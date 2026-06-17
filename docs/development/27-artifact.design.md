@@ -1,14 +1,24 @@
 # Artifact 制品模块 — 实现设计文档
 
-> 对应需求：`27 artifact.md`
+> 对应需求：[27-artifact.md](./27-artifact.md)
 > 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
-> 更新日期：2026-06-06
+> 更新日期：2026-06-17
 
 ---
 
 ## 一、模块概述
 
 制品存储与版本管理：Agent 运行产出物（文件/图片/代码）的持久化存储。对标 trpc-agent-go `artifact` 包，桥接到项目自身存储层，支持本地文件系统存储，预留 S3/COS 云存储扩展。
+
+### 1.1 trpc-agent-go 框架参照
+
+trpc-agent-go `artifact` 包定义了 Agent 运行时制品的核心抽象：
+
+- **Artifact**：MIME 类型 + 二进制数据 + 可选 URL + 可选名称。
+- **SessionInfo**：AppName + UserID + SessionID，标识制品归属。
+- **Service 接口**：SaveArtifact / LoadArtifact / ListArtifactKeys / DeleteArtifact / ListVersions。
+
+项目通过 `internal/artifact/trpc/service.go` 桥接该接口到自身存储层，使 Agent 运行时可透明使用制品能力。
 
 ---
 
@@ -21,7 +31,7 @@ Frontend (base64 HTTP/gRPC)
 internal/service/artifact.go        ← Kratos Service：proto ↔ biz 映射 + base64 编解码 + PreviewArtifact + SignDownloadUrl + ServeSignedDownload
     │
     ▼
-internal/biz/artifact/              ← ArtifactUsecase + ArtifactReader/ArtifactWriter/ArtifactRepo 接口定义
+internal/biz/artifact/              ← Usecase + Reader/Writer/Repo 接口 + TurnCollector + 附件解析 + 过滤 + 限制
     │
     ▼
 internal/data/artifactfs/repo.go    ← FSArtifactRepo：本地文件系统实现
@@ -29,7 +39,7 @@ internal/data/artifactfs/repo.go    ← FSArtifactRepo：本地文件系统实�
     ▼
 internal/artifact/trpc/service.go   ← ServiceAdapter：桥接 biz → trpc artifact.Service
 
-internal/artifact/sign.go           ← HMAC-SHA256 签名/验签（签名下载 URL）；生产 fail-closed
+internal/artifact/sign.go           ← Signer：HMAC-SHA256 签名/验签（生产 fail-closed）
 
 internal/artifact/storage_factory.go ← 存储后端工厂：local/s3/cos 选择（S3/COS 委托 trpc-agent-go）
 
@@ -42,7 +52,7 @@ internal/skill/trpc/artifact_executor.go ← artifactSavingExecutor：CodeExecut
 
 ## 三、Proto 层
 
-### 3.1 已实现
+### 3.1 服务定义
 
 文件：`api/kratos/artifact/v1/artifact.proto`
 
@@ -83,7 +93,7 @@ service ArtifactService {
 | **ArtifactData** | meta (ArtifactMeta), data_base64 | 元数据 + base64 编码的二进制载荷 |
 | **UploadArtifactRequest** | session_id (REQUIRED), name (REQUIRED), mime_type, data_base64 (REQUIRED) | 上传请求 |
 | **GetArtifactRequest** | id (REQUIRED), version | 获取请求；version=0 返回最新版本 |
-| **ListArtifactsRequest** | session_id, limit, offset, query, mime_type_prefix | 列表请求；query 按名称模糊匹配，mime_type_prefix 按 MIME 前缀过滤 |
+| **ListArtifactsRequest** | session_id, limit, offset, query, mime_type_prefix | 列表请求；query 按名称/session/mime 模糊匹配，mime_type_prefix 按 MIME 前缀过滤 |
 | **ListArtifactsResponse** | items (repeated ArtifactMeta), total | 列表响应 |
 | **DeleteArtifactRequest** | id (REQUIRED) | 删除请求，删除该 ID 的所有版本 |
 | **DeleteArtifactVersionRequest** | id (REQUIRED), version (REQUIRED) | 按版本删除请求 |
@@ -94,9 +104,9 @@ service ArtifactService {
 | **SignDownloadUrlRequest** | id (REQUIRED), version, ttl_seconds | 签名下载请求；ttl_seconds 最大 86400 |
 | **SignDownloadUrlResponse** | url, expires_at | 签名下载响应；url 含 HMAC-SHA256 token + expires |
 
-### 3.3 已实现（在线预览 / 签名下载）
+### 3.3 签名下载端点
 
-PreviewArtifact 和 SignDownloadUrl RPC 已在 §3.1 中列出并实现。签名下载的实际文件流通过独立 HTTP 端点 `/v1/artifacts/download` 提供（非 gRPC），由 `ServeSignedDownload` 方法处理。
+签名下载的实际文件流通过独立 HTTP 端点 `/v1/artifacts/download` 提供（非 gRPC），由 `ServeSignedDownload` 方法处理。
 
 ---
 
@@ -104,7 +114,7 @@ PreviewArtifact 和 SignDownloadUrl RPC 已在 §3.1 中列出并实现。签名
 
 ### 4.1 领域模型
 
-文件：`internal/biz/artifact/`（子包，`internal/biz/artifact.go` 为 re-export 桥接层）
+文件：`internal/biz/artifact/artifact.go`（子包，`internal/biz/artifact.go` 为 re-export 桥接层，将 `artifact.Usecase` 别名为 `biz.ArtifactUsecase`）
 
 ```go
 type Artifact struct {
@@ -123,7 +133,7 @@ type Artifact struct {
 
 ### 4.2 Repo 接口
 
-接口拆分为读写分离，`ArtifactRepo` 为组合接口：
+接口拆分为读写分离，`Repo` 为组合接口：
 
 ```go
 type Reader interface {
@@ -136,7 +146,7 @@ type Reader interface {
 type Writer interface {
     Save(ctx context.Context, sessionID, name, mimeType string, data []byte) (Artifact, error)
     Delete(ctx context.Context, id string) error
-    DeleteVersion(ctx context.Context, id string, version int) error
+    DeleteVersion(ctx context.Context, sessionID, name string, version int) error
 }
 
 type Repo interface {
@@ -148,22 +158,66 @@ type Repo interface {
 ### 4.3 Usecase
 
 ```go
-type ArtifactUsecase struct { repo Repo }
+type Usecase struct {
+    repo Repo
+    lg   loggateway.Logger
+}
 
-func (uc *ArtifactUsecase) Save(ctx, sessionID, name, mimeType string, data []byte) (Artifact, error)
-func (uc *ArtifactUsecase) Load(ctx, id string, version int) (Artifact, []byte, error)
-func (uc *ArtifactUsecase) LoadMeta(ctx, id string, version int) (Artifact, error)
-func (uc *ArtifactUsecase) List(ctx, sessionID string, limit, offset int, query, mimePrefix string) ([]Artifact, int, error)
-func (uc *ArtifactUsecase) Delete(ctx, id string) error
-func (uc *ArtifactUsecase) DeleteVersion(ctx, id string, version int) error
-func (uc *ArtifactUsecase) ListVersions(ctx, sessionID, name string) ([]Artifact, error)
-func (uc *ArtifactUsecase) StorageBytes(ctx) (int64, error)
-func (uc *ArtifactUsecase) Preview(ctx, id string, version int) (PreviewResult, error)
+func NewUsecase(repo Repo, lg loggateway.Logger) *Usecase
+
+func (uc *Usecase) Save(ctx, sessionID, name, mimeType string, data []byte) (Artifact, error)
+func (uc *Usecase) Load(ctx, id string, version int) (Artifact, []byte, error)
+func (uc *Usecase) LoadMeta(ctx, id string, version int) (Artifact, error)
+func (uc *Usecase) List(ctx, sessionID string, limit, offset int, query, mimePrefix string) ([]Artifact, int, error)
+func (uc *Usecase) Delete(ctx, id string) error
+func (uc *Usecase) DeleteVersion(ctx, id string, version int) error
+func (uc *Usecase) ListVersions(ctx, sessionID, name string) ([]Artifact, error)
+func (uc *Usecase) StorageBytes(ctx) (int64, error)
+func (uc *Usecase) Preview(ctx, id string, version int) (PreviewResult, error)
 ```
 
-### 4.4 ID 生成
+关键行为：
+- **Save**：校验大小上限（`ValidateUploadSize`），保存后若有 TurnCollector 则自动收集引用。
+- **Delete**：按 ID 解析 session+name，列出所有版本后逐个删除（逻辑制品删除）。
+- **DeleteVersion**：按 ID 解析 session+name，再按版本号删除单版本。
+- **List**：当 query/mimePrefix 非空时全量拉取后内存过滤（`FilterArtifacts`），再做分页。
+- **Preview**：按 MIME 分类（text/image/pdf/binary），text 截断 512 KB。
+
+### 4.4 子包辅助文件
+
+| 文件 | 职责 |
+|------|------|
+| `limits.go` | `MaxUploadBytes`（10 MB）常量 + `ValidateUploadSize` + `ErrSizeExceeded` |
+| `filter.go` | `FilterArtifacts(items, query, mimePrefix)` 内存过滤（名称/session/mime 模糊匹配 + MIME 前缀） |
+| `turn_collector.go` | `TurnCollector` + `WithTurnCollector` / `CollectorFromContext`：单次 turn 产出物引用收集 |
+| `attachments_resolve.go` | 附件解析：从制品 ID 列表加载元数据，校验 session 归属 |
+| `options_merge.go` | 消息 options_json 合并附件引用 |
+
+### 4.5 ID 生成
 
 `NewArtifactID()` 使用 `crypto/rand` 生成 12 字节随机 hex（24 字符）。
+
+### 4.6 预览分类
+
+```go
+type PreviewKind string
+
+const (
+    PreviewKindText   PreviewKind = "text"
+    PreviewKindImage  PreviewKind = "image"
+    PreviewKindPDF    PreviewKind = "pdf"
+    PreviewKindBinary PreviewKind = "binary"
+)
+
+type PreviewResult struct {
+    Meta        Artifact
+    Kind        PreviewKind
+    TextContent string // Kind == text 时填充
+    Data        []byte // Kind == image/pdf 时填充
+}
+```
+
+文本截断阈值：`maxTextPreviewBytes = 512 << 10`（512 KB）。
 
 ---
 
@@ -192,8 +246,8 @@ func (uc *ArtifactUsecase) Preview(ctx, id string, version int) (PreviewResult, 
 - **Load**：version ≤ 0 返回最新版本；按 ID 前缀扫描所有 session 目录查找。
 - **LoadMeta**：仅加载元数据（不读取二进制文件）。
 - **List**：去重保留每个 name 的最新版本，按 created_at 降序排列，支持分页。
-- **Delete**：按 ID 前缀删除所有版本文件（bin + json）。
-- **DeleteVersion**：按 ID + 版本号删除指定版本文件。
+- **Delete**：按 ID 删除所有版本文件（bin + json）。
+- **DeleteVersion**：按 session+name+version 删除指定版本文件。
 - **ListBySessionAndName**：返回指定 session+name 的全部版本，按版本号升序。
 - **StorageBytes**：统计磁盘总字节数（近似）。
 
@@ -201,9 +255,20 @@ func (uc *ArtifactUsecase) Preview(ctx, id string, version int) (PreviewResult, 
 
 文件：`internal/artifact/storage_factory.go`
 
-`NewArtifactService()` 根据 `StorageConfig.Backend` 选择存储后端：
+`NewArtifactService(ctx, cfg)` 根据 `StorageConfig.Backend` 选择存储后端：
 - `local`：返回 nil（走 FSArtifactRepo）
-- `s3` / `cos`：委托 `trpc-agent-go/artifact/s3|cos` 框架包创建实例
+- `s3`：委托 `trpc-agent-go/artifact/s3` 框架包创建实例
+- `cos`：委托 `trpc-agent-go/artifact/cos` 框架包创建实例
+
+`StorageConfig` 字段：
+
+| 字段 | 说明 |
+|------|------|
+| `Backend` | `local` / `s3` / `cos` |
+| `S3Bucket` / `S3Endpoint` / `S3Region` | S3 配置 |
+| `S3AccessKey` / `S3SecretKey` | S3 凭据（可由环境变量 `ARTIFACT_S3_ACCESS_KEY` / `ARTIFACT_S3_SECRET_KEY` 覆盖） |
+| `S3PathStyle` | S3 path-style 访问 |
+| `COSBucketURL` / `COSSecretID` / `COSSecretKey` | COS 配置（可由环境变量 `ARTIFACT_COS_SECRET_ID` / `ARTIFACT_COS_SECRET_KEY` 覆盖） |
 
 S3/COS 的具体实现委托给 trpc-agent-go 框架包，项目自身不维护独立实现目录。
 
@@ -217,25 +282,77 @@ S3/COS 的具体实现委托给 trpc-agent-go 框架包，项目自身不维护�
 
 文件：`internal/service/artifact.go`
 
+```go
+type ArtifactService struct {
+    v1.UnimplementedArtifactServiceServer
+    uc     *biz.ArtifactUsecase
+    signer *artifact.Signer
+}
+
+func NewArtifactService(uc *biz.ArtifactUsecase, signer *artifact.Signer) *ArtifactService
+```
+
 | 方法 | 说明 |
 |------|------|
-| `UploadArtifact` | 校验 session_id/name 必填，base64 解码，**10 MB** 上限（超限返回明确错误），MIME 缺省 `application/octet-stream` |
-| `GetArtifact` | 按 ID + version 加载，not found 返回 Kratos NotFound 错误 |
+| `UploadArtifact` | 校验 session_id/name 必填，base64 解码，**10 MB** 上限（超限返回明确错误），MIME 缺省 `application/octet-stream`；记录 `aranea_artifact_upload_bytes_total` |
+| `GetArtifact` | 按 ID + version 加载，not found 返回 Kratos NotFound 错误；记录 `aranea_artifact_download_bytes_total` |
 | `ListArtifacts` | limit 默认 50，返回去重后的最新版本列表；支持 `query` 名称模糊匹配 + `mime_type_prefix` MIME 前缀过滤 |
-| `DeleteArtifact` | 按 ID 删除所有版本 |
-| `DeleteArtifactVersion` | 按 ID + version 删除指定版本 |
-| `ListArtifactVersions` | 按 ID 列出全部版本历史 |
+| `DeleteArtifact` | 按 ID 删除所有版本；刷新存储 Gauge |
+| `DeleteArtifactVersion` | 按 ID + version 删除指定版本；not found 返回 404 |
+| `ListArtifactVersions` | 按 ID 解析 session+name 后列出全部版本历史 |
 | `PreviewArtifact` | 按 MIME 分类预览：text（≤512KB 截断）/ image（base64）/ pdf（base64）/ binary |
-| `SignDownloadUrl` | 生成 HMAC-SHA256 签名 URL，TTL 可配置（默认 15 分钟，最大 24 小时） |
+| `SignDownloadUrl` | 生成 HMAC-SHA256 签名 URL，TTL 可配置（默认 15 分钟，最大 24 小时）；生产缺密钥返回 503 |
 | `ServeSignedDownload` | 独立 HTTP handler，验证签名后流式返回二进制文件，设置 Content-Disposition |
 
 ---
 
-## 七、trpc 适配层
+## 七、签名下载
+
+文件：`internal/artifact/sign.go`
+
+### 7.1 Signer
+
+```go
+type Signer struct {
+    lg       loggateway.Logger
+    once     sync.Once
+    cached   []byte
+    cacheErr error
+}
+
+func NewSigner(lg loggateway.Logger) *Signer
+func (s *Signer) SignKey() ([]byte, error)
+func (s *Signer) DownloadToken(id string, version int, expires time.Time) (string, error)
+func (s *Signer) VerifyDownloadToken(id string, version int, expiresUnix int64, token string) (bool, error)
+```
+
+### 7.2 密钥解析顺序
+
+1. `KRATOS_ARTIFACT_SIGN_KEY` 环境变量
+2. `KRATOS_AUTH_SECRET` 环境变量
+3. 开发环境（`DEPLOY_ENV`/`KRATOS_ENV`/`APP_ENV` 为 dev/development/local/test）回退到不安全密钥 `aranea-artifact-dev-key`
+4. 其他环境（含空/staging/prod）返回 `ErrSignKeyMissing`（fail-closed）
+
+### 7.3 辅助函数
+
+- `DefaultDownloadExpiry()`：默认过期时间（now + 15 分钟）
+- `ParseExpires(raw)`：解析 expires 查询参数为 unix 时间戳
+
+---
+
+## 八、trpc 适配层
 
 文件：`internal/artifact/trpc/service.go`
 
 ServiceAdapter 桥接 `biz.ArtifactUsecase` → `trpcartifact.Service` 接口：
+
+```go
+type ServiceAdapter struct {
+    uc *biz.ArtifactUsecase
+}
+
+var _ trpcartifact.Service = (*ServiceAdapter)(nil)
+```
 
 | trpc 方法 | 桥接逻辑 |
 |-----------|----------|
@@ -245,13 +362,32 @@ ServiceAdapter 桥接 `biz.ArtifactUsecase` → `trpcartifact.Service` 接口：
 | `DeleteArtifact` | `uc.ListVersions()` → 逐个 `uc.Delete()` |
 | `ListVersions` | `uc.ListVersions()` → 提取版本号列表 |
 
-编译期接口校验：`var _ trpcartifact.Service = (*ServiceAdapter)(nil)`
+---
+
+## 九、CodeExecutor 集成
+
+文件：`internal/skill/trpc/artifact_executor.go`
+
+`artifactSavingExecutor` 包装 `codeexecutor.CodeExecutor`，自动保存产出物：
+
+```go
+type artifactSavingExecutor struct {
+    inner codeexecutor.CodeExecutor
+    lg    loggateway.Logger
+}
+
+func WrapWithArtifactSave(inner codeexecutor.CodeExecutor, lg loggateway.Logger) codeexecutor.CodeExecutor
+```
+
+- 执行后遍历 `OutputFiles`，跳过空名/空内容/超 10 MB 的文件
+- MIME 缺省时按文件扩展名推断（`mime.TypeByExtension`），再缺省 `application/octet-stream`
+- 通过 `codeexecutor.SaveArtifactHelper(ctx, name, data, mimeType)` 保存
 
 ---
 
-## 八、Wire 注入
+## 十、Wire 注入
 
-### 8.1 已实现
+### 10.1 已实现
 
 ```
 data.ProviderSet  → NewArtifactRepo       (→ artifactfs.NewFSArtifactRepo)
@@ -262,8 +398,9 @@ service.ProviderSet → NewArtifactService
 Wire 生成（`cmd/admin/wire_gen.go`）：
 ```
 artifactRepo := data.NewArtifactRepo()
-artifactUsecase := biz.NewArtifactUsecase(artifactRepo)
-artifactService := service.NewArtifactService(artifactUsecase)
+artifactUsecase := biz.NewArtifactUsecase(artifactRepo, logger)
+artifactSigner := artifact.NewSigner(logger)
+artifactService := service.NewArtifactService(artifactUsecase, artifactSigner)
 ```
 
 HTTP/gRPC 注册：
@@ -271,19 +408,20 @@ HTTP/gRPC 注册：
 - `http.go`：`/v1/artifacts/download` 签名下载路由（`ServeSignedDownload`）
 - `grpc.go`：`artifactv1.RegisterArtifactServiceServer(srv, artifactSvc)`
 
-### 8.2 已实现（Runner 注入）
+### 10.2 Runner 注入
 
 ```
 TRPCRunnerDeps.ArtifactService 字段已添加
 NewTRPCRunner 中 trpcrunner.WithArtifactService(deps.ArtifactService) 注入
 Wire provideArtifactRuntimeService 提供 trpcartifact.Service 实例
+Wire provideArtifactSigner 提供 *artifact.Signer 实例
 ```
 
 ---
 
-## 九、Web 前端设计
+## 十一、Web 前端设计
 
-### 9.1 已实现
+### 11.1 已实现
 
 | 层 | 文件 | 说明 |
 |----|------|------|
@@ -305,15 +443,15 @@ Wire provideArtifactRuntimeService 提供 trpcartifact.Service 实例
 | 工具 | `features/artifact/artifactTableUi.ts` | 表格 UI 配置 |
 | 服务 | `services/index.ts` | createArtifactService → createArtifactServiceClient |
 
-### 9.2 待实现
+### 11.2 待实现
 
 无。前端 P1–P3 功能已全部实现。
 
 ---
 
-## 十、运维指南
+## 十二、运维指南
 
-### 10.1 API
+### 12.1 API
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -325,7 +463,7 @@ Wire provideArtifactRuntimeService 提供 trpcartifact.Service 实例
 | `GET`  | `/v1/artifacts/{id}/versions` | 列出制品的全部版本历史 |
 | `GET`  | `/v1/artifacts/{id}/preview` | 预览制品（按 MIME 分类返回），可选 `?version=N` |
 | `POST` | `/v1/artifacts/{id}/sign-download` | 生成签名下载 URL |
-| `GET`  | `/v1/artifacts/download?id=…&token=…&expires=…` | 签名下载文件流（ServeSignedDownload） |
+| `GET`  | `/v1/artifacts/download?id=…&token=…&expires=…&version=…` | 签名下载文件流（ServeSignedDownload） |
 
 #### 上传请求体
 
@@ -357,11 +495,15 @@ Wire provideArtifactRuntimeService 提供 trpcartifact.Service 实例
 }
 ```
 
-### 10.2 存储配置
+### 12.2 存储配置
 
 | 配置方式 | 键 | 默认值 | 说明 |
 |----------|-----|--------|------|
 | 环境变量 | `ARTIFACT_STORAGE_DIR` | `./data/artifacts` | 制品文件根目录 |
+| 环境变量 | `KRATOS_ARTIFACT_SIGN_KEY` | — | 签名密钥（优先） |
+| 环境变量 | `KRATOS_AUTH_SECRET` | — | 签名密钥（次选） |
+| 环境变量 | `ARTIFACT_S3_ACCESS_KEY` / `ARTIFACT_S3_SECRET_KEY` | — | S3 凭据 |
+| 环境变量 | `ARTIFACT_COS_SECRET_ID` / `ARTIFACT_COS_SECRET_KEY` | — | COS 凭据 |
 
 每个制品存储为：
 ```
@@ -371,7 +513,7 @@ Wire provideArtifactRuntimeService 提供 trpcartifact.Service 实例
 
 上传相同 `session_id` + `name` 的文件会创建新版本（版本号递增）。
 
-### 10.3 指标
+### 12.3 指标
 
 | 指标 | 类型 | 标签 | 说明 |
 |------|------|------|------|
@@ -379,7 +521,7 @@ Wire provideArtifactRuntimeService 提供 trpcartifact.Service 实例
 | `aranea_artifact_download_bytes_total` | Counter | — | 总下载字节数 |
 | `aranea_artifact_storage_bytes` | Gauge | — | 磁盘总字节数（近似） |
 
-### 10.4 Agent 集成
+### 12.4 Agent 集成
 
 Agent 通过 `trpc-agent-go` artifact service 访问制品：
 
@@ -394,9 +536,9 @@ version, err := svc.SaveArtifact(ctx, sessionInfo, "output.csv", &artifact.Artif
 a, err := svc.LoadArtifact(ctx, sessionInfo, "output.csv", nil)
 ```
 
-### 10.5 已知限制
+### 12.5 已知限制
 
 - S3/COS 存储工厂已实现（委托 trpc-agent-go 框架包），但生产配置与多租户路径隔离待 Phase 4（依赖 M2 EP-WS-01）。
 - 制品不在节点间复制。多实例部署需使用共享卷或配置 S3/COS 后端。
 - `data_base64` 编码增加约 33% 开销；大文件（> 10 MB）应优先使用分块流式传输（计划中）。
-- 签名密钥生产环境 fail-closed（缺少密钥拒绝服务），开发环境回退到不安全密钥。
+- 签名密钥生产环境 fail-closed（缺少密钥返回 503），开发环境回退到不安全密钥。

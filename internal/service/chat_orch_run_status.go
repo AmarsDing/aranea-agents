@@ -67,12 +67,13 @@ type runStatusTracker interface {
 // Part of the TECH-DEBT(BL8) resolution: extracting run status management
 // from ChatOrchestrator to reduce cognitive complexity (AS-COG-01).
 type chatRunStatusTracker struct {
-	runs      *rt.RunRegistry
-	sessions  biz.SessionStatePort
-	bus       event.Bus
-	bindings  *TypedSyncMap[string, sessionRunTurnBinding]
+	runs       *rt.RunRegistry
+	sessions   biz.SessionStatePort
+	bus        event.Bus
+	bindings   *TypedSyncMap[string, sessionRunTurnBinding]
 	awaitCache *TypedSyncMap[string, biz.ChatAwaitMeta]
-	lg        loggateway.Logger
+	sm         *biz.RunStateMachine
+	lg         loggateway.Logger
 }
 
 func newChatRunStatusTracker(runs *rt.RunRegistry, sessions biz.SessionStatePort, bus event.Bus, lg loggateway.Logger) *chatRunStatusTracker {
@@ -82,6 +83,7 @@ func newChatRunStatusTracker(runs *rt.RunRegistry, sessions biz.SessionStatePort
 		bus:        bus,
 		bindings:   NewTypedSyncMap[string, sessionRunTurnBinding](orchMapMaxIdle),
 		awaitCache: NewTypedSyncMap[string, biz.ChatAwaitMeta](orchMapMaxIdle),
+		sm:         biz.NewRunStateMachine(),
 		lg:         lg,
 	}
 }
@@ -96,6 +98,24 @@ func (t *chatRunStatusTracker) SetRunStatus(ctx context.Context, sessionID, runI
 
 // SetRunStatusWithAwait same as SetRunStatus but includes await metadata.
 func (t *chatRunStatusTracker) SetRunStatusWithAwait(ctx context.Context, sessionID, runID, status, errMsg string, await *AwaitStatusMeta) {
+	// FSM validation (AS-FSM-01): log illegal transitions for investigation.
+	// Does not block — existing callers may rely on "illegal but intentional"
+	// transitions (e.g. retry from terminal). The warning surfaces bugs.
+	if t.sm != nil {
+		from := biz.RunStateNone
+		if entry, ok := t.runs.GetStatus(sessionID); ok {
+			from = biz.ParseRunState(entry.Status)
+		}
+		to := biz.ParseRunState(status)
+		if from != to && !t.sm.CanTransition(from, to) {
+			t.lg.Warn("run: illegal state transition detected by FSM",
+				loggateway.StepID("run.fsm_illegal"),
+				loggateway.Str("session_id", sessionID),
+				loggateway.Str("run_id", runID),
+				loggateway.Str("from", string(from)),
+				loggateway.Str("to", string(to)))
+		}
+	}
 	t.runs.SetStatus(sessionID, runID, status, errMsg)
 	bind, _ := t.LoadBinding(sessionID)
 	if await != nil {

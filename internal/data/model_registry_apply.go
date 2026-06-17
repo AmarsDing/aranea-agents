@@ -337,33 +337,48 @@ func migrateOneRuleInTx(ctx context.Context, e execer, rule modelregistry.Provid
 	if err != nil {
 		return stats, err
 	}
-	n, _ := res.RowsAffected()
+	n, raErr := res.RowsAffected()
+	if raErr != nil {
+		return stats, fmt.Errorf("migrate agents rows affected: %w", raErr)
+	}
 	stats.Agents = int(n)
 
 	res, err = e.ExecContext(ctx, `UPDATE sessions SET default_provider = ? WHERE default_provider = ?`, to, from)
 	if err != nil {
 		return stats, err
 	}
-	n, _ = res.RowsAffected()
+	n, raErr = res.RowsAffected()
+	if raErr != nil {
+		return stats, fmt.Errorf("migrate sessions default_provider rows affected: %w", raErr)
+	}
 	stats.Sessions = int(n)
 	res, err = e.ExecContext(ctx, `UPDATE sessions SET last_provider = ? WHERE last_provider = ?`, to, from)
 	if err != nil {
 		return stats, err
 	}
-	n, _ = res.RowsAffected()
+	n, raErr = res.RowsAffected()
+	if raErr != nil {
+		return stats, fmt.Errorf("migrate sessions last_provider rows affected: %w", raErr)
+	}
 	stats.Sessions += int(n)
 
 	res, err = e.ExecContext(ctx, `UPDATE system_settings SET eval_sim_provider = ? WHERE eval_sim_provider = ?`, to, from)
 	if err != nil {
 		return stats, err
 	}
-	n, _ = res.RowsAffected()
+	n, raErr = res.RowsAffected()
+	if raErr != nil {
+		return stats, fmt.Errorf("migrate eval_sim_provider rows affected: %w", raErr)
+	}
 	stats.Eval = int(n)
 	res, err = e.ExecContext(ctx, `UPDATE system_settings SET eval_judge_provider = ? WHERE eval_judge_provider = ?`, to, from)
 	if err != nil {
 		return stats, err
 	}
-	n, _ = res.RowsAffected()
+	n, raErr = res.RowsAffected()
+	if raErr != nil {
+		return stats, fmt.Errorf("migrate eval_judge_provider rows affected: %w", raErr)
+	}
 	stats.Eval += int(n)
 
 	res, err = e.ExecContext(ctx,
@@ -371,14 +386,20 @@ func migrateOneRuleInTx(ctx context.Context, e execer, rule modelregistry.Provid
 	if err != nil {
 		return stats, err
 	}
-	n, _ = res.RowsAffected()
+	n, raErr = res.RowsAffected()
+	if raErr != nil {
+		return stats, fmt.Errorf("migrate l0_compress_provider rows affected: %w", raErr)
+	}
 	stats.RuntimeSettings = int(n)
 	res, err = e.ExecContext(ctx,
 		`UPDATE agent_runtime_settings SET memory_worker_provider = ? WHERE memory_worker_provider = ?`, to, from)
 	if err != nil {
 		return stats, err
 	}
-	n, _ = res.RowsAffected()
+	n, raErr = res.RowsAffected()
+	if raErr != nil {
+		return stats, fmt.Errorf("migrate memory_worker_provider rows affected: %w", raErr)
+	}
 	stats.RuntimeSettings += int(n)
 
 	res, err = e.ExecContext(ctx,
@@ -386,7 +407,10 @@ func migrateOneRuleInTx(ctx context.Context, e execer, rule modelregistry.Provid
 	if err != nil {
 		return stats, err
 	}
-	n, _ = res.RowsAffected()
+	n, raErr = res.RowsAffected()
+	if raErr != nil {
+		return stats, fmt.Errorf("migrate skill provider rows affected: %w", raErr)
+	}
 	stats.Skills = int(n)
 
 	res, err = e.ExecContext(ctx,
@@ -395,7 +419,10 @@ func migrateOneRuleInTx(ctx context.Context, e execer, rule modelregistry.Provid
 	if err != nil {
 		return stats, err
 	}
-	n, _ = res.RowsAffected()
+	n, raErr = res.RowsAffected()
+	if raErr != nil {
+		return stats, fmt.Errorf("migrate knowledge_embed_provider rows affected: %w", raErr)
+	}
 	stats.KnowledgeEmbed = int(n)
 
 	res, err = e.ExecContext(ctx,
@@ -404,7 +431,10 @@ func migrateOneRuleInTx(ctx context.Context, e execer, rule modelregistry.Provid
 	if err != nil {
 		return stats, err
 	}
-	n, _ = res.RowsAffected()
+	n, raErr = res.RowsAffected()
+	if raErr != nil {
+		return stats, fmt.Errorf("migrate web_research_provider rows affected: %w", raErr)
+	}
 	stats.WebResearch = int(n)
 
 	res, err = e.ExecContext(ctx,
@@ -413,7 +443,9 @@ func migrateOneRuleInTx(ctx context.Context, e execer, rule modelregistry.Provid
 	if err != nil {
 		return stats, err
 	}
-	_, _ = res.RowsAffected()
+	if _, raErr := res.RowsAffected(); raErr != nil {
+		return stats, fmt.Errorf("migrate llm_provider_models rows affected: %w", raErr)
+	}
 
 	return stats, nil
 }

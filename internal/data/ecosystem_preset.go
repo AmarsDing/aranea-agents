@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -172,7 +173,11 @@ func (r *EcosystemPresetRepo) DeleteAgentsByIndustry(ctx context.Context, indust
 		if err != nil {
 			return err
 		}
-		n, _ = res.RowsAffected()
+		var raErr error
+		n, raErr = res.RowsAffected()
+		if raErr != nil {
+			return fmt.Errorf("delete agents by industry rows affected: %w", raErr)
+		}
 
 		// Cascade cleanup for each deleted agent (runtime_settings, prompt_files, sessions)
 		for agentID := range agentIDs {

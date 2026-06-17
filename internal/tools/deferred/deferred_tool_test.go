@@ -143,3 +143,23 @@ func TestDeferredCallableTool_FactoryRetryOnSuccess(t *testing.T) {
 		t.Fatalf("factory should not be called again after success, called %d times", callCount)
 	}
 }
+
+// TestDeferredCallableTool_ImplementsDeferredTool verifies that DeferredCallableTool
+// satisfies the framework's DeferredTool interface (P2-9 alignment).
+func TestDeferredCallableTool_ImplementsDeferredTool(t *testing.T) {
+	decl := &trpctool.Declaration{Name: "deferred_tool", Description: "test"}
+	dt := NewDeferredCallableTool(decl, nil, loggateway.NewNoop())
+
+	// Compile-time interface assertion.
+	var _ trpctool.DeferredTool = dt
+
+	// ShouldDefer must always return true for DeferredCallableTool.
+	if !dt.ShouldDefer(context.Background()) {
+		t.Fatal("DeferredCallableTool.ShouldDefer must return true")
+	}
+
+	// Framework helper must recognize the tool as deferred.
+	if !trpctool.ShouldDefer(context.Background(), dt) {
+		t.Fatal("framework tool.ShouldDefer must return true for DeferredCallableTool")
+	}
+}

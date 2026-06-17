@@ -148,6 +148,15 @@ func (d *Data) PostgresExecInTx(ctx context.Context, fn func(ctx context.Context
 	if err := fn(ctx, tx); err != nil {
 		return err
 	}
+	// If the caller's context was cancelled while the transaction was running,
+	// roll back instead of committing a result nobody will read.
+	// Mirrors ExecInTx semantics (see line 73).
+	if ctx.Err() != nil {
+		_ = tx.Rollback()
+		d.lg.Warn("postgres transaction rolled back (caller context cancelled)",
+			loggateway.StepID("data.pg_tx"), loggateway.Err(ctx.Err()))
+		return ctx.Err()
+	}
 	if err := tx.Commit(); err != nil {
 		d.lg.Error("postgres transaction commit failed", loggateway.StepID("data.pg_tx"), loggateway.Err(err))
 		return err

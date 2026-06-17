@@ -79,7 +79,7 @@ func (r *taskPlanRepo) Create(ctx context.Context, plan *biz.TaskPlan) (*biz.Tas
 		string(plan.Status), plan.CreatedAt.Format(time.RFC3339), plan.UpdatedAt.Format(time.RFC3339),
 	)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TASK_PLAN")
 	}
 	return r.GetByID(ctx, plan.ID)
 }
@@ -96,7 +96,7 @@ func (r *taskPlanRepo) GetByID(ctx context.Context, id string) (*biz.TaskPlan, e
 			status, created_at, updated_at
 		 FROM task_plans WHERE id = ?`, id)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TASK_PLAN")
 	}
 	defer rows.Close()
 	if !rows.Next() {
@@ -104,7 +104,7 @@ func (r *taskPlanRepo) GetByID(ctx context.Context, id string) (*biz.TaskPlan, e
 	}
 	plan, err := scanTaskPlanFromRows(rows)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TASK_PLAN")
 	}
 	return plan, nil
 }
@@ -154,7 +154,7 @@ func (r *taskPlanRepo) Update(ctx context.Context, plan *biz.TaskPlan) (*biz.Tas
 		plan.ID,
 	)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TASK_PLAN")
 	}
 	return r.GetByID(ctx, plan.ID)
 }
@@ -171,14 +171,14 @@ func (r *taskPlanRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionI
 			status, created_at, updated_at
 		 FROM task_plans WHERE spirit_session_id = ? ORDER BY created_at DESC`, spiritSessionID)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TASK_PLAN")
 	}
 	defer rows.Close()
 	var plans []*biz.TaskPlan
 	for rows.Next() {
 		plan, err := scanTaskPlanFromRows(rows)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "TASK_PLAN")
 		}
 		plans = append(plans, plan)
 	}
@@ -233,7 +233,7 @@ func scanTaskPlanFromRows(rows *sql.Rows) (*biz.TaskPlan, error) {
 		&status, &createdAtStr, &updatedAtStr,
 	)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TASK_PLAN")
 	}
 
 	plan.ComplexityLevel = biz.ComplexityLevel(complexityLevel)

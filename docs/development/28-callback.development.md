@@ -18,9 +18,11 @@ Callback：全链路回调钩子，覆盖 Agent/Model/Tool 与 OnEvent。`intern
 | Chain | `internal/agent/callbacks/` |
 | 装配 | `internal/agent/callback_chain.go`、`product_chain_builtins.go` |
 | Manager | `internal/plugin/trpc/manager.go`（含编排边界注释）、`orchestration_policy.go` |
-| Hook 领域 | `internal/biz/hook/hook.go`（实现）、`internal/biz/hook.go`（re-export）、`internal/biz/hook_resolver.go` |
+| Hook 领域 | `internal/biz/hook/hook.go`（Hook 模型/Config/Resolver/Usecase/Delivery 实现）、`internal/biz/hook.go`（re-export 至 `biz` 包） |
 | Hook 执行 | `internal/plugin/trpc/hook_callbacks.go`、`hook_modify.go`、`hook_events.go`、`hook_notify.go`、`hook_audit.go`、`hook_resilience.go`、`hook_retry_worker.go` |
-| 前端 | `web/src/pages/HooksPage.vue`、`HookDeliveriesPage.vue`、`PluginRunsPage.vue`、`AgentHooksPanel.vue`、`CallbackEditor.vue` |
+| Service | `internal/service/hook.go`（HookService） |
+| 数据层 | `internal/data/hook.go`、`internal/data/hook_delivery.go`、`internal/data/sql/hook_delivery.sql` |
+| 前端 | `web/src/pages/HooksPage.vue`、`HookDeliveriesPage.vue`、`PluginRunsPage.vue`、`web/src/components/agents/AgentHooksPanel.vue`、`web/src/components/hooks/CallbackEditor.vue`、`HooksTable.vue` |
 
 ---
 
@@ -32,8 +34,8 @@ Callback：全链路回调钩子，覆盖 Agent/Model/Tool 与 OnEvent。`intern
 | Agent/Model/Tool Chain 挂载 | ✅ | `buildCallbackChainOptions` → `With*Callbacks` |
 | 产品工具链 | ✅ | guard/cache/timing/confirm/recorder/circuit-breaker/command-safety |
 | PluginManager | ✅ | `manager.go`：`MergeChain`、`RunnerPluginsForAgent`、`OnEvent` |
-| Hook → Chain | ✅ | `hook/hook.go` + `hook_resolver.go` + `HookCallbacks` + `wrapResilientHooks` |
-| Runner 内置 Plugin | ✅ | `runtime.go` + 9 `builtin()`；scope 过滤 |
+| Hook → Chain | ✅ | `hook/hook.go`（Resolver）+ `hook.go`（re-export）+ `HookCallbacks` + `wrapResilientHooks` |
+| Runner 内置 Plugin | ✅ | `registry.go`（`BuiltinPluginDefs` 9 项）+ `runtime.go` 生命周期；scope 过滤 |
 | OnEvent + Hook on_event | ✅ | `productEventPlugin`、`hook_events.go` |
 | Prometheus 回调指标 | ✅ | `metrics.ObserveCallback`、`PluginInvokeTotal`（product_chain） |
 | 前端 Hook 管理 | ✅ | `/hooks`、`/hooks/deliveries`、`/plugins/runs`、`AgentHooksPanel`、`CallbackEditor` |
@@ -86,7 +88,7 @@ Callback：全链路回调钩子，覆盖 Agent/Model/Tool 与 OnEvent。`intern
 
 ### Phase 2：PluginManager + Hook 桥接
 
-- `manager.go`、`hook_resolver.go`、`MergeChain`
+- `manager.go`、`hook/hook.go`（Resolver）、`MergeChain`
 - AuditLog 等内置 Plugin 覆盖多回调点（Runner 层）
 
 ### Phase 3：OnEvent + 产品闭环
@@ -105,7 +107,7 @@ Callback：全链路回调钩子，覆盖 Agent/Model/Tool 与 OnEvent。`intern
 | 2 | ToolRecorder 迁入 Chain | 1 | ✅ |
 | 3 | TRPCBuilderDeps.PluginManager | 2 | ✅ |
 | 4 | PluginManager BuildChain/MergeChain | 2 | ✅ |
-| 5 | hook_resolver + hook_callbacks | 2 | ✅ |
+| 5 | hook Resolver + hook_callbacks | 2 | ✅ |
 | 6 | AuditLog 多回调点（Runner） | 2 | ✅ |
 | 7 | OnEvent 桥接 | 3 | ✅ |
 | 8 | Hook webhook notify | 3 | ✅ |

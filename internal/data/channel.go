@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -11,6 +10,7 @@ import (
 	"aranea-agents/internal/data/ent/platformchannelcredential"
 	"aranea-agents/internal/data/ent/platformchanneldelivery"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 
 	"entgo.io/ent/dialect/sql"
 )
@@ -56,7 +56,7 @@ func (r *channelRepo) List(ctx context.Context) ([]biz.Channel, error) {
 		Order(platformchannel.BySortOrder(sql.OrderAsc()), platformchannel.ByCreatedAt(sql.OrderDesc())).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "CHANNEL")
 	}
 	out := make([]biz.Channel, 0, len(rows))
 	for _, e := range rows {
@@ -77,7 +77,7 @@ func (r *channelRepo) Get(ctx context.Context, id string) (biz.Channel, error) {
 		).
 		Only(ctx)
 	if err != nil {
-		return biz.Channel{}, err
+		return biz.Channel{}, entErrToBizErr(err, "CHANNEL")
 	}
 	return entToChannel(e), nil
 }
@@ -94,7 +94,7 @@ func (r *channelRepo) GetByKey(ctx context.Context, key string) (biz.Channel, er
 		).
 		Only(ctx)
 	if err != nil {
-		return biz.Channel{}, err
+		return biz.Channel{}, entErrToBizErr(err, "CHANNEL")
 	}
 	return entToChannel(e), nil
 }
@@ -120,7 +120,7 @@ func (r *channelRepo) Create(ctx context.Context, row biz.Channel) (biz.Channel,
 		SetDeletedAt("")
 	e, err := b.Save(ctx)
 	if err != nil {
-		return biz.Channel{}, err
+		return biz.Channel{}, entErrToBizErr(err, "CHANNEL")
 	}
 	return entToChannel(e), nil
 }
@@ -138,7 +138,7 @@ func (r *channelRepo) Update(ctx context.Context, row biz.Channel) (biz.Channel,
 		SetUpdatedAt(nowRFC3339()).
 		Save(ctx)
 	if err != nil {
-		return biz.Channel{}, err
+		return biz.Channel{}, entErrToBizErr(err, "CHANNEL")
 	}
 	return entToChannel(e), nil
 }
@@ -181,7 +181,7 @@ func (r *channelRepo) ListCredentials(ctx context.Context, channelID string) ([]
 		Order(platformchannelcredential.ByCredentialKey()).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "CHANNEL")
 	}
 	out := make([]biz.ChannelCredential, 0, len(rows))
 	for _, e := range rows {
@@ -225,12 +225,12 @@ func (r *channelRepo) UpsertCredential(ctx context.Context, cred biz.ChannelCred
 		}).
 		ID(ctx)
 	if err != nil {
-		return biz.ChannelCredential{}, err
+		return biz.ChannelCredential{}, entErrToBizErr(err, "CHANNEL")
 	}
 	// Read back the upserted row to return consistent state
 	e, err := r.data.RW().Read(ctx).PlatformChannelCredential.Get(ctx, id)
 	if err != nil {
-		return biz.ChannelCredential{}, err
+		return biz.ChannelCredential{}, entErrToBizErr(err, "CHANNEL")
 	}
 	return credentialEntToBiz(e), nil
 }
@@ -273,7 +273,7 @@ func (r *channelRepo) ListDeliveries(ctx context.Context, channelID string, limi
 		Limit(limit).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "CHANNEL")
 	}
 	out := make([]biz.ChannelDelivery, 0, len(rows))
 	for _, e := range rows {
@@ -306,7 +306,7 @@ func (r *channelRepo) AddDelivery(ctx context.Context, d biz.ChannelDelivery) (b
 		SetUpdatedAt(d.UpdatedAt)
 	e, err := b.Save(ctx)
 	if err != nil {
-		return biz.ChannelDelivery{}, err
+		return biz.ChannelDelivery{}, entErrToBizErr(err, "CHANNEL")
 	}
 	return deliveryEntToBiz(e), nil
 }
@@ -356,14 +356,17 @@ func (r *channelRepo) AddDeliveryIfNotExists(ctx context.Context, d biz.ChannelD
 			).
 			Only(ctx)
 		if findErr != nil {
-			return biz.ChannelDelivery{}, false, fmt.Errorf("insert failed: %w; query also failed: %v", err, findErr)
+			r.data.lg.Warn("query existing delivery failed after insert conflict",
+				loggateway.Domain("CHANNEL"),
+				loggateway.Err(findErr))
+			return biz.ChannelDelivery{}, false, entErrToBizErr(err, "CHANNEL")
 		}
 		return deliveryEntToBiz(existing), false, nil
 	}
 	// Load the upserted row by ID to return full entity.
 	upserted, findErr := r.data.RW().Read(ctx).PlatformChannelDelivery.Get(ctx, e)
 	if findErr != nil {
-		return biz.ChannelDelivery{}, true, findErr
+		return biz.ChannelDelivery{}, true, entErrToBizErr(findErr, "CHANNEL")
 	}
 	return deliveryEntToBiz(upserted), true, nil
 }
@@ -383,7 +386,7 @@ func (r *channelRepo) ListPendingDeliveries(ctx context.Context, limit int) ([]b
 		Limit(limit).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "CHANNEL")
 	}
 	out := make([]biz.ChannelDelivery, 0, len(rows))
 	for _, e := range rows {
@@ -399,5 +402,5 @@ func (r *channelRepo) UpdateDelivery(ctx context.Context, d biz.ChannelDelivery)
 		SetErrorMessage(strings.TrimSpace(d.ErrorMessage)).
 		SetUpdatedAt(nowRFC3339()).
 		Save(ctx)
-	return err
+	return entErrToBizErr(err, "CHANNEL")
 }

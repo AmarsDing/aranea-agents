@@ -97,7 +97,7 @@
 
 ### 4.4 Hook 解析
 
-**位置**：`internal/biz/hook/hook.go`（实现）、`internal/biz/hook.go`（re-export）；解析 `internal/biz/hook_resolver.go`；执行 `internal/plugin/trpc/hook_callbacks.go`、`hook_modify.go`、`hook_events.go`
+**位置**：`internal/biz/hook/hook.go`（Hook 模型、Config、Resolver、Usecase、Delivery 实现）；`internal/biz/hook.go`（re-export 至 `biz` 包）；执行 `internal/plugin/trpc/hook_callbacks.go`、`hook_modify.go`、`hook_events.go`
 
 `config_json` 结构：
 
@@ -114,12 +114,22 @@
 }
 ```
 
-### 4.5 数据表
+### 4.5 数据模型与 Schema
 
-| 表 | 关键字段 |
-|----|----------|
-| `plugins` | `callback_points_json`、`config_json`、`scope`、`sort_order` |
-| `hooks` | `config_json`、`enabled`、`sort_order` |
+#### Ent Schema（核心表）
+
+| 表 | Ent Schema | 关键字段 |
+|----|------------|----------|
+| `hooks` | `internal/data/ent/schema/hook.go`（`PlatformHook`，`entsql.Annotation{Table: "hooks"}`） | `id`、`hook_key`、`name`、`status`、`enabled`、`sort_order`、`config_json`、`metadata_json` |
+| `plugins` | `internal/data/ent/schema/plugin.go`（`PlatformPlugin`，`entsql.Annotation{Table: "plugins"}`） | `id`、`plugin_key`、`scope`、`callback_points_json`、`config_json`、`fallback_config_json`（StorageKey `default_config_json`）、`sort_order`、`enabled` |
+
+#### DDL 迁移表（非 Ent Schema）
+
+| 表 | DDL 位置 | 说明 |
+|----|----------|------|
+| `hook_deliveries` | `internal/data/sql/hook_delivery.sql` + 迁移 `20260622_hook_delivery_schema.sql` | Hook notify 投递队列，含 `status`、`attempt_count`、`max_attempts`、`idempotency_key`；索引 `idx_hook_deliveries_retry`（status=pending + updated_at）支撑重试 worker |
+
+> `hook_deliveries` 不进 Ent Schema，通过 DDL Migration Registry 管理（符合 DB-R3：FTS5/队列等通过 DDL 迁移补充但不另建 Ent Schema）。Repo 实现见 `internal/data/hook_delivery.go`（Raw SQL，走 `RWDB()` 事务感知路径）。
 
 ### 4.6 Hook `modify` 合并策略（before_tool）
 
@@ -148,7 +158,7 @@
 
 Hook 规则使用 **`wrapResilientHooks`**（非 block 错误不中断回合）。
 
-### 4.9 Hook notify 投递（P3）
+### 4.9 Hook notify 投递
 
 表 `hook_deliveries`（`internal/data/sql/hook_delivery.sql`）：`pending` → 重试 → `success`/`failed`。
 
@@ -217,9 +227,12 @@ Hook on_event 规则经 HookResolver + event 桥接（非 Chain 条目）
 | `internal/plugin/trpc/hook_*.go` | Hook 动作执行（callbacks/modify/notify/audit/events/resilience/retry_worker） |
 | `internal/plugin/trpc/orchestration_policy.go` | 编排策略（统一 Runner） |
 | `internal/plugin/trpc/runtime.go` | 内置 Plugin 注册与生命周期 |
-| `internal/biz/hook/*.go` | Hook 领域实现（Config/Resolver/Usecase） |
-| `internal/biz/hook.go` | Hook 领域 re-export |
-| `internal/biz/hook_resolver.go` | Hook 解析器 |
+| `internal/plugin/trpc/chain_adapter.go` | 内置 Plugin 回调点声明（`BuiltinCallbackPoints`） |
+| `internal/biz/hook/hook.go` | Hook 领域实现（Config/Resolver/Usecase/Delivery） |
+| `internal/biz/hook.go` | Hook 领域 re-export 至 `biz` 包 |
+| `internal/service/hook.go` | HookService gRPC/HTTP 实现 |
+| `internal/data/hook.go` | hooks 表 Repo |
+| `internal/data/hook_delivery.go` | hook_deliveries 表 Repo（Raw SQL） |
 | `internal/data/sql/hook_delivery.sql` | hook_deliveries 表 DDL |
 
 ---
@@ -238,3 +251,37 @@ Hook on_event 规则经 HookResolver + event 桥接（非 Chain 条目）
 共享常量：`web/src/features/callback/constants.ts`（`CALLBACK_POINT_VALUES`、`PLUGIN_RUN_KEY_PRESETS`）。
 
 API：`HookService` gRPC/HTTP；Agent 设置页复用同一编辑器组件。
+
+---
+
+## 九、Proto / API 契约
+
+### 9.1 HookService（`api/kratos/hook/v1/hook.proto`）
+
+| RPC | HTTP | 请求 | 响应 | 说明 |
+|-----|------|------|------|------|
+| `ListHooks` | `GET /v1/hooks` | `google.protobuf.Empty` | `ListHooksResponse{items[]}` | 列出全部 Hook |
+| `CreateHook` | `POST /v1/hooks` | `CreateHookRequest`（key/name 必填） | `Hook` | 创建 Hook，成功后触发 `ReloadHooks` |
+| `GetHook` | `GET /v1/hooks/{id}` | `GetHookRequest{id}` | `Hook` | 查询单个 Hook |
+| `UpdateHook` | `PATCH /v1/hooks/{id}` | `UpdateHookRequest{id, hook}` | `Hook` | 更新 Hook，成功后触发 `ReloadHooks` |
+| `DeleteHook` | `DELETE /v1/hooks/{id}` | `DeleteHookRequest{id}` | `google.protobuf.Empty` | 删除 Hook，成功后触发 `ReloadHooks` |
+| `ListHookDeliveries` | `GET /v1/hooks/deliveries` | `ListHookDeliveriesRequest{hook_key,status,from,to,page,page_size}` | `ListHookDeliveriesResponse{items[],total,page,page_size}` | Hook notify 投递记录分页查询 |
+
+### 9.2 消息字段契约
+
+**`Hook`**：`id`、`key`、`name`、`description`、`status`、`enabled`、`sort_order`、`config_json`、`metadata_json`、`created_at`、`updated_at`、`deleted_at`
+
+**`HookDelivery`**：`id`、`hook_key`、`hook_id`、`webhook_url`、`payload_json`、`status`（pending/success/failed）、`attempt_count`、`max_attempts`、`last_error`、`created_at`、`updated_at`、`idempotency_key`
+
+### 9.3 Service 实现
+
+**位置**：`internal/service/hook.go`（`HookService`）
+
+- 注入 `biz.HookUsecase` + `biz.HookDeliveryUsecase` + `plugintrpc.Manager` + `loggateway.Logger`
+- 写操作（Create/Update/Delete）成功后通过 `safego.Go` 异步调用 `mgr.ReloadHooks` 热更新
+- 错误翻译：`apierror.IsCode(err, CodeNotFound)` → `apierror.NotFound("HOOK", ...)`
+- 分页：复用 `biz.PageToLimitOffset`
+
+### 9.4 Plugin 运行记录查询
+
+`ListPluginRuns`（`api/kratos/plugin/v1/plugin.proto`，`internal/service/plugin.go`）支撑 `/plugins/runs` 审计查询，按 `plugin_key` 前缀 `hook:` 匹配所有 Hook 审计记录。

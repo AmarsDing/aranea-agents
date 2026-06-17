@@ -150,8 +150,8 @@ func resolveCalleeWorkspace(ctx context.Context, uc *biz.A2AUsecase, agents biz.
 	return ""
 }
 
-// InjectRunContext attaches A2A usecase, caller id, and invoker to a tool run context.
-func InjectRunContext(ctx context.Context, uc *biz.A2AUsecase, callerAgentID string, inv InvokerFunc) context.Context {
+// InjectRunContext attaches A2A usecase, caller id, invoker, and logger to a tool run context.
+func InjectRunContext(ctx context.Context, uc *biz.A2AUsecase, callerAgentID string, inv InvokerFunc, lg loggateway.Logger) context.Context {
 	if uc != nil {
 		ctx = WithA2AUsecase(ctx, uc)
 	}
@@ -160,6 +160,9 @@ func InjectRunContext(ctx context.Context, uc *biz.A2AUsecase, callerAgentID str
 	}
 	if inv != nil {
 		ctx = WithInvoker(ctx, inv)
+	}
+	if lg != nil {
+		ctx = WithLogger(ctx, lg)
 	}
 	return ctx
 }

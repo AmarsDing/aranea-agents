@@ -147,7 +147,7 @@ func (o *ChatOrchestrator) injectA2AContext(ctx context.Context, callerAgentID s
 		return ctx
 	}
 	inv := a2apkg.NewInvoker(o, o.a2aUC(), o.td().ReadDeps.Agents, o.lg(), a2abiz.DefaultRetryPolicy())
-	return a2apkg.InjectRunContext(ctx, o.a2aUC(), callerAgentID, inv)
+	return a2apkg.InjectRunContext(ctx, o.a2aUC(), callerAgentID, inv, o.lg())
 }
 
 // processPendingQueue handles the next pending message after a turn completes.

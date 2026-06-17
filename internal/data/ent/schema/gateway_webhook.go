@@ -24,7 +24,7 @@ func (GatewayWebhook) Fields() []ent.Field {
 		field.String("name").MaxLen(256),
 		field.String("url").MaxLen(2048),
 		field.Text("event_types_json").Default("[]"),
-		field.String("secret").Default("").MaxLen(512),
+		field.String("secret").Default("").MaxLen(512).Sensitive(),
 		field.Text("headers_json").Default("{}"),
 		field.Bool("enabled").Default(true),
 		field.String("created_at").Default(""),

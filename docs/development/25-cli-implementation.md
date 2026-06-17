@@ -1,6 +1,12 @@
 # 25 CLI 模块实施方案（2026-05-27）
 
 > **状态**：v1.1（取代 `25-cli.development.md` 的开发计划部分；需求 `25-cli.md` 与设计 `25-cli.design.md` 中与本方案冲突的细节以本文档为准）。
+> **注意**：本文档为历史实施方案，内容已按三件套内容边界拆分并入以下文档：
+> - 需求（用户故事 / 验收标准 / 交互规格）→ [`25-cli.md`](./25-cli.md)
+> - 设计（架构 / 代码分层 / API 契约 / 数据模型 / 状态机）→ [`25-cli.design.md`](./25-cli.design.md)
+> - 开发计划（现状评估 / Phase 划分 / 任务清单 / 进度状态）→ [`25-cli.development.md`](./25-cli.development.md)
+>
+> 新读者请直接阅读三件套；本文档保留作为历史决策记录与差异对账参考。
 > **作者口径**：本方案对 `25-cli.md` / `25-cli.design.md` / `25-cli.development.md` 三份既有材料做对仓库实际代码的对账，剔除假设字段、对齐框架红线，并把 MVP 收窄到能在 1～2 周交付的体量。
 > **同系列**：需求 → [`25-cli.md`](./25-cli.md)；设计 → [`25-cli.design.md`](./25-cli.design.md)；开发计划 → [`25-cli.development.md`](./25-cli.development.md)
 
@@ -50,8 +56,8 @@ Aranea CLI（二进制 `aranea`）是一只与 `cmd/admin` 后端**完全异构*
 
 | 项 | 路径 | 与新 CLI 的关系 |
 |----|------|----------------|
-| 开发者 lint | `cmd/araneactl/lint/main.go`（stdlib `flag`） | **不存在**：`cmd/araneactl/` 目录未创建，R12 lint 规则缺失 |
-| fmtcheck | `cmd/araneactl/fmtcheck/main.go` | **不存在**：同上 |
+| 开发者 lint | `cmd/araneactl/lint/main.go`（stdlib `flag`） | **已实现**：含 R12 黑名单检查（`r12CLINoBackendImport`）+ `r12_test.go` + `testdata/r12_violation.go.txt` |
+| fmtcheck | `cmd/araneactl/fmtcheck/main.go` | **已实现** |
 | 一次性数据 CLI | `cmd/fetch-channel-icons`、`cmd/memory-migrate`、`cmd/sqlmigrate`、`cmd/seed-stockx-org`、`cmd/pginit`、`cmd/pgprobe` | 一次性数据维护工具，与终端用户 CLI 无关 |
 | Cobra/spf13 依赖 | **已引入**：`github.com/spf13/cobra v1.10.2` | — |
 | `cmd/aranea/` | **已实现** | 完整 cobra CLI 入口 |
@@ -66,9 +72,9 @@ Aranea CLI（二进制 `aranea`）是一只与 `cmd/admin` 后端**完全异构*
 5. Skill import multipart 表单当前不支持 `source / source_url / source_ref / source_subpath / client_validation` 字段（待确认）。
 6. WS 协议层 `tool.error` envelope 子类型未定义（当前使用通用 `error` 类型）。
 7. ~~没有跨平台二进制发布脚本~~ **部分解决**：`make cli` 已实现，但 `cli-all` 仅覆盖 Linux/amd64。
-8. `cmd/araneactl/` 目录不存在，R12 lint 规则缺失——CLI 红线无 CI 守护。
+8. ~~`cmd/araneactl/` 目录不存在，R12 lint 规则缺失~~ **已解决**：`cmd/araneactl/lint/main.go` 含 R12 黑名单检查，CLI 红线已有 CI 守护。
 9. CLI 子命令测试覆盖不足：`cmd/` 下仅 `config_test.go`，其他子命令缺 httptest。
-10. `docs/guides/cli-quickstart.md` 未创建。
+10. ~~`docs/guides/cli-quickstart.md` 未创建~~ **已解决**：文件已创建（`docs/README.md` 索引文件不存在）。
 
 ---
 

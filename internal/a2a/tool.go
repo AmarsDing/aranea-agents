@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -53,6 +54,19 @@ func WithInvoker(ctx context.Context, fn InvokerFunc) context.Context {
 func invokerFromContext(ctx context.Context) InvokerFunc {
 	fn, _ := ctx.Value(invokerKey{}).(InvokerFunc)
 	return fn
+}
+
+// loggerKey stores the loggateway.Logger in context for audit error reporting.
+type loggerKey struct{}
+
+// WithLogger attaches a loggateway.Logger to ctx.
+func WithLogger(ctx context.Context, lg loggateway.Logger) context.Context {
+	return context.WithValue(ctx, loggerKey{}, lg)
+}
+
+func loggerFromContext(ctx context.Context) loggateway.Logger {
+	lg, _ := ctx.Value(loggerKey{}).(loggateway.Logger)
+	return lg
 }
 
 // callAgentInput is the JSON schema for call_agent.
@@ -138,23 +152,39 @@ func (t *callAgentTool) Call(ctx context.Context, args []byte) (any, error) {
 	if err != nil {
 		// Audit the failure when the usecase is available.
 		if uc != nil {
-			_ = uc.AppendAudit(ctx, biz.A2AAuditEntry{
+			if auditErr := uc.AppendAudit(ctx, biz.A2AAuditEntry{
 				CallerAgentID: callerAgentIDFromContext(ctx),
 				CalleeAgentID: in.AgentID,
 				Capability:    in.Capability,
 				Status:        "error",
-			})
+			}); auditErr != nil {
+				if lg := loggerFromContext(ctx); lg != nil {
+					lg.Warn("a2a: audit write failed for error status",
+						loggateway.StepID("a2a.audit_fail"),
+						loggateway.Str("callee_agent_id", in.AgentID),
+						loggateway.Str("capability", in.Capability),
+						loggateway.Err(auditErr))
+				}
+			}
 		}
 		return nil, fmt.Errorf("call_agent: %w", err)
 	}
 
 	if uc != nil {
-		_ = uc.AppendAudit(ctx, biz.A2AAuditEntry{
+		if auditErr := uc.AppendAudit(ctx, biz.A2AAuditEntry{
 			CallerAgentID: callerAgentIDFromContext(ctx),
 			CalleeAgentID: in.AgentID,
 			Capability:    in.Capability,
 			Status:        "success",
-		})
+		}); auditErr != nil {
+			if lg := loggerFromContext(ctx); lg != nil {
+				lg.Warn("a2a: audit write failed for success status",
+					loggateway.StepID("a2a.audit_fail"),
+					loggateway.Str("callee_agent_id", in.AgentID),
+					loggateway.Str("capability", in.Capability),
+					loggateway.Err(auditErr))
+			}
+		}
 	}
 
 	return map[string]any{"result": result}, nil

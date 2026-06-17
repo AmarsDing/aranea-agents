@@ -2,12 +2,14 @@ package data
 
 import (
 	"context"
-	"fmt"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/evolutionsuggestion"
 )
+
+// evolutionSuggestionDomain is the apierror domain for evolution suggestion errors.
+const evolutionSuggestionDomain = "EVOLUTION_SUGGESTION"
 
 type evolutionSuggestionRepo struct {
 	data *Data
@@ -45,7 +47,7 @@ func (r *evolutionSuggestionRepo) ListByAgent(ctx context.Context, agentID strin
 	}
 	rows, err := query.Order(ent.Desc(evolutionsuggestion.FieldCreatedAt)).All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, evolutionSuggestionDomain)
 	}
 	out := make([]biz.EvolutionSuggestion, 0, len(rows))
 	for _, row := range rows {
@@ -57,10 +59,7 @@ func (r *evolutionSuggestionRepo) ListByAgent(ctx context.Context, agentID strin
 func (r *evolutionSuggestionRepo) GetByID(ctx context.Context, id string) (biz.EvolutionSuggestion, error) {
 	row, err := r.data.RW().Read(ctx).EvolutionSuggestion.Get(ctx, id)
 	if err != nil {
-		if ent.IsNotFound(err) {
-			return biz.EvolutionSuggestion{}, fmt.Errorf("suggestion not found")
-		}
-		return biz.EvolutionSuggestion{}, err
+		return biz.EvolutionSuggestion{}, entErrToBizErr(err, evolutionSuggestionDomain)
 	}
 	return entSuggestionToBiz(row), nil
 }
@@ -78,7 +77,7 @@ func (r *evolutionSuggestionRepo) Create(ctx context.Context, s biz.EvolutionSug
 		SetCreatedAt(now).
 		Save(ctx)
 	if err != nil {
-		return biz.EvolutionSuggestion{}, err
+		return biz.EvolutionSuggestion{}, entErrToBizErr(err, evolutionSuggestionDomain)
 	}
 	return entSuggestionToBiz(row), nil
 }
@@ -91,10 +90,7 @@ func (r *evolutionSuggestionRepo) UpdateStatus(ctx context.Context, id string, s
 	}
 	row, err := update.Save(ctx)
 	if err != nil {
-		if ent.IsNotFound(err) {
-			return biz.EvolutionSuggestion{}, fmt.Errorf("suggestion not found")
-		}
-		return biz.EvolutionSuggestion{}, err
+		return biz.EvolutionSuggestion{}, entErrToBizErr(err, evolutionSuggestionDomain)
 	}
 	return entSuggestionToBiz(row), nil
 }
@@ -103,11 +99,5 @@ func (r *evolutionSuggestionRepo) UpdateSnapshot(ctx context.Context, id string,
 	_, err := r.data.RW().Write(ctx).EvolutionSuggestion.UpdateOneID(id).
 		SetPreApplySnapshot(snapshot).
 		Save(ctx)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			return fmt.Errorf("suggestion not found")
-		}
-		return err
-	}
-	return nil
+	return entErrToBizErr(err, evolutionSuggestionDomain)
 }

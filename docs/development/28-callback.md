@@ -18,9 +18,9 @@
 |------|------|
 | **回调钩子（Callback Hook）** | 在 Agent/Model/Tool 生命周期特定点触发的拦截函数 |
 | **回调链（Callback Chain）** | 多个回调按优先级排序组成的执行链，前一个输出为后一个输入 |
-| **回调点（Callback Point）** | 触发生命周期位置：BeforeAgent / AfterAgent / BeforeModel / AfterModel / BeforeTool / AfterTool / OnError；OnEvent 通过 Runner Plugin 桥接，非 Chain 枚举 |
-| **Plugin** | 平台内置或 DB 配置的运行时插件，经 Runner `WithPlugins` 注入框架 |
-| **Hook** | 产品层配置的回调规则（`hooks` 表），经 Chain 在 Agent 构造时合并 |
+| **回调点（Callback Point）** | 触发生命周期位置：BeforeAgent / AfterAgent / BeforeModel / AfterModel / BeforeTool / AfterTool / OnError；OnEvent 为事件流回调，非 Chain 枚举 |
+| **Plugin** | 平台内置或 DB 配置的运行时插件，提供框架级横切能力 |
+| **Hook** | 产品层配置的回调规则，按回调点 + 条件 + 动作执行 |
 
 ---
 
@@ -58,9 +58,9 @@
 **作为** 开发者，**我希望** 通过 Plugin 接口注册多层回调，**以便** 实现跨 Agent/Model/Tool 的横切关注点。
 
 **验收标准**：
-- Plugin 可声明关注的回调点（`callback_points_json`）
+- Plugin 可声明关注的回调点
 - Plugin 回调按优先级排序执行
-- Plugin 回调错误不导致整个链路崩溃（可配置 continue-on-error）
+- Plugin 回调错误不导致整个链路崩溃（可配置错误隔离）
 
 ---
 
@@ -102,28 +102,29 @@
 
 **验收标准**：Tool 调用前后回调正确触发；BeforeTool 可拒绝调用；AfterTool 可修改结果。
 
-### 4.4 Plugin 与 Chain 分工
+### 4.4 Plugin 与 Hook 分工
 
-**需求描述**：Runner 级 Plugin 与 LLMAgent 级 Callback Chain 各司其职，避免重复触发。
+**需求描述**：平台内置 Plugin 与产品层 Hook 规则各司其职，避免同一治理关注点被重复触发。
 
 **功能规格**：
-- DB 启用的内置 Plugin 经 Runner `WithPlugins` 注入（按 `sort_order`）
-- 产品固定链（工具确认、计时、调用记录等）与 Hook 规则经 Chain 注入 LLMAgent
-- `model_router` / `cost_guard` 的模型切换仅经 ModelSelector，不在 Chain 重复路由
+- 内置 Plugin 负责框架级横切能力（审计、安全、计费、工具治理等）
+- 产品固定链与 Hook 规则负责 Agent 级回调增强
+- 模型切换由独立的模型选择器承担，不在回调链中重复路由
 
-**验收标准**：同一治理 concern 不在 Runner Plugin 与 Chain 双路径重复执行；编排边界见设计文档 §编排。
+**验收标准**：同一治理 concern 不在 Plugin 与 Hook 双路径重复执行；编排边界与技术分工见设计文档 §三、§四。
 
 ### 4.5 OnEvent 事件回调
 
 **需求描述**：Agent 运行时产生的每个事件可被回调处理。
 
 **功能规格**：
-- 事件流经 Runner Plugin 的 OnEvent（含 Hook `on_event` 桥接）
+- 事件流可被回调监听并处理
+- 可按 Agent 作用域匹配事件回调
 - 可修改或过滤事件（在框架允许范围内）
 
 **典型场景**：事件审计、格式转换、敏感事件过滤。
 
-**验收标准**：事件流经 OnEvent 正确处理；Hook `on_event` 可按 Agent 作用域匹配。
+**验收标准**：事件流经事件回调正确处理；Hook `on_event` 可按 Agent 作用域匹配。
 
 ### 4.6 回调链顺序与错误处理
 
@@ -132,21 +133,21 @@
 **功能规格**：
 - 数值越小越先执行；同优先级按注册顺序
 - Before/After 链：前一个输出为后一个输入
-- 可配置 continue-on-error（Hook 规则层支持错误隔离）
+- 可配置错误隔离策略（Hook 规则层支持错误隔离，非阻断动作失败不中断回合）
 
 **验收标准**：回调按优先级顺序执行；错误传播行为符合配置。
 
 ### 4.7 产品层回调规则（Hook）
 
-**需求描述**：产品层通过界面配置回调规则，无需修改代码。
+**需求描述**：产品层通过界面配置回调规则，无需修改代码即可调整回调行为。
 
 **功能规格**：
-- 规则存储在 `hooks` 表（`config_json`：callback_point + condition + action）
-- 条件：AgentID / agent_key / tool_name / 事件类型等
-- 动作：log / notify / block / modify
-- 变更后 `HookResolver.Reload` 热更新
+- 可创建回调规则：指定回调点 + 条件 + 动作
+- 条件支持：AgentID / agent_key / tool_name / 事件类型等
+- 动作类型支持：日志记录（log）/ 通知（notify）/ 拦截（block）/ 修改（modify）
+- 规则变更后热更新，下一 Agent 构造即生效
 
-**验收标准**：规则保存后下一 Agent 构造生效；block/modify 在对应回调点生效。
+**验收标准**：规则保存后下一 Agent 构造生效；block/modify 在对应回调点生效；notify 异步投递可重试。数据模型与存储结构见设计文档 §四。
 
 ---
 
@@ -164,7 +165,7 @@
 ## 6. 验收标准总览
 
 1. Agent / Model / Tool 全生命周期回调可触发
-2. Plugin（Runner）与 Hook（Chain）分工清晰、不重复编排
+2. Plugin 与 Hook 分工清晰、不重复编排
 3. OnEvent 与 Hook `on_event` 可按作用域生效
 4. 回调按优先级执行，错误传播可配置
 5. 产品层可配置 Hook 规则并热更新

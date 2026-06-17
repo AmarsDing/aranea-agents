@@ -1,7 +1,7 @@
 # Evaluation 评估 — 开发计划
 
 > **版本**：2026-06-06 | **状态**：🟢 全部完成（所有 Phase 已交付，差距已关闭）
-> **需求**：[33 evaluation.md](./33%20evaluation.md) · **设计**：[33 evaluation.design.md](./33%20evaluation.design.md)
+> **需求**：[33 evaluation.md](./33%20evaluation.md) · **设计**：[33 evaluation.design.md](./33-evaluation.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-DATA-01 ✅, EP-RT-08 ✅, EP-BIZ-04 ✅, EVAL-02 ✅
 
 ---
@@ -11,13 +11,14 @@
 Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动评估（含 LLM-as-Judge）、人工标注与客户端报告导出。
 
 **代码锚点**：
-- `api/kratos/evaluation/v1/evaluation.proto` — Evaluation HTTP+gRPC API（14 RPC）
-- `internal/service/evaluation.go` — EvaluationService（传输桥点）
+- `api/kratos/evaluation/v1/evaluation.proto` — Evaluation HTTP+gRPC API（14 RPC + 26 Message）
+- `internal/service/evaluation.go` — EvaluationService（传输桥点，14 方法）
 - `internal/service/evaluation_runner.go` — NewEvaluationRunner（Wire 装配）
 - `internal/service/evaluation_after_turn.go` — NewEvaluationAfterTurnTrigger
 - `internal/biz/evaluation.go` — 类型重导出（子包 `evaluation/` 的别名）
-- `internal/biz/evaluation/evaluation.go` — 领域模型 + EvalRepo 接口（16 方法）+ EvalUsecase（17 方法）
+- `internal/biz/evaluation/evaluation.go` — 领域模型 + EvalRepo 接口（19 方法）+ EvalUsecase（17 方法）
 - `internal/data/evaluation.go` — EvalRepo + EnsureEvalSchema（4 表 + 11 条 ALTER 迁移）
+- `internal/data/ent/schema/eval_*.go` — 4 个 Ent Schema（EvalDataset/EvalCase/EvalRun/EvalCaseResult）
 - `internal/evaluation/runner.go` — 异步调度
 - `internal/evaluation/runner_legacy.go` — Legacy 回退路径
 - `internal/evaluation/metrics.go` — 指标解析与 legacy 计分
@@ -52,7 +53,7 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| Proto 14 RPC | ✅ | evaluation.proto：14 个 RPC + 18 个 Message |
+| Proto 14 RPC + 26 Message | ✅ | evaluation.proto：14 个 RPC + 26 个 Message |
 | Dataset CRUD | ✅ | Create/Get/List/Update/Delete + UploadCases |
 | DeleteRun | ✅ | `DELETE /v1/evaluation/runs/{id}`（级联 results） |
 | DeleteDataset 级联 | ✅ | 事务删 cases + dataset |
@@ -86,8 +87,35 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 | Biz 子包结构 | ✅ | `internal/biz/evaluation/` 子包 + 外层类型重导出 |
 | 前端 Pinia Store | ✅ | `stores/evaluation/index.ts` 13 方法 |
 | 前端路由 + 导航 + i18n | ✅ | `/evaluation` 路由 + 侧边栏 + 中英文 |
+| Ent Schema 4 表 | ✅ | `eval_dataset.go` / `eval_case.go` / `eval_run.go` / `eval_case_result.go` |
 
-### 未完成项
+### 已交付能力总览
+
+| 能力 | 状态 | 实现位置 |
+|------|------|----------|
+| AgentEvaluator 集成 | ✅ | `framework.go` FrameworkBridge |
+| EvalSet 多轮 Invocation | ✅ | `evalset_adapter.go` + `case_metadata.go` |
+| UserSimulation | ✅ | `scripted_simulator.go` + `llm_simulator.go` |
+| pass@k / pass^k | ✅ | `pass_metrics.go` + `multirun.go` |
+| AfterTurn 自动评估 | ✅ | `after_turn.go` + `evaluation_after_turn.go` |
+| 趋势 / A/B API + 前端 | ✅ | `GetAgentEvalTrend` / `CompareEvalRuns` / `EvaluationAnalyticsPanel` |
+| FinalResponse ROUGE/XML/JSON | ✅ | `framework_metrics.go` opt-in metrics |
+| ToolTrajectory 完整序列 | ✅ | `tool_trajectory` + `evalset_tools.go` |
+| Eval LLM 系统配置 | ✅ | `eval_llm_resolve.go` + `system_settings` + Settings 页 |
+| 人工标注 | ✅ | `AnnotateCaseResult` API + `EvaluationResultsDialog` |
+| 客户端报告导出 | ✅ | `exportRunResults.ts` CSV/JSON |
+| 内置评估器注册 | ✅ | `evaluator_registry.go` 9 种评估器 |
+
+### 用户故事实现状态映射
+
+| 用户故事 | 状态 | 实现证据 |
+|---------|------|----------|
+| US-5 自动评估触发 | ✅ | `NativeTurnAfterHook` + `config_json.evaluation.auto_after_turn`（min_interval_sec 限流） |
+| US-6 人工评估标注 | ✅ | `AnnotateCaseResult` API + Results 对话框（EVAL-02） |
+| US-7 评估报告与趋势 | ✅ | 客户端 CSV/JSON 导出；`GetAgentEvalTrend` + `CompareEvalRuns` API；前端 `EvaluationAnalyticsPanel` 趋势表 + Run 多选 A/B 对比 |
+| US-8 高级评估能力 | ✅ | 多轮 turns、脚本化/LLM UserSimulation、MultiRun + pass@k、ROUGE/XML/JSON FinalResponse、完整 ToolTrajectory（`tool_trajectory`）、趋势/A/B API 与前端 |
+
+### 未完成项（已知短板）
 
 | 项 | 说明 |
 |----|------|

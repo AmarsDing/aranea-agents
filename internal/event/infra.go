@@ -126,8 +126,10 @@ const (
 //
 // For Critical events (AS-EVT-01), if WAL is available, the event is persisted
 // before publishing (Write-Before-Publish-Fanout). If WAL write fails, the event
-// is still published directly (better to publish without WAL protection than to
-// lose the event entirely).
+// is NOT published — publishing an unpersisted Critical event would violate
+// WBPF semantics: on crash recovery the event would be lost from WAL while
+// consumers may have already processed it, causing inconsistency. Losing the
+// event entirely is safer than publishing without persistence guarantee.
 //
 // Routing mode is controlled by the MONITOR_BUS_ROUTING environment variable
 // (read once at NewInfra / BindInfra time):
@@ -143,16 +145,17 @@ func (infra *Infra) Publish(ctx context.Context, env Envelope) {
 	if infra.WAL != nil {
 		publish := func() { infra.publishToBuses(ctx, env) }
 		if err := infra.WAL.WriteBeforePublish(ctx, env, publish); err != nil {
-			// WAL write failed — log and fall back to direct publish.
-			// Better to publish without WAL protection than to lose the event entirely.
+			// WAL write failed — do NOT publish. Publishing an unpersisted
+			// Critical event violates WBPF: on crash the event is absent from
+			// WAL but consumers may have already side-effected on it.
 			if infra.lg != nil {
-				infra.lg.Warn("event_wal: WBPF failed, falling back to direct publish",
+				infra.lg.Error("event_wal: WBPF failed, event dropped to preserve consistency",
 					loggateway.Str("type", string(env.Type)),
 					loggateway.Str("id", env.ID),
 					loggateway.Err(err),
 				)
 			}
-			infra.publishToBuses(ctx, env)
+			return
 		}
 		return
 	}

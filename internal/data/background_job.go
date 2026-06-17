@@ -2,23 +2,24 @@ package data
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz/backgroundjob"
-	bizbackgroundjob "aranea-agents/internal/biz/backgroundjob"
 	"aranea-agents/internal/data/ent"
 	entbgjob "aranea-agents/internal/data/ent/backgroundjob"
 
 	"github.com/google/uuid"
 )
 
+// bgJobDomain is the apierror domain for background job errors.
+const bgJobDomain = "BACKGROUND_JOB"
+
 type backgroundJobRepo struct {
 	data *Data
 }
 
-var _ bizbackgroundjob.Repo = (*backgroundJobRepo)(nil)
+var _ backgroundjob.Repo = (*backgroundJobRepo)(nil)
 
 // NewBackgroundJobRepo wires the data-layer implementation of backgroundjob.Repo.
 func NewBackgroundJobRepo(d *Data) backgroundjob.Repo {
@@ -58,7 +59,7 @@ func (r *backgroundJobRepo) Create(ctx context.Context, req backgroundjob.Create
 		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("backgroundjob create: %w", err)
+		return nil, entErrToBizErr(err, bgJobDomain)
 	}
 	return entToJob(row), nil
 }
@@ -66,10 +67,7 @@ func (r *backgroundJobRepo) Create(ctx context.Context, req backgroundjob.Create
 func (r *backgroundJobRepo) Get(ctx context.Context, id string) (*backgroundjob.Job, error) {
 	row, err := r.data.RW().Read(ctx).BackgroundJob.Get(ctx, id)
 	if err != nil {
-		if ent.IsNotFound(err) {
-			return nil, fmt.Errorf("backgroundjob %s: %w", id, backgroundjob.ErrNotFound)
-		}
-		return nil, fmt.Errorf("backgroundjob get %s: %w", id, err)
+		return nil, entErrToBizErr(err, bgJobDomain)
 	}
 	return entToJob(row), nil
 }
@@ -96,7 +94,7 @@ func (r *backgroundJobRepo) List(ctx context.Context, f backgroundjob.ListFilter
 	q = q.Limit(limit).Offset(f.Offset)
 	rows, err := q.All(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("backgroundjob list: %w", err)
+		return nil, entErrToBizErr(err, bgJobDomain)
 	}
 	jobs := make([]*backgroundjob.Job, 0, len(rows))
 	for _, row := range rows {
@@ -125,7 +123,7 @@ func (r *backgroundJobRepo) TryClaim(ctx context.Context, workerID string, kinds
 	}
 	candidates, err := q.All(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("backgroundjob TryClaim query: %w", err)
+		return nil, entErrToBizErr(err, bgJobDomain)
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -159,7 +157,7 @@ func (r *backgroundJobRepo) TryClaim(ctx context.Context, workerID string, kinds
 		// Re-read to get the fresh state.
 		fresh, gerr := r.data.RW().Read(ctx).BackgroundJob.Get(ctx, cand.ID)
 		if gerr != nil {
-			return nil, fmt.Errorf("backgroundjob TryClaim re-read: %w", gerr)
+			return nil, entErrToBizErr(gerr, bgJobDomain)
 		}
 		return entToJob(fresh), nil
 	}
@@ -173,7 +171,7 @@ func (r *backgroundJobRepo) MarkRunning(ctx context.Context, id, workerID string
 		SetWorkerID(workerID).
 		SetUpdatedAt(now).
 		Save(ctx)
-	return wrapBGJobErr(err, "MarkRunning", id)
+	return entErrToBizErr(err, bgJobDomain)
 }
 
 func (r *backgroundJobRepo) MarkSucceeded(ctx context.Context, id string) error {
@@ -184,7 +182,7 @@ func (r *backgroundJobRepo) MarkSucceeded(ctx context.Context, id string) error 
 		SetFinishedAt(nowMS).
 		SetUpdatedAt(now).
 		Save(ctx)
-	return wrapBGJobErr(err, "MarkSucceeded", id)
+	return entErrToBizErr(err, bgJobDomain)
 }
 
 func (r *backgroundJobRepo) MarkFailed(ctx context.Context, id, errMsg string) error {
@@ -199,7 +197,7 @@ func (r *backgroundJobRepo) MarkFailed(ctx context.Context, id, errMsg string) e
 		SetFinishedAt(nowMS).
 		SetUpdatedAt(now).
 		Save(ctx)
-	return wrapBGJobErr(err, "MarkFailed", id)
+	return entErrToBizErr(err, bgJobDomain)
 }
 
 func (r *backgroundJobRepo) Cancel(ctx context.Context, id string) error {
@@ -218,7 +216,7 @@ func (r *backgroundJobRepo) Cancel(ctx context.Context, id string) error {
 		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {
-		return fmt.Errorf("backgroundjob cancel %s: %w", id, err)
+		return entErrToBizErr(err, bgJobDomain)
 	}
 	_ = n // affected rows not needed
 	return nil
@@ -241,7 +239,7 @@ func (r *backgroundJobRepo) CancelByOwner(ctx context.Context, ownerType backgro
 		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("backgroundjob CancelByOwner %s/%s: %w", ownerType, ownerID, err)
+		return 0, entErrToBizErr(err, bgJobDomain)
 	}
 	return n, nil
 }
@@ -262,7 +260,7 @@ func (r *backgroundJobRepo) DeleteTerminated(ctx context.Context, f backgroundjo
 	}
 	n, err := q.Exec(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("backgroundjob DeleteTerminated: %w", err)
+		return 0, entErrToBizErr(err, bgJobDomain)
 	}
 	return n, nil
 }
@@ -304,11 +302,4 @@ func parseRFC3339(s string) time.Time {
 	}
 	t, _ := time.Parse(time.RFC3339, s)
 	return t
-}
-
-func wrapBGJobErr(err error, op, id string) error {
-	if err == nil {
-		return nil
-	}
-	return fmt.Errorf("backgroundjob %s %s: %w", op, id, err)
 }

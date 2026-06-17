@@ -1,7 +1,7 @@
 # Artifact 产出物 — 开发计划
 
-> **版本**：2026-06-06 | **状态**：🟢 P1–P3 全部完成；Phase 4 S3/COS 生产配置**后续支持**
-> **需求**：[27 artifact.md](./27%20artifact.md) · **设计**：[27 artifact.design.md](./27%20artifact.design.md)
+> **版本**：2026-06-17 | **状态**：🟢 P1–P3 全部完成；Phase 4 S3/COS 生产配置**后续支持**
+> **需求**：[27-artifact.md](./27-artifact.md) · **设计**：[27-artifact.design.md](./27-artifact.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-RT-08
 
 ---
@@ -38,7 +38,8 @@ Artifact 产出物：管理 Agent 运行时产生的文件、图片、代码等�
 |----|------|------|
 | Proto 定义 | ✅ | UploadArtifact / GetArtifact / ListArtifacts / DeleteArtifact / DeleteArtifactVersion / ListArtifactVersions / PreviewArtifact / SignDownloadUrl |
 | Service 层 | ✅ | base64 编解码 + **10 MB** 上限 + 参数校验 + 全部 RPC + ServeSignedDownload |
-| Biz 层 | ✅ | Artifact 模型 + ArtifactReader/ArtifactWriter/ArtifactRepo 组合接口 + ArtifactUsecase（含 Preview/StorageBytes/DeleteVersion） |
+| Biz 层 | ✅ | Artifact 模型 + ArtifactReader/ArtifactWriter/ArtifactRepo 组合接口 + Usecase（含 Preview/StorageBytes/DeleteVersion，构造注入 loggateway.Logger） |
+| biz 子包辅助文件 | ✅ | `limits.go`（MaxUploadBytes 10MB）+ `filter.go`（FilterArtifacts 内存过滤）+ `turn_collector.go`（TurnCollector 产出物收集）+ `attachments_resolve.go`（附件解析+session 校验）+ `options_merge.go`（options_json 合并） |
 | Data 层（FS） | ✅ | FSArtifactRepo + 版本管理 + JSON sidecar + LoadMeta/DeleteVersion/StorageBytes |
 | trpc 适配器 | ✅ | ServiceAdapter 实现 trpcartifact.Service 全部 5 个方法 |
 | Wire 注入 | ✅ | NewArtifactRepo → NewArtifactUsecase → NewArtifactService + provideArtifactRuntimeService + provideArtifactSigner |

@@ -21,7 +21,7 @@ func (Admin) Fields() []ent.Field {
 		field.String("email").Default(""),
 		field.String("avatar").Default(""),
 		field.String("access").Default(""),
-		field.String("password").Default(""),
+		field.String("password").Default("").Sensitive(),
 		field.Time("create_time").Default(time.Now).Immutable(),
 		field.Time("update_time").Default(time.Now).UpdateDefault(time.Now),
 	}

@@ -1,7 +1,7 @@
 # Telemetry 遥测 — 开发计划
 
-> **版本**：2026-06-06 | **状态**：🟢 Prometheus + OTLP + Langfuse + Runs UI + 细粒度 Span/采样 ✅；🟡 Jaeger 全链路 UI 非目标；🟡 gRPC 采样待 trpc 扩展
-> **需求**：[24 telemetry.md](./24%20telemetry.md) · **设计**：[24 telemetry.design.md](./24%20telemetry.design.md)
+> **版本**：2026-06-06 | **状态**：🟢 Prometheus + OTLP + Runs UI + 细粒度 Span/采样 ✅；🟡 Jaeger 全链路 UI 非目标；🟡 gRPC 采样待 trpc 扩展；🔴 Langfuse 构造函数已就绪但未接入 Wire
+> **需求**：[24-telemetry.md](./24-telemetry.md) · **设计**：[24-telemetry.design.md](./24-telemetry.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md)（I6-TEL-01/02）· **Monitor UI**：[18-monitor-development.md](./18-monitor-development.md)
 
 ---
@@ -16,7 +16,7 @@
 |----|------|
 | OTLP 初始化 | `internal/telemetry/telemetry.go` |
 | 采样器 | `internal/telemetry/sampler.go` |
-| Langfuse | `internal/telemetry/langfuse.go` |
+| Langfuse 运行时 | `internal/telemetry/langfuse.go` |
 | 传输中间件 | `internal/server/http.go`、`internal/server/grpc.go` |
 | Prometheus | `internal/metrics/vars.go`、`internal/metrics/callback.go` |
 | OTel Turn Bridge | `internal/telemetry/turntrace/bridge.go` |
@@ -24,15 +24,34 @@
 | Graph OTel Span | `internal/service/graph_execution_service.go`、`internal/service/graph_telemetry.go` |
 | 应用 Trace | `internal/event/trace_context.go`、`trace_emitter.go`、`span_collector.go` |
 | 框架事件 | `internal/event/framework_events.go` |
-| Usage 投影 | `internal/service/turn_usage.go` |
+| Usage 投影 | `internal/service/chat_orchestrator_turn_metrics.go`（`recordTurnUsage`）、`internal/service/turn_usage.go`（薄封装） |
 | Team Run | `internal/team/runner_team_trpc.go` |
 | 前端 Runs | `web/src/components/monitor/TraceList.vue`、`TraceWaterfall.vue` |
 | 启动 | `cmd/admin/main.go` → `telemetry.Init` |
+| Wire 注入 | `cmd/admin/wire.go`（`wireApp`） |
 | FlowLogger | [52-flow-logger-development.md](./52-flow-logger-development.md) |
 
 ---
 
 ## 2. 现状评估
+
+### 2.1 需求问题实现状态
+
+> 对应需求文档 §0.1 的用户问题。
+
+| 用户问题 | 实现状态 | 证据 |
+|----------|----------|------|
+| HTTP/gRPC 请求是否可追踪？ | ✅ | `http.go` / `grpc.go` → `tracing.Server()` |
+| Chat 一轮耗时、Token、工具步骤？ | ✅ | `TraceEmitter` → usage `metadata_json.spans` + WS `flow_log` |
+| 系统 Prometheus 指标是否可 scrape？ | ✅ | `/metrics` + `internal/metrics` |
+| trpc-agent-go 框架级 gen_ai 指标？ | ✅（需配置 endpoint） | `internal/telemetry` → trpc `telemetry/metric` |
+| Jaeger 里能否看到 LLM/Tool 细粒度 Span？ | ✅ | `turntrace.Bridge` → `llm.call` / `tool.call` 子 Span |
+| Graph / Team 执行是否有 OTel Span？ | ✅ | `graph.execute` / `team.run` 根 Span + 子 Span |
+| 高负载下 Trace 采样如何控制？ | ✅ HTTP / ❌ gRPC | `OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG`（HTTP only） |
+| Langfuse Trace 是否可导出？ | 🔴 未接入 Wire | `internal/telemetry/langfuse.go` 构造函数已就绪，但 `wireApp` 未注册 |
+| 运维在 UI 看单次运行瀑布图？ | ✅ | `TraceList` + `TraceWaterfall` |
+
+### 2.2 组件实现状态
 
 | 项 | 状态 | 证据 |
 |----|------|------|
@@ -44,8 +63,8 @@
 | OTLP Metrics | ✅ | `initMeterProvider` → trpc `telemetry/metric` |
 | Prometheus `/metrics` | ✅ | `metrics/vars.go` + `callback.go` + Route 注册 |
 | FlowLog trace_id | ✅ | `NewTraceContext` + OTel 中间件 |
-| OTel Chat 根 Span | ✅ | I6-TEL-01：`startTurnSpan("chat.turn")` |
-| Usage spans + Waterfall | ✅ | I6-TEL-02：`TraceEmitter` + `TraceWaterfall.vue` |
+| OTel Chat 根 Span | ✅ | `startTurnSpan("chat.turn")` |
+| Usage spans + Waterfall | ✅ | `TraceEmitter` + `TraceWaterfall.vue` |
 | Monitor Runs UI | ✅ | `TraceList` 列表 + 详情 Flow/Waterfall/Span |
 | `chat.usage_record` Flow 步骤 | ✅ | 落库失败可见于 monitor flow |
 | OTel LLM/Tool 细粒度 Span | ✅ Chat/Team | `turntrace.Bridge` + `ObserveFrameworkEvent` + `RecordToolCallEnd` |
@@ -53,7 +72,7 @@
 | Team usage spans 投影 | ✅ | turn + member metadata |
 | Trace 采样策略 | ✅ HTTP / ❌ gRPC | `sampler.go` + `OTEL_TRACES_SAMPLER*`（HTTP only） |
 | OTel ↔ usage 关联 | ✅ root + child | `otel_trace_id` / `otel_root_span_id` + 各 span `otel_id` |
-| Langfuse 导出 | ✅ | `langfuse.go` → trpc `telemetry/langfuse`，Wire 注入 |
+| Langfuse 导出 | 🔴 未接入 Wire | `langfuse.go` 构造函数已就绪，`wireApp` 未注册 `NewLangfuseRuntime` |
 | OTel ↔ usage span ID 同步 | ✅ | `SyncOtelSpanIDs` → `span_collector.go` |
 
 ---
@@ -69,7 +88,7 @@
 | P3 | Trace 采样 | ✅ HTTP（`sampler.go`）；gRPC 待 trpc 暴露 Sampler |
 | P3 | OTel ↔ usage 关联 | ✅ root span id + child span `otel_id` |
 | P3 | Team usage parity | ✅ turn + member metadata |
-| P3 | Langfuse 导出 | ✅ Wire 注入 `LangfuseRuntime`，独立生命周期 |
+| P3 | Langfuse 导出 | 🔴 构造函数已就绪，**未接入 `wireApp`**，需注册 `NewLangfuseRuntime` 并管理 shutdown 生命周期 |
 | P3 | OTel ↔ usage span ID 同步 | ✅ `SyncOtelSpanIDs` + `span_collector.go` |
 | — | gRPC exporter 采样 | ❌ 依赖 trpc `telemetry/trace` 暴露 Sampler 配置 |
 
@@ -80,11 +99,11 @@
 | 阶段 | 内容 | 状态 |
 |------|------|------|
 | Phase 1 | OTLP Trace/Metrics + Prometheus + FlowLog trace_id | ✅ |
-| Phase 1b | I6-TEL-01 Chat OTel 根 Span | ✅ |
-| Phase 1c | I6-TEL-02 Runs Waterfall + usage spans | ✅ |
+| Phase 1b | Chat OTel 根 Span | ✅ |
+| Phase 1c | Runs Waterfall + usage spans | ✅ |
 | Phase 2 | LLM/Tool/Graph OTel 细粒度 Span（`turntrace.Bridge`） | ✅ |
 | Phase 3 | Trace 采样（HTTP `sampler.go`） | ✅ |
-| Phase 4 | Langfuse 导出 + OTel ↔ usage span ID 同步 | ✅ |
+| Phase 4 | Langfuse 导出 + OTel ↔ usage span ID 同步 | 🟡 span ID 同步 ✅；Langfuse 🔴 未接入 Wire |
 
 ---
 
@@ -105,12 +124,14 @@
 | 11 | Graph 执行 OTel Span | P2 | EP-OBS-06 | ✅ |
 | 12 | Trace 采样策略（HTTP `sampler.go`） | P3 | — | ✅ |
 | 13 | Span 语义 / Team parity | P2 | — | ✅ |
-| 14 | Langfuse 导出（`langfuse.go` + Wire 注入） | P3 | — | ✅ |
+| 14 | Langfuse 导出（`langfuse.go` + Wire 注入） | P3 | — | 🔴 构造函数已就绪，未接入 `wireApp` |
 | 15 | OTel ↔ usage span ID 同步（`SyncOtelSpanIDs`） | P3 | — | ✅ |
 
 ---
 
 ## 6. 验收标准
+
+> 产品级验收标准见需求文档 §3。以下为开发验证口径与完成状态。
 
 - [x] `OTEL_EXPORTER_OTLP_ENDPOINT` 设置后 Jaeger 可见 HTTP/gRPC 请求 Trace
 - [x] OTLP Metrics 导出 trpc-agent-go 框架指标
@@ -121,7 +142,7 @@
 - [x] Jaeger 可见 LLM/Tool 等细粒度 OTel Span（`llm.call` / `tool.call`）
 - [x] Graph / Team 执行有 OTel Span（`graph.execute` / `team.run`）
 - [x] 可配置 Trace 采样率（HTTP exporter；`OTEL_TRACES_SAMPLER`）
-- [x] Langfuse 导出可用（需配置 `conf.Bootstrap.Langfuse`）
+- [ ] Langfuse 导出可用（需配置 `conf.Bootstrap.Langfuse`）— 🔴 `NewLangfuseRuntime` 未接入 `wireApp`
 - [x] OTel ↔ usage 关联含 `otel_trace_id` / `otel_root_span_id` + 各 span `otel_id`
 - [ ] gRPC exporter 采样（依赖 trpc `telemetry/trace` 扩展）
 
@@ -142,3 +163,4 @@ cd web && pnpm lint && pnpm test && pnpm build
 - 开发环境 OTEL：参考 `pkg/trpc-agent-go/examples/telemetry/jaeger-prometheus/docker-compose.yaml`
 - 细粒度 Span 需配合采样，避免高 QPS 存储压力
 - Runs UI 与 Jaeger 职责分离：产品排障以 Runs/Flow 为主，Jaeger 供 SRE 全链路
+- **Langfuse 接入风险**：`NewLangfuseRuntime` 构造函数已就绪但 `wireApp` 未注册，当前为死代码；接入时需在 `cmd/admin/wire.go` 注册 provider 并在 `cmd/admin/main.go` 或 `app.go` 管理 shutdown 生命周期

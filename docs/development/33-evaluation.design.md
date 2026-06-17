@@ -37,12 +37,12 @@ evaluation.Runner (async goroutine)
 
 | 层 | 文件 | 职责 |
 |----|------|------|
-| Proto | `api/kratos/evaluation/v1/evaluation.proto` | HTTP + gRPC API 契约（14 RPC） |
+| Proto | `api/kratos/evaluation/v1/evaluation.proto` | HTTP + gRPC API 契约（14 RPC + 26 Message） |
 | Service | `internal/service/evaluation.go` | proto ↔ biz 映射；RunEvaluation 触发 Runner |
 | Service | `internal/service/evaluation_runner.go` | Wire：`NewEvaluationRunner` 装配 AgentRunner + LLMJudge + FrameworkBridge |
 | Service | `internal/service/evaluation_after_turn.go` | Wire：`NewEvaluationAfterTurnTrigger` 创建 AfterTurn 触发器 |
 | Biz | `internal/biz/evaluation.go` | 类型重导出（子包 `evaluation/` 的别名） |
-| Biz | `internal/biz/evaluation/evaluation.go` | 领域模型 + EvalRepo 接口（16 方法）+ EvalUsecase（17 方法） |
+| Biz | `internal/biz/evaluation/evaluation.go` | 领域模型 + EvalRepo 接口（19 方法）+ EvalUsecase（17 方法） |
 | Data | `internal/data/evaluation.go` | Raw SQL 持久化 + EnsureEvalSchema（4 表 + 11 条 ALTER 迁移） |
 | Runner | `internal/evaluation/runner.go` | 异步调度、Prometheus |
 | Legacy | `internal/evaluation/runner_legacy.go` | FrameworkBridge 不可用时的降级执行路径 |
@@ -76,6 +76,8 @@ evaluation.Runner (async goroutine)
 
 **EvalCaseResult**：逐用例结果（实际输出、各指标得分/判定、人工标注字段）。
 
+**EvalTrendPoint** / **EvalRunComparison**：趋势点与 A/B 对比结果。
+
 ### 3.2 API 端点
 
 | 方法 | 路径 | RPC | 说明 |
@@ -101,7 +103,7 @@ evaluation.Runner (async goroutine)
 |------|------|------|------|
 | dataset_id | string | 是 | 评估数据集 ID |
 | agent_id | string | 是 | 被评估的 Agent ID |
-| metrics | string | 否 | 逗号分隔指标键名，空值运行 4 种核心指标；扩展见 §6.6 |
+| metrics | string | 否 | 逗号分隔指标键名，空值运行 4 种核心指标；扩展见 §6.5 |
 | num_runs | int32 | 否 | 每用例重复次数（AgentEvaluator MultiRun，默认 1） |
 | use_user_simulation | bool | 否 | 启用 UserSimulation（脚本或 LLM） |
 
@@ -111,25 +113,32 @@ evaluation.Runner (async goroutine)
 
 ### 4.1 领域模型
 
-**EvalDataset** / **EvalCase** / **EvalRun** / **EvalCaseResult** / **EvalCaseResultAnnotation** — 见 `internal/biz/evaluation/evaluation.go`。
+**Dataset** / **Case** / **Run** / **CaseResult** / **CaseResultAnnotation** / **TrendPoint** / **RunComparison** — 见 `internal/biz/evaluation/evaluation.go`。
 
 人工标注字段：`HumanPass`、`HumanScore`、`HumanComment`、`AnnotatedAt`、`AnnotatedBy`。
+
+辅助类型：`CaseUpload`（用例上传行）、`Scores`（指标键→分数 map）、`LLMSetting`（Eval LLM 平台默认配置）。
 
 ### 4.2 EvalRepo 接口
 
 ```
-Dataset：Create / Get / List / Update / Delete / UpdateCaseCount
-Case：Insert / List
-Run：Create / Get / Update / Delete / List / ListTrendPoints / GetRunsByIDs
-CaseResult：Insert / List / Get / UpdateAnnotation
+Dataset：CreateDataset / GetDataset / ListDatasets / DeleteDataset / UpdateDataset / UpdateDatasetCaseCount  (6)
+Case：InsertCases / ListCases  (2)
+Run：CreateRun / GetRun / UpdateRun / DeleteRun / ListRuns  (5)
+CaseResult：InsertCaseResult / ListCaseResults / GetCaseResult / UpdateCaseResultAnnotation  (4)
+Trend/Compare：ListTrendPoints / GetRunsByIDs  (2)
 ```
+
+合计 19 方法。
 
 ### 4.3 EvalUsecase
 
 - Dataset CRUD + UploadCases（JSON 数组解析）
 - Run 创建（初始 status=`pending`）+ 查询 + DeleteRun
 - CaseResult 列表 + AnnotateCaseResult（EVAL-02）
-- GetAgentEvalTrend（趋势数据）+ CompareEvalRuns（A/B 对比）
+- GetAgentEvalTrend（趋势数据）+ CompareEvalRuns（A/B 对比，baseline = 首个 run）
+
+合计 17 方法。
 
 ---
 
@@ -141,16 +150,29 @@ CaseResult：Insert / List / Get / UpdateAnnotation
 
 `eval_case_results` 含人工标注列与 `scores_json`；`eval_runs` 含 `pass_at_k`/`pass_hat_k`/`trigger_source`/`num_runs`/`scores_json`，通过 ALTER 迁移兼容旧库。
 
-### 5.2 Schema 初始化
+### 5.2 Ent Schema
 
-`NewData()` 启动期调用 `EnsureEvalSchema`（EP-DATA-01 ✅）。
+4 个 Ent Schema（`internal/data/ent/schema/eval_*.go`）显式映射表名（`entsql.Annotation{Table: ...}`）：
 
-### 5.3 级联删除
+| Schema | 表名 | Edge |
+|--------|------|------|
+| `EvalDataset` | `eval_datasets` | → cases / runs |
+| `EvalCase` | `eval_cases` | ← dataset / → results |
+| `EvalRun` | `eval_runs` | ← dataset / → results |
+| `EvalCaseResult` | `eval_case_results` | ← run / ← case |
+
+> Ent Schema 与 Raw SQL `EnsureEvalSchema` 并存：Ent Schema 作为类型映射真相源，运行期建表由 `EnsureEvalSchema` 完成（含 ALTER 兼容旧库）。
+
+### 5.3 Schema 初始化
+
+`NewData()` 启动期调用 `EnsureEvalSchema`（EP-DATA-01）。
+
+### 5.4 级联删除
 
 - `DeleteDataset`：事务内先删 `eval_cases`，再删 `eval_datasets`
 - `DeleteRun`：事务内先删 `eval_case_results`，再删 `eval_runs`
 
-### 5.4 用例上传格式
+### 5.5 用例上传格式
 
 ```json
 [
@@ -163,6 +185,11 @@ CaseResult：Insert / List / Get / UpdateAnnotation
 ]
 ```
 
+`metadata_json` 可包含：
+- `turns`：多轮对话序列
+- `user_simulation`：`{script: "..."}` 脚本驱动 或 `{use_llm: true, conversation_plan: "..."}` LLM 驱动
+- `expected_tools` / `expected_tool_calls`：ToolTrajectory 期望工具序列
+
 ---
 
 ## 六、Runner 与 FrameworkBridge
@@ -171,7 +198,7 @@ CaseResult：Insert / List / Get / UpdateAnnotation
 
 **AgentRunner**：`func(ctx, agentID, input) (string, error)` — 经 `ChatService.RunNativeTurnUnary` 执行，每条用例创建临时 Session。
 
-**LLMJudge**：`NewLLMJudge(catalog, rt, sys)` — 模型解析见 §6.7；env 优先于 `system_settings`。
+**LLMJudge**：`NewLLMJudge(catalog, rt, sys)` — 模型解析见 §6.6；env 优先于 `system_settings`。
 
 **LLM UserSimulator**：`NewLLMUserSimulator(catalog, rt, sys)` — trpc `usersimulation.New(simRunner)`；`resolveUserSimulator` 脚本优先于 LLM。
 
@@ -223,6 +250,8 @@ CaseResult：Insert / List / Get / UpdateAnnotation
 | `tool_trajectory` | 顺序敏感 ToolTrajectory；`evalset_tools.go` 填充期望工具 |
 | `scores_json` | run/result 扩展分 map；legacy 列仍写入 |
 
+扩展分数字段：`eval_runs.scores_json` / `eval_case_results.scores_json`（键 → 分数 map）；legacy 四列仍同步写入。
+
 ### 6.6 Eval LLM 系统配置
 
 持久化于 `system_settings`（ent + `docs/sql/00_system_setting_eval_llm.sql`）：
@@ -236,7 +265,7 @@ Proto：`SystemSettings.eval_llm`；前端 **系统设置** `/settings` 表单�
 
 **运行时优先级**（Judge / Sim 各自链路）：
 
-1. 对应 env `KRATOS_EVAL_*`
+1. 对应 env `KRATOS_EVAL_SIM_PROVIDER` / `KRATOS_EVAL_SIM_MODEL`（UserSim）或 `KRATOS_EVAL_JUDGE_PROVIDER` / `KRATOS_EVAL_JUDGE_MODEL`（Judge）
 2. DB `eval_judge_*` 或 `eval_sim_*`
 3. 交叉 env / DB 回退（Judge↔Sim）
 4. Provider 目录首 mini/flash 模型
@@ -270,30 +299,4 @@ Proto：`SystemSettings.eval_llm`；前端 **系统设置** `/settings` 表单�
 | — | `features/system-settings/eval-llm.ts` | Eval LLM 表单类型 + 映射 |
 | `/settings` | `SystemSettingsPage.vue` | Eval LLM（UserSim/Judge）Provider/Model 持久化 |
 
----
-
-## 八、已交付能力总览
-
-| 能力 | 状态 | 实现位置 |
-|------|------|----------|
-| AgentEvaluator 集成 | ✅ | `framework.go` FrameworkBridge |
-| EvalSet 多轮 Invocation | ✅ | `evalset_adapter.go` + `case_metadata.go` |
-| UserSimulation | ✅ | `scripted_simulator.go` + `llm_simulator.go` |
-| pass@k / pass^k | ✅ | `pass_metrics.go` + `multirun.go` |
-| AfterTurn 自动评估 | ✅ | `after_turn.go` + `evaluation_after_turn.go` |
-| 趋势 / A/B API + 前端 | ✅ | `GetAgentEvalTrend` / `CompareEvalRuns` / `EvaluationAnalyticsPanel` |
-| FinalResponse ROUGE/XML/JSON | ✅ | `framework_metrics.go` opt-in metrics |
-| ToolTrajectory 完整序列 | ✅ | `tool_trajectory` + `evalset_tools.go` |
-| Eval LLM 系统配置 | ✅ | `eval_llm_resolve.go` + `system_settings` + Settings 页 |
-| 人工标注 | ✅ | `AnnotateCaseResult` API + `EvaluationResultsDialog` |
-| 客户端报告导出 | ✅ | `exportRunResults.ts` CSV/JSON |
-| 内置评估器注册 | ✅ | `evaluator_registry.go` 9 种评估器 |
-
-### 已知短板
-
-| 项 | 说明 |
-|----|------|
-| Service 层单元测试 | `internal/service/evaluation*_test.go` 不存在 |
-| Runner 异步执行测试 | `internal/evaluation/runner_test.go` 不存在 |
-| AfterTurn 触发器测试 | `internal/evaluation/after_turn_test.go` 不存在 |
-| 前端数据集编辑 | 后端 `UpdateDataset` API 已实现，前端未暴露编辑入口 |
+> 已交付能力状态与已知短板见 [开发计划文档](./33-evaluation-development.md)

@@ -26,9 +26,9 @@ const sessionMaxAge = 2 * time.Hour
 const defaultCleanupInterval = 10 * time.Minute
 
 type CoordinatorConfig struct {
-	WatchTimeout   time.Duration
-	HITLSLATimeout time.Duration
-	SessionMaxAge  time.Duration
+	WatchTimeout    time.Duration
+	HITLSLATimeout  time.Duration
+	SessionMaxAge   time.Duration
 	CleanupInterval time.Duration
 }
 
@@ -183,7 +183,7 @@ func (c *TeamGraphRunCoordinator) MarkTeamGraphInterrupt(ctx context.Context, ex
 		c.lg.Warn("TransitionRunStatus failed in MarkTeamGraphInterrupt",
 			loggateway.StepID("team.run.transition_fail"),
 			loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
-		// Fallback: update directly.
+		// Fallback: update directly. CanTransition already validated above (line 178).
 		run.Status = biz.TeamRunStatusWaitingHuman
 		if err := c.teamRunWriter.UpdateTeamRun(ctx, run); err != nil {
 			return err
@@ -220,7 +220,7 @@ func (c *TeamGraphRunCoordinator) DeferTeamRunSuccessIfHITL(ctx context.Context,
 		c.lg.Warn("TransitionRunStatus failed in DeferTeamRunSuccessIfHITL",
 			loggateway.StepID("team.run.transition_fail"),
 			loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
-		// Fallback: update directly.
+		// Fallback: update directly. CanTransition already validated above (line 215).
 		run.Status = biz.TeamRunStatusWaitingHuman
 		if err := c.teamRunWriter.UpdateTeamRun(ctx, *run); err != nil {
 			return false, err
@@ -250,28 +250,36 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 		if c.teamRunReader != nil {
 			if run, rerr := c.teamRunReader.GetTeamRunByID(ctx, sess.teamRunID); rerr == nil {
 				if !biz.IsTeamRunTerminalStatus(run.Status) {
-					updatedRun, transitionErr := c.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusFailed)
-					if transitionErr != nil {
-						c.lg.Warn("TransitionRunStatus failed in HandleTeamGraphTaskCompleted",
-							loggateway.StepID("team.run.transition_fail"),
-							loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
-						// Fallback: update directly.
-						run.Status = biz.TeamRunStatusFailed
-						run.ErrorMessage = fmt.Sprintf("ResumeExecution failed: %s", err.Error())
-						run.FinishedAt = agent.RFC3339Now()
-						if uerr := c.teamRunWriter.UpdateTeamRun(ctx, run); uerr != nil {
-							c.lg.Warn("UpdateTeamRun failed after ResumeExecution error",
-							loggateway.StepID("team.graph.resume_fail_update"),
-							loggateway.Str("team_run_id", run.ID), loggateway.Str("update_error", uerr.Error()))
-						}
+					sm := biz.NewTeamRunStateMachine()
+					if !sm.CanTransition(biz.TeamRunState(run.Status), biz.TeamRunState(biz.TeamRunStatusFailed)) {
+						c.lg.Warn("HandleTeamGraphTaskCompleted: illegal transition to failed skipped",
+							loggateway.StepID("team.run.fsm_skip"),
+							loggateway.Str("team_run_id", run.ID),
+							loggateway.Str("from", run.Status))
 					} else {
-						updatedRun.ErrorMessage = fmt.Sprintf("ResumeExecution failed: %s", err.Error())
-						if uerr := c.teamRunWriter.UpdateTeamRun(ctx, updatedRun); uerr != nil {
-							c.lg.Warn("UpdateTeamRun failed after ResumeExecution error",
-							loggateway.StepID("team.graph.resume_fail_update"),
-							loggateway.Str("team_run_id", updatedRun.ID), loggateway.Str("update_error", uerr.Error()))
+						updatedRun, transitionErr := c.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusFailed)
+						if transitionErr != nil {
+							c.lg.Warn("TransitionRunStatus failed in HandleTeamGraphTaskCompleted",
+								loggateway.StepID("team.run.transition_fail"),
+								loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
+							// Fallback: update directly. CanTransition validated above.
+							run.Status = biz.TeamRunStatusFailed
+							run.ErrorMessage = fmt.Sprintf("ResumeExecution failed: %s", err.Error())
+							run.FinishedAt = agent.RFC3339Now()
+							if uerr := c.teamRunWriter.UpdateTeamRun(ctx, run); uerr != nil {
+								c.lg.Warn("UpdateTeamRun failed after ResumeExecution error",
+									loggateway.StepID("team.graph.resume_fail_update"),
+									loggateway.Str("team_run_id", run.ID), loggateway.Str("update_error", uerr.Error()))
+							}
+						} else {
+							updatedRun.ErrorMessage = fmt.Sprintf("ResumeExecution failed: %s", err.Error())
+							if uerr := c.teamRunWriter.UpdateTeamRun(ctx, updatedRun); uerr != nil {
+								c.lg.Warn("UpdateTeamRun failed after ResumeExecution error",
+									loggateway.StepID("team.graph.resume_fail_update"),
+									loggateway.Str("team_run_id", updatedRun.ID), loggateway.Str("update_error", uerr.Error()))
+							}
+							run = updatedRun
 						}
-						run = updatedRun
 					}
 				}
 				if c.bus != nil {
@@ -374,12 +382,12 @@ func (c *TeamGraphRunCoordinator) startGraphWatch(ctx context.Context, sess *tea
 					sessRun, runErr := c.teamRunReader.GetTeamRunByID(watchCtx, sess.teamRunID)
 					if runErr == nil && sessRun.Status == biz.TeamRunStatusWaitingHuman && hitlExtensions < maxHITLSLAExtensions {
 						hitlExtensions++
-					c.lg.Warn("HITL SLA expired, extending deadline for manual resolution",
-						loggateway.StepID("team.hitl_sla_expired"),
-						loggateway.Str("exec_id", sess.execID),
-						loggateway.Str("hitl_sla", hitlSLA.String()),
-						loggateway.Int("extension", hitlExtensions),
-						loggateway.Int("max_extensions", maxHITLSLAExtensions))
+						c.lg.Warn("HITL SLA expired, extending deadline for manual resolution",
+							loggateway.StepID("team.hitl_sla_expired"),
+							loggateway.Str("exec_id", sess.execID),
+							loggateway.Str("hitl_sla", hitlSLA.String()),
+							loggateway.Int("extension", hitlExtensions),
+							loggateway.Int("max_extensions", maxHITLSLAExtensions))
 						deadline = time.After(hitlSLA)
 						continue
 					}

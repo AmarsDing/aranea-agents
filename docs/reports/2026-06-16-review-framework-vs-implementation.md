@@ -1,7 +1,82 @@
 # trpc-agent-go 框架架构 vs Aranea-Agents 项目实现对比分析
 
 > 生成日期：2026-06-16
+> 最后更新：2026-06-17（对齐状态同步）
 > 分析范围：trpc-agent-go 框架全部技术文档（42 篇）、全部示例代码（27 个）、全部模块源码（17 个核心模块）、Aranea-Agents 项目实现代码
+
+---
+
+## 〇、对齐状态更新（2026-06-17）
+
+> 本报告生成于对齐工作启动前。根据 `docs/trpc-agent-go/alignment-plan.md`，Phase 0-6 全部完成，本节同步对齐后的实际状态。
+
+### 已完成对齐项（报告原结论已过时）
+
+| 模块 | 报告原结论 | 当前实际状态 | 证据 |
+|------|-----------|-------------|------|
+| Tool ToolPipe Extension | ❌ 未使用 | ✅ 已启用（白名单模式，覆盖 MCP + 6 个长输出工具） | `internal/agent/trpc_build.go:223-232` |
+| Evaluation 模块 | ❌ 未使用 | ✅ 全面使用（`evaluation.New()` + 9 个内置评估器 + Callbacks） | `internal/evaluation/framework.go:118` |
+| Prompt 模块 | ❌ 未使用 | ✅ 已使用（`prompt.Text.Render()` + `state.Render()` + PromptIter） | `internal/agent/prompt_render.go:27` |
+| Server A2A | ❌ 未使用 | ✅ 已使用（2 处调用 `a2a.New()`，含审计/过滤扩展点） | `internal/server/a2a_adapter.go:95` |
+| Server AG-UI | ❌ 未使用 | ✅ 已使用（2 处调用 `agui.New()`，14 种 Option） | `internal/server/agui_adapter.go:104` |
+| Server OpenAI | ❌ 未使用 | ✅ 已使用（2 处调用 `openai.New()`，会话持久化） | `internal/server/openai_adapter.go:60` |
+| Knowledge 接口 | ❌ 未使用 | ✅ 已接入生产（`KnowledgeAdapter` + `WithKnowledge()`） | `internal/agent/knowledge_safety_adapter.go:71` |
+| Knowledge Reranker | ❌ 未使用 | ✅ 已使用（topk/cohere/infinity 三种） | `internal/knowledge/reranker_factory.go` |
+| Event EventBus/WAL/分级 | ⚠️ 框架缺失，项目自建 | ✅ 已贡献回框架（`pkg/trpc-agent-go/event/bus`、`wal`、`reliability`） | Phase 1 完成 |
+| Session Hooks | ⚠️ 部分使用 | ✅ 已启用（AppendEventHook + GetSessionHook + Summarizer） | `internal/session/trpc/sqlite.go` |
+| Memory Extractor 适配 | ⚠️ 框架缺失 | ✅ 已完成（`ConsolidatorExtractorAdapter`，桥接框架 MemoryExtractor） | `internal/memory/trpc/extractor_adapter.go` |
+| Skill DBRepository | ⚠️ 框架缺失 | ✅ 已完成（internal 适配层 `DBStoreAdapter`） | `internal/skill/trpc/db_repository_adapter.go` |
+| Agent WithKnowledge | ❌ 未使用 | ✅ 已启用（KnowledgeAdapter 桥接） | `internal/agent/trpc_build.go:208` |
+| Agent 安全限制 | ❌ 未使用 | ✅ 已启用（SafetyLimitAdapter：MaxLLMCalls/MaxToolIterations） | `internal/agent/knowledge_safety_adapter.go` |
+| Runner WithPersistInterruptedAssistant | ❌ 未使用 | ✅ 已启用（中断恢复） | `internal/service/chat_orchestrator_durable.go` |
+| Runner WithStreamMode | ❌ 未使用 | ✅ 已启用（StreamModeMessages） | `internal/service/chat_orchestrator_turn_phases.go` |
+| Extended TodoEnforcer | ❌ 未使用 | ✅ 已启用 | `internal/agent/todo_enforcer.go` |
+| Extended TaskRun | ❌ 未使用 | ✅ 已启用（异步委派） | `internal/tools/taskrun_adapter.go` |
+| Tool 命令安全 | ⚠️ 框架缺失 | ✅ 已启用（CommandSafetyPermissionChecker） | `internal/tools/security/command_safety_adapter.go` |
+| Tool 输出大小限制 | ⚠️ 框架缺失 | ✅ 已启用（NewOutputSizeLimiterHook） | `internal/tools/toolresult_size_limiter.go` |
+| Tool ToolResultGate | ⚠️ 框架缺失 | ✅ 已启用（与 ToolPipe 协调） | `internal/tools/toolresult_gate_adapter.go` |
+
+### 仍未对齐项（架构决策或后续阶段）
+
+| 模块 | 报告原结论 | 当前状态 | 原因 |
+|------|-----------|---------|------|
+| Team `team.New()`/`NewSwarm()` | ❌ 未使用 | ❌ 仍未使用 | 架构决策：Graph 实现更灵活，所有模式编译为 Graph 拓扑 |
+| Team `safety_adapter.go` | — | ⚠️ 死代码（返回 `team.Option` 但无 `team.New()` 调用） | 待处理：标注 TECH-DEBT 或移除 |
+| Knowledge `BuiltinKnowledge` | ❌ 未使用 | ❌ 仍未使用 | 架构决策：不匹配多集合 + API 摄入模式 |
+| Knowledge VectorStore/Embedder 适配器 | ❌ 未使用 | ⚠️ 已实现但仅测试使用 | 待评估：是否接入生产路径 |
+| Knowledge FrameworkSearchTool | ❌ 未使用 | ⚠️ 已包装但未调用 | 待评估：是否替换自建 KnowledgeSearchTool |
+| Knowledge QueryEnhancer/Source | ❌ 未使用 | ❌ 仍未使用 | 项目自建 QueryRewriter 更完善；通过 API 上传文档 |
+| Session SearchableService | ❌ 未使用 | ❌ 仍未使用 | Phase 4 未启动（PgVector 后端） |
+| Session WindowService | ❌ 未使用 | ❌ 仍未使用 | Phase 4 未启动 |
+| Memory Auto 模式（框架 Worker） | ❌ 未使用 | ⚠️ 自建 AutoMemoryWorker 替代 | 项目使用启发式合并器而非 LLM 提取 |
+| Artifact COS/S3 后端 | ❌ 未使用 | ⚠️ 代码已存在但未接入 Wire | 待 Phase 4 配置驱动接入 |
+| Prompt LangfuseSource | ❌ 未使用 | ❌ 仍未使用 | 架构决策：prompt 从 SQLite 加载 |
+| Server Gateway | ❌ 未使用 | ❌ 仍未使用 | 架构决策：Kratos 替代 |
+| Tool DeferredTool 接口 | ❌ 未使用 | ❌ 仍未实现 | P2-9 待实施：自建 DeferredManager 未对接框架接口 |
+| Tool StreamableTool | ⚠️ 部分使用 | ⚠️ 仍部分使用 | P3 优先级，未启动逐工具启用 |
+
+### 模块对齐度评分更新
+
+| 模块 | 报告评分（2026-06-16） | 当前评分（2026-06-17） |
+|------|----------------------|----------------------|
+| Event | ★★☆☆☆ | ★★★★★ |
+| Prompt | ☆☆☆☆☆ | ★★★☆☆ |
+| Knowledge | ★☆☆☆☆ | ★★★☆☆ |
+| Team | ★☆☆☆☆ | ★★★☆☆ |
+| Evaluation | ☆☆☆☆☆ | ★★★★☆ |
+| Tool | ★★★★☆ | ★★★★★ |
+| Session | ★★★☆☆ | ★★★★☆ |
+| Memory | ★★★☆☆ | ★★★★☆ |
+| Server | ☆☆☆☆☆ | ★★★★☆ |
+| Model | ★★★★☆ | ★★★★★ |
+| Agent | ★★★★☆ | ★★★★★ |
+| Runner | ★★★★☆ | ★★★★★ |
+| Skill | ★★★★☆ | ★★★★★ |
+| Extended | ★★☆☆☆ | ★★★★☆ |
+| Artifact | ★★★★☆ | ★★★★☆ |
+| Callback | ★★★★☆ | ★★★★☆ |
+| Plugin | ★★★★★ | ★★★★★ |
+| Graph | ★★★★★ | ★★★★★ |
 
 ---
 

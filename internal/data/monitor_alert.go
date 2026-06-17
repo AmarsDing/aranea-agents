@@ -3,7 +3,6 @@ package data
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
 	"time"
 
@@ -109,7 +108,7 @@ func (r *monitorRepo) ReplaceAlertRules(ctx context.Context, rules []biz.Monitor
 
 		existingRows, err := e.QueryContext(txCtx, `SELECT id FROM monitor_alert_rules`)
 		if err != nil {
-			return err
+			return entErrToBizErr(err, "MONITOR_ALERT")
 		}
 		existingIDs := map[string]struct{}{}
 		for existingRows.Next() {
@@ -141,10 +140,10 @@ SET name = ?, metric_key = ?, threshold = ?, window_minutes = ?, enabled = ?, se
 WHERE id = ?`,
 					rule.Name, rule.MetricKey, rule.Threshold, rule.WindowMinutes, enabled, rule.Severity,
 					rule.NotifyWebhookURL, rule.NotifyChannelID, rule.CooldownMinutes, now, id,
-				)
-				if err != nil {
-					return err
-				}
+			)
+			if err != nil {
+				return entErrToBizErr(err, "MONITOR_ALERT")
+			}
 			} else {
 				_, err := e.ExecContext(txCtx, `
 INSERT INTO monitor_alert_rules
@@ -154,18 +153,18 @@ INSERT INTO monitor_alert_rules
 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'idle')`,
 					id, rule.Name, rule.MetricKey, rule.Threshold, rule.WindowMinutes, enabled, rule.Severity,
 					rule.NotifyWebhookURL, rule.NotifyChannelID, rule.CooldownMinutes, now, now,
-				)
-				if err != nil {
-					return err
-				}
+			)
+			if err != nil {
+				return entErrToBizErr(err, "MONITOR_ALERT")
+			}
 			}
 		}
 
 		for id := range existingIDs {
 			if _, exists := newIDs[id]; !exists {
 				if _, err := e.ExecContext(txCtx, `DELETE FROM monitor_alert_rules WHERE id = ?`, id); err != nil {
-					return err
-				}
+				return entErrToBizErr(err, "MONITOR_ALERT")
+			}
 			}
 		}
 
@@ -193,7 +192,7 @@ func (r *monitorRepo) UpdateAlertFiringState(
 	// BEGIN IMMEDIATE acquires a write lock immediately; BEGIN DEFERRED (the default)
 	// only upgrades to write on the first write statement, leaving a gap for races.
 	if _, err := db.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
-		return fmt.Errorf("UpdateAlertFiringState BEGIN IMMEDIATE: %w", err)
+		return entErrToBizErr(err, "MONITOR_ALERT")
 	}
 	committed := false
 	defer func() {
@@ -219,10 +218,10 @@ WHERE id = ?`,
 		string(state), lastFiredAtMs, lastFiredValue, recoveredAtMs,
 		time.Now().UTC().Format(time.RFC3339), id,
 	); err != nil {
-		return err
+		return entErrToBizErr(err, "MONITOR_ALERT")
 	}
 	if _, err := db.ExecContext(ctx, "COMMIT"); err != nil {
-		return fmt.Errorf("UpdateAlertFiringState COMMIT: %w", err)
+		return entErrToBizErr(err, "MONITOR_ALERT")
 	}
 	committed = true
 	return nil

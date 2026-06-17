@@ -381,13 +381,13 @@ Plugin 是运行时回调对象。每个 Plugin 实现 `plugin.Plugin` 接口，
 |--------|-----|----------|-----------|----------|-----------------|
 | 运行日志和审计 | `audit_log` | observability | low | 开发环境建议启用 | BeforeAgent, AfterAgent, BeforeModel, AfterModel, BeforeTool, AfterTool, OnEvent |
 | Skill 调用统计 | `skill_usage_tracker` | tracking | low | 可启用 | BeforeTool, AfterTool |
-| 工具失败自愈 | `retry_and_reflect` | debug | medium | 可启用 | AfterAgent, AfterTool |
-| 输入输出脱敏 | `sensitive_data_mask` | guard | medium | 建议启用 | BeforeModel, AfterModel |
-| 高风险操作确认 | `confirmation_guard` | guard | high | 默认启用但默认拒绝 | BeforeTool |
-| 模型成本控制 | `cost_guard` | guard | medium | 可启用 | BeforeModel |
+| 工具失败自愈 | `retry_and_reflect` | reliability | medium | 可启用 | AfterAgent, AfterTool |
+| 输入输出脱敏 | `sensitive_data_mask` | security | medium | 建议启用 | BeforeModel, AfterModel |
+| 高风险操作确认 | `confirmation_guard` | security | high | 默认启用但默认拒绝 | BeforeTool |
+| 模型成本控制 | `cost_guard` | governance | medium | 可启用 | BeforeModel |
 | 模型路由 | `model_router` | routing | low | 可启用 | BeforeModel |
-| 工具权限控制 | `permission_guard` | guard | high | 可启用 | BeforeTool |
-| 输出策略检查 | `output_policy` | policy | medium | 可启用 | AfterModel, OnEvent |
+| 工具权限控制 | `permission_guard` | security | high | 可启用 | BeforeTool |
+| 输出策略检查 | `output_policy` | security | medium | 可启用 | AfterModel, OnEvent |
 
 管理页启用：
 
@@ -436,7 +436,7 @@ Plugin 是运行时回调对象。每个 Plugin 实现 `plugin.Plugin` 接口，
 | 列 | 字段 | UI 与交互 |
 |----|------|-----------|
 | 名称 | `name`、`key` | 主行名称，副行 key |
-| 类型 | `category` | `observability` / `guard` / `routing` / `policy` / `tracking` / `debug` |
+| 类型 | `category` | `observability` / `tracking` / `reliability` / `security` / `governance` / `routing` |
 | 作用阶段 | `callback_points[]` | 用 `QChip` 展示 callback |
 | 状态 | `enabled` | `QToggle`；无权限时禁用 |
 | 范围 | `scope` | `global` / `agent` |
@@ -513,188 +513,21 @@ Plugin 是运行时回调对象。每个 Plugin 实现 `plugin.Plugin` 接口，
 
 ## 5. 数据模型
 
-### 5.1 Plugin
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | string | 唯一标识 |
-| key | string | 插件唯一 Key，如 `runtime_audit` |
-| name | string | 显示名称 |
-| description | string | 插件描述 |
-| category | enum | `observability` / `guard` / `routing` / `policy` / `tracking` / `debug` |
-| risk_level | enum | `low` / `medium` / `high` |
-| enabled | boolean | 是否启用 |
-| scope | string | `"global"` 或 agent_id |
-| callback_points | string[] | 注册的回调点列表 |
-| sort_order | number | 执行顺序，数字越小越先执行 |
-| config_schema_json | string | JSON Schema 定义配置项 |
-| config_json | string | 当前生效配置 |
-| default_config_json | string | 出厂默认配置 |
-| invoke_count | number | 调用次数 |
-| block_count | number | 拦截次数 |
-| error_count | number | 错误次数 |
-| last_invoked_at | string | 最近调用时间 |
-| last_status | enum | `success` / `blocked` / `error` |
-| created_at | string | 创建时间 |
-| updated_at | string | 更新时间 |
-| permissions | PluginPermissions | 操作权限 |
-
-### 5.2 PluginCallbackPoint
-
-框架支持的 7 个回调点：`before_agent`、`after_agent`、`before_model`、`after_model`、`before_tool`、`after_tool`、`on_event`。
-
-### 5.3 PluginPermissions
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| can_view | boolean | 可查看 |
-| can_toggle | boolean | 可启停 |
-| can_edit_config | boolean | 可修改配置 |
-| can_view_logs | boolean | 可查看日志 |
-
-### 5.4 PluginRun
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | string | 记录 ID |
-| plugin_id | string | 插件 ID |
-| plugin_name | string | 插件名称 |
-| agent_id | string? | 关联 Agent |
-| agent_display_name | string? | Agent 显示名 |
-| invocation_id | string? | 调用 ID |
-| callback_point | PluginCallbackPoint | 回调点 |
-| status | enum | `success` / `blocked` / `error` / `skipped` |
-| action | enum | `pass` / `modify` / `block` / `retry` / `route` / `mask` |
-| started_at | string | 执行时间 |
-| duration_ms | number | 耗时 |
-| input_preview | string? | 脱敏输入摘要 |
-| output_preview | string? | 脱敏输出摘要 |
-| summary | string? | 执行摘要 |
-| error_message | string? | 错误摘要 |
-
-> **具体 Proto / Go / TypeScript 类型定义**参见设计文档 §2 和 §3。
+> 数据模型（Plugin / PluginRun / PluginPermissions 等字段定义、Ent Schema、数据库表）属于设计实现细节，已迁移至设计文档：
+> - **Proto 类型定义**：[22 plugin.design.md](./22%20plugin.design.md) §二 Proto 层
+> - **Biz 领域模型**：[22 plugin.design.md](./22%20plugin.design.md) §三 Biz 层
+> - **Ent Schema 与数据库表**：[22 plugin.design.md](./22%20plugin.design.md) §四 Data 层
 
 ---
 
 ## 6. API 契约
 
-### 6.1 Plugin 列表
+> API 契约（HTTP 路径、请求/响应结构、Proto RPC 定义）属于设计实现细节，已迁移至设计文档：
+> - **完整 Proto 定义**：[22 plugin.design.md](./22%20plugin.design.md) §二 Proto 层
+> - **HTTP API 汇总**：[22 plugin.design.md](./22%20plugin.design.md) §二 Proto 层 §2.3
+> - **Service 层 RPC 方法实现**：[22 plugin.design.md](./22%20plugin.design.md) §五 Service 层
 
-`GET /v1/plugins`
-
-Query：
-
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `search` | string | 名称、key、描述 |
-| `category` | string | 类型 |
-| `enabled` | string | "" / "true" / "false" 三态 |
-| `callback_point` | string | 作用阶段 |
-| `page` | number | 页码 |
-| `page_size` | number | 每页数量 |
-
-Response：
-
-```json
-{
-  "items": [],
-  "page": 1,
-  "page_size": 20,
-  "total": 0
-}
-```
-
-### 6.2 启用 / 停用
-
-`PATCH /v1/plugins/{id}/enabled`
-
-Request：
-
-```json
-{
-  "enabled": true
-}
-```
-
-Response：返回更新后的 `Plugin`。
-
-### 6.3 更新配置
-
-`PUT /v1/plugins/{id}/config`
-
-Request：
-
-```json
-{
-  "config_json": "{\"max_retries\": 3}"
-}
-```
-
-Response：返回更新后的 `Plugin`。
-
-### 6.4 调整顺序
-
-`PATCH /v1/plugins/{id}/sort-order`
-
-Request：
-
-```json
-{
-  "sort_order": 10
-}
-```
-
-Response：返回更新后的 `Plugin`。
-
-### 6.5 更新作用域
-
-`PATCH /v1/plugins/{id}/scope`
-
-Request：
-
-```json
-{
-  "scope": "global"
-}
-```
-
-`scope` 取值：`"global"` 表示全局生效，或传入具体 `agent_id` 表示仅对该 Agent 生效。
-
-Response：返回更新后的 `Plugin`。
-
-### 6.6 运行记录
-
-`GET /v1/plugins/runs`
-
-Query：
-
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `plugin_id` | string | 插件 |
-| `agent_id` | string | Agent |
-| `callback_point` | string | callback 类型 |
-| `status` | string | 状态 |
-| `from` | string | 开始时间 |
-| `to` | string | 结束时间 |
-| `page` | number | 页码 |
-| `page_size` | number | 每页数量 |
-
-Response：
-
-```json
-{
-  "items": [],
-  "page": 1,
-  "page_size": 20,
-  "total": 0
-}
-```
-
-### 6.7 工具确认审批
-
-`POST /v1/chat/send`（复用聊天消息通道）
-
-前端发送 `__aranea:tool_confirm:approve` 或 `__aranea:tool_confirm:deny` 结构化消息，后端解析后完成工具确认审批。
+工具确认审批复用聊天消息通道（`POST /v1/chat/send`），前端发送 `__aranea:tool_confirm:approve` 或 `__aranea:tool_confirm:deny` 结构化消息，后端解析后完成工具确认审批。
 
 ---
 
@@ -730,17 +563,16 @@ Response：
 
 | 组件 | 说明 |
 |------|------|
-| `PluginPage.vue` | 页面编排 |
-| `PluginFilterBar.vue` | 搜索和筛选 |
-| `PluginTable.vue` | 插件列表 |
-| `PluginStatsStrip.vue` | 顶部统计 |
+| `PluginsPage.vue` | 页面编排 |
+| `PluginRunsPage.vue` | 运行记录页 |
+| `PluginsTable.vue` | 插件列表 |
 | `PluginConfigDialog.vue` | 配置详情对话框 |
 | `PluginDetailDialog.vue` | 插件详情对话框 |
 | `PluginSchemaForm.vue` | Schema 驱动配置表单（表单 / JSON 双模式） |
 | `ModelRouterRulesEditor.vue` | model_router rules[] 可视化规则编辑器 |
 | `PluginRunDetailDialog.vue` | 运行详情对话框 |
-| `PluginRiskBadge.vue` | 风险等级展示 |
 | `pluginUi.ts` | 插件 UI 工具函数 |
+| `pluginRunsTableUi.ts` | 运行记录表 UI 工具函数 |
 
 ### 8.3 Agent 绑定交互
 

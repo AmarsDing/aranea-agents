@@ -1,8 +1,7 @@
 # CodeExecutor 代码执行模块 — 实现设计文档
 
-> **对应需求**：[32 codeexecutor.md](./32%20codeexecutor.md)
-> **开发计划**：[32-codeexecutor-development.md](./32-codeexecutor-development.md)
-> **遵循规范**：`AI-DEVELOPMENT-SPECIFICATION.md`
+> **对应需求**：[32-codeexecutor.md](./32-codeexecutor.md)
+> **开发计划**：[32-codeexecutor.development.md](./32-codeexecutor.development.md)
 
 ---
 
@@ -15,14 +14,16 @@
 - 项目自定义 `Executor` 接口（`internal/agent/codeexecutor`）负责底层执行，通过适配层转换为框架 `codeexecutor.CodeExecutor` 接口
 - 适配层位于 `internal/skill/trpc/executor.go`，将项目执行器适配为框架接口供 Skill 工具使用
 - 框架 `codeexecutor` 包提供完整的 Workspace / Interactive / Artifact 生态，项目按需集成
-- Agent 级别通过 `AgentRuntimeSettings.CodeExecutorType` 字段配置执行器类型（**已实现**；biz 校验 + 前端 Skill Tab）
+- Agent 级别通过 `AgentRuntimeSettings.CodeExecutorType` 字段配置执行器类型
 - Skill 装配门控：仅 `deps.SkillUC != nil` 时注入 `WithCodeExecutor`
+
+> 进度状态与 Phase 划分见 [32-codeexecutor.development.md](./32-codeexecutor.development.md)。
 
 ---
 
 ## 二、架构方案
 
-### 2.1 当前架构（已实现 Phase 1–2 + Review 修复）
+### 2.1 当前架构
 
 ```
 Wire 单例
@@ -89,7 +90,7 @@ flowchart TD
 | 框架 `trpclocal.New()` | Skill 主路径（Factory.getLocal） | 与 LLMAgent CodeExecutor 契约一致 |
 | 项目 `LocalExecutor` | `internal/agent/codeexecutor/executor.go` | 独立 `Executor` 接口；单测与 Docker 同级底层 |
 
-### 2.2 规划架构（P3 待实现）
+### 2.2 规划架构
 
 ```
 Factory.Resolve（扩展注册项，lazy 同 E2B/Container）
@@ -101,7 +102,7 @@ Interactive 生态:
   ProgramSession           → 状态保持 + 输入/输出/终止
 ```
 
-与已实现 **Factory** 的关系：P3 仅在 `Factory` 中增加 lazy 注册项；**不再**单独引入 `ExecutorRegistry` 类型（开发计划 Phase 1 原 Registry 已由 `factory.go` 落地）。
+与当前 **Factory** 的关系：规划阶段仅在 `Factory` 中增加 lazy 注册项；不再单独引入 `ExecutorRegistry` 类型。
 
 ### 2.3 双接口关系
 
@@ -126,7 +127,7 @@ codeexecutor.CodeExecutor.ExecuteCode(input)
 
 ## 三、接口设计
 
-### 3.1 项目 Executor 接口（已实现）
+### 3.1 项目 Executor 接口
 
 ```go
 type Executor interface {
@@ -237,11 +238,42 @@ type RunEnvProvider func(ctx context.Context) map[string]string
 func NewEnvInjectingCodeExecutor(exec CodeExecutor, provider RunEnvProvider) CodeExecutor
 ```
 
+### 3.8 Monitor API 契约（Proto）
+
+`api/kratos/monitor/v1/monitor.proto`：
+
+```protobuf
+message CodeExecutorCapability {
+  string type = 1;
+  bool available = 2;
+  string reason = 3;
+}
+
+message GetCodeExecutorCapabilitiesResponse {
+  repeated CodeExecutorCapability backends = 1;
+}
+
+service MonitorService {
+  rpc GetCodeExecutorCapabilities(GetMonitorLogsRequest) returns (GetCodeExecutorCapabilitiesResponse) {
+    option (google.api.http) = {get: "/v1/monitor/code-executor-capabilities"};
+  }
+}
+```
+
+### 3.9 Agent 配置 Proto 契约
+
+`api/kratos/agent/v1/agent.proto`：
+
+```protobuf
+// code_executor_type selects Skill code execution backend: local | docker | e2b | container
+string code_executor_type = 101;
+```
+
 ---
 
 ## 四、适配层设计
 
-### 4.1 Skill 适配层（已实现）
+### 4.1 Skill 适配层
 
 `internal/skill/trpc/executor.go` + `artifact_executor.go`：
 
@@ -249,7 +281,7 @@ func NewEnvInjectingCodeExecutor(exec CodeExecutor, provider RunEnvProvider) Cod
 |------|------|------|
 | `NewExecutorForAgent(ctx, factory, agentType, workDir, lg)` | `codeexecutor.CodeExecutor` | Factory.Resolve + `WrapWithArtifactSave` |
 | `NewLocalExecutor(factory, workDir)` | `codeexecutor.CodeExecutor` | 强制 local |
-| `WrapWithArtifactSave(inner)` | `codeexecutor.CodeExecutor` | 产出物持久化（`artifact_executor.go`） |
+| `WrapWithArtifactSave(inner, lg)` | `codeexecutor.CodeExecutor` | 产出物持久化（`artifact_executor.go`） |
 
 `dockerAdapter`（`internal/agent/codeexecutor/docker_adapter.go`）适配逻辑：
 
@@ -257,9 +289,9 @@ func NewEnvInjectingCodeExecutor(exec CodeExecutor, provider RunEnvProvider) Cod
 - `ExecuteCode()` → 遍历 CodeBlocks → `DockerExecutor.Run()` → 拼接 stdout/stderr / `[exit N]` / timeout / OOM
 - 输出目录 → `CollectOutputDirFiles` → `CodeExecutionResult.OutputFiles`
 
-### 4.2 Factory（已实现，原 Phase 1 Registry 计划）
+### 4.2 Factory
 
-项目级 **Factory**（`internal/agent/codeexecutor/factory.go`）负责 backend 解析与 lazy 注册；与框架 **WorkspaceRegistry**（Session 工作区复用，Phase 4）职责分离。
+项目级 **Factory**（`internal/agent/codeexecutor/factory.go`）负责 backend 解析与 lazy 注册；与框架 **WorkspaceRegistry**（Session 工作区复用）职责分离。
 
 | 类型 | 构造来源 | 注册方式 |
 |------|----------|----------|
@@ -267,7 +299,7 @@ func NewEnvInjectingCodeExecutor(exec CodeExecutor, provider RunEnvProvider) Cod
 | `docker` | `dockerAdapter` → 项目 `DockerExecutor` | 单例 + `dockerRuntimeFallback` |
 | `e2b` | `e2bexec.New(...)` | lazy `sync.Once`，需 `E2B_API_KEY` |
 | `container` | `containerexec.New(...)` | lazy + build tag `codeexec_container` |
-| `jupyter` | `jupyter.New(...)` | ❌ Phase 3 |
+| `jupyter` | `jupyter.New(...)` | 规划中 |
 
 核心 API：
 
@@ -277,6 +309,7 @@ func NewFactoryWithLogger(lg loggateway.Logger) *Factory      // Wire 单例（�
 func (f *Factory) Resolve(ctx, agentType, workDir string) codeexecutor.CodeExecutor
 func (f *Factory) Capabilities() []Capability                   // Monitor / 前端
 func (f *Factory) RegisteredTypes() []string                    // 可用 backend 列表
+func (f *Factory) IsBackendAvailable(typ string) bool           // 探测可用性
 ```
 
 装饰链：`Resolve` 出口经 `wrapMetrics`；Skill 路径最外层 `WrapWithArtifactSave`。
@@ -285,7 +318,7 @@ func (f *Factory) RegisteredTypes() []string                    // 可用 backen
 
 ## 五、配置设计
 
-### 5.1 Agent 级别配置（已实现）
+### 5.1 Agent 级别配置
 
 `AgentRuntimeSettings.CodeExecutorType`（`local` / `docker` / `e2b` / `container`）：
 
@@ -313,6 +346,7 @@ func (f *Factory) RegisteredTypes() []string                    // 可用 backen
 | `CODE_EXECUTOR_BACKEND` | 全局执行器后端选择 |
 | `CODE_EXECUTOR_DOCKER_IMAGE` | Docker 镜像覆盖 |
 | `CODE_EXECUTOR_TIMEOUT` | 执行超时覆盖 |
+| `CODE_EXECUTOR_ALLOW_LOCAL_IN_PROD` | 生产环境允许 local（`1`/`true`/`yes`） |
 
 ### 5.3 E2B 后端配置
 
@@ -324,7 +358,7 @@ func (f *Factory) RegisteredTypes() []string                    // 可用 backen
 | Sandbox Timeout | — | 沙箱生命周期 |
 | Execution Timeout | — | 单次代码执行超时 |
 
-### 5.4 Jupyter 后端配置
+### 5.4 Jupyter 后端配置（规划）
 
 | 配置项 | 说明 |
 |--------|------|
@@ -361,13 +395,14 @@ func (f *Factory) RegisteredTypes() []string                    // 可用 backen
 
 ### 6.2 回退策略
 
-**已实现双层回退**：
+双层回退机制：
 
 | 层级 | 机制 | 说明 |
 |------|------|------|
 | 启动时 | `applyAvailabilityFallback()` | Docker daemon 不可用 → local + FlowLog；E2B/Container 不可用 → local |
 | 运行时 | `dockerRuntimeFallback` | Docker 执行失败 → local + `ResetDockerProbe()` 清缓存 |
 | 生产告警 | `warnLocalInProd()` | `ARANEA_ENV=production` 且使用 local → FlowLog 告警（`AllowLocalInProd` 可关闭） |
+| 生产拒绝 | `applyAvailabilityFallback()` | `ARANEA_ENV=production` 且 Docker 不可用且未允许 local → `TypeDisabled` 拒绝执行 |
 
 未来可扩展 `firecracker` 或 `nsjail` 轻量 VM 后端。
 
@@ -404,7 +439,7 @@ func (f *Factory) RegisteredTypes() []string                    // 可用 backen
 
 ## 八、数据模型
 
-### 8.1 已有模型
+### 8.1 项目执行器类型
 
 `internal/agent/codeexecutor/executor.go` 中的类型：
 
@@ -414,39 +449,84 @@ func (f *Factory) RegisteredTypes() []string                    // 可用 backen
 | `LocalConfig` | 本地执行器配置 |
 | `DockerConfig` | Docker 执行器配置 |
 
-### 8.2 已新增模型（Phase 1）
+`internal/agent/codeexecutor/config.go` 中的类型：
 
-#### AgentRuntimeSettings 扩展 ✅
+| 类型 | 用途 |
+|------|------|
+| `EnvConfig` | 环境变量配置（Backend/DockerImage/Timeout/E2BAPIKey/AllowLocalInProd） |
+| `Capability` | 后端能力描述（Type/Available/Reason） |
 
-`internal/biz/agent_types.go` — `CodeExecutorType`；`GetCodeExecutor()` 领域视图。
+### 8.2 AgentRuntimeSettings 扩展
 
-#### biz 校验 ✅
+`internal/biz/agent_types.go`：
 
-`internal/biz/code_executor.go` — `ValidateCodeExecutorType`（与 `codeexecutor.ValidTypes` 枚举需手动同步，R2 不 cross-import）。
+- `CodeExecutorType` 字段（`string`）
+- `GetCodeExecutor()` 领域视图方法，返回 `CodeExecutorCfg{Type: ...}`
 
-#### Ent / SQL ✅
+`internal/biz/code_executor.go`：
 
-`code_executor_type` 列；Ent auto migration 管理（无手动 SQL 迁移文件）。
+- `ValidateCodeExecutorType(raw string) error` — 非法值返回 API 400
+- `ValidCodeExecutorTypes() []string` — 允许值列表
+- 常量：`CodeExecutorLocal` / `CodeExecutorDocker` / `CodeExecutorE2B` / `CodeExecutorContainer`
+
+> 注：biz 层 `ValidCodeExecutorTypes` 与 `codeexecutor.ValidTypes` 枚举需手动同步（红线 R2：`internal/biz` 不 import `trpc-agent-go`）。
+
+### 8.3 Ent Schema
+
+`internal/data/ent/schema/agent_runtime_setting.go`：
+
+```go
+field.String("code_executor_type").Default("local"),
+```
+
+Ent auto migration 管理，无手动 SQL 迁移文件。
 
 ---
 
-## 九、涉及文件
+## 九、前端组件设计
 
-| 文件 | 状态 | 说明 |
-|------|------|------|
-| `internal/agent/codeexecutor/factory.go` | ✅ | Factory + Resolve + lazy E2B/Container |
-| `internal/agent/codeexecutor/capabilities.go` | ✅ | Capabilities / IsBackendAvailable |
-| `internal/agent/codeexecutor/docker_fallback.go` | ✅ | 运行时 docker→local |
-| `internal/agent/codeexecutor/metrics_executor.go` | ✅ | Prometheus + blocks_total |
-| `internal/agent/codeexecutor/docker_adapter.go` | ✅ | DockerExecutor → 框架 CodeExecutor |
-| `internal/agent/codeexecutor/output_files.go` | ✅ | CollectOutputDirFiles |
-| `internal/agent/codeexecutor/executor.go` | ✅ | 项目 Executor + Local/Docker 底层 |
-| `internal/skill/trpc/executor.go` | ✅ | NewExecutorForAgent + Factory 注入 |
-| `internal/skill/trpc/artifact_executor.go` | ✅ | WrapWithArtifactSave |
-| `internal/agent/trpc_build.go` | ✅ | buildSkillDeps + CodeExecFactory |
-| `internal/biz/code_executor.go` | ✅ | ValidateCodeExecutorType |
-| `cmd/admin/wire.go` | ✅ | provideCodeExecutorFactory |
-| `api/kratos/monitor/v1/monitor.proto` | ✅ | GetCodeExecutorCapabilities |
-| `web/.../AgentSettingsSkillsTab.vue` | ✅ | 执行器选择 + capabilities 提示 |
-| `docker-compose.executor.yml` | ✅ | Docker 后端运维示例 |
-| `pkg/trpc-agent-go/codeexecutor/{jupyter}/` | 📦 | Phase 3 |
+### 9.1 AgentSettingsSkillsTab
+
+`web/src/pages/agent-settings/AgentSettingsSkillsTab.vue`：
+
+| 元素 | 说明 |
+|------|------|
+| 执行器类型选择器 | `q-select` 绑定 `config.code_executor_type`，选项来自 `codeExecutorOptions` |
+| 选项禁用逻辑 | 根据 `codeExecutorCapabilities` 中对应后端的 `available` 字段禁用不可用项 |
+| 回退提示 | `fallbackHint` 计算属性：选中后端不可用时显示 `q-banner` 提示 |
+
+### 9.2 数据流
+
+```
+Monitor API (GET /v1/monitor/code-executor-capabilities)
+  → CodeExecutorCapability[] (type/available/reason)
+    → AgentSettingsSkillsTab props.codeExecutorCapabilities
+      → capabilityByType (Map<type, Capability>)
+        → codeExecutorOptions (禁用不可用项)
+        → fallbackHint (选中项不可用时提示)
+```
+
+### 9.3 类型定义
+
+`web/src/features/monitor/types.ts`：
+
+```typescript
+interface CodeExecutorCapability {
+  type: string;
+  available: boolean;
+  reason?: string;
+}
+```
+
+### 9.4 UX 规范
+
+- 不可用后端选项显示但禁用，鼠标悬停显示不可用原因
+- 选中后端不可用时显示黄色提示横幅
+- 默认选中 `local` 后端
+- 配置变更通过 Agent 设置保存流程持久化
+
+---
+
+## 十、涉及文件
+
+> 文件状态与改动清单见 [32-codeexecutor.development.md](./32-codeexecutor.development.md) §8。

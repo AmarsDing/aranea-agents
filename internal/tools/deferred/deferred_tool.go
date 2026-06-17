@@ -32,6 +32,13 @@ func (d *DeferredCallableTool) Declaration() *trpctool.Declaration {
 	return d.decl
 }
 
+// ShouldDefer implements trpctool.DeferredTool. DeferredCallableTool always
+// defers full loading until the first Call triggers factory resolution,
+// allowing hosts to hide the full declaration until it is explicitly needed.
+func (d *DeferredCallableTool) ShouldDefer(_ context.Context) bool {
+	return true
+}
+
 func (d *DeferredCallableTool) Call(ctx context.Context, jsonArgs []byte) (any, error) {
 	if err := d.resolve(ctx); err != nil {
 		return nil, apierror.Internal(apierror.DomainTool, "deferred tool resolution failed: "+err.Error())

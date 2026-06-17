@@ -1,6 +1,6 @@
 # Telemetry 遥测模块 — 实现设计文档
 
-> **对应需求**：[24 telemetry.md](./24%20telemetry.md)  
+> **对应需求**：[24-telemetry.md](./24-telemetry.md)  
 > **开发计划**：[24-telemetry-development.md](./24-telemetry-development.md)  
 > **遵循**：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md)
 
@@ -26,6 +26,8 @@ OpenTelemetry 遥测集成：Trace / Metrics / Langfuse / 应用内 Trace 投影
 
 无独立 Telemetry Proto。观测数据通过 Kratos 中间件、Prometheus scrape、Usage/Monitor 既有 API 与 WS 暴露。
 
+Langfuse 配置通过 `conf.Bootstrap.Langfuse`（`internal/conf/conf.proto` `message Langfuse`）注入，非独立 Proto。
+
 ---
 
 ## 3. Biz 层
@@ -40,7 +42,7 @@ OpenTelemetry 遥测集成：Trace / Metrics / Langfuse / 应用内 Trace 投影
 
 ```text
 cmd/admin/main.go
-  └─ telemetry.Init(Name, Version, lg)     ← EP-OBS-02
+  └─ telemetry.Init(Name, Version, lg)
        ├─ initTracerProvider
        │    ├─ HTTP → otlptracehttp + sdktrace.TracerProvider + buildSampler()
        │    └─ gRPC → trpc-agent-go telemetry/trace.Start
@@ -68,13 +70,15 @@ cmd/admin/main.go
 
 支持的采样策略：`always_on` / `parentbased_always_on` / `always_off` / `parentbased_always_off` / `traceidratio` / `parentbased_traceidratio`。仅 HTTP 路径生效。
 
-**`internal/telemetry/langfuse.go`** — Langfuse 运行时（Wire 注入，独立于 OTLP 生命周期）：
+**`internal/telemetry/langfuse.go`** — Langfuse 运行时：
 
 | 函数/方法 | 职责 |
 |-----------|------|
 | `NewLangfuseRuntime(conf, lg)` | 从 `conf.Bootstrap.Langfuse` 读取配置，启动 Langfuse |
 | `Enabled()` | Langfuse 是否启用 |
 | `Shutdown(ctx)` | 优雅关闭 |
+
+> **设计意图**：`LangfuseRuntime` 构造函数签名已就绪，设计为通过 Wire 注入、独立于 OTLP 生命周期。当前接入状态见开发计划 §2。
 
 ### 4.2 Kratos 传输层中间件
 
@@ -103,6 +107,7 @@ grpc.Middleware(
 
 | 指标名 | 类型 | 标签 | 用途 |
 |--------|------|------|------|
+| `aranea_chat_ttft_seconds` | Histogram | agent_id, first_byte_type | Chat 首 Token 延迟（TTFT） |
 | `aranea_chat_turn_duration_seconds` | Histogram | agent_id, status | Chat turn 延迟 |
 | `aranea_agent_build_cache_hits_total` | Counter | — | Agent 构建 LRU 命中 |
 | `aranea_agent_build_cache_misses_total` | Counter | — | Agent 构建 LRU 未命中 |
@@ -168,14 +173,14 @@ grpc.Middleware(
 
 ```text
 internal/service/chat_orchestrator_turn.go
-  startTurnSpan("chat.turn", ...)          ← OTel 根 Span（I6-TEL-01）
+  startTurnSpan("chat.turn", ...)          ← OTel 根 Span
   turntrace.Bridge → ctx
   WrapFrameworkEventsWithOtel(events, emitter, bridge, bridge)
        │
        ▼
-internal/event/trace_emitter.go
-  ├─ publishFlowLog → WS monitor（correlation.trace_id）
-  ├─ span buffer → recordTurnUsage metadata_json.spans
+internal/event/trace_emitter.go (embeds FlowTracker)
+  ├─ FlowTracker.LogStart/LogDone/LogError → WS monitor（correlation.trace_id）
+  ├─ SpanCollector → recordTurnUsage metadata_json.spans
   └─ SetOtelRefs(traceID, rootSpanID) → otel_trace_id / otel_root_span_id
 
 internal/event/trace_context.go
@@ -191,6 +196,8 @@ internal/event/span_collector.go
 - **Span ID 同步**：`SyncOtelSpanIDs(src)` 将 `llm.call` / `tool.call` / `chat.turn` 的 OTel span ID 写入各 span 的 `otel_id` 字段。
 - **系统域 FlowLog**：`system.telemetry.init|noop|error`（`internal/event/flow_log.go` 步骤注册表）。
 - **已移除**：`slog_bridge.go` / `LOG_BRIDGE_*`（2026-05-20）。
+
+> FlowLog 发布通过 `FlowTracker`（嵌入 `TraceEmitter`）的 `LogStart`/`LogDone`/`LogError` 等方法，经 `event.Bus` 投递至 WS monitor 频道。
 
 ### 4.6 Service 层 OTel Span
 
@@ -236,7 +243,7 @@ internal/event/span_collector.go
 
 - 无独立 Telemetry Service RPC。
 - `telemetry.Init` 在 `cmd/admin/main.go` 于 `wireApp` **之前**调用；shutdown 通过 `defer` flush。
-- `LangfuseRuntime` 通过 Wire 注入，独立于 OTLP 生命周期。
+- `LangfuseRuntime` 构造函数已就绪（`NewLangfuseRuntime`），设计为 Wire 注入、独立于 OTLP 生命周期；当前接入状态见开发计划 §2。
 - Chat Run 在 `internal/service/chat_orchestrator_turn.go` 挂载 `turntrace.Bridge` + `TraceEmitter`。
 - Team Run 在 `internal/team/runner_team_trpc.go` 挂载 `turntrace.Bridge` + `TraceEmitter`，trace_id 持久化到 team_run 记录。
 - Graph Run 在 `internal/service/graph_execution_service.go` 挂载 `turntrace.Bridge`，通过 `GraphExecutionTelemetry` 观察者管理生命周期。
@@ -257,12 +264,13 @@ internal/event/span_collector.go
 
 **Langfuse 配置**（`conf.Bootstrap.Langfuse`，非环境变量）：
 
-| 字段 | 说明 |
-|------|------|
-| `Enable` | 是否启用 Langfuse |
-| `PublicKey` | Langfuse Public Key |
-| `SecretKey` | Langfuse Secret Key |
-| `BaseUrl` | Langfuse 服务端地址 |
+| 字段 | Proto 字段 | 说明 |
+|------|-----------|------|
+| `Enable` | `enable` | 是否启用 Langfuse |
+| `PublicKey` | `public_key` | Langfuse Public Key |
+| `SecretKey` | `secret_key` | Langfuse Secret Key |
+| `BaseUrl` | `base_url` | Langfuse 服务端地址 |
+| `FlushIntervalMS` | `flush_interval_ms` | Flush 间隔（毫秒） |
 
 ---
 
@@ -276,7 +284,7 @@ Telemetry **不单独占路由**；排障 UI 归 Monitor **Runs** Tab（路由�
 | `TraceWaterfall.vue` | 同上 | usage spans 瀑布图 |
 | Flow 详情 | `TraceList` 对话框内 Tab | WS `flow_log` 实时流 |
 
-Jaeger 级全链路 UI **非目标**；`/overview` Dashboard 负责用量大盘（见 [18 monitor-dashboard.md](./18%20monitor-dashboard.md)）。
+Jaeger 级全链路 UI **非目标**；`/overview` Dashboard 负责用量大盘（见 [18-monitor.md](./18-monitor.md)）。
 
 ---
 

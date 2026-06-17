@@ -1,20 +1,22 @@
 # Tools 工具模块 — 实现设计文档
 
-> 对应需求：`23 tools.md`
-> 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
+> 对应需求：[23-tools.md](./23-tools.md) · 开发计划：[23-tools.development.md](./23-tools.development.md)
+> 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md` · 框架：trpc-agent-go
 
 ---
 
 ## 一、模块概述
 
-工具注册与管理：CallableTool/StreamableTool/MCP Tool 统一目录、Agent 工具绑定、运行时挂载。工具是 Agent 可调用的具体外部能力，与 Plugin（运行时拦截器）和 Skill（面向 Agent 的能力+知识包）有明确边界。
+工具注册与管理：CallableTool / StreamableTool / MCP Tool 统一目录、Agent 工具绑定、运行时挂载。工具是 Agent 可调用的具体外部能力，与 Plugin（运行时拦截器）和 Skill（面向 Agent 的能力+知识包）有明确边界。
 
 核心能力：
 - 工具目录 CRUD（含内置工具 + MCP 工具 + 外部工具）
-- 工具启用/停用/风险等级管理
-- Agent 工具绑定与生效矩阵
-- 工具调用记录（ToolInvocation）查询
+- 工具启用/停用/风险等级管理（高风险启用需 `confirm_intent = I_UNDERSTAND_RISK`）
+- Agent 工具绑定与生效矩阵（profile + allow/deny + catalog）
+- 工具调用记录（ToolInvocation）查询与审计（ToolInvocationAudit）
 - 运行时工具挂载（trpc-agent-go Tool/ToolSet 适配）
+- 工具工作区统一（file / shell / claude_code 共用 `workspace_root`）
+- 片段级文件编辑（`diff_edit` / `patch_file`）— catalog 已就绪、运行时工具待补
 
 ---
 
@@ -36,6 +38,8 @@ import "google/api/field_behavior.proto";
 import "google/protobuf/empty.proto";
 
 option go_package = "aranea-agents/api/kratos/tool/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.tool.v1";
 
 message ToolPermissions {
   bool can_manage = 1;
@@ -74,6 +78,7 @@ message Tool {
   string created_at = 30;
   string updated_at = 31;
   ToolPermissions permissions = 32;
+  double p95_duration_ms = 33;          // P95 耗时（毫秒）
 }
 
 message ToolSummary {
@@ -92,6 +97,7 @@ message ListToolsRequest {
   string enabled = 5;                   // ""/"true"/"false" 三态
   int32 page = 6;
   int32 page_size = 7;
+  string sort = 8;                      // 排序字段
 }
 
 message ListToolsResponse {
@@ -154,6 +160,10 @@ message DeleteToolRequest {
 message ToggleToolEnabledRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
   bool enabled = 2;
+  // confirm_intent must be "I_UNDERSTAND_RISK" when enabling high/critical
+  // risk tools. Replaces the old confirm_key which matched the tool key
+  // (a guessable value that provided no real security).
+  string confirm_intent = 3;
 }
 
 message ToolInvocation {
@@ -183,6 +193,8 @@ message ToolInvocation {
   bool redaction_applied = 24;
   string metadata_json = 25;
   string created_at = 26;
+  bool streaming = 27;                  // 是否流式调用
+  int32 chunk_count = 28;               // 流式分片数
 }
 
 message ListToolRunsRequest {
@@ -194,6 +206,7 @@ message ListToolRunsRequest {
   string to = 6;
   int32 page = 7;
   int32 page_size = 8;
+  optional bool has_error = 9;          // 仅查失败记录
 }
 
 message ListToolRunsResponse {
@@ -220,7 +233,7 @@ message ToolAgentOverride {
   string tool_key = 3;
   string agent_id = 4;
   bool enabled = 5;
-  string mode = 6;                    // "inherit"/"override"/"deny"
+  string mode = 6;                      // "inherit"/"override"/"deny"
   string config_override_json = 7;
   bool requires_confirmation = 8;
   string created_at = 9;
@@ -228,19 +241,24 @@ message ToolAgentOverride {
 }
 
 message ListToolAgentOverridesRequest {
-  string tool_key = 1 [(google.api.field_behavior) = REQUIRED];
-}
-
-message ListToolAgentOverridesByAgentRequest {
-  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string tool_id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
 message ListToolAgentOverridesResponse {
   repeated ToolAgentOverride items = 1;
 }
 
+message ListToolAgentOverridesByAgentRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// 独立响应类型，避免与 ListToolAgentOverridesResponse 耦合
+message ListToolAgentOverridesByAgentResponse {
+  repeated ToolAgentOverride items = 1;
+}
+
 message UpsertToolAgentOverrideRequest {
-  string tool_key = 1 [(google.api.field_behavior) = REQUIRED];
+  string tool_id = 1 [(google.api.field_behavior) = REQUIRED];
   string agent_id = 2 [(google.api.field_behavior) = REQUIRED];
   bool enabled = 3;
   string mode = 4;
@@ -249,12 +267,8 @@ message UpsertToolAgentOverrideRequest {
 }
 
 message DeleteToolAgentOverrideRequest {
-  string tool_key = 1 [(google.api.field_behavior) = REQUIRED];
+  string tool_id = 1 [(google.api.field_behavior) = REQUIRED];
   string agent_id = 2 [(google.api.field_behavior) = REQUIRED];
-}
-
-message GetToolInvocationParamsRequest {
-  string invocation_id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
 message ToolInvocationParam {
@@ -266,9 +280,13 @@ message ToolInvocationParam {
   string created_at = 6;
 }
 
+message GetToolInvocationParamsRequest {
+  string invocation_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
 message UpdateToolConfigRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
-  string config_json = 2;
+  string config_json = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
 message TestToolRequest {
@@ -278,7 +296,7 @@ message TestToolRequest {
 }
 
 message TestToolResponse {
-  string status = 1;                   // "success"/"error"/"timeout"
+  string status = 1;                    // "success"/"error"/"timeout"
   string result_preview = 2;
   string error_message = 3;
   int32 duration_ms = 4;
@@ -318,8 +336,19 @@ message ListToolInvocationAuditsResponse {
 }
 
 service ToolService {
+  // 静态 GET 路径必须先于 /v1/tools/{id} 注册，避免 gorilla/mux 把
+  // "runs"/"audits" 等变量段误匹配为 {id}。
   rpc ListTools(ListToolsRequest) returns (ListToolsResponse) {
     option (google.api.http) = {get: "/v1/tools"};
+  }
+  rpc ListToolRuns(ListToolRunsRequest) returns (ListToolRunsResponse) {
+    option (google.api.http) = {get: "/v1/tools/runs"};
+  }
+  rpc ListToolInvocationAudits(ListToolInvocationAuditsRequest) returns (ListToolInvocationAuditsResponse) {
+    option (google.api.http) = {get: "/v1/tools/audits"};
+  }
+  rpc GetToolInvocationParams(GetToolInvocationParamsRequest) returns (ToolInvocationParam) {
+    option (google.api.http) = {get: "/v1/tools/runs/{invocation_id}/params"};
   }
   rpc GetTool(GetToolRequest) returns (Tool) {
     option (google.api.http) = {get: "/v1/tools/{id}"};
@@ -336,35 +365,26 @@ service ToolService {
   rpc ToggleToolEnabled(ToggleToolEnabledRequest) returns (Tool) {
     option (google.api.http) = {patch: "/v1/tools/{id}/enabled" body: "*"};
   }
-  rpc ListToolRuns(ListToolRunsRequest) returns (ListToolRunsResponse) {
-    option (google.api.http) = {get: "/v1/tools/runs"};
-  }
   rpc ListToolRunsForTool(ListToolRunsForToolRequest) returns (ListToolRunsResponse) {
     option (google.api.http) = {get: "/v1/tools/{tool_id}/runs"};
   }
   rpc ListToolAgentOverrides(ListToolAgentOverridesRequest) returns (ListToolAgentOverridesResponse) {
-    option (google.api.http) = {get: "/v1/tools/{tool_key}/overrides"};
+    option (google.api.http) = {get: "/v1/tools/{tool_id}/agent-overrides"};
   }
-  rpc ListToolAgentOverridesByAgent(ListToolAgentOverridesByAgentRequest) returns (ListToolAgentOverridesResponse) {
+  rpc ListToolAgentOverridesByAgent(ListToolAgentOverridesByAgentRequest) returns (ListToolAgentOverridesByAgentResponse) {
     option (google.api.http) = {get: "/v1/agents/{agent_id}/tool-overrides"};
   }
   rpc UpsertToolAgentOverride(UpsertToolAgentOverrideRequest) returns (ToolAgentOverride) {
-    option (google.api.http) = {put: "/v1/tools/{tool_key}/overrides/{agent_id}" body: "*"};
+    option (google.api.http) = {put: "/v1/tools/{tool_id}/agent-overrides/{agent_id}" body: "*"};
   }
   rpc DeleteToolAgentOverride(DeleteToolAgentOverrideRequest) returns (google.protobuf.Empty) {
-    option (google.api.http) = {delete: "/v1/tools/{tool_key}/overrides/{agent_id}"};
-  }
-  rpc GetToolInvocationParams(GetToolInvocationParamsRequest) returns (ToolInvocationParam) {
-    option (google.api.http) = {get: "/v1/tools/invocations/{invocation_id}/params"};
+    option (google.api.http) = {delete: "/v1/tools/{tool_id}/agent-overrides/{agent_id}"};
   }
   rpc UpdateToolConfig(UpdateToolConfigRequest) returns (Tool) {
     option (google.api.http) = {put: "/v1/tools/{id}/config" body: "*"};
   }
   rpc TestTool(TestToolRequest) returns (TestToolResponse) {
     option (google.api.http) = {post: "/v1/tools/{id}/test" body: "*"};
-  }
-  rpc ListToolInvocationAudits(ListToolInvocationAuditsRequest) returns (ListToolInvocationAuditsResponse) {
-    option (google.api.http) = {get: "/v1/tools/audits"};
   }
 }
 ```
@@ -373,22 +393,24 @@ service ToolService {
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/v1/tools` | 列表查询，支持 search/category/source/risk_level/enabled 筛选，含 Summary |
+| GET | `/v1/tools` | 列表查询，支持 search/category/source/risk_level/enabled/sort 筛选，含 Summary |
+| GET | `/v1/tools/runs` | 全局工具调用记录查询（静态路径，先于 `{id}` 注册） |
+| GET | `/v1/tools/audits` | 工具调用审计日志查询（静态路径，先于 `{id}` 注册） |
+| GET | `/v1/tools/runs/{invocation_id}/params` | 查询工具调用脱敏参数 |
 | GET | `/v1/tools/{id}` | 获取单个工具详情 |
 | POST | `/v1/tools` | 创建工具 |
 | PUT | `/v1/tools/{id}` | 更新工具 |
 | DELETE | `/v1/tools/{id}` | 软删除工具 |
-| PATCH | `/v1/tools/{id}/enabled` | 启用/停用工具 |
-| GET | `/v1/tools/runs` | 全局工具调用记录查询 |
+| PATCH | `/v1/tools/{id}/enabled` | 启用/停用工具（高风险启用需 `confirm_intent=I_UNDERSTAND_RISK`） |
 | GET | `/v1/tools/{tool_id}/runs` | 指定工具的调用记录查询 |
-| GET | `/v1/tools/{tool_key}/overrides` | 查询工具的 Agent 覆盖列表 |
+| GET | `/v1/tools/{tool_id}/agent-overrides` | 查询工具的 Agent 覆盖列表 |
 | GET | `/v1/agents/{agent_id}/tool-overrides` | 查询 Agent 的工具覆盖列表 |
-| PUT | `/v1/tools/{tool_key}/overrides/{agent_id}` | 创建/更新 Agent 工具覆盖 |
-| DELETE | `/v1/tools/{tool_key}/overrides/{agent_id}` | 删除 Agent 工具覆盖 |
-| GET | `/v1/tools/invocations/{invocation_id}/params` | 查询工具调用脱敏参数 |
-| PUT | `/v1/tools/{id}/config` | 更新工具配置 |
+| PUT | `/v1/tools/{tool_id}/agent-overrides/{agent_id}` | 创建/更新 Agent 工具覆盖 |
+| DELETE | `/v1/tools/{tool_id}/agent-overrides/{agent_id}` | 删除 Agent 工具覆盖 |
+| PUT | `/v1/tools/{id}/config` | 更新工具配置（`config_json` 必填） |
 | POST | `/v1/tools/{id}/test` | 在线测试工具 |
-| GET | `/v1/tools/audits` | 查询工具调用审计日志 |
+
+> **路径设计要点**：Override 路径使用 `tool_id`（而非 `tool_key`），与 `ResolveToolKey` 解析链对齐；`/v1/tools/runs/{invocation_id}/params` 路径与 `/v1/tools/{id}` 区分，避免 mux 路由冲突。
 
 ---
 
@@ -396,11 +418,13 @@ service ToolService {
 
 ### 3.1 领域模型
 
+文件路径：`internal/biz/tool/tool.go`
+
 ```go
 type Tool struct {
     ID                   string
     Key                  string              // 唯一标识，如 "duckduckgo_search"
-    DisplayName          string              // 显示名称
+    DisplayName          string
     Description          string
     Category             string              // "system"/"filesystem"/"web"/...
     Source               string              // "builtin"/"mcp"/"system"/"external"
@@ -425,7 +449,7 @@ type Tool struct {
     BlockedCount         int
     AgentOverrideCount   int                 // Agent 级别覆盖数
     AvgDurationMS        *float64            // 平均耗时（毫秒）
-    P95DurationMS        float64             // P95 耗时
+    P95DurationMS        float64             // P95 耗时（毫秒）
     LastInvokedAt        string
     LastStatus           string              // "success"/"error"/"blocked"
     CreatedAt            string
@@ -511,6 +535,8 @@ type ToolInvocation struct {
     ErrorCode        string
     ErrorMessage     string
     RedactionApplied bool
+    Streaming        bool                // 是否流式调用
+    ChunkCount       int                 // 流式分片数
     MetadataJSON     string
     CreatedAt        string
 }
@@ -533,6 +559,8 @@ type ToolInvocationWrite struct {
     ErrorMessage  string
     Source        string
     ToolCallID    string
+    Streaming     bool
+    ChunkCount    int
 }
 
 type ToolInvocationParam struct {
@@ -550,7 +578,7 @@ type ToolAgentOverride struct {
     ToolKey              string
     AgentID              string
     Enabled              bool
-    Mode                 string
+    Mode                 string              // "inherit"/"override"/"deny"
     ConfigOverrideJSON   string
     RequiresConfirmation bool
     CreatedAt            string
@@ -573,7 +601,7 @@ type ToolRunQuery struct {
     Status    string
     From      string
     To        string
-    HasError  *bool
+    HasError  *bool               // 仅查失败记录
     Limit     int
     Offset    int
 }
@@ -584,89 +612,255 @@ type ToolRunResult struct {
     Limit  int
     Offset int
 }
+
+// 审计写入模型
+type ToolInvocationAuditWrite struct {
+    InvocationID  string
+    ToolKey       string
+    AgentID       string
+    UserID        string
+    SessionID     string
+    Action        string
+    ResultSummary string
+    Status        string
+    Source        string
+}
+
+// 审计读取模型
+type ToolInvocationAudit struct {
+    ID            string
+    InvocationID  string
+    ToolKey       string
+    AgentID       string
+    UserID        string
+    SessionID     string
+    Action        string
+    ResultSummary string
+    Status        string
+    Source        string
+    CreatedAt     string
+}
+
+type ToolAuditQuery struct {
+    ToolKey   string
+    AgentID   string
+    UserID    string
+    SessionID string
+    Status    string
+    From      string
+    To        string
+    Limit     int
+    Offset    int
+}
+
+type ToolAuditResult struct {
+    Items  []ToolInvocationAudit
+    Total  int
+    Limit  int
+    Offset int
+}
 ```
 
-### 3.2 Repo 接口
+### 3.2 Repo 接口（8 子接口 + 组合 + 窄接口）
+
+文件路径：`internal/biz/tool/tool.go`
+
+为遵守红线 #15（Repository 接口方法 ≤ 5），`ToolRepo` 拆分为 8 个子接口 + 1 个组合接口 + 1 个窄接口：
 
 ```go
-type ToolRepo interface {
+// Stability:stable
+type ToolReader interface {
     SearchTools(ctx context.Context, q ToolListQuery) (ToolListResult, error)
     GetTool(ctx context.Context, idOrKey string) (Tool, error)
+}
+
+// Stability:stable
+type ToolWriter interface {
     CreateTool(ctx context.Context, in ToolUpsertInput) (Tool, error)
     UpdateTool(ctx context.Context, idOrKey string, in ToolUpsertInput) (Tool, error)
     DeleteTool(ctx context.Context, idOrKey string) error
     UpdateToolEnabled(ctx context.Context, idOrKey string, enabled bool) (Tool, error)
     UpdateToolConfig(ctx context.Context, idOrKey string, configJSON string) (Tool, error)
+}
+
+// Stability:stable
+type ToolInvocationReader interface {
     SearchToolInvocations(ctx context.Context, q ToolRunQuery) (ToolRunResult, error)
-    RecordToolInvocation(ctx context.Context, in ToolInvocationWrite) error
-    SyncBuiltinTools(ctx context.Context) error
     GetToolInvocationParams(ctx context.Context, invocationID string) (ToolInvocationParam, error)
+}
+
+// Stability:stable
+type ToolInvocationWriter interface {
+    RecordToolInvocation(ctx context.Context, in ToolInvocationWrite) error
+}
+
+// Stability:stable
+type ToolAuditRepo interface {
+    RecordToolInvocationAudit(ctx context.Context, in ToolInvocationAuditWrite) error
+    SearchToolInvocationAudits(ctx context.Context, q ToolAuditQuery) (ToolAuditResult, error)
+    PurgeToolInvocationAuditsBefore(ctx context.Context, cutoffRFC3339 string) (int64, error)
+}
+
+// Stability:stable
+type ToolOverrideReader interface {
     ListToolAgentOverrides(ctx context.Context, toolKey string) ([]ToolAgentOverride, error)
-    UpsertToolAgentOverride(ctx context.Context, in ToolAgentOverrideInput) (ToolAgentOverride, error)
+    ListToolAgentOverridesByAgent(ctx context.Context, agentID string) ([]ToolAgentOverride, error)
+}
+
+// Stability:stable
+type ToolOverrideWriter interface {
+    UpsertToolAgentOverride(ctx context.Context, in ToolAgentOverrideInput, toolID string) (ToolAgentOverride, error)
     DeleteToolAgentOverride(ctx context.Context, toolKey string, agentID string) error
 }
+
+type ToolSyncer interface {
+    SyncBuiltinTools(ctx context.Context) error
+}
+
+// Stability:stable — 窄接口：ToolReader + ToolOverrideReader
+type ToolRegistryReader interface {
+    ToolReader
+    ToolOverrideReader
+}
+
+// Stability:stable — 组合接口（嵌入 8 子接口），保持向后兼容
+type ToolRepo interface {
+    ToolReader
+    ToolWriter
+    ToolInvocationReader
+    ToolInvocationWriter
+    ToolAuditRepo
+    ToolOverrideReader
+    ToolOverrideWriter
+    ToolSyncer
+}
+
+// SettingRepo 提供工具 usecase 所需的系统设置只读访问
+// Stability:stable
+type SettingRepo interface {
+    GetWebResearch(ctx context.Context) (WebResearchSetting, error)
+}
+
+type WebResearchSetting struct {
+    Provider    string
+    APIKey      string
+    HasAPIKey   bool
+    MaxResults  int
+    FetchTop    int
+    SearchDepth string
+    TimeoutSec  int
+    HTTPProxy   string
+}
 ```
+
+**窄接口传播**：
+
+| 消费者 | 依赖接口 | 说明 |
+|--------|----------|------|
+| `ToolUsecase` | `ToolRepo`（全量） | Usecase 需要全量访问 |
+| `AgentUsecase.tools` | `ToolRegistryReader` | 只需 SearchTools + Override 查询 |
+| `agent.Deps.ToolRegistry` | `biz.ToolRegistryReader` | 只需读取工具目录 |
+| `team.Runner.toolRegistry` | `biz.ToolRegistryReader` | 只需读取工具目录 |
+| `runtime.TurnReadDeps.Tools` | `biz.ToolRegistryReader` | 只需读取工具目录 |
 
 ### 3.3 Usecase
 
 ```go
 type ToolUsecase struct {
-    repo ToolRepo
+    repo          ToolRepo
+    sys           SettingRepo
+    tester        ToolTester
+    webResChecker WebResearchReadinessChecker
+    lg            loggateway.Logger
 }
 
-func NewToolUsecase(repo ToolRepo) *ToolUsecase
+func NewToolUsecase(repo ToolRepo, sys SettingRepo, lg loggateway.Logger, opts ...ToolUsecaseOption) *ToolUsecase
 
-func (u *ToolUsecase) ListTools(ctx context.Context, q ToolListQuery) (ToolListResult, error)
-// - 校验分页参数：Limit 默认 20，上限 100，Offset >= 0
+// 选项：
+//   WithToolTester(tester)              — 注入在线测试器
+//   WithWebResearchChecker(checker)     — 注入 Web 研究就绪检查器
+```
+
+**核心方法签名**：
+
+```go
+func (u *ToolUsecase) ListTools(ctx, q ToolListQuery) (ToolListResult, error)
+// - 校验分页：Limit 默认 20，上限 100，Offset >= 0
 // - 调用 repo.SearchTools
+// - enrichToolList：注入 WebResearch 平台状态 + 就绪检查
 
-func (u *ToolUsecase) GetTool(ctx context.Context, id string) (Tool, error)
+func (u *ToolUsecase) GetTool(ctx, id string) (Tool, error)
 // - 校验 id 非空
 // - 调用 repo.GetTool（支持 id 或 key 查找）
+// - EnrichToolRuntimeFieldsWithPlatform：注入运行时字段
 
-func (u *ToolUsecase) Create(ctx context.Context, in ToolUpsertInput) (Tool, error)
+func (u *ToolUsecase) Create(ctx, in ToolUpsertInput) (Tool, error)
+// - validateToolUpsert：校验 key/display_name 非空
 // - 调用 repo.CreateTool
 
-func (u *ToolUsecase) Update(ctx context.Context, id string, in ToolUpsertInput) (Tool, error)
+func (u *ToolUsecase) Update(ctx, id string, in ToolUpsertInput) (Tool, error)
 // - 校验 id 非空
+// - assertToolMutable：readonly 工具禁止修改
 // - 调用 repo.UpdateTool
 
-func (u *ToolUsecase) Delete(ctx context.Context, id string) error
+func (u *ToolUsecase) Delete(ctx, id string) error
 // - 校验 id 非空
+// - assertToolDeletable：内置工具禁止删除
 // - 调用 repo.DeleteTool（软删除）
 
-func (u *ToolUsecase) ToggleEnabled(ctx context.Context, id string, enabled bool, confirmKey ...string) (Tool, error)
-// - 校验 id 非空
-// - 高风险工具启用需 confirmKey 匹配 tool.Key
+// ConfirmIntentValue 是启用 high/critical 风险工具时 confirm_intent 参数的必需值。
+// 确保调用方显式确认风险，而非匹配可猜测的 key。
+const ConfirmIntentValue = "I_UNDERSTAND_RISK"
 
-func (u *ToolUsecase) UpdateToolConfig(ctx context.Context, id string, configJSON string) (Tool, error)
+func (u *ToolUsecase) ToggleEnabled(ctx, id string, enabled bool, confirmIntent ...string) (Tool, error)
+// - 校验 id 非空
+// - 启用 high/critical 风险工具时，confirmIntent[0] 必须等于 ConfirmIntentValue
+// - 调用 repo.UpdateToolEnabled
+
+func (u *ToolUsecase) UpdateToolConfig(ctx, id string, configJSON string) (Tool, error)
 // - 校验 id 非空
 // - configJSON 为空时默认 "{}"
+// - validateToolConfigAgainstSchema：用 gojsonschema 校验配置符合 ConfigSchemaJSON
 // - 调用 repo.UpdateToolConfig
 
-func (u *ToolUsecase) ListRuns(ctx context.Context, q ToolRunQuery) (ToolRunResult, error)
+func (u *ToolUsecase) ListRuns(ctx, q ToolRunQuery) (ToolRunResult, error)
 // - 校验分页参数
 // - 调用 repo.SearchToolInvocations
 
-func (u *ToolUsecase) RecordToolInvocation(ctx context.Context, in ToolInvocationWrite) error
-// - 调用 repo.RecordToolInvocation
+func (u *ToolUsecase) ListRunsForTool(ctx, toolIDOrKey string, q ToolRunQuery) (ToolRunResult, error)
+// - ResolveToolKey：将 id 或 key 解析为 catalog tool_key
+// - 调用 ListRuns
 
-func (u *ToolUsecase) SyncBuiltinTools(ctx context.Context) error
-// - 调用 repo.SyncBuiltinTools
+func (u *ToolUsecase) RecordToolInvocationAudit(ctx, in ToolInvocationAuditWrite) error
 
-func (u *ToolUsecase) GetToolInvocationParams(ctx context.Context, invocationID string) (ToolInvocationParam, error)
-// - 校验 invocationID 非空
-// - 调用 repo.GetToolInvocationParams
+func (u *ToolUsecase) ListInvocationAudits(ctx, q ToolAuditQuery) (ToolAuditResult, error)
 
-func (u *ToolUsecase) ListToolAgentOverrides(ctx context.Context, toolKey string) ([]ToolAgentOverride, error)
-// - 校验 toolKey 非空
+// ToolAuditRetentionDays 是审计日志默认保留天数
+const ToolAuditRetentionDays = 90
 
-func (u *ToolUsecase) UpsertToolAgentOverride(ctx context.Context, in ToolAgentOverrideInput) (ToolAgentOverride, error)
-// - 校验 toolKey、agentID 非空
+func (u *ToolUsecase) PurgeOldInvocationAudits(ctx) (int64, error)
+// - cutoff = now - 90d
+// - 调用 repo.PurgeToolInvocationAuditsBefore
+
+func (u *ToolUsecase) SyncBuiltinTools(ctx) error
+
+func (u *ToolUsecase) GetToolInvocationParams(ctx, invocationID string) (ToolInvocationParam, error)
+
+func (u *ToolUsecase) ListToolAgentOverrides(ctx, toolIDOrKey string) ([]ToolAgentOverride, error)
+// - ResolveToolKey：将 id 或 key 解析为 catalog tool_key
+// - 调用 repo.ListToolAgentOverrides
+
+func (u *ToolUsecase) ListToolAgentOverridesByAgent(ctx, agentID string) ([]ToolAgentOverride, error)
+
+func (u *ToolUsecase) UpsertToolAgentOverride(ctx, in ToolAgentOverrideInput) (ToolAgentOverride, error)
+// - 校验 agentID 非空
+// - GetTool：解析 tool_key → tool.ID
 // - Mode 默认 "inherit"，ConfigOverrideJSON 默认 "{}"
+// - 调用 repo.UpsertToolAgentOverride(ctx, in, tool.ID)
 
-func (u *ToolUsecase) DeleteToolAgentOverride(ctx context.Context, toolKey string, agentID string) error
-// - 校验 toolKey、agentID 非空
+func (u *ToolUsecase) DeleteToolAgentOverride(ctx, toolIDOrKey string, agentID string) error
+// - ResolveToolKey
+// - 调用 repo.DeleteToolAgentOverride
 ```
 
 ---
@@ -710,11 +904,22 @@ func (PlatformTool) Fields() []ent.Field {
         field.Text("result_schema_json").Default("{}"),
         field.Text("config_schema_json").Default("{}"),
         field.Text("config_json").Default("{}"),
+        // StorageKey 显式映射列名，避免依赖 Ent 默认复数化规则
         field.Text("fallback_config_json").StorageKey("default_config_json").Default("{}"),
         field.Text("metadata_json").Default("{}"),
         field.String("created_at").Default(""),
         field.String("updated_at").Default(""),
         field.String("deleted_at").Default(""),
+    }
+}
+
+func (PlatformTool) Indexes() []ent.Index {
+    return []ent.Index{
+        index.Fields("category").StorageKey("idx_tools_category"),
+        index.Fields("enabled").StorageKey("idx_tools_enabled"),
+        index.Fields("deleted_at").StorageKey("idx_tools_deleted_at"),
+        index.Fields("enabled", "deleted_at").StorageKey("idx_tools_enabled_deleted"),
+        index.Fields("category", "enabled", "deleted_at").StorageKey("idx_tools_cat_enabled_deleted"),
     }
 }
 ```
@@ -760,19 +965,83 @@ func (ToolInvocation) Fields() []ent.Field {
         field.String("error_code").Default(""),
         field.Text("error_message").Default(""),
         field.Bool("redaction_applied").Default(true),
+        field.Bool("streaming").Default(false),
+        field.Int("chunk_count").Default(0),
         field.Text("metadata_json").Default("{}"),
         field.String("created_at"),
+        field.String("deleted_at").Default("").Optional(),
+    }
+}
+
+func (ToolInvocation) Indexes() []ent.Index {
+    return []ent.Index{
+        index.Fields("tool_key", "started_at").StorageKey("idx_tool_invocations_tool_time"),
+        index.Fields("agent_id", "started_at").StorageKey("idx_tool_invocations_agent_time"),
+        index.Fields("session_id").StorageKey("idx_tool_invocations_session"),
+        index.Fields("status").StorageKey("idx_tool_invocations_status"),
+        index.Fields("deleted_at").StorageKey("idx_tool_invocations_deleted_at"),
+    }
+}
+```
+
+#### ToolInvocationAudit（工具调用审计表）
+
+文件路径：`internal/data/ent/schema/tool_invocation_audit.go`
+
+映射数据库表 `tool_invocation_audit`。
+
+```go
+type ToolInvocationAudit struct {
+    ent.Schema
+}
+
+func (ToolInvocationAudit) Annotations() []schema.Annotation {
+    return []schema.Annotation{
+        entsql.Annotation{Table: "tool_invocation_audit"},
+    }
+}
+
+func (ToolInvocationAudit) Fields() []ent.Field {
+    return []ent.Field{
+        field.String("id").Immutable().Unique().MaxLen(256),
+        field.String("invocation_id").Default(""),
+        field.String("tool_key"),
+        field.String("agent_id").Default(""),
+        field.String("user_id").Default(""),
+        field.String("session_id").Default(""),
+        field.String("action").Default("tool.call"),
+        field.Text("result_summary").Default(""),
+        field.String("status").Default("success"),
+        field.String("source").Default("adk"),
+        field.String("created_at"),
+    }
+}
+
+func (ToolInvocationAudit) Indexes() []ent.Index {
+    return []ent.Index{
+        index.Fields("tool_key", "created_at"),
+        index.Fields("agent_id", "created_at"),
+        index.Fields("user_id", "created_at"),
+        index.Fields("session_id").StorageKey("idx_tool_invocation_audit_session"),
     }
 }
 ```
 
 #### ToolAgentOverride（Agent 工具覆盖表）
 
+文件路径：`internal/data/ent/schema/tool_agent_override.go`
+
 映射数据库表 `tool_agent_overrides`。
 
 ```go
 type ToolAgentOverride struct {
     ent.Schema
+}
+
+func (ToolAgentOverride) Annotations() []schema.Annotation {
+    return []schema.Annotation{
+        entsql.Annotation{Table: "tool_agent_overrides"},
+    }
 }
 
 func (ToolAgentOverride) Fields() []ent.Field {
@@ -785,16 +1054,24 @@ func (ToolAgentOverride) Fields() []ent.Field {
         field.String("mode").Default("inherit"),       // "inherit"/"override"/"deny"
         field.Text("config_override_json").Default("{}"),
         field.Bool("requires_confirmation").Default(false),
-        field.String("created_at").Default(""),
-        field.String("updated_at").Default(""),
+        field.String("created_at"),
+        field.String("updated_at"),
         field.String("deleted_at").Default(""),
+    }
+}
+
+func (ToolAgentOverride) Indexes() []ent.Index {
+    return []ent.Index{
+        index.Fields("tool_key", "agent_id").Unique(),
+        index.Fields("agent_id"),
+        index.Fields("tool_key"),
     }
 }
 ```
 
 ### 4.2 Repo 实现
 
-文件路径：`internal/data/tool.go`
+文件路径：`internal/data/tool.go`、`internal/data/tool_audit.go`
 
 **关键实现特点**：
 
@@ -810,7 +1087,7 @@ func NewToolRepo(d *Data) biz.ToolRepo {
 }
 ```
 
-**聚合查询 SQL**：
+**聚合查询 SQL**（节选）：
 
 ```go
 func toolSelectSQL() string {
@@ -820,7 +1097,8 @@ func toolSelectSQL() string {
                t.parameters_schema_json, t.result_schema_json, t.config_schema_json, t.config_json, t.default_config_json, t.metadata_json,
                COALESCE(stats.invoke_count, 0), COALESCE(stats.invoke_count_24h, 0), COALESCE(stats.success_count, 0),
                COALESCE(stats.failure_count, 0), COALESCE(stats.blocked_count, 0), COALESCE(overrides.agent_override_count, 0),
-               stats.avg_duration_ms, COALESCE(last.started_at, ''), COALESCE(last.status, ''),
+               stats.avg_duration_ms, COALESCE(stats.p95_duration_ms, 0),
+               COALESCE(last.started_at, ''), COALESCE(last.status, ''),
                t.created_at, t.updated_at, t.deleted_at
         FROM tools t
         LEFT JOIN (
@@ -830,8 +1108,10 @@ func toolSelectSQL() string {
                    SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success_count,
                    SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS failure_count,
                    SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) AS blocked_count,
-                   AVG(duration_ms) AS avg_duration_ms
+                   AVG(duration_ms) AS avg_duration_ms,
+                   percentile_95(duration_ms) AS p95_duration_ms
             FROM tool_invocations
+            WHERE deleted_at = ''
             GROUP BY tool_key
         ) stats ON stats.tool_key = t.tool_key
         LEFT JOIN (
@@ -846,6 +1126,7 @@ func toolSelectSQL() string {
             INNER JOIN (
                 SELECT tool_key, MAX(started_at) AS max_started_at
                 FROM tool_invocations
+                WHERE deleted_at = ''
                 GROUP BY tool_key
             ) latest ON latest.tool_key = ti.tool_key AND latest.max_started_at = ti.started_at
         ) last ON last.tool_key = t.tool_key`
@@ -873,48 +1154,33 @@ func toolWhereClause(q biz.ToolListQuery) (string, []any) {
 }
 ```
 
-**Summary 计算**：
-
-```go
-func (r *toolRepo) computeToolSummary(ctx context.Context, client *ent.Client, q biz.ToolListQuery) (biz.ToolSummary, error) {
-    where, args := toolWhereClause(q)
-    var s biz.ToolSummary
-    // 统计总数、启用数、高风险启用数
-    // 统计 24h 调用数和失败率
-    // ...
-}
-```
-
 **CreateTool**：
 
 ```go
-func (r *toolRepo) CreateTool(ctx context.Context, in biz.ToolUpsertInput) (biz.Tool, error) {
-    // 校验 key 非空
-    // applyBuiltinToolDefaults：补全默认值（source="builtin", risk_level="low", JSON 默认 "{}"）
-    // 生成 ID：优先 "tool_{key}"，否则 uniqueToolID
-    // 使用 Ent ORM 插入
-    // 返回 r.GetTool(ctx, id)
-}
+func (r *toolRepo) CreateTool(ctx context.Context, in biz.ToolUpsertInput) (biz.Tool, error)
+// - 校验 key 非空
+// - applyBuiltinToolDefaults：补全默认值（source="builtin", risk_level="low", JSON 默认 "{}"）
+// - 生成 ID：优先 "tool_{key}"，否则 uniqueToolID
+// - 使用 Ent ORM 插入
+// - 返回 r.GetTool(ctx, id)
 ```
 
 **UpdateTool**：
 
 ```go
-func (r *toolRepo) UpdateTool(ctx context.Context, idOrKey string, in biz.ToolUpsertInput) (biz.Tool, error) {
-    // 通过 toolByIDOrKey 查找现有记录
-    // applyBuiltinToolDefaults
-    // 使用 Ent ORM 更新
-    // 返回 r.GetTool(ctx, key)
-}
+func (r *toolRepo) UpdateTool(ctx context.Context, idOrKey string, in biz.ToolUpsertInput) (Tool, error)
+// - 通过 toolByIDOrKey 查找现有记录
+// - applyBuiltinToolDefaults
+// - 使用 Ent ORM 更新
+// - 返回 r.GetTool(ctx, key)
 ```
 
 **DeleteTool**（软删除）：
 
 ```go
-func (r *toolRepo) DeleteTool(ctx context.Context, idOrKey string) error {
-    // 通过 toolByIDOrKey 查找
-    // 设置 deleted_at = nowRFC3339()
-}
+func (r *toolRepo) DeleteTool(ctx context.Context, idOrKey string) error
+// - 通过 toolByIDOrKey 查找
+// - 设置 deleted_at = nowRFC3339()
 ```
 
 **RecordToolInvocation**（工具调用记录写入）：
@@ -923,19 +1189,20 @@ func (r *toolRepo) DeleteTool(ctx context.Context, idOrKey string) error {
 func (r *toolRepo) RecordToolInvocation(ctx context.Context, in biz.ToolInvocationWrite) error
 // - 生成 ID
 // - input_preview/output_preview 截断至 2000 字符
-// - 写入 tool_invocations 表
+// - 写入 tool_invocations 表（含 streaming / chunk_count）
 ```
 
 **SearchToolInvocations**（工具调用记录查询）：
 
 ```go
-func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery) (biz.ToolRunResult, error) {
-    // 原始 SQL 查询 tool_invocations 表
-    // LEFT JOIN tools（获取 display_name）和 agents（获取 agent display_name）
-    // 支持 tool_key/agent_id/session_id/status/from/to/has_error 筛选
-    // ORDER BY started_at DESC, created_at DESC
-}
+func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery) (biz.ToolRunResult, error)
+// - 原始 SQL 查询 tool_invocations 表（过滤 deleted_at = ''）
+// - LEFT JOIN tools（获取 display_name）和 agents（获取 agent display_name）
+// - 支持 tool_key/agent_id/session_id/status/from/to/has_error 筛选
+// - ORDER BY started_at DESC, created_at DESC
 ```
+
+**错误翻译**：所有 Repo 方法的数据库错误必须经 `entErrToBizErr(err, domain)` 翻译（红线 DB-R5）。
 
 ### 4.3 内置工具种子
 
@@ -946,8 +1213,22 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 1. `builtinPlatformToolSeeds` 定义所有内置工具的初始数据（key、displayName、description、category、riskLevel、enabled、paramsSchema、registryName）
 2. `ensureBuiltinPlatformTools` 在数据库初始化时执行 `INSERT ... ON CONFLICT(tool_key) DO NOTHING`
 3. `syncBuiltinToolsFromRegistry` 从 `tools.Registry()` 同步 risk_level、requires_confirmation、supports_streaming、supports_concurrency 到 tools 表
+4. `syncBuiltinWebToolCatalogPatches` 用 `UPDATE ... WHERE tool_key = ?` 修补已有 DB 的 catalog 元数据（description、params_schema、config_schema、enabled）
 
 **关键约束**：`registryName` 字段将 seed 行与 `tools.Registry()` 中的 `ToolRegistration` 关联，确保 seed 的 tool_key 与框架工具的 `Declaration().Name` 一致。
+
+**种子表覆盖范围**（节选）：
+- `datetime`、`web_research`、`duckduckgo_search`、`web_fetch`、`gemini_web_fetch`、`google_search`、`arxiv_search`、`wikipedia_search`
+- `read_file`、`read_multiple_files`、`save_file`、`list_file`、`search_file`、`search_content`、`replace_content`、`diff_edit`、`patch_file`
+- `skill_search`、`use_skill`、`memory_search`、`memory_get`
+- `read_image`、`read_document`、`read_spreadsheet`、`create_image`、`tts`
+- `shell_exec`、`send_email`、`todo_write`、`await_user_reply`、`kanban`、`claude_code`、`workspace_exec`
+- `call_agent`、`knowledge_search`、`knowledge_reflect`、`mcp_tool_set`、`mcp_broker`
+- `working_memory_read`、`working_memory_list`、`working_memory_write`、`working_memory_patch`、`working_memory_delete`
+- `model_registry_sync`、`browser`、`read_tool_result`
+- `plan_and_execute`、`check_progress`、`cancel_orchestration`、`synthesize_results`、`build_orchestration_graph`
+
+> **注意**：`message` 和 `subagents_*` 在 Registry 中已注册，但种子表暂缺条目（见开发计划 §8 P2 #10）。
 
 ---
 
@@ -966,22 +1247,31 @@ func NewToolService(uc *biz.ToolUsecase) *ToolService
 
 **Biz → Proto 转换函数**：
 
-- `bizToolToProto(t biz.Tool) *v1.Tool`：转换工具模型，注意 `AvgDurationMS` 是 `*float64` → `optional double`
+- `bizToolToProto(t biz.Tool) *v1.Tool`：转换工具模型，注意 `AvgDurationMS` 是 `*float64` → `optional double`，`P95DurationMS` 是 `float64` → `double`
 - `bizSummaryToProto(s biz.ToolSummary) *v1.ToolSummary`
-- `bizInvocationToProto(x biz.ToolInvocation) *v1.ToolInvocation`
+- `bizInvocationToProto(x biz.ToolInvocation) *v1.ToolInvocation`：含 `streaming` / `chunk_count`
+- `bizAuditToProto(x biz.ToolInvocationAudit) *v1.ToolInvocationAudit`
 
 **RPC 方法实现**：
 
 | 方法 | 说明 |
 |------|------|
 | `ListTools` | 分页查询 + Summary，使用 `biz.PageToLimitOffset` |
+| `ListToolRuns` | 全局调用记录查询（支持 `has_error` 筛选） |
+| `ListToolInvocationAudits` | 审计日志查询 |
+| `GetToolInvocationParams` | 调用参数脱敏查询 |
 | `GetTool` | 按 ID 查找，sql.ErrNoRows → NotFound |
 | `CreateTool` | CreateToolRequest → ToolUpsertInput → uc.Create |
 | `UpdateTool` | UpdateToolRequest → ToolUpsertInput → uc.Update |
 | `DeleteTool` | uc.Delete，sql.ErrNoRows → NotFound |
-| `ToggleToolEnabled` | uc.ToggleEnabled |
-| `ListToolRuns` | 全局调用记录查询 |
-| `ListToolRunsForTool` | 指定工具的调用记录查询 |
+| `ToggleToolEnabled` | 透传 `confirm_intent` 给 uc.ToggleEnabled |
+| `ListToolRunsForTool` | 按 tool_id 解析为 tool_key 后查询 |
+| `ListToolAgentOverrides` | 按 tool_id 解析为 tool_key 后查询 |
+| `ListToolAgentOverridesByAgent` | 按 agent_id 查询 |
+| `UpsertToolAgentOverride` | 透传 tool_id 给 uc（uc 内部解析为 tool_key + tool.ID） |
+| `DeleteToolAgentOverride` | 按 tool_id 解析为 tool_key 后删除 |
+| `UpdateToolConfig` | uc.UpdateToolConfig |
+| `TestTool` | uc.tester.Execute（5s 超时） |
 
 ---
 
@@ -992,6 +1282,14 @@ data.ProviderSet  → NewToolRepo
 biz.ProviderSet   → NewToolUsecase
 service.ProviderSet → NewToolService
 ```
+
+**窄接口 provider**（红线 #7）：
+
+| Provider | 参数 | 说明 |
+|----------|------|------|
+| `provideSkillWatchRunner` | `watch.SkillReader` + `watch.SkillWriter` | 已改造 |
+| `provideMonitorUsecase` | `biz.FilesystemHealthReader` | 通过 `provideFilesystemHealthReader` 适配 |
+| `provideChatServiceDeps` | `*biz.SkillUsecase`（待改造） | 影响面大，后续迭代 |
 
 ---
 
@@ -1004,7 +1302,7 @@ Agent 构建请求
   → BuildTRPCLLMAgent(ctx, ag, deps)
     → loadEffectiveToolKeys(ctx, deps, agentID)  // 计算生效工具
     → buildToolsetsForAgent(ctx, ag, deps)        // 装配工具集
-      → tooltrpc.BuildToolsets(ctx, cfg)          // 桥接层
+      → tooltrpc.BuildToolsets(ctx, cfg, lg)      // 桥接层
         → tools.Assemble(ctx, assemblyCfg)        // 核心装配
     → llmagent.WithToolSets(ts.ToolSets)           // 注入 ToolSet
     → llmagent.WithTools(ts.Tools)                 // 注入 Tool
@@ -1016,89 +1314,150 @@ Agent 构建请求
 
 ### 7.2 工具注册表
 
-文件路径：`internal/tools/toolset.go`
+文件路径：`internal/tools/tool.go`（类型）、`internal/tools/toolset.go`（Registry + Assemble）
 
 **核心类型**：
 
 ```go
+// internal/tools/tool.go
+type Tool            = trpctool.Tool
+type CallableTool    = trpctool.CallableTool
+type StreamableTool  = trpctool.StreamableTool
+type ToolSet         = trpctool.ToolSet
+type Declaration     = trpctool.Declaration
+type Schema          = trpctool.Schema
+
+type ToolUseExample struct {
+    UserQuery   string          `json:"user_query"`
+    ToolName    string          `json:"tool_name"`
+    Arguments   json.RawMessage `json:"arguments,omitempty"`
+    Explanation string          `json:"explanation,omitempty"`
+}
+
 type ToolRegistration struct {
     Name                 string
     Description          string
-    Category             string
     Factory              func(ctx context.Context) (Tool, error)       // 单工具工厂
     ToolSetFactory       func(ctx context.Context) (ToolSet, error)    // 工具集工厂
     EnabledByDefault     bool
-    RiskLevel            string
+    Category             string   // filesystem / execution / web / search / ...
+    Tags                 []string // 分类标签，支持 RegistryByTag / RegistryByCategory
+    RiskLevel            string   // low / medium / high / critical
     RequiresConfirmation bool
     SupportsStreaming    bool
     SupportsConcurrency  bool
-}
-
-type AssemblyConfig struct {
-    EnabledTools  []string
-    FilesystemDir string
-    ShellExecDir  string   // Phase 5：hostexec WithBaseDir；默认同 FilesystemDir / workspace_root
-    GeminiModel   string
-    GoogleAPIKey  string
-    GoogleCX      string
-    ClaudeCodeDir string
-    OpenAPISpecs  []OpenAPISpecConfig
-    AgentTools    []AgentToolConfig
-    MCPServers    []MCPServerConfig
-    MCPBroker     *MCPBrokerConfig
-    CustomTools   []Tool
-}
-
-type AssembledToolsets struct {
-    ToolSets []ToolSet
-    Tools    []Tool
+    Deferred             bool                 // 延迟加载标记
+    Examples             []ToolUseExample     // 工具使用示例（供 prompt 增强）
+    Group                string               // 工具分组（如 "file_edit" / "web_search"）
 }
 ```
 
-**Registry() 注册的工具**：
+**AssemblyConfig**（实际结构，子配置分组以符合 AS-COG-01 字段 ≤ 15）：
 
-| 注册名 | 分类 | 类型 | 风险 | 默认启用 | 框架包 |
-|--------|------|------|------|----------|--------|
-| `file` | filesystem | ToolSet | low | ✅ | `trpc-agent-go/tool/file` |
-| `hostexec` | execution | ToolSet | critical | ❌ | `trpc-agent-go/tool/hostexec` |
-| `httpfetch` | web | Tool | medium | ❌ | `trpc-agent-go/tool/webfetch/httpfetch` |
-| `claudefetch` | web | Tool | medium | ❌ | 框架存根 |
-| `geminifetch` | web | Tool | medium | ❌ | `trpc-agent-go/tool/webfetch/geminifetch` |
-| `duckduckgo` | search | Tool | medium | ❌ | `trpc-agent-go/tool/duckduckgo` |
-| `google_search` | search | ToolSet | medium | ❌ | `trpc-agent-go/tool/google/search` |
-| `arxiv_search` | search | ToolSet | low | ❌ | `trpc-agent-go/tool/arxivsearch` |
-| `wikipedia` | search | ToolSet | low | ❌ | `trpc-agent-go/tool/wikipedia` |
-| `email` | communication | ToolSet | high | ❌ | `trpc-agent-go/tool/email` |
-| `todo` | productivity | Tool | low | ❌ | `trpc-agent-go/tool/todo` |
-| `await_user_reply` | interaction | Tool | low | ❌ | `trpc-agent-go/tool/awaitreply` |
-| `claudecode` | coding | ToolSet | critical | ❌ | `trpc-agent-go/tool/claudecode` |
-| `workspace_exec` | execution | Tool | critical | ❌ | `trpc-agent-go/tool/workspaceexec` |
-| `openapi` | integration | ToolSet | medium | ❌ | `trpc-agent-go/tool/openapi` |
-| `agent` | composition | — | medium | ❌ | `trpc-agent-go/tool/agent` |
-| `mcp` | integration | — | medium | ❌ | `trpc-agent-go/tool/mcp` |
-| `mcpbroker` | integration | — | medium | ❌ | `trpc-agent-go/tool/mcpbroker` |
-| `browser` | browser | ToolSet | critical | ❌ | `trpc-agent-go/tool/browser`（Playwright MCP 桥接） |
-| `read_spreadsheet` | media | Tool | medium | ❌ | `trpc-agent-go/tool/readspreadsheet` |
-| `read_tool_result` | system | Tool | low | ❌ | `Deferred: true`；延迟工具结果读取 |
-| `model_registry_sync` | system | — | medium | ❌ | 仅元数据，无 Factory |
-| `working_memory` | memory | ToolSet | low | ❌ | `trpc-agent-go/tool/workingmemory` |
-| `message` | messaging | ToolSet | medium | ❌ | 统一消息发送（OutboundRouter） |
-| `subagents_spawn` | composition | — | medium | ❌ | 仅元数据，运行时通过 SubAgentService 注入 |
-| `subagents_list` | composition | — | low | ❌ | 仅元数据 |
-| `subagents_get` | composition | — | low | ❌ | 仅元数据 |
-| `subagents_cancel` | composition | — | medium | ❌ | 仅元数据 |
+```go
+type AssemblyConfig struct {
+    EnabledTools  []string
+    DeferredTools []string
+    FilesystemDir string
+    ShellExec     ShellExecConfig
+    Search        SearchConfig
+    ClaudeCode    ClaudeCodeConfig
+    OpenAPISpecs  []OpenAPISpecConfig
+    AgentTools    []AgentToolConfig
+    MCP           MCPConfig
+    Session       SessionConfig
+    Browser       *browser.PlaywrightMCPConfig
+    Lg            loggateway.Logger
+}
+
+type ShellExecConfig struct {
+    Dir string
+    Env map[string]string
+}
+
+type SearchConfig struct {
+    GeminiModel  string
+    GoogleAPIKey string
+    GoogleCX     string
+}
+
+type ClaudeCodeConfig struct {
+    Dir              string
+    ReadOnly         bool
+    MaxFileSize      int64
+    WebFetch         *WebFetchConfig
+    WebSearch        *WebSearchConfig
+    CommandAllowList []string
+}
+
+type MCPConfig struct {
+    Servers []MCPServerConfig
+    Broker  *MCPBrokerConfig
+}
+
+type SessionConfig struct {
+    MemoryEnabled    bool
+    MemoryTools      []Tool
+    CustomTools      []Tool
+    OutboundRouter   *outbound.Router
+    SubAgentService  *subagenttool.Service
+    BlobReader       biz.ToolResultBlobReader
+}
+
+type AssembledToolsets struct {
+    ToolSets        []ToolSet
+    Tools           []Tool
+    DeferredManager *deferred.DeferredToolManager
+}
+```
+
+**Registry() 注册的工具**（29 项）：
+
+| 注册名 | Category | 类型 | 风险 | 默认启用 | Deferred | Group | 框架包 |
+|--------|----------|------|------|----------|----------|-------|--------|
+| `file` | filesystem | ToolSet | low | ✅ | — | file_edit | `trpc-agent-go/tool/file` |
+| `hostexec` | execution | ToolSet | critical | ❌ | — | — | `trpc-agent-go/tool/hostexec` |
+| `httpfetch` | web | Tool | medium | ❌ | — | web_search | `trpc-agent-go/tool/webfetch/httpfetch` |
+| `geminifetch` | web | Tool | medium | ❌ | — | — | `trpc-agent-go/tool/webfetch/geminifetch` |
+| `duckduckgo` | search | Tool | medium | ❌ | — | web_search | `trpc-agent-go/tool/duckduckgo` |
+| `google_search` | search | ToolSet | medium | ❌ | — | web_search | `trpc-agent-go/tool/google/search` |
+| `arxiv_search` | search | ToolSet | low | ❌ | — | — | `trpc-agent-go/tool/arxivsearch` |
+| `wikipedia` | search | ToolSet | low | ❌ | — | — | `trpc-agent-go/tool/wikipedia` |
+| `email` | communication | ToolSet | high | ❌ | — | — | `trpc-agent-go/tool/email` |
+| `message` | communication | ToolSet | high | ❌ | — | — | OutboundRouter（统一消息发送） |
+| `todo` | productivity | Tool | low | ❌ | — | — | `trpc-agent-go/tool/todo` |
+| `await_user_reply` | interaction | Tool | low | ❌ | — | — | `trpc-agent-go/tool/awaitreply` |
+| `claudecode` | coding | ToolSet | critical | ❌ | — | file_edit | `trpc-agent-go/tool/claudecode` |
+| `workspace_exec` | execution | Tool | critical | ❌ | — | — | CodeExecutor 路径（未独立挂载） |
+| `openapi` | integration | ToolSet | medium | ❌ | — | — | `trpc-agent-go/tool/openapi` |
+| `agent` | composition | — | medium | ❌ | — | — | 运行时通过 AgentToolConfig 注入 |
+| `mcp` | integration | — | medium | ❌ | — | — | 运行时通过 MCPServerConfig 注入 |
+| `mcpbroker` | integration | — | medium | ❌ | — | — | 运行时通过 MCPBrokerConfig 注入 |
+| `model_registry_sync` | system | — | medium | ❌ | — | — | 仅元数据，无 Factory |
+| `subagents_spawn` | composition | — | medium | ❌ | — | — | 仅元数据，运行时通过 SubAgentService 注入 |
+| `subagents_list` | composition | — | low | ❌ | — | — | 仅元数据 |
+| `subagents_get` | composition | — | low | ❌ | — | — | 仅元数据 |
+| `subagents_cancel` | composition | — | medium | ❌ | — | — | 仅元数据 |
+| `browser` | browser | ToolSet | critical | ❌ | — | — | Playwright MCP 桥接 |
+| `read_document` | media | — | medium | ✅ | — | — | 文档读取 |
+| `read_spreadsheet` | media | — | medium | ✅ | — | — | 表格读取 |
+| `read_tool_result` | system | Tool | low | ✅ | ✅ | — | 延迟工具结果读取 |
+| `working_memory` | memory | ToolSet | low | ✅ | — | — | `internal/tools/working_memory` |
+| `datetime` | system | Tool | low | ✅ | — | — | 内置时间工具 |
 
 **Assemble 流程**：
 
-1. 遍历 `Registry()`，按 `EnabledTools` 列表过滤
-2. 对每个注册项，调用 `Factory` 或 `ToolSetFactory` 创建工具实例
-3. 对需要额外配置的工具（file、geminifetch、google_search、claudecode），用配置覆盖默认实例
-4. 处理 OpenAPI spec → `openapi.NewToolSet`
-5. 处理 workspace_exec → 额外注入 `write_stdin`、`kill_session` 工具
-6. 处理 AgentTool → `agent.NewTool`
-7. 处理 MCP Server → `mcp.NewMCPToolSet`
-8. 处理 MCP Broker → `mcpbroker.New`
-9. 追加 CustomTools
+1. `ValidateRuntimeAliasesAgainstPolicy`：校验 runtime alias 与 policy alias 一致
+2. 遍历 `Registry()`，按 `EnabledTools` 列表过滤
+3. 对每个注册项，调用 `Factory` 或 `ToolSetFactory` 创建工具实例
+4. 对需要额外配置的工具（file、geminifetch、google_search、claudecode），用配置覆盖默认实例
+5. 处理 OpenAPI spec → `openapi.NewToolSet`
+6. 处理 workspace_exec → 仅 `WithCodeExecutor` 路径启用
+7. 处理 AgentTool → `agent.NewTool`
+8. 处理 MCP Server → `mcp.NewMCPToolSet`
+9. 处理 MCP Broker → `mcpbroker.New`
+10. 处理 DeferredTools → 构建 `DeferredToolManager`
+11. 追加 CustomTools / MemoryTools / SubAgentTools
 
 ### 7.3 桥接层
 
@@ -1108,41 +1467,52 @@ type AssembledToolsets struct {
 
 ```go
 type ToolsetConfig struct {
-    Filesystem      bool
-    FilesystemDir   string
-    ShellExec       bool
-    WebFetch        bool
-    WebSearch       bool
-    GeminiFetch     bool
-    GeminiModel     string
-    GoogleSearch    bool
-    GoogleAPIKey    string
-    GoogleCX        string
-    ArxivSearch     bool
-    Wikipedia       bool
-    Email           bool
-    Todo            bool
-    AwaitReply      bool
-    AwaitHook       ReplyFunc          // 阻塞式等待回调
-    ClaudeCode      bool
-    ClaudeCodeDir   string
-    OpenAPISpecs    []OpenAPISpecConfig
-    WorkspaceExec   bool
-    AgentTools      []AgentToolConfig
-    MCPServers      []MCPServerConfig
-    MCPBroker       *MCPBrokerConfig
-    CustomTools     []trpctool.Tool
+    Filesystem       bool
+    FilesystemDir    string
+    ShellExec        bool
+    ShellExecDir     string
+    ShellExecEnv     map[string]string
+    WebFetch         bool
+    WebSearch        bool
+    WebResearch      bool
+    WebResearchCfg   webresearchpkg.Config
+    GeminiFetch      bool
+    GeminiModel      string
+    GoogleSearch     bool
+    GoogleAPIKey     string
+    GoogleCX         string
+    ArxivSearch      bool
+    Wikipedia        bool
+    Email            bool
+    Todo             bool
+    AwaitReply       bool
+    AwaitHook        ReplyFunc          // 阻塞式等待回调
+    ClaudeCode       bool
+    ClaudeCodeDir    string
+    OpenAPISpecs     []OpenAPISpecConfig
+    WorkspaceExec    bool
+    AgentTools       []AgentToolConfig
+    MCPServers       []MCPServerConfig
+    MCPBroker        *MCPBrokerConfig
+    CustomTools      []trpctool.Tool
+    KnowledgeSearch  bool
     KnowledgeReflect bool
     CallAgent        bool
-    Browser          *browser.PlaywrightMCPConfig
-    SubAgentService  SubAgentServiceProvider
-    OutboundRouter   OutboundRouterProvider
-    BlobReader       BlobReaderProvider
-    DeferredTools    []DeferredToolEntry
-    KnowledgeSearch bool
-    CallAgent       bool
+    Kanban           bool
+    KanbanBridge     kanbanpkg.Bridge
+    MemoryEnabled    bool
+    MemoryTools      []trpctool.Tool
+    DeferredTools    []string
+    BlobReader       biz.ToolResultBlobReader
+    ReadDocument     bool
+    ReadSpreadsheet  bool
+    WorkingMemory    bool
+    Datetime         bool
+    OutboundRouter   *outbound.Router
+    SubAgentService  *subagenttool.Service
 }
-func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, error)
+
+func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger) (*AssembledToolsets, error)
 ```
 
 **关键映射**：`ToolsetConfig` 的布尔字段映射到 `AssemblyConfig.EnabledTools` 列表中的注册名。
@@ -1151,6 +1521,7 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, 
 - `AwaitReply + AwaitHook != nil` → 使用 `serviceawaitreply.New()` 替代框架内置工具
 - `KnowledgeSearch` → `knowledgepkg.NewSearchTool()` 追加到 CustomTools
 - `CallAgent` → `a2a.NewCallAgentTool()` 追加到 CustomTools
+- `Kanban` → `kanbanpkg.NewToolset(cfg.KanbanBridge)` 追加到 ToolSets
 
 ### 7.4 Effective Tools 计算
 
@@ -1177,15 +1548,33 @@ AgentRuntimeSettings
 | `coding` | filesystem + web + skill + session + datetime |
 | `research` | web(搜索+抓取) + filesystem(读) + skill + memory + todo + datetime |
 | `full` | 全部分组 |
+| `minimal` / `safe` / `system_admin` / `spirit` | 扩展 profile（见开发计划 Phase 8） |
 
 **计算语义**：
 - `tools.enabled=true`（catalog 行）= "默认开放"：profile 门控通过且不在 deny 列表即可用
 - `tools.enabled=false` = "仅显式允许"：必须在 allow 列表中才可用
 - Deny 列表和 `ToolsEnabled=false` 全局开关覆盖一切
 
+**Tool Group 展开**（节选）：
+
+```go
+var toolGroupsFilesystem = []string{
+    "read_file", "read_multiple_files", "save_file", "list_file",
+    "search_file", "search_content", "replace_content",
+    "diff_edit", "patch_file",  // Phase 4 新增
+}
+var toolGroupsWeb       = []string{"duckduckgo_search", "web_fetch", "gemini_web_fetch", "google_search", "arxiv_search", "wikipedia_search"}
+var toolGroupsMemory    = []string{"memory_search", "memory_get"}
+var toolGroupsSkill     = []string{"skill_search", "use_skill"}
+var toolGroupsMedia     = []string{"read_image", "read_document", "create_image", "tts"}
+var toolGroupsRuntime   = []string{"shell_exec", "claude_code", "workspace_exec"}
+var toolGroupsMessaging = []string{"send_email"}
+var toolGroupsSession   = []string{"await_user_reply", "todo_write"}
+```
+
 ### 7.5 工具注入与回调
 
-文件路径：`internal/agent/trpc_build.go`
+文件路径：`internal/agent/trpc_build.go`、`internal/agent/tool_invocation_recorder.go`
 
 **buildToolsetsForAgent**：
 
@@ -1210,11 +1599,11 @@ callbacks.RegisterAfterTool(func(ctx context.Context, args *trpctool.AfterToolAr
 })
 ```
 
-**recordToolInvocationAsync**：
+**recordToolInvocationAsync**（`internal/agent/tool_invocation_recorder.go`）：
 
 - 从 `trpcagent.InvocationFromContext(ctx)` 提取 sessionID、userID、agentKey
 - `previewFromArgs` / `previewFromResult` 截断至 2000 字符
-- 使用 `safego.Go` 异步写入 `ToolInvocationWrite`
+- 使用 `safego.Go` 异步写入 `ToolInvocationWrite`（含 `Streaming` / `ChunkCount`）
 
 **buildToolFilter**：
 
@@ -1245,22 +1634,35 @@ if ag.Settings.MemoryEnabled && deps.HasMemory {
 
 ```
 internal/tools/
-├── tool.go                          — 项目级工具类型别名（Tool/CallableTool/StreamableTool/ToolSet/Declaration/Schema）
-├── toolset.go                       — Registry() + AssemblyConfig + Assemble()
+├── tool.go                          — 项目级工具类型别名 + ToolRegistration + RegistryByTag/RegistryByCategory
+├── toolset.go                       — Registry() + AssemblyConfig + Assemble() + 子装配器
 ├── doc.go                           — 包文档
+├── alias/
+│   └── alias.go                     — RuntimeToolNameAliases（重导出，破除 import 循环）
 ├── trpc/
-│   └── toolsets.go                  — ToolsetConfig → AssemblyConfig 桥接层
+│   ├── toolsets.go                  — ToolsetConfig → AssemblyConfig 桥接层
+│   ├── effective_config.go          — Effective tool keys → ToolsetConfig 映射
+│   ├── runtime_config.go            — 运行时配置解析
+│   ├── confirmation.go              — 工具确认策略
+│   └── toolset_prune.go             — 工具集裁剪
+├── cache/                           — 工具结果缓存（LRU 驱逐 + TTL）
 ├── custom/                          — 自定义工具实现
+├── hostexecnorm/                    — 主机执行工具参数归一化（working_dir → workdir）
+├── kanban/                          — 看板工具集（Bridge 拆分为 Reader/Writer/Lifecycle）
 ├── knowledge/                       — Knowledge 搜索工具
-├── serviceawaitreply/               — 阻塞式等待用户回复工具
+├── mcpobserve/                      — MCP 运行时可观测性
 ├── memory/                          — Memory 工具
-├── mcpmount/                        — MCP 服务器发现与 ToolSet 装配
+├── preview/                         — 工具调用预览脱敏
+├── serviceawaitreply/               — 服务级 await_user_reply（阻塞式）
 ├── skillrouter/                     — Skill 检测与分类
-└── skillruntime/                    — Skill 工具集解析
-├── outbound/                 — 统一消息发送工具
-│   └── message.go            — NewMessageTool(OutboundRouter)
-├── deferred/                 — 延迟工具加载机制
-│   └── deferred.go           — DeferredToolEntry + NewToolSearchTool + NewDeferredCallableTool
+├── skillruntime/                    — Skill 工具集解析（filterCache LRU + RWMutex）
+├── subagent/                        — 子代理工具服务
+├── testexec/                        — 工具在线测试
+├── webresearch/                     — Web 搜索工具
+├── working_memory/                  — 工作记忆工具集
+├── outbound/                        — 统一消息发送工具
+├── deferred/                        — 延迟工具加载机制
+└── browser/                         — 浏览器自动化（Playwright MCP 桥接）
 ```
 
 ### 7.8 工具工作区统一（Phase 5）
@@ -1269,7 +1671,7 @@ internal/tools/
 
 #### 7.8.1 解析链
 
-文件路径：`internal/agent/tool_assembly.go`（`resolveToolWorkspaceRoot` ✅）
+文件路径：`internal/agent/tool_assembly.go`（`resolveToolWorkspaceRoot`）
 
 ```text
 Tool / Override config: filesystem_dir | base_dir | working_dir | root_dir
@@ -1281,6 +1683,8 @@ Tool / Override config: filesystem_dir | base_dir | working_dir | root_dir
 ```
 
 `buildToolsetsForAgent` 在 desktop 联调与将来 Electron 打包下语义相同：均解析为 **本机绝对路径**。
+
+`applyToolWorkspaceDirs`：一次解析 `workspace_root` → 同时赋 `FilesystemDir`、`ShellExecDir`；`ClaudeCodeDir` 空则回退。
 
 #### 7.8.2 工具 × 目录矩阵
 
@@ -1301,11 +1705,12 @@ Tool / Override config: filesystem_dir | base_dir | working_dir | root_dir
 
 | 文件 | 改动 |
 |------|------|
-| `internal/tools/toolset.go` | `enabled["hostexec"] && ShellExecDir != ""` → `hostexec.NewToolSet(WithBaseDir(ShellExecDir))` |
-| `internal/tools/trpc/toolsets.go` | `ToolsetConfig.ShellExecDir`；Build 时写入 `AssemblyConfig` |
-| `internal/agent/tool_assembly.go` | 解析 `workspace_root` → 同时赋 `FilesystemDir`、`ShellExecDir`；`ClaudeCodeDir` 空则回退 |
+| `internal/tools/toolset.go` | `AssemblyConfig.ShellExec.Dir` → `hostexec.NewToolSet(WithBaseDir(ShellExecDir))` |
+| `internal/tools/trpc/toolsets.go` | `ToolsetConfig.ShellExecDir` / `ShellExecEnv`；Build 时写入 `AssemblyConfig` |
+| `internal/agent/tool_assembly.go` | `resolveToolWorkspaceRoot` + `applyToolWorkspaceDirs` |
 | `internal/tools/trpc/runtime_config.go` | `shell_exec` config 支持 `base_dir` / `shell_root` |
 | `internal/data/builtin_tools_seed.go` | `shell_exec` 参数改为 `workdir`（与 hostexec 一致） |
+| `internal/tools/hostexecnorm` | `working_dir` → `workdir` 兼容映射 |
 | `internal/tools/testexec/config.go` | 在线测试 shell 时传入 workspace |
 
 #### 7.8.4 Shell 参数与确认
@@ -1313,9 +1718,9 @@ Tool / Override config: filesystem_dir | base_dir | working_dir | root_dir
 | 项 | 设计 |
 |----|------|
 | 调用参数 | `command`（必填）、`workdir`（可选，相对 `workspace_root`） |
-| 兼容 | Tool 层将 `working_dir` 映射为 `workdir` |
-| 确认门控 | `tool_confirm_gate` 同时匹配 `shell_exec` 与 `exec_command` |
-| Prompt | `RuntimeCapabilityCue` 表述默认 cwd=工作区，删除与错误实现绑定的 sandbox 文案 |
+| 兼容 | `hostexecnorm` 将 `working_dir` 映射为 `workdir` |
+| 确认门控 | `tool_confirm_gate` 同时匹配 `shell_exec` 与 `exec_command`（runtime alias） |
+| Prompt | `RuntimeCapabilityCue` 表述默认 cwd=工作区 |
 
 #### 7.8.5 与 Electron / App 打包
 
@@ -1331,8 +1736,9 @@ App 壳、Electron 打包 **不在本模块范围**（曾起草编号 53 文档�
 Assemble()
   → 识别 Deferred: true 的注册项
   → 构建 DeferredToolEntry 列表
-  → 创建 ToolSearchTool（搜索可用延迟工具）
-  → 创建 DeferredCallableTool（按需实例化并调用）
+  → 创建 DeferredToolManager
+    → ToolSearchTool（搜索可用延迟工具）
+    → DeferredCallableTool（按需实例化并调用）
   → 追加到 AssembledToolsets.Tools
 ```
 
@@ -1343,7 +1749,7 @@ Assemble()
 **注入路径**：
 
 ```
-AssemblyConfig.SubAgentService
+AssemblyConfig.Session.SubAgentService
   → SubAgentService.FrameworkTools()
   → 按 enabled 列表过滤
   → 追加到 AssembledToolsets.Tools
@@ -1351,11 +1757,35 @@ AssemblyConfig.SubAgentService
 
 **4 个子代理工具**：`subagents_spawn`、`subagents_list`、`subagents_get`、`subagents_cancel`。
 
+### 7.11 Runtime Alias 与 Policy Alias
+
+**Runtime Alias**（`internal/tools/alias/alias.go`）：LLM 调用工具时使用的别名 → 框架工具 Declaration().Name 的映射。
+
+```go
+var RuntimeToolNameAliases = map[string]string{
+    "write_file":       "save_file",
+    "edit_file":        "diff_edit",
+    "list_files":       "list_file",
+    "workspace_search": "search_content",
+    "shell":            "shell_exec",
+    "shell_exec":       "exec_command",
+    "todo":             "todo_write",
+    "gemini_fetch":     "gemini_web_fetch",
+    "wikipedia":        "wikipedia_search",
+    "email":            "send_email",
+    "await_reply":      "await_user_reply",
+    "web_search":       "web_research",
+}
+```
+
+**Policy Alias**（`internal/biz/tool/tool_policy_keys.go`）：UI/API/legacy 名 → catalog tool_key 的映射，用于 effective tool 策略计算。
+
+**铁律**：两份 alias map 必须保持一致（TPM-P1-01）。`ValidateRuntimeAliasesAgainstPolicy` 在 Assemble 启动时校验。`PropagateAllowAliases` / `PropagateDenyAliases` 处理链式别名（如 `shell` → `shell_exec` → `exec_command`）。
+
 ---
 
 ## 七-B、LLM Provider Tool Calling 适配
 
-> **版本**：1.0 | **状态**：✅ 已修复（2026-06-10）
 > **定位**：trpc-agent-go 运行时中各 LLM Provider 对 `tool.Declaration` → API 请求格式的转换规范
 
 ### 1. Provider 适配架构
@@ -1375,10 +1805,10 @@ tool.Declaration (InputSchema *Schema)
 
 | Provider | 位置 | 状态 |
 |----------|------|------|
-| OpenAI | `model/openai/openai.go` | ✅ 已有 |
-| Anthropic | `model/anthropic/anthropic.go` | ✅ 已修复 |
-| Gemini | `model/gemini/gemini.go` | ✅ 已修复 |
-| Ollama | `model/ollama/ollama.go` | ✅ 已修复 |
+| OpenAI | `model/openai/openai.go` | ✅ |
+| Anthropic | `model/anthropic/anthropic.go` | ✅ |
+| Gemini | `model/gemini/gemini.go` | ✅ |
+| Ollama | `model/ollama/ollama.go` | ✅ |
 
 ### 3. nil InputSchema 防护
 
@@ -1386,23 +1816,16 @@ tool.Declaration (InputSchema *Schema)
 
 **规则**：所有 Provider 的 `convertTools()` 必须在访问 `InputSchema` 前做 nil 检查，nil 时提供默认空 object schema。
 
-| Provider | 防护状态 |
-|----------|---------|
-| OpenAI | ✅ 已有防护 |
-| Anthropic | ✅ 已修复（2026-06-10） |
-| Gemini | ✅ 已有（`if decl.InputSchema != nil`） |
-| Ollama | ✅ 已有（`if decl.InputSchema != nil`） |
-
 ### 4. JSON Schema `required` 字段映射
 
 JSON Schema 中 `required` 是顶层字段（`InputSchema.Required`），列出哪些属性名是必填的。**不得**使用 `prop.Required`（嵌套对象的子级 required 列表）。
 
 | Provider | 映射方式 | 状态 |
 |----------|---------|------|
-| OpenAI | `declaration.InputSchema.Required` | ✅ 正确 |
-| Anthropic | `declaration.InputSchema.Required` | ✅ 正确 |
-| Gemini | `normalizeToolSchema` 整体序列化 | ✅ 正确 |
-| Ollama | `decl.InputSchema.Required` | ✅ 已修复（2026-06-10，原错误使用 `prop.Required`） |
+| OpenAI | `declaration.InputSchema.Required` | ✅ |
+| Anthropic | `declaration.InputSchema.Required` | ✅ |
+| Gemini | `normalizeToolSchema` 整体序列化 | ✅ |
+| Ollama | `decl.InputSchema.Required` | ✅（原错误使用 `prop.Required` 已修复） |
 
 ### 5. Tool Result 回传格式
 
@@ -1417,57 +1840,35 @@ JSON Schema 中 `required` 是顶层字段（`InputSchema.Required`），列出�
 
 `buildDefaultToolMessage(toolCallID, toolName, result)` 必须同时填充 `ToolID` 和 `ToolName`，确保下游 Provider（特别是 Gemini）能正确构建 `FunctionResponse.Name`。
 
-**修复记录**（2026-06-10）：原签名缺少 `toolName` 参数，导致 Gemini `FunctionResponse.Name` 为空，可能触发 API 400 错误。
+### 7. 工具调用成功率增强
 
-### 7. 工具调用成功率增强（2026-06-11）
-
-> **版本**：1.1 | **状态**：✅ 已实施
 > **定位**：基于竞品调研（Pydantic AI / Instructor / LangChain / Vercel AI SDK / Dify）的最优实践，提升 LLM 调用工具的成功率
 
 #### 7.1 JSON 参数修复默认开启
 
 **问题**：`ToolCallArgumentsJSONRepairEnabled` 默认关闭，小模型/开源模型频繁生成不合法 JSON 参数导致工具调用失败。
 
-**竞品参考**：CrewAI 内置 `ast.literal_eval` 兜底；Dify 内置容错解析器；Semantic Kernel 内置单引号替换。
-
 **方案**：将 `IsToolCallArgumentsJSONRepairEnabled` 默认值从 `false` 改为 `true`。`*bool` 三态设计（nil=默认启用, true=显式启用, false=显式禁用）保留用户完整控制权。
 
-| 文件 | 改动 |
-|------|------|
-| `agent/invocation.go` | 注释更新：nil → enabled by default |
-| `internal/jsonrepair/toolcall.go` | `enabled == nil || *enabled` 替代 `enabled != nil && *enabled` |
-
 #### 7.2 Ollama OutputSchema 描述格式统一
-
-**问题**：Ollama 的 `buildToolDescription` 缺少 `\n` 前缀，导致描述文本和 Output schema 粘连。
 
 **修复**：`desc += "Output schema: "` → `desc += "\nOutput schema: "`，与 OpenAI/Anthropic 保持一致。
 
 #### 7.3 Ollama Schema 约束迁移到描述
 
-**问题**：Ollama SDK 不支持 `additionalProperties`/`default`/嵌套 `required`/`$ref`，以及新增的约束字段（`minLength`/`maxLength`/`pattern`/`minimum`/`maximum`/`minItems`/`maxItems`），导致复杂 Schema 信息丢失。
+**问题**：Ollama SDK 不支持 `additionalProperties`/`default`/嵌套 `required`/`$ref`，以及新增的约束字段（`minLength`/`maxLength`/`pattern`/`minimum`/`maximum`/`minItems`/`maxItems`）。
 
-**竞品参考**：Pydantic AI 的 `JsonSchemaTransformer` 按 Provider 适配；LangChain 社区 `sanitize_for_openai_schema()` 将约束迁移到 description。
-
-**方案**：新增 `appendSchemaConstraintsToDescription` 函数，将 Ollama SDK 不支持的约束以自然语言追加到属性描述中。所有 hints 统一收集到单个括号块，格式一致。
+**方案**：新增 `appendSchemaConstraintsToDescription` 函数，将 Ollama SDK 不支持的约束以自然语言追加到属性描述中。
 
 #### 7.4 JSON 解析错误增强反馈
-
-**问题**：工具执行时 JSON 解析失败，LLM 收到的错误信息缺少期望的 Schema 信息，无法自行纠正。
-
-**竞品参考**：Instructor 的 `max_retries` + 错误反馈模式；Pydantic AI 的 `ModelRetry`。
 
 **方案**：新增 `enhanceJSONParseError` 函数，在 JSON 解析错误时将 InputSchema 追加到错误消息中。使用类型化错误匹配（`json.SyntaxError`/`json.UnmarshalTypeError`）+ 字符串前缀兜底。
 
 #### 7.5 清洗名查找缓存优化
 
-**问题**：`lookupBySanitizedName` 使用 O(n) 线性扫描，`buildSanitizedNameCache` 已定义但未被调用。
-
 **方案**：`lookupBySanitizedName` 改为调用 `buildSanitizedNameCache` 构建 map 后 O(1) 查找。
 
 #### 7.6 tool.Schema 约束字段扩展
-
-**问题**：`tool.Schema` 不支持 `minLength`/`maxLength`/`pattern`/`minimum`/`maximum`/`minItems`/`maxItems` 等 JSON Schema 约束关键字。
 
 **方案**：扩展 `Schema` struct 新增 7 个约束字段（全部指针类型 + `omitempty`），更新 `ExtraFields()` 方法将约束字段纳入返回值，新增 `AppendConstraintsToDescription` 公开函数供 Provider 适配层使用。
 
@@ -1481,10 +1882,33 @@ JSON Schema 中 `required` 是顶层字段（`InputSchema.Required`），列出�
 web/src/
 ├── features/tools/
 │   ├── api.ts                        # API 调用封装
-│   └── types.ts                      # TypeScript 类型定义
+│   ├── types.ts                      # TypeScript 类型定义
+│   └── toolUi.ts                     # UI 辅助函数
 └── pages/
-    ├── ToolsPage.vue                  # 工具目录管理页
-    └── ToolRunsPage.vue              # 工具调用记录页
+    ├── ToolsPage.vue                 # 工具目录管理页
+    ├── ToolRunsPage.vue              # 工具调用记录页
+    └── ToolAuditsPage.vue            # 工具调用审计页
+└── components/tools/
+    ├── ToolsTable.vue                # 工具列表表格
+    ├── ToolsMetricStrip.vue          # Summary 统计卡片
+    ├── ToolCatalogFilters.vue        # 筛选卡片
+    ├── ToolHeroSection.vue           # 顶部 Hero 区域
+    ├── ToolGlassPanel.vue            # 玻璃质感面板
+    ├── ToolJsonBlock.vue             # JSON 展示块
+    ├── ToolSchemaForm.vue            # Schema 表单
+    ├── ToolDetailDrawer.vue          # 详情抽屉（容器）
+    ├── ToolDetailParamsPanel.vue     # 详情-参数面板
+    ├── ToolDetailConfigPanel.vue     # 详情-配置面板（可编辑）
+    ├── ToolEditorDialog.vue          # 编辑弹窗（容器）
+    ├── ToolOverrideEditorDialog.vue  # Override 编辑弹窗
+    ├── ToolRunsTable.vue             # 调用记录表格
+    ├── ToolRunsFilters.vue           # 调用记录筛选
+    ├── ToolAuditsTable.vue           # 审计日志表格
+    ├── ToolAuditsFilters.vue         # 审计日志筛选
+    └── editor/
+        ├── ToolSchemaBuilder.vue     # Schema 构建器
+        ├── ToolEditorHelpDrawer.vue  # 编辑帮助抽屉
+        └── ToolFieldHintInput.vue    # 字段提示输入
 ```
 
 ### 8.2 TypeScript 类型定义
@@ -1502,8 +1926,8 @@ export type Tool = {
   display_name: string;
   description: string;
   category: string;
-  source: "builtin" | "mcp" | "system" | "external" | string;
-  risk_level: "low" | "medium" | "high" | "critical" | string;
+  source: 'builtin' | 'mcp' | 'system' | 'external' | string;
+  risk_level: 'low' | 'medium' | 'high' | 'critical' | string;
   enabled: boolean;
   readonly: boolean;
   requires_confirmation: boolean;
@@ -1515,8 +1939,8 @@ export type Tool = {
   config_json: string;
   default_config_json: string;
   metadata_json: string;
-  runtime_status?: "available" | "registered_only" | "disabled" | string;
-  runtime_kind?: "function" | "streaming" | "approval" | string;
+  runtime_status?: 'available' | 'registered_only' | 'disabled' | string;
+  runtime_kind?: 'function' | 'streaming' | 'approval' | string;
   invoke_count: number;
   invoke_count_24h: number;
   success_count: number;
@@ -1524,6 +1948,7 @@ export type Tool = {
   blocked_count: number;
   agent_override_count: number;
   avg_duration_ms: number | null;
+  p95_duration_ms: number;
   last_invoked_at?: string;
   last_status?: string;
   created_at: string;
@@ -1565,6 +1990,7 @@ export type ToolListQuery = {
   source?: string;
   risk_level?: string;
   enabled?: boolean | null;
+  sort?: string;
   page?: number;
   page_size?: number;
 };
@@ -1591,7 +2017,7 @@ export type ToolInvocation = {
   message_id: string;
   user_id: string;
   source: string;
-  status: "success" | "error" | "blocked" | "cancelled" | string;
+  status: 'success' | 'error' | 'blocked' | 'cancelled' | string;
   started_at: string;
   ended_at: string;
   duration_ms: number;
@@ -1604,6 +2030,34 @@ export type ToolInvocation = {
   redaction_applied: boolean;
   metadata_json: string;
   created_at: string;
+  streaming?: boolean;
+  chunk_count?: number;
+};
+
+export type ToolInvocationAudit = {
+  id: string;
+  invocation_id: string;
+  tool_key: string;
+  agent_id: string;
+  user_id: string;
+  session_id: string;
+  action: string;
+  result_summary: string;
+  status: string;
+  source: string;
+  created_at: string;
+};
+
+export type ToolAuditQuery = {
+  tool_key?: string;
+  agent_id?: string;
+  user_id?: string;
+  session_id?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  page_size?: number;
 };
 
 export type ToolRunQuery = {
@@ -1613,6 +2067,7 @@ export type ToolRunQuery = {
   status?: string;
   from?: string;
   to?: string;
+  has_error?: boolean;
   page?: number;
   page_size?: number;
 };
@@ -1624,13 +2079,36 @@ export type PaginatedResponse<T> = {
   total: number;
 };
 
+export type ToolAgentOverride = {
+  id: string;
+  tool_id: string;
+  tool_key: string;
+  agent_id: string;
+  enabled: boolean;
+  mode: 'inherit' | 'allow' | 'deny' | string;
+  config_override_json: string;
+  requires_confirmation: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+// 注意：input 使用 tool_id（与 Proto 一致），而非 tool_key
+export type ToolAgentOverrideInput = {
+  tool_id: string;
+  agent_id: string;
+  enabled?: boolean;
+  mode?: string;
+  config_override_json?: string;
+  requires_confirmation?: boolean;
+};
+
 export type AgentEffectiveTool = {
   tool_key: string;
   display_name: string;
   category: string;
   source: string;
   enabled: boolean;
-  effective_state: "allowed" | "denied" | string;
+  effective_state: 'allowed' | 'denied' | string;
   reason: string;
 };
 
@@ -1641,6 +2119,13 @@ export type AgentEffectiveTools = {
   deny: string[];
   items: AgentEffectiveTool[];
 };
+
+export type ToolTestResult = {
+  status: string;
+  result_preview: string;
+  error_message: string;
+  duration_ms: number;
+};
 ```
 
 ### 8.3 API 封装
@@ -1648,20 +2133,50 @@ export type AgentEffectiveTools = {
 文件路径：`web/src/features/tools/api.ts`
 
 ```typescript
+// 工具目录 CRUD
 export async function listTools(query: ToolListQuery = {}): Promise<ToolListResponse>
 export async function getTool(id: string): Promise<Tool>
 export async function createTool(input: ToolUpsertInput): Promise<Tool>
 export async function updateTool(id: string, input: ToolUpsertInput): Promise<Tool>
 export async function deleteTool(id: string): Promise<void>
-export async function toggleToolEnabled(id: string, enabled: boolean): Promise<Tool>
+
+// 启用/停用（高风险启用需 confirmIntent = 'I_UNDERSTAND_RISK'）
+export async function toggleToolEnabled(id: string, enabled: boolean, confirmIntent?: string): Promise<Tool>
+
+// 配置更新
+export async function updateToolConfig(id: string, configJson: string): Promise<Tool>
+
+// 在线测试
+export async function testTool(toolId: string, argumentsJson = '{}', timeoutSec = 30): Promise<ToolTestResult>
+
+// 调用记录
 export async function listToolRunsForTool(id: string, query: ToolRunQuery = {}): Promise<PaginatedResponse<ToolInvocation>>
 export async function listToolRuns(query: ToolRunQuery = {}): Promise<PaginatedResponse<ToolInvocation>>
+
+// 调用参数（脱敏）
+// 注意：通过 toolApi.GetToolInvocationParams 调用，路径 /v1/tools/runs/{invocation_id}/params
+
+// Agent 工具覆盖（使用 tool_id，与 Proto 一致）
+export async function listToolAgentOverrides(toolId: string): Promise<ToolAgentOverride[]>
+export async function listToolAgentOverridesByAgent(agentId: string): Promise<ToolAgentOverride[]>
+export async function upsertToolAgentOverride(input: {
+  tool_id: string;
+  agent_id: string;
+  enabled?: boolean;
+  mode?: string;
+  config_override_json?: string;
+  requires_confirmation?: boolean;
+}): Promise<ToolAgentOverride>
+export async function deleteToolAgentOverride(toolId: string, agentId: string): Promise<void>
+
+// 审计日志
+export async function listToolInvocationAudits(query: ToolAuditQuery = {}): Promise<PaginatedResponse<ToolInvocationAudit>>
+
+// Agent 生效工具矩阵（通过 agent/v1 API）
 export async function getAgentEffectiveTools(agentId: string): Promise<AgentEffectiveTools>
 ```
 
-### 8.3-B Chat Tool 事件流与状态映射
-
-> **版本**：1.0 | **更新**：2026-06-10
+### 8.4 Chat Tool 事件流与状态映射
 
 #### 数据流
 
@@ -1722,9 +2237,9 @@ export async function getAgentEffectiveTools(agentId: string): Promise<AgentEffe
 
 **ToolUseEvent.status 类型**：`'running' | 'success' | 'failed' | 'blocked' | 'cancelled' | string`
 
-> 注意：`'error'` 已从类型定义中移除（2026-06-10），canonicalToolStatus 将 wire `"error"` 映射为 `'failed'`。`'cancelled'` 已添加到类型定义中。
+> 注意：`'error'` 已从类型定义中移除，canonicalToolStatus 将 wire `"error"` 映射为 `'failed'`。
 
-### 8.4 页面组件
+### 8.5 页面组件
 
 #### ToolsPage.vue
 
@@ -1732,15 +2247,11 @@ export async function getAgentEffectiveTools(agentId: string): Promise<AgentEffe
 
 **页面结构**：
 
-1. **顶部 Hero 区域**：标题 "工具管理" + Summary 统计卡片 + 刷新/新建按钮
-2. **筛选卡片**：搜索框 + Category 下拉 + Source 下拉 + Risk Level 下拉 + 启用状态筛选
-3. **数据表格**：展示工具列表
-4. **新建/编辑弹窗**（`ToolEditorDialog` + `ToolEditorForm`）：4 Tab — 基础 / 运行策略 / 参数与配置 / 高级；文案 `features/tools/toolEditorCopy.ts`；子组件 `components/tools/editor/*`
-5. **详情弹窗**（`ToolDetailContent`）：5 Tab — 概览 / 参数 / 配置（可编辑，`PUT /v1/tools/{id}/config`）/ Agent / 调用；Agent Tab 含 **生效摘要**（§5.6 UX-02）
-
-~~6. **配置弹窗**~~：已合并至详情「配置」Tab 与编辑弹窗「参数与配置」Tab。
-
-**§5.6 后续 UX**（chip 语义、Schema 边界、保存引导等）见 [23-tools.md §5.6](./23%20tools.md#56-后续迭代业务评审-2026-05-28)。
+1. **顶部 Hero 区域**（`ToolHeroSection`）：标题 "工具管理" + Summary 统计卡片（`ToolsMetricStrip`）+ 刷新/新建按钮
+2. **筛选卡片**（`ToolCatalogFilters`）：搜索框 + Category 下拉 + Source 下拉 + Risk Level 下拉 + 启用状态筛选
+3. **数据表格**（`ToolsTable`）：展示工具列表
+4. **新建/编辑弹窗**（`ToolEditorDialog` + `editor/*` 子组件）：4 Tab — 基础 / 运行策略 / 参数与配置 / 高级
+5. **详情抽屉**（`ToolDetailDrawer` + `ToolDetailParamsPanel` + `ToolDetailConfigPanel`）：5 Tab — 概览 / 参数 / 配置（可编辑，`PUT /v1/tools/{id}/config`）/ Agent / 调用；Agent Tab 含 **生效摘要**
 
 **Summary 统计卡片**：
 - 总工具数 / 已启用数 / 高风险启用数
@@ -1759,7 +2270,7 @@ export async function getAgentEffectiveTools(agentId: string): Promise<AgentEffe
 | 调用 | invoke_count + invoke_count_24h | 总调用 / 24h 调用 |
 | 成功率 | success_count / (success+failure+blocked) | 成功率百分比 |
 | 平均耗时 | avg_duration_ms | 毫秒 |
-| 启用 | enabled | Toggle 开关 |
+| 启用 | enabled | Toggle 开关（高风险启用需 confirm_intent） |
 | 操作 | id | 查看/编辑/删除/配置按钮 |
 
 #### ToolRunsPage.vue
@@ -1769,8 +2280,8 @@ export async function getAgentEffectiveTools(agentId: string): Promise<AgentEffe
 **页面结构**：
 
 1. **顶部 Hero 区域**：标题 "工具调用记录"
-2. **筛选卡片**：Tool Key + Agent ID + Session ID + Status + 时间范围
-3. **数据表格**：展示调用记录列表
+2. **筛选卡片**（`ToolRunsFilters`）：Tool Key + Agent ID + Session ID + Status + 时间范围 + Has Error
+3. **数据表格**（`ToolRunsTable`）：展示调用记录列表
 
 **表格列定义**：
 
@@ -1780,6 +2291,7 @@ export async function getAgentEffectiveTools(agentId: string): Promise<AgentEffe
 | Agent | agent_key + agent_display_name | |
 | Session | session_id | |
 | 状态 | status | success=绿/error=红/blocked=橙/cancelled=灰 |
+| 流式 | streaming + chunk_count | 流式调用标记 + 分片数 |
 | 开始时间 | started_at | |
 | 耗时 | duration_ms | 毫秒 |
 | 输入摘要 | input_preview | 截断展示 |
@@ -1787,12 +2299,37 @@ export async function getAgentEffectiveTools(agentId: string): Promise<AgentEffe
 | 错误 | error_code + error_message | error 状态时展示 |
 | 脱敏 | redaction_applied | 是否已脱敏 |
 
-### 8.5 路由
+#### ToolAuditsPage.vue
+
+文件路径：`web/src/pages/ToolAuditsPage.vue`
+
+**页面结构**：
+
+1. **顶部 Hero 区域**：标题 "工具调用审计"
+2. **筛选卡片**（`ToolAuditsFilters`）：Tool Key + Agent ID + User ID + Session ID + Status + 时间范围
+3. **数据表格**（`ToolAuditsTable`）：展示审计日志列表
+
+**表格列定义**：
+
+| 列名 | 字段 | 说明 |
+|------|------|------|
+| 工具 | tool_key | |
+| Agent | agent_id | |
+| User | user_id | |
+| Session | session_id | |
+| Action | action | 如 `tool.call` |
+| 结果摘要 | result_summary | |
+| 状态 | status | success=绿/error=红 |
+| 来源 | source | 如 `adk` |
+| 时间 | created_at | |
+
+### 8.6 路由
 
 | 路径 | 组件 | 说明 |
 |------|------|------|
 | `/tools` | ToolsPage | 工具目录管理页 |
 | `/tools/runs` | ToolRunsPage | 工具调用记录页 |
+| `/tools/audits` | ToolAuditsPage | 工具调用审计页 |
 
 ---
 
@@ -1830,21 +2367,7 @@ type FinalResultStateChunk struct {
 }
 ```
 
-### 9.2 Stream 内部实现
-
-```go
-// 底层基于 channel 的泛型流
-type stream[T any] struct {
-    items  chan streamItem[T]   // 缓冲 channel
-    closed chan struct{}        // 关闭信号
-}
-
-// NewStream(bufferSize) 创建流
-// - bufferSize 控制 Send 阻塞前的队列深度
-// - closed channel 用于 Reader 主动取消时通知 Writer 停止
-```
-
-### 9.3 流式工具执行流程
+### 9.2 流式工具执行流程
 
 ```
 LLM 返回 tool_call
@@ -1858,7 +2381,7 @@ LLM 返回 tool_call
   → 否：调用 Call(ctx, args) → 返回同步结果
 ```
 
-### 9.4 AG-UI 集成
+### 9.3 AG-UI 集成
 
 ```go
 // agui.WithStreamingToolResultActivityEnabled(true)
@@ -1868,18 +2391,9 @@ LLM 返回 tool_call
 // 工具结束时仍发一条 TOOL_CALL_RESULT
 ```
 
-### 9.5 项目集成设计
+### 9.4 项目集成设计
 
-**ToolsetConfig 扩展**（✅ 已实现）：
-
-```go
-type ToolsetConfig struct {
-    // ... 已有字段
-    StreamingEnabled bool  // 全局流式工具开关
-}
-```
-
-**tool_invocations 扩展**（✅ 已实现）：
+**tool_invocations 扩展**（已实现）：
 
 ```sql
 ALTER TABLE tool_invocations ADD COLUMN streaming INTEGER NOT NULL DEFAULT 0;
@@ -2005,7 +2519,7 @@ type MCPBrokerConfig struct {
 **Assemble 路径**：
 
 ```
-AssemblyConfig.MCPBroker
+AssemblyConfig.MCP.Broker
   → buildMCPBrokerTools(cfg)
   → trpcmcpbroker.New(opts...)
   → broker.Tools() → 4 个工具
@@ -2089,798 +2603,54 @@ type RetryPolicy struct {
 
 ## 十三、片段级文件编辑（扩展）
 
-> **状态**：✅ 已实现（2026-05-22） | **详设**：[23 tools-fragment-edit.design.md](./23%20tools-fragment-edit.design.md) · **需求**：[23 tools-fragment-edit.md](./23%20tools-fragment-edit.md) · **Review**：[2026-05-22-Tools-Phase4-Fragment-Edit-Review.md](../review/2026-05-22-Tools-Phase4-Fragment-Edit-Review.md) · **changelog**：[Phase 4](../changelog/2026-05-22-Tools-Phase4-Fragment-Edit.md) · [Follow-up](../changelog/2026-05-22-Tools-Phase4-Review-Followup.md)
+> **状态**：catalog 已就绪、运行时工具待补
+> **需求**：[23-tools.md §子模块 Tools Fragment Edit](./23-tools.md) · **开发计划**：[23-tools.development.md §Phase 4](./23-tools.development.md)
 
 在 §7 运行时层 `file` ToolSet 上扩展两个 CallableTool：
 
-| 工具 | 职责 |
-|------|------|
-| `diff_edit` | 多片段 SEARCH/REPLACE，内存原子 apply |
-| `patch_file` | unified diff 或结构化 hunk 应用 |
-
-**实现包**：`pkg/trpc-agent-go/tool/file`（非新 Registry 项）。**会话缓存** 经 `internal/toolcache.FileView` 与 `read_file` / 写工具联动，详见扩展设计文档 §4–§6。
-
-本文 §7 注册表与 Assemble 流程**不变**；catalog 种子与 Prompt 集成见开发计划 Phase 4。
-
----
-
-*文档版本：3.1 — 增加 §十三 片段编辑扩展索引（2026-05-22）。详设见 [23 tools-fragment-edit.design.md](./23%20tools-fragment-edit.design.md)。*
-
-
----
-
-## 子模块：Tools Struct 设计
-
-> **对应需求**：[23 tools.md](./23%20tools.md) · **技术设计**：[23 tools.design.md](./23%20tools.design.md) · **开发计划**：[23-tools-development.md](./23-tools-development.md)
-> **遵循规范**：`AI-DEVELOPMENT-SPECIFICATION.md`
-> **框架**：trpc-agent-go（`trpc.group/trpc-go/trpc-agent-go`）
-
----
-
-## 一、文档定位与边界
-
-| 维度 | 本文档范围 | 不含 |
-|------|-----------|------|
-| **焦点** | Go 类型定义、接口签名、目录结构、注册/装配数据流 | 产品需求（见 `23 tools.md`）、API/Proto 设计（见 `23 tools.design.md`）、开发排期（见 `23-tools-development.md`） |
-| **深度** | 给出可编译的结构骨架与关键类型；AI 可据此生成实现代码 | 完整业务逻辑实现、前端 UI 设计 |
-| **框架** | 以 trpc-agent-go 的 `tool.Tool` / `CallableTool` / `StreamableTool` / `ToolSet` 为核心 | 不自建 tooldef/toolctx 等抽象层；不自建洋葱中间件链 |
-
----
-
-## 二、框架接口（trpc-agent-go/tool）
-
-项目直接依赖 trpc-agent-go 框架的 tool 包，**不自建** Tool 接口或中间件链。框架提供以下核心接口：
-
-```go
-package trpctool // "trpc.group/trpc-go/trpc-agent-go/tool"
-
-// Tool — 基础接口：所有工具的声明入口
-type Tool interface {
-    Declaration() *Declaration
-}
-
-// CallableTool — 可调用工具：Tool + 同步执行
-type CallableTool interface {
-    Tool
-    Call(ctx context.Context, args []byte) (any, error)
-}
-
-// StreamableTool — 流式工具：Tool + 流式执行
-type StreamableTool interface {
-    Tool
-    StreamableCall(ctx context.Context, args []byte) (*StreamReader, error)
-}
-
-// ToolSet — 工具集：聚合多个 Tool，支持延迟初始化与关闭
-type ToolSet interface {
-    Name() string
-    Tools(ctx context.Context) []Tool
-    Close() error
-}
-
-// Declaration — 工具声明：暴露给 LLM 的元数据
-type Declaration struct {
-    Name        string
-    Description string
-    InputSchema *Schema
-}
-
-// Schema — JSON Schema 描述
-type Schema struct {
-    Type       string
-    Properties map[string]*Schema
-    Required   []string
-    // ... 其他 JSON Schema 字段
-}
-```
-
-**关键决策**：项目通过 **type alias** 直接复用框架类型，不自建 tooldef / toolctx / middleware / executor 抽象层。横切关注点（校验、重试、追踪、过滤）通过框架内建的 Callbacks / Filter / Retry 机制注入，而非自建洋葱中间件链。
-
----
-
-## 三、项目级类型定义
-
-### 3.1 类型别名（internal/tools/tool.go）
-
-```go
-package tools
-
-import (
-    "context"
-    trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
-)
-
-type Tool            = trpctool.Tool
-type CallableTool    = trpctool.CallableTool
-type StreamableTool  = trpctool.StreamableTool
-type ToolSet         = trpctool.ToolSet
-type Declaration     = trpctool.Declaration
-type Schema          = trpctool.Schema
-```
-
-### 3.2 工具注册项（ToolRegistration）
-
-```go
-type ToolRegistration struct {
-    Name                 string
-    Description          string
-    Factory              func(ctx context.Context) (Tool, error)       // 单工具工厂
-    ToolSetFactory       func(ctx context.Context) (ToolSet, error)    // 工具集工厂
-    EnabledByDefault     bool
-    Category             string   // filesystem / execution / web / search / communication / productivity / interaction / coding / integration / composition
-    Tags                 []string // 分类标签，支持 RegistryByTag / RegistryByCategory 查询
-    RiskLevel            string   // low / medium / high / critical
-    RequiresConfirmation bool
-    SupportsStreaming    bool
-    SupportsConcurrency  bool
-}
-```
-
-**语义**：
-- `Factory` 与 `ToolSetFactory` 互斥：单工具用 Factory，工具集用 ToolSetFactory
-- `EnabledByDefault`：true 表示 catalog 行 `enabled=true`（默认开放），false 表示仅显式允许
-- `Category`：与 `builtin_tools_seed.go` 中的分类对齐
-- `Tags`：工具分类标签，用于按标签/分类查询注册工具（`RegistryByTag`/`RegistryByCategory`）
-- `RiskLevel`：影响前端展示与 Agent 策略
-
-### 3.3 装配配置（AssemblyConfig）
-
-```go
-type AssemblyConfig struct {
-    EnabledTools  []string            // 从 effective tools 计算得出的启用工具名列表
-    FilesystemDir string              // file ToolSet 的根目录覆盖
-    GeminiModel   string              // geminifetch 的模型名
-    GoogleAPIKey  string              // Google Search API Key
-    GoogleCX      string              // Google Search Engine ID
-    ClaudeCodeDir string              // claudecode ToolSet 的工作目录
-    OpenAPISpecs  []OpenAPISpecConfig // OpenAPI 动态工具集
-    AgentTools    []AgentToolConfig   // Agent-as-Tool 配置
-    MCPServers    []MCPServerConfig   // MCP 服务器连接配置
-    MCPBroker     *MCPBrokerConfig    // MCP Broker 配置
-    CustomTools   []Tool              // 额外注入的自定义工具
-}
-```
-
-### 3.4 装配输出（AssembledToolsets）
-
-```go
-type AssembledToolsets struct {
-    ToolSets []ToolSet
-    Tools    []Tool
-}
-```
-
-### 3.5 Agent-as-Tool 配置
-
-```go
-type AgentToolConfig struct {
-    Agent             trpcagent.Agent
-    Name              string
-    Description       string
-    SkipSummarization bool
-    StreamInner       bool
-    HistoryScope      trpcagenttool.HistoryScope
-    ResponseMode      trpcagenttool.ResponseMode
-}
-```
-
-### 3.6 MCP 配置
-
-```go
-type MCPServerConfig struct {
-    Name       string
-    Transport  string            // stdio / sse / streamable_http
-    ServerURL  string            // HTTP 传输的 URL
-    Command    string            // stdio 传输的可执行文件
-    Args       []string          // stdio 传输的参数
-    Headers    map[string]string // HTTP 传输的请求头
-    TimeoutSec int               // 连接超时
-    ToolPrefix string            // 工具名前缀过滤
-}
-
-type MCPBrokerConfig struct {
-    Servers         []MCPServerConfig
-    AllowAdHocHTTP  bool
-    AdHocTimeoutSec int
-}
-
-type OpenAPISpecConfig struct {
-    Name     string
-    SpecURL  string
-    SpecData []byte
-}
-```
-
----
-
-## 四、目录结构
-
-```
-internal/tools/
-├── tool.go                  — 类型别名 + ConfigString + RegistryByTag/RegistryByCategory
-├── toolset.go               — Registry() 注册表 + Assemble() 编排调度 + 子装配器
-├── doc.go                   — 包文档（框架能力速查 + 注册工具清单 + 自定义工具指南）
-│
-├── trpc/                    — 向后兼容适配层：ToolsetConfig → AssemblyConfig → tools.Assemble()
-│   ├── toolsets.go          — BuildToolsets()，被 trpc_build.go 调用
-│   ├── effective_config.go  — Effective tool keys → ToolsetConfig 映射
-│   ├── runtime_config.go    — 运行时配置解析
-│   ├── confirmation.go      — 工具确认策略
-│   └── toolset_prune.go     — 工具集裁剪
-│
-├── cache/                   — 工具结果缓存（LRU 驱逐 + TTL）
-│   └── result_cache.go      — ResultCache + Global()/SetGlobal()
-│
-├── custom/                  — 自定义工具实现
-│   └── demo.go              — 示例：使用 function.NewFunctionTool 构建自定义工具
-│
-├── hostexecnorm/            — 主机执行工具参数归一化
-│   ├── normalize.go         — working_dir → workdir 兼容映射
-│   └── wrap.go              — ToolSet 包装器
-│
-├── kanban/                  — 看板工具集（CI/CD 集成）
-│   ├── bridge.go            — Bridge/BridgeReader/BridgeWriter/BridgeLifecycle 接口
-│   └── tools.go             — NewToolset + Enabled
-│
-├── knowledge/               — Knowledge 工具
-│   └── tool.go              — knowledge_search 工具 + WithRetriever context 注入
-│
-├── mcpobserve/              — MCP 运行时可观测性
-│   └── observe.go           — 重连检测 + SessionReconnectMax
-│
-├── memory/                  — Memory 工具（add/update/load/search/delete）
-│   └── tools.go             — DefaultTools() 返回标准 memory 工具
-│
-├── preview/                 — 工具调用预览脱敏
-│   └── preview.go           — RedactAndTruncate
-│
-├── serviceawaitreply/       — 服务级 await_user_reply（阻塞式，替代框架内置版）
-│   ├── tool.go              — ServiceTool + ReplyFunc context 注入
-│   └── tool_confirm.go      — 确认请求上下文
-│
-├── skillrouter/             — Skill 检测与分类
-│   ├── detect.go
-│   └── taxonomy.go
-│
-├── skillruntime/            — Skill 工具集解析
-│   ├── runtime.go           — 运行时工具集构建
-│   ├── toolset.go           — Skill ToolSet
-│   ├── resolve.go           — Skill 解析
-│   └── filter.go            — Skill 过滤（fail-closed + 缓存驱逐）
-│
-├── testexec/                — 工具在线测试
-│   ├── config.go            — 测试配置解析
-│   └── execute.go           — 测试执行
-│
-├── webresearch/             — Web 搜索工具
-│   ├── tool.go              — web_research CallableTool
-│   └── config.go            — 搜索配置
-│
-└── cli_admin/               — CLI 管理工具
-    └── registry.go          — Skill 安装/卸载工具
-```
-
-**与旧设计的差异**：不设 `tooldef/`、`toolctx/`、`middleware/`、`executor/`、`adkbridge/`、`backends/`、`telemetry/` 子包。框架接口直接通过 type alias 使用，横切关注点通过框架内建机制注入。
-
----
-
-## 五、注册表（Registry）
-
-### 5.1 注册工具清单
-
-| 注册名 | Category | Tags | Factory / ToolSetFactory | EnabledByDefault | RiskLevel | RequiresConfirmation |
-|--------|----------|------|--------------------------|------------------|-----------|---------------------|
-| `file` | filesystem | filesystem, read, write, search | `ToolSetFactory: trpcfile.NewToolSet` | ✅ | low | — |
-| `hostexec` | execution | shell, exec, command | `ToolSetFactory: trpchostexec.NewToolSet` | ❌ | critical | ✅ |
-| `httpfetch` | web | web, fetch, http | `Factory: trpchttpfetch.NewTool` | ❌ | medium | — |
-| `claudefetch` | web | web, fetch, claude | `Factory` (stub) | ❌ | medium | — |
-| `geminifetch` | web | web, fetch, gemini | `Factory: trpcgeminifetch.NewTool` | ❌ | medium | — |
-| `duckduckgo` | search | search, web | `Factory: trpcduckduckgo.NewTool` | ❌ | medium | — |
-| `google_search` | search | search, web, google | `ToolSetFactory: trpcgooglesearch.NewToolSet` | ❌ | medium | — |
-| `arxiv_search` | search | search, academic, paper | `ToolSetFactory: trpcarxivsearch.NewToolSet` | ❌ | low | — |
-| `wikipedia` | search | search, encyclopedia | `ToolSetFactory: trpcwikipedia.NewToolSet` | ❌ | low | — |
-| `email` | communication | email, send, smtp | `ToolSetFactory: trpcemail.NewToolSet` | ❌ | high | ✅ |
-| `todo` | productivity | todo, task, manage | `Factory: trpctodo.New` | ❌ | low | — |
-| `await_user_reply` | interaction | interaction, reply, await | `Factory: trpcawaitreply.New` | ❌ | low | — |
-| `claudecode` | coding | coding, ide, claude | `ToolSetFactory: trpcclaudecode.NewToolSet` | ❌ | critical | ✅ |
-| `workspace_exec` | execution | exec, workspace, code | `Factory` (CodeExecutor 路径) | ❌ | critical | ✅ |
-| `openapi` | integration | api, rest, openapi | `ToolSetFactory` (需 spec 配置) | ❌ | medium | — |
-| `agent` | composition | agent, delegation, composition | 无 Factory（运行时通过 AgentToolConfig 注入） | ❌ | medium | — |
-| `mcp` | integration | mcp, integration, protocol | 无 Factory（运行时通过 MCPServerConfig 注入） | ❌ | medium | — |
-| `mcpbroker` | integration | mcp, broker, discovery | 无 Factory（运行时通过 MCPBrokerConfig 注入） | ❌ | medium | — |
-
-### 5.2 非 Registry 注入的工具
-
-以下工具不经过 Registry，通过其他路径注入到 Agent：
-
-| 工具 | 注入路径 | 说明 |
-|------|----------|------|
-| memory (add/update/load/search/delete) | `trpc_build.go` → `memorytool.DefaultTools()` → `WithTools` | 仅当 `MemoryEnabled=true` 且 `HasMemory=true` 时注入 |
-| knowledge_search | `trpc/toolsets.go` → `knowledgepkg.NewSearchTool()` → CustomTools | 仅当 `KnowledgeSearch=true` 时注入 |
-| call_agent | `trpc/toolsets.go` → `a2a.NewCallAgentTool()` → CustomTools | 仅当 `CallAgent=true` 时注入 |
-| await_user_reply (ServiceTool) | `trpc/toolsets.go` → `serviceawaitreply.New()` → CustomTools | 仅当 `AwaitHook != nil` 时注入，替代框架内置版 |
-| skill tools | `trpc_build.go` → `WithSkills(repo)` + `WithCodeExecutor` | 通过框架 Skill 机制注入 |
-
----
-
-## 六、装配数据流
-
-### 6.1 端到端流程
-
-```
-AgentRuntimeSettings
-        │
-        ▼
-GetEffectiveTools() ─── 计算 effective tool keys
-        │                    (profile + allow/deny + catalog enabled)
-        ▼
-buildToolsetsForAgent() ─── ToolsetConfig 标记哪些工具启用
-        │
-        ▼
-BuildToolsets() ─── ToolsetConfig → AssemblyConfig
-        │              (enabled 名列表 + 配置参数)
-        ▼
-Assemble() ─── 编排调度，依次调用子装配器：
-        │    assembleFromRegistry()    — Registry 注册工具匹配
-        │    assembleFilesystem()      — 文件系统工具集（WithBaseDir 覆盖）
-        │    assembleHostExec()        — 主机命令执行（WithBaseDir + 归一化包装）
-        │    assembleGeminiFetch()     — Gemini 网页抓取（需 GeminiModel）
-        │    assembleGoogleSearch()    — Google 搜索（需 APIKey + CX）
-        │    assembleClaudeCode()      — Claude Code（WithBaseDir 覆盖）
-        │    assembleOpenAPISpecs()    — OpenAPI Spec 工具集
-        │    assembleAgentTools()      — Agent-as-Tool
-        │    assembleMCPServers()      — MCP 服务器
-        │    assembleMCPBroker()       — MCP Broker
-        │    assembleMemory()          — 记忆工具
-        ▼
-AssembledToolsets ─── { ToolSets, Tools }
-        │
-        ▼
-BuildTRPCLLMAgent() ─── WithToolSets + WithTools
-        │                 + WithToolFilter (deny)
-        │                 + WithToolCallbacks (invocation 记录)
-        │                 + WithToolCallRetryPolicy
-        │                 + WithEnableParallelTools
-        ▼
-trpc-agent-go LLMAgent ─── 运行时执行
-```
-
-### 6.2 Effective Tools 计算语义
-
-```
-catalog.enabled=true  → "默认开放"：profile 门控通过且不在 deny 列表即可用
-catalog.enabled=false → "仅显式允许"：必须在 allow 列表中才可用
-deny 列表 + ToolsEnabled=false → 覆盖一切
-```
-
-计算公式（`computeEffectiveToolState`）：
-```
-baseEnabled = ToolsEnabled && (toolOpenByDefault || policyNamesKey)
-enabled     = baseEnabled && state == "allowed"  // 未被 deny
-```
-
-### 6.3 Tool Key 映射关系
-
-| Registry 名 | Effective Tool Key | Declaration().Name | 说明 |
-|-------------|-------------------|-------------------|------|
-| `file` | `read_file`, `save_file`, `list_file` 等 | `read_file`, `save_file` 等 | ToolSet 展开为多个 key |
-| `hostexec` | `shell_exec` | `shell_exec` | 注册名与 key 不同 |
-| `duckduckgo` | `duckduckgo_search` | `duckduckgo_search` | 注册名与 key 不同 |
-| `httpfetch` | `web_fetch` | `web_fetch` | 注册名与 key 不同 |
-| `geminifetch` | `gemini_web_fetch` | `gemini_web_fetch` | 注册名与 key 不同 |
-| `todo` | `todo_write` | `todo_write` | 注册名与 key 不同 |
-
-> **关键约束**：`builtin_tools_seed.go` 中的 tool key 必须与框架工具的 `Declaration().Name` 一致，否则 effective tool 策略无法正确匹配。
-
----
-
-## 七、框架横切机制映射
-
-项目不自建中间件链，使用 trpc-agent-go 内建机制：
-
-| 横切关注点 | 框架机制 | 项目注入点 | 代码位置 |
-|-----------|---------|-----------|---------|
-| **调用前拦截** | `tool.Callbacks.RegisterBeforeTool` | — | 暂未使用 |
-| **调用后记录** | `tool.Callbacks.RegisterAfterTool` | 记录 ToolInvocation | `trpc_build.go` → `buildToolCallbacks` |
-| **工具过滤** | `tool.NewExcludeToolNamesFilter` | deny 列表过滤 | `trpc_build.go` → `buildToolFilter` |
-| **自动重试** | `tool.RetryPolicy` | 可配置重试策略 | `trpc_build.go` → `buildToolRetryPolicy` |
-| **并行执行** | `llmagent.WithEnableParallelTools` | 开关控制 | `trpc_build.go` |
-| **流式工具** | `StreamableTool` + `StreamReader` | 框架内置 | 工具实现侧 |
-| **结果合并** | `tool.Merge[T]` | 框架内置 | 框架自动处理 |
-
-### 7.1 Callbacks 注入结构
-
-```go
-callbacks := trpctool.NewCallbacks()
-
-callbacks.RegisterAfterTool(func(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
-    recordToolInvocationAsync(ctx, args, ag, deps)
-    return &trpctool.AfterToolResult{}, nil
-})
-
-// Agent 集成
-llmagent.WithToolCallbacks(callbacks)
-```
-
-### 7.2 Filter 注入结构
-
-```go
-denyList := jsonStringList(settings.ToolsDenyJSON)
-filter := trpctool.NewExcludeToolNamesFilter(denyList...)
-
-// Agent 集成
-llmagent.WithToolFilter(filter)
-```
-
-### 7.3 RetryPolicy 注入结构
-
-```go
-policy := &trpctool.RetryPolicy{
-    MaxAttempts:     maxAttempts,      // 默认 2
-    InitialInterval: initialMs * time.Millisecond,  // 默认 500ms
-    BackoffFactor:   backoff,          // 默认 2.0
-    MaxInterval:     maxMs * time.Millisecond,      // 默认 5000ms
-    Jitter:          settings.ToolsRetryJitter,
-    RetryOn:         trpctool.DefaultRetryOn,  // EOF, network timeout/temporary
-}
-
-// Agent 集成
-llmagent.WithToolCallRetryPolicy(policy)
-```
-
----
-
-## 八、自定义工具开发模式
-
-### 8.1 使用 function.NewFunctionTool（推荐）
-
-```go
-package custom
-
-import (
-    "context"
-    trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
-    "trpc.group/trpc-go/trpc-agent-go/tool/function"
-)
-
-type MyInput struct {
-    Query string `json:"query" jsonschema:"description=搜索关键词,required"`
-    Limit int    `json:"limit" jsonschema:"description=最大结果数,default=5"`
-}
-
-type MyOutput struct {
-    Results []MyResult `json:"results"`
-}
-
-type MyResult struct {
-    Title string `json:"title"`
-    URL   string `json:"url"`
-}
-
-func myExecute(ctx context.Context, input MyInput) (MyOutput, error) {
-    // 业务逻辑
-    return MyOutput{}, nil
-}
-
-func NewMyTool() trpctool.Tool {
-    return function.NewFunctionTool(
-        myExecute,
-        function.WithName("my_search"),
-        function.WithDescription("自定义搜索工具"),
-    )
-}
-```
-
-### 8.2 实现 CallableTool 接口
-
-```go
-type myTool struct{}
-
-func (t *myTool) Declaration() *trpctool.Declaration {
-    return &trpctool.Declaration{
-        Name:        "my_tool",
-        Description: "手动实现的工具",
-        InputSchema: &trpctool.Schema{
-            Type:       "object",
-            Properties: map[string]*trpctool.Schema{...},
-        },
-    }
-}
-
-func (t *myTool) Call(ctx context.Context, args []byte) (any, error) {
-    var input MyInput
-    if err := json.Unmarshal(args, &input); err != nil {
-        return nil, fmt.Errorf("my_tool: invalid args: %w", err)
-    }
-    // 业务逻辑
-    return result, nil
-}
-```
-
-### 8.3 注入路径
-
-自定义工具通过 `AssemblyConfig.CustomTools` 注入：
-
-```go
-// 方式 1：通过 ToolsetConfig.CustomTools
-cfg.CustomTools = append(cfg.CustomTools, custom.NewMyTool())
-
-// 方式 2：在 BuildToolsets 中按条件注入
-if cfg.KnowledgeSearch {
-    customTools = append(customTools, knowledgepkg.NewSearchTool())
-}
-```
-
----
-
-## 九、Tool Key 命名规范
-
-| 规则 | 示例 |
-|------|------|
-| 使用 snake_case | `duckduckgo_search`、`web_fetch` |
-| 动词_名词结构 | `read_file`、`send_email`、`search_content` |
-| ToolSet 展开后的子工具保持独立 key | `file` → `read_file` + `save_file` + `list_file` + ... |
-| MCP 工具加前缀 | `{server_name}_{original_tool_name}` |
-| 注册名与 key 可能不同 | `duckduckgo`(注册名) → `duckduckgo_search`(key) |
-
-**一致性约束**：
-- `builtin_tools_seed.go` 的 key = `Declaration().Name` = effective tool policy 的 key
-- 三处必须一致，否则策略无法生效
-
----
-
-## 十、ToolInvocation 记录结构
-
-```go
-type ToolInvocationWrite struct {
-    ToolKey       string    // Declaration().Name
-    AgentID       string
-    AgentKey      string
-    SessionID     string
-    UserID        string
-    Status        string    // "success" / "error"
-    DurationMS    int
-    StartedAt     string    // RFC3339
-    EndedAt       string    // RFC3339
-    InputPreview  string    // 截断至 2000 字符
-    OutputPreview string    // 截断至 2000 字符
-    ErrorCode     string
-    ErrorMessage  string    // 截断至 500 字符
-    Source        string    // "adk"
-    ToolCallID    string    // 模型分配的调用 ID
-}
-```
-
-**脱敏规则**：
-- `InputPreview` / `OutputPreview`：截断至 2000 字符，不存完整明文
-- `ErrorMessage`：截断至 500 字符
-- 敏感字段（API Key、Token 等）不落库
-
----
-
-## 十一、Effective Tools 策略结构
-
-### 11.1 Profile 预设
-
-```go
-var toolProfiles = map[string][]string{
-    "chat_only": {},
-    "read_only": {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
-    "coding":    {"group:filesystem", "group:web", "group:skill", "group:session", "datetime"},
-    "research":  {"duckduckgo_search", "web_fetch", "gemini_web_fetch", "google_search", "arxiv_search", "wikipedia_search",
-                  "read_file", "read_multiple_files", "list_file", "search_file", "search_content",
-                  "skill_search", "memory_search", "todo_write", "datetime"},
-    "full":      {"group:filesystem", "group:web", "group:skill", "group:memory", "group:media",
-                  "group:runtime", "group:messaging", "group:session", "group:cli_admin", "datetime"},
-}
-```
-
-### 11.2 Tool Group 展开
-
-```go
-var toolGroupsFilesystem = []string{"read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content"}
-var toolGroupsWeb       = []string{"duckduckgo_search", "web_fetch", "gemini_web_fetch", "google_search", "arxiv_search", "wikipedia_search"}
-var toolGroupsMemory    = []string{"memory_search", "memory_get"}
-var toolGroupsSkill     = []string{"skill_search", "use_skill"}
-var toolGroupsMedia     = []string{"read_image", "read_document", "create_image", "tts"}
-var toolGroupsRuntime   = []string{"shell_exec", "claude_code", "workspace_exec"}
-var toolGroupsMessaging = []string{"send_email"}
-var toolGroupsSession   = []string{"await_user_reply", "todo_write"}
-```
-
-### 11.3 策略计算结果
-
-```go
-type AgentEffectiveTools struct {
-    ToolsEnabled bool
-    Profile      string
-    Allow        []string
-    Deny         []string
-    Items        []EffectiveAgentTool
-}
-
-type EffectiveAgentTool struct {
-    ToolKey        string
-    DisplayName    string
-    Category       string
-    Source         string
-    Enabled        bool
-    EffectiveState string   // "allowed" / "denied"
-    Reason         string   // "profile:coding" / "agent_deny" / "agent_tools_disabled"
-}
-```
-
----
-
-## 十二、Biz 层 ToolRepo 子接口
-
-`ToolRepo` 原有 18 个方法，违反项目红线 #15（Repository 接口方法不得超过 5 个）。已拆分为 8 个子接口 + 1 个组合接口：
-
-| 子接口 | 方法数 | 职责 |
-|--------|--------|------|
-| `ToolReader` | 2 | 工具查询（SearchTools, GetTool） |
-| `ToolWriter` | 5 | 工具增删改（Create, Update, Delete, UpdateEnabled, UpdateConfig） |
-| `ToolInvocationReader` | 2 | 调用记录查询（SearchInvocations, GetInvocationParams） |
-| `ToolInvocationWriter` | 1 | 调用记录写入（RecordInvocation） |
-| `ToolAuditRepo` | 3 | 审计日志（RecordAudit, SearchAudits, PurgeOldAudits） |
-| `ToolOverrideReader` | 2 | Agent 覆盖查询（ListOverrides, ListOverridesByAgent） |
-| `ToolOverrideWriter` | 2 | Agent 覆盖写入（UpsertOverride, DeleteOverride） |
-| `ToolSyncer` | 1 | 内置工具同步（SyncBuiltinTools） |
-| `ToolRegistryReader` | 4 | 只读窄接口（= ToolReader + ToolOverrideReader） |
-
-`ToolRepo` 保留为组合接口（嵌入上述 8 个子接口），保持向后兼容。
-
-**窄接口传播**：
-
-| 消费者 | 依赖接口 | 说明 |
-|--------|----------|------|
-| `ToolUsecase` | `ToolRepo`（全量） | Usecase 需要全量访问 |
-| `AgentUsecase.tools` | `ToolRegistryReader` | 只需 SearchTools + Override 查询 |
-| `agent.Deps.ToolRegistry` | `biz.ToolRegistryReader` | 只需读取工具目录 |
-| `team.Runner.toolRegistry` | `biz.ToolRegistryReader` | 只需读取工具目录 |
-| `runtime.TurnReadDeps.Tools` | `biz.ToolRegistryReader` | 只需读取工具目录 |
-
----
-
-## 十三、新增工具的步骤清单
-
-1. 在 `internal/tools/toolset.go` 的 `Registry()` 中添加 `ToolRegistration` 条目（含 Tags 标签）
-2. 若工具需要配置，在 `AssemblyConfig` 中添加对应字段
-3. 在 `internal/tools/toolset.go` 中添加 `assembleXxx()` 子装配器函数
-4. 在 `internal/tools/trpc/toolsets.go` 的 `BuildToolsets()` 中添加启用标志映射
-5. 在 `internal/agent/trpc_build.go` 的 `buildToolsetsForAgent()` 中添加 effective key 到配置的映射
-6. 在 `internal/data/builtin_tools_seed.go` 中添加种子数据（key 必须与 `Declaration().Name` 一致）
-7. 在 `internal/biz/agent_effective_tools.go` 中按需更新 tool group 和 profile 定义
-8. 编写单元测试验证注册 → 装配 → 注入链路
-9. 在 `internal/tools/trpc/effective_config.go` 的 `ToolsetConfigFromEffectiveKeys` 中添加映射
-10. 在 `internal/tools/testexec/config.go` 中添加在线测试支持判断
-
----
-
-## 十四、Data 层错误处理规范
-
-Data 层统一使用 `kerrors` 返回错误，禁止 `errors.New` / `sql.ErrNoRows`：
-
-| 场景 | 使用 |
-|------|------|
-| Ent 客户端不可用 | `kerrors.InternalServer("TOOL", "ent client unavailable")` |
-| 记录不存在 | `kerrors.NotFound("TOOL", "tool not found")` |
-| 参数校验失败 | `kerrors.BadRequest("TOOL", "tool key is required")` |
-
----
-
-## 十五、装配可观测性规范
-
-`Assemble` 子装配器在以下场景必须通过 `event.SysLogWarn` 记录日志：
-
-| 场景 | 日志事件 | 说明 |
-|------|----------|------|
-| 工具已启用但配置缺失 | `system.tool_assembly_skip` | geminifetch 无 model、google_search 无 apiKey/cx |
-| Factory 返回 nil 无 error | `system.tool_assembly_skip` | stub 工具或占位注册项 |
-| OpenAPI spec 加载失败 | `system.builtin_tools_sync_fail` | 已有 |
-
----
-
-## 十六、并发安全规范
-
-| 全局变量 | 保护方式 | 位置 |
-|----------|----------|------|
-| `globalResultCache` | `sync.RWMutex`（`globalMu`） | `internal/tools/cache/result_cache.go` |
-| `toolWebResChecker` | `sync.RWMutex`（`toolWebResCheckerMu`） | `internal/biz/tool/tool_catalog_runtime.go` |
-| `filterCache.entries` | `sync.RWMutex`（读用 RLock，写用 Lock） | `internal/tools/skillruntime/filter.go` |
-
----
-
-## 十七、Wire 窄接口规范
-
-Wire provider 函数不得依赖跨模块具体类型（红线 #7）。已改造的 provider：
-
-| Provider | 旧参数 | 新参数 | 说明 |
-|----------|--------|--------|------|
-| `provideSkillWatchRunner` | `*biz.SkillUsecase` | `watch.SkillReader` + `watch.SkillWriter` | watch 包已定义窄接口 |
-| `provideMonitorUsecase` | `*biz.SkillUsecase` | `biz.FilesystemHealthReader` | 通过 `provideFilesystemHealthReader` 适配 |
-
-**待改造**：
-
-| Provider | 当前参数 | 目标 | 说明 |
-|----------|----------|------|------|
-| `provideChatServiceDeps` | `*biz.SkillUsecase` | 拆分 `rt.TurnReadDeps.SkillUC` 为窄接口 | 影响面大，后续迭代 |
-
----
-
-## 十八、Skill 文件系统安全规范
-
-`CreateSkillDir` 必须校验 slug 参数：
-
-| 校验规则 | 错误类型 | 说明 |
-|----------|----------|------|
-| 空 slug | `kerrors.BadRequest("SKILL", "slug is required")` | 防止 SKILL.md 写入根目录 |
-| 包含 `..` | `kerrors.BadRequest("SKILL", "slug contains unsafe path characters")` | 防止路径遍历 |
-| 以 `/` 开头 | `kerrors.BadRequest("SKILL", "slug contains unsafe path characters")` | 防止绝对路径逃逸 |
-
-
----
-
-## 子模块：Tools Fragment Edit 设计
-
-> **版本**：1.1 | **状态**：✅ 已实现（2026-05-22）
-> **需求**：[23 tools-fragment-edit.md](./23%20tools-fragment-edit.md) · **开发计划**：[23-tools-development.md §Phase 4](./23-tools-development.md#phase-4片段级文件编辑p1)
-> **父设计**：[23 tools.design.md §七 运行时层](./23%20tools.design.md#七运行时层)
-
----
-
-## 1. 设计目标
-
-在 **trpc-agent-go `tool/file` ToolSet** 内新增 `diff_edit`、`patch_file`，并引入 **SessionFileState** 会话缓存，使片段编辑在运行时达到：
-
-- **O(变更大小)** 的模型输出与内存处理
-- **1 读 + 1 写** 的磁盘访问（同 invocation 缓存命中时 0 读）
-- **原子多 hunk** 提交
-
----
-
-## 2. 分层与依赖
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  internal/agent/prompt.go          ← 编辑工作流提示        │
-│  internal/data/builtin_tools_seed  ← catalog 种子         │
-│  internal/biz/agent_effective_tools← toolGroupsFilesystem │
-│  internal/tools/runtime_alias.go   ← 别名（Phase 2）      │
-│  internal/tools/testexec/config.go ← 在线测试映射         │
-│  internal/agent/activity_meta.go   ← 活动流中文标签        │
-└──────────────────────────┬──────────────────────────────┘
-                           │ Assemble(file ToolSet)
-┌──────────────────────────▼──────────────────────────────┐
-│  internal/tools/toolset.go         ← Registry 不变       │
-│  internal/tools/trpc/toolsets.go   ← FilesystemDir 注入  │
-└──────────────────────────┬──────────────────────────────┘
-                           │
-┌──────────────────────────▼──────────────────────────────┐
-│  pkg/trpc-agent-go/tool/file/      ← ★ 实现真相源        │
-│    diffedit.go / patchfile.go                            │
-│    editcontent.go        ← load/commit + SessionFileState │
-│    patch/                ← parse / apply / validate        │
-│  pkg/trpc-agent-go/tool/internal/textfile/  ← 抽取共享   │
-│    （encoding / line ending / quote fuzzy）               │
-└───────────────────────────────────────────────────────────┘
-         ↑ 复用逻辑来源（抽取，不复制业务到 internal/）
-         pkg/trpc-agent-go/tool/claudecode/
-           file_state.go · common.go (buildStructuredPatch)
-```
-
-**红线**：
+| 工具 | 职责 | 运行时状态 |
+|------|------|-----------|
+| `diff_edit` | 多片段 SEARCH/REPLACE，内存原子 apply | ⏳ 运行时工具未实现 |
+| `patch_file` | unified diff 或结构化 hunk 应用 | ⏳ 运行时工具未实现 |
+
+**已就绪部分**（catalog 与策略层）：
+
+| 位置 | 状态 | 说明 |
+|------|------|------|
+| `internal/data/builtin_tools_seed.go` | ✅ | `diff_edit` / `patch_file` seed 已添加（registryName=`file`） |
+| `internal/biz/agent_effective_tools.go` | ✅ | `toolGroupsFilesystem` 含 `diff_edit` / `patch_file` |
+| `internal/biz/tool/tool_policy_keys.go` | ✅ | `edit_file` → `diff_edit` policy alias |
+| `internal/tools/alias/alias.go` | ✅ | `edit_file` → `diff_edit` runtime alias |
+| `internal/tools/testexec/config.go` | ✅ | `diff_edit` / `patch_file` 映射到 `file` |
+| `internal/tools/trpc/effective_config.go` | ✅ | effective key 映射 |
+| `internal/tools/trpc/runtime_config.go` | ✅ | runtime config 映射 |
+| `internal/agent/activity_meta.go` | ✅ | `diff_edit` → 片段编辑、`patch_file` → 应用补丁 中文标签 |
+| `internal/agent/prompt.go` | ✅ | `diff_edit` / `patch_file` 工作流提示 |
+
+**未实现部分**（运行时工具实现）：
+
+| 计划位置 | 状态 | 说明 |
+|----------|------|------|
+| `pkg/trpc-agent-go/tool/file/diffedit.go` | ❌ 不存在 | `diff_edit` 工具实现 |
+| `pkg/trpc-agent-go/tool/file/patchfile.go` | ❌ 不存在 | `patch_file` 工具实现 |
+| `pkg/trpc-agent-go/tool/file/editcontent.go` | ❌ 不存在 | load/commit 编排 + SessionFileState |
+| `pkg/trpc-agent-go/tool/file/patch/` | ❌ 不存在 | hunk 类型 / apply / unified 解析 / validate |
+| `pkg/trpc-agent-go/tool/internal/textfile/` | ❌ 不存在 | 共享编码 / 行结束 / 引号 fuzzy |
+| `internal/toolcache/file_views.go` | ❌ 不存在 | per-invocation FileView 存取 |
+
+**实现红线**：
 
 - 实现放在 `pkg/trpc-agent-go/tool/file`，**禁止**在 `internal/biz` import trpc-agent-go 实现编辑逻辑
 - `internal/tools` 仅做装配、别名、catalog，不写 patch 算法
+- `runtime_alias.go`（实际为 `internal/tools/alias/alias.go`）与 `tool_policy_keys.go`（实际为 `internal/biz/tool/tool_policy_keys.go`）须同步
 
----
+**详细设计**（待运行时工具实现时参考）：
 
-## 3. 工具 API
+### 13.1 工具 API
 
-### 3.1 `diff_edit`
+#### `diff_edit`
 
-**Declaration name**：`diff_edit`
+Declaration name：`diff_edit`
 
 ```json
 {
@@ -2913,16 +2683,9 @@ Wire provider 函数不得依赖跨模块具体类型（红线 #7）。已改造
 }
 ```
 
-**Description 要点**（写入 function.WithDescription）：
+#### `patch_file`
 
-- Read file first; use `search_content` to locate symbols when needed
-- Only changed fragments — never whole file
-- Prefer over `save_file` for modifications
-- Use `patch_file` when you already have unified diff
-
-### 3.2 `patch_file`
-
-**Declaration name**：`patch_file`
+Declaration name：`patch_file`
 
 ```json
 {
@@ -2960,32 +2723,12 @@ Wire provider 函数不得依赖跨模块具体类型（红线 #7）。已改造
 
 约束：`patch` 与 `hunks` 必须且仅能提供一个。
 
-### 3.3 响应（共用字段）
+### 13.2 SessionFileState
 
-```json
-{
-  "base_directory": "...",
-  "file_name": "...",
-  "applied_edits": 2,
-  "total_replacements": 3,
-  "structured_patch": [ { "old_start": 42, "old_lines": 5, "new_start": 42, "new_lines": 7, "lines": ["-...", "+..."] } ],
-  "message": "Applied 2 edits to 'internal/foo.go'"
-}
-```
-
-`structured_patch` 格式与 claudecode `patchHunk` 对齐，供 Activity / 前端 diff 预览扩展。
-
----
-
-## 4. SessionFileState
-
-### 4.1 数据结构
-
-实现位于 **`editcontent.go`**（load/commit 编排）与 **`internal/toolcache/file_views.go`**（per-invocation 存取），**不**挂在 `fileToolSet` 实例字段上。
+**数据结构**（计划实现于 `editcontent.go` + `internal/toolcache/file_views.go`）：
 
 ```go
-// internal/toolcache/file_views.go
-
+// internal/toolcache/file_views.go（计划）
 type FileView struct {
     Content    string
     MtimeMs    int64
@@ -2999,7 +2742,7 @@ type FileView struct {
 - 与 `BuildTRPCLLMAgentCached`（Agent LRU ~10min）兼容，避免跨 session 泄漏
 - **同一文件勿并行** `diff_edit` / `patch_file`；可选 `expected_mtime_ms`（来自 `read_file.mtime_ms`）作乐观锁
 
-### 4.2 读写协议
+**读写协议**：
 
 | 操作 | 行为 |
 |------|------|
@@ -3007,119 +2750,8 @@ type FileView struct {
 | `diff_edit` / `patch_file` | `loadEditSnapshot` → cache 命中且 mtime 一致则跳过 ReadFile → apply → `commitEditSnapshot` → `storeFileView` |
 | `save_file` / `replace_content` | 写盘后 `storeSaveFileView`（读回磁盘再解码，保持 encoding 一致） |
 | mtime 不匹配 | 返回 `file_modified_externally`，hint re-read |
-| 磁盘文件已删、cache 仍命中 | **同 invocation 设计取舍**：仍用 cache 内容编辑并可写回重建；外部删改以 mtime 为准；见 Review FRAG-P2-03 |
 
-### 4.3 与 claudecode fileState 的关系
-
-| 项 | claudecode | file ToolSet SessionFileState |
-|----|------------|-------------------------------|
-| read-before-write 强制 | 是 | **否**（Prompt 软约束 + mtime 硬约束） |
-| partial read 视图 | 是 | Phase 1 全文件；Phase 2 可记录 slice |
-| 引号 fuzzy | 是 | **复用**抽取后的 `findActualString` |
-
-抽取目标包：`pkg/trpc-agent-go/tool/internal/textfile`（claudecode 与 file 共同 import）。
-
----
-
-## 5. 核心算法
-
-### 5.1 diff_edit 流程
-
-```
-resolvePath(file_name)
-  → loadContent (cache or ReadFile)
-  → validate text / not binary / not .ipynb
-  → check expected_mtime_ms
-  → for each edit in edits:
-        resolve search (exact → whitespace → quote fuzzy)
-        count matches; enforce replace_all policy
-        apply strings.Replace on in-memory content
-  → buildStructuredPatch(old, new)
-  → WriteFile (preserve mode)
-  → storeView
-  → return response
-```
-
-任一 edit 失败：**不 WriteFile**，返回结构化错误（含 `edit_index`、`match_lines`）。
-
-### 5.2 patch_file 流程
-
-```
-parse patch string OR validate hunks[]
-  → loadContent
-  → for each hunk (ascending old_start):
-        verify '-' lines against file lines at old_start
-        apply splice
-  → WriteFile + storeView
-```
-
-Unified diff 解析子集（Phase 1）：
-
-- `@@ -old_start,old_lines +new_start,new_lines @@` hunk header
-- 行前缀：` ` context、`-` delete、`+` insert
-- 不支持：git binary patch、`diff --git` 多文件（单文件 only）
-
-### 5.3 patch 包
-
-```
-pkg/trpc-agent-go/tool/file/patch/
-  hunk.go           // patchHunk 类型（自 claudecode 迁入）
-  apply.go          // ApplyHunks(content, hunks) (string, error)
-  parse_unified.go  // ParseUnifiedDiff(patch) ([]patchHunk, error)
-  validate.go       // ValidateHunk(fileLines, hunk) error
-```
-
----
-
-## 6. file ToolSet 注册
-
-在 `file.go` 的 `NewToolSet` 中：
-
-```go
-type fileToolSet struct {
-    // ...existing fields...
-    diffEditEnabled   bool  // default true
-    patchFileEnabled  bool  // default true
-}
-```
-
-工具列表追加（在 `replaceContentEnabled` 之后）：
-
-- `diffEditTool()`
-- `patchFileTool()`
-
-Limits（常量）：
-
-| 常量 | 默认值 |
-|------|--------|
-| `maxEditsPerCall` | 20 |
-| `maxPatchBytes` | 256 KiB |
-| `maxEditSearchBytes` | 64 KiB per search block |
-| `maxEditReplaceBytes` | 256 KiB per replace block |
-
----
-
-## 7. 项目集成清单
-
-| # | 位置 | 变更 |
-|---|------|------|
-| 1 | `internal/data/builtin_tools_seed.go` | 新增 `diff_edit`、`patch_file` seed |
-| 2 | `internal/biz/agent_effective_tools.go` | `toolGroupsFilesystem` 追加 key |
-| 3 | `internal/biz/tool_policy_keys.go` | 若需 policy alias |
-| 4 | `internal/tools/runtime_alias.go` | Phase 2：`edit_file` → `diff_edit`（可选） |
-| 4b | `internal/biz/tool_policy_keys.go` | **须与 runtime_alias 同步**（allow/deny 策略键） |
-| 5 | `internal/tools/testexec/config.go` | `AssemblyForCatalogKey` 映射到 `file` |
-| 6 | `internal/agent/prompt.go` | 编辑工作流：`diff_edit` 优先 |
-| 7 | `internal/agent/activity_meta.go` | 中文标签 |
-| 8 | `web/src/features/agents/useAgentToolsCatalog.ts` | filesystem 组展示（若硬编码列表） |
-
-**Registry**：仍注册 `file` ToolSet 一条，不新增 Registry 名。
-
----
-
-## 8. 错误响应结构
-
-工具错误通过 `message` + 结构化 JSON 字段返回（function tool result）：
+### 13.3 错误响应结构
 
 **diff_edit — 歧义匹配**
 
@@ -3154,9 +2786,16 @@ Limits（常量）：
 }
 ```
 
----
+### 13.4 Limits 常量
 
-## 9. 性能设计
+| 常量 | 默认值 |
+|------|--------|
+| `maxEditsPerCall` | 20 |
+| `maxPatchBytes` | 256 KiB |
+| `maxEditSearchBytes` | 64 KiB per search block |
+| `maxEditReplaceBytes` | 256 KiB per replace block |
+
+### 13.5 性能设计
 
 | 层级 | 手段 | 预期 |
 |------|------|------|
@@ -3166,11 +2805,7 @@ Limits（常量）：
 | 运行时 | 内存 patch | 毫秒级（Go string splice） |
 | Phase 2 | 行区间读 | >1MB 文件仅加载 hunk ±context |
 
-**端到端**：磁盘 I/O 已接近 Cursor 本地写入；Agent 场景仍受 LLM 推理约束，无法达到 IDE 即时感。
-
----
-
-## 10. 安全
+### 13.6 安全
 
 - 复用 `resolvePath`、`maxFileSize`、文本校验（与 `read_file` / `replace_content` 一致）
 - `maxPatchBytes` / `maxEditSearchBytes` / `maxEditReplaceBytes` 防 DoS
@@ -3180,30 +2815,69 @@ Limits（常量）：
 
 ---
 
-## 11. 测试策略
+## 十四、Data 层错误处理规范
 
-| 包 | 覆盖 |
-|----|------|
-| `tool/file/patch/*_test.go` | unified 解析、hunk apply、偏移累加 |
-| `tool/file/diffedit_test.go` | 多 edit 原子性、fuzzy、歧义、mtime_ms |
-| `tool/file/patchfile_test.go` | mismatch 回滚、新建文件 |
-| `internal/toolcache/file_views.go` + `editcontent.go` | cache hit / mtime 失效 |
-| `internal/tools/testexec/config_test.go` | catalog key 映射 |
+Data 层统一使用 `kerrors` 返回错误，禁止 `errors.New` / `sql.ErrNoRows`：
 
----
-
-## 12. 迁移阶段（技术侧）
-
-| 阶段 | 内容 |
+| 场景 | 使用 |
 |------|------|
-| **T1** | 抽取 `textfile` + `patch` 包；`patch_file`（hunks 模式） |
-| **T2** | unified diff 解析；`diff_edit` |
-| **T3** | SessionFileState + read/save/replace 写回缓存 |
-| **T4** | catalog / prompt / activity 集成 |
-| **T5** | 可选：`edit_file` 别名 → `diff_edit`；`replace_content` deprecated 描述 |
+| Ent 客户端不可用 | `kerrors.InternalServer("TOOL", "ent client unavailable")` |
+| 记录不存在 | `kerrors.NotFound("TOOL", "tool not found")` |
+| 参数校验失败 | `kerrors.BadRequest("TOOL", "tool key is required")` |
 
-任务编号与验收勾选见 [23-tools-development.md §Phase 4](./23-tools-development.md#phase-4片段级文件编辑p1)。
+所有 Repo 方法的数据库错误必须经 `entErrToBizErr(err, domain)` 翻译（红线 DB-R5）。
 
 ---
 
-*文档版本：1.0 — 片段级文件编辑技术设计；不含修复记录与 sprint 进度。*
+## 十五、装配可观测性规范
+
+`Assemble` 子装配器在以下场景必须通过 `lg.Warn` 记录日志（loggateway.Logger）：
+
+| 场景 | 日志事件 | 说明 |
+|------|----------|------|
+| 工具已启用但配置缺失 | `system.tool_assembly_skip` | geminifetch 无 model、google_search 无 apiKey/cx |
+| Factory 返回 nil 无 error | `system.tool_assembly_skip` | stub 工具或占位注册项 |
+| OpenAPI spec 加载失败 | `system.builtin_tools_sync_fail` | 已有 |
+
+---
+
+## 十六、并发安全规范
+
+| 全局变量 | 保护方式 | 位置 |
+|----------|----------|------|
+| `globalResultCache` | `sync.RWMutex`（`globalMu`） | `internal/tools/cache/result_cache.go` |
+| `toolWebResChecker` | `sync.RWMutex`（`toolWebResCheckerMu`） | `internal/biz/tool/tool_catalog_runtime.go` |
+| `filterCache.entries` | `sync.RWMutex`（读用 RLock，写用 Lock） | `internal/tools/skillruntime/filter.go` |
+| `filterCache` 计数器 | `atomic` | `internal/tools/skillruntime/filter.go` |
+
+---
+
+## 十七、Skill 文件系统安全规范
+
+`CreateSkillDir` 必须校验 slug 参数：
+
+| 校验规则 | 错误类型 | 说明 |
+|----------|----------|------|
+| 空 slug | `kerrors.BadRequest("SKILL", "slug is required")` | 防止 SKILL.md 写入根目录 |
+| 包含 `..` | `kerrors.BadRequest("SKILL", "slug contains unsafe path characters")` | 防止路径遍历 |
+| 以 `/` 开头 | `kerrors.BadRequest("SKILL", "slug contains unsafe path characters")` | 防止绝对路径逃逸 |
+
+---
+
+## 十八、新增工具的步骤清单
+
+1. 在 `internal/tools/toolset.go` 的 `Registry()` 中添加 `ToolRegistration` 条目（含 Tags / Group / Deferred）
+2. 若工具需要配置，在 `AssemblyConfig` 的对应子配置（`ShellExec` / `Search` / `ClaudeCode` / `MCP` / `Session` / `Browser`）中添加字段
+3. 在 `internal/tools/toolset.go` 中添加 `assembleXxx()` 子装配器函数
+4. 在 `internal/tools/trpc/toolsets.go` 的 `BuildToolsets()` 中添加启用标志映射
+5. 在 `internal/agent/trpc_build.go` 的 `buildToolsetsForAgent()` 中添加 effective key 到配置的映射
+6. 在 `internal/data/builtin_tools_seed.go` 中添加种子数据（key 必须与 `Declaration().Name` 一致）
+7. 在 `internal/biz/agent_effective_tools.go` 中按需更新 tool group 和 profile 定义
+8. 编写单元测试验证注册 → 装配 → 注入链路
+9. 在 `internal/tools/trpc/effective_config.go` 的 `ToolsetConfigFromEffectiveKeys` 中添加映射
+10. 在 `internal/tools/testexec/config.go` 中添加在线测试支持判断
+11. 若有别名，同步更新 `internal/tools/alias/alias.go` 和 `internal/biz/tool/tool_policy_keys.go`
+
+---
+
+*文档版本：4.0 — 按三件套边界重组，与代码对齐（2026-06-17）。*

@@ -51,7 +51,7 @@ func (r *allocationPlanRepo) Create(ctx context.Context, plan *biz.AllocationPla
 		string(plan.Status), plan.CreatedAt, plan.UpdatedAt,
 	)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "ALLOCATION_PLAN")
 	}
 	return r.GetByID(ctx, plan.ID)
 }
@@ -66,7 +66,7 @@ func (r *allocationPlanRepo) GetByID(ctx context.Context, id string) (*biz.Alloc
 			status, created_at, updated_at
 		 FROM allocation_plans WHERE id = ?`, id)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "ALLOCATION_PLAN")
 	}
 	defer rows.Close()
 	if !rows.Next() {
@@ -74,7 +74,7 @@ func (r *allocationPlanRepo) GetByID(ctx context.Context, id string) (*biz.Alloc
 	}
 	plan, err := scanAllocationPlanFromRows(rows)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "ALLOCATION_PLAN")
 	}
 	return plan, nil
 }
@@ -100,7 +100,7 @@ func (r *allocationPlanRepo) Update(ctx context.Context, plan *biz.AllocationPla
 		plan.ID,
 	)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "ALLOCATION_PLAN")
 	}
 	return r.GetByID(ctx, plan.ID)
 }
@@ -115,14 +115,14 @@ func (r *allocationPlanRepo) ListBySpiritSessionID(ctx context.Context, spiritSe
 			status, created_at, updated_at
 		 FROM allocation_plans WHERE spirit_session_id = ? ORDER BY created_at DESC`, spiritSessionID)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "ALLOCATION_PLAN")
 	}
 	defer rows.Close()
 	var plans []*biz.AllocationPlan
 	for rows.Next() {
 		plan, err := scanAllocationPlanFromRows(rows)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "ALLOCATION_PLAN")
 		}
 		plans = append(plans, plan)
 	}
@@ -164,7 +164,7 @@ func scanAllocationPlanFromRows(rows *sql.Rows) (*biz.AllocationPlan, error) {
 		&status, &plan.CreatedAt, &plan.UpdatedAt,
 	)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "ALLOCATION_PLAN")
 	}
 
 	plan.Status = biz.AllocationStatus(status)

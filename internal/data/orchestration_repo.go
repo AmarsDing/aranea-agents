@@ -61,7 +61,7 @@ func (r *orchestrationRepo) Create(ctx context.Context, handle *biz.Orchestratio
 		synthesisResultJSON, handle.CreatedAt, handle.UpdatedAt,
 	)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "ORCHESTRATION")
 	}
 	return r.GetByID(ctx, handle.ID)
 }
@@ -77,7 +77,7 @@ func (r *orchestrationRepo) GetByID(ctx context.Context, id string) (*biz.Orches
 			synthesis_result_json, created_at, updated_at
 		 FROM orchestrations WHERE id = ?`, id)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "ORCHESTRATION")
 	}
 	defer rows.Close()
 	if !rows.Next() {
@@ -85,7 +85,7 @@ func (r *orchestrationRepo) GetByID(ctx context.Context, id string) (*biz.Orches
 	}
 	handle, err := scanOrchestrationFromRows(rows)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "ORCHESTRATION")
 	}
 	return handle, nil
 }
@@ -121,7 +121,7 @@ func (r *orchestrationRepo) Update(ctx context.Context, handle *biz.Orchestratio
 		handle.ID,
 	)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "ORCHESTRATION")
 	}
 	return r.GetByID(ctx, handle.ID)
 }
@@ -137,14 +137,14 @@ func (r *orchestrationRepo) ListBySpiritSessionID(ctx context.Context, spiritSes
 			synthesis_result_json, created_at, updated_at
 		 FROM orchestrations WHERE spirit_session_id = ? ORDER BY created_at DESC`, spiritSessionID)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "ORCHESTRATION")
 	}
 	defer rows.Close()
 	var handles []*biz.OrchestrationHandle
 	for rows.Next() {
 		handle, err := scanOrchestrationFromRows(rows)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "ORCHESTRATION")
 		}
 		handles = append(handles, handle)
 	}
@@ -158,14 +158,14 @@ func (r *orchestrationRepo) ListByStatus(ctx context.Context, status biz.Orchest
 			synthesis_result_json, created_at, updated_at
 		 FROM orchestrations WHERE status = ? ORDER BY created_at DESC`, string(status))
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "ORCHESTRATION")
 	}
 	defer rows.Close()
 	var handles []*biz.OrchestrationHandle
 	for rows.Next() {
 		handle, err := scanOrchestrationFromRows(rows)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "ORCHESTRATION")
 		}
 		handles = append(handles, handle)
 	}
@@ -183,7 +183,7 @@ func scanOrchestrationFromRows(rows *sql.Rows) (*biz.OrchestrationHandle, error)
 		&synthesisResultJSON, &handle.CreatedAt, &handle.UpdatedAt,
 	)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "ORCHESTRATION")
 	}
 
 	handle.Strategy = biz.OrchestrationStrategy(strategy)

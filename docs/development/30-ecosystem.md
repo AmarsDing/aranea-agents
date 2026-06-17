@@ -1,6 +1,8 @@
 # 生态商城设计
 
-本文档设计 Aranea 的 **生态商城（Ecosystem Marketplace）** 和 **附带生态（Ecosystem Preset）** 两个子模块。商城不是简单的资源展示页，而是围绕 **Agent、Skill、Team** 三类可复用能力建立发现、评估、安装、交易、发布和治理体系。附带生态则提供行业预设数据的按需加载/卸载管理。
+本文档定义 Aranea 的 **生态商城（Ecosystem Marketplace）** 和 **附带生态（Ecosystem Preset）** 两个子模块的用户视角需求。商城不是简单的资源展示页，而是围绕 **Agent、Skill、Team** 三类可复用能力建立发现、评估、安装、交易、发布和治理体系。附带生态则提供行业预设数据的按需加载/卸载管理。
+
+> 技术设计见 `30-ecosystem.design.md`，开发计划与现状评估见 `30-ecosystem.development.md`。
 
 ---
 
@@ -37,9 +39,9 @@
 | Channel 模板 | 飞书、Slack、Email、Webhook 等渠道接入模板 |
 | Workflow 模板 | 跨 Agent / Tool / Skill 的业务流程模板 |
 
-### A3. 前端页面设计
+### A3. 前端页面交互规格
 
-| 区域 | 内容 |
+| 区域 | 用户可见内容 |
 |------|------|
 | Hero 区 | 商城定位、GMV、商品数、创作者数、安装数、浏览和发布入口 |
 | 类型入口 | Agent 模板、Skill 包、Team 编排三类入口卡片 |
@@ -51,19 +53,6 @@
 | 榜单 | 本周高评分 / 高安装商品 |
 | 发布流程 | 打包、审核、上架三个步骤 |
 
-Quasar 组件映射：
-
-| 功能 | 组件 |
-|------|------|
-| 页面 | `QPage` + `QCard` |
-| 搜索 | `QInput` |
-| 类型筛选 | `QBtnToggle` |
-| 价格 / 排序 | `QSelect` |
-| 商品展示 | `QCard` + `QChip` + `QAvatar` |
-| 详情 | `QDialog` + `QExpansionItem` |
-| 发布流程 | `QTimeline` |
-| 状态 / 认证 | `QBadge` + `QIcon` |
-
 主题要求：
 
 | 模式 | 要求 |
@@ -72,69 +61,9 @@ Quasar 组件映射：
 | 黑夜模式 | 使用 `body.body--dark` 下深色渐变背景、深色卡片、低对比边框 |
 | 响应式 | 桌面为左列表右治理栏；移动端改为单列 |
 
-### A4. 商品卡字段
+> Quasar 组件映射、组件结构与前端类型定义见设计文档 `30-ecosystem.design.md` §七。
 
-```ts
-export type MarketplaceProductType = "agent" | "skill" | "team";
-
-export type MarketplaceProduct = {
-  id: string;
-  type: MarketplaceProductType;
-  name: string;
-  creator_id: string;
-  creator_name: string;
-  description: string;
-  tags: string[];
-  price_cents: number;
-  pricing_type: "free" | "one_time" | "subscription" | "enterprise";
-  rating: number;
-  install_count: number;
-  trust_score: number;
-  verified: boolean;
-  status: "draft" | "reviewing" | "listed" | "rejected" | "delisted";
-  latest_version: string;
-  capabilities: string[];
-  permissions_summary: string[];
-  created_at: string;
-  updated_at: string;
-};
-
-export type MarketplaceProductDetail = MarketplaceProduct & {
-  readme_markdown: string;
-  changelog_markdown: string;
-  screenshots: string[];
-  versions: MarketplaceProductVersion[];
-  reviews: MarketplaceReview[];
-  install_schema_json: string;
-  manifest_json: string;
-};
-```
-
-### A5. 数据模型
-
-> 详细 SQL DDL 见设计文档 `30-ecosystem.design.md`。此处仅描述概念模型。
-
-| 实体 | 职责 | 关键字段 |
-|------|------|----------|
-| 产品（Product） | 商品主信息 | id, type, name, pricing_type, status, rating, install_count |
-| 产品版本（ProductVersion） | 不可变版本快照 | product_id, version, artifact_json, manifest_json, permissions_json |
-| 安装记录（Install） | 商品与 workspace 资源的关联 | product_id, version_id, installed_resource_type, installed_resource_id |
-| 交易订单（Order） | 付费商品交易记录 | product_id, buyer/seller, amount, status, payment_ref |
-| 评分评论（Review） | 用户评价 | product_id, user_id, rating, body |
-
-### A6. API 设计
-
-| API | 方法 | 说明 |
-|-----|------|------|
-| 商品列表 | `GET /v1/ecosystem/products` | 筛选：type/pricing/keyword/sort/status |
-| 商品详情 | `GET /v1/ecosystem/products/{id}` | 主信息 + 版本 + 能力 + 权限 + 评分 |
-| 发布商品 | `POST /v1/ecosystem/products` | 创建草稿，进入审核流程 |
-| 安装商品 | `POST /v1/ecosystem/products/{id}/install` | 根据类型创建 Agent/Skill/Team |
-| 卸载商品 | `DELETE /v1/ecosystem/products/{id}/install` | 移除安装记录 |
-| 评价商品 | `POST /v1/ecosystem/products/{id}/ratings` | 评分 + 评论（待实现） |
-| 购买/订单 | `POST /v1/ecosystem/products/{id}/checkout` | 交易流程（待实现） |
-
-### A7. 发布与审核流程
+### A4. 发布与审核流程
 
 ```text
 创建商品草稿
@@ -158,7 +87,7 @@ export type MarketplaceProductDetail = MarketplaceProduct & {
 | 安装可逆 | 是否支持禁用、卸载、版本回滚 |
 | 安全签名 | artifact hash 和 signature 是否匹配 |
 
-### A8. 权限与安全
+### A5. 权限与安全
 
 商城安装必须显式展示权限声明。
 
@@ -183,7 +112,7 @@ export type MarketplaceProductDetail = MarketplaceProduct & {
 | 费用影响 | 是否会产生模型调用、工具调用或订阅费用 |
 | 回滚方式 | 如何禁用、卸载、恢复旧版本 |
 
-### A9. 与现有系统的关系
+### A6. 与现有系统的关系
 
 商城只负责 **发现、交易、发布、安装**，运行时仍复用现有模块。
 
@@ -197,39 +126,7 @@ export type MarketplaceProductDetail = MarketplaceProduct & {
 | Usage 统计 | 商城商品可按 installed_resource_id 统计运行成本和质量 |
 | Monitor | 商品安装、审核、运行异常可写入 monitor/audit |
 
-### A10. 前端状态与类型
-
-建议新增独立 store：
-
-```ts
-export const useMarketplaceStore = defineStore("marketplace", {
-  state: () => ({
-    query: {} as MarketplaceProductQuery,
-    items: [] as MarketplaceProduct[],
-    total: 0,
-    selected: null as MarketplaceProductDetail | null,
-    loading: false
-  }),
-  actions: {
-    async search() {},
-    async loadDetail(id: string) {},
-    async install(id: string) {},
-    async publish(payload: MarketplacePublishInput) {}
-  }
-});
-```
-
-### A11. 落地阶段
-
-| 阶段 | 工作 | 状态 |
-|------|------|------|
-| Phase 1 | 前端商城原型 + 基础 API（List/Get/Publish/Install/Uninstall） | ✅ 已完成 |
-| Phase 2 | 安装逻辑补全（解析 artifact 创建实际资源） | ❌ 待开发 |
-| Phase 3 | 审核与可信治理（权限声明、签名校验、审计日志） | ❌ 待开发 |
-| Phase 4 | 交易商业化（订单、支付、授权、分账） | ❌ 待开发 |
-| Phase 5 | 质量与推荐（评分评论、榜单、质量指标、推荐） | ❌ 待开发 |
-
-### A12. 关键设计原则
+### A7. 关键设计原则
 
 1. **商品是版本化能力包**：安装的是某个版本快照，不是实时引用创作者当前配置。
 2. **运行复用现有模块**：商城不直接执行 Agent / Skill / Team，只负责安装和治理。
@@ -349,11 +246,4 @@ export const useMarketplaceStore = defineStore("marketplace", {
 - 不做商城/认证 Agent/Team 的 Kind 相关改动
 - 不做拖拽排序后端 API 新增（复用现有 `reorderTaxonomy` API）
 
-### B6. 落地阶段
-
-| 阶段 | 工作 | 状态 |
-|------|------|------|
-| Phase 1 | 架构改造（Kind 统一、Preset API/Store、KindBadge） | ✅ 已完成 |
-| Phase 2 | 行业 Pack 数据补全（finance 补全 + selfmedia/softwaredev 创建） | ❌ 待开发 |
-| Phase 3 | 前端树形布局（行业分类管理页改造） | ❌ 待开发 |
-| Phase 4 | system_builtin 删除保护完善 | ❌ 待开发 |
+> 落地阶段与任务进度见开发计划 `30-ecosystem.development.md`。

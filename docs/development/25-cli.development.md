@@ -39,13 +39,28 @@
 | WS envelope 类型 | **部分实现** | `internal/event/contract/envelope.go`：`tool_call` / `tool_result` 已定义；`tool.error` 未定义（使用通用 `error` 类型） |
 | Skill proto 既有 RPC | `import / import-status / import-apply / refine-conflict-group` 已 proto-first | `api/kratos/skill/v1/skill.proto` |
 | Chat `AwaitUserReply` / `EnqueueUserMessage` | 已 proto-first | `api/kratos/chat/v1/chat.proto:223,229` |
-| `cmd/araneactl/lint` 规则 | **未实现** | `cmd/araneactl/` 目录不存在；R12 lint 规则缺失 |
+| `cmd/araneactl/lint` 规则 | **已实现** | `cmd/araneactl/lint/main.go` 含 R12 黑名单检查（`r12CLINoBackendImport`）；配套 `r12_test.go` + `testdata/r12_violation.go.txt` |
+| `docs/guides/cli-quickstart.md` | **已创建** | 文件存在；`docs/README.md` 索引文件不存在（仓库无顶层 docs/README） |
+| `monitor` 命令 | **未实现** | `cmd/aranea/main.go` 未注册 `NewMonitorCmd`；`internal/cli/cmd/` 下无 `monitor.go`（CLI-27 其余 6 类资源已实现） |
 | `make cli` target | **已实现** | Makefile 含 `cli` / `cli-all` target |
 | REPL | **已实现** | `internal/cli/repl/` 含 repl.go / slash.go / render.go / history.go |
 | 额外命令（实施中新增） | **已实现** | `graph` / `pkg` / `import` / `pack` 命令已存在 |
-| `--timeout` 全局 flag | **已实现** | 实施中新增，非原计划 |
+| `--timeout` 全局 flag | **已实现** | `cmd/aranea/main.go:160` 注册为 PersistentFlag，默认 60s |
 
-> 结论：P0 核心任务（CLI-01~11）已基本完成；P1 部分任务（CLI-20/21/22/23/27）已实现；主要缺口为 R12 lint（CLI-12）、文档（CLI-13/30）、`tool.error` envelope、`SystemInfoResponse` 字段补齐。
+> 结论：P0 核心任务（CLI-01~13）已基本完成（R12 lint 已上线、quickstart 已落地）；P1 部分任务（CLI-20/21/22/23/27）已实现；主要缺口为 `monitor` 命令（CLI-27 残留）、`tool.error` envelope、`SystemInfoResponse` 字段补齐、CLI-28/29/30。
+
+### 1.1 后端契约（BE-1~BE-6）实现状态
+
+> 设计文档 §4.2 定义的目标契约；本表跟踪代码实际实现状态（从设计文档迁移，避免设计文档混入进度信息）。
+
+| ID | 接口 | 状态 | 证据 / 差距 |
+|----|------|------|------------|
+| BE-1 | `GET /v1/system/info` | ⚠️ 部分实现 | `internal/service/system_info.go` + `internal/server/http.go` 手动注册路由；**缺** `system_admin_agent_id` / `system_admin_agent_key` / `skill_max_zip_mb` 字段 |
+| BE-2 | `POST /v1/skills/import` 接收 multipart 来源字段 | ❌ 未实现 | `internal/service/skill_import_http.go` 仅解析 `file` 字段；未解析 `source` / `source_url` / `source_ref` / `source_subpath` / `client_validation` |
+| BE-3 | `SeedSystemAdminAgent()` 注入 `__system_admin__` | ✅ 已实现 | `internal/data/seed_system_admin.go::SeedSystemAdminAgent`（`readonly=1`, `kind=system`, `tools_profile=system_admin`）；含 SeedSpiritAgent/SeedMemoryAgent/SeedSkillsAgent/SeedBuiltinCLIAdminTools |
+| BE-4 | `SeedBuiltinTools()` + `SeedToolGroups()` 注册 `cli_admin_*` | ✅ 已实现 | `internal/data/seed_system_admin.go::SeedBuiltinCLIAdminTools` 注册 `cli_admin_*` 工具记录 |
+| BE-5 | `internal/tools/cli_admin/` 工具实现 | ⚠️ 部分实现 | 已实现：`skill_list` / `skill_install_from_url` / `pkg_install_from_url` / `agent_list` / `agent_get`；**待实现**：`skill_get` / `skill_import_status` / `skill_import_apply` / `team_*` / `plugin_*` / `mcp_*` / `cron_*` / `channel_*` / `provider_*` / `session_*` |
+| BE-6 | WS 下行 envelope 细化 | ⚠️ 部分实现 | `internal/event/contract/envelope.go`：`tool_call` / `tool_result` 已定义；**`tool.error` 未定义**（使用通用 `EnvelopeTypeError = "error"`）；`message.delta` 实际为 `EnvelopeTypeTextDelta = "text_delta"` |
 
 ---
 
@@ -241,13 +256,13 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
 - **DoD**：4 个子命令均通过；`enable`/`disable` 二次确认。
 - **关联**：PRD US-04
 
-#### CLI-12 Makefile target + lint R12 黑名单 ⚠️ 部分完成
+#### CLI-12 Makefile target + lint R12 黑名单 ✅ 已完成
 - **工种**：CLI
 - **估时**：1
 - **依赖**：CLI-01..11（建议在所有 CLI 业务文件落地后引入 R12，避免误伤）
 - **修改 / 新增**：
   - `Makefile`：新增 `cli` / `cli-all` target；
-  - `cmd/araneactl/lint/main.go`：新增 `checkR12()`（与现有 R1/R2 同模式：AST 扫 import），并在 main 中调度；
+  - `cmd/araneactl/lint/main.go`：新增 `r12CLINoBackendImport()`（与现有 R1/R2 同模式：AST 扫 import），并在 main 中调度；
   - `cmd/araneactl/lint/r12_test.go`（构造一个"故意违例"的 fixture 文件，断言 lint 失败）。
 - **DoD**：
   - `make cli` 产出 `./bin/aranea`；
@@ -256,9 +271,9 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
   - 手工构造一个 `internal/cli/cmd/_bad.go` 引入 `internal/biz` → `make lint` 失败；删除后通过。
 - **关联**：设计 §7.3；PRD R11 / R40
 
-✅ `make cli` 已完成；❌ `cmd/araneactl/` 目录不存在，R12 lint 规则缺失；⚠️ `cli-all` 仅覆盖 Linux/amd64
+✅ `make cli` 已完成；✅ R12 lint 规则已实现（`cmd/araneactl/lint/main.go::r12CLINoBackendImport` + `r12_test.go` + `testdata/r12_violation.go.txt`）；⚠️ `cli-all` 仅覆盖 Linux/amd64（Makefile `cli-all` target 仅编译 `GOOS=linux GOARCH=amd64`）
 
-#### CLI-13 文档 `docs/guides/cli-quickstart.md` ❌ 未完成
+#### CLI-13 文档 `docs/guides/cli-quickstart.md` ✅ 已完成（有残留）
 - **工种**：CLI
 - **估时**：0.5
 - **依赖**：CLI-01..12
@@ -268,15 +283,17 @@ P0 与 P1 之间存在硬依赖：CLI-20（系统管家 Agent 种子）必须先
 - **DoD**：用户照文档复制粘贴可端到端跑通 5 个命令；中文 markdown ≤ 200 行。
 - **关联**：PRD R12
 
+✅ `docs/guides/cli-quickstart.md` 已创建；⚠️ `docs/README.md` 索引文件不存在（仓库无顶层 docs/README，无法完成"链接进索引"部分）
+
 #### **P0 退出条件（必须全部满足）**
 
-- [x] CLI-01..11 ✅ 已完成；CLI-12 ⚠️ 部分完成（R12 lint 缺失）；CLI-13 ❌ 未完成
+- [x] CLI-01..13 ✅ 已完成（CLI-12 R12 lint 已上线；CLI-13 quickstart 已落地；残留：`cli-all` 仅 Linux/amd64、`docs/README.md` 索引缺失）
 - [x] `./bin/aranea agent ls` 对真实 `cmd/admin` 后端可正确分页；
 - [x] `make lint` / `make test` / `go build ./cmd/aranea/` 全绿；
-- [ ] PRD §9.1 的 R0..R12 全绿（R12 lint 规则缺失，待补齐）；
+- [x] PRD §9.1 的 R0..R12 全绿（R11 R12 lint 已实现；R12 quickstart 已创建）；
 - [ ] 在 `docs/changelog/2026-XX-XX-CLI-P0-MVP.md` 写一份变更说明，列入 `make ci` 不收紧（不强制 `make cli`）。
 
-> **差距汇总**：CLI-07 缺少 `system_admin_agent_id` / `system_admin_agent_key` / `skill_max_zip_mb` 字段；CLI-12 R12 lint 规则缺失、`cli-all` 仅覆盖 Linux/amd64；CLI-13 文档未完成。
+> **差距汇总**：CLI-07 缺少 `system_admin_agent_id` / `system_admin_agent_key` / `skill_max_zip_mb` 字段；`cli-all` 仅覆盖 Linux/amd64；`docs/README.md` 索引文件不存在。
 
 ---
 
@@ -386,7 +403,7 @@ WS 客户端已实现，但 `tool.error` envelope 类型未定义（使用通用
 - **DoD**：每个子命令各一条 httptest；手工对真实后端 import 一个本地 zip → 看到 job_id → status pending → apply → 成功。
 - **关联**：PRD US-12 / R26
 
-#### CLI-27 剩余资源命令（team / plugin / mcp / cron / channel / session / monitor） ✅ 已完成
+#### CLI-27 剩余资源命令（team / plugin / mcp / cron / channel / session / monitor） ⚠️ 部分完成（6/7）
 - **工种**：CLI
 - **估时**：3（建议拆 CLI-27.1 team、CLI-27.2 plugin、CLI-27.3 mcp、CLI-27.4 cron、CLI-27.5 channel、CLI-27.6 session、CLI-27.7 monitor，每个 0.5d）
 - **依赖**：CLI-03, CLI-05
@@ -395,6 +412,8 @@ WS 客户端已实现，但 `tool.error` envelope 类型未定义（使用通用
   - `internal/cli/client/{team,plugin,mcp,cron,channel,session,monitor}.go`
 - **DoD**：每个资源至少 1 条 happy-path smoke + 1 条 httptest；`channel send` 必须 `--yes`，否则即使 TTY 也拒绝（与删除不同：channel send 是外部副作用，无 prompt 路径）。
 - **关联**：PRD US-12 / R27
+
+✅ team / plugin / mcp / cron / channel / session 六类已实现（`cmd/aranea/main.go` 已注册）；❌ `monitor` 未实现（`main.go` 未注册 `NewMonitorCmd`，`internal/cli/cmd/` 下无 `monitor.go`）
 
 #### CLI-28 `aranea completion <shell>` ❌ 未完成
 - **工种**：CLI
@@ -427,12 +446,12 @@ WS 客户端已实现，但 `tool.error` envelope 类型未定义（使用通用
 
 #### **P1 退出条件**
 
-- [ ] CLI-20..30 全绿（CLI-20/21/23/27 ✅；CLI-22 ⚠️ 部分完成；CLI-24/25/26 ⚠️ 待确认；CLI-28/29/30 ❌ 未完成）；
+- [ ] CLI-20..30 全绿（CLI-20/21/23 ✅；CLI-22 ⚠️ 部分完成；CLI-24/25/26 ⚠️ 待确认；CLI-27 ⚠️ 6/7（monitor 缺）；CLI-28/29/30 ❌ 未完成）；
 - [ ] PRD §9.2 R20..R29 + §9.3 R30..R34 全绿；
 - [ ] 手工跑 `aranea` 进 REPL → "帮我把 figma-code-connect 装上" → 看到工具调用 + 二次确认 + 成功；
 - [ ] Web 控制台 `/tools/runs` 看到 `source=cli` 的记录。
 
-> **差距汇总**：CLI-22 `tool.error` envelope 类型未定义；CLI-24/25/26 待确认实现状态；CLI-28/29/30 未完成。
+> **差距汇总**：CLI-22 `tool.error` envelope 类型未定义；CLI-24/25/26 待确认实现状态；CLI-27 `monitor` 命令未实现；CLI-28/29/30 未完成。
 
 ---
 
@@ -580,16 +599,16 @@ P1
 ## 8. 验收 checklist（汇总）
 
 ### 8.1 P0 出口
-- [x] CLI-01..11 ✅ 已完成；CLI-12 ⚠️ 部分完成；CLI-13 ❌ 未完成
-- [ ] PRD §9.1 R0..R12 全绿（R12 lint 规则缺失，待补齐）
+- [x] CLI-01..13 ✅ 已完成（CLI-12 R12 lint 已上线；CLI-13 quickstart 已落地；残留：`cli-all` 仅 Linux/amd64、`docs/README.md` 索引缺失）
+- [x] PRD §9.1 R0..R12 全绿（R11 R12 lint 已实现；R12 quickstart 已创建）
 - [x] `make cli` / `make lint` / `make test` 全绿
 - [x] `./bin/aranea agent ls` 对真实 admin 后端正确分页
 - [ ] `docs/changelog/2026-XX-XX-CLI-P0-MVP.md` 已合入
 - [x] 原 `25-cli-development.md` 顶部已加 superseded 指向本计划
 
 ### 8.2 P1 出口
-- [ ] CLI-20..30 全绿（CLI-20/21/23/27 ✅；CLI-22 ⚠️；CLI-24/25/26 ⚠️ 待确认；CLI-28/29/30 ❌）
-- [ ] PRD §9.2 R20..R29 全绿
+- [ ] CLI-20..30 全绿（CLI-20/21/23 ✅；CLI-22 ⚠️；CLI-24/25/26 ⚠️ 待确认；CLI-27 ⚠️ 6/7（monitor 缺）；CLI-28/29/30 ❌）
+- [ ] PRD §9.2 R20..R29 全绿（R27 monitor 缺）
 - [ ] PRD §9.3 R30..R34 全绿
 - [ ] 手工跑通对话模式 + skill install
 - [ ] Web 控制台 `/tools/runs` 可见 `source=cli` 的记录

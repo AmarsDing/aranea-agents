@@ -5,15 +5,7 @@
 
 ---
 
-## 1. 模块定位
-
-Evaluation 评估模块对 Agent 的输出质量进行结构化评估，支持自动化评估（含 LLM-as-Judge）和人工评估，评估结果用于 Agent 迭代优化。
-
-**核心价值**：将 Agent 质量从"人工感觉"转变为"可量化、可追溯、可对比"的客观指标。
-
----
-
-## 2. 用户故事
+## 1. 用户故事
 
 ### US-1 评估数据集管理
 
@@ -65,8 +57,6 @@ Evaluation 评估模块对 Agent 的输出质量进行结构化评估，支持�
 - Agent 完成对话 turn 后可自动触发关联的评估
 - 可配置自动评估的触发条件和关联数据集
 
-> **实现状态**：✅ `NativeTurnAfterHook` + `config_json.evaluation.auto_after_turn`（min_interval_sec 限流）
-
 ### US-6 人工评估标注
 
 **作为** Agent 开发者，**我希望** 对自动评估结果进行人工标注，**以便** 纠正自动评估的偏差并积累高质量标注数据。
@@ -76,8 +66,6 @@ Evaluation 评估模块对 Agent 的输出质量进行结构化评估，支持�
 - 可添加人工评语
 - 人工标注结果与自动评估结果并存展示
 
-> **实现状态**：✅ `AnnotateCaseResult` API + Results 对话框（EVAL-02）
-
 ### US-7 评估报告与趋势
 
 **作为** Agent 开发者，**我希望** 查看评估报告和趋势，**以便** 了解 Agent 质量的变化趋势和对比不同版本的表现。
@@ -86,8 +74,6 @@ Evaluation 评估模块对 Agent 的输出质量进行结构化评估，支持�
 - 可生成评估报告（汇总分数、用例分布）
 - 可查看同一 Agent 不同时间运行的分数趋势
 - 可导出评估报告
-
-> **实现状态**：✅ 客户端 CSV/JSON 导出；`GetAgentEvalTrend` + `CompareEvalRuns` API；前端 `EvaluationAnalyticsPanel` 趋势表 + Run 多选 A/B 对比
 
 ### US-8 高级评估能力（超越层）
 
@@ -101,35 +87,32 @@ Evaluation 评估模块对 Agent 的输出质量进行结构化评估，支持�
 - 支持 pass@k / pass^k 指标
 - 支持 A/B 对比不同 Agent 版本
 
-> **实现状态**：✅ 多轮 turns、脚本化/LLM UserSimulation、MultiRun + pass@k、ROUGE/XML/JSON FinalResponse、完整 ToolTrajectory（`tool_trajectory`）、趋势/A/B API 与前端
-
 ---
 
-## 3. 功能规格
+## 2. 功能规格
 
-### 3.1 评估数据集
+### 2.1 评估数据集
 
 | 属性 | 说明 |
 |------|------|
 | 名称 | 必填，数据集标识 |
 | 描述 | 选填，数据集说明 |
 | 用例数 | 自动统计 |
-| 用例格式 | JSON 数组；`metadata_json` 可含 `turns`（多轮）、`user_simulation`（`script` 脚本 / `use_llm`+`conversation_plan` LLM 驱动）、`expected_tools` / `expected_tool_calls`（ToolTrajectory） |
+| 用例格式 | JSON 数组，每条包含 input + expected_output，可选 metadata（多轮对话、用户模拟、期望工具调用等高级配置，详见设计文档） |
 
-### 3.2 评估运行
+### 2.2 评估运行
 
 | 属性 | 说明 |
 |------|------|
 | 关联数据集 | 必填 |
 | 关联 Agent | 必填 |
 | 运行状态 | pending → running → completed / failed |
-| 指标选择 | 逗号分隔的指标键名，空值运行 4 种核心指标；扩展指标 opt-in（见 §3.3） |
-| num_runs | MultiRun 重复次数（默认 1）；`>1` 时写入 pass@k / pass^k |
-| use_user_simulation | 启用 UserSimulation（脚本或 LLM，见 case metadata） |
-
+| 指标选择 | 逗号分隔的指标键名，空值运行 4 种核心指标；扩展指标 opt-in（见 §2.3） |
+| 重复次数 | MultiRun 重复次数（默认 1）；>1 时计算 pass@k / pass^k |
+| 用户模拟 | 启用 UserSimulation（脚本或 LLM，见用例 metadata） |
 | 执行方式 | 异步，创建后立即返回，后台执行 |
 
-### 3.3 评估指标
+### 2.3 评估指标
 
 #### 核心指标（metrics 为空时默认全开）
 
@@ -149,19 +132,17 @@ Evaluation 评估模块对 Agent 的输出质量进行结构化评估，支持�
 | ROUGE-L | `rouge_l` | FinalResponse ROUGE-L（阈值 0.5） |
 | 工具轨迹 | `tool_trajectory` | 顺序敏感完整 ToolTrajectory 匹配 |
 
-扩展分数字段：`eval_runs.scores_json` / `eval_case_results.scores_json`（键 → 分数 map）；legacy 四列仍同步写入。
+### 2.4 Eval LLM 模型配置
 
-### 3.4 Eval LLM 模型配置
+UserSim 与 LLM-as-Judge 共用 Provider 目录凭证；模型解析优先级：环境变量 > 系统设置 > 目录 mini/flash。
 
-UserSim 与 LLM-as-Judge 共用 Provider 目录凭证；模型解析优先级：**env > system_settings > 目录 mini/flash**。
+| 来源 | 说明 |
+|------|------|
+| 环境变量 | UserSim 与 Judge 专用变量，优先级最高 |
+| 系统设置 | Settings 页持久化；前端默认 UserSim 为 openai / gpt-4o-mini |
+| 目录回退 | Provider 目录首 mini/flash 模型 |
 
-| 来源 | 键 | 说明 |
-|------|-----|------|
-| 环境变量 | `KRATOS_EVAL_SIM_PROVIDER` / `KRATOS_EVAL_SIM_MODEL` | UserSim；Judge 未配时可回退 |
-| 环境变量 | `KRATOS_EVAL_JUDGE_PROVIDER` / `KRATOS_EVAL_JUDGE_MODEL` | Judge 专用 |
-| 系统设置 | `system_settings.eval_sim_*` / `eval_judge_*` | **Settings 页**持久化；前端默认 `openai` / `gpt-4o-mini`（Sim） |
-
-### 3.5 评估结果
+### 2.5 评估结果
 
 | 属性 | 说明 |
 |------|------|
@@ -171,22 +152,24 @@ UserSim 与 LLM-as-Judge 共用 Provider 目录凭证；模型解析优先级：
 
 ---
 
-## 4. 验收标准总览
+## 3. 验收标准总览
 
-1. 可创建评估数据集并上传用例 ✅
-2. 可对指定 Agent 运行评估（异步）✅
-3. 四种内置指标可按需选择运行 ✅
-4. 可查看运行汇总分数和逐用例结果 ✅
-5. Agent 运行后可自动触发评估（US-5）✅
-6. 评估结果可人工标注（US-6）✅
-7. 可查看评估报告和趋势（US-7）✅ 客户端导出 + 趋势/A/B API
-8. 高级评估：多轮/UserSim/扩展指标/pass@k/趋势对比（US-8）✅
-9. Eval LLM 可在系统设置页配置并持久化 ✅
-10. 可更新数据集名称/描述、删除评估运行（级联）✅
+1. 可创建评估数据集并上传用例
+2. 可对指定 Agent 运行评估（异步）
+3. 四种内置指标可按需选择运行
+4. 可查看运行汇总分数和逐用例结果
+5. Agent 运行后可自动触发评估（US-5）
+6. 评估结果可人工标注（US-6）
+7. 可查看评估报告和趋势（US-7）— 客户端导出 + 趋势/A/B API
+8. 高级评估：多轮/UserSim/扩展指标/pass@k/趋势对比（US-8）
+9. Eval LLM 可在系统设置页配置并持久化
+10. 可更新数据集名称/描述、删除评估运行（级联）
+
+> 实现进度与状态追踪见 [开发计划文档](./33-evaluation-development.md)
 
 ---
 
-## 5. 非功能需求
+## 4. 非功能需求
 
 | 项 | 要求 |
 |----|------|

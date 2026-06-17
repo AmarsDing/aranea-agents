@@ -235,8 +235,8 @@ Aranea CLI 是与后端 `cmd/admin` **完全异构**的终端控制台：
 | `skill` | `import-apply <job_id>` | P1 | `POST /v1/skills/import/{job_id}/apply` | |
 | `tool` | `ls / get / enable / disable` | P0 | `/v1/tools*` | `enable/disable` 高风险二次确认 |
 | `system` | `info` | P0 | **新增** `GET /v1/system/info` | 见 §3.4 |
-| `graph` | `ls / get / create / update / delete` | P1 | `/v1/graphs*` | 实施中新增 |
-| `pkg` | `install <url>` | P1 | 走 skill import + multipart | 实施中新增，包安装快捷方式 |
+| `graph` | `ls / get / create / update / delete` | P1 | `/v1/graphs*` | Graph 工作流管理 |
+| `pkg` | `install <url>` | P1 | 走 skill import + multipart | 包安装快捷方式 |
 | `team` | `ls / get / create / update / delete / run / runs / run-events` | P1 | `/v1/teams*` / `/v1/team-runs*` | |
 | `plugin` | `ls / get / enable / disable / order-set / config-set` | P1 | `/v1/plugins*` | |
 | `mcp` | `ls / get / add / update / delete / test` | P1 | `/v1/mcp-servers*` | |
@@ -259,18 +259,20 @@ Aranea CLI 是与后端 `cmd/admin` **完全异构**的终端控制台：
 | `--debug` | bool | false | HTTP 请求/响应详情到 stderr |
 | `--config` | string | 跨平台默认路径 | 覆盖配置文件 |
 | `--no-color` | bool | false | 同 `NO_COLOR=1` |
-| `--timeout` | int | 30 | HTTP 请求超时秒数（实施中新增） |
+| `--timeout` | int | 60 | HTTP 请求超时秒数 |
 
 ### 3.4 后端契约新增（必须由后端先实现）
 
-| ID | 接口 | 时机 | 说明 |
-|----|------|------|------|
-| BE-1 | `GET /v1/system/info` | P0 | 见设计 §6.1；CLI-07 |
-| BE-2 | `POST /v1/skills/import` 接收 multipart form 字段 `source / source_url / source_ref / source_subpath / client_validation`，写入 `metadata_json` | P1 | 见设计 §6.3；CLI-25 |
-| BE-3 | `SeedSystemAdminAgent()` 注入 `__system_admin__`（`readonly=1`, `kind=system`, `tools_profile=system_admin`） | P1 | 见设计 §6.2；CLI-20 |
-| BE-4 | `SeedBuiltinTools()` + `SeedToolGroups()` 注册 `cli_admin_*` 工具与 `group:cli_admin` 工具组 | P1 | CLI-20 |
-| BE-5 | `internal/tools/cli_admin/` 工具实现（首批：`skill_list / get / install_from_url / import_status / import_apply / agent_list / get`） | P1 | CLI-21 |
-| BE-6 | WS 下行细化 envelope：`tool.call / tool.result / tool.error / await.user.reply` 子类型，落在 `internal/service/chat_wire.go`（不新增 server 直接依赖 `pkg/trpc-agent-go`） | P1 | CLI-22 前置 |
+> 以下接口为 CLI 依赖的后端新增能力。技术契约（字段定义、payload schema、实现方式）见设计文档 §4.2；实现进度见开发计划 §1.1。
+
+| ID | 接口 | 说明 |
+|----|------|------|
+| BE-1 | `GET /v1/system/info` | 见设计 §4.2.1；返回后端版本 / 系统管家 Agent 信息 / Skill 限制等 |
+| BE-2 | `POST /v1/skills/import` 接收 multipart form 字段 `source / source_url / source_ref / source_subpath / client_validation`，写入 `metadata_json` | 见设计 §4.2.2 |
+| BE-3 | `SeedSystemAdminAgent()` 注入 `__system_admin__`（`readonly=1`, `kind=system`, `tools_profile=system_admin`） | 见设计 §4.2.3 |
+| BE-4 | `SeedBuiltinTools()` + `SeedToolGroups()` 注册 `cli_admin_*` 工具与 `group:cli_admin` 工具组 | 见设计 §4.2.3 |
+| BE-5 | `internal/tools/cli_admin/` 工具实现（首批：`skill_list / get / install_from_url / import_status / import_apply / agent_list / get`） | 见设计 §4.2.4 |
+| BE-6 | WS 下行细化 envelope：`tool.call / tool.result / tool.error / await.user.reply` 子类型，落在 `internal/service/chat_wire.go`（不新增 server 直接依赖 `pkg/trpc-agent-go`） | 见设计 §4.2.5 |
 
 ---
 
@@ -354,8 +356,8 @@ hint   : 用 `--decision skip` 跳过，或 `--decision keep` 保留两份。
 aranea login --base-url <url> --user <name> --password <pwd>
 ```
 
-- 调用 `POST /v1/admins/login`，请求体 `{ "username": ..., "password": ... }`（与 `LoginRequest` 一致；密码明文上行，符合 proto 注释约定）；
-- 成功：响应里取 token（响应 schema 实施时以 `Admin` 与现有 `internal/service/admin.go` 行为为准；若 token 通过 cookie 返回而非 body，CLI 改为从 `Set-Cookie` 解析），写入 `config.toml` 的 `[backend].token`；文件权限校正为 0600；
+- 调用后端登录接口（`/v1/admins/login`，已放行 noAuthPaths；请求/响应 schema 见设计 §4.1）；
+- 成功：token 写入 `config.toml` 的 `[backend].token`；文件权限校正为 0600；
 - 失败：HTTP 4xx → 退出码 2；网络 / 5xx → 退出码 3；
 - 安全：CLI 不在 stdout 打印 token；`--debug` 模式下日志中也 mask 为 `***<last4>`。
 
@@ -405,7 +407,7 @@ aranea login --base-url <url> --user <name> --password <pwd>
 
 #### 6.2.3 上传与轮询
 
-- multipart form：`file=<zip>` + `source=cli_url` + `source_url` + `source_ref` + `source_subpath` + `client_validation`（JSON 字符串）；
+- 上传：multipart form 含 `file=<zip>` + 来源字段（`source` / `source_url` / `source_ref` / `source_subpath` / `client_validation`）；字段定义与写入位置见设计 §4.2.2；
 - 轮询 `GET /v1/skills/import/{job_id}` 1.5s × 80 次（cap 120s）；
 - 终态：`pass` 自动 apply；`warn` 询问或按 `--decision`；`block` 立即 `exit 5`；
 - 超时回退：提示 `aranea skill import-status <job_id>` 与 `aranea skill import-apply <job_id> --decision ...`。
@@ -428,16 +430,8 @@ UX 要点：
 - 启动横幅一行：`Aranea CLI vX.Y.Z | 后端 <url> ✓ | Agent: 系统管家 | Session: new`；
 - 提示符 `aranea> `；执行中切 `aranea⏵ ` + spinner；
 - 输入：默认 `Enter` 发送；`Shift+Enter` 或行末 `\` 换行；`Ctrl+L` 清屏；`Ctrl+C` 在生成中=中断；在 prompt 阶段=取消（exit 4）；`Ctrl+D` 退出；
-- 流式渲染按 WS 下行事件 type 分类：
-
-| 事件 type | 渲染 |
-|----------|------|
-| `message.delta`（或当前 system + payload 携带的 chat delta） | 追加文本到当前行 |
-| `tool.call` | 新行 `▼ <tool>(args=...)`，spinner |
-| `tool.result` | 折叠块内追加结果摘要 + ✓，停 spinner |
-| `tool.error` | 折叠块内追加红色错误码 + ✗ |
-| `await.user.reply` | 弹 prompt；用户回复通过 `EnqueueUserMessage` 上行 |
-| `system.done` / `done` | 结束本轮，回到提示符 |
+- 流式渲染按 WS 下行事件 type 分类渲染（模型增量追加文本、工具调用折叠块、工具结果 ✓、工具错误 ✗、等待用户回复弹 prompt、本轮结束回到提示符）；
+  - 事件 type 定义与 payload schema 见设计 §4.2.5；数据流见设计 §5.3；
 
 斜杠命令：
 
@@ -459,31 +453,19 @@ UX 要点：
 
 ## 7. 配置与本地存储
 
-### 7.1 配置 schema（TOML）
+### 7.1 配置项（用户视角）
 
-```toml
-# ~/.aranea/config.toml （Linux/mac：$XDG_CONFIG_HOME/aranea/config.toml；Win：%APPDATA%\aranea\config.toml）
-[backend]
-base_url     = "http://127.0.0.1:8080"
-token        = ""                 # JWT；自动 0600
-workspace_id = ""                 # 占位字段，本期无效
+CLI 配置文件为 TOML 格式，路径见 §7.3。用户可配置以下分区：
 
-[ui]
-output  = "text"                  # text | json （P1: yaml | table）
-color   = "auto"                  # auto | always | never
+| 分区 | 作用 | 关键字段 |
+|------|------|----------|
+| `[backend]` | 后端连接 | `base_url`（后端地址）、`token`（JWT，自动 0600）、`workspace_id`（占位，本期无效） |
+| `[ui]` | 输出 | `output`（`text` / `json`，P1 增 `yaml` / `table`）、`color`（`auto` / `always` / `never`） |
+| `[skill]` | Skill 安装 | `default_decision`（`ask` / `skip` / `keep` / `refine`）、`max_zip_mb`（100）、`keep_temp`（false） |
+| `[chat]`（P1） | 对话模式 | `default_agent`（`__system_admin__`）、`auto_resume`（true） |
+| `[telemetry]` | 遥测 | `enabled`（false，对齐 24 telemetry） |
 
-[skill]
-default_decision = "ask"          # ask | skip | keep | refine
-max_zip_mb       = 100
-keep_temp        = false
-
-[chat]                            # P1
-default_agent = "__system_admin__"
-auto_resume   = true
-
-[telemetry]
-enabled = false                   # 对齐 24 telemetry
-```
+> 配置 schema 的 Go 类型定义与 TOML 序列化规则见设计 §3.3 / §8.2。
 
 ### 7.2 配置优先级
 
@@ -493,20 +475,16 @@ enabled = false                   # 对齐 24 telemetry
 
 环境变量映射：`ARANEA_BASE_URL` / `ARANEA_TOKEN` / `ARANEA_OUTPUT` / `ARANEA_CONFIG` / `ARANEA_DEBUG` / `ARANEA_NO_COLOR`。
 
-### 7.3 本地存储布局
+### 7.3 本地存储布局（用户视角）
 
-```
-~/.aranea/                          (或 %APPDATA%\aranea\)
-└── config.toml                     # 配置（必须）
-
-<UserCacheDir>/aranea/              (Linux: ~/.cache/aranea；mac: ~/Library/Caches/aranea；Win: %LOCALAPPDATA%\aranea\Cache)
-├── logs/
-│   └── cli-YYYY-MM-DD.log         # 按天切割，单文件 ≤ 5MB
-└── tmp/
-    └── <job_id>/                  # Skill 安装临时目录，apply 成功后清理（除非 keep_temp=true）
-```
+| 用途 | 路径 | 说明 |
+|------|------|------|
+| 配置文件 | `$XDG_CONFIG_HOME/aranea/config.toml`（Linux/mac）；`%APPDATA%\aranea\config.toml`（Win） | 必须；权限 0600 |
+| 日志 | `<UserCacheDir>/aranea/logs/cli-YYYY-MM-DD.log` | 按天切割，单文件 ≤ 5MB |
+| 临时文件 | `<UserCacheDir>/aranea/tmp/<job_id>/` | Skill 安装临时目录，apply 成功后清理（除非 `keep_temp=true`） |
 
 > **不存在** `~/.aranea/sessions/` 文件；CLI 不在本地落会话历史，对话历史以后端 `sessions/messages` 表为单一真相源。
+> 跨平台路径解析的代码实现见设计 §8.1。
 
 ---
 
@@ -526,51 +504,51 @@ enabled = false                   # 对齐 24 telemetry
 
 ## 9. 验收准则汇总
 
-> 详细 DoD 落在开发计划的 CLI-XX 任务；本节是合规清单。
+> 本节是合规清单（验收标准）。**进度状态（✅/❌/⚠️）统一在开发计划 §8 跟踪**，本节不重复。
 
 ### 9.1 P0（必须）
 
-- [x] **R0** `make cli` 产出 `./bin/aranea`；`go build ./cmd/aranea/` 编译通过；
-- [x] **R1** `aranea version` 在无后端时也能输出本地版本与 commit；后端不可达 → exit 3 + 友好提示；
-- [x] **R2** `aranea login` 成功后 token 写入 `config.toml`，文件权限 0600（Win 跳过 chmod 仅提示）；
-- [x] **R3** `aranea agent ls / get / create / update / delete / enable / disable / tools / tools-set` 全部 happy path 通过 + httptest；
-- [x] **R4** `aranea skill ls / get / create / update / delete / enable / disable / publish` 同上；
-- [x] **R5** `aranea tool ls / get / enable / disable` 同上；
-- [x] **R6** `aranea system info` 显示后端版本 / commit / 默认 provider / `__system_admin__` agent_key；
-- [x] **R7** `--output json` 输出可被 `jq` 解析；`--quiet` 输出每行一个 ID；
-- [ ] **R8** 删除 / 启停高风险动作无 `--yes` 时拒绝执行并提示；（待确认：当前实现是否完整覆盖所有高风险动作）
-- [x] **R9** 401 / 403 → exit 6 + 重跑 login 提示；
-- [x] **R10** `aranea config path` 在 Win / mac / Linux 输出正确路径；旧 `config.toml` 缺字段时 CLI 不崩溃（用默认值）；
-- [ ] **R11** `cmd/araneactl/lint` 新增 R12 黑名单生效（CLI 误 import biz/agent/server/service/trpc-agent-go 时 lint 失败）；（**未实现**：`cmd/araneactl/` 目录不存在）
-- [ ] **R12** `docs/guides/cli-quickstart.md` 落地，链接进 `docs/README.md`；
+- **R0** `make cli` 产出 `./bin/aranea`；`go build ./cmd/aranea/` 编译通过；
+- **R1** `aranea version` 在无后端时也能输出本地版本与 commit；后端不可达 → exit 3 + 友好提示；
+- **R2** `aranea login` 成功后 token 写入 `config.toml`，文件权限 0600（Win 跳过 chmod 仅提示）；
+- **R3** `aranea agent ls / get / create / update / delete / enable / disable / tools / tools-set` 全部 happy path 通过 + httptest；
+- **R4** `aranea skill ls / get / create / update / delete / enable / disable / publish` 同上；
+- **R5** `aranea tool ls / get / enable / disable` 同上；
+- **R6** `aranea system info` 显示后端版本 / commit / 默认 provider / `__system_admin__` agent_key；
+- **R7** `--output json` 输出可被 `jq` 解析；`--quiet` 输出每行一个 ID；
+- **R8** 删除 / 启停高风险动作无 `--yes` 时拒绝执行并提示；
+- **R9** 401 / 403 → exit 6 + 重跑 login 提示；
+- **R10** `aranea config path` 在 Win / mac / Linux 输出正确路径；旧 `config.toml` 缺字段时 CLI 不崩溃（用默认值）；
+- **R11** `cmd/araneactl/lint` 新增 R12 黑名单生效（CLI 误 import biz/agent/server/service/trpc-agent-go 时 lint 失败）；
+- **R12** `docs/guides/cli-quickstart.md` 落地，链接进 `docs/README.md`；
 
 ### 9.2 P1（应做）
 
-- [x] **R20** 后端 `__system_admin__` 种子存在（重启后端不重复创建）；
-- [x] **R21** 后端 `cli_admin_*` 首批工具注册成功；系统管家 Agent 单测能调用工具；
-- [ ] **R22** WS 客户端能正确解码 5 类事件（`message.delta / tool.call / tool.result / tool.error / await.user.reply`）；（**部分**：`tool.error` envelope 类型未定义，当前使用通用 `error` 类型）
-- [x] **R23** `aranea` 启动进入 REPL；`/help / /quit` 工作；一次完整 skill install 对话流跑通；
-- [ ] **R24** `aranea skill install <github-url>` happy path 成功；冲突 warn 时按 `--decision` 工作；（待确认完整状态机）
-- [ ] **R25** 后端 multipart 接收 `source / source_url / source_ref / source_subpath / client_validation` 写入 `metadata_json`；`tool_invocations` / `audit_logs` 可见来源；（待确认后端实现）
-- [ ] **R26** `aranea skill import / import-status / import-apply` 全部 httptest 通过；
-- [x] **R27** `team / plugin / mcp / cron / channel / session / monitor` 每个资源至少 1 条 smoke；
-- [ ] **R28** `aranea completion bash/zsh/powershell` 三种各跑一次；
-- [ ] **R29** 后端剩余 `cli_admin_*` 工具（team/plugin/mcp/cron/channel/provider/session）单测覆盖；
+- **R20** 后端 `__system_admin__` 种子存在（重启后端不重复创建）；
+- **R21** 后端 `cli_admin_*` 首批工具注册成功；系统管家 Agent 单测能调用工具；
+- **R22** WS 客户端能正确解码 5 类事件（`message.delta / tool.call / tool.result / tool.error / await.user.reply`）；
+- **R23** `aranea` 启动进入 REPL；`/help / /quit` 工作；一次完整 skill install 对话流跑通；
+- **R24** `aranea skill install <github-url>` happy path 成功；冲突 warn 时按 `--decision` 工作；
+- **R25** 后端 multipart 接收 `source / source_url / source_ref / source_subpath / client_validation` 写入 `metadata_json`；`tool_invocations` / `audit_logs` 可见来源；
+- **R26** `aranea skill import / import-status / import-apply` 全部 httptest 通过；
+- **R27** `team / plugin / mcp / cron / channel / session / monitor` 每个资源至少 1 条 smoke；
+- **R28** `aranea completion bash/zsh/powershell` 三种各跑一次；
+- **R29** 后端剩余 `cli_admin_*` 工具（team/plugin/mcp/cron/channel/provider/session）单测覆盖；
 
 ### 9.3 安全与审计
 
-- [ ] **R30** CLI 二进制不调用 `shell_exec` / `write_file` 等高危工具（在 P1 系统管家 Agent 工具集层面约束）；
-- [x] **R31** `__system_admin__` Agent 不可删除、不可改名；尝试删除返回 `READONLY_AGENT`；
-- [ ] **R32** `--yes` / `/yes` 仅当前进程会话内生效；
-- [ ] **R33** Skill 安装在 block 时立即 exit 5；非交互终端 + 无 `--decision` 遇 warn 也以 exit 5 退出；
-- [ ] **R34** CLI 调用在 Web 控制台 `/tools/runs` 看到 `source=cli` 的记录（P1 系统管家工具触发）；
+- **R30** CLI 二进制不调用 `shell_exec` / `write_file` 等高危工具（在 P1 系统管家 Agent 工具集层面约束）；
+- **R31** `__system_admin__` Agent 不可删除、不可改名；尝试删除返回 `READONLY_AGENT`；
+- **R32** `--yes` / `/yes` 仅当前进程会话内生效；
+- **R33** Skill 安装在 block 时立即 exit 5；非交互终端 + 无 `--decision` 遇 warn 也以 exit 5 退出；
+- **R34** CLI 调用在 Web 控制台 `/tools/runs` 看到 `source=cli` 的记录（P1 系统管家工具触发）；
 
 ### 9.4 配置与可移植
 
-- [ ] **R40** 跨平台编译三平台 amd64+arm64 全部通过（`make cli-all`）；（**部分**：当前 `cli-all` 仅覆盖 Linux/amd64）
-- [x] **R41** `config.toml` 权限不安全时 CLI 拒绝读 token；
-- [x] **R42** 升级新版本旧 `config.toml` 兼容；
-- [ ] **R43** 临时目录 `<UserCacheDir>/aranea/tmp/<job>/` 在 apply 成功后清理（除非 `keep_temp=true`）；Windows 文件句柄清理失败时 defer + 记录日志，不阻塞退出。
+- **R40** 跨平台编译三平台 amd64+arm64 全部通过（`make cli-all`）；
+- **R41** `config.toml` 权限不安全时 CLI 拒绝读 token；
+- **R42** 升级新版本旧 `config.toml` 兼容；
+- **R43** 临时目录 `<UserCacheDir>/aranea/tmp/<job>/` 在 apply 成功后清理（除非 `keep_temp=true`）；Windows 文件句柄清理失败时 defer + 记录日志，不阻塞退出。
 
 ---
 

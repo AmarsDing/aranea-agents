@@ -1,7 +1,6 @@
 package data
 
 import (
-	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -246,33 +245,6 @@ func TestParseRFC3339_Invalid(t *testing.T) {
 	got := parseRFC3339("not-a-date")
 	if !got.IsZero() {
 		t.Fatalf("expected zero time for invalid input, got %v", got)
-	}
-}
-
-func TestWrapBGJobErr_Nil(t *testing.T) {
-	got := wrapBGJobErr(nil, "MarkRunning", "id1")
-	if got != nil {
-		t.Fatalf("expected nil, got %v", got)
-	}
-}
-
-func TestWrapBGJobErr_NonNil(t *testing.T) {
-	inner := errors.New("db error")
-	got := wrapBGJobErr(inner, "MarkRunning", "id1")
-	if got == nil {
-		t.Fatal("expected non-nil error")
-	}
-	if !strings.Contains(got.Error(), "backgroundjob") {
-		t.Fatalf("expected error to contain 'backgroundjob', got %q", got.Error())
-	}
-	if !strings.Contains(got.Error(), "MarkRunning") {
-		t.Fatalf("expected error to contain 'MarkRunning', got %q", got.Error())
-	}
-	if !strings.Contains(got.Error(), "id1") {
-		t.Fatalf("expected error to contain 'id1', got %q", got.Error())
-	}
-	if !errors.Is(got, inner) {
-		t.Fatal("expected wrapped error to match inner")
 	}
 }
 

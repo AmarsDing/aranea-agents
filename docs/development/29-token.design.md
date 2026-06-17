@@ -37,6 +37,27 @@ service UsageService {
   rpc RecordTokenUsageEvent(TokenUsageEvent) returns (TokenUsageEvent) {
     option (google.api.http) = { post: "/v1/usage/token-events" body: "*" };
   }
+  rpc GetUsageQuota(GetUsageQuotaRequest) returns (UsageQuota) {
+    option (google.api.http) = { get: "/v1/usage/quotas/{scope_type}/{scope_id}" };
+  }
+  rpc SetUsageQuota(SetUsageQuotaRequest) returns (UsageQuota) {
+    option (google.api.http) = { put: "/v1/usage/quotas/{scope_type}/{scope_id}" body: "*" };
+  }
+  rpc CheckUsageQuota(CheckUsageQuotaRequest) returns (CheckUsageQuotaResponse) {
+    option (google.api.http) = { get: "/v1/usage/quotas/{scope_type}/{scope_id}/check" };
+  }
+  rpc ListBudgetAlerts(ListBudgetAlertsRequest) returns (ListBudgetAlertsResponse) {
+    option (google.api.http) = { get: "/v1/usage/budget-alerts" };
+  }
+  rpc SetBudgetAlert(SetBudgetAlertRequest) returns (BudgetAlert) {
+    option (google.api.http) = { post: "/v1/usage/budget-alerts" body: "*" };
+  }
+  rpc ExportUsageEvents(UsageQuery) returns (ExportUsageEventsResponse) {
+    option (google.api.http) = { get: "/v1/usage/events/export" };
+  }
+  rpc PurgeUsageEvents(PurgeUsageEventsRequest) returns (PurgeUsageEventsResponse) {
+    option (google.api.http) = { post: "/v1/usage/events/purge" body: "*" };
+  }
 }
 ```
 
@@ -49,66 +70,39 @@ service UsageService {
 | `UsageTrendPoint` | 趋势点：date_key + UsageSummary 核心字段 |
 | `UsageBreakdownRow` | 占比行：provider_code / model_api_id / model_display_name / agent_id / agent_key + 汇总字段 + success_rate |
 | `TokenUsageEvent` | 明细事件：50 个字段，包含时间/归属/模型/Token/价格快照/费用/性能/状态/上下文 |
-| `UsageOverview` | 概览：today / yesterday / month / range_summary / trends / top_models / top_agents / anomalies |
-
-### 2.3 限额 + 告警 + 导出（已实现）
-
-```protobuf
-service UsageService {
-  // ... 基础 6 个 RPC ...
-
-  // 限额（P2，已实现）
-  rpc GetUsageQuota(GetUsageQuotaRequest) returns (UsageQuota) {
-    option (google.api.http) = { get: "/v1/usage/quotas/{scope_type}/{scope_id}" };
-  }
-  rpc SetUsageQuota(SetUsageQuotaRequest) returns (UsageQuota) {
-    option (google.api.http) = { put: "/v1/usage/quotas/{scope_type}/{scope_id}" body: "*" };
-  }
-  rpc CheckUsageQuota(CheckUsageQuotaRequest) returns (CheckUsageQuotaResponse) {
-    option (google.api.http) = { get: "/v1/usage/quotas/{scope_type}/{scope_id}/check" };
-  }
-
-  // 告警（P3，已实现）
-  rpc ListBudgetAlerts(ListBudgetAlertsRequest) returns (ListBudgetAlertsResponse) {
-    option (google.api.http) = { get: "/v1/usage/budget-alerts" };
-  }
-  rpc SetBudgetAlert(SetBudgetAlertRequest) returns (BudgetAlert) {
-    option (google.api.http) = { post: "/v1/usage/budget-alerts" body: "*" };
-  }
-
-  // 导出（P3，已实现）
-  rpc ExportUsageEvents(UsageQuery) returns (google.api.HttpBody) {
-    option (google.api.http) = { get: "/v1/usage/events/export" };
-  }
-
-  // 清理（已实现）
-  rpc PurgeUsageEvents(PurgeUsageEventsRequest) returns (PurgeUsageEventsResponse) {
-    option (google.api.http) = { post: "/v1/usage/events/purge" body: "*" };
-  }
-}
-```
+| `UsageOverview` | 概览：today / yesterday / month / range_summary / trends / top_models / top_agents / anomalies / quota_dashboard / inefficient_models |
+| `UsageQuota` | 限额：id / scope_type / scope_id / monthly_micro_usd / period_start / period_end / created_at / updated_at |
+| `BudgetAlert` | 告警：id / scope_type / scope_id / alert_ratio / enabled / last_fired_at / created_at / updated_at |
+| `UsageQuotaDashboard` | 配额仪表盘：configured_count / total_cap_micro_usd / total_spent_micro_usd / max_utilization_ratio |
+| `UsageModelInsight` | 低性价比模型：provider_code / model_api_id / model_display_name / call_count / total_tokens / total_cost_micro_usd / avg_latency_ms / avg_tokens_per_second / success_rate / flags |
+| `ExportUsageEventsResponse` | CSV 导出响应：csv 字符串 |
+| `PurgeUsageEventsRequest` | 清理请求：retain_days |
+| `PurgeUsageEventsResponse` | 清理响应：deleted_count |
 
 ---
 
 ## 三、Biz 层
 
+包路径：`internal/biz/usage`（`internal/biz/usage.go` 提供类型别名透传到 `biz` 包）
+
 ### 3.1 领域模型
 
-#### 已实现
-
 ```go
-type UsageQuery struct {
+type Query struct {
     Range        string
     StartDate    string
     EndDate      string
     ProviderCode string
     ModelAPIID   string
     AgentID      string
+    TeamID       string
+    UsageKind    string
     Status       string
     Limit        int
+    Granularity  string
 }
 
-type UsageSummary struct {
+type Summary struct {
     CallCount          int
     RequestCount       int
     SuccessCount       int
@@ -123,7 +117,7 @@ type UsageSummary struct {
     SuccessRate        float64
 }
 
-type UsageTrendPoint struct {
+type TrendPoint struct {
     DateKey            string
     CallCount          int
     InputTokens        int
@@ -137,7 +131,7 @@ type UsageTrendPoint struct {
     AvgTokensPerSecond float64
 }
 
-type UsageBreakdownRow struct {
+type BreakdownRow struct {
     ProviderCode       string
     ModelAPIID         string
     ModelDisplayName   string
@@ -167,6 +161,7 @@ type TokenUsageEvent struct {
     MessageID                     string
     RequestID                     string
     ProviderCode                  string
+    CanonicalProviderCode         string
     ProviderType                  string
     ProviderDisplayName           string
     ModelAPIID                    string
@@ -177,17 +172,26 @@ type TokenUsageEvent struct {
     InputTokens                   int
     OutputTokens                  int
     CachedInputTokens             int
+    CacheWriteTokens              int
     ReasoningTokens               int
     EmbeddingTokens               int
     TotalTokens                   int
     InputPriceMicroUSDPer1K       int64
     OutputPriceMicroUSDPer1K      int64
     CachedInputPriceMicroUSDPer1K int64
+    CacheWritePriceMicroUSDPer1K  int64
     ReasoningPriceMicroUSDPer1K   int64
     EmbeddingPriceMicroUSDPer1K   int64
+    InputPriceUSDPer1M            float64
+    OutputPriceUSDPer1M           float64
+    CacheReadPriceUSDPer1M        float64
+    CacheWritePriceUSDPer1M       float64
+    ReasoningPriceUSDPer1M        float64
+    EmbeddingPriceUSDPer1M        float64
     InputCostMicroUSD             int64
     OutputCostMicroUSD            int64
     CachedInputCostMicroUSD       int64
+    CacheWriteCostMicroUSD        int64
     ReasoningCostMicroUSD         int64
     EmbeddingCostMicroUSD         int64
     TotalCostMicroUSD             int64
@@ -206,22 +210,35 @@ type TokenUsageEvent struct {
     CreatedAt                     string
 }
 
-type UsageOverview struct {
-    Today     UsageSummary
-    Yesterday UsageSummary
-    Month     UsageSummary
-    Range     UsageSummary
-    Trends    []UsageTrendPoint
-    TopModels []UsageBreakdownRow
-    TopAgents []UsageBreakdownRow
-    Anomalies []TokenUsageEvent
+type Overview struct {
+    Today             Summary
+    Yesterday         Summary
+    Month             Summary
+    Range             Summary
+    Trends            []TrendPoint
+    TopModels         []BreakdownRow
+    TopAgents         []BreakdownRow
+    Anomalies         []TokenUsageEvent
+    QuotaDashboard    QuotaDashboard
+    InefficientModels []ModelInsight
 }
-```
 
-#### 限额 + 告警（已实现）
+type ModelPricingSnapshot struct {
+    InputPriceMicroUSDPer1K       int64
+    OutputPriceMicroUSDPer1K      int64
+    CachedInputPriceMicroUSDPer1K int64
+    CacheWritePriceMicroUSDPer1K  int64
+    ReasoningPriceMicroUSDPer1K   int64
+    EmbeddingPriceMicroUSDPer1K   int64
+    InputPriceUSDPer1M            float64
+    OutputPriceUSDPer1M           float64
+    CacheReadPriceUSDPer1M        float64
+    CacheWritePriceUSDPer1M       float64
+    ReasoningPriceUSDPer1M        float64
+    EmbeddingPriceUSDPer1M        float64
+}
 
-```go
-type UsageQuota struct {
+type Quota struct {
     ID              string
     ScopeType       string  // "agent" / "user" / "global"
     ScopeID         string
@@ -232,107 +249,201 @@ type UsageQuota struct {
     UpdatedAt       string
 }
 
+type QuotaCheck struct {
+    Quota             Quota
+    Allowed           bool
+    SpentMicroUSD     int64
+    RemainingMicroUSD int64
+    Reason            string
+}
+
 type BudgetAlert struct {
     ID          string
     ScopeType   string  // "agent" / "user" / "global"
     ScopeID     string
     AlertRatio  float64
     Enabled     bool
+    LastFiredAt string
     CreatedAt   string
     UpdatedAt   string
 }
 
-type QuotaCheck struct { /* ... */ }
-type QuotaDashboard struct { /* ... */ }
-type ModelInsight struct { /* ... */ }
+type QuotaDashboard struct {
+    ConfiguredCount    int
+    TotalCapMicroUSD   int64
+    TotalSpentMicroUSD int64
+    MaxUtilization     float64
+}
+
+type ModelInsight struct {
+    ProviderCode       string
+    ModelAPIID         string
+    ModelDisplayName   string
+    CallCount          int
+    TotalTokens        int
+    TotalCostMicroUSD  int64
+    AvgLatencyMS       float64
+    AvgTokensPerSecond float64
+    SuccessRate        float64
+    Flags              []string
+}
+
+type TurnUsageInput struct {
+    SessionID     string
+    RunID         string
+    AgentKey      string
+    AgentID       string
+    Provider      string
+    Model         string
+    Status        string
+    PromptTok     int
+    CompletionTok int
+    Latency       time.Duration
+    ErrMsg        string
+    MetadataJSON  string
+    TraceID       string
+}
 ```
 
 ### 3.2 Repo 接口
 
-#### 已实现
-
 ```go
-type UsageRepo interface {
+type AnalyticsRepo interface {
+    GetModelUsageSummary(ctx context.Context, query Query) (Summary, error)
+    ListModelUsageTrends(ctx context.Context, query Query) ([]TrendPoint, error)
+    ListTopModelUsage(ctx context.Context, query Query) ([]BreakdownRow, error)
+    ListTopAgentUsage(ctx context.Context, query Query) ([]BreakdownRow, error)
+    ListModelUsageEvents(ctx context.Context, query Query) ([]TokenUsageEvent, error)
+    ListModelUsageHourlyTrends(ctx context.Context, query Query) ([]TrendPoint, error)
+    GetModelUsageSummaryFromDaily(ctx context.Context, query Query) (Summary, error)
+    ListModelUsageDailyTrends(ctx context.Context, query Query) ([]TrendPoint, error)
+    ListTopModelUsageFromDaily(ctx context.Context, query Query) ([]BreakdownRow, error)
+    ListTopAgentUsageFromDaily(ctx context.Context, query Query) ([]BreakdownRow, error)
+}
+
+type WriteRepo interface {
+    RecordTokenUsageEvent(ctx context.Context, event TokenUsageEvent) (TokenUsageEvent, error)
+    GetActiveModelPricing(ctx context.Context, providerCode, modelAPIID string) (ModelPricingSnapshot, bool, error)
+    PurgeUsageEventsOlderThan(ctx context.Context, retainDays int) (int64, error)
+    RollupDailyHourly(ctx context.Context, event TokenUsageEvent) error
+}
+
+type QuotaRepo interface {
+    GetQuota(ctx context.Context, scopeType, scopeID string) (Quota, error)
+    SetQuota(ctx context.Context, quota Quota) (Quota, error)
+    SumScopeCostInPeriod(ctx context.Context, scopeType, scopeID, periodStart, periodEnd string) (int64, error)
+    ListActiveQuotas(ctx context.Context) ([]Quota, error)
+    BatchSumScopeCost(ctx context.Context, quotas []Quota) (map[string]int64, error)
+    ListBudgetAlerts(ctx context.Context, scopeType, scopeID string) ([]BudgetAlert, error)
+    SetBudgetAlert(ctx context.Context, alert BudgetAlert) (BudgetAlert, error)
+    UpdateBudgetAlertLastFired(ctx context.Context, id, firedAt string) error
+}
+
+type Repo interface {
     AnalyticsRepo
     WriteRepo
     QuotaRepo
 }
 
-type AnalyticsRepo interface {
-    GetModelUsageSummary(ctx context.Context, query UsageQuery) (UsageSummary, error)
-    ListModelUsageTrends(ctx context.Context, query UsageQuery) ([]UsageTrendPoint, error)
-    ListTopModelUsage(ctx context.Context, query UsageQuery) ([]UsageBreakdownRow, error)
-    ListTopAgentUsage(ctx context.Context, query UsageQuery) ([]UsageBreakdownRow, error)
-    ListModelUsageEvents(ctx context.Context, query UsageQuery) ([]TokenUsageEvent, error)
-    // ... 其他分析方法
-}
-
-type WriteRepo interface {
-    RecordTokenUsageEvent(ctx context.Context, event TokenUsageEvent) (TokenUsageEvent, error)
-    GetActiveModelPricing(ctx context.Context, providerCode, modelAPIID string) (*ModelPricing, error)
-    PurgeUsageEventsOlderThan(ctx context.Context, before string) (int, error)
-    RollupDailyHourly(ctx context.Context, event TokenUsageEvent) error
-}
-
-type QuotaRepo interface {
-    GetQuota(ctx context.Context, scopeType, scopeID string) (UsageQuota, error)
-    SetQuota(ctx context.Context, quota UsageQuota) (UsageQuota, error)
-    SumScopeCostInPeriod(ctx context.Context, scopeType, scopeID, start, end string) (int64, error)
-    ListActiveQuotas(ctx context.Context, scopeType string) ([]UsageQuota, error)
-    BatchSumScopeCost(ctx context.Context, quotas []UsageQuota) (map[string]int64, error)
-    ListBudgetAlerts(ctx context.Context, scopeType, scopeID string) ([]BudgetAlert, error)
-    SetBudgetAlert(ctx context.Context, alert BudgetAlert) (BudgetAlert, error)
-    UpdateBudgetAlertLastFired(ctx context.Context, id string) error
-}
-
 // 窄接口（跨 usecase 依赖）
-type TeamQuotaReader interface { /* ... */ }
-type SessionMetricsAccumulator interface { /* ... */ }
-type CompletionUsageLinker interface { /* ... */ }
-type UsageEnvelopePublisher interface { /* ... */ }
-type AlertNotifier interface { /* ... */ }
+type TeamQuotaReader interface {
+    EnabledMemberAgentIDs(ctx context.Context, teamID string) ([]string, error)
+}
+
+type SessionMetricsAccumulator interface {
+    AccumulateMetricsDelta(delta SessionMetricsDelta)
+}
+
+type CompletionUsageLinker interface {
+    LinkRunnerCompletionUsage(ctx context.Context, sessionID, runID, usageEventID, traceID string) error
+}
+
+type UsageEnvelopePublisher interface {
+    PublishTokenUsageEnvelope(ctx context.Context, e TokenUsageEvent)
+}
+
+type AlertNotifier interface {
+    NotifyBudgetAlert(ctx context.Context, alert BudgetAlert, spentMicroUSD, capMicroUSD int64, utilization float64) error
+}
 ```
 
 ### 3.3 Usecase
 
-#### 已实现
-
 ```go
-type UsageUsecase struct {
+type Usecase struct {
     repo UsageRepo
     now  func() time.Time
+    // 可选注入（通过 Setter 设置）
+    teamReader   TeamQuotaReader
+    sessAccum    SessionMetricsAccumulator
+    completion   CompletionUsageLinker
+    envelopePub  UsageEnvelopePublisher
+    alertNotifier AlertNotifier
 }
 
 // 查询
-func (u *UsageUsecase) Overview(ctx, query) (UsageOverview, error)
-func (u *UsageUsecase) Trends(ctx, query) ([]UsageTrendPoint, error)
-func (u *UsageUsecase) TopModels(ctx, query) ([]UsageBreakdownRow, error)
-func (u *UsageUsecase) TopAgents(ctx, query) ([]UsageBreakdownRow, error)
-func (u *UsageUsecase) Events(ctx, query) ([]TokenUsageEvent, error)
+func (u *Usecase) Overview(ctx context.Context, query Query) (Overview, error)
+func (u *Usecase) Trends(ctx context.Context, query Query) ([]TrendPoint, error)
+func (u *Usecase) TopModels(ctx context.Context, query Query) ([]BreakdownRow, error)
+func (u *Usecase) TopAgents(ctx context.Context, query Query) ([]BreakdownRow, error)
+func (u *Usecase) Events(ctx context.Context, query Query) ([]TokenUsageEvent, error)
 
 // 写入
-func (u *UsageUsecase) RecordTokenUsageEvent(ctx, event) (TokenUsageEvent, error)
-func (u *UsageUsecase) RecordTurnUsage(ctx, ...) (TokenUsageEvent, error)
+func (u *Usecase) RecordTokenUsageEvent(ctx context.Context, e TokenUsageEvent) (TokenUsageEvent, error)
+func (u *Usecase) RecordTurnUsage(ctx context.Context, in TurnUsageInput) error
+func (u *Usecase) RollupDailyHourly(ctx context.Context, e TokenUsageEvent) error
 
 // 限额
-func (u *UsageUsecase) GetQuota(ctx, scopeType, scopeID string) (UsageQuota, error)
-func (u *UsageUsecase) SetQuota(ctx, quota UsageQuota) (UsageQuota, error)
-func (u *UsageUsecase) CheckQuota(ctx, scopeType, scopeID string) (QuotaCheck, error)
-func (u *UsageUsecase) QuotaDashboard(ctx, query) (QuotaDashboard, error)
-func (u *UsageUsecase) CheckTeamMemberQuotas(ctx, ...) error
+func (u *Usecase) GetQuota(ctx context.Context, scopeType, scopeID string) (Quota, error)
+func (u *Usecase) SetQuota(ctx context.Context, quota Quota) (Quota, error)
+func (u *Usecase) CheckQuota(ctx context.Context, scopeType, scopeID string) (QuotaCheck, error)
+func (u *Usecase) QuotaDashboard(ctx context.Context) (QuotaDashboard, error)
+func (u *Usecase) CheckTeamMemberQuotas(ctx context.Context, teamID string) error
 
 // 告警
-func (u *UsageUsecase) ListBudgetAlerts(ctx, scopeType, scopeID string) ([]BudgetAlert, error)
-func (u *UsageUsecase) SetBudgetAlert(ctx, alert BudgetAlert) (BudgetAlert, error)
-func (u *UsageUsecase) EvaluateBudgetAlerts(ctx, event TokenUsageEvent) error
+func (u *Usecase) ListBudgetAlerts(ctx context.Context, scopeType, scopeID string) ([]BudgetAlert, error)
+func (u *Usecase) SetBudgetAlert(ctx context.Context, alert BudgetAlert) (BudgetAlert, error)
+func (u *Usecase) EvaluateBudgetAlerts(ctx context.Context, e TokenUsageEvent)
 
 // 导出 / 清理
-func (u *UsageUsecase) ExportUsageEventsCSV(ctx, query) (io.Reader, error)
-func (u *UsageUsecase) PurgeEvents(ctx, before string) (int, error)
+func (u *Usecase) ExportUsageEventsCSV(ctx context.Context, query Query) (string, error)
+func (u *Usecase) PurgeEvents(ctx context.Context, retainDays int) (int64, error)
 
 // 增强
-func (u *UsageUsecase) InefficientModels(ctx, query) ([]ModelInsight, error)
+func (u *Usecase) InefficientModels(ctx context.Context, query Query) ([]ModelInsight, error)
+
+// Setter（由 Wire provideUsageUsecase 注入窄接口适配器）
+func (u *Usecase) SetTeamReader(tr TeamQuotaReader)
+func (u *Usecase) SetSessionMetricsAccumulator(sa SessionMetricsAccumulator)
+func (u *Usecase) SetCompletionUsageLinker(cl CompletionUsageLinker)
+func (u *Usecase) SetUsageEnvelopePublisher(pub UsageEnvelopePublisher)
+func (u *Usecase) SetAlertNotifier(n AlertNotifier)
 ```
+
+### 3.4 配额拦截（TurnAdmissionUsecase）
+
+配额拦截由独立的 `TurnAdmissionUsecase`（`internal/biz/turn_admission.go`）承担，依赖 `QuotaEnforcer` 窄接口：
+
+```go
+type QuotaEnforcer interface {
+    CheckQuota(ctx context.Context, scopeType, scopeID string) (UsageQuotaCheck, error)
+    CheckTeamMemberQuotas(ctx context.Context, teamID string) error
+}
+
+type TurnAdmissionUsecase struct {
+    quota             QuotaEnforcer
+    agents            AgentHydrator
+    thresholdResolver ContextThresholdResolver
+}
+
+func (u *TurnAdmissionUsecase) EnforceChatTurnQuotas(ctx context.Context, agentID, userID string) error
+func (u *TurnAdmissionUsecase) EnforceTeamMemberQuotas(ctx context.Context, teamID string) error
+```
+
+Service 层通过 `ChatOrchestrator.admission()` 调用：
+- `internal/service/chat_orchestrator_turn.go` → `EnforceChatTurnQuotas`（单 Agent）
+- `internal/service/team_turn_hooks.go` → `EnforceChatTurnQuotas`（Team 整轮）
+- `internal/service/chat_orchestrator_turn_metrics.go` → `checkTeamMemberQuotas` 包装 `EnforceTeamMemberQuotas`
 
 ---
 
@@ -340,19 +451,19 @@ func (u *UsageUsecase) InefficientModels(ctx, query) ([]ModelInsight, error)
 
 ### 4.1 数据表
 
-#### 已实现：`model_token_usage_events`
+#### `model_token_usage_events`（DDL 管理）
 
-明细流水表，每次模型调用产生一条不可变记录。
+明细流水表，每次模型调用产生一条不可变记录。通过 DDL 迁移管理（`internal/data/sql/migrations/20260717_usage_events_schema.sql` + `20260612_pricing_rule_patches.sql`）。
 
 | 字段分组 | 字段 |
 |----------|------|
 | 时间维度 | id / occurred_at / date_key / hour_key |
 | 归属维度 | workspace_id / user_id / team_id / agent_id / agent_key / session_id / message_id / request_id |
-| 模型维度 | provider_code / provider_type / provider_display_name / model_api_id / model_display_name / model_category_json |
+| 模型维度 | provider_code / canonical_provider_code / provider_type / provider_display_name / model_api_id / model_display_name / model_category_json |
 | 调用类型 | usage_kind / call_count |
-| Token 明细 | input_tokens / output_tokens / cached_input_tokens / reasoning_tokens / embedding_tokens / total_tokens |
-| 价格快照 | input_price_micro_usd_per_1k / output_price_micro_usd_per_1k / cached_input_price_micro_usd_per_1k / reasoning_price_micro_usd_per_1k / embedding_price_micro_usd_per_1k |
-| 费用结果 | input_cost_micro_usd / output_cost_micro_usd / cached_input_cost_micro_usd / reasoning_cost_micro_usd / embedding_cost_micro_usd / total_cost_micro_usd |
+| Token 明细 | input_tokens / output_tokens / cached_input_tokens / cache_write_tokens / reasoning_tokens / embedding_tokens / total_tokens |
+| 价格快照 | input_price_micro_usd_per_1k / output_price_micro_usd_per_1k / cached_input_price_micro_usd_per_1k / cache_write_price_micro_usd_per_1k / reasoning_price_micro_usd_per_1k / embedding_price_micro_usd_per_1k |
+| 费用结果 | input_cost_micro_usd / output_cost_micro_usd / cached_input_cost_micro_usd / cache_write_cost_micro_usd / reasoning_cost_micro_usd / embedding_cost_micro_usd / total_cost_micro_usd |
 | 性能与状态 | latency_ms / time_to_first_token_ms / tokens_per_second / status / error_code / error_message / retry_count |
 | 请求上下文 | prompt_mode / max_output_tokens / context_window_k / stream_enabled |
 | 扩展 | metadata_json / created_at |
@@ -360,16 +471,15 @@ func (u *UsageUsecase) InefficientModels(ctx, query) ([]ModelInsight, error)
 索引：
 
 ```sql
-idx_usage_events_time       ON (occurred_at)
-idx_usage_events_date_model ON (date_key, provider_code, model_api_id)
-idx_usage_events_agent_time ON (agent_id, occurred_at)
-idx_usage_events_session    ON (session_id)
-idx_usage_events_status     ON (status, occurred_at)
+idx_model_token_usage_events_date_key       ON (date_key)
+idx_model_token_usage_events_session_id     ON (session_id)
+idx_model_token_usage_events_agent_id       ON (agent_id)
+idx_model_token_usage_events_provider_code  ON (provider_code)
 ```
 
-#### 已实现：`model_token_usage_daily`
+#### `model_token_usage_daily`（DDL 管理）
 
-日聚合表，用于趋势图和占比分析。写入明细时自动 upsert。
+日聚合表，用于趋势图和占比分析。写入明细时自动 upsert。通过 DDL 迁移管理。
 
 | 字段分组 | 字段 |
 |----------|------|
@@ -382,7 +492,17 @@ idx_usage_events_status     ON (status, occurred_at)
 
 UNIQUE 约束：`(date_key, workspace_id, agent_id, provider_code, model_api_id, usage_kind)`
 
-#### 已实现：`model_pricing_rules`
+#### `model_token_usage_hourly`（Ent Schema）
+
+Ent Schema：`internal/data/ent/schema/model_token_usage_hourly.go`
+
+小时聚合表，结构同 `model_token_usage_daily`，按 `hour_key` 分组。写入明细时自动 upsert。
+
+UNIQUE 约束：`(hour_key, workspace_id, agent_id, provider_code, model_api_id, usage_kind)`
+
+#### `model_pricing_rules`（Ent Schema）
+
+Ent Schema：`internal/data/ent/schema/model_pricing_rule.go`
 
 模型价格规则表，维护当前和历史价格。
 
@@ -390,14 +510,16 @@ UNIQUE 约束：`(date_key, workspace_id, agent_id, provider_code, model_api_id,
 |------|------|
 | provider_code / model_api_id | 模型标识 |
 | currency | 货币（默认 USD） |
-| input/output/cached_input/reasoning/embedding_price_micro_usd_per_1k | 各类 Token 单价 |
+| input/output/cached_input/cache_write/reasoning/embedding_price_micro_usd_per_1k | 各类 Token 单价（micro USD / 1K） |
+| input/output/cached_input(cache_read)/cache_write/reasoning/embedding_price_usd_per_1m | 各类 Token 单价（USD / 1M，浮点） |
 | effective_from / effective_to | 生效时间范围 |
 | is_active | 是否当前生效 |
 | source | 来源（manual / auto_sync） |
+| metadata_json | 扩展元数据 |
 
-Ent Schema：`internal/data/ent/schema/model_pricing_rule.go`
+UNIQUE 约束：`(provider_code, model_api_id, effective_from)`
 
-#### 已实现：`usage_quotas`
+#### `usage_quotas`（Ent Schema）
 
 Ent Schema：`internal/data/ent/schema/usage_quota.go`
 
@@ -415,7 +537,7 @@ CREATE TABLE IF NOT EXISTS usage_quotas (
 );
 ```
 
-#### 已实现：`budget_alerts`
+#### `budget_alerts`（Ent Schema）
 
 Ent Schema：`internal/data/ent/schema/budget_alert.go`
 
@@ -426,17 +548,12 @@ CREATE TABLE IF NOT EXISTS budget_alerts (
   scope_id TEXT NOT NULL,
   alert_ratio REAL NOT NULL DEFAULT 0.8,
   enabled INTEGER NOT NULL DEFAULT 1,
+  last_fired_at TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE(scope_type, scope_id, alert_ratio)
 );
 ```
-
-#### 已实现：`model_token_usage_hourly`
-
-Ent Schema：`internal/data/ent/schema/model_token_usage_hourly.go`
-
-小时聚合表，结构同 `model_token_usage_daily`，按 `hour_key` 分组。写入明细时自动 upsert。
 
 ### 4.2 写入流程
 
@@ -445,10 +562,11 @@ Ent Schema：`internal/data/ent/schema/model_token_usage_hourly.go`
 1. INSERT INTO `model_token_usage_events`
 2. UPDATE `sessions` 聚合计数器（model_call_count / input_tokens / output_tokens / total_tokens / total_cost_micro_usd）
 3. UPSERT `model_token_usage_daily`（ON CONFLICT DO UPDATE 累加）
+4. UPSERT `model_token_usage_hourly`（同上，按 hour_key）
 
 ### 4.3 查询构建
 
-`usageWhere(query, billableOnly)` 根据 `UsageQuery` 动态构建 WHERE 子句：
+`usageWhere(query, billableOnly)` 根据 `Query` 动态构建 WHERE 子句：
 
 | 参数 | 条件 |
 |------|------|
@@ -461,6 +579,16 @@ Ent Schema：`internal/data/ent/schema/model_token_usage_hourly.go`
 | `status` | `status = ?`；`abnormal` → `status <> 'success'` |
 
 `usageLimit(limit)` 限制范围 [1, 200]，默认 10。
+
+### 4.4 费用计算
+
+所有费用以 micro USD 存储：
+
+```
+input_cost_micro_usd = input_tokens * input_price_micro_usd_per_1k / 1000
+output_cost_micro_usd = output_tokens * output_price_micro_usd_per_1k / 1000
+total_cost_micro_usd = input_cost + output_cost + cached_input_cost + cache_write_cost + reasoning_cost + embedding_cost
+```
 
 ### 4.5 统计口径矩阵（可计费 vs 对账）
 
@@ -478,7 +606,7 @@ Ent Schema：`internal/data/ent/schema/model_token_usage_hourly.go`
 | `SumScopeCostInPeriod`（配额已用额） | 固定 billable | `usage_quota.go` |
 | `ListModelUsageEvents` / `ExportUsageEvents` | `false` | 明细含 `team_turn`；可用 `usage_kind` / `team_id` 精确筛选 |
 
-**写入 `usage_kind`（`internal/biz/usage.go` 常量）**
+**写入 `usage_kind`（`internal/biz/usage/usage.go` 常量）**
 
 | 值 | 写入路径 | 聚合 |
 |----|----------|------|
@@ -486,25 +614,13 @@ Ent Schema：`internal/data/ent/schema/model_token_usage_hourly.go`
 | `team_member` | Team `persistStep` → `recordMemberUsage` | 可计费；Team 总额 = `SUM(...) WHERE team_id=? AND usage_kind='team_member'` |
 | `team_turn` | `recordTeamRunUsage` | **排除**默认可计费聚合；明细可见 |
 
-**Team 并行（O4）**：`EventStreamResult.MemberUsage` 按 `agent_key` 汇总 → `stepTokensForMember`；无成员级 usage 时 anchor（sortIdx=0）回退整轮 tokens。
-
-**P3 暂缓**：`model_token_usage_daily` / hourly upsert 仍可能写入 `team_turn` 维度行；读层已过滤，rollup 表对齐见开发计划 §9.3。
-
-### 4.4 费用计算
-
-所有费用以 micro USD 存储：
-
-```
-input_cost_micro_usd = input_tokens * input_price_micro_usd_per_1k / 1000
-output_cost_micro_usd = output_tokens * output_price_micro_usd_per_1k / 1000
-total_cost_micro_usd = input_cost + output_cost + cached_input_cost + reasoning_cost + embedding_cost
-```
+**Team 并行**：`EventStreamResult.MemberUsage` 按 `agent_key` 汇总 → `stepTokensForMember`；无成员级 usage 时 anchor（sortIdx=0）回退整轮 tokens。
 
 ---
 
 ## 五、Service 层
 
-### 5.1 已实现
+### 5.1 UsageService
 
 文件：`internal/service/usage.go`
 
@@ -515,15 +631,36 @@ type UsageService struct {
 }
 
 func NewUsageService(uc *biz.UsageUsecase) *UsageService
+
+// 查询
 func (s *UsageService) GetUsageOverview(ctx, *v1.UsageQuery) (*v1.UsageOverview, error)
 func (s *UsageService) ListUsageTrends(ctx, *v1.UsageQuery) (*v1.ListUsageTrendsResponse, error)
 func (s *UsageService) ListTopModels(ctx, *v1.UsageQuery) (*v1.ListBreakdownResponse, error)
 func (s *UsageService) ListTopAgents(ctx, *v1.UsageQuery) (*v1.ListBreakdownResponse, error)
 func (s *UsageService) ListUsageEvents(ctx, *v1.UsageQuery) (*v1.ListUsageEventsResponse, error)
+
+// 写入
 func (s *UsageService) RecordTokenUsageEvent(ctx, *v1.TokenUsageEvent) (*v1.TokenUsageEvent, error)
+
+// 限额
+func (s *UsageService) GetUsageQuota(ctx, *v1.GetUsageQuotaRequest) (*v1.UsageQuota, error)
+func (s *UsageService) SetUsageQuota(ctx, *v1.SetUsageQuotaRequest) (*v1.UsageQuota, error)
+func (s *UsageService) CheckUsageQuota(ctx, *v1.CheckUsageQuotaRequest) (*v1.CheckUsageQuotaResponse, error)
+
+// 告警
+func (s *UsageService) ListBudgetAlerts(ctx, *v1.ListBudgetAlertsRequest) (*v1.ListBudgetAlertsResponse, error)
+func (s *UsageService) SetBudgetAlert(ctx, *v1.SetBudgetAlertRequest) (*v1.BudgetAlert, error)
+
+// 导出 / 清理
+func (s *UsageService) ExportUsageEvents(ctx, *v1.UsageQuery) (*v1.ExportUsageEventsResponse, error)
+func (s *UsageService) PurgeUsageEvents(ctx, *v1.PurgeUsageEventsRequest) (*v1.PurgeUsageEventsResponse, error)
 ```
 
-### 5.2 用量记录入口（2026-05-20）
+辅助文件：
+- `internal/service/usage_mapper.go` — Proto ↔ Biz 类型映射
+- `internal/service/usage_alert_notifier.go` — `AlertNotifier` 实现（写入监控事件 `usage.budget_alert`）
+
+### 5.2 用量记录入口
 
 **主路径**：`internal/service/turn_usage.go` → `recordTurnUsage`（`trpc_turn` defer）
 
@@ -537,7 +674,10 @@ func (s *UsageService) RecordTokenUsageEvent(ctx, *v1.TokenUsageEvent) (*v1.Toke
 | `event_bus_runner_handler` | `CHAT_RECORD_RUNNER_USAGE=1` | Runner completion；需带 `id`（uuid） |
 | `recordChatIngressUsage` | `CHAT_RECORD_USAGE_INGRESS=1` | 遗留；**不再**由 `SendChatMessage` 自动调用，避免与主路径双写 |
 
-配额拦截：`chat_native.runNativeAgentTurn`（单 Agent）、`checkTeamMemberQuotas`（Team 成员）。
+**配额拦截**：由 `TurnAdmissionUsecase`（`internal/biz/turn_admission.go`）承担，Service 层通过 `ChatOrchestrator.admission()` 调用：
+- 单 Agent：`chat_orchestrator_turn.go` → `EnforceChatTurnQuotas`
+- Team 整轮：`team_turn_hooks.go` → `EnforceChatTurnQuotas`
+- Team 成员：`chat_orchestrator_turn_metrics.go` → `checkTeamMemberQuotas` → `EnforceTeamMemberQuotas`
 
 **Team 明细**：
 
@@ -552,32 +692,26 @@ func (s *UsageService) RecordTokenUsageEvent(ctx, *v1.TokenUsageEvent) (*v1.Toke
 
 **告警**：`EvaluateBudgetAlerts` → 监控事件 `usage.budget_alert`（60min 冷却）。
 
-### 5.3 Quota / Alert / Export / Purge RPC（已实现）
+### 5.3 写入路径（真相源）
 
-```go
-func (s *UsageService) GetUsageQuota(...)
-func (s *UsageService) SetUsageQuota(...)
-func (s *UsageService) CheckUsageQuota(...)
-func (s *UsageService) ListBudgetAlerts(...)
-func (s *UsageService) SetBudgetAlert(...)
-func (s *UsageService) ExportUsageEvents(...)
-func (s *UsageService) PurgeUsageEvents(...)
 ```
+Chat Turn 结束 → service/turn_usage.recordTurnUsage
+              → biz.RecordTokenUsageEvent（归一 status + 定价 + 费用）
+              → data/usage_write（events + sessions 聚合 + daily/hourly upsert）
 
-`UsageOverview.quota_dashboard`；`UsageQuery.granularity`（`hour` → `model_token_usage_hourly`）。
+Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
+                 → team.persistStep → recordMemberUsage（usage_kind=team_member）
+                 → team.recordTeamRunUsage（usage_kind=team_turn，整轮聚合）
 
-辅助文件：`internal/service/usage_mapper.go`（Proto ↔ Biz 类型映射）、`internal/service/usage_alert_notifier.go`（AlertNotifier 实现）。
-
-### 5.4 待扩展
-
-- 价格规则自动同步（OpenRouter / Anthropic / Gemini / OpenAI API 定时拉取，当前仅 `syncProviderModelPricing` 手动触发）
-- Team 维度概览 API / 前端 Team 用量卡片
+（可选）CHAT_RECORD_RUNNER_USAGE=1 → event_bus_runner_handler
+（已停用默认）CHAT_RECORD_USAGE_INGRESS=1 → recordChatIngressUsage
+```
 
 ---
 
 ## 六、Wire 注入
 
-### 6.1 已实现
+文件：`cmd/admin/wire.go`
 
 ```
 data.ProviderSet  → NewUsageRepo（含 AnalyticsRepo / WriteRepo / QuotaRepo）
@@ -589,17 +723,22 @@ wire.Bind(new(biz.UsageQuotaRepo), new(biz.UsageRepo))
 wire.Bind(new(bizusage.AnalyticsRepo), new(biz.UsageRepo))
 wire.Bind(new(biz.TeamUsageQuerier), new(*biz.UsageUsecase))
 
-// 窄接口适配
-sessionMetricsAdapter / completionLinkerAdapter / envelopePublisherAdapter
+// provideUsageUsecase 注入窄接口适配器
+func provideUsageUsecase(repo biz.UsageRepo, mon *biz.MonitorUsecase, teamUC *biz.TeamUsecase,
+    sessions *biz.SessionUsecase, bus contract.Bus, lg loggateway.Logger) *biz.UsageUsecase
 ```
+
+窄接口适配器（`cmd/admin/wire.go`）：
+- `sessionMetricsAdapter` — 适配 `SessionMetricsAccumulator`
+- `completionLinkerAdapter` — 适配 `CompletionUsageLinker`
+- `envelopePublisherAdapter` — 适配 `UsageEnvelopePublisher`
+- `service.NewMonitorBudgetAlertNotifier(mon)` — `AlertNotifier` 实现
 
 ---
 
 ## 七、Web 前端设计
 
-### 7.1 已实现
-
-#### 文件结构
+### 7.1 文件结构
 
 ```
 web/src/features/usage/
@@ -634,13 +773,24 @@ web/src/components/usage/
 ├── OverviewRunnerMetrics.vue     ← 概览页 Runner 条
 ├── OverviewProviderHealth.vue    ← 概览页 Provider 健康
 ├── OverviewPageHero.vue          ← 概览页 Hero
-└── OverviewMonitorQuickLinks.vue ← 概览页监控快捷链接
+├── OverviewMonitorQuickLinks.vue ← 概览页监控快捷链接
+├── CommandCenterHero.vue         ← 命令中心 Hero
+├── CommandCenterStatusPanels.vue ← 命令中心状态面板
+├── CommandCenterQuickActions.vue ← 命令中心快捷操作
+├── StatusPanelAgent.vue          ← Agent 状态面板
+├── StatusPanelSession.vue        ← Session 状态面板
+├── StatusPanelRunner.vue         ← Runner 状态面板
+└── StatusPanelProvider.vue       ← Provider 状态面板
 
 web/src/components/agents/
 └── AgentUsageQuotaPanel.vue      ← Agent 权限 Tab 限额 + 告警配置
+
+web/src/pages/
+├── OverviewPage.vue              ← 概览页（useOverviewPage）
+└── UsageEventsPage.vue           ← 用量明细页（useUsageEventsPage）
 ```
 
-#### API 函数
+### 7.2 API 函数
 
 ```typescript
 // features/usage/api.ts
@@ -660,7 +810,7 @@ export async function setBudgetAlert(alert: BudgetAlert): Promise<BudgetAlert>
 export function microUsdToUsd(micro: number): number
 ```
 
-#### 类型定义
+### 7.3 类型定义
 
 | 类型 | 说明 |
 |------|------|
@@ -675,10 +825,11 @@ export function microUsdToUsd(micro: number): number
 | `QuotaCheck` | 配额检查结果 |
 | `ModelInsight` | 低性价比模型洞察 |
 
-### 7.2 待扩展
+### 7.4 数据流
 
-- Team 维度用量卡片 / 页面
-- Provider 独立定价编辑 UI（当前 `/models` 页可维护单价，独立定价页非本期）
+- 页面组件通过 composable（`useOverviewPage` / `useUsageEventsPage`）访问 API，禁止直接 `import features/usage/api`
+- `AgentUsageQuotaPanel` 通过 `useAgentUsageQuota` composable 访问 `quotaApi`，禁止直接调 API
+- 告警 API 合并进 `quotaApi.ts`，不再单独维护 `budgetAlertApi.ts`
 
 ---
 

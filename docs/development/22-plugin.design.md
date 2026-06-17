@@ -44,6 +44,8 @@ import "google/api/annotations.proto";
 import "google/api/field_behavior.proto";
 
 option go_package = "aranea-agents/api/kratos/plugin/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.plugin.v1";
 
 message PluginPermissions {
   bool can_view = 1;
@@ -112,6 +114,45 @@ message UpdatePluginScopeRequest {
   string scope = 2 [(google.api.field_behavior) = REQUIRED];  // "global" 或 agent_id
 }
 
+message PluginRun {
+  string id = 1;
+  string plugin_key = 2;
+  string plugin_id = 3;
+  string session_id = 4;
+  string agent_id = 5;
+  string callback_point = 6;
+  string status = 7;
+  int32 duration_ms = 8;
+  string detail_json = 9;
+  string created_at = 10;
+}
+
+message ListPluginRunsRequest {
+  string plugin_key = 1;
+  string plugin_id = 2;
+  string session_id = 3;
+  string agent_id = 4;
+  string callback_point = 5;
+  string status = 6;
+  string from = 7;
+  string to = 8;
+  int32 page = 9;
+  int32 page_size = 10;
+}
+
+message ListPluginRunsResponse {
+  repeated PluginRun items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message DeleteAllPluginRunsRequest {}
+
+message DeleteAllPluginRunsResponse {
+  int32 deleted_count = 1;
+}
+
 service PluginService {
   rpc ListPlugins(ListPluginsRequest) returns (ListPluginsResponse) {
     option (google.api.http) = {get: "/v1/plugins"};
@@ -140,6 +181,12 @@ service PluginService {
       body: "*"
     };
   }
+  rpc ListPluginRuns(ListPluginRunsRequest) returns (ListPluginRunsResponse) {
+    option (google.api.http) = {get: "/v1/plugins/runs"};
+  }
+  rpc DeleteAllPluginRuns(DeleteAllPluginRunsRequest) returns (DeleteAllPluginRunsResponse) {
+    option (google.api.http) = {delete: "/v1/plugins/runs"};
+  }
 }
 ```
 
@@ -152,10 +199,14 @@ service PluginService {
 | PUT | `/v1/plugins/{id}/config` | 更新插件配置 JSON |
 | PATCH | `/v1/plugins/{id}/sort-order` | 更新插件执行顺序 |
 | PATCH | `/v1/plugins/{id}/scope` | 更新插件作用域（global 或 agent_id） |
+| GET | `/v1/plugins/runs` | 运行记录查询，支持 plugin_key/plugin_id/session_id/agent_id/callback_point/status/from/to 筛选 |
+| DELETE | `/v1/plugins/runs` | 清空所有运行记录 |
 
 ---
 
 ## 三、Biz 层
+
+> 文件路径：`internal/biz/plugin/plugin.go`（biz 包通过 `internal/biz/plugin.go` 中的 type alias 重导出）
 
 ### 3.1 领域模型
 
@@ -165,7 +216,7 @@ type Plugin struct {
     Key               string              // 唯一标识，如 "runtime_audit"
     Name              string              // 显示名称
     Description       string
-    Category          string              // "observability"/"guard"/"tracking"/"debug"/"routing"/"policy"
+    Category          string              // "observability"/"tracking"/"reliability"/"security"/"governance"/"routing"
     RiskLevel         string              // "low"/"medium"/"high"
     Enabled           bool
     Scope             string              // "global" 或 agent_id
@@ -181,17 +232,17 @@ type Plugin struct {
     LastStatus        string              // "success"/"blocked"/"error"
     CreatedAt         string
     UpdatedAt         string
-    Permissions       PluginPermissions
+    Permissions       Permissions
 }
 
-type PluginPermissions struct {
+type Permissions struct {
     CanView       bool
     CanToggle     bool
     CanEditConfig bool
     CanViewLogs   bool
 }
 
-type PluginListQuery struct {
+type ListQuery struct {
     Search        string              // 模糊搜索 key/name/description
     Category      string              // 精确筛选
     Enabled       string              // ""/"true"/"false" 三态
@@ -200,68 +251,179 @@ type PluginListQuery struct {
     Offset        int
 }
 
-type PluginListResult struct {
+type ListResult struct {
     Items  []Plugin
     Total  int
     Limit  int
     Offset int
+}
+
+// StatUpdate is a delta applied to persisted plugin invocation counters.
+type StatUpdate struct {
+    InvokeCount int
+    BlockDelta  int
+    ErrorDelta  int
+    LastStatus  string
+}
+
+// Run is one plugin callback invocation audit row.
+type Run struct {
+    ID            string
+    PluginKey     string
+    PluginID      string
+    SessionID     string
+    AgentID       string
+    CallbackPoint string
+    Status        string
+    DurationMS    int
+    DetailJSON    string
+    CreatedAt     string
+}
+
+// RunQuery filters plugin run list.
+type RunQuery struct {
+    PluginKey     string
+    PluginID      string
+    SessionID     string
+    AgentID       string
+    CallbackPoint string
+    Status        string
+    From          string
+    To            string
+    Limit         int
+    Offset        int
+}
+
+// RunListResult is a paginated plugin run list.
+type RunListResult struct {
+    Items  []Run
+    Total  int32
+    Limit  int
+    Offset int
+}
+
+// ScopeAgentLookup checks whether an agent exists for scope validation.
+type ScopeAgentLookup interface {
+    AgentExists(ctx context.Context, id string) error
+}
+
+// SandboxMode controls Phase 4 sandbox isolation.
+type SandboxMode string
+
+const (
+    SandboxNone      SandboxMode = "none"
+    SandboxProcess   SandboxMode = "process"
+    SandboxContainer SandboxMode = "container"
+)
+
+// VersionPolicy pins a plugin rule to a semver range.
+type VersionPolicy struct {
+    PluginID   string
+    MinVersion string
+    MaxVersion string
+    Pinned     string
+}
+
+// CostGuardUsageRepo persists daily token totals for cost_guard.
+type CostGuardUsageRepo interface {
+    GetTokens(ctx context.Context, usageDay, scopeKey string) (int, error)
+    AddTokens(ctx context.Context, usageDay, scopeKey string, delta int) error
 }
 ```
 
 ### 3.2 Repo 接口
 
 ```go
-type PluginRepo interface {
-    SearchPlugins(ctx context.Context, q PluginListQuery) (PluginListResult, error)
+// Repo abstracts plugin persistence.
+type Repo interface {
+    SearchPlugins(ctx context.Context, q ListQuery) (ListResult, error)
     GetPlugin(ctx context.Context, id string) (Plugin, error)
     GetByKey(ctx context.Context, key string) (Plugin, error)
     CreatePlugin(ctx context.Context, p Plugin) (Plugin, error)
     UpdatePluginEnabled(ctx context.Context, id string, enabled bool) (Plugin, error)
     UpdatePluginConfig(ctx context.Context, id string, configJSON string) (Plugin, error)
     UpdateSortOrder(ctx context.Context, id string, sortOrder int) (Plugin, error)
-    UpdateScope(ctx context.Context, id string, scope string) (Plugin, error)
-    IncrementStats(ctx context.Context, key string, delta PluginStatUpdate) error
+    UpdatePluginScope(ctx context.Context, id string, scope string) (Plugin, error)
+    IncrementStats(ctx context.Context, pluginKey string, delta StatUpdate) error
+}
+
+// RunRepo persists plugin run audit rows.
+type RunRepo interface {
+    Insert(ctx context.Context, run Run) error
+    List(ctx context.Context, q RunQuery) (RunListResult, error)
+    DeleteAll(ctx context.Context) (int32, error)
 }
 ```
 
 ### 3.3 Usecase
 
 ```go
-type PluginUsecase struct {
-    repo PluginRepo
+type Usecase struct {
+    repo   Repo
+    runs   RunRepo
+    agents ScopeAgentLookup
 }
 
-func NewPluginUsecase(repo PluginRepo) *PluginUsecase
+func NewUsecase(repo Repo, runs RunRepo, agents ScopeAgentLookup) *Usecase
 
-func (u *PluginUsecase) List(ctx context.Context, q PluginListQuery) (PluginListResult, error)
+func (u *Usecase) List(ctx context.Context, q ListQuery) (ListResult, error)
 // - 校验分页参数：Limit 默认 20，上限 100，Offset >= 0
 // - 调用 repo.SearchPlugins
 
-func (u *PluginUsecase) ToggleEnabled(ctx context.Context, id string, enabled bool) (Plugin, error)
+func (u *Usecase) ToggleEnabled(ctx context.Context, id string, enabled bool) (Plugin, error)
 // - 校验 id 非空
 // - 调用 repo.UpdatePluginEnabled
 
-func (u *PluginUsecase) UpdateConfig(ctx context.Context, id string, configJSON string) (Plugin, error)
+func (u *Usecase) UpdateConfig(ctx context.Context, id string, configJSON string) (Plugin, error)
 // - 校验 id 非空
 // - configJSON 为空时默认 "{}"
 // - 校验 configJSON 是合法 JSON（json.Valid）
+// - 取 Plugin.ConfigSchemaJSON，非空时调用 ValidateJSONSchema 校验
 // - 调用 repo.UpdatePluginConfig
 
-func (u *PluginUsecase) UpdateSortOrder(ctx context.Context, id string, sortOrder int) (Plugin, error)
+func (u *Usecase) UpdateSortOrder(ctx context.Context, id string, sortOrder int) (Plugin, error)
 // - 校验 id 非空
 // - 调用 repo.UpdateSortOrder
 
-func (u *PluginUsecase) UpdateScope(ctx context.Context, id string, scope string) (Plugin, error)
+func (u *Usecase) UpdateScope(ctx context.Context, id string, scope string) (Plugin, error)
 // - 校验 id 非空
 // - scope 为空时默认 "global"
-// - 调用 repo.UpdateScope
+// - scope 非 global 时通过 ScopeAgentLookup.AgentExists 校验 Agent 存在
+// - 调用 repo.UpdatePluginScope
 
-func (u *PluginUsecase) GetByKey(ctx context.Context, key string) (Plugin, error)
-// - 调用 repo.GetByKey
+func (u *Usecase) GetByKey(ctx context.Context, key string) (Plugin, error)
+// - 校验 key 非空
+// - 调用 repo.GetByKey，NotFound 透传 shared.ErrNotFound
 
-func (u *PluginUsecase) Create(ctx context.Context, p Plugin) (Plugin, error)
-// - 校验 Key 非空且唯一
+func (u *Usecase) Create(ctx context.Context, p Plugin) (Plugin, error)
+// - 校验 Key 非空
+// - ID 为空时默认 "builtin-<Key>"
+// - ConfigJSON 为空时默认 "{}"
+// - ConfigSchemaJSON 非空时调用 ValidateJSONSchema 校验
+// - Scope 为空时默认 "global"
 // - 调用 repo.CreatePlugin
+
+func (u *Usecase) RecordRun(ctx context.Context, run Run) error
+// - runs 为 nil 时静默返回
+// - 调用 runs.Insert
+
+func (u *Usecase) ListRuns(ctx context.Context, q RunQuery) (RunListResult, error)
+// - runs 为 nil 时返回空结果
+// - Limit 默认 50
+// - 调用 runs.List
+
+func (u *Usecase) DeleteAllRuns(ctx context.Context) (int32, error)
+// - runs 为 nil 时返回 0
+// - 调用 runs.DeleteAll
+
+// ValidateJSONSchema 委托 shared.ValidateDocumentAgainstSchema("PLUGIN", schemaJSON, docJSON)
+func ValidateJSONSchema(schemaJSON, docJSON string) error
+
+// NormalizeSandboxMode 根据 riskLevel 返回默认沙箱模式
+func NormalizeSandboxMode(raw string, riskLevel string) SandboxMode
+
+// ResolveVersion 选择 pinned 版本或回退到 latest
+func ResolveVersion(policy VersionPolicy, latest string) string
 ```
 
 ---
@@ -301,6 +463,7 @@ func (PlatformPlugin) Fields() []ent.Field {
         field.Int("sort_order").Default(0),
         field.Text("config_schema_json").Default("{}"),
         field.Text("config_json").Default("{}"),
+        // default_config_json — field name avoids Ent global DefaultConfigJSON collision.
         field.Text("fallback_config_json").StorageKey("default_config_json").Default("{}"),
         field.Int("invoke_count").Default(0),
         field.Int("block_count").Default(0),
@@ -312,9 +475,56 @@ func (PlatformPlugin) Fields() []ent.Field {
         field.String("deleted_at").Default(""),
     }
 }
+
+func (PlatformPlugin) Indexes() []ent.Index {
+    return []ent.Index{
+        index.Fields("enabled", "sort_order").StorageKey("idx_plugins_enabled_order"),
+    }
+}
 ```
 
-### 4.2 Repo 实现
+### 4.2 plugin_runs 表（DDL 迁移）
+
+文件路径：`internal/data/sql/plugin_run.sql`（由 `internal/data/plugin_run_schema.go` 的 `EnsurePluginRunSchema` 嵌入执行，DDL 迁移注册版本 `20260621`）
+
+```sql
+CREATE TABLE IF NOT EXISTS plugin_runs (
+  id TEXT PRIMARY KEY,
+  plugin_key TEXT NOT NULL,
+  plugin_id TEXT NOT NULL DEFAULT '',
+  session_id TEXT NOT NULL DEFAULT '',
+  agent_id TEXT NOT NULL DEFAULT '',
+  callback_point TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'ok',
+  duration_ms INTEGER NOT NULL DEFAULT 0,
+  detail_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_plugin_runs_plugin_key ON plugin_runs(plugin_key);
+CREATE INDEX IF NOT EXISTS idx_plugin_runs_created_at ON plugin_runs(created_at);
+```
+
+### 4.3 plugin_cost_guard_usage 表
+
+文件路径：`internal/data/plugin_cost_guard_usage.go`（Raw SQL，无独立 DDL 文件）
+
+表结构（通过 `ON CONFLICT(usage_day, scope_key) DO UPDATE` 推断）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `usage_day` | TEXT | 日期键（YYYY-MM-DD） |
+| `scope_key` | TEXT | 作用域键（global 或 agent_id） |
+| `tokens` | INTEGER | 当日累计 token |
+| `updated_at` | TEXT | 更新时间 |
+
+唯一约束：`(usage_day, scope_key)`。
+
+> **注意**：当前代码中未找到该表的 DDL 创建语句，可能存在 TECH-DEBT（表未通过 DDL 迁移注册）。`AddTokens` 使用 `INSERT ... ON CONFLICT DO UPDATE`，依赖该表存在。
+
+### 4.4 Repo 实现
+
+#### 4.4.1 pluginRepo
 
 文件路径：`internal/data/plugin.go`
 
@@ -328,12 +538,15 @@ func NewPluginRepo(d *Data) biz.PluginRepo {
 }
 ```
 
-**Ent → Biz 转换函数**：
+**Ent → Biz 转换函数**（实际签名含 `loggateway.Logger` 用于解析 JSON 失败告警）：
 
 ```go
-func entToBizPlugin(e *ent.PlatformPlugin) biz.Plugin {
+func entToBizPlugin(lg loggateway.Logger, e *ent.PlatformPlugin) biz.Plugin {
     var cbs []string
-    _ = json.Unmarshal([]byte(e.CallbackPointsJSON), &cbs)
+    if err := json.Unmarshal([]byte(e.CallbackPointsJSON), &cbs); err != nil {
+        lg.Warn("unmarshal plugin callback_points failed",
+            loggateway.StepID("data.plugin"), loggateway.Err(err))
+    }
     return biz.Plugin{
         ID:                e.ID,
         Key:               e.PluginKey,
@@ -360,11 +573,11 @@ func entToBizPlugin(e *ent.PlatformPlugin) biz.Plugin {
 }
 ```
 
-**SearchPlugins 查询构建**：
+**SearchPlugins 查询构建**（使用事务感知读连接 `r.data.RW().Read(ctx)`）：
 
 ```go
-func (r *pluginRepo) pluginSearchQuery(q biz.PluginListQuery) *ent.PlatformPluginQuery {
-    pq := r.data.entClient.PlatformPlugin.Query().Where(platformplugin.DeletedAtEQ(""))
+func (r *pluginRepo) pluginSearchQuery(ctx context.Context, q biz.PluginListQuery) *ent.PlatformPluginQuery {
+    pq := r.data.RW().Read(ctx).PlatformPlugin.Query().Where(platformplugin.DeletedAtEQ(""))
     if s := strings.TrimSpace(q.Search); s != "" {
         pq = pq.Where(
             platformplugin.Or(
@@ -388,102 +601,44 @@ func (r *pluginRepo) pluginSearchQuery(q biz.PluginListQuery) *ent.PlatformPlugi
     }
     return pq
 }
-
-func (r *pluginRepo) SearchPlugins(ctx context.Context, q biz.PluginListQuery) (biz.PluginListResult, error) {
-    base := r.pluginSearchQuery(q)
-    total, err := base.Count(ctx)
-    if err != nil {
-        return biz.PluginListResult{}, err
-    }
-    rows, err := r.pluginSearchQuery(q).
-        Order(
-            platformplugin.BySortOrder(),
-            platformplugin.ByCreatedAt(entsql.OrderDesc()),
-        ).
-        Limit(q.Limit).
-        Offset(q.Offset).
-        All(ctx)
-    if err != nil {
-        return biz.PluginListResult{}, err
-    }
-    items := make([]biz.Plugin, 0, len(rows))
-    for _, e := range rows {
-        items = append(items, entToBizPlugin(e))
-    }
-    return biz.PluginListResult{Items: items, Total: total, Limit: q.Limit, Offset: q.Offset}, nil
-}
 ```
 
-**GetPlugin**：
+排序：`sort_order ASC` + `created_at DESC`。
+
+#### 4.4.2 pluginRunRepo
+
+文件路径：`internal/data/plugin_run.go`
 
 ```go
-func (r *pluginRepo) GetPlugin(ctx context.Context, id string) (biz.Plugin, error) {
-    row, err := r.data.entClient.PlatformPlugin.Query().
-        Where(platformplugin.IDEQ(id), platformplugin.DeletedAtEQ("")).
-        Only(ctx)
-    if err != nil {
-        if ent.IsNotFound(err) {
-            return biz.Plugin{}, sql.ErrNoRows
-        }
-        return biz.Plugin{}, err
-    }
-    return entToBizPlugin(row), nil
+type pluginRunRepo struct {
+    data *Data
+}
+
+func NewPluginRunRepo(data *Data) biz.PluginRunRepo {
+    return &pluginRunRepo{data: data}
 }
 ```
 
-**UpdatePluginEnabled**：
+- `Insert`：Raw SQL `INSERT INTO plugin_runs (...)`，走 `r.data.RWDB().WriteDB(ctx).ExecContext`
+- `List`：Raw SQL 拼接 WHERE 条件（plugin_key/plugin_id/session_id/agent_id/callback_point/status/from/to），走 `r.data.RWDB().ReadDB(ctx).QueryContext`，Limit 默认 50 上限 200
+- `DeleteAll`：Raw SQL `DELETE FROM plugin_runs`
+
+#### 4.4.3 pluginCostGuardUsageRepo
+
+文件路径：`internal/data/plugin_cost_guard_usage.go`
 
 ```go
-func (r *pluginRepo) UpdatePluginEnabled(ctx context.Context, id string, enabled bool) (biz.Plugin, error) {
-    err := r.data.entClient.PlatformPlugin.UpdateOneID(id).
-        SetEnabled(enabled).
-        SetUpdatedAt(nowRFC3339()).
-        Exec(ctx)
-    if err != nil {
-        if ent.IsNotFound(err) {
-            return biz.Plugin{}, sql.ErrNoRows
-        }
-        return biz.Plugin{}, err
-    }
-    return r.GetPlugin(ctx, id)
+type pluginCostGuardUsageRepo struct {
+    data *Data
+}
+
+func NewPluginCostGuardUsageRepo(data *Data) biz.PluginCostGuardUsageRepo {
+    return &pluginCostGuardUsageRepo{data: data}
 }
 ```
 
-**UpdatePluginConfig**：
-
-```go
-func (r *pluginRepo) UpdatePluginConfig(ctx context.Context, id string, configJSON string) (biz.Plugin, error) {
-    err := r.data.entClient.PlatformPlugin.UpdateOneID(id).
-        SetConfigJSON(configJSON).
-        SetUpdatedAt(nowRFC3339()).
-        Exec(ctx)
-    if err != nil {
-        if ent.IsNotFound(err) {
-            return biz.Plugin{}, sql.ErrNoRows
-        }
-        return biz.Plugin{}, err
-    }
-    return r.GetPlugin(ctx, id)
-}
-```
-
-**UpdateSortOrder**：
-
-```go
-func (r *pluginRepo) UpdateSortOrder(ctx context.Context, id string, sortOrder int) (biz.Plugin, error) {
-    err := r.data.entClient.PlatformPlugin.UpdateOneID(id).
-        SetSortOrder(sortOrder).
-        SetUpdatedAt(nowRFC3339()).
-        Exec(ctx)
-    if err != nil {
-        if ent.IsNotFound(err) {
-            return biz.Plugin{}, sql.ErrNoRows
-        }
-        return biz.Plugin{}, err
-    }
-    return r.GetPlugin(ctx, id)
-}
-```
+- `GetTokens`：`SELECT tokens FROM plugin_cost_guard_usage WHERE usage_day=? AND scope_key=?`，NotFound 返回 0
+- `AddTokens`：`INSERT ... ON CONFLICT(usage_day, scope_key) DO UPDATE SET tokens = tokens + excluded.tokens`
 
 ---
 
@@ -499,16 +654,65 @@ type PluginService struct {
 
     uc      *biz.PluginUsecase
     runtime *plugintrpc.Runtime
+    lg      loggateway.Logger
 }
 
-func NewPluginService(uc *biz.PluginUsecase, runtime *plugintrpc.Runtime) *PluginService {
-    return &PluginService{uc: uc, runtime: runtime}
+func NewPluginService(uc *biz.PluginUsecase, runtime *plugintrpc.Runtime, lg loggateway.Logger) *PluginService {
+    return &PluginService{uc: uc, runtime: runtime, lg: lg}
+}
+
+// NewPluginServiceWithBootstrap 构造 PluginService 并执行一次性种子同步。
+// TECH-DEBT(#plugin-bootstrap): 构造函数副作用，应在 Wire 图构造后显式调用。
+func NewPluginServiceWithBootstrap(uc *biz.PluginUsecase, runtime *plugintrpc.Runtime, lg loggateway.Logger) *PluginService {
+    s := NewPluginService(uc, runtime, lg)
+    ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+    defer cancel()
+    s.Bootstrap(ctx)
+    return s
+}
+
+// Bootstrap 种子同步内置插件并热重载运行时（进程启动时调用一次）。
+func (s *PluginService) Bootstrap(ctx context.Context) {
+    if s == nil {
+        return
+    }
+    s.seedBuiltinPlugins(ctx)
 }
 ```
 
-### 5.2 热重载机制
+### 5.2 种子同步
 
-每次写操作（ToggleEnabled / UpdateConfig / UpdateSortOrder）成功后，异步触发 `reloadRuntime()`：
+```go
+func (s *PluginService) seedBuiltinPlugins(ctx context.Context) {
+    if s == nil || s.uc == nil {
+        return
+    }
+    for _, def := range plugintrpc.BuiltinPluginDefs() {
+        _, err := s.uc.GetByKey(ctx, def.Key)
+        if err == nil {
+            continue  // 已存在，不覆盖
+        }
+        if !apierror.IsCode(err, apierror.CodeNotFound) {
+            s.lg.Warn("插件种子查询失败",
+                loggateway.StepID("plugin.seed_fail"),
+                loggateway.Str("key", def.Key),
+                loggateway.Err(err))
+            continue
+        }
+        if _, err := s.uc.Create(ctx, def.ToBizPlugin()); err != nil {
+            s.lg.Warn("插件种子创建失败",
+                loggateway.StepID("plugin.seed_fail"),
+                loggateway.Str("key", def.Key),
+                loggateway.Err(err))
+        }
+    }
+    s.reloadRuntime(ctx)
+}
+```
+
+### 5.3 热重载机制
+
+每次写操作（ToggleEnabled / UpdateConfig / UpdateSortOrder / UpdateScope）成功后，异步触发 `reloadRuntime()`：
 
 ```go
 func (s *PluginService) reloadRuntime(ctx context.Context) {
@@ -518,7 +722,9 @@ func (s *PluginService) reloadRuntime(ctx context.Context) {
     safego.Go(ctx, "plugin.reloadRuntime", func() {
         result, err := s.uc.List(context.Background(), biz.PluginListQuery{Enabled: "true", Limit: 200})
         if err != nil {
-            s.lg.Warn("plugin.reloadRuntime: list enabled failed", loggateway.Err(err))
+            s.lg.Warn("插件运行时重载列表失败",
+                loggateway.StepID("plugin.reload_fail"),
+                loggateway.Err(err))
             return
         }
         s.runtime.Apply(context.Background(), result.Items)
@@ -532,7 +738,7 @@ func (s *PluginService) reloadRuntime(ctx context.Context) {
 写操作 → DB 更新 → reloadRuntime() → uc.List(enabled=true) → runtime.Apply() → 下次 Runner 创建获取最新插件
 ```
 
-### 5.3 Biz → Proto 转换
+### 5.4 Biz → Proto 转换
 
 ```go
 func toProtoPlugin(p biz.Plugin) *v1.Plugin {
@@ -565,101 +771,71 @@ func toProtoPlugin(p biz.Plugin) *v1.Plugin {
         },
     }
 }
+
+func toProtoPluginRun(r biz.PluginRun) *v1.PluginRun {
+    return &v1.PluginRun{
+        Id:            r.ID,
+        PluginKey:     r.PluginKey,
+        PluginId:      r.PluginID,
+        SessionId:     r.SessionID,
+        AgentId:       r.AgentID,
+        CallbackPoint: r.CallbackPoint,
+        Status:        r.Status,
+        DurationMs:    int32(r.DurationMS),
+        DetailJson:    r.DetailJSON,
+        CreatedAt:     r.CreatedAt,
+    }
+}
 ```
 
-### 5.4 RPC 方法
+### 5.5 RPC 方法
 
-**ListPlugins**：
+**ListPlugins / TogglePluginEnabled / UpdatePluginConfig / UpdatePluginSortOrder / UpdatePluginScope**：
+
+每个写操作成功后调用 `s.reloadRuntime(ctx)`。错误翻译使用 `apierror.IsCode(err, apierror.CodeNotFound)` → `apierror.NotFound("PLUGIN", "plugin not found")`。
+
+**ListPluginRuns**：
 
 ```go
-func (s *PluginService) ListPlugins(ctx context.Context, req *v1.ListPluginsRequest) (*v1.ListPluginsResponse, error) {
+func (s *PluginService) ListPluginRuns(ctx context.Context, req *v1.ListPluginRunsRequest) (*v1.ListPluginRunsResponse, error) {
     limit, offset, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
-    q := biz.PluginListQuery{
-        Search:        req.GetSearch(),
-        Category:      req.GetCategory(),
-        Enabled:       req.GetEnabled(),
+    result, err := s.uc.ListRuns(ctx, biz.PluginRunQuery{
+        PluginKey:     req.GetPluginKey(),
+        PluginID:      req.GetPluginId(),
+        SessionID:     req.GetSessionId(),
+        AgentID:       req.GetAgentId(),
         CallbackPoint: req.GetCallbackPoint(),
+        Status:        req.GetStatus(),
+        From:          req.GetFrom(),
+        To:            req.GetTo(),
         Limit:         limit,
         Offset:        offset,
-    }
-    result, err := s.uc.List(ctx, q)
+    })
     if err != nil {
         return nil, err
     }
-    resp := &v1.ListPluginsResponse{
-        Total:    int32(result.Total),
+    resp := &v1.ListPluginRunsResponse{
+        Total:    result.Total,
         Page:     page,
         PageSize: pageSize,
-        Items:    make([]*v1.Plugin, 0, len(result.Items)),
+        Items:    make([]*v1.PluginRun, 0, len(result.Items)),
     }
     for i := range result.Items {
-        resp.Items = append(resp.Items, toProtoPlugin(result.Items[i]))
+        resp.Items = append(resp.Items, toProtoPluginRun(result.Items[i]))
     }
     return resp, nil
 }
 ```
 
-**TogglePluginEnabled**：
+**DeleteAllPluginRuns**：
 
 ```go
-func (s *PluginService) TogglePluginEnabled(ctx context.Context, req *v1.TogglePluginEnabledRequest) (*v1.Plugin, error) {
-    out, err := s.uc.ToggleEnabled(ctx, req.GetId(), req.GetEnabled())
+func (s *PluginService) DeleteAllPluginRuns(ctx context.Context, _ *v1.DeleteAllPluginRunsRequest) (*v1.DeleteAllPluginRunsResponse, error) {
+    count, err := s.uc.DeleteAllRuns(ctx)
     if err != nil {
-        if errors.Is(err, sql.ErrNoRows) {
-            return nil, kerrors.NotFound("PLUGIN", "plugin not found")
-        }
         return nil, err
     }
-    s.reloadRuntime(ctx)
-    return toProtoPlugin(out), nil
-}
-```
-
-**UpdatePluginConfig**：
-
-```go
-func (s *PluginService) UpdatePluginConfig(ctx context.Context, req *v1.UpdatePluginConfigRequest) (*v1.Plugin, error) {
-    out, err := s.uc.UpdateConfig(ctx, req.GetId(), req.GetConfigJson())
-    if err != nil {
-        if errors.Is(err, sql.ErrNoRows) {
-            return nil, kerrors.NotFound("PLUGIN", "plugin not found")
-        }
-        return nil, err
-    }
-    s.reloadRuntime(ctx)
-    return toProtoPlugin(out), nil
-}
-```
-
-**UpdatePluginSortOrder**：
-
-```go
-func (s *PluginService) UpdatePluginSortOrder(ctx context.Context, req *v1.UpdatePluginSortOrderRequest) (*v1.Plugin, error) {
-    out, err := s.uc.UpdateSortOrder(ctx, req.GetId(), int(req.GetSortOrder()))
-    if err != nil {
-        if errors.Is(err, sql.ErrNoRows) {
-            return nil, kerrors.NotFound("PLUGIN", "plugin not found")
-        }
-        return nil, err
-    }
-    s.reloadRuntime(ctx)
-    return toProtoPlugin(out), nil
-}
-```
-
-**UpdatePluginScope**：
-
-```go
-func (s *PluginService) UpdatePluginScope(ctx context.Context, req *v1.UpdatePluginScopeRequest) (*v1.Plugin, error) {
-    out, err := s.uc.UpdateScope(ctx, req.GetId(), req.GetScope())
-    if err != nil {
-        if errors.Is(err, sql.ErrNoRows) {
-            return nil, kerrors.NotFound("PLUGIN", "plugin not found")
-        }
-        return nil, err
-    }
-    s.reloadRuntime(ctx)
-    return toProtoPlugin(out), nil
+    return &v1.DeleteAllPluginRunsResponse{DeletedCount: count}, nil
 }
 ```
 
@@ -668,12 +844,13 @@ func (s *PluginService) UpdatePluginScope(ctx context.Context, req *v1.UpdatePlu
 ## 六、Wire 注入
 
 ```
-data.ProviderSet  → NewPluginRepo
-biz.ProviderSet   → NewPluginUsecase
-service.ProviderSet → NewPluginService(uc, runtime)
+data.ProviderSet  → NewPluginRepo / NewPluginRunRepo / NewPluginCostGuardUsageRepo
+biz.ProviderSet   → NewPluginUsecase(repo, runs, agents)  // agents = NewScopeAgentLookup(AgentRepository)
+service.ProviderSet → NewPluginServiceWithBootstrap(uc, runtime, lg)
 ```
 
 `plugintrpc.Runtime` 通过 Wire 注入到 `PluginService`，确保 Service 层可触发热重载。
+`biz.NewScopeAgentLookup` 包装 `AgentRepository` 为 `plugin.ScopeAgentLookup`，用于 `UpdateScope` 时校验 Agent 存在。
 
 ---
 
@@ -722,34 +899,60 @@ type runtimeEntry struct {
     confirmationGuard *ConfirmationGuardConfig
 }
 
+func NewRuntime(stats StatsRecorder, lg loggateway.Logger) *Runtime
+
 // Apply 替换活跃插件集（仅实例化 enabled + 已知 key 的插件）
-func (rt *Runtime) Apply(_ context.Context, plugins []biz.Plugin) {
-    built := make([]runtimeEntry, 0, len(plugins))
-    for _, p := range plugins {
-        if ap := adapt(p, rt.stats, rt.bus, rt); ap != nil {
-            built = append(built, runtimeEntry{
-                plugin: ap.plugin, scope: p.Scope, key: p.Key,
-                sortOrder: p.SortOrder, orchestration: ResolvePluginOrchestration(p),
-                modelRouter: ap.modelRouter, costGuard: ap.costGuard, confirmationGuard: ap.confirmationGuard,
-            })
-        }
-    }
-    rt.mu.Lock()
-    rt.active = built
-    rt.mu.Unlock()
-}
+func (rt *Runtime) Apply(_ context.Context, plugins []biz.Plugin)
 
-// PluginsForAgent returns active plugins for the agent.
-func (rt *Runtime) PluginsForAgent(agentID string) []trpcplugin.Plugin { ... }
+// PluginsForAgent 返回匹配 agent scope 的活跃插件（scope="global" 或 scope==agentID）
+func (rt *Runtime) PluginsForAgent(agentID string) []trpcplugin.Plugin
 
-// Close stops background workers (hook retry worker, stats batch worker).
-func (rt *Runtime) Close() { ... }
+// Plugins 返回所有活跃插件（无 scope 过滤，旧接口）
+func (rt *Runtime) Plugins() []trpcplugin.Plugin
+
+// ModelRouterConfigForAgent 返回 model_router 配置（启用且 scope 匹配时）
+func (rt *Runtime) ModelRouterConfigForAgent(agentID string) (ModelRouterConfig, bool)
+
+// CostGuardConfigForAgent 返回 cost_guard 配置（启用且 scope 匹配时）
+func (rt *Runtime) CostGuardConfigForAgent(agentID string) (CostGuardConfig, bool)
+
+// ConfirmationGuardConfigForAgent 返回 confirmation_guard 配置（启用且 scope 匹配时）
+func (rt *Runtime) ConfirmationGuardConfigForAgent(agentID string) (ConfirmationGuardConfig, bool)
+
+// SetBus 注入事件总线并初始化 Hook 日志桥接
+func (rt *Runtime) SetBus(bus event.Bus)
+
+// SetAgentKeyResolver 注入 agent_key → agent_id 解析函数
+func (rt *Runtime) SetAgentKeyResolver(fn AgentKeyResolver)
+
+// SetCatalogConfirmChecker 注入 catalog requires_confirmation 检查器
+func (rt *Runtime) SetCatalogConfirmChecker(fn CatalogConfirmChecker)
+
+// SetToolUsecase 通过 ToolUsecase 构造 CatalogConfirmChecker
+func (rt *Runtime) SetToolUsecase(tools *biz.ToolUsecase)
+
+// SetCostGuardUsageRepo 启用跨进程日预算持久化
+func (rt *Runtime) SetCostGuardUsageRepo(repo biz.PluginCostGuardUsageRepo)
+
+// SetHookDeliveryRepo 启用 Hook 通知持久化与重试
+func (rt *Runtime) SetHookDeliveryRepo(repo biz.HookDeliveryRepo)
+
+// StartBackgroundWorkers 启动后台 worker（hook retry worker）
+func (rt *Runtime) StartBackgroundWorkers()
+
+// Close 停止后台 worker（hook retry / stats batch / budgets reset）
+func (rt *Runtime) Close()
+
+// CostGuardBudgetTracker 返回全局预算追踪器（legacy，优先用 CostGuardBudgetTrackerForAgent）
+func (rt *Runtime) CostGuardBudgetTracker() *CostGuardBudgetTracker
 ```
 
 线程安全保证：
 - `Apply()` 使用写锁替换整个 `active` 切片。
-- `Plugins()` 使用读锁返回快照副本。
+- `Plugins()` / `PluginsForAgent()` 使用读锁返回快照副本。
 - 并发安全，无需额外同步。
+
+**scope 过滤**：`PluginMatchesScope(scope, agentID)` — scope 为 `global` 或空时匹配所有 Agent，否则 scope 必须等于 agentID。
 
 ### 7.3 Adapter 适配层
 
@@ -764,12 +967,12 @@ type adaptedPlugin struct {
 
 // adapt 将 biz.Plugin 转换为 adaptedPlugin（含已解析配置）
 // disabled 或未知 key 返回 nil
-func adapt(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime) *adaptedPlugin {
+func adapt(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime, lg loggateway.Logger) *adaptedPlugin {
     if !p.Enabled {
         return nil
     }
     ValidatePluginCallbackPoints(p)
-    tp := builtin(p, stats, bus, rt)
+    tp := builtin(p, stats, bus, rt, lg)
     if tp == nil {
         return nil
     }
@@ -778,15 +981,15 @@ func adapt(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime) *adapt
     switch key {
     case "model_router":
         var cfg ModelRouterConfig
-        parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+        parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
         ap.modelRouter = &cfg
     case "cost_guard":
         var cfg CostGuardConfig
-        parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+        parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
         ap.costGuard = &cfg
     case "confirmation_guard":
         var cfg ConfirmationGuardConfig
-        parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+        parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
         ap.confirmationGuard = &cfg
     }
     return ap
@@ -806,13 +1009,20 @@ func builtin(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime, lg l
     case "sensitive_data_mask":
         return NewSensitiveDataMaskPlugin(p, stats, bus, lg)
     case "confirmation_guard":
-        return NewConfirmationGuardPlugin(p, stats, bus, rt, lg)
+        return NewConfirmationGuardPlugin(p, stats, bus, lg)  // 注意：不传 rt
     case "cost_guard":
         return NewCostGuardPlugin(p, stats, bus, rt, lg)
     case "model_router":
-        return NewModelRouterPlugin(p, stats, bus, rt, lg)
+        return NewModelRouterPlugin(p, stats, bus, lg)
     case "permission_guard":
-        return NewPermissionGuardPlugin(p, stats, bus, rt, lg)
+        // permission_guard 需要 AgentKeyResolver，从 rt 获取
+        var resolve AgentKeyResolver
+        if rt != nil {
+            rt.mu.RLock()
+            resolve = rt.resolveAgent
+            rt.mu.RUnlock()
+        }
+        return NewPermissionGuardPlugin(p, stats, bus, resolve, lg)
     case "output_policy":
         return NewOutputPolicyPlugin(p, stats, bus, lg)
     default:
@@ -903,17 +1113,20 @@ func (m *Manager) Close(ctx context.Context) error
 
 本节仅列出 Key 与文件映射，供开发参考：
 
-| Key | 实现文件 | 注册回调点 |
-|-----|----------|------------|
-| `audit_log` | `internal/plugin/trpc/audit.go` | BeforeAgent, AfterAgent, BeforeModel, AfterModel, BeforeTool, AfterTool, OnEvent |
-| `skill_usage_tracker` | `internal/plugin/trpc/skill_tracker.go` | BeforeTool, AfterTool |
-| `retry_and_reflect` | `internal/plugin/trpc/retry_reflect.go` | AfterAgent, AfterTool |
-| `sensitive_data_mask` | `internal/plugin/trpc/sensitive_mask.go` | BeforeModel, AfterModel |
-| `confirmation_guard` | `internal/plugin/trpc/confirmation_guard.go` | BeforeTool（直接阻断） |
-| `cost_guard` | `internal/plugin/trpc/cost_guard.go` | BeforeModel |
-| `model_router` | `internal/plugin/trpc/model_router.go` | BeforeModel |
-| `permission_guard` | `internal/plugin/trpc/permission_guard.go` | BeforeTool |
-| `output_policy` | `internal/plugin/trpc/output_policy.go` | AfterModel, OnEvent |
+| Key | 实现文件 | 注册回调点 | Category | RiskLevel | SortOrder |
+|-----|----------|------------|----------|-----------|-----------|
+| `audit_log` | `internal/plugin/trpc/audit.go` | BeforeAgent, AfterAgent, BeforeModel, AfterModel, BeforeTool, AfterTool, OnEvent | observability | low | 100 |
+| `skill_usage_tracker` | `internal/plugin/trpc/skill_tracker.go` | BeforeTool, AfterTool | tracking | low | 110 |
+| `retry_and_reflect` | `internal/plugin/trpc/retry_reflect.go` | AfterTool（registry 仅注册 after_tool；chain_adapter 声明含 after_agent） | reliability | medium | 120 |
+| `sensitive_data_mask` | `internal/plugin/trpc/sensitive_mask.go` | BeforeModel, AfterModel | security | medium | 130 |
+| `confirmation_guard` | `internal/plugin/trpc/confirmation_guard.go` | BeforeTool（直接阻断） | security | high | 140 |
+| `cost_guard` | `internal/plugin/trpc/cost_guard.go` | BeforeModel | governance | medium | 150 |
+| `model_router` | `internal/plugin/trpc/model_router.go` | BeforeModel | routing | low | 160 |
+| `permission_guard` | `internal/plugin/trpc/permission_guard.go` | BeforeTool | security | high | 170 |
+| `output_policy` | `internal/plugin/trpc/output_policy.go` | AfterModel, OnEvent | security | medium | 180 |
+
+> **Category 与 SortOrder 来源**：`internal/plugin/trpc/registry.go` 的 `BuiltinPluginDefs()`。
+> **回调点声明来源**：`internal/plugin/trpc/chain_adapter.go` 的 `builtinCallbackPoints` map。
 
 ### 8.0 框架 Plugin（自动注入，无需 DB 配置）
 
@@ -984,7 +1197,9 @@ func (p *XxxPlugin) Register(r *trpcplugin.Registry) {
 
 ### 8.4 各内置 Plugin 配置 Schema
 
-**runtime_audit**：
+> **权威来源**：`internal/plugin/trpc/registry.go` 中的 `const xxxSchema` 字符串常量。以下 schema 与代码保持一致。
+
+**audit_log**（`auditLogSchema`）：
 ```json
 {
   "type": "object",
@@ -998,7 +1213,7 @@ func (p *XxxPlugin) Register(r *trpcplugin.Registry) {
 }
 ```
 
-**retry_and_reflect**：
+**retry_and_reflect**（`retryReflectSchema`）：
 ```json
 {
   "type": "object",
@@ -1012,7 +1227,7 @@ func (p *XxxPlugin) Register(r *trpcplugin.Registry) {
 }
 ```
 
-**sensitive_data_mask**：
+**sensitive_data_mask**（`sensitiveMaskSchema`）：
 ```json
 {
   "type": "object",
@@ -1026,7 +1241,7 @@ func (p *XxxPlugin) Register(r *trpcplugin.Registry) {
 }
 ```
 
-**confirmation_guard**：
+**confirmation_guard**（`confirmationGuardSchema`）：
 ```json
 {
   "type": "object",
@@ -1039,7 +1254,7 @@ func (p *XxxPlugin) Register(r *trpcplugin.Registry) {
 }
 ```
 
-**cost_guard**：
+**cost_guard**（`costGuardSchema`）：
 ```json
 {
   "type": "object",
@@ -1047,18 +1262,19 @@ func (p *XxxPlugin) Register(r *trpcplugin.Registry) {
     "daily_token_budget":  { "type": "integer", "default": 0 },
     "max_prompt_tokens":   { "type": "integer", "default": 0 },
     "blocked_models":      { "type": "array", "items": { "type": "string" }, "default": [] },
-    "fallback_model":      { "type": "string", "default": "" },
-    "admin_bypass":        { "type": "boolean", "default": true }
+    "fallback_model":      { "type": "string", "default": "" }
   }
 }
 ```
 
-**model_router**：
+> **注意**：需求文档 §2.5 列出的 `admin_bypass` 字段在代码 schema 中未定义。
+
+**model_router**（`modelRouterSchema`）：
 ```json
 {
   "type": "object",
   "properties": {
-    "rules":                 { "type": "array", "items": { "type": "object" }, "default": [] },
+    "rules":                 { "type": "array", "items": { "type": "object", "properties": { "model": {"type":"string"}, "contains": {"type":"array","items":{"type":"string"}}, "regex": {"type":"string"}, "min_chars": {"type":"integer"}, "priority": {"type":"integer"} } }, "default": [] },
     "default_model":         { "type": "string", "default": "" },
     "code_model":            { "type": "string", "default": "" },
     "long_context_model":    { "type": "string", "default": "" },
@@ -1067,20 +1283,20 @@ func (p *XxxPlugin) Register(r *trpcplugin.Registry) {
 }
 ```
 
-**permission_guard**：
+**permission_guard**（`permissionGuardSchema`）：
 ```json
 {
   "type": "object",
   "properties": {
     "deny_tools":       { "type": "array", "items": { "type": "string" }, "default": [] },
-    "confirm_tools":    { "type": "array", "items": { "type": "string" }, "default": [] },
-    "agent_allowlist":  { "type": "array", "items": { "type": "string" }, "default": [] },
-    "role_rules":       { "type": "array", "items": { "type": "object" }, "default": [] }
+    "agent_allowlist":  { "type": "array", "items": { "type": "string" }, "default": [] }
   }
 }
 ```
 
-**output_policy**：
+> **注意**：需求文档 §2.7 列出的 `confirm_tools` 和 `role_rules` 字段在代码 schema 中未定义。
+
+**output_policy**（`outputPolicySchema`）：
 ```json
 {
   "type": "object",
@@ -1093,7 +1309,7 @@ func (p *XxxPlugin) Register(r *trpcplugin.Registry) {
 }
 ```
 
-**skill_usage_tracker**：
+**skill_usage_tracker**（`skillTrackerSchema`）：
 ```json
 {
   "type": "object",
@@ -1115,46 +1331,23 @@ func (p *XxxPlugin) Register(r *trpcplugin.Registry) {
 
 ### 9.1 API 调用封装
 
-文件路径：`web/src/services/plugin.ts`
+文件路径：`web/src/features/plugins/api.ts`
 
 ```typescript
-export async function listPlugins(params: ListPluginsParams): Promise<ListPluginsResult> {
-  const svc = createPluginService();
-  const res = await svc.ListPlugins({
-    search: params.search,
-    category: params.category,
-    enabled: params.enabled,
-    callbackPoint: params.callback_point,
-    page: params.page,
-    pageSize: params.page_size,
-  });
-  return { items, total: Number(res.total ?? 0), page: Number(res.page ?? page), page_size: Number(res.pageSize ?? pageSize) };
-}
+const pluginService = createPluginService();
 
-export async function togglePluginEnabled(id: string, enabled: boolean): Promise<Plugin> {
-  const svc = createPluginService();
-  const row = await svc.TogglePluginEnabled({ id, enabled });
-  return mapPluginRow(row);
-}
-
-export async function updatePluginConfig(id: string, configJSON: string): Promise<Plugin> {
-  const svc = createPluginService();
-  const row = await svc.UpdatePluginConfig({ id, configJson: configJSON });
-  return mapPluginRow(row);
-}
-
-export async function updatePluginSortOrder(id: string, sortOrder: number): Promise<Plugin> {
-  const svc = createPluginService();
-  const row = await svc.UpdatePluginSortOrder({ id, sortOrder });
-  return mapPluginRow(row);
-}
-
-export async function updatePluginScope(id: string, scope: string): Promise<Plugin> {
-  const svc = createPluginService();
-  const row = await svc.UpdatePluginScope({ id, scope });
-  return mapPluginRow(row);
-}
+export async function listPlugins(query: PluginListQuery = {}): Promise<PaginatedResponse<Plugin>
+export async function togglePluginEnabled(id: string, enabled: boolean): Promise<Plugin>
+export async function updatePluginConfig(id: string, configJSON: string): Promise<Plugin>
+export async function updatePluginSortOrder(id: string, sortOrder: number): Promise<Plugin>
+export async function updatePluginScope(id: string, scope: string): Promise<Plugin>
+export async function listPluginRuns(query: PluginRunListQuery = {}): Promise<PaginatedResponse<PluginRun>>
+export async function deleteAllPluginRuns(): Promise<number>
 ```
+
+- 模块级 service 单例（`createPluginService()`），避免每次 API 调用重复创建实例
+- `mapPluginRow` / `mapPluginRunRow`：snake_case ↔ camelCase 兼容映射
+- `listPlugins` 的 `enabled` 参数：`true` → `"true"`，`false` → `"false"`，`undefined` → 不传
 
 ### 9.2 页面组件
 
@@ -1173,18 +1366,42 @@ export async function updatePluginScope(id: string, scope: string): Promise<Plug
 6. 更新作用域：调用 `updatePluginScope`，成功后更新本地行数据。
 7. 所有操作带 loading 状态和错误通知。
 
-**Category 下拉选项**：`observability`, `guard`, `tracking`, `debug`, `routing`, `policy`
+**Category 下拉选项**：`observability`, `tracking`, `reliability`, `security`, `governance`, `routing`
 
 **风险等级颜色映射**：
 - `high` → negative (红色)
 - `medium` → warning (橙色)
 - `low` → positive (绿色)
 
-### 9.3 路由
+#### PluginRunsPage.vue
+
+文件路径：`web/src/pages/PluginRunsPage.vue`
+
+运行记录页，调用 `listPluginRuns` / `deleteAllPluginRuns`，UI 工具函数位于 `web/src/features/plugins/pluginRunsTableUi.ts`。
+
+### 9.3 组件文件清单
+
+| 文件路径 | 说明 |
+|----------|------|
+| `web/src/pages/PluginsPage.vue` | Plugin 管理页 |
+| `web/src/pages/PluginRunsPage.vue` | Plugin 运行记录页 |
+| `web/src/components/plugins/PluginsTable.vue` | 插件列表表格 |
+| `web/src/components/plugins/PluginDetailDialog.vue` | 插件详情对话框 |
+| `web/src/components/plugins/PluginConfigDialog.vue` | 配置详情对话框 |
+| `web/src/components/plugins/PluginSchemaForm.vue` | Schema 驱动配置表单 |
+| `web/src/components/plugins/ModelRouterRulesEditor.vue` | model_router rules[] 可视化编辑器 |
+| `web/src/components/plugins/PluginRunDetailDialog.vue` | 运行详情对话框 |
+| `web/src/components/plugins/pluginUi.ts` | 插件 UI 工具函数 |
+| `web/src/features/plugins/api.ts` | API 调用封装 |
+| `web/src/features/plugins/pluginRunsTableUi.ts` | 运行记录表 UI 工具函数 |
+| `web/src/stores/plugins/index.ts` | Pinia store |
+
+### 9.4 路由
 
 | 路径 | 组件 | 说明 |
 |------|------|------|
 | `/plugins` | PluginsPage | Plugin 管理页 |
+| `/plugins/runs` | PluginRunsPage | Plugin 运行记录页 |
 
 ---
 

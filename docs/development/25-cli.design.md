@@ -149,8 +149,8 @@ internal/cli/
 │   ├── cron.go
 │   ├── channel.go
 │   ├── session.go
-│   ├── graph.go            # Graph 资源（实施中新增）
-│   ├── pack.go             # Pack 资源（实施中新增）
+│   ├── graph.go            # Graph 资源
+│   ├── pack.go             # Pack 资源
 │   ├── agent_test.go
 │   ├── skill_test.go
 │   ├── tool_test.go
@@ -197,10 +197,10 @@ internal/cli/
     ├── cron.go
     ├── channel.go
     ├── session.go
-    ├── graph.go             # 实施中新增
-    ├── import.go            # 实施中新增（import 命令入口）
-    ├── pack.go              # 实施中新增
-    ├── pkg.go               # 实施中新增（pkg install 快捷方式）
+    ├── graph.go             # Graph 资源
+    ├── import.go            # import 命令入口
+    ├── pack.go              # Pack 资源
+    ├── pkg.go               # pkg install 快捷方式
     ├── config_test.go
     └── completion.go
 ```
@@ -209,19 +209,19 @@ internal/cli/
 
 ```
 internal/service/
-├── system_info.go          GET /v1/system/info Handler（已实现；手动注册 HTTP handler，非 proto 生成）
+├── system_info.go          GET /v1/system/info Handler（手动注册 HTTP handler，非 proto 生成）
 └── ... cli_admin 工具集装配到 system_admin Agent 走这里
 
 internal/data/
-├── seed_system_admin.go    启动时 upsert __system_admin__（已实现；含 SeedSpiritAgent/SeedMemoryAgent/SeedSkillsAgent/SeedBuiltinCLIAdminTools 等）
+├── seed_system_admin.go    启动时 upsert __system_admin__（含 SeedSpiritAgent/SeedMemoryAgent/SeedSkillsAgent/SeedBuiltinCLIAdminTools 等）
 └── ...
 
-internal/tools/cli_admin/   系统管家工具集；走 service 注入（已实现）
+internal/tools/cli_admin/   系统管家工具集；走 service 注入
 ├── registry.go             # RegisterAll(deps) []tool.Tool
 ├── agent_tools.go          # agent_list / agent_get
 ├── skill_list.go
 ├── skill_install_from_url.go
-├── pkg_install_from_url.go # 实施中新增：包安装
+├── pkg_install_from_url.go # 包安装工具
 ├── registry_test.go
 ├── agent_tools_test.go
 ├── skill_install_from_url_test.go
@@ -229,6 +229,7 @@ internal/tools/cli_admin/   系统管家工具集；走 service 注入（已实�
 └── export_test.go
 ```
 
+> **当前实现状态见开发计划 §1.1**。
 > **`internal/tools/cli_admin/` 不 import `cmd/aranea` 或 `internal/cli`**（反向依赖会污染服务端二进制）。CLI 与 `cli_admin` 工具完全解耦：前者是终端二进制，后者是服务端 Agent 工具。
 
 ---
@@ -467,13 +468,9 @@ func (u UI) Color(name string) ColorFn                     // red/yellow/green/d
 
 ### 4.2 必须新增的后端能力（详细需求见 PRD §3.4）
 
-#### 4.2.1 BE-1：`GET /v1/system/info`（P0，CLI-07）— 已实现
+#### 4.2.1 BE-1：`GET /v1/system/info`（P0，CLI-07）
 
-**已实现**：`internal/service/system_info.go` + `internal/server/http.go` 手动注册路由。
-
-> **注意**：当前实现为手动 HTTP handler（非 proto 生成），路由在 `internal/server/http.go` 第 159-161 行注册。
-
-**当前服务端 `SystemInfoResponse` 字段**（实际）：
+**目标 `SystemInfoResponse` 字段**（CLI 期望的完整契约）：
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -483,15 +480,13 @@ func (u UI) Color(name string) ColorFn                     // red/yellow/green/d
 | `default_provider` | string | 默认 LLM provider |
 | `default_model` | string | 默认模型 |
 | `skill_storage_root` | string | Skill 存储根路径 |
+| `system_admin_agent_id` | string | 系统管家 Agent ID |
+| `system_admin_agent_key` | string | 系统管家 Agent key |
+| `skill_max_zip_mb` | int | Skill zip 最大体积限制 |
 | `features` | map | 功能特性检测 |
 
-**与设计预期的差距**（待补齐）：
-
-| 缺失字段 | 说明 |
-|----------|------|
-| `system_admin_agent_id` | 系统管家 Agent ID（当前未返回） |
-| `system_admin_agent_key` | 系统管家 Agent key（当前未返回） |
-| `skill_max_zip_mb` | Skill zip 最大体积限制（当前未返回） |
+> 实现方式：手动 HTTP handler（非 proto 生成），路由在 `internal/server/http.go` 注册。
+> **当前实现状态见开发计划 §1.1 BE-1**。
 
 #### 4.2.2 BE-2：`POST /v1/skills/import` 接收来源字段（P1，CLI-25）
 
@@ -508,28 +503,34 @@ func (u UI) Color(name string) ColorFn                     // red/yellow/green/d
 
 后端在 `SkillImportJob` / `tool_invocations` / `audit_logs` 中保留以上字段，便于审计追溯。
 
-#### 4.2.3 BE-3 / BE-4：种子数据（P1，CLI-20）— 已实现
+#### 4.2.3 BE-3 / BE-4：种子数据（P1，CLI-20）
 
-**已实现**：`internal/data/seed_system_admin.go` 包含以下 seed 函数：
+**目标**：`internal/data/seed_system_admin.go` 包含以下 seed 函数：
 - `SeedSystemAdminAgent` — upsert `agent_key = "__system_admin__"`，`readonly=1`, `kind="system"`, `tools_profile="system_admin"`
 - `SeedSpiritAgent` / `SeedMemoryAgent` / `SeedSkillsAgent` — 其他系统 Agent
 - `SeedBuiltinCLIAdminTools` — 注册 `cli_admin_*` 工具记录
 - `SeedCronTasks` / `SeedSpiritPromptFiles` / `SeedButlerPromptFiles` — 其他种子数据
 
-> **与原设计的差异**：原设计计划在 `internal/data/ent/schema/agent.go` 新增 `readonly` / `kind` 字段。实际实现中需确认 Ent schema 是否已包含这些字段。
+> Ent schema 需包含 `readonly` (bool) / `kind` (enum) 字段（`internal/data/ent/schema/agent.go`）。
+> **当前实现状态见开发计划 §1.1 BE-3 / BE-4**。
 
-#### 4.2.4 BE-5：`cli_admin_*` 工具实现（P1，CLI-21/29）— 部分实现
+#### 4.2.4 BE-5：`cli_admin_*` 工具实现（P1，CLI-21/29）
 
-**已实现**（`internal/tools/cli_admin/`）：
-- `cli_admin_skill_list` / `cli_admin_skill_get`
+**目标工具清单**（`internal/tools/cli_admin/`）：
+
+首批（P1，CLI-21）：
+
+- `cli_admin_skill_list`
+- `cli_admin_skill_get`
 - `cli_admin_skill_install_from_url`
-- `cli_admin_skill_import_status` / `cli_admin_skill_import_apply`
-- `cli_admin_agent_list` / `cli_admin_agent_get`
-- `cli_admin_pkg_install_from_url`（实施中新增）
+- `cli_admin_skill_import_status`
+- `cli_admin_skill_import_apply`
+- `cli_admin_agent_list`
+- `cli_admin_agent_get`
 
-**待实现**（CLI-29）：
-- `cli_admin_team_*` / `cli_admin_plugin_*` / `cli_admin_mcp_*`
-- `cli_admin_cron_*` / `cli_admin_channel_*` / `cli_admin_provider_*` / `cli_admin_session_*`
+完整（P1，CLI-29）：team / plugin / mcp / cron / channel / provider / session 全量。
+
+> **当前实现状态见开发计划 §1.1 BE-5**。
 
 ```go
 // internal/tools/cli_admin/registry.go
@@ -549,18 +550,6 @@ func RegisterAll(deps Deps) []tool.Tool
 
 工具命名：`cli_admin_<resource>_<action>`（保持与 PRD §3.1 一致）。
 
-首批（P1，CLI-21）：
-
-- `cli_admin_skill_list`
-- `cli_admin_skill_get`
-- `cli_admin_skill_install_from_url`
-- `cli_admin_skill_import_status`
-- `cli_admin_skill_import_apply`
-- `cli_admin_agent_list`
-- `cli_admin_agent_get`
-
-完整（P1，CLI-29）：team / plugin / mcp / cron / channel / provider / session 全量。
-
 **风险白名单**（Q4 推荐答案）：
 
 ```go
@@ -574,18 +563,19 @@ func IsCLIAdminAllowed(agentKey string) bool {
 
 #### 4.2.5 BE-6：WS envelope 细化（P1，CLI-22 前置）
 
-`internal/event/contract/envelope.go` 已定义 envelope 类型常量。CLI REPL 渲染需要的 `Type` 取值：
+`internal/event/contract/envelope.go` 定义 envelope 类型常量。CLI REPL 渲染需要的 `Type` 取值（目标契约）：
 
-| 期望 Type | 含义 | 当前实现状态 |
-|-----------|------|------------|
-| `message.delta` | 模型增量文本 | 待对照 `internal/event/` 实际值 |
-| `tool.call` | 工具调用开始 | **已实现**（`EnvelopeTypeToolCall`） |
-| `tool.result` | 工具结果 | **已实现**（`EnvelopeTypeToolResult`） |
-| `tool.error` | 工具错误 | **未实现**：当前使用通用 `EnvelopeTypeError`（值为 `"error"`），非 `tool.error` 子类型 |
-| `await.user.reply` | 等待用户回复 | 已通过 `AwaitUserReply` 协议 |
-| `system.done` / `done` | 一轮结束 | 已有 |
+| 期望 Type | 含义 |
+|-----------|------|
+| `message.delta` | 模型增量文本 |
+| `tool.call` | 工具调用开始 |
+| `tool.result` | 工具结果 |
+| `tool.error` | 工具错误 |
+| `await.user.reply` | 等待用户回复 |
+| `system.done` / `done` | 一轮结束 |
 
-> **差距**：`tool.error` 作为独立 envelope 子类型尚未定义。当前 `internal/cli/repl/render.go` 消费 `tool_call` 和 `tool_result`，但错误事件走通用 `error` 类型。建议后续在 `internal/event/contract/envelope.go` 新增 `EnvelopeTypeToolError = "tool.error"`，并在 `internal/event/span_collector.go` 中投影工具错误到该类型。
+> **当前实现状态见开发计划 §1.1 BE-6**。
+> 后续应在 `internal/event/contract/envelope.go` 新增 `EnvelopeTypeToolError = "tool.error"`，并在 `internal/event/span_collector.go` 中投影工具错误到该类型。
 
 **Payload schema**（CLI-22 实施前与后端对齐）：
 
@@ -883,15 +873,15 @@ func (c *CLIConfig) OverrideFromEnv() {
 
 ## 10. 测试策略
 
-| 层 | 范围 | 工具 | 纳入 `make ci` |
-|----|------|------|----------------|
-| 单元 | `internal/cli/config / output / client/errors / cmd/*` 的纯逻辑 | `testing` + `testify` | ✅ |
-| 契约 | `internal/cli/client/*` 调后端 → `httptest.NewServer` 假后端断言请求 & 响应 | `httptest` | ✅ |
-| Golden | `internal/cli/output/golden/*.golden` 文本快照 | 自写 diff 或 `goldie` | ✅ |
-| Lint | R12 黑名单（`cmd/araneactl/lint`） | 自家工具 | ✅ |
-| 编译验证 | `go build ./cmd/aranea/` | go | ✅（建议在 CI 矩阵加） |
-| Smoke (单平台) | `make smoke-cli`：启 admin → login → agent ls → skill ls | shell + 已构建 binary | ❌ P0；P1 evaluate |
-| E2E（多平台） | 跨平台二进制 + admin 后端 | 自建 | ❌ P2 |
+| 层 | 范围 | 工具 | CI 优先级 |
+|----|------|------|-----------|
+| 单元 | `internal/cli/config / output / client/errors / cmd/*` 的纯逻辑 | `testing` + `testify` | P0 |
+| 契约 | `internal/cli/client/*` 调后端 → `httptest.NewServer` 假后端断言请求 & 响应 | `httptest` | P0 |
+| Golden | `internal/cli/output/golden/*.golden` 文本快照 | 自写 diff 或 `goldie` | P0 |
+| Lint | R12 黑名单（`cmd/araneactl/lint`） | 自家工具 | P0 |
+| 编译验证 | `go build ./cmd/aranea/` | go | P0（建议在 CI 矩阵加） |
+| Smoke (单平台) | `make smoke-cli`：启 admin → login → agent ls → skill ls | shell + 已构建 binary | P0；P1 evaluate |
+| E2E（多平台） | 跨平台二进制 + admin 后端 | 自建 | P2 |
 
 ### 10.1 httptest 模板
 
@@ -1163,10 +1153,10 @@ func NewLoginCmd() *cobra.Command {
 
 1. **A1：`/v1/admins/login` 的 token 返回方式**。当前 `pkg/auth/middleware.go::noAuthPaths` 已包含 `/v1/admins/login`，但 token 是 body 字段、cookie，还是 header，需读 `internal/service/admin.go` 与 `pkg/auth/cookie.go` 后决定 CLI 怎样取 token；
 2. **A2：WS token 携带方式**。`internal/server/` 下无 `ws.go`，WebSocket 实现位置需确认；token 读取位置（query / Sec-WebSocket-Protocol / cookie）必须在 CLI WS 客户端实现前确认；
-3. **A3：WS 下行事件 type 取值**。`internal/event/contract/envelope.go` 已定义 `EnvelopeTypeToolCall` / `EnvelopeTypeToolResult`，但 `tool.error` 子类型缺失（使用通用 `error` 类型）；`message.delta` 的实际值待对照；
+3. **A3：WS 下行事件 type 取值**。`internal/event/contract/envelope.go` 已定义 `EnvelopeTypeToolCall = "tool_call"` / `EnvelopeTypeToolResult = "tool_result"`，但 `tool.error` 子类型缺失（使用通用 `EnvelopeTypeError = "error"`）；`message.delta` 的实际值为 `EnvelopeTypeTextDelta = "text_delta"`（非 `message.delta`）；
 4. **A4：Skill import multipart 字段命名空间**。`internal/service/skill_import.go` 当前接收哪些 form 字段，需在 CLI-25 之前盘点；
 5. **A5：Agent enable/disable RPC**。`api/kratos/agent/v1/agent.proto` 是否暴露独立 enable/disable RPC，还是只能走 `UpdateAgent + FieldMask`；CLI 实现按 proto 真相为准；
-6. **A6：是否已有 R1～R11 之外的 lint 规则**。`cmd/araneactl/` 目录当前不存在，R12 lint 规则尚未实现；
+6. **A6：是否已有 R1～R11 之外的 lint 规则**。**已验证**：`cmd/araneactl/lint/main.go` 含 R12 黑名单检查（`r12CLINoBackendImport`），配套 `r12_test.go` + `testdata/r12_violation.go.txt`；`cmd/araneactl/` 目录已存在（含 `lint/` / `fmtcheck/` / `fieldguide-lint/`）；
 7. **A7：`SystemInfoResponse` 字段补齐**。当前服务端缺少 `system_admin_agent_id` / `system_admin_agent_key` / `skill_max_zip_mb` 字段，需决定是补齐还是 CLI 端适配。
 
 ---

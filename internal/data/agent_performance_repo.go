@@ -34,7 +34,7 @@ func (r *agentPerformanceRepo) Get(ctx context.Context, agentKey, taskType strin
 			avg_dq_score, avg_duration_ms, last_executed_at
 		 FROM agent_performances WHERE agent_key = ? AND task_type = ?`, agentKey, taskType)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "AGENT_PERFORMANCE")
 	}
 	defer rows.Close()
 	if !rows.Next() {
@@ -42,7 +42,7 @@ func (r *agentPerformanceRepo) Get(ctx context.Context, agentKey, taskType strin
 	}
 	perf, err := scanAgentPerformanceFromRows(rows)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "AGENT_PERFORMANCE")
 	}
 	return perf, nil
 }
@@ -62,14 +62,14 @@ func (r *agentPerformanceRepo) GetBestForTaskType(ctx context.Context, taskType 
 		 ORDER BY success_rate DESC, avg_dq_score DESC
 		 LIMIT ?`, taskType, limit)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "AGENT_PERFORMANCE")
 	}
 	defer rows.Close()
 	var perfs []*biz.AgentPerformance
 	for rows.Next() {
 		perf, err := scanAgentPerformanceFromRows(rows)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "AGENT_PERFORMANCE")
 		}
 		perfs = append(perfs, perf)
 	}
@@ -96,7 +96,7 @@ func (r *agentPerformanceRepo) Upsert(ctx context.Context, perf *biz.AgentPerfor
 		perf.TotalRuns, perf.SuccessRuns, perf.SuccessRate,
 		perf.AvgDQScore, perf.AvgDurationMs, perf.LastExecutedAt,
 	)
-	return err
+	return entErrToBizErr(err, "AGENT_PERFORMANCE")
 }
 
 // EnsureAgentPerformanceSchema creates the agent_performances table if it does not exist.
@@ -135,7 +135,7 @@ func scanAgentPerformanceFromRows(rows *sql.Rows) (*biz.AgentPerformance, error)
 		&perf.AvgDQScore, &perf.AvgDurationMs, &perf.LastExecutedAt,
 	)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "AGENT_PERFORMANCE")
 	}
 
 	return &perf, nil
