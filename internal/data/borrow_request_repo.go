@@ -66,7 +66,7 @@ func (r *borrowRequestRepo) CreateBorrowRequest(ctx context.Context, br biz.Borr
 		SetUpdatedAt(formatTime(br.UpdatedAt)).
 		Save(ctx)
 	if err != nil {
-		return biz.BorrowRequest{}, err
+		return biz.BorrowRequest{}, entErrToBizErr(err, "BORROW_REQUEST")
 	}
 	return entToBizBorrowRequest(saved), nil
 }
@@ -77,7 +77,7 @@ func (r *borrowRequestRepo) GetBorrowRequest(ctx context.Context, id string) (bi
 		if ent.IsNotFound(err) {
 			return biz.BorrowRequest{}, apierror.NotFound("BORROW_REQUEST", "borrow request not found")
 		}
-		return biz.BorrowRequest{}, err
+		return biz.BorrowRequest{}, entErrToBizErr(err, "BORROW_REQUEST")
 	}
 	return entToBizBorrowRequest(row), nil
 }
@@ -91,7 +91,7 @@ func (r *borrowRequestRepo) UpdateBorrowRequest(ctx context.Context, br biz.Borr
 		SetUpdatedAt(formatTime(br.UpdatedAt)).
 		Exec(ctx)
 	if err != nil {
-		return biz.BorrowRequest{}, err
+		return biz.BorrowRequest{}, entErrToBizErr(err, "BORROW_REQUEST")
 	}
 	return r.GetBorrowRequest(ctx, br.ID)
 }
@@ -104,7 +104,7 @@ func (r *borrowRequestRepo) ListPendingBorrowRequests(ctx context.Context, deptI
 	}
 	rows, err := query.Order(borrowrequest.ByCreatedAt(entsql.OrderAsc())).All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "BORROW_REQUEST")
 	}
 	out := make([]biz.BorrowRequest, 0, len(rows))
 	for _, e := range rows {
@@ -119,7 +119,7 @@ func (r *borrowRequestRepo) ListBorrowRequestsByTeam(ctx context.Context, teamID
 		Order(borrowrequest.ByCreatedAt(entsql.OrderAsc())).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "BORROW_REQUEST")
 	}
 	out := make([]biz.BorrowRequest, 0, len(rows))
 	for _, e := range rows {
@@ -138,7 +138,7 @@ func (r *borrowRequestRepo) ListExpiredPendingBorrowRequests(ctx context.Context
 		).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "BORROW_REQUEST")
 	}
 	out := make([]biz.BorrowRequest, 0, len(rows))
 	for _, e := range rows {
@@ -158,7 +158,7 @@ func (r *borrowRequestRepo) CancelBorrowRequestsByFromDept(ctx context.Context, 
 		).
 		All(ctx)
 	if err != nil {
-		return 0, err
+		return 0, entErrToBizErr(err, "BORROW_REQUEST")
 	}
 	if len(pending) == 0 {
 		return 0, nil

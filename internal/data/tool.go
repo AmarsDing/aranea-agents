@@ -133,7 +133,7 @@ func scanBizTool(rows *sql.Rows) ([]biz.Tool, error) {
 			&avg, &p95, &item.LastInvokedAt, &item.LastStatus,
 			&item.CreatedAt, &item.UpdatedAt, &item.DeletedAt,
 		); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "TOOL")
 		}
 		if avg.Valid {
 			v := avg.Float64
@@ -143,7 +143,7 @@ func scanBizTool(rows *sql.Rows) ([]biz.Tool, error) {
 		item.Permissions = adminToolPerms()
 		out = append(out, item)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "TOOL")
 }
 
 func (r *toolRepo) computeToolSummary(ctx context.Context, client *ent.Client, q biz.ToolListQuery) (biz.ToolSummary, error) {
@@ -156,7 +156,7 @@ func (r *toolRepo) computeToolSummary(ctx context.Context, client *ent.Client, q
 		  COALESCE(SUM(CASE WHEN enabled = 1 AND risk_level IN ('high', 'critical') THEN 1 ELSE 0 END), 0)
 		FROM tools t WHERE `+where, args,
 		&s.TotalTools, &s.EnabledTools, &s.HighRiskEnabled); err != nil {
-		return biz.ToolSummary{}, err
+		return biz.ToolSummary{}, entErrToBizErr(err, "TOOL")
 	}
 	cutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
 	var success24h, failed24h, blocked24h int
@@ -169,7 +169,7 @@ func (r *toolRepo) computeToolSummary(ctx context.Context, client *ent.Client, q
 		FROM tool_invocations WHERE started_at >= ?`,
 		[]any{cutoff},
 		&s.Calls24h, &success24h, &failed24h, &blocked24h); err != nil {
-		return biz.ToolSummary{}, err
+		return biz.ToolSummary{}, entErrToBizErr(err, "TOOL")
 	}
 	if s.Calls24h > 0 {
 		s.FailureRate24h = float64(failed24h+blocked24h) / float64(s.Calls24h)
@@ -188,7 +188,7 @@ func (r *toolRepo) SearchTools(ctx context.Context, q biz.ToolListQuery) (biz.To
 	var total int
 	if err := entQueryRowScan(client, ctx, `SELECT COUNT(1) FROM tools t WHERE `+where, args, &total); err != nil {
 		r.data.lg.Warn("tool search count query failed", loggateway.StepID("data.tool.search"), loggateway.Err(err))
-		return biz.ToolListResult{}, err
+		return biz.ToolListResult{}, entErrToBizErr(err, "TOOL")
 	}
 	listArgs := append([]any{cutoff}, args...)
 	listArgs = append(listArgs, q.Limit, q.Offset)
@@ -206,18 +206,18 @@ func (r *toolRepo) SearchTools(ctx context.Context, q biz.ToolListQuery) (biz.To
 	rows, err := client.QueryContext(ctx, toolSelectSQL()+` WHERE `+where+` ORDER BY `+orderBy+` LIMIT ? OFFSET ?`, listArgs...)
 	if err != nil {
 		r.data.lg.Warn("tool search list query failed", loggateway.StepID("data.tool.search"), loggateway.Err(err))
-		return biz.ToolListResult{}, err
+		return biz.ToolListResult{}, entErrToBizErr(err, "TOOL")
 	}
 	defer rows.Close()
 	items, err := scanBizTool(rows)
 	if err != nil {
 		r.data.lg.Warn("tool search scan failed", loggateway.StepID("data.tool.search"), loggateway.Err(err))
-		return biz.ToolListResult{}, err
+		return biz.ToolListResult{}, entErrToBizErr(err, "TOOL")
 	}
 	summary, err := r.computeToolSummary(ctx, client, q)
 	if err != nil {
 		r.data.lg.Warn("tool search summary failed", loggateway.StepID("data.tool.search"), loggateway.Err(err))
-		return biz.ToolListResult{}, err
+		return biz.ToolListResult{}, entErrToBizErr(err, "TOOL")
 	}
 	return biz.ToolListResult{Items: items, Total: total, Limit: q.Limit, Offset: q.Offset, Summary: summary}, nil
 }
@@ -230,12 +230,12 @@ func (r *toolRepo) GetTool(ctx context.Context, idOrKey string) (biz.Tool, error
 	cutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
 	rows, err := client.QueryContext(ctx, toolSelectSQL()+` WHERE (t.id = ? OR t.tool_key = ?) AND t.deleted_at = '' LIMIT 1`, cutoff, idOrKey, idOrKey)
 	if err != nil {
-		return biz.Tool{}, err
+		return biz.Tool{}, entErrToBizErr(err, "TOOL")
 	}
 	defer rows.Close()
 	items, err := scanBizTool(rows)
 	if err != nil {
-		return biz.Tool{}, err
+		return biz.Tool{}, entErrToBizErr(err, "TOOL")
 	}
 	if len(items) == 0 {
 		return biz.Tool{}, apierror.NotFound("TOOL", "tool not found")
@@ -310,7 +310,7 @@ func (r *toolRepo) CreateTool(ctx context.Context, in biz.ToolUpsertInput) (biz.
 		SetDeletedAt("").
 		Exec(ctx)
 	if err != nil {
-		return biz.Tool{}, err
+		return biz.Tool{}, entErrToBizErr(err, "TOOL")
 	}
 	return r.GetTool(ctx, id)
 }
@@ -330,7 +330,7 @@ func (r *toolRepo) UpdateTool(ctx context.Context, idOrKey string, in biz.ToolUp
 		if ent.IsNotFound(err) {
 			return biz.Tool{}, apierror.NotFound("TOOL", "tool not found")
 		}
-		return biz.Tool{}, err
+		return biz.Tool{}, entErrToBizErr(err, "TOOL")
 	}
 	applyBuiltinToolDefaults(&in)
 	key := strings.TrimSpace(in.Key)
@@ -360,7 +360,7 @@ func (r *toolRepo) UpdateTool(ctx context.Context, idOrKey string, in biz.ToolUp
 		SetDeletedAt("").
 		Exec(ctx)
 	if err != nil {
-		return biz.Tool{}, err
+		return biz.Tool{}, entErrToBizErr(err, "TOOL")
 	}
 	return r.GetTool(ctx, key)
 }
@@ -371,14 +371,14 @@ func (r *toolRepo) DeleteTool(ctx context.Context, idOrKey string) error {
 		if ent.IsNotFound(err) {
 			return apierror.NotFound("TOOL", "tool not found")
 		}
-		return err
+		return entErrToBizErr(err, "TOOL")
 	}
 	now := nowRFC3339()
 	err = r.data.RW().Write(ctx).PlatformTool.UpdateOneID(ex.ID).
 		SetDeletedAt(now).
 		SetUpdatedAt(now).
 		Exec(ctx)
-	return err
+	return entErrToBizErr(err, "TOOL")
 }
 
 func (r *toolRepo) UpdateToolEnabled(ctx context.Context, idOrKey string, enabled bool) (biz.Tool, error) {
@@ -387,14 +387,14 @@ func (r *toolRepo) UpdateToolEnabled(ctx context.Context, idOrKey string, enable
 		if ent.IsNotFound(err) {
 			return biz.Tool{}, apierror.NotFound("TOOL", "tool not found")
 		}
-		return biz.Tool{}, err
+		return biz.Tool{}, entErrToBizErr(err, "TOOL")
 	}
 	err = r.data.RW().Write(ctx).PlatformTool.UpdateOneID(ex.ID).
 		SetEnabled(enabled).
 		SetUpdatedAt(nowRFC3339()).
 		Exec(ctx)
 	if err != nil {
-		return biz.Tool{}, err
+		return biz.Tool{}, entErrToBizErr(err, "TOOL")
 	}
 	return r.GetTool(ctx, ex.ToolKey)
 }
@@ -405,14 +405,14 @@ func (r *toolRepo) UpdateToolConfig(ctx context.Context, idOrKey string, configJ
 		if ent.IsNotFound(err) {
 			return biz.Tool{}, apierror.NotFound("TOOL", "tool not found")
 		}
-		return biz.Tool{}, err
+		return biz.Tool{}, entErrToBizErr(err, "TOOL")
 	}
 	err = r.data.RW().Write(ctx).PlatformTool.UpdateOneID(ex.ID).
 		SetConfigJSON(configJSON).
 		SetUpdatedAt(nowRFC3339()).
 		Exec(ctx)
 	if err != nil {
-		return biz.Tool{}, err
+		return biz.Tool{}, entErrToBizErr(err, "TOOL")
 	}
 	return r.GetTool(ctx, ex.ToolKey)
 }
@@ -459,7 +459,7 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 	var total int
 	if err := entQueryRowScan(client, ctx, `SELECT COUNT(1) FROM tool_invocations ti WHERE `+whereSQL, args, &total); err != nil {
 		r.data.lg.Warn("tool invocation search count failed", loggateway.StepID("data.tool.invocation_search"), loggateway.Err(err))
-		return biz.ToolRunResult{}, err
+		return biz.ToolRunResult{}, entErrToBizErr(err, "TOOL")
 	}
 	listArgs := append([]any{}, args...)
 	listArgs = append(listArgs, q.Limit, q.Offset)
@@ -478,7 +478,7 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 		ORDER BY ti.started_at DESC, ti.created_at DESC
 		LIMIT ? OFFSET ?`, listArgs...)
 	if err != nil {
-		return biz.ToolRunResult{}, err
+		return biz.ToolRunResult{}, entErrToBizErr(err, "TOOL")
 	}
 	defer rows.Close()
 	items := []biz.ToolInvocation{}
@@ -493,14 +493,14 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 			&item.InputPreview, &item.InputHash, &item.OutputPreview, &item.OutputHash,
 			&item.ErrorCode, &item.ErrorMessage, &redact, &streaming, &item.ChunkCount, &item.MetadataJSON, &item.CreatedAt,
 		); err != nil {
-			return biz.ToolRunResult{}, err
+			return biz.ToolRunResult{}, entErrToBizErr(err, "TOOL")
 		}
 		item.RedactionApplied = redact != 0
 		item.Streaming = streaming != 0
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return biz.ToolRunResult{}, err
+		return biz.ToolRunResult{}, entErrToBizErr(err, "TOOL")
 	}
 	return biz.ToolRunResult{Items: items, Total: total, Limit: q.Limit, Offset: q.Offset}, nil
 }
@@ -575,7 +575,7 @@ func (r *toolRepo) RecordToolInvocation(ctx context.Context, in biz.ToolInvocati
 	}
 	if !ent.IsConstraintError(err) {
 		r.data.lg.Error("tool invocation write failed", loggateway.StepID("data.tool.invocation_write"), loggateway.Err(err))
-		return err
+		return entErrToBizErr(err, "TOOL")
 	}
 	// Constraint error: same tool_call_id already exists (streaming chunk
 	// update). Only update mutable fields — do NOT overwrite identity
@@ -597,7 +597,7 @@ func (r *toolRepo) RecordToolInvocation(ctx context.Context, in biz.ToolInvocati
 	if err != nil {
 		r.data.lg.Error("tool invocation fallback update failed", loggateway.StepID("data.tool.invocation_write"), loggateway.Err(err))
 	}
-	return err
+	return entErrToBizErr(err, "TOOL")
 }
 
 func hashTrim(explicit, fallback string) string {
@@ -652,7 +652,7 @@ func (r *toolRepo) ListToolAgentOverridesByAgent(ctx context.Context, agentID st
 		WHERE agent_id = ? AND deleted_at = ''
 		ORDER BY tool_key`, agentID)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TOOL")
 	}
 	defer rows.Close()
 	return scanToolAgentOverrides(rows)
@@ -669,7 +669,7 @@ func (r *toolRepo) ListToolAgentOverrides(ctx context.Context, toolKey string) (
 		WHERE tool_key = ? AND deleted_at = ''
 		ORDER BY agent_id`, toolKey)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TOOL")
 	}
 	defer rows.Close()
 	return scanToolAgentOverrides(rows)
@@ -682,13 +682,13 @@ func scanToolAgentOverrides(rows *sql.Rows) ([]biz.ToolAgentOverride, error) {
 		var enabled int
 		var reqConfirm int
 		if err := rows.Scan(&o.ID, &o.ToolID, &o.ToolKey, &o.AgentID, &enabled, &o.Mode, &o.ConfigOverrideJSON, &reqConfirm, &o.CreatedAt, &o.UpdatedAt); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "TOOL")
 		}
 		o.Enabled = enabled != 0
 		o.RequiresConfirmation = reqConfirm != 0
 		result = append(result, o)
 	}
-	return result, rows.Err()
+	return result, entErrToBizErr(rows.Err(), "TOOL")
 }
 
 func (r *toolRepo) UpsertToolAgentOverride(ctx context.Context, in biz.ToolAgentOverrideInput, toolID string) (biz.ToolAgentOverride, error) {
@@ -715,12 +715,12 @@ func (r *toolRepo) UpsertToolAgentOverride(ctx context.Context, in biz.ToolAgent
 	)
 	if err != nil {
 		r.data.lg.Warn("tool agent override upsert failed", loggateway.StepID("data.tool.override_upsert"), loggateway.Err(err))
-		return biz.ToolAgentOverride{}, err
+		return biz.ToolAgentOverride{}, entErrToBizErr(err, "TOOL")
 	}
 	overrides, err := r.ListToolAgentOverrides(ctx, in.ToolKey)
 	if err != nil {
 		r.data.lg.Warn("tool agent override list after upsert failed", loggateway.StepID("data.tool.override_upsert"), loggateway.Err(err))
-		return biz.ToolAgentOverride{}, err
+		return biz.ToolAgentOverride{}, entErrToBizErr(err, "TOOL")
 	}
 	for _, o := range overrides {
 		if o.AgentID == in.AgentID {
@@ -741,7 +741,7 @@ func (r *toolRepo) DeleteToolAgentOverride(ctx context.Context, toolKey string, 
 		WHERE tool_key = ? AND agent_id = ? AND deleted_at = ''`,
 		now, now, toolKey, agentID,
 	)
-	return err
+	return entErrToBizErr(err, "TOOL")
 }
 
 func (r *toolRepo) GetToolInvocationParams(ctx context.Context, invocationID string) (biz.ToolInvocationParam, error) {
@@ -755,7 +755,7 @@ func (r *toolRepo) GetToolInvocationParams(ctx context.Context, invocationID str
 		WHERE invocation_id = ?
 		LIMIT 1`, invocationID)
 	if err != nil {
-		return biz.ToolInvocationParam{}, err
+		return biz.ToolInvocationParam{}, entErrToBizErr(err, "TOOL")
 	}
 	defer rows.Close()
 	if !rows.Next() {
@@ -764,7 +764,7 @@ func (r *toolRepo) GetToolInvocationParams(ctx context.Context, invocationID str
 	var p biz.ToolInvocationParam
 	var redaction int
 	if err := rows.Scan(&p.ID, &p.InvocationID, &p.ToolKey, &p.ParamsJSON, &redaction, &p.CreatedAt); err != nil {
-		return biz.ToolInvocationParam{}, err
+		return biz.ToolInvocationParam{}, entErrToBizErr(err, "TOOL")
 	}
 	p.RedactionApplied = redaction != 0
 	return p, nil

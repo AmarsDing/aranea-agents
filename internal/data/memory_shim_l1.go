@@ -58,18 +58,18 @@ func (r *l1WorkingMemoryRepo) ListL1TaskRows(ctx context.Context, sessionID, age
 	q := sqlL1Task + where + ` ORDER BY updated_at DESC`
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L1")
 	}
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
 		b, err := scanL1TaskRow(rows)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "MEMORY_L1")
 		}
 		out = append(out, b)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "MEMORY_L1")
 }
 
 func (r *l1WorkingMemoryRepo) ListL1FieldRows(ctx context.Context, taskID string, includeInternal bool, requestingAgentID ...string) ([][]byte, error) {
@@ -105,42 +105,44 @@ func (r *l1WorkingMemoryRepo) listL1FieldRows(ctx context.Context, taskID string
 	q += ` ORDER BY field_path ASC`
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L1")
 	}
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
 		b, err := scanL1FieldRow(rows)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "MEMORY_L1")
 		}
 		out = append(out, b)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "MEMORY_L1")
 }
 
 func (r *l1WorkingMemoryRepo) GetL1TaskRow(ctx context.Context, sessionID, id string) ([]byte, error) {
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlL1Task+` WHERE id = ? AND session_id = ?`, id, sessionID)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L1")
 	}
 	defer rows.Close()
 	if !rows.Next() {
 		return nil, apierror.NotFound(apierror.DomainMemory, "not found")
 	}
-	return scanL1TaskRow(rows)
+	b, err := scanL1TaskRow(rows)
+	return b, entErrToBizErr(err, "MEMORY_L1")
 }
 
 func (r *l1WorkingMemoryRepo) GetL1FieldRow(ctx context.Context, taskID, fieldPath string) ([]byte, error) {
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlL1Field+` WHERE task_id = ? AND field_path = ?`, taskID, fieldPath)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L1")
 	}
 	defer rows.Close()
 	if !rows.Next() {
 		return nil, apierror.NotFound(apierror.DomainMemory, "not found")
 	}
-	return scanL1FieldRow(rows)
+	b, err := scanL1FieldRow(rows)
+	return b, entErrToBizErr(err, "MEMORY_L1")
 }
 
 // --- L1TaskWriter ---
@@ -177,7 +179,7 @@ func (r *l1WorkingMemoryRepo) StartL1Task(ctx context.Context, in biz.L1TaskInse
 		now, "", "", "{}", now, now,
 	)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L1")
 	}
 	return r.GetL1TaskRow(ctx, sessID, id)
 }
@@ -189,7 +191,7 @@ func (r *l1WorkingMemoryRepo) EndL1Task(ctx context.Context, sessionID, taskID, 
 		status, now, now, taskID, sessionID,
 	)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L1")
 	}
 	return r.GetL1TaskRow(ctx, sessionID, taskID)
 }
@@ -201,7 +203,7 @@ func (r *l1WorkingMemoryRepo) ArchiveL1Task(ctx context.Context, sessionID, task
 		now, now, taskID, sessionID,
 	)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L1")
 	}
 	return r.buildL1TaskSnapshot(ctx, sessionID, taskID)
 }
@@ -212,7 +214,7 @@ func (r *l1WorkingMemoryRepo) UnarchiveL1Task(ctx context.Context, sessionID, ta
 		`UPDATE memory_l1_tasks SET archived_at = '', updated_at = ? WHERE id = ? AND session_id = ?`,
 		now, taskID, sessionID,
 	)
-	return err
+	return entErrToBizErr(err, "MEMORY_L1")
 }
 
 // ArchiveAndCreateEpisodeTx atomically archives an L1 task and creates the
@@ -229,7 +231,7 @@ func (r *l1WorkingMemoryRepo) ArchiveAndCreateEpisodeTx(ctx context.Context, ses
 			`UPDATE memory_l1_tasks SET archived_at = ?, updated_at = ? WHERE id = ? AND session_id = ?`,
 			now, now, taskID, sessionID,
 		); err != nil {
-			return err
+			return entErrToBizErr(err, "MEMORY_L1")
 		}
 
 		// Step 2: Build the full snapshot (task + fields) inside the transaction.
@@ -335,8 +337,8 @@ func (r *l1WorkingMemoryRepo) ArchiveAndCreateEpisodeTx(ctx context.Context, ses
 			keyArtifactsJSON,
 			l1SnapshotJSON,
 			consolidationStatus, 0, "{}", now, now,
-		); err != nil {
-			return err
+	); err != nil {
+			return entErrToBizErr(err, "MEMORY_L1")
 		}
 		return nil
 	})
@@ -512,14 +514,14 @@ func (r *l1WorkingMemoryRepo) insertL1FieldRow(ctx context.Context, id string, i
 		in.TTLSeconds, expiresAt,
 		1, "", 0, "{}", now, now,
 	)
-	return err
+	return entErrToBizErr(err, "MEMORY_L1")
 }
 
 func (r *l1WorkingMemoryRepo) DeleteL1Field(ctx context.Context, taskID, fieldPath string) error {
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`DELETE FROM memory_l1_fields WHERE task_id = ? AND field_path = ?`, taskID, fieldPath)
 	if err != nil {
-		return err
+		return entErrToBizErr(err, "MEMORY_L1")
 	}
 	// Sync used_tokens aggregation for the parent task.
 	return r.syncL1TaskUsedTokens(ctx, taskID)
@@ -552,16 +554,16 @@ func (r *l1WorkingMemoryRepo) getL1TaskBudget(ctx context.Context, taskID string
 	rows, qErr := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		`SELECT budget_tokens, used_tokens FROM memory_l1_tasks WHERE id = ?`, taskID)
 	if qErr != nil {
-		return 0, 0, qErr
+		return 0, 0, entErrToBizErr(qErr, "MEMORY_L1")
 	}
 	defer rows.Close()
 	if !rows.Next() {
 		return 0, 0, apierror.NotFound(apierror.DomainMemory, "not found")
 	}
 	if sErr := rows.Scan(&budget, &used); sErr != nil {
-		return 0, 0, sErr
+		return 0, 0, entErrToBizErr(sErr, "MEMORY_L1")
 	}
-	return budget, used, rows.Err()
+	return budget, used, entErrToBizErr(rows.Err(), "MEMORY_L1")
 }
 
 // syncL1TaskUsedTokens recalculates and updates used_tokens for the given task.
@@ -571,7 +573,7 @@ func (r *l1WorkingMemoryRepo) syncL1TaskUsedTokens(ctx context.Context, taskID s
             SELECT COALESCE(SUM(token_estimate), 0) FROM memory_l1_fields WHERE task_id = ?
         ), updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
 		taskID, taskID)
-	return err
+	return entErrToBizErr(err, "MEMORY_L1")
 }
 
 // estimateTokens provides a rough token count estimate.
@@ -615,14 +617,14 @@ func (r *l1WorkingMemoryRepo) ListIdleL1Tasks(ctx context.Context, cutoffRFC3339
 		cutoffRFC3339,
 	)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L1")
 	}
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
 		var id, sessID, agentID, title, status, updatedAt string
 		if err := rows.Scan(&id, &sessID, &agentID, &title, &status, &updatedAt); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "MEMORY_L1")
 		}
 		m := map[string]any{
 			"id": id, "session_id": sessID, "agent_id": agentID,
@@ -631,7 +633,7 @@ func (r *l1WorkingMemoryRepo) ListIdleL1Tasks(ctx context.Context, cutoffRFC3339
 		b, _ := json.Marshal(m)
 		out = append(out, b)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "MEMORY_L1")
 }
 
 // --- L1SchemaReader ---
@@ -645,7 +647,7 @@ func (r *l1WorkingMemoryRepo) GetL1SchemaRow(ctx context.Context, schemaID strin
 		schemaID,
 	)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L1")
 	}
 	defer rows.Close()
 	if !rows.Next() {
@@ -659,7 +661,7 @@ func (r *l1WorkingMemoryRepo) GetL1SchemaRow(ctx context.Context, schemaID strin
 		metadataJSON, createdAt           string
 	)
 	if err := rows.Scan(&id, &scopeType, &scopeID, &schemaKey, &schemaVersion, &schemaJSON, &description, &enabled, &metadataJSON, &createdAt); err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L1")
 	}
 	m := map[string]any{
 		"id": id, "scope_type": scopeType, "scope_id": scopeID,

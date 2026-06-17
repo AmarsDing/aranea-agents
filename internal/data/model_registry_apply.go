@@ -62,7 +62,7 @@ func (b *modelRegistryApplyBackend) SaveProviderModel(ctx context.Context, row m
 func (b *modelRegistryApplyBackend) countEvalBindings(ctx context.Context, provider string) (int, error) {
 	setting, err := b.data.RW().Read(ctx).SystemSetting.Query().Only(ctx)
 	if err != nil {
-		return 0, err
+		return 0, entErrToBizErr(err, "MODEL_REGISTRY")
 	}
 	n := 0
 	if setting.EvalSimProvider == provider {
@@ -82,7 +82,7 @@ func (b *modelRegistryApplyBackend) countRuntimeProviderBindings(ctx context.Con
 		[]any{provider, provider},
 		&n,
 	)
-	return n, err
+	return n, entErrToBizErr(err, "MODEL_REGISTRY")
 }
 
 func (b *modelRegistryApplyBackend) countSkillProviderBindings(ctx context.Context, provider string) (int, error) {
@@ -92,7 +92,7 @@ func (b *modelRegistryApplyBackend) countSkillProviderBindings(ctx context.Conte
 		[]any{provider},
 		&n,
 	)
-	return n, err
+	return n, entErrToBizErr(err, "MODEL_REGISTRY")
 }
 
 func (b *modelRegistryApplyBackend) countWebResearchBindings(ctx context.Context, provider string) (int, error) {
@@ -105,7 +105,7 @@ func (b *modelRegistryApplyBackend) countWebResearchBindings(ctx context.Context
 	if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 		return 0, nil
 	}
-	return n, err
+	return n, entErrToBizErr(err, "MODEL_REGISTRY")
 }
 
 func (b *modelRegistryApplyBackend) countKnowledgeEmbedBindings(ctx context.Context, provider string) (int, error) {
@@ -118,7 +118,7 @@ func (b *modelRegistryApplyBackend) countKnowledgeEmbedBindings(ctx context.Cont
 	if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 		return 0, nil
 	}
-	return n, err
+	return n, entErrToBizErr(err, "MODEL_REGISTRY")
 }
 
 func (b *modelRegistryApplyBackend) CountProviderBindings(ctx context.Context, provider string) (modelregistry.ApplyMigrationStats, error) {
@@ -129,7 +129,7 @@ func (b *modelRegistryApplyBackend) CountProviderBindings(ctx context.Context, p
 	var stats modelregistry.ApplyMigrationStats
 	agents, err := b.data.RW().Read(ctx).Agent.Query().Where(agent.ProviderEQ(provider)).Count(ctx)
 	if err != nil {
-		return stats, err
+		return stats, entErrToBizErr(err, "MODEL_REGISTRY")
 	}
 	stats.Agents = agents
 	sess, err := b.data.RW().Read(ctx).Session.Query().Where(
@@ -139,7 +139,7 @@ func (b *modelRegistryApplyBackend) CountProviderBindings(ctx context.Context, p
 		),
 	).Count(ctx)
 	if err != nil {
-		return stats, err
+		return stats, entErrToBizErr(err, "MODEL_REGISTRY")
 	}
 	stats.Sessions = sess
 	stats.Eval, err = b.countEvalBindings(ctx, provider)
@@ -274,13 +274,13 @@ func (b *modelRegistryApplyBackend) upsertPricingInTx(ctx context.Context, e exe
 	)
 	if err != nil {
 		if ae, ok := apierror.From(err); !ok || ae.Code != apierror.CodeNotFound {
-			return err
+			return entErrToBizErr(err, "MODEL_REGISTRY")
 		}
 	}
 	if existingID != "" {
 		var existingSource string
 		if err := queryRowScan(ctx, e, `SELECT source FROM model_pricing_rules WHERE id = ?`, []any{existingID}, &existingSource); err != nil {
-			return err
+			return entErrToBizErr(err, "MODEL_REGISTRY")
 		}
 		if biz.PricingSourcePriority(p.Source) < biz.PricingSourcePriority(existingSource) {
 			return nil
@@ -292,7 +292,7 @@ func (b *modelRegistryApplyBackend) upsertPricingInTx(ctx context.Context, e exe
 			cost.Input, cost.Output, cost.CacheRead, cost.CacheWrite, cost.Reasoning, cost.Embedding,
 			p.Source, now, existingID,
 		)
-		return err
+		return entErrToBizErr(err, "MODEL_REGISTRY")
 	}
 	ruleID := fmt.Sprintf("pricing:%s:%s:%d", p.Provider, strings.ReplaceAll(p.Model, "/", "_"), time.Now().UTC().UnixNano())
 	cost := modelregistry.MicroPer1KToCostUSDPer1M(p.Micro)
@@ -303,7 +303,7 @@ func (b *modelRegistryApplyBackend) upsertPricingInTx(ctx context.Context, e exe
 		cost.Input, cost.Output, cost.CacheRead, cost.CacheWrite, cost.Reasoning, cost.Embedding,
 		now, p.Source, now, now,
 	)
-	return err
+	return entErrToBizErr(err, "MODEL_REGISTRY")
 }
 
 func microPricingToBizRule(provider, model string, micro modelregistry.MicroPricing, source string) biz.ModelPricingRule {
@@ -335,81 +335,81 @@ func migrateOneRuleInTx(ctx context.Context, e execer, rule modelregistry.Provid
 
 	res, err := e.ExecContext(ctx, `UPDATE agents SET provider = ?, updated_at = ? WHERE provider = ?`, to, now, from)
 	if err != nil {
-		return stats, err
+		return stats, entErrToBizErr(err, "MODEL_REGISTRY")
 	}
 	n, raErr := res.RowsAffected()
 	if raErr != nil {
-		return stats, fmt.Errorf("migrate agents rows affected: %w", raErr)
+		return stats, entErrToBizErr(raErr, "MODEL_REGISTRY")
 	}
 	stats.Agents = int(n)
 
 	res, err = e.ExecContext(ctx, `UPDATE sessions SET default_provider = ? WHERE default_provider = ?`, to, from)
 	if err != nil {
-		return stats, err
+		return stats, entErrToBizErr(err, "MODEL_REGISTRY")
 	}
 	n, raErr = res.RowsAffected()
 	if raErr != nil {
-		return stats, fmt.Errorf("migrate sessions default_provider rows affected: %w", raErr)
+		return stats, entErrToBizErr(raErr, "MODEL_REGISTRY")
 	}
 	stats.Sessions = int(n)
 	res, err = e.ExecContext(ctx, `UPDATE sessions SET last_provider = ? WHERE last_provider = ?`, to, from)
 	if err != nil {
-		return stats, err
+		return stats, entErrToBizErr(err, "MODEL_REGISTRY")
 	}
 	n, raErr = res.RowsAffected()
 	if raErr != nil {
-		return stats, fmt.Errorf("migrate sessions last_provider rows affected: %w", raErr)
+		return stats, entErrToBizErr(raErr, "MODEL_REGISTRY")
 	}
 	stats.Sessions += int(n)
 
 	res, err = e.ExecContext(ctx, `UPDATE system_settings SET eval_sim_provider = ? WHERE eval_sim_provider = ?`, to, from)
 	if err != nil {
-		return stats, err
+		return stats, entErrToBizErr(err, "MODEL_REGISTRY")
 	}
 	n, raErr = res.RowsAffected()
 	if raErr != nil {
-		return stats, fmt.Errorf("migrate eval_sim_provider rows affected: %w", raErr)
+		return stats, entErrToBizErr(raErr, "MODEL_REGISTRY")
 	}
 	stats.Eval = int(n)
 	res, err = e.ExecContext(ctx, `UPDATE system_settings SET eval_judge_provider = ? WHERE eval_judge_provider = ?`, to, from)
 	if err != nil {
-		return stats, err
+		return stats, entErrToBizErr(err, "MODEL_REGISTRY")
 	}
 	n, raErr = res.RowsAffected()
 	if raErr != nil {
-		return stats, fmt.Errorf("migrate eval_judge_provider rows affected: %w", raErr)
+		return stats, entErrToBizErr(raErr, "MODEL_REGISTRY")
 	}
 	stats.Eval += int(n)
 
 	res, err = e.ExecContext(ctx,
 		`UPDATE agent_runtime_settings SET l0_compress_provider = ? WHERE l0_compress_provider = ?`, to, from)
 	if err != nil {
-		return stats, err
+		return stats, entErrToBizErr(err, "MODEL_REGISTRY")
 	}
 	n, raErr = res.RowsAffected()
 	if raErr != nil {
-		return stats, fmt.Errorf("migrate l0_compress_provider rows affected: %w", raErr)
+		return stats, entErrToBizErr(raErr, "MODEL_REGISTRY")
 	}
 	stats.RuntimeSettings = int(n)
 	res, err = e.ExecContext(ctx,
 		`UPDATE agent_runtime_settings SET memory_worker_provider = ? WHERE memory_worker_provider = ?`, to, from)
 	if err != nil {
-		return stats, err
+		return stats, entErrToBizErr(err, "MODEL_REGISTRY")
 	}
 	n, raErr = res.RowsAffected()
 	if raErr != nil {
-		return stats, fmt.Errorf("migrate memory_worker_provider rows affected: %w", raErr)
+		return stats, entErrToBizErr(raErr, "MODEL_REGISTRY")
 	}
 	stats.RuntimeSettings += int(n)
 
 	res, err = e.ExecContext(ctx,
 		`UPDATE skill SET provider = ?, updated_at = ? WHERE deleted_at = '' AND provider = ?`, to, now, from)
 	if err != nil {
-		return stats, err
+		return stats, entErrToBizErr(err, "MODEL_REGISTRY")
 	}
 	n, raErr = res.RowsAffected()
 	if raErr != nil {
-		return stats, fmt.Errorf("migrate skill provider rows affected: %w", raErr)
+		return stats, entErrToBizErr(raErr, "MODEL_REGISTRY")
 	}
 	stats.Skills = int(n)
 
@@ -417,11 +417,11 @@ func migrateOneRuleInTx(ctx context.Context, e execer, rule modelregistry.Provid
 		`UPDATE system_settings SET knowledge_embed_provider = ?, update_time = ? WHERE knowledge_embed_provider = ?`,
 		to, now, from)
 	if err != nil {
-		return stats, err
+		return stats, entErrToBizErr(err, "MODEL_REGISTRY")
 	}
 	n, raErr = res.RowsAffected()
 	if raErr != nil {
-		return stats, fmt.Errorf("migrate knowledge_embed_provider rows affected: %w", raErr)
+		return stats, entErrToBizErr(raErr, "MODEL_REGISTRY")
 	}
 	stats.KnowledgeEmbed = int(n)
 
@@ -429,11 +429,11 @@ func migrateOneRuleInTx(ctx context.Context, e execer, rule modelregistry.Provid
 		`UPDATE system_settings SET web_research_provider = ?, update_time = ? WHERE web_research_provider = ?`,
 		to, now, from)
 	if err != nil {
-		return stats, err
+		return stats, entErrToBizErr(err, "MODEL_REGISTRY")
 	}
 	n, raErr = res.RowsAffected()
 	if raErr != nil {
-		return stats, fmt.Errorf("migrate web_research_provider rows affected: %w", raErr)
+		return stats, entErrToBizErr(raErr, "MODEL_REGISTRY")
 	}
 	stats.WebResearch = int(n)
 
@@ -441,10 +441,10 @@ func migrateOneRuleInTx(ctx context.Context, e execer, rule modelregistry.Provid
 		`UPDATE llm_provider_models SET provider = ?, model_key = ? || ':' || model, updated_at = ? WHERE provider = ?`,
 		to, to, now, from)
 	if err != nil {
-		return stats, err
+		return stats, entErrToBizErr(err, "MODEL_REGISTRY")
 	}
 	if _, raErr := res.RowsAffected(); raErr != nil {
-		return stats, fmt.Errorf("migrate llm_provider_models rows affected: %w", raErr)
+		return stats, entErrToBizErr(raErr, "MODEL_REGISTRY")
 	}
 
 	return stats, nil

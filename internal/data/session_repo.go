@@ -136,7 +136,7 @@ func (r *sessionRepo) SearchSessions(ctx context.Context, q biz.SessionSearchQue
 	wherePred := entsession.And(wheres...)
 	total, err := c.Session.Query().Where(wherePred).Count(ctx)
 	if err != nil {
-		return biz.SessionListResult{}, err
+		return biz.SessionListResult{}, entErrToBizErr(err, "SESSION")
 	}
 
 	orderOpts := sessionSearchOrder(q.SortBy, q.SortOrder)
@@ -147,7 +147,7 @@ func (r *sessionRepo) SearchSessions(ctx context.Context, q biz.SessionSearchQue
 		Offset(offset).
 		All(ctx)
 	if err != nil {
-		return biz.SessionListResult{}, err
+		return biz.SessionListResult{}, entErrToBizErr(err, "SESSION")
 	}
 	items := make([]biz.Session, 0, len(rows))
 	for _, row := range rows {
@@ -228,7 +228,7 @@ func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Se
 		SetAgentDepth(in.AgentDepth).
 		Save(ctx)
 	if err != nil {
-		return biz.Session{}, err
+		return biz.Session{}, entErrToBizErr(err, "SESSION")
 	}
 	return r.GetSessionByID(ctx, in.ID)
 }
@@ -260,7 +260,7 @@ func (r *sessionRepo) UpdateSessionTitle(ctx context.Context, id, title string) 
 		SetUpdatedAt(nowRFC3339()).
 		Save(ctx)
 	if err != nil {
-		return biz.Session{}, err
+		return biz.Session{}, entErrToBizErr(err, "SESSION")
 	}
 	return r.GetSessionByID(ctx, id)
 }
@@ -302,7 +302,7 @@ func (r *sessionRepo) UpdateSession(ctx context.Context, id string, fields biz.S
 	}
 	_, err := upd.Save(ctx)
 	if err != nil {
-		return biz.Session{}, err
+		return biz.Session{}, entErrToBizErr(err, "SESSION")
 	}
 	return r.GetSessionByID(ctx, id)
 }
@@ -341,7 +341,7 @@ func (r *sessionRepo) PinSession(ctx context.Context, id string) (biz.Session, e
 		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {
-		return biz.Session{}, err
+		return biz.Session{}, entErrToBizErr(err, "SESSION")
 	}
 	return r.GetSessionByID(ctx, id)
 }
@@ -372,7 +372,7 @@ func (r *sessionRepo) ArchiveSession(ctx context.Context, id string) (int, error
 		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {
-		return 0, err
+		return 0, entErrToBizErr(err, "SESSION")
 	}
 	return n, nil
 }
@@ -388,7 +388,7 @@ func (r *sessionRepo) DeleteSession(ctx context.Context, id string) (int, error)
 			SetUpdatedAt(now).
 			Save(txCtx)
 		if err != nil {
-			return err
+			return entErrToBizErr(err, "SESSION")
 		}
 		if affected == 0 {
 			n = 0
@@ -397,7 +397,7 @@ func (r *sessionRepo) DeleteSession(ctx context.Context, id string) (int, error)
 		n = affected
 		return cascadeDeleteBySession(txCtx, r.data, id)
 	})
-	return n, err
+	return n, entErrToBizErr(err, "SESSION")
 }
 
 func (r *sessionRepo) DeleteSessionsByAgentID(ctx context.Context, agentID string) error {
@@ -411,7 +411,7 @@ func (r *sessionRepo) DeleteSessionsByAgentID(ctx context.Context, agentID strin
 	if err != nil {
 		r.data.lg.Error("batch delete sessions by agent failed", loggateway.StepID("data.session.delete_by_agent"), loggateway.Err(err))
 	}
-	return err
+	return entErrToBizErr(err, "SESSION")
 }
 
 func (r *sessionRepo) ListToolInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]biz.ToolInvocationView, error) {
@@ -425,7 +425,7 @@ func (r *sessionRepo) ListToolInvocationsBySession(ctx context.Context, sessionI
 		Limit(limit).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SESSION")
 	}
 	if len(rows) == 0 {
 		return nil, nil
@@ -494,7 +494,7 @@ func (r *sessionRepo) ListSkillInvocationsBySession(ctx context.Context, session
 	if len(skillIDs) > 0 {
 		skills, err := c.PlatformSkill.Query().Where(platformskill.IDIn(skillIDs...), platformskill.DeletedAtEQ("")).All(ctx)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "SESSION")
 		}
 		for _, s := range skills {
 			names[s.ID] = s.Name
@@ -506,7 +506,7 @@ func (r *sessionRepo) ListSkillInvocationsBySession(ctx context.Context, session
 	if len(agentIDs) > 0 {
 		agents, err := c.Agent.Query().Where(agent.IDIn(agentIDs...), agent.DeletedAtEQ("")).All(ctx)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "SESSION")
 		}
 		for _, a := range agents {
 			agentNames[a.ID] = a.DisplayName
@@ -589,7 +589,7 @@ func (r *sessionRepo) UpdateRunnerSnapshotJSON(ctx context.Context, sessionID st
 	if err != nil {
 		r.data.lg.Warn("update runner snapshot failed", loggateway.StepID("data.session.runner_snapshot"), loggateway.Err(err))
 	}
-	return err
+	return entErrToBizErr(err, "SESSION")
 }
 
 func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, _ int, contextWindow int) error {
@@ -671,7 +671,7 @@ func (r *sessionRepo) UpdateSessionContextAfterCompression(ctx context.Context, 
 		Save(ctx)
 	if err != nil {
 		r.data.lg.Warn("update session context after compression failed", loggateway.StepID("data.session.context_after_compress"), loggateway.Err(err))
-		return err
+		return entErrToBizErr(err, "SESSION")
 	}
 
 	// dual_write: also update session_metrics table
@@ -801,7 +801,7 @@ func (r *sessionRepo) applyMetricsDeltaToSession(ctx context.Context, d *session
 		upd = upd.SetLastMessageAt(d.LastMessageAt)
 	}
 	_, err := upd.Save(ctx)
-	return err
+	return entErrToBizErr(err, "SESSION")
 }
 
 func (r *sessionRepo) IncrementInvocationCounts(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error {
@@ -833,7 +833,7 @@ func (r *sessionRepo) BumpSessionRevision(ctx context.Context, sessionID string)
 	)
 	if err != nil {
 		r.data.lg.Warn("bump session revision failed", loggateway.StepID("data.session.bump_revision"), loggateway.Err(err))
-		return 0, err
+		return 0, entErrToBizErr(err, "SESSION")
 	}
 	return rev, nil
 }
@@ -847,7 +847,7 @@ func (r *sessionRepo) GetSessionRevision(ctx context.Context, sessionID string) 
 		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
-		return 0, err
+		return 0, entErrToBizErr(err, "SESSION")
 	}
 	return row.SessionRevision, nil
 }
@@ -882,7 +882,7 @@ func (r *sessionRepo) ListByParentSessionID(ctx context.Context, parentSessionID
 		Order(entsession.ByCreatedAt(entsql.OrderAsc())).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SESSION")
 	}
 	out := make([]biz.Session, 0, len(rows))
 	for _, row := range rows {

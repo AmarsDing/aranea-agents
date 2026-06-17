@@ -62,7 +62,7 @@ func (r *monitorRepo) InsertAuditLog(ctx context.Context, entry biz.AuditLog) er
 		id, entry.Action, entry.Resource, entry.ResourceID, entry.RequestID, entry.Detail, entry.CreatedAt,
 		entry.Actor, entry.IP, entry.UserAgent, entry.Severity, entry.MetadataJSON,
 	)
-	return err
+	return entErrToBizErr(err, "MONITOR")
 }
 
 func (r *monitorRepo) InsertMonitorEvent(ctx context.Context, ev biz.MonitorEventWrite) error {
@@ -83,7 +83,7 @@ func (r *monitorRepo) InsertMonitorEvent(ctx context.Context, ev biz.MonitorEven
 			loggateway.Str("event_key", ev.EventKey))
 		return nil
 	}
-	return err
+	return entErrToBizErr(err, "MONITOR")
 }
 
 func (r *monitorRepo) ListAuditLogs(ctx context.Context, query biz.AuditQuery) (biz.AuditListResult, error) {
@@ -107,12 +107,12 @@ func (r *monitorRepo) ListAuditLogs(ctx context.Context, query biz.AuditQuery) (
 
 	var total int32
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), countSQL, args[:len(args)-2], &total); err != nil {
-		return biz.AuditListResult{}, err
+		return biz.AuditListResult{}, entErrToBizErr(err, "MONITOR")
 	}
 
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, listSQL, args...)
 	if err != nil {
-		return biz.AuditListResult{}, err
+		return biz.AuditListResult{}, entErrToBizErr(err, "MONITOR")
 	}
 	defer rows.Close()
 
@@ -121,12 +121,12 @@ func (r *monitorRepo) ListAuditLogs(ctx context.Context, query biz.AuditQuery) (
 		var v biz.AuditLog
 		if err = rows.Scan(&v.ID, &v.Action, &v.Resource, &v.ResourceID, &v.RequestID, &v.Detail, &v.CreatedAt,
 			&v.Actor, &v.IP, &v.UserAgent, &v.Severity, &v.MetadataJSON); err != nil {
-			return biz.AuditListResult{}, err
+			return biz.AuditListResult{}, entErrToBizErr(err, "MONITOR")
 		}
 		out = append(out, v)
 	}
 	if err = rows.Err(); err != nil {
-		return biz.AuditListResult{}, err
+		return biz.AuditListResult{}, entErrToBizErr(err, "MONITOR")
 	}
 	return biz.AuditListResult{Items: out, Total: total}, nil
 }
@@ -186,18 +186,18 @@ func (r *monitorRepo) ListMonitorEvents(ctx context.Context, query biz.MonitorEv
 
 	var total int32
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), countSQL, args, &total); err != nil {
-		return biz.MonitorListResult{}, err
+		return biz.MonitorListResult{}, entErrToBizErr(err, "MONITOR")
 	}
 
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, listSQL, listArgs...)
 	if err != nil {
-		return biz.MonitorListResult{}, err
+		return biz.MonitorListResult{}, entErrToBizErr(err, "MONITOR")
 	}
 	defer rows.Close()
 
 	out, err := scanMonitorRows("monitor-events", rows)
 	if err != nil {
-		return biz.MonitorListResult{}, err
+		return biz.MonitorListResult{}, entErrToBizErr(err, "MONITOR")
 	}
 	return biz.MonitorListResult{Items: out, Total: total}, nil
 }
@@ -234,7 +234,7 @@ func monitorEventsWhere(q biz.MonitorEventsQuery) (string, []any) {
 func (r *monitorRepo) GetMonitorEvent(ctx context.Context, id string) (biz.MonitorPlatformRow, error) {
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlMonitorEventsGet, id)
 	if err != nil {
-		return biz.MonitorPlatformRow{}, err
+		return biz.MonitorPlatformRow{}, entErrToBizErr(err, "MONITOR")
 	}
 	defer rows.Close()
 	if !rows.Next() {
@@ -260,18 +260,18 @@ func (r *monitorRepo) ListMonitorTraces(ctx context.Context, query biz.MonitorTr
 
 	var total int32
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), countSQL, args, &total); err != nil {
-		return biz.MonitorListResult{}, err
+		return biz.MonitorListResult{}, entErrToBizErr(err, "MONITOR")
 	}
 
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, listSQL, listArgs...)
 	if err != nil {
-		return biz.MonitorListResult{}, err
+		return biz.MonitorListResult{}, entErrToBizErr(err, "MONITOR")
 	}
 	defer rows.Close()
 
 	out, err := scanTraceRows(rows)
 	if err != nil {
-		return biz.MonitorListResult{}, err
+		return biz.MonitorListResult{}, entErrToBizErr(err, "MONITOR")
 	}
 	return biz.MonitorListResult{Items: out, Total: total}, nil
 }
@@ -317,7 +317,7 @@ func (r *monitorRepo) ExistsRunnerCompletion(ctx context.Context, sessionID, inv
 		 AND COALESCE(meta_invocation_id, json_extract(metadata_json, '$.invocation_id')) = ?`,
 		[]any{sessionID, invocationID}, &n)
 	if err != nil {
-		return false, err
+		return false, entErrToBizErr(err, "MONITOR")
 	}
 	return n > 0, nil
 }
@@ -359,7 +359,7 @@ func (r *monitorRepo) patchRunnerCompletionByDualKey(ctx context.Context, sessio
 		return false, nil
 	}
 	if err != nil {
-		return false, err
+		return false, entErrToBizErr(err, "MONITOR")
 	}
 	merged, err := mergeJSONMetadata(r.data.lg, existing, patchJSON)
 	if err != nil {
@@ -371,7 +371,7 @@ func (r *monitorRepo) patchRunnerCompletionByDualKey(ctx context.Context, sessio
 		merged, now, id,
 	)
 	if err != nil {
-		return false, err
+		return false, entErrToBizErr(err, "MONITOR")
 	}
 	n, _ := res.RowsAffected()
 	return n > 0, nil
@@ -396,7 +396,7 @@ func (r *monitorRepo) patchRunnerCompletionByKey(ctx context.Context, sessionID,
 		return false, nil
 	}
 	if err != nil {
-		return false, err
+		return false, entErrToBizErr(err, "MONITOR")
 	}
 	merged, err := mergeJSONMetadata(r.data.lg, existing, patchJSON)
 	if err != nil {
@@ -408,7 +408,7 @@ func (r *monitorRepo) patchRunnerCompletionByKey(ctx context.Context, sessionID,
 		merged, now, id,
 	)
 	if err != nil {
-		return false, err
+		return false, entErrToBizErr(err, "MONITOR")
 	}
 	n, _ := res.RowsAffected()
 	return n > 0, nil
@@ -440,7 +440,7 @@ func mergeJSONMetadata(lg loggateway.Logger, existing, patch string) (string, er
 func (r *monitorRepo) GetMonitorTrace(ctx context.Context, id string) (biz.MonitorPlatformRow, error) {
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlMonitorTracesGet, id)
 	if err != nil {
-		return biz.MonitorPlatformRow{}, err
+		return biz.MonitorPlatformRow{}, entErrToBizErr(err, "MONITOR")
 	}
 	defer rows.Close()
 	if !rows.Next() {
@@ -454,11 +454,11 @@ func scanMonitorRows(resource string, rows *sql.Rows) ([]biz.MonitorPlatformRow,
 	for rows.Next() {
 		item, err := scanMonitorPlatformRow(resource, rows)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "MONITOR")
 		}
 		out = append(out, item)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "MONITOR")
 }
 
 func scanMonitorPlatformRow(resource string, row scanner) (biz.MonitorPlatformRow, error) {
@@ -472,7 +472,7 @@ func scanMonitorPlatformRow(resource string, row scanner) (biz.MonitorPlatformRo
 	v.Resource = resource
 	err := row.Scan(&id, &key, &name, &description, &status, &metaJSON, &createdAt, &updatedAt, &deletedAt)
 	if err != nil {
-		return biz.MonitorPlatformRow{}, err
+		return biz.MonitorPlatformRow{}, entErrToBizErr(err, "MONITOR")
 	}
 	v.ID = id
 	v.Key = key
@@ -495,11 +495,11 @@ func scanTraceRows(rows *sql.Rows) ([]biz.MonitorPlatformRow, error) {
 	for rows.Next() {
 		item, err := scanTracePlatformRow(rows)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "MONITOR")
 		}
 		out = append(out, item)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "MONITOR")
 }
 
 // scanTracePlatformRow scans a single monitor_traces row with extended columns
@@ -515,7 +515,7 @@ func scanTracePlatformRow(row scanner) (biz.MonitorPlatformRow, error) {
 	)
 	err := row.Scan(&id, &key, &name, &description, &status, &agentID, &provider, &model, &metaJSON, &createdAt, &updatedAt, &deletedAt)
 	if err != nil {
-		return biz.MonitorPlatformRow{}, err
+		return biz.MonitorPlatformRow{}, entErrToBizErr(err, "MONITOR")
 	}
 	v.Resource = "monitor-traces"
 	v.ID = id

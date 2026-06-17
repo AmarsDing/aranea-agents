@@ -3,7 +3,6 @@ package data
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -117,10 +116,10 @@ func EnsureAgentPerformanceSchema(ctx context.Context, db *sql.DB, lg loggateway
 		last_executed_at TEXT DEFAULT ''
 	)`)
 	if err != nil {
-		return fmt.Errorf("create agent_performances table: %w", err)
+		return entErrToBizErr(err, "AGENT_PERFORMANCE")
 	}
 	if _, err := db.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_performances_key_type ON agent_performances(agent_key, task_type)`); err != nil {
-		return fmt.Errorf("create agent_performances index: %w", err)
+		return entErrToBizErr(err, "AGENT_PERFORMANCE")
 	}
 	return nil
 }

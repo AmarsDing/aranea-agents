@@ -467,19 +467,23 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 		if ent.IsNotFound(err) {
 			return []string{}, nil
 		}
-		return nil, err
+		return nil, entErrToBizErr(err, "AGENT")
 	}
 	switch node.Level {
 	case "position":
 		return []string{node.ID}, nil
 	case "department":
-		return r.data.RW().Read(ctx).Organization.Query().
+		ids, err := r.data.RW().Read(ctx).Organization.Query().
 			Where(
 				organization.ParentIDEQ(categoryID),
 				organization.LevelEQ("position"),
 				organization.DeletedAtEQ(""),
 			).
 			IDs(ctx)
+		if err != nil {
+			return nil, entErrToBizErr(err, "AGENT")
+		}
+		return ids, nil
 	case "company":
 		deptIDs, err := r.data.RW().Read(ctx).Organization.Query().
 			Where(
@@ -489,18 +493,22 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 			).
 			IDs(ctx)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "AGENT")
 		}
 		if len(deptIDs) == 0 {
 			return []string{}, nil
 		}
-		return r.data.RW().Read(ctx).Organization.Query().
+		posIDs, err := r.data.RW().Read(ctx).Organization.Query().
 			Where(
 				organization.ParentIDIn(deptIDs...),
 				organization.LevelEQ("position"),
 				organization.DeletedAtEQ(""),
 			).
 			IDs(ctx)
+		if err != nil {
+			return nil, entErrToBizErr(err, "AGENT")
+		}
+		return posIDs, nil
 	default:
 		return []string{}, nil
 	}
@@ -558,7 +566,7 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 	c := r.data.RW().Read(ctx)
 	total, err := c.Agent.Query().Where(where).Count(ctx)
 	if err != nil {
-		return biz.AgentListResult{}, err
+		return biz.AgentListResult{}, entErrToBizErr(err, "AGENT")
 	}
 	rows, err := c.Agent.Query().Where(where).
 		Order(agent.ByIsDefault(entsql.OrderDesc()), agent.ByUpdatedAt(entsql.OrderDesc())).
@@ -566,7 +574,7 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 		Offset(q.Offset).
 		All(ctx)
 	if err != nil {
-		return biz.AgentListResult{}, err
+		return biz.AgentListResult{}, entErrToBizErr(err, "AGENT")
 	}
 	items := make([]biz.Agent, 0, len(rows))
 	for _, row := range rows {
@@ -582,7 +590,7 @@ func (r *agentRepo) ListAgentCreators(ctx context.Context) ([]biz.AgentCreator, 
 		GroupBy(agent.FieldCreatedBy).
 		Strings(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "AGENT")
 	}
 	out := make([]biz.AgentCreator, 0, len(rows)+1)
 	if biz.AgentCreatedByFromContext(ctx) != "" {
@@ -614,7 +622,7 @@ func (r *agentRepo) GetAgentByID(ctx context.Context, id string) (biz.Agent, err
 		if ent.IsNotFound(err) {
 			return biz.Agent{}, shared.ErrNotFound
 		}
-		return biz.Agent{}, err
+		return biz.Agent{}, entErrToBizErr(err, "AGENT")
 	}
 	return entAgentToBiz(row, r.data.lg), nil
 }
@@ -629,7 +637,7 @@ func (r *agentRepo) GetAgentByAgentKey(ctx context.Context, agentKey string) (bi
 		if ent.IsNotFound(err) {
 			return biz.Agent{}, shared.ErrNotFound
 		}
-		return biz.Agent{}, err
+		return biz.Agent{}, entErrToBizErr(err, "AGENT")
 	}
 	return entAgentToBiz(row, r.data.lg), nil
 }
@@ -735,7 +743,7 @@ func (r *agentRepo) UpdateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		SetUpdatedAt(a.UpdatedAt).
 		Save(ctx)
 	if err != nil {
-		return biz.Agent{}, err
+		return biz.Agent{}, entErrToBizErr(err, "AGENT")
 	}
 	out, err := r.GetAgentByID(ctx, a.ID)
 	return out, err
@@ -752,7 +760,7 @@ func (r *agentRepo) DeleteAgent(ctx context.Context, id string) error {
 			SetStatus("deleted").
 			SetUpdatedAt(now).
 			Save(txCtx); err != nil {
-			return err
+			return entErrToBizErr(err, "AGENT")
 		}
 		return cascadeDeleteByAgent(txCtx, r.data, id)
 	})
@@ -773,11 +781,11 @@ func (r *agentRepo) ToggleFavorite(ctx context.Context, id string) (biz.Agent, e
 		now, id,
 	)
 	if err != nil {
-		return biz.Agent{}, err
+		return biz.Agent{}, entErrToBizErr(err, "AGENT")
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
-		return biz.Agent{}, err
+		return biz.Agent{}, entErrToBizErr(err, "AGENT")
 	}
 	if affected == 0 {
 		return biz.Agent{}, shared.ErrNotFound
@@ -791,7 +799,7 @@ func (r *agentRepo) GetAgentRuntimeSettings(ctx context.Context, agentID string)
 		if ent.IsNotFound(err) {
 			return biz.AgentRuntimeSettings{}, shared.ErrNotFound
 		}
-		return biz.AgentRuntimeSettings{}, err
+		return biz.AgentRuntimeSettings{}, entErrToBizErr(err, "AGENT")
 	}
 	return entRuntimeToBiz(row), nil
 }
@@ -811,11 +819,11 @@ func (r *agentRepo) UpsertAgentRuntimeSettings(ctx context.Context, v biz.AgentR
 		entsql.ConflictColumns(agentruntimesetting.FieldID),
 		entsql.ResolveWithNewValues(),
 	).Exec(ctx); err != nil {
-		return biz.AgentRuntimeSettings{}, err
+		return biz.AgentRuntimeSettings{}, entErrToBizErr(err, "AGENT")
 	}
 	row, err := r.data.RW().Write(ctx).AgentRuntimeSetting.Get(ctx, v.AgentID)
 	if err != nil {
-		return biz.AgentRuntimeSettings{}, err
+		return biz.AgentRuntimeSettings{}, entErrToBizErr(err, "AGENT")
 	}
 	return entRuntimeToBiz(row), nil
 }
@@ -826,7 +834,7 @@ func (r *agentRepo) ListAgentPromptFiles(ctx context.Context, agentID string) ([
 		Order(agentpromptfile.BySortOrder(), agentpromptfile.ByFileName()).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "AGENT")
 	}
 	out := make([]biz.AgentPromptFile, 0, len(rows))
 	for _, row := range rows {
@@ -841,7 +849,7 @@ func (r *agentRepo) ReplaceAgentPromptFiles(ctx context.Context, agentID string,
 	}
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		if _, err := r.data.RW().Write(txCtx).AgentPromptFile.Delete().Where(agentpromptfile.AgentIDEQ(agentID)).Exec(txCtx); err != nil {
-			return err
+			return entErrToBizErr(err, "AGENT")
 		}
 		now := nowRFC3339()
 		builders := make([]*ent.AgentPromptFileCreate, 0, len(files))
@@ -868,7 +876,7 @@ func (r *agentRepo) ReplaceAgentPromptFiles(ctx context.Context, agentID string,
 		}
 		if len(builders) > 0 {
 			if _, err := r.data.RW().Write(txCtx).AgentPromptFile.CreateBulk(builders...).Save(txCtx); err != nil {
-				return err
+				return entErrToBizErr(err, "AGENT")
 			}
 		}
 		return nil
@@ -952,7 +960,7 @@ func (r *agentRepo) CreateAgentPromptFile(ctx context.Context, f biz.AgentPrompt
 		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {
-		return biz.AgentPromptFile{}, err
+		return biz.AgentPromptFile{}, entErrToBizErr(err, "AGENT")
 	}
 	return entPromptToBiz(created), nil
 }
@@ -977,7 +985,7 @@ func (r *agentRepo) UpdateAgentPromptFile(ctx context.Context, f biz.AgentPrompt
 		if ent.IsNotFound(err) {
 			return biz.AgentPromptFile{}, shared.ErrNotFound
 		}
-		return biz.AgentPromptFile{}, err
+		return biz.AgentPromptFile{}, entErrToBizErr(err, "AGENT")
 	}
 	return entPromptToBiz(updated), nil
 }
@@ -989,7 +997,7 @@ func (r *agentRepo) DeleteAgentPromptFile(ctx context.Context, agentID, id strin
 	_, err := r.data.RW().Write(ctx).AgentPromptFile.Delete().
 		Where(agentpromptfile.IDEQ(id), agentpromptfile.AgentIDEQ(agentID)).
 		Exec(ctx)
-	return err
+	return entErrToBizErr(err, "AGENT")
 }
 
 func (r *agentRepo) ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error {
@@ -1005,9 +1013,13 @@ func (r *agentRepo) CountAgentsByProviderAndModel(ctx context.Context, provider,
 	if r.data == nil {
 		return 0, nil
 	}
-	return r.data.RW().Read(ctx).Agent.Query().
+	n, err := r.data.RW().Read(ctx).Agent.Query().
 		Where(agent.ProviderEQ(provider), agent.ModelEQ(model), agent.DeletedAtEQ("")).
 		Count(ctx)
+	if err != nil {
+		return 0, entErrToBizErr(err, "AGENT")
+	}
+	return n, nil
 }
 
 // ClearPositionByDepartment clears the position_id field for all agents
@@ -1025,7 +1037,7 @@ func (r *agentRepo) ClearPositionByDepartment(ctx context.Context, deptID string
 		).
 		All(ctx)
 	if err != nil {
-		return 0, err
+		return 0, entErrToBizErr(err, "AGENT")
 	}
 	if len(positions) == 0 {
 		return 0, nil
@@ -1043,7 +1055,7 @@ func (r *agentRepo) ClearPositionByDepartment(ctx context.Context, deptID string
 		SetPositionID("").
 		Save(ctx)
 	if err != nil {
-		return 0, err
+		return 0, entErrToBizErr(err, "AGENT")
 	}
 	return n, nil
 }
