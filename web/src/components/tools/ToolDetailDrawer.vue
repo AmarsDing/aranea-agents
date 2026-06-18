@@ -7,7 +7,7 @@
   <q-drawer
     :model-value="open"
     :width="640"
-    :breakpoint="1024"
+    :breakpoint="0"
     side="right"
     overlay
     bordered

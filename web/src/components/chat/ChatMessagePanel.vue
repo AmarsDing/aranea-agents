@@ -94,9 +94,6 @@
                 <q-tooltip v-else>{{ t('chat.connected') }}</q-tooltip>
               </span>
             </template>
-            <q-btn v-if="isMobile" flat round dense icon="list_alt" :aria-label="t('chat.collapseSession')" @click="emit('open-sessions')">
-              <q-tooltip>{{ t('chat.collapseSession') }}</q-tooltip>
-            </q-btn>
             <ChatRunnerStatus
               v-if="
                 runStatus &&
@@ -296,7 +293,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, provide, readonly, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useQuasar } from 'quasar';
 import type { Envelope } from '../../realtime/envelope';
 import ChatRunnerStatus from './ChatRunnerStatus.vue';
 import ChatTeamMemberStrip from './ChatTeamMemberStrip.vue';
@@ -434,7 +430,6 @@ const emit = defineEmits<{
   'submit-tool-confirm': [approved: boolean];
   'open-events': [];
   'open-artifact': [id: string];
-  'open-sessions': [];
   'paste-file': [file: File];
   'focus-turn': [turnId: string];
   navigate: [route: { name: string; params: Record<string, string> }];
@@ -476,8 +471,8 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const $q = useQuasar();
-const isMobile = computed(() => $q.screen.lt.md);
+// T5.5: Mobile (<1024px) responsive logic removed — app targets desktop only.
+// useQuasar/$q were only used for $q.screen.lt.md (isMobile).
 const messagesRef = computed(() => props.messages);
 
 // ── Team member lanes ──
@@ -544,8 +539,9 @@ const { headerUserPrompt, promptKey, refreshActivePrompt, resetToLatestOrSession
   sessionTitle: sessionTitleRef,
   messages: messagesRef,
   messagesScrollEl,
-  virtualScrollRef: computed(() => null),
-  useVirtualMessageList: computed(() => false),
+  // T8.3: Enable virtual scroll path for long conversations.
+  virtualScrollRef: computed(() => messageListRef.value?.virtualScrollRef ?? null),
+  useVirtualMessageList: computed(() => messageListRef.value?.useVirtualScroll ?? false),
 });
 
 function onMessagesScrollWrapped(event?: Event) {
@@ -569,6 +565,14 @@ watch(
   () => props.focusTurnId,
   async (turnId) => {
     if (!turnId?.trim()) return;
+    // T8.3: In virtual-scroll mode, DynamicScroller only renders visible items,
+    // so useChatMessageScroll.scrollToTurnId (which uses querySelector) would fail
+    // for off-screen turns. Use ChatMessageList.scrollToTurnId first to bring the
+    // item into view via DynamicScroller.scrollToItem, then let useChatMessageScroll
+    // handle the highlight (its scrollIntoView becomes a no-op or minor adjustment).
+    if (messageListRef.value?.useVirtualScroll) {
+      await messageListRef.value.scrollToTurnId(turnId);
+    }
     await scrollToTurnId(turnId);
     emit('focus-turn-cleared');
   },

@@ -437,15 +437,20 @@ func (m *RunnerManager) CloseRunner(key string) error
 
 ### 4.9 RunRegistry
 
-`RunRegistry` 定义于 `internal/runtime/run_registry.go`，基于 `sync.Map` 提供类型安全的并发访问：
+`RunRegistry` 定义于 `internal/runtime/run_registry.go`，基于 `sync.Map` 提供类型安全的并发访问。`activeRunMap` 内置 `sync.Mutex` 保护 `StoreRunner`/`StoreCancelable` 的 load-modify-store 原子性（T2.2 TOCTOU 修复）：
 
 ```go
 type RunRegistry struct {
-    activeRuns     activeRunMap     // sessionID → activeRun
+    activeRuns     activeRunMap     // sessionID → activeRun（含 mu mutex + updateOrStore）
     pendingCancels cancelMap        // sessionID → context.CancelFunc
     runStatuses    statusMap        // sessionID → *RunStatusEntry
     lg             loggateway.Logger
 }
+
+// activeRunMap 的 updateOrStore 方法在 mutex 保护下执行原子 load-modify-store，
+// 消除 StoreRunner/StoreCancelable 的 TOCTOU 竞态。plain load/store/delete
+// 仍使用 sync.Map 无锁访问（单操作本身并发安全）。
+```
 
 func NewRunRegistry() *RunRegistry
 func (r *RunRegistry) WithLogger(lg loggateway.Logger) *RunRegistry

@@ -72,6 +72,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
+import { useCollapseState } from '../../features/chat/composables/useCollapseState';
 
 const props = withDefaults(
   defineProps<{
@@ -101,15 +102,19 @@ const props = withDefaults(
 
 const { t } = useI18n();
 
-// --- Collapse state ---
+// --- Collapse state (T8.4: persisted to sessionStorage) ---
 
-const collapsed = ref(props.defaultCollapsed);
+const { collapsed, toggle, setCollapsed } = useCollapseState(
+  `thinking:${props.messageId}`,
+  props.defaultCollapsed,
+);
 // Sync with external defaultCollapsed changes (e.g., when Activity data updates from AF).
 // Only apply when not streaming — streaming state is managed by the streaming watch.
+// Note: only applies if the user hasn't explicitly toggled (sessionStorage has no stored value).
 watch(
   () => props.defaultCollapsed,
   (val) => {
-    if (!props.streaming) collapsed.value = val;
+    if (!props.streaming) setCollapsed(val);
   },
 );
 const viewportRef = ref<HTMLElement | null>(null);
@@ -181,11 +186,11 @@ watch(
   (live) => {
     if (live) {
       userScrolledUp.value = false;
-      collapsed.value = true; // 流式时保持折叠，显示状态指示器
+      setCollapsed(true); // 流式时保持折叠，显示状态指示器
       void nextTick(scrollToBottom);
     } else {
       // streaming 结束时保持折叠
-      collapsed.value = true;
+      setCollapsed(true);
     }
   },
 );
@@ -193,7 +198,7 @@ watch(
 // --- Interaction ---
 
 function onClick() {
-  collapsed.value = !collapsed.value;
+  toggle();
 
   // After expanding, scroll to bottom if streaming
   if (!collapsed.value && props.streaming) {
@@ -203,7 +208,7 @@ function onClick() {
 }
 
 function onEscape() {
-  collapsed.value = true;
+  setCollapsed(true);
 }
 </script>
 

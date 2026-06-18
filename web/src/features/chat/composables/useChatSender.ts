@@ -305,6 +305,11 @@ export function useChatSender(deps: SenderDeps) {
       const res = await runtime.enqueue(sessionId, content);
       if (res.accepted) {
         dropPendingUserRow(sessionId, pendingUserId);
+        // T5.3: Clear input only after successful enqueue (matches Path B
+        // onEnqueueWhileRunning behavior). For follow-up sends, input was
+        // intentionally not cleared in sendUserContent so the user can retry
+        // if enqueue fails.
+        deps.inputText.value = '';
         $q.notify({
           type: 'positive',
           message: res.queued
@@ -473,11 +478,21 @@ export function useChatSender(deps: SenderDeps) {
 
       const pendingUserId = reusePendingId ?? `pending-user-${crypto.randomUUID()}`;
       if (!reusePendingId) {
-        deps.inputText.value = '';
-        deps.messageStore.setMessages(sessionId, [
-          ...deps.messageStore.getMessages(sessionId),
-          createPlaceholderMessage(pendingUserId, sessionId, 'user', text),
-        ]);
+        // T5.3: For follow-up (enqueue during active run), don't create a
+        // pending-user placeholder and don't clear input yet. The queued
+        // message will appear in ChatPendingQueue via refreshPendingMessages,
+        // providing consistent UX with the onEnqueueWhileRunning path (Path B).
+        // Input is cleared only after enqueue succeeds (inside enqueueDuringRun),
+        // so the user can retry if enqueue fails (e.g., backend unavailable,
+        // queue full). The dropPendingUserRow calls in enqueueDuringRun become
+        // no-ops (safe — filter on non-existent id returns unchanged list).
+        if (!followUp) {
+          deps.inputText.value = '';
+          deps.messageStore.setMessages(sessionId, [
+            ...deps.messageStore.getMessages(sessionId),
+            createPlaceholderMessage(pendingUserId, sessionId, 'user', text),
+          ]);
+        }
       }
 
       const { provider, model } = strategy.resolveProviderModel();

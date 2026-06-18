@@ -1235,6 +1235,174 @@ const summary = computed(() => {
 | 折叠阈值 | `< 30` 字符不折叠 | 信息密度过低，折叠反而干扰 |
 | Summary 长度 | `≤ 60` 字 + `…` | 1 行内可读 |
 
+### 6.9 虚拟滚动（T8.3，2026-06-18 新增）
+
+> **需求来源**：[2026-06-18-review-full-message-chain-and-solutions.md](../../reports/2026-06-18-review-full-message-chain-and-solutions.md) Sprint 8 / T8.3
+> **目标**：长会话（>100 回合）启用虚拟滚动，避免 DOM 节点过多导致卡顿；同时保留短会话的简单 v-for 渲染路径。
+
+#### 6.9.1 启用阈值与组件选型
+
+| 维度 | 决策 | 理由 |
+|------|------|------|
+| 启用阈值 | `VIRTUAL_SCROLL_THRESHOLD = 100`（回合数） | 短会话保留原生 v-for 路径，避免虚拟滚动开销；长会话才需要回收 |
+| 组件 | `vue-virtual-scroller` 的 `DynamicScroller` + `DynamicScrollerItem` | 支持动态高度（回合内容长度差异大），无需手动测量 |
+| `min-item-size` | `80`px | 回合最小高度兜底，DynamicScroller 据此预分配空间 |
+| `key-field` | `id`（ConversationTurn.id） | 稳定 key，避免回收后状态错乱 |
+| 样式导入 | `vue-virtual-scroller/dist/vue-virtual-scroller.css` | 实际样式文件位于 dist 目录 |
+
+#### 6.9.2 数据流与滚动管理
+
+```
+ChatMessagePanel
+  ├─ messageListRef → ChatMessageList
+  │   ├─ useVirtualScroll = computed(() => conversationTurns.length > 100)
+  │   ├─ virtualScrollRef = ref<DynamicScroller>(null)  ← defineExpose
+  │   ├─ scrollToTurnId(turnId)                          ← defineExpose
+  │   └─ getScrollTarget()                               ← defineExpose
+  ├─ useChatScrollTitle({ virtualScrollRef, useVirtualMessageList })
+  │   └─ resolveScrollRoot() 优先取 virtualScrollRef.$el，否则取 messagesScrollEl
+  └─ useChatMessageScroll({ messagesScrollEl })
+      └─ scrollToTurnId() 通过 querySelector + scrollIntoView 高亮目标回合
+```
+
+**focusTurnId 处理流程**（虚拟滚动模式下）：
+
+1. `ChatMessagePanel` watch `focusTurnId` 变化
+2. 若 `useVirtualScroll` 为 true，先调用 `messageListRef.scrollToTurnId(turnId)`
+   - `ChatMessageList.scrollToTurnId` 调用 `virtualScrollRef.scrollToItem(index)` 将离屏回合滚入视口
+   - `await nextTick()` 等待 DOM 更新
+3. 再调用 `useChatMessageScroll.scrollToTurnId(turnId)` 通过 `querySelector('[data-turn-id]')` 高亮目标
+4. emit `focus-turn-cleared`
+
+**关键设计决策**：
+
+- **DynamicScrollerItem 的 `data-index`**：使用 slot prop `itemIndex`（数字），**不**使用 `item.id`（字符串）。`data-index` 是 DynamicScroller 用于内部定位的索引，必须是数字。
+- **`getScrollTarget` 返回值**：虚拟滚动模式下返回 `virtualScrollRef.$el`（DynamicScroller 的根滚动容器），供 `useChatScrollTitle` 和 `useChatMessageScroll` 计算 viewport 位置。
+- **ref 变量名避免遮蔽**：`getScrollTarget` 内部使用 `const vsRef = virtualScrollRef.value`，避免遮蔽 Vue 的 `ref` API。
+
+#### 6.9.3 影响文件
+
+| 文件 | 变更 |
+|------|------|
+| `web/src/components/chat/ChatMessageList.vue` | 新增 `DynamicScroller` / `DynamicScrollerItem` 导入；新增 `VIRTUAL_SCROLL_THRESHOLD`、`useVirtualScroll`、`virtualScrollRef`、`scrollToTurnId`；`defineExpose` 扩展；`getScrollTarget` 适配虚拟滚动 |
+| `web/src/components/chat/ChatMessagePanel.vue` | `useChatScrollTitle` 参数适配（`virtualScrollRef` / `useVirtualMessageList` 从 `messageListRef` 计算）；`focusTurnId` watch 先调用 `messageListRef.scrollToTurnId` |
+| `web/src/features/chat/useChatScrollTitle.ts` | 新增 `VirtualScrollInstance` 类型；新增 `resolveScrollRoot` 函数优先取虚拟滚动根元素 |
+
+### 6.10 大消息折叠（T8.4，2026-06-18 新增）
+
+> **需求来源**：[2026-06-18-review-full-message-chain-and-solutions.md](../../reports/2026-06-18-review-full-message-chain-and-solutions.md) Sprint 8 / T8.4
+> **目标**：思考块和工具调用结果默认折叠，减少首屏高度；用户展开/折叠状态持久化到 sessionStorage，虚拟滚动回收后状态可恢复。
+
+#### 6.10.1 useCollapseState composable
+
+**位置**：`web/src/features/chat/composables/useCollapseState.ts`
+
+**核心设计**：分离用户操作与系统操作的持久化策略，避免系统强制折叠覆盖用户偏好。
+
+| 操作 | API | 持久化到 sessionStorage | 场景 |
+|------|-----|------------------------|------|
+| 用户点击展开/折叠 | `toggle()` | ✅ 是 | 用户主动操作，应被记住 |
+| 系统强制折叠 | `setCollapsed(value)` | ❌ 否 | 流式开始/结束、内容超阈值自动折叠 |
+
+**为什么分离**：
+
+```
+场景：用户手动展开了某个思考块（toggle → sessionStorage 记录 false）
+      随后流式结束，ThinkingBlock 的 streaming watch 调用 setCollapsed(true)
+      
+若 setCollapsed 也持久化：
+  → sessionStorage 被覆盖为 true
+  → 用户刷新页面，思考块又变成折叠
+  → 用户的展开偏好丢失
+
+分离后：
+  → setCollapsed(true) 只改当前 ref，不写 sessionStorage
+  → 用户刷新页面，从 sessionStorage 读到 false（用户偏好）
+  → 用户的展开偏好保留
+```
+
+**API 签名**：
+
+```ts
+export function useCollapseState(
+  key: string,                    // sessionStorage key（前缀 'chat:collapse:'）
+  defaultCollapsed: boolean = true,
+): {
+  collapsed: Ref<boolean>;
+  toggle: () => void;             // 用户操作：切换 + 持久化
+  setCollapsed: (v: boolean) => void;  // 系统操作：仅切换，不持久化
+}
+```
+
+**存储 key 命名**：
+
+| 组件 | key 格式 | 示例 |
+|------|---------|------|
+| ThinkingBlock | `chat:collapse:thinking:{messageId}` | `chat:collapse:thinking:msg-123` |
+| ActionBlock | `chat:collapse:action:{activity.id}` | `chat:collapse:action:act-456` |
+
+**降级策略**：sessionStorage 不可用（隐私模式、配额超限）时静默降级为内存 ref，不抛错。
+
+#### 6.10.2 ThinkingBlock 默认折叠
+
+**位置**：`web/src/components/chat/ThinkingBlock.vue`
+
+| 场景 | 行为 | API |
+|------|------|-----|
+| 初始化 | 从 sessionStorage 读取，无记录则用 `defaultCollapsed`（默认 true） | `useCollapseState(key, props.defaultCollapsed)` |
+| 流式开始 | 折叠（显示状态指示器） | `setCollapsed(true)` |
+| 流式结束 | 保持折叠 | `setCollapsed(true)` |
+| 外部 `defaultCollapsed` 变化 | 非流式时同步 | `setCollapsed(val)` |
+| 用户点击 | 切换 + 持久化 | `toggle()` |
+| ESC 键 | 折叠（不持久化） | `setCollapsed(true)` |
+
+#### 6.10.3 ActionBlock 大消息自动折叠
+
+**位置**：`web/src/components/chat/ActionBlock.vue`
+
+| 阈值 | 行为 |
+|------|------|
+| `RESULT_COLLAPSE_THRESHOLD = 500` | `result.length + arguments.length > 500` 时默认折叠 |
+| 初始化 | `defaultCollapsed = computed(() => contentLength.value > 500)` |
+| 内容增长超阈值 | `watch(contentLength)` 检测从 ≤500 跨越到 >500，调用 `setCollapsed(true)` 自动折叠 |
+| 用户点击 | `toggle()` 切换 + 持久化 |
+
+**`contentLength` computed**：
+
+```ts
+const contentLength = computed(() => {
+  const result = props.activity.tool.result ?? '';
+  const args = props.activity.tool.arguments ?? '';
+  return result.length + args.length;
+});
+```
+
+**watch 自动折叠逻辑**：
+
+```ts
+watch(contentLength, (len, prevLen) => {
+  if (len > RESULT_COLLAPSE_THRESHOLD && prevLen <= RESULT_COLLAPSE_THRESHOLD) {
+    setCollapsed(true);  // 系统操作，不持久化
+  }
+});
+```
+
+#### 6.10.4 影响文件
+
+| 文件 | 变更 |
+|------|------|
+| `web/src/features/chat/composables/useCollapseState.ts` | 新增 composable |
+| `web/src/components/chat/ThinkingBlock.vue` | 替换本地 `collapsed` ref 为 `useCollapseState`；`onClick` 调用 `toggle()`；`onEscape` 调用 `setCollapsed(true)`；流式 watch 使用 `setCollapsed(true)` |
+| `web/src/components/chat/ActionBlock.vue` | 新增 `RESULT_COLLAPSE_THRESHOLD`、`contentLength` computed、`defaultCollapsed` computed；集成 `useCollapseState`；新增 `watch(contentLength)` 自动折叠；`expanded` 改为 computed（`!collapsed`） |
+
+#### 6.10.5 与虚拟滚动的协同
+
+虚拟滚动回收组件后，重新挂载时会从 sessionStorage 读取折叠状态，确保用户偏好不丢失。这是 T8.3 与 T8.4 的核心协同点：
+
+- **无 sessionStorage**：回收后状态丢失，用户需重新展开
+- **有 sessionStorage + toggle 持久化**：回收后状态恢复，用户体验一致
+- **setCollapsed 不持久化**：系统强制折叠不会污染用户偏好
+
 ---
 
 ## 七、前端架构

@@ -17,7 +17,7 @@ type Infra struct {
 	SessionBus        Bus
 	MonitorBus        Bus
 	Buffer            *Buffer
-	WAL               *EventWAL // nil when WAL is not configured (e.g., no SQLite)
+	WAL               *EventWAL                  // nil when WAL is not configured (e.g., no SQLite)
 	CrossProcessStore contract.CrossProcessStore // optional (P1-6): nil when Postgres not configured
 	lg                loggateway.Logger
 	// routing caches MONITOR_BUS_ROUTING once at construction to avoid per-call os.Getenv (M-01).
@@ -102,16 +102,15 @@ func ProvideBuffer(infra *Infra) *Buffer {
 	return infra.Buffer
 }
 
-// ProvideEventWAL creates an EventWAL instance. Returns nil if neither
-// database is available (e.g., in test environments without SQLite/Postgres).
+// ProvideEventWAL creates an EventWAL instance. Returns nil if pgDB is nil
+// (e.g., in test environments without Postgres).
 //
-// When pgDB is non-nil, Postgres-backed WAL storage is used (preferred for
-// Phase 1 migration). Otherwise, SQLite-backed storage is used with sqliteDB.
-func ProvideEventWAL(sqliteDB *sql.DB, pgDB *sql.DB, lg loggateway.Logger) *EventWAL {
-	if sqliteDB == nil && pgDB == nil {
+// Production deployments require Postgres for WAL storage.
+func ProvideEventWAL(pgDB *sql.DB, lg loggateway.Logger) *EventWAL {
+	if pgDB == nil {
 		return nil
 	}
-	wal, err := NewEventWAL(sqliteDB, pgDB, lg)
+	wal, err := NewEventWAL(pgDB, lg)
 	if err != nil {
 		if lg != nil {
 			lg.Warn("event_wal: failed to create, Critical events will not have WBPF protection",

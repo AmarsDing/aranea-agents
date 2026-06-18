@@ -17,13 +17,13 @@ func NewTRPCSessionService(pgDSN string, lg loggateway.Logger, summarizerCfg ses
 }
 
 // NewGraphCheckpointSaver builds the graph checkpoint saver.
-// When pgDSN is non-empty, a Postgres-backed saver is created; otherwise the
-// saver falls back to the rawDB handle (used in tests/offline tools).
+// pgDSN must be non-empty; Postgres is the only supported backend after A6.
+// Returns an error if pgDSN is empty.
 func NewGraphCheckpointSaver(rawDB *sql.DB, pgDSN string, lg loggateway.Logger) (*graphtrpc.CheckpointSaver, error) {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	// nil-db check is delegated to graphtrpc.NewCheckpointSaver which returns
-	// a proper apierror.BadRequest.
+	// nil-db check and pgDSN-empty check are delegated to
+	// graphtrpc.NewCheckpointSaver which returns proper apierror.BadRequest.
 	return graphtrpc.NewCheckpointSaver(rawDB, pgDSN, lg)
 }

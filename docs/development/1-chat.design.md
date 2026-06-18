@@ -1492,6 +1492,7 @@ web/src/
 │       ├── useChatMessageScroll.ts ← Chat 消息滚动
 │       ├── useConversationTimeline.ts ← 对话时间线
 │       ├── useActivityTimeline.ts ← Activity 时间线
+│       ├── useCollapseState.ts    ← 折叠状态持久化（T8.4：toggle 持久化 / setCollapsed 不持久化）
 │       ├── useTodoBoard.ts        ← Todo 看板
 │       ├── useStatusPulse.ts      ← 状态脉冲
 │       ├── useContextualLoadingMessage.ts ← 上下文加载消息

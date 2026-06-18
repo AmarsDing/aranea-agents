@@ -1,35 +1,53 @@
+//go:build integration
+
 package event
 
 import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"os"
 	"sync"
 	"testing"
 	"time"
 
-	_ "github.com/glebarez/go-sqlite/compat"
+	_ "github.com/lib/pq"
 
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/pkg/loggateway"
 )
 
-func openTestDB(t *testing.T) *sql.DB {
+// openTestPostgresDB opens a Postgres connection using ARANEA_TEST_POSTGRES_DSN.
+// Skips the test when the DSN env var is not set.
+func openTestPostgresDB(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("sqlite3", ":memory:")
+	dsn := os.Getenv("ARANEA_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("ARANEA_TEST_POSTGRES_DSN not set; skipping Postgres integration test")
+	}
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		t.Fatalf("open test db: %v", err)
+		t.Fatalf("open postgres: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
+	// Drop any leftover data so each test starts from a clean slate.
+	if _, err := db.Exec(`DROP TABLE IF EXISTS event_wal`); err != nil {
+		t.Fatalf("drop event_wal: %v", err)
+	}
 	return db
 }
 
 func newTestWAL(t *testing.T) *EventWAL {
 	t.Helper()
-	db := openTestDB(t)
-	w, err := NewEventWAL(db, nil, nil)
+	db := openTestPostgresDB(t)
+	w, err := NewEventWAL(db, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("new test wal: %v", err)
 	}
+	t.Cleanup(func() {
+		// Best-effort cleanup; ignore error (connection may already be closed).
+		_, _ = db.Exec(`DROP TABLE IF EXISTS event_wal`)
+	})
 	return w
 }
 
@@ -49,7 +67,7 @@ func TestEventWAL_WriteBeforePublish_CriticalEvent(t *testing.T) {
 
 	// Verify WAL entry exists
 	var count int
-	row := w.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM event_wal WHERE id = ?`, env.ID)
+	row := w.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM event_wal WHERE id = $1`, env.ID)
 	if err := row.Scan(&count); err != nil {
 		t.Fatalf("query wal: %v", err)
 	}
@@ -59,7 +77,7 @@ func TestEventWAL_WriteBeforePublish_CriticalEvent(t *testing.T) {
 
 	// Verify it was marked published
 	var publishedFlag int
-	row = w.db.QueryRowContext(ctx, `SELECT published FROM event_wal WHERE id = ?`, env.ID)
+	row = w.db.QueryRowContext(ctx, `SELECT published FROM event_wal WHERE id = $1`, env.ID)
 	if err := row.Scan(&publishedFlag); err != nil {
 		t.Fatalf("query published flag: %v", err)
 	}
@@ -115,9 +133,9 @@ func TestEventWAL_WriteBeforePublish_Idempotency(t *testing.T) {
 		t.Errorf("publish call count = %d, want 2", callCount)
 	}
 
-	// But only one WAL row should exist (INSERT OR IGNORE)
+	// But only one WAL row should exist (ON CONFLICT DO NOTHING)
 	var count int
-	row := w.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM event_wal WHERE id = ?`, env.ID)
+	row := w.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM event_wal WHERE id = $1`, env.ID)
 	if err := row.Scan(&count); err != nil {
 		t.Fatalf("query wal: %v", err)
 	}
@@ -134,7 +152,7 @@ func TestEventWAL_Recover_UnpublishedEvents(t *testing.T) {
 	env := contract.NewEnvelope(contract.EnvelopeTypeToolResult, "agent", "sess-1")
 	raw, _ := marshalEnvelope(t, &env)
 	_, err := w.db.ExecContext(ctx,
-		`INSERT INTO event_wal (id, envelope_json, created_at, published) VALUES (?, ?, ?, 0)`,
+		`INSERT INTO event_wal (id, envelope_json, created_at, published) VALUES ($1, $2, $3, 0)`,
 		env.ID, string(raw), time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		t.Fatalf("insert test data: %v", err)
@@ -153,7 +171,7 @@ func TestEventWAL_Recover_UnpublishedEvents(t *testing.T) {
 
 	// Verify WAL entry is now marked published
 	var publishedFlag int
-	row := w.db.QueryRowContext(ctx, `SELECT published FROM event_wal WHERE id = ?`, env.ID)
+	row := w.db.QueryRowContext(ctx, `SELECT published FROM event_wal WHERE id = $1`, env.ID)
 	if err := row.Scan(&publishedFlag); err != nil {
 		t.Fatalf("query published flag: %v", err)
 	}
@@ -169,7 +187,7 @@ func TestEventWAL_Recover_SkipsExistingInEventStore(t *testing.T) {
 	env := contract.NewEnvelope(contract.EnvelopeTypeToolResult, "agent", "sess-1")
 	raw, _ := marshalEnvelope(t, &env)
 	_, err := w.db.ExecContext(ctx,
-		`INSERT INTO event_wal (id, envelope_json, created_at, published) VALUES (?, ?, ?, 0)`,
+		`INSERT INTO event_wal (id, envelope_json, created_at, published) VALUES ($1, $2, $3, 0)`,
 		env.ID, string(raw), time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		t.Fatalf("insert test data: %v", err)
@@ -186,7 +204,7 @@ func TestEventWAL_Recover_SkipsExistingInEventStore(t *testing.T) {
 
 	// Should still be marked as published
 	var publishedFlag int
-	row := w.db.QueryRowContext(ctx, `SELECT published FROM event_wal WHERE id = ?`, env.ID)
+	row := w.db.QueryRowContext(ctx, `SELECT published FROM event_wal WHERE id = $1`, env.ID)
 	if err := row.Scan(&publishedFlag); err != nil {
 		t.Fatalf("query published flag: %v", err)
 	}
@@ -204,7 +222,7 @@ func TestEventWAL_Recover_MultipleUnpublished(t *testing.T) {
 		env := contract.NewEnvelope(contract.EnvelopeTypeToolResult, "agent", "sess-1")
 		raw, _ := marshalEnvelope(t, &env)
 		_, err := w.db.ExecContext(ctx,
-			`INSERT INTO event_wal (id, envelope_json, created_at, published) VALUES (?, ?, ?, 0)`,
+			`INSERT INTO event_wal (id, envelope_json, created_at, published) VALUES ($1, $2, $3, 0)`,
 			env.ID, string(raw), time.Now().UTC().Format(time.RFC3339Nano))
 		if err != nil {
 			t.Fatalf("insert test data %d: %v", i, err)
@@ -228,7 +246,7 @@ func TestEventWAL_PurgePublished(t *testing.T) {
 	raw, _ := marshalEnvelope(t, &env)
 	oldTime := time.Now().UTC().Add(-2 * time.Hour).Format(time.RFC3339Nano)
 	_, err := w.db.ExecContext(ctx,
-		`INSERT INTO event_wal (id, envelope_json, created_at, published, published_at) VALUES (?, ?, ?, 1, ?)`,
+		`INSERT INTO event_wal (id, envelope_json, created_at, published, published_at) VALUES ($1, $2, $3, 1, $4)`,
 		env.ID, string(raw), oldTime, time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		t.Fatalf("insert published event: %v", err)
@@ -238,7 +256,7 @@ func TestEventWAL_PurgePublished(t *testing.T) {
 	env2 := contract.NewEnvelope(contract.EnvelopeTypeError, "agent", "sess-2")
 	raw2, _ := marshalEnvelope(t, &env2)
 	_, err = w.db.ExecContext(ctx,
-		`INSERT INTO event_wal (id, envelope_json, created_at, published) VALUES (?, ?, ?, 0)`,
+		`INSERT INTO event_wal (id, envelope_json, created_at, published) VALUES ($1, $2, $3, 0)`,
 		env2.ID, string(raw2), time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		t.Fatalf("insert unpublished event: %v", err)
@@ -288,7 +306,7 @@ func TestEventWAL_markPublished_Synchronous(t *testing.T) {
 	env := contract.NewEnvelope(contract.EnvelopeTypeToolResult, "agent", "sess-1")
 	raw, _ := marshalEnvelope(t, &env)
 	_, err := w.db.ExecContext(ctx,
-		`INSERT INTO event_wal (id, envelope_json, created_at, published) VALUES (?, ?, ?, 0)`,
+		`INSERT INTO event_wal (id, envelope_json, created_at, published) VALUES ($1, $2, $3, 0)`,
 		env.ID, string(raw), time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		t.Fatalf("insert test data: %v", err)
@@ -300,15 +318,15 @@ func TestEventWAL_markPublished_Synchronous(t *testing.T) {
 	}
 
 	var publishedFlag int
-	var publishedAt sql.NullString
-	row := w.db.QueryRowContext(ctx, `SELECT published, published_at FROM event_wal WHERE id = ?`, env.ID)
+	var publishedAt sql.NullTime
+	row := w.db.QueryRowContext(ctx, `SELECT published, published_at FROM event_wal WHERE id = $1`, env.ID)
 	if err := row.Scan(&publishedFlag, &publishedAt); err != nil {
 		t.Fatalf("query: %v", err)
 	}
 	if publishedFlag != 1 {
 		t.Errorf("published flag = %d, want 1", publishedFlag)
 	}
-	if !publishedAt.Valid || publishedAt.String == "" {
+	if !publishedAt.Valid {
 		t.Error("published_at should be set after markPublished")
 	}
 }

@@ -1,8 +1,10 @@
 import { computed, ref, type ComputedRef, type Ref } from 'vue';
-import type { QVirtualScroll } from 'quasar';
 import type { Message } from './types';
 
 const HEADER_VIEWPORT_OFFSET = 72;
+
+/** T8.3: Minimal contract for a virtual scroll component (QVirtualScroll or DynamicScroller). */
+type VirtualScrollInstance = { $el?: HTMLElement };
 
 /** Normalize user message body for header / scroll markers. */
 export function userPromptText(message: Message): string {
@@ -26,11 +28,11 @@ function lastUserPrompt(messages: Message[]): string {
 
 function resolveScrollRoot(
   useVirtual: boolean,
-  virtualScrollRef: Ref<QVirtualScroll | null>,
+  virtualScrollRef: Ref<VirtualScrollInstance | null>,
   messagesScrollEl: Ref<HTMLElement | null>,
 ): HTMLElement | null {
-  if (useVirtual && virtualScrollRef.value) {
-    return virtualScrollRef.value.$el as HTMLElement;
+  if (useVirtual && virtualScrollRef.value?.$el) {
+    return virtualScrollRef.value.$el;
   }
   return messagesScrollEl.value;
 }
@@ -40,7 +42,7 @@ export function useChatScrollTitle(opts: {
   sessionTitle: Ref<string> | ComputedRef<string>;
   messages: Ref<Message[]>;
   messagesScrollEl: Ref<HTMLElement | null>;
-  virtualScrollRef: Ref<QVirtualScroll | null>;
+  virtualScrollRef: Ref<VirtualScrollInstance | null>;
   useVirtualMessageList: Ref<boolean>;
 }) {
   const activeUserPrompt = ref('');

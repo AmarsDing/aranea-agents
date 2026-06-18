@@ -16,7 +16,7 @@ type memoryFactIndexSync struct {
 	lg   loggateway.Logger
 }
 
-// NewMemoryFactIndexSync dual-writes L3 fact vectors to pgvector (optional) and SQLite embedding_blob.
+// NewMemoryFactIndexSync dual-writes L3 fact vectors to pgvector (optional) and the primary DB embedding_blob.
 var _ biz.MemoryFactIndexSyncer = (*memoryFactIndexSync)(nil)
 
 func NewMemoryFactIndexSync(vec *biz.MemoryUsecase, data *Data, lg loggateway.Logger) biz.MemoryFactIndexSyncer {
@@ -29,7 +29,7 @@ func NewMemoryFactIndexSync(vec *biz.MemoryUsecase, data *Data, lg loggateway.Lo
 	return &memoryFactIndexSync{vec: vec, data: data, lg: lg}
 }
 
-// SyncFactIndex embeds the statement and writes vectors to pgvector + SQLite.
+// SyncFactIndex embeds the statement and writes vectors to pgvector + primary DB embedding_blob.
 func (s *memoryFactIndexSync) SyncFactIndex(ctx context.Context, agentID, userID, factID, statement string) error {
 	if s == nil || s.vec == nil {
 		return biz.ErrMemoryUnavailable
@@ -53,8 +53,8 @@ func (s *memoryFactIndexSync) SyncFactIndex(ctx context.Context, agentID, userID
 		markStale(err)
 		return err
 	}
-	if err := s.syncSQLiteBlob(ctx, factID, embedding); err != nil {
-		s.lg.Warn("sync sqlite blob failed", loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(err))
+	if err := s.syncEmbeddingBlob(ctx, factID, embedding); err != nil {
+		s.lg.Warn("sync embedding blob failed", loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(err))
 		markStale(err)
 		return err
 	}
@@ -88,7 +88,7 @@ func (s *memoryFactIndexSync) SyncFactIndexFromRow(ctx context.Context, raw []by
 	return s.SyncFactIndex(ctx, agentID, jsonutil.IfaceStr(m, "user_id"), factID, statement)
 }
 
-func (s *memoryFactIndexSync) syncSQLiteBlob(ctx context.Context, factID string, embedding []float32) error {
+func (s *memoryFactIndexSync) syncEmbeddingBlob(ctx context.Context, factID string, embedding []float32) error {
 	if s == nil || s.data == nil || len(embedding) == 0 {
 		return nil
 	}

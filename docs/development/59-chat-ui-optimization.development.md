@@ -1260,3 +1260,123 @@ cd web && pnpm lint && pnpm test && pnpm build
 2. 清理后旧 Message-First 推理路径（原 `useAgentBlocks`）可完全移除或标记 Deprecated
 3. 清理后 bundle size 减少量可测量
 4. 全量回归测试通过后才可合并
+
+---
+
+## 10. Phase S8 — Sprint 8 虚拟滚动 + 大消息折叠（2026-06-18 新增）
+
+> **目标**：长会话虚拟滚动 + 大消息默认折叠 + 折叠状态持久化
+> **来源**：[2026-06-18-review-full-message-chain-and-solutions.md](../reports/2026-06-18-review-full-message-chain-and-solutions.md) Sprint 8 / P3
+> **设计**：[59-chat-ui-optimization.design.md §6.9 / §6.10](./59-chat-ui-optimization.design.md)
+> **纪律**：两阶段审查（规格合规 + 代码质量）；aranea-review 通过
+
+### 10.1 代码锚点
+
+| 文件 | 用途 |
+|------|------|
+| `web/src/components/chat/ChatMessageList.vue` | 虚拟滚动集成（DynamicScroller + 阈值 100 + scrollToTurnId） |
+| `web/src/components/chat/ChatMessagePanel.vue` | 虚拟滚动 ref 透传 + focusTurnId watch 适配 |
+| `web/src/features/chat/useChatScrollTitle.ts` | 虚拟滚动根元素解析（resolveScrollRoot） |
+| `web/src/features/chat/composables/useCollapseState.ts` | 折叠状态持久化 composable |
+| `web/src/components/chat/ThinkingBlock.vue` | 思考块默认折叠 + useCollapseState 集成 |
+| `web/src/components/chat/ActionBlock.vue` | 工具结果 >500 字符自动折叠 + useCollapseState 集成 |
+| `internal/provider/retry_transport_test.go` | T8.1 补充 P0 T1.2 测试缺口（19 个测试） |
+
+### 10.2 任务清单
+
+| ID | 任务 | 影响文件 | 验收标准 | 状态 |
+|----|------|----------|----------|------|
+| T8.1 | 全量回归 + 补充 T1.2 测试缺口 | `internal/provider/retry_transport_test.go` | `internal/provider` 全部通过 | ✅ |
+| T8.2 | 文档同步 + ADR | 三件套文档 + ADR | DOC-SYNC-1~8 合规 | ✅ |
+| T8.3 | 虚拟滚动（DynamicScroller） | `ChatMessageList.vue` / `ChatMessagePanel.vue` / `useChatScrollTitle.ts` | 消息数 >100 启用；scrollToTurnId 适配 | ✅ |
+| T8.4 | 大消息折叠（useCollapseState） | `useCollapseState.ts` / `ThinkingBlock.vue` / `ActionBlock.vue` | ThinkingBlock 默认折叠；ActionBlock >500 字符折叠；sessionStorage 持久化 | ✅ |
+| T8.5 | 前端测试 | `pnpm lint && pnpm test && pnpm build` | lint + build 通过；test 失败为已有技术债务 | 🟡 部分完成 |
+
+### 10.3 现状评估
+
+**已完成**：
+- T8.3 虚拟滚动：`ChatMessageList.vue` 集成 `DynamicScroller`（阈值 100），`ChatMessagePanel.vue` 透传虚拟滚动 ref，`useChatScrollTitle.ts` 适配虚拟滚动根元素，`scrollToTurnId` 支持虚拟滚动模式（先 `scrollToItem` 再 `querySelector`）
+- T8.4 大消息折叠：`useCollapseState.ts` 创建（`toggle` 持久化 / `setCollapsed` 不持久化，避免系统操作覆盖用户偏好），`ThinkingBlock.vue` 使用 `useCollapseState`，`ActionBlock.vue` 添加 `RESULT_COLLAPSE_THRESHOLD=500` + `contentLength` computed + watch 自动折叠
+- T8.1 测试补充：`retry_transport_test.go` 创建 19 个测试覆盖 T1.2（LLM 默认重试）的测试缺口
+- aranea-review 审查通过（0 阻断项）
+
+**部分完成**：
+- T8.1 全量回归：`internal/provider` 全部通过；`internal/data` 和 `internal/agent` 有已有测试失败（Ent Schema 字段映射、SQL 列数、错误消息格式、token 计数），需后续 Sprint 修复
+- T8.5 前端测试：`pnpm lint` 0 errors 通过；`pnpm build` 成功通过；`pnpm test` 有 7 个已有失败（`chatSendFlow`/`inboundTurnCompleteRouting`/`sessionCompletionReload`/`useActivityTimeline`），与 T8.3/T8.4 修改无关
+
+**不可实施项**：
+- T3.5（可观测性 Dashboard）依赖 P1 T3.2（TaskPlan 查询 API）未完成，无法在 P3 实施
+
+### 10.4 验收标准
+
+- [x] T8.3：消息数 >100 时启用 DynamicScroller
+- [x] T8.3：scrollToTurnId 在虚拟滚动模式下正确工作（先 scrollToItem 再 querySelector）
+- [x] T8.3：useChatScrollTitle 正确解析虚拟滚动根元素
+- [x] T8.4：ThinkingBlock 默认折叠，流式时显示状态指示器
+- [x] T8.4：ActionBlock 工具结果 + 参数 >500 字符时自动折叠
+- [x] T8.4：用户展开/折叠状态持久化到 sessionStorage
+- [x] T8.4：系统强制折叠不覆盖用户偏好（toggle 持久化 / setCollapsed 不持久化）
+- [x] T8.1：retry_transport_test.go 19 个测试全部通过
+- [x] T8.5：`pnpm lint` 0 errors
+- [x] T8.5：`pnpm build` 成功
+- [ ] T8.5：`pnpm test` 全通过（7 个已有失败，非本次引入）
+- [ ] T8.1：`make test` 全通过（已有测试失败，非本次引入）
+
+### 10.5 改动文件清单
+
+| 文件 | 变更类型 | 说明 |
+|------|---------|------|
+| `web/src/features/chat/composables/useCollapseState.ts` | 新增 | 折叠状态持久化 composable |
+| `web/src/components/chat/ChatMessageList.vue` | 修改 | 集成 DynamicScroller + scrollToTurnId + getScrollTarget 适配 |
+| `web/src/components/chat/ChatMessagePanel.vue` | 修改 | 透传虚拟滚动 ref + focusTurnId watch 适配 |
+| `web/src/features/chat/useChatScrollTitle.ts` | 修改 | 新增 VirtualScrollInstance 类型 + resolveScrollRoot 函数 |
+| `web/src/components/chat/ThinkingBlock.vue` | 修改 | 集成 useCollapseState + 流式 watch 使用 setCollapsed |
+| `web/src/components/chat/ActionBlock.vue` | 修改 | 新增 RESULT_COLLAPSE_THRESHOLD + contentLength + watch 自动折叠 |
+| `internal/provider/retry_transport_test.go` | 新增 | T1.2 测试缺口补充（19 个测试） |
+| `docs/reports/2026-06-18-review-full-message-chain-and-solutions.md` | 修改 | Sprint 8 实施状态标注 |
+| `docs/development/59-chat-ui-optimization.design.md` | 修改 | 新增 §6.9 虚拟滚动 + §6.10 大消息折叠设计 |
+| `docs/development/59-chat-ui-optimization.development.md` | 修改 | 新增 §10 Phase S8 开发计划 |
+
+### 10.6 架构决策记录
+
+#### AD-S8-01: 虚拟滚动启用阈值
+
+**决策**：`VIRTUAL_SCROLL_THRESHOLD = 100`（回合数）。
+
+**理由**：
+- 短会话（<100 回合）保留原生 v-for 路径，避免 DynamicScroller 的开销和复杂性
+- 长会话（≥100 回合）DOM 节点数过多，虚拟滚动回收可显著降低内存和渲染开销
+- 100 回合对应约 200-400 条消息，是用户感知卡顿的临界点
+
+**替代方案**：
+- 始终启用虚拟滚动：增加短会话开销，DynamicScroller 的测量逻辑对短列表不必要
+- 阈值 50：过于激进，部分中等长度会话也会进入虚拟滚动路径
+
+#### AD-S8-02: useCollapseState 持久化策略分离
+
+**决策**：`toggle()` 持久化到 sessionStorage，`setCollapsed()` 不持久化。
+
+**理由**：
+- 用户主动展开/折叠应被记住（跨刷新、跨虚拟滚动回收）
+- 系统强制折叠（流式开始/结束、内容超阈值）不应覆盖用户偏好
+- 分离后，用户展开的思考块在流式结束后仍保持展开（如果用户在流式期间展开）
+
+**替代方案**：
+- 全部持久化：系统操作会覆盖用户偏好（已验证有问题）
+- 全部不持久化：虚拟滚动回收后状态丢失，用户体验差
+- 使用 `userInteracted` flag：增加状态复杂度，且无法区分"用户展开后系统折叠"和"系统直接折叠"
+
+#### AD-S8-03: ActionBlock 折叠阈值
+
+**决策**：`RESULT_COLLAPSE_THRESHOLD = 500`（result.length + arguments.length）。
+
+**理由**：
+- 500 字符约对应 10-15 行代码或 JSON，是用户需要滚动查看的临界点
+- 低于 500 字符的内容展开后不会显著增加首屏高度
+- 高于 500 字符的内容折叠后显示摘要，用户按需展开
+
+**替代方案**：
+- 阈值 300：过于激进，部分中等长度结果也会被折叠
+- 阈值 1000：过于宽松，长结果仍会占据大量首屏空间
+- 仅看 result.length：忽略 arguments 长度，参数长但结果短的情况不折叠
+

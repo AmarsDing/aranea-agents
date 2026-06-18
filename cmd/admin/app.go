@@ -176,8 +176,18 @@ func startReadinessDependentServices(
 		// AS-EVT-01: Recover unpublished Critical events from WAL after crash.
 		// Must run AFTER Bus and subscribers are ready (consumer.Start above).
 		if eventInfra.WAL != nil {
-			// TODO(debt): pass EventStoreExistChecker instead of nil for idempotent recovery.
-			eventInfra.WAL.Recover(ctx, eventInfra.SessionBus, nil)
+			// T5.2: pass PostgresEventStore as EventStoreExistChecker for
+			// idempotent recovery. When Recover replays an unpublished Critical
+			// event that was already persisted by the async consumer before the
+			// crash (post-publish failure scenario), the ExistChecker skips
+			// re-publishing to avoid duplicate side effects on subscribers.
+			// When pgEventStore is nil (Postgres not configured), fall back to
+			// nil checker — subscribers must handle duplicates idempotently.
+			var checker event.EventStoreExistChecker
+			if pgEventStore != nil {
+				checker = pgEventStore
+			}
+			eventInfra.WAL.Recover(ctx, eventInfra.SessionBus, checker)
 		}
 		if pipeline != nil {
 			if len(loggingSinks) > 0 {

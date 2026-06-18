@@ -375,11 +375,6 @@ func (d *Data) SeedLazy(ctx context.Context, name string) error {
 
 const defaultVectorDim = 1536
 
-// sqliteWALAutoCheckpoint controls how frequently SQLite checkpoints the WAL file.
-// 500 pages ≈ 2 MB of WAL before auto-checkpoint, balancing write throughput
-// against WAL file growth for long-running sessions.
-const sqliteWALAutoCheckpoint = 500
-
 func vectorDimFromConf(c *conf.Data) int {
 	dim := defaultVectorDim
 	if c != nil && c.GetPostgres() != nil {

@@ -146,11 +146,24 @@ func (p *ActivityProjector) processChatCompletionChunk(ctx context.Context, ev *
 
 		// Text and reasoning content
 		text, reasoning := ChoiceStreamContent(choice, ev.Response.IsPartial)
+		// AF-GAP-04: Route team member authors to OnMemberMessage* so the
+		// resulting reply Activity carries meta.member_id for frontend
+		// differentiation. Non-member authors (coordinator, single-agent chat)
+		// continue through OnTextDelta/OnTextDone/OnReasoning*.
+		isMember := isTeamMemberAuthor(author, p.meta)
 		if text != "" {
 			if ev.Response.IsPartial {
-				p.OnTextDelta(ctx, author, text)
+				if isMember {
+					p.OnMemberMessageDelta(ctx, author, text)
+				} else {
+					p.OnTextDelta(ctx, author, text)
+				}
 			} else {
-				p.OnTextDone(ctx, author, text)
+				if isMember {
+					p.OnMemberMessageDone(ctx, author, text)
+				} else {
+					p.OnTextDone(ctx, author, text)
+				}
 			}
 		}
 		if reasoning != "" {
@@ -181,8 +194,15 @@ func (p *ActivityProjector) processChatCompletion(ctx context.Context, ev *trpce
 		// Text and reasoning content
 		text := strings.TrimSpace(msg.Content)
 		reasoning := strings.TrimSpace(msg.ReasoningContent)
+		// AF-GAP-04: Route team member authors to OnMemberMessage* so the
+		// resulting reply Activity carries meta.member_id.
+		isMember := isTeamMemberAuthor(author, p.meta)
 		if text != "" {
-			p.OnTextDone(ctx, author, text)
+			if isMember {
+				p.OnMemberMessageDone(ctx, author, text)
+			} else {
+				p.OnTextDone(ctx, author, text)
+			}
 		}
 		if reasoning != "" {
 			p.OnReasoningDone(ctx, author, reasoning, false)
@@ -368,6 +388,67 @@ func (p *ActivityProjector) OnTextDelta(ctx context.Context, author string, chun
 
 	a := p.activities[activityID]
 	p.publishActivityDelta(ctx, a, "content", chunk)
+}
+
+// OnMemberMessageDelta handles a text content chunk for a team member message.
+// Unlike OnTextDelta, the resulting reply Activity is tagged with
+// meta.member_id so the frontend can distinguish member replies from the
+// coordinator's reply (AF-GAP-04).
+func (p *ActivityProjector) OnMemberMessageDelta(ctx context.Context, author string, chunk string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Find or create member reply activity
+	activityID := p.findActivityByKindAuthor(biz.ActivityKindReply, author)
+	if activityID == "" {
+		id := uuid.NewString()
+		now := time.Now().UTC()
+		a := &biz.Activity{
+			ID:               id,
+			Kind:             biz.ActivityKindReply,
+			Status:           biz.ActivityStatusRunning,
+			SessionID:        p.meta.SessionID,
+			TurnID:           p.meta.RequestID,
+			ParentActivityID: p.rootActivityID,
+			Timestamp:        now,
+			AgentKey:         author,
+			AgentName:        p.resolveAgentName(ctx, author),
+			SpiritSessionID:  p.meta.SessionID,
+			TeamID:           p.meta.TeamID,
+			Meta:             map[string]any{"member_id": author},
+		}
+		p.activities[id] = a
+		p.kindAuthorMap[kindKey(biz.ActivityKindReply, author)] = id
+		p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityStart)
+		activityID = id
+	}
+
+	a := p.activities[activityID]
+	p.publishActivityDelta(ctx, a, "content", chunk)
+}
+
+// OnMemberMessageDone finalizes a team member's reply activity.
+func (p *ActivityProjector) OnMemberMessageDone(ctx context.Context, author string, fullText string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	activityID := p.findActivityByKindAuthor(biz.ActivityKindReply, author)
+	if activityID == "" {
+		// Defensive: ignore Done without a prior Delta (e.g. empty member message)
+		return
+	}
+	a := p.activities[activityID]
+	a.Content = fullText
+	a.Status = biz.ActivityStatusCompleted
+	now := time.Now().UTC()
+	a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
+	a.Collapsed = false
+
+	// Remove completed reply from lookup so the next member message
+	// creates a new reply Activity.
+	delete(p.kindAuthorMap, kindKey(biz.ActivityKindReply, author))
+
+	p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityDone)
 }
 
 // OnTextDone finalizes a reply activity.

@@ -14,9 +14,9 @@ import (
 type Dialect string
 
 const (
-	// DialectSQLite is the default dialect (SQLite as primary DB).
+	// DialectSQLite is the SQLite dialect (used by CLI tools and tests only).
 	DialectSQLite Dialect = "sqlite"
-	// DialectPostgres is the Postgres dialect (Postgres as primary DB).
+	// DialectPostgres is the Postgres dialect (primary DB in production).
 	DialectPostgres Dialect = "postgres"
 )
 
@@ -265,6 +265,26 @@ func (d Dialect) UndefinedObjectErr(err error) bool {
 	// SQLite: "no such table"
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "no such table")
+}
+
+// UniqueConstraintErr reports whether err indicates a unique constraint
+// violation (duplicate key) for the given dialect. Used for idempotent
+// INSERT operations that skip duplicates.
+func (d Dialect) UniqueConstraintErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if d.IsPostgres() {
+		var pgErr *pq.Error
+		if errors.As(err, &pgErr) {
+			// 23505 = unique_violation
+			return pgErr.Code == "23505"
+		}
+		return false
+	}
+	// SQLite: "UNIQUE constraint failed"
+	msg := err.Error()
+	return strings.Contains(msg, "UNIQUE constraint failed") || strings.Contains(msg, "unique constraint")
 }
 
 // TableExists checks whether a table exists in the database.

@@ -278,3 +278,47 @@ func TestPostgresEventStore_Replay_EmptySession(t *testing.T) {
 		t.Errorf("Replay empty session returned %d events, want 0", len(got))
 	}
 }
+
+func TestPostgresEventStore_Exists(t *testing.T) {
+	store := newTestPostgresStore(t)
+	ctx := context.Background()
+
+	env := contract.NewEnvelope(contract.EnvelopeTypeToolResult, "agent", "sess-exists")
+	if err := store.Save(ctx, &env); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// Existing event → true
+	if !store.Exists(ctx, env.ID) {
+		t.Errorf("Exists(%q) = false, want true (event was saved)", env.ID)
+	}
+
+	// Non-existent event → false
+	if store.Exists(ctx, "evt-nonexistent-id") {
+		t.Error("Exists(nonexistent) = true, want false")
+	}
+
+	// Empty eventID → false (guard against accidental matches)
+	if store.Exists(ctx, "") {
+		t.Error("Exists(\"\") = true, want false")
+	}
+}
+
+func TestPostgresEventStore_Exists_AfterIdempotentSave(t *testing.T) {
+	store := newTestPostgresStore(t)
+	ctx := context.Background()
+
+	env := contract.NewEnvelope(contract.EnvelopeTypeToolResult, "agent", "sess-exists-idem")
+
+	// Save the same event multiple times (idempotent).
+	for i := 0; i < 3; i++ {
+		if err := store.Save(ctx, &env); err != nil {
+			t.Fatalf("Save %d: %v", i, err)
+		}
+	}
+
+	// Exists should still return true (single row, not affected by idempotent saves).
+	if !store.Exists(ctx, env.ID) {
+		t.Errorf("Exists after idempotent saves = false, want true")
+	}
+}

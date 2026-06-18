@@ -19,7 +19,7 @@
 | 需求约束 | 9 条（无超时 / 持续连接 / 队列管理 / 动态加载 / 同机部署 / 可观测性 等） |
 | 消息链阶段 | 4（UI 发送 → 后端响应 → LLM 响应 → 前端展示） |
 | 代码核对发现问题 | 39（前端发送 15 + 后端响应 12 + 前端渲染 12） |
-| 去重后独立问题 | 30（含已解决 12 + 未实施 18） |
+| 去重后独立问题 | 30（含已解决 14 + 未实施 16） |
 | 长任务目标 | 完成用户指令（**无时间限制**，无 24h deadline） |
 | 根本性方案族 | 6（A 无超时重试 / B 前端收敛 / C 记忆生产化 / D 通道分离 / E 可观测性 / F 动态加载） |
 | 总工作量 | 88.5 人天 |
@@ -153,7 +153,7 @@
 |---------|---------|---------|
 | 输入文本 | 实时字符计数 + 附件预览 | ✅ `useChatComposerActions.ts` |
 | 点击发送 | 创建 pending-user 占位 + WS 提交（**无超时**） | 🟡 需移除 dispatch 30s |
-| 任务执行中发送 | 排队消息 + ChatPendingQueue UI 展示 | ✅ `useChatSender.ts:340-373` |
+| 任务执行中发送 | 排队消息 + ChatPendingQueue UI 展示 | ✅ `useChatSender.ts`（T5.3 统一 enqueue 路径） |
 | 排队消息立即发送 | 中断当前 turn + 提升优先级 | ✅ `ChatPendingQueue.vue` interrupt 按钮 |
 | 排队消息删除 | 从队列移除 | ✅ `ChatPendingQueue.vue` cancel 按钮 |
 | 排队消息编辑 | inline 编辑内容 | ✅ `ChatPendingQueue.vue` edit 功能 |
@@ -512,7 +512,7 @@ messageStore.messages (Pinia ref)
 | **HTTP fallback 消息混乱** | 双通道数据流竞态 | 通道职责分离（HTTP 仅命令，WS 仅数据） |
 | **实时 Activity 不渲染** | AF 路径实时事件未接入 | 补充 onActivityEnvelope 回调 |
 | **可观测性无前端 dashboard** | 后端 API 齐全但前端无展示 | 新增 Observability Dashboard（任务计划/Team/Graph） |
-| **移动端折叠逻辑冗余** | `<1024px` 折叠（需求 6 不考虑移动端） | 移除移动端折叠逻辑，专注桌面端 |
+| **移动端折叠逻辑冗余** | `<1024px` 折叠（需求 6 不考虑移动端） | ✅ 已修复（T5.5）：移除移动端折叠逻辑，专注桌面端 |
 | **WS 重连 10 次后放弃** | 同机部署不应放弃 | 无限重连（同机部署简化） |
 
 ### 5.3 可观测性 Dashboard 设计（需求 9）
@@ -623,7 +623,7 @@ ObservabilityDashboard
 | **根本性方案** | `retryFailedMessage` 检查 `isActiveRun()`，若活跃则提示"当前有任务执行中，已加入队列"并展示在 ChatPendingQueue |
 | **工作量** | 0.5 人天 |
 
-**问题 5：两套 enqueue 路径行为不一致** 🟡 建议
+**问题 5：两套 enqueue 路径行为不一致** 🟡 建议 ✅ 已修复（T5.3）
 
 | 项 | 内容 |
 |----|------|
@@ -631,6 +631,7 @@ ObservabilityDashboard
 | **问题** | 路径 A 创建占位消息（出现又消失），路径 B 不创建占位（无视觉反馈），UX 不一致 |
 | **根本性方案** | 统一为一种路径，所有排队消息都展示在 ChatPendingQueue |
 | **工作量** | 0.5 人天 |
+| **修复** | T5.3：`sendUserContent` 在 followUp 时跳过 pending-user 占位创建，输入清空延迟到 `enqueueDuringRun` 成功后执行，与 Path B 行为一致 |
 
 #### 6.2.2 阶段 2（后端响应）问题
 
@@ -679,7 +680,7 @@ ObservabilityDashboard
 | **根本性方案** | 默认开启重试（方案 A）：`MaxAttempts = -1`（无限重试）+ 指数退避（1s/2s/4s/8s/16s/30s 封顶）+ 每次重试推送 `llm_retry` 事件 |
 | **工作量** | 2 人天 |
 
-**问题 11：DB 事务超时无重试** 🟡 建议（新增）
+**问题 11：DB 事务超时无重试** 🟡 建议（新增） ✅ 已实施
 
 | 项 | 内容 |
 |----|------|
@@ -687,8 +688,9 @@ ObservabilityDashboard
 | **问题** | DB 事务 30s 硬超时（Postgres 已迁移，30s 仅作安全网防死锁），超时后回滚返回错误，无自动重试，长任务中 DB 超时直接失败 |
 | **根本性方案** | DB 操作重试包装器（方案 A）：`ExecInTxWithRetry(ctx, fn, maxRetries=3, backoff=1s/2s/4s)`，仅对 `CodeInternal` 和死锁错误重试（Postgres 支持并发写，重试更安全） |
 | **工作量** | 2 人天 |
+| **实施** | `internal/data/tx_retry.go`：`ExecInTxWithRetry` + `isRetryableDBError`；3 次重试 + 指数退避（1s/2s/4s）；caller ctx 取消立即返回（select ctx.Done）；8 个测试用例 + 11 个子测试，`-race` 全部通过 |
 
-**问题 12：RunRegistry TOCTOU 风险** 🔴 阻断
+**问题 12：RunRegistry TOCTOU 风险** 🔴 阻断 ✅ 已实施
 
 | 项 | 内容 |
 |----|------|
@@ -696,6 +698,7 @@ ObservabilityDashboard
 | **问题** | `StoreRunner` 先 `load` 再 `store`，存在 TOCTOU 风险，两个并发 goroutine 可能同时 load 到旧值然后各自 store |
 | **根本性方案** | 用 ManagedMap（内置锁 + 原子操作）替代裸 `sync.Map`，`LoadOrStore` 替代 `load+store`（方案 A） |
 | **工作量** | 1 人天 |
+| **实施** | `internal/runtime/run_registry.go`：`activeRunMap` 新增 `mu sync.Mutex` + `updateOrStore` 原子方法；`StoreRunner`/`StoreCancelable` 改用 `updateOrStore` 实现 load-modify-store 原子化；3 个并发测试（64 goroutines + 200 iterations mixed），`-race` 全部通过 |
 
 **问题 13：前端 7 个超时模型需移除** 🔴 阻断（新增）
 
@@ -708,7 +711,7 @@ ObservabilityDashboard
 
 #### 6.2.3 阶段 3（LLM 响应）问题
 
-**问题 14：WBPF Post-Publish Failure 幂等性隐式契约** 🟡 建议
+**问题 14：WBPF Post-Publish Failure 幂等性隐式契约** 🟡 建议 ✅ 已修复（T5.2）
 
 | 项 | 内容 |
 |----|------|
@@ -716,6 +719,7 @@ ObservabilityDashboard
 | **问题** | Post-publish failure 时事件已发布但 mark failed，重启时 Recover 可能重放，要求订阅者幂等，但缺少统一保证机制 |
 | **根本性方案** | 引入 EventStoreExistChecker 统一应用，订阅者通过 event_id 去重 |
 | **工作量** | 2 人天 |
+| **修复** | T5.2：`PostgresEventStore` 实现 `Exists(ctx, eventID) bool` 方法（`EventStoreExistChecker` 接口），`app.go` 将其作为 ExistChecker 传给 `WAL.Recover`，恢复时跳过已持久化的 Critical 事件 |
 
 #### 6.2.4 阶段 4（前端展示）问题
 
@@ -828,7 +832,7 @@ messageStore.messages (Pinia ref)
 | **根本性方案** | 新增 `ListPlans` / `GetPlan` RPC + Service 实现（方案 E） |
 | **工作量** | 2 人天 |
 
-**问题 21：移动端折叠逻辑冗余** 🟢 清理（新增）
+**问题 21：移动端折叠逻辑冗余** 🟢 清理（新增） ✅ 已修复（T5.5）
 
 | 项 | 内容 |
 |----|------|
@@ -836,6 +840,7 @@ messageStore.messages (Pinia ref)
 | **问题** | 需求 6 明确不考虑移动端，但代码中存在大量 `<1024px` 折叠逻辑，增加维护成本 |
 | **根本性方案** | 移除移动端折叠逻辑，专注桌面端（≥1024px）体验 |
 | **工作量** | 1 人天 |
+| **修复** | T5.5：移除 `MainLayout`/`ChatPage`/`ChatMessagePanel` 中的 `isMobile`/`isDesktop` 逻辑，移除移动端会话对话框，`ToolDetailDrawer` breakpoint=0，清理 dead CSS |
 
 ---
 
@@ -1097,11 +1102,11 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 
 **后端任务**（5 人天）：
 
-| 任务 | 工作量 | 依赖 | 验证标准 |
-|------|--------|------|---------|
-| T2.1 DB 重试包装 | 2d | 无 | `ExecInTxWithRetry(ctx, fn, maxRetries=3, backoff)`；仅对 `CodeInternal`/死锁错误重试 |
-| T2.2 RunRegistry TOCTOU | 1d | 无 | `ManagedMap` 替代裸 `sync.Map`；`LoadOrStore` 替代 `load+store` |
-| T2.3 记忆生产化（启动） | 2d | 无 | `job_framework.go` 统一 Job 框架；`memory_ebbinghaus_decay.go` DB 读写增强 |
+| 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
+|------|--------|------|---------|------|
+| T2.1 DB 重试包装 | 2d | 无 | `ExecInTxWithRetry(ctx, fn, maxRetries=3, backoff)`；仅对 `CodeInternal`/死锁错误重试 | ✅ 已实施 |
+| T2.2 RunRegistry TOCTOU | 1d | 无 | `ManagedMap` 替代裸 `sync.Map`；`LoadOrStore` 替代 `load+store` | ✅ 已实施 |
+| T2.3 记忆生产化（启动） | 2d | 无 | `job_framework.go` 统一 Job 框架；`memory_ebbinghaus_decay.go` DB 读写增强 | ⏳ 未实施 |
 
 **前端任务**（5 人天）：
 
@@ -1163,18 +1168,18 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 
 **后端任务**（4 人天）：
 
-| 任务 | 工作量 | 依赖 | 验证标准 |
-|------|--------|------|---------|
-| T5.1 竞态条件修复 | 1d | T1.3 | `processPendingQueue` lock 内完成 dequeue+检查+决策；重新入队保持原位置 |
-| T5.2 WBPF 幂等性 | 2d | 无 | `EventStoreExistChecker` 统一应用；订阅者通过 event_id 去重 |
-| T5.3 enqueue 路径统一 | 1d | 无 | 统一为一种 enqueue 路径；所有排队消息展示在 ChatPendingQueue |
+| 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
+|------|--------|------|---------|------|
+| T5.1 竞态条件修复 | 1d | T1.3 | `processPendingQueue` lock 内完成 dequeue+检查+决策；重新入队保持原位置 | ⏳ 待实施 |
+| T5.2 WBPF 幂等性 | 2d | 无 | `EventStoreExistChecker` 统一应用；订阅者通过 event_id 去重 | ✅ 已完成 |
+| T5.3 enqueue 路径统一 | 1d | 无 | 统一为一种 enqueue 路径；所有排队消息展示在 ChatPendingQueue | ✅ 已完成 |
 
 **前端任务**（5 人天）：
 
-| 任务 | 工作量 | 依赖 | 验证标准 |
-|------|--------|------|---------|
-| T5.4 Dashboard Graph + Metrics | 4d | T4.3 | `GraphExecutionView.vue`（图可视化 nodes+edges）；`MetricsPanel.vue`（Prometheus 解析） |
-| T5.5 移动端逻辑清理 | 1d | 无 | 移除 `<1024px` 折叠逻辑；专注桌面端 ≥1024px |
+| 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
+|------|--------|------|---------|------|
+| T5.4 Dashboard Graph + Metrics | 4d | T4.3 | `GraphExecutionView.vue`（图可视化 nodes+edges）；`MetricsPanel.vue`（Prometheus 解析） | ⏳ 待实施 |
+| T5.5 移动端逻辑清理 | 1d | 无 | 移除 `<1024px` 折叠逻辑；专注桌面端 ≥1024px | ✅ 已完成 |
 
 **里程碑 M5**：Dashboard 完成 — 全链路可观测（TaskPlan/Team/Graph/Metrics/Logs）
 
@@ -1247,20 +1252,27 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 
 **后端任务**（5 人天）：
 
-| 任务 | 工作量 | 依赖 | 验证标准 |
-|------|--------|------|---------|
-| T8.1 全量回归 | 3d | T7.1 | `make api && make wire && make build && make test && make lint` 全通过 |
-| T8.2 文档同步 | 2d | 全部 | 三件套文档同步（DOC-SYNC-1~8）；ADR 记录架构变更 |
+| 任务 | 工作量 | 依赖 | 验证标准 | 实施状态 |
+|------|--------|------|---------|----------|
+| T8.1 全量回归 | 3d | T7.1 | `make api && make wire && make build && make test && make lint` 全通过 | 🟡 部分完成：`retry_transport_test.go` 已补充（19 个测试覆盖 T1.2 测试缺口）；`internal/provider` 全部通过；`internal/data` 和 `internal/agent` 有已有测试失败（Ent Schema 字段映射 `TestEntRuntimeToBiz_*`、SQL 列数 `TestSQLiteMemoryService_*`、错误消息格式 `TestErrL1BudgetOverflow`、token 计数 `TestAccumulateStreamUsage_multiLLMRounds`），需后续 Sprint 修复 |
+| T8.2 文档同步 | 2d | 全部 | 三件套文档同步（DOC-SYNC-1~8）；ADR 记录架构变更 | ✅ 已完成：本报告已更新实施状态；三件套文档已同步（`59-chat-ui-optimization.design.md` 新增 §6.9 虚拟滚动 + §6.10 大消息折叠设计；`59-chat-ui-optimization.development.md` 新增 §10 Phase S8 开发计划 + AD-S8-01/02/03 架构决策记录；`1-chat.design.md` 组件列表新增 `useCollapseState.ts`） |
 
 **前端任务**（5 人天）：
 
-| 任务 | 工作量 | 依赖 | 验证标准 |
-|------|--------|------|---------|
-| T8.3 虚拟滚动（收尾） | 2d | T7.3 | 消息数 >100 时启用；DynamicScroller 动态高度 |
-| T8.4 大消息折叠 | 2d | 无 | `ThinkingBlock` 默认折叠；`ActionBlock` >500 字符折叠；`useCollapseState.ts` sessionStorage 记忆 |
-| T8.5 前端测试 | 1d | T8.3-T8.4 | `pnpm lint && pnpm test && pnpm build` 全通过 |
+| 任务 | 工作量 | 依赖 | 验证标准 | 实施状态 |
+|------|--------|------|---------|----------|
+| T8.3 虚拟滚动（收尾） | 2d | T7.3 | 消息数 >100 时启用；DynamicScroller 动态高度 | ✅ 已完成：`ChatMessageList.vue` 集成 `DynamicScroller`（阈值 100）；`ChatMessagePanel.vue` 集成虚拟滚动 ref；`useChatScrollTitle.ts` 类型适配；`scrollToTurnId` 支持虚拟滚动模式（先 `scrollToItem` 再 `querySelector`） |
+| T8.4 大消息折叠 | 2d | 无 | `ThinkingBlock` 默认折叠；`ActionBlock` >500 字符折叠；`useCollapseState.ts` sessionStorage 记忆 | ✅ 已完成：`useCollapseState.ts` 创建（`toggle` 持久化/`setCollapsed` 不持久化，避免系统操作覆盖用户偏好）；`ThinkingBlock.vue` 使用 `useCollapseState`；`ActionBlock.vue` 添加 `RESULT_COLLAPSE_THRESHOLD=500` + `contentLength` computed + watch 自动折叠 |
+| T8.5 前端测试 | 1d | T8.3-T8.4 | `pnpm lint && pnpm test && pnpm build` 全通过 | 🟡 部分完成：`pnpm lint` 0 errors 通过；`pnpm build` 成功通过；`pnpm test` 有 7 个已有失败（`chatSendFlow`/`inboundTurnCompleteRouting`/`sessionCompletionReload`/`useActivityTimeline`），与 T8.3/T8.4 修改无关 |
 
 **里程碑 M8**：交付 — 全部 18 个问题修复完成，全量测试通过
+
+> **P3 实施说明**：
+> - T8.3 和 T8.4 已完整实施，通过 aranea-review 审查（0 阻断项）
+> - T8.1 的 `retry_transport_test.go` 已补充，覆盖 T1.2（LLM 默认重试）的测试缺口
+> - T8.2 文档同步已完成：三件套文档已更新（设计文档 §6.9/§6.10 + 开发计划 §10 + ADR），`1-chat.design.md` 组件列表同步
+> - T8.5 的 lint + build 全通过，test 失败均为已有技术债务（非本次引入）
+> - **不可实施项标注**：T3.5（可观测性 Dashboard）依赖 P1 T3.2（TaskPlan 查询 API）未完成，无法在 P3 实施
 
 ### 8.3 关键路径与依赖
 
@@ -1338,7 +1350,7 @@ T7.3 虚拟滚动 | T8.4 大消息折叠
 | 3. 通信设计合理 | 🟡 方案就绪 | 通道职责分离（方案 D） |
 | 4. 队列管理（排队/立即发送/删除） | ✅ 已实现 | 后端 API + 前端 UI 完整 |
 | 5. 动态加载大折叠消息 | 🟡 方案就绪 | VirtualScroller + 折叠（方案 F） |
-| 6. 不考虑移动端 | 🟡 待清理 | 移除移动端逻辑（问题 21） |
+| 6. 不考虑移动端 | ✅ 已清理 | 移除移动端逻辑（问题 21，T5.5 已完成） |
 | 7. 同机部署 | ✅ 已满足 | WS 本地连接，简化重连 |
 | 8. 不考虑多租户 | ✅ 已满足 | 无租户隔离 |
 | 9. 可观测性 | 🟡 后端就绪 | 后端 API 齐全 + 前端 Dashboard（方案 E） |

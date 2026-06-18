@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/safego"
 )
@@ -15,6 +16,7 @@ type EventBusConsumer struct {
 	state            *stateDeltaHandler
 	persist          *eventPersistHandler
 	crossProcessSink contract.CrossProcessStore // optional (P1-6): nil when Postgres not configured
+	dedup            *event.EventDeduplicator   // T5.2: dedup Critical events by event_id
 	logger           SessionLogWriter
 }
 
@@ -36,6 +38,7 @@ func NewEventBusConsumer(
 		runner:   newRunnerCompletionHandler(sessions, usage, monitorUC, memWorker, traceProj, eventBus, logger),
 		state:    newStateDeltaHandler(sessions, runnerSync, logger),
 		persist:  newEventPersistHandler(eventStore, logger),
+		dedup:    event.NewEventDeduplicator(event.DefaultDedupCapacity),
 		logger:   logger,
 	}
 }
@@ -72,6 +75,16 @@ func (c *EventBusConsumer) Start(ctx context.Context) {
 }
 
 func (c *EventBusConsumer) handleEnvelope(ctx context.Context, env contract.Envelope) {
+	// T5.2: Deduplicate Critical events by event_id to handle WAL recovery
+	// replays (AS-EVT-01 post-publish failure scenario). When Recover replays
+	// a Critical event that was already delivered before the crash (post-publish
+	// failure — event reached subscribers but WAL mark failed), skip processing
+	// to avoid duplicate side effects on domain handlers (runnerCompletion,
+	// stateDelta, etc.). Only Critical events go through WBPF and may be
+	// replayed; non-Critical events are never replayed by WAL.
+	if contract.IsCriticalWBPFType(env.Type) && c.dedup.IsDuplicate(env.ID) {
+		return
+	}
 	c.buffer.Handle(env)
 	if c.persist != nil {
 		c.persist.Handle(ctx, env)

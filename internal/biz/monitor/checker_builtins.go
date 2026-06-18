@@ -18,6 +18,9 @@ import (
 type DBPinger interface {
 	PingContext(ctx context.Context) error
 	QueryRowContext(ctx context.Context, query string, args ...any) DBRow
+	// Dialect returns the database dialect ("postgres" or "sqlite").
+	// Used to pick dialect-specific system-table queries.
+	Dialect() string
 }
 
 // DBRow abstracts sql.Row.Scan for health-check queries.
@@ -27,7 +30,8 @@ type DBRow interface {
 
 // dbPingerAdapter wraps *sql.DB to implement DBPinger.
 type dbPingerAdapter struct {
-	db *sql.DB
+	db      *sql.DB
+	dialect string
 }
 
 func (a *dbPingerAdapter) PingContext(ctx context.Context) error {
@@ -38,12 +42,16 @@ func (a *dbPingerAdapter) QueryRowContext(ctx context.Context, query string, arg
 	return a.db.QueryRowContext(ctx, query, args...)
 }
 
+func (a *dbPingerAdapter) Dialect() string { return a.dialect }
+
 // NewDBPinger creates a DBPinger from *sql.DB. Returns nil if db is nil.
-func NewDBPinger(db *sql.DB) DBPinger {
+// dialect is the database dialect ("postgres" or "sqlite") used to pick
+// dialect-specific system-table queries.
+func NewDBPinger(db *sql.DB, dialect string) DBPinger {
 	if db == nil {
 		return nil
 	}
-	return &dbPingerAdapter{db: db}
+	return &dbPingerAdapter{db: db, dialect: dialect}
 }
 
 // defaultTraceProjectorIdleTimeout is the threshold beyond which a
@@ -53,7 +61,7 @@ func NewDBPinger(db *sql.DB) DBPinger {
 // long-running run does not look like a stall.
 const defaultTraceProjectorIdleTimeout = 30 * time.Minute
 
-// DBHealthChecker verifies SQLite connectivity and basic schema integrity.
+// DBHealthChecker verifies database connectivity and basic schema integrity.
 type DBHealthChecker struct {
 	db DBPinger
 }
@@ -90,10 +98,17 @@ func (c *DBHealthChecker) Check(ctx context.Context) types.SelfCheckResult {
 	}
 	pingMs := time.Since(start).Milliseconds()
 
-	// Step 2: Verify monitor_events table exists
+	// Step 2: Verify monitor_events table exists (dialect-aware).
+	//   Postgres: information_schema.tables (SQL standard)
+	//   SQLite:   sqlite_master (SQLite system catalog)
 	var tableName string
-	row := c.db.QueryRowContext(ctx,
-		"SELECT name FROM sqlite_master WHERE type='table' AND name='monitor_events' LIMIT 1")
+	var query string
+	if c.db.Dialect() == "postgres" {
+		query = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'monitor_events' LIMIT 1"
+	} else {
+		query = "SELECT name FROM sqlite_master WHERE type='table' AND name='monitor_events' LIMIT 1"
+	}
+	row := c.db.QueryRowContext(ctx, query)
 	if err := row.Scan(&tableName); err != nil {
 		result.Status = types.SelfCheckStatusFailed
 		result.Message = "schema integrity check failed: monitor_events table not found"
@@ -285,11 +300,11 @@ func (c *TraceProjectorChecker) Check(ctx context.Context) types.SelfCheckResult
 	}
 
 	result.Details = map[string]any{
-		"active_traces":    count,
-		"started":          started,
-		"last_event_at":    lastAt,
+		"active_traces":     count,
+		"started":           started,
+		"last_event_at":     lastAt,
 		"has_ever_received": hasEver,
-		"idle_timeout_sec": int(timeout.Seconds()),
+		"idle_timeout_sec":  int(timeout.Seconds()),
 	}
 
 	switch {

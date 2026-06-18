@@ -992,17 +992,15 @@ func providePrimaryRawDB(d *data.Data) *sql.DB {
 	return d.RWDB().WriteHandle()
 }
 
-// provideEventWAL creates an EventWAL with the primary DB handle and optional
-// Postgres DB handle. Postgres is preferred when available (Phase 1 migration);
-// the primary DB handle (now Postgres after A6) is the fallback.
+// provideEventWAL creates an EventWAL with the Postgres DB handle.
+// Postgres is the only WAL storage backend after A6 (SQLite removed).
 // This provider is needed because Wire cannot disambiguate two *sql.DB args by type.
 func provideEventWAL(d *data.Data, lg loggateway.Logger) *event.EventWAL {
 	if d == nil {
 		return nil
 	}
-	primaryDB := d.RWDB().WriteHandle()
 	pgDB := d.Postgres()
-	return event.ProvideEventWAL(primaryDB, pgDB, lg)
+	return event.ProvideEventWAL(pgDB, lg)
 }
 
 // providePostgresEventStore creates a Postgres-backed EventStore for cross-process
@@ -1626,8 +1624,11 @@ func provideWSConnectionCounter() monitor.WSConnectionCounter { return nil }
 
 func provideEventBusResubscriber() monitor.EventBusResubscriber { return nil }
 
-func provideDBPinger(rawDB *sql.DB) monitor.DBPinger {
-	return monitor.NewDBPinger(rawDB)
+func provideDBPinger(d *data.Data) monitor.DBPinger {
+	if d == nil {
+		return nil
+	}
+	return monitor.NewDBPinger(d.RWDB().WriteHandle(), d.Dialect().String())
 }
 
 func provideSelfCheckCleanup(repo monitor.SelfCheckReportRepo, lg loggateway.Logger) *jobs.SelfCheckCleanup {
@@ -2192,7 +2193,6 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideArtifactRuntimeService,
 		provideArtifactSigner,
 		provideMemoryService,
-		providePrimaryRawDB,
 		provideEventWAL,
 		providePostgresEventStore,
 		provideTRPCSessionService,

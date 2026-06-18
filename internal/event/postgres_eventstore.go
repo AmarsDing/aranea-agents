@@ -143,6 +143,41 @@ func (s *PostgresEventStore) Cleanup(ctx context.Context, before time.Time) erro
 	return nil
 }
 
+// Exists checks if an event with the given event_id has already been persisted
+// to the EventStore. Implements EventStoreExistChecker for idempotent WAL
+// recovery — when Recover replays an unpublished Critical event, this check
+// avoids re-publishing if the downstream consumer already persisted it before
+// the crash (AS-EVT-01 post-publish failure scenario).
+//
+// Returns false on query error to fall back to republishing (safer than
+// silently dropping a Critical event).
+//
+// Stability:evolving
+func (s *PostgresEventStore) Exists(ctx context.Context, eventID string) bool {
+	if eventID == "" {
+		return false
+	}
+	const existsSQL = `SELECT 1 FROM event_store WHERE event_id = $1 LIMIT 1`
+	var one int
+	err := s.db.QueryRowContext(ctx, existsSQL, eventID).Scan(&one)
+	if err != nil {
+		// sql.ErrNoRows → not found, return false.
+		// Other errors → log and return false to fall back to republishing
+		// (republishing is safer than dropping a Critical event).
+		if s.lg != nil && err != sql.ErrNoRows {
+			s.lg.Warn("event_store: Exists query failed, falling back to republish",
+				loggateway.Str("event_id", eventID),
+				loggateway.Err(err),
+			)
+		}
+		return false
+	}
+	return true
+}
+
+// Compile-time check that PostgresEventStore implements EventStoreExistChecker.
+var _ EventStoreExistChecker = (*PostgresEventStore)(nil)
+
 // envelopeCreatedAt parses env.Timestamp (RFC3339Nano) into a time.Time.
 // Falls back to time.Now().UTC() when the timestamp is missing or unparseable.
 func envelopeCreatedAt(env *contract.Envelope) time.Time {

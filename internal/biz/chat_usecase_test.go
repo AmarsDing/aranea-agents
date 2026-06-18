@@ -68,6 +68,7 @@ func (stubChatPendingQueue) List(string) []PendingQueueEntry                    
 func (stubChatPendingQueue) Enqueue(_, _ string) string                            { return "" }
 func (stubChatPendingQueue) EnqueueFollowup(_, _ string) string                    { return "" }
 func (stubChatPendingQueue) Dequeue(string) (PendingQueueEntry, bool)              { return PendingQueueEntry{}, false }
+func (stubChatPendingQueue) Peek(string) (PendingQueueEntry, bool)                 { return PendingQueueEntry{}, false }
 func (stubChatPendingQueue) Remove(string, string) bool                            { return false }
 func (stubChatPendingQueue) Update(string, string, string) bool                    { return false }
 func (stubChatPendingQueue) PromoteToFront(string, string) error                   { return nil }

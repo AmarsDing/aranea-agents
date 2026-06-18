@@ -30,8 +30,14 @@ type activeRun struct {
 
 // activeRunMap wraps sync.Map with typed accessor methods to eliminate
 // unsafe type assertions in external callers.
+//
+// T2.2 TOCTOU fix: the mu mutex guards load-modify-store sequences in
+// updateOrStore so that concurrent StoreRunner / StoreCancelable calls
+// cannot race on the same session. Plain load/store/delete still use
+// sync.Map for lock-free reads; only the compound operations take mu.
 type activeRunMap struct {
-	m sync.Map
+	m  sync.Map
+	mu sync.Mutex
 }
 
 func (a *activeRunMap) load(key string) (activeRun, bool) {
@@ -45,6 +51,24 @@ func (a *activeRunMap) load(key string) (activeRun, bool) {
 
 func (a *activeRunMap) store(key string, val activeRun) { a.m.Store(key, val) }
 func (a *activeRunMap) delete(key string)               { a.m.Delete(key) }
+
+// updateOrStore atomically loads the existing entry (if any), applies
+// update to derive the new value, and stores it. The update callback
+// receives (existing, ok) where ok is false if no entry exists. The
+// callback MUST be side-effect-free — it may be called multiple times
+// under contention (though the mutex serializes calls for the same key).
+//
+// This eliminates the TOCTOU window that existed when StoreRunner and
+// StoreCancelable did load-then-store as separate operations: two
+// concurrent goroutines could both load the old value, then both store,
+// with the second store overwriting the first's data (e.g. losing the
+// cancel func or the runner reference).
+func (a *activeRunMap) updateOrStore(key string, update func(existing activeRun, ok bool) activeRun) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	existing, ok := a.load(key)
+	a.store(key, update(existing, ok))
+}
 
 // cancelMap wraps sync.Map for context.CancelFunc storage.
 type cancelMap struct {
@@ -130,25 +154,40 @@ func (r *RunRegistry) StoreRunner(sessionID, runID string, runner trpcrunner.Run
 	if r == nil {
 		return
 	}
-	ar := activeRun{runID: runID, runner: runner}
-	if existing, ok := r.activeRuns.load(sessionID); ok {
-		ar.cancel = existing.cancel
-		if ar.runID == "" {
-			ar.runID = existing.runID
+	// T2.2: use updateOrStore for atomic load-modify-store. Previously
+	// load+store was non-atomic: a concurrent StoreCancelable could
+	// overwrite the runner reference, or a concurrent StoreRunner could
+	// lose the cancel func.
+	r.activeRuns.updateOrStore(sessionID, func(existing activeRun, ok bool) activeRun {
+		ar := activeRun{runID: runID, runner: runner}
+		if ok {
+			ar.cancel = existing.cancel
+			if ar.runID == "" {
+				ar.runID = existing.runID
+			}
 		}
-	}
-	r.activeRuns.store(sessionID, ar)
+		return ar
+	})
 }
 
 func (r *RunRegistry) StoreCancelable(sessionID, runID string, cancel context.CancelFunc) {
 	if r == nil {
 		return
 	}
-	ar := activeRun{runID: runID, cancel: cancel}
-	if existing, ok := r.activeRuns.load(sessionID); ok {
-		ar.runner = existing.runner
-	}
-	r.activeRuns.store(sessionID, ar)
+	// T2.2: use updateOrStore for atomic load-modify-store. Previously
+	// load+store was non-atomic: a concurrent StoreRunner could
+	// overwrite the cancel func, or a concurrent StoreCancelable could
+	// lose the runner reference.
+	r.activeRuns.updateOrStore(sessionID, func(existing activeRun, ok bool) activeRun {
+		ar := activeRun{runID: runID, cancel: cancel}
+		if ok {
+			ar.runner = existing.runner
+			if ar.runID == "" {
+				ar.runID = existing.runID
+			}
+		}
+		return ar
+	})
 }
 
 func (r *RunRegistry) Finish(sessionID string) {

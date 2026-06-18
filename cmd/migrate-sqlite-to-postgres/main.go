@@ -50,33 +50,42 @@ func main() {
 
 // migrationConfig holds parsed flag values for the migration tool.
 type migrationConfig struct {
-	source         string
-	target         string
-	mode           string
-	table          string
-	batchSize      int
-	skipTables     string
-	initSchema     bool
-	runDDL         bool
-	initFramework  bool
-	sampleSize     int
+	source        string
+	target        string
+	mode          string
+	table         string
+	batchSize     int
+	skipTables    string
+	initSchema    bool
+	runDDL        bool
+	initFramework bool
+	sampleSize    int
 }
 
 func parseFlags() migrationConfig {
-	cfg := migrationConfig{
-		source:        flag.String("source", "file:./data/arenea.sqlite?cache=shared&_fk=1", "SQLite source DSN or file path"),
-		target:        flag.String("target", "", "Postgres target DSN (or set ARANEA_PG_DSN env var)"),
-		mode:          flag.String("mode", "migrate", "migrate | validate | both"),
-		table:         flag.String("table", "", "Migrate only this table (optional)"),
-		batchSize:     flag.Int("batch-size", 500, "Rows per INSERT batch"),
-		skipTables:    flag.String("skip-tables", "", "Comma-separated table names to skip"),
-		initSchema:    flag.Bool("init-schema", false, "Run Ent Schema.Create on Postgres before migration"),
-		runDDL:        flag.Bool("run-ddl", false, "Run DDL migrations (FTS5/monitor/memory/trpc tables) on Postgres before migration"),
-		initFramework: flag.Bool("init-framework-schema", false, "Create framework-managed tables (trpc_*/graph_checkpoints/event_wal/vector_embeddings etc.) on Postgres before migration"),
-		sampleSize:    flag.Int("sample-size", 100, "Number of rows to sample for validation checksum"),
-	}
+	source := flag.String("source", "file:./data/arenea.sqlite?cache=shared&_fk=1", "SQLite source DSN or file path")
+	target := flag.String("target", "", "Postgres target DSN (or set ARANEA_PG_DSN env var)")
+	mode := flag.String("mode", "migrate", "migrate | validate | both")
+	table := flag.String("table", "", "Migrate only this table (optional)")
+	batchSize := flag.Int("batch-size", 500, "Rows per INSERT batch")
+	skipTables := flag.String("skip-tables", "", "Comma-separated table names to skip")
+	initSchema := flag.Bool("init-schema", false, "Run Ent Schema.Create on Postgres before migration")
+	runDDL := flag.Bool("run-ddl", false, "Run DDL migrations (FTS5/monitor/memory/trpc tables) on Postgres before migration")
+	initFramework := flag.Bool("init-framework-schema", false, "Create framework-managed tables (trpc_*/graph_checkpoints/event_wal/vector_embeddings etc.) on Postgres before migration")
+	sampleSize := flag.Int("sample-size", 100, "Number of rows to sample for validation checksum")
 	flag.Parse()
-	return cfg
+	return migrationConfig{
+		source:        *source,
+		target:        *target,
+		mode:          *mode,
+		table:         *table,
+		batchSize:     *batchSize,
+		skipTables:    *skipTables,
+		initSchema:    *initSchema,
+		runDDL:        *runDDL,
+		initFramework: *initFramework,
+		sampleSize:    *sampleSize,
+	}
 }
 
 // resolvePgDSN resolves the Postgres DSN from --target flag or ARANEA_PG_DSN env var.

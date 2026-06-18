@@ -206,9 +206,9 @@ func TestProactiveRecall_NilDefense(t *testing.T) {
 	ctx := context.Background()
 	uk := trpcmemory.UserKey{AppName: "agent-pr-7", UserID: "user-pr-7"}
 
-	// nil pointer to sqliteMemoryService wrapped in the interface — the
+	// nil pointer to memoryService wrapped in the interface — the
 	// method must handle nil receiver without panicking.
-	var nilSvc trpcmemory.Service = (*sqliteMemoryService)(nil)
+	var nilSvc trpcmemory.Service = (*memoryService)(nil)
 	entries, err := nilSvc.ProactiveRecall(ctx, uk, trpcmemory.ConversationContext{
 		MentionedEntities: []string{"anything"},
 	})

@@ -2,6 +2,9 @@ package runtime
 
 import (
 	"context"
+	"fmt"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -154,5 +157,121 @@ func TestRunRegistryEnqueueUserMessageFallsBackWhenUnsupported(t *testing.T) {
 	}
 	if enqueued {
 		t.Fatalf("EnqueueUserMessage() enqueued = true, want false")
+	}
+}
+
+// TestStoreRunner_ConcurrentNoTOCTOU verifies that concurrent StoreRunner
+// calls on the same session cannot lose the cancel func registered by a
+// prior StoreCancelable. Before T2.2, load+store was non-atomic, so a
+// StoreRunner could overwrite the entry while a StoreCancelable was in
+// flight, dropping the cancel reference.
+//
+// Run with -race to detect data races.
+func TestStoreRunner_ConcurrentNoTOCTOU(t *testing.T) {
+	const goroutines = 64
+	reg := NewRunRegistry()
+
+	// Seed with a cancel so StoreRunner must preserve it.
+	cancelCalled := int64(0)
+	reg.StoreCancelable("session-1", "run-seed", func() { atomic.AddInt64(&cancelCalled, 1) })
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			reg.StoreRunner("session-1", fmt.Sprintf("run-%d", idx), &registryRunner{})
+		}(i)
+	}
+	wg.Wait()
+
+	// After all concurrent stores, the cancel func must still be present.
+	if stopped, _ := reg.Cancel("session-1", ""); !stopped {
+		t.Fatalf("Cancel() = false, want true (cancel func lost during concurrent StoreRunner)")
+	}
+	if got := atomic.LoadInt64(&cancelCalled); got != 1 {
+		t.Fatalf("cancel called %d times, want 1", got)
+	}
+}
+
+// TestStoreCancelable_ConcurrentNoTOCTOU verifies that concurrent
+// StoreCancelable calls on the same session cannot lose the runner
+// registered by a prior StoreRunner. Before T2.2, load+store was
+// non-atomic, so a StoreCancelable could overwrite the entry while a
+// StoreRunner was in flight, dropping the runner reference.
+//
+// Run with -race to detect data races.
+func TestStoreCancelable_ConcurrentNoTOCTOU(t *testing.T) {
+	const goroutines = 64
+	reg := NewRunRegistry()
+
+	// Seed with a runner so StoreCancelable must preserve it.
+	runner := &steerableRegistryRunner{}
+	reg.StoreRunner("session-1", "run-seed", runner)
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			reg.StoreCancelable("session-1", fmt.Sprintf("run-%d", idx), func() {})
+		}(i)
+	}
+	wg.Wait()
+
+	// After all concurrent stores, the runner must still be present and
+	// usable for enqueue.
+	enqueued, err := reg.EnqueueUserMessage("session-1", "hello")
+	if err != nil {
+		t.Fatalf("EnqueueUserMessage() error = %v (runner lost during concurrent StoreCancelable)", err)
+	}
+	if !enqueued {
+		t.Fatalf("EnqueueUserMessage() enqueued = false, want true (runner lost)")
+	}
+	if runner.enqueuedContent != "hello" {
+		t.Fatalf("enqueued content = %q, want hello", runner.enqueuedContent)
+	}
+}
+
+// TestStoreRunnerAndStoreCancelable_MixedConcurrent verifies the most
+// dangerous TOCTOU scenario: StoreRunner and StoreCallable racing on
+// the same session from different goroutines. Both must end up visible
+// in the final entry — neither may overwrite the other.
+//
+// Run with -race to detect data races.
+func TestStoreRunnerAndStoreCancelable_MixedConcurrent(t *testing.T) {
+	const iterations = 200
+	reg := NewRunRegistry()
+
+	cancelCalled := int64(0)
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Goroutine A: repeatedly store runner.
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iterations; i++ {
+			reg.StoreRunner("session-1", fmt.Sprintf("run-a-%d", i), &registryRunner{})
+		}
+	}()
+
+	// Goroutine B: repeatedly store cancel.
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iterations; i++ {
+			reg.StoreCancelable("session-1", fmt.Sprintf("run-b-%d", i), func() {
+				atomic.AddInt64(&cancelCalled, 1)
+			})
+		}
+	}()
+
+	wg.Wait()
+
+	// Final state: cancel must still be callable (not lost to StoreRunner).
+	if stopped, _ := reg.Cancel("session-1", ""); !stopped {
+		t.Fatalf("Cancel() = false, want true (cancel func lost during mixed concurrent stores)")
+	}
+	if got := atomic.LoadInt64(&cancelCalled); got != 1 {
+		t.Fatalf("cancel called %d times, want 1", got)
 	}
 }

@@ -4,7 +4,6 @@
       <q-toolbar class="q-px-sm-md">
         <q-btn flat dense round icon="menu" aria-label="Menu" @click="drawerOpen = !drawerOpen" />
         <q-btn
-          v-if="isDesktop"
           flat
           dense
           round
@@ -24,7 +23,7 @@
             @mark-read="inboundStore.markRead($event)"
             @mark-all-read="inboundStore.markAllRead()"
           />
-          <q-btn v-if="isDesktop" round flat dense class="cursor-pointer">
+          <q-btn round flat dense class="cursor-pointer">
             <q-avatar size="36px" class="app-header-avatar" font-size="14px">
               {{ auth.avatarLetter }}
             </q-avatar>
@@ -67,11 +66,10 @@
       v-model="drawerOpen"
       show-if-above
       :width="256"
-      :mini="!isMobile && drawerMini"
+      :mini="drawerMini"
       :mini-width="90"
-      :breakpoint="1024"
-      :overlay="isMobile"
-      :class="['app-sidebar', { 'q-drawer--design-mini': !isMobile && drawerMini }]"
+      :breakpoint="0"
+      :class="['app-sidebar', { 'q-drawer--design-mini': drawerMini }]"
     >
       <div class="app-sidebar-card">
         <div class="app-sidebar__scroll fit">
@@ -136,8 +134,8 @@ const drawerMini = ref(true);
 
 useGlobalInboundNotifications();
 
-const isDesktop = computed(() => $q.screen.gt.xs);
-const isMobile = computed(() => $q.screen.lt.md);
+// T5.5: Mobile (<1024px) responsive logic removed — app targets desktop only.
+// isDark is still needed for theme-aware styling.
 const isDark = computed(() => $q.dark.isActive);
 
 const localeOptions = [
@@ -171,7 +169,6 @@ function isNavItemActive(item: { to: string; exact?: boolean }) {
 async function navigateTo(path: string) {
   if (route.path === path) return;
   await router.push(path);
-  if (isMobile.value) drawerOpen.value = false;
 }
 
 function onOpenInboundSession(sessionId: string, agentId: string) {

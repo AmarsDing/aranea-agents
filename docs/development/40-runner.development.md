@@ -189,6 +189,7 @@ Runner 运行器：管理 Agent/Team 的运行生命周期，包括启动、停�
 | 27 | A2A Runner Ralph + Lookup | P1 | 2 | `internal/service/a2a_endpoint.go` | ✅ |
 | 28 | `useAgentRalphLoopForm` / `useAgentPlannerForm` | P3 | 4 | `web/src/features/agents/` | ✅ |
 | 29 | Run 显式状态机（AS-FSM-01） | P2 | 3 | `internal/biz/run_state_machine.go` | ✅ |
+| 30 | RunRegistry TOCTOU 修复（T2.2） | P1 | 5 | `internal/runtime/run_registry.go`, `internal/runtime/run_registry_test.go` | ✅ |
 
 ---
 

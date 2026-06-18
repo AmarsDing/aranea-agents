@@ -51,3 +51,44 @@ func TestPendingMessageQueue_MaxPerSession(t *testing.T) {
 		t.Fatal("expected enqueue cap")
 	}
 }
+
+func TestPendingMessageQueue_Peek(t *testing.T) {
+	q := NewPendingMessageQueue()
+
+	// Empty queue: Peek returns false.
+	if _, ok := q.Peek("sess-peek"); ok {
+		t.Fatal("expected Peek to return false on empty queue")
+	}
+
+	id1 := q.Enqueue("sess-peek", "first")
+	id2 := q.Enqueue("sess-peek", "second")
+
+	// Peek returns head without removing.
+	head, ok := q.Peek("sess-peek")
+	if !ok || head.ID != id1 || head.Content != "first" {
+		t.Fatalf("unexpected peek head: %+v ok=%v", head, ok)
+	}
+
+	// Queue still has both entries.
+	if len(q.List("sess-peek")) != 2 {
+		t.Fatal("Peek should not remove entries")
+	}
+
+	// Peek again returns same head.
+	head, ok = q.Peek("sess-peek")
+	if !ok || head.ID != id1 {
+		t.Fatalf("unexpected second peek head: %+v ok=%v", head, ok)
+	}
+
+	// Dequeue returns the same head we peeked.
+	dequeued, ok := q.Dequeue("sess-peek")
+	if !ok || dequeued.ID != id1 {
+		t.Fatalf("unexpected dequeue head: %+v ok=%v", dequeued, ok)
+	}
+
+	// Peek now returns the second entry.
+	head, ok = q.Peek("sess-peek")
+	if !ok || head.ID != id2 || head.Content != "second" {
+		t.Fatalf("unexpected peek after dequeue: %+v ok=%v", head, ok)
+	}
+}

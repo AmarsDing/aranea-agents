@@ -26,6 +26,40 @@
         </div>
       </div>
     </div>
+    <!--
+      T8.3 VirtualScroller: messages > VIRTUAL_SCROLL_THRESHOLD use DynamicScroller
+      for dynamic-height virtualization. Falls back to normal v-for for short lists.
+    -->
+    <DynamicScroller
+      v-else-if="useVirtualScroll"
+      ref="virtualScrollRef"
+      :items="conversationTurns"
+      :min-item-size="80"
+      key-field="id"
+      class="col chat-messages__viewport chat-messages__viewport--virtual"
+      @scroll.passive="$emit('scroll', $event)"
+      @click="$emit('messages-click', $event)"
+    >
+      <template #default="{ item, itemIndex, active }">
+        <DynamicScrollerItem
+          :item="item"
+          :active="active"
+          :data-index="itemIndex"
+          :data-turn-id="item.id"
+        >
+          <ConversationTurn
+            :turn="item"
+            @confirm="(id: string, approved: boolean) => $emit('confirm', id, approved)"
+            @error-retry="(e: ErrorEvent) => $emit('error-retry', e)"
+            @error-switch-model="(e: ErrorEvent) => $emit('error-switch-model', e)"
+            @error-rephrase="(e: ErrorEvent) => $emit('error-rephrase', e)"
+            @error-check-config="(e: ErrorEvent) => $emit('error-check-config', e)"
+            @error-remove-attachment="(e: ErrorEvent) => $emit('error-remove-attachment', e)"
+            @error-relogin="(e: ErrorEvent) => $emit('error-relogin', e)"
+          />
+        </DynamicScrollerItem>
+      </template>
+    </DynamicScroller>
     <div
       v-else
       ref="normalScrollEl"
@@ -69,8 +103,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller';
+import 'vue-virtual-scroller/dist/vue-virtual-scroller.css';
 import ChatPendingQueue from './ChatPendingQueue.vue';
 import ConversationTurn from './ConversationTurn.vue';
 import { useConversationTimeline } from '../../features/chat/composables/useConversationTimeline';
@@ -80,6 +116,9 @@ import type { ArtifactMeta } from '../../features/artifact/types';
 import type { Envelope } from '../../realtime/envelope';
 import type { Activity as TimelineActivity } from '../../features/chat/activityTimelineTypes';
 import type { ErrorEvent } from '../../features/chat/streamEventTypes';
+
+/** T8.3: Virtual scrolling threshold — only enable for long conversations. */
+const VIRTUAL_SCROLL_THRESHOLD = 100;
 
 const props = defineProps<{
   sessionKey: string;
@@ -137,6 +176,8 @@ const quickStartHints = [
 
 const emptyScrollEl = ref<HTMLElement | null>(null);
 const normalScrollEl = ref<HTMLElement | null>(null);
+// T8.3: DynamicScroller ref for virtual scrolling mode
+const virtualScrollRef = ref<InstanceType<typeof DynamicScroller> | null>(null);
 
 const { conversationTurns } = useConversationTimeline({
   messages: computed(() => props.messages),
@@ -150,11 +191,43 @@ const { conversationTurns } = useConversationTimeline({
   activityRawRecords: computed(() => props.activityRawRecords ?? []),
 });
 
+/** T8.3: Enable virtual scrolling only for long conversations to keep short-list UX simple. */
+const useVirtualScroll = computed(() => conversationTurns.value.length > VIRTUAL_SCROLL_THRESHOLD);
+
+/**
+ * T8.3: Scroll to a specific turn by id.
+ * In virtual mode, uses DynamicScroller.scrollToItem; in normal mode, uses DOM query.
+ * Returns true if the turn was found and scrolled to.
+ */
+async function scrollToTurnId(turnId: string): Promise<boolean> {
+  const id = turnId.trim();
+  if (!id) return false;
+  if (useVirtualScroll.value && virtualScrollRef.value) {
+    const index = conversationTurns.value.findIndex((t) => t.id === id);
+    if (index < 0) return false;
+    // DynamicScroller.scrollToItem scrolls the item into view, then we wait
+    // for the DOM to update before the caller can highlight the element.
+    virtualScrollRef.value.scrollToItem(index);
+    await nextTick();
+    return true;
+  }
+  // Normal mode: caller (useChatMessageScroll) handles DOM query + highlight.
+  return false;
+}
+
 defineExpose({
   emptyScrollEl,
   normalScrollEl,
+  virtualScrollRef,
+  useVirtualScroll,
+  scrollToTurnId,
   getScrollTarget: () => {
     if (!props.messages.length) return emptyScrollEl.value;
+    if (useVirtualScroll.value) {
+      // DynamicScroller root element (the scrollable container)
+      const vsRef = virtualScrollRef.value as { $el?: HTMLElement } | null;
+      return vsRef?.$el ?? null;
+    }
     return normalScrollEl.value;
   },
 });

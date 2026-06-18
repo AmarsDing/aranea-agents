@@ -53,7 +53,7 @@ type vecHit struct {
 	score   float64
 }
 
-type sqliteMemoryService struct {
+type memoryService struct {
 	factReader      biz.L3FactReader
 	factWriter      biz.L3FactWriter
 	indexSync       biz.MemoryFactIndexSyncer
@@ -77,7 +77,7 @@ type factConsistencyChecker interface {
 	GetFactResyncRow(ctx context.Context, factID string) (agentID, userID, statement string, err error)
 }
 
-var _ trpcmemory.Service = (*sqliteMemoryService)(nil)
+var _ trpcmemory.Service = (*memoryService)(nil)
 
 type singleflightGroup struct {
 	mu sync.Mutex
@@ -103,11 +103,11 @@ func (g *singleflightGroup) Done(key string) {
 	delete(g.m, key)
 }
 
-func NewSQLiteMemoryService(factReader biz.L3FactReader, factWriter biz.L3FactWriter, indexSync biz.MemoryFactIndexSyncer, queue AutoMemoryQueue, vector vectorFactSearcher, settingsLoader AgentRuntimeSettingsLoader, consistency factConsistencyChecker, linkEvolver memlink.LinkEvolutionService, lg loggateway.Logger) trpcmemory.Service {
+func NewMemoryService(factReader biz.L3FactReader, factWriter biz.L3FactWriter, indexSync biz.MemoryFactIndexSyncer, queue AutoMemoryQueue, vector vectorFactSearcher, settingsLoader AgentRuntimeSettingsLoader, consistency factConsistencyChecker, linkEvolver memlink.LinkEvolutionService, lg loggateway.Logger) trpcmemory.Service {
 	if factReader == nil {
 		return nil
 	}
-	return &sqliteMemoryService{
+	return &memoryService{
 		factReader:      factReader,
 		factWriter:      factWriter,
 		indexSync:       indexSync,
@@ -120,14 +120,14 @@ func NewSQLiteMemoryService(factReader biz.L3FactReader, factWriter biz.L3FactWr
 	}
 }
 
-func (s *sqliteMemoryService) requireStore() error {
+func (s *memoryService) requireStore() error {
 	if s == nil || s.factReader == nil {
 		return errors.New("sqlite memory service: fact reader not wired")
 	}
 	return nil
 }
 
-func (s *sqliteMemoryService) AddMemory(ctx context.Context, uk trpcmemory.UserKey, mem string, topics []string, opts ...trpcmemory.AddOption) error {
+func (s *memoryService) AddMemory(ctx context.Context, uk trpcmemory.UserKey, mem string, topics []string, opts ...trpcmemory.AddOption) error {
 	if err := s.requireStore(); err != nil {
 		return err
 	}
@@ -151,7 +151,7 @@ func (s *sqliteMemoryService) AddMemory(ctx context.Context, uk trpcmemory.UserK
 	return nil
 }
 
-func (s *sqliteMemoryService) UpdateMemory(ctx context.Context, mk trpcmemory.Key, mem string, topics []string, opts ...trpcmemory.UpdateOption) error {
+func (s *memoryService) UpdateMemory(ctx context.Context, mk trpcmemory.Key, mem string, topics []string, opts ...trpcmemory.UpdateOption) error {
 	if err := s.requireStore(); err != nil {
 		return err
 	}
@@ -210,7 +210,7 @@ func (s *sqliteMemoryService) UpdateMemory(ctx context.Context, mk trpcmemory.Ke
 // if a conflict is detected (content differs), or empty string otherwise.
 // When the fact reader is unavailable or the fact doesn't exist, no conflict
 // is reported and the update proceeds as a normal upsert.
-func (s *sqliteMemoryService) detectContentConflict(ctx context.Context, factID, newMem string) string {
+func (s *memoryService) detectContentConflict(ctx context.Context, factID, newMem string) string {
 	if s.factReader == nil || factID == "" {
 		return ""
 	}
@@ -250,14 +250,14 @@ func applyPIIScan(u *biz.FactUpsert, original string) {
 	}
 }
 
-func (s *sqliteMemoryService) DeleteMemory(ctx context.Context, mk trpcmemory.Key) error {
+func (s *memoryService) DeleteMemory(ctx context.Context, mk trpcmemory.Key) error {
 	if err := s.requireStore(); err != nil {
 		return err
 	}
 	return s.factWriter.DeleteFactRow(ctx, mk.MemoryID)
 }
 
-func (s *sqliteMemoryService) ClearMemories(ctx context.Context, uk trpcmemory.UserKey) error {
+func (s *memoryService) ClearMemories(ctx context.Context, uk trpcmemory.UserKey) error {
 	if err := s.requireStore(); err != nil {
 		return err
 	}
@@ -269,7 +269,7 @@ func (s *sqliteMemoryService) ClearMemories(ctx context.Context, uk trpcmemory.U
 	return err
 }
 
-func (s *sqliteMemoryService) ReadMemories(ctx context.Context, uk trpcmemory.UserKey, limit int) ([]*trpcmemory.Entry, error) {
+func (s *memoryService) ReadMemories(ctx context.Context, uk trpcmemory.UserKey, limit int) ([]*trpcmemory.Entry, error) {
 	if s == nil {
 		return nil, nil
 	}
@@ -288,7 +288,7 @@ func (s *sqliteMemoryService) ReadMemories(ctx context.Context, uk trpcmemory.Us
 	return s.listEntries(ctx, uk, "", limit, minScore, false)
 }
 
-func (s *sqliteMemoryService) SearchMemories(ctx context.Context, uk trpcmemory.UserKey, query string, opts ...trpcmemory.SearchOption) ([]*trpcmemory.Entry, error) {
+func (s *memoryService) SearchMemories(ctx context.Context, uk trpcmemory.UserKey, query string, opts ...trpcmemory.SearchOption) ([]*trpcmemory.Entry, error) {
 	if s == nil {
 		return nil, nil
 	}
@@ -401,7 +401,7 @@ type factConsistencyRow struct {
 	Statement   string
 }
 
-func (s *sqliteMemoryService) getFactConsistencyRow(ctx context.Context, factID string) (factConsistencyRow, error) {
+func (s *memoryService) getFactConsistencyRow(ctx context.Context, factID string) (factConsistencyRow, error) {
 	if s.consistency == nil {
 		return factConsistencyRow{}, errors.New("consistency checker not wired")
 	}
@@ -412,7 +412,7 @@ func (s *sqliteMemoryService) getFactConsistencyRow(ctx context.Context, factID 
 	return factConsistencyRow{Status: status, IndexStatus: indexStatus, Statement: statement}, nil
 }
 
-func (s *sqliteMemoryService) asyncResyncFact(ctx context.Context, factID string) {
+func (s *memoryService) asyncResyncFact(ctx context.Context, factID string) {
 	if s.indexSync == nil || s.consistency == nil {
 		return
 	}
@@ -448,7 +448,7 @@ func (s *sqliteMemoryService) asyncResyncFact(ctx context.Context, factID string
 // from the authoritative SQLite fact rows for vector search hits.
 // This ensures SearchMemories returns complete entries regardless of
 // whether the hit came from vector similarity or keyword search.
-func (s *sqliteMemoryService) enrichVectorHits(ctx context.Context, uk trpcmemory.UserKey, factIDs []string, hitMap map[string]vecHit) []*trpcmemory.Entry {
+func (s *memoryService) enrichVectorHits(ctx context.Context, uk trpcmemory.UserKey, factIDs []string, hitMap map[string]vecHit) []*trpcmemory.Entry {
 	// Fetch fact rows directly by ID to avoid limit/offset truncation
 	// that could occur with ListFactRowsForUser.
 	rows, err := s.factReader.GetFactRowsByIDs(ctx, factIDs)
@@ -469,7 +469,7 @@ func (s *sqliteMemoryService) enrichVectorHits(ctx context.Context, uk trpcmemor
 	return out
 }
 
-func (s *sqliteMemoryService) listEntries(ctx context.Context, uk trpcmemory.UserKey, keyword string, limit int, minImportance float64, includeInvalidated bool) ([]*trpcmemory.Entry, error) {
+func (s *memoryService) listEntries(ctx context.Context, uk trpcmemory.UserKey, keyword string, limit int, minImportance float64, includeInvalidated bool) ([]*trpcmemory.Entry, error) {
 	limit32 := int32(limit)
 	if limit32 <= 0 {
 		limit32 = defaultListEntriesLimit
@@ -511,7 +511,7 @@ func (s *sqliteMemoryService) listEntries(ctx context.Context, uk trpcmemory.Use
 	return out, nil
 }
 
-func (s *sqliteMemoryService) syncIndexBestEffort(ctx context.Context, raw []byte) {
+func (s *memoryService) syncIndexBestEffort(ctx context.Context, raw []byte) {
 	if s == nil || s.indexSync == nil || len(raw) == 0 {
 		return
 	}
@@ -525,7 +525,7 @@ func (s *sqliteMemoryService) syncIndexBestEffort(ctx context.Context, raw []byt
 // the AddMemory result. The evolver runs in a detached context so that
 // cancellation of the caller's context (e.g. HTTP request completion) does
 // not abort the evolution work. Red line #13: goroutine started via safego.Go.
-func (s *sqliteMemoryService) triggerLinkEvolution(ctx context.Context, uk trpcmemory.UserKey, raw []byte) {
+func (s *memoryService) triggerLinkEvolution(ctx context.Context, uk trpcmemory.UserKey, raw []byte) {
 	if s == nil || s.linkEvolver == nil || len(raw) == 0 {
 		return
 	}
@@ -568,7 +568,7 @@ func trpcFactUpsert(uk trpcmemory.UserKey, id, mem string, topics []string, fact
 	}
 }
 
-func (s *sqliteMemoryService) Tools() []trpctool.Tool {
+func (s *memoryService) Tools() []trpctool.Tool {
 	return []trpctool.Tool{
 		trpcmemtool.NewAddTool(),
 		trpcmemtool.NewUpdateTool(),
@@ -579,7 +579,7 @@ func (s *sqliteMemoryService) Tools() []trpctool.Tool {
 	}
 }
 
-func (s *sqliteMemoryService) Close() error {
+func (s *memoryService) Close() error {
 	return nil
 }
 
@@ -594,7 +594,7 @@ func (s *sqliteMemoryService) Close() error {
 //   - Contradiction detection: when UserStatement potentially conflicts
 //     with a stored memory, that memory is prioritised (boosted score).
 //   - Results are deduplicated by memory ID and sorted by score descending.
-func (s *sqliteMemoryService) ProactiveRecall(ctx context.Context, uk trpcmemory.UserKey,
+func (s *memoryService) ProactiveRecall(ctx context.Context, uk trpcmemory.UserKey,
 	convCtx trpcmemory.ConversationContext) ([]*trpcmemory.Entry, error) {
 	if s == nil {
 		return nil, nil
@@ -798,7 +798,7 @@ func (a *ProactiveRecallAdapter) ProactiveRecall(ctx context.Context, agentID, u
 	return out, nil
 }
 
-func (s *sqliteMemoryService) EnqueueAutoMemoryJob(ctx context.Context, sess *session.Session) error {
+func (s *memoryService) EnqueueAutoMemoryJob(ctx context.Context, sess *session.Session) error {
 	if s == nil || sess == nil || s.autoMemoryQueue == nil {
 		return nil
 	}

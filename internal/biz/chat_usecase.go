@@ -60,6 +60,7 @@ type ChatPendingQueue interface {
 	Enqueue(sessionID, content string) string
 	EnqueueFollowup(sessionID, content string) string
 	Dequeue(sessionID string) (PendingQueueEntry, bool)
+	Peek(sessionID string) (PendingQueueEntry, bool)
 	Remove(sessionID, entryID string) bool
 	Update(sessionID, entryID, newContent string) bool
 	PromoteToFront(sessionID, pendingID string) error
@@ -249,6 +250,13 @@ func (uc *ChatUsecase) UpdatePendingMessage(sessionID, pendingID, content string
 
 func (uc *ChatUsecase) DequeuePendingMessage(sessionID string) (PendingQueueEntry, bool) {
 	return uc.pending.Dequeue(sessionID)
+}
+
+// PeekPendingMessage returns the head of the pending queue without removing it.
+// Used by processPendingQueue to perform an atomic check-and-dequeue under the
+// session lock, eliminating the TOCTOU race between Dequeue and HasActive.
+func (uc *ChatUsecase) PeekPendingMessage(sessionID string) (PendingQueueEntry, bool) {
+	return uc.pending.Peek(sessionID)
 }
 
 func (uc *ChatUsecase) EnqueueUserMessage(sessionID, content string, mergeFollowup bool) (accepted, queued bool, pendingID, rejectReason string, err error) {

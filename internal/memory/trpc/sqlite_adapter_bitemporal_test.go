@@ -224,7 +224,7 @@ func (l *bitemporalSettingsLoader) GetAgentRuntimeSettings(_ context.Context, _ 
 
 func newBitemporalService() (trpcmemory.Service, *bitemporalMockStore) {
 	store := newBitemporalMockStore()
-	svc := NewSQLiteMemoryService(
+	svc := NewMemoryService(
 		store,                       // factReader
 		store,                       // factWriter
 		nil,                         // indexSync

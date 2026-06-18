@@ -9,41 +9,32 @@ import (
 
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 	trpcgraphpg "trpc.group/trpc-go/trpc-agent-go/graph/checkpoint/postgres"
-	trpcgraphsqlite "trpc.group/trpc-go/trpc-agent-go/graph/checkpoint/sqlite"
 )
 
-// CheckpointSaver is a dialect-aware wrapper around the framework's
-// checkpoint saver. When pgDSN is non-empty, it uses the Postgres saver;
-// otherwise it falls back to the SQLite saver.
+// CheckpointSaver is a wrapper around the framework's Postgres checkpoint saver.
+// After A6, Postgres is the only supported backend for graph checkpoints.
 type CheckpointSaver struct {
 	saver trpcgraph.CheckpointSaver
 	db    *sql.DB
 	lg    loggateway.Logger
 }
 
-// NewCheckpointSaver creates a dialect-aware checkpoint saver.
-// When pgDSN is non-empty, a Postgres-backed saver is created; otherwise SQLite.
-// The db must be non-nil and must match the dialect (Postgres *sql.DB for pgDSN,
-// SQLite *sql.DB otherwise).
+// NewCheckpointSaver creates a Postgres-backed checkpoint saver.
+// pgDSN must be non-empty; production deployments require Postgres.
+// The db must be a Postgres *sql.DB handle.
 func NewCheckpointSaver(db *sql.DB, pgDSN string, lg loggateway.Logger) (*CheckpointSaver, error) {
 	if db == nil {
 		return nil, apierror.BadRequest(apierror.DomainGraph, "graph checkpoint: db is nil")
 	}
+	if pgDSN == "" {
+		return nil, apierror.BadRequest(apierror.DomainGraph, "graph checkpoint: pgDSN is empty (Postgres required after A6)")
+	}
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	var saver trpcgraph.CheckpointSaver
-	var err error
-	if pgDSN != "" {
-		saver, err = trpcgraphpg.NewSaver(db)
-		if err != nil {
-			return nil, apierror.Internal(apierror.DomainGraph, "graph checkpoint postgres init").WithCause(err)
-		}
-	} else {
-		saver, err = trpcgraphsqlite.NewSaver(db)
-		if err != nil {
-			return nil, apierror.Internal(apierror.DomainGraph, "graph checkpoint sqlite init").WithCause(err)
-		}
+	saver, err := trpcgraphpg.NewSaver(db)
+	if err != nil {
+		return nil, apierror.Internal(apierror.DomainGraph, "graph checkpoint postgres init").WithCause(err)
 	}
 	return &CheckpointSaver{saver: saver, db: db, lg: lg}, nil
 }

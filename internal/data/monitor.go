@@ -77,7 +77,7 @@ func (r *monitorRepo) InsertMonitorEvent(ctx context.Context, ev biz.MonitorEven
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, '')`,
 		id, ev.EventKey, ev.Name, ev.Description, status, ev.MetadataJSON, now, now,
 	)
-	if err != nil && isSQLiteUniqueConstraintError(err) {
+	if err != nil && r.data.Dialect().UniqueConstraintErr(err) {
 		r.data.lg.Warn("InsertMonitorEvent: duplicate event key, skipping",
 			loggateway.StepID("monitor.event_duplicate"),
 			loggateway.Str("event_key", ev.EventKey))
@@ -511,12 +511,12 @@ func scanTraceRows(rows *sql.Rows) ([]biz.MonitorPlatformRow, error) {
 // (agent_id, provider, model) that are not present in the events table.
 func scanTracePlatformRow(row scanner) (biz.MonitorPlatformRow, error) {
 	var (
-		v                                       biz.MonitorPlatformRow
-		id, key, name                           string
-		description, status                     string
-		agentID, provider, model                string
-		metaJSON                                string
-		createdAt, updatedAt, deletedAt         string
+		v                               biz.MonitorPlatformRow
+		id, key, name                   string
+		description, status             string
+		agentID, provider, model        string
+		metaJSON                        string
+		createdAt, updatedAt, deletedAt string
 	)
 	err := row.Scan(&id, &key, &name, &description, &status, &agentID, &provider, &model, &metaJSON, &createdAt, &updatedAt, &deletedAt)
 	if err != nil {
@@ -552,12 +552,4 @@ func safeJSONKey(key string) (string, bool) {
 		return k, true
 	}
 	return "", false
-}
-
-func isSQLiteUniqueConstraintError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "UNIQUE constraint failed") || strings.Contains(msg, "unique constraint")
 }

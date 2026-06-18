@@ -11,12 +11,12 @@ import (
 
 // Deps is a minimal bundle for prompt / runtime helpers (biz facades).
 type Deps struct {
-	Agents              biz.AgentRepository
-	AgentUC             biz.TeamAgentLookup
-	ToolRegistry        biz.ToolRegistryReader
-	SQLiteSessionMemory bool
-	Organization        *biz.OrganizationUsecase
-	LG                  loggateway.Logger
+	Agents                 biz.AgentRepository
+	AgentUC                biz.TeamAgentLookup
+	ToolRegistry           biz.ToolRegistryReader
+	SessionMemoryAvailable bool
+	Organization           *biz.OrganizationUsecase
+	LG                     loggateway.Logger
 	// CustomToolKeys carries the names of dynamically injected CustomTools
 	// (e.g. plan_and_execute, check_progress) that are NOT in the Registry.
 	// The Runtime Cue uses this to produce accurate tool availability hints.
@@ -257,8 +257,8 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 		b.WriteString("- Execution planning: state 3-7 verifiable steps before substantive edits; prefer tests or builds on affected packages when tools allow; if intent_artifact appears in session metadata, align steps with refined_goal and use search_hints for search_content queries.\n")
 	}
 	if memCue && level >= cueLevelStandard && !skipToolCue {
-		if d.SQLiteSessionMemory {
-			b.WriteString("- load_memory/preload_memory: SQLite-backed session memory (memory_entities); durable across process restarts for turns that sync into the store.\n")
+		if d.SessionMemoryAvailable {
+			b.WriteString("- load_memory/preload_memory: persistent session memory (memory_entities); durable across process restarts for turns that sync into the store.\n")
 		} else {
 			b.WriteString("- load_memory/preload_memory: in-process recall only (no SessionMemory store wired to this runner); not durable across restarts.\n")
 		}

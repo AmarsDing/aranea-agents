@@ -11,6 +11,9 @@ import (
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+
+	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
 // syncCaptureBus is an event.Bus that captures envelopes with
@@ -504,5 +507,244 @@ func TestOnPlanStepUpdate_planPartialFailureWhenAllDoneButSomeFailed(t *testing.
 	}
 	if result.Status != biz.ActivityStatusPartialFailure {
 		t.Errorf("plan status=%q want %q", result.Status, biz.ActivityStatusPartialFailure)
+	}
+}
+
+// --- OnMemberMessageDelta / OnMemberMessageDone (AF-GAP-04) ---
+
+// TestOnMemberMessageDelta_createsReplyActivityWithMemberID verifies that the
+// first delta for a team member author creates a reply Activity tagged with
+// meta.member_id, so the frontend can distinguish member replies from the
+// coordinator's reply.
+//
+// Note: On first delta, OnMemberMessageDelta publishes two envelopes:
+//   - activity_start (async via safego.Go in publishAndPersist)
+//   - activity_delta (sync via publishActivityDelta)
+//
+// Because the start envelope is async and the delta is sync, arrival order is
+// not guaranteed. We wait for both and locate the activity_start envelope.
+func TestOnMemberMessageDelta_createsReplyActivityWithMemberID(t *testing.T) {
+	p, bus, _ := newTestProjector()
+	p.Configure(ProjectMeta{
+		SessionID:       "sess-team",
+		RequestID:       "turn-1",
+		TeamID:          "team-1",
+		AgentID:         "coordinator",
+		AgentDisplayName: "Coordinator",
+		MemberAgentKeys: map[string]struct{}{"worker-a": {}},
+	}, nil)
+
+	p.OnMemberMessageDelta(context.Background(), "worker-a", "Hello ")
+
+	// Expect 2 envelopes: activity_start + activity_delta (order not guaranteed)
+	envs := bus.waitForPublished(t, 2)
+	var startEnv *event.Envelope
+	for i := range envs {
+		if envs[i].Type == contract.EnvelopeTypeActivityStart {
+			startEnv = &envs[i]
+			break
+		}
+	}
+	if startEnv == nil {
+		t.Fatalf("no activity_start envelope found among %d envelopes", len(envs))
+	}
+	kind, _ := startEnv.Metadata["kind"].(string)
+	if kind != string(biz.ActivityKindReply) {
+		t.Errorf("metadata kind=%q want %q", kind, biz.ActivityKindReply)
+	}
+	meta, _ := startEnv.Metadata["meta"].(map[string]any)
+	if meta == nil {
+		t.Fatal("metadata meta is nil, expected member_id tag")
+	}
+	memberID, _ := meta["member_id"].(string)
+	if memberID != "worker-a" {
+		t.Errorf("meta.member_id=%q want %q", memberID, "worker-a")
+	}
+	if startEnv.TeamID != "team-1" {
+		t.Errorf("envelope TeamID=%q want %q (should inherit from ProjectMeta)", startEnv.TeamID, "team-1")
+	}
+}
+
+// TestOnMemberMessageDelta_appendsDeltaToExistingActivity verifies that
+// subsequent deltas reuse the same reply Activity instead of creating new ones.
+func TestOnMemberMessageDelta_appendsDeltaToExistingActivity(t *testing.T) {
+	p, bus, _ := newTestProjector()
+	p.Configure(ProjectMeta{
+		SessionID:       "sess-team",
+		RequestID:       "turn-1",
+		TeamID:          "team-1",
+		MemberAgentKeys: map[string]struct{}{"worker-a": {}},
+	}, nil)
+
+	p.OnMemberMessageDelta(context.Background(), "worker-a", "Hello ")
+	bus.waitForPublished(t, 1) // activity_start
+	bus.reset()
+
+	p.OnMemberMessageDelta(context.Background(), "worker-a", "world")
+
+	// Expect 1 envelope: activity_delta (no new activity_start)
+	envs := bus.waitForPublished(t, 1)
+	if envs[0].Type != contract.EnvelopeTypeActivityDelta {
+		t.Errorf("envelope type=%q want activity_delta", envs[0].Type)
+	}
+}
+
+// TestOnMemberMessageDone_finalizesReplyActivity verifies that Done marks the
+// reply Activity as completed and publishes activity_done.
+func TestOnMemberMessageDone_finalizesReplyActivity(t *testing.T) {
+	p, bus, _ := newTestProjector()
+	p.Configure(ProjectMeta{
+		SessionID:       "sess-team",
+		RequestID:       "turn-1",
+		TeamID:          "team-1",
+		MemberAgentKeys: map[string]struct{}{"worker-a": {}},
+	}, nil)
+
+	p.OnMemberMessageDelta(context.Background(), "worker-a", "Hello ")
+	bus.waitForPublished(t, 1) // activity_start
+	bus.reset()
+
+	p.OnMemberMessageDone(context.Background(), "worker-a", "Hello world")
+
+	envs := bus.waitForPublished(t, 1)
+	if envs[0].Type != contract.EnvelopeTypeActivityDone {
+		t.Errorf("envelope type=%q want activity_done", envs[0].Type)
+	}
+	status, _ := envs[0].Metadata["status"].(string)
+	if status != string(biz.ActivityStatusCompleted) {
+		t.Errorf("status=%q want %q", status, biz.ActivityStatusCompleted)
+	}
+	content, _ := envs[0].Metadata["content"].(string)
+	if content != "Hello world" {
+		t.Errorf("content=%q want %q", content, "Hello world")
+	}
+}
+
+// TestOnMemberMessageDone_noopWhenNoActivity verifies that Done without a
+// prior Delta does not publish anything (defensive guard).
+func TestOnMemberMessageDone_noopWhenNoActivity(t *testing.T) {
+	p, bus, _ := newTestProjector()
+	p.Configure(ProjectMeta{
+		SessionID:       "sess-team",
+		RequestID:       "turn-1",
+		TeamID:          "team-1",
+		MemberAgentKeys: map[string]struct{}{"worker-a": {}},
+	}, nil)
+
+	p.OnMemberMessageDone(context.Background(), "worker-a", "orphan text")
+
+	// No envelopes should be published
+	if envs := bus.waitForPublished(t, 0); len(envs) != 0 {
+		t.Errorf("expected 0 envelopes, got %d", len(envs))
+	}
+}
+
+// TestProcessEvent_routesTeamMemberToMemberMessage verifies that ProcessEvent
+// detects team member authors and routes text to OnMemberMessage* instead of
+// OnTextDelta/OnTextDone, so the resulting Activity carries meta.member_id.
+//
+// Note: First delta publishes activity_start (async) + activity_delta (sync).
+// Arrival order is not guaranteed, so we wait for both and locate the start.
+func TestProcessEvent_routesTeamMemberToMemberMessage(t *testing.T) {
+	p, bus, _ := newTestProjector()
+	p.Configure(ProjectMeta{
+		SessionID:       "sess-team",
+		RequestID:       "turn-1",
+		TeamID:          "team-1",
+		AgentID:         "coordinator",
+		MemberAgentKeys: map[string]struct{}{"worker-a": {}},
+	}, nil)
+
+	// Simulate a streaming chunk from a team member
+	ev := &trpcevent.Event{
+		Author: "worker-a",
+		Response: &trpcmodel.Response{
+			Object:    trpcmodel.ObjectTypeChatCompletionChunk,
+			IsPartial: true,
+			Choices: []trpcmodel.Choice{{
+				Delta: trpcmodel.Message{Content: "member reply"},
+			}},
+		},
+	}
+
+	p.ProcessEvent(context.Background(), ev)
+
+	// Expect 2 envelopes: activity_start + activity_delta (order not guaranteed)
+	envs := bus.waitForPublished(t, 2)
+	var startEnv *event.Envelope
+	for i := range envs {
+		if envs[i].Type == contract.EnvelopeTypeActivityStart {
+			startEnv = &envs[i]
+			break
+		}
+	}
+	if startEnv == nil {
+		t.Fatalf("no activity_start envelope found among %d envelopes", len(envs))
+	}
+	kind, _ := startEnv.Metadata["kind"].(string)
+	if kind != string(biz.ActivityKindReply) {
+		t.Errorf("metadata kind=%q want %q", kind, biz.ActivityKindReply)
+	}
+	meta, _ := startEnv.Metadata["meta"].(map[string]any)
+	if meta == nil {
+		t.Fatal("metadata meta is nil, expected member_id tag")
+	}
+	memberID, _ := meta["member_id"].(string)
+	if memberID != "worker-a" {
+		t.Errorf("meta.member_id=%q want %q", memberID, "worker-a")
+	}
+}
+
+// TestProcessEvent_routesCoordinatorToOnTextDelta verifies that non-team-member
+// authors still go through the regular OnTextDelta path (no meta.member_id).
+//
+// Note: First delta publishes activity_start (async) + activity_delta (sync).
+// Arrival order is not guaranteed, so we wait for both and locate the start.
+func TestProcessEvent_routesCoordinatorToOnTextDelta(t *testing.T) {
+	p, bus, _ := newTestProjector()
+	p.Configure(ProjectMeta{
+		SessionID:       "sess-team",
+		RequestID:       "turn-1",
+		TeamID:          "team-1",
+		AgentID:         "coordinator",
+		MemberAgentKeys: map[string]struct{}{"worker-a": {}},
+	}, nil)
+
+	// Simulate a streaming chunk from the coordinator (not a team member)
+	ev := &trpcevent.Event{
+		Author: "coordinator",
+		Response: &trpcmodel.Response{
+			Object:    trpcmodel.ObjectTypeChatCompletionChunk,
+			IsPartial: true,
+			Choices: []trpcmodel.Choice{{
+				Delta: trpcmodel.Message{Content: "coordinator reply"},
+			}},
+		},
+	}
+
+	p.ProcessEvent(context.Background(), ev)
+
+	// Expect 2 envelopes: activity_start + activity_delta (order not guaranteed)
+	envs := bus.waitForPublished(t, 2)
+	var startEnv *event.Envelope
+	for i := range envs {
+		if envs[i].Type == contract.EnvelopeTypeActivityStart {
+			startEnv = &envs[i]
+			break
+		}
+	}
+	if startEnv == nil {
+		t.Fatalf("no activity_start envelope found among %d envelopes", len(envs))
+	}
+	kind, _ := startEnv.Metadata["kind"].(string)
+	if kind != string(biz.ActivityKindReply) {
+		t.Errorf("metadata kind=%q want %q", kind, biz.ActivityKindReply)
+	}
+	// Coordinator reply should NOT have meta.member_id
+	meta, _ := startEnv.Metadata["meta"].(map[string]any)
+	if meta != nil {
+		if _, ok := meta["member_id"]; ok {
+			t.Errorf("coordinator reply should not have meta.member_id, got %v", meta["member_id"])
+		}
 	}
 }

@@ -162,7 +162,41 @@ ExecInTx(ctx, fn)
 | 30s 硬超时 | SQLite 单写限制下，长事务会阻塞所有写操作 |
 | 双 key 注入 | `txClientKey{}`（Ent 客户端）+ `rawTxKey{}`（Raw SQL execer），确保 Ent 和 Raw SQL 在同一事务 |
 
-### 3.2 事务传播机制
+### 3.2 ExecInTxWithRetry 重试包装（T2.1）
+
+`ExecInTxWithRetry` 包装 `ExecInTx`，对瞬态 DB 错误自动重试，实现 No-Timeout 原则：
+
+```
+ExecInTxWithRetry(ctx, fn)
+  │
+  ├── for attempt := 0..3
+  │   ├── 检查 ctx.Err() → 已取消则返回
+  │   ├── ExecInTx(ctx, fn)
+  │   │   └── 成功 → 返回 nil
+  │   ├── isRetryableDBError(err)?
+  │   │   └── 不可重试 → 返回 err
+  │   ├── 指数退避等待 (1s/2s/4s)
+  │   │   └── select { ctx.Done → 返回; time.After → 继续 }
+  │
+  └── 返回 lastErr
+```
+
+**可重试错误分类**：
+
+| 错误类型 | 可重试 | 原因 |
+|---------|--------|------|
+| `apierror.CodeInternal` | ✅ | 未知 DB 错误，可能是瞬态 |
+| Postgres `deadlock_detected` (40P01) | ✅ | 死锁，重试通常成功 |
+| Postgres `serialization_failure` (40001) | ✅ | 序列化冲突，重试通常成功 |
+| `context.DeadlineExceeded` | ✅ | tx 超时（非 caller 取消），瞬态 |
+| `context.Canceled` | ❌ | caller 主动取消，不应重试 |
+| `apierror.CodeConflict` | ❌ | 业务冲突（唯一键等），重试无意义 |
+| `apierror.CodeBadRequest` | ❌ | 输入错误，重试无意义 |
+| `apierror.CodeNotFound` | ❌ | 数据不存在，重试无意义 |
+
+**幂等性要求**：`fn` 回调必须是幂等的——重试可能多次执行 fn，副作用（事件发布、WS 推送）必须延迟到事务提交后。
+
+### 3.3 事务传播机制
 
 ```go
 // data 层
@@ -863,6 +897,7 @@ message Data {
 |------|---------|
 | `internal/data/data.go` | Data 结构体、初始化流程、ProviderSet、Postgres 双连接池 |
 | `internal/data/tx.go` | 事务管理、嵌套检测、上下文分离、双 key 注入 |
+| `internal/data/tx_retry.go` | DB 事务重试包装（ExecInTxWithRetry，T2.1） |
 | `internal/data/spirit_transactor.go` | biz.SpiritTransactor 适配器 |
 | `internal/data/readwrite.go` | ReadWriteClient 读写分离（Ent） |
 | `internal/data/readwrite_db.go` | ReadWriteDB 读写分离（原生 SQL） |

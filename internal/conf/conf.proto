@@ -103,10 +103,6 @@ message Data {
     string driver = 1;
     string source = 2;
   }
-  message Sqlite {
-    bool enable = 1;
-    string source = 2;
-  }
   // PostgreSQL + pgvector: agent long-term memory (embeddings). Not used by Ent.
   message Postgres {
     string source = 1;
@@ -132,12 +128,15 @@ message Data {
   }
   Database database = 1;
   Redis redis = 2;
-  Sqlite sqlite = 3;
+  // Field 3 was `Sqlite sqlite`, removed in A6 (Postgres is the only primary DB).
+  // Reserved to prevent accidental reuse.
+  reserved 3;
+  reserved "sqlite";
   Postgres postgres = 4;
   InitialAdmin initial_admin = 5;
-  // Primary database driver: "sqlite" (default) or "postgres".
-  // When "postgres", Ent CRUD + raw SQL use the Postgres connection from
-  // data.postgres.source (pgvector/WAL/EventStore share the same pool).
+  // Primary database driver: "postgres" (only supported value after A6).
+  // Ent CRUD + raw SQL use the Postgres connection from data.postgres.source
+  // (pgvector/WAL/EventStore share the same pool).
   string driver = 6;
 }
 

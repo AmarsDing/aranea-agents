@@ -206,10 +206,33 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 		teamID := strings.TrimSpace(sess.TeamID)
 
 		for depth := 0; depth < maxPendingQueueDepth; depth++ {
-			entry, ok := o.chatUC.DequeuePendingMessage(sessionID)
+			// Acquire session lock and atomically peek + check + dequeue.
+			// This eliminates the TOCTOU window between the original Dequeue
+			// (outside lock) and HasActive check (inside lock), and avoids the
+			// dequeue-requeue pattern that lost the message's original position.
+			unlock := o.lockSession(sessionID)
+			entry, ok := o.chatUC.PeekPendingMessage(sessionID)
 			if !ok {
+				unlock()
 				return // queue empty
 			}
+			if o.runs.HasActive(sessionID) {
+				// Another turn is active (e.g. user used "send now" to
+				// interrupt). Leave the message at the head of the queue
+				// (preserving its original position/priority) and stop the
+				// loop; the active turn's defer will re-enter processPendingQueue.
+				unlock()
+				return
+			}
+			// Dequeue is guaranteed to return the same head we just peeked:
+			// we hold the session lock, and the only dequeue path for this
+			// session is this loop (recursive processPendingQueue calls are
+			// suppressed by loopCtx via contextWithPendingLoop).
+			entry, _ = o.chatUC.DequeuePendingMessage(sessionID)
+			bgCtx, cancel := context.WithCancel(loopCtx)
+			o.runs.SetPendingCancel(sessionID, cancel)
+			unlock()
+
 			pendingContent := entry.Content
 			pendingEntryID := entry.ID
 			pendingEmitter := event.NewFlowLogger(o.td().Pipeline.Bus, o.td().Pipeline.Buffer, sessionID, ag.AgentKey, o.lg())
@@ -217,25 +240,6 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 				event.P("entry_id", pendingEntryID),
 				event.P("content_len", len(pendingContent)),
 				event.P("depth", depth))
-
-			// Acquire session lock only for the admission check, then release
-			// it so the turn itself doesn't hold the lock for its full duration
-			// (mirrors the original goroutine-per-message behavior where the
-			// lock was held but a new goroutine didn't block enqueue).
-			unlock := o.lockSession(sessionID)
-			if o.runs.HasActive(sessionID) {
-				// Another turn is active (e.g. user used "send now" to
-				// interrupt). Re-enqueue preserving content and stop the loop;
-				// the active turn's defer will re-enter processPendingQueue.
-				o.chatUC.EnqueuePendingMessage(sessionID, pendingContent)
-				unlock()
-				pendingEmitter.Log("chat.pending_dequeue", event.FlowPhaseDone, "会话仍活跃，消息已重新入队",
-					event.P("entry_id", pendingEntryID))
-				return
-			}
-			bgCtx, cancel := context.WithCancel(loopCtx)
-			o.runs.SetPendingCancel(sessionID, cancel)
-			unlock()
 
 			pendingInput := biz.TurnInput{
 				SessionID: sessionID,

@@ -11,8 +11,8 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
-	araneasession "aranea-agents/internal/session"
 	"aranea-agents/internal/provider"
+	araneasession "aranea-agents/internal/session"
 	"aranea-agents/pkg/loggateway"
 
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
@@ -37,11 +37,11 @@ type TurnReadDeps struct {
 
 // PersistenceSet groups the session and memory persistence services for a turn.
 type PersistenceSet struct {
-	Session    trpcsession.Service  // SQLite-backed or in-memory session service
-	Memory     MemorySet            // TRPC memory service + L0–L4 admin port
-	AgentMCP   *biz.AgentMCPTooling // per-agent MCP tool configuration
-	Artifact   trpcartifact.Service // optional; wired from biz.ArtifactUsecase adapter
-	ArtifactUC *biz.ArtifactUsecase // optional; attachment ref resolution for turns
+	Session        trpcsession.Service        // primary-DB-backed or in-memory session service
+	Memory         MemorySet                  // TRPC memory service + L0–L4 admin port
+	AgentMCP       *biz.AgentMCPTooling       // per-agent MCP tool configuration
+	Artifact       trpcartifact.Service       // optional; wired from biz.ArtifactUsecase adapter
+	ArtifactUC     *biz.ArtifactUsecase       // optional; attachment ref resolution for turns
 	RunnerRollback RunnerSessionRollbackStore // optional framework-session rollback boundary store
 }
 
@@ -119,11 +119,6 @@ func (d TurnDeps) RoundTripForSession(sessionID string) *provider.RoundTrip {
 		}
 	}
 	return rt
-}
-
-// SQLiteSessionMemory reports whether the turn has an active SQLite memory store.
-func (d TurnDeps) SQLiteSessionMemory() bool {
-	return d.Persist.Memory.Available()
 }
 
 // NewRunnerManagerFromPersist builds a RunnerManager from a wired PersistenceSet.

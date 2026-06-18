@@ -83,6 +83,19 @@ func (a *pendingQueueAdapter) Dequeue(sessionID string) (biz.PendingQueueEntry, 
 	}, true
 }
 
+func (a *pendingQueueAdapter) Peek(sessionID string) (biz.PendingQueueEntry, bool) {
+	e, ok := a.PendingMessageQueue.Peek(sessionID)
+	if !ok {
+		return biz.PendingQueueEntry{}, false
+	}
+	return biz.PendingQueueEntry{
+		ID:        e.ID,
+		Content:   e.Content,
+		Status:    e.Status,
+		CreatedAt: e.CreatedAt,
+	}, true
+}
+
 func (a *pendingQueueAdapter) Close() {
 	a.PendingMessageQueue.Close()
 }

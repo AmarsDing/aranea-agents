@@ -136,6 +136,22 @@ func (q *PendingMessageQueue) EnqueueFollowup(sessionID, content, separator stri
 	return id
 }
 
+// Peek returns the head of the session queue without removing it.
+//
+// Used by callers that need to inspect the next pending message before
+// deciding whether to dequeue (e.g., processPendingQueue's atomic
+// check-and-dequeue under the session lock, which eliminates the TOCTOU
+// window between Dequeue and the HasActive admission check).
+func (q *PendingMessageQueue) Peek(sessionID string) (PendingMessage, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	queue := q.queues[sessionID]
+	if len(queue) == 0 {
+		return PendingMessage{}, false
+	}
+	return queue[0], true
+}
+
 func (q *PendingMessageQueue) Dequeue(sessionID string) (PendingMessage, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()

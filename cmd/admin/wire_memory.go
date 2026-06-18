@@ -84,7 +84,7 @@ func provideMemoryTRPCService(
 	if d == nil {
 		return nil
 	}
-	return memtrpc.NewSQLiteMemoryService(
+	return memtrpc.NewMemoryService(
 		data.NewL3FactReaderForUser(d),
 		data.NewL3FactWriterAdapter(d, d.VectorStore()),
 		factSync,

@@ -31,25 +31,50 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { computed, watch } from 'vue';
 import type { ActionEvent } from '../../features/chat/streamEventTypes';
 import type { ToolUseEvent } from '../../features/chat/types';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 import { isTodoWriteTool } from '../../features/chat/activityPresentation';
+import { useCollapseState } from '../../features/chat/composables/useCollapseState';
 import TodoInlineList from './TodoInlineList.vue';
+
+/** T8.4: Tool result/arguments longer than this threshold auto-collapse. */
+const RESULT_COLLAPSE_THRESHOLD = 500;
 
 const props = defineProps<{
   activity: ActionEvent;
   agentColor?: string;
 }>();
 
-const expanded = ref(false);
-
-function toggleExpand() {
-  expanded.value = !expanded.value;
-}
-
 const isTodo = computed(() => isTodoWriteTool(props.activity.tool.toolName));
+
+/** T8.4: Compute total content length to decide auto-collapse. */
+const contentLength = computed(() => {
+  const result = props.activity.tool.result ?? '';
+  const args = props.activity.tool.arguments ?? '';
+  return result.length + args.length;
+});
+
+/** T8.4: Default collapsed when content exceeds threshold. */
+const defaultCollapsed = computed(() => contentLength.value > RESULT_COLLAPSE_THRESHOLD);
+
+// T8.4: Persisted collapse state (remembered across re-renders/refreshes).
+// Note: useCollapseState reads the initial defaultCollapsed at setup time.
+// For activity blocks, the content is typically available immediately, so
+// this is fine. If content arrives later, the watch below syncs the default.
+const { collapsed, toggle, setCollapsed } = useCollapseState(
+  `action:${props.activity.id}`,
+  defaultCollapsed.value,
+);
+
+// If content grows beyond threshold after initial render (e.g., streaming result),
+// auto-collapse unless the user has explicitly expanded.
+watch(contentLength, (len, prevLen) => {
+  if (len > RESULT_COLLAPSE_THRESHOLD && prevLen <= RESULT_COLLAPSE_THRESHOLD) {
+    setCollapsed(true);
+  }
+});
 
 /** Adapt ToolActivity (AF type) to ToolUseEvent for TodoInlineList consumption. */
 const todoEvent = computed<ToolUseEvent>(() => {
@@ -74,6 +99,12 @@ const todoEvent = computed<ToolUseEvent>(() => {
     duration_ms: t.durationMs ?? undefined,
   };
 });
+
+const expanded = computed(() => !collapsed.value);
+
+function toggleExpand() {
+  toggle();
+}
 
 const statusClass = computed(() => ({
   'act-activity__status--running': props.activity.tool.status === 'running',

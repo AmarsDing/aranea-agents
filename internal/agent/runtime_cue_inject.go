@@ -23,11 +23,11 @@ func newStaticRuntimeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		promptDeps := Deps{
-			Agents:              deps.Agents,
-			AgentUC:             deps.AgentUC,
-			SQLiteSessionMemory: deps.HasMemory,
-			LG:                  deps.Logger(),
-			CustomToolKeys:      customKeys,
+			Agents:                 deps.Agents,
+			AgentUC:                deps.AgentUC,
+			SessionMemoryAvailable: deps.HasMemory,
+			LG:                     deps.Logger(),
+			CustomToolKeys:         customKeys,
 		}
 		cue := StaticRuntimeCapabilityCue(ctx, promptDeps, ag)
 		if cue == "" {
@@ -53,11 +53,11 @@ func newDynamicRuntimeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callback
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		promptDeps := Deps{
-			Agents:              deps.Agents,
-			AgentUC:             deps.AgentUC,
-			SQLiteSessionMemory: deps.HasMemory,
-			LG:                  deps.Logger(),
-			CustomToolKeys:      customKeys,
+			Agents:                 deps.Agents,
+			AgentUC:                deps.AgentUC,
+			SessionMemoryAvailable: deps.HasMemory,
+			LG:                     deps.Logger(),
+			CustomToolKeys:         customKeys,
 		}
 		cue := DynamicRuntimeCapabilityCue(ctx, promptDeps, ag)
 		if cue == "" {

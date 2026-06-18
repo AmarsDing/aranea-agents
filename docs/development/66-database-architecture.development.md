@@ -49,6 +49,7 @@
 | SQLite 双连接池 | ✅ | 写=1, 读=2, WAL 模式, 5 个 PRAGMA |
 | PostgreSQL 双连接池 | ✅ | 写=16, 读=32, 降级策略 |
 | 事务管理（ExecInTx） | ✅ | 嵌套检测 + 分离上下文 + 30s 超时 + 调用者取消检测 + 双 key 注入 |
+| 事务重试（ExecInTxWithRetry） | ✅ | 3 次重试 + 指数退避（1s/2s/4s）+ 仅对 CodeInternal/deadlock/serialization_failure 重试（T2.1） |
 | PostgreSQL 事务 | ✅ | PostgresExecInTx 独立方法 |
 | 事务抽象 | ✅ | SpiritTransactor 接口 + 适配器 |
 | 读写分离（Ent） | ✅ | ReadWriteClient |
@@ -117,6 +118,16 @@
 **改动文件**：`internal/data/tx.go`, `internal/data/spirit_transactor.go`
 
 **验证**：`go test ./internal/data/... -run TestTx -count=1`
+
+#### Task 1.3b: DB 事务重试包装（T2.1） ✅
+
+- [x] 实现 `ExecInTxWithRetry()`（3 次重试 + 指数退避 1s/2s/4s，caller ctx 取消立即返回）
+- [x] 实现 `isRetryableDBError()`（CodeInternal/deadlock/serialization_failure/DelayExceeded 可重试；Canceled/Conflict/BadRequest/NotFound 不重试）
+- [x] 8 个测试用例 + 11 个子测试，`-race` 全部通过
+
+**改动文件**：`internal/data/tx_retry.go`, `internal/data/tx_retry_test.go`
+
+**验证**：`go test -race ./internal/data/... -run "TestExecInTxWithRetry|TestIsRetryableDBError" -count=1`
 
 #### Task 1.4: 错误转换与就绪门控 ✅
 
@@ -375,6 +386,7 @@
 |------|------|
 | `internal/data/data.go` | Data 结构体、初始化、ProviderSet、Postgres 双连接池 |
 | `internal/data/tx.go` | 事务管理、嵌套检测、上下文分离、双 key 注入 |
+| `internal/data/tx_retry.go` | DB 事务重试包装（ExecInTxWithRetry，T2.1） |
 | `internal/data/spirit_transactor.go` | biz.SpiritTransactor 适配器 |
 | `internal/data/readwrite.go` | ReadWriteClient（Ent 读写分离） |
 | `internal/data/readwrite_db.go` | ReadWriteDB（原生 SQL 读写分离） |
