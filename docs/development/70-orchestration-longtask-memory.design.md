@@ -221,18 +221,75 @@ func (s *service) runChild(ctx, req) {
 ```go
 // internal/event/postgres_eventstore.go 新增
 type PostgresEventStore struct {
-    db *pgxpool.Pool
+    db *sql.DB        // Postgres 连接（来自 data.Data.Postgres()）
+    lg loggateway.Logger
 }
 
-// Save 持久化事件到 Postgres
+// Save 持久化事件到 Postgres（幂等：ON CONFLICT DO NOTHING）
 func (s *PostgresEventStore) Save(ctx, envelope *Envelope) error
 
-// Replay 从 Postgres 回放事件（WS 重连时）
-func (s *PostgresEventStore) Replay(ctx, sessionID string, afterEventID string) ([]*Envelope, error)
+// Replay 从 Postgres 回放事件（WS 重连时），支持 afterEventID 游标 + limit 上限
+func (s *PostgresEventStore) Replay(ctx, sessionID string, afterEventID string, limit int) ([]*Envelope, error)
 
 // Cleanup 清理过期事件
 func (s *PostgresEventStore) Cleanup(ctx, before time.Time) error
+
+// EnsureSchema 幂等建表（构造时调用）
+func (s *PostgresEventStore) EnsureSchema(ctx) error
 ```
+
+**`CrossProcessStore` 窄接口**（`internal/event/contract/bus.go`，`Stability:evolving`）：
+
+```go
+type CrossProcessStore interface {
+    Save(ctx context.Context, env *Envelope) error
+    Replay(ctx context.Context, sessionID string, afterEventID string, limit int) ([]*Envelope, error)
+}
+```
+
+> 上层（`EventBusConsumer`/`WSServer`）依赖 `contract.CrossProcessStore` 接口而非具体实现，避免分层违规。`PostgresEventStore` 实现该接口。
+
+**双写路径**（`internal/biz/event_bus_consumer.go::handleEnvelope`）：
+
+```go
+// shouldPersistEnvelope(env) 为真时，best-effort 非阻塞写 Postgres
+if c.crossProcessSink != nil && shouldPersistEnvelope(env) {
+    if err := c.crossProcessSink.Save(ctx, &env); err != nil && c.logger != nil {
+        c.logger.LogSessionWarn(ctx, env.SessionID, "event_store.cross_process",
+            "跨进程事件持久化失败", ...)
+    }
+}
+```
+
+- 双写为 best-effort：失败仅 Warn 日志，不阻塞主流程（符合 Informational/Important 级别语义）
+- `shouldPersistEnvelope` 过滤掉纯日志类事件，避免 Postgres 写入压力
+
+**WS replay fallback**（`internal/server/ws_event.go::replayEvents`）：
+
+```go
+// 内存 buffer 为空时回退到 Postgres
+if len(events) == 0 && s.crossProcessStore != nil {
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    pgEvents, err := s.crossProcessStore.Replay(ctx, sessionID, lastEventID, 100)
+    cancel()
+    if err == nil {
+        for _, env := range pgEvents {
+            events = append(events, *env)
+        }
+    }
+}
+```
+
+- 5s 超时防止 Postgres 慢查询阻塞 WS 重连
+- 仅在内存 buffer 为空时触发（进程重启或跨实例重连场景）
+
+**Wire 接线**（`cmd/admin/wire.go` + `cmd/admin/app.go`）：
+
+- `providePostgresEventStore` 从 `data.Data.Postgres()` 取连接，构造时 `EnsureSchema` 幂等建表
+- `startReadinessDependentServices` 在 `consumer.Start(ctx)` 前调用 `consumer.WithCrossProcessSink(pgEventStore)`
+- `WSServer` 通过 `infra.CrossProcessStore` 注入（`NewInfra` 第三参数）
+
+**错误域**：`apierror.DomainEventStore = "EVENT_STORE"`（`pkg/apierror/domains.go`），所有 PostgresEventStore 错误经 `apierror.Wrap(err, CodeInternal, DomainEventStore)` 翻译。
 
 ### 3.4 任务级心跳
 
@@ -489,7 +546,14 @@ type GeneratedAgentDefinition struct {
 
 func (f *AgentFactoryImpl) generateAgentDefinition(ctx, profile TaskProfile) (*GeneratedAgentDefinition, error) {
     // 1. 从模板库选择最接近的模板作为基础
-    template := f.selectClosestTemplate(ctx, profile)
+    template, tmplErr := f.selectClosestTemplate(ctx, profile)
+    if tmplErr != nil {
+        // CQ-3 修复：模板查询失败时 Warn 日志并降级为空模板，不中断生成流程
+        f.lg.Warn("AgentFactory 模板查询失败，使用空模板",
+            loggateway.StepID("agent_factory.template_query"),
+            loggateway.Err(tmplErr),
+        )
+    }
 
     // 2. LLM 定制化
     prompt := fmt.Sprintf(`Based on the task profile, generate an agent definition:
@@ -509,6 +573,39 @@ Generate a JSON agent definition with: agent_key, display_name, description, pro
     // ... 解析 JSON 并返回
 }
 ```
+
+**Allocator 集成**（`internal/agent/agent_allocator_impl.go`，P1-4 审查修复）：
+
+4 层匹配失败时，allocator 优先调用 AgentFactory，再降级为 Spirit fallback。两条路径：
+
+```go
+// SubTask 路径
+allocation, err := impl.matchSubTask(ctx, subTask, capabilities, traceID)
+if err != nil {
+    // P1-4: 4-layer matching failed → try AgentFactory before fallback.
+    if factoryAlloc, ok := impl.tryAgentFactoryForSubTask(ctx, subTask, traceID); ok {
+        allocations = append(allocations, factoryAlloc)
+        continue
+    }
+    allocation = impl.fallbackAllocation(subTask, capabilities)
+}
+
+// Whole-plan 路径（无 subtasks 时）
+allocation, err := impl.matchWholePlan(ctx, taskPlan, capabilities, traceID)
+if err != nil {
+    if factoryAlloc, ok := impl.tryAgentFactoryForPlan(ctx, taskPlan, traceID); ok {
+        allocations = append(allocations, factoryAlloc)
+    } else {
+        allocation = impl.fallbackWholePlanAllocation(taskPlan, capabilities)
+        allocations = append(allocations, allocation)
+    }
+}
+```
+
+`tryAgentFactoryForSubTask`/`tryAgentFactoryForPlan` 契约：
+- AgentFactory 为 nil 或 `EnsureAgent` 失败 → 返回 `(zero, false)`，caller 继续降级
+- 成功 → 返回 `TaskAllocation{MatchLayer: "factory", MatchReason: "AgentFactory 动态创建"}`，便于观测区分
+- `TaskProfile` 构造：SubTask 路径用 `subTask.RequiredCapabilities` + `subTask.Description`（空则用 Name）；Whole-plan 路径用 `extractCapabilityHints(taskPlan.UserMessage)` + `taskPlan.UserMessage`
 
 ---
 
@@ -669,20 +766,55 @@ interface TimelineStep {
 ### 7.2 跨边界 Trace 传播
 
 ```go
-// internal/service/turn_trace.go 扩展
-type OrchestrationSpan struct {
-    TraceID   string
-    PlanSpan  trace.Span  // 规划阶段
-    AllocSpan trace.Span  // 分配阶段（child of PlanSpan）
-    OrchSpan  trace.Span  // 编排阶段（child of AllocSpan）
-    NodeSpans []trace.Span // Graph 节点（children of OrchSpan）
+// internal/telemetry/turntrace/bridge.go 新增（P3-2 落地）
+type Bridge struct {
+    mu       sync.Mutex
+    domain   Domain
+    root     trace.Span
+    llm      trace.Span
+    tool     map[string]trace.Span
+    plan     trace.Span // PhasePlan 阶段 span（root 的 child）
+    alloc    trace.Span // PhaseAlloc 阶段 span
+    orch     trace.Span // PhaseOrch 阶段 span
+    finished bool
 }
 
-// 通过 context 传播 TraceID
-func WithOrchestrationTrace(ctx context.Context, span OrchestrationSpan) context.Context {
-    return context.WithValue(ctx, orchestrationTraceKey{}, span)
+// 阶段名常量
+const (
+    PhasePlan  = "plan"
+    PhaseAlloc = "alloc"
+    PhaseOrch  = "orch"
+)
+
+// Start 创建 turn root span 并通过 WithBridge 注入 ctx
+func Start(ctx context.Context, cfg Config) (context.Context, *Bridge, trace.Span)
+
+// StartPhase 开启阶段 span（root 的 child），返回带 span 的 ctx；nil-safe
+func (b *Bridge) StartPhase(ctx context.Context, phase string, attrs ...attribute.KeyValue) (context.Context, trace.Span)
+
+// EndPhase 结束阶段 span 并记录错误状态（nil-safe，safe for non-started phases）
+func (b *Bridge) EndPhase(phase string, err error)
+```
+
+**错误传播修复（CQ-1）**：
+
+`executePlanPhase`/`executeAllocatePhase`/`Orchestrate` 改为命名返回值 + `defer EndPhase`，确保 panic/early-return 路径下 span 也能正确记录错误状态：
+
+```go
+// internal/tools/spirit_tools.go
+func (e *SpiritToolsExecutor) executePlanPhase(...) (plan *biz.TaskPlan, step biztypes.OrchestrationStepRecord, err error) {
+    bridge := turntrace.FromContext(ctx)
+    ctx, _ = bridge.StartPhase(ctx, turntrace.PhasePlan)
+    defer func() { bridge.EndPhase(turntrace.PhasePlan, err) }()
+
+    plan, err = e.planner.Plan(ctx, ...)  // 注意：用 = 而非 := 避免 shadowing 命名返回
+    if err != nil { return nil, step, err }
+    // ...
+    return plan, step, nil
 }
 ```
+
+> 关键：`:=` 会 shadow 命名返回值，导致 `defer` 中的 `err` 永远为 nil。改为 `=` 赋值后，`defer EndPhase(phase, err)` 能正确捕获实际错误。
 
 ### 7.3 Spirit 编排阶段 Metrics
 
@@ -840,14 +972,38 @@ type Memory struct {
     Topics    []string
     Kind      Kind
     Metadata  Metadata
-    // 新增
+    // 新增（指针类型，nil 表示未设置）
     ValidFrom  *time.Time `json:"valid_from,omitempty"`
     ValidUntil *time.Time `json:"valid_until,omitempty"`
 }
 
-// SearchMemories 默认过滤
-// WHERE valid_until IS NULL OR valid_until > now()
+type Entry struct {
+    // ... 既有字段
+    ValidFrom  *time.Time `json:"valid_from,omitempty"`
+    ValidUntil *time.Time `json:"valid_until,omitempty"`
+}
 ```
+
+**SQLite 迁移**（`internal/data/sql/migrations/20260725_memory_bitemporal.sql`，版本 20260725）：
+
+```sql
+-- 实际表名为 memory_facts（非 memories），列类型为 TEXT（非 TIMESTAMP），
+-- 与 SQLite 既有 schema 一致。空字符串表示未设置。
+ALTER TABLE memory_facts ADD COLUMN valid_from TEXT NOT NULL DEFAULT '';
+ALTER TABLE memory_facts ADD COLUMN valid_until TEXT NOT NULL DEFAULT '';
+
+-- 部分索引：仅索引当前有效记录，加速 SearchMemories 默认过滤
+CREATE INDEX IF NOT EXISTS idx_memory_facts_valid_until
+  ON memory_facts(valid_until)
+  WHERE valid_until = '';
+```
+
+**冲突检测与失效**（`internal/memory/trpc/sqlite_adapter.go`）：
+
+- 写入时检测同 key 冲突 → 旧记录 `valid_until = now`（不删除，保留历史）→ 新记录 `valid_from = now` 写入
+- `InvalidateFact(ctx, key)` 显式失效单条记录
+- `SearchMemories` 默认过滤：`WHERE valid_until = '' OR valid_until > now()`（仅返回当前有效记忆）
+- 历史重建查询：显式传入 `includeInvalidated=true` 跳过过滤，按 `valid_from`/`valid_until` 重建时间线
 
 ### 9.2 Ebbinghaus 衰减评分
 
@@ -1010,31 +1166,45 @@ field.Enum("source").Values("user", "system", "imported").Default("user").Commen
 
 ### 11.2 Memory 表新增列
 
+> 注：实际表名为 `memory_facts`（非 `memories`），Bi-temporal 列（P3-8）类型为 `TEXT NOT NULL DEFAULT ''`（非 `TIMESTAMP`），与 SQLite 既有 schema 一致。Ebbinghaus/链接图相关列（P3-9/P3-12）尚未实现，保留原设计。
+
 ```sql
-ALTER TABLE memories ADD COLUMN valid_from TIMESTAMP;
-ALTER TABLE memories ADD COLUMN valid_until TIMESTAMP;
-ALTER TABLE memories ADD COLUMN access_count INTEGER DEFAULT 0;
-ALTER TABLE memories ADD COLUMN last_accessed_at TIMESTAMP;
-ALTER TABLE memories ADD COLUMN decay_score FLOAT DEFAULT 1.0;
-ALTER TABLE memories ADD COLUMN links JSONB DEFAULT '[]';
-ALTER TABLE memories ADD COLUMN keywords JSONB DEFAULT '[]';
-ALTER TABLE memories ADD COLUMN tags JSONB DEFAULT '[]';
+-- P3-8 已落地（internal/data/sql/migrations/20260725_memory_bitemporal.sql）
+ALTER TABLE memory_facts ADD COLUMN valid_from TEXT NOT NULL DEFAULT '';
+ALTER TABLE memory_facts ADD COLUMN valid_until TEXT NOT NULL DEFAULT '';
+
+-- P3-9/P3-12 待落地（保留原设计，类型待 SQLite 适配）
+ALTER TABLE memory_facts ADD COLUMN access_count INTEGER DEFAULT 0;
+ALTER TABLE memory_facts ADD COLUMN last_accessed_at TIMESTAMP;
+ALTER TABLE memory_facts ADD COLUMN decay_score FLOAT DEFAULT 1.0;
+ALTER TABLE memory_facts ADD COLUMN links JSON DEFAULT '[]';
+ALTER TABLE memory_facts ADD COLUMN keywords JSON DEFAULT '[]';
+ALTER TABLE memory_facts ADD COLUMN tags JSON DEFAULT '[]';
 ```
 
 ### 11.3 新增事件表
 
+> P1-6 已落地（`internal/event/postgres_eventstore.go::EnsureSchema`），实际 schema 与原设计略有差异：增加 `run_id` 列、`event_id` 唯一索引、`created_at` 改为 `TIMESTAMPTZ`。
+
 ```sql
-CREATE TABLE event_store (
+-- 实际实现（PostgresEventStore.EnsureSchema，幂等 CREATE IF NOT EXISTS）
+CREATE TABLE IF NOT EXISTS event_store (
     id BIGSERIAL PRIMARY KEY,
     event_id VARCHAR(64) NOT NULL,
     session_id VARCHAR(64) NOT NULL,
+    run_id VARCHAR(64),
     envelope_type VARCHAR(64) NOT NULL,
     payload JSONB NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW(),
-    INDEX idx_event_store_session_created (session_id, created_at),
-    INDEX idx_event_store_type (envelope_type)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_event_store_event_id ON event_store (event_id);
+CREATE INDEX IF NOT EXISTS idx_event_store_session_created ON event_store (session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_event_store_type ON event_store (envelope_type);
 ```
+
+- `event_id` 唯一索引保证 `Save` 幂等（`ON CONFLICT DO NOTHING`）
+- `run_id` 可选列，便于按 run 维度查询
+- `created_at` 用 `TIMESTAMPTZ` 带时区，避免跨时区问题
 
 ---
 

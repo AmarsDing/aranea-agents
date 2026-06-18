@@ -73,6 +73,11 @@ export type StreamHandlerCtx = {
    * See docs/reports/2026-06-10-proposal-execution-progress-inline.md
    */
   onExecutionProgress?: (env: Envelope) => void;
+  /**
+   * Run heartbeat (P1-7): periodic run progress. Callers use this to update
+   * progress UI; the heartbeat also resets the run-stale timer.
+   */
+  onHeartbeat?: (env: Envelope) => void;
   /** Team-only: resolve member meta for member_* envelopes */
   resolveMemberMeta?: (agentKey: string) => { agent_key: string; name: string; role: string };
   /**
@@ -383,6 +388,16 @@ export function bindStreamHandlers(
       }),
     );
   }
+
+  // P1-7: run_heartbeat resets the run activity timer (prevents stale
+  // detection) and forwards the envelope to the UI for progress rendering.
+  stream.onType(
+    'run_heartbeat',
+    withSessionFilter(ctx, (env) => {
+      ctx.onRunActivity?.();
+      ctx.onHeartbeat?.(env);
+    }),
+  );
 
   // === Fallback handlers for raw error/runner_completion envelopes ===
   // In AF mode, the backend wraps errors into activity_start(kind=error) and

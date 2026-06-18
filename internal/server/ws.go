@@ -12,6 +12,7 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -67,6 +68,7 @@ type WSServer struct {
 	eventBus              event.Bus
 	monitorBus            event.Bus
 	eventBuffer           *event.Buffer
+	crossProcessStore     contract.CrossProcessStore // optional (P1-6): Postgres replay fallback
 	canceller             RunCanceller
 	sender                ChatSender
 	turnExecutor          WSTurnExecutor
@@ -94,7 +96,7 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 		return nil
 	}
 	if infra == nil {
-		infra = event.NewInfra(lg, nil)
+		infra = event.NewInfra(lg, nil, nil)
 	}
 	monitor := infra.MonitorBus
 	if monitor == nil {
@@ -106,6 +108,7 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 		eventBus:              infra.SessionBus,
 		monitorBus:            monitor,
 		eventBuffer:           infra.Buffer,
+		crossProcessStore:     infra.CrossProcessStore,
 		canceller:             canceller,
 		sender:                sender,
 		turnExecutor:          turnExecutor,

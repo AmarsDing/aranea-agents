@@ -1223,5 +1223,16 @@ export default {
     online: '在线',
     waitingForPredecessor: '等待前置任务完成…',
   },
+  orchestration: {
+    timeline: {
+      title: '编排时间线',
+      phases: {
+        planning: '规划',
+        allocation: '分配',
+        orchestration: '编排',
+        delivery: '交付',
+      },
+    },
+  },
 
 };

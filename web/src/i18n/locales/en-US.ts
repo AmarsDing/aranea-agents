@@ -1235,5 +1235,16 @@ export default {
     online: 'Online',
     waitingForPredecessor: 'Waiting for predecessor to complete…',
   },
+  orchestration: {
+    timeline: {
+      title: 'Orchestration Timeline',
+      phases: {
+        planning: 'Planning',
+        allocation: 'Allocation',
+        orchestration: 'Orchestration',
+        delivery: 'Delivery',
+      },
+    },
+  },
 
 };

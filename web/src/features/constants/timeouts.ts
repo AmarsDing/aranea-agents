@@ -22,6 +22,7 @@ export const WS_MAX_RECONNECT_DELAY_MS = 30_000           // Max reconnect delay
 export const WS_MAX_RECONNECT_ATTEMPTS = 10               // Max reconnect attempts
 export const WS_HEARTBEAT_INTERVAL_MS = 25_000            // Business WS ping interval
 export const WS_RECONNECT_BASE_DELAY_MS = 1_000           // Reconnect base delay (exponential backoff)
+export const WS_RUN_STALE_TIMEOUT_MS = 30_000             // Run stale threshold (no run_heartbeat)
 
 // ── Server Heartbeat ───────────────────────────────────────────────────
 export const HEARTBEAT_PING_INTERVAL_MS = 15_000          // Health-check ping interval

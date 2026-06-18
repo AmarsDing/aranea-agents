@@ -72,6 +72,9 @@ export type EnvelopeType =
   // TraceEmitter.EmitProgress to drive the inline progress card.
   // See docs/reports/2026-06-10-proposal-execution-progress-inline.md
   | 'execution_progress'
+  // Run heartbeat (P1-7): periodic run progress so frontend can detect
+  // stale runs within 30s. Published by RunHeartbeatEmitter every 10s.
+  | 'run_heartbeat'
   // AF: Activity-First envelope types — backend projects Activity lifecycle events
   | 'activity_start'
   | 'activity_delta'

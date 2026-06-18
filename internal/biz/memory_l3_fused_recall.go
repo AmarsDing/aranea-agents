@@ -8,6 +8,16 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
+const (
+	// decayFuseBase is the retained fraction of Total when Decay=0 (no fusion).
+	// decayFuseWeight is the additional fraction restored as Decay approaches 1.0.
+	// Final Total = Total * (decayFuseBase + decayFuseWeight*Decay).
+	// When Decay=1.0 (no forgetting), Total is unchanged (0.7+0.3=1.0).
+	// When Decay→0+ (fully forgotten), Total retains 70% of its value.
+	decayFuseBase   = 0.7
+	decayFuseWeight = 0.3
+)
+
 // RecallScoreBreakdown is the component-wise recall ranking for one hit.
 type RecallScoreBreakdown struct {
 	Keyword      float64
@@ -17,6 +27,7 @@ type RecallScoreBreakdown struct {
 	QualityScore float64
 	SessionBoost float64
 	CrossEncoder float64
+	Decay        float64 // Ebbinghaus reachability R_t in (0,1]; 0 means not computed
 	Total        float64
 }
 
@@ -156,6 +167,15 @@ func (uc *MemoryL3RecallUsecase) RecallFactsFused(ctx context.Context, q L3Fused
 			return nil, err
 		}
 		merged = append(merged, hits...)
+	}
+	// Fuse Ebbinghaus decay factor into Total before ranking. When Decay > 0,
+	// Total is scaled by (0.7 + 0.3*Decay); when Decay == 0 (not computed),
+	// Total is unaffected. This down-weights low-reachability (forgotten)
+	// memories so they rank lower in fused recall.
+	for i := range merged {
+		if merged[i].Scores.Decay > 0 {
+			merged[i].Scores.Total *= decayFuseBase + decayFuseWeight*merged[i].Scores.Decay
+		}
 	}
 	sort.Slice(merged, func(i, j int) bool {
 		return merged[i].Scores.Total > merged[j].Scores.Total

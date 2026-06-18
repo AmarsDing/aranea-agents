@@ -176,7 +176,7 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 }
 
 // executePlanPhase runs Phase 1 of plan_and_execute: task planning.
-func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID string, deps planAndExecuteDeps) (*biz.TaskPlan, biztypes.OrchestrationStepRecord, error) {
+func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID string, deps planAndExecuteDeps) (plan *biz.TaskPlan, step biztypes.OrchestrationStepRecord, err error) {
 	// Start plan phase span (P3-2): Trace propagation across Spirit→Team→Graph.
 	bridge := turntrace.FromContext(ctx)
 	if bridge != nil {
@@ -184,7 +184,7 @@ func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID string, d
 	}
 	defer func() {
 		if bridge != nil {
-			bridge.EndPhase(turntrace.PhasePlan, nil)
+			bridge.EndPhase(turntrace.PhasePlan, err)
 		}
 	}()
 
@@ -193,15 +193,15 @@ func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID string, d
 		UserMessage:     taskPrompt,
 		SpiritSessionID: spiritSessionID,
 	}
-	taskPlan, err := deps.planner.Plan(ctx, planInput)
-	if err != nil {
+	taskPlan, planErr := deps.planner.Plan(ctx, planInput)
+	if planErr != nil {
 		return nil, biztypes.OrchestrationStepRecord{
 			StepName:   "plan",
 			Status:     "failed",
-			Error:      err.Error(),
+			Error:      planErr.Error(),
 			StartedAt:  start,
 			FinishedAt: time.Now().UTC(),
-		}, apierror.Internal(apierror.DomainSpirit, "plan failed: "+err.Error())
+		}, apierror.Internal(apierror.DomainSpirit, "plan failed: "+planErr.Error())
 	}
 	return taskPlan, biztypes.OrchestrationStepRecord{
 		StepName:   "plan",
@@ -212,7 +212,7 @@ func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID string, d
 }
 
 // executeAllocatePhase runs Phase 2 of plan_and_execute: agent allocation.
-func executeAllocatePhase(ctx context.Context, taskPlan *biz.TaskPlan, deps planAndExecuteDeps) (*biz.AllocationPlan, biztypes.OrchestrationStepRecord, error) {
+func executeAllocatePhase(ctx context.Context, taskPlan *biz.TaskPlan, deps planAndExecuteDeps) (allocPlan *biz.AllocationPlan, step biztypes.OrchestrationStepRecord, err error) {
 	// Start allocate phase span (P3-2): Trace propagation across Spirit→Team→Graph.
 	bridge := turntrace.FromContext(ctx)
 	if bridge != nil {
@@ -220,12 +220,12 @@ func executeAllocatePhase(ctx context.Context, taskPlan *biz.TaskPlan, deps plan
 	}
 	defer func() {
 		if bridge != nil {
-			bridge.EndPhase(turntrace.PhaseAlloc, nil)
+			bridge.EndPhase(turntrace.PhaseAlloc, err)
 		}
 	}()
 
 	start := time.Now().UTC()
-	allocPlan, err := deps.allocator.Allocate(ctx, taskPlan)
+	allocPlan, err = deps.allocator.Allocate(ctx, taskPlan)
 	if err != nil {
 		deps.lg.Warn("plan_and_execute: allocation failed, returning plan only",
 			loggateway.StepID("spirit.plan_and_execute.alloc_fail"),

@@ -198,6 +198,10 @@ type L2RecallStore interface {
 type L3FactReader interface {
 	ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword string, limit, offset int32) ([][]byte, int32, int32, int32, error)
 	ListFactRowsForUser(ctx context.Context, scopeType, scopeID, userID, keyword string, limit, offset int32) ([][]byte, error)
+	// ListFactRowsForUserAll returns facts for a user including invalidated
+	// ones (valid_until != ''). Used for historical reconstruction queries
+	// when SearchOptions.IncludeInvalidated is true.
+	ListFactRowsForUserAll(ctx context.Context, scopeType, scopeID, userID, keyword string, limit, offset int32) ([][]byte, error)
 	GetFactRowsByIDs(ctx context.Context, factIDs []string) ([][]byte, error)
 	RecallL3Facts(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32, minScore float64) ([][]byte, error)
 }

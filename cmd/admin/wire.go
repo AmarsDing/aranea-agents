@@ -921,11 +921,8 @@ func provideEventWAL(d *data.Data, lg loggateway.Logger) *event.EventWAL {
 // providePostgresEventStore creates a Postgres-backed EventStore for cross-process
 // event replay (WS reconnect). Returns nil when Postgres is not configured, allowing
 // the system to degrade gracefully to in-process event delivery only.
-//
-// NOTE: Not yet added to wire.Build because no consumer depends on
-// *event.PostgresEventStore. Will be wired up when the WS reconnect replay
-// handler (Wave 2) consumes it. The function is defined here so it is ready
-// to register once a consumer exists.
+// The store is injected into event.Infra (for WS replay fallback) and
+// EventBusConsumer (for dual-write on publish) in startReadinessDependentServices.
 func providePostgresEventStore(d *data.Data, lg loggateway.Logger) *event.PostgresEventStore {
 	if d == nil {
 		return nil
@@ -1963,6 +1960,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideMemoryService,
 		provideSQLiteRawDB,
 		provideEventWAL,
+		providePostgresEventStore,
 		provideTRPCSessionService,
 		provideGraphCheckpointSaver,
 		wire.Bind(new(trpcgraph.CheckpointSaver), new(*graphtrpc.SQLiteCheckpointSaver)),

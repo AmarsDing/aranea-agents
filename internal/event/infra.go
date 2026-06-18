@@ -8,16 +8,18 @@ import (
 
 	"github.com/google/wire"
 
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 )
 
 // Infra holds session vs monitor event buses (P0: isolate flow_log from chat envelopes).
 type Infra struct {
-	SessionBus Bus
-	MonitorBus Bus
-	Buffer     *Buffer
-	WAL        *EventWAL // nil when WAL is not configured (e.g., no SQLite)
-	lg         loggateway.Logger
+	SessionBus        Bus
+	MonitorBus        Bus
+	Buffer            *Buffer
+	WAL               *EventWAL // nil when WAL is not configured (e.g., no SQLite)
+	CrossProcessStore contract.CrossProcessStore // optional (P1-6): nil when Postgres not configured
+	lg                loggateway.Logger
 	// routing caches MONITOR_BUS_ROUTING once at construction to avoid per-call os.Getenv (M-01).
 	routing routingMode
 }
@@ -55,12 +57,14 @@ func monitorBusRef() Bus {
 }
 
 // NewInfra wires dual buses for dependency injection.
-func NewInfra(lg loggateway.Logger, wal *EventWAL) *Infra {
+// pgStore is optional (nil when Postgres is not configured); when set, it
+// enables cross-process event persistence for WS reconnect replay (P1-6).
+func NewInfra(lg loggateway.Logger, wal *EventWAL, pgStore *PostgresEventStore) *Infra {
 	mode := routingMode(os.Getenv("MONITOR_BUS_ROUTING"))
 	if mode == "" {
 		mode = routingModeSplit
 	}
-	return &Infra{
+	infra := &Infra{
 		SessionBus: NewBus(lg),
 		MonitorBus: NewBus(lg),
 		Buffer:     NewBuffer(),
@@ -68,6 +72,10 @@ func NewInfra(lg loggateway.Logger, wal *EventWAL) *Infra {
 		lg:         lg,
 		routing:    mode,
 	}
+	if pgStore != nil {
+		infra.CrossProcessStore = pgStore
+	}
+	return infra
 }
 
 // ProvideSessionBus exposes the interactive/session bus for wire.

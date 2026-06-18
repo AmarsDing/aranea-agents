@@ -22,10 +22,10 @@ import (
 )
 
 const (
-	factScopeTypeAgent       = "agent"
-	factSourceTRPC           = "trpc_memory"
-	vectorMinSimilarity      = 0.5  // minimum cosine similarity for vector recall hits
-	defaultListEntriesLimit  = 50   // fallback limit when caller provides none
+	factScopeTypeAgent      = "agent"
+	factSourceTRPC          = "trpc_memory"
+	vectorMinSimilarity     = 0.5 // minimum cosine similarity for vector recall hits
+	defaultListEntriesLimit = 50  // fallback limit when caller provides none
 )
 
 var memoryReadConsistencyCheck = os.Getenv("MEMORY_READ_CONSISTENCY_CHECK") == "1"
@@ -266,7 +266,7 @@ func (s *sqliteMemoryService) ReadMemories(ctx context.Context, uk trpcmemory.Us
 	if limit <= 0 || limit > int(topK) {
 		limit = int(topK)
 	}
-	return s.listEntries(ctx, uk, "", limit, minScore)
+	return s.listEntries(ctx, uk, "", limit, minScore, false)
 }
 
 func (s *sqliteMemoryService) SearchMemories(ctx context.Context, uk trpcmemory.UserKey, query string, opts ...trpcmemory.SearchOption) ([]*trpcmemory.Entry, error) {
@@ -294,80 +294,80 @@ func (s *sqliteMemoryService) SearchMemories(ctx context.Context, uk trpcmemory.
 			}
 		}
 		if err == nil && len(hits) > 0 {
-				// Collect fact IDs for batch enrichment from the authoritative
-				// SQLite store. Vector hits only carry ID + content + score;
-				// topics, kind, event_time etc. must be backfilled from the
-				// fact rows to avoid returning incomplete entries.
-				var factIDs []string
-				hitMap := make(map[string]vecHit, len(hits))
-				for _, h := range hits {
-					if h == nil || strings.TrimSpace(h.Content) == "" {
-						continue
-					}
-					if h.Score < vectorMinSimilarity {
-						continue
-					}
-					factID, memText := vector.ParseFactVectorContent(h.Content)
-					if memText == "" {
-						memText = strings.TrimSpace(h.Content)
-					}
-					entryID := factID
-					if entryID == "" {
-						entryID = fmt.Sprintf("%d", h.ID)
-					}
-					if memoryReadConsistencyCheck && factID != "" && s.consistency != nil {
-						row, consistencyErr := s.getFactConsistencyRow(ctx, factID)
-						if consistencyErr != nil {
-							s.lg.Warn("read consistency check failed, skipping validation",
+			// Collect fact IDs for batch enrichment from the authoritative
+			// SQLite store. Vector hits only carry ID + content + score;
+			// topics, kind, event_time etc. must be backfilled from the
+			// fact rows to avoid returning incomplete entries.
+			var factIDs []string
+			hitMap := make(map[string]vecHit, len(hits))
+			for _, h := range hits {
+				if h == nil || strings.TrimSpace(h.Content) == "" {
+					continue
+				}
+				if h.Score < vectorMinSimilarity {
+					continue
+				}
+				factID, memText := vector.ParseFactVectorContent(h.Content)
+				if memText == "" {
+					memText = strings.TrimSpace(h.Content)
+				}
+				entryID := factID
+				if entryID == "" {
+					entryID = fmt.Sprintf("%d", h.ID)
+				}
+				if memoryReadConsistencyCheck && factID != "" && s.consistency != nil {
+					row, consistencyErr := s.getFactConsistencyRow(ctx, factID)
+					if consistencyErr != nil {
+						s.lg.Warn("read consistency check failed, skipping validation",
 							loggateway.StepID("memory.search"),
 							loggateway.Str("fact_id", factID),
 							loggateway.Err(consistencyErr))
-						} else if row.Status == "" || row.Status != "active" || row.IndexStatus == "disabled" {
-							continue
-						} else if row.IndexStatus == "stale" {
-							s.asyncResyncFact(ctx, factID)
-							continue
-						}
-					}
-					if factID != "" {
-						factIDs = append(factIDs, factID)
-						hitMap[factID] = vecHit{factID: entryID, memText: memText, score: h.Score}
+					} else if row.Status == "" || row.Status != "active" || row.IndexStatus == "disabled" {
+						continue
+					} else if row.IndexStatus == "stale" {
+						s.asyncResyncFact(ctx, factID)
+						continue
 					}
 				}
-				// Enrich vector hits with full metadata from SQLite.
-				if len(factIDs) > 0 && s.factReader != nil {
-					enriched := s.enrichVectorHits(ctx, uk, factIDs, hitMap)
-					if len(enriched) > 0 {
-						return enriched, nil
-					}
-				}
-				// Fallback: build minimal entries from vector data when
-				// enrichment is unavailable (factReader nil or no matches).
-				out := make([]*trpcmemory.Entry, 0, len(hitMap))
-				for fid, hit := range hitMap {
-					now := time.Now()
-					memContent := hit.memText
-					if memContent == "" {
-						memContent = fid
-					}
-					out = append(out, &trpcmemory.Entry{
-						ID:      hit.factID,
-						AppName: uk.AppName,
-						UserID:  uk.UserID,
-						Memory: &trpcmemory.Memory{
-							Memory:      memContent,
-							LastUpdated: &now,
-						},
-						Score: hit.score,
-					})
-				}
-				if len(out) > 0 {
-					return out, nil
+				if factID != "" {
+					factIDs = append(factIDs, factID)
+					hitMap[factID] = vecHit{factID: entryID, memText: memText, score: h.Score}
 				}
 			}
+			// Enrich vector hits with full metadata from SQLite.
+			if len(factIDs) > 0 && s.factReader != nil {
+				enriched := s.enrichVectorHits(ctx, uk, factIDs, hitMap)
+				if len(enriched) > 0 {
+					return enriched, nil
+				}
+			}
+			// Fallback: build minimal entries from vector data when
+			// enrichment is unavailable (factReader nil or no matches).
+			out := make([]*trpcmemory.Entry, 0, len(hitMap))
+			for fid, hit := range hitMap {
+				now := time.Now()
+				memContent := hit.memText
+				if memContent == "" {
+					memContent = fid
+				}
+				out = append(out, &trpcmemory.Entry{
+					ID:      hit.factID,
+					AppName: uk.AppName,
+					UserID:  uk.UserID,
+					Memory: &trpcmemory.Memory{
+						Memory:      memContent,
+						LastUpdated: &now,
+					},
+					Score: hit.score,
+				})
+			}
+			if len(out) > 0 {
+				return out, nil
+			}
+		}
 	}
 
-	entries, err := s.listEntries(ctx, uk, q, int(topK), minScore)
+	entries, err := s.listEntries(ctx, uk, q, int(topK), minScore, searchOpts.IncludeInvalidated)
 	if err != nil {
 		return nil, err
 	}
@@ -450,12 +450,18 @@ func (s *sqliteMemoryService) enrichVectorHits(ctx context.Context, uk trpcmemor
 	return out
 }
 
-func (s *sqliteMemoryService) listEntries(ctx context.Context, uk trpcmemory.UserKey, keyword string, limit int, minImportance float64) ([]*trpcmemory.Entry, error) {
+func (s *sqliteMemoryService) listEntries(ctx context.Context, uk trpcmemory.UserKey, keyword string, limit int, minImportance float64, includeInvalidated bool) ([]*trpcmemory.Entry, error) {
 	limit32 := int32(limit)
 	if limit32 <= 0 {
 		limit32 = defaultListEntriesLimit
 	}
-	rows, err := s.factReader.ListFactRowsForUser(ctx, factScopeTypeAgent, uk.AppName, uk.UserID, keyword, limit32, 0)
+	var rows [][]byte
+	var err error
+	if includeInvalidated {
+		rows, err = s.factReader.ListFactRowsForUserAll(ctx, factScopeTypeAgent, uk.AppName, uk.UserID, keyword, limit32, 0)
+	} else {
+		rows, err = s.factReader.ListFactRowsForUser(ctx, factScopeTypeAgent, uk.AppName, uk.UserID, keyword, limit32, 0)
+	}
 	if err != nil {
 		return nil, err
 	}

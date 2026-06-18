@@ -34,6 +34,7 @@ func newApp(
 	consumer *biz.EventBusConsumer,
 	sideConsumers *biz.EventBusSideConsumers,
 	eventInfra *event.Infra,
+	pgEventStore *event.PostgresEventStore,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
 	agentUC *biz.AgentUsecase,
 	teamUC *biz.TeamUsecase,
@@ -89,16 +90,16 @@ func newApp(
 							return
 						}
 						lg.Info("post-readiness: data ready, starting dependent services", loggateway.StepID("startup.gate"))
-						startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, lg)
-					})
-				} else {
-					// No readiness gate (unlikely), start immediately.
-					startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, lg)
-				}
+						startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pgEventStore, pipeline, loggingSinks, lg)
+				})
 			} else {
-				// No data layer (unlikely), start immediately.
-				startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, lg)
+				// No readiness gate (unlikely), start immediately.
+				startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pgEventStore, pipeline, loggingSinks, lg)
 			}
+		} else {
+			// No data layer (unlikely), start immediately.
+			startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pgEventStore, pipeline, loggingSinks, lg)
+		}
 			return nil
 		}),
 		kratos.AfterStart(func(startCtx context.Context) error {
@@ -148,6 +149,7 @@ func startReadinessDependentServices(
 	sideConsumers *biz.EventBusSideConsumers,
 	sessions *biz.SessionUsecase,
 	eventInfra *event.Infra,
+	pgEventStore *event.PostgresEventStore,
 	pipeline logpipeline.Pipeline,
 	loggingSinks []*conf.LoggingSink,
 	lg loggateway.Logger,
@@ -157,6 +159,12 @@ func startReadinessDependentServices(
 	}
 	if orchCache != nil {
 		orchCache.InitFromRepo(ctx)
+	}
+	// P1-6: wire cross-process event store into the consumer for dual-write.
+	// The Infra already has CrossProcessStore set (via NewInfra) for WS replay
+	// fallback; this adds the publish-side dual-write path.
+	if pgEventStore != nil && consumer != nil {
+		consumer.WithCrossProcessSink(pgEventStore)
 	}
 	consumer.Start(ctx)
 	if sideConsumers != nil {

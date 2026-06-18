@@ -342,6 +342,16 @@ type AgentCreatedContent struct {
 	Trigger     string `json:"trigger"` // the TaskProfile.TaskDescription that triggered creation
 }
 
+// RunHeartbeatContent is the metadata payload for EnvelopeTypeRunHeartbeat (P1-7).
+// Carried in Envelope.Metadata so subscribers can detect stale runs within 30s.
+type RunHeartbeatContent struct {
+	RunID           string  `json:"run_id"`
+	ProgressPercent float64 `json:"progress_percent"`
+	CurrentStep     string  `json:"current_step"`
+	TotalSteps      int     `json:"total_steps"`
+	ETA             string  `json:"eta"`
+}
+
 // NewEnvelope creates a new Envelope with a generated ID and current timestamp.
 func NewEnvelope(typ EnvelopeType, author, sessionID string) Envelope {
 	return Envelope{

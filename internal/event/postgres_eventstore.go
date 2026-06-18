@@ -15,11 +15,6 @@ import (
 // when the caller does not specify a limit.
 const defaultReplayLimit = 100
 
-// eventStoreDomain is the apierror domain used for all EventStore errors.
-// NOTE: not added to pkg/apierror/domains.go to avoid modifying existing files
-// in this task; the literal string is used per task spec.
-const eventStoreDomain = "EVENT_STORE"
-
 // PostgresEventStore persists event envelopes to Postgres for cross-process
 // replay (WS reconnect) and durability. Complements the in-process event.Bus
 // and WAL (which only covers Critical events).
@@ -39,7 +34,7 @@ type PostgresEventStore struct {
 // The schema is created idempotently on construction.
 func NewPostgresEventStore(db *sql.DB, lg loggateway.Logger) (*PostgresEventStore, error) {
 	if db == nil {
-		return nil, apierror.BadRequest(eventStoreDomain, "db is nil")
+		return nil, apierror.BadRequest(apierror.DomainEventStore, "db is nil")
 	}
 	s := &PostgresEventStore{
 		db: db,
@@ -74,7 +69,7 @@ func (s *PostgresEventStore) EnsureSchema(ctx context.Context) error {
 	CREATE INDEX IF NOT EXISTS idx_event_store_type ON event_store (envelope_type);
 	`
 	if _, err := s.db.ExecContext(ctx, ddl); err != nil {
-		return apierror.Wrap(err, apierror.CodeInternal, eventStoreDomain)
+		return apierror.Wrap(err, apierror.CodeInternal, apierror.DomainEventStore)
 	}
 	return nil
 }
@@ -83,11 +78,11 @@ func (s *PostgresEventStore) EnsureSchema(ctx context.Context) error {
 // (ON CONFLICT DO NOTHING — duplicate saves are silently ignored).
 func (s *PostgresEventStore) Save(ctx context.Context, env *contract.Envelope) error {
 	if env == nil {
-		return apierror.BadRequest(eventStoreDomain, "envelope is nil")
+		return apierror.BadRequest(apierror.DomainEventStore, "envelope is nil")
 	}
 	payload, err := json.Marshal(env)
 	if err != nil {
-		return apierror.Wrap(err, apierror.CodeInternal, eventStoreDomain)
+		return apierror.Wrap(err, apierror.CodeInternal, apierror.DomainEventStore)
 	}
 	const insertSQL = `
 	INSERT INTO event_store (event_id, session_id, run_id, envelope_type, payload, created_at)
@@ -97,7 +92,7 @@ func (s *PostgresEventStore) Save(ctx context.Context, env *contract.Envelope) e
 	if _, err := s.db.ExecContext(ctx, insertSQL,
 		env.ID, env.SessionID, env.RequestID, string(env.Type), payload, createdAt,
 	); err != nil {
-		return apierror.Wrap(err, apierror.CodeInternal, eventStoreDomain)
+		return apierror.Wrap(err, apierror.CodeInternal, apierror.DomainEventStore)
 	}
 	return nil
 }
@@ -117,7 +112,7 @@ func (s *PostgresEventStore) Replay(ctx context.Context, sessionID string, after
 	LIMIT $3`
 	rows, err := s.db.QueryContext(ctx, replaySQL, sessionID, afterEventID, limit)
 	if err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, eventStoreDomain)
+		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainEventStore)
 	}
 	defer rows.Close()
 
@@ -125,16 +120,16 @@ func (s *PostgresEventStore) Replay(ctx context.Context, sessionID string, after
 	for rows.Next() {
 		var payload []byte
 		if err := rows.Scan(&payload); err != nil {
-			return nil, apierror.Wrap(err, apierror.CodeInternal, eventStoreDomain)
+			return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainEventStore)
 		}
 		env := &contract.Envelope{}
 		if err := json.Unmarshal(payload, env); err != nil {
-			return nil, apierror.Wrap(err, apierror.CodeInternal, eventStoreDomain)
+			return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainEventStore)
 		}
 		envelopes = append(envelopes, env)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, apierror.Wrap(err, apierror.CodeInternal, eventStoreDomain)
+		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainEventStore)
 	}
 	return envelopes, nil
 }
@@ -143,7 +138,7 @@ func (s *PostgresEventStore) Replay(ctx context.Context, sessionID string, after
 func (s *PostgresEventStore) Cleanup(ctx context.Context, before time.Time) error {
 	const cleanupSQL = `DELETE FROM event_store WHERE created_at < $1`
 	if _, err := s.db.ExecContext(ctx, cleanupSQL, before.UTC()); err != nil {
-		return apierror.Wrap(err, apierror.CodeInternal, eventStoreDomain)
+		return apierror.Wrap(err, apierror.CodeInternal, apierror.DomainEventStore)
 	}
 	return nil
 }

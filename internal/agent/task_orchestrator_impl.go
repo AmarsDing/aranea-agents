@@ -75,7 +75,7 @@ func NewTaskOrchestratorImpl(
 }
 
 // Orchestrate builds and executes the orchestration graph based on the TaskPlan and AllocationPlan.
-func (o *TaskOrchestratorImpl) Orchestrate(ctx context.Context, taskPlan *biz.TaskPlan, allocPlan *biz.AllocationPlan) (*biz.OrchestrationHandle, error) {
+func (o *TaskOrchestratorImpl) Orchestrate(ctx context.Context, taskPlan *biz.TaskPlan, allocPlan *biz.AllocationPlan) (handle *biz.OrchestrationHandle, err error) {
 	// Start orchestration phase span (P3-2): Trace propagation across Spirit→Team→Graph.
 	bridge := turntrace.FromContext(ctx)
 	if bridge != nil {
@@ -83,7 +83,7 @@ func (o *TaskOrchestratorImpl) Orchestrate(ctx context.Context, taskPlan *biz.Ta
 	}
 	defer func() {
 		if bridge != nil {
-			bridge.EndPhase(turntrace.PhaseOrch, nil)
+			bridge.EndPhase(turntrace.PhaseOrch, err)
 		}
 	}()
 
@@ -102,7 +102,7 @@ func (o *TaskOrchestratorImpl) Orchestrate(ctx context.Context, taskPlan *biz.Ta
 	)
 
 	// Create OrchestrationHandle with status "pending".
-	handle := &biz.OrchestrationHandle{
+	handle = &biz.OrchestrationHandle{
 		ID:              "orch_" + uuid.NewString()[:12],
 		TaskPlanID:      taskPlan.ID,
 		AllocationID:    allocPlan.ID,

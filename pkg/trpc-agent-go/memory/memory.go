@@ -317,6 +317,11 @@ type SearchOptions struct {
 	// Higher values give more weight to lower-ranked results.
 	// Default is 60 (standard RRF value). Only used when HybridSearch is true.
 	HybridRRFK int
+
+	// IncludeInvalidated includes memories with ValidUntil in the past.
+	// Default false (only valid memories returned). Set true for historical
+	// reconstruction queries.
+	IncludeInvalidated bool
 }
 
 func checkMemoryKey(appName, userID, memoryID string) error {

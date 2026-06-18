@@ -1,10 +1,12 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"time"
 
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 // sendConnected sends the initial "connected" downstream message to a new connection.
@@ -25,8 +27,33 @@ func (s *WSServer) sendConnected(wc *wsConn, sessionID, lastEventID string) {
 }
 
 // replayEvents replays historical events from the buffer to the connection.
+// When the in-memory buffer has no events for the session (e.g. after a
+// server restart or cross-instance reconnect), it falls back to the
+// cross-process Postgres store (P1-6) when configured.
 func (s *WSServer) replayEvents(wc *wsConn, sessionID, lastEventID string) {
 	events := s.eventBuffer.Replay(sessionID, lastEventID)
+
+	// P1-6: cross-process fallback — when the in-memory buffer is empty and a
+	// Postgres event store is configured, replay from Postgres so that WS
+	// reconnect after a server restart (or to a different instance) still
+	// recovers missed events.
+	if len(events) == 0 && s.crossProcessStore != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		pgEvents, err := s.crossProcessStore.Replay(ctx, sessionID, lastEventID, 100)
+		cancel()
+		if err != nil && s.lg != nil {
+			s.lg.Warn("ws replay: cross-process store replay failed",
+				loggateway.StepID("ws.replay.cross_process"),
+				loggateway.Str("session_id", sessionID),
+				loggateway.Err(err),
+			)
+		}
+		if err == nil {
+			for _, env := range pgEvents {
+				events = append(events, *env)
+			}
+		}
+	}
 
 	startMsg := wsDownstream{
 		Direction: "server_to_client",

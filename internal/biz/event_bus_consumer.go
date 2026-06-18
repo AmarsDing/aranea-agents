@@ -9,11 +9,13 @@ import (
 )
 
 type EventBusConsumer struct {
-	eventBus contract.Bus
-	buffer   *eventBufferHandler
-	runner   *runnerCompletionHandler
-	state    *stateDeltaHandler
-	persist  *eventPersistHandler
+	eventBus         contract.Bus
+	buffer           *eventBufferHandler
+	runner           *runnerCompletionHandler
+	state            *stateDeltaHandler
+	persist          *eventPersistHandler
+	crossProcessSink contract.CrossProcessStore // optional (P1-6): nil when Postgres not configured
+	logger           SessionLogWriter
 }
 
 func NewEventBusConsumer(
@@ -34,7 +36,18 @@ func NewEventBusConsumer(
 		runner:   newRunnerCompletionHandler(sessions, usage, monitorUC, memWorker, traceProj, eventBus, logger),
 		state:    newStateDeltaHandler(sessions, runnerSync, logger),
 		persist:  newEventPersistHandler(eventStore, logger),
+		logger:   logger,
 	}
+}
+
+// WithCrossProcessSink sets an optional cross-process event sink (P1-6).
+// When set, every envelope is dual-written to this sink in addition to the
+// in-process EventStore. The sink must be safe for concurrent use.
+func (c *EventBusConsumer) WithCrossProcessSink(sink contract.CrossProcessStore) *EventBusConsumer {
+	if c != nil && sink != nil {
+		c.crossProcessSink = sink
+	}
+	return c
 }
 
 func (c *EventBusConsumer) Start(ctx context.Context) {
@@ -62,6 +75,18 @@ func (c *EventBusConsumer) handleEnvelope(ctx context.Context, env contract.Enve
 	c.buffer.Handle(env)
 	if c.persist != nil {
 		c.persist.Handle(ctx, env)
+	}
+	// P1-6: best-effort dual-write to cross-process store (Postgres) for WS
+	// reconnect replay across server instances. Failures are logged but do
+	// not affect the in-process event flow.
+	if c.crossProcessSink != nil && shouldPersistEnvelope(env) {
+		if err := c.crossProcessSink.Save(ctx, &env); err != nil && c.logger != nil {
+			c.logger.LogSessionWarn(ctx, env.SessionID, "event_store.cross_process",
+				"跨进程事件持久化失败",
+				LogPair{Key: "type", Value: string(env.Type)},
+				LogPair{Key: "id", Value: env.ID},
+				LogPair{Key: "error", Value: err})
+		}
 	}
 
 	de := envelopeToDomainEvent(env)

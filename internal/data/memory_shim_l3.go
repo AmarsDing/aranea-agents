@@ -239,6 +239,55 @@ func (r *l3FactRepo) ListFactRowsForUser(ctx context.Context, scopeType, scopeID
 	return out, rows.Err()
 }
 
+// ListFactRowsForUserAll returns facts for a user including invalidated ones
+// (valid_until != ''). Used for historical reconstruction queries when
+// SearchOptions.IncludeInvalidated is true. Deleted facts are still excluded.
+func (r *l3FactRepo) ListFactRowsForUserAll(ctx context.Context, scopeType, scopeID, userID, keyword string, limit, offset int32) ([][]byte, error) {
+	clauses := []string{"status = 'active'", "deleted_at = ''"}
+	args := []any{}
+	if scopeType != "" {
+		clauses = append(clauses, "scope_type = ?")
+		args = append(args, scopeType)
+	}
+	if scopeID != "" {
+		clauses = append(clauses, "scope_id = ?")
+		args = append(args, scopeID)
+	}
+	if userID != "" {
+		clauses = append(clauses, "user_id = ?")
+		args = append(args, userID)
+	}
+	if keyword != "" {
+		clauses = append(clauses, "statement_normalized LIKE ?")
+		args = append(args, "%"+strings.ToLower(keyword)+"%")
+	}
+	where := " WHERE " + strings.Join(clauses, " AND ")
+	lim := int(limit)
+	if lim <= 0 {
+		lim = 20
+	}
+	off := int(offset)
+	if off < 0 {
+		off = 0
+	}
+	q := sqlFactSelect + where + ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
+	args = append(args, lim, off)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out [][]byte
+	for rows.Next() {
+		b, err := scanFactRowJSON(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
 func (r *l3FactRepo) GetFactRowsByIDs(ctx context.Context, factIDs []string) ([][]byte, error) {
 	if len(factIDs) == 0 {
 		return nil, nil

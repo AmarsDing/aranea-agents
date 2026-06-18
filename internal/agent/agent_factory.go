@@ -139,7 +139,13 @@ func (f *AgentFactoryImpl) EnsureAgent(ctx context.Context, profile biz.TaskProf
 
 // generateAgentDefinition calls the LLM to generate an agent definition.
 func (f *AgentFactoryImpl) generateAgentDefinition(ctx context.Context, profile biz.TaskProfile) (GeneratedAgentDefinition, error) {
-	template, _ := f.selectClosestTemplate(ctx, profile)
+	template, tmplErr := f.selectClosestTemplate(ctx, profile)
+	if tmplErr != nil {
+		f.lg.Warn("AgentFactory 模板查询失败，使用空模板",
+			loggateway.StepID("agent_factory.template_query"),
+			loggateway.Err(tmplErr),
+		)
+	}
 	prompt := f.buildAgentFactoryPrompt(profile, template)
 
 	callCtx, cancel := context.WithTimeout(ctx, agentFactoryLLMTimeout)
