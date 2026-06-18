@@ -310,17 +310,15 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		}
 	}()
 
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		var cancel context.CancelFunc
-		// P1 fix (2026-06-18): Safety upper bound raised to 24h to support
-		// long-running tasks. The previous turnTimeout*12 (~2h) blocked 24h
-		// long tasks. The business-level timeout (turnTimeout) still triggers
-		// a WS notification; this hard deadline is the last resort to prevent
-		// infinite hangs while allowing long task execution.
-		const longTaskHardDeadline = 24 * time.Hour
-		ctx, cancel = context.WithTimeout(ctx, longTaskHardDeadline)
-		defer cancel()
-	}
+	// No-Timeout principle (2026-06-18): long tasks run until completion or
+	// user cancel. The previous 24h hard deadline (longTaskHardDeadline)
+	// blocked tasks longer than 24h, contradicting the "no time limit"
+	// requirement. LLM/DB transient failures are now recovered via
+	// automatic retry (see RetryTransport and ExecInTxWithRetry); process
+	// crashes are recovered via CheckpointSaver + RecoveryWorker. The
+	// heartbeat emitter (10s) keeps the frontend informed of progress
+	// without imposing a timeout. User can cancel at any time via WS
+	// `cancel` command.
 
 	attachmentRefs, err := o.resolveUserAttachmentRefs(ctx, sessionID, input.Options.AttachmentIDs)
 	if err != nil {
@@ -454,7 +452,13 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		}
 		o.runs.Finish(sessionID)
 		runner.Close()
-		o.processPendingQueue(sessionID, sess, ag, dialogMode, prov, mod)
+		// Skip processPendingQueue when this turn was started from inside
+		// the iterative pending-queue loop (see processPendingQueue). The
+		// loop owns draining the queue; re-entering would spawn a new
+		// goroutine per message, re-introducing the chain we eliminated.
+		if !inPendingLoop(ctx) {
+			o.processPendingQueue(sessionID, sess, ag, dialogMode, prov, mod)
+		}
 	}()
 
 	// ── EXECUTE ──

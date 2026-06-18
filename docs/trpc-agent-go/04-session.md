@@ -142,7 +142,7 @@
 
 | 框架接口/功能 | 项目实现 | 合规性 | 说明 |
 |--------------|---------|--------|------|
-| `session.Service`（核心 16 方法） | ✅ 完全使用，SQLite 后端 + InMemory 降级 | ✅ | 工厂 `NewTRPCSessionService` 优先 SQLite，失败降级 InMemory |
+| `session.Service`（核心 16 方法） | ✅ 完全使用，Postgres 后端 + InMemory 降级 | ✅ | 工厂 `NewTRPCSessionService` 优先 Postgres，失败降级 InMemory（A6 后移除 SQLite 生产路径） |
 | `session.Service` Option | ⚠️ 仅使用 3 个 Option | ⚠️ | 仅 `WithTablePrefix("trpc_")` + `WithEnableAsyncPersist(false)` + `WithSoftDelete(true)`，未使用 EventLimit/TTL/Hook/Summarizer 等 |
 | `AppendEventHook` | ❌ 未使用 | ❌ | 创建 Session Service 时未注入任何 Hook |
 | `GetSessionHook` | ❌ 未使用 | ❌ | 创建 Session Service 时未注入任何 Hook |

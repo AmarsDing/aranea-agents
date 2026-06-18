@@ -259,28 +259,48 @@
 
 ### A6：清理 SQLite 专用代码
 
-**目标**：移除 SQLite 专用代码，简化代码库
+**目标**：移除生产代码中的 SQLite 专用路径，简化代码库
+
+**状态**：✅ 已完成（业务代码层面移除 SQLite，保留框架代码和测试基础设施）
 
 **Files:**
-- Modify: `internal/data/data.go` （移除 `initSQLite`，或保留为开发模式）
-- Delete: `internal/data/sql/message_fts.sql` （FTS5 schema）
-- Delete: `internal/data/message_fts_schema.go` （FTS5 embed）
-- Modify: `internal/data/ddl_migration_registry.go` （移除 SQLite 专用迁移）
-- Modify: `internal/data/vector/sqlite.go` （保留为降级方案或删除）
+- Modify: `internal/data/data.go` （移除 `initSQLite`/`initPostgres`/`entSQLiteDriverAndDSN`，`NewData` 只支持 Postgres）
+- Modify: `internal/session/trpc/factory.go` （移除 SQLite session service 分支，只走 Postgres + InMemory fallback）
+- Modify: `internal/session/trpc/sqlite.go` （移除 `NewSQLiteSessionService`，保留 `NewInMemorySessionService` 和 `sessionEventLimit`）
+- 保留: `internal/data/dialect.go` （dialect 抽象层，保留 SQLite 分支用于测试和 CLI 工具）
+- 保留: `internal/data/message_fts_schema.go` / `message_search.go` （已是 dialect 感知，生产代码只走 Postgres 路径）
+- 保留: `internal/data/vector/sqlite.go` （保留用于测试和 CLI 工具 `NewCLIData`）
+- 保留: `internal/data/testhelper/migration.go` （测试基础设施，使用 SQLite 内存数据库）
+- 保留: `internal/data/sqlite_path.go` / `OpenSQLiteEntClient` / `NewCLIData` （CLI 维护工具）
 
-- [ ] **Step 1: 评估保留 SQLite 作为开发模式的价值**
-  - 如果保留，将 SQLite 代码移到 `internal/data/dev/` 目录
-  - 如果删除，确保所有测试用 Postgres
+- [x] **Step 1: 评估保留 SQLite 作为开发模式的价值**
+  - 评估结论：完全移除 SQLite 需要修改框架代码（`pkg/trpc-agent-go` 有 100 个文件涉及 SQLite）和重写 22+ 个测试文件，风险极高
+  - 决策：业务代码层面移除 SQLite，保留框架代码和测试基础设施
+  - SQLite 保留用于：测试基础设施（`testhelper.SetupTestDB`）、CLI 维护工具（`OpenSQLiteEntClient`/`NewCLIData`）
 
-- [ ] **Step 2: 清理 SQLite 专用代码**
-  - 移除 `sqlite_master` 查询
-  - 移除 `PRAGMA` 设置
-  - 移除 FTS5 schema 和查询代码
-  - 移除 `vector/sqlite.go`（如不需要降级）
+- [x] **Step 2: 清理 SQLite 专用代码**
+  - 移除 `initSQLite` 函数（生产代码不再使用 SQLite 作为主库）
+  - 移除 `initPostgres` 函数（辅助 Postgres，不再需要）
+  - 移除 `entSQLiteDriverAndDSN` 函数（SQLite 配置解析，不再需要）
+  - 移除 `NewData` 中的 SQLite 路径和 dialect 切换逻辑
+  - 移除 `NewData` 中的 VectorStore SQLite fallback（pgvector 失败直接返回错误）
+  - 移除 `NewSQLiteSessionService` 函数（生产代码不再使用 SQLite session service）
+  - 移除 `factory.go` 中的 SQLite 分支（只走 Postgres + InMemory fallback）
+  - 保留 `dialect.go` 的 SQLite 分支（测试和 CLI 工具需要）
+  - 保留 FTS5 代码（已是 dialect 感知，生产代码只走 Postgres 路径）
+  - 保留 `vector/sqlite.go`（测试和 CLI 工具需要）
 
-- [ ] **Step 3: 验证**
-  - `go build ./...` 通过
-  - `go test ./... -count=1` 通过
+- [x] **Step 3: 验证**
+  - `go build ./...` 通过 ✅
+  - `go vet ./internal/data/... ./internal/session/...` 通过 ✅
+  - `gofmt -l` 通过 ✅
+  - 测试失败用 `git stash` 验证为预存在失败（`TestSQLiteMemoryService_*`/`TestEntRuntimeToBiz_*`/`TestSessionCompressEnabled`），与 A6 改动无关 ✅
+
+**完成记录**：
+- 生产代码完全移除 SQLite 路径，`NewData` 只支持 Postgres
+- 框架代码（`pkg/trpc-agent-go`）保持不变，保留 SQLite 支持能力
+- 测试基础设施保持不变，继续使用 SQLite 内存数据库（快速、隔离）
+- CLI 维护工具保持不变，继续支持 SQLite 离线操作
 
 ---
 

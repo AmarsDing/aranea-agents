@@ -265,7 +265,7 @@ func (r *monitorRepo) InsertMonitorTrace(ctx context.Context, tw biz.MonitorTrac
 		tw.SessionID, tw.RunID, tw.InvocationID, tw.AgentID, tw.Provider, tw.Model, tw.TeamID, tw.ParentTraceID,
 		tw.DurationMs, tw.SpanCount, tw.ErrorCount, tw.TotalTokens, tw.TotalCostUsd,
 	)
-	return err
+	return entErrToBizErr(err, "monitor")
 }
 
 func (r *monitorRepo) UpsertMonitorTraceSpan(ctx context.Context, sw biz.MonitorTraceSpanWrite) error {
@@ -292,7 +292,7 @@ func (r *monitorRepo) UpsertMonitorTraceSpan(ctx context.Context, sw biz.Monitor
 		sw.TraceID, sw.SpanID, sw.ParentSpanID, sw.Kind, sw.Name,
 		sw.StartedAt, sw.EndedAt, sw.Status, sw.AttributesJSON, sw.ErrorJSON,
 	)
-	return err
+	return entErrToBizErr(err, "monitor")
 }
 
 func (r *monitorRepo) UpdateMonitorTraceCompletion(ctx context.Context, traceID string, status string, durationMs int64, spanCount, errorCount int, totalTokens int64, totalCostUsd float64) error {
@@ -315,7 +315,7 @@ func (r *monitorRepo) UpdateMonitorTraceCompletion(ctx context.Context, traceID 
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, sql,
 		status, durationMs, spanCount, errorCount, totalTokens, totalCostUsd, now, traceID,
 	)
-	return err
+	return entErrToBizErr(err, "monitor")
 }
 
 func (r *monitorRepo) ListRecentRunnerCompletions(ctx context.Context, since time.Duration, limit int) ([]biz.RunnerCompletionRow, error) {
@@ -360,16 +360,16 @@ func (r *monitorRepo) ListRecentRunnerCompletions(ctx context.Context, since tim
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sql, args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "monitor")
 	}
 	defer rows.Close()
 	var out []biz.RunnerCompletionRow
 	for rows.Next() {
 		var row biz.RunnerCompletionRow
 		if err := rows.Scan(&row.TraceID, &row.SessionID, &row.RunID, &row.AgentID, &row.Status, &row.CreatedAt); err != nil {
-			continue
+			return nil, entErrToBizErr(err, "monitor")
 		}
 		out = append(out, row)
 	}
-	return out, nil
+	return out, entErrToBizErr(rows.Err(), "monitor")
 }

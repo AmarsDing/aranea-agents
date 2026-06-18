@@ -23,7 +23,7 @@ import (
 // Flags:
 //
 //	--source       SQLite DSN or file path (default: file:./data/arenea.sqlite?cache=shared&_fk=1)
-//	--target       Postgres DSN (default: from configs/config.yaml data.postgres.source)
+//	--target       Postgres DSN (required; or set ARANEA_PG_DSN env var)
 //	--mode         migrate | validate | both (default: migrate)
 //	--table        Migrate only this table (optional)
 //	--batch-size   Rows per INSERT batch (default: 500)
@@ -32,7 +32,7 @@ import (
 //	--sample-size  Number of rows to sample for validation checksum (default: 100)
 func main() {
 	source := flag.String("source", "file:./data/arenea.sqlite?cache=shared&_fk=1", "SQLite source DSN or file path")
-	target := flag.String("target", "postgres://postgres:Hangshan%40123@127.0.0.1:5432/aranea?sslmode=disable", "Postgres target DSN")
+	target := flag.String("target", "", "Postgres target DSN (or set ARANEA_PG_DSN env var)")
 	mode := flag.String("mode", "migrate", "migrate | validate | both")
 	table := flag.String("table", "", "Migrate only this table (optional)")
 	batchSize := flag.Int("batch-size", 500, "Rows per INSERT batch")
@@ -43,6 +43,17 @@ func main() {
 	sampleSize := flag.Int("sample-size", 100, "Number of rows to sample for validation checksum")
 	flag.Parse()
 
+	// Resolve Postgres DSN: --target flag takes precedence, then ARANEA_PG_DSN env var.
+	// Never hardcode credentials — red line #25.
+	pgDSN := *target
+	if pgDSN == "" {
+		pgDSN = os.Getenv("ARANEA_PG_DSN")
+	}
+	if pgDSN == "" {
+		fmt.Fprintln(os.Stderr, "postgres target DSN is required: pass --target or set ARANEA_PG_DSN env var")
+		os.Exit(2)
+	}
+
 	lg := loggateway.NewNoop()
 
 	srcDB, err := openSQLite(*source)
@@ -52,7 +63,7 @@ func main() {
 	}
 	defer srcDB.Close()
 
-	tgtDB, err := openPostgres(*target)
+	tgtDB, err := openPostgres(pgDSN)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "open postgres target: %v\n", err)
 		os.Exit(1)

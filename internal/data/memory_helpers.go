@@ -307,13 +307,13 @@ func scanL0SnapshotRow(rows *sql.Rows) ([]byte, error) {
 
 func scanL1TaskRow(rows *sql.Rows) ([]byte, error) {
 	var (
-		id, sessID, runID, teamID, agentID string
+		id, sessID, runID, teamID, agentID   string
 		taskKey, taskTitle, taskGoal, status string
-		schemaVer                          int
-		budgetTok, usedTok                 int
-		parentTaskID, sharedWithJSON       string
-		startedAt, endedAt, archivedAt     string
-		metadataJSON, createdAt, updatedAt string
+		schemaVer                            int
+		budgetTok, usedTok                   int
+		parentTaskID, sharedWithJSON         string
+		startedAt, endedAt, archivedAt       string
+		metadataJSON, createdAt, updatedAt   string
 	)
 	if err := rows.Scan(
 		&id, &sessID, &runID, &teamID, &agentID,
@@ -548,7 +548,7 @@ func scanRelationRowJSON(rows *sql.Rows) ([]byte, error) {
 		"metadata_json": metaJ,
 		"valid_from":    validFrom,
 		"valid_to":      validTo,
-		"created_at": ca, "updated_at": ua,
+		"created_at":    ca, "updated_at": ua,
 		"archived_at": arch, "deleted_at": del,
 	}
 	return json.Marshal(m)
@@ -805,13 +805,13 @@ const (
 	l2ScoreWeightImport   = 0.15
 	l2ScoreWeightSession  = 0.05
 
-	l3RecallCandidatePool   = 60
-	l3DecayHalfLifeDays     = 30.0
-	l3ScoreWeightKeyword    = 0.25
-	l3ScoreWeightVector     = 0.30
-	l3ScoreWeightImport     = 0.20
-	l3ScoreWeightRecency    = 0.15
-	l3ScoreWeightQuality    = 0.10
+	l3RecallCandidatePool = 60
+	l3DecayHalfLifeDays   = 30.0
+	l3ScoreWeightKeyword  = 0.25
+	l3ScoreWeightVector   = 0.30
+	l3ScoreWeightImport   = 0.20
+	l3ScoreWeightRecency  = 0.15
+	l3ScoreWeightQuality  = 0.10
 
 	ceRerankWeight = 0.15
 
@@ -1114,33 +1114,6 @@ func sessionMemoryEnsureMonitorSchemaPatches(ctx context.Context, client execer,
 		}
 		if !exists {
 			return fmt.Errorf("monitor patch verify: table %s not found after CREATE TABLE IF NOT EXISTS", tbl)
-		}
-	}
-	return nil
-}
-
-func sessionMemoryEnsureMemoryRelationPatches(ctx context.Context, client execer, d Dialect) error {
-	if client == nil {
-		return nil
-	}
-	patches := []struct {
-		table string
-		col   string
-		ddl   string
-	}{
-		{"memory_relations", "valid_from", "ALTER TABLE memory_relations ADD COLUMN valid_from TEXT NOT NULL DEFAULT ''"},
-		{"memory_relations", "valid_to", "ALTER TABLE memory_relations ADD COLUMN valid_to TEXT NOT NULL DEFAULT ''"},
-	}
-	for _, p := range patches {
-		has, err := memColumnExists(ctx, client, d, p.table, p.col)
-		if err != nil {
-			return fmt.Errorf("memory relation patch check %s.%s: %w", p.table, p.col, err)
-		}
-		if has {
-			continue
-		}
-		if _, err := client.ExecContext(ctx, p.ddl); err != nil {
-			return fmt.Errorf("memory relation patch %s.%s: %w", p.table, p.col, err)
 		}
 	}
 	return nil

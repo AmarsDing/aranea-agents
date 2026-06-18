@@ -141,6 +141,13 @@ const (
 	EnvelopeTypeActivityDelta      EnvelopeType = "activity_delta"
 	EnvelopeTypeActivityDone       EnvelopeType = "activity_done"
 	EnvelopeTypeActivityChildStart EnvelopeType = "activity_child_start"
+
+	// EnvelopeTypeLLMRetry signals that the LLM provider call is being retried
+	// after a transient failure (5xx / 429 / network error). Published by the
+	// provider retry transport so the frontend can show "正在重试" feedback.
+	// Classified as Important (AS-EVT-01): loss degrades user feedback but does
+	// not corrupt state; the retry itself still proceeds.
+	EnvelopeTypeLLMRetry EnvelopeType = "llm_retry"
 )
 
 // Envelope is the universal event carrier.
@@ -457,6 +464,8 @@ func init() {
 		EnvelopeTypeOrganizationCreated, EnvelopeTypeOrganizationUpdated, EnvelopeTypeOrganizationDeleted,
 		// Activity-First lifecycle events
 		EnvelopeTypeActivityStart, EnvelopeTypeActivityDelta, EnvelopeTypeActivityDone, EnvelopeTypeActivityChildStart,
+		// LLM retry feedback (T1.2): "正在重试" notification
+		EnvelopeTypeLLMRetry,
 	)
 }
 

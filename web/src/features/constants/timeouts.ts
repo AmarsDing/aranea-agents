@@ -6,20 +6,28 @@
  *   L1 — Code defaults (this file)
  *   L2 — System Settings (future: backend pushes overrides via API)
  *   L3 — Per-session runtime (future: event-driven overrides)
+ *
+ * No-Timeout principle (T1.5): dispatch / turn-ack / first-byte / stream-stall
+ * timeouts have been removed. Tasks run until completion or user cancel.
+ * The stall check remains as a notification-only mechanism — it never marks
+ * messages as failed or interrupts the run.
  */
 
-// ── Chat Send ──────────────────────────────────────────────────────────
-export const CHAT_SEND_DISPATCH_TIMEOUT_MS = 30_000       // Message send dispatch timeout
-export const CHAT_TURN_ACK_TIMEOUT_MS = 30_000            // Client turn-ack timeout
-export const CHAT_FIRST_BYTE_TIMEOUT_MS = 90_000          // First byte timeout after run accepted
-export const CHAT_RUN_STALL_TIMEOUT_MS = 180_000          // Run stall timeout (no run events)
+// ── Chat Send (notification-only, no timeouts) ─────────────────────────
+// T1.5: Removed CHAT_SEND_DISPATCH_TIMEOUT_MS, CHAT_TURN_ACK_TIMEOUT_MS,
+// CHAT_FIRST_BYTE_TIMEOUT_MS, CHAT_RUN_STALL_TIMEOUT_MS.
+// The stall check is now a periodic notification, not a timeout that
+// interrupts the run.
 export const CHAT_RUN_STALL_CHECK_INTERVAL_MS = 30_000    // Stall check polling interval
+export const CHAT_RUN_STALL_NOTIFY_THRESHOLD_MS = 60_000  // Show stall warning after this delay
 export const CHAT_STALL_NOTIFY_DURATION_MS = 8_000        // Stall warning notification display duration
-export const CHAT_FIRST_BYTE_NOTIFY_DURATION_MS = 8_000   // First byte timeout notification duration
+export const CHAT_FIRST_BYTE_NOTIFY_THRESHOLD_MS = 30_000 // Show "model thinking" notice after this delay
+export const CHAT_FIRST_BYTE_NOTIFY_DURATION_MS = 8_000   // First byte notice display duration
 
 // ── WebSocket Transport ────────────────────────────────────────────────
 export const WS_MAX_RECONNECT_DELAY_MS = 30_000           // Max reconnect delay
-export const WS_MAX_RECONNECT_ATTEMPTS = 10               // Max reconnect attempts
+// T1.8: WS_MAX_RECONNECT_ATTEMPTS removed — unlimited reconnect for
+// same-machine deployment. Exponential backoff caps the delay at 30s.
 export const WS_HEARTBEAT_INTERVAL_MS = 25_000            // Business WS ping interval
 export const WS_RECONNECT_BASE_DELAY_MS = 1_000           // Reconnect base delay (exponential backoff)
 export const WS_RUN_STALE_TIMEOUT_MS = 30_000             // Run stale threshold (no run_heartbeat)

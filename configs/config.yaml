@@ -19,11 +19,14 @@ server:
   # Public A2A endpoint prefix (no trailing slash). Prefer System Settings UI or env A2A_PUBLIC_BASE_URL.
   # a2a_public_base_url: ""
 data:
-  # Primary database driver: "sqlite" (default) or "postgres".
-  # When "postgres", all Ent CRUD + raw SQL use Postgres (data.postgres.source).
-  driver: sqlite
+  # Primary database driver. "postgres" is the only supported driver in
+  # production (NewData hardcodes Postgres). "sqlite" is kept only for
+  # offline CLI maintenance tools and test infrastructure.
+  driver: postgres
   sqlite:
-    enable: true
+    # Used only by CLI maintenance tools (OpenSQLiteEntClient/NewCLIData) and
+    # in-memory tests. Ignored by NewData in production.
+    enable: false
     source: file:./data/arenea.sqlite?cache=shared&_fk=1
   # First boot only (empty admins): id=1, password MD5-hashed like Login.
   # SECURITY: Override via env var DATA__INITIAL_ADMIN__PASSWORD in production.
@@ -33,6 +36,7 @@ data:
     password: changeme
     access: admin
   # SECURITY: Override via env var DATA__POSTGRES__SOURCE in production.
+  # pgvector extension is required (DAO_VECTOR_PGVECTOR=1).
   postgres:
     source: "postgres://postgres:Hangshan%40123@127.0.0.1:5432/aranea?sslmode=disable"
     vector_dim: 1536

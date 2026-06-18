@@ -47,6 +47,10 @@ type Migrator struct {
 	tgtDB     *sql.DB
 	batchSize int
 	lg        loggateway.Logger
+	// tgtConn is a dedicated connection acquired in MigrateAll to ensure
+	// SET session_replication_role applies to all subsequent operations.
+	// It is nil when MigrateAll is not running (methods fall back to tgtDB).
+	tgtConn *sql.Conn
 }
 
 // NewMigrator creates a new Migrator.
@@ -55,6 +59,24 @@ func NewMigrator(srcDB, tgtDB *sql.DB, batchSize int, lg loggateway.Logger) *Mig
 		batchSize = 500
 	}
 	return &Migrator{srcDB: srcDB, tgtDB: tgtDB, batchSize: batchSize, lg: lg}
+}
+
+// pgExecer is the subset of *sql.DB/*sql.Conn methods used by the Migrator.
+// Both types satisfy this interface, allowing methods to work with either.
+type pgExecer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
+}
+
+// pg returns the active Postgres executor: the dedicated connection during
+// MigrateAll (so session_replication_role applies), or the pool otherwise.
+func (m *Migrator) pg() pgExecer {
+	if m.tgtConn != nil {
+		return m.tgtConn
+	}
+	return m.tgtDB
 }
 
 // defaultSkipTables are tables that should never be migrated.
@@ -69,8 +91,8 @@ var defaultSkipTables = map[string]bool{
 	"messages_fts_content": true, // FTS5 shadow table
 	"messages_fts_docsize": true, // FTS5 shadow table
 	// Framework-managed tables with incompatible schemas — created by
-	// initFrameworkSchema but data cannot be migrated directly.
-	// See framework_schema.go frameworkSkipDataMigration for rationale.
+	// initFrameworkSchema (framework_schema.go) but data cannot be migrated directly.
+	// See frameworkSchemaDDL comments for per-table rationale.
 	"vector_embeddings":    true, // SQLite: embedding_json TEXT; Postgres: embedding vector — incompatible
 	"memory_l2_index_meta": true, // Table dropped in 20260620; skip if present in legacy SQLite
 	// trpc_session_events/states: SQLite stores nanosecond timestamps (INTEGER),
@@ -78,8 +100,12 @@ var defaultSkipTables = map[string]bool{
 	// would require timestamp conversion. These tables are framework-internal
 	// session data that the app recreates on startup; historical data is not
 	// business-critical and can be regenerated.
-	"trpc_session_events": true,
-	"trpc_session_states": true,
+	"trpc_session_events":       true,
+	"trpc_session_states":       true,
+	"trpc_session_track_events": true, // same timestamp incompatibility as above
+	"trpc_session_summaries":    true, // same timestamp incompatibility as above
+	"trpc_app_states":           true, // same timestamp incompatibility as above
+	"trpc_user_states":          true, // same timestamp incompatibility as above
 }
 
 // MigrateAll discovers tables from SQLite and migrates each to Postgres.
@@ -90,11 +116,35 @@ var defaultSkipTables = map[string]bool{
 // to allow tables to be migrated in alphabetical order without FK violations.
 // They are re-enabled after migration. The caller should run the validator
 // afterwards to verify data integrity.
+//
+// A dedicated *sql.Conn is acquired from the pool for the entire migration so
+// that SET session_replication_role (a session-level setting) applies to all
+// subsequent operations. Using the pool directly would be incorrect because
+// different statements might land on different connections where the setting
+// is not applied.
 func (m *Migrator) MigrateAll(ctx context.Context, tableFilter string, skipSet map[string]bool) (*MigrationReport, error) {
 	tables, err := m.discoverTables(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("discover tables: %w", err)
 	}
+
+	// Acquire a dedicated Postgres connection for the duration of the migration.
+	// SET session_replication_role is session-scoped: it only affects the
+	// connection that executes it. With a pool, subsequent ExecContext calls
+	// might use a different connection where FK checks are still enabled,
+	// causing FK violations during bulk load. Pinning a single connection
+	// ensures the setting applies to every operation in this migration.
+	conn, err := m.tgtDB.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("acquire postgres connection: %w", err)
+	}
+	m.tgtConn = conn
+	defer func() {
+		m.tgtConn = nil
+		if err := conn.Close(); err != nil {
+			m.lg.Warn("close dedicated pg conn", loggateway.StepID("migrate.conn_close"), loggateway.Err(err))
+		}
+	}()
 
 	// Disable FK checks for the duration of the migration.
 	// session_replication_role = 'replica' tells Postgres to skip FK triggers,
@@ -103,7 +153,13 @@ func (m *Migrator) MigrateAll(ctx context.Context, tableFilter string, skipSet m
 		return nil, fmt.Errorf("disable fk checks: %w", err)
 	}
 	defer func() {
-		if err := m.setFKChecks(ctx, true); err != nil {
+		// Use a detached context with timeout for re-enabling FK checks.
+		// If the caller's ctx is cancelled (e.g. migration aborted), we still
+		// need to restore session_replication_role = 'origin' before returning
+		// the connection to the pool, otherwise the pool gets a polluted conn.
+		reEnableCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := m.setFKChecks(reEnableCtx, true); err != nil {
 			m.lg.Warn("re-enable fk checks failed after migration",
 				loggateway.StepID("migrate.fk_reenable"),
 				loggateway.Err(err))
@@ -138,12 +194,13 @@ func (m *Migrator) MigrateAll(ctx context.Context, tableFilter string, skipSet m
 
 // setFKChecks enables or disables FK constraint checks on the Postgres connection.
 // Uses SET session_replication_role = 'replica' (disable) / 'origin' (enable).
+// Must be called on the dedicated connection (m.tgtConn) to take effect.
 func (m *Migrator) setFKChecks(ctx context.Context, enable bool) error {
 	role := "origin"
 	if !enable {
 		role = "replica"
 	}
-	_, err := m.tgtDB.ExecContext(ctx, fmt.Sprintf("SET session_replication_role = '%s'", role))
+	_, err := m.pg().ExecContext(ctx, fmt.Sprintf("SET session_replication_role = '%s'", role))
 	return err
 }
 
@@ -197,7 +254,7 @@ func (m *Migrator) migrateTable(ctx context.Context, table string) (int64, error
 // tableExistsInPostgres checks if a table exists in the Postgres public schema.
 func (m *Migrator) tableExistsInPostgres(ctx context.Context, table string) (bool, error) {
 	var exists bool
-	err := m.tgtDB.QueryRowContext(ctx,
+	err := m.pg().QueryRowContext(ctx,
 		`SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1)`,
 		table).Scan(&exists)
 	return exists, err
@@ -232,7 +289,9 @@ func (m *Migrator) getCommonColumns(ctx context.Context, sqliteTable, pgTable st
 
 // getSQLiteColumns returns column names from SQLite's pragma_table_info.
 func (m *Migrator) getSQLiteColumns(ctx context.Context, table string) ([]string, error) {
-	rows, err := m.srcDB.QueryContext(ctx, fmt.Sprintf("SELECT name FROM pragma_table_info('%s') ORDER BY cid", table))
+	// Escape single quotes in table name for SQLite string literal safety.
+	escapedTable := strings.ReplaceAll(table, `'`, `''`)
+	rows, err := m.srcDB.QueryContext(ctx, fmt.Sprintf("SELECT name FROM pragma_table_info('%s') ORDER BY cid", escapedTable))
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +311,7 @@ func (m *Migrator) getSQLiteColumns(ctx context.Context, table string) ([]string
 // getPostgresInsertableColumns returns column names from Postgres that can be inserted into
 // (excludes GENERATED ALWAYS columns).
 func (m *Migrator) getPostgresInsertableColumns(ctx context.Context, table string) ([]string, error) {
-	rows, err := m.tgtDB.QueryContext(ctx,
+	rows, err := m.pg().QueryContext(ctx,
 		`SELECT column_name FROM information_schema.columns
 		 WHERE table_schema = 'public' AND table_name = $1 AND is_generated = 'NEVER'
 		 ORDER BY ordinal_position`,
@@ -280,12 +339,12 @@ func (m *Migrator) getPostgresInsertableColumns(ctx context.Context, table strin
 func (m *Migrator) streamAndInsert(ctx context.Context, sqliteTable, pgTable string, columns []string) (int64, error) {
 	// Build the SELECT query from SQLite.
 	colList := strings.Join(quoteIdentifiers(columns), ", ")
-	selectSQL := fmt.Sprintf(`SELECT %s FROM "%s"`, colList, sqliteTable)
+	selectSQL := fmt.Sprintf(`SELECT %s FROM %s`, colList, quoteIdent(sqliteTable))
 
 	// Build the INSERT prefix for Postgres.
 	// The VALUES clause and ON CONFLICT are appended per batch.
 	pgColList := strings.Join(quoteIdentifiers(columns), ", ")
-	insertPrefix := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES `, pgTable, pgColList)
+	insertPrefix := fmt.Sprintf(`INSERT INTO %s (%s) VALUES `, quoteIdent(pgTable), pgColList)
 
 	// Stream rows from SQLite.
 	rows, err := m.srcDB.QueryContext(ctx, selectSQL)
@@ -389,7 +448,7 @@ func (m *Migrator) execBatch(ctx context.Context, insertPrefix string, nCols int
 	ctxExec, cancel := context.WithTimeout(ctx, batchInsertTimeout)
 	defer cancel()
 
-	tx, err := m.tgtDB.BeginTx(ctxExec, nil)
+	tx, err := m.pg().BeginTx(ctxExec, nil)
 	if err != nil {
 		return 0, fmt.Errorf("begin tx: %w", err)
 	}
@@ -407,11 +466,19 @@ func (m *Migrator) execBatch(ctx context.Context, insertPrefix string, nCols int
 	return int64(nRows), nil
 }
 
-// quoteIdentifiers wraps each identifier in double quotes (Postgres-compatible).
+// quoteIdent wraps a single identifier in double quotes (Postgres-compatible),
+// escaping any internal double quotes by doubling them (per SQL standard).
+// Use this for table names; use quoteIdentifiers for column lists.
+func quoteIdent(s string) string {
+	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
+}
+
+// quoteIdentifiers wraps each identifier in double quotes (Postgres-compatible),
+// escaping any internal double quotes by doubling them (per SQL standard).
 func quoteIdentifiers(cols []string) []string {
 	out := make([]string, len(cols))
 	for i, c := range cols {
-		out[i] = `"` + c + `"`
+		out[i] = quoteIdent(c)
 	}
 	return out
 }

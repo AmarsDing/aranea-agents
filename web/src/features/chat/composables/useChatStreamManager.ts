@@ -29,6 +29,10 @@ export type StreamManagerDeps = {
   onFirstByteArrived: () => void;
   refreshRunStatus: (sessionId?: string) => Promise<void>;
   onCompressNotice?: (sessionId: string, prevRatio: number, newRatio: number) => void;
+  // T1.6: Real-time AF integration. Route activity envelopes from the stream
+  // directly to useActivityTimeline so the UI updates in real-time without
+  // waiting for the inbound-sync polling path.
+  onActivityEnvelope?: (env: Envelope) => void;
 };
 
 export function useChatStreamManager(deps: StreamManagerDeps) {
@@ -255,6 +259,9 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         onRunActivity: deps.touchRunActivity,
         onFirstByteArrived: deps.onFirstByteArrived,
         onExecutionProgress: pushProgress,
+        // T1.6: Real-time AF — route activity envelopes directly to the
+        // timeline handler for immediate UI updates.
+        onActivityEnvelope: deps.onActivityEnvelope,
       },
       { batched: true },
     );
@@ -355,6 +362,9 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       // timeline shows inline orchestration / team / tool step cards
       // during the multi-agent fan-out. Mirrors the chat stream binding.
       onExecutionProgress: pushProgress,
+      // T1.6: Real-time AF — route activity envelopes directly to the
+      // timeline handler for immediate UI updates.
+      onActivityEnvelope: deps.onActivityEnvelope,
     });
 
     teamStream.connect();

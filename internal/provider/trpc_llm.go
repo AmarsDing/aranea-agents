@@ -298,7 +298,7 @@ func buildProviderOptions(cfg ProviderModelConfig, rt *RoundTrip, lg loggateway.
 	if cfg.RateLimitRPM > 0 {
 		transport = wrapRateLimitTransport(transport, cfg.RateLimitRPM)
 	}
-	if cfg.Retry.MaxAttempts > 0 {
+	if cfg.Retry.MaxAttempts != 0 {
 		baseDelay := time.Duration(cfg.Retry.BaseDelayMs) * time.Millisecond
 		if baseDelay <= 0 {
 			baseDelay = 1000 * time.Millisecond
@@ -307,7 +307,11 @@ func buildProviderOptions(cfg ProviderModelConfig, rt *RoundTrip, lg loggateway.
 		if maxDelay <= 0 {
 			maxDelay = 30000 * time.Millisecond
 		}
-		transport = newRetryTransport(transport, cfg.Retry.MaxAttempts, baseDelay, maxDelay, lg)
+		var onRetry RetryCallback
+		if rt != nil {
+			onRetry = rt.OnRetry
+		}
+		transport = newRetryTransport(transport, cfg.Retry.MaxAttempts, baseDelay, maxDelay, lg, onRetry)
 	}
 	if cfg.CB.Enabled {
 		cbCfg := biztool.CircuitBreakerConfig{
@@ -317,7 +321,7 @@ func buildProviderOptions(cfg ProviderModelConfig, rt *RoundTrip, lg loggateway.
 		cb := biztool.NewCircuitBreaker(fmt.Sprintf("provider:%s:%s", cfg.ProviderType, cfg.ModelAPI), cbCfg)
 		transport = newCircuitBreakerTransport(transport, cb, lg)
 	}
-	if hasCustomTransport || cfg.RateLimitRPM > 0 || cfg.Retry.MaxAttempts > 0 || cfg.CB.Enabled {
+	if hasCustomTransport || cfg.RateLimitRPM > 0 || cfg.Retry.MaxAttempts != 0 || cfg.CB.Enabled {
 		opts = append(opts, trpcprovider.WithHTTPClientTransport(transport))
 	}
 

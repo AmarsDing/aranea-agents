@@ -16,12 +16,10 @@ import { shouldBlockAttachmentsForModel } from '../modelCapabilities';
 // TECH-DEBT resolved: moved sendMessage to runtimeStore.send — chat optimization
 import { AWAIT_KIND_TOOL_CONFIRM } from '../awaitConstants';
 import {
-  CHAT_SEND_DISPATCH_TIMEOUT_MS,
-  CHAT_TURN_ACK_TIMEOUT_MS,
-  CHAT_FIRST_BYTE_TIMEOUT_MS,
-  CHAT_RUN_STALL_TIMEOUT_MS,
   CHAT_RUN_STALL_CHECK_INTERVAL_MS,
+  CHAT_RUN_STALL_NOTIFY_THRESHOLD_MS,
   CHAT_STALL_NOTIFY_DURATION_MS,
+  CHAT_FIRST_BYTE_NOTIFY_THRESHOLD_MS,
   CHAT_FIRST_BYTE_NOTIFY_DURATION_MS,
 } from '../../constants/timeouts';
 
@@ -85,16 +83,13 @@ export function useChatSender(deps: SenderDeps) {
   const runtime = useChatRuntimeStore();
 
   const sending = ref(false);
-  let sendingTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  // 30-second client-side turn-ack timeout: if backend doesn't respond with
-  // run.status=running/accepted within 30s, mark the placeholder user message
-  // as failed so the user can retry immediately instead of waiting for the
-  // (much longer) server-side 5min timeout.
-  let turnAckTimeout: ReturnType<typeof setTimeout> | null = null;
-  let pendingTurnAck: { sessionId: string; pendingUserId: string } | null = null;
+  // T1.5: No-Timeout principle — removed sendingTimeout, turnAckTimeout.
+  // Tasks run until completion or user cancel. The stall check and first-byte
+  // notice are notification-only; they never mark messages as failed.
 
-  let firstByteTimeout: ReturnType<typeof setTimeout> | null = null;
+  let firstByteNoticeTimeout: ReturnType<typeof setTimeout> | null = null;
+  let stallNotified = false;
 
   let lastRunEventAt = 0;
   let stallCheckInterval: ReturnType<typeof setInterval> | null = null;
@@ -110,100 +105,67 @@ export function useChatSender(deps: SenderDeps) {
 
   function startStallCheck() {
     clearStallCheck();
+    stallNotified = false;
     stallCheckInterval = setInterval(() => {
       if (!sending.value || lastRunEventAt === 0) return;
-      if (Date.now() - lastRunEventAt > CHAT_RUN_STALL_TIMEOUT_MS) {
+      // T1.5: notification-only — show a "please wait" notice after the
+      // threshold, but never mark the message as failed or interrupt the run.
+      if (!stallNotified && Date.now() - lastRunEventAt > CHAT_RUN_STALL_NOTIFY_THRESHOLD_MS) {
+        stallNotified = true;
         $q.notify({
-          type: 'warning',
-          message: t('chat.runStallWarning', '响应时间较长，请耐心等待或停止生成'),
+          type: 'info',
+          message: t('chat.runStallWarning', '响应时间较长，模型仍在处理中，请耐心等待'),
           timeout: CHAT_STALL_NOTIFY_DURATION_MS,
         });
-        clearStallCheck();
       }
     }, CHAT_RUN_STALL_CHECK_INTERVAL_MS);
   }
 
   function markSending(sessionId?: string) {
     sending.value = true;
-    clearSendingTimeout();
-    sendingTimeout = setTimeout(() => {
-      if (sending.value) {
-        sending.value = false;
-        $q.notify({ type: 'warning', message: t('chat.sendDispatchTimeout', '消息发送超时，请检查网络连接') });
-      }
-    }, CHAT_SEND_DISPATCH_TIMEOUT_MS);
     startStallCheck();
   }
 
   function markSendingDone() {
     sending.value = false;
-    clearSendingTimeout();
-    clearFirstByteTimeout();
-    clearTurnAckTimeout();
+    clearFirstByteNotice();
     clearStallCheck();
   }
 
+  function clearFirstByteNotice() {
+    if (firstByteNoticeTimeout != null) {
+      clearTimeout(firstByteNoticeTimeout);
+      firstByteNoticeTimeout = null;
+    }
+  }
+
+  // T1.5: clearSendingTimeout is now a no-op — the sending timeout was removed.
+  // Kept for backward compatibility with streamHandlers and useChatWorkspace.
   function clearSendingTimeout() {
-    if (sendingTimeout != null) {
-      clearTimeout(sendingTimeout);
-      sendingTimeout = null;
-    }
+    // no-op: No-Timeout principle
   }
 
-  function clearFirstByteTimeout() {
-    if (firstByteTimeout != null) {
-      clearTimeout(firstByteTimeout);
-      firstByteTimeout = null;
-    }
-  }
-
-  function clearTurnAckTimeout() {
-    if (turnAckTimeout != null) {
-      clearTimeout(turnAckTimeout);
-      turnAckTimeout = null;
-    }
-    pendingTurnAck = null;
-  }
-
-  function startTurnAckTimeout(sessionId: string, pendingUserId: string) {
-    clearTurnAckTimeout();
-    pendingTurnAck = { sessionId, pendingUserId };
-    turnAckTimeout = setTimeout(() => {
-      turnAckTimeout = null;
-      const target = pendingTurnAck;
-      pendingTurnAck = null;
-      if (!target) return;
-      if (!sending.value) return;
-      markPendingUserFailed(
-        target.sessionId,
-        target.pendingUserId,
-        t('chat.sendTimeoutRetry', '后端 30 秒内未确认 turn，请点击重试'),
-      );
-      markSendingDone();
-      $q.notify({
-        type: 'negative',
-        message: t('chat.sendTimeoutToast', '后端响应超时，消息已标记为失败，请重试'),
-      });
-    }, CHAT_TURN_ACK_TIMEOUT_MS);
-  }
+  // T1.5: turnAckTimeout removed — no client-side turn-ack timeout.
+  // The backend will process the message; if it fails, an error event arrives.
 
   function onFirstByteArrived() {
-    clearFirstByteTimeout();
+    clearFirstByteNotice();
   }
 
   function onRunAccepted() {
-    clearFirstByteTimeout();
-    clearTurnAckTimeout();
-    firstByteTimeout = setTimeout(() => {
+    clearFirstByteNotice();
+    // T1.5: notification-only — show a "model thinking" notice after the
+    // threshold, but never mark the message as failed.
+    firstByteNoticeTimeout = setTimeout(() => {
       if (sending.value) {
         $q.notify({
-          type: 'warning',
-          message: t('chat.firstByteTimeout', '响应等待时间较长，模型可能正在思考中'),
+          type: 'info',
+          message: t('chat.firstByteTimeout', '模型正在思考中，请耐心等待'),
           timeout: CHAT_FIRST_BYTE_NOTIFY_DURATION_MS,
         });
-        clearFirstByteTimeout();
+        clearFirstByteNotice();
       }
-    }, CHAT_FIRST_BYTE_TIMEOUT_MS);
+    }, CHAT_FIRST_BYTE_NOTIFY_THRESHOLD_MS);
   }
 
   function touchRunActivity() {
@@ -552,7 +514,9 @@ export function useChatSender(deps: SenderDeps) {
       try {
         const stream = strategy.ensureStream(sessionId);
         deps.sendChatViaWs(stream, strategy.buildWsPayload(sessionId, pendingUserId, text, provider, model));
-        startTurnAckTimeout(sessionId, pendingUserId);
+        // T1.5: No turn-ack timeout — the backend processes the message and
+        // sends run.status=running as an early ack. If it fails, an error
+        // event arrives. No client-side timeout marks the message as failed.
         // Clear attachments only after WS send is dispatched successfully.
         // If the backend fails, the error envelope will arrive later and
         // the user can retry with the same attachments still attached.
@@ -573,11 +537,28 @@ export function useChatSender(deps: SenderDeps) {
               knowledgeBases: deps.selectedKnowledgeBases.value,
             },
           );
-          // S-06: Drop the pending user row AFTER loadMessages succeeds,
-          // so the user never sees their message disappear if the reload fails.
-          await deps.messageStore.loadMessages({ sessionId });
-          dropPendingUserRow(sessionId, pendingUserId);
+          // T1.7: markSendingDone() immediately after fallback success so
+          // the sending state doesn't stay true forever. The message was
+          // accepted by the backend; subsequent loadMessages failure should
+          // NOT mark the pending as failed.
+          if (!followUp) markSendingDone();
           clearAttachments = true;
+          // S-06 + T1.7: Drop the pending user row AFTER loadMessages
+          // succeeds. If loadMessages fails, the message was still sent
+          // successfully — don't mark it as failed, just notify the user
+          // that the message list couldn't be refreshed.
+          try {
+            await deps.messageStore.loadMessages({ sessionId });
+            dropPendingUserRow(sessionId, pendingUserId);
+          } catch (loadErr) {
+            // T1.7: loadMessages failed but the message was sent. Don't
+            // mark pending as failed; just notify the user to refresh.
+            $q.notify({
+              type: 'warning',
+              message: t('chat.loadMessagesFailed', '消息已发送，但消息列表刷新失败，请手动刷新'),
+            });
+            dropPendingUserRow(sessionId, pendingUserId);
+          }
         } catch (httpError) {
           markPendingUserFailed(sessionId, pendingUserId, t('chat.sendFailedRetry', '发送失败，请点击重试'));
           if (!followUp) markSendingDone();

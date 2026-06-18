@@ -8,30 +8,42 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
+// RetryCallback is invoked before each retry attempt (i.e. after a failure
+// and before sleeping the backoff delay). attempt is 1-indexed (first retry
+// = 1). maxRetries is the configured cap (-1 = infinite). delay is the
+// backoff duration that will be slept. err is the error that triggered the
+// retry. req is the original HTTP request; the callback can extract context
+// info (e.g. session ID) from it.
+type RetryCallback func(req *http.Request, attempt, maxRetries int, err error, delay time.Duration)
+
 // retryTransport wraps a base http.RoundTripper with exponential backoff retry.
 // It retries on server errors (5xx) and 429 (rate limited), up to maxRetries
-// additional attempts beyond the initial one.
+// additional attempts beyond the initial one. A maxRetries of -1 means
+// infinite retry (bounded only by request context cancellation).
 type retryTransport struct {
 	base       http.RoundTripper
-	maxRetries int
+	maxRetries int // -1 = infinite, 0 = disabled (should not reach here), >0 = finite
 	baseDelay  time.Duration
 	maxDelay   time.Duration
 	lg         loggateway.Logger
+	onRetry    RetryCallback // optional; called before each retry
 }
 
-func newRetryTransport(base http.RoundTripper, maxRetries int, baseDelay, maxDelay time.Duration, lg loggateway.Logger) http.RoundTripper {
+func newRetryTransport(base http.RoundTripper, maxRetries int, baseDelay, maxDelay time.Duration, lg loggateway.Logger, onRetry RetryCallback) http.RoundTripper {
 	if base == nil {
 		base = http.DefaultTransport
 	}
-	if maxRetries <= 0 {
+	// maxRetries == 0 means disabled; caller should not invoke us, but guard anyway.
+	if maxRetries == 0 {
 		return base
 	}
-	return &retryTransport{base: base, maxRetries: maxRetries, baseDelay: baseDelay, maxDelay: maxDelay, lg: lg}
+	return &retryTransport{base: base, maxRetries: maxRetries, baseDelay: baseDelay, maxDelay: maxDelay, lg: lg, onRetry: onRetry}
 }
 
 func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	var lastErr error
-	for attempt := 0; attempt <= t.maxRetries; attempt++ {
+	attempt := 0
+	for {
 		// On retry, reset the request body so the full payload is sent again.
 		// Without this, the body ReadCloser is already at EOF after the first
 		// attempt and the retried request would be sent with an empty body.
@@ -42,6 +54,11 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			delay := t.baseDelay * time.Duration(1<<(attempt-1)) // exponential backoff
 			if delay > t.maxDelay {
 				delay = t.maxDelay
+			}
+			// Notify callback before sleeping so the frontend can show
+			// "正在重试" feedback.
+			if t.onRetry != nil {
+				t.onRetry(req, attempt, t.maxRetries, lastErr, delay)
 			}
 			select {
 			case <-req.Context().Done():
@@ -59,7 +76,11 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 					loggateway.Int("max_retries", t.maxRetries),
 					loggateway.Err(err))
 			}
-			continue
+			if t.shouldRetry(attempt) {
+				attempt++
+				continue
+			}
+			return nil, lastErr
 		}
 		// Retry on server errors (5xx) and 429 (rate limited).
 		if resp.StatusCode >= 500 || resp.StatusCode == 429 {
@@ -72,11 +93,23 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 					loggateway.Int("max_retries", t.maxRetries),
 					loggateway.Int("status_code", resp.StatusCode))
 			}
-			continue
+			if t.shouldRetry(attempt) {
+				attempt++
+				continue
+			}
+			return nil, lastErr
 		}
 		return resp, nil
 	}
-	return nil, lastErr
+}
+
+// shouldRetry returns true if the transport should attempt another retry
+// after the given attempt index (0-indexed: attempt 0 = first try).
+func (t *retryTransport) shouldRetry(attempt int) bool {
+	if t.maxRetries < 0 {
+		return true // infinite
+	}
+	return attempt < t.maxRetries
 }
 
 // resetRequestBody rewinds the request body using GetBody, which is set by

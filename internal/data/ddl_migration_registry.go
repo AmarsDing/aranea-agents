@@ -87,10 +87,6 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260726, Name: "memory_links", SQL: "sql/migrations/20260726_memory_links.sql"},
 }
 
-func runDDLMigrations(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
-	return runDDLMigrationsWithDialect(rawDB, entClient, DialectSQLite, lg)
-}
-
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
 // This is exported for use by external tools (e.g. cmd/migrate-sqlite-to-postgres)
 // to ensure DDL-managed tables (FTS5, monitor, memory, trpc session, etc.) exist
@@ -148,20 +144,12 @@ func runDDLMigrationsWithDialect(rawDB *sql.DB, entClient *ent.Client, d Dialect
 	return nil
 }
 
-// executeSQLFile reads a SQL file (path relative to project root), splits it into
-// individual statements using splitDDLStatements, and executes each via rawDB.
-// "duplicate column name", "already exists", and "no such table" errors are treated
-// as idempotent successes (the table/column will be created by a later migration).
-func executeSQLFile(ctx context.Context, rawDB *sql.DB, path string, lg loggateway.Logger) error {
-	return executeSQLFileWithDialect(ctx, rawDB, path, DialectSQLite, lg)
-}
-
-// executeSQLFileWithDialect is the dialect-aware variant of executeSQLFile.
+// executeSQLFileWithDialect is the dialect-aware SQL file executor.
 // Uses Dialect.AlreadyExistsErr and Dialect.UndefinedObjectErr for idempotent
 // error detection across SQLite and Postgres.
 func executeSQLFileWithDialect(ctx context.Context, rawDB *sql.DB, path string, d Dialect, lg loggateway.Logger) error {
 	if rawDB == nil {
-		return nil
+		return fmt.Errorf("execute SQL file %s: rawDB is nil", path)
 	}
 	sqlBytes, err := fs.ReadFile(migrationSQLFS, path)
 	if err != nil {
@@ -170,7 +158,7 @@ func executeSQLFileWithDialect(ctx context.Context, rawDB *sql.DB, path string, 
 	ddl := strings.TrimPrefix(string(sqlBytes), "\ufeff")
 	if d.IsPostgres() {
 		// Translate SQLite-specific DDL syntax to Postgres equivalents.
-		// INTEGER PRIMARY KEY AUTOINCREMENT -> SERIAL PRIMARY KEY
+		// INTEGER PRIMARY KEY AUTOINCREMENT -> BIGSERIAL PRIMARY KEY
 		ddl = translateSQLiteDDLToPostgres(ddl)
 	}
 	for _, stmt := range splitDDLStatements(strings.TrimSpace(ddl)) {
@@ -193,7 +181,11 @@ func executeSQLFileWithDialect(ctx context.Context, rawDB *sql.DB, path string, 
 		}
 		_, err := tx.ExecContext(ctx, stmt)
 		if err != nil {
-			tx.Rollback()
+			if rbErr := tx.Rollback(); rbErr != nil {
+				lg.Debug("rollback after exec failure",
+					loggateway.StepID("data.ddl_migration.sql_file"),
+					loggateway.Err(rbErr))
+			}
 			if d.AlreadyExistsErr(err) {
 				lg.Debug("ddl patch skipped (already exists)",
 					loggateway.StepID("data.ddl_migration.sql_file"),
@@ -228,10 +220,6 @@ func ddlMessagesTurnNumber(ctx context.Context, rawDB *sql.DB, entClient *ent.Cl
 
 func ddlSessionMemorySchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureSessionMemorySchema(ctx, entClient, d, lg)
-}
-
-func ddlMemoryRelationPatches(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
-	return sessionMemoryEnsureMemoryRelationPatches(ctx, entClient, d)
 }
 
 func ddlMonitorSchemaPatches(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
@@ -345,20 +333,6 @@ func ddlOrchestrationSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.C
 	return EnsureOrchestrationSchema(ctx, rawDB, d, lg)
 }
 
-func ddlCompiledTeamSessionID(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, _ loggateway.Logger) error {
-	if rawDB == nil {
-		return nil
-	}
-	// Add session_id column if it doesn't exist (SQLite ALTER TABLE ADD COLUMN is safe if column exists)
-	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE compiled_teams ADD COLUMN session_id TEXT NOT NULL DEFAULT ''`); err != nil && !d.AlreadyExistsErr(err) {
-		return fmt.Errorf("add compiled_teams.session_id: %w", err)
-	}
-	if _, err := rawDB.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_compiled_teams_session_id ON compiled_teams(session_id)`); err != nil {
-		return fmt.Errorf("create idx_compiled_teams_session_id: %w", err)
-	}
-	return nil
-}
-
 func ddlEcosystemPresetDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, _ loggateway.Logger) error {
 	if rawDB == nil {
 		return nil
@@ -426,6 +400,12 @@ func ddlAgentSourceDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.Clie
 	// This runs in a separate transaction because the complex JSON query may fail
 	// on some rows (e.g. malformed JSON); we treat it as non-critical and don't
 	// want to abort the entire migration.
+	//
+	// TECH-DEBT(debt): This migration is best-effort: errors are logged but not
+	// returned, which means the migration version is still recorded as applied
+	// even if the fix failed. This could leave teams with incorrect kind on
+	// retry. Acceptable because the heuristic is non-destructive (only reverts
+	// kind to 'user', never corrupts data). Issue: track via TECH-DEBT log.
 	jsonExtract := d.JSONExtract
 	jsonEach := d.JSONEach
 	tx2, err := rawDB.BeginTx(ctx, nil)

@@ -29,9 +29,9 @@ func (r *agentPerformanceRepo) Get(ctx context.Context, agentKey, taskType strin
 		return nil, apierror.BadRequest("AGENT_PERF", "agent_key and task_type are required")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, agent_key, task_type, total_runs, success_runs, success_rate,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, agent_key, task_type, total_runs, success_runs, success_rate,
 			avg_dq_score, avg_duration_ms, last_executed_at
-		 FROM agent_performances WHERE agent_key = ? AND task_type = ?`, agentKey, taskType)
+		 FROM agent_performances WHERE agent_key = ? AND task_type = ?`), agentKey, taskType)
 	if err != nil {
 		return nil, entErrToBizErr(err, "AGENT_PERFORMANCE")
 	}
@@ -55,11 +55,11 @@ func (r *agentPerformanceRepo) GetBestForTaskType(ctx context.Context, taskType 
 		limit = 10
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, agent_key, task_type, total_runs, success_runs, success_rate,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, agent_key, task_type, total_runs, success_runs, success_rate,
 			avg_dq_score, avg_duration_ms, last_executed_at
 		 FROM agent_performances WHERE task_type = ?
 		 ORDER BY success_rate DESC, avg_dq_score DESC
-		 LIMIT ?`, taskType, limit)
+		 LIMIT ?`), taskType, limit)
 	if err != nil {
 		return nil, entErrToBizErr(err, "AGENT_PERFORMANCE")
 	}
@@ -87,10 +87,19 @@ func (r *agentPerformanceRepo) Upsert(ctx context.Context, perf *biz.AgentPerfor
 	id := perf.AgentKey + "_" + perf.TaskType
 
 	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
-		`INSERT OR REPLACE INTO agent_performances
+		r.data.Dialect().RenumberPlaceholders(`INSERT INTO agent_performances
 			(id, agent_key, task_type, total_runs, success_runs, success_rate,
 			 avg_dq_score, avg_duration_ms, last_executed_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(id) DO UPDATE SET
+		   agent_key=excluded.agent_key,
+		   task_type=excluded.task_type,
+		   total_runs=excluded.total_runs,
+		   success_runs=excluded.success_runs,
+		   success_rate=excluded.success_rate,
+		   avg_dq_score=excluded.avg_dq_score,
+		   avg_duration_ms=excluded.avg_duration_ms,
+		   last_executed_at=excluded.last_executed_at`),
 		id, perf.AgentKey, perf.TaskType,
 		perf.TotalRuns, perf.SuccessRuns, perf.SuccessRate,
 		perf.AvgDQScore, perf.AvgDurationMs, perf.LastExecutedAt,

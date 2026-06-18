@@ -6,18 +6,47 @@ import (
 	"strings"
 	"time"
 
+	a2apkg "aranea-agents/internal/a2a"
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	a2abiz "aranea-agents/internal/biz/a2a"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
-	a2apkg "aranea-agents/internal/a2a"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/appctx"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
 )
+
+// pendingQueueLoopKey is a context key used to suppress the recursive
+// processPendingQueue call inside runSingleAgentViaTRPC / team turn defers
+// when the turn is being executed from within the iterative pending-queue
+// loop. This converts the previous goroutine-chain "recursion" into a single
+// goroutine while-loop, bounded by maxPendingQueueDepth.
+type pendingQueueLoopKey struct{}
+
+// contextWithPendingLoop marks ctx as executing inside the pending-queue loop.
+// Turns started with this context skip the processPendingQueue call in their
+// defer, letting the loop own the queue draining.
+func contextWithPendingLoop(ctx context.Context) context.Context {
+	return context.WithValue(ctx, pendingQueueLoopKey{}, true)
+}
+
+// inPendingLoop reports whether ctx is marked as executing inside the
+// pending-queue loop.
+func inPendingLoop(ctx context.Context) bool {
+	v, _ := ctx.Value(pendingQueueLoopKey{}).(bool)
+	return v
+}
+
+// maxPendingQueueDepth bounds the number of pending messages processed in a
+// single loop iteration. 32 matches MaxPendingPerSession; reaching this limit
+// means the user enqueued 32+ messages faster than the agent could process
+// them, which is already the queue cap. A notification is emitted so the user
+// knows remaining messages stay queued.
+const maxPendingQueueDepth = 32
 
 // RunAgentTurn implements a2a.AgentTurnRunner for call_agent and HTTP Invoke dispatch.
 func (o *ChatOrchestrator) RunAgentTurn(ctx context.Context, agentID, input string, timeoutSec int) (string, error) {
@@ -126,7 +155,11 @@ func (o *ChatOrchestrator) resumeAwaitAfterRestart(ctx context.Context, sessionI
 	o.awaitCoord().PublishAwaitResumed(sessionID, runID)
 	safego.Go(ctx, "chat.resume_await_turn", func() {
 		defer o.awaitCoord().EndResume(sessionID)
-		bgCtx, cancel := context.WithTimeout(context.Background(), o.turnTimeout())
+		// No-Timeout principle (T1.1): no hard turn timeout — the resumed
+		// turn runs until completion or user cancel. User cancel is wired
+		// via RunNativeAgentTurnFromInput → runSingleAgentViaTRPC →
+		// o.runs.StoreCancelable.
+		bgCtx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		_, _, turnErr := o.RunNativeAgentTurnFromInput(bgCtx, biz.TurnInput{
 			SessionID: sessionID,
@@ -150,62 +183,107 @@ func (o *ChatOrchestrator) injectA2AContext(ctx context.Context, callerAgentID s
 	return a2apkg.InjectRunContext(ctx, o.a2aUC(), callerAgentID, inv, o.lg())
 }
 
-// processPendingQueue handles the next pending message after a turn completes.
+// processPendingQueue drains pending messages for a session iteratively in a
+// single goroutine. Previously this method spawned a new goroutine per pending
+// message (via runSingleAgentViaTRPC's defer → processPendingQueue recursion),
+// creating an unbounded goroutine chain. The iterative form uses a while-loop
+// bounded by maxPendingQueueDepth, and suppresses the recursive
+// processPendingQueue call in runSingleAgentViaTRPC / team turn defers via
+// contextWithPendingLoop so the loop owns queue draining.
+//
+// The session lock is released between iterations so concurrent enqueue
+// operations (user sending more messages) aren't blocked while a turn runs.
+// After each turn, the loop re-acquires the lock, checks for an active run
+// (e.g. user interrupted with "send now"), and dequeues the next message.
 func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Session, ag biz.Agent, dialogMode, prov, mod string) {
-	entry, ok := o.chatUC.DequeuePendingMessage(sessionID)
-	if !ok {
-		return
-	}
-	pendingContent := entry.Content
-	pendingEntryID := entry.ID
-	pendingEmitter := event.NewFlowLogger(o.td().Pipeline.Bus, o.td().Pipeline.Buffer, sessionID, ag.AgentKey, o.lg())
-	pendingEmitter.LogStart("chat.pending_dequeue", "排队消息开始处理", event.P("entry_id", pendingEntryID), event.P("content_len", len(pendingContent)))
 	safego.Go(appctx.Ctx(), "pending-queue", func() {
-		unlock := o.lockSession(sessionID)
-		defer unlock()
-		if o.runs.HasActive(sessionID) {
-			o.chatUC.EnqueuePendingMessage(sessionID, pendingContent)
-			pendingEmitter.Log("chat.pending_dequeue", event.FlowPhaseDone, "会话仍活跃，消息已重新入队", event.P("entry_id", pendingEntryID))
-			return
-		}
-		bgCtx, cancel := context.WithTimeout(appctx.Ctx(), o.turnTimeout())
-		o.runs.SetPendingCancel(sessionID, cancel)
-		defer func() {
-			cancel()
-			o.runs.ClearPendingCancel(sessionID)
-		}()
-		pendingInput := biz.TurnInput{
-			SessionID: sessionID,
-			Content:   pendingContent,
-		}
-		var err error
-		if strings.EqualFold(strings.TrimSpace(sess.OwnerType), "team") {
-			o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusRunning, "")
-			_, _, err = o.team().TeamsNative.RunTurnFromInput(bgCtx, sess, pendingInput)
-			spiritSessionID := strings.TrimSpace(sess.ParentSessionID)
-			teamID := strings.TrimSpace(sess.TeamID)
-			if err != nil {
-				o.publishTurnFailure(sessionID, "", "pending-queue", err, pendingEntryID)
-				o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
-				if spiritSessionID != "" && teamID != "" {
-					o.teamStarter().HandleTeamTurnResult(bgCtx, spiritSessionID, teamID, "failed", err.Error())
+		// Mark the context so turns started from this loop skip the
+		// processPendingQueue call in their defer (otherwise each turn would
+		// spawn a new goroutine, re-introducing the chain we're eliminating).
+		loopCtx := contextWithPendingLoop(appctx.Ctx())
+		isTeam := strings.EqualFold(strings.TrimSpace(sess.OwnerType), "team")
+		spiritSessionID := strings.TrimSpace(sess.ParentSessionID)
+		teamID := strings.TrimSpace(sess.TeamID)
+
+		for depth := 0; depth < maxPendingQueueDepth; depth++ {
+			entry, ok := o.chatUC.DequeuePendingMessage(sessionID)
+			if !ok {
+				return // queue empty
+			}
+			pendingContent := entry.Content
+			pendingEntryID := entry.ID
+			pendingEmitter := event.NewFlowLogger(o.td().Pipeline.Bus, o.td().Pipeline.Buffer, sessionID, ag.AgentKey, o.lg())
+			pendingEmitter.LogStart("chat.pending_dequeue", "排队消息开始处理",
+				event.P("entry_id", pendingEntryID),
+				event.P("content_len", len(pendingContent)),
+				event.P("depth", depth))
+
+			// Acquire session lock only for the admission check, then release
+			// it so the turn itself doesn't hold the lock for its full duration
+			// (mirrors the original goroutine-per-message behavior where the
+			// lock was held but a new goroutine didn't block enqueue).
+			unlock := o.lockSession(sessionID)
+			if o.runs.HasActive(sessionID) {
+				// Another turn is active (e.g. user used "send now" to
+				// interrupt). Re-enqueue preserving content and stop the loop;
+				// the active turn's defer will re-enter processPendingQueue.
+				o.chatUC.EnqueuePendingMessage(sessionID, pendingContent)
+				unlock()
+				pendingEmitter.Log("chat.pending_dequeue", event.FlowPhaseDone, "会话仍活跃，消息已重新入队",
+					event.P("entry_id", pendingEntryID))
+				return
+			}
+			bgCtx, cancel := context.WithCancel(loopCtx)
+			o.runs.SetPendingCancel(sessionID, cancel)
+			unlock()
+
+			pendingInput := biz.TurnInput{
+				SessionID: sessionID,
+				Content:   pendingContent,
+			}
+			var err error
+			if isTeam {
+				o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusRunning, "")
+				_, _, err = o.team().TeamsNative.RunTurnFromInput(bgCtx, sess, pendingInput)
+				if err != nil {
+					o.publishTurnFailure(sessionID, "", "pending-queue", err, pendingEntryID)
+					o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
+					if spiritSessionID != "" && teamID != "" {
+						o.teamStarter().HandleTeamTurnResult(bgCtx, spiritSessionID, teamID, "failed", err.Error())
+					}
+				} else {
+					o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusCompleted, "")
+					if spiritSessionID != "" && teamID != "" {
+						o.teamStarter().HandleTeamTurnResult(bgCtx, spiritSessionID, teamID, "completed", "")
+					}
 				}
 			} else {
-				o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusCompleted, "")
-				if spiritSessionID != "" && teamID != "" {
-					o.teamStarter().HandleTeamTurnResult(bgCtx, spiritSessionID, teamID, "completed", "")
+				_, _, err = o.runSingleAgentViaTRPC(bgCtx, sess, pendingInput, ag, dialogMode, prov, mod)
+				if err != nil {
+					o.publishTurnFailure(sessionID, "", "pending-queue", err, pendingEntryID)
 				}
 			}
-		} else {
-			_, _, err = o.runSingleAgentViaTRPC(bgCtx, sess, pendingInput, ag, dialogMode, prov, mod)
+			cancel()
+			o.runs.ClearPendingCancel(sessionID)
+
 			if err != nil {
-				o.publishTurnFailure(sessionID, "", "pending-queue", err, pendingEntryID)
+				pendingEmitter.LogError("chat.pending_dequeue", "排队消息处理失败",
+					event.P("entry_id", pendingEntryID),
+					event.P("error", err.Error()))
+			} else {
+				pendingEmitter.LogDone("chat.pending_dequeue", "排队消息处理完成",
+					event.P("entry_id", pendingEntryID))
 			}
 		}
-		if err != nil {
-			pendingEmitter.LogError("chat.pending_dequeue", "排队消息处理失败", event.P("entry_id", pendingEntryID), event.P("error", err.Error()))
-		} else {
-			pendingEmitter.LogDone("chat.pending_dequeue", "排队消息处理完成", event.P("entry_id", pendingEntryID))
+		// Loop exited due to depth cap. Remaining messages (if any) stay
+		// queued and will be picked up by the next processPendingQueue
+		// trigger (e.g. when the user sends another message or the active
+		// turn completes). Log so operators can spot sustained overload.
+		if remaining := len(o.chatUC.GetPendingMessages(sessionID)); remaining > 0 {
+			o.lg().With(loggateway.SessionID(sessionID)).Warn("pending queue reached depth cap; remaining messages stay queued",
+				loggateway.StepID("chat.pending_queue.depth_cap"),
+				loggateway.Int("cap", maxPendingQueueDepth),
+				loggateway.Int("remaining", remaining))
 		}
 	})
 }

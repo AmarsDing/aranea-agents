@@ -140,7 +140,7 @@ func (r *Runner) buildTeamBuilderDeps(ctx context.Context, sess biz.Session, run
 			Sessions:     r.td.Sessions,
 		},
 		TRPCModelRouteDeps: agent.TRPCModelRouteDeps{
-			RT:         r.td.RoundTrip(),
+			RT:         r.td.RoundTripForSession(sess.ID),
 			Provider:   ar.prov,
 			Model:      ar.mod,
 			DialogMode: dialogMode,

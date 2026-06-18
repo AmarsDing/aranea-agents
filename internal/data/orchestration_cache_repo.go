@@ -35,9 +35,11 @@ func (r *orchestrationCacheRepo) LoadCacheJSON(ctx context.Context) (string, err
 }
 
 func (r *orchestrationCacheRepo) SaveCacheJSON(ctx context.Context, jsonStr string) error {
-	// Use INSERT OR REPLACE to handle both initial insert and subsequent updates.
+	// Use ON CONFLICT upsert (works for both SQLite 3.24+ and Postgres).
 	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
-		`INSERT OR REPLACE INTO system_settings (id, orchestration_cache_json) VALUES (1, ?)`,
+		r.data.Dialect().RenumberPlaceholders(`INSERT INTO system_settings (id, orchestration_cache_json)
+		 VALUES (1, ?)
+		 ON CONFLICT(id) DO UPDATE SET orchestration_cache_json=excluded.orchestration_cache_json`),
 		jsonStr,
 	)
 	return entErrToBizErr(err, "ORCHESTRATION_CACHE")

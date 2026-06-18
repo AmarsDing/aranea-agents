@@ -150,11 +150,11 @@ func (v *Validator) validateTable(ctx context.Context, table string) (*tableVali
 
 	// Compare row counts. SQLite queries use the source table name;
 	// Postgres queries use the resolved target table name.
-	srcCount, err := v.countRows(ctx, v.srcDB, table, true)
+	srcCount, err := v.countRows(ctx, v.srcDB, table)
 	if err != nil {
 		return nil, fmt.Errorf("count sqlite rows: %w", err)
 	}
-	tgtCount, err := v.countRows(ctx, v.tgtDB, targetTable, false)
+	tgtCount, err := v.countRows(ctx, v.tgtDB, targetTable)
 	if err != nil {
 		return nil, fmt.Errorf("count postgres rows: %w", err)
 	}
@@ -201,30 +201,39 @@ func (v *Validator) tableExistsInPostgres(ctx context.Context, table string) (bo
 }
 
 // countRows returns the row count for a table.
-// isSQLite selects the SQL dialect (SQLite uses "table" quoting, Postgres uses "table" too).
-func (v *Validator) countRows(ctx context.Context, db *sql.DB, table string, isSQLite bool) (int64, error) {
+func (v *Validator) countRows(ctx context.Context, db *sql.DB, table string) (int64, error) {
 	var count int64
-	err := db.QueryRowContext(ctx, fmt.Sprintf(`SELECT COUNT(*) FROM "%s"`, table)).Scan(&count)
+	err := db.QueryRowContext(ctx, fmt.Sprintf(`SELECT COUNT(*) FROM %s`, quoteIdent(table))).Scan(&count)
 	return count, err
 }
 
 // compareSampleChecksums compares checksums of sample rows between source and target.
 // It reads up to sampleSize rows from each side (ordered by the first column) and
 // compares a SHA-256 checksum of the concatenated row values.
+//
+// NULL ordering: SQLite sorts NULLs first (ascending) by default, while Postgres
+// sorts NULLs last. We use explicit NULLS FIRST on both sides to guarantee
+// identical row ordering, otherwise checksums would mismatch on tables with
+// NULL values even when the data is identical.
 func (v *Validator) compareSampleChecksums(ctx context.Context, sqliteTable, pgTable string, columns []string) (int, error) {
 	colList := strings.Join(quoteIdentifiers(columns), ", ")
-	// Order by all columns to ensure deterministic ordering.
-	orderBy := strings.Join(quoteIdentifiers(columns), ", ")
+	// Order by all columns with explicit NULLS FIRST for cross-database consistency.
+	// Both SQLite and Postgres support NULLS FIRST / NULLS LAST.
+	orderByParts := make([]string, len(columns))
+	for i, c := range quoteIdentifiers(columns) {
+		orderByParts[i] = c + " NULLS FIRST"
+	}
+	orderBy := strings.Join(orderByParts, ", ")
 
 	// Read sample from SQLite.
-	srcSQL := fmt.Sprintf(`SELECT %s FROM "%s" ORDER BY %s LIMIT %d`, colList, sqliteTable, orderBy, v.sampleSize)
+	srcSQL := fmt.Sprintf(`SELECT %s FROM %s ORDER BY %s LIMIT %d`, colList, quoteIdent(sqliteTable), orderBy, v.sampleSize)
 	srcChecksums, err := v.computeRowChecksums(ctx, v.srcDB, srcSQL, len(columns))
 	if err != nil {
 		return 0, fmt.Errorf("source checksums: %w", err)
 	}
 
 	// Read sample from Postgres.
-	tgtSQL := fmt.Sprintf(`SELECT %s FROM "%s" ORDER BY %s LIMIT %d`, colList, pgTable, orderBy, v.sampleSize)
+	tgtSQL := fmt.Sprintf(`SELECT %s FROM %s ORDER BY %s LIMIT %d`, colList, quoteIdent(pgTable), orderBy, v.sampleSize)
 	tgtChecksums, err := v.computeRowChecksums(ctx, v.tgtDB, tgtSQL, len(columns))
 	if err != nil {
 		return 0, fmt.Errorf("target checksums: %w", err)

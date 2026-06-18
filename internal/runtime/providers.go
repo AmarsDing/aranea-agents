@@ -12,12 +12,13 @@ import (
 
 // NewTRPCSessionService builds the framework session service.
 // Deprecated: prefer aranea-agents/internal/session/trpc.NewTRPCSessionService directly.
-func NewTRPCSessionService(rawDB *sql.DB, pgDSN string, lg loggateway.Logger, summarizerCfg sessiontrpc.SummarizerConfig) trpcsession.Service {
-	return sessiontrpc.NewTRPCSessionService(rawDB, pgDSN, lg, summarizerCfg)
+func NewTRPCSessionService(pgDSN string, lg loggateway.Logger, summarizerCfg sessiontrpc.SummarizerConfig) trpcsession.Service {
+	return sessiontrpc.NewTRPCSessionService(pgDSN, lg, summarizerCfg)
 }
 
 // NewGraphCheckpointSaver builds the graph checkpoint saver.
-// When pgDSN is non-empty, a Postgres-backed saver is created; otherwise SQLite.
+// When pgDSN is non-empty, a Postgres-backed saver is created; otherwise the
+// saver falls back to the rawDB handle (used in tests/offline tools).
 func NewGraphCheckpointSaver(rawDB *sql.DB, pgDSN string, lg loggateway.Logger) (*graphtrpc.CheckpointSaver, error) {
 	if lg == nil {
 		lg = loggateway.NewNoop()

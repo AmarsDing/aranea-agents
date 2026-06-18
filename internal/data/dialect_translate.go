@@ -6,13 +6,20 @@ import "strings"
 // given SQL string to Postgres-compatible equivalents.
 //
 // Translations applied:
-//   - "INTEGER PRIMARY KEY AUTOINCREMENT" -> "SERIAL PRIMARY KEY"
-//     (SQLite AUTOINCREMENT creates an auto-incrementing rowid; Postgres SERIAL
-//     creates an INTEGER column backed by a sequence.)
+//   - "INTEGER PRIMARY KEY AUTOINCREMENT" -> "BIGSERIAL PRIMARY KEY"
+//     (SQLite AUTOINCREMENT creates an auto-incrementing rowid backed by 64-bit
+//     INTEGER; Postgres BIGSERIAL creates a BIGINT column backed by a sequence,
+//     matching SQLite's 64-bit width. Using SERIAL would overflow at ~2.1B.)
 //   - "BLOB" -> "BYTEA"
 //     (SQLite BLOB is a binary blob; Postgres BYTEA is the equivalent.)
+//     WARNING: This replacement is token-level and may incorrectly rewrite
+//     "BLOB" inside string literals or CHECK constraints. Current migration
+//     SQL files do not contain such usage, but future files must be audited.
 //   - "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')" -> Postgres to_char equivalent
 //     (SQLite strftime for ISO 8601 UTC timestamp; Postgres uses to_char.)
+//   - "datetime('now')" -> "now()"
+//   - "date('now')" -> "current_date"
+//   - "time('now')" -> "current_time"
 //
 // Note: "INSERT OR IGNORE INTO" is handled per-statement in
 // executeSQLFileWithDialect because it requires appending "ON CONFLICT DO
@@ -26,12 +33,12 @@ import "strings"
 // This function is called by executeSQLFileWithDialect when the active dialect
 // is Postgres, to allow shared SQL migration files to work on both databases.
 func translateSQLiteDDLToPostgres(ddl string) string {
-	// INTEGER PRIMARY KEY AUTOINCREMENT -> SERIAL PRIMARY KEY
+	// INTEGER PRIMARY KEY AUTOINCREMENT -> BIGSERIAL PRIMARY KEY
 	// Match case-insensitively but preserve the rest of the line.
-	ddl = replaceCaseInsensitive(ddl, "INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+	// BIGSERIAL (BIGINT) matches SQLite's 64-bit INTEGER width.
+	ddl = replaceCaseInsensitive(ddl, "INTEGER PRIMARY KEY AUTOINCREMENT", "BIGSERIAL PRIMARY KEY")
 	// BLOB -> BYTEA (only as a column type, not inside strings).
-	// This is safe because BLOB is not a valid identifier and only appears as
-	// a column type in DDL.
+	// WARNING: token-level replacement; see function doc for limitations.
 	ddl = replaceCaseInsensitive(ddl, "BLOB", "BYTEA")
 	// strftime('%Y-%m-%dT%H:%M:%SZ', 'now') -> to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 	// SQLite strftime for ISO 8601 UTC timestamp; Postgres uses to_char with
@@ -39,6 +46,12 @@ func translateSQLiteDDLToPostgres(ddl string) string {
 	ddl = replaceCaseInsensitive(ddl,
 		`strftime('%Y-%m-%dT%H:%M:%SZ', 'now')`,
 		`to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`)
+	// datetime('now') -> now()
+	ddl = replaceCaseInsensitive(ddl, `datetime('now')`, `now()`)
+	// date('now') -> current_date
+	ddl = replaceCaseInsensitive(ddl, `date('now')`, `current_date`)
+	// time('now') -> current_time
+	ddl = replaceCaseInsensitive(ddl, `time('now')`, `current_time`)
 	return ddl
 }
 

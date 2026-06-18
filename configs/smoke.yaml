@@ -1,4 +1,8 @@
-# sqlite-only bootstrap for local smoke tests (no postgres/redis dependency).
+# SQLite-only config for CLI maintenance tools and in-memory tests.
+# NOTE: This config CANNOT be used with the main admin server because NewData
+# hardcodes Postgres as the primary database. For Postgres smoke tests, use
+# configs/smoke_postgres.yaml instead.
+#
 # data.initial_admin: when admins table is empty, seeds id=1 (password → MD5, same as AdminService.Login).
 # Optional: KRATOS_HTTP_AUTH_DISABLED=1 skips cookie auth for local SPA.
 server:

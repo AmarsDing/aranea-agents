@@ -20,12 +20,14 @@
 
 | 编号 | 用户故事 | 优先级 |
 |------|---------|--------|
-| US-1 | 作为平台运维者，我希望系统能够在单机 SQLite 模式下开箱即用，无需额外部署数据库，以便快速验证和开发。 | P0 |
-| US-2 | 作为平台运维者，我希望系统能够可选地接入 PostgreSQL 用于向量搜索和知识库，以便在生产环境扩展语义检索能力。 | P1 |
+| US-1 | 作为平台运维者，我希望系统能够以 PostgreSQL 作为主库开箱即用，承载全部业务实体 CRUD 与向量搜索，以便在生产环境统一数据栈。 | P0 |
+| US-2 | 作为平台运维者，我希望系统能够利用 pgvector 扩展支持向量搜索和知识库，以便在生产环境扩展语义检索能力。 | P1 |
 | US-3 | 作为平台运维者，我希望数据库 Schema 变更能够通过版本化迁移自动执行，无需手动操作数据库，以便降低部署风险。 | P0 |
 | US-4 | 作为平台运维者，我希望系统能够在数据库迁移完成前拒绝外部请求，以避免请求命中未就绪的 Schema。 | P0 |
-| US-5 | 作为平台运维者，我希望系统能够在 PostgreSQL 不可用时自动降级为纯 SQLite 模式，以保证核心业务不中断。 | P1 |
+| US-5 | 作为平台运维者，我希望系统能够在 PostgreSQL 不可用时明确报错并拒绝启动，而不是静默降级到不一致的状态，以保证数据一致性。 | P1 |
 | US-6 | 作为平台运维者，我希望数据库错误能够被翻译为统一的业务错误码（404/409/400/500），以便上层模块和前端能够正确处理。 | P0 |
+
+> **注**：SQLite 仅保留用于测试基础设施（in-memory）和离线 CLI 维护工具（OpenSQLiteEntClient/NewCLIData），不再作为生产主库。
 
 ### 2.2 业务开发者视角
 
@@ -53,21 +55,21 @@
 
 ## 3. 功能需求
 
-### 3.1 双库架构
+### 3.1 Postgres 主库架构
 
 | 编号 | 需求 | 验收标准 |
 |------|------|---------|
-| FR-1 | 系统必须支持 SQLite 作为主库，承载全部业务实体 CRUD | 启动后所有业务实体的增删改查均通过 SQLite 完成 |
-| FR-2 | 系统必须支持可选的 PostgreSQL 作为向量库和知识库 | 配置 PostgreSQL 连接串后，向量搜索和知识库查询走 PostgreSQL |
-| FR-3 | SQLite 必须启用 WAL 模式以支持并发读写 | 启动后 `PRAGMA journal_mode` 返回 `wal` |
-| FR-4 | SQLite 必须启用外键约束 | 启动后 `PRAGMA foreign_keys` 返回 `1` |
-| FR-5 | PostgreSQL 不可用时必须降级为纯 SQLite 模式 | PostgreSQL 连接失败时系统仍能启动，向量搜索回退到 SQLite 实现 |
+| FR-1 | 系统必须以 PostgreSQL 作为主库，承载全部业务实体 CRUD | 启动后所有业务实体的增删改查均通过 Postgres 完成（NewData 强制 Postgres） |
+| FR-2 | 系统必须使用 pgvector 扩展支持向量搜索和知识库 | 配置 PostgreSQL 连接串 + `DAO_VECTOR_PGVECTOR=1`，向量搜索走 pgvector |
+| FR-3 | PostgreSQL 必须启用外键约束 | Ent Schema 创建时自动启用 FK 约束 |
+| FR-4 | PostgreSQL 不可用时必须拒绝启动 | 连接失败或 pgvector 未启用时 NewData 返回错误，不降级 |
+| FR-5 | SQLite 仅用于测试和 CLI 维护工具 | `OpenSQLiteEntClient`/`NewCLIData`/`SetEntClientForTest` 路径保留，不参与生产 |
 
 ### 3.2 读写分离
 
 | 编号 | 需求 | 验收标准 |
 |------|------|---------|
-| FR-6 | SQLite 必须实现读写连接分离 | 写连接 MaxOpenConns=1，读连接 MaxOpenConns=2 |
+| FR-6 | PostgreSQL 必须实现读写连接池分离 | 写池 MaxOpenConns=16/MaxIdle=4，读池 MaxOpenConns=32/MaxIdle=8 |
 | FR-7 | 事务中的读写操作必须使用同一连接 | 事务内所有操作走事务客户端，提交后恢复读写分离 |
 | FR-8 | 原生 SQL 操作必须同样参与事务传播 | 事务内的原生 SQL 使用事务句柄，非事务使用读写分离句柄 |
 
@@ -106,9 +108,9 @@
 
 | 编号 | 需求 | 验收标准 |
 |------|------|---------|
-| FR-25 | 必须支持 FTS5 全文搜索 | `messages_fts` 虚拟表 + 3 触发器自动同步 |
-| FR-26 | FTS5 不可用时必须回退到 LIKE 查询 | FTS 表不存在时使用 `content_markdown LIKE ?` |
-| FR-27 | 必须支持向量存储双实现 | SQLiteVectorStore（JSON+Go 余弦）+ PgVectorStore（pgvector） |
+| FR-25 | 必须支持全文搜索双实现 | SQLite FTS5（测试）+ Postgres tsvector + GIN 索引（生产），按 Dialect 切换 |
+| FR-26 | FTS 不可用时必须回退到 LIKE 查询 | FTS 表/列不存在时使用 `content_markdown LIKE ?` |
+| FR-27 | 必须支持向量存储双实现 | SQLiteVectorStore（测试，Go 余弦）+ PgVectorStore（生产，pgvector） |
 | FR-28 | 必须支持级联删除 | 删除 Agent/Session/Team/Channel 时自动清理关联表 |
 | FR-29 | 必须提供启动就绪门控 | `ReadinessGate` 三态：Pending → Ready / Failed |
 
@@ -120,37 +122,35 @@
 
 | 编号 | 需求 | 指标 |
 |------|------|------|
-| NFR-1 | SQLite 写连接单连接，避免 SQLITE_BUSY | MaxOpenConns=1, busy_timeout=30s |
-| NFR-2 | SQLite 读连接并发，平衡性能和资源 | MaxOpenConns=2 |
-| NFR-3 | PostgreSQL 写连接池支持中等并发 | MaxOpenConns=16 |
-| NFR-4 | PostgreSQL 读连接池支持高并发检索 | MaxOpenConns=32 |
-| NFR-5 | 关键查询路径必须有索引覆盖 | 通过 DDL 迁移补缺失索引 |
-| NFR-6 | 消息全文搜索必须避免 LIKE 全表扫描 | 使用 FTS5 + bm25 排序 |
+| NFR-1 | PostgreSQL 写连接池支持中等并发 | MaxOpenConns=16, MaxIdleConns=4, ConnMaxLifetime=30min |
+| NFR-2 | PostgreSQL 读连接池支持高并发检索 | MaxOpenConns=32, MaxIdleConns=8, ConnMaxLifetime=30min |
+| NFR-3 | 关键查询路径必须有索引覆盖 | 通过 DDL 迁移补缺失索引 |
+| NFR-4 | 消息全文搜索必须避免 LIKE 全表扫描 | 生产用 Postgres tsvector + GIN 索引 + ts_rank 排序；测试用 SQLite FTS5 + bm25 |
 
 ### 4.2 可靠性
 
 | 编号 | 需求 | 指标 |
 |------|------|------|
-| NFR-7 | 事务必须保证原子性 | 全成功或全回滚，无部分成功 |
-| NFR-8 | 迁移必须幂等可重试 | 重复执行不报错，失败可重试 |
-| NFR-9 | PostgreSQL 降级不能阻断启动 | 连接失败时 `log.Warn` 后继续 |
-| NFR-10 | 数据库错误必须保留原始错误链 | `apierror.Wrap` 保留 Cause 字段 |
+| NFR-5 | 事务必须保证原子性 | 全成功或全回滚，无部分成功 |
+| NFR-6 | 迁移必须幂等可重试 | 重复执行不报错，失败可重试 |
+| NFR-7 | PostgreSQL 不可用时必须明确报错 | 连接失败或 pgvector 未启用时 NewData 返回错误，不降级启动 |
+| NFR-8 | 数据库错误必须保留原始错误链 | `apierror.Wrap` 保留 Cause 字段 |
 
 ### 4.3 可维护性
 
 | 编号 | 需求 | 指标 |
 |------|------|------|
-| NFR-11 | Schema 变更必须通过 Ent Schema + DDL 迁移 | 禁止手动建表，禁止野生 `*_patch.go` |
-| NFR-12 | Repo 接口必须标注稳定性等级 | Stable / Evolving / Internal |
-| NFR-13 | 单 Repo 方法数 ≤ 5 | 超过按读写职责拆分 |
-| NFR-14 | 单方法行数 ≤ 80，圈复杂度 ≤ 15 | linter 强制 |
+| NFR-9 | Schema 变更必须通过 Ent Schema + DDL 迁移 | 禁止手动建表，禁止野生 `*_patch.go` |
+| NFR-10 | Repo 接口必须标注稳定性等级 | Stable / Evolving / Internal |
+| NFR-11 | 单 Repo 方法数 ≤ 5 | 超过按读写职责拆分 |
+| NFR-12 | 单方法行数 ≤ 80，圈复杂度 ≤ 15 | linter 强制 |
 
 ### 4.4 安全
 
 | 编号 | 需求 | 指标 |
 |------|------|------|
-| NFR-15 | 敏感字段必须标记 `.Sensitive()` | 凭证、API Key 等不泄漏到日志 |
-| NFR-16 | 外键约束必须启用 | `PRAGMA foreign_keys=ON` |
+| NFR-13 | 敏感字段必须标记 `.Sensitive()` | 凭证、API Key 等不泄漏到日志 |
+| NFR-14 | 外键约束必须启用 | Postgres FK 约束通过 Ent Schema 自动创建 |
 
 ---
 

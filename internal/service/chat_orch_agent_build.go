@@ -124,7 +124,7 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 			Sessions:     d.td.Sessions,
 		},
 		TRPCModelRouteDeps: chatagent.TRPCModelRouteDeps{
-			RT:         d.td.RoundTrip(),
+			RT:         d.td.RoundTripForSession(sessionID),
 			Provider:   p.Provider,
 			Model:      p.Model,
 			DialogMode: p.DialogMode,

@@ -92,6 +92,30 @@ export function useChatWorkspace() {
   // AF-FE-02~04: Activity-First timeline composable
   const activityTimeline = useActivityTimeline();
 
+  // T1.6: Shared activity envelope handler — used by both the real-time
+  // stream path (useChatStreamManager → bindStreamHandlers) and the
+  // inbound-sync polling path (useChatInboundSync). Routing activity events
+  // directly from the stream gives immediate UI updates without waiting
+  // for the polling cycle.
+  const handleActivityEnvelope = (env: Envelope) => {
+    const md = env.metadata as Record<string, unknown> | undefined;
+    if (!md) return;
+    switch (env.type) {
+      case 'activity_start':
+        activityTimeline.handleActivityStart(md as unknown as ActivityStartMeta);
+        break;
+      case 'activity_delta':
+        activityTimeline.handleActivityDelta(md as unknown as ActivityDeltaMeta);
+        break;
+      case 'activity_done':
+        activityTimeline.handleActivityDone(md as unknown as ActivityDoneMeta);
+        break;
+      case 'activity_child_start':
+        activityTimeline.handleActivityChildStart(md as unknown as ActivityChildStartMeta);
+        break;
+    }
+  };
+
   const runStatusCtrl = useChatRunStatus({ applyAwaitRunStatus });
   const { runStatus, runMeta, applyFromEnvelope, onSessionSwitch, refreshRunStatus, forceSetRunStatus } = runStatusCtrl;
 
@@ -245,6 +269,9 @@ export function useChatWorkspace() {
         timeout: 4000,
       });
     },
+    // T1.6: Real-time AF — route activity envelopes from the stream directly
+    // to useActivityTimeline for immediate UI updates.
+    onActivityEnvelope: handleActivityEnvelope,
   });
 
   const contextualLoading = useContextualLoadingMessage(streamManager.wsReplaying);
@@ -407,24 +434,9 @@ export function useChatWorkspace() {
     selectedSessionId,
     wsReplaying: streamManager.wsReplaying,
     onSpiritEnvelope: contextualLoading.onSpiritEnvelope,
-    onActivityEnvelope: (env: Envelope) => {
-      const md = env.metadata as Record<string, unknown> | undefined;
-      if (!md) return;
-      switch (env.type) {
-        case 'activity_start':
-          activityTimeline.handleActivityStart(md as unknown as ActivityStartMeta);
-          break;
-        case 'activity_delta':
-          activityTimeline.handleActivityDelta(md as unknown as ActivityDeltaMeta);
-          break;
-        case 'activity_done':
-          activityTimeline.handleActivityDone(md as unknown as ActivityDoneMeta);
-          break;
-        case 'activity_child_start':
-          activityTimeline.handleActivityChildStart(md as unknown as ActivityChildStartMeta);
-          break;
-      }
-    },
+    // T1.6: Reuse the shared handler so both real-time stream and
+    // inbound-sync paths route to the same useActivityTimeline instance.
+    onActivityEnvelope: handleActivityEnvelope,
     isChatRoute: () => route.name === 'chat',
     shouldAutoFocusChannel: () => {
       // Default OFF: channel inbound messages no longer auto-focus the session

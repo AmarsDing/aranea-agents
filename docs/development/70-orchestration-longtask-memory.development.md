@@ -1561,7 +1561,7 @@ Stream G2 (记忆):     P3-10/P3-13
 | A3 | 数据迁移工具 | ✅ | `cmd/migrate-sqlite-to-postgres/` 完整工具链 |
 | A4 | Wire 注入调整 + 框架兼容性修复 | ✅ | Wire providers 更新 + Postgres session service |
 | A5 | 停机迁移 + 切换 | ✅ | 133 表迁移成功，0 失败，43991 行数据 |
-| A6 | 清理 SQLite 专用代码 | 📋 待执行 | 计划保留 SQLite 作为开发模式降级方案 |
+| A6 | 清理 SQLite 专用代码 | ✅ | 业务代码层面移除 SQLite，保留框架代码和测试基础设施 |
 
 ### 15.2 关键技术产出
 
@@ -1633,6 +1633,28 @@ Stream G2 (记忆):     P3-10/P3-13
 5. **vector_embeddings 不兼容**：跳过数据迁移（SQLite TEXT vs Postgres vector，需重新嵌入）
 6. **索引名称一致性**：所有索引使用 `idx_` 前缀，与框架 `BuildIndexName` 函数一致
 
+#### 15.2.5 业务代码移除 SQLite（A6）
+
+**策略**：业务代码层面移除 SQLite，保留框架代码和测试基础设施
+
+**修改文件**：
+- `internal/data/data.go` — 移除 `initSQLite`/`initPostgres`/`entSQLiteDriverAndDSN` 函数，`NewData` 只支持 Postgres，VectorStore 移除 SQLite fallback
+- `internal/session/trpc/factory.go` — 移除 SQLite session service 分支，只走 Postgres + InMemory fallback
+- `internal/session/trpc/sqlite.go` — 移除 `NewSQLiteSessionService` 函数，保留 `NewInMemorySessionService` 和 `sessionEventLimit`
+
+**保留的 SQLite 代码**（用于测试和 CLI 工具）：
+- `internal/data/dialect.go` — dialect 抽象层，保留 SQLite 分支
+- `internal/data/message_fts_schema.go` / `message_search.go` — FTS5 代码，已是 dialect 感知
+- `internal/data/vector/sqlite.go` — SQLiteVectorStore，用于测试和 CLI 工具
+- `internal/data/testhelper/migration.go` — 测试基础设施，使用 SQLite 内存数据库
+- `internal/data/sqlite_path.go` / `OpenSQLiteEntClient` / `NewCLIData` — CLI 维护工具
+
+**评估结论**：
+- 完全移除 SQLite 需要修改框架代码（`pkg/trpc-agent-go` 有 100 个文件涉及 SQLite）和重写 22+ 个测试文件，风险极高
+- 业务代码层面移除 SQLite 已满足"生产代码只走 Postgres"的目标
+- 框架代码保持不变，保留 SQLite 支持能力（其他项目可能使用）
+- 测试基础设施保持不变，继续使用 SQLite 内存数据库（快速、隔离）
+
 ### 15.3 验证证据
 
 **全量 build 通过**：
@@ -1656,7 +1678,7 @@ Stream G2 (记忆):     P3-10/P3-13
 
 | # | 问题 | 严重度 | 处理建议 |
 |---|------|--------|---------|
-| PA-DEBT-01 | A6 清理 SQLite 专用代码未执行 | 中 | 计划保留 SQLite 作为开发模式降级方案，后续迭代评估是否完全移除 |
+| PA-DEBT-01 | ~~A6 清理 SQLite 专用代码未执行~~ 已解决 | - | A6 已完成：业务代码层面移除 SQLite（`initSQLite`/`NewSQLiteSessionService` 等），保留框架代码和测试基础设施 |
 | PA-DEBT-02 | 24 表 checksum 不匹配（行数匹配） | 低 | 差异来自数据类型表示（TIMESTAMP 格式、JSON 序列化顺序），无数据丢失，可接受 |
 | PA-DEBT-03 | trpc_session_events/states 数据未迁移 | 低 | 框架内部 session 数据，应用启动时重新创建，无业务影响 |
 | PA-DEBT-04 | vector_embeddings 数据未迁移 | 低 | 需重新嵌入，可由后台 job 异步完成 |
@@ -1665,7 +1687,7 @@ Stream G2 (记忆):     P3-10/P3-13
 
 本次 Phase A 完成记录同步更新本开发计划文档（DOC-SYNC-1/5/6 合规）：
 - DOC-SYNC-1：代码改动同步更新三件套文档 ✅
-- DOC-SYNC-5：状态标记反映代码真实状态（A1-A5 ✅，A6 📋）✅
+- DOC-SYNC-5：状态标记反映代码真实状态（A1-A6 ✅）✅
 - DOC-SYNC-6：代码锚点引用的文件路径真实存在 ✅
 
 **不涉及需求文档和设计文档变更**：Phase A 属于基础设施迁移，不改变外部行为契约和 API 接口。

@@ -16,7 +16,7 @@ type ModelCatalogInput struct {
 
 // RetryConfig holds retry configuration for provider HTTP calls.
 type RetryConfig struct {
-	MaxAttempts int // default 0 (disabled)
+	MaxAttempts int // default -1 (infinite). 0 = disabled, -1 = infinite, >0 = finite attempts
 	BaseDelayMs int // default 1000
 	MaxDelayMs  int // default 30000
 }
@@ -155,7 +155,7 @@ func catalogConfigToConfig(c catalogConfigJSON, modelAPI string) ProviderModelCo
 		},
 		// Retry
 		Retry: RetryConfig{
-			MaxAttempts: c.RetryMaxAttempts,
+			MaxAttempts: defaultRetryMaxAttempts(c.RetryMaxAttempts),
 			BaseDelayMs: c.RetryBaseDelayMs,
 			MaxDelayMs:  c.RetryMaxDelayMs,
 		},
@@ -193,6 +193,19 @@ func catalogConfigToConfig(c catalogConfigJSON, modelAPI string) ProviderModelCo
 		cfg.Cache.Messages = *c.CacheMessages
 	}
 	return cfg
+}
+
+// defaultRetryMaxAttempts returns the effective MaxAttempts value. When the
+// catalog config doesn't specify retry_max_attempts (0), we default to -1
+// (infinite retry) per the No-Timeout principle: LLM transient failures
+// (5xx / 429 / network) should be retried with exponential backoff until
+// success or user-initiated cancel. Callers who want to disable retry can
+// explicitly set retry_max_attempts=0 in the model config JSON.
+func defaultRetryMaxAttempts(configured int) int {
+	if configured == 0 {
+		return -1
+	}
+	return configured
 }
 
 func hasExplicitCapabilities(c biz.ModelCapabilities) bool {

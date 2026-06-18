@@ -48,14 +48,10 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 
 	runID := uuid.NewString()
 	teamCtx, teamCancel := context.WithCancel(ctx)
-	// Apply default turn timeout if the parent context has no deadline.
-	// This mirrors the single-agent path in runSingleAgentViaTRPC.
-	if _, hasDeadline := teamCtx.Deadline(); !hasDeadline && o.turnTimeout() > 0 {
-		var timeoutCancel context.CancelFunc
-		teamCtx, timeoutCancel = context.WithTimeout(teamCtx, o.turnTimeout())
-		origCancel := teamCancel
-		teamCancel = func() { timeoutCancel(); origCancel() }
-	}
+	// No-Timeout principle (T1.1): no hard turn timeout — tasks run until
+	// completion or user cancel. Mirrors the single-agent path in
+	// runSingleAgentViaTRPC which uses WithCancel only (no WithTimeout).
+	// User cancel is wired via o.runs.StoreCancelable below.
 	o.runs.StoreCancelable(sessionID, runID, teamCancel)
 	o.runStatus().SetRunStatus(ctx, sessionID, runID, biz.TeamRunStatusRunning, "")
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusRunning, "")
@@ -64,7 +60,13 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 	}
 	defer func() {
 		o.runs.Finish(sessionID)
-		o.processPendingQueue(sessionID, sess, biz.Agent{}, "", "", "")
+		// Skip processPendingQueue when this turn was started from inside
+		// the iterative pending-queue loop (see processPendingQueue). The
+		// loop owns draining the queue; re-entering would spawn a new
+		// goroutine per message, re-introducing the chain we eliminated.
+		if !inPendingLoop(ctx) {
+			o.processPendingQueue(sessionID, sess, biz.Agent{}, "", "", "")
+		}
 	}()
 
 	userMsg, assistantMsg, err = o.team().TeamsNative.RunTurnFromInput(teamCtx, sess, input)

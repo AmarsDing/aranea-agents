@@ -1,0 +1,52 @@
+# Postgres smoke test config (requires postgres + pgvector + redis).
+# Use this to verify the production code path (NewData hardcodes Postgres).
+#
+# Prerequisites:
+#   - Postgres running at 127.0.0.1:5432 with `aranea` database
+#   - pgvector extension installed: `CREATE EXTENSION IF NOT EXISTS vector;`
+#   - Env: DAO_VECTOR_PGVECTOR=1
+#   - Redis at 127.0.0.1:6379 (optional, only for distributed mode)
+#
+# Run: admin -conf configs/smoke_postgres.yaml
+# Optional: KRATOS_HTTP_AUTH_DISABLED=1 skips cookie auth for local SPA.
+server:
+  http:
+    addr: 0.0.0.0:8000
+    timeout: 600s
+  grpc:
+    addr: 0.0.0.0:9100
+    timeout: 120s
+  ws:
+    enable: true
+    network: tcp
+    addr: 0.0.0.0:8002
+  monitor:
+    process_log_enabled: true
+data:
+  # Postgres is the only supported primary database in production.
+  driver: postgres
+  sqlite:
+    # Ignored by NewData; kept for CLI maintenance tools.
+    enable: false
+    source: file:./data/arenea.sqlite?_fk=1
+  initial_admin:
+    name: dev
+    email: dev@local.invalid
+    password: dev
+    access: admin
+  postgres:
+    source: "postgres://postgres:Hangshan%40123@127.0.0.1:5432/aranea?sslmode=disable"
+    vector_dim: 1536
+  redis:
+    addr: 127.0.0.1:6379
+    read_timeout: 0.2s
+    write_timeout: 0.2s
+logging:
+  level: info
+  output_dir: "./logs"
+  max_size_mb: 100
+  max_backups: 10
+  max_age_days: 30
+  compress: true
+  stdout_enabled: true
+  hook_level: info

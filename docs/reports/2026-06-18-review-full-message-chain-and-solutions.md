@@ -22,7 +22,7 @@
 | 去重后独立问题 | 30（含已解决 12 + 未实施 18） |
 | 长任务目标 | 完成用户指令（**无时间限制**，无 24h deadline） |
 | 根本性方案族 | 6（A 无超时重试 / B 前端收敛 / C 记忆生产化 / D 通道分离 / E 可观测性 / F 动态加载） |
-| 总工作量 | 82 人天 |
+| 总工作量 | 88.5 人天 |
 
 ---
 
@@ -65,7 +65,7 @@
 | stall 180s | 180,000ms | **改为通知**（不中断） | 仅提示"似乎停滞"，不取消任务 |
 | stream 10min | 600,000ms | **移除** | 流式持续到完成 |
 | LLM HTTP 30min | 1,800s | **移除** + 自动重试 | LLM 断开 → 指数退避重试 |
-| DB 事务 30s | 30s | **保留**（SQLite 需要）+ 自动重试 | 30s 超时 → 回滚 → 重试 |
+| DB 事务 30s | 30s | **保留**（安全网）+ 自动重试 | 30s 超时 → 回滚 → 重试（Postgres 支持并发写，30s 仅防死锁） |
 | 24h hard deadline | 24h | **移除** | 任务无时间限制 |
 | WS TurnTimeout 5min | 300s | **移除** | WS turn 不超时 |
 | WS ping/pong | 30s/60s | **保留** | 连接健康检测 |
@@ -347,7 +347,7 @@ invokeLLMCall (chat_orchestrator_turn_phases.go:357)
 | 业务级 turn 超时 | 10min（软） | **移除** | 任务持续运行 |
 | LLM HTTP 超时 | 30min | **移除** | LLM 调用无上限，断开自动重试 |
 | 24h hard deadline | 24h | **移除** | 任务无时间限制 |
-| DB 事务超时 | 30s | **保留**（SQLite 需要） | 超时回滚 + 自动重试 |
+| DB 事务超时 | 30s | **保留**（安全网） | 超时回滚 + 自动重试（Postgres 已迁移，30s 仅防死锁） |
 | WS TurnTimeout | 5min | **移除** | WS turn 不超时 |
 | Heartbeat | 10s | **保留** | 仅进度感知，不触发超时 |
 | WS ping/pong | 30s/60s | **保留** | 连接健康检测 |
@@ -475,7 +475,7 @@ messageStore.messages (Pinia ref)
 | 7 | 无任务级心跳 | ✅ 已解决 | RunHeartbeatEmitter（10s） |
 | 8 | WBPF 语义违规 | ✅ 已解决 | 修复 WBPF |
 | 9 | 状态机被绕过 | ✅ 已解决 | GraphExecution FSM |
-| 10 | SQLite 单写瓶颈 | 🔴 未解决 | Phase A Postgres 迁移（排除本文范围） |
+| 10 | SQLite 单写瓶颈 | ✅ 已解决 | Postgres 全量迁移完成 |
 | 11 | **24h hard deadline 限制** | 🔴 新增 | **移除 24h deadline**（本方案） |
 | 12 | **LLM 断开无自动重试** | 🔴 新增 | **RetryTransport 默认开启 + 无限重试**（本方案） |
 | 13 | **DB 超时无自动重试** | 🔴 新增 | **DB 操作重试包装器**（本方案） |
@@ -684,8 +684,8 @@ ObservabilityDashboard
 | 项 | 内容 |
 |----|------|
 | **位置** | `internal/data/data.go:163-219` + `internal/data/tx.go:17-100` |
-| **问题** | DB 事务 30s 硬超时，超时后回滚返回错误，无自动重试，长任务中 DB 超时直接失败 |
-| **根本性方案** | DB 操作重试包装器（方案 A）：`ExecInTxWithRetry(ctx, fn, maxRetries=3, backoff=1s/2s/4s)`，仅对 `CodeInternal` 和 busy 错误重试 |
+| **问题** | DB 事务 30s 硬超时（Postgres 已迁移，30s 仅作安全网防死锁），超时后回滚返回错误，无自动重试，长任务中 DB 超时直接失败 |
+| **根本性方案** | DB 操作重试包装器（方案 A）：`ExecInTxWithRetry(ctx, fn, maxRetries=3, backoff=1s/2s/4s)`，仅对 `CodeInternal` 和死锁错误重试（Postgres 支持并发写，重试更安全） |
 | **工作量** | 2 人天 |
 
 **问题 12：RunRegistry TOCTOU 风险** 🔴 阻断
@@ -728,14 +728,69 @@ ObservabilityDashboard
 | **根本性方案** | 补充 `onActivityEnvelope` 回调，将当前 session 的 activity 事件转发到 `activityTimeline.handleActivityStart/Delta/Done/ChildStart` |
 | **工作量** | 1 人天 |
 
-**问题 16：AF 与 Legacy 双路径技术债** 🔴 阻断
+**问题 16：AF 与 Legacy 双路径技术债 — Legacy 完全移除方案** 🔴 阻断
 
 | 项 | 内容 |
 |----|------|
-| **位置** | `useConversationTimeline.ts:94-131`、`mergeSessionMessages.ts:210-213` |
-| **问题** | AF 与 Legacy 路径并存，根据 `hasAfData`/`hasSnapshots` 切换，两条路径行为不一致，bug 修复易遗漏 |
-| **根本性方案** | 完成 AF 迁移（方案 B1）：验证 AF 覆盖所有 Legacy 场景 → 移除 Legacy 函数 → 移除切换逻辑 |
-| **工作量** | 5 人天 |
+| **位置** | `useConversationTimeline.ts:94-131`、`mergeSessionMessages.ts:210-213` 等 5 个文件 |
+| **问题** | AF 与 Legacy 路径并存，根据 `hasAfData`/`hasSnapshots` 切换，两条路径行为不一致，bug 修复易遗漏。**目标：完全移除 Legacy，全部归一到 AF** |
+| **根本性方案** | 分两阶段：先填补 5 个 AF 缺口（7.5 人天），再移除 Legacy 代码（5 人天） |
+| **工作量** | 12.5 人天 |
+
+**阶段 1：填补 AF 缺口（7.5 人天，前置必做）**
+
+| 缺口 | 优先级 | 工作量 | 位置 | 方案 |
+|------|--------|--------|------|------|
+| AF-GAP-01 实时 activity 未接入 | P0 | 1d | `useChatStreamManager.ts:229-260, 331-358` | `bindStreamHandlers` 设置 `ctx.onActivityEnvelope`，转发到 `activityTimeline.handleActivityStart/Delta/Done/ChildStart` |
+| AF-GAP-02 当前 session 不转发 | P0 | 0.5d | `useChatInboundSync.ts:379-383` | 移除 `if (!isCurrent)` 条件，当前 session 也转发 activity 事件 |
+| AF-GAP-03 Pre-AF 历史会话 | P1 | 3d | 后端数据迁移 | 后台批量回填：遍历 pre-AF 会话，从 messages 重建 activities 记录（`reconstruct_activities_from_messages.go`） |
+| AF-GAP-04 Team 成员消息 | P1 | 2d | `streamHandlers.ts:288-364` + `activity_projector.go` | 后端新增 `OnMemberMessage` → `activity_start(kind=reply, meta.member_id=xxx)`；前端映射到 ReplyEvent（含 member 标识） |
+| AF-GAP-05 AF API 失败降级 | P2 | 1d | `useChatWorkspace.ts:862` | `loadActivitiesFromAPI` 失败时强制重试 5 次（指数退避），仍失败则显示"数据加载失败，请刷新"而非回退 Legacy |
+
+**阶段 2：移除 Legacy 代码（5 人天）**
+
+| 步骤 | 工作量 | 文件 | 删除内容 |
+|------|--------|------|---------|
+| 2.1 移除 Legacy Turn 构建 | 1d | `useConversationTimeline.ts` | 删除 `buildLegacyConversationTurn`（L144-188）；删除 `hasAfData` 切换（L108-120）；删除 Legacy fallback 分支（L122-130）；删除单 turn 级 fallback（L222-228） |
+| 2.2 移除 Legacy 合并逻辑 | 1d | `mergeSessionMessages.ts` | 删除 `ws-snap-*` 相关逻辑（L26-36, L95-109）；`hasSnapshots` 改为始终 true（L193-213）；`excludeMergedAssistant` 改为始终 true |
+| 2.3 移除 Legacy 重载 | 0.5d | `sessionCompletionReload.ts` | 删除 `if (!input.activityFirst)` 分支（L29-38），改为始终 AF 模式 |
+| 2.4 移除 isLegacy 标记 | 0.5d | `activityTimelineTypes.ts` | 删除 `isLegacy` 字段（L64-66） |
+| 2.5 评估保留基础设施 fallback | 1d | `streamHandlers.ts` | **保留** `run_status` placeholder（L254-286，AF `activity_start(kind=task)` 会移除它）；**保留** `runner_completion`/`error` fallback（L410-452，处理基础设施错误）；**移除** `member_message_*` Legacy handlers（L288-364，已被 AF-GAP-04 替代） |
+| 2.6 灰度验证 + 全量测试 | 1d | — | 灰度发布监控 Legacy fallback 触发次数 < 0.1%；`pnpm lint && pnpm test && pnpm build` 全通过 |
+
+**移除后保留的基础设施 fallback（非 Legacy）**：
+
+| 代码 | 位置 | 保留原因 |
+|------|------|---------|
+| `run_status` placeholder | `streamHandlers.ts:254-286` | AF `activity_start(kind=task)` 到达前需要 placeholder 占位 |
+| `runner_completion` fallback | `streamHandlers.ts:410-425` | 处理 turn 完成的基础设施事件（finalize + reload） |
+| `error` fallback | `streamHandlers.ts:427-452` | 处理 `flow_*` 错误和 WS 断连的基础设施错误 |
+
+**移除后的 AF 唯一路径**：
+
+```
+WS onmessage → EnvelopeDispatcher.dispatch
+  → bindStreamHandlers (streamHandlers.ts)
+    ├─ run_status → 创建 placeholder（AF task 到达后移除）
+    ├─ activity_start → activityTimeline.handleActivityStart（唯一路径）
+    ├─ activity_delta → activityTimeline.handleActivityDelta（唯一路径）
+    ├─ activity_done → activityTimeline.handleActivityDone（唯一路径）
+    ├─ activity_child_start → activityTimeline.handleActivityChildStart（唯一路径）
+    ├─ runner_completion → finalize + reload（基础设施）
+    ├─ error → 标记失败 + reload（基础设施）
+    └─ llm_retry → 显示"正在重试..."（新增）
+
+messageStore.messages (Pinia ref)
+  → useConversationTimeline.conversationTurns (computed)
+    → buildAllConversationTurnsFromActivities（唯一路径，无 Legacy fallback）
+      → ChatMessageList.vue → ConversationTurn.vue → EventStream.vue
+```
+
+**验证标准**：
+- 灰度发布 1 周，Legacy fallback 触发次数 = 0
+- Pre-AF 历史会话通过数据回填后正常渲染（AF-GAP-03）
+- Team 成员消息通过 AF kind 渲染（AF-GAP-04）
+- `grep -r "buildLegacyConversationTurn\|hasAfData\|hasSnapshots\|isLegacy" web/src/` 返回空
 
 **问题 17：HTTP/WS 双通道职责不清** 🔴 阻断
 
@@ -812,16 +867,16 @@ internal/service/
 **关键点**：
 1. **移除 24h deadline**：删除 `chat_orchestrator_turn.go:313-323` 的 `context.WithTimeout(ctx, longTaskHardDeadline)` 代码块
 2. **LLM 默认重试**：`RetryTransport` 默认 `MaxAttempts = -1`（无限），指数退避 1s/2s/4s/8s/16s/30s（封顶），每次重试推送 `llm_retry` 事件
-3. **DB 重试包装**：`ExecInTxWithRetry(ctx, fn, maxRetries=3, backoff)`，仅对 `CodeInternal` 和 busy 错误重试
+3. **DB 重试包装**：`ExecInTxWithRetry(ctx, fn, maxRetries=3, backoff)`，仅对 `CodeInternal` 和死锁错误重试（Postgres 已迁移，支持并发写，重试更安全）
 4. **前端超时移除**：删除 `timeouts.ts` 中的 dispatch/turn-ack/first-byte/stream 超时常量；stall 改为通知（不中断）
 5. **GoroutinePool**：支持多模式 `Go(ctx, ...)` 请求级 + `GoBackground(name, ...)` 进程级
 6. **ManagedMap**：替代裸 `sync.Map`/`map`，原子操作根治 TOCTOU
 7. **pending queue 持久化**：`NewPendingMessageQueueWithDirAndLogger(dataDir, lg)`
 8. **processPendingQueue 迭代式**：while loop + 深度计数器
 
-### 7.2 方案 B：前端架构收敛与体验统一（29 人天）
+### 7.2 方案 B：前端架构收敛与体验统一（35.5 人天）
 
-**覆盖问题**：问题 15（实时 AF）、问题 16（双路径）、问题 18（虚拟滚动+折叠）+ 5 个其他
+**覆盖问题**：问题 15（实时 AF）、问题 16（Legacy 完全移除）、问题 18（虚拟滚动+折叠）+ 5 个其他
 
 **核心设计**：
 ```
@@ -975,65 +1030,295 @@ web/src/composables/
 
 ---
 
-## 八、实施建议
+## 八、实施计划
 
-### 8.1 实施顺序
+### 8.1 实施总览
+
+**团队假设**：1 后端 + 1 前端并行开发，1 周 = 5 工作日
+**总工期**：约 8 周（40 工作日），总工作量 88.5 人天
+**关键路径**：P0 阻断项 → 通道分离 → 可观测性 → AF 缺口填补 → Legacy 完全移除 → 虚拟滚动
 
 ```
-阶段 1（P0，立即）：8 个阻断项
-  ├─ 问题 9 移除 24h deadline（0.5 人天）— 最高 ROI
-  ├─ 问题 10 LLM 默认重试（2 人天）— 核心需求
-  ├─ 问题 13 前端超时移除（1.5 人天）— 核心需求
-  ├─ 问题 15 实时 AF 接入（1 人天）
-  ├─ 问题 1+2 HTTP fallback 临时修复（1 人天）
-  ├─ 问题 3 WS pendingQueue 保护（1 人天）
-  ├─ 问题 6 processPendingQueue 递归（1 人天）
-  └─ 问题 7 Pending Queue 持久化（1 人天）
-  → 9 人天
-
-阶段 2（P1，本迭代）：通道分离 + 可观测性 + DB 重试
-  ├─ 问题 17 通道职责分离（7 人天）— 含问题 1+2 根本性解决
-  ├─ 问题 19 可观测性 Dashboard（12 人天）— 需求 9
-  ├─ 问题 20 Task Plan API（2 人天）— 需求 9
-  ├─ 问题 11 DB 重试包装（2 人天）
-  ├─ 问题 12 RunRegistry TOCTOU（1 人天）
-  └─ 方案 C 记忆生产化（4.5 人天）
-  → 28.5 人天
-
-阶段 3（P2，下迭代）：体验与性能
-  ├─ 问题 16 AF/Legacy 双路径收敛（5 人天）
-  ├─ 问题 18 虚拟滚动 + 折叠（6 人天）— 需求 5
-  ├─ 问题 8 竞态条件（1 人天）
-  ├─ 问题 4 retryFailedMessage（0.5 人天）
-  ├─ 问题 5 enqueue 路径统一（0.5 人天）
-  ├─ 问题 14 WBPF 幂等性（2 人天）
-  └─ 问题 21 移动端逻辑清理（1 人天）— 需求 6
-  → 16 人天
-
-阶段 4（P3，机会性）：i18n baseline 持续清理
-  → 持续
+周次  后端开发流                          前端开发流                          里程碑
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+W1   P0: 移除24h deadline + LLM重试      P0: 前端超时移除 + 实时AF接入       M1: 无超时核心
+     + pendingQueue递归 + 持久化          + HTTP fallback修复 + WS保护
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+W2   P1: DB重试 + TOCTOU + 记忆生产化    P1: 通道职责分离（启动）             M2: DB可靠性
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+W3   P1: Task Plan API + 记忆收尾        P1: 通道分离（收尾）+ Dashboard启动  M3: 通道分离
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+W4   P1: Dashboard后端联调 + 集成测试    P1: Dashboard（TaskPlan+Team）       M4: 可观测性
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+W5   P2: 竞态 + WBPF幂等 + enqueue统一  P1: Dashboard（Graph+Metrics）收尾   M5: Dashboard完成
+                                         + 移动端清理
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+W6   P2: 回归测试 + Pre-AF数据回填      P2: AF缺口填补（GAP-02/04/05）        M6: AF缺口填补
+     + Team成员消息AF化后端                                              （Legacy仍保留）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+W7   P2: 缓冲 + Legacy移除后端联调      P2: Legacy代码完全移除（5步）         M7: AF统一
+                                         （Legacy代码删除）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测试            M8: 交付
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-### 8.2 工作量汇总
+### 8.2 Sprint 详细计划
+
+#### Sprint 1（W1）：P0 阻断项 — 无超时核心
+
+**目标**：实现"无超时 + 自动重试"核心需求，移除所有任务级超时
+
+**后端任务**（4.5 人天）：
+
+| 任务 | 工作量 | 依赖 | 验证标准 |
+|------|--------|------|---------|
+| T1.1 移除 24h deadline | 0.5d | 无 | `chat_orchestrator_turn.go` 删除 `longTaskHardDeadline` 代码块；长任务不受 24h 限制 |
+| T1.2 LLM 默认重试 | 2d | 无 | `RetryTransport` 默认 `MaxAttempts=-1`；指数退避 1s/2s/4s/8s/16s/30s；每次重试推送 `llm_retry` 事件 |
+| T1.3 processPendingQueue 迭代式 | 1d | 无 | 改为 while loop + 深度计数器；递归深度 >10 时停止消费 + 通知 |
+| T1.4 Pending Queue 持久化 | 1d | 无 | `wire.go` 传入 `dataDir`；`snapshot=true`；进程重启后队列恢复 |
+
+**前端任务**（4.5 人天）：
+
+| 任务 | 工作量 | 依赖 | 验证标准 |
+|------|--------|------|---------|
+| T1.5 前端超时移除 | 1.5d | 无 | `timeouts.ts` 删除 dispatch/turn-ack/first-byte/stream 常量；stall 改为通知（不中断） |
+| T1.6 实时 AF 接入 | 1d | 无 | `bindStreamHandlers` 设置 `onActivityEnvelope`；实时 activity 事件更新 `useActivityTimeline` |
+| T1.7 HTTP fallback 临时修复 | 1d | 无 | `markSendingDone()` 在 fallback 成功后立即调用；`loadMessages` 失败不标记 pending 为 failed |
+| T1.8 WS pendingQueue 保护 | 1d | 无 | `pendingQueue` 最大长度 100；`flushPendingQueue` 添加 try-catch；同机部署无限重连 |
+
+**里程碑 M1**：无超时核心 — 任务持续运行直到完成或用户取消，LLM 断开自动重试
+
+---
+
+#### Sprint 2（W2）：P1 启动 — DB 可靠性 + 通道分离
+
+**目标**：DB 操作自动重试，启动通道职责分离
+
+**后端任务**（5 人天）：
+
+| 任务 | 工作量 | 依赖 | 验证标准 |
+|------|--------|------|---------|
+| T2.1 DB 重试包装 | 2d | 无 | `ExecInTxWithRetry(ctx, fn, maxRetries=3, backoff)`；仅对 `CodeInternal`/死锁错误重试 |
+| T2.2 RunRegistry TOCTOU | 1d | 无 | `ManagedMap` 替代裸 `sync.Map`；`LoadOrStore` 替代 `load+store` |
+| T2.3 记忆生产化（启动） | 2d | 无 | `job_framework.go` 统一 Job 框架；`memory_ebbinghaus_decay.go` DB 读写增强 |
+
+**前端任务**（5 人天）：
+
+| 任务 | 工作量 | 依赖 | 验证标准 |
+|------|--------|------|---------|
+| T2.4 通道职责分离（启动） | 5d | T1.7 | `command_channel.ts` HTTP 仅命令；`data_channel.ts` WS 唯一数据；`event_replay.ts` afterRevision 回放 |
+
+**里程碑 M2**：DB 可靠性 — DB 超时自动重试，TOCTOU 风险消除
+
+---
+
+#### Sprint 3（W3）：P1 推进 — 通道分离收尾 + 可观测性启动
+
+**目标**：通道分离完成，启动可观测性 Dashboard
+
+**后端任务**（5 人天）：
+
+| 任务 | 工作量 | 依赖 | 验证标准 |
+|------|--------|------|---------|
+| T3.1 记忆生产化（收尾） | 2.5d | T2.3 | `memory_sleep_time.go` 重试+死信；`memory_link_evolution.go` 事务包裹；`dead_letter_repo.go` |
+| T3.2 Task Plan 查询 API | 2d | 无 | `chat.proto` 新增 `ListPlans`/`GetPlan` RPC；`chat_plan_query.go` Service 实现 |
+| T3.3 Dashboard 后端联调准备 | 0.5d | T3.2 | 确认 Team/Graph/Metrics API 响应格式；编写 API 文档 |
+
+**前端任务**（5 人天）：
+
+| 任务 | 工作量 | 依赖 | 验证标准 |
+|------|--------|------|---------|
+| T3.4 通道分离（收尾） | 2d | T2.4 | HTTP 接口语义变更完成；WS 断连事件持久化；重连 afterRevision 回放 |
+| T3.5 Dashboard 启动 | 3d | T3.2 | `ObservabilityDashboard.vue` 主面板；`TaskPlanView.vue` 任务计划视图 |
+
+**里程碑 M3**：通道分离 — HTTP 仅命令，WS 唯一数据通道
+
+---
+
+#### Sprint 4（W4）：P1 推进 — 可观测性 Dashboard
+
+**目标**：完成 TaskPlan + Team 执行状态可视化
+
+**后端任务**（5 人天）：
+
+| 任务 | 工作量 | 依赖 | 验证标准 |
+|------|--------|------|---------|
+| T4.1 Dashboard 后端联调 | 3d | T3.3 | 协助前端对接 Team Observatory / Graph Visualize API；修复联调问题 |
+| T4.2 集成测试 | 2d | T1.1-T1.4 | P0 修复项回归测试；`goleak` 检测；长任务 E2E 测试 |
+
+**前端任务**（5 人天）：
+
+| 任务 | 工作量 | 依赖 | 验证标准 |
+|------|--------|------|---------|
+| T4.3 Dashboard TaskPlan + Team | 5d | T3.5 | `TaskPlanView.vue` 完整（计划步骤/复杂度/策略）；`TeamRunView.vue`（成员状态/时间线） |
+
+**里程碑 M4**：可观测性（TaskPlan + Team）— 用户可查看任务计划和 Team 执行状态
+
+---
+
+#### Sprint 5（W5）：P1 收尾 + P2 启动
+
+**目标**：Dashboard 完成，启动体验优化
+
+**后端任务**（4 人天）：
+
+| 任务 | 工作量 | 依赖 | 验证标准 |
+|------|--------|------|---------|
+| T5.1 竞态条件修复 | 1d | T1.3 | `processPendingQueue` lock 内完成 dequeue+检查+决策；重新入队保持原位置 |
+| T5.2 WBPF 幂等性 | 2d | 无 | `EventStoreExistChecker` 统一应用；订阅者通过 event_id 去重 |
+| T5.3 enqueue 路径统一 | 1d | 无 | 统一为一种 enqueue 路径；所有排队消息展示在 ChatPendingQueue |
+
+**前端任务**（5 人天）：
+
+| 任务 | 工作量 | 依赖 | 验证标准 |
+|------|--------|------|---------|
+| T5.4 Dashboard Graph + Metrics | 4d | T4.3 | `GraphExecutionView.vue`（图可视化 nodes+edges）；`MetricsPanel.vue`（Prometheus 解析） |
+| T5.5 移动端逻辑清理 | 1d | 无 | 移除 `<1024px` 折叠逻辑；专注桌面端 ≥1024px |
+
+**里程碑 M5**：Dashboard 完成 — 全链路可观测（TaskPlan/Team/Graph/Metrics/Logs）
+
+---
+
+#### Sprint 6（W6）：P2 启动 — AF 缺口填补
+
+**目标**：填补 AF 缺口（AF-GAP-02~05），为 Legacy 完全移除做准备
+
+**后端任务**（5 人天）：
+
+| 任务 | 工作量 | 依赖 | 验证标准 |
+|------|--------|------|---------|
+| T6.1 回归测试 | 1d | T5.1-T5.3 | P1 修复项回归测试；通道分离 E2E；Dashboard API 集成测试 |
+| T6.2 性能基准 | 1d | 无 | 建立性能基准（TTFT/turn 时长/内存）；`goleak` 全量检测 |
+| T6.3 AF-GAP-03 Pre-AF 数据回填 | 3d | 无 | `reconstruct_activities_from_messages.go` 后台批量回填；遍历 pre-AF 会话从 messages 重建 activities 记录 |
+
+**前端任务**（5 人天）：
+
+| 任务 | 工作量 | 依赖 | 验证标准 |
+|------|--------|------|---------|
+| T6.4 AF-GAP-02 当前 session 转发 | 0.5d | T1.6 | `useChatInboundSync.ts:379-383` 移除 `if (!isCurrent)` 条件 |
+| T6.5 AF-GAP-04 Team 成员消息前端 | 1d | T6.6 | `streamHandlers.ts` 映射 `activity_start(kind=reply, meta.member_id)` 到 ReplyEvent |
+| T6.6 AF-GAP-04 Team 成员消息后端 | 1d | 无 | `activity_projector.go` 新增 `OnMemberMessage` → `activity_start(kind=reply, meta.member_id=xxx)` |
+| T6.7 AF-GAP-05 API 失败降级 | 1d | 无 | `loadActivitiesFromAPI` 失败强制重试 5 次；仍失败显示"数据加载失败"而非回退 Legacy |
+| T6.8 buffer + 联调测试 | 1.5d | T6.4-T6.7 | AF 缺口填补后集成测试；验证所有场景走 AF 路径 |
+
+**里程碑 M6**：AF 缺口填补完成 — 所有场景可走 AF 路径（Legacy 仍保留作为 fallback）
+
+---
+
+#### Sprint 7（W7）：P2 推进 — Legacy 完全移除
+
+**目标**：完全移除 Legacy 代码，AF 成为唯一路径
+
+**后端任务**（5 人天）：
+
+| 任务 | 工作量 | 依赖 | 验证标准 |
+|------|--------|------|---------|
+| T7.1 缓冲 + bug 修复 | 3d | T6.3-T6.7 | 修复 AF 缺口填补后发现的问题；协助前端联调 |
+| T7.2 Legacy 移除后端联调 | 2d | T7.3 | 确认后端所有 turn 都发送 activity 事件；`stream_consumer.go` 移除 Legacy fallback 注释 |
+
+**前端任务**（5 人天）：
+
+| 任务 | 工作量 | 依赖 | 验证标准 |
+|------|--------|------|---------|
+| T7.3 Legacy 代码移除 | 5d | T6.4-T6.8 | 见下方详细步骤 |
+
+**T7.3 Legacy 代码移除详细步骤**：
+
+| 步骤 | 工作量 | 文件 | 操作 |
+|------|--------|------|------|
+| 7.3a 移除 Legacy Turn 构建 | 1d | `useConversationTimeline.ts` | 删除 `buildLegacyConversationTurn`（L144-188）；删除 `hasAfData` 切换（L108-120）；删除 Legacy fallback 分支（L122-130）；删除单 turn 级 fallback（L222-228） |
+| 7.3b 移除 Legacy 合并逻辑 | 1d | `mergeSessionMessages.ts` | 删除 `ws-snap-*` 相关逻辑（L26-36, L95-109）；`hasSnapshots` 改为始终 true（L193-213）；`excludeMergedAssistant` 改为始终 true |
+| 7.3c 移除 Legacy 重载 + isLegacy | 1d | `sessionCompletionReload.ts` + `activityTimelineTypes.ts` | 删除 `if (!input.activityFirst)` 分支（L29-38）；删除 `isLegacy` 字段（L64-66） |
+| 7.3d 移除 member_message Legacy handlers | 0.5d | `streamHandlers.ts` | 移除 `member_message_*` Legacy handlers（L288-364，已被 AF-GAP-04 替代） |
+| 7.3e 灰度验证 + 全量测试 | 1.5d | — | 灰度发布监控 Legacy fallback 触发次数 = 0；`grep -r "buildLegacyConversationTurn\|hasAfData\|hasSnapshots\|isLegacy" web/src/` 返回空；`pnpm lint && pnpm test && pnpm build` 全通过 |
+
+**保留的基础设施 fallback（非 Legacy）**：
+- `run_status` placeholder（`streamHandlers.ts:254-286`）— AF task 到达前占位
+- `runner_completion`/`error` fallback（`streamHandlers.ts:410-452`）— 基础设施错误处理
+
+**里程碑 M7**：AF 统一 — Legacy 代码完全移除，AF 成为唯一渲染路径
+
+---
+
+#### Sprint 8（W8）：P2 收尾 + 交付
+
+**目标**：虚拟滚动 + 折叠完成，全量交付
+
+**后端任务**（5 人天）：
+
+| 任务 | 工作量 | 依赖 | 验证标准 |
+|------|--------|------|---------|
+| T8.1 全量回归 | 3d | T7.1 | `make api && make wire && make build && make test && make lint` 全通过 |
+| T8.2 文档同步 | 2d | 全部 | 三件套文档同步（DOC-SYNC-1~8）；ADR 记录架构变更 |
+
+**前端任务**（5 人天）：
+
+| 任务 | 工作量 | 依赖 | 验证标准 |
+|------|--------|------|---------|
+| T8.3 虚拟滚动（收尾） | 2d | T7.3 | 消息数 >100 时启用；DynamicScroller 动态高度 |
+| T8.4 大消息折叠 | 2d | 无 | `ThinkingBlock` 默认折叠；`ActionBlock` >500 字符折叠；`useCollapseState.ts` sessionStorage 记忆 |
+| T8.5 前端测试 | 1d | T8.3-T8.4 | `pnpm lint && pnpm test && pnpm build` 全通过 |
+
+**里程碑 M8**：交付 — 全部 18 个问题修复完成，全量测试通过
+
+### 8.3 关键路径与依赖
+
+```
+关键路径（不可并行）：
+T1.1 移除24h deadline ──────────────────────────────────────→ M1
+T1.2 LLM重试 ──────────────────────────────────────────────→ M1
+T1.7 HTTP fallback修复 ──→ T2.4 通道分离 ──→ T3.4 通道分离收尾 → M3
+T1.6 实时AF ──→ T6.3 AF收敛 ──→ T7.2 AF收尾 ──→ M7
+T3.2 TaskPlan API ──→ T3.5 Dashboard启动 ──→ T4.3 ──→ T5.4 → M5
+
+可并行任务：
+T1.3 递归修复 | T1.4 持久化 | T1.5 前端超时 | T1.8 WS保护
+T2.1 DB重试 | T2.2 TOCTOU | T2.3 记忆启动
+T5.1 竞态 | T5.2 WBPF | T5.3 enqueue统一 | T5.5 移动端清理
+T7.3 虚拟滚动 | T8.4 大消息折叠
+```
+
+### 8.4 验证计划
+
+**每个 Sprint 验证门控**：
+
+| Sprint | 验证内容 | 命令/方法 |
+|--------|---------|----------|
+| S1 | P0 修复项单元测试 | `go test ./internal/service/... ./internal/provider/... -count=1` |
+| S2 | DB 重试 + TOCTOU 测试 | `go test ./internal/data/... ./internal/runtime/... -count=1` |
+| S3 | 通道分离 E2E + TaskPlan API | `go test ./internal/service/... -run TestChannel -count=1` |
+| S4 | Dashboard API 集成测试 | 手动验证 + `curl` API 测试 |
+| S5 | WBPF 幂等 + 竞态测试 | `go test ./internal/event/... -count=1 -race` |
+| S6 | 全量后端回归 | `make api && make wire && make build && make test && make lint` |
+| S7 | AF 收敛灰度验证 | 监控 Legacy fallback 触发次数 < 1% |
+| S8 | 全量交付验证 | 后端全量 + 前端 `pnpm lint && pnpm test && pnpm build` |
+
+**长期验证**：
+- `goleak` 检测：每个 Sprint 结束运行，确保无 goroutine 泄漏
+- 性能基准：Sprint 6 建立基准，后续 Sprint 对比回归
+- 长任务 E2E：模拟 1h+ 任务，验证无超时 + 自动重试
+
+### 8.5 工作量汇总
 
 | 方案 | 工作量 | 覆盖问题 |
 |------|--------|---------|
 | 方案 A（无超时重试） | 22 人天 | 7 |
-| 方案 B（前端收敛） | 29 人天 | 9 |
+| 方案 B（前端收敛） | 35.5 人天 | 9（含 Legacy 完全移除 12.5 人天） |
 | 方案 C（记忆生产化） | 9 人天 | 3 |
 | 方案 D（通道分离） | 含在 B 中 | 3 |
 | 方案 E（可观测性） | 14 人天 | 2 |
 | 方案 F（动态加载） | 含在 B 中 | 1 |
 | 临时修复（阶段 1） | 9 人天 | 8 |
-| **合计** | **82 人天** | **18+12 已解决** |
+| **合计** | **88.5 人天** | **18+12 已解决** |
 
-### 8.3 系统级风险防范
+### 8.6 系统级风险防范
 
 | 风险 | 缓解措施 |
 |------|---------|
 | 无超时导致资源泄漏 | GoroutinePool 统一管理 + 用户取消 + CheckpointSaver 崩溃恢复 |
 | LLM 无限重试导致成本失控 | 每次重试推送事件 + 前端显示重试次数 + 用户可随时取消 |
-| DB 无限重试导致死锁 | DB 重试上限 3 次 + 仅对 busy/internal 错误重试 |
+| DB 无限重试导致死锁 | DB 重试上限 3 次 + 仅对 busy/internal/死锁错误重试（Postgres 已迁移，并发写性能更好） |
 | 改造期间稳定性下降 | 分阶段实施 + 每阶段独立验证 + 灰度发布 |
 | 回归测试覆盖不足 | 改造前建立性能基准 + 关键路径 E2E 测试 + `goleak` 检测 |
 | AF 收敛遗漏 Legacy 场景 | 灰度发布 + 监控 Legacy fallback 触发次数 |
@@ -1074,13 +1359,12 @@ web/src/composables/
 - LLM 单调用无重试，断开即失败（问题 10）→ **本方案默认重试**
 - DB 超时无重试（问题 11）→ **本方案增加重试**
 - pending queue 进程重启丢失（问题 7）→ **本方案启用持久化**
-- SQLite 单写瓶颈（Phase A 未实施，排除本文范围）
+- ~~SQLite 单写瓶颈~~ → ✅ **Postgres 全量迁移已完成**
 
 **目标达成路径**：
 1. 修复问题 9+10+11（无超时 + 自动重试）→ 长任务可靠性提升
 2. 实施方案 D（通道分离）→ 消除双通道竞态，长任务期间用户可继续交互
 3. 实施方案 E（可观测性）→ 用户可查看任务进度、Team 状态、Graph 执行
-4. 实施 Phase A（Postgres 迁移，排除本文）→ 突破 SQLite 单写瓶颈
 
 ### 9.4 用户体验评估
 
@@ -1101,6 +1385,6 @@ web/src/composables/
 
 **优先修复阶段 1 的 8 个阻断项**（9 人天），立即实现"无超时 + 自动重试"核心需求。然后按阶段 2→3 推进根本性方案，最终达成"完成用户指令（无时间限制）+ 绝对友好体验 + 全链路可观测"的目标。
 
-排除数据库迁移后，本报告共列出 **18 个未实施问题**，预估总修复工作量约 **82 人天**（含临时修复 9 人天 + 根本性方案 73 人天）。
+排除数据库迁移后，本报告共列出 **18 个未实施问题**，预估总修复工作量约 **88.5 人天**（含临时修复 9 人天 + 根本性方案 79.5 人天）。其中 Legacy 完全移除方案（问题 16）占 12.5 人天，分两阶段实施：先填补 5 个 AF 缺口（7.5 人天），再移除 Legacy 代码（5 人天），最终实现 AF 唯一渲染路径。
 
 **核心设计哲学转变**：从"超时保护"到"无超时 + 自动重试 + 用户可控"。任务持续运行直到完成或用户取消，LLM/DB 异常自动恢复，用户通过可观测性 Dashboard 全程感知进度。

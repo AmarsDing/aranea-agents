@@ -319,8 +319,13 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 // assembleTurnResult checks for context timeout and assembles the final turnExecuteResult.
 // When the turn timeout fires without content, we no longer fail immediately — instead we
 // push a timeout notification via WS so the user knows the turn is taking longer than
-// expected, and continue waiting (the actual hard deadline is set in runSingleAgentViaTRPC
-// as a safety upper bound of turnTimeout * 12).
+// expected, and continue waiting.
+//
+// No-Timeout principle (T1.1, 2026-06-18): the previous 24h hard deadline
+// (longTaskHardDeadline = turnTimeout * 12) was removed. Tasks now run until
+// completion or user cancel. The turnTimeout (10min default) serves only as
+// a sync-cap notification threshold — when it fires without content, a
+// timeout notification is pushed via WS but the turn is NOT cancelled.
 // Stability:internal
 func (o *ChatOrchestrator) assembleTurnResult(
 	ctx context.Context,

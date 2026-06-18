@@ -68,11 +68,21 @@ func (r *teamGraphSessionRepo) SaveSession(ctx context.Context, sess biz.TeamGra
 	if sess.LastActivityAt == "" {
 		sess.LastActivityAt = now
 	}
-	_, err := db.ExecContext(ctx, `
-INSERT OR REPLACE INTO team_graph_sessions
+	_, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
+INSERT INTO team_graph_sessions
   (exec_id, team_run_id, team_id, session_id, input_preview, definition_json,
    status, registered_at, last_activity_at, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(exec_id) DO UPDATE SET
+  team_run_id=excluded.team_run_id,
+  team_id=excluded.team_id,
+  session_id=excluded.session_id,
+  input_preview=excluded.input_preview,
+  definition_json=excluded.definition_json,
+  status=excluded.status,
+  registered_at=excluded.registered_at,
+  last_activity_at=excluded.last_activity_at,
+  updated_at=excluded.updated_at`),
 		sess.ExecID, sess.TeamRunID, sess.TeamID, sess.SessionID,
 		sess.InputPreview, sess.DefinitionJSON,
 		sess.Status, sess.RegisteredAt, sess.LastActivityAt,
@@ -87,9 +97,10 @@ func (r *teamGraphSessionRepo) UpdateSessionStatus(ctx context.Context, execID, 
 		return nil
 	}
 	now := nowRFC3339()
-	_, err := db.ExecContext(ctx, `
+	_, err := db.ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`
 UPDATE team_graph_sessions SET status=?, last_activity_at=?, updated_at=?
-WHERE exec_id=?`,
+WHERE exec_id=?`),
 		status, now, now, strings.TrimSpace(execID),
 	)
 	return entErrToBizErr(err, "TEAM_GRAPH_SESSION")
@@ -100,7 +111,8 @@ func (r *teamGraphSessionRepo) GetSession(ctx context.Context, execID string) (b
 	if db == nil {
 		return biz.TeamGraphSession{}, apierror.NotFound(apierror.DomainTeam, "not found")
 	}
-	rows, err := db.QueryContext(ctx, teamGraphSessionSelectSQL+` WHERE exec_id=? LIMIT 1`,
+	rows, err := db.QueryContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(teamGraphSessionSelectSQL+` WHERE exec_id=? LIMIT 1`),
 		strings.TrimSpace(execID))
 	if err != nil {
 		return biz.TeamGraphSession{}, entErrToBizErr(err, "TEAM_GRAPH_SESSION")
@@ -117,8 +129,9 @@ func (r *teamGraphSessionRepo) ListActiveSessions(ctx context.Context) ([]biz.Te
 	if db == nil {
 		return nil, nil
 	}
-	rows, err := db.QueryContext(ctx, teamGraphSessionSelectSQL+
-		` WHERE status IN (?, ?) ORDER BY created_at ASC`,
+	rows, err := db.QueryContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(teamGraphSessionSelectSQL+
+			` WHERE status IN (?, ?) ORDER BY created_at ASC`),
 		biz.TeamRunStatusRunning, biz.TeamRunStatusWaitingHuman)
 	if err != nil {
 		return nil, entErrToBizErr(err, "TEAM_GRAPH_SESSION")
@@ -140,7 +153,8 @@ func (r *teamGraphSessionRepo) DeleteSession(ctx context.Context, execID string)
 	if db == nil {
 		return nil
 	}
-	_, err := db.ExecContext(ctx, `DELETE FROM team_graph_sessions WHERE exec_id=?`,
+	_, err := db.ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`DELETE FROM team_graph_sessions WHERE exec_id=?`),
 		strings.TrimSpace(execID))
 	return entErrToBizErr(err, "TEAM_GRAPH_SESSION")
 }
@@ -151,10 +165,11 @@ func (r *teamGraphSessionRepo) MarkOrphanedSessionsTerminal(ctx context.Context)
 		return 0, nil
 	}
 	now := nowRFC3339()
-	res, err := db.ExecContext(ctx, `
+	res, err := db.ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`
 UPDATE team_graph_sessions
 SET status=?, last_activity_at=?, updated_at=?
-WHERE status=?`,
+WHERE status=?`),
 		biz.TeamRunStatusCancelled, now, now,
 		biz.TeamRunStatusRunning,
 	)

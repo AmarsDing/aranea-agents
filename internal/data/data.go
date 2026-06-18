@@ -390,28 +390,6 @@ func vectorDimFromConf(c *conf.Data) int {
 	return dim
 }
 
-// entSQLiteDriverAndDSN resolves Ent's SQLite location: explicit data.sqlite, or legacy data.database.driver=sqlite3.
-func entSQLiteDriverAndDSN(c *conf.Data) (driverName, dsn string, err error) {
-	if c == nil {
-		return "", "", fmt.Errorf("data config is nil")
-	}
-	if c.GetSqlite() != nil && c.GetSqlite().GetEnable() {
-		src := strings.TrimSpace(c.GetSqlite().GetSource())
-		if src == "" {
-			return "", "", fmt.Errorf("data.sqlite.enabled but source is empty")
-		}
-		return dialect.SQLite, src, nil
-	}
-	if db := c.GetDatabase(); db != nil {
-		drv := strings.TrimSpace(strings.ToLower(db.GetDriver()))
-		src := strings.TrimSpace(db.GetSource())
-		if drv == dialect.SQLite && src != "" {
-			return dialect.SQLite, src, nil
-		}
-	}
-	return "", "", fmt.Errorf(`local CRUD expects SQLite: set data.sqlite.enable=true with source, or data.database.driver=sqlite3`)
-}
-
 func postgresVectorDSN(c *conf.Data) string {
 	if c == nil || c.GetPostgres() == nil {
 		return ""
@@ -436,8 +414,13 @@ func entSQLDebugEnabled() bool {
 	return v == "1" || v == "true" || v == "yes"
 }
 
-// NewData opens SQLite for Ent CRUD; optionally opens Postgres + ensures pgvector schema for agent memory.
+// NewData opens Postgres for Ent CRUD + pgvector + WAL + EventStore.
 // The underlying *sql.DB is shared with trpc session/checkpoint adapters via RawDB().
+//
+// SQLite is no longer supported as a primary database in production. It remains
+// available only for:
+//   - Test infrastructure (testhelper.SetupTestDB uses in-memory SQLite)
+//   - Offline CLI maintenance tools (OpenSQLiteEntClient/NewCLIData)
 func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 	var entClient *ent.Client
 	var rawDB *sql.DB
@@ -445,9 +428,7 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 	var readDB *sql.DB
 	var pg *sql.DB
 	var pgRead *sql.DB
-	var pgOpened bool
 	var st *Data
-	var activeDialect Dialect
 
 	cleanup := func() {
 		if st != nil {
@@ -475,54 +456,20 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 		if readDB != nil && readDB != rawDB {
 			readDB.Close()
 		}
-		if pgOpened {
-			// When driver=postgres, pg==rawDB and pgRead==readDB, so they're
-			// already closed above. Only close separately for the SQLite+PG case.
-			if pg != nil && pg != rawDB {
-				pg.Close()
-			}
-			if pgRead != nil && pgRead != readDB {
-				pgRead.Close()
-			}
-		}
 	}
 
-	driver := strings.TrimSpace(strings.ToLower(c.GetDriver()))
-	usePostgresAsPrimary := driver == "postgres"
-
-	if usePostgresAsPrimary {
-		if err := runStartupStep("initPostgresEnt", func() error {
-			var stepErr error
-			entClient, rawDB, readClient, readDB, stepErr = initPostgresEnt(c, lg)
-			return stepErr
-		}, lg); err != nil {
-			return nil, nil, err
-		}
-		// Postgres is primary: pgvector/WAL/EventStore share the same pool.
-		pg = rawDB
-		pgRead = readDB
-		pgOpened = true
-		activeDialect = DialectPostgres
-	} else {
-		if err := runStartupStep("initSQLite", func() error {
-			var stepErr error
-			entClient, rawDB, readClient, readDB, stepErr = initSQLite(c, lg)
-			return stepErr
-		}, lg); err != nil {
-			return nil, nil, err
-		}
-
-		if err := runStartupStep("initPostgres", func() error {
-			var stepErr error
-			pg, pgRead, stepErr = initPostgres(c, lg)
-			pgOpened = true
-			return stepErr
-		}, lg); err != nil {
-			cleanup()
-			return nil, nil, err
-		}
-		activeDialect = DialectSQLite
+	// Postgres is the only supported primary database.
+	if err := runStartupStep("initPostgresEnt", func() error {
+		var stepErr error
+		entClient, rawDB, readClient, readDB, stepErr = initPostgresEnt(c, lg)
+		return stepErr
+	}, lg); err != nil {
+		return nil, nil, err
 	}
+	// Postgres is primary: pgvector/WAL/EventStore share the same pool.
+	pg = rawDB
+	pgRead = readDB
+	activeDialect := DialectPostgres
 
 	if err := runStartupStep("seedAdminUsers", func() error {
 		ctx := context.Background()
@@ -537,32 +484,24 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 
 	vdim := vectorDimFromConf(c)
 
-	// Initialize VectorStore based on config and feature flag.
+	// Initialize VectorStore — pgvector is the only supported backend in production.
+	// SQLiteVectorStore remains available only for tests (see vector/sqlite.go).
 	var vs vector.VectorStore
 	if pg != nil && conf.DAOVectorPgVector() {
 		pgvs, vsErr := vector.NewPgVectorStore(pg, "vector_embeddings", vdim, lg)
 		if vsErr != nil {
-			lg.Warn("pgvector store init failed, falling back to SQLite",
-				loggateway.StepID("data.vector_store"), loggateway.Err(vsErr))
-		} else {
-			vs = pgvs
-		}
-	}
-	if vs == nil {
-		sqliteVS, vsErr := vector.NewSQLiteVectorStore(rawDB, "vector_embeddings", lg)
-		if vsErr != nil {
 			cleanup()
-			return nil, nil, fmt.Errorf("sqlite vector store init: %w", vsErr)
+			return nil, nil, fmt.Errorf("pgvector store init: %w", vsErr)
 		}
-		vs = sqliteVS
+		vs = pgvs
+	} else {
+		cleanup()
+		return nil, nil, fmt.Errorf("pgvector is required: set data.postgres.source and enable DAO_VECTOR_PGVECTOR")
 	}
 
 	p1Ctx, p1Cancel := context.WithCancel(context.Background())
 	p1Done := make(chan struct{})
-	pgDSNForData := ""
-	if usePostgresAsPrimary {
-		pgDSNForData = postgresVectorDSN(c)
-	}
+	pgDSNForData := postgresVectorDSN(c)
 	st = &Data{entClient: entClient, rawDB: rawDB, readClient: readClient, readDB: readDB, pg: pg, pgRead: pgRead, rw: NewReadWriteClient(entClient, readClient), rwDB: NewReadWriteDB(rawDB, readDB), vectorDim: vdim, vectorStore: vs, reranker: newMemoryReranker(lg), readiness: newReadinessGate(), p1Cancel: p1Cancel, p1Done: p1Done, lg: lg, txTimeout: 30 * time.Second, dialect: activeDialect, pgDSN: pgDSNForData}
 
 	safego.Go(appctx.Ctx(), "startup.p1", func() {
@@ -727,102 +666,6 @@ func entLogAdapter(lg loggateway.Logger) func(...any) {
 	}
 }
 
-// initSQLite opens the SQLite database, configures Ent, applies PRAGMAs,
-// and runs migration.
-func initSQLite(c *conf.Data, lg loggateway.Logger) (*ent.Client, *sql.DB, *ent.Client, *sql.DB, error) {
-	driverName, dsn, err := entSQLiteDriverAndDSN(c)
-	if err != nil {
-		lg.Error("init sqlite failed", loggateway.StepID("data.init_sqlite"), loggateway.Err(err))
-		return nil, nil, nil, nil, fmt.Errorf("sqlite (ent): %w", err)
-	}
-	if err := ensureSQLiteParentDir(dsn); err != nil {
-		lg.Error("init sqlite failed", loggateway.StepID("data.init_sqlite"), loggateway.Str("step", "ensure_parent_dir"), loggateway.Err(err))
-		return nil, nil, nil, nil, err
-	}
-
-	rawDB, err := sql.Open(driverName, dsn)
-	if err != nil {
-		lg.Error("init sqlite failed", loggateway.StepID("data.init_sqlite"), loggateway.Str("step", "sql_open"), loggateway.Err(err))
-		return nil, nil, nil, nil, fmt.Errorf("failed opening sqlite raw db: %w", err)
-	}
-	rawDB.SetMaxOpenConns(1)
-	rawDB.SetMaxIdleConns(1)
-	rawDB.SetConnMaxIdleTime(5 * time.Minute)
-
-	drv := entsql.OpenDB(driverName, rawDB)
-	entClient := ent.NewClient(ent.Driver(drv), ent.Log(entLogAdapter(lg)))
-
-	if driverName == dialect.SQLite {
-		sqlitePragmas := []string{
-			"PRAGMA foreign_keys=ON",
-			"PRAGMA journal_mode=WAL",
-			"PRAGMA busy_timeout=30000",
-			"PRAGMA synchronous=NORMAL",
-			fmt.Sprintf("PRAGMA wal_autocheckpoint=%d", sqliteWALAutoCheckpoint),
-		}
-		for _, pragma := range sqlitePragmas {
-			if _, pragmaErr := rawDB.ExecContext(context.Background(), pragma); pragmaErr != nil {
-				rawDB.Close()
-				lg.Error("init sqlite failed", loggateway.StepID("data.init_sqlite"), loggateway.Str("step", "pragma"), loggateway.Str("pragma", pragma), loggateway.Err(pragmaErr))
-				return nil, nil, nil, nil, fmt.Errorf("sqlite %s: %w", pragma, pragmaErr)
-			}
-		}
-	}
-
-	ctxEnt := context.Background()
-
-	// Pre-Ent migration: rename industry_taxonomy → organizations before Ent auto-creates the table.
-	// This runs during initSQLite, so the dialect is SQLite.
-	PreEntOrganizationRedesignMigration(ctxEnt, rawDB, DialectSQLite, lg)
-
-	if strings.TrimSpace(os.Getenv("DEPLOY_ENV")) == "dev" {
-		entClient, err = migrateDev(ctxEnt, entClient, "sqlite(ent)")
-		if err != nil {
-			rawDB.Close()
-			lg.Error("init sqlite failed", loggateway.StepID("data.init_sqlite"), loggateway.Str("step", "migrate_dev"), loggateway.Err(err))
-			return nil, nil, nil, nil, err
-		}
-	} else if err = entClient.Schema.Create(ctxEnt); err != nil {
-		rawDB.Close()
-		lg.Error("init sqlite failed", loggateway.StepID("data.init_sqlite"), loggateway.Str("step", "schema_create"), loggateway.Err(err))
-		return nil, nil, nil, nil, fmt.Errorf("ent schema create (sqlite): %w", err)
-	}
-
-	readDB, err := sql.Open(driverName, dsn)
-	if err != nil {
-		rawDB.Close()
-		lg.Error("init sqlite failed", loggateway.StepID("data.init_sqlite"), loggateway.Str("step", "read_db_open"), loggateway.Err(err))
-		return nil, nil, nil, nil, fmt.Errorf("failed opening sqlite read db: %w", err)
-	}
-	// P1: Expand read connection pool from 2 to 8. SQLite WAL mode supports
-	// concurrent readers without blocking the writer, so this is safe and
-	// reduces read contention under multi-session load.
-	readDB.SetMaxOpenConns(8)
-	readDB.SetMaxIdleConns(8)
-	readDB.SetConnMaxIdleTime(5 * time.Minute)
-	if driverName == dialect.SQLite {
-		sqliteReadPragmas := []string{
-			"PRAGMA foreign_keys=ON",
-			"PRAGMA journal_mode=WAL",
-			"PRAGMA busy_timeout=30000",
-			"PRAGMA synchronous=NORMAL",
-			fmt.Sprintf("PRAGMA wal_autocheckpoint=%d", sqliteWALAutoCheckpoint),
-		}
-		for _, pragma := range sqliteReadPragmas {
-			if _, pragmaErr := readDB.ExecContext(context.Background(), pragma); pragmaErr != nil {
-				rawDB.Close()
-				readDB.Close()
-				lg.Error("init sqlite failed", loggateway.StepID("data.init_sqlite"), loggateway.Str("step", "read_db_pragma"), loggateway.Str("pragma", pragma), loggateway.Err(pragmaErr))
-				return nil, nil, nil, nil, fmt.Errorf("sqlite read %s: %w", pragma, pragmaErr)
-			}
-		}
-	}
-	readDrv := entsql.OpenDB(driverName, readDB)
-	readClient := ent.NewClient(ent.Driver(readDrv), ent.Log(entLogAdapter(lg)))
-
-	return entClient, rawDB, readClient, readDB, nil
-}
-
 // initPostgresEnt opens Postgres as the primary Ent database (driver=postgres).
 // Returns write/read Ent clients and write/read *sql.DB handles.
 // The write pool (MaxOpen=16) handles Ent writes + raw SQL writes; the read
@@ -939,50 +782,6 @@ func ensureAllSchemas(rawDB *sql.DB, d *Data, lg loggateway.Logger) error {
 		return err
 	}
 	return runPendingDataMigrations(d)
-}
-
-// initPostgres opens the optional Postgres vector store connection.
-// On failure, logs a warning and returns nil (degrades to SQLite-only mode).
-// Creates separate write (16) and read (32) connection pools for optimal
-// concurrency. The write pool is returned as the primary handle; the read
-// pool is stored in Data.pgRead.
-func initPostgres(c *conf.Data, lg loggateway.Logger) (*sql.DB, *sql.DB, error) {
-	pgDSN := postgresVectorDSN(c)
-	if pgDSN == "" {
-		return nil, nil, nil
-	}
-	// Write pool: 16 connections (inserts, updates, DDL).
-	pgWrite, err := sql.Open("postgres", pgDSN)
-	if err != nil {
-		lg.Warn("init postgres write pool failed, degrading to SQLite-only mode", loggateway.StepID("data.init_postgres"), loggateway.Str("step", "sql_open_write"), loggateway.Err(err))
-		return nil, nil, nil
-	}
-	pgWrite.SetMaxOpenConns(16)
-	pgWrite.SetMaxIdleConns(4)
-	pgWrite.SetConnMaxLifetime(30 * time.Minute)
-	pgWrite.SetConnMaxIdleTime(5 * time.Minute)
-
-	// Read pool: 32 connections (vector similarity search, knowledge queries).
-	pgRead, err := sql.Open("postgres", pgDSN)
-	if err != nil {
-		pgWrite.Close()
-		lg.Warn("init postgres read pool failed, degrading to SQLite-only mode", loggateway.StepID("data.init_postgres"), loggateway.Str("step", "sql_open_read"), loggateway.Err(err))
-		return nil, nil, nil
-	}
-	pgRead.SetMaxOpenConns(32)
-	pgRead.SetMaxIdleConns(8)
-	pgRead.SetConnMaxLifetime(30 * time.Minute)
-	pgRead.SetConnMaxIdleTime(5 * time.Minute)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err = pgWrite.PingContext(ctx); err != nil {
-		pgWrite.Close()
-		pgRead.Close()
-		lg.Warn("init postgres ping failed, degrading to SQLite-only mode", loggateway.StepID("data.init_postgres"), loggateway.Str("step", "ping"), loggateway.Err(err))
-		return nil, nil, nil
-	}
-	return pgWrite, pgRead, nil
 }
 
 // ensurePostgresSchemas applies vector and knowledge schema on Postgres if configured.

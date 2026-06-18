@@ -12,11 +12,15 @@ import { buildWsUrl } from '../config/runtime';
 import type { Envelope, WsDownstream, WsUpstream } from './envelope';
 import {
   WS_MAX_RECONNECT_DELAY_MS,
-  WS_MAX_RECONNECT_ATTEMPTS,
   WS_HEARTBEAT_INTERVAL_MS,
   WS_RECONNECT_BASE_DELAY_MS,
   WS_RUN_STALE_TIMEOUT_MS,
 } from '../features/constants/timeouts';
+
+// T1.8: pendingQueue max length. Prevents unbounded memory growth when the
+// WebSocket is disconnected for a long time. When the queue is full, new
+// messages are rejected (the caller should fall back to HTTP).
+const WS_PENDING_QUEUE_MAX_LENGTH = 100;
 
 export type WsTransportOptions = {
   sessionId: string;
@@ -148,10 +152,12 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
 
   function scheduleReconnect(): void {
     if (reconnectTimer) return;
-    if (reconnectAttempts >= WS_MAX_RECONNECT_ATTEMPTS) {
-      opts.onReconnectFailed?.();
-      return;
-    }
+    // T1.8: Unlimited reconnect for same-machine deployment. The exponential
+    // backoff already caps the delay at WS_MAX_RECONNECT_DELAY_MS (30s), so
+    // unlimited reconnect won't spam the server. The previous
+    // WS_MAX_RECONNECT_ATTEMPTS=10 limit caused permanent disconnection
+    // after ~5 minutes of network issues, which is unacceptable for the
+    // No-Timeout principle.
     const delay = Math.min(WS_RECONNECT_BASE_DELAY_MS * Math.pow(2, reconnectAttempts), WS_MAX_RECONNECT_DELAY_MS);
     reconnectAttempts++;
     reconnectTimer = setTimeout(() => {
@@ -210,21 +216,53 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
   }
 
   function flushPendingQueue(): void {
+    // T1.8: try-catch around each send to prevent a single JSON.stringify
+    // or send error from breaking the entire flush loop. Messages that
+    // fail to send are left in the queue for the next flush attempt.
     while (pendingQueue.length > 0 && ws && ws.readyState === WebSocket.OPEN) {
       const msg = pendingQueue.shift()!;
-      ws.send(JSON.stringify(msg));
+      try {
+        ws.send(JSON.stringify(msg));
+      } catch (err) {
+        // Send failed — re-enqueue the message and stop flushing.
+        // The next onopen or manual flush will retry.
+        pendingQueue.unshift(msg);
+        console.warn('ws-transport: flushPendingQueue send failed, re-enqueued', err);
+        break;
+      }
     }
   }
 
   function send(upstream: WsUpstream): void {
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(upstream));
+      try {
+        ws.send(JSON.stringify(upstream));
+      } catch (err) {
+        // T1.8: send failed — enqueue for retry instead of silently dropping.
+        console.warn('ws-transport: send failed, enqueued for retry', err);
+        enqueuePending(upstream);
+      }
       return;
     }
-    pendingQueue.push(upstream);
+    enqueuePending(upstream);
     if (!ws || ws.readyState === WebSocket.CLOSED) {
       connect();
     }
+  }
+
+  // T1.8: enqueuePending enforces the max queue length. When the queue is
+  // full, the oldest message is dropped (FIFO eviction). This prevents
+  // unbounded memory growth during long disconnections.
+  function enqueuePending(upstream: WsUpstream): void {
+    if (pendingQueue.length >= WS_PENDING_QUEUE_MAX_LENGTH) {
+      // Drop the oldest message to make room for the new one.
+      // This is acceptable because the oldest messages are likely stale
+      // (e.g., ping/subscribe) and the caller should fall back to HTTP
+      // for important messages.
+      pendingQueue.shift();
+      console.warn(`ws-transport: pendingQueue full (${WS_PENDING_QUEUE_MAX_LENGTH}), dropped oldest message`);
+    }
+    pendingQueue.push(upstream);
   }
 
   function subscribe(channel: string): void {

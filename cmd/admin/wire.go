@@ -422,8 +422,20 @@ func provideRunHeartbeatEmitter(bus contract.Bus, lg loggateway.Logger) *service
 	return service.NewRunHeartbeatEmitter(interval, bus, lg)
 }
 
+// providePendingMessageQueue builds the Wire-bound PendingMessageQueue with
+// snapshot persistence enabled. The snapshot directory is resolved from (in
+// order): PENDING_QUEUE_SNAPSHOT_DIR env var, the loggateway output dir, or
+// empty (disables persistence). When persistence is enabled, the queue is
+// restored on startup and snapshotted every 10s, so queued messages survive
+// process restarts — required by the "no time limit" long-task guarantee.
 func providePendingMessageQueue(lg loggateway.Logger) *rt.PendingMessageQueue {
-	return rt.NewPendingMessageQueueWithDirAndLogger("", lg)
+	dir := strings.TrimSpace(os.Getenv("PENDING_QUEUE_SNAPSHOT_DIR"))
+	if dir == "" {
+		if gw, ok := lg.(*loggateway.Gateway); ok {
+			dir = gw.OutputDir()
+		}
+	}
+	return rt.NewPendingMessageQueueWithDirAndLogger(dir, lg)
 }
 
 func provideCodeExecutorFactory(lg loggateway.Logger) *localexec.Factory {
@@ -984,16 +996,17 @@ func providePrimaryRawDB(d *data.Data) *sql.DB {
 	return provideSQLiteRawDB(d)
 }
 
-// provideEventWAL creates an EventWAL with both SQLite and Postgres DB handles.
-// Postgres is preferred when available (Phase 1 migration); SQLite is the fallback.
+// provideEventWAL creates an EventWAL with the primary DB handle and optional
+// Postgres DB handle. Postgres is preferred when available (Phase 1 migration);
+// the primary DB handle (now Postgres after A6) is the fallback.
 // This provider is needed because Wire cannot disambiguate two *sql.DB args by type.
 func provideEventWAL(d *data.Data, lg loggateway.Logger) *event.EventWAL {
 	if d == nil {
 		return nil
 	}
-	sqliteDB := d.RWDB().WriteHandle()
+	primaryDB := d.RWDB().WriteHandle()
 	pgDB := d.Postgres()
-	return event.ProvideEventWAL(sqliteDB, pgDB, lg)
+	return event.ProvideEventWAL(primaryDB, pgDB, lg)
 }
 
 // providePostgresEventStore creates a Postgres-backed EventStore for cross-process
@@ -1022,9 +1035,8 @@ func providePostgresEventStore(d *data.Data, lg loggateway.Logger) *event.Postgr
 }
 
 func provideTRPCSessionService(d *data.Data, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) trpcsession.Service {
-	rawDB := providePrimaryRawDB(d)
 	pgDSN := d.PostgresDSN()
-	return rt.NewTRPCSessionService(rawDB, pgDSN, lg, sessiontrpc.SummarizerConfig{
+	return rt.NewTRPCSessionService(pgDSN, lg, sessiontrpc.SummarizerConfig{
 		Catalog: catalog,
 		RT:      &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
 		Lg:      lg,
