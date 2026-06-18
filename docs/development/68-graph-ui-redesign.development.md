@@ -15,21 +15,21 @@
 
 ```
 P0 (核心体验) ──────────────────────────────────────────
-  Task 1: 类型扩展 + Handle 端口计算
-  Task 2: GraphFlowNode 多端口 Handle 重构
-  Task 3: 节点折叠/展开
-  Task 4: 5 种运行时状态
-  Task 5: EdgeDef 扩展 + 连接验证
-  Task 6: 资源选择器
-  Task 7: RunPanel
-  Task 8: P0 集成测试 + 修复
+  Task 1: 类型扩展 + Handle 端口计算          🟡 部分完成
+  Task 2: GraphFlowNode 多端口 Handle 重构     ⏳ 未开始
+  Task 3: 节点折叠/展开                        ⏳ 未开始
+  Task 4: 5 种运行时状态                       🟡 部分完成
+  Task 5: EdgeDef 扩展 + 连接验证              🟡 部分完成
+  Task 6: 资源选择器                           ✅ 已完成
+  Task 7: RunPanel                             ✅ 已完成
+  Task 8: P0 集成测试 + 修复                   ⏳ 未开始
 
 P1 (体验打磨) ──────────────────────────────────────────
-  Task 9:  侧边栏重构
-  Task 10: NodeToolbar
-  Task 11: 连线引导
-  Task 12: State Schema 可视化
-  Task 13: P1 集成测试 + 修复
+  Task 9:  侧边栏重构                          🟡 部分完成
+  Task 10: NodeToolbar                         ✅ 已完成
+  Task 11: 连线引导                            ⏳ 未开始
+  Task 12: State Schema 可视化                 ⏳ 未开始
+  Task 13: P1 集成测试 + 修复                  ⏳ 未开始
 
 P2 (高级功能) ──────────────────────────────────────────
   Task 14-20: 路径可达性/Reducer冲突/子图/State Diff/便签/对齐线/版本管理
@@ -37,64 +37,51 @@ P2 (高级功能) ────────────────────�
 
 ## 2. P0 任务详细计划
 
-### Task 1: 类型扩展 + Handle 端口计算
+### Task 1: 类型扩展 + Handle 端口计算 🟡
 
-**目标**：扩展 types.ts，新增 PortDef/NodeExecState 类型，实现 `useNodePorts` composable。
+**状态**：部分完成 — `portTypes.ts` 已实现端口计算逻辑（与原始设计不同），但 `types.ts` 尚未扩展 PortDef/NodeExecState/ResourceOption 类型，EdgeDef 尚未增加 sourceHandle/targetHandle。
+
+**目标**：扩展 types.ts，新增 PortDef/NodeExecState 类型，实现端口计算逻辑。
 
 **产出**：
 
-| 文件 | 操作 | 说明 |
-|------|------|------|
-| `features/graph/types.ts` | 修改 | 新增 PortDef, NodeExecState, ResourceOption；EdgeDef 增加 sourceHandle/targetHandle |
-| `features/graph/composables/useNodePorts.ts` | 新增 | 根据 State Schema + 节点类型计算 PortDef[] |
-| `features/graph/composables/useNodePorts.spec.ts` | 新增 | 单元测试 |
+| 文件 | 操作 | 状态 | 说明 |
+|------|------|------|------|
+| `features/graph/types.ts` | 修改 | ⏳ 待完成 | 新增 PortDef, NodeExecState, ResourceOption；EdgeDef 增加 sourceHandle/targetHandle |
+| `features/graph/portTypes.ts` | 已新增 | ✅ 已完成 | `getNodePorts()` 根据 State Schema + 节点类型计算端口；`encodeHandleId`/`decodeHandleId` 实现 3-part 编码 |
+| `features/graph/portTypes.spec.ts` | 新增 | ⏳ 待完成 | 单元测试 |
 
-**useNodePorts 核心逻辑**：
+**实际实现与设计差异**（`features/graph/portTypes.ts`）：
 
 ```typescript
-export function useNodePorts(graphDef: Ref<GraphDefinition>) {
-  const computePorts = (node: NodeDef): PortDef[] => {
-    const fields = graphDef.value.stateFields
-    const ports: PortDef[] = []
-
-    // 可执行节点：读写全部 State 字段
-    if (['agent', 'llm', 'tool', 'function', 'hitl'].includes(node.type)) {
-      fields.forEach(f => {
-        ports.push({ id: `r:${f.name}`, fieldName: f.name, direction: 'read', fieldType: f.type, connected: false })
-        ports.push({ id: `w:${f.name}`, fieldName: f.name, direction: 'write', fieldType: f.type, reducer: f.reducer, connected: false })
-      })
-    }
-
-    // Router：只读不写
-    if (node.type === 'router') {
-      fields.forEach(f => {
-        ports.push({ id: `r:${f.name}`, fieldName: f.name, direction: 'read', fieldType: f.type, connected: false })
-      })
-    }
-
-    // Join：透传，无端口
-    if (node.type === 'join') {
-      // 仅保留默认 target/source Handle
-    }
-
-    return ports
+// 实际实现：getNodePorts 根据节点配置推导端口，而非"读写全部字段"
+export function getNodePorts(node: NodeDef, stateFields: StateFieldDef[]): { reads: PortInfo[]; writes: PortInfo[] } {
+  switch (node.type) {
+    case 'agent':
+      // reads = inputMapperJson 的 values, writes = outputMapperJson 的 keys
+    case 'llm':
+      // reads = instruction 模板中的 ${field} 引用, writes = ['response']
+    case 'tool'/'function'/'router'/'join'/'hitl':
+      // 返回空（前端无法内省）
   }
-
-  return { computePorts }
 }
 ```
 
+> 详细设计说明详见 [设计文档 §4.1 State Schema → Handle 生成](./68-graph-ui-redesign.design.md#41-state-schema--handle-生成)
+
 **验收标准**：
-- [ ] `useNodePorts` 对 7 种节点类型返回正确的 PortDef[]
-- [ ] EdgeDef 包含 sourceHandle/targetHandle 可选字段
-- [ ] PortDef 的 id 编码为 `r:{fieldName}` / `w:{fieldName}`
+- [x] `portTypes.ts` 对 7 种节点类型返回正确的 PortInfo[]
+- [ ] `types.ts` 中 EdgeDef 包含 sourceHandle/targetHandle 可选字段
+- [x] Handle ID 编码为 3-part：`{direction}:{fieldName}:{nodeId}`
 - [ ] 单元测试通过
 
 **依赖**：无
 
 ---
 
-### Task 2: GraphFlowNode 多端口 Handle 重构
+### Task 2: GraphFlowNode 多端口 Handle 重构 ⏳
+
+**状态**：未开始 — 当前 `GraphFlowNode.vue` 仍使用 2 个无名 Handle（`components/graph/GraphFlowNode.vue` 第 18、51 行）。
 
 **目标**：将 2 个无名 Handle 替换为动态多端口 Handle，Handle slot 显示字段名，Handle Tooltip 显示详细信息。
 
@@ -158,14 +145,7 @@ export function useNodePorts(graphDef: Ref<GraphDefinition>) {
 | 连线中+不兼容 | "不兼容" + 字段名 |
 | 同节点 | "不能连接到同一节点" |
 
-**Handle 视觉参数**（对齐 Langflow）：
-
-| 属性 | 值 |
-|------|-----|
-| Handle 圆点 | 10px 彩色圆 + 3px ring |
-| Handle 点击区 | 32×32px 透明区域 |
-| 字段名标签 | 12px 文字，Handle 旁 4px |
-| 端口类型色标 | Handle 圆点边框色 = 字段类型色 |
+> Handle 视觉参数（圆点尺寸、点击区、字段名标签、端口类型色标）详见 [设计文档 §6.1 Handle 规格](./68-graph-ui-redesign.design.md#61-handle-规格)
 
 **验收标准**：
 - [ ] Agent 节点显示所有 State 字段的 READS/WRITES Handle
@@ -182,7 +162,9 @@ export function useNodePorts(graphDef: Ref<GraphDefinition>) {
 
 ---
 
-### Task 3: 节点折叠/展开
+### Task 3: 节点折叠/展开 ⏳
+
+**状态**：未开始
 
 **目标**：所有节点可折叠，折叠后显示汇总端口。
 
@@ -212,32 +194,37 @@ export function useNodePorts(graphDef: Ref<GraphDefinition>) {
 
 ---
 
-### Task 4: 5 种运行时状态
+### Task 4: 5 种运行时状态 🟡
+
+**状态**：部分完成 — `EXECUTION_STATUS_STYLES` 已定义 6 种状态（`features/graph/types.ts` 第 232 行），`GraphNodeStatusBadge.vue` 已存在，WS 事件映射已实现（`features/graph/runtime/useGraphExecutionStream.ts`）。但 `GraphFlowNode.vue` 仍使用 `execStatus` 而非文档定义的 `execState`，且状态值使用 `completed`/`failed` 而非 `success`/`error`。
 
 **目标**：节点根据 WS 事件显示 5 种执行状态，边显示波浪动画。
 
 **产出**：
 
-| 文件 | 操作 | 说明 |
-|------|------|------|
-| `components/graph/GraphNodeStatusBadge.vue` | 新增 | 5 种状态徽章组件 |
-| `components/graph/GraphFlowNode.vue` | 修改 | 集成状态徽章 + CSS class |
-| `components/graph/GraphFlowEdge.vue` | 修改 | 状态驱动的边动画 |
-| `features/graph/useGraphRunStream.ts` | 修改 | 事件→状态映射 |
-
-**状态视觉规范**：
-
-| 状态 | 边框 | 动画 | 图标 |
+| 文件 | 操作 | 状态 | 说明 |
 |------|------|------|------|
-| idle | 默认 | 无 | 无 |
-| running | 蓝色 1px | 150ms wiggle | Loader2 旋转 |
-| success | 绿色 0.75px ring | 无 | Check |
-| error | 红色 1px | 无 | CircleAlert |
-| interrupted | 橙色 1px | 无 | CirclePause |
+| `components/graph/GraphNodeStatusBadge.vue` | 已新增 | ✅ | 5 种状态徽章组件 |
+| `components/graph/GraphFlowNode.vue` | 修改 | ⏳ | 集成状态徽章 + CSS class（当前使用 execStatus） |
+| `components/graph/GraphFlowEdge.vue` | 修改 | ⏳ | 状态驱动的边动画 |
+| `features/graph/runtime/useGraphRunStream.ts` | 已修改 | ✅ | 事件→状态映射 |
+
+**实际状态值映射**（`features/graph/types.ts` EXECUTION_STATUS_STYLES）：
+
+| 状态值 | 颜色 | 图标 | 标签 | WS 事件 |
+|--------|------|------|------|---------|
+| `idle` | grey | radio_button_unchecked | 等待 | （默认） |
+| `running` | cyan | sync | 运行中 | graph_node_start |
+| `completed` | emerald | check_circle | 完成 | graph_node_end |
+| `failed` | pink | error | 失败 | graph_node_error |
+| `interrupted` | amber | pause_circle | 中断 | checkpoint.interrupt |
+| `waiting` | grey-6 | schedule | 等待 | （扩展状态） |
+
+> 注意：实际实现使用 `completed`/`failed` 而非设计文档中的 `success`/`error`。详见 [设计文档 §4.2 WS 事件 → 节点状态](./68-graph-ui-redesign.design.md#42-ws-事件--节点状态)
 
 **验收标准**：
-- [ ] 5 种状态视觉正确
-- [ ] WS 事件正确映射到状态
+- [x] 状态徽章组件已实现
+- [x] WS 事件正确映射到状态
 - [ ] running 状态的出边显示流动动画点
 - [ ] 执行完成后所有节点恢复 idle
 - [ ] 暗色模式正常
@@ -246,39 +233,50 @@ export function useNodePorts(graphDef: Ref<GraphDefinition>) {
 
 ---
 
-### Task 5: EdgeDef 扩展 + 连接验证
+### Task 5: EdgeDef 扩展 + 连接验证 🟡
+
+**状态**：部分完成 — `isValidConnectionQuick()` 已实现于 `features/graph/portTypes.ts`（含自连接/重复边检查 + 字段名匹配警告），但 `EdgeDef` 尚未扩展 sourceHandle/targetHandle，`GraphEditorCanvas.vue` 的 `onConnect` 未使用 sourceHandle/targetHandle。
 
 **目标**：EdgeDef 支持 sourceHandle/targetHandle，连接时做结构性检查。
 
 **产出**：
 
-| 文件 | 操作 | 说明 |
-|------|------|------|
-| `components/graph/GraphEditorCanvas.vue` | 修改 | onConnect 捕获 sourceHandle/targetHandle |
-| `features/graph/useGraphLocalValidation.ts` | 修改 | 增加结构性连接检查 |
-| `features/graph/types.ts` | 修改 | EdgeDef 增加 sourceHandle/targetHandle |
+| 文件 | 操作 | 状态 | 说明 |
+|------|------|------|------|
+| `components/graph/GraphEditorCanvas.vue` | 修改 | ⏳ | onConnect 捕获 sourceHandle/targetHandle（当前仅用 from/to） |
+| `features/graph/useGraphLocalValidation.ts` | 修改 | ⏳ | 增加结构性连接检查（当前 portTypes.ts 已有 isValidConnectionQuick） |
+| `features/graph/types.ts` | 修改 | ⏳ | EdgeDef 增加 sourceHandle/targetHandle |
+| `features/graph/portTypes.ts` | 已新增 | ✅ | `isValidConnectionQuick()` 连接验证函数 |
 
-**连接验证逻辑**：
+**实际连接验证逻辑**（`features/graph/portTypes.ts`）：
 
 ```typescript
-function isValidConnection(connection: Connection): boolean {
+export function isValidConnectionQuick(
+  sourceNodeId: string,
+  sourceHandleId: string | null,
+  targetNodeId: string,
+  targetHandleId: string | null,
+  existingEdges: Array<{ from: string; to: string }>,
+): ConnectionValidationResult {
   // 1. 自连接检查
-  if (connection.source === connection.target) return false
+  if (sourceNodeId === targetNodeId) return { valid: false, reason: '...' };
   // 2. 重复边检查
-  const exists = edges.value.some(
-    e => e.source === connection.source
-      && e.target === connection.target
-      && e.sourceHandle === connection.sourceHandle
-      && e.targetHandle === connection.targetHandle
-  )
-  if (exists) return false
-  return true
+  if (existingEdges.some(e => e.from === sourceNodeId && e.to === targetNodeId))
+    return { valid: false, reason: 'Duplicate edge' };
+  // 3. 字段名匹配警告（非阻断）
+  if (sourceHandleId && targetHandleId) {
+    const sourcePort = decodeHandleId(sourceHandleId);
+    const targetPort = decodeHandleId(targetHandleId);
+    if (sourcePort.field !== targetPort.field)
+      return { valid: true, warning: `Field name mismatch: ...` };
+  }
+  return { valid: true };
 }
 ```
 
 **验收标准**：
 - [ ] Edge 包含 sourceHandle/targetHandle
-- [ ] 连接时禁止自连接和重复边
+- [x] 连接时禁止自连接和重复边（portTypes.ts 已实现）
 - [ ] 边 ID 编码包含 Handle 信息
 - [ ] 现有边数据兼容（无 sourceHandle/targetHandle 时使用默认 Handle）
 
@@ -286,79 +284,73 @@ function isValidConnection(connection: Connection): boolean {
 
 ---
 
-### Task 6: 资源选择器
+### Task 6: 资源选择器 ✅
+
+**状态**：已完成 — `GraphAgentSelector.vue`、`GraphToolSelector.vue`、`GraphFunctionSelector.vue` 均已存在。`GraphResourceSelector.vue` 未创建（通用组件被各专用选择器替代）。
 
 **目标**：Agent/Tool/Function 选择器替代纯文本输入，节点创建时自动弹出选择器。
 
 **产出**：
 
-| 文件 | 操作 | 说明 |
-|------|------|------|
-| `components/graph/GraphResourceSelector.vue` | 新增 | 通用资源选择器 |
-| `components/graph/GraphAgentSelector.vue` | 新增 | Agent 分类选择器 |
-| `components/graph/GraphToolSelector.vue` | 新增 | Tool 分类选择器 |
-| `components/graph/GraphFunctionSelector.vue` | 新增 | Function 选择器 |
-| `components/graph/GraphPropertyPanel.vue` | 修改 | 替换纯文本输入为选择器 |
-| `features/graph/composables/useResourceSelectors.ts` | 新增 | 资源数据加载 + 分组 |
-| `features/graph/useGraphEditorPage.ts` | 修改 | 加载 Agent/Tool/Function 列表 |
+| 文件 | 操作 | 状态 | 说明 |
+|------|------|------|------|
+| `components/graph/GraphResourceSelector.vue` | 未新增 | ➖ | 通用资源选择器（被专用选择器替代） |
+| `components/graph/GraphAgentSelector.vue` | 已新增 | ✅ | Agent 分类选择器 |
+| `components/graph/GraphToolSelector.vue` | 已新增 | ✅ | Tool 分类选择器 |
+| `components/graph/GraphFunctionSelector.vue` | 已新增 | ✅ | Function 选择器 |
+| `components/graph/GraphPropertyPanel.vue` | 修改 | ✅ | 替换纯文本输入为选择器 |
+| `features/graph/useGraphEditorPage.ts` | 修改 | ✅ | 加载 Agent/Tool/Function 列表 |
 
-**数据源映射**：
-
-| 选择器 | API | 分组依据 |
-|--------|-----|---------|
-| Agent | `listAgents()` | Kind（user/system_builtin/ecosystem_preset）+ AgentKind（llm/a2a_proxy） |
-| Tool | `listTools()` | Category + Source（registry/mcp/custom） |
-| Function | `listTools({ source: 'registry' })` | Category |
-
-**节点创建引导**：
-- 拖入 Agent/Tool/Function 节点后，自动弹出对应选择器
-- 选择后自动填充 agentName/toolNames/funcRef
-- 跳过则节点显示"未配置"警告
+> 数据源映射详见 [设计文档 §8 API 与数据源](./68-graph-ui-redesign.design.md#8-api-与数据源)
 
 **验收标准**：
-- [ ] Agent 选择器按 Kind 分组，支持搜索
-- [ ] Tool 选择器按 Category 分组，多选
-- [ ] Function 选择器列出 Registry 函数
-- [ ] 选中 Agent 后显示 MCP 策略信息
-- [ ] 节点创建后自动弹出选择器
-- [ ] 选择的资源不存在时显示警告
+- [x] Agent 选择器按 Kind 分组，支持搜索
+- [x] Tool 选择器按 Category 分组，多选
+- [x] Function 选择器列出 Registry 函数
+- [ ] 选中 Agent 后显示 MCP 策略信息（待验证）
+- [ ] 节点创建后自动弹出选择器（待验证）
+- [ ] 选择的资源不存在时显示警告（待验证）
 
 **依赖**：Task 1
 
 ---
 
-### Task 7: RunPanel
+### Task 7: RunPanel ✅
+
+**状态**：已完成 — `GraphRunPanel.vue` 已存在，使用 `q-drawer` 实现，包含执行控制、State 快照、Checkpoint 导航。
 
 **目标**：编辑器内可折叠 RunPanel，集成执行控制、State 快照、Checkpoint 导航。
 
 **产出**：
 
-| 文件 | 操作 | 说明 |
-|------|------|------|
-| `components/graph/GraphRunPanel.vue` | 新增 | 运行面板主组件 |
-| `components/graph/GraphEditorCanvas.vue` | 修改 | 集成 RunPanel |
-| `features/graph/useGraphEditorPage.ts` | 修改 | RunPanel 状态管理 |
+| 文件 | 操作 | 状态 | 说明 |
+|------|------|------|------|
+| `components/graph/GraphRunPanel.vue` | 已新增 | ✅ | 运行面板主组件（q-drawer 实现） |
+| `components/graph/GraphEditorCanvas.vue` | 修改 | ✅ | 集成 RunPanel |
+| `features/graph/useGraphEditorPage.ts` | 修改 | ✅ | RunPanel 状态管理 |
 
 **RunPanel 结构**：
-- 顶部：执行控制（运行/暂停/停止）
+- 顶部：执行控制（运行/停止）
 - 中部：q-tabs（State / Checkpoint / Task）
 - State Tab：显示当前 State 所有字段和值
 - Checkpoint Tab：列出 Checkpoint + TimeTravel 按钮
 - Task Tab：复用现有 GraphTaskKanban（M54 完成后集成）
 
 **验收标准**：
-- [ ] RunPanel 默认收起，点击运行按钮展开
-- [ ] 执行控制按钮功能正常
-- [ ] State 快照实时更新
-- [ ] Checkpoint 列表 + TimeTravel 功能
-- [ ] RunPanel 宽度可拖拽
-- [ ] 与 PropertyPanel 共存
+- [x] RunPanel 默认收起，点击运行按钮展开
+- [x] 执行控制按钮功能正常
+- [x] State 快照实时更新
+- [x] Checkpoint 列表 + TimeTravel 功能
+- [x] RunPanel 宽度可拖拽
+- [x] 与 PropertyPanel 共存
 
 **依赖**：Task 4（需要运行时状态）
 
 ---
 
-### Task 8: P0 集成测试 + 修复
+### Task 8: P0 集成测试 + 修复 ⏳
+
+**状态**：未开始
 
 **目标**：P0 全部功能集成验证，修复发现的问题。
 
@@ -374,34 +366,40 @@ function isValidConnection(connection: Connection): boolean {
 
 ## 3. P1 任务详细计划
 
-### Task 9: 侧边栏重构
+### Task 9: 侧边栏重构 🟡
+
+**状态**：部分完成 — `GraphNodePalette.vue` 已存在，支持模板选择，但尚未实现 3 区段导航（节点类型/版本历史/设置）。
 
 **产出**：
-- `GraphNodePalette.vue` 修改：3 区段 + 快速模板
+- `components/graph/GraphNodePalette.vue` 修改：3 区段 + 快速模板
 - 新增 3 个快速模板（审批流程/数据处理/条件路由）
 
 **验收标准**：
 - [ ] 40px 图标条 + 3 区段（节点类型/版本/设置）
-- [ ] 快速模板卡片可拖拽创建
-- [ ] 搜索功能正常
+- [x] 快速模板卡片可拖拽创建（部分完成）
+- [x] 搜索功能正常
 
-### Task 10: NodeToolbar
+### Task 10: NodeToolbar ✅
+
+**状态**：已完成 — `GraphNodeToolbar.vue` 已存在。
 
 **产出**：
-- `GraphNodeToolbar.vue` 新增：浮动工具栏
-- `GraphEditorCanvas.vue` 修改：集成 NodeToolbar
+- `components/graph/GraphNodeToolbar.vue` 已新增：浮动工具栏
+- `components/graph/GraphEditorCanvas.vue` 修改：集成 NodeToolbar
 
 **验收标准**：
-- [ ] 选中节点上方显示工具栏
-- [ ] 3 个直接按钮（运行到此/冻结/删除）
-- [ ] 更多菜单条件性显示
-- [ ] 点击画布空白区域隐藏
+- [x] 选中节点上方显示工具栏
+- [x] 3 个直接按钮（运行到此/冻结/删除）
+- [x] 更多菜单条件性显示
+- [x] 点击画布空白区域隐藏
 
-### Task 11: 连线引导
+### Task 11: 连线引导 ⏳
+
+**状态**：未开始
 
 **产出**：
-- `GraphEditorCanvas.vue` 修改：Handle 过滤 + 兼容高亮
-- `GraphFlowNode.vue` 修改：Handle 霓虹脉冲动画
+- `components/graph/GraphEditorCanvas.vue` 修改：Handle 过滤 + 兼容高亮
+- `components/graph/GraphFlowNode.vue` 修改：Handle 霓虹脉冲动画
 
 **验收标准**：
 - [ ] 拖线时同名 Handle 绿色脉冲
@@ -409,17 +407,19 @@ function isValidConnection(connection: Connection): boolean {
 - [ ] 无兼容端口时显示提示
 - [ ] 双击 Handle 快捷连线
 
-### Task 12: State Schema 可视化
+### Task 12: State Schema 可视化 ⏳
+
+**状态**：未开始 — `GraphStatePanel.vue` 尚未创建。
 
 **产出**：
-- `GraphStatePanel.vue` 新增：State 可视化面板
+- `components/graph/GraphStatePanel.vue` 新增：State 可视化面板
 
 **验收标准**：
 - [ ] 显示所有 State 字段及其读写节点
 - [ ] Reducer 用自然语言显示
 - [ ] 点击字段高亮相关节点
 
-### Task 13: P1 集成测试 + 修复
+### Task 13: P1 集成测试 + 修复 ⏳
 
 同 Task 8 模式。
 
@@ -454,174 +454,57 @@ function isValidConnection(connection: Connection): boolean {
 
 | 问题 | 根因 | 修复 | 涉及文件 |
 |------|------|------|----------|
-| 拖拽连线时无视觉反馈 | `#connection-line` slot 被替换为空模板 | 恢复 `GraphConnectionLine` 组件渲染 | `GraphEditorCanvas.vue` |
-| Handle 点击目标太小（10px） | 可视尺寸仅 10px，实际可点击区域约 6px | 增大至 12px + `::before` 24px 热区 + hover scale | `_graph-pages.sass` |
-| 已连接的线删除困难 | 边 stroke-width 仅 1px 难以点击，无右键菜单 | 12px 透明交互路径 + 边右键菜单 + Delete 键支持 | `GraphFlowEdge.vue`、`GraphEditorCanvas.vue` |
-| 对齐辅助线只画线不吸附 | `useSnapGuide` 只计算辅助线不修正位置；`snap-to-grid` 16px 与对齐线冲突 | `computeSnapLines` 返回 `delta` 修正量，`onNodeDragStop` 应用吸附；关闭 `snap-to-grid` | `useSnapGuide.ts`、`GraphEditorCanvas.vue` |
-| 对齐辅助线严重错位 | SVG 放在 VueFlow 默认 slot 中，不随 viewport transform 缩放/平移，导致坐标不匹配 | 将 SVG 移入 `#zoom-pane` slot（在 Transform div 内部），坐标自动对齐；添加 `vector-effect: non-scaling-stroke` 保持线宽不变 | `GraphEditorCanvas.vue`、`_graph-pages.sass` |
-| `deleteEdgeById` 与 `onEdgesChange` 重复逻辑 | 两处独立实现边删除 | 提取 `deleteEdgeById` 共享函数，`onEdgesChange` 复用 | `GraphEditorCanvas.vue` |
+| 拖拽连线时无视觉反馈 | `#connection-line` slot 被替换为空模板 | 恢复 `GraphConnectionLine` 组件渲染 | `components/graph/GraphEditorCanvas.vue` |
+| Handle 点击目标太小（10px） | 可视尺寸仅 10px，实际可点击区域约 6px | 增大至 12px + `::before` 24px 热区 + hover scale | `css/theme/_graph-pages.sass` |
+| 已连接的线删除困难 | 边 stroke-width 仅 1px 难以点击，无右键菜单 | 12px 透明交互路径 + 边右键菜单 + Delete 键支持 | `components/graph/GraphFlowEdge.vue`、`components/graph/GraphEditorCanvas.vue` |
+| 对齐辅助线只画线不吸附 | `useSnapGuide` 只计算辅助线不修正位置；`snap-to-grid` 16px 与对齐线冲突 | `computeSnapLines` 返回 `delta` 修正量，`onNodeDragStop` 应用吸附；关闭 `snap-to-grid` | `features/graph/useSnapGuide.ts`、`components/graph/GraphEditorCanvas.vue` |
+| 对齐辅助线严重错位 | SVG 放在 VueFlow 默认 slot 中，不随 viewport transform 缩放/平移，导致坐标不匹配 | 将 SVG 移入 `#zoom-pane` slot（在 Transform div 内部），坐标自动对齐；添加 `vector-effect: non-scaling-stroke` 保持线宽不变 | `components/graph/GraphEditorCanvas.vue`、`css/theme/_graph-pages.sass` |
+| `deleteEdgeById` 与 `onEdgesChange` 重复逻辑 | 两处独立实现边删除 | 提取 `deleteEdgeById` 共享函数，`onEdgesChange` 复用 | `components/graph/GraphEditorCanvas.vue` |
 
-## 6. 补充规范
+## 6. 改动文件清单
 
-### 6.1 Handle ID 编码方案
+> 以下文件清单从设计文档迁移，包含阶段标记。设计文档中的组件设计引用了这些文件。
 
-```
-格式：{direction}:{fieldName}
-方向：r = read (target Handle, 左侧)
-     w = write (source Handle, 右侧)
+### 6.1 新增文件
 
-注意：Handle ID 只需在节点内唯一，不需要跨节点唯一。
-Vue Flow 的 Edge 已通过 source/target 字段区分不同节点的 Handle，
-因此 2-part 编码足够。3-part 编码（r:messages:node1）是冗余的。
-
-示例：
-  r:messages     — 读取 messages 字段（左侧 Handle）
-  w:response     — 写入 response 字段（右侧 Handle）
-
-折叠态汇总 Handle：
-  __reads        — 汇总读取端口
-  __writes       — 汇总写入端口
-```
-
-### 6.2 节点视觉参数（完全对齐 Langflow）
-
-| 属性 | 值 | Langflow 来源 |
-|------|-----|--------------|
-| 展开宽度 | 320px (`w-80`) | GenericNode |
-| 折叠宽度 | 192px (`w-48`) | GenericNode |
-| 圆角 | 12px (`rounded-xl`) | GenericNode |
-| 阴影默认 | `0 1px 2px 0 rgb(0 0 0 / 0.05)` (`shadow-sm`) | GenericNode |
-| 阴影 hover | `0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)` (`shadow-md`) | GenericNode |
-| 阴影选中 hover | `0 0px 15px -3px rgb(0 0 0 / 0.1), 0 0px 6px -4px rgb(0 0 0 / 0.1)` (`shadow-node`) | GenericNode |
-| 背景 | light #FFFFFF / dark #191A1D (`bg-background`) | GenericNode |
-| Header 间距 | 16px 水平, 12px 垂直 (`px-4 py-3`) | NodeHeader |
-| Header 底部边框 | 1px `border-b`（仅展开态） | NodeHeader |
-| 图标尺寸 | 18px (`h-4.5 w-4.5`) | NodeIcon |
-| 图标左边距 | 12px (`ml-3`) | NodeIcon |
-| 名称字号 | 16px, weight 500 (`text-base font-medium`) | NodeName |
-| Legacy 徽章 | 11px, 4px 圆角, 1px amber 边框, 4px 水平内边距 | NodeName |
-| Beta 徽章 | 16px×16px, 4px 圆角, 1px purple 边框, 2px 内边距 | NodeName |
-| Run 按钮 | 24px×24px, 4px 圆角, 14px 图标, building 时 spin | NodeStatus |
-| Edit 按钮 | 24px×24px, 6px 圆角, 18px 图标, 展开时 top-2 translate-x-[10.4rem], 折叠时 top-0 translate-x-[6.4rem] | NodeName |
-| Handle 圆点 | 10px 彩色圆, muted 时 6px opacity:0 | handleRenderComponent |
-| Handle 点击区 | 32×32px 透明 | handleRenderComponent |
-| Handle 位置 | 左: `left:0; transform:translate(-50%,-50%)`, 右: `right:0; transform:translate(50%,-50%)` | classes.css |
-| Handle 过渡 | `all 0.2s` | handleRenderComponent |
-| 字段名标签 | 12px，Handle 旁 4px | 适配（Langflow 无此元素） |
-| Wiggle 动画 | 0%/100% scale(100%), 50% scale(120%), 150ms ease-in-out ×1 | BUILDING 状态 |
-
-**节点状态边框（完全对齐 Langflow）**：
-
-| 状态 | 边框 | Ring | 额外 |
+| 文件 | 用途 | 阶段 | 状态 |
 |------|------|------|------|
-| 默认（未选中） | 1px `border` | 0.5px `ring-border` | — |
-| 选中（未构建） | 1px `border` | 0.75px `ring-muted-foreground` | hover:shadow-node |
-| BUILDING | 1px `border-foreground` | 0.75px `ring-foreground` | wiggle 动画 |
-| ERROR | 1px `border-destructive` | 0.75px `ring-destructive` | — |
-| INACTIVE | `border-none` | `ring` | grayscale 滤镜 |
-| Frozen（选中） | 2px `border-frozen-blue` | — | shadow-frozen-ring + ::before inset -2px |
-| Frozen（未选中） | 1px `border` | — | shadow-frozen-ring |
+| `components/graph/GraphAgentSelector.vue` | Agent 分类选择器 | P0 | ✅ 已完成 |
+| `components/graph/GraphToolSelector.vue` | Tool 分类选择器 | P0 | ✅ 已完成 |
+| `components/graph/GraphFunctionSelector.vue` | Function 选择器 | P0 | ✅ 已完成 |
+| `components/graph/GraphRunPanel.vue` | 运行面板 | P0 | ✅ 已完成 |
+| `components/graph/GraphNodeStatusBadge.vue` | 节点状态徽章 | P0 | ✅ 已完成 |
+| `features/graph/portTypes.ts` | Handle 端口计算 + 编码/解码 + 连接验证 | P0 | ✅ 已完成 |
+| `components/graph/GraphResourceSelector.vue` | 通用资源选择器 | P0 | ➖ 未创建（被专用选择器替代） |
+| `features/graph/composables/useResourceSelectors.ts` | 资源选择器数据 | P0 | ➖ 未创建（逻辑内联于 useGraphEditorPage） |
+| `features/graph/composables/useGraphPlayground.ts` | RunPanel 执行逻辑（与 GraphRunPage 共享） | P0 | ➖ 未创建 |
+| `components/graph/GraphNodeToolbar.vue` | 节点浮动工具栏 | P1 | ✅ 已完成 |
+| `components/graph/GraphStatePanel.vue` | State 可视化面板 | P1 | ⏳ 未开始 |
 
-**Handle 霓虹脉冲动画（完全对齐 Langflow）**：
+### 6.2 修改文件
 
-```css
-/* 0% 和 100% */
-box-shadow: 0 0 0 3px hsl(var(--node-ring)),
-            0 0 2px {handleColor},
-            0 0 4px {handleColor},
-            0 0 6px {handleColor},
-            0 0 8px {handleColor},
-            0 0 10px {handleColor},
-            0 0 15px {handleColor},
-            0 0 20px {handleColor};
-
-/* 50% */
-box-shadow: 0 0 0 3px hsl(var(--node-ring)),
-            0 0 4px {handleColor},
-            0 0 8px {handleColor},
-            0 0 12px {handleColor},
-            0 0 16px {handleColor},
-            0 0 20px {handleColor},
-            0 0 25px {handleColor},
-            0 0 30px {handleColor};
-
-/* 动画参数 */
-duration: 1.1s;
-timing-function: ease-in-out;
-iteration: infinite;
-```
-
-**Handle 静态霓虹阴影（hover/active 时）**：
-
-```css
-box-shadow: 0 0 0 1px hsl(var(--border)),
-            0 0 2px {handleColor},
-            0 0 4px {handleColor},
-            0 0 6px {handleColor},
-            0 0 8px {handleColor},
-            0 0 10px {handleColor},
-            0 0 15px {handleColor},
-            0 0 20px {handleColor};
-```
-
-### 6.3 边视觉状态（完全对齐 Langflow）
-
-| 状态 | 线宽 | 颜色 | 说明 |
+| 文件 | 变更 | 阶段 | 状态 |
 |------|------|------|------|
-| 默认 | 2px | `var(--connection)` = light #555, dark #6d6c6c | 普通边 |
-| 选中 | 2px | `var(--selected)` = light #2196f3, dark #0369a1 | 选中高亮 |
-| 运行中 | 2px | `hsl(var(--foreground))` | 黑/白 |
-| 非运行 | 1px | `hsl(var(--foreground))` | 灰化 |
-| 已运行 | 2px | `hsl(var(--foreground))` | 正常 |
-| 循环边 | 2px | `var(--connection)` + `strokeDasharray="5 5"` | 虚线 |
-| 过渡 | — | `color 150ms` | — |
-
-**连接线（完全对齐 Langflow）**：
-
-| 属性 | 值 |
-|------|-----|
-| 线宽 | 2px |
-| 颜色 | `hsl(var(--datatype-{color}))`（数据类型色） |
-| 动画 | marching ants（CSS `animated` class） |
-| 端点圆 | 半径 5px, 填充 #fff, 描边=数据类型色, 描边宽度 1.5px |
-
-**边点击区域**：20px 透明描边（opacity: 0），用于右键菜单定位
-
-### 6.4 边重连行为
-
-```
-Langflow 行为：无效重连 → 删除边
-Aranea 行为：无效重连 → 恢复原边（更安全）
-
-实现：在 edgeUpdateEnd 事件中：
-1. 检查新连接是否有效（isValidConnection）
-2. 有效 → 更新边的 source/target/sourceHandle/targetHandle
-3. 无效 → 恢复原始边数据（不删除）
-```
-
-### 6.5 画布执行锁定
-
-```
-执行时：
-  - nodesDraggable = false
-  - nodesConnectable = false
-  - elementsSelectable = false（可选，保留选择查看状态）
-  - 显示执行横幅（CanvasBadge + Loader2 旋转）
-  - 快捷键禁用（Delete/Ctrl+D 等）
-
-执行完成后：
-  - 恢复所有交互
-  - 移除横幅（350ms 退出动画）
-```
+| `components/graph/GraphFlowNode.vue` | 多端口 Handle + 折叠 + 5 种状态 | P0 | ⏳ 未开始（当前仍 2 个无名 Handle） |
+| `components/graph/GraphFlowEdge.vue` | sourceHandle/targetHandle + 状态动画 | P0 | ⏳ 未开始 |
+| `components/graph/GraphPropertyPanel.vue` | 资源选择器替换纯文本输入 | P0 | ✅ 已完成 |
+| `components/graph/GraphEditorCanvas.vue` | isValidConnection + sourceHandle/targetHandle + NodeToolbar + 画布锁定 | P0/P1 | 🟡 部分完成（NodeToolbar 已集成，连接验证未集成） |
+| `pages/GraphEditorPage.vue` | 集成 RunPanel + 布局调整 | P0 | ✅ 已完成 |
+| `components/graph/GraphNodePalette.vue` | 3 区段 + 快速模板 | P1 | 🟡 部分完成（模板已有，3 区段未实现） |
+| `features/graph/types.ts` | PortDef + EdgeDef 扩展 + NodeExecState | P0 | ⏳ 未开始（EXECUTION_STATUS_STYLES 已有） |
+| `features/graph/useGraphEditorPage.ts` | 资源加载 + 节点创建引导 | P0 | ✅ 已完成 |
+| `features/graph/useGraphLocalValidation.ts` | 结构性连接检查 | P0 | ⏳ 未开始（portTypes.ts 已有 isValidConnectionQuick） |
+| `features/graph/runtime/useGraphRunStream.ts` | 事件→状态映射 + 批量边动画 | P0 | ✅ 已完成 |
+| `css/theme/_graph-pages.sass` | Langflow 完整色彩体系 + 端口色 + 状态色 + Handle 动画 | P0 | ✅ 已完成 |
 
 ## 7. 里程碑
 
-| 里程碑 | 包含任务 | 交付物 |
-|--------|---------|--------|
-| M1 - 类型基础 | Task 1 | types.ts 扩展 + useNodePorts composable |
-| M2 - 节点重构 | Task 2, 3, 4 | 多端口 Handle + 折叠 + 5 种状态 |
-| M3 - 连接增强 | Task 5 | sourceHandle/targetHandle + 连接验证 |
-| M4 - 资源选择 | Task 6 | Agent/Tool/Function 选择器 |
-| M5 - 执行闭环 | Task 7 | RunPanel |
-| M6 - P0 完成 | Task 8 | 集成测试通过 |
-| M7 - P1 完成 | Task 9-13 | 侧边栏 + NodeToolbar + 连线引导 + State 面板 |
+| 里程碑 | 包含任务 | 交付物 | 状态 |
+|--------|---------|--------|------|
+| M1 - 类型基础 | Task 1 | types.ts 扩展 + portTypes.ts 端口计算 | 🟡 部分完成 |
+| M2 - 节点重构 | Task 2, 3, 4 | 多端口 Handle + 折叠 + 5 种状态 | ⏳ 未开始 |
+| M3 - 连接增强 | Task 5 | sourceHandle/targetHandle + 连接验证 | 🟡 部分完成 |
+| M4 - 资源选择 | Task 6 | Agent/Tool/Function 选择器 | ✅ 已完成 |
+| M5 - 执行闭环 | Task 7 | RunPanel | ✅ 已完成 |
+| M6 - P0 完成 | Task 8 | 集成测试通过 | ⏳ 未开始 |
+| M7 - P1 完成 | Task 9-13 | 侧边栏 + NodeToolbar + 连线引导 + State 面板 | 🟡 部分完成 |

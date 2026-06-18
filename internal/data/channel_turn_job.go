@@ -149,20 +149,31 @@ UPDATE channel_turn_job SET
   finished_at=CASE WHEN ? IN (%s) THEN ? ELSE finished_at END,
   updated_at=?
 WHERE id=?`, startPlaceholders, finishPlaceholders)
+	// Args MUST follow the placeholder order in the SQL:
+	//   1. status                        -> SET status=?
+	//   2-3. errMsg, errMsg              -> error_message CASE WHEN ? != '' THEN ?
+	//   4-5. previewMsgID, previewMsgID  -> preview_message_id CASE WHEN ? != '' THEN ?
+	//   6-7. contentPreview, contentPreview -> content_preview CASE WHEN ? != '' THEN ?
+	//   8. status                        -> started_at CASE WHEN ? IN (startPlaceholders)
+	//   9..(8+len(startArgs)). startArgs -> startPlaceholders (?, ?, ...)
+	//   next. now                        -> started_at THEN ?
+	//   next. status                     -> finished_at CASE WHEN ? IN (finishPlaceholders)
+	//   next. finishArgs                 -> finishPlaceholders (?, ?, ...)
+	//   next. now                        -> finished_at THEN ?
+	//   next. now                        -> updated_at=?
+	//   next. id                         -> WHERE id=?
 	args := []any{
 		status,
 		errMsg, errMsg,
 		previewMsgID, previewMsgID,
 		contentPreview, contentPreview,
 		status,
-		now,
-		status,
-		now,
-		now,
-		id,
 	}
 	args = append(args, startArgs...)
+	args = append(args, now)
+	args = append(args, status)
 	args = append(args, finishArgs...)
+	args = append(args, now, now, id)
 	_, err := db.ExecContext(ctx, query, args...)
 	return err
 }

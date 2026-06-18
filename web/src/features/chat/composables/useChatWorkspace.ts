@@ -14,6 +14,7 @@ import { useSpiritTeamStore } from '../../../stores/spirit';
 import { cancelRunningToolMessages } from '../envelopeToolCall';
 import { runStatusFromEnvelope } from '../envelopeRunStatus';
 import type { Envelope } from '../envelope';
+import { confirmActivity } from '../api';
 import { useChatRunStatus } from './useChatRunStatus';
 import { useChatStreamManager } from './useChatStreamManager';
 import { useChatInboundSync } from './useChatInboundSync';
@@ -765,6 +766,25 @@ export function useChatWorkspace() {
     }
   }
 
+  // N-14: Handle confirm-activity event from ConfirmBlock → API call.
+  // Encapsulated here (rather than in ChatPage.vue) to comply with FD2:
+  // Page must not import API directly.
+  async function onConfirmActivity(activityId: string, approved: boolean) {
+    const sid = selectedSessionForUi.value?.id;
+    if (!sid) return;
+    try {
+      const ok = await confirmActivity(sid, activityId, approved);
+      if (!ok) {
+        $q.notify({
+          type: 'warning',
+          message: approved ? t('chat.confirmActivity.approveRejected') : t('chat.confirmActivity.denyRejected'),
+        });
+      }
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('chat.confirmActivity.failed') });
+    }
+  }
+
   // --- Compress status polling ---
   const compressStatus = computed<CompressStatus>(() => sessionStore.compressStatus);
   let compressPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -1065,6 +1085,7 @@ export function useChatWorkspace() {
       openSessionEvents,
       compactSessionAction: sessionStore.compactSessionAction,
       onCompactSession,
+      onConfirmActivity,
       compressStatus,
       activityTimeline,
     }),

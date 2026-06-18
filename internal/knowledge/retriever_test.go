@@ -21,7 +21,7 @@ func (emptyErrEmbedder) EmbedSingle(_ context.Context, text string) ([]float32, 
 
 func TestRetriever_Search_EmptyQuery(t *testing.T) {
 	repo := &stubKnowledgeRepo{chunks: nil}
-	ret := NewRetriever(emptyErrEmbedder{}, repo, nil, loggateway.Global())
+	ret := NewRetriever(emptyErrEmbedder{}, repo, nil, loggateway.NewNoop())
 
 	_, err := ret.Search(context.Background(), biz.KnowledgeSearchQuery{
 		CollectionID: "col-1",
@@ -43,7 +43,7 @@ func TestRetriever_Search_EmptyQuery(t *testing.T) {
 
 func TestRetriever_Search_InvalidCollectionID(t *testing.T) {
 	repo := &stubKnowledgeRepo{chunks: nil}
-	ret := NewRetriever(stubEmbedder{}, repo, nil, loggateway.Global())
+	ret := NewRetriever(stubEmbedder{}, repo, nil, loggateway.NewNoop())
 
 	out, err := ret.Search(context.Background(), biz.KnowledgeSearchQuery{
 		CollectionID: "nonexistent-col",

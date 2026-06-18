@@ -9,7 +9,7 @@ import (
 )
 
 func TestRunStatusFromStateJSON(t *testing.T) {
-	lg := loggateway.Global()
+	lg := loggateway.NewNoop()
 	raw, _ := json.Marshal(map[string]string{biz.SessionStateRunStatus: "failed"})
 	if got := runStatusFromStateJSON(lg, string(raw)); got != "failed" {
 		t.Fatalf("got %q want failed", got)

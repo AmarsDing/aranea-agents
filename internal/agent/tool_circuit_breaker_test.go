@@ -24,8 +24,8 @@ func TestCircuitBreakerIntegration_FuseAndBlock(t *testing.T) {
 		HalfOpenMaxProbe:   1,
 	})
 
-	beforeHook := newCircuitBreakerBeforeHook(registry, loggateway.Global())
-	afterHook := newCircuitBreakerAfterHook(registry, loggateway.Global())
+	beforeHook := newCircuitBreakerBeforeHook(registry, loggateway.NewNoop())
+	afterHook := newCircuitBreakerAfterHook(registry, loggateway.NewNoop())
 
 	ctx := context.Background()
 
@@ -70,8 +70,8 @@ func TestCircuitBreakerIntegration_Recovery(t *testing.T) {
 		HalfOpenMaxProbe:   1,
 	})
 
-	beforeHook := newCircuitBreakerBeforeHook(registry, loggateway.Global())
-	afterHook := newCircuitBreakerAfterHook(registry, loggateway.Global())
+	beforeHook := newCircuitBreakerBeforeHook(registry, loggateway.NewNoop())
+	afterHook := newCircuitBreakerAfterHook(registry, loggateway.NewNoop())
 
 	ctx := context.Background()
 
@@ -182,7 +182,7 @@ func TestCircuitBreakerIntegration_JSONOverride(t *testing.T) {
 		}`,
 	}
 
-	registry := buildCircuitBreakerRegistry(settings, loggateway.Global())
+	registry := buildCircuitBreakerRegistry(settings, loggateway.NewNoop())
 	if registry == nil {
 		t.Fatal("expected non-nil registry")
 	}
@@ -217,7 +217,7 @@ func TestCircuitBreakerIntegration_TransientErrorIgnored(t *testing.T) {
 		HalfOpenMaxProbe:   1,
 	})
 
-	afterHook := newCircuitBreakerAfterHook(registry, loggateway.Global())
+	afterHook := newCircuitBreakerAfterHook(registry, loggateway.NewNoop())
 	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {

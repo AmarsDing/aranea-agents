@@ -1,8 +1,12 @@
 server:
   http:
     addr: 0.0.0.0:8000
-    # Chat/completions can exceed seconds; 1s causes context deadline errors after the model returns.
-    timeout: 600s
+    # P1 fix (2026-06-18): Raised from 600s to 0 (no timeout) to support 24h
+    # long tasks. The turn-level hard deadline (24h in chat_orchestrator_turn.go)
+    # is the real safety net. HTTP timeout was previously the first blocker in
+    # the "timeout waterfall" (HTTP 10min → Turn 2h → LLM 5min → DB 30s).
+    # Set to a positive duration (e.g., 600s) to restore sync HTTP timeout.
+    timeout: 0s
   grpc:
     addr: 0.0.0.0:9000
     timeout: 120s
@@ -15,6 +19,9 @@ server:
   # Public A2A endpoint prefix (no trailing slash). Prefer System Settings UI or env A2A_PUBLIC_BASE_URL.
   # a2a_public_base_url: ""
 data:
+  # Primary database driver: "sqlite" (default) or "postgres".
+  # When "postgres", all Ent CRUD + raw SQL use Postgres (data.postgres.source).
+  driver: sqlite
   sqlite:
     enable: true
     source: file:./data/arenea.sqlite?cache=shared&_fk=1

@@ -34,6 +34,17 @@ type RefineLLMSetting struct {
 	APIKey   string
 }
 
+// SystemSettingRepo is the repository interface for the singleton system
+// setting row and its sub-settings (knowledge embed, eval LLM, web research,
+// memory platform, refine LLM).
+//
+// Stability:evolving
+// TECH-DEBT(DB-DEBT-02): This interface has 11 methods, exceeding the ≤5
+// guideline (BI1/BI6). It should be split by domain into smaller interfaces
+// (e.g., SystemSettingCoreRepo, KnowledgeEmbedSettingRepo,
+// WebResearchSettingRepo, RefineLLMSettingRepo). Deferred because the split
+// would touch Wire bindings, all callers, and test stubs — track for a
+// dedicated refactoring iteration.
 type SystemSettingRepo interface {
 	Get(ctx context.Context) (SystemSetting, error)
 	Update(ctx context.Context, rootDir, workDir string, globalMonthlyMicroUSD int64, a2aPublicBaseURL string, mcpAllowAdHocHTTP bool) (SystemSetting, error)

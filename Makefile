@@ -122,9 +122,9 @@ golangci-lint:
 	golangci-lint run ./...
 
 .PHONY: test
-# run all Go tests
+# run all Go tests (with -race for concurrent safety detection, aligned with CI)
 test:
-	go test -cover ./...
+	go test -race -cover ./...
 
 .PHONY: archlint
 # run architecture fitness function tests (AS-FIT-01)

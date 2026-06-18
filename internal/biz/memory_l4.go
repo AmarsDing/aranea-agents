@@ -165,6 +165,29 @@ type L4EntityWriter interface {
 	UpsertRelation(ctx context.Context, params L4RelationWrite) error
 }
 
+// L4EntityReadWriter is the combined interface for read-then-write entity
+// resolution. PathBExtractor uses it to look up existing entities by scope
+// key before minting a fresh UUID, ensuring ID stability across re-extraction.
+//
+// Stability:stable
+type L4EntityReadWriter interface {
+	L4EntityReader
+	L4EntityWriter
+}
+
+// PathBL4Writer is the narrow interface used by PathBExtractor for
+// read-then-write entity resolution. It only requires the three methods
+// PathBExtractor actually calls, avoiding forcing implementers to satisfy
+// the full L4EntityReader (which includes search/list methods irrelevant
+// to extraction-time writes).
+//
+// Stability:stable
+type PathBL4Writer interface {
+	GetEntityByScopeKey(ctx context.Context, scopeType, scopeID, entityType, nameNormalized string) (L4EntitySnapshot, bool, error)
+	UpsertEntity(ctx context.Context, params L4EntityWrite) error
+	UpsertRelation(ctx context.Context, params L4RelationWrite) error
+}
+
 type L4DecayWriter interface {
 	ApplyConfidenceDecay(ctx context.Context, scopeType, scopeID, olderThanRFC3339 string, factor float64) (int64, error)
 	ApplyBusinessConfidenceDecay(ctx context.Context, scopeType, scopeID string, cfg L4DecayConfig, nowUnixMs int64) (int64, error)

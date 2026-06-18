@@ -8,7 +8,7 @@ import (
 )
 
 func TestRetrievalEvaluator_NilLLM(t *testing.T) {
-	e := NewRetrievalEvaluator(nil, nil, nil, loggateway.Global())
+	e := NewRetrievalEvaluator(nil, nil, nil, loggateway.NewNoop())
 	assessment, err := e.Evaluate(nil, "test query", []biz.KnowledgeChunk{
 		{ID: "1", Content: "some content", Score: 0.9},
 	})

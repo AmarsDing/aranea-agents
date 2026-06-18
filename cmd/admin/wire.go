@@ -20,10 +20,12 @@ import (
 	"aranea-agents/internal/agent"
 	chatagent "aranea-agents/internal/agent"
 	localexec "aranea-agents/internal/agent/codeexecutor"
+	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/artifact"
 	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
 	a2abiz "aranea-agents/internal/biz/a2a"
+	"aranea-agents/internal/biz/backgroundjob"
 	"aranea-agents/internal/biz/monitor"
 	bizsession "aranea-agents/internal/biz/session"
 	bizskill "aranea-agents/internal/biz/skill"
@@ -37,6 +39,7 @@ import (
 	"aranea-agents/internal/debug"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/internal/graph"
 	graphadapter "aranea-agents/internal/graph/adapter"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/knowledge"
@@ -45,6 +48,7 @@ import (
 	"aranea-agents/internal/mcp/health"
 	mcpmetadata "aranea-agents/internal/mcp/metadata"
 	mcpprobe "aranea-agents/internal/mcp/probe"
+	"aranea-agents/internal/memory"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	"aranea-agents/internal/modelregistry"
 	"aranea-agents/internal/outbound"
@@ -59,6 +63,7 @@ import (
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/skill/watch"
 	"aranea-agents/internal/team"
+	"aranea-agents/internal/tools"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	"aranea-agents/internal/tools/testexec"
@@ -72,6 +77,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
+	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
@@ -375,6 +381,20 @@ func (a toolTesterAdapter) Execute(ctx context.Context, tool biztool.ToolTestInp
 
 func provideToolTester(lg loggateway.Logger) biztool.ToolTester { return toolTesterAdapter{lg: lg} }
 
+// provideParallelToolExecutor builds the Wire-bound ParallelToolExecutor used
+// by BatchExecuteSpiritTools for batch tool call scenarios (e.g.,
+// multi_tool_use.parallel). The handler is nil at construction because tool
+// dispatch is agent/session-specific; callers supply the handler at call time
+// via BatchExecuteSpiritTools, which reuses this executor's concurrency
+// configuration. Returns nil when ARANEA_PARALLEL_AUTO is disabled so callers
+// transparently fall back to serial execution.
+func provideParallelToolExecutor(lg loggateway.Logger) *tools.ParallelToolExecutor {
+	if !intent.AllowAutoParallel() {
+		return nil
+	}
+	return tools.NewParallelToolExecutor(nil, lg)
+}
+
 func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, tester biztool.ToolTester, checker biztool.WebResearchReadinessChecker, lg loggateway.Logger) *biztool.ToolUsecase {
 	return biztool.NewToolUsecase(repo, sys, lg, biztool.WithToolTester(tester), biztool.WithWebResearchChecker(checker))
 }
@@ -386,6 +406,20 @@ func provideMCPServerUsecaseWithDeps(repo biz.MCPServerRepo, credRepo biz.MCPSer
 
 func provideRunRegistry(lg loggateway.Logger) *rt.RunRegistry {
 	return rt.NewRunRegistry().WithLogger(lg)
+}
+
+// provideRunHeartbeatEmitter builds the Wire-bound RunHeartbeatEmitter (P1-7).
+// The emit interval is read from the RUN_HEARTBEAT_INTERVAL env var (e.g.
+// "10s", "30s"); when unset or invalid, NewRunHeartbeatEmitter applies its
+// built-in 10s default (interval <= 0 → defaultHeartbeatInterval).
+func provideRunHeartbeatEmitter(bus contract.Bus, lg loggateway.Logger) *service.RunHeartbeatEmitter {
+	interval := time.Duration(0)
+	if raw := strings.TrimSpace(os.Getenv("RUN_HEARTBEAT_INTERVAL")); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			interval = d
+		}
+	}
+	return service.NewRunHeartbeatEmitter(interval, bus, lg)
 }
 
 func providePendingMessageQueue(lg loggateway.Logger) *rt.PendingMessageQueue {
@@ -410,6 +444,22 @@ func provideSessionRunDurableWorker(sessionRuns *biz.SessionRunUsecase, runCtrl 
 // Returns nil if any dependency is nil (defensive construction).
 func provideRecoveryWorker(sessionRuns *biz.SessionRunUsecase, saver trpcgraph.CheckpointSaver, resumer biz.DurableResumeGateway, lg loggateway.Logger) *service.RecoveryWorker {
 	return service.NewRecoveryWorker(sessionRuns, saver, resumer, lg)
+}
+
+// provideBackgroundJobRegistry builds the in-memory Runner registry for the
+// Unified BackgroundJob subsystem (M56 BLO-5). Runners register themselves
+// at construction time; the worker queries the registry to dispatch claimed
+// jobs by Kind.
+func provideBackgroundJobRegistry() backgroundjob.Registry {
+	return backgroundjob.NewRegistry()
+}
+
+// provideBackgroundJobWorker builds the worker that polls backgroundjob.Repo
+// for queued jobs and dispatches them to registered Runners. Returns nil if
+// any dependency is nil (defensive construction). When no runners are
+// registered at startup, Start() logs once and exits without polling.
+func provideBackgroundJobWorker(repo backgroundjob.Repo, registry backgroundjob.Registry, lg loggateway.Logger) *service.BackgroundJobWorker {
+	return service.NewBackgroundJobWorker(repo, registry, lg)
 }
 
 func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, eventBus event.Bus, lg loggateway.Logger) biz.AlertNotifier {
@@ -549,6 +599,7 @@ func provideRuntimeTooling(
 	toolResultGate *biz.ToolResultGate,
 	outboundRouter *outbound.Router,
 	subAgentSvc *subagenttool.Service,
+	parallelExec *tools.ParallelToolExecutor,
 ) service.RuntimeTooling {
 	return service.RuntimeTooling{
 		PluginRT:                    pluginRT,
@@ -566,6 +617,7 @@ func provideRuntimeTooling(
 		ToolResultGate:              toolResultGate,
 		OutboundRouter:              outboundRouter,
 		SubAgentService:             subAgentSvc,
+		ParallelToolExecutor:        parallelExec,
 	}
 }
 
@@ -580,18 +632,22 @@ func provideTeamOrchestrationDeps(
 	spiritUC biz.SpiritTeamController,
 	taskPlanner biz.TaskPlannerPort,
 	agentAllocator biz.AgentAllocatorPort,
+	nl2graph graph.NL2GraphConverter,
+	runtimeReplanner graph.RuntimeReplanner,
 ) service.TeamOrchestrationDeps {
 	return service.TeamOrchestrationDeps{
-		TeamUC:         teamUC,
-		TeamsNative:    teamsNative,
-		GraphFactory:   graphFactory,
-		Graphs:         graphs,
-		Tasks:          tasks,
-		TeamGraphCoord: teamGraphCoord,
-		TeamMediator:   mediator,
-		SpiritUC:       spiritUC,
-		TaskPlanner:    taskPlanner,
-		AgentAllocator: agentAllocator,
+		TeamUC:            teamUC,
+		TeamsNative:       teamsNative,
+		GraphFactory:      graphFactory,
+		Graphs:            graphs,
+		Tasks:             tasks,
+		TeamGraphCoord:    teamGraphCoord,
+		TeamMediator:      mediator,
+		SpiritUC:          spiritUC,
+		TaskPlanner:       taskPlanner,
+		AgentAllocator:    agentAllocator,
+		NL2GraphConverter: nl2graph,
+		RuntimeReplanner:  runtimeReplanner,
 	}
 }
 
@@ -683,10 +739,14 @@ func provideTeamTurnDeps(
 	lg loggateway.Logger,
 ) rt.TurnDeps {
 	return rt.TurnDeps{
-		ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
-		Persist:   persist,
-		Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer},
-		LLMHTTP:   &http.Client{Timeout: 300 * time.Second},
+		ReadDeps: provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
+		Persist:  persist,
+		Pipeline: rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer},
+		// P1 fix (2026-06-18): Raised from 300s (5min) to 1800s (30min) to support
+		// long-running LLM reasoning tasks (deep analysis, code generation) that
+		// exceed the previous 5min ceiling. Streaming responses are not affected
+		// (stream chunks arrive within the timeout); this only bounds total call time.
+		LLMHTTP:   &http.Client{Timeout: 1800 * time.Second},
 		Sessions:  sessions,
 		Compress:  compress,
 		RunnerMgr: rt.NewRunnerManagerFromPersist(persist, lg),
@@ -754,6 +814,7 @@ func provideChatServiceDeps(
 	turnLifecycle *biz.TurnLifecycleUsecase,
 	activityWriter biz.ActivityWriter,
 	activityReader biz.ActivityReader,
+	heartbeatEmitter *service.RunHeartbeatEmitter,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	// Backfill TaskOrchestrator into teamDeps to break the Wire cycle:
@@ -765,10 +826,11 @@ func provideChatServiceDeps(
 	return service.ChatOrchestratorDeps{
 		Turn: service.ChatTurnDeps{
 			TurnDeps: rt.TurnDeps{
-				ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
-				Persist:   persist,
-				Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer},
-				LLMHTTP:   &http.Client{Timeout: 300 * time.Second},
+				ReadDeps: provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
+				Persist:  persist,
+				Pipeline: rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer},
+				// P1 fix (2026-06-18): Raised from 300s to 1800s to support long LLM reasoning.
+				LLMHTTP:   &http.Client{Timeout: 1800 * time.Second},
 				Sessions:  sessions,
 				SessionRT: sessionRT,
 				Compress:  compress,
@@ -807,13 +869,14 @@ func provideChatServiceDeps(
 			Evolution: evolution,
 		},
 		Infra: service.ChatInfraDeps{
-			LG:              lg,
-			OrchCache:       orchCache,
-			A2AUC:           a2aUC,
-			MCPServers:      mcpUC,
-			OutboundRouter:  outboundRouter,
-			SubAgentService: subAgentSvc,
-			TurnLifecycle:   turnLifecycle,
+			LG:               lg,
+			OrchCache:        orchCache,
+			A2AUC:            a2aUC,
+			MCPServers:       mcpUC,
+			OutboundRouter:   outboundRouter,
+			SubAgentService:  subAgentSvc,
+			TurnLifecycle:    turnLifecycle,
+			HeartbeatEmitter: heartbeatEmitter,
 		},
 	}
 }
@@ -914,6 +977,13 @@ func provideSQLiteRawDB(d *data.Data) *sql.DB {
 	return d.RWDB().WriteHandle()
 }
 
+// providePrimaryRawDB is the dialect-aware alias for provideSQLiteRawDB.
+// It returns the primary database's raw *sql.DB handle (SQLite or Postgres
+// depending on data.driver config).
+func providePrimaryRawDB(d *data.Data) *sql.DB {
+	return provideSQLiteRawDB(d)
+}
+
 // provideEventWAL creates an EventWAL with both SQLite and Postgres DB handles.
 // Postgres is preferred when available (Phase 1 migration); SQLite is the fallback.
 // This provider is needed because Wire cannot disambiguate two *sql.DB args by type.
@@ -951,8 +1021,10 @@ func providePostgresEventStore(d *data.Data, lg loggateway.Logger) *event.Postgr
 	return store
 }
 
-func provideTRPCSessionService(rawDB *sql.DB, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) trpcsession.Service {
-	return rt.NewTRPCSessionService(rawDB, lg, sessiontrpc.SummarizerConfig{
+func provideTRPCSessionService(d *data.Data, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) trpcsession.Service {
+	rawDB := providePrimaryRawDB(d)
+	pgDSN := d.PostgresDSN()
+	return rt.NewTRPCSessionService(rawDB, pgDSN, lg, sessiontrpc.SummarizerConfig{
 		Catalog: catalog,
 		RT:      &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
 		Lg:      lg,
@@ -970,8 +1042,56 @@ func provideL1AdminReader(admin biz.SessionAdminStore) biz.L1AdminReader {
 	return admin
 }
 
-func provideGraphCheckpointSaver(rawDB *sql.DB, lg loggateway.Logger) (*graphtrpc.SQLiteCheckpointSaver, error) {
-	return rt.NewGraphCheckpointSaver(rawDB, lg)
+func provideGraphCheckpointSaver(d *data.Data, lg loggateway.Logger) (*graphtrpc.CheckpointSaver, error) {
+	rawDB := providePrimaryRawDB(d)
+	pgDSN := d.PostgresDSN()
+	return rt.NewGraphCheckpointSaver(rawDB, pgDSN, lg)
+}
+
+// provideNL2GraphConverter builds the NL2GraphConverter for natural-language →
+// graph build config conversion. P1 fix (2026-06-18): previously this component
+// was implemented but never wired into production (orphan component). The llm
+// parameter is nil for now; callers that need NL2Graph will get an Internal
+// error and can fall back to build_orchestration_graph tool. Future work:
+// inject a dedicated planner model.
+func provideNL2GraphConverter(lg loggateway.Logger) graph.NL2GraphConverter {
+	return graph.NewNL2GraphConverter(nil, lg)
+}
+
+// provideRuntimeReplanner builds the RuntimeReplanner for graph node failure
+// recovery. P1 fix (2026-06-18): previously this component was implemented but
+// never wired into production (orphan component). It is now available for
+// Graph executors to call OnNodeFailure on node errors.
+func provideRuntimeReplanner(eventBus event.Bus, lg loggateway.Logger) graph.RuntimeReplanner {
+	return graph.NewRuntimeReplanner(eventBus, lg)
+}
+
+// provideTopologyEvolver builds the TopologyEvolver for dynamic graph topology
+// evolution. The LLM model is resolved from TOPOLOGY_EVOLVER_PROVIDER and
+// TOPOLOGY_EVOLVER_MODEL env vars; when unset, the evolver degrades gracefully
+// (returns nil edge, no error) because NewTopologyEvolver accepts a nil LLM.
+// The evolver is integrated into the Graph executor via AfterNode callbacks
+// (B4) and is called when execution insights suggest a new transfer edge.
+func provideTopologyEvolver(
+	catalog *biz.LlmProviderModelUsecase,
+	eventBus event.Bus,
+	lg loggateway.Logger,
+) graph.TopologyEvolver {
+	var llm trpcmodel.Model
+	prov := strings.TrimSpace(os.Getenv("TOPOLOGY_EVOLVER_PROVIDER"))
+	mod := strings.TrimSpace(os.Getenv("TOPOLOGY_EVOLVER_MODEL"))
+	if prov != "" && mod != "" && catalog != nil {
+		rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}}
+		if m, err := provider.TRPCModelForProviderModel(context.Background(), catalog, rtTrip, prov, mod, lg); err == nil {
+			llm = m
+		} else {
+			lg.Warn("topology evolver: LLM model build failed, edge decisions will be no-op",
+				loggateway.Str("provider", prov),
+				loggateway.Str("model", mod),
+				loggateway.Err(err))
+		}
+	}
+	return graph.NewTopologyEvolver(llm, eventBus, lg)
 }
 
 func provideGraphBuildDeps(
@@ -1244,6 +1364,87 @@ func provideMemoryL4DecayWorker(l4 biz.L4GraphWriter, agents *biz.AgentUsecase, 
 		return nil
 	}
 	return jobs.NewMemoryL4DecayWorker(0, l4, agents, lg)
+}
+
+// provideMemoryEbbinghausDecayWorker wires the Ebbinghaus exponential decay
+// statistics worker. The worker is statistics-only and does not mutate the
+// database; the calculator defaults to a fresh instance when nil is passed.
+// Disabled via MEMORY_EBBINGHAUS_DECAY_DISABLED env var.
+func provideMemoryEbbinghausDecayWorker(lg loggateway.Logger) *jobs.MemoryEbbinghausDecayWorker {
+	if jobs.MemoryEbbinghausDecayDisabled() {
+		return nil
+	}
+	return jobs.NewMemoryEbbinghausDecayWorker(0, nil, lg)
+}
+
+// memorySleepTimeQueueSize is the buffer size for the in-memory consolidation
+// queue consumed by the Sleep-time Agent.
+const memorySleepTimeQueueSize = 100
+
+// provideMemorySleepTimeWorker wires the Sleep-time Agent worker. It builds a
+// SleepTimeService backed by the shared trpc memory Service, an optional LLM
+// model (resolved from MEMORY_SLEEP_TIME_PROVIDER/MEMORY_SLEEP_TIME_MODEL env
+// vars), and an in-memory consolidation queue. When MEMORY_SLEEP_TIME_USER_IDS
+// is set, an AgentUserKeyLister is wired so the worker periodically enqueues
+// consolidation jobs for each (agent, user) pair; otherwise the worker only
+// drains the queue (queue-only mode).
+//
+// Disabled via MEMORY_SLEEP_TIME_DISABLED env var.
+func provideMemorySleepTimeWorker(
+	memSvc trpcmemory.Service,
+	agents *biz.AgentUsecase,
+	catalog *biz.LlmProviderModelUsecase,
+	lg loggateway.Logger,
+) *jobs.MemorySleepTimeWorker {
+	if jobs.MemorySleepTimeDisabled() {
+		return nil
+	}
+	// Resolve optional LLM model for consolidation analysis. When unset, the
+	// SleepTimeService gracefully degrades to a no-op (llmConsolidate returns
+	// an empty result).
+	var llm trpcmodel.Model
+	prov := strings.TrimSpace(os.Getenv("MEMORY_SLEEP_TIME_PROVIDER"))
+	mod := strings.TrimSpace(os.Getenv("MEMORY_SLEEP_TIME_MODEL"))
+	if prov != "" && mod != "" && catalog != nil {
+		rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}}
+		if m, err := provider.TRPCModelForProviderModel(context.Background(), catalog, rtTrip, prov, mod, lg); err == nil {
+			llm = m
+		} else {
+			lg.Warn("sleep-time worker: LLM model build failed, consolidation will be no-op",
+				loggateway.Str("provider", prov),
+				loggateway.Str("model", mod),
+				loggateway.Err(err))
+		}
+	}
+	queue := memory.NewConsolidationQueue(memorySleepTimeQueueSize)
+	svc := memory.NewSleepTimeService(memSvc, llm, queue, lg)
+	// Build optional target lister from configured user IDs. When no user IDs
+	// are configured, the worker runs in queue-only mode (drains the queue but
+	// does not proactively enqueue consolidation jobs).
+	userIDs := parseSleepTimeUserIDsFromEnv()
+	var lister jobs.SleepTimeTargetLister
+	if len(userIDs) > 0 {
+		lister = jobs.NewAgentUserKeyLister(agents, userIDs)
+	}
+	return jobs.NewMemorySleepTimeWorker(0, svc, lister, lg)
+}
+
+// parseSleepTimeUserIDsFromEnv reads the MEMORY_SLEEP_TIME_USER_IDS env var
+// (comma-separated) and returns the trimmed, non-empty user ID list.
+func parseSleepTimeUserIDsFromEnv() []string {
+	raw := strings.TrimSpace(os.Getenv("MEMORY_SLEEP_TIME_USER_IDS"))
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	var out []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func provideMemoryFactIndexReconciler(maintainer biz.MemoryFactIndexMaintainer, factSync biz.MemoryFactIndexSyncer, lg loggateway.Logger) *jobs.MemoryFactIndexReconciler {
@@ -1567,6 +1768,7 @@ type wireOut struct {
 	ChannelDeliveryScanner      *jobs.ChannelDeliveryWorker
 	SessionRunDurableWorker     *service.SessionRunDurableWorker
 	RecoveryWorker              *service.RecoveryWorker
+	BackgroundJobWorker         *service.BackgroundJobWorker
 	ChannelRuntime              *service.ChannelRuntime
 	PluginRuntime               *plugintrpc.Runtime
 	EventStoreCleanup           *jobs.EventStoreCleanup
@@ -1581,6 +1783,8 @@ type wireOut struct {
 	MemoryL1Archive             *jobs.MemoryL1ArchiveWorker
 	MemoryL3Decay               *jobs.MemoryL3DecayWorker
 	MemoryL4Decay               *jobs.MemoryL4DecayWorker
+	MemoryEbbinghausDecay       *jobs.MemoryEbbinghausDecayWorker
+	MemorySleepTime             *jobs.MemorySleepTimeWorker
 	MemoryEpisodeBackfill       *jobs.MemoryEpisodeBackfillWorker
 	MemoryDataMigration         *jobs.MemoryDataMigrationWorker
 	MemoryFactIndexReconciler   *jobs.MemoryFactIndexReconciler
@@ -1614,6 +1818,7 @@ func provideWireOut(
 	channelDelivery *jobs.ChannelDeliveryWorker,
 	sessionRunDurable *service.SessionRunDurableWorker,
 	recoveryWorker *service.RecoveryWorker,
+	backgroundJobWorker *service.BackgroundJobWorker,
 	channelRuntime *service.ChannelRuntime,
 	pluginRuntime *plugintrpc.Runtime,
 	eventStoreCleanup *jobs.EventStoreCleanup,
@@ -1628,6 +1833,8 @@ func provideWireOut(
 	memoryL1Archive *jobs.MemoryL1ArchiveWorker,
 	memoryL3Decay *jobs.MemoryL3DecayWorker,
 	memoryL4Decay *jobs.MemoryL4DecayWorker,
+	memoryEbbinghausDecay *jobs.MemoryEbbinghausDecayWorker,
+	memorySleepTime *jobs.MemorySleepTimeWorker,
 	memoryEpisodeBackfill *jobs.MemoryEpisodeBackfillWorker,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
 	memoryFactIndexReconciler *jobs.MemoryFactIndexReconciler,
@@ -1654,11 +1861,14 @@ func provideWireOut(
 		ChannelHealthScanner: channelHealth, ChannelDeliveryScanner: channelDelivery,
 		SessionRunDurableWorker: sessionRunDurable,
 		RecoveryWorker:          recoveryWorker,
+		BackgroundJobWorker:     backgroundJobWorker,
 		ChannelRuntime:          channelRuntime,
 		PluginRuntime:           pluginRuntime,
 		EventStoreCleanup:       eventStoreCleanup, ToolAuditCleanup: toolAuditCleanup,
 		EventWALCleanup: eventWALCleanup,
 		FlowLogCleanup:  flowLogCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
+		MemoryEbbinghausDecay:     memoryEbbinghausDecay,
+		MemorySleepTime:           memorySleepTime,
 		MemoryEpisodeBackfill:     memoryEpisodeBackfill,
 		MemoryDataMigration:       memoryDataMigration,
 		MemoryFactIndexReconciler: memoryFactIndexReconciler,
@@ -1808,6 +2018,7 @@ func provideTaskOrchestrator(
 	perfRepo biz.AgentPerformanceRepository,
 	evolutionSugg biz.EvolutionSuggestionRepo,
 	bus contract.Bus,
+	nl2graph graph.NL2GraphConverter,
 	lg loggateway.Logger,
 ) biz.TaskOrchestratorPort {
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
@@ -1826,7 +2037,7 @@ func provideTaskOrchestrator(
 		},
 	}
 	compiler := chatagent.NewDAGToGraphCompiler(lg)
-	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, compiler, repo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionSugg, bus, lg)
+	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, compiler, repo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionSugg, bus, nl2graph, lg)
 }
 
 func provideDeptLeadManager(
@@ -1935,6 +2146,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		providePromptFileAIEditor,
 		provideSessionTitleGenerator,
 		provideRunRegistry,
+		provideRunHeartbeatEmitter,
 		providePendingMessageQueue,
 		provideCodeExecutorFactory,
 		provideAutoMemoryQueue,
@@ -1946,6 +2158,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideMemoryL3Recall,
 		provideMemoryCompositeRecall,
 		provideMemoryTRPCService,
+		provideLinkEvolutionService,
 		provideFeedbackMemoryEnqueuer,
 		provideMCPProber,
 		provideMCPMetadataEditor,
@@ -1957,6 +2170,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideBizWebResearchReadinessChecker,
 		provideAgentUsecaseWithDeps,
 		provideToolTester,
+		provideParallelToolExecutor,
 		provideToolUsecaseWithDeps,
 		provideChatServiceDeps,
 		provideRuntimeTooling,
@@ -1975,7 +2189,11 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		providePostgresEventStore,
 		provideTRPCSessionService,
 		provideGraphCheckpointSaver,
-		wire.Bind(new(trpcgraph.CheckpointSaver), new(*graphtrpc.SQLiteCheckpointSaver)),
+		wire.Bind(new(trpcgraph.CheckpointSaver), new(*graphtrpc.CheckpointSaver)),
+		// P1 fix (2026-06-18): Wire previously-orphan graph components into production.
+		provideNL2GraphConverter,
+		provideRuntimeReplanner,
+		provideTopologyEvolver,
 		providePersistenceSet,
 		provideSessionMemoryResync,
 		provideL1AdminReader,
@@ -2011,12 +2229,14 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideMemoryL2DecayWorker,
 		provideMemoryAdminUsecase,
 		providePathBExtractor,
-		provideL4EntityWriter,
+		providePathBL4Writer,
 		provideSessionAdminStore,
 		provideMemoryAdminDeps,
 		provideMemoryL1ArchiveWorker,
 		provideMemoryL3DecayWorker,
 		provideMemoryL4DecayWorker,
+		provideMemoryEbbinghausDecayWorker,
+		provideMemorySleepTimeWorker,
 		provideMemoryEpisodeBackfillWorker,
 		provideMemoryDataMigrationWorker,
 		provideMemoryFactIndexReconciler,
@@ -2046,6 +2266,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideChannelRunEscalationNotifier,
 		provideSessionRunDurableWorker,
 		provideRecoveryWorker,
+		provideBackgroundJobRegistry,
+		provideBackgroundJobWorker,
 		provideFilesystemHealthReader,
 		provideProcessLogEnabled,
 		provideRedisClient,

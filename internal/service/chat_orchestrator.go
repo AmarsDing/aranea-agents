@@ -11,12 +11,14 @@ import (
 	"aranea-agents/internal/chatactivity"
 	"aranea-agents/internal/debug"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/graph"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/outbound"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/runtime/turn"
 	araneasession "aranea-agents/internal/session"
+	"aranea-agents/internal/tools"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	"aranea-agents/internal/tools/security"
 	subagenttool "aranea-agents/internal/tools/subagent"
@@ -64,6 +66,9 @@ type RuntimeTooling struct {
 	ToolResultGate              *biz.ToolResultGate
 	OutboundRouter              *outbound.Router
 	SubAgentService             *subagenttool.Service
+	// ParallelToolExecutor enables batch tool call parallelism (B5 integration).
+	// Nil when ARANEA_PARALLEL_AUTO is disabled; callers fall back to serial execution.
+	ParallelToolExecutor *tools.ParallelToolExecutor
 }
 
 // TeamOrchestrationDeps groups team execution and graph compilation dependencies.
@@ -81,6 +86,12 @@ type TeamOrchestrationDeps struct {
 	TaskPlanner      biz.TaskPlannerPort
 	AgentAllocator   biz.AgentAllocatorPort
 	TaskOrchestrator biz.TaskOrchestratorPort
+	// P1 fix (2026-06-18): Previously-orphan graph components now wired into
+	// production via TeamOrchestrationDeps. NL2GraphConverter enables natural
+	// language → graph build config conversion; RuntimeReplanner enables
+	// automatic replanning on graph node failures.
+	NL2GraphConverter graph.NL2GraphConverter
+	RuntimeReplanner  graph.RuntimeReplanner
 }
 
 // ChannelTurnJobDeps groups channel turn job tracking and session run management.
@@ -106,11 +117,11 @@ type ChatChannelDeps struct {
 // admission gate, admission usecase, and turn timeout. Consolidating these into a
 // single struct reduces ChatOrchestrator's field count (AS-COG-01).
 type chatTurnCoreDeps struct {
-	TD            rt.TurnDeps
-	RT            RuntimeTooling
-	AdmitGate     *turn.AdmissionGate
-	Admission     *biz.TurnAdmissionUsecase
-	TurnTimeout   time.Duration
+	TD             rt.TurnDeps
+	RT             RuntimeTooling
+	AdmitGate      *turn.AdmissionGate
+	Admission      *biz.TurnAdmissionUsecase
+	TurnTimeout    time.Duration
 	ActivityWriter biz.ActivityWriter // AF phase: Activity persistence for ActivityProjector
 	ActivityReader biz.ActivityReader // AF phase: Activity lookup for Confirm API
 }
@@ -231,6 +242,12 @@ func (o *ChatOrchestrator) subAgentService() *subagenttool.Service {
 }
 func (o *ChatOrchestrator) lg() loggateway.Logger { return o.infraDeps.LG }
 
+// heartbeatEmitter returns the Wire-injected RunHeartbeatEmitter, or nil when
+// not configured. Callers must nil-check before use.
+func (o *ChatOrchestrator) heartbeatEmitter() *RunHeartbeatEmitter {
+	return o.infraDeps.HeartbeatEmitter
+}
+
 // Sub-manager accessors delegate to the composite interfaces.
 func (o *ChatOrchestrator) sessionStateMgr() sessionStateTransitor { return o.turnLC }
 func (o *ChatOrchestrator) turnMetrics() turnRecorder              { return o.turnLC }
@@ -288,6 +305,10 @@ type ChatInfraDeps struct {
 	OutboundRouter  *outbound.Router
 	SubAgentService *subagenttool.Service
 	TurnLifecycle   *biz.TurnLifecycleUsecase
+	// HeartbeatEmitter publishes run_heartbeat events so the frontend can
+	// detect stale runs within 30s (P1-7). When nil, no heartbeats are
+	// emitted and stale detection degrades gracefully.
+	HeartbeatEmitter *RunHeartbeatEmitter
 }
 
 // ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.
@@ -363,10 +384,10 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 
 	o := &ChatOrchestrator{
 		core: chatTurnCoreDeps{
-			TD:            deps.Turn.TurnDeps,
-			RT:            deps.Turn.RT,
-			Admission:     deps.Turn.Admission,
-			TurnTimeout:   turnTimeout,
+			TD:             deps.Turn.TurnDeps,
+			RT:             deps.Turn.RT,
+			Admission:      deps.Turn.Admission,
+			TurnTimeout:    turnTimeout,
 			ActivityWriter: deps.Turn.ActivityWriter,
 			ActivityReader: deps.Turn.ActivityReader,
 		},

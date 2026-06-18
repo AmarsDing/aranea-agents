@@ -367,7 +367,18 @@ func NewGraphAgentWithEngine(name string, g *trpcgraph.Graph, enableCheckpoint b
 }
 
 func (a *GraphAgent) Run(ctx context.Context, inv *trpcagent.Invocation) (<-chan *trpcevent.Event, error) {
-	return a.executor.Execute(ctx, nil, inv)
+	// Merge RuntimeState into the initial state so that runtime-injected
+	// values (e.g. NodeCallbacks via StateKeyNodeCallbacks) are visible to
+	// the executor. This mirrors the framework's graphagent.createInitialState
+	// behavior. Without this merge, RuntimeState would be ignored because
+	// Execute receives a separate initialState parameter.
+	initialState := trpcgraph.State{}
+	if inv != nil && inv.RunOptions.RuntimeState != nil {
+		for k, v := range inv.RunOptions.RuntimeState {
+			initialState[k] = v
+		}
+	}
+	return a.executor.Execute(ctx, initialState, inv)
 }
 
 func (a *GraphAgent) Tools() []trpctool.Tool {

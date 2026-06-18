@@ -135,6 +135,10 @@ message Data {
   Sqlite sqlite = 3;
   Postgres postgres = 4;
   InitialAdmin initial_admin = 5;
+  // Primary database driver: "sqlite" (default) or "postgres".
+  // When "postgres", Ent CRUD + raw SQL use the Postgres connection from
+  // data.postgres.source (pgvector/WAL/EventStore share the same pool).
+  string driver = 6;
 }
 
 // Runtime holds infrastructure-level tuning parameters that rarely change at

@@ -97,6 +97,12 @@ func (m *memTeamRepoB) CreateTeamRun(_ context.Context, r biz.TeamRun) (biz.Team
 	return r, nil
 }
 func (m *memTeamRepoB) UpdateTeamRun(_ context.Context, _ biz.TeamRun) error          { return nil }
+func (m *memTeamRepoB) UpdateTeamWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
+	return true, nil
+}
+func (m *memTeamRepoB) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
+	return true, nil
+}
 func (m *memTeamRepoB) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
 func (m *memTeamRepoB) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error {
 	return nil

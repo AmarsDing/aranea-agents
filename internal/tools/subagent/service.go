@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -44,9 +45,14 @@ const (
 
 	defaultMaxConcurrentSubAgents = 5
 
+	// envSubagentMaxConcurrency is the environment variable used to override
+	// the default subagent concurrency limit. When set to a positive integer,
+	// it replaces defaultMaxConcurrentSubAgents. P1 fix (2026-06-18).
+	envSubagentMaxConcurrency = "ARANEA_SUBAGENT_MAX_CONCURRENCY"
+
 	// Notification limits for outbound completion messages.
 	notifyMaxSummaryRunes = 200
-	notifyTimeoutSec     = 5
+	notifyTimeoutSec      = 5
 
 	toolSubagentsSpawn  = "subagents_spawn"
 	toolSubagentsList   = "subagents_list"
@@ -103,6 +109,11 @@ type Service struct {
 	baseCtx   context.Context
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup
+
+	// maxConcurrent is the upper bound on simultaneously running subagents.
+	// Defaults to defaultMaxConcurrentSubAgents; overridable via
+	// ARANEA_SUBAGENT_MAX_CONCURRENCY env var (P1 fix 2026-06-18).
+	maxConcurrent int
 }
 
 // runesManager manages per-session rune limits for subagent results.
@@ -179,13 +190,14 @@ func NewService(stateDir string, r trpcrunner.Runner, lg loggateway.Logger) (*Se
 	}
 
 	svc := &Service{
-		path:    path,
-		runner:  r,
-		lg:      lg,
-		runes:   newRunesManager(),
-		clock:   time.Now,
-		runs:    runs,
-		running: make(map[string]*runningRun),
+		path:          path,
+		runner:        r,
+		lg:            lg,
+		runes:         newRunesManager(),
+		clock:         time.Now,
+		runs:          runs,
+		running:       make(map[string]*runningRun),
+		maxConcurrent: resolveSubagentMaxConcurrency(),
 	}
 	if normalizeLoadedRuns(svc.runs, svc.clock()) {
 		if err := svc.persist(); err != nil {
@@ -214,6 +226,21 @@ func (s *Service) WithOutboundRouter(router *outbound.Router) *Service {
 		s.mu.Unlock()
 	}
 	return s
+}
+
+// resolveSubagentMaxConcurrency reads ARANEA_SUBAGENT_MAX_CONCURRENCY and
+// returns the effective concurrency limit. Falls back to
+// defaultMaxConcurrentSubAgents when unset or invalid. P1 fix (2026-06-18).
+func resolveSubagentMaxConcurrency() int {
+	v := strings.TrimSpace(os.Getenv(envSubagentMaxConcurrency))
+	if v == "" {
+		return defaultMaxConcurrentSubAgents
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 1 {
+		return defaultMaxConcurrentSubAgents
+	}
+	return n
 }
 
 // runesConfig holds per-session rune limits for subagent results.
@@ -290,9 +317,9 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 		s.mu.Unlock()
 		return trpcsubagent.Run{}, apierror.Internal(apierror.DomainSubagent, "runner not configured")
 	}
-	if len(s.running) >= defaultMaxConcurrentSubAgents {
+	if len(s.running) >= s.maxConcurrent {
 		s.mu.Unlock()
-		return trpcsubagent.Run{}, apierror.RateLimit(apierror.DomainSubagent, fmt.Sprintf("too many concurrent sub-agents (limit: %d)", defaultMaxConcurrentSubAgents))
+		return trpcsubagent.Run{}, apierror.RateLimit(apierror.DomainSubagent, fmt.Sprintf("too many concurrent sub-agents (limit: %d)", s.maxConcurrent))
 	}
 
 	if err := validateSpawnRequest(req); err != nil {
@@ -365,8 +392,8 @@ func (s *Service) newRunRecord(req SpawnRequest) *runRecord {
 			CreatedAt:       now,
 			UpdatedAt:       now,
 		},
-		OwnerUserID: strings.TrimSpace(req.OwnerUserID),
-		ResultRunes: resultRunes,
+		OwnerUserID:  strings.TrimSpace(req.OwnerUserID),
+		ResultRunes:  resultRunes,
 		SummaryRunes: summaryRunes,
 	}
 }

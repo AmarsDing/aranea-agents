@@ -13,6 +13,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/vector"
+	memlink "aranea-agents/internal/memory"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -36,6 +37,11 @@ const (
 	contradictionBoost = 0.1
 	// minKeywordLen is the minimum token length to be considered a keyword.
 	minKeywordLen = 3
+	// linkEvolutionTimeout caps the overall duration of an async link
+	// evolution triggered after AddMemory. The LLM call inside EvolveLinks
+	// has its own shorter timeout (evolutionLLMTimeout); this budget covers
+	// DB reads/writes plus the LLM round-trip.
+	linkEvolutionTimeout = 90 * time.Second
 )
 
 var memoryReadConsistencyCheck = os.Getenv("MEMORY_READ_CONSISTENCY_CHECK") == "1"
@@ -56,6 +62,7 @@ type sqliteMemoryService struct {
 	settingsLoader  AgentRuntimeSettingsLoader
 	consistency     factConsistencyChecker
 	resyncFlight    singleflightGroup
+	linkEvolver     memlink.LinkEvolutionService
 	lg              loggateway.Logger
 }
 
@@ -96,7 +103,7 @@ func (g *singleflightGroup) Done(key string) {
 	delete(g.m, key)
 }
 
-func NewSQLiteMemoryService(factReader biz.L3FactReader, factWriter biz.L3FactWriter, indexSync biz.MemoryFactIndexSyncer, queue AutoMemoryQueue, vector vectorFactSearcher, settingsLoader AgentRuntimeSettingsLoader, consistency factConsistencyChecker, lg loggateway.Logger) trpcmemory.Service {
+func NewSQLiteMemoryService(factReader biz.L3FactReader, factWriter biz.L3FactWriter, indexSync biz.MemoryFactIndexSyncer, queue AutoMemoryQueue, vector vectorFactSearcher, settingsLoader AgentRuntimeSettingsLoader, consistency factConsistencyChecker, linkEvolver memlink.LinkEvolutionService, lg loggateway.Logger) trpcmemory.Service {
 	if factReader == nil {
 		return nil
 	}
@@ -108,6 +115,7 @@ func NewSQLiteMemoryService(factReader biz.L3FactReader, factWriter biz.L3FactWr
 		vector:          vector,
 		settingsLoader:  settingsLoader,
 		consistency:     consistency,
+		linkEvolver:     linkEvolver,
 		lg:              lg,
 	}
 }
@@ -139,6 +147,7 @@ func (s *sqliteMemoryService) AddMemory(ctx context.Context, uk trpcmemory.UserK
 		return err
 	}
 	s.syncIndexBestEffort(ctx, raw)
+	s.triggerLinkEvolution(ctx, uk, raw)
 	return nil
 }
 
@@ -511,6 +520,32 @@ func (s *sqliteMemoryService) syncIndexBestEffort(ctx context.Context, raw []byt
 	}
 }
 
+// triggerLinkEvolution asynchronously invokes the link evolver for a newly
+// added memory. Best-effort: failures are logged as Warn and do not affect
+// the AddMemory result. The evolver runs in a detached context so that
+// cancellation of the caller's context (e.g. HTTP request completion) does
+// not abort the evolution work. Red line #13: goroutine started via safego.Go.
+func (s *sqliteMemoryService) triggerLinkEvolution(ctx context.Context, uk trpcmemory.UserKey, raw []byte) {
+	if s == nil || s.linkEvolver == nil || len(raw) == 0 {
+		return
+	}
+	entry, err := factRowToEntry(raw, uk)
+	if err != nil || entry == nil || entry.ID == "" {
+		return
+	}
+	evolver := s.linkEvolver
+	bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), linkEvolutionTimeout)
+	safego.Go(bgCtx, "memory.link_evolution_on_add", func() {
+		defer cancel()
+		if _, err := evolver.EvolveLinks(bgCtx, uk, entry); err != nil {
+			s.lg.Warn("async link evolution failed",
+				loggateway.StepID("memory.link_evolution"),
+				loggateway.Str("fact_id", entry.ID),
+				loggateway.Err(err))
+		}
+	})
+}
+
 func trpcFactUpsert(uk trpcmemory.UserKey, id, mem string, topics []string, factKind, createdAt, updatedAt string) biz.FactUpsert {
 	mem = strings.TrimSpace(mem)
 	return biz.FactUpsert{
@@ -807,6 +842,8 @@ type factRow struct {
 	UpdatedAt    string  `json:"updated_at"`
 	ValidFrom    string  `json:"valid_from"`
 	ValidUntil   string  `json:"valid_until"`
+	LinksJSON    string  `json:"links"`
+	KeywordsJSON string  `json:"keywords"`
 }
 
 func factRowToEntry(raw []byte, uk trpcmemory.UserKey) (*trpcmemory.Entry, error) {
@@ -856,6 +893,9 @@ func factRowToEntry(raw []byte, uk trpcmemory.UserKey) (*trpcmemory.Entry, error
 		Score:      row.Importance,
 		ValidFrom:  validFrom,
 		ValidUntil: validUntil,
+		Links:      decodeTagsJSON(row.LinksJSON),
+		Keywords:   decodeTagsJSON(row.KeywordsJSON),
+		Tags:       topics,
 	}, nil
 }
 

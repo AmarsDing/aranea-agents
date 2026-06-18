@@ -134,7 +134,7 @@ func (r *TeamRepo) ListTeamsByStatus(ctx context.Context, status string) ([]biz.
 		Order(team.ByCreatedAt(entsql.OrderDesc())).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TEAM")
 	}
 	out := make([]biz.Team, 0, len(rows))
 	for _, row := range rows {
@@ -149,7 +149,7 @@ func (r *TeamRepo) ListTeams(ctx context.Context) ([]biz.Team, error) {
 		Order(team.ByIsDefault(entsql.OrderDesc()), team.ByCreatedAt(entsql.OrderDesc())).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TEAM")
 	}
 	out := make([]biz.Team, 0, len(rows))
 	for _, row := range rows {
@@ -165,7 +165,7 @@ func (r *TeamRepo) GetTeamByID(ctx context.Context, id string) (biz.Team, error)
 		if ent.IsNotFound(err) {
 			return biz.Team{}, apierror.NotFound(apierror.DomainTeam, "not found")
 		}
-		return biz.Team{}, err
+		return biz.Team{}, entErrToBizErr(err, "TEAM")
 	}
 	return entTeamToBiz(row, r.data.lg), nil
 }
@@ -177,7 +177,7 @@ func (r *TeamRepo) GetTeamByKey(ctx context.Context, teamKey string) (biz.Team, 
 		if ent.IsNotFound(err) {
 			return biz.Team{}, apierror.NotFound(apierror.DomainTeam, "not found")
 		}
-		return biz.Team{}, err
+		return biz.Team{}, entErrToBizErr(err, "TEAM")
 	}
 	return entTeamToBiz(row, r.data.lg), nil
 }
@@ -227,7 +227,7 @@ func (r *TeamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 		SetDeletedAt(t.DeletedAt).
 		Save(ctx)
 	if err != nil {
-		return biz.Team{}, err
+		return biz.Team{}, entErrToBizErr(err, "TEAM")
 	}
 	return r.GetTeamByID(ctx, t.ID)
 }
@@ -271,9 +271,29 @@ func (r *TeamRepo) UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 		if ent.IsNotFound(err) {
 			return biz.Team{}, apierror.NotFound(apierror.DomainTeam, "not found")
 		}
-		return biz.Team{}, err
+		return biz.Team{}, entErrToBizErr(err, "TEAM")
 	}
 	return r.GetTeamByID(ctx, t.ID)
+}
+
+// UpdateTeamWhereStatus performs a Compare-And-Swap update on the team status
+// field. The row is updated only if its current status equals
+// expectedCurrentStatus. Returns true if the row was updated, false if the
+// current status did not match (concurrent modification).
+func (r *TeamRepo) UpdateTeamWhereStatus(ctx context.Context, id, newStatus, expectedCurrentStatus string) (bool, error) {
+	if id == "" {
+		return false, apierror.BadRequest("TEAM", "id is required")
+	}
+	now := nowRFC3339()
+	count, err := r.data.RW().Write(ctx).Team.Update().
+		Where(team.IDEQ(id), team.StatusEQ(expectedCurrentStatus)).
+		SetStatus(newStatus).
+		SetUpdatedAt(now).
+		Save(ctx)
+	if err != nil {
+		return false, entErrToBizErr(err, "TEAM")
+	}
+	return count > 0, nil
 }
 
 func (r *TeamRepo) DeleteTeam(ctx context.Context, id string) error {
@@ -287,7 +307,7 @@ func (r *TeamRepo) DeleteTeam(ctx context.Context, id string) error {
 			SetStatus(biz.TeamStatusDeleted).
 			SetUpdatedAt(now).
 			Save(txCtx); err != nil {
-			return err
+			return entErrToBizErr(err, "TEAM")
 		}
 		return cascadeDeleteByTeam(txCtx, r.data, id)
 	})
@@ -308,7 +328,7 @@ func (r *TeamRepo) BatchArchiveTeams(ctx context.Context, ids []string) (int, er
 		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {
-		return 0, err
+		return 0, entErrToBizErr(err, "TEAM")
 	}
 	return n, nil
 }
@@ -323,7 +343,7 @@ func (r *TeamRepo) ListTeamsByDepartmentID(ctx context.Context, deptID string) (
 		Order(team.ByCreatedAt(entsql.OrderDesc())).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TEAM")
 	}
 	out := make([]biz.Team, 0, len(rows))
 	for _, row := range rows {
@@ -342,7 +362,7 @@ func (r *TeamRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionID st
 		Order(team.ByCreatedAt(entsql.OrderDesc())).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TEAM")
 	}
 	out := make([]biz.Team, 0, len(rows))
 	for _, row := range rows {
@@ -361,7 +381,7 @@ func (r *TeamRepo) ListTeamRuns(ctx context.Context, teamID string, limit int) (
 	}
 	rows, err := q.Limit(limit).All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TEAM")
 	}
 	out := make([]biz.TeamRun, 0, len(rows))
 	for _, row := range rows {
@@ -380,7 +400,7 @@ func (r *TeamRepo) ListTeamRunsByTeamIDs(ctx context.Context, teamIDs []string, 
 		Limit(limit * len(teamIDs)).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TEAM")
 	}
 	result := make(map[string][]biz.TeamRun, len(teamIDs))
 	for _, row := range rows {
@@ -399,7 +419,7 @@ func (r *TeamRepo) HasActiveTeamRun(ctx context.Context, teamID string) (bool, e
 		Limit(1).
 		Count(ctx)
 	if err != nil {
-		return false, err
+		return false, entErrToBizErr(err, "TEAM")
 	}
 	return count > 0, nil
 }
@@ -410,7 +430,7 @@ func (r *TeamRepo) GetTeamRunByID(ctx context.Context, id string) (biz.TeamRun, 
 		if ent.IsNotFound(err) {
 			return biz.TeamRun{}, apierror.NotFound(apierror.DomainTeam, "not found")
 		}
-		return biz.TeamRun{}, err
+		return biz.TeamRun{}, entErrToBizErr(err, "TEAM")
 	}
 	return entTeamRunToBiz(row), nil
 }
@@ -421,7 +441,7 @@ func (r *TeamRepo) ListTeamRunSteps(ctx context.Context, runID string) ([]biz.Te
 		Order(teamrunstep.BySortOrder(entsql.OrderAsc()), teamrunstep.ByCreatedAt(entsql.OrderAsc())).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TEAM")
 	}
 	out := make([]biz.TeamRunStep, 0, len(rows))
 	for _, row := range rows {
@@ -474,11 +494,11 @@ func (r *TeamRepo) CreateTeamRun(ctx context.Context, run biz.TeamRun) (biz.Team
 		SetUpdatedAt(run.UpdatedAt).
 		Save(ctx)
 	if err != nil {
-		return biz.TeamRun{}, err
+		return biz.TeamRun{}, entErrToBizErr(err, "TEAM")
 	}
 	row, err := r.data.RW().Read(ctx).TeamRun.Get(ctx, run.ID)
 	if err != nil {
-		return biz.TeamRun{}, err
+		return biz.TeamRun{}, entErrToBizErr(err, "TEAM")
 	}
 	return entTeamRunToBiz(row), nil
 }
@@ -500,7 +520,32 @@ func (r *TeamRepo) UpdateTeamRun(ctx context.Context, run biz.TeamRun) error {
 		SetFinishedAt(run.FinishedAt).
 		SetUpdatedAt(now).
 		Save(ctx)
-	return err
+	return entErrToBizErr(err, "TEAM")
+}
+
+// UpdateTeamRunWhereStatus performs a Compare-And-Swap update on the team run
+// status field. The row is updated only if its current status equals
+// expectedCurrentStatus. Returns true if the row was updated, false if the
+// current status did not match (concurrent modification). Terminal statuses
+// also set finished_at.
+func (r *TeamRepo) UpdateTeamRunWhereStatus(ctx context.Context, runID, newStatus, expectedCurrentStatus string) (bool, error) {
+	if strings.TrimSpace(runID) == "" {
+		return false, apierror.BadRequest("TEAM_RUN", "team run id is required")
+	}
+	now := nowRFC3339()
+	builder := r.data.RW().Write(ctx).TeamRun.Update().
+		Where(teamrun.IDEQ(runID), teamrun.StatusEQ(expectedCurrentStatus)).
+		SetStatus(newStatus).
+		SetUpdatedAt(now)
+	// Set finished_at for terminal statuses.
+	if biz.IsTeamRunTerminalStatus(newStatus) {
+		builder = builder.SetFinishedAt(now)
+	}
+	count, err := builder.Save(ctx)
+	if err != nil {
+		return false, entErrToBizErr(err, "TEAM")
+	}
+	return count > 0, nil
 }
 
 func (r *TeamRepo) CreateTeamRunStep(ctx context.Context, step biz.TeamRunStep) (biz.TeamRunStep, error) {
@@ -537,11 +582,11 @@ func (r *TeamRepo) CreateTeamRunStep(ctx context.Context, step biz.TeamRunStep) 
 		SetToolCallCount(step.ToolCallCount).
 		Save(ctx)
 	if err != nil {
-		return biz.TeamRunStep{}, err
+		return biz.TeamRunStep{}, entErrToBizErr(err, "TEAM")
 	}
 	row, err := r.data.RW().Read(ctx).TeamRunStep.Get(ctx, step.ID)
 	if err != nil {
-		return biz.TeamRunStep{}, err
+		return biz.TeamRunStep{}, entErrToBizErr(err, "TEAM")
 	}
 	return entTeamRunStepToBiz(row), nil
 }
@@ -554,7 +599,7 @@ func (r *TeamRepo) UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJ
 	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
 		`UPDATE team_runs SET summary_json=?, updated_at=? WHERE id=?`,
 		summaryJSON, now, runID)
-	return err
+	return entErrToBizErr(err, "TEAM")
 }
 
 func (r *TeamRepo) UpdateTeamRunGraphExecutionID(ctx context.Context, runID, graphExecutionID string) error {
@@ -565,7 +610,7 @@ func (r *TeamRepo) UpdateTeamRunGraphExecutionID(ctx context.Context, runID, gra
 	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
 		`UPDATE team_runs SET graph_execution_id=?, updated_at=? WHERE id=?`,
 		graphExecutionID, now, runID)
-	return err
+	return entErrToBizErr(err, "TEAM")
 }
 
 func (r *TeamRepo) UpdateTeamRunTraceID(ctx context.Context, runID, traceID string) error {
@@ -576,7 +621,7 @@ func (r *TeamRepo) UpdateTeamRunTraceID(ctx context.Context, runID, traceID stri
 	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
 		`UPDATE team_runs SET trace_id=?, updated_at=? WHERE id=?`,
 		traceID, now, runID)
-	return err
+	return entErrToBizErr(err, "TEAM")
 }
 
 func (r *TeamRepo) BatchCreateOrchestrationSteps(ctx context.Context, steps []biz.OrchestrationStep) error {
@@ -607,7 +652,7 @@ func (r *TeamRepo) BatchCreateOrchestrationSteps(ctx context.Context, steps []bi
 		return nil
 	}
 	_, err := r.data.RW().Write(ctx).OrchestrationStep.CreateBulk(builders...).Save(ctx)
-	return err
+	return entErrToBizErr(err, "TEAM")
 }
 
 func (r *TeamRepo) ListOrchestrationSteps(ctx context.Context, teamRunID, nodeID string, limit int) ([]biz.OrchestrationStep, error) {
@@ -627,7 +672,7 @@ func (r *TeamRepo) ListOrchestrationSteps(ctx context.Context, teamRunID, nodeID
 	}
 	rows, err := q.All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TEAM")
 	}
 	out := make([]biz.OrchestrationStep, 0, len(rows))
 	for _, row := range rows {
@@ -658,7 +703,7 @@ func (r *TeamRepo) CreateTaskDeadLetter(ctx context.Context, dl biz.TaskDeadLett
 		SetCreatedAt(strings.TrimSpace(dl.CreatedAt)).
 		SetResolvedAt(strings.TrimSpace(dl.ResolvedAt)).
 		Save(ctx)
-	return err
+	return entErrToBizErr(err, "TEAM")
 }
 
 func (r *TeamRepo) ListTaskDeadLetters(ctx context.Context, filter biz.TaskDeadLetterListFilter) ([]biz.TaskDeadLetter, error) {
@@ -681,7 +726,7 @@ func (r *TeamRepo) ListTaskDeadLetters(ctx context.Context, filter biz.TaskDeadL
 	}
 	rows, err := q.Order(taskdeadletter.ByCreatedAt(entsql.OrderDesc())).Limit(limit).All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TEAM")
 	}
 	out := make([]biz.TaskDeadLetter, 0, len(rows))
 	for _, row := range rows {
@@ -697,7 +742,7 @@ func (r *TeamRepo) ResolveTaskDeadLetter(ctx context.Context, id string) (biz.Ta
 	}
 	existing, err := r.data.RW().Read(ctx).TaskDeadLetter.Get(ctx, id)
 	if err != nil {
-		return biz.TaskDeadLetter{}, err
+		return biz.TaskDeadLetter{}, entErrToBizErr(err, "TEAM")
 	}
 	if strings.EqualFold(strings.TrimSpace(existing.Status), biz.TaskDeadLetterStatusResolved) {
 		return entTaskDeadLetterToBiz(existing), nil
@@ -711,7 +756,7 @@ func (r *TeamRepo) ResolveTaskDeadLetter(ctx context.Context, id string) (biz.Ta
 		SetResolvedAt(now).
 		Save(ctx)
 	if err != nil {
-		return biz.TaskDeadLetter{}, err
+		return biz.TaskDeadLetter{}, entErrToBizErr(err, "TEAM")
 	}
 	return entTaskDeadLetterToBiz(row), nil
 }

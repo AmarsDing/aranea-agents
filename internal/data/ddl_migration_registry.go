@@ -21,7 +21,7 @@ type ddlMigration struct {
 	// SQL is an optional path to a SQL file to execute (relative to project root).
 	// If set, the SQL file is executed first via rawDB, then Func is called (if not nil).
 	SQL  string
-	Func func(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error
+	Func func(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error
 }
 
 var ddlMigrations = []ddlMigration{
@@ -84,9 +84,17 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260723, Name: "activity_token_columns", SQL: "sql/migrations/20260723_activity_token_columns.sql"},
 	{Version: 20260724, Name: "invariant_constraints", SQL: "sql/migrations/20260724_invariant_constraints.sql"},
 	{Version: 20260725, Name: "memory_bitemporal", SQL: "sql/migrations/20260725_memory_bitemporal.sql"},
+	{Version: 20260726, Name: "memory_links", SQL: "sql/migrations/20260726_memory_links.sql"},
 }
 
 func runDDLMigrations(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+	return runDDLMigrationsWithDialect(rawDB, entClient, DialectSQLite, lg)
+}
+
+// runDDLMigrationsWithDialect runs DDL migrations with dialect-aware error handling.
+// Use this when the primary database is Postgres to ensure idempotent error detection
+// matches the active dialect.
+func runDDLMigrationsWithDialect(rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	ctx := context.Background()
 	for _, m := range ddlMigrations {
 		applied, err := isMigrationApplied(ctx, entClient, m.Version, lg)
@@ -102,7 +110,7 @@ func runDDLMigrations(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger
 		}
 		// Execute SQL file first if set
 		if m.SQL != "" {
-			if err := executeSQLFile(ctx, rawDB, m.SQL, lg); err != nil {
+			if err := executeSQLFileWithDialect(ctx, rawDB, m.SQL, d, lg); err != nil {
 				lg.Error("schema step (SQL) failed",
 					loggateway.StepID("data.schema."+m.Name),
 					loggateway.Int("version", m.Version),
@@ -112,7 +120,7 @@ func runDDLMigrations(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger
 		}
 		// Then execute Func if set
 		if m.Func != nil {
-			if err := m.Func(ctx, rawDB, entClient, lg); err != nil {
+			if err := m.Func(ctx, rawDB, entClient, d, lg); err != nil {
 				lg.Error("schema step failed",
 					loggateway.StepID("data.schema."+m.Name),
 					loggateway.Int("version", m.Version),
@@ -120,7 +128,7 @@ func runDDLMigrations(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger
 				return fmt.Errorf("%s: %w", m.Name, err)
 			}
 		}
-		if err := recordMigrationApplied(ctx, entClient, m.Version, m.Name, lg); err != nil {
+		if err := recordMigrationApplied(ctx, entClient, d, m.Version, m.Name, lg); err != nil {
 			lg.Error("failed to record migration, aborting to prevent re-execution",
 				loggateway.StepID("data.ddl_migration.record"),
 				loggateway.Int("version", m.Version),
@@ -136,6 +144,13 @@ func runDDLMigrations(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger
 // "duplicate column name", "already exists", and "no such table" errors are treated
 // as idempotent successes (the table/column will be created by a later migration).
 func executeSQLFile(ctx context.Context, rawDB *sql.DB, path string, lg loggateway.Logger) error {
+	return executeSQLFileWithDialect(ctx, rawDB, path, DialectSQLite, lg)
+}
+
+// executeSQLFileWithDialect is the dialect-aware variant of executeSQLFile.
+// Uses Dialect.AlreadyExistsErr and Dialect.UndefinedObjectErr for idempotent
+// error detection across SQLite and Postgres.
+func executeSQLFileWithDialect(ctx context.Context, rawDB *sql.DB, path string, d Dialect, lg loggateway.Logger) error {
 	if rawDB == nil {
 		return nil
 	}
@@ -149,13 +164,13 @@ func executeSQLFile(ctx context.Context, rawDB *sql.DB, path string, lg loggatew
 			continue
 		}
 		if _, err := rawDB.ExecContext(ctx, stmt); err != nil {
-			if isColumnExistsErr(err) {
+			if d.AlreadyExistsErr(err) {
 				lg.Debug("ddl patch skipped (already exists)",
 					loggateway.StepID("data.ddl_migration.sql_file"),
 					loggateway.Str("statement", stmt[:min(len(stmt), 120)]))
 				continue
 			}
-			if isNoSuchTableErr(err) {
+			if d.UndefinedObjectErr(err) {
 				lg.Debug("ddl patch skipped (table not yet created, will be created by later migration)",
 					loggateway.StepID("data.ddl_migration.sql_file"),
 					loggateway.Str("statement", stmt[:min(len(stmt), 120)]))
@@ -170,50 +185,50 @@ func executeSQLFile(ctx context.Context, rawDB *sql.DB, path string, lg loggatew
 	return nil
 }
 
-func ddlSessionMemoryPatches(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
-	return sessionMemoryEnsurePatches(ctx, entClient)
+func ddlSessionMemoryPatches(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
+	return sessionMemoryEnsurePatches(ctx, entClient, d)
 }
 
-func ddlMessagesTurnNumber(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
-	return ensureMessagesTurnNumberPatch(ctx, entClient, lg)
+func ddlMessagesTurnNumber(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
+	return ensureMessagesTurnNumberPatch(ctx, entClient, d, lg)
 }
 
-func ddlSessionMemorySchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlSessionMemorySchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureSessionMemorySchema(ctx, entClient, lg)
 }
 
-func ddlMemoryRelationPatches(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
-	return sessionMemoryEnsureMemoryRelationPatches(ctx, entClient)
+func ddlMemoryRelationPatches(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
+	return sessionMemoryEnsureMemoryRelationPatches(ctx, entClient, d)
 }
 
-func ddlMonitorSchemaPatches(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
-	return sessionMemoryEnsureMonitorSchemaPatches(ctx, entClient)
+func ddlMonitorSchemaPatches(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
+	return sessionMemoryEnsureMonitorSchemaPatches(ctx, entClient, d)
 }
 
-func ddlBuiltinPlatformTools(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlBuiltinPlatformTools(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return ensureBuiltinPlatformTools(ctx, entClient, lg)
 }
 
-func ddlDefaultSystemSetting(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlDefaultSystemSetting(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return ensureDefaultSystemSetting(ctx, entClient)
 }
 
-func ddlCredentialEncryptionKey(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlCredentialEncryptionKey(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return ensureDefaultCredentialEncryptionKey(ctx, entClient)
 }
 
-func ddlEvalSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlEvalSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureEvalSchema(ctx, rawDB)
 }
 
-func ddlA2ASchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlA2ASchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureA2ASchema(ctx, rawDB)
 }
 
 // ddlSessionRevisionDataMigration backfills session_revision from message counts.
 // The ALTER TABLE is handled by the SQL file; this Func only does the data migration.
 // Uses WHERE session_revision IS NULL OR session_revision = ” to ensure idempotency.
-func ddlSessionRevisionDataMigration(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlSessionRevisionDataMigration(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if entClient == nil {
 		return nil
 	}
@@ -224,80 +239,80 @@ UPDATE sessions SET session_revision = (
 	return err
 }
 
-func ddlPluginRunSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlPluginRunSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsurePluginRunSchema(ctx, entClient)
 }
 
-func ddlFlowLogSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlFlowLogSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureFlowLogSchema(ctx, entClient)
 }
 
-func ddlMessageFTSSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
-	return EnsureMessageFTSSchema(ctx, rawDB)
+func ddlMessageFTSSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
+	return EnsureMessageFTSSchemaWithDialect(ctx, rawDB, d)
 }
 
-func ddlChannelInboundSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlChannelInboundSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureChannelInboundSchema(ctx, rawDB)
 }
 
-func ddlChannelTurnJobSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlChannelTurnJobSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureChannelTurnJobSchema(ctx, rawDB)
 }
 
-func ddlChannelRuntimeLeaseSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlChannelRuntimeLeaseSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureChannelRuntimeLeaseSchema(ctx, rawDB)
 }
 
-func ddlSessionRunSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlSessionRunSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureSessionRunSchema(ctx, rawDB, lg)
 }
 
-func ddlSessionParticipantSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlSessionParticipantSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureSessionParticipantSchema(ctx, rawDB, lg)
 }
 
-func ddlMonitorAlertSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlMonitorAlertSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureMonitorAlertSchema(ctx, entClient)
 }
 
-func ddlEcosystemSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlEcosystemSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureEcosystemSchema(ctx, entClient)
 }
 
-func ddlTeamGraphSessionSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlTeamGraphSessionSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureTeamGraphSessionSchema(ctx, rawDB)
 }
 
-func ddlCompiledTeamSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlCompiledTeamSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureCompiledTeamSchema(ctx, rawDB)
 }
 
-func ddlSkillEvolutionSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlSkillEvolutionSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureSkillEvolutionSchema(ctx, entClient)
 }
 
-func ddlTaskPlanSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlTaskPlanSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureTaskPlanSchema(ctx, rawDB, lg)
 }
 
-func ddlAllocationPlanSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlAllocationPlanSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureAllocationPlanSchema(ctx, rawDB, lg)
 }
 
-func ddlAgentPerformanceSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlAgentPerformanceSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureAgentPerformanceSchema(ctx, rawDB, lg)
 }
 
-func ddlOrchestrationSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlOrchestrationSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureOrchestrationSchema(ctx, rawDB, lg)
 }
 
-func ddlCompiledTeamSessionID(ctx context.Context, rawDB *sql.DB, _ *ent.Client, _ loggateway.Logger) error {
+func ddlCompiledTeamSessionID(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, _ loggateway.Logger) error {
 	if rawDB == nil {
 		return nil
 	}
 	// Add session_id column if it doesn't exist (SQLite ALTER TABLE ADD COLUMN is safe if column exists)
-	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE compiled_teams ADD COLUMN session_id TEXT NOT NULL DEFAULT ''`); err != nil && !isColumnExistsErr(err) {
+	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE compiled_teams ADD COLUMN session_id TEXT NOT NULL DEFAULT ''`); err != nil && !d.AlreadyExistsErr(err) {
 		return fmt.Errorf("add compiled_teams.session_id: %w", err)
 	}
 	if _, err := rawDB.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_compiled_teams_session_id ON compiled_teams(session_id)`); err != nil {
@@ -306,7 +321,7 @@ func ddlCompiledTeamSessionID(ctx context.Context, rawDB *sql.DB, _ *ent.Client,
 	return nil
 }
 
-func ddlEcosystemPresetDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.Client, _ loggateway.Logger) error {
+func ddlEcosystemPresetDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, _ loggateway.Logger) error {
 	if rawDB == nil {
 		return nil
 	}
@@ -334,7 +349,7 @@ func ddlEcosystemPresetDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.
 // ddlAgentSourceDataMigration populates the new agents.source column from existing kind values.
 // Mapping: kind=user -> source=user, kind=system_builtin -> source=system, kind=ecosystem_preset/marketplace/certified -> source=imported.
 // Also fixes Team source and corrects over-broad Team kind migration from 20260718.
-func ddlAgentSourceDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.Client, lg loggateway.Logger) error {
+func ddlAgentSourceDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if rawDB == nil {
 		return nil
 	}
@@ -364,32 +379,35 @@ func ddlAgentSourceDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.Clie
 	// no ecosystem_preset agent members should be 'user'. The 20260718 migration set
 	// kind='ecosystem_preset' for ALL source='imported' teams, including user-imported packs.
 	// Heuristic: if a team has NO members referencing ecosystem_preset agents, revert to 'user'.
-	if _, err := tx.ExecContext(ctx, `
+	// Use dialect-aware JSON extraction: SQLite json_extract / json_each vs Postgres ->> / json_array_elements.
+	jsonExtract := d.JSONExtract
+	jsonEach := d.JSONEach
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`
 		UPDATE teams SET kind = 'user', source = 'user'
 		WHERE kind = 'ecosystem_preset'
 		  AND deleted_at = ''
 		  AND id NOT IN (
 		    SELECT DISTINCT t2.id
-		    FROM teams t2, json_each(t2.definition_json, '$.members') tm
-		    INNER JOIN agents a ON a.id = json_extract(tm.value, '$.agent_id') AND a.kind = 'ecosystem_preset' AND a.deleted_at = ''
+		    FROM teams t2, %s AS tm
+		    INNER JOIN agents a ON a.id = %s AND a.kind = 'ecosystem_preset' AND a.deleted_at = ''
 		    WHERE t2.kind = 'ecosystem_preset' AND t2.deleted_at = ''
 		  )
-	`); err != nil {
+	`, jsonEach("t2.definition_json"), jsonExtract("tm.value", "agent_id"))); err != nil {
 		// Non-critical: log the error but don't fail the entire migration
 		lg.Warn("ddl migration: fix over-broad team kind migration failed", loggateway.Err(err))
 	}
 	return tx.Commit()
 }
 
-func ddlUnifiedEvolutionSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+func ddlUnifiedEvolutionSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	return EnsureUnifiedEvolutionSchema(ctx, entClient)
 }
 
-func ddlEvolutionSuggestionPreApplySnapshot(ctx context.Context, rawDB *sql.DB, _ *ent.Client, _ loggateway.Logger) error {
+func ddlEvolutionSuggestionPreApplySnapshot(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, _ loggateway.Logger) error {
 	if rawDB == nil {
 		return nil
 	}
-	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE evolution_suggestions ADD COLUMN pre_apply_snapshot TEXT NOT NULL DEFAULT ''`); err != nil && !isColumnExistsErr(err) {
+	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE evolution_suggestions ADD COLUMN pre_apply_snapshot TEXT NOT NULL DEFAULT ''`); err != nil && !d.AlreadyExistsErr(err) {
 		return fmt.Errorf("add evolution_suggestions.pre_apply_snapshot: %w", err)
 	}
 	return nil

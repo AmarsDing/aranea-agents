@@ -106,15 +106,25 @@ func TestAgentUsecase_DeleteAllowsUserAgent(t *testing.T) {
 	}
 }
 
-func TestAgentUsecase_DeleteAllowsEcosystemPresetAgent(t *testing.T) {
+func TestAgentUsecase_DeleteRejectsEcosystemPresetAgent(t *testing.T) {
 	t.Parallel()
 	repo := &stubAgentRepo{
 		agent: Agent{ID: "agent-3", Kind: "ecosystem_preset"},
 	}
 	uc := NewAgentUsecase(AgentUsecaseDeps{Reader: repo, Writer: repo, Settings: repo, Files: repo, Position: repo, Tx: repo, Lg: loggateway.NewNoop()})
 	err := uc.Delete(context.Background(), "agent-3")
-	if err != nil {
-		t.Fatalf("expected no error when deleting ecosystem_preset agent, got %v", err)
+	if err == nil {
+		t.Fatal("expected error when deleting ecosystem_preset agent directly")
+	}
+	e, ok := apierror.From(err)
+	if !ok {
+		t.Fatalf("expected apierror, got %T", err)
+	}
+	if e.Code != apierror.CodeForbidden {
+		t.Fatalf("expected code %s, got %s", apierror.CodeForbidden, e.Code)
+	}
+	if e.Domain != "AGENT" {
+		t.Fatalf("expected domain AGENT, got %s", e.Domain)
 	}
 }
 

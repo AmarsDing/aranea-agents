@@ -10,7 +10,7 @@ import (
 )
 
 func TestBizSessionIngestor_IngestSession(t *testing.T) {
-	ing := &BizSessionIngestor{lg: loggateway.Global()}
+	ing := &BizSessionIngestor{lg: loggateway.NewNoop()}
 	err := ing.IngestSession(context.Background(), &trpcsession.Session{
 		ID:      "sess-1",
 		AppName: "aranea",

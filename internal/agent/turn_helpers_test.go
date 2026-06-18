@@ -82,7 +82,7 @@ func TestConsumeEventStream_skipsToolResponseInReply(t *testing.T) {
 		events <- runnerCompletionEvent()
 	}()
 
-	result := ConsumeEventStream(context.Background(), events, bus, ProjectMeta{SessionID: "s1"}, nil, loggateway.Global())
+	result := ConsumeEventStream(context.Background(), events, bus, ProjectMeta{SessionID: "s1"}, nil, loggateway.NewNoop())
 	if got := result.Reply.String(); got != "hello world" {
 		t.Fatalf("reply = %q, want %q", got, "hello world")
 	}
@@ -98,7 +98,7 @@ func TestConsumeEventStream_accumulatesDeltaReasoning(t *testing.T) {
 		events <- runnerCompletionEvent()
 	}()
 
-	result := ConsumeEventStream(context.Background(), events, bus, ProjectMeta{SessionID: "s1"}, nil, loggateway.Global())
+	result := ConsumeEventStream(context.Background(), events, bus, ProjectMeta{SessionID: "s1"}, nil, loggateway.NewNoop())
 	if got := result.Reasoning.String(); got != "think-athink-b" {
 		t.Fatalf("reasoning = %q", got)
 	}
@@ -116,7 +116,7 @@ func TestConsumeEventStream_finalizesStuckTools(t *testing.T) {
 	}()
 
 	opts := &StreamConsumeOptions{ActivityPersister: persister}
-	_ = ConsumeEventStream(context.Background(), events, bus, ProjectMeta{SessionID: "s1"}, opts, loggateway.Global())
+	_ = ConsumeEventStream(context.Background(), events, bus, ProjectMeta{SessionID: "s1"}, opts, loggateway.NewNoop())
 	if len(persister.upserts) < 2 {
 		t.Fatalf("expected tool_call + finalize upserts, got %d", len(persister.upserts))
 	}

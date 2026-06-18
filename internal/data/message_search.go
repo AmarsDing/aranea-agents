@@ -34,20 +34,49 @@ func (r *sessionRepo) SearchMessages(ctx context.Context, q biz.MessageSearchQue
 		offset = 0
 	}
 
-	if tableExists(ctx, db, "messages_fts") {
-		return r.searchMessagesFTS(ctx, db, q, keyword, limit, offset)
+	d := r.data.Dialect()
+	if ftsAvailable(ctx, db, d) {
+		return r.searchMessagesFTS(ctx, db, d, q, keyword, limit, offset)
 	}
-	return r.searchMessagesLike(ctx, db, q, keyword, limit, offset)
+	return r.searchMessagesLike(ctx, db, d, q, keyword, limit, offset)
 }
 
-func tableExists(ctx context.Context, db execer, name string) bool {
-	var n int
-	err := queryRowScan(ctx, db,
-		`SELECT COUNT(1) FROM sqlite_master WHERE type IN ('table','view') AND name = ?`, []any{name}, &n)
-	return err == nil && n > 0
+// ftsAvailable checks whether full-text search is available for the dialect.
+// SQLite: checks for messages_fts virtual table.
+// Postgres: checks for tsv column on messages table.
+func ftsAvailable(ctx context.Context, db execer, d Dialect) bool {
+	if d.IsPostgres() {
+		// Check for tsv column on messages table via information_schema.
+		rows, err := db.QueryContext(ctx,
+			`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'messages' AND column_name = 'tsv' LIMIT 1`)
+		if err != nil {
+			return false
+		}
+		defer rows.Close()
+		return rows.Next()
+	}
+	return tableExists(ctx, db, d, "messages_fts")
 }
 
-func (r *sessionRepo) searchMessagesFTS(ctx context.Context, db execer, q biz.MessageSearchQuery, keyword string, limit, offset int) (biz.MessageSearchResult, error) {
+// tableExists checks whether a table exists in the database.
+// SQLite: sqlite_master WHERE type = 'table' AND name = ?
+// Postgres: information_schema.tables WHERE table_schema = 'public' AND table_name = $1
+func tableExists(ctx context.Context, db execer, d Dialect, name string) bool {
+	q, args := d.TableExistsQuery(name)
+	var n string
+	err := queryRowScan(ctx, db, q, args, &n)
+	return err == nil && n != ""
+}
+
+func (r *sessionRepo) searchMessagesFTS(ctx context.Context, db execer, d Dialect, q biz.MessageSearchQuery, keyword string, limit, offset int) (biz.MessageSearchResult, error) {
+	if d.IsPostgres() {
+		return r.searchMessagesPostgresFTS(ctx, db, q, keyword, limit, offset)
+	}
+	return r.searchMessagesSQLiteFTS(ctx, db, q, keyword, limit, offset)
+}
+
+// searchMessagesSQLiteFTS uses FTS5 virtual table for full-text search.
+func (r *sessionRepo) searchMessagesSQLiteFTS(ctx context.Context, db execer, q biz.MessageSearchQuery, keyword string, limit, offset int) (biz.MessageSearchResult, error) {
 	match := ftsMatchQuery(keyword)
 	args := []any{match}
 	where := "messages_fts MATCH ?"
@@ -71,13 +100,57 @@ LIMIT ? OFFSET ?`, where)
 	args = append(args, limit, offset)
 	rows, err := db.QueryContext(ctx, listSQL, args...)
 	if err != nil {
-		return r.searchMessagesLike(ctx, db, q, keyword, limit, offset)
+		return r.searchMessagesLike(ctx, db, DialectSQLite, q, keyword, limit, offset)
 	}
 	defer rows.Close()
 	return scanMessageSearchRows(rows, total)
 }
 
-func (r *sessionRepo) searchMessagesLike(ctx context.Context, db execer, q biz.MessageSearchQuery, keyword string, limit, offset int) (biz.MessageSearchResult, error) {
+// searchMessagesPostgresFTS uses tsvector + GIN index for full-text search.
+// Uses websearch_to_tsquery for natural-language query syntax and ts_headline
+// for highlight snippets.
+func (r *sessionRepo) searchMessagesPostgresFTS(ctx context.Context, db execer, q biz.MessageSearchQuery, keyword string, limit, offset int) (biz.MessageSearchResult, error) {
+	tsQuery := strings.TrimSpace(keyword)
+	hasSessionID := strings.TrimSpace(q.SessionID) != ""
+
+	// Build WHERE clause with Postgres $N placeholders.
+	// $1 = tsquery, $2 = session_id (optional), $3 = limit, $4 = offset
+	var where string
+	var countArgs []any
+	if hasSessionID {
+		where = "tsv @@ websearch_to_tsquery('simple', $1) AND session_id = $2"
+		countArgs = []any{tsQuery, q.SessionID}
+	} else {
+		where = "tsv @@ websearch_to_tsquery('simple', $1)"
+		countArgs = []any{tsQuery}
+	}
+	countSQL := fmt.Sprintf(`SELECT COUNT(1) FROM messages WHERE %s`, where)
+	var total int
+	if err := queryRowScan(ctx, db, countSQL, countArgs, &total); err != nil {
+		return biz.MessageSearchResult{}, err
+	}
+
+	// List query: append limit/offset args.
+	listArgs := append([]any{}, countArgs...)
+	listArgs = append(listArgs, limit, offset)
+	limitIdx := len(countArgs) + 1
+	offsetIdx := limitIdx + 1
+	listSQL := fmt.Sprintf(`
+SELECT id, session_id, role, content_markdown, created_at,
+       ts_headline('simple', content_markdown, websearch_to_tsquery('simple', $1), 'StartSel=<mark>, StopSel=</mark>, MaxWords=32, MinWords=8') AS highlight
+FROM messages
+WHERE %s
+ORDER BY ts_rank(tsv, websearch_to_tsquery('simple', $1)) DESC
+LIMIT $%d OFFSET $%d`, where, limitIdx, offsetIdx)
+	rows, err := db.QueryContext(ctx, listSQL, listArgs...)
+	if err != nil {
+		return r.searchMessagesLike(ctx, db, DialectPostgres, q, keyword, limit, offset)
+	}
+	defer rows.Close()
+	return scanMessageSearchRows(rows, total)
+}
+
+func (r *sessionRepo) searchMessagesLike(ctx context.Context, db execer, d Dialect, q biz.MessageSearchQuery, keyword string, limit, offset int) (biz.MessageSearchResult, error) {
 	pattern := "%" + escapeLike(keyword) + "%"
 	args := []any{pattern}
 	where := "content_markdown LIKE ? ESCAPE '\\'"
@@ -85,16 +158,20 @@ func (r *sessionRepo) searchMessagesLike(ctx context.Context, db execer, q biz.M
 		where += " AND session_id = ?"
 		args = append(args, sid)
 	}
-	countSQL := fmt.Sprintf(`SELECT COUNT(1) FROM messages WHERE %s`, where)
+	// For Postgres, convert ? placeholders to $N.
+	wherePG := d.RenumberPlaceholders(where)
+	countSQL := fmt.Sprintf(`SELECT COUNT(1) FROM messages WHERE %s`, wherePG)
 	var total int
 	if err := queryRowScan(ctx, db, countSQL, args, &total); err != nil {
 		return biz.MessageSearchResult{}, err
 	}
+	// List query: append LIMIT/OFFSET placeholders.
+	listWhere := where + " LIMIT ? OFFSET ?"
 	listSQL := fmt.Sprintf(`
 SELECT id, session_id, role, content_markdown, created_at, '' AS highlight
 FROM messages WHERE %s
-ORDER BY created_at DESC
-LIMIT ? OFFSET ?`, where)
+ORDER BY created_at DESC`, listWhere)
+	listSQL = d.RenumberPlaceholders(listSQL)
 	args = append(args, limit, offset)
 	rows, err := db.QueryContext(ctx, listSQL, args...)
 	if err != nil {

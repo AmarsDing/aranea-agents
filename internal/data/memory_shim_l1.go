@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -99,7 +100,9 @@ func (r *l1WorkingMemoryRepo) listL1FieldRows(ctx context.Context, taskID string
 	// Filter by requesting agent: if specified, only return fields owned by that agent
 	// or fields in tasks shared with that agent.
 	if len(requestingAgentID) > 0 && requestingAgentID[0] != "" {
-		q += ` AND (agent_id = ? OR agent_id = '' OR ? IN (SELECT value FROM json_each((SELECT shared_with_json FROM memory_l1_tasks WHERE id = ?))))`
+		d := r.data.Dialect()
+		sharedWithExpr := d.JSONEach("(SELECT shared_with_json FROM memory_l1_tasks WHERE id = ?)")
+		q += fmt.Sprintf(` AND (agent_id = ? OR agent_id = '' OR ? IN (SELECT value FROM %s))`, sharedWithExpr)
 		args = append(args, requestingAgentID[0], requestingAgentID[0], taskID)
 	}
 	q += ` ORDER BY field_path ASC`

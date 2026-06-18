@@ -17,39 +17,33 @@ import (
 // exactly once per process lifetime (H-04: was running PRAGMA on every ListAlertRules call).
 func (r *monitorRepo) ensureMonitorAlertFiringStateCols(ctx context.Context) {
 	r.firingColsOnce.Do(func() {
+		d := r.data.Dialect()
 		db := r.data.RWDB().WriteDB(ctx)
-		rows, err := db.QueryContext(ctx, `PRAGMA table_info(monitor_alert_rules)`)
-		if err != nil {
-			r.data.lg.Warn("ensureMonitorAlertFiringStateCols: PRAGMA failed", loggateway.StepID("monitor.alert_count_fail"), loggateway.Err(err))
-			return
-		}
-		existing := map[string]bool{}
-		for rows.Next() {
-			var cid int
-			var name, typ string
-			var notNull int
-			var dflt sql.NullString
-			var pk int
-			if err := rows.Scan(&cid, &name, &typ, &notNull, &dflt, &pk); err == nil {
-				existing[name] = true
-			}
-		}
-		rows.Close()
 
-		alters := []string{
-			`ALTER TABLE monitor_alert_rules ADD COLUMN last_fired_at INTEGER`,
-			`ALTER TABLE monitor_alert_rules ADD COLUMN last_fired_value REAL NOT NULL DEFAULT 0`,
-			`ALTER TABLE monitor_alert_rules ADD COLUMN last_fired_window_start INTEGER`,
-			`ALTER TABLE monitor_alert_rules ADD COLUMN firing_state TEXT NOT NULL DEFAULT 'idle'`,
-			`ALTER TABLE monitor_alert_rules ADD COLUMN recovered_at INTEGER`,
+		alters := []struct {
+			col string
+			ddl string
+		}{
+			{"last_fired_at", `ALTER TABLE monitor_alert_rules ADD COLUMN last_fired_at INTEGER`},
+			{"last_fired_value", `ALTER TABLE monitor_alert_rules ADD COLUMN last_fired_value REAL NOT NULL DEFAULT 0`},
+			{"last_fired_window_start", `ALTER TABLE monitor_alert_rules ADD COLUMN last_fired_window_start INTEGER`},
+			{"firing_state", `ALTER TABLE monitor_alert_rules ADD COLUMN firing_state TEXT NOT NULL DEFAULT 'idle'`},
+			{"recovered_at", `ALTER TABLE monitor_alert_rules ADD COLUMN recovered_at INTEGER`},
 		}
-		cols := []string{"last_fired_at", "last_fired_value", "last_fired_window_start", "firing_state", "recovered_at"}
-		for i, col := range cols {
-			if existing[col] {
+		for _, a := range alters {
+			has, err := columnExistsWithDialect(ctx, db, "monitor_alert_rules", a.col, d)
+			if err != nil {
+				r.data.lg.Warn("ensureMonitorAlertFiringStateCols: column check failed", loggateway.StepID("monitor.alert_count_fail"), loggateway.Str("col", a.col), loggateway.Err(err))
+				return
+			}
+			if has {
 				continue
 			}
-			if _, err := db.ExecContext(ctx, alters[i]); err != nil {
-				r.data.lg.Warn("ensureMonitorAlertFiringStateCols: ALTER TABLE failed", loggateway.StepID("monitor.alert_count_fail"), loggateway.Str("col", col), loggateway.Err(err))
+			if _, err := db.ExecContext(ctx, a.ddl); err != nil {
+				if d.AlreadyExistsErr(err) {
+					continue
+				}
+				r.data.lg.Warn("ensureMonitorAlertFiringStateCols: ALTER TABLE failed", loggateway.StepID("monitor.alert_count_fail"), loggateway.Str("col", a.col), loggateway.Err(err))
 			}
 		}
 	})
@@ -140,10 +134,10 @@ SET name = ?, metric_key = ?, threshold = ?, window_minutes = ?, enabled = ?, se
 WHERE id = ?`,
 					rule.Name, rule.MetricKey, rule.Threshold, rule.WindowMinutes, enabled, rule.Severity,
 					rule.NotifyWebhookURL, rule.NotifyChannelID, rule.CooldownMinutes, now, id,
-			)
-			if err != nil {
-				return entErrToBizErr(err, "MONITOR_ALERT")
-			}
+				)
+				if err != nil {
+					return entErrToBizErr(err, "MONITOR_ALERT")
+				}
 			} else {
 				_, err := e.ExecContext(txCtx, `
 INSERT INTO monitor_alert_rules
@@ -153,18 +147,18 @@ INSERT INTO monitor_alert_rules
 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'idle')`,
 					id, rule.Name, rule.MetricKey, rule.Threshold, rule.WindowMinutes, enabled, rule.Severity,
 					rule.NotifyWebhookURL, rule.NotifyChannelID, rule.CooldownMinutes, now, now,
-			)
-			if err != nil {
-				return entErrToBizErr(err, "MONITOR_ALERT")
-			}
+				)
+				if err != nil {
+					return entErrToBizErr(err, "MONITOR_ALERT")
+				}
 			}
 		}
 
 		for id := range existingIDs {
 			if _, exists := newIDs[id]; !exists {
 				if _, err := e.ExecContext(txCtx, `DELETE FROM monitor_alert_rules WHERE id = ?`, id); err != nil {
-				return entErrToBizErr(err, "MONITOR_ALERT")
-			}
+					return entErrToBizErr(err, "MONITOR_ALERT")
+				}
 			}
 		}
 
@@ -178,6 +172,8 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'idle')`,
 // reader that also tries to fire the same rule is blocked until this transaction
 // commits. This prevents duplicate Webhook notifications on restart or multi-goroutine
 // evaluation runs.
+// Postgres uses MVCC and does not support BEGIN IMMEDIATE; a standard BEGIN is used
+// instead, which starts a READ COMMITTED transaction (the default isolation level).
 func (r *monitorRepo) UpdateAlertFiringState(
 	ctx context.Context,
 	id string,
@@ -188,10 +184,17 @@ func (r *monitorRepo) UpdateAlertFiringState(
 ) error {
 	r.ensureMonitorAlertFiringStateCols(ctx)
 	db := r.data.RWDB().WriteDB(ctx)
+	d := r.data.Dialect()
 
-	// BEGIN IMMEDIATE acquires a write lock immediately; BEGIN DEFERRED (the default)
-	// only upgrades to write on the first write statement, leaving a gap for races.
-	if _, err := db.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+	// SQLite: BEGIN IMMEDIATE acquires a write lock immediately; BEGIN DEFERRED (the
+	// default) only upgrades to write on the first write statement, leaving a gap for
+	// races. Postgres uses MVCC and does not have IMMEDIATE transactions; standard
+	// BEGIN is used instead.
+	beginStmt := "BEGIN IMMEDIATE"
+	if d.IsPostgres() {
+		beginStmt = "BEGIN"
+	}
+	if _, err := db.ExecContext(ctx, beginStmt); err != nil {
 		return entErrToBizErr(err, "MONITOR_ALERT")
 	}
 	committed := false
@@ -210,11 +213,12 @@ func (r *monitorRepo) UpdateAlertFiringState(
 		recoveredAtMs = sql.NullInt64{Int64: recoveredAt.UnixMilli(), Valid: true}
 	}
 
-	if _, err := db.ExecContext(ctx, `
+	updateSQL := d.RenumberPlaceholders(`
 UPDATE monitor_alert_rules
 SET firing_state = ?, last_fired_at = ?, last_fired_value = ?, recovered_at = ?,
     updated_at = ?
-WHERE id = ?`,
+WHERE id = ?`)
+	if _, err := db.ExecContext(ctx, updateSQL,
 		string(state), lastFiredAtMs, lastFiredValue, recoveredAtMs,
 		time.Now().UTC().Format(time.RFC3339), id,
 	); err != nil {
@@ -245,11 +249,14 @@ func (r *monitorRepo) CountMonitorEventsSince(ctx context.Context, eventKey, sta
 
 func (r *monitorRepo) AvgRunnerCompletionDurationMsSince(ctx context.Context, sinceRFC3339 string) (float64, error) {
 	var avg sql.NullFloat64
-	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), `
-SELECT AVG(CAST(COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) AS REAL))
+	d := r.data.Dialect()
+	durExpr := d.JSONExtract("metadata_json", "duration_ms")
+	query := d.RenumberPlaceholders(`
+SELECT AVG(CAST(COALESCE(meta_duration_ms, ` + durExpr + `) AS REAL))
 FROM monitor_events
 WHERE deleted_at = '' AND event_key = 'runner.completion' AND created_at >= ?
-  AND COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) IS NOT NULL`, []any{sinceRFC3339}, &avg)
+  AND COALESCE(meta_duration_ms, ` + durExpr + `) IS NOT NULL`)
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), query, []any{sinceRFC3339}, &avg)
 	if err != nil {
 		return 0, err
 	}
@@ -261,13 +268,16 @@ WHERE deleted_at = '' AND event_key = 'runner.completion' AND created_at >= ?
 
 func (r *monitorRepo) LatencyPercentilesSince(ctx context.Context, sinceRFC3339 string) (p50, p95, p99 float64, err error) {
 	// Count total matching rows first
-	var n int
-	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), `
+	d := r.data.Dialect()
+	durExpr := d.JSONExtract("metadata_json", "duration_ms")
+	countQuery := d.RenumberPlaceholders(`
 SELECT COUNT(*)
 FROM monitor_events
 WHERE deleted_at = '' AND event_key = 'runner.completion' AND created_at >= ?
-  AND COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) IS NOT NULL
-  AND COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) > 0`, []any{sinceRFC3339}, &n); err != nil {
+  AND COALESCE(meta_duration_ms, ` + durExpr + `) IS NOT NULL
+  AND COALESCE(meta_duration_ms, ` + durExpr + `) > 0`)
+	var n int
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), countQuery, []any{sinceRFC3339}, &n); err != nil {
 		return 0, 0, 0, err
 	}
 	if n == 0 {
@@ -295,14 +305,17 @@ WHERE deleted_at = '' AND event_key = 'runner.completion' AND created_at >= ?
 func (r *monitorRepo) queryPercentile(ctx context.Context, sinceRFC3339 string, total, percentile int) (float64, error) {
 	idx := percentileIndex(total, percentile)
 	var d float64
-	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), `
-SELECT CAST(COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) AS REAL) AS dur
+	dialect := r.data.Dialect()
+	durExpr := dialect.JSONExtract("metadata_json", "duration_ms")
+	query := dialect.RenumberPlaceholders(`
+SELECT CAST(COALESCE(meta_duration_ms, ` + durExpr + `) AS REAL) AS dur
 FROM monitor_events
 WHERE deleted_at = '' AND event_key = 'runner.completion' AND created_at >= ?
-  AND COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) IS NOT NULL
-  AND COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) > 0
+  AND COALESCE(meta_duration_ms, ` + durExpr + `) IS NOT NULL
+  AND COALESCE(meta_duration_ms, ` + durExpr + `) > 0
 ORDER BY dur ASC
-LIMIT 1 OFFSET ?`, []any{sinceRFC3339, idx}, &d)
+LIMIT 1 OFFSET ?`)
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), query, []any{sinceRFC3339, idx}, &d)
 	if err != nil {
 		return 0, err
 	}

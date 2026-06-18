@@ -59,6 +59,11 @@ type FactUpsert struct {
 	// old fact is invalidated (ValidUntil set) rather than deleted.
 	ValidFrom  string
 	ValidUntil string
+	// Links/Keywords (P3-12): A-MEM style memory linking and evolution.
+	// LinksJSON stores related memory IDs as a JSON array. KeywordsJSON
+	// stores LLM-generated keywords as a JSON array. Both default to "[]".
+	LinksJSON    string
+	KeywordsJSON string
 }
 
 // EvolutionEventInsert is the domain-level DTO for inserting evolution events.

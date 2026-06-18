@@ -44,9 +44,20 @@ func (r *hookDeliveryRepo) Insert(ctx context.Context, d biz.HookDelivery) error
 	}
 	idempotencyKey := strings.TrimSpace(d.IdempotencyKey)
 	if idempotencyKey != "" {
-		_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
-INSERT OR IGNORE INTO hook_deliveries (id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, idempotency_key, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		dialect := r.data.Dialect()
+		// SQLite: INSERT OR IGNORE ignores any conflict (id PK or idempotency_key unique index).
+		// Postgres: ON CONFLICT DO NOTHING (no target) mirrors SQLite's ignore-all semantics,
+		// covering both the id primary key and the partial unique index on idempotency_key.
+		var stmt string
+		if dialect.IsPostgres() {
+			stmt = `INSERT INTO hook_deliveries (id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, idempotency_key, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+ON CONFLICT DO NOTHING`
+		} else {
+			stmt = `INSERT OR IGNORE INTO hook_deliveries (id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, idempotency_key, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		}
+		_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, stmt,
 			id, d.HookKey, d.HookID, d.WebhookURL, d.WebhookSecret, d.PayloadJSON, string(biz.NormalizeHookDeliveryStatus(string(d.Status))),
 			d.AttemptCount, maxAttempts, d.LastError, idempotencyKey, now, updated,
 		)

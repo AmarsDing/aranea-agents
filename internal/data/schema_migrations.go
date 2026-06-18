@@ -26,7 +26,7 @@ func isMigrationApplied(ctx context.Context, client *ent.Client, version int, lg
 	return client.SchemaMigration.Query().Where(schemamigration.ID(version)).Exist(ctx)
 }
 
-func recordMigrationApplied(ctx context.Context, client *ent.Client, version int, name string, lg loggateway.Logger) error {
+func recordMigrationApplied(ctx context.Context, client *ent.Client, d Dialect, version int, name string, lg loggateway.Logger) error {
 	if client == nil {
 		return fmt.Errorf("schema migrations: ent client required")
 	}
@@ -38,7 +38,7 @@ func recordMigrationApplied(ctx context.Context, client *ent.Client, version int
 		Save(ctx)
 	if err != nil {
 		// If the record already exists (duplicate), treat as idempotent success
-		if isColumnExistsErr(err) {
+		if d.AlreadyExistsErr(err) {
 			lg.Debug("migration record already exists, skipping",
 				loggateway.StepID("data.migration.record"),
 				loggateway.Int("version", version))
@@ -53,6 +53,6 @@ func IsSeedApplied(ctx context.Context, client *ent.Client, version int, lg logg
 	return isMigrationApplied(ctx, client, version, lg)
 }
 
-func MarkSeedApplied(ctx context.Context, client *ent.Client, version int, name string, lg loggateway.Logger) error {
-	return recordMigrationApplied(ctx, client, version, name, lg)
+func MarkSeedApplied(ctx context.Context, client *ent.Client, d Dialect, version int, name string, lg loggateway.Logger) error {
+	return recordMigrationApplied(ctx, client, d, version, name, lg)
 }

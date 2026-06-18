@@ -35,6 +35,7 @@ type backgroundWorkersConfig struct {
 	ChannelDeliveryScanner      BackgroundStarter
 	SessionRunDurableWorker     BackgroundStarter
 	RecoveryWorker              BackgroundStarter
+	BackgroundJobWorker         BackgroundStarter
 	PluginRuntime               PluginRuntimeStarter
 	ChannelRuntime              ChannelRuntimeStarter
 	EventStoreCleanup           BackgroundStarter
@@ -52,6 +53,8 @@ type backgroundWorkersConfig struct {
 	MemoryL1Archive             BackgroundStarter
 	MemoryL3Decay               BackgroundStarter
 	MemoryL4Decay               BackgroundStarter
+	MemoryEbbinghausDecay       BackgroundStarter
+	MemorySleepTime             BackgroundStarter
 	MemoryEpisodeBackfill       BackgroundStarter
 	MemoryFactIndexReconciler   BackgroundStarter
 	MemoryDeadLetterReplayer    BackgroundStarter
@@ -86,10 +89,10 @@ func startBackgroundWorkers(
 	waitDataReady func(),
 ) {
 	goAfterReady := func(name string, fn func()) {
-		go func() {
+		safego.Go(ctx, "worker."+name, func() {
 			waitDataReady()
 			fn()
-		}()
+		})
 	}
 
 	if cfg.CronRunner != nil {
@@ -169,6 +172,11 @@ func startBackgroundWorkers(
 	if cfg.RecoveryWorker != nil {
 		goAfterReady("recovery_worker", func() { cfg.RecoveryWorker.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "recovery worker scheduled", "interval", "5m")
+	}
+
+	if cfg.BackgroundJobWorker != nil {
+		goAfterReady("backgroundjob_worker", func() { cfg.BackgroundJobWorker.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "backgroundjob worker scheduled", "interval", "5s")
 	}
 
 	if cfg.PluginRuntime != nil {
@@ -254,6 +262,16 @@ func startBackgroundWorkers(
 	if cfg.MemoryL4Decay != nil {
 		goAfterReady("memory_l4_decay", func() { cfg.MemoryL4Decay.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "memory l4 decay worker scheduled", "interval", "24h")
+	}
+
+	if cfg.MemoryEbbinghausDecay != nil {
+		goAfterReady("memory_ebbinghaus_decay", func() { cfg.MemoryEbbinghausDecay.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "memory ebbinghaus decay worker scheduled", "interval", "24h")
+	}
+
+	if cfg.MemorySleepTime != nil {
+		goAfterReady("memory_sleep_time", func() { cfg.MemorySleepTime.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "memory sleep-time worker scheduled", "interval", "1h")
 	}
 
 	if cfg.MemoryEpisodeBackfill != nil {

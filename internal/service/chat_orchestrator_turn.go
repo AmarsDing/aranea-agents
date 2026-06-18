@@ -7,6 +7,7 @@ package service
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	chatagent "aranea-agents/internal/agent"
@@ -275,7 +276,31 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	})
 	emitter.SetOtelRefs(traceBridge.TraceID(), traceBridge.RootSpanID())
 	ctx = event.WithTraceEmitter(ctx, emitter)
+
+	// P1-7: Start the Wire-injected run heartbeat emitter so the frontend
+	// can detect stale runs within 30s. The stop function is invoked in the
+	// defer below to avoid goroutine leaks. When the emitter is not wired
+	// (nil), heartbeats are skipped and stale detection degrades gracefully.
+	//
+	// The progress closure reports the current turn phase (building/executing/
+	// persisting) via an atomic.Value so the heartbeat goroutine can read it
+	// concurrently without locks.
+	var turnPhase atomic.Value
+	turnPhase.Store("building")
+	progress := func() RunProgress {
+		step, _ := turnPhase.Load().(string)
+		return RunProgress{CurrentStep: step}
+	}
+
+	var stopHeartbeat func()
+	if hb := o.heartbeatEmitter(); hb != nil {
+		stopHeartbeat = hb.Start(ctx, runID, sessionID, progress)
+	} else {
+		stopHeartbeat = func() {}
+	}
+
 	defer func() {
+		stopHeartbeat()
 		emitter.FinishRoot(turnStatus)
 		endTurnSpan(traceBridge, turnErr)
 		o.recordTurnUsage(ctx, emitter, sessionID, runID, ag.AgentKey, ag.ID, prov, mod, turnStatus,
@@ -287,10 +312,13 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var cancel context.CancelFunc
-		// Safety upper bound: turnTimeout * 12 (~1h) prevents infinite hangs.
-		// The business-level timeout (turnTimeout) now only triggers a WS notification
-		// instead of failing the turn; this hard deadline is the last resort.
-		ctx, cancel = context.WithTimeout(ctx, o.turnTimeout()*12)
+		// P1 fix (2026-06-18): Safety upper bound raised to 24h to support
+		// long-running tasks. The previous turnTimeout*12 (~2h) blocked 24h
+		// long tasks. The business-level timeout (turnTimeout) still triggers
+		// a WS notification; this hard deadline is the last resort to prevent
+		// infinite hangs while allowing long task execution.
+		const longTaskHardDeadline = 24 * time.Hour
+		ctx, cancel = context.WithTimeout(ctx, longTaskHardDeadline)
 		defer cancel()
 	}
 
@@ -317,6 +345,14 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	content := strings.TrimSpace(input.Content)
 	prov = admit.provider
 	mod = admit.model
+
+	// ── PROACTIVE RECALL (P3-11) ──
+	// Surface relevant memories based on conversation context before building
+	// the runner. The hits are stored in ctx so the MemoryInject before-model
+	// hook can merge them with RecallComposite results. Failures are non-fatal:
+	// only a warning is logged and the turn continues without proactive hits.
+	proactiveHits := o.runProactiveRecall(ctx, sess, ag, content, emitter)
+	ctx = chatagent.WithProactiveHits(ctx, proactiveHits)
 
 	var buildResult turnBuildResult
 	var intentRunOpts []trpcagent.RunOption
@@ -358,8 +394,39 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// ── PRE-PLANNING GATE (P1-2) ──
 	// After intent pass, run a quick complexity assessment. If Moderate/Complex,
 	// force the planning path by injecting a system instruction.
+	//
+	// P1 fix (2026-06-18): Upgraded from soft gate to hard gate. When
+	// ForcePlanning=true, the Service layer directly calls TaskPlanner.Plan()
+	// to create and persist a plan, rather than relying on the LLM to
+	// voluntarily invoke plan_and_execute. This ensures complex tasks always
+	// go through planning. The forcedPlanningRunOption is still injected as a
+	// hint to the LLM. If Plan() fails, we fall back to the soft gate.
 	if gateDecision, gateErr := o.runPrePlanningGate(ctx, sessionID, content, intentArtifact); gateErr == nil && gateDecision.ForcePlanning {
 		emitter.LogDone("chat.pre_planning_gate", "强制规划路径", event.P("complexity_level", string(gateDecision.Level)), event.P("complexity_score", gateDecision.Score), event.P("reason", gateDecision.Reason))
+
+		// Hard gate: directly invoke TaskPlanner.Plan() to create and persist
+		// the plan. This guarantees a plan exists even if the LLM later
+		// ignores the forcedPlanningRunOption hint.
+		if planner := o.team().TaskPlanner; planner != nil {
+			planInput := biz.PlanInput{
+				UserMessage:     content,
+				SpiritSessionID: sessionID,
+				IntentArtifact:  gateDecision.IntentArtifact,
+			}
+			if traceID, ok := biz.SpiritTraceIDFromContext(ctx); ok {
+				planInput.TraceID = traceID
+			}
+			if plan, planErr := planner.Plan(ctx, planInput); planErr != nil {
+				emitter.LogWarn("chat.pre_planning_gate.hard", "硬门控规划失败，回退到软门控", "",
+					event.P("error", planErr.Error()))
+			} else if plan != nil {
+				emitter.LogDone("chat.pre_planning_gate.hard", "硬门控规划已创建",
+					event.P("plan_id", plan.ID),
+					event.P("strategy", string(plan.Strategy)),
+					event.P("subtask_count", len(plan.SubTasks)))
+			}
+		}
+
 		intentRunOpts = append(intentRunOpts, forcedPlanningRunOption(gateDecision))
 	}
 	deps := buildResult.deps
@@ -391,6 +458,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	}()
 
 	// ── EXECUTE ──
+	turnPhase.Store("executing")
 	execResult, err := o.executeTurn(ctx, sess, input, ag, admit, emitter, traceBridge, deps, runner, attachmentRefs, intentRunOpts, turnStart)
 	if err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
@@ -401,6 +469,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	}()
 
 	// ── PERSIST ──
+	turnPhase.Store("persisting")
 	persistResult, err := o.persistTurn(&ctx, sess, ag, admit, execResult, emitter, turnStart, &turnStatus, &turnErr, &turnErrMsg)
 	if err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
@@ -424,4 +493,88 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	o.postProcessTurn(ctx, sess, ag, input, admit, execResult, persistResult, emitter, turnStart, turnStatus)
 
 	return userMsg, persistResult.assistantMsg, nil
+}
+
+// runProactiveRecall triggers proactive memory recall at turn start to surface
+// relevant memories based on the conversation context (P3-11). The returned
+// hits are later merged with RecallComposite results by the MemoryInject
+// before-model hook.
+//
+// Failures are non-fatal: only a warning is logged and nil is returned so the
+// turn continues without proactive hits. The method is a no-op when memory is
+// disabled, the composite recaller is not wired, or the recaller does not
+// implement biz.ProactiveRecaller.
+func (o *ChatOrchestrator) runProactiveRecall(ctx context.Context, sess biz.Session, ag biz.Agent, content string, emitter *event.TraceEmitter) []biz.CompositeRecallHit {
+	policy := biz.ResolveMemoryRuntimePolicy(ag.Settings)
+	if !policy.MasterEnabled || !policy.RecallL2 || !policy.InjectL3 {
+		return nil
+	}
+	compositeRecaller := o.td().Persist.Memory.CompositeRecall
+	if compositeRecaller == nil {
+		return nil
+	}
+	proactiveRecaller, ok := compositeRecaller.(biz.ProactiveRecaller)
+	if !ok || proactiveRecaller == nil {
+		return nil
+	}
+	agentID := strings.TrimSpace(ag.ID)
+	if agentID == "" {
+		return nil
+	}
+	userID := strings.TrimSpace(chatagent.UserIDFromCtx(ctx))
+	convCtx := biz.ProactiveRecallContext{
+		UserStatement:     strutil.TruncateRunes(content, 200),
+		MentionedEntities: extractMentionedEntities(content),
+	}
+	hits, err := proactiveRecaller.ProactiveRecall(ctx, agentID, userID, convCtx)
+	if err != nil {
+		o.lg().Warn("proactive recall failed, continuing without proactive hits",
+			loggateway.StepID("chat.proactive_recall"),
+			loggateway.SessionID(sess.ID),
+			loggateway.Err(err))
+		return nil
+	}
+	if len(hits) > 0 {
+		emitter.LogDone("chat.proactive_recall", "主动召回完成",
+			event.P("hit_count", len(hits)),
+			event.P("agent_id", agentID))
+	}
+	return hits
+}
+
+// extractMentionedEntities extracts candidate entity keywords from the user
+// message for proactive recall. This is a simple tokenisation (YAGNI: no NLP,
+// no stemming) that splits on whitespace and common punctuation (ASCII + CJK),
+// filters out very short tokens, and caps the result to avoid excessive queries.
+func extractMentionedEntities(content string) []string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return nil
+	}
+	const (
+		minTokenLen = 3
+		maxEntities = 8
+	)
+	fields := strings.FieldsFunc(strings.ToLower(content), func(r rune) bool {
+		switch r {
+		case ' ', '\t', '\n', ',', '.', '!', '?', ';', ':', '\'', '"':
+			return true
+		case '，', '。', '！', '？', '；', '：', '、':
+			return true
+		}
+		return false
+	})
+	out := make([]string, 0, maxEntities)
+	seen := make(map[string]bool, len(fields))
+	for _, f := range fields {
+		if len(f) < minTokenLen || seen[f] {
+			continue
+		}
+		seen[f] = true
+		out = append(out, f)
+		if len(out) >= maxEntities {
+			break
+		}
+	}
+	return out
 }

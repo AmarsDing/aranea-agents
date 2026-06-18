@@ -19,45 +19,42 @@ const (
 // auto-creates the organizations table, otherwise we'd end up with both tables
 // and lose the existing data.
 //
+// The dialect parameter controls SQL generation and idempotent error detection
+// for both SQLite and Postgres.
+//
 // This function is idempotent — safe to run multiple times.
-func PreEntOrganizationRedesignMigration(ctx context.Context, rawDB *sql.DB, lg loggateway.Logger) {
+func PreEntOrganizationRedesignMigration(ctx context.Context, rawDB *sql.DB, d Dialect, lg loggateway.Logger) {
 	if rawDB == nil {
 		return
 	}
 
-	// Check if industry_taxonomy table exists
-	var count int
-	err := rawDB.QueryRowContext(ctx,
-		`SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='industry_taxonomy'`,
-	).Scan(&count)
+	// Check if industry_taxonomy table exists (dialect-aware).
+	industryExists, err := d.TableExists(ctx, rawDB, "industry_taxonomy")
 	if err != nil {
 		lg.Warn("organization redesign pre-migration: cannot check industry_taxonomy existence",
 			loggateway.StepID("migration.organization_redesign.pre"), loggateway.Err(err))
 		return
 	}
-	if count == 0 {
+	if !industryExists {
 		// No old table — nothing to rename
 		return
 	}
 
-	// Check if organizations table already exists
-	var orgCount int
-	err = rawDB.QueryRowContext(ctx,
-		`SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='organizations'`,
-	).Scan(&orgCount)
+	// Check if organizations table already exists (dialect-aware).
+	orgExists, err := d.TableExists(ctx, rawDB, "organizations")
 	if err != nil {
 		lg.Warn("organization redesign pre-migration: cannot check organizations existence",
 			loggateway.StepID("migration.organization_redesign.pre"), loggateway.Err(err))
 		return
 	}
 
-	if orgCount > 0 {
+	if orgExists {
 		// Both tables exist — Ent already created organizations.
 		// Copy any remaining data from industry_taxonomy that isn't in organizations,
 		// then drop the old table.
 		lg.Info("organization redesign pre-migration: both tables exist, migrating data",
 			loggateway.StepID("migration.organization_redesign.pre"))
-		migrateIndustryTaxonomyData(ctx, rawDB, lg)
+		migrateIndustryTaxonomyData(ctx, rawDB, d, lg)
 		return
 	}
 
@@ -72,7 +69,7 @@ func PreEntOrganizationRedesignMigration(ctx context.Context, rawDB *sql.DB, lg 
 
 	// Rename column taxonomy_key → org_key (SQLite 3.25+)
 	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE organizations RENAME COLUMN taxonomy_key TO org_key`); err != nil {
-		if !isColumnExistsErr(err) {
+		if !d.AlreadyExistsErr(err) {
 			lg.Warn("organization redesign pre-migration: rename taxonomy_key→org_key failed",
 				loggateway.StepID("migration.organization_redesign.pre"), loggateway.Err(err))
 		}
@@ -80,7 +77,7 @@ func PreEntOrganizationRedesignMigration(ctx context.Context, rawDB *sql.DB, lg 
 
 	// Rename Agent column taxonomy_position_id → position_id
 	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE agents RENAME COLUMN taxonomy_position_id TO position_id`); err != nil {
-		if !isColumnExistsErr(err) && !isNoSuchTableErr(err) {
+		if !d.AlreadyExistsErr(err) && !d.UndefinedObjectErr(err) {
 			lg.Warn("organization redesign pre-migration: rename agents.taxonomy_position_id→position_id failed",
 				loggateway.StepID("migration.organization_redesign.pre"), loggateway.Err(err))
 		}
@@ -88,7 +85,7 @@ func PreEntOrganizationRedesignMigration(ctx context.Context, rawDB *sql.DB, lg 
 
 	// Rename Team column category_industry_id → department_id
 	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE teams RENAME COLUMN category_industry_id TO department_id`); err != nil {
-		if !isColumnExistsErr(err) && !isNoSuchTableErr(err) {
+		if !d.AlreadyExistsErr(err) && !d.UndefinedObjectErr(err) {
 			lg.Warn("organization redesign pre-migration: rename teams.category_industry_id→department_id failed",
 				loggateway.StepID("migration.organization_redesign.pre"), loggateway.Err(err))
 		}
@@ -98,7 +95,7 @@ func PreEntOrganizationRedesignMigration(ctx context.Context, rawDB *sql.DB, lg 
 // migrateIndustryTaxonomyData handles the case where both industry_taxonomy and
 // organizations tables exist. It copies data from the old table to the new one
 // and drops the old table.
-func migrateIndustryTaxonomyData(ctx context.Context, rawDB *sql.DB, lg loggateway.Logger) {
+func migrateIndustryTaxonomyData(ctx context.Context, rawDB *sql.DB, d Dialect, lg loggateway.Logger) {
 	tx, err := rawDB.BeginTx(ctx, nil)
 	if err != nil {
 		lg.Error("organization redesign: begin data migration tx failed",
@@ -107,10 +104,14 @@ func migrateIndustryTaxonomyData(ctx context.Context, rawDB *sql.DB, lg loggatew
 	}
 	defer tx.Rollback()
 
-	// Copy rows from industry_taxonomy that don't already exist in organizations
-	// Map: taxonomy_key → org_key, keep all other columns as-is
-	_, err = tx.ExecContext(ctx, `
-		INSERT OR IGNORE INTO organizations (id, org_key, name, description, status, enabled, sort_order,
+	// Copy rows from industry_taxonomy that don't already exist in organizations.
+	// Map: taxonomy_key → org_key, keep all other columns as-is.
+	// SQLite: INSERT OR IGNORE INTO ...
+	// Postgres: INSERT INTO ... ON CONFLICT (id) DO NOTHING
+	var copySQL string
+	if d.IsPostgres() {
+		copySQL = `
+		INSERT INTO organizations (id, org_key, name, description, status, enabled, sort_order,
 			parent_id, level, scenario_key, workspace_id, owner_user_id, is_system,
 			config_json, metadata_json, created_at, updated_at, deleted_at)
 		SELECT id, taxonomy_key, name, description, status, enabled, sort_order,
@@ -118,7 +119,19 @@ func migrateIndustryTaxonomyData(ctx context.Context, rawDB *sql.DB, lg loggatew
 			config_json, metadata_json, created_at, updated_at, deleted_at
 		FROM industry_taxonomy
 		WHERE id NOT IN (SELECT id FROM organizations)
-	`)
+		ON CONFLICT (id) DO NOTHING`
+	} else {
+		copySQL = `
+		INSERT OR IGNORE INTO organizations (id, org_key, name, description, status, enabled, sort_order,
+			parent_id, level, scenario_key, workspace_id, owner_user_id, is_system,
+			config_json, metadata_json, created_at, updated_at, deleted_at)
+		SELECT id, taxonomy_key, name, description, status, enabled, sort_order,
+			parent_id, level, scenario_key, workspace_id, owner_user_id, is_system,
+			config_json, metadata_json, created_at, updated_at, deleted_at
+		FROM industry_taxonomy
+		WHERE id NOT IN (SELECT id FROM organizations)`
+	}
+	_, err = tx.ExecContext(ctx, copySQL)
 	if err != nil {
 		lg.Warn("organization redesign: copy data from industry_taxonomy failed (non-fatal)",
 			loggateway.StepID("migration.organization_redesign.data"), loggateway.Err(err))
@@ -144,8 +157,11 @@ func migrateIndustryTaxonomyData(ctx context.Context, rawDB *sql.DB, lg loggatew
 // adds new columns and updates level values from 'industry' to 'company'.
 // The pre-Ent table rename is handled by PreEntOrganizationRedesignMigration.
 //
+// The dialect parameter controls SQL generation and idempotent error detection
+// for both SQLite and Postgres.
+//
 // The migration is idempotent — safe to run multiple times.
-func RunOrganizationRedesignMigration(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
+func RunOrganizationRedesignMigration(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if client == nil {
 		return fmt.Errorf("organization redesign migration: ent client required")
 	}
@@ -160,21 +176,21 @@ func RunOrganizationRedesignMigration(ctx context.Context, client *ent.Client, l
 
 	// Step 1: Rename column taxonomy_key → org_key (in case pre-migration didn't run)
 	if _, err := client.ExecContext(ctx, `ALTER TABLE organizations RENAME COLUMN taxonomy_key TO org_key`); err != nil {
-		if !isColumnExistsErr(err) && !isNoSuchTableErr(err) {
+		if !d.AlreadyExistsErr(err) && !d.UndefinedObjectErr(err) {
 			lg.Debug("organization redesign: rename org_key skipped", loggateway.StepID("migration.organization_redesign"), loggateway.Err(err))
 		}
 	}
 
 	// Step 2: Rename Agent column taxonomy_position_id → position_id
 	if _, err := client.ExecContext(ctx, `ALTER TABLE agents RENAME COLUMN taxonomy_position_id TO position_id`); err != nil {
-		if !isColumnExistsErr(err) && !isNoSuchTableErr(err) {
+		if !d.AlreadyExistsErr(err) && !d.UndefinedObjectErr(err) {
 			lg.Debug("organization redesign: rename agents.position_id skipped", loggateway.StepID("migration.organization_redesign"), loggateway.Err(err))
 		}
 	}
 
 	// Step 3: Rename Team column category_industry_id → department_id
 	if _, err := client.ExecContext(ctx, `ALTER TABLE teams RENAME COLUMN category_industry_id TO department_id`); err != nil {
-		if !isColumnExistsErr(err) && !isNoSuchTableErr(err) {
+		if !d.AlreadyExistsErr(err) && !d.UndefinedObjectErr(err) {
 			lg.Debug("organization redesign: rename teams.department_id skipped", loggateway.StepID("migration.organization_redesign"), loggateway.Err(err))
 		}
 	}
@@ -197,9 +213,15 @@ func RunOrganizationRedesignMigration(ctx context.Context, client *ent.Client, l
 	}
 
 	for _, c := range newColumns {
-		sql := fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, c.table, c.col, c.typ)
-		if _, err := client.ExecContext(ctx, sql); err != nil {
-			if !isColumnExistsErr(err) && !isNoSuchTableErr(err) {
+		// Postgres requires a real boolean literal for BOOLEAN columns;
+		// SQLite uses INTEGER 0/1. Translate "BOOLEAN DEFAULT 0" → "BOOLEAN DEFAULT FALSE".
+		colType := c.typ
+		if d.IsPostgres() && colType == "BOOLEAN DEFAULT 0" {
+			colType = "BOOLEAN DEFAULT FALSE"
+		}
+		stmt := fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, c.table, c.col, colType)
+		if _, err := client.ExecContext(ctx, stmt); err != nil {
+			if !d.AlreadyExistsErr(err) && !d.UndefinedObjectErr(err) {
 				lg.Debug("organization redesign: add column skipped",
 					loggateway.StepID("migration.organization_redesign"),
 					loggateway.Str("table", c.table),
@@ -211,13 +233,13 @@ func RunOrganizationRedesignMigration(ctx context.Context, client *ent.Client, l
 
 	// Step 5: Update level values: 'industry' → 'company'
 	if _, err := client.ExecContext(ctx, `UPDATE organizations SET level = 'company' WHERE level = 'industry'`); err != nil {
-		if !isNoSuchTableErr(err) {
+		if !d.UndefinedObjectErr(err) {
 			lg.Warn("organization redesign: update level industry→company failed (non-critical)",
 				loggateway.StepID("migration.organization_redesign"), loggateway.Err(err))
 		}
 	}
 
-	if err := recordMigrationApplied(ctx, client, MigrationOrganizationRedesign, migrationNameOrganizationRedesign, lg); err != nil {
+	if err := recordMigrationApplied(ctx, client, d, MigrationOrganizationRedesign, migrationNameOrganizationRedesign, lg); err != nil {
 		return fmt.Errorf("organization redesign migration: record: %w", err)
 	}
 	lg.Info("organization redesign: post-Ent schema migration done", loggateway.StepID("migration.organization_redesign"))
@@ -228,8 +250,11 @@ func RunOrganizationRedesignMigration(ctx context.Context, client *ent.Client, l
 // WARNING: This is a destructive operation — it will rename organizations back to
 // industry_taxonomy and revert column names. Use only for emergency rollback.
 //
+// The dialect parameter controls SQL generation and idempotent error detection
+// for both SQLite and Postgres.
+//
 // The rollback is idempotent — safe to run multiple times.
-func RollbackOrganizationRedesignMigration(ctx context.Context, rawDB *sql.DB, lg loggateway.Logger) error {
+func RollbackOrganizationRedesignMigration(ctx context.Context, rawDB *sql.DB, d Dialect, lg loggateway.Logger) error {
 	if rawDB == nil {
 		return fmt.Errorf("organization redesign rollback: rawDB required")
 	}
@@ -238,7 +263,7 @@ func RollbackOrganizationRedesignMigration(ctx context.Context, rawDB *sql.DB, l
 
 	// Step 1: Revert level values: 'company' → 'industry'
 	if _, err := rawDB.ExecContext(ctx, `UPDATE organizations SET level = 'industry' WHERE level = 'company'`); err != nil {
-		if !isNoSuchTableErr(err) {
+		if !d.UndefinedObjectErr(err) {
 			lg.Warn("organization redesign rollback: revert level company→industry failed (non-critical)",
 				loggateway.StepID("migration.organization_redesign.rollback"), loggateway.Err(err))
 		}
@@ -246,7 +271,7 @@ func RollbackOrganizationRedesignMigration(ctx context.Context, rawDB *sql.DB, l
 
 	// Step 2: Rename column org_key → taxonomy_key
 	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE organizations RENAME COLUMN org_key TO taxonomy_key`); err != nil {
-		if !isColumnExistsErr(err) && !isNoSuchTableErr(err) {
+		if !d.AlreadyExistsErr(err) && !d.UndefinedObjectErr(err) {
 			lg.Warn("organization redesign rollback: rename org_key→taxonomy_key failed",
 				loggateway.StepID("migration.organization_redesign.rollback"), loggateway.Err(err))
 		}
@@ -254,7 +279,7 @@ func RollbackOrganizationRedesignMigration(ctx context.Context, rawDB *sql.DB, l
 
 	// Step 3: Rename Agent column position_id → taxonomy_position_id
 	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE agents RENAME COLUMN position_id TO taxonomy_position_id`); err != nil {
-		if !isColumnExistsErr(err) && !isNoSuchTableErr(err) {
+		if !d.AlreadyExistsErr(err) && !d.UndefinedObjectErr(err) {
 			lg.Warn("organization redesign rollback: rename agents.position_id→taxonomy_position_id failed",
 				loggateway.StepID("migration.organization_redesign.rollback"), loggateway.Err(err))
 		}
@@ -262,7 +287,7 @@ func RollbackOrganizationRedesignMigration(ctx context.Context, rawDB *sql.DB, l
 
 	// Step 4: Rename Team column department_id → category_industry_id
 	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE teams RENAME COLUMN department_id TO category_industry_id`); err != nil {
-		if !isColumnExistsErr(err) && !isNoSuchTableErr(err) {
+		if !d.AlreadyExistsErr(err) && !d.UndefinedObjectErr(err) {
 			lg.Warn("organization redesign rollback: rename teams.department_id→category_industry_id failed",
 				loggateway.StepID("migration.organization_redesign.rollback"), loggateway.Err(err))
 		}
@@ -270,7 +295,7 @@ func RollbackOrganizationRedesignMigration(ctx context.Context, rawDB *sql.DB, l
 
 	// Step 5: Rename table organizations → industry_taxonomy
 	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE organizations RENAME TO industry_taxonomy`); err != nil {
-		if !isNoSuchTableErr(err) {
+		if !d.UndefinedObjectErr(err) {
 			return fmt.Errorf("organization redesign rollback: rename table: %w", err)
 		}
 	}

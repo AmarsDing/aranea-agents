@@ -11,14 +11,14 @@ import (
 )
 
 func TestCancelRunningActivityMessages_NilSessions(t *testing.T) {
-	n, err := CancelRunningActivityMessages(context.Background(), nil, "sess1", loggateway.Global())
+	n, err := CancelRunningActivityMessages(context.Background(), nil, "sess1", loggateway.NewNoop())
 	if err != nil || n != 0 {
 		t.Fatalf("expected 0,nil got %d,%v", n, err)
 	}
 }
 
 func TestCancelRunningActivityMessages_EmptySessionID(t *testing.T) {
-	n, err := CancelRunningActivityMessages(context.Background(), nil, "  ", loggateway.Global())
+	n, err := CancelRunningActivityMessages(context.Background(), nil, "  ", loggateway.NewNoop())
 	if err != nil || n != 0 {
 		t.Fatalf("expected 0,nil got %d,%v", n, err)
 	}

@@ -62,7 +62,7 @@ func TestNewFSRepositoryAdapter_InvalidRoot(t *testing.T) {
 }
 
 func TestWrapWithArtifactSave_Nil(t *testing.T) {
-	result := WrapWithArtifactSave(nil, loggateway.Global())
+	result := WrapWithArtifactSave(nil, loggateway.NewNoop())
 	if result != nil {
 		t.Fatal("expected nil for nil input")
 	}

@@ -22,6 +22,9 @@ type pathBMockRepo struct {
 	resolveFn func(scopeType, scopeID, entityType, nameNormalized string) (L4EntitySnapshot, bool, error)
 }
 
+// Compile-time check: pathBMockRepo must satisfy PathBL4Writer.
+var _ PathBL4Writer = (*pathBMockRepo)(nil)
+
 func (m *pathBMockRepo) GetEntityByScopeKey(_ context.Context, scopeType, scopeID, entityType, nameNormalized string) (L4EntitySnapshot, bool, error) {
 	if m.resolveFn == nil {
 		return L4EntitySnapshot{}, false, nil

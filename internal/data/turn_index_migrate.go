@@ -3,25 +3,31 @@ package data
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/pkg/loggateway"
 )
 
-func entColumnExists(ctx context.Context, client *ent.Client, table, column string) (bool, error) {
+func entColumnExists(ctx context.Context, client *ent.Client, d Dialect, table, column string) (bool, error) {
+	var query string
+	var args []any
+	if d.IsPostgres() {
+		query = `SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2`
+		args = []any{table, column}
+	} else {
+		query = `SELECT COUNT(1) FROM pragma_table_info(?) WHERE name = ?`
+		args = []any{table, column}
+	}
 	var count int
-	err := entQueryRowScan(client, ctx,
-		`SELECT COUNT(1) FROM pragma_table_info(?) WHERE name = ?`,
-		[]any{table, column}, &count)
+	err := entQueryRowScan(client, ctx, query, args, &count)
 	if err != nil {
 		return false, err
 	}
 	return count > 0, nil
 }
 
-func entAddColumnIfMissing(ctx context.Context, client *ent.Client, table, column, ddl string) error {
-	exists, err := entColumnExists(ctx, client, table, column)
+func entAddColumnIfMissing(ctx context.Context, client *ent.Client, d Dialect, table, column, ddl string) error {
+	exists, err := entColumnExists(ctx, client, d, table, column)
 	if err != nil {
 		return fmt.Errorf("check column %s.%s: %w", table, column, err)
 	}
@@ -29,14 +35,14 @@ func entAddColumnIfMissing(ctx context.Context, client *ent.Client, table, colum
 		return nil
 	}
 	if _, err := client.ExecContext(ctx, ddl); err != nil {
-		if !strings.Contains(err.Error(), "duplicate column name") {
+		if !d.AlreadyExistsErr(err) {
 			return fmt.Errorf("add column %s.%s: %w", table, column, err)
 		}
 	}
 	return nil
 }
 
-func ensureMessagesTurnNumberPatch(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
+func ensureMessagesTurnNumberPatch(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
@@ -47,11 +53,11 @@ func ensureMessagesTurnNumberPatch(ctx context.Context, client *ent.Client, lg l
 	if !hasTable {
 		return nil
 	}
-	return entAddColumnIfMissing(ctx, client, "messages", "turn_number",
+	return entAddColumnIfMissing(ctx, client, d, "messages", "turn_number",
 		`ALTER TABLE messages ADD COLUMN turn_number INTEGER NOT NULL DEFAULT 0`)
 }
 
-func RunTurnIndexToTurnIDMigration(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
+func RunTurnIndexToTurnIDMigration(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if client == nil {
 		return fmt.Errorf("turn_index migration: ent client required")
 	}
@@ -64,23 +70,23 @@ func RunTurnIndexToTurnIDMigration(ctx context.Context, client *ent.Client, lg l
 	}
 	lg.Info("turn_index -> turn_id/turn_number/seq_in_turn: starting", loggateway.StepID("migration.turn_index"))
 
-	if err := entAddColumnIfMissing(ctx, client, "messages", "turn_id",
+	if err := entAddColumnIfMissing(ctx, client, d, "messages", "turn_id",
 		`ALTER TABLE messages ADD COLUMN turn_id VARCHAR(256) NOT NULL DEFAULT ''`); err != nil {
 		return err
 	}
 
-	if err := entAddColumnIfMissing(ctx, client, "messages", "turn_number",
+	if err := entAddColumnIfMissing(ctx, client, d, "messages", "turn_number",
 		`ALTER TABLE messages ADD COLUMN turn_number INTEGER NOT NULL DEFAULT 0`); err != nil {
 		return err
 	}
 
-	if err := entAddColumnIfMissing(ctx, client, "messages", "seq_in_turn",
+	if err := entAddColumnIfMissing(ctx, client, d, "messages", "seq_in_turn",
 		`ALTER TABLE messages ADD COLUMN seq_in_turn INTEGER NOT NULL DEFAULT 0`); err != nil {
 		return err
 	}
 
-	hasOldIndex, _ := entColumnExists(ctx, client, "messages", "turn_index")
-	hasSTOldIndex, _ := entColumnExists(ctx, client, "session_turns", "turn_index")
+	hasOldIndex, _ := entColumnExists(ctx, client, d, "messages", "turn_index")
+	hasSTOldIndex, _ := entColumnExists(ctx, client, d, "session_turns", "turn_index")
 
 	if hasOldIndex {
 		stCol := "turn_index"
@@ -121,7 +127,7 @@ WHERE m.id = r.id
 		}
 	}
 
-	if err := recordMigrationApplied(ctx, client, MigrationTurnIndexToTurnID, migrationNameTurnIndexToTurnID, lg); err != nil {
+	if err := recordMigrationApplied(ctx, client, d, MigrationTurnIndexToTurnID, migrationNameTurnIndexToTurnID, lg); err != nil {
 		return fmt.Errorf("turn_index migration: record: %w", err)
 	}
 	lg.Info("turn_index -> turn_id/turn_number/seq_in_turn: done", loggateway.StepID("migration.turn_index"))

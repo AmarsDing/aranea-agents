@@ -22,14 +22,14 @@ func (r *orchestrationCacheRepo) LoadCacheJSON(ctx context.Context) (string, err
 		`SELECT orchestration_cache_json FROM system_settings WHERE id = 1 LIMIT 1`,
 	)
 	if err != nil {
-		return "", err
+		return "", entErrToBizErr(err, "ORCHESTRATION_CACHE")
 	}
 	defer rows.Close()
 	if !rows.Next() {
 		return "", nil
 	}
 	if err := rows.Scan(&jsonStr); err != nil {
-		return "", err
+		return "", entErrToBizErr(err, "ORCHESTRATION_CACHE")
 	}
 	return jsonStr, nil
 }
@@ -40,5 +40,5 @@ func (r *orchestrationCacheRepo) SaveCacheJSON(ctx context.Context, jsonStr stri
 		`INSERT OR REPLACE INTO system_settings (id, orchestration_cache_json) VALUES (1, ?)`,
 		jsonStr,
 	)
-	return err
+	return entErrToBizErr(err, "ORCHESTRATION_CACHE")
 }

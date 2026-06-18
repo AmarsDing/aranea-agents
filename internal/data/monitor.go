@@ -179,9 +179,10 @@ func (r *monitorRepo) ListMonitorEvents(ctx context.Context, query biz.MonitorEv
 		offset = 0
 	}
 
-	where, args := monitorEventsWhere(query)
-	countSQL := sqlMonitorEventsCount + where
-	listSQL := sqlMonitorEventsList + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	d := r.data.Dialect()
+	where, args := monitorEventsWhere(query, d)
+	countSQL := d.RenumberPlaceholders(sqlMonitorEventsCount + where)
+	listSQL := d.RenumberPlaceholders(sqlMonitorEventsList + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?")
 	listArgs := append(args, limit, offset)
 
 	var total int32
@@ -202,7 +203,7 @@ func (r *monitorRepo) ListMonitorEvents(ctx context.Context, query biz.MonitorEv
 	return biz.MonitorListResult{Items: out, Total: total}, nil
 }
 
-func monitorEventsWhere(q biz.MonitorEventsQuery) (string, []any) {
+func monitorEventsWhere(q biz.MonitorEventsQuery, d Dialect) (string, []any) {
 	parts := []string{}
 	args := []any{}
 	if q.EventType != "" {
@@ -210,15 +211,15 @@ func monitorEventsWhere(q biz.MonitorEventsQuery) (string, []any) {
 		args = append(args, q.EventType+"%")
 	}
 	if q.AgentID != "" {
-		parts = append(parts, "json_extract(metadata_json, '$.agent_id') = ?")
+		parts = append(parts, d.JSONExtract("metadata_json", "agent_id")+" = ?")
 		args = append(args, q.AgentID)
 	}
 	if q.SessionID != "" {
-		parts = append(parts, "COALESCE(meta_session_id, json_extract(metadata_json, '$.session_id')) = ?")
+		parts = append(parts, "COALESCE(meta_session_id, "+d.JSONExtract("metadata_json", "session_id")+") = ?")
 		args = append(args, q.SessionID)
 	}
 	if q.TraceID != "" {
-		parts = append(parts, "COALESCE(meta_trace_id, json_extract(metadata_json, '$.trace_id')) = ?")
+		parts = append(parts, "COALESCE(meta_trace_id, "+d.JSONExtract("metadata_json", "trace_id")+") = ?")
 		args = append(args, q.TraceID)
 	}
 	if q.Status != "" {
@@ -253,9 +254,10 @@ func (r *monitorRepo) ListMonitorTraces(ctx context.Context, query biz.MonitorTr
 		offset = 0
 	}
 
-	where, args := monitorTracesWhere(query)
-	countSQL := sqlMonitorTracesCount + where
-	listSQL := sqlMonitorTracesList + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	d := r.data.Dialect()
+	where, args := monitorTracesWhere(query, d)
+	countSQL := d.RenumberPlaceholders(sqlMonitorTracesCount + where)
+	listSQL := d.RenumberPlaceholders(sqlMonitorTracesList + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?")
 	listArgs := append(args, limit, offset)
 
 	var total int32
@@ -276,22 +278,22 @@ func (r *monitorRepo) ListMonitorTraces(ctx context.Context, query biz.MonitorTr
 	return biz.MonitorListResult{Items: out, Total: total}, nil
 }
 
-func monitorTracesWhere(q biz.MonitorTracesQuery) (string, []any) {
+func monitorTracesWhere(q biz.MonitorTracesQuery, d Dialect) (string, []any) {
 	parts := []string{}
 	args := []any{}
 	// TODO(debt): After backfill completes for all rows, simplify to direct column
 	// comparison (e.g. "agent_id = ?") for index utilization. The COALESCE fallback
 	// to json_extract is a transition pattern for rows created before the column existed.
 	if q.AgentID != "" {
-		parts = append(parts, "COALESCE(NULLIF(agent_id, ''), json_extract(metadata_json, '$.agent_id')) = ?")
+		parts = append(parts, "COALESCE(NULLIF(agent_id, ''), "+d.JSONExtract("metadata_json", "agent_id")+") = ?")
 		args = append(args, q.AgentID)
 	}
 	if q.Provider != "" {
-		parts = append(parts, "COALESCE(NULLIF(provider, ''), json_extract(metadata_json, '$.provider')) = ?")
+		parts = append(parts, "COALESCE(NULLIF(provider, ''), "+d.JSONExtract("metadata_json", "provider")+") = ?")
 		args = append(args, q.Provider)
 	}
 	if q.Model != "" {
-		parts = append(parts, "COALESCE(NULLIF(model, ''), json_extract(metadata_json, '$.model')) = ?")
+		parts = append(parts, "COALESCE(NULLIF(model, ''), "+d.JSONExtract("metadata_json", "model")+") = ?")
 		args = append(args, q.Model)
 	}
 	if q.Status != "" {
@@ -310,12 +312,13 @@ func (r *monitorRepo) ExistsRunnerCompletion(ctx context.Context, sessionID, inv
 	if sessionID == "" || invocationID == "" {
 		return false, nil
 	}
+	d := r.data.Dialect()
+	query := d.RenumberPlaceholders(`SELECT COUNT(*) FROM monitor_events WHERE deleted_at = '' AND event_key = 'runner.completion'
+		 AND COALESCE(meta_session_id, ` + d.JSONExtract("metadata_json", "session_id") + `) = ?
+		 AND COALESCE(meta_invocation_id, ` + d.JSONExtract("metadata_json", "invocation_id") + `) = ?`)
 	var n int
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
-		`SELECT COUNT(*) FROM monitor_events WHERE deleted_at = '' AND event_key = 'runner.completion'
-		 AND COALESCE(meta_session_id, json_extract(metadata_json, '$.session_id')) = ?
-		 AND COALESCE(meta_invocation_id, json_extract(metadata_json, '$.invocation_id')) = ?`,
-		[]any{sessionID, invocationID}, &n)
+		query, []any{sessionID, invocationID}, &n)
 	if err != nil {
 		return false, entErrToBizErr(err, "MONITOR")
 	}
@@ -347,13 +350,14 @@ func (r *monitorRepo) PatchRunnerCompletionMetadata(ctx context.Context, session
 }
 
 func (r *monitorRepo) patchRunnerCompletionByDualKey(ctx context.Context, sessionID, invocationID, runID, patchJSON string) (bool, error) {
+	d := r.data.Dialect()
 	var id, existing string
-	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
-		`SELECT id, metadata_json FROM monitor_events WHERE deleted_at = '' AND event_key = 'runner.completion'
-		 AND json_extract(metadata_json, '$.session_id') = ?
-		 AND json_extract(metadata_json, '$.invocation_id') = ?
-		 AND json_extract(metadata_json, '$.run_id') = ?
-		 ORDER BY created_at DESC LIMIT 1`, []any{sessionID, invocationID, runID},
+	query := d.RenumberPlaceholders(`SELECT id, metadata_json FROM monitor_events WHERE deleted_at = '' AND event_key = 'runner.completion'
+		 AND ` + d.JSONExtract("metadata_json", "session_id") + ` = ?
+		 AND ` + d.JSONExtract("metadata_json", "invocation_id") + ` = ?
+		 AND ` + d.JSONExtract("metadata_json", "run_id") + ` = ?
+		 ORDER BY created_at DESC LIMIT 1`)
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), query, []any{sessionID, invocationID, runID},
 		&id, &existing)
 	if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 		return false, nil
@@ -386,11 +390,12 @@ func (r *monitorRepo) patchRunnerCompletionByKey(ctx context.Context, sessionID,
 	if !ok {
 		return false, nil
 	}
+	d := r.data.Dialect()
 	var id, existing string
-	query := `SELECT id, metadata_json FROM monitor_events WHERE deleted_at = '' AND event_key = 'runner.completion'
-		 AND json_extract(metadata_json, '$.session_id') = ?
-		 AND json_extract(metadata_json, '$.` + safeKey + `') = ?
-		 ORDER BY created_at DESC LIMIT 1`
+	query := d.RenumberPlaceholders(`SELECT id, metadata_json FROM monitor_events WHERE deleted_at = '' AND event_key = 'runner.completion'
+		 AND ` + d.JSONExtract("metadata_json", "session_id") + ` = ?
+		 AND ` + d.JSONExtract("metadata_json", safeKey) + ` = ?
+		 ORDER BY created_at DESC LIMIT 1`)
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), query, []any{sessionID, jsonValue}, &id, &existing)
 	if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 		return false, nil

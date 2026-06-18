@@ -1,0 +1,393 @@
+package main
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"aranea-agents/pkg/loggateway"
+)
+
+// MigrationReport summarizes the migration outcome.
+type MigrationReport struct {
+	TotalTables int
+	TotalRows   int64
+	Migrated    []TableMigration
+	Skipped     []TableSkip
+	Failed      []TableFailure
+}
+
+// TableMigration records a successful table migration.
+type TableMigration struct {
+	Table string
+	Rows  int64
+}
+
+// TableSkip records a skipped table.
+type TableSkip struct {
+	Table  string
+	Reason string
+}
+
+// TableFailure records a failed table migration.
+type TableFailure struct {
+	Table string
+	Error string
+}
+
+// Migrator copies data from SQLite to Postgres.
+type Migrator struct {
+	srcDB     *sql.DB
+	tgtDB     *sql.DB
+	batchSize int
+	lg        loggateway.Logger
+}
+
+// NewMigrator creates a new Migrator.
+func NewMigrator(srcDB, tgtDB *sql.DB, batchSize int, lg loggateway.Logger) *Migrator {
+	if batchSize <= 0 {
+		batchSize = 500
+	}
+	return &Migrator{srcDB: srcDB, tgtDB: tgtDB, batchSize: batchSize, lg: lg}
+}
+
+// defaultSkipTables are tables that should never be migrated.
+var defaultSkipTables = map[string]bool{
+	"schema_migrations":    true, // Postgres DDL registry manages this fresh
+	"sqlite_sequence":      true, // SQLite internal
+	"sqlite_stat1":         true, // SQLite internal
+	"messages_fts":         true, // FTS5 virtual table, rebuilt by DDL migration
+	"messages_fts_config":  true, // FTS5 shadow table
+	"messages_fts_data":    true, // FTS5 shadow table
+	"messages_fts_idx":     true, // FTS5 shadow table
+	"messages_fts_content": true, // FTS5 shadow table
+	"messages_fts_docsize": true, // FTS5 shadow table
+}
+
+// MigrateAll discovers tables from SQLite and migrates each to Postgres.
+// If tableFilter is non-empty, only that table is migrated.
+// skipSet is merged with defaultSkipTables.
+//
+// FK constraints are disabled during migration (SET session_replication_role = 'replica')
+// to allow tables to be migrated in alphabetical order without FK violations.
+// They are re-enabled after migration. The caller should run the validator
+// afterwards to verify data integrity.
+func (m *Migrator) MigrateAll(ctx context.Context, tableFilter string, skipSet map[string]bool) (*MigrationReport, error) {
+	tables, err := m.discoverTables(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("discover tables: %w", err)
+	}
+
+	// Disable FK checks for the duration of the migration.
+	// session_replication_role = 'replica' tells Postgres to skip FK triggers,
+	// which is the standard technique for bulk data loading.
+	if err := m.setFKChecks(ctx, false); err != nil {
+		return nil, fmt.Errorf("disable fk checks: %w", err)
+	}
+	defer func() {
+		if err := m.setFKChecks(ctx, true); err != nil {
+			fmt.Fprintf(os.Stderr, "WARNING: re-enable fk checks failed: %v\n", err)
+		}
+	}()
+
+	report := &MigrationReport{TotalTables: len(tables)}
+
+	for _, table := range tables {
+		if tableFilter != "" && table != tableFilter {
+			report.Skipped = append(report.Skipped, TableSkip{Table: table, Reason: "filtered out (--table)"})
+			continue
+		}
+		if defaultSkipTables[table] || skipSet[table] {
+			report.Skipped = append(report.Skipped, TableSkip{Table: table, Reason: "skip list"})
+			continue
+		}
+
+		rows, err := m.migrateTable(ctx, table)
+		if err != nil {
+			report.Failed = append(report.Failed, TableFailure{Table: table, Error: err.Error()})
+			fmt.Printf("  [FAIL] %s: %v\n", table, err)
+			continue
+		}
+		report.Migrated = append(report.Migrated, TableMigration{Table: table, Rows: rows})
+		report.TotalRows += rows
+		fmt.Printf("  [OK]   %-40s %d rows\n", table, rows)
+	}
+
+	return report, nil
+}
+
+// setFKChecks enables or disables FK constraint checks on the Postgres connection.
+// Uses SET session_replication_role = 'replica' (disable) / 'origin' (enable).
+func (m *Migrator) setFKChecks(ctx context.Context, enable bool) error {
+	role := "origin"
+	if !enable {
+		role = "replica"
+	}
+	_, err := m.tgtDB.ExecContext(ctx, fmt.Sprintf("SET session_replication_role = '%s'", role))
+	return err
+}
+
+// discoverTables returns all user tables from SQLite (excluding sqlite_* internal tables).
+func (m *Migrator) discoverTables(ctx context.Context) ([]string, error) {
+	rows, err := m.srcDB.QueryContext(ctx, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+	if err != nil {
+		return nil, fmt.Errorf("query sqlite_master: %w", err)
+	}
+	defer rows.Close()
+
+	var tables []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("scan table name: %w", err)
+		}
+		tables = append(tables, name)
+	}
+	return tables, rows.Err()
+}
+
+// migrateTable migrates a single table from SQLite to Postgres.
+func (m *Migrator) migrateTable(ctx context.Context, table string) (int64, error) {
+	// Check if table exists in Postgres.
+	exists, err := m.tableExistsInPostgres(ctx, table)
+	if err != nil {
+		return 0, fmt.Errorf("check postgres table: %w", err)
+	}
+	if !exists {
+		return 0, fmt.Errorf("table %s does not exist in Postgres (run app once with driver=postgres to create schema)", table)
+	}
+
+	// Get common columns (intersection of SQLite and Postgres, excluding GENERATED).
+	columns, err := m.getCommonColumns(ctx, table)
+	if err != nil {
+		return 0, fmt.Errorf("get columns: %w", err)
+	}
+	if len(columns) == 0 {
+		return 0, fmt.Errorf("no common columns between SQLite and Postgres for table %s", table)
+	}
+
+	// Stream rows from SQLite and batch insert into Postgres.
+	return m.streamAndInsert(ctx, table, columns)
+}
+
+// tableExistsInPostgres checks if a table exists in the Postgres public schema.
+func (m *Migrator) tableExistsInPostgres(ctx context.Context, table string) (bool, error) {
+	var exists bool
+	err := m.tgtDB.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1)`,
+		table).Scan(&exists)
+	return exists, err
+}
+
+// getCommonColumns returns the intersection of column names from SQLite and Postgres,
+// excluding Postgres GENERATED ALWAYS columns (which cannot be inserted into).
+func (m *Migrator) getCommonColumns(ctx context.Context, table string) ([]string, error) {
+	sqliteCols, err := m.getSQLiteColumns(ctx, table)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite columns: %w", err)
+	}
+
+	pgCols, err := m.getPostgresInsertableColumns(ctx, table)
+	if err != nil {
+		return nil, fmt.Errorf("postgres columns: %w", err)
+	}
+
+	// Intersection (preserve SQLite order for deterministic column ordering).
+	pgSet := make(map[string]bool, len(pgCols))
+	for _, c := range pgCols {
+		pgSet[c] = true
+	}
+	var common []string
+	for _, c := range sqliteCols {
+		if pgSet[c] {
+			common = append(common, c)
+		}
+	}
+	return common, nil
+}
+
+// getSQLiteColumns returns column names from SQLite's pragma_table_info.
+func (m *Migrator) getSQLiteColumns(ctx context.Context, table string) ([]string, error) {
+	rows, err := m.srcDB.QueryContext(ctx, fmt.Sprintf("SELECT name FROM pragma_table_info('%s') ORDER BY cid", table))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cols []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		cols = append(cols, name)
+	}
+	return cols, rows.Err()
+}
+
+// getPostgresInsertableColumns returns column names from Postgres that can be inserted into
+// (excludes GENERATED ALWAYS columns).
+func (m *Migrator) getPostgresInsertableColumns(ctx context.Context, table string) ([]string, error) {
+	rows, err := m.tgtDB.QueryContext(ctx,
+		`SELECT column_name FROM information_schema.columns
+		 WHERE table_schema = 'public' AND table_name = $1 AND is_generated = 'NEVER'
+		 ORDER BY ordinal_position`,
+		table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cols []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		cols = append(cols, name)
+	}
+	return cols, rows.Err()
+}
+
+// streamAndInsert streams rows from SQLite and batch-inserts into Postgres.
+// Uses []byte scanning to avoid type coercion issues between SQLite (dynamic typing)
+// and Postgres (strong typing). The lib/pq driver accepts []byte for most types
+// via the text protocol (e.g., "0"/"1" for boolean, ISO timestamps for timestamp).
+func (m *Migrator) streamAndInsert(ctx context.Context, table string, columns []string) (int64, error) {
+	// Build the SELECT query from SQLite.
+	colList := strings.Join(quoteIdentifiers(columns), ", ")
+	selectSQL := fmt.Sprintf(`SELECT %s FROM "%s"`, colList, table)
+
+	// Build the INSERT prefix for Postgres.
+	// The VALUES clause and ON CONFLICT are appended per batch.
+	pgColList := strings.Join(quoteIdentifiers(columns), ", ")
+	insertPrefix := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES `, table, pgColList)
+
+	// Stream rows from SQLite.
+	rows, err := m.srcDB.QueryContext(ctx, selectSQL)
+	if err != nil {
+		return 0, fmt.Errorf("query sqlite: %w", err)
+	}
+	defer rows.Close()
+
+	// Allocate scan destinations using *[]byte.
+	// NULL → nil, non-NULL → []byte (may be empty for empty string).
+	scanVals := make([]any, len(columns))
+	for i := range scanVals {
+		scanVals[i] = new([]byte)
+	}
+
+	var totalRows int64
+	var batch [][]any
+
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		n, err := m.execBatch(ctx, insertPrefix, len(columns), batch)
+		if err != nil {
+			return err
+		}
+		totalRows += n
+		batch = batch[:0]
+		return nil
+	}
+
+	for rows.Next() {
+		if err := rows.Scan(scanVals...); err != nil {
+			return totalRows, fmt.Errorf("scan row: %w", err)
+		}
+		// Convert *[]byte to any (nil for NULL, []byte copy for data).
+		row := make([]any, len(columns))
+		for i, v := range scanVals {
+			bp := v.(*[]byte)
+			if *bp == nil {
+				row[i] = nil // NULL
+			} else {
+				// Copy to avoid aliasing (driver may reuse buffer on next Next()).
+				copied := make([]byte, len(*bp))
+				copy(copied, *bp)
+				row[i] = copied
+			}
+		}
+		batch = append(batch, row)
+		if len(batch) >= m.batchSize {
+			if err := flush(); err != nil {
+				return totalRows, err
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return totalRows, fmt.Errorf("iterate rows: %w", err)
+	}
+
+	if err := flush(); err != nil {
+		return totalRows, err
+	}
+
+	return totalRows, nil
+}
+
+// execBatch executes a multi-row INSERT within a single transaction.
+// Returns the number of rows attempted (not necessarily all inserted due to ON CONFLICT DO NOTHING).
+func (m *Migrator) execBatch(ctx context.Context, insertPrefix string, nCols int, batch [][]any) (int64, error) {
+	nRows := len(batch)
+
+	// Build the multi-row VALUES clause: ($1,$2,...,$N), ($N+1,...,$2N), ...
+	var b strings.Builder
+	b.Grow(nRows * nCols * 6)
+	for i := 0; i < nRows; i++ {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteByte('(')
+		for j := 0; j < nCols; j++ {
+			if j > 0 {
+				b.WriteByte(',')
+			}
+			fmt.Fprintf(&b, "$%d", i*nCols+j+1)
+		}
+		b.WriteByte(')')
+	}
+	b.WriteString(" ON CONFLICT DO NOTHING")
+
+	stmt := insertPrefix + b.String()
+
+	// Flatten batch args.
+	args := make([]any, 0, nRows*nCols)
+	for _, row := range batch {
+		args = append(args, row...)
+	}
+
+	ctxExec, cancel := context.WithTimeout(ctx, 120*time.Second)
+	defer cancel()
+
+	tx, err := m.tgtDB.BeginTx(ctxExec, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(ctxExec, stmt, args...)
+	if err != nil {
+		return 0, fmt.Errorf("exec batch insert: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
+	}
+
+	return int64(nRows), nil
+}
+
+// quoteIdentifiers wraps each identifier in double quotes (Postgres-compatible).
+func quoteIdentifiers(cols []string) []string {
+	out := make([]string, len(cols))
+	for i, c := range cols {
+		out[i] = `"` + c + `"`
+	}
+	return out
+}

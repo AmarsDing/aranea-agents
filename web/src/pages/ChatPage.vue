@@ -143,7 +143,7 @@
         @regenerate="composer.regenerateMessage"
         @compact="session.onCompactSession"
         @toggle-tool-calls="uiConfig.setShowToolCalls(!uiConfig.showToolCalls)"
-        @confirm-activity="onConfirmActivity"
+        @confirm-activity="session.onConfirmActivity"
         @error-retry="onErrorRetry"
         @error-switch-model="onErrorSwitchModel"
         @error-rephrase="onErrorRephrase"
@@ -289,7 +289,6 @@ import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import { useChatWorkspace } from '../features/chat/composables/useChatWorkspace';
-import { confirmActivity } from '../features/chat/api';
 import { useSpiritTeamStore } from '../stores/spirit';
 import { useUiConfigStore } from '../stores/uiConfig';
 import { DEFAULT_MAX_PARALLEL_TEAMS } from '../features/spirit/observabilityConstants';
@@ -438,23 +437,6 @@ function onStatusBarClickLastEvent() {
   if (lastEvent?.teamName) {
     const team = spiritStore.teams.find((t) => t.teamName === lastEvent.teamName);
     if (team) spiritStore.selectTeam(team.id);
-  }
-}
-
-/** N-14: Handle confirm-activity event from ConfirmBlock → API call. */
-async function onConfirmActivity(activityId: string, approved: boolean) {
-  const sid = session.selectedSessionForUi?.id;
-  if (!sid) return;
-  try {
-    const ok = await confirmActivity(sid, activityId, approved);
-    if (!ok) {
-      $q.notify({
-        type: 'warning',
-        message: approved ? t('chat.confirmActivity.approveRejected') : t('chat.confirmActivity.denyRejected'),
-      });
-    }
-  } catch (err) {
-    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('chat.confirmActivity.failed') });
   }
 }
 

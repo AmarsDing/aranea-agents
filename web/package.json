@@ -14,7 +14,7 @@
     "check:i18n": "node scripts/check-i18n.mjs",
     "stylelint": "stylelint \"src/**/*.{vue,css,sass,scss}\" --config .stylelintrc.json",
     "stylelint:fix": "stylelint \"src/**/*.{vue,css,sass,scss}\" --config .stylelintrc.json --fix",
-    "lint": "eslint \"src/**/*.{ts,vue}\"",
+    "lint": "eslint \"src/**/*.{ts,vue}\" && node scripts/check-i18n.mjs",
     "lint:fix": "eslint \"src/**/*.{ts,vue}\" --fix",
     "format": "prettier --write \"src/**/*.{ts,vue,css,scss}\"",
     "e2e": "playwright test",

@@ -66,7 +66,7 @@ func (r *sessionRunCheckpointRepo) Create(ctx context.Context, cp biz.SessionRun
 		SetPayloadJSON(cp.PayloadJSON).
 		SetCreatedAt(cp.CreatedAt).
 		Save(ctx)
-	return id, err
+	return id, entErrToBizErr(err, "SESSION_RUN_CHECKPOINT")
 }
 
 func (r *sessionRunCheckpointRepo) Get(ctx context.Context, id string) (biz.SessionRunCheckpoint, error) {
@@ -79,7 +79,7 @@ func (r *sessionRunCheckpointRepo) Get(ctx context.Context, id string) (biz.Sess
 		if ent.IsNotFound(err) {
 			return biz.SessionRunCheckpoint{}, apierror.NotFound(apierror.DomainSession, "not found")
 		}
-		return biz.SessionRunCheckpoint{}, err
+		return biz.SessionRunCheckpoint{}, entErrToBizErr(err, "SESSION_RUN_CHECKPOINT")
 	}
 	return entSessionRunCheckpointToBiz(item), nil
 }
@@ -97,7 +97,7 @@ func (r *sessionRunCheckpointRepo) GetBySessionRunID(ctx context.Context, sessio
 		if ent.IsNotFound(err) {
 			return biz.SessionRunCheckpoint{}, apierror.NotFound(apierror.DomainSession, "not found")
 		}
-		return biz.SessionRunCheckpoint{}, err
+		return biz.SessionRunCheckpoint{}, entErrToBizErr(err, "SESSION_RUN_CHECKPOINT")
 	}
 	return entSessionRunCheckpointToBiz(item), nil
 }

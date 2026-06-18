@@ -140,7 +140,7 @@ func (r *l3FactRepo) ListFactRows(ctx context.Context, scopeType, scopeID, kind,
 		}
 		out = append(out, b)
 	}
-	return out, total, active, archived, rows.Err()
+	return out, total, active, archived, entErrToBizErr(rows.Err(), "MEMORY_L3")
 }
 
 // buildFactFilterClauses constructs WHERE clause components for fact queries.
@@ -236,7 +236,7 @@ func (r *l3FactRepo) ListFactRowsForUser(ctx context.Context, scopeType, scopeID
 		}
 		out = append(out, b)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "MEMORY_L3")
 }
 
 // ListFactRowsForUserAll returns facts for a user including invalidated ones
@@ -285,7 +285,7 @@ func (r *l3FactRepo) ListFactRowsForUserAll(ctx context.Context, scopeType, scop
 		}
 		out = append(out, b)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "MEMORY_L3")
 }
 
 func (r *l3FactRepo) GetFactRowsByIDs(ctx context.Context, factIDs []string) ([][]byte, error) {
@@ -313,7 +313,7 @@ func (r *l3FactRepo) GetFactRowsByIDs(ctx context.Context, factIDs []string) ([]
 		}
 		out = append(out, b)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "MEMORY_L3")
 }
 
 func (r *l3FactRepo) RecallL3Facts(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32, minScore float64) ([][]byte, error) {
@@ -389,7 +389,7 @@ func (r *l3FactRepo) recallL3FactsBruteForce(ctx context.Context, scopeType, sco
 		}
 		out = append(out, b)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "MEMORY_L3")
 }
 
 func (r *l3FactRepo) recallL3Facts(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32, minScore float64) ([][]byte, error) {
@@ -648,6 +648,14 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 	if tags == "" {
 		tags = "[]"
 	}
+	links := strings.TrimSpace(in.LinksJSON)
+	if links == "" {
+		links = "[]"
+	}
+	keywords := strings.TrimSpace(in.KeywordsJSON)
+	if keywords == "" {
+		keywords = "[]"
+	}
 	meta := strings.TrimSpace(in.MetadataJSON)
 	if meta == "" {
 		meta = "{}"
@@ -693,8 +701,8 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 		version, status, superseded_by,
 		pii_flag, redacted_statement,
 		quality_score, pii_types, metadata_json, created_at, updated_at,
-		valid_from, valid_until
-	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		valid_from, valid_until, links, keywords
+	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 		statement = excluded.statement, details_markdown = excluded.details_markdown,
 		confidence = excluded.confidence, importance = excluded.importance,
@@ -711,7 +719,8 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 		quality_score = excluded.quality_score, pii_types = excluded.pii_types, metadata_json = excluded.metadata_json,
 		updated_at = excluded.updated_at,
 		valid_from = COALESCE(NULLIF(memory_facts.valid_from, ''), excluded.valid_from),
-		valid_until = excluded.valid_until`,
+		valid_until = excluded.valid_until,
+		links = excluded.links, keywords = excluded.keywords`,
 			id,
 			strings.TrimSpace(in.ScopeType),
 			strings.TrimSpace(in.ScopeID),
@@ -733,7 +742,7 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 			in.Version, status, "",
 			pii, redacted,
 			defaultFactQualityScore, piiTypesJSON, meta, createdAt, updatedAt,
-			validFrom, validUntil,
+			validFrom, validUntil, links, keywords,
 		)
 		if execErr != nil {
 			return execErr
@@ -990,7 +999,7 @@ func (r *l3FactRepo) ListConflictingFacts(ctx context.Context, scopeType, scopeI
 		}
 		out = append(out, b)
 	}
-	return out, total, rows.Err()
+	return out, total, entErrToBizErr(rows.Err(), "MEMORY_L3")
 }
 
 // --- PIIReviewStore ---
@@ -1034,7 +1043,7 @@ func (r *l3FactRepo) ListPIIFlaggedFacts(ctx context.Context, scopeType, scopeID
 		}
 		out = append(out, b)
 	}
-	return out, total, rows.Err()
+	return out, total, entErrToBizErr(rows.Err(), "MEMORY_L3")
 }
 
 func (r *l3FactRepo) ApprovePIIFact(ctx context.Context, factID string) error {

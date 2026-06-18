@@ -240,7 +240,7 @@ const sqlFactSelect = `SELECT id, scope_type, scope_id, workspace_id, user_id, t
  pii_flag, redacted_statement,
  ttl_days, decay_factor, next_decay_at, last_used_at, expires_at,
  metadata_json, quality_score, pii_types, created_at, updated_at, archived_at, deleted_at,
- valid_from, valid_until
+ valid_from, valid_until, links, keywords, tags
  FROM memory_facts`
 
 const sqlEpisodeSelect = `SELECT id, session_id, agent_id, episode_kind, title, outcome_summary, importance,
@@ -398,6 +398,7 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		qScore                             float64
 		piiTypes                           string
 		validFrom, validUntil              string
+		links, keywords, llmTags           string
 	)
 	if err := rows.Scan(
 		&id, &stype, &sid, &wid, &uid, &tid, &aid,
@@ -410,7 +411,7 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		&pii, &redacted,
 		&ttlD, &decay, &nextD, &lastU, &exp,
 		&meta, &qScore, &piiTypes, &ca, &ua, &arch, &del,
-		&validFrom, &validUntil,
+		&validFrom, &validUntil, &links, &keywords, &llmTags,
 	); err != nil {
 		return nil, err
 	}
@@ -434,6 +435,7 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		"metadata_json": meta, "quality_score": qScore, "pii_types": piiTypes, "created_at": ca, "updated_at": ua,
 		"archived_at": arch, "deleted_at": del,
 		"valid_from": validFrom, "valid_until": validUntil,
+		"links": links, "keywords": keywords, "tags": llmTags,
 	}
 	return json.Marshal(m)
 }
@@ -1001,7 +1003,7 @@ type VectorSearchHit struct {
 // Schema / DDL helpers (moved from sessionmemory/schema.go)
 // ──────────────────────────────────────────────────────────
 
-func sessionMemoryEnsurePatches(ctx context.Context, client execer) error {
+func sessionMemoryEnsurePatches(ctx context.Context, client execer, d Dialect) error {
 	if client == nil {
 		return nil
 	}
@@ -1020,7 +1022,7 @@ func sessionMemoryEnsurePatches(ctx context.Context, client execer) error {
 		{"tool_invocation_params", "redaction_reason", "ALTER TABLE tool_invocation_params ADD COLUMN redaction_reason TEXT NOT NULL DEFAULT ''"},
 	}
 	for _, p := range patches {
-		has, err := memSqliteColumnExists(ctx, client, p.table, p.col)
+		has, err := memColumnExists(ctx, client, d, p.table, p.col)
 		if err != nil {
 			return fmt.Errorf("sessionmemory patch check %s.%s: %w", p.table, p.col, err)
 		}
@@ -1034,7 +1036,7 @@ func sessionMemoryEnsurePatches(ctx context.Context, client execer) error {
 	return nil
 }
 
-func sessionMemoryEnsureMonitorSchemaPatches(ctx context.Context, client execer) error {
+func sessionMemoryEnsureMonitorSchemaPatches(ctx context.Context, client execer, d Dialect) error {
 	if client == nil {
 		return nil
 	}
@@ -1090,7 +1092,7 @@ func sessionMemoryEnsureMonitorSchemaPatches(ctx context.Context, client execer)
 		{"audit_logs", "metadata_json", "ALTER TABLE audit_logs ADD COLUMN metadata_json TEXT NOT NULL DEFAULT ''"},
 	}
 	for _, p := range patches {
-		has, err := memSqliteColumnExists(ctx, client, p.table, p.col)
+		has, err := memColumnExists(ctx, client, d, p.table, p.col)
 		if err != nil {
 			return fmt.Errorf("monitor patch check %s.%s: %w", p.table, p.col, err)
 		}
@@ -1106,7 +1108,7 @@ func sessionMemoryEnsureMonitorSchemaPatches(ctx context.Context, client execer)
 	// silent DDL failure could leave the tables missing while the migration is
 	// marked done, making it impossible to recover without manual intervention.
 	for _, tbl := range []string{"monitor_events", "monitor_traces"} {
-		exists, err := memSqliteTableExists(ctx, client, tbl)
+		exists, err := memTableExists(ctx, client, d, tbl)
 		if err != nil {
 			return fmt.Errorf("monitor patch verify %s: %w", tbl, err)
 		}
@@ -1117,7 +1119,7 @@ func sessionMemoryEnsureMonitorSchemaPatches(ctx context.Context, client execer)
 	return nil
 }
 
-func sessionMemoryEnsureMemoryRelationPatches(ctx context.Context, client execer) error {
+func sessionMemoryEnsureMemoryRelationPatches(ctx context.Context, client execer, d Dialect) error {
 	if client == nil {
 		return nil
 	}
@@ -1130,7 +1132,7 @@ func sessionMemoryEnsureMemoryRelationPatches(ctx context.Context, client execer
 		{"memory_relations", "valid_to", "ALTER TABLE memory_relations ADD COLUMN valid_to TEXT NOT NULL DEFAULT ''"},
 	}
 	for _, p := range patches {
-		has, err := memSqliteColumnExists(ctx, client, p.table, p.col)
+		has, err := memColumnExists(ctx, client, d, p.table, p.col)
 		if err != nil {
 			return fmt.Errorf("memory relation patch check %s.%s: %w", p.table, p.col, err)
 		}
@@ -1144,34 +1146,44 @@ func sessionMemoryEnsureMemoryRelationPatches(ctx context.Context, client execer
 	return nil
 }
 
-func memSqliteColumnExists(ctx context.Context, client execer, table, column string) (bool, error) {
-	rows, err := client.QueryContext(ctx, "SELECT 1 FROM pragma_table_info(?) WHERE name = ? LIMIT 1", table, column)
+// memColumnExists is the dialect-aware variant of memSqliteColumnExists.
+// SQLite: pragma_table_info(table) WHERE name = ?
+// Postgres: information_schema.columns WHERE table_name = $1 AND column_name = $2
+func memColumnExists(ctx context.Context, client execer, d Dialect, table, column string) (bool, error) {
+	var query string
+	var args []any
+	if d.IsPostgres() {
+		query = `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2 LIMIT 1`
+		args = []any{table, column}
+	} else {
+		query = `SELECT 1 FROM pragma_table_info(?) WHERE name = ? LIMIT 1`
+		args = []any{table, column}
+	}
+	rows, err := client.QueryContext(ctx, query, args...)
 	if err != nil {
 		return false, err
 	}
 	defer rows.Close()
-	if !rows.Next() {
-		return false, nil
-	}
-	var one int
-	if err := rows.Scan(&one); err != nil {
-		return false, err
-	}
-	return true, nil
+	return rows.Next(), nil
 }
 
-func memSqliteTableExists(ctx context.Context, client execer, table string) (bool, error) {
-	rows, err := client.QueryContext(ctx, "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ? LIMIT 1", table)
+// memTableExists is the dialect-aware variant of memSqliteTableExists.
+// SQLite: sqlite_master WHERE type='table' AND name = ?
+// Postgres: information_schema.tables WHERE table_schema='public' AND table_name = $1
+func memTableExists(ctx context.Context, client execer, d Dialect, table string) (bool, error) {
+	var query string
+	var args []any
+	if d.IsPostgres() {
+		query = `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1 LIMIT 1`
+		args = []any{table}
+	} else {
+		query = `SELECT 1 FROM sqlite_master WHERE type='table' AND name = ? LIMIT 1`
+		args = []any{table}
+	}
+	rows, err := client.QueryContext(ctx, query, args...)
 	if err != nil {
 		return false, err
 	}
 	defer rows.Close()
-	if !rows.Next() {
-		return false, nil
-	}
-	var one int
-	if err := rows.Scan(&one); err != nil {
-		return false, err
-	}
-	return true, nil
+	return rows.Next(), nil
 }

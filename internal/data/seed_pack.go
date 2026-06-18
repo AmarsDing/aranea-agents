@@ -18,7 +18,7 @@ import (
 // SeedPackBuiltinTemplates 使用 Pack 引擎加载内置模板（taxonomy + agent templates + graph templates）。
 // 在 P1 阶段调用，使用 overwrite 冲突策略。
 // force=true 时跳过版本门控，强制重新导入。
-func SeedPackBuiltinTemplates(ctx context.Context, client *ent.Client, scenarioDir string, lg loggateway.Logger, force ...bool) error {
+func SeedPackBuiltinTemplates(ctx context.Context, client *ent.Client, d Dialect, scenarioDir string, lg loggateway.Logger, force ...bool) error {
 	// 版本门控：检查是否已应用（force=true 时跳过）
 	skipVersionCheck := len(force) > 0 && force[0]
 	if !skipVersionCheck {
@@ -60,7 +60,7 @@ func SeedPackBuiltinTemplates(ctx context.Context, client *ent.Client, scenarioD
 	}
 
 	// 记录版本
-	if recordErr := recordMigrationApplied(ctx, client, SeedPackBuiltinV1, "pack_builtin_v1", lg); recordErr != nil {
+	if recordErr := recordMigrationApplied(ctx, client, d, SeedPackBuiltinV1, "pack_builtin_v1", lg); recordErr != nil {
 		return entErrToBizErr(recordErr, "SEED")
 	}
 
@@ -69,7 +69,7 @@ func SeedPackBuiltinTemplates(ctx context.Context, client *ent.Client, scenarioD
 
 // SeedPackBuiltinTemplatesV2 增量导入内置模板中的 teams 定义。
 // V1 只导入了 agents + graphs，V2 补充 teams。
-func SeedPackBuiltinTemplatesV2(ctx context.Context, client *ent.Client, scenarioDir string, lg loggateway.Logger) error {
+func SeedPackBuiltinTemplatesV2(ctx context.Context, client *ent.Client, d Dialect, scenarioDir string, lg loggateway.Logger) error {
 	applied, err := isMigrationApplied(ctx, client, SeedPackBuiltinV2, lg)
 	if err != nil {
 		return entErrToBizErr(err, "SEED")
@@ -97,7 +97,7 @@ func SeedPackBuiltinTemplatesV2(ctx context.Context, client *ent.Client, scenari
 		loggateway.Int("teams_skipped", result.TeamsSkipped),
 		loggateway.Int("failures", len(result.Failures)))
 
-	if recordErr := recordMigrationApplied(ctx, client, SeedPackBuiltinV2, "pack_builtin_v2", lg); recordErr != nil {
+	if recordErr := recordMigrationApplied(ctx, client, d, SeedPackBuiltinV2, "pack_builtin_v2", lg); recordErr != nil {
 		return entErrToBizErr(recordErr, "SEED")
 	}
 

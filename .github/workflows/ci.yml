@@ -64,7 +64,11 @@ jobs:
 
       - name: ESLint check
         working-directory: web
-        run: pnpm lint -- --max-warnings=0
+        run: npx eslint "src/**/*.{ts,vue}" --max-warnings=0
+
+      - name: i18n check
+        working-directory: web
+        run: pnpm check:i18n
 
       - name: Prettier check
         working-directory: web
@@ -190,10 +194,11 @@ jobs:
       - name: Run tests with coverage
         run: |
           # EP-ENG-01: run full ./... to get real coverage numbers.
-          go test -race -cover -coverprofile=coverage.out ./... 2>&1 | tee test_output.txt || true
-          # Fail if there are actual test failures (not compile errors tolerated during migration).
-          if grep -E "^--- FAIL|^FAIL\s" test_output.txt; then
-            echo "Test failures detected" && exit 1
+          # Run with -race to detect data races; do NOT swallow race detector output.
+          go test -race -cover -coverprofile=coverage.out ./... 2>&1 | tee test_output.txt
+          # Fail if there are actual test failures or race detector reports.
+          if grep -E "^--- FAIL|^FAIL\s|^WARNING: DATA RACE" test_output.txt; then
+            echo "Test failures or data races detected" && exit 1
           fi
           go tool cover -func=coverage.out | tee coverage.txt
 
@@ -289,8 +294,9 @@ jobs:
         run: |
           total=$(go tool cover -func=coverage.out | grep "^total:" | awk '{print $3}' | tr -d '%')
           echo "Total coverage: ${total}%"
-          # Enforce ≥ 40% total coverage (M3 threshold; rises to 60% at M4, 70% at M5).
-          awk -v cov="$total" 'BEGIN { if (cov+0 < 40) { print "Coverage " cov "% is below 40% threshold"; exit 1 } else { print "Coverage OK: " cov "%" } }'
+          # Enforce ≥ 50% total coverage (stepped threshold; target 70% at M5).
+          # Per-package thresholds: biz ≥70%, service ≥60%, data ≥40%.
+          awk -v cov="$total" 'BEGIN { if (cov+0 < 50) { print "Coverage " cov "% is below 50% threshold"; exit 1 } else { print "Coverage OK: " cov "%" } }'
 
   # ── Stage 4: Security Scan ────────────────────────────────────
 

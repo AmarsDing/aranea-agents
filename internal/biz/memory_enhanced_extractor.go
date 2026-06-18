@@ -2,7 +2,6 @@ package biz
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"aranea-agents/pkg/loggateway"
@@ -52,12 +51,12 @@ type EnhancedTextExtractor interface {
 // PathBExtractor orchestrates Path B enhanced extraction and writes results to L4.
 type PathBExtractor struct {
 	extractor EnhancedTextExtractor
-	l4Writer  L4EntityWriter
+	l4Writer  PathBL4Writer
 	lg        loggateway.Logger
 }
 
 // NewPathBExtractor creates a new PathBExtractor.
-func NewPathBExtractor(extractor EnhancedTextExtractor, l4Writer L4EntityWriter, lg loggateway.Logger) *PathBExtractor {
+func NewPathBExtractor(extractor EnhancedTextExtractor, l4Writer PathBL4Writer, lg loggateway.Logger) *PathBExtractor {
 	return &PathBExtractor{
 		extractor: extractor,
 		l4Writer:  l4Writer,
@@ -96,7 +95,25 @@ func (pe *PathBExtractor) WriteEntities(ctx context.Context, agentID, userID str
 		if name == "" {
 			continue
 		}
-		entID := fmt.Sprintf("l4-%s-%s-%s", ent.EntityType, agentID, slugEntityName(name))
+		nameNorm := strings.ToLower(truncateRunes(name, 80))
+
+		// Read-then-write: resolve existing entity by (scope, type,
+		// name_normalized). If found, reuse its ID to maintain identity
+		// stability across re-extraction (BUG-03/BUG-07 fix). On read
+		// failure, degrade to a fresh UUID so consolidation is not lost.
+		entID := newBizID()
+		if pe.l4Writer != nil {
+			existing, ok, err := pe.l4Writer.GetEntityByScopeKey(ctx, "agent", agentID, ent.EntityType, nameNorm)
+			if err != nil {
+				pe.lg.Warn("PathB: failed to resolve existing entity; minting fresh UUID",
+					loggateway.StepID("memory.path_b_resolve_fail"),
+					loggateway.Str("entity_type", ent.EntityType),
+					loggateway.Str("name", name),
+					loggateway.Err(err))
+			} else if ok && existing.ID != "" {
+				entID = existing.ID
+			}
+		}
 		entityIDMap[strings.ToLower(name)] = entID
 
 		if err := pe.l4Writer.UpsertEntity(ctx, L4EntityWrite{
@@ -106,7 +123,7 @@ func (pe *PathBExtractor) WriteEntities(ctx context.Context, agentID, userID str
 			UserID:         userID,
 			EntityType:     ent.EntityType,
 			Name:           truncateRunes(name, 80),
-			NameNormalized: strings.ToLower(truncateRunes(name, 80)),
+			NameNormalized: nameNorm,
 			Description:    ent.Description,
 			Importance:     entityImportance(ent.EntityType),
 			Confidence:     ent.Confidence,

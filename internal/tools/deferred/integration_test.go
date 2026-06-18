@@ -134,7 +134,7 @@ func TestDeferredIntegration_DeferredCallableLazyResolution(t *testing.T) {
 		Name:        "weather_lookup",
 		Description: "Look up weather for a city",
 	}
-	dt := NewDeferredCallableTool(decl, factory, loggateway.Global())
+	dt := NewDeferredCallableTool(decl, factory, loggateway.NewNoop())
 
 	if atomic.LoadInt32(&factoryCalls) != 0 {
 		t.Fatal("factory should not be called on construction")

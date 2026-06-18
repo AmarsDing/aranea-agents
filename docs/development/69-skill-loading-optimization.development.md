@@ -42,7 +42,7 @@
 | 步骤 | 内容 | 状态 |
 |------|------|------|
 | 1 | `skill_invocation` Schema 增加 `routed_slugs` / `loaded_slug` 字段 | ✅ |
-| 2 | `resolveAndWriteSkillState` 写入 `routed_slugs` 到 Invocation State | ✅ |
+| 2 | `resolveAndWriteSkillState` 在 Progressive 模式下写入 `routed_slugs` 到 Invocation State | ✅ |
 | 3 | `newSkillLoadCaptureAfterHook` 捕获 `skill_load` / `skill_run` 的 slug | ✅ |
 | 4 | `recordSkillInvocation` 读取并持久化 `routed_slugs` / `loaded_slug` | ✅ |
 | 5 | `SkillHealthDetail` 增加 `RouteHitRate7d` / `RouteHitRate30d` | ✅ |
@@ -76,7 +76,7 @@
 | 项 | 状态 | 证据 |
 |----|------|------|
 | `skill_invocation` 表新字段 | ✅ | `routed_slugs` JSON + `loaded_slug` String(256) 已落地 |
-| Invocation State 写入 | ✅ | `skillRoutedSlugsStateKey` / `skillLoadedSlugStateKey` 常量已定义 |
+| Invocation State 写入 | ✅ | `skillRoutedSlugsStateKey`（Progressive 模式写入）/ `skillLoadedSlugStateKey`（AfterTool 钩子写入）常量已定义 |
 | AfterTool 钩子捕获 slug | ✅ | `newSkillLoadCaptureAfterHook` 在 `callback_chain.go` 注册（priority 0 < 50） |
 | Recorder 读取 State | ✅ | `tool_invocation_recorder.go:257,267` 读取并写入 `SkillInvocationWrite` |
 | Biz 层 `InvocationWrite` 扩展 | ✅ | `RoutedSlugs []string` / `LoadedSlug string` 字段已添加 |

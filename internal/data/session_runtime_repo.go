@@ -53,7 +53,7 @@ func (r *sessionRuntimeRepo) GetSessionRuntime(ctx context.Context, sessionID st
 		if ent.IsNotFound(err) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, entErrToBizErr(err, "SESSION_RUNTIME")
 	}
 	return entSessionRuntimeToBiz(row), nil
 }
@@ -93,7 +93,7 @@ func (r *sessionRuntimeRepo) UpsertSessionRuntime(ctx context.Context, sessionID
 	if err != nil {
 		r.data.lg.Warn("upsert session runtime failed", loggateway.StepID("data.session_runtime.upsert"), loggateway.Err(err))
 	}
-	return err
+	return entErrToBizErr(err, "SESSION_RUNTIME")
 }
 
 // TransitionSessionStatus updates the session status in the sessions table.
@@ -120,7 +120,7 @@ func (r *sessionRuntimeRepo) TransitionSessionStatus(ctx context.Context, sessio
 		Save(ctx)
 	if err != nil {
 		r.data.lg.Warn("transition session status failed", loggateway.StepID("data.session_runtime.transition_status"), loggateway.Err(err))
-		return err
+		return entErrToBizErr(err, "SESSION_RUNTIME")
 	}
 	if n == 0 {
 		r.data.lg.Warn("transition session status: no rows affected (status already changed?)", loggateway.StepID("data.session_runtime.transition_status_noop"), loggateway.Str("session_id", sessionID), loggateway.Str("current_status", currentStatus), loggateway.Str("new_status", newStatus))

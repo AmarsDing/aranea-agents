@@ -245,13 +245,15 @@ func (r *SkillIntelligenceRepo) GetHealthMetrics(ctx context.Context, skillID st
 	sinceStr := since.UTC().Format(time.RFC3339)
 
 	// Main aggregation query — computes count, success_count, avg_duration, avg_token_usage in SQL.
-	const aggQuery = `SELECT
+	d := r.data.Dialect()
+	tokenUsageTotal := d.JSONExtract("token_usage", "total")
+	aggQuery := d.RenumberPlaceholders(`SELECT
   COUNT(*) as invocation_count,
   SUM(CASE WHEN outcome = 'success' OR (outcome = '' AND (status = 'completed' OR status = 'success')) THEN 1 ELSE 0 END) as success_count,
   AVG(CASE WHEN duration_ms > 0 THEN duration_ms END) as avg_duration_ms,
-  COALESCE(AVG(CASE WHEN token_usage IS NOT NULL THEN json_extract(token_usage, '$.total') END), 0) as avg_token_usage
+  COALESCE(AVG(CASE WHEN token_usage IS NOT NULL THEN ` + tokenUsageTotal + ` END), 0) as avg_token_usage
 FROM skill_invocation
-WHERE skill_id = ? AND created_at >= ?`
+WHERE skill_id = ? AND created_at >= ?`)
 
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, aggQuery, skillID, sinceStr)
 	if err != nil {

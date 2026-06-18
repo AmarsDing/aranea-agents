@@ -17,9 +17,14 @@ func NewSeedVersionRepo(d *Data) biz.SeedVersionRepo {
 }
 
 func (r *seedVersionRepo) IsApplied(ctx context.Context, version int) (bool, error) {
-	return IsSeedApplied(ctx, r.data.RW().Read(ctx), version, r.data.lg)
+	applied, err := IsSeedApplied(ctx, r.data.RW().Read(ctx), version, r.data.lg)
+	if err != nil {
+		return false, entErrToBizErr(err, "SEED_VERSION")
+	}
+	return applied, nil
 }
 
 func (r *seedVersionRepo) MarkApplied(ctx context.Context, version int, name string) error {
-	return MarkSeedApplied(ctx, r.data.RW().Write(ctx), version, name, r.data.lg)
+	err := MarkSeedApplied(ctx, r.data.RW().Write(ctx), r.data.Dialect(), version, name, r.data.lg)
+	return entErrToBizErr(err, "SEED_VERSION")
 }

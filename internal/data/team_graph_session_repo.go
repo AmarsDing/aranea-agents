@@ -78,7 +78,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		sess.Status, sess.RegisteredAt, sess.LastActivityAt,
 		sess.CreatedAt, sess.UpdatedAt,
 	)
-	return err
+	return entErrToBizErr(err, "TEAM_GRAPH_SESSION")
 }
 
 func (r *teamGraphSessionRepo) UpdateSessionStatus(ctx context.Context, execID, status string) error {
@@ -92,7 +92,7 @@ UPDATE team_graph_sessions SET status=?, last_activity_at=?, updated_at=?
 WHERE exec_id=?`,
 		status, now, now, strings.TrimSpace(execID),
 	)
-	return err
+	return entErrToBizErr(err, "TEAM_GRAPH_SESSION")
 }
 
 func (r *teamGraphSessionRepo) GetSession(ctx context.Context, execID string) (biz.TeamGraphSession, error) {
@@ -103,7 +103,7 @@ func (r *teamGraphSessionRepo) GetSession(ctx context.Context, execID string) (b
 	rows, err := db.QueryContext(ctx, teamGraphSessionSelectSQL+` WHERE exec_id=? LIMIT 1`,
 		strings.TrimSpace(execID))
 	if err != nil {
-		return biz.TeamGraphSession{}, err
+		return biz.TeamGraphSession{}, entErrToBizErr(err, "TEAM_GRAPH_SESSION")
 	}
 	defer rows.Close()
 	if !rows.Next() {
@@ -121,14 +121,14 @@ func (r *teamGraphSessionRepo) ListActiveSessions(ctx context.Context) ([]biz.Te
 		` WHERE status IN (?, ?) ORDER BY created_at ASC`,
 		biz.TeamRunStatusRunning, biz.TeamRunStatusWaitingHuman)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TEAM_GRAPH_SESSION")
 	}
 	defer rows.Close()
 	var out []biz.TeamGraphSession
 	for rows.Next() {
 		s, err := scanTeamGraphSessionRow(rows)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "TEAM_GRAPH_SESSION")
 		}
 		out = append(out, s)
 	}
@@ -142,7 +142,7 @@ func (r *teamGraphSessionRepo) DeleteSession(ctx context.Context, execID string)
 	}
 	_, err := db.ExecContext(ctx, `DELETE FROM team_graph_sessions WHERE exec_id=?`,
 		strings.TrimSpace(execID))
-	return err
+	return entErrToBizErr(err, "TEAM_GRAPH_SESSION")
 }
 
 func (r *teamGraphSessionRepo) MarkOrphanedSessionsTerminal(ctx context.Context) (int, error) {
@@ -159,7 +159,7 @@ WHERE status=?`,
 		biz.TeamRunStatusRunning,
 	)
 	if err != nil {
-		return 0, err
+		return 0, entErrToBizErr(err, "TEAM_GRAPH_SESSION")
 	}
 	n, _ := res.RowsAffected()
 	return int(n), nil

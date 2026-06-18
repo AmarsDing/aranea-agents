@@ -28,7 +28,7 @@ func (r *evolutionMetricsRepo) GetToolSuccessRate(ctx context.Context, agentID s
 		).
 		All(ctx)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, entErrToBizErr(err, "EVOLUTION_METRICS")
 	}
 	var total, success int64
 	dayBuckets := make(map[string]struct{ total, success int64 })
@@ -63,7 +63,7 @@ func (r *evolutionMetricsRepo) GetRetrievalQuality(ctx context.Context, agentID 
 		).
 		All(ctx)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, entErrToBizErr(err, "EVOLUTION_METRICS")
 	}
 	var total, success int64
 	dayBuckets := make(map[string]struct{ total, success int64 })
@@ -96,7 +96,7 @@ func (r *evolutionMetricsRepo) GetEpisodeCount(ctx context.Context, agentID stri
 		).
 		Count(ctx)
 	if err != nil {
-		return 0, err
+		return 0, entErrToBizErr(err, "EVOLUTION_METRICS")
 	}
 	return count, nil
 }
@@ -110,7 +110,7 @@ func (r *evolutionMetricsRepo) GetNegativeFeedbackCount(ctx context.Context, age
 		).
 		Count(ctx)
 	if err != nil {
-		return 0, err
+		return 0, entErrToBizErr(err, "EVOLUTION_METRICS")
 	}
 	return count, nil
 }

@@ -163,6 +163,21 @@ type Data struct {
 	// txTimeout is the hard deadline for ExecInTx transactions. Default 30s.
 	// Set to 0 to disable the timeout (e.g., for long-running Postgres migrations).
 	txTimeout time.Duration
+	// dialect identifies the primary database dialect (sqlite or postgres).
+	// Controls dialect-aware SQL generation in Repo implementations.
+	dialect Dialect
+	// pgDSN stores the Postgres connection string when driver=postgres.
+	// Used by framework components (e.g. trpcsession postgres service) that
+	// create their own connection pools from a DSN rather than sharing *sql.DB.
+	pgDSN string
+}
+
+// Dialect returns the active primary database dialect.
+func (d *Data) Dialect() Dialect {
+	if d == nil {
+		return DialectSQLite
+	}
+	return d.dialect
 }
 
 // Ent returns the SQLite-backed Ent client.
@@ -183,6 +198,7 @@ func (d *Data) SetEntClientForTest(client *ent.Client, rawDB *sql.DB, lg loggate
 	d.rw = NewReadWriteClient(client, client)
 	d.rwDB = NewReadWriteDB(rawDB, rawDB)
 	d.txTimeout = 30 * time.Second
+	d.dialect = DialectSQLite
 }
 
 // SetTxTimeout configures the hard deadline for ExecInTx transactions.
@@ -281,6 +297,17 @@ func (d *Data) PostgresRead() *sql.DB {
 		return d.pgRead
 	}
 	return d.pg
+}
+
+// PostgresDSN returns the Postgres connection string when driver=postgres.
+// Returns empty string when the primary database is SQLite.
+// Used by framework components (e.g. trpcsession postgres service) that
+// create their own connection pools from a DSN rather than sharing *sql.DB.
+func (d *Data) PostgresDSN() string {
+	if d == nil {
+		return ""
+	}
+	return d.pgDSN
 }
 
 // VectorDim returns configured embedding dimension for agent memory inserts / search.
@@ -420,6 +447,7 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 	var pgRead *sql.DB
 	var pgOpened bool
 	var st *Data
+	var activeDialect Dialect
 
 	cleanup := func() {
 		if st != nil {
@@ -438,41 +466,62 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 		if entClient != nil {
 			_ = entClient.Close()
 		}
-		if readClient != nil {
+		if readClient != nil && readClient != entClient {
 			_ = readClient.Close()
 		}
 		if rawDB != nil {
 			rawDB.Close()
 		}
-		if readDB != nil {
+		if readDB != nil && readDB != rawDB {
 			readDB.Close()
 		}
 		if pgOpened {
-			if pg != nil {
+			// When driver=postgres, pg==rawDB and pgRead==readDB, so they're
+			// already closed above. Only close separately for the SQLite+PG case.
+			if pg != nil && pg != rawDB {
 				pg.Close()
 			}
-			if pgRead != nil {
+			if pgRead != nil && pgRead != readDB {
 				pgRead.Close()
 			}
 		}
 	}
 
-	if err := runStartupStep("initSQLite", func() error {
-		var stepErr error
-		entClient, rawDB, readClient, readDB, stepErr = initSQLite(c, lg)
-		return stepErr
-	}, lg); err != nil {
-		return nil, nil, err
-	}
+	driver := strings.TrimSpace(strings.ToLower(c.GetDriver()))
+	usePostgresAsPrimary := driver == "postgres"
 
-	if err := runStartupStep("initPostgres", func() error {
-		var stepErr error
-		pg, pgRead, stepErr = initPostgres(c, lg)
+	if usePostgresAsPrimary {
+		if err := runStartupStep("initPostgresEnt", func() error {
+			var stepErr error
+			entClient, rawDB, readClient, readDB, stepErr = initPostgresEnt(c, lg)
+			return stepErr
+		}, lg); err != nil {
+			return nil, nil, err
+		}
+		// Postgres is primary: pgvector/WAL/EventStore share the same pool.
+		pg = rawDB
+		pgRead = readDB
 		pgOpened = true
-		return stepErr
-	}, lg); err != nil {
-		cleanup()
-		return nil, nil, err
+		activeDialect = DialectPostgres
+	} else {
+		if err := runStartupStep("initSQLite", func() error {
+			var stepErr error
+			entClient, rawDB, readClient, readDB, stepErr = initSQLite(c, lg)
+			return stepErr
+		}, lg); err != nil {
+			return nil, nil, err
+		}
+
+		if err := runStartupStep("initPostgres", func() error {
+			var stepErr error
+			pg, pgRead, stepErr = initPostgres(c, lg)
+			pgOpened = true
+			return stepErr
+		}, lg); err != nil {
+			cleanup()
+			return nil, nil, err
+		}
+		activeDialect = DialectSQLite
 	}
 
 	if err := runStartupStep("seedAdminUsers", func() error {
@@ -510,14 +559,18 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 
 	p1Ctx, p1Cancel := context.WithCancel(context.Background())
 	p1Done := make(chan struct{})
-	st = &Data{entClient: entClient, rawDB: rawDB, readClient: readClient, readDB: readDB, pg: pg, pgRead: pgRead, rw: NewReadWriteClient(entClient, readClient), rwDB: NewReadWriteDB(rawDB, readDB), vectorDim: vdim, vectorStore: vs, reranker: newMemoryReranker(lg), readiness: newReadinessGate(), p1Cancel: p1Cancel, p1Done: p1Done, lg: lg, txTimeout: 30 * time.Second}
+	pgDSNForData := ""
+	if usePostgresAsPrimary {
+		pgDSNForData = postgresVectorDSN(c)
+	}
+	st = &Data{entClient: entClient, rawDB: rawDB, readClient: readClient, readDB: readDB, pg: pg, pgRead: pgRead, rw: NewReadWriteClient(entClient, readClient), rwDB: NewReadWriteDB(rawDB, readDB), vectorDim: vdim, vectorStore: vs, reranker: newMemoryReranker(lg), readiness: newReadinessGate(), p1Cancel: p1Cancel, p1Done: p1Done, lg: lg, txTimeout: 30 * time.Second, dialect: activeDialect, pgDSN: pgDSNForData}
 
 	safego.Go(appctx.Ctx(), "startup.p1", func() {
 		defer close(p1Done)
 
 		var p1Err error
 		if err := runStartupStep("ensureSchemaDDL", func() error {
-			return ensureSchemaDDL(rawDB, entClient, st.lg)
+			return ensureSchemaDDL(rawDB, entClient, st.Dialect(), st.lg)
 		}, st.lg); err != nil {
 			if p1Ctx.Err() != nil {
 				return
@@ -719,7 +772,8 @@ func initSQLite(c *conf.Data, lg loggateway.Logger) (*ent.Client, *sql.DB, *ent.
 	ctxEnt := context.Background()
 
 	// Pre-Ent migration: rename industry_taxonomy → organizations before Ent auto-creates the table.
-	PreEntOrganizationRedesignMigration(ctxEnt, rawDB, lg)
+	// This runs during initSQLite, so the dialect is SQLite.
+	PreEntOrganizationRedesignMigration(ctxEnt, rawDB, DialectSQLite, lg)
 
 	if strings.TrimSpace(os.Getenv("DEPLOY_ENV")) == "dev" {
 		entClient, err = migrateDev(ctxEnt, entClient, "sqlite(ent)")
@@ -740,8 +794,11 @@ func initSQLite(c *conf.Data, lg loggateway.Logger) (*ent.Client, *sql.DB, *ent.
 		lg.Error("init sqlite failed", loggateway.StepID("data.init_sqlite"), loggateway.Str("step", "read_db_open"), loggateway.Err(err))
 		return nil, nil, nil, nil, fmt.Errorf("failed opening sqlite read db: %w", err)
 	}
-	readDB.SetMaxOpenConns(2)
-	readDB.SetMaxIdleConns(2)
+	// P1: Expand read connection pool from 2 to 8. SQLite WAL mode supports
+	// concurrent readers without blocking the writer, so this is safe and
+	// reduces read contention under multi-session load.
+	readDB.SetMaxOpenConns(8)
+	readDB.SetMaxIdleConns(8)
 	readDB.SetConnMaxIdleTime(5 * time.Minute)
 	if driverName == dialect.SQLite {
 		sqliteReadPragmas := []string{
@@ -766,9 +823,82 @@ func initSQLite(c *conf.Data, lg loggateway.Logger) (*ent.Client, *sql.DB, *ent.
 	return entClient, rawDB, readClient, readDB, nil
 }
 
+// initPostgresEnt opens Postgres as the primary Ent database (driver=postgres).
+// Returns write/read Ent clients and write/read *sql.DB handles.
+// The write pool (MaxOpen=16) handles Ent writes + raw SQL writes; the read
+// pool (MaxOpen=32) handles Ent reads + raw SQL reads. Both pools share the
+// same DSN from data.postgres.source.
+func initPostgresEnt(c *conf.Data, lg loggateway.Logger) (*ent.Client, *sql.DB, *ent.Client, *sql.DB, error) {
+	pgDSN := postgresVectorDSN(c)
+	if pgDSN == "" {
+		return nil, nil, nil, nil, fmt.Errorf("data.postgres.source is required when driver=postgres")
+	}
+
+	// Write pool: 16 connections (Ent writes, raw SQL writes, DDL).
+	writeDB, err := sql.Open("postgres", pgDSN)
+	if err != nil {
+		lg.Error("init postgres ent failed", loggateway.StepID("data.init_pg_ent"), loggateway.Str("step", "sql_open_write"), loggateway.Err(err))
+		return nil, nil, nil, nil, fmt.Errorf("open postgres write pool: %w", err)
+	}
+	writeDB.SetMaxOpenConns(16)
+	writeDB.SetMaxIdleConns(4)
+	writeDB.SetConnMaxLifetime(30 * time.Minute)
+	writeDB.SetConnMaxIdleTime(5 * time.Minute)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err = writeDB.PingContext(ctx); err != nil {
+		writeDB.Close()
+		lg.Error("init postgres ent failed", loggateway.StepID("data.init_pg_ent"), loggateway.Str("step", "ping_write"), loggateway.Err(err))
+		return nil, nil, nil, nil, fmt.Errorf("ping postgres write pool: %w", err)
+	}
+
+	// Read pool: 32 connections (Ent reads, raw SQL reads, vector search).
+	readDB, err := sql.Open("postgres", pgDSN)
+	if err != nil {
+		writeDB.Close()
+		lg.Error("init postgres ent failed", loggateway.StepID("data.init_pg_ent"), loggateway.Str("step", "sql_open_read"), loggateway.Err(err))
+		return nil, nil, nil, nil, fmt.Errorf("open postgres read pool: %w", err)
+	}
+	readDB.SetMaxOpenConns(32)
+	readDB.SetMaxIdleConns(8)
+	readDB.SetConnMaxLifetime(30 * time.Minute)
+	readDB.SetConnMaxIdleTime(5 * time.Minute)
+
+	// Ent write client.
+	writeDrv := entsql.OpenDB(dialect.Postgres, writeDB)
+	entClient := ent.NewClient(ent.Driver(writeDrv), ent.Log(entLogAdapter(lg)))
+
+	ctxEnt := context.Background()
+	if strings.TrimSpace(os.Getenv("DEPLOY_ENV")) == "dev" {
+		entClient, err = migrateDev(ctxEnt, entClient, "postgres(ent)")
+		if err != nil {
+			writeDB.Close()
+			readDB.Close()
+			lg.Error("init postgres ent failed", loggateway.StepID("data.init_pg_ent"), loggateway.Str("step", "migrate_dev"), loggateway.Err(err))
+			return nil, nil, nil, nil, err
+		}
+	} else if err = entClient.Schema.Create(ctxEnt); err != nil {
+		writeDB.Close()
+		readDB.Close()
+		lg.Error("init postgres ent failed", loggateway.StepID("data.init_pg_ent"), loggateway.Str("step", "schema_create"), loggateway.Err(err))
+		return nil, nil, nil, nil, fmt.Errorf("ent schema create (postgres): %w", err)
+	}
+
+	// Ent read client.
+	readDrv := entsql.OpenDB(dialect.Postgres, readDB)
+	readClient := ent.NewClient(ent.Driver(readDrv), ent.Log(entLogAdapter(lg)))
+
+	lg.Info("postgres ent initialized",
+		loggateway.StepID("data.init_pg_ent"),
+		loggateway.Str("driver", "postgres"))
+	return entClient, writeDB, readClient, readDB, nil
+}
+
 // ensureSchemaDDL applies Ent and raw SQL schema patches (DDL only; no data migrations).
-func ensureSchemaDDL(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
-	return runDDLMigrations(rawDB, entClient, lg)
+// Uses the active dialect for idempotent error detection.
+func ensureSchemaDDL(rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
+	return runDDLMigrationsWithDialect(rawDB, entClient, d, lg)
 }
 
 // runPendingDataMigrations applies one-time data migrations (schema_migrations gate).
@@ -788,15 +918,15 @@ func runPendingDataMigrations(d *Data) error {
 		d.lg.Info("legacy trpc memory backfill migrated",
 			loggateway.StepID("data.startup"), loggateway.Int("migrated", migrated))
 	}
-	if err := RunTurnIndexToTurnIDMigration(ctx, entClient, d.lg); err != nil {
+	if err := RunTurnIndexToTurnIDMigration(ctx, entClient, d.Dialect(), d.lg); err != nil {
 		d.lg.Error("migration step failed", loggateway.StepID("data.migration.turn_index_to_turn_id"), loggateway.Err(err))
 		return fmt.Errorf("turn_index migration: %w", err)
 	}
-	if err := RunSessionStatusIdleMigration(ctx, entClient, d.lg); err != nil {
+	if err := RunSessionStatusIdleMigration(ctx, entClient, d.Dialect(), d.lg); err != nil {
 		d.lg.Error("migration step failed", loggateway.StepID("data.migration.session_status_idle"), loggateway.Err(err))
 		return fmt.Errorf("session status migration: %w", err)
 	}
-	if err := RunOrganizationRedesignMigration(ctx, entClient, d.lg); err != nil {
+	if err := RunOrganizationRedesignMigration(ctx, entClient, d.Dialect(), d.lg); err != nil {
 		d.lg.Error("migration step failed", loggateway.StepID("data.migration.organization_redesign"), loggateway.Err(err))
 		return fmt.Errorf("organization redesign migration: %w", err)
 	}
@@ -805,7 +935,7 @@ func runPendingDataMigrations(d *Data) error {
 
 // ensureAllSchemas applies DDL patches and pending data migrations (compat wrapper for tests).
 func ensureAllSchemas(rawDB *sql.DB, d *Data, lg loggateway.Logger) error {
-	if err := ensureSchemaDDL(rawDB, d.Ent(), lg); err != nil {
+	if err := ensureSchemaDDL(rawDB, d.Ent(), d.Dialect(), lg); err != nil {
 		return err
 	}
 	return runPendingDataMigrations(d)
@@ -977,10 +1107,10 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 	scenarioDir := biz.ScenarioDir()
 
 	seedStep("data.seed.pack_builtin_templates", func(ctx context.Context) error {
-		return SeedPackBuiltinTemplates(ctx, entClient, scenarioDir, lg)
+		return SeedPackBuiltinTemplates(ctx, entClient, d.Dialect(), scenarioDir, lg)
 	})
 	seedStep("data.seed.pack_builtin_templates_v2", func(ctx context.Context) error {
-		return SeedPackBuiltinTemplatesV2(ctx, entClient, scenarioDir, lg)
+		return SeedPackBuiltinTemplatesV2(ctx, entClient, d.Dialect(), scenarioDir, lg)
 	})
 	seedStep("data.seed.spirit_prompt_files", func(ctx context.Context) error {
 		return SeedSpiritPromptFiles(ctx, entClient, scenarioDir, lg)
@@ -1045,7 +1175,7 @@ func NewCLIData(client *ent.Client, rawDB *sql.DB, lg loggateway.Logger) *Data {
 			vs = s
 		}
 	}
-	return &Data{entClient: client, readClient: client, rawDB: rawDB, readDB: rawDB, rw: NewReadWriteClient(client, client), rwDB: NewReadWriteDB(rawDB, rawDB), vectorStore: vs, reranker: newMemoryReranker(lg), lg: lg}
+	return &Data{entClient: client, readClient: client, rawDB: rawDB, readDB: rawDB, rw: NewReadWriteClient(client, client), rwDB: NewReadWriteDB(rawDB, rawDB), vectorStore: vs, reranker: newMemoryReranker(lg), lg: lg, dialect: DialectSQLite}
 }
 
 // OpenSQLiteEntClient opens SQLite for offline CLI maintenance tools (e.g. memory-migrate).

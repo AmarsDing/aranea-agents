@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	biztypes "aranea-agents/internal/biz/types"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/telemetry/turntrace"
 	"aranea-agents/pkg/loggateway"
 
@@ -189,6 +190,9 @@ func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID string, d
 	}()
 
 	start := time.Now().UTC()
+	defer func() {
+		metrics.SpiritPlanDuration.Observe(time.Since(start).Seconds())
+	}()
 	planInput := biz.PlanInput{
 		UserMessage:     taskPrompt,
 		SpiritSessionID: spiritSessionID,
@@ -225,6 +229,9 @@ func executeAllocatePhase(ctx context.Context, taskPlan *biz.TaskPlan, deps plan
 	}()
 
 	start := time.Now().UTC()
+	defer func() {
+		metrics.SpiritAllocDuration.Observe(time.Since(start).Seconds())
+	}()
 	allocPlan, err = deps.allocator.Allocate(ctx, taskPlan)
 	if err != nil {
 		deps.lg.Warn("plan_and_execute: allocation failed, returning plan only",
@@ -501,4 +508,77 @@ func spiritSessionIDFromCtx(ctx context.Context) string {
 		return inv.Session.ID
 	}
 	return ""
+}
+
+// ---------------------------------------------------------------------------
+// Batch tool execution integration (B5: ParallelToolExecutor integration)
+// ---------------------------------------------------------------------------
+
+// BatchExecuteSpiritTools runs a batch of tool calls using ParallelToolExecutor
+// when available, falling back to serial execution when the executor is nil or
+// Execute returns an error (e.g., dependency cycle, context cancellation).
+//
+// The Wire-bound executor provides configuration (maxConcurrency, isolators);
+// the caller-supplied handler dispatches each call to the appropriate tool
+// implementation. A fresh executor is constructed with the handler so the
+// Wire-bound singleton is never mutated.
+//
+// Use this helper for batch tool call scenarios such as multi_tool_use.parallel
+// patterns where multiple independent (or dependency-ordered) tool calls should
+// run concurrently for lower latency.
+func BatchExecuteSpiritTools(
+	ctx context.Context,
+	exec *ParallelToolExecutor,
+	handler ToolHandler,
+	calls []ToolCall,
+	lg loggateway.Logger,
+) []ToolResult {
+	if len(calls) == 0 {
+		return nil
+	}
+	if exec != nil && handler != nil {
+		// Reuse the Wire-bound executor's concurrency setting; the handler is
+		// caller-supplied because tool dispatch is agent/session-specific.
+		parallelExec := NewParallelToolExecutor(handler, lg, WithMaxConcurrency(exec.maxConcurrency))
+		results, err := parallelExec.Execute(ctx, calls)
+		if err == nil {
+			return results
+		}
+		if lg != nil {
+			lg.Warn("ParallelToolExecutor 执行失败，降级为串行执行",
+				loggateway.StepID("spirit.batch.fallback"),
+				loggateway.Err(err),
+			)
+		}
+	}
+	return executeToolCallsSerial(ctx, handler, calls, lg)
+}
+
+// executeToolCallsSerial runs tool calls one by one, respecting ctx cancellation.
+// A nil handler produces failure results so callers can distinguish "no handler"
+// from "handler returned error".
+func executeToolCallsSerial(ctx context.Context, handler ToolHandler, calls []ToolCall, lg loggateway.Logger) []ToolResult {
+	results := make([]ToolResult, 0, len(calls))
+	for _, call := range calls {
+		if ctx.Err() != nil {
+			results = append(results, ToolResult{
+				CallID:  call.ID,
+				Name:    call.Name,
+				Success: false,
+				Error:   ctx.Err().Error(),
+			})
+			break
+		}
+		if handler == nil {
+			results = append(results, ToolResult{
+				CallID:  call.ID,
+				Name:    call.Name,
+				Success: false,
+				Error:   "no tool handler configured",
+			})
+			continue
+		}
+		results = append(results, handler(ctx, call))
+	}
+	return results
 }

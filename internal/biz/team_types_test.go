@@ -115,6 +115,9 @@ func TestValidTeamStatusTransition(t *testing.T) {
 		{TeamStatusRunning, TeamStatusInterrupted},
 		// interrupted → running (recovery)
 		{TeamStatusInterrupted, TeamStatusRunning},
+		// failed/cancelled → pending (recover, used by RetryTeam)
+		{TeamStatusFailed, TeamStatusPending},
+		{TeamStatusCancelled, TeamStatusPending},
 	}
 	for _, pair := range valid {
 		if !sm.CanTransition(TeamState(pair[0]), TeamState(pair[1])) {
@@ -123,13 +126,11 @@ func TestValidTeamStatusTransition(t *testing.T) {
 	}
 
 	invalid := [][2]string{
-		// Terminal states cannot transition out
+		// Terminal states cannot transition out (archived is the only true terminal)
 		{TeamStatusCompleted, TeamStatusRunning},
 		{TeamStatusCompleted, TeamStatusPending},
 		{TeamStatusFailed, TeamStatusRunning},
-		{TeamStatusFailed, TeamStatusPending},
 		{TeamStatusCancelled, TeamStatusRunning},
-		{TeamStatusCancelled, TeamStatusPending},
 		// Cannot skip states
 		{TeamStatusPending, TeamStatusCompleted},
 		{TeamStatusPending, TeamStatusFailed},

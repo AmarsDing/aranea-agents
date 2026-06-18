@@ -352,6 +352,21 @@ type RunHeartbeatContent struct {
 	ETA             string  `json:"eta"`
 }
 
+// GraphTopologyEvolvedContent is the metadata payload for
+// EnvelopeTypeGraphTopologyEvolved (P2-3). Carried in Envelope.Metadata so
+// subscribers can render the topology evolution on the frontend timeline.
+// Classified as Important (AS-EVT-01): loss causes topology drift but
+// execution continues.
+type GraphTopologyEvolvedContent struct {
+	ExecutionID string `json:"execution_id"`
+	GraphID     string `json:"graph_id"`
+	FromNode    string `json:"from_node"`
+	ToNode      string `json:"to_node"`
+	EdgeKind    string `json:"edge_kind"`
+	Reason      string `json:"reason"`
+	Evidence    string `json:"evidence"`
+}
+
 // NewEnvelope creates a new Envelope with a generated ID and current timestamp.
 func NewEnvelope(typ EnvelopeType, author, sessionID string) Envelope {
 	return Envelope{

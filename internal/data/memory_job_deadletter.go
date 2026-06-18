@@ -8,6 +8,7 @@ package data
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -36,9 +37,17 @@ func (r *MemoryJobDeadLetterRepo) ensureTable() {
 	if db == nil {
 		return
 	}
-	_, err := db.Exec(`
+	// Dialect-aware auto-increment syntax:
+	// SQLite: INTEGER PRIMARY KEY AUTOINCREMENT
+	// Postgres: BIGSERIAL PRIMARY KEY
+	d := r.data.Dialect()
+	idColDef := "id INTEGER PRIMARY KEY AUTOINCREMENT"
+	if d.IsPostgres() {
+		idColDef = "id BIGSERIAL PRIMARY KEY"
+	}
+	_, err := db.Exec(fmt.Sprintf(`
 CREATE TABLE IF NOT EXISTS memory_job_deadletter (
-    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    %s,
     enqueued_at      INTEGER NOT NULL,
     failed_at        INTEGER NOT NULL,
     session_id       TEXT    NOT NULL DEFAULT '',
@@ -52,7 +61,7 @@ CREATE TABLE IF NOT EXISTS memory_job_deadletter (
     last_error       TEXT    NOT NULL DEFAULT '',
     state            TEXT    NOT NULL DEFAULT 'pending'
                      CHECK(state IN ('pending','replayed','abandoned'))
-)`)
+)`, idColDef))
 	if err != nil {
 		r.data.lg.Warn("ensureTable: CREATE TABLE memory_job_deadletter failed", loggateway.StepID("memory.extract_fail"), loggateway.Err(err))
 		return

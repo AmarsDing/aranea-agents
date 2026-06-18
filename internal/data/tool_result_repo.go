@@ -36,14 +36,14 @@ func (r *ToolResultBlobRepo) SaveBlob(ctx context.Context, blob *biz.ToolResultB
 	if err != nil {
 		r.data.lg.Warn("tool result blob save failed", loggateway.StepID("data.tool.blob_save"), loggateway.Err(err))
 	}
-	return err
+	return entErrToBizErr(err, "TOOL_RESULT")
 }
 
 func (r *ToolResultBlobRepo) GetBlob(ctx context.Context, id string) (*biz.ToolResultBlob, error) {
 	client := r.data.RW().Read(ctx)
 	row, err := client.ToolResultBlob.Get(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TOOL_RESULT")
 	}
 	return entToolResultBlobToBiz(row), nil
 }
@@ -57,7 +57,7 @@ func (r *ToolResultBlobRepo) ListBlobsBySession(ctx context.Context, sessionID s
 		).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TOOL_RESULT")
 	}
 	result := make([]*biz.ToolResultBlob, len(rows))
 	for i, row := range rows {
@@ -90,7 +90,7 @@ func (r *ToolResultReplacementRepo) SaveReplacement(ctx context.Context, rep *bi
 	if err != nil {
 		r.data.lg.Warn("tool result replacement save failed", loggateway.StepID("data.tool.replacement_save"), loggateway.Err(err))
 	}
-	return err
+	return entErrToBizErr(err, "TOOL_RESULT")
 }
 
 func (r *ToolResultReplacementRepo) GetReplacementByMessage(ctx context.Context, sessionID, messageID string) (*biz.ToolResultReplacement, error) {
@@ -102,7 +102,7 @@ func (r *ToolResultReplacementRepo) GetReplacementByMessage(ctx context.Context,
 		).
 		Only(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "TOOL_RESULT")
 	}
 	return entToolResultReplacementToBiz(row), nil
 }

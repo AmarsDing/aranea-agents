@@ -8,7 +8,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-func RunSessionStatusIdleMigration(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
+func RunSessionStatusIdleMigration(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if client == nil {
 		return fmt.Errorf("session status migration: ent client required")
 	}
@@ -26,7 +26,7 @@ func RunSessionStatusIdleMigration(ctx context.Context, client *ent.Client, lg l
 		return fmt.Errorf("session status migration: check table: %w", err)
 	}
 	if !hasTable {
-		if err := recordMigrationApplied(ctx, client, MigrationSessionStatusIdle, migrationNameSessionStatusIdle, lg); err != nil {
+		if err := recordMigrationApplied(ctx, client, d, MigrationSessionStatusIdle, migrationNameSessionStatusIdle, lg); err != nil {
 			return fmt.Errorf("session status migration: record: %w", err)
 		}
 		return nil
@@ -47,7 +47,7 @@ func RunSessionStatusIdleMigration(ctx context.Context, client *ent.Client, lg l
 		return fmt.Errorf("session status migration: status_changed_at NULL→empty: %w", err)
 	}
 
-	if err := recordMigrationApplied(ctx, client, MigrationSessionStatusIdle, migrationNameSessionStatusIdle, lg); err != nil {
+	if err := recordMigrationApplied(ctx, client, d, MigrationSessionStatusIdle, migrationNameSessionStatusIdle, lg); err != nil {
 		return fmt.Errorf("session status migration: record: %w", err)
 	}
 	lg.Info("session status: active→idle + NULL defaults: done", loggateway.StepID("migration.session_status"))

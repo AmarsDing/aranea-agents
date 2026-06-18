@@ -63,7 +63,7 @@ func RunLegacyTRPCMemoryMigration(ctx context.Context, d *Data, lg loggateway.Lo
 	if remaining > 0 {
 		return migrated, false, fmt.Errorf("legacy trpc migration: %d entities still pending after backfill", remaining)
 	}
-	if err := recordMigrationApplied(ctx, client, MigrationLegacyTRPCMemoryFacts, migrationNameLegacyTRPCMemoryFacts, lg); err != nil {
+	if err := recordMigrationApplied(ctx, client, d.Dialect(), MigrationLegacyTRPCMemoryFacts, migrationNameLegacyTRPCMemoryFacts, lg); err != nil {
 		return migrated, false, err
 	}
 	return migrated, false, nil

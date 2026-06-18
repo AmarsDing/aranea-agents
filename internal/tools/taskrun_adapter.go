@@ -9,6 +9,16 @@ import (
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
+// TECH-DEBT(B-7): TaskRunAdapter 已实现但未接入生产路径。
+// 阻塞类型：缺少核心依赖 + 复杂依赖链。
+// 适配器需要 taskrun.Controller 实例管理异步任务生命周期，但项目缺少：
+//   1. 任务持久化层（存储任务状态和结果）
+//   2. 任务生命周期管理器（状态机：pending → running → completed/failed/cancelled）
+//   3. 任务状态追踪（per-session、per-run 的任务索引）
+//   4. 任务结果回调机制
+// 解除方案：Phase 1 统一执行引擎实施时解除（唯一有明确解除路径的阻塞项）。
+// 详见 docs/trpc-agent-go/alignment-plan.md §十一/B-7。
+
 // TaskRunAdapter wraps the framework's taskrun tools to allow Agent async
 // delegation while coexisting with the project's existing tool system.
 //

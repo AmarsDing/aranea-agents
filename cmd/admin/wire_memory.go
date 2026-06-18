@@ -2,18 +2,24 @@ package main
 
 import (
 	"context"
+	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/data"
+	"aranea-agents/internal/memory"
 	memtrpc "aranea-agents/internal/memory/trpc"
+	"aranea-agents/internal/provider"
 	rt "aranea-agents/internal/runtime"
 	sessiontrpc "aranea-agents/internal/session/trpc"
 	"aranea-agents/pkg/loggateway"
 
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
@@ -72,6 +78,7 @@ func provideMemoryTRPCService(
 	vec *biz.MemoryUsecase,
 	factSync biz.MemoryFactIndexSyncer,
 	q memtrpc.AutoMemoryQueue,
+	linkEvolver memory.LinkEvolutionService,
 	lg loggateway.Logger,
 ) trpcmemory.Service {
 	if d == nil {
@@ -85,6 +92,46 @@ func provideMemoryTRPCService(
 		vec,
 		memtrpc.NewAgentRuntimeSettingsLoader(agentsUC),
 		data.NewFactConsistencyAdapter(d),
+		linkEvolver,
+		lg,
+	)
+}
+
+// provideLinkEvolutionService builds the LinkEvolutionService used to evolve
+// the memory link graph after AddMemory. The LLM is resolved from
+// MEMORY_LINK_EVOLUTION_PROVIDER / MEMORY_LINK_EVOLUTION_MODEL env vars; when
+// unset, llm is nil and EvolveLinks gracefully degrades to a no-op (warn log
+// inside the implementation). The evolution queue is intentionally nil: the
+// sqlite adapter triggers EvolveLinks directly via safego.Go, so the
+// queue/worker loop is not needed.
+func provideLinkEvolutionService(
+	d *data.Data,
+	catalog *biz.LlmProviderModelUsecase,
+	lg loggateway.Logger,
+) memory.LinkEvolutionService {
+	if d == nil {
+		return nil
+	}
+	var llm trpcmodel.Model
+	prov := strings.TrimSpace(os.Getenv("MEMORY_LINK_EVOLUTION_PROVIDER"))
+	mod := strings.TrimSpace(os.Getenv("MEMORY_LINK_EVOLUTION_MODEL"))
+	if prov != "" && mod != "" && catalog != nil {
+		rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}}
+		if m, err := provider.TRPCModelForProviderModel(context.Background(), catalog, rtTrip, prov, mod, lg); err == nil {
+			llm = m
+		} else {
+			lg.Warn("link evolution: LLM model build failed, EvolveLinks will be no-op",
+				loggateway.StepID("memory.link_evolution.wire"),
+				loggateway.Str("provider", prov),
+				loggateway.Str("model", mod),
+				loggateway.Err(err))
+		}
+	}
+	return memory.NewLinkEvolutionService(
+		llm,
+		data.NewL3FactReaderForUser(d),
+		data.NewL3FactWriterAdapter(d, d.VectorStore()),
+		nil, // queue: not needed — sqlite adapter calls EvolveLinks directly
 		lg,
 	)
 }
@@ -95,7 +142,7 @@ func provideMemoryAdminUsecase(admin biz.MemoryAdminDeps, vec *biz.MemoryUsecase
 
 // providePathBExtractor creates a PathBExtractor and injects it into MemoryAdminUsecase.
 // This breaks the dependency cycle: MemoryAdminUsecase → PathBExtractor → EnhancedTextExtractor → SessionUsecase → … → MemoryAdminUsecase.
-func providePathBExtractor(extractor biz.EnhancedTextExtractor, l4 biz.L4EntityWriter, adminUC *biz.MemoryAdminUsecase, d *data.Data, lg loggateway.Logger) *biz.PathBExtractor {
+func providePathBExtractor(extractor biz.EnhancedTextExtractor, l4 biz.PathBL4Writer, adminUC *biz.MemoryAdminUsecase, d *data.Data, lg loggateway.Logger) *biz.PathBExtractor {
 	pe := biz.NewPathBExtractor(extractor, l4, lg)
 	if adminUC != nil {
 		adminUC.SetPathBExtractor(pe, data.NewRecentMessageLister(d))
@@ -103,8 +150,9 @@ func providePathBExtractor(extractor biz.EnhancedTextExtractor, l4 biz.L4EntityW
 	return pe
 }
 
-// provideL4EntityWriter provides the L4EntityWriter from Data.
-func provideL4EntityWriter(d *data.Data) biz.L4EntityWriter {
+// providePathBL4Writer provides the narrow PathBL4Writer from Data.
+// Used by PathBExtractor for read-then-write entity resolution.
+func providePathBL4Writer(d *data.Data) biz.PathBL4Writer {
 	if d == nil {
 		return nil
 	}

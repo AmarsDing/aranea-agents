@@ -25,7 +25,7 @@ func (r *agentTemplateRepo) ListAgentTemplates(ctx context.Context) ([]biz.Agent
 		Order(agenttemplate.BySortOrder(entsql.OrderAsc())).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "AGENT_TEMPLATE")
 	}
 	result := make([]biz.AgentTemplate, 0, len(rows))
 	for _, row := range rows {

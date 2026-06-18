@@ -63,6 +63,9 @@ func (r *runSummaryRepo) CreateTeam(_ context.Context, t Team) (Team, error)    
 func (r *runSummaryRepo) UpdateTeam(_ context.Context, t Team) (Team, error)         { return t, nil }
 func (r *runSummaryRepo) DeleteTeam(_ context.Context, _ string) error               { return nil }
 func (r *runSummaryRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
+func (r *runSummaryRepo) UpdateTeamWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
+	return true, nil
+}
 
 // TeamRunReader
 func (r *runSummaryRepo) GetTeamRunByID(_ context.Context, id string) (TeamRun, error) {
@@ -86,6 +89,9 @@ func (r *runSummaryRepo) HasActiveTeamRun(_ context.Context, _ string) (bool, er
 // TeamRunWriter stubs
 func (r *runSummaryRepo) CreateTeamRun(_ context.Context, run TeamRun) (TeamRun, error) { return run, nil }
 func (r *runSummaryRepo) UpdateTeamRun(_ context.Context, _ TeamRun) error              { return nil }
+func (r *runSummaryRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
+	return true, nil
+}
 func (r *runSummaryRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error {
 	return nil
 }

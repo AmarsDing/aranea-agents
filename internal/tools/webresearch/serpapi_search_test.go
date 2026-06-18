@@ -212,7 +212,7 @@ func TestSerpAPISearch_requestFailed(t *testing.T) {
 		Timeout:        100 * time.Millisecond,
 		SerpAPIBaseURL: "http://127.0.0.1:0",
 	}
-	p, err := webresearch.NewSerpAPIProvider(cfg, loggateway.Global())
+	p, err := webresearch.NewSerpAPIProvider(cfg, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestSerpAPISearch_cancelledContext(t *testing.T) {
 		Timeout:        10 * time.Second,
 		SerpAPIBaseURL: srv.URL,
 	}
-	p, err := webresearch.NewSerpAPIProvider(cfg, loggateway.Global())
+	p, err := webresearch.NewSerpAPIProvider(cfg, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}

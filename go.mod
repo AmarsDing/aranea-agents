@@ -17,6 +17,11 @@ replace trpc.group/trpc-go/trpc-agent-go/codeexecutor/container => ./pkg/trpc-ag
 
 replace trpc.group/trpc-go/trpc-agent-go/server/agui => ./pkg/trpc-agent-go/server/agui
 
+// Agent runtime storage/session backends must resolve to the vendored framework source.
+replace trpc.group/trpc-go/trpc-agent-go/session/postgres => ./pkg/trpc-agent-go/session/postgres
+
+replace trpc.group/trpc-go/trpc-agent-go/storage/postgres => ./pkg/trpc-agent-go/storage/postgres
+
 require (
 	entgo.io/ent v0.14.6
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
@@ -84,6 +89,8 @@ require (
 	trpc.group/trpc-go/trpc-agent-go/model/provider v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/model/tiktoken v1.10.0
 	trpc.group/trpc-go/trpc-agent-go/openclaw v0.0.1
+	trpc.group/trpc-go/trpc-agent-go/server/agui v0.0.0
+	trpc.group/trpc-go/trpc-agent-go/session/postgres v1.8.0
 	trpc.group/trpc-go/trpc-agent-go/session/sqlite v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/tool/arxivsearch v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/tool/claudecode v1.9.0
@@ -193,6 +200,10 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/itchyny/gojq v0.12.16 // indirect
 	github.com/itchyny/timefmt-go v0.1.6 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/pgx/v5 v5.7.2 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/lestrrat-go/blackmagic v1.0.2 // indirect
@@ -290,7 +301,7 @@ require (
 	modernc.org/memory v1.7.2 // indirect
 	modernc.org/sqlite v1.28.0 // indirect
 	mvdan.cc/sh/v3 v3.8.0 // indirect
-	trpc.group/trpc-go/trpc-agent-go/server/agui v0.0.0 // indirect
+	trpc.group/trpc-go/trpc-agent-go/storage/postgres v1.8.0 // indirect
 	trpc.group/trpc-go/trpc-agent-go/storage/s3 v1.8.0 // indirect
 	trpc.group/trpc-go/trpc-mcp-go v0.0.10 // indirect
 )

@@ -3,7 +3,6 @@ package biz
 import (
 	"context"
 	"strings"
-	"time"
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -25,6 +24,12 @@ type TeamWriter interface {
 	UpdateTeam(ctx context.Context, t Team) (Team, error)
 	DeleteTeam(ctx context.Context, id string) error
 	BatchArchiveTeams(ctx context.Context, ids []string) (int, error)
+	// UpdateTeamWhereStatus performs a Compare-And-Swap update on the status
+	// field: the row is updated only if its current status equals
+	// expectedCurrentStatus. Returns true if the row was updated, false if the
+	// current status did not match (concurrent modification).
+	// Stability:stable
+	UpdateTeamWhereStatus(ctx context.Context, id, newStatus, expectedCurrentStatus string) (bool, error)
 }
 
 // Stability:stable
@@ -44,6 +49,13 @@ type TeamRunWriter interface {
 	UpdateTeamRunTraceID(ctx context.Context, runID, traceID string) error
 	UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJSON string) error
 	CreateTeamRunStep(ctx context.Context, s TeamRunStep) (TeamRunStep, error)
+	// UpdateTeamRunWhereStatus performs a Compare-And-Swap update on the status
+	// field: the row is updated only if its current status equals
+	// expectedCurrentStatus. Returns true if the row was updated, false if the
+	// current status did not match (concurrent modification). Terminal statuses
+	// also set finished_at.
+	// Stability:stable
+	UpdateTeamRunWhereStatus(ctx context.Context, runID, newStatus, expectedCurrentStatus string) (bool, error)
 }
 
 // Stability:evolving
@@ -438,6 +450,10 @@ func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, 
 // It checks the transition is allowed by the state machine and updates
 // only the status field, bypassing the HasActiveRun guard (status
 // transitions are part of the team lifecycle and must work during runs).
+//
+// CAS (Compare-And-Swap) is used to prevent TOCTOU race conditions: the
+// status is only updated if the current DB status still matches what we
+// read. If a concurrent modification occurred, Conflict is returned.
 func (u *TeamUsecase) TransitionStatus(ctx context.Context, id string, newStatus string) (Team, error) {
 	id, err := requireNonEmpty(id, "TEAM", "id")
 	if err != nil {
@@ -451,12 +467,24 @@ func (u *TeamUsecase) TransitionStatus(ctx context.Context, id string, newStatus
 	if !sm.CanTransition(TeamState(current.Status), TeamState(newStatus)) {
 		return Team{}, apierror.BadRequest("TEAM", "invalid team status transition: %s → %s", current.Status, newStatus)
 	}
-	current.Status = newStatus
-	return u.writer.UpdateTeam(ctx, current)
+	// CAS: only update if current status hasn't changed (prevents TOCTOU race)
+	updated, err := u.writer.UpdateTeamWhereStatus(ctx, id, newStatus, current.Status)
+	if err != nil {
+		return Team{}, err
+	}
+	if !updated {
+		return Team{}, apierror.Conflict("TEAM", "team status changed concurrently; please retry")
+	}
+	return u.reader.GetTeamByID(ctx, id)
 }
 
 // TransitionStatusWithReason transitions the team status and sets an interrupt reason
 // when transitioning to interrupted status.
+//
+// CAS is used for the status field; the interrupt reason is set in a
+// separate best-effort update after CAS succeeds. This means a crash between
+// the two updates could leave the status changed but the reason empty —
+// acceptable because the reason is informational, not a consistency invariant.
 func (u *TeamUsecase) TransitionStatusWithReason(ctx context.Context, id string, newStatus string, reason string) (Team, error) {
 	id, err := requireNonEmpty(id, "TEAM", "id")
 	if err != nil {
@@ -470,11 +498,25 @@ func (u *TeamUsecase) TransitionStatusWithReason(ctx context.Context, id string,
 	if !sm.CanTransition(TeamState(current.Status), TeamState(newStatus)) {
 		return Team{}, apierror.BadRequest("TEAM", "invalid team status transition: %s → %s", current.Status, newStatus)
 	}
-	current.Status = newStatus
-	if newStatus == TeamStatusInterrupted && reason != "" {
-		current.InterruptReason = reason
+	// CAS: only update if current status hasn't changed (prevents TOCTOU race)
+	updated, err := u.writer.UpdateTeamWhereStatus(ctx, id, newStatus, current.Status)
+	if err != nil {
+		return Team{}, err
 	}
-	return u.writer.UpdateTeam(ctx, current)
+	if !updated {
+		return Team{}, apierror.Conflict("TEAM", "team status changed concurrently; please retry")
+	}
+	// Best-effort: set interrupt reason after CAS succeeds.
+	if newStatus == TeamStatusInterrupted && reason != "" {
+		current.Status = newStatus
+		current.InterruptReason = reason
+		if _, rErr := u.writer.UpdateTeam(ctx, current); rErr != nil {
+			u.lg.Warn("best-effort interrupt reason update failed",
+				loggateway.Str("team_id", id),
+				loggateway.Err(rErr))
+		}
+	}
+	return u.reader.GetTeamByID(ctx, id)
 }
 
 // RetryTeam resets a failed or cancelled team to pending so it can be re-started.
@@ -635,6 +677,10 @@ func (u *TeamUsecase) CancelRun(ctx context.Context, runID string) (TeamRun, err
 // using the TeamRunStateMachine. This is the single authoritative path
 // for all team run status changes — no caller should modify run.Status
 // directly.
+//
+// CAS (Compare-And-Swap) is used to prevent TOCTOU race conditions: the
+// status is only updated if the current DB status still matches what we
+// read. If a concurrent modification occurred, Conflict is returned.
 func (u *TeamUsecase) TransitionRunStatus(ctx context.Context, runID string, newStatus string) (TeamRun, error) {
 	runID, err := requireNonEmpty(runID, "TEAM", "run_id")
 	if err != nil {
@@ -648,17 +694,16 @@ func (u *TeamUsecase) TransitionRunStatus(ctx context.Context, runID string, new
 	if !sm.CanTransition(TeamRunState(r.Status), TeamRunState(newStatus)) {
 		return TeamRun{}, apierror.BadRequest("TEAM", "invalid team run status transition: %s → %s", r.Status, newStatus)
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	r.Status = newStatus
-	r.UpdatedAt = now
-	// Set finished_at for terminal transitions.
-	if IsTeamRunTerminalStatus(newStatus) {
-		r.FinishedAt = now
-	}
-	if err := u.runWriter.UpdateTeamRun(ctx, r); err != nil {
+	// CAS: only update if current status hasn't changed (prevents TOCTOU race).
+	// UpdateTeamRunWhereStatus also sets finished_at for terminal statuses.
+	updated, err := u.runWriter.UpdateTeamRunWhereStatus(ctx, runID, newStatus, r.Status)
+	if err != nil {
 		return TeamRun{}, err
 	}
-	return r, nil
+	if !updated {
+		return TeamRun{}, apierror.Conflict("TEAM", "team run status changed concurrently; please retry")
+	}
+	return u.runReader.GetTeamRunByID(ctx, runID)
 }
 
 func (u *TeamUsecase) UpdateRunSummaryJSON(ctx context.Context, runID, summaryJSON string) error {

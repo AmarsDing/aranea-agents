@@ -286,7 +286,7 @@ func TestEntRuntimeToBiz_FullRoundTrip(t *testing.T) {
 }
 
 func TestEntAgentToBiz_Nil(t *testing.T) {
-	lg := loggateway.Global()
+	lg := loggateway.NewNoop()
 	got := entAgentToBiz(nil, lg)
 	want := biz.Agent{}
 	if !reflect.DeepEqual(got, want) {
@@ -295,7 +295,7 @@ func TestEntAgentToBiz_Nil(t *testing.T) {
 }
 
 func TestEntAgentToBiz_BasicFields(t *testing.T) {
-	lg := loggateway.Global()
+	lg := loggateway.NewNoop()
 	a := &ent.Agent{
 		ID:                 "a1",
 		AgentKey:           "test-agent",

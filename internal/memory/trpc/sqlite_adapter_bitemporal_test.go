@@ -232,6 +232,7 @@ func newBitemporalService() (trpcmemory.Service, *bitemporalMockStore) {
 		nil,                         // vector
 		&bitemporalSettingsLoader{}, // settingsLoader
 		nil,                         // consistency
+		nil,                         // linkEvolver
 		loggateway.NewNoop(),
 	)
 	return svc, store

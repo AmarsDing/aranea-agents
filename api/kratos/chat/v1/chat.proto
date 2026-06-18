@@ -280,6 +280,17 @@ service ChatService {
       body: "*"
     };
   }
+
+  // ConfirmPlan allows the user to confirm or reject a draft TaskPlan created
+  // by the pre-planning hard gate. When approved=true, the plan transitions
+  // from draft → confirmed and execution may proceed; when approved=false,
+  // the plan is abandoned and the turn aborts with a "plan rejected" status.
+  rpc ConfirmPlan(ConfirmPlanRequest) returns (ConfirmPlanResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/plans/{plan_id}/confirm"
+      body: "*"
+    };
+  }
 }
 
 message SubmitMessageFeedbackRequest {
@@ -305,4 +316,28 @@ message ConfirmActivityRequest {
 message ConfirmActivityResponse {
   bool accepted = 1;
   string status = 2; // "completed" or "cancelled"
+}
+
+// ConfirmPlanRequest is the request for confirming or rejecting a draft TaskPlan
+// produced by the pre-planning hard gate (P1-2).
+message ConfirmPlanRequest {
+  string plan_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string session_id = 2 [(google.api.field_behavior) = REQUIRED];
+  // approved = true → confirm plan (draft → confirmed); approved = false → reject plan
+  bool approved = 3 [(google.api.field_behavior) = REQUIRED];
+  // strategy_override optionally overrides the suggested orchestration strategy.
+  // Valid values: direct | single_agent | parallel | dag | coordinator
+  optional string strategy_override = 4;
+  // reason is an optional user-supplied justification for the decision.
+  optional string reason = 5;
+}
+
+message ConfirmPlanResponse {
+  bool accepted = 1;
+  string status = 2; // "confirmed" or "rejected"
+  string plan_id = 3;
+  // strategy is the final strategy after applying any override.
+  string strategy = 4;
+  // subtask_count is the number of subtasks in the confirmed plan.
+  int32 subtask_count = 5;
 }

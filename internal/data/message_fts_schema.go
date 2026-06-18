@@ -10,14 +10,42 @@ import (
 //go:embed sql/message_fts.sql
 var messageFTSDDL string
 
-// EnsureMessageFTSSchema creates messages_fts virtual table and backfills rows.
+//go:embed sql/message_fts_postgres.sql
+var messageFTSPostgresDDL string
+
+// EnsureMessageFTSSchema creates messages_fts virtual table (SQLite) or tsvector
+// column + GIN index (Postgres) and backfills rows.
 func EnsureMessageFTSSchema(ctx context.Context, db *sql.DB) error {
 	if db == nil {
 		return nil
 	}
-	for _, stmt := range splitSQLStatements(messageFTSDDL) {
+	return EnsureMessageFTSSchemaWithDialect(ctx, db, DialectSQLite)
+}
+
+// EnsureMessageFTSSchemaWithDialect is the dialect-aware variant.
+// SQLite: creates messages_fts FTS5 virtual table + triggers.
+// Postgres: adds tsv GENERATED STORED tsvector column + GIN index.
+func EnsureMessageFTSSchemaWithDialect(ctx context.Context, db *sql.DB, d Dialect) error {
+	if db == nil {
+		return nil
+	}
+	ddl := messageFTSDDL
+	if d.IsPostgres() {
+		ddl = messageFTSPostgresDDL
+	}
+	for _, stmt := range splitSQLStatements(ddl) {
 		if _, err := db.ExecContext(ctx, stmt); err != nil {
-			if strings.Contains(err.Error(), "already exists") {
+			if d.AlreadyExistsErr(err) {
+				continue
+			}
+			// Postgres DO $$ blocks may report "column already exists" via
+			// different error codes; tolerate undefined_object for idempotency
+			// when the table is created by a later migration.
+			if d.IsPostgres() && isPostgresAlreadyExistsErr(err) {
+				continue
+			}
+			// SQLite fallback: tolerate "already exists" in error message.
+			if d.IsSQLite() && strings.Contains(err.Error(), "already exists") {
 				continue
 			}
 			return err
@@ -36,6 +64,10 @@ func splitSQLStatements(ddl string) []string {
 		out   []string
 		cur   strings.Builder
 		depth int // inside BEGIN...END
+		// dollarQuote tracks whether we're inside a Postgres $$ ... $$ block.
+		// Inside $$ blocks, semicolons are part of the function body and must
+		// not be treated as statement separators.
+		dollarQuote bool
 	)
 	flush := func() {
 		s := strings.TrimSpace(cur.String())
@@ -45,6 +77,24 @@ func splitSQLStatements(ddl string) []string {
 		}
 	}
 	for i := 0; i < len(ddl); {
+		// Detect Postgres $$ ... $$ quoting (used in DO $$ blocks).
+		if !dollarQuote && i+1 < len(ddl) && ddl[i] == '$' && ddl[i+1] == '$' {
+			dollarQuote = true
+			cur.WriteString("$$")
+			i += 2
+			continue
+		}
+		if dollarQuote && i+1 < len(ddl) && ddl[i] == '$' && ddl[i+1] == '$' {
+			dollarQuote = false
+			cur.WriteString("$$")
+			i += 2
+			continue
+		}
+		if dollarQuote {
+			cur.WriteByte(ddl[i])
+			i++
+			continue
+		}
 		if depth == 0 && matchSQLWord(ddl, i, "BEGIN") {
 			depth++
 			cur.WriteString(ddl[i : i+5])

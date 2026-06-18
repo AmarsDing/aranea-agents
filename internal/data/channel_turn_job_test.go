@@ -6,21 +6,30 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	_ "github.com/glebarez/go-sqlite/compat"
 )
 
-func TestChannelTurnJobCreateReturnsStableIDOnConflict(t *testing.T) {
+func newChannelTurnJobTestRepo(t *testing.T, dbName string) (biz.ChannelTurnJobRepo, *sql.DB) {
+	t.Helper()
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:channel_turn_job_test?mode=memory&cache=shared")
+	db, err := sql.Open("sqlite", "file:"+dbName+"?mode=memory&cache=shared")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
 	if err := EnsureChannelTurnJobSchema(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	repo := NewChannelTurnJobRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db)})
+	// Initialize lg to avoid nil pointer panic in ExecInTx (tx.go:22).
+	repo := NewChannelTurnJobRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop()})
+	return repo, db
+}
+
+func TestChannelTurnJobCreateReturnsStableIDOnConflict(t *testing.T) {
+	ctx := context.Background()
+	repo, db := newChannelTurnJobTestRepo(t, "channel_turn_job_test")
+	defer db.Close()
 
 	firstID, err := repo.Create(ctx, biz.ChannelTurnJob{
 		ID:             "job-1",
@@ -51,15 +60,8 @@ func TestChannelTurnJobCreateReturnsStableIDOnConflict(t *testing.T) {
 
 func TestChannelTurnJobCreatePreservesAsyncQueuedOnConflict(t *testing.T) {
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:channel_turn_job_async_test?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
+	repo, db := newChannelTurnJobTestRepo(t, "channel_turn_job_async_test")
 	defer db.Close()
-	if err := EnsureChannelTurnJobSchema(ctx, db); err != nil {
-		t.Fatal(err)
-	}
-	repo := NewChannelTurnJobRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db)})
 
 	id, err := repo.Create(ctx, biz.ChannelTurnJob{
 		ID:             "job-a",
@@ -97,15 +99,8 @@ func TestChannelTurnJobCreatePreservesAsyncQueuedOnConflict(t *testing.T) {
 
 func TestChannelTurnJobUpdateStatusQueued(t *testing.T) {
 	ctx := context.Background()
-	db, err := sql.Open("sqlite", "file:channel_turn_job_status_test?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
+	repo, db := newChannelTurnJobTestRepo(t, "channel_turn_job_status_test")
 	defer db.Close()
-	if err := EnsureChannelTurnJobSchema(ctx, db); err != nil {
-		t.Fatal(err)
-	}
-	repo := NewChannelTurnJobRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db)})
 
 	id, err := repo.Create(ctx, biz.ChannelTurnJob{
 		ID:             "job-q",

@@ -337,8 +337,18 @@ func (r *cascadeRepo) SaveCascadeOriginalStatements(ctx context.Context, agentID
 		placeholders[i] = "?"
 		args = append(args, id)
 	}
-	q := fmt.Sprintf(`UPDATE memory_facts SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.cascade_original_statement', statement, '$.cascade_original_name', ?, '$.cascade_saved_at', ?) WHERE id IN (%s)`,
-		strings.Join(placeholders, ","))
+	d := r.data.Dialect()
+	// SQLite: json_set(COALESCE(metadata_json,'{}'), '$.cascade_original_statement', statement, '$.cascade_original_name', ?, '$.cascade_saved_at', ?)
+	// Postgres: nested jsonb_set(..., to_jsonb(...))
+	jsonExpr := d.JSONSetMulti(
+		"COALESCE(metadata_json,'{}')",
+		[2]string{"cascade_original_statement", "statement"},
+		[2]string{"cascade_original_name", "?"},
+		[2]string{"cascade_saved_at", "?"},
+	)
+	q := fmt.Sprintf(`UPDATE memory_facts SET metadata_json = %s WHERE id IN (%s)`,
+		jsonExpr, strings.Join(placeholders, ","))
+	q = d.RenumberPlaceholders(q)
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, args...)
 	return err
 }

@@ -19,7 +19,7 @@ func (r *sessionRepo) GetSessionState(ctx context.Context, sessionID string) (ma
 	}
 	row, err := r.data.RW().Read(ctx).Session.Get(ctx, sessionID)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SESSION_STATE")
 	}
 	out := map[string]string{}
 	if row.StateJSON != "" {
@@ -51,7 +51,7 @@ func (r *sessionRepo) SaveSessionState(ctx context.Context, sessionID string, st
 		SetStateJSON(string(raw)).
 		SetUpdatedAt(nowRFC3339()).
 		Save(ctx)
-	return err
+	return entErrToBizErr(err, "SESSION_STATE")
 }
 
 func (r *sessionRepo) PatchSessionState(ctx context.Context, sessionID string, sets map[string]string, deletes []string) error {
@@ -63,13 +63,18 @@ func (r *sessionRepo) PatchSessionState(ctx context.Context, sessionID string, s
 		return nil
 	}
 
+	d := r.data.Dialect()
 	expr := "state_json"
 	var args []any
 
 	orderedKeys := sortedKeys(sets)
 	for _, k := range orderedKeys {
-		expr = fmt.Sprintf("json_set(%s, ?, ?)", expr)
-		args = append(args, "$."+k, sets[k])
+		// SQLite: json_set(state_json, '$.key', ?)
+		// Postgres: jsonb_set(state_json, '{key}', to_jsonb(?))
+		// d.JSONSet embeds the key directly into the SQL, so only the value
+		// is passed as a placeholder arg.
+		expr = d.JSONSet(expr, k, "?")
+		args = append(args, sets[k])
 	}
 	for _, k := range deletes {
 		expr = fmt.Sprintf("json_remove(%s, ?)", expr)
@@ -81,8 +86,9 @@ func (r *sessionRepo) PatchSessionState(ctx context.Context, sessionID string, s
 		"UPDATE sessions SET state_json = %s, updated_at = ? WHERE id = ? AND deleted_at = ''",
 		expr,
 	)
+	query = d.RenumberPlaceholders(query)
 	_, err := r.data.RW().Write(ctx).ExecContext(ctx, query, args...)
-	return err
+	return entErrToBizErr(err, "SESSION_STATE")
 }
 
 func sortedKeys(m map[string]string) []string {

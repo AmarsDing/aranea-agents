@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/graph"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -30,6 +31,11 @@ type trpcGraphRuntime struct {
 	execID    string
 	lg        loggateway.Logger
 	bridge    *graphtrpc.EventBridge
+
+	// callbacks holds the NodeCallbacks (replanner OnNodeError + evolver
+	// AfterNode) injected via StateKeyNodeCallbacks in the runtime state.
+	// Nil when no replanner/evolver is configured.
+	callbacks *trpcgraph.NodeCallbacks
 
 	cancelMu  sync.Mutex
 	runCancel context.CancelFunc
@@ -67,6 +73,13 @@ func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any)
 
 	for k, v := range initialState {
 		runtimeState[k] = v
+	}
+
+	// Inject NodeCallbacks (replanner + evolver) into the runtime state so
+	// the executor's getMergedCallbacks can retrieve them. StateKeyNodeCallbacks
+	// is an "unsafe" key that is retained in state copies (see graph/keys.go).
+	if r.callbacks != nil {
+		runtimeState[trpcgraph.StateKeyNodeCallbacks] = r.callbacks
 	}
 
 	inv := &trpcagent.Invocation{
@@ -116,6 +129,12 @@ func (r *trpcGraphRuntime) Resume(ctx context.Context, lineageID string, resumeV
 
 	if resumeValue != nil {
 		runtimeState[trpcgraph.ResumeChannel] = resumeValue
+	}
+
+	// Inject NodeCallbacks (replanner + evolver) into the runtime state so
+	// the executor's getMergedCallbacks can retrieve them on resume.
+	if r.callbacks != nil {
+		runtimeState[trpcgraph.StateKeyNodeCallbacks] = r.callbacks
 	}
 
 	inv := &trpcagent.Invocation{
@@ -273,6 +292,13 @@ type trpcGraphBuilderFactory struct {
 	agentChecker biz.AgentExistenceCheckerFunc
 	resolvers    graphtrpc.GraphNodeResolverSet
 	lg           loggateway.Logger
+
+	// replanner handles node failure analysis and replan decisions (B3).
+	// May be nil when not configured; the OnNodeError callback is skipped.
+	replanner graph.RuntimeReplanner
+	// evolver handles dynamic topology evolution based on execution insights (B4).
+	// May be nil when not configured; the AfterNode callback is skipped.
+	evolver graph.TopologyEvolver
 }
 
 var _ biz.GraphBuilderFactory = (*trpcGraphBuilderFactory)(nil)
@@ -283,6 +309,8 @@ func NewGraphBuilderFactory(
 	eventBus event.Bus,
 	agentChecker biz.AgentExistenceCheckerFunc,
 	resolvers graphtrpc.GraphNodeResolverSet,
+	replanner graph.RuntimeReplanner,
+	evolver graph.TopologyEvolver,
 	lg loggateway.Logger,
 ) biz.GraphBuilderFactory {
 	RegisterCriticLoopCondFunc(registry, DefaultCriticLoopThreshold, lg)
@@ -293,6 +321,8 @@ func NewGraphBuilderFactory(
 		agentChecker: agentChecker,
 		resolvers:    resolvers,
 		lg:           lg,
+		replanner:    replanner,
+		evolver:      evolver,
 	}
 }
 
@@ -309,8 +339,130 @@ func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.Grap
 	return &trpcGraphRuntime{
 		agent: graphAgent, graph: g, lineageID: lineageID, eventBus: f.eventBus,
 		sessionID: sessionID, graphID: graphID, execID: execID, lg: f.lg,
-		bridge: graphtrpc.NewEventBridge(f.eventBus, sessionID, graphID, execID, f.lg),
+		bridge:    graphtrpc.NewEventBridge(f.eventBus, sessionID, graphID, execID, f.lg),
+		callbacks: f.buildNodeCallbacks(sessionID, graphID, execID),
 	}, nil
+}
+
+// buildNodeCallbacks assembles the NodeCallbacks for the graph execution.
+// B3: registers OnNodeError callback that invokes the RuntimeReplanner to
+// analyze node failures and decide replan actions (retry/reroute/insert_fallback/
+// rebuild_subgraph). The replan action is logged; actual topology mutation is
+// deferred to a future iteration (the framework does not yet support runtime
+// graph mutation).
+// B4: registers AfterNode callback that invokes the TopologyEvolver to decide
+// whether a dynamic transfer edge should be added based on execution insights.
+// The evolver is only called when a meaningful insight (non-empty source and
+// target) is available; on evolver failure, only a Warn log is emitted and
+// execution continues (degrade gracefully).
+// Returns nil when neither replanner nor evolver is configured, so the runtime
+// skips injecting StateKeyNodeCallbacks into the state.
+func (f *trpcGraphBuilderFactory) buildNodeCallbacks(sessionID, graphID, execID string) *trpcgraph.NodeCallbacks {
+	if f.replanner == nil && f.evolver == nil {
+		return nil
+	}
+	cb := trpcgraph.NewNodeCallbacks()
+
+	if f.replanner != nil {
+		replanner := f.replanner
+		lg := f.lg
+		cb.RegisterOnNodeError(func(ctx context.Context, cbCtx *trpcgraph.NodeCallbackContext, state trpcgraph.State, err error) {
+			if cbCtx == nil || err == nil {
+				return
+			}
+			exec := biz.NewGraphExecution(ctx, execID, graphID, sessionID, "")
+			action, replanErr := replanner.OnNodeFailure(ctx, exec, cbCtx.NodeID, err)
+			if replanErr != nil {
+				lg.Warn("runtime replanner: OnNodeFailure failed, execution continues without replan",
+					loggateway.StepID("replanner.callback_fail"),
+					loggateway.Str("execution_id", execID),
+					loggateway.Str("session_id", sessionID),
+					loggateway.Str("graph_id", graphID),
+					loggateway.Str("failed_node", cbCtx.NodeID),
+					loggateway.Err(replanErr),
+				)
+				return
+			}
+			if action != nil {
+				lg.Info("runtime replanner: replan action decided",
+					loggateway.StepID("replanner.action_decided"),
+					loggateway.Str("execution_id", execID),
+					loggateway.Str("session_id", sessionID),
+					loggateway.Str("graph_id", graphID),
+					loggateway.Str("failed_node", cbCtx.NodeID),
+					loggateway.Str("replan_type", string(action.Type)),
+					loggateway.Int("new_nodes", len(action.NewNodes)),
+					loggateway.Int("new_edges", len(action.NewEdges)),
+					loggateway.Int("skip_nodes", len(action.SkipNodes)),
+				)
+			}
+		})
+	}
+
+	if f.evolver != nil {
+		evolver := f.evolver
+		lg := f.lg
+		cb.RegisterAfterNode(func(ctx context.Context, cbCtx *trpcgraph.NodeCallbackContext, state trpcgraph.State, result any, nodeErr error) (any, error) {
+			if cbCtx == nil {
+				return nil, nil
+			}
+			// Only evaluate topology evolution after successful node completion.
+			// On node error (nodeErr != nil), the replanner's OnNodeError callback
+			// handles the failure path; invoking the evolver on error would be
+			// noisy and semantically incorrect.
+			if nodeErr != nil {
+				return nil, nil
+			}
+			// Construct a best-effort ExecutionInsight. The evolver requires
+			// non-empty SourceNode and TargetNode; without a TargetNode (which
+			// the framework does not provide via the callback context), the
+			// insight is incomplete and the evolver call is skipped. Future
+			// work: derive TargetNode from the node result or graph topology.
+			sourceNode := cbCtx.NodeID
+			if sourceNode == "" {
+				return nil, nil
+			}
+			// TargetNode is unknown at this layer; skip the evolver call when
+			// we cannot construct a meaningful insight. The evolver remains
+			// wired and ready for future insight producers.
+			insight := graph.ExecutionInsight{
+				SourceNode: sourceNode,
+				Reason:     "post-completion topology check",
+			}
+			if insight.TargetNode == "" {
+				return nil, nil
+			}
+			exec := biz.NewGraphExecution(ctx, execID, graphID, sessionID, "")
+			edge, evolveErr := evolver.OnExecutionInsight(ctx, exec, insight)
+			if evolveErr != nil {
+				// B4 requirement: on failure, only Warn log, don't block execution.
+				lg.Warn("topology evolver: OnExecutionInsight failed, execution continues",
+					loggateway.StepID("topology.callback_fail"),
+					loggateway.Str("execution_id", execID),
+					loggateway.Str("session_id", sessionID),
+					loggateway.Str("graph_id", graphID),
+					loggateway.Str("source_node", sourceNode),
+					loggateway.Str("target_node", insight.TargetNode),
+					loggateway.Err(evolveErr),
+				)
+				return nil, nil
+			}
+			if edge != nil {
+				lg.Info("topology evolver: edge decided",
+					loggateway.StepID("topology.edge_decided"),
+					loggateway.Str("execution_id", execID),
+					loggateway.Str("session_id", sessionID),
+					loggateway.Str("graph_id", graphID),
+					loggateway.Str("from", edge.From),
+					loggateway.Str("to", edge.To),
+					loggateway.Str("edge_kind", edge.Kind),
+				)
+			}
+			return nil, nil
+		})
+	}
+
+	return cb
 }
 
 func (f *trpcGraphBuilderFactory) BuildRuntime(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, graphID, execID, lineageID string) (biz.GraphRuntime, error) {

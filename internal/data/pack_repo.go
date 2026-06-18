@@ -87,20 +87,20 @@ func (a *PackRepoAdapter) GetOrganizationNode(ctx context.Context, id string) (b
 func (a *PackRepoAdapter) GetOrgAncestors(ctx context.Context, positionID string) (biz.OrgAncestors, error) {
 	pos, err := a.organization.GetOrgNode(ctx, positionID)
 	if err != nil {
-		return biz.OrgAncestors{}, err
+		return biz.OrgAncestors{}, entErrToBizErr(err, "PACK")
 	}
 	var dept biz.OrganizationNode
 	if pos.ParentID != "" {
 		dept, err = a.organization.GetOrgNode(ctx, pos.ParentID)
 		if err != nil {
-			return biz.OrgAncestors{}, err
+			return biz.OrgAncestors{}, entErrToBizErr(err, "PACK")
 		}
 	}
 	var company biz.OrganizationNode
 	if dept.ParentID != "" {
 		company, err = a.organization.GetOrgNode(ctx, dept.ParentID)
 		if err != nil {
-			return biz.OrgAncestors{}, err
+			return biz.OrgAncestors{}, entErrToBizErr(err, "PACK")
 		}
 	}
 	return biz.OrgAncestors{

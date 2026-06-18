@@ -6,6 +6,13 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/prompt"
 )
 
+// TECH-DEBT(B-5): RenderPromptTemplate/RenderCapabilityCue 已实现但未接入生产路径。
+// 阻塞类型：设计前提不匹配（模板渲染 vs 结构化拼接）。
+// 项目的 BuildSystemPrompt() 使用 strings.Builder 结构化拼接 capability cues/sections/runtime cues，
+// 而非模板字符串 + 变量替换。Render() 适用于模板化 Agent 定义，当前项目 prompt 架构非模板化。
+// 解除方案：Phase 1 AgentFactory 实施时重新评估（若引入模板化 Agent 定义则接入）。
+// 详见 docs/trpc-agent-go/alignment-plan.md §十一/B-5。
+
 // promptRequiredPlaceholders lists the placeholders that are expected in
 // RenderPromptTemplate and RenderCapabilityCue templates. If any of these
 // are missing from the template, a warning is logged but rendering

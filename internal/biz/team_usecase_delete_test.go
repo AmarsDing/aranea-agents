@@ -39,6 +39,9 @@ func (s *stubTeamWriter) DeleteTeam(_ context.Context, id string) error {
 func (s *stubTeamWriter) BatchArchiveTeams(_ context.Context, ids []string) (int, error) {
 	return len(ids), nil
 }
+func (s *stubTeamWriter) UpdateTeamWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
+	return true, nil
+}
 
 type stubTeamRunReader struct{}
 
@@ -56,6 +59,9 @@ type stubTeamRunWriter struct{}
 
 func (s *stubTeamRunWriter) CreateTeamRun(context.Context, TeamRun) (TeamRun, error)          { return TeamRun{}, nil }
 func (s *stubTeamRunWriter) UpdateTeamRun(context.Context, TeamRun) error                      { return nil }
+func (s *stubTeamRunWriter) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
+	return true, nil
+}
 func (s *stubTeamRunWriter) UpdateTeamRunGraphExecutionID(context.Context, string, string) error { return nil }
 func (s *stubTeamRunWriter) UpdateTeamRunTraceID(context.Context, string, string) error        { return nil }
 func (s *stubTeamRunWriter) UpdateTeamRunSummaryJSON(context.Context, string, string) error    { return nil }

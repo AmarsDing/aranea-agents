@@ -276,6 +276,13 @@ type Entry struct {
 	// for top-level access without dereferencing Memory.
 	ValidFrom  *time.Time `json:"valid_from,omitempty"`
 	ValidUntil *time.Time `json:"valid_until,omitempty"`
+
+	// Links/Keywords/Tags (P3-12): A-MEM style memory linking and evolution.
+	// Links holds IDs of related memories. Keywords/Tags are LLM-generated
+	// metadata that evolve as new memories are added.
+	Links    []string `json:"links,omitempty"`
+	Keywords []string `json:"keywords,omitempty"`
+	Tags     []string `json:"tags,omitempty"`
 }
 
 // Key is the key for a memory.

@@ -133,7 +133,7 @@ func (r *sessionParticipantRepo) SyncFromSession(ctx context.Context, sess bizse
 			Where(sessionparticipant.SessionIDEQ(sessionID)).
 			Exec(txCtx)
 		if err != nil {
-			return err
+			return entErrToBizErr(err, "SESSION_PARTICIPANT")
 		}
 		// Insert new participants.
 		for _, row := range aggs {
@@ -155,14 +155,14 @@ func (r *sessionParticipantRepo) SyncFromSession(ctx context.Context, sess bizse
 				SetContextUsedRatio(0).
 				SetMetadataJSON("{}").
 				SetCreatedAt(now).
-				SetUpdatedAt(now).
-				Save(txCtx)
-			if err != nil {
-				return err
-			}
+			SetUpdatedAt(now).
+			Save(txCtx)
+		if err != nil {
+			return entErrToBizErr(err, "SESSION_PARTICIPANT")
 		}
-		return nil
-	})
+	}
+	return nil
+})
 }
 
 func participantFromMessage(msg bizsess.ChatMessage, sess bizsess.Session, lg loggateway.Logger) (pType, pID, name, role string) {
@@ -224,7 +224,7 @@ func (r *sessionParticipantRepo) ListBySession(ctx context.Context, sessionID st
 		Order(ent.Desc(sessionparticipant.FieldMessageCount), ent.Desc(sessionparticipant.FieldLastActiveAt)).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SESSION_PARTICIPANT")
 	}
 	out := make([]bizsess.SessionParticipant, len(items))
 	for i, item := range items {

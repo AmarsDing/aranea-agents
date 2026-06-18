@@ -83,7 +83,7 @@ func (r *sessionRepo) CreateSessionTurn(ctx context.Context, turn biz.SessionTur
 		SetUpdatedAt(turn.UpdatedAt).
 		Save(ctx)
 	if err != nil {
-		return biz.SessionTurn{}, err
+		return biz.SessionTurn{}, entErrToBizErr(err, "SESSION_TURN")
 	}
 	return entSessionTurnToBiz(saved), nil
 }
@@ -163,7 +163,7 @@ func (r *sessionRepo) UpdateSessionTurn(ctx context.Context, id string, fields b
 	upd = upd.SetUpdatedAt(nowRFC3339())
 	saved, err := upd.Save(ctx)
 	if err != nil {
-		return biz.SessionTurn{}, err
+		return biz.SessionTurn{}, entErrToBizErr(err, "SESSION_TURN")
 	}
 	return entSessionTurnToBiz(saved), nil
 }
@@ -177,7 +177,7 @@ func (r *sessionRepo) ListSessionTurns(ctx context.Context, sessionID string, li
 	where := entsessionturn.SessionIDEQ(sessionID)
 	total, err := c.SessionTurn.Query().Where(where).Count(ctx)
 	if err != nil {
-		return biz.SessionTurnListResult{}, err
+		return biz.SessionTurnListResult{}, entErrToBizErr(err, "SESSION_TURN")
 	}
 	rows, err := c.SessionTurn.Query().
 		Where(where).
@@ -186,7 +186,7 @@ func (r *sessionRepo) ListSessionTurns(ctx context.Context, sessionID string, li
 		Offset(offset).
 		All(ctx)
 	if err != nil {
-		return biz.SessionTurnListResult{}, err
+		return biz.SessionTurnListResult{}, entErrToBizErr(err, "SESSION_TURN")
 	}
 	items := make([]biz.SessionTurn, 0, len(rows))
 	for _, r := range rows {
@@ -199,7 +199,7 @@ func (r *sessionRepo) GetSessionTurn(ctx context.Context, id string) (biz.Sessio
 	c := r.data.RW().Read(ctx)
 	row, err := c.SessionTurn.Get(ctx, id)
 	if err != nil {
-		return biz.SessionTurn{}, err
+		return biz.SessionTurn{}, entErrToBizErr(err, "SESSION_TURN")
 	}
 	return entSessionTurnToBiz(row), nil
 }

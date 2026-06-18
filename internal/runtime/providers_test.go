@@ -8,14 +8,14 @@ import (
 )
 
 func TestNewTRPCSessionServiceNilDB(t *testing.T) {
-	svc := NewTRPCSessionService(nil, loggateway.NewNoop(), sessiontrpc.SummarizerConfig{})
+	svc := NewTRPCSessionService(nil, "", loggateway.NewNoop(), sessiontrpc.SummarizerConfig{})
 	if svc == nil {
 		t.Fatal("expected in-memory fallback session service")
 	}
 }
 
 func TestNewGraphCheckpointSaverNilDB(t *testing.T) {
-	_, err := NewGraphCheckpointSaver(nil, nil)
+	_, err := NewGraphCheckpointSaver(nil, "", loggateway.NewNoop())
 	if err == nil {
 		t.Fatal("expected error for nil db")
 	}

@@ -16,6 +16,25 @@ import (
 // rebuild.  It is an XML comment so LLMs treat it as inert metadata.
 const memoryInjectMarker = "<!-- aranea:memory_inject -->\n"
 
+// proactiveHitsCtxKey is the context key for proactive recall hits (P3-11).
+// The service layer stores hits from ProactiveRecall at turn start; the
+// before-model hook retrieves them to merge with RecallComposite results.
+type proactiveHitsCtxKey struct{}
+
+// WithProactiveHits returns a new context carrying proactive recall hits.
+func WithProactiveHits(ctx context.Context, hits []biz.CompositeRecallHit) context.Context {
+	return context.WithValue(ctx, proactiveHitsCtxKey{}, hits)
+}
+
+// ProactiveHitsFromContext returns the proactive recall hits stored in ctx,
+// or nil if none are present.
+func ProactiveHitsFromContext(ctx context.Context) []biz.CompositeRecallHit {
+	if v, ok := ctx.Value(proactiveHitsCtxKey{}).([]biz.CompositeRecallHit); ok {
+		return v
+	}
+	return nil
+}
+
 // isMemoryInjectMessage reports whether msg was injected by the
 // MemoryInject before-model hook (identified by the hidden marker prefix).
 func isMemoryInjectMessage(msg trpcmodel.Message) bool {
@@ -137,7 +156,8 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 	// L2/L3/L4: recall-based cues (keyword-driven, changes every turn)
 	var recallParts []string
 	if policy.RecallL2 && policy.InjectL3 && deps.MemoryCompositeRecall != nil {
-		if composite := CompositeMemoryCue(ctx, deps.MemoryCompositeRecall, ag, policy, rt, sessionID, keyword, 0); composite != "" {
+		proactiveHits := ProactiveHitsFromContext(ctx)
+		if composite := CompositeMemoryCue(ctx, deps.MemoryCompositeRecall, ag, policy, rt, sessionID, keyword, 0, proactiveHits); composite != "" {
 			recallParts = append(recallParts, composite)
 		}
 	} else {

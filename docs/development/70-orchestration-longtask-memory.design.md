@@ -707,6 +707,15 @@ func (r *RuntimeReplannerImpl) OnNodeFailure(ctx, exec *biz.GraphExecution, fail
 }
 ```
 
+> P2-2 已落地（Wave 4）。实际实现与原设计的差异：
+> - **4 种 ReplanType 对齐**：`ReplanRetry` / `ReplanReroute` / `ReplanInsertFallback` / `ReplanRebuildSubgraph` 与原设计一致
+> - **规则化失败分析（无 LLM）**：`analyzeFailure` 基于错误类型规则匹配（transient/agent_incapable/subtask_invalid/blocked_downstream），YAGNI 原则——不引入 LLM 决策，避免运行时延迟与成本
+> - **`sync.Mutex` 保护 attemptCount**：`map[string]int` 按 execID 计数，并发安全（红线 #21）
+> - **`maxReplanAttempts` 上限**：单 execution 单节点最多重规划 3 次，超限返回 `apierror.CodeTooManyRequests`
+> - **apierror 错误模型**：所有业务错误经 `apierror.New(...)` 返回（红线 #14），不使用 `fmt.Errorf`
+> - **事件发布**：重规划决策通过 `ReplanBus.Publish` 发布 `ReplanEnvelope`，由 executor 订阅执行
+> - **18 个测试**：含 `TestRuntimeReplanner_ConcurrentAccess` 并发测试（8 goroutine × maxReplanAttempts，`-race` 通过，BD5）
+
 ### 6.3 Graph 拓扑演化
 
 ```go
@@ -918,6 +927,13 @@ func (e *ParallelToolExecutor) executeLayer(ctx, calls []ToolCall) []ToolResult 
 }
 ```
 
+> P2-4 已落地（Wave 4）。实际实现与原设计的差异：
+> - **safego.Go 替代裸 goroutine**：`executeLayer` 内部用 `safego.Go(ctx, "parallel_tool.exec", fn)` 替代 `go func()`（红线 #13，保证 panic 恢复 + ctx 取消传播）
+> - **信号量限流**：新增 `semaphore` 字段（`chan struct{}`，容量 `maxConcurrency`），在 goroutine 启动前 acquire、退出时 release，防止突发 layer 耗尽 goroutine
+> - **预分配 results 切片**：`results := make([]ToolResult, len(calls))` 按索引写入，避免 `append` 竞态（无需 `sync.Mutex` 保护）
+> - **ctx 取消传播**：`safego.Go` 内部检查 `ctx.Err()`，ctx 取消时未启动的 goroutine 跳过执行
+> - **WorktreeIsolator 错误日志化**：审查修复（红线 #22）—— `mergeWorktree`/`removeWorktree` 中的 `runGit` 错误不再用 `_ =` 吞掉，改为 `lg.Warn` 记录（best-effort 清理，不阻断主流程）
+
 ### 8.2 WorktreeIsolator
 
 ```go
@@ -1096,6 +1112,17 @@ type ConversationContext struct {
 // 实现：基于提及实体检索关联记忆，无需显式 query
 ```
 
+> P3-11 已落地（Wave 4）。实际实现与原设计的差异：
+> - **签名增加 UserKey**：`ProactiveRecall(ctx, userKey UserKey, convCtx ConversationContext) ([]*Entry, error)` —— 多租户场景必须区分 agent/user，原设计遗漏此参数
+> - **biz 端口分离**：`internal/biz/memory_composite_recall.go` 定义 `ProactiveRecaller` 接口（用 `agentID/userID + ProactiveRecallContext`），避免 biz 直接依赖框架类型（红线 #2）
+> - **适配器模式**：`ProactiveRecallAdapter` 桥接框架 `Service.ProactiveRecall` 与 biz `ProactiveRecaller.ProactiveRecall`（Go 不允许同类型同名方法，签名又不同）
+> - **可选依赖 + Setter 注入**：`SetProactiveRecaller` 后置注入，避免破坏 `NewMemoryCompositeRecallUsecase` 现有签名（向后兼容）
+> - **Bi-temporal 过滤集成**：跳过 `ValidUntil.Before(time.Now())` 的失效记忆（P3-8 联动）
+> - **矛盾检测**：`extractKeywords` 分词 + `hasKeywordOverlap` 命中时 `Score += 0.1`，优先暴露潜在冲突
+> - **查询上限**：`proactiveRecallMaxQueries=8` 防止 DB 过载
+> - **错误降级**：单 query 搜索失败 `lg.Warn` + continue，不中断整体召回
+> - **in-memory 框架实现**：`pkg/trpc-agent-go/memory/inmemory/service.go` 提供测试用简化版（无 Bi-temporal/矛盾检测）
+
 ### 9.5 记忆链接图 Evolution
 
 ```go
@@ -1138,7 +1165,23 @@ type Entry struct {
 </template>
 ```
 
-### 10.2 编排时间线视图
+> P3-4 已落地（Wave 4）。实际实现与原设计的差异：
+> - **错误码映射集中化**：`web/src/features/chat/errorCodeHints.ts` 统一管理 17 个错误码（9 TurnErrorCode + 8 ApiErrorCode）到 `ErrorAction` 的映射，组件不内联硬编码
+> - **6 个 emit 事件**：`retry` / `switch-model` / `rephrase` / `dismiss` / `report` / `ignore`，覆盖所有错误动作
+> - **条件按钮渲染**：`getErrorAction()` 返回 action 后，按钮按 action 类型条件渲染（无 action 时隐藏整个 actions 区）
+> - **i18n 完整覆盖**：`errorBlock.*` 命名空间 17 个 key（zh-CN + en-US 双语）
+> - **未实现 §10.2 编排时间线视图**：原设计的 `OrchestrationTimeline.vue` 不在 Wave 4 范围内，留待后续
+
+### 10.2 WS 断连快速检测
+
+> P3-5 已落地（Wave 4）。原设计未单独描述 WS 断连检测，实际实现如下：
+> - **`useChatStreamManager.ts`**：新增 `isStale` ref + `resetStaleTimer()` + `onHeartbeat()` / `onStale()` 回调；心跳超时（默认 30s）触发 `isStale = true`
+> - **`recover()` 方法**：手动重连入口，重置 stale 状态 + 重新建立 WS 连接
+> - **`ChatMessagePanel.vue`**：新增 `isStale` prop + `recover` emit + stale banner UI（顶部黄色提示条 + "重新连接" 按钮）
+> - **`ChatPage.vue`**：`:is-stale` 绑定 + `@recover` 处理器 + `onRecover()` 调用 stream manager
+> - **i18n**：`wsStale.*` 命名空间 4 个 key（title/message/recover/dismiss）
+
+### 10.3 编排时间线视图
 
 ```vue
 <!-- web/src/features/orchestration/OrchestrationTimeline.vue -->
@@ -1159,6 +1202,8 @@ type Entry struct {
 </template>
 ```
 
+> 注：编排时间线视图不在 Wave 4 范围内，保留原设计待后续实现。
+
 ---
 
 ## 十一、数据模型变更
@@ -1174,20 +1219,23 @@ field.Enum("source").Values("user", "system", "imported").Default("user").Commen
 
 ### 11.2 Memory 表新增列
 
-> 注：实际表名为 `memory_facts`（非 `memories`），Bi-temporal 列（P3-8）类型为 `TEXT NOT NULL DEFAULT ''`（非 `TIMESTAMP`），与 SQLite 既有 schema 一致。Ebbinghaus/链接图相关列（P3-9/P3-12）尚未实现，保留原设计。
+> 注：实际表名为 `memory_facts`（非 `memories`），Bi-temporal 列（P3-8）类型为 `TEXT NOT NULL DEFAULT ''`（非 `TIMESTAMP`），与 SQLite 既有 schema 一致。Ebbinghaus 相关列（P3-9）尚未实现，保留原设计。链接图相关列（P3-12）已落地，类型为 `TEXT NOT NULL DEFAULT '[]'`（SQLite 无原生 JSON 类型，用 TEXT 存储 JSON 字符串）。
 
 ```sql
 -- P3-8 已落地（internal/data/sql/migrations/20260725_memory_bitemporal.sql）
 ALTER TABLE memory_facts ADD COLUMN valid_from TEXT NOT NULL DEFAULT '';
 ALTER TABLE memory_facts ADD COLUMN valid_until TEXT NOT NULL DEFAULT '';
 
--- P3-9/P3-12 待落地（保留原设计，类型待 SQLite 适配）
+-- P3-9 待落地（保留原设计，类型待 SQLite 适配）
 ALTER TABLE memory_facts ADD COLUMN access_count INTEGER DEFAULT 0;
 ALTER TABLE memory_facts ADD COLUMN last_accessed_at TIMESTAMP;
 ALTER TABLE memory_facts ADD COLUMN decay_score FLOAT DEFAULT 1.0;
-ALTER TABLE memory_facts ADD COLUMN links JSON DEFAULT '[]';
-ALTER TABLE memory_facts ADD COLUMN keywords JSON DEFAULT '[]';
-ALTER TABLE memory_facts ADD COLUMN tags JSON DEFAULT '[]';
+
+-- P3-12 已落地（internal/data/sql/migrations/20260726_memory_links.sql）
+-- SQLite 无原生 JSON 类型，用 TEXT 存储 JSON 字符串
+ALTER TABLE memory_facts ADD COLUMN links TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE memory_facts ADD COLUMN keywords TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE memory_facts ADD COLUMN tags TEXT NOT NULL DEFAULT '[]';
 ```
 
 ### 11.3 新增事件表

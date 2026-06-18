@@ -10,12 +10,15 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event/contract"
+	araneagraph "aranea-agents/internal/graph"
+	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/telemetry/turntrace"
 	"aranea-agents/internal/tools"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 	"trpc.group/trpc-go/trpc-agent-go/graph"
 )
 
@@ -36,10 +39,14 @@ type TaskOrchestratorImpl struct {
 	perfRepo        biz.AgentPerformanceRepository
 	evolutionSugg   biz.EvolutionSuggestionRepo
 	bus             contract.Bus
+	nl2graph        araneagraph.NL2GraphConverter
 	lg              loggateway.Logger
 }
 
 // NewTaskOrchestratorImpl creates a new TaskOrchestratorImpl.
+// The nl2graph parameter may be nil when NL2Graph conversion is not configured;
+// in that case orchestrateDAG falls back to the sequential pipeline when no
+// pre-defined graph template (TaskDAG) is available.
 func NewTaskOrchestratorImpl(
 	spiritUC *biz.SpiritTeamUsecase,
 	assembler tools.SpiritTeamAssemblerPort,
@@ -54,6 +61,7 @@ func NewTaskOrchestratorImpl(
 	perfRepo biz.AgentPerformanceRepository,
 	evolutionSugg biz.EvolutionSuggestionRepo,
 	bus contract.Bus,
+	nl2graph araneagraph.NL2GraphConverter,
 	lg loggateway.Logger,
 ) *TaskOrchestratorImpl {
 	return &TaskOrchestratorImpl{
@@ -70,12 +78,18 @@ func NewTaskOrchestratorImpl(
 		perfRepo:        perfRepo,
 		evolutionSugg:   evolutionSugg,
 		bus:             bus,
+		nl2graph:        nl2graph,
 		lg:              lg,
 	}
 }
 
 // Orchestrate builds and executes the orchestration graph based on the TaskPlan and AllocationPlan.
 func (o *TaskOrchestratorImpl) Orchestrate(ctx context.Context, taskPlan *biz.TaskPlan, allocPlan *biz.AllocationPlan) (handle *biz.OrchestrationHandle, err error) {
+	start := time.Now()
+	defer func() {
+		metrics.SpiritOrchDuration.Observe(time.Since(start).Seconds())
+	}()
+
 	// Start orchestration phase span (P3-2): Trace propagation across Spirit→Team→Graph.
 	bridge := turntrace.FromContext(ctx)
 	if bridge != nil {
@@ -291,51 +305,95 @@ func (o *TaskOrchestratorImpl) orchestrateTeam(ctx context.Context, taskPlan *bi
 // enabling focused and concurrent execution. Teams that fail to assemble are
 // logged but do not block the orchestration — the remaining teams proceed.
 // Returns an error only if ALL teams fail to assemble.
+//
+// Teams are assembled concurrently using errgroup. A pre-allocated results
+// slice avoids shared-slice concurrent writes (red line #21). Each goroutine
+// returns nil to errgroup so a single assembly failure does NOT cancel other
+// in-flight assemblies, preserving the fault-tolerance semantics of the
+// previous serial implementation.
 func (o *TaskOrchestratorImpl) orchestrateParallelTeams(ctx context.Context, taskPlan *biz.TaskPlan, allocPlan *biz.AllocationPlan) ([]string, error) {
+	allocs := allocPlan.Allocations
+	if len(allocs) == 0 {
+		return nil, nil
+	}
+
+	// Pre-allocate results slice: each goroutine writes only to its own index.
+	results := make([]parallelTeamResult, len(allocs))
+
+	// errgroup.WithContext creates a child context for cancellation propagation.
+	// Goroutines return nil so a single failure does not cancel siblings.
+	g, gctx := errgroup.WithContext(ctx)
+	for i, alloc := range allocs {
+		idx, al := i, alloc
+		g.Go(func() error {
+			key := strings.TrimSpace(al.AssignedKey)
+			if key == "" {
+				// Skip allocations without an agent key; leave result zero-valued.
+				return nil
+			}
+
+			// Use the subtask name as the team's task description for focused execution.
+			taskDesc := al.SubTaskName
+			if taskDesc == "" {
+				taskDesc = al.SubTaskID
+			}
+			if taskDesc == "" {
+				taskDesc = taskPlan.UserMessage
+			}
+
+			params := biz.SpiritTeamParams{
+				SpiritSessionID: taskPlan.SpiritSessionID,
+				TaskDescription: taskDesc,
+				AgentKeys:       []string{key},
+				Mode:            "parallel",
+				AutoStart:       true,
+			}
+
+			team, _, err := o.assembler.AssembleTeam(gctx, params)
+			if err != nil {
+				results[idx] = parallelTeamResult{
+					subtaskID: al.SubTaskID,
+					agentKey:  key,
+					err:       err,
+				}
+				o.lg.Warn("TaskOrchestrator: failed to assemble team for subtask, skipping",
+					loggateway.StepID(biz.SpiritStepOrchestratorExecute),
+					loggateway.Str("subtask_id", al.SubTaskID),
+					loggateway.Str("agent_key", key),
+					loggateway.Err(err),
+				)
+				return nil
+			}
+
+			results[idx] = parallelTeamResult{
+				teamID:    team.ID,
+				subtaskID: al.SubTaskID,
+				agentKey:  key,
+			}
+			o.lg.Info("TaskOrchestrator: parallel team assembled for subtask",
+				loggateway.StepID(biz.SpiritStepOrchestratorExecute),
+				loggateway.Str("team_id", team.ID),
+				loggateway.Str("subtask_id", al.SubTaskID),
+				loggateway.Str("agent_key", key),
+			)
+			return nil
+		})
+	}
+	// All goroutines return nil, so g.Wait() always returns nil. The error
+	// channel is intentionally unused — failures are captured in `results`.
+	_ = g.Wait()
+
+	// Collect successful team IDs and track the last non-nil error.
 	var teamIDs []string
 	var lastErr error
-	for _, alloc := range allocPlan.Allocations {
-		key := strings.TrimSpace(alloc.AssignedKey)
-		if key == "" {
+	for _, r := range results {
+		if r.err != nil {
+			lastErr = r.err
 			continue
 		}
-
-		// Use the subtask name as the team's task description for focused execution.
-		taskDesc := alloc.SubTaskName
-		if taskDesc == "" {
-			taskDesc = alloc.SubTaskID
+		if r.teamID != "" {
+			teamIDs = append(teamIDs, r.teamID)
 		}
-		if taskDesc == "" {
-			taskDesc = taskPlan.UserMessage
-		}
-
-		params := biz.SpiritTeamParams{
-			SpiritSessionID: taskPlan.SpiritSessionID,
-			TaskDescription: taskDesc,
-			AgentKeys:       []string{key},
-			Mode:            "parallel",
-			AutoStart:       true,
-		}
-
-		team, _, err := o.assembler.AssembleTeam(ctx, params)
-		if err != nil {
-			lastErr = err
-			o.lg.Warn("TaskOrchestrator: failed to assemble team for subtask, skipping",
-				loggateway.StepID(biz.SpiritStepOrchestratorExecute),
-				loggateway.Str("subtask_id", alloc.SubTaskID),
-				loggateway.Str("agent_key", key),
-				loggateway.Err(err),
-			)
-			continue
-		}
-		teamIDs = append(teamIDs, team.ID)
-
-		o.lg.Info("TaskOrchestrator: parallel team assembled for subtask",
-			loggateway.StepID(biz.SpiritStepOrchestratorExecute),
-			loggateway.Str("team_id", team.ID),
-			loggateway.Str("subtask_id", alloc.SubTaskID),
-			loggateway.Str("agent_key", key),
-		)
 	}
 
 	if len(teamIDs) == 0 {
@@ -345,24 +403,18 @@ func (o *TaskOrchestratorImpl) orchestrateParallelTeams(ctx context.Context, tas
 	return teamIDs, nil
 }
 
+// parallelTeamResult captures the outcome of a single parallel team assembly.
+// Each goroutine writes its own instance into a pre-allocated slice slot.
+type parallelTeamResult struct {
+	teamID    string
+	subtaskID string
+	agentKey  string
+	err       error
+}
+
 // orchestrateDAG handles the DAG → Graph compilation path.
 func (o *TaskOrchestratorImpl) orchestrateDAG(ctx context.Context, taskPlan *biz.TaskPlan, allocPlan *biz.AllocationPlan, handle *biz.OrchestrationHandle) error {
 	o.lg.Info("TaskOrchestrator: DAG path",
-		loggateway.StepID(biz.SpiritStepOrchestratorGraphBuild),
-		loggateway.Str("orchestration_id", handle.ID),
-	)
-
-	if taskPlan.TaskDAG == nil {
-		return apierror.BadRequest(apierror.DomainSpirit, "task_dag is required for DAG strategy")
-	}
-
-	// Compile DAG + AllocationPlan → Definition JSON.
-	defJSON, err := o.compiler.Compile(taskPlan.TaskDAG, allocPlan)
-	if err != nil {
-		return apierror.Internal(apierror.DomainSpirit, "compile DAG to graph").WithCause(err)
-	}
-
-	o.lg.Info("TaskOrchestrator: DAG compiled to definition JSON",
 		loggateway.StepID(biz.SpiritStepOrchestratorGraphBuild),
 		loggateway.Str("orchestration_id", handle.ID),
 	)
@@ -380,20 +432,36 @@ func (o *TaskOrchestratorImpl) orchestrateDAG(ctx context.Context, taskPlan *biz
 		return apierror.BadRequest(apierror.DomainSpirit, "no agent keys in allocation plan for DAG strategy")
 	}
 
+	// No pre-defined graph template: try NL2Graph conversion. On failure
+	// (converter not wired or conversion error), fall back to the existing
+	// sequential pipeline (parallel team mode).
+	if taskPlan.TaskDAG == nil {
+		return o.orchestrateWithoutTemplate(ctx, taskPlan, allocPlan, handle, agentKeys)
+	}
+
+	// Compile DAG + AllocationPlan → Definition JSON.
+	defJSON, err := o.compiler.Compile(taskPlan.TaskDAG, allocPlan)
+	if err != nil {
+		return apierror.Internal(apierror.DomainSpirit, "compile DAG to graph").WithCause(err)
+	}
+
+	o.lg.Info("TaskOrchestrator: DAG compiled to definition JSON",
+		loggateway.StepID(biz.SpiritStepOrchestratorGraphBuild),
+		loggateway.Str("orchestration_id", handle.ID),
+	)
+
 	// Determine mode from the compiled definition.
 	// The compiler already chose "coordinator" or "parallel" based on DAG structure.
 	mode := "coordinator"
-	if taskPlan.TaskDAG != nil {
-		hasDeps := false
-		for _, node := range taskPlan.TaskDAG.Nodes {
-			if len(node.DependsOn) > 0 {
-				hasDeps = true
-				break
-			}
+	hasDeps := false
+	for _, node := range taskPlan.TaskDAG.Nodes {
+		if len(node.DependsOn) > 0 {
+			hasDeps = true
+			break
 		}
-		if !hasDeps && len(taskPlan.TaskDAG.Nodes) > 1 {
-			mode = "parallel"
-		}
+	}
+	if !hasDeps && len(taskPlan.TaskDAG.Nodes) > 1 {
+		mode = "parallel"
 	}
 
 	// Assemble the team with the compiled definition JSON.
@@ -435,6 +503,98 @@ func (o *TaskOrchestratorImpl) orchestrateDAG(ctx context.Context, taskPlan *biz
 		loggateway.Str("definition_json_len", fmt.Sprintf("%d", len(defJSON))),
 	)
 	return nil
+}
+
+// orchestrateWithoutTemplate handles the DAG strategy path when no pre-defined
+// graph template (TaskDAG) is available. It attempts NL2Graph conversion to
+// generate a GraphBuildConfig from the task description; on failure (converter
+// not wired or conversion error), it falls back to the existing sequential
+// pipeline by delegating to orchestrateTeam with "parallel" mode.
+func (o *TaskOrchestratorImpl) orchestrateWithoutTemplate(ctx context.Context, taskPlan *biz.TaskPlan, allocPlan *biz.AllocationPlan, handle *biz.OrchestrationHandle, agentKeys []string) error {
+	cfg, convErr := o.tryNL2GraphConversion(ctx, taskPlan, allocPlan, handle)
+	if convErr != nil || cfg == nil {
+		o.lg.Warn("TaskOrchestrator: NL2Graph conversion unavailable, falling back to sequential pipeline",
+			loggateway.StepID(biz.SpiritStepOrchestratorGraphBuild),
+			loggateway.Str("orchestration_id", handle.ID),
+			loggateway.Err(convErr),
+		)
+		return o.orchestrateTeam(ctx, taskPlan, allocPlan, handle, "parallel")
+	}
+
+	// Determine mode from the NL2Graph-generated config structure.
+	mode := "coordinator"
+	if len(cfg.Edges) == 0 && len(cfg.Nodes) > 1 {
+		mode = "parallel"
+	}
+
+	params := biz.SpiritTeamParams{
+		SpiritSessionID: taskPlan.SpiritSessionID,
+		TaskDescription: taskPlan.UserMessage,
+		AgentKeys:       agentKeys,
+		Mode:            mode,
+		AutoStart:       true,
+	}
+	team, _, err := o.assembler.AssembleTeam(ctx, params)
+	if err != nil {
+		return apierror.Internal(apierror.DomainSpirit, "assemble NL2Graph team").WithCause(err)
+	}
+	handle.TeamIDs = []string{team.ID}
+	handle.AgentKeys = agentKeys
+	handle.GraphExecutionID = team.ID
+	handle.Status = biz.OrchestrationStatusRunning
+	o.lg.Info("TaskOrchestrator: NL2Graph team assembled",
+		loggateway.StepID(biz.SpiritStepOrchestratorExecute),
+		loggateway.Str("orchestration_id", handle.ID),
+		loggateway.Str("team_id", team.ID),
+	)
+	return nil
+}
+
+// tryNL2GraphConversion attempts to convert the task description into a
+// GraphBuildConfig using the NL2GraphConverter. Returns nil config (with nil
+// error) when the converter is not wired; returns an error when conversion
+// fails. In both cases the caller should fall back to the sequential pipeline.
+func (o *TaskOrchestratorImpl) tryNL2GraphConversion(ctx context.Context, taskPlan *biz.TaskPlan, allocPlan *biz.AllocationPlan, handle *biz.OrchestrationHandle) (*biz.GraphBuildConfig, error) {
+	if o.nl2graph == nil {
+		return nil, nil
+	}
+	availableAgents := buildAgentCapabilitiesFromAlloc(allocPlan)
+	cfg, err := o.nl2graph.Convert(ctx, taskPlan.UserMessage, availableAgents)
+	if err != nil {
+		return nil, err
+	}
+	if cfg == nil {
+		return nil, nil
+	}
+	o.lg.Info("TaskOrchestrator: NL2Graph conversion succeeded",
+		loggateway.StepID(biz.SpiritStepOrchestratorGraphBuild),
+		loggateway.Str("orchestration_id", handle.ID),
+		loggateway.Int("node_count", len(cfg.Nodes)),
+		loggateway.Int("edge_count", len(cfg.Edges)),
+	)
+	return cfg, nil
+}
+
+// buildAgentCapabilitiesFromAlloc builds a minimal AgentCapability list from
+// the AllocationPlan for NL2Graph conversion. Only AgentKey and DisplayName
+// are populated because the orchestrator does not have access to the full
+// agent catalog; NL2Graph uses these as fallback agent selectors.
+func buildAgentCapabilitiesFromAlloc(allocPlan *biz.AllocationPlan) []biz.AgentCapability {
+	if allocPlan == nil {
+		return nil
+	}
+	caps := make([]biz.AgentCapability, 0, len(allocPlan.Allocations))
+	for _, alloc := range allocPlan.Allocations {
+		key := strings.TrimSpace(alloc.AssignedKey)
+		if key == "" {
+			continue
+		}
+		caps = append(caps, biz.AgentCapability{
+			AgentKey:    key,
+			DisplayName: alloc.AssignedName,
+		})
+	}
+	return caps
 }
 
 // CheckProgress returns the progress of each subtask in the orchestration.

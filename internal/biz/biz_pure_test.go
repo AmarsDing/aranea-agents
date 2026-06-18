@@ -34,24 +34,9 @@ func TestRequireNonEmpty(t *testing.T) {
 	}
 }
 
-func TestInboundIdempotencyKey(t *testing.T) {
-	cases := []struct {
-		platform   string
-		messageKey string
-		want       string
-	}{
-		{"feishu", "om_123", "om_123"},
-		{"feishu", "  om_456  ", "om_456"},
-		{"feishu", "", ""},
-	}
-	for _, tc := range cases {
-		got := InboundIdempotencyKey(tc.platform, tc.messageKey)
-		if got != tc.want {
-			t.Errorf("InboundIdempotencyKey(%q, %q) = %q, want %q",
-				tc.platform, tc.messageKey, got, tc.want)
-		}
-	}
-}
+// TestInboundIdempotencyKey is covered by channel_inbound_receipt_test.go
+// (package biz_test) with more comprehensive cases including platform
+// prefixing, already-prefixed keys, and cross-platform scenarios.
 
 func TestInboundTextPreview(t *testing.T) {
 	cases := []struct {

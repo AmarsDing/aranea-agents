@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -158,12 +159,64 @@ func (uc *ChatUsecase) InterruptAndSendMessage(ctx context.Context, sessionID, p
 	return nil
 }
 
+// SetRunStatus updates the run status with WBPF (Write-Before-Publish-Fire) semantics.
+//
+// State machine validation (AS-FSM-01): The transition from the current run
+// state to the new state is validated via RunStateMachine. Illegal transitions
+// are rejected and logged. When no prior status record exists (e.g., crash
+// recovery or first call), validation is skipped to allow bootstrap.
+//
+// WBPF ordering (BD1): PersistRunStatus (DB write) must succeed before
+// runs.SetStatus (in-memory) and PublishRunStatus (event) are applied. If the
+// DB write fails, the in-memory and event states are NOT updated, keeping DB
+// and memory consistent. The error is logged for monitoring/retry; callers
+// that need to react to persistence failures should use SetRunStatusWithError.
 func (uc *ChatUsecase) SetRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
-	if err := uc.persist.PersistRunStatus(ctx, sessionID, runID, status, errMsg); err != nil {
-		uc.lg.Error("persist run status failed", loggateway.StepID("chat.persist_run_status"), loggateway.SessionID(sessionID), loggateway.Str("run_id", runID), loggateway.Err(err))
+	_ = uc.SetRunStatusWithError(ctx, sessionID, runID, status, errMsg)
+}
+
+// SetRunStatusWithError is the same as SetRunStatus but returns the
+// persistence error so callers in critical paths can react (e.g., retry or
+// fail the parent operation). State-machine rejection is also surfaced as an
+// error.
+//
+// Stability:evolving
+func (uc *ChatUsecase) SetRunStatusWithError(ctx context.Context, sessionID, runID, status, errMsg string) error {
+	// ── 1. State machine validation (AS-FSM-01 / FSM2) ──────────────────────
+	current, hasCurrent := uc.runs.GetStatus(sessionID)
+	fromState := RunStateNone
+	if hasCurrent {
+		fromState = ParseRunState(current.Status)
 	}
+	toState := ParseRunState(status)
+	// Skip validation when there is no prior record (bootstrap/crash recovery).
+	if hasCurrent && fromState != toState {
+		sm := NewRunStateMachine()
+		if !sm.CanTransition(fromState, toState) {
+			uc.lg.Warn("invalid run status transition rejected",
+				loggateway.StepID("chat.set_run_status"),
+				loggateway.SessionID(sessionID),
+				loggateway.Str("run_id", runID),
+				loggateway.Str("from", string(fromState)),
+				loggateway.Str("to", string(toState)))
+			return apierror.BadRequest("CHAT", "invalid run status transition: %s → %s", fromState, toState)
+		}
+	}
+
+	// ── 2. WBPF: persist first, then update memory and publish (BD1) ────────
+	if err := uc.persist.PersistRunStatus(ctx, sessionID, runID, status, errMsg); err != nil {
+		uc.lg.Error("persist run status failed; skipping in-memory and event update to maintain DB/memory consistency",
+			loggateway.StepID("chat.persist_run_status"),
+			loggateway.SessionID(sessionID),
+			loggateway.Str("run_id", runID),
+			loggateway.Err(err))
+		return err
+	}
+
+	// ── 3. DB write succeeded → propagate to memory and event bus ──────────
 	uc.runs.SetStatus(sessionID, runID, status, errMsg)
 	uc.publisher.PublishRunStatus(sessionID, runID, status, errMsg)
+
 	// Proactively clean up await channel when run reaches a terminal status.
 	// This prevents memory leaks when runs end without going through the normal
 	// await reply flow (e.g., hard budget, cancellation, unexpected failure).
@@ -171,6 +224,7 @@ func (uc *ChatUsecase) SetRunStatus(ctx context.Context, sessionID, runID, statu
 	case SessionRunPhaseCompleted, SessionRunPhaseFailed, SessionRunPhaseCancelled:
 		uc.DeleteAwaitChannel(sessionID)
 	}
+	return nil
 }
 
 func (uc *ChatUsecase) GetRunStatus(sessionID string) (ChatRunStatus, bool) {
