@@ -21,7 +21,7 @@ func (r *usageRepo) GetActiveModelPricing(ctx context.Context, providerCode, mod
 	var inputUSD, outputUSD, cacheUSD, cacheWriteUSD, reasonUSD, embedUSD float64
 	var inputMicro, outputMicro, cacheMicro, cacheWriteMicro, reasonMicro, embedMicro int64
 	err := entQueryRowScan(r.data.RW().Read(ctx), ctx,
-		`SELECT input_price_micro_usd_per_1k, output_price_micro_usd_per_1k,
+		r.data.Dialect().RenumberPlaceholders(`SELECT input_price_micro_usd_per_1k, output_price_micro_usd_per_1k,
 		        cached_input_price_micro_usd_per_1k, COALESCE(cache_write_price_micro_usd_per_1k, 0),
 		        reasoning_price_micro_usd_per_1k, embedding_price_micro_usd_per_1k,
 		        COALESCE(input_price_usd_per_1m, 0), COALESCE(output_price_usd_per_1m, 0),
@@ -30,7 +30,7 @@ func (r *usageRepo) GetActiveModelPricing(ctx context.Context, providerCode, mod
 		 FROM model_pricing_rules
 		 WHERE provider_code = ? AND model_api_id = ? AND is_active = 1 AND (effective_to = '' OR effective_to IS NULL)
 		 ORDER BY effective_from DESC
-		 LIMIT 1`,
+		 LIMIT 1`),
 		[]any{providerCode, modelAPIID},
 		&inputMicro, &outputMicro, &cacheMicro, &cacheWriteMicro, &reasonMicro, &embedMicro,
 		&inputUSD, &outputUSD, &cacheUSD, &cacheWriteUSD, &reasonUSD, &embedUSD,
@@ -61,9 +61,9 @@ func (r *usageRepo) GetActiveModelPricing(ctx context.Context, providerCode, mod
 func (r *usageRepo) pricingFromProviderModelConfig(ctx context.Context, providerCode, modelAPIID string) (biz.ModelPricingSnapshot, bool, error) {
 	var cfgJSON string
 	err := entQueryRowScan(r.data.RW().Read(ctx), ctx,
-		`SELECT config_json FROM llm_provider_models
+		r.data.Dialect().RenumberPlaceholders(`SELECT config_json FROM llm_provider_models
 		 WHERE provider = ? AND model = ? AND deleted_at = '' AND enabled = 1
-		 ORDER BY sort_order ASC, created_at DESC LIMIT 1`,
+		 ORDER BY sort_order ASC, created_at DESC LIMIT 1`),
 		[]any{providerCode, modelAPIID},
 		&cfgJSON,
 	)

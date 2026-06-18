@@ -31,89 +31,131 @@ import (
 //	--init-schema  Run Ent Schema.Create on Postgres before migration (default: false)
 //	--sample-size  Number of rows to sample for validation checksum (default: 100)
 func main() {
-	source := flag.String("source", "file:./data/arenea.sqlite?cache=shared&_fk=1", "SQLite source DSN or file path")
-	target := flag.String("target", "", "Postgres target DSN (or set ARANEA_PG_DSN env var)")
-	mode := flag.String("mode", "migrate", "migrate | validate | both")
-	table := flag.String("table", "", "Migrate only this table (optional)")
-	batchSize := flag.Int("batch-size", 500, "Rows per INSERT batch")
-	skipTables := flag.String("skip-tables", "", "Comma-separated table names to skip")
-	initSchema := flag.Bool("init-schema", false, "Run Ent Schema.Create on Postgres before migration")
-	runDDL := flag.Bool("run-ddl", false, "Run DDL migrations (FTS5/monitor/memory/trpc tables) on Postgres before migration")
-	initFramework := flag.Bool("init-framework-schema", false, "Create framework-managed tables (trpc_*/graph_checkpoints/event_wal/vector_embeddings etc.) on Postgres before migration")
-	sampleSize := flag.Int("sample-size", 100, "Number of rows to sample for validation checksum")
-	flag.Parse()
+	cfg := parseFlags()
 
-	// Resolve Postgres DSN: --target flag takes precedence, then ARANEA_PG_DSN env var.
-	// Never hardcode credentials — red line #25.
-	pgDSN := *target
-	if pgDSN == "" {
-		pgDSN = os.Getenv("ARANEA_PG_DSN")
-	}
-	if pgDSN == "" {
-		fmt.Fprintln(os.Stderr, "postgres target DSN is required: pass --target or set ARANEA_PG_DSN env var")
-		os.Exit(2)
-	}
-
+	pgDSN := resolvePgDSN(cfg.target)
 	lg := loggateway.NewNoop()
 
-	srcDB, err := openSQLite(*source)
+	srcDB, tgtDB := openDatabases(cfg.source, pgDSN)
+	defer srcDB.Close()
+	defer tgtDB.Close()
+
+	runInitPhases(context.Background(), tgtDB, cfg, lg)
+
+	migrator := NewMigrator(srcDB, tgtDB, cfg.batchSize, lg)
+	validator := NewValidator(srcDB, tgtDB, cfg.sampleSize, lg)
+
+	runMigrationPhase(context.Background(), migrator, validator, cfg)
+}
+
+// migrationConfig holds parsed flag values for the migration tool.
+type migrationConfig struct {
+	source         string
+	target         string
+	mode           string
+	table          string
+	batchSize      int
+	skipTables     string
+	initSchema     bool
+	runDDL         bool
+	initFramework  bool
+	sampleSize     int
+}
+
+func parseFlags() migrationConfig {
+	cfg := migrationConfig{
+		source:        flag.String("source", "file:./data/arenea.sqlite?cache=shared&_fk=1", "SQLite source DSN or file path"),
+		target:        flag.String("target", "", "Postgres target DSN (or set ARANEA_PG_DSN env var)"),
+		mode:          flag.String("mode", "migrate", "migrate | validate | both"),
+		table:         flag.String("table", "", "Migrate only this table (optional)"),
+		batchSize:     flag.Int("batch-size", 500, "Rows per INSERT batch"),
+		skipTables:    flag.String("skip-tables", "", "Comma-separated table names to skip"),
+		initSchema:    flag.Bool("init-schema", false, "Run Ent Schema.Create on Postgres before migration"),
+		runDDL:        flag.Bool("run-ddl", false, "Run DDL migrations (FTS5/monitor/memory/trpc tables) on Postgres before migration"),
+		initFramework: flag.Bool("init-framework-schema", false, "Create framework-managed tables (trpc_*/graph_checkpoints/event_wal/vector_embeddings etc.) on Postgres before migration"),
+		sampleSize:    flag.Int("sample-size", 100, "Number of rows to sample for validation checksum"),
+	}
+	flag.Parse()
+	return cfg
+}
+
+// resolvePgDSN resolves the Postgres DSN from --target flag or ARANEA_PG_DSN env var.
+// Never hardcode credentials — red line #25.
+func resolvePgDSN(target string) string {
+	if target != "" {
+		return target
+	}
+	if dsn := os.Getenv("ARANEA_PG_DSN"); dsn != "" {
+		return dsn
+	}
+	fmt.Fprintln(os.Stderr, "postgres target DSN is required: pass --target or set ARANEA_PG_DSN env var")
+	os.Exit(2)
+	return ""
+}
+
+// openDatabases opens the SQLite source and Postgres target databases.
+// Exits the process on failure.
+func openDatabases(source, pgDSN string) (*sql.DB, *sql.DB) {
+	srcDB, err := openSQLite(source)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "open sqlite source: %v\n", err)
 		os.Exit(1)
 	}
-	defer srcDB.Close()
-
 	tgtDB, err := openPostgres(pgDSN)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "open postgres target: %v\n", err)
 		os.Exit(1)
 	}
-	defer tgtDB.Close()
+	return srcDB, tgtDB
+}
 
-	if *initSchema {
+// runInitPhases runs the optional schema initialization phases (Ent schema,
+// DDL migrations, framework-managed tables) on the Postgres target.
+func runInitPhases(ctx context.Context, tgtDB *sql.DB, cfg migrationConfig, lg loggateway.Logger) {
+	if cfg.initSchema {
 		fmt.Println("=== Initializing Postgres schema via Ent Schema.Create ===")
-		if err := initPostgresSchema(context.Background(), tgtDB); err != nil {
+		if err := initPostgresSchema(ctx, tgtDB); err != nil {
 			fmt.Fprintf(os.Stderr, "init schema: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println("Schema initialized.")
 	}
 
-	if *runDDL {
+	if cfg.runDDL {
 		fmt.Println("=== Running DDL migrations (FTS5/monitor/memory/trpc tables) ===")
-		if err := runDDLMigrationsOnPostgres(context.Background(), tgtDB, lg); err != nil {
+		if err := runDDLMigrationsOnPostgres(ctx, tgtDB, lg); err != nil {
 			fmt.Fprintf(os.Stderr, "ddl migrations: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println("DDL migrations completed.")
 	}
 
-	if *initFramework {
+	if cfg.initFramework {
 		fmt.Println("=== Creating framework-managed tables (trpc_*/graph_checkpoints/event_wal/vector_embeddings) ===")
 		// Try to create pgvector extension first (non-fatal if it fails —
 		// vector_embeddings table creation will be skipped).
-		if err := ensurePgvectorExtension(context.Background(), tgtDB); err != nil {
+		if err := ensurePgvectorExtension(ctx, tgtDB); err != nil {
 			fmt.Printf("  [WARN] pgvector extension not available: %v\n", err)
 			fmt.Println("         vector_embeddings table will be skipped (vectors need re-embedding after migration).")
 		}
-		if err := initFrameworkSchema(context.Background(), tgtDB); err != nil {
+		if err := initFrameworkSchema(ctx, tgtDB); err != nil {
 			fmt.Fprintf(os.Stderr, "framework schema: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println("Framework schema created.")
 	}
+}
 
-	skipSet := parseSkipTables(*skipTables)
-	migrator := NewMigrator(srcDB, tgtDB, *batchSize, lg)
-	validator := NewValidator(srcDB, tgtDB, *sampleSize, lg)
-
-	wantMigrate := *mode == "migrate" || *mode == "both"
-	wantValidate := *mode == "validate" || *mode == "both"
+// runMigrationPhase runs the data migration and/or validation phase based on mode.
+func runMigrationPhase(ctx context.Context, migrator *Migrator, validator *Validator, cfg migrationConfig) {
+	wantMigrate := cfg.mode == "migrate" || cfg.mode == "both"
+	wantValidate := cfg.mode == "validate" || cfg.mode == "both"
+	skipSet := parseSkipTables(cfg.skipTables)
 
 	if wantMigrate {
 		fmt.Println("=== Migrating data from SQLite to Postgres ===")
 		start := time.Now()
-		report, err := migrator.MigrateAll(context.Background(), *table, skipSet)
+		report, err := migrator.MigrateAll(ctx, cfg.table, skipSet)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "migration failed: %v\n", err)
 			os.Exit(1)
@@ -123,7 +165,7 @@ func main() {
 
 	if wantValidate {
 		fmt.Println("\n=== Validating data consistency ===")
-		report, err := validator.ValidateAll(context.Background(), *table, skipSet)
+		report, err := validator.ValidateAll(ctx, cfg.table, skipSet)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "validation failed: %v\n", err)
 			os.Exit(1)

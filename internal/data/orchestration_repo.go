@@ -52,10 +52,10 @@ func (r *orchestrationRepo) Create(ctx context.Context, handle *biz.Orchestratio
 	}
 
 	_, err = r.data.RW().Write(ctx).ExecContext(ctx,
-		`INSERT INTO orchestrations (id, task_plan_id, allocation_id, spirit_session_id, trace_id,
+		r.data.Dialect().RenumberPlaceholders(`INSERT INTO orchestrations (id, task_plan_id, allocation_id, spirit_session_id, trace_id,
 			strategy, graph_execution_id, team_ids_json, agent_keys_json, status, checkpoint_id,
 			synthesis_result_json, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		handle.ID, handle.TaskPlanID, handle.AllocationID, handle.SpiritSessionID, handle.TraceID,
 		string(handle.Strategy), handle.GraphExecutionID, string(teamIDsJSON), string(agentKeysJSON), string(handle.Status), handle.CheckpointID,
 		synthesisResultJSON, handle.CreatedAt, handle.UpdatedAt,
@@ -72,10 +72,10 @@ func (r *orchestrationRepo) GetByID(ctx context.Context, id string) (*biz.Orches
 		return nil, apierror.BadRequest("ORCHESTRATION", "id is required")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, task_plan_id, allocation_id, spirit_session_id, trace_id,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, task_plan_id, allocation_id, spirit_session_id, trace_id,
 			strategy, graph_execution_id, team_ids_json, agent_keys_json, status, checkpoint_id,
 			synthesis_result_json, created_at, updated_at
-		 FROM orchestrations WHERE id = ?`, id)
+		 FROM orchestrations WHERE id = ?`), id)
 	if err != nil {
 		return nil, entErrToBizErr(err, "ORCHESTRATION")
 	}
@@ -110,11 +110,11 @@ func (r *orchestrationRepo) Update(ctx context.Context, handle *biz.Orchestratio
 	}
 
 	_, err = r.data.RW().Write(ctx).ExecContext(ctx,
-		`UPDATE orchestrations SET
+		r.data.Dialect().RenumberPlaceholders(`UPDATE orchestrations SET
 			task_plan_id=?, allocation_id=?, spirit_session_id=?, trace_id=?,
 			strategy=?, graph_execution_id=?, team_ids_json=?, agent_keys_json=?, status=?, checkpoint_id=?,
 			synthesis_result_json=?, updated_at=?
-		 WHERE id = ?`,
+		 WHERE id = ?`),
 		handle.TaskPlanID, handle.AllocationID, handle.SpiritSessionID, handle.TraceID,
 		string(handle.Strategy), handle.GraphExecutionID, string(teamIDsJSON), string(agentKeysJSON), string(handle.Status), handle.CheckpointID,
 		synthesisResultJSON, handle.UpdatedAt,
@@ -132,10 +132,10 @@ func (r *orchestrationRepo) ListBySpiritSessionID(ctx context.Context, spiritSes
 		return nil, nil
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, task_plan_id, allocation_id, spirit_session_id, trace_id,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, task_plan_id, allocation_id, spirit_session_id, trace_id,
 			strategy, graph_execution_id, team_ids_json, agent_keys_json, status, checkpoint_id,
 			synthesis_result_json, created_at, updated_at
-		 FROM orchestrations WHERE spirit_session_id = ? ORDER BY created_at DESC`, spiritSessionID)
+		 FROM orchestrations WHERE spirit_session_id = ? ORDER BY created_at DESC`), spiritSessionID)
 	if err != nil {
 		return nil, entErrToBizErr(err, "ORCHESTRATION")
 	}
@@ -153,10 +153,10 @@ func (r *orchestrationRepo) ListBySpiritSessionID(ctx context.Context, spiritSes
 
 func (r *orchestrationRepo) ListByStatus(ctx context.Context, status biz.OrchestrationStatus) ([]*biz.OrchestrationHandle, error) {
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, task_plan_id, allocation_id, spirit_session_id, trace_id,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, task_plan_id, allocation_id, spirit_session_id, trace_id,
 			strategy, graph_execution_id, team_ids_json, agent_keys_json, status, checkpoint_id,
 			synthesis_result_json, created_at, updated_at
-		 FROM orchestrations WHERE status = ? ORDER BY created_at DESC`, string(status))
+		 FROM orchestrations WHERE status = ? ORDER BY created_at DESC`), string(status))
 	if err != nil {
 		return nil, entErrToBizErr(err, "ORCHESTRATION")
 	}

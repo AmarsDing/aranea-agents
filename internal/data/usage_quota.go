@@ -107,7 +107,7 @@ func (r *usageRepo) SumScopeCostInPeriod(ctx context.Context, scopeType, scopeID
 		return 0, biz.ErrUsageScopeRequired
 	}
 	var spent int64
-	err := entQueryRowScan(r.data.RW().Read(ctx), ctx, q, args, &spent)
+	err := entQueryRowScan(r.data.RW().Read(ctx), ctx, r.data.Dialect().RenumberPlaceholders(q), args, &spent)
 	if err != nil {
 		return 0, err
 	}
@@ -159,7 +159,7 @@ func (r *usageRepo) BatchSumScopeCost(ctx context.Context, quotas []biz.UsageQuo
 			for _, id := range ids {
 				args = append(args, id)
 			}
-			rows, err := r.data.RW().Read(ctx).QueryContext(ctx, sql, args...)
+			rows, err := r.data.RW().Read(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(sql), args...)
 			if err != nil {
 				return result, err
 			}
@@ -186,7 +186,7 @@ func (r *usageRepo) BatchSumScopeCost(ctx context.Context, quotas []biz.UsageQuo
 			for _, id := range ids {
 				args = append(args, id)
 			}
-			rows, err := r.data.RW().Read(ctx).QueryContext(ctx, sql, args...)
+			rows, err := r.data.RW().Read(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(sql), args...)
 			if err != nil {
 				return result, err
 			}
@@ -206,7 +206,7 @@ func (r *usageRepo) BatchSumScopeCost(ctx context.Context, quotas []biz.UsageQuo
 				`SELECT COALESCE(SUM(total_cost_micro_usd), 0) FROM model_token_usage_events WHERE date_key >= ? AND date_key <= ? AND %s`,
 				sqlUsageBillableKind,
 			)
-			if err := entQueryRowScan(r.data.RW().Read(ctx), ctx, sql, []any{gk.periodStart, gk.periodEnd}, &spent); err != nil {
+			if err := entQueryRowScan(r.data.RW().Read(ctx), ctx, r.data.Dialect().RenumberPlaceholders(sql), []any{gk.periodStart, gk.periodEnd}, &spent); err != nil {
 				return result, err
 			}
 			result["global:global"] = spent

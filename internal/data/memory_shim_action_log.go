@@ -45,9 +45,9 @@ func (r *actionLogRepo) WriteMemoryActionLog(ctx context.Context, rec biz.Memory
 	if meta == "" {
 		meta = "{}"
 	}
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_action_log (
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_action_log (
 		id, action, target_kind, target_id, reason, policy_version, turn_id, source_event_ids_json, metadata_json, created_at
-	) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+	) VALUES (?,?,?,?,?,?,?,?,?,?)`),
 		id,
 		strings.TrimSpace(rec.Action),
 		strings.TrimSpace(rec.TargetKind),

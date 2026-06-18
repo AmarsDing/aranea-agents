@@ -60,9 +60,9 @@ func (r *compiledTeamRepo) Save(ctx context.Context, teamID, graphID, sessionID 
 	}
 	id := compiledTeamRowID(teamID, graphID)
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err = db.ExecContext(ctx, `
+	_, err = db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 INSERT INTO compiled_teams (id, team_id, graph_id, session_id, config_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET team_id = excluded.team_id, graph_id = excluded.graph_id, session_id = excluded.session_id, config_json = excluded.config_json, updated_at = excluded.updated_at`,
+ON CONFLICT(id) DO UPDATE SET team_id = excluded.team_id, graph_id = excluded.graph_id, session_id = excluded.session_id, config_json = excluded.config_json, updated_at = excluded.updated_at`),
 		id, teamID, graphID, sessionID, string(configJSON), now, now,
 	)
 	if err != nil {
@@ -80,7 +80,7 @@ func (r *compiledTeamRepo) Load(ctx context.Context, teamID, graphID string) (*b
 	graphID = strings.TrimSpace(graphID)
 	id := compiledTeamRowID(teamID, graphID)
 	var configJSON string
-	err := queryRowScan(ctx, db, `SELECT config_json FROM compiled_teams WHERE id = ? LIMIT 1`, []any{id}, &configJSON)
+	err := queryRowScan(ctx, db, r.data.Dialect().RenumberPlaceholders(`SELECT config_json FROM compiled_teams WHERE id = ? LIMIT 1`), []any{id}, &configJSON)
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound(apierror.DomainTeam, fmt.Sprintf("compiled_team not found: %s", id))
@@ -120,7 +120,7 @@ func (r *compiledTeamRepo) Delete(ctx context.Context, teamID, graphID string) e
 		return nil
 	}
 	id := compiledTeamRowID(strings.TrimSpace(teamID), strings.TrimSpace(graphID))
-	_, err := db.ExecContext(ctx, `DELETE FROM compiled_teams WHERE id = ?`, id)
+	_, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`DELETE FROM compiled_teams WHERE id = ?`), id)
 	if err != nil {
 		return entErrToBizErr(err, "COMPILED_TEAM")
 	}

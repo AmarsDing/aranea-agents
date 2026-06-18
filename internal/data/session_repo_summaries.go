@@ -23,8 +23,8 @@ func (r *sessionRepo) InsertSessionSummary(ctx context.Context, row biz.SessionS
 	if row.CreatedAt == "" {
 		row.CreatedAt = nowRFC3339()
 	}
-	q := `INSERT INTO session_summaries (id, session_id, summary_markdown, from_turn, to_turn, token_estimate, created_at)
-VALUES (?,?,?,?,?,?,?)`
+	q := r.data.Dialect().RenumberPlaceholders(`INSERT INTO session_summaries (id, session_id, summary_markdown, from_turn, to_turn, token_estimate, created_at)
+VALUES (?,?,?,?,?,?,?)`)
 	_, err := r.data.RW().Write(ctx).ExecContext(ctx, q,
 		row.ID, row.SessionID, row.SummaryMarkdown, row.FromTurn, row.ToTurn, row.TokenEstimate, row.CreatedAt)
 	return err
@@ -37,7 +37,7 @@ func (r *sessionRepo) MaxSessionSummaryToTurn(ctx context.Context, sessionID str
 	}
 	var max int
 	err := entQueryRowScan(r.data.RW().Read(ctx), ctx,
-		`SELECT COALESCE(MAX(to_turn), 0) FROM session_summaries WHERE session_id = ?`, []any{sessionID}, &max)
+		r.data.Dialect().RenumberPlaceholders(`SELECT COALESCE(MAX(to_turn), 0) FROM session_summaries WHERE session_id = ?`), []any{sessionID}, &max)
 	if err != nil {
 		return 0, err
 	}
@@ -50,8 +50,8 @@ func (r *sessionRepo) ListSessionSummaries(ctx context.Context, sessionID string
 		return nil, apierror.BadRequest("SESSION", "session id is required")
 	}
 	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
-		`SELECT id, session_id, summary_markdown, from_turn, to_turn, token_estimate, created_at
-FROM session_summaries WHERE session_id = ? ORDER BY created_at ASC`, sessionID)
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, session_id, summary_markdown, from_turn, to_turn, token_estimate, created_at
+FROM session_summaries WHERE session_id = ? ORDER BY created_at ASC`), sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func (r *sessionRepo) LatestSessionSummaryTime(ctx context.Context, sessionID st
 	}
 	var created string
 	err := entQueryRowScan(r.data.RW().Read(ctx), ctx,
-		`SELECT created_at FROM session_summaries WHERE session_id = ? ORDER BY created_at DESC LIMIT 1`, []any{sessionID}, &created)
+		r.data.Dialect().RenumberPlaceholders(`SELECT created_at FROM session_summaries WHERE session_id = ? ORDER BY created_at DESC LIMIT 1`), []any{sessionID}, &created)
 	if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 		return "", nil
 	}
@@ -104,7 +104,7 @@ func (r *sessionRepo) SessionSummaryExists(ctx context.Context, sessionID string
 	}
 	var cnt int
 	err := entQueryRowScan(r.data.RW().Read(ctx), ctx,
-		`SELECT COUNT(1) FROM session_summaries WHERE session_id = ? AND from_turn = ? AND to_turn = ?`,
+		r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(1) FROM session_summaries WHERE session_id = ? AND from_turn = ? AND to_turn = ?`),
 		[]any{sessionID, fromTurn, toTurn}, &cnt)
 	if err != nil {
 		return false, err

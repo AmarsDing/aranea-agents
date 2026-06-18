@@ -33,12 +33,12 @@ func NewUnifiedEvolutionRepo(data *Data, lg loggateway.Logger) *UnifiedEvolution
 }
 
 func (r *UnifiedEvolutionRepo) Create(ctx context.Context, suggestion biz.UnifiedEvolutionSuggestion) error {
-	q := `INSERT INTO unified_evolution_suggestions
+	q := r.data.Dialect().RenumberPlaceholders(`INSERT INTO unified_evolution_suggestions
 		(id, target_type, target_id, action_type, trigger_source, trigger_reason,
 		 status, priority, draft_body, draft_name, merge_target_id,
 		 lifecycle_status, sandbox_passed, sandbox_result, metadata,
 		 created_at, approved_by, applied_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 
 	var sandboxResultStr *string
 	if suggestion.SandboxResult != nil {
@@ -83,8 +83,8 @@ func (r *UnifiedEvolutionRepo) Create(ctx context.Context, suggestion biz.Unifie
 }
 
 func (r *UnifiedEvolutionRepo) HasPendingForTarget(ctx context.Context, targetType string, targetID string) (bool, error) {
-	q := `SELECT COUNT(*) FROM unified_evolution_suggestions
-	      WHERE target_type = ? AND target_id = ? AND status = 'pending'`
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(*) FROM unified_evolution_suggestions
+	      WHERE target_type = ? AND target_id = ? AND status = 'pending'`)
 	var count int
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, []any{targetType, targetID}, &count)
 	if err != nil {
@@ -94,13 +94,13 @@ func (r *UnifiedEvolutionRepo) HasPendingForTarget(ctx context.Context, targetTy
 }
 
 func (r *UnifiedEvolutionRepo) GetLatestByTarget(ctx context.Context, targetType string, targetID string) (*biz.UnifiedEvolutionSuggestion, error) {
-	q := `SELECT id, target_type, target_id, action_type, trigger_source, trigger_reason,
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT id, target_type, target_id, action_type, trigger_source, trigger_reason,
 	             status, priority, draft_body, draft_name, merge_target_id,
 	             lifecycle_status, sandbox_passed, sandbox_result, metadata,
 	             created_at, approved_by, applied_at
 	      FROM unified_evolution_suggestions
 	      WHERE target_type = ? AND target_id = ?
-	      ORDER BY created_at DESC LIMIT 1`
+	      ORDER BY created_at DESC LIMIT 1`)
 	s, err := r.scanOne(ctx, q, targetType, targetID)
 	if err != nil {
 		return nil, err
@@ -109,13 +109,13 @@ func (r *UnifiedEvolutionRepo) GetLatestByTarget(ctx context.Context, targetType
 }
 
 func (r *UnifiedEvolutionRepo) GetLatestByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string) (*biz.UnifiedEvolutionSuggestion, error) {
-	q := `SELECT id, target_type, target_id, action_type, trigger_source, trigger_reason,
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT id, target_type, target_id, action_type, trigger_source, trigger_reason,
 	             status, priority, draft_body, draft_name, merge_target_id,
 	             lifecycle_status, sandbox_passed, sandbox_result, metadata,
 	             created_at, approved_by, applied_at
 	      FROM unified_evolution_suggestions
 	      WHERE target_type = ? AND target_id = ? AND action_type = ?
-	      ORDER BY created_at DESC LIMIT 1`
+	      ORDER BY created_at DESC LIMIT 1`)
 	s, err := r.scanOne(ctx, q, targetType, targetID, actionType)
 	if err != nil {
 		return nil, err
@@ -141,7 +141,7 @@ func (r *UnifiedEvolutionRepo) ListByTarget(ctx context.Context, targetType stri
 	q += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
 
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "UNIFIED_EVO")
 	}
@@ -167,7 +167,7 @@ func (r *UnifiedEvolutionRepo) CountByTarget(ctx context.Context, targetType str
 		args = append(args, status)
 	}
 	var count int
-	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, args, &count)
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders(q), args, &count)
 	if err != nil {
 		return 0, entErrToBizErr(err, "UNIFIED_EVO")
 	}
@@ -175,11 +175,11 @@ func (r *UnifiedEvolutionRepo) CountByTarget(ctx context.Context, targetType str
 }
 
 func (r *UnifiedEvolutionRepo) GetByID(ctx context.Context, id string) (*biz.UnifiedEvolutionSuggestion, error) {
-	q := `SELECT id, target_type, target_id, action_type, trigger_source, trigger_reason,
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT id, target_type, target_id, action_type, trigger_source, trigger_reason,
 	             status, priority, draft_body, draft_name, merge_target_id,
 	             lifecycle_status, sandbox_passed, sandbox_result, metadata,
 	             created_at, approved_by, applied_at
-	      FROM unified_evolution_suggestions WHERE id = ?`
+	      FROM unified_evolution_suggestions WHERE id = ?`)
 	s, err := r.scanOne(ctx, q, id)
 	if err != nil {
 		return nil, err
@@ -205,7 +205,7 @@ func (r *UnifiedEvolutionRepo) UpdateStatus(ctx context.Context, id string, stat
 	q += ` WHERE id = ?`
 	args = append(args, id)
 
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, args...)
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return entErrToBizErr(err, "UNIFIED_EVO")
 	}
@@ -213,7 +213,7 @@ func (r *UnifiedEvolutionRepo) UpdateStatus(ctx context.Context, id string, stat
 }
 
 func (r *UnifiedEvolutionRepo) UpdateDraftBody(ctx context.Context, id string, draftBody string) error {
-	q := `UPDATE unified_evolution_suggestions SET draft_body = ? WHERE id = ?`
+	q := r.data.Dialect().RenumberPlaceholders(`UPDATE unified_evolution_suggestions SET draft_body = ? WHERE id = ?`)
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, draftBody, id)
 	if err != nil {
 		return entErrToBizErr(err, "UNIFIED_EVO")
@@ -222,7 +222,7 @@ func (r *UnifiedEvolutionRepo) UpdateDraftBody(ctx context.Context, id string, d
 }
 
 func (r *UnifiedEvolutionRepo) UpdateLifecycleStatus(ctx context.Context, id string, lifecycleStatus string) error {
-	q := `UPDATE unified_evolution_suggestions SET lifecycle_status = ? WHERE id = ?`
+	q := r.data.Dialect().RenumberPlaceholders(`UPDATE unified_evolution_suggestions SET lifecycle_status = ? WHERE id = ?`)
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, lifecycleStatus, id)
 	if err != nil {
 		return entErrToBizErr(err, "UNIFIED_EVO")
@@ -231,7 +231,7 @@ func (r *UnifiedEvolutionRepo) UpdateLifecycleStatus(ctx context.Context, id str
 }
 
 func (r *UnifiedEvolutionRepo) UpdateSandboxResult(ctx context.Context, id string, passed bool, result json.RawMessage) error {
-	q := `UPDATE unified_evolution_suggestions SET sandbox_passed = ?, sandbox_result = ? WHERE id = ?`
+	q := r.data.Dialect().RenumberPlaceholders(`UPDATE unified_evolution_suggestions SET sandbox_passed = ?, sandbox_result = ? WHERE id = ?`)
 	var sandboxPassed int
 	if passed {
 		sandboxPassed = 1
@@ -249,8 +249,8 @@ func (r *UnifiedEvolutionRepo) UpdateSandboxResult(ctx context.Context, id strin
 }
 
 func (r *UnifiedEvolutionRepo) ExpireOlderThan(ctx context.Context, cutoff time.Time) (int, error) {
-	q := `UPDATE unified_evolution_suggestions SET status = 'expired'
-	      WHERE status = 'pending' AND created_at < ?`
+	q := r.data.Dialect().RenumberPlaceholders(`UPDATE unified_evolution_suggestions SET status = 'expired'
+	      WHERE status = 'pending' AND created_at < ?`)
 	result, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, cutoff.UTC().Format(time.RFC3339))
 	if err != nil {
 		return 0, entErrToBizErr(err, "UNIFIED_EVO")

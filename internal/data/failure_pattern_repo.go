@@ -40,9 +40,9 @@ func (r *failurePatternRepo) Create(ctx context.Context, pattern bizmonitor.Fail
 	}
 
 	_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`INSERT INTO failure_pattern (id, source, type, pattern_hash, pattern_regex, fix_action,
+		r.data.Dialect().RenumberPlaceholders(`INSERT INTO failure_pattern (id, source, type, pattern_hash, pattern_regex, fix_action,
 			confidence, success_count, fail_count, version, is_active, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		pattern.ID,
 		string(pattern.Source),
 		pattern.Type,
@@ -71,9 +71,9 @@ func (r *failurePatternRepo) Update(ctx context.Context, pattern bizmonitor.Fail
 	}
 
 	_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE failure_pattern SET source=?, type=?, pattern_hash=?, pattern_regex=?, fix_action=?,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE failure_pattern SET source=?, type=?, pattern_hash=?, pattern_regex=?, fix_action=?,
 			confidence=?, success_count=?, fail_count=?, version=?, is_active=?, updated_at=?
-		 WHERE id=?`,
+		 WHERE id=?`),
 		string(pattern.Source),
 		pattern.Type,
 		pattern.PatternHash,
@@ -96,9 +96,9 @@ func (r *failurePatternRepo) ListBySource(ctx context.Context, source bizmonitor
 	}
 
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, source, type, pattern_hash, pattern_regex, fix_action,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, source, type, pattern_hash, pattern_regex, fix_action,
 			confidence, success_count, fail_count, version, is_active, created_at, updated_at
-		 FROM failure_pattern WHERE source = ? ORDER BY confidence DESC`,
+		 FROM failure_pattern WHERE source = ? ORDER BY confidence DESC`),
 		string(source),
 	)
 	if err != nil {
@@ -115,9 +115,9 @@ func (r *failurePatternRepo) GetByPatternHash(ctx context.Context, hash string) 
 	}
 
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, source, type, pattern_hash, pattern_regex, fix_action,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, source, type, pattern_hash, pattern_regex, fix_action,
 			confidence, success_count, fail_count, version, is_active, created_at, updated_at
-		 FROM failure_pattern WHERE pattern_hash = ? LIMIT 1`,
+		 FROM failure_pattern WHERE pattern_hash = ? LIMIT 1`),
 		hash,
 	)
 	if err != nil {
@@ -159,7 +159,7 @@ func (r *failurePatternRepo) IncrementSuccess(ctx context.Context, id string) er
 	}
 
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE failure_pattern SET success_count = success_count + 1, updated_at = ? WHERE id = ?`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE failure_pattern SET success_count = success_count + 1, updated_at = ? WHERE id = ?`),
 		time.Now().UTC().Format(time.RFC3339Nano), id,
 	)
 	return err
@@ -171,7 +171,7 @@ func (r *failurePatternRepo) IncrementFail(ctx context.Context, id string) error
 	}
 
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE failure_pattern SET fail_count = fail_count + 1, updated_at = ? WHERE id = ?`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE failure_pattern SET fail_count = fail_count + 1, updated_at = ? WHERE id = ?`),
 		time.Now().UTC().Format(time.RFC3339Nano), id,
 	)
 	return err
@@ -183,7 +183,7 @@ func (r *failurePatternRepo) Deactivate(ctx context.Context, id string) error {
 	}
 
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE failure_pattern SET is_active = 0, updated_at = ? WHERE id = ?`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE failure_pattern SET is_active = 0, updated_at = ? WHERE id = ?`),
 		time.Now().UTC().Format(time.RFC3339Nano), id,
 	)
 	return err

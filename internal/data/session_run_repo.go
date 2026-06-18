@@ -175,12 +175,12 @@ func (r *sessionRunRepo) TryClaimDurableResume(ctx context.Context, id, staleBef
 		return false, nil
 	}
 	now := biz.ChannelTurnJobNow()
-	res, err := db.ExecContext(ctx, `
+	res, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 UPDATE session_runs SET resume_started_at=?, updated_at=?
 WHERE id=? AND phase='durable'
   AND checkpoint_id != '' AND checkpoint_id IS NOT NULL
   AND (finished_at IS NULL OR finished_at='')
-  AND (resume_started_at IS NULL OR resume_started_at='' OR resume_started_at < ?)`,
+  AND (resume_started_at IS NULL OR resume_started_at='' OR resume_started_at < ?)`),
 		now, now, id, strings.TrimSpace(staleBefore),
 	)
 	if err != nil {
@@ -279,7 +279,7 @@ WHERE 1=1`
 	}
 	query += ` ORDER BY r.created_at DESC LIMIT ?`
 	args = append(args, limit)
-	rows, err := db.QueryContext(ctx, query, args...)
+	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(query), args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "SESSION_RUN")
 	}
@@ -409,9 +409,9 @@ func (r *sessionRunRepo) TransitionPhase(ctx context.Context, id, fromPhase, toP
 	}
 	now := biz.ChannelTurnJobNow()
 	nowStr := time.Now().UTC().Format(time.RFC3339)
-	res, err := db.ExecContext(ctx, `
+	res, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 UPDATE session_runs SET phase=?, phase_changed_at=?, updated_at=?
-WHERE id=? AND phase=?`,
+WHERE id=? AND phase=?`),
 		biz.NormalizeSessionRunPhase(toPhase), now, nowStr, id, biz.NormalizeSessionRunPhase(fromPhase),
 	)
 	if err != nil {
@@ -438,13 +438,13 @@ func (r *sessionRunRepo) MarkOrphanedRunsCancelled(ctx context.Context) (int, er
 	}
 	now := biz.ChannelTurnJobNow()
 	nowStr := time.Now().UTC().Format(time.RFC3339)
-	res, err := db.ExecContext(ctx, `
+	res, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 UPDATE session_runs SET phase=?, error_message='orphaned: process restarted', finished_at=?, phase_changed_at=?, updated_at=?
 WHERE (
     phase IN ('interactive')
     OR (phase='durable' AND (checkpoint_id IS NULL OR checkpoint_id=''))
   )
-  AND (finished_at IS NULL OR finished_at='')`,
+  AND (finished_at IS NULL OR finished_at='')`),
 		biz.SessionRunPhaseCancelled, now, now, nowStr,
 	)
 	if err != nil {

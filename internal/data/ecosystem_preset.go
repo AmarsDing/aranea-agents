@@ -49,7 +49,7 @@ func (r *EcosystemPresetRepo) SetEcosystemLoaded(ctx context.Context, status biz
 		return entErrToBizErr(err, "ECOSYSTEM")
 	}
 	_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE system_settings SET ecosystem_loaded = ? WHERE id = 1`, string(raw))
+		r.data.Dialect().RenumberPlaceholders(`UPDATE system_settings SET ecosystem_loaded = ? WHERE id = 1`), string(raw))
 	return err
 }
 
@@ -59,7 +59,7 @@ func (r *EcosystemPresetRepo) DeleteOrgNodesByCompany(ctx context.Context, compa
 	// Find the company node ID
 	var companyID string
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
-		`SELECT id FROM organizations WHERE org_key = ? AND level = 'company' AND deleted_at = ''`,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id FROM organizations WHERE org_key = ? AND level = 'company' AND deleted_at = ''`),
 		[]any{companyKey}, &companyID)
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -70,7 +70,7 @@ func (r *EcosystemPresetRepo) DeleteOrgNodesByCompany(ctx context.Context, compa
 
 	// Find department IDs
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id FROM organizations WHERE parent_id = ? AND deleted_at = ''`, companyID)
+		r.data.Dialect().RenumberPlaceholders(`SELECT id FROM organizations WHERE parent_id = ? AND deleted_at = ''`), companyID)
 	if err != nil {
 		return 0, err
 	}
@@ -88,7 +88,7 @@ func (r *EcosystemPresetRepo) DeleteOrgNodesByCompany(ctx context.Context, compa
 	if len(deptIDs) > 0 {
 		// Find position IDs
 		posRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-			`SELECT id FROM organizations WHERE parent_id IN (`+placeholders(len(deptIDs))+`) AND deleted_at = ''`,
+			r.data.Dialect().RenumberPlaceholders(`SELECT id FROM organizations WHERE parent_id IN (`+placeholders(len(deptIDs))+`) AND deleted_at = ''`),
 			toAnySlice(deptIDs)...)
 		if err != nil {
 			return 0, err
@@ -108,7 +108,7 @@ func (r *EcosystemPresetRepo) DeleteOrgNodesByCompany(ctx context.Context, compa
 	// Soft-delete positions
 	if len(positionIDs) > 0 {
 		res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-			`UPDATE organizations SET deleted_at = ?, status = 'deleted', updated_at = ? WHERE id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`,
+			r.data.Dialect().RenumberPlaceholders(`UPDATE organizations SET deleted_at = ?, status = 'deleted', updated_at = ? WHERE id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`),
 			append([]any{now, now}, toAnySlice(positionIDs)...)...)
 		if err != nil {
 			return total, err
@@ -120,7 +120,7 @@ func (r *EcosystemPresetRepo) DeleteOrgNodesByCompany(ctx context.Context, compa
 	// Soft-delete departments
 	if len(deptIDs) > 0 {
 		res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-			`UPDATE organizations SET deleted_at = ?, status = 'deleted', updated_at = ? WHERE id IN (`+placeholders(len(deptIDs))+`) AND deleted_at = ''`,
+			r.data.Dialect().RenumberPlaceholders(`UPDATE organizations SET deleted_at = ?, status = 'deleted', updated_at = ? WHERE id IN (`+placeholders(len(deptIDs))+`) AND deleted_at = ''`),
 			append([]any{now, now}, toAnySlice(deptIDs)...)...)
 		if err != nil {
 			return total, err
@@ -131,7 +131,7 @@ func (r *EcosystemPresetRepo) DeleteOrgNodesByCompany(ctx context.Context, compa
 
 	// Soft-delete company node
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE organizations SET deleted_at = ?, status = 'deleted', updated_at = ? WHERE id = ? AND deleted_at = ''`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE organizations SET deleted_at = ?, status = 'deleted', updated_at = ? WHERE id = ? AND deleted_at = ''`),
 		now, now, companyID)
 	if err != nil {
 		return total, err
@@ -168,7 +168,7 @@ func (r *EcosystemPresetRepo) DeleteAgentsByIndustry(ctx context.Context, indust
 	err = r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		positionArgs := toAnySlice(positionIDs)
 		res, err := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
-			`UPDATE agents SET deleted_at = ?, updated_at = ? WHERE kind = 'ecosystem_preset' AND source = 'imported' AND position_id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`,
+			r.data.Dialect().RenumberPlaceholders(`UPDATE agents SET deleted_at = ?, updated_at = ? WHERE kind = 'ecosystem_preset' AND source = 'imported' AND position_id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`),
 			append([]any{now, now}, positionArgs...)...)
 		if err != nil {
 			return err
@@ -232,7 +232,7 @@ func (r *EcosystemPresetRepo) findEcosystemAgentIDsByPositions(ctx context.Conte
 		return deletedAgentIDs, nil
 	}
 	agentRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id FROM agents WHERE kind = 'ecosystem_preset' AND source = 'imported' AND position_id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id FROM agents WHERE kind = 'ecosystem_preset' AND source = 'imported' AND position_id IN (`+placeholders(len(positionIDs))+`) AND deleted_at = ''`),
 		toAnySlice(positionIDs)...)
 	if err != nil {
 		return nil, err
@@ -302,7 +302,7 @@ func (r *EcosystemPresetRepo) softDeleteTeams(ctx context.Context, now string, i
 	for _, id := range ids {
 		err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 			_, err := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
-				`UPDATE teams SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at = ''`,
+				r.data.Dialect().RenumberPlaceholders(`UPDATE teams SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at = ''`),
 				now, now, id)
 			if err != nil {
 				return err
@@ -322,7 +322,7 @@ func (r *EcosystemPresetRepo) modifyTeamDefinitions(ctx context.Context, now str
 	modified := 0
 	for _, tm := range entries {
 		_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-			`UPDATE teams SET definition_json = ?, updated_at = ? WHERE id = ? AND deleted_at = ''`,
+			r.data.Dialect().RenumberPlaceholders(`UPDATE teams SET definition_json = ?, updated_at = ? WHERE id = ? AND deleted_at = ''`),
 			tm.newDefJSON, now, tm.id)
 		if err != nil {
 			return modified, err
@@ -337,7 +337,7 @@ func (r *EcosystemPresetRepo) findIndustryPositionIDs(ctx context.Context, indus
 	// Find the industry node ID
 	var companyID string
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
-		`SELECT id FROM organizations WHERE taxonomy_key = ? AND level = 'industry' AND deleted_at = ''`,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id FROM organizations WHERE taxonomy_key = ? AND level = 'industry' AND deleted_at = ''`),
 		[]any{industryKey}, &companyID)
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -348,7 +348,7 @@ func (r *EcosystemPresetRepo) findIndustryPositionIDs(ctx context.Context, indus
 
 	// Find department IDs
 	deptRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id FROM organizations WHERE parent_id = ? AND deleted_at = ''`, companyID)
+		r.data.Dialect().RenumberPlaceholders(`SELECT id FROM organizations WHERE parent_id = ? AND deleted_at = ''`), companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +368,7 @@ func (r *EcosystemPresetRepo) findIndustryPositionIDs(ctx context.Context, indus
 
 	// Find position IDs
 	posRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id FROM organizations WHERE parent_id IN (`+placeholders(len(deptIDs))+`) AND deleted_at = ''`,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id FROM organizations WHERE parent_id IN (`+placeholders(len(deptIDs))+`) AND deleted_at = ''`),
 		toAnySlice(deptIDs)...)
 	if err != nil {
 		return nil, err

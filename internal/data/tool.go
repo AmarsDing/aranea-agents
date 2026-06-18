@@ -149,24 +149,24 @@ func scanBizTool(rows *sql.Rows) ([]biz.Tool, error) {
 func (r *toolRepo) computeToolSummary(ctx context.Context, client *ent.Client, q biz.ToolListQuery) (biz.ToolSummary, error) {
 	where, args := toolWhereClause(q)
 	var s biz.ToolSummary
-	if err := entQueryRowScan(client, ctx, `
+	if err := entQueryRowScan(client, ctx, r.data.Dialect().RenumberPlaceholders(`
 		SELECT
 		  COALESCE(COUNT(1), 0),
 		  COALESCE(SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END), 0),
 		  COALESCE(SUM(CASE WHEN enabled = 1 AND risk_level IN ('high', 'critical') THEN 1 ELSE 0 END), 0)
-		FROM tools t WHERE `+where, args,
+		FROM tools t WHERE `+where), args,
 		&s.TotalTools, &s.EnabledTools, &s.HighRiskEnabled); err != nil {
 		return biz.ToolSummary{}, entErrToBizErr(err, "TOOL")
 	}
 	cutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
 	var success24h, failed24h, blocked24h int
-	if err := entQueryRowScan(client, ctx, `
+	if err := entQueryRowScan(client, ctx, r.data.Dialect().RenumberPlaceholders(`
 		SELECT
 		  COALESCE(COUNT(1), 0),
 		  COALESCE(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END), 0),
 		  COALESCE(SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END), 0),
 		  COALESCE(SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END), 0)
-		FROM tool_invocations WHERE started_at >= ?`,
+		FROM tool_invocations WHERE started_at >= ?`),
 		[]any{cutoff},
 		&s.Calls24h, &success24h, &failed24h, &blocked24h); err != nil {
 		return biz.ToolSummary{}, entErrToBizErr(err, "TOOL")
@@ -186,7 +186,7 @@ func (r *toolRepo) SearchTools(ctx context.Context, q biz.ToolListQuery) (biz.To
 	cutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
 	where, args := toolWhereClause(q)
 	var total int
-	if err := entQueryRowScan(client, ctx, `SELECT COUNT(1) FROM tools t WHERE `+where, args, &total); err != nil {
+	if err := entQueryRowScan(client, ctx, r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(1) FROM tools t WHERE `+where), args, &total); err != nil {
 		r.data.lg.Warn("tool search count query failed", loggateway.StepID("data.tool.search"), loggateway.Err(err))
 		return biz.ToolListResult{}, entErrToBizErr(err, "TOOL")
 	}
@@ -203,7 +203,7 @@ func (r *toolRepo) SearchTools(ctx context.Context, q biz.ToolListQuery) (biz.To
 	case "avg_duration_ms":
 		orderBy = "stats.avg_duration_ms DESC NULLS LAST, t.display_name ASC"
 	}
-	rows, err := client.QueryContext(ctx, toolSelectSQL()+` WHERE `+where+` ORDER BY `+orderBy+` LIMIT ? OFFSET ?`, listArgs...)
+	rows, err := client.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(toolSelectSQL()+` WHERE `+where+` ORDER BY `+orderBy+` LIMIT ? OFFSET ?`), listArgs...)
 	if err != nil {
 		r.data.lg.Warn("tool search list query failed", loggateway.StepID("data.tool.search"), loggateway.Err(err))
 		return biz.ToolListResult{}, entErrToBizErr(err, "TOOL")
@@ -228,7 +228,7 @@ func (r *toolRepo) GetTool(ctx context.Context, idOrKey string) (biz.Tool, error
 		return biz.Tool{}, apierror.Internal("TOOL", "ent client unavailable")
 	}
 	cutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
-	rows, err := client.QueryContext(ctx, toolSelectSQL()+` WHERE (t.id = ? OR t.tool_key = ?) AND t.deleted_at = '' LIMIT 1`, cutoff, idOrKey, idOrKey)
+	rows, err := client.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(toolSelectSQL()+` WHERE (t.id = ? OR t.tool_key = ?) AND t.deleted_at = '' LIMIT 1`), cutoff, idOrKey, idOrKey)
 	if err != nil {
 		return biz.Tool{}, entErrToBizErr(err, "TOOL")
 	}
@@ -457,13 +457,13 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 	}
 	whereSQL := strings.Join(where, " AND ")
 	var total int
-	if err := entQueryRowScan(client, ctx, `SELECT COUNT(1) FROM tool_invocations ti WHERE `+whereSQL, args, &total); err != nil {
+	if err := entQueryRowScan(client, ctx, r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(1) FROM tool_invocations ti WHERE `+whereSQL), args, &total); err != nil {
 		r.data.lg.Warn("tool invocation search count failed", loggateway.StepID("data.tool.invocation_search"), loggateway.Err(err))
 		return biz.ToolRunResult{}, entErrToBizErr(err, "TOOL")
 	}
 	listArgs := append([]any{}, args...)
 	listArgs = append(listArgs, q.Limit, q.Offset)
-	rows, err := client.QueryContext(ctx, `
+	rows, err := client.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 		SELECT ti.id, ti.request_id, ti.invocation_id, ti.tool_id, ti.tool_key, COALESCE(t.display_name, ti.tool_key),
 		       ti.agent_id, ti.agent_key, COALESCE(a.display_name, ''), ti.session_id, ti.message_id, ti.user_id,
 		       ti.source, ti.status, ti.started_at, ti.ended_at, ti.duration_ms,
@@ -476,7 +476,7 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 		LEFT JOIN agents a ON a.id = ti.agent_id
 		WHERE `+whereSQL+`
 		ORDER BY ti.started_at DESC, ti.created_at DESC
-		LIMIT ? OFFSET ?`, listArgs...)
+		LIMIT ? OFFSET ?`), listArgs...)
 	if err != nil {
 		return biz.ToolRunResult{}, entErrToBizErr(err, "TOOL")
 	}
@@ -646,11 +646,11 @@ func (r *toolRepo) ListToolAgentOverridesByAgent(ctx context.Context, agentID st
 	if agentID == "" {
 		return nil, nil
 	}
-	rows, err := client.QueryContext(ctx, `
+	rows, err := client.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 		SELECT id, COALESCE(tool_id, ''), tool_key, agent_id, enabled, mode, config_override_json, requires_confirmation, created_at, updated_at
 		FROM tool_agent_overrides
 		WHERE agent_id = ? AND deleted_at = ''
-		ORDER BY tool_key`, agentID)
+		ORDER BY tool_key`), agentID)
 	if err != nil {
 		return nil, entErrToBizErr(err, "TOOL")
 	}
@@ -663,11 +663,11 @@ func (r *toolRepo) ListToolAgentOverrides(ctx context.Context, toolKey string) (
 	if client == nil {
 		return nil, apierror.Internal("TOOL", "ent client unavailable")
 	}
-	rows, err := client.QueryContext(ctx, `
+	rows, err := client.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 		SELECT id, COALESCE(tool_id, ''), tool_key, agent_id, enabled, mode, config_override_json, requires_confirmation, created_at, updated_at
 		FROM tool_agent_overrides
 		WHERE tool_key = ? AND deleted_at = ''
-		ORDER BY agent_id`, toolKey)
+		ORDER BY agent_id`), toolKey)
 	if err != nil {
 		return nil, entErrToBizErr(err, "TOOL")
 	}
@@ -709,7 +709,7 @@ func (r *toolRepo) UpsertToolAgentOverride(ctx context.Context, in biz.ToolAgent
 			updated_at = excluded.updated_at,
 			deleted_at = ''`
 	id := uniqueToolID("tao")
-	_, err := client.ExecContext(ctx, q,
+	_, err := client.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(q),
 		id, toolID, in.ToolKey, in.AgentID, b2i(in.Enabled), in.Mode, in.ConfigOverrideJSON, b2i(in.RequiresConfirmation),
 		now, now,
 	)
@@ -736,9 +736,9 @@ func (r *toolRepo) DeleteToolAgentOverride(ctx context.Context, toolKey string, 
 		return apierror.Internal("TOOL", "ent client unavailable")
 	}
 	now := nowRFC3339()
-	_, err := client.ExecContext(ctx, `
+	_, err := client.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 		UPDATE tool_agent_overrides SET deleted_at = ?, updated_at = ?
-		WHERE tool_key = ? AND agent_id = ? AND deleted_at = ''`,
+		WHERE tool_key = ? AND agent_id = ? AND deleted_at = ''`),
 		now, now, toolKey, agentID,
 	)
 	return entErrToBizErr(err, "TOOL")
@@ -749,11 +749,11 @@ func (r *toolRepo) GetToolInvocationParams(ctx context.Context, invocationID str
 	if client == nil {
 		return biz.ToolInvocationParam{}, apierror.Internal("TOOL", "ent client unavailable")
 	}
-	rows, err := client.QueryContext(ctx, `
+	rows, err := client.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 		SELECT id, invocation_id, tool_key, params_json, redaction_applied, created_at
 		FROM tool_invocation_params
 		WHERE invocation_id = ?
-		LIMIT 1`, invocationID)
+		LIMIT 1`), invocationID)
 	if err != nil {
 		return biz.ToolInvocationParam{}, entErrToBizErr(err, "TOOL")
 	}

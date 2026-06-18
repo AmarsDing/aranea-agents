@@ -901,7 +901,7 @@ type CacheConfig struct {
 }
 
 type RetryConfig struct {
-    MaxAttempts int
+    MaxAttempts int  // T1.2: -1 = 无限重试（默认）, 0 = 禁用, >0 = 有限次
     BaseDelayMs int
     MaxDelayMs  int
 }
@@ -1016,10 +1016,17 @@ Transport 装饰链（按需启用）：
 ```
 http.DefaultTransport (或 rt.HTTP.Transport)
     ↓ wrapRateLimitTransport (若 rate_limit_rpm > 0)
-    ↓ wrapRetryTransport (若 retry_max_attempts > 0)
+    ↓ wrapRetryTransport (若 retry_max_attempts != 0；T1.2: -1=无限, 0=禁用, >0=有限)
     ↓ wrapCircuitBreakerTransport (若 circuit_breaker_enabled)
     → trpcprovider.WithHTTPClientTransport(transport)
 ```
+
+> **T1.2 LLM 重试增强（Sprint 1, 2026-06-18）**：
+> - 默认 `MaxAttempts = -1`（无限重试），指数退避 1s/2s/4s/8s/16s/30s（封顶 30s）
+> - `retryTransport` 改为 `for {}` 循环 + `shouldRetry(attempt)` 方法，支持 `maxRetries=-1` 无限模式
+> - 新增 `RetryCallback` 类型：`func(req *http.Request, attempt, maxRetries int, err error, delay time.Duration)`
+> - 回调在 backoff sleep 前触发，由 `runtime.TurnDeps.RoundTripForSession(sessionID)` 注入，发布 `llm_retry` Envelope 到 chat channel
+> - 分层合规：`provider` 包不导入 `event` 包，回调由 runtime 层桥接事件发布
 
 ---
 
@@ -1289,7 +1296,7 @@ export async function validateModel(provider: string, model: string): Promise<Va
 
 ### 11.4 容错：四层降级 + 熔断
 
-1. **同模型**：有限次重试 + 指数退避；只对可重试错误（超时、429 等），参数/鉴权类立即失败
+1. **同模型**：默认无限重试（`MaxAttempts = -1`，T1.2）+ 指数退避（1s/2s/4s/8s/16s/30s 封顶）；只对可重试错误（超时、429 等），参数/鉴权类立即失败；每次重试经 `RetryCallback` 发布 `llm_retry` 事件通知前端
 2. **跨厂商**：降级链预置 + 出口层协议转换，对上游尽量无感
 3. **跨等级**：降级轻量或小上下文（需产品预先接受体验下限）
 4. **兜底**：语义缓存、固定话术、人工接管

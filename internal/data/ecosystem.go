@@ -35,7 +35,7 @@ func (r *ecosystemRepo) ListProducts(ctx context.Context, q biz.EcosystemQuery) 
 	}
 	wsql := strings.Join(where, " AND ")
 	var total int32
-	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), `SELECT COUNT(*) FROM ecosystem_products WHERE `+wsql, args, &total); err != nil {
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(*) FROM ecosystem_products WHERE `+wsql), args, &total); err != nil {
 		return biz.EcosystemListResult{}, err
 	}
 	limit := int(q.Limit)
@@ -46,10 +46,11 @@ func (r *ecosystemRepo) ListProducts(ctx context.Context, q biz.EcosystemQuery) 
 	if offset < 0 {
 		offset = 0
 	}
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, `
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`
 SELECT id, name, display_name, description, type, author_id, version, price_model, price_cents,
        rating, install_count, config_json, status, created_at, updated_at
-FROM ecosystem_products WHERE `+wsql+` ORDER BY install_count DESC, created_at DESC LIMIT ? OFFSET ?`,
+FROM ecosystem_products WHERE `+wsql+` ORDER BY install_count DESC, created_at DESC LIMIT ? OFFSET ?`),
 		append(args, limit, offset)...)
 	if err != nil {
 		return biz.EcosystemListResult{}, err
@@ -70,10 +71,11 @@ FROM ecosystem_products WHERE `+wsql+` ORDER BY install_count DESC, created_at D
 }
 
 func (r *ecosystemRepo) GetProduct(ctx context.Context, id string) (biz.EcosystemProduct, error) {
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, `
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`
 SELECT id, name, display_name, description, type, author_id, version, price_model, price_cents,
        rating, install_count, config_json, status, created_at, updated_at
-FROM ecosystem_products WHERE id = ? AND deleted_at = ''`, id)
+FROM ecosystem_products WHERE id = ? AND deleted_at = ''`), id)
 	if err != nil {
 		return biz.EcosystemProduct{}, err
 	}
@@ -89,10 +91,11 @@ FROM ecosystem_products WHERE id = ? AND deleted_at = ''`, id)
 }
 
 func (r *ecosystemRepo) CreateProduct(ctx context.Context, p biz.EcosystemProduct) (biz.EcosystemProduct, error) {
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`
 INSERT INTO ecosystem_products (id, name, display_name, description, type, author_id, version, price_model,
   price_cents, rating, install_count, config_json, status, created_at, updated_at, deleted_at)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'')`,
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'')`),
 		p.ID, p.Name, p.DisplayName, p.Description, p.Type, p.AuthorID, p.Version, p.PriceModel,
 		p.PriceCents, p.Rating, p.InstallCount, defaultJSON(p.ConfigJSON), p.Status, p.CreatedAt, p.UpdatedAt,
 	)
@@ -103,12 +106,14 @@ func (r *ecosystemRepo) RecordInstall(ctx context.Context, productID, refID stri
 	now := time.Now().UTC().Format(time.RFC3339)
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		e := TxExecerFromCtx(txCtx, r.data.RWDB().WriteHandle())
-		if _, err := e.ExecContext(txCtx, `
+		if _, err := e.ExecContext(txCtx,
+			r.data.Dialect().RenumberPlaceholders(`
 INSERT INTO ecosystem_installs (id, product_id, installed_ref_id, created_at, deleted_at)
-VALUES (?,?,?,?,'')`, refID, productID, refID, now); err != nil {
+VALUES (?,?,?,?,'')`), refID, productID, refID, now); err != nil {
 			return err
 		}
-		if _, err := e.ExecContext(txCtx, `UPDATE ecosystem_products SET install_count = install_count + 1, updated_at = ? WHERE id = ?`, now, productID); err != nil {
+		if _, err := e.ExecContext(txCtx,
+			r.data.Dialect().RenumberPlaceholders(`UPDATE ecosystem_products SET install_count = install_count + 1, updated_at = ? WHERE id = ?`), now, productID); err != nil {
 			return err
 		}
 		return nil
@@ -117,15 +122,17 @@ VALUES (?,?,?,?,'')`, refID, productID, refID, now); err != nil {
 
 func (r *ecosystemRepo) RemoveInstall(ctx context.Context, productID string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
-UPDATE ecosystem_installs SET deleted_at = ? WHERE product_id = ? AND deleted_at = ''`, now, productID)
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`
+UPDATE ecosystem_installs SET deleted_at = ? WHERE product_id = ? AND deleted_at = ''`), now, productID)
 	return err
 }
 
 func (r *ecosystemRepo) IsInstalled(ctx context.Context, productID string) (bool, error) {
 	var n int
-	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), `
-SELECT COUNT(*) FROM ecosystem_installs WHERE product_id = ? AND deleted_at = ''`, []any{productID}, &n)
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
+		r.data.Dialect().RenumberPlaceholders(`
+SELECT COUNT(*) FROM ecosystem_installs WHERE product_id = ? AND deleted_at = ''`), []any{productID}, &n)
 	return n > 0, err
 }
 

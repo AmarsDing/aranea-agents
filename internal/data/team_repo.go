@@ -597,7 +597,7 @@ func (r *TeamRepo) UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJ
 	}
 	now := nowRFC3339()
 	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
-		`UPDATE team_runs SET summary_json=?, updated_at=? WHERE id=?`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE team_runs SET summary_json=?, updated_at=? WHERE id=?`),
 		summaryJSON, now, runID)
 	return entErrToBizErr(err, "TEAM")
 }
@@ -608,7 +608,7 @@ func (r *TeamRepo) UpdateTeamRunGraphExecutionID(ctx context.Context, runID, gra
 	}
 	now := nowRFC3339()
 	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
-		`UPDATE team_runs SET graph_execution_id=?, updated_at=? WHERE id=?`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE team_runs SET graph_execution_id=?, updated_at=? WHERE id=?`),
 		graphExecutionID, now, runID)
 	return entErrToBizErr(err, "TEAM")
 }
@@ -619,7 +619,7 @@ func (r *TeamRepo) UpdateTeamRunTraceID(ctx context.Context, runID, traceID stri
 	}
 	now := nowRFC3339()
 	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
-		`UPDATE team_runs SET trace_id=?, updated_at=? WHERE id=?`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE team_runs SET trace_id=?, updated_at=? WHERE id=?`),
 		traceID, now, runID)
 	return entErrToBizErr(err, "TEAM")
 }

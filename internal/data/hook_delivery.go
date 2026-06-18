@@ -63,9 +63,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 		)
 		return err
 	}
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 INSERT INTO hook_deliveries (id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, idempotency_key, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		id, d.HookKey, d.HookID, d.WebhookURL, d.WebhookSecret, d.PayloadJSON, string(biz.NormalizeHookDeliveryStatus(string(d.Status))),
 		d.AttemptCount, maxAttempts, d.LastError, idempotencyKey, now, updated,
 	)
@@ -81,8 +81,8 @@ func (r *hookDeliveryRepo) UpdateResult(ctx context.Context, id string, status b
 		return nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
-UPDATE hook_deliveries SET status = ?, attempt_count = ?, last_error = ?, updated_at = ? WHERE id = ?`,
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
+UPDATE hook_deliveries SET status = ?, attempt_count = ?, last_error = ?, updated_at = ? WHERE id = ?`),
 		string(status), attemptCount, lastError, now, id,
 	)
 	return err
@@ -126,13 +126,13 @@ func (r *hookDeliveryRepo) List(ctx context.Context, q biz.HookDeliveryQuery) (b
 		args = append(args, k)
 	}
 	var total int32
-	if err := queryRowScan(ctx, readDB, "SELECT COUNT(*) FROM hook_deliveries"+where, args, &total); err != nil {
+	if err := queryRowScan(ctx, readDB, r.data.Dialect().RenumberPlaceholders("SELECT COUNT(*) FROM hook_deliveries"+where), args, &total); err != nil {
 		return biz.HookDeliveryListResult{}, err
 	}
 	listArgs := append(append([]any{}, args...), limit, offset)
-	rows, err := readDB.QueryContext(ctx, `
+	rows, err := readDB.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 SELECT id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, idempotency_key, created_at, updated_at
-FROM hook_deliveries`+where+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...)
+FROM hook_deliveries`+where+` ORDER BY created_at DESC LIMIT ? OFFSET ?`), listArgs...)
 	if err != nil {
 		return biz.HookDeliveryListResult{}, err
 	}
@@ -166,14 +166,14 @@ func (r *hookDeliveryRepo) ListStalePending(ctx context.Context, updatedBefore t
 		limit = 20
 	}
 	cutoff := updatedBefore.UTC().Format(time.RFC3339)
-	rows, err := readDB.QueryContext(ctx, `
+	rows, err := readDB.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 SELECT id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, idempotency_key, created_at, updated_at
 FROM hook_deliveries
 WHERE status = 'pending'
   AND attempt_count < max_attempts
   AND updated_at < ?
 ORDER BY created_at ASC
-LIMIT ?`, cutoff, limit)
+LIMIT ?`), cutoff, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -201,13 +201,13 @@ func (r *hookDeliveryRepo) TryClaimForRetry(ctx context.Context, id string, expe
 		return false, nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
+	result, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 UPDATE hook_deliveries
    SET attempt_count = attempt_count + 1,
        updated_at    = ?
  WHERE id             = ?
    AND status         = 'pending'
-   AND attempt_count  = ?`, now, id, expectedAttemptCount)
+   AND attempt_count  = ?`), now, id, expectedAttemptCount)
 	if err != nil {
 		return false, err
 	}

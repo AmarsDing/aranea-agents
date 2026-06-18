@@ -36,8 +36,8 @@ func (r *selfCheckReportRepo) InsertSelfCheckReport(ctx context.Context, report 
 	}
 
 	_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`INSERT INTO self_check_reports (id, check_results_json, overall_status, repair_actions_json, started_at, finished_at, duration_ms, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.data.Dialect().RenumberPlaceholders(`INSERT INTO self_check_reports (id, check_results_json, overall_status, repair_actions_json, started_at, finished_at, duration_ms, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
 		report.ID,
 		string(checkResultsJSON),
 		string(report.OverallStatus),
@@ -73,8 +73,8 @@ func (r *selfCheckReportRepo) ListSelfCheckReports(ctx context.Context, limit, o
 	}
 
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, check_results_json, overall_status, repair_actions_json, started_at, finished_at, duration_ms
-		 FROM self_check_reports ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, check_results_json, overall_status, repair_actions_json, started_at, finished_at, duration_ms
+		 FROM self_check_reports ORDER BY created_at DESC LIMIT ? OFFSET ?`),
 		limit, offset)
 	if err != nil {
 		return nil, 0, entErrToBizErr(err, "SELF_CHECK_REPORT")
@@ -132,7 +132,7 @@ func (r *selfCheckReportRepo) DeleteSelfCheckReportsOlderThan(ctx context.Contex
 
 	cutoff := olderThan.Format(time.RFC3339Nano)
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`DELETE FROM self_check_reports WHERE created_at < ?`, cutoff)
+		r.data.Dialect().RenumberPlaceholders(`DELETE FROM self_check_reports WHERE created_at < ?`), cutoff)
 	if err != nil {
 		return 0, entErrToBizErr(err, "SELF_CHECK_REPORT")
 	}

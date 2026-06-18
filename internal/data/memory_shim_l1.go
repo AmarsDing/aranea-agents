@@ -57,7 +57,7 @@ func (r *l1WorkingMemoryRepo) ListL1TaskRows(ctx context.Context, sessionID, age
 	}
 	where := " WHERE " + strings.Join(clauses, " AND ")
 	q := sqlL1Task + where + ` ORDER BY updated_at DESC`
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L1")
 	}
@@ -106,7 +106,7 @@ func (r *l1WorkingMemoryRepo) listL1FieldRows(ctx context.Context, taskID string
 		args = append(args, requestingAgentID[0], requestingAgentID[0], taskID)
 	}
 	q += ` ORDER BY field_path ASC`
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L1")
 	}
@@ -123,7 +123,7 @@ func (r *l1WorkingMemoryRepo) listL1FieldRows(ctx context.Context, taskID string
 }
 
 func (r *l1WorkingMemoryRepo) GetL1TaskRow(ctx context.Context, sessionID, id string) ([]byte, error) {
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlL1Task+` WHERE id = ? AND session_id = ?`, id, sessionID)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(sqlL1Task+` WHERE id = ? AND session_id = ?`), id, sessionID)
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L1")
 	}
@@ -136,7 +136,7 @@ func (r *l1WorkingMemoryRepo) GetL1TaskRow(ctx context.Context, sessionID, id st
 }
 
 func (r *l1WorkingMemoryRepo) GetL1FieldRow(ctx context.Context, taskID, fieldPath string) ([]byte, error) {
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlL1Field+` WHERE task_id = ? AND field_path = ?`, taskID, fieldPath)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(sqlL1Field+` WHERE task_id = ? AND field_path = ?`), taskID, fieldPath)
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L1")
 	}
@@ -160,14 +160,14 @@ func (r *l1WorkingMemoryRepo) StartL1Task(ctx context.Context, in biz.L1TaskInse
 		id = newUUIDString()
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_l1_tasks (
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_l1_tasks (
 		id, session_id, run_id, team_id, agent_id, task_key, task_title, task_goal, status,
 		schema_version, budget_tokens, used_tokens, parent_task_id, shared_with_json,
 		started_at, ended_at, archived_at, metadata_json, created_at, updated_at
 	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 	ON CONFLICT(session_id, task_key, agent_id) DO UPDATE SET
 		task_title = excluded.task_title, task_goal = excluded.task_goal,
-		status = excluded.status, ended_at = '', updated_at = excluded.updated_at`,
+		status = excluded.status, ended_at = '', updated_at = excluded.updated_at`),
 		id, sessID,
 		strings.TrimSpace(in.RunID),
 		strings.TrimSpace(in.TeamID),
@@ -190,7 +190,7 @@ func (r *l1WorkingMemoryRepo) StartL1Task(ctx context.Context, in biz.L1TaskInse
 func (r *l1WorkingMemoryRepo) EndL1Task(ctx context.Context, sessionID, taskID, status string) ([]byte, error) {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_l1_tasks SET status = ?, ended_at = ?, updated_at = ? WHERE id = ? AND session_id = ?`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_l1_tasks SET status = ?, ended_at = ?, updated_at = ? WHERE id = ? AND session_id = ?`),
 		status, now, now, taskID, sessionID,
 	)
 	if err != nil {
@@ -202,7 +202,7 @@ func (r *l1WorkingMemoryRepo) EndL1Task(ctx context.Context, sessionID, taskID, 
 func (r *l1WorkingMemoryRepo) ArchiveL1Task(ctx context.Context, sessionID, taskID string) ([]byte, error) {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_l1_tasks SET archived_at = ?, updated_at = ? WHERE id = ? AND session_id = ?`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_l1_tasks SET archived_at = ?, updated_at = ? WHERE id = ? AND session_id = ?`),
 		now, now, taskID, sessionID,
 	)
 	if err != nil {
@@ -214,7 +214,7 @@ func (r *l1WorkingMemoryRepo) ArchiveL1Task(ctx context.Context, sessionID, task
 func (r *l1WorkingMemoryRepo) UnarchiveL1Task(ctx context.Context, sessionID, taskID string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_l1_tasks SET archived_at = '', updated_at = ? WHERE id = ? AND session_id = ?`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_l1_tasks SET archived_at = '', updated_at = ? WHERE id = ? AND session_id = ?`),
 		now, taskID, sessionID,
 	)
 	return entErrToBizErr(err, "MEMORY_L1")
@@ -231,7 +231,7 @@ func (r *l1WorkingMemoryRepo) ArchiveAndCreateEpisodeTx(ctx context.Context, ses
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		// Step 1: Archive the L1 task (set archived_at).
 		if _, err := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
-			`UPDATE memory_l1_tasks SET archived_at = ?, updated_at = ? WHERE id = ? AND session_id = ?`,
+			r.data.Dialect().RenumberPlaceholders(`UPDATE memory_l1_tasks SET archived_at = ?, updated_at = ? WHERE id = ? AND session_id = ?`),
 			now, now, taskID, sessionID,
 		); err != nil {
 			return entErrToBizErr(err, "MEMORY_L1")
@@ -309,7 +309,7 @@ func (r *l1WorkingMemoryRepo) ArchiveAndCreateEpisodeTx(ctx context.Context, ses
 			confidence = 0.6
 		}
 		consolidationStatus := "consolidated"
-		if _, err := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx, `INSERT INTO memory_episodes (
+		if _, err := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx, r.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_episodes (
 			id, session_id, agent_id, l1_task_id, episode_kind, title, goal,
 			outcome, outcome_summary, importance, confidence,
 			key_decisions_json, key_artifacts_json, l1_snapshot_json,
@@ -324,7 +324,7 @@ func (r *l1WorkingMemoryRepo) ArchiveAndCreateEpisodeTx(ctx context.Context, ses
 			l1_snapshot_json = excluded.l1_snapshot_json,
 			l1_task_id = excluded.l1_task_id,
 			episode_kind = excluded.episode_kind,
-			ended_at = excluded.ended_at`,
+			ended_at = excluded.ended_at`),
 			epID,
 			strings.TrimSpace(episode.SessionID),
 			strings.TrimSpace(episode.AgentID),
@@ -465,9 +465,9 @@ func (r *l1WorkingMemoryRepo) UpsertL1Field(ctx context.Context, in biz.L1FieldI
 
 // archiveL1FieldHistory copies the current field value to field_history (best-effort).
 func (r *l1WorkingMemoryRepo) archiveL1FieldHistory(ctx context.Context, taskID, fieldPath, changedBy, now string, lg loggateway.Logger) {
-	if _, histErr := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_l1_field_history (id, field_id, task_id, revision, value_text, value_json, value_ref, preview, token_estimate, changed_by, change_reason, diff_json, metadata_json, created_at)
+	if _, histErr := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_l1_field_history (id, field_id, task_id, revision, value_text, value_json, value_ref, preview, token_estimate, changed_by, change_reason, diff_json, metadata_json, created_at)
 		SELECT ?, id, task_id, revision, value_text, value_json, value_ref, preview, token_estimate, ?, 'upsert', '{}', '{}', ?
-		FROM memory_l1_fields WHERE task_id = ? AND field_path = ?`,
+		FROM memory_l1_fields WHERE task_id = ? AND field_path = ?`),
 		newUUIDString(), changedBy, now, taskID, fieldPath,
 	); histErr != nil {
 		lg.Warn("L1 field history archival failed (best-effort)",
@@ -489,7 +489,7 @@ func (r *l1WorkingMemoryRepo) insertL1FieldRow(ctx context.Context, id string, i
 		}
 		expiresAt = t.Add(time.Duration(in.TTLSeconds) * time.Second).Format(time.RFC3339Nano)
 	}
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_l1_fields (
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_l1_fields (
 		id, task_id, session_id, agent_id, field_path, field_kind, visibility,
 		pin_to_prompt, is_required, value_text, value_json, value_ref, preview,
 		token_estimate, source, source_ref, ttl_seconds, expires_at,
@@ -501,7 +501,7 @@ func (r *l1WorkingMemoryRepo) insertL1FieldRow(ctx context.Context, id string, i
 		token_estimate = excluded.token_estimate, visibility = excluded.visibility,
 		pin_to_prompt = excluded.pin_to_prompt, source = excluded.source,
 		ttl_seconds = excluded.ttl_seconds, expires_at = excluded.expires_at,
-		revision = revision + 1, updated_at = excluded.updated_at`,
+		revision = revision + 1, updated_at = excluded.updated_at`),
 		id, strings.TrimSpace(in.TaskID),
 		strings.TrimSpace(in.SessionID),
 		strings.TrimSpace(in.AgentID),
@@ -522,7 +522,7 @@ func (r *l1WorkingMemoryRepo) insertL1FieldRow(ctx context.Context, id string, i
 
 func (r *l1WorkingMemoryRepo) DeleteL1Field(ctx context.Context, taskID, fieldPath string) error {
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`DELETE FROM memory_l1_fields WHERE task_id = ? AND field_path = ?`, taskID, fieldPath)
+		r.data.Dialect().RenumberPlaceholders(`DELETE FROM memory_l1_fields WHERE task_id = ? AND field_path = ?`), taskID, fieldPath)
 	if err != nil {
 		return entErrToBizErr(err, "MEMORY_L1")
 	}
@@ -555,7 +555,7 @@ func (r *l1WorkingMemoryRepo) PatchL1Fields(ctx context.Context, fields []biz.L1
 // getL1TaskBudget returns the budget_tokens and used_tokens for the given task.
 func (r *l1WorkingMemoryRepo) getL1TaskBudget(ctx context.Context, taskID string) (budget, used int, err error) {
 	rows, qErr := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT budget_tokens, used_tokens FROM memory_l1_tasks WHERE id = ?`, taskID)
+		r.data.Dialect().RenumberPlaceholders(`SELECT budget_tokens, used_tokens FROM memory_l1_tasks WHERE id = ?`), taskID)
 	if qErr != nil {
 		return 0, 0, entErrToBizErr(qErr, "MEMORY_L1")
 	}
@@ -572,9 +572,9 @@ func (r *l1WorkingMemoryRepo) getL1TaskBudget(ctx context.Context, taskID string
 // syncL1TaskUsedTokens recalculates and updates used_tokens for the given task.
 func (r *l1WorkingMemoryRepo) syncL1TaskUsedTokens(ctx context.Context, taskID string) error {
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_l1_tasks SET used_tokens = (
+		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_l1_tasks SET used_tokens = (
             SELECT COALESCE(SUM(token_estimate), 0) FROM memory_l1_fields WHERE task_id = ?
-        ), updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        ), updated_at = CURRENT_TIMESTAMP WHERE id = ?`),
 		taskID, taskID)
 	return entErrToBizErr(err, "MEMORY_L1")
 }
@@ -616,7 +616,7 @@ func isCJKRune(r rune) bool {
 
 func (r *l1WorkingMemoryRepo) ListIdleL1Tasks(ctx context.Context, cutoffRFC3339 string) ([][]byte, error) {
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, session_id, agent_id, task_title, status, updated_at FROM memory_l1_tasks WHERE status = 'active' AND archived_at = '' AND updated_at < ?`,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, session_id, agent_id, task_title, status, updated_at FROM memory_l1_tasks WHERE status = 'active' AND archived_at = '' AND updated_at < ?`),
 		cutoffRFC3339,
 	)
 	if err != nil {
@@ -646,7 +646,7 @@ func (r *l1WorkingMemoryRepo) GetL1SchemaRow(ctx context.Context, schemaID strin
 		return nil, apierror.BadRequest("MEMORY", "schema id is required")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, scope_type, scope_id, schema_key, schema_version, schema_json, description, enabled, metadata_json, created_at FROM memory_l1_schemas WHERE id = ?`,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, scope_type, scope_id, schema_key, schema_version, schema_json, description, enabled, metadata_json, created_at FROM memory_l1_schemas WHERE id = ?`),
 		schemaID,
 	)
 	if err != nil {

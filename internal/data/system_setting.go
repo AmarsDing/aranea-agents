@@ -108,8 +108,8 @@ func (r *systemSettingRepo) Get(ctx context.Context) (biz.SystemSetting, error) 
 // Used by Get() to populate biz.SystemSetting.DefaultRefineLLM safely.
 func (r *systemSettingRepo) getRefineLLMRedacted(ctx context.Context) (biz.RefineLLMSetting, error) {
 	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
-		`SELECT refine_llm_provider, refine_llm_model, refine_llm_base_url
-		 FROM system_settings WHERE id = ? LIMIT 1`, systemSettingSingletonID)
+		r.data.Dialect().RenumberPlaceholders(`SELECT refine_llm_provider, refine_llm_model, refine_llm_base_url
+		 FROM system_settings WHERE id = ? LIMIT 1`), systemSettingSingletonID)
 	if err != nil {
 		return biz.RefineLLMSetting{}, err
 	}
@@ -268,8 +268,8 @@ func (r *systemSettingRepo) UpdateEvalLLM(ctx context.Context, patch biz.EvalLLM
 // Uses raw SQL because the ent generator cannot be run due to a tablewriter version conflict.
 func (r *systemSettingRepo) GetRefineLLM(ctx context.Context) (biz.RefineLLMSetting, error) {
 	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
-		`SELECT refine_llm_provider, refine_llm_model, refine_llm_base_url, refine_llm_api_key
-		 FROM system_settings WHERE id = ? LIMIT 1`, systemSettingSingletonID)
+		r.data.Dialect().RenumberPlaceholders(`SELECT refine_llm_provider, refine_llm_model, refine_llm_base_url, refine_llm_api_key
+		 FROM system_settings WHERE id = ? LIMIT 1`), systemSettingSingletonID)
 	if err != nil {
 		return biz.RefineLLMSetting{}, err
 	}
@@ -289,14 +289,14 @@ func (r *systemSettingRepo) GetRefineLLM(ctx context.Context) (biz.RefineLLMSett
 func (r *systemSettingRepo) UpdateRefineLLM(ctx context.Context, patch biz.RefineLLMSetting, updateAPIKey bool) (biz.RefineLLMSetting, error) {
 	if updateAPIKey {
 		_, err := r.data.RW().Write(ctx).ExecContext(ctx,
-			`UPDATE system_settings SET refine_llm_provider=?, refine_llm_model=?, refine_llm_base_url=?, refine_llm_api_key=? WHERE id=?`,
+			r.data.Dialect().RenumberPlaceholders(`UPDATE system_settings SET refine_llm_provider=?, refine_llm_model=?, refine_llm_base_url=?, refine_llm_api_key=? WHERE id=?`),
 			patch.Provider, patch.Model, patch.BaseURL, strings.TrimSpace(patch.APIKey), systemSettingSingletonID)
 		if err != nil {
 			return biz.RefineLLMSetting{}, err
 		}
 	} else {
 		_, err := r.data.RW().Write(ctx).ExecContext(ctx,
-			`UPDATE system_settings SET refine_llm_provider=?, refine_llm_model=?, refine_llm_base_url=? WHERE id=?`,
+			r.data.Dialect().RenumberPlaceholders(`UPDATE system_settings SET refine_llm_provider=?, refine_llm_model=?, refine_llm_base_url=? WHERE id=?`),
 			patch.Provider, patch.Model, patch.BaseURL, systemSettingSingletonID)
 		if err != nil {
 			return biz.RefineLLMSetting{}, err

@@ -308,6 +308,29 @@ func (m *Migrator) getSQLiteColumns(ctx context.Context, table string) ([]string
 	return cols, rows.Err()
 }
 
+// getByteaColumns returns the set of bytea column names for the given Postgres
+// table. Used to skip UTF-8 sanitization for binary columns during migration.
+func (m *Migrator) getByteaColumns(ctx context.Context, table string) (map[string]bool, error) {
+	rows, err := m.pg().QueryContext(ctx,
+		`SELECT column_name FROM information_schema.columns
+		 WHERE table_schema = 'public' AND table_name = $1 AND data_type = 'bytea'`,
+		table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[string]bool)
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		out[name] = true
+	}
+	return out, rows.Err()
+}
+
 // getPostgresInsertableColumns returns column names from Postgres that can be inserted into
 // (excludes GENERATED ALWAYS columns).
 func (m *Migrator) getPostgresInsertableColumns(ctx context.Context, table string) ([]string, error) {
@@ -336,7 +359,19 @@ func (m *Migrator) getPostgresInsertableColumns(ctx context.Context, table strin
 // Uses []byte scanning to avoid type coercion issues between SQLite (dynamic typing)
 // and Postgres (strong typing). The lib/pq driver accepts []byte for most types
 // via the text protocol (e.g., "0"/"1" for boolean, ISO timestamps for timestamp).
+//
+// bytea columns: Postgres bytea columns receive raw []byte without UTF-8
+// sanitization to preserve binary data integrity. Text-like columns are
+// sanitized via strings.ToValidUTF8 to avoid "invalid UTF8 byte sequence"
+// errors on the Postgres side (SQLite may store arbitrary bytes in TEXT).
 func (m *Migrator) streamAndInsert(ctx context.Context, sqliteTable, pgTable string, columns []string) (int64, error) {
+	// Identify bytea columns on the Postgres target so we can skip UTF-8
+	// sanitization for them (sanitizing would corrupt binary payloads).
+	byteaSet, err := m.getByteaColumns(ctx, pgTable)
+	if err != nil {
+		return 0, fmt.Errorf("detect bytea columns: %w", err)
+	}
+
 	// Build the SELECT query from SQLite.
 	colList := strings.Join(quoteIdentifiers(columns), ", ")
 	selectSQL := fmt.Sprintf(`SELECT %s FROM %s`, colList, quoteIdent(sqliteTable))
@@ -380,21 +415,26 @@ func (m *Migrator) streamAndInsert(ctx context.Context, sqliteTable, pgTable str
 		if err := rows.Scan(scanVals...); err != nil {
 			return totalRows, fmt.Errorf("scan row: %w", err)
 		}
-		// Convert *[]byte to any (nil for NULL, string for data).
-		// We convert to string and sanitize UTF8 because:
-		// 1. Postgres text columns require valid UTF8 (SQLite may store invalid bytes).
-		// 2. lib/pq sends []byte as bytea and string as text; for text columns,
-		//    string avoids "invalid UTF8 byte sequence" errors.
-		// 3. For bytea columns, Postgres accepts string values transparently.
+		// Convert *[]byte to any (nil for NULL, value for data).
+		// - bytea columns: pass raw []byte to preserve binary data integrity.
+		// - text-like columns: convert to string and sanitize UTF8 because:
+		//   1. Postgres text columns require valid UTF8 (SQLite may store invalid bytes).
+		//   2. lib/pq sends []byte as bytea and string as text; for text columns,
+		//      string avoids "invalid UTF8 byte sequence" errors.
 		row := make([]any, len(columns))
 		for i, v := range scanVals {
 			bp := v.(*[]byte)
 			if *bp == nil {
 				row[i] = nil // NULL
-			} else {
-				// Sanitize invalid UTF8 sequences (replace with \uFFFD).
-				row[i] = strings.ToValidUTF8(string(*bp), "\uFFFD")
+				continue
 			}
+			if byteaSet[columns[i]] {
+				// Binary column: preserve raw bytes (do not sanitize).
+				row[i] = *bp
+				continue
+			}
+			// Text-like column: sanitize invalid UTF8 sequences (replace with \uFFFD).
+			row[i] = strings.ToValidUTF8(string(*bp), "\uFFFD")
 		}
 		batch = append(batch, row)
 		if len(batch) >= m.batchSize {

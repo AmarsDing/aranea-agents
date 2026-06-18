@@ -723,7 +723,7 @@ func NewChatService(deps ChatOrchestratorDeps) *ChatService
 
 **入队**：`chat_native` 检测 `HasActive` → `chatUC.EnqueueUserMessage` → Steerable 或 Pending → `PublishMessageQueued`（`run_status` + `hint: message_queued`）。
 
-**出队**：turn defer → `processPendingQueue` → `chatUC.DequeuePendingMessage` → 新 turn。
+**出队**：turn defer → `processPendingQueue`（迭代式循环，T1.3）→ `chatUC.DequeuePendingMessage` → 新 turn（同一 goroutine 内串行处理，避免递归 goroutine 链）。
 
 **废弃**：`ChatService.publishMessageQueued` — 使用 `ChatUsecase` + `publishMessageQueuedToBus`。
 
@@ -756,7 +756,7 @@ func NewChatService(deps ChatOrchestratorDeps) *ChatService
 3. 返回 stopped 状态
 ```
 
-当前 `RunRegistry` 由单 Agent **`StoreCancelable` → `StoreRunner`** 与 Team **`StoreCancelable`** 共同登记；`lockSession` per-session 互斥锁保护 admission。Turn 启动中且无 `ActiveRunner` 时返回 **`CHAT_TURN_BUSY`**；运行中追加消息经 `EnqueueUserMessage` 成功返回 **`ErrTurnMessageQueued`**（steer 或 Pending FIFO）。Team / 单 Agent turn 完成后 defer `Finish` 并调用 `processPendingQueue`（加锁；仍 active 则重新入队）。
+当前 `RunRegistry` 由单 Agent **`StoreCancelable` → `StoreRunner`** 与 Team **`StoreCancelable`** 共同登记；`lockSession` per-session 互斥锁保护 admission。Turn 启动中且无 `ActiveRunner` 时返回 **`CHAT_TURN_BUSY`**；运行中追加消息经 `EnqueueUserMessage` 成功返回 **`ErrTurnMessageQueued`**（steer 或 Pending FIFO）。Team / 单 Agent turn 完成后 defer `Finish` 并调用 `processPendingQueue`（加锁；仍 active 则重新入队；defer 中检查 `inPendingLoop(ctx)` 抑制递归触发，T1.3）。
 
 #### GetPendingMessages
 
@@ -943,9 +943,11 @@ type EnvelopeTrace struct {
 
 注意：
 - 步骤 2 的 `activeRuns` 检查由 `RunRegistry` 维护，`lockSession` per-session 互斥锁保护 Load/Store 原子性。Team 路径通过 `teamRunGuard` 接入 `activeRuns`，与单 Agent 的 stop/pending 行为一致。
-- Team turn 完成后通过 defer 调用 `processPendingQueue`，内部按 `OwnerType` 路由到 `teamsNative.RunTurn` 或 `runSingleAgentViaTRPC`。
+- Team turn 完成后通过 defer 调用 `processPendingQueue`（迭代式循环，T1.3），内部按 `OwnerType` 路由到 `teamsNative.RunTurn` 或 `runSingleAgentViaTRPC`。defer 中检查 `inPendingLoop(ctx)` 标志，避免在 pending 循环内重复触发。
 
 ### 8.7 runSingleAgentViaTRPC 核心流程
+
+> **No-Timeout（T1.1）**：`turnCtx, turnCancel := context.WithCancel(ctx)` — 仅 cancel，无 `WithTimeout`。原 24h `longTaskHardDeadline` 已移除，任务持续运行直到完成或用户取消。
 
 ```
 1. 校验 agent_key 匹配
@@ -954,20 +956,20 @@ type EnvelopeTrace struct {
 4. 构建 TRPCRunnerDeps（SessionService + MemoryService）
 5. NewTRPCRunner() → runner
 6. activeRuns.Store(sessionID, runner)
-7. defer: activeRuns.Delete + runner.Close + processPendingQueue
+7. defer: activeRuns.Delete + runner.Close + processPendingQueue（inPendingLoop 抑制递归）
 8. 构建 UserOptionsJSON
 9. 运行意图识别 intent.Run()
    - 成功时：MergeIntoUserOptionsJSON 合并到 options_json
    - 成功时：WrapUserMessage 嵌入 artifact 到用户消息
    - EventBus Publish intent_pass Envelope（单 Agent 和 Team 均发送）
 10. 构造 userMsg → AppendChatMessage
-11. RunTRPCUserTurn() → events channel
+11. RunTRPCUserTurn() → events channel（使用 RoundTripForSession 注入 llm_retry 回调，T1.2）
 12. 遍历事件流:
     - EventProjector.ProjectAndPublish → EventBus Envelope
     - Response.Choices → 累积 reply/reasoning
     - ToolCalls → 投影为 tool_call / tool_result Envelope
     - Usage → 记录 promptTok/completionTok
-    - ctx.Err() != nil 时退出循环（取消/超时）
+    - ctx.Err() != nil 时退出循环（仅用户取消；无超时）
 13. 构造 assistantMsg
 14. 持久化消息（AppendChatMessage）
 15. recordSessionTurn() 写入 session_turns 表
@@ -988,22 +990,33 @@ type EnvelopeTrace struct {
 
 ### 8.9 processPendingQueue 错误处理
 
+> **No-Timeout 原则（Sprint 1 / T1.1, 2026-06-18）**：任务执行无任何时间上限，持续运行直到完成或用户取消。原 24h `longTaskHardDeadline`（`turnTimeout * 12`）已移除；单 Agent / Team / pending queue / resumeAwait 路径统一使用 `context.WithCancel`（不施加 `WithTimeout`）。`turnTimeout()`（默认 10min）仅作为 sync-cap 通知阈值，不作为硬截止。
+
 ```
 1. dequeuePending 取出待执行消息
-2. 启动 goroutine，设置 600s 超时 + cancel 传播
-3. 调用 runSingleAgentViaTRPC 执行
-4. 执行失败时：发布 error Envelope
-5. WS 前端收到 error 后显示通知
+2. 迭代式循环（while loop + 深度计数器，替代原 goroutine 递归）：
+   a. 加锁 admission 检查（HasActive → 重新入队并退出）
+   b. context.WithCancel(loopCtx)（无超时；用户取消经 StoreCancelable 传播）
+   c. 调用 runSingleAgentViaTRPC / teamsNative.RunTurn 执行
+   d. 执行失败时：发布 error Envelope（含 pending_id）
+   e. defer 中检查 inPendingLoop(ctx) 标志，避免递归 defer 重复触发
+3. WS 前端收到 error 后显示通知
 ```
+
+**关键设计**：
+- **迭代式替代递归**（T1.3）：原 `processPendingQueue` 在 turn defer 中递归启动新 goroutine，深度无界。改为 `for {}` 循环 + `depth` 计数器（上限保护），同一 goroutine 内串行处理 pending 队列，避免 goroutine 链爆炸。
+- **inPendingLoop context flag**（T1.3）：循环内通过 `contextWithPendingLoop(ctx)` 注入标志，turn defer 中的 `processPendingQueue` 调用检查 `inPendingLoop(ctx)` 抑制递归触发。
+- **pending queue 持久化**（T1.4）：`PendingMessageQueue` 支持 snapshot 持久化（`NewPendingMessageQueueWithDirAndLogger`），进程重启后从磁盘恢复未消费的 pending 消息。
 
 > **pending_id 约定**：待执行消息执行失败时，`error.pending_id` 应填充关联的待执行消息 ID。当前 `processPendingQueue` 中统一使用 `env.Error.PendingID = entry.ID`，metadata 双写已移除。
 
-### 8.10 pendingQueue 容量控制
+### 8.10 pendingQueue 容量控制与持久化
 
 ```
 - maxPendingPerSession = 32
 - enqueuePending 检查队列长度，超出时返回空 ID
 - runNativeAgentTurn 中检测空 ID，返回 BadRequest 错误
+- 持久化（T1.4）：PendingMessageQueue 支持 snapshot 到 dataDir，进程重启后恢复
 ```
 
 ### 8.11 上下文管理
@@ -1407,7 +1420,7 @@ web/src/
 │   ├── eventFilter.ts             ← 事件过滤
 │   ├── useEventFilter.ts          ← 事件过滤 composable
 │   ├── useEnvelopeStream.ts       ← WS Envelope 底层消费
-│   ├── ws-transport.ts            ← WS 连接管理（WsTransport：连接/重连/心跳/断线回放）
+│   ├── ws-transport.ts            ← WS 连接管理（WsTransport：连接/重连/心跳/断线回放；T1.8: 无限重连 + pendingQueue FIFO 保护 100 上限）
 │   ├── globalWsHub.ts             ← 全局 WS Hub
 │   ├── streamHandlers.ts          ← WS 事件处理器（withSessionFilter + onRunActivity + errorCodeHints）
 │   ├── streamEventTypes.ts        ← 流事件类型
@@ -1460,8 +1473,8 @@ web/src/
 │   ├── a2uiUserActionDisplay.ts   ← A2UI 用户动作展示
 │   └── composables/
 │       ├── useChatWorkspace.ts    ← 对话工作区 composable（状态管理 + 交互逻辑；拆分后聚焦编排）
-│       ├── useChatSender.ts       ← 发送策略模式（Agent/Team 统一发送路径 + enqueue_message）
-│       ├── useChatStreamManager.ts ← WS 事件流管理（单 Agent + Team 统一）
+│       ├── useChatSender.ts       ← 发送策略模式（Agent/Team 统一发送路径 + enqueue_message；T1.5: 移除超时失败标记；T1.7: HTTP fallback loadMessages 失败隔离）
+│       ├── useChatStreamManager.ts ← WS 事件流管理（单 Agent + Team 统一；T1.6: onActivityEnvelope 实时 AF 接入）
 │       ├── useChatRunStatus.ts    ← RunStatus 轮询 + AwaitUserReply 回复提交
 │       ├── useFollowUpQueue.ts    ← Follow-up Queue 状态管理（pending 列表 + WS 刷新）
 │       ├── useAwaitReply.ts       ← AwaitUserReply 交互（提交回复 + 横幅状态）

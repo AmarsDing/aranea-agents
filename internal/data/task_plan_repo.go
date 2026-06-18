@@ -68,11 +68,11 @@ func (r *taskPlanRepo) Create(ctx context.Context, plan *biz.TaskPlan) (*biz.Tas
 	}
 
 	_, err = r.data.RW().Write(ctx).ExecContext(ctx,
-		`INSERT INTO task_plans (id, spirit_session_id, trace_id, user_message, intent_artifact_json,
+		r.data.Dialect().RenumberPlaceholders(`INSERT INTO task_plans (id, spirit_session_id, trace_id, user_message, intent_artifact_json,
 			complexity_level, complexity_score, dimensions_json, sub_tasks_json, dag_json,
 			decompose_reason, strategy, strategy_reason, topology_hint, memory_hit_json,
 			status, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		plan.ID, plan.SpiritSessionID, plan.TraceID, plan.UserMessage, intentArtifactJSON,
 		string(plan.ComplexityLevel), plan.ComplexityScore, string(dimensionsJSON), string(subTasksJSON), dagJSON,
 		plan.DecomposeReason, string(plan.Strategy), plan.StrategyReason, string(plan.TopologyHint), memoryHitJSON,
@@ -90,11 +90,11 @@ func (r *taskPlanRepo) GetByID(ctx context.Context, id string) (*biz.TaskPlan, e
 		return nil, apierror.BadRequest("TASK_PLAN", "id is required")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, spirit_session_id, trace_id, user_message, intent_artifact_json,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, spirit_session_id, trace_id, user_message, intent_artifact_json,
 			complexity_level, complexity_score, dimensions_json, sub_tasks_json, dag_json,
 			decompose_reason, strategy, strategy_reason, topology_hint, memory_hit_json,
 			status, created_at, updated_at
-		 FROM task_plans WHERE id = ?`, id)
+		 FROM task_plans WHERE id = ?`), id)
 	if err != nil {
 		return nil, entErrToBizErr(err, "TASK_PLAN")
 	}
@@ -141,12 +141,12 @@ func (r *taskPlanRepo) Update(ctx context.Context, plan *biz.TaskPlan) (*biz.Tas
 	}
 
 	_, err = r.data.RW().Write(ctx).ExecContext(ctx,
-		`UPDATE task_plans SET
+		r.data.Dialect().RenumberPlaceholders(`UPDATE task_plans SET
 			spirit_session_id=?, trace_id=?, user_message=?, intent_artifact_json=?,
 			complexity_level=?, complexity_score=?, dimensions_json=?, sub_tasks_json=?, dag_json=?,
 			decompose_reason=?, strategy=?, strategy_reason=?, topology_hint=?, memory_hit_json=?,
 			status=?, updated_at=?
-		 WHERE id = ?`,
+		 WHERE id = ?`),
 		plan.SpiritSessionID, plan.TraceID, plan.UserMessage, plan.IntentArtifactJSON,
 		string(plan.ComplexityLevel), plan.ComplexityScore, string(dimensionsJSON), string(subTasksJSON), dagJSON,
 		plan.DecomposeReason, string(plan.Strategy), plan.StrategyReason, string(plan.TopologyHint), memoryHitJSON,
@@ -165,11 +165,11 @@ func (r *taskPlanRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionI
 		return nil, nil
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, spirit_session_id, trace_id, user_message, intent_artifact_json,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, spirit_session_id, trace_id, user_message, intent_artifact_json,
 			complexity_level, complexity_score, dimensions_json, sub_tasks_json, dag_json,
 			decompose_reason, strategy, strategy_reason, topology_hint, memory_hit_json,
 			status, created_at, updated_at
-		 FROM task_plans WHERE spirit_session_id = ? ORDER BY created_at DESC`, spiritSessionID)
+		 FROM task_plans WHERE spirit_session_id = ? ORDER BY created_at DESC`), spiritSessionID)
 	if err != nil {
 		return nil, entErrToBizErr(err, "TASK_PLAN")
 	}

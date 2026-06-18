@@ -42,7 +42,7 @@ func cascadeDeleteByAgent(ctx context.Context, d *Data, agentID string) error {
 
 	// Hard-delete tool_agent_overrides for this agent
 	execer := d.RWDB().WriteDB(ctx)
-	if _, err := execer.ExecContext(ctx, `DELETE FROM tool_agent_overrides WHERE agent_id = ?`, agentID); err != nil {
+	if _, err := execer.ExecContext(ctx, d.Dialect().RenumberPlaceholders(`DELETE FROM tool_agent_overrides WHERE agent_id = ?`), agentID); err != nil {
 		return err
 	}
 
@@ -62,66 +62,66 @@ func cascadeDeleteBySession(ctx context.Context, d *Data, sessionID string) erro
 		execer := d.RWDB().WriteDB(txCtx)
 
 		// Hard-delete session_turns (no soft-delete support)
-		if _, err := execer.ExecContext(txCtx, `DELETE FROM session_turns WHERE session_id = ?`, sessionID); err != nil {
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM session_turns WHERE session_id = ?`), sessionID); err != nil {
 			return err
 		}
 
 		// Hard-delete session_participants
-		if _, err := execer.ExecContext(txCtx, `DELETE FROM session_participants WHERE session_id = ?`, sessionID); err != nil {
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM session_participants WHERE session_id = ?`), sessionID); err != nil {
 			return err
 		}
 
 		// Hard-delete session_run_checkpoints
-		if _, err := execer.ExecContext(txCtx, `DELETE FROM session_run_checkpoints WHERE session_id = ?`, sessionID); err != nil {
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM session_run_checkpoints WHERE session_id = ?`), sessionID); err != nil {
 			return err
 		}
 
 		// Hard-delete tool_invocation_params + tool_invocations
-		if _, err := execer.ExecContext(txCtx, `DELETE FROM tool_invocation_params WHERE invocation_id IN (SELECT id FROM tool_invocations WHERE session_id = ?)`, sessionID); err != nil {
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM tool_invocation_params WHERE invocation_id IN (SELECT id FROM tool_invocations WHERE session_id = ?)`), sessionID); err != nil {
 			return err
 		}
-		if _, err := execer.ExecContext(txCtx, `DELETE FROM tool_invocations WHERE session_id = ?`, sessionID); err != nil {
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM tool_invocations WHERE session_id = ?`), sessionID); err != nil {
 			return err
 		}
 
 		// Hard-delete skill_invocations
-		if _, err := execer.ExecContext(txCtx, `DELETE FROM skill_invocation WHERE session_id = ?`, sessionID); err != nil {
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM skill_invocation WHERE session_id = ?`), sessionID); err != nil {
 			return err
 		}
 
 		// Hard-delete tool_result_blobs + tool_result_replacements
-		if _, err := execer.ExecContext(txCtx, `DELETE FROM tool_result_replacements WHERE session_id = ?`, sessionID); err != nil {
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM tool_result_replacements WHERE session_id = ?`), sessionID); err != nil {
 			return err
 		}
-		if _, err := execer.ExecContext(txCtx, `DELETE FROM tool_result_blobs WHERE session_id = ?`, sessionID); err != nil {
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM tool_result_blobs WHERE session_id = ?`), sessionID); err != nil {
 			return err
 		}
 
 		// Hard-delete messages
-		if _, err := execer.ExecContext(txCtx, `DELETE FROM messages WHERE session_id = ?`, sessionID); err != nil {
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM messages WHERE session_id = ?`), sessionID); err != nil {
 			return err
 		}
 
 		// Hard-delete event_store entries
-		if _, err := execer.ExecContext(txCtx, `DELETE FROM event_store WHERE session_id = ?`, sessionID); err != nil {
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM event_store WHERE session_id = ?`), sessionID); err != nil {
 			return err
 		}
 
 		// Hard-delete session_runs (created by DDL migration, not Ent schema)
-		if _, err := execer.ExecContext(txCtx, `DELETE FROM session_runs WHERE session_id = ?`, sessionID); err != nil {
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM session_runs WHERE session_id = ?`), sessionID); err != nil {
 			return err
 		}
 
 		// Hard-delete session_runtime + session_metrics (1:1 with session)
-		if _, err := execer.ExecContext(txCtx, `DELETE FROM session_runtime WHERE id = ?`, sessionID); err != nil {
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM session_runtime WHERE id = ?`), sessionID); err != nil {
 			return err
 		}
-		if _, err := execer.ExecContext(txCtx, `DELETE FROM session_metrics WHERE id = ?`, sessionID); err != nil {
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM session_metrics WHERE id = ?`), sessionID); err != nil {
 			return err
 		}
 
 		// Hard-delete channel_turn_jobs
-		if _, err := execer.ExecContext(txCtx, `DELETE FROM channel_turn_job WHERE session_id = ?`, sessionID); err != nil {
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM channel_turn_job WHERE session_id = ?`), sessionID); err != nil {
 			return err
 		}
 
@@ -138,17 +138,17 @@ func cascadeDeleteByTeam(ctx context.Context, d *Data, teamID string) error {
 	execer := d.RWDB().WriteDB(ctx)
 
 	// Hard-delete team_run_steps (child of team_runs)
-	if _, err := execer.ExecContext(ctx, `DELETE FROM team_run_steps WHERE team_id = ?`, teamID); err != nil {
+	if _, err := execer.ExecContext(ctx, d.Dialect().RenumberPlaceholders(`DELETE FROM team_run_steps WHERE team_id = ?`), teamID); err != nil {
 		return err
 	}
 
 	// Hard-delete team_runs
-	if _, err := execer.ExecContext(ctx, `DELETE FROM team_runs WHERE team_id = ?`, teamID); err != nil {
+	if _, err := execer.ExecContext(ctx, d.Dialect().RenumberPlaceholders(`DELETE FROM team_runs WHERE team_id = ?`), teamID); err != nil {
 		return err
 	}
 
 	// Hard-delete compiled_teams
-	if _, err := execer.ExecContext(ctx, `DELETE FROM compiled_teams WHERE team_id = ?`, teamID); err != nil {
+	if _, err := execer.ExecContext(ctx, d.Dialect().RenumberPlaceholders(`DELETE FROM compiled_teams WHERE team_id = ?`), teamID); err != nil {
 		return err
 	}
 
@@ -164,32 +164,32 @@ func cascadeDeleteByChannel(ctx context.Context, d *Data, channelID string) erro
 	execer := d.RWDB().WriteDB(ctx)
 
 	// Hard-delete channel_peer_sessions
-	if _, err := execer.ExecContext(ctx, `DELETE FROM channel_peer_session WHERE channel_id = ?`, channelID); err != nil {
+	if _, err := execer.ExecContext(ctx, d.Dialect().RenumberPlaceholders(`DELETE FROM channel_peer_session WHERE channel_id = ?`), channelID); err != nil {
 		return err
 	}
 
 	// Hard-delete channel_credentials
-	if _, err := execer.ExecContext(ctx, `DELETE FROM channel_credential WHERE channel_id = ?`, channelID); err != nil {
+	if _, err := execer.ExecContext(ctx, d.Dialect().RenumberPlaceholders(`DELETE FROM channel_credential WHERE channel_id = ?`), channelID); err != nil {
 		return err
 	}
 
 	// Hard-delete channel_deliveries
-	if _, err := execer.ExecContext(ctx, `DELETE FROM channel_delivery WHERE channel_id = ?`, channelID); err != nil {
+	if _, err := execer.ExecContext(ctx, d.Dialect().RenumberPlaceholders(`DELETE FROM channel_delivery WHERE channel_id = ?`), channelID); err != nil {
 		return err
 	}
 
 	// Hard-delete channel_inbound_receipts
-	if _, err := execer.ExecContext(ctx, `DELETE FROM channel_inbound_receipt WHERE channel_id = ?`, channelID); err != nil {
+	if _, err := execer.ExecContext(ctx, d.Dialect().RenumberPlaceholders(`DELETE FROM channel_inbound_receipt WHERE channel_id = ?`), channelID); err != nil {
 		return err
 	}
 
 	// Hard-delete channel_turn_jobs
-	if _, err := execer.ExecContext(ctx, `DELETE FROM channel_turn_job WHERE channel_id = ?`, channelID); err != nil {
+	if _, err := execer.ExecContext(ctx, d.Dialect().RenumberPlaceholders(`DELETE FROM channel_turn_job WHERE channel_id = ?`), channelID); err != nil {
 		return err
 	}
 
 	// Hard-delete channel_runtime_leases
-	if _, err := execer.ExecContext(ctx, `DELETE FROM channel_runtime_lease WHERE channel_id = ?`, channelID); err != nil {
+	if _, err := execer.ExecContext(ctx, d.Dialect().RenumberPlaceholders(`DELETE FROM channel_runtime_lease WHERE channel_id = ?`), channelID); err != nil {
 		return err
 	}
 

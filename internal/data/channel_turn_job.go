@@ -78,7 +78,7 @@ func (r *channelTurnJobRepo) Create(ctx context.Context, job biz.ChannelTurnJob)
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		e := TxExecerFromCtx(txCtx, r.data.RWDB().WriteHandle())
 		lockedPlaceholders, lockedArgs := buildSQLInPlaceholders(biz.ChannelTurnJobIdempotentLockedStatuses)
-		query := fmt.Sprintf(`
+		query := r.data.Dialect().RenumberPlaceholders(fmt.Sprintf(`
 INSERT INTO channel_turn_job (
   id, channel_id, session_id, peer_id, peer_key, idempotency_key, status,
   preview_message_id, content_preview, async_target_type, async_target_id,
@@ -87,7 +87,7 @@ INSERT INTO channel_turn_job (
 ON CONFLICT(channel_id, idempotency_key) DO UPDATE SET
   updated_at=excluded.updated_at,
   status=CASE WHEN channel_turn_job.status IN (%s)
-    THEN channel_turn_job.status ELSE excluded.status END`, lockedPlaceholders)
+    THEN channel_turn_job.status ELSE excluded.status END`, lockedPlaceholders))
 		args := []any{
 			strings.TrimSpace(job.ID),
 			channelID,
@@ -111,7 +111,7 @@ ON CONFLICT(channel_id, idempotency_key) DO UPDATE SET
 		if execErr != nil {
 			return execErr
 		}
-		row, queryErr := queryChannelTurnJob(txCtx, e, `WHERE channel_id = ? AND idempotency_key = ? LIMIT 1`,
+		row, queryErr := queryChannelTurnJob(txCtx, e, r.data.Dialect().RenumberPlaceholders(`WHERE channel_id = ? AND idempotency_key = ? LIMIT 1`),
 			channelID, idempotency)
 		if queryErr != nil {
 			return queryErr
@@ -139,7 +139,7 @@ func (r *channelTurnJobRepo) UpdateStatus(ctx context.Context, id, status, errMs
 	status = biz.NormalizeChannelTurnJobStatus(status)
 	startPlaceholders, startArgs := buildSQLInPlaceholders(biz.ChannelTurnJobStartStatuses)
 	finishPlaceholders, finishArgs := buildSQLInPlaceholders(biz.ChannelTurnJobFinishStatuses)
-	query := fmt.Sprintf(`
+	query := r.data.Dialect().RenumberPlaceholders(fmt.Sprintf(`
 UPDATE channel_turn_job SET
   status=?,
   error_message=CASE WHEN ? != '' THEN ? ELSE error_message END,
@@ -148,7 +148,7 @@ UPDATE channel_turn_job SET
   started_at=CASE WHEN started_at='' AND ? IN (%s) THEN ? ELSE started_at END,
   finished_at=CASE WHEN ? IN (%s) THEN ? ELSE finished_at END,
   updated_at=?
-WHERE id=?`, startPlaceholders, finishPlaceholders)
+WHERE id=?`, startPlaceholders, finishPlaceholders))
 	// Args MUST follow the placeholder order in the SQL:
 	//   1. status                        -> SET status=?
 	//   2-3. errMsg, errMsg              -> error_message CASE WHEN ? != '' THEN ?
@@ -188,12 +188,12 @@ func (r *channelTurnJobRepo) UpdateAsyncTarget(ctx context.Context, id, targetTy
 		return apierror.BadRequest("CHANNEL_TURN_JOB", "id is required")
 	}
 	now := biz.ChannelTurnJobNow()
-	_, err := db.ExecContext(ctx, `
+	_, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 UPDATE channel_turn_job SET
   async_target_type=CASE WHEN ? != '' THEN ? ELSE async_target_type END,
   async_target_id=CASE WHEN ? != '' THEN ? ELSE async_target_id END,
   updated_at=?
-WHERE id=?`,
+WHERE id=?`),
 		targetType, targetType,
 		targetID, targetID,
 		now,
@@ -210,7 +210,7 @@ func (r *channelTurnJobRepo) GetByIdempotency(ctx context.Context, channelID, id
 	if db == nil {
 		return biz.ChannelTurnJob{}, apierror.NotFound(apierror.DomainChannel, "not found")
 	}
-	return queryChannelTurnJob(ctx, db, `WHERE channel_id = ? AND idempotency_key = ? LIMIT 1`,
+	return queryChannelTurnJob(ctx, db, r.data.Dialect().RenumberPlaceholders(`WHERE channel_id = ? AND idempotency_key = ? LIMIT 1`),
 		strings.TrimSpace(channelID), strings.TrimSpace(idempotencyKey))
 }
 
@@ -222,7 +222,7 @@ func (r *channelTurnJobRepo) GetByID(ctx context.Context, id string) (biz.Channe
 	if db == nil {
 		return biz.ChannelTurnJob{}, apierror.NotFound(apierror.DomainChannel, "not found")
 	}
-	return queryChannelTurnJob(ctx, db, `WHERE id = ? LIMIT 1`, strings.TrimSpace(id))
+	return queryChannelTurnJob(ctx, db, r.data.Dialect().RenumberPlaceholders(`WHERE id = ? LIMIT 1`), strings.TrimSpace(id))
 }
 
 func (r *channelTurnJobRepo) ListByChannel(ctx context.Context, channelID string, limit int) ([]biz.ChannelTurnJob, error) {
@@ -234,7 +234,7 @@ func (r *channelTurnJobRepo) ListByChannel(ctx context.Context, channelID string
 		return nil, nil
 	}
 	limit = biz.NormalizeChannelTurnJobListLimit(limit)
-	rows, err := db.QueryContext(ctx, channelTurnJobSelectSQL+` WHERE channel_id = ? ORDER BY created_at DESC LIMIT ?`,
+	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(channelTurnJobSelectSQL+` WHERE channel_id = ? ORDER BY created_at DESC LIMIT ?`),
 		strings.TrimSpace(channelID), limit)
 	if err != nil {
 		return nil, err
@@ -259,7 +259,7 @@ func (r *channelTurnJobRepo) ListFiltered(ctx context.Context, q biz.ChannelTurn
 		return nil, nil
 	}
 	limit := biz.NormalizeChannelTurnJobListLimit(q.Limit)
-	query := `
+	query := r.data.Dialect().RenumberPlaceholders(`
 SELECT j.id, j.channel_id, j.session_id, j.peer_id, j.peer_key, j.idempotency_key, j.status,
   j.preview_message_id, j.content_preview, j.async_target_type, j.async_target_id,
   j.error_message, j.started_at, j.finished_at, j.created_at, j.updated_at,
@@ -272,7 +272,7 @@ WHERE (? = '' OR j.session_id = ?)
   AND (? = '' OR s.agent_id = ?)
   AND (? = '' OR j.status = ?)
 ORDER BY j.created_at DESC
-LIMIT ?`
+LIMIT ?`)
 	sessionID := strings.TrimSpace(q.SessionID)
 	agentID := strings.TrimSpace(q.AgentID)
 	statusFilter := strings.TrimSpace(q.Status)
@@ -328,9 +328,9 @@ func (r *channelTurnJobRepo) ListActiveBySession(ctx context.Context, channelID,
 		return nil, nil
 	}
 	terminalPlaceholders, terminalArgs := buildSQLInPlaceholders(biz.ChannelTurnJobTerminalStatuses)
-	query := channelTurnJobSelectSQL + fmt.Sprintf(`
+	query := r.data.Dialect().RenumberPlaceholders(channelTurnJobSelectSQL + fmt.Sprintf(`
 WHERE channel_id = ? AND session_id = ? AND status NOT IN (%s)
-ORDER BY created_at DESC`, terminalPlaceholders)
+ORDER BY created_at DESC`, terminalPlaceholders))
 	args := append([]any{channelID, sessionID}, terminalArgs...)
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {

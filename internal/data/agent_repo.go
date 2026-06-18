@@ -777,7 +777,7 @@ func (r *agentRepo) ToggleFavorite(ctx context.Context, id string) (biz.Agent, e
 	}
 	now := nowRFC3339()
 	result, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		"UPDATE agents SET is_favorite = NOT is_favorite, updated_at = ? WHERE id = ? AND deleted_at = ''",
+		r.data.Dialect().RenumberPlaceholders("UPDATE agents SET is_favorite = NOT is_favorite, updated_at = ? WHERE id = ? AND deleted_at = ''"),
 		now, id,
 	)
 	if err != nil {

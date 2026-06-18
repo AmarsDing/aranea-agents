@@ -603,14 +603,14 @@ func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sess
 	}
 	now := nowRFC3339()
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE sessions
+		r.data.Dialect().RenumberPlaceholders(`UPDATE sessions
 		 SET context_used_ratio = ?,
 		     max_context_used_ratio = MAX(max_context_used_ratio, ?),
 		     context_status = ?,
 		     context_used_tokens = CASE WHEN ? > 0 THEN ? ELSE context_used_tokens END,
 		     last_context_window_tokens = CASE WHEN ? > 0 THEN ? ELSE last_context_window_tokens END,
 		     updated_at = ?
-		 WHERE id = ? AND deleted_at = ''`,
+		 WHERE id = ? AND deleted_at = ''`),
 		ratio, ratio, llmcontext.ContextStatusForRatio(ratio),
 		promptTokens, promptTokens,
 		contextWindow, contextWindow,
@@ -827,7 +827,7 @@ func (r *sessionRepo) BumpSessionRevision(ctx context.Context, sessionID string)
 	}
 	var rev int64
 	err := entQueryRowScan(r.data.RW().Write(ctx), ctx,
-		`UPDATE sessions SET session_revision = session_revision + 1, updated_at = ? WHERE id = ? AND deleted_at = '' RETURNING session_revision`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE sessions SET session_revision = session_revision + 1, updated_at = ? WHERE id = ? AND deleted_at = '' RETURNING session_revision`),
 		[]any{nowRFC3339(), sessionID},
 		&rev,
 	)
@@ -859,7 +859,7 @@ func (r *sessionRepo) TryIncrementCompressVersion(ctx context.Context, sessionID
 	}
 	var old int64
 	err := entQueryRowScan(r.data.RW().Write(ctx), ctx,
-		`UPDATE sessions SET compress_version = compress_version + 1, updated_at = ? WHERE id = ? AND deleted_at = '' RETURNING compress_version - 1`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE sessions SET compress_version = compress_version + 1, updated_at = ? WHERE id = ? AND deleted_at = '' RETURNING compress_version - 1`),
 		[]any{nowRFC3339(), sessionID}, &old)
 	if err != nil {
 		r.data.lg.Error("cas increment compress version failed", loggateway.StepID("data.session.compress_version.cas"), loggateway.Err(err))

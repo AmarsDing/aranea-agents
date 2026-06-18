@@ -36,11 +36,11 @@ func (r *toolRepo) RecordToolInvocationAudit(ctx context.Context, in biz.ToolInv
 	if len(summary) > 2000 {
 		summary = summary[:2000]
 	}
-	_, err := client.ExecContext(ctx, `
+	_, err := client.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 		INSERT INTO tool_invocation_audit (
 			id, invocation_id, tool_key, agent_id, user_id, session_id,
 			action, result_summary, status, source, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		id, strings.TrimSpace(in.InvocationID), toolKey,
 		strings.TrimSpace(in.AgentID), strings.TrimSpace(in.UserID), strings.TrimSpace(in.SessionID),
 		action, summary, status, source, now,
@@ -88,18 +88,18 @@ func (r *toolRepo) SearchToolInvocationAudits(ctx context.Context, q biz.ToolAud
 	}
 	whereSQL := strings.Join(where, " AND ")
 	var total int
-	if err := entQueryRowScan(client, ctx, `SELECT COUNT(1) FROM tool_invocation_audit WHERE `+whereSQL, args, &total); err != nil {
+	if err := entQueryRowScan(client, ctx, r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(1) FROM tool_invocation_audit WHERE `+whereSQL), args, &total); err != nil {
 		return biz.ToolAuditResult{}, err
 	}
 	listArgs := append([]any{}, args...)
 	listArgs = append(listArgs, q.Limit, q.Offset)
-	rows, err := client.QueryContext(ctx, `
+	rows, err := client.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 		SELECT id, invocation_id, tool_key, agent_id, user_id, session_id,
 		       action, result_summary, status, source, created_at
 		FROM tool_invocation_audit
 		WHERE `+whereSQL+`
 		ORDER BY created_at DESC
-		LIMIT ? OFFSET ?`, listArgs...)
+		LIMIT ? OFFSET ?`), listArgs...)
 	if err != nil {
 		return biz.ToolAuditResult{}, err
 	}
@@ -127,7 +127,7 @@ func (r *toolRepo) PurgeToolInvocationAuditsBefore(ctx context.Context, cutoffRF
 	if cutoffRFC3339 == "" {
 		return 0, nil
 	}
-	res, err := client.ExecContext(ctx, `DELETE FROM tool_invocation_audit WHERE created_at < ?`, cutoffRFC3339)
+	res, err := client.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`DELETE FROM tool_invocation_audit WHERE created_at < ?`), cutoffRFC3339)
 	if err != nil {
 		return 0, err
 	}

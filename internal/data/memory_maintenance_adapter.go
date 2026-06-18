@@ -45,7 +45,7 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 			meta = "{}"
 		}
 		details := strings.TrimSpace(f.DetailsMarkdown)
-		_, err := a.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_facts (
+		_, err := a.data.RWDB().WriteDB(ctx).ExecContext(ctx, a.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_facts (
 			id, scope_type, scope_id, workspace_id, user_id, team_id, agent_id,
 			statement, statement_normalized, fingerprint, details_markdown,
 			fact_kind, tags_json,
@@ -63,7 +63,7 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 			source_kind = excluded.source_kind, source_session_id = excluded.source_session_id,
 			source_message_id = excluded.source_message_id,
 			version = version + 1, status = excluded.status,
-			metadata_json = excluded.metadata_json, updated_at = excluded.updated_at`,
+			metadata_json = excluded.metadata_json, updated_at = excluded.updated_at`),
 			id,
 			strings.TrimSpace(f.ScopeType),
 			strings.TrimSpace(f.ScopeID),
@@ -91,7 +91,7 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 		}
 		// Read back by fingerprint (works for both new inserts and ON CONFLICT upserts).
 		readRows, err := a.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-			sqlFactSelect+` WHERE scope_type = ? AND scope_id = ? AND fingerprint = ?`,
+			a.data.Dialect().RenumberPlaceholders(sqlFactSelect+` WHERE scope_type = ? AND scope_id = ? AND fingerprint = ?`),
 			strings.TrimSpace(f.ScopeType), strings.TrimSpace(f.ScopeID), fp)
 		if err != nil {
 			a.lg.Warn("consolidation fact read-back failed", loggateway.StepID("memory.consolidation_fact_readback_fail"), loggateway.Err(err))
@@ -140,7 +140,7 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 		if confidence <= 0 {
 			confidence = 0.6
 		}
-		_, err := a.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_episodes (
+		_, err := a.data.RWDB().WriteDB(ctx).ExecContext(ctx, a.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_episodes (
 			id, session_id, agent_id, episode_kind, title,
 			goal, outcome, outcome_summary,
 			key_decisions_json, key_artifacts_json,
@@ -154,7 +154,7 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 			key_artifacts_json = excluded.key_artifacts_json,
 			importance = excluded.importance, confidence = excluded.confidence,
 			consolidation_status = excluded.consolidation_status,
-			consolidated_l3_count = excluded.consolidated_l3_count`,
+			consolidated_l3_count = excluded.consolidated_l3_count`),
 			epID,
 			strings.TrimSpace(ep.SessionID),
 			strings.TrimSpace(ep.AgentID),
@@ -175,7 +175,7 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 		if err != nil {
 			a.lg.Warn("consolidation episode upsert failed", loggateway.StepID("memory.consolidation_episode_fail"), loggateway.Err(err))
 		} else {
-			readRows, err := a.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlEpisodeSelect+` WHERE session_id = ? AND agent_id = ? AND title = ?`,
+			readRows, err := a.data.RWDB().ReadDB(ctx).QueryContext(ctx, a.data.Dialect().RenumberPlaceholders(sqlEpisodeSelect+` WHERE session_id = ? AND agent_id = ? AND title = ?`),
 				strings.TrimSpace(ep.SessionID), strings.TrimSpace(ep.AgentID), strings.TrimSpace(ep.Title))
 			if err != nil {
 				a.lg.Warn("consolidation episode read-back failed", loggateway.StepID("memory.consolidation_episode_readback_fail"), loggateway.Err(err))
@@ -214,7 +214,7 @@ func (a *memoryFactIndexMaintainerAdapter) ListStaleIndexFacts(ctx context.Conte
 		batchSize = 50
 	}
 	rows, err := a.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		sqlFactSelect+` WHERE embedding_status IN ('stale','failed') AND status = 'active' AND deleted_at = '' LIMIT ?`,
+		a.data.Dialect().RenumberPlaceholders(sqlFactSelect+` WHERE embedding_status IN ('stale','failed') AND status = 'active' AND deleted_at = '' LIMIT ?`),
 		batchSize)
 	if err != nil {
 		return nil, err
@@ -233,7 +233,7 @@ func (a *memoryFactIndexMaintainerAdapter) ListStaleIndexFacts(ctx context.Conte
 
 func (a *memoryFactIndexMaintainerAdapter) MarkFactIndexDisabled(ctx context.Context, factID string) error {
 	_, err := a.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_facts SET embedding_status = 'disabled', updated_at = ? WHERE id = ?`,
+		a.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET embedding_status = 'disabled', updated_at = ? WHERE id = ?`),
 		time.Now().UTC().Format(time.RFC3339Nano), factID)
 	return err
 }
@@ -251,7 +251,7 @@ func NewMemoryEpisodeDecayerAdapter(data *Data) biz.MemoryEpisodeDecayer {
 
 func (a *memoryEpisodeDecayerAdapter) ApplyEpisodeImportanceDecay(ctx context.Context, agentID, cutoffRFC3339 string, factor float64) (int, error) {
 	res, err := a.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_episodes SET importance = importance * ?, updated_at = ? WHERE agent_id = ? AND ended_at != '' AND ended_at < ?`,
+		a.data.Dialect().RenumberPlaceholders(`UPDATE memory_episodes SET importance = importance * ?, updated_at = ? WHERE agent_id = ? AND ended_at != '' AND ended_at < ?`),
 		factor, time.Now().UTC().Format(time.RFC3339Nano), agentID, cutoffRFC3339)
 	if err != nil {
 		return 0, err
@@ -262,7 +262,7 @@ func (a *memoryEpisodeDecayerAdapter) ApplyEpisodeImportanceDecay(ctx context.Co
 
 func (a *memoryEpisodeDecayerAdapter) PurgeEpisodesOlderThan(ctx context.Context, agentID, cutoffRFC3339 string) (int, error) {
 	res, err := a.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`DELETE FROM memory_episodes WHERE agent_id = ? AND ended_at != '' AND ended_at < ? AND consolidation_status = 'consolidated'`,
+		a.data.Dialect().RenumberPlaceholders(`DELETE FROM memory_episodes WHERE agent_id = ? AND ended_at != '' AND ended_at < ? AND consolidation_status = 'consolidated'`),
 		agentID, cutoffRFC3339)
 	if err != nil {
 		return 0, err
@@ -273,7 +273,7 @@ func (a *memoryEpisodeDecayerAdapter) PurgeEpisodesOlderThan(ctx context.Context
 
 func (a *memoryEpisodeDecayerAdapter) ApplyAllEpisodeImportanceDecay(ctx context.Context, cutoffRFC3339 string, factor float64) (int, error) {
 	res, err := a.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_episodes SET importance = importance * ?, updated_at = ? WHERE ended_at != '' AND ended_at < ?`,
+		a.data.Dialect().RenumberPlaceholders(`UPDATE memory_episodes SET importance = importance * ?, updated_at = ? WHERE ended_at != '' AND ended_at < ?`),
 		factor, time.Now().UTC().Format(time.RFC3339Nano), cutoffRFC3339)
 	if err != nil {
 		return 0, err
@@ -295,7 +295,7 @@ func NewMemoryFactDecayerAdapter(data *Data) biz.MemoryFactDecayer {
 
 func (a *memoryFactDecayerAdapter) ApplyAgentFactImportanceDecay(ctx context.Context, agentID, cutoffRFC3339 string, factor float64) (int, error) {
 	res, err := a.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_facts SET importance = importance * ?, updated_at = ? WHERE agent_id = ? AND status = 'active' AND deleted_at = '' AND updated_at < ?`,
+		a.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET importance = importance * ?, updated_at = ? WHERE agent_id = ? AND status = 'active' AND deleted_at = '' AND updated_at < ?`),
 		factor, time.Now().UTC().Format(time.RFC3339Nano), agentID, cutoffRFC3339)
 	if err != nil {
 		return 0, err
@@ -306,7 +306,7 @@ func (a *memoryFactDecayerAdapter) ApplyAgentFactImportanceDecay(ctx context.Con
 
 func (a *memoryFactDecayerAdapter) ApplyAllFactImportanceDecay(ctx context.Context, cutoffRFC3339 string, factor float64) (int, error) {
 	res, err := a.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_facts SET importance = importance * ?, updated_at = ? WHERE status = 'active' AND deleted_at = '' AND updated_at < ?`,
+		a.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET importance = importance * ?, updated_at = ? WHERE status = 'active' AND deleted_at = '' AND updated_at < ?`),
 		factor, time.Now().UTC().Format(time.RFC3339Nano), cutoffRFC3339)
 	if err != nil {
 		return 0, err
@@ -331,7 +331,7 @@ func (a *memoryEpisodeBackfillReaderAdapter) ListEpisodesPendingEmbedding(ctx co
 		limit = 50
 	}
 	rows, err := a.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, agent_id, title, outcome_summary FROM memory_episodes WHERE embedding_status IN ('pending','stale') AND consolidation_status = 'consolidated' LIMIT ?`,
+		a.data.Dialect().RenumberPlaceholders(`SELECT id, agent_id, title, outcome_summary FROM memory_episodes WHERE embedding_status IN ('pending','stale') AND consolidation_status = 'consolidated' LIMIT ?`),
 		limit)
 	if err != nil {
 		return nil, err

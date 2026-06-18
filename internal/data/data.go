@@ -888,19 +888,19 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 		return ensureAgentAvatars(ctx, entClient, lg)
 	})
 	seedStep("data.seed.system_admin_agent", func(ctx context.Context) error {
-		return SeedSystemAdminAgent(ctx, entClient, lg)
+		return SeedSystemAdminAgent(ctx, entClient, d.Dialect(), lg)
 	})
 	seedStep("data.seed.spirit_agent", func(ctx context.Context) error {
-		return SeedSpiritAgent(ctx, entClient, lg)
+		return SeedSpiritAgent(ctx, entClient, d.Dialect(), lg)
 	})
 	seedStep("data.seed.memory_agent", func(ctx context.Context) error {
-		return SeedMemoryAgent(ctx, entClient, lg)
+		return SeedMemoryAgent(ctx, entClient, d.Dialect(), lg)
 	})
 	seedStep("data.seed.skills_agent", func(ctx context.Context) error {
-		return SeedSkillsAgent(ctx, entClient, lg)
+		return SeedSkillsAgent(ctx, entClient, d.Dialect(), lg)
 	})
 	seedStep("data.seed.cli_admin_tools", func(ctx context.Context) error {
-		return SeedBuiltinCLIAdminTools(ctx, entClient, lg)
+		return SeedBuiltinCLIAdminTools(ctx, entClient, d.Dialect(), lg)
 	})
 
 	scenarioDir := biz.ScenarioDir()
@@ -912,19 +912,19 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 		return SeedPackBuiltinTemplatesV2(ctx, entClient, d.Dialect(), scenarioDir, lg)
 	})
 	seedStep("data.seed.spirit_prompt_files", func(ctx context.Context) error {
-		return SeedSpiritPromptFiles(ctx, entClient, scenarioDir, lg)
+		return SeedSpiritPromptFiles(ctx, entClient, d.Dialect(), scenarioDir, lg)
 	})
 	seedStep("data.seed.butler_prompt_files", func(ctx context.Context) error {
-		return SeedButlerPromptFiles(ctx, entClient, scenarioDir, lg)
+		return SeedButlerPromptFiles(ctx, entClient, d.Dialect(), scenarioDir, lg)
 	})
 	seedStep("data.seed.cron_tasks", func(ctx context.Context) error {
-		return SeedCronTasks(ctx, entClient, lg)
+		return SeedCronTasks(ctx, entClient, d.Dialect(), lg)
 	})
 	seedStep("data.seed.dept_lead_agents", func(ctx context.Context) error {
-		return SeedDeptLeadAgents(ctx, entClient, lg)
+		return SeedDeptLeadAgents(ctx, entClient, d.Dialect(), lg)
 	})
 	seedStep("data.seed.dept_lead_prompt_files", func(ctx context.Context) error {
-		return SeedDeptLeadPromptFiles(ctx, entClient, scenarioDir, lg)
+		return SeedDeptLeadPromptFiles(ctx, entClient, d.Dialect(), scenarioDir, lg)
 	})
 
 	d.lazySeeders = map[string]*LazySeeder{}

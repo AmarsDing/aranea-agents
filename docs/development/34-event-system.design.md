@@ -125,6 +125,7 @@ Envelope 是事件系统唯一的传输单元，所有事件均封装为 Envelop
 | chat | context_usage | EnvelopeTypeContextUsage | 中间轮上下文填充 |
 | chat | run_status | EnvelopeTypeRunStatus | Chat 运行态（queued/running/await/cancelled） |
 | chat | error | EnvelopeTypeError | 错误事件 |
+| chat | llm_retry | EnvelopeTypeLLMRetry | LLM 调用重试通知（T1.2：含 attempt/max_retries/delay_ms/error 元数据） |
 | chat | session.status_changed | EnvelopeTypeSessionStatusChanged | 会话状态变更 |
 | chat | metrics_updated | EnvelopeTypeMetricsUpdated | 指标更新 |
 | chat | execution_progress | EnvelopeTypeExecutionProgress | 编排步骤进度（5-15s 等待期） |
@@ -549,7 +550,7 @@ func (b *Buffer) Replay(sessionID, lastEventID string) []Envelope
 **Channel 路由**（`wsBuildChannels`）：
 | Channel | 默认订阅 | 包含事件类型 |
 |---------|----------|-------------|
-| chat | ✅（始终） | text_delta / text_done / tool_call / tool_result / state_delta / transfer / runner_completion / run_status / error / execution_progress / activity_* / spirit_* / butler.* / skill.* / organization.* |
+| chat | ✅（始终） | text_delta / text_done / tool_call / tool_result / state_delta / transfer / runner_completion / run_status / error / llm_retry / execution_progress / activity_* / spirit_* / butler.* / skill.* / organization.* |
 | system | ✅（始终） | connected / pong / server_shutdown / replay_* |
 | monitor | ❌（需 enable_log 或 subscribe；global 默认开） | log / flow_log / mcp.session.reconnect / mcp.health.alert / alert.notify / monitor.* |
 | team | ❌（需 subscribe；global 默认开） | member_* / team_* / intent_pass / team_summary / orchestration_agent_status |

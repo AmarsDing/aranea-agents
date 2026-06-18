@@ -18,7 +18,7 @@ func (r *usageRepo) RecordTokenUsageEvent(ctx context.Context, e biz.TokenUsageE
 	}
 
 	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
-		`INSERT INTO model_token_usage_events(
+		r.data.Dialect().RenumberPlaceholders(`INSERT INTO model_token_usage_events(
 		 id, occurred_at, date_key, hour_key, workspace_id, user_id, team_id, agent_id, agent_key, session_id, message_id, request_id,
 		 provider_code, canonical_provider_code, provider_type, provider_display_name, model_api_id, model_display_name, model_category_json, usage_kind, call_count,
 		 input_tokens, output_tokens, cached_input_tokens, cache_write_tokens, reasoning_tokens, embedding_tokens, total_tokens,
@@ -26,7 +26,7 @@ func (r *usageRepo) RecordTokenUsageEvent(ctx context.Context, e biz.TokenUsageE
 		 input_cost_micro_usd, output_cost_micro_usd, cached_input_cost_micro_usd, cache_write_cost_micro_usd, reasoning_cost_micro_usd, embedding_cost_micro_usd, total_cost_micro_usd,
 		 latency_ms, time_to_first_token_ms, tokens_per_second, status, error_code, error_message, retry_count,
 		 prompt_mode, max_output_tokens, context_window_k, stream_enabled, metadata_json, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		e.ID, e.OccurredAt, e.DateKey, e.HourKey, e.WorkspaceID, e.UserID, e.TeamID, e.AgentID, e.AgentKey, e.SessionID, e.MessageID, e.RequestID,
 		e.ProviderCode, e.CanonicalProviderCode, e.ProviderType, e.ProviderDisplayName, e.ModelAPIID, e.ModelDisplayName, e.ModelCategoryJSON, e.UsageKind, e.CallCount,
 		e.InputTokens, e.OutputTokens, e.CachedInputTokens, e.CacheWriteTokens, e.ReasoningTokens, e.EmbeddingTokens, e.TotalTokens,
@@ -44,10 +44,11 @@ func (r *usageRepo) RecordTokenUsageEvent(ctx context.Context, e biz.TokenUsageE
 
 func (r *usageRepo) RollupDailyHourly(ctx context.Context, e biz.TokenUsageEvent) error {
 	c := r.data.RW().Write(ctx)
-	if err := upsertModelTokenUsageDaily(ctx, c, e); err != nil {
+	dialect := r.data.Dialect()
+	if err := upsertModelTokenUsageDaily(ctx, c, dialect, e); err != nil {
 		return err
 	}
-	if err := upsertModelTokenUsageHourly(ctx, c, e); err != nil {
+	if err := upsertModelTokenUsageHourly(ctx, c, dialect, e); err != nil {
 		return err
 	}
 	return nil
@@ -55,7 +56,7 @@ func (r *usageRepo) RollupDailyHourly(ctx context.Context, e biz.TokenUsageEvent
 
 func (r *usageRepo) PurgeUsageEventsOlderThan(ctx context.Context, retainDays int) (int64, error) {
 	result, err := r.data.RW().Write(ctx).ExecContext(ctx,
-		`DELETE FROM model_token_usage_events WHERE date_key < date('now', '-'||?||' days')`,
+		r.data.Dialect().RenumberPlaceholders(`DELETE FROM model_token_usage_events WHERE date_key < date('now', '-'||?||' days')`),
 		retainDays,
 	)
 	if err != nil {
@@ -65,7 +66,7 @@ func (r *usageRepo) PurgeUsageEventsOlderThan(ctx context.Context, retainDays in
 	return affected, nil
 }
 
-func upsertModelTokenUsageDaily(ctx context.Context, c execer, e biz.TokenUsageEvent) error {
+func upsertModelTokenUsageDaily(ctx context.Context, c execer, dialect Dialect, e biz.TokenUsageEvent) error {
 	if strings.TrimSpace(e.DateKey) == "" {
 		return nil
 	}
@@ -83,7 +84,7 @@ func upsertModelTokenUsageDaily(ctx context.Context, c execer, e biz.TokenUsageE
 	id := strings.Join([]string{e.DateKey, e.WorkspaceID, e.AgentID, e.ProviderCode, e.ModelAPIID, e.UsageKind}, ":")
 	now := nowRFC3339()
 	_, err := c.ExecContext(ctx,
-		`INSERT INTO model_token_usage_daily(
+		dialect.RenumberPlaceholders(`INSERT INTO model_token_usage_daily(
 		 id, date_key, workspace_id, agent_id, agent_key, provider_code, model_api_id, usage_kind,
 		 call_count, request_count, success_count, failed_count, cancelled_count,
 		 input_tokens, output_tokens, cached_input_tokens, reasoning_tokens, embedding_tokens, total_tokens,
@@ -104,7 +105,7 @@ func upsertModelTokenUsageDaily(ctx context.Context, c execer, e biz.TokenUsageE
 		 total_cost_micro_usd = total_cost_micro_usd + excluded.total_cost_micro_usd,
 		 avg_latency_ms = (avg_latency_ms * request_count + excluded.avg_latency_ms * excluded.request_count) / (request_count + excluded.request_count),
 		 avg_tokens_per_second = (avg_tokens_per_second * request_count + excluded.avg_tokens_per_second * excluded.request_count) / (request_count + excluded.request_count),
-		 updated_at = excluded.updated_at`,
+		 updated_at = excluded.updated_at`),
 		id, e.DateKey, e.WorkspaceID, e.AgentID, e.AgentKey, e.ProviderCode, e.ModelAPIID, e.UsageKind,
 		e.CallCount, successCount, failedCount, cancelledCount,
 		e.InputTokens, e.OutputTokens, e.CachedInputTokens, e.ReasoningTokens, e.EmbeddingTokens, e.TotalTokens,
@@ -113,7 +114,7 @@ func upsertModelTokenUsageDaily(ctx context.Context, c execer, e biz.TokenUsageE
 	return err
 }
 
-func upsertModelTokenUsageHourly(ctx context.Context, c execer, e biz.TokenUsageEvent) error {
+func upsertModelTokenUsageHourly(ctx context.Context, c execer, dialect Dialect, e biz.TokenUsageEvent) error {
 	hourKey := strings.TrimSpace(e.HourKey)
 	if hourKey == "" {
 		return nil
@@ -132,7 +133,7 @@ func upsertModelTokenUsageHourly(ctx context.Context, c execer, e biz.TokenUsage
 	id := strings.Join([]string{hourKey, e.WorkspaceID, e.AgentID, e.ProviderCode, e.ModelAPIID, e.UsageKind}, ":")
 	now := nowRFC3339()
 	_, err := c.ExecContext(ctx,
-		`INSERT INTO model_token_usage_hourly(
+		dialect.RenumberPlaceholders(`INSERT INTO model_token_usage_hourly(
 		 id, hour_key, workspace_id, agent_id, agent_key, provider_code, model_api_id, usage_kind,
 		 call_count, request_count, success_count, failed_count, cancelled_count,
 		 input_tokens, output_tokens, cached_input_tokens, reasoning_tokens, embedding_tokens, total_tokens,
@@ -153,7 +154,7 @@ func upsertModelTokenUsageHourly(ctx context.Context, c execer, e biz.TokenUsage
 		 total_cost_micro_usd = total_cost_micro_usd + excluded.total_cost_micro_usd,
 		 avg_latency_ms = (avg_latency_ms * request_count + excluded.avg_latency_ms * excluded.request_count) / (request_count + excluded.request_count),
 		 avg_tokens_per_second = (avg_tokens_per_second * request_count + excluded.avg_tokens_per_second * excluded.request_count) / (request_count + excluded.request_count),
-		 updated_at = excluded.updated_at`,
+		 updated_at = excluded.updated_at`),
 		id, hourKey, e.WorkspaceID, e.AgentID, e.AgentKey, e.ProviderCode, e.ModelAPIID, e.UsageKind,
 		e.CallCount, successCount, failedCount, cancelledCount,
 		e.InputTokens, e.OutputTokens, e.CachedInputTokens, e.ReasoningTokens, e.EmbeddingTokens, e.TotalTokens,

@@ -27,12 +27,12 @@ func (r *memoryFactReader) ReadSessionMemoryFacts(ctx context.Context, sessionID
 	if db == nil {
 		return nil, nil
 	}
-	rows, err := db.QueryContext(ctx, `
+	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 		SELECT statement, fact_kind, confidence
 		FROM memory_facts
 		WHERE source_session_id = ? AND deleted_at = '' AND status = 'active'
 		ORDER BY importance DESC
-		LIMIT 50`, sessionID)
+		LIMIT 50`), sessionID)
 	if err != nil {
 		return nil, err
 	}

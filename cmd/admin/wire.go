@@ -982,18 +982,14 @@ func provideL4CascadeUsecase(d *data.Data, factSync biz.MemoryFactIndexSyncer, l
 	})
 }
 
-func provideSQLiteRawDB(d *data.Data) *sql.DB {
+// providePrimaryRawDB returns the primary database's raw *sql.DB handle.
+// After A6, the primary database is Postgres; this name replaces the legacy
+// provideSQLiteRawDB to reflect the dialect-agnostic role.
+func providePrimaryRawDB(d *data.Data) *sql.DB {
 	if d == nil {
 		return nil
 	}
 	return d.RWDB().WriteHandle()
-}
-
-// providePrimaryRawDB is the dialect-aware alias for provideSQLiteRawDB.
-// It returns the primary database's raw *sql.DB handle (SQLite or Postgres
-// depending on data.driver config).
-func providePrimaryRawDB(d *data.Data) *sql.DB {
-	return provideSQLiteRawDB(d)
 }
 
 // provideEventWAL creates an EventWAL with the primary DB handle and optional
@@ -2196,7 +2192,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideArtifactRuntimeService,
 		provideArtifactSigner,
 		provideMemoryService,
-		provideSQLiteRawDB,
+		providePrimaryRawDB,
 		provideEventWAL,
 		providePostgresEventStore,
 		provideTRPCSessionService,

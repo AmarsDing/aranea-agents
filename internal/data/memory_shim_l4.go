@@ -66,7 +66,7 @@ func (r *l4EntityRepo) ListEntityRows(ctx context.Context, scopeType, scopeID, w
 	}
 	where := " WHERE " + strings.Join(clauses, " AND ")
 	var total int32
-	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), "SELECT COUNT(*) FROM memory_entities"+where, args, &total); err != nil {
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders("SELECT COUNT(*) FROM memory_entities"+where), args, &total); err != nil {
 		return nil, 0, err
 	}
 	lim := int(limit)
@@ -79,7 +79,7 @@ func (r *l4EntityRepo) ListEntityRows(ctx context.Context, scopeType, scopeID, w
 	}
 	q := "SELECT" + sqlEntityCols + " FROM memory_entities" + where + ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
 	args = append(args, lim, off)
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -125,13 +125,13 @@ func (r *l4EntityRepo) NeighborhoodJSON(ctx context.Context, centerID string, ho
 			ph[i] = "?"
 			args = append(args, id)
 		}
-		relQ := fmt.Sprintf(`SELECT%s FROM memory_relations WHERE (source_id IN (%s) OR target_id IN (%s)) AND status = 'active' AND deleted_at = ''`,
+		relQ := fmt.Sprintf(`SELECT%s FROM memory_relation WHERE (source_id IN (%s) OR target_id IN (%s)) AND status = 'active' AND deleted_at = ''`,
 			sqlRelationCols, strings.Join(ph, ","), strings.Join(ph, ","))
 		// Duplicate args for second IN clause
 		args2 := make([]any, len(args))
 		copy(args2, args)
 		args = append(args, args2...)
-		rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, relQ, args...)
+		rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(relQ), args...)
 		if err != nil {
 			return nil, err
 		}
@@ -181,7 +181,7 @@ func (r *l4EntityRepo) NeighborhoodJSON(ctx context.Context, centerID string, ho
 			}
 			entQ := fmt.Sprintf(`SELECT%s FROM memory_entities WHERE id IN (%s) AND status = 'active' AND deleted_at = ''`,
 				sqlEntityCols, strings.Join(ph2, ","))
-			entRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, entQ, args2...)
+			entRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(entQ), args2...)
 			if err != nil {
 				return nil, err
 			}
@@ -204,7 +204,7 @@ func (r *l4EntityRepo) NeighborhoodJSON(ctx context.Context, centerID string, ho
 
 	// Also fetch center entity
 	centerRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		"SELECT"+sqlEntityCols+" FROM memory_entities WHERE id = ? AND status = 'active' AND deleted_at = ''", centerID)
+		r.data.Dialect().RenumberPlaceholders("SELECT"+sqlEntityCols+" FROM memory_entities WHERE id = ? AND status = 'active' AND deleted_at = ''"), centerID)
 	if err != nil {
 		return nil, err
 	}
@@ -236,9 +236,9 @@ func (r *l4EntityRepo) AgentIdentityJSON(ctx context.Context, agentID string) ([
 		return nil, apierror.BadRequest("MEMORY", "agent_id is required")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT agent_id, persona, values_json, tone, domains_json, user_expectations,
+		r.data.Dialect().RenumberPlaceholders(`SELECT agent_id, persona, values_json, tone, domains_json, user_expectations,
 		        current_phase, metadata_json, version, created_at, updated_at
-		 FROM agent_identity WHERE agent_id = ?`, agentID)
+		 FROM agent_identity WHERE agent_id = ?`), agentID)
 	if err != nil {
 		return nil, err
 	}
@@ -272,11 +272,11 @@ func (r *l4EntityRepo) AgentStrategyJSON(ctx context.Context, agentID string) ([
 		return nil, apierror.BadRequest("MEMORY", "agent_id is required")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT agent_id, exploration, conciseness, caution, delegation,
+		r.data.Dialect().RenumberPlaceholders(`SELECT agent_id, exploration, conciseness, caution, delegation,
 		        tool_preference_json, tool_blacklist_json,
 		        provider_preference_json, model_preference_json,
 		        stats_json, metadata_json, version, created_at, updated_at
-		 FROM agent_strategy_profile WHERE agent_id = ?`, agentID)
+		 FROM agent_strategy_profile WHERE agent_id = ?`), agentID)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +315,7 @@ func (r *l4EntityRepo) DeleteSessionEventEntities(ctx context.Context, sessionID
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	// Soft-delete entities whose scope points to this session
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_entities SET deleted_at = ?, status = 'deleted' WHERE scope_id = ? AND scope_type = 'session' AND entity_type = 'event'`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_entities SET deleted_at = ?, status = 'deleted' WHERE scope_id = ? AND scope_type = 'session' AND entity_type = 'event'`),
 		now, sessionID)
 	return err
 }
@@ -343,7 +343,7 @@ func (r *l4EntityRepo) EvolutionProposalRows(ctx context.Context, agentID, statu
 	}
 	q := cascadeProposalSelect + where + ` ORDER BY created_at DESC LIMIT ?`
 	args = append(args, lim)
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -374,7 +374,7 @@ func (r *l4EntityRepo) EvolutionEventRows(ctx context.Context, agentID string, l
 	}
 	q += ` ORDER BY created_at DESC LIMIT ?`
 	args = append(args, lim)
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -432,7 +432,7 @@ func (r *l4EntityRepo) EvolutionMetricsJSON(ctx context.Context, agentID string,
 	if len(whereClauses) > 0 {
 		metricsQ += " WHERE " + strings.Join(whereClauses, " AND ")
 	}
-	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), metricsQ, args, &total, &pending, &approved, &rejected); err != nil {
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders(metricsQ), args, &total, &pending, &approved, &rejected); err != nil {
 		return nil, err
 	}
 	return json.Marshal(map[string]any{
@@ -493,13 +493,13 @@ func (r *l4EntityRepo) InsertEvolutionEventRow(ctx context.Context, in biz.Evolu
 			meta = string(b)
 		}
 	}
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO agent_evolution_events (
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`INSERT INTO agent_evolution_events (
 		id, agent_id, workspace_id, event_kind, target_field,
 		before_json, after_json, diff_json,
 		trigger_kind, trigger_source, evidence_json, reason,
 		applied, reverted, reverted_by_event_id,
 		metadata_json, created_at, applied_at, reverted_at
-	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
 		id,
 		strings.TrimSpace(in.AgentID),
 		strings.TrimSpace(in.WorkspaceID),
@@ -519,9 +519,9 @@ func (r *l4EntityRepo) InsertEvolutionEventRow(ctx context.Context, in biz.Evolu
 		return nil, err
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, agent_id, workspace_id, event_kind, target_field, reason,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, agent_id, workspace_id, event_kind, target_field, reason,
 		        trigger_kind, trigger_source, metadata_json, created_at, reverted
-		 FROM agent_evolution_events WHERE id = ?`, id)
+		 FROM agent_evolution_events WHERE id = ?`), id)
 	if err != nil {
 		return nil, err
 	}

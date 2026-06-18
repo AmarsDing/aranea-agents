@@ -66,10 +66,11 @@ func (r *healRecordRepo) ListHealRecords(ctx context.Context, query bizmonitor.H
 	}
 
 	where, args := healRecordWhere(query)
-	countSQL := `SELECT COUNT(*) FROM heal_records` + where
-	listSQL := `SELECT id, rule_id, trigger_type, trace_id, session_id, step_id,
+	d := r.data.Dialect()
+	countSQL := d.RenumberPlaceholders(`SELECT COUNT(*) FROM heal_records` + where)
+	listSQL := d.RenumberPlaceholders(`SELECT id, rule_id, trigger_type, trace_id, session_id, step_id,
 		fix_action_type, confidence, status, runtime_auto_healed, runtime_heal_attempts, reason, created_at
-		FROM heal_records` + where + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
+		FROM heal_records` + where + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`)
 	args = append(args, limit, offset)
 
 	var total int
@@ -122,7 +123,7 @@ func (r *healRecordRepo) DeleteHealRecordsOlderThan(ctx context.Context, olderTh
 
 	cutoff := olderThan.Format(time.RFC3339)
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`DELETE FROM heal_records WHERE created_at < ?`, cutoff)
+		r.data.Dialect().RenumberPlaceholders(`DELETE FROM heal_records WHERE created_at < ?`), cutoff)
 	if err != nil {
 		return 0, entErrToBizErr(err, "HEAL_RECORD")
 	}

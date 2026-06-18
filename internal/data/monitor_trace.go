@@ -16,70 +16,157 @@ var traceSchemaOnce sync.Once
 var eventSchemaOnce sync.Once
 
 func (r *monitorRepo) EnsureTraceSchema(ctx context.Context) error {
-	var firstErr error
 	d := r.data.Dialect()
+	if err := r.ensureMonitorTracesSchemaOnce(ctx, d); err != nil {
+		return err
+	}
+	return r.ensureMonitorEventsSchemaOnce(ctx, d)
+}
+
+// ensureMonitorTracesSchemaOnce applies column patches, indexes, backfill, and
+// the monitor_trace_spans table creation for the monitor_traces family. Runs at
+// most once per process via traceSchemaOnce.
+func (r *monitorRepo) ensureMonitorTracesSchemaOnce(ctx context.Context, d Dialect) error {
+	var firstErr error
 	traceSchemaOnce.Do(func() {
 		db := r.data.RWDB().WriteDB(ctx)
-		patches := []struct {
-			table string
-			col   string
-			ddl   string
-		}{
-			{"monitor_traces", "session_id", "ALTER TABLE monitor_traces ADD COLUMN session_id TEXT NOT NULL DEFAULT ''"},
-			{"monitor_traces", "run_id", "ALTER TABLE monitor_traces ADD COLUMN run_id TEXT NOT NULL DEFAULT ''"},
-			{"monitor_traces", "invocation_id", "ALTER TABLE monitor_traces ADD COLUMN invocation_id TEXT NOT NULL DEFAULT ''"},
-			{"monitor_traces", "agent_id", "ALTER TABLE monitor_traces ADD COLUMN agent_id TEXT NOT NULL DEFAULT ''"},
-			{"monitor_traces", "provider", "ALTER TABLE monitor_traces ADD COLUMN provider TEXT NOT NULL DEFAULT ''"},
-			{"monitor_traces", "model", "ALTER TABLE monitor_traces ADD COLUMN model TEXT NOT NULL DEFAULT ''"},
-			{"monitor_traces", "team_id", "ALTER TABLE monitor_traces ADD COLUMN team_id TEXT NOT NULL DEFAULT ''"},
-			{"monitor_traces", "parent_trace_id", "ALTER TABLE monitor_traces ADD COLUMN parent_trace_id TEXT NOT NULL DEFAULT ''"},
-			{"monitor_traces", "duration_ms", "ALTER TABLE monitor_traces ADD COLUMN duration_ms INTEGER NOT NULL DEFAULT 0"},
-			{"monitor_traces", "span_count", "ALTER TABLE monitor_traces ADD COLUMN span_count INTEGER NOT NULL DEFAULT 0"},
-			{"monitor_traces", "error_count", "ALTER TABLE monitor_traces ADD COLUMN error_count INTEGER NOT NULL DEFAULT 0"},
-			{"monitor_traces", "total_tokens", "ALTER TABLE monitor_traces ADD COLUMN total_tokens INTEGER NOT NULL DEFAULT 0"},
-			{"monitor_traces", "total_cost_usd", "ALTER TABLE monitor_traces ADD COLUMN total_cost_usd REAL NOT NULL DEFAULT 0.0"},
+		if err := applyColumnPatches(ctx, db, d, monitorTracesColumnPatches()); err != nil {
+			firstErr = err
+			return
 		}
-		for _, p := range patches {
-			has, err := columnExistsWithDialect(ctx, db, p.table, p.col, d)
-			if err != nil {
-				firstErr = err
-				return
-			}
-			if has {
-				continue
-			}
-			if _, err := db.ExecContext(ctx, p.ddl); err != nil {
-				if !d.AlreadyExistsErr(err) {
-					firstErr = err
-					return
-				}
-			}
+		if err := createMonitorTracesIndexes(ctx, db); err != nil {
+			firstErr = err
+			return
 		}
+		if err := backfillMonitorTracesFromMetadata(ctx, db, d); err != nil {
+			firstErr = err
+			return
+		}
+		if err := createMonitorTraceSpansTable(ctx, db, d); err != nil {
+			firstErr = err
+			return
+		}
+	})
+	return firstErr
+}
 
-		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_traces_session_id ON monitor_traces(session_id)`); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("create index idx_monitor_traces_session_id: %w", err)
+// ensureMonitorEventsSchemaOnce applies generated-column patches and indexes
+// for monitor_events. Runs at most once per process via eventSchemaOnce.
+func (r *monitorRepo) ensureMonitorEventsSchemaOnce(ctx context.Context, d Dialect) error {
+	var firstErr error
+	eventSchemaOnce.Do(func() {
+		db := r.data.RWDB().WriteDB(ctx)
+		if err := applyColumnPatches(ctx, db, d, monitorEventsColumnPatches(d)); err != nil {
+			firstErr = err
+			return
 		}
-		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_traces_run_id ON monitor_traces(run_id)`); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("create index idx_monitor_traces_run_id: %w", err)
+		if err := createMonitorEventsIndexes(ctx, db); err != nil {
+			firstErr = err
+			return
 		}
-		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_traces_agent_id ON monitor_traces(agent_id)`); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("create index idx_monitor_traces_agent_id: %w", err)
-		}
-		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_traces_provider ON monitor_traces(provider)`); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("create index idx_monitor_traces_provider: %w", err)
-		}
-		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_traces_model ON monitor_traces(model)`); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("create index idx_monitor_traces_model: %w", err)
-		}
+	})
+	return firstErr
+}
 
-		// Backfill agent_id / provider / model from metadata_json for rows where
-		// the column is empty but the JSON blob carries the value. This is idempotent.
-		// COALESCE(NULLIF(...), col) preserves the original value when json_extract
-		// returns NULL (missing key) or empty string, preventing NOT NULL constraint violations.
-		agentIDExpr := d.JSONExtract("metadata_json", "agent_id")
-		providerExpr := d.JSONExtract("metadata_json", "provider")
-		modelExpr := d.JSONExtract("metadata_json", "model")
-		if _, err := db.ExecContext(ctx, fmt.Sprintf(`
+// columnPatch describes an idempotent ALTER TABLE ADD COLUMN migration.
+type columnPatch struct {
+	table string
+	col   string
+	ddl   string
+}
+
+// monitorTracesColumnPatches returns the column patches for monitor_traces.
+func monitorTracesColumnPatches() []columnPatch {
+	return []columnPatch{
+		{"monitor_traces", "session_id", "ALTER TABLE monitor_traces ADD COLUMN session_id TEXT NOT NULL DEFAULT ''"},
+		{"monitor_traces", "run_id", "ALTER TABLE monitor_traces ADD COLUMN run_id TEXT NOT NULL DEFAULT ''"},
+		{"monitor_traces", "invocation_id", "ALTER TABLE monitor_traces ADD COLUMN invocation_id TEXT NOT NULL DEFAULT ''"},
+		{"monitor_traces", "agent_id", "ALTER TABLE monitor_traces ADD COLUMN agent_id TEXT NOT NULL DEFAULT ''"},
+		{"monitor_traces", "provider", "ALTER TABLE monitor_traces ADD COLUMN provider TEXT NOT NULL DEFAULT ''"},
+		{"monitor_traces", "model", "ALTER TABLE monitor_traces ADD COLUMN model TEXT NOT NULL DEFAULT ''"},
+		{"monitor_traces", "team_id", "ALTER TABLE monitor_traces ADD COLUMN team_id TEXT NOT NULL DEFAULT ''"},
+		{"monitor_traces", "parent_trace_id", "ALTER TABLE monitor_traces ADD COLUMN parent_trace_id TEXT NOT NULL DEFAULT ''"},
+		{"monitor_traces", "duration_ms", "ALTER TABLE monitor_traces ADD COLUMN duration_ms INTEGER NOT NULL DEFAULT 0"},
+		{"monitor_traces", "span_count", "ALTER TABLE monitor_traces ADD COLUMN span_count INTEGER NOT NULL DEFAULT 0"},
+		{"monitor_traces", "error_count", "ALTER TABLE monitor_traces ADD COLUMN error_count INTEGER NOT NULL DEFAULT 0"},
+		{"monitor_traces", "total_tokens", "ALTER TABLE monitor_traces ADD COLUMN total_tokens INTEGER NOT NULL DEFAULT 0"},
+		{"monitor_traces", "total_cost_usd", "ALTER TABLE monitor_traces ADD COLUMN total_cost_usd REAL NOT NULL DEFAULT 0.0"},
+	}
+}
+
+// monitorEventsColumnPatches returns the generated-column patches for monitor_events.
+// Dialect-aware: SQLite uses VIRTUAL generated columns; Postgres uses STORED.
+func monitorEventsColumnPatches(d Dialect) []columnPatch {
+	if d.IsPostgres() {
+		return []columnPatch{
+			{"monitor_events", "meta_session_id", "ALTER TABLE monitor_events ADD COLUMN meta_session_id TEXT GENERATED ALWAYS AS (metadata_json ->> 'session_id') STORED"},
+			{"monitor_events", "meta_invocation_id", "ALTER TABLE monitor_events ADD COLUMN meta_invocation_id TEXT GENERATED ALWAYS AS (metadata_json ->> 'invocation_id') STORED"},
+			{"monitor_events", "meta_agent_id", "ALTER TABLE monitor_events ADD COLUMN meta_agent_id TEXT GENERATED ALWAYS AS (metadata_json ->> 'agent_id') STORED"},
+			{"monitor_events", "meta_trace_id", "ALTER TABLE monitor_events ADD COLUMN meta_trace_id TEXT GENERATED ALWAYS AS (metadata_json ->> 'trace_id') STORED"},
+			{"monitor_events", "meta_duration_ms", "ALTER TABLE monitor_events ADD COLUMN meta_duration_ms DOUBLE PRECISION GENERATED ALWAYS AS (CAST(metadata_json ->> 'duration_ms' AS DOUBLE PRECISION)) STORED"},
+		}
+	}
+	return []columnPatch{
+		{"monitor_events", "meta_session_id", "ALTER TABLE monitor_events ADD COLUMN meta_session_id TEXT GENERATED ALWAYS AS (json_extract(metadata_json, '$.session_id')) VIRTUAL"},
+		{"monitor_events", "meta_invocation_id", "ALTER TABLE monitor_events ADD COLUMN meta_invocation_id TEXT GENERATED ALWAYS AS (json_extract(metadata_json, '$.invocation_id')) VIRTUAL"},
+		{"monitor_events", "meta_agent_id", "ALTER TABLE monitor_events ADD COLUMN meta_agent_id TEXT GENERATED ALWAYS AS (json_extract(metadata_json, '$.agent_id')) VIRTUAL"},
+		{"monitor_events", "meta_trace_id", "ALTER TABLE monitor_events ADD COLUMN meta_trace_id TEXT GENERATED ALWAYS AS (json_extract(metadata_json, '$.trace_id')) VIRTUAL"},
+		{"monitor_events", "meta_duration_ms", "ALTER TABLE monitor_events ADD COLUMN meta_duration_ms REAL GENERATED ALWAYS AS (CAST(json_extract(metadata_json, '$.duration_ms') AS REAL)) VIRTUAL"},
+	}
+}
+
+// applyColumnPatches applies each ALTER TABLE ADD COLUMN idempotently.
+// A patch is skipped when the column already exists; "already exists" errors
+// from concurrent writers are tolerated per DB-N6.
+func applyColumnPatches(ctx context.Context, db execer, d Dialect, patches []columnPatch) error {
+	for _, p := range patches {
+		has, err := columnExistsWithDialect(ctx, db, p.table, p.col, d)
+		if err != nil {
+			return err
+		}
+		if has {
+			continue
+		}
+		if _, err := db.ExecContext(ctx, p.ddl); err != nil {
+			if !d.AlreadyExistsErr(err) {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// createMonitorTracesIndexes creates the supporting indexes for monitor_traces.
+func createMonitorTracesIndexes(ctx context.Context, db execer) error {
+	indexes := []struct {
+		name string
+		ddl  string
+	}{
+		{"idx_monitor_traces_session_id", "CREATE INDEX IF NOT EXISTS idx_monitor_traces_session_id ON monitor_traces(session_id)"},
+		{"idx_monitor_traces_run_id", "CREATE INDEX IF NOT EXISTS idx_monitor_traces_run_id ON monitor_traces(run_id)"},
+		{"idx_monitor_traces_agent_id", "CREATE INDEX IF NOT EXISTS idx_monitor_traces_agent_id ON monitor_traces(agent_id)"},
+		{"idx_monitor_traces_provider", "CREATE INDEX IF NOT EXISTS idx_monitor_traces_provider ON monitor_traces(provider)"},
+		{"idx_monitor_traces_model", "CREATE INDEX IF NOT EXISTS idx_monitor_traces_model ON monitor_traces(model)"},
+	}
+	for _, idx := range indexes {
+		if _, err := db.ExecContext(ctx, idx.ddl); err != nil {
+			return fmt.Errorf("create index %s: %w", idx.name, err)
+		}
+	}
+	return nil
+}
+
+// backfillMonitorTracesFromMetadata populates agent_id/provider/model from
+// metadata_json for rows where the column is empty but the JSON blob carries
+// the value. Idempotent.
+//
+// COALESCE(NULLIF(...), col) preserves the original value when json_extract
+// returns NULL (missing key) or empty string, preventing NOT NULL constraint violations.
+func backfillMonitorTracesFromMetadata(ctx context.Context, db execer, d Dialect) error {
+	agentIDExpr := d.JSONExtract("metadata_json", "agent_id")
+	providerExpr := d.JSONExtract("metadata_json", "provider")
+	modelExpr := d.JSONExtract("metadata_json", "model")
+	if _, err := db.ExecContext(ctx, fmt.Sprintf(`
 UPDATE monitor_traces SET
   agent_id = COALESCE(NULLIF(%s, ''), agent_id),
   provider = COALESCE(NULLIF(%s, ''), provider),
@@ -87,27 +174,29 @@ UPDATE monitor_traces SET
 WHERE (agent_id = '' AND %s != '')
    OR (provider = '' AND %s != '')
    OR (model    = '' AND %s    != '')`,
-			agentIDExpr, providerExpr, modelExpr,
-			agentIDExpr, providerExpr, modelExpr)); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("backfill monitor_traces columns: %w", err)
-		}
+		agentIDExpr, providerExpr, modelExpr,
+		agentIDExpr, providerExpr, modelExpr)); err != nil {
+		return fmt.Errorf("backfill monitor_traces columns: %w", err)
+	}
+	return nil
+}
 
-		// Create monitor_trace_spans table with dialect-aware auto-increment syntax.
-		// SQLite: INTEGER PRIMARY KEY AUTOINCREMENT
-		// Postgres: BIGSERIAL PRIMARY KEY (or BIGINT GENERATED ALWAYS AS IDENTITY)
-		idColDef := "id INTEGER PRIMARY KEY AUTOINCREMENT"
-		if d.IsPostgres() {
-			idColDef = "id BIGSERIAL PRIMARY KEY"
-		}
-		// Dialect-aware timestamp column type:
-		// SQLite INTEGER is 8 bytes (stores nanosecond timestamps fine).
-		// Postgres INTEGER is 4 bytes (max ~2.1B) — overflows on nanosecond timestamps.
-		// Use BIGINT on Postgres to match SQLite's capacity.
-		tsType := "INTEGER"
-		if d.IsPostgres() {
-			tsType = "BIGINT"
-		}
-		_, firstErr = db.ExecContext(ctx, fmt.Sprintf(`
+// createMonitorTraceSpansTable creates the monitor_trace_spans table with
+// dialect-aware auto-increment and timestamp column types.
+//
+// SQLite: INTEGER PRIMARY KEY AUTOINCREMENT, INTEGER timestamps (8 bytes).
+// Postgres: BIGSERIAL PRIMARY KEY, BIGINT timestamps (INTEGER is 4 bytes and
+// overflows on nanosecond timestamps).
+func createMonitorTraceSpansTable(ctx context.Context, db execer, d Dialect) error {
+	idColDef := "id INTEGER PRIMARY KEY AUTOINCREMENT"
+	if d.IsPostgres() {
+		idColDef = "id BIGSERIAL PRIMARY KEY"
+	}
+	tsType := "INTEGER"
+	if d.IsPostgres() {
+		tsType = "BIGINT"
+	}
+	if _, err := db.ExecContext(ctx, fmt.Sprintf(`
 CREATE TABLE IF NOT EXISTS monitor_trace_spans (
     %s,
     trace_id TEXT NOT NULL,
@@ -121,88 +210,40 @@ CREATE TABLE IF NOT EXISTS monitor_trace_spans (
     attributes_json TEXT NOT NULL DEFAULT '',
     error_json TEXT NOT NULL DEFAULT '',
     UNIQUE(trace_id, span_id)
-)`, idColDef, tsType, tsType))
-		if firstErr != nil {
-			return
+)`, idColDef, tsType, tsType)); err != nil {
+		return err
+	}
+	indexes := []struct {
+		name string
+		ddl  string
+	}{
+		{"idx_monitor_trace_spans_trace_id", "CREATE INDEX IF NOT EXISTS idx_monitor_trace_spans_trace_id ON monitor_trace_spans(trace_id)"},
+		{"idx_monitor_trace_spans_kind", "CREATE INDEX IF NOT EXISTS idx_monitor_trace_spans_kind ON monitor_trace_spans(kind)"},
+	}
+	for _, idx := range indexes {
+		if _, err := db.ExecContext(ctx, idx.ddl); err != nil {
+			return fmt.Errorf("create index %s: %w", idx.name, err)
 		}
-		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_trace_spans_trace_id ON monitor_trace_spans(trace_id)`); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("create index idx_monitor_trace_spans_trace_id: %w", err)
-		}
-		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_trace_spans_kind ON monitor_trace_spans(kind)`); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("create index idx_monitor_trace_spans_kind: %w", err)
-		}
-	})
+	}
+	return nil
+}
 
-	eventSchemaOnce.Do(func() {
-		db := r.data.RWDB().WriteDB(ctx)
-		// GENERATED VIRTUAL columns are SQLite-only. Postgres supports only
-		// GENERATED STORED. Use dialect-aware DDL.
-		// SQLite: GENERATED ALWAYS AS (json_extract(...)) VIRTUAL
-		// Postgres: GENERATED ALWAYS AS (metadata_json ->> '...') STORED
-		//   (Postgres ->> operator is IMMUTABLE since Postgres 12, so it can
-		//   be used in GENERATED STORED columns.)
-		var eventPatches []struct {
-			table string
-			col   string
-			ddl   string
+// createMonitorEventsIndexes creates the supporting indexes for monitor_events.
+func createMonitorEventsIndexes(ctx context.Context, db execer) error {
+	indexes := []struct {
+		name string
+		ddl  string
+	}{
+		{"idx_monitor_events_meta_session_id", "CREATE INDEX IF NOT EXISTS idx_monitor_events_meta_session_id ON monitor_events(meta_session_id)"},
+		{"idx_monitor_events_meta_invocation_id", "CREATE INDEX IF NOT EXISTS idx_monitor_events_meta_invocation_id ON monitor_events(meta_invocation_id, event_key)"},
+		{"idx_monitor_events_meta_trace_id", "CREATE INDEX IF NOT EXISTS idx_monitor_events_meta_trace_id ON monitor_events(meta_trace_id)"},
+	}
+	for _, idx := range indexes {
+		if _, err := db.ExecContext(ctx, idx.ddl); err != nil {
+			return fmt.Errorf("create index %s: %w", idx.name, err)
 		}
-		if d.IsPostgres() {
-			eventPatches = []struct {
-				table string
-				col   string
-				ddl   string
-			}{
-				{"monitor_events", "meta_session_id", "ALTER TABLE monitor_events ADD COLUMN meta_session_id TEXT GENERATED ALWAYS AS (metadata_json ->> 'session_id') STORED"},
-				{"monitor_events", "meta_invocation_id", "ALTER TABLE monitor_events ADD COLUMN meta_invocation_id TEXT GENERATED ALWAYS AS (metadata_json ->> 'invocation_id') STORED"},
-				{"monitor_events", "meta_agent_id", "ALTER TABLE monitor_events ADD COLUMN meta_agent_id TEXT GENERATED ALWAYS AS (metadata_json ->> 'agent_id') STORED"},
-				{"monitor_events", "meta_trace_id", "ALTER TABLE monitor_events ADD COLUMN meta_trace_id TEXT GENERATED ALWAYS AS (metadata_json ->> 'trace_id') STORED"},
-				{"monitor_events", "meta_duration_ms", "ALTER TABLE monitor_events ADD COLUMN meta_duration_ms DOUBLE PRECISION GENERATED ALWAYS AS (CAST(metadata_json ->> 'duration_ms' AS DOUBLE PRECISION)) STORED"},
-			}
-		} else {
-			eventPatches = []struct {
-				table string
-				col   string
-				ddl   string
-			}{
-				{"monitor_events", "meta_session_id", "ALTER TABLE monitor_events ADD COLUMN meta_session_id TEXT GENERATED ALWAYS AS (json_extract(metadata_json, '$.session_id')) VIRTUAL"},
-				{"monitor_events", "meta_invocation_id", "ALTER TABLE monitor_events ADD COLUMN meta_invocation_id TEXT GENERATED ALWAYS AS (json_extract(metadata_json, '$.invocation_id')) VIRTUAL"},
-				{"monitor_events", "meta_agent_id", "ALTER TABLE monitor_events ADD COLUMN meta_agent_id TEXT GENERATED ALWAYS AS (json_extract(metadata_json, '$.agent_id')) VIRTUAL"},
-				{"monitor_events", "meta_trace_id", "ALTER TABLE monitor_events ADD COLUMN meta_trace_id TEXT GENERATED ALWAYS AS (json_extract(metadata_json, '$.trace_id')) VIRTUAL"},
-				{"monitor_events", "meta_duration_ms", "ALTER TABLE monitor_events ADD COLUMN meta_duration_ms REAL GENERATED ALWAYS AS (CAST(json_extract(metadata_json, '$.duration_ms') AS REAL)) VIRTUAL"},
-			}
-		}
-		for _, p := range eventPatches {
-			has, err := columnExistsWithDialect(ctx, db, p.table, p.col, d)
-			if err != nil {
-				if firstErr == nil {
-					firstErr = err
-				}
-				return
-			}
-			if has {
-				continue
-			}
-			if _, err := db.ExecContext(ctx, p.ddl); err != nil {
-				if !d.AlreadyExistsErr(err) {
-					if firstErr == nil {
-						firstErr = err
-					}
-					return
-				}
-			}
-		}
-		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_events_meta_session_id ON monitor_events(meta_session_id)`); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("create index idx_monitor_events_meta_session_id: %w", err)
-		}
-		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_events_meta_invocation_id ON monitor_events(meta_invocation_id, event_key)`); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("create index idx_monitor_events_meta_invocation_id: %w", err)
-		}
-		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_events_meta_trace_id ON monitor_events(meta_trace_id)`); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("create index idx_monitor_events_meta_trace_id: %w", err)
-		}
-	})
-
-	return firstErr
+	}
+	return nil
 }
 
 // columnExists checks whether a column exists in the given table.

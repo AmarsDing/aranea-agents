@@ -109,7 +109,7 @@ func backfillLegacyTRPCMemoryEntities(ctx context.Context, d *Data) (int, error)
 
 	// Mark skipped (empty statement) rows as migrated so they are not re-processed.
 	for _, sid := range skippedIDs {
-		d.RWDB().WriteDB(ctx).ExecContext(ctx, `UPDATE trpc_memory_entities SET migrated = 1 WHERE id = ?`, sid)
+		d.RWDB().WriteDB(ctx).ExecContext(ctx, d.Dialect().RenumberPlaceholders(`UPDATE trpc_memory_entities SET migrated = 1 WHERE id = ?`), sid)
 	}
 
 	var migrated int
@@ -121,7 +121,7 @@ func backfillLegacyTRPCMemoryEntities(ctx context.Context, d *Data) (int, error)
 		if meta == "" {
 			meta = "{}"
 		}
-		_, err := d.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_facts (
+		_, err := d.RWDB().WriteDB(ctx).ExecContext(ctx, d.Dialect().RenumberPlaceholders(`INSERT INTO memory_facts (
 			id, scope_type, scope_id, workspace_id, user_id, team_id, agent_id,
 			statement, statement_normalized, fingerprint, details_markdown,
 			fact_kind, tags_json,
@@ -132,7 +132,7 @@ func backfillLegacyTRPCMemoryEntities(ctx context.Context, d *Data) (int, error)
 			pii_flag, redacted_statement,
 			quality_score, metadata_json, created_at, updated_at
 		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(scope_type, scope_id, fingerprint) DO NOTHING`,
+		ON CONFLICT(scope_type, scope_id, fingerprint) DO NOTHING`),
 			r.id, r.scopeType, r.scopeID, "", r.userID, "", r.agentID,
 			r.statement, strings.ToLower(r.statement), fp, r.details,
 			r.entityType, tags,
@@ -144,7 +144,7 @@ func backfillLegacyTRPCMemoryEntities(ctx context.Context, d *Data) (int, error)
 			continue
 		}
 		// Mark as migrated
-		d.RWDB().WriteDB(ctx).ExecContext(ctx, `UPDATE trpc_memory_entities SET migrated = 1 WHERE id = ?`, r.id)
+		d.RWDB().WriteDB(ctx).ExecContext(ctx, d.Dialect().RenumberPlaceholders(`UPDATE trpc_memory_entities SET migrated = 1 WHERE id = ?`), r.id)
 		migrated++
 	}
 	return migrated, nil

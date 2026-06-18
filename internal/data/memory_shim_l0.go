@@ -42,7 +42,7 @@ func (r *l0SnapshotRepo) ListL0SnapshotRows(ctx context.Context, sessionID, agen
 	}
 	q += ` ORDER BY created_at DESC LIMIT ?`
 	args = append(args, lim)
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func (r *l0SnapshotRepo) GetL0SnapshotRow(ctx context.Context, sessionID, id str
 	if id == "" {
 		return nil, apierror.BadRequest("MEMORY", "snapshot id is required")
 	}
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlL0Select+` WHERE id = ? AND session_id = ?`, id, sessionID)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(sqlL0Select+` WHERE id = ? AND session_id = ?`), id, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func (r *l0SnapshotRepo) InsertL0AssemblySnapshot(ctx context.Context, in biz.L0
 	if created == "" {
 		created = time.Now().UTC().Format(time.RFC3339Nano)
 	}
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, sqlL0Insert,
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(sqlL0Insert),
 		id, sessID,
 		strings.TrimSpace(in.RunID),
 		strings.TrimSpace(in.TurnID),
@@ -152,9 +152,9 @@ func (r *l0SnapshotRepo) UpdateL0SnapshotActual(ctx context.Context, id, session
 		usedRatio = float64(actualPromptTokens) / float64(contextWindowTokens)
 	}
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_l0_assembly_snapshots
+		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_l0_assembly_snapshots
 		 SET prompt_token_actual = ?, used_ratio = ?, warning_codes_json = ?
-		 WHERE id = ? AND session_id = ?`,
+		 WHERE id = ? AND session_id = ?`),
 		actualPromptTokens, usedRatio, biz.L0WarningCodesJSON(biz.L0WarningCodesFromRatio(usedRatio)), id, sessionID,
 	)
 	return err

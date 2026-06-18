@@ -69,14 +69,14 @@ func NewFactConsistencyAdapter(data *Data) *factConsistencyAdapter {
 
 func (a *factConsistencyAdapter) GetFactConsistencyRow(ctx context.Context, factID string) (status, indexStatus, statement string, err error) {
 	err = QueryRowScan(ctx, a.data.RWDB().ReadDB(ctx),
-		`SELECT status, embedding_status, statement FROM memory_facts WHERE id = ?`,
+		a.data.Dialect().RenumberPlaceholders(`SELECT status, embedding_status, statement FROM memory_facts WHERE id = ?`),
 		[]any{factID}, &status, &indexStatus, &statement)
 	return
 }
 
 func (a *factConsistencyAdapter) GetFactResyncRow(ctx context.Context, factID string) (agentID, userID, statement string, err error) {
 	err = QueryRowScan(ctx, a.data.RWDB().ReadDB(ctx),
-		`SELECT COALESCE(agent_id, scope_id), user_id, statement FROM memory_facts WHERE id = ?`,
+		a.data.Dialect().RenumberPlaceholders(`SELECT COALESCE(agent_id, scope_id), user_id, statement FROM memory_facts WHERE id = ?`),
 		[]any{factID}, &agentID, &userID, &statement)
 	return
 }
@@ -95,7 +95,7 @@ func (r *l3FactRepo) ListFactRows(ctx context.Context, scopeType, scopeID, kind,
 	}
 	var total, active, archived int32
 	countRow, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT COUNT(*) as total, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active, SUM(CASE WHEN status = 'archived' THEN 1 ELSE 0 END) as archived FROM memory_facts`+countWhere,
+		r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(*) as total, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active, SUM(CASE WHEN status = 'archived' THEN 1 ELSE 0 END) as archived FROM memory_facts`+countWhere),
 		countArgs...)
 	if err != nil {
 		return nil, 0, 0, 0, err
@@ -127,7 +127,7 @@ func (r *l3FactRepo) ListFactRows(ctx context.Context, scopeType, scopeID, kind,
 	}
 	q := sqlFactSelect + where + ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
 	args = append(args, lim, off)
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, 0, 0, 0, err
 	}
@@ -184,7 +184,7 @@ func (r *l3FactRepo) countFacts(ctx context.Context, clauses []string, args ...a
 		where = " WHERE " + strings.Join(clauses, " AND ")
 	}
 	var count int32
-	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), "SELECT COUNT(*) FROM memory_facts"+where, args, &count); err != nil {
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders("SELECT COUNT(*) FROM memory_facts"+where), args, &count); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -223,7 +223,7 @@ func (r *l3FactRepo) ListFactRowsForUser(ctx context.Context, scopeType, scopeID
 	}
 	q := sqlFactSelect + where + ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
 	args = append(args, lim, off)
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -272,7 +272,7 @@ func (r *l3FactRepo) ListFactRowsForUserAll(ctx context.Context, scopeType, scop
 	}
 	q := sqlFactSelect + where + ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
 	args = append(args, lim, off)
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -300,7 +300,7 @@ func (r *l3FactRepo) GetFactRowsByIDs(ctx context.Context, factIDs []string) ([]
 		args[i] = id
 	}
 	q := sqlFactSelect + " WHERE id IN (" + strings.Join(placeholders, ",") + ") AND status = 'active' AND deleted_at = '' AND valid_until = ''"
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +347,7 @@ func (r *l3FactRepo) shouldUseBruteForce(ctx context.Context, scopeType, scopeID
 	}
 	where := " WHERE " + strings.Join(clauses, " AND ")
 	var count int
-	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), "SELECT COUNT(*) FROM memory_facts"+where, args, &count); err != nil {
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders("SELECT COUNT(*) FROM memory_facts"+where), args, &count); err != nil {
 		return false
 	}
 	return count <= biz.DefaultFactBruteForceThreshold || len(queryEmbedding) == 0
@@ -376,7 +376,7 @@ func (r *l3FactRepo) recallL3FactsBruteForce(ctx context.Context, scopeType, sco
 	where := " WHERE " + strings.Join(clauses, " AND ")
 	q := sqlFactSelect + where + ` ORDER BY importance DESC, updated_at DESC LIMIT ?`
 	args = append(args, lim)
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -418,7 +418,7 @@ func (r *l3FactRepo) recallL3Facts(ctx context.Context, scopeType, scopeID, user
 	where := " WHERE " + strings.Join(clauses, " AND ")
 	q := sqlFactSelect + where + ` ORDER BY updated_at DESC LIMIT ?`
 	args = append(args, pool)
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -550,7 +550,7 @@ func (r *l3FactRepo) recallL3WithVectorStore(ctx context.Context, scopeType, sco
 	where := " WHERE " + strings.Join(clauses, " AND ")
 	q := sqlFactSelect + where + ` ORDER BY updated_at DESC LIMIT ?`
 	args = append(args, pool)
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -691,7 +691,7 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 	validUntil := strings.TrimSpace(in.ValidUntil)
 	var result []byte
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
-		_, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx, `INSERT INTO memory_facts (
+		_, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx, r.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_facts (
 		id, scope_type, scope_id, workspace_id, user_id, team_id, agent_id,
 		statement, statement_normalized, fingerprint, details_markdown,
 		fact_kind, tags_json,
@@ -720,7 +720,7 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 		updated_at = excluded.updated_at,
 		valid_from = COALESCE(NULLIF(memory_facts.valid_from, ''), excluded.valid_from),
 		valid_until = excluded.valid_until,
-		links = excluded.links, keywords = excluded.keywords`,
+		links = excluded.links, keywords = excluded.keywords`),
 			id,
 			strings.TrimSpace(in.ScopeType),
 			strings.TrimSpace(in.ScopeID),
@@ -750,7 +750,7 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 		// Read back the row using the unique constraint (scope_type, scope_id, fingerprint)
 		// within the same transaction so the write connection is reused.
 		rows, queryErr := r.data.RWDB().ReadDB(txCtx).QueryContext(txCtx,
-			sqlFactSelect+` WHERE scope_type = ? AND scope_id = ? AND fingerprint = ?`,
+			r.data.Dialect().RenumberPlaceholders(sqlFactSelect+` WHERE scope_type = ? AND scope_id = ? AND fingerprint = ?`),
 			strings.TrimSpace(in.ScopeType), strings.TrimSpace(in.ScopeID), fp)
 		if queryErr != nil {
 			return queryErr
@@ -774,7 +774,7 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 func (r *l3FactRepo) DeleteFactRow(ctx context.Context, factID string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_facts SET deleted_at = ?, status = 'deleted' WHERE id = ?`, now, factID)
+		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET deleted_at = ?, status = 'deleted' WHERE id = ?`), now, factID)
 	if err != nil {
 		return err
 	}
@@ -810,7 +810,7 @@ func (r *l3FactRepo) DeleteFactRowsByIDs(ctx context.Context, factIDs []string) 
 		args = append(args, id)
 	}
 	q := fmt.Sprintf(`UPDATE memory_facts SET deleted_at = ?, status = 'deleted' WHERE id IN (%s)`, strings.Join(placeholders, ","))
-	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, args...)
+	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return 0, err
 	}
@@ -843,7 +843,7 @@ func (r *l3FactRepo) ClearFactsByScope(ctx context.Context, scopeType, scopeID, 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		rows, queryErr := r.data.RWDB().ReadDB(txCtx).QueryContext(txCtx,
-			`SELECT id FROM memory_facts WHERE scope_type = ? AND scope_id = ? AND user_id = ? AND status = 'active' AND deleted_at = ''`,
+			r.data.Dialect().RenumberPlaceholders(`SELECT id FROM memory_facts WHERE scope_type = ? AND scope_id = ? AND user_id = ? AND status = 'active' AND deleted_at = ''`),
 			scopeType, scopeID, userID)
 		if queryErr != nil {
 			return queryErr
@@ -863,7 +863,7 @@ func (r *l3FactRepo) ClearFactsByScope(ctx context.Context, scopeType, scopeID, 
 			return nil
 		}
 		_, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
-			`UPDATE memory_facts SET deleted_at = ?, status = 'deleted', valid_until = ? WHERE scope_type = ? AND scope_id = ? AND user_id = ? AND status = 'active' AND deleted_at = ''`,
+			r.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET deleted_at = ?, status = 'deleted', valid_until = ? WHERE scope_type = ? AND scope_id = ? AND user_id = ? AND status = 'active' AND deleted_at = ''`),
 			now, now, scopeType, scopeID, userID)
 		return execErr
 	})
@@ -903,13 +903,13 @@ func (r *l3FactRepo) InvalidateFact(ctx context.Context, factID string) ([]byte,
 	var result []byte
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		_, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
-			`UPDATE memory_facts SET valid_until = ?, updated_at = ? WHERE id = ? AND valid_until = ''`,
+			r.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET valid_until = ?, updated_at = ? WHERE id = ? AND valid_until = ''`),
 			now, now, factID)
 		if execErr != nil {
 			return execErr
 		}
 		rows, queryErr := r.data.RWDB().ReadDB(txCtx).QueryContext(txCtx,
-			sqlFactSelect+` WHERE id = ?`, factID)
+			r.data.Dialect().RenumberPlaceholders(sqlFactSelect+` WHERE id = ?`), factID)
 		if queryErr != nil {
 			return queryErr
 		}
@@ -932,13 +932,13 @@ func (r *l3FactRepo) IncrementConflictCount(ctx context.Context, factID string) 
 	var count int32
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		_, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
-			`UPDATE memory_facts SET conflict_count = conflict_count + 1, updated_at = ? WHERE id = ?`,
+			r.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET conflict_count = conflict_count + 1, updated_at = ? WHERE id = ?`),
 			time.Now().UTC().Format(time.RFC3339Nano), factID)
 		if execErr != nil {
 			return execErr
 		}
 		return queryRowScan(txCtx, r.data.RWDB().ReadDB(txCtx),
-			`SELECT conflict_count FROM memory_facts WHERE id = ?`, []any{factID}, &count)
+			r.data.Dialect().RenumberPlaceholders(`SELECT conflict_count FROM memory_facts WHERE id = ?`), []any{factID}, &count)
 	})
 	return count, err
 }
@@ -956,7 +956,7 @@ func (r *l3FactRepo) BatchIncrementConflictCounts(ctx context.Context, factIDs [
 		args = append(args, id)
 	}
 	q := fmt.Sprintf(`UPDATE memory_facts SET conflict_count = conflict_count + 1, updated_at = ? WHERE id IN (%s)`, strings.Join(placeholders, ","))
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, args...)
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	return err
 }
 
@@ -973,7 +973,7 @@ func (r *l3FactRepo) ListConflictingFacts(ctx context.Context, scopeType, scopeI
 	}
 	where := " WHERE " + strings.Join(clauses, " AND ")
 	var total int32
-	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), "SELECT COUNT(*) FROM memory_facts"+where, args, &total); err != nil {
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders("SELECT COUNT(*) FROM memory_facts"+where), args, &total); err != nil {
 		return nil, 0, err
 	}
 	lim := int(limit)
@@ -986,7 +986,7 @@ func (r *l3FactRepo) ListConflictingFacts(ctx context.Context, scopeType, scopeI
 	}
 	q := sqlFactSelect + where + ` ORDER BY conflict_count DESC, updated_at DESC LIMIT ? OFFSET ?`
 	args = append(args, lim, off)
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1017,7 +1017,7 @@ func (r *l3FactRepo) ListPIIFlaggedFacts(ctx context.Context, scopeType, scopeID
 	}
 	where := " WHERE " + strings.Join(clauses, " AND ")
 	var total int32
-	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), "SELECT COUNT(*) FROM memory_facts"+where, args, &total); err != nil {
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders("SELECT COUNT(*) FROM memory_facts"+where), args, &total); err != nil {
 		return nil, 0, err
 	}
 	lim := int(limit)
@@ -1030,7 +1030,7 @@ func (r *l3FactRepo) ListPIIFlaggedFacts(ctx context.Context, scopeType, scopeID
 	}
 	q := sqlFactSelect + where + ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
 	args = append(args, lim, off)
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1048,14 +1048,14 @@ func (r *l3FactRepo) ListPIIFlaggedFacts(ctx context.Context, scopeType, scopeID
 
 func (r *l3FactRepo) ApprovePIIFact(ctx context.Context, factID string) error {
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_facts SET pii_flag = 0, statement = COALESCE(NULLIF(redacted_statement, ''), statement), redacted_statement = '', pii_types = '[]', updated_at = ? WHERE id = ?`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET pii_flag = 0, statement = COALESCE(NULLIF(redacted_statement, ''), statement), redacted_statement = '', pii_types = '[]', updated_at = ? WHERE id = ?`),
 		time.Now().UTC().Format(time.RFC3339Nano), factID)
 	return err
 }
 
 func (r *l3FactRepo) RejectPIIFact(ctx context.Context, factID string) error {
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_facts SET status = 'redacted', updated_at = ? WHERE id = ?`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET status = 'redacted', updated_at = ? WHERE id = ?`),
 		time.Now().UTC().Format(time.RFC3339Nano), factID)
 	return err
 }
@@ -1064,7 +1064,7 @@ func (r *l3FactRepo) RejectPIIFact(ctx context.Context, factID string) error {
 // reconciler can detect and fix the inconsistency between SQLite and pgvector.
 func (r *l3FactRepo) markFactEmbeddingStale(ctx context.Context, factID string) error {
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_facts SET embedding_status = 'stale' WHERE id = ?`, factID)
+		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET embedding_status = 'stale' WHERE id = ?`), factID)
 	return err
 }
 

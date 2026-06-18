@@ -56,7 +56,7 @@ func (r *channelRuntimeLeaseRepo) TryAcquireRuntimeLease(ctx context.Context, le
 	if db == nil {
 		return false, apierror.Internal("CHANNEL_RUNTIME_LEASE", "repository unavailable")
 	}
-	res, err := db.ExecContext(ctx, `
+	res, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 INSERT INTO channel_runtime_lease (key, channel_id, platform, owner_id, expires_at, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(key) DO UPDATE SET
@@ -64,7 +64,7 @@ ON CONFLICT(key) DO UPDATE SET
   expires_at = excluded.expires_at,
   updated_at = excluded.updated_at
 WHERE channel_runtime_lease.owner_id = excluded.owner_id
-   OR channel_runtime_lease.expires_at <= ?`,
+   OR channel_runtime_lease.expires_at <= ?`),
 		lease.Key, lease.ChannelID, lease.Platform, lease.OwnerID, exp, now, now, now,
 	)
 	if err != nil {
@@ -88,10 +88,10 @@ func (r *channelRuntimeLeaseRepo) RenewRuntimeLease(ctx context.Context, key, ow
 	if db == nil {
 		return false, apierror.Internal("CHANNEL_RUNTIME_LEASE", "repository unavailable")
 	}
-	res, err := db.ExecContext(ctx, `
+	res, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 UPDATE channel_runtime_lease
 SET expires_at = ?, updated_at = ?
-WHERE key = ? AND owner_id = ? AND expires_at > ?`,
+WHERE key = ? AND owner_id = ? AND expires_at > ?`),
 		expiresAt.UTC().Format(time.RFC3339Nano), now,
 		key, ownerID, now,
 	)
@@ -115,6 +115,6 @@ func (r *channelRuntimeLeaseRepo) ReleaseRuntimeLease(ctx context.Context, key, 
 	if db == nil {
 		return apierror.Internal("CHANNEL_RUNTIME_LEASE", "repository unavailable")
 	}
-	_, err := db.ExecContext(ctx, `DELETE FROM channel_runtime_lease WHERE key = ? AND owner_id = ?`, key, ownerID)
+	_, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`DELETE FROM channel_runtime_lease WHERE key = ? AND owner_id = ?`), key, ownerID)
 	return err
 }

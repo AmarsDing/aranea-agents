@@ -14,7 +14,7 @@ import (
 
 const systemAdminAgentKey = biz.SystemAdminAgentKey
 
-func SeedSystemAdminAgent(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
+func SeedSystemAdminAgent(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
@@ -44,14 +44,14 @@ func SeedSystemAdminAgent(ctx context.Context, client *ent.Client, lg loggateway
 		position_key = excluded.position_key,
 		agent_variant = excluded.agent_variant,
 		updated_at = excluded.updated_at`
-	if _, err := client.ExecContext(ctx, q, systemAdminAgentKey, now, now); err != nil {
+	if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), systemAdminAgentKey, now, now); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.system_admin_agent"), loggateway.Err(err))
 		return entErrToBizErr(err, "SEED")
 	}
 	return nil
 }
 
-func SeedSpiritAgent(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
+func SeedSpiritAgent(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
@@ -81,14 +81,14 @@ func SeedSpiritAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		position_key = excluded.position_key,
 		agent_variant = excluded.agent_variant,
 		updated_at = excluded.updated_at`
-	if _, err := client.ExecContext(ctx, q, biz.SpiritAgentKey, now, now); err != nil {
+	if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), biz.SpiritAgentKey, now, now); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_agent"), loggateway.Err(err))
 		return entErrToBizErr(err, "SEED")
 	}
 	return nil
 }
 
-func SeedSpiritPromptFiles(ctx context.Context, client *ent.Client, scenarioDir string, lg loggateway.Logger) error {
+func SeedSpiritPromptFiles(ctx context.Context, client *ent.Client, d Dialect, scenarioDir string, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
@@ -123,7 +123,7 @@ func SeedSpiritPromptFiles(ctx context.Context, client *ent.Client, scenarioDir 
 			return entErrToBizErr(err, "SEED")
 		}
 		id := "apf_spirit_" + fileName
-		if _, err := client.ExecContext(ctx, q, id, agentID, fileName, string(data), sortOrder, now, now); err != nil {
+		if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), id, agentID, fileName, string(data), sortOrder, now, now); err != nil {
 			lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_prompt_files"), loggateway.Str("file_name", fileName), loggateway.Err(err))
 			return entErrToBizErr(err, "SEED")
 		}
@@ -132,7 +132,7 @@ func SeedSpiritPromptFiles(ctx context.Context, client *ent.Client, scenarioDir 
 	return nil
 }
 
-func SeedMemoryAgent(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
+func SeedMemoryAgent(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
@@ -162,14 +162,14 @@ func SeedMemoryAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		position_key = excluded.position_key,
 		agent_variant = excluded.agent_variant,
 		updated_at = excluded.updated_at`
-	if _, err := client.ExecContext(ctx, q, biz.MemoryAgentKey, now, now); err != nil {
+	if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), biz.MemoryAgentKey, now, now); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.memory_agent"), loggateway.Err(err))
 		return entErrToBizErr(err, "SEED")
 	}
 	return nil
 }
 
-func SeedSkillsAgent(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
+func SeedSkillsAgent(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
@@ -199,14 +199,14 @@ func SeedSkillsAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		position_key = excluded.position_key,
 		agent_variant = excluded.agent_variant,
 		updated_at = excluded.updated_at`
-	if _, err := client.ExecContext(ctx, q, biz.SkillsAgentKey, now, now); err != nil {
+	if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), biz.SkillsAgentKey, now, now); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.skills_agent"), loggateway.Err(err))
 		return entErrToBizErr(err, "SEED")
 	}
 	return nil
 }
 
-func SeedButlerPromptFiles(ctx context.Context, client *ent.Client, scenarioDir string, lg loggateway.Logger) error {
+func SeedButlerPromptFiles(ctx context.Context, client *ent.Client, d Dialect, scenarioDir string, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
@@ -250,7 +250,7 @@ func SeedButlerPromptFiles(ctx context.Context, client *ent.Client, scenarioDir 
 				return entErrToBizErr(err, "SEED")
 			}
 			id := b.prefix + fileName
-			if _, err := client.ExecContext(ctx, q, id, b.agentID, fileName, string(data), sortOrder, now, now); err != nil {
+			if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), id, b.agentID, fileName, string(data), sortOrder, now, now); err != nil {
 				lg.Warn("seed step failed", loggateway.StepID("data.seed.butler_prompt_files"), loggateway.Str("file_name", fileName), loggateway.Err(err))
 				return entErrToBizErr(err, "SEED")
 			}
@@ -260,7 +260,7 @@ func SeedButlerPromptFiles(ctx context.Context, client *ent.Client, scenarioDir 
 	return nil
 }
 
-func SeedCronTasks(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
+func SeedCronTasks(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
@@ -304,7 +304,7 @@ func SeedCronTasks(ctx context.Context, client *ent.Client, lg loggateway.Logger
 		config_json = excluded.config_json,
 		updated_at = excluded.updated_at`
 	for _, t := range tasks {
-		if _, err := client.ExecContext(ctx, q, t.id, t.taskKey, t.name, t.description, t.agentID, t.configJSON, now, now); err != nil {
+		if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), t.id, t.taskKey, t.name, t.description, t.agentID, t.configJSON, now, now); err != nil {
 			lg.Warn("seed step failed", loggateway.StepID("data.seed.cron_tasks"), loggateway.Str("task_key", t.taskKey), loggateway.Err(err))
 			return entErrToBizErr(err, "SEED")
 		}
@@ -312,7 +312,7 @@ func SeedCronTasks(ctx context.Context, client *ent.Client, lg loggateway.Logger
 	return nil
 }
 
-func SeedBuiltinCLIAdminTools(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
+func SeedBuiltinCLIAdminTools(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
@@ -344,7 +344,7 @@ func SeedBuiltinCLIAdminTools(ctx context.Context, client *ent.Client, lg loggat
 	) ON CONFLICT(tool_key) DO NOTHING`
 	for _, t := range tools {
 		id := "tool_" + t.key
-		if _, err := client.ExecContext(ctx, q, id, t.key, t.name, t.desc, now, now); err != nil {
+		if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), id, t.key, t.name, t.desc, now, now); err != nil {
 			lg.Warn("seed step failed", loggateway.StepID("data.seed.cli_admin_tools"), loggateway.Str("tool_key", t.key), loggateway.Err(err))
 			return entErrToBizErr(err, "SEED")
 		}
@@ -354,7 +354,7 @@ func SeedBuiltinCLIAdminTools(ctx context.Context, client *ent.Client, lg loggat
 
 // SeedDeptLeadAgents creates department lead agents for all existing department-level
 // org nodes. This is called during seed to ensure every department has a lead agent.
-func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
+func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
@@ -407,7 +407,7 @@ func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, lg loggateway.L
 			position_key = excluded.position_key,
 			agent_variant = excluded.agent_variant,
 			updated_at = excluded.updated_at`
-		if _, err := client.ExecContext(ctx, q, agentID, agentKey, displayName, description, now, now, key+"_dept_lead"); err != nil {
+		if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), agentID, agentKey, displayName, description, now, now, key+"_dept_lead"); err != nil {
 			lg.Warn("seed step failed: create dept lead agent",
 				loggateway.StepID("data.seed.dept_lead_agents"),
 				loggateway.Str("dept_key", key),
@@ -416,7 +416,7 @@ func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, lg loggateway.L
 		}
 
 		// Link dept_lead_agent_id on the org node
-		if _, err := client.ExecContext(ctx, `UPDATE organizations SET dept_lead_agent_id = ?, updated_at = ? WHERE id = ? AND (dept_lead_agent_id = '' OR dept_lead_agent_id IS NULL)`, agentID, now, id); err != nil {
+		if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(`UPDATE organizations SET dept_lead_agent_id = ?, updated_at = ? WHERE id = ? AND (dept_lead_agent_id = '' OR dept_lead_agent_id IS NULL)`), agentID, now, id); err != nil {
 			lg.Warn("seed step failed: link dept lead to org node",
 				loggateway.StepID("data.seed.dept_lead_agents"),
 				loggateway.Str("dept_id", id),
@@ -427,7 +427,7 @@ func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, lg loggateway.L
 }
 
 // SeedDeptLeadPromptFiles seeds the dept_lead.md prompt file for each department lead agent.
-func SeedDeptLeadPromptFiles(ctx context.Context, client *ent.Client, scenarioDir string, lg loggateway.Logger) error {
+func SeedDeptLeadPromptFiles(ctx context.Context, client *ent.Client, d Dialect, scenarioDir string, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
@@ -466,7 +466,7 @@ func SeedDeptLeadPromptFiles(ctx context.Context, client *ent.Client, scenarioDi
 			continue
 		}
 		id := "apf_dept_lead_" + agentKey
-		if _, err := client.ExecContext(ctx, q, id, agentID, "dept_lead", string(data), 0, now, now); err != nil {
+		if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), id, agentID, "dept_lead", string(data), 0, now, now); err != nil {
 			lg.Warn("seed step failed: seed dept lead prompt file",
 				loggateway.StepID("data.seed.dept_lead_prompt_files"),
 				loggateway.Str("agent_key", agentKey),

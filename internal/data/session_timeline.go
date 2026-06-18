@@ -25,8 +25,9 @@ func (r *sessionRepo) ListTimelineEventRefsPaged(ctx context.Context, sessionID 
 	}
 
 	client := r.data.RW().Read(ctx)
+	d := r.data.Dialect()
 	var total int
-	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM (%s)", unionSQL)
+	countSQL := d.RenumberPlaceholders(fmt.Sprintf("SELECT COUNT(*) FROM (%s)", unionSQL))
 	if err := entQueryRowScan(client, ctx, countSQL, args, &total); err != nil {
 		return nil, 0, err
 	}
@@ -40,10 +41,10 @@ func (r *sessionRepo) ListTimelineEventRefsPaged(ctx context.Context, sessionID 
 	if strings.EqualFold(strings.TrimSpace(q.SortOrder), "desc") {
 		orderDir = "DESC"
 	}
-	listSQL := fmt.Sprintf(
+	listSQL := d.RenumberPlaceholders(fmt.Sprintf(
 		"SELECT src_kind, id, occurred_at FROM (%s) ORDER BY occurred_at %s, id %s LIMIT ? OFFSET ?",
 		unionSQL, orderDir, orderDir,
-	)
+	))
 	listArgs := append(append([]any{}, args...), limit, offset)
 	rows, err := client.QueryContext(ctx, listSQL, listArgs...)
 	if err != nil {

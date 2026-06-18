@@ -43,7 +43,7 @@ func (r *l4GraphRepo) UpsertEntity(ctx context.Context, params biz.L4EntityWrite
 	if meta == "" {
 		meta = "{}"
 	}
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_entities (
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_entities (
 		id, scope_type, scope_id, workspace_id, user_id,
 		entity_type, name, name_normalized, aliases_json, description, attributes_json,
 		importance, confidence, use_count, source_kind,
@@ -52,7 +52,7 @@ func (r *l4GraphRepo) UpsertEntity(ctx context.Context, params biz.L4EntityWrite
 	ON CONFLICT(scope_type, scope_id, entity_type, name_normalized) DO UPDATE SET
 		name = excluded.name, description = excluded.description,
 		importance = excluded.importance, confidence = excluded.confidence,
-		metadata_json = excluded.metadata_json, updated_at = excluded.updated_at`,
+		metadata_json = excluded.metadata_json, updated_at = excluded.updated_at`),
 		id,
 		strings.TrimSpace(params.ScopeType),
 		strings.TrimSpace(params.ScopeID),
@@ -84,7 +84,7 @@ func (r *l4GraphRepo) UpsertRelation(ctx context.Context, params biz.L4RelationW
 	}
 	id := newUUIDString()
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_relations (
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_relations (
 		id, scope_type, scope_id, workspace_id,
 		source_id, target_id, relation_type, bidirectional,
 		weight, confidence, importance, use_count,
@@ -93,7 +93,7 @@ func (r *l4GraphRepo) UpsertRelation(ctx context.Context, params biz.L4RelationW
 	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 	ON CONFLICT(scope_type, scope_id, source_id, target_id, relation_type) DO UPDATE SET
 		weight = excluded.weight, confidence = excluded.confidence,
-		updated_at = excluded.updated_at`,
+		updated_at = excluded.updated_at`),
 		id,
 		strings.TrimSpace(params.ScopeType),
 		strings.TrimSpace(params.ScopeID),
@@ -116,7 +116,7 @@ func (r *l4GraphRepo) GetEntityByScopeKey(ctx context.Context, scopeType, scopeI
 	var id, name, nnorm, meta, updatedAt string
 	var conf float64
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
-		`SELECT id, name, name_normalized, confidence, metadata_json, updated_at FROM memory_entities WHERE scope_type = ? AND scope_id = ? AND entity_type = ? AND name_normalized = ? AND status = 'active' AND deleted_at = ''`,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, name, name_normalized, confidence, metadata_json, updated_at FROM memory_entities WHERE scope_type = ? AND scope_id = ? AND entity_type = ? AND name_normalized = ? AND status = 'active' AND deleted_at = ''`),
 		[]any{scopeType, scopeID, entityType, nameNormalized}, &id, &name, &nnorm, &conf, &meta, &updatedAt)
 	if err != nil {
 		if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
@@ -140,7 +140,7 @@ func (r *l4GraphRepo) GetFirstEntityByType(ctx context.Context, scopeType, scope
 	var id, name, nnorm, meta, updatedAt string
 	var conf float64
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
-		`SELECT id, name, name_normalized, confidence, metadata_json, updated_at FROM memory_entities WHERE scope_type = ? AND scope_id = ? AND entity_type = ? AND status = 'active' AND deleted_at = '' LIMIT 1`,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, name, name_normalized, confidence, metadata_json, updated_at FROM memory_entities WHERE scope_type = ? AND scope_id = ? AND entity_type = ? AND status = 'active' AND deleted_at = '' LIMIT 1`),
 		[]any{scopeType, scopeID, entityType}, &id, &name, &nnorm, &conf, &meta, &updatedAt)
 	if err != nil {
 		if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
@@ -165,10 +165,10 @@ func (r *l4GraphRepo) GetEntityRelations(ctx context.Context, entityID string) (
 		return nil, nil
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, scope_type, scope_id, source_id, target_id, relation_type, weight, confidence, metadata_json
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, scope_type, scope_id, source_id, target_id, relation_type, weight, confidence, metadata_json
 		 FROM memory_relations
 		 WHERE status = 'active' AND deleted_at = '' AND (source_id = ? OR target_id = ?)
-		 ORDER BY weight DESC`,
+		 ORDER BY weight DESC`),
 		entityID, entityID)
 	if err != nil {
 		return nil, err
@@ -198,10 +198,10 @@ func (r *l4GraphRepo) GetEntitiesByType(ctx context.Context, scope, entityType s
 		return nil, nil
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, scope_type, scope_id, user_id, entity_type, name, name_normalized, description, importance, confidence, metadata_json
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, scope_type, scope_id, user_id, entity_type, name, name_normalized, description, importance, confidence, metadata_json
 		 FROM memory_entities
 		 WHERE scope_id = ? AND entity_type = ? AND status = 'active' AND deleted_at = ''
-		 ORDER BY importance DESC`,
+		 ORDER BY importance DESC`),
 		scope, entityType)
 	if err != nil {
 		return nil, err
@@ -235,11 +235,11 @@ func (r *l4GraphRepo) SearchEntitiesByName(ctx context.Context, scope, nameQuery
 	}
 	pattern := "%" + strings.ToLower(nameQuery) + "%"
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, scope_type, scope_id, user_id, entity_type, name, name_normalized, description, importance, confidence, metadata_json
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, scope_type, scope_id, user_id, entity_type, name, name_normalized, description, importance, confidence, metadata_json
 		 FROM memory_entities
 		 WHERE scope_id = ? AND name_normalized LIKE ? AND status = 'active' AND deleted_at = ''
 		 ORDER BY importance DESC
-		 LIMIT ?`,
+		 LIMIT ?`),
 		scope, pattern, limit)
 	if err != nil {
 		return nil, err
@@ -265,7 +265,7 @@ func (r *l4GraphRepo) ApplyConfidenceDecay(ctx context.Context, scopeType, scope
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_entities SET confidence = confidence * ?, updated_at = ? WHERE scope_type = ? AND scope_id = ? AND status = 'active' AND deleted_at = '' AND updated_at < ?`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_entities SET confidence = confidence * ?, updated_at = ? WHERE scope_type = ? AND scope_id = ? AND status = 'active' AND deleted_at = '' AND updated_at < ?`),
 		factor, now, scopeType, scopeID, olderThanRFC3339)
 	if err != nil {
 		return 0, err
@@ -287,7 +287,7 @@ func (r *l4GraphRepo) RecordEntityReinforcement(ctx context.Context, entityID st
 		delta = -0.05
 	}
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_entities SET confidence = MIN(1.0, MAX(0.0, confidence + ?)), use_count = use_count + 1, updated_at = ? WHERE id = ?`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_entities SET confidence = MIN(1.0, MAX(0.0, confidence + ?)), use_count = use_count + 1, updated_at = ? WHERE id = ?`),
 		delta, now, entityID)
 	return err
 }
@@ -300,12 +300,12 @@ func (r *l4GraphRepo) GetRecentReinforcementCounts(ctx context.Context, scopeTyp
 	// Query reinforcement counts for entities belonging to the given scope.
 	// Entity IDs follow the pattern "l4-{type}-{scopeID}-..." or "l4-user-{scopeID}".
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT a.target_id, COUNT(*) FROM memory_action_log a
+		r.data.Dialect().RenumberPlaceholders(`SELECT a.target_id, COUNT(*) FROM memory_action_log a
 		 JOIN memory_entities e ON e.id = a.target_id
 		 WHERE a.target_kind = 'entity' AND a.action = 'REINFORCE'
 		   AND e.scope_type = ? AND e.scope_id = ?
 		   AND a.created_at > ?
-		 GROUP BY a.target_id`,
+		 GROUP BY a.target_id`),
 		scopeType, scopeID, cutoff)
 	if err != nil {
 		return nil, err
@@ -348,7 +348,7 @@ func (r *l4GraphRepo) ApplyBusinessConfidenceDecay(ctx context.Context, scopeTyp
 	}
 	cutoff := time.UnixMilli(nowUnixMs - cutoffMs).Format(time.RFC3339Nano)
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_entities SET confidence = confidence * ?, updated_at = ? WHERE scope_type = ? AND scope_id = ? AND status = 'active' AND deleted_at = '' AND updated_at < ? AND confidence > 0.01`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_entities SET confidence = confidence * ?, updated_at = ? WHERE scope_type = ? AND scope_id = ? AND status = 'active' AND deleted_at = '' AND updated_at < ? AND confidence > 0.01`),
 		factor, now, scopeType, scopeID, cutoff)
 	if err != nil {
 		return 0, err
@@ -363,7 +363,7 @@ func (r *l4GraphRepo) ArchiveLowConfidenceEntities(ctx context.Context, scopeTyp
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_entities SET status = 'archived', updated_at = ? WHERE scope_type = ? AND scope_id = ? AND status = 'active' AND deleted_at = '' AND confidence < ?`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_entities SET status = 'archived', updated_at = ? WHERE scope_type = ? AND scope_id = ? AND status = 'active' AND deleted_at = '' AND confidence < ?`),
 		now, scopeType, scopeID, threshold)
 	if err != nil {
 		return 0, err
@@ -378,9 +378,9 @@ func (r *l4GraphRepo) writeActionLog(ctx context.Context, action, targetKind, ta
 	if meta == "" {
 		meta = "{}"
 	}
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_action_log (
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_action_log (
 		id, action, target_kind, target_id, reason, policy_version, turn_id, source_event_ids_json, metadata_json, created_at
-	) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+	) VALUES (?,?,?,?,?,?,?,?,?,?)`),
 		id, action, targetKind, targetID, reason, policyVersion, "", "[]", meta, now)
 	return err
 }

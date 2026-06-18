@@ -44,9 +44,9 @@ func (r *allocationPlanRepo) Create(ctx context.Context, plan *biz.AllocationPla
 	}
 
 	_, err = r.data.RW().Write(ctx).ExecContext(ctx,
-		`INSERT INTO allocation_plans (id, task_plan_id, spirit_session_id, trace_id, allocations_json,
+		r.data.Dialect().RenumberPlaceholders(`INSERT INTO allocation_plans (id, task_plan_id, spirit_session_id, trace_id, allocations_json,
 			status, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
 		plan.ID, plan.TaskPlanID, plan.SpiritSessionID, plan.TraceID, string(allocationsJSON),
 		string(plan.Status), plan.CreatedAt, plan.UpdatedAt,
 	)
@@ -62,9 +62,9 @@ func (r *allocationPlanRepo) GetByID(ctx context.Context, id string) (*biz.Alloc
 		return nil, apierror.BadRequest("ALLOCATION_PLAN", "id is required")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, task_plan_id, spirit_session_id, trace_id, allocations_json,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, task_plan_id, spirit_session_id, trace_id, allocations_json,
 			status, created_at, updated_at
-		 FROM allocation_plans WHERE id = ?`, id)
+		 FROM allocation_plans WHERE id = ?`), id)
 	if err != nil {
 		return nil, entErrToBizErr(err, "ALLOCATION_PLAN")
 	}
@@ -91,10 +91,10 @@ func (r *allocationPlanRepo) Update(ctx context.Context, plan *biz.AllocationPla
 	}
 
 	_, err = r.data.RW().Write(ctx).ExecContext(ctx,
-		`UPDATE allocation_plans SET
+		r.data.Dialect().RenumberPlaceholders(`UPDATE allocation_plans SET
 			task_plan_id=?, spirit_session_id=?, trace_id=?, allocations_json=?,
 			status=?, updated_at=?
-		 WHERE id = ?`,
+		 WHERE id = ?`),
 		plan.TaskPlanID, plan.SpiritSessionID, plan.TraceID, string(allocationsJSON),
 		string(plan.Status), plan.UpdatedAt,
 		plan.ID,
@@ -111,9 +111,9 @@ func (r *allocationPlanRepo) ListBySpiritSessionID(ctx context.Context, spiritSe
 		return nil, nil
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT id, task_plan_id, spirit_session_id, trace_id, allocations_json,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, task_plan_id, spirit_session_id, trace_id, allocations_json,
 			status, created_at, updated_at
-		 FROM allocation_plans WHERE spirit_session_id = ? ORDER BY created_at DESC`, spiritSessionID)
+		 FROM allocation_plans WHERE spirit_session_id = ? ORDER BY created_at DESC`), spiritSessionID)
 	if err != nil {
 		return nil, entErrToBizErr(err, "ALLOCATION_PLAN")
 	}

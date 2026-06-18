@@ -77,7 +77,7 @@ func (r *l2EpisodeRepo) InsertL1ArchiveEpisode(ctx context.Context, in biz.L1Arc
 		confidence = 0.6
 	}
 	consolidationStatus := "consolidated"
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_episodes (
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_episodes (
 		id, session_id, agent_id, l1_task_id, episode_kind, title, goal,
 		outcome, outcome_summary, importance, confidence,
 		key_decisions_json, key_artifacts_json, l1_snapshot_json,
@@ -92,7 +92,7 @@ func (r *l2EpisodeRepo) InsertL1ArchiveEpisode(ctx context.Context, in biz.L1Arc
 		l1_snapshot_json = excluded.l1_snapshot_json,
 		l1_task_id = excluded.l1_task_id,
 		episode_kind = excluded.episode_kind,
-		ended_at = excluded.ended_at`,
+		ended_at = excluded.ended_at`),
 		id,
 		strings.TrimSpace(in.SessionID),
 		strings.TrimSpace(in.AgentID),
@@ -127,7 +127,7 @@ func (r *l2EpisodeRepo) ListEpisodeRowsForRecall(ctx context.Context, agentID, s
 	}
 	q += ` ORDER BY created_at DESC LIMIT ?`
 	args = append(args, lim)
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +277,7 @@ func (r *l2EpisodeRepo) recallL2WithVectorStore(ctx context.Context, agentID, se
 		args[i+1] = id
 	}
 	q := fmt.Sprintf(`%s WHERE agent_id = ? AND id IN (%s)`, sqlEpisodeSelect, strings.Join(placeholders, ","))
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, err
 	}

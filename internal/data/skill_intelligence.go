@@ -285,7 +285,7 @@ WHERE skill_id = ? AND created_at >= ?`)
 
 	// P95: for small row counts (<20), load durations and compute in Go;
 	// for larger sets, use SQL ORDER BY + OFFSET approach.
-	const countQuery = `SELECT COUNT(*) FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND duration_ms > 0`
+	countQuery := d.RenumberPlaceholders(`SELECT COUNT(*) FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND duration_ms > 0`)
 	var durCount int
 	cRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, countQuery, skillID, sinceStr)
 	if err != nil {
@@ -305,7 +305,7 @@ WHERE skill_id = ? AND created_at >= ?`)
 		metrics.P95DurationMS = 0
 	} else if durCount < 20 {
 		// Small set: load all durations and compute P95 in Go.
-		const durQuery = `SELECT duration_ms FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND duration_ms > 0 ORDER BY duration_ms ASC`
+		durQuery := d.RenumberPlaceholders(`SELECT duration_ms FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND duration_ms > 0 ORDER BY duration_ms ASC`)
 		dRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, durQuery, skillID, sinceStr)
 		if err != nil {
 			return nil, err
@@ -329,7 +329,7 @@ WHERE skill_id = ? AND created_at >= ?`)
 		if offset >= durCount {
 			offset = durCount - 1
 		}
-		const p95Query = `SELECT duration_ms FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND duration_ms > 0 ORDER BY duration_ms ASC LIMIT 1 OFFSET ?`
+		p95Query := d.RenumberPlaceholders(`SELECT duration_ms FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND duration_ms > 0 ORDER BY duration_ms ASC LIMIT 1 OFFSET ?`)
 		var p95 int
 		pRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, p95Query, skillID, sinceStr, offset)
 		if err != nil {
@@ -375,9 +375,10 @@ func extractTokenTotal(tokenUsage map[string]any) (int, bool) {
 
 func (r *SkillIntelligenceRepo) GetFailureStats(ctx context.Context, skillID string, since time.Time) (*biz.SkillFailureStats, error) {
 	sinceStr := since.UTC().Format(time.RFC3339)
+	d := r.data.Dialect()
 
 	// Count total failures.
-	const failCountQuery = `SELECT COUNT(*) FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND outcome != 'success' AND NOT (outcome = '' AND (status = 'completed' OR status = 'success'))`
+	failCountQuery := d.RenumberPlaceholders(`SELECT COUNT(*) FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND outcome != 'success' AND NOT (outcome = '' AND (status = 'completed' OR status = 'success'))`)
 	var failureCount int
 	fRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, failCountQuery, skillID, sinceStr)
 	if err != nil {
@@ -394,14 +395,14 @@ func (r *SkillIntelligenceRepo) GetFailureStats(ctx context.Context, skillID str
 	}
 
 	// Top error codes via SQL GROUP BY.
-	const topCodesQuery = `SELECT
+	topCodesQuery := d.RenumberPlaceholders(`SELECT
   COALESCE(error_code, 'unknown') as error_code,
   COUNT(*) as count
 FROM skill_invocation
 WHERE skill_id = ? AND created_at >= ? AND outcome != 'success' AND NOT (outcome = '' AND (status = 'completed' OR status = 'success'))
 GROUP BY error_code
 ORDER BY count DESC
-LIMIT 5`
+LIMIT 5`)
 	cRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, topCodesQuery, skillID, sinceStr)
 	if err != nil {
 		return nil, err

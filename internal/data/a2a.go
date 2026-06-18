@@ -120,6 +120,9 @@ func EnsureA2ASchema(ctx context.Context, db *sql.DB, d Dialect) error {
 // --- Agent Card ---
 
 func (r *a2aRepo) UpsertAgentCard(ctx context.Context, card biz.A2AAgentCard) (biz.A2AAgentCard, error) {
+	if r == nil || r.data == nil {
+		return biz.A2AAgentCard{}, apierror.Internal("A2A", "a2a db nil")
+	}
 	caps, err := json.Marshal(card.Capabilities)
 	if err != nil {
 		return biz.A2AAgentCard{}, fmt.Errorf("marshal capabilities: %w", err)
@@ -145,6 +148,9 @@ func (r *a2aRepo) UpsertAgentCard(ctx context.Context, card biz.A2AAgentCard) (b
 }
 
 func (r *a2aRepo) GetAgentCard(ctx context.Context, agentID string) (biz.A2AAgentCard, error) {
+	if r == nil || r.data == nil {
+		return biz.A2AAgentCard{}, apierror.Internal("A2A", "a2a db nil")
+	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`SELECT agent_id,display_name,workspace,enabled,capabilities,updated_at FROM a2a_agent_cards WHERE agent_id=?`), agentID)
 	if err != nil {
@@ -154,7 +160,7 @@ func (r *a2aRepo) GetAgentCard(ctx context.Context, agentID string) (biz.A2AAgen
 	if !rows.Next() {
 		return biz.A2AAgentCard{}, biz.ErrNotFound
 	}
-	card, err := scanA2ACard(rows, r.lg)
+	card, err := scanA2ACard(rows)
 	if err != nil {
 		return biz.A2AAgentCard{}, entErrToBizErr(err, "A2A")
 	}
@@ -162,6 +168,9 @@ func (r *a2aRepo) GetAgentCard(ctx context.Context, agentID string) (biz.A2AAgen
 }
 
 func (r *a2aRepo) ListEnabledCards(ctx context.Context, workspace, capability string) ([]biz.A2AAgentCard, error) {
+	if r == nil || r.data == nil {
+		return nil, apierror.Internal("A2A", "a2a db nil")
+	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`SELECT agent_id,display_name,workspace,enabled,capabilities,updated_at
 		 FROM a2a_agent_cards WHERE enabled=1 AND (workspace=? OR ?='')
@@ -172,7 +181,7 @@ func (r *a2aRepo) ListEnabledCards(ctx context.Context, workspace, capability st
 	defer rows.Close()
 	var out []biz.A2AAgentCard
 	for rows.Next() {
-		card, err := scanA2ACard(rows, r.lg)
+		card, err := scanA2ACard(rows)
 		if err != nil {
 			return nil, entErrToBizErr(err, "A2A")
 		}
@@ -239,6 +248,9 @@ func (r *a2aRepo) MapEndpointEnabled(ctx context.Context, agentIDs []string) (ma
 // --- Invocations ---
 
 func (r *a2aRepo) CreateInvocation(ctx context.Context, inv biz.A2AInvocation) (biz.A2AInvocation, error) {
+	if r == nil || r.data == nil {
+		return biz.A2AInvocation{}, apierror.Internal("A2A", "a2a db nil")
+	}
 	t := time.Now().UTC().Format(time.RFC3339)
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`INSERT INTO a2a_invocations
@@ -251,6 +263,9 @@ func (r *a2aRepo) CreateInvocation(ctx context.Context, inv biz.A2AInvocation) (
 }
 
 func (r *a2aRepo) UpdateInvocation(ctx context.Context, inv biz.A2AInvocation) error {
+	if r == nil || r.data == nil {
+		return apierror.Internal("A2A", "a2a db nil")
+	}
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`UPDATE a2a_invocations SET status=?,result_json=?,error_message=?,duration_ms=? WHERE id=?`),
 		inv.Status, inv.ResultJSON, inv.ErrorMessage, inv.DurationMs, inv.ID)
@@ -260,6 +275,9 @@ func (r *a2aRepo) UpdateInvocation(ctx context.Context, inv biz.A2AInvocation) e
 // --- Audit ---
 
 func (r *a2aRepo) InsertAudit(ctx context.Context, entry biz.A2AAuditEntry) error {
+	if r == nil || r.data == nil {
+		return apierror.Internal("A2A", "a2a db nil")
+	}
 	if entry.CreatedAt == "" {
 		entry.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
@@ -272,6 +290,9 @@ func (r *a2aRepo) InsertAudit(ctx context.Context, entry biz.A2AAuditEntry) erro
 }
 
 func (r *a2aRepo) ListAudit(ctx context.Context, callerID, calleeID string, limit, offset int) ([]biz.A2AAuditEntry, int, error) {
+	if r == nil || r.data == nil {
+		return nil, 0, apierror.Internal("A2A", "a2a db nil")
+	}
 	var total int
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
 		r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(*) FROM a2a_audit WHERE (caller_agent_id=? OR ?='') AND (callee_agent_id=? OR ?='')`),
@@ -300,6 +321,9 @@ func (r *a2aRepo) ListAudit(ctx context.Context, callerID, calleeID string, limi
 }
 
 func (r *a2aRepo) DiscoverRemoteCard(ctx context.Context, in biz.RemoteCardDiscoverInput) (biz.A2AAgentCard, error) {
+	if r == nil {
+		return biz.A2AAgentCard{}, apierror.Internal("A2A", "a2a repo nil")
+	}
 	r.lg.Info("A2A discover remote card", loggateway.StepID("a2a.discover_remote_card"), loggateway.Str("remote_url", in.RemoteURL))
 	card, err := a2apkg.FetchRemoteAgentCard(ctx, in.RemoteURL, in.AuthType, in.AuthConfigJSON, r.lg)
 	if err != nil {
@@ -363,7 +387,7 @@ func (r *a2aRepo) ListRemoteAgents(ctx context.Context, workspace string) ([]biz
 	defer rows.Close()
 	var out []biz.A2ARemoteAgent
 	for rows.Next() {
-		item, err := scanRemoteAgent(rows, r.lg)
+		item, err := scanRemoteAgent(rows)
 		if err != nil {
 			return nil, entErrToBizErr(err, "A2A")
 		}
@@ -400,7 +424,7 @@ func (r *a2aRepo) GetRemoteAgent(ctx context.Context, id string) (biz.A2ARemoteA
 	if !rows.Next() {
 		return biz.A2ARemoteAgent{}, biz.ErrNotFound
 	}
-	agent, err := scanRemoteAgent(rows, r.lg)
+	agent, err := scanRemoteAgent(rows)
 	if err != nil {
 		return biz.A2ARemoteAgent{}, entErrToBizErr(err, "A2A")
 	}
@@ -426,7 +450,7 @@ func (r *a2aRepo) UpdateRemoteAgentHealth(ctx context.Context, id string, ok boo
 	return entErrToBizErr(err, "A2A")
 }
 
-func scanRemoteAgent(row scannable, lg loggateway.Logger) (biz.A2ARemoteAgent, error) {
+func scanRemoteAgent(row scannable) (biz.A2ARemoteAgent, error) {
 	var agent biz.A2ARemoteAgent
 	var enabled int
 	var healthOK int
@@ -439,7 +463,7 @@ func scanRemoteAgent(row scannable, lg loggateway.Logger) (biz.A2ARemoteAgent, e
 	agent.Enabled = enabled == 1
 	agent.LastHealthOK = healthOK == 1
 	if err := json.Unmarshal([]byte(cardJSON), &agent.DiscoveredCard); err != nil {
-		lg.Warn("a2a json unmarshal failed", loggateway.StepID("data.a2a"), loggateway.Err(err))
+		return biz.A2ARemoteAgent{}, fmt.Errorf("unmarshal discovered card: %w", err)
 	}
 	if agent.DiscoveredCard.AgentID == "" {
 		agent.DiscoveredCard.AgentID = agent.ID
@@ -449,7 +473,7 @@ func scanRemoteAgent(row scannable, lg loggateway.Logger) (biz.A2ARemoteAgent, e
 
 // --- helpers ---
 
-func scanA2ACard(row scannable, lg loggateway.Logger) (biz.A2AAgentCard, error) {
+func scanA2ACard(row scannable) (biz.A2AAgentCard, error) {
 	var card biz.A2AAgentCard
 	var capJSON string
 	var enabled int
@@ -458,7 +482,7 @@ func scanA2ACard(row scannable, lg loggateway.Logger) (biz.A2AAgentCard, error) 
 	}
 	card.Enabled = enabled == 1
 	if err := json.Unmarshal([]byte(capJSON), &card.Capabilities); err != nil {
-		lg.Warn("a2a json unmarshal failed", loggateway.StepID("data.a2a"), loggateway.Err(err))
+		return biz.A2AAgentCard{}, fmt.Errorf("unmarshal capabilities: %w", err)
 	}
 	return card, nil
 }

@@ -33,7 +33,7 @@ func (r *skillProposalRepo) ListByAgent(ctx context.Context, agentID string, sta
 		q += ` LIMIT ? OFFSET ?`
 		args = append(args, limit, offset)
 	}
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "SKILL_EVO")
 	}
@@ -64,8 +64,8 @@ func (r *skillProposalRepo) ListByAgent(ctx context.Context, agentID string, sta
 }
 
 func (r *skillProposalRepo) GetByID(ctx context.Context, id string) (biz.SkillProposal, error) {
-	q := `SELECT id, agent_id, pattern_hash, pattern_desc, skill_name, skill_md, status, approved_by, rejected_by, created_at, approved_at
-	       FROM skill_proposals WHERE id = ?`
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT id, agent_id, pattern_hash, pattern_desc, skill_name, skill_md, status, approved_by, rejected_by, created_at, approved_at
+	       FROM skill_proposals WHERE id = ?`)
 	var p biz.SkillProposal
 	var createdAt string
 	var approvedAt *string
@@ -90,8 +90,8 @@ func (r *skillProposalRepo) GetByID(ctx context.Context, id string) (biz.SkillPr
 }
 
 func (r *skillProposalRepo) GetByPatternHash(ctx context.Context, agentID string, hash string) (*biz.SkillProposal, error) {
-	q := `SELECT id, agent_id, pattern_hash, pattern_desc, skill_name, skill_md, status, approved_by, rejected_by, created_at, approved_at
-	       FROM skill_proposals WHERE agent_id = ? AND pattern_hash = ? ORDER BY created_at DESC LIMIT 1`
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT id, agent_id, pattern_hash, pattern_desc, skill_name, skill_md, status, approved_by, rejected_by, created_at, approved_at
+	       FROM skill_proposals WHERE agent_id = ? AND pattern_hash = ? ORDER BY created_at DESC LIMIT 1`)
 	var p biz.SkillProposal
 	var createdAt string
 	var approvedAt *string
@@ -124,8 +124,8 @@ func (r *skillProposalRepo) Create(ctx context.Context, p biz.SkillProposal) (bi
 		s := p.ApprovedAt.UTC().Format(time.RFC3339)
 		approvedAt = &s
 	}
-	q := `INSERT INTO skill_proposals (id, agent_id, pattern_hash, pattern_desc, skill_name, skill_md, status, approved_by, rejected_by, created_at, approved_at)
-	      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	q := r.data.Dialect().RenumberPlaceholders(`INSERT INTO skill_proposals (id, agent_id, pattern_hash, pattern_desc, skill_name, skill_md, status, approved_by, rejected_by, created_at, approved_at)
+	      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q,
 		p.ID, p.AgentID, p.PatternHash, p.PatternDesc, p.SkillName, p.SkillMD, string(p.Status),
 		p.ApprovedBy, p.RejectedBy,
@@ -152,6 +152,7 @@ func (r *skillProposalRepo) UpdateStatus(ctx context.Context, id string, status 
 	q += ` WHERE id = ?`
 	args = append(args, id)
 
+	d := r.data.Dialect()
 	writeDB := r.data.RWDB().WriteHandle()
 	tx, txErr := writeDB.BeginTx(ctx, nil)
 	if txErr != nil {
@@ -159,14 +160,14 @@ func (r *skillProposalRepo) UpdateStatus(ctx context.Context, id string, status 
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.ExecContext(ctx, q, args...); err != nil {
+	if _, err := tx.ExecContext(ctx, d.RenumberPlaceholders(q), args...); err != nil {
 		return biz.SkillProposal{}, entErrToBizErr(err, "SKILL_EVO")
 	}
 
 	var p biz.SkillProposal
 	var createdAt string
 	var approvedAt *string
-	selectQ := `SELECT id, agent_id, pattern_hash, pattern_desc, skill_name, skill_md, status, approved_by, rejected_by, created_at, approved_at FROM skill_proposals WHERE id = ?`
+	selectQ := d.RenumberPlaceholders(`SELECT id, agent_id, pattern_hash, pattern_desc, skill_name, skill_md, status, approved_by, rejected_by, created_at, approved_at FROM skill_proposals WHERE id = ?`)
 	if err := tx.QueryRowContext(ctx, selectQ, id).Scan(&p.ID, &p.AgentID, &p.PatternHash, &p.PatternDesc, &p.SkillName, &p.SkillMD, &p.Status, &p.ApprovedBy, &p.RejectedBy, &createdAt, &approvedAt); err != nil {
 		return biz.SkillProposal{}, entErrToBizErr(err, "SKILL_EVO")
 	}

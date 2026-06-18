@@ -27,9 +27,9 @@ func (r *pluginRunRepo) Insert(ctx context.Context, run biz.PluginRun) error {
 	if now == "" {
 		now = time.Now().UTC().Format(time.RFC3339)
 	}
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 INSERT INTO plugin_runs (id, plugin_key, plugin_id, session_id, agent_id, callback_point, status, duration_ms, detail_json, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		run.ID, run.PluginKey, run.PluginID, run.SessionID, run.AgentID, run.CallbackPoint, run.Status, run.DurationMS, run.DetailJSON, now,
 	)
 	return err
@@ -90,13 +90,13 @@ func (r *pluginRunRepo) List(ctx context.Context, q biz.PluginRunQuery) (biz.Plu
 		args = append(args, k)
 	}
 	var total int32
-	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), "SELECT COUNT(*) FROM plugin_runs"+where, args, &total); err != nil {
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders("SELECT COUNT(*) FROM plugin_runs"+where), args, &total); err != nil {
 		return biz.PluginRunListResult{}, err
 	}
 	listArgs := append(append([]any{}, args...), limit, offset)
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, `
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 SELECT id, plugin_key, plugin_id, session_id, agent_id, callback_point, status, duration_ms, detail_json, created_at
-FROM plugin_runs`+where+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...)
+FROM plugin_runs`+where+` ORDER BY created_at DESC LIMIT ? OFFSET ?`), listArgs...)
 	if err != nil {
 		return biz.PluginRunListResult{}, err
 	}

@@ -19,7 +19,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 **代码锚点**（已校验存在）：
 - `api/kratos/chat/v1/chat.proto` — Chat RPC（含 `EnqueueUserMessage` → `POST /v1/chat/enqueue`）
 - `internal/runtime/run_registry.go` — 会话级 active run / cancel / run status
-- `internal/runtime/pending_queue.go` — PendingMessageQueue FIFO
+- `internal/runtime/pending_queue.go` — PendingMessageQueue FIFO（T1.4: 支持 snapshot 持久化，`NewPendingMessageQueueWithDirAndLogger`）
 - `internal/server/ws.go` — WebSocket（`user_message` / `cancel` / `enqueue_message`）
 - `internal/server/ws_message_handler.go` — WS 上行消息分发（user_message/enqueue_message/cancel/ping/subscribe/unsubscribe/enable_log）
 - `internal/biz/chat_usecase.go` — Follow-up Queue 编排（EnqueueUserMessage / Pending CRUD）
@@ -81,7 +81,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 1. ~~Turn starting 并行 turn~~ ✅ `CHAT_TURN_BUSY` + `StoreCancelable`
 2. ~~Channel queued 启发式~~ ✅ `ErrTurnMessageQueued`
-3. ~~`processPendingQueue` 竞态~~ ✅ lock + 重新入队
+3. ~~`processPendingQueue` 竞态~~ ✅ lock + 重新入队（T1.3 进一步改为迭代式循环 + inPendingLoop 标志，消除 goroutine 递归）
 
 详见 [Chat Flow Full Review](../review/2026-05-23-Chat-Flow-Full-Review.md)
 
@@ -183,6 +183,10 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 18 | RunRegistry + EnqueueUserMessage | P0 | ✅ |
 | 19 | 执行过程卡片 v2（EnvelopeToolCall v2、ChatExecutionCard） | P0 | ✅ |
 | 20 | 执行卡片持久化 + catalog 名 + Team 标识 + 流式修复 | P1 | ✅ |
+| 21 | **T1.1** 移除 24h hard deadline + Team/pending/resumeAwait 路径统一 WithCancel（No-Timeout 原则） | P0 | ✅ Sprint 1 |
+| 22 | **T1.2** LLM 无限重试 + llm_retry 事件 + RetryCallback 回调模式 | P0 | ✅ Sprint 1 |
+| 23 | **T1.3** processPendingQueue 迭代式循环（替代 goroutine 递归）+ inPendingLoop 标志 | P0 | ✅ Sprint 1 |
+| 24 | **T1.4** PendingMessageQueue snapshot 持久化（进程重启恢复） | P0 | ✅ Sprint 1 |
 
 ---
 
@@ -450,7 +454,7 @@ cd web && npx quasar build
 |------|-----|------|------|
 | M55 Phase E | CC-E-01 | @ 引用上下文注入 | 未启动 |
 | M55 Phase E | CC-E-02 | diff Apply 卡片 | 未启动 |
-| M55 Phase F | CC-F-01 | 24h Durable Job（Worker deadline） | 未启动 |
+| M55 Phase F | CC-F-01 | 24h Durable Job（Worker deadline） | ✅ T1.1 移除（No-Timeout 原则：任务无时间上限） |
 | M55 Phase F | CC-F-02 | invocation restore | 未启动 |
 | M56 BLO-1 | BLO-1 | Intent-Aware Admission | 需求草案 |
 | M56 BLO-2 | BLO-2 | Multi-Signal Escalation | 需求草案 |

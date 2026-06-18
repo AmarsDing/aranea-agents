@@ -93,7 +93,7 @@ func (r *MemoryJobDeadLetterRepo) WriteMemoryDeadLetter(
 	now := time.Now().UnixMilli()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
+	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 UPDATE memory_job_deadletter
    SET attempts = attempts + 1,
        last_error = ?,
@@ -102,17 +102,17 @@ UPDATE memory_job_deadletter
    AND app_name = ?
    AND priority = ?
    AND state = 'pending'
-   AND attempts < 3`, lastErr, now, req.SessionID, req.AppName, int(req.Priority))
+   AND attempts < 3`), lastErr, now, req.SessionID, req.AppName, int(req.Priority))
 	if err == nil {
 		if n, _ := res.RowsAffected(); n > 0 {
 			return
 		}
 	}
-	_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
+	_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 INSERT INTO memory_job_deadletter
   (enqueued_at, failed_at, session_id, app_name, user_id, feedback_msg_id,
    payload_json, drop_reason, priority, attempts, last_error, state)
-VALUES (?,?,?,?,?,?,?,?,?,0,?,'pending')`,
+VALUES (?,?,?,?,?,?,?,?,?,0,?,'pending')`),
 		now, now,
 		req.SessionID, req.AppName, req.UserID, req.FeedbackMessageID,
 		string(payload), string(reason), int(req.Priority), lastErr,
@@ -130,12 +130,12 @@ func (r *MemoryJobDeadLetterRepo) ListDeadLetters(ctx context.Context, state str
 	if limit <= 0 {
 		limit = 100
 	}
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, `
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 SELECT id, enqueued_at, failed_at, session_id, app_name, drop_reason, priority, attempts, state, last_error
 FROM memory_job_deadletter
 WHERE state = ?
 ORDER BY enqueued_at ASC
-LIMIT ?`, state, limit)
+LIMIT ?`), state, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -159,14 +159,14 @@ LIMIT ?`, state, limit)
 // MarkDeadLetterReplayed marks a dead-letter job as replayed.
 func (r *MemoryJobDeadLetterRepo) MarkDeadLetterReplayed(ctx context.Context, id int64) error {
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_job_deadletter SET state='replayed', attempts=attempts+1 WHERE id=?`, id)
+		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_job_deadletter SET state='replayed', attempts=attempts+1 WHERE id=?`), id)
 	return err
 }
 
 // MarkDeadLetterAbandoned marks a dead-letter job as permanently abandoned.
 func (r *MemoryJobDeadLetterRepo) MarkDeadLetterAbandoned(ctx context.Context, id int64, reason string) error {
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE memory_job_deadletter SET state='abandoned', last_error=?, attempts=attempts+1 WHERE id=?`, reason, id)
+		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_job_deadletter SET state='abandoned', last_error=?, attempts=attempts+1 WHERE id=?`), reason, id)
 	return err
 }
 
@@ -177,9 +177,9 @@ func (r *MemoryJobDeadLetterRepo) GetDeadLetter(ctx context.Context, id int64) (
 	}
 	var row biz.MemoryDeadLetterEntry
 	var enqueuedMs, failedMs int64
-	err := queryRowScan(ctx, db, `
+	err := queryRowScan(ctx, db, r.data.Dialect().RenumberPlaceholders(`
 SELECT id, enqueued_at, failed_at, session_id, app_name, drop_reason, priority, attempts, state, last_error
-FROM memory_job_deadletter WHERE id=?`, []any{id},
+FROM memory_job_deadletter WHERE id=?`), []any{id},
 		&row.ID, &enqueuedMs, &failedMs,
 		&row.SessionID, &row.AppName, &row.DropReason,
 		&row.Priority, &row.Attempts, &row.State, &row.LastError)
@@ -236,8 +236,8 @@ func (r *MemoryJobDeadLetterRepo) ReplayDeadLetterIntoQueue(
 	var priority int
 	var enqueuedMs int64
 	err := queryRowScan(ctx, db,
-		`SELECT payload_json, session_id, app_name, user_id, feedback_msg_id, priority, enqueued_at
-         FROM memory_job_deadletter WHERE id=? AND state='pending'`, []any{id},
+		r.data.Dialect().RenumberPlaceholders(`SELECT payload_json, session_id, app_name, user_id, feedback_msg_id, priority, enqueued_at
+         FROM memory_job_deadletter WHERE id=? AND state='pending'`), []any{id},
 		&payloadJSON, &sessionID, &appName, &userID, &feedbackMsgID, &priority, &enqueuedMs)
 	if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 		return nil // already replayed or abandoned
