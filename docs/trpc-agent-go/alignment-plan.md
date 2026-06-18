@@ -66,8 +66,8 @@ Extended（独立，ToolPipe 依赖 Tool）
 | P1-2 | Event | 贡献 EventWAL（WBPF） | 贡献回框架 | 框架获得事件持久化+先写后发能力 | ✅ 已完成 |
 | P1-3 | Event | 贡献事件可靠性分级 | 贡献回框架 | 框架获得 Critical/Important/Informational 三级可靠性保证 | ✅ 已完成 |
 | P1-4 | Tool | 启用 ToolPipe Extension | 启用框架功能 | Token 消耗降低 50-90%（框架 benchmark 数据） | ✅ 已完成 |
-| P1-5 | Knowledge | 实现 VectorStore 适配器 | 新增适配层 | 对接框架 Knowledge 接口，统一向量搜索 | 🟡 阻塞：框架 `vectorstore.VectorStore` 接口无消费者（详见 §十一/B-1） |
-| P1-6 | Knowledge | 实现 Embedder 适配器 | 新增适配层 | 对接框架 Embedder 接口，统一嵌入生成 | 🟡 阻塞：框架 `embedder.Embedder` 接口无消费者（详见 §十一/B-2） |
+| P1-5 | Knowledge | 实现 VectorStore 适配器 | 新增适配层 | 对接框架 Knowledge 接口，统一向量搜索 | ❌ 已删除（永久阻塞：框架 `vectorstore.VectorStore` 接口无消费者，死代码已删，详见 §十一/B-1） |
+| P1-6 | Knowledge | 实现 Embedder 适配器 | 新增适配层 | 对接框架 Embedder 接口，统一嵌入生成 | ❌ 已删除（永久阻塞：框架 `embedder.Embedder` 接口无消费者，死代码已删，详见 §十一/B-2） |
 | P1-7 | Evaluation | 启用框架 LLM Judge | 启用框架功能 | 替换自建 LLM-as-Judge，减少维护 | ✅ 已完成 |
 | P1-8 | Evaluation | 启用 Callbacks | 启用框架功能 | 评估流程获得框架 Callback 能力 | ✅ 已完成 |
 | P1-9 | Prompt | 启用 PromptIter 替换 PromptRefiner | 启用框架功能 | 替换自建 PromptRefiner，获得框架迭代优化能力 | 🟡 阻塞：框架协作者缺失（"编译错误"经核实为误判，详见 §十一/B-3） |
@@ -105,7 +105,7 @@ P1-9 (PromptIter) ──→ 独立
 | P2-9 | Tool | DeferredCallableTool 实现 DeferredTool | 替换自建实现 | P1-4 ToolPipe | ✅ 已完成（`internal/tools/deferred/deferred_tool.go` 实现 `ShouldDefer()` 满足 `trpctool.DeferredTool` 接口） |
 | P2-10 | Tool | 贡献 Circuit Breaker | 贡献回框架 | 无 | ⏭ 跳过（不贡献回框架） |
 | P2-11 | Tool | 贡献 Confirmation Gate | 贡献回框架 | 无 | ⏭ 跳过（不贡献回框架） |
-| P2-12 | Tool | ToolResultGate + ToolPipe 协调 | 新增适配层 | P1-4 ToolPipe | ✅ 已完成（功能已通过 `internal/agent/tool_result_gate_hook.go` 的 BeforeModelHook 接入，`callback_chain.go:62` 调用；`toolresult_gate_adapter.go` 为冗余实现，已标记 TECH-DEBT） |
+| P2-12 | Tool | ToolResultGate + ToolPipe 协调 | 新增适配层 | P1-4 ToolPipe | ✅ 已完成（功能已通过 `internal/agent/tool_result_gate_hook.go` 的 BeforeModelHook 接入，`callback_chain.go:62` 调用；`toolresult_gate_adapter.go` 为冗余实现，死代码已删，遵循 CS-B2） |
 
 ### 3.2 独立 P2 项（无前置依赖）
 
@@ -120,15 +120,15 @@ P1-9 (PromptIter) ──→ 独立
 | P2-19 | Team | 借鉴 Swarm 安全机制 | 启用框架功能 | ✅ 已实现（TECH-DEBT：未接入生产路径，项目使用自建安全策略） |
 | P2-20 | Team | 借鉴 Session 隔离 | 启用框架功能 | ✅ 已实现（TECH-DEBT：未接入生产路径，项目使用自建会话隔离机制） |
 | P2-21 | Knowledge | 实现 Knowledge 接口 | 新增适配层 | ✅ 已完成 |
-| P2-22 | Knowledge | 使用框架 SearchTool | 启用框架功能 | 🟡 阻塞：双重注册冲突 + 丢失动态 collection 限定能力（详见 §十一/B-4） |
+| P2-22 | Knowledge | 使用框架 SearchTool | 启用框架功能 | 🟡 阻塞：双重注册冲突 + 丢失动态 collection 限定能力（已补充 TECH-DEBT(B-4) 标记，详见 §十一/B-4） |
 | P2-23 | Knowledge | 贡献 HybridRetriever | 贡献回框架 | ⏭ 跳过（不贡献回框架） |
 | P2-24 | Knowledge | 贡献 AdaptiveRouter | 贡献回框架 | ⏭ 跳过（不贡献回框架） |
 | P2-25 | Evaluation | 启用 EvalSet Recorder | 启用框架功能 | 评估集持久化走框架 |
 | P2-26 | Evaluation | 启用 PromptIter | 启用框架功能 | 🟡 阻塞：与 P1-9 同一阻塞点，框架 `promptiter` 需 5 个协作者（详见 §十一/B-3） |
 | P2-27 | Skill | 启用提示缓存优化 | 启用框架功能 | ✅ 已启用（`internal/agent/trpc_build.go:160` 调用 `WithSkillsLoadedContentInToolResults(true)`，渐进加载模式下已启用） |
 | P2-28 | Skill | 贡献 DBRepositoryAdapter | 贡献回框架 | ✅ 已完成（internal 适配层，非框架贡献） |
-| P2-29 | Server | 启用 AG-UI 协议端点 | 启用框架功能 | ✅ 已实现（TECH-DEBT：未接入生产路径，生产使用 `internal/service/agui_compat.go` 包装层解决 Runner per-session 问题） |
-| P2-30 | Server | 启用 A2A 扩展点 | 启用框架功能 | ✅ 已实现（TECH-DEBT：未接入生产路径，生产使用 `internal/service/a2a_extension_compat.go` 包装层支持懒加载） |
+| P2-29 | Server | 启用 AG-UI 协议端点 | 启用框架功能 | ✅ 已完成（生产路径通过 `internal/service/agui_compat.go` 的 `AGUICompatService` 包装层接入，解决 Runner per-session 问题；server 层直接适配器死代码已删） |
+| P2-30 | Server | 启用 A2A 扩展点 | 启用框架功能 | ✅ 已完成（生产路径通过 `internal/service/a2a_extension_compat.go` 的 `A2AExtensionCompatService` 包装层接入，支持懒加载 + AgentCard 构建；server 层直接适配器死代码已删） |
 | P2-31 | Extended | 启用 TodoEnforcer 扩展 | 启用框架功能 | ✅ 已完成（`trpc_build.go` 条件启用：仅当 Agent 已有 `todo_write` 工具时追加 `NewTodoEnforcerOption`，避免向不使用 todo 的 Agent 注入工具。框架 earlier-wins 去重保证用户工具优先，enforcer 通过 session state key `temp:todos:<branch>` 追踪状态） |
 | P2-32 | Prompt | 启用 prompt.Text.Render() | 启用框架功能 | 🟡 阻塞：设计前提不匹配（模板渲染 vs 结构化拼接，详见 §十一/B-5） |
 | P2-33 | Prompt | 启用 state.Render() | 启用框架功能 | 🟡 阻塞：设计前提不匹配（模板渲染 vs RuntimeState 注入，详见 §十一/B-6） |
@@ -168,7 +168,7 @@ P1-9 (PromptIter) ──→ 独立
 | Agent | 启用 WithKnowledge | Agent 获得框架知识注入 | ✅ 已完成（KnowledgeAdapter 桥接项目 Retriever 到框架 knowledge.Knowledge） |
 | Agent | 启用安全限制 | Agent 获得框架安全保护 | ✅ 已完成（SafetyLimitAdapter 启用 MaxLLMCalls/MaxToolIterations） |
 | Agent | 启用时间注入 | Agent 获得框架时间感知 | |
-| Agent | 评估 ActivatableToolSets vs DeferredManager | 工具集管理策略统一 | |
+| Agent | 评估 ActivatableToolSets vs DeferredManager | 工具集管理策略统一 | ✅ 已完成（评估结论：保持自建 DeferredManager，详见 `docs/trpc-agent-go/02-agent.md` 对齐项 #4。两者功能重叠但机制不同，DeferredManager 更适合项目场景） |
 | Agent | 贡献 BuildCache | 框架获得 LRU+singleflight 缓存 | ⏭ 跳过（不贡献回框架） |
 | Agent | 贡献 AgentFactory 增强 | 框架获得 Agent 工厂增强 | ⏭ 跳过（不贡献回框架） |
 | Runner | 评估 WithPersistInterruptedAssistant | 中断恢复能力 | ✅ 已完成（chat_orchestrator_durable.go 启用） |
@@ -207,7 +207,7 @@ P1-9 (PromptIter) ──→ 独立
 | 模块 | 对齐项 | 协同收益 |
 |------|--------|---------|
 | Model | 暴露 TailoringStrategy | Token 裁剪策略可配置 | ✅ 已完成（resolveTailoringStrategy 函数 + catalog 字段注释） |
-| Model | 暴露 TokenTailoringConfig | 裁剪参数可配置 |
+| Model | 暴露 TokenTailoringConfig | 裁剪参数可配置 | ✅ 已完成（`internal/provider/catalog.go` 暴露 `EnableTokenTailoring`/`TokenTailoringStrategy`/`TokenTailoringSafetyMargin` 三个字段；`internal/provider/trpc_llm.go:282` 调用 `trpcprovider.WithTokenTailoringConfig` 注入框架） |
 | Model | 贡献 Metrics Model | 框架获得模型指标 | ⏭ 跳过（不贡献回框架） |
 | Model | 贡献 ModelSelector 策略 | 框架获得 5 种选择策略 | ⏭ 跳过（不贡献回框架） |
 
@@ -229,7 +229,7 @@ P1-9 (PromptIter) ──→ 独立
 
 | 模块 | 对齐项 | 协同收益 |
 |------|--------|---------|
-| Server | 启用 OpenAI 完整选项 | OpenAI 会话持久化 | ✅ 已完成 |
+| Server | 启用 OpenAI 完整选项 | OpenAI 会话持久化 | ✅ 已完成（生产路径通过 `internal/service/openai_session_compat.go` 的 `OpenAISessionCompatService` 包装层接入；server 层直接适配器死代码已删，避免违反 R1 lint 规则） |
 | Server | 贡献 WebSocket ServiceFactory | 框架获得 WS 传输 | ⏭ 跳过（不贡献回框架） |
 | Server | 贡献多租户 A2A 路由器 | 框架获得多 Agent 路由 | ⏭ 跳过（不贡献回框架） |
 | Extended | 评估 TaskRun 共存 | Agent 获得异步委派能力 | 🟡 阻塞：缺少 Controller 实例 + 复杂依赖链（详见 §十一/B-7） |
@@ -709,7 +709,7 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 > 以下 7 项适配器代码已就绪但无法接入生产路径，每项有明确的阻塞原因。
 > 阻塞原因分为三类：**框架接口无消费者**（框架未提供使用该接口的组件）、**框架协作者缺失**（适配器依赖的框架组件在项目中不存在）、**设计前提不匹配**（适配器的设计假设与项目实际架构冲突）。
 >
-> **当前状态**：B-1/B-2 已标记 DEPRECATED（永久阻塞）；B-3 已标记 TECH-DEBT（"编译错误"经核实为误判，真实阻塞原因为框架协作者缺失）；B-4~B-7 待对应 Phase 解除。
+> **当前状态**：B-1/B-2 永久阻塞，死代码已删除（CS-B2）；B-3 已标记 TECH-DEBT（"编译错误"经核实为误判，真实阻塞原因为框架协作者缺失）；B-4 已补充 TECH-DEBT(B-4) 标记；B-5~B-7 待对应 Phase 解除。
 >
 > **解除方案关联文档**：`docs/reports/2026-06-17-research-orchestration-longtask-memory-upgrade.md`（以下简称"升级调研报告"），该报告规划了 Phase 0~3 的架构重构路径，部分阻塞项将在重构过程中解除。
 
@@ -717,7 +717,7 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 
 **阻塞类型**：框架接口无消费者（架构设计差异，永久阻塞）
 
-**适配器位置**：`internal/knowledge/vectorstore_adapter.go`
+**适配器位置**：`internal/knowledge/vectorstore_adapter.go`（**已删除**）
 
 **阻塞原因**：
 - 适配器将项目的 `internal/data/vector.VectorStore` 适配到框架的 `vectorstore.VectorStore` 接口
@@ -727,13 +727,13 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 **解除方案**：**不解除（永久阻塞）**
 - 升级调研报告 §6.4 确认记忆系统 5 项前沿技术（Bi-temporal/Ebbinghaus/Sleep-time/主动召回/记忆链接图）均在项目内部实现，对齐的是框架 `memory.Service` 接口而非 `vectorstore.VectorStore`
 - 框架架构设计上通过 `knowledge.Knowledge` 接口抽象了整个检索流程，VectorStore/Embedder 是项目内部实现细节，框架不直接消费
-- **已完成**：适配器代码已标记 `// DEPRECATED: 框架架构差异，永久阻塞`（文件头 + struct 注释），下一迭代删除死代码（CS-B2）
+- **已完成**：死代码已删除（`internal/knowledge/vectorstore_adapter.go` + 测试文件），遵循 CS-B2「死代码即删」原则
 
 ### B-2. EmbedderAdapter（P1-6）— 框架接口无消费者
 
 **阻塞类型**：框架接口无消费者（架构设计差异，永久阻塞）
 
-**适配器位置**：`internal/knowledge/embedder_adapter.go`
+**适配器位置**：`internal/knowledge/embedder_adapter.go`（**已删除**）
 
 **阻塞原因**：
 - 适配器将项目的 `MultiProviderEmbedder` 适配到框架的 `embedder.Embedder` 接口
@@ -742,7 +742,7 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 
 **解除方案**：**不解除（永久阻塞）**
 - 与 B-1 同理，升级调研报告 §6.4 的记忆系统升级不涉及框架 Embedder 接口消费
-- **已完成**：适配器代码已标记 `// DEPRECATED: 框架架构差异，永久阻塞`（文件头 + struct 注释），下一迭代删除死代码（CS-B2）
+- **已完成**：死代码已删除（`internal/knowledge/embedder_adapter.go` + 测试文件），遵循 CS-B2「死代码即删」原则
 
 ### B-3. PromptIterAdapter（P1-9, P2-26）— 框架协作者缺失（编译错误为误判）
 
@@ -857,10 +857,10 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 
 | 阻塞项 | 阻塞类型 | 解除方案 | 关联 Phase | 优先级 |
 |--------|---------|---------|-----------|--------|
-| B-1 VectorStoreAdapter | 框架接口无消费者 | **不解除（永久阻塞）**，已标记 DEPRECATED，下一迭代删除死代码 | N/A | 低 |
-| B-2 EmbedderAdapter | 框架接口无消费者 | **不解除（永久阻塞）**，已标记 DEPRECATED，下一迭代删除死代码 | N/A | 低 |
+| B-1 VectorStoreAdapter | 框架接口无消费者 | **不解除（永久阻塞）**，死代码已删除（CS-B2） | N/A | 低 |
+| B-2 EmbedderAdapter | 框架接口无消费者 | **不解除（永久阻塞）**，死代码已删除（CS-B2） | N/A | 低 |
 | B-3 PromptIterAdapter | 框架协作者缺失（编译错误为误判） | **独立迭代**，待有明确 Prompt 迭代优化业务需求时启动；已标记 TECH-DEBT | N/A | 低 |
-| B-4 FrameworkSearchTool | 双重注册 + 能力降级 | **Phase 3 重新评估**，检查框架是否支持动态 collection | Phase 3 | 中 |
+| B-4 FrameworkSearchTool | 双重注册 + 能力降级 | **Phase 3 重新评估**，检查框架是否支持动态 collection；已补充 TECH-DEBT(B-4) 标记 | Phase 3 | 中 |
 | B-5 RenderPromptTemplate | 设计前提不匹配 | **Phase 1 重新评估**，AgentFactory 引入模板化 Agent 定义时接入 | Phase 1 | 中 |
 | B-6 RenderStateTemplate | 设计前提不匹配 | **Phase 1 重新评估**，与 B-5 同步评估 | Phase 1 | 中 |
 | B-7 TaskRunAdapter | 缺少 Controller + 依赖链 | **Phase 1 解除**，统一执行引擎建设时同步接入 | Phase 1 | **高** |
@@ -868,6 +868,6 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 **关键结论**：
 - 7 个阻塞项中，**1 项有明确解除路径**（B-7 TaskRunAdapter → Phase 1）
 - **3 项在架构重构时重新评估**（B-4/B-5/B-6 → Phase 1/3）
-- **2 项永久阻塞**（B-1/B-2 → 框架架构差异，已标记 DEPRECATED，下一迭代删除死代码）
+- **2 项永久阻塞且死代码已删除**（B-1/B-2 → 框架架构差异，遵循 CS-B2「死代码即删」原则）
 - **1 项独立迭代**（B-3 → 框架协作者缺失，"编译错误"经核实为误判；已标记 TECH-DEBT，待业务需求驱动）
 - 升级调研报告（`docs/reports/2026-06-17-research-orchestration-longtask-memory-upgrade.md`）的 Phase 0~3 架构重构将逐步解除可解除的阻塞项

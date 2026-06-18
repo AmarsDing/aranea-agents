@@ -40,16 +40,56 @@ type MemoryCompositeRecaller interface {
 	RecallComposite(ctx context.Context, q CompositeRecallQuery) ([]CompositeRecallHit, error)
 }
 
-// MemoryCompositeRecallUsecase wraps SessionCompositeRecallStore.
-type MemoryCompositeRecallUsecase struct {
-	store SessionCompositeRecallStore
+// ProactiveRecallContext captures the current conversation state for
+// proactive recall. This is the biz-level mirror of the framework's
+// ConversationContext type, defined here to avoid importing the framework
+// package (red line #2).
+type ProactiveRecallContext struct {
+	// MentionedEntities are people, places, or topics mentioned in the
+	// conversation. Each entity is used as a search keyword to retrieve
+	// related memories.
+	MentionedEntities []string
+
+	// CurrentTopic is the topic of the current conversation turn.
+	CurrentTopic string
+
+	// UserStatement is the user's latest statement, used for contradiction
+	// detection.
+	UserStatement string
 }
 
+// ProactiveRecaller is the biz port for proactive memory recall.
+// Implementations live in internal/memory/trpc and delegate to the
+// framework's memory.Service.ProactiveRecall method.
+type ProactiveRecaller interface {
+	ProactiveRecall(ctx context.Context, agentID, userID string, convCtx ProactiveRecallContext) ([]CompositeRecallHit, error)
+}
+
+// MemoryCompositeRecallUsecase wraps SessionCompositeRecallStore and
+// optionally a ProactiveRecaller for conversation-driven memory surfacing.
+type MemoryCompositeRecallUsecase struct {
+	store          SessionCompositeRecallStore
+	proactiveRecaller ProactiveRecaller
+}
+
+// NewMemoryCompositeRecallUsecase wires the composite recall store.
+// The proactive recaller is optional; use SetProactiveRecaller to inject it
+// after construction (avoids breaking existing Wire providers).
 func NewMemoryCompositeRecallUsecase(store SessionCompositeRecallStore) *MemoryCompositeRecallUsecase {
 	if store == nil {
 		return nil
 	}
 	return &MemoryCompositeRecallUsecase{store: store}
+}
+
+// SetProactiveRecaller injects a proactive recaller after construction.
+// This avoids breaking the existing NewMemoryCompositeRecallUsecase signature
+// and allows Wire to bind the proactive recaller separately.
+func (uc *MemoryCompositeRecallUsecase) SetProactiveRecaller(r ProactiveRecaller) {
+	if uc == nil {
+		return
+	}
+	uc.proactiveRecaller = r
 }
 
 func (uc *MemoryCompositeRecallUsecase) RecallComposite(ctx context.Context, q CompositeRecallQuery) ([]CompositeRecallHit, error) {
@@ -80,6 +120,24 @@ func (uc *MemoryCompositeRecallUsecase) RecallComposite(ctx context.Context, q C
 		out = append(out, CompositeRecallHit{Layer: row.Layer, Line: line, Score: row.Score})
 	}
 	return out, nil
+}
+
+// ProactiveRecall retrieves memories based on the conversation context
+// (mentioned entities, current topic, user statement) without requiring an
+// explicit query. It is intended to be called before each conversation turn
+// to surface relevant memories that the agent should consider.
+//
+// Returns empty list (not error) when no proactive recaller is wired or
+// when the conversation context carries no usable signal.
+func (uc *MemoryCompositeRecallUsecase) ProactiveRecall(ctx context.Context, agentID, userID string, convCtx ProactiveRecallContext) ([]CompositeRecallHit, error) {
+	if uc == nil || uc.proactiveRecaller == nil {
+		return nil, nil
+	}
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return nil, nil
+	}
+	return uc.proactiveRecaller.ProactiveRecall(ctx, agentID, strings.TrimSpace(userID), convCtx)
 }
 
 func formatCompositeRecallLine(row CompositeRecallStoreRow) string {

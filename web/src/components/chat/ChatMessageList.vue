@@ -38,6 +38,12 @@
         :key="turn.id"
         :turn="turn"
         @confirm="(id, approved) => $emit('confirm', id, approved)"
+        @error-retry="(e) => $emit('error-retry', e)"
+        @error-switch-model="(e) => $emit('error-switch-model', e)"
+        @error-rephrase="(e) => $emit('error-rephrase', e)"
+        @error-check-config="(e) => $emit('error-check-config', e)"
+        @error-remove-attachment="(e) => $emit('error-remove-attachment', e)"
+        @error-relogin="(e) => $emit('error-relogin', e)"
       />
     </div>
     <ChatPendingQueue
@@ -73,6 +79,7 @@ import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { Envelope } from '../../realtime/envelope';
 import type { Activity as TimelineActivity } from '../../features/chat/activityTimelineTypes';
+import type { ErrorEvent } from '../../features/chat/streamEventTypes';
 
 const props = defineProps<{
   sessionKey: string;
@@ -112,6 +119,12 @@ defineEmits<{
   'interrupt-pending': [pendingId: string];
   'update-pending': [pendingId: string, content: string];
   confirm: [activityId: string, approved: boolean];
+  'error-retry': [event: ErrorEvent];
+  'error-switch-model': [event: ErrorEvent];
+  'error-rephrase': [event: ErrorEvent];
+  'error-check-config': [event: ErrorEvent];
+  'error-remove-attachment': [event: ErrorEvent];
+  'error-relogin': [event: ErrorEvent];
 }>();
 
 const { t } = useI18n();

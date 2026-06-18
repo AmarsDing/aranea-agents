@@ -404,6 +404,14 @@ func provideSessionRunDurableWorker(sessionRuns *biz.SessionRunUsecase, runCtrl 
 	return service.NewSessionRunDurableWorker(sessionRuns, runCtrl, resumer, lg)
 }
 
+// provideRecoveryWorker builds the P1-8 crash-recovery worker. It reuses the
+// shared CheckpointSaver (bound to trpcgraph.CheckpointSaver) and the
+// DurableResumeGateway to resume stale durable runs after a process restart.
+// Returns nil if any dependency is nil (defensive construction).
+func provideRecoveryWorker(sessionRuns *biz.SessionRunUsecase, saver trpcgraph.CheckpointSaver, resumer biz.DurableResumeGateway, lg loggateway.Logger) *service.RecoveryWorker {
+	return service.NewRecoveryWorker(sessionRuns, saver, resumer, lg)
+}
+
 func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, eventBus event.Bus, lg loggateway.Logger) biz.AlertNotifier {
 	return service.NewMonitorAlertNotifier(channels, eventBus, lg)
 }
@@ -1558,6 +1566,7 @@ type wireOut struct {
 	ChannelHealthScanner        *jobs.ChannelHealthScanner
 	ChannelDeliveryScanner      *jobs.ChannelDeliveryWorker
 	SessionRunDurableWorker     *service.SessionRunDurableWorker
+	RecoveryWorker              *service.RecoveryWorker
 	ChannelRuntime              *service.ChannelRuntime
 	PluginRuntime               *plugintrpc.Runtime
 	EventStoreCleanup           *jobs.EventStoreCleanup
@@ -1604,6 +1613,7 @@ func provideWireOut(
 	channelHealth *jobs.ChannelHealthScanner,
 	channelDelivery *jobs.ChannelDeliveryWorker,
 	sessionRunDurable *service.SessionRunDurableWorker,
+	recoveryWorker *service.RecoveryWorker,
 	channelRuntime *service.ChannelRuntime,
 	pluginRuntime *plugintrpc.Runtime,
 	eventStoreCleanup *jobs.EventStoreCleanup,
@@ -1643,6 +1653,7 @@ func provideWireOut(
 		MCPHealthProbe: mcpHealth, A2AGatewayHealthProbe: a2aHealth, EvolutionScanner: evoScan, LearningLoopScanner: learningLoop, ProviderHealthScanner: providerHealth,
 		ChannelHealthScanner: channelHealth, ChannelDeliveryScanner: channelDelivery,
 		SessionRunDurableWorker: sessionRunDurable,
+		RecoveryWorker:          recoveryWorker,
 		ChannelRuntime:          channelRuntime,
 		PluginRuntime:           pluginRuntime,
 		EventStoreCleanup:       eventStoreCleanup, ToolAuditCleanup: toolAuditCleanup,
@@ -1934,6 +1945,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideMemoryL2Recall,
 		provideMemoryL3Recall,
 		provideMemoryCompositeRecall,
+		provideMemoryTRPCService,
 		provideFeedbackMemoryEnqueuer,
 		provideMCPProber,
 		provideMCPMetadataEditor,
@@ -2033,6 +2045,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideMonitorAlertNotifier,
 		provideChannelRunEscalationNotifier,
 		provideSessionRunDurableWorker,
+		provideRecoveryWorker,
 		provideFilesystemHealthReader,
 		provideProcessLogEnabled,
 		provideRedisClient,

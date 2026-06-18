@@ -13,6 +13,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
+	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
@@ -49,8 +50,43 @@ func provideFeedbackMemoryEnqueuer(q memtrpc.AutoMemoryQueue) biz.FeedbackMemory
 	return biz.FeedbackMemoryEnqueuerFunc(memtrpc.NewFeedbackMemoryEnqueuer(q))
 }
 
-func provideMemoryCompositeRecall(d *data.Data) biz.MemoryCompositeRecaller {
-	return biz.NewMemoryCompositeRecallUsecase(data.NewMemoryCompositeRecallAdapter(d))
+func provideMemoryCompositeRecall(d *data.Data, memSvc trpcmemory.Service) biz.MemoryCompositeRecaller {
+	uc := biz.NewMemoryCompositeRecallUsecase(data.NewMemoryCompositeRecallAdapter(d))
+	if uc == nil {
+		return nil
+	}
+	// Wire the proactive recaller so the composite usecase can surface
+	// memories based on conversation context (P3-11).
+	if proactiveRecaller := memtrpc.NewProactiveRecallAdapter(memSvc); proactiveRecaller != nil {
+		uc.SetProactiveRecaller(proactiveRecaller)
+	}
+	return uc
+}
+
+// provideMemoryTRPCService builds the trpc-agent-go memory Service backed by
+// the SQLite adapter. Centralizing construction here lets both the composite
+// recall usecase (P3-11) and the persistence set share the same instance.
+func provideMemoryTRPCService(
+	d *data.Data,
+	agentsUC *biz.AgentUsecase,
+	vec *biz.MemoryUsecase,
+	factSync biz.MemoryFactIndexSyncer,
+	q memtrpc.AutoMemoryQueue,
+	lg loggateway.Logger,
+) trpcmemory.Service {
+	if d == nil {
+		return nil
+	}
+	return memtrpc.NewSQLiteMemoryService(
+		data.NewL3FactReaderForUser(d),
+		data.NewL3FactWriterAdapter(d, d.VectorStore()),
+		factSync,
+		q,
+		vec,
+		memtrpc.NewAgentRuntimeSettingsLoader(agentsUC),
+		data.NewFactConsistencyAdapter(d),
+		lg,
+	)
 }
 
 func provideMemoryAdminUsecase(admin biz.MemoryAdminDeps, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, d *data.Data, lg loggateway.Logger) *biz.MemoryAdminUsecase {
@@ -81,11 +117,9 @@ func providePersistenceSet(
 	sess trpcsession.Service,
 	artifact trpcartifact.Service,
 	artifactUC *biz.ArtifactUsecase,
-	agentsUC *biz.AgentUsecase,
-	vec *biz.MemoryUsecase,
+	memSvc trpcmemory.Service,
 	q memtrpc.AutoMemoryQueue,
 	policy *biz.MemoryPolicyEngine,
-	factSync biz.MemoryFactIndexSyncer,
 	l2Recall biz.MemoryL2Recaller,
 	l3Recall biz.MemoryL3Recaller,
 	compositeRecall biz.MemoryCompositeRecaller,
@@ -96,7 +130,7 @@ func providePersistenceSet(
 	var mem rt.MemorySet
 	if d != nil {
 		mem = rt.MemorySet{
-			TRPC:            memtrpc.NewSQLiteMemoryService(data.NewL3FactReaderForUser(d), data.NewL3FactWriterAdapter(d, d.VectorStore()), factSync, q, vec, memtrpc.NewAgentRuntimeSettingsLoader(agentsUC), data.NewFactConsistencyAdapter(d), lg),
+			TRPC:            memSvc,
 			Admin:           data.NewSessionAdminStoreAdapter(d, d.VectorStore()),
 			AdminUsecase:    adminUC,
 			L2Recall:        l2Recall,

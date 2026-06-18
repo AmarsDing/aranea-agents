@@ -45,6 +45,17 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
   let teamStreamCleanup: (() => void) | null = null;
 
   const wsReplaying = ref(false);
+  /**
+   * P3-5: Run-stale indicator. Set to `true` when no `run_heartbeat` arrives
+   * within `WS_RUN_STALE_TIMEOUT_MS` (30s). Reset to `false` on heartbeat,
+   * reconnect, or explicit `recover()` call.
+   *
+   * The stale timer is started by `transport.resetStaleTimer()` (called on
+   * run start via `onRunAccepted`). When the timer fires, `onStale` is
+   * invoked and `isStale` flips to `true`, surfacing a "Recover" button in
+   * the chat UI.
+   */
+  const isStale = ref(false);
   let lastErrorNotifyMessage = '';
   let lastErrorNotifyAt = 0;
 
@@ -176,6 +187,8 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       lastEventId: getChannelWsCursor(sessionId),
       onConnected: () => {
         deps.runtimeStore.setWsConnected(sessionId, true);
+        // P3-5: a fresh connection implies the run is no longer stale.
+        isStale.value = false;
         void deps.refreshRunStatus(sessionId);
       },
       onDisconnected: () => {
@@ -204,6 +217,13 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
           actions: [{ label: t('chat.refresh', '刷新页面'), color: 'white', handler: () => window.location.reload() }],
         });
       },
+      // P3-5: heartbeat clears stale; stale timer fires onStale.
+      onHeartbeat: () => {
+        isStale.value = false;
+      },
+      onStale: () => {
+        isStale.value = true;
+      },
     });
 
     chatStreamCleanup = bindStreamHandlers(
@@ -218,8 +238,13 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         // Reset the progress accumulator when a new run is accepted so a new
         // turn starts with a clean timeline (avoids leaking the previous
         // turn's orchestration steps into the next one).
+        // P3-5: start the run-stale timer so that if no `run_heartbeat`
+        // arrives within WS_RUN_STALE_TIMEOUT_MS (30s), `onStale` fires and
+        // surfaces the "Recover" button. The timer is auto-reset by the
+        // transport on every subsequent heartbeat.
         onRunAccepted: () => {
           clearProgress();
+          chatStream?.transport.value?.resetStaleTimer();
           deps.onRunAccepted();
         },
         onRunStatus: deps.onRunStatus,
@@ -288,7 +313,18 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       },
       onConnected: () => {
         deps.runtimeStore.setWsConnected(sessionId, true);
+        // P3-5: a fresh connection implies the run is no longer stale.
+        isStale.value = false;
         void deps.refreshRunStatus(sessionId);
+      },
+      // P3-5: heartbeat clears stale; stale timer fires onStale. Mirrors
+      // the chat stream binding so team sessions get the same stale
+      // detection as agent sessions.
+      onHeartbeat: () => {
+        isStale.value = false;
+      },
+      onStale: () => {
+        isStale.value = true;
       },
     });
 
@@ -301,8 +337,10 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       clearSendingTimeout: deps.clearSendingTimeout,
       // Mirror chat stream: a new team run means a new turn — drop the
       // progress accumulator to avoid cross-turn envelope leakage.
+      // P3-5: start the run-stale timer for team sessions too.
       onRunAccepted: () => {
         clearProgress();
+        teamStream?.transport.value?.resetStaleTimer();
         deps.onRunAccepted();
       },
       onRunStatus: deps.onRunStatus,
@@ -382,9 +420,33 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     return stream.onType(types, handler);
   }
 
+  /**
+   * P3-5: Recover from a stale WS run. Tears down and recreates the active
+   * stream(s) so the new transport gets a fresh stale timer, and clears
+   * `isStale` immediately so the UI hides the "Recover" button.
+   *
+   * We capture the session ids before teardown because `disconnectXxxStream`
+   * nulls them. If a stream is not active (null session id), it is skipped —
+   * recovering only the streams that were actually in use.
+   */
+  function recover(): void {
+    const chatSid = chatStreamSessionId;
+    if (chatSid) {
+      disconnectChatStream();
+      ensureChatStream(chatSid);
+    }
+    const teamSid = teamStreamSessionId;
+    if (teamSid) {
+      disconnectTeamStream();
+      ensureTeamStream(teamSid);
+    }
+    isStale.value = false;
+  }
+
   return {
     wsReplaying,
     executionProgress,
+    isStale,
     ensureChatStream,
     ensureTeamStream,
     subscribeSessionStream,
@@ -394,5 +456,6 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     disconnectAll,
     cancelActiveStream,
     patchAgentMessages,
+    recover,
   };
 }

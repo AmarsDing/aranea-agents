@@ -305,6 +305,10 @@ func (m *mockMemoryService) Close() error {
 	return nil
 }
 
+func (m *mockMemoryService) ProactiveRecall(ctx context.Context, userKey memory.UserKey, convCtx memory.ConversationContext) ([]*memory.Entry, error) {
+	return nil, nil
+}
+
 type mockSearchableSessionService struct {
 	session.Service
 	searchResults []session.EventSearchResult

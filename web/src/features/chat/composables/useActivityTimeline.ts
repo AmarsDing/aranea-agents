@@ -352,6 +352,10 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
         id: node.id,
         type: 'degradation',
         message: node.content || node.toolErrorCode || '',
+        // P3-4: surface the error code so ErrorBlock can pick an inline
+        // action. Prefer toolErrorCode (turn-level), then meta.error_code
+        // (backend apierror.Code), so the most specific code wins.
+        errorCode: node.toolErrorCode || (node.meta?.error_code as string | undefined) || undefined,
       } satisfies ErrorEvent;
 
     case 'plan': {

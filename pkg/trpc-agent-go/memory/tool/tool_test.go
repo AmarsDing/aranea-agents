@@ -136,6 +136,10 @@ func (m *mockMemoryService) BuildInstruction(enabledTools []string, defaultPromp
 	return "", false
 }
 
+func (m *mockMemoryService) ProactiveRecall(ctx context.Context, userKey memory.UserKey, convCtx memory.ConversationContext) ([]*memory.Entry, error) {
+	return nil, nil
+}
+
 // createMockContext creates a mock context with session information.
 func createMockContext(appName, userID string, service memory.Service) context.Context {
 	mockSession := &session.Session{
@@ -1188,6 +1192,10 @@ func (m *mockMemoryServiceWithError) Close() error {
 
 func (m *mockMemoryServiceWithError) BuildInstruction(enabledTools []string, defaultPrompt string) (string, bool) {
 	return "", false
+}
+
+func (m *mockMemoryServiceWithError) ProactiveRecall(ctx context.Context, userKey memory.UserKey, convCtx memory.ConversationContext) ([]*memory.Entry, error) {
+	return nil, fmt.Errorf("mock proactive recall error")
 }
 
 // --- Episodic helpers unit tests ---

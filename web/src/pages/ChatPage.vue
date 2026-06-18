@@ -72,6 +72,7 @@
         :await-kind="composer.awaitKind"
         :await-tool-key="composer.awaitToolKey"
         :ws-replaying="session.wsReplaying"
+        :is-stale="session.isStale"
         :execution-progress="session.executionProgress"
         :spirit-loading-message="session.spiritLoadingMessage"
         :spirit-status-bar="spiritStatusBar"
@@ -143,6 +144,13 @@
         @compact="session.onCompactSession"
         @toggle-tool-calls="uiConfig.setShowToolCalls(!uiConfig.showToolCalls)"
         @confirm-activity="onConfirmActivity"
+        @error-retry="onErrorRetry"
+        @error-switch-model="onErrorSwitchModel"
+        @error-rephrase="onErrorRephrase"
+        @error-check-config="onErrorCheckConfig"
+        @error-remove-attachment="onErrorRemoveAttachment"
+        @error-relogin="onErrorRelogin"
+        @recover="onRecover"
         @cancel-team="spiritStore.cancelTeam"
         @resume-team="spiritStore.resumeTeam"
         @retry-team="spiritStore.retryTeam"
@@ -448,5 +456,68 @@ async function onConfirmActivity(activityId: string, approved: boolean) {
   } catch (err) {
     $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('chat.confirmActivity.failed') });
   }
+}
+
+/**
+ * P3-4: ErrorBlock inline action handlers.
+ *
+ * ErrorBlock emits typed actions based on the resolved `errorCode`. The
+ * handlers below wire those actions to existing composer/session methods
+ * or surface a guidance notification when no direct action is available.
+ *
+ * The `event` payload carries the original `ErrorEvent` (message + errorCode)
+ * so handlers can log diagnostics or correlate with the failed turn.
+ */
+
+/** Retry: find the latest failed pending-user message and re-send it. */
+async function onErrorRetry() {
+  const sid = session.selectedSessionForUi?.id;
+  if (!sid) return;
+  const failed = composer.pendingMessages.find((m) => m.id.startsWith('pending-user-') && m.status === 'failed');
+  if (failed) {
+    await composer.retryFailedMessage(failed.id);
+  } else {
+    $q.notify({ type: 'info', message: t('chat.errorBlock.retryNoTarget', '未找到可重试的失败消息') });
+  }
+}
+
+/** Switch model: prompt the user to switch model via the header provider selector. */
+function onErrorSwitchModel() {
+  $q.notify({ type: 'info', message: t('chat.errorBlock.switchModelHint', '请在顶部切换到其他模型后重试') });
+}
+
+/** Rephrase: focus the composer so the user can edit and re-send. */
+function onErrorRephrase() {
+  $q.notify({ type: 'info', message: t('chat.errorBlock.rephraseHint', '请尝试换种表述后重新发送') });
+}
+
+/** Check config: open the agent settings dialog. */
+function onErrorCheckConfig() {
+  const agent = entity.store.selectedAgent;
+  if (agent) {
+    entity.openSettings('agent', agent.id);
+  } else {
+    $q.notify({ type: 'warning', message: t('chat.errorBlock.checkConfigHint', '请检查 Agent 配置') });
+  }
+}
+
+/** Remove attachment: notify the user to remove the offending attachment. */
+function onErrorRemoveAttachment() {
+  $q.notify({ type: 'info', message: t('chat.errorBlock.removeAttachmentHint', '请移除不支持的附件后重试') });
+}
+
+/** Relogin: redirect to the login page. */
+function onErrorRelogin() {
+  router.push({ name: 'login' });
+}
+
+/**
+ * P3-5: Recover from a stale WS run. Delegates to the stream manager's
+ * `recover()` which force-reconnects the active stream(s) and clears
+ * `isStale`. A short notification confirms the action to the user.
+ */
+function onRecover() {
+  session.recover();
+  $q.notify({ type: 'info', message: t('chat.wsStale.recovered'), timeout: 2000 });
 }
 </script>

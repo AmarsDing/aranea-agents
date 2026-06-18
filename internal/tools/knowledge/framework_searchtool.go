@@ -1,9 +1,12 @@
 // Package knowledge provides knowledge search tools for trpc Runners.
 //
-// This file contains framework-aligned search tools that delegate to
-// trpc-agent-go's built-in knowledge.SearchTool implementations.
-// The self-built versions (NewSearchTool, NewReflectTool in tool.go)
-// are retained for backward compatibility and will be migrated over time.
+// TECH-DEBT(B-4): framework-aligned search tools 已实现但未接入生产路径。
+// 阻塞原因：(1) 双重注册冲突——项目已在 tool.go 注册自建 knowledge_search 工具，
+// 此处使用框架 knowledge.NewKnowledgeSearchTool 会创建同名工具导致冲突；
+// (2) 能力降级——项目自建 SearchTool 支持通过 knowledgetool.WithKnowledgeCollections
+// 在 per-run context 中动态限定 collection，框架版本不支持此能力。
+// 解除条件：框架 KnowledgeSearchTool 支持动态 collection 限定，或项目决定放弃
+// 动态 collection 过滤能力。详见 alignment-plan.md §十一/B-4。
 package knowledge
 
 import (

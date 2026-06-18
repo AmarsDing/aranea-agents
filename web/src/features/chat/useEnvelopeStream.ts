@@ -25,6 +25,7 @@ import { ref } from 'vue';
 import { createEnvelopeStream, useEnvelopeStream } from '../../realtime/useEnvelopeStream';
 import { CHAT_ENVELOPE_LOG_LOCAL_MAX } from '../constants/queryLimits';
 import type { UseEnvelopeStreamReturn } from '../../realtime/useEnvelopeStream';
+import type { Envelope } from '../../realtime/envelope';
 
 export type ChatStreamFactoryOpts = {
   lastEventId?: string;
@@ -33,6 +34,10 @@ export type ChatStreamFactoryOpts = {
   onServerShutdown?: (reason: string) => void;
   onReplayState?: (replaying: boolean, count?: number) => void;
   onReconnectFailed?: () => void;
+  /** P3-5: forwarded to WsTransport.onHeartbeat. */
+  onHeartbeat?: (env: Envelope) => void;
+  /** P3-5: forwarded to WsTransport.onStale. */
+  onStale?: () => void;
 };
 
 /** Chat session WS stream; use in `setup()` via {@link useChatStream} or imperatively via this factory. */
@@ -47,6 +52,8 @@ export function createChatStream(sessionId: string, streamOpts?: ChatStreamFacto
     onServerShutdown: streamOpts?.onServerShutdown,
     onReplayState: streamOpts?.onReplayState,
     onReconnectFailed: streamOpts?.onReconnectFailed,
+    onHeartbeat: streamOpts?.onHeartbeat,
+    onStale: streamOpts?.onStale,
   });
 }
 
@@ -132,6 +139,10 @@ export function createTeamStream(
     onReconnectFailed?: () => void;
     onConnected?: () => void;
     onServerShutdown?: (reason: string) => void;
+    /** P3-5: forwarded to WsTransport.onHeartbeat. */
+    onHeartbeat?: (env: Envelope) => void;
+    /** P3-5: forwarded to WsTransport.onStale. */
+    onStale?: () => void;
   },
 ): UseEnvelopeStreamReturn {
   return createEnvelopeStream({
@@ -142,6 +153,8 @@ export function createTeamStream(
     onReconnectFailed: streamOpts?.onReconnectFailed,
     onConnected: () => streamOpts?.onConnected?.(),
     onServerShutdown: streamOpts?.onServerShutdown,
+    onHeartbeat: streamOpts?.onHeartbeat,
+    onStale: streamOpts?.onStale,
   });
 }
 

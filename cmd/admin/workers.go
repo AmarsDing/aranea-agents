@@ -34,6 +34,7 @@ type backgroundWorkersConfig struct {
 	ChannelHealthScanner        BackgroundStarter
 	ChannelDeliveryScanner      BackgroundStarter
 	SessionRunDurableWorker     BackgroundStarter
+	RecoveryWorker              BackgroundStarter
 	PluginRuntime               PluginRuntimeStarter
 	ChannelRuntime              ChannelRuntimeStarter
 	EventStoreCleanup           BackgroundStarter
@@ -163,6 +164,11 @@ func startBackgroundWorkers(
 	if cfg.SessionRunDurableWorker != nil {
 		goAfterReady("session_run_durable", func() { cfg.SessionRunDurableWorker.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "session run durable worker scheduled", "interval", "5s")
+	}
+
+	if cfg.RecoveryWorker != nil {
+		goAfterReady("recovery_worker", func() { cfg.RecoveryWorker.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "recovery worker scheduled", "interval", "5m")
 	}
 
 	if cfg.PluginRuntime != nil {

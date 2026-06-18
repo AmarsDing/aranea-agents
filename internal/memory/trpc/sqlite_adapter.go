@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +27,15 @@ const (
 	factSourceTRPC          = "trpc_memory"
 	vectorMinSimilarity     = 0.5 // minimum cosine similarity for vector recall hits
 	defaultListEntriesLimit = 50  // fallback limit when caller provides none
+
+	// proactiveRecallMaxQueries caps the number of search queries issued
+	// during proactive recall to avoid excessive DB load.
+	proactiveRecallMaxQueries = 8
+	// contradictionBoost is the score increment applied to memories that
+	// share keywords with the user statement (potential contradictions).
+	contradictionBoost = 0.1
+	// minKeywordLen is the minimum token length to be considered a keyword.
+	minKeywordLen = 3
 )
 
 var memoryReadConsistencyCheck = os.Getenv("MEMORY_READ_CONSISTENCY_CHECK") == "1"
@@ -536,6 +546,221 @@ func (s *sqliteMemoryService) Tools() []trpctool.Tool {
 
 func (s *sqliteMemoryService) Close() error {
 	return nil
+}
+
+// ProactiveRecall retrieves associated memories based on the conversation
+// context (mentioned entities, current topic, user statement) without
+// requiring an explicit query. It is intended to be called before each
+// conversation turn to surface relevant memories.
+//
+// Behaviour:
+//   - Empty conversation context → returns empty list, no error.
+//   - Invalidated memories (Bi-temporal P3-8) are filtered out by default.
+//   - Contradiction detection: when UserStatement potentially conflicts
+//     with a stored memory, that memory is prioritised (boosted score).
+//   - Results are deduplicated by memory ID and sorted by score descending.
+func (s *sqliteMemoryService) ProactiveRecall(ctx context.Context, uk trpcmemory.UserKey,
+	convCtx trpcmemory.ConversationContext) ([]*trpcmemory.Entry, error) {
+	if s == nil {
+		return nil, nil
+	}
+	if err := s.requireStore(); err != nil {
+		return nil, err
+	}
+
+	queries := collectProactiveQueries(convCtx)
+	if len(queries) == 0 {
+		return nil, nil
+	}
+
+	// Determine search limits from agent runtime settings.
+	topK, _ := resolveMemoryToolSearchLimits(ctx, s.settingsLoader, uk.AppName, 0)
+	if topK <= 0 {
+		return nil, nil
+	}
+
+	// Collect candidate entries from each query, deduplicating by ID.
+	seen := make(map[string]*trpcmemory.Entry, topK)
+	for _, q := range queries {
+		entries, err := s.SearchMemories(ctx, uk, q)
+		if err != nil {
+			// Degrade gracefully on search errors — log and continue.
+			s.lg.Warn("proactive recall search failed",
+				loggateway.StepID("memory.proactive_recall"),
+				loggateway.Str("query", q),
+				loggateway.Err(err))
+			continue
+		}
+		for _, e := range entries {
+			if e == nil || e.ID == "" {
+				continue
+			}
+			// Bi-temporal filter: skip invalidated memories.
+			if e.ValidUntil != nil && e.ValidUntil.Before(time.Now()) {
+				continue
+			}
+			if existing, ok := seen[e.ID]; ok {
+				// Keep the higher score.
+				if e.Score > existing.Score {
+					seen[e.ID] = e
+				}
+			} else {
+				seen[e.ID] = e
+			}
+		}
+	}
+
+	if len(seen) == 0 {
+		return nil, nil
+	}
+
+	// Apply contradiction detection: boost entries that share keywords
+	// with the user statement (potential conflicts should be surfaced).
+	statementKeywords := extractKeywords(convCtx.UserStatement)
+	if len(statementKeywords) > 0 {
+		for _, e := range seen {
+			if e.Memory != nil && hasKeywordOverlap(e.Memory.Memory, statementKeywords) {
+				e.Score += contradictionBoost
+			}
+		}
+	}
+
+	// Sort by score descending and cap at topK.
+	out := make([]*trpcmemory.Entry, 0, len(seen))
+	for _, e := range seen {
+		out = append(out, e)
+	}
+	sortProactiveEntries(out)
+	if int32(len(out)) > topK {
+		out = out[:topK]
+	}
+	return out, nil
+}
+
+// collectProactiveQueries extracts search keywords from the conversation
+// context. Returns nil when the context carries no usable signal.
+// For UserStatement, individual keywords are extracted (not the full
+// statement) so contradiction detection can find memories sharing
+// conceptual keywords (e.g. "live" matches "lives in London").
+func collectProactiveQueries(convCtx trpcmemory.ConversationContext) []string {
+	var queries []string
+	for _, e := range convCtx.MentionedEntities {
+		e = strings.TrimSpace(e)
+		if e != "" {
+			queries = append(queries, e)
+		}
+	}
+	if topic := strings.TrimSpace(convCtx.CurrentTopic); topic != "" {
+		queries = append(queries, topic)
+	}
+	// For contradiction detection, extract keywords from the user statement
+	// so we can find potentially conflicting memories by shared concepts.
+	for _, kw := range extractKeywords(convCtx.UserStatement) {
+		queries = append(queries, kw)
+	}
+	// Cap the number of queries to avoid excessive DB load.
+	if len(queries) > proactiveRecallMaxQueries {
+		queries = queries[:proactiveRecallMaxQueries]
+	}
+	return queries
+}
+
+// extractKeywords splits a text into lowercase keyword tokens for overlap
+// comparison. Very simple tokenisation (YAGNI: no NLP, no stemming).
+func extractKeywords(text string) []string {
+	text = strings.ToLower(strings.TrimSpace(text))
+	if text == "" {
+		return nil
+	}
+	// Split on whitespace and common punctuation.
+	fields := strings.FieldsFunc(text, func(r rune) bool {
+		return r == ' ' || r == ',' || r == '.' || r == '!' || r == '?' ||
+			r == ';' || r == ':' || r == '\'' || r == '"' || r == '\n' || r == '\t'
+	})
+	// Filter out very short tokens (noise).
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if len(f) >= minKeywordLen {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// hasKeywordOverlap returns true if the memory text contains any of the
+// provided keywords. Used for contradiction detection.
+func hasKeywordOverlap(memoryText string, keywords []string) bool {
+	if memoryText == "" || len(keywords) == 0 {
+		return false
+	}
+	low := strings.ToLower(memoryText)
+	for _, kw := range keywords {
+		if kw != "" && strings.Contains(low, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// sortProactiveEntries sorts entries by score descending. Entries with
+// equal scores retain their relative order (stable sort).
+func sortProactiveEntries(entries []*trpcmemory.Entry) {
+	sort.SliceStable(entries, func(i, j int) bool {
+		return entries[i].Score > entries[j].Score
+	})
+}
+
+// ProactiveRecallAdapter wraps a trpcmemory.Service and exposes it as a
+// biz.ProactiveRecaller. This adapter is necessary because the framework
+// Service.ProactiveRecall and biz.ProactiveRecaller.ProactiveRecall methods
+// have different signatures (framework uses UserKey + ConversationContext,
+// biz uses agentID/userID + ProactiveRecallContext), and Go does not allow
+// two methods with the same name on the same type.
+type ProactiveRecallAdapter struct {
+	svc trpcmemory.Service
+}
+
+// NewProactiveRecallAdapter creates a biz.ProactiveRecaller backed by the
+// given framework memory Service. Returns nil if svc is nil.
+func NewProactiveRecallAdapter(svc trpcmemory.Service) biz.ProactiveRecaller {
+	if svc == nil {
+		return nil
+	}
+	return &ProactiveRecallAdapter{svc: svc}
+}
+
+// ProactiveRecall implements biz.ProactiveRecaller. It converts biz-level
+// types to framework types and delegates to the framework ProactiveRecall
+// method. Results are converted to biz.CompositeRecallHit for consumption
+// by the composite recall usecase.
+func (a *ProactiveRecallAdapter) ProactiveRecall(ctx context.Context, agentID, userID string, convCtx biz.ProactiveRecallContext) ([]biz.CompositeRecallHit, error) {
+	if a == nil || a.svc == nil {
+		return nil, nil
+	}
+	uk := trpcmemory.UserKey{AppName: agentID, UserID: userID}
+	entries, err := a.svc.ProactiveRecall(ctx, uk, trpcmemory.ConversationContext{
+		MentionedEntities: convCtx.MentionedEntities,
+		CurrentTopic:      convCtx.CurrentTopic,
+		UserStatement:     convCtx.UserStatement,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(entries) == 0 {
+		return nil, nil
+	}
+	out := make([]biz.CompositeRecallHit, 0, len(entries))
+	for _, e := range entries {
+		if e == nil || e.Memory == nil {
+			continue
+		}
+		out = append(out, biz.CompositeRecallHit{
+			Layer: "L3",
+			Line:  e.Memory.Memory,
+			Score: e.Score,
+		})
+	}
+	return out, nil
 }
 
 func (s *sqliteMemoryService) EnqueueAutoMemoryJob(ctx context.Context, sess *session.Session) error {

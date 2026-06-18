@@ -147,6 +147,7 @@ func main() {
 		ChannelHealthScanner:        out.ChannelHealthScanner,
 		ChannelDeliveryScanner:      out.ChannelDeliveryScanner,
 		SessionRunDurableWorker:     out.SessionRunDurableWorker,
+		RecoveryWorker:              out.RecoveryWorker,
 		PluginRuntime:               out.PluginRuntime,
 		ChannelRuntime:              out.ChannelRuntime,
 		EventStoreCleanup:           out.EventStoreCleanup,

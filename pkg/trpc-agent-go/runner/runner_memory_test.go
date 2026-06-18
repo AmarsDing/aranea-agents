@@ -98,6 +98,10 @@ func (m *mockMemoryServiceForAutoMemory) Close() error {
 	return nil
 }
 
+func (m *mockMemoryServiceForAutoMemory) ProactiveRecall(ctx context.Context, userKey memory.UserKey, convCtx memory.ConversationContext) ([]*memory.Entry, error) {
+	return nil, nil
+}
+
 func TestEnqueueAutoMemoryJob(t *testing.T) {
 	t.Run("nil memory service", func(t *testing.T) {
 		r := &runner{memoryService: nil}

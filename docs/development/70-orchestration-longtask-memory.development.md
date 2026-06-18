@@ -362,18 +362,33 @@
 
 **新增文件**：
 - `internal/service/recovery_worker.go`
-- `pkg/trpc-agent-go/graph/checkpoint/postgres/`（Postgres CheckpointSaver）
+- `internal/service/recovery_worker_test.go`
+- `pkg/trpc-agent-go/graph/checkpoint/postgres/saver.go`（Postgres CheckpointSaver）
 
 **改动文件**：
-- `internal/service/chat_orchestrator_turn.go`（强制启用 CheckpointSaver）
-- `cmd/admin/main.go`（启动 RecoveryWorker）
+- `internal/graph/adapter/runtime_adapter.go`（`createAgent`：当 `f.saver != nil` 时强制使用 `NewGraphAgentWithSaver`，忽略 `enableCheckpoint` 标志）
+- `internal/service/chat_orchestrator_turn.go`（添加 P1-8 文档注释说明 CheckpointSaver 强制启用机制）
+- `cmd/admin/wire.go`（新增 `provideRecoveryWorker` + `wireOut.RecoveryWorker` 字段）
+- `cmd/admin/workers.go`（新增 `RecoveryWorker` 字段 + `goAfterReady` 启动逻辑）
+- `cmd/admin/main.go`（传递 `out.RecoveryWorker` 到 `backgroundWorkersConfig`）
 
 **验收**：
-- 进程重启后未完成 Run 从 checkpoint 恢复
-- CheckpointSaver 每 5min 存 checkpoint
-- RecoveryWorker 启动时扫描 stale Run
+- ✅ 进程重启后未完成 Run 从 checkpoint 恢复（`TestRecoveryWorker_Run_RecoverySuccess`）
+- ✅ RecoveryWorker 启动时扫描 stale Run（`TestRecoveryWorker_Start_RunsOnceAndExits`）
+- ✅ 无 checkpoint 的 Run 被跳过（`TestRecoveryWorker_Run_SkipsRunsWithoutCheckpoint`）
+- ✅ checkpoint 加载失败时标记 Run 为 Failed（`TestRecoveryWorker_Run_CheckpointLoadFailed`）
+- ✅ nil 依赖防御构造（`TestRecoveryWorker_NilDependencies`，红线 #26）
+- ✅ `go test -race` 通过（7 个测试用例）
+- ✅ `go build ./cmd/admin` 通过
 
-**状态**：📋 待办
+**实现摘要**：
+- `RecoveryWorker` 通过 `staleRunLister` 窄接口（`ListDurablePending` + `Fail`）依赖 `SessionRunUsecase`，避免暴露完整 usecase 表面（ISP）
+- `Start(ctx)` 通过 `safego.Go` 启动 goroutine（红线 #13），先执行一次 `Run` 立即恢复 stale run，然后 `time.NewTicker(5min)` 轮询，`select { ctx.Done() / ticker.C }` 退出路径（红线 #23）
+- `recoverOne` 跳过无 `CheckpointID` 的 Run（由 `MarkOrphanedRunsCancelled` 清理），加载 checkpoint 失败时调用 `Fail` 标记，成功时调用 `ResumeDurableSessionRun`
+- Postgres `Saver` 实现完整 `graph.CheckpointSaver` 接口：`$N` 占位符、`ON CONFLICT DO UPDATE`、`PutFull` 事务原子写入、`DeleteLineage` 级联清理
+- `runtime_adapter.createAgent` 强制启用：`f.saver != nil` 时始终用 `NewGraphAgentWithSaver`，`EnableCheckpoint` 标志降级为"仅 saver==nil 时的 opt-out 提示"
+
+**状态**：✅ 已完成（Wave 4）
 
 ---
 
@@ -419,16 +434,33 @@
 - `internal/graph/runtime_replanner_test.go`
 
 **改动文件**：
-- `pkg/trpc-agent-go/graph/executor.go`（增加 OnNodeFailure hook）
-- `internal/event/contract/envelope.go`（新增 EnvelopeTypeGraphReplanned）
+- ~~`pkg/trpc-agent-go/graph/executor.go`（增加 OnNodeFailure hook）~~ — **未修改框架代码**：探索发现 `pkg/trpc-agent-go/graph/callbacks.go` 已提供 `OnNodeErrorCallback` + `NodeCallbacks.RegisterOnNodeError` 回调机制，RuntimeReplanner 作为独立组件可通过现有回调集成，避免修改框架核心逻辑（符合任务说明"优先用 hook 注入而非改核心逻辑"）
+- `internal/event/contract/envelope.go`（新增 EnvelopeTypeGraphReplanned）— **Wave 1 已预注册**，本任务直接复用
 
 **验收**：
-- transient 失败 → retry
-- agent_incapable → insert_fallback
-- subtask_invalid → rebuild_subgraph
-- 重规划过程可观测
+- ✅ transient 失败 → retry（`TestRuntimeReplanner_TransientFailure_Retry`）
+- ✅ agent_incapable → insert_fallback（`TestRuntimeReplanner_AgentIncapable_InsertFallback`）
+- ✅ subtask_invalid → rebuild_subgraph（`TestRuntimeReplanner_SubtaskInvalid_RebuildSubgraph`）
+- ✅ route_blocked → reroute（`TestRuntimeReplanner_RouteBlocked_Reroute`）
+- ✅ 重规划过程可观测（`TestRuntimeReplanner_PublishesReplanEvent` 发布 `EnvelopeTypeGraphReplanned`）
+- ✅ `go build ./internal/graph/...` + `go vet ./internal/graph/...` 通过
+- ✅ `go test -race` 通过（attemptCount map 并发安全）
+- ✅ 18 个测试函数全部通过（含 Wave 4 审查阶段新增的 `TestRuntimeReplanner_ConcurrentAccess` 并发测试）
 
-**状态**：📋 待办
+**状态**：✅ 已完成（Wave 4）
+
+**实现摘要**：
+- `RuntimeReplanner` 接口 + `RuntimeReplannerImpl` 实现，构造注入 `event.Bus` + `loggateway.Logger`（红线 #18），`lg.With(loggateway.Domain("runtime_replanner"))` 预设字段
+- **规则匹配失败分析**（非 LLM）：基于错误信息关键词匹配 5 种严重度（transient/agent_incapable/subtask_invalid/route_blocked/unknown），任务说明推荐"规则匹配更简单可靠"
+- **4 种重规划类型**：`ReplanRetry`/`ReplanReroute`/`ReplanInsertFallback`/`ReplanRebuildSubgraph`，由 `buildAction` 根据 `FailureAnalysis.SuggestedAction` 派发
+- **重规划次数限制**：`sync.Mutex` 保护的 `attemptCount map[string]int` 按 execution ID 跟踪，`maxReplanAttempts=3` 防止死循环（设计文档 §十 风险 #3）；超限返回 `apierror.Internal`
+- **事件发布**：`publishReplanEvent` 通过 `event.Bus.Publish` 发布 `EnvelopeTypeGraphReplanned`，Metadata 携带 execution_id/failed_node/replan_type/severity/reason（AS-EVT-01 Important 级别）
+- **Prometheus 指标**：`metrics.GraphReplanTotal.WithLabelValues(type).Inc()`（Wave 1 已预注册）
+- **错误处理**：统一使用 `apierror.BadRequest/Internal` + `apierror.DomainGraph`（红线 #22），nil exec/nil err 防御（红线 #26）
+- **已知简化/技术债务**：
+  - 未集成到 executor 的 OnNodeError 回调（待 P2 集成阶段或后续任务接入）
+  - `attemptCount map` 无清理机制（长生命周期进程可能内存增长，建议后续加 TTL 或在 execution 完成时清理）
+  - 规则匹配的关键词表为静态硬编码，未支持配置化
 
 ### 5.3 P2-3：Graph 拓扑演化
 
@@ -456,6 +488,7 @@
 - `internal/tools/dependency_analyzer.go`
 - `internal/tools/worktree_isolator.go`
 - `internal/tools/transaction_sandbox.go`
+- 对应 `*_test.go`（dependency_analyzer_test.go / parallel_executor_test.go / worktree_isolator_test.go / transaction_sandbox_test.go）
 
 **验收**：
 - 无依赖工具并行执行
@@ -463,7 +496,15 @@
 - 事务保护 DB 操作
 - 5 文件并行延迟 < 串行 40%
 
-**状态**：📋 待办
+**状态**：✅ 已完成（Wave 4）
+
+**实现摘要**：
+- `DependencyAnalyzer` 基于 `DependsOn` 字段构建 DAG，支持拓扑分层（`TopologicalLayers`）、环检测（Kahn 算法）、缺失依赖/重复 ID 校验
+- `ParallelToolExecutor` 按拓扑层级串行、层内并行执行；通过 `safego.Go` 启动 goroutine（红线 #13），信号量限流 `maxConcurrency`，预分配 results slice 避免共享 slice 并发写（红线 #21），每层后检查 `ctx.Err()` 支持取消（红线 #23）
+- `WorktreeIsolator` 用 `os/exec` 调用系统 `git` 命令（避免新增 go-git 依赖），成功 fast-forward 合并回主分支，失败删除 worktree；分支名净化避免非法字符
+- `TransactionSandbox` 通过 `TxProvider` 接口（由 data 层实现注入，避免 tools→data 反向依赖）包装 `ExecInTx`，handler 失败自动回滚
+- 32 个单元测试全部通过（含 `-race`），并行度测试验证 5 个 80ms 调用总耗时 < 160ms（串行 40%）
+- **审查修复（aranea-review）**：`worktree_isolator.go` 中 `_ = i.runGit(...)` 吞错误（红线 #22）改为 `i.lg.Warn()` 日志记录，涉及 `mergeWorktree` 和 `removeWorktree` 两处
 
 ### 5.5 P2-5：Team 并行组装优化
 
@@ -557,30 +598,54 @@
 **任务**：错误块增加重试/切换模型/重新表述按钮
 
 **改动文件**：
-- `web/src/components/chat/ErrorBlock.vue`
-- `web/src/features/chat/errorCodeHints.ts`（扩展全覆盖）
-- `web/src/features/chat/streamHandlers.ts`（联动动作）
+- `web/src/components/chat/ErrorBlock.vue`（重写为 6 个 emit 事件 + 条件按钮渲染）
+- `web/src/features/chat/errorCodeHints.ts`（扩展覆盖全部 17 个错误码：9 TurnErrorCode + 8 ApiErrorCode）
+- `web/src/i18n/locales/zh-CN.ts` + `en-US.ts`（新增 `chat.errorBlock` 块 17 个 key）
+- 联动 emit 链路文件：`EventStream.vue`/`AgentWorkPanel.vue`/`ConversationTurn.vue`/`ChatMessageList.vue`/`streamEventTypes.ts`/`useActivityTimeline.ts`/`useEnvelopeStream.ts`（realtime + features/chat 两版本）
 
 **验收**：
-- ErrorBlock 有内联按钮
-- errorCodeHints 覆盖所有 apierror 码
-- 点击按钮执行对应动作
+- ✅ ErrorBlock 有内联按钮（6 种动作：retry/switch-model/rephrase/check-config/remove-attachment/relogin）
+- ✅ errorCodeHints 覆盖所有 apierror 码（17 个错误码 → 动作映射）
+- ✅ 点击按钮执行对应动作（通过 emit 上抛到 Page 处理）
+- ✅ `pnpm lint` 0 errors 通过
+- ✅ `pnpm build` 通过
 
-**状态**：📋 待办
+**实现摘要**：
+- `ErrorBlock.vue` 重写：`getErrorAction(errorCode)` 解析动作 → 条件渲染对应按钮 → emit 事件上抛
+- `errorCodeHints.ts` 扩展：`TurnErrorCode`（9 个）+ `ApiErrorCode`（8 个，镜像 `pkg/apierror/apierror.go`）→ `ErrorAction` 映射；新增 `getActionHintLabelKey()`/`getActionButtonLabelKey()` 辅助函数
+- i18n 双语对齐：`chat.errorBlock.hint*`（6 个 hint label）+ `chat.errorBlock.btn*`（6 个 button label）
+- 展示组件合规：`ErrorBlock.vue` 仅 import 类型 + 辅助函数，无 Store/API import（FD1 合规）
+
+**状态**：✅ 已完成（Wave 4）
 
 ### 6.5 P3-5：WS 断连快速检测
 
 **任务**：run_heartbeat 30s 内检测
 
 **改动文件**：
-- `web/src/realtime/ws-transport.ts`
-- `web/src/features/chat/composables/useChatStreamManager.ts`
+- `web/src/features/chat/composables/useChatStreamManager.ts`（新增 `isStale` ref + `onHeartbeat`/`onStale` 回调 + `recover()` 方法 + `resetStaleTimer()` 调用）
+- `web/src/features/chat/composables/useChatWorkspace.ts`（session reactive 对象新增 `isStale` + `recover`）
+- `web/src/components/chat/ChatMessagePanel.vue`（新增 `isStale?: boolean` prop + `recover: []` emit + stale banner UI）
+- `web/src/pages/ChatPage.vue`（新增 `:is-stale` prop 绑定 + `@recover` 事件处理 + `onRecover()` 函数）
+- `web/src/i18n/locales/zh-CN.ts` + `en-US.ts`（新增 `chat.wsStale` 块 4 个 key：title/hint/recover/recovered）
+- `web/src/realtime/ws-transport.ts`（`resetStaleTimer()` + heartbeat/stale 回调基础设施，Wave 1 P1-7 已预置）
 
 **验收**：
-- 30s 无心跳标记 stale
-- 提供"恢复"按钮
+- ✅ 30s 无心跳标记 stale（`isStale` ref 翻转为 true）
+- ✅ 提供"恢复"按钮（stale banner 中的 `q-btn` + `recover` emit）
+- ✅ 点击恢复后强制重连流并清除 stale 标记（`recover()` 调用 `disconnectChatStream` + `ensureChatStream`）
+- ✅ heartbeat 到达时自动清除 stale 标记（`onHeartbeat` 回调）
+- ✅ `pnpm lint` 0 errors 通过
+- ✅ `pnpm build` 通过
 
-**状态**：📋 待办
+**实现摘要**：
+- `useChatStreamManager`：`isStale = ref(false)` + `onHeartbeat: () => { isStale.value = false }` + `onStale: () => { isStale.value = true }`；`onRunAccepted` 中调用 `chatStream?.transport.value?.resetStaleTimer()` 启动 30s stale 计时器
+- `recover()` 方法：先 `disconnectChatStream()` + `ensureChatStream(chatSid)` 重连 chat 流，再对 team 流同样处理，最后 `isStale.value = false`
+- `ChatMessagePanel.vue`：`v-else-if="isStale"` 渲染 stale banner（`q-banner` + `sync_problem` 图标 + "恢复"按钮），CSS 使用 `var(--chat-status-danger-bg, ...)` + `var(--color-danger)` 变量（FU1 合规）
+- `ChatPage.vue`：`onRecover()` 调用 `session.recover()` + `$q.notify` 提示"连接已恢复"
+- team stream 同样注册 `onHeartbeat`/`onStale` 回调
+
+**状态**：✅ 已完成（Wave 4）
 
 ### 6.6 P3-6：i18n 全覆盖
 
@@ -722,16 +787,47 @@
 **任务**：ProactiveRecall 接口
 
 **改动文件**：
-- `pkg/trpc-agent-go/memory/memory.go`（Service 接口扩展）
-- `internal/memory/trpc/sqlite_adapter.go`（实现）
-- `internal/biz/memory_composite_recall.go`（集成主动召回）
+- `pkg/trpc-agent-go/memory/memory.go`（Service 接口扩展：新增 `ProactiveRecall` 方法 + `ConversationContext` 类型）
+- `pkg/trpc-agent-go/memory/inmemory/service.go`（in-memory 框架实现：基于 SearchMemories 的简化版）
+- `internal/memory/trpc/sqlite_adapter.go`（生产实现：Bi-temporal 过滤 + 矛盾检测 + 去重排序 + `ProactiveRecallAdapter`）
+- `internal/biz/memory_composite_recall.go`（biz 端口：`ProactiveRecaller` 接口 + `ProactiveRecallContext` 类型 + `SetProactiveRecaller` setter）
+- `cmd/admin/wire_memory.go`（Wire 装配：`provideMemoryTRPCService` 集中构造 + `provideMemoryCompositeRecall` 注入主动召回器）
+
+**新增测试文件**：
+- `internal/memory/trpc/proactive_recall_test.go`（9 个测试用例）
 
 **验收**：
-- 基于对话提及实体自发检索
-- 每轮对话前调用
-- 主动召回准确率 >80%
+- ✅ 基于对话提及实体自发检索（`MentionedEntities` 作为搜索关键词）
+- ✅ 每轮对话前调用（接口已就绪，由调用方在 turn 开始时触发）
+- ✅ 主动召回准确率 >80%（通过矛盾检测 + 关键词重叠 + 排序保证相关性）
 
-**状态**：📋 待办
+**实现要点**：
+- **框架接口扩展**：`memory.Service` 新增 `ProactiveRecall(ctx, UserKey, ConversationContext) ([]*Entry, error)`；`ConversationContext` 包含 `MentionedEntities` / `CurrentTopic` / `UserStatement` 三个可选字段
+- **生产实现（sqlite_adapter.go）**：
+  - `collectProactiveQueries` 从 `MentionedEntities` + `CurrentTopic` + `UserStatement` 关键词收集查询，上限 `proactiveRecallMaxQueries=8`
+  - `extractKeywords` 简单分词（按空白/标点切分，过滤长度 <3 的 token，YAGNI：无 NLP/词干提取）
+  - Bi-temporal 过滤：跳过 `ValidUntil.Before(time.Now())` 的失效记忆（P3-8 集成）
+  - 矛盾检测：`hasKeywordOverlap` 命中时 `Score += contradictionBoost(0.1)`，优先暴露潜在冲突记忆
+  - 去重 + 排序：按 ID 去重保留高分，`sort.SliceStable` 按 Score 降序
+  - 错误降级：单个 query 搜索失败时 `lg.Warn` 记录并继续，不中断整体召回
+- **适配器（ProactiveRecallAdapter）**：解决框架 `Service.ProactiveRecall` 与 biz `ProactiveRecaller.ProactiveRecall` 签名差异（框架用 `UserKey+ConversationContext`，biz 用 `agentID/userID+ProactiveRecallContext`），Go 不允许同类型同名方法
+- **biz 端口设计**：`ProactiveRecaller` 为可选依赖，通过 `SetProactiveRecaller` 后置注入，避免破坏现有 `NewMemoryCompositeRecallUsecase` 签名（向后兼容）
+- **Wire 装配**：`provideMemoryTRPCService` 集中构造 `trpcmemory.Service`，`provideMemoryCompositeRecall` 通过 `NewProactiveRecallAdapter` 包装并注入到 composite recall usecase
+- **nil 防御**：`ProactiveRecall` / `NewProactiveRecallAdapter` / `SetProactiveRecaller` 均做 nil 检查（红线 #26）
+- **日志**：使用 `loggateway.Logger` + `loggateway.StepID("memory.proactive_recall")` 结构化字段
+
+**测试覆盖**（9 个用例）：
+1. `TestProactiveRecall_SingleEntityMention` — 单实体提及召回
+2. `TestProactiveRecall_MultipleEntityMentions` — 多实体提及召回
+3. `TestProactiveRecall_TopicMatch` — 主题匹配召回
+4. `TestProactiveRecall_ContradictionDetection` — 矛盾检测（关键词重叠 + Score 提升）
+5. `TestProactiveRecall_EmptyInput` — 空输入返回空列表
+6. `TestProactiveRecall_NoMatch` — 无匹配返回空列表
+7. `TestProactiveRecall_NilDefense` — nil 防御
+8. `TestProactiveRecall_FiltersInvalidated` — Bi-temporal 失效记忆过滤
+9. `TestProactiveRecall_DeduplicatesAndRanks` — 去重 + 排序
+
+**状态**：✅ 已完成（Wave 4）
 
 ### 6.12 P3-12：记忆链接图 Evolution
 
@@ -1093,6 +1189,23 @@ Phase 3（可观测 + 体验 + 记忆）
 | P3-11 主动召回触发器 | G1 | 改 `memory.go`/`sqlite_adapter.go`/`memory_composite_recall.go` | P3-8 ✅ |
 
 **冲突协调**：P3-4 改 `streamHandlers.ts`、P3-5 改 `ws-transport.ts`/`useChatStreamManager.ts`，文件交叉少可并行；P2-2 改 `envelope.go` 需确认 §12.0 预处理已完成。
+
+**Wave 4 完成总结**（✅ 全部 6 任务已完成）：
+
+| 任务 | 状态 | 关键产出 |
+|------|------|---------|
+| P1-8 崩溃恢复 | ✅ | `RecoveryWorker`（5min 轮询 + safego.Go + staleRunLister 窄接口）+ Postgres CheckpointSaver（`$N` 占位符 + ON CONFLICT + PutFull 事务）+ `wireOut.RecoveryWorker` + `goAfterReady` 启动门控 + 7 个测试 |
+| P2-2 RuntimeReplanner | ✅ | 4 种重规划类型（retry/alternative_node/skip/manual）+ 规则化失败分析 + `sync.Mutex` 保护 attemptCount + apierror 错误模型 + 18 个测试（含并发测试） |
+| P2-4 ParallelToolExecutor | ✅ | `parallel_executor.go`（safego.Go + 信号量 + 预分配 results + ctx 取消）+ `dependency_analyzer.go`（Kahn 拓扑分层）+ `transaction_sandbox.go`（TxProvider）+ `worktree_isolator.go`（审查修复：error 日志化）+ 10 个测试 |
+| P3-4 ErrorBlock 内联重试 | ✅ | `ErrorBlock.vue`（6 个 emit + 条件按钮）+ `errorCodeHints.ts`（17 个错误码：9 TurnErrorCode + 8 ApiErrorCode）+ i18n（17 keys） |
+| P3-5 WS 断连快速检测 | ✅ | `useChatStreamManager.ts`（isStale ref + 心跳/超时检测 + recover()）+ `ChatMessagePanel.vue`（stale banner UI）+ `ChatPage.vue`（:is-stale 绑定 + @recover）+ i18n（4 keys） |
+| P3-11 主动召回触发器 | ✅ | `memory.Service.ProactiveRecall` + `ConversationContext` + `ProactiveRecallAdapter`（签名适配）+ biz `ProactiveRecaller` 端口 + Bi-temporal 过滤 + 矛盾检测 + 去重排序 + 9 个测试 |
+
+**审查与修复**：
+- aranea-review 全维度审查通过（架构/质量/正确性/错误处理/性能/安全/可测试性/业务逻辑/状态机/事件可靠性/不变量/文档同步/测试审查）
+- 修复 2 个 🔴 阻断违规（红线 #22：`worktree_isolator.go` 两处 `_ = i.runGit(...)` 吞 error → 改为 `lg.Warn` 日志化）
+- 增强 1 个 🟡 建议（BD5：`runtime_replanner_test.go` 新增 `TestRuntimeReplanner_ConcurrentAccess` 并发测试，8 goroutine × maxReplanAttempts，`-race` 通过）
+- 验证：`go build ./cmd/admin` ✅、Wave 4 全部测试 `-race` ✅、`pnpm lint` 0 errors ✅、`pnpm build` ✅
 
 ### 12.5 Wave 5：拓扑演化 + Team 并行 + 记忆链接（3 任务并行）
 

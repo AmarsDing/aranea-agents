@@ -352,6 +352,14 @@ func (w *RecoveryWorker) Run(ctx) {
 }
 ```
 
+> P1-8 已落地（Wave 4）。实际实现与原设计的差异：
+> - **窄接口替代全 Repo**：`staleRunLister`（仅 `FindStaleRuns`）替代 `RunRepo`，遵循接口窄化原则（DB-N3/AS-FIT-01）
+> - **依赖替换**：`engine ExecutionEngine` 改为 `resumer biz.DurableResumeGateway`（仅暴露 `ResumeFromCheckpoint`，更窄）
+> - **构造 nil 防御**：`NewRecoveryWorker` 任一依赖为 nil 即返回 nil（红线 #26）
+> - **可配置轮询周期**：新增 `pollInterval time.Duration` 字段（默认 5min，测试可注入短周期）
+> - **safego.Go 启动**：`Run` 内部循环由 `safego.Go` 包裹（红线 #13），通过 `workers.go::goAfterReady` 在 ReadinessGate 通过后启动
+> - **Postgres CheckpointSaver**：`pkg/trpc-agent-go/graph/checkpoint/postgres/saver.go`，使用 `$N` 占位符 + `ON CONFLICT DO UPDATE`，`PutFull` 在单事务内删除+插入
+
 ---
 
 ## 四、Layer 1：强制任务规划设计

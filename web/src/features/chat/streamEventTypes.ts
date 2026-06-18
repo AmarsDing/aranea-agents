@@ -98,6 +98,16 @@ export interface ErrorEvent extends StreamEventBase {
   kind: 'error';
   type: 'degradation';
   message: string;
+  /**
+   * Stable machine-readable error code used to drive inline action hints
+   * (retry / switch_model / rephrase / …). May originate from:
+   *   - `Activity.toolErrorCode` (turn-level codes like `LLM_CALL_FAILED`)
+   *   - `Activity.meta.error_code` (backend `apierror.Code` like `NOT_FOUND`)
+   *   - `EnvelopeError.code` (raw WS error envelopes)
+   *
+   * See `features/chat/errorCodeHints.ts` for the full code → action map.
+   */
+  errorCode?: string;
 }
 
 /** 计划事件 — 新增类型 */

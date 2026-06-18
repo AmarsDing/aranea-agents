@@ -190,9 +190,41 @@ type Service interface {
 	EnqueueAutoMemoryJob(ctx context.Context,
 		sess *session.Session) error
 
+	// ProactiveRecall retrieves associated memories based on the
+	// current conversation context (mentioned entities, topic, and
+	// user statement) without requiring an explicit query. It is
+	// intended to be called before each conversation turn to surface
+	// relevant memories that the agent should consider.
+	//
+	// Behaviour:
+	//   - Empty conversation context → returns empty list, no error.
+	//   - Invalidated memories (Bi-temporal) are filtered out by default.
+	//   - Contradiction detection: when UserStatement potentially
+	//     conflicts with a stored memory, that memory is prioritised.
+	ProactiveRecall(ctx context.Context, userKey UserKey,
+		convCtx ConversationContext) ([]*Entry, error)
+
 	// Close closes the service and releases resources.
 	// This includes stopping async memory workers if configured.
 	Close() error
+}
+
+// ConversationContext captures the current conversation state for
+// proactive recall. Fields are optional; empty values are ignored.
+type ConversationContext struct {
+	// MentionedEntities are people, places, or topics mentioned in the
+	// conversation. Each entity is used as a search keyword to retrieve
+	// related memories.
+	MentionedEntities []string
+
+	// CurrentTopic is the topic of the current conversation turn. It is
+	// used as a search keyword to retrieve topic-relevant memories.
+	CurrentTopic string
+
+	// UserStatement is the user's latest statement. It is used for
+	// contradiction detection: if the statement potentially conflicts
+	// with a stored memory, that memory is prioritised in the results.
+	UserStatement string
 }
 
 // ToolCreator creates a tool.

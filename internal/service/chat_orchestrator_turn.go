@@ -324,6 +324,10 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	eg, egCtx := errgroup.WithContext(ctx)
 
 	// Goroutine 1: BUILD
+	// P1-8: CheckpointSaver is force-enabled for all graph-based Runs at the
+	// graph builder factory (internal/graph/adapter.runtime_adapter.createAgent),
+	// so every Run persists checkpoints and can be recovered by RecoveryWorker
+	// after a process restart.
 	eg.Go(func() error {
 		var buildErr error
 		buildResult, buildErr = o.buildTurnRunner(egCtx, sess, ag, admit, emitter)

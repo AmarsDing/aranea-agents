@@ -1015,6 +1015,12 @@ export function useChatWorkspace() {
       }),
       wsReplaying: streamManager.wsReplaying,
       executionProgress: streamManager.executionProgress,
+      // P3-5: WS run-stale indicator + recover action. When no run_heartbeat
+      // arrives within 30s, `isStale` flips to true and the UI surfaces a
+      // "Recover" button. Clicking it calls `recover()` which force-reconnects
+      // the active stream(s) and clears the stale flag.
+      isStale: streamManager.isStale,
+      recover: streamManager.recover,
       spiritLoadingMessage: contextualLoading.loadingMessage,
       spiritPulseStates: statusPulse.pulseStates,
       spiritOnTeamStatusChanged: statusPulse.onTeamStatusChanged,

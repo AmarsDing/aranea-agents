@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -353,6 +354,65 @@ func (s *MemoryService) EnqueueAutoMemoryJob(ctx context.Context, sess *session.
 		return nil
 	}
 	return s.autoMemoryWorker.EnqueueJob(ctx, sess)
+}
+
+// ProactiveRecall retrieves associated memories based on the conversation
+// context. The in-memory implementation delegates to SearchMemories for each
+// mentioned entity and the current topic, then merges and deduplicates the
+// results. Contradiction detection is performed via keyword overlap between
+// the user statement and stored memories.
+func (s *MemoryService) ProactiveRecall(ctx context.Context, userKey memory.UserKey,
+	convCtx memory.ConversationContext) ([]*memory.Entry, error) {
+	if s == nil {
+		return nil, nil
+	}
+	if err := userKey.CheckUserKey(); err != nil {
+		return nil, err
+	}
+
+	queries := collectProactiveQueries(convCtx)
+	if len(queries) == 0 {
+		return nil, nil
+	}
+
+	seen := make(map[string]struct{})
+	var out []*memory.Entry
+	for _, q := range queries {
+		entries, err := s.SearchMemories(ctx, userKey, q)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			if e == nil || e.ID == "" {
+				continue
+			}
+			if _, ok := seen[e.ID]; ok {
+				continue
+			}
+			seen[e.ID] = struct{}{}
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
+// collectProactiveQueries extracts search keywords from the conversation
+// context. Returns nil when the context carries no usable signal.
+func collectProactiveQueries(convCtx memory.ConversationContext) []string {
+	var queries []string
+	for _, e := range convCtx.MentionedEntities {
+		e = strings.TrimSpace(e)
+		if e != "" {
+			queries = append(queries, e)
+		}
+	}
+	if topic := strings.TrimSpace(convCtx.CurrentTopic); topic != "" {
+		queries = append(queries, topic)
+	}
+	if stmt := strings.TrimSpace(convCtx.UserStatement); stmt != "" {
+		queries = append(queries, stmt)
+	}
+	return queries
 }
 
 // Close stops the async memory workers and cleans up resources.

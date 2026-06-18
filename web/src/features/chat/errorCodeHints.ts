@@ -1,3 +1,16 @@
+/**
+ * Error code → action hint mapping for chat ErrorBlock.
+ *
+ * Covers two categories of error codes:
+ *   1. TurnErrorCode — chat/turn-level errors produced by the streaming pipeline
+ *      (LLM_CALL_FAILED, TURN_TIMEOUT, …). These are stable frontend identifiers.
+ *   2. ApiErrorCode — backend `pkg/apierror.Code` values surfaced via WS error
+ *      envelopes or HTTP error responses (NOT_FOUND, BAD_REQUEST, …).
+ *      See `pkg/apierror/apierror.go` for the canonical list.
+ *
+ * The hint drives which inline action button(s) ErrorBlock renders.
+ */
+
 export type TurnErrorCode =
   | 'AGENT_BUILD_FAILED'
   | 'ATTACHMENT_FAILED'
@@ -9,21 +22,62 @@ export type TurnErrorCode =
   | 'AGENT_FORBIDDEN'
   | 'STREAM_PREVIEW_FAILED';
 
-export interface ErrorActionHint {
-  action: 'switch_model' | 'retry' | 'rephrase' | 'check_config' | 'remove_attachment' | 'none';
-  label: string;
-}
+/**
+ * Backend `apierror.Code` constants. Mirrors `pkg/apierror/apierror.go` so
+ * that error envelopes carrying `error.code` can be mapped without a network
+ * round-trip. Keep in sync with the Go source of truth.
+ */
+export type ApiErrorCode =
+  | 'NOT_FOUND'
+  | 'BAD_REQUEST'
+  | 'UNAUTHORIZED'
+  | 'FORBIDDEN'
+  | 'CONFLICT'
+  | 'INTERNAL'
+  | 'UNAVAILABLE'
+  | 'RATE_LIMITED';
 
-const ACTION_LABELS: Record<ErrorActionHint['action'], string> = {
-  switch_model: '建议切换模型',
-  retry: '可点击重试',
-  rephrase: '请尝试换种表述',
-  check_config: '请检查配置',
-  remove_attachment: '请移除附件',
+/** All error codes recognized by the hint lookup. */
+export type ChatErrorCode = TurnErrorCode | ApiErrorCode;
+
+export type ErrorAction =
+  | 'switch_model'
+  | 'retry'
+  | 'rephrase'
+  | 'check_config'
+  | 'remove_attachment'
+  | 'relogin'
+  | 'none';
+
+/** i18n keys for action labels; resolved by ErrorBlock via `t()`. */
+const ACTION_LABEL_KEYS: Record<ErrorAction, string> = {
+  switch_model: 'chat.errorBlock.hintSwitchModel',
+  retry: 'chat.errorBlock.hintRetry',
+  rephrase: 'chat.errorBlock.hintRephrase',
+  check_config: 'chat.errorBlock.hintCheckConfig',
+  remove_attachment: 'chat.errorBlock.hintRemoveAttachment',
+  relogin: 'chat.errorBlock.hintRelogin',
   none: '',
 };
 
-const ERROR_CODE_HINTS: Record<string, ErrorActionHint['action']> = {
+/** i18n keys for button labels; resolved by ErrorBlock via `t()`. */
+const ACTION_BUTTON_KEYS: Record<ErrorAction, string> = {
+  switch_model: 'chat.errorBlock.btnSwitchModel',
+  retry: 'chat.errorBlock.btnRetry',
+  rephrase: 'chat.errorBlock.btnRephrase',
+  check_config: 'chat.errorBlock.btnCheckConfig',
+  remove_attachment: 'chat.errorBlock.btnRemoveAttachment',
+  relogin: 'chat.errorBlock.btnRelogin',
+  none: '',
+};
+
+/**
+ * Error code → action mapping. Covers both TurnErrorCode and ApiErrorCode.
+ * Codes not listed here fall back to `retry` when the error is recoverable
+ * (HTTP 5xx / WS error) and `none` otherwise.
+ */
+const ERROR_CODE_HINTS: Record<ChatErrorCode, ErrorAction> = {
+  // ── TurnErrorCode ──
   LLM_CALL_FAILED: 'switch_model',
   TURN_TIMEOUT: 'retry',
   FIRST_BYTE_TIMEOUT: 'switch_model',
@@ -33,17 +87,35 @@ const ERROR_CODE_HINTS: Record<string, ErrorActionHint['action']> = {
   ATTACHMENT_UNSUPPORTED: 'remove_attachment',
   AGENT_FORBIDDEN: 'check_config',
   STREAM_PREVIEW_FAILED: 'retry',
+
+  // ── ApiErrorCode (mirrors pkg/apierror/apierror.go) ──
+  NOT_FOUND: 'retry',
+  BAD_REQUEST: 'rephrase',
+  UNAUTHORIZED: 'relogin',
+  FORBIDDEN: 'check_config',
+  CONFLICT: 'retry',
+  INTERNAL: 'retry',
+  UNAVAILABLE: 'retry',
+  RATE_LIMITED: 'retry',
 };
 
-export function getErrorActionHint(errorCode?: string): ErrorActionHint | null {
-  if (!errorCode) return null;
-  const action = ERROR_CODE_HINTS[errorCode];
-  if (!action) return null;
-  return { action, label: ACTION_LABELS[action] };
+/** i18n key for the inline hint label of a given action (empty string for `none`). */
+export function getActionHintLabelKey(action: ErrorAction): string {
+  return ACTION_LABEL_KEYS[action];
 }
 
-export function formatErrorWithHint(message: string, errorCode?: string): string {
-  const hint = getErrorActionHint(errorCode);
-  if (!hint || !hint.label) return message;
-  return `${message}（${hint.label}）`;
+/** i18n key for the button label of a given action (empty string for `none`). */
+export function getActionButtonLabelKey(action: ErrorAction): string {
+  return ACTION_BUTTON_KEYS[action];
+}
+
+/**
+ * Resolve the action for a given error code.
+ *
+ * Returns `'none'` when the code is unknown so callers can decide whether to
+ * render a generic retry button or hide actions entirely.
+ */
+export function getErrorAction(errorCode?: string): ErrorAction {
+  if (!errorCode) return 'none';
+  return ERROR_CODE_HINTS[errorCode as ChatErrorCode] ?? 'none';
 }

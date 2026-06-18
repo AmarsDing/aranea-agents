@@ -31,6 +31,12 @@
       <ErrorBlock
         v-else-if="event.kind === 'error'"
         :event="event"
+        @retry="(e) => $emit('error-retry', e)"
+        @switch-model="(e) => $emit('error-switch-model', e)"
+        @rephrase="(e) => $emit('error-rephrase', e)"
+        @check-config="(e) => $emit('error-check-config', e)"
+        @remove-attachment="(e) => $emit('error-remove-attachment', e)"
+        @relogin="(e) => $emit('error-relogin', e)"
       />
       <PlanBlock
         v-else-if="event.kind === 'plan'"
@@ -57,6 +63,7 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Activity as TimelineActivity } from '../../features/chat/activityTimelineTypes';
 import type { ActivityTreeNode } from '../../features/chat/activityTypes';
+import type { ErrorEvent } from '../../features/chat/streamEventTypes';
 import ThinkingBlock from './ThinkingBlock.vue';
 import ActionBlock from './ActionBlock.vue';
 import ReplyBlock from './ReplyBlock.vue';
@@ -77,6 +84,12 @@ const props = defineProps<{
 
 defineEmits<{
   confirm: [activityId: string, approved: boolean];
+  'error-retry': [event: ErrorEvent];
+  'error-switch-model': [event: ErrorEvent];
+  'error-rephrase': [event: ErrorEvent];
+  'error-check-config': [event: ErrorEvent];
+  'error-remove-attachment': [event: ErrorEvent];
+  'error-relogin': [event: ErrorEvent];
 }>();
 
 /** Pre-built Map<parentId, children[]> for O(1) child lookup instead of recursive tree search. */

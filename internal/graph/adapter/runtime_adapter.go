@@ -430,7 +430,12 @@ func (f *trpcGraphBuilderFactory) FindNodeDef(cfg biz.GraphBuildConfig, taskMeta
 }
 
 func (f *trpcGraphBuilderFactory) createAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool, ee biz.ExecutionEngineType, subAgents []trpcagent.Agent) (*graphtrpc.GraphAgent, error) {
-	if f.saver != nil && enableCheckpoint {
+	// P1-8: Force-enable CheckpointSaver for all graph runs when a saver is
+	// available, regardless of the per-graph EnableCheckpoint flag. This
+	// guarantees that every Run can be recovered by RecoveryWorker after a
+	// process restart. The EnableCheckpoint flag is now only a hint for
+	// graph definitions that explicitly opt out (saver == nil).
+	if f.saver != nil {
 		return graphtrpc.NewGraphAgentWithSaver(name, g, f.saver, ee, subAgents...)
 	} else if ee != "" && ee != biz.EngineBSP {
 		return graphtrpc.NewGraphAgentWithEngine(name, g, enableCheckpoint, ee, subAgents...)

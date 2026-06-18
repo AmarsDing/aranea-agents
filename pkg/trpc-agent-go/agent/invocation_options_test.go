@@ -498,6 +498,10 @@ func (m *mockMemoryService) Close() error {
 	return nil
 }
 
+func (m *mockMemoryService) ProactiveRecall(ctx context.Context, userKey memory.UserKey, convCtx memory.ConversationContext) ([]*memory.Entry, error) {
+	return nil, nil
+}
+
 type mockArtifactService struct{}
 
 func (m *mockArtifactService) SaveArtifact(ctx context.Context, info artifact.SessionInfo, filename string, artifact *artifact.Artifact) (int, error) {

@@ -53,6 +53,12 @@
         :agent-color="agentWork.agentColor"
         :activity-tree="agentWork.activityTree"
         @confirm="(id, approved) => $emit('confirm', id, approved)"
+        @error-retry="(e) => $emit('error-retry', e)"
+        @error-switch-model="(e) => $emit('error-switch-model', e)"
+        @error-rephrase="(e) => $emit('error-rephrase', e)"
+        @error-check-config="(e) => $emit('error-check-config', e)"
+        @error-remove-attachment="(e) => $emit('error-remove-attachment', e)"
+        @error-relogin="(e) => $emit('error-relogin', e)"
       />
     </div>
   </div>
@@ -66,6 +72,7 @@ import type { ProgressCategory, ProgressSection } from '../../features/chat/agen
 import { PROGRESS_GLYPHS, PROGRESS_STATUS_GLYPHS } from '../../features/chat/agentTreeTypes';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
+import type { ErrorEvent } from '../../features/chat/streamEventTypes';
 import EventStream from './EventStream.vue';
 import TeamPanel from './TeamPanel.vue';
 
@@ -77,6 +84,12 @@ const props = defineProps<{
 
 defineEmits<{
   confirm: [activityId: string, approved: boolean];
+  'error-retry': [event: ErrorEvent];
+  'error-switch-model': [event: ErrorEvent];
+  'error-rephrase': [event: ErrorEvent];
+  'error-check-config': [event: ErrorEvent];
+  'error-remove-attachment': [event: ErrorEvent];
+  'error-relogin': [event: ErrorEvent];
 }>();
 
 const statusClass = computed(() => ({
