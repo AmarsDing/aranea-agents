@@ -13,7 +13,7 @@ import (
 
 // ensureCredentialEncryptionKeyOnClient returns the platform AES key (hex), generating it once if empty.
 // Uses a conditional UPDATE to avoid races when multiple goroutines initialize concurrently.
-func ensureCredentialEncryptionKeyOnClient(ctx context.Context, c *ent.Client) (string, error) {
+func ensureCredentialEncryptionKeyOnClient(ctx context.Context, c *ent.Client, d Dialect) (string, error) {
 	if c == nil {
 		return "", fmt.Errorf("ent client is nil")
 	}
@@ -32,8 +32,8 @@ func ensureCredentialEncryptionKeyOnClient(ctx context.Context, c *ent.Client) (
 		return "", err
 	}
 	newKey := hex.EncodeToString(buf)
-	res, err := c.ExecContext(ctx,
-		`UPDATE system_settings SET credential_encryption_key = ? WHERE id = ? AND (credential_encryption_key = '' OR credential_encryption_key IS NULL)`,
+	const q = `UPDATE system_settings SET credential_encryption_key = ? WHERE id = ? AND (credential_encryption_key = '' OR credential_encryption_key IS NULL)`
+	res, err := c.ExecContext(ctx, d.RenumberPlaceholders(q),
 		newKey, systemSettingSingletonID,
 	)
 	if err != nil {

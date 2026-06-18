@@ -125,7 +125,7 @@ func (r *systemSettingRepo) getRefineLLMRedacted(ctx context.Context) (biz.Refin
 }
 
 func (r *systemSettingRepo) EnsureCredentialEncryptionKey(ctx context.Context) (string, error) {
-	return ensureCredentialEncryptionKeyOnClient(ctx, r.data.RW().Write(ctx))
+	return ensureCredentialEncryptionKeyOnClient(ctx, r.data.RW().Write(ctx), r.data.dialect)
 }
 
 func (r *systemSettingRepo) Update(ctx context.Context, rootDir, workDir string, globalMonthlyMicroUSD int64, a2aPublicBaseURL string, mcpAllowAdHocHTTP bool) (biz.SystemSetting, error) {

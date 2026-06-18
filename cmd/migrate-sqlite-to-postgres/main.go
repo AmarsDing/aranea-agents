@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/internal/data"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/pkg/loggateway"
 
@@ -20,14 +21,15 @@ import (
 )
 
 // Flags:
-//   --source       SQLite DSN or file path (default: file:./data/arenea.sqlite?cache=shared&_fk=1)
-//   --target       Postgres DSN (default: from configs/config.yaml data.postgres.source)
-//   --mode         migrate | validate | both (default: migrate)
-//   --table        Migrate only this table (optional)
-//   --batch-size   Rows per INSERT batch (default: 500)
-//   --skip-tables  Comma-separated table names to skip
-//   --init-schema  Run Ent Schema.Create on Postgres before migration (default: false)
-//   --sample-size  Number of rows to sample for validation checksum (default: 100)
+//
+//	--source       SQLite DSN or file path (default: file:./data/arenea.sqlite?cache=shared&_fk=1)
+//	--target       Postgres DSN (default: from configs/config.yaml data.postgres.source)
+//	--mode         migrate | validate | both (default: migrate)
+//	--table        Migrate only this table (optional)
+//	--batch-size   Rows per INSERT batch (default: 500)
+//	--skip-tables  Comma-separated table names to skip
+//	--init-schema  Run Ent Schema.Create on Postgres before migration (default: false)
+//	--sample-size  Number of rows to sample for validation checksum (default: 100)
 func main() {
 	source := flag.String("source", "file:./data/arenea.sqlite?cache=shared&_fk=1", "SQLite source DSN or file path")
 	target := flag.String("target", "postgres://postgres:Hangshan%40123@127.0.0.1:5432/aranea?sslmode=disable", "Postgres target DSN")
@@ -36,6 +38,8 @@ func main() {
 	batchSize := flag.Int("batch-size", 500, "Rows per INSERT batch")
 	skipTables := flag.String("skip-tables", "", "Comma-separated table names to skip")
 	initSchema := flag.Bool("init-schema", false, "Run Ent Schema.Create on Postgres before migration")
+	runDDL := flag.Bool("run-ddl", false, "Run DDL migrations (FTS5/monitor/memory/trpc tables) on Postgres before migration")
+	initFramework := flag.Bool("init-framework-schema", false, "Create framework-managed tables (trpc_*/graph_checkpoints/event_wal/vector_embeddings etc.) on Postgres before migration")
 	sampleSize := flag.Int("sample-size", 100, "Number of rows to sample for validation checksum")
 	flag.Parse()
 
@@ -62,6 +66,30 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Println("Schema initialized.")
+	}
+
+	if *runDDL {
+		fmt.Println("=== Running DDL migrations (FTS5/monitor/memory/trpc tables) ===")
+		if err := runDDLMigrationsOnPostgres(context.Background(), tgtDB, lg); err != nil {
+			fmt.Fprintf(os.Stderr, "ddl migrations: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("DDL migrations completed.")
+	}
+
+	if *initFramework {
+		fmt.Println("=== Creating framework-managed tables (trpc_*/graph_checkpoints/event_wal/vector_embeddings) ===")
+		// Try to create pgvector extension first (non-fatal if it fails —
+		// vector_embeddings table creation will be skipped).
+		if err := ensurePgvectorExtension(context.Background(), tgtDB); err != nil {
+			fmt.Printf("  [WARN] pgvector extension not available: %v\n", err)
+			fmt.Println("         vector_embeddings table will be skipped (vectors need re-embedding after migration).")
+		}
+		if err := initFrameworkSchema(context.Background(), tgtDB); err != nil {
+			fmt.Fprintf(os.Stderr, "framework schema: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Framework schema created.")
 	}
 
 	skipSet := parseSkipTables(*skipTables)
@@ -127,9 +155,23 @@ func openPostgres(dsn string) (*sql.DB, error) {
 func initPostgresSchema(ctx context.Context, pgDB *sql.DB) error {
 	drv := entsql.OpenDB(dialect.Postgres, pgDB)
 	client := ent.NewClient(ent.Driver(drv))
-	defer client.Close()
+	// Do NOT call client.Close() — it would close the underlying *sql.DB
+	// which is owned and managed by the caller (main defer tgtDB.Close()).
 	if err := client.Schema.Create(ctx); err != nil {
 		return fmt.Errorf("ent schema create (postgres): %w", err)
+	}
+	return nil
+}
+
+// runDDLMigrationsOnPostgres runs DDL migrations (FTS5/monitor/memory/trpc tables)
+// on the Postgres database. This creates tables that are not managed by Ent Schema
+// but are needed for data migration (e.g. memory_facts, trpc_session_events, monitor_traces).
+func runDDLMigrationsOnPostgres(ctx context.Context, pgDB *sql.DB, lg loggateway.Logger) error {
+	drv := entsql.OpenDB(dialect.Postgres, pgDB)
+	client := ent.NewClient(ent.Driver(drv))
+	// Do NOT call client.Close() — it would close the underlying *sql.DB.
+	if err := data.RunDDLMigrationsExternal(pgDB, client, data.DialectPostgres, lg); err != nil {
+		return fmt.Errorf("ddl migrations: %w", err)
 	}
 	return nil
 }

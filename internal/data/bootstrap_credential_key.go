@@ -6,7 +6,7 @@ import (
 	"aranea-agents/internal/data/ent"
 )
 
-func ensureDefaultCredentialEncryptionKey(ctx context.Context, client *ent.Client) error {
-	_, err := ensureCredentialEncryptionKeyOnClient(ctx, client)
+func ensureDefaultCredentialEncryptionKey(ctx context.Context, client *ent.Client, d Dialect) error {
+	_, err := ensureCredentialEncryptionKeyOnClient(ctx, client, d)
 	return err
 }

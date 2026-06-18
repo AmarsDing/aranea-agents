@@ -634,7 +634,7 @@ func invocationMetaJSON(in biz.ToolInvocationWrite) string {
 }
 
 func (r *toolRepo) SyncBuiltinTools(ctx context.Context) error {
-	return syncBuiltinToolsFromRegistry(ctx, r.data.RW().Write(ctx), r.data.lg)
+	return syncBuiltinToolsFromRegistry(ctx, r.data.RW().Write(ctx), r.data.dialect, r.data.lg)
 }
 
 func (r *toolRepo) ListToolAgentOverridesByAgent(ctx context.Context, agentID string) ([]biz.ToolAgentOverride, error) {

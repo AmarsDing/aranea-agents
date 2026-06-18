@@ -3,7 +3,6 @@ package graph
 import (
 	"context"
 	"database/sql"
-	"fmt"
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -30,17 +29,20 @@ func NewCheckpointSaver(db *sql.DB, pgDSN string, lg loggateway.Logger) (*Checkp
 	if db == nil {
 		return nil, apierror.BadRequest(apierror.DomainGraph, "graph checkpoint: db is nil")
 	}
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	var saver trpcgraph.CheckpointSaver
 	var err error
 	if pgDSN != "" {
 		saver, err = trpcgraphpg.NewSaver(db)
 		if err != nil {
-			return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph checkpoint postgres init: %v", err))
+			return nil, apierror.Internal(apierror.DomainGraph, "graph checkpoint postgres init").WithCause(err)
 		}
 	} else {
 		saver, err = trpcgraphsqlite.NewSaver(db)
 		if err != nil {
-			return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph checkpoint sqlite init: %v", err))
+			return nil, apierror.Internal(apierror.DomainGraph, "graph checkpoint sqlite init").WithCause(err)
 		}
 	}
 	return &CheckpointSaver{saver: saver, db: db, lg: lg}, nil

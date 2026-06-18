@@ -128,28 +128,33 @@ func (v *Validator) discoverTables(ctx context.Context) ([]string, error) {
 
 // tableValidationResult holds the result of validating a single table.
 type tableValidationResult struct {
-	SourceRows        int64
-	TargetRows        int64
+	SourceRows         int64
+	TargetRows         int64
 	ChecksumMismatches int
 }
 
 // validateTable validates a single table by comparing row counts and sample checksums.
 func (v *Validator) validateTable(ctx context.Context, table string) (*tableValidationResult, error) {
+	// Resolve target table name (some SQLite tables map to differently-named
+	// Postgres tables, e.g. checkpoints -> graph_checkpoints).
+	targetTable := resolveTargetTableName(table)
+
 	// Check if table exists in Postgres.
-	exists, err := v.tableExistsInPostgres(ctx, table)
+	exists, err := v.tableExistsInPostgres(ctx, targetTable)
 	if err != nil {
 		return nil, fmt.Errorf("check postgres table: %w", err)
 	}
 	if !exists {
-		return nil, fmt.Errorf("table %s does not exist in Postgres", table)
+		return nil, fmt.Errorf("table %s does not exist in Postgres", targetTable)
 	}
 
-	// Compare row counts.
+	// Compare row counts. SQLite queries use the source table name;
+	// Postgres queries use the resolved target table name.
 	srcCount, err := v.countRows(ctx, v.srcDB, table, true)
 	if err != nil {
 		return nil, fmt.Errorf("count sqlite rows: %w", err)
 	}
-	tgtCount, err := v.countRows(ctx, v.tgtDB, table, false)
+	tgtCount, err := v.countRows(ctx, v.tgtDB, targetTable, false)
 	if err != nil {
 		return nil, fmt.Errorf("count postgres rows: %w", err)
 	}
@@ -168,7 +173,7 @@ func (v *Validator) validateTable(ctx context.Context, table string) (*tableVali
 
 	// Get common columns for checksum comparison.
 	migrator := &Migrator{srcDB: v.srcDB, tgtDB: v.tgtDB, batchSize: 1, lg: v.lg}
-	columns, err := migrator.getCommonColumns(ctx, table)
+	columns, err := migrator.getCommonColumns(ctx, table, targetTable)
 	if err != nil {
 		return nil, fmt.Errorf("get common columns: %w", err)
 	}
@@ -177,7 +182,7 @@ func (v *Validator) validateTable(ctx context.Context, table string) (*tableVali
 	}
 
 	// Sample rows and compare checksums.
-	mismatches, err := v.compareSampleChecksums(ctx, table, columns)
+	mismatches, err := v.compareSampleChecksums(ctx, table, targetTable, columns)
 	if err != nil {
 		return nil, fmt.Errorf("compare checksums: %w", err)
 	}
@@ -206,20 +211,20 @@ func (v *Validator) countRows(ctx context.Context, db *sql.DB, table string, isS
 // compareSampleChecksums compares checksums of sample rows between source and target.
 // It reads up to sampleSize rows from each side (ordered by the first column) and
 // compares a SHA-256 checksum of the concatenated row values.
-func (v *Validator) compareSampleChecksums(ctx context.Context, table string, columns []string) (int, error) {
+func (v *Validator) compareSampleChecksums(ctx context.Context, sqliteTable, pgTable string, columns []string) (int, error) {
 	colList := strings.Join(quoteIdentifiers(columns), ", ")
 	// Order by all columns to ensure deterministic ordering.
 	orderBy := strings.Join(quoteIdentifiers(columns), ", ")
 
 	// Read sample from SQLite.
-	srcSQL := fmt.Sprintf(`SELECT %s FROM "%s" ORDER BY %s LIMIT %d`, colList, table, orderBy, v.sampleSize)
+	srcSQL := fmt.Sprintf(`SELECT %s FROM "%s" ORDER BY %s LIMIT %d`, colList, sqliteTable, orderBy, v.sampleSize)
 	srcChecksums, err := v.computeRowChecksums(ctx, v.srcDB, srcSQL, len(columns))
 	if err != nil {
 		return 0, fmt.Errorf("source checksums: %w", err)
 	}
 
 	// Read sample from Postgres.
-	tgtSQL := fmt.Sprintf(`SELECT %s FROM "%s" ORDER BY %s LIMIT %d`, colList, table, orderBy, v.sampleSize)
+	tgtSQL := fmt.Sprintf(`SELECT %s FROM "%s" ORDER BY %s LIMIT %d`, colList, pgTable, orderBy, v.sampleSize)
 	tgtChecksums, err := v.computeRowChecksums(ctx, v.tgtDB, tgtSQL, len(columns))
 	if err != nil {
 		return 0, fmt.Errorf("target checksums: %w", err)

@@ -24,11 +24,11 @@ func EnsurePluginRunSchema(ctx context.Context, client *ent.Client) error {
 }
 
 // EnsureMonitorAlertSchema creates monitor_alert_rules table if missing.
-func EnsureMonitorAlertSchema(ctx context.Context, client *ent.Client) error {
+func EnsureMonitorAlertSchema(ctx context.Context, client *ent.Client, d Dialect) error {
 	if err := execDDLFile(ctx, client, monitorAlertDDL, "monitor_alert"); err != nil {
 		return err
 	}
-	return ensureMonitorAlertColumns(ctx, client)
+	return ensureMonitorAlertColumns(ctx, client, d)
 }
 
 // EnsureEcosystemSchema creates ecosystem marketplace tables if missing.
@@ -36,7 +36,7 @@ func EnsureEcosystemSchema(ctx context.Context, client *ent.Client) error {
 	return execDDLFile(ctx, client, ecosystemProductDDL, "ecosystem")
 }
 
-func ensureMonitorAlertColumns(ctx context.Context, client *ent.Client) error {
+func ensureMonitorAlertColumns(ctx context.Context, client *ent.Client, d Dialect) error {
 	if client == nil {
 		return nil
 	}
@@ -47,9 +47,10 @@ func ensureMonitorAlertColumns(ctx context.Context, client *ent.Client) error {
 	}
 	for _, stmt := range alters {
 		if _, err := client.ExecContext(ctx, stmt); err != nil {
-			if strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+			if d.AlreadyExistsErr(err) {
 				continue
 			}
+			return fmt.Errorf("monitor alert column patch: %w", err)
 		}
 	}
 	return nil

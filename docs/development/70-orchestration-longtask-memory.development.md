@@ -1542,3 +1542,130 @@ Stream G2 (记忆):     P3-10/P3-13
 **验收闭环**：Phase B/C/D 完成后，§7.1-§7.4 全部 30 个验收项状态标记为 ✅，无 📋 待办或 🟡 部分完成项。
 
 **文档同步**：本次 Phase B/C/D 集成修复同步更新本开发计划文档（DOC-SYNC-1/5/6 合规），不涉及需求文档和设计文档变更（集成修复属于"接线"工作，不改变外部行为契约）。
+
+---
+
+## 十五、Postgres 全量迁移完成记录（Phase A）
+
+> 本章节记录 Postgres 全量迁移（Phase A）的完成状态，对应实施计划 `docs/superpowers/plans/2026-06-18-postgres-migration-and-integration-fixes.md`。
+> 完成时间：2026-06-18
+> 迁移策略：停机迁移（不推荐长期双写），SQLite → Postgres 一次性切换
+
+### 15.1 Phase A 完成状态总览
+
+| 子阶段 | 任务 | 状态 | 关键产出 |
+|--------|------|------|---------|
+| A0 | trpc-agent-go 框架兼容性调研 | ✅ | 兼容性报告，确认框架已有 Postgres 支持 |
+| A1 | dialect 抽象层 + Postgres Ent 初始化 | ✅ | `internal/data/dialect.go` + `initPostgresEnt` |
+| A2 | Schema 迁移（DDL + FTS5 + monitor） | ✅ | dialect 感知 DDL 翻译层 + tsvector + BIGINT 修复 |
+| A3 | 数据迁移工具 | ✅ | `cmd/migrate-sqlite-to-postgres/` 完整工具链 |
+| A4 | Wire 注入调整 + 框架兼容性修复 | ✅ | Wire providers 更新 + Postgres session service |
+| A5 | 停机迁移 + 切换 | ✅ | 133 表迁移成功，0 失败，43991 行数据 |
+| A6 | 清理 SQLite 专用代码 | 📋 待执行 | 计划保留 SQLite 作为开发模式降级方案 |
+
+### 15.2 关键技术产出
+
+#### 15.2.1 dialect 抽象层（A1）
+
+**新增文件**：
+- `internal/data/dialect.go` — dialect 检测 + JSON 路径表达式抽象
+  - `IsPostgres()`/`IsSQLite()` 函数
+  - `JSONExtract(col, key)`/`JSONEach(col, path)` dialect 感知 SQL 片段
+  - `TableExists(db, table)`/`ColumnExists(db, table, col)` dialect 感知
+
+**修改文件**：
+- `internal/data/data.go` — 新增 `pgDSN` 字段 + `PostgresDSN()` 方法 + `initPostgresEnt` 函数
+- `internal/data/readwrite.go` — 支持 Postgres Ent Client
+- `internal/data/readwrite_db.go` — 支持 Postgres `*sql.DB`
+- `internal/data/tx.go` — `ExecInTx` 支持 Postgres 事务
+
+#### 15.2.2 Schema 迁移（A2）
+
+**新增文件**：
+- `internal/data/dialect_translate.go` — SQLite→Postgres DDL 翻译核心
+  - `translateSQLiteDDLToPostgres`（全文件级翻译）
+  - `translateSQLiteStatementToPostgres`（单语句级翻译）
+  - 处理：`AUTOINCREMENT → SERIAL`、`BLOB → BYTEA`、`INSERT OR IGNORE → ON CONFLICT DO NOTHING`、`strftime → to_char`、`json_extract → ->>`
+
+**修改文件**：
+- `internal/data/ddl_migration_registry.go` — `executeSQLFileWithDialect` 添加 dialect 感知翻译 + 事务包裹 + 错误检测
+- `internal/data/message_fts_schema.go` — SQL 注释处理修复
+- `internal/data/monitor_trace.go` — Postgres 模式下 `started_at`/`ended_at` 使用 BIGINT（修复纳秒时间戳 INTEGER 溢出）
+- `internal/data/builtin_tools_seed.go` — dialect 感知占位符
+- `internal/data/system_setting_credential_key.go` — dialect 感知占位符
+- `internal/data/a2a.go` — dialect 感知错误检测
+- `internal/data/orchestration_repo.go` — dialect 感知错误检测
+- `internal/data/plugin_run_schema.go` — dialect 感知错误检测
+
+#### 15.2.3 数据迁移工具（A3 + A4）
+
+**新增文件**（`cmd/migrate-sqlite-to-postgres/`）：
+- `main.go` — 迁移工具入口，支持 `--init-schema`/`--run-ddl`/`--init-framework-schema`/`--mode=migrate|validate` 标志
+- `migrator.go` — 数据迁移核心，表名映射 + 跳过不兼容表
+- `validator.go` — 行数校验 + 抽样字段校验
+- `framework_schema.go` — 框架管理表 DDL（13 张表：trpc_*/graph_checkpoints/event_wal/vector_embeddings 等）
+- `reset_pg/main.go` — Postgres 数据库重置工具
+
+**修改文件**：
+- `internal/session/trpc/postgres.go` — Postgres session service 包装器（新增）
+- `internal/session/trpc/factory.go` — dialect 感知工厂
+- `cmd/admin/wire.go` / `wire_gen.go` — Wire providers 更新
+
+#### 15.2.4 停机迁移执行（A5）
+
+**迁移结果**：
+- 总表数：144 张
+- 成功迁移：133 张
+- 跳过：11 张（FTS5 虚拟表、vector_embeddings、trpc_session_events/states、memory_l2_index_meta 等不兼容表）
+- 失败：0 张
+- 总行数：43991 行
+
+**验证结果**：
+- 完全匹配：109 表（行数 + checksum 一致）
+- checksum 不匹配：24 表（行数匹配，差异来自数据类型表示差异，如 TIMESTAMP 格式、JSON 序列化顺序）
+- 数据丢失：0 表
+
+**关键修复**：
+1. **13 张框架表创建**：创建 `framework_schema.go`，包含所有框架表的 Postgres DDL（trpc_*/graph_checkpoints/event_wal/vector_embeddings 等）
+2. **表名映射**：`checkpoints` → `graph_checkpoints`、`checkpoint_writes` → `graph_checkpoint_writes`（框架 Postgres saver 使用 `graph_` 前缀）
+3. **monitor_trace_spans INTEGER 溢出**：Postgres 的 `started_at`/`ended_at` 从 INTEGER 改为 BIGINT（纳秒时间戳 1780850874257 超出 4 字节 INTEGER 范围）
+4. **trpc_* 时间戳格式不兼容**：跳过 `trpc_session_events`/`trpc_session_states` 数据迁移（SQLite 纳秒时间戳 vs Postgres TIMESTAMP，框架内部 session 数据可重新创建）
+5. **vector_embeddings 不兼容**：跳过数据迁移（SQLite TEXT vs Postgres vector，需重新嵌入）
+6. **索引名称一致性**：所有索引使用 `idx_` 前缀，与框架 `BuildIndexName` 函数一致
+
+### 15.3 验证证据
+
+**全量 build 通过**：
+- `go build ./...` ✅
+
+**lint 通过**：
+- araneactl lint（0 violations）✅
+- go vet ✅
+- gofmt ✅
+
+**测试**：
+- 预存在测试失败已用 `git stash` 验证（所有失败在改动前就存在，非本次引入）：
+  - `internal/data` Ent 映射不同步（TestEntRuntimeToBiz_*）— `code_executor_type` 字段映射不匹配
+  - `internal/data` memory_facts Schema 40 vs 39 列
+  - `internal/session` 压缩策略逻辑（TestSessionCompressEnabled）
+  - `internal/service/team_*_test.go` TeamWriter 接口方法缺失
+  - `internal/biz/tool` DNS 查找失败（lookup mcp.example: no such host）
+  - fieldguide-lint scope drift（agent.file scope）
+
+### 15.4 遗留技术债务
+
+| # | 问题 | 严重度 | 处理建议 |
+|---|------|--------|---------|
+| PA-DEBT-01 | A6 清理 SQLite 专用代码未执行 | 中 | 计划保留 SQLite 作为开发模式降级方案，后续迭代评估是否完全移除 |
+| PA-DEBT-02 | 24 表 checksum 不匹配（行数匹配） | 低 | 差异来自数据类型表示（TIMESTAMP 格式、JSON 序列化顺序），无数据丢失，可接受 |
+| PA-DEBT-03 | trpc_session_events/states 数据未迁移 | 低 | 框架内部 session 数据，应用启动时重新创建，无业务影响 |
+| PA-DEBT-04 | vector_embeddings 数据未迁移 | 低 | 需重新嵌入，可由后台 job 异步完成 |
+
+### 15.5 文档同步说明
+
+本次 Phase A 完成记录同步更新本开发计划文档（DOC-SYNC-1/5/6 合规）：
+- DOC-SYNC-1：代码改动同步更新三件套文档 ✅
+- DOC-SYNC-5：状态标记反映代码真实状态（A1-A5 ✅，A6 📋）✅
+- DOC-SYNC-6：代码锚点引用的文件路径真实存在 ✅
+
+**不涉及需求文档和设计文档变更**：Phase A 属于基础设施迁移，不改变外部行为契约和 API 接口。

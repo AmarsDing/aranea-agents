@@ -55,6 +55,7 @@ func EnsureMessageFTSSchemaWithDialect(ctx context.Context, db *sql.DB, d Dialec
 }
 
 // splitSQLStatements splits DDL on semicolons outside BEGIN...END blocks (e.g. CREATE TRIGGER).
+// Handles SQL line comments (-- to end of line) and Postgres $$ ... $$ dollar quoting.
 func splitSQLStatements(ddl string) []string {
 	ddl = strings.TrimSpace(ddl)
 	if ddl == "" {
@@ -77,6 +78,20 @@ func splitSQLStatements(ddl string) []string {
 		}
 	}
 	for i := 0; i < len(ddl); {
+		// Skip SQL line comments (-- to end of line). This prevents $$ or ;
+		// inside comments from being interpreted as syntax.
+		if !dollarQuote && i+1 < len(ddl) && ddl[i] == '-' && ddl[i+1] == '-' {
+			// Find end of line.
+			end := strings.IndexByte(ddl[i:], '\n')
+			if end < 0 {
+				// Comment runs to end of input.
+				cur.WriteString(ddl[i:])
+				break
+			}
+			cur.WriteString(ddl[i : i+end+1])
+			i += end + 1
+			continue
+		}
 		// Detect Postgres $$ ... $$ quoting (used in DO $$ blocks).
 		if !dollarQuote && i+1 < len(ddl) && ddl[i] == '$' && ddl[i+1] == '$' {
 			dollarQuote = true

@@ -46,7 +46,7 @@ func ensureMessagesTurnNumberPatch(ctx context.Context, client *ent.Client, d Di
 	if client == nil {
 		return nil
 	}
-	hasTable, err := sqliteTableExists(ctx, client, lg, "messages")
+	hasTable, err := tableExistsWithDialect(ctx, client, lg, "messages", d)
 	if err != nil {
 		return err
 	}

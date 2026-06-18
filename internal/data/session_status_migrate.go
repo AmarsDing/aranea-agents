@@ -21,7 +21,7 @@ func RunSessionStatusIdleMigration(ctx context.Context, client *ent.Client, d Di
 	}
 	lg.Info("session status: active→idle + NULL defaults: starting", loggateway.StepID("migration.session_status"))
 
-	hasTable, err := sqliteTableExists(ctx, client, lg, "sessions")
+	hasTable, err := tableExistsWithDialect(ctx, client, lg, "sessions", d)
 	if err != nil {
 		return fmt.Errorf("session status migration: check table: %w", err)
 	}

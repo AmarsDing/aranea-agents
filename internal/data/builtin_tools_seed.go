@@ -103,17 +103,18 @@ var builtinPlatformToolSeeds = []platformToolSeed{
 	{key: "build_orchestration_graph", displayName: "构建编排图", description: "构建 DAG 编排图，定义子任务依赖关系和执行顺序。", category: "spirit", source: "builtin", riskLevel: "low", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"task_description":{"type":"string","description":"任务描述"},"nodes":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"agent_key":{"type":"string"},"depends_on":{"type":"array","items":{"type":"string"}}}}},"verification_gates":{"type":"array","items":{"type":"object"}}},"required":["task_description","nodes"]}`},
 }
 
-func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
+func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	const q = `INSERT INTO tools (
-			id, tool_key, display_name, description, category, source, risk_level, enabled, readonly, requires_confirmation,
-			supports_streaming, supports_concurrency, parameters_schema_json, result_schema_json, config_schema_json, config_json,
-			default_config_json, metadata_json, created_at, updated_at, deleted_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')
+		id, tool_key, display_name, description, category, source, risk_level, enabled, readonly, requires_confirmation,
+		supports_streaming, supports_concurrency, parameters_schema_json, result_schema_json, config_schema_json, config_json,
+		default_config_json, metadata_json, created_at, updated_at, deleted_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')
 		ON CONFLICT(tool_key) DO NOTHING`
+	qDialect := d.RenumberPlaceholders(q)
 	for _, row := range builtinPlatformToolSeeds {
 		applyPlatformToolDefaults(&row)
 		id := "tool_" + strings.ReplaceAll(row.key, ".", "_")
@@ -121,7 +122,7 @@ func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client, lg logg
 		if configSchema == "" {
 			configSchema = "{}"
 		}
-		_, err := client.ExecContext(ctx, q,
+		_, err := client.ExecContext(ctx, qDialect,
 			id, row.key, row.displayName, row.description, row.category, row.source, row.riskLevel,
 			b2i(row.enabled), b2i(row.readonly), b2i(row.reqConfirm),
 			b2i(row.suppStream), b2i(row.suppConc),
@@ -133,17 +134,17 @@ func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client, lg logg
 			return fmt.Errorf("ensure builtin tools: seed %q: %w", row.key, err)
 		}
 	}
-	if err := syncBuiltinToolsFromRegistry(ctx, client, lg); err != nil {
+	if err := syncBuiltinToolsFromRegistry(ctx, client, d, lg); err != nil {
 		lg.Warn("内置工具批量同步失败", loggateway.StepID("data.builtin_tool_sync"), loggateway.Err(err))
 	}
-	if err := syncBuiltinWebToolCatalogPatches(ctx, client); err != nil {
+	if err := syncBuiltinWebToolCatalogPatches(ctx, client, d); err != nil {
 		lg.Warn("内置 Web 工具元数据同步失败", loggateway.StepID("data.builtin_tool_sync"), loggateway.Err(err))
 	}
 	return nil
 }
 
 // syncBuiltinWebToolCatalogPatches updates catalog metadata for existing DBs (seed uses ON CONFLICT DO NOTHING).
-func syncBuiltinWebToolCatalogPatches(ctx context.Context, client *ent.Client) error {
+func syncBuiltinWebToolCatalogPatches(ctx context.Context, client *ent.Client, d Dialect) error {
 	if client == nil {
 		return nil
 	}
@@ -151,6 +152,7 @@ func syncBuiltinWebToolCatalogPatches(ctx context.Context, client *ent.Client) e
 	const upd = `UPDATE tools SET
 		enabled = ?, description = ?, parameters_schema_json = ?, config_schema_json = ?, updated_at = ?
 		WHERE tool_key = ? AND source = 'builtin' AND deleted_at = ''`
+	updDialect := d.RenumberPlaceholders(upd)
 	patches := []struct {
 		key, desc, params, config string
 		enabled                   int
@@ -178,14 +180,14 @@ func syncBuiltinWebToolCatalogPatches(ctx context.Context, client *ent.Client) e
 		},
 	}
 	for _, p := range patches {
-		if _, err := client.ExecContext(ctx, upd, p.enabled, p.desc, p.params, p.config, now, p.key); err != nil {
+		if _, err := client.ExecContext(ctx, updDialect, p.enabled, p.desc, p.params, p.config, now, p.key); err != nil {
 			return fmt.Errorf("sync web tool %q: %w", p.key, err)
 		}
 	}
 	return nil
 }
 
-func syncBuiltinToolsFromRegistry(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
+func syncBuiltinToolsFromRegistry(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
@@ -200,6 +202,7 @@ func syncBuiltinToolsFromRegistry(ctx context.Context, client *ent.Client, lg lo
 		parameters_schema_json = COALESCE(NULLIF(?, ''), parameters_schema_json),
 		updated_at = ?
 		WHERE tool_key = ? AND source = 'builtin' AND deleted_at = ''`
+	updDialect := d.RenumberPlaceholders(upd)
 	for _, seed := range builtinPlatformToolSeeds {
 		regName := strings.TrimSpace(seed.registryName)
 		if regName == "" {
@@ -219,7 +222,7 @@ func syncBuiltinToolsFromRegistry(ctx context.Context, client *ent.Client, lg lo
 		reqConfirm := reg.RequiresConfirmation
 		suppStream := reg.SupportsStreaming
 		suppConc := reg.SupportsConcurrency
-		_, err := client.ExecContext(ctx, upd,
+		_, err := client.ExecContext(ctx, updDialect,
 			riskLevel, b2i(reqConfirm), b2i(suppStream), b2i(suppConc),
 			seed.description, seed.paramsSchema,
 			now, seed.key,

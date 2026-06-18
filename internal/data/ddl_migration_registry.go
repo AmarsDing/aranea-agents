@@ -91,6 +91,15 @@ func runDDLMigrations(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger
 	return runDDLMigrationsWithDialect(rawDB, entClient, DialectSQLite, lg)
 }
 
+// RunDDLMigrationsExternal runs DDL migrations with the given dialect.
+// This is exported for use by external tools (e.g. cmd/migrate-sqlite-to-postgres)
+// to ensure DDL-managed tables (FTS5, monitor, memory, trpc session, etc.) exist
+// before data migration. The entClient must be connected to the same database as
+// rawDB and must use the same dialect.
+func RunDDLMigrationsExternal(rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
+	return runDDLMigrationsWithDialect(rawDB, entClient, d, lg)
+}
+
 // runDDLMigrationsWithDialect runs DDL migrations with dialect-aware error handling.
 // Use this when the primary database is Postgres to ensure idempotent error detection
 // matches the active dialect.
@@ -159,11 +168,32 @@ func executeSQLFileWithDialect(ctx context.Context, rawDB *sql.DB, path string, 
 		return fmt.Errorf("read SQL file %s: %w", path, err)
 	}
 	ddl := strings.TrimPrefix(string(sqlBytes), "\ufeff")
+	if d.IsPostgres() {
+		// Translate SQLite-specific DDL syntax to Postgres equivalents.
+		// INTEGER PRIMARY KEY AUTOINCREMENT -> SERIAL PRIMARY KEY
+		ddl = translateSQLiteDDLToPostgres(ddl)
+	}
 	for _, stmt := range splitDDLStatements(strings.TrimSpace(ddl)) {
 		if stmt == "" {
 			continue
 		}
-		if _, err := rawDB.ExecContext(ctx, stmt); err != nil {
+		if d.IsPostgres() {
+			stmt = translateSQLiteStatementToPostgres(stmt)
+		}
+		// Wrap each DDL statement in a transaction. When a statement fails
+		// (e.g. "column already exists"), Postgres aborts the current
+		// transaction; without an explicit rollback, the connection is
+		// returned to the pool in an aborted state, causing subsequent
+		// statements to fail with "could not complete operation in a failed
+		// transaction". Using a per-statement transaction ensures the
+		// connection is always returned clean.
+		tx, txErr := rawDB.BeginTx(ctx, nil)
+		if txErr != nil {
+			return fmt.Errorf("begin tx for SQL statement in %s: %w", path, txErr)
+		}
+		_, err := tx.ExecContext(ctx, stmt)
+		if err != nil {
+			tx.Rollback()
 			if d.AlreadyExistsErr(err) {
 				lg.Debug("ddl patch skipped (already exists)",
 					loggateway.StepID("data.ddl_migration.sql_file"),
@@ -177,6 +207,9 @@ func executeSQLFileWithDialect(ctx context.Context, rawDB *sql.DB, path string, 
 				continue
 			}
 			return fmt.Errorf("execute SQL statement in %s: %w\n---\n%s", path, err, stmt)
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit SQL statement in %s: %w\n---\n%s", path, err, stmt)
 		}
 	}
 	lg.Info("executed SQL migration file",
@@ -194,7 +227,7 @@ func ddlMessagesTurnNumber(ctx context.Context, rawDB *sql.DB, entClient *ent.Cl
 }
 
 func ddlSessionMemorySchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
-	return EnsureSessionMemorySchema(ctx, entClient, lg)
+	return EnsureSessionMemorySchema(ctx, entClient, d, lg)
 }
 
 func ddlMemoryRelationPatches(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
@@ -206,7 +239,7 @@ func ddlMonitorSchemaPatches(ctx context.Context, rawDB *sql.DB, entClient *ent.
 }
 
 func ddlBuiltinPlatformTools(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
-	return ensureBuiltinPlatformTools(ctx, entClient, lg)
+	return ensureBuiltinPlatformTools(ctx, entClient, d, lg)
 }
 
 func ddlDefaultSystemSetting(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
@@ -214,7 +247,7 @@ func ddlDefaultSystemSetting(ctx context.Context, rawDB *sql.DB, entClient *ent.
 }
 
 func ddlCredentialEncryptionKey(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
-	return ensureDefaultCredentialEncryptionKey(ctx, entClient)
+	return ensureDefaultCredentialEncryptionKey(ctx, entClient, d)
 }
 
 func ddlEvalSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
@@ -222,20 +255,25 @@ func ddlEvalSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d 
 }
 
 func ddlA2ASchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
-	return EnsureA2ASchema(ctx, rawDB)
+	return EnsureA2ASchema(ctx, rawDB, d)
 }
 
 // ddlSessionRevisionDataMigration backfills session_revision from message counts.
 // The ALTER TABLE is handled by the SQL file; this Func only does the data migration.
-// Uses WHERE session_revision IS NULL OR session_revision = ” to ensure idempotency.
+// Uses dialect-aware WHERE clause: SQLite needs `OR session_revision = ”` for
+// type-coerced empty strings; Postgres uses proper bigint type and only needs IS NULL.
 func ddlSessionRevisionDataMigration(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if entClient == nil {
 		return nil
 	}
-	_, err := entClient.ExecContext(ctx, `
+	whereClause := "WHERE session_revision IS NULL OR session_revision = ''"
+	if d.IsPostgres() {
+		whereClause = "WHERE session_revision IS NULL"
+	}
+	_, err := entClient.ExecContext(ctx, fmt.Sprintf(`
 UPDATE sessions SET session_revision = (
   SELECT COUNT(*) FROM messages WHERE messages.session_id = sessions.id AND role = 'user'
-) WHERE session_revision IS NULL OR session_revision = ''`)
+) %s`, whereClause))
 	return err
 }
 
@@ -272,7 +310,7 @@ func ddlSessionParticipantSchema(ctx context.Context, rawDB *sql.DB, entClient *
 }
 
 func ddlMonitorAlertSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
-	return EnsureMonitorAlertSchema(ctx, entClient)
+	return EnsureMonitorAlertSchema(ctx, entClient, d)
 }
 
 func ddlEcosystemSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
@@ -304,7 +342,7 @@ func ddlAgentPerformanceSchema(ctx context.Context, rawDB *sql.DB, entClient *en
 }
 
 func ddlOrchestrationSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
-	return EnsureOrchestrationSchema(ctx, rawDB, lg)
+	return EnsureOrchestrationSchema(ctx, rawDB, d, lg)
 }
 
 func ddlCompiledTeamSessionID(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, _ loggateway.Logger) error {
@@ -375,14 +413,28 @@ func ddlAgentSourceDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.Clie
 	if _, err := tx.ExecContext(ctx, `UPDATE teams SET source = 'imported' WHERE kind = 'ecosystem_preset' AND source = 'user'`); err != nil {
 		return fmt.Errorf("migrate team source ecosystem_preset->imported: %w", err)
 	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit agent source migration: %w", err)
+	}
+
 	// Fix over-broad migration from 20260718: teams with kind='ecosystem_preset' but
 	// no ecosystem_preset agent members should be 'user'. The 20260718 migration set
 	// kind='ecosystem_preset' for ALL source='imported' teams, including user-imported packs.
 	// Heuristic: if a team has NO members referencing ecosystem_preset agents, revert to 'user'.
 	// Use dialect-aware JSON extraction: SQLite json_extract / json_each vs Postgres ->> / json_array_elements.
+	//
+	// This runs in a separate transaction because the complex JSON query may fail
+	// on some rows (e.g. malformed JSON); we treat it as non-critical and don't
+	// want to abort the entire migration.
 	jsonExtract := d.JSONExtract
 	jsonEach := d.JSONEach
-	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`
+	tx2, err := rawDB.BeginTx(ctx, nil)
+	if err != nil {
+		lg.Warn("ddl migration: begin tx for team kind fix failed", loggateway.Err(err))
+		return nil
+	}
+	defer tx2.Rollback()
+	if _, err := tx2.ExecContext(ctx, fmt.Sprintf(`
 		UPDATE teams SET kind = 'user', source = 'user'
 		WHERE kind = 'ecosystem_preset'
 		  AND deleted_at = ''
@@ -395,8 +447,12 @@ func ddlAgentSourceDataMigration(ctx context.Context, rawDB *sql.DB, _ *ent.Clie
 	`, jsonEach("t2.definition_json"), jsonExtract("tm.value", "agent_id"))); err != nil {
 		// Non-critical: log the error but don't fail the entire migration
 		lg.Warn("ddl migration: fix over-broad team kind migration failed", loggateway.Err(err))
+		return nil
 	}
-	return tx.Commit()
+	if err := tx2.Commit(); err != nil {
+		lg.Warn("ddl migration: commit team kind fix failed", loggateway.Err(err))
+	}
+	return nil
 }
 
 func ddlUnifiedEvolutionSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {

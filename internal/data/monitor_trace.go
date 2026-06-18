@@ -99,6 +99,14 @@ WHERE (agent_id = '' AND %s != '')
 		if d.IsPostgres() {
 			idColDef = "id BIGSERIAL PRIMARY KEY"
 		}
+		// Dialect-aware timestamp column type:
+		// SQLite INTEGER is 8 bytes (stores nanosecond timestamps fine).
+		// Postgres INTEGER is 4 bytes (max ~2.1B) — overflows on nanosecond timestamps.
+		// Use BIGINT on Postgres to match SQLite's capacity.
+		tsType := "INTEGER"
+		if d.IsPostgres() {
+			tsType = "BIGINT"
+		}
 		_, firstErr = db.ExecContext(ctx, fmt.Sprintf(`
 CREATE TABLE IF NOT EXISTS monitor_trace_spans (
     %s,
@@ -107,13 +115,13 @@ CREATE TABLE IF NOT EXISTS monitor_trace_spans (
     parent_span_id TEXT NOT NULL DEFAULT '',
     kind TEXT NOT NULL,
     name TEXT NOT NULL,
-    started_at INTEGER NOT NULL,
-    ended_at INTEGER NOT NULL DEFAULT 0,
+    started_at %s NOT NULL,
+    ended_at %s NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'running',
     attributes_json TEXT NOT NULL DEFAULT '',
     error_json TEXT NOT NULL DEFAULT '',
     UNIQUE(trace_id, span_id)
-)`, idColDef))
+)`, idColDef, tsType, tsType))
 		if firstErr != nil {
 			return
 		}

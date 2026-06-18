@@ -202,7 +202,7 @@ func scanOrchestrationFromRows(rows *sql.Rows) (*biz.OrchestrationHandle, error)
 
 // EnsureOrchestrationSchema creates the orchestrations table if it does not exist.
 // Called during DDL migration.
-func EnsureOrchestrationSchema(ctx context.Context, db *sql.DB, lg loggateway.Logger) error {
+func EnsureOrchestrationSchema(ctx context.Context, db *sql.DB, d Dialect, lg loggateway.Logger) error {
 	if db == nil {
 		return nil
 	}
@@ -228,10 +228,11 @@ func EnsureOrchestrationSchema(ctx context.Context, db *sql.DB, lg loggateway.Lo
 	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_orchestrations_spirit_session_id ON orchestrations(spirit_session_id)`); err != nil {
 		return fmt.Errorf("create orchestrations index: %w", err)
 	}
-	// Migration: add agent_keys_json column. SQLite ALTER TABLE ADD COLUMN
-	// fails if the column already exists; we catch and ignore that error.
+	// Migration: add agent_keys_json column. ALTER TABLE ADD COLUMN
+	// fails if the column already exists; we catch and ignore that error
+	// using dialect-aware detection (SQLite: "duplicate column", Postgres: 42701).
 	if _, err := db.ExecContext(ctx, `ALTER TABLE orchestrations ADD COLUMN agent_keys_json TEXT DEFAULT '[]'`); err != nil {
-		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+		if !d.AlreadyExistsErr(err) {
 			return fmt.Errorf("alter orchestrations add agent_keys_json: %w", err)
 		}
 	}

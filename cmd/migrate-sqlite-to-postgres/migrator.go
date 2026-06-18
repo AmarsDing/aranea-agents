@@ -4,12 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
 	"aranea-agents/pkg/loggateway"
 )
+
+// batchInsertTimeout is the per-batch INSERT timeout. Large enough for
+// 500-row batches against Postgres on localhost; tuned for safety not speed.
+const batchInsertTimeout = 120 * time.Second
 
 // MigrationReport summarizes the migration outcome.
 type MigrationReport struct {
@@ -65,6 +68,18 @@ var defaultSkipTables = map[string]bool{
 	"messages_fts_idx":     true, // FTS5 shadow table
 	"messages_fts_content": true, // FTS5 shadow table
 	"messages_fts_docsize": true, // FTS5 shadow table
+	// Framework-managed tables with incompatible schemas — created by
+	// initFrameworkSchema but data cannot be migrated directly.
+	// See framework_schema.go frameworkSkipDataMigration for rationale.
+	"vector_embeddings":    true, // SQLite: embedding_json TEXT; Postgres: embedding vector — incompatible
+	"memory_l2_index_meta": true, // Table dropped in 20260620; skip if present in legacy SQLite
+	// trpc_session_events/states: SQLite stores nanosecond timestamps (INTEGER),
+	// Postgres uses TIMESTAMP. The formats are incompatible — direct migration
+	// would require timestamp conversion. These tables are framework-internal
+	// session data that the app recreates on startup; historical data is not
+	// business-critical and can be regenerated.
+	"trpc_session_events": true,
+	"trpc_session_states": true,
 }
 
 // MigrateAll discovers tables from SQLite and migrates each to Postgres.
@@ -89,7 +104,9 @@ func (m *Migrator) MigrateAll(ctx context.Context, tableFilter string, skipSet m
 	}
 	defer func() {
 		if err := m.setFKChecks(ctx, true); err != nil {
-			fmt.Fprintf(os.Stderr, "WARNING: re-enable fk checks failed: %v\n", err)
+			m.lg.Warn("re-enable fk checks failed after migration",
+				loggateway.StepID("migrate.fk_reenable"),
+				loggateway.Err(err))
 		}
 	}()
 
@@ -151,26 +168,30 @@ func (m *Migrator) discoverTables(ctx context.Context) ([]string, error) {
 
 // migrateTable migrates a single table from SQLite to Postgres.
 func (m *Migrator) migrateTable(ctx context.Context, table string) (int64, error) {
+	// Resolve target table name (some SQLite tables map to differently-named
+	// Postgres tables, e.g. checkpoints -> graph_checkpoints).
+	targetTable := resolveTargetTableName(table)
+
 	// Check if table exists in Postgres.
-	exists, err := m.tableExistsInPostgres(ctx, table)
+	exists, err := m.tableExistsInPostgres(ctx, targetTable)
 	if err != nil {
 		return 0, fmt.Errorf("check postgres table: %w", err)
 	}
 	if !exists {
-		return 0, fmt.Errorf("table %s does not exist in Postgres (run app once with driver=postgres to create schema)", table)
+		return 0, fmt.Errorf("table %s does not exist in Postgres (run with --init-schema --init-framework-schema to create schema)", targetTable)
 	}
 
 	// Get common columns (intersection of SQLite and Postgres, excluding GENERATED).
-	columns, err := m.getCommonColumns(ctx, table)
+	columns, err := m.getCommonColumns(ctx, table, targetTable)
 	if err != nil {
 		return 0, fmt.Errorf("get columns: %w", err)
 	}
 	if len(columns) == 0 {
-		return 0, fmt.Errorf("no common columns between SQLite and Postgres for table %s", table)
+		return 0, fmt.Errorf("no common columns between SQLite %s and Postgres %s", table, targetTable)
 	}
 
 	// Stream rows from SQLite and batch insert into Postgres.
-	return m.streamAndInsert(ctx, table, columns)
+	return m.streamAndInsert(ctx, table, targetTable, columns)
 }
 
 // tableExistsInPostgres checks if a table exists in the Postgres public schema.
@@ -184,13 +205,13 @@ func (m *Migrator) tableExistsInPostgres(ctx context.Context, table string) (boo
 
 // getCommonColumns returns the intersection of column names from SQLite and Postgres,
 // excluding Postgres GENERATED ALWAYS columns (which cannot be inserted into).
-func (m *Migrator) getCommonColumns(ctx context.Context, table string) ([]string, error) {
-	sqliteCols, err := m.getSQLiteColumns(ctx, table)
+func (m *Migrator) getCommonColumns(ctx context.Context, sqliteTable, pgTable string) ([]string, error) {
+	sqliteCols, err := m.getSQLiteColumns(ctx, sqliteTable)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite columns: %w", err)
 	}
 
-	pgCols, err := m.getPostgresInsertableColumns(ctx, table)
+	pgCols, err := m.getPostgresInsertableColumns(ctx, pgTable)
 	if err != nil {
 		return nil, fmt.Errorf("postgres columns: %w", err)
 	}
@@ -256,15 +277,15 @@ func (m *Migrator) getPostgresInsertableColumns(ctx context.Context, table strin
 // Uses []byte scanning to avoid type coercion issues between SQLite (dynamic typing)
 // and Postgres (strong typing). The lib/pq driver accepts []byte for most types
 // via the text protocol (e.g., "0"/"1" for boolean, ISO timestamps for timestamp).
-func (m *Migrator) streamAndInsert(ctx context.Context, table string, columns []string) (int64, error) {
+func (m *Migrator) streamAndInsert(ctx context.Context, sqliteTable, pgTable string, columns []string) (int64, error) {
 	// Build the SELECT query from SQLite.
 	colList := strings.Join(quoteIdentifiers(columns), ", ")
-	selectSQL := fmt.Sprintf(`SELECT %s FROM "%s"`, colList, table)
+	selectSQL := fmt.Sprintf(`SELECT %s FROM "%s"`, colList, sqliteTable)
 
 	// Build the INSERT prefix for Postgres.
 	// The VALUES clause and ON CONFLICT are appended per batch.
 	pgColList := strings.Join(quoteIdentifiers(columns), ", ")
-	insertPrefix := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES `, table, pgColList)
+	insertPrefix := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES `, pgTable, pgColList)
 
 	// Stream rows from SQLite.
 	rows, err := m.srcDB.QueryContext(ctx, selectSQL)
@@ -300,17 +321,20 @@ func (m *Migrator) streamAndInsert(ctx context.Context, table string, columns []
 		if err := rows.Scan(scanVals...); err != nil {
 			return totalRows, fmt.Errorf("scan row: %w", err)
 		}
-		// Convert *[]byte to any (nil for NULL, []byte copy for data).
+		// Convert *[]byte to any (nil for NULL, string for data).
+		// We convert to string and sanitize UTF8 because:
+		// 1. Postgres text columns require valid UTF8 (SQLite may store invalid bytes).
+		// 2. lib/pq sends []byte as bytea and string as text; for text columns,
+		//    string avoids "invalid UTF8 byte sequence" errors.
+		// 3. For bytea columns, Postgres accepts string values transparently.
 		row := make([]any, len(columns))
 		for i, v := range scanVals {
 			bp := v.(*[]byte)
 			if *bp == nil {
 				row[i] = nil // NULL
 			} else {
-				// Copy to avoid aliasing (driver may reuse buffer on next Next()).
-				copied := make([]byte, len(*bp))
-				copy(copied, *bp)
-				row[i] = copied
+				// Sanitize invalid UTF8 sequences (replace with \uFFFD).
+				row[i] = strings.ToValidUTF8(string(*bp), "\uFFFD")
 			}
 		}
 		batch = append(batch, row)
@@ -362,7 +386,7 @@ func (m *Migrator) execBatch(ctx context.Context, insertPrefix string, nCols int
 		args = append(args, row...)
 	}
 
-	ctxExec, cancel := context.WithTimeout(ctx, 120*time.Second)
+	ctxExec, cancel := context.WithTimeout(ctx, batchInsertTimeout)
 	defer cancel()
 
 	tx, err := m.tgtDB.BeginTx(ctxExec, nil)

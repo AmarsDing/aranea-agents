@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"database/sql"
-	"fmt"
 
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	sessiontrpc "aranea-agents/internal/session/trpc"
@@ -20,11 +19,10 @@ func NewTRPCSessionService(rawDB *sql.DB, pgDSN string, lg loggateway.Logger, su
 // NewGraphCheckpointSaver builds the graph checkpoint saver.
 // When pgDSN is non-empty, a Postgres-backed saver is created; otherwise SQLite.
 func NewGraphCheckpointSaver(rawDB *sql.DB, pgDSN string, lg loggateway.Logger) (*graphtrpc.CheckpointSaver, error) {
-	if rawDB == nil {
-		return nil, fmt.Errorf("runtime: raw db is nil")
-	}
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
+	// nil-db check is delegated to graphtrpc.NewCheckpointSaver which returns
+	// a proper apierror.BadRequest.
 	return graphtrpc.NewCheckpointSaver(rawDB, pgDSN, lg)
 }

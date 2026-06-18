@@ -37,7 +37,7 @@ func NewA2ARepo(data *Data, lg loggateway.Logger) biz.A2ARepo {
 }
 
 // EnsureA2ASchema creates the A2A tables when they do not exist.
-func EnsureA2ASchema(ctx context.Context, db *sql.DB) error {
+func EnsureA2ASchema(ctx context.Context, db *sql.DB, d Dialect) error {
 	if db == nil {
 		return nil
 	}
@@ -105,10 +105,11 @@ func EnsureA2ASchema(ctx context.Context, db *sql.DB) error {
 		`ALTER TABLE a2a_remote_agents ADD COLUMN last_health_error TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, m := range migrations {
-		// SQLite ALTER TABLE ADD COLUMN fails silently if column already exists in some drivers,
-		// but returns an error in others. Ignore "duplicate column" errors.
+		// ALTER TABLE ADD COLUMN fails if the column already exists.
+		// Use dialect-aware error detection: SQLite returns "duplicate column",
+		// Postgres returns error code 42701 (duplicate_column).
 		if _, err := db.ExecContext(ctx, m); err != nil {
-			if !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+			if !d.AlreadyExistsErr(err) {
 				return entErrToBizErr(err, "A2A")
 			}
 		}
