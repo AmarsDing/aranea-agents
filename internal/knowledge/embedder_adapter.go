@@ -1,5 +1,11 @@
 package knowledge
 
+// DEPRECATED: 框架架构差异，永久阻塞（alignment-plan.md §十一/B-2）。
+// 框架中没有任何组件直接消费 embedder.Embedder 接口——框架的 Knowledge
+// 模块通过 knowledge.Knowledge 接口抽象了整个检索流程，Embedder 是项目
+// 内部实现细节。wire.go 直接绑定 MultiProviderEmbedder 是正确的。下一迭代
+// 将删除此死代码（CS-B2）。
+
 import (
 	"context"
 
@@ -8,6 +14,8 @@ import (
 )
 
 // EmbedderAdapter adapts MultiProviderEmbedder to the framework's embedder.Embedder interface.
+//
+// DEPRECATED: 框架架构差异，永久阻塞。见文件头说明。
 type EmbedderAdapter struct {
 	inner *MultiProviderEmbedder
 	lg    loggateway.Logger

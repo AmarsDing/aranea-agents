@@ -1,5 +1,10 @@
 package team
 
+// TECH-DEBT(P2-18): ExportSnapshot 适配器已实现但未接入生产路径。
+// 项目 Team 编排当前不使用框架 structure.Snapshot 导出能力，此适配器
+// 保留作为未来 Team 可视化/diff/版本控制需求的桥接点
+// （alignment-plan.md §四 协同包 C）。
+
 import (
 	"context"
 	"fmt"
@@ -20,6 +25,8 @@ import (
 // This adapter bridges the project's team definition model (biz.Agent) to the
 // framework's Export() structure format, enabling structure-level tooling
 // (visualization, diff, version control) for team definitions.
+//
+// TECH-DEBT(P2-18): 未接入生产路径，见文件头说明。
 //
 // P2-18: The adapter re-implements the path allocation and rebasing logic
 // locally (matching the framework's internal istructure package) because the

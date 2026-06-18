@@ -202,6 +202,20 @@ func (s *service) runChild(ctx, req) {
 }
 ```
 
+**实现差异（Wave 1 落地）**：
+
+1. **Controller 接口方法数**：实际 Controller 接口含 6 方法（Spawn/List/Get/Cancel/Wait/Events），超过 ≤5 建议。审查建议拆分为 `EventStreamer` 独立接口，但因涉及框架代码修改（用户明确禁止），保留现状。
+
+2. **`eventChs` map 保护**：`eventChs map[string]chan *event.Event` 由 `s.mu` 保护。`forwardEvent` 在持有 `s.mu` 期间执行 non-blocking send（select+default），锁持有时间极短，防止与 `closeEventChannel` 竞态导致 send-on-closed-channel panic。
+
+3. **drop policy 与 AS-EVT-01 对齐**：non-blocking send（select+default）静默丢弃满缓冲事件，符合 Informational 级别"尽力而为，丢弃不报错"的语义。
+
+4. **`closeEventChannel` 幂等**：终态转换路径（finishRun/failPersistedRun/finalizeCanceledRun）均调用 `closeEventChannel`，第二次调用时 `ch = nil`（已从 map 删除），不会重复 close。
+
+5. **单订阅者限制**：每个 run 仅允许一个订阅者（`if _, exists := s.eventChs[runID]; exists` 拒绝第二次订阅）。重复订阅错误用 `fmt.Errorf` 而非哨兵错误（框架豁免，不修改 trpc 代码）。
+
+6. **`eventChannelBuffer = 64`**：命名常量，注释清晰说明 drop policy 语义。
+
 ### 3.3 跨进程事件流
 
 ```go
@@ -386,6 +400,22 @@ func (a *AgentAllocatorImpl) matchLayer2(ctx, subTask, candidates) (*TaskAllocat
     // ... 计算相似度并匹配
 }
 ```
+
+**实现差异（Wave 1 落地）**：
+
+实际实现与上述设计草图有以下差异，已通过 aranea-review 审查确认：
+
+1. **in-memory cosine 而非 pgvector SQL**：实际实现调用 `embedder.Embed()`（OpenAI/Gemini/Ollama text-embedding API）后在 Go 内存中计算 cosine 相似度（`cosineSimilarity32` helper），**未使用 pgvector SQL `<=>` 操作符，未访问 `vector_embeddings` 表，未走 `d.Postgres()`**。设计理由：allocator 是热路径，避免 Postgres 往返；pgvector SQL 仅用于 memory 域（`internal/data/vector/pgvector_fact.go`）的批量检索。
+
+2. **批量 embedding**：将 task 文本 + 所有 agent capability 文本合并为单次 `Embed()` 调用（`allTexts []string`），减少 HTTP 往返。`vectors[0]` 为 task 向量，`vectors[1:]` 为 agent 向量。
+
+3. **三级 fallback 链**：`matchLayer2` → `matchLayer2Embedding`（ok=false）→ `matchLayer2TFIDF`。embedding 失败/nil embedder/维度不匹配均安全降级，不向调用方抛硬错误。
+
+4. **`cosineSimilarity32` 防御性编程**：处理空向量、零范数向量、维度不匹配三种边界，均返回 0 而非 panic。
+
+5. **Embedder 接口来源**：复用 `internal/knowledge.Embedder` 接口（`Embed(ctx, []string) ([][]float32, error)` + `Dim() int`），Wire 绑定 `*knowledge.MultiProviderEmbedder`。
+
+6. **whole-plan 路径未升级**：`matchLayer2ForPlan`（whole-plan 路径）仍使用 TF-IDF，仅 subtask 路径升级为 embedding。后续迭代可统一。
 
 ### 5.2 AgentFactory
 
@@ -685,6 +715,14 @@ var (
 )
 ```
 
+**实现差异（Wave 1 落地）**：
+
+1. **指标命名前缀**：实际命名为 `aranea_spirit_plan_duration_seconds` 等（加 `aranea_` 前缀），符合 Prometheus 命名规范，与项目既有指标一致。
+
+2. **buckets 调整（审查修复）**：`SpiritPlanDuration`/`SpiritAllocDuration` 从 `prometheus.DefBuckets`（max 10s）改为 `spiritPhaseBuckets = []float64{0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300}`（max 300s=5min）。理由：Plan/Alloc 阶段可能调用 LLM，耗时超过 10s，DefBuckets 无法覆盖；新 buckets 匹配"multi-minute"注释声明。`SpiritOrchDuration` 保留独立 buckets（1s-3600s）覆盖长任务子阶段。
+
+3. **`spiritPhaseBuckets` 命名常量**：抽取为包级常量复用，避免重复定义。
+
 ---
 
 ## 八、Cursor 级并行工具执行设计
@@ -860,6 +898,20 @@ func (s *SleepTimeService) EnqueueConsolidationJob(ctx, sess session.Service) er
 }
 ```
 
+**实现差异（Wave 1 落地）**：
+
+1. **队列解耦**：实际实现将 `EnqueueConsolidationJob`（入队）与 `Consolidate`（执行）解耦。`EnqueueConsolidationJob` 将 `ConsolidationJobRequest` 发送到 `ConsolidationQueue`（buffered channel），`Consolidate` 由 `MemorySleepTimeWorker` cron job 出队后执行。设计理由：避免阻塞调用方，支持后台异步整理。
+
+2. **三阶段非原子**：`Consolidate` 的 read→LLM→execute 三阶段非原子。`executeOperations` 对每个 op 失败采用 best-effort（log + continue）而非 fail-fast，使单 op 失败不阻塞后续 op。文档明确"consolidation 是最终一致而非强一致"。
+
+3. **未知 op 类型日志**：`executeOperations` 的 switch 增加 `default` 分支，记录未知 op 类型（`loggateway.Warn` + `loggateway.Str("op_type", op.Type)`），便于发现 LLM prompt/response 契约漂移。
+
+4. **LLM 失败优雅降级**：`Consolidate` 对 LLM 失败（API 错误、malformed JSON、nil LLM）统一 `lg.Warn` + 返回 `nil`，不修改 memory。memory read 失败则返回错误（不降级），区分"基础设施失败"与"LLM 失败"。
+
+5. **`AgentUserKeyLister` placeholder**：当前 `AgentUserKeyLister` 返回空列表（开发/测试用），生产启用前需实现从 `SessionRepo` 派生活跃用户。
+
+6. **未完成项**：`MemorySleepTimeWorker` 未通过 Wire 绑定到 cronrunner 调度器（死代码）；失败 job 无重试无死信（对比 `AutoMemoryWorker.processWithRetry`）。生产启用前需补全。
+
 ### 9.4 主动召回触发器
 
 ```go
@@ -1028,6 +1080,19 @@ const (
     EnvelopeTypeGraphReplanned        = "graph_replanned"
 )
 ```
+
+**AS-EVT-01 可靠性分级（Wave 1 落地）**：
+
+4 个 Wave 1 预注册事件类型已在 `internal/event/contract/reliability.go` 中完成 AS-EVT-01 分级注册：
+
+| 事件类型 | 分级 | 理由 | 持久化 |
+|---------|------|------|--------|
+| `EnvelopeTypeRunHeartbeat` | Informational | 丢失仅降低进度可见性，不破坏状态 | 不持久化 |
+| `EnvelopeTypeAgentCreated` | Informational | Agent 已落库，事件仅驱动 UI | 不持久化 |
+| `EnvelopeTypeGraphReplanned` | Important | 拓扑漂移防护，不可静默丢弃 | 异步持久化 |
+| `EnvelopeTypeGraphTopologyEvolved` | Important | 拓扑漂移防护，不可静默丢弃 | 异步持久化 |
+
+**审查修复（Wave 1）**：初始实现中 `GraphReplanned`/`GraphTopologyEvolved` 的注释声明为 Important 但未在 `reliability.go` 注册，实际为 Informational（默认）。aranea-review 第一轮审查发现此阻断项（B1），已在 `reliability.go` 的 `RegisterBulk(reliability.Important, ...)` 中追加注册。新增 `TestReliabilityClassification` 测试验证分级一致性。
 
 ---
 

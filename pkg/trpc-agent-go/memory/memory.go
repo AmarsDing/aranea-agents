@@ -222,6 +222,12 @@ type Memory struct {
 	EventTime    *time.Time `json:"event_time,omitempty"`   // When the event occurred.
 	Participants []string   `json:"participants,omitempty"` // People involved in the event.
 	Location     string     `json:"location,omitempty"`     // Where the event took place.
+
+	// Bi-temporal validity (P3-8). nil ValidUntil means currently valid.
+	// When a memory conflicts with a newer one, ValidUntil is set to the
+	// conflict time instead of deleting the memory, preserving history.
+	ValidFrom  *time.Time `json:"valid_from,omitempty"`
+	ValidUntil *time.Time `json:"valid_until,omitempty"`
 }
 
 // Entry represents a memory entry stored in the system.
@@ -233,6 +239,11 @@ type Entry struct {
 	CreatedAt time.Time `json:"created_at"`      // CreatedAt is the creation time.
 	UpdatedAt time.Time `json:"updated_at"`      // UpdatedAt is the last update time.
 	Score     float64   `json:"score,omitempty"` // Score is the similarity score from vector search (0-1).
+
+	// Bi-temporal validity (P3-8). Mirrors Memory.ValidFrom/ValidUntil
+	// for top-level access without dereferencing Memory.
+	ValidFrom  *time.Time `json:"valid_from,omitempty"`
+	ValidUntil *time.Time `json:"valid_until,omitempty"`
 }
 
 // Key is the key for a memory.

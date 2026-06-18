@@ -120,6 +120,9 @@ func (s *sqliteMemoryService) AddMemory(ctx context.Context, uk trpcmemory.UserK
 		factKind = string(meta.Kind)
 	}
 	upsert := trpcFactUpsert(uk, "", mem, topics, factKind, now, now)
+	// Bi-temporal (P3-8): new memories are valid from creation time.
+	// ValidUntil stays empty (= currently valid).
+	upsert.ValidFrom = now
 	applyPIIScan(&upsert, mem)
 	raw, err := s.factWriter.UpsertFactRow(ctx, upsert)
 	if err != nil {
@@ -145,7 +148,23 @@ func (s *sqliteMemoryService) UpdateMemory(ctx context.Context, mk trpcmemory.Ke
 	if meta != nil && meta.Kind != "" {
 		factKind = string(meta.Kind)
 	}
-	upsert := trpcFactUpsert(uk, id, mem, topics, factKind, now, now)
+	// Bi-temporal conflict detection (P3-8): when the new content differs
+	// from the existing fact, invalidate the old fact (set ValidUntil)
+	// rather than overwriting it. This preserves history for temporal
+	// reconstruction queries.
+	upsertID := id
+	if oldID := s.detectContentConflict(ctx, id, mem); oldID != "" {
+		if _, invErr := s.factWriter.InvalidateFact(ctx, oldID); invErr != nil {
+			s.lg.Warn("invalidate old fact on update conflict failed",
+				loggateway.StepID("memory.update.invalidate"),
+				loggateway.Str("fact_id", oldID),
+				loggateway.Err(invErr))
+		}
+		// Create a new fact with a fresh ID so the old row is preserved.
+		upsertID = ""
+	}
+	upsert := trpcFactUpsert(uk, upsertID, mem, topics, factKind, now, now)
+	upsert.ValidFrom = now
 	applyPIIScan(&upsert, mem)
 	raw, err := s.factWriter.UpsertFactRow(ctx, upsert)
 	if err != nil {
@@ -165,6 +184,33 @@ func (s *sqliteMemoryService) UpdateMemory(ctx context.Context, mk trpcmemory.Ke
 	}
 	s.syncIndexBestEffort(ctx, raw)
 	return nil
+}
+
+// detectContentConflict checks whether the existing fact with the given ID
+// has a different statement than the new memory content. Returns the fact ID
+// if a conflict is detected (content differs), or empty string otherwise.
+// When the fact reader is unavailable or the fact doesn't exist, no conflict
+// is reported and the update proceeds as a normal upsert.
+func (s *sqliteMemoryService) detectContentConflict(ctx context.Context, factID, newMem string) string {
+	if s.factReader == nil || factID == "" {
+		return ""
+	}
+	newMem = strings.TrimSpace(newMem)
+	if newMem == "" {
+		return ""
+	}
+	rows, err := s.factReader.GetFactRowsByIDs(ctx, []string{factID})
+	if err != nil || len(rows) == 0 {
+		return ""
+	}
+	var row factRow
+	if json.Unmarshal(rows[0], &row) != nil {
+		return ""
+	}
+	if strings.TrimSpace(row.Statement) != newMem {
+		return factID
+	}
+	return ""
 }
 
 // applyPIIScan scans the statement for PII and updates the FactUpsert accordingly.
@@ -528,6 +574,8 @@ type factRow struct {
 	MetadataJSON string  `json:"metadata_json"`
 	CreatedAt    string  `json:"created_at"`
 	UpdatedAt    string  `json:"updated_at"`
+	ValidFrom    string  `json:"valid_from"`
+	ValidUntil   string  `json:"valid_until"`
 }
 
 func factRowToEntry(raw []byte, uk trpcmemory.UserKey) (*trpcmemory.Entry, error) {
@@ -546,6 +594,21 @@ func factRowToEntry(raw []byte, uk trpcmemory.UserKey) (*trpcmemory.Entry, error
 	now := time.Now()
 	lastUpdated := parseRFC3339(row.UpdatedAt, now)
 	createdAt := parseRFC3339(row.CreatedAt, now)
+	var validFrom, validUntil *time.Time
+	if vf := strings.TrimSpace(row.ValidFrom); vf != "" {
+		if t, err := time.Parse(time.RFC3339Nano, vf); err == nil {
+			validFrom = &t
+		} else if t, err := time.Parse(time.RFC3339, vf); err == nil {
+			validFrom = &t
+		}
+	}
+	if vu := strings.TrimSpace(row.ValidUntil); vu != "" {
+		if t, err := time.Parse(time.RFC3339Nano, vu); err == nil {
+			validUntil = &t
+		} else if t, err := time.Parse(time.RFC3339, vu); err == nil {
+			validUntil = &t
+		}
+	}
 	return &trpcmemory.Entry{
 		ID:      row.ID,
 		AppName: uk.AppName,
@@ -553,11 +616,15 @@ func factRowToEntry(raw []byte, uk trpcmemory.UserKey) (*trpcmemory.Entry, error
 			Memory:      memText,
 			Topics:      topics,
 			LastUpdated: &lastUpdated,
+			ValidFrom:   validFrom,
+			ValidUntil:  validUntil,
 		},
-		UserID:    uk.UserID,
-		CreatedAt: createdAt,
-		UpdatedAt: lastUpdated,
-		Score:     row.Importance,
+		UserID:     uk.UserID,
+		CreatedAt:  createdAt,
+		UpdatedAt:  lastUpdated,
+		Score:      row.Importance,
+		ValidFrom:  validFrom,
+		ValidUntil: validUntil,
 	}, nil
 }
 

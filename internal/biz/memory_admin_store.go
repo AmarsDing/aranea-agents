@@ -53,6 +53,12 @@ type FactUpsert struct {
 	MetadataJSON          string
 	CreatedAt             string
 	UpdatedAt             string
+	// Bi-temporal validity (P3-8). ValidFrom marks when the fact became
+	// effective; ValidUntil marks when it was superseded. Empty ValidUntil
+	// means the fact is currently valid. When a conflict is detected the
+	// old fact is invalidated (ValidUntil set) rather than deleted.
+	ValidFrom  string
+	ValidUntil string
 }
 
 // EvolutionEventInsert is the domain-level DTO for inserting evolution events.
@@ -205,6 +211,12 @@ type L3FactWriter interface {
 	// and cascades the deletion to the pgvector index. It returns the IDs of
 	// the deleted facts so callers can perform additional cleanup if needed.
 	ClearFactsByScope(ctx context.Context, scopeType, scopeID, userID string) ([]string, error)
+	// InvalidateFact marks a fact as no longer valid by setting valid_until
+	// to the current time (bi-temporal validity, P3-8). The fact row is
+	// preserved for historical reconstruction queries. Returns the raw
+	// updated row as JSON (same shape as UpsertFactRow) so callers can
+	// sync downstream indexes.
+	InvalidateFact(ctx context.Context, factID string) ([]byte, error)
 }
 
 // L3FactAdminStore manages semantic facts and L3 recall.

@@ -46,6 +46,7 @@ func openTestDataForMemory(t *testing.T) (*data.Data, *ent.Client) {
  last_used_at TEXT NOT NULL DEFAULT '', expires_at TEXT NOT NULL DEFAULT '',
  metadata_json TEXT NOT NULL DEFAULT '{}', quality_score REAL NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
  archived_at TEXT NOT NULL DEFAULT '', deleted_at TEXT NOT NULL DEFAULT '',
+ valid_from TEXT NOT NULL DEFAULT '', valid_until TEXT NOT NULL DEFAULT '',
  UNIQUE(scope_type, scope_id, fingerprint))`,
 		`CREATE TABLE IF NOT EXISTS memory_action_log (
  id TEXT PRIMARY KEY, action TEXT NOT NULL, target_kind TEXT NOT NULL, target_id TEXT NOT NULL,
@@ -196,5 +197,207 @@ func TestMemoryAdminUsecase_RequireAdminWhenStoreMissing(t *testing.T) {
 	_, _, _, _, err := uc.ListFactRows(context.Background(), "agent", "a1", "", "", "", 10, 0)
 	if err == nil {
 		t.Fatal("expected error when admin store missing")
+	}
+}
+
+// TestAddMemory_SetsValidFrom verifies that AddMemory populates ValidFrom
+// on the stored fact (bi-temporal P3-8).
+func TestAddMemory_SetsValidFrom(t *testing.T) {
+	d, _ := openTestDataForMemory(t)
+	factWriter := data.NewL3FactWriterAdapter(d, nil)
+	svc := trpcmem.NewSQLiteMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	ctx := context.Background()
+	uk := trpcmemory.UserKey{AppName: "agent-vf", UserID: "user-vf"}
+	if err := svc.AddMemory(ctx, uk, "I live in Paris", nil); err != nil {
+		t.Fatalf("AddMemory: %v", err)
+	}
+	entries, err := svc.ReadMemories(ctx, uk, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].ValidFrom == nil {
+		t.Fatal("expected ValidFrom to be set on entry")
+	}
+	if entries[0].Memory.ValidFrom == nil {
+		t.Fatal("expected Memory.ValidFrom to be set")
+	}
+	if entries[0].ValidUntil != nil {
+		t.Fatalf("expected ValidUntil to be nil for new memory, got %v", entries[0].ValidUntil)
+	}
+}
+
+// TestSearchMemories_FiltersInvalidated verifies that facts with ValidUntil
+// set are excluded from SearchMemories results (bi-temporal P3-8).
+func TestSearchMemories_FiltersInvalidated(t *testing.T) {
+	d, _ := openTestDataForMemory(t)
+	factWriter := data.NewL3FactWriterAdapter(d, nil)
+	svc := trpcmem.NewSQLiteMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	ctx := context.Background()
+	uk := trpcmemory.UserKey{AppName: "agent-inv", UserID: "user-inv"}
+	if err := svc.AddMemory(ctx, uk, "I like coffee", nil); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := svc.ReadMemories(ctx, uk, 10)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("setup: err=%v len=%d", err, len(entries))
+	}
+	factID := entries[0].ID
+	// Invalidate the fact directly via the writer.
+	if _, err := factWriter.InvalidateFact(ctx, factID); err != nil {
+		t.Fatalf("InvalidateFact: %v", err)
+	}
+	// SearchMemories should not return the invalidated fact.
+	entries, err = svc.ReadMemories(ctx, uk, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("expected 0 entries after invalidation, got %d", len(entries))
+	}
+}
+
+// TestSearchMemories_IncludesValid verifies that facts without ValidUntil
+// (currently valid) appear in search results.
+func TestSearchMemories_IncludesValid(t *testing.T) {
+	d, _ := openTestDataForMemory(t)
+	factWriter := data.NewL3FactWriterAdapter(d, nil)
+	svc := trpcmem.NewSQLiteMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	ctx := context.Background()
+	uk := trpcmemory.UserKey{AppName: "agent-valid", UserID: "user-valid"}
+	if err := svc.AddMemory(ctx, uk, "I like tea", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddMemory(ctx, uk, "I like hiking", nil); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := svc.ReadMemories(ctx, uk, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 valid entries, got %d", len(entries))
+	}
+	for _, e := range entries {
+		if e.ValidUntil != nil {
+			t.Fatalf("expected nil ValidUntil for valid entry %s, got %v", e.ID, e.ValidUntil)
+		}
+	}
+}
+
+// TestUpdateMemory_InvalidatesOldOnConflict verifies that updating a memory
+// with different content invalidates the old fact (sets ValidUntil) and
+// creates a new fact, preserving history (bi-temporal P3-8).
+func TestUpdateMemory_InvalidatesOldOnConflict(t *testing.T) {
+	d, _ := openTestDataForMemory(t)
+	factWriter := data.NewL3FactWriterAdapter(d, nil)
+	svc := trpcmem.NewSQLiteMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	ctx := context.Background()
+	uk := trpcmemory.UserKey{AppName: "agent-conf", UserID: "user-conf"}
+	// Add initial memory.
+	if err := svc.AddMemory(ctx, uk, "I live in London", nil); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := svc.ReadMemories(ctx, uk, 10)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("setup: err=%v len=%d", err, len(entries))
+	}
+	oldID := entries[0].ID
+	// Update with different content — should invalidate old, create new.
+	result := &trpcmemory.UpdateResult{}
+	mk := trpcmemory.Key{AppName: uk.AppName, UserID: uk.UserID, MemoryID: oldID}
+	if err := svc.UpdateMemory(ctx, mk, "I live in Berlin", nil, trpcmemory.WithUpdateResult(result)); err != nil {
+		t.Fatalf("UpdateMemory: %v", err)
+	}
+	if result.MemoryID == "" {
+		t.Fatal("expected non-empty new memory ID in UpdateResult")
+	}
+	if result.MemoryID == oldID {
+		t.Fatal("expected new memory ID to differ from old ID on content conflict")
+	}
+	// SearchMemories should return only the new (valid) fact.
+	entries, err = svc.ReadMemories(ctx, uk, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 valid entry after update, got %d", len(entries))
+	}
+	if entries[0].ID != result.MemoryID {
+		t.Fatalf("expected entry ID %q, got %q", result.MemoryID, entries[0].ID)
+	}
+	if entries[0].Memory.Memory != "I live in Berlin" {
+		t.Fatalf("expected updated content, got %q", entries[0].Memory.Memory)
+	}
+	// The old fact should still exist in the DB but with ValidUntil set.
+	// Use the admin reader (ListFactRows) which does NOT filter valid_until.
+	l3 := data.NewL3FactReaderForUser(d)
+	rows, _, _, _, err := l3.ListFactRows(ctx, "agent", "agent-conf", "", "", "", 20, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var foundOld bool
+	for _, raw := range rows {
+		var m map[string]any
+		if json.Unmarshal(raw, &m) != nil {
+			continue
+		}
+		if m["id"] == oldID {
+			foundOld = true
+			if vu, _ := m["valid_until"].(string); vu == "" {
+				t.Fatal("expected old fact to have valid_until set after conflict invalidation")
+			}
+		}
+	}
+	if !foundOld {
+		t.Fatal("expected old fact to still exist in DB after invalidation")
+	}
+}
+
+// TestInvalidateFact_DataLayer verifies the data-layer InvalidateFact method
+// sets valid_until and preserves the row.
+func TestInvalidateFact_DataLayer(t *testing.T) {
+	d, _ := openTestDataForMemory(t)
+	factWriter := data.NewL3FactWriterAdapter(d, nil)
+	reader := data.NewL3FactReaderForUser(d)
+	ctx := context.Background()
+	uk := trpcmemory.UserKey{AppName: "agent-inv-dl", UserID: "user-inv-dl"}
+	if err := trpcmem.NewSQLiteMemoryService(reader, factWriter, nil, nil, nil, nil, nil, loggateway.NewNoop()).
+		AddMemory(ctx, uk, "I like running", nil); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := reader.ListFactRowsForUser(ctx, "agent", "agent-inv-dl", "user-inv-dl", "", 10, 0)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("setup: err=%v len=%d", err, len(rows))
+	}
+	var m map[string]any
+	_ = json.Unmarshal(rows[0], &m)
+	factID, _ := m["id"].(string)
+	if factID == "" {
+		t.Fatal("expected non-empty fact ID")
+	}
+	raw, err := factWriter.InvalidateFact(ctx, factID)
+	if err != nil {
+		t.Fatalf("InvalidateFact: %v", err)
+	}
+	if len(raw) == 0 {
+		t.Fatal("expected non-empty raw row from InvalidateFact")
+	}
+	var inv map[string]any
+	if json.Unmarshal(raw, &inv) != nil {
+		t.Fatal("failed to unmarshal invalidated row")
+	}
+	if vu, _ := inv["valid_until"].(string); vu == "" {
+		t.Fatal("expected valid_until to be set after invalidation")
+	}
+	// The fact should no longer appear in user-facing queries.
+	rows, err = reader.ListFactRowsForUser(ctx, "agent", "agent-inv-dl", "user-inv-dl", "", 10, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("expected 0 rows after invalidation, got %d", len(rows))
 	}
 }

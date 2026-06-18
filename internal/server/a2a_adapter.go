@@ -1,5 +1,11 @@
 package server
 
+// TECH-DEBT(P2-30): A2AExtensionAdapter 框架适配器已实现但未接入生产路径。
+// 生产环境使用 internal/service/a2a_extension_compat.go 的
+// A2AExtensionCompatService 包装层（懒加载 + AgentCard 构建），而非此直接
+// 对接框架的适配器。保留此文件作为未来框架 A2A Server 支持懒加载时的切换入口
+// （alignment-plan.md §四 协同包 F）。
+
 import (
 	"context"
 	"net/http"
@@ -17,6 +23,8 @@ import (
 // A2AExtensionAdapter enables the framework's A2A extension points for
 // message audit, filter, and error customization. It wraps the framework's
 // A2A server and provides hooks for project-specific processing.
+//
+// TECH-DEBT(P2-30): 未接入生产路径，见文件头说明。
 type A2AExtensionAdapter struct {
 	server *a2aserver.A2AServer
 	lg     loggateway.Logger

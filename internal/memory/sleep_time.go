@@ -270,6 +270,12 @@ func (s *SleepTimeService) executeOperations(ctx context.Context, uk trpcmemory.
 			if err := s.executeUpdateCore(ctx, uk, op); err != nil {
 				return err
 			}
+		default:
+			// Unknown op type — log to surface prompt/response contract drift.
+			// LLM may emit typos (e.g. "merg") or new types not yet supported.
+			s.lg.Warn("sleep-time unknown consolidation op type skipped",
+				loggateway.Str("op_type", op.Type),
+				loggateway.Str("target_id", op.TargetID))
 		}
 	}
 	return nil
@@ -339,7 +345,13 @@ func buildConsolidationPrompt(memories []*trpcmemory.Entry) string {
 			Topics: m.Memory.Topics,
 		})
 	}
-	b, _ := json.Marshal(items)
+	b, err := json.Marshal(items)
+	if err != nil {
+		// memItem is a plain struct of strings/slices — marshal failure is
+		// unexpected. Return an empty prompt; the caller (llmConsolidate)
+		// treats an empty user prompt as "no items" and returns no operations.
+		return ""
+	}
 	return "Memories to consolidate:\n" + string(b)
 }
 

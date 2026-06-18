@@ -26,6 +26,13 @@ const (
 
 const tracerPrefix = "aranea-agents/"
 
+// Orchestration phase names used by StartPhase/EndPhase.
+const (
+	PhasePlan  = "plan"  // Spirit 规划阶段
+	PhaseAlloc = "alloc" // Spirit 分配阶段
+	PhaseOrch  = "orch"  // Spirit 编排阶段
+)
+
 // Config configures a turn root span.
 type Config struct {
 	Domain    Domain
@@ -43,6 +50,10 @@ type Bridge struct {
 	root     trace.Span
 	llm      trace.Span
 	tool     map[string]trace.Span
+	// Orchestration phase spans (P3-2): plan/alloc/orch are children of root.
+	plan     trace.Span
+	alloc    trace.Span
+	orch     trace.Span
 	finished bool
 }
 
@@ -107,6 +118,13 @@ func (b *Bridge) Finish(err error) {
 		endSpan(sp, err)
 		delete(b.tool, id)
 	}
+	// Close any open orchestration phase spans (P3-2).
+	endSpan(b.orch, err)
+	b.orch = nil
+	endSpan(b.alloc, err)
+	b.alloc = nil
+	endSpan(b.plan, err)
+	b.plan = nil
 	endSpan(b.root, err)
 }
 
@@ -122,6 +140,65 @@ func (b *Bridge) StartChild(ctx context.Context, name string, attrs ...attribute
 // EndChild ends a child span.
 func EndChild(span trace.Span, err error) {
 	endSpan(span, err)
+}
+
+// StartPhase begins a named orchestration phase span (plan/alloc/orch).
+// The span is a child of the root span. Returns the span and an updated ctx.
+// Nil-safe: a nil Bridge returns (ctx, nil).
+func (b *Bridge) StartPhase(ctx context.Context, phase string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {
+	if b == nil || b.root == nil {
+		return ctx, nil
+	}
+	b.mu.Lock()
+	if b.finished {
+		b.mu.Unlock()
+		return ctx, nil
+	}
+	b.mu.Unlock()
+
+	parentCtx := trace.ContextWithSpan(ctx, b.root)
+	newCtx, span := b.tracer().Start(parentCtx, phase, trace.WithAttributes(attrs...))
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.finished {
+		endSpan(span, nil)
+		return ctx, nil
+	}
+	switch phase {
+	case PhasePlan:
+		b.plan = span
+	case PhaseAlloc:
+		b.alloc = span
+	case PhaseOrch:
+		b.orch = span
+	}
+	return newCtx, span
+}
+
+// EndPhase ends a phase span by name. Nil-safe and safe for non-started phases.
+func (b *Bridge) EndPhase(phase string, err error) {
+	if b == nil {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.finished {
+		return
+	}
+	var sp trace.Span
+	switch phase {
+	case PhasePlan:
+		sp = b.plan
+		b.plan = nil
+	case PhaseAlloc:
+		sp = b.alloc
+		b.alloc = nil
+	case PhaseOrch:
+		sp = b.orch
+		b.orch = nil
+	}
+	endSpan(sp, err)
 }
 
 // ObserveFrameworkEvent opens or updates OTel spans for LLM usage and tool calls.

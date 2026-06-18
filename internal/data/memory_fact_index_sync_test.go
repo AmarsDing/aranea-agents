@@ -92,8 +92,9 @@ func openFactEmbedTestData(t *testing.T) (*ent.Client, *Data) {
  ttl_days INTEGER NOT NULL DEFAULT 0, decay_factor REAL NOT NULL DEFAULT 0.98, next_decay_at TEXT NOT NULL DEFAULT '',
  last_used_at TEXT NOT NULL DEFAULT '', expires_at TEXT NOT NULL DEFAULT '',
  metadata_json TEXT NOT NULL DEFAULT '{}', quality_score REAL NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
- archived_at TEXT NOT NULL DEFAULT '', deleted_at TEXT NOT NULL DEFAULT '',
- UNIQUE(scope_type, scope_id, fingerprint))`); err != nil {
+archived_at TEXT NOT NULL DEFAULT '', deleted_at TEXT NOT NULL DEFAULT '',
+valid_from TEXT NOT NULL DEFAULT '', valid_until TEXT NOT NULL DEFAULT '',
+UNIQUE(scope_type, scope_id, fingerprint))`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := client.ExecContext(ctx, `

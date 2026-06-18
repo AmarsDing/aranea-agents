@@ -10,6 +10,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/internal/telemetry/turntrace"
 	"aranea-agents/internal/tools"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -75,6 +76,17 @@ func NewTaskOrchestratorImpl(
 
 // Orchestrate builds and executes the orchestration graph based on the TaskPlan and AllocationPlan.
 func (o *TaskOrchestratorImpl) Orchestrate(ctx context.Context, taskPlan *biz.TaskPlan, allocPlan *biz.AllocationPlan) (*biz.OrchestrationHandle, error) {
+	// Start orchestration phase span (P3-2): Trace propagation across Spirit→Team→Graph.
+	bridge := turntrace.FromContext(ctx)
+	if bridge != nil {
+		ctx, _ = bridge.StartPhase(ctx, turntrace.PhaseOrch)
+	}
+	defer func() {
+		if bridge != nil {
+			bridge.EndPhase(turntrace.PhaseOrch, nil)
+		}
+	}()
+
 	if taskPlan == nil {
 		return nil, apierror.BadRequest(apierror.DomainSpirit, "task_plan is required")
 	}

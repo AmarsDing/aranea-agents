@@ -332,6 +332,16 @@ type EnvelopeTrace struct {
 	DurationMS   int64  `json:"duration_ms,omitempty"`
 }
 
+// AgentCreatedContent is the Content payload for EnvelopeTypeAgentCreated (P1-4).
+// It is carried in Envelope.Metadata (not Envelope.Content, which is reserved
+// for chat text) so subscribers can render "系统创建了新 Agent" notifications.
+type AgentCreatedContent struct {
+	AgentKey    string `json:"agent_key"`
+	DisplayName string `json:"display_name"`
+	Source      string `json:"source"`  // "system" for AgentFactory-created agents
+	Trigger     string `json:"trigger"` // the TaskProfile.TaskDescription that triggered creation
+}
+
 // NewEnvelope creates a new Envelope with a generated ID and current timestamp.
 func NewEnvelope(typ EnvelopeType, author, sessionID string) Envelope {
 	return Envelope{

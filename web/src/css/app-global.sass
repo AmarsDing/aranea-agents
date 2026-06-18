@@ -1263,6 +1263,47 @@ body.body--dark .chat-page .chat-q-message--streaming .chat-message-bubble--rece
   .chat-toolbar-actions
     justify-content: flex-start
 
+// ── Mobile bottom sheet for session list (< 1024px) ──
+.mobile-session-dialog
+  .q-dialog__inner
+    padding: 0
+
+.mobile-session-sheet
+  max-height: 70vh
+  border-radius: 20px 20px 0 0
+  background: var(--glass-elevated)
+  backdrop-filter: blur(var(--glass-blur-elevated))
+  -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
+  border: 1px solid var(--glass-border)
+  border-bottom: none
+  overflow: hidden
+
+.mobile-session-sheet__handle
+  width: 36px
+  height: 4px
+  border-radius: 2px
+  background: var(--glass-border)
+  margin: 8px auto 4px
+
+.mobile-session-sheet__header
+  min-height: 44px
+
+.mobile-session-sheet__body
+  overflow-y: auto
+  min-height: 0
+  max-height: calc(70vh - 60px)
+
+  .chat-side--right
+    width: 100% !important
+    min-width: 100% !important
+    flex: 1 1 100% !important
+    max-width: 100% !important
+    border-radius: 0
+
+body.body--dark .mobile-session-sheet
+  background: var(--glass-surface)
+  border-color: var(--glass-border)
+
 // Skill 管理页：UX.md §2 玻璃 token + §7 圆角；昼夜仅换变量
 body:not(.body--dark)
   .skills-page,

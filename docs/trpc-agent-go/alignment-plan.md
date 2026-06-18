@@ -70,7 +70,7 @@ Extended（独立，ToolPipe 依赖 Tool）
 | P1-6 | Knowledge | 实现 Embedder 适配器 | 新增适配层 | 对接框架 Embedder 接口，统一嵌入生成 | 🟡 阻塞：框架 `embedder.Embedder` 接口无消费者（详见 §十一/B-2） |
 | P1-7 | Evaluation | 启用框架 LLM Judge | 启用框架功能 | 替换自建 LLM-as-Judge，减少维护 | ✅ 已完成 |
 | P1-8 | Evaluation | 启用 Callbacks | 启用框架功能 | 评估流程获得框架 Callback 能力 | ✅ 已完成 |
-| P1-9 | Prompt | 启用 PromptIter 替换 PromptRefiner | 启用框架功能 | 替换自建 PromptRefiner，获得框架迭代优化能力 | 🟡 阻塞：适配器编译错误 + 框架协作者缺失（详见 §十一/B-3） |
+| P1-9 | Prompt | 启用 PromptIter 替换 PromptRefiner | 启用框架功能 | 替换自建 PromptRefiner，获得框架迭代优化能力 | 🟡 阻塞：框架协作者缺失（"编译错误"经核实为误判，详见 §十一/B-3） |
 
 ### P1 执行顺序
 
@@ -100,12 +100,12 @@ P1-9 (PromptIter) ──→ 独立
 | P2-4 | Session | 启用 GetSessionHook | 启用框架功能 | P1-1 EventBus | Session 读取时注入自定义逻辑 | ✅ 已完成 |
 | P2-5 | Session | 评估 Summary 替换 micro_compact | 替换自建实现 | P2-3 | 框架 Summary 替换自建压缩 | ✅ 已完成（补充模式） |
 | P2-6 | Session | 启用 WithSessionEventLimit | 启用框架功能 | P2-3 | 控制单 Session 事件数量 | ✅ 已完成 |
-| P2-7 | Memory | L2/L3 适配 memory.Service 接口 | 新增适配层 | P1-1 EventBus | 记忆层对接框架接口 | ✅ 已验证（已有实现） |
-| P2-8 | Memory | Extractor Chain 适配 MemoryExtractor | 新增适配层 | P2-7 | 提取器链对接框架接口 | ✅ 已完成 |
+| P2-7 | Memory | L2/L3 适配 memory.Service 接口 | 新增适配层 | P1-1 EventBus | 记忆层对接框架接口 | ✅ 已实现（TECH-DEBT：未接入生产路径，项目自建 AutoMemoryWorker 更完善） |
+| P2-8 | Memory | Extractor Chain 适配 MemoryExtractor | 新增适配层 | P2-7 | 提取器链对接框架接口 | ✅ 已实现（TECH-DEBT：未接入生产路径，同 P2-7） |
 | P2-9 | Tool | DeferredCallableTool 实现 DeferredTool | 替换自建实现 | P1-4 ToolPipe | ✅ 已完成（`internal/tools/deferred/deferred_tool.go` 实现 `ShouldDefer()` 满足 `trpctool.DeferredTool` 接口） |
 | P2-10 | Tool | 贡献 Circuit Breaker | 贡献回框架 | 无 | ⏭ 跳过（不贡献回框架） |
 | P2-11 | Tool | 贡献 Confirmation Gate | 贡献回框架 | 无 | ⏭ 跳过（不贡献回框架） |
-| P2-12 | Tool | ToolResultGate + ToolPipe 协调 | 新增适配层 | P1-4 ToolPipe | ✅ 已完成 |
+| P2-12 | Tool | ToolResultGate + ToolPipe 协调 | 新增适配层 | P1-4 ToolPipe | ✅ 已完成（功能已通过 `internal/agent/tool_result_gate_hook.go` 的 BeforeModelHook 接入，`callback_chain.go:62` 调用；`toolresult_gate_adapter.go` 为冗余实现，已标记 TECH-DEBT） |
 
 ### 3.2 独立 P2 项（无前置依赖）
 
@@ -116,9 +116,9 @@ P1-9 (PromptIter) ──→ 独立
 | P2-15 | Model | 贡献 Retry Transport | 贡献回框架 | ⏭ 跳过（不贡献回框架） |
 | P2-16 | Model | 贡献 Circuit Breaker Transport | 贡献回框架 | ⏭ 跳过（不贡献回框架） |
 | P2-17 | Model | 贡献 Callback Chain | 贡献回框架 | ⏭ 跳过（不贡献回框架） |
-| P2-18 | Team | 适配 Export() 结构 | 新增适配层 | ✅ 已完成 |
-| P2-19 | Team | 借鉴 Swarm 安全机制 | 启用框架功能 | ✅ 已完成 |
-| P2-20 | Team | 借鉴 Session 隔离 | 启用框架功能 | ✅ 已完成 |
+| P2-18 | Team | 适配 Export() 结构 | 新增适配层 | ✅ 已实现（TECH-DEBT：未接入生产路径，项目 Team 编排不使用框架 structure.Snapshot 导出） |
+| P2-19 | Team | 借鉴 Swarm 安全机制 | 启用框架功能 | ✅ 已实现（TECH-DEBT：未接入生产路径，项目使用自建安全策略） |
+| P2-20 | Team | 借鉴 Session 隔离 | 启用框架功能 | ✅ 已实现（TECH-DEBT：未接入生产路径，项目使用自建会话隔离机制） |
 | P2-21 | Knowledge | 实现 Knowledge 接口 | 新增适配层 | ✅ 已完成 |
 | P2-22 | Knowledge | 使用框架 SearchTool | 启用框架功能 | 🟡 阻塞：双重注册冲突 + 丢失动态 collection 限定能力（详见 §十一/B-4） |
 | P2-23 | Knowledge | 贡献 HybridRetriever | 贡献回框架 | ⏭ 跳过（不贡献回框架） |
@@ -127,8 +127,8 @@ P1-9 (PromptIter) ──→ 独立
 | P2-26 | Evaluation | 启用 PromptIter | 启用框架功能 | 🟡 阻塞：与 P1-9 同一阻塞点，框架 `promptiter` 需 5 个协作者（详见 §十一/B-3） |
 | P2-27 | Skill | 启用提示缓存优化 | 启用框架功能 | ✅ 已启用（`internal/agent/trpc_build.go:160` 调用 `WithSkillsLoadedContentInToolResults(true)`，渐进加载模式下已启用） |
 | P2-28 | Skill | 贡献 DBRepositoryAdapter | 贡献回框架 | ✅ 已完成（internal 适配层，非框架贡献） |
-| P2-29 | Server | 启用 AG-UI 协议端点 | 启用框架功能 | ✅ 已完成 |
-| P2-30 | Server | 启用 A2A 扩展点 | 启用框架功能 | ✅ 已完成 |
+| P2-29 | Server | 启用 AG-UI 协议端点 | 启用框架功能 | ✅ 已实现（TECH-DEBT：未接入生产路径，生产使用 `internal/service/agui_compat.go` 包装层解决 Runner per-session 问题） |
+| P2-30 | Server | 启用 A2A 扩展点 | 启用框架功能 | ✅ 已实现（TECH-DEBT：未接入生产路径，生产使用 `internal/service/a2a_extension_compat.go` 包装层支持懒加载） |
 | P2-31 | Extended | 启用 TodoEnforcer 扩展 | 启用框架功能 | ✅ 已完成（`trpc_build.go` 条件启用：仅当 Agent 已有 `todo_write` 工具时追加 `NewTodoEnforcerOption`，避免向不使用 todo 的 Agent 注入工具。框架 earlier-wins 去重保证用户工具优先，enforcer 通过 session state key `temp:todos:<branch>` 追踪状态） |
 | P2-32 | Prompt | 启用 prompt.Text.Render() | 启用框架功能 | 🟡 阻塞：设计前提不匹配（模板渲染 vs 结构化拼接，详见 §十一/B-5） |
 | P2-33 | Prompt | 启用 state.Render() | 启用框架功能 | 🟡 阻塞：设计前提不匹配（模板渲染 vs RuntimeState 注入，详见 §十一/B-6） |
@@ -707,7 +707,9 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 ## 十一、未接入适配器阻塞原因详解
 
 > 以下 7 项适配器代码已就绪但无法接入生产路径，每项有明确的阻塞原因。
-> 阻塞原因分为三类：**框架接口无消费者**（框架未提供使用该接口的组件）、**编译/依赖错误**（适配器代码本身有问题）、**设计前提不匹配**（适配器的设计假设与项目实际架构冲突）。
+> 阻塞原因分为三类：**框架接口无消费者**（框架未提供使用该接口的组件）、**框架协作者缺失**（适配器依赖的框架组件在项目中不存在）、**设计前提不匹配**（适配器的设计假设与项目实际架构冲突）。
+>
+> **当前状态**：B-1/B-2 已标记 DEPRECATED（永久阻塞）；B-3 已标记 TECH-DEBT（"编译错误"经核实为误判，真实阻塞原因为框架协作者缺失）；B-4~B-7 待对应 Phase 解除。
 >
 > **解除方案关联文档**：`docs/reports/2026-06-17-research-orchestration-longtask-memory-upgrade.md`（以下简称"升级调研报告"），该报告规划了 Phase 0~3 的架构重构路径，部分阻塞项将在重构过程中解除。
 
@@ -725,7 +727,7 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 **解除方案**：**不解除（永久阻塞）**
 - 升级调研报告 §6.4 确认记忆系统 5 项前沿技术（Bi-temporal/Ebbinghaus/Sleep-time/主动召回/记忆链接图）均在项目内部实现，对齐的是框架 `memory.Service` 接口而非 `vectorstore.VectorStore`
 - 框架架构设计上通过 `knowledge.Knowledge` 接口抽象了整个检索流程，VectorStore/Embedder 是项目内部实现细节，框架不直接消费
-- **建议**：将适配器代码标记为 `// DEPRECATED: 框架架构差异，永久阻塞`，在下一迭代中删除死代码（CS-B2 死代码即删）
+- **已完成**：适配器代码已标记 `// DEPRECATED: 框架架构差异，永久阻塞`（文件头 + struct 注释），下一迭代删除死代码（CS-B2）
 
 ### B-2. EmbedderAdapter（P1-6）— 框架接口无消费者
 
@@ -740,17 +742,17 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 
 **解除方案**：**不解除（永久阻塞）**
 - 与 B-1 同理，升级调研报告 §6.4 的记忆系统升级不涉及框架 Embedder 接口消费
-- **建议**：将适配器代码标记为 `// DEPRECATED: 框架架构差异，永久阻塞`，在下一迭代中删除死代码（CS-B2）
+- **已完成**：适配器代码已标记 `// DEPRECATED: 框架架构差异，永久阻塞`（文件头 + struct 注释），下一迭代删除死代码（CS-B2）
 
-### B-3. PromptIterAdapter（P1-9, P2-26）— 编译错误 + 框架协作者缺失
+### B-3. PromptIterAdapter（P1-9, P2-26）— 框架协作者缺失（编译错误为误判）
 
-**阻塞类型**：编译错误 + 框架协作者缺失
+**阻塞类型**：框架协作者缺失（原"编译错误"经核实为误判）
 
-**适配器位置**：`internal/agent/prompt_iter_adapter.go`
+**适配器位置**：`internal/agent/prompt_iter_adapter.go`（已标记 `// TECH-DEBT(B-3)`）
 
 **阻塞原因**：
-1. **编译错误**：适配器引用了 `TrainEvalSetIDs` 和 `ValidationEvalSetIDs` 字段，但框架的 `promptiter` 包中不存在这些字段（API 已变更或适配器编写时使用了不存在的 API）
-2. **框架协作者缺失**：框架的 `promptiter` 需要 5 个协作者才能运行：
+1. **"编译错误"经核实为误判**：原计划声称适配器引用的 `TrainEvalSetIDs` 和 `ValidationEvalSetIDs` 字段在框架 `promptiter` 包中不存在。经核实，此判断基于本地 `pkg/trpc-agent-go` 新版源码，但 `go.mod` 中 `evaluation` 模块使用远程 v1.9.0 版本（非本地 replace），v1.9.0 API 仍为 `TrainEvalSetIDs`/`ValidationEvalSetIDs`，编译正常。本地新版源码已改为 `Train []EvalSetInput` / `Validation []EvalSetInput`，但项目未升级到该版本。
+2. **框架协作者缺失**（真实阻塞原因）：框架的 `promptiter` 需要 5 个协作者才能运行：
    - `engine.Engine` — 迭代引擎
    - `evalset.Recorder` — 评估集记录器
    - 评估集持久化后端
@@ -761,9 +763,9 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 **解除方案**：**独立迭代（优先级低，不关联升级调研报告 Phase 0~3）**
 - 升级调研报告未涉及 PromptIter 管线，项目自建的 `PromptRefiner` 已满足当前需求
 - 如需解除：
-  1. 修复编译错误（对齐框架 `promptiter` 包的实际 API）
-  2. 建立评估集基础设施（EvalSet Recorder + 持久化）——这是独立的基础设施投入
-  3. 评估是否值得引入完整的 PromptIter 管线
+  1. 建立评估集基础设施（EvalSet Recorder + 持久化）——这是独立的基础设施投入
+  2. 评估是否值得引入完整的 PromptIter 管线
+  3. 若升级 `evaluation` 模块到本地新版，需同步适配 `Train`/`Validation` 字段变更
 - **建议**：保持阻塞状态，待有明确的 Prompt 迭代优化业务需求时再启动
 
 ### B-4. FrameworkSearchTool（P2-22）— 双重注册冲突 + 能力降级
@@ -855,9 +857,9 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 
 | 阻塞项 | 阻塞类型 | 解除方案 | 关联 Phase | 优先级 |
 |--------|---------|---------|-----------|--------|
-| B-1 VectorStoreAdapter | 框架接口无消费者 | **不解除（永久阻塞）**，建议标记 DEPRECATED 并删除死代码 | N/A | 低 |
-| B-2 EmbedderAdapter | 框架接口无消费者 | **不解除（永久阻塞）**，建议标记 DEPRECATED 并删除死代码 | N/A | 低 |
-| B-3 PromptIterAdapter | 编译错误 + 协作者缺失 | **独立迭代**，待有明确 Prompt 迭代优化业务需求时启动 | N/A | 低 |
+| B-1 VectorStoreAdapter | 框架接口无消费者 | **不解除（永久阻塞）**，已标记 DEPRECATED，下一迭代删除死代码 | N/A | 低 |
+| B-2 EmbedderAdapter | 框架接口无消费者 | **不解除（永久阻塞）**，已标记 DEPRECATED，下一迭代删除死代码 | N/A | 低 |
+| B-3 PromptIterAdapter | 框架协作者缺失（编译错误为误判） | **独立迭代**，待有明确 Prompt 迭代优化业务需求时启动；已标记 TECH-DEBT | N/A | 低 |
 | B-4 FrameworkSearchTool | 双重注册 + 能力降级 | **Phase 3 重新评估**，检查框架是否支持动态 collection | Phase 3 | 中 |
 | B-5 RenderPromptTemplate | 设计前提不匹配 | **Phase 1 重新评估**，AgentFactory 引入模板化 Agent 定义时接入 | Phase 1 | 中 |
 | B-6 RenderStateTemplate | 设计前提不匹配 | **Phase 1 重新评估**，与 B-5 同步评估 | Phase 1 | 中 |
@@ -866,6 +868,6 @@ Agent 的 BuildCache（LRU+singleflight+dirty-mark）与 Skill 的 TTL 缓存有
 **关键结论**：
 - 7 个阻塞项中，**1 项有明确解除路径**（B-7 TaskRunAdapter → Phase 1）
 - **3 项在架构重构时重新评估**（B-4/B-5/B-6 → Phase 1/3）
-- **2 项永久阻塞**（B-1/B-2 → 框架架构差异，建议删除死代码）
-- **1 项独立迭代**（B-3 → 待业务需求驱动）
+- **2 项永久阻塞**（B-1/B-2 → 框架架构差异，已标记 DEPRECATED，下一迭代删除死代码）
+- **1 项独立迭代**（B-3 → 框架协作者缺失，"编译错误"经核实为误判；已标记 TECH-DEBT，待业务需求驱动）
 - 升级调研报告（`docs/reports/2026-06-17-research-orchestration-longtask-memory-upgrade.md`）的 Phase 0~3 架构重构将逐步解除可解除的阻塞项

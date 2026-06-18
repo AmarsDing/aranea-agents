@@ -4,6 +4,7 @@
   </div>
   <ChatWorkspaceShell v-else>
     <ChatEntitySidebar
+      v-if="!isMobile"
       :search="layout.search"
       :open="layout.leftOpen"
       :agents="entity.displayAgents"
@@ -31,6 +32,7 @@
     />
 
     <ChatSideToggle
+      v-if="!isMobile"
       :open="layout.leftOpen"
       :icon="layout.leftOpen ? 'chevron_left' : 'chevron_right'"
       :aria-label="layout.t('chat.collapseList')"
@@ -121,6 +123,7 @@
         @submit-tool-confirm="composer.submitToolConfirm"
         @open-events="session.openSessionEvents"
         @open-artifact="session.openSessionArtifact"
+        @open-sessions="mobileSessionOpen = true"
         @attachment-deleted="session.onArtifactDeleted"
         @download-artifact="session.downloadArtifact"
         @focus-turn="session.focusSessionTurn"
@@ -155,6 +158,7 @@
     </div>
 
     <ChatSideToggle
+      v-if="!isMobile"
       :open="layout.rightOpen"
       :icon="layout.rightOpen ? 'chevron_right' : 'chevron_left'"
       :aria-label="layout.t('chat.collapseSession')"
@@ -162,6 +166,7 @@
     />
 
     <ChatSessionSidebar
+      v-if="!isMobile"
       :open="layout.rightOpen"
       :sessions="session.displaySessions"
       :inbox-sessions="session.inboxSessions"
@@ -181,6 +186,43 @@
     />
 
     <template #dialogs>
+      <q-dialog
+        v-if="isMobile"
+        v-model="mobileSessionOpen"
+        position="bottom"
+        :full-width="true"
+        class="mobile-session-dialog"
+      >
+        <q-card class="mobile-session-sheet column no-wrap">
+          <div class="mobile-session-sheet__handle" />
+          <div class="mobile-session-sheet__header row items-center justify-between q-px-md q-py-sm">
+            <div class="text-subtitle2 text-weight-medium">{{ layout.t('chat.sessionListTitle') }}</div>
+            <q-btn v-close-popup flat dense round icon="close" />
+          </div>
+          <q-separator />
+          <div class="mobile-session-sheet__body col">
+            <ChatSessionSidebar
+              :open="true"
+              :sessions="session.displaySessions"
+              :inbox-sessions="session.inboxSessions"
+              :selected-session-id="session.selectedSessionForUi?.id"
+              :is-dark="layout.isDark"
+              :favorite-ids="session.favoriteIds"
+              @select="onMobileSessionSelect"
+              @new-session="onMobileNewSession"
+              @rename="session.onRenameSession"
+              @toggle-pin="session.onTogglePinSession"
+              @toggle-favorite="session.onToggleFavorite"
+              @trace="session.openSessionTrace"
+              @delete="entity.openDelete"
+              @restore="session.onRestoreSession"
+              @archive="session.onArchiveSession"
+              @detail="session.onSessionDetail"
+            />
+          </div>
+        </q-card>
+      </q-dialog>
+
       <ChatSettingsDialog
         v-model="dialogs.settingsOpen"
         :name="dialogs.editName"
@@ -234,7 +276,7 @@ import ChatSideToggle from '../components/chat/ChatSideToggle.vue';
 import ChatSettingsDialog from '../components/chat/ChatSettingsDialog.vue';
 import ChatWorkspaceShell from '../components/chat/ChatWorkspaceShell.vue';
 import SessionTimelineDialog from '../components/chat/SessionTimelineDialog.vue';
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
@@ -253,6 +295,31 @@ const uiConfig = useUiConfigStore();
 const router = useRouter();
 const $q = useQuasar();
 const { t } = useI18n();
+
+const isMobile = computed(() => $q.screen.lt.md);
+const mobileSessionOpen = ref(false);
+
+watch(
+  isMobile,
+  (mobile) => {
+    if (mobile) {
+      layout.leftOpen = false;
+      layout.rightOpen = false;
+      mobileSessionOpen.value = false;
+    }
+  },
+  { immediate: true },
+);
+
+function onMobileSessionSelect(sessionId: string) {
+  session.onSelectSession(sessionId);
+  mobileSessionOpen.value = false;
+}
+
+function onMobileNewSession() {
+  session.onNewSession();
+  mobileSessionOpen.value = false;
+}
 
 const activeMember = computed(() => {
   const team = spiritStore.activeTeam;

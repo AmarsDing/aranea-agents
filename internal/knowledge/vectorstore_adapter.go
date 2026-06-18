@@ -1,5 +1,11 @@
 package knowledge
 
+// DEPRECATED: 框架架构差异，永久阻塞（alignment-plan.md §十一/B-1）。
+// 框架中没有任何组件消费 vectorstore.VectorStore 接口——框架的 Knowledge
+// 模块使用 knowledge.Knowledge 接口（已通过 KnowledgeAdapter 适配），
+// 不直接使用 vectorstore.VectorStore。插入此适配器不会带来任何功能增益，
+// 只会增加一层无意义的包装。下一迭代将删除此死代码（CS-B2）。
+
 import (
 	"context"
 	"encoding/json"
@@ -15,7 +21,9 @@ import (
 // VectorStoreAdapter wraps a self-built vector.VectorStore to implement
 // the framework's vectorstore.VectorStore interface.
 // Methods not supported by the underlying store return best-effort defaults
-// and are marked TECH-DEBT for future migration.
+// and are marked TECH-DEBT to track which methods lack underlying store support.
+//
+// DEPRECATED: 框架架构差异，永久阻塞。见文件头说明。
 type VectorStoreAdapter struct {
 	store vector.VectorStore
 	lg    loggateway.Logger

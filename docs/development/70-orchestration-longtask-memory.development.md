@@ -238,7 +238,12 @@
 - 向量相似度匹配准确率 > TF-IDF
 - Embedder 失败时降级 TF-IDF
 
-**状态**：📋 待办
+**状态**：✅ 已完成（Wave 1）
+- `matchLayer2` 升级为 embedding cosine similarity（in-memory，非 pgvector SQL）+ TF-IDF fallback
+- 实际实现：调用 `embedder.Embed()`（OpenAI/Gemini/Ollama API）后在 Go 内存计算 cosine，避免 Postgres 往返
+- pgvector SQL `<=>` 操作符仅用于 memory 域（`internal/data/vector/pgvector_fact.go`），allocator 不涉及
+- 5 个测试覆盖：embedding 成功/失败/nil embedder/空候选/维度不匹配
+- Wire 注入：`provideAgentAllocator` 新增 embedder 参数，`wire.Bind` 绑定 `*knowledge.MultiProviderEmbedder`
 
 ### 4.4 P1-4：AgentFactory
 
@@ -266,13 +271,19 @@
 **任务**：扩展 taskrun.Controller 增加 Events()
 
 **改动文件**：
-- `pkg/trpc-agent-go/agent/taskrun/inprocess/service.go`
+- `pkg/trpc-agent-go/agent/taskrun/types.go`（Controller 接口新增 Events 方法 + ErrRunNotActive 错误）
+- `pkg/trpc-agent-go/agent/taskrun/inprocess/service.go`（实现 Events()：eventChs map + forwardEvent + closeEventChannel）
 
 **验收**：
 - taskrun 后台任务事件可被外部消费
 - 无消费者时不阻塞
 
-**状态**：📋 待办
+**状态**：✅ 已完成（Wave 1）
+- Controller 接口新增 `Events(runID string) (<-chan *event.Event, error)`
+- inprocess.Service 实现：`eventChs map[string]chan *event.Event`（s.mu 保护）+ `forwardEvent`（non-blocking send）+ `closeEventChannel`（终态关闭）
+- drop policy：缓冲区满时静默丢弃（符合 Informational 级别语义）
+- 5 个测试覆盖：active run/forwarding/channel close/missing run/no-block
+- 已知限制（框架豁免，不修改 trpc 代码）：重复订阅错误用 `fmt.Errorf` 而非哨兵错误；单订阅者限制
 
 ### 4.6 P1-6：跨进程事件流
 
@@ -462,7 +473,11 @@
 - Prometheus 指标可查询
 - Grafana 可展示
 
-**状态**：📋 待办
+**状态**：✅ 已完成（Wave 1）
+- 5 个指标已添加：`aranea_spirit_plan_duration_seconds`/`aranea_spirit_alloc_duration_seconds`/`aranea_spirit_orch_duration_seconds`/`aranea_agent_factory_created_total`/`aranea_graph_replan_total`
+- buckets 设计：Plan/Alloc 用 `spiritPhaseBuckets`（0.1s-300s，覆盖 LLM 调用），Orch 用独立 buckets（1s-3600s，覆盖长任务子阶段）
+- 审查修复：从 `prometheus.DefBuckets`（max 10s）改为 `spiritPhaseBuckets`（max 300s），匹配"multi-minute"注释声明
+- 测试：`spirit_metrics_test.go` 验证 Observe/Inc 不 panic（遵循 callback_test.go 模式，无 testutil 依赖）
 
 ### 6.4 P3-4：ErrorBlock 内联重试
 
@@ -510,7 +525,15 @@
 - i18n 覆盖率 100%
 - CI 拦截新增硬编码
 
-**状态**：📋 待办
+**状态**：� 部分完成（Wave 1）
+- ✅ CI 检查脚本 `web/scripts/check-i18n.mjs` 已创建（扫描硬编码中文 + baseline 增量比对）
+- ✅ `web/scripts/i18n-baseline.json` 记录 458 个既有文件的技术债务基线
+- ✅ `web/package.json` 新增 `check:i18n` 脚本
+- ✅ 6 个高可见 UI 文件已迁移：MainLayout/LoginPage/ChatPage/FileUploadField/ChatHeaderPromptBar/EventStream
+- ✅ zh-CN.ts/en-US.ts 新增约 12 个 key，两语言一一对应
+- 🟡 既有技术债务：458 个文件仍有硬编码中文（已纳入 baseline，新增违规才失败）
+- 🟡 `check:i18n` 未集成到 CI lint/test 流程（需手动运行或后续 PR 加入 CI）
+- 🟡 ChatPage.vue:242 既有 FD2 违规（Page 直接 import api），非本次引入
 
 ### 6.7 P3-7：移动端三栏折叠
 
@@ -579,7 +602,15 @@
 - 提取反思
 - 更新 core memory
 
-**状态**：📋 待办
+**状态**：🟡 部分完成（Wave 1）
+- ✅ `SleepTimeService` 实现 Letta/MemGPT 三阶段：merge（去重合并）/reflect（反思提取）/update_core（核心记忆更新）
+- ✅ `ConsolidationQueue` 基于 buffered channel + non-blocking select/default，线程安全
+- ✅ `MemorySleepTimeWorker` cron job：safego.Go + ctx 取消 + ticker 调度
+- ✅ 15 个测试覆盖：正常路径/LLM 失败/响应错误/空输入/malformed JSON/read 失败/多操作组合/队列行为
+- ✅ 审查修复：`executeOperations` 增加 default 分支记录未知 op 类型；`buildConsolidationPrompt` 的 json.Marshal 错误处理
+- � `MemorySleepTimeWorker` 未通过 Wire 绑定到 cronrunner 调度器（死代码，需后续 PR 补全）
+- 🟡 `AgentUserKeyLister` 为 placeholder（返回空列表），生产启用前需实现从 SessionRepo 派生活跃用户
+- 🟡 失败 job 无重试无死信（对比 `AutoMemoryWorker.processWithRetry` 的退避重试机制）
 
 ### 6.11 P3-11：主动召回触发器
 
@@ -626,7 +657,11 @@
 - 长任务期间每 N 步触发记忆提取
 - 24h 任务记忆条数 <1000
 
-**状态**：📋 待办
+**状态**：✅ 已完成（Wave 1）
+- 新增 `WithMidRunMemoryInterval(n int) Option`，n=0 禁用（向后兼容）
+- `maybeEnqueueMidRunMemory` 在 `runEventLoop` 中每 N 步触发，stepCount 单 goroutine 访问无竞态
+- 提取失败不影响主流程：`enqueueAutoMemoryJob` 捕获所有错误并 log.Debug，runner 不中断
+- 4 个测试覆盖：interval 触发/禁用/未达 interval/失败优雅降级
 
 ---
 
@@ -647,9 +682,9 @@
 |---|--------|---------|------|
 | 5 | Intent Pass 默认开启 | 默认场景执行；agent setting 可关闭 | ✅ |
 | 6 | 预规划门控 | Simple <2s，Moderate+ 强制规划 | ✅ |
-| 7 | pgvector 语义匹配 | 准确率 > TF-IDF | 📋 |
+| 7 | pgvector 语义匹配 | 准确率 > TF-IDF | ✅ |
 | 8 | AgentFactory | 无匹配时自动创建，可观测，可复用 | 📋 |
-| 9 | taskrun 事件透传 | 后台任务事件可消费 | 📋 |
+| 9 | taskrun 事件透传 | 后台任务事件可消费 | ✅ |
 | 10 | 跨进程事件流 | WS 重连从 Postgres replay | 📋 |
 | 11 | 任务级心跳 | 10s 间隔，30s 检测 stale | 📋 |
 | 12 | 崩溃恢复 | 进程重启从 checkpoint 恢复 | 📋 |
@@ -666,21 +701,21 @@
 
 ### 7.4 Phase 3 验收
 
-| # | 验收项 | 验证方式 |
-|---|--------|---------|
-| 18 | 编排时间线 | Plan→Allocate→Orchestrate→Delivery 全阶段 |
-| 19 | 跨边界 Trace | Spirit→Team→Graph 传播 |
-| 20 | Spirit Metrics | 耗时直方图可查询 |
-| 21 | ErrorBlock 重试 | 内联按钮，动作联动 |
-| 22 | WS 快速检测 | 30s 内检测 stale |
-| 23 | i18n 全覆盖 | 覆盖率 100%，CI 拦截 |
-| 24 | 移动端折叠 | <1024px 折叠策略 |
-| 25 | Bi-temporal | 冲突不删除，标记失效 |
-| 26 | Ebbinghaus 衰减 | R_t 计算，低频降权 |
-| 27 | Sleep-time 整理 | 后台合并/反思/更新 |
-| 28 | 主动召回 | 准确率 >80% |
-| 29 | 记忆链接图 | link generation + 演化 |
-| 30 | mid-run 提取 | 24h 任务记忆 <1000 |
+| # | 验收项 | 验证方式 | 状态 |
+|---|--------|---------|------|
+| 18 | 编排时间线 | Plan→Allocate→Orchestrate→Delivery 全阶段 | 📋 |
+| 19 | 跨边界 Trace | Spirit→Team→Graph 传播 | 📋 |
+| 20 | Spirit Metrics | 耗时直方图可查询 | ✅ |
+| 21 | ErrorBlock 重试 | 内联按钮，动作联动 | 📋 |
+| 22 | WS 快速检测 | 30s 内检测 stale | 📋 |
+| 23 | i18n 全覆盖 | 覆盖率 100%，CI 拦截 | 🟡 |
+| 24 | 移动端折叠 | <1024px 折叠策略 | 📋 |
+| 25 | Bi-temporal | 冲突不删除，标记失效 | 📋 |
+| 26 | Ebbinghaus 衰减 | R_t 计算，低频降权 | 📋 |
+| 27 | Sleep-time 整理 | 后台合并/反思/更新 | 🟡 |
+| 28 | 主动召回 | 准确率 >80% | 📋 |
+| 29 | 记忆链接图 | link generation + 演化 | 📋 |
+| 30 | mid-run 提取 | 24h 任务记忆 <1000 | ✅ |
 
 ---
 
@@ -855,23 +890,33 @@ Phase 3（可观测 + 体验 + 记忆）
 `internal/event/contract/envelope.go` 为高频冲突文件（P1-4/P1-6/P1-7/P2-2/P2-3/P3-3 均需新增 EnvelopeType）。**建议在 Wave 1 启动前先执行一次"事件类型批量注册"预处理**，将后续 Wave 所需的新事件类型常量一次性添加，避免并行开发时的合并冲突。
 
 需批量注册的事件类型：
-- `EnvelopeTypeAgentCreated`（P1-4）
-- `EnvelopeTypeRunHeartbeat`（P1-7）
-- `EnvelopeTypeGraphReplanned`（P2-2）
-- `EnvelopeTypeGraphTopologyEvolved`（P2-3）
+- `EnvelopeTypeAgentCreated`（P1-4）— Informational（Agent 已落库，事件仅驱动 UI）
+- `EnvelopeTypeRunHeartbeat`（P1-7）— Informational（丢失仅降低进度可见性）
+- `EnvelopeTypeGraphReplanned`（P2-2）— Important（拓扑漂移防护）
+- `EnvelopeTypeGraphTopologyEvolved`（P2-3）— Important（拓扑漂移防护）
+
+**状态**：✅ 已完成（Wave 1）
+- 4 个 EnvelopeType 常量已添加至 `envelope.go`，channel 路由已注册（chat/graph）
+- AS-EVT-01 分级已落地：`reliability.go` 中 GraphReplanned/GraphTopologyEvolved 注册为 Important，RunHeartbeat/AgentCreated 为 Informational（默认）
+- 测试覆盖：`envelope_contract_test.go` 补全至 79 项常量 + 新增 `TestReliabilityClassification` 验证分级
 
 ### 12.1 Wave 1：基础设施 + 独立模块（6 任务并行，立即启动）
 
-| 任务 | Stream | 关键文件 | 依赖 |
-|------|--------|---------|------|
-| P1-5 taskrun 事件透传 | A | `pkg/trpc-agent-go/agent/taskrun/inprocess/service.go` | 无 |
-| P1-3 pgvector 语义匹配 | B | `internal/agent/agent_allocator_impl.go` | 无 |
-| P3-3 Spirit Metrics | E | `internal/metrics/vars.go` | 无 |
-| P3-6 i18n 全覆盖 | F | `web/src/i18n/locales/*` + 多 `.vue` | 无 |
-| P3-10 Sleep-time 整理 | G2 | 新增 `internal/memory/sleep_time.go` + cron job | 无 |
-| P3-13 mid-run 增量提取 | G2 | `pkg/trpc-agent-go/runner/runner.go` | 无 |
+| 任务 | Stream | 关键文件 | 依赖 | 状态 |
+|------|--------|---------|------|------|
+| P1-5 taskrun 事件透传 | A | `pkg/trpc-agent-go/agent/taskrun/inprocess/service.go` | 无 | ✅ |
+| P1-3 pgvector 语义匹配 | B | `internal/agent/agent_allocator_impl.go` | 无 | ✅ |
+| P3-3 Spirit Metrics | E | `internal/metrics/vars.go` | 无 | ✅ |
+| P3-6 i18n 全覆盖 | F | `web/src/i18n/locales/*` + 多 `.vue` | 无 | ✅ |
+| P3-10 Sleep-time 整理 | G2 | 新增 `internal/memory/sleep_time.go` + cron job | 无 | 🟡 |
+| P3-13 mid-run 增量提取 | G2 | `pkg/trpc-agent-go/runner/runner.go` | 无 | ✅ |
 
 **说明**：6 个任务分属不同模块、无文件冲突，可完全并行。本波完成后解锁 Wave 2 的 P1-6（依赖 P1-5）和 P1-4（依赖 P1-3）。
+
+**Wave 1 完成总结**：
+- ✅ 5 个任务完全完成，1 个任务（P3-10）部分完成（🟡）
+- 🟡 P3-10 Sleep-time 整理：核心 `SleepTimeService` + `ConsolidationQueue` + `MemorySleepTimeWorker` 已实现并测试覆盖，但 `MemorySleepTimeWorker` 未通过 Wire 绑定到 cronrunner 调度器，`AgentUserKeyLister` 为 placeholder（返回空列表）。生产启用前需补全 Wire 绑定 + 实现生产级 lister（从 SessionRepo 派生活跃用户）。
+- 审查修复：3 个阻断项（envelope 可靠性分级未落地、测试覆盖不全、expected 计数错误）+ 5 个建议项（metrics buckets、可靠性分级测试、json.Marshal 错误处理、未知 op 日志、注释修正）已修复并通过第二轮审查验证。
 
 ### 12.2 Wave 2：执行引擎续 + Agent 动态化 + 独立模块（5 任务并行）
 

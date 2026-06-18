@@ -20,6 +20,11 @@ import (
 //
 // Usage: inject via memory backend's WithExtractor() option when switching
 // from the project's AutoMemoryWorker to the framework's auto-memory pipeline.
+//
+// TECH-DEBT(P2-7/8): 适配器已实现但未接入生产路径。项目自建 AutoMemoryWorker
+// （三优先级队列 + 死信持久化）比框架 auto-memory 更完善，当前保持自建方案。
+// 适配器保留作为未来切换到框架 auto-memory pipeline 的桥接点
+// （alignment-plan.md §三 P2-7/8）。
 type ConsolidatorExtractorAdapter struct {
 	consolidator biz.MemoryConsolidator
 	lg           loggateway.Logger

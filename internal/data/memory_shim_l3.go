@@ -191,7 +191,10 @@ func (r *l3FactRepo) countFacts(ctx context.Context, clauses []string, args ...a
 }
 
 func (r *l3FactRepo) ListFactRowsForUser(ctx context.Context, scopeType, scopeID, userID, keyword string, limit, offset int32) ([][]byte, error) {
-	clauses := []string{"status = 'active'", "deleted_at = ''"}
+	// Bi-temporal filter (P3-8): only return currently-valid facts by default.
+	// Invalidated facts (valid_until != '') are preserved for history but
+	// excluded from normal search/read paths.
+	clauses := []string{"status = 'active'", "deleted_at = ''", "valid_until = ''"}
 	args := []any{}
 	if scopeType != "" {
 		clauses = append(clauses, "scope_type = ?")
@@ -247,7 +250,7 @@ func (r *l3FactRepo) GetFactRowsByIDs(ctx context.Context, factIDs []string) ([]
 		placeholders[i] = "?"
 		args[i] = id
 	}
-	q := sqlFactSelect + " WHERE id IN (" + strings.Join(placeholders, ",") + ") AND status = 'active' AND deleted_at = ''"
+	q := sqlFactSelect + " WHERE id IN (" + strings.Join(placeholders, ",") + ") AND status = 'active' AND deleted_at = '' AND valid_until = ''"
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -279,7 +282,7 @@ func (r *l3FactRepo) RecallL3Facts(ctx context.Context, scopeType, scopeID, user
 
 // shouldUseBruteForce checks whether the fact count is below the brute-force threshold.
 func (r *l3FactRepo) shouldUseBruteForce(ctx context.Context, scopeType, scopeID, userID string, queryEmbedding []float32) bool {
-	clauses := []string{"status = 'active'", "deleted_at = ''"}
+	clauses := []string{"status = 'active'", "deleted_at = ''", "valid_until = ''"}
 	args := []any{}
 	if scopeType != "" {
 		clauses = append(clauses, "scope_type = ?")
@@ -307,7 +310,7 @@ func (r *l3FactRepo) recallL3FactsBruteForce(ctx context.Context, scopeType, sco
 	if lim <= 0 {
 		lim = 10
 	}
-	clauses := []string{"status = 'active'", "deleted_at = ''"}
+	clauses := []string{"status = 'active'", "deleted_at = ''", "valid_until = ''"}
 	args := []any{}
 	if scopeType != "" {
 		clauses = append(clauses, "scope_type = ?")
@@ -349,7 +352,7 @@ func (r *l3FactRepo) recallL3Facts(ctx context.Context, scopeType, scopeID, user
 	if pool < lim {
 		pool = lim
 	}
-	clauses := []string{"status = 'active'", "deleted_at = ''"}
+	clauses := []string{"status = 'active'", "deleted_at = ''", "valid_until = ''"}
 	args := []any{}
 	if scopeType != "" {
 		clauses = append(clauses, "scope_type = ?")
@@ -475,7 +478,7 @@ func (r *l3FactRepo) recallL3WithVectorStore(ctx context.Context, scopeType, sco
 	}
 	placeholders := make([]string, len(ids))
 	args := make([]any, 0, len(ids)+3)
-	clauses := []string{"status = 'active'", "deleted_at = ''"}
+	clauses := []string{"status = 'active'", "deleted_at = ''", "valid_until = ''"}
 	if scopeType != "" {
 		clauses = append(clauses, "scope_type = ?")
 		args = append(args, scopeType)
@@ -621,6 +624,14 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 
 	// INSERT + read-back in a single transaction to ensure read-your-writes
 	// consistency under read-write separation.
+	validFrom := strings.TrimSpace(in.ValidFrom)
+	if validFrom == "" {
+		// Default ValidFrom to createdAt for new facts so bi-temporal
+		// queries have a meaningful lower bound. For upserts that hit the
+		// ON CONFLICT branch, valid_from is preserved (not overwritten).
+		validFrom = createdAt
+	}
+	validUntil := strings.TrimSpace(in.ValidUntil)
 	var result []byte
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		_, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx, `INSERT INTO memory_facts (
@@ -632,9 +643,10 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 		source_kind, source_episode_id, source_session_id, source_message_id, source_external,
 		version, status, superseded_by,
 		pii_flag, redacted_statement,
-		quality_score, pii_types, metadata_json, created_at, updated_at
-	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-	ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
+		quality_score, pii_types, metadata_json, created_at, updated_at,
+		valid_from, valid_until
+	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 		statement = excluded.statement, details_markdown = excluded.details_markdown,
 		confidence = excluded.confidence, importance = excluded.importance,
 		use_count = use_count + excluded.use_count, hit_count = hit_count + excluded.hit_count,
@@ -648,7 +660,9 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 		version = version + 1, status = excluded.status,
 		pii_flag = excluded.pii_flag, redacted_statement = excluded.redacted_statement,
 		quality_score = excluded.quality_score, pii_types = excluded.pii_types, metadata_json = excluded.metadata_json,
-		updated_at = excluded.updated_at`,
+		updated_at = excluded.updated_at,
+		valid_from = COALESCE(NULLIF(memory_facts.valid_from, ''), excluded.valid_from),
+		valid_until = excluded.valid_until`,
 			id,
 			strings.TrimSpace(in.ScopeType),
 			strings.TrimSpace(in.ScopeID),
@@ -670,6 +684,7 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 			in.Version, status, "",
 			pii, redacted,
 			defaultFactQualityScore, piiTypesJSON, meta, createdAt, updatedAt,
+			validFrom, validUntil,
 		)
 		if execErr != nil {
 			return execErr
@@ -790,8 +805,8 @@ func (r *l3FactRepo) ClearFactsByScope(ctx context.Context, scopeType, scopeID, 
 			return nil
 		}
 		_, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
-			`UPDATE memory_facts SET deleted_at = ?, status = 'deleted' WHERE scope_type = ? AND scope_id = ? AND user_id = ? AND status = 'active' AND deleted_at = ''`,
-			now, scopeType, scopeID, userID)
+			`UPDATE memory_facts SET deleted_at = ?, status = 'deleted', valid_until = ? WHERE scope_type = ? AND scope_id = ? AND user_id = ? AND status = 'active' AND deleted_at = ''`,
+			now, now, scopeType, scopeID, userID)
 		return execErr
 	})
 	if err != nil {
@@ -820,6 +835,37 @@ func (r *l3FactRepo) ClearFactsByScope(ctx context.Context, scopeType, scopeID, 
 		}
 	}
 	return factIDs, nil
+}
+
+// InvalidateFact marks a fact as superseded by setting valid_until to the
+// current time (bi-temporal validity, P3-8). The row is preserved for
+// historical reconstruction queries. Returns the updated row as JSON.
+func (r *l3FactRepo) InvalidateFact(ctx context.Context, factID string) ([]byte, error) {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	var result []byte
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		_, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
+			`UPDATE memory_facts SET valid_until = ?, updated_at = ? WHERE id = ? AND valid_until = ''`,
+			now, now, factID)
+		if execErr != nil {
+			return execErr
+		}
+		rows, queryErr := r.data.RWDB().ReadDB(txCtx).QueryContext(txCtx,
+			sqlFactSelect+` WHERE id = ?`, factID)
+		if queryErr != nil {
+			return queryErr
+		}
+		defer rows.Close()
+		if !rows.Next() {
+			return apierror.NotFound("MEMORY", "fact row not found after invalidate")
+		}
+		result, execErr = scanFactRowJSON(rows)
+		return execErr
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // --- L3ConflictStore ---

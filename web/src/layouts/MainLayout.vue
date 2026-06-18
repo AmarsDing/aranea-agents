@@ -67,10 +67,11 @@
       v-model="drawerOpen"
       show-if-above
       :width="256"
-      :mini="drawerMini"
+      :mini="!isMobile && drawerMini"
       :mini-width="90"
       :breakpoint="1024"
-      :class="['app-sidebar', { 'q-drawer--design-mini': drawerMini }]"
+      :overlay="isMobile"
+      :class="['app-sidebar', { 'q-drawer--design-mini': !isMobile && drawerMini }]"
     >
       <div class="app-sidebar-card">
         <div class="app-sidebar__scroll fit">
@@ -136,6 +137,7 @@ const drawerMini = ref(true);
 useGlobalInboundNotifications();
 
 const isDesktop = computed(() => $q.screen.gt.xs);
+const isMobile = computed(() => $q.screen.lt.md);
 const isDark = computed(() => $q.dark.isActive);
 
 const localeOptions = [
@@ -169,6 +171,7 @@ function isNavItemActive(item: { to: string; exact?: boolean }) {
 async function navigateTo(path: string) {
   if (route.path === path) return;
   await router.push(path);
+  if (isMobile.value) drawerOpen.value = false;
 }
 
 function onOpenInboundSession(sessionId: string, agentId: string) {

@@ -1,5 +1,13 @@
 package tools
 
+// TECH-DEBT(P2-12): 此适配器为冗余实现，未接入生产路径。
+// ToolResultGate 功能已通过 internal/agent/tool_result_gate_hook.go 的
+// newToolResultGateBeforeHook 接入（callback_chain.go:62 调用），作为
+// BeforeModelHook 在模型调用前对历史 ToolResult 进行持久化与预览替换。
+// 本文件实现的 AfterToolCallbackStructured 版本是另一种接入方式，但项目
+// 选择了 BeforeModelHook 方案（能在历史消息层面统一处理，而非仅当前回合）。
+// 保留此文件作为框架 AfterTool 回调接入方式的参考，下一迭代可删除（CS-B2）。
+
 import (
 	"context"
 	"fmt"
@@ -16,8 +24,7 @@ import (
 // string exceeding the gate's threshold, the gate's Check method is invoked
 // to persist the full content and replace it with a preview.
 //
-// This adapter bridges the project's biz.ToolResultGate with the framework's
-// tool.AfterToolCallbackStructured callback interface.
+// TECH-DEBT(P2-12): 冗余实现，见文件头说明。
 func NewToolResultGateAfterHook(gate *biz.ToolResultGate, ag biz.Agent, lg loggateway.Logger) trpctool.AfterToolCallbackStructured {
 	return func(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
 		if args == nil || gate == nil {

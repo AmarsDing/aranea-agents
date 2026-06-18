@@ -98,6 +98,7 @@ export default {
     clearAllSession: '清空历史会话',
     collapseList: '展开或折叠列表',
     collapseSession: '展开或折叠 Session 列表',
+    sessionListTitle: '会话列表',
     dialogMode: '对话模式',
     modelProvider: '模型',
     contextUse: '上下文',

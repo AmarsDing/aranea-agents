@@ -11,8 +11,11 @@ import (
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/telemetry/turntrace"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 const defaultGraphWatchTimeout = 30 * time.Minute
@@ -126,6 +129,12 @@ func (c *TeamGraphRunCoordinator) RegisterTeamGraphExecution(ctx context.Context
 	if c == nil || c.graphs == nil {
 		return nil
 	}
+	// Create graph execution child span (P3-2): Trace propagation across Spirit→Team→Graph.
+	if bridge := turntrace.FromContext(ctx); bridge != nil {
+		var span trace.Span
+		ctx, span = bridge.StartChild(ctx, "graph.execute.register")
+		defer turntrace.EndChild(span, nil)
+	}
 	if err := c.graphs.RegisterTeamGraphExecution(ctx, execID, sessionID, teamID, teamRunID, ct); err != nil {
 		return err
 	}
@@ -238,6 +247,12 @@ func (c *TeamGraphRunCoordinator) DeferTeamRunSuccessIfHITL(ctx context.Context,
 func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Context, task *biz.GraphTask, resume map[string]any) (bool, error) {
 	if c == nil || c.graphs == nil || task == nil {
 		return false, nil
+	}
+	// Create graph execution child span (P3-2): Trace propagation across Spirit→Team→Graph.
+	if bridge := turntrace.FromContext(ctx); bridge != nil {
+		var span trace.Span
+		ctx, span = bridge.StartChild(ctx, "graph.execute.resume")
+		defer turntrace.EndChild(span, nil)
 	}
 	sess := c.session(task.ExecutionID)
 	if sess == nil {

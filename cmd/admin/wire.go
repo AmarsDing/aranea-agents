@@ -72,6 +72,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
@@ -917,6 +918,34 @@ func provideEventWAL(d *data.Data, lg loggateway.Logger) *event.EventWAL {
 	return event.ProvideEventWAL(sqliteDB, pgDB, lg)
 }
 
+// providePostgresEventStore creates a Postgres-backed EventStore for cross-process
+// event replay (WS reconnect). Returns nil when Postgres is not configured, allowing
+// the system to degrade gracefully to in-process event delivery only.
+//
+// NOTE: Not yet added to wire.Build because no consumer depends on
+// *event.PostgresEventStore. Will be wired up when the WS reconnect replay
+// handler (Wave 2) consumes it. The function is defined here so it is ready
+// to register once a consumer exists.
+func providePostgresEventStore(d *data.Data, lg loggateway.Logger) *event.PostgresEventStore {
+	if d == nil {
+		return nil
+	}
+	pgDB := d.Postgres()
+	if pgDB == nil {
+		return nil
+	}
+	store, err := event.NewPostgresEventStore(pgDB, lg)
+	if err != nil {
+		if lg != nil {
+			lg.Warn("event_store: failed to create Postgres store, cross-process replay disabled",
+				loggateway.Err(err),
+			)
+		}
+		return nil
+	}
+	return store
+}
+
 func provideTRPCSessionService(rawDB *sql.DB, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) trpcsession.Service {
 	return rt.NewTRPCSessionService(rawDB, lg, sessiontrpc.SummarizerConfig{
 		Catalog: catalog,
@@ -1717,11 +1746,42 @@ func provideAgentAllocator(
 	catalog *biz.LlmProviderModelUsecase,
 	bus contract.Bus,
 	embedder knowledge.Embedder,
+	agentFactory biz.AgentFactory,
 	lg loggateway.Logger,
 ) biz.AgentAllocatorPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
 	capBuilder := chatagent.NewAgentCapabilityBuilder(agentReader, lg)
-	return chatagent.NewAgentAllocator(repo, agentReader, perfRepo, capBuilder, catalog, httpClient, bus, lg, embedder)
+	return chatagent.NewAgentAllocator(repo, agentReader, perfRepo, capBuilder, catalog, httpClient, bus, lg, embedder, agentFactory)
+}
+
+// provideAgentFactory constructs the AgentFactory (P1-4). The LLM model is
+// resolved from ARANEA_PLANNER_PROVIDER/ARANEA_PLANNER_MODEL env vars; when
+// unset, llm is nil and EnsureAgent returns an Internal error so callers can
+// fall back to other strategies.
+func provideAgentFactory(
+	agentReader biz.AgentReader,
+	agentWriter biz.AgentWriter,
+	templateRepo biz.AgentTemplateRepo,
+	bus contract.Bus,
+	catalog *biz.LlmProviderModelUsecase,
+	lg loggateway.Logger,
+) biz.AgentFactory {
+	rt := &provider.RoundTrip{HTTP: &http.Client{Timeout: 60 * time.Second}}
+	prov := strings.TrimSpace(os.Getenv("ARANEA_PLANNER_PROVIDER"))
+	mod := strings.TrimSpace(os.Getenv("ARANEA_PLANNER_MODEL"))
+	var llm trpcmodel.Model
+	if prov != "" && mod != "" && catalog != nil {
+		if m, err := provider.TRPCModelForProviderModel(context.Background(), catalog, rt, prov, mod, lg); err == nil {
+			llm = m
+		} else {
+			lg.Warn("AgentFactory 模型构建失败，EnsureAgent 将返回错误",
+				loggateway.StepID("agent_factory.wire"),
+				loggateway.Str("provider", prov),
+				loggateway.Str("model", mod),
+				loggateway.Err(err))
+		}
+	}
+	return chatagent.NewAgentFactoryImpl(llm, agentWriter, agentReader, templateRepo, bus, lg)
 }
 
 func provideTaskOrchestrator(
@@ -1995,6 +2055,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideEventService,
 		provideTaskPlanner,
 		provideAgentAllocator,
+		provideAgentFactory,
 		chatagent.NewAgentMatcher,
 		provideTaskOrchestrator,
 		debug.NewRecorderFactory,
@@ -2037,6 +2098,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		wire.Bind(new(biz.TaskDeadLetterRepo), new(*data.TeamRepo)),
 		wire.Bind(new(biz.PatternReader), new(biz.PatternReadWriter)),
 		wire.Bind(new(biz.AgentReader), new(biz.AgentRepository)),
+		wire.Bind(new(biz.AgentWriter), new(biz.AgentRepository)),
 		wire.Bind(new(biz.AgentReferenceChecker), new(biz.AgentRepository)),
 		wire.Bind(new(biz.ProviderModelPairValidator), new(*biz.LlmProviderModelUsecase)),
 		// Team-layer narrow interface bindings

@@ -26,3 +26,22 @@ func endTurnSpan(bridge *turntrace.Bridge, err error) {
 		bridge.Finish(err)
 	}
 }
+
+// startOrchestrationPhaseSpan opens a child span for an orchestration phase (P3-2).
+// Returns (ctx, nil) when no Bridge is attached to ctx (nil-safe).
+func startOrchestrationPhaseSpan(ctx context.Context, phase string) (context.Context, trace.Span) {
+	bridge := turntrace.FromContext(ctx)
+	if bridge == nil {
+		return ctx, nil
+	}
+	return bridge.StartPhase(ctx, phase)
+}
+
+// endOrchestrationPhaseSpan ends a phase span by name (P3-2).
+// Nil-safe: does nothing when no Bridge is attached to ctx.
+func endOrchestrationPhaseSpan(ctx context.Context, phase string, err error) {
+	bridge := turntrace.FromContext(ctx)
+	if bridge != nil {
+		bridge.EndPhase(phase, err)
+	}
+}

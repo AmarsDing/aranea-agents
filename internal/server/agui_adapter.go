@@ -1,5 +1,11 @@
 package server
 
+// TECH-DEBT(P2-29): AGUIHandler 框架适配器已实现但未接入生产路径。
+// 生产环境使用 internal/service/agui_compat.go 的 AGUICompatService 包装层
+// （解决 Runner per-session 问题），而非此直接对接框架的适配器。保留此文件
+// 作为未来框架 AG-UI Server 支持 per-session Runner 时的切换入口
+// （alignment-plan.md §四 协同包 F）。
+
 import (
 	"net/http"
 	"time"
@@ -16,6 +22,8 @@ import (
 // and exposes a RegisterRoutes method for mounting on the Kratos HTTP mux.
 //
 // AG-UI provides SSE-based streaming for CopilotKit-compatible frontends.
+//
+// TECH-DEBT(P2-29): 未接入生产路径，见文件头说明。
 type AGUIHandler struct {
 	server *trpcagui.Server
 	lg     loggateway.Logger

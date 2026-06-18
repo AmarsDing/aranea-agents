@@ -20,15 +20,16 @@ import (
 
 // agentAllocatorImpl implements biz.AgentAllocatorPort.
 type agentAllocatorImpl struct {
-	repo        biz.AllocationPlanRepository
-	agentReader biz.AgentReader
-	perfRepo    biz.AgentPerformanceRepository
-	capBuilder  *AgentCapabilityBuilder
-	catalog     *biz.LlmProviderModelUsecase
-	httpClient  *http.Client
-	bus         contract.Bus
-	lg          loggateway.Logger
-	embedder    knowledge.Embedder
+	repo          biz.AllocationPlanRepository
+	agentReader   biz.AgentReader
+	perfRepo      biz.AgentPerformanceRepository
+	capBuilder    *AgentCapabilityBuilder
+	catalog       *biz.LlmProviderModelUsecase
+	httpClient    *http.Client
+	bus           contract.Bus
+	lg            loggateway.Logger
+	embedder      knowledge.Embedder
+	agentFactory  biz.AgentFactory
 }
 
 var _ biz.AgentAllocatorPort = (*agentAllocatorImpl)(nil)
@@ -44,17 +45,19 @@ func NewAgentAllocator(
 	bus contract.Bus,
 	lg loggateway.Logger,
 	embedder knowledge.Embedder,
+	agentFactory biz.AgentFactory,
 ) biz.AgentAllocatorPort {
 	return &agentAllocatorImpl{
-		repo:        repo,
-		agentReader: agentReader,
-		perfRepo:    perfRepo,
-		capBuilder:  capBuilder,
-		catalog:     catalog,
-		httpClient:  httpClient,
-		bus:         bus,
-		lg:          lg,
-		embedder:    embedder,
+		repo:         repo,
+		agentReader:  agentReader,
+		perfRepo:     perfRepo,
+		capBuilder:   capBuilder,
+		catalog:      catalog,
+		httpClient:   httpClient,
+		bus:          bus,
+		lg:           lg,
+		embedder:     embedder,
+		agentFactory: agentFactory,
 	}
 }
 
@@ -316,9 +319,14 @@ func (impl *agentAllocatorImpl) exactMatch(requiredCapabilities []string, capabi
 
 // matchLayer2 performs Layer 2 matching: semantic similarity between task description and agent capabilities.
 //
-// When an embedder is configured, it uses pgvector-style embedding cosine similarity for true semantic
-// matching. When the embedder is nil or fails, it gracefully falls back to the existing TF-IDF
-// keyword-based matching — no hard error is surfaced to the caller.
+// When an embedder is configured, it uses in-memory embedding cosine similarity (the embedder is
+// typically backed by OpenAI/Gemini/Ollama text-embedding APIs) for true semantic matching. When
+// the embedder is nil or fails, it gracefully falls back to the existing TF-IDF keyword-based
+// matching — no hard error is surfaced to the caller.
+//
+// Note: pgvector SQL similarity (`<=>` operator on the `vector_embeddings` table) is used by the
+// memory domain (internal/data/vector/pgvector_fact.go) for memory retrieval, not by the allocator.
+// The allocator computes cosine in Go memory to avoid a Postgres round-trip on the hot allocation path.
 func (impl *agentAllocatorImpl) matchLayer2(ctx context.Context, subTask biz.SubTask, capabilities []biz.AgentCapability, traceID string) (biz.AgentCapability, float64, string) {
 	if len(capabilities) == 0 {
 		return biz.AgentCapability{}, 0, ""

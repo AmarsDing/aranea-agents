@@ -238,20 +238,24 @@ var (
 	// so operators can locate latency bottlenecks across the orchestration pipeline.
 	// See docs/development/70-orchestration-longtask-memory.design.md §7.3.
 
+	// spiritPhaseBuckets covers sub-second to multi-minute planning/allocation phases.
+	// DefBuckets (max 10s) are too narrow for Spirit phases that may invoke LLM calls.
+	spiritPhaseBuckets = []float64{0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300}
+
 	// SpiritPlanDuration tracks the planning phase (intent pass + complexity
-	// assessment + task decomposition). Buckets cover sub-second to multi-minute.
+	// assessment + task decomposition). Buckets cover sub-second to 5 minutes.
 	SpiritPlanDuration = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name:    "aranea_spirit_plan_duration_seconds",
 		Help:    "Duration of Spirit planning phase (intent→assess→decompose).",
-		Buckets: prometheus.DefBuckets,
+		Buckets: spiritPhaseBuckets,
 	})
 
 	// SpiritAllocDuration tracks the agent allocation phase (4-layer matching +
-	// AgentFactory fallback). Buckets cover sub-second to multi-minute.
+	// AgentFactory fallback). Buckets cover sub-second to 5 minutes.
 	SpiritAllocDuration = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name:    "aranea_spirit_alloc_duration_seconds",
 		Help:    "Duration of Spirit agent allocation phase (matching + factory).",
-		Buckets: prometheus.DefBuckets,
+		Buckets: spiritPhaseBuckets,
 	})
 
 	// SpiritOrchDuration tracks the orchestration phase (graph/team execution).

@@ -17,6 +17,13 @@ import (
 // single-round evaluation-driven optimization via engine.Run(). When the
 // engine is nil, it falls back to the injected Refiner for single-shot
 // LLM refinement.
+//
+// TECH-DEBT(B-3): 适配器已实现但未接入生产路径。框架的 promptiter 需要
+// 5 个协作者（engine.Engine/evalset.Recorder/评估集持久化/LLM Judge/Prompt
+// 生成器），项目缺少评估集基础设施。待有明确的 Prompt 迭代优化业务需求时
+// 再启动（alignment-plan.md §十一/B-3）。
+// 注：alignment-plan 原声称的"编译错误"是基于本地 pkg/trpc-agent-go 新版
+// 源码判断，但项目实际依赖 evaluation v1.9.0 远程版本，API 兼容，编译正常。
 type PromptIterAdapter struct {
 	fallback biz.Refiner
 	eng      engine.Engine

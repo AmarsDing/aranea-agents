@@ -71,6 +71,9 @@
                 <q-tooltip v-else>{{ t('chat.connected') }}</q-tooltip>
               </span>
             </template>
+            <q-btn v-if="isMobile" flat round dense icon="list_alt" :aria-label="t('chat.collapseSession')" @click="emit('open-sessions')">
+              <q-tooltip>{{ t('chat.collapseSession') }}</q-tooltip>
+            </q-btn>
             <ChatRunnerStatus
               v-if="
                 runStatus &&
@@ -260,6 +263,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, provide, readonly, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
 import type { Envelope } from '../../realtime/envelope';
 import ChatRunnerStatus from './ChatRunnerStatus.vue';
 import ChatTeamMemberStrip from './ChatTeamMemberStrip.vue';
@@ -390,6 +394,7 @@ const emit = defineEmits<{
   'submit-tool-confirm': [approved: boolean];
   'open-events': [];
   'open-artifact': [id: string];
+  'open-sessions': [];
   'paste-file': [file: File];
   'focus-turn': [turnId: string];
   navigate: [route: { name: string; params: Record<string, string> }];
@@ -423,6 +428,8 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const $q = useQuasar();
+const isMobile = computed(() => $q.screen.lt.md);
 const messagesRef = computed(() => props.messages);
 
 // ── Team member lanes ──

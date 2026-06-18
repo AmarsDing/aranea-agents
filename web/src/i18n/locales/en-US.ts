@@ -101,6 +101,7 @@ export default {
     clearAllSession: 'Clear all session history',
     collapseList: 'Show or hide list',
     collapseSession: 'Show or hide session list',
+    sessionListTitle: 'Session list',
     dialogMode: 'Mode',
     modelProvider: 'Model',
     contextUse: 'Context',

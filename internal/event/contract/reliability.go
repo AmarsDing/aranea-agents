@@ -46,6 +46,8 @@ func init() {
 		EnvelopeTypeSessionStatusChanged,
 		// Graph
 		EnvelopeTypeGraphNodeEnd,
+		EnvelopeTypeGraphReplanned,
+		EnvelopeTypeGraphTopologyEvolved,
 		// TeamRun
 		EnvelopeTypeTeamRunFinished,
 		EnvelopeTypeTeamRunFailed,

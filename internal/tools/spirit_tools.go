@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	biztypes "aranea-agents/internal/biz/types"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/internal/telemetry/turntrace"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -176,6 +177,17 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 
 // executePlanPhase runs Phase 1 of plan_and_execute: task planning.
 func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID string, deps planAndExecuteDeps) (*biz.TaskPlan, biztypes.OrchestrationStepRecord, error) {
+	// Start plan phase span (P3-2): Trace propagation across Spirit→Team→Graph.
+	bridge := turntrace.FromContext(ctx)
+	if bridge != nil {
+		ctx, _ = bridge.StartPhase(ctx, turntrace.PhasePlan)
+	}
+	defer func() {
+		if bridge != nil {
+			bridge.EndPhase(turntrace.PhasePlan, nil)
+		}
+	}()
+
 	start := time.Now().UTC()
 	planInput := biz.PlanInput{
 		UserMessage:     taskPrompt,
@@ -201,6 +213,17 @@ func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID string, d
 
 // executeAllocatePhase runs Phase 2 of plan_and_execute: agent allocation.
 func executeAllocatePhase(ctx context.Context, taskPlan *biz.TaskPlan, deps planAndExecuteDeps) (*biz.AllocationPlan, biztypes.OrchestrationStepRecord, error) {
+	// Start allocate phase span (P3-2): Trace propagation across Spirit→Team→Graph.
+	bridge := turntrace.FromContext(ctx)
+	if bridge != nil {
+		ctx, _ = bridge.StartPhase(ctx, turntrace.PhaseAlloc)
+	}
+	defer func() {
+		if bridge != nil {
+			bridge.EndPhase(turntrace.PhaseAlloc, nil)
+		}
+	}()
+
 	start := time.Now().UTC()
 	allocPlan, err := deps.allocator.Allocate(ctx, taskPlan)
 	if err != nil {

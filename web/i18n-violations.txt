@@ -1,1 +1,0 @@
-﻿Total: 3511 violation(s) across 452 file(s).
