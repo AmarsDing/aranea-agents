@@ -195,11 +195,12 @@ export function useActivityTimeline() {
     rootActivityId.value = newRootId;
   }
 
-  // AF-FE-14: Load activities from backend API for history recovery
-  // Retries up to 2 times with exponential backoff (500ms, 1000ms) on failure.
-  // On final failure, sets loadError so the UI can show a degradation notice.
+  // AF-FE-14 / AF-GAP-05: Load activities from backend API for history recovery.
+  // Retries up to 5 times with exponential backoff (500ms, 1s, 2s, 4s) on failure.
+  // On final failure, sets loadError so the UI can show a "数据加载失败，请刷新"
+  // degradation notice instead of silently falling back to Legacy rendering.
   async function loadActivitiesFromAPI(sessionId: string, turnId?: string) {
-    const maxAttempts = 3;
+    const maxAttempts = 5;
     const baseDelay = 500;
     let lastErr: unknown;
 

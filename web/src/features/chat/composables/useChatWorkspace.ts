@@ -92,12 +92,32 @@ export function useChatWorkspace() {
   // AF-FE-02~04: Activity-First timeline composable
   const activityTimeline = useActivityTimeline();
 
+  // AF-GAP-02: Bounded dedup set for activity envelope IDs. Both the real-time
+  // stream path (streamHandlers → ctx.onActivityEnvelope) and the inbound-sync
+  // path (useChatInboundSync → deps.onActivityEnvelope) may forward the same
+  // activity envelope for the current session. Without dedup, handleActivityDelta
+  // would append the same chunk twice, duplicating content in the timeline.
+  // The set is bounded (LRU eviction) to prevent unbounded memory growth.
+  const ACTIVITY_DEDUP_LIMIT = 512;
+  const activityDedupIds = new Set<string>();
+  const activityDedupRing: string[] = [];
+
   // T1.6: Shared activity envelope handler — used by both the real-time
   // stream path (useChatStreamManager → bindStreamHandlers) and the
   // inbound-sync polling path (useChatInboundSync). Routing activity events
   // directly from the stream gives immediate UI updates without waiting
   // for the polling cycle.
   const handleActivityEnvelope = (env: Envelope) => {
+    // AF-GAP-02: Skip if this envelope was already processed by the other path.
+    if (env.id) {
+      if (activityDedupIds.has(env.id)) return;
+      activityDedupIds.add(env.id);
+      activityDedupRing.push(env.id);
+      if (activityDedupRing.length > ACTIVITY_DEDUP_LIMIT) {
+        const evicted = activityDedupRing.shift();
+        if (evicted) activityDedupIds.delete(evicted);
+      }
+    }
     const md = env.metadata as Record<string, unknown> | undefined;
     if (!md) return;
     switch (env.type) {
@@ -869,6 +889,21 @@ export function useChatWorkspace() {
       let activityFirstForMerge = false;
       let activityReconstructedMessages: import('../../chat/types').Message[] = [];
       await activityTimeline.loadActivitiesFromAPI(sessionId);
+      // AF-GAP-05: When AF API fails after 5 retries, show a visible
+      // "数据加载失败，请刷新" notice instead of silently falling back to
+      // Legacy rendering. The user must refresh to recover — silent Legacy
+      // fallback masks the failure and causes confusion when AF data is
+      // expected but missing.
+      if (activityTimeline.loadError.value) {
+        $q.notify({
+          type: 'negative',
+          message: t('chat.activityLoadFailed'),
+          timeout: 0, // persist until user refreshes
+          actions: [
+            { label: t('chat.activityLoadFailedRefresh'), color: 'white', handler: () => window.location.reload() },
+          ],
+        });
+      }
       // Check if Activity data was successfully loaded (loadError indicates API failure)
       const afActivities = activityTimeline.activities.value;
       activityFirstForMerge = afActivities.length > 0 && !activityTimeline.loadError.value;

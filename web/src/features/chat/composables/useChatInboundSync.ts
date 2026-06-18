@@ -371,15 +371,15 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
 
     const isCurrent = deps.selectedSessionId.value === sessionId;
 
-    // DECO-R-AF1: Route Activity events to useActivityTimeline handler.
-    // For the current session, activity events are handled by the session WS
-    // streamHandlers (which also update messageStore). The global hub only
-    // processes activity events for non-current sessions (channel inbound,
-    // background sessions) to avoid double-processing.
+    // AF-GAP-02: Route Activity events to useActivityTimeline handler for
+    // ALL sessions (including current). The handleActivityEnvelope in
+    // useChatWorkspace deduplicates by envelope ID, so forwarding from both
+    // the session WS streamHandlers and the global hub inbound sync is safe —
+    // the first path to arrive processes the event, the second is a no-op.
+    // This ensures activity events are not lost during WS reconnection gaps
+    // or when the session WS stream is not yet established.
     if (env.type.startsWith('activity_')) {
-      if (!isCurrent) {
-        deps.onActivityEnvelope?.(env);
-      }
+      deps.onActivityEnvelope?.(env);
     }
 
     const entityMatch = matchesSelectedEntity(env);

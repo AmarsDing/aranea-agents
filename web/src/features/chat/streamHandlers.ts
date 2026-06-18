@@ -129,6 +129,37 @@ function latestPendingUserId(messages: Message[]): string {
   return '';
 }
 
+/**
+ * AF-GAP-04: Apply team member metadata to a reply Activity message.
+ *
+ * When the backend ActivityProjector detects a team member author, it sets
+ * `Meta: { member_id: <author> }` on the Activity (see OnMemberMessageDelta
+ * in internal/agent/activity_projector.go). The envelope builder surfaces
+ * this as `metadata.meta.member_id`.
+ *
+ * This function mirrors the Legacy `member_message_start` handler's message
+ * fields so the AF path produces identical team_member / origin / options_json
+ * data, enabling the frontend to render member avatars and role badges without
+ * relying on the Legacy member_message_* handlers.
+ *
+ * If `member_id` is absent or `resolveMemberMeta` is unavailable, the message
+ * is left unchanged (coordinator or single-agent reply).
+ */
+function applyMemberMetaToMessage(
+  msg: Message,
+  md: Record<string, unknown>,
+  ctx: StreamHandlerCtx,
+): void {
+  const metaObj = md.meta as Record<string, unknown> | undefined;
+  const memberId = typeof metaObj?.member_id === 'string' ? metaObj.member_id : '';
+  if (!memberId || !ctx.resolveMemberMeta) return;
+  const memberMeta = ctx.resolveMemberMeta(memberId);
+  msg.model_name = `team/${memberMeta.role || 'member'}`;
+  msg.options_json = JSON.stringify({ team_member: memberMeta });
+  msg.origin = { kind: 'team_member', agentKey: memberId };
+  msg.team_member = { agent_id: '', name: memberMeta.name, role: memberMeta.role };
+}
+
 /** Shared streaming row patch for WS handlers and inbound sync. */
 export function patchStreamingEnvelope(
   messages: Message[],
@@ -285,83 +316,13 @@ export function bindStreamHandlers(
     }
   });
 
-  if (ctx.resolveMemberMeta) {
-    stream.onType('member_message_start', (env: Envelope) => {
-      const sid = ctx.resolveActiveSessionId();
-      if (!sid || !env.author) return;
-      const msgId = `member-${env.author}`;
-      const meta = ctx.resolveMemberMeta!(env.author);
-      const newMsg: Message = {
-        ...createPlaceholderMessage(msgId, sid, 'assistant', ''),
-        status: 'streaming',
-        model_name: `team/${meta.role || 'member'}`,
-        options_json: JSON.stringify({ team_member: meta }),
-        origin: { kind: 'team_member', agentKey: env.author },
-        team_member: { agent_id: '', name: meta.name, role: meta.role },
-      };
-      // Use batch writer when available for consistency with member_delta/done.
-      // member_message_start needs immediate rendering, but the writer's
-      // RAF flush is fast enough (~16ms) that the delay is imperceptible.
-      if (writer && sid === ctx.sessionId) {
-        writer.update((cur) => {
-          if (cur.some((m) => m.id === msgId)) return cur;
-          return [...cur, newMsg];
-        });
-        return;
-      }
-      const cur = ctx.getMessages(sid);
-      if (cur.some((m) => m.id === msgId)) return;
-      ctx.setMessages(sid, [...cur, newMsg]);
-    });
-
-    stream.onType('member_delta', (env: Envelope) => {
-      const sid = ctx.resolveActiveSessionId();
-      if (!sid || !env.author) return;
-      const msgId = `member-${env.author}`;
-      // M-01 fix: use batch writer when available to avoid racing with
-      // other streaming updates on the same session.
-      if (writer && sid === ctx.sessionId) {
-        writer.update((cur) =>
-          patchStreamingMessage(cur, msgId, {
-            text: env.content?.text,
-            reasoning: env.content?.reasoning,
-          }),
-        );
-        return;
-      }
-      ctx.setMessages(
-        sid,
-        patchStreamingMessage(ctx.getMessages(sid), msgId, {
-          text: env.content?.text,
-          reasoning: env.content?.reasoning,
-        }),
-      );
-    });
-
-    stream.onType('member_message_done', (env: Envelope) => {
-      const sid = ctx.resolveActiveSessionId();
-      if (!sid || !env.author) return;
-      const msgId = `member-${env.author}`;
-      if (writer && sid === ctx.sessionId) {
-        writer.update((cur) =>
-          patchStreamingMessage(cur, msgId, {
-            replaceText: env.content?.text,
-            replaceReasoning: env.content?.reasoning,
-            status: 'ok',
-          }),
-        );
-        return;
-      }
-      ctx.setMessages(
-        sid,
-        patchStreamingMessage(ctx.getMessages(sid), msgId, {
-          replaceText: env.content?.text,
-          replaceReasoning: env.content?.reasoning,
-          status: 'ok',
-        }),
-      );
-    });
-  }
+  // T7.3d: Legacy member_message_start / member_delta / member_message_done
+  // handlers removed. Team member messages are now handled exclusively by
+  // the AF path: activity_start(kind=reply) with meta.member_id triggers
+  // applyMemberMetaToMessage (see case 'reply' below), which sets the same
+  // team_member / origin / options_json fields the Legacy handlers did.
+  // The Legacy handlers are no longer needed and have been removed to
+  // eliminate dual-path rendering bugs.
 
   stream.onType('intent_pass', (env: Envelope) => {
     const meta = env.metadata as Record<string, unknown> | undefined;
@@ -489,6 +450,12 @@ export function bindStreamHandlers(
       }
       case 'reply': {
         const newMsg = createStreamingMessageFromActivity(activityId, sid, md as unknown as ActivityStartMeta);
+        // AF-GAP-04: When meta.member_id is present, this reply Activity was
+        // produced by a team member (OnMemberMessageDelta/Done on the backend).
+        // Apply the same team_member metadata as the Legacy member_message_start
+        // handler so the frontend can distinguish member replies from the
+        // coordinator's reply (avatar, role badge, options_json).
+        applyMemberMetaToMessage(newMsg, md, ctx);
         if (writer && sid === ctx.sessionId) {
           writer.update((cur) => [...cur, newMsg]);
         } else {

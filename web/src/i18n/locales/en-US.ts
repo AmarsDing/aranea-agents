@@ -154,6 +154,8 @@ export default {
     teamSendFailed: 'Team send failed',
     retry: 'Retry',
     dismiss: 'Dismiss',
+    activityLoadFailed: 'Data loading failed, please refresh',
+    activityLoadFailedRefresh: 'Refresh',
     syncDiagnostic: '{count} msgs · rev {rev} · WS {ws} · {ctx}% ctx',
     todo: {
       pending: 'Pending',

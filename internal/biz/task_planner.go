@@ -13,6 +13,8 @@ type TaskPlannerPort interface {
 	// used by the pre-planning gate (P1-2) to force planning for Moderate/Complex tasks.
 	QuickAssess(ctx context.Context, input PlanInput) (ComplexityLevel, float64, error)
 	GetPlan(ctx context.Context, planID string) (*TaskPlan, error)
+	// ListPlans returns all plans for a spirit session, newest first (T3.2).
+	ListPlans(ctx context.Context, spiritSessionID string) ([]*TaskPlan, error)
 	ConfirmPlan(ctx context.Context, planID string, adjustments PlanAdjustments) (*TaskPlan, error)
 }
 

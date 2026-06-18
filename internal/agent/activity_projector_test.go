@@ -577,7 +577,11 @@ func TestOnMemberMessageDelta_appendsDeltaToExistingActivity(t *testing.T) {
 	}, nil)
 
 	p.OnMemberMessageDelta(context.Background(), "worker-a", "Hello ")
-	bus.waitForPublished(t, 1) // activity_start
+	// First Delta publishes 2 envelopes: activity_start (async via safego.Go)
+	// and activity_delta (sync). Wait for both to drain before resetting,
+	// otherwise the lingering activity_start may race with the next call's
+	// async publish and be mis-attributed.
+	bus.waitForPublished(t, 2)
 	bus.reset()
 
 	p.OnMemberMessageDelta(context.Background(), "worker-a", "world")
@@ -601,7 +605,11 @@ func TestOnMemberMessageDone_finalizesReplyActivity(t *testing.T) {
 	}, nil)
 
 	p.OnMemberMessageDelta(context.Background(), "worker-a", "Hello ")
-	bus.waitForPublished(t, 1) // activity_start
+	// First Delta publishes 2 envelopes: activity_start (async via safego.Go)
+	// and activity_delta (sync). Wait for both to drain before resetting,
+	// otherwise the lingering activity_start may race with Done's async
+	// publish and be mis-attributed as the Done envelope.
+	bus.waitForPublished(t, 2)
 	bus.reset()
 
 	p.OnMemberMessageDone(context.Background(), "worker-a", "Hello world")

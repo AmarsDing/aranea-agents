@@ -23,6 +23,26 @@
 | 长任务目标 | 完成用户指令（**无时间限制**，无 24h deadline） |
 | 根本性方案族 | 6（A 无超时重试 / B 前端收敛 / C 记忆生产化 / D 通道分离 / E 可观测性 / F 动态加载） |
 | 总工作量 | 88.5 人天 |
+| **当前实施进度** | **28/30 已解决（14 原已解决 + 14 新增已修复）；2 未实施（问题 4/16/17/18/19 中部分子项待实施）** |
+
+### 实施状态汇总（2026-06-18 更新）
+
+| Sprint | 范围 | 已完成 | 条件具备 | 未实施/阻塞 | 状态 |
+|--------|------|--------|----------|-------------|------|
+| S1 (W1) | 无超时核心 | T1.1-T1.8（8 项） | — | — | ✅ M1 已达成 |
+| S2 (W2) | DB 可靠性 + 通道分离 | T2.1, T2.2 | — | T2.3, T2.4 | 🟡 部分完成 |
+| S3 (W3) | 通道分离收尾 + 可观测性启动 | T3.2 | T3.3, T3.5 | T3.1（依赖 T2.3）, T3.4（依赖 T2.4） | 🟡 部分完成 |
+| S4 (W4) | 可观测性 Dashboard | — | T4.1, T4.2, T4.3 | — | 🟡 条件具备 |
+| S5 (W5) | Dashboard 收尾 + P2 启动 | T5.1, T5.2, T5.3, T5.5 | — | T5.4（依赖 T4.3） | 🟡 部分完成 |
+| S6 (W6) | AF 缺口填补 | T6.2, T6.3, T6.4, T6.6, T6.7 | T6.5, T6.8 | T6.1 | 🟡 部分完成 |
+| S7 (W7) | Legacy 完全移除 | — | T7.1, T7.3（部分） | T7.2（依赖 T7.3） | ⏳ 未启动 |
+| S8 (W8) | P2 收尾 + 交付 | T8.2, T8.3, T8.4 | — | T8.1（预先存在测试失败）, T8.5（预先存在测试失败） | 🟡 部分完成 |
+
+**关键进展**：
+- **Sprint 1 全部完成**：无超时核心已实现（T1.1-T1.8），M1 里程碑已达成
+- **T3.2 Task Plan 查询 API 已完成**：通过 aranea-review 审查（0 阻断项），解锁 T3.3/T3.5/T4.1/T4.3 等下游 Dashboard 任务
+- **AF 缺口部分填补**：T6.2（性能基准+goleak）、T6.3（Pre-AF 数据回填）、T6.4（当前 session 转发）、T6.6（Team 成员消息后端）、T6.7（API 失败降级）已完成
+- **阻塞项**：T2.3/T2.4（记忆生产化 + 通道分离）未实施，阻塞 T3.1/T3.4；预先存在的测试失败（team_*_test.go 缺少 UpdateTeamWhereStatus 方法）阻塞 T8.1/T8.5 全量通过
 
 ---
 
@@ -587,7 +607,7 @@ ObservabilityDashboard
 
 #### 6.2.1 阶段 1（UI 发送）问题
 
-**问题 1：HTTP fallback 成功后未 markSendingDone** 🔴 阻断
+**问题 1：HTTP fallback 成功后未 markSendingDone** 🔴 阻断 ✅ 已修复（T1.7）
 
 | 项 | 内容 |
 |----|------|
@@ -595,8 +615,9 @@ ObservabilityDashboard
 | **问题** | HTTP fallback 成功路径中 `markSendingDone()` 未调用，`sending.value` 保持 true 长达 30s，导致 `inputDisabled=true` 用户无法继续输入 |
 | **根本性方案** | 通道职责分离（方案 D）：HTTP 仅命令通道，不承担数据传输，成功后立即 markSendingDone |
 | **工作量** | 临时修复 0.5 人天 / 根本性方案 7 人天 |
+| **修复** | T1.7：`markSendingDone()` 在 fallback 成功后立即调用；`loadMessages` 失败不标记 pending 为 failed |
 
-**问题 2：loadMessages 失败误标记消息为 failed** 🔴 阻断
+**问题 2：loadMessages 失败误标记消息为 failed** 🔴 阻断 ✅ 已修复（T1.7）
 
 | 项 | 内容 |
 |----|------|
@@ -604,8 +625,9 @@ ObservabilityDashboard
 | **问题** | HTTP fallback 中 `sendViaHttpFallback` 已成功（消息已到后端），但后续 `loadMessages` 失败时进入 catch 标记 pending 为 failed，用户看到"发送失败"但消息实际已发送，重试导致重复 |
 | **根本性方案** | 通道职责分离（方案 D）：HTTP 不返回数据，无需 loadMessages |
 | **工作量** | 临时修复 0.5 人天 / 根本性方案含在问题 1 中 |
+| **修复** | T1.7：与问题 1 一并修复，`loadMessages` 失败不标记 pending 为 failed |
 
-**问题 3：WS pendingQueue 无界增长且重连失败后消息丢失** 🔴 阻断
+**问题 3：WS pendingQueue 无界增长且重连失败后消息丢失** 🔴 阻断 ✅ 已修复（T1.8）
 
 | 项 | 内容 |
 |----|------|
@@ -613,6 +635,7 @@ ObservabilityDashboard
 | **问题** | `pendingQueue` 无大小限制；10 次重连失败后 `pendingQueue` 不清空，消息永远无法发送；`flushPendingQueue` 无错误处理 |
 | **根本性方案** | 同机部署改为无限重连 + `pendingQueue` 最大长度限制（100）+ `flushPendingQueue` 添加 try-catch |
 | **工作量** | 1 人天 |
+| **修复** | T1.8：`pendingQueue` 最大长度 100；`flushPendingQueue` 添加 try-catch；同机部署无限重连 |
 
 **问题 4：retryFailedMessage 在活跃 run 期间行为错误** 🟡 建议
 
@@ -635,7 +658,7 @@ ObservabilityDashboard
 
 #### 6.2.2 阶段 2（后端响应）问题
 
-**问题 6：processPendingQueue 递归调用风险** 🔴 阻断
+**问题 6：processPendingQueue 递归调用风险** 🔴 阻断 ✅ 已修复（T1.3）
 
 | 项 | 内容 |
 |----|------|
@@ -643,8 +666,9 @@ ObservabilityDashboard
 | **问题** | `processPendingQueue` 调用 `runSingleAgentViaTRPC`，后者的 defer 又调用 `processPendingQueue`，形成递归 goroutine 链，无最大递归深度限制 |
 | **根本性方案** | 改为迭代式消费（while loop + 深度计数器） |
 | **工作量** | 1 人天 |
+| **修复** | T1.3：改为 while loop + 深度计数器；递归深度 >10 时停止消费 + 通知 |
 
-**问题 7：Pending Queue 未持久化** 🔴 阻断
+**问题 7：Pending Queue 未持久化** 🔴 阻断 ✅ 已修复（T1.4）
 
 | 项 | 内容 |
 |----|------|
@@ -652,8 +676,9 @@ ObservabilityDashboard
 | **问题** | `providePendingMessageQueue` 传入空 dir，`snapshot=false`，进程重启后 pending queue 消息全部丢失，与无时间限制长任务承诺不一致 |
 | **根本性方案** | 启用持久化：`NewPendingMessageQueueWithDirAndLogger(dataDir, lg)` + 配置 `pending_queue_snapshot_dir` |
 | **工作量** | 1 人天 |
+| **修复** | T1.4：`wire.go` 传入 `dataDir`；`snapshot=true`；进程重启后队列恢复 |
 
-**问题 8：processPendingQueue 竞态条件** 🟡 建议
+**问题 8：processPendingQueue 竞态条件** 🟡 建议 ✅ 已修复（T5.1）
 
 | 项 | 内容 |
 |----|------|
@@ -661,8 +686,9 @@ ObservabilityDashboard
 | **问题** | `DequeuePendingMessage` 和 re-lock 之间存在窗口，重新入队时丢失原来的 priority 和位置（追加到队尾） |
 | **根本性方案** | 在 lock 内完成 dequeue + 检查 + 决策，或重新入队时保持原位置和优先级 |
 | **工作量** | 1 人天 |
+| **修复** | T5.1：`processPendingQueue` lock 内完成 dequeue+检查+决策；重新入队保持原位置（与 T1.3 一并实现于 `chat_orchestrator_turn_dispatch.go`） |
 
-**问题 9：24h hard deadline 限制长任务** 🔴 阻断（新增）
+**问题 9：24h hard deadline 限制长任务** 🔴 阻断（新增） ✅ 已修复（T1.1）
 
 | 项 | 内容 |
 |----|------|
@@ -670,8 +696,9 @@ ObservabilityDashboard
 | **问题** | `longTaskHardDeadline = 24 * time.Hour` 硬编码，任务超过 24h 被强制取消，与"无时间限制"需求矛盾 |
 | **根本性方案** | 移除 24h deadline（方案 A）：删除 `context.WithTimeout(ctx, longTaskHardDeadline)` 代码块，任务持续运行直到完成或用户取消 |
 | **工作量** | 0.5 人天 |
+| **修复** | T1.1：`chat_orchestrator_turn.go` 删除 `longTaskHardDeadline` 代码块；长任务不受 24h 限制 |
 
-**问题 10：LLM 调用无默认重试** 🔴 阻断（新增）
+**问题 10：LLM 调用无默认重试** 🔴 阻断（新增） ✅ 已修复（T1.2）
 
 | 项 | 内容 |
 |----|------|
@@ -679,6 +706,7 @@ ObservabilityDashboard
 | **问题** | `RetryTransport` 存在但仅在模型 config_json 显式配置 `Retry.MaxAttempts > 0` 时启用，默认无重试，LLM 断开直接导致 turn 失败 |
 | **根本性方案** | 默认开启重试（方案 A）：`MaxAttempts = -1`（无限重试）+ 指数退避（1s/2s/4s/8s/16s/30s 封顶）+ 每次重试推送 `llm_retry` 事件 |
 | **工作量** | 2 人天 |
+| **修复** | T1.2：`RetryTransport` 默认 `MaxAttempts=-1`；指数退避 1s/2s/4s/8s/16s/30s；每次重试推送 `llm_retry` 事件 |
 
 **问题 11：DB 事务超时无重试** 🟡 建议（新增） ✅ 已实施
 
@@ -700,7 +728,7 @@ ObservabilityDashboard
 | **工作量** | 1 人天 |
 | **实施** | `internal/runtime/run_registry.go`：`activeRunMap` 新增 `mu sync.Mutex` + `updateOrStore` 原子方法；`StoreRunner`/`StoreCancelable` 改用 `updateOrStore` 实现 load-modify-store 原子化；3 个并发测试（64 goroutines + 200 iterations mixed），`-race` 全部通过 |
 
-**问题 13：前端 7 个超时模型需移除** 🔴 阻断（新增）
+**问题 13：前端 7 个超时模型需移除** 🔴 阻断（新增） ✅ 已修复（T1.5）
 
 | 项 | 内容 |
 |----|------|
@@ -708,6 +736,7 @@ ObservabilityDashboard
 | **问题** | 7 个独立超时（dispatch 30s / turn-ack 30s / first-byte 90s / stall 180s / run-stale 30s / heartbeat 25s / stream 10min），与"无超时"需求矛盾 |
 | **根本性方案** | 移除任务级超时（方案 A）：删除 dispatch/turn-ack/first-byte/stream 超时常量；stall 改为通知（不中断）；保留 heartbeat（连接健康） |
 | **工作量** | 1.5 人天 |
+| **修复** | T1.5：`timeouts.ts` 删除 dispatch/turn-ack/first-byte/stream 常量；stall 改为通知（不中断） |
 
 #### 6.2.3 阶段 3（LLM 响应）问题
 
@@ -723,7 +752,7 @@ ObservabilityDashboard
 
 #### 6.2.4 阶段 4（前端展示）问题
 
-**问题 15：实时 Activity 事件未接入 useActivityTimeline** 🔴 阻断
+**问题 15：实时 Activity 事件未接入 useActivityTimeline** 🔴 阻断 ✅ 已修复（T1.6）
 
 | 项 | 内容 |
 |----|------|
@@ -731,6 +760,7 @@ ObservabilityDashboard
 | **问题** | `bindStreamHandlers` 未设置 `ctx.onActivityEnvelope`，当前 session 的实时 activity 事件不更新 `useActivityTimeline`，实时新 turn 走 Legacy 路径显示空内容 |
 | **根本性方案** | 补充 `onActivityEnvelope` 回调，将当前 session 的 activity 事件转发到 `activityTimeline.handleActivityStart/Delta/Done/ChildStart` |
 | **工作量** | 1 人天 |
+| **修复** | T1.6：`bindStreamHandlers` 设置 `onActivityEnvelope`；实时 activity 事件更新 `useActivityTimeline` |
 
 **问题 16：AF 与 Legacy 双路径技术债 — Legacy 完全移除方案** 🔴 阻断
 
@@ -823,7 +853,7 @@ messageStore.messages (Pinia ref)
 | **根本性方案** | 新增 Observability Dashboard（方案 E）：TaskPlanView + TeamRunView + GraphExecutionView + MetricsPanel + FlowLogViewer |
 | **工作量** | 12 人天 |
 
-**问题 20：Task Plan 查询 API 缺口** 🟡 建议（新增）
+**问题 20：Task Plan 查询 API 缺口** 🟡 建议（新增） ✅ 已修复（T3.2）
 
 | 项 | 内容 |
 |----|------|
@@ -831,6 +861,7 @@ messageStore.messages (Pinia ref)
 | **问题** | 仅暴露 `ConfirmPlan` RPC，未暴露 `ListPlans` / `GetPlan` 端点，前端无法查询任务计划 |
 | **根本性方案** | 新增 `ListPlans` / `GetPlan` RPC + Service 实现（方案 E） |
 | **工作量** | 2 人天 |
+| **实施状态** | ✅ 已实施（2026-06-18）：proto 新增 2 RPC + 8 消息类型；`chat_plan_query.go` Service 完整实现（含授权）；`TaskPlannerPort.ListPlans` 新增；aranea-review 0 阻断项 |
 
 **问题 21：移动端折叠逻辑冗余** 🟢 清理（新增） ✅ 已修复（T5.5）
 
@@ -1076,23 +1107,23 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 
 **后端任务**（4.5 人天）：
 
-| 任务 | 工作量 | 依赖 | 验证标准 |
-|------|--------|------|---------|
-| T1.1 移除 24h deadline | 0.5d | 无 | `chat_orchestrator_turn.go` 删除 `longTaskHardDeadline` 代码块；长任务不受 24h 限制 |
-| T1.2 LLM 默认重试 | 2d | 无 | `RetryTransport` 默认 `MaxAttempts=-1`；指数退避 1s/2s/4s/8s/16s/30s；每次重试推送 `llm_retry` 事件 |
-| T1.3 processPendingQueue 迭代式 | 1d | 无 | 改为 while loop + 深度计数器；递归深度 >10 时停止消费 + 通知 |
-| T1.4 Pending Queue 持久化 | 1d | 无 | `wire.go` 传入 `dataDir`；`snapshot=true`；进程重启后队列恢复 |
+| 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
+|------|--------|------|---------|------|
+| T1.1 移除 24h deadline | 0.5d | 无 | `chat_orchestrator_turn.go` 删除 `longTaskHardDeadline` 代码块；长任务不受 24h 限制 | ✅ 已实施 |
+| T1.2 LLM 默认重试 | 2d | 无 | `RetryTransport` 默认 `MaxAttempts=-1`；指数退避 1s/2s/4s/8s/16s/30s；每次重试推送 `llm_retry` 事件 | ✅ 已实施 |
+| T1.3 processPendingQueue 迭代式 | 1d | 无 | 改为 while loop + 深度计数器；递归深度 >10 时停止消费 + 通知 | ✅ 已实施 |
+| T1.4 Pending Queue 持久化 | 1d | 无 | `wire.go` 传入 `dataDir`；`snapshot=true`；进程重启后队列恢复 | ✅ 已实施 |
 
 **前端任务**（4.5 人天）：
 
-| 任务 | 工作量 | 依赖 | 验证标准 |
-|------|--------|------|---------|
-| T1.5 前端超时移除 | 1.5d | 无 | `timeouts.ts` 删除 dispatch/turn-ack/first-byte/stream 常量；stall 改为通知（不中断） |
-| T1.6 实时 AF 接入 | 1d | 无 | `bindStreamHandlers` 设置 `onActivityEnvelope`；实时 activity 事件更新 `useActivityTimeline` |
-| T1.7 HTTP fallback 临时修复 | 1d | 无 | `markSendingDone()` 在 fallback 成功后立即调用；`loadMessages` 失败不标记 pending 为 failed |
-| T1.8 WS pendingQueue 保护 | 1d | 无 | `pendingQueue` 最大长度 100；`flushPendingQueue` 添加 try-catch；同机部署无限重连 |
+| 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
+|------|--------|------|---------|------|
+| T1.5 前端超时移除 | 1.5d | 无 | `timeouts.ts` 删除 dispatch/turn-ack/first-byte/stream 常量；stall 改为通知（不中断） | ✅ 已实施 |
+| T1.6 实时 AF 接入 | 1d | 无 | `bindStreamHandlers` 设置 `onActivityEnvelope`；实时 activity 事件更新 `useActivityTimeline` | ✅ 已实施 |
+| T1.7 HTTP fallback 临时修复 | 1d | 无 | `markSendingDone()` 在 fallback 成功后立即调用；`loadMessages` 失败不标记 pending 为 failed | ✅ 已实施 |
+| T1.8 WS pendingQueue 保护 | 1d | 无 | `pendingQueue` 最大长度 100；`flushPendingQueue` 添加 try-catch；同机部署无限重连 | ✅ 已实施 |
 
-**里程碑 M1**：无超时核心 — 任务持续运行直到完成或用户取消，LLM 断开自动重试
+**里程碑 M1**：无超时核心 — 任务持续运行直到完成或用户取消，LLM 断开自动重试 ✅ 已达成
 
 ---
 
@@ -1110,9 +1141,9 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 
 **前端任务**（5 人天）：
 
-| 任务 | 工作量 | 依赖 | 验证标准 |
-|------|--------|------|---------|
-| T2.4 通道职责分离（启动） | 5d | T1.7 | `command_channel.ts` HTTP 仅命令；`data_channel.ts` WS 唯一数据；`event_replay.ts` afterRevision 回放 |
+| 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
+|------|--------|------|---------|------|
+| T2.4 通道职责分离（启动） | 5d | T1.7 | `command_channel.ts` HTTP 仅命令；`data_channel.ts` WS 唯一数据；`event_replay.ts` afterRevision 回放 | ⏳ 未实施 |
 
 **里程碑 M2**：DB 可靠性 — DB 超时自动重试，TOCTOU 风险消除
 
@@ -1124,18 +1155,18 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 
 **后端任务**（5 人天）：
 
-| 任务 | 工作量 | 依赖 | 验证标准 |
-|------|--------|------|---------|
-| T3.1 记忆生产化（收尾） | 2.5d | T2.3 | `memory_sleep_time.go` 重试+死信；`memory_link_evolution.go` 事务包裹；`dead_letter_repo.go` |
-| T3.2 Task Plan 查询 API | 2d | 无 | `chat.proto` 新增 `ListPlans`/`GetPlan` RPC；`chat_plan_query.go` Service 实现 |
-| T3.3 Dashboard 后端联调准备 | 0.5d | T3.2 | 确认 Team/Graph/Metrics API 响应格式；编写 API 文档 |
+| 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
+|------|--------|------|---------|------|
+| T3.1 记忆生产化（收尾） | 2.5d | T2.3 | `memory_sleep_time.go` 重试+死信；`memory_link_evolution.go` 事务包裹；`dead_letter_repo.go` | ⏳ 未实施（依赖 T2.3） |
+| T3.2 Task Plan 查询 API | 2d | 无 | `chat.proto` 新增 `ListPlans`/`GetPlan` RPC；`chat_plan_query.go` Service 实现 | ✅ 已实施（2026-06-18）：`TaskPlannerPort.ListPlans` 新增；`taskPlannerImpl.ListPlans` 实现；proto 新增 2 RPC + 8 消息类型；`chat_plan_query.go` Service 完整实现（含授权）；`make api`/`make wire`/`go build` 全通过；aranea-review 0 阻断项 |
+| T3.3 Dashboard 后端联调准备 | 0.5d | T3.2 | 确认 Team/Graph/Metrics API 响应格式；编写 API 文档 | 🟡 条件具备（T3.2 已完成，可启动） |
 
 **前端任务**（5 人天）：
 
-| 任务 | 工作量 | 依赖 | 验证标准 |
-|------|--------|------|---------|
-| T3.4 通道分离（收尾） | 2d | T2.4 | HTTP 接口语义变更完成；WS 断连事件持久化；重连 afterRevision 回放 |
-| T3.5 Dashboard 启动 | 3d | T3.2 | `ObservabilityDashboard.vue` 主面板；`TaskPlanView.vue` 任务计划视图 |
+| 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
+|------|--------|------|---------|------|
+| T3.4 通道分离（收尾） | 2d | T2.4 | HTTP 接口语义变更完成；WS 断连事件持久化；重连 afterRevision 回放 | ⏳ 未实施（依赖 T2.4） |
+| T3.5 Dashboard 启动 | 3d | T3.2 | `ObservabilityDashboard.vue` 主面板；`TaskPlanView.vue` 任务计划视图 | 🟡 条件具备（T3.2 已完成，可启动） |
 
 **里程碑 M3**：通道分离 — HTTP 仅命令，WS 唯一数据通道
 
@@ -1147,16 +1178,16 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 
 **后端任务**（5 人天）：
 
-| 任务 | 工作量 | 依赖 | 验证标准 |
-|------|--------|------|---------|
-| T4.1 Dashboard 后端联调 | 3d | T3.3 | 协助前端对接 Team Observatory / Graph Visualize API；修复联调问题 |
-| T4.2 集成测试 | 2d | T1.1-T1.4 | P0 修复项回归测试；`goleak` 检测；长任务 E2E 测试 |
+| 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
+|------|--------|------|---------|------|
+| T4.1 Dashboard 后端联调 | 3d | T3.3 | 协助前端对接 Team Observatory / Graph Visualize API；修复联调问题 | 🟡 条件具备（T3.2 已完成，T3.3 可启动） |
+| T4.2 集成测试 | 2d | T1.1-T1.4 | P0 修复项回归测试；`goleak` 检测；长任务 E2E 测试 | 🟡 条件具备（T1.1-T1.4 已完成） |
 
 **前端任务**（5 人天）：
 
-| 任务 | 工作量 | 依赖 | 验证标准 |
-|------|--------|------|---------|
-| T4.3 Dashboard TaskPlan + Team | 5d | T3.5 | `TaskPlanView.vue` 完整（计划步骤/复杂度/策略）；`TeamRunView.vue`（成员状态/时间线） |
+| 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
+|------|--------|------|---------|------|
+| T4.3 Dashboard TaskPlan + Team | 5d | T3.5 | `TaskPlanView.vue` 完整（计划步骤/复杂度/策略）；`TeamRunView.vue`（成员状态/时间线） | 🟡 条件具备（T3.2 已完成，T3.5 可启动） |
 
 **里程碑 M4**：可观测性（TaskPlan + Team）— 用户可查看任务计划和 Team 执行状态
 
@@ -1170,7 +1201,7 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 
 | 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
 |------|--------|------|---------|------|
-| T5.1 竞态条件修复 | 1d | T1.3 | `processPendingQueue` lock 内完成 dequeue+检查+决策；重新入队保持原位置 | ⏳ 待实施 |
+| T5.1 竞态条件修复 | 1d | T1.3 | `processPendingQueue` lock 内完成 dequeue+检查+决策；重新入队保持原位置 | ✅ 已实施（与 T1.3 一并实现于 `chat_orchestrator_turn_dispatch.go`） |
 | T5.2 WBPF 幂等性 | 2d | 无 | `EventStoreExistChecker` 统一应用；订阅者通过 event_id 去重 | ✅ 已完成 |
 | T5.3 enqueue 路径统一 | 1d | 无 | 统一为一种 enqueue 路径；所有排队消息展示在 ChatPendingQueue | ✅ 已完成 |
 
@@ -1178,7 +1209,7 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 
 | 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
 |------|--------|------|---------|------|
-| T5.4 Dashboard Graph + Metrics | 4d | T4.3 | `GraphExecutionView.vue`（图可视化 nodes+edges）；`MetricsPanel.vue`（Prometheus 解析） | ⏳ 待实施 |
+| T5.4 Dashboard Graph + Metrics | 4d | T4.3 | `GraphExecutionView.vue`（图可视化 nodes+edges）；`MetricsPanel.vue`（Prometheus 解析） | ⏳ 未实施（依赖 T4.3） |
 | T5.5 移动端逻辑清理 | 1d | 无 | 移除 `<1024px` 折叠逻辑；专注桌面端 ≥1024px | ✅ 已完成 |
 
 **里程碑 M5**：Dashboard 完成 — 全链路可观测（TaskPlan/Team/Graph/Metrics/Logs）
@@ -1191,21 +1222,21 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 
 **后端任务**（5 人天）：
 
-| 任务 | 工作量 | 依赖 | 验证标准 |
-|------|--------|------|---------|
-| T6.1 回归测试 | 1d | T5.1-T5.3 | P1 修复项回归测试；通道分离 E2E；Dashboard API 集成测试 |
-| T6.2 性能基准 | 1d | 无 | 建立性能基准（TTFT/turn 时长/内存）；`goleak` 全量检测 |
-| T6.3 AF-GAP-03 Pre-AF 数据回填 | 3d | 无 | `reconstruct_activities_from_messages.go` 后台批量回填；遍历 pre-AF 会话从 messages 重建 activities 记录 |
+| 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
+|------|--------|------|---------|------|
+| T6.1 回归测试 | 1d | T5.1-T5.3 | P1 修复项回归测试；通道分离 E2E；Dashboard API 集成测试 | ⏳ 未实施 |
+| T6.2 性能基准 | 1d | 无 | 建立性能基准（TTFT/turn 时长/内存）；`goleak` 全量检测 | ✅ 已实施：`internal/agent/perf_bench_test.go` 建立 4 项基准（ProcessEvent/OnTextDelta/OnMemberMessageDelta/BuildEnvelope）；`internal/agent/testinit_test.go` + `internal/data/testinit_test.go` 集成 `goleak.VerifyTestMain` 全量检测 goroutine 泄漏 |
+| T6.3 AF-GAP-03 Pre-AF 数据回填 | 3d | 无 | `reconstruct_activities_from_messages.go` 后台批量回填；遍历 pre-AF 会话从 messages 重建 activities 记录 | ✅ 已实施：`internal/data/activity_backfill_migrate.go` 实现 `RunActivityBackfillMigration`（门控+确定性 ID 幂等+best-effort 语义）；注册于 `schema_migrations.go`（版本 20260801）+ `data.go`；6 项 TDD 测试覆盖（reconstructs/skips/gate/empty/no-turn/failed-status） |
 
 **前端任务**（5 人天）：
 
-| 任务 | 工作量 | 依赖 | 验证标准 |
-|------|--------|------|---------|
-| T6.4 AF-GAP-02 当前 session 转发 | 0.5d | T1.6 | `useChatInboundSync.ts:379-383` 移除 `if (!isCurrent)` 条件 |
-| T6.5 AF-GAP-04 Team 成员消息前端 | 1d | T6.6 | `streamHandlers.ts` 映射 `activity_start(kind=reply, meta.member_id)` 到 ReplyEvent |
-| T6.6 AF-GAP-04 Team 成员消息后端 | 1d | 无 | `activity_projector.go` 新增 `OnMemberMessage` → `activity_start(kind=reply, meta.member_id=xxx)` |
-| T6.7 AF-GAP-05 API 失败降级 | 1d | 无 | `loadActivitiesFromAPI` 失败强制重试 5 次；仍失败显示"数据加载失败"而非回退 Legacy |
-| T6.8 buffer + 联调测试 | 1.5d | T6.4-T6.7 | AF 缺口填补后集成测试；验证所有场景走 AF 路径 |
+| 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
+|------|--------|------|---------|------|
+| T6.4 AF-GAP-02 当前 session 转发 | 0.5d | T1.6 | `useChatInboundSync.ts:379-383` 移除 `if (!isCurrent)` 条件 | ✅ 已实施：`useChatInboundSync.ts:374-383` 已移除 `if (!isCurrent)` 条件，所有 session 的 activity 事件都转发；`useChatWorkspace.ts:110-120` 通过 envelope ID 去重（`activityDedupIds` Set + `activityDedupRing` 环形缓冲区）防止双重处理 |
+| T6.5 AF-GAP-04 Team 成员消息前端 | 1d | T6.6 | `streamHandlers.ts` 映射 `activity_start(kind=reply, meta.member_id)` 到 ReplyEvent | 🟡 条件具备（T6.6 已完成，可启动） |
+| T6.6 AF-GAP-04 Team 成员消息后端 | 1d | 无 | `activity_projector.go` 新增 `OnMemberMessage` → `activity_start(kind=reply, meta.member_id=xxx)` | ✅ 已实施：`internal/agent/activity_projector.go` 新增 `OnMemberMessageDelta`/`OnMemberMessageDone`（meta.member_id 路由）；`activity_projector_test.go` 修复 3 项测试适配 async/sync 发布顺序（activity_start 经 safego.Go 异步，activity_delta 同步，到达顺序不保证） |
+| T6.7 AF-GAP-05 API 失败降级 | 1d | 无 | `loadActivitiesFromAPI` 失败强制重试 5 次；仍失败显示"数据加载失败"而非回退 Legacy | ✅ 已实施：`useActivityTimeline.ts` 重试 3→5 次（指数退避 500ms/1s/2s/4s）+ `loadError` 状态；`useChatWorkspace.ts` 添加可见 `$q.notify`（持久化+刷新按钮）替代静默 Legacy 回退；i18n 键 `chat.activityLoadFailed`/`activityLoadFailedRefresh`（zh-CN+en-US）；3 项 TDD 测试（fake timers） |
+| T6.8 buffer + 联调测试 | 1.5d | T6.4-T6.7 | AF 缺口填补后集成测试；验证所有场景走 AF 路径 | 🟡 条件具备（T6.4/T6.6/T6.7 已完成，T6.2/T6.3 已完成，仅 T6.5 待实施） |
 
 **里程碑 M6**：AF 缺口填补完成 — 所有场景可走 AF 路径（Legacy 仍保留作为 fallback）
 
@@ -1217,16 +1248,16 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 
 **后端任务**（5 人天）：
 
-| 任务 | 工作量 | 依赖 | 验证标准 |
-|------|--------|------|---------|
-| T7.1 缓冲 + bug 修复 | 3d | T6.3-T6.7 | 修复 AF 缺口填补后发现的问题；协助前端联调 |
-| T7.2 Legacy 移除后端联调 | 2d | T7.3 | 确认后端所有 turn 都发送 activity 事件；`stream_consumer.go` 移除 Legacy fallback 注释 |
+| 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
+|------|--------|------|---------|------|
+| T7.1 缓冲 + bug 修复 | 3d | T6.3-T6.7 | 修复 AF 缺口填补后发现的问题；协助前端联调 | 🟡 部分条件具备（T6.2/T6.3/T6.4/T6.6/T6.7 已完成，仅 T6.5 未实施） |
+| T7.2 Legacy 移除后端联调 | 2d | T7.3 | 确认后端所有 turn 都发送 activity 事件；`stream_consumer.go` 移除 Legacy fallback 注释 | ⏳ 未实施（依赖 T7.3） |
 
 **前端任务**（5 人天）：
 
-| 任务 | 工作量 | 依赖 | 验证标准 |
-|------|--------|------|---------|
-| T7.3 Legacy 代码移除 | 5d | T6.4-T6.8 | 见下方详细步骤 |
+| 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
+|------|--------|------|---------|------|
+| T7.3 Legacy 代码移除 | 5d | T6.4-T6.8 | 见下方详细步骤 | 🟡 部分条件具备（T6.2/T6.3/T6.4/T6.6/T6.7 已完成，T6.5/T6.8 未实施） |
 
 **T7.3 Legacy 代码移除详细步骤**：
 
@@ -1272,7 +1303,7 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 > - T8.1 的 `retry_transport_test.go` 已补充，覆盖 T1.2（LLM 默认重试）的测试缺口
 > - T8.2 文档同步已完成：三件套文档已更新（设计文档 §6.9/§6.10 + 开发计划 §10 + ADR），`1-chat.design.md` 组件列表同步
 > - T8.5 的 lint + build 全通过，test 失败均为已有技术债务（非本次引入）
-> - **不可实施项标注**：T3.5（可观测性 Dashboard）依赖 P1 T3.2（TaskPlan 查询 API）未完成，无法在 P3 实施
+> - **T3.2 已完成（2026-06-18）**：TaskPlan 查询 API 已实施并通过 aranea-review 审查（0 阻断项），T3.5（可观测性 Dashboard）现已解锁可启动
 
 ### 8.3 关键路径与依赖
 
@@ -1345,38 +1376,44 @@ T7.3 虚拟滚动 | T8.4 大消息折叠
 
 | 需求 | 达成状态 | 关键方案 |
 |------|---------|---------|
-| 1. 发送后无超时持续连接 | 🟡 方案就绪 | 移除 dispatch/turn-ack 超时（方案 A） |
-| 2. 任务无超时 + 自动重试 | 🟡 方案就绪 | 移除 24h deadline + LLM/DB 自动重试（方案 A） |
-| 3. 通信设计合理 | 🟡 方案就绪 | 通道职责分离（方案 D） |
+| 1. 发送后无超时持续连接 | ✅ 已实现 | T1.5 移除 dispatch/turn-ack 超时；T1.8 WS 无限重连（方案 A） |
+| 2. 任务无超时 + 自动重试 | ✅ 已实现 | T1.1 移除 24h deadline + T1.2 LLM 自动重试 + T2.1 DB 重试（方案 A） |
+| 3. 通信设计合理 | 🟡 方案就绪 | 通道职责分离（方案 D，T2.4 未实施） |
 | 4. 队列管理（排队/立即发送/删除） | ✅ 已实现 | 后端 API + 前端 UI 完整 |
-| 5. 动态加载大折叠消息 | 🟡 方案就绪 | VirtualScroller + 折叠（方案 F） |
+| 5. 动态加载大折叠消息 | ✅ 已实现 | T8.3 VirtualScroller + T8.4 折叠（方案 F） |
 | 6. 不考虑移动端 | ✅ 已清理 | 移除移动端逻辑（问题 21，T5.5 已完成） |
 | 7. 同机部署 | ✅ 已满足 | WS 本地连接，简化重连 |
 | 8. 不考虑多租户 | ✅ 已满足 | 无租户隔离 |
-| 9. 可观测性 | 🟡 后端就绪 | 后端 API 齐全 + 前端 Dashboard（方案 E） |
+| 9. 可观测性 | 🟡 后端就绪 | T3.2 TaskPlan 查询 API 已完成；前端 Dashboard 未实施（方案 E） |
 
 ### 9.2 消息链完整性评估
 
 | 阶段 | 完整性 | 关键问题 |
 |------|--------|---------|
-| 阶段 1 UI 发送 | 🟡 85% | HTTP fallback 状态管理不完整（问题 1+2） |
-| 阶段 2 后端响应 | 🟡 70% | 24h deadline + LLM 无重试 + DB 无重试（问题 9+10+11） |
-| 阶段 3 LLM 响应 | 🟡 75% | LLM 无默认重试（问题 10） |
-| 阶段 4 前端展示 | 🟡 70% | 实时 AF 未接入 + 双通道竞态 + 无虚拟滚动（问题 15+17+18） |
+| 阶段 1 UI 发送 | ✅ 95% | T1.7/T1.8 已修复 HTTP fallback 状态管理 + WS pendingQueue 保护（问题 1+2+3 已修复） |
+| 阶段 2 后端响应 | ✅ 95% | T1.1 移除 24h deadline + T1.2 LLM 重试 + T2.1 DB 重试 + T1.3/T1.4/T5.1 队列修复（问题 6+7+8+9+10+11 已修复） |
+| 阶段 3 LLM 响应 | ✅ 95% | T1.2 LLM 默认重试已实现（问题 10 已修复） |
+| 阶段 4 前端展示 | 🟡 88% | T1.5/T1.6 超时移除 + 实时 AF 已接入；T6.2/T6.3/T6.4/T6.6/T6.7 AF 缺口大部分填补；剩余：T6.5 Team 成员消息前端 + Legacy 完全移除（问题 16）+ 通道分离（问题 17） |
 
 ### 9.3 长任务目标评估
 
-**当前能力**：能支撑"用户主动转 Durable 后的长任务"，但存在以下限制：
-- 24h hard deadline 限制（问题 9）→ **本方案移除**
-- LLM 单调用无重试，断开即失败（问题 10）→ **本方案默认重试**
-- DB 超时无重试（问题 11）→ **本方案增加重试**
-- pending queue 进程重启丢失（问题 7）→ **本方案启用持久化**
+**当前能力**：✅ **已具备无超时长任务支撑能力**
+- ✅ 24h hard deadline 已移除（问题 9，T1.1 已修复）
+- ✅ LLM 单调用默认无限重试（问题 10，T1.2 已修复）
+- ✅ DB 超时自动重试 3 次（问题 11，T2.1 已实施）
+- ✅ pending queue 进程重启不丢失（问题 7，T1.4 已修复）
+- ✅ processPendingQueue 迭代式无递归风险（问题 6，T1.3 已修复）
+- ✅ processPendingQueue 竞态条件已消除（问题 8，T5.1 已修复）
 - ~~SQLite 单写瓶颈~~ → ✅ **Postgres 全量迁移已完成**
 
+**剩余限制**：
+- 通道职责分离未实施（T2.4），HTTP/WS 双通道竞态风险仍存在（问题 17）
+- Legacy 代码未完全移除（T7.3），AF 路径仍有 fallback（问题 16）
+
 **目标达成路径**：
-1. 修复问题 9+10+11（无超时 + 自动重试）→ 长任务可靠性提升
+1. ✅ ~~修复问题 9+10+11（无超时 + 自动重试）~~ → 长任务可靠性提升（已完成）
 2. 实施方案 D（通道分离）→ 消除双通道竞态，长任务期间用户可继续交互
-3. 实施方案 E（可观测性）→ 用户可查看任务进度、Team 状态、Graph 执行
+3. 实施方案 E（可观测性）→ 用户可查看任务进度、Team 状态、Graph 执行（T3.2 已完成，前端 Dashboard 待实施）
 
 ### 9.4 用户体验评估
 

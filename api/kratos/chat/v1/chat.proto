@@ -291,6 +291,22 @@ service ChatService {
       body: "*"
     };
   }
+
+  // ListPlans returns all TaskPlans for a spirit session, newest first (T3.2).
+  // Used by the Observability Dashboard to display task planning history.
+  rpc ListPlans(ListPlansRequest) returns (ListPlansResponse) {
+    option (google.api.http) = {
+      get: "/v1/chat/plans"
+    };
+  }
+
+  // GetPlan returns a single TaskPlan by ID with full details (T3.2).
+  // Used by the Observability Dashboard to display plan details.
+  rpc GetPlan(GetPlanRequest) returns (GetPlanResponse) {
+    option (google.api.http) = {
+      get: "/v1/chat/plans/{plan_id}"
+    };
+  }
 }
 
 message SubmitMessageFeedbackRequest {
@@ -340,4 +356,100 @@ message ConfirmPlanResponse {
   string strategy = 4;
   // subtask_count is the number of subtasks in the confirmed plan.
   int32 subtask_count = 5;
+}
+
+// ── Task Plan Query API (T3.2) ──────────────────────────────────────────
+
+// ListPlansRequest is the request for listing TaskPlans of a spirit session.
+message ListPlansRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListPlansResponse contains the list of TaskPlans, newest first.
+message ListPlansResponse {
+  repeated TaskPlanSummary plans = 1;
+}
+
+// TaskPlanSummary is a compact view of a TaskPlan for list display.
+message TaskPlanSummary {
+  string plan_id = 1;
+  string session_id = 2;
+  string trace_id = 3;
+  string user_message = 4;
+  string complexity_level = 5;
+  double complexity_score = 6;
+  string strategy = 7;
+  string status = 8;
+  int32 subtask_count = 9;
+  string created_at = 10;
+  string updated_at = 11;
+}
+
+// GetPlanRequest is the request for fetching a single TaskPlan by ID.
+message GetPlanRequest {
+  string plan_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string session_id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+// GetPlanResponse contains the full TaskPlan details.
+message GetPlanResponse {
+  TaskPlanDetail plan = 1;
+}
+
+// TaskPlanDetail is the full view of a TaskPlan for detail display.
+message TaskPlanDetail {
+  string plan_id = 1;
+  string session_id = 2;
+  string trace_id = 3;
+  string user_message = 4;
+  string intent_artifact_json = 5;
+  string complexity_level = 6;
+  double complexity_score = 7;
+  DimensionScores dimensions = 8;
+  repeated SubTask sub_tasks = 9;
+  PlanTaskDAG task_dag = 10;
+  string decompose_reason = 11;
+  string strategy = 12;
+  string strategy_reason = 13;
+  string topology_hint = 14;
+  MemoryHit memory_hit = 15;
+  string status = 16;
+  string created_at = 17;
+  string updated_at = 18;
+}
+
+// DimensionScores holds the six-dimension complexity assessment.
+message DimensionScores {
+  double semantic = 1;
+  double structural = 2;
+  double domain = 3;
+  double tool = 4;
+  double context = 5;
+  double historical = 6;
+}
+
+// SubTask represents a decomposed sub-task within a TaskPlan.
+message SubTask {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  repeated string depends_on = 4;
+  repeated string required_capabilities = 5;
+  int32 priority = 6;
+  double estimated_complexity = 7;
+}
+
+// PlanTaskDAG represents the dependency graph of subtasks.
+message PlanTaskDAG {
+  repeated SubTask nodes = 1;
+  repeated string root_ids = 2;
+  repeated string leaf_ids = 3;
+}
+
+// MemoryHit represents a memory cache hit from OrchestrationCache.
+message MemoryHit {
+  string cache_id = 1;
+  double dq_score = 2;
+  string topology_used = 3;
+  repeated string agent_keys_used = 4;
 }

@@ -28,6 +28,9 @@ func (f *fakePlanner) QuickAssess(_ context.Context, _ biz.PlanInput) (biz.Compl
 func (f *fakePlanner) GetPlan(_ context.Context, _ string) (*biz.TaskPlan, error) {
 	return nil, nil
 }
+func (f *fakePlanner) ListPlans(_ context.Context, _ string) ([]*biz.TaskPlan, error) {
+	return nil, nil
+}
 func (f *fakePlanner) ConfirmPlan(_ context.Context, _ string, _ biz.PlanAdjustments) (*biz.TaskPlan, error) {
 	return nil, nil
 }

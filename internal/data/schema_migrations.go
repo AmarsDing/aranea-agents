@@ -17,6 +17,8 @@ const (
 	migrationNameTurnIndexToTurnID     = "turn_index_to_turn_id"
 	MigrationSessionStatusIdle         = 20260531
 	migrationNameSessionStatusIdle     = "session_status_active_to_idle"
+	MigrationActivityBackfill          = 20260801
+	migrationNameActivityBackfill      = "activity_backfill_pre_af"
 )
 
 func isMigrationApplied(ctx context.Context, client *ent.Client, version int, lg loggateway.Logger) (bool, error) {

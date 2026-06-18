@@ -6,11 +6,13 @@ import type {
   ActivityChildStartMeta,
 } from '../../activityTypes';
 
-// Mock the listActivities import to avoid real API calls
+// Mock the listActivities import to avoid real API calls.
+// Individual tests can override the mock implementation via vi.mocked(listActivities).
 vi.mock('../../../session/api', () => ({
   listActivities: vi.fn().mockResolvedValue([]),
 }));
 
+import { listActivities } from '../../../session/api';
 import { useActivityTimeline } from '../useActivityTimeline';
 
 function makeStartMeta(overrides: Partial<ActivityStartMeta> & Pick<ActivityStartMeta, 'activity_id' | 'kind'>): ActivityStartMeta {
@@ -31,6 +33,8 @@ describe('useActivityTimeline', () => {
   let tl: ReturnType<typeof useActivityTimeline>;
 
   beforeEach(() => {
+    vi.mocked(listActivities).mockReset();
+    vi.mocked(listActivities).mockResolvedValue([]);
     tl = useActivityTimeline();
   });
 
@@ -313,5 +317,92 @@ describe('useActivityTimeline', () => {
     const after = tl.activities.value.find((a) => a.id === 'think-1');
     expect(after).not.toBe(before);
     expect(after?.status).toBe('completed');
+  });
+
+  // --- AF-GAP-05: loadActivitiesFromAPI retry behavior ---
+
+  it('loadActivitiesFromAPI retries 5 times then sets loadError on final failure', async () => {
+    // Use fake timers to skip exponential backoff delays
+    vi.useFakeTimers();
+    // Mock listActivities to always reject
+    vi.mocked(listActivities).mockRejectedValue(new Error('network error'));
+
+    const promise = tl.loadActivitiesFromAPI('sess-1');
+    // Advance through all retry delays (500+1000+2000+4000 = 7500ms)
+    await vi.advanceTimersByTimeAsync(8000);
+    await promise;
+
+    expect(listActivities).toHaveBeenCalledTimes(5);
+    expect(tl.loadError.value).toBeTruthy();
+    expect(tl.loadError.value).toContain('network error');
+    vi.useRealTimers();
+  });
+
+  it('loadActivitiesFromAPI succeeds within 5 retries and clears loadError', async () => {
+    vi.useFakeTimers();
+    // Fail 3 times, then succeed on the 4th attempt
+    vi.mocked(listActivities)
+      .mockRejectedValueOnce(new Error('transient error'))
+      .mockRejectedValueOnce(new Error('transient error'))
+      .mockRejectedValueOnce(new Error('transient error'))
+      .mockResolvedValueOnce([
+        {
+          id: 'act-1',
+          kind: 'task',
+          status: 'completed',
+          sessionId: 'sess-1',
+          turnId: 'turn-1',
+          parentActivityId: null,
+          timestamp: '2026-06-13T00:00:00Z',
+          durationMs: 100,
+          content: null,
+          reasoning: null,
+          toolName: null,
+          toolCallId: null,
+          toolArguments: null,
+          toolResult: null,
+          toolDurationMs: null,
+          toolErrorCode: null,
+          childBoardId: null,
+          spiritSessionId: null,
+          teamId: null,
+          dagNodeId: null,
+          dependsOn: null,
+          agentKey: null,
+          agentName: null,
+          collapsed: false,
+          label: null,
+        },
+      ]);
+
+    const promise = tl.loadActivitiesFromAPI('sess-1');
+    // Advance through retry delays (500+1000+2000 = 3500ms for 3 failures)
+    await vi.advanceTimersByTimeAsync(4000);
+    await promise;
+
+    expect(listActivities).toHaveBeenCalledTimes(4);
+    expect(tl.loadError.value).toBeNull();
+    expect(tl.activities.value).toHaveLength(1);
+    expect(tl.activities.value[0].id).toBe('act-1');
+    vi.useRealTimers();
+  });
+
+  it('retryLoad clears loadError before retrying', async () => {
+    vi.useFakeTimers();
+    // First, set loadError by failing all retries
+    vi.mocked(listActivities).mockRejectedValue(new Error('failure'));
+
+    let promise = tl.loadActivitiesFromAPI('sess-1');
+    await vi.advanceTimersByTimeAsync(8000);
+    await promise;
+    expect(tl.loadError.value).toBeTruthy();
+
+    // Now mock success for retryLoad
+    vi.mocked(listActivities).mockResolvedValue([]);
+
+    promise = tl.retryLoad('sess-1');
+    await promise;
+    expect(tl.loadError.value).toBeNull();
+    vi.useRealTimers();
   });
 });

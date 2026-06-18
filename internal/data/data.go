@@ -768,6 +768,10 @@ func runPendingDataMigrations(d *Data) error {
 		d.lg.Error("migration step failed", loggateway.StepID("data.migration.organization_redesign"), loggateway.Err(err))
 		return fmt.Errorf("organization redesign migration: %w", err)
 	}
+	if err := RunActivityBackfillMigration(ctx, entClient, d.Dialect(), d.lg); err != nil {
+		d.lg.Error("migration step failed", loggateway.StepID("data.migration.activity_backfill"), loggateway.Err(err))
+		return fmt.Errorf("activity backfill migration: %w", err)
+	}
 	return nil
 }
 

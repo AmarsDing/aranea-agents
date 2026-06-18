@@ -149,6 +149,8 @@ export default {
     teamSendFailed: 'Team 发送失败',
     retry: '重试',
     dismiss: '关闭',
+    activityLoadFailed: '数据加载失败，请刷新',
+    activityLoadFailedRefresh: '刷新',
     syncDiagnostic: '{count} 条 · rev {rev} · WS {ws} · {ctx}% ctx',
     todo: {
       pending: '待办',

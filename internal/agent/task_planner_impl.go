@@ -252,6 +252,11 @@ func (impl *taskPlannerImpl) GetPlan(ctx context.Context, planID string) (*biz.T
 	return plan, nil
 }
 
+// ListPlans returns all plans for a spirit session, newest first (T3.2).
+func (impl *taskPlannerImpl) ListPlans(ctx context.Context, spiritSessionID string) ([]*biz.TaskPlan, error) {
+	return impl.repo.ListBySpiritSessionID(ctx, spiritSessionID)
+}
+
 // QuickAssess performs a pure-computation complexity assessment (P1-2).
 // It reuses the six-dimension assessComplexity logic but skips memory cache,
 // LLM decomposition, and DB persistence — making it safe to call before the
