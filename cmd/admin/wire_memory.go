@@ -132,6 +132,7 @@ func provideLinkEvolutionService(
 		data.NewL3FactReaderForUser(d),
 		data.NewL3FactWriterAdapter(d, d.VectorStore()),
 		nil, // queue: not needed — sqlite adapter calls EvolveLinks directly
+		d,   // tx: *data.Data implements memory.TxProvider for atomic backlink updates
 		lg,
 	)
 }

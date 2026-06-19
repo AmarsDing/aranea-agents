@@ -10,6 +10,7 @@ import {
 } from '../../features/session/api';
 import type { Message } from '../../features/chat/types';
 import { mergeIncrementalSessionMessages, mergeSessionMessages } from '../../features/chat/mergeSessionMessages';
+import { clearToolEventCache } from '../../features/chat/envelopeToolCall';
 import { onSessionMutation } from '../sessionSync';
 
 export const useChatMessageStore = defineStore('chatMessage', () => {
@@ -32,12 +33,16 @@ export const useChatMessageStore = defineStore('chatMessage', () => {
 
   function clearSessionMessages(sessionId: string) {
     if (sessionId) messagesBySession.value[sessionId] = [];
+    // P2-F1: toolEventCache is keyed by message.id (not per-session), so a
+    // clear on one session requires a full cache reset to avoid stale entries.
+    clearToolEventCache();
   }
 
   function clearAllMessages() {
     for (const key of Object.keys(messagesBySession.value)) {
       delete messagesBySession.value[key];
     }
+    clearToolEventCache();
   }
 
   async function loadMessages(opts: {
@@ -46,35 +51,29 @@ export const useChatMessageStore = defineStore('chatMessage', () => {
     afterRevision?: number;
     dropStaleInFlight?: boolean;
     /**
-     * When true, exclude server-persisted merged assistant ChatMessages from
-     * the merge result. In AF mode, Activity data provides per-round content
-     * (thinking/reply/action), so the merged assistant message is redundant.
-     *
-     * IMPORTANT: Only set this to true when Activity data is confirmed
-     * available for the session. Pre-AF sessions (no Activity data) rely on
-     * the merged message for content display. Default is false.
-     */
-    activityFirst?: boolean;
-    /**
      * Pre-constructed Activity messages (from `reconstructMessagesFromActivities`).
      * When Activity data is available, these per-round `actv-*` messages replace
      * the server's single merged assistant ChatMessage, preserving the multi-round
      * structure needed for correct interleaved display (thinking → tool → reply).
      *
-     * These are merged as local messages alongside server messages, with the
-     * server merged assistant excluded when `activityFirst=true`.
+     * These are merged as local messages alongside server messages. The server
+     * merged assistant is automatically excluded when streaming_snapshot messages
+     * are present (detected via `hasSnapshots` in mergeSessionMessages).
      */
     activityMessages?: Message[];
   }) {
     const sid = opts.sessionId;
     if (!sid) return;
 
-    const activityFirst = opts.activityFirst ?? false;
+    // P2-F1: Clear toolEventCache before reloading from server. Server may
+    // update options_json for an existing message id (e.g., tool status
+    // running → success), which would make cached parse results stale.
+    clearToolEventCache();
+
     const activityMessages = opts.activityMessages ?? [];
     const local = getMessages(sid);
     const mergeOpts = {
       dropStaleInFlight: opts.dropStaleInFlight ?? false,
-      activityFirst,
     };
 
     if (opts.afterRevision != null && opts.afterRevision > 0) {
@@ -113,6 +112,7 @@ export const useChatMessageStore = defineStore('chatMessage', () => {
   function deleteSessionMessages(sessionId: string) {
     delete messagesBySession.value[sessionId];
     delete sessionRevisionBySession.value[sessionId];
+    clearToolEventCache();
   }
 
   return {

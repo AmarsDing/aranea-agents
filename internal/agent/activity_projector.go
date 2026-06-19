@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -12,7 +13,6 @@ import (
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
 
@@ -32,7 +32,48 @@ const (
 // graphNodeMetadata mirrors trpc-agent-go/graph.NodeExecutionMetadata
 // (only the fields we need for plan step mapping).
 type graphNodeMetadata struct {
-	NodeID string `json:"nodeId"`
+	NodeID      string `json:"nodeId"`
+	NodeType    string `json:"nodeType,omitempty"`
+	StepNumber  int    `json:"stepNumber,omitempty"`
+	ModelName   string `json:"modelName,omitempty"`
+}
+
+// planStepLabel builds a human-readable label for a plan step from graph node
+// metadata. Falls back to NodeID when no richer info is available.
+//
+// Priority: StepNumber + NodeType → StepNumber → NodeType + NodeID → NodeID
+func planStepLabel(meta graphNodeMetadata) string {
+	typeLabel := nodeTypeLabel(meta.NodeType)
+	if meta.StepNumber > 0 && typeLabel != "" {
+		return fmt.Sprintf("步骤 %d · %s", meta.StepNumber, typeLabel)
+	}
+	if meta.StepNumber > 0 {
+		return fmt.Sprintf("步骤 %d", meta.StepNumber)
+	}
+	if typeLabel != "" {
+		return fmt.Sprintf("%s · %s", typeLabel, meta.NodeID)
+	}
+	return meta.NodeID
+}
+
+// nodeTypeLabel maps a graph NodeType to a Chinese display label.
+func nodeTypeLabel(nodeType string) string {
+	switch strings.TrimSpace(nodeType) {
+	case "function":
+		return "函数"
+	case "llm":
+		return "LLM"
+	case "tool":
+		return "工具"
+	case "agent":
+		return "Agent"
+	case "join":
+		return "汇合"
+	case "router":
+		return "路由"
+	default:
+		return ""
+	}
 }
 
 // ActivityProjector projects runtime events into Activity semantic units
@@ -45,6 +86,12 @@ type ActivityProjector struct {
 	metaResolver ActivityMetaResolver
 	lg           loggateway.Logger
 
+	// sequencer guarantees per-activity FIFO event ordering.
+	// Each activity gets its own channel and consumer goroutine.
+	// This fixes B-01 (start/delta ordering), B-04 (delta holds global lock),
+	// and B-05 (async start races with sync delta).
+	sequencer *activityEventSequencer
+
 	// Turn-scoped state (reset per turn)
 	rootActivityID string
 	activities     map[string]*biz.Activity // id -> activity
@@ -54,6 +101,18 @@ type ActivityProjector struct {
 	meta           ProjectMeta
 	planActivityID string                   // current turn's plan activity ID (graph node events)
 	planStepIndex  int                      // monotonic counter for plan steps within this turn
+
+	// resetDone prevents Reset() from clearing state that was initialized
+	// before stream consumption started. When the projector is pre-created
+	// (e.g. in invokeTurnLLMAndStream for early emission access), Reset()
+	// is called once to initialize maps; subsequent Reset() calls from
+	// newTurnStreamConsumer become no-ops to avoid clearing activities
+	// emitted by hooks/plugins during the LLM call.
+	resetDone bool
+
+	// turnStarted prevents duplicate root task activities when OnTurnStart
+	// is called both early (pre-creation path) and in newTurnStreamConsumer.
+	turnStarted bool
 }
 
 // NewActivityProjector creates a new ActivityProjector.
@@ -61,10 +120,24 @@ func NewActivityProjector(eventBus event.Bus, activityRepo biz.ActivityWriter, l
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &ActivityProjector{
+	p := &ActivityProjector{
 		eventBus:     eventBus,
 		activityRepo: activityRepo,
 		lg:           lg,
+	}
+	p.sequencer = newActivityEventSequencer(eventBus, lg)
+	p.sequencer.activityRepo = activityRepo
+	return p
+}
+
+// Close releases resources held by the projector, including the event sequencer.
+// It blocks until all queued events have been published and persisted.
+// After Close, subsequent publish operations are silently dropped.
+// Close must be called when the projector is no longer needed (typically after
+// stream consumption finalizes) to prevent goroutine leaks.
+func (p *ActivityProjector) Close() {
+	if p.sequencer != nil {
+		p.sequencer.Close()
 	}
 }
 
@@ -77,9 +150,15 @@ func (p *ActivityProjector) Configure(meta ProjectMeta, resolver ActivityMetaRes
 }
 
 // Reset clears turn-scoped state. Called at the start of each turn.
+// When the projector is pre-created (resetDone=true), Reset() becomes a
+// no-op to preserve activities emitted by hooks/plugins before stream
+// consumption started.
 func (p *ActivityProjector) Reset() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.resetDone {
+		return
+	}
 	p.rootActivityID = ""
 	p.activities = make(map[string]*biz.Activity)
 	p.toolCalls = make(map[string]*biz.Activity)
@@ -87,6 +166,8 @@ func (p *ActivityProjector) Reset() {
 	p.reasoningBuf = make(map[string]*strings.Builder)
 	p.planActivityID = ""
 	p.planStepIndex = 0
+	p.resetDone = true
+	p.turnStarted = false
 }
 
 // ProcessEvent dispatches a trpc-agent-go event to the appropriate On* callback.
@@ -254,9 +335,15 @@ func (p *ActivityProjector) processToolResponse(ctx context.Context, ev *trpceve
 }
 
 // OnTurnStart creates the root task Activity for a new turn.
+// When called multiple times (e.g. pre-creation path + newTurnStreamConsumer),
+// only the first call creates the root activity; subsequent calls are no-ops.
 func (p *ActivityProjector) OnTurnStart(ctx context.Context, meta ProjectMeta) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.turnStarted {
+		return
+	}
+	p.turnStarted = true
 	p.meta = meta
 
 	id := uuid.NewString()
@@ -639,24 +726,41 @@ func (p *ActivityProjector) OnNotice(ctx context.Context, turnID, sessionID stri
 	id := uuid.NewString()
 	now := time.Now().UTC()
 	activity := &biz.Activity{
-		ID:        id,
-		Kind:      biz.ActivityKindNotice,
-		Status:    biz.ActivityStatusPending,
-		SessionID: sessionID,
-		TurnID:    turnID,
-		Timestamp: now,
-		Content:   content,
-		Meta:      map[string]any{"noticeType": noticeType},
+		ID:               id,
+		Kind:             biz.ActivityKindNotice,
+		Status:           biz.ActivityStatusPending,
+		SessionID:        sessionID,
+		TurnID:           turnID,
+		ParentActivityID: p.rootActivityID,
+		Timestamp:        now,
+		Content:          content,
+		Meta:             map[string]any{"noticeType": noticeType},
 	}
 	p.activities[id] = activity
-	p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityStart)
 
-	// Notice is immediately completed
+	// Notice is immediately completed (pending → completed in the same call).
+	// The sequencer guarantees start → done ordering per-activity, so we can
+	// safely use two publishAndPersist calls without a manual goroutine.
+	p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityStart)
 	activity.Status = biz.ActivityStatusCompleted
 	activity.DurationMs = time.Now().UTC().Sub(activity.Timestamp).Milliseconds()
 	p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityDone)
 
 	return activity, nil
+}
+
+// EmitNotice implements biz.ActivityEmitter. It is a thin wrapper over OnNotice
+// for use by plugins/hooks that access the projector via context.
+// The turn/session IDs are derived from the projector's stored ProjectMeta.
+func (p *ActivityProjector) EmitNotice(ctx context.Context, content, noticeType string) error {
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	turnID, sessionID := p.meta.RequestID, p.meta.SessionID
+	p.mu.Unlock()
+	_, err := p.OnNotice(ctx, turnID, sessionID, content, noticeType)
+	return err
 }
 
 // ConfirmRequestParams holds the parameters for creating a confirm Activity.
@@ -674,14 +778,15 @@ func (p *ActivityProjector) OnConfirmRequest(ctx context.Context, turnID, sessio
 	id := uuid.NewString()
 	now := time.Now().UTC()
 	activity := &biz.Activity{
-		ID:        id,
-		Kind:      biz.ActivityKindConfirm,
-		Status:    biz.ActivityStatusToolBlocked,
-		SessionID: sessionID,
-		TurnID:    turnID,
-		Timestamp: now,
-		Content:   params.Content,
-		Meta:      map[string]any{"toolName": params.ToolName, "toolArguments": params.ToolArguments},
+		ID:               id,
+		Kind:             biz.ActivityKindConfirm,
+		Status:           biz.ActivityStatusToolBlocked,
+		SessionID:        sessionID,
+		TurnID:           turnID,
+		ParentActivityID: p.rootActivityID,
+		Timestamp:        now,
+		Content:          params.Content,
+		Meta:             map[string]any{"toolName": params.ToolName, "toolArguments": params.ToolArguments},
 	}
 	p.activities[id] = activity
 	p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityStart)
@@ -711,6 +816,40 @@ func (p *ActivityProjector) OnConfirmResult(ctx context.Context, activityID stri
 
 	return activity, nil
 }
+
+// EmitConfirmRequest implements biz.ActivityEmitter. It is a thin wrapper over
+// OnConfirmRequest for use by plugins/hooks that access the projector via context.
+// The turn/session IDs are derived from the projector's stored ProjectMeta.
+func (p *ActivityProjector) EmitConfirmRequest(ctx context.Context, params biz.ActivityConfirmParams) (string, error) {
+	if p == nil {
+		return "", nil
+	}
+	p.mu.Lock()
+	turnID, sessionID := p.meta.RequestID, p.meta.SessionID
+	p.mu.Unlock()
+	a, err := p.OnConfirmRequest(ctx, turnID, sessionID, ConfirmRequestParams{
+		ToolName:      params.ToolName,
+		ToolArguments: params.ToolArguments,
+		Content:       params.Content,
+	})
+	if err != nil || a == nil {
+		return "", err
+	}
+	return a.ID, nil
+}
+
+// EmitConfirmResult implements biz.ActivityEmitter. It is a thin wrapper over
+// OnConfirmResult for use by plugins/hooks that access the projector via context.
+func (p *ActivityProjector) EmitConfirmResult(ctx context.Context, activityID string, approved bool) error {
+	if p == nil {
+		return nil
+	}
+	_, err := p.OnConfirmResult(ctx, activityID, approved)
+	return err
+}
+
+// compile-time interface check
+var _ biz.ActivityEmitter = (*ActivityProjector)(nil)
 
 // processGraphNodeStart handles graph.node.start events by lazily creating a plan
 // Activity on first node arrival and registering a pending step.
@@ -767,7 +906,7 @@ func (p *ActivityProjector) processGraphNodeStart(ctx context.Context, ev *trpce
 	p.planStepIndex++
 	step := biz.ActivityPlanStep{
 		ID:      meta.NodeID,
-		Label:   meta.NodeID, // Use node ID as label for now
+		Label:   planStepLabel(meta),
 		Status:  biz.ActivityStatusRunning,
 	}
 	steps = append(steps, step)
@@ -996,46 +1135,58 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, usage *ActivityUsage)
 }
 
 // publishAndPersist publishes an Activity envelope and persists to DB.
-// Called with p.mu held — copies data before releasing mutex for I/O.
+// Called with p.mu held — copies activity data before enqueuing to sequencer.
+// The sequencer's per-activity channel guarantees FIFO ordering (start → delta
+// → done) while performing I/O outside the mutex.
 func (p *ActivityProjector) publishAndPersist(ctx context.Context, a *biz.Activity, envType contract.EnvelopeType) {
 	env := p.buildActivityEnvelope(a, envType)
 	p.publishEnvelope(ctx, env, a)
 }
 
 // publishEnvelope publishes a pre-built envelope and persists the activity to DB.
-// Called with p.mu held — copies data before releasing mutex for I/O.
+// Called with p.mu held — copies activity data before enqueuing to sequencer.
+// The sequencer consumer goroutine performs the actual I/O (publish + persist)
+// outside the caller's critical section.
 func (p *ActivityProjector) publishEnvelope(ctx context.Context, env contract.Envelope, a *biz.Activity) {
+	if p.sequencer == nil {
+		return
+	}
 	activityCopy := *a
-
-	// I/O operations (event bus publish + DB write) happen after mutex release
-	// since callers unlock p.mu immediately after this method returns.
-	safego.Go(ctx, "activity_projector.publish", func() {
-		if p.eventBus != nil {
-			p.eventBus.Publish(ctx, env)
-		}
-		if p.activityRepo != nil {
-			if _, err := p.activityRepo.UpsertActivity(ctx, activityCopy); err != nil {
-				p.lg.Warn("activity persist failed",
-					loggateway.StepID("agent.activity_projector.persist"),
-					loggateway.Str("activity_id", activityCopy.ID),
-					loggateway.Str("kind", string(activityCopy.Kind)),
-					loggateway.Str("status", string(activityCopy.Status)),
-					loggateway.Err(err))
-			}
-		}
-	})
+	if err := p.sequencer.publish(ctx, a.ID, publishTask{
+		env:      env,
+		persist:  true,
+		activity: activityCopy,
+	}); err != nil {
+		p.lg.Warn("activity publish failed",
+			loggateway.StepID("agent.activity_projector.publish"),
+			loggateway.Str("activity_id", a.ID),
+			loggateway.Str("kind", string(a.Kind)),
+			loggateway.Err(err))
+	}
 }
 
 // publishActivityDelta publishes an activity_delta envelope with a content patch.
+// Called with p.mu held — enqueues to sequencer for ordered async publishing.
+// Unlike the previous sync implementation, this no longer blocks the event loop
+// on bus.Publish; backpressure is applied via the sequencer's channel buffer.
 func (p *ActivityProjector) publishActivityDelta(ctx context.Context, a *biz.Activity, field, chunk string) {
+	if p.sequencer == nil {
+		return
+	}
 	env := p.buildActivityEnvelope(a, contract.EnvelopeTypeActivityDelta)
 	if env.Metadata == nil {
 		env.Metadata = make(map[string]any)
 	}
 	env.Metadata["delta_field"] = field
 	env.Metadata["delta_chunk"] = chunk
-	if p.eventBus != nil {
-		p.eventBus.Publish(ctx, env)
+	if err := p.sequencer.publish(ctx, a.ID, publishTask{
+		env:     env,
+		persist: false,
+	}); err != nil {
+		p.lg.Warn("activity delta publish failed",
+			loggateway.StepID("agent.activity_projector.delta"),
+			loggateway.Str("activity_id", a.ID),
+			loggateway.Err(err))
 	}
 }
 

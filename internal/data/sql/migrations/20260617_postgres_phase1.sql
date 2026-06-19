@@ -71,6 +71,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_team_runs_active_unique
 --    Added here because Postgres supports native FK; SQLite defers to app-layer
 --    (see 20260724_invariant_constraints.sql TECH-DEBT note).
 --    Wrapped in DO $$ blocks for idempotency (check existence before adding).
+--    Cleanup orphaned rows before adding FK (idempotent: DELETE is a no-op
+--    when no orphans exist; safe to re-run).
+DELETE FROM session_run_checkpoints
+    WHERE session_run_id NOT IN (SELECT id FROM session_runs);
 DO $$ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM pg_constraint
@@ -83,6 +87,8 @@ DO $$ BEGIN
 END $$;
 
 --    INV-REF-02: event_store.session_id → sessions.id
+DELETE FROM event_store
+    WHERE session_id NOT IN (SELECT id FROM sessions);
 DO $$ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM pg_constraint
@@ -95,6 +101,8 @@ DO $$ BEGIN
 END $$;
 
 --    INV-REF-03: session_run_checkpoints.session_id → sessions.id
+DELETE FROM session_run_checkpoints
+    WHERE session_id NOT IN (SELECT id FROM sessions);
 DO $$ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM pg_constraint

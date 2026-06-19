@@ -10,6 +10,7 @@ import (
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
@@ -55,6 +56,14 @@ type ChatSender interface {
 	EnqueueUserMessage(ctx context.Context, req *chatv1.EnqueueUserMessageRequest) (*chatv1.EnqueueUserMessageResponse, error)
 }
 
+// EventStoreLister is the narrow interface for querying stored envelopes
+// during revision-based WS replay (T3.4). WSServer holds this instead of the
+// concrete *biz.EventStoreUsecase to reduce coupling and clarify that only
+// List is needed for sync_request replay.
+type EventStoreLister interface {
+	List(ctx context.Context, q biz.EventStoreQuery) (biz.EventStoreListResult, error)
+}
+
 // WSServer is the WebSocket server coordinator. It delegates to focused sub-modules:
 //   - ws_conn.go         — wsConn struct + connStore (connection lifecycle)
 //   - ws_conn_manager.go — connection limit checks and removal
@@ -72,6 +81,7 @@ type WSServer struct {
 	canceller             RunCanceller
 	sender                ChatSender
 	turnExecutor          WSTurnExecutor
+	eventStoreUsecase     EventStoreLister // optional (T3.4): revision-based sync replay
 	serverConf            *conf.Server
 	runtimeConf           *conf.Runtime
 	upgrader              websocket.Upgrader
@@ -87,11 +97,11 @@ func NewWSServer(c *conf.Server, eventBus event.Bus, eventBuffer *event.Buffer, 
 		SessionBus: eventBus,
 		MonitorBus: eventBus,
 		Buffer:     eventBuffer,
-	}, canceller, sender, nil, nil, nil)
+	}, canceller, sender, nil, nil, nil, nil)
 }
 
 // NewWSServerFromInfra uses session bus for chat envelopes and monitor bus for flow_log (P0).
-func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnExecutor WSTurnExecutor, runtimeConf *conf.Runtime, lg loggateway.Logger) *WSServer {
+func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnExecutor WSTurnExecutor, runtimeConf *conf.Runtime, lg loggateway.Logger, eventStoreUsecase *biz.EventStoreUsecase) *WSServer {
 	if c == nil || c.GetWs() == nil || !c.GetWs().GetEnable() {
 		return nil
 	}
@@ -101,6 +111,14 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 	monitor := infra.MonitorBus
 	if monitor == nil {
 		monitor = infra.SessionBus
+	}
+	// Avoid the Go nil-interface trap: assigning a nil *biz.EventStoreUsecase
+	// to an EventStoreLister field yields a non-nil interface wrapping a nil
+	// pointer. Keep the field as a true nil interface when the usecase is nil
+	// so the `s.eventStoreUsecase == nil` guard in handleSyncRequest works.
+	var store EventStoreLister
+	if eventStoreUsecase != nil {
+		store = eventStoreUsecase
 	}
 	wsCfg := runtimeConf.WSConfig()
 	return &WSServer{
@@ -112,6 +130,7 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 		canceller:             canceller,
 		sender:                sender,
 		turnExecutor:          turnExecutor,
+		eventStoreUsecase:     store,
 		serverConf:            c,
 		runtimeConf:           runtimeConf,
 		maxSessionConns:       envInt("WS_MAX_SESSION_CONNS", int(wsCfg.MaxSessionConns)),

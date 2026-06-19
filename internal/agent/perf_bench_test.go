@@ -22,7 +22,7 @@ import (
 //   - TTFT proxy: time from first event to first activity_start envelope
 //   - Throughput: events/sec for streaming text chunks
 func BenchmarkProcessEvent_StreamingText(b *testing.B) {
-	p, _, _ := newTestProjector()
+	p, _, _ := newTestProjector(b)
 	p.Configure(ProjectMeta{
 		SessionID: "sess-bench",
 		RequestID: "turn-bench",
@@ -50,7 +50,7 @@ func BenchmarkProcessEvent_StreamingText(b *testing.B) {
 // BenchmarkOnTextDelta_StreamingReply measures the throughput of
 // OnTextDelta calls, which is the per-chunk hot path during streaming replies.
 func BenchmarkOnTextDelta_StreamingReply(b *testing.B) {
-	p, _, _ := newTestProjector()
+	p, _, _ := newTestProjector(b)
 	p.Configure(ProjectMeta{
 		SessionID: "sess-bench",
 		RequestID: "turn-bench",
@@ -69,7 +69,7 @@ func BenchmarkOnTextDelta_StreamingReply(b *testing.B) {
 // BenchmarkOnMemberMessageDelta_TeamReply measures the throughput of
 // OnMemberMessageDelta calls (AF-GAP-04 team member message path).
 func BenchmarkOnMemberMessageDelta_TeamReply(b *testing.B) {
-	p, _, _ := newTestProjector()
+	p, _, _ := newTestProjector(b)
 	p.Configure(ProjectMeta{
 		SessionID:       "sess-bench",
 		RequestID:       "turn-bench",
@@ -90,7 +90,7 @@ func BenchmarkOnMemberMessageDelta_TeamReply(b *testing.B) {
 // BenchmarkBuildActivityEnvelope measures the envelope construction overhead,
 // which is called on every activity event (start/delta/done).
 func BenchmarkBuildActivityEnvelope(b *testing.B) {
-	p, _, _ := newTestProjector()
+	p, _, _ := newTestProjector(b)
 	a := &biz.Activity{
 		ID:        "act-bench",
 		Kind:      biz.ActivityKindReply,

@@ -1897,7 +1897,8 @@ type SpiritContext struct {
 | Turn 开始 | `task` | 根 Activity，描述任务 |
 | `reasoning_delta` | `thinking` | reasoning 内容流式推送 |
 | `reasoning_done` + `reasoning_as_display=true` | `thinking` → `reply` | reasoning 即回复时升级 |
-| `text_delta` | `reply` | 正式回复流式推送 |
+| `text_delta` | `reply` | 正常回复流式推送 |
+| `member_message_delta`（Team 成员） | `reply`（`meta.member_id=author`） | AF-GAP-04：Team 成员消息通过 AF kind 渲染，前端 `applyMemberMetaToMessage` 映射 team_member 元数据 |
 | `tool_call` | `action` | 工具调用开始 |
 | `tool_result` | `action` (done) | 工具调用完成 |
 | `tool_call(tool_name=subagents_spawn)` | `delegate` + `sub_task_board` | 委派子代理（工具调用语义重分类） |
@@ -2180,13 +2181,14 @@ function activityToTaskBoardNode(activity: Activity): TaskBoardNode {
 
 | 包 | 变更类型 | 说明 |
 |----|----------|------|
-| `internal/agent/` | 新增 | `activity_projector.go` |
+| `internal/agent/` | 新增 | `activity_projector.go`（含 `OnMemberMessageDelta`/`OnMemberMessageDone` AF-GAP-04）+ `perf_bench_test.go`（T6.2 性能基准） |
 | `internal/biz/` | 新增 | `ActivityRepo` 接口（Reader/Writer 拆分） |
-| `internal/data/` | 新增 | `activity_repo.go` + Ent Schema + DDL 迁移 |
+| `internal/data/` | 新增 | `activity_repo.go` + Ent Schema + DDL 迁移 + `activity_backfill_migrate.go`（T6.3 Pre-AF 数据回填） |
 | `internal/event/contract/` | 扩展 | 4 个新 EnvelopeType |
 | `internal/service/` | 修改 | 集成 ActivityProjector |
-| `web/src/features/chat/` | 新增 | `activityTypes.ts` + `useActivityTimeline.ts` |
-| `web/src/features/chat/composables/` | 修改 | 组件数据源切换 |
+| `web/src/features/chat/` | 新增 | `activityTypes.ts` + `useActivityTimeline.ts`（含 AF-GAP-05 重试降级） |
+| `web/src/features/chat/` | 修改 | `streamHandlers.ts`（AF-GAP-04 `applyMemberMetaToMessage` + T7.3d 移除 Legacy member_message handlers） |
+| `web/src/features/chat/composables/` | 修改 | `useChatInboundSync.ts`（AF-GAP-02 当前 session 转发）+ `useChatWorkspace.ts`（envelope ID 去重） |
 | `web/src/components/` | 修改 | 各组件数据源切换 |
 
 **不改动**：M59 展示组件的模板和样式；`internal/server` 直连 runtime；Team 编译/运行流程。

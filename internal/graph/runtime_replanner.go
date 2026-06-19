@@ -5,12 +5,12 @@ package graph
 import (
 	"context"
 	"strings"
-	"sync"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/metrics"
+	"aranea-agents/internal/runtime/lifecycle"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
@@ -71,8 +71,10 @@ type RuntimeReplannerImpl struct {
 	eventBus event.Bus
 	lg       loggateway.Logger
 
-	mu           sync.Mutex
-	attemptCount map[string]int
+	// attemptCount tracks per-execution replan attempts. ttl=0 means no
+	// automatic TTL cleanup; callers must invoke ReleaseExecution(execID)
+	// when an execution completes to prevent unbounded growth (A5).
+	attemptCount *lifecycle.ManagedMap[string, int]
 }
 
 var _ RuntimeReplanner = (*RuntimeReplannerImpl)(nil)
@@ -87,7 +89,7 @@ func NewRuntimeReplanner(eventBus event.Bus, lg loggateway.Logger) *RuntimeRepla
 	return &RuntimeReplannerImpl{
 		eventBus:     eventBus,
 		lg:           lg.With(loggateway.Domain("runtime_replanner")),
-		attemptCount: make(map[string]int),
+		attemptCount: lifecycle.NewManagedMap[string, int](0),
 	}
 }
 
@@ -145,25 +147,37 @@ func (r *RuntimeReplannerImpl) OnNodeFailure(
 
 // tryAcquireAttempt increments the per-execution replan counter and returns
 // false if the max has already been reached. Safe for concurrent use.
+//
+// 使用 ManagedMap.UpdateOrStoreWithResult 原子地 check-and-increment，
+// 根治 TOCTOU 窗口（A5）。
 func (r *RuntimeReplannerImpl) tryAcquireAttempt(execID string) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.attemptCount[execID] >= maxReplanAttempts {
-		return false
-	}
-	r.attemptCount[execID]++
-	return true
+	_, allowed := r.attemptCount.UpdateOrStoreWithResult(execID, func(existing int, ok bool) (int, bool) {
+		if ok && existing >= maxReplanAttempts {
+			// 已达上限，不递增，返回 false
+			return existing, false
+		}
+		// 无 entry（ok=false, existing=0）或未达上限，递增并返回 true
+		return existing + 1, true
+	})
+	return allowed
 }
 
 // releaseAttempt decrements the per-execution replan counter. Used when a
 // replan attempt errors out before producing an action, so the caller can
 // retry with a different strategy without being blocked by the limit.
 func (r *RuntimeReplannerImpl) releaseAttempt(execID string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.attemptCount[execID] > 0 {
-		r.attemptCount[execID]--
-	}
+	r.attemptCount.UpdateOrStore(execID, func(existing int, ok bool) int {
+		if !ok || existing <= 0 {
+			return 0
+		}
+		return existing - 1
+	})
+}
+
+// ReleaseExecution 清理指定 execution 的 replan 计数 entry。
+// 必须在 execution 终态（完成/失败/取消）时由调用方调用，防止 map 无限增长（A5）。
+func (r *RuntimeReplannerImpl) ReleaseExecution(execID string) {
+	r.attemptCount.Delete(execID)
 }
 
 // buildAction maps a FailureAnalysis to a concrete ReplanAction.
@@ -258,14 +272,14 @@ func (r *RuntimeReplannerImpl) publishReplanEvent(
 	}
 	env := contract.NewEnvelope(contract.EnvelopeTypeGraphReplanned, "runtime-replanner", exec.SessionID)
 	env.Metadata = map[string]any{
-		"execution_id":  exec.ID,
-		"graph_id":      exec.GraphID,
-		"failed_node":   failedNode,
-		"replan_type":   string(action.Type),
-		"severity":      analysis.Severity,
-		"reason":        analysis.Reason,
+		"execution_id":   exec.ID,
+		"graph_id":       exec.GraphID,
+		"failed_node":    failedNode,
+		"replan_type":    string(action.Type),
+		"severity":       analysis.Severity,
+		"reason":         analysis.Reason,
 		"new_node_count": len(action.NewNodes),
-		"skip_nodes":    action.SkipNodes,
+		"skip_nodes":     action.SkipNodes,
 	}
 	r.eventBus.Publish(ctx, env)
 }

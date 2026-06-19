@@ -47,6 +47,7 @@ func (m *memTeamRunRepoCoord) UpdateTeamRun(_ context.Context, r biz.TeamRun) er
 	m.runs[r.ID] = r
 	return nil
 }
+func (m *memTeamRunRepoCoord) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) { return true, nil }
 func (m *memTeamRunRepoCoord) UpdateTeamRunGraphExecutionID(context.Context, string, string) error {
 	return nil
 }

@@ -117,6 +117,9 @@ export interface PlanEvent extends StreamEventBase {
   status: 'planning' | 'executing' | 'completed' | 'failed';
   /** 计划标题 */
   title?: string;
+  /** 子事件列表（从 activityTree 映射的递归 StreamEvent）。
+   * B-04: 替代 PlanBlock 直接消费 activityTree 的数据流，统一通过事件模型传递。 */
+  children?: StreamEvent[];
 }
 
 /** 确认事件 — 工具执行前的用户确认请求 */

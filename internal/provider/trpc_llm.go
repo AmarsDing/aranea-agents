@@ -25,6 +25,23 @@ import (
 	trpcprovider "trpc.group/trpc-go/trpc-agent-go/model/provider"
 )
 
+// TRPCModelForProviderModel resolves a trpc-agent-go model.Model from the biz
+// catalog and wires it with the project's HTTP transport (rate-limit, retry,
+// circuit-breaker, metrics).
+//
+// Per-task-type timeout:
+// The HTTP client's base timeout is set at wire time via TimeoutPolicy
+// (see provideLLMHTTPClient in cmd/admin/wire.go, using TaskTypeModerate as
+// the baseline). To apply a different timeout for a specific call, set the
+// TaskType in the request context before invoking model.GenerateContent:
+//
+//	ctx = provider.WithTaskType(ctx, provider.TaskTypeCodeGen)
+//	ctx, cancel, _ := timeoutPolicy.ApplyTimeoutFromCtx(ctx)
+//	if cancel != nil { defer cancel() }
+//	resp, err := model.GenerateContent(ctx, req)
+//
+// When no TaskType is set in context, the http.Client's default timeout
+// (TaskTypeModerate = 60min) applies.
 func TRPCModelForProviderModel(ctx context.Context, catalog biz.TeamModelCatalog, rt *RoundTrip, prov, modelAPI string, lg loggateway.Logger) (trpcmodel.Model, error) {
 	if catalog == nil {
 		return nil, ErrNilLlmCatalog

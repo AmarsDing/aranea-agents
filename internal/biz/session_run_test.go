@@ -2,9 +2,11 @@ package biz
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -190,6 +192,112 @@ func TestSessionRunUsecaseStartInteractive(t *testing.T) {
 	}
 }
 
+// TestSessionRunUsecase_StartInteractive_RejectsConcurrentActiveRun 验证 INV-1
+// 并发守卫：当 Session 已存在活跃 Run（interactive/durable 且未结束）时，
+// 再次调用 StartInteractive 必须返回 CodeConflict，避免违反
+// "One Session one active Run" 不变量。
+func TestSessionRunUsecase_StartInteractive_RejectsConcurrentActiveRun(t *testing.T) {
+	repo := &sessionRunRepoStub{runs: map[string]SessionRun{
+		"run-existing": {
+			ID:        "run-existing",
+			SessionID: "sess-conflict",
+			TurnID:    "turn-prev",
+			Phase:     SessionRunPhaseInteractive,
+			StartedAt: sessionRunNow(),
+		},
+	}}
+	uc := NewSessionRunUsecase(repo, nil, loggateway.NewNoop())
+
+	_, err := uc.StartInteractive(context.Background(), "sess-conflict", "turn-2", "rt-2", "channel", "agent-1")
+	if err == nil {
+		t.Fatal("expected Conflict error when active run exists, got nil")
+	}
+	if !apierror.IsCode(err, apierror.CodeConflict) {
+		t.Fatalf("expected CodeConflict, got %v", err)
+	}
+}
+
+// TestSessionRunUsecase_StartInteractive_AllowsAfterTerminalRun 验证 INV-1
+// 守卫只阻断活跃 Run：当 Session 的前一个 Run 已终态（completed/failed/cancelled）
+// 或 FinishedAt 已设置时，允许创建新 Run。
+func TestSessionRunUsecase_StartInteractive_AllowsAfterTerminalRun(t *testing.T) {
+	repo := &sessionRunRepoStub{runs: map[string]SessionRun{
+		"run-prev": {
+			ID:         "run-prev",
+			SessionID:  "sess-term",
+			TurnID:     "turn-prev",
+			Phase:      SessionRunPhaseCompleted,
+			StartedAt:  sessionRunNow(),
+			FinishedAt: sessionRunNow(),
+		},
+	}}
+	uc := NewSessionRunUsecase(repo, nil, loggateway.NewNoop())
+
+	run, err := uc.StartInteractive(context.Background(), "sess-term", "turn-2", "rt-2", "channel", "agent-1")
+	if err != nil {
+		t.Fatalf("expected success after terminal run, got %v", err)
+	}
+	if run.Phase != SessionRunPhaseInteractive {
+		t.Fatalf("phase=%q", run.Phase)
+	}
+}
+
+// TestSessionRunUsecase_StartInteractive_PropagatesRepoError 验证 INV-1
+// 守卫不会静默吞掉 GetActiveForSession 的非 NotFound 错误。
+func TestSessionRunUsecase_StartInteractive_PropagatesRepoError(t *testing.T) {
+	repo := &sessionRunRepoStubErr{
+		err: errors.New("db connection lost"),
+	}
+	uc := NewSessionRunUsecase(repo, nil, loggateway.NewNoop())
+
+	_, err := uc.StartInteractive(context.Background(), "sess-err", "turn-1", "rt-1", "channel", "agent-1")
+	if err == nil {
+		t.Fatal("expected repo error to propagate, got nil")
+	}
+	if !strings.Contains(err.Error(), "db connection lost") {
+		t.Fatalf("expected error to contain 'db connection lost', got %v", err)
+	}
+}
+
+// sessionRunRepoStubErr 是一个总是返回指定错误的 stub，用于测试错误传播。
+type sessionRunRepoStubErr struct {
+	err error
+}
+
+func (s *sessionRunRepoStubErr) Create(_ context.Context, _ SessionRun) (string, error) {
+	return "", s.err
+}
+func (s *sessionRunRepoStubErr) UpdatePhase(_ context.Context, _, _ string) error { return s.err }
+func (s *sessionRunRepoStubErr) UpdateCheckpointID(_ context.Context, _, _ string) error {
+	return s.err
+}
+func (s *sessionRunRepoStubErr) MarkTerminal(_ context.Context, _, _, _ string) error { return s.err }
+func (s *sessionRunRepoStubErr) Get(_ context.Context, _ string) (SessionRun, error) {
+	return SessionRun{}, s.err
+}
+func (s *sessionRunRepoStubErr) GetActiveForSession(_ context.Context, _ string) (SessionRun, error) {
+	return SessionRun{}, s.err
+}
+func (s *sessionRunRepoStubErr) ListByPhase(_ context.Context, _ string, _ int) ([]SessionRun, error) {
+	return nil, s.err
+}
+func (s *sessionRunRepoStubErr) ListForJobs(_ context.Context, _ SessionRunListQuery) ([]SessionRun, error) {
+	return nil, s.err
+}
+func (s *sessionRunRepoStubErr) ListBySession(_ context.Context, _ string, _, _ int) ([]SessionRun, int, error) {
+	return nil, 0, s.err
+}
+func (s *sessionRunRepoStubErr) TryClaimDurableResume(_ context.Context, _, _ string) (bool, error) {
+	return false, s.err
+}
+func (s *sessionRunRepoStubErr) ClearResumeClaim(_ context.Context, _ string) error { return s.err }
+func (s *sessionRunRepoStubErr) TransitionPhase(_ context.Context, _, _, _ string) (bool, error) {
+	return false, s.err
+}
+func (s *sessionRunRepoStubErr) MarkOrphanedRunsCancelled(_ context.Context) (int, error) {
+	return 0, s.err
+}
+
 func TestSuggestDurableRun_autoKeywords(t *testing.T) {
 	cfg := ParseChannelLongTaskConfig(`{"config":{"execution_mode":"auto","async_graph_id":"g1"}}`)
 	if !cfg.SuggestDurableRun("请做全量分析") {
@@ -229,5 +337,3 @@ func TestSessionRunTryClaimDurableResume(t *testing.T) {
 		t.Fatalf("after clear: claimed=%v err=%v", claimed3, err)
 	}
 }
-
-

@@ -162,6 +162,23 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		teamEmitter.LogStart("team.run.execute", "执行团队任务", event.P("mode", mode))
 	}
 
+	// Phase 6.5: Build project metadata and pre-create ActivityProjector.
+	// N-21/N-03: The projector is pre-created and injected into runCtx so that
+	// plugins (cost_guard, model_router) and hooks (tool_confirmation) can emit
+	// notice/confirm Activities via biz.ActivityEmitterFromContext during the
+	// LLM call. The same projector is reused in ConsumeWithFirstByteGuard.
+	traceID := ""
+	if teamEmitter != nil {
+		traceID = teamEmitter.TraceID()
+	}
+	projectMeta := r.buildTeamProjectMeta(ctx, sess, run, teamRow, ar, memberKeys, ti.content, traceID)
+	streamOpts := r.newStreamConsumeOptions()
+	if streamOpts != nil && streamOpts.ActivityProjector != nil {
+		streamOpts.ActivityProjector.Reset()
+		streamOpts.ActivityProjector.OnTurnStart(runCtx, projectMeta)
+		runCtx = biz.WithActivityEmitter(runCtx, streamOpts.ActivityProjector)
+	}
+
 	userTurnMsg, err := agent.BuildUserMessageFromArtifacts(runCtx, r.td.Persist.ArtifactUC, sess.ID, ti.content, input.Options.AttachmentIDs)
 	if err != nil {
 		logTeamRunError(teamEmitter, "team.run.attachments", err.Error(), mode)
@@ -178,11 +195,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, teamEmitter, teamBridge, teamBridge)
 
-	// Phase 7: Build project metadata and consume stream
-	traceID := ""
-	if teamEmitter != nil {
-		traceID = teamEmitter.TraceID()
-	}
+	// Phase 7: Consume stream (streamOpts already has the pre-created projector)
 	var streamPromptTok, streamCompletionTok int
 	var contextUsagePatched bool
 	defer func() {
@@ -191,8 +204,6 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		}
 	}()
 
-	projectMeta := r.buildTeamProjectMeta(ctx, sess, run, teamRow, ar, memberKeys, ti.content, traceID)
-	streamOpts := r.newStreamConsumeOptions()
 	result, streamErr := agent.ConsumeWithFirstByteGuard(runCtx, agent.DefaultFirstByteTimeout, events, r.td.Pipeline.Bus, projectMeta, streamOpts, r.lg)
 	streamPromptTok = result.PromptTok
 	streamCompletionTok = result.CompletionTok

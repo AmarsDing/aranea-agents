@@ -1304,13 +1304,42 @@ Agent 构建请求
     → buildToolsetsForAgent(ctx, ag, deps)        // 装配工具集
       → tooltrpc.BuildToolsets(ctx, cfg, lg)      // 桥接层
         → tools.Assemble(ctx, assemblyCfg)        // 核心装配
+      → tools.ApplyDecorators(ts, cfg)            // 装饰器：超时+预算+缓存
     → llmagent.WithToolSets(ts.ToolSets)           // 注入 ToolSet
     → llmagent.WithTools(ts.Tools)                 // 注入 Tool
     → llmagent.WithToolFilter(filter)              // 注入过滤
     → llmagent.WithToolCallbacks(callbacks)        // 注入回调
     → llmagent.WithToolCallRetryPolicy(policy)     // 注入重试策略
-    → llmagent.WithEnableParallelTools(true)       // 注入并行执行
+    → llmagent.WithEnableParallelTools(true)       // 注入并行执行（默认开启）
 ```
+
+### 7.1.1 工具装饰器（ToolDecorator）
+
+文件路径：`internal/tools/decorator.go`、`internal/tools/decorator_apply.go`、`internal/tools/safety.go`
+
+**设计决策**：详见 ADR [2026-06-15-review-adr-tool-parallel-execution.md](../reports/2026-06-15-review-adr-tool-parallel-execution.md)
+
+**三层保护**（项目层实现，不修改框架内部）：
+
+| 方案 | 能力 | 默认值 | 实现位置 |
+|------|------|--------|----------|
+| P0-G3 | 每次工具调用执行超时 | 60s（`DefaultToolTimeout`） | `ToolDecorator.applyTimeout` |
+| P0-D | 工具结果大小预算 + 截断 | 10KB（`DefaultResultBudget`） | `ToolDecorator.truncateResult` |
+| P2-E | ConcurrentSafe 工具确定性缓存 | 按工具名判定（`IsCacheable`） | `ToolDecorator.lookupCache/storeCache` |
+| P1-C | 工具安全分类 | 未知默认 Exclusive | `ClassifyTool(name)` |
+
+**接口设计**：
+
+- `NewToolDecorator(inner, cfg)` 返回 `trpctool.CallableTool` 接口类型
+- 内部工具支持流式时返回 `*streamableToolDecorator`（满足 `StreamableTool`）
+- 内部工具不支持流式时返回 `*ToolDecorator`（**不**满足 `StreamableTool`，避免框架误分类）
+- 编译期接口断言：`var _ trpctool.CallableTool = (*ToolDecorator)(nil)` + `var _ trpctool.StreamableTool = (*streamableToolDecorator)(nil)`
+
+**已知限制**：
+
+- DeferredManager 延迟加载的工具不经过装饰器（框架 runner 层有自己的治理）
+- ToolSet 管理的工具每次 `Tools(ctx)` 创建新装饰器实例，缓存不生效（超时和预算仍生效）
+- 缓存踩踏：并发首次调用相同参数可能多次执行 inner tool（P2 优先级可接受）
 
 ### 7.2 工具注册表
 

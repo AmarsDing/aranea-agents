@@ -85,6 +85,8 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260724, Name: "invariant_constraints", SQL: "sql/migrations/20260724_invariant_constraints.sql"},
 	{Version: 20260725, Name: "memory_bitemporal", SQL: "sql/migrations/20260725_memory_bitemporal.sql"},
 	{Version: 20260726, Name: "memory_links", SQL: "sql/migrations/20260726_memory_links.sql"},
+	{Version: 20260727, Name: "memory_decay_columns", SQL: "sql/migrations/20260727_memory_decay_columns.sql"},
+	{Version: 20260728, Name: "memory_job_deadletter_schema", SQL: "sql/migrations/20260728_memory_job_deadletter_schema.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

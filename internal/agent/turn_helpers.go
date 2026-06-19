@@ -26,6 +26,12 @@ type EventStreamResult struct {
 	Reasoning     strings.Builder
 	PromptTok     int
 	CompletionTok int
+	// prevRoundsCompletionTok tracks the sum of completion tokens from
+	// previous LLM rounds (when promptTok increased). CompletionTok is
+	// always prevRoundsCompletionTok + current round's max completion.
+	// This enables correct multi-round accumulation: prompt tokens are
+	// cumulative (take max), but completion tokens are per-round (sum).
+	prevRoundsCompletionTok int
 	// MemberUsage maps agent_key → latest usage from member completion events (Team parallel/swarm).
 	MemberUsage map[string]MemberTokenUsage
 	// MemberToolCalls maps agent_key → tool_call envelope count observed during the turn.
@@ -98,11 +104,22 @@ func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta 
 	if result == nil {
 		return
 	}
+	// Multi-round accumulation strategy:
+	// - Prompt tokens are cumulative across rounds (each round includes prior
+	//   context), so we take the max.
+	// - Completion tokens are per-round, so we sum them across rounds.
+	// - Within a single round (streaming chunks), usage is reported cumulatively,
+	//   so we take the max for that round.
+	// prevRoundsCompletionTok tracks the locked-in total from prior rounds;
+	// CompletionTok = prevRoundsCompletionTok + current round's max completion.
 	if promptTok > result.PromptTok {
-		result.CompletionTok = completionTok
+		// New LLM round detected: lock in previous rounds' total.
+		result.prevRoundsCompletionTok = result.CompletionTok
 		result.PromptTok = promptTok
-	} else if promptTok == result.PromptTok && completionTok > result.CompletionTok {
-		result.CompletionTok = completionTok
+		result.CompletionTok = result.prevRoundsCompletionTok + completionTok
+	} else if promptTok == result.PromptTok && completionTok > (result.CompletionTok-result.prevRoundsCompletionTok) {
+		// Same round, streaming update: take max completion for this round.
+		result.CompletionTok = result.prevRoundsCompletionTok + completionTok
 	}
 	if !isTeamMemberAuthor(ev.Author, meta) {
 		return
@@ -118,7 +135,7 @@ func accumulateStreamUsage(result *EventStreamResult, ev *trpcevent.Event, meta 
 	if promptTok > prev.PromptTokens {
 		result.MemberUsage[key] = MemberTokenUsage{
 			PromptTokens:     promptTok,
-			CompletionTokens: completionTok,
+			CompletionTokens: prev.CompletionTokens + completionTok,
 		}
 	} else if promptTok == prev.PromptTokens && completionTok > prev.CompletionTokens {
 		result.MemberUsage[key] = MemberTokenUsage{

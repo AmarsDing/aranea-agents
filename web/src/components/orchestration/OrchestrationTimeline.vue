@@ -33,7 +33,7 @@ import type {
   OrchestrationTimelineData,
   TimelinePhaseType,
   TimelineStepStatus,
-} from './timelineTypes';
+} from '../../features/orchestration/timelineTypes';
 
 defineProps<{
   timeline: OrchestrationTimelineData | null;

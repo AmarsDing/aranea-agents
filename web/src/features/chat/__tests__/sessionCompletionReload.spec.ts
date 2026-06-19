@@ -1,10 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import { reloadSessionAfterCompletion } from '../sessionCompletionReload';
 
+/**
+ * T7.3c: Legacy reload path removed. AF mode is the only path.
+ * Activity events are the source of truth for assistant content — the
+ * streaming state IS the final state, so no message reload is needed.
+ * Only session metadata (token usage, context ratio, session list) is refreshed.
+ */
 describe('reloadSessionAfterCompletion (DECO-R-P2-02)', () => {
-  it('uses dropStaleInFlight + afterRevision for agent turns and refreshes sessions', async () => {
+  it('refreshes session metadata + agent session list (no message reload)', async () => {
     const loadMessages = vi.fn().mockResolvedValue(undefined);
-    const loadAgentSessions = vi.fn().mockResolvedValue(undefined);
+    const loadSessions = vi.fn().mockResolvedValue(undefined);
     const fetchAndReconcileSession = vi.fn().mockResolvedValue(undefined);
     const clear = vi.fn();
 
@@ -12,8 +18,7 @@ describe('reloadSessionAfterCompletion (DECO-R-P2-02)', () => {
       sessionStore: {
         entityKind: 'agent',
         selectedTeamId: '',
-        loadAgentSessions,
-        loadTeamSessions: vi.fn(),
+        loadSessions,
         fetchAndReconcileSession,
       } as never,
       messageStore: {
@@ -25,75 +30,88 @@ describe('reloadSessionAfterCompletion (DECO-R-P2-02)', () => {
       resolveAgentId: () => 'agent-1',
     });
 
-    expect(loadMessages).toHaveBeenCalledWith({
-      sessionId: 'sess-1',
-      dropStaleInFlight: true,
-      afterRevision: 5,
-    });
-    expect(clear).toHaveBeenCalledWith('sess-1');
+    // T7.3c: Legacy message reload removed — AF streaming state is final.
+    expect(loadMessages).not.toHaveBeenCalled();
+    expect(clear).not.toHaveBeenCalled();
+    // Session metadata + session list are still refreshed.
     expect(fetchAndReconcileSession).toHaveBeenCalledWith('sess-1');
-    expect(loadAgentSessions).toHaveBeenCalledWith('agent-1', { refreshOnly: true });
+    expect(loadSessions).toHaveBeenCalledWith('agent-1', { refreshOnly: true });
   });
 
-  it('falls back to full load when revision is 0', async () => {
+  it('skips session list refresh when agentId is empty', async () => {
     const loadMessages = vi.fn().mockResolvedValue(undefined);
+    const loadSessions = vi.fn().mockResolvedValue(undefined);
     const fetchAndReconcileSession = vi.fn().mockResolvedValue(undefined);
-    const clear = vi.fn();
 
     await reloadSessionAfterCompletion({
       sessionStore: {
         entityKind: 'agent',
         selectedTeamId: '',
-        loadAgentSessions: vi.fn(),
-        loadTeamSessions: vi.fn(),
+        loadSessions,
         fetchAndReconcileSession,
       } as never,
       messageStore: {
         loadMessages,
         sessionRevisionBySession: {},
       } as never,
-      streamingSnapshots: { clear } as never,
+      streamingSnapshots: { clear: vi.fn() } as never,
       sessionId: 'sess-new',
-      resolveAgentId: () => 'agent-1',
+      resolveAgentId: () => '',
     });
 
-    expect(loadMessages).toHaveBeenCalledWith({
-      sessionId: 'sess-new',
-      dropStaleInFlight: true,
-      afterRevision: undefined,
-    });
+    expect(loadMessages).not.toHaveBeenCalled();
     expect(fetchAndReconcileSession).toHaveBeenCalledWith('sess-new');
+    expect(loadSessions).not.toHaveBeenCalled();
   });
 
-  it('uses the same incremental path for team turns', async () => {
+  it('refreshes team session list for team turns', async () => {
     const loadMessages = vi.fn().mockResolvedValue(undefined);
-    const loadTeamSessions = vi.fn().mockResolvedValue(undefined);
+    const loadSessions = vi.fn().mockResolvedValue(undefined);
     const fetchAndReconcileSession = vi.fn().mockResolvedValue(undefined);
-    const clear = vi.fn();
 
     await reloadSessionAfterCompletion({
       sessionStore: {
         entityKind: 'team',
         selectedTeamId: 'team-1',
-        loadAgentSessions: vi.fn(),
-        loadTeamSessions,
+        loadSessions,
         fetchAndReconcileSession,
       } as never,
       messageStore: {
         loadMessages,
         sessionRevisionBySession: { 'sess-team': 12 },
       } as never,
-      streamingSnapshots: { clear } as never,
+      streamingSnapshots: { clear: vi.fn() } as never,
       sessionId: 'sess-team',
     });
 
-    expect(loadMessages).toHaveBeenCalledWith({
-      sessionId: 'sess-team',
-      dropStaleInFlight: true,
-      afterRevision: 12,
-    });
-    expect(clear).toHaveBeenCalledWith('sess-team');
+    // T7.3c: Legacy message reload removed — AF streaming state is final.
+    expect(loadMessages).not.toHaveBeenCalled();
     expect(fetchAndReconcileSession).toHaveBeenCalledWith('sess-team');
-    expect(loadTeamSessions).toHaveBeenCalledWith('team-1');
+    expect(loadSessions).toHaveBeenCalledWith('team-1');
+  });
+
+  it('no-ops when sessionId is empty', async () => {
+    const loadMessages = vi.fn().mockResolvedValue(undefined);
+    const loadSessions = vi.fn().mockResolvedValue(undefined);
+    const fetchAndReconcileSession = vi.fn().mockResolvedValue(undefined);
+
+    await reloadSessionAfterCompletion({
+      sessionStore: {
+        entityKind: 'agent',
+        selectedTeamId: '',
+        loadSessions,
+        fetchAndReconcileSession,
+      } as never,
+      messageStore: {
+        loadMessages,
+        sessionRevisionBySession: {},
+      } as never,
+      streamingSnapshots: { clear: vi.fn() } as never,
+      sessionId: '  ',
+    });
+
+    expect(loadMessages).not.toHaveBeenCalled();
+    expect(fetchAndReconcileSession).not.toHaveBeenCalled();
+    expect(loadSessions).not.toHaveBeenCalled();
   });
 });

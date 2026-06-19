@@ -74,7 +74,7 @@ export function envelopeToToolEvent(env: Envelope, phase: 'before' | 'after'): T
   const result = unwrapParsed(resultRecord) as Record<string, unknown> | null | undefined;
   const toolName = tc.name || 'tool';
   // AF-Phase3: activity_kind is always provided by the backend ActivityProjector.
-  // The classifyActivityKind fallback is no longer needed.
+  // Default to 'tool' when missing (legacy envelopes only).
   const kind = (tc.activity_kind || 'tool') as ActivityKind;
   // Resolve the user-facing error message with the following precedence:
   //   1) result.error (string body)            — most descriptive
@@ -221,6 +221,18 @@ function patchOrphanToolMessages(
   return changed ? next : messages;
 }
 
+/**
+ * Cache for {@link toolEventFromMessage} parsed results, keyed by `message.id`.
+ *
+ * Only used for the `JSON.parse(options_json)` fallback path — messages with
+ * `tool_event` already set take the fast path and bypass this cache entirely.
+ *
+ * Invalidation: {@link clearToolEventCache} is called from `messageStore` on
+ * session switch / message reload / message clear, so stale entries from a
+ * previous server load cannot leak into a new session's view.
+ */
+const toolEventCache = new Map<string, ToolUseEvent | null>();
+
 export function toolEventFromMessage(message: Message): ToolUseEvent | null {
   // `tool_event` is typed as `unknown` on the cross-domain Message facade.
   // Run the candidate through isToolUseEvent so the cast is structural, not
@@ -229,11 +241,45 @@ export function toolEventFromMessage(message: Message): ToolUseEvent | null {
   if (isToolUseEvent(message.tool_event)) {
     return message.tool_event;
   }
+  // Cache lookup (only for the JSON.parse fallback path). Skip cache when
+  // message.id is missing — those rows are ephemeral and cannot be safely
+  // keyed.
+  const cacheKey = message.id || '';
+  if (cacheKey) {
+    const cached = toolEventCache.get(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+  }
+  let result: ToolUseEvent | null = null;
   try {
     const raw = JSON.parse(message.options_json || '{}') as { tool_event?: unknown };
-    if (isToolUseEvent(raw.tool_event)) return raw.tool_event;
-    return null;
+    if (isToolUseEvent(raw.tool_event)) {
+      result = raw.tool_event;
+    }
   } catch {
-    return null;
+    result = null;
+  }
+  if (cacheKey) {
+    toolEventCache.set(cacheKey, result);
+  }
+  return result;
+}
+
+/**
+ * Clear the {@link toolEventCache}. Call from `messageStore` on session switch,
+ * message reload, or message clear to prevent stale parsed results from a
+ * previous server load (server may update `options_json` for the same id).
+ *
+ * @param messageIds When provided, removes only the given ids; otherwise
+ *                   clears the entire cache.
+ */
+export function clearToolEventCache(messageIds?: string[]): void {
+  if (!messageIds) {
+    toolEventCache.clear();
+    return;
+  }
+  for (const id of messageIds) {
+    toolEventCache.delete(id);
   }
 }

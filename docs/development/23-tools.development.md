@@ -38,7 +38,10 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | Adapter | `internal/tools/trpc/effective_config.go` | ToolsetConfigFromEffectiveKeys + ToolsetConfigHasAny |
 | Alias | `internal/tools/alias/alias.go` | RuntimeToolNameAliases（12 条映射，与 policy alias 双向一致 TPM-P1-01） |
 | Injection | `internal/agent/trpc_build.go` | BuildTRPCLLMAgent()：工具注入入口 |
-| Assembly | `internal/agent/tool_assembly.go` | buildToolsetsForAgent + MCP + Override 配置合并 + 工作区统一 |
+| Assembly | `internal/agent/tool_assembly.go` | buildToolsetsForAgent + MCP + Override 配置合并 + 工作区统一 + ApplyDecorators |
+| Decorator | `internal/tools/decorator.go` | ToolDecorator（P0-G3 超时 + P0-D 结果预算 + P2-E 缓存）+ streamableToolDecorator |
+| Decorator Apply | `internal/tools/decorator_apply.go` | ApplyDecorators：包装 standalone Tools + ToolSets |
+| Safety | `internal/tools/safety.go` | ClassifyTool（P1-C 工具安全分类：ConcurrentSafe / Exclusive） |
 | Recorder | `internal/agent/tool_invocation_recorder.go` | AfterTool 调用记录 + 预览截断 |
 | Runtime | `internal/agent/tool_runtime_options.go` | Filter / Retry 策略 |
 | Cache | `internal/tools/cache/result_cache.go` | ResultCache LRU + 锁保护 |
@@ -62,7 +65,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | Tool Callbacks | ✅ 已实现 | AfterTool 记录 ToolInvocation |
 | Tool Filter | ✅ 已实现 | ExcludeToolNamesFilter (deny 列表) |
 | Tool Retry | ✅ 已实现 | RetryPolicy (可配置 maxAttempts/backoff/jitter) |
-| Tool 并行 | ✅ 已实现 | WithEnableParallelTools |
+| Tool 并行 | ✅ 已实现 | WithEnableParallelTools（默认开启）+ ToolDecorator 保护（超时/预算/缓存） |
 | Memory Tools | ✅ 已实现 | memorytool.DefaultTools() (5 个标准工具) |
 | Knowledge Search | ✅ 已实现 | knowledgepkg.NewSearchTool() + WithRetriever |
 | MCP ToolSet | ✅ 已实现 | trpcmcp.NewMCPToolSet (stdio/sse/streamable_http) |

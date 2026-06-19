@@ -28,6 +28,7 @@ func (r *cancelTeamRunRepo) ListTeamsByDepartmentID(_ context.Context, _ string)
 // TeamWriter stubs
 func (r *cancelTeamRunRepo) CreateTeam(_ context.Context, t biz.Team) (biz.Team, error) { return t, nil }
 func (r *cancelTeamRunRepo) UpdateTeam(_ context.Context, t biz.Team) (biz.Team, error) { return t, nil }
+func (r *cancelTeamRunRepo) UpdateTeamWhereStatus(_ context.Context, _, _, _ string) (bool, error) { return true, nil }
 func (r *cancelTeamRunRepo) DeleteTeam(_ context.Context, _ string) error                 { return nil }
 func (r *cancelTeamRunRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
 
@@ -58,6 +59,7 @@ func (r *cancelTeamRunRepo) UpdateTeamRun(_ context.Context, run biz.TeamRun) er
 	r.runs[run.ID] = run
 	return nil
 }
+func (r *cancelTeamRunRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) { return true, nil }
 func (r *cancelTeamRunRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error { return nil }
 func (r *cancelTeamRunRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error { return nil }
 func (r *cancelTeamRunRepo) UpdateTeamRunTraceID(_ context.Context, _, _ string) error             { return nil }

@@ -877,16 +877,18 @@ export function useChatWorkspace() {
       // AF-FE-14: Load Activity data BEFORE messages so that:
       // 1. The AF path (buildAllConversationTurnsFromActivities) has data
       //    available when conversationTurns is computed.
-      // 2. loadMessages can pass activityFirst=true to exclude the server's
-      //    merged assistant ChatMessage, preventing content duplication.
+      // 2. Reconstructed actv-* messages (streaming_snapshot origin) are
+      //    available to merge into local state, which automatically excludes
+      //    the server's merged assistant ChatMessage via the hasSnapshots
+      //    guard in mergeSessionMessages, preventing content duplication.
       // Without this ordering, the server's merged message and AF data
       // coexist, causing "thinking/reply merged into one UI block" and
       // content duplication bugs.
       //
-      // Only pass activityFirst=true to loadMessages when Activity data
-      // is actually available. Pre-AF sessions (no Activity records) rely
-      // on the server's merged assistant message for content display.
-      let activityFirstForMerge = false;
+      // Only reconstruct Activity messages when Activity data is actually
+      // available. Pre-AF sessions (no Activity records) rely on the
+      // server's merged assistant message for content display.
+      let hasActivityData = false;
       let activityReconstructedMessages: import('../../chat/types').Message[] = [];
       await activityTimeline.loadActivitiesFromAPI(sessionId);
       // AF-GAP-05: When AF API fails after 5 retries, show a visible
@@ -906,20 +908,19 @@ export function useChatWorkspace() {
       }
       // Check if Activity data was successfully loaded (loadError indicates API failure)
       const afActivities = activityTimeline.activities.value;
-      activityFirstForMerge = afActivities.length > 0 && !activityTimeline.loadError.value;
+      hasActivityData = afActivities.length > 0 && !activityTimeline.loadError.value;
       // Reconstruct per-round actv-* messages from Activity records.
-      // When the server's merged assistant ChatMessage is excluded
-      // (activityFirst=true), these reconstructed messages provide the
-      // per-round structure needed for correct interleaved display
-      // (thinking → tool → thinking → tool → reply).
-      if (activityFirstForMerge) {
+      // These streaming_snapshot messages provide the per-round structure
+      // needed for correct interleaved display (thinking → tool → reply)
+      // and automatically exclude the server's merged assistant ChatMessage.
+      if (hasActivityData) {
         activityReconstructedMessages = reconstructMessagesFromActivities(afActivities, sessionId);
       }
 
       await messageStore.loadMessages(
         replace
-          ? { sessionId, replace: true, activityFirst: activityFirstForMerge, activityMessages: activityReconstructedMessages }
-          : { sessionId, activityFirst: activityFirstForMerge, activityMessages: activityReconstructedMessages },
+          ? { sessionId, replace: true, activityMessages: activityReconstructedMessages }
+          : { sessionId, activityMessages: activityReconstructedMessages },
       );
     } catch (err) {
       $q.notify({

@@ -118,3 +118,41 @@ type ActivityRepo interface {
 	ActivityReader
 	ActivityWriter
 }
+
+// ActivityConfirmParams holds parameters for creating a confirm Activity.
+type ActivityConfirmParams struct {
+	ToolName      string
+	ToolArguments string
+	Content       string
+}
+
+// ActivityEmitter emits Activity events for runtime notifications.
+// Implemented by agent.ActivityProjector, accessed via context by plugins/hooks
+// that cannot directly import the agent package (e.g. cost_guard, model_router,
+// tool_confirmation). The turn/session IDs are derived from the projector's
+// internal ProjectMeta (set via OnTurnStart), so callers don't need to pass them.
+// Stability:evolving
+type ActivityEmitter interface {
+	// EmitNotice emits a notice Activity (kind=notice) and immediately completes it.
+	EmitNotice(ctx context.Context, content, noticeType string) error
+	// EmitConfirmRequest emits a confirm Activity (kind=confirm, status=tool_blocked)
+	// and returns the activity ID for later result correlation.
+	EmitConfirmRequest(ctx context.Context, params ActivityConfirmParams) (activityID string, err error)
+	// EmitConfirmResult updates a confirm Activity with the user's response.
+	EmitConfirmResult(ctx context.Context, activityID string, approved bool) error
+}
+
+// activityEmitterKey is the context key for ActivityEmitter.
+type activityEmitterKey struct{}
+
+// WithActivityEmitter injects an ActivityEmitter into the context.
+func WithActivityEmitter(ctx context.Context, e ActivityEmitter) context.Context {
+	return context.WithValue(ctx, activityEmitterKey{}, e)
+}
+
+// ActivityEmitterFromContext extracts an ActivityEmitter from the context.
+// Returns nil if no emitter is present.
+func ActivityEmitterFromContext(ctx context.Context) ActivityEmitter {
+	e, _ := ctx.Value(activityEmitterKey{}).(ActivityEmitter)
+	return e
+}

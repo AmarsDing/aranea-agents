@@ -20,6 +20,7 @@ func (r *deadLetterTeamRepo) GetTeamByID(context.Context, string) (biz.Team, err
 }
 func (r *deadLetterTeamRepo) CreateTeam(context.Context, biz.Team) (biz.Team, error) { return biz.Team{}, nil }
 func (r *deadLetterTeamRepo) UpdateTeam(context.Context, biz.Team) (biz.Team, error) { return biz.Team{}, nil }
+func (r *deadLetterTeamRepo) UpdateTeamWhereStatus(_ context.Context, _, _, _ string) (bool, error) { return true, nil }
 func (r *deadLetterTeamRepo) DeleteTeam(context.Context, string) error { return nil }
 func (r *deadLetterTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
 func (r *deadLetterTeamRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
@@ -41,6 +42,7 @@ func (r *deadLetterTeamRepo) CreateTeamRun(context.Context, biz.TeamRun) (biz.Te
 	return biz.TeamRun{}, nil
 }
 func (r *deadLetterTeamRepo) UpdateTeamRun(context.Context, biz.TeamRun) error { return nil }
+func (r *deadLetterTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) { return true, nil }
 func (r *deadLetterTeamRepo) UpdateTeamRunGraphExecutionID(context.Context, string, string) error {
 	return nil
 }

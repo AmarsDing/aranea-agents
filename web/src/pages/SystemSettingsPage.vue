@@ -17,8 +17,8 @@
           active-color="primary"
           indicator-color="primary"
         >
-          <q-tab name="general" label="常规" icon="tune" />
-          <q-tab name="catalog" label="模型目录" icon="dns" />
+          <q-tab name="general" :label="t('settingsPage.tabGeneral')" icon="tune" />
+          <q-tab name="catalog" :label="t('settingsPage.tabCatalog')" icon="dns" />
         </q-tabs>
         <q-separator />
         <q-tab-panels v-model="settingsTab" animated>
@@ -32,7 +32,7 @@
                     <div class="section-heading__main">
                       <div class="section-title">
                         <q-icon name="folder_open" size="sm" color="primary" />
-                        <span class="section-title__text">{{ t('settingsPage.pathsTitle', '路径') }}</span>
+                        <span class="section-title__text">{{ t('settingsPage.pathsTitle') }}</span>
                       </div>
                       <p class="settings-section__hint">{{ t('settingsPage.rootDirHint') }}</p>
                     </div>
@@ -232,15 +232,15 @@
                     <div class="section-heading__main">
                       <div class="section-title">
                         <q-icon name="park" size="sm" color="primary" />
-                        <span class="section-title__text">附带生态</span>
+                        <span class="section-title__text">{{ t('settingsPage.ecosystemTitle') }}</span>
                       </div>
-                      <p class="settings-section__hint">加载行业预设生态，自动创建对应的 Agent、Team 和分类节点。</p>
+                      <p class="settings-section__hint">{{ t('settingsPage.ecosystemHint') }}</p>
                     </div>
                   </div>
 
                   <div v-if="ecosystemLoading" class="row items-center q-py-sm">
                     <q-spinner-dots color="primary" size="28px" />
-                    <span class="q-ml-sm text-grey-7">正在加载生态状态…</span>
+                    <span class="q-ml-sm text-grey-7">{{ t('settingsPage.ecosystemLoading') }}</span>
                   </div>
 
                   <template v-else-if="ecosystemEntries.length > 0">
@@ -248,13 +248,13 @@
                       <div v-for="[industry, info] in ecosystemEntries" :key="industry" class="ecosystem-industry-row">
                         <div class="ecosystem-industry-row__label">
                           <span class="text-body2 text-weight-medium">{{ industry }}</span>
-                          <q-badge v-if="info.loaded" color="positive" outline label="已加载" class="q-ml-sm" />
-                          <q-badge v-else color="grey" outline label="未加载" class="q-ml-sm" />
+                          <q-badge v-if="info.loaded" color="positive" outline :label="t('settingsPage.ecosystemLoaded')" class="q-ml-sm" />
+                          <q-badge v-else color="grey" outline :label="t('settingsPage.ecosystemNotLoaded')" class="q-ml-sm" />
                         </div>
                         <div v-if="info.loaded" class="ecosystem-industry-row__stats text-caption text-grey-7">
                           <span>Agent: {{ info.agents ?? 0 }}</span>
                           <span class="q-ml-md">Team: {{ info.teams ?? 0 }}</span>
-                          <span class="q-ml-md">分类节点: {{ info.taxonomy_nodes ?? 0 }}</span>
+                          <span class="q-ml-md">{{ t('settingsPage.ecosystemTaxonomyNodes') }}: {{ info.taxonomy_nodes ?? 0 }}</span>
                         </div>
                         <div class="ecosystem-industry-row__action">
                           <q-btn
@@ -264,7 +264,7 @@
                             no-caps
                             color="primary"
                             icon="download"
-                            label="加载"
+                            :label="t('settingsPage.ecosystemLoad')"
                             :loading="ecosystemActionLoading === industry"
                             @click="handleLoadIndustry(industry)"
                           />
@@ -275,7 +275,7 @@
                             no-caps
                             color="negative"
                             icon="delete_outline"
-                            label="卸载"
+                            :label="t('settingsPage.ecosystemUnload')"
                             :loading="ecosystemActionLoading === industry"
                             @click="confirmUnloadIndustry(industry, info)"
                           />
@@ -289,7 +289,7 @@
                       no-caps
                       color="primary"
                       icon="download"
-                      label="加载全部附带生态"
+                      :label="t('settingsPage.ecosystemLoadAll')"
                       class="q-mt-sm"
                       :loading="ecosystemActionLoading === '__all__'"
                       @click="handleLoadAll"
@@ -300,7 +300,7 @@
                     <template #avatar>
                       <q-icon name="info" color="grey" />
                     </template>
-                    暂无可用生态预设。
+                    {{ t('settingsPage.ecosystemEmpty') }}
                   </q-banner>
                 </section>
               </div>
@@ -340,27 +340,24 @@
     <q-dialog v-model="unloadDialogVisible" persistent>
       <q-card class="app-dialog-card app-glass-dialog" style="min-width: 340px">
         <q-card-section>
-          <div class="text-h6">确认卸载</div>
+          <div class="text-h6">{{ t('settingsPage.unloadConfirmTitle') }}</div>
         </q-card-section>
         <q-card-section>
-          <p>
-            即将卸载行业 <strong>{{ unloadTargetIndustry }}</strong
-            >，将删除以下资源：
-          </p>
+          <p>{{ t('settingsPage.unloadConfirmHint', { industry: unloadTargetIndustry }) }}</p>
           <ul class="q-pl-md q-mt-sm">
-            <li>Agent: {{ unloadTargetInfo?.agents ?? 0 }} 个</li>
-            <li>Team: {{ unloadTargetInfo?.teams ?? 0 }} 个</li>
-            <li>分类节点: {{ unloadTargetInfo?.taxonomy_nodes ?? 0 }} 个</li>
+            <li>{{ t('settingsPage.unloadConfirmAgents', { count: unloadTargetInfo?.agents ?? 0 }) }}</li>
+            <li>{{ t('settingsPage.unloadConfirmTeams', { count: unloadTargetInfo?.teams ?? 0 }) }}</li>
+            <li>{{ t('settingsPage.unloadConfirmTaxonomyNodes', { count: unloadTargetInfo?.taxonomy_nodes ?? 0 }) }}</li>
           </ul>
-          <q-banner dense rounded class="bg-warning text-dark q-mt-md"> 此操作不可撤销。确定要卸载吗？ </q-banner>
+          <q-banner dense rounded class="bg-warning text-dark q-mt-md"> {{ t('settingsPage.unloadConfirmWarning') }} </q-banner>
         </q-card-section>
         <q-card-actions align="right">
-          <q-btn v-close-popup flat no-caps label="取消" />
+          <q-btn v-close-popup flat no-caps :label="t('common.cancel')" />
           <q-btn
             unelevated
             no-caps
             color="negative"
-            label="确认卸载"
+            :label="t('settingsPage.unloadConfirmAction')"
             :loading="ecosystemActionLoading === unloadTargetIndustry"
             @click="handleUnloadConfirmed"
           />

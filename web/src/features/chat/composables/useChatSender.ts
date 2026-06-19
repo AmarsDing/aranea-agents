@@ -15,6 +15,7 @@ import { createPlaceholderMessage } from '../streamHandlers';
 import { shouldBlockAttachmentsForModel } from '../modelCapabilities';
 // TECH-DEBT resolved: moved sendMessage to runtimeStore.send — chat optimization
 import { AWAIT_KIND_TOOL_CONFIRM } from '../awaitConstants';
+import { sendCommand } from '../../../realtime/command_channel';
 import {
   CHAT_RUN_STALL_CHECK_INTERVAL_MS,
   CHAT_RUN_STALL_NOTIFY_THRESHOLD_MS,
@@ -286,6 +287,47 @@ export function useChatSender(deps: SenderDeps) {
     const msgs = deps.messageStore.getMessages(sid);
     const failed = msgs.find((m) => m.id === pendingUserId);
     if (!failed || failed.status !== 'failed') return;
+
+    // 问题 4 修复：活跃 run 期间重试失败消息时，直接入队而非走 sendUserContent。
+    // sendUserContent 在 followUp=true 时会进入 enqueueDuringRun 路径并 dropPendingUserRow，
+    // 但此前已将状态重置为 'ok'，用户既看不到失败标记也看不到排队反馈。
+    // 正确做法：检测到活跃 run 时直接 enqueue，成功后移除失败行并提示已加入队列，
+    // 消息通过 ChatPendingQueue 展示，提供清晰的重试反馈。
+    if (isActiveRun()) {
+      const runtime = useChatRuntimeStore();
+      try {
+        const res = await runtime.enqueue(sid, failed.content_markdown);
+        if (res.accepted) {
+          dropPendingUserRow(sid, pendingUserId);
+          $q.notify({
+            type: 'info',
+            message: t('chat.retryQueuedDuringRun', '当前有任务执行中，已加入队列'),
+          });
+          await deps.refreshPendingMessages?.();
+          return;
+        }
+        $q.notify({
+          type: 'warning',
+          message: t('chat.retryEnqueueRejected', '重试失败，请稍后再试'),
+        });
+      } catch (err: unknown) {
+        const errMessage = err instanceof Error ? err.message : '';
+        if (errMessage.includes('CHAT_QUEUE_FULL')) {
+          $q.notify({ type: 'warning', message: t('chat.enqueueQueueFull', '排队消息已满，请稍后再试') });
+        } else {
+          $q.notify({
+            type: 'negative',
+            message:
+              err instanceof Error
+                ? err.message
+                : t('chat.retryEnqueueRejected', '重试失败，请稍后再试'),
+          });
+        }
+      }
+      return;
+    }
+
+    // 无活跃 run：重置状态并重新发送（复用 pendingId 避免占位闪烁）
     failedPendingIds.delete(pendingUserId);
     deps.messageStore.setMessages(
       sid,
@@ -352,7 +394,11 @@ export function useChatSender(deps: SenderDeps) {
       knowledgeBases: string[];
     },
   ): Promise<void> {
-    await runtime.send({
+    // B2: HTTP command channel — submit message and get ACK only.
+    // Full message/state data arrives via the WS data channel.
+    // Do NOT call loadMessages after HTTP success — the WS data channel
+    // is the single source of truth for message data.
+    await sendCommand({
       session_id: sessionId,
       agent_key: agentKey,
       team_id: teamId,
@@ -552,28 +598,16 @@ export function useChatSender(deps: SenderDeps) {
               knowledgeBases: deps.selectedKnowledgeBases.value,
             },
           );
-          // T1.7: markSendingDone() immediately after fallback success so
-          // the sending state doesn't stay true forever. The message was
-          // accepted by the backend; subsequent loadMessages failure should
-          // NOT mark the pending as failed.
+          // B2: HTTP command channel returns ACK only — no loadMessages.
+          // The WS data channel pushes the persisted message and subsequent
+          // streaming/state events. markSendingDone so the sending state
+          // doesn't stay true; the WS data channel will deliver the message.
           if (!followUp) markSendingDone();
           clearAttachments = true;
-          // S-06 + T1.7: Drop the pending user row AFTER loadMessages
-          // succeeds. If loadMessages fails, the message was still sent
-          // successfully — don't mark it as failed, just notify the user
-          // that the message list couldn't be refreshed.
-          try {
-            await deps.messageStore.loadMessages({ sessionId });
-            dropPendingUserRow(sessionId, pendingUserId);
-          } catch (loadErr) {
-            // T1.7: loadMessages failed but the message was sent. Don't
-            // mark pending as failed; just notify the user to refresh.
-            $q.notify({
-              type: 'warning',
-              message: t('chat.loadMessagesFailed', '消息已发送，但消息列表刷新失败，请手动刷新'),
-            });
-            dropPendingUserRow(sessionId, pendingUserId);
-          }
+          // B2: Drop the pending user row — the WS data channel will deliver
+          // the server-persisted user message. If the WS is disconnected,
+          // the next reconnect sync (event_replay) will fetch missed messages.
+          dropPendingUserRow(sessionId, pendingUserId);
         } catch (httpError) {
           markPendingUserFailed(sessionId, pendingUserId, t('chat.sendFailedRetry', '发送失败，请点击重试'));
           if (!followUp) markSendingDone();

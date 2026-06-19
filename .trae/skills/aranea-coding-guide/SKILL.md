@@ -14,7 +14,7 @@ description: "Aranea-Agents 项目统一编码指南。当在本项目编写 Go 
 ## 目录
 
 - [第一章：架构总纲](#第一章架构总纲)
-- [第二章：26 条红线](#第二章26-条红线含-3-条已降级为编程规范)
+- [第二章：27 条红线](#第二章27-条红线含-3-条已降级为编程规范)
 - [第三章：代码探索约束](#第三章代码探索约束)
 - [第四章：决策树](#第四章决策树)
 - [第五章：分层编码规范](#第五章分层编码规范)
@@ -97,10 +97,10 @@ internal/data           ← Repo 实现（Ent ORM + pgvector）
 
 ---
 
-## 第二章：26 条红线（含 3 条已降级为编程规范）
+## 第二章：27 条红线（含 3 条已降级为编程规范）
 
 > 违反即停，不可绕过。其中 #16/#19/#20 已降级为编程规范 CS-B1/CS-B2/CS-B18，保留编号便于追溯。
-> 红线分两类：**架构边界**（#1-#9, #12, #15, #17, #18）防止模块耦合越界；**运行时正确性**（#10, #11, #13, #14, #21-#26）防止生产事故。
+> 红线分两类：**架构边界**（#1-#9, #12, #15, #17, #18, #27）防止模块耦合越界与框架源码污染；**运行时正确性**（#10, #11, #13, #14, #21-#26）防止生产事故。
 
 | # | 红线 | 正确做法 |
 |---|------|----------|
@@ -130,6 +130,7 @@ internal/data           ← Repo 实现（Ent ORM + pgvector）
 | 24 | 跨表/跨 Repo 写操作必须包事务 | 用 `Data.ExecInTx` 或 biz 层 `XxxTxRepo.ExecInTx`，禁止跨 Repo 多次独立写不包事务 |
 | 25 | 禁止日志输出敏感字段明文 | credential/api_key/password/token/secret 等用 `loggateway.Redacted()` 或标记 `.Sensitive()`，禁止 `Str("key", value)` 直出 |
 | 26 | 外部输入/接口返回值使用前必须 nil 检查 | proto 请求字段、Repo 返回值、第三方 API 响应使用前判 nil；指针解引用前必须确认非 nil |
+| 27 | 不得修改 `pkg/trpc-agent-go` 框架源码 | 框架视为只读依赖；能力扩展通过适配层（`internal/agent`/`internal/tools`/`internal/memory`/`internal/session` 等）实现；如需框架本身改动，提 issue/PR 到上游框架仓库，禁止在本仓内直接改框架源码 |
 
 > **降级说明**：红线 #16（log/slog）→ CS-B1、#19（deprecated 方法）→ CS-B2、#20（YAGNI 过度设计）→ CS-B18 已降级为编程规范（见第十四章），因可通过 linter/静态分析约束或属可维护性问题，不属于运行时正确性违反。红线编号不变，但违反级别从"阻断"降为"建议"。
 >
@@ -359,6 +360,7 @@ v1.RegisterXxxServiceServer(srv, svc)
 | 先查框架 API | 查 `pkg/trpc-agent-go` 的 Runner/Agent/Tool API 后再实现 | 在 biz 重写运行时逻辑 |
 | 不复制框架 | 调用框架 API | 把框架内部实现整块复制到业务目录 |
 | 编排语义归框架 | Runner/Agent/Tool/Session/Event 在框架中 | 在业务包中平行维护编排逻辑 |
+| 框架源码只读 | 视 `pkg/trpc-agent-go` 为只读依赖，扩展走适配层 | 直接修改 `pkg/trpc-agent-go` 源码（红线 #27） |
 
 ### 6.2 运行时装配层次
 
@@ -1015,6 +1017,7 @@ cmd/admin/wire.go                         ← Wire 注入
 - [ ] **Biz 层**：无 `pkg/trpc-agent-go` import，无 proto import
 - [ ] **Data 层**：仅 `d.RW()`/`d.RWDB()`/`d.Postgres()` 访问，无并联 SQLite 连接，无已废弃的 `d.Ent()`/`d.RawDB()`/`d.ReadDB()`
 - [ ] **Agent/Tools/Team 层**：框架 API 调用合规，不复制框架内部逻辑
+- [ ] **框架源码只读**：未修改 `pkg/trpc-agent-go` 任何文件，能力扩展走适配层（红线 #27）
 - [ ] **模块解耦**：跨模块调用走 biz 级窄接口，不持有对方 Service 具体类型
 - [ ] **Channel**：不 import `graphv1` 等 proto 包，不持有 `*ChatService`
 - [ ] **Team**：不 import chat proto，输入用 `biz.TurnInput`

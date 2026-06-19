@@ -407,11 +407,29 @@ func validateAgentSettings(ctx context.Context, u *AgentUsecase, agent *Agent, s
 	if err := ValidateRalphLoopSettings(settings); err != nil {
 		return err
 	}
+	// 校验 ToolsAllowJSON / ToolsDenyJSON 是有效的 JSON 字符串数组格式。
+	// 注意：allow/deny 列表允许包含 group:* 前缀和未注册的 tool key（设计如此，
+	// 不存在的 key 会被运行时忽略），因此只校验 JSON 格式，不校验 key 存在性。
+	if err := validateToolsPolicyJSON(settings.ToolsAllowJSON, "tools_allow"); err != nil {
+		return err
+	}
+	if err := validateToolsPolicyJSON(settings.ToolsDenyJSON, "tools_deny"); err != nil {
+		return err
+	}
 	if IsA2AProxyAgent(*agent) {
 		settings.IntentPassEnabled = false
 		settings.ToolsEnabled = false
 		settings.MemoryEnabled = false
 		settings.SelfEvolve = false
+	}
+	return nil
+}
+
+// validateToolsPolicyJSON 校验 ToolsAllowJSON / ToolsDenyJSON 是有效的 JSON 字符串数组格式。
+// 空字符串和 "[]" 视为合法（表示无策略）。允许包含 "group:*" 前缀的组 key。
+func validateToolsPolicyJSON(raw, field string) error {
+	if _, err := shared.JSONStringList(raw); err != nil {
+		return apierror.BadRequest("AGENT", field+" json parse: "+err.Error())
 	}
 	return nil
 }

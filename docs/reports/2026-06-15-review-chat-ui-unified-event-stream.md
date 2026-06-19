@@ -808,14 +808,19 @@ degradation 类型：
 | B-05 | ErrorEvent.type='info' 语义重叠修复 | 2026-06-16 | `streamEventTypes.ts` 移除 `ErrorEvent.type` 的 `'info'` 选项（仅保留 `'degradation'`），`useActivityTimeline.ts` fallback 改用 `type: 'degradation'`。`NoticeEvent.type` 保留 `'info'` |
 | B-06 | shouldUseA2UIView/contentLooksLikeA2UIJsonl 死代码删除 | 2026-06-16 | `a2uiParse.ts` 删除两个无消费者的导出函数（`shouldUseA2UIView`、`contentLooksLikeA2UIJsonl`），保留 `parseA2UIJsonl` 和 `A2UIParseLine` 类型 |
 | N-07b | streamEventTypes.ts 注释更新 | 2026-06-16 | 头部注释从"5 种 Activity Kind"更新为"7 种"，移除过时的映射关系说明 |
+| N-20 | Plan step 可读标签 | 2026-06-19 | `activity_projector.go` 新增 `planStepLabel()`/`nodeTypeLabel()` 函数，从 `graphNodeMetadata` 提取 NodeType/StepNumber/ModelName，生成人类可读标签（如"步骤 1 · LLM"） |
+| N-21 | Confirm Activity 运行时集成 | 2026-06-19 | `tool_confirmation.go` 在 ReplyFunc 分支调用 `EmitConfirmRequest`/`EmitConfirmResult`；service 层预创建 ActivityProjector 并注入 runCtx；team 路径同步注入 |
+| N-03 | Notice Activity 运行时集成 | 2026-06-19 | 新增 `biz.ActivityEmitter` 接口 + context 传递机制（`WithActivityEmitter`/`ActivityEmitterFromContext`）；`cost_guard.go` 在 fallback/blocked/budget_exceeded 场景发射 notice；`model_router.go` 在模型切换场景发射 notice |
+| B-04 | PlanStep.children 映射填充 | 2026-06-19 | `streamEventTypes.ts` 为 `PlanEvent` 新增 `children?: StreamEvent[]` 字段；`useActivityTimeline.ts` plan 分支将 `node.children` 映射为 `StreamEvent[]` 填入 `PlanEvent.children`；`PlanBlock.vue` 改用 `activity.children` 替代 `childActivities` prop；`EventStream.vue` 移除 `activityTree`/`childrenMap`/`getChildActivities` |
+| N-08 | activityTimelineTypes.ts 瘦身 | 2026-06-19 | 删除 `DelegateActivity` 接口，`Activity` 联合类型简化为 `StreamEvent` |
+| N-10 | DelegateActivity.vue 迁移 | 2026-06-19 | 删除 `DelegateActivity.vue` 组件；`EventStream.vue` 移除 DelegateActivity 渲染分支和 import |
 
 ### 已评估暂不实施
 
 | # | 优化项 | 原因 |
 |---|--------|------|
-| N-03 | Notice Activity 运行时集成 | 需 ADR：插件层（cost_guard、model_router）无法直接访问 ActivityProjector，属于跨模块架构变更，需设计事件桥接机制 |
 | N-04 | 删除 `task` Kind | 前端 8+ 处活跃依赖（ChatPage.vue:83、streamHandlers.ts:450/627、useConversationTimeline.ts:257、activityMessageAdapter.ts:182、api.ts:581），删除不安全 |
-| N-05 | 删除 `sub_task_board` Kind | 前端 20+ 处依赖（activityTimelineTypes.ts、DelegateActivity.vue、TeamPanel.vue 等），删除不安全。需先完成 DelegateActivity → PlanBlock 迁移 |
+| N-05 | 删除 `sub_task_board` Kind | 前端 20+ 处依赖（activityTimelineTypes.ts、TeamPanel.vue 等），删除不安全。需先完成 DelegateActivity → PlanBlock 迁移 |
 | N-06 | 删除 `delegate` Kind | 同 N-05，前端依赖广泛，需先完成 DelegateActivity 迁移 |
 | N-19 | 旧 awaitUserReply 工具确认迁移 | 现有 `useAwaitReply.submitToolConfirm` 使用特殊字符串走 `awaitUserReply` API，与新 `confirmActivity` API 是两套路径并存。需评估统一方案，涉及运行时协议变更 |
 
@@ -834,22 +839,22 @@ degradation 类型：
 | B-02 | **TrySendAwaitChannel 传入空 RunID** | ✅ 已修复 | 通过 `ActiveRunner` 获取实际 RunID |
 | B-03 | **GetActivity/UpdateActivity 错误未翻译** | ✅ 确认无需修改 | data 层 `activity_repo.go` 已使用 `entErrToBizErr` |
 
-### P2：代码清理（减少技术债务）
+### ~~P2：代码清理（减少技术债务）~~ — 已全部完成
 
 | # | 优化项 | 说明 | 涉及文件 | 状态 |
 |---|--------|------|---------|------|
-| N-08 | **activityTimelineTypes.ts 瘦身** | ConversationTurn/AgentWorkProcess/DelegateActivity/TeamPanel 仍在使用，但 ActivityVariant/TaskBoardNodeData 已删除。长期目标：DelegateActivity 迁移到 PlanBlock 后可删除整个文件 | `web/src/features/chat/activityTimelineTypes.ts` | 待实施 |
-| N-10 | **DelegateActivity.vue 迁移** | 当前 EventStream 仍渲染 DelegateActivity，需在 N-05/N-06 完成后删除 | `DelegateActivity.vue` | 待实施 |
-| B-04 | **PlanStep.children 映射未处理** | `PlanStep.children`（递归 StreamEvent）在映射中未填充，PlanBlock 的递归子事件渲染依赖 `activityTree` 而非 `steps.children`，存在数据流不一致 | `useActivityTimeline.ts` | 待实施 |
+| N-08 | ~~activityTimelineTypes.ts 瘦身~~ | 删除 `DelegateActivity` 接口，`Activity` 联合类型简化为 `StreamEvent` | `web/src/features/chat/activityTimelineTypes.ts` | ✅ 已修复 |
+| N-10 | ~~DelegateActivity.vue 迁移~~ | 删除 `DelegateActivity.vue` 组件，EventStream 移除渲染分支 | `DelegateActivity.vue` | ✅ 已修复 |
+| B-04 | ~~PlanStep.children 映射未处理~~ | `PlanEvent` 新增 `children` 字段，`useActivityTimeline.ts` 映射填充，`PlanBlock.vue` 使用 `activity.children` | `useActivityTimeline.ts` | ✅ 已修复 |
 | B-05 | ~~ErrorEvent.type='info' 与 NoticeEvent.type='info' 语义重叠~~ | 已修复：移除 ErrorEvent.type 的 'info' 选项 | `streamEventTypes.ts` | ✅ 已修复 |
 | B-06 | ~~shouldUseA2UIView/contentLooksLikeA2UIJsonl 死代码~~ | 已删除 | `a2uiParse.ts` | ✅ 已修复 |
 
-### P3：功能增强
+### ~~P3：功能增强~~ — 已全部完成
 
-| # | 优化项 | 说明 | 涉及文件 |
-|---|--------|------|---------|
-| N-20 | **Plan step 可读标签** | 当前 plan step label 使用 `graphNodeMetadata.NodeID`（如 `node_1`），用户不可读。需从 graph node 事件中提取人类可读标签（如节点名称/描述） | `activity_projector.go` |
-| N-21 | **Confirm API Confirm Activity 运行时集成** | `OnConfirmRequest`/`OnConfirmResult` 已定义但无生产调用方。需在 tool_confirm 场景中调用，将工具确认请求映射为 confirm Activity | `internal/agent/`, `internal/session/trpc/` |
+| # | 优化项 | 说明 | 涉及文件 | 状态 |
+|---|--------|------|---------|------|
+| N-20 | ~~Plan step 可读标签~~ | `planStepLabel()`/`nodeTypeLabel()` 从 graph node metadata 生成可读标签 | `activity_projector.go` | ✅ 已修复 |
+| N-21 | ~~Confirm Activity 运行时集成~~ | `tool_confirmation.go` 调用 `EmitConfirmRequest`/`EmitConfirmResult`；service/team 层预创建 projector 注入 runCtx | `internal/agent/`, `internal/service/`, `internal/team/` | ✅ 已修复 |
 
 ### 依赖关系图
 
@@ -860,11 +865,14 @@ degradation 类型：
 ~~B-03 (错误翻译)~~ ✅ 确认无需修改
 ~~B-05 (ErrorEvent.type 重叠)~~ ✅ 已完成
 ~~B-06 (死代码删除)~~ ✅ 已完成
+~~N-20 (Plan step 可读标签)~~ ✅ 已完成
+~~N-21 (Confirm Activity 运行时集成)~~ ✅ 已完成
+~~N-03 (Notice Activity 运行时集成)~~ ✅ 已完成
+~~B-04 (PlanStep.children 映射)~~ ✅ 已完成
+~~N-08 (activityTimelineTypes 瘦身)~~ ✅ 已完成
+~~N-10 (DelegateActivity 迁移)~~ ✅ 已完成
 
-N-21 (Confirm Activity 运行时集成) ──→ ConfirmBlock 生产触发
-N-20 (Plan step 可读标签) ──→ PlanBlock 用户体验
-B-04 (PlanStep.children 映射) ──→ 数据流一致性
-N-08 (activityTimelineTypes 瘦身) ──→ N-10 (DelegateActivity 迁移) ──→ N-05/N-06 (删除 sub_task_board/delegate)
+剩余：N-05/N-06 (删除 sub_task_board/delegate) — 需评估前端依赖
 ```
 
 ---
@@ -890,7 +898,7 @@ N-08 (activityTimelineTypes 瘦身) ──→ N-10 (DelegateActivity 迁移) ─
 |---|------|------|------|
 | A-01 | **Confirm API 越权风险** | `internal/service/chat_confirm.go` | ✅ 已修复：添加 `session.UserID != userID` 校验 + Warn 日志 |
 | A-02 | **`autoApproveAt` 字段映射遗漏** | `useActivityTimeline.ts` | ✅ 已修复：confirm 分支提取 `node.meta.autoApproveAt` |
-| A-03 | **部分 Kind 仍无生产调用方** | `internal/agent/activity_projector.go` | 部分修复：`OnPlanStart`/`OnPlanStepUpdate` 已有生产调用方。`OnNotice`/`OnConfirmRequest`/`OnConfirmResult` 仍无生产调用方，需完成 N-03/N-21 |
+| A-03 | **部分 Kind 仍无生产调用方** | `internal/agent/activity_projector.go` | ✅ 已修复：`OnPlanStart`/`OnPlanStepUpdate` 已有生产调用方（N-02）；`OnNotice` 已有生产调用方（N-03 cost_guard/model_router）；`OnConfirmRequest`/`OnConfirmResult` 已有生产调用方（N-21 tool_confirmation） |
 
 ### 10.3 建议级问题（推荐修复）— 已全部修复或确认
 
@@ -899,7 +907,7 @@ N-08 (activityTimelineTypes 瘦身) ──→ N-10 (DelegateActivity 迁移) ─
 | B-01 | `TrySendAwaitChannel` 返回值被忽略 | `chat_confirm.go` | ✅ 已修复：检查返回值，失败返回 `accepted: false` |
 | B-02 | `TrySendAwaitChannel` 传入空 RunID | `chat_confirm.go` | ✅ 已修复：通过 `ActiveRunner` 获取实际 RunID |
 | B-03 | `GetActivity`/`UpdateActivity` 错误未翻译 | `chat_confirm.go` | ✅ 确认无需修改：data 层已使用 `entErrToBizErr` |
-| B-04 | `PlanStep.children` 映射未处理 | `useActivityTimeline.ts` | 待实施：当前 PlanBlock 通过 `activityTree` 渲染子事件，功能正常但数据流不一致 |
+| B-04 | `PlanStep.children` 映射未处理 | `useActivityTimeline.ts` | ✅ 已修复：`PlanEvent.children` 字段新增，映射填充，PlanBlock 使用 `activity.children` |
 | B-05 | `ErrorEvent.type='info'` 与 `NoticeEvent.type='info'` 语义重叠 | `streamEventTypes.ts` | ✅ 已修复：移除 ErrorEvent.type 的 'info' 选项 |
 | B-06 | `shouldUseA2UIView`/`contentLooksLikeA2UIJsonl` 死代码 | `a2uiParse.ts` | ✅ 已删除 |
 
@@ -916,15 +924,17 @@ N-08 (activityTimelineTypes 瘦身) ──→ N-10 (DelegateActivity 迁移) ─
 
 **总体判断**：方案**不存在严重过度设计**。核心架构决策（单数据路径 + 单渲染模型 + 后端驱动 Activity）是正确的简化方向。
 
-### 10.5 修复优先级（2026-06-16 更新）
+### 10.5 修复优先级（2026-06-19 更新）
 
 1. ~~🔴 **A-01**：Confirm API 越权风险 → 添加 session 归属校验~~ ✅ 已修复
 2. ~~🔴 **A-02**：`autoApproveAt` 映射遗漏 → 修复 `activityToStreamEvent` confirm 分支~~ ✅ 已修复
 3. ~~🟡 **B-01~B-02**：Confirm API 健壮性 → TrySendAwaitChannel 返回值处理 + RunID~~ ✅ 已修复
 4. ~~🟡 **B-03**：错误翻译 → 确认 data 层已翻译，无需修改~~ ✅ 已确认
 5. ~~🟡 **B-05~B-06**：前端数据一致性 → type 重叠清理 + 死代码删除~~ ✅ 已修复
-6. 🟡 **A-03**（降级）：Notice/Confirm 运行时集成 → 完成 N-03/N-21（Plan 已完成）
-7. 🟡 **B-04**：PlanStep.children 映射 → 当前通过 activityTree 渲染，功能正常但数据流不一致
-8. 🟡 **N-08/N-10**：activityTimelineTypes 瘦身 + DelegateActivity 迁移 → N-05/N-06 前置
-9. 🟡 **N-20**：Plan step 可读标签 → 用户体验优化
-10. 🟡 **N-21**：Confirm Activity 运行时集成 → ConfirmBlock 生产触发
+6. ~~🟡 **A-03**（降级）：Notice/Confirm 运行时集成 → 完成 N-03/N-21~~ ✅ 已修复
+7. ~~🟡 **B-04**：PlanStep.children 映射 → `PlanEvent.children` 字段新增 + 映射填充~~ ✅ 已修复
+8. ~~🟡 **N-08/N-10**：activityTimelineTypes 瘦身 + DelegateActivity 迁移~~ ✅ 已修复
+9. ~~🟡 **N-20**：Plan step 可读标签 → `planStepLabel()`/`nodeTypeLabel()`~~ ✅ 已修复
+10. ~~🟡 **N-21**：Confirm Activity 运行时集成 → `tool_confirmation.go` 调用 Emit*~~ ✅ 已修复
+
+**所有 P0/P1/P2/P3 优化项已全部完成。** 剩余仅 N-05/N-06（删除 sub_task_board/delegate Kind），需评估前端依赖后决定。

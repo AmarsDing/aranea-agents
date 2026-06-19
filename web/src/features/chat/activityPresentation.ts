@@ -38,32 +38,6 @@ const nameIcons: Record<string, string> = {
   skill_load: 'download',
 };
 
-/**
- * Classify an activity kind from a tool name (frontend inference).
- *
- * @deprecated Activity-First architecture provides kind directly from the
- * backend via Activity events. This function is only needed for the legacy
- * message-inference fallback path.
- */
-export function classifyActivityKind(toolName: string): ActivityKind {
-  const name = toolName.trim().toLowerCase();
-  if (['skill_load', 'skill_run', 'skill_search', 'use_skill'].includes(name) || name.startsWith('skill_')) {
-    return 'skill';
-  }
-  if (
-    ['mcp_call', 'mcp_list_tools', 'mcp_list_servers', 'mcp_inspect_tools'].includes(name) ||
-    name.startsWith('mcp:') ||
-    name.startsWith('mcp_')
-  ) {
-    return 'mcp';
-  }
-  if (['transfer_to_agent', 'spawn_subagent', 'call_agent', 'subagents_spawn'].includes(name)) return 'subagent';
-  if (['load_memory', 'preload_memory'].includes(name) || name.startsWith('memory_')) return 'memory';
-  if (name === 'knowledge_search') return 'knowledge';
-  if (name === 'await_user_reply') return 'session';
-  return 'tool';
-}
-
 const todoWriteToolNames = new Set(['todo_write', 'TodoWrite']);
 
 /** Check if a tool is a todo_write variant that should render as inline task cards. */
@@ -85,7 +59,9 @@ export function resolveActivityIcon(event: ToolUseEvent): string {
   if (event.icon_key?.trim()) return event.icon_key.trim();
   const byName = nameIcons[event.tool_name];
   if (byName) return byName;
-  const kind = (event.activity_kind || classifyActivityKind(event.tool_name)) as ActivityKind;
+  // AF: activity_kind is always provided by the backend ActivityProjector
+  // (envelopeToolCall.ts / activityMessageAdapter.ts). Default to 'tool' for safety.
+  const kind = (event.activity_kind || 'tool') as ActivityKind;
   return kindIcons[kind] || 'build';
 }
 

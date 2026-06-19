@@ -6,20 +6,17 @@
  * Session 相关 API 请从 `features/session/api` 直接导入。
  */
 import { createChatService } from '../../services';
-import { asRecord, pickI32, pickStr } from '../../shared/wireJson';
+import { asRecord, pickStr } from '../../shared/wireJson';
 import type {
   ChatOption,
-  Message,
   SendMessageOptions,
-  SendMessageResult,
-  ToolUseEvent,
   RunStatus,
   RunStatusValue,
   EnqueueUserMessageResult,
   ChatBackgroundJobRow,
   PendingMessage,
 } from './types';
-import { parseMessageOptions } from './parseMessageOptions';
+import type { MessageAck } from '../../realtime/command_channel';
 
 export type {
   ChatOption,
@@ -52,61 +49,26 @@ function wrapChatError(err: unknown, fallback: string): never {
   throw new ChatApiError(message, err);
 }
 
-function wireInboundChatMessage(raw: unknown): Message {
-  const r = asRecord(raw);
-  if (raw == null || !Object.keys(r).length) {
-    return {
-      id: '',
-      session_id: '',
-      parent_message_id: '',
-      turn_id: '',
-      turn_number: 0,
-      seq_in_turn: 0,
-      role: '',
-      content_markdown: '',
-      model_name: '',
-      token_in: 0,
-      token_out: 0,
-      latency_ms: 0,
-      status: '',
-      attachments_count: 0,
-      options_json: '',
-      error_message: '',
-      created_at: '',
-    };
-  }
-  const options_json = pickStr(r, 'options_json', 'optionsJson');
-  return {
-    id: pickStr(r, 'id', 'id'),
-    session_id: pickStr(r, 'session_id', 'sessionId'),
-    parent_message_id: pickStr(r, 'parent_message_id', 'parentMessageId'),
-    turn_id: pickStr(r, 'turn_id', 'turnId'),
-    turn_number: pickI32(r, 'turn_number', 'turnNumber'),
-    seq_in_turn: pickI32(r, 'seq_in_turn', 'seqInTurn'),
-    role: pickStr(r, 'role', 'role'),
-    content_markdown: pickStr(r, 'content_markdown', 'contentMarkdown'),
-    model_name: pickStr(r, 'model_name', 'modelName'),
-    token_in: pickI32(r, 'token_in', 'tokenIn'),
-    token_out: pickI32(r, 'token_out', 'tokenOut'),
-    latency_ms: pickI32(r, 'latency_ms', 'latencyMs'),
-    status: pickStr(r, 'status', 'status'),
-    attachments_count: pickI32(r, 'attachments_count', 'attachmentsCount'),
-    options_json,
-    error_message: pickStr(r, 'error_message', 'errorMessage'),
-    created_at: pickStr(r, 'created_at', 'createdAt'),
-    ...parseMessageOptions(options_json),
-  };
-}
-
+/**
+ * Send a chat message via the HTTP command channel (B2 channel separation).
+ *
+ * Calls `SubmitChatMessage` (async, ACK-only) — NOT `SendChatMessage` (sync,
+ * full response). The backend starts the turn in a background goroutine and
+ * returns immediately with a `MessageAck` (accepted/status only). Full
+ * message/state/streaming data arrives via the WS data channel.
+ *
+ * The `messageId` and `turnId` in the ACK are empty on accept; they are
+ * delivered later via WS events (`message.persisted`, `run_status=running`).
+ */
 export async function sendMessage(payload: {
   session_id: string;
   agent_key?: string;
   team_id?: string;
   content: string;
   options?: SendMessageOptions;
-}): Promise<SendMessageResult> {
+}): Promise<MessageAck> {
   try {
-    const data = await chatService.SendChatMessage({
+    const data = await chatService.SubmitChatMessage({
       sessionId: payload.session_id,
       agentKey: payload.agent_key,
       teamId: payload.team_id,
@@ -121,12 +83,11 @@ export async function sendMessage(payload: {
           }
         : undefined,
     });
-    const d = asRecord(data);
-    const um = d.userMessage ?? d.user_message;
-    const am = d.agentMessage ?? d.agent_message;
+    // B2: ACK-only — messageId/turnId are empty on accept, delivered via WS events.
     return {
-      user_message: wireInboundChatMessage(um),
-      agent_message: wireInboundChatMessage(am),
+      messageId: data.messageId ?? '',
+      turnId: data.turnId ?? '',
+      status: data.status ?? (data.accepted ? 'accepted' : 'rejected'),
     };
   } catch (err) {
     wrapChatError(err, 'sendMessage failed');

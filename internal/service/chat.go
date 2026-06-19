@@ -98,6 +98,18 @@ func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatM
 	return s.orch.nativeSendChatMessage(ctx, req)
 }
 
+// SubmitChatMessage submits a user message asynchronously and returns an ACK
+// only (B2 channel separation). Turn execution runs in a background goroutine
+// using the process-lifecycle context; all message/state/streaming data is
+// delivered via the WS data channel.
+//
+// This is the additive, non-breaking companion to SendChatMessage. The legacy
+// synchronous RPC remains available for clients that need the full response
+// inline; WS-connected clients should prefer SubmitChatMessage.
+func (s *ChatService) SubmitChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SubmitChatMessageResponse, error) {
+	return s.orch.submitChatMessageAsync(ctx, req)
+}
+
 func (s *ChatService) GetChatOptions(ctx context.Context, req *chatv1.GetChatOptionsRequest) (*chatv1.GetChatOptionsResponse, error) {
 	return s.orch.nativeGetChatOptions(ctx, req)
 }

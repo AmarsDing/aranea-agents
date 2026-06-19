@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/session"
 	"aranea-agents/internal/memory"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -17,6 +18,13 @@ import (
 const (
 	memorySleepTimeDefaultInterval = 1 * time.Hour
 )
+
+// memorySleepTimeRetryBackoff is the 3-step backoff schedule for the
+// sleep-time consolidation job: 1s, 2s, 4s. This is much shorter than the
+// default (30s/2m/10m) because consolidation jobs are queue-driven and
+// failures are typically transient (DB busy, vector store timeout).
+// The circuit breaker prevents retry storms when the backend is down.
+var memorySleepTimeRetryBackoff = []time.Duration{1 * time.Second, 2 * time.Second, 4 * time.Second}
 
 // SleepTimeTargetLister enumerates (agent, user) pairs whose memories should
 // be consolidated by the Sleep-time Agent. Implementations typically scan
@@ -36,6 +44,7 @@ type MemorySleepTimeWorker struct {
 	interval time.Duration
 	service  *memory.SleepTimeService
 	lister   SleepTimeTargetLister
+	runner   *JobRunner // unified Job framework (retry + dead letter)
 	lg       loggateway.Logger
 }
 
@@ -59,20 +68,61 @@ func NewMemorySleepTimeWorker(interval time.Duration, service *memory.SleepTimeS
 		interval: interval,
 		service:  service,
 		lister:   lister,
+		runner:   NewJobRunner(lg),
 		lg:       lg,
 	}
 }
 
+// WithCircuitBreaker attaches a circuit breaker to the worker's job runner.
+// When the circuit is open, consolidation jobs are rejected immediately
+// instead of being retried. Returns the receiver for chaining.
+func (w *MemorySleepTimeWorker) WithCircuitBreaker(cb *CircuitBreaker) *MemorySleepTimeWorker {
+	if w != nil && w.runner != nil {
+		w.runner.WithCircuitBreaker(cb)
+	}
+	return w
+}
+
+// WithDeadLetter attaches a dead-letter writer to the worker's job runner.
+// When a consolidation job exhausts all retries, it is written to the
+// dead-letter sink for later replay. Returns the receiver for chaining.
+func (w *MemorySleepTimeWorker) WithDeadLetter(dl DeadLetterWriter) *MemorySleepTimeWorker {
+	if w != nil && w.runner != nil {
+		w.runner.WithDeadLetter(dl)
+	}
+	return w
+}
+
 // Start blocks until ctx is cancelled. It launches the queue worker goroutine
 // and ticks the enqueue loop at the configured interval.
+//
+// T3.1: The queue worker drains the consolidation queue via
+// SleepTimeService.QueueChan() and wraps each job in a JobRunner for retry
+// (3 attempts with 30s/2m/10m backoff), panic recovery, and dead-letter
+// metrics. Only read failures are retried — mutation failures are treated
+// as graceful degradation inside Consolidate (non-idempotent operations
+// must not be retried).
 func (w *MemorySleepTimeWorker) Start(ctx context.Context) {
 	if w == nil || w.service == nil {
 		return
 	}
 
 	// Launch the queue worker (consumer) in a managed goroutine.
+	// T3.1: drain the queue ourselves (instead of calling service.Start) so
+	// each job can be wrapped in a JobRunner for retry + dead-letter metrics.
 	safego.Go(ctx, "memory.sleep_time.worker", func() {
-		w.service.Start(ctx)
+		ch := w.service.QueueChan()
+		if ch == nil {
+			return
+		}
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case req := <-ch:
+				w.processJobWithRetry(ctx, req)
+			}
+		}
 	})
 
 	// If no lister is wired, the worker only drains the queue.
@@ -133,6 +183,32 @@ func (w *MemorySleepTimeWorker) runOnce(ctx context.Context) {
 	})
 }
 
+// processJobWithRetry wraps a single consolidation job in the unified JobRunner
+// for retry (read failures only), panic recovery, and dead-letter metrics.
+//
+// Retry safety: Consolidate returns an error ONLY on memory read failure
+// (idempotent — safe to retry). Mutation failures are treated as graceful
+// degradation inside Consolidate (return nil) because merge/reflect/update_core
+// operations are NOT idempotent — retrying them could add duplicate memories.
+//
+// Backoff: uses memorySleepTimeRetryBackoff (1s/2s/4s) instead of the default
+// (30s/2m/10m) because queue-driven jobs benefit from fast retries. The
+// circuit breaker (when attached) prevents retry storms when the backend is
+// down.
+func (w *MemorySleepTimeWorker) processJobWithRetry(ctx context.Context, req memory.ConsolidationJobRequest) {
+	// JobRunner.Run handles all error logging and dead-letter metrics internally
+	// (warn on each retry, error on exhausted retries, jobDeadTotal counter).
+	// The returned error is therefore intentionally ignored — there is nothing
+	// the caller can do beyond what JobRunner already does.
+	_ = w.runner.Run(ctx, JobConfig{
+		JobID:      "memory_sleep_time",
+		MaxRetries: DefaultJobMaxRetries,
+		Backoff:    memorySleepTimeRetryBackoff,
+	}, func(ctx context.Context) error {
+		return w.service.Consolidate(ctx, req.UserKey)
+	})
+}
+
 // MemorySleepTimeDisabled reports whether the Sleep-time worker is disabled via
 // the MEMORY_SLEEP_TIME_DISABLED environment variable.
 func MemorySleepTimeDisabled() bool {
@@ -176,6 +252,86 @@ func (l *AgentUserKeyLister) ListConsolidationTargets(ctx context.Context) ([]tr
 			}
 			out = append(out, trpcmemory.UserKey{AppName: t.AgentID, UserID: uid})
 		}
+	}
+	return out, nil
+}
+
+// memorySleepTimeSessionLookbackDays is the lookback window (in days) for
+// deriving consolidation targets from session activity. Sessions that had no
+// activity (last_message_at or last_run_at) within this window are excluded.
+const memorySleepTimeSessionLookbackDays = 7
+
+// AgentUserKeyListerFromSession derives Sleep-time consolidation targets from
+// real session activity instead of env-var configuration. It enumerates
+// distinct (agent_id, user_id) pairs from sessions active within the last
+// memorySleepTimeSessionLookbackDays days, then filters to agents with L3
+// facts enabled.
+//
+// This replaces the env-var-driven AgentUserKeyLister in production: instead
+// of requiring operators to set MEMORY_SLEEP_TIME_USER_IDS, the worker
+// automatically discovers which users need consolidation based on who has
+// been chatting recently.
+type AgentUserKeyListerFromSession struct {
+	agents   *biz.AgentUsecase
+	sessions session.SessionReader
+}
+
+// NewAgentUserKeyListerFromSession creates an AgentUserKeyListerFromSession.
+// The sessions reader is used to enumerate active (agent, user) pairs; the
+// agents usecase filters them to L3-enabled agents.
+func NewAgentUserKeyListerFromSession(agents *biz.AgentUsecase, sessions session.SessionReader) *AgentUserKeyListerFromSession {
+	return &AgentUserKeyListerFromSession{agents: agents, sessions: sessions}
+}
+
+// Compile-time interface checks.
+var (
+	_ SleepTimeTargetLister = (*AgentUserKeyLister)(nil)
+	_ SleepTimeTargetLister = (*AgentUserKeyListerFromSession)(nil)
+)
+
+// ListConsolidationTargets returns (agent, user) pairs derived from recent
+// session activity, filtered to agents with L3 facts enabled.
+func (l *AgentUserKeyListerFromSession) ListConsolidationTargets(ctx context.Context) ([]trpcmemory.UserKey, error) {
+	if l == nil || l.agents == nil || l.sessions == nil {
+		return nil, nil
+	}
+	// 1. Enumerate agents with L3 facts enabled → build a set for O(1) lookup.
+	targets, err := l.agents.ListMemoryMaintenanceTargets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	l3Agents := make(map[string]struct{}, len(targets))
+	for _, t := range targets {
+		if t.WriteL3Facts && t.AgentID != "" {
+			l3Agents[t.AgentID] = struct{}{}
+		}
+	}
+	if len(l3Agents) == 0 {
+		return nil, nil
+	}
+	// 2. Derive distinct (agent, user) pairs from sessions active in the last
+	//    7 days.
+	pairs, err := l.sessions.ListActiveAgentUserKeys(ctx, memorySleepTimeSessionLookbackDays)
+	if err != nil {
+		return nil, err
+	}
+	// 3. Filter to L3-enabled agents and de-duplicate (the SQL DISTINCT already
+	//    de-duplicates, but we guard against future changes).
+	seen := make(map[string]struct{}, len(pairs))
+	var out []trpcmemory.UserKey
+	for _, p := range pairs {
+		if p.AgentID == "" || p.UserID == "" {
+			continue
+		}
+		if _, ok := l3Agents[p.AgentID]; !ok {
+			continue
+		}
+		key := p.AgentID + "\x00" + p.UserID
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, trpcmemory.UserKey{AppName: p.AgentID, UserID: p.UserID})
 	}
 	return out, nil
 }

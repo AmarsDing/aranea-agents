@@ -129,6 +129,15 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 	if gate := buildToolConfirmGate(ctx, ag, deps); gate != nil {
 		tooltrpc.ApplyConfirmationPolicy(ts, gate.confirmationMap())
 	}
+	// P0-G3 + P0-D + P2-E: 应用工具装饰器（执行超时 + 结果预算 + 确定性缓存）。
+	// 装饰器包装所有 CallableTool，为每次调用提供 60s 默认超时、10KB 结果截断，
+	// 并对 ConcurrentSafe 工具（如 file、read_document）启用确定性缓存。
+	tools.ApplyDecorators(ts, tools.ToolDecoratorConfig{
+		Timeout:      tools.DefaultToolTimeout,
+		ResultBudget: tools.DefaultResultBudget,
+		EnableCache:  true,
+		Logger:       deps.Logger(),
+	})
 	return ts, nil
 }
 

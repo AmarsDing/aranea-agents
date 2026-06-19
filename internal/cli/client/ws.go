@@ -10,6 +10,9 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/pkg/appctx"
+	"aranea-agents/pkg/safego"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -72,7 +75,7 @@ func (w *WSClient) Dial(ctx context.Context, sessionID string) (*WSConn, error) 
 		events: make(chan Envelope, 128),
 		done:   make(chan struct{}),
 	}
-	go wc.readPump()
+	safego.Go(appctx.Ctx(), "cli.ws.readPump", wc.readPump)
 	return wc, nil
 }
 

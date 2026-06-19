@@ -166,12 +166,20 @@ func (s *SleepTimeService) Consolidate(ctx context.Context, uk trpcmemory.UserKe
 	}
 
 	// 3. Execute operations.
+	//
+	// T3.1: Mutation failures are treated as graceful degradation (return nil)
+	// rather than returning the error. This ensures JobRunner retry is safe:
+	// only read failures (step 1) return an error, and reads are idempotent.
+	// Mutation operations (merge/reflect/update_core) are NOT idempotent —
+	// retrying them could add duplicate reflections or core memories.
+	// By returning nil on mutation failure, we prevent unsafe retries while
+	// still logging the failure for observability.
 	if err := s.executeOperations(ctx, uk, result.Operations); err != nil {
-		s.lg.Warn("sleep-time execute operations failed",
+		s.lg.Warn("sleep-time execute operations failed, skipping (non-retryable)",
 			loggateway.Str("app", uk.AppName),
 			loggateway.Str("user", uk.UserID),
 			loggateway.Err(err))
-		return err
+		return nil
 	}
 
 	s.lg.Info("sleep-time consolidation completed",
@@ -184,6 +192,11 @@ func (s *SleepTimeService) Consolidate(ctx context.Context, uk trpcmemory.UserKe
 
 // Start runs the worker loop that drains the consolidation queue and calls
 // Consolidate for each job. Blocks until ctx is cancelled.
+//
+// Note: callers that need retry/dead-letter semantics should use QueueChan()
+// to drain the queue themselves (e.g. cronrunner/jobs.MemorySleepTimeWorker
+// wraps each job in a JobRunner for retry + panic recovery + dead-letter
+// metrics).
 func (s *SleepTimeService) Start(ctx context.Context) {
 	if s == nil || s.queue == nil {
 		return
@@ -200,6 +213,17 @@ func (s *SleepTimeService) Start(ctx context.Context) {
 			s.processJob(ctx, req)
 		}
 	}
+}
+
+// QueueChan returns the consolidation queue channel for external consumers.
+// Returns nil when no queue is wired. Callers (e.g. MemorySleepTimeWorker)
+// can drain the queue themselves to wrap each job in a JobRunner for retry
+// and dead-letter metrics.
+func (s *SleepTimeService) QueueChan() <-chan ConsolidationJobRequest {
+	if s == nil || s.queue == nil {
+		return nil
+	}
+	return s.queue.Chan()
 }
 
 func (s *SleepTimeService) processJob(ctx context.Context, req ConsolidationJobRequest) {

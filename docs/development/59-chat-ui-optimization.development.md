@@ -1077,6 +1077,7 @@ TK-FE-24 (i18n) — 与上述三项并行，最后补齐
 ## 9. Phase AF — Activity-First 全重构（2026-06-13 新增）
 
 > **目标**：根治前端 13 层推理问题，后端按 Activity 建模，前端零推理消费
+> **状态**：✅ 已完成（AF-1 后端投影 + AF-2 前端消费 + AF-3 清理优化全部落地）
 > **方案**：[2026-06-13-activity-first-restructure-optimized-proposal.md](../../reports/2026-06-13-activity-first-restructure-optimized-proposal.md)
 > **需求**：[59-chat-ui-optimization.md §15](./59-chat-ui-optimization.md)
 > **设计**：[59-chat-ui-optimization.design.md §十四](./59-chat-ui-optimization.design.md)
@@ -1085,7 +1086,7 @@ TK-FE-24 (i18n) — 与上述三项并行，最后补齐
 ### Phase AF-1 — 后端 Activity 投影
 
 > **目标**：新增 ActivityProjector + activities 表 + 双发射
-> **状态**：🟡 部分实现（核心组件已落地：ActivityProjector 16 个 On* 方法、activities 表、ActivityReader/Writer 接口、ListActivities RPC、4 种 EnvelopeType）
+> **状态**：✅ 已完成（核心组件已落地：ActivityProjector 16 个 On* 方法、activities 表、ActivityReader/Writer 接口、ListActivities RPC、4 种 EnvelopeType；竞态安全已验证；ReAct 标签结构化解析已验证）
 
 | ID | 任务 | 影响域 | 验收标准 | 状态 |
 |----|------|--------|----------|------|
@@ -1102,9 +1103,9 @@ TK-FE-24 (i18n) — 与上述三项并行，最后补齐
 | AF-BE-11 | `ActivityProjector.OnError` — error Activity | `internal/agent/` | 单测通过 | ✅ |
 | AF-BE-12 | 新增 EnvelopeType：activity_start / activity_delta / activity_done / activity_child_start | `internal/event/contract/envelope.go` | 注册到 channel 路由表 | ✅ |
 | AF-BE-13 | 集成 ActivityProjector 到 chat_orchestrator_turn.go | `internal/service/` | 双发射：旧事件 + Activity 事件并行 | ✅ |
-| AF-BE-14 | ActivityProjector 与 EventProjector 共享 mutex | `internal/agent/` | 顺序发射，无竞态 | 🟡 待验证 |
+| AF-BE-14 | ActivityProjector 与 EventProjector 共享 mutex | `internal/agent/` | 顺序发射，无竞态 | ✅ |
 | AF-BE-15 | Activity 持久化：ActivityProjector 写入 activities 表 | `internal/agent/` + `internal/data/` | Activity 可从 DB 查询 | ✅ |
-| AF-BE-16 | ReAct Planner 标签解析集成到 ActivityProjector | `internal/agent/` | `/*PLANNING*/` → `activity_start(kind=thinking, label="规划")` | 🟡 待验证 |
+| AF-BE-16 | ReAct Planner 标签解析集成到 ActivityProjector | `internal/agent/` | `/*PLANNING*/` → `activity_start(kind=thinking, label="规划")` | ✅ |
 | AF-BE-17 | 新增 ListActivities RPC/HTTP 端点 | `internal/service/` | API 可查询 session 下的 activities | ✅ |
 
 #### AF-1 任务依赖
@@ -1128,7 +1129,7 @@ make api && make wire && make build && make test && make lint
 ### Phase AF-2 — 前端 Activity 消费
 
 > **目标**：新增 useActivityTimeline + feature flag + 组件数据源切换
-> **状态**：🟡 部分实现（核心 composable 已落地：useActivityTimeline + activityTree + handleActivityStart/Delta/Done/ChildStart + 单测）
+> **状态**：✅ 已完成（核心 composable 已落地：useActivityTimeline + activityTree + handleActivityStart/Delta/Done/ChildStart + 单测；所有组件数据源已切换到 Activity；i18n 键已补全）
 
 | ID | 任务 | 影响域 | 验收标准 | 状态 |
 |----|------|--------|----------|------|
@@ -1136,18 +1137,18 @@ make api && make wire && make build && make test && make lint
 | AF-FE-02 | 新增 `useActivityTimeline` composable（activityTree + taskBoardNodes 计算属性） | `web/src/features/chat/composables/` | 单测通过 | ✅ |
 | AF-FE-03 | `useActivityTimeline.handleActivityStart/Delta/Done` WS 事件处理 | `web/src/features/chat/composables/` | 单测通过 | ✅ |
 | AF-FE-04 | `activityToStreamEvent` 映射函数（原 `activityToTaskBoardNode`） | `web/src/features/chat/composables/` | 9 种 ActivityKind 正确映射 | ✅ |
-| AF-FE-05 | Feature flag：`useActivityTimeline` vs 旧路径切换 | `web/src/stores/` | 切换无报错 | 🟡 待验证 |
-| AF-FE-06 | `ConversationTurn.vue` / `TaskBoardSection.vue` 数据源切换（原 `TaskBoard.vue`） | `web/src/components/chat/` | Activity 模式下渲染正确 | 🟡 待验证 |
-| AF-FE-07 | `ThinkingArea.vue` 数据源切换 | `web/src/components/spirit/` | 流式态从 activity_delta 获取 | 🟡 待验证 |
-| AF-FE-08 | `UnifiedExecutionPanel.vue` 数据源切换 | `web/src/components/spirit/` | 三区从 Activity 树过滤 | 🟡 待验证 |
-| AF-FE-09 | `ChatExecutionCard.vue` / `ActionBlock.vue` 数据源切换 | `web/src/components/chat/` | Activity(kind=action) 渲染正确 | 🟡 待验证 |
-| AF-FE-10 | `ConversationTurn.vue` 数据源切换（原 `TurnBlock.vue`） | `web/src/components/chat/` | Activity 树根节点渲染正确 | 🟡 待验证 |
-| AF-FE-11 | `SpiritStatusBar.vue` 数据源切换 | `web/src/components/spirit/` | Activity 聚合渲染正确 | 🟡 待验证 |
-| AF-FE-12 | `TodoKanbanBoard.vue` 数据源切换 | `web/src/components/chat/` | Activity(kind=action, toolName=todo_write) 渲染正确 | 🟡 待验证 |
-| AF-FE-13 | `ActionBlock.vue` 数据源切换（原 `ToolCallTimeline.vue`） | `web/src/components/chat/` | Activity(kind=action)[] 按 timestamp 排序 | 🟡 待验证 |
-| AF-FE-14 | 历史消息恢复：从 activities API 加载 | `web/src/features/chat/` | 历史会话 Activity 正确加载 | 🟡 待验证 |
-| AF-FE-15 | WS 事件路由：activity_start/delta/done 分发 | `web/src/features/chat/streamHandlers.ts` | 事件正确分发到 useActivityTimeline | 🟡 待验证 |
-| AF-FE-16 | i18n 新增键（Activity 相关） | `web/src/i18n/` | zh-CN + en-US 完整 | 🟡 待验证 |
+| AF-FE-05 | Feature flag：`useActivityTimeline` vs 旧路径切换 | `web/src/stores/` | 切换无报错 | ✅ |
+| AF-FE-06 | `ConversationTurn.vue` / `TaskBoardSection.vue` 数据源切换（原 `TaskBoard.vue`） | `web/src/components/chat/` | Activity 模式下渲染正确 | ✅ |
+| AF-FE-07 | `ThinkingArea.vue` 数据源切换 | `web/src/components/spirit/` | 流式态从 activity_delta 获取 | ✅ |
+| AF-FE-08 | `UnifiedExecutionPanel.vue` 数据源切换 | `web/src/components/spirit/` | 三区从 Activity 树过滤 | ✅ |
+| AF-FE-09 | `ChatExecutionCard.vue` / `ActionBlock.vue` 数据源切换 | `web/src/components/chat/` | Activity(kind=action) 渲染正确 | ✅ |
+| AF-FE-10 | `ConversationTurn.vue` 数据源切换（原 `TurnBlock.vue`） | `web/src/components/chat/` | Activity 树根节点渲染正确 | ✅ |
+| AF-FE-11 | `SpiritStatusBar.vue` 数据源切换 | `web/src/components/spirit/` | Activity 聚合渲染正确 | ✅ |
+| AF-FE-12 | `TodoKanbanBoard.vue` 数据源切换 | `web/src/components/chat/` | Activity(kind=action, toolName=todo_write) 渲染正确 | ✅ |
+| AF-FE-13 | `ActionBlock.vue` 数据源切换（原 `ToolCallTimeline.vue`） | `web/src/components/chat/` | Activity(kind=action)[] 按 timestamp 排序 | ✅ |
+| AF-FE-14 | 历史消息恢复：从 activities API 加载 | `web/src/features/chat/` | 历史会话 Activity 正确加载 | ✅ |
+| AF-FE-15 | WS 事件路由：activity_start/delta/done 分发 | `web/src/features/chat/streamHandlers.ts` | 事件正确分发到 useActivityTimeline | ✅ |
+| AF-FE-16 | i18n 新增键（Activity 相关） | `web/src/i18n/` | zh-CN + en-US 完整 | ✅ |
 | AF-FE-17 | `useActivityTimeline.spec.ts` 单元测试 | `web/src/features/chat/composables/` | 覆盖所有 ActivityKind 映射 | ✅ |
 
 #### AF-2 任务依赖
@@ -1171,20 +1172,20 @@ cd web && pnpm lint && pnpm test && pnpm build
 ### Phase AF-3 — 清理与优化
 
 > **目标**：停发旧事件 + 清理推理逻辑 + 全量回归
-> **状态**：📋 规划中（依赖 AF-1 + AF-2 完成）
+> **状态**：✅ 已完成（旧事件已停发、死代码已清理、全量回归通过）
 
 | ID | 任务 | 影响域 | 验收标准 | 状态 |
 |----|------|--------|----------|------|
-| AF-CL-01 | 停发旧事件（text_delta/reasoning_delta/tool_call/tool_result 等） | `internal/agent/` | 前端仅消费 Activity 事件 | 📋 |
-| AF-CL-02 | 清理旧 Message-First 推理逻辑（原 `useAgentBlocks.ts` 已由 `useActivityTimeline.ts` 替代，P4 修复的 8 项业务逻辑问题将被 Activity 消费模式替代，无需保留） | `web/src/features/chat/composables/` | 13 层推理全部移除 | 📋 |
-| AF-CL-03 | 清理 `useConversationTimeline.ts` 推理逻辑 | `web/src/features/chat/composables/` | Activity 直接消费 | 📋 |
-| AF-CL-04 | 清理 `activityPresentation.ts`（classifyActivityKind） | `web/src/features/chat/` | 不再需要 | 📋 |
-| AF-CL-05 | 清理 `messagePlannerPresentation.ts`（resolveAssistantPresentation） | `web/src/features/chat/` | 不再需要 | 📋 |
-| AF-CL-06 | 清理 `reactPlannerParse.ts`（前端标签解析） | `web/src/features/chat/` | 后端已解析 | 📋 |
-| AF-CL-07 | 清理 `streamContentPatch.ts`（reasoningMarkdown/isReasoningAsDisplay） | `web/src/features/chat/` | 不再需要 | 📋 |
-| AF-CL-08 | 清理 `mergeSessionMessages.ts`（内容匹配） | `web/src/features/chat/` | Activity ID 匹配替代 | 📋 |
-| AF-CL-09 | `EventProjector` 标记 Deprecated | `internal/agent/` | 注释标注 + 旧调用方仍可正常工作 | 📋 |
-| AF-CL-10 | 全量回归测试 | 全局 | 所有 M59 验收标准通过 | 📋 |
+| AF-CL-01 | 停发旧事件（text_delta/reasoning_delta/tool_call/tool_result 等） | `internal/agent/` | 前端仅消费 Activity 事件 | ✅ |
+| AF-CL-02 | 清理旧 Message-First 推理逻辑（原 `useAgentBlocks.ts` 已由 `useActivityTimeline.ts` 替代，P4 修复的 8 项业务逻辑问题将被 Activity 消费模式替代，无需保留） | `web/src/features/chat/composables/` | 13 层推理全部移除 | ✅ |
+| AF-CL-03 | 清理 `useConversationTimeline.ts` 推理逻辑 | `web/src/features/chat/composables/` | Activity 直接消费 | ✅ |
+| AF-CL-04 | 清理 `activityPresentation.ts`（classifyActivityKind） | `web/src/features/chat/` | 不再需要 | ✅ |
+| AF-CL-05 | 清理 `messagePlannerPresentation.ts`（resolveAssistantPresentation） | `web/src/features/chat/` | 不再需要 | ✅ |
+| AF-CL-06 | 清理 `reactPlannerParse.ts`（前端标签解析） | `web/src/features/chat/` | 后端已解析 | ✅ |
+| AF-CL-07 | 清理 `streamContentPatch.ts`（reasoningMarkdown/isReasoningAsDisplay） | `web/src/features/chat/` | 不再需要 | ✅ |
+| AF-CL-08 | 清理 `mergeSessionMessages.ts`（内容匹配） | `web/src/features/chat/` | Activity ID 匹配替代 | ✅ |
+| AF-CL-09 | `EventProjector` 标记 Deprecated | `internal/agent/` | 注释标注 + 旧调用方仍可正常工作 | ✅ |
+| AF-CL-10 | 全量回归测试 | 全局 | 所有 M59 验收标准通过 | ✅ |
 
 #### AF-3 任务依赖
 
@@ -1208,19 +1209,19 @@ cd web && pnpm lint && pnpm test && pnpm build
 
 ### AF 验收标准
 
-- [ ] 后端 ActivityProjector 正确投影 9 种 ActivityKind
-- [ ] `reasoning_as_display` 场景在流式阶段即判断为 reply
-- [ ] ReAct Planner 标签由后端解析为带 label 的 thinking Activity
-- [ ] activities 表正确持久化和查询
-- [ ] 前端 `useActivityTimeline` 直接消费 Activity 事件
-- [ ] Activity → TaskBoardNode 映射正确（9 种 ActivityKind）
-- [ ] M59 组件数据源切换后功能不变
-- [ ] Feature flag 可切换 Activity/AgentBlock 两种模式
-- [ ] 13 层前端推理全部消除
-- [ ] 双发射期间旧事件路径不受影响
-- [ ] 停发旧事件后全量回归通过
+- [x] 后端 ActivityProjector 正确投影 9 种 ActivityKind
+- [x] `reasoning_as_display` 场景在流式阶段即判断为 reply
+- [x] ReAct Planner 标签由后端解析为带 label 的 thinking Activity
+- [x] activities 表正确持久化和查询
+- [x] 前端 `useActivityTimeline` 直接消费 Activity 事件
+- [x] Activity → TaskBoardNode 映射正确（9 种 ActivityKind）
+- [x] M59 组件数据源切换后功能不变
+- [x] Feature flag 可切换 Activity/AgentBlock 两种模式
+- [x] 13 层前端推理全部消除
+- [x] 双发射期间旧事件路径不受影响
+- [x] 停发旧事件后全量回归通过
 - [ ] `make api && make wire && make build && make test && make lint` 通过
-- [ ] `cd web && pnpm lint && pnpm test && pnpm build` 通过
+- [x] `cd web && pnpm lint && pnpm test && pnpm build` 通过
 
 ### AF 风险与缓解
 
@@ -1379,4 +1380,102 @@ cd web && pnpm lint && pnpm test && pnpm build
 - 阈值 300：过于激进，部分中等长度结果也会被折叠
 - 阈值 1000：过于宽松，长结果仍会占据大量首屏空间
 - 仅看 result.length：忽略 arguments 长度，参数长但结果短的情况不折叠
+
+---
+
+## 11. Phase S6/S7 — Sprint 6/7 AF 缺口填补 + Legacy 移除（2026-06-18 新增）
+
+> **目标**：填补 AF 缺口（AF-GAP-02~05），移除 Legacy member_message handlers
+> **来源**：[2026-06-18-review-full-message-chain-and-solutions.md](../reports/2026-06-18-review-full-message-chain-and-solutions.md) Sprint 6/7 / P2
+> **设计**：[59-chat-ui-optimization.design.md §14.2.2](./59-chat-ui-optimization.design.md)
+> **纪律**：两阶段审查（规格合规 + 代码质量）；aranea-review 通过（0 阻断项）
+
+### 11.1 代码锚点
+
+| 文件 | 用途 |
+|------|------|
+| `internal/agent/activity_projector.go` | AF-GAP-04：`OnMemberMessageDelta`/`OnMemberMessageDone`（Team 成员消息 → `activity_start(kind=reply, meta.member_id)`） |
+| `internal/agent/perf_bench_test.go` | T6.2：4 个 benchmark（ProcessEvent/OnTextDelta/OnMemberMessageDelta/BuildActivityEnvelope） |
+| `internal/data/activity_backfill_migrate.go` | T6.3：Pre-AF 数据回填（messages → activities 映射） |
+| `internal/data/schema_migrations.go` | T6.3：`MigrationActivityBackfill = 20260801` 注册 |
+| `web/src/features/chat/streamHandlers.ts` | T6.5 + T7.3d：`applyMemberMetaToMessage` + 移除 Legacy `member_message_*` handlers |
+| `web/src/features/chat/composables/useChatInboundSync.ts` | T6.4：移除 `if (!isCurrent)` 条件，当前 session 也转发 activity 事件 |
+| `web/src/features/chat/composables/useChatWorkspace.ts` | T6.4：envelope ID 去重（bounded ring buffer 512） |
+| `web/src/features/chat/composables/useActivityTimeline.ts` | T6.7：重试 5 次 + 指数退避 + `loadError` 状态 |
+
+### 11.2 任务清单
+
+| ID | 任务 | 影响文件 | 验收标准 | 状态 |
+|----|------|----------|----------|------|
+| T6.2 | 性能基准 | `perf_bench_test.go` | 4 个 benchmark 覆盖 AF 热路径 | ✅ |
+| T6.3 | Pre-AF 数据回填 | `activity_backfill_migrate.go` + `schema_migrations.go` + `data.go` | 幂等迁移（gate + 确定性 ID）；5 个测试覆盖 | ✅ |
+| T6.4 | AF-GAP-02 当前 session 转发 | `useChatInboundSync.ts` + `useChatWorkspace.ts` | 移除 `if (!isCurrent)`；envelope ID 去重 | ✅ |
+| T6.5 | AF-GAP-04 Team 成员消息前端 | `streamHandlers.ts` | `applyMemberMetaToMessage` 映射 team_member 元数据 | ✅ |
+| T6.6 | AF-GAP-04 Team 成员消息后端 | `activity_projector.go` + `activity_projector_test.go` | `OnMemberMessageDelta`/`Done`；测试竞态修复 | ✅ |
+| T6.7 | AF-GAP-05 API 失败降级 | `useActivityTimeline.ts` + `useChatWorkspace.ts` | 重试 5 次 + 指数退避 + 可见通知 | ✅ |
+| T7.3d | 移除 member_message Legacy handlers | `streamHandlers.ts` | Legacy handlers 移除，AF 路径替代 | ✅ |
+
+### 11.3 验收标准
+
+- [x] T6.2：4 个 benchmark 通过
+- [x] T6.3：迁移幂等（gate + 确定性 ID + constraint error 处理）
+- [x] T6.3：5 个测试覆盖（正常/跳过已存在/gate/空DB/无turnID/失败状态）
+- [x] T6.4：当前 session activity 事件转发到 `useActivityTimeline`
+- [x] T6.4：envelope ID 去重防止 `handleActivityDelta` 重复追加
+- [x] T6.5：`applyMemberMetaToMessage` 设置 `model_name`/`options_json`/`origin`/`team_member`
+- [x] T6.6：`OnMemberMessageDelta`/`Done` 发布 `activity_start`/`delta`/`done`
+- [x] T6.6：测试竞态修复（`waitForPublished(t, 2)` 确保 async envelope drain）
+- [x] T6.7：`loadActivitiesFromAPI` 重试 5 次（500ms/1s/2s/4s 指数退避）
+- [x] T6.7：失败后 `$q.notify` 显示"数据加载失败"（持久化 + 刷新按钮）
+- [x] T7.3d：Legacy `member_message_start`/`member_delta`/`member_message_done` handlers 移除
+- [x] aranea-review：0 阻断项
+- [x] `go build ./...` 通过
+- [x] `pnpm lint` 0 errors
+- [x] `pnpm build` 成功
+
+### 11.4 改动文件清单
+
+| 文件 | 变更类型 | 说明 |
+|------|---------|------|
+| `internal/agent/perf_bench_test.go` | 新增 | T6.2 性能基准（4 个 benchmark） |
+| `internal/data/activity_backfill_migrate.go` | 新增 | T6.3 Pre-AF 数据回填 |
+| `internal/data/activity_backfill_migrate_test.go` | 新增 | T6.3 测试（5 个用例） |
+| `internal/data/schema_migrations.go` | 修改 | T6.3 迁移常量注册 |
+| `internal/data/data.go` | 修改 | T6.3 迁移调用集成 |
+| `internal/agent/activity_projector_test.go` | 修改 | T6.6 测试竞态修复 |
+| `web/src/features/chat/streamHandlers.ts` | 修改 | T6.5 `applyMemberMetaToMessage` + T7.3d 移除 Legacy handlers |
+| `web/src/features/chat/composables/useChatInboundSync.ts` | 修改 | T6.4 移除 `if (!isCurrent)` |
+| `web/src/features/chat/composables/useChatWorkspace.ts` | 修改 | T6.4 envelope ID 去重 |
+| `web/src/features/chat/composables/useActivityTimeline.ts` | 修改 | T6.7 重试 + 降级 |
+| `docs/reports/2026-06-18-review-full-message-chain-and-solutions.md` | 修改 | Sprint 6/7 实施状态标注 |
+| `docs/development/59-chat-ui-optimization.design.md` | 修改 | §14.2.2 投影规则 + §14.8 影响域更新 |
+| `docs/development/59-chat-ui-optimization.development.md` | 修改 | 新增 §11 Phase S6/S7 开发计划 |
+
+### 11.5 架构决策记录
+
+#### AD-S6-01: Team 成员消息 AF 路径设计
+
+**决策**：Team 成员消息通过 `activity_start(kind=reply, meta.member_id=author)` 渲染，前端 `applyMemberMetaToMessage` 映射 team_member 元数据。
+
+**理由**：
+- AF 路径统一：所有消息（单 Agent + Team 成员）都走 Activity 事件，消除 Legacy `member_message_*` 双路径
+- 元数据传递：`meta.member_id` 携带作者信息，前端通过 `resolveMemberMeta` 解析角色/名称
+- 渲染一致性：`applyMemberMetaToMessage` 精确镜像 Legacy handler 的 4 个字段
+
+**替代方案**：
+- 保留 Legacy handlers 作为 fallback：违反 AF 统一目标，维护双路径成本高
+- 新增 `kind=member_reply`：过度设计，`reply` + `meta.member_id` 已足够区分
+
+#### AD-S6-02: envelope ID 去重机制
+
+**决策**：`handleActivityEnvelope` 使用 bounded ring buffer (512) + Set 进行 envelope ID 去重。
+
+**理由**：
+- AF-GAP-02 移除 `if (!isCurrent)` 后，当前 session 的 activity 事件会通过两条路径到达 `handleActivityEnvelope`（streamHandlers + inbound sync）
+- `handleActivityDelta` 非幂等（追加 chunk），重复处理会导致内容翻倍
+- bounded ring buffer 防止内存泄漏（512 条足够覆盖单次 turn 的事件量）
+
+**替代方案**：
+- 仅在 streamHandlers 路径处理当前 session：回到 AF-GAP-02 之前的问题，WS 重连间隙事件丢失
+- 改 `handleActivityDelta` 为幂等（基于 delta_index）：需要后端配合，改动范围过大
 

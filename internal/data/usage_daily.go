@@ -17,6 +17,7 @@ func (r *usageRepo) GetModelUsageSummaryFromDaily(ctx context.Context, query biz
 		 COALESCE(SUM(avg_latency_ms * request_count) / NULLIF(SUM(request_count), 0), 0),
 		 COALESCE(SUM(avg_tokens_per_second * request_count) / NULLIF(SUM(request_count), 0), 0)
 		 FROM model_token_usage_daily` + where
+	q = r.data.Dialect().RenumberPlaceholders(q)
 	var v biz.UsageSummary
 	err := entQueryRowScan(r.data.RW().Read(ctx), ctx, q, args,
 		&v.CallCount, &v.RequestCount, &v.SuccessCount, &v.FailedCount, &v.CancelledCount,
@@ -32,8 +33,7 @@ func (r *usageRepo) GetModelUsageSummaryFromDaily(ctx context.Context, query biz
 
 func (r *usageRepo) ListModelUsageDailyTrends(ctx context.Context, query biz.UsageQuery) ([]biz.UsageTrendPoint, error) {
 	where, args := usageDailyWhere(query)
-	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
-		`SELECT date_key,
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT date_key,
 		 COALESCE(SUM(call_count), 0),
 		 COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0),
@@ -42,9 +42,8 @@ func (r *usageRepo) ListModelUsageDailyTrends(ctx context.Context, query biz.Usa
 		 COALESCE(SUM(cancelled_count), 0),
 		 COALESCE(SUM(avg_latency_ms * request_count) / NULLIF(SUM(request_count), 0), 0),
 		 COALESCE(SUM(avg_tokens_per_second * request_count) / NULLIF(SUM(request_count), 0), 0)
-		 FROM model_token_usage_daily`+where+` GROUP BY date_key ORDER BY date_key ASC`,
-		args...,
-	)
+		 FROM model_token_usage_daily`+where+` GROUP BY date_key ORDER BY date_key ASC`)
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -63,16 +62,14 @@ func (r *usageRepo) ListModelUsageDailyTrends(ctx context.Context, query biz.Usa
 func (r *usageRepo) ListTopModelUsageFromDaily(ctx context.Context, query biz.UsageQuery) ([]biz.UsageBreakdownRow, error) {
 	where, args := usageDailyWhere(query)
 	args = append(args, usageLimit(query.Limit))
-	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
-		`SELECT provider_code, model_api_id,
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT provider_code, model_api_id,
 		 COALESCE(SUM(call_count), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0),
 		 COALESCE(SUM(avg_latency_ms * request_count) / NULLIF(SUM(request_count), 0), 0),
 		 COALESCE(SUM(avg_tokens_per_second * request_count) / NULLIF(SUM(request_count), 0), 0),
 		 COALESCE(1.0 * SUM(success_count) / NULLIF(SUM(request_count), 0), 0)
-		 FROM model_token_usage_daily`+where+` GROUP BY provider_code, model_api_id ORDER BY total_cost_micro_usd DESC, call_count DESC LIMIT ?`,
-		args...,
-	)
+		 FROM model_token_usage_daily`+where+` GROUP BY provider_code, model_api_id ORDER BY total_cost_micro_usd DESC, call_count DESC LIMIT ?`)
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -92,16 +89,14 @@ func (r *usageRepo) ListTopModelUsageFromDaily(ctx context.Context, query biz.Us
 func (r *usageRepo) ListTopAgentUsageFromDaily(ctx context.Context, query biz.UsageQuery) ([]biz.UsageBreakdownRow, error) {
 	where, args := usageDailyWhere(query)
 	args = append(args, usageLimit(query.Limit))
-	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
-		`SELECT agent_id, agent_key,
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT agent_id, agent_key,
 		 COALESCE(SUM(call_count), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0),
 		 COALESCE(SUM(avg_latency_ms * request_count) / NULLIF(SUM(request_count), 0), 0),
 		 COALESCE(SUM(avg_tokens_per_second * request_count) / NULLIF(SUM(request_count), 0), 0),
 		 COALESCE(1.0 * SUM(success_count) / NULLIF(SUM(request_count), 0), 0)
-		 FROM model_token_usage_daily`+where+` GROUP BY agent_id, agent_key ORDER BY total_cost_micro_usd DESC, call_count DESC LIMIT ?`,
-		args...,
-	)
+		 FROM model_token_usage_daily`+where+` GROUP BY agent_id, agent_key ORDER BY total_cost_micro_usd DESC, call_count DESC LIMIT ?`)
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

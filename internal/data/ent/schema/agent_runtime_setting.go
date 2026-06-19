@@ -124,12 +124,22 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.Bool("compress_llm_cache_enabled").Default(true),
 		field.Int("compress_llm_cache_max_entries").Default(256),
 		field.Int("compress_llm_cache_ttl_sec").Default(600),
+		// Token tailoring (provider-level context window management).
+		field.Bool("enable_token_tailoring").Default(false),
+		field.String("token_tailoring_strategy").Default(""),
+		field.Float("token_tailoring_safety_margin").Default(0.0),
 		field.Float("compression_buffer_ratio").Default(0.15),
+		// CompressionBufferAdaptive enables adaptive buffer ratio adjustment based on token increment patterns.
+		field.Bool("compression_buffer_adaptive").Default(true),
 		field.Float("soft_trigger_ratio").Default(0.70),
 		field.Float("hard_trigger_ratio").Default(0.90),
 		field.Bool("session_summary_enabled").Default(false),
 		field.String("skill_load_mode").Default("auto"),
 		field.String("code_executor_type").Default("local"),
+		// MaxLLMCalls limits LLM calls per turn (0 = unlimited); maps to llmagent.WithMaxLLMCalls.
+		field.Int("max_llm_calls").Default(0),
+		// MaxToolIterations limits tool-call iterations per turn (0 = unlimited); maps to llmagent.WithMaxToolIterations.
+		field.Int("max_tool_iterations").Default(0),
 		field.String("planner_kind").Default(""),
 		field.String("planner_config_json").Default("{}"),
 		field.Int("ralph_loop_max_iterations").Default(0),

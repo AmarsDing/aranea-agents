@@ -269,6 +269,9 @@ func (m *ingressSessionRepo) SessionSummaryExists(context.Context, string, int, 
 func (m *ingressSessionRepo) ListByParentSessionID(_ context.Context, _ string) ([]biz.Session, error) {
 	return nil, nil
 }
+func (m *ingressSessionRepo) ListActiveAgentUserKeys(_ context.Context, _ int) ([]sessstatus.AgentUserKey, error) {
+	return nil, nil
+}
 
 type ingressAgentRepo struct {
 	id string

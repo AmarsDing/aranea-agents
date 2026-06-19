@@ -39,6 +39,23 @@ message SendChatMessageResponse {
   google.protobuf.Struct agent_message = 2;
 }
 
+// SubmitChatMessageResponse is the ACK-only response for the async command
+// channel (B2). Full message/state/streaming data arrives via the WS data
+// channel — this response intentionally carries no message content.
+message SubmitChatMessageResponse {
+  // accepted = true means the message was accepted and turn processing started.
+  bool accepted = 1;
+  // status: "accepted" = turn started; "queued" = enqueued for later (active run).
+  string status = 2;
+  // message_id is empty on accept (assigned when the user message is persisted,
+  // delivered via WS `message.persisted` event). For queued messages, this is
+  // the pending queue entry ID.
+  string message_id = 3;
+  // turn_id is empty on accept (assigned when the turn starts, delivered via
+  // WS `run_status=running` event).
+  string turn_id = 4;
+}
+
 message GetChatOptionsRequest {
   // Query: ?type=
   string type = 1;
@@ -208,6 +225,17 @@ service ChatService {
   rpc SendChatMessage(SendChatMessageRequest) returns (SendChatMessageResponse) {
     option (google.api.http) = {
       post: "/v1/chat/messages"
+      body: "*"
+    };
+  }
+  // SubmitChatMessage submits a user message asynchronously and returns an ACK
+  // only (B2 channel separation). Turn execution runs in the background; all
+  // message/state/streaming data arrives via the WS data channel.
+  // Use this instead of SendChatMessage when the client is WS-connected and
+  // only needs a fire-and-ack command channel.
+  rpc SubmitChatMessage(SendChatMessageRequest) returns (SubmitChatMessageResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/messages/submit"
       body: "*"
     };
   }

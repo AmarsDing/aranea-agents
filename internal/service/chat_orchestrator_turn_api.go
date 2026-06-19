@@ -9,6 +9,9 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/appctx"
+	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -48,6 +51,54 @@ func (o *ChatOrchestrator) nativeSendChatMessage(ctx context.Context, req *chatv
 		}
 	}
 	return out, nil
+}
+
+// submitChatMessageAsync submits a user message asynchronously and returns an
+// ACK immediately (B2 channel separation). Turn execution runs in a background
+// goroutine using the process-lifecycle context; all message/state/streaming
+// data is delivered via the WS data channel.
+//
+// Design notes:
+//   - The HTTP request context is cancelled as soon as the ACK is returned, so
+//     the background turn MUST derive from appctx.Ctx() (process-lifecycle).
+//     Cancellation is handled via the RunRegistry (StopGeneration RPC).
+//   - On turn failure, an error envelope is published to the event bus so
+//     WS-connected clients see the failure inline. Queued messages are not
+//     treated as errors — the pending queue tracks them and the WS data
+//     channel delivers updates when the turn eventually runs.
+//   - The response intentionally carries no message content; message_id and
+//     turn_id are empty on accept and delivered via WS events
+//     (`message.persisted`, `run_status=running`).
+func (o *ChatOrchestrator) submitChatMessageAsync(_ context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SubmitChatMessageResponse, error) {
+	input := turnInputFromProto(req)
+	sessionID := input.SessionID
+	lg := o.lg().With(loggateway.SessionID(sessionID), loggateway.StepID("chat.submit_async"))
+
+	// Derive from appctx.Ctx() so the turn outlives the HTTP request.
+	// StopGeneration cancels via the RunRegistry, not via this context.
+	bgCtx := appctx.Ctx()
+	safego.Go(bgCtx, "chat-submit-async", func() {
+		if _, err := o.Execute(bgCtx, input); err != nil {
+			if isTurnMessageQueued(err) {
+				lg.Info("SubmitChatMessage: message queued (active run)")
+				return
+			}
+			lg.Warn("SubmitChatMessage: turn execution failed", loggateway.Err(err))
+			if bus := o.td().Pipeline.Bus; bus != nil {
+				env := event.NewEnvelope(event.EnvelopeTypeError, "chat-submit", sessionID)
+				env.Error = &event.EnvelopeError{
+					Type:    "send_failed",
+					Message: err.Error(),
+				}
+				bus.Publish(context.Background(), env)
+			}
+		}
+	})
+
+	return &chatv1.SubmitChatMessageResponse{
+		Accepted: true,
+		Status:   "accepted",
+	}, nil
 }
 
 // nativeGetChatOptions returns chat options.

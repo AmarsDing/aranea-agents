@@ -3,7 +3,8 @@ package data
 // memory_job_deadletter.go — MEM-OPT-03: persistent dead-letter store for AutoMemory jobs.
 //
 // Implements trpcmem.MemoryDeadLetterSink using the raw SQLite database.
-// Table is created lazily on first write.
+// Table is created by DDL migration 20260728 (primary path, DB-R4 compliance).
+// The ensureTable() safety net handles the Wire-construction-vs-P1-migration race.
 
 import (
 	"context"
@@ -33,6 +34,10 @@ func NewMemoryJobDeadLetterRepo(d *Data) *MemoryJobDeadLetterRepo {
 }
 
 func (r *MemoryJobDeadLetterRepo) ensureTable() {
+	// Safety net for the Wire-construction-vs-P1-migration race: NewMemoryJobDeadLetterRepo
+	// may be called by Wire before the P1 DDL migration (version 20260728) completes.
+	// The migration is the primary, versioned creation path (DB-R4); this idempotent
+	// CREATE TABLE IF NOT EXISTS ensures the table exists regardless of startup ordering.
 	db := r.data.RWDB().WriteHandle()
 	if db == nil {
 		return

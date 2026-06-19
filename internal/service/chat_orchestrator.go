@@ -16,6 +16,7 @@ import (
 	"aranea-agents/internal/outbound"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/internal/runtime/lifecycle"
 	"aranea-agents/internal/runtime/turn"
 	araneasession "aranea-agents/internal/session"
 	"aranea-agents/internal/tools"
@@ -248,6 +249,12 @@ func (o *ChatOrchestrator) heartbeatEmitter() *RunHeartbeatEmitter {
 	return o.infraDeps.HeartbeatEmitter
 }
 
+// deadLetterQueue returns the Wire-injected DeadLetterQueue for pending-queue
+// failures (A4), or nil when not configured. Callers must nil-check before use.
+func (o *ChatOrchestrator) deadLetterQueue() *lifecycle.DeadLetterQueue {
+	return o.infraDeps.DeadLetterQueue
+}
+
 // Sub-manager accessors delegate to the composite interfaces.
 func (o *ChatOrchestrator) sessionStateMgr() sessionStateTransitor { return o.turnLC }
 func (o *ChatOrchestrator) turnMetrics() turnRecorder              { return o.turnLC }
@@ -309,6 +316,9 @@ type ChatInfraDeps struct {
 	// detect stale runs within 30s (P1-7). When nil, no heartbeats are
 	// emitted and stale detection degrades gracefully.
 	HeartbeatEmitter *RunHeartbeatEmitter
+	// DeadLetterQueue holds pending-queue messages that failed processing
+	// (A4). When nil, failed messages are only logged (legacy behavior).
+	DeadLetterQueue *lifecycle.DeadLetterQueue
 }
 
 // ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.

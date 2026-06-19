@@ -2,6 +2,7 @@ package plugintrpc
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -54,11 +55,26 @@ func (m *ModelRouterPlugin) beforeModel(ctx context.Context, args *trpcmodel.Bef
 	}
 	if target != "" && target != origModel {
 		m.base.logger.Info("plugin.model_router.before_model", "status", "routed_via_selector", "orig_model", origModel, "target_model", target)
+		// N-03: Emit notice Activity for model routing.
+		m.emitNotice(ctx, "model_router_routed",
+			fmt.Sprintf("模型已从 %s 切换至 %s", origModel, target))
 	} else {
 		m.base.logger.Info("plugin.model_router.before_model", "status", "no_route", "orig_model", origModel)
 	}
 	m.base.record(ctx, "before_model", "ok")
 	return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+}
+
+// emitNotice emits a notice Activity via the ActivityEmitter in ctx.
+// It is a best-effort operation: errors are logged but do not affect routing.
+func (m *ModelRouterPlugin) emitNotice(ctx context.Context, noticeType, content string) {
+	if emitter := biz.ActivityEmitterFromContext(ctx); emitter != nil {
+		if err := emitter.EmitNotice(ctx, content, noticeType); err != nil {
+			m.base.lg.Warn("EmitNotice failed",
+				loggateway.StepID("plugin.model_router"),
+				loggateway.Err(err))
+		}
+	}
 }
 
 // ResolveModelAPI picks a catalog model API id from prompt heuristics and plugin config.

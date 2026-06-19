@@ -36,7 +36,11 @@ type ProjectMeta struct {
 	TaskContent        string // User input text for the root task Activity
 }
 
-// Deprecated: Use ActivityProjector instead (Activity-First architecture). EventProjector will be removed after frontend fully migrates to Activity consumption (Phase 3).
+// Deprecated: Use ActivityProjector instead (Activity-First architecture).
+// EventProjector is retained only for persistence purposes (trackToolEnvelope,
+// PublishActivityEnvelopes, member tool call counting) and test scenarios.
+// Frontend has fully migrated to Activity consumption (T7.3 complete);
+// EventProjector output is never published to WS in production.
 type EventProjector struct {
 	eventBus      event.Bus
 	mu            sync.Mutex
@@ -55,7 +59,11 @@ type toolCallCache struct {
 	startedAt time.Time
 }
 
-// Deprecated: Use ActivityProjector instead (Activity-First architecture). EventProjector will be removed after frontend fully migrates to Activity consumption (Phase 3).
+// Deprecated: Use ActivityProjector instead (Activity-First architecture).
+// EventProjector is retained only for persistence purposes (trackToolEnvelope,
+// PublishActivityEnvelopes, member tool call counting) and test scenarios.
+// Frontend has fully migrated to Activity consumption (T7.3 complete);
+// EventProjector output is never published to WS in production.
 func NewEventProjector(eventBus event.Bus, lg loggateway.Logger) *EventProjector {
 	if lg == nil {
 		lg = loggateway.NewNoop()

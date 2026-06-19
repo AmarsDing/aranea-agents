@@ -32,16 +32,16 @@ func (s *UsageService) GetUsageOverview(ctx context.Context, in *v1.UsageQuery) 
 		return nil, err
 	}
 	return &v1.UsageOverview{
-		Today:              toProtoUsageSummary(o.Today),
-		Yesterday:          toProtoUsageSummary(o.Yesterday),
-		Month:              toProtoUsageSummary(o.Month),
-		RangeSummary:       toProtoUsageSummary(o.Range),
-		Trends:             toProtoUsageTrendPoints(o.Trends),
-		TopModels:          toProtoUsageBreakdownRows(o.TopModels),
-		TopAgents:          toProtoUsageBreakdownRows(o.TopAgents),
-		Anomalies:          toProtoTokenUsageEvents(o.Anomalies),
-		QuotaDashboard:     toProtoQuotaDashboard(o.QuotaDashboard),
-		InefficientModels:  toProtoUsageModelInsights(o.InefficientModels),
+		Today:             toProtoUsageSummary(o.Today),
+		Yesterday:         toProtoUsageSummary(o.Yesterday),
+		Month:             toProtoUsageSummary(o.Month),
+		RangeSummary:      toProtoUsageSummary(o.Range),
+		Trends:            toProtoUsageTrendPoints(o.Trends),
+		TopModels:         toProtoUsageBreakdownRows(o.TopModels),
+		TopAgents:         toProtoUsageBreakdownRows(o.TopAgents),
+		Anomalies:         toProtoTokenUsageEvents(o.Anomalies),
+		QuotaDashboard:    toProtoQuotaDashboard(o.QuotaDashboard),
+		InefficientModels: toProtoUsageModelInsights(o.InefficientModels),
 	}, nil
 }
 

@@ -3,7 +3,7 @@
     <template v-if="isProviderResource">
       <AppPageHero kicker="LLM Provider" :title="pageTitle" :subtitle="pageSubtitle">
         <template #actions>
-          <q-btn color="primary" unelevated rounded icon="add" label="添加 Provider" @click="openCreate" />
+          <q-btn color="primary" unelevated rounded icon="add" :label="t('resourceManager.addProvider')" @click="openCreate" />
         </template>
       </AppPageHero>
 
@@ -11,8 +11,7 @@
         <template #avatar>
           <q-icon name="lock_open" color="warning" />
         </template>
-        凭据加密密钥未配置，API 密钥将以明文存储。请在「系统设置」中初始化加密密钥，或设置 ARANEA_CREDENTIAL_KEY
-        环境变量。
+        {{ t('resourceManager.credentialWarning') }}
       </q-banner>
 
       <q-card flat bordered class="app-entity-glass-panel provider-card">
@@ -24,7 +23,7 @@
             outlined
             clearable
             debounce="200"
-            placeholder="搜索 Provider、模型或类型..."
+            :placeholder="t('resourceManager.searchPlaceholder')"
           >
             <template #prepend><q-icon name="search" /></template>
           </q-input>
@@ -37,7 +36,7 @@
             use-chips
             emit-value
             map-options
-            label="Provider 类型"
+            :label="t('resourceManager.providerType')"
             :options="providerTypeFilterOptions"
           />
         </q-card-section>
@@ -45,15 +44,15 @@
 
         <div v-if="!loading && !pagedProviderRows.length" class="app-registry-empty empty-state q-card-section">
           <q-icon name="manage_search" size="40px" color="grey-5" />
-          <div class="text-subtitle1 q-mt-sm">暂无 Provider 模型</div>
-          <div class="text-caption text-grey-7">添加 Provider 后，可为每个模型配置能力分类、密钥和性能指标。</div>
+          <div class="text-subtitle1 q-mt-sm">{{ t('resourceManager.emptyTitle') }}</div>
+          <div class="text-caption text-grey-7">{{ t('resourceManager.emptyHint') }}</div>
           <q-btn
             class="q-mt-md"
             color="primary"
             unelevated
             rounded
             icon="add"
-            label="添加 Provider"
+            :label="t('resourceManager.addProvider')"
             @click="openCreate"
           />
         </div>
@@ -78,7 +77,7 @@
             :page-max="pageCount"
             :total="filteredRows.length"
             :loading="loading"
-            label="条模型"
+            :label="t('resourceManager.modelsUnit')"
             :page-size-options="[10, 20, 50]"
           />
         </div>
@@ -92,12 +91,12 @@
           <div class="text-caption text-grey-7">{{ pageSubtitle }}</div>
         </div>
         <div class="app-field-md">
-          <q-input v-model="keyword" dense outlined clearable debounce="200" label="搜索">
+          <q-input v-model="keyword" dense outlined clearable debounce="200" :label="t('common.search')">
             <template #prepend><q-icon name="search" /></template>
           </q-input>
         </div>
         <div class="col-auto">
-          <q-btn color="primary" unelevated rounded icon="add" label="新增" @click="openCreate" />
+          <q-btn color="primary" unelevated rounded icon="add" :label="t('resourceManager.addNew')" @click="openCreate" />
         </div>
       </q-card-section>
       <q-separator />
@@ -327,6 +326,8 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
@@ -339,12 +340,14 @@ import ProviderWizardStep4Advanced from '../components/platform/ProviderWizardSt
 import { useResourceManagerPage } from '../features/platform/useResourceManagerPage';
 import { useModelCatalogStore } from '../stores/model-catalog';
 
-const providerWizardSteps = [
-  { id: 1, title: '连接', caption: '密钥与身份' },
-  { id: 2, title: '规格', caption: '能力与定价' },
-  { id: 3, title: '高可用', caption: 'Failover' },
-  { id: 4, title: '高级', caption: '限速与优化' },
-] as const;
+const { t } = useI18n();
+
+const providerWizardSteps = computed(() => [
+  { id: 1, title: t('resourceManager.step1Title'), caption: t('resourceManager.step1Caption') },
+  { id: 2, title: t('resourceManager.step2Title'), caption: t('resourceManager.step2Caption') },
+  { id: 3, title: t('resourceManager.step3Title'), caption: t('resourceManager.step3Caption') },
+  { id: 4, title: t('resourceManager.step4Title'), caption: t('resourceManager.step4Caption') },
+]);
 
 const {
   isDark,

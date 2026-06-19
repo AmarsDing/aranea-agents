@@ -242,6 +242,7 @@ func (r *monitorRepo) CountMonitorEventsSince(ctx context.Context, eventKey, sta
 		q += ` AND status = ?`
 		args = append(args, status)
 	}
+	q = r.data.Dialect().RenumberPlaceholders(q)
 	var n int32
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, args, &n)
 	return n, err

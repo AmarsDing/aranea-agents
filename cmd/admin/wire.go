@@ -55,6 +55,7 @@ import (
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/internal/runtime/lifecycle"
 	"aranea-agents/internal/server"
 	"aranea-agents/internal/service"
 	araneasession "aranea-agents/internal/session"
@@ -408,6 +409,54 @@ func provideRunRegistry(lg loggateway.Logger) *rt.RunRegistry {
 	return rt.NewRunRegistry().WithLogger(lg)
 }
 
+// provideGlobalBuildCache exposes the process-level agent BuildCache singleton
+// so it can be registered with the LifecycleManager for orderly shutdown (A3).
+func provideGlobalBuildCache() *agent.BuildCache {
+	return agent.GetGlobalBuildCache()
+}
+
+// provideLifecycleManager builds the process-level LifecycleManager and
+// registers the global build cache for LIFO shutdown (A3). Additional
+// process-level resources can be registered here as they are migrated to
+// the lifecycle abstraction.
+func provideLifecycleManager(cache *agent.BuildCache, lg loggateway.Logger) *lifecycle.LifecycleManager {
+	mgr := lifecycle.NewLifecycleManager(lg)
+	mgr.Register("global-build-cache", cache)
+	return mgr
+}
+
+// provideDeadLetterQueue builds the process-level DeadLetterQueue for
+// pending-queue failures (A4). The queue is bounded to 1000 entries;
+// when full, the oldest message is dropped (logged).
+//
+// A4 + T3.1: The queue is wired with a persist hook that stores failed
+// pending-queue messages to the memory_job_deadletter table (unified dead-letter
+// store). This ensures operators can inspect/retry/discard failed messages
+// across process restarts, completing the A4 "内存缓冲 + DB 持久化" design.
+func provideDeadLetterQueue(sink biz.MemoryDeadLetterSink, lg loggateway.Logger) *lifecycle.DeadLetterQueue {
+	q := lifecycle.NewDeadLetterQueue(1000, lg)
+	q.SetPersistHook(func(ctx context.Context, msg *lifecycle.DeadLetterMessage) error {
+		// Map DeadLetterMessage → MemoryDeadLetterRequest. The Original field
+		// holds the pending message content (string); Source identifies the
+		// origin (e.g. "pending-queue").
+		originalStr := ""
+		if s, ok := msg.Original.(string); ok {
+			originalStr = s
+		}
+		sink.WriteMemoryDeadLetter(
+			biz.MemoryDeadLetterRequest{
+				AppName:  msg.Source,
+				Priority: biz.MemoryJobPriorityNormal,
+				TenantID: originalStr, // store original content for inspection
+			},
+			biz.MemoryDeadLetterReasonPendingQueueFailure,
+			msg.Error,
+		)
+		return nil
+	})
+	return q
+}
+
 // provideRunHeartbeatEmitter builds the Wire-bound RunHeartbeatEmitter (P1-7).
 // The emit interval is read from the RUN_HEARTBEAT_INTERVAL env var (e.g.
 // "10s", "30s"); when unset or invalid, NewRunHeartbeatEmitter applies its
@@ -750,15 +799,15 @@ func provideTeamTurnDeps(
 	eventBuffer *event.Buffer,
 	lg loggateway.Logger,
 ) rt.TurnDeps {
+	// LLMHTTP timeout is sourced from TimeoutPolicy.
+	// TaskTypeModerate (60min) is the baseline; per-task-type overrides
+	// can be applied in the LLM call path via context (see trpc_llm.go).
+	timeoutPolicy := provider.NewTimeoutPolicy()
 	return rt.TurnDeps{
-		ReadDeps: provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
-		Persist:  persist,
-		Pipeline: rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer},
-		// P1 fix (2026-06-18): Raised from 300s (5min) to 1800s (30min) to support
-		// long-running LLM reasoning tasks (deep analysis, code generation) that
-		// exceed the previous 5min ceiling. Streaming responses are not affected
-		// (stream chunks arrive within the timeout); this only bounds total call time.
-		LLMHTTP:   &http.Client{Timeout: 1800 * time.Second},
+		ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
+		Persist:   persist,
+		Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer},
+		LLMHTTP:   &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
 		Sessions:  sessions,
 		Compress:  compress,
 		RunnerMgr: rt.NewRunnerManagerFromPersist(persist, lg),
@@ -827,6 +876,7 @@ func provideChatServiceDeps(
 	activityWriter biz.ActivityWriter,
 	activityReader biz.ActivityReader,
 	heartbeatEmitter *service.RunHeartbeatEmitter,
+	deadLetterQueue *lifecycle.DeadLetterQueue,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	// Backfill TaskOrchestrator into teamDeps to break the Wire cycle:
@@ -835,14 +885,17 @@ func provideChatServiceDeps(
 	// (it would create a cycle), so we inject it here after Wire resolves it.
 	teamDeps.TaskOrchestrator = taskOrch
 
+	// LLMHTTP timeout is sourced from TimeoutPolicy.
+	// TaskTypeModerate (60min) is the baseline; per-task-type overrides
+	// can be applied in the LLM call path via context (see trpc_llm.go).
+	timeoutPolicy := provider.NewTimeoutPolicy()
 	return service.ChatOrchestratorDeps{
 		Turn: service.ChatTurnDeps{
 			TurnDeps: rt.TurnDeps{
-				ReadDeps: provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
-				Persist:  persist,
-				Pipeline: rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer},
-				// P1 fix (2026-06-18): Raised from 300s to 1800s to support long LLM reasoning.
-				LLMHTTP:   &http.Client{Timeout: 1800 * time.Second},
+				ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
+				Persist:   persist,
+				Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer},
+				LLMHTTP:   &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
 				Sessions:  sessions,
 				SessionRT: sessionRT,
 				Compress:  compress,
@@ -889,6 +942,7 @@ func provideChatServiceDeps(
 			SubAgentService:  subAgentSvc,
 			TurnLifecycle:    turnLifecycle,
 			HeartbeatEmitter: heartbeatEmitter,
+			DeadLetterQueue:  deadLetterQueue,
 		},
 	}
 }
@@ -1373,14 +1427,15 @@ func provideMemoryL4DecayWorker(l4 biz.L4GraphWriter, agents *biz.AgentUsecase, 
 }
 
 // provideMemoryEbbinghausDecayWorker wires the Ebbinghaus exponential decay
-// statistics worker. The worker is statistics-only and does not mutate the
-// database; the calculator defaults to a fresh instance when nil is passed.
+// worker. The worker scans memories via L3FactReader (DB read), computes
+// per-agent Ebbinghaus reachability R_t, and writes R_t back to the DB via
+// DecayScoreWriter so fused recall can down-weight forgotten memories.
 // Disabled via MEMORY_EBBINGHAUS_DECAY_DISABLED env var.
-func provideMemoryEbbinghausDecayWorker(lg loggateway.Logger) *jobs.MemoryEbbinghausDecayWorker {
+func provideMemoryEbbinghausDecayWorker(d *data.Data, agents *biz.AgentUsecase, lg loggateway.Logger) *jobs.MemoryEbbinghausDecayWorker {
 	if jobs.MemoryEbbinghausDecayDisabled() {
 		return nil
 	}
-	return jobs.NewMemoryEbbinghausDecayWorker(0, nil, lg)
+	return jobs.NewMemoryEbbinghausDecayWorker(0, nil, data.NewL3FactReaderForUser(d), data.NewDecayScoreWriter(d), agents, lg)
 }
 
 // memorySleepTimeQueueSize is the buffer size for the in-memory consolidation
@@ -1390,16 +1445,26 @@ const memorySleepTimeQueueSize = 100
 // provideMemorySleepTimeWorker wires the Sleep-time Agent worker. It builds a
 // SleepTimeService backed by the shared trpc memory Service, an optional LLM
 // model (resolved from MEMORY_SLEEP_TIME_PROVIDER/MEMORY_SLEEP_TIME_MODEL env
-// vars), and an in-memory consolidation queue. When MEMORY_SLEEP_TIME_USER_IDS
-// is set, an AgentUserKeyLister is wired so the worker periodically enqueues
-// consolidation jobs for each (agent, user) pair; otherwise the worker only
-// drains the queue (queue-only mode).
+// vars), and an in-memory consolidation queue.
+//
+// Target lister selection (in priority order):
+//  1. MEMORY_SLEEP_TIME_USER_IDS env var — explicit override for testing/debug.
+//  2. SessionRepo-derived lister — production default. Enumerates distinct
+//     (agent, user) pairs from sessions active in the last 7 days, filtered to
+//     agents with L3 facts enabled.
+//  3. nil — queue-only mode (drains the queue but does not proactively enqueue).
+//
+// A circuit breaker (5 failures → 5min pause → half-open) and a dead-letter
+// writer (persists exhausted jobs to memory_job_deadletter) are attached to
+// the worker's job runner.
 //
 // Disabled via MEMORY_SLEEP_TIME_DISABLED env var.
 func provideMemorySleepTimeWorker(
 	memSvc trpcmemory.Service,
 	agents *biz.AgentUsecase,
 	catalog *biz.LlmProviderModelUsecase,
+	sessionReader biz.SessionReader,
+	deadLetterSink biz.MemoryDeadLetterSink,
 	lg loggateway.Logger,
 ) *jobs.MemorySleepTimeWorker {
 	if jobs.MemorySleepTimeDisabled() {
@@ -1424,15 +1489,23 @@ func provideMemorySleepTimeWorker(
 	}
 	queue := memory.NewConsolidationQueue(memorySleepTimeQueueSize)
 	svc := memory.NewSleepTimeService(memSvc, llm, queue, lg)
-	// Build optional target lister from configured user IDs. When no user IDs
-	// are configured, the worker runs in queue-only mode (drains the queue but
-	// does not proactively enqueue consolidation jobs).
-	userIDs := parseSleepTimeUserIDsFromEnv()
+	// Build target lister. Priority: env-var override → SessionRepo-derived.
 	var lister jobs.SleepTimeTargetLister
-	if len(userIDs) > 0 {
+	if userIDs := parseSleepTimeUserIDsFromEnv(); len(userIDs) > 0 {
+		lg.Info("sleep-time worker: using env-var target lister (MEMORY_SLEEP_TIME_USER_IDS)")
 		lister = jobs.NewAgentUserKeyLister(agents, userIDs)
+	} else if sessionReader != nil {
+		lg.Info("sleep-time worker: using SessionRepo-derived target lister (7-day lookback)")
+		lister = jobs.NewAgentUserKeyListerFromSession(agents, sessionReader)
 	}
-	return jobs.NewMemorySleepTimeWorker(0, svc, lister, lg)
+	worker := jobs.NewMemorySleepTimeWorker(0, svc, lister, lg)
+	// Attach circuit breaker: 5 consecutive failures → 5min cool-down →
+	// half-open probe. Prevents retry storms when the memory backend is down.
+	worker.WithCircuitBreaker(jobs.NewCircuitBreaker(lg))
+	// Attach dead-letter writer: exhausted jobs are persisted to
+	// memory_job_deadletter for later replay/analysis.
+	worker.WithDeadLetter(jobs.NewDeadLetterSinkAdapter(deadLetterSink))
+	return worker
 }
 
 // parseSleepTimeUserIDsFromEnv reads the MEMORY_SLEEP_TIME_USER_IDS env var
@@ -2155,12 +2228,16 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		providePromptFileAIEditor,
 		provideSessionTitleGenerator,
 		provideRunRegistry,
+		provideGlobalBuildCache,
+		provideLifecycleManager,
+		provideDeadLetterQueue,
 		provideRunHeartbeatEmitter,
 		providePendingMessageQueue,
 		provideCodeExecutorFactory,
 		provideAutoMemoryQueue,
 		wire.Bind(new(memtrpc.AutoMemoryQueue), new(*memtrpc.MemoryJobQueue)),
 		wire.Bind(new(biz.MemoryDeadLetterAdminRepo), new(*data.MemoryJobDeadLetterRepo)),
+		wire.Bind(new(biz.MemoryDeadLetterSink), new(*data.MemoryJobDeadLetterRepo)),
 		provideMemoryPolicyEngine,
 		provideFactIndexSync,
 		provideMemoryL2Recall,

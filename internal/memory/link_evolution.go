@@ -59,6 +59,15 @@ type EvolutionQueue interface {
 	Chan() <-chan EvolutionJobRequest
 }
 
+// TxProvider provides transactional execution for atomic link evolution.
+// When tx is nil, EvolveLinks falls back to non-atomic best-effort updates
+// (preserving the legacy behaviour). When tx is wired (e.g. *data.Data),
+// the backlink batch + new-memory update are wrapped in a single transaction
+// so a mid-loop failure rolls back all partial backlinks.
+type TxProvider interface {
+	ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
 // LinkEvolutionServiceImpl is the default LinkEvolutionService implementation.
 // It uses an LLM to extract keywords and judge links, and persists the
 // resulting links/keywords via the fact reader/writer ports.
@@ -67,6 +76,7 @@ type LinkEvolutionServiceImpl struct {
 	factReader biz.L3FactReader
 	factWriter biz.L3FactWriter
 	queue      EvolutionQueue
+	tx         TxProvider
 	lg         loggateway.Logger
 }
 
@@ -77,12 +87,15 @@ type LinkEvolutionServiceImpl struct {
 //   - factReader: the reader for retrieving historical memories.
 //   - factWriter: the writer for updating memory links/keywords.
 //   - queue:      the queue for async evolution jobs. May be nil.
+//   - tx:         the transaction provider for atomic backlink updates. May be nil
+//                 (falls back to non-atomic best-effort updates).
 //   - lg:         the logger. Falls back to a no-op logger if nil.
 func NewLinkEvolutionService(
 	llm trpcmodel.Model,
 	factReader biz.L3FactReader,
 	factWriter biz.L3FactWriter,
 	queue EvolutionQueue,
+	tx TxProvider,
 	lg loggateway.Logger,
 ) *LinkEvolutionServiceImpl {
 	if lg == nil {
@@ -93,6 +106,7 @@ func NewLinkEvolutionService(
 		factReader: factReader,
 		factWriter: factWriter,
 		queue:      queue,
+		tx:         tx,
 		lg:         lg.With(loggateway.Domain("link_evolution")),
 	}
 }
@@ -222,51 +236,80 @@ func (s *LinkEvolutionServiceImpl) EvolveLinks(ctx context.Context, uk trpcmemor
 		return nil, nil
 	}
 
-	// 3. Update historical memories: add backlink to the new memory.
-	// TECH-DEBT: Each UpsertFactRow is a separate DB call without a wrapping
-	// transaction. A mid-loop failure leaves partial backlinks. This is
-	// acceptable for best-effort A-MEM style link evolution (links can be
-	// rebuilt on the next analysis pass), but a future iteration should wrap
-	// the batch in ExecInTx for atomicity.
-	linkedIDs := make([]string, 0, len(result.Links))
-	for _, link := range result.Links {
-		targetID := strings.TrimSpace(link.TargetID)
-		if targetID == "" || targetID == newEntry.ID {
-			continue
+	// 3+4. Apply backlinks (historical memories) and forward links (new memory).
+	//
+	// When s.tx is wired (production: *data.Data), the batch is wrapped in a
+	// single transaction so a mid-loop failure rolls back all partial
+	// backlinks (atomicity). When s.tx is nil (tests / legacy), the batch
+	// runs without a transaction — the first failure aborts the remaining
+	// updates but already-applied writes are not rolled back.
+	//
+	// Note: UpsertFactRow internally calls Data.ExecInTx for INSERT + read-back.
+	// When this method wraps the batch in ExecInTx, the nested ExecInTx inside
+	// UpsertFactRow detects the in-progress transaction via ctx and reuses it
+	// (see tx.go: txClientKey detection), so all writes participate in the
+	// same transaction.
+	applyBacklinks := func(ctx context.Context) ([]string, error) {
+		linkedIDs := make([]string, 0, len(result.Links))
+		for _, link := range result.Links {
+			targetID := strings.TrimSpace(link.TargetID)
+			if targetID == "" || targetID == newEntry.ID {
+				continue
+			}
+			// Verify the target ID exists in historical memories.
+			var targetRow *factRowData
+			for i := range historical {
+				if historical[i].ID == targetID {
+					targetRow = &historical[i]
+					break
+				}
+			}
+			if targetRow == nil {
+				continue
+			}
+			// Add the new memory's ID to the historical memory's links.
+			updatedLinks := appendUnique(decodeStringArray(targetRow.LinksJSON), newEntry.ID)
+			updatedKeywords := mergeUnique(decodeStringArray(targetRow.KeywordsJSON), result.Keywords)
+			upsert := factRowToUpsert(*targetRow)
+			upsert.LinksJSON = encodeStringArray(updatedLinks)
+			upsert.KeywordsJSON = encodeStringArray(updatedKeywords)
+			if _, upErr := s.factWriter.UpsertFactRow(ctx, upsert); upErr != nil {
+				return nil, fmt.Errorf("update historical memory %s: %w", targetID, upErr)
+			}
+			linkedIDs = append(linkedIDs, targetID)
 		}
-		// Verify the target ID exists in historical memories.
-		var targetRow *factRowData
-		for i := range historical {
-			if historical[i].ID == targetID {
-				targetRow = &historical[i]
-				break
+
+		// 4. Update the new memory's links and keywords.
+		if len(linkedIDs) > 0 {
+			if err := s.updateNewMemoryLinks(ctx, uk, newEntry.ID, linkedIDs, result.Keywords); err != nil {
+				return nil, fmt.Errorf("update new memory %s: %w", newEntry.ID, err)
 			}
 		}
-		if targetRow == nil {
-			continue
-		}
-		// Add the new memory's ID to the historical memory's links.
-		updatedLinks := appendUnique(decodeStringArray(targetRow.LinksJSON), newEntry.ID)
-		updatedKeywords := mergeUnique(decodeStringArray(targetRow.KeywordsJSON), result.Keywords)
-		upsert := factRowToUpsert(*targetRow)
-		upsert.LinksJSON = encodeStringArray(updatedLinks)
-		upsert.KeywordsJSON = encodeStringArray(updatedKeywords)
-		if _, upErr := s.factWriter.UpsertFactRow(ctx, upsert); upErr != nil {
-			s.lg.Warn("link evolution update historical memory failed",
-				loggateway.Str("fact_id", targetID),
-				loggateway.Err(upErr))
-			// Continue — partial update is acceptable.
-		}
-		linkedIDs = append(linkedIDs, targetID)
+		return linkedIDs, nil
 	}
 
-	// 4. Update the new memory's links and keywords.
-	if len(linkedIDs) > 0 {
-		if err := s.updateNewMemoryLinks(ctx, uk, newEntry.ID, linkedIDs, result.Keywords); err != nil {
-			s.lg.Warn("link evolution update new memory failed",
-				loggateway.Str("fact_id", newEntry.ID),
-				loggateway.Err(err))
-		}
+	var linkedIDs []string
+	var applyErr error
+	if s.tx != nil {
+		applyErr = s.tx.ExecInTx(ctx, func(txCtx context.Context) error {
+			var err error
+			linkedIDs, err = applyBacklinks(txCtx)
+			return err
+		})
+	} else {
+		linkedIDs, applyErr = applyBacklinks(ctx)
+	}
+	if applyErr != nil {
+		// Best-effort: log warn and return empty links. A failed batch leaves
+		// no partial backlinks when tx is wired (rolled back), or may leave
+		// partial writes when tx is nil (acceptable — links can be rebuilt on
+		// the next analysis pass).
+		s.lg.Warn("link evolution apply backlinks failed",
+			loggateway.Str("app", uk.AppName),
+			loggateway.Str("user", uk.UserID),
+			loggateway.Str("new_fact_id", newEntry.ID),
+			loggateway.Err(applyErr))
+		return nil, nil
 	}
 
 	s.lg.Info("link evolution completed",

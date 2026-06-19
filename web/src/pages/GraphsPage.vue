@@ -1,25 +1,25 @@
 <template>
   <q-page :class="['app-standard-page graphs-page', { 'is-dark': isDark }]">
     <AppPageHero
-      kicker="Graph 工作流"
-      title="Graph 管理"
-      subtitle="可视化构建可观测、可干预、可回溯的确定性工作流，支持条件路由、人工审批和状态回溯。"
+      :kicker="t('graphs.kicker')"
+      :title="t('graphs.title')"
+      :subtitle="t('graphs.subtitle')"
     >
       <template #actions>
-        <q-btn outline rounded icon="dashboard" label="从模板创建" class="q-mr-sm" @click="templateDialogOpen = true" />
-        <q-btn class="graphs-page__create-btn" rounded unelevated icon="add" label="新增 Graph" @click="openCreate" />
+        <q-btn outline rounded icon="dashboard" :label="t('graphs.createFromTemplate')" class="q-mr-sm" @click="templateDialogOpen = true" />
+        <q-btn class="graphs-page__create-btn" rounded unelevated icon="add" :label="t('graphs.createGraph')" @click="openCreate" />
       </template>
     </AppPageHero>
 
     <q-banner v-if="error" rounded class="bg-negative text-white q-mt-md">
       {{ error }}
-      <template #action><q-btn flat color="white" label="重试" @click="loadRows" /></template>
+      <template #action><q-btn flat color="white" :label="t('common.retry')" @click="loadRows" /></template>
     </q-banner>
 
     <div class="graphs-page__body">
       <div class="graphs-page__list">
         <section class="graphs-filter-bar q-mt-md">
-          <q-input v-model="searchQuery" dense outlined placeholder="搜索 Graph..." class="graphs-filter-bar__search">
+          <q-input v-model="searchQuery" dense outlined :placeholder="t('graphs.searchPlaceholder')" class="graphs-filter-bar__search">
             <template #prepend><q-icon name="search" /></template>
             <template v-if="searchQuery" #append
               ><q-icon name="close" class="cursor-pointer" @click="searchQuery = ''"
@@ -61,8 +61,8 @@
         <div v-if="!loading && rows.length === 0" class="graphs-page__empty">
           <div class="graphs-page__empty-head column items-center q-pb-lg">
             <q-icon name="hub" size="48px" color="grey-6" class="q-mb-sm" />
-            <div class="text-h6 text-grey-7">暂无 Graph</div>
-            <div class="text-body2 text-grey-6 q-mt-xs">从下方模板快速开始，或点击「新增 Graph」从零创建</div>
+            <div class="text-h6 text-grey-7">{{ t('graphs.emptyTitle') }}</div>
+            <div class="text-body2 text-grey-6 q-mt-xs">{{ t('graphs.emptyHint') }}</div>
           </div>
           <q-inner-loading :showing="templatesLoading" />
           <div v-if="!templatesLoading && templates.length > 0" class="graphs-page__templates-grid">
@@ -88,8 +88,8 @@
                 </div>
                 <div class="template-example-card__desc">{{ tpl.description }}</div>
                 <div class="template-example-card__meta">
-                  <span>{{ tpl.nodes?.length ?? 0 }} 节点</span>
-                  <span>{{ tpl.edges?.length ?? 0 }} 连线</span>
+                  <span>{{ tpl.nodes?.length ?? 0 }} {{ t('graphs.nodesUnit') }}</span>
+                  <span>{{ tpl.edges?.length ?? 0 }} {{ t('graphs.edgesUnit') }}</span>
                 </div>
                 <q-btn
                   flat
@@ -97,7 +97,7 @@
                   no-caps
                   color="primary"
                   icon="add_circle_outline"
-                  label="使用此模板"
+                  :label="t('graphs.useTemplate')"
                   class="template-example-card__action"
                   :loading="templateCreating"
                   @click.stop="quickCreateFromTemplate(tpl)"
@@ -149,10 +149,10 @@
                   <div class="graph-card__tags">
                     <span v-if="graph.executionEngine === 'dag'" class="graph-card__tag">DAG</span>
                     <span v-else class="graph-card__tag">BSP</span>
-                    <span v-if="graph.enableCheckpoint" class="graph-card__tag">检查点</span>
+                    <span v-if="graph.enableCheckpoint" class="graph-card__tag">{{ t('graphs.checkpoint') }}</span>
                   </div>
                   <span class="graph-card__summary"
-                    >{{ graph.nodes?.length ?? 0 }}节点·{{ graph.edges?.length ?? 0 }}线</span
+                    >{{ graph.nodes?.length ?? 0 }}{{ t('graphs.nodesUnit') }}·{{ graph.edges?.length ?? 0 }}{{ t('graphs.edgesUnit') }}</span
                   >
                 </div>
               </div>
@@ -162,7 +162,7 @@
             <div class="graph-card graph-card--add" @click="openCreate">
               <div class="graph-card__inner column items-center justify-center">
                 <q-icon name="add" size="28px" color="grey-6" />
-                <span class="graph-card--add__label">新增 Graph</span>
+                <span class="graph-card--add__label">{{ t('graphs.createGraph') }}</span>
               </div>
             </div>
           </template>
@@ -206,8 +206,8 @@
       <q-card class="app-dialog-card app-dialog-card--md app-glass-dialog">
         <q-card-section class="app-glass-dialog__head row items-center justify-between no-wrap">
           <div class="min-width-0">
-            <div class="app-glass-dialog__title">从模板创建 Graph</div>
-            <div class="app-glass-dialog__subtitle">选择一个内置模板快速开始</div>
+            <div class="app-glass-dialog__title">{{ t('graphs.createFromTemplateTitle') }}</div>
+            <div class="app-glass-dialog__subtitle">{{ t('graphs.createFromTemplateSubtitle') }}</div>
           </div>
           <q-btn v-close-popup flat round dense icon="close" />
         </q-card-section>
@@ -215,7 +215,7 @@
         <q-card-section class="app-glass-dialog__body">
           <q-inner-loading :showing="templatesLoading" />
           <div v-if="!templatesLoading && templates.length === 0" class="text-center text-grey-7 q-pa-md">
-            暂无可用模板
+            {{ t('graphs.noTemplates') }}
           </div>
           <div v-else class="q-gutter-sm">
             <q-card
@@ -231,20 +231,20 @@
                 <q-icon name="dashboard" size="24px" color="primary" class="q-mr-md" />
                 <div class="col min-width-0">
                   <div class="text-subtitle2">{{ tpl.name }}</div>
-                  <div class="text-caption text-grey-7 ellipsis">{{ tpl.description || '无描述' }}</div>
+                  <div class="text-caption text-grey-7 ellipsis">{{ tpl.description || t('graphs.noDescription') }}</div>
                 </div>
               </q-card-section>
             </q-card>
           </div>
         </q-card-section>
         <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-          <q-btn v-close-popup flat rounded no-caps label="取消" />
+          <q-btn v-close-popup flat rounded no-caps :label="t('common.cancel')" />
           <q-btn
             color="primary"
             rounded
             unelevated
             no-caps
-            label="创建"
+            :label="t('common.create')"
             :disable="!selectedTemplateId"
             :loading="templateCreating"
             @click="createFromTemplate"
@@ -257,6 +257,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import draggable from 'vuedraggable';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import GraphRunDialog from '../components/graph/GraphRunDialog.vue';
@@ -264,6 +265,8 @@ import GraphDetailPanel from '../components/graph/GraphDetailPanel.vue';
 import GraphCardContextMenu from '../components/graph/GraphCardContextMenu.vue';
 import { useGraphsPage } from '../features/graph/useGraphsPage';
 import type { GraphDefinition } from '../features/graph/types';
+
+const { t } = useI18n();
 
 const {
   isDark,

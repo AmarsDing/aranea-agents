@@ -68,7 +68,7 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 
 | 你要查的内容 | 去哪个 SKILL |
 |-------------|-------------|
-| 后端 23 条有效红线（+3 条已降级为编程规范，共 26 条编号） | `aranea-coding-guide` §2 |
+| 后端 24 条有效红线（+3 条已降级为编程规范，共 27 条编号） | `aranea-coding-guide` §2 |
 | 前端 11 条有效红线（+4 条已降级为编程规范，共 15 条编号） | `aranea-frontend-guide` §1 |
 | 后端编程规范 CS-B1~B18 | `aranea-coding-guide` §14 |
 | 前端编程规范 CS-F1~F9 | `aranea-frontend-guide` §13 |

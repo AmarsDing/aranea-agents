@@ -41,6 +41,10 @@ func (m *mockSessionRepo) ListSessionsByIDs(_ context.Context, _ []string) ([]Se
 	return nil, nil
 }
 
+func (m *mockSessionRepo) ListActiveAgentUserKeys(_ context.Context, _ int) ([]AgentUserKey, error) {
+	return nil, nil
+}
+
 func (m *mockSessionRepo) CreateSession(ctx context.Context, s Session) (Session, error) {
 	if m.createSessionFn != nil {
 		return m.createSessionFn(ctx, s)

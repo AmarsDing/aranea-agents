@@ -10,6 +10,7 @@
 
 import { buildWsUrl } from '../config/runtime';
 import type { Envelope, WsDownstream, WsUpstream } from './envelope';
+import { RevisionTracker, requestSyncReplay } from './event_replay';
 import {
   WS_MAX_RECONNECT_DELAY_MS,
   WS_HEARTBEAT_INTERVAL_MS,
@@ -66,7 +67,15 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
   let staleTimer: ReturnType<typeof setTimeout> | null = null;
   let reconnectAttempts = 0;
   let shutdownReceived = false;
+  // T3.4: Track whether we've ever connected before, to detect reconnects.
+  // reconnectAttempts is reset to 0 in onopen, so we can't rely on it in the
+  // connected message handler (which arrives after onopen).
+  let hasConnectedBefore = false;
   const pendingQueue: WsUpstream[] = [];
+  // T3.4: Per-session revision tracker for sync_request replay after reconnect.
+  // Updated on every envelope carrying session_revision; used on reconnect to
+  // request replay of envelopes with revision > last known.
+  const revisionTracker = new RevisionTracker();
 
   function connect(): void {
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
@@ -97,6 +106,18 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
           const payload = msg.payload as Record<string, unknown>;
           _lastEventId = (payload.last_event_id as string) || _lastEventId;
           opts.onConnected?.({ sessionId: opts.sessionId, lastEventId: _lastEventId });
+          // T3.4: After reconnect, request revision-based sync replay.
+          // The server replays envelopes with session_revision > last known.
+          // This complements event-ID-based replay (via lastEventId in URL)
+          // by ensuring message-level consistency for envelopes persisted
+          // during the disconnection window.
+          if (hasConnectedBefore) {
+            const lastRevision = revisionTracker.get(opts.sessionId);
+            if (lastRevision > 0) {
+              requestSyncReplay(send, opts.sessionId, lastRevision);
+            }
+          }
+          hasConnectedBefore = true;
           return;
         }
 
@@ -124,6 +145,10 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
 
         if (msg.envelope) {
           _lastEventId = msg.envelope.id;
+          // T3.4: Track session_revision for sync_request replay.
+          if (msg.envelope.session_revision && msg.envelope.session_revision > 0) {
+            revisionTracker.update(opts.sessionId, msg.envelope.session_revision);
+          }
           if (msg.envelope.type === 'run_heartbeat') {
             resetStaleTimer();
             opts.onHeartbeat?.(msg.envelope);

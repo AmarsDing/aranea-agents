@@ -309,7 +309,7 @@ import TaskExecutionPanel from '../spirit/TaskExecutionPanel.vue';
 import MemberReadOnlyPanel from '../spirit/MemberReadOnlyPanel.vue';
 import SynthesisResultCard from '../spirit/SynthesisResultCard.vue';
 import SpiritStatusBar from '../spirit/SpiritStatusBar.vue';
-import OrchestrationTimeline from '../../features/orchestration/OrchestrationTimeline.vue';
+import OrchestrationTimeline from '../orchestration/OrchestrationTimeline.vue';
 import type { OrchestrationTimelineData } from '../../features/orchestration/timelineTypes';
 import type { RunStatusValue } from '../../features/chat/types';
 import { TOOL_DISPLAY_KEY } from '../../features/chat/types';

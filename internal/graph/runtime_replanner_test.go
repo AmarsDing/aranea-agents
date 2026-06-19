@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/internal/runtime/lifecycle"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
@@ -51,7 +52,7 @@ func newTestReplanner(bus *recordingReplanBus) *RuntimeReplannerImpl {
 	return &RuntimeReplannerImpl{
 		eventBus:     bus,
 		lg:           loggateway.NewNoop().With(loggateway.Domain("runtime_replanner")),
-		attemptCount: make(map[string]int),
+		attemptCount: lifecycle.NewManagedMap[string, int](0),
 	}
 }
 
@@ -498,8 +499,8 @@ func TestAnalyzeFailure_NilError(t *testing.T) {
 
 // TestRuntimeReplanner_ConcurrentAccess verifies that OnNodeFailure is safe
 // for concurrent use across multiple executions (BD5 concurrency test).
-// The attemptCount map is protected by sync.Mutex; this test exercises
-// concurrent reads/writes to catch data races when run with -race.
+// The attemptCount is protected by ManagedMap's internal mutex; this test
+// exercises concurrent reads/writes to catch data races when run with -race.
 func TestRuntimeReplanner_ConcurrentAccess(t *testing.T) {
 	bus := &recordingReplanBus{}
 	r := newTestReplanner(bus)

@@ -208,6 +208,9 @@ func (m *batchSessionRepo) UpdateChatMessageStatus(context.Context, string, stri
 func (m *batchSessionRepo) ListByParentSessionID(_ context.Context, _ string) ([]biz.Session, error) {
 	return nil, nil
 }
+func (m *batchSessionRepo) ListActiveAgentUserKeys(_ context.Context, _ int) ([]sessstatus.AgentUserKey, error) {
+	return nil, nil
+}
 
 func TestSessionService_BatchPreviewSessions_validation(t *testing.T) {
 	uc := biz.NewSessionUsecase(&batchSessionRepo{sessions: map[string]biz.Session{}}, nil, nil, nil, nil, nil, nil, nil, nil)

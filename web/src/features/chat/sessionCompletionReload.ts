@@ -13,30 +13,12 @@ export async function reloadSessionAfterCompletion(input: {
   streamingSnapshots: StreamingSnapshots;
   sessionId: string;
   resolveAgentId?: () => string | undefined;
-  /**
-   * When true, Activity-First mode is active for this session.
-   * AF mode skips loadMessages because Activity events already provide
-   * complete per-round data (thinking/reply/action) — reloading would
-   * replace correctly separated streaming state with the server's merged
-   * assistant message, causing UI jumping. Only session metadata
-   * (token usage, context ratio, session list) is refreshed.
-   */
-  activityFirst?: boolean;
 }): Promise<void> {
   const sessionId = input.sessionId.trim();
   if (!sessionId) return;
 
-  if (!input.activityFirst) {
-    // Legacy mode: reload messages to sync with server-persisted data.
-    const currentRevision = input.messageStore.sessionRevisionBySession[sessionId] ?? 0;
-    await input.messageStore.loadMessages({
-      sessionId,
-      dropStaleInFlight: true,
-      afterRevision: currentRevision > 0 ? currentRevision : undefined,
-    });
-    input.streamingSnapshots.clear(sessionId);
-  }
-  // AF mode: Activity events are the source of truth for assistant content.
+  // T7.3c: Legacy reload path removed. AF mode is the only path.
+  // Activity events are the source of truth for assistant content.
   // The streaming state IS the final state — no reload needed.
   // Session metadata is still refreshed below.
 

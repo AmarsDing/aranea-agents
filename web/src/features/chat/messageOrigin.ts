@@ -17,6 +17,7 @@ export function originFromId(id: string, role: string): MessageOrigin {
   if (id.startsWith('pending-user-')) return { kind: 'pending_user', localId: id };
   if (id.startsWith('actv-'))
     return { kind: 'streaming', sessionId: '' };
+  if (id.startsWith('ws-stream-')) return { kind: 'streaming', sessionId: '' };
   if (id.startsWith('member-')) return { kind: 'team_member', agentKey: id.replace(/^member-/, '') };
   if (id.startsWith('act-') || id.startsWith('tool-')) return { kind: 'tool_activity', toolEventId: id };
   return { kind: 'persisted' };

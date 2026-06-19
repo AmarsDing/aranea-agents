@@ -24,8 +24,10 @@ const (
 type MemoryDeadLetterReason string
 
 const (
-	MemoryDeadLetterReasonQueueFull     MemoryDeadLetterReason = "queue_full"
-	MemoryDeadLetterReasonQuotaExceeded MemoryDeadLetterReason = "quota_exceeded"
+	MemoryDeadLetterReasonQueueFull           MemoryDeadLetterReason = "queue_full"
+	MemoryDeadLetterReasonQuotaExceeded       MemoryDeadLetterReason = "quota_exceeded"
+	MemoryDeadLetterReasonRetryExhausted      MemoryDeadLetterReason = "retry_exhausted"
+	MemoryDeadLetterReasonPendingQueueFailure MemoryDeadLetterReason = "pending_queue_failure"
 )
 
 // MemoryDeadLetterRequest carries the minimal fields needed to persist a dead-letter entry.

@@ -2,6 +2,7 @@ package plugintrpc
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -73,10 +74,16 @@ func (c *CostGuardPlugin) beforeModel(ctx context.Context, args *trpcmodel.Befor
 				"reason", "fallback_bypass_daily_budget",
 				"est_tokens", est)
 			c.base.record(ctx, "before_model", "over_budget_allowed")
+			// N-03: Emit notice Activity for fallback bypass.
+			c.emitNotice(ctx, "cost_guard_fallback",
+				fmt.Sprintf("日预算已达上限，已切换至备用模型 %s", model))
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		c.base.logger.Info("plugin.cost_guard.before_model", "status", "blocked", "model", model, "est_tokens", est, "reason", reason)
 		c.base.record(ctx, "before_model", "blocked")
+		// N-03: Emit notice Activity for blocked model.
+		c.emitNotice(ctx, "cost_guard_blocked",
+			fmt.Sprintf("模型 %s 已被阻止（原因：%s）", model, reason))
 		return &trpcmodel.BeforeModelResult{
 			Context:        ctx,
 			CustomResponse: blockedModelResponse("cost_guard: " + reason),
@@ -91,6 +98,9 @@ func (c *CostGuardPlugin) beforeModel(ctx context.Context, args *trpcmodel.Befor
 	if c.cfg.DailyTokenBudget > 0 && !budget.TryConsume(c.cfg.DailyTokenBudget, est) {
 		c.base.logger.Info("plugin.cost_guard.before_model", "status", "blocked", "model", model, "reason", "daily_budget_exceeded")
 		c.base.record(ctx, "before_model", "blocked")
+		// N-03: Emit notice Activity for daily budget exceeded.
+		c.emitNotice(ctx, "cost_guard_budget_exceeded",
+			fmt.Sprintf("日 token 预算已用尽，模型 %s 调用被阻止", model))
 		return &trpcmodel.BeforeModelResult{
 			Context:        ctx,
 			CustomResponse: blockedModelResponse("cost_guard: daily token budget exceeded"),
@@ -99,5 +109,18 @@ func (c *CostGuardPlugin) beforeModel(ctx context.Context, args *trpcmodel.Befor
 	c.base.logger.Info("plugin.cost_guard.before_model", "status", "success", "model", model, "est_tokens", est)
 	c.base.record(ctx, "before_model", "success")
 	return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+}
+
+// emitNotice emits a notice Activity via the ActivityEmitter in ctx.
+// It is a best-effort operation: errors are logged but do not affect the
+// cost guard's blocking decision.
+func (c *CostGuardPlugin) emitNotice(ctx context.Context, noticeType, content string) {
+	if emitter := biz.ActivityEmitterFromContext(ctx); emitter != nil {
+		if err := emitter.EmitNotice(ctx, content, noticeType); err != nil {
+			c.base.lg.Warn("EmitNotice failed",
+				loggateway.StepID("plugin.cost_guard"),
+				loggateway.Err(err))
+		}
+	}
 }
 

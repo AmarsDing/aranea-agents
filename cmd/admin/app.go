@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/provider"
+	"aranea-agents/internal/runtime/lifecycle"
 	"aranea-agents/internal/server"
 	"aranea-agents/internal/service"
 	loggateway "aranea-agents/pkg/loggateway"
@@ -47,6 +48,7 @@ func newApp(
 	spiritUC *biz.SpiritTeamUsecase,
 	teamStarter *service.TeamStarter,
 	eventWALCleanup *jobs.EventWALCleanup,
+	lifecycleMgr *lifecycle.LifecycleManager,
 ) *kratos.App {
 	// EP-OBS-03: WSServer implements transport.Server (Start/Stop); register it so
 	// kratos.App orchestrates its lifecycle and Stop triggers broadcastShutdown.
@@ -122,6 +124,11 @@ func newApp(
 				if err := chatSvc.Close(); err != nil {
 					lg.Warn("chat service close failed", loggateway.StepID("shutdown.chat"), loggateway.Err(err))
 				}
+			}
+			// Close process-level resources (build cache, etc.) in LIFO order
+			// after the chat service has stopped accepting requests (A3).
+			if lifecycleMgr != nil {
+				lifecycleMgr.Close()
 			}
 			consumerCancel()
 			cleanupCancel()

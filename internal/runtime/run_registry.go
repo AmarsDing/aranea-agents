@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/runtime/lifecycle"
 	"aranea-agents/pkg/loggateway"
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -26,48 +27,6 @@ type activeRun struct {
 	runner      trpcrunner.Runner
 	cancel      context.CancelFunc
 	placeholder bool
-}
-
-// activeRunMap wraps sync.Map with typed accessor methods to eliminate
-// unsafe type assertions in external callers.
-//
-// T2.2 TOCTOU fix: the mu mutex guards load-modify-store sequences in
-// updateOrStore so that concurrent StoreRunner / StoreCancelable calls
-// cannot race on the same session. Plain load/store/delete still use
-// sync.Map for lock-free reads; only the compound operations take mu.
-type activeRunMap struct {
-	m  sync.Map
-	mu sync.Mutex
-}
-
-func (a *activeRunMap) load(key string) (activeRun, bool) {
-	v, ok := a.m.Load(key)
-	if !ok {
-		return activeRun{}, false
-	}
-	ar, ok := v.(activeRun)
-	return ar, ok
-}
-
-func (a *activeRunMap) store(key string, val activeRun) { a.m.Store(key, val) }
-func (a *activeRunMap) delete(key string)               { a.m.Delete(key) }
-
-// updateOrStore atomically loads the existing entry (if any), applies
-// update to derive the new value, and stores it. The update callback
-// receives (existing, ok) where ok is false if no entry exists. The
-// callback MUST be side-effect-free — it may be called multiple times
-// under contention (though the mutex serializes calls for the same key).
-//
-// This eliminates the TOCTOU window that existed when StoreRunner and
-// StoreCancelable did load-then-store as separate operations: two
-// concurrent goroutines could both load the old value, then both store,
-// with the second store overwriting the first's data (e.g. losing the
-// cancel func or the runner reference).
-func (a *activeRunMap) updateOrStore(key string, update func(existing activeRun, ok bool) activeRun) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	existing, ok := a.load(key)
-	a.store(key, update(existing, ok))
 }
 
 // cancelMap wraps sync.Map for context.CancelFunc storage.
@@ -116,15 +75,22 @@ func (s *statusMap) delete(key string)                     { s.m.Delete(key) }
 // cron, channel, and gateway ingress.
 //
 // trpc runner request_id is the session_id (see trpcagent.WithRequestID in chat/team turns).
+//
+// A1: activeRuns uses lifecycle.ManagedMap (ttl=0, terminal-state cleanup via
+// Finish) instead of a hand-rolled sync.Map+mutex wrapper. The ManagedMap's
+// built-in UpdateOrStore provides the same TOCTOU protection as the previous
+// updateOrStore, without the bespoke mutex.
 type RunRegistry struct {
-	activeRuns     activeRunMap
+	activeRuns     *lifecycle.ManagedMap[string, activeRun]
 	pendingCancels cancelMap
 	runStatuses    statusMap
 	lg             loggateway.Logger
 }
 
 func NewRunRegistry() *RunRegistry {
-	return &RunRegistry{}
+	return &RunRegistry{
+		activeRuns: lifecycle.NewManagedMap[string, activeRun](0),
+	}
 }
 
 // WithLogger sets the logger for the registry. Returns the same registry for chaining.
@@ -139,7 +105,7 @@ func (r *RunRegistry) HasActive(sessionID string) bool {
 	if r == nil {
 		return false
 	}
-	_, ok := r.activeRuns.load(sessionID)
+	_, ok := r.activeRuns.Load(sessionID)
 	return ok
 }
 
@@ -147,18 +113,18 @@ func (r *RunRegistry) StorePlaceholder(sessionID string) {
 	if r == nil {
 		return
 	}
-	r.activeRuns.store(sessionID, activeRun{placeholder: true})
+	r.activeRuns.Store(sessionID, activeRun{placeholder: true})
 }
 
 func (r *RunRegistry) StoreRunner(sessionID, runID string, runner trpcrunner.Runner) {
 	if r == nil {
 		return
 	}
-	// T2.2: use updateOrStore for atomic load-modify-store. Previously
+	// A1: use ManagedMap.UpdateOrStore for atomic load-modify-store. Previously
 	// load+store was non-atomic: a concurrent StoreCancelable could
 	// overwrite the runner reference, or a concurrent StoreRunner could
 	// lose the cancel func.
-	r.activeRuns.updateOrStore(sessionID, func(existing activeRun, ok bool) activeRun {
+	r.activeRuns.UpdateOrStore(sessionID, func(existing activeRun, ok bool) activeRun {
 		ar := activeRun{runID: runID, runner: runner}
 		if ok {
 			ar.cancel = existing.cancel
@@ -174,11 +140,11 @@ func (r *RunRegistry) StoreCancelable(sessionID, runID string, cancel context.Ca
 	if r == nil {
 		return
 	}
-	// T2.2: use updateOrStore for atomic load-modify-store. Previously
+	// A1: use ManagedMap.UpdateOrStore for atomic load-modify-store. Previously
 	// load+store was non-atomic: a concurrent StoreRunner could
 	// overwrite the cancel func, or a concurrent StoreCancelable could
 	// lose the runner reference.
-	r.activeRuns.updateOrStore(sessionID, func(existing activeRun, ok bool) activeRun {
+	r.activeRuns.UpdateOrStore(sessionID, func(existing activeRun, ok bool) activeRun {
 		ar := activeRun{runID: runID, cancel: cancel}
 		if ok {
 			ar.runner = existing.runner
@@ -194,7 +160,7 @@ func (r *RunRegistry) Finish(sessionID string) {
 	if r == nil {
 		return
 	}
-	r.activeRuns.delete(sessionID)
+	r.activeRuns.Delete(sessionID)
 	r.runStatuses.delete(sessionID)
 	r.pendingCancels.delete(sessionID)
 }
@@ -220,15 +186,15 @@ func (r *RunRegistry) Cancel(sessionID, reason string) (bool, string) {
 	if cancelFn, ok := r.pendingCancels.loadAndDelete(sessionID); ok {
 		cancelFn()
 	}
-	run, ok := r.activeRuns.load(sessionID)
+	run, ok := r.activeRuns.Load(sessionID)
 	if !ok {
 		return false, ""
 	}
 	if run.cancel != nil {
 		run.cancel()
 		r.SetStatus(sessionID, run.runID, biz.SessionRunPhaseCancelled, "")
-		if current, ok := r.activeRuns.load(sessionID); ok && current.runID == run.runID {
-			r.activeRuns.delete(sessionID)
+		if current, ok := r.activeRuns.Load(sessionID); ok && current.runID == run.runID {
+			r.activeRuns.Delete(sessionID)
 		}
 		return true, run.runID
 	}
@@ -241,7 +207,7 @@ func (r *RunRegistry) Cancel(sessionID, reason string) (bool, string) {
 	if err := run.runner.Close(); err != nil && r.lg != nil {
 		r.lg.Warn("runner close error during cancel", loggateway.SessionID(sessionID), loggateway.Err(err))
 	}
-	r.activeRuns.delete(sessionID)
+	r.activeRuns.Delete(sessionID)
 	return true, run.runID
 }
 
@@ -249,7 +215,7 @@ func (r *RunRegistry) EnqueueUserMessage(sessionID, content string) (bool, error
 	if r == nil {
 		return false, nil
 	}
-	run, ok := r.activeRuns.load(sessionID)
+	run, ok := r.activeRuns.Load(sessionID)
 	if !ok || run.placeholder || run.runner == nil {
 		return false, nil
 	}
@@ -280,7 +246,7 @@ func (r *RunRegistry) ActiveRunner(sessionID string) (trpcrunner.Runner, string,
 	if r == nil {
 		return nil, "", false
 	}
-	run, ok := r.activeRuns.load(sessionID)
+	run, ok := r.activeRuns.Load(sessionID)
 	if !ok || run.placeholder || run.runner == nil {
 		return nil, "", false
 	}

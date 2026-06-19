@@ -61,24 +61,15 @@ export interface AgentWorkProcess {
   progressSections: ProgressSection[];
   startedAt: string;
   finishedAt: string | null;
-  /** AF-Phase3: true when this turn was built without Activity data (pre-AF session).
-   * The UI should render a simplified view instead of the full activity timeline. */
-  isLegacy?: boolean;
 }
 
 // ── Activity (时间线节点) ──
 
-/** 活动节点 — 时间线上的最小展示单元（StreamEvent + DelegateActivity） */
-export type Activity =
-  | StreamEvent
-  | DelegateActivity;
-
-/** 委托活动 — 子 Agent 工作（暂保留在本文件） */
-export interface DelegateActivity {
-  kind: 'delegate';
-  id: string;
-  subAgent: AgentWorkProcess;
-}
+/**
+ * 活动节点 — 时间线上的最小展示单元。
+ * N-08: DelegateActivity 类型已移除，委托活动通过 StreamEvent 体系表达。
+ */
+export type Activity = StreamEvent;
 
 // ── Team Panel ──
 

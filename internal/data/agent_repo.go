@@ -123,6 +123,14 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 	s.ApplyEvolution(fromEntEvolution(e))
 	s.ApplyContext(fromEntContext(e))
 	s.ApplyRalphLoop(fromEntRalphLoop(e))
+	// Direct fields not owned by any sub-cfg.
+	s.CodeExecutorType = e.CodeExecutorType
+	s.MaxLLMCalls = e.MaxLlmCalls
+	s.MaxToolIterations = e.MaxToolIterations
+	s.CompressionBufferAdaptive = e.CompressionBufferAdaptive
+	s.EnableTokenTailoring = e.EnableTokenTailoring
+	s.TokenTailoringStrategy = e.TokenTailoringStrategy
+	s.TokenTailoringSafetyMargin = e.TokenTailoringSafetyMargin
 	return *s
 }
 
@@ -418,11 +426,17 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetCompressLlmCacheMaxEntries(v.CompressLLMCacheMaxEntries).
 		SetCompressLlmCacheTTLSec(v.CompressLLMCacheTTLSec).
 		SetCompressionBufferRatio(v.CompressionBufferRatio).
+		SetCompressionBufferAdaptive(v.CompressionBufferAdaptive).
 		SetSoftTriggerRatio(v.SoftTriggerRatio).
 		SetHardTriggerRatio(v.HardTriggerRatio).
 		SetSessionSummaryEnabled(v.SessionSummaryEnabled).
 		SetSkillLoadMode(v.SkillLoadMode).
 		SetCodeExecutorType(v.CodeExecutorType).
+		SetMaxLlmCalls(v.MaxLLMCalls).
+		SetMaxToolIterations(v.MaxToolIterations).
+		SetEnableTokenTailoring(v.EnableTokenTailoring).
+		SetTokenTailoringStrategy(v.TokenTailoringStrategy).
+		SetTokenTailoringSafetyMargin(v.TokenTailoringSafetyMargin).
 		SetPlannerKind(v.PlannerKind).
 		SetPlannerConfigJSON(normalizeJSONObj(v.PlannerConfigJSON)).
 		SetRalphLoopMaxIterations(v.RalphLoopMaxIterations).

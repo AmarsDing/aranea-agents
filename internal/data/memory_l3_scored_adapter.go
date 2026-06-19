@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 var _ biz.SessionL3ScoredRecallStore = (*L3ScoredRecallAdapter)(nil)
@@ -33,22 +34,45 @@ func (a *L3ScoredRecallAdapter) RecallL3Hits(ctx context.Context, scopeType, sco
 	// For scored recall, we return the raw rows as RecallHit objects.
 	// The scoring is done internally in RecallL3Facts.
 	out := make([]biz.RecallHit, 0, len(raw))
+	recalledIDs := make([]string, 0, len(raw))
 	for _, b := range raw {
 		hit := biz.RecallHit{
 			Layer: "L3",
 			Raw:   b,
 		}
-		// Extract id and statement from raw JSON
+		// Extract id, statement, and persisted decay_score from raw JSON.
+		// decay_score is the Ebbinghaus reachability R_t ∈ (0,1] written back
+		// by the MemoryEbbinghausDecayWorker cron job. Setting it on
+		// Scores.Decay enables the fused-recall decay fusion formula in
+		// RecallFactsFused (Total *= 0.7 + 0.3*Decay).
 		var m map[string]any
 		if err := json.Unmarshal(b, &m); err == nil {
 			if id, ok := m["id"].(string); ok {
 				hit.ID = id
+				recalledIDs = append(recalledIDs, id)
 			}
 			if stmt, ok := m["statement"].(string); ok {
 				hit.Statement = stmt
 			}
+			// decay_score defaults to 1.0 in the DB schema (no forgetting).
+			// Only set Scores.Decay when the persisted value is in (0, 1].
+			// A value of 0 means "not yet computed by the cron job" — leave
+			// Decay at 0 so the fusion formula skips it (treats as no decay).
+			if ds, ok := m["decay_score"].(float64); ok && ds > 0 && ds <= 1.0 {
+				hit.Scores.Decay = ds
+			}
 		}
 		out = append(out, hit)
+	}
+	// Increment use_count and update last_used_at for recalled facts so the
+	// Ebbinghaus decay worker has accurate access-recency signals. Failures
+	// are logged but do not fail the recall (write-on-recall is best-effort).
+	if len(recalledIDs) > 0 {
+		if err := l3.IncrementFactAccessCount(ctx, recalledIDs); err != nil && a.data.lg != nil {
+			a.data.lg.Warn("scored recall: increment access count failed",
+				loggateway.StepID("memory.l3_recall_access"),
+				loggateway.Err(err))
+		}
 	}
 	return out, nil
 }

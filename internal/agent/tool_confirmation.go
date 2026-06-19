@@ -67,6 +67,25 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 					loggateway.Err(markErr))
 			}
 		}
+		// N-21: Emit a confirm Activity so the frontend can render a
+		// confirmation card in the activity timeline.
+		emitter := biz.ActivityEmitterFromContext(ctx)
+		var confirmActivityID string
+		if emitter != nil {
+			confirmContent := fmt.Sprintf("工具 %s 需要确认后执行", toolKey)
+			id, emitErr := emitter.EmitConfirmRequest(ctx, biz.ActivityConfirmParams{
+				ToolName:      toolKey,
+				ToolArguments: string(args.Arguments),
+				Content:       confirmContent,
+			})
+			if emitErr != nil {
+				h.deps.Logger().Warn("EmitConfirmRequest failed",
+					loggateway.StepID("agent.tool_confirm"),
+					loggateway.Err(emitErr))
+			} else {
+				confirmActivityID = id
+			}
+		}
 		confirmCtx := serviceawaitreply.WithToolConfirmRequest(ctx, serviceawaitreply.ToolConfirmRequest{
 			ToolKey:    toolKey,
 			ToolCallID: args.ToolCallID,
@@ -75,6 +94,15 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		confirmCtx, confirmCancel := context.WithTimeout(confirmCtx, defaultToolConfirmationTimeout)
 		defer confirmCancel()
 		reply, err := fn(confirmCtx)
+		// N-21: Update the confirm Activity with the user's response.
+		if emitter != nil && confirmActivityID != "" {
+			approved := err == nil && toolConfirmApproved(reply)
+			if emitErr := emitter.EmitConfirmResult(ctx, confirmActivityID, approved); emitErr != nil {
+				h.deps.Logger().Warn("EmitConfirmResult failed",
+					loggateway.StepID("agent.tool_confirm"),
+					loggateway.Err(emitErr))
+			}
+		}
 		if err != nil {
 			// Distinguish between confirmation timeout and other errors.
 			// Only report ErrorCodeConfirmationTimeout when the confirmation

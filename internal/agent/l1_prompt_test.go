@@ -182,8 +182,12 @@ func TestErrL1BudgetOverflow(t *testing.T) {
 	if biz.ErrL1BudgetOverflow.Error() == "" {
 		t.Error("ErrL1BudgetOverflow.Error() must not be empty")
 	}
-	if got := biz.ErrL1BudgetOverflow.Error(); got != "L1 budget overflow: field would exceed task budget_tokens" {
-		t.Errorf("ErrL1BudgetOverflow.Error() = %q, want specific message containing 'L1 budget overflow'", got)
+	// apierror.Error() formats as "[DOMAIN/CODE] message".
+	// ErrL1BudgetOverflow = apierror.BadRequest(apierror.DomainMemory, msg),
+	// so Error() returns "[MEMORY/BAD_REQUEST] L1 budget overflow: ...".
+	want := "[MEMORY/BAD_REQUEST] L1 budget overflow: field would exceed task budget_tokens"
+	if got := biz.ErrL1BudgetOverflow.Error(); got != want {
+		t.Errorf("ErrL1BudgetOverflow.Error() = %q, want %q", got, want)
 	}
 }
 

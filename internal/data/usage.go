@@ -29,6 +29,7 @@ func (r *usageRepo) GetModelUsageSummary(ctx context.Context, query biz.UsageQue
 		 COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0), COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0)
 		 FROM model_token_usage_events` + where
+	q = r.data.Dialect().RenumberPlaceholders(q)
 	var v biz.UsageSummary
 	err := entQueryRowScan(r.data.RW().Read(ctx), ctx, q, args,
 		&v.CallCount, &v.RequestCount, &v.SuccessCount, &v.FailedCount, &v.CancelledCount,
@@ -44,8 +45,7 @@ func (r *usageRepo) GetModelUsageSummary(ctx context.Context, query biz.UsageQue
 
 func (r *usageRepo) ListModelUsageTrends(ctx context.Context, query biz.UsageQuery) ([]biz.UsageTrendPoint, error) {
 	where, args := usageWhere(query, true)
-	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
-		`SELECT date_key,
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT date_key,
 		 COALESCE(SUM(call_count), 0),
 		 COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0),
@@ -53,9 +53,8 @@ func (r *usageRepo) ListModelUsageTrends(ctx context.Context, query biz.UsageQue
 		 COALESCE(SUM(CASE WHEN `+sqlUsageStatusFailed+` THEN 1 ELSE 0 END), 0),
 		 COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0),
 		 COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0)
-		 FROM model_token_usage_events`+where+` GROUP BY date_key ORDER BY date_key ASC`,
-		args...,
-	)
+		 FROM model_token_usage_events`+where+` GROUP BY date_key ORDER BY date_key ASC`)
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -74,14 +73,12 @@ func (r *usageRepo) ListModelUsageTrends(ctx context.Context, query biz.UsageQue
 func (r *usageRepo) ListTopModelUsage(ctx context.Context, query biz.UsageQuery) ([]biz.UsageBreakdownRow, error) {
 	where, args := usageWhere(query, true)
 	args = append(args, usageLimit(query.Limit))
-	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
-		`SELECT provider_code, model_api_id, MAX(model_display_name),
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT provider_code, model_api_id, MAX(model_display_name),
 		 COALESCE(SUM(call_count), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0), COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0),
 		 COALESCE(1.0 * SUM(CASE WHEN `+sqlUsageStatusSuccess+` THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0)
-		 FROM model_token_usage_events`+where+` GROUP BY provider_code, model_api_id ORDER BY total_cost_micro_usd DESC, call_count DESC LIMIT ?`,
-		args...,
-	)
+		 FROM model_token_usage_events`+where+` GROUP BY provider_code, model_api_id ORDER BY total_cost_micro_usd DESC, call_count DESC LIMIT ?`)
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -100,17 +97,15 @@ func (r *usageRepo) ListTopModelUsage(ctx context.Context, query biz.UsageQuery)
 func (r *usageRepo) ListModelUsageEvents(ctx context.Context, query biz.UsageQuery) ([]biz.TokenUsageEvent, error) {
 	where, args := usageWhere(query, false)
 	args = append(args, usageLimit(query.Limit))
-	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
-		`SELECT id, occurred_at, date_key, hour_key, workspace_id, user_id, team_id, agent_id, agent_key, session_id, message_id, request_id,
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT id, occurred_at, date_key, hour_key, workspace_id, user_id, team_id, agent_id, agent_key, session_id, message_id, request_id,
 		 provider_code, COALESCE(canonical_provider_code, ''), provider_type, provider_display_name, model_api_id, model_display_name, model_category_json, usage_kind, call_count,
 		 input_tokens, output_tokens, cached_input_tokens, COALESCE(cache_write_tokens, 0), reasoning_tokens, embedding_tokens, total_tokens,
 		 input_price_micro_usd_per_1k, output_price_micro_usd_per_1k, cached_input_price_micro_usd_per_1k, COALESCE(cache_write_price_micro_usd_per_1k, 0), reasoning_price_micro_usd_per_1k, embedding_price_micro_usd_per_1k,
 		 input_cost_micro_usd, output_cost_micro_usd, cached_input_cost_micro_usd, COALESCE(cache_write_cost_micro_usd, 0), reasoning_cost_micro_usd, embedding_cost_micro_usd, total_cost_micro_usd,
 		 latency_ms, time_to_first_token_ms, tokens_per_second, status, error_code, error_message, retry_count,
 		 prompt_mode, max_output_tokens, context_window_k, stream_enabled, metadata_json, created_at
-		 FROM model_token_usage_events`+where+` ORDER BY occurred_at DESC LIMIT ?`,
-		args...,
-	)
+		 FROM model_token_usage_events`+where+` ORDER BY occurred_at DESC LIMIT ?`)
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -129,14 +124,12 @@ func (r *usageRepo) ListModelUsageEvents(ctx context.Context, query biz.UsageQue
 func (r *usageRepo) ListTopAgentUsage(ctx context.Context, query biz.UsageQuery) ([]biz.UsageBreakdownRow, error) {
 	where, args := usageWhere(query, true)
 	args = append(args, usageLimit(query.Limit))
-	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
-		`SELECT agent_id, agent_key,
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT agent_id, agent_key,
 		 COALESCE(SUM(call_count), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0), COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0),
 		 COALESCE(1.0 * SUM(CASE WHEN `+sqlUsageStatusSuccess+` THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0)
-		 FROM model_token_usage_events`+where+` GROUP BY agent_id, agent_key ORDER BY total_cost_micro_usd DESC, call_count DESC LIMIT ?`,
-		args...,
-	)
+		 FROM model_token_usage_events`+where+` GROUP BY agent_id, agent_key ORDER BY total_cost_micro_usd DESC, call_count DESC LIMIT ?`)
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

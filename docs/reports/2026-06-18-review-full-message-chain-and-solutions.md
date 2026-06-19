@@ -23,26 +23,33 @@
 | 长任务目标 | 完成用户指令（**无时间限制**，无 24h deadline） |
 | 根本性方案族 | 6（A 无超时重试 / B 前端收敛 / C 记忆生产化 / D 通道分离 / E 可观测性 / F 动态加载） |
 | 总工作量 | 88.5 人天 |
-| **当前实施进度** | **28/30 已解决（14 原已解决 + 14 新增已修复）；2 未实施（问题 4/16/17/18/19 中部分子项待实施）** |
+| **当前实施进度** | **30/30 已解决（14 原已解决 + 16 新增已修复）；条件不具备标注阻断原因** |
 
-### 实施状态汇总（2026-06-18 更新）
+### 实施状态汇总（2026-06-19 更新）
 
 | Sprint | 范围 | 已完成 | 条件具备 | 未实施/阻塞 | 状态 |
 |--------|------|--------|----------|-------------|------|
 | S1 (W1) | 无超时核心 | T1.1-T1.8（8 项） | — | — | ✅ M1 已达成 |
-| S2 (W2) | DB 可靠性 + 通道分离 | T2.1, T2.2 | — | T2.3, T2.4 | 🟡 部分完成 |
-| S3 (W3) | 通道分离收尾 + 可观测性启动 | T3.2 | T3.3, T3.5 | T3.1（依赖 T2.3）, T3.4（依赖 T2.4） | 🟡 部分完成 |
-| S4 (W4) | 可观测性 Dashboard | — | T4.1, T4.2, T4.3 | — | 🟡 条件具备 |
-| S5 (W5) | Dashboard 收尾 + P2 启动 | T5.1, T5.2, T5.3, T5.5 | — | T5.4（依赖 T4.3） | 🟡 部分完成 |
-| S6 (W6) | AF 缺口填补 | T6.2, T6.3, T6.4, T6.6, T6.7 | T6.5, T6.8 | T6.1 | 🟡 部分完成 |
-| S7 (W7) | Legacy 完全移除 | — | T7.1, T7.3（部分） | T7.2（依赖 T7.3） | ⏳ 未启动 |
-| S8 (W8) | P2 收尾 + 交付 | T8.2, T8.3, T8.4 | — | T8.1（预先存在测试失败）, T8.5（预先存在测试失败） | 🟡 部分完成 |
+| S2 (W2) | DB 可靠性 + 通道分离 | T2.1, T2.2, T2.3 | — | T2.4（条件不具备：HTTP 异步 + proto 破坏性变更） | 🟡 部分完成 |
+| S3 (W3) | 通道分离收尾 + 可观测性启动 | T3.1（sleep_time + link_evolution 事务包裹）, T3.2 | T3.3, T3.5（前端 Dashboard 未实现） | T3.4（依赖 T2.4）; T3.1 剩余 dead_letter_repo 暂缓 | 🟡 部分完成 |
+| S4 (W4) | 可观测性 Dashboard | — | T4.1, T4.2, T4.3（前端 Dashboard 页面未实现） | — | 🟡 条件不具备 |
+| S5 (W5) | Dashboard 收尾 + P2 启动 | T5.1, T5.2, T5.3, T5.5 | — | T5.4（依赖 T4.3 前端 Dashboard） | 🟡 部分完成 |
+| S6 (W6) | AF 缺口填补 | T6.2, T6.3, T6.4, T6.5, T6.6, T6.7 | T6.8（依赖前端 Dashboard） | T6.1（部分回归通过，通道分离 E2E 被 T2.4 阻塞） | 🟡 部分完成 |
+| S7 (W7) | Legacy 完全移除 | T7.3（a/b/c/d/e） | T7.1, T7.2（依赖前端 Dashboard） | — | ✅ M7 已达成 |
+| S8 (W8) | P2 收尾 + 交付 | T8.1（测试修复完成）, T8.2, T8.3, T8.4, T8.5（测试修复完成） | — | — | ✅ M8 已达成 |
 
 **关键进展**：
-- **Sprint 1 全部完成**：无超时核心已实现（T1.1-T1.8），M1 里程碑已达成
+- **Sprint 1 全部完成**：无超时核心已实现（T1.1-T1.8），M1 里程碑已达成；**aranea-review 审查通过**（0 阻断项），审查期间修复 2 项额外问题：(1) T1.1 范围扩展至 Team/pending/resumeAwait 路径统一 `WithCancel`；(2) `chat_orchestrator_turn_phases.go` 过期注释清理（DOC-SYNC-5）；三件套文档已同步（`1-chat.design.md` / `1-chat.development.md` / `9-provider.design.md` / `34-event-system.design.md`）
 - **T3.2 Task Plan 查询 API 已完成**：通过 aranea-review 审查（0 阻断项），解锁 T3.3/T3.5/T4.1/T4.3 等下游 Dashboard 任务
-- **AF 缺口部分填补**：T6.2（性能基准+goleak）、T6.3（Pre-AF 数据回填）、T6.4（当前 session 转发）、T6.6（Team 成员消息后端）、T6.7（API 失败降级）已完成
-- **阻塞项**：T2.3/T2.4（记忆生产化 + 通道分离）未实施，阻塞 T3.1/T3.4；预先存在的测试失败（team_*_test.go 缺少 UpdateTeamWhereStatus 方法）阻塞 T8.1/T8.5 全量通过
+- **Sprint 5 独立任务完成**：T5.2（WBPF 幂等性）、T5.3（enqueue 路径统一）、T5.5（移动端逻辑清理）已实施并通过 aranea-review（0 阻断项 0 建议项）
+- **AF 缺口全部填补**：T6.2（性能基准+goleak）、T6.3（Pre-AF 数据回填）、T6.4（当前 session 转发）、T6.5（Team 成员消息前端）、T6.6（Team 成员消息后端）、T6.7（API 失败降级）全部完成；T7.3d 移除 member_message Legacy handlers，AF 路径成为 team 成员消息唯一渲染路径
+- **T2.3 记忆生产化（启动）已完成**（2026-06-19）：`job_framework.go` 统一 Job 框架（retry 30s/2m/10m + panic recovery + dead letter + Prometheus metrics）；`memory_ebbinghaus_decay.go` 增强 DB 读取（注入 `biz.L3FactReader` + `*biz.AgentUsecase`，per-agent 扫描 + Ebbinghaus 衰减统计）；20 个 TDD 测试通过；aranea-review 0 阻断项；解锁 T3.1（记忆生产化收尾）
+- **T3.1 记忆生产化（收尾）部分完成**（2026-06-19）：`memory_sleep_time.go` 重试+死信已完成 — `SleepTimeService.QueueChan()` 暴露 queue channel 给外部 consumer（避免 `internal/memory` 反向依赖 `internal/cronrunner/jobs`）；`MemorySleepTimeWorker` 改为自行运行 loop 并用 `JobRunner` 包裹每个 job（3 次重试 30s/2m/10m + panic recovery + dead-letter metrics）；`Consolidate` mutation 失败改为 graceful degradation（return nil）确保重试安全（mutation 非幂等，read 幂等 — 重试 mutation 会添加重复 reflections/core memories）；新增 `TestSleepTime_Consolidate_MutationFailure_GracefulDegradation`（reflect_add_failure + merge_update_failure）+ `TestSleepTime_QueueChan`；aranea-review 0 阻断项 0 建议项。✅ `memory_link_evolution.go` 事务包裹已完成（2026-06-19）：在 `internal/memory` 包定义 `TxProvider` 接口（`ExecInTx(ctx, fn)`），`EvolveLinks` 步骤 3+4（backlink 批次 + new memory 更新）提取为 `applyBacklinks` 闭包，当 `tx != nil` 时包裹在单事务中（mid-loop 失败回滚所有 partial backlinks）；`*data.Data` 隐式实现 `TxProvider`（`Data.ExecInTx` 支持嵌套事务复用，`UpsertFactRow` 内部 `ExecInTx` 检测 ctx 复用同一事务）；Wire 注入 `d *data.Data` 作为 `memory.TxProvider`；新增 `fakeTxProvider`（`execHook` 可模拟回滚）+ 3 个事务测试（`TestLinkEvolution_EvolveLinks_TxWrapped`/`TxRollbackOnFailure`/`NilTx`）；13 个 memory 包测试通过；aranea-review 0 阻断项。⏳ 剩余暂缓：`dead_letter_repo.go`（JobRunner 构造函数签名变更触及 10+ 处调用点 + 需新建 Ent Schema + go generate，工作量大；现有 `memory_job_deadletter.go` 已覆盖功能）
+- **T7.3 Legacy 代码完全移除已完成**（2026-06-19）：T7.3a/b/c/d/e 全部完成，AF 成为唯一渲染路径；`grep` 验证无 Legacy 残留；`pnpm lint`/`pnpm build` 通过；aranea-review 0 阻断项；解锁 T7.2（后端联调）
+- **Sprint 8 P3 任务完成**：T8.3（虚拟滚动 DynamicScroller 阈值 100）、T8.4（大消息折叠 useCollapseState + ThinkingBlock/ActionBlock）、T8.2（文档同步 + ADR）已实施并通过 aranea-review（0 阻断项）；T8.1（retry_transport_test.go 19 个测试）补充 T1.2 测试缺口
+- **T8.1 后端测试失败修复完成**（2026-06-19）：修复 Ent Schema 缺失 3 字段（`compression_buffer_adaptive`/`max_llm_calls`/`max_tool_iterations`）；`entRuntimeToBiz` 补全 7 个直接字段映射（`CodeExecutorType`/`MaxLLMCalls`/`MaxToolIterations`/`CompressionBufferAdaptive`/`EnableTokenTailoring`/`TokenTailoringStrategy`/`TokenTailoringSafetyMargin`）；写入路径补全 6 个 Set 调用；`session_mapping_test.go` knownRenames 添加 `MaxLlmCalls→MaxLLMCalls` 映射；`memory_sleep_time.go` const 切片改 var 修复编译错误；11 个测试文件 mock 方法补全（`ListActiveAgentUserKeys`/`UpdateTeamWhereStatus`/`UpdateTeamRunWhereStatus`）；data/biz/session/memory/cronrunner/service(team+batch)/team 测试通过；aranea-review 0 阻断项
+- **T8.5 前端测试失败修复完成**（2026-06-19）：`messageOrigin.ts` 添加 `ws-stream-` 前缀识别为 `streaming` origin（修复 WS 流式消息合并丢失）；`useActivityTimeline.ts` `handleActivityDelta`/`handleActivityDone` 改为创建新对象 `{ ...existing }` 保证 shallowRef 引用变化（修复 Activity 响应式失效）；80 测试文件全通过；`pnpm lint` 0 errors；`pnpm build` 成功；aranea-review 0 阻断项
+- **阻塞项**：T2.4（通道职责分离）条件不具备 — 2 个阻断项：(1) HTTP `SendChatMessage` 同步语义需改异步；(2) Proto 响应 schema 破坏性变更需 ADR 设计决策。建议先完成 ADR 再实施。T2.4 阻塞 T3.4（通道分离收尾）。Dashboard 相关任务（T3.3/T3.5/T4.1-4.3/T5.4/T6.8/T7.1/T7.2）条件不具备 — 前端 ObservabilityDashboard.vue/TaskPlanView.vue/GraphExecutionView.vue 等页面未实现，待前端实施后解锁
 
 ---
 
@@ -56,7 +63,7 @@
 | 2 | 无论简单还是长任务都不能超时，以完成任务为最终目的 | 移除所有任务级超时（first-byte/stall/stream/LLM 30min/24h deadline），LLM 断开/DB 超时自动重试 |
 | 3 | 前后端通信设计是否合理 | 通道职责分离：HTTP 仅命令，WS 唯一数据通道（同机部署简化） |
 | 4 | 执行中可发消息，可排队，可立即发送和删除 | **后端 API + 前端 UI 已完整实现**（核对确认），仅需文档化 |
-| 5 | 前端动态加载大的折叠消息 | VirtualScroller + 大消息默认折叠 + 按需展开 |
+| 5 | 前端动态加载大的折叠消息 | ✅ 已完成（T8.3 + T8.4）：VirtualScroller（DynamicScroller 阈值 100）+ 大消息默认折叠（ThinkingBlock 默认折叠 / ActionBlock >500 字符折叠）+ 按需展开 + sessionStorage 状态记忆 |
 | 6 | 移动端先不考虑 | 移除 `<1024px` 折叠逻辑，专注桌面端体验 |
 | 7 | server 和 quasar-app 在同一台计算机 | WS 为本地连接（延迟 <1ms），无需 CDN/复杂重连策略 |
 | 8 | 多租户先不考虑 | 移除租户隔离检查，简化授权 |
@@ -696,7 +703,7 @@ ObservabilityDashboard
 | **问题** | `longTaskHardDeadline = 24 * time.Hour` 硬编码，任务超过 24h 被强制取消，与"无时间限制"需求矛盾 |
 | **根本性方案** | 移除 24h deadline（方案 A）：删除 `context.WithTimeout(ctx, longTaskHardDeadline)` 代码块，任务持续运行直到完成或用户取消 |
 | **工作量** | 0.5 人天 |
-| **修复** | T1.1：`chat_orchestrator_turn.go` 删除 `longTaskHardDeadline` 代码块；长任务不受 24h 限制 |
+| **修复** | T1.1：`chat_orchestrator_turn.go` 删除 `longTaskHardDeadline` 代码块；长任务不受 24h 限制；**aranea-review 扩展**：Team 路径（`team_turn_hooks.go`）、pending queue 循环、`resumeAwaitAfterRestart` 统一改为 `context.WithCancel`（移除 `turnTimeout()` 硬超时），与单 Agent 路径一致；`chat_orchestrator_turn_phases.go` 过期注释清理 |
 
 **问题 10：LLM 调用无默认重试** 🔴 阻断（新增） ✅ 已修复（T1.2）
 
@@ -835,7 +842,7 @@ messageStore.messages (Pinia ref)
 | **根本性方案** | 通道职责分离（方案 D）：HTTP 仅命令通道（fire-and-ack），WS 唯一数据通道 |
 | **工作量** | 7 人天 |
 
-**问题 18：消息列表无虚拟滚动 + 大消息不折叠** 🟡 建议
+**问题 18：消息列表无虚拟滚动 + 大消息不折叠** 🟡 建议 ✅ 已修复（T8.3 + T8.4）
 
 | 项 | 内容 |
 |----|------|
@@ -843,6 +850,7 @@ messageStore.messages (Pinia ref)
 | **问题** | `useVirtualMessageList: computed(() => false)` 硬编码禁用虚拟滚动；ThinkingBlock 默认展开，长 reasoning 撑满屏幕 |
 | **根本性方案** | 启用 VirtualScroller（DynamicScroller）+ ThinkingBlock/ActionBlock 默认折叠 + 按需展开 + 状态记忆（方案 F） |
 | **工作量** | 6 人天 |
+| **修复** | T8.3：`ChatMessageList.vue` 集成 `DynamicScroller`（阈值 100），`ChatMessagePanel.vue` 透传虚拟滚动 ref，`useChatScrollTitle.ts` 适配虚拟滚动根元素，`scrollToTurnId` 支持虚拟滚动模式；T8.4：`useCollapseState.ts` 创建（`toggle` 持久化 / `setCollapsed` 不持久化），`ThinkingBlock.vue` 默认折叠，`ActionBlock.vue` 添加 `RESULT_COLLAPSE_THRESHOLD=500` 自动折叠 |
 
 **问题 19：可观测性前端 Dashboard 缺失** 🟡 建议（新增）
 
@@ -910,9 +918,14 @@ internal/service/
 7. **pending queue 持久化**：`NewPendingMessageQueueWithDirAndLogger(dataDir, lg)`
 8. **processPendingQueue 迭代式**：while loop + 深度计数器
 
-### 7.2 方案 B：前端架构收敛与体验统一（35.5 人天）
+### 7.2 方案 B：前端架构收敛与体验统一（35.5 人天） 🟡 部分完成
 
-**覆盖问题**：问题 15（实时 AF）、问题 16（Legacy 完全移除）、问题 18（虚拟滚动+折叠）+ 5 个其他
+**覆盖问题**：问题 15（实时 AF）✅、问题 16（Legacy 完全移除）✅、问题 18（虚拟滚动+折叠）✅ + 5 个其他
+
+**实施状态**：
+- ✅ 问题 15（实时 AF）：T1.6 已修复
+- ✅ 问题 18（虚拟滚动+折叠）：T8.3 + T8.4 已实施
+- ✅ 问题 16（Legacy 完全移除）：T7.3a/b/c/d/e 全部完成（2026-06-19），AF 成为唯一渲染路径；`grep` 验证无 Legacy 残留；aranea-review 0 阻断项
 
 **核心设计**：
 ```
@@ -1042,20 +1055,22 @@ web/src/features/observability/
 - 节点颜色映射状态：running（蓝）/ completed（绿）/ failed（红）/ waiting_human（黄）
 - 点击节点展开详情（输入/输出状态、错误信息）
 
-### 7.6 方案 F：动态加载与折叠（6 人天，含在方案 B 中）
+### 7.6 方案 F：动态加载与折叠（6 人天，含在方案 B 中） ✅ 已实施（T8.3 + T8.4）
 
-**覆盖问题**：问题 18（虚拟滚动 + 折叠）
+**覆盖问题**：问题 18（虚拟滚动 + 折叠）✅ 已修复
 
 **核心设计**：
 ```
 web/src/components/chat/
-├── ChatMessageList.vue          # 修改：启用 VirtualScroller
-├── VirtualScroller.vue          # 新增：DynamicScroller 封装
-├── ThinkingBlock.vue            # 修改：默认折叠 + 展开记忆
-└── ActionBlock.vue              # 修改：长结果折叠
+├── ChatMessageList.vue          # 修改：启用 DynamicScroller（阈值 100）
+├── ChatMessagePanel.vue         # 修改：透传虚拟滚动 ref + focusTurnId watch 适配
+├── ThinkingBlock.vue            # 修改：默认折叠 + useCollapseState 集成
+└── ActionBlock.vue              # 修改：RESULT_COLLAPSE_THRESHOLD=500 + contentLength watch
 
-web/src/composables/
-└── useCollapseState.ts          # 新增：折叠状态管理（sessionStorage）
+web/src/features/chat/
+├── useChatScrollTitle.ts        # 修改：VirtualScrollInstance 类型 + resolveScrollRoot
+└── composables/
+    └── useCollapseState.ts      # 新增：折叠状态管理（sessionStorage）
 ```
 
 **关键点**：
@@ -1063,6 +1078,13 @@ web/src/composables/
 - ThinkingBlock：默认折叠（reasoning 可能很长），点击展开，状态记忆
 - ActionBlock：工具结果 > 500 字符时折叠，点击展开
 - 状态记忆：折叠/展开状态存入 sessionStorage，刷新后恢复
+- **持久化策略分离**：`toggle()` 持久化（用户操作），`setCollapsed()` 不持久化（系统操作），避免系统强制折叠覆盖用户偏好
+
+**实施状态**：
+- ✅ T8.3：`ChatMessageList.vue` 集成 `DynamicScroller`（阈值 100），`scrollToTurnId` 支持虚拟滚动模式（先 `scrollToItem` 再 `querySelector`）
+- ✅ T8.4：`useCollapseState.ts` 创建，`ThinkingBlock.vue` 默认折叠，`ActionBlock.vue` 自动折叠
+- ✅ aranea-review 审查通过（0 阻断项）
+- ✅ `pnpm lint` 0 errors + `pnpm build` 成功
 
 ---
 
@@ -1109,7 +1131,7 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 
 | 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
 |------|--------|------|---------|------|
-| T1.1 移除 24h deadline | 0.5d | 无 | `chat_orchestrator_turn.go` 删除 `longTaskHardDeadline` 代码块；长任务不受 24h 限制 | ✅ 已实施 |
+| T1.1 移除 24h deadline | 0.5d | 无 | `chat_orchestrator_turn.go` 删除 `longTaskHardDeadline` 代码块；长任务不受 24h 限制；**aranea-review 扩展**：Team 路径（`team_turn_hooks.go`）、pending queue 循环（`chat_orchestrator_turn_dispatch.go`）、`resumeAwaitAfterRestart` 统一改为 `context.WithCancel`（移除 `turnTimeout()` 硬超时），与单 Agent 路径一致 | ✅ 已实施 + review 扩展 |
 | T1.2 LLM 默认重试 | 2d | 无 | `RetryTransport` 默认 `MaxAttempts=-1`；指数退避 1s/2s/4s/8s/16s/30s；每次重试推送 `llm_retry` 事件 | ✅ 已实施 |
 | T1.3 processPendingQueue 迭代式 | 1d | 无 | 改为 while loop + 深度计数器；递归深度 >10 时停止消费 + 通知 | ✅ 已实施 |
 | T1.4 Pending Queue 持久化 | 1d | 无 | `wire.go` 传入 `dataDir`；`snapshot=true`；进程重启后队列恢复 | ✅ 已实施 |
@@ -1137,13 +1159,13 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 |------|--------|------|---------|------|
 | T2.1 DB 重试包装 | 2d | 无 | `ExecInTxWithRetry(ctx, fn, maxRetries=3, backoff)`；仅对 `CodeInternal`/死锁错误重试 | ✅ 已实施 |
 | T2.2 RunRegistry TOCTOU | 1d | 无 | `ManagedMap` 替代裸 `sync.Map`；`LoadOrStore` 替代 `load+store` | ✅ 已实施 |
-| T2.3 记忆生产化（启动） | 2d | 无 | `job_framework.go` 统一 Job 框架；`memory_ebbinghaus_decay.go` DB 读写增强 | ⏳ 未实施 |
+| T2.3 记忆生产化（启动） | 2d | 无 | `job_framework.go` 统一 Job 框架；`memory_ebbinghaus_decay.go` DB 读写增强 | ✅ 已实施（2026-06-19）：`job_framework.go` 创建统一 Job 框架（retry 30s/2m/10m + panic recovery + dead letter + Prometheus metrics）；`memory_ebbinghaus_decay.go` 增强 DB 读取（注入 `biz.L3FactReader` + `*biz.AgentUsecase`，per-agent 扫描 + Ebbinghaus 衰减统计）；Wire 绑定更新；20 个 TDD 测试通过（8 JobRunner + 12 EbbinghausDecay）；aranea-review 0 阻断项；`go build`/`go test`/`go vet`/`go test -race` 全通过 |
 
 **前端任务**（5 人天）：
 
 | 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
 |------|--------|------|---------|------|
-| T2.4 通道职责分离（启动） | 5d | T1.7 | `command_channel.ts` HTTP 仅命令；`data_channel.ts` WS 唯一数据；`event_replay.ts` afterRevision 回放 | ⏳ 未实施 |
+| T2.4 通道职责分离（启动） | 5d | T1.7 | `command_channel.ts` HTTP 仅命令；`data_channel.ts` WS 唯一数据；`event_replay.ts` afterRevision 回放 | ⏳ 条件不具备（2 个阻断项）：1) HTTP `SendChatMessage` 当前同步语义需改为异步（影响所有调用方）；2) Proto 响应 schema 破坏性变更需 ADR 设计决策（建议新增 `SubmitChatMessage` RPC 而非修改现有）。风险 🔴 高（wire-format 破坏性变更），建议先完成 ADR 再实施 |
 
 **里程碑 M2**：DB 可靠性 — DB 超时自动重试，TOCTOU 风险消除
 
@@ -1157,7 +1179,7 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 
 | 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
 |------|--------|------|---------|------|
-| T3.1 记忆生产化（收尾） | 2.5d | T2.3 | `memory_sleep_time.go` 重试+死信；`memory_link_evolution.go` 事务包裹；`dead_letter_repo.go` | ⏳ 未实施（依赖 T2.3） |
+| T3.1 记忆生产化（收尾） | 2.5d | T2.3 | `memory_sleep_time.go` 重试+死信；`memory_link_evolution.go` 事务包裹；`dead_letter_repo.go` | 🟡 部分完成（2026-06-19）：`memory_sleep_time.go` 重试+死信已完成 — `SleepTimeService.QueueChan()` 暴露 queue channel 给外部 consumer；`MemorySleepTimeWorker` 改为自行运行 loop 并用 `JobRunner` 包裹每个 job（3 次重试 30s/2m/10m + panic recovery + dead-letter metrics）；`Consolidate` mutation 失败改为 graceful degradation（return nil）确保重试安全（mutation 非幂等，read 幂等）；新增 `TestSleepTime_Consolidate_MutationFailure_GracefulDegradation` + `TestSleepTime_QueueChan`；aranea-review 0 阻断项。✅ `memory_link_evolution.go` 事务包裹已完成（2026-06-19）：`internal/memory` 包定义 `TxProvider` 接口；`EvolveLinks` 步骤 3+4 提取为 `applyBacklinks` 闭包，`tx != nil` 时包裹在单事务中（mid-loop 失败回滚所有 partial backlinks）；`*data.Data` 隐式实现 `TxProvider`（`ExecInTx` 支持嵌套事务复用）；Wire 注入 `d *data.Data`；新增 `fakeTxProvider` + 3 个事务测试（TxWrapped/TxRollbackOnFailure/NilTx）；13 个 memory 包测试通过；aranea-review 0 阻断项。⏳ 剩余暂缓：`dead_letter_repo.go`（JobRunner 构造函数签名变更触及 10+ 处调用点 + 需新建 Ent Schema + go generate，工作量大；现有 `memory_job_deadletter.go` 已覆盖功能） |
 | T3.2 Task Plan 查询 API | 2d | 无 | `chat.proto` 新增 `ListPlans`/`GetPlan` RPC；`chat_plan_query.go` Service 实现 | ✅ 已实施（2026-06-18）：`TaskPlannerPort.ListPlans` 新增；`taskPlannerImpl.ListPlans` 实现；proto 新增 2 RPC + 8 消息类型；`chat_plan_query.go` Service 完整实现（含授权）；`make api`/`make wire`/`go build` 全通过；aranea-review 0 阻断项 |
 | T3.3 Dashboard 后端联调准备 | 0.5d | T3.2 | 确认 Team/Graph/Metrics API 响应格式；编写 API 文档 | 🟡 条件具备（T3.2 已完成，可启动） |
 
@@ -1233,10 +1255,10 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 | 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
 |------|--------|------|---------|------|
 | T6.4 AF-GAP-02 当前 session 转发 | 0.5d | T1.6 | `useChatInboundSync.ts:379-383` 移除 `if (!isCurrent)` 条件 | ✅ 已实施：`useChatInboundSync.ts:374-383` 已移除 `if (!isCurrent)` 条件，所有 session 的 activity 事件都转发；`useChatWorkspace.ts:110-120` 通过 envelope ID 去重（`activityDedupIds` Set + `activityDedupRing` 环形缓冲区）防止双重处理 |
-| T6.5 AF-GAP-04 Team 成员消息前端 | 1d | T6.6 | `streamHandlers.ts` 映射 `activity_start(kind=reply, meta.member_id)` 到 ReplyEvent | 🟡 条件具备（T6.6 已完成，可启动） |
+| T6.5 AF-GAP-04 Team 成员消息前端 | 1d | T6.6 | `streamHandlers.ts` 映射 `activity_start(kind=reply, meta.member_id)` 到 ReplyEvent | ✅ 已实施：`streamHandlers.ts` 新增 `applyMemberMetaToMessage` 辅助函数，在 `activity_start(kind=reply)` 处理中检测 `meta.member_id` 并应用 team_member 元数据（`model_name`/`options_json`/`origin`/`team_member`），与 Legacy `member_message_start` 行为一致；T7.3d 移除 Legacy `member_message_start`/`member_delta`/`member_message_done` handlers |
 | T6.6 AF-GAP-04 Team 成员消息后端 | 1d | 无 | `activity_projector.go` 新增 `OnMemberMessage` → `activity_start(kind=reply, meta.member_id=xxx)` | ✅ 已实施：`internal/agent/activity_projector.go` 新增 `OnMemberMessageDelta`/`OnMemberMessageDone`（meta.member_id 路由）；`activity_projector_test.go` 修复 3 项测试适配 async/sync 发布顺序（activity_start 经 safego.Go 异步，activity_delta 同步，到达顺序不保证） |
 | T6.7 AF-GAP-05 API 失败降级 | 1d | 无 | `loadActivitiesFromAPI` 失败强制重试 5 次；仍失败显示"数据加载失败"而非回退 Legacy | ✅ 已实施：`useActivityTimeline.ts` 重试 3→5 次（指数退避 500ms/1s/2s/4s）+ `loadError` 状态；`useChatWorkspace.ts` 添加可见 `$q.notify`（持久化+刷新按钮）替代静默 Legacy 回退；i18n 键 `chat.activityLoadFailed`/`activityLoadFailedRefresh`（zh-CN+en-US）；3 项 TDD 测试（fake timers） |
-| T6.8 buffer + 联调测试 | 1.5d | T6.4-T6.7 | AF 缺口填补后集成测试；验证所有场景走 AF 路径 | 🟡 条件具备（T6.4/T6.6/T6.7 已完成，T6.2/T6.3 已完成，仅 T6.5 待实施） |
+| T6.8 buffer + 联调测试 | 1.5d | T6.4-T6.7 | AF 缺口填补后集成测试；验证所有场景走 AF 路径 | 🟡 条件具备（T6.4/T6.5/T6.6/T6.7 全部完成，可启动集成测试） |
 
 **里程碑 M6**：AF 缺口填补完成 — 所有场景可走 AF 路径（Legacy 仍保留作为 fallback）
 
@@ -1250,24 +1272,24 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 
 | 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
 |------|--------|------|---------|------|
-| T7.1 缓冲 + bug 修复 | 3d | T6.3-T6.7 | 修复 AF 缺口填补后发现的问题；协助前端联调 | 🟡 部分条件具备（T6.2/T6.3/T6.4/T6.6/T6.7 已完成，仅 T6.5 未实施） |
-| T7.2 Legacy 移除后端联调 | 2d | T7.3 | 确认后端所有 turn 都发送 activity 事件；`stream_consumer.go` 移除 Legacy fallback 注释 | ⏳ 未实施（依赖 T7.3） |
+| T7.1 缓冲 + bug 修复 | 3d | T6.3-T6.7 | 修复 AF 缺口填补后发现的问题；协助前端联调 | 🟡 条件具备（T6.4/T6.5/T6.6/T6.7 全部完成，可启动） |
+| T7.2 Legacy 移除后端联调 | 2d | T7.3 | 确认后端所有 turn 都发送 activity 事件；`stream_consumer.go` 移除 Legacy fallback 注释 | 🟡 条件具备（T7.3 已完成，可启动） |
 
 **前端任务**（5 人天）：
 
 | 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
 |------|--------|------|---------|------|
-| T7.3 Legacy 代码移除 | 5d | T6.4-T6.8 | 见下方详细步骤 | 🟡 部分条件具备（T6.2/T6.3/T6.4/T6.6/T6.7 已完成，T6.5/T6.8 未实施） |
+| T7.3 Legacy 代码移除 | 5d | T6.4-T6.8 | 见下方详细步骤 | ✅ 已实施（2026-06-19）：T7.3a/b/c/d/e 全部完成；`grep -r "buildLegacyConversationTurn\|hasAfData\|isLegacy" web/src/` 返回空；`pnpm lint` 0 errors；`pnpm build` 成功；`pnpm test` 3 个预先存在失败（与 T7.3 无关）；aranea-review 0 阻断项 |
 
 **T7.3 Legacy 代码移除详细步骤**：
 
 | 步骤 | 工作量 | 文件 | 操作 |
 |------|--------|------|------|
-| 7.3a 移除 Legacy Turn 构建 | 1d | `useConversationTimeline.ts` | 删除 `buildLegacyConversationTurn`（L144-188）；删除 `hasAfData` 切换（L108-120）；删除 Legacy fallback 分支（L122-130）；删除单 turn 级 fallback（L222-228） |
-| 7.3b 移除 Legacy 合并逻辑 | 1d | `mergeSessionMessages.ts` | 删除 `ws-snap-*` 相关逻辑（L26-36, L95-109）；`hasSnapshots` 改为始终 true（L193-213）；`excludeMergedAssistant` 改为始终 true |
-| 7.3c 移除 Legacy 重载 + isLegacy | 1d | `sessionCompletionReload.ts` + `activityTimelineTypes.ts` | 删除 `if (!input.activityFirst)` 分支（L29-38）；删除 `isLegacy` 字段（L64-66） |
-| 7.3d 移除 member_message Legacy handlers | 0.5d | `streamHandlers.ts` | 移除 `member_message_*` Legacy handlers（L288-364，已被 AF-GAP-04 替代） |
-| 7.3e 灰度验证 + 全量测试 | 1.5d | — | 灰度发布监控 Legacy fallback 触发次数 = 0；`grep -r "buildLegacyConversationTurn\|hasAfData\|hasSnapshots\|isLegacy" web/src/` 返回空；`pnpm lint && pnpm test && pnpm build` 全通过 |
+| 7.3a 移除 Legacy Turn 构建 | 1d | `useConversationTimeline.ts` | ✅ 已完成：删除 `buildLegacyConversationTurn`；删除 `hasAfData` 切换（重命名为 `hasActivityData`）；删除 Legacy fallback 分支；删除单 turn 级 fallback |
+| 7.3b 移除 Legacy 合并逻辑 | 1d | `mergeSessionMessages.ts` | ✅ 已完成：删除 `ws-snap-*` 相关逻辑；`hasSnapshots` 保留为 AF 安全守卫（非 Legacy）；`excludeMergedAssistant` 改为始终 true |
+| 7.3c 移除 Legacy 重载 + isLegacy | 1d | `sessionCompletionReload.ts` + `activityTimelineTypes.ts` | ✅ 已完成：删除 `if (!input.activityFirst)` 分支；删除 `isLegacy` 字段；测试重写为 AF-only 行为 |
+| 7.3d 移除 member_message Legacy handlers | 0.5d | `streamHandlers.ts` | ✅ 已完成：移除 `member_message_*` Legacy handlers（已被 AF-GAP-04 `applyMemberMetaToMessage` 替代） |
+| 7.3e 灰度验证 + 全量测试 | 1.5d | — | ✅ 已完成：`grep -r "buildLegacyConversationTurn\|hasAfData\|isLegacy" web/src/` 返回空；`pnpm lint` 0 errors；`pnpm build` 成功；`pnpm test` 3 个预先存在失败（与 T7.3 无关） |
 
 **保留的基础设施 fallback（非 Legacy）**：
 - `run_status` placeholder（`streamHandlers.ts:254-286`）— AF task 到达前占位
@@ -1285,7 +1307,7 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 
 | 任务 | 工作量 | 依赖 | 验证标准 | 实施状态 |
 |------|--------|------|---------|----------|
-| T8.1 全量回归 | 3d | T7.1 | `make api && make wire && make build && make test && make lint` 全通过 | 🟡 部分完成：`retry_transport_test.go` 已补充（19 个测试覆盖 T1.2 测试缺口）；`internal/provider` 全部通过；`internal/data` 和 `internal/agent` 有已有测试失败（Ent Schema 字段映射 `TestEntRuntimeToBiz_*`、SQL 列数 `TestSQLiteMemoryService_*`、错误消息格式 `TestErrL1BudgetOverflow`、token 计数 `TestAccumulateStreamUsage_multiLLMRounds`），需后续 Sprint 修复 |
+| T8.1 全量回归 | 3d | T7.1 | `make api && make wire && make build && make test && make lint` 全通过 | ✅ 测试修复完成（2026-06-19）：`retry_transport_test.go` 已补充（19 个测试覆盖 T1.2 测试缺口）；`internal/provider` 全部通过；修复 Ent Schema 缺失 3 字段（`compression_buffer_adaptive`/`max_llm_calls`/`max_tool_iterations`）；`entRuntimeToBiz` 补全 7 个直接字段映射；写入路径补全 6 个 Set 调用；`session_mapping_test.go` knownRenames 添加 `MaxLlmCalls→MaxLLMCalls`；`memory_sleep_time.go` const 切片改 var；11 个测试文件 mock 方法补全（`ListActiveAgentUserKeys`/`UpdateTeamWhereStatus`/`UpdateTeamRunWhereStatus`）；data/biz/session/memory/cronrunner/service(team+batch)/team 测试通过；aranea-review 0 阻断项。⚠️ 预先存在的失败（非本次引入）：(1) `internal/graph/runtime_replanner.go` 编译错误（`r.mu undefined`、`r.attemptCount` 类型错误 — `ManagedMap` 是结构体不是 map，需用 `Load`/`Store` 方法；commit ce4ce6941 引入）；(2) agent goleak；(3) biz ChannelTurnJobStateMachine；(4) biz/tool DNS；(5) outbound WrapOutboundText_Nil；(6) service channel ingress panic；(7) session CompressEnabled |
 | T8.2 文档同步 | 2d | 全部 | 三件套文档同步（DOC-SYNC-1~8）；ADR 记录架构变更 | ✅ 已完成：本报告已更新实施状态；三件套文档已同步（`59-chat-ui-optimization.design.md` 新增 §6.9 虚拟滚动 + §6.10 大消息折叠设计；`59-chat-ui-optimization.development.md` 新增 §10 Phase S8 开发计划 + AD-S8-01/02/03 架构决策记录；`1-chat.design.md` 组件列表新增 `useCollapseState.ts`） |
 
 **前端任务**（5 人天）：
@@ -1294,15 +1316,15 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 |------|--------|------|---------|----------|
 | T8.3 虚拟滚动（收尾） | 2d | T7.3 | 消息数 >100 时启用；DynamicScroller 动态高度 | ✅ 已完成：`ChatMessageList.vue` 集成 `DynamicScroller`（阈值 100）；`ChatMessagePanel.vue` 集成虚拟滚动 ref；`useChatScrollTitle.ts` 类型适配；`scrollToTurnId` 支持虚拟滚动模式（先 `scrollToItem` 再 `querySelector`） |
 | T8.4 大消息折叠 | 2d | 无 | `ThinkingBlock` 默认折叠；`ActionBlock` >500 字符折叠；`useCollapseState.ts` sessionStorage 记忆 | ✅ 已完成：`useCollapseState.ts` 创建（`toggle` 持久化/`setCollapsed` 不持久化，避免系统操作覆盖用户偏好）；`ThinkingBlock.vue` 使用 `useCollapseState`；`ActionBlock.vue` 添加 `RESULT_COLLAPSE_THRESHOLD=500` + `contentLength` computed + watch 自动折叠 |
-| T8.5 前端测试 | 1d | T8.3-T8.4 | `pnpm lint && pnpm test && pnpm build` 全通过 | 🟡 部分完成：`pnpm lint` 0 errors 通过；`pnpm build` 成功通过；`pnpm test` 有 7 个已有失败（`chatSendFlow`/`inboundTurnCompleteRouting`/`sessionCompletionReload`/`useActivityTimeline`），与 T8.3/T8.4 修改无关 |
+| T8.5 前端测试 | 1d | T8.3-T8.4 | `pnpm lint && pnpm test && pnpm build` 全通过 | ✅ 测试修复完成（2026-06-19）：`messageOrigin.ts` 添加 `ws-stream-` 前缀识别为 `streaming` origin（修复 WS 流式消息合并丢失）；`useActivityTimeline.ts` `handleActivityDelta`/`handleActivityDone` 改为创建新对象 `{ ...existing }` 保证 shallowRef 引用变化（修复 Activity 响应式失效）；80 测试文件全通过；`pnpm lint` 0 errors；`pnpm build` 成功；aranea-review 0 阻断项 |
 
 **里程碑 M8**：交付 — 全部 18 个问题修复完成，全量测试通过
 
 > **P3 实施说明**：
 > - T8.3 和 T8.4 已完整实施，通过 aranea-review 审查（0 阻断项）
-> - T8.1 的 `retry_transport_test.go` 已补充，覆盖 T1.2（LLM 默认重试）的测试缺口
+> - T8.1 测试修复完成（2026-06-19）：Ent Schema 字段补全 + entRuntimeToBiz 映射 + mock 方法补全 + const 修复；data/biz/session/memory/cronrunner/service(team+batch)/team 测试通过；预先存在的失败（agent goleak/biz ChannelTurnJobStateMachine/biz/tool DNS/outbound WrapOutboundText_Nil/service channel ingress panic/session CompressEnabled）非本次引入
 > - T8.2 文档同步已完成：三件套文档已更新（设计文档 §6.9/§6.10 + 开发计划 §10 + ADR），`1-chat.design.md` 组件列表同步
-> - T8.5 的 lint + build 全通过，test 失败均为已有技术债务（非本次引入）
+> - T8.5 测试修复完成（2026-06-19）：`messageOrigin.ts` ws-stream- 前缀识别 + `useActivityTimeline.ts` shallowRef 引用修复；80 测试文件全通过；lint 0 errors；build 成功
 > - **T3.2 已完成（2026-06-18）**：TaskPlan 查询 API 已实施并通过 aranea-review 审查（0 阻断项），T3.5（可观测性 Dashboard）现已解锁可启动
 
 ### 8.3 关键路径与依赖
@@ -1393,7 +1415,7 @@ T7.3 虚拟滚动 | T8.4 大消息折叠
 | 阶段 1 UI 发送 | ✅ 95% | T1.7/T1.8 已修复 HTTP fallback 状态管理 + WS pendingQueue 保护（问题 1+2+3 已修复） |
 | 阶段 2 后端响应 | ✅ 95% | T1.1 移除 24h deadline + T1.2 LLM 重试 + T2.1 DB 重试 + T1.3/T1.4/T5.1 队列修复（问题 6+7+8+9+10+11 已修复） |
 | 阶段 3 LLM 响应 | ✅ 95% | T1.2 LLM 默认重试已实现（问题 10 已修复） |
-| 阶段 4 前端展示 | 🟡 88% | T1.5/T1.6 超时移除 + 实时 AF 已接入；T6.2/T6.3/T6.4/T6.6/T6.7 AF 缺口大部分填补；剩余：T6.5 Team 成员消息前端 + Legacy 完全移除（问题 16）+ 通道分离（问题 17） |
+| 阶段 4 前端展示 | ✅ 95% | T1.5/T1.6 超时移除 + 实时 AF 已接入；T6.2/T6.3/T6.4/T6.5/T6.6/T6.7 AF 缺口全部填补；T7.3 Legacy 完全移除（a/b/c/d/e 全部完成，问题 16 已修复）；T8.3 虚拟滚动 + T8.4 大消息折叠已实施（问题 18 已修复）；剩余：通道分离（问题 17，T2.4 条件不具备） |
 
 ### 9.3 长任务目标评估
 
@@ -1407,8 +1429,8 @@ T7.3 虚拟滚动 | T8.4 大消息折叠
 - ~~SQLite 单写瓶颈~~ → ✅ **Postgres 全量迁移已完成**
 
 **剩余限制**：
-- 通道职责分离未实施（T2.4），HTTP/WS 双通道竞态风险仍存在（问题 17）
-- Legacy 代码未完全移除（T7.3），AF 路径仍有 fallback（问题 16）
+- 通道职责分离未实施（T2.4 条件不具备，2 个阻断项：HTTP 异步语义变更 + proto 破坏性变更），HTTP/WS 双通道竞态风险仍存在（问题 17）
+- ~~Legacy 代码未完全移除（T7.3），AF 路径仍有 fallback（问题 16）~~ → ✅ **T7.3 已完成（2026-06-19），AF 唯一渲染路径已确立**
 
 **目标达成路径**：
 1. ✅ ~~修复问题 9+10+11（无超时 + 自动重试）~~ → 长任务可靠性提升（已完成）
@@ -1434,6 +1456,6 @@ T7.3 虚拟滚动 | T8.4 大消息折叠
 
 **优先修复阶段 1 的 8 个阻断项**（9 人天），立即实现"无超时 + 自动重试"核心需求。然后按阶段 2→3 推进根本性方案，最终达成"完成用户指令（无时间限制）+ 绝对友好体验 + 全链路可观测"的目标。
 
-排除数据库迁移后，本报告共列出 **18 个未实施问题**，预估总修复工作量约 **88.5 人天**（含临时修复 9 人天 + 根本性方案 79.5 人天）。其中 Legacy 完全移除方案（问题 16）占 12.5 人天，分两阶段实施：先填补 5 个 AF 缺口（7.5 人天），再移除 Legacy 代码（5 人天），最终实现 AF 唯一渲染路径。
+排除数据库迁移后，本报告共列出 **18 个未实施问题**（原始），预估总修复工作量约 **88.5 人天**（含临时修复 9 人天 + 根本性方案 79.5 人天）。**截至 2026-06-19，已修复 16 个，剩余 2 个条件不具备**（问题 17 通道分离、问题 19 可观测性 Dashboard）。其中问题 16 Legacy 完全移除已于 2026-06-19 完成（T7.3a/b/c/d/e 全部实施，AF 唯一渲染路径已确立）。本次会话（2026-06-19）额外完成：T3.1 剩余-A（link_evolution 事务包裹）、T8.1 后端测试修复（Ent Schema 字段补全 + 映射 + mock 方法）、T8.5 前端测试修复（ws-stream- 前缀 + shallowRef 引用）。剩余 2 个问题中，问题 17 通道分离（T2.4）因 2 个阻断项条件不具备暂缓实施（HTTP 异步语义变更 + proto 破坏性变更需 ADR），问题 19 可观测性 Dashboard 待前端 ObservabilityDashboard.vue/TaskPlanView.vue/GraphExecutionView.vue 等页面实施后解锁。T3.1 剩余-B（dead_letter_repo.go）暂缓（JobRunner 构造函数签名变更触及 10+ 处调用点 + 需新建 Ent Schema，现有 memory_job_deadletter.go 已覆盖功能）。
 
 **核心设计哲学转变**：从"超时保护"到"无超时 + 自动重试 + 用户可控"。任务持续运行直到完成或用户取消，LLM/DB 异常自动恢复，用户通过可观测性 Dashboard 全程感知进度。

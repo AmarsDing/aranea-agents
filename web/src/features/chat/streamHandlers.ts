@@ -57,7 +57,7 @@ export type StreamHandlerCtx = {
   onRunStatus: (env: Envelope) => void;
   onErrorNotify: (message: string) => void;
   onOrchestrationNotice?: (message: string) => void;
-  onReloadAfterCompletion: (sessionId: string, opts?: { activityFirst?: boolean }) => Promise<void>;
+  onReloadAfterCompletion: (sessionId: string) => Promise<void>;
   onSessionContextPatch?: (sessionId: string, patch: SessionContextPatch) => void;
   onCompressNotice?: (sessionId: string, prevRatio: number, newRatio: number) => void;
   getSessionMetrics?: (
@@ -518,6 +518,10 @@ export function bindStreamHandlers(
         const idx = cur.findIndex((m) => m.id === activityId);
         if (idx < 0) return cur;
         const patched = patchStreamingMessageFromDelta(cur[idx], md as unknown as ActivityDeltaMeta);
+        // P2-F1: skip array copy when the patch is a no-op (terminal status
+        // or unknown delta_field). patchStreamingMessageFromDelta returns the
+        // same reference in those cases, so we can avoid the O(n) spread.
+        if (patched === cur[idx]) return cur;
         const next = [...cur];
         next[idx] = patched;
         return next;
@@ -527,9 +531,13 @@ export function bindStreamHandlers(
       const idx = msgs.findIndex((m) => m.id === activityId);
       if (idx >= 0) {
         const patched = patchStreamingMessageFromDelta(msgs[idx], md as unknown as ActivityDeltaMeta);
-        const next = [...msgs];
-        next[idx] = patched;
-        ctx.setMessages(sid, next);
+        // P2-F1: skip array copy + setMessages when the patch is a no-op.
+        // Do NOT return early — onActivityEnvelope must still fire below.
+        if (patched !== msgs[idx]) {
+          const next = [...msgs];
+          next[idx] = patched;
+          ctx.setMessages(sid, next);
+        }
       }
     }
 
@@ -619,7 +627,7 @@ export function bindStreamHandlers(
         }
         if (shouldSessionWsSkipEnvelope(env)) return;
         try {
-          await ctx.onReloadAfterCompletion?.(sid, { activityFirst: true });
+          await ctx.onReloadAfterCompletion?.(sid);
         } catch {
           /* caller may surface errors */
         }

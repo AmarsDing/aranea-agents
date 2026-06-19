@@ -48,6 +48,7 @@ func openTestDataForMemory(t *testing.T) (*data.Data, *ent.Client) {
  archived_at TEXT NOT NULL DEFAULT '', deleted_at TEXT NOT NULL DEFAULT '',
  valid_from TEXT NOT NULL DEFAULT '', valid_until TEXT NOT NULL DEFAULT '',
  links TEXT NOT NULL DEFAULT '[]', keywords TEXT NOT NULL DEFAULT '[]', tags TEXT NOT NULL DEFAULT '[]',
+ decay_score REAL NOT NULL DEFAULT 1.0,
  UNIQUE(scope_type, scope_id, fingerprint))`,
 		`CREATE TABLE IF NOT EXISTS memory_action_log (
  id TEXT PRIMARY KEY, action TEXT NOT NULL, target_kind TEXT NOT NULL, target_id TEXT NOT NULL,
@@ -78,10 +79,20 @@ func openTestDataForMemory(t *testing.T) (*data.Data, *ent.Client) {
 	return d, client
 }
 
+// enabledSettingsLoader is a test stub that returns memory-enabled runtime
+// settings so resolveMemoryToolSearchLimits honours the default topK/minScore
+// policy. Without it, a nil loader causes MasterEnabled=false and ReadMemories
+// returns empty (see commit ee9691ec8b).
+type enabledSettingsLoader struct{}
+
+func (enabledSettingsLoader) GetAgentRuntimeSettings(_ context.Context, _ string) (*biz.AgentRuntimeSettings, error) {
+	return &biz.AgentRuntimeSettings{MemoryEnabled: true}, nil
+}
+
 func TestMemoryService_AddMemoryWritesFactVisibleToAdmin(t *testing.T) {
 	d, _ := openTestDataForMemory(t)
 	factWriter := data.NewL3FactWriterAdapter(d, nil)
-	svc := trpcmem.NewMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := trpcmem.NewMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, enabledSettingsLoader{}, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
 	if err := svc.AddMemory(ctx, uk, "My name is Alice", []string{"profile"}); err != nil {
@@ -110,7 +121,7 @@ func TestMemoryService_AddMemoryWritesFactVisibleToAdmin(t *testing.T) {
 func TestMemoryService_AddMemoryDedupByFingerprint(t *testing.T) {
 	d, _ := openTestDataForMemory(t)
 	factWriter := data.NewL3FactWriterAdapter(d, nil)
-	svc := trpcmem.NewMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := trpcmem.NewMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, enabledSettingsLoader{}, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 	uk := trpcmemory.UserKey{AppName: "agent-dedup", UserID: "user-dedup"}
 	stmt := "I prefer tea in the morning"
@@ -133,7 +144,7 @@ func TestMemoryService_AddMemoryDedupByFingerprint(t *testing.T) {
 func TestMemoryService_ReadMemoriesFromFacts(t *testing.T) {
 	d, _ := openTestDataForMemory(t)
 	factWriter := data.NewL3FactWriterAdapter(d, nil)
-	svc := trpcmem.NewMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := trpcmem.NewMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, enabledSettingsLoader{}, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 	uk := trpcmemory.UserKey{AppName: "agent-2", UserID: "user-2"}
 	if err := svc.AddMemory(ctx, uk, "I prefer dark mode", nil); err != nil {
@@ -154,7 +165,7 @@ func TestMemoryService_ReadMemoriesFromFacts(t *testing.T) {
 func TestMemoryService_DeleteAndClear(t *testing.T) {
 	d, _ := openTestDataForMemory(t)
 	factWriter := data.NewL3FactWriterAdapter(d, nil)
-	svc := trpcmem.NewMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := trpcmem.NewMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, enabledSettingsLoader{}, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 	uk := trpcmemory.UserKey{AppName: "agent-3", UserID: "user-3"}
 	if err := svc.AddMemory(ctx, uk, "fact one", nil); err != nil {
@@ -206,7 +217,7 @@ func TestMemoryAdminUsecase_RequireAdminWhenStoreMissing(t *testing.T) {
 func TestAddMemory_SetsValidFrom(t *testing.T) {
 	d, _ := openTestDataForMemory(t)
 	factWriter := data.NewL3FactWriterAdapter(d, nil)
-	svc := trpcmem.NewMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := trpcmem.NewMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, enabledSettingsLoader{}, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 	uk := trpcmemory.UserKey{AppName: "agent-vf", UserID: "user-vf"}
 	if err := svc.AddMemory(ctx, uk, "I live in Paris", nil); err != nil {
@@ -235,7 +246,7 @@ func TestAddMemory_SetsValidFrom(t *testing.T) {
 func TestSearchMemories_FiltersInvalidated(t *testing.T) {
 	d, _ := openTestDataForMemory(t)
 	factWriter := data.NewL3FactWriterAdapter(d, nil)
-	svc := trpcmem.NewMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := trpcmem.NewMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, enabledSettingsLoader{}, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 	uk := trpcmemory.UserKey{AppName: "agent-inv", UserID: "user-inv"}
 	if err := svc.AddMemory(ctx, uk, "I like coffee", nil); err != nil {
@@ -265,7 +276,7 @@ func TestSearchMemories_FiltersInvalidated(t *testing.T) {
 func TestSearchMemories_IncludesValid(t *testing.T) {
 	d, _ := openTestDataForMemory(t)
 	factWriter := data.NewL3FactWriterAdapter(d, nil)
-	svc := trpcmem.NewMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := trpcmem.NewMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, enabledSettingsLoader{}, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 	uk := trpcmemory.UserKey{AppName: "agent-valid", UserID: "user-valid"}
 	if err := svc.AddMemory(ctx, uk, "I like tea", nil); err != nil {
@@ -294,7 +305,7 @@ func TestSearchMemories_IncludesValid(t *testing.T) {
 func TestUpdateMemory_InvalidatesOldOnConflict(t *testing.T) {
 	d, _ := openTestDataForMemory(t)
 	factWriter := data.NewL3FactWriterAdapter(d, nil)
-	svc := trpcmem.NewMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := trpcmem.NewMemoryService(data.NewL3FactReaderForUser(d), factWriter, nil, nil, nil, enabledSettingsLoader{}, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 	uk := trpcmemory.UserKey{AppName: "agent-conf", UserID: "user-conf"}
 	// Add initial memory.
@@ -365,7 +376,7 @@ func TestInvalidateFact_DataLayer(t *testing.T) {
 	reader := data.NewL3FactReaderForUser(d)
 	ctx := context.Background()
 	uk := trpcmemory.UserKey{AppName: "agent-inv-dl", UserID: "user-inv-dl"}
-	if err := trpcmem.NewMemoryService(reader, factWriter, nil, nil, nil, nil, nil, nil, loggateway.NewNoop()).
+	if err := trpcmem.NewMemoryService(reader, factWriter, nil, nil, nil, enabledSettingsLoader{}, nil, nil, loggateway.NewNoop()).
 		AddMemory(ctx, uk, "I like running", nil); err != nil {
 		t.Fatal(err)
 	}

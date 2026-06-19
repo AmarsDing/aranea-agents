@@ -19,7 +19,8 @@ import {
   submitMessageFeedback as apiSubmitFeedback,
   updatePendingMessage,
 } from '../../features/chat/api';
-import type { ChatOption, RunStatus, PendingMessage, SendMessageOptions, SendMessageResult } from '../../features/chat/types';
+import type { ChatOption, RunStatus, PendingMessage, SendMessageOptions } from '../../features/chat/types';
+import type { MessageAck } from '../../realtime/command_channel';
 
 export const useChatRuntimeStore = defineStore('chatRuntime', () => {
   const wsConnectedBySession = ref<Record<string, boolean>>({});
@@ -82,7 +83,7 @@ export const useChatRuntimeStore = defineStore('chatRuntime', () => {
     team_id?: string;
     content: string;
     options?: SendMessageOptions;
-  }): Promise<SendMessageResult> {
+  }): Promise<MessageAck> {
     return apiSendMessage(payload);
   }
 

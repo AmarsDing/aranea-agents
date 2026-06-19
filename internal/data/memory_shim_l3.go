@@ -23,10 +23,11 @@ type l3FactRepo struct {
 
 // Compile-time interface checks.
 var (
-	_ biz.L3FactReader    = (*l3FactRepo)(nil)
-	_ biz.L3FactWriter    = (*l3FactRepo)(nil)
-	_ biz.L3ConflictStore = (*l3FactRepo)(nil)
-	_ biz.PIIReviewStore  = (*l3FactRepo)(nil)
+	_ biz.L3FactReader     = (*l3FactRepo)(nil)
+	_ biz.L3FactWriter     = (*l3FactRepo)(nil)
+	_ biz.L3ConflictStore  = (*l3FactRepo)(nil)
+	_ biz.PIIReviewStore   = (*l3FactRepo)(nil)
+	_ biz.DecayScoreWriter = (*l3FactRepo)(nil)
 )
 
 func newL3FactRepo(data *Data, vs vector.VectorStore) *l3FactRepo {
@@ -46,6 +47,15 @@ func NewL3FactWriterAdapter(data *Data, vs vector.VectorStore) biz.L3FactWriter 
 
 // NewL3FactReaderForUser creates a biz.L3FactReader backed by data.
 func NewL3FactReaderForUser(data *Data) biz.L3FactReader {
+	if data == nil {
+		return nil
+	}
+	return newL3FactRepo(data, nil)
+}
+
+// NewDecayScoreWriter creates a biz.DecayScoreWriter backed by data.
+// Used by the Ebbinghaus decay cron job to persist R_t scores.
+func NewDecayScoreWriter(data *Data) biz.DecayScoreWriter {
 	if data == nil {
 		return nil
 	}
@@ -98,13 +108,13 @@ func (r *l3FactRepo) ListFactRows(ctx context.Context, scopeType, scopeID, kind,
 		r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(*) as total, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active, SUM(CASE WHEN status = 'archived' THEN 1 ELSE 0 END) as archived FROM memory_facts`+countWhere),
 		countArgs...)
 	if err != nil {
-		return nil, 0, 0, 0, err
+		return nil, 0, 0, 0, entErrToBizErr(err, "MEMORY_L3")
 	}
 	if countRow.Next() {
 		var a, ar sql.NullInt32
 		if scanErr := countRow.Scan(&total, &a, &ar); scanErr != nil {
 			countRow.Close()
-			return nil, 0, 0, 0, scanErr
+			return nil, 0, 0, 0, entErrToBizErr(scanErr, "MEMORY_L3")
 		}
 		if a.Valid {
 			active = a.Int32
@@ -129,14 +139,14 @@ func (r *l3FactRepo) ListFactRows(ctx context.Context, scopeType, scopeID, kind,
 	args = append(args, lim, off)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
-		return nil, 0, 0, 0, err
+		return nil, 0, 0, 0, entErrToBizErr(err, "MEMORY_L3")
 	}
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
 		b, err := scanFactRowJSON(rows)
 		if err != nil {
-			return nil, 0, 0, 0, err
+			return nil, 0, 0, 0, entErrToBizErr(err, "MEMORY_L3")
 		}
 		out = append(out, b)
 	}
@@ -185,7 +195,7 @@ func (r *l3FactRepo) countFacts(ctx context.Context, clauses []string, args ...a
 	}
 	var count int32
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders("SELECT COUNT(*) FROM memory_facts"+where), args, &count); err != nil {
-		return 0, err
+		return 0, entErrToBizErr(err, "MEMORY_L3")
 	}
 	return count, nil
 }
@@ -225,14 +235,14 @@ func (r *l3FactRepo) ListFactRowsForUser(ctx context.Context, scopeType, scopeID
 	args = append(args, lim, off)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
 		b, err := scanFactRowJSON(rows)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "MEMORY_L3")
 		}
 		out = append(out, b)
 	}
@@ -240,7 +250,7 @@ func (r *l3FactRepo) ListFactRowsForUser(ctx context.Context, scopeType, scopeID
 }
 
 // ListFactRowsForUserAll returns facts for a user including invalidated ones
-// (valid_until != ''). Used for historical reconstruction queries when
+// (valid_until != ”). Used for historical reconstruction queries when
 // SearchOptions.IncludeInvalidated is true. Deleted facts are still excluded.
 func (r *l3FactRepo) ListFactRowsForUserAll(ctx context.Context, scopeType, scopeID, userID, keyword string, limit, offset int32) ([][]byte, error) {
 	clauses := []string{"status = 'active'", "deleted_at = ''"}
@@ -274,14 +284,14 @@ func (r *l3FactRepo) ListFactRowsForUserAll(ctx context.Context, scopeType, scop
 	args = append(args, lim, off)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
 		b, err := scanFactRowJSON(rows)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "MEMORY_L3")
 		}
 		out = append(out, b)
 	}
@@ -302,14 +312,14 @@ func (r *l3FactRepo) GetFactRowsByIDs(ctx context.Context, factIDs []string) ([]
 	q := sqlFactSelect + " WHERE id IN (" + strings.Join(placeholders, ",") + ") AND status = 'active' AND deleted_at = '' AND valid_until = ''"
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
 		b, err := scanFactRowJSON(rows)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "MEMORY_L3")
 		}
 		out = append(out, b)
 	}
@@ -378,7 +388,7 @@ func (r *l3FactRepo) recallL3FactsBruteForce(ctx context.Context, scopeType, sco
 	args = append(args, lim)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
 	defer rows.Close()
 	var out [][]byte
@@ -420,7 +430,7 @@ func (r *l3FactRepo) recallL3Facts(ctx context.Context, scopeType, scopeID, user
 	args = append(args, pool)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
 	defer rows.Close()
 	tokens := tokenizeQuery(query)
@@ -552,7 +562,7 @@ func (r *l3FactRepo) recallL3WithVectorStore(ctx context.Context, scopeType, sco
 	args = append(args, pool)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
 	defer rows.Close()
 	tokens := tokenizeQuery(query)
@@ -699,10 +709,13 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 		positive_feedback_count, negative_feedback_count, conflict_count,
 		source_kind, source_episode_id, source_session_id, source_message_id, source_external,
 		version, status, superseded_by,
+		embedding_status, embedding_model, embedding_dim, embedding_blob, embedding_norm,
 		pii_flag, redacted_statement,
+		ttl_days, decay_factor, next_decay_at, last_used_at, expires_at,
 		quality_score, pii_types, metadata_json, created_at, updated_at,
-		valid_from, valid_until, links, keywords
-	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		archived_at, deleted_at,
+		valid_from, valid_until, links, keywords, tags
+	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 		statement = excluded.statement, details_markdown = excluded.details_markdown,
 		confidence = excluded.confidence, importance = excluded.importance,
@@ -740,16 +753,19 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 			strings.TrimSpace(in.SourceMessageID),
 			strings.TrimSpace(in.SourceExternal),
 			in.Version, status, "",
+			"pending", "", 0, nil, 0.0, // embedding_status, embedding_model, embedding_dim, embedding_blob, embedding_norm
 			pii, redacted,
+			0, 0.98, "", "", "", // ttl_days, decay_factor, next_decay_at, last_used_at, expires_at
 			defaultFactQualityScore, piiTypesJSON, meta, createdAt, updatedAt,
-			validFrom, validUntil, links, keywords,
+			"", "", // archived_at, deleted_at
+			validFrom, validUntil, links, keywords, tags,
 		)
 		if execErr != nil {
 			return execErr
 		}
 		// Read back the row using the unique constraint (scope_type, scope_id, fingerprint)
 		// within the same transaction so the write connection is reused.
-		rows, queryErr := r.data.RWDB().ReadDB(txCtx).QueryContext(txCtx,
+		rows, queryErr := r.data.RWDB().WriteDB(txCtx).QueryContext(txCtx,
 			r.data.Dialect().RenumberPlaceholders(sqlFactSelect+` WHERE scope_type = ? AND scope_id = ? AND fingerprint = ?`),
 			strings.TrimSpace(in.ScopeType), strings.TrimSpace(in.ScopeID), fp)
 		if queryErr != nil {
@@ -766,7 +782,7 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 		return execErr
 	})
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
 	return result, nil
 }
@@ -776,7 +792,7 @@ func (r *l3FactRepo) DeleteFactRow(ctx context.Context, factID string) error {
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET deleted_at = ?, status = 'deleted' WHERE id = ?`), now, factID)
 	if err != nil {
-		return err
+		return entErrToBizErr(err, "MEMORY_L3")
 	}
 	// Cascade: remove pgvector embedding so deleted facts are not recalled.
 	if r.vectorStore != nil {
@@ -812,7 +828,7 @@ func (r *l3FactRepo) DeleteFactRowsByIDs(ctx context.Context, factIDs []string) 
 	q := fmt.Sprintf(`UPDATE memory_facts SET deleted_at = ?, status = 'deleted' WHERE id IN (%s)`, strings.Join(placeholders, ","))
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
-		return 0, err
+		return 0, entErrToBizErr(err, "MEMORY_L3")
 	}
 	n, _ := res.RowsAffected()
 	// Cascade: remove pgvector embeddings so deleted facts are not recalled.
@@ -857,7 +873,7 @@ func (r *l3FactRepo) ClearFactsByScope(ctx context.Context, scopeType, scopeID, 
 			factIDs = append(factIDs, id)
 		}
 		if err := rows.Err(); err != nil {
-			return err
+			return entErrToBizErr(err, "MEMORY_L3")
 		}
 		if len(factIDs) == 0 {
 			return nil
@@ -868,7 +884,7 @@ func (r *l3FactRepo) ClearFactsByScope(ctx context.Context, scopeType, scopeID, 
 		return execErr
 	})
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
 	if len(factIDs) == 0 {
 		return nil, nil
@@ -921,7 +937,7 @@ func (r *l3FactRepo) InvalidateFact(ctx context.Context, factID string) ([]byte,
 		return execErr
 	})
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
 	return result, nil
 }
@@ -940,7 +956,7 @@ func (r *l3FactRepo) IncrementConflictCount(ctx context.Context, factID string) 
 		return queryRowScan(txCtx, r.data.RWDB().ReadDB(txCtx),
 			r.data.Dialect().RenumberPlaceholders(`SELECT conflict_count FROM memory_facts WHERE id = ?`), []any{factID}, &count)
 	})
-	return count, err
+	return count, entErrToBizErr(err, "MEMORY_L3")
 }
 
 func (r *l3FactRepo) BatchIncrementConflictCounts(ctx context.Context, factIDs []string) error {
@@ -957,7 +973,7 @@ func (r *l3FactRepo) BatchIncrementConflictCounts(ctx context.Context, factIDs [
 	}
 	q := fmt.Sprintf(`UPDATE memory_facts SET conflict_count = conflict_count + 1, updated_at = ? WHERE id IN (%s)`, strings.Join(placeholders, ","))
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
-	return err
+	return entErrToBizErr(err, "MEMORY_L3")
 }
 
 func (r *l3FactRepo) ListConflictingFacts(ctx context.Context, scopeType, scopeID string, limit, offset int32) ([][]byte, int32, error) {
@@ -974,7 +990,7 @@ func (r *l3FactRepo) ListConflictingFacts(ctx context.Context, scopeType, scopeI
 	where := " WHERE " + strings.Join(clauses, " AND ")
 	var total int32
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders("SELECT COUNT(*) FROM memory_facts"+where), args, &total); err != nil {
-		return nil, 0, err
+		return nil, 0, entErrToBizErr(err, "MEMORY_L3")
 	}
 	lim := int(limit)
 	if lim <= 0 {
@@ -988,14 +1004,14 @@ func (r *l3FactRepo) ListConflictingFacts(ctx context.Context, scopeType, scopeI
 	args = append(args, lim, off)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, entErrToBizErr(err, "MEMORY_L3")
 	}
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
 		b, err := scanFactRowJSON(rows)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, entErrToBizErr(err, "MEMORY_L3")
 		}
 		out = append(out, b)
 	}
@@ -1018,7 +1034,7 @@ func (r *l3FactRepo) ListPIIFlaggedFacts(ctx context.Context, scopeType, scopeID
 	where := " WHERE " + strings.Join(clauses, " AND ")
 	var total int32
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders("SELECT COUNT(*) FROM memory_facts"+where), args, &total); err != nil {
-		return nil, 0, err
+		return nil, 0, entErrToBizErr(err, "MEMORY_L3")
 	}
 	lim := int(limit)
 	if lim <= 0 {
@@ -1032,14 +1048,14 @@ func (r *l3FactRepo) ListPIIFlaggedFacts(ctx context.Context, scopeType, scopeID
 	args = append(args, lim, off)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, entErrToBizErr(err, "MEMORY_L3")
 	}
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
 		b, err := scanFactRowJSON(rows)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, entErrToBizErr(err, "MEMORY_L3")
 		}
 		out = append(out, b)
 	}
@@ -1050,14 +1066,14 @@ func (r *l3FactRepo) ApprovePIIFact(ctx context.Context, factID string) error {
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET pii_flag = 0, statement = COALESCE(NULLIF(redacted_statement, ''), statement), redacted_statement = '', pii_types = '[]', updated_at = ? WHERE id = ?`),
 		time.Now().UTC().Format(time.RFC3339Nano), factID)
-	return err
+	return entErrToBizErr(err, "MEMORY_L3")
 }
 
 func (r *l3FactRepo) RejectPIIFact(ctx context.Context, factID string) error {
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET status = 'redacted', updated_at = ? WHERE id = ?`),
 		time.Now().UTC().Format(time.RFC3339Nano), factID)
-	return err
+	return entErrToBizErr(err, "MEMORY_L3")
 }
 
 // markFactEmbeddingStale marks a fact's embedding_status as 'stale' so the
@@ -1065,6 +1081,78 @@ func (r *l3FactRepo) RejectPIIFact(ctx context.Context, factID string) error {
 func (r *l3FactRepo) markFactEmbeddingStale(ctx context.Context, factID string) error {
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET embedding_status = 'stale' WHERE id = ?`), factID)
-	return err
+	return entErrToBizErr(err, "MEMORY_L3")
 }
 
+// --- DecayScoreWriter ---
+
+// UpdateDecayScores batch-updates the persisted Ebbinghaus decay score (R_t)
+// for the given fact IDs. The updates are wrapped in a single transaction so
+// the batch is atomic (red line #24: cross-table writes must use ExecInTx).
+//
+// scores maps fact ID → R_t ∈ (0, 1]. A zero-length map is a no-op.
+func (r *l3FactRepo) UpdateDecayScores(ctx context.Context, scores map[string]float64) error {
+	if r == nil || r.data == nil || len(scores) == 0 {
+		return nil
+	}
+	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		for factID, score := range scores {
+			factID = strings.TrimSpace(factID)
+			if factID == "" {
+				continue
+			}
+			_, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
+				r.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET decay_score = ?, updated_at = ? WHERE id = ?`),
+				score, now, factID)
+			if execErr != nil {
+				return entErrToBizErr(execErr, "MEMORY_L3")
+			}
+		}
+		return nil
+	})
+}
+
+// IncrementFactAccessCount batch-increments use_count and updates last_used_at
+// for the given fact IDs. Called by the scored recall adapter so the Ebbinghaus
+// decay worker can use accurate access-recency signals. The updates are wrapped
+// in a single transaction to minimize write load on the recall path.
+//
+// factIDs must be non-empty; an empty slice is a no-op.
+func (r *l3FactRepo) IncrementFactAccessCount(ctx context.Context, factIDs []string) error {
+	if r == nil || r.data == nil || len(factIDs) == 0 {
+		return nil
+	}
+	// Deduplicate and trim IDs to avoid redundant updates.
+	seen := make(map[string]struct{}, len(factIDs))
+	ids := make([]string, 0, len(factIDs))
+	for _, id := range factIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		placeholders := make([]string, len(ids))
+		args := make([]any, 0, len(ids)+1)
+		args = append(args, now)
+		for i, id := range ids {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+		q := fmt.Sprintf(`UPDATE memory_facts SET use_count = use_count + 1, last_used_at = ? WHERE id IN (%s)`,
+			strings.Join(placeholders, ","))
+		_, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx,
+			r.data.Dialect().RenumberPlaceholders(q), args...)
+		return entErrToBizErr(execErr, "MEMORY_L3")
+	})
+}

@@ -7,7 +7,7 @@
     role="status"
     :aria-label="t('chat.reasoningTitle', '思考过程')"
   >
-    <span class="thinking-block__thinking-text">{{ t('chat.thinking', '正在思考…') }}</span>
+    <span class="thinking-block__thinking-text">{{ t('chat.thinking.thinking', '正在思考…') }}</span>
     <span class="thinking-block__pulse" aria-hidden="true" />
     <span v-if="streaming" class="thinking-block__cursor" aria-hidden="true" />
   </div>

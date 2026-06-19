@@ -33,15 +33,14 @@ describe('inbound turn-complete routing (DECO-R-P2-03)', () => {
     expect(shouldGlobalHubFinalizeTurn(true, false, true)).toBe(true);
   });
 
-  it('expects dropStaleInFlight + afterRevision reload contract on completion helpers', async () => {
+  it('T7.3c: completion helpers skip message reload (AF streaming state is final)', async () => {
     const loadMessages = vi.fn().mockResolvedValue(undefined);
     const { reloadSessionAfterCompletion } = await import('../sessionCompletionReload');
     await reloadSessionAfterCompletion({
       sessionStore: {
         entityKind: 'agent',
         selectedTeamId: '',
-        loadAgentSessions: vi.fn(),
-        loadTeamSessions: vi.fn(),
+        loadSessions: vi.fn().mockResolvedValue(undefined),
         fetchAndReconcileSession: vi.fn().mockResolvedValue(undefined),
       } as never,
       messageStore: {
@@ -52,6 +51,7 @@ describe('inbound turn-complete routing (DECO-R-P2-03)', () => {
       sessionId: 'sess-1',
       resolveAgentId: () => 'agent-1',
     });
-    expect(loadMessages).toHaveBeenCalledWith(expect.objectContaining({ dropStaleInFlight: true, afterRevision: 3 }));
+    // T7.3c: Legacy reload path removed — loadMessages must NOT be called.
+    expect(loadMessages).not.toHaveBeenCalled();
   });
 });

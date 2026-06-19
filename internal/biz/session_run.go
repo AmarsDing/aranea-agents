@@ -143,6 +143,17 @@ func (u *SessionRunUsecase) StartInteractive(ctx context.Context, sessionID, tur
 	if sessionID == "" || turnID == "" {
 		return SessionRun{}, apierror.BadRequest("SESSION_RUN", "sessionID and turnID are required")
 	}
+	// 并发守卫：拒绝同一 Session 重复创建活跃 Run。
+	// TODO(debt): 这是 TOCTOU 检查，最终保障应通过 DB 部分唯一索引实现：
+	//   CREATE UNIQUE INDEX idx_session_runs_active ON session_runs(session_id)
+	//   WHERE finished_at = '' AND phase IN ('interactive', 'durable')
+	// 配合 entErrToBizErr 的 CodeConflict 翻译，可在 DB 层兜底。
+	if existing, err := u.repo.GetActiveForSession(ctx, sessionID); err == nil && existing.ID != "" {
+		return SessionRun{}, apierror.Conflict("SESSION_RUN", "active run already exists for session")
+	} else if err != nil && !apierror.IsCode(err, apierror.CodeNotFound) {
+		// 非 NotFound 的查询错误应原样返回，避免静默吞错误。
+		return SessionRun{}, err
+	}
 	now := sessionRunNow()
 	run := SessionRun{
 		ID:             uuid.NewString(),

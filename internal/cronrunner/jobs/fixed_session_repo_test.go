@@ -175,6 +175,9 @@ func (fixedSessionRepo) PatchSessionState(_ context.Context, _ string, _ map[str
 func (fixedSessionRepo) ListByParentSessionID(_ context.Context, _ string) ([]sessionsess.Session, error) {
 	return nil, nil
 }
+func (fixedSessionRepo) ListActiveAgentUserKeys(_ context.Context, _ int) ([]sessionsess.AgentUserKey, error) {
+	return nil, nil
+}
 
 var _ sessionsess.SessionRepo = fixedSessionRepo{}
 

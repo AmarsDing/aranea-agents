@@ -234,11 +234,11 @@ function onReject() {
 
     &--approve
       background: var(--color-success)
-      color: var(--color-text-on-primary, #fff)
+      color: var(--color-on-accent, #fff)
 
     &--reject
       background: var(--color-danger)
-      color: var(--color-text-on-primary, #fff)
+      color: var(--color-on-accent, #fff)
 
   &__summary
     color: var(--color-text-secondary)

@@ -43,10 +43,47 @@
         <q-btn
           flat
           round
-          :icon="isDark ? 'light_mode' : 'dark_mode'"
-          :aria-label="isDark ? t('common.lightMode') : t('common.darkMode')"
-          @click="toggleTheme"
-        />
+          :icon="themeIcon"
+          :aria-label="t('common.autoMode')"
+        >
+          <q-menu anchor="bottom right" self="top right" auto-close>
+            <q-list dense style="min-width: 160px">
+              <q-item
+                clickable
+                :active="themeMode === 'auto'"
+                active-class="text-primary"
+                @click="setTheme('auto')"
+              >
+                <q-item-section avatar>
+                  <q-icon name="brightness_auto" size="xs" />
+                </q-item-section>
+                <q-item-section>{{ t('common.autoMode') }}</q-item-section>
+              </q-item>
+              <q-item
+                clickable
+                :active="themeMode === 'light'"
+                active-class="text-primary"
+                @click="setTheme('light')"
+              >
+                <q-item-section avatar>
+                  <q-icon name="light_mode" size="xs" />
+                </q-item-section>
+                <q-item-section>{{ t('common.lightMode') }}</q-item-section>
+              </q-item>
+              <q-item
+                clickable
+                :active="themeMode === 'dark'"
+                active-class="text-primary"
+                @click="setTheme('dark')"
+              >
+                <q-item-section avatar>
+                  <q-icon name="dark_mode" size="xs" />
+                </q-item-section>
+                <q-item-section>{{ t('common.darkMode') }}</q-item-section>
+              </q-item>
+            </q-list>
+          </q-menu>
+        </q-btn>
         <q-select
           v-model="locale"
           :options="localeOptions"
@@ -115,16 +152,15 @@
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
-import { useQuasar } from 'quasar';
 import { setQuasarLangFor } from '../i18n/quasar-lang';
 import { sideNavGroups } from '../config/sideNav';
 import { useAuthStore } from '../stores/auth';
 import { useInboundNotificationStore } from '../stores/inboundNotifications';
 import InboundNotificationBell from '../components/layout/InboundNotificationBell.vue';
 import { useGlobalInboundNotifications } from '../composables/useGlobalInboundNotifications';
+import { useTheme } from '../composables/useTheme';
 
 const { t, locale } = useI18n();
-const $q = useQuasar();
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
@@ -134,22 +170,20 @@ const drawerMini = ref(true);
 
 useGlobalInboundNotifications();
 
-// T5.5: Mobile (<1024px) responsive logic removed — app targets desktop only.
-// isDark is still needed for theme-aware styling.
-const isDark = computed(() => $q.dark.isActive);
+// B7: Theme management via useTheme composable (auto/dark/light modes).
+const { themeMode, isDark, setTheme } = useTheme();
+
+// Icon reflects the current effective theme (not the mode selection).
+// In auto mode, the icon shows the actual applied theme.
+const themeIcon = computed(() => {
+  if (themeMode.value === 'auto') return 'brightness_auto';
+  return isDark.value ? 'dark_mode' : 'light_mode';
+});
 
 const localeOptions = [
   { label: t('common.localeZhCN'), value: 'zh-CN' as const },
   { label: t('common.localeEnUS'), value: 'en-US' as const },
 ];
-
-watch(
-  () => $q.dark.isActive,
-  (on) => {
-    if (typeof localStorage === 'undefined') return;
-    localStorage.setItem('theme', on ? 'dark' : 'light');
-  },
-);
 
 watch(locale, (v) => {
   setQuasarLangFor(String(v));
@@ -157,10 +191,6 @@ watch(locale, (v) => {
     localStorage.setItem('locale', v);
   }
 });
-
-function toggleTheme() {
-  $q.dark.toggle();
-}
 
 function isNavItemActive(item: { to: string; exact?: boolean }) {
   return item.exact === false ? route.path.startsWith(item.to) : route.path === item.to;

@@ -19,19 +19,12 @@
       </span>
     </div>
 
-    <!-- Branch: TeamPanel, EventStream, or legacy -->
+    <!-- Branch: TeamPanel, EventStream -->
     <div class="agent-work-panel__body">
-      <!-- AF-Phase3: Legacy turn without Activity data — show simplified view -->
-      <div v-if="agentWork.isLegacy" class="agent-work-panel__legacy">
-        <div v-if="agentWork.result" class="agent-work-panel__legacy-content chat-message-prose" v-html="renderedResult" />
-        <div v-else class="agent-work-panel__legacy-hint text-caption text-grey">
-          {{ t('chat.turn.legacyHint', '历史对话（无活动详情）') }}
-        </div>
-      </div>
       <!-- Running indicator when no activities yet (waiting for LLM first byte) -->
-      <div v-else-if="agentWork.status === 'running' && !agentWork.activities.length && !agentWork.progressSections?.length" class="agent-work-panel__waiting">
+      <div v-if="agentWork.status === 'running' && !agentWork.activities.length && !agentWork.progressSections?.length" class="agent-work-panel__waiting">
         <span class="pulse-dot"></span>
-        <span class="agent-work-panel__waiting-text">{{ t('chat.thinking', '正在思考…') }}</span>
+        <span class="agent-work-panel__waiting-text">{{ t('chat.thinking.thinking', '正在思考…') }}</span>
       </div>
       <!-- Progress sections (orchestration / thinking / tool steps from execution_progress envelopes) -->
       <template v-if="agentWork.progressSections?.length">
@@ -71,7 +64,6 @@ import type { AgentWorkProcess } from '../../features/chat/activityTimelineTypes
 import type { ProgressCategory, ProgressSection } from '../../features/chat/agentTreeTypes';
 import { PROGRESS_GLYPHS, PROGRESS_STATUS_GLYPHS } from '../../features/chat/agentTreeTypes';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
-import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import type { ErrorEvent } from '../../features/chat/streamEventTypes';
 import EventStream from './EventStream.vue';
 import TeamPanel from './TeamPanel.vue';
@@ -108,12 +100,6 @@ const statusLabel = computed(() => {
 });
 
 const formattedDuration = computed(() => props.agentWork.durationMs != null ? formatDuration(props.agentWork.durationMs) : '');
-
-/** Render legacy turn result as Markdown */
-const renderedResult = computed(() => {
-  const raw = props.agentWork.result;
-  return raw ? renderChatMarkdown(raw) : '';
-});
 
 function progressIcon(category: ProgressCategory): string {
   return PROGRESS_GLYPHS[category] ?? '•';

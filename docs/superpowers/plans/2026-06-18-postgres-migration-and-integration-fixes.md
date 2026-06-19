@@ -46,37 +46,50 @@
 
 **目标**：审查 `pkg/trpc-agent-go` 框架内部 SQL 是否硬编码 SQLite 语法
 
+**状态**：✅ 已完成（调研结论：框架零修改，所有兼容性通过"独立包 + Wire 选择"或"项目层 dialect 抽象"解决）
+
 **Files:**
 - Read: `pkg/trpc-agent-go/session/` （Session Service 实现）
 - Read: `pkg/trpc-agent-go/graph/checkpoint/sqlite/` （SQLite CheckpointSaver）
 - Read: `pkg/trpc-agent-go/graph/checkpoint/postgres/saver.go` （已有 Postgres CheckpointSaver）
 - Read: `pkg/trpc-agent-go/memory/` （Memory Service 实现）
 
-- [ ] **Step 1: 审查 trpcsession.Service 的 SQL 兼容性**
+- [x] **Step 1: 审查 trpcsession.Service 的 SQL 兼容性**
   - 检查 `pkg/trpc-agent-go/session/` 下所有 `.go` 文件中的 SQL 语句
   - 重点关注：`sqlite_master`、`INSERT OR IGNORE/REPLACE`、`PRAGMA`、`json_extract`、`strftime`
   - 输出：兼容性清单（哪些 SQL 需要重写）
 
-- [ ] **Step 2: 审查 SQLiteCheckpointSaver 的 SQL 兼容性**
+- [x] **Step 2: 审查 SQLiteCheckpointSaver 的 SQL 兼容性**
   - 检查 `pkg/trpc-agent-go/graph/checkpoint/sqlite/` 下所有 `.go` 文件
   - 确认是否已有 Postgres 版本（`pkg/trpc-agent-go/graph/checkpoint/postgres/saver.go`）
   - 输出：CheckpointSaver 的 Postgres 支持状态
 
-- [ ] **Step 3: 审查 Memory Service 的 SQL 兼容性**
+- [x] **Step 3: 审查 Memory Service 的 SQL 兼容性**
   - 检查 `pkg/trpc-agent-go/memory/` 下所有 `.go` 文件
   - 重点关注：memory_facts 表的 CRUD SQL
   - 输出：Memory Service 的 Postgres 支持状态
 
-- [ ] **Step 4: 生成兼容性报告**
+- [x] **Step 4: 生成兼容性报告**
   - 汇总 Step 1-3 的发现
   - 列出需要框架层修改的 SQL 语句
   - 评估是否需要修改 `pkg/trpc-agent-go` 代码（红线：框架代码修改需谨慎）
 
-**验证**：兼容性报告保存到 `docs/reports/2026-06-18-trpc-framework-postgres-compatibility.md`
+**验证**：兼容性报告保存到 `docs/reports/2026-06-18-research-trpc-framework-postgres-compatibility.md`
+
+**完成记录**：
+- 调研报告已生成：[2026-06-18-research-trpc-framework-postgres-compatibility.md](../../reports/2026-06-18-research-trpc-framework-postgres-compatibility.md)
+- **核心结论**：trpc-agent-go 框架采用"每个 dialect 一个独立包"架构（非 dialect 抽象层），所有 SQL 在包内独立实现，包之间不共享代码
+- **Session Service**：框架已提供完整的 `postgres/` 实现（`$N` 占位符、`JSONB`、`TIMESTAMP`、`FOR UPDATE` 行锁、`ON CONFLICT ... WHERE deleted_at IS NULL`），项目通过 Wire 选择后端即可
+- **CheckpointSaver**：框架已提供 `postgres/saver.go`，覆盖 SQLite 版全部 8 个接口方法，`INSERT OR REPLACE` → `ON CONFLICT ... DO UPDATE`，`?` → `$N`，表名加 `graph_` 前缀
+- **Memory Service**：框架已提供 `postgres/`/`pgvector/` 实现；项目层选择绕过框架实现，自建基于 `internal/data/dialect.go` 抽象的 raw SQL 实现
+- **框架代码修改需求**：零修改（符合红线 #11）
+- **风险**：Postgres CheckpointSaver 缺失测试覆盖（ISS-1，高严重度）；Close() 行为不一致（ISS-2，中严重度）
 
 ### A1：dialect 抽象层 + Postgres Ent 初始化
 
 **目标**：新增 dialect 抽象，支持配置切换 SQLite/Postgres
+
+**状态**：✅ 已完成（A6 清理后保留 dialect.go 的 SQLite 分支用于测试和 CLI 工具）
 
 **Files:**
 - Create: `internal/data/dialect.go` （dialect 检测 + JSON 路径表达式抽象）
@@ -87,45 +100,54 @@
 - Modify: `configs/config.yaml` （新增 `data.driver` 字段）
 - Modify: `api/kratos/admin/v1/data.proto` （扩展 `Data` 消息）
 
-- [ ] **Step 1: 新增 dialect 抽象层**
+- [x] **Step 1: 新增 dialect 抽象层**
   - 创建 `internal/data/dialect.go`，提供 `IsPostgres()`/`IsSQLite()` 函数
   - 提供 `JSONExtract(col, key)`/`JSONEach(col, path)` 函数返回 dialect 感知的 SQL 片段
   - 提供 `TableExists(db, table)`/`ColumnExists(db, table, col)` 函数（dialect 感知）
 
-- [ ] **Step 2: 新增 Postgres Ent 初始化**
+- [x] **Step 2: 新增 Postgres Ent 初始化**
   - 在 `data.go` 新增 `initPostgresEnt(c *conf.Data)` 函数
   - 使用 `dialect.Postgres` 打开 Ent Client
   - 设置连接池参数（MaxOpen=16, MaxIdle=4）
   - 执行 `Schema.Create(ctx)` 自动迁移
 
-- [ ] **Step 3: 修改 NewData 支持 dialect 切换**
+- [x] **Step 3: 修改 NewData 支持 dialect 切换**
   - 新增 `data.driver` 配置字段（`sqlite`/`postgres`）
   - `NewData` 根据 `driver` 选择 `initSQLite` 或 `initPostgresEnt`
   - 保持向后兼容（未配置 `driver` 时默认 `sqlite`）
 
-- [ ] **Step 4: 修改 ReadWriteClient/ReadWriteDB 支持 Postgres**
+- [x] **Step 4: 修改 ReadWriteClient/ReadWriteDB 支持 Postgres**
   - `ReadWriteClient` 支持传入 Postgres Ent Client
   - `ReadWriteDB` 支持传入 Postgres `*sql.DB`
   - 保持接口不变，内部根据 dialect 选择句柄
 
-- [ ] **Step 5: 修改 ExecInTx 支持 Postgres**
+- [x] **Step 5: 修改 ExecInTx 支持 Postgres**
   - `ExecInTx` 根据 dialect 选择 `entClient.Tx` 或 `pg.BeginTx`
   - 保持分离 context + 30s 硬超时（可配置）的行为
   - 嵌套事务检测逻辑保持一致
 
-- [ ] **Step 6: 更新配置文件和 Proto**
+- [x] **Step 6: 更新配置文件和 Proto**
   - `configs/config.yaml` 新增 `data.driver: sqlite`（默认）
   - `api/kratos/admin/v1/data.proto` 新增 `string driver = 5`
   - 重新生成 Proto：`make api`
 
-- [ ] **Step 7: 验证**
+- [x] **Step 7: 验证**
   - `go build ./...` 通过
   - `go test ./internal/data/... -count=1` 通过
   - 手动测试：配置 `driver: postgres` 能启动并连接 Postgres
 
+**完成记录**：
+- `internal/data/dialect.go` 已创建，提供 `IsPostgres()`/`IsSQLite()`/`RenumberPlaceholders`/`JSONExtract`/`JSONEach`/`TableExistsQuery`/`ColumnExistsQuery`/`AlreadyExistsErr` 等 dialect 感知 helper
+- `internal/data/data.go` 已新增 `initPostgresEnt` 函数（[data.go#L669](../../../internal/data/data.go)），使用 `dialect.Postgres` 打开 Ent Client
+- `NewData` 支持 `data.driver` 配置字段切换（A6 清理后只支持 Postgres，但 dialect.go 保留 SQLite 分支用于测试）
+- `ReadWriteClient`/`ReadWriteDB`/`ExecInTx` 均已支持 Postgres
+- 配置文件和 Proto 已更新
+
 ### A2：Schema 迁移（DDL + FTS5 + monitor）
 
 **目标**：为 Postgres 提供完整的 DDL 迁移支持
+
+**状态**：✅ 已完成（采用 dialect 感知的 DDL 注册表，未创建独立 migrations_postgres 目录）
 
 **Files:**
 - Create: `internal/data/sql/migrations_postgres/` （Postgres 版迁移目录）
@@ -135,12 +157,12 @@
 - Modify: `internal/data/monitor_trace.go` （GENERATED VIRTUAL → STORED）
 - Modify: `internal/data/monitor.go` （json_extract → ->>）
 
-- [ ] **Step 1: 扩展 DDL 迁移注册表支持 Postgres**
+- [x] **Step 1: 扩展 DDL 迁移注册表支持 Postgres**
   - `ddlMigration` 结构体新增 `PostgresSQL string` 字段
   - `executeSQLFile` 根据 dialect 选择 SQL 文件
   - 集成 `isPostgresAlreadyExistsErr` 到通用执行器
 
-- [ ] **Step 2: 重写 FTS5 → tsvector**
+- [x] **Step 2: 重写 FTS5 → tsvector**
   - 新建 `20260624_message_fts.sql`（Postgres 版）：
     ```sql
     ALTER TABLE messages ADD COLUMN search_vector tsvector
@@ -150,26 +172,35 @@
   - 修改 `message_search.go` 支持 tsvector 查询（dialect 感知）
   - 保留 LIKE 回退作为安全网
 
-- [ ] **Step 3: 重写 monitor 模块的 GENERATED VIRTUAL 列**
+- [x] **Step 3: 重写 monitor 模块的 GENERATED VIRTUAL 列**
   - `monitor_trace.go:122-126` 5 个 GENERATED VIRTUAL 列改为 GENERATED STORED
   - 或改为应用层计算（插入时计算并存储）
   - 评估两种方案的复杂度，选择更简单的
 
-- [ ] **Step 4: 重写 Raw SQL Repo 的 SQLite 特定语法**
+- [x] **Step 4: 重写 Raw SQL Repo 的 SQLite 特定语法**
   - `json_extract(col, '$.key')` → `col ->> 'key'`（Postgres）
   - `INSERT OR IGNORE` → `ON CONFLICT DO NOTHING`
   - `INSERT OR REPLACE` → `ON CONFLICT DO UPDATE`
   - `sqlite_master` 查询 → `information_schema`（Postgres）
   - 逐个审查 99 个 Raw SQL Repo 文件，使用 dialect 抽象层
 
-- [ ] **Step 5: 验证**
+- [x] **Step 5: 验证**
   - `go build ./...` 通过
   - `go test ./internal/data/... -count=1` 通过
   - 手动测试：Postgres 模式下 DDL 迁移全部成功执行
 
+**完成记录**：
+- [ddl_migration_registry.go](../../../internal/data/ddl_migration_registry.go) 已扩展为 dialect 感知：`executeSQLFileWithDialect` 根据 dialect 选择 SQL 文件，集成 `isPostgresAlreadyExistsErr` 错误翻译
+- FTS5 → tsvector：[message_search.go](../../../internal/data/message_search.go) 已支持 dialect 感知的 tsvector 查询（`searchMessagesPostgresFTS`），保留 LIKE 回退
+- monitor GENERATED 列：[monitor_trace.go#L98-114](../../../internal/data/monitor_trace.go) 已改为 dialect 感知——SQLite 用 VIRTUAL，Postgres 用 STORED（`metadata_json ->> 'key'`）
+- Raw SQL Repo：通过 `dialect.go` 的 `JSONExtract`/`JSONEach`/`InsertOrIgnore`/`BuildInsertOrIgnore` 等 helper 实现 dialect 感知，未创建独立 migrations_postgres 目录（dialect 分支在代码内处理）
+- **偏差说明**：原计划创建 `internal/data/sql/migrations_postgres/` 目录，实际采用 dialect 感知的代码内分支处理，更简洁
+
 ### A3：数据迁移工具
 
 **目标**：自建 SQLite → Postgres 数据迁移 CLI 工具
+
+**状态**：✅ 已完成（A5 停机迁移时实际运行，133 表迁移、0 失败、43991 行数据）
 
 **Files:**
 - Create: `cmd/migrate-sqlite-to-postgres/main.go`
@@ -177,32 +208,41 @@
 - Create: `cmd/migrate-sqlite-to-postgres/validator.go`
 - Create: `cmd/migrate-sqlite-to-postgres/README.md`
 
-- [ ] **Step 1: 设计数据迁移工具架构**
+- [x] **Step 1: 设计数据迁移工具架构**
   - 按表分批迁移，每表流程：SQLite 流式读取 → Postgres 批量写入 → 行数校验
   - 优先级排序（按依赖关系）：P0 核心表 → P1 业务表 → P2 辅助表
   - 特殊处理：`vector_embeddings`（重新生成嵌入）、`messages_fts`（不迁移，重建）、`monitor_events`（GENERATED 列不迁移）
 
-- [ ] **Step 2: 实现迁移器**
+- [x] **Step 2: 实现迁移器**
   - `migrator.go`：按表迁移逻辑
   - 支持 `--table` 参数（迁移单个表）、`--batch-size` 参数
   - 使用 `INSERT ... ON CONFLICT DO NOTHING` 批量写入
   - 流式读取（分页避免 OOM）
 
-- [ ] **Step 3: 实现校验器**
+- [x] **Step 3: 实现校验器**
   - `validator.go`：行数校验 + 抽样字段校验
   - 输出校验报告（哪些表一致/不一致）
 
-- [ ] **Step 4: 编写 README**
+- [x] **Step 4: 编写 README**
   - 使用说明、参数说明、注意事项
 
-- [ ] **Step 5: 验证**
+- [x] **Step 5: 验证**
   - 在测试环境运行迁移工具
   - 校验所有表行数一致
   - 抽样校验关键字段
 
+**完成记录**：
+- 迁移工具已创建：`cmd/migrate-sqlite-to-postgres/` 含 [main.go](../../../cmd/migrate-sqlite-to-postgres/main.go)、[migrator.go](../../../cmd/migrate-sqlite-to-postgres/migrator.go)、[validator.go](../../../cmd/migrate-sqlite-to-postgres/validator.go)、[framework_schema.go](../../../cmd/migrate-sqlite-to-postgres/framework_schema.go)
+- 额外创建 `framework_schema.go`：框架管理表的 DDL（trpc_*/graph_checkpoints/event_wal/vector_embeddings 等 12 张表）
+- 表名映射逻辑：`checkpoints` → `graph_checkpoints`、`checkpoint_writes` → `graph_checkpoint_writes`
+- 支持 `--init-schema`/`--run-ddl`/`--init-framework-schema`/`--mode=migrate|validate` 参数
+- 实际迁移结果（A5 执行）：133 表迁移、11 表跳过、0 失败、43991 行数据；109 表完全匹配，24 表 checksum 不匹配（行数匹配，差异来自数据类型表示差异）
+
 ### A4：Wire 注入调整 + 框架兼容性修复
 
 **目标**：调整 Wire 绑定，修复框架兼容性问题
+
+**状态**：✅ 已完成（基于 A0 调研结论：框架零修改，仅需 Wire 选择 Postgres 实现）
 
 **Files:**
 - Modify: `cmd/admin/wire.go` （调整数据库相关 Wire 绑定）
@@ -210,21 +250,27 @@
 - Modify: `internal/data/wire.go` （如有）
 - Modify: `pkg/trpc-agent-go/session/` （如需修复框架兼容性）
 
-- [ ] **Step 1: 调整 Wire 绑定**
+- [x] **Step 1: 调整 Wire 绑定**
   - `provideSQLiteRawDB` → `providePrimaryRawDB`（返回主库 `*sql.DB`，dialect 感知）
   - `provideTRPCSessionService` 审查框架 SQL 兼容性
   - `provideGraphCheckpointSaver` 提供 Postgres 版本（已有 `postgres/saver.go`）
 
-- [ ] **Step 2: 修复框架兼容性问题（基于 A0 调研结果）**
+- [x] **Step 2: 修复框架兼容性问题（基于 A0 调研结果）**
   - 如 `trpcsession.Service` 内部有 SQLite 特定 SQL，提供 Postgres 版本或抽象
   - 如 `SQLiteCheckpointSaver` 无法复用，确认 `postgres/saver.go` 功能完整
 
-- [ ] **Step 3: 重新生成 Wire**
+- [x] **Step 3: 重新生成 Wire**
   - `make wire && go build ./cmd/admin`
 
-- [ ] **Step 4: 验证**
+- [x] **Step 4: 验证**
   - `go build ./cmd/admin` 通过
   - `go test ./... -count=1` 通过（除已知失败）
+
+**完成记录**：
+- Wire 绑定已调整：`provideTRPCSessionService` 选择 Postgres 实现（生产）+ InMemory fallback
+- `provideGraphCheckpointSaver` 选择 `postgres/saver.go`（生产）
+- 基于 A0 调研结论，框架代码零修改（`trpcsession.Service` 和 `CheckpointSaver` 均已有完整 Postgres 实现）
+- `make wire && go build ./cmd/admin` 通过
 
 ### A5：停机迁移 + 切换
 
@@ -314,130 +360,173 @@
 
 **目标**：将 `RunHeartbeatEmitter` 集成到 `chat_orchestrator_turn.go` 主流程
 
+**状态**：✅ 已完成
+
 **Files:**
 - Modify: `internal/service/chat_orchestrator_turn.go` （在 turn 开始时启动心跳，结束时取消）
 - Modify: `cmd/admin/wire.go` （新增 `provideRunHeartbeatEmitter`）
 - Modify: `cmd/admin/workers.go` （如有需要）
 - Test: `internal/service/chat_orchestrator_turn_test.go` （新增心跳集成测试）
 
-- [ ] **Step 1: Wire 绑定 RunHeartbeatEmitter**
+- [x] **Step 1: Wire 绑定 RunHeartbeatEmitter**
   - `cmd/admin/wire.go` 新增 `provideRunHeartbeatEmitter(interval time.Duration, bus contract.Bus, lg loggateway.Logger) *RunHeartbeatEmitter`
   - 从配置读取心跳间隔（默认 10s）
 
-- [ ] **Step 2: 集成到 chat_orchestrator_turn.go**
+- [x] **Step 2: 集成到 chat_orchestrator_turn.go**
   - 在 `OrchestratorTurn` 方法中，turn 开始时调用 `emitter.Start(ctx, runID, sessionID, progress)`
   - 在 turn 结束时（成功/失败/取消）调用返回的 `cancel` 函数
   - `progress` 闭包从 turn 状态派生（如当前阶段、进度百分比）
 
-- [ ] **Step 3: 编写集成测试**
+- [x] **Step 3: 编写集成测试**
   - 测试 turn 开始时心跳启动
   - 测试 turn 结束时心跳取消
   - 测试心跳事件发布到 chat 频道
 
-- [ ] **Step 4: 验证**
+- [x] **Step 4: 验证**
   - `go build ./...` 通过
   - `go test ./internal/service/... -run TestHeartbeat -count=1` 通过
+
+**完成记录**：
+- [run_heartbeat.go](../../../internal/service/run_heartbeat.go) + [run_heartbeat_test.go](../../../internal/service/run_heartbeat_test.go) 已创建
+- [chat_orchestrator_turn.go#L296](../../../internal/service/chat_orchestrator_turn.go) 已集成：turn 开始时 `hb.Start(ctx, runID, sessionID, progress)`，结束时 `stopHeartbeat()`
+- [wire.go#L415](../../../cmd/admin/wire.go) `provideRunHeartbeatEmitter` 已绑定
+- nil-safe：`hb == nil` 时跳过心跳，stale 检测降级
 
 ### B2：P2-1 NL2Graph 集成
 
 **目标**：将 `NL2GraphConverter` 集成到 `task_orchestrator_impl.go`
+
+**状态**：✅ 已完成
 
 **Files:**
 - Modify: `internal/agent/task_orchestrator_impl.go` （在 Graph 编排路径调用 NL2GraphConverter）
 - Modify: `cmd/admin/wire.go` （新增 `provideNL2GraphConverter`）
 - Test: `internal/agent/task_orchestrator_impl_test.go` （新增 NL2Graph 集成测试）
 
-- [ ] **Step 1: Wire 绑定 NL2GraphConverter**
+- [x] **Step 1: Wire 绑定 NL2GraphConverter**
   - `cmd/admin/wire.go` 新增 `provideNL2GraphConverter(llm trpcmodel.Model, lg loggateway.Logger) *NL2GraphConverterImpl`
 
-- [ ] **Step 2: 集成到 task_orchestrator_impl.go**
+- [x] **Step 2: 集成到 task_orchestrator_impl.go**
   - `TaskOrchestratorImpl` 新增 `nl2graph NL2GraphConverter` 字段
   - 在 Graph 编排路径（`orchestrateWithGraph` 或类似方法）中，当无预定义 Graph 模板时调用 `nl2graph.Convert`
   - 失败时降级到现有 sequential pipeline
 
-- [ ] **Step 3: 编写集成测试**
+- [x] **Step 3: 编写集成测试**
   - 测试自然语言任务描述生成 Graph
   - 测试 LLM 失败时降级到 sequential pipeline
 
-- [ ] **Step 4: 验证**
+- [x] **Step 4: 验证**
   - `go build ./...` 通过
   - `go test ./internal/agent/... -run TestNL2Graph -count=1` 通过
+
+**完成记录**：
+- [task_orchestrator_impl.go#L42](../../../internal/agent/task_orchestrator_impl.go) `nl2graph NL2GraphConverter` 字段已添加
+- [task_orchestrator_impl.go#L557](../../../internal/agent/task_orchestrator_impl.go) `tryNL2GraphConversion` 方法已实现：无预定义 Graph 模板时调用 `nl2graph.Convert`
+- 失败降级：`convErr != nil` 时 Warn 日志 + 回退到 sequential pipeline
+- [wire.go#L1063](../../../cmd/admin/wire.go) `provideNL2GraphConverter` 已绑定
+- nil-safe：`o.nl2graph == nil` 时直接返回 nil config，走 sequential
 
 ### B3：P2-2 RuntimeReplanner 集成
 
 **目标**：将 `RuntimeReplanner` 集成到 Graph executor 的 `OnNodeError` 回调
+
+**状态**：✅ 已完成
 
 **Files:**
 - Modify: `internal/graph/adapter/runtime_adapter.go` （注册 OnNodeError 回调）
 - Modify: `cmd/admin/wire.go` （新增 `provideRuntimeReplanner`）
 - Test: `internal/graph/adapter/runtime_adapter_test.go` （新增重规划集成测试）
 
-- [ ] **Step 1: Wire 绑定 RuntimeReplanner**
+- [x] **Step 1: Wire 绑定 RuntimeReplanner**
   - `cmd/admin/wire.go` 新增 `provideRuntimeReplanner(bus event.Bus, lg loggateway.Logger) *RuntimeReplannerImpl`
 
-- [ ] **Step 2: 集成到 runtime_adapter.go**
+- [x] **Step 2: 集成到 runtime_adapter.go**
   - `GraphBuilderFactory` 新增 `replanner RuntimeReplanner` 字段
   - `createAgent` 时注册 `NodeCallbacks.RegisterOnNodeError(replanner.OnNodeFailure)`
   - 失败时调用 `replanner.OnNodeFailure`，根据返回的 action 执行重规划
 
-- [ ] **Step 3: 编写集成测试**
+- [x] **Step 3: 编写集成测试**
   - 测试节点失败时触发重规划
   - 测试重规划次数限制（maxReplanAttempts=3）
 
-- [ ] **Step 4: 验证**
+- [x] **Step 4: 验证**
   - `go build ./...` 通过
   - `go test ./internal/graph/... -run TestReplanner -count=1` 通过
+
+**完成记录**：
+- [runtime_adapter.go#L298](../../../internal/graph/adapter/runtime_adapter.go) `replanner graph.RuntimeReplanner` 字段已添加到 `GraphBuilderFactory`
+- [runtime_adapter.go#L366-388](../../../internal/graph/adapter/runtime_adapter.go) `RegisterOnNodeError` 回调已注册：节点失败时调用 `replanner.OnNodeFailure`，根据返回的 action 执行重规划
+- 失败降级：`replanErr != nil` 时 Warn 日志，执行继续不阻断
+- [wire.go#L1071](../../../cmd/admin/wire.go) `provideRuntimeReplanner` 已绑定
+- nil-safe：`f.replanner == nil && f.evolver == nil` 时返回 nil callbacks
 
 ### B4：P2-3 TopologyEvolver 集成
 
 **目标**：将 `TopologyEvolver` 集成到 Graph executor 的执行洞察回调
+
+**状态**：✅ 已完成
 
 **Files:**
 - Modify: `internal/graph/adapter/runtime_adapter.go` （注册执行洞察回调）
 - Modify: `cmd/admin/wire.go` （新增 `provideTopologyEvolver`）
 - Test: `internal/graph/adapter/runtime_adapter_test.go` （新增拓扑演化集成测试）
 
-- [ ] **Step 1: Wire 绑定 TopologyEvolver**
+- [x] **Step 1: Wire 绑定 TopologyEvolver**
   - `cmd/admin/wire.go` 新增 `provideTopologyEvolver(llm trpcmodel.Model, bus event.Bus, lg loggateway.Logger) *TopologyEvolverImpl`
 
-- [ ] **Step 2: 集成到 runtime_adapter.go**
+- [x] **Step 2: 集成到 runtime_adapter.go**
   - `GraphBuilderFactory` 新增 `evolver TopologyEvolver` 字段
   - 在 Graph 执行的适当节点（如节点完成后）调用 `evolver.OnExecutionInsight`
   - 失败时仅 Warn 日志，不阻断执行
 
-- [ ] **Step 3: 编写集成测试**
+- [x] **Step 3: 编写集成测试**
   - 测试执行中发现新路径时动态添加边
   - 测试 LLM 失败时降级返回 nil
 
-- [ ] **Step 4: 验证**
+- [x] **Step 4: 验证**
   - `go build ./...` 通过
   - `go test ./internal/graph/... -run TestTopology -count=1` 通过
+
+**完成记录**：
+- [runtime_adapter.go#L301](../../../internal/graph/adapter/runtime_adapter.go) `evolver graph.TopologyEvolver` 字段已添加到 `GraphBuilderFactory`
+- [runtime_adapter.go#L402-451](../../../internal/graph/adapter/runtime_adapter.go) `AfterNode` 回调已注册：节点完成后调用 `evolver.OnExecutionInsight`，根据返回的 edge 动态添加边
+- 失败降级：`evolveErr != nil` 时 Warn 日志，执行继续不阻断
+- 节点错误时不调用 evolver（由 replanner 的 OnNodeError 处理）
+- [wire.go#L1081](../../../cmd/admin/wire.go) `provideTopologyEvolver` 已绑定
 
 ### B5：P2-4 ParallelToolExecutor 集成
 
 **目标**：将 `ParallelToolExecutor` 集成到 `spirit_tools.go` 的批量工具调用路径
+
+**状态**：✅ 已完成
 
 **Files:**
 - Modify: `internal/tools/spirit_tools.go` （在批量工具调用时使用 ParallelToolExecutor）
 - Modify: `cmd/admin/wire.go` （新增 `provideParallelToolExecutor`）
 - Test: `internal/tools/spirit_tools_test.go` （新增并行执行集成测试）
 
-- [ ] **Step 1: Wire 绑定 ParallelToolExecutor**
+- [x] **Step 1: Wire 绑定 ParallelToolExecutor**
   - `cmd/admin/wire.go` 新增 `provideParallelToolExecutor(handler ToolHandler, lg loggateway.Logger) *ParallelToolExecutor`
 
-- [ ] **Step 2: 集成到 spirit_tools.go**
+- [x] **Step 2: 集成到 spirit_tools.go**
   - 识别批量工具调用场景（如 `multi_tool_use.parallel`）
   - 使用 `ParallelToolExecutor.Execute` 替代串行执行
   - 保留串行执行作为降级方案
 
-- [ ] **Step 3: 编写集成测试**
+- [x] **Step 3: 编写集成测试**
   - 测试无依赖工具并行执行
   - 测试有依赖工具按拓扑层级执行
   - 测试 5 文件并行延迟 < 串行 40%
 
-- [ ] **Step 4: 验证**
+- [x] **Step 4: 验证**
   - `go build ./...` 通过
   - `go test ./internal/tools/... -run TestParallel -count=1` 通过
+
+**完成记录**：
+- [spirit_tools.go#L514-548](../../../internal/tools/spirit_tools.go) `BatchExecuteSpiritTools` 函数已实现：批量工具调用使用 `ParallelToolExecutor.Execute`
+- 失败降级：`ParallelToolExecutor` 执行失败时 Warn 日志 + 回退到串行执行
+- [wire.go#L391](../../../cmd/admin/wire.go) `provideParallelToolExecutor` 已绑定
+- 并行执行器支持 `WithMaxConcurrency` 选项
 
 ---
 
@@ -450,75 +539,102 @@
 
 **目标**：在编排阶段实际记录耗时到 `SpiritPlanDuration`/`SpiritAllocDuration`/`SpiritOrchDuration`
 
+**状态**：✅ 已完成
+
 **Files:**
 - Modify: `internal/service/chat_orchestrator_turn_phases.go` （Plan/Allocate 阶段埋点）
 - Modify: `internal/agent/task_orchestrator_impl.go` （Orchestrate 阶段埋点）
 - Test: 对应测试文件
 
-- [ ] **Step 1: Plan 阶段埋点**
+- [x] **Step 1: Plan 阶段埋点**
   - `executePlanPhase` 开始时 `start := time.Now()`，结束时 `metrics.SpiritPlanDuration.Observe(time.Since(start).Seconds())`
   - 使用 `defer` 确保异常路径也记录
 
-- [ ] **Step 2: Allocate 阶段埋点**
+- [x] **Step 2: Allocate 阶段埋点**
   - `executeAllocatePhase` 同上
 
-- [ ] **Step 3: Orchestrate 阶段埋点**
+- [x] **Step 3: Orchestrate 阶段埋点**
   - `Orchestrate` 同上
 
-- [ ] **Step 4: 验证**
+- [x] **Step 4: 验证**
   - `go build ./...` 通过
   - 手动测试：执行一个 turn，检查 Prometheus 指标暴露
+
+**完成记录**：
+- [spirit_tools.go#L194](../../../internal/tools/spirit_tools.go) `SpiritPlanDuration.Observe(time.Since(start).Seconds())` 已埋点
+- [spirit_tools.go#L233](../../../internal/tools/spirit_tools.go) `SpiritAllocDuration.Observe(...)` 已埋点
+- [task_orchestrator_impl.go#L90](../../../internal/agent/task_orchestrator_impl.go) `SpiritOrchDuration.Observe(...)` 已埋点
+- [metrics/vars.go#L245-265](../../../internal/metrics/vars.go) 三个 Histogram 已定义（含 24h 长任务桶）
+- [spirit_metrics_test.go](../../../internal/metrics/spirit_metrics_test.go) 测试已编写
 
 ### C2：P3-11 主动召回 turn 触发
 
 **目标**：在 turn 开始时调用 `ProactiveRecall`，将结果注入 prompt
+
+**状态**：✅ 已完成
 
 **Files:**
 - Modify: `internal/service/chat_orchestrator_turn.go` （turn 开始时调用 ProactiveRecall）
 - Modify: `internal/agent/composite_prompt.go` （将主动召回结果注入 CompositeMemoryCue）
 - Test: 对应测试文件
 
-- [ ] **Step 1: 在 turn 开始时调用 ProactiveRecall**
+- [x] **Step 1: 在 turn 开始时调用 ProactiveRecall**
   - `OrchestratorTurn` 方法中，在 build runner 前调用 `compositeRecaller.ProactiveRecall`
   - 从用户消息提取 `MentionedEntities`/`CurrentTopic`/`UserStatement`
   - 失败时仅 Warn 日志，不阻断 turn
 
-- [ ] **Step 2: 将主动召回结果注入 prompt**
+- [x] **Step 2: 将主动召回结果注入 prompt**
   - `CompositeMemoryCue` 新增 `proactiveHits` 参数
   - 主动召回结果与 RecallComposite 结果合并
 
-- [ ] **Step 3: 编写集成测试**
+- [x] **Step 3: 编写集成测试**
   - 测试 turn 开始时触发主动召回
   - 测试主动召回结果注入 prompt
 
-- [ ] **Step 4: 验证**
+- [x] **Step 4: 验证**
   - `go build ./...` 通过
   - `go test ./internal/service/... -run TestProactive -count=1` 通过
+
+**完成记录**：
+- [chat_orchestrator_turn.go#L352](../../../internal/service/chat_orchestrator_turn.go) `runProactiveRecall` 已在 turn 开始时调用（build runner 前）
+- [chat_orchestrator_turn.go#L511](../../../internal/service/chat_orchestrator_turn.go) `runProactiveRecall` 方法实现：从用户消息提取 `MentionedEntities`/`CurrentTopic`/`UserStatement`，调用 `proactiveRecaller.ProactiveRecall`
+- 主动召回结果通过 `proactiveHits` 注入 prompt
+- 失败降级：`compositeRecaller == nil` 或类型断言失败时跳过，不阻断 turn
+- [proactive_recall_test.go](../../../internal/memory/trpc/proactive_recall_test.go) 测试已编写（8 个用例）
 
 ### C3：P3-12 LinkEvolver AddMemory 触发
 
 **目标**：在 `AddMemory` 后异步触发 `EvolveLinks`
+
+**状态**：✅ 已完成
 
 **Files:**
 - Modify: `internal/memory/trpc/sqlite_adapter.go` （AddMemory 后异步触发 EvolveLinks）
 - Modify: `cmd/admin/wire_memory.go` （Wire 绑定 LinkEvolver）
 - Test: 对应测试文件
 
-- [ ] **Step 1: Wire 绑定 LinkEvolver**
+- [x] **Step 1: Wire 绑定 LinkEvolver**
   - `cmd/admin/wire_memory.go` 新增 `provideLinkEvolver`，注入到 `sqliteMemoryService`
 
-- [ ] **Step 2: AddMemory 后异步触发 EvolveLinks**
+- [x] **Step 2: AddMemory 后异步触发 EvolveLinks**
   - `sqliteMemoryService` 新增 `linkEvolver LinkEvolver` 字段
   - `AddMemory` 成功后，使用 `safego.Go` 异步调用 `linkEvolver.EvolveLinks`
   - 失败时仅 Warn 日志，不阻断 AddMemory
 
-- [ ] **Step 3: 编写集成测试**
+- [x] **Step 3: 编写集成测试**
   - 测试 AddMemory 后异步触发 EvolveLinks
   - 测试 EvolveLinks 失败时不影响 AddMemory
 
-- [ ] **Step 4: 验证**
+- [x] **Step 4: 验证**
   - `go build ./...` 通过
   - `go test ./internal/memory/... -run TestLinkEvolution -count=1` 通过
+
+**完成记录**：
+- [sqlite_adapter.go#L65](../../../internal/memory/trpc/sqlite_adapter.go) `linkEvolver memlink.LinkEvolutionService` 字段已添加到 `memoryService`
+- [sqlite_adapter.go#L106](../../../internal/memory/trpc/sqlite_adapter.go) `NewMemoryService` 构造函数已注入 `linkEvolver` 参数
+- [sqlite_adapter.go#L529-540](../../../internal/memory/trpc/sqlite_adapter.go) `AddMemory` 成功后异步调用 `evolver.EvolveLinks(bgCtx, uk, entry)`
+- 失败降级：`s == nil || s.linkEvolver == nil || len(raw) == 0` 时跳过；`EvolveLinks` 失败时仅 Warn 日志，不阻断 AddMemory
+- [wire_memory.go#L107](../../../cmd/admin/wire_memory.go) `provideLinkEvolutionService` 已绑定
 
 ---
 
@@ -531,27 +647,36 @@
 
 **目标**：将 `MemoryEbbinghausDecayWorker` 通过 Wire 绑定到 cronrunner 调度器
 
+**状态**：✅ 已完成
+
 **Files:**
 - Modify: `cmd/admin/wire.go` （新增 `provideMemoryEbbinghausDecayWorker`）
 - Modify: `cmd/admin/workers.go` （新增 `MemoryEbbinghausDecayWorker` 字段 + `goAfterReady` 启动）
 - Modify: `cmd/admin/main.go` （传递到 `backgroundWorkersConfig`）
 - Modify: `internal/data/ent/schema/` 或 DDL 迁移 （新增 `access_count`/`last_accessed_at`/`decay_score` 列）— 可选，简化方案可不加
 
-- [ ] **Step 1: Wire 绑定 MemoryEbbinghausDecayWorker**
+- [x] **Step 1: Wire 绑定 MemoryEbbinghausDecayWorker**
   - `cmd/admin/wire.go` 新增 `provideMemoryEbbinghausDecayWorker`
   - 从配置读取 interval（默认 1h）
 
-- [ ] **Step 2: 在 workers.go 启动**
+- [x] **Step 2: 在 workers.go 启动**
   - `backgroundWorkersConfig` 新增 `MemoryEbbinghausDecayWorker` 字段
   - `goAfterReady("memory_ebbinghaus_decay", func() { cfg.MemoryEbbinghausDecayWorker.Start(ctx) })`
 
-- [ ] **Step 3: 验证**
+- [x] **Step 3: 验证**
   - `go build ./cmd/admin` 通过
   - 手动测试：启动后 cron job 定期执行
+
+**完成记录**：
+- [wire.go#L1382](../../../cmd/admin/wire.go) `provideMemoryEbbinghausDecayWorker` 已绑定
+- [workers.go#L268](../../../cmd/admin/workers.go) `goAfterReady("memory_ebbinghaus_decay", func() { cfg.MemoryEbbinghausDecay.Start(ctx) })` 已启动
+- 可选的 Schema 字段（`access_count`/`last_accessed_at`/`decay_score`）未添加（简化方案）
 
 ### D2：P3-10 Sleep-time cron job Wire 绑定
 
 **目标**：将 `MemorySleepTimeWorker` 通过 Wire 绑定到 cronrunner 调度器
+
+**状态**：✅ 已完成
 
 **Files:**
 - Modify: `cmd/admin/wire.go` （新增 `provideMemorySleepTimeWorker`）
@@ -559,41 +684,55 @@
 - Modify: `cmd/admin/main.go` （传递到 `backgroundWorkersConfig`）
 - Modify: `internal/cronrunner/jobs/memory_sleep_time.go` （实现生产级 `AgentUserKeyLister`，从 SessionRepo 派生活跃用户）
 
-- [ ] **Step 1: 实现生产级 AgentUserKeyLister**
+- [x] **Step 1: 实现生产级 AgentUserKeyLister**
   - 从 SessionRepo 派生活跃用户（最近 N 天有活动的 session）
   - 或从配置读取 userIDs 列表
 
-- [ ] **Step 2: Wire 绑定 MemorySleepTimeWorker**
+- [x] **Step 2: Wire 绑定 MemorySleepTimeWorker**
   - `cmd/admin/wire.go` 新增 `provideMemorySleepTimeWorker`
   - 从配置读取 interval（默认 6h）
 
-- [ ] **Step 3: 在 workers.go 启动**
+- [x] **Step 3: 在 workers.go 启动**
   - `backgroundWorkersConfig` 新增 `MemorySleepTimeWorker` 字段
   - `goAfterReady("memory_sleep_time", func() { cfg.MemorySleepTimeWorker.Start(ctx) })`
 
-- [ ] **Step 4: 验证**
+- [x] **Step 4: 验证**
   - `go build ./cmd/admin` 通过
   - 手动测试：启动后 cron job 定期执行
+
+**完成记录**：
+- [wire.go#L1402](../../../cmd/admin/wire.go) `provideMemorySleepTimeWorker` 已绑定
+- [workers.go#L273](../../../cmd/admin/workers.go) `goAfterReady("memory_sleep_time", func() { cfg.MemorySleepTime.Start(ctx) })` 已启动
+- [memory_sleep_time.go#L189](../../../internal/cronrunner/jobs/memory_sleep_time.go) `AgentUserKeyLister` 已实现：从 `biz.AgentUsecase.ListMemoryMaintenanceTargets` 派生目标，与配置的 userIDs 交叉组合
+- nil-safe：`l.agents == nil || len(l.userIDs) == 0` 时返回空列表
+- 支持 `MEMORY_SLEEP_TIME_DISABLED` 环境变量禁用
 
 ### D3：P3-6 i18n CI 集成
 
 **目标**：将 `check:i18n` 集成到 CI lint/test 流程
+
+**状态**：✅ 已完成
 
 **Files:**
 - Modify: `web/package.json` （`lint` 脚本包含 `check:i18n`）
 - Modify: CI 配置文件（如有）
 - Modify: `web/scripts/check-i18n.mjs` （优化错误输出）
 
-- [ ] **Step 1: 修改 lint 脚本**
+- [x] **Step 1: 修改 lint 脚本**
   - `web/package.json` 的 `lint` 脚本改为 `eslint ... && node scripts/check-i18n.mjs`
   - 或新增 `lint:full` 脚本包含两者
 
-- [ ] **Step 2: 优化 check-i18n.mjs 输出**
+- [x] **Step 2: 优化 check-i18n.mjs 输出**
   - 错误输出包含文件路径和行号
   - baseline 增量比对清晰提示
 
-- [ ] **Step 3: 验证**
+- [x] **Step 3: 验证**
   - `cd web && pnpm lint` 通过（含 i18n 检查）
+
+**完成记录**：
+- [package.json#L17](../../../web/package.json) `lint` 脚本已改为 `eslint "src/**/*.{ts,vue}" && node scripts/check-i18n.mjs`
+- `check:i18n` 脚本独立保留在 [package.json#L14](../../../web/package.json)（`node scripts/check-i18n.mjs`）
+- `pnpm lint` 现在同时执行 ESLint + i18n 检查
 
 ### D4：文档状态标记同步
 
@@ -632,7 +771,7 @@
 - §7.2/§7.4 验收表状态标记已全部修正为 ✅（Step 1 在 Phase B/C/D 完成时已同步）
 - §9.1 改动文件清单状态标记已全部修正为 ✅（Step 2 在 Phase B/C/D 完成时已同步）
 - §14 章节"剩余项集成修复完成记录（Phase B/C/D）"已存在（Step 3 Phase B/C/D 部分已完成）
-- §15 章节"Postgres 全量迁移完成记录（Phase A）"已新增，记录 A0-A5 ✅、A6 📋 待执行
+- §15 章节"Postgres 全量迁移完成记录（Phase A）"已新增，记录 A0-A6 全部 ✅
 - 文档同步合规：DOC-SYNC-1/5/6 全部满足
 
 ---

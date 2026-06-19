@@ -1256,6 +1256,50 @@ body.body--dark .chat-page .chat-q-message--streaming .chat-message-bubble--rece
   50%
     box-shadow: var(--glass-inner-highlight), inset 3px 0 0 color-mix(in srgb, var(--color-accent) 70%, transparent), 0 0 12px color-mix(in srgb, var(--color-accent) 20%, transparent)
 
+// ===== 流式视觉反馈（脉动点 + 闪烁光标）=====
+// 通用类，供 ReplyBlock、AgentWorkPanel 等聊天组件使用
+// 参考 aranea-frontend-guide §6.14「左侧 3px inset 强调条或轻脉动，禁止整卡绿色外框」
+.pulse-dot
+  display: inline-block
+  width: 6px
+  height: 6px
+  border-radius: 50%
+  background: var(--color-accent)
+  vertical-align: middle
+  margin-left: 4px
+  flex-shrink: 0
+  animation: chat-pulse-dot 1s ease-in-out infinite
+
+.cursor-blink
+  display: inline-block
+  width: 2px
+  height: 14px
+  background: var(--color-accent)
+  vertical-align: middle
+  margin-left: 2px
+  flex-shrink: 0
+  animation: chat-cursor-blink 0.8s step-end infinite
+
+@keyframes chat-pulse-dot
+  0%, 100%
+    opacity: 1
+  50%
+    opacity: 0.3
+
+@keyframes chat-cursor-blink
+  0%, 100%
+    opacity: 1
+  50%
+    opacity: 0
+
+@media (prefers-reduced-motion: reduce)
+  .pulse-dot
+    animation: none
+    opacity: 0.6
+  .cursor-blink
+    animation: none
+    opacity: 0.6
+
 @media (max-width: 900px)
   :root
     --chat-side-left-width: 240px

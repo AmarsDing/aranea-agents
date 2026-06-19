@@ -17,7 +17,7 @@ func newTestWSServer(bus event.Bus, buf *event.Buffer, canceller RunCanceller, s
 	return NewWSServerFromInfra(
 		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
 		&event.Infra{SessionBus: bus, MonitorBus: bus, Buffer: buf},
-		canceller, sender, nil, nil, loggateway.NewNoop(),
+		canceller, sender, nil, nil, loggateway.NewNoop(), nil,
 	)
 }
 
@@ -254,6 +254,7 @@ func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
 		stubTurnExecutor{err: errors.New("provider raw error")},
 		nil,
 		loggateway.NewNoop(),
+		nil,
 	)
 	wc := &wsConn{
 		sessionID: "sess-turn",

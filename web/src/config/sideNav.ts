@@ -63,6 +63,7 @@ export const sideNavGroups: NavGroup[] = [
   {
     labelKey: 'menu.groupOps',
     items: [
+      { to: '/observability', icon: 'insights', labelKey: 'menu.observability' },
       { to: '/cron', icon: 'schedule', labelKey: 'menu.cron' },
       { to: '/monitor/logs', icon: 'monitor_heart', labelKey: 'menu.monitor', exact: false },
       { to: '/shop', icon: 'storefront', labelKey: 'menu.shop' },

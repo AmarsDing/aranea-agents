@@ -117,13 +117,14 @@ export function useActivityTimeline() {
     const existing = activities.value.get(meta.activity_id);
     if (!existing) return;
 
-    // Mutate in place, then trigger reactivity
+    // Create a new object to ensure reference change for reactivity
+    const updated: Activity = { ...existing };
     if (meta.delta_field === 'reasoning') {
-      existing.reasoning = (existing.reasoning || '') + meta.delta_chunk;
+      updated.reasoning = (existing.reasoning || '') + meta.delta_chunk;
     } else if (meta.delta_field === 'content') {
-      existing.content = (existing.content || '') + meta.delta_chunk;
+      updated.content = (existing.content || '') + meta.delta_chunk;
     }
-
+    activities.value.set(meta.activity_id, updated);
     triggerRef(activities);
   }
 
@@ -131,18 +132,21 @@ export function useActivityTimeline() {
     const existing = activities.value.get(meta.activity_id);
     if (!existing) return;
 
-    // Mutate in place, then trigger reactivity
-    existing.status = meta.status as ActivityStatus;
-    existing.durationMs = meta.duration_ms;
-    existing.collapsed = meta.collapsed;
-    if (meta.content !== undefined) existing.content = meta.content;
-    if (meta.reasoning !== undefined) existing.reasoning = meta.reasoning;
-    if (meta.tool_result !== undefined) existing.toolResult = meta.tool_result;
-    if (meta.tool_duration_ms !== undefined) existing.toolDurationMs = meta.tool_duration_ms;
-    if (meta.tool_error_code !== undefined) existing.toolErrorCode = meta.tool_error_code;
-    if (meta.child_board_id !== undefined) existing.childBoardId = meta.child_board_id;
-    if (meta.label !== undefined) existing.label = meta.label;
-
+    // Create a new object to ensure reference change for reactivity
+    const updated: Activity = {
+      ...existing,
+      status: meta.status as ActivityStatus,
+      durationMs: meta.duration_ms,
+      collapsed: meta.collapsed,
+    };
+    if (meta.content !== undefined) updated.content = meta.content;
+    if (meta.reasoning !== undefined) updated.reasoning = meta.reasoning;
+    if (meta.tool_result !== undefined) updated.toolResult = meta.tool_result;
+    if (meta.tool_duration_ms !== undefined) updated.toolDurationMs = meta.tool_duration_ms;
+    if (meta.tool_error_code !== undefined) updated.toolErrorCode = meta.tool_error_code;
+    if (meta.child_board_id !== undefined) updated.childBoardId = meta.child_board_id;
+    if (meta.label !== undefined) updated.label = meta.label;
+    activities.value.set(meta.activity_id, updated);
     triggerRef(activities);
   }
 
@@ -304,6 +308,10 @@ function mapPlanStatus(status: ActivityStatus): PlanEvent['status'] {
 /**
  * Maps an AF ActivityTreeNode to a StreamEvent (streamEventTypes).
  * This bridges the AF backend Activity model to the frontend rendering model.
+ *
+ * B-04: For plan nodes, the node's tree children are mapped to StreamEvent[]
+ * and stored in PlanEvent.children, eliminating the need for PlanBlock to
+ * directly consume activityTree.
  */
 export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
   switch (node.kind) {
@@ -364,12 +372,19 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
       const planStatus = mapPlanStatus(node.status);
       // Extract steps from meta (serialized from Go ActivityPlanStep[])
       const metaSteps = Array.isArray(node.meta?.steps) ? node.meta.steps as PlanStep[] : [];
+      // B-04: Map tree children to StreamEvent[] for PlanBlock rendering.
+      // This replaces the direct activityTree consumption in PlanBlock,
+      // unifying the data flow through the event model.
+      const childEvents: StreamEvent[] = (node.children ?? [])
+        .filter((child) => child.kind !== 'task' && child.kind !== 'sub_task_board' && child.kind !== 'delegate')
+        .map((child) => activityToStreamEvent(child));
       return {
         kind: 'plan',
         id: node.id,
         title: node.label || node.content || '',
         steps: metaSteps,
         status: planStatus,
+        children: childEvents.length > 0 ? childEvents : undefined,
       } satisfies PlanEvent;
     }
 

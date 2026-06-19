@@ -12,6 +12,7 @@ import (
 	a2abiz "aranea-agents/internal/biz/a2a"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/runtime/lifecycle"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
@@ -196,7 +197,7 @@ func (o *ChatOrchestrator) injectA2AContext(ctx context.Context, callerAgentID s
 // After each turn, the loop re-acquires the lock, checks for an active run
 // (e.g. user interrupted with "send now"), and dequeues the next message.
 func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Session, ag biz.Agent, dialogMode, prov, mod string) {
-	safego.Go(appctx.Ctx(), "pending-queue", func() {
+	safego.GoBackground("pending-queue", func() {
 		// Mark the context so turns started from this loop skip the
 		// processPendingQueue call in their defer (otherwise each turn would
 		// spawn a new goroutine, re-introducing the chain we're eliminating).
@@ -274,6 +275,19 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 				pendingEmitter.LogError("chat.pending_dequeue", "排队消息处理失败",
 					event.P("entry_id", pendingEntryID),
 					event.P("error", err.Error()))
+				// A4: Enqueue failed pending message to dead-letter queue so
+				// operators can inspect/retry/discard via admin API instead of
+				// silent loss. When DLQ is nil (not configured), degrade to
+				// legacy behavior (log only).
+				if dlq := o.deadLetterQueue(); dlq != nil {
+					dlq.Enqueue(lifecycle.DeadLetterMessage{
+						ID:         uuid.NewString(),
+						Source:     "pending-queue",
+						Original:   pendingContent,
+						Error:      err.Error(),
+						MaxRetries: 3,
+					})
+				}
 			} else {
 				pendingEmitter.LogDone("chat.pending_dequeue", "排队消息处理完成",
 					event.P("entry_id", pendingEntryID))

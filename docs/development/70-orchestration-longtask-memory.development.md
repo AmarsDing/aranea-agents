@@ -769,12 +769,13 @@
 - `memory_l3_fused_recall.go` 融合策略：
   - `Decay > 0` 时 `Total *= decayFuseBase + decayFuseWeight*Decay`（Decay=1.0 不变，Decay→0+ 保留 70%）
   - `Decay == 0`（未计算）时不融合，保持原 Total
-- `MemoryEbbinghausDecayWorker` cron job 骨架：`safego.Go` + `ticker` + `ctx.Done()` 退出路径，不绑定数据库（简化方案，生产启用前需补全 DB 访问层）
+- `MemoryEbbinghausDecayWorker` cron job：`safego.Go` + `ticker` + `ctx.Done()` 退出路径。**2026-06-19 T2.3 增强**：已绑定 DB 读取层（`biz.L3FactReader` + `*biz.AgentUsecase` 注入），通过统一 Job 框架 `JobRunner`（30s/2m/10m 指数退避 + panic 恢复 + 死信指标）执行每 tick 扫描所有 agent 的 fact 行，计算 Ebbinghaus 衰减并输出统计日志。该 worker 为**统计型**（不写 DB），重要性更新仍由 `MemoryL3DecayWorker` 负责。
 
 **已知简化（技术债务）**：
-- 🟡 `internal/data/ent/schema/memory.go` 未新增 `access_count`/`last_accessed_at`/`decay_score` 列（简化方案，cron job 不读写 DB）
+- 🟡 `internal/data/ent/schema/memory.go` 未新增 `access_count`/`last_accessed_at`/`decay_score` 列（schema 变更需独立 ADR，T2.3 范围外）
 - ✅ `MemoryEbbinghausDecayWorker` 已通过 Wire 绑定（Phase D-1：`cmd/admin/wire.go` 新增 `provideMemoryEbbinghausDecayWorker`，`cmd/admin/workers.go` 新增字段 + `goAfterReady` 启动）
-- 🟡 Decay 值当前由 `RecallFactsFused` 调用方通过 `DecayInput` 传入，未自动从 DB 读取
+- ✅ Decay 值由 worker 通过 `L3FactReader.ListFactRows` 读取 fact 行 JSON（含 `created_at`/`updated_at`/`last_used_at`/`use_count`），调用 `ComputeDecay` 计算
+- ✅ 统一 Job 框架 `internal/cronrunner/jobs/job_framework.go` 提供 retry/panic-recovery/dead-letter/Prometheus 指标（T2.3 新增）
 
 **验收**：
 - ✅ `EbbinghausDecayCalculator.ComputeDecay` 正确计算 R_t（12 个测试用例含 clamping/零时间戳/未来时间等边界条件）
@@ -783,6 +784,9 @@
 - ✅ 低频访问记忆自动降权（Decay 越小，Total 越低）
 - ✅ `go build ./internal/memory/... ./internal/biz/...` + `go test ./internal/memory/... -run TestEbbinghaus` 通过
 - ✅ cron job Start 方法有完整 ticker + ctx.Done() 退出路径
+- ✅ **T2.3（2026-06-19）**：`JobRunner` 8 个测试通过（成功/重试/耗尽/panic 恢复/ctx 取消/默认重试/零重试/nil logger）
+- ✅ **T2.3（2026-06-19）**：`MemoryEbbinghausDecayWorker` 12 个测试通过（默认值/nil reader/全局扫描/计算行/无效 JSON/空时间戳/reader 错误/无 facts/无 facts 统计/禁用/ctx 取消/集成）
+- ✅ **T2.3（2026-06-19）**：`go build ./...` + `go test ./internal/cronrunner/... -count=1` + `go vet ./...` 通过
 
 **状态**：✅ 已完成（Wave 3，含简化方案）
 
@@ -1026,7 +1030,7 @@
 **SQL 迁移**：
 - `internal/data/sql/migrations/20260617_postgres_phase1.sql` ✅
 - `internal/data/sql/migrations/20260725_memory_bitemporal.sql` ✅
-- `internal/data/sql/migrations/20260617_memory_ebbinghaus.sql`（🟡 P3-9 简化方案未启用，cron job 不读写 DB）
+- `internal/data/sql/migrations/20260617_memory_ebbinghaus.sql`（🟡 P3-9 schema 列未启用，T2.3 worker 通过 fact 行 JSON 读取现有字段计算衰减，无需新增列）
 - `internal/data/sql/migrations/20260617_event_store.sql`（❌ 不需要，EnsureSchema 在代码中建表）
 - `internal/data/sql/migrations/20260726_memory_links.sql` ✅
 
@@ -1050,6 +1054,8 @@
 - `internal/data/memory_helpers.go`（Wave 5 P3-12：`scanFactRow`/`factRowToUpsert` 适配新列）
 - `internal/data/memory_shim_l3.go`（Wave 5 P3-12：`UpsertFactRow` 写入 links/keywords/tags）
 - `internal/data/ddl_migration_registry.go`（Wave 5 P3-12：注册 20260726 迁移）
+- `internal/cronrunner/jobs/job_framework.go`（T2.3：统一 Job 框架，retry/panic-recovery/dead-letter/Prometheus 指标）
+- `internal/cronrunner/jobs/memory_ebbinghaus_decay.go`（T2.3：增强 DB 读取层，绑定 `L3FactReader` + `AgentUsecase`）
 - `internal/metrics/vars.go`
 - `internal/service/turn_trace.go`
 - `internal/event/contract/envelope.go`（Wave 5 P2-3：新增 `GraphTopologyEvolvedContent`）
@@ -1228,7 +1234,7 @@ Phase 3（可观测 + 体验 + 记忆）
     - "NL2Graph LLM 返回非法 JSON，使用降级策略" → "NL2Graph LLM returned malformed JSON, using fallback strategy"
   - 修复后重新验证：`go build ./internal/graph/...` 和 `go test ./internal/graph/... -run TestNL2Graph` 均通过
 - **已知简化（技术债务）**：
-  - 🟡 P3-9 Ebbinghaus 衰减评分采用简化方案：cron job 不绑定数据库，`schema/memory.go` 未新增 `access_count`/`last_accessed_at`/`decay_score` 列。✅ Wire 绑定已通过 Phase D-1 补全（`provideMemoryEbbinghausDecayWorker`）。
+  - 🟡 P3-9 Ebbinghaus 衰减评分：`schema/memory.go` 未新增 `access_count`/`last_accessed_at`/`decay_score` 列（schema 变更需独立 ADR）。✅ Wire 绑定已通过 Phase D-1 补全（`provideMemoryEbbinghausDecayWorker`）。✅ **T2.3（2026-06-19）**：worker 已绑定 `L3FactReader` + `AgentUsecase`，通过 fact 行 JSON 读取现有字段计算衰减并输出统计；统一 Job 框架 `job_framework.go` 提供 retry/panic-recovery/dead-letter。
   - ✅ P1-7 任务级心跳：`RunHeartbeatEmitter` 已集成到 `chat_orchestrator_turn.go` 主流程（Phase B-1 心跳集成：`cmd/admin/wire.go` 新增 `provideRunHeartbeatEmitter`）
 
 ### 12.4 Wave 4：崩溃恢复 + 重规划 + 并行工具 + 体验补全 + 主动召回（6 任务并行）
@@ -1485,11 +1491,11 @@ Stream G2 (记忆):     P3-10/P3-13
 
 **关键设计决策**：
 - cron job 启动门控：通过 `goAfterReady` 确保在 ReadinessGate 完成后才启动（避免迁移未完成时运行）
-- 简化方案保留：cron job 不读写 DB（`schema/memory.go` 未新增列），仅作为骨架启动；Decay 值仍由 `RecallFactsFused` 调用方传入
+- **T2.3（2026-06-19）增强**：worker 已绑定 `L3FactReader` + `AgentUsecase`，每 tick 扫描所有 agent 的 fact 行计算 Ebbinghaus 衰减并输出统计；统一 Job 框架 `job_framework.go` 提供 retry/panic-recovery/dead-letter。worker 为**统计型**（不写 DB），重要性更新仍由 `MemoryL3DecayWorker` 负责。
 
 **遗留技术债务**：
-- 🟡 `schema/memory.go` 未新增 `access_count`/`last_accessed_at`/`decay_score` 列（简化方案，生产启用前需补全 DB 访问层）
-- 🟡 Decay 值未自动从 DB 读取，由调用方通过 `DecayInput` 传入
+- 🟡 `schema/memory.go` 未新增 `access_count`/`last_accessed_at`/`decay_score` 列（schema 变更需独立 ADR，T2.3 范围外；worker 通过 fact 行 JSON 现有字段计算衰减，无需新增列）
+- ✅ ~~Decay 值未自动从 DB 读取~~ → **T2.3 已修复**：worker 通过 `L3FactReader.ListFactRows` 读取 fact 行 JSON 计算 Decay
 
 **状态**：✅ 完成（验收 #26 Ebbinghaus 衰减完整闭环）
 

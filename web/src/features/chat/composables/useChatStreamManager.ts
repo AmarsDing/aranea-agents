@@ -111,7 +111,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     $q.notify({ type: 'info', message, timeout: 4000, group: false });
   }
 
-  async function reloadSessionMessagesAfterCompletion(sessionId: string, opts?: { activityFirst?: boolean }) {
+  async function reloadSessionMessagesAfterCompletion(sessionId: string) {
     try {
       await reloadSessionAfterCompletion({
         sessionStore: deps.sessionStore,
@@ -119,7 +119,6 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         streamingSnapshots,
         sessionId,
         resolveAgentId: deps.resolveAgentId,
-        activityFirst: opts?.activityFirst ?? false,
       });
     } catch (err) {
       notifyError(err instanceof Error ? err.message : t('chat.loadMessagesFailed', '加载消息失败'));

@@ -301,6 +301,30 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 	}
 	runCtx := o.prepareRunContext(ctx, input, ag, deps)
 
+	// N-21/N-03: Pre-create ActivityProjector and inject into runCtx so that
+	// plugins (cost_guard, model_router) and hooks (tool_confirmation) can emit
+	// notice/confirm Activities via biz.ActivityEmitterFromContext during the
+	// LLM call. The same projector is reused in consumeTurnStream to avoid
+	// races between early emissions and Reset() in newTurnStreamConsumer.
+	if o.activityWriter() != nil && o.td().Pipeline.Bus != nil {
+		ap := chatagent.NewActivityProjector(o.td().Pipeline.Bus, o.activityWriter(), o.lg())
+		ap.Reset() // initialize maps; subsequent Reset() in newTurnStreamConsumer is a no-op
+		earlyMeta := chatagent.ProjectMeta{
+			SessionID:        sessionID,
+			RequestID:        sessionID,
+			InvocationID:     admit.runID,
+			RunID:            admit.runID,
+			TraceID:          emitter.TraceID(),
+			AgentID:          ag.ID,
+			AgentDisplayName: ag.DisplayName,
+			ContextWindow:    o.resolveContextWindowTokens(runCtx, sess, ag, admit.provider, admit.model),
+			Source:           event.EnvelopeSourceFromContext(runCtx),
+			TaskContent:      content,
+		}
+		ap.OnTurnStart(runCtx, earlyMeta)
+		runCtx = biz.WithActivityEmitter(runCtx, ap)
+	}
+
 	// LLM invocation
 	events, err := o.invokeLLMCall(runCtx, ctx, runner, sess, input, ag, admit, emitter, traceBridge, runOpts, content, turnStart)
 	if err != nil {
@@ -571,6 +595,15 @@ func (o *ChatOrchestrator) consumeTurnStream(
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
 	streamOpts := NewChatStreamConsumeOptions(o.td().ReadDeps.ToolUC, o.td().ReadDeps.Agents, o.td().Sessions, o.activityWriter(), o.td().Pipeline.Bus, o.lg())
+	// N-21/N-03: Reuse the ActivityProjector injected in invokeTurnLLMAndStream
+	// so that emissions from plugins/hooks (which fire during invokeLLMCall)
+	// are visible to the stream consumer. This avoids a race where Reset() in
+	// newTurnStreamConsumer would clear activities emitted before consumption started.
+	if emitter := biz.ActivityEmitterFromContext(runCtx); emitter != nil {
+		if p, ok := emitter.(*chatagent.ActivityProjector); ok {
+			streamOpts.ActivityProjector = p
+		}
+	}
 	o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始消费事件流",
 		loggateway.StepID("chat.stream_consume_start"),
 		loggateway.Any("first_byte_timeout", firstByteTimeout.String()))

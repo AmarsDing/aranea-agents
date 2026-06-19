@@ -152,11 +152,21 @@ func (c *BuildCache) evict(key string) {
 }
 
 // Close clears all entries. It is safe to call Close multiple times.
-func (c *BuildCache) Close() {
+// Returns nil; the error return satisfies io.Closer / lifecycle.Closer so
+// the cache can be registered with LifecycleManager (A3).
+func (c *BuildCache) Close() error {
 	c.mu.Lock()
 	c.items = make(map[string]*buildCacheEntry)
 	c.lruList.Init()
 	c.mu.Unlock()
+	return nil
+}
+
+// GetGlobalBuildCache returns the process-level BuildCache singleton.
+// It is exposed so Wire can register it with the LifecycleManager for
+// orderly shutdown (A3).
+func GetGlobalBuildCache() *BuildCache {
+	return globalBuildCache
 }
 
 // BuildCacheKey produces a sha256 fingerprint that uniquely identifies an agent build

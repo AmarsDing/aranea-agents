@@ -24,6 +24,8 @@ type fakeMemoryService struct {
 	updated map[string]string // memoryID -> new content
 	deleted []string
 	readErr error
+	addErr  error // T3.1: mutation error for AddMemory (reflect/update_core)
+	updErr  error // T3.1: mutation error for UpdateMemory (merge)
 }
 
 type fakeAddedMemory struct {
@@ -49,6 +51,9 @@ func (f *fakeMemoryService) ReadMemories(_ context.Context, uk trpcmemory.UserKe
 func (f *fakeMemoryService) AddMemory(_ context.Context, _ trpcmemory.UserKey, memory string, topics []string, _ ...trpcmemory.AddOption) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.addErr != nil {
+		return f.addErr
+	}
 	f.added = append(f.added, fakeAddedMemory{content: memory, topics: topics})
 	return nil
 }
@@ -56,6 +61,9 @@ func (f *fakeMemoryService) AddMemory(_ context.Context, _ trpcmemory.UserKey, m
 func (f *fakeMemoryService) UpdateMemory(_ context.Context, mk trpcmemory.Key, memory string, _ []string, _ ...trpcmemory.UpdateOption) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.updErr != nil {
+		return f.updErr
+	}
 	if f.updated == nil {
 		f.updated = make(map[string]string)
 	}
@@ -485,5 +493,78 @@ func TestSleepTime_ConsolidateResult_Unmarshal(t *testing.T) {
 	}
 	if result.Operations[2].Type != "update_core" || len(result.Operations[2].Updates) != 1 {
 		t.Errorf("unexpected op 2: %+v", result.Operations[2])
+	}
+}
+
+// TestSleepTime_Consolidate_MutationFailure_GracefulDegradation verifies that
+// mutation failures (AddMemory/UpdateMemory) are treated as graceful
+// degradation (return nil) rather than returning an error.
+//
+// T3.1: This ensures JobRunner retry is safe — only read failures return an
+// error (idempotent, safe to retry). Mutation operations are NOT idempotent,
+// so they must not be retried.
+func TestSleepTime_Consolidate_MutationFailure_GracefulDegradation(t *testing.T) {
+	// Test reflect (AddMemory) failure.
+	t.Run("reflect_add_failure", func(t *testing.T) {
+		ms := &fakeMemoryService{
+			entries: map[string][]*trpcmemory.Entry{
+				"user-1": {makeEntry("mem-1", "User likes Go")},
+			},
+			addErr: errors.New("add memory failed"),
+		}
+		llm := &fakeModel{response: buildLLMResponse(`{"operations":[{"type":"reflect","reflection":"new insight","topics":["t"]}]}`)}
+		svc := NewSleepTimeService(ms, llm, nil, loggateway.NewNoop())
+
+		uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
+		if err := svc.Consolidate(context.Background(), uk); err != nil {
+			t.Fatalf("expected nil error on mutation failure (graceful degradation), got %v", err)
+		}
+	})
+
+	// Test merge (UpdateMemory) failure.
+	t.Run("merge_update_failure", func(t *testing.T) {
+		ms := &fakeMemoryService{
+			entries: map[string][]*trpcmemory.Entry{
+				"user-1": {makeEntry("mem-1", "User likes Go")},
+			},
+			updErr: errors.New("update memory failed"),
+		}
+		llm := &fakeModel{response: buildLLMResponse(`{"operations":[{"type":"merge","target_id":"mem-1","source_ids":[],"merged_content":"merged","merged_topics":["t"]}]}`)}
+		svc := NewSleepTimeService(ms, llm, nil, loggateway.NewNoop())
+
+		uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
+		if err := svc.Consolidate(context.Background(), uk); err != nil {
+			t.Fatalf("expected nil error on mutation failure (graceful degradation), got %v", err)
+		}
+	})
+}
+
+// TestSleepTime_QueueChan verifies that QueueChan returns the queue channel
+// when a queue is wired, and nil otherwise.
+func TestSleepTime_QueueChan(t *testing.T) {
+	// No queue wired → nil.
+	svc := NewSleepTimeService(&fakeMemoryService{}, nil, nil, loggateway.NewNoop())
+	if ch := svc.QueueChan(); ch != nil {
+		t.Errorf("expected nil channel when no queue wired, got non-nil")
+	}
+
+	// Queue wired → non-nil.
+	q := NewConsolidationQueue(10)
+	svc2 := NewSleepTimeService(&fakeMemoryService{}, nil, q, loggateway.NewNoop())
+	ch := svc2.QueueChan()
+	if ch == nil {
+		t.Fatal("expected non-nil channel when queue wired")
+	}
+
+	// Verify the channel is the same as queue.Chan().
+	uk := trpcmemory.UserKey{AppName: "a", UserID: "u"}
+	q.Enqueue(ConsolidationJobRequest{UserKey: uk, EnqueuedAt: time.Now()})
+	select {
+	case req := <-ch:
+		if req.UserKey.AppName != "a" || req.UserKey.UserID != "u" {
+			t.Errorf("unexpected job: %+v", req)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for job from QueueChan")
 	}
 }

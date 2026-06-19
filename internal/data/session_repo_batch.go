@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	session "aranea-agents/internal/biz/session"
@@ -201,4 +202,46 @@ func sessionSearchWheres(q biz.SessionSearchQuery) []predicate.Session {
 		))
 	}
 	return wheres
+}
+
+// ListActiveAgentUserKeys returns distinct (agent_id, user_id) pairs for
+// sessions that had activity within the given lookback window. "Activity" is
+// defined as last_message_at OR last_run_at falling within the last
+// lookbackDays days. Only non-archived, non-deleted sessions with non-empty
+// agent_id and user_id are considered.
+//
+// Uses raw SQL for efficient DISTINCT + COALESCE filtering that would be
+// awkward to express in Ent. The query is read-only and uses the read
+// connection (RWDB().ReadDB).
+func (r *sessionRepo) ListActiveAgentUserKeys(ctx context.Context, lookbackDays int) ([]session.AgentUserKey, error) {
+	if lookbackDays <= 0 {
+		lookbackDays = 7
+	}
+	cutoff := time.Now().UTC().AddDate(0, 0, -lookbackDays).Format(time.RFC3339)
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT DISTINCT agent_id, user_id FROM sessions
+WHERE deleted_at = ''
+  AND archived_at = ''
+  AND agent_id != ''
+  AND user_id != ''
+  AND (last_message_at >= ? OR last_run_at >= ?)
+ORDER BY agent_id, user_id`)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, cutoff, cutoff)
+	if err != nil {
+		return nil, entErrToBizErr(err, "SESSION")
+	}
+	defer rows.Close()
+	var out []session.AgentUserKey
+	for rows.Next() {
+		var agentID, userID string
+		if scanErr := rows.Scan(&agentID, &userID); scanErr != nil {
+			return nil, entErrToBizErr(scanErr, "SESSION")
+		}
+		agentID = strings.TrimSpace(agentID)
+		userID = strings.TrimSpace(userID)
+		if agentID == "" || userID == "" {
+			continue
+		}
+		out = append(out, session.AgentUserKey{AgentID: agentID, UserID: userID})
+	}
+	return out, entErrToBizErr(rows.Err(), "SESSION")
 }

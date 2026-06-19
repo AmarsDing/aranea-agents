@@ -67,6 +67,7 @@ func (m *parityMemRepo) UpdateTeamRun(_ context.Context, r biz.TeamRun) error {
 	m.runs[r.ID] = r
 	return nil
 }
+func (m *parityMemRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) { return true, nil }
 func (m *parityMemRepo) UpdateTeamRunGraphExecutionID(context.Context, string, string) error { return nil }
 func (m *parityMemRepo) UpdateTeamRunTraceID(context.Context, string, string) error           { return nil }
 func (m *parityMemRepo) UpdateTeamRunSummaryJSON(context.Context, string, string) error      { return nil }

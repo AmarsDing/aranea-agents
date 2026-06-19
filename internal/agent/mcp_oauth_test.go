@@ -18,6 +18,9 @@ func TestFetchOAuth2ClientCredentials(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "tok-abc"})
 	}))
 	defer srv.Close()
+	// Close idle HTTP/2 connections after the test so goleak doesn't flag
+	// leftover clientConnReadLoop goroutines from the shared oauth2HTTPClient.
+	defer oauth2HTTPClient.CloseIdleConnections()
 
 	tok, err := fetchOAuth2ClientCredentials(context.Background(), mcpconfig.AuthConfig{
 		Type:         "oauth2_client_credentials",
@@ -50,6 +53,7 @@ func TestFetchOAuth2RefreshToken_Success(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "refreshed-tok"})
 	}))
 	defer srv.Close()
+	defer oauth2HTTPClient.CloseIdleConnections()
 
 	tok, err := fetchOAuth2RefreshToken(context.Background(), mcpconfig.AuthConfig{
 		Type:         "oauth2_refresh",

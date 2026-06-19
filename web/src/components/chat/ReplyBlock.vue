@@ -19,7 +19,7 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { ReplyEvent } from '../../features/chat/streamEventTypes';
-import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
+import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
 
 const { t } = useI18n();
 
@@ -31,7 +31,9 @@ const label = computed(() =>
   props.activity.isFinal ? t('chat.agentBlock.finalReply') : t('chat.agentBlock.intermediateReply'),
 );
 
-const renderedContent = computed(() => renderChatMarkdown(props.activity.content));
+const renderedContent = computed(() =>
+  renderChatMarkdownForMessage(props.activity.id, props.activity.content, props.activity.streaming),
+);
 </script>
 
 <style lang="sass" scoped>
@@ -58,4 +60,8 @@ const renderedContent = computed(() => renderChatMarkdown(props.activity.content
     font-size: 14px
     line-height: 1.7
     word-break: break-word
+
+// 夜间助手气泡切换为标准玻璃 token（§6.14 要求夜 --glass-surface）
+body.body--dark .reply-block__content
+  background: var(--glass-surface)
 </style>

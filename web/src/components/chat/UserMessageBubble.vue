@@ -46,7 +46,7 @@ const renderedContent = computed(() =>
 
   &__text
     background: var(--color-accent)
-    color: var(--color-text-on-accent, #fff)
+    color: var(--color-on-accent, #fff)
     border-radius: 12px 12px 12px 4px
     padding: 10px 14px
     font-size: 14px
@@ -60,7 +60,7 @@ const renderedContent = computed(() =>
       margin-top: 8px
 
     :deep(a)
-      color: var(--color-text-on-accent, #fff)
+      color: var(--color-on-accent, #fff)
       text-decoration: underline
 
 body.body--dark &

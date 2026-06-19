@@ -112,18 +112,20 @@ func (m *mockActivityWriter) UpsertActivity(_ context.Context, a biz.Activity) (
 }
 
 // newTestProjector creates an ActivityProjector with a syncCaptureBus and mock repo.
-func newTestProjector() (*ActivityProjector, *syncCaptureBus, *mockActivityWriter) {
+// The projector is automatically closed via t.Cleanup to prevent goroutine leaks.
+func newTestProjector(t testing.TB) (*ActivityProjector, *syncCaptureBus, *mockActivityWriter) {
 	bus := newSyncCaptureBus()
 	repo := newMockActivityWriter()
 	p := NewActivityProjector(bus, repo, loggateway.NewNoop())
 	p.Reset() // initialize internal maps
+	t.Cleanup(func() { p.Close() })
 	return p, bus, repo
 }
 
 // --- OnNotice ---
 
 func TestOnNotice_createsActivityWithKindNotice(t *testing.T) {
-	p, bus, _ := newTestProjector()
+	p, bus, _ := newTestProjector(t)
 
 	act, err := p.OnNotice(context.Background(), "turn-1", "sess-1", "hello world", "info")
 	if err != nil {
@@ -161,7 +163,7 @@ func TestOnNotice_createsActivityWithKindNotice(t *testing.T) {
 // --- OnConfirmRequest ---
 
 func TestOnConfirmRequest_createsActivityWithKindConfirm(t *testing.T) {
-	p, bus, _ := newTestProjector()
+	p, bus, _ := newTestProjector(t)
 
 	params := ConfirmRequestParams{
 		ToolName:      "delete_file",
@@ -197,7 +199,7 @@ func TestOnConfirmRequest_createsActivityWithKindConfirm(t *testing.T) {
 // --- OnConfirmResult ---
 
 func TestOnConfirmResult_notFoundWhenActivityMissing(t *testing.T) {
-	p, _, _ := newTestProjector()
+	p, _, _ := newTestProjector(t)
 
 	_, err := p.OnConfirmResult(context.Background(), "nonexistent-id", true)
 	if err == nil {
@@ -213,7 +215,7 @@ func TestOnConfirmResult_notFoundWhenActivityMissing(t *testing.T) {
 }
 
 func TestOnConfirmResult_badRequestWhenKindNotConfirm(t *testing.T) {
-	p, _, _ := newTestProjector()
+	p, _, _ := newTestProjector(t)
 
 	// Create a notice activity (not confirm) in the projector's internal map
 	p.mu.Lock()
@@ -238,7 +240,7 @@ func TestOnConfirmResult_badRequestWhenKindNotConfirm(t *testing.T) {
 }
 
 func TestOnConfirmResult_completedWhenApproved(t *testing.T) {
-	p, bus, _ := newTestProjector()
+	p, bus, _ := newTestProjector(t)
 
 	// Create a confirm activity first
 	params := ConfirmRequestParams{ToolName: "rm", Content: "OK?"}
@@ -263,7 +265,7 @@ func TestOnConfirmResult_completedWhenApproved(t *testing.T) {
 }
 
 func TestOnConfirmResult_cancelledWhenNotApproved(t *testing.T) {
-	p, bus, _ := newTestProjector()
+	p, bus, _ := newTestProjector(t)
 
 	params := ConfirmRequestParams{ToolName: "rm", Content: "OK?"}
 	act, _ := p.OnConfirmRequest(context.Background(), "turn-1", "sess-1", params)
@@ -289,7 +291,7 @@ func TestOnConfirmResult_cancelledWhenNotApproved(t *testing.T) {
 // --- OnPlanStart ---
 
 func TestOnPlanStart_createsActivityWithKindPlan(t *testing.T) {
-	p, bus, _ := newTestProjector()
+	p, bus, _ := newTestProjector(t)
 
 	steps := []biz.ActivityPlanStep{
 		{ID: "s1", Label: "Step 1", Status: biz.ActivityStatusPending},
@@ -338,7 +340,7 @@ func TestOnPlanStart_createsActivityWithKindPlan(t *testing.T) {
 // --- OnPlanStepUpdate ---
 
 func TestOnPlanStepUpdate_notFoundWhenActivityMissing(t *testing.T) {
-	p, _, _ := newTestProjector()
+	p, _, _ := newTestProjector(t)
 
 	_, err := p.OnPlanStepUpdate(context.Background(), "nonexistent-id", "s1", biz.ActivityStatusCompleted)
 	if err == nil {
@@ -354,7 +356,7 @@ func TestOnPlanStepUpdate_notFoundWhenActivityMissing(t *testing.T) {
 }
 
 func TestOnPlanStepUpdate_badRequestWhenKindNotPlan(t *testing.T) {
-	p, _, _ := newTestProjector()
+	p, _, _ := newTestProjector(t)
 
 	// Insert a non-plan activity
 	p.mu.Lock()
@@ -379,7 +381,7 @@ func TestOnPlanStepUpdate_badRequestWhenKindNotPlan(t *testing.T) {
 }
 
 func TestOnPlanStepUpdate_badRequestWhenStepsMetaInvalid(t *testing.T) {
-	p, _, _ := newTestProjector()
+	p, _, _ := newTestProjector(t)
 
 	// Insert a plan activity with invalid steps metadata
 	p.mu.Lock()
@@ -405,7 +407,7 @@ func TestOnPlanStepUpdate_badRequestWhenStepsMetaInvalid(t *testing.T) {
 }
 
 func TestOnPlanStepUpdate_notFoundWhenStepIDMissing(t *testing.T) {
-	p, _, _ := newTestProjector()
+	p, _, _ := newTestProjector(t)
 
 	steps := []biz.ActivityPlanStep{
 		{ID: "s1", Label: "Step 1", Status: biz.ActivityStatusPending},
@@ -426,7 +428,7 @@ func TestOnPlanStepUpdate_notFoundWhenStepIDMissing(t *testing.T) {
 }
 
 func TestOnPlanStepUpdate_updatesStepStatusCorrectly(t *testing.T) {
-	p, _, _ := newTestProjector()
+	p, _, _ := newTestProjector(t)
 
 	steps := []biz.ActivityPlanStep{
 		{ID: "s1", Label: "Step 1", Status: biz.ActivityStatusPending},
@@ -452,7 +454,7 @@ func TestOnPlanStepUpdate_updatesStepStatusCorrectly(t *testing.T) {
 }
 
 func TestOnPlanStepUpdate_planRunningWhenSomeStepsPending(t *testing.T) {
-	p, _, _ := newTestProjector()
+	p, _, _ := newTestProjector(t)
 
 	steps := []biz.ActivityPlanStep{
 		{ID: "s1", Label: "Step 1", Status: biz.ActivityStatusPending},
@@ -471,7 +473,7 @@ func TestOnPlanStepUpdate_planRunningWhenSomeStepsPending(t *testing.T) {
 }
 
 func TestOnPlanStepUpdate_planCompletedWhenAllStepsCompleted(t *testing.T) {
-	p, _, _ := newTestProjector()
+	p, _, _ := newTestProjector(t)
 
 	steps := []biz.ActivityPlanStep{
 		{ID: "s1", Label: "Step 1", Status: biz.ActivityStatusPending},
@@ -491,7 +493,7 @@ func TestOnPlanStepUpdate_planCompletedWhenAllStepsCompleted(t *testing.T) {
 }
 
 func TestOnPlanStepUpdate_planPartialFailureWhenAllDoneButSomeFailed(t *testing.T) {
-	p, _, _ := newTestProjector()
+	p, _, _ := newTestProjector(t)
 
 	steps := []biz.ActivityPlanStep{
 		{ID: "s1", Label: "Step 1", Status: biz.ActivityStatusPending},
@@ -524,7 +526,7 @@ func TestOnPlanStepUpdate_planPartialFailureWhenAllDoneButSomeFailed(t *testing.
 // Because the start envelope is async and the delta is sync, arrival order is
 // not guaranteed. We wait for both and locate the activity_start envelope.
 func TestOnMemberMessageDelta_createsReplyActivityWithMemberID(t *testing.T) {
-	p, bus, _ := newTestProjector()
+	p, bus, _ := newTestProjector(t)
 	p.Configure(ProjectMeta{
 		SessionID:       "sess-team",
 		RequestID:       "turn-1",
@@ -568,7 +570,7 @@ func TestOnMemberMessageDelta_createsReplyActivityWithMemberID(t *testing.T) {
 // TestOnMemberMessageDelta_appendsDeltaToExistingActivity verifies that
 // subsequent deltas reuse the same reply Activity instead of creating new ones.
 func TestOnMemberMessageDelta_appendsDeltaToExistingActivity(t *testing.T) {
-	p, bus, _ := newTestProjector()
+	p, bus, _ := newTestProjector(t)
 	p.Configure(ProjectMeta{
 		SessionID:       "sess-team",
 		RequestID:       "turn-1",
@@ -596,7 +598,7 @@ func TestOnMemberMessageDelta_appendsDeltaToExistingActivity(t *testing.T) {
 // TestOnMemberMessageDone_finalizesReplyActivity verifies that Done marks the
 // reply Activity as completed and publishes activity_done.
 func TestOnMemberMessageDone_finalizesReplyActivity(t *testing.T) {
-	p, bus, _ := newTestProjector()
+	p, bus, _ := newTestProjector(t)
 	p.Configure(ProjectMeta{
 		SessionID:       "sess-team",
 		RequestID:       "turn-1",
@@ -631,7 +633,7 @@ func TestOnMemberMessageDone_finalizesReplyActivity(t *testing.T) {
 // TestOnMemberMessageDone_noopWhenNoActivity verifies that Done without a
 // prior Delta does not publish anything (defensive guard).
 func TestOnMemberMessageDone_noopWhenNoActivity(t *testing.T) {
-	p, bus, _ := newTestProjector()
+	p, bus, _ := newTestProjector(t)
 	p.Configure(ProjectMeta{
 		SessionID:       "sess-team",
 		RequestID:       "turn-1",
@@ -654,7 +656,7 @@ func TestOnMemberMessageDone_noopWhenNoActivity(t *testing.T) {
 // Note: First delta publishes activity_start (async) + activity_delta (sync).
 // Arrival order is not guaranteed, so we wait for both and locate the start.
 func TestProcessEvent_routesTeamMemberToMemberMessage(t *testing.T) {
-	p, bus, _ := newTestProjector()
+	p, bus, _ := newTestProjector(t)
 	p.Configure(ProjectMeta{
 		SessionID:       "sess-team",
 		RequestID:       "turn-1",
@@ -709,7 +711,7 @@ func TestProcessEvent_routesTeamMemberToMemberMessage(t *testing.T) {
 // Note: First delta publishes activity_start (async) + activity_delta (sync).
 // Arrival order is not guaranteed, so we wait for both and locate the start.
 func TestProcessEvent_routesCoordinatorToOnTextDelta(t *testing.T) {
-	p, bus, _ := newTestProjector()
+	p, bus, _ := newTestProjector(t)
 	p.Configure(ProjectMeta{
 		SessionID:       "sess-team",
 		RequestID:       "turn-1",

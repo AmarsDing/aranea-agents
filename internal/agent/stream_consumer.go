@@ -116,6 +116,7 @@ func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) EventStream
 			canceled = true
 		}
 		if !c.handleEvent(ev) {
+			c.finalize()
 			return c.result
 		}
 		// After first-byte timeout or context cancellation, stop once we see
@@ -251,6 +252,9 @@ func (c *turnStreamConsumer) projectAndTrackTools(ev *trpcevent.Event) {
 
 	// AF-3: ActivityProjector directly consumes trpc events.
 	// It no longer depends on EventProjector output for translation.
+	// In production, ActivityProjector is always non-nil (wired via Wire DI).
+	// In tests, it may be nil — in that case EventProjector output is published
+	// to WS as a test-only path.
 	hasAF := c.opts != nil && c.opts.ActivityProjector != nil
 	if hasAF {
 		c.opts.ActivityProjector.ProcessEvent(c.turnCtx, ev)
@@ -260,10 +264,8 @@ func (c *turnStreamConsumer) projectAndTrackTools(ev *trpcevent.Event) {
 	// - trackToolEnvelope (stuck tool detection at finalize)
 	// - PublishActivityEnvelopes (activity persistence)
 	// - Member tool call counting
-	// When ActivityProjector is active, EventProjector output is NEVER published
-	// to WS — ActivityProjector owns the WS path.
-	// Fallback: if ActivityProjector is nil (should not happen after Phase 2),
-	// EventProjector output is published to WS as the legacy path.
+	// When ActivityProjector is active (production), EventProjector output is
+	// NEVER published to WS — ActivityProjector owns the WS path.
 	envelopes := c.projector.Project(c.turnCtx, ev, meta)
 
 	for _, env := range envelopes {
@@ -278,6 +280,9 @@ func (c *turnStreamConsumer) projectAndTrackTools(ev *trpcevent.Event) {
 			}
 		}
 		if !hasAF {
+			// Test-only path: ActivityProjector not configured.
+			// Production always has ActivityProjector (wired via Wire DI),
+			// so this WS-publish branch never executes in production.
 			if c.observer != nil {
 				c.observer.PublishChat(c.turnCtx, env)
 			} else if c.eventBus != nil {
@@ -354,11 +359,18 @@ func (c *turnStreamConsumer) finalize() {
 		// in tool_running status. Without this step, the frontend never receives
 		// activity_done(kind=action) for these tools, leaving them stuck in
 		// running state indefinitely. This is the AF equivalent of
-		// PublishStuckToolResultEnvelopes (which publishes legacy tool_result
-		// envelopes that AF mode doesn't process).
+		// PublishStuckToolResultEnvelopes (which publishes tool_result envelopes
+		// for the persistence/test path that AF mode doesn't process).
 		if len(c.pendingToolCalls) > 0 {
 			c.opts.ActivityProjector.OnStuckTools(c.turnCtx, c.pendingToolCalls)
 		}
+
+		// Close the projector's event sequencer to ensure all queued events
+		// are flushed before the stream consumer exits. This blocks until all
+		// per-activity consumer goroutines have finished publishing and
+		// persisting, preventing goroutine leaks and ensuring the frontend
+		// receives all terminal events (activity_done) before the turn ends.
+		c.opts.ActivityProjector.Close()
 	}
 	if len(c.pendingToolCalls) == 0 {
 		return

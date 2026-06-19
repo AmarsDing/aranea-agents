@@ -1,14 +1,14 @@
 /**
  * useConversationTimeline — 从 Activity 事件构建 ConversationTurn[]
  *
- * 单路径架构（Activity-First）：
+ * 单路径架构（Activity-First，T7.3a 已移除 Legacy 路径）：
  * - 当 activityRawRecords 非空时，从后端 Activity 事件构建 Turn，零推理。
- * - 无 AF 数据时，从原始消息构建最小化 Turn（isLegacy=true），不做推理。
+ * - 无 AF 数据时，返回空数组（pre-AF 会话由 T6.3 回填保证有 AF 数据；
+ *   AF API 失败时由 AF-GAP-05 显示错误提示）。
  *
  * 设计原则：
  * 1. AF 路径：按 turnId 分组 Activity 记录，构建完整 Think/Act/Say 时间线
- * 2. Legacy 路径：按 role=user 边界划分 Turn，仅提取基本信息，标记 isLegacy
- * 3. isFinal：Turn 内最后一个 SayActivity 的 isFinal=true
+ * 2. isFinal：Turn 内最后一个 SayActivity 的 isFinal=true
  */
 
 import { computed, type ComputedRef } from 'vue';
@@ -54,8 +54,8 @@ function buildProgressSections(
   return sections;
 }
 
-/** 按 role=user 边界划分消息为 UserTurn[] */
-function findUserTurns(messages: Message[]): UserTurn[] {
+/** 按 role=user 边界划分消息为 UserTurn[]（turn 边界辅助函数，AF 唯一路径下使用） */
+function splitByUserMessages(messages: Message[]): UserTurn[] {
   if (messages.length === 0) return [];
   const turns: UserTurn[] = [];
   let current: UserTurn = { userMessage: null, messages: [] };
@@ -102,88 +102,29 @@ export function useConversationTimeline(deps: {
 
     const plannerKind = deps.plannerKind?.value ?? '';
 
-    // AF-FE-06 + AF-FE-14: When Activity-First data is available, build turns
-    // from Activity events. Uses buildAllConversationTurnsFromActivities which
-    // groups raw Activity records by turnId to build ALL turns from AF data.
+    // T7.3a: Activity-First is the only path. Pre-AF sessions are backfilled
+    // by T6.3 (activity_backfill_migrate.go); AF API failures show error
+    // prompts via AF-GAP-05. When no Activity data is available, return empty
+    // array (no Legacy fallback).
     const afActivities = deps.activityTimelineActivities?.value;
     const afTree = deps.activityTree?.value;
     const afRawRecords = deps.activityRawRecords?.value;
-    const hasAfData = (afActivities && afActivities.length > 0) || (afRawRecords && afRawRecords.length > 0);
-    if (hasAfData) {
-      return buildAllConversationTurnsFromActivities(allMessages, afRawRecords ?? [], afActivities ?? [], {
-        agentKey: deps.activityAgentKey?.value || '',
-        taskContent: deps.activityTaskContent?.value || null,
-        activityTree: afTree ? [...afTree] : [],
-        progressByStep,
-        plannerKind,
-      });
-    }
+    const hasActivityData = (afActivities && afActivities.length > 0) || (afRawRecords && afRawRecords.length > 0);
+    if (!hasActivityData) return [];
 
-    // No AF data — build minimal legacy turns (no inference)
-    const ensured = allMessages.map((m) => ensureOrigin(m));
-    const turns = findUserTurns(ensured);
-    return turns.map((turn) => buildLegacyConversationTurn(turn, {
+    return buildAllConversationTurnsFromActivities(allMessages, afRawRecords ?? [], afActivities ?? [], {
       agentKey: deps.activityAgentKey?.value || '',
       taskContent: deps.activityTaskContent?.value || null,
-      activityTree: [],
+      activityTree: afTree ? [...afTree] : [],
       progressByStep,
-    }));
+      plannerKind,
+    });
   });
 
   return {
     conversationTurns,
     /** @deprecated AgentBlocks removed in AF refactoring — always empty */
     agentBlocks: computed((): AgentBlock[] => []),
-  };
-}
-
-/**
- * Build a minimal ConversationTurn for turns without Activity data.
- * Shows the user message and basic agent info. No message inference.
- */
-function buildLegacyConversationTurn(
-  turn: UserTurn,
-  opts: { agentKey: string; taskContent: string | null; activityTree: ActivityTreeNode[]; progressByStep: Map<string, ProgressSection> },
-): ConversationTurn {
-  const userMessage = turn.userMessage || turn.messages.find((m) => m.role === 'user');
-  const firstAssistant = turn.messages.find((m) => m.role === 'assistant' && !isTeamMemberOrigin(m.origin));
-  const lastMsg = turn.messages[turn.messages.length - 1];
-
-  const agentKey = opts.agentKey || firstAssistant?.agent_ref?.agent_key || ROOT_AGENT_KEY;
-  const agentName = firstAssistant?.agent_ref?.name || '精灵助手';
-  const agentIcon = firstAssistant?.agent_ref?.icon || '精';
-
-  // Calculate duration from message timestamps
-  const startTs = userMessage?.created_at ? new Date(userMessage.created_at).getTime() : 0;
-  const endTs = lastMsg?.created_at ? new Date(lastMsg.created_at).getTime() : 0;
-  const durationMs = startTs && endTs ? Math.max(0, endTs - startTs) : null;
-
-  // Extract reply text from the last assistant message (no inference)
-  const replyContent = firstAssistant?.content_markdown || null;
-
-  const agentWork: AgentWorkProcess = {
-    agentKey,
-    agentName,
-    agentIcon,
-    agentColor: agentColorFromKey(agentKey),
-    status: 'completed',
-    durationMs,
-    activities: [],
-    task: userMessage?.content_markdown || null,
-    result: replyContent,
-    hasPartialFailure: false,
-    plan: null,
-    teamStatus: null,
-    progressSections: [],
-    startedAt: userMessage?.created_at || '',
-    finishedAt: lastMsg?.created_at || '',
-    isLegacy: true,
-  };
-
-  return {
-    id: `turn-legacy-${userMessage?.id || 'no-user'}`,
-    userMessage: userMessage ?? null,
-    agentWork,
   };
 }
 
@@ -196,7 +137,7 @@ function buildAllConversationTurnsFromActivities(
   opts: { agentKey: string; taskContent: string | null; activityTree: ActivityTreeNode[]; progressByStep: Map<string, ProgressSection>; plannerKind: string },
 ): ConversationTurn[] {
   const ensured = messages.map(ensureOrigin);
-  const userTurns = findUserTurns(ensured);
+  const userTurns = splitByUserMessages(ensured);
   if (userTurns.length === 0) return [];
 
   // Group raw Activity records by turnId
@@ -219,12 +160,12 @@ function buildAllConversationTurnsFromActivities(
 
     const turnActivities = turnId ? activitiesByTurn.get(turnId) : undefined;
 
+    // T7.3a: Skip turns without Activity data (Legacy fallback removed).
+    // Pre-AF sessions are backfilled by T6.3; if a turn has no Activity data
+    // it is either still loading or the data was lost — either way, showing
+    // an empty turn would be misleading.
     if (turnActivities && turnActivities.length > 0) {
-      // Build from Activity data — zero inference
       result.push(buildSingleTurnFromActivities(turn, turnActivities, opts));
-    } else {
-      // No Activity data for this turn — legacy fallback
-      result.push(buildLegacyConversationTurn(turn, opts));
     }
   }
 

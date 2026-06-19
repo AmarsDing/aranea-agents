@@ -228,6 +228,18 @@ type L3FactWriter interface {
 	InvalidateFact(ctx context.Context, factID string) ([]byte, error)
 }
 
+// DecayScoreWriter updates the persisted Ebbinghaus decay score (R_t) for
+// memory facts. The cron job (MemoryEbbinghausDecayWorker) computes R_t per
+// fact and writes it back via this port so that fused recall can down-weight
+// forgotten memories without recomputing the score on every recall.
+// Stability:evolving
+type DecayScoreWriter interface {
+	// UpdateDecayScores batch-updates decay_score for the given fact IDs.
+	// scores maps fact ID → R_t ∈ (0, 1]. Implementations must wrap the
+	// updates in a single transaction so the batch is atomic.
+	UpdateDecayScores(ctx context.Context, scores map[string]float64) error
+}
+
 // L3FactAdminStore manages semantic facts and L3 recall.
 //
 // Deprecated: Use L3FactReader and L3FactWriter directly instead.

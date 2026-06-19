@@ -9,8 +9,7 @@ import (
 
 func (r *usageRepo) ListModelUsageHourlyTrends(ctx context.Context, query biz.UsageQuery) ([]biz.UsageTrendPoint, error) {
 	where, args := usageHourlyWhere(query)
-	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
-		`SELECT hour_key,
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT hour_key,
 		 COALESCE(SUM(call_count), 0),
 		 COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0),
@@ -18,9 +17,8 @@ func (r *usageRepo) ListModelUsageHourlyTrends(ctx context.Context, query biz.Us
 		 COALESCE(SUM(failed_count), 0),
 		 COALESCE(SUM(cancelled_count), 0),
 		 COALESCE(AVG(avg_latency_ms), 0), COALESCE(AVG(avg_tokens_per_second), 0)
-		 FROM model_token_usage_hourly`+where+` GROUP BY hour_key ORDER BY hour_key ASC`,
-		args...,
-	)
+		 FROM model_token_usage_hourly`+where+` GROUP BY hour_key ORDER BY hour_key ASC`)
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

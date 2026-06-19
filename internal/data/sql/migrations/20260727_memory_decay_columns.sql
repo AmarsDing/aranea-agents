@@ -1,0 +1,11 @@
+-- Version 20260727: Ebbinghaus decay score column for memory_facts.
+-- Persists the computed Ebbinghaus reachability R_t = exp(-n_t / S_t) so that
+-- fused recall (RecallFactsFused) can down-weight forgotten memories without
+-- recomputing the score on every recall.
+--
+-- Note: access_count and last_accessed_at semantics are already covered by the
+-- existing columns use_count (INTEGER NOT NULL DEFAULT 0) and last_used_at
+-- (TEXT NOT NULL DEFAULT ''). Only decay_score is new — the existing
+-- decay_factor column (REAL NOT NULL DEFAULT 0.98) is a per-tick decay
+-- multiplier used by the L3 decay worker, not the Ebbinghaus R_t score.
+ALTER TABLE memory_facts ADD COLUMN decay_score REAL NOT NULL DEFAULT 1.0;

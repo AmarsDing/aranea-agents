@@ -126,6 +126,15 @@ golangci-lint:
 test:
 	go test -race -cover ./...
 
+.PHONY: test-integration
+# run only integration tests (build tag: integration). Aligned with CI test-integration job.
+test-integration:
+	go test -race -tags=integration ./internal/service/... -run TestIntegration -count=1 -timeout 10m
+
+.PHONY: test-all
+# run unit tests followed by integration tests (full local verification suite).
+test-all: test test-integration
+
 .PHONY: archlint
 # run architecture fitness function tests (AS-FIT-01)
 archlint:

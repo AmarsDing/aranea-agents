@@ -31,6 +31,7 @@ func (r *observatoryTeamRepo) CreateTeam(context.Context, biz.Team) (biz.Team, e
 func (r *observatoryTeamRepo) UpdateTeam(context.Context, biz.Team) (biz.Team, error) {
 	return biz.Team{}, nil
 }
+func (r *observatoryTeamRepo) UpdateTeamWhereStatus(_ context.Context, _, _, _ string) (bool, error) { return true, nil }
 func (r *observatoryTeamRepo) DeleteTeam(context.Context, string) error { return nil }
 func (r *observatoryTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
 func (r *observatoryTeamRepo) ListTeamRuns(_ context.Context, teamID string, _ int) ([]biz.TeamRun, error) {
@@ -61,6 +62,7 @@ func (r *observatoryTeamRepo) CreateTeamRun(context.Context, biz.TeamRun) (biz.T
 	return biz.TeamRun{}, nil
 }
 func (r *observatoryTeamRepo) UpdateTeamRun(context.Context, biz.TeamRun) error { return nil }
+func (r *observatoryTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) { return true, nil }
 func (r *observatoryTeamRepo) UpdateTeamRunSummaryJSON(context.Context, string, string) error {
 	return nil
 }

@@ -6,6 +6,8 @@ import (
 	"os"
 	"runtime/debug"
 	"sync"
+
+	"aranea-agents/pkg/appctx"
 )
 
 // PanicHook is called when a goroutine started by Go recovers from a panic.
@@ -48,4 +50,18 @@ func Go(ctx context.Context, name string, fn func()) {
 		}()
 		fn()
 	}()
+}
+
+// GoBackground starts a process-level goroutine using appctx.Ctx() as the
+// context. This is intended for cross-request background work that should
+// only be cancelled when the application shuts down (appctx.Cancel()).
+//
+// Use GoBackground for goroutines that outlive any single request, such as
+// the pending-queue drainer or graph event consumers. For request-scoped
+// goroutines (e.g. WebSocket handlers), use Go with the request context.
+//
+// The panic recovery semantics are identical to Go: panics are recovered,
+// logged to stderr, and forwarded to the registered PanicHook (if any).
+func GoBackground(name string, fn func()) {
+	Go(appctx.Ctx(), name, fn)
 }

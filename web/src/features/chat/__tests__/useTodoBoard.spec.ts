@@ -1,6 +1,7 @@
 import { computed } from 'vue';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { useTodoBoard } from '../composables/useTodoBoard';
+import { clearToolEventCache } from '../envelopeToolCall';
 import type { Message } from '../../../domain/types';
 import type { ToolUseEvent } from '../types';
 
@@ -47,6 +48,13 @@ function makeTodoWriteResult(todos: Array<{ content: string; status: string; id?
 }
 
 describe('useTodoBoard', () => {
+  // P2-F1: toolEventFromMessage caches parsed results by message.id. Tests
+  // reuse id 'msg-1' with different options_json payloads, so the cache must
+  // be reset between cases to avoid stale null entries polluting later tests.
+  beforeEach(() => {
+    clearToolEventCache();
+  });
+
   it('returns null when no messages', () => {
     const msgs = computed(() => []);
     const { todoBoardState } = useTodoBoard(msgs);

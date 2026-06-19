@@ -312,6 +312,13 @@ type SessionTurnUpdateFields struct {
 	MetadataJSON        *string
 }
 
+// AgentUserKey is a distinct (agent_id, user_id) pair derived from session
+// activity. Used by the Sleep-time worker to enumerate consolidation targets.
+type AgentUserKey struct {
+	AgentID string
+	UserID  string
+}
+
 // Stability:stable
 type SessionReader interface {
 	SearchSessions(ctx context.Context, q SessionSearchQuery) (SessionListResult, error)
@@ -319,6 +326,13 @@ type SessionReader interface {
 	GetSessionRevision(ctx context.Context, sessionID string) (int64, error)
 	ListSessionsForBatch(ctx context.Context, q SessionSearchQuery) ([]Session, error)
 	ListSessionsByIDs(ctx context.Context, ids []string) ([]Session, error)
+	// ListActiveAgentUserKeys returns distinct (agent_id, user_id) pairs for
+	// sessions that had activity (last_message_at or last_run_at) within the
+	// given lookback window. Only non-archived, non-deleted sessions with a
+	// non-empty agent_id and user_id are considered. Used by the Sleep-time
+	// worker to derive consolidation targets from real session activity
+	// instead of env-var configuration.
+	ListActiveAgentUserKeys(ctx context.Context, lookbackDays int) ([]AgentUserKey, error)
 }
 
 // Stability:stable

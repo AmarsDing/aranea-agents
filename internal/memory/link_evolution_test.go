@@ -158,6 +158,41 @@ func (f *fakeEvolutionQueue) jobCount() int {
 	return len(f.jobs)
 }
 
+// fakeTxProvider implements TxProvider for testing. By default it executes fn
+// directly (no real transaction). The execHook can be set to customise
+// behaviour (e.g. simulate rollback, capture ctx). callCount tracks how many
+// times ExecInTx was invoked.
+type fakeTxProvider struct {
+	mu        sync.Mutex
+	callCount int
+	execHook  func(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
+func newFakeTxProvider() *fakeTxProvider {
+	return &fakeTxProvider{
+		execHook: func(ctx context.Context, fn func(ctx context.Context) error) error {
+			return fn(ctx)
+		},
+	}
+}
+
+func (f *fakeTxProvider) ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	f.mu.Lock()
+	f.callCount++
+	hook := f.execHook
+	f.mu.Unlock()
+	if hook == nil {
+		return fn(ctx)
+	}
+	return hook(ctx, fn)
+}
+
+func (f *fakeTxProvider) calls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.callCount
+}
+
 // --- Helpers ---
 
 // buildFactRowJSON builds a raw JSON fact row for testing, matching the
@@ -230,7 +265,7 @@ func TestLinkEvolution_EvolveLinks_Success(t *testing.T) {
 	llmResp := buildLLMResponse(`{"keywords":["go","programming"],"links":[{"target_id":"mem-old-1","reason":"both about Go"}]}`)
 	llm := &fakeModel{response: llmResp}
 
-	svc := NewLinkEvolutionService(llm, reader, writer, nil, loggateway.NewNoop())
+	svc := NewLinkEvolutionService(llm, reader, writer, nil, newFakeTxProvider(), loggateway.NewNoop())
 	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
 	newEntry := makeEvolutionEntry("mem-new-1", "User is learning Go")
 
@@ -268,7 +303,7 @@ func TestLinkEvolution_EvolveLinks_LLMFailure(t *testing.T) {
 	writer := newFakeFactWriter()
 	llm := &fakeModel{err: errors.New("LLM service unavailable")}
 
-	svc := NewLinkEvolutionService(llm, reader, writer, nil, loggateway.NewNoop())
+	svc := NewLinkEvolutionService(llm, reader, writer, nil, newFakeTxProvider(), loggateway.NewNoop())
 	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
 	newEntry := makeEvolutionEntry("mem-new-1", "User is learning Go")
 
@@ -295,7 +330,7 @@ func TestLinkEvolution_EvolveLinks_NilLLM(t *testing.T) {
 	}
 	writer := newFakeFactWriter()
 
-	svc := NewLinkEvolutionService(nil, reader, writer, nil, loggateway.NewNoop())
+	svc := NewLinkEvolutionService(nil, reader, writer, nil, nil, loggateway.NewNoop())
 	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
 	newEntry := makeEvolutionEntry("mem-new-1", "User is learning Go")
 
@@ -315,7 +350,7 @@ func TestLinkEvolution_EvolveLinks_NilEntry(t *testing.T) {
 	writer := newFakeFactWriter()
 	llm := &fakeModel{err: errors.New("LLM should not be called")}
 
-	svc := NewLinkEvolutionService(llm, reader, writer, nil, loggateway.NewNoop())
+	svc := NewLinkEvolutionService(llm, reader, writer, nil, newFakeTxProvider(), loggateway.NewNoop())
 	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
 
 	links, err := svc.EvolveLinks(context.Background(), uk, nil)
@@ -342,7 +377,7 @@ func TestLinkEvolution_EvolveLinks_NoHistory(t *testing.T) {
 	writer := newFakeFactWriter()
 	llm := &fakeModel{err: errors.New("LLM should not be called when no history")}
 
-	svc := NewLinkEvolutionService(llm, reader, writer, nil, loggateway.NewNoop())
+	svc := NewLinkEvolutionService(llm, reader, writer, nil, newFakeTxProvider(), loggateway.NewNoop())
 	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
 	newEntry := makeEvolutionEntry("mem-new-1", "User is learning Go")
 
@@ -368,7 +403,7 @@ func TestLinkEvolution_EvolveLinks_MalformedJSON(t *testing.T) {
 	writer := newFakeFactWriter()
 	llm := &fakeModel{response: buildLLMResponse("not valid json")}
 
-	svc := NewLinkEvolutionService(llm, reader, writer, nil, loggateway.NewNoop())
+	svc := NewLinkEvolutionService(llm, reader, writer, nil, newFakeTxProvider(), loggateway.NewNoop())
 	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
 	newEntry := makeEvolutionEntry("mem-new-1", "User is learning Go")
 
@@ -401,7 +436,7 @@ func TestLinkEvolution_EnqueueEvolution(t *testing.T) {
 	llm := &fakeModel{response: llmResp}
 
 	q := newFakeEvolutionQueue()
-	svc := NewLinkEvolutionService(llm, reader, writer, q, loggateway.NewNoop())
+	svc := NewLinkEvolutionService(llm, reader, writer, q, newFakeTxProvider(), loggateway.NewNoop())
 
 	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
 	newEntry := makeEvolutionEntry("mem-new-1", "User is learning Go")
@@ -430,7 +465,7 @@ func TestLinkEvolution_EnqueueEvolution(t *testing.T) {
 // TestLinkEvolution_EnqueueEvolution_NilQueue verifies that a nil queue
 // does not panic.
 func TestLinkEvolution_EnqueueEvolution_NilQueue(t *testing.T) {
-	svc := NewLinkEvolutionService(nil, nil, nil, nil, loggateway.NewNoop())
+	svc := NewLinkEvolutionService(nil, nil, nil, nil, nil, loggateway.NewNoop())
 	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
 	newEntry := makeEvolutionEntry("mem-new-1", "User is learning Go")
 	if err := svc.EnqueueEvolution(context.Background(), uk, newEntry); err != nil {
@@ -454,7 +489,7 @@ func TestLinkEvolution_ConcurrentAccess(t *testing.T) {
 	llm := &fakeModel{response: llmResp}
 
 	q := newFakeEvolutionQueue()
-	svc := NewLinkEvolutionService(llm, reader, writer, q, loggateway.NewNoop())
+	svc := NewLinkEvolutionService(llm, reader, writer, q, newFakeTxProvider(), loggateway.NewNoop())
 
 	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
 	newEntry := makeEvolutionEntry("mem-new-1", "User is learning Go")
@@ -498,7 +533,7 @@ func TestLinkEvolution_EvolveLinks_PreservesExistingLinks(t *testing.T) {
 	llmResp := buildLLMResponse(`{"keywords":["go","learning"],"links":[{"target_id":"mem-old-1","reason":"both about Go"}]}`)
 	llm := &fakeModel{response: llmResp}
 
-	svc := NewLinkEvolutionService(llm, reader, writer, nil, loggateway.NewNoop())
+	svc := NewLinkEvolutionService(llm, reader, writer, nil, newFakeTxProvider(), loggateway.NewNoop())
 	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
 	newEntry := makeEvolutionEntry("mem-new-1", "User is learning Go")
 
@@ -528,6 +563,115 @@ func TestLinkEvolution_EvolveLinks_PreservesExistingLinks(t *testing.T) {
 	keywordsArr := decodeStringArray(upserted.KeywordsJSON)
 	if !containsString(keywordsArr, "programming") {
 		t.Errorf("expected existing keyword programming to be preserved, got %v", keywordsArr)
+	}
+}
+
+// TestLinkEvolution_EvolveLinks_TxWrapped verifies that when a TxProvider is
+// wired, EvolveLinks wraps the backlink batch in a single transaction.
+func TestLinkEvolution_EvolveLinks_TxWrapped(t *testing.T) {
+	reader := newFakeFactReader()
+	reader.rowsByUser["user-1"] = [][]byte{
+		buildFactRowJSON("mem-old-1", "User likes Go"),
+	}
+	reader.rowsByID["mem-new-1"] = [][]byte{
+		buildFactRowJSON("mem-new-1", "User is learning Go"),
+	}
+	writer := newFakeFactWriter()
+	llmResp := buildLLMResponse(`{"keywords":["go"],"links":[{"target_id":"mem-old-1","reason":"related"}]}`)
+	llm := &fakeModel{response: llmResp}
+
+	tx := newFakeTxProvider()
+	svc := NewLinkEvolutionService(llm, reader, writer, nil, tx, loggateway.NewNoop())
+	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
+	newEntry := makeEvolutionEntry("mem-new-1", "User is learning Go")
+
+	links, err := svc.EvolveLinks(context.Background(), uk, newEntry)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if len(links) != 1 || links[0] != "mem-old-1" {
+		t.Fatalf("expected links [mem-old-1], got %v", links)
+	}
+	if got := tx.calls(); got != 1 {
+		t.Errorf("expected tx.ExecInTx to be called once, got %d", got)
+	}
+}
+
+// TestLinkEvolution_EvolveLinks_TxRollbackOnFailure verifies that when a
+// backlink update fails inside the transaction, EvolveLinks returns empty
+// links (best-effort) and the transaction is rolled back (simulated by
+// clearing the fake writer's upserts).
+func TestLinkEvolution_EvolveLinks_TxRollbackOnFailure(t *testing.T) {
+	reader := newFakeFactReader()
+	reader.rowsByUser["user-1"] = [][]byte{
+		buildFactRowJSON("mem-old-1", "User likes Go"),
+		buildFactRowJSON("mem-old-2", "User likes Rust"),
+	}
+	reader.rowsByID["mem-new-1"] = [][]byte{
+		buildFactRowJSON("mem-new-1", "User is learning Go"),
+	}
+	writer := newFakeFactWriter()
+	writer.upsertErr = errors.New("simulated DB failure")
+	llmResp := buildLLMResponse(`{"keywords":["go"],"links":[{"target_id":"mem-old-1","reason":"related"},{"target_id":"mem-old-2","reason":"related"}]}`)
+	llm := &fakeModel{response: llmResp}
+
+	tx := newFakeTxProvider()
+	tx.execHook = func(ctx context.Context, fn func(ctx context.Context) error) error {
+		err := fn(ctx)
+		if err != nil {
+			// Simulate rollback: clear any upserts applied before the failure.
+			writer.mu.Lock()
+			writer.upserts = nil
+			writer.upsertByID = make(map[string]biz.FactUpsert)
+			writer.mu.Unlock()
+		}
+		return err
+	}
+	svc := NewLinkEvolutionService(llm, reader, writer, nil, tx, loggateway.NewNoop())
+	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
+	newEntry := makeEvolutionEntry("mem-new-1", "User is learning Go")
+
+	links, err := svc.EvolveLinks(context.Background(), uk, newEntry)
+	if err != nil {
+		t.Fatalf("expected nil error (best-effort), got %v", err)
+	}
+	if len(links) != 0 {
+		t.Fatalf("expected empty links on tx rollback, got %v", links)
+	}
+	if got := tx.calls(); got != 1 {
+		t.Errorf("expected tx.ExecInTx to be called once, got %d", got)
+	}
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	if len(writer.upserts) != 0 {
+		t.Errorf("expected no upserts after rollback, got %d", len(writer.upserts))
+	}
+}
+
+// TestLinkEvolution_EvolveLinks_NilTx verifies that when tx is nil, EvolveLinks
+// falls back to non-atomic best-effort updates (no panic).
+func TestLinkEvolution_EvolveLinks_NilTx(t *testing.T) {
+	reader := newFakeFactReader()
+	reader.rowsByUser["user-1"] = [][]byte{
+		buildFactRowJSON("mem-old-1", "User likes Go"),
+	}
+	reader.rowsByID["mem-new-1"] = [][]byte{
+		buildFactRowJSON("mem-new-1", "User is learning Go"),
+	}
+	writer := newFakeFactWriter()
+	llmResp := buildLLMResponse(`{"keywords":["go"],"links":[{"target_id":"mem-old-1","reason":"related"}]}`)
+	llm := &fakeModel{response: llmResp}
+
+	svc := NewLinkEvolutionService(llm, reader, writer, nil, nil, loggateway.NewNoop())
+	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
+	newEntry := makeEvolutionEntry("mem-new-1", "User is learning Go")
+
+	links, err := svc.EvolveLinks(context.Background(), uk, newEntry)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if len(links) != 1 {
+		t.Fatalf("expected 1 link with nil tx, got %d", len(links))
 	}
 }
 
