@@ -1203,6 +1203,11 @@ func (p *ActivityProjector) buildActivityEnvelope(a *biz.Activity, envType contr
 		"timestamp":          a.Timestamp.UTC().Format(time.RFC3339Nano),
 		"duration_ms":        a.DurationMs,
 		"collapsed":          a.Collapsed,
+		// AF-correlation: 前端 useConversationTimeline 通过 turn_id 将 Activity 记录关联到
+		// UserTurn；handleActivityStart 从 metadata 读取 turn_id/session_id。缺失会导致
+		// Activity 记录被 if (!tid) continue 跳过，思考和回复 UI 不显示。
+		"turn_id":    a.TurnID,
+		"session_id": a.SessionID,
 	}
 
 	// Content fields

@@ -29,4 +29,20 @@ const (
 	// the main LLM call. Typically 0.5-3s. Surfaced so the frontend can
 	// show "正在理解意图" during this phase.
 	StepIDChatIntentPass = "chat.intent.pass"
+
+	// StepIDChatProactiveRecall — proactive memory recall that runs before
+	// BUILD to surface relevant memories based on the conversation context
+	// (P3-11). Typically 0.1-2s. Surfaced so the frontend can show
+	// "正在检索相关记忆" instead of a black screen between message send
+	// and the BUILD phase. Only emits start/done when the recaller is
+	// actually wired (no-op early returns stay silent).
+	StepIDChatProactiveRecall = "chat.proactive_recall"
+
+	// StepIDChatPrePlanningGate — the hard-gate planning path that runs
+	// after Intent Pass when the pre-planning gate decides ForcePlanning.
+	// The Service layer directly invokes TaskPlanner.Plan() to create and
+	// persist a plan. Surfaced so the frontend can show "正在创建任务规划"
+	// during this potentially multi-second step. Only emits start/done
+	// when ForcePlanning=true (the common soft-gate path stays silent).
+	StepIDChatPrePlanningGate = "chat.pre_planning_gate"
 )

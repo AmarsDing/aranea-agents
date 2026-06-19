@@ -19,7 +19,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import type { RunStatusValue } from '../../features/chat/types';
 import { presentRunStatus, toneToQuasarColor } from '../../domain/conversationPresentation';
 
@@ -44,11 +44,50 @@ const badgeColor = computed(() => toneToQuasarColor(presentation.value.tone));
 
 const statusLabel = computed(() => presentation.value.label);
 
+// ── Reactive elapsed timer ──
+// Without this, elapsedLabel uses Date.now() in a computed, which is NOT
+// reactive — the displayed "12s" never ticks up, making the user think the
+// system is frozen even though run_heartbeat events are arriving every 10s.
+// The timer is started/stopped on visible change to avoid wasting CPU when
+// the status bar is hidden.
+const now = ref(Date.now());
+let elapsedTimer: ReturnType<typeof setInterval> | null = null;
+
+function startElapsedTimer() {
+  stopElapsedTimer();
+  elapsedTimer = setInterval(() => {
+    now.value = Date.now();
+  }, 1000);
+}
+
+function stopElapsedTimer() {
+  if (elapsedTimer !== null) {
+    clearInterval(elapsedTimer);
+    elapsedTimer = null;
+  }
+}
+
+watch(
+  visible,
+  (isVisible) => {
+    if (isVisible) {
+      startElapsedTimer();
+    } else {
+      stopElapsedTimer();
+    }
+  },
+  { immediate: true },
+);
+
+onUnmounted(() => {
+  stopElapsedTimer();
+});
+
 const elapsedLabel = computed(() => {
   if (!props.startedAt) return '';
   const start = Date.parse(props.startedAt);
   if (Number.isNaN(start)) return '';
-  const sec = Math.max(0, Math.floor((Date.now() - start) / 1000));
+  const sec = Math.max(0, Math.floor((now.value - start) / 1000));
   if (sec < 60) return `${sec}s`;
   return `${Math.floor(sec / 60)}m ${sec % 60}s`;
 });

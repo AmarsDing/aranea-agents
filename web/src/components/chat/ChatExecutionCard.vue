@@ -13,9 +13,12 @@
   >
     <template #header>
       <div class="row items-center no-wrap full-width q-gutter-xs">
-        <q-avatar v-if="agentInitials" :color="agentAvatarColor" text-color="white" size="24px" class="chat-execution-card__avatar">
-          <span class="text-xs text-weight-medium">{{ agentInitials }}</span>
-        </q-avatar>
+        <agent-avatar-q
+          v-if="agentInitials"
+          :icon="agentIcon"
+          size="24px"
+          avatar-class="chat-execution-card__avatar"
+        />
         <q-icon v-else :name="activityIcon" :color="statusIconColor" size="20px" />
         <div class="col ellipsis">
           <div class="text-weight-medium ellipsis">{{ title }}</div>
@@ -109,6 +112,8 @@ import type { ToolUseEvent, FileEditResult } from '../../features/chat/types';
 import { EXECUTION_COLLAPSE_CONTROL_KEY, generateSummaryFallback } from '../../features/chat/executionCardHelpers';
 import { isFileEditTool, extractDiffHunks, extractFileName } from '../../features/chat/diffEditHelpers';
 import ChatDiffViewer from './ChatDiffViewer.vue';
+import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
+import { useAppStore } from '../../stores/app';
 
 const props = withDefaults(
   defineProps<{
@@ -266,19 +271,13 @@ const agentInitials = computed(() => {
   if (!name) return '';
   return name.charAt(0);
 });
-const agentAvatarColor = computed(() => {
-  const key = props.event.agent_key || props.event.agent_name || '';
-  const colors = [
-    'var(--agent-palette-0)',
-    'var(--agent-palette-1)',
-    'var(--agent-palette-2)',
-    'var(--agent-palette-3)',
-    'var(--agent-palette-4)',
-    'var(--agent-palette-5)',
-  ];
-  let hash = 0;
-  for (let i = 0; i < key.length; i++) hash = key.charCodeAt(i) + ((hash << 5) - hash);
-  return colors[Math.abs(hash) % colors.length];
+// 从 appStore 按 agent_key 查询 agent 配置的 icon（Material 名 / URL / avatar_assets id），
+// 空值由 AgentAvatarQ 回退到 smart_toy 图标。
+const appStore = useAppStore();
+const agentIcon = computed(() => {
+  const key = props.event.agent_key?.trim();
+  if (!key) return '';
+  return appStore.agents.find((a) => a.agent_key === key)?.icon ?? '';
 });
 const summaryText = computed(() => props.event.summary?.trim() || generateSummaryFallback(props.event));
 const memberLabel = computed(() => {

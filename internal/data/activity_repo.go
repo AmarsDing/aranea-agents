@@ -9,6 +9,8 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/activity"
 	"aranea-agents/pkg/loggateway"
+
+	"entgo.io/ent/dialect/sql"
 )
 
 type activityRepo struct {
@@ -137,15 +139,56 @@ func (r *activityRepo) UpsertActivity(ctx context.Context, a biz.Activity) (biz.
 	if r == nil || r.data == nil {
 		return biz.Activity{}, fmt.Errorf("activity repo: database not configured")
 	}
-	// Try create first; on constraint error (duplicate ID), fall back to update.
-	created, err := r.CreateActivity(ctx, a)
-	if err == nil {
-		return created, nil
+	// Atomic upsert via ON CONFLICT (id) DO UPDATE. Avoids the "Create → ConstraintError
+	// → fallback Update" race that previously produced noise-level
+	// `agent.activity_sequencer.persist` warn logs on every ActivityDone (same
+	// activity_id is re-inserted to mark the activity complete). Ent's
+	// ResolveWithNewValues() updates only the columns actually SET in this call,
+	// preserving immutable fields (id, kind, session_id, turn_id, parent_activity_id,
+	// timestamp, agent_key, agent_name, child_board_id, spirit_session_id, team_id,
+	// dag_node_id) from the initial insert.
+	now := a.Timestamp.UTC().Format(time.RFC3339Nano)
+	b := r.data.RW().Write(ctx).Activity.Create().
+		SetID(a.ID).
+		SetKind(string(a.Kind)).
+		SetStatus(string(a.Status)).
+		SetSessionID(a.SessionID).
+		SetTurnID(a.TurnID).
+		SetParentActivityID(a.ParentActivityID).
+		SetTimestamp(now).
+		SetDurationMs(a.DurationMs).
+		SetPromptTokens(a.PromptTokens).
+		SetCompletionTokens(a.CompletionTokens).
+		SetContent(a.Content).
+		SetReasoning(a.Reasoning).
+		SetToolName(a.ToolName).
+		SetToolCallID(a.ToolCallID).
+		SetToolArguments(a.ToolArguments).
+		SetToolResult(a.ToolResult).
+		SetToolDurationMs(a.ToolDurationMs).
+		SetToolErrorCode(a.ToolErrorCode).
+		SetChildBoardID(a.ChildBoardID).
+		SetSpiritSessionID(a.SpiritSessionID).
+		SetTeamID(a.TeamID).
+		SetDagNodeID(a.DagNodeID).
+		SetAgentKey(a.AgentKey).
+		SetAgentName(a.AgentName).
+		SetCollapsed(a.Collapsed).
+		SetLabel(a.Label)
+	if len(a.DependsOn) > 0 {
+		b.SetDependsOn(a.DependsOn)
 	}
-	if ent.IsConstraintError(err) {
-		return r.UpdateActivity(ctx, a)
+	if err := b.OnConflict(
+		sql.ConflictColumns(activity.FieldID),
+		sql.ResolveWithNewValues(),
+	).Exec(ctx); err != nil {
+		return biz.Activity{}, entErrToBizErr(err, "ACTIVITY")
 	}
-	return biz.Activity{}, entErrToBizErr(err, "ACTIVITY")
+	row, err := r.data.RW().Read(ctx).Activity.Get(ctx, a.ID)
+	if err != nil {
+		return biz.Activity{}, entErrToBizErr(err, "ACTIVITY")
+	}
+	return entActivityToBiz(row), nil
 }
 
 func entActivityToBiz(row *ent.Activity) biz.Activity {

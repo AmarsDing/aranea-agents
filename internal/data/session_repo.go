@@ -601,16 +601,21 @@ func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sess
 	if contextWindow > 0 && promptTokens > 0 {
 		ratio = llmcontext.ContextRatio(promptTokens, contextWindow)
 	}
+	d := r.data.Dialect()
 	now := nowRFC3339()
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		r.data.Dialect().RenumberPlaceholders(`UPDATE sessions
+	// PG requires GREATEST() for scalar 2-arg max; SQLite supports multi-arg MAX.
+	// `?` will be renumbered to $N by RenumberPlaceholders.
+	maxRatioExpr := d.Greatest("max_context_used_ratio", "?")
+	sql := `UPDATE sessions
 		 SET context_used_ratio = ?,
-		     max_context_used_ratio = MAX(max_context_used_ratio, ?),
+		     max_context_used_ratio = ` + maxRatioExpr + `,
 		     context_status = ?,
 		     context_used_tokens = CASE WHEN ? > 0 THEN ? ELSE context_used_tokens END,
 		     last_context_window_tokens = CASE WHEN ? > 0 THEN ? ELSE last_context_window_tokens END,
 		     updated_at = ?
-		 WHERE id = ? AND deleted_at = ''`),
+		 WHERE id = ? AND deleted_at = ''`
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		d.RenumberPlaceholders(sql),
 		ratio, ratio, llmcontext.ContextStatusForRatio(ratio),
 		promptTokens, promptTokens,
 		contextWindow, contextWindow,

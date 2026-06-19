@@ -26,6 +26,7 @@ import { agentColorFromKey, ROOT_AGENT_KEY } from '../agentTreeTypes';
 import { activityToStreamEvent } from './useActivityTimeline';
 import { isTeamMemberOrigin, ensureOrigin } from '../messageOrigin';
 import { mergeProgressEvents } from '../executionProgress';
+import { useAppStore } from '../../../stores/app';
 
 // ── UserTurn (internal) ──
 
@@ -35,6 +36,17 @@ interface UserTurn {
 }
 
 // ── Helpers ──
+
+/** 从 appStore.agents 按 agent_key 查询 agent.icon，用于补全 Activity 重建消息缺失的 icon。 */
+function resolveAgentIconFromStore(agentKey: string): string {
+  const key = agentKey?.trim();
+  if (!key || key === ROOT_AGENT_KEY) return '';
+  try {
+    return useAppStore().agents.find((a) => a.agent_key === key)?.icon ?? '';
+  } catch {
+    return '';
+  }
+}
 
 /** Build sorted ProgressSection[] from execution_progress envelopes, clamping startedAt to turn start. */
 function buildProgressSections(
@@ -102,15 +114,15 @@ export function useConversationTimeline(deps: {
 
     const plannerKind = deps.plannerKind?.value ?? '';
 
-    // T7.3a: Activity-First is the only path. Pre-AF sessions are backfilled
-    // by T6.3 (activity_backfill_migrate.go); AF API failures show error
-    // prompts via AF-GAP-05. When no Activity data is available, return empty
-    // array (no Legacy fallback).
+    // T7.3a + 修复: Activity-First 是主路径，但不能因无 Activity 数据而完全隐藏用户消息。
+    // 修复场景：用户发送消息后，messageStore 已有 pending-user 占位消息，但 Activity 数据
+    // 尚未到达（WS 未连接/后端未处理）。原逻辑返回空数组导致 UI 完全无响应。
+    // 新逻辑：无 Activity 数据时仍构建 turn，agentWork.status 根据消息状态设为 'running'
+    // （显示"正在思考…"）或 'failed'（显示失败）。Pre-AF 会话由 T6.3 回填保证有 AF 数据；
+    // AF API 失败时由 AF-GAP-05 显示错误提示。
     const afActivities = deps.activityTimelineActivities?.value;
     const afTree = deps.activityTree?.value;
     const afRawRecords = deps.activityRawRecords?.value;
-    const hasActivityData = (afActivities && afActivities.length > 0) || (afRawRecords && afRawRecords.length > 0);
-    if (!hasActivityData) return [];
 
     return buildAllConversationTurnsFromActivities(allMessages, afRawRecords ?? [], afActivities ?? [], {
       agentKey: deps.activityAgentKey?.value || '',
@@ -160,13 +172,13 @@ function buildAllConversationTurnsFromActivities(
 
     const turnActivities = turnId ? activitiesByTurn.get(turnId) : undefined;
 
-    // T7.3a: Skip turns without Activity data (Legacy fallback removed).
-    // Pre-AF sessions are backfilled by T6.3; if a turn has no Activity data
-    // it is either still loading or the data was lost — either way, showing
-    // an empty turn would be misleading.
-    if (turnActivities && turnActivities.length > 0) {
-      result.push(buildSingleTurnFromActivities(turn, turnActivities, opts));
-    }
+    // 修复：即使没有 Activity 数据，也构建 turn（显示用户消息 + 等待指示器/失败状态）。
+    // 这解决了"用户发送消息后 UI 无响应"的问题：
+    // - 用户发送消息后，messageStore 有 pending-user 占位消息，但 Activity 数据尚未到达
+    // - 原逻辑跳过无 Activity 数据的 turn，导致 UI 显示为空
+    // - 新逻辑构建 turn，agentWork.status 根据消息状态设置为 'running' 或 'failed'
+    // Pre-AF 会话由 T6.3 回填保证有 AF 数据；AF API 失败由 AF-GAP-05 显示错误提示。
+    result.push(buildSingleTurnFromActivities(turn, turnActivities ?? [], opts));
   }
 
   return result;
@@ -193,9 +205,11 @@ function buildSingleTurnFromActivities(
   const rootTask = rawRecords.find((r) => r.kind === 'task');
   const agentKey = rootTask?.agentKey || opts.agentKey || firstAssistant?.agent_ref?.agent_key || ROOT_AGENT_KEY;
   const agentName = rootTask?.agentName || firstAssistant?.agent_ref?.name || '精灵助手';
-  // 优先使用 agent 配置的 icon（Material 名 / URL / avatar_assets id），
-  // 空值由 AgentAvatarQ 回退到 smart_toy 图标，与 AgentCard 保持一致。
-  const agentIcon = firstAssistant?.agent_ref?.icon || '';
+  // 优先使用 message options_json 中的 agent.icon（后端 AssistantOptionsJSON 写入）；
+  // 为空时回退到 appStore.agents 按 agent_key 查询（覆盖 Activity 重建消息 icon 缺失的场景）；
+  // 仍为空时由 AgentAvatarQ 回退到 smart_toy 图标，与 AgentCard 保持一致。
+  const refIcon = firstAssistant?.agent_ref?.icon || '';
+  const agentIcon = refIcon || resolveAgentIconFromStore(agentKey);
 
   // Determine status from activities
   const hasRunning = rawRecords.some((a) => a.status === 'running' || a.status === 'tool_running' || a.status === 'tool_blocked');
@@ -210,6 +224,12 @@ function buildSingleTurnFromActivities(
     status = 'running';
   } else if (hasError || (hasFailedAction && !hasResult)) {
     status = 'failed';
+  } else if (rawRecords.length === 0) {
+    // 修复：无 Activity 数据时，根据用户消息状态决定 agentWork.status
+    // - pending-user 占位消息（status='ok'）→ 'running'（显示"正在思考…"等待指示器）
+    // - 失败消息（status='failed'）→ 'failed'（显示失败状态）
+    // 这确保用户发送消息后能立即看到 UI 反馈，而不是空白
+    status = userMessage?.status === 'failed' ? 'failed' : 'running';
   } else {
     status = 'completed';
   }
@@ -238,7 +258,7 @@ function buildSingleTurnFromActivities(
     teamStatus: null,
     progressSections,
     startedAt: userMessage?.created_at || firstAssistant?.created_at || '',
-    finishedAt: !hasRunning ? lastMsg?.created_at || '' : null,
+    finishedAt: status !== 'running' ? (lastMsg?.created_at || '') : null,
   };
 
   return {

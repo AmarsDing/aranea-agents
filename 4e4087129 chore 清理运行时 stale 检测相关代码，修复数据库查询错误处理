@@ -1,0 +1,10 @@
+[33m4e4087129[m[33m ([m[1;36mHEAD -> [m[1;32mdev[m[33m)[m chore: 清理运行时 stale 检测相关代码，修复数据库查询错误处理
+[33m104fa3b01[m feat: 完成Postgres全链路迁移与无超时架构重构
+[33m687bb09f7[m chore: 完成多批次功能迭代与基建优化
+[33mce4ce6941[m feat: 完成多组核心功能迭代与架构优化
+[33m750b50791[m feat: 新增预规划门控与意图传递默认值优化
+[33m99bd5c411[m refactor: 移除escalating阶段，统一为durable阶段
+[33m574e9e6f0[m feat: 完成多组功能迭代与优化
+[33mb5f079fdc[m feat: 引入 Activity-First 架构，重构聊天流程
+[33m47f09d5d2[m feat: 完成Activity-First重构第一阶段优化
+[33ma818aac43[m refactor: 拆分会话业务逻辑为子用例，完善状态机与数据库约束

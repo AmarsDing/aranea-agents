@@ -31,10 +31,16 @@ func (d Dialect) String() string { return string(d) }
 
 // JSONExtract returns a SQL expression that extracts a JSON object key as text.
 // SQLite: json_extract(col, '$.key')
-// Postgres: col ->> 'key'
+// Postgres: CAST(col AS JSONB) ->> 'key'
+//
+// The CAST is required because monitor_events.metadata_json / monitor_traces.metadata_json
+// are defined as TEXT for cross-dialect compatibility (SQLite has no JSONB type),
+// but PostgreSQL's `->>` operator only works on JSON/JSONB values, not TEXT.
+// COALESCE(NULLIF(col, ”)::jsonb, '{}'::jsonb) guards against empty strings
+// (defensive — default is '{}' and writes are JSON, but legacy rows may differ).
 func (d Dialect) JSONExtract(col, key string) string {
 	if d.IsPostgres() {
-		return fmt.Sprintf("%s ->> '%s'", col, key)
+		return fmt.Sprintf("COALESCE(NULLIF(%s, '')::jsonb, '{}'::jsonb) ->> '%s'", col, key)
 	}
 	return fmt.Sprintf("json_extract(%s, '$.%s')", col, key)
 }

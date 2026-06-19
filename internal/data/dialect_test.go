@@ -39,7 +39,7 @@ func TestDialect_JSONExtract(t *testing.T) {
 		want    string
 	}{
 		{DialectSQLite, "metadata", "session_id", "json_extract(metadata, '$.session_id')"},
-		{DialectPostgres, "metadata", "session_id", "metadata ->> 'session_id'"},
+		{DialectPostgres, "metadata", "session_id", "COALESCE(NULLIF(metadata, '')::jsonb, '{}'::jsonb) ->> 'session_id'"},
 	}
 	for _, tt := range tests {
 		got := tt.dialect.JSONExtract(tt.col, tt.key)

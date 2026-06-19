@@ -311,7 +311,7 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 		ap.Reset() // initialize maps; subsequent Reset() in newTurnStreamConsumer is a no-op
 		earlyMeta := chatagent.ProjectMeta{
 			SessionID:        sessionID,
-			RequestID:        sessionID,
+			RequestID:        userMsg.ID,
 			InvocationID:     admit.runID,
 			RunID:            admit.runID,
 			TraceID:          emitter.TraceID(),
@@ -586,7 +586,7 @@ func (o *ChatOrchestrator) consumeTurnStream(
 
 	contextWin := o.resolveContextWindowTokens(runCtx, sess, ag, prov, mod)
 	projectMeta := chatagent.ProjectMeta{
-		SessionID: sessionID, RequestID: sessionID,
+		SessionID: sessionID, RequestID: event.TurnIDFromContext(runCtx),
 		InvocationID: runID, RunID: runID,
 		TraceID: emitter.TraceID(), AgentID: ag.ID,
 		AgentDisplayName: ag.DisplayName, ContextWindow: contextWin,

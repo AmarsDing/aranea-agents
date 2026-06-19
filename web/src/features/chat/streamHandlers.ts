@@ -223,6 +223,28 @@ export function bindStreamHandlers(
     }
   }
 
+  /** AF-correlation: 用后端 Activity 的 turn_id 回填 pending-user 占位消息的 turn_id。
+   *
+   * pending-user 占位消息创建时 turn_id=''（见 useChatSender.createPlaceholderMessage），
+   * 而后端 Activity.TurnID = userMsg.ID（见 chat_orchestrator_durable.go:82,97）。
+   * useConversationTimeline 通过 turn_id 将 Activity 记录关联到 UserTurn：
+   *   turnId = userMessage?.turn_id || assistantMessage?.turn_id || ''
+   * 若 pending-user 的 turn_id 始终为空，则 turnActivities=undefined，agentWork.activities=[]，
+   * EventStream 的 v-if="agentWork.activities.length" 不渲染，思考和回复 UI 不显示。
+   *
+   * 此函数在 activity_start(kind=task) 到达时调用，用 md.turn_id 更新最新的 pending-user
+   * 占位消息，使其与 Activity 记录的 turnId 匹配，完成关联闭环。 */
+  function backfillPendingUserTurnId(sid: string, turnId: string) {
+    if (!turnId) return;
+    const msgs = ctx.getMessages(sid);
+    const pendingIdx = msgs.findIndex((m) => m.id.startsWith('pending-user-') && m.turn_id === '');
+    if (pendingIdx < 0) return;
+    writer?.flushSync();
+    const updated = [...msgs];
+    updated[pendingIdx] = { ...updated[pendingIdx], turn_id: turnId };
+    ctx.setMessages(sid, updated);
+  }
+
   // H-03: Stream timeout protection. If runner_completion never arrives
   // (e.g., WS disconnect), force-finalize all streaming/tool_running messages
   // after the timeout expires. The timer starts on the first streaming event
@@ -423,6 +445,11 @@ export function bindStreamHandlers(
       // Remove the placeholder message created on run_status=running.
       // The real streaming message will be created by the Activity handlers below.
       removeThinkingPlaceholder(sid);
+
+      // AF-correlation: 用 md.turn_id 回填 pending-user 占位消息的 turn_id，
+      // 使 useConversationTimeline 能将后续 Activity 记录关联到此 UserTurn。
+      const turnId = typeof md.turn_id === 'string' ? md.turn_id : '';
+      backfillPendingUserTurnId(sid, turnId);
     }
 
     const rawActivityId = String(md.activity_id ?? '');
