@@ -449,6 +449,19 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	defer func() {
 		if turnStatus != "ok" {
 			rollbackRunnerSession()
+			// Ensure frontend runStatus is reset to "failed" on EXECUTE/PERSIST
+			// errors (e.g. turn timeout). BUILD-phase errors already publish
+			// run_status=failed above (line ~386). Without this, the frontend
+			// runStatus stays "running" → isActiveRun() returns true → new
+			// messages go through enqueueDuringRun instead of direct send →
+			// input box never clears (root cause of "no response after send").
+			// Use context.Background() because ctx may be cancelled (timeout).
+			failCtx := context.Background()
+			o.publishRunStatus(sessionID, runID, "failed", turnErrMsg)
+			o.transitionSessionStatus(failCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
+			if turnErr != nil {
+				o.publishTurnFailure(sessionID, runID, "chat-service", turnErr, "")
+			}
 		}
 		o.runs.Finish(sessionID)
 		runner.Close()

@@ -38,7 +38,13 @@ func uniqueToolID(prefix string) string {
 	return fmt.Sprintf("%s_%d_%d", prefix, time.Now().UTC().UnixNano(), toolIDCtr.Add(1))
 }
 
-func toolSelectSQL() string {
+func toolSelectSQL(d Dialect) string {
+	// d.Greatest emits GREATEST on Postgres (MAX is aggregate-only) and MAX on
+	// SQLite (multi-argument MAX is a scalar function). Using GREATEST
+	// unconditionally breaks SQLite drivers that don't support it (e.g.
+	// glebarez/go-sqlite), and using MAX unconditionally breaks Postgres
+	// (error 42883: function max(integer, integer) does not exist).
+	topN := d.Greatest("1", "CAST(total_cnt * 0.05 AS INTEGER)")
 	return `
 		SELECT t.id, t.tool_key, t.display_name, t.description, t.category, t.source, t.risk_level,
 		       t.enabled, t.readonly, t.requires_confirmation, t.supports_streaming, t.supports_concurrency,
@@ -70,7 +76,7 @@ func toolSelectSQL() string {
 					       COUNT(1) OVER (PARTITION BY tool_key) AS total_cnt
 					FROM tool_invocations
 				)
-				WHERE rn <= MAX(1, CAST(total_cnt * 0.05 AS INTEGER))
+				WHERE rn <= ` + topN + `
 				GROUP BY tool_key
 			) top5 ON top5.tool_key = ti95.tool_key AND ti95.duration_ms >= top5.threshold_ms
 			GROUP BY ti95.tool_key
@@ -203,7 +209,7 @@ func (r *toolRepo) SearchTools(ctx context.Context, q biz.ToolListQuery) (biz.To
 	case "avg_duration_ms":
 		orderBy = "stats.avg_duration_ms DESC NULLS LAST, t.display_name ASC"
 	}
-	rows, err := client.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(toolSelectSQL()+` WHERE `+where+` ORDER BY `+orderBy+` LIMIT ? OFFSET ?`), listArgs...)
+	rows, err := client.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(toolSelectSQL(r.data.Dialect())+` WHERE `+where+` ORDER BY `+orderBy+` LIMIT ? OFFSET ?`), listArgs...)
 	if err != nil {
 		r.data.lg.Warn("tool search list query failed", loggateway.StepID("data.tool.search"), loggateway.Err(err))
 		return biz.ToolListResult{}, entErrToBizErr(err, "TOOL")
@@ -228,7 +234,7 @@ func (r *toolRepo) GetTool(ctx context.Context, idOrKey string) (biz.Tool, error
 		return biz.Tool{}, apierror.Internal("TOOL", "ent client unavailable")
 	}
 	cutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
-	rows, err := client.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(toolSelectSQL()+` WHERE (t.id = ? OR t.tool_key = ?) AND t.deleted_at = '' LIMIT 1`), cutoff, idOrKey, idOrKey)
+	rows, err := client.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(toolSelectSQL(r.data.Dialect())+` WHERE (t.id = ? OR t.tool_key = ?) AND t.deleted_at = '' LIMIT 1`), cutoff, idOrKey, idOrKey)
 	if err != nil {
 		return biz.Tool{}, entErrToBizErr(err, "TOOL")
 	}

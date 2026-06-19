@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 )
 
 // defaultChannelBufferSize is the per-activity channel buffer size.
@@ -95,7 +96,12 @@ func (s *activityEventSequencer) publish(ctx context.Context, activityID string,
 		ch = make(chan publishTask, defaultChannelBufferSize)
 		s.channels[activityID] = ch
 		s.wg.Add(1)
-		go s.consume(activityID, ch)
+		// safego.GoBackground (red line #13): consumer goroutines are
+		// process-level (outlive any single request), exit via s.done
+		// channel on Close. safego provides panic recovery + PanicHook.
+		safego.GoBackground("activity_event_sequencer.consume", func() {
+			s.consume(activityID, ch)
+		})
 	}
 	s.mu.Unlock()
 

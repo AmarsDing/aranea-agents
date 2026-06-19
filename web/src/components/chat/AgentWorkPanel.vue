@@ -2,12 +2,11 @@
   <div class="agent-work-panel">
     <!-- Agent header -->
     <div class="agent-work-panel__header">
-      <div
-        class="agent-work-panel__avatar"
-        :style="{ background: agentWork.agentColor }"
-      >
-        {{ agentWork.agentIcon }}
-      </div>
+      <agent-avatar-q
+        :icon="agentWork.agentIcon"
+        size="24px"
+        avatar-class="agent-work-panel__avatar"
+      />
       <span class="agent-work-panel__name" :style="{ color: agentWork.agentColor }">
         {{ agentWork.agentName }}
       </span>
@@ -67,6 +66,7 @@ import { formatDuration } from '../../features/chat/agentTreeUtils';
 import type { ErrorEvent } from '../../features/chat/streamEventTypes';
 import EventStream from './EventStream.vue';
 import TeamPanel from './TeamPanel.vue';
+import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
 
 const { t } = useI18n();
 
@@ -130,14 +130,6 @@ function progressClass(ps: ProgressSection): Record<string, boolean> {
     margin-bottom: 8px
 
   &__avatar
-    width: 24px
-    height: 24px
-    border-radius: 50%
-    display: flex
-    align-items: center
-    justify-content: center
-    font-size: 12px
-    color: var(--color-on-accent)
     flex-shrink: 0
 
   &__name

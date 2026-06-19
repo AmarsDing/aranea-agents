@@ -193,7 +193,9 @@ function buildSingleTurnFromActivities(
   const rootTask = rawRecords.find((r) => r.kind === 'task');
   const agentKey = rootTask?.agentKey || opts.agentKey || firstAssistant?.agent_ref?.agent_key || ROOT_AGENT_KEY;
   const agentName = rootTask?.agentName || firstAssistant?.agent_ref?.name || '精灵助手';
-  const agentIcon = rootTask?.agentName?.charAt(0) || firstAssistant?.agent_ref?.icon || '精';
+  // 优先使用 agent 配置的 icon（Material 名 / URL / avatar_assets id），
+  // 空值由 AgentAvatarQ 回退到 smart_toy 图标，与 AgentCard 保持一致。
+  const agentIcon = firstAssistant?.agent_ref?.icon || '';
 
   // Determine status from activities
   const hasRunning = rawRecords.some((a) => a.status === 'running' || a.status === 'tool_running' || a.status === 'tool_blocked');

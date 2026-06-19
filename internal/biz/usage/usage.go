@@ -13,6 +13,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"aranea-agents/pkg/apierror"
+
 	"github.com/google/uuid"
 
 	"aranea-agents/internal/biz/shared"
@@ -41,7 +42,7 @@ const floatCompareEpsilon = 1e-9
 
 // Usage query and operational constants.
 const (
-	defaultQueryRangeDays   = 30 // default date range for usage queries
+	defaultQueryRangeDays  = 30 // default date range for usage queries
 	anomalyQueryLimit      = 12 // max anomaly events per overview query
 	usageRecordTimeoutSec  = 45 // timeout for recording usage events
 	usageLinkTimeoutSec    = 10 // timeout for linking runner completion usage
@@ -152,12 +153,12 @@ type TokenUsageEvent struct {
 	CacheWritePriceMicroUSDPer1K  int64
 	ReasoningPriceMicroUSDPer1K   int64
 	EmbeddingPriceMicroUSDPer1K   int64
-	InputPriceUSDPer1M             float64
-	OutputPriceUSDPer1M            float64
-	CacheReadPriceUSDPer1M         float64
-	CacheWritePriceUSDPer1M        float64
-	ReasoningPriceUSDPer1M         float64
-	EmbeddingPriceUSDPer1M         float64
+	InputPriceUSDPer1M            float64
+	OutputPriceUSDPer1M           float64
+	CacheReadPriceUSDPer1M        float64
+	CacheWritePriceUSDPer1M       float64
+	ReasoningPriceUSDPer1M        float64
+	EmbeddingPriceUSDPer1M        float64
 	InputCostMicroUSD             int64
 	OutputCostMicroUSD            int64
 	CachedInputCostMicroUSD       int64
@@ -950,11 +951,11 @@ func (u *Usecase) RecordTurnUsage(ctx context.Context, in TurnUsageInput) error 
 	}
 	if u.sessAccum != nil && strings.TrimSpace(in.SessionID) != "" {
 		u.sessAccum.AccumulateMetricsDelta(SessionMetricsDelta{
-			SessionID:        in.SessionID,
-			ModelCallCount:   ev.CallCount,
-			InputTokens:      int64(ev.InputTokens),
-			OutputTokens:     int64(ev.OutputTokens),
-			TotalTokens:      int64(ev.TotalTokens),
+			SessionID:         in.SessionID,
+			ModelCallCount:    ev.CallCount,
+			InputTokens:       int64(ev.InputTokens),
+			OutputTokens:      int64(ev.OutputTokens),
+			TotalTokens:       int64(ev.TotalTokens),
 			TotalCostMicroUsd: ev.TotalCostMicroUSD,
 		})
 	}

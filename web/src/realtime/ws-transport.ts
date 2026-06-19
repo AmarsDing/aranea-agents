@@ -15,7 +15,6 @@ import {
   WS_MAX_RECONNECT_DELAY_MS,
   WS_HEARTBEAT_INTERVAL_MS,
   WS_RECONNECT_BASE_DELAY_MS,
-  WS_RUN_STALE_TIMEOUT_MS,
 } from '../features/constants/timeouts';
 
 // T1.8: pendingQueue max length. Prevents unbounded memory growth when the
@@ -37,10 +36,6 @@ export type WsTransportOptions = {
   onReplayState?: (replaying: boolean, count?: number) => void;
   /** Fired when all reconnect attempts have been exhausted. */
   onReconnectFailed?: () => void;
-  /** Fired when a run_heartbeat envelope arrives (P1-7). Use to update UI progress. */
-  onHeartbeat?: (env: Envelope) => void;
-  /** Fired when no run_heartbeat has arrived within WS_RUN_STALE_TIMEOUT_MS (P1-7). */
-  onStale?: () => void;
 };
 
 export type WsTransport = {
@@ -52,8 +47,6 @@ export type WsTransport = {
   enableLog(enabled: boolean): void;
   ping(): void;
   cancel(): void;
-  /** Reset the run-stale timer (P1-7). Call when a run starts to begin stale detection. */
-  resetStaleTimer(): void;
   readonly connected: boolean;
   readonly lastEventId: string | undefined;
 };
@@ -64,7 +57,6 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
   let _lastEventId: string | undefined = opts.lastEventId;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  let staleTimer: ReturnType<typeof setTimeout> | null = null;
   let reconnectAttempts = 0;
   let shutdownReceived = false;
   // T3.4: Track whether we've ever connected before, to detect reconnects.
@@ -149,10 +141,6 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
           if (msg.envelope.session_revision && msg.envelope.session_revision > 0) {
             revisionTracker.update(opts.sessionId, msg.envelope.session_revision);
           }
-          if (msg.envelope.type === 'run_heartbeat') {
-            resetStaleTimer();
-            opts.onHeartbeat?.(msg.envelope);
-          }
           opts.onEnvelope?.(msg.envelope);
         }
       } catch {
@@ -163,7 +151,6 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
     ws.onclose = (ev) => {
       _connected = false;
       stopHeartbeat();
-      stopStaleTimer();
       opts.onDisconnected?.();
       if (!shutdownReceived) {
         scheduleReconnect();
@@ -207,30 +194,12 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
     }
   }
 
-  function resetStaleTimer(): void {
-    if (staleTimer) {
-      clearTimeout(staleTimer);
-    }
-    staleTimer = setTimeout(() => {
-      staleTimer = null;
-      opts.onStale?.();
-    }, WS_RUN_STALE_TIMEOUT_MS);
-  }
-
-  function stopStaleTimer(): void {
-    if (staleTimer) {
-      clearTimeout(staleTimer);
-      staleTimer = null;
-    }
-  }
-
   function disconnect(): void {
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
     }
     stopHeartbeat();
-    stopStaleTimer();
     pendingQueue.length = 0;
     if (ws) {
       ws.onclose = null;
@@ -342,7 +311,6 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
     enableLog,
     ping,
     cancel,
-    resetStaleTimer,
     get connected() {
       return _connected;
     },

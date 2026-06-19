@@ -180,6 +180,22 @@ func (d Dialect) Placeholder(index int) string {
 	return "?"
 }
 
+// Greatest returns the SQL scalar function that picks the largest of the given
+// arguments. SQLite uses the multi-argument MAX (a scalar function when given
+// 2+ args), while Postgres uses GREATEST. Postgres' MAX is aggregate-only and
+// rejects multi-argument scalar usage (error 42883).
+//
+// Example: DialectPostgres.Greatest("1", "x") → "GREATEST(1, x)"
+//
+// All major SQLite drivers support multi-argument MAX as a scalar function.
+func (d Dialect) Greatest(args ...string) string {
+	fn := "GREATEST"
+	if d.IsSQLite() {
+		fn = "MAX"
+	}
+	return fn + "(" + strings.Join(args, ", ") + ")"
+}
+
 // Placeholders returns n positional placeholders joined by commas.
 // SQLite: ?,?,?
 // Postgres: $1,$2,$3

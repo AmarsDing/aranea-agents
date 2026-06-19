@@ -546,6 +546,27 @@ func (b *Buffer) Replay(sessionID, lastEventID string) []Envelope
 | enable_log | 开关日志事件（受 `ProcessLogEnabled` 限制） |
 | user_message | 发送用户消息 |
 | enqueue_message | 排队用户消息 |
+| sync_request | T3.4 断连重连后的 revision-based 同步重放请求，payload `{ session_id, after_revision }` |
+
+**sync_request 协议（T3.4）**：
+
+客户端在 WS 重连后发送 `sync_request` 上行消息，请求服务端重放 `session_revision > after_revision` 的 Envelope。与基于 `last_event_id` 的 replay 互补：
+
+| 维度 | event-ID replay（`last_event_id` URL 参数） | revision sync（`sync_request` 上行消息） |
+|------|---------------------------------------------|------------------------------------------|
+| 触发时机 | 连接建立时 | 重连后客户端主动发起 |
+| 数据源 | `event.Buffer` 环形缓冲（内存） | `event_store` 表（持久化） |
+| 回放窗口 | Buffer 容量（默认 256） | 24 小时回溯窗口（`syncReplayLookbackWindow`） |
+| 上限 | 无显式上限 | 500 条（`syncReplayMaxEnvelopes`） |
+| 排序 | Buffer 入队顺序 | 按 `SessionRevision` 升序（INV4） |
+| 通道过滤 | 无 | 仅回放当前连接已订阅的 Channel |
+| 降级 | Buffer 满则丢失 | EventStore 未配置则静默跳过 |
+
+**处理流程**（`internal/server/ws_sync_request.go`）：
+1. 同步阶段（在 readPump goroutine 中）：校验 `eventStoreUsecase != nil`、解析 payload、提取 `session_id` / `after_revision`；`after_revision <= 0` 直接返回
+2. 异步阶段（`safego.Go` 启动独立 goroutine）：以 `wc.contextOrBackground()` 派生 10s 超时 ctx，查询 EventStore，过滤 `revision > after_revision` 且 Channel 已订阅的记录，按 `SessionRevision` 升序排序后通过 `enqueueSystem` 投递
+
+**接口窄化（BA6）**：`WSServer` 持有 `EventStoreLister` 窄接口（仅 `List` 方法）而非具体 `*biz.EventStoreUsecase`，构造函数处理 Go nil-interface 陷阱（`*T` 为 nil 时赋给接口会得到非 nil 接口包装 nil 指针）。
 
 **Channel 路由**（`wsBuildChannels`）：
 | Channel | 默认订阅 | 包含事件类型 |
@@ -590,6 +611,19 @@ WebSocket 传输层，职责：
 - 消息发送（离线排队）
 - lastEventId 跟踪（断连重放）
 - 服务器关机通知
+- T3.4：维护 `RevisionTracker`，每条携带 `session_revision` 的 Envelope 更新对应 session 的最后已知 revision；重连后调用 `requestSyncReplay` 发送 `sync_request` 上行消息
+
+### 11.2.1 RevisionTracker（T3.4）
+
+`web/src/realtime/event_replay.ts`
+
+Revision-based 同步重放前端模块，与 event-ID replay 互补：
+
+| 导出 | 职责 |
+|------|------|
+| `RevisionTracker` | Per-session revision 跟踪器（`update(sessionId, revision)` 单调递增 / `get(sessionId)` / `clear` / `clearAll`） |
+| `buildSyncRequest(sessionId, afterRevision)` | 构造 `sync_request` 上行消息（`afterRevision <= 0` 返回 null） |
+| `requestSyncReplay(send, sessionId, afterRevision)` | 通过 `send` 发送 `sync_request`，返回是否实际发送 |
 
 ### 11.3 useEnvelopeStream
 
@@ -750,6 +784,7 @@ Branch 树由 `invocation_id` / `parent_invocation_id` 在线推导，不新增�
 | `internal/data/event_store_repo.go` | EventStore Repo |
 | `internal/data/ent/schema/event_store.go` | event_store 表 Schema |
 | `internal/server/ws.go` + `ws_*.go` | WebSocket 统一网关 |
+| `internal/server/ws_sync_request.go` | T3.4 sync_request 上行处理 + revision-based 重放 |
 | `internal/service/event.go` | 回放 API Service |
 | `internal/service/run_status_publish.go` | run_status Envelope 发布 |
 | `internal/service/chat_run_gateway.go` | Chat 运行态 + run_status |
@@ -765,6 +800,7 @@ Branch 树由 `invocation_id` / `parent_invocation_id` 在线推导，不新增�
 |------|------|
 | `web/src/realtime/envelope.ts` | 前端 Envelope 基础类型 |
 | `web/src/realtime/ws-transport.ts` | WsTransport |
+| `web/src/realtime/event_replay.ts` | T3.4 RevisionTracker + buildSyncRequest + requestSyncReplay |
 | `web/src/realtime/useEnvelopeStream.ts` | useEnvelopeStream composable |
 | `web/src/realtime/dispatcher.ts` | EnvelopeDispatcher |
 | `web/src/realtime/globalWsHub.ts` | 全局 WS Hub |

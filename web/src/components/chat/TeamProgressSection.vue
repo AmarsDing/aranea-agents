@@ -23,7 +23,7 @@
     <div class="team-progress-section__agents">
       <div v-for="agent in section.agents" :key="agent.agentKey" class="agent-progress">
         <div class="agent-progress__header">
-          <span class="agent-progress__icon">{{ agent.agentIcon }}</span>
+          <agent-avatar-q :icon="agent.agentIcon" size="20px" avatar-class="agent-progress__icon" />
           <span class="agent-progress__name">{{ agent.agentName }}</span>
           <span class="agent-progress__status" :class="`agent-progress__status--${agent.status}`">
             {{ agentStatusIcon(agent.status) }}
@@ -43,6 +43,7 @@ import { useI18n } from 'vue-i18n';
 import type { TeamProgressSection as TeamProgressSectionType } from '../../features/chat/activityTimelineTypes';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 import EventStream from './EventStream.vue';
+import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
 
 const { t } = useI18n();
 
@@ -146,7 +147,7 @@ function agentStatusIcon(status: string): string {
     margin-bottom: 2px
 
   &__icon
-    font-size: 13px
+    flex-shrink: 0
 
   &__name
     font-size: 13px

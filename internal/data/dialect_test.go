@@ -90,6 +90,25 @@ func TestDialect_Placeholders(t *testing.T) {
 	}
 }
 
+func TestDialect_Greatest(t *testing.T) {
+	tests := []struct {
+		dialect Dialect
+		args    []string
+		want    string
+	}{
+		{DialectSQLite, []string{"1", "x"}, "MAX(1, x)"},
+		{DialectPostgres, []string{"1", "x"}, "GREATEST(1, x)"},
+		{DialectSQLite, []string{"a", "b", "c"}, "MAX(a, b, c)"},
+		{DialectPostgres, []string{"a", "b", "c"}, "GREATEST(a, b, c)"},
+	}
+	for _, tt := range tests {
+		got := tt.dialect.Greatest(tt.args...)
+		if got != tt.want {
+			t.Errorf("%s.Greatest(%v) = %q, want %q", tt.dialect, tt.args, got, tt.want)
+		}
+	}
+}
+
 func TestDialect_BuildInsertOrIgnore(t *testing.T) {
 	tests := []struct {
 		dialect      Dialect

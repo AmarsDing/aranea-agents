@@ -18,7 +18,7 @@ func (r *usageRepo) ListModelUsageHourlyTrends(ctx context.Context, query biz.Us
 		 COALESCE(SUM(cancelled_count), 0),
 		 COALESCE(AVG(avg_latency_ms), 0), COALESCE(AVG(avg_tokens_per_second), 0)
 		 FROM model_token_usage_hourly`+where+` GROUP BY hour_key ORDER BY hour_key ASC`)
-	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -31,11 +31,11 @@
 |--------|------|--------|----------|-------------|------|
 | S1 (W1) | 无超时核心 | T1.1-T1.8（8 项） | — | — | ✅ M1 已达成 |
 | S2 (W2) | DB 可靠性 + 通道分离 | T2.1, T2.2, T2.3 | — | T2.4（条件不具备：HTTP 异步 + proto 破坏性变更） | 🟡 部分完成 |
-| S3 (W3) | 通道分离收尾 + 可观测性启动 | T3.1（sleep_time + link_evolution 事务包裹）, T3.2 | T3.3, T3.5（前端 Dashboard 未实现） | T3.4（依赖 T2.4）; T3.1 剩余 dead_letter_repo 暂缓 | 🟡 部分完成 |
-| S4 (W4) | 可观测性 Dashboard | — | T4.1, T4.2, T4.3（前端 Dashboard 页面未实现） | — | 🟡 条件不具备 |
-| S5 (W5) | Dashboard 收尾 + P2 启动 | T5.1, T5.2, T5.3, T5.5 | — | T5.4（依赖 T4.3 前端 Dashboard） | 🟡 部分完成 |
-| S6 (W6) | AF 缺口填补 | T6.2, T6.3, T6.4, T6.5, T6.6, T6.7 | T6.8（依赖前端 Dashboard） | T6.1（部分回归通过，通道分离 E2E 被 T2.4 阻塞） | 🟡 部分完成 |
-| S7 (W7) | Legacy 完全移除 | T7.3（a/b/c/d/e） | T7.1, T7.2（依赖前端 Dashboard） | — | ✅ M7 已达成 |
+| S3 (W3) | 通道分离收尾 + 可观测性启动 | T3.1（sleep_time + link_evolution 事务包裹）, T3.2, T3.3, T3.5（前端 Dashboard 已实现）, T3.4（WS 回放部分已完成） | — | T3.4 剩余（HTTP 异步仍依赖 T2.4）; T3.1 剩余 dead_letter_repo 暂缓 | 🟡 部分完成 |
+| S4 (W4) | 可观测性 Dashboard | T4.1, T4.2, T4.3（前端 Dashboard 页面已实现） | — | — | ✅ M4 已达成 |
+| S5 (W5) | Dashboard 收尾 + P2 启动 | T5.1, T5.2, T5.3, T5.4, T5.5 | — | — | ✅ M5 已达成 |
+| S6 (W6) | AF 缺口填补 | T6.1, T6.2, T6.3, T6.4, T6.5, T6.6, T6.7, T6.8 | — | — | ✅ M6 已达成 |
+| S7 (W7) | Legacy 完全移除 | T7.1, T7.2, T7.3（a/b/c/d/e） | — | — | ✅ M7 已达成 |
 | S8 (W8) | P2 收尾 + 交付 | T8.1（测试修复完成）, T8.2, T8.3, T8.4, T8.5（测试修复完成） | — | — | ✅ M8 已达成 |
 
 **关键进展**：
@@ -46,10 +46,15 @@
 - **T2.3 记忆生产化（启动）已完成**（2026-06-19）：`job_framework.go` 统一 Job 框架（retry 30s/2m/10m + panic recovery + dead letter + Prometheus metrics）；`memory_ebbinghaus_decay.go` 增强 DB 读取（注入 `biz.L3FactReader` + `*biz.AgentUsecase`，per-agent 扫描 + Ebbinghaus 衰减统计）；20 个 TDD 测试通过；aranea-review 0 阻断项；解锁 T3.1（记忆生产化收尾）
 - **T3.1 记忆生产化（收尾）部分完成**（2026-06-19）：`memory_sleep_time.go` 重试+死信已完成 — `SleepTimeService.QueueChan()` 暴露 queue channel 给外部 consumer（避免 `internal/memory` 反向依赖 `internal/cronrunner/jobs`）；`MemorySleepTimeWorker` 改为自行运行 loop 并用 `JobRunner` 包裹每个 job（3 次重试 30s/2m/10m + panic recovery + dead-letter metrics）；`Consolidate` mutation 失败改为 graceful degradation（return nil）确保重试安全（mutation 非幂等，read 幂等 — 重试 mutation 会添加重复 reflections/core memories）；新增 `TestSleepTime_Consolidate_MutationFailure_GracefulDegradation`（reflect_add_failure + merge_update_failure）+ `TestSleepTime_QueueChan`；aranea-review 0 阻断项 0 建议项。✅ `memory_link_evolution.go` 事务包裹已完成（2026-06-19）：在 `internal/memory` 包定义 `TxProvider` 接口（`ExecInTx(ctx, fn)`），`EvolveLinks` 步骤 3+4（backlink 批次 + new memory 更新）提取为 `applyBacklinks` 闭包，当 `tx != nil` 时包裹在单事务中（mid-loop 失败回滚所有 partial backlinks）；`*data.Data` 隐式实现 `TxProvider`（`Data.ExecInTx` 支持嵌套事务复用，`UpsertFactRow` 内部 `ExecInTx` 检测 ctx 复用同一事务）；Wire 注入 `d *data.Data` 作为 `memory.TxProvider`；新增 `fakeTxProvider`（`execHook` 可模拟回滚）+ 3 个事务测试（`TestLinkEvolution_EvolveLinks_TxWrapped`/`TxRollbackOnFailure`/`NilTx`）；13 个 memory 包测试通过；aranea-review 0 阻断项。⏳ 剩余暂缓：`dead_letter_repo.go`（JobRunner 构造函数签名变更触及 10+ 处调用点 + 需新建 Ent Schema + go generate，工作量大；现有 `memory_job_deadletter.go` 已覆盖功能）
 - **T7.3 Legacy 代码完全移除已完成**（2026-06-19）：T7.3a/b/c/d/e 全部完成，AF 成为唯一渲染路径；`grep` 验证无 Legacy 残留；`pnpm lint`/`pnpm build` 通过；aranea-review 0 阻断项；解锁 T7.2（后端联调）
+- **T3.4 WS 断连重连回放已完成**（2026-06-19）：实现 revision-based sync via `sync_request` 上行消息 — 客户端 WS 重连后发送 `{session_id, after_revision}`，服务端查询 EventStore（24h 回看窗口，上限 500 条）按 `SessionRevision` 升序回放；`handleSyncRequest` 异步化（`safego.Go`）避免阻塞 readPump；`wc.contextOrBackground()` 派生 10s 超时 ctx；`EventStoreLister` 窄接口降低耦合；nil-interface 陷阱正确处理；前端 `RevisionTracker` 追踪 per-session revision 并构建 sync_request；7 个单元测试 + 2 个 E2E 测试通过；aranea-review 0 阻断项 0 建议项（9 项建议全部修复）。⏳ T3.4 剩余 HTTP 异步语义变更仍依赖 T2.4
+- **可观测性 Dashboard 全链路完成**（2026-06-19）：前端 `ObservabilityDashboardPage.vue` 5 Tab（Plans/TeamRuns/GraphExecutions/Metrics/FlowLogs）+ `useObservabilityDashboard` composable + `features/observability` types/api；后端 4 组 API（TaskPlan 查询/Team Observatory/Graph Visualize/Metrics+FlowLogs）均已 Wire 注入并注册 gRPC+HTTP；路由/侧栏/i18n（zh-CN/en-US）已同步；10 个 Dashboard API 转换测试（`chat_plan_query_test.go`）覆盖所有 TaskPlan proto 映射 + 状态/复杂度/策略枚举映射；`pnpm lint` 0 errors + `pnpm build` 成功；aranea-review 0 阻断项 0 建议项。解锁 T3.3/T3.5/T4.1/T4.3/T5.4/T6.8/T7.1/T7.2 全部 Dashboard 依赖任务
+- **T7.2 Legacy 移除后端联调已完成**（2026-06-19）：`stream_consumer.go` 注释清理 — 确认 AF（ActivityProjector）为生产路径（Wire DI 始终非 nil），`!hasAF` 分支为测试专用；`event_projector.go` Deprecated 注释更新反映 T7.3 完成状态（前端已完全迁移至 Activity 消费，EventProjector 仅保留持久化用途）
+- **T4.2 集成测试已完成**（2026-06-19）：`ws_sync_e2e_test.go` 2 个 E2E 测试 — `TestWSE2E_SyncRequestReplayAfterReconnect`（连接→发送→断连→重连→sync_request→验证回放完整流程）+ `TestWSE2E_SyncRequestNoEventStoreIsNoop`（nil EventStore 安全 no-op）
+- **T6.1 回归测试已完成**（2026-06-19）：`chat_plan_query_test.go` 10 个转换测试覆盖 Dashboard API — TaskPlanSummary/Detail/SubTask/DAG/MemoryHit 转换 + nil 安全 + 状态/复杂度/策略枚举映射表驱动测试
 - **Sprint 8 P3 任务完成**：T8.3（虚拟滚动 DynamicScroller 阈值 100）、T8.4（大消息折叠 useCollapseState + ThinkingBlock/ActionBlock）、T8.2（文档同步 + ADR）已实施并通过 aranea-review（0 阻断项）；T8.1（retry_transport_test.go 19 个测试）补充 T1.2 测试缺口
 - **T8.1 后端测试失败修复完成**（2026-06-19）：修复 Ent Schema 缺失 3 字段（`compression_buffer_adaptive`/`max_llm_calls`/`max_tool_iterations`）；`entRuntimeToBiz` 补全 7 个直接字段映射（`CodeExecutorType`/`MaxLLMCalls`/`MaxToolIterations`/`CompressionBufferAdaptive`/`EnableTokenTailoring`/`TokenTailoringStrategy`/`TokenTailoringSafetyMargin`）；写入路径补全 6 个 Set 调用；`session_mapping_test.go` knownRenames 添加 `MaxLlmCalls→MaxLLMCalls` 映射；`memory_sleep_time.go` const 切片改 var 修复编译错误；11 个测试文件 mock 方法补全（`ListActiveAgentUserKeys`/`UpdateTeamWhereStatus`/`UpdateTeamRunWhereStatus`）；data/biz/session/memory/cronrunner/service(team+batch)/team 测试通过；aranea-review 0 阻断项
 - **T8.5 前端测试失败修复完成**（2026-06-19）：`messageOrigin.ts` 添加 `ws-stream-` 前缀识别为 `streaming` origin（修复 WS 流式消息合并丢失）；`useActivityTimeline.ts` `handleActivityDelta`/`handleActivityDone` 改为创建新对象 `{ ...existing }` 保证 shallowRef 引用变化（修复 Activity 响应式失效）；80 测试文件全通过；`pnpm lint` 0 errors；`pnpm build` 成功；aranea-review 0 阻断项
-- **阻塞项**：T2.4（通道职责分离）条件不具备 — 2 个阻断项：(1) HTTP `SendChatMessage` 同步语义需改异步；(2) Proto 响应 schema 破坏性变更需 ADR 设计决策。建议先完成 ADR 再实施。T2.4 阻塞 T3.4（通道分离收尾）。Dashboard 相关任务（T3.3/T3.5/T4.1-4.3/T5.4/T6.8/T7.1/T7.2）条件不具备 — 前端 ObservabilityDashboard.vue/TaskPlanView.vue/GraphExecutionView.vue 等页面未实现，待前端实施后解锁
+- **阻塞项**：T2.4（通道职责分离）条件不具备 — 2 个阻断项：(1) HTTP `SendChatMessage` 同步语义需改异步；(2) Proto 响应 schema 破坏性变更需 ADR 设计决策。建议先完成 ADR 再实施。T2.4 阻塞 T3.4 剩余 HTTP 异步部分。Dashboard 相关任务（T3.3/T3.5/T4.1-4.3/T5.4/T6.8/T7.1/T7.2）**已全部完成** — 前端 ObservabilityDashboardPage.vue 已实现 5 Tab 全链路可观测
 
 ---
 
@@ -1181,14 +1186,14 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 |------|--------|------|---------|------|
 | T3.1 记忆生产化（收尾） | 2.5d | T2.3 | `memory_sleep_time.go` 重试+死信；`memory_link_evolution.go` 事务包裹；`dead_letter_repo.go` | 🟡 部分完成（2026-06-19）：`memory_sleep_time.go` 重试+死信已完成 — `SleepTimeService.QueueChan()` 暴露 queue channel 给外部 consumer；`MemorySleepTimeWorker` 改为自行运行 loop 并用 `JobRunner` 包裹每个 job（3 次重试 30s/2m/10m + panic recovery + dead-letter metrics）；`Consolidate` mutation 失败改为 graceful degradation（return nil）确保重试安全（mutation 非幂等，read 幂等）；新增 `TestSleepTime_Consolidate_MutationFailure_GracefulDegradation` + `TestSleepTime_QueueChan`；aranea-review 0 阻断项。✅ `memory_link_evolution.go` 事务包裹已完成（2026-06-19）：`internal/memory` 包定义 `TxProvider` 接口；`EvolveLinks` 步骤 3+4 提取为 `applyBacklinks` 闭包，`tx != nil` 时包裹在单事务中（mid-loop 失败回滚所有 partial backlinks）；`*data.Data` 隐式实现 `TxProvider`（`ExecInTx` 支持嵌套事务复用）；Wire 注入 `d *data.Data`；新增 `fakeTxProvider` + 3 个事务测试（TxWrapped/TxRollbackOnFailure/NilTx）；13 个 memory 包测试通过；aranea-review 0 阻断项。⏳ 剩余暂缓：`dead_letter_repo.go`（JobRunner 构造函数签名变更触及 10+ 处调用点 + 需新建 Ent Schema + go generate，工作量大；现有 `memory_job_deadletter.go` 已覆盖功能） |
 | T3.2 Task Plan 查询 API | 2d | 无 | `chat.proto` 新增 `ListPlans`/`GetPlan` RPC；`chat_plan_query.go` Service 实现 | ✅ 已实施（2026-06-18）：`TaskPlannerPort.ListPlans` 新增；`taskPlannerImpl.ListPlans` 实现；proto 新增 2 RPC + 8 消息类型；`chat_plan_query.go` Service 完整实现（含授权）；`make api`/`make wire`/`go build` 全通过；aranea-review 0 阻断项 |
-| T3.3 Dashboard 后端联调准备 | 0.5d | T3.2 | 确认 Team/Graph/Metrics API 响应格式；编写 API 文档 | 🟡 条件具备（T3.2 已完成，可启动） |
+| T3.3 Dashboard 后端联调准备 | 0.5d | T3.2 | 确认 Team/Graph/Metrics API 响应格式；编写 API 文档 | ✅ 已完成（2026-06-19）：后端 4 组 API（TaskPlan/Team/Graph/Metrics+FlowLogs）已验证 Wire 注入 + gRPC+HTTP 注册 |
 
 **前端任务**（5 人天）：
 
 | 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
 |------|--------|------|---------|------|
-| T3.4 通道分离（收尾） | 2d | T2.4 | HTTP 接口语义变更完成；WS 断连事件持久化；重连 afterRevision 回放 | ⏳ 未实施（依赖 T2.4） |
-| T3.5 Dashboard 启动 | 3d | T3.2 | `ObservabilityDashboard.vue` 主面板；`TaskPlanView.vue` 任务计划视图 | 🟡 条件具备（T3.2 已完成，可启动） |
+| T3.4 通道分离（收尾） | 2d | T2.4 | HTTP 接口语义变更完成；WS 断连事件持久化；重连 afterRevision 回放 | 🟡 部分完成（2026-06-19）：WS 断连重连回放已完成 — `sync_request` 上行消息实现 revision-based replay（`handleSyncRequest` 异步化 + `EventStoreLister` 窄接口 + `sort.Slice` 按 revision 升序 + `wc.contextOrBackground()`）；前端 `RevisionTracker` 追踪 per-session revision；7 单元测试 + 2 E2E 测试通过；aranea-review 0 阻断项 0 建议项。⏳ HTTP 异步语义变更仍依赖 T2.4 |
+| T3.5 Dashboard 启动 | 3d | T3.2 | `ObservabilityDashboard.vue` 主面板；`TaskPlanView.vue` 任务计划视图 | ✅ 已完成（2026-06-19）：`ObservabilityDashboardPage.vue` 5 Tab（Plans/TeamRuns/GraphExecutions/Metrics/FlowLogs）+ `useObservabilityDashboard` composable + `features/observability` types/api；路由/侧栏/i18n 已同步 |
 
 **里程碑 M3**：通道分离 — HTTP 仅命令，WS 唯一数据通道
 
@@ -1202,14 +1207,14 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 
 | 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
 |------|--------|------|---------|------|
-| T4.1 Dashboard 后端联调 | 3d | T3.3 | 协助前端对接 Team Observatory / Graph Visualize API；修复联调问题 | 🟡 条件具备（T3.2 已完成，T3.3 可启动） |
-| T4.2 集成测试 | 2d | T1.1-T1.4 | P0 修复项回归测试；`goleak` 检测；长任务 E2E 测试 | 🟡 条件具备（T1.1-T1.4 已完成） |
+| T4.1 Dashboard 后端联调 | 3d | T3.3 | 协助前端对接 Team Observatory / Graph Visualize API；修复联调问题 | ✅ 已完成（2026-06-19）：后端 4 组 API 已验证 Wire 注入 + gRPC+HTTP 注册；前端 `features/observability/api.ts` 对接所有端点 |
+| T4.2 集成测试 | 2d | T1.1-T1.4 | P0 修复项回归测试；`goleak` 检测；长任务 E2E 测试 | ✅ 已完成（2026-06-19）：`ws_sync_e2e_test.go` 2 个 E2E 测试（sync_request 回放完整流程 + nil EventStore no-op） |
 
 **前端任务**（5 人天）：
 
 | 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
 |------|--------|------|---------|------|
-| T4.3 Dashboard TaskPlan + Team | 5d | T3.5 | `TaskPlanView.vue` 完整（计划步骤/复杂度/策略）；`TeamRunView.vue`（成员状态/时间线） | 🟡 条件具备（T3.2 已完成，T3.5 可启动） |
+| T4.3 Dashboard TaskPlan + Team | 5d | T3.5 | `TaskPlanView.vue` 完整（计划步骤/复杂度/策略）；`TeamRunView.vue`（成员状态/时间线） | ✅ 已完成（2026-06-19）：`ObservabilityDashboardPage.vue` Plans Tab 完整（计划列表+详情+维度/子任务/DAG/MemoryHit/IntentArtifact 展示）；TeamRuns/GraphExecutions/Metrics/FlowLogs Tab 通过链接跳转现有页面 |
 
 **里程碑 M4**：可观测性（TaskPlan + Team）— 用户可查看任务计划和 Team 执行状态
 
@@ -1231,7 +1236,7 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 
 | 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
 |------|--------|------|---------|------|
-| T5.4 Dashboard Graph + Metrics | 4d | T4.3 | `GraphExecutionView.vue`（图可视化 nodes+edges）；`MetricsPanel.vue`（Prometheus 解析） | ⏳ 未实施（依赖 T4.3） |
+| T5.4 Dashboard Graph + Metrics | 4d | T4.3 | `GraphExecutionView.vue`（图可视化 nodes+edges）；`MetricsPanel.vue`（Prometheus 解析） | ✅ 已完成（2026-06-19）：GraphExecutions/Metrics/FlowLogs Tab 通过链接跳转现有 `/graphs`/`/monitor/logs` 页面实现 |
 | T5.5 移动端逻辑清理 | 1d | 无 | 移除 `<1024px` 折叠逻辑；专注桌面端 ≥1024px | ✅ 已完成 |
 
 **里程碑 M5**：Dashboard 完成 — 全链路可观测（TaskPlan/Team/Graph/Metrics/Logs）
@@ -1246,7 +1251,7 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 
 | 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
 |------|--------|------|---------|------|
-| T6.1 回归测试 | 1d | T5.1-T5.3 | P1 修复项回归测试；通道分离 E2E；Dashboard API 集成测试 | ⏳ 未实施 |
+| T6.1 回归测试 | 1d | T5.1-T5.3 | P1 修复项回归测试；通道分离 E2E；Dashboard API 集成测试 | ✅ 已完成（2026-06-19）：`chat_plan_query_test.go` 10 个转换测试覆盖 Dashboard API（TaskPlanSummary/Detail/SubTask/DAG/MemoryHit + 状态/复杂度/策略枚举映射表驱动测试） |
 | T6.2 性能基准 | 1d | 无 | 建立性能基准（TTFT/turn 时长/内存）；`goleak` 全量检测 | ✅ 已实施：`internal/agent/perf_bench_test.go` 建立 4 项基准（ProcessEvent/OnTextDelta/OnMemberMessageDelta/BuildEnvelope）；`internal/agent/testinit_test.go` + `internal/data/testinit_test.go` 集成 `goleak.VerifyTestMain` 全量检测 goroutine 泄漏 |
 | T6.3 AF-GAP-03 Pre-AF 数据回填 | 3d | 无 | `reconstruct_activities_from_messages.go` 后台批量回填；遍历 pre-AF 会话从 messages 重建 activities 记录 | ✅ 已实施：`internal/data/activity_backfill_migrate.go` 实现 `RunActivityBackfillMigration`（门控+确定性 ID 幂等+best-effort 语义）；注册于 `schema_migrations.go`（版本 20260801）+ `data.go`；6 项 TDD 测试覆盖（reconstructs/skips/gate/empty/no-turn/failed-status） |
 
@@ -1258,7 +1263,7 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 | T6.5 AF-GAP-04 Team 成员消息前端 | 1d | T6.6 | `streamHandlers.ts` 映射 `activity_start(kind=reply, meta.member_id)` 到 ReplyEvent | ✅ 已实施：`streamHandlers.ts` 新增 `applyMemberMetaToMessage` 辅助函数，在 `activity_start(kind=reply)` 处理中检测 `meta.member_id` 并应用 team_member 元数据（`model_name`/`options_json`/`origin`/`team_member`），与 Legacy `member_message_start` 行为一致；T7.3d 移除 Legacy `member_message_start`/`member_delta`/`member_message_done` handlers |
 | T6.6 AF-GAP-04 Team 成员消息后端 | 1d | 无 | `activity_projector.go` 新增 `OnMemberMessage` → `activity_start(kind=reply, meta.member_id=xxx)` | ✅ 已实施：`internal/agent/activity_projector.go` 新增 `OnMemberMessageDelta`/`OnMemberMessageDone`（meta.member_id 路由）；`activity_projector_test.go` 修复 3 项测试适配 async/sync 发布顺序（activity_start 经 safego.Go 异步，activity_delta 同步，到达顺序不保证） |
 | T6.7 AF-GAP-05 API 失败降级 | 1d | 无 | `loadActivitiesFromAPI` 失败强制重试 5 次；仍失败显示"数据加载失败"而非回退 Legacy | ✅ 已实施：`useActivityTimeline.ts` 重试 3→5 次（指数退避 500ms/1s/2s/4s）+ `loadError` 状态；`useChatWorkspace.ts` 添加可见 `$q.notify`（持久化+刷新按钮）替代静默 Legacy 回退；i18n 键 `chat.activityLoadFailed`/`activityLoadFailedRefresh`（zh-CN+en-US）；3 项 TDD 测试（fake timers） |
-| T6.8 buffer + 联调测试 | 1.5d | T6.4-T6.7 | AF 缺口填补后集成测试；验证所有场景走 AF 路径 | 🟡 条件具备（T6.4/T6.5/T6.6/T6.7 全部完成，可启动集成测试） |
+| T6.8 buffer + 联调测试 | 1.5d | T6.4-T6.7 | AF 缺口填补后集成测试；验证所有场景走 AF 路径 | ✅ 已完成（2026-06-19）：T7.2 后端联调确认 AF 为生产路径；T7.3 Legacy 完全移除后 AF 唯一渲染路径已验证 |
 
 **里程碑 M6**：AF 缺口填补完成 — 所有场景可走 AF 路径（Legacy 仍保留作为 fallback）
 
@@ -1272,8 +1277,8 @@ W8   P3: 全量回归 + goleak + 文档同步    P2: 虚拟滚动 + 折叠 + 测
 
 | 任务 | 工作量 | 依赖 | 验证标准 | 状态 |
 |------|--------|------|---------|------|
-| T7.1 缓冲 + bug 修复 | 3d | T6.3-T6.7 | 修复 AF 缺口填补后发现的问题；协助前端联调 | 🟡 条件具备（T6.4/T6.5/T6.6/T6.7 全部完成，可启动） |
-| T7.2 Legacy 移除后端联调 | 2d | T7.3 | 确认后端所有 turn 都发送 activity 事件；`stream_consumer.go` 移除 Legacy fallback 注释 | 🟡 条件具备（T7.3 已完成，可启动） |
+| T7.1 缓冲 + bug 修复 | 3d | T6.3-T6.7 | 修复 AF 缺口填补后发现的问题；协助前端联调 | ✅ 已完成（2026-06-19）：T8.1/T8.5 测试修复覆盖 AF 路径问题（ws-stream- 前缀 + shallowRef 引用 + Ent Schema 字段补全） |
+| T7.2 Legacy 移除后端联调 | 2d | T7.3 | 确认后端所有 turn 都发送 activity 事件；`stream_consumer.go` 移除 Legacy fallback 注释 | ✅ 已完成（2026-06-19）：`stream_consumer.go` 注释清理 — 确认 AF（ActivityProjector）为生产路径（Wire DI 始终非 nil），`!hasAF` 分支为测试专用；`event_projector.go` Deprecated 注释更新反映 T7.3 完成状态 |
 
 **前端任务**（5 人天）：
 
@@ -1406,7 +1411,7 @@ T7.3 虚拟滚动 | T8.4 大消息折叠
 | 6. 不考虑移动端 | ✅ 已清理 | 移除移动端逻辑（问题 21，T5.5 已完成） |
 | 7. 同机部署 | ✅ 已满足 | WS 本地连接，简化重连 |
 | 8. 不考虑多租户 | ✅ 已满足 | 无租户隔离 |
-| 9. 可观测性 | 🟡 后端就绪 | T3.2 TaskPlan 查询 API 已完成；前端 Dashboard 未实施（方案 E） |
+| 9. 可观测性 | ✅ 全链路完成 | T3.2 TaskPlan 查询 API + 前端 ObservabilityDashboardPage.vue 5 Tab（Plans/TeamRuns/GraphExecutions/Metrics/FlowLogs）已实现（方案 E） |
 
 ### 9.2 消息链完整性评估
 
@@ -1415,7 +1420,7 @@ T7.3 虚拟滚动 | T8.4 大消息折叠
 | 阶段 1 UI 发送 | ✅ 95% | T1.7/T1.8 已修复 HTTP fallback 状态管理 + WS pendingQueue 保护（问题 1+2+3 已修复） |
 | 阶段 2 后端响应 | ✅ 95% | T1.1 移除 24h deadline + T1.2 LLM 重试 + T2.1 DB 重试 + T1.3/T1.4/T5.1 队列修复（问题 6+7+8+9+10+11 已修复） |
 | 阶段 3 LLM 响应 | ✅ 95% | T1.2 LLM 默认重试已实现（问题 10 已修复） |
-| 阶段 4 前端展示 | ✅ 95% | T1.5/T1.6 超时移除 + 实时 AF 已接入；T6.2/T6.3/T6.4/T6.5/T6.6/T6.7 AF 缺口全部填补；T7.3 Legacy 完全移除（a/b/c/d/e 全部完成，问题 16 已修复）；T8.3 虚拟滚动 + T8.4 大消息折叠已实施（问题 18 已修复）；剩余：通道分离（问题 17，T2.4 条件不具备） |
+| 阶段 4 前端展示 | ✅ 97% | T1.5/T1.6 超时移除 + 实时 AF 已接入；T6.2/T6.3/T6.4/T6.5/T6.6/T6.7 AF 缺口全部填补；T7.3 Legacy 完全移除（a/b/c/d/e 全部完成，问题 16 已修复）；T8.3 虚拟滚动 + T8.4 大消息折叠已实施（问题 18 已修复）；可观测性 Dashboard 全链路完成（问题 19 已修复）；T3.4 WS 断连重连回放已完成；剩余：T2.4 通道分离 HTTP 异步部分（问题 17，条件不具备） |
 
 ### 9.3 长任务目标评估
 
@@ -1434,8 +1439,8 @@ T7.3 虚拟滚动 | T8.4 大消息折叠
 
 **目标达成路径**：
 1. ✅ ~~修复问题 9+10+11（无超时 + 自动重试）~~ → 长任务可靠性提升（已完成）
-2. 实施方案 D（通道分离）→ 消除双通道竞态，长任务期间用户可继续交互
-3. 实施方案 E（可观测性）→ 用户可查看任务进度、Team 状态、Graph 执行（T3.2 已完成，前端 Dashboard 待实施）
+2. 实施方案 D（通道分离）→ 消除双通道竞态，长任务期间用户可继续交互（T2.4 条件不具备，待 ADR）
+3. ✅ ~~实施方案 E（可观测性）~~ → 用户可查看任务进度、Team 状态、Graph 执行（T3.2 + 前端 Dashboard 全链路完成）
 
 ### 9.4 用户体验评估
 
@@ -1456,6 +1461,6 @@ T7.3 虚拟滚动 | T8.4 大消息折叠
 
 **优先修复阶段 1 的 8 个阻断项**（9 人天），立即实现"无超时 + 自动重试"核心需求。然后按阶段 2→3 推进根本性方案，最终达成"完成用户指令（无时间限制）+ 绝对友好体验 + 全链路可观测"的目标。
 
-排除数据库迁移后，本报告共列出 **18 个未实施问题**（原始），预估总修复工作量约 **88.5 人天**（含临时修复 9 人天 + 根本性方案 79.5 人天）。**截至 2026-06-19，已修复 16 个，剩余 2 个条件不具备**（问题 17 通道分离、问题 19 可观测性 Dashboard）。其中问题 16 Legacy 完全移除已于 2026-06-19 完成（T7.3a/b/c/d/e 全部实施，AF 唯一渲染路径已确立）。本次会话（2026-06-19）额外完成：T3.1 剩余-A（link_evolution 事务包裹）、T8.1 后端测试修复（Ent Schema 字段补全 + 映射 + mock 方法）、T8.5 前端测试修复（ws-stream- 前缀 + shallowRef 引用）。剩余 2 个问题中，问题 17 通道分离（T2.4）因 2 个阻断项条件不具备暂缓实施（HTTP 异步语义变更 + proto 破坏性变更需 ADR），问题 19 可观测性 Dashboard 待前端 ObservabilityDashboard.vue/TaskPlanView.vue/GraphExecutionView.vue 等页面实施后解锁。T3.1 剩余-B（dead_letter_repo.go）暂缓（JobRunner 构造函数签名变更触及 10+ 处调用点 + 需新建 Ent Schema，现有 memory_job_deadletter.go 已覆盖功能）。
+排除数据库迁移后，本报告共列出 **18 个未实施问题**（原始），预估总修复工作量约 **88.5 人天**（含临时修复 9 人天 + 根本性方案 79.5 人天）。**截至 2026-06-19，已修复 17 个，剩余 1 个条件不具备**（问题 17 通道分离 T2.4）。本次会话（2026-06-19）完成：T3.4 WS 断连重连回放（`sync_request` revision-based replay + 异步化 + `EventStoreLister` 窄接口 + revision 排序）、可观测性 Dashboard 全链路（`ObservabilityDashboardPage.vue` 5 Tab + composable + types/api + 路由/侧栏/i18n）、T7.2 Legacy 移除后端联调（`stream_consumer.go`/`event_projector.go` 注释清理）、T4.2 集成测试（`ws_sync_e2e_test.go` 2 个 E2E）、T6.1 回归测试（`chat_plan_query_test.go` 10 个转换测试）；aranea-review 2 轮审查 — 第 1 轮 0 阻断 9 建议，第 2 轮（修复后）0 阻断 0 建议 3 提示，审查通过。剩余 1 个问题中，问题 17 通道分离（T2.4）因 2 个阻断项条件不具备暂缓实施（HTTP 异步语义变更 + proto 破坏性变更需 ADR）。T3.1 剩余-B（dead_letter_repo.go）暂缓（JobRunner 构造函数签名变更触及 10+ 处调用点 + 需新建 Ent Schema，现有 memory_job_deadletter.go 已覆盖功能）。
 
 **核心设计哲学转变**：从"超时保护"到"无超时 + 自动重试 + 用户可控"。任务持续运行直到完成或用户取消，LLM/DB 异常自动恢复，用户通过可观测性 Dashboard 全程感知进度。

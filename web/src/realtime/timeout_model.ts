@@ -39,7 +39,6 @@
  */
 import {
   WS_HEARTBEAT_INTERVAL_MS,
-  WS_RUN_STALE_TIMEOUT_MS,
   WS_RECONNECT_BASE_DELAY_MS,
   WS_MAX_RECONNECT_DELAY_MS,
   HEARTBEAT_PING_INTERVAL_MS,
@@ -68,15 +67,13 @@ import {
 export const TIMEOUT_LAYERS = {
   /**
    * Layer 1: Connection-level timeouts.
-   * Manage WS keepalive, run-stale detection, and server health.
-   * Trigger: WS connected / run started.
-   * Cancel: WS disconnected / run completed.
+   * Manage WS keepalive and server health.
+   * Trigger: WS connected.
+   * Cancel: WS disconnected.
    */
   connection: {
     /** WS business ping interval — keeps the connection alive. */
     wsHeartbeatInterval: WS_HEARTBEAT_INTERVAL_MS,
-    /** Run stale threshold — no run_heartbeat within this window means the run may be stuck. */
-    wsRunStaleTimeout: WS_RUN_STALE_TIMEOUT_MS,
     /** WS reconnect base delay (exponential backoff start). */
     wsReconnectBaseDelay: WS_RECONNECT_BASE_DELAY_MS,
     /** WS reconnect max delay (exponential backoff cap). */

@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	bizusage "aranea-agents/internal/biz/usage"
+	"aranea-agents/pkg/apierror"
 )
 
 type usageRepo struct {
@@ -31,11 +32,11 @@ func (r *usageRepo) GetModelUsageSummary(ctx context.Context, query biz.UsageQue
 		 FROM model_token_usage_events` + where
 	q = r.data.Dialect().RenumberPlaceholders(q)
 	var v biz.UsageSummary
-	err := entQueryRowScan(r.data.RW().Read(ctx), ctx, q, args,
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, args,
 		&v.CallCount, &v.RequestCount, &v.SuccessCount, &v.FailedCount, &v.CancelledCount,
 		&v.InputTokens, &v.OutputTokens, &v.TotalTokens, &v.TotalCostMicroUSD, &v.AvgLatencyMS, &v.AvgTokensPerSecond)
 	if err != nil {
-		return biz.UsageSummary{}, err
+		return biz.UsageSummary{}, entErrToBizErr(err, apierror.DomainData)
 	}
 	if v.RequestCount > 0 {
 		v.SuccessRate = float64(v.SuccessCount) / float64(v.RequestCount)
@@ -56,18 +57,18 @@ func (r *usageRepo) ListModelUsageTrends(ctx context.Context, query biz.UsageQue
 		 FROM model_token_usage_events`+where+` GROUP BY date_key ORDER BY date_key ASC`)
 	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, apierror.DomainData)
 	}
 	defer rows.Close()
 	var result []biz.UsageTrendPoint
 	for rows.Next() {
 		var point biz.UsageTrendPoint
 		if err = rows.Scan(&point.DateKey, &point.CallCount, &point.InputTokens, &point.OutputTokens, &point.TotalTokens, &point.TotalCostMicroUSD, &point.SuccessCount, &point.FailedCount, &point.CancelledCount, &point.AvgLatencyMS, &point.AvgTokensPerSecond); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, apierror.DomainData)
 		}
 		result = append(result, point)
 	}
-	return result, rows.Err()
+	return result, entErrToBizErr(rows.Err(), apierror.DomainData)
 }
 
 func (r *usageRepo) ListTopModelUsage(ctx context.Context, query biz.UsageQuery) ([]biz.UsageBreakdownRow, error) {
@@ -77,21 +78,21 @@ func (r *usageRepo) ListTopModelUsage(ctx context.Context, query biz.UsageQuery)
 		 COALESCE(SUM(call_count), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0), COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0),
 		 COALESCE(1.0 * SUM(CASE WHEN `+sqlUsageStatusSuccess+` THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0)
-		 FROM model_token_usage_events`+where+` GROUP BY provider_code, model_api_id ORDER BY total_cost_micro_usd DESC, call_count DESC LIMIT ?`)
+		 FROM model_token_usage_events`+where+` GROUP BY provider_code, model_api_id ORDER BY SUM(total_cost_micro_usd) DESC, SUM(call_count) DESC LIMIT ?`)
 	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, apierror.DomainData)
 	}
 	defer rows.Close()
 	var result []biz.UsageBreakdownRow
 	for rows.Next() {
 		var item biz.UsageBreakdownRow
 		if err = rows.Scan(&item.ProviderCode, &item.ModelAPIID, &item.ModelDisplayName, &item.CallCount, &item.InputTokens, &item.OutputTokens, &item.TotalTokens, &item.TotalCostMicroUSD, &item.AvgLatencyMS, &item.AvgTokensPerSecond, &item.SuccessRate); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, apierror.DomainData)
 		}
 		result = append(result, item)
 	}
-	return mergeUsageBreakdownByAlias(result), rows.Err()
+	return mergeUsageBreakdownByAlias(result), entErrToBizErr(rows.Err(), apierror.DomainData)
 }
 
 func (r *usageRepo) ListModelUsageEvents(ctx context.Context, query biz.UsageQuery) ([]biz.TokenUsageEvent, error) {
@@ -107,18 +108,18 @@ func (r *usageRepo) ListModelUsageEvents(ctx context.Context, query biz.UsageQue
 		 FROM model_token_usage_events`+where+` ORDER BY occurred_at DESC LIMIT ?`)
 	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, apierror.DomainData)
 	}
 	defer rows.Close()
 	var result []biz.TokenUsageEvent
 	for rows.Next() {
 		event, err := scanTokenUsageEvent(rows)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, apierror.DomainData)
 		}
 		result = append(result, aliasUsageEvent(event))
 	}
-	return result, rows.Err()
+	return result, entErrToBizErr(rows.Err(), apierror.DomainData)
 }
 
 func (r *usageRepo) ListTopAgentUsage(ctx context.Context, query biz.UsageQuery) ([]biz.UsageBreakdownRow, error) {
@@ -128,21 +129,21 @@ func (r *usageRepo) ListTopAgentUsage(ctx context.Context, query biz.UsageQuery)
 		 COALESCE(SUM(call_count), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0), COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0),
 		 COALESCE(1.0 * SUM(CASE WHEN `+sqlUsageStatusSuccess+` THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0)
-		 FROM model_token_usage_events`+where+` GROUP BY agent_id, agent_key ORDER BY total_cost_micro_usd DESC, call_count DESC LIMIT ?`)
+		 FROM model_token_usage_events`+where+` GROUP BY agent_id, agent_key ORDER BY SUM(total_cost_micro_usd) DESC, SUM(call_count) DESC LIMIT ?`)
 	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, apierror.DomainData)
 	}
 	defer rows.Close()
 	var result []biz.UsageBreakdownRow
 	for rows.Next() {
 		var item biz.UsageBreakdownRow
 		if err = rows.Scan(&item.AgentID, &item.AgentKey, &item.CallCount, &item.InputTokens, &item.OutputTokens, &item.TotalTokens, &item.TotalCostMicroUSD, &item.AvgLatencyMS, &item.AvgTokensPerSecond, &item.SuccessRate); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, apierror.DomainData)
 		}
 		result = append(result, item)
 	}
-	return result, rows.Err()
+	return result, entErrToBizErr(rows.Err(), apierror.DomainData)
 }
 
 type scanner interface {

@@ -34,29 +34,6 @@
         </template>
         {{ t('chat.wsReplaying', '正在同步历史事件…') }}
       </q-banner>
-      <q-banner
-        v-else-if="isStale"
-        dense
-        rounded
-        class="q-mx-md q-mt-sm ws-stale-banner"
-        :aria-label="t('chat.wsStale.title')"
-      >
-        <template #avatar>
-          <q-icon name="sync_problem" color="warning" size="20px" />
-        </template>
-        <div class="ws-stale-banner__content">
-          <span class="ws-stale-banner__hint">{{ t('chat.wsStale.hint') }}</span>
-          <q-btn
-            flat
-            dense
-            no-caps
-            color="warning"
-            :label="t('chat.wsStale.recover')"
-            class="ws-stale-banner__recover"
-            @click="emit('recover')"
-          />
-        </div>
-      </q-banner>
       <q-banner v-else-if="sessionLoading" dense rounded class="q-mx-md q-mt-sm app-info-banner">
         <template #avatar>
           <q-spinner-dots color="accent" size="20px" />
@@ -364,8 +341,6 @@ const props = defineProps<{
   awaitToolKey?: string;
   wsReplaying?: boolean;
   sessionLoading?: boolean;
-  /** P3-5: WS run-stale indicator — true when no run_heartbeat arrives within 30s. */
-  isStale?: boolean;
   isTeamSession?: boolean;
   plannerKind?: string;
   pendingMessages?: { id: string; content: string; status: string; created_at: string }[];
@@ -466,8 +441,6 @@ const emit = defineEmits<{
   'error-check-config': [event: ErrorEvent];
   'error-remove-attachment': [event: ErrorEvent];
   'error-relogin': [event: ErrorEvent];
-  /** P3-5: user clicked the "Recover" button on the stale banner. */
-  recover: [];
 }>();
 
 const { t } = useI18n();
@@ -603,23 +576,6 @@ onMounted(() => {
   border-radius: 50%
   background: var(--color-success)
   opacity: 60%
-
-.ws-stale-banner
-  background: var(--chat-status-danger-bg, color-mix(in srgb, var(--color-danger) 12%, var(--glass-surface)))
-  border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent)
-
-  &__content
-    display: flex
-    align-items: center
-    gap: 12px
-    flex-wrap: wrap
-
-  &__hint
-    color: var(--color-text-primary)
-    font-size: 13px
-
-  &__recover
-    flex-shrink: 0
 
 .contextual-loading-bar
   padding: 6px 12px

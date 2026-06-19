@@ -17,10 +17,12 @@ func TestFetchOAuth2ClientCredentials(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "tok-abc"})
 	}))
-	defer srv.Close()
-	// Close idle HTTP/2 connections after the test so goleak doesn't flag
-	// leftover clientConnReadLoop goroutines from the shared oauth2HTTPClient.
+	// Close idle HTTP/2 connections AFTER the server shuts down so goleak
+	// doesn't flag leftover clientConnReadLoop goroutines from the shared
+	// oauth2HTTPClient. defer runs in LIFO order: srv.Close() runs first,
+	// then CloseIdleConnections() cleans up the now-stale connections.
 	defer oauth2HTTPClient.CloseIdleConnections()
+	defer srv.Close()
 
 	tok, err := fetchOAuth2ClientCredentials(context.Background(), mcpconfig.AuthConfig{
 		Type:         "oauth2_client_credentials",
@@ -52,8 +54,8 @@ func TestFetchOAuth2RefreshToken_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "refreshed-tok"})
 	}))
-	defer srv.Close()
 	defer oauth2HTTPClient.CloseIdleConnections()
+	defer srv.Close()
 
 	tok, err := fetchOAuth2RefreshToken(context.Background(), mcpconfig.AuthConfig{
 		Type:         "oauth2_refresh",

@@ -430,12 +430,6 @@ export default {
       checkConfigHint: 'Please check the Agent configuration',
       removeAttachmentHint: 'Please remove unsupported attachments and retry',
     },
-    wsStale: {
-      title: 'Connection may be lost',
-      hint: 'No heartbeat received for over 30s. Click "Recover" to reconnect',
-      recover: 'Recover',
-      recovered: 'Connection recovered',
-    },
   },
   plugins: {
     rulesAdd: 'Add rule',

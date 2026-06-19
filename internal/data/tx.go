@@ -179,6 +179,12 @@ func queryRowScan(ctx context.Context, e execer, query string, args []any, dest 
 	}
 	defer rows.Close()
 	if !rows.Next() {
+		// rows.Next 返回 false 时必须检查 rows.Err()，否则会隐藏真实错误
+		// （例如 PostgreSQL 的语法错误/类型错误在迭代时才暴露），
+		// 错误地返回 NOT_FOUND。
+		if rerr := rows.Err(); rerr != nil {
+			return rerr
+		}
 		return apierror.NotFound(apierror.DomainData, "not found")
 	}
 	if err := rows.Scan(dest...); err != nil {

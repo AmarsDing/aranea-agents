@@ -70,7 +70,6 @@
         :await-kind="composer.awaitKind"
         :await-tool-key="composer.awaitToolKey"
         :ws-replaying="session.wsReplaying"
-        :is-stale="session.isStale"
         :execution-progress="session.executionProgress"
         :spirit-loading-message="session.spiritLoadingMessage"
         :spirit-status-bar="spiritStatusBar"
@@ -147,7 +146,6 @@
         @error-check-config="onErrorCheckConfig"
         @error-remove-attachment="onErrorRemoveAttachment"
         @error-relogin="onErrorRelogin"
-        @recover="onRecover"
         @cancel-team="spiritStore.cancelTeam"
         @resume-team="spiritStore.resumeTeam"
         @retry-team="spiritStore.retryTeam"
@@ -242,7 +240,7 @@ import ChatSideToggle from '../components/chat/ChatSideToggle.vue';
 import ChatSettingsDialog from '../components/chat/ChatSettingsDialog.vue';
 import ChatWorkspaceShell from '../components/chat/ChatWorkspaceShell.vue';
 import SessionTimelineDialog from '../components/chat/SessionTimelineDialog.vue';
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
@@ -426,15 +424,5 @@ function onErrorRemoveAttachment() {
 /** Relogin: redirect to the login page. */
 function onErrorRelogin() {
   router.push({ name: 'login' });
-}
-
-/**
- * P3-5: Recover from a stale WS run. Delegates to the stream manager's
- * `recover()` which force-reconnects the active stream(s) and clears
- * `isStale`. A short notification confirms the action to the user.
- */
-function onRecover() {
-  session.recover();
-  $q.notify({ type: 'info', message: t('chat.wsStale.recovered'), timeout: 2000 });
 }
 </script>

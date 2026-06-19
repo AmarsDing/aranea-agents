@@ -428,12 +428,6 @@ export default {
       checkConfigHint: '请检查 Agent 配置',
       removeAttachmentHint: '请移除不支持的附件后重试',
     },
-    wsStale: {
-      title: '连接可能已断开',
-      hint: '已超过 30 秒未收到心跳，点击「恢复」重新建立连接',
-      recover: '恢复',
-      recovered: '连接已恢复',
-    },
   },
   plugins: {
     rulesAdd: '添加规则',

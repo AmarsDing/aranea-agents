@@ -42,20 +42,6 @@ export type UseEnvelopeStreamOptions = {
   onServerShutdown?: (reason: string) => void;
   onReplayState?: (replaying: boolean, count?: number) => void;
   onReconnectFailed?: () => void;
-  /**
-   * Fired when a `run_heartbeat` envelope arrives (P1-7). Use to update UI
-   * progress and reset run-stale timers. Forwarded from `WsTransportOptions.onHeartbeat`.
-   */
-  onHeartbeat?: (env: Envelope) => void;
-  /**
-   * Fired when no `run_heartbeat` has arrived within `WS_RUN_STALE_TIMEOUT_MS`
-   * (P1-7 / P3-5). Indicates the run may be stuck or the WS silently dropped
-   * heartbeats. Forwarded from `WsTransportOptions.onStale`.
-   *
-   * Note: the stale timer only starts after `transport.resetStaleTimer()` is
-   * called (typically on run start). See `useChatStreamManager.recover()`.
-   */
-  onStale?: () => void;
 };
 
 export type UseEnvelopeStreamReturn = {
@@ -151,12 +137,6 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
       },
       onReconnectFailed: () => {
         opts.onReconnectFailed?.();
-      },
-      onHeartbeat: (env) => {
-        opts.onHeartbeat?.(env);
-      },
-      onStale: () => {
-        opts.onStale?.();
       },
     });
 

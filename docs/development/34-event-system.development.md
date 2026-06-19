@@ -1,6 +1,6 @@
 # Event 事件系统 — 开发计划
 
-> **版本**：2026-06-17 | **状态**：🟢 P1 + P2 + P3 已实现，P4 工具生命周期事件未实现
+> **版本**：2026-06-19 | **状态**：🟢 P1 + P2 + P3 + P5(T3.4) 已实现，P4 工具生命周期事件未实现
 > **需求**：[34-event-system.md](./34-event-system.md) · **设计**：[34-event-system.design.md](./34-event-system.design.md)
 
 ---
@@ -43,9 +43,11 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 | data | `internal/data/session_state_repo.go` | Session State 持久化（json_set / json_remove） |
 | data | `internal/data/event_store_repo.go` + `ent/schema/event_store.go` | event_store 表 Repo + Schema |
 | server | `internal/server/ws.go` + `ws_*.go` | WebSocket 统一网关（`/v1/ws`） |
+| server | `internal/server/ws_sync_request.go` | T3.4 sync_request 上行处理 + revision-based 重放（EventStoreLister 窄接口） |
 | service | `internal/service/event.go` | 回放 API Service（`GET /v1/events`） |
 | proto | `api/kratos/event/v1/event.proto` | EventService.ListEvents Proto 契约 |
 | 前端 | `web/src/realtime/envelope.ts` + `ws-transport.ts` + `useEnvelopeStream.ts` | 前端 Envelope 类型 + WS 传输 + composable |
+| 前端 | `web/src/realtime/event_replay.ts` | T3.4 RevisionTracker + buildSyncRequest + requestSyncReplay |
 | 前端 | `web/src/components/monitor/RealtimeEvents.vue` | Monitor Events Tab |
 | 前端 | `web/src/components/chat/SessionTimelineDialog.vue` | Chat Trace + Envelope 双 Tab |
 | 前端 | `web/src/features/chat/composables/useChatTraceAndArtifacts.ts` | openSessionTrace / openSessionEvents |
@@ -77,6 +79,7 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 | 17 | 事件回放 API（`GET /v1/events`） | `internal/service/event.go` + `event.proto` |
 | 18 | 事件丢弃可观测（Prometheus） | `bus_adapter.go` DropLogger → `EventBusDropped` 指标 |
 | 19 | Graph 事件桥接 | `internal/graph/trpc/event_bridge.go` |
+| 20 | T3.4 revision-based sync replay（sync_request 上行 + EventStore 重放） | `internal/server/ws_sync_request.go` + `web/src/realtime/event_replay.ts` |
 
 ### 2.2 能力清单（未实现）
 
@@ -92,6 +95,7 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 | Monitor 实时事件 UI | ✅ | `RealtimeEvents.vue` |
 | Chat 会话事件检视 | ✅ | `SessionTimelineDialog` 双 Tab + Inspector 组件群 |
 | Monitor EventTimeline 原型 | ✅ | 已删除（O1） |
+| T3.4 revision-based sync replay | ✅ | `ws_sync_request.go` + `event_replay.ts` + E2E 测试 |
 | 工具生命周期事件 | ❌ | EnvelopeType 无 ToolRegistered/ToolUpdated/ToolRemoved |
 
 ---
@@ -163,6 +167,27 @@ Envelope 元数据扩展（StateDelta / Extensions / FilterKey / Branch / Tag / 
 5. 所有触发操作经 broker/async 异步执行
 6. 触发结果记录到 FlowLog
 
+### Phase 5：revision-based sync replay（T3.4）— ✅ 完成
+
+> 来源：`docs/reports/2026-06-18-review-issues-and-solutions.md` T3.4 — WS 断连事件持久化 + afterRevision 重放。
+
+**背景**：原有 event-ID replay 基于 `event.Buffer` 环形缓冲（内存，容量 256），断连时间超过 Buffer 容量时丢失事件。T3.4 引入 revision-based sync：客户端重连后发送 `sync_request { after_revision }`，服务端从 `event_store` 表查询并重放 `session_revision > after_revision` 的 Envelope。
+
+**任务**：
+1. ~~后端 `internal/server/ws_sync_request.go` — `handleSyncRequest` + `runSyncReplay`~~ ✅
+2. ~~后端 `internal/server/ws.go` — `EventStoreLister` 窄接口 + nil-interface 陷阱处理~~ ✅
+3. ~~前端 `web/src/realtime/event_replay.ts` — `RevisionTracker` + `buildSyncRequest` + `requestSyncReplay`~~ ✅
+4. ~~前端 `web/src/realtime/ws-transport.ts` — 集成 `RevisionTracker`，重连后调用 `requestSyncReplay`~~ ✅
+5. ~~E2E 测试 `internal/server/ws_sync_e2e_test.go` — 覆盖正常重放 + 边界条件~~ ✅
+6. ~~aranea-review 通过（0 blocking / 0 suggestions）~~ ✅
+
+**关键设计决策**：
+- 同步阶段（校验）在 readPump goroutine 中执行，异步阶段（EventStore 查询 + 重放）通过 `safego.Go` 启动独立 goroutine，避免阻塞 readPump
+- Context 来源为 `wc.contextOrBackground()`（连接关闭时取消），而非 `context.Background()`
+- 重放前按 `SessionRevision` 升序排序（INV4），保证因果顺序
+- 仅重放当前连接已订阅的 Channel 的事件
+- EventStore 未配置时静默降级到 event-ID replay
+
 ---
 
 ## 5. 任务清单
@@ -190,6 +215,9 @@ Envelope 元数据扩展（StateDelta / Extensions / FilterKey / Branch / Tag / 
 | 19 | ToolUpdated → 缓存失效 | 4 | ❌ |
 | 20 | ToolRemoved → Agent 配置告警 | 4 | ❌ |
 | 21 | 异步触发 + FlowLog 记录 | 4 | ❌ |
+| 22 | T3.4 后端 sync_request 处理（ws_sync_request.go + EventStoreLister 窄接口） | 5 | ✅ |
+| 23 | T3.4 前端 RevisionTracker + requestSyncReplay（event_replay.ts + ws-transport.ts 集成） | 5 | ✅ |
+| 24 | T3.4 E2E 测试（ws_sync_e2e_test.go） | 5 | ✅ |
 
 ---
 
@@ -206,6 +234,10 @@ Envelope 元数据扩展（StateDelta / Extensions / FilterKey / Branch / Tag / 
 - [x] Chat 会话事件检视：Drawer/Dialog 双 Tab（Trace + 实时 Envelope），支持类型/分支/标签过滤与 Branch 树
 - [x] 关键事件 WBPF（先写后发），进程崩溃不丢失
 - [x] Monitor 高频事件与 Chat 业务事件走独立 Bus，避免相互挤压
+- [x] T3.4 WS 断连重连后，客户端发送 `sync_request { after_revision }`，服务端从 EventStore 重放 `session_revision > after_revision` 的 Envelope
+- [x] T3.4 重放按 `SessionRevision` 升序排序，仅投递当前连接已订阅 Channel 的事件
+- [x] T3.4 EventStore 未配置时静默降级到 event-ID replay，不阻断连接
+- [x] T3.4 sync_request 处理不阻塞 readPump（EventStore 查询通过 `safego.Go` 异步执行）
 - [ ] 新工具注册后自动生成描述和 embedding
 - [ ] 工具更新后相关 Agent 缓存自动失效
 - [ ] 触发操作异步执行，不阻塞主流程
@@ -221,3 +253,5 @@ Envelope 元数据扩展（StateDelta / Extensions / FilterKey / Branch / Tag / 
 - Critical 事件 WAL 写失败会阻塞 publish（避免不一致），需监控 WAL 写延迟
 - 双 Bus 路由模式由 `MONITOR_BUS_ROUTING` 控制，`split` 模式下若误配会导致事件丢失
 - P4 工具生命周期事件需与 `internal/biz/tool/` 和 `internal/biz/skill/` 模块协同，触发链需遵守红线 #8（框架 plugin 回调不得直接写数据库）
+- T3.4 sync_request 依赖 EventStore 持久化（P2），EventStore 未配置时降级到 event-ID replay；24h 回溯窗口外的历史事件不重放（客户端应在初次加载时通过 `GET /v1/events` 补齐）
+- T3.4 单连接 sync_request 重放上限 500 条，超过的会话需客户端分页拉取

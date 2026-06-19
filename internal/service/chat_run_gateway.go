@@ -174,18 +174,43 @@ func persistRunStatusToSession(sessions biz.SessionStatePort, ctx context.Contex
 	bg, bgCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer bgCancel()
 
-	if terminalRunStatus(status) {
-		return sessions.PatchSessionState(bg, sessionID,
-			map[string]string{},
-			[]string{stateKeyRunID, stateKeyAwaitRunID, stateKeyAwaitSince},
-		)
+	now := time.Now().UTC().Format(time.RFC3339)
+	status = strings.TrimSpace(status)
+	errMsg = strings.TrimSpace(errMsg)
+
+	sets := map[string]string{
+		stateKeyRunStatus:    status,
+		stateKeyRunUpdatedAt: now,
 	}
-	return sessions.PatchSessionState(bg, sessionID,
-		map[string]string{
-			stateKeyRunID: strings.TrimSpace(runID),
-		},
-		nil,
-	)
+	if errMsg != "" {
+		sets[stateKeyRunError] = errMsg
+	}
+
+	if terminalRunStatus(status) {
+		// Terminal status: clear run_id and await markers, but keep
+		// status/error/updated_at for crash-recovery hydration.
+		deletes := []string{
+			stateKeyRunID,
+			stateKeyAwaitRunID,
+			stateKeyAwaitSince,
+		}
+		// If errMsg is empty, clear the error field too; otherwise the
+		// previous error would persist after a successful terminal state.
+		if errMsg == "" {
+			deletes = append(deletes, stateKeyRunError)
+		}
+		return sessions.PatchSessionState(bg, sessionID, sets, deletes)
+	}
+
+	// Non-terminal status: persist run_id alongside status/updated_at.
+	sets[stateKeyRunID] = strings.TrimSpace(runID)
+	// Clear any stale error from a previous failed attempt when entering
+	// a non-terminal state (e.g., retry after failure).
+	if errMsg == "" {
+		deletes := []string{stateKeyRunError}
+		return sessions.PatchSessionState(bg, sessionID, sets, deletes)
+	}
+	return sessions.PatchSessionState(bg, sessionID, sets, nil)
 }
 
 func persistAwaitMarkersToSession(sessions biz.SessionStatePort, ctx context.Context, sessionID, runID string, await biz.ChatAwaitMeta, syncWrite bool, lg loggateway.Logger) {

@@ -14,7 +14,7 @@
         <span class="task-board-entry__num">{{ entry.num }}</span>
         <span class="task-board-entry__task">{{ entry.task }}</span>
         <span v-if="entry.agentName" class="task-board-entry__agent" :style="{ color: entry.agentColor || 'var(--color-text-secondary)' }">
-          {{ entry.agentIcon || entry.agentName?.charAt(0) || '' }} {{ entry.agentName }}
+          <agent-avatar-q :icon="entry.agentIcon || ''" size="16px" avatar-class="task-board-entry__agent-avatar" /> {{ entry.agentName }}
         </span>
         <q-icon
           :name="statusIconName(entry.status)"
@@ -29,6 +29,7 @@
 
 <script setup lang="ts">
 import type { TaskBoardSection as TaskBoardSectionType } from '../../features/chat/activityTimelineTypes';
+import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
 
 defineProps<{
   section: TaskBoardSectionType;
@@ -122,6 +123,12 @@ function statusIconColor(status: string): string {
 
   &__agent
     font-size: 12px
+    flex-shrink: 0
+    display: inline-flex
+    align-items: center
+    gap: 4px
+
+  &__agent-avatar
     flex-shrink: 0
 
   &__status-icon
