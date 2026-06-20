@@ -181,6 +181,31 @@ export function useActivityTimeline() {
 
   // === Load activities from API (for history recovery) ===
 
+  // AF-FE-15: Coerce numeric fields that the backend may serialize as JSON
+  // strings (e.g. `durationMs: "1745"`) into actual numbers. Without this,
+  // downstream `sum + (s.durationMs ?? 0)` becomes implicit string
+  // concatenation (`1745 + "1588" === "17451588"`), which corrupts
+  // displayed durations like "290m 52s".
+  function normalizeActivityNumericFields(a: Activity): Activity {
+    return {
+      ...a,
+      durationMs: toNumberOrNull(a.durationMs),
+      toolDurationMs: a.toolDurationMs == null ? a.toolDurationMs : toNumberOrNull(a.toolDurationMs),
+    };
+  }
+
+  function toNumberOrNull(v: unknown): number | null {
+    if (v == null) return null;
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string') {
+      const trimmed = v.trim();
+      if (!trimmed) return null;
+      const n = Number(trimmed);
+      return Number.isFinite(n) ? n : null;
+    }
+    return null;
+  }
+
   function loadActivities(activityList: Activity[]) {
     // Atomic replacement: build a complete new Map before assigning to the
     // shallowRef. This avoids the intermediate empty-map state that causes
@@ -190,7 +215,11 @@ export function useActivityTimeline() {
     const newMap = new Map<string, Activity>();
     let newRootId: string | null = null;
     for (const a of activityList) {
-      newMap.set(a.id, a);
+      // AF-FE-15: Backend may return numeric fields as JSON strings (e.g.
+      // durationMs="1745"). Coerce them here so downstream reduce/sum/arithmetic
+      // never falls into implicit string concatenation (e.g. 1745 + "1588"
+      // = "17451588"), which would corrupt displayed durations and turn totals.
+      newMap.set(a.id, normalizeActivityNumericFields(a));
       if (!a.parentActivityId) {
         newRootId = a.id;
       }
@@ -217,7 +246,7 @@ export function useActivityTimeline() {
       } catch (err) {
         lastErr = err;
         if (attempt < maxAttempts - 1) {
-          const delay = baseDelay * (2 ** attempt);
+          const delay = baseDelay * 2 ** attempt;
           await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
@@ -371,7 +400,7 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
       // Map backend ActivityStatus → frontend PlanEvent.status
       const planStatus = mapPlanStatus(node.status);
       // Extract steps from meta (serialized from Go ActivityPlanStep[])
-      const metaSteps = Array.isArray(node.meta?.steps) ? node.meta.steps as PlanStep[] : [];
+      const metaSteps = Array.isArray(node.meta?.steps) ? (node.meta.steps as PlanStep[]) : [];
       // B-04: Map tree children to StreamEvent[] for PlanBlock rendering.
       // This replaces the direct activityTree consumption in PlanBlock,
       // unifying the data flow through the event model.

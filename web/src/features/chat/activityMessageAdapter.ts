@@ -25,6 +25,10 @@ export function createStreamingMessageFromActivity(
   const msg = createPlaceholderMessage(streamId, sessionId, 'assistant', '');
   msg.status = 'streaming';
   msg.origin = { kind: 'streaming', sessionId };
+  // AF-correlation: 从 Activity metadata 回填 turn_id，使 useConversationTimeline
+  // 能通过 assistant message 的 turn_id 关联 Activity 记录（作为 user message
+  // turn_id 为空时的回退路径）。
+  if (md.turn_id) msg.turn_id = md.turn_id;
   if (md.agent_name) msg.model_name = md.agent_name;
   if (md.kind === 'thinking') {
     msg.reasoning_markdown = '';
@@ -133,7 +137,11 @@ export function mergeToolResultFromDone(existing: ToolUseEvent, md: ActivityDone
 /** Create a tool Message from an activity_start(kind=action). */
 export function createToolMessageFromActivityStart(sessionId: string, md: ActivityStartMeta): Message {
   const event = toolEventFromActivityStart(md);
-  return toolEventToMessage(sessionId, event);
+  const msg = toolEventToMessage(sessionId, event);
+  // AF-correlation: 从 Activity metadata 回填 turn_id，使 useConversationTimeline
+  // 能通过 assistant message 的 turn_id 关联 Activity 记录。
+  if (md.turn_id) msg.turn_id = md.turn_id;
+  return msg;
 }
 
 /** Create a failed Message from an activity_start(kind=error). */
@@ -144,6 +152,8 @@ export function createFailedMessageFromError(sessionId: string, md: ActivityStar
     status: 'failed',
     error_message: errMsg,
     origin: { kind: 'streaming', sessionId },
+    // AF-correlation: 从 Activity metadata 回填 turn_id。
+    turn_id: md.turn_id || '',
   };
 }
 
@@ -176,18 +186,19 @@ export function createFailedMessageFromError(sessionId: string, md: ActivityStar
  * @param sessionId - Current session ID
  * @returns Message[] suitable for injection as local messages in mergeSessionMessages
  */
-export function reconstructMessagesFromActivities(
-  activities: readonly Activity[],
-  sessionId: string,
-): Message[] {
+export function reconstructMessagesFromActivities(activities: readonly Activity[], sessionId: string): Message[] {
   if (!activities.length) return [];
-
   // Group activities by turnId to apply per-turn sequential offsets
   const byTurn = new Map<string, Activity[]>();
   for (const record of activities) {
     // Skip non-content activities
-    if (record.kind === 'task' || record.kind === 'end' || record.kind === 'sub_task_board'
-      || record.kind === 'delegate' || record.kind === 'notice') {
+    if (
+      record.kind === 'task' ||
+      record.kind === 'end' ||
+      record.kind === 'sub_task_board' ||
+      record.kind === 'delegate' ||
+      record.kind === 'notice'
+    ) {
       continue;
     }
     const turnId = record.turnId || '';
@@ -213,9 +224,10 @@ export function reconstructMessagesFromActivities(
       const createdAt = addMicroOffset(baseTimestamp, seqInTurn);
       seqInTurn++;
 
-      const agentRef = record.agentKey || record.agentName
-        ? { id: '', agent_key: record.agentKey || '', name: record.agentName || '', icon: '' }
-        : null;
+      const agentRef =
+        record.agentKey || record.agentName
+          ? { id: '', agent_key: record.agentKey || '', name: record.agentName || '', icon: '' }
+          : null;
 
       if (record.kind === 'thinking') {
         // Thinking activity → assistant message with reasoning_markdown
@@ -396,10 +408,18 @@ function addMicroOffset(isoTimestamp: string, offsetCount: number): string {
 
 function parseToolArgs(raw?: string): unknown {
   if (!raw) return undefined;
-  try { return JSON.parse(raw); } catch { return { __raw: raw }; }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { __raw: raw };
+  }
 }
 
 function parseToolResult(raw?: string): unknown {
   if (!raw) return undefined;
-  try { return JSON.parse(raw); } catch { return { __raw: raw }; }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { __raw: raw };
+  }
 }

@@ -23,19 +23,19 @@ import (
 // Graph node event object types (mirrored from trpc-agent-go/graph to avoid
 // importing the graph package, which pulls in broken transitive dependencies).
 const (
-	graphObjectTypeNodeStart   = "graph.node.start"
+	graphObjectTypeNodeStart    = "graph.node.start"
 	graphObjectTypeNodeComplete = "graph.node.complete"
-	graphObjectTypeNodeError   = "graph.node.error"
-	graphMetadataKeyNode       = "_node_metadata"
+	graphObjectTypeNodeError    = "graph.node.error"
+	graphMetadataKeyNode        = "_node_metadata"
 )
 
 // graphNodeMetadata mirrors trpc-agent-go/graph.NodeExecutionMetadata
 // (only the fields we need for plan step mapping).
 type graphNodeMetadata struct {
-	NodeID      string `json:"nodeId"`
-	NodeType    string `json:"nodeType,omitempty"`
-	StepNumber  int    `json:"stepNumber,omitempty"`
-	ModelName   string `json:"modelName,omitempty"`
+	NodeID     string `json:"nodeId"`
+	NodeType   string `json:"nodeType,omitempty"`
+	StepNumber int    `json:"stepNumber,omitempty"`
+	ModelName  string `json:"modelName,omitempty"`
 }
 
 // planStepLabel builds a human-readable label for a plan step from graph node
@@ -99,8 +99,8 @@ type ActivityProjector struct {
 	kindAuthorMap  map[string]string        // "kind:author" -> activity ID (O(1) lookup)
 	reasoningBuf   map[string]*strings.Builder
 	meta           ProjectMeta
-	planActivityID string                   // current turn's plan activity ID (graph node events)
-	planStepIndex  int                      // monotonic counter for plan steps within this turn
+	planActivityID string // current turn's plan activity ID (graph node events)
+	planStepIndex  int    // monotonic counter for plan steps within this turn
 
 	// resetDone prevents Reset() from clearing state that was initialized
 	// before stream consumption started. When the projector is pre-created
@@ -905,9 +905,9 @@ func (p *ActivityProjector) processGraphNodeStart(ctx context.Context, ev *trpce
 	}
 	p.planStepIndex++
 	step := biz.ActivityPlanStep{
-		ID:      meta.NodeID,
-		Label:   planStepLabel(meta),
-		Status:  biz.ActivityStatusRunning,
+		ID:     meta.NodeID,
+		Label:  planStepLabel(meta),
+		Status: biz.ActivityStatusRunning,
 	}
 	steps = append(steps, step)
 	planAct.Meta["steps"] = steps

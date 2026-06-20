@@ -35,6 +35,13 @@ export type EntityNavDeps = {
   selectedProviderModel: Ref<{ provider?: string; model?: string } | undefined>;
   makeSessionTitle: (content: string) => string;
   t: (key: string, ...args: unknown[]) => string;
+  /**
+   * AF-FE-15: Load Activity records for the session and reconstruct per-round
+   * `actv-*` messages. The channel-focus path (route watch, sidebar click,
+   * session restore) routes through this so activity-driven UI is consistent
+   * with the bindSessionView path.
+   */
+  loadActivitiesAndReconstruct: (sessionId: string) => Promise<Message[]>;
 };
 
 export function useChatEntityNav(deps: EntityNavDeps) {
@@ -89,9 +96,15 @@ export function useChatEntityNav(deps: EntityNavDeps) {
   function channelFocusLoadDeps() {
     return {
       getMessages: (sid: string) => deps.messageStore.getMessages(sid),
-      loadMessages: (opts: { sessionId: string }) => deps.messageStore.loadMessages(opts),
+      loadMessages: (opts: {
+        sessionId: string;
+        replace?: boolean;
+        dropStaleInFlight?: boolean;
+        activityMessages?: Message[];
+      }) => deps.messageStore.loadMessages(opts),
       setMessages: (sid: string, rows: Message[]) => deps.messageStore.setMessages(sid, rows),
       ensureChatStream: (sid: string) => deps.streamManager.ensureChatStream(sid),
+      loadActivitiesAndReconstruct: (sid: string) => deps.loadActivitiesAndReconstruct(sid),
     };
   }
 

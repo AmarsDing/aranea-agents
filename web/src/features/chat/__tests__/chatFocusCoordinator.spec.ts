@@ -73,6 +73,7 @@ describe('hydrateSessionForChannelFocus', () => {
   it('skips reload when skipMessageReload and user row exists locally', async () => {
     const loadMessages = vi.fn().mockResolvedValue(undefined);
     const ensureChatStream = vi.fn();
+    const loadActivitiesAndReconstruct = vi.fn().mockResolvedValue([]);
     const rows: Message[] = [{ ...baseMsg }];
     await hydrateSessionForChannelFocus(
       {
@@ -82,6 +83,7 @@ describe('hydrateSessionForChannelFocus', () => {
           rows.splice(0, rows.length, ...next);
         },
         ensureChatStream,
+        loadActivitiesAndReconstruct,
       },
       'sess-1',
       true,
@@ -92,16 +94,18 @@ describe('hydrateSessionForChannelFocus', () => {
 
   it('loads user turn when skipMessageReload but no local user content', async () => {
     const loadMessages = vi.fn().mockResolvedValue(undefined);
+    const loadActivitiesAndReconstruct = vi.fn().mockResolvedValue([]);
     await hydrateSessionForChannelFocus(
       {
         getMessages: () => [],
         loadMessages,
         setMessages: () => {},
         ensureChatStream: () => {},
+        loadActivitiesAndReconstruct,
       },
       'sess-1',
       true,
     );
-    expect(loadMessages).toHaveBeenCalledWith({ sessionId: 'sess-1', replace: true });
+    expect(loadMessages).toHaveBeenCalledWith({ sessionId: 'sess-1', replace: true, activityMessages: [] });
   });
 });

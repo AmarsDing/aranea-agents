@@ -158,8 +158,8 @@ func (r *toolRepo) computeToolSummary(ctx context.Context, client *ent.Client, q
 	if err := entQueryRowScan(client, ctx, r.data.Dialect().RenumberPlaceholders(`
 		SELECT
 		  COALESCE(COUNT(1), 0),
-		  COALESCE(SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END), 0),
-		  COALESCE(SUM(CASE WHEN enabled = 1 AND risk_level IN ('high', 'critical') THEN 1 ELSE 0 END), 0)
+		  COALESCE(SUM(CASE WHEN t.enabled THEN 1 ELSE 0 END), 0),
+      COALESCE(SUM(CASE WHEN t.enabled AND risk_level IN ('high', 'critical') THEN 1 ELSE 0 END), 0)
 		FROM tools t WHERE `+where), args,
 		&s.TotalTools, &s.EnabledTools, &s.HighRiskEnabled); err != nil {
 		return biz.ToolSummary{}, entErrToBizErr(err, "TOOL")

@@ -18,7 +18,7 @@ import (
 )
 
 func init() {
-	timeoutSec := 60
+	timeoutSec := 5
 	if v := os.Getenv("KRATOS_KNOWLEDGE_EMBED_TIMEOUT_SEC"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			timeoutSec = n
@@ -37,6 +37,12 @@ const (
 	ProviderGemini      = "gemini"
 	ProviderHuggingFace = "huggingface"
 )
+
+// ErrEmbedderNotConfigured is returned when the embedder has not been fully
+// configured via the memory module UI (missing base_url or api_key for
+// providers that require them). Callers should skip embedding and degrade
+// gracefully instead of attempting a network call that will time out.
+var ErrEmbedderNotConfigured = apierror.Unavailable("KNOWLEDGE", "embedder not configured: set provider/base_url/api_key in memory module UI")
 
 // Embedder is the interface for text embedding providers.
 type Embedder interface {
@@ -106,11 +112,18 @@ func (e *MultiProviderEmbedder) Config() (provider, baseURL, model string, dim i
 	hasAPIKey = e.APIKey != ""
 	switch e.Provider {
 	case ProviderOllama:
-		configured = e.Provider != ""
+		// Ollama runs locally; only base_url is required.
+		configured = e.BaseURL != ""
 	case ProviderHuggingFace:
 		configured = e.BaseURL != ""
+	case ProviderGemini:
+		configured = hasAPIKey
 	default:
-		configured = e.Provider != "" && hasAPIKey
+		// OpenAI-compatible: both base_url and api_key must be set via the
+		// memory module UI. Empty base_url means "not configured" (previously
+		// defaulted to https://api.openai.com, which caused 21s timeouts
+		// under DNS pollution).
+		configured = e.BaseURL != "" && hasAPIKey
 	}
 	return e.Provider, e.BaseURL, e.Model, e.dim, configured, hasAPIKey
 }
@@ -193,6 +206,12 @@ func (e *MultiProviderEmbedder) EmbedBatchWithTaskType(ctx context.Context, text
 	if len(texts) == 0 {
 		return nil, nil
 	}
+	// Skip when the embedder has not been fully configured via the memory
+	// module UI. This avoids blocking the LLM main flow on a doomed network
+	// call (e.g. default https://api.openai.com under DNS pollution).
+	if _, _, _, _, configured, _ := e.Config(); !configured {
+		return nil, ErrEmbedderNotConfigured
+	}
 	provider, baseURL, apiKey, model, dim := e.snapshot()
 	switch provider {
 	case ProviderOllama:
@@ -208,7 +227,7 @@ func (e *MultiProviderEmbedder) EmbedBatchWithTaskType(ctx context.Context, text
 
 func (e *MultiProviderEmbedder) embedOpenAIBatch(ctx context.Context, baseURL, apiKey, model string, texts []string) ([][]float32, error) {
 	if baseURL == "" {
-		baseURL = "https://api.openai.com"
+		return nil, ErrEmbedderNotConfigured
 	}
 	out := make([][]float32, 0, len(texts))
 	for start := 0; start < len(texts); start += defaultEmbedBatchSize {

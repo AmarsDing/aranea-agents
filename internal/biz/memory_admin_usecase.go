@@ -9,6 +9,7 @@ import (
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/jsonutil"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 )
 
 // conflictDetectMaxRows is the maximum number of facts scanned for conflict detection.
@@ -221,9 +222,15 @@ func (uc *MemoryAdminUsecase) syncFactIndexBestEffort(ctx context.Context, raw [
 	if syncer == nil {
 		return
 	}
-	if err := syncer.SyncFactIndexFromRow(ctx, raw); err != nil && !errors.Is(err, ErrMemoryUnavailable) {
-		uc.lg.Warn("syncFactIndexBestEffort failed", loggateway.StepID("memory.l4_fail"), loggateway.Err(err))
-	}
+	// Async: L4 fact index sync must not block the LLM main flow. Embed
+	// calls can take up to 5s (or time out), which would delay fact
+	// insertion and L3 recall. Use a detached context so the sync
+	// survives request cancellation.
+	safego.Go(ctx, "memory.l4_sync", func() {
+		if err := syncer.SyncFactIndexFromRow(context.WithoutCancel(ctx), raw); err != nil && !errors.Is(err, ErrMemoryUnavailable) {
+			uc.lg.Warn("syncFactIndexBestEffort failed", loggateway.StepID("memory.l4_fail"), loggateway.Err(err))
+		}
+	})
 }
 
 func (uc *MemoryAdminUsecase) InsertEvolutionEventRow(ctx context.Context, in EvolutionEventInsert) ([]byte, error) {

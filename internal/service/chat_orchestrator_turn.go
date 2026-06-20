@@ -105,7 +105,12 @@ func (o *ChatOrchestrator) checkTurnAdmission(input biz.TurnInput, hasActive, co
 func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz.TurnInput, flow *event.TraceEmitter) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
 	sessionID := strings.TrimSpace(input.SessionID)
 
+	lockStart := time.Now()
 	unlock := o.lockSession(sessionID)
+	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: lockSession",
+		loggateway.StepID("chat.lock_session"),
+		loggateway.Any("elapsed_ms", time.Since(lockStart).Milliseconds()))
+	sessGetStart := time.Now()
 	sess, err := o.td().Sessions.Get(ctx, sessionID)
 	if err != nil {
 		unlock()
@@ -117,6 +122,9 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 		}
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
+	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: Sessions.Get",
+		loggateway.StepID("chat.session_get"),
+		loggateway.Any("elapsed_ms", time.Since(sessGetStart).Milliseconds()))
 	flow.LogDone("chat.session_fetch", "会话已获取", event.P("owner_type", sess.OwnerType), event.P("agent_id", sess.AgentID), event.P("team_id", sess.TeamID))
 
 	releaseLane := rt.AcquireTurnLane(ctx, input, sess.OwnerType)
@@ -136,6 +144,7 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 		unlock()
 		return biz.ChatMessage{}, biz.ChatMessage{}, apierror.BadRequest("CHAT_NATIVE", "session has no agent_id")
 	}
+	hydrateStart := time.Now()
 	ag, err := o.hydratedAgent(ctx, agentID)
 	if err != nil {
 		unlock()
@@ -145,6 +154,10 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 		}
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
+	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: hydratedAgent",
+		loggateway.StepID("chat.agent_hydrate"),
+		loggateway.Any("elapsed_ms", time.Since(hydrateStart).Milliseconds()),
+		loggateway.Any("agent_key", ag.AgentKey))
 	flow.LogDone("chat.agent_hydrate", "Agent配置已加载", event.P("agent_key", ag.AgentKey), event.P("provider", ag.Provider), event.P("model", ag.Model))
 	if err := o.admission().EnforceChatTurnQuotas(ctx, agentID, chatagent.UserIDFromCtx(ctx)); err != nil {
 		unlock()
@@ -244,10 +257,15 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	sessionID := strings.TrimSpace(input.SessionID)
 
 	// ── ADMISSION ──
+	admitStart := time.Now()
 	admit, err := o.admitTurn(ctx, sess, input, ag, dialogMode, prov, mod)
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
+	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: admitTurn",
+		loggateway.StepID("chat.admit"),
+		loggateway.Any("elapsed_ms", time.Since(admitStart).Milliseconds()),
+		loggateway.Any("run_id", admit.runID))
 	runID := admit.runID
 	dialogMode = admit.dialogMode
 	prov = admit.provider
@@ -349,7 +367,12 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// the runner. The hits are stored in ctx so the MemoryInject before-model
 	// hook can merge them with RecallComposite results. Failures are non-fatal:
 	// only a warning is logged and the turn continues without proactive hits.
+	proactiveStart := time.Now()
 	proactiveHits := o.runProactiveRecall(ctx, sess, ag, content, emitter)
+	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: runProactiveRecall",
+		loggateway.StepID("chat.proactive_recall"),
+		loggateway.Any("elapsed_ms", time.Since(proactiveStart).Milliseconds()),
+		loggateway.Any("hits", len(proactiveHits)))
 	ctx = chatagent.WithProactiveHits(ctx, proactiveHits)
 
 	var buildResult turnBuildResult
@@ -380,6 +403,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		emitter.LogSkip("chat.intent.pass", "Intent Pass 未启用或消息过短", event.P("intent_pass_enabled", intent.IntentPassFromAgent(ag)))
 	}
 
+	buildIntentStart := time.Now()
 	if err := eg.Wait(); err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		o.runs.Finish(sessionID)
@@ -388,6 +412,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
+	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: BUILD+IntentPass parallel",
+		loggateway.StepID("chat.build_intent_parallel"),
+		loggateway.Any("elapsed_ms", time.Since(buildIntentStart).Milliseconds()))
 
 	// ── PRE-PLANNING GATE (P1-2) ──
 	// After intent pass, run a quick complexity assessment. If Moderate/Complex,
@@ -399,7 +426,14 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// voluntarily invoke plan_and_execute. This ensures complex tasks always
 	// go through planning. The forcedPlanningRunOption is still injected as a
 	// hint to the LLM. If Plan() fails, we fall back to the soft gate.
-	if gateDecision, gateErr := o.runPrePlanningGate(ctx, sessionID, content, intentArtifact); gateErr == nil && gateDecision.ForcePlanning {
+	gateStart := time.Now()
+	gateDecision, gateErr := o.runPrePlanningGate(ctx, sessionID, content, intentArtifact)
+	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: runPrePlanningGate",
+		loggateway.StepID("chat.pre_planning_gate"),
+		loggateway.Any("elapsed_ms", time.Since(gateStart).Milliseconds()),
+		loggateway.Any("force_planning", gateErr == nil && gateDecision.ForcePlanning),
+		loggateway.Any("gate_err", gateErr != nil))
+	if gateErr == nil && gateDecision.ForcePlanning {
 		emitter.LogDone("chat.pre_planning_gate", "强制规划路径", event.P("complexity_level", string(gateDecision.Level)), event.P("complexity_score", gateDecision.Score), event.P("reason", gateDecision.Reason))
 
 		// Hard gate: directly invoke TaskPlanner.Plan() to create and persist

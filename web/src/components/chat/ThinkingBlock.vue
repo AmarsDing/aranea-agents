@@ -15,7 +15,7 @@
   <!-- Main component -->
   <div
     v-else
-    class="thinking-block"
+    class="thinking-block thinking-block--card"
     :class="[
       {
         'thinking-block--streaming': streaming,
@@ -30,39 +30,41 @@
     @keydown.escape="onEscape"
   >
     <!-- ===== card variant ===== -->
-    <template>
-      <!-- Streaming + collapsed: status indicator only -->
-      <div v-if="streaming && collapsed" class="thinking-block__streaming-indicator thinking-block__streaming-indicator--card" @click.stop="onClick">
-        <q-icon name="psychology_alt" size="14px" color="accent" />
-        <span class="thinking-block__streaming-text">{{ t('chat.thinking.summary', '思考') }}</span>
-        <span class="thinking-block__pulse" aria-hidden="true" />
+    <!-- Streaming + collapsed: status indicator only -->
+    <div
+      v-if="streaming && collapsed"
+      class="thinking-block__streaming-indicator thinking-block__streaming-indicator--card"
+      @click.stop="onClick"
+    >
+      <q-icon name="psychology_alt" size="14px" color="accent" />
+      <span class="thinking-block__streaming-text">{{ t('chat.thinking.summary', '思考') }}</span>
+      <span class="thinking-block__pulse" aria-hidden="true" />
+      <span v-if="durationMs != null" class="thinking-block__duration">{{ formattedDuration }}</span>
+      <span class="thinking-block__toggle">{{ collapsed ? '▶' : '▼' }}</span>
+    </div>
+
+    <!-- Label row (not streaming or expanded) -->
+    <template v-else>
+      <div class="thinking-block__label">
+        <q-icon name="psychology_alt" size="14px" color="accent" class="thinking-block__label-icon" />
+        <span class="thinking-block__label-text">{{ t('chat.thinking.summary', '思考') }}</span>
+        <span v-if="streaming" class="thinking-block__pulse" aria-hidden="true" />
         <span v-if="durationMs != null" class="thinking-block__duration">{{ formattedDuration }}</span>
         <span class="thinking-block__toggle">{{ collapsed ? '▶' : '▼' }}</span>
       </div>
 
-      <!-- Label row (not streaming or expanded) -->
-      <template v-else>
-        <div class="thinking-block__label">
-          <q-icon name="psychology_alt" size="14px" color="accent" class="thinking-block__label-icon" />
-          <span class="thinking-block__label-text">{{ t('chat.thinking.summary', '思考') }}</span>
-          <span v-if="streaming" class="thinking-block__pulse" aria-hidden="true" />
-          <span v-if="durationMs != null" class="thinking-block__duration">{{ formattedDuration }}</span>
-          <span class="thinking-block__toggle">{{ collapsed ? '▶' : '▼' }}</span>
-        </div>
+      <!-- Collapsed: preview text -->
+      <div v-if="collapsed" class="thinking-block__preview">{{ previewText }}</div>
 
-        <!-- Collapsed: preview text -->
-        <div v-if="collapsed" class="thinking-block__preview">{{ previewText }}</div>
-
-        <!-- Expanded content -->
-        <div v-else class="thinking-block__collapse-wrapper">
-          <div class="thinking-block__collapse-inner">
-            <div class="thinking-block__body" :class="{ 'thinking-block__body--streaming': streaming }">
-              <div class="thinking-block__content chat-message-prose" v-html="renderedHtml" />
-              <span v-if="streaming" class="thinking-block__cursor" aria-hidden="true" />
-            </div>
+      <!-- Expanded content -->
+      <div v-else class="thinking-block__collapse-wrapper">
+        <div class="thinking-block__collapse-inner">
+          <div class="thinking-block__body" :class="{ 'thinking-block__body--streaming': streaming }">
+            <div class="thinking-block__content chat-message-prose" v-html="renderedHtml" />
+            <span v-if="streaming" class="thinking-block__cursor" aria-hidden="true" />
           </div>
         </div>
-      </template>
+      </div>
     </template>
   </div>
 </template>
@@ -104,10 +106,7 @@ const { t } = useI18n();
 
 // --- Collapse state (T8.4: persisted to sessionStorage) ---
 
-const { collapsed, toggle, setCollapsed } = useCollapseState(
-  `thinking:${props.messageId}`,
-  props.defaultCollapsed,
-);
+const { collapsed, toggle, setCollapsed } = useCollapseState(`thinking:${props.messageId}`, props.defaultCollapsed);
 // Sync with external defaultCollapsed changes (e.g., when Activity data updates from AF).
 // Only apply when not streaming — streaming state is managed by the streaming watch.
 // Note: only applies if the user hasn't explicitly toggled (sessionStorage has no stored value).

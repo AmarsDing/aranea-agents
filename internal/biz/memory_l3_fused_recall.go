@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"time"
 
 	"aranea-agents/pkg/loggateway"
 )
@@ -104,7 +105,12 @@ func (uc *MemoryL3RecallUsecase) RecallFacts(ctx context.Context, q L3RecallQuer
 	}
 	var qvec []float32
 	if query != "" && uc.embedder != nil {
-		if vec, err := uc.embedder.Embed(ctx, query); err == nil {
+		// Short timeout: L3 recall is on the LLM critical path. Degrade to
+		// non-vector search quickly if embed is slow or misconfigured.
+		embedCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		vec, err := uc.embedder.Embed(embedCtx, query)
+		cancel()
+		if err == nil {
 			qvec = vec
 		} else {
 			uc.lg.Warn("L3 recall embed failed, degrading to non-vector search",
@@ -112,11 +118,7 @@ func (uc *MemoryL3RecallUsecase) RecallFacts(ctx context.Context, q L3RecallQuer
 				loggateway.Err(err))
 		}
 	}
-	lim := q.Limit
-	if lim <= 0 {
-		lim = 12
-	}
-	return uc.store.RecallL3Facts(ctx, strings.TrimSpace(q.ScopeType), strings.TrimSpace(q.ScopeID), strings.TrimSpace(q.UserID), query, qvec, lim, minScore)
+	return uc.store.RecallL3Facts(ctx, strings.TrimSpace(q.ScopeType), strings.TrimSpace(q.ScopeID), strings.TrimSpace(q.UserID), query, qvec, q.Limit, minScore)
 }
 
 func (uc *MemoryL3RecallUsecase) RecallFactsFused(ctx context.Context, q L3FusedRecallQuery) ([][]byte, error) {
@@ -140,7 +142,12 @@ func (uc *MemoryL3RecallUsecase) RecallFactsFused(ctx context.Context, q L3Fused
 	}
 	var qvec []float32
 	if query != "" && uc.embedder != nil {
-		if vec, err := uc.embedder.Embed(ctx, query); err == nil {
+		// Short timeout: L3 fused recall is on the LLM critical path.
+		// Degrade to non-vector search quickly if embed is slow or misconfigured.
+		embedCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		vec, err := uc.embedder.Embed(embedCtx, query)
+		cancel()
+		if err == nil {
 			qvec = vec
 		} else {
 			uc.lg.Warn("L3 fused recall embed failed, degrading to non-vector search",

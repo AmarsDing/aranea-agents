@@ -252,6 +252,11 @@ func (o *ChatOrchestrator) persistTurnUserMessage(
 			CreatedAt:        now,
 			AttachmentsCount: attN,
 		}
+		// AF-correlation: TurnID 必须等于 userMsg.ID，使前端通过 API 加载的
+		// user message 的 turn_id 非空，useConversationTimeline 才能将 Activity
+		// 记录关联到此 UserTurn。缺失会导致 loadMessages 用服务器消息替换
+		// pending-user 占位消息后 turn_id 丢失，思考和回复 UI 不显示。
+		userMsg.TurnID = userMsg.ID
 		if err := o.td().Sessions.AppendChatMessage(ctx, sessionID, userMsg, false); err != nil {
 			o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: AppendChatMessage 失败",
 				loggateway.StepID("chat.append_user_msg_fail"), loggateway.Err(err))
@@ -427,8 +432,13 @@ func (o *ChatOrchestrator) invokeLLMCall(
 
 	llmCtx, llmSpan := traceBridge.StartChild(runCtx, "chat.llm.invoke")
 	uid := chatagent.UserIDFromCtx(llmCtx)
+	llmCallStart := time.Now()
 	events, err := chatagent.RunTRPCUserTurnMsg(llmCtx, runner, uid, sessionID, userTurnMsg, runOpts...)
 	turntrace.EndChild(llmSpan, err)
+	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: RunTRPCUserTurnMsg (LLM call)",
+		loggateway.StepID("chat.llm_call"),
+		loggateway.Any("elapsed_ms", time.Since(llmCallStart).Milliseconds()),
+		loggateway.Any("has_error", err != nil))
 	o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: LLM 调用返回",
 		loggateway.StepID("chat.llm_invoke_done"),
 		loggateway.Any("elapsed_ms", time.Since(turnStart).Milliseconds()),
@@ -901,6 +911,7 @@ func (o *ChatOrchestrator) buildTurnRunner(
 	emitter.EmitProgress(ctx, event.StepIDChatAgentBuild, "start", "正在构建Agent依赖", "orchestration",
 		event.P("run_id", runID), event.P("agent_id", ag.ID))
 
+	depsStart := time.Now()
 	deps, err := o.agentBuild.BuildTRPCDeps(ctx, AgentBuildParams{
 		Session: sess, Agent: ag, RunID: runID,
 		DialogMode: dialogMode, Provider: prov, Model: mod, Emitter: emitter,
@@ -909,11 +920,18 @@ func (o *ChatOrchestrator) buildTurnRunner(
 		emitter.LogError("chat.agent.build", "构建Agent依赖失败", event.P("agent_id", ag.ID), event.P("error", err.Error()))
 		return turnBuildResult{}, TurnError(TurnErrAgentBuildFailed, err.Error())
 	}
+	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: BuildTRPCDeps",
+		loggateway.StepID("chat.build_deps"),
+		loggateway.Any("elapsed_ms", time.Since(depsStart).Milliseconds()))
+	agentStart := time.Now()
 	root, err := chatagent.BuildTRPCAgentCached(ctx, ag, deps, o.lg())
 	if err != nil {
 		emitter.LogError("chat.agent.build", "构建Agent实例失败", event.P("agent_id", ag.ID), event.P("error", err.Error()))
 		return turnBuildResult{}, TurnError(TurnErrAgentBuildFailed, err.Error())
 	}
+	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: BuildTRPCAgentCached",
+		loggateway.StepID("chat.build_agent"),
+		loggateway.Any("elapsed_ms", time.Since(agentStart).Milliseconds()))
 	emitter.LogDone("chat.agent.build", "Agent实例已构建", event.P("provider", prov), event.P("model", mod))
 	emitter.EmitProgress(ctx, event.StepIDChatAgentBuild, "done", "Agent构建完成", "orchestration",
 		event.P("run_id", runID), event.P("agent_id", ag.ID))
@@ -937,6 +955,7 @@ func (o *ChatOrchestrator) buildTurnRunner(
 	}
 	emitter.LogStart("chat.runner.create", "创建 Runner", event.P("agent_key", ag.AgentKey), event.P("plugin_count", len(plugins)))
 	runnerMgr := o.tdPtr().CoalesceRunnerManager()
+	runnerStart := time.Now()
 	runner, err := runnerMgr.NewTurnRunner(root, rt.TurnRunnerSpec{
 		Plugins: plugins, AwaitUserReplyRouting: deps.AwaitHook != nil,
 		BuilderDeps: deps, AgentFactoryKeys: []string{ag.AgentKey},
@@ -946,6 +965,9 @@ func (o *ChatOrchestrator) buildTurnRunner(
 		emitter.LogError("chat.runner.create", "Runner 创建失败", event.P("error", err.Error()))
 		return turnBuildResult{}, err
 	}
+	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: NewTurnRunner",
+		loggateway.StepID("chat.runner_create"),
+		loggateway.Any("elapsed_ms", time.Since(runnerStart).Milliseconds()))
 	emitter.LogDone("chat.runner.create", "Runner 已创建")
 	o.runs.StoreRunner(sessionID, runID, runner)
 	if o.subAgentService() != nil {
@@ -954,7 +976,12 @@ func (o *ChatOrchestrator) buildTurnRunner(
 			o.subAgentService().SetSessionRunes(sessionID, ag.Settings.SubagentsStoredResultRunes, ag.Settings.SubagentsStoredSummaryRunes)
 		}
 	}
+	rbStart := time.Now()
 	rollbackBoundary, rbErr := runnerMgr.MarkRollbackBoundary(ctx, sessionID, runID, "")
+	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: MarkRollbackBoundary",
+		loggateway.StepID("chat.rollback_boundary"),
+		loggateway.Any("elapsed_ms", time.Since(rbStart).Milliseconds()),
+		loggateway.Any("has_error", rbErr != nil))
 	if rbErr != nil {
 		emitter.LogWarn("chat.runner.rollback_boundary", "Runner 回滚边界记录失败", "", event.P("error", rbErr.Error()))
 	}

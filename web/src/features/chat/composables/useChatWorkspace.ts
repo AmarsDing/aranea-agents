@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router';
 import type { SessionView, TeamRow } from '../../../components/chat/types';
 import type { Agent } from '../../agents/types';
 import type { CompressStatus } from '../../session/types';
+import type { Message } from '../types';
 import { useAppStore } from '../../../stores/app';
 import { useChatSessionStore } from '../../../stores/chat/sessionStore';
 import { useChatMessageStore } from '../../../stores/chat/messageStore';
@@ -119,6 +120,14 @@ export function useChatWorkspace() {
       }
     }
     const md = env.metadata as Record<string, unknown> | undefined;
+    console.info('[AF-DBG] handleActivityEnvelope', {
+      type: env.type,
+      env_turn_id: env.turn_id,
+      md_turn_id: md?.turn_id,
+      md_kind: md?.kind,
+      md_activity_id: md?.activity_id,
+      has_md: !!md,
+    });
     if (!md) return;
     switch (env.type) {
       case 'activity_start':
@@ -154,6 +163,24 @@ export function useChatWorkspace() {
   const selectedProviderModel = computed(() =>
     providerModels.value.find((row) => getProviderModelValue(row) === modelProvider.value),
   );
+
+  // AF-FE-15: Shared loader used by the channel-focus path (route watch,
+  // sidebar click, session restore). It mirrors the AF data load used by
+  // `bindSessionView` so both routes produce the same per-round
+  // `actv-*` messages. Returns [] on failure so the caller can still
+  // render the server's merged assistant message as a fallback.
+  async function loadActivitiesAndReconstruct(sessionId: string): Promise<Message[]> {
+    try {
+      await activityTimeline.loadActivitiesFromAPI(sessionId);
+      if (activityTimeline.loadError.value) return [];
+      const afActivities = activityTimeline.activities.value;
+      if (!afActivities.length) return [];
+      return reconstructMessagesFromActivities(afActivities, sessionId);
+    } catch (e) {
+      console.warn('[chatWorkspace] loadActivitiesAndReconstruct failed', e);
+      return [];
+    }
+  }
 
   const fileSupported = computed(() => {
     const m = selectedProviderModel.value;
@@ -443,6 +470,7 @@ export function useChatWorkspace() {
     selectedProviderModel,
     makeSessionTitle,
     t,
+    loadActivitiesAndReconstruct,
   });
 
   useChatInboundSync({
@@ -889,7 +917,7 @@ export function useChatWorkspace() {
       // available. Pre-AF sessions (no Activity records) rely on the
       // server's merged assistant message for content display.
       let hasActivityData = false;
-      let activityReconstructedMessages: import('../../chat/types').Message[] = [];
+      let activityReconstructedMessages: Message[] = [];
       await activityTimeline.loadActivitiesFromAPI(sessionId);
       // AF-GAP-05: When AF API fails after 5 retries, show a visible
       // "数据加载失败，请刷新" notice instead of silently falling back to

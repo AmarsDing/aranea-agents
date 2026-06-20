@@ -165,7 +165,10 @@ func (r *sessionRepo) queryMaxTurnNumber(ctx context.Context, c *ent.Client, ses
 //	running / completing    �?user         �?new turn (status=running)
 //	completed / failed /    �?any          �?new turn (status=running)
 //	cancelled               �?             �?//	no existing turn        �?any          �?new turn (status=running)
-func (r *sessionRepo) assignTurnForNewMessage(ctx context.Context, c *ent.Client, sessionID, role string) (turnID string, turnNumber int, seqInTurn int, err error) {
+// AF-correlation: 当 preferredTurnID 非空时，新创建的 SessionTurn 使用该 ID，
+// 使 message.turn_id 与 activity.turnId（= userMsg.ID）一致，前端
+// useConversationTimeline 才能将 Activity 记录关联到对应 UserTurn。
+func (r *sessionRepo) assignTurnForNewMessage(ctx context.Context, c *ent.Client, sessionID, role, preferredTurnID string) (turnID string, turnNumber int, seqInTurn int, err error) {
 	latestTurn, qErr := c.SessionTurn.Query().
 		Where(entsessionturn.SessionIDEQ(sessionID)).
 		Order(entsessionturn.ByTurnNumber(entsql.OrderDesc())).
@@ -200,7 +203,10 @@ func (r *sessionRepo) assignTurnForNewMessage(ctx context.Context, c *ent.Client
 	if mErr != nil {
 		return "", 0, 0, entErrToBizErr(mErr, "SESSION_MESSAGE")
 	}
-	newTurnID := uuid.NewString()
+	newTurnID := strings.TrimSpace(preferredTurnID)
+	if newTurnID == "" {
+		newTurnID = uuid.NewString()
+	}
 	newTurnNumber := maxTurn + 1
 	now := nowRFC3339()
 	if _, cErr := c.SessionTurn.Create().
@@ -307,7 +313,7 @@ func (r *sessionRepo) UpsertChatActivityMessage(ctx context.Context, sessionID s
 				return entErrToBizErr(err, "SESSION_MESSAGE")
 			}
 			msg.SessionID = sessionID
-			turnID, turnNum, seqInTurn, merr := r.assignTurnForNewMessage(txCtx, c, sessionID, msg.Role)
+			turnID, turnNum, seqInTurn, merr := r.assignTurnForNewMessage(txCtx, c, sessionID, msg.Role, msg.TurnID)
 			if merr != nil {
 				return entErrToBizErr(merr, "SESSION_MESSAGE")
 			}
@@ -372,7 +378,7 @@ func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, m
 			}
 			return entErrToBizErr(err, "SESSION_MESSAGE")
 		}
-		turnID, turnNum, seqInTurn, err := r.assignTurnForNewMessage(txCtx, c, sessionID, msg.Role)
+		turnID, turnNum, seqInTurn, err := r.assignTurnForNewMessage(txCtx, c, sessionID, msg.Role, msg.TurnID)
 		if err != nil {
 			if lg != nil {
 				lg.With(loggateway.SessionID(sessionID)).Info("data.AppendChatMessage: assignTurn 失败",

@@ -58,6 +58,10 @@ func (d durableResumeTurnCtx) buildUserMessage(sessionID, userOpts string, attN 
 		CreatedAt:        now,
 		AttachmentsCount: attN,
 	}
+	// AF-correlation: TurnID 必须等于 msg.ID（= d.spec.TurnID），使前端通过 API
+	// 加载的 user message 的 turn_id 非空，useConversationTimeline 才能将 Activity
+	// 记录关联到此 UserTurn。
+	msg.TurnID = msg.ID
 	if emitter != nil {
 		emitter.LogDone("chat.user_msg_persist", "Durable checkpoint 续跑（复用 turn_id，跳过 biz 用户行）",
 			event.P("turn_id", d.spec.TurnID),

@@ -95,7 +95,8 @@ export const useChatMessageStore = defineStore('chatMessage', () => {
     const { items: server, currentRevision } = await listMessages(sid);
     sessionRevisionBySession.value[sid] = currentRevision;
     if (opts.replace || local.length === 0) {
-      setMessages(sid, mergeSessionMessages(server, activityMessages, mergeOpts));
+      const merged = mergeSessionMessages(server, activityMessages, mergeOpts);
+      setMessages(sid, merged);
       return;
     }
     setMessages(sid, mergeSessionMessages(server, mergeLocalWithActivity(local, activityMessages), mergeOpts));

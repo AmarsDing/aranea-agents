@@ -10,7 +10,7 @@
       v-model:selected-provider="selectedProvider"
       v-model:view-mode="viewMode"
       :status-options="statusOptions"
-      :category-tree="taxonomyTree"
+      :taxonomy-tree="taxonomyTree"
       :provider-options="providerOptions"
       :creator-options="creatorOptions"
     />
@@ -41,7 +41,7 @@
       :form="form"
       :a2a-proxy="a2aProxy"
       :is-a2-a-proxy="isA2AProxyCreate"
-      :category-tree="taxonomyTree"
+      :taxonomy-tree="taxonomyTree"
       :provider-options="providerOptions"
       :model-options="modelOptions"
       :selected-template-key="selectedTemplateKey"
