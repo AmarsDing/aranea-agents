@@ -1,1 +1,0 @@
-﻿src/pages/TeamsPage.vue(37,9): error TS2740: Type 'WritableComputedRef<Team[], Team[]>' is missing the following properties from type 'unknown[]': length, pop, push, concat, and 29 more.

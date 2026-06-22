@@ -1,8 +1,0 @@
-{
-  "route": "/skills/evolution-suggestions",
-  "url": "http://localhost:9001/skills/evolution-suggestions",
-  "loadOk": true,
-  "network": [],
-  "logs": [],
-  "screenshot": "F:\\aranea-agents\\.dogfood-output\\_skills_evolution-suggestions-check.png"
-}

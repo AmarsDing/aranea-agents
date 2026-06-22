@@ -1,1 +1,0 @@
-﻿src/stores/__tests__/tools.store.spec.ts(118,30): error TS2339: Property 'name' does not exist on type '{ id: string; key: string; display_name: string; description: string; category: string; source: string; risk_level: string; enabled: boolean; readonly: boolean; requires_confirmation: boolean; ... 22 more ...; permissions: { ...; }; }'.

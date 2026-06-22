@@ -1,8 +1,0 @@
-{
-  "route": "/team",
-  "url": "http://localhost:9001/team",
-  "loadOk": true,
-  "network": [],
-  "logs": [],
-  "screenshot": "F:\\aranea-agents\\.dogfood-output\\_team-check.png"
-}
