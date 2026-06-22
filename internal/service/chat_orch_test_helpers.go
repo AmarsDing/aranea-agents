@@ -14,8 +14,11 @@ import (
 // noopRunStatusTracker satisfies runStatusTracker.
 type noopRunStatusTracker struct{}
 
-func (noopRunStatusTracker) SetRunStatus(context.Context, string, string, string, string) {}
-func (noopRunStatusTracker) SetRunStatusWithAwait(context.Context, string, string, string, string, *AwaitStatusMeta) {
+func (noopRunStatusTracker) SetRunStatus(context.Context, string, string, string, string) error {
+	return nil
+}
+func (noopRunStatusTracker) SetRunStatusWithAwait(context.Context, string, string, string, string, *AwaitStatusMeta) error {
+	return nil
 }
 func (noopRunStatusTracker) PublishRunStatus(string, string, string, string)                  {}
 func (noopRunStatusTracker) PersistRunStatus(context.Context, string, string, string, string) {}

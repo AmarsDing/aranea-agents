@@ -391,11 +391,14 @@ func (s *OrchestrationStatusStore) applyGraphNode(
 			return nil
 		}
 		st = &AgentNodeState{
-			NodeID:    nodeID,
-			AgentID:   entry.AgentID,
-			AgentKey:  entry.AgentKey,
-			AgentName: entry.AgentName,
-			Role:      entry.Role,
+			NodeID:        nodeID,
+			AgentID:       entry.AgentID,
+			AgentKey:      entry.AgentKey,
+			AgentName:     entry.AgentName,
+			Role:          entry.Role,
+			Status:        AgentNodeStatusIdle,
+			DisplayStatus: DisplayStatusWaiting,
+			Phase:         WorkPhaseReceived,
 		}
 		s.Nodes[nodeID] = st
 	}
@@ -560,37 +563,26 @@ func (s *OrchestrationStatusStore) nodeByID(nodeID string) *AgentNodeState {
 	return s.Nodes[nodeID]
 }
 
+// setStatus applies a status transition validated against the AgentNodeStatus
+// state machine (AS-FSM-01). Returns true when the status actually changed.
 func (s *OrchestrationStatusStore) setStatus(st *AgentNodeState, next AgentNodeStatus) bool {
 	if st == nil {
 		return false
 	}
-	if isTerminalStatus(st.Status) && !canOverrideTerminal(st.Status, next) {
-		return false
+	current := st.Status
+	if current == "" {
+		current = AgentNodeStatusIdle
 	}
-	if st.Status == next {
+	if current == next {
 		st.DisplayStatus = AggregateDisplayStatus(next)
 		return false
 	}
-	if statusPriority(next) < statusPriority(st.Status) && !isTerminalStatus(next) {
+	if !CanTransitionAgentNodeStatus(current, next) {
 		return false
 	}
 	st.Status = next
 	st.DisplayStatus = AggregateDisplayStatus(next)
 	return true
-}
-
-func canOverrideTerminal(current, next AgentNodeStatus) bool {
-	if !isTerminalStatus(current) {
-		return false
-	}
-	switch next {
-	case AgentNodeStatusRetrying, AgentNodeStatusRunning:
-		return true
-	case AgentNodeStatusSkipped:
-		return current == AgentNodeStatusFailed
-	default:
-		return false
-	}
 }
 
 func isTerminalStatus(status AgentNodeStatus) bool {
@@ -606,34 +598,6 @@ func isTerminalStatus(status AgentNodeStatus) bool {
 // IsTerminalAgentNodeStatus reports whether orchestration node status is terminal.
 func IsTerminalAgentNodeStatus(status AgentNodeStatus) bool {
 	return isTerminalStatus(status)
-}
-
-func statusPriority(status AgentNodeStatus) int {
-	switch status {
-	case AgentNodeStatusBlocked, AgentNodeStatusWaitingReview, AgentNodeStatusWaitingAssign, AgentNodeStatusWaitingInput:
-		return 100
-	case AgentNodeStatusRetrying:
-		return 90
-	case AgentNodeStatusToolRunning:
-		return 80
-	case AgentNodeStatusThinking:
-		return 70
-	case AgentNodeStatusTransferring:
-		return 65
-	case AgentNodeStatusRunning:
-		return 60
-	case AgentNodeStatusScheduled:
-		return 40
-	case AgentNodeStatusQueued:
-		return 30
-	case AgentNodeStatusIdle:
-		return 10
-	default:
-		if isTerminalStatus(status) {
-			return 200
-		}
-		return 0
-	}
 }
 
 // AggregateDisplayStatus maps a fine status to UI aggregate bucket.

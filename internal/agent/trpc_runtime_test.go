@@ -14,6 +14,8 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
+var _ trpcagent.Agent = (*staticTRPCAgent)(nil)
+
 type staticTRPCAgent struct {
 	name  string
 	reply string

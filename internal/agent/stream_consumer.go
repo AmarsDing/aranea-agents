@@ -387,9 +387,16 @@ func (c *turnStreamConsumer) finalize() {
 		)
 	}
 	if c.eventBus != nil {
-		PublishStuckToolResultEnvelopes(c.turnCtx, c.projectMeta, c.eventBus, pending)
-		// Push a user-facing notification via WS so the user knows a tool got stuck.
-		publishStuckToolNotification(c.turnCtx, c.projectMeta, c.eventBus, pending)
+		// AS-EVT-01: ToolResult is Critical — must go through Infra.Publish (WBPF).
+		// publishStuckToolNotification uses infra.SessionBus for AlertNotify (Informational).
+		var infra *event.Infra
+		if c.opts != nil {
+			infra = c.opts.EventInfra
+		}
+		if infra != nil {
+			PublishStuckToolResultEnvelopes(c.turnCtx, c.projectMeta, infra, pending)
+			publishStuckToolNotification(c.turnCtx, c.projectMeta, infra, pending)
+		}
 	}
 	if c.opts != nil && c.opts.ActivityPersister != nil {
 		FinalizeStuckToolActivities(c.turnCtx, c.projectMeta, c.opts.ActivityPersister, pending, c.lg)

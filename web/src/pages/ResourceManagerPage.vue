@@ -365,7 +365,6 @@ const providerWizardSteps = computed(() => [
 
 const {
   isDark,
-  rows,
   loading,
   saving,
   checkingModel,
@@ -413,7 +412,6 @@ const {
   pagedProviderRows,
   providerPresetOptions,
   currentAuthType,
-  isLocalProviderModel,
   canInspectProviderModel,
   apiKeyFieldHint,
   apiKeyMaskedPlaceholder,
@@ -450,8 +448,6 @@ const {
   trendMetricOptions,
   providerCodeRule,
   updateHAForm,
-  getCategories,
-  metadataLabel,
   credentialEncryptionAvailable,
 } = useResourceManagerPage();
 

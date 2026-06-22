@@ -9,6 +9,7 @@ import (
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
 )
@@ -53,7 +54,13 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 	// runSingleAgentViaTRPC which uses WithCancel only (no WithTimeout).
 	// User cancel is wired via o.runs.StoreCancelable below.
 	o.runs.StoreCancelable(sessionID, runID, teamCancel)
-	o.runStatus().SetRunStatus(ctx, sessionID, runID, biz.TeamRunStatusRunning, "")
+	if err := o.runStatus().SetRunStatus(ctx, sessionID, runID, biz.TeamRunStatusRunning, ""); err != nil {
+		o.lg().Warn("set run status failed on team turn start",
+			loggateway.StepID("chat.team_turn.start"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("run_id", runID),
+			loggateway.Err(err))
+	}
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusRunning, "")
 	if unlock != nil {
 		unlock()
@@ -71,7 +78,13 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 
 	userMsg, assistantMsg, err = o.team().TeamsNative.RunTurnFromInput(teamCtx, sess, input)
 	if err != nil {
-		o.runStatus().SetRunStatus(ctx, sessionID, runID, biz.TeamRunStatusFailed, err.Error())
+		if serr := o.runStatus().SetRunStatus(ctx, sessionID, runID, biz.TeamRunStatusFailed, err.Error()); serr != nil {
+			o.lg().Warn("set run status failed on team turn error",
+				loggateway.StepID("chat.team_turn.fail"),
+				loggateway.Str("session_id", sessionID),
+				loggateway.Str("run_id", runID),
+				loggateway.Err(serr))
+		}
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		if sess.ParentSessionID != "" && strings.TrimSpace(sess.TeamID) != "" {
@@ -80,7 +93,13 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 		return userMsg, assistantMsg, err
 	}
 
-	o.runStatus().SetRunStatus(ctx, sessionID, runID, "completed", "")
+	if err := o.runStatus().SetRunStatus(ctx, sessionID, runID, "completed", ""); err != nil {
+		o.lg().Warn("set run status failed on team turn complete",
+			loggateway.StepID("chat.team_turn.complete"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("run_id", runID),
+			loggateway.Err(err))
+	}
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, "")
 	if sess.ParentSessionID != "" && strings.TrimSpace(sess.TeamID) != "" {
 		o.teamStarter().HandleTeamTurnResult(ctx, sess.ParentSessionID, strings.TrimSpace(sess.TeamID), "completed", "")

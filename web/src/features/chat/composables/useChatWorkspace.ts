@@ -573,13 +573,7 @@ export function useChatWorkspace() {
   });
 
   const settingsDialog = useChatSettingsDialog(appStore, displayAgents, displayTeams);
-  const {
-    settingsOpen,
-    settingsMode,
-    settingsId,
-    editName,
-    onSaveSettings: saveSettingsDialog,
-  } = settingsDialog;
+  const { settingsOpen, settingsMode, settingsId, editName, onSaveSettings: saveSettingsDialog } = settingsDialog;
 
   const traceAndArtifacts = useChatTraceDialog(toRef(sessionStore, 'entityKind'), displaySessions, streamManager);
   const {
@@ -832,6 +826,54 @@ export function useChatWorkspace() {
     }
   }
 
+  /**
+   * P3-4: ErrorBlock inline action handlers.
+   *
+   * ErrorBlock emits typed actions based on the resolved `errorCode`. The
+   * handlers below wire those actions to existing composer/session methods
+   * or surface a guidance notification when no direct action is available.
+   *
+   * The `event` payload carries the original `ErrorEvent` (message + errorCode)
+   * so handlers can log diagnostics or correlate with the failed turn.
+   */
+
+  /** Retry: find the latest failed pending-user message and re-send it. */
+  async function onErrorRetry() {
+    const sid = selectedSessionForUi.value?.id;
+    if (!sid) return;
+    const failed = pendingMessages.value.find((m) => m.id.startsWith('pending-user-') && m.status === 'failed');
+    if (failed) {
+      await sender.retryFailedMessage(failed.id);
+    } else {
+      $q.notify({ type: 'info', message: t('chat.errorBlock.retryNoTarget') });
+    }
+  }
+
+  /** Switch model: prompt the user to switch model via the header provider selector. */
+  function onErrorSwitchModel() {
+    $q.notify({ type: 'info', message: t('chat.errorBlock.switchModelHint', '请在顶部切换到其他模型后重试') });
+  }
+
+  /** Rephrase: focus the composer so the user can edit and re-send. */
+  function onErrorRephrase() {
+    $q.notify({ type: 'info', message: t('chat.errorBlock.rephraseHint') });
+  }
+
+  /** Check config: open the agent settings dialog. */
+  function onErrorCheckConfig() {
+    const agent = appStore.selectedAgent;
+    if (agent) {
+      void openSettings('agent', agent.id);
+    } else {
+      $q.notify({ type: 'warning', message: t('chat.errorBlock.checkConfigHint') });
+    }
+  }
+
+  /** Remove attachment: notify the user to remove the offending attachment. */
+  function onErrorRemoveAttachment() {
+    $q.notify({ type: 'info', message: t('chat.errorBlock.removeAttachmentHint') });
+  }
+
   // --- Compress status polling ---
   const compressStatus = computed<CompressStatus>(() => sessionStore.compressStatus);
   let compressPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -940,7 +982,7 @@ export function useChatWorkspace() {
     } catch (err) {
       $q.notify({
         type: 'negative',
-        message: err instanceof Error ? err.message : '加载消息失败',
+        message: err instanceof Error ? err.message : t('chat.loadMessagesFailed'),
       });
     } finally {
       sessionLoading.value = false;
@@ -1124,7 +1166,7 @@ export function useChatWorkspace() {
           const signed = await artifactStore.signDownload(meta.id, meta.version);
           window.open(artifactStore.artifactDownloadHref(signed.url), '_blank', 'noopener,noreferrer');
         } catch {
-          $q.notify({ type: 'negative', message: t('chat.attachmentDownloadFailed', '下载失败') });
+          $q.notify({ type: 'negative', message: t('chat.attachmentDownloadFailed') });
         }
       },
       onSelectSession: entityNav.onSelectSession,
@@ -1202,6 +1244,13 @@ export function useChatWorkspace() {
       selectedProviderModel,
       fileSupported,
       onSaveSettings,
+    }),
+    errorBlock: reactive({
+      onErrorRetry,
+      onErrorSwitchModel,
+      onErrorRephrase,
+      onErrorCheckConfig,
+      onErrorRemoveAttachment,
     }),
   };
 }

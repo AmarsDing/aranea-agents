@@ -234,20 +234,27 @@ func (l *chatSessionRunLifecycle) resolveEscalationFields(
 func (l *chatSessionRunLifecycle) applyDurableTransition(
 	ctx context.Context, sessionID, sessionRunID string, run biz.SessionRun, cp biz.SessionRunCheckpoint,
 ) {
-	if err := l.sessionRuns.MarkPhase(ctx, sessionRunID, biz.SessionRunPhaseDurable); err != nil {
-		l.lg.Warn("session run mark durable failed",
+	ok, err := l.sessionRuns.TransitionPhase(ctx, sessionRunID, biz.PhaseEventUserEscalate)
+	if err != nil || !ok {
+		l.lg.Warn("session run transition to durable failed",
 			loggateway.StepID(flowStepRunEscalate),
 			loggateway.Str("session_run_id", sessionRunID),
+			loggateway.Bool("cas_ok", ok),
 			loggateway.Err(err),
 		)
 		return
 	}
 	stopped, runID := l.runs.Cancel(sessionID, "durable_escalate")
 	if stopped {
-		l.runStatus.SetRunStatus(ctx, sessionID, runID, biz.SessionRunPhaseCancelled, "")
+		if err := l.runStatus.SetRunStatus(ctx, sessionID, runID, biz.SessionRunPhaseCancelled, ""); err != nil {
+			l.lg.Warn("set run status failed on durable escalate cancel",
+				loggateway.StepID(flowStepRunEscalate),
+				loggateway.Str("session_id", sessionID),
+				loggateway.Str("run_id", runID),
+				loggateway.Err(err))
+		}
 	}
 	l.sessionState.TransitionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonUserEscalated)
-	run.Phase = biz.SessionRunPhaseDurable
 	run.CheckpointID = cp.ID
 	if l.escalation != nil {
 		if err := l.escalation.NotifyDurableEscalated(ctx, run); err != nil {

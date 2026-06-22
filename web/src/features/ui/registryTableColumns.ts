@@ -3,7 +3,7 @@ import type { QTableColumn, QTableProps } from 'quasar';
 type RegistryColumn = NonNullable<QTableProps['columns']>[number];
 
 /** AppRegistryTable / AppRegistryMarkupTable 统一列定义类型 */
-export type RegistryTableColumn<T extends Record<string, any> = Record<string, any>> = QTableColumn<T>;
+export type RegistryTableColumn<T extends Record<string, unknown> = Record<string, unknown>> = QTableColumn<T>;
 
 /** 常用列宽 token（Registry 列表统一引用，避免散落 width 字符串） */
 export const REGISTRY_COL_W = {
@@ -57,7 +57,7 @@ export function registryColWidth(width: string) {
 /**
  * 统一列定义写法：name → label → field → align → width → 其它属性。
  */
-export function registryCol<T extends Record<string, any>>(
+export function registryCol<T extends Record<string, unknown>>(
   name: string,
   label: string,
   field: RegistryTableColumn<T>['field'],
@@ -69,7 +69,7 @@ export function registryCol<T extends Record<string, any>>(
 }
 
 /** 操作列 preset：右对齐 + sticky 类名（sessions 等特殊表可复用） */
-export function registryColActions<T extends Record<string, any>>(
+export function registryColActions<T extends Record<string, unknown>>(
   width: string = REGISTRY_COL_W.actions,
   label = '操作',
   field: RegistryTableColumn<T>['field'] = 'id',
@@ -82,7 +82,7 @@ export function registryColActions<T extends Record<string, any>>(
 }
 
 /** Toggle 列 preset：居中 + 固定宽度 */
-export function registryColEnabled<T extends Record<string, any>>(
+export function registryColEnabled<T extends Record<string, unknown>>(
   label = '启用',
   field: RegistryTableColumn<T>['field'] = 'enabled',
 ) {

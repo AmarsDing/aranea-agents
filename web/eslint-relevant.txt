@@ -1,0 +1,287 @@
+=== vue/require-default-prop ===
+F:\aranea-agents\web\src\components\agents\AIRefineButton.vue
+  107 5 Prop 'fileName' requires default value to be set.
+  108 5 Prop 'resourceId' requires default value to be set.
+  111 5 Prop 'label' requires default value to be set.
+  112 5 Prop 'color' requires default value to be set.
+F:\aranea-agents\web\src\components\chat\ChatHeaderUsagePanel.vue
+  77 5 Prop 'contextStatus' requires default value to be set.
+  78 5 Prop 'usageSnapshot' requires default value to be set.
+  80 5 Prop 'breakdown' requires default value to be set.
+  81 5 Prop 'sessionId' requires default value to be set.
+F:\aranea-agents\web\src\components\graph\GraphAgentSelector.vue
+  55 5 Prop 'options' requires default value to be set.
+F:\aranea-agents\web\src\components\graph\GraphFunctionSelector.vue
+  30 5 Prop 'options' requires default value to be set.
+F:\aranea-agents\web\src\components\layout\AppPageHero.vue
+  18 5 Prop 'kicker' requires default value to be set.
+  20 5 Prop 'subtitle' requires default value to be set.
+F:\aranea-agents\web\src\components\orchestration\OrchestrationKanban.vue
+  49 5 Prop 'selectedNodeId' requires default value to be set.
+F:\aranea-agents\web\src\components\platform\ProviderLogo.vue
+  16 5 Prop 'fetchSvg' requires default value to be set.
+=== vue/no-required-prop-with-default ===
+F:\aranea-agents\web\src\components\teams\TeamEditorDialog.vue
+  429 5 Prop "selectedTemplateKey" should be optional.
+=== vue/no-lone-template ===
+F:\aranea-agents\web\src\components\chat\ActionBlock.vue
+  4 5 `<template>` require directive.
+=== @typescript-eslint/no-explicit-any ===
+F:\aranea-agents\web\src\features\chat\__tests__\agentPlannerSettings.spec.ts
+  13 85 Unexpected any. Specify a different type.
+  17 90 Unexpected any. Specify a different type.
+F:\aranea-agents\web\src\features\chat\__tests__\streamHandlers.spec.ts
+  27 34 Unexpected any. Specify a different type.
+  78 34 Unexpected any. Specify a different type.
+F:\aranea-agents\web\src\stores\__tests__\agents.store.spec.ts
+  66 83 Unexpected any. Specify a different type.
+  81 83 Unexpected any. Specify a different type.
+  95 10 Unexpected any. Specify a different type.
+F:\aranea-agents\web\src\stores\__tests__\app.store.spec.ts
+  46 94 Unexpected any. Specify a different type.
+  63 87 Unexpected any. Specify a different type.
+  77 52 Unexpected any. Specify a different type.
+  91 65 Unexpected any. Specify a different type.
+  91 96 Unexpected any. Specify a different type.
+  92 65 Unexpected any. Specify a different type.
+  93 50 Unexpected any. Specify a different type.
+  94 50 Unexpected any. Specify a different type.
+  95 50 Unexpected any. Specify a different type.
+  96 54 Unexpected any. Specify a different type.
+  97 17 Unexpected any. Specify a different type.
+  119 17 Unexpected any. Specify a different type.
+  119 68 Unexpected any. Specify a different type.
+  119 107 Unexpected any. Specify a different type.
+  120 54 Unexpected any. Specify a different type.
+  121 54 Unexpected any. Specify a different type.
+  122 53 Unexpected any. Specify a different type.
+  148 65 Unexpected any. Specify a different type.
+  148 96 Unexpected any. Specify a different type.
+  149 17 Unexpected any. Specify a different type.
+  150 50 Unexpected any. Specify a different type.
+F:\aranea-agents\web\src\stores\__tests__\avatar.store.spec.ts
+  131 34 Unexpected any. Specify a different type.
+  143 41 Unexpected any. Specify a different type.
+  145 37 Unexpected any. Specify a different type.
+F:\aranea-agents\web\src\stores\__tests__\chat-session.store.spec.ts
+  35 64 Unexpected any. Specify a different type.
+  130 80 Unexpected any. Specify a different type.
+  143 80 Unexpected any. Specify a different type.
+  158 67 Unexpected any. Specify a different type.
+  172 53 Unexpected any. Specify a different type.
+  190 53 Unexpected any. Specify a different type.
+  240 53 Unexpected any. Specify a different type.
+F:\aranea-agents\web\src\stores\__tests__\hooks.store.spec.ts
+  16 61 Unexpected any. Specify a different type.
+  75 47 Unexpected any. Specify a different type.
+  80 76 Unexpected any. Specify a different type.
+  94 89 Unexpected any. Specify a different type.
+  107 71 Unexpected any. Specify a different type.
+  149 60 Unexpected any. Specify a different type.
+  154 76 Unexpected any. Specify a different type.
+F:\aranea-agents\web\src\stores\__tests__\mcp.store.spec.ts
+  17 63 Unexpected any. Specify a different type.
+  82 54 Unexpected any. Specify a different type.
+  97 103 Unexpected any. Specify a different type.
+  110 83 Unexpected any. Specify a different type.
+F:\aranea-agents\web\src\stores\__tests__\session.store.spec.ts
+  91 41 Unexpected any. Specify a different type.
+  115 55 Unexpected any. Specify a different type.
+  125 41 Unexpected any. Specify a different type.
+  126 44 Unexpected any. Specify a different type.
+  135 55 Unexpected any. Specify a different type.
+  136 45 Unexpected any. Specify a different type.
+  148 55 Unexpected any. Specify a different type.
+  158 41 Unexpected any. Specify a different type.
+  159 44 Unexpected any. Specify a different type.
+  175 41 Unexpected any. Specify a different type.
+  189 41 Unexpected any. Specify a different type.
+  190 44 Unexpected any. Specify a different type.
+  206 41 Unexpected any. Specify a different type.
+  220 62 Unexpected any. Specify a different type.
+  234 41 Unexpected any. Specify a different type.
+  235 44 Unexpected any. Specify a different type.
+  249 55 Unexpected any. Specify a different type.
+  260 41 Unexpected any. Specify a different type.
+  261 44 Unexpected any. Specify a different type.
+  273 55 Unexpected any. Specify a different type.
+  276 53 Unexpected any. Specify a different type.
+  284 41 Unexpected any. Specify a different type.
+  285 44 Unexpected any. Specify a different type.
+  288 53 Unexpected any. Specify a different type.
+  295 55 Unexpected any. Specify a different type.
+  296 45 Unexpected any. Specify a different type.
+  299 53 Unexpected any. Specify a different type.
+F:\aranea-agents\web\src\stores\__tests__\system-settings.store.spec.ts
+  95 29 Unexpected any. Specify a different type.
+F:\aranea-agents\web\src\stores\__tests__\tools.store.spec.ts
+  80 78 Unexpected any. Specify a different type.
+  82 72 Unexpected any. Specify a different type.
+  98 10 Unexpected any. Specify a different type.
+  100 83 Unexpected any. Specify a different type.
+  113 74 Unexpected any. Specify a different type.
+  114 77 Unexpected any. Specify a different type.
+  116 63 Unexpected any. Specify a different type.
+  126 10 Unexpected any. Specify a different type.
+  136 76 Unexpected any. Specify a different type.
+  137 79 Unexpected any. Specify a different type.
+  151 77 Unexpected any. Specify a different type.
+F:\aranea-agents\web\src\stores\__tests__\webhooks.store.spec.ts
+  12 64 Unexpected any. Specify a different type.
+  66 54 Unexpected any. Specify a different type.
+  84 103 Unexpected any. Specify a different type.
+  97 82 Unexpected any. Specify a different type.
+  112 67 Unexpected any. Specify a different type.
+  122 54 Unexpected any. Specify a different type.
+=== @typescript-eslint/no-unused-vars ===
+F:\aranea-agents\web\src\components\agents\AgentFilesPanel.vue
+  65 8 'AiRefineButton' is defined but never used.
+F:\aranea-agents\web\src\components\agents\AgentsListSection.vue
+  231 3 'deriveMemoryToolMode' is defined but never used.
+  233 8 'MemoryToolMode' is defined but never used.
+F:\aranea-agents\web\src\components\chat\ChatBackgroundJobsPanel.vue
+  225 12 'resolveDeadLetter' is assigned a value but never used.
+F:\aranea-agents\web\src\components\chat\ChatHeaderUsagePanel.vue
+  91 7 '$q' is assigned a value but never used.
+F:\aranea-agents\web\src\components\chat\ChatMessageAttachments.vue
+  45 10 'useI18n' is defined but never used.
+  54 7 'props' is assigned a value but never used.
+F:\aranea-agents\web\src\components\chat\ChatMessagePanel.vue
+  570 10 'turnIsFocused' is defined but never used.
+F:\aranea-agents\web\src\components\chat\EventStream.vue
+  59 7 'props' is assigned a value but never used.
+F:\aranea-agents\web\src\components\chat\ThinkingBlock.vue
+  126 7 'plainText' is assigned a value but never used.
+  164 10 'onViewportScroll' is defined but never used.
+F:\aranea-agents\web\src\components\chat\UiConfigToggle.vue
+  12 7 'props' is assigned a value but never used.
+F:\aranea-agents\web\src\components\common\CodeEditor.vue
+  38 42 'onMounted' is defined but never used.
+F:\aranea-agents\web\src\components\common\FileUploadField.vue
+  41 7 'props' is assigned a value but never used.
+F:\aranea-agents\web\src\components\cron\CronRunsDialog.vue
+  151 7 'emit' is assigned a value but never used.
+F:\aranea-agents\web\src\components\graph\GraphCheckpointPanel.vue
+  58 20 'ref' is defined but never used.
+F:\aranea-agents\web\src\components\graph\GraphVersionPanel.vue
+  47 7 'props' is assigned a value but never used.
+F:\aranea-agents\web\src\components\hooks\callbackEditorUi.ts
+  1 31 'HookRuleConfig' is defined but never used.
+F:\aranea-agents\web\src\components\layout\InboundNotificationBell.vue
+  51 7 'props' is assigned a value but never used.
+F:\aranea-agents\web\src\components\mcp\mcpServerTableUi.ts
+  4 3 'REGISTRY_COL_W' is defined but never used.
+F:\aranea-agents\web\src\components\monitor\FlowLogStream.vue
+  77 7 'emit' is assigned a value but never used.
+F:\aranea-agents\web\src\components\monitor\SelfCheckStatusPanel.vue
+  95 7 'props' is assigned a value but never used.
+F:\aranea-agents\web\src\components\orchestration\OrchestrationHitlReviewDialog.vue
+  48 7 'props' is assigned a value but never used.
+F:\aranea-agents\web\src\components\orchestration\OrchestrationKanbanCard.vue
+  46 15 'ActivitySnapshot' is defined but never used.
+F:\aranea-agents\web\src\components\platform\ProviderTrendDialog.vue
+  76 25 'watch' is defined but never used.
+  79 33 'ProviderConfig' is defined but never used.
+F:\aranea-agents\web\src\components\skills\FailureTagsChart.vue
+  18 29 'ensureUsageEcharts' is defined but never used.
+  18 49 'echarts' is defined but never used.
+F:\aranea-agents\web\src\components\spirit\InterruptedTeamCard.vue
+  48 7 'props' is assigned a value but never used.
+F:\aranea-agents\web\src\components\spirit\TeamMemberTreeNode.vue
+  26 7 'props' is assigned a value but never used.
+F:\aranea-agents\web\src\components\spirit\TeamProgressCard.vue
+  140 41 'TopologyType' is defined but never used.
+F:\aranea-agents\web\src\components\tools\ToolDetailDrawer.vue
+  361 15 'ToolAgentBindingRow' is defined but never used.
+F:\aranea-agents\web\src\components\tools\ToolEditorDialog.vue
+  459 3 'categoryFilterOptions' is defined but never used.
+F:\aranea-agents\web\src\components\usage\UsageBreakdownCharts.vue
+  36 10 'baseChartOption' is defined but never used.
+F:\aranea-agents\web\src\components\usage\UsageModelCostPie.vue
+  19 10 'baseChartOption' is defined but never used.
+F:\aranea-agents\web\src\components\usage\usageAnomalyTableUi.ts
+  2 15 'ModelTokenUsageEvent' is defined but never used.
+F:\aranea-agents\web\src\components\webhooks\WebhookDialog.vue
+  91 7 'props' is assigned a value but never used.
+F:\aranea-agents\web\src\components\webhooks\WebhooksTable.vue
+  88 7 'props' is assigned a value but never used.
+F:\aranea-agents\web\src\features\agents\agentSkillRuntimeConfig.ts
+  1 37 'Ref' is defined but never used.
+F:\aranea-agents\web\src\features\agents\aiRefine.ts
+  5 20 'KratosRefineRequest' is defined but never used.
+F:\aranea-agents\web\src\features\agents\api.ts
+  14 3 'AgentPromptSection' is defined but never used.
+F:\aranea-agents\web\src\features\agents\useAgentEvolutionPanel.ts
+  3 15 'EvolutionKey' is defined but never used.
+F:\aranea-agents\web\src\features\agents\useAgentSettingsPersistence.ts
+  3 10 'computed' is defined but never used.
+  156 25 '_settings' is assigned a value but never used.
+F:\aranea-agents\web\src\features\chat\__tests__\chatSendFlow.spec.ts
+  1 32 'vi' is defined but never used.
+F:\aranea-agents\web\src\features\chat\activityMessageAdapter.ts
+  7 10 'activityMessageId' is defined but never used.
+F:\aranea-agents\web\src\features\chat\composables\__tests__\useActivityTimeline.spec.ts
+  4 3 'ActivityDeltaMeta' is defined but never used.
+  5 3 'ActivityDoneMeta' is defined but never used.
+  6 3 'ActivityChildStartMeta' is defined but never used.
+F:\aranea-agents\web\src\features\chat\composables\useActivityTimeline.ts
+  1 82 'ComputedRef' is defined but never used.
+F:\aranea-agents\web\src\features\chat\composables\useChatEntityNav.ts
+  1 40 'ComputedRef' is defined but never used.
+F:\aranea-agents\web\src\features\chat\composables\useChatRunStatus.ts
+  25 7 'hydrating' is assigned a value but never used.
+F:\aranea-agents\web\src\features\chat\composables\useChatSender.ts
+  125 24 'sessionId' is defined but never used. Allowed unused args must match /^_/u.
+  582 16 'wsError' is defined but never used.
+  608 18 'httpError' is defined but never used.
+F:\aranea-agents\web\src\features\chat\composables\useChatStreamManager.ts
+  134 35 'sessionId' is defined but never used. Allowed unused args must match /^_/u.
+F:\aranea-agents\web\src\features\chat\composables\useConversationTimeline.ts
+  14 43 'Ref' is defined but never used.
+  119 11 'afActivities' is assigned a value but never used.
+  241 10 'buildAllConversationTurnsFromActivities' is defined but never used.
+F:\aranea-agents\web\src\features\chat\composables\useFollowUpQueue.ts
+  4 42 'RunStatusFromWs' is defined but never used.
+F:\aranea-agents\web\src\features\chat\composables\useTodoBoard.ts
+  4 15 'ToolUseEvent' is defined but never used.
+F:\aranea-agents\web\src\features\chat\envelopeToolCall.ts
+  5 31 'messageStatusFromWire' is defined but never used.
+F:\aranea-agents\web\src\features\chat\mergeSessionMessages.ts
+  8 3 'isInFlightOrigin' is defined but never used.
+  132 10 'isPendingUserMatch' is defined but never used.
+F:\aranea-agents\web\src\features\chat\messageOrigin.ts
+  16 42 'role' is defined but never used. Allowed unused args must match /^_/u.
+F:\aranea-agents\web\src\features\chat\streamHandlers.ts
+  522 11 'field' is assigned a value but never used.
+F:\aranea-agents\web\src\features\graph\useGraphEditorAssets.ts
+  7 65 'isNew' is defined but never used. Allowed unused args must match /^_/u.
+F:\aranea-agents\web\src\features\graph\useGraphLocalValidation.ts
+  1 25 'watch' is defined but never used.
+F:\aranea-agents\web\src\features\knowledge\mappers.ts
+  1 29 'pickNum' is defined but never used.
+F:\aranea-agents\web\src\features\knowledge\useKnowledgePage.ts
+  1 20 'onMounted' is defined but never used.
+  399 14 'e' is defined but never used.
+F:\aranea-agents\web\src\features\monitor\api.ts
+  7 3 'MonitorTrace' is defined but never used.
+F:\aranea-agents\web\src\features\platform\useProviderCatalog.ts
+  5 31 'ProviderModelPreset' is defined but never used.
+  6 10 'PROVIDER_RUNTIME_OVERLAY' is defined but never used.
+F:\aranea-agents\web\src\features\teams\graphUtils.ts
+  102 46 'total' is defined but never used. Allowed unused args must match /^_/u.
+F:\aranea-agents\web\src\features\teams\orchestrationSpec.ts
+  27 29 'first_byte_timeout_sec' is assigned a value but never used.
+F:\aranea-agents\web\src\pages\GraphEditorPage.vue
+  152 3 'validationErrors' is assigned a value but never used.
+  153 3 'validationWarnings' is assigned a value but never used.
+  154 3 'validationValid' is assigned a value but never used.
+F:\aranea-agents\web\src\pages\GraphsPage.vue
+  276 20 'onMounted' is defined but never used.
+F:\aranea-agents\web\src\pages\MemoryCenterPage.vue
+  186 3 'cascadeSagaProposalId' is assigned a value but never used.
+F:\aranea-agents\web\src\pages\SystemSettingsCatalogTab.vue
+  371 3 'loadJsonSearch' is assigned a value but never used.
+F:\aranea-agents\web\src\realtime\ws-transport.ts
+  151 19 'ev' is defined but never used. Allowed unused args must match /^_/u.
+F:\aranea-agents\web\src\stores\uiConfig\__tests__\uiConfig.spec.ts
+  1 44 'vi' is defined but never used.

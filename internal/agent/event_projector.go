@@ -394,7 +394,14 @@ func (p *EventProjector) buildToolResultEnvelope(ctx context.Context, ev *trpcev
 		errorCode = coalesceStr(ev.Response.Error.Type, event.ErrorCodeToolError)
 		errMsg = ev.Response.Error.Message
 		if resultRaw == nil || string(resultRaw) == "null" || string(resultRaw) == `""` {
-			resultRaw, _ = json.Marshal(map[string]string{"error": errMsg})
+			if raw, marshalErr := json.Marshal(map[string]string{"error": errMsg}); marshalErr != nil {
+				p.lg.Warn("buildToolResultEnvelope: marshal error result failed, using fallback",
+					loggateway.StepID("event_projector.tool_result"),
+					loggateway.Err(marshalErr))
+				resultRaw = []byte(`{"error":"marshal failed"}`)
+			} else {
+				resultRaw = raw
+			}
 		}
 	}
 

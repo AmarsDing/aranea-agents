@@ -65,8 +65,12 @@ func stuckToolCallPatch(tc event.EnvelopeToolCall) event.EnvelopeToolCall {
 }
 
 // PublishStuckToolResultEnvelopes emits failed tool_result envelopes for orphan in-flight tools (CC-FIX-TOOL-01).
-func PublishStuckToolResultEnvelopes(ctx context.Context, meta ProjectMeta, bus event.Bus, pending map[string]event.EnvelopeToolCall) {
-	if bus == nil || len(pending) == 0 {
+//
+// AS-EVT-01: ToolResult is a Critical event — must go through Infra.Publish (WBPF)
+// to ensure durability. Direct bus.Publish would lose the event on crash, leaving
+// the frontend tool card stuck in "running" forever.
+func PublishStuckToolResultEnvelopes(ctx context.Context, meta ProjectMeta, infra *event.Infra, pending map[string]event.EnvelopeToolCall) {
+	if infra == nil || len(pending) == 0 {
 		return
 	}
 	for _, tc := range pending {
@@ -83,7 +87,7 @@ func PublishStuckToolResultEnvelopes(ctx context.Context, meta ProjectMeta, bus 
 		env.InvocationID = meta.InvocationID
 		env.ParentInvocationID = meta.ParentInvocationID
 		env.ToolCall = &stuck
-		bus.Publish(ctx, env)
+		infra.Publish(ctx, env)
 	}
 }
 
@@ -117,8 +121,14 @@ func FinalizeStuckToolActivities(ctx context.Context, meta ProjectMeta, persiste
 // publishStuckToolNotification pushes a user-facing alert via WS when tools get stuck.
 // This complements the tool_result failure envelope (which is for programmatic cleanup)
 // with a human-readable notification the user can see and act on.
-func publishStuckToolNotification(ctx context.Context, meta ProjectMeta, bus event.Bus, pending map[string]event.EnvelopeToolCall) {
-	if bus == nil || len(pending) == 0 {
+//
+// AlertNotify is an Informational event — direct bus.Publish is acceptable (no WBPF).
+func publishStuckToolNotification(ctx context.Context, meta ProjectMeta, infra *event.Infra, pending map[string]event.EnvelopeToolCall) {
+	if infra == nil || len(pending) == 0 {
+		return
+	}
+	bus := infra.SessionBus
+	if bus == nil {
 		return
 	}
 	toolNames := make([]string, 0, len(pending))

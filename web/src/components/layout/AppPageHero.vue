@@ -18,7 +18,6 @@ withDefaults(
     kicker?: string;
     title: string;
     subtitle?: string;
-    /** Monitor / Channel 等功能页：标题略大 */
     feature?: boolean;
   }>(),
   {

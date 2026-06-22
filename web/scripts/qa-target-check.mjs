@@ -16,7 +16,7 @@ function log(msg) {
 
 const ROUTES = ['/agents', '/channels'];
 const IGNORED_CONSOLE = /WebSocket connection to .*probe=1.* failed: WebSocket is closed before the connection is established/i;
-const IGNORED_URL = /probe=1|\.png|\.jpg|\.svg|\.ico|\.woff/i;
+const IGNORED_URL = /probe=1|\.jpg|\.svg|\.ico|\.woff/i;
 
 function slug(path) {
   return path.replace(/\//g, '_') || 'root';

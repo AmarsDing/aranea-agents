@@ -468,7 +468,7 @@ func (uc *SkillIntelligenceUsecase) RunCuratorFlow(ctx context.Context, skillID 
 				})
 			}
 		}
-		resultJSON, _ = json.Marshal(map[string]any{
+		if raw, marshalErr := json.Marshal(map[string]any{
 			"passed": passed,
 			"checks": checkResults,
 			"message": func() string {
@@ -477,10 +477,18 @@ func (uc *SkillIntelligenceUsecase) RunCuratorFlow(ctx context.Context, skillID 
 				}
 				return "Some validation checks failed"
 			}(),
-		})
+		}); marshalErr != nil {
+			uc.lg.Warn("RunCuratorFlow: marshal sandbox result failed, using fallback",
+				loggateway.StepID("skill_intelligence.curator_flow"),
+				loggateway.Str("suggestion_id", suggestion.ID),
+				loggateway.Err(marshalErr))
+			resultJSON = []byte(`{"error":"marshal failed"}`)
+		} else {
+			resultJSON = raw
+		}
 	} else {
 		passed = uc.ruleBasedSandboxValidation(suggestion)
-		resultJSON, _ = json.Marshal(map[string]any{
+		if raw, marshalErr := json.Marshal(map[string]any{
 			"passed": passed,
 			"checks": []map[string]any{
 				{"name": "draft_body_not_empty", "passed": suggestion.DraftSkillBody != ""},
@@ -493,7 +501,15 @@ func (uc *SkillIntelligenceUsecase) RunCuratorFlow(ctx context.Context, skillID 
 				}
 				return "Some validation checks failed"
 			}(),
-		})
+		}); marshalErr != nil {
+			uc.lg.Warn("RunCuratorFlow: marshal sandbox result failed, using fallback",
+				loggateway.StepID("skill_intelligence.curator_flow"),
+				loggateway.Str("suggestion_id", suggestion.ID),
+				loggateway.Err(marshalErr))
+			resultJSON = []byte(`{"error":"marshal failed"}`)
+		} else {
+			resultJSON = raw
+		}
 	}
 	if sbErr := uc.bridgeWrite(ctx,
 		func() error { return uc.unifiedStore.UpdateSandboxResult(ctx, suggestion.ID, passed, resultJSON) },

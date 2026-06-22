@@ -24,11 +24,12 @@ func (b *captureBus) DropCount() uint64 { return 0 }
 
 func TestPublishStuckToolResultEnvelopes_emitsFailedToolResult(t *testing.T) {
 	bus := &captureBus{}
+	infra := &event.Infra{SessionBus: bus}
 	meta := ProjectMeta{SessionID: "sess-1", RequestID: "req-1"}
 	pending := map[string]event.EnvelopeToolCall{
 		"tc-1": {ID: "tc-1", Name: "read_file", Status: "running"},
 	}
-	PublishStuckToolResultEnvelopes(context.Background(), meta, bus, pending)
+	PublishStuckToolResultEnvelopes(context.Background(), meta, infra, pending)
 	if len(bus.published) != 1 {
 		t.Fatalf("published=%d want 1", len(bus.published))
 	}

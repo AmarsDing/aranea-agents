@@ -69,17 +69,16 @@ func (ft *FlowTracker) LogError(stepID, message string, extra ...Pair) {
 	timing := ft.fc.TakeTiming(stepID)
 	ft.emit(stepID, FlowPhaseError, FlowSeverityError, message, "", timing, extra)
 	if ft.shouldPublishFlowChatError(stepID) {
-		var bus Bus
+		// AS-EVT-01: Error is a Critical event — must go through Infra.Publish (WBPF)
+		// to ensure durability. Direct bus.Publish would lose the event on crash,
+		// leaving the user without error feedback.
 		if ft.infra != nil {
-			bus = ft.infra.SessionBus
-		}
-		if bus != nil {
 			errEnv := NewEnvelope(EnvelopeTypeError, "flow", ft.tc.SessionID)
 			errEnv.Error = &EnvelopeError{
 				Type:    "flow_" + normalizeStepID(stepID),
 				Message: message,
 			}
-			bus.Publish(context.Background(), errEnv)
+			ft.infra.Publish(context.Background(), errEnv)
 		}
 	}
 }

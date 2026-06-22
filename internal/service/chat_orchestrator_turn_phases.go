@@ -424,7 +424,13 @@ func (o *ChatOrchestrator) invokeLLMCall(
 	userTurnMsg, err := o.buildUserMessage(runCtx, sessionID, content, input.Options.AttachmentIDs)
 	if err != nil {
 		emitter.LogError("chat.llm.invoke", "附件装配失败", event.P("error", err.Error()))
-		o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", err.Error())
+		if serr := o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", err.Error()); serr != nil {
+			o.lg().Warn("set run status failed on attachment error",
+				loggateway.StepID("chat.turn.attach_fail"),
+				loggateway.Str("session_id", sessionID),
+				loggateway.Str("run_id", runID),
+				loggateway.Err(serr))
+		}
 		te := TurnError(TurnErrAttachmentFailed, err.Error())
 		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 		return nil, te
@@ -448,7 +454,13 @@ func (o *ChatOrchestrator) invokeLLMCall(
 		emitter.EmitProgress(runCtx, event.StepIDChatLLMInvoke, "error", "语言模型调用失败", "orchestration",
 			event.P("run_id", runID), event.P("error", err.Error()))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "error").Observe(time.Since(turnStart).Seconds())
-		o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", err.Error())
+		if serr := o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", err.Error()); serr != nil {
+			o.lg().Warn("set run status failed on llm error",
+				loggateway.StepID("chat.turn.llm_fail"),
+				loggateway.Str("session_id", sessionID),
+				loggateway.Str("run_id", runID),
+				loggateway.Err(serr))
+		}
 		te := TurnError(TurnErrLLMCallFailed, err.Error())
 		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 		return nil, te
@@ -654,10 +666,22 @@ func (o *ChatOrchestrator) handleStreamError(
 	if errors.Is(streamErr, chatagent.ErrFirstByteTimeout) {
 		emitter.LogCritical("chat.first_byte_timeout", "首字节超时，模型响应过慢", event.P("timeout", firstByteTimeout.String()))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "first_byte_timeout").Observe(time.Since(turnStart).Seconds())
-		o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", "first byte timeout")
+		if serr := o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", "first byte timeout"); serr != nil {
+			o.lg().Warn("set run status failed on first byte timeout",
+				loggateway.StepID("chat.turn.first_byte_timeout"),
+				loggateway.Str("session_id", sessionID),
+				loggateway.Str("run_id", runID),
+				loggateway.Err(serr))
+		}
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonTimeout)
 	} else {
-		o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", streamErr.Error())
+		if serr := o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", streamErr.Error()); serr != nil {
+			o.lg().Warn("set run status failed on stream error",
+				loggateway.StepID("chat.turn.stream_fail"),
+				loggateway.Str("session_id", sessionID),
+				loggateway.Str("run_id", runID),
+				loggateway.Err(serr))
+		}
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 	}
 	o.publishTurnFailure(sessionID, runID, "chat-service", streamErr, "")
@@ -745,7 +769,13 @@ func (o *ChatOrchestrator) handleEmptyReply(
 	}
 	markTurnError(turnStatus, turnErr, turnErrMsg, errors.New(detail))
 	arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "empty_reply").Observe(time.Since(turnStart).Seconds())
-	o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", detail)
+	if serr := o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", detail); serr != nil {
+		o.lg().Warn("set run status failed on empty reply",
+			loggateway.StepID("chat.turn.empty_reply"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("run_id", runID),
+			loggateway.Err(serr))
+	}
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 	te := TurnError(TurnErrEmptyReply, detail)
 	o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
@@ -867,7 +897,13 @@ func (o *ChatOrchestrator) postProcessTurn(
 	}
 	arametrics.ChatTurnDuration.WithLabelValues(ag.ID, metricsLabel).Observe(time.Since(turnStart).Seconds())
 	o.recordSessionTurn(ctx, sessionID, ag, execResult.userMsg.ID, persistResult.assistantMsg.ID, prov, mod, persistResult.promptTok, persistResult.completionTok, persistResult.assistantMsg.ContentMarkdown)
-	o.runStatus().SetRunStatus(ctx, sessionID, runID, "completed", "")
+	if serr := o.runStatus().SetRunStatus(ctx, sessionID, runID, "completed", ""); serr != nil {
+		o.lg().Warn("set run status failed on complete",
+			loggateway.StepID("chat.turn.complete"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("run_id", runID),
+			loggateway.Err(serr))
+	}
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, "")
 	o.bumpSessionRevisionAndPublish(ctx, sessionID, runID, execResult.userMsg.ID)
 	o.notifyNativeTurnHooks(ctx, sessionID, ag, content, persistResult.assistantMsg.ContentMarkdown)

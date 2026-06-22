@@ -339,7 +339,7 @@ func (u *AgentUsecase) migrateLegacyFiles(ctx context.Context, agent Agent) []Ag
 
 // validateAgentCreate performs common validation for agent creation.
 // It mutates settings for A2A Proxy agents (force-disables certain features).
-func validateAgentCreate(ctx context.Context, u *AgentUsecase, agent *Agent, settings *AgentRuntimeSettings) error {
+func validateAgentCreate(ctx context.Context, u *AgentUsecase, agent *Agent, settings *AgentRuntimeSettings, skipProviderValidate bool) error {
 	switch agent.AgentKind {
 	case AgentKindA2AProxy:
 		if agent.A2AProxy == nil || strings.TrimSpace(agent.A2AProxy.RemoteURL) == "" {
@@ -358,7 +358,7 @@ func validateAgentCreate(ctx context.Context, u *AgentUsecase, agent *Agent, set
 			return apierror.BadRequest("AGENT", "provider and model must both be set or both be empty")
 		}
 	}
-	return validateAgentSettings(ctx, u, agent, settings, "agent.create.provider_validate")
+	return validateAgentSettings(ctx, u, agent, settings, "agent.create.provider_validate", skipProviderValidate)
 }
 
 // validateAgentUpdate performs validation for agent updates.
@@ -370,25 +370,27 @@ func validateAgentUpdate(ctx context.Context, u *AgentUsecase, agent *Agent, set
 			return apierror.BadRequest("AGENT", "a2a_proxy remote_url is required")
 		}
 	}
-	return validateAgentSettings(ctx, u, agent, settings, "agent.update.provider_validate")
+	return validateAgentSettings(ctx, u, agent, settings, "agent.update.provider_validate", false)
 }
 
 // validateAgentSettings is the shared validation logic for both Create and Update paths.
 // It validates provider/model pairs, settings fields, and force-disables A2A-incompatible features.
-func validateAgentSettings(ctx context.Context, u *AgentUsecase, agent *Agent, settings *AgentRuntimeSettings, logStepID string) error {
+func validateAgentSettings(ctx context.Context, u *AgentUsecase, agent *Agent, settings *AgentRuntimeSettings, logStepID string, skipProviderValidate bool) error {
 	// Validate that the provider+model pair exists in the catalog (non-A2A agents only).
 	// Skip validation when provider/model is empty — the agent will inherit
 	// the model from the chat interface at runtime (resolved via WithModel RunOption).
-	if u.providerValidator != nil && !IsA2AProxyAgent(*agent) {
+	// Duplicate may also skip validation so a clone of an existing agent can be created
+	// even when its original provider/model is no longer enabled in the catalog.
+	if !skipProviderValidate && u.providerValidator != nil && !IsA2AProxyAgent(*agent) {
 		prov := strings.TrimSpace(agent.Provider)
 		mod := strings.TrimSpace(agent.Model)
 		if prov != "" || mod != "" {
-			ok, msg, valErr := u.providerValidator.ValidatePair(ctx, agent.Provider, agent.Model)
+			ok, msg, valErr := u.providerValidator.ValidatePair(ctx, prov, mod)
 			if valErr != nil {
 				u.lg.Warn("provider model validation failed, proceeding",
 					loggateway.StepID(logStepID),
-					loggateway.Str("provider", agent.Provider),
-					loggateway.Str("model", agent.Model),
+					loggateway.Str("provider", prov),
+					loggateway.Str("model", mod),
 					loggateway.Err(valErr))
 			} else if !ok {
 				return apierror.BadRequest("AGENT", "provider/model is not enabled: "+msg)
@@ -436,6 +438,14 @@ func validateToolsPolicyJSON(raw, field string) error {
 
 // Create inserts an agent and persists settings + prompt files.
 func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
+	return u.create(ctx, in, false)
+}
+
+// create is the internal creation path shared by Create and Duplicate.
+// When skipProviderValidate is true, the provider/model catalog check is skipped
+// (used by Duplicate so a clone can be created from an existing agent even when
+// its original provider/model is no longer enabled).
+func (u *AgentUsecase) create(ctx context.Context, in Agent, skipProviderValidate bool) (Agent, error) {
 	in.AgentKey = strings.TrimSpace(in.AgentKey)
 	in.DisplayName = strings.TrimSpace(in.DisplayName)
 	in.Provider = strings.TrimSpace(in.Provider)
@@ -451,7 +461,7 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	}
 	settings := withSettingDefaults(settingsFromAgentInput(in))
 	settings.AgentID = in.ID
-	if err := validateAgentCreate(ctx, u, &in, &settings); err != nil {
+	if err := validateAgentCreate(ctx, u, &in, &settings, skipProviderValidate); err != nil {
 		return Agent{}, err
 	}
 	if in.AgentKind != AgentKindA2AProxy {
@@ -479,7 +489,7 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	if err := u.tx.ExecInTx(ctx, func(txCtx context.Context) error {
 		if _, err := u.writer.CreateAgent(txCtx, in); err != nil {
 			if isAgentKeyDuplicate(err) {
-				return apierror.BadRequest("AGENT_KEY_CONFLICT", "agent_key already in use")
+				return apierror.BadRequest("AGENT_KEY_CONFLICT", "agent_key already in use: "+err.Error())
 			}
 			return err
 		}
@@ -874,7 +884,7 @@ func (u *AgentUsecase) CreateWithFilesAndSettings(ctx context.Context, agent Age
 	}
 	s.AgentID = agent.ID
 
-	if err := validateAgentCreate(ctx, u, &agent, &s); err != nil {
+	if err := validateAgentCreate(ctx, u, &agent, &s, false); err != nil {
 		return Agent{}, err
 	}
 	if agent.AgentKind != AgentKindA2AProxy {

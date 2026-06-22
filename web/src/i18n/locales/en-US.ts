@@ -221,6 +221,8 @@ export default {
     voicePlaceholder: 'Voice capture will be wired in a later release.',
     attachmentDeleted: 'Attachment deleted',
     attachmentDeleteFailed: 'Failed to delete attachment',
+    attachmentDownloadFailed: 'Download failed',
+    loadMessagesFailed: 'Failed to load messages',
     awaitingUserHint: 'The agent is waiting for your reply. Type below and click Submit reply.',
     submitAwaitReply: 'Submit reply',
     awaitReplySent: 'Reply submitted; execution continues',

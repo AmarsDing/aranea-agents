@@ -4,9 +4,11 @@ import { errorMessage } from './providerUtils';
 import { usePlatformStore } from '../../stores/platform';
 import { findModelPreset, type ProviderModelPreset } from '../../config/providerPresets';
 import type { Ref, ComputedRef } from 'vue';
+import type { ProviderForm } from './types';
+import type { CatalogModelSummary } from '../../services/kratos/model_catalog/v1/index';
 
 export function useProviderInspect(deps: {
-  providerForm: Record<string, any>;
+  providerForm: ProviderForm;
   providerAddMode: Ref<'catalog' | 'custom'>;
   providerCreateInspectFingerprint: Ref<string>;
   providerEditIdentityAtOpen: Ref<string>;
@@ -14,10 +16,10 @@ export function useProviderInspect(deps: {
   isProviderResource: ComputedRef<boolean>;
   currentProviderPreset: ComputedRef<{ key?: string; authType?: string } | undefined>;
   applyModelPresetValues: (preset: ProviderModelPreset, overwrite?: boolean) => void;
-  findCatalogModel: (modelId: string) => any | undefined;
+  findCatalogModel: (modelId: string) => CatalogModelSummary | undefined;
   applyCatalogModel: (modelId: string) => void;
   catalogProviderId: Ref<string>;
-  catalogModels: Ref<any[]>;
+  catalogModels: Ref<CatalogModelSummary[]>;
 }) {
   const platformStore = usePlatformStore();
   const $q = useQuasar();

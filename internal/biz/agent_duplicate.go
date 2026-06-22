@@ -2,10 +2,13 @@ package biz
 
 import (
 	"context"
+	"regexp"
 	"strings"
 
 	"aranea-agents/pkg/apierror"
 )
+
+var keySanitizer = regexp.MustCompile(`[^a-z0-9]+`)
 
 // Duplicate clones an agent with settings and prompt files (AGT-10).
 func (u *AgentUsecase) Duplicate(ctx context.Context, id string) (Agent, error) {
@@ -23,7 +26,15 @@ func (u *AgentUsecase) Duplicate(ctx context.Context, id string) (Agent, error) 
 	}
 	copy := src
 	copy.ID = ""
-	copy.AgentKey = strings.TrimSpace(src.AgentKey) + "-copy-" + suffix
+	// Sanitize the source key so the duplicated key always passes the
+	// lowercase-letters/digits/hyphens validation rule.
+	baseKey := strings.ToLower(strings.TrimSpace(src.AgentKey))
+	baseKey = keySanitizer.ReplaceAllString(baseKey, "-")
+	baseKey = strings.Trim(baseKey, "-")
+	if baseKey == "" {
+		baseKey = "agent"
+	}
+	copy.AgentKey = baseKey + "-copy-" + suffix
 	copy.DisplayName = strings.TrimSpace(src.DisplayName) + " Copy"
 	copy.IsDefault = BoolPtr(false)
 	copy.IsFavorite = BoolPtr(false)
@@ -34,6 +45,10 @@ func (u *AgentUsecase) Duplicate(ctx context.Context, id string) (Agent, error) 
 	copy.LastRunAt = ""
 	copy.PendingEvolutionCount = 0
 	copy.CreatedBy = ""
+	copy.PositionID = ""
+	copy.PositionKey = ""
+	copy.AgentVariant = ""
+	copy.VariantDescription = ""
 	if copy.Settings != nil {
 		settings := *copy.Settings
 		settings.AgentID = ""
@@ -59,7 +74,7 @@ func (u *AgentUsecase) Duplicate(ctx context.Context, id string) (Agent, error) 
 		if attempt == 4 {
 			return Agent{}, apierror.BadRequest("AGENT_KEY_INVALID", msg)
 		}
-		copy.AgentKey = strings.TrimSpace(src.AgentKey) + "-copy-" + strings.ToLower(newAgentCatalogID()[:6])
+		copy.AgentKey = baseKey + "-copy-" + strings.ToLower(newAgentCatalogID()[:6])
 	}
-	return u.Create(ctx, copy)
+	return u.create(ctx, copy, true)
 }

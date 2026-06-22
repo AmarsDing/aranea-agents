@@ -81,35 +81,26 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 	enrichTeamRunMetricsFromSteps(&run, steps)
 	updatedRun, transitionErr := r.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusSuccess)
 	if transitionErr != nil {
-		r.lg.Warn("TransitionRunStatus failed in FinalizeGraphTeamRun",
+		r.lg.Error("TransitionRunStatus failed in FinalizeGraphTeamRun",
 			loggateway.StepID("team.run.transition_fail"),
 			loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
-		// Fallback: update directly.
-		now := agent.RFC3339Now()
-		run.Status = biz.TeamRunStatusSuccess
-		run.FinishedAt = now
-		run.UpdatedAt = now
-		run.DurationMS = int(time.Since(t0).Milliseconds())
-		if err := r.runWriter.UpdateTeamRun(ctx, run); err != nil {
-			r.lg.Warn("UpdateTeamRun failed in FinalizeGraphTeamRun", loggateway.StepID("team.graph.finisher_update_fail"), loggateway.Str("team_run_id", run.ID), loggateway.Err(err))
-		}
-	} else {
-		// Preserve token/duration data from the original run before the transition.
-		updatedRun.DurationMS = int(time.Since(t0).Milliseconds())
-		if run.TokenIn > 0 {
-			updatedRun.TokenIn = run.TokenIn
-		}
-		if run.TokenOut > 0 {
-			updatedRun.TokenOut = run.TokenOut
-		}
-		if strings.TrimSpace(run.OutputPreview) != "" {
-			updatedRun.OutputPreview = run.OutputPreview
-		}
-		if err := r.runWriter.UpdateTeamRun(ctx, updatedRun); err != nil {
-			r.lg.Warn("UpdateTeamRun failed in FinalizeGraphTeamRun", loggateway.StepID("team.graph.finisher_update_fail"), loggateway.Str("team_run_id", updatedRun.ID), loggateway.Err(err))
-		}
-		run = updatedRun
+		return
 	}
+	// Preserve token/duration data from the original run before the transition.
+	updatedRun.DurationMS = int(time.Since(t0).Milliseconds())
+	if run.TokenIn > 0 {
+		updatedRun.TokenIn = run.TokenIn
+	}
+	if run.TokenOut > 0 {
+		updatedRun.TokenOut = run.TokenOut
+	}
+	if strings.TrimSpace(run.OutputPreview) != "" {
+		updatedRun.OutputPreview = run.OutputPreview
+	}
+	if err := r.runWriter.UpdateTeamRun(ctx, updatedRun); err != nil {
+		r.lg.Warn("UpdateTeamRun failed in FinalizeGraphTeamRun", loggateway.StepID("team.graph.finisher_update_fail"), loggateway.Str("team_run_id", updatedRun.ID), loggateway.Err(err))
+	}
+	run = updatedRun
 	if r.td.Pipeline.Bus != nil {
 		cp := run
 		env := event.NewEnvelope(event.EnvelopeTypeTeamRunFinished, "team-graph-coordinator", stepCtx.SessionID)

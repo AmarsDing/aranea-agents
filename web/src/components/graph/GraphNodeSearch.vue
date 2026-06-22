@@ -32,6 +32,7 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue';
+import type { QInput } from 'quasar';
 
 const props = defineProps<{
   visible: boolean;
@@ -47,7 +48,7 @@ defineEmits<{
 }>();
 
 const query = ref('');
-const inputRef = ref<any>(null);
+const inputRef = ref<QInput | null>(null);
 
 watch(
   () => props.visible,

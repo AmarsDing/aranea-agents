@@ -353,6 +353,11 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	pending := coalescePendingQueue(deps.Turn.PendingQueue)
 	sessionLocks := biz.NewSessionLockManager()
 	chatUC := NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Turn.Sessions, deps.Turn.Pipeline.Bus, deps.Infra.LG)
+	// Wire provider/model resolution ports (BA4): biz-layer methods need
+	// access to RefineLLM config, LLM catalog, and session updates.
+	chatUC.SetRefineLLMLookup(deps.Turn.ReadDeps.Settings)
+	chatUC.SetModelLister(deps.Turn.ReadDeps.LLM)
+	chatUC.SetSessionUpdater(deps.Turn.Sessions)
 
 	// Build individual sub-managers first.
 	stateMgr := sessionStateTransitor(deps.Infra.TurnLifecycle)
@@ -593,7 +598,13 @@ func (o *ChatOrchestrator) cancelActiveRun(ctx context.Context, sessionID string
 	if !stopped {
 		return false
 	}
-	o.runStatus().SetRunStatus(ctx, sessionID, runID, biz.SessionRunPhaseCancelled, "")
+	if err := o.runStatus().SetRunStatus(ctx, sessionID, runID, biz.SessionRunPhaseCancelled, ""); err != nil {
+		o.lg().Warn("set run status failed on cancel",
+			loggateway.StepID("chat.cancel_run"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("run_id", runID),
+			loggateway.Err(err))
+	}
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonUserCancelled)
 	if _, err := chatactivity.CancelRunningActivityMessages(ctx, o.td().Sessions, sessionID, o.lg()); err != nil {
 		o.lg().Warn("取消执行卡片查询失败",
@@ -607,11 +618,25 @@ func (o *ChatOrchestrator) cancelActiveRun(ctx context.Context, sessionID string
 
 // setRunStatus delegates to the runStatus sub-manager.
 func (o *ChatOrchestrator) setRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
-	o.runStatus().SetRunStatus(ctx, sessionID, runID, status, errMsg)
+	if err := o.runStatus().SetRunStatus(ctx, sessionID, runID, status, errMsg); err != nil {
+		o.lg().Warn("set run status failed",
+			loggateway.StepID("chat.set_run_status"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("run_id", runID),
+			loggateway.Str("status", status),
+			loggateway.Err(err))
+	}
 }
 
 func (o *ChatOrchestrator) setRunStatusWithAwait(ctx context.Context, sessionID, runID, status, errMsg string, await *AwaitStatusMeta) {
-	o.runStatus().SetRunStatusWithAwait(ctx, sessionID, runID, status, errMsg, await)
+	if err := o.runStatus().SetRunStatusWithAwait(ctx, sessionID, runID, status, errMsg, await); err != nil {
+		o.lg().Warn("set run status with await failed",
+			loggateway.StepID("chat.set_run_status"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("run_id", runID),
+			loggateway.Str("status", status),
+			loggateway.Err(err))
+	}
 }
 
 func (o *ChatOrchestrator) publishRunStatus(sessionID, runID, status, errMsg string) {

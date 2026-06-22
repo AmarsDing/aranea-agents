@@ -180,7 +180,7 @@ function onFilterAgent(val: string, update: (fn: () => void) => void) {
   });
 }
 
-function onNewAgentValue(val: string, done: (item?: any, mode?: 'add' | 'toggle' | 'add-unique') => void) {
+function onNewAgentValue(val: string, done: (item?: string, mode?: 'add' | 'toggle' | 'add-unique') => void) {
   done(val, 'add-unique');
 }
 
@@ -193,7 +193,7 @@ function onFilterCapability(val: string, update: (fn: () => void) => void) {
   });
 }
 
-function onNewCapabilityValue(val: string, done: (item?: any, mode?: 'add' | 'toggle' | 'add-unique') => void) {
+function onNewCapabilityValue(val: string, done: (item?: string, mode?: 'add' | 'toggle' | 'add-unique') => void) {
   done(val, 'add-unique');
 }
 

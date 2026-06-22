@@ -187,21 +187,12 @@ func (c *TeamGraphRunCoordinator) MarkTeamGraphInterrupt(ctx context.Context, ex
 	if !sm.CanTransition(biz.TeamRunState(run.Status), biz.TeamRunState(biz.TeamRunStatusWaitingHuman)) {
 		return nil
 	}
-	updatedRun, transitionErr := c.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusWaitingHuman)
+	_, transitionErr := c.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusWaitingHuman)
 	if transitionErr != nil {
-		c.lg.Warn("TransitionRunStatus failed in MarkTeamGraphInterrupt",
+		c.lg.Error("TransitionRunStatus failed in MarkTeamGraphInterrupt",
 			loggateway.StepID("team.run.transition_fail"),
 			loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
-		// Persistence-recovery fallback: CanTransition already validated the state
-		// machine legality above (line 178). TransitionRunStatus failed for another
-		// reason (e.g., race or DB error), so we re-attempt the write directly.
-		run.Status = biz.TeamRunStatusWaitingHuman
-		if err := c.teamRunWriter.UpdateTeamRun(ctx, run); err != nil {
-			return err
-		}
-	} else {
-		// No extra fields to set for WaitingHuman; transition already persisted.
-		_ = updatedRun
+		return transitionErr
 	}
 	c.updateSessionStatus(ctx, sess.execID, biz.TeamRunStatusWaitingHuman)
 	return nil
@@ -228,19 +219,12 @@ func (c *TeamGraphRunCoordinator) DeferTeamRunSuccessIfHITL(ctx context.Context,
 	}
 	updatedRun, transitionErr := c.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusWaitingHuman)
 	if transitionErr != nil {
-		c.lg.Warn("TransitionRunStatus failed in DeferTeamRunSuccessIfHITL",
+		c.lg.Error("TransitionRunStatus failed in DeferTeamRunSuccessIfHITL",
 			loggateway.StepID("team.run.transition_fail"),
 			loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
-		// Persistence-recovery fallback: CanTransition already validated the state
-		// machine legality above (line 215). TransitionRunStatus failed for another
-		// reason (e.g., race or DB error), so we re-attempt the write directly.
-		run.Status = biz.TeamRunStatusWaitingHuman
-		if err := c.teamRunWriter.UpdateTeamRun(ctx, *run); err != nil {
-			return false, err
-		}
-	} else {
-		*run = updatedRun
+		return false, transitionErr
 	}
+	*run = updatedRun
 	return true, nil
 }
 
@@ -278,18 +262,9 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 					} else {
 						updatedRun, transitionErr := c.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusFailed)
 						if transitionErr != nil {
-							c.lg.Warn("TransitionRunStatus failed in HandleTeamGraphTaskCompleted",
+							c.lg.Error("TransitionRunStatus failed in HandleTeamGraphTaskCompleted",
 								loggateway.StepID("team.run.transition_fail"),
 								loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
-							// Persistence-recovery fallback: CanTransition validated above.
-							run.Status = biz.TeamRunStatusFailed
-							run.ErrorMessage = fmt.Sprintf("ResumeExecution failed: %s", err.Error())
-							run.FinishedAt = agent.RFC3339Now()
-							if uerr := c.teamRunWriter.UpdateTeamRun(ctx, run); uerr != nil {
-								c.lg.Warn("UpdateTeamRun failed after ResumeExecution error",
-									loggateway.StepID("team.graph.resume_fail_update"),
-									loggateway.Str("team_run_id", run.ID), loggateway.Str("update_error", uerr.Error()))
-							}
 						} else {
 							updatedRun.ErrorMessage = fmt.Sprintf("ResumeExecution failed: %s", err.Error())
 							if uerr := c.teamRunWriter.UpdateTeamRun(ctx, updatedRun); uerr != nil {
@@ -329,21 +304,11 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 				loggateway.Str("from", run.Status),
 				loggateway.Str("to", biz.TeamRunStatusRunning))
 		} else {
-			updatedRun, transitionErr := c.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusRunning)
+			_, transitionErr := c.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusRunning)
 			if transitionErr != nil {
-				c.lg.Warn("TransitionRunStatus failed in HandleTeamGraphTaskCompleted",
+				c.lg.Error("TransitionRunStatus failed in HandleTeamGraphTaskCompleted",
 					loggateway.StepID("team.run.transition_fail"),
 					loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
-				// Persistence-recovery fallback: CanTransition validated above.
-				run.Status = biz.TeamRunStatusRunning
-				if err := c.teamRunWriter.UpdateTeamRun(ctx, run); err != nil {
-					c.lg.Warn("HandleTeamGraphTaskCompleted: UpdateTeamRun failed",
-						loggateway.StepID("team.usage_record_fail"),
-						loggateway.Str("team_run_id", run.ID),
-						loggateway.Err(err))
-				}
-			} else {
-				_ = updatedRun
 			}
 			c.updateSessionStatus(ctx, sess.execID, biz.TeamRunStatusRunning)
 		}

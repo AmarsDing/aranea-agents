@@ -641,6 +641,17 @@ func (r *agentRepo) GetAgentByID(ctx context.Context, id string) (biz.Agent, err
 	return entAgentToBiz(row, r.data.lg), nil
 }
 
+// isAgentKeyConstraintError reports whether a constraint error is for the
+// agents.agent_key unique index rather than another unique constraint such as
+// agent_position_key_agent_variant.
+func isAgentKeyConstraintError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "agent_key")
+}
+
 func (r *agentRepo) GetAgentByAgentKey(ctx context.Context, agentKey string) (biz.Agent, error) {
 	agentKey = strings.TrimSpace(agentKey)
 	if agentKey == "" {
@@ -700,7 +711,7 @@ func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		SetDeletedAt(a.DeletedAt).
 		Save(ctx)
 	if err != nil {
-		if sqlgraph.IsConstraintError(err) {
+		if sqlgraph.IsConstraintError(err) && isAgentKeyConstraintError(err) {
 			return biz.Agent{}, shared.ErrAgentKeyConflict
 		}
 		return biz.Agent{}, entErrToBizErr(err, "AGENT")

@@ -5,10 +5,10 @@ import {
   findProviderPreset,
   type ProviderModelPreset,
 } from '../../config/providerPresets';
-import type { Ref } from 'vue';
+import type { ProviderForm } from './types';
 
 export function useProviderPresets(deps: {
-  providerForm: Record<string, any>;
+  providerForm: ProviderForm;
   applyModelPresetValues: (preset: ProviderModelPreset, overwrite?: boolean) => void;
 }) {
   const providerPresetKey = ref('');

@@ -113,6 +113,12 @@ type ChatUsecase struct {
 	awaitChans map[string]awaitChanEntry
 	bgCancel   context.CancelFunc
 	lg         loggateway.Logger
+
+	// Optional ports for provider/model resolution (BA4). Nil-safe: when not
+	// wired, ResolveProviderModel and SyncSessionProviderModel degrade to no-ops.
+	refineLLM      RefineLLMLookup
+	modelLister    TeamModelCatalog
+	sessionUpdater SessionCRUDPort
 }
 
 func NewChatUsecase(

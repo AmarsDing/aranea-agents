@@ -74,7 +74,7 @@ watch(
   { immediate: true },
 );
 
-function onFilter(val: string, update: (callback: () => void, afterFn?: (ref: any) => void) => void) {
+function onFilter(val: string, update: (callback: () => void, afterFn?: (ref: unknown) => void) => void) {
   update(() => {
     if (!val) {
       filteredOptions.value = props.options ?? [];

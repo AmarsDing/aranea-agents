@@ -82,6 +82,11 @@ func (o *ChatOrchestrator) RunNativeAgentTurnWithOutcome(ctx context.Context, in
 	}, nil
 }
 
+// TECH-DEBT(BA4): checkTurnAdmission still encodes the reject_busy_queue
+// business rule (IngressQueue + intent check) at the service layer. Moving
+// this into TurnAdmissionUsecase requires expanding the admission verdict
+// model and touching multiple callers (chat_native.go, chat_orchestrator_turn.go).
+// Deferred to avoid cross-module churn in this P1 pass.
 func (o *ChatOrchestrator) checkTurnAdmission(input biz.TurnInput, hasActive, contextPressure bool) (turn.AdmissionVerdict, bool) {
 	if o == nil || o.admitGate() == nil || !hasActive {
 		return turn.AdmissionVerdict{}, false
@@ -186,49 +191,15 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 }
 
 func (o *ChatOrchestrator) resolveProviderModelFallback(ctx context.Context, prov, mod string) (string, string) {
-	if prov != "" && mod != "" {
-		return prov, mod
-	}
-	if o.td().ReadDeps.Settings != nil {
-		if refine, err := o.td().ReadDeps.Settings.GetRefineLLM(ctx); err == nil {
-			prov = strutil.FirstNonEmpty(prov, refine.Provider)
-			mod = strutil.FirstNonEmpty(mod, refine.Model)
-		}
-	}
-	if prov != "" && mod != "" {
-		return prov, mod
-	}
-	if o.td().ReadDeps.LLM != nil {
-		if models, err := o.td().ReadDeps.LLM.List(ctx); err == nil {
-			for _, m := range models {
-				if m.Enabled && m.Provider != "" && m.Model != "" {
-					prov = strutil.FirstNonEmpty(prov, m.Provider)
-					mod = strutil.FirstNonEmpty(mod, m.Model)
-					break
-				}
-			}
-		}
-	}
-	return prov, mod
+	// BA4: business rule (RefineLLM → LLM catalog fallback) lives in biz layer.
+	resolvedProv, resolvedMod, _ := o.chatUC.ResolveProviderModel(ctx, prov, mod)
+	return resolvedProv, resolvedMod
 }
 
 func (o *ChatOrchestrator) syncSessionProviderModel(ctx context.Context, sessionID string, sess biz.Session, prov, mod string) {
-	if prov == "" || mod == "" {
-		return
-	}
-	if sess.DefaultProvider == prov && sess.DefaultModel == mod {
-		return
-	}
-	if o.td().Sessions == nil {
-		return
-	}
-	p, m := prov, mod
-	if _, err := o.td().Sessions.Update(ctx, sessionID, biz.SessionUpdateFields{
-		DefaultProvider: &p,
-		DefaultModel:    &m,
-	}); err != nil {
-		o.lg().Warn("sync session provider model failed", loggateway.Err(err), loggateway.Str("session_id", sessionID))
-	}
+	// BA4: business rule (sync session defaults when resolved values differ)
+	// lives in biz layer. Error is logged inside the biz method.
+	_ = o.chatUC.SyncSessionProviderModel(ctx, sessionID, sess, prov, mod)
 }
 
 // hydratedAgent loads and returns an Agent by ID.
@@ -276,7 +247,13 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// client-side 30s Turn ACK timeout is cleared before the BUILD phase.
 	// Previously this was sent after BUILD, which could take 2-15s on cache
 	// miss, causing the frontend to time out.
-	o.runStatus().SetRunStatus(ctx, sessionID, runID, "running", "")
+	if err := o.runStatus().SetRunStatus(ctx, sessionID, runID, "running", ""); err != nil {
+		o.lg().Warn("set run status failed on early ack",
+			loggateway.StepID("chat.turn.early_ack"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("run_id", runID),
+			loggateway.Err(err))
+	}
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusRunning, "")
 
 	// ── BUILD (inline — defer interactions prevent extraction) ──

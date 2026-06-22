@@ -7,14 +7,15 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
 // RunStatusWriter manages run status transitions and persistence.
 // Stability:evolving
 type RunStatusWriter interface {
-	SetRunStatus(ctx context.Context, sessionID, runID, status, errMsg string)
-	SetRunStatusWithAwait(ctx context.Context, sessionID, runID, status, errMsg string, await *AwaitStatusMeta)
+	SetRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) error
+	SetRunStatusWithAwait(ctx context.Context, sessionID, runID, status, errMsg string, await *AwaitStatusMeta) error
 	PublishRunStatus(sessionID, runID, status, errMsg string)
 	PersistRunStatus(ctx context.Context, sessionID, runID, status, errMsg string)
 }
@@ -92,28 +93,33 @@ func newChatRunStatusTracker(runs *rt.RunRegistry, sessions biz.SessionStatePort
 var _ runStatusTracker = (*chatRunStatusTracker)(nil)
 
 // SetRunStatus atomically updates the run status, publishes a WS envelope, and persists.
-func (t *chatRunStatusTracker) SetRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
-	t.SetRunStatusWithAwait(ctx, sessionID, runID, status, errMsg, nil)
+func (t *chatRunStatusTracker) SetRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) error {
+	return t.SetRunStatusWithAwait(ctx, sessionID, runID, status, errMsg, nil)
 }
 
 // SetRunStatusWithAwait same as SetRunStatus but includes await metadata.
-func (t *chatRunStatusTracker) SetRunStatusWithAwait(ctx context.Context, sessionID, runID, status, errMsg string, await *AwaitStatusMeta) {
-	// FSM validation (AS-FSM-01): log illegal transitions for investigation.
-	// Does not block — existing callers may rely on "illegal but intentional"
-	// transitions (e.g. retry from terminal). The warning surfaces bugs.
+func (t *chatRunStatusTracker) SetRunStatusWithAwait(ctx context.Context, sessionID, runID, status, errMsg string, await *AwaitStatusMeta) error {
+	// FSM validation (AS-FSM-01): reject illegal transitions.
+	// When no prior status record exists (bootstrap/crash recovery), validation
+	// is skipped to allow the first status write.
+	// TECH-DEBT(FSM): retry-from-terminal needs explicit state machine rule;
+	// current behavior rejects terminal→running transitions.
 	if t.sm != nil {
 		from := biz.RunStateNone
+		hasCurrent := false
 		if entry, ok := t.runs.GetStatus(sessionID); ok {
 			from = biz.ParseRunState(entry.Status)
+			hasCurrent = true
 		}
 		to := biz.ParseRunState(status)
-		if from != to && !t.sm.CanTransition(from, to) {
-			t.lg.Warn("run: illegal state transition detected by FSM",
+		if hasCurrent && from != to && !t.sm.CanTransition(from, to) {
+			t.lg.Warn("run: illegal state transition rejected by FSM",
 				loggateway.StepID("run.fsm_illegal"),
 				loggateway.Str("session_id", sessionID),
 				loggateway.Str("run_id", runID),
 				loggateway.Str("from", string(from)),
 				loggateway.Str("to", string(to)))
+			return apierror.BadRequest(apierror.DomainChat, "illegal run state transition: %s → %s", from, to)
 		}
 	}
 	t.runs.SetStatus(sessionID, runID, status, errMsg)
@@ -124,6 +130,7 @@ func (t *chatRunStatusTracker) SetRunStatusWithAwait(ctx context.Context, sessio
 		PublishRunStatusFull(t.bus, sessionID, runID, status, errMsg, nil, bind.sessionRunID, bind.turnID)
 	}
 	t.PersistRunStatus(ctx, sessionID, runID, status, errMsg)
+	return nil
 }
 
 // PublishRunStatus publishes a WS run_status envelope (no state change).

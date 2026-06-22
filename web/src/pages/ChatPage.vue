@@ -142,11 +142,11 @@
         @compact="session.onCompactSession"
         @toggle-tool-calls="uiConfig.setShowToolCalls(!uiConfig.showToolCalls)"
         @confirm-activity="session.onConfirmActivity"
-        @error-retry="onErrorRetry"
-        @error-switch-model="onErrorSwitchModel"
-        @error-rephrase="onErrorRephrase"
-        @error-check-config="onErrorCheckConfig"
-        @error-remove-attachment="onErrorRemoveAttachment"
+        @error-retry="errorBlock.onErrorRetry"
+        @error-switch-model="errorBlock.onErrorSwitchModel"
+        @error-rephrase="errorBlock.onErrorRephrase"
+        @error-check-config="errorBlock.onErrorCheckConfig"
+        @error-remove-attachment="errorBlock.onErrorRemoveAttachment"
         @error-relogin="onErrorRelogin"
         @cancel-team="spiritStore.cancelTeam"
         @resume-team="spiritStore.resumeTeam"
@@ -244,8 +244,6 @@ import ChatWorkspaceShell from '../components/chat/ChatWorkspaceShell.vue';
 import SessionTimelineDialog from '../components/chat/SessionTimelineDialog.vue';
 import { computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { useQuasar } from 'quasar';
-import { useI18n } from 'vue-i18n';
 import { useChatWorkspace } from '../features/chat/composables/useChatWorkspace';
 import { useSpiritTeamStore } from '../stores/spirit';
 import { useUiConfigStore } from '../stores/uiConfig';
@@ -254,14 +252,11 @@ import type { Agent } from '../features/agents/types';
 
 const SPIRIT_AGENT_KEY = '__spirit__';
 
-const { coreReady, fileRef, layout, entity, session, composer, dialogs } = useChatWorkspace();
+const { coreReady, fileRef, layout, entity, session, composer, dialogs, errorBlock } = useChatWorkspace();
 const spiritStore = useSpiritTeamStore();
 const uiConfig = useUiConfigStore();
 const router = useRouter();
-const $q = useQuasar();
-const { t } = useI18n();
 // T5.5: Mobile (<1024px) responsive logic removed — app targets desktop only.
-// $q is still needed for $q.notify() in error handlers; $q.screen is no longer used.
 
 const activeMember = computed(() => {
   const team = spiritStore.activeTeam;
@@ -378,50 +373,11 @@ function onStatusBarClickLastEvent() {
 /**
  * P3-4: ErrorBlock inline action handlers.
  *
- * ErrorBlock emits typed actions based on the resolved `errorCode`. The
- * handlers below wire those actions to existing composer/session methods
- * or surface a guidance notification when no direct action is available.
- *
- * The `event` payload carries the original `ErrorEvent` (message + errorCode)
- * so handlers can log diagnostics or correlate with the failed turn.
+ * ErrorBlock emits typed actions based on the resolved `errorCode`. Most
+ * handlers are implemented in `useChatWorkspace` (errorBlock) so they can
+ * call `$q.notify` directly. The `onErrorRelogin` handler stays here
+ * because it only needs `router.push` (no notification).
  */
-
-/** Retry: find the latest failed pending-user message and re-send it. */
-async function onErrorRetry() {
-  const sid = session.selectedSessionForUi?.id;
-  if (!sid) return;
-  const failed = composer.pendingMessages.find((m) => m.id.startsWith('pending-user-') && m.status === 'failed');
-  if (failed) {
-    await composer.retryFailedMessage(failed.id);
-  } else {
-    $q.notify({ type: 'info', message: t('chat.errorBlock.retryNoTarget', '未找到可重试的失败消息') });
-  }
-}
-
-/** Switch model: prompt the user to switch model via the header provider selector. */
-function onErrorSwitchModel() {
-  $q.notify({ type: 'info', message: t('chat.errorBlock.switchModelHint', '请在顶部切换到其他模型后重试') });
-}
-
-/** Rephrase: focus the composer so the user can edit and re-send. */
-function onErrorRephrase() {
-  $q.notify({ type: 'info', message: t('chat.errorBlock.rephraseHint', '请尝试换种表述后重新发送') });
-}
-
-/** Check config: open the agent settings dialog. */
-function onErrorCheckConfig() {
-  const agent = entity.store.selectedAgent;
-  if (agent) {
-    entity.openSettings('agent', agent.id);
-  } else {
-    $q.notify({ type: 'warning', message: t('chat.errorBlock.checkConfigHint', '请检查 Agent 配置') });
-  }
-}
-
-/** Remove attachment: notify the user to remove the offending attachment. */
-function onErrorRemoveAttachment() {
-  $q.notify({ type: 'info', message: t('chat.errorBlock.removeAttachmentHint', '请移除不支持的附件后重试') });
-}
 
 /** Relogin: redirect to the login page. */
 function onErrorRelogin() {

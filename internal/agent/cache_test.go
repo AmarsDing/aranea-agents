@@ -15,6 +15,8 @@ import (
 )
 
 // mockAgent is a minimal trpcagent.Agent for cache tests.
+var _ trpcagent.Agent = (*mockAgent)(nil)
+
 type mockAgent struct{ key string }
 
 func (m *mockAgent) Run(ctx context.Context, invocation *trpcagent.Invocation) (<-chan *trpcevent.Event, error) {

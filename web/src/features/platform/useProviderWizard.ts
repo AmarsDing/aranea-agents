@@ -1,9 +1,6 @@
 import { computed, reactive, ref, type ComputedRef, type Ref } from 'vue';
-import { useQuasar } from 'quasar';
-import type { PlatformResource, PlatformResourceName, ModelCategory, CapabilityChip } from './types';
-import { errorMessage, toNullableNumber, toNumber, getConfig, getCategories } from './providerUtils';
-import { usePlatformStore } from '../../stores/platform';
-import type { ProviderHAForm } from './types';
+import type { PlatformResource, PlatformResourceName, ModelCategory, CapabilityChip, ProviderHAForm } from './types';
+import { toNullableNumber, toNumber, getConfig, getCategories } from './providerUtils';
 import {
   PROVIDER_RUNTIME_OVERLAY,
   PROVIDER_TYPE_OPTIONS,
@@ -14,7 +11,7 @@ import {
 import { MODEL_CATEGORY_OPTIONS } from '../model-catalog/catalogCategories';
 import { catalogProviderIdFor, ensureProviderMigrationMap } from '../model-catalog/providerMigration';
 import { hasPricingConfigured } from '../usage/pricingWarning';
-import { findProviderPreset, findModelPreset, type ProviderModelPreset } from '../../config/providerPresets';
+import { findProviderPreset, type ProviderModelPreset } from '../../config/providerPresets';
 import { useProviderCatalog } from './useProviderCatalog';
 import { useProviderCredentials } from './useProviderCredentials';
 import { useProviderInspect } from './useProviderInspect';
@@ -29,9 +26,6 @@ export function useProviderWizard(deps: {
   isProviderResource: ComputedRef<boolean>;
   rows: Ref<PlatformResource[]>;
 }) {
-  const platformStore = usePlatformStore();
-  const $q = useQuasar();
-
   const providerForm = reactive({
     provider_type: 'openai',
     variant: 'openai',

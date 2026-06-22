@@ -45,7 +45,7 @@ import {
 const props = withDefaults(
   defineProps<{
     rows: Record<string, unknown>[];
-    columns: RegistryTableColumn<any>[];
+    columns: RegistryTableColumn[];
     rowKey?: string;
     wrapCells?: boolean;
     tableClass?: string;

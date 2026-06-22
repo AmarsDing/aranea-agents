@@ -167,7 +167,13 @@ func (o *ChatOrchestrator) resumeAwaitAfterRestart(ctx context.Context, sessionI
 			Content:   reply,
 		})
 		if turnErr != nil && !isTurnMessageQueued(turnErr) {
-			o.runStatus().SetRunStatus(bgCtx, sessionID, runID, "failed", turnErr.Error())
+			if serr := o.runStatus().SetRunStatus(bgCtx, sessionID, runID, "failed", turnErr.Error()); serr != nil {
+				o.lg().Warn("set run status failed on turn error",
+					loggateway.StepID("chat.turn.dispatch_fail"),
+					loggateway.Str("session_id", sessionID),
+					loggateway.Str("run_id", runID),
+					loggateway.Err(serr))
+			}
 			o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 			o.publishTurnFailure(sessionID, runID, "chat-service", turnErr, "")
 		}
@@ -229,7 +235,15 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 			// we hold the session lock, and the only dequeue path for this
 			// session is this loop (recursive processPendingQueue calls are
 			// suppressed by loopCtx via contextWithPendingLoop).
-			entry, _ = o.chatUC.DequeuePendingMessage(sessionID)
+			entry, ok = o.chatUC.DequeuePendingMessage(sessionID)
+			if !ok {
+				unlock()
+				o.lg().Warn("dequeue pending message failed after peek",
+					loggateway.StepID("chat.pending_queue.dequeue_fail"),
+					loggateway.Str("session_id", sessionID),
+					loggateway.Int("depth", depth))
+				return
+			}
 			bgCtx, cancel := context.WithCancel(loopCtx)
 			o.runs.SetPendingCancel(sessionID, cancel)
 			unlock()

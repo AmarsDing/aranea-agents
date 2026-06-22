@@ -101,7 +101,7 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick, computed, onMounted, onUnmounted, markRaw } from 'vue';
-import type { Ref } from 'vue';
+import type { Ref, Component } from 'vue';
 import { useQuasar } from 'quasar';
 import {
   VueFlow,
@@ -112,7 +112,6 @@ import {
   type NodeChange,
   type EdgeChange,
   type EdgeUpdateEvent,
-  Position,
   SelectionMode,
 } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
@@ -130,11 +129,11 @@ import GraphContextMenu from './GraphContextMenu.vue';
 import type { ContextMenuItem } from './GraphContextMenu.vue';
 import GraphNodeSearch from './GraphNodeSearch.vue';
 import type { NodeDef, EdgeDef, ConditionalEdgeDef, NodeType, GraphDefinition } from '../../features/graph/types';
-import { NODE_TYPE_STYLES, NODE_DEFAULT_WIDTH, NODE_DEFAULT_HEIGHT } from '../../features/graph/types';
+import { NODE_TYPE_STYLES } from '../../features/graph/types';
 import type { useGraphUndoRedo } from '../../features/graph/useGraphUndoRedo';
 import { defaultNodePosition, readGraphLayout, writeGraphNodePosition } from '../../features/graph/editor/graphLayout';
 import { useSnapGuide } from '../../features/graph/useSnapGuide';
-import type { SnapLine, SnapGuideNode } from '../../features/graph/useSnapGuide';
+import type { SnapGuideNode } from '../../features/graph/useSnapGuide';
 import { graphNodeDisplayLabel } from '../../features/orchestration/teamNodeDisplay';
 
 const props = defineProps<{
@@ -221,7 +220,7 @@ function zoomToFit() {
   fitView({ padding: 0.2, duration: 300 });
 }
 
-const nodeTypes: Record<string, any> = markRaw({
+const nodeTypes: Record<string, Component> = markRaw({
   function: markRaw(GraphFlowNode),
   llm: markRaw(GraphFlowNode),
   tool: markRaw(GraphFlowNode),
@@ -231,7 +230,7 @@ const nodeTypes: Record<string, any> = markRaw({
   join: markRaw(GraphFlowDiamond),
 });
 
-const edgeTypes: Record<string, any> = markRaw({
+const edgeTypes: Record<string, Component> = markRaw({
   flowEdge: markRaw(GraphFlowEdge),
 });
 
@@ -1059,7 +1058,7 @@ function onCanvasKeydown(e: KeyboardEvent) {
       return;
     }
     // 删除选中的边
-    const selectedEdges = (internalEdges.value as any[]).filter((edge) => edge.selected);
+    const selectedEdges = internalEdges.value.filter((edge) => (edge as Edge & { selected?: boolean }).selected);
     if (selectedEdges.length > 0) {
       for (const edge of selectedEdges) {
         deleteEdgeById(edge.id);

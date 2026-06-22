@@ -71,6 +71,9 @@ func TestClassifyEnqueueOutcome(t *testing.T) {
 	}
 }
 
+var _ trpcrunner.Runner = (*admissionTestRunner)(nil)
+var _ trpcrunner.SteerableRunner = (*admissionTestRunner)(nil)
+
 type admissionTestRunner struct{}
 
 func (admissionTestRunner) Run(context.Context, string, string, trpcmodel.Message, ...trpcagent.RunOption) (<-chan *trpcevent.Event, error) {

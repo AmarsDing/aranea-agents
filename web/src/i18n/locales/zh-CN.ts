@@ -216,6 +216,8 @@ export default {
     voicePlaceholder: '语音输入功能将在后续版本接入。',
     attachmentDeleted: '附件已删除',
     attachmentDeleteFailed: '附件删除失败',
+    attachmentDownloadFailed: '下载失败',
+    loadMessagesFailed: '加载消息失败',
     awaitingUserHint: 'Agent 正在等待你的回复，在下方输入后点击「提交回复」。',
     submitAwaitReply: '提交回复',
     awaitReplySent: '已提交回复，继续执行',

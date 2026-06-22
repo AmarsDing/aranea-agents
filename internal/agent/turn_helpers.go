@@ -73,6 +73,10 @@ type StreamConsumeOptions struct {
 	MetaResolver      ActivityMetaResolver
 	ActivityPersister ActivityPersister
 	ActivityProjector *ActivityProjector // AF phase: projects runtime events into Activity semantic units
+	// EventInfra provides WBPF-protected publishing for Critical events (e.g., stuck ToolResult).
+	// When set, PublishStuckToolResultEnvelopes routes through Infra.Publish instead of raw bus.Publish.
+	// When nil, stuck tool finalization is skipped (only persists Activities via ActivityPersister).
+	EventInfra *event.Infra
 }
 
 func ConsumeEventStream(

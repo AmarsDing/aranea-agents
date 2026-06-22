@@ -221,7 +221,13 @@ func (a *chatAwaitCoordinator) MakeAwaitReplyFunc(runCtx context.Context, sessio
 				ToolCallID: req.ToolCallID,
 			}
 		}
-		a.runStatus.SetRunStatusWithAwait(toolCtx, sessionID, runID, "awaiting_user", "", &awaitMeta)
+		if err := a.runStatus.SetRunStatusWithAwait(toolCtx, sessionID, runID, "awaiting_user", "", &awaitMeta); err != nil {
+			a.lg.Warn("set run status awaiting_user failed",
+				loggateway.StepID("chat.await"),
+				loggateway.Str("session_id", sessionID),
+				loggateway.Str("run_id", runID),
+				loggateway.Err(err))
+		}
 		if awaitMeta.Kind == biz.ChatAwaitKindToolConfirm {
 			a.sessionState.TransitionStatus(toolCtx, sessionID, sessstatus.SessionStatusAwaitingConfirmation, sessstatus.StatusReasonToolConfirmation)
 		} else {
@@ -231,7 +237,13 @@ func (a *chatAwaitCoordinator) MakeAwaitReplyFunc(runCtx context.Context, sessio
 		defer func() {
 			a.chatUC.DeleteAwaitChannel(sessionID)
 			a.runStatus.ClearAwaitMetaCache(sessionID)
-			a.runStatus.SetRunStatus(toolCtx, sessionID, runID, "running", "")
+			if err := a.runStatus.SetRunStatus(toolCtx, sessionID, runID, "running", ""); err != nil {
+				a.lg.Warn("set run status running on resume failed",
+					loggateway.StepID("chat.await_resume"),
+					loggateway.Str("session_id", sessionID),
+					loggateway.Str("run_id", runID),
+					loggateway.Err(err))
+			}
 			a.sessionState.TransitionStatus(toolCtx, sessionID, sessstatus.SessionStatusRunning, "")
 		}()
 		select {
