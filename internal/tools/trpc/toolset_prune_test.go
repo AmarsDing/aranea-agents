@@ -32,3 +32,54 @@ func TestPruneUnconfiguredToolFlags_googleConfigured(t *testing.T) {
 		t.Fatal("configured tools should stay enabled")
 	}
 }
+
+func TestPruneUnconfiguredToolFlags_workspaceExecForcedOff(t *testing.T) {
+	cfg := &ToolsetConfig{WorkspaceExec: true}
+	skipped := PruneUnconfiguredToolFlags(cfg)
+	if cfg.WorkspaceExec {
+		t.Error("WorkspaceExec should always be pruned (factory returns nil,nil)")
+	}
+	found := false
+	for _, s := range skipped {
+		if s == "workspace_exec" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("workspace_exec should be in skipped list, got %v", skipped)
+	}
+}
+
+func TestPruneUnconfiguredToolFlags_browserMissingConfig(t *testing.T) {
+	cfg := &ToolsetConfig{BrowserEnabled: true}
+	skipped := PruneUnconfiguredToolFlags(cfg)
+	if cfg.BrowserEnabled {
+		t.Error("BrowserEnabled should be pruned when Browser config is nil")
+	}
+	found := false
+	for _, s := range skipped {
+		if s == "browser" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("browser should be in skipped list, got %v", skipped)
+	}
+}
+
+func TestPruneUnconfiguredToolFlags_messageMissingRouter(t *testing.T) {
+	cfg := &ToolsetConfig{Message: true}
+	skipped := PruneUnconfiguredToolFlags(cfg)
+	if cfg.Message {
+		t.Error("Message should be pruned when OutboundRouter is nil")
+	}
+	found := false
+	for _, s := range skipped {
+		if s == "message" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("message should be in skipped list, got %v", skipped)
+	}
+}

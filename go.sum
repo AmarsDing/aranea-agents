@@ -812,10 +812,6 @@ trpc.group/trpc-go/trpc-agent-go/model/provider v1.9.0 h1:rMnGaZJGvC0DOxOd78zkPL
 trpc.group/trpc-go/trpc-agent-go/model/provider v1.9.0/go.mod h1:J4UGlMawNN/OlRnAvcQnv6QIiuZj+ehoM5oPyZzLRzI=
 trpc.group/trpc-go/trpc-agent-go/model/tiktoken v1.10.0 h1:CTn/TuKJpRgcQUcUFiGaji/3V/JVLuiB8RoIQ2qEhU4=
 trpc.group/trpc-go/trpc-agent-go/model/tiktoken v1.10.0/go.mod h1:SgExIJ+lBn6iLlPAapOwcKGOpR3OM86e6LZmSR51Z5o=
-trpc.group/trpc-go/trpc-agent-go/openclaw v0.0.1 h1:EaW/WWF/waMPA0VmsimGzT5N0jmQQ3pqExw0kUyoRQc=
-trpc.group/trpc-go/trpc-agent-go/openclaw v0.0.1/go.mod h1:glaew326MZurpuDMYJYW+Z6wddbET+IThbcWpDNJves=
-trpc.group/trpc-go/trpc-agent-go/session/sqlite v1.9.0 h1:pI4ja9YpfdnLrFnGHO1bIYZZJ5L8CxEGXz2F8ZoJybs=
-trpc.group/trpc-go/trpc-agent-go/session/sqlite v1.9.0/go.mod h1:Tk5AeewPgIiavjVoRRtgiN5aNhPFoPemvRkZGjrwtXw=
 trpc.group/trpc-go/trpc-agent-go/storage/s3 v1.8.0 h1:L3qc8RO5zY4PD4s737hZ2GTNRj61Thoxsiwx5yvGhT8=
 trpc.group/trpc-go/trpc-agent-go/storage/s3 v1.8.0/go.mod h1:H6vGr646nU6K29SPOmNuuCnSu665dqvTCl/jsDSHPgM=
 trpc.group/trpc-go/trpc-agent-go/tool/arxivsearch v1.9.0 h1:V8fVBQiPUOBVZy9H7YEAI8wb1LFD9u4hV8kDc+KUYcY=

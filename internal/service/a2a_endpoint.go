@@ -98,6 +98,8 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 			Organization:     s.orch.rt().OrganizationUC,
 			ToolResultGate:   s.orch.rt().ToolResultGate,
 			SubAgentService:  s.orch.subAgentService(),
+			OutboundRouter:   s.orch.outboundRouter(),
+			A2AEnabled:       s.orch.a2aUC() != nil,
 			L0SnapshotForcer: s.orch.td().SessionRT,
 		},
 	}

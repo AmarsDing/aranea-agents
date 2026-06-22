@@ -106,6 +106,7 @@ var ProviderSet = wire.NewSet(
 	NewObservationRepo,
 	NewPatternRepo,
 	NewProposalRepo,
+	NewRuntimeProfileRepo,
 	NewMemoryFactReader,
 	NewToolResultBlobRepo,
 	NewToolResultReplacementRepo,

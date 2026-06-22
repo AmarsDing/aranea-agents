@@ -877,6 +877,7 @@ func provideChatServiceDeps(
 	activityReader biz.ActivityReader,
 	heartbeatEmitter *service.RunHeartbeatEmitter,
 	deadLetterQueue *lifecycle.DeadLetterQueue,
+	profileResolver *chatagent.ProfileResolver,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	// Backfill TaskOrchestrator into teamDeps to break the Wire cycle:
@@ -943,6 +944,7 @@ func provideChatServiceDeps(
 			TurnLifecycle:    turnLifecycle,
 			HeartbeatEmitter: heartbeatEmitter,
 			DeadLetterQueue:  deadLetterQueue,
+			ProfileResolver:  profileResolver,
 		},
 	}
 }
@@ -2375,6 +2377,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideAgentAllocator,
 		provideAgentFactory,
 		chatagent.NewAgentMatcher,
+		chatagent.NewProfileResolver,
 		provideTaskOrchestrator,
 		debug.NewRecorderFactory,
 		// PGO-3: DynamicLLMCaller → biz.LLMCaller binding, PromptRefiner.

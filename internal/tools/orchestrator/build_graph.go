@@ -53,7 +53,8 @@ type GraphBuilderPort interface {
 }
 
 // NewBuildOrchestrationGraphTool creates the build_orchestration_graph tool.
-// If builder is nil, the tool only generates the graph config without executing it.
+// If builder is nil, the tool only generates the graph config without executing it,
+// and includes a warning in the output to make the agent aware that execution was skipped.
 func NewBuildOrchestrationGraphTool(builder GraphBuilderPort) *trpcfunction.FunctionTool[BuildOrchestrationGraphInput, BuildOrchestrationGraphOutput] {
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, input BuildOrchestrationGraphInput) (BuildOrchestrationGraphOutput, error) {
@@ -63,6 +64,13 @@ func NewBuildOrchestrationGraphTool(builder GraphBuilderPort) *trpcfunction.Func
 
 			config, warnings := BuildGraphConfig(input)
 			verificationNodes := injectVerificationNodes(&config, input.Mode)
+
+			// When no builder is wired, the graph config is still useful (e.g. for
+			// inspection or external execution), but we must make the agent aware
+			// that execution was skipped so it doesn't assume the graph ran.
+			if builder == nil {
+				warnings = append(warnings, "graph builder not configured: graph config generated but not executed")
+			}
 
 			out := BuildOrchestrationGraphOutput{
 				GraphBuildConfig:  config,

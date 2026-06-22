@@ -7,6 +7,7 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/outbound"
 	rt "aranea-agents/internal/runtime"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	"aranea-agents/pkg/loggateway"
@@ -47,6 +48,8 @@ type chatAgentBuildDirector struct {
 	rt             RuntimeTooling
 	awaitCoord     awaitCoordinator
 	subAgentSvc    *subagenttool.Service
+	outboundRouter *outbound.Router
+	a2aEnabled     bool
 	customToolFunc func(ctx context.Context, ag biz.Agent) []trpctool.Tool
 	lg             loggateway.Logger
 }
@@ -59,6 +62,8 @@ type chatAgentBuildDirectorDeps struct {
 	RT             RuntimeTooling
 	AwaitCoord     awaitCoordinator
 	SubAgentSvc    *subagenttool.Service
+	OutboundRouter *outbound.Router
+	A2AEnabled     bool
 	CustomToolFunc func(ctx context.Context, ag biz.Agent) []trpctool.Tool
 	Logger         loggateway.Logger
 }
@@ -69,6 +74,8 @@ func newChatAgentBuildDirector(d chatAgentBuildDirectorDeps) *chatAgentBuildDire
 		rt:             d.RT,
 		awaitCoord:     d.AwaitCoord,
 		subAgentSvc:    d.SubAgentSvc,
+		outboundRouter: d.OutboundRouter,
+		a2aEnabled:     d.A2AEnabled,
 		customToolFunc: d.CustomToolFunc,
 		lg:             d.Logger,
 	}
@@ -159,6 +166,7 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 			Organization:     d.rt.OrganizationUC,
 			ToolResultGate:   d.rt.ToolResultGate,
 			SubAgentService:  d.subAgentSvc,
+			OutboundRouter:   d.outboundRouter,
 			L0SnapshotForcer: d.td.SessionRT,
 			ToolVersionHash:  toolHash,
 			SkillVersionHash: skillHash,

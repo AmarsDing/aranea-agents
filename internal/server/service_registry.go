@@ -52,6 +52,8 @@ type ServiceRegistry struct {
 	AGUICompat    *service.AGUICompatService
 	OpenAISession *service.OpenAISessionCompatService
 	A2AExtension  *service.A2AExtensionCompatService
+	// RuntimeProfileService manages per-agent runtime configuration profiles.
+	RuntimeProfile *service.RuntimeProfileService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -98,6 +100,7 @@ func NewServiceRegistry(
 	aguiCompat *service.AGUICompatService,
 	openaiSession *service.OpenAISessionCompatService,
 	a2aExtension *service.A2AExtensionCompatService,
+	runtimeProfile *service.RuntimeProfileService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
 		Admin:              admin,
@@ -141,5 +144,6 @@ func NewServiceRegistry(
 		AGUICompat:         aguiCompat,
 		OpenAISession:      openaiSession,
 		A2AExtension:       a2aExtension,
+		RuntimeProfile:     runtimeProfile,
 	}
 }

@@ -1,0 +1,166 @@
+syntax = "proto3";
+
+package kratos.runtime_profile.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
+
+option go_package = "aranea-agents/api/kratos/runtime_profile/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.runtime_profile.v1";
+
+message PromptConfig {
+  string instruction = 1;
+  string system_prompt = 2;
+}
+
+message ToolPolicy {
+  repeated string include = 1;
+  repeated string exclude = 2;
+  repeated string execution_include = 3;
+  repeated string execution_exclude = 4;
+  repeated string toolsets = 5;
+  map<string, string> credential_refs = 6;
+}
+
+message SkillPolicy {
+  repeated string include = 1;
+  repeated string exclude = 2;
+  repeated string roots = 3;
+}
+
+message KnowledgePolicy {
+  repeated string indexes = 1;
+  google.protobuf.Struct filter = 2;
+}
+
+message WorkspacePolicy {
+  string workdir = 1;
+  repeated string allowed_roots = 2;
+}
+
+message CredentialPolicy {
+  repeated string allowed_refs = 1;
+}
+
+message IsolationPolicy {
+  string mode = 1;
+  bool agent_cache = 2;
+  bool toolset_cache = 3;
+  string service_mode = 4;
+}
+
+message RuntimeProfile {
+  string id = 1;
+  string agent_id = 2;
+  string name = 3;
+  string description = 4;
+  string version = 5;
+  bool is_active = 6;
+  int32 priority = 7;
+  PromptConfig prompt_config = 8;
+  ToolPolicy tool_policy = 9;
+  SkillPolicy skill_policy = 10;
+  KnowledgePolicy knowledge_policy = 11;
+  WorkspacePolicy workspace_policy = 12;
+  CredentialPolicy credential_policy = 13;
+  IsolationPolicy isolation_policy = 14;
+  google.protobuf.Struct extra_model_config = 15;
+  string created_at = 16;
+  string updated_at = 17;
+}
+
+message ListRuntimeProfilesRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  bool active_only = 2;
+}
+
+message ListRuntimeProfilesResponse {
+  repeated RuntimeProfile items = 1;
+}
+
+message GetRuntimeProfileRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message CreateRuntimeProfileRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 2 [(google.api.field_behavior) = REQUIRED];
+  string description = 3;
+  string version = 4;
+  bool is_active = 5;
+  int32 priority = 6;
+  PromptConfig prompt_config = 7;
+  ToolPolicy tool_policy = 8;
+  SkillPolicy skill_policy = 9;
+  KnowledgePolicy knowledge_policy = 10;
+  WorkspacePolicy workspace_policy = 11;
+  CredentialPolicy credential_policy = 12;
+  IsolationPolicy isolation_policy = 13;
+  google.protobuf.Struct extra_model_config = 14;
+}
+
+message UpdateRuntimeProfileRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string agent_id = 2 [(google.api.field_behavior) = REQUIRED];
+  string name = 3 [(google.api.field_behavior) = REQUIRED];
+  string description = 4;
+  string version = 5;
+  bool is_active = 6;
+  int32 priority = 7;
+  PromptConfig prompt_config = 8;
+  ToolPolicy tool_policy = 9;
+  SkillPolicy skill_policy = 10;
+  KnowledgePolicy knowledge_policy = 11;
+  WorkspacePolicy workspace_policy = 12;
+  CredentialPolicy credential_policy = 13;
+  IsolationPolicy isolation_policy = 14;
+  google.protobuf.Struct extra_model_config = 15;
+}
+
+message DeleteRuntimeProfileRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message SetActiveRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  bool active = 2;
+}
+
+service RuntimeProfileService {
+  rpc ListRuntimeProfiles(ListRuntimeProfilesRequest) returns (ListRuntimeProfilesResponse) {
+    option (google.api.http) = {
+      get: "/v1/agents/{agent_id}/runtime-profiles"
+    };
+  }
+  rpc GetRuntimeProfile(GetRuntimeProfileRequest) returns (RuntimeProfile) {
+    option (google.api.http) = {
+      get: "/v1/runtime-profiles/{id}"
+    };
+  }
+  rpc CreateRuntimeProfile(CreateRuntimeProfileRequest) returns (RuntimeProfile) {
+    option (google.api.http) = {
+      post: "/v1/agents/{agent_id}/runtime-profiles"
+      body: "*"
+    };
+  }
+  rpc UpdateRuntimeProfile(UpdateRuntimeProfileRequest) returns (RuntimeProfile) {
+    option (google.api.http) = {
+      put: "/v1/runtime-profiles/{id}"
+      body: "*"
+    };
+  }
+  rpc DeleteRuntimeProfile(DeleteRuntimeProfileRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/runtime-profiles/{id}"
+    };
+  }
+  rpc SetActive(SetActiveRequest) returns (RuntimeProfile) {
+    option (google.api.http) = {
+      post: "/v1/runtime-profiles/{id}/set-active"
+      body: "*"
+    };
+  }
+}

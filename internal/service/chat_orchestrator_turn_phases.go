@@ -575,12 +575,26 @@ func (o *ChatOrchestrator) buildTurnRunOptions(
 				loggateway.Str("request_provider", prov),
 				loggateway.Str("request_model", mod))
 		} else if err != nil {
-			o.lg().Warn("请求级 Model 解析失败，将使用 Agent 默认模型",
-				loggateway.StepID("chat.run_option_model_fail"),
+		o.lg().Warn("请求级 Model 解析失败，将使用 Agent 默认模型",
+			loggateway.StepID("chat.run_option_model_fail"),
+			loggateway.Str("agent_id", ag.ID),
+			loggateway.Str("provider", prov),
+			loggateway.Str("model", mod),
+			loggateway.Err(err))
+		}
+	}
+
+	// Apply runtime profile overrides (prompt/tools/skills/knowledge/workspace/
+	// credentials/isolation/extra-model). ProfileResolver returns nil when no
+	// active profile is configured — callers treat nil as "use agent defaults".
+	if pr := o.profileResolver(); pr != nil {
+		if profOpts, prErr := pr.ResolveRunOptions(ctx, ag.ID); prErr == nil && len(profOpts) > 0 {
+			runOpts = append(runOpts, profOpts...)
+		} else if prErr != nil {
+			o.lg().Warn("runtime profile resolve failed, using agent defaults",
+				loggateway.StepID("chat.run_option_profile_fail"),
 				loggateway.Str("agent_id", ag.ID),
-				loggateway.Str("provider", prov),
-				loggateway.Str("model", mod),
-				loggateway.Err(err))
+				loggateway.Err(prErr))
 		}
 	}
 

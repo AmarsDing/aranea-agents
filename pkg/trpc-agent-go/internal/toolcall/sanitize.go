@@ -18,9 +18,40 @@ import (
 	"strings"
 
 	"trpc.group/trpc-go/trpc-agent-go/internal/util/message"
+	"trpc.group/trpc-go/trpc-agent-go/log"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
+
+// debugSummarizeMessages renders a compact one-line summary of message roles and
+// tool_call/tool_result pairing for diagnostics. Intended for temporary debug
+// logging when investigating DeepSeek 400 "insufficient tool messages" errors.
+func debugSummarizeMessages(label string, messages []model.Message) {
+	if len(messages) == 0 {
+		log.Debugf("toolcall.sanitize %s: empty messages", label)
+		return
+	}
+	parts := make([]string, 0, len(messages))
+	for i, m := range messages {
+		switch {
+		case len(m.ToolCalls) > 0:
+			ids := make([]string, 0, len(m.ToolCalls))
+			for _, tc := range m.ToolCalls {
+				id := tc.ID
+				if id == "" {
+					id = "<empty>"
+				}
+				ids = append(ids, id)
+			}
+			parts = append(parts, fmt.Sprintf("[%d]%s(tc:%s)", i, m.Role, strings.Join(ids, ",")))
+		case m.ToolID != "":
+			parts = append(parts, fmt.Sprintf("[%d]%s(tid:%s)", i, m.Role, m.ToolID))
+		default:
+			parts = append(parts, fmt.Sprintf("[%d]%s", i, m.Role))
+		}
+	}
+	log.Debugf("toolcall.sanitize %s: %s", label, strings.Join(parts, " "))
+}
 
 const (
 	invalidToolCallTag   = "[invalid_tool_call]"
@@ -46,6 +77,7 @@ var (
 // tool result message, and orphan tool result messages that are not associated with a
 // kept tool call message, to avoid invalid tool message sequences in strict chat APIs.
 func SanitizeMessagesWithTools(messages []model.Message, tools map[string]tool.Tool) []model.Message {
+	debugSummarizeMessages("input", messages)
 	if len(messages) == 0 {
 		return messages
 	}
@@ -69,6 +101,7 @@ func SanitizeMessagesWithTools(messages []model.Message, tools map[string]tool.T
 		out = append(out, msg)
 		i++
 	}
+	debugSummarizeMessages("output", out)
 	return out
 }
 

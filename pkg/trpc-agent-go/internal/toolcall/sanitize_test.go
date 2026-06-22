@@ -758,3 +758,271 @@ func TestIsEmptyAssistantMessage(t *testing.T) {
 	assert.True(t, message.IsEmptyAssistantMessage(model.Message{Role: model.RoleAssistant, ReasoningContent: "x"}))
 	assert.False(t, message.IsEmptyAssistantMessage(model.Message{Role: model.RoleAssistant, ToolCalls: []model.ToolCall{{ID: "call_1"}}}))
 }
+
+// TestSanitizeMessagesWithTools_HookAppendedUserAfterPairedRound simulates the
+// scenario where a BeforeModel hook appends a user message after a fully paired
+// assistant(tool_calls) + tool(tool_call_id) round. The pairing is intact, so
+// sanitize should preserve the sequence as-is.
+func TestSanitizeMessagesWithTools_HookAppendedUserAfterPairedRound(t *testing.T) {
+	in := []model.Message{
+		model.NewUserMessage("question"),
+		{
+			Role: model.RoleAssistant,
+			ToolCalls: []model.ToolCall{
+				{
+					ID: "call_1",
+					Function: model.FunctionDefinitionParam{
+						Name:      "test_tool",
+						Arguments: []byte(`{"a":1}`),
+					},
+				},
+			},
+		},
+		{
+			Role:    model.RoleTool,
+			ToolID:  "call_1",
+			Content: "result",
+		},
+		model.NewUserMessage("hook-appended-user"),
+	}
+	out := SanitizeMessagesWithTools(in, nil)
+	if assert.Len(t, out, 4) {
+		assert.Equal(t, model.RoleUser, out[0].Role)
+		assert.Equal(t, model.RoleAssistant, out[1].Role)
+		if assert.Len(t, out[1].ToolCalls, 1) {
+			assert.Equal(t, "call_1", out[1].ToolCalls[0].ID)
+		}
+		assert.Equal(t, model.RoleTool, out[2].Role)
+		assert.Equal(t, "call_1", out[2].ToolID)
+		assert.Equal(t, model.RoleUser, out[3].Role)
+	}
+}
+
+// TestSanitizeMessagesWithTools_OrphanToolCallFollowedByUser simulates the
+// scenario where token tailoring or track restoration drops a tool result,
+// leaving assistant(tool_calls) followed by a user message. Sanitize must
+// downgrade the orphan tool_call to a user message so that DeepSeek does not
+// see assistant(tool_calls) followed by a non-tool message.
+func TestSanitizeMessagesWithTools_OrphanToolCallFollowedByUser(t *testing.T) {
+	in := []model.Message{
+		model.NewUserMessage("question"),
+		{
+			Role: model.RoleAssistant,
+			ToolCalls: []model.ToolCall{
+				{
+					ID: "call_orphan",
+					Function: model.FunctionDefinitionParam{
+						Name:      "test_tool",
+						Arguments: []byte(`{"a":1}`),
+					},
+				},
+			},
+		},
+		model.NewUserMessage("next-turn"),
+	}
+	out := SanitizeMessagesWithTools(in, nil)
+	// The orphan tool_call must be downgraded; the assistant (no content,
+	// no tool_calls after filtering) is dropped because IsEmptyAssistantMessage
+	// returns true.
+	if assert.Len(t, out, 3) {
+		assert.Equal(t, model.RoleUser, out[0].Role)
+		assert.Equal(t, model.RoleUser, out[1].Role)
+		assert.Contains(t, out[1].Content, orphanToolCallTag)
+		assert.Contains(t, out[1].Content, "call_orphan")
+		assert.Equal(t, model.RoleUser, out[2].Role)
+	}
+	// Verify no assistant with tool_calls remains.
+	for _, msg := range out {
+		if msg.Role == model.RoleAssistant {
+			assert.Empty(t, msg.ToolCalls)
+		}
+	}
+}
+
+// TestSanitizeMessagesWithTools_OrphanToolCallWithContentFollowedByUser
+// simulates the scenario where assistant has both content and tool_calls,
+// but the tool result is missing. The assistant should be preserved (with
+// tool_calls cleared) and the orphan tool_call downgraded to user.
+func TestSanitizeMessagesWithTools_OrphanToolCallWithContentFollowedByUser(t *testing.T) {
+	in := []model.Message{
+		model.NewUserMessage("question"),
+		{
+			Role:    model.RoleAssistant,
+			Content: "I will call the tool",
+			ToolCalls: []model.ToolCall{
+				{
+					ID: "call_orphan",
+					Function: model.FunctionDefinitionParam{
+						Name:      "test_tool",
+						Arguments: []byte(`{"a":1}`),
+					},
+				},
+			},
+		},
+		model.NewUserMessage("next-turn"),
+	}
+	out := SanitizeMessagesWithTools(in, nil)
+	if assert.Len(t, out, 4) {
+		assert.Equal(t, model.RoleUser, out[0].Role)
+		assert.Equal(t, "question", out[0].Content)
+		assert.Equal(t, model.RoleAssistant, out[1].Role)
+		assert.Equal(t, "I will call the tool", out[1].Content)
+		assert.Empty(t, out[1].ToolCalls)
+		assert.Equal(t, model.RoleUser, out[2].Role)
+		assert.Contains(t, out[2].Content, orphanToolCallTag)
+		assert.Contains(t, out[2].Content, "call_orphan")
+		assert.Equal(t, model.RoleUser, out[3].Role)
+		assert.Equal(t, "next-turn", out[3].Content)
+	}
+}
+
+// TestSanitizeMessagesWithTools_MiddleOrphanToolCall simulates the scenario
+// where rearrangeAsyncFuncRespHist produces a sequence with an orphan
+// tool_call in the middle (tool result lost). Sanitize must downgrade it.
+func TestSanitizeMessagesWithTools_MiddleOrphanToolCall(t *testing.T) {
+	in := []model.Message{
+		model.NewUserMessage("first"),
+		{
+			Role: model.RoleAssistant,
+			ToolCalls: []model.ToolCall{
+				{
+					ID: "call_lost",
+					Function: model.FunctionDefinitionParam{
+						Name:      "test_tool",
+						Arguments: []byte(`{"a":1}`),
+					},
+				},
+			},
+		},
+		model.NewUserMessage("second"),
+		{
+			Role: model.RoleAssistant,
+			ToolCalls: []model.ToolCall{
+				{
+					ID: "call_ok",
+					Function: model.FunctionDefinitionParam{
+						Name:      "test_tool",
+						Arguments: []byte(`{"b":2}`),
+					},
+				},
+			},
+		},
+		{
+			Role:    model.RoleTool,
+			ToolID:  "call_ok",
+			Content: "ok",
+		},
+	}
+	out := SanitizeMessagesWithTools(in, nil)
+	// call_lost has no tool result → downgraded to user.
+	// call_ok has tool result → preserved.
+	for _, msg := range out {
+		if msg.Role == model.RoleAssistant {
+			for _, tc := range msg.ToolCalls {
+				assert.NotEqual(t, "call_lost", tc.ID,
+					"orphan tool_call call_lost must not survive sanitize")
+			}
+		}
+	}
+	// Verify call_ok pairing is intact.
+	var foundPaired bool
+	for i := 0; i < len(out)-1; i++ {
+		if out[i].Role == model.RoleAssistant && len(out[i].ToolCalls) > 0 &&
+			out[i].ToolCalls[0].ID == "call_ok" &&
+			out[i+1].Role == model.RoleTool && out[i+1].ToolID == "call_ok" {
+			foundPaired = true
+		}
+	}
+	assert.True(t, foundPaired, "call_ok pairing must be preserved")
+}
+
+// TestSanitizeMessagesWithTools_Idempotent verifies that calling sanitize
+// multiple times produces the same result. This is critical because the
+// defensive guard in prepareChatRequest calls sanitize after it has already
+// run in preprocess.
+func TestSanitizeMessagesWithTools_Idempotent(t *testing.T) {
+	in := []model.Message{
+		model.NewUserMessage("q"),
+		{
+			Role: model.RoleAssistant,
+			ToolCalls: []model.ToolCall{
+				{
+					ID: "call_1",
+					Function: model.FunctionDefinitionParam{
+						Name:      "test_tool",
+						Arguments: []byte(`{"a":1}`),
+					},
+				},
+				{
+					ID: "call_orphan",
+					Function: model.FunctionDefinitionParam{
+						Name:      "test_tool",
+						Arguments: []byte(`{"b":2}`),
+					},
+				},
+			},
+		},
+		{
+			Role:    model.RoleTool,
+			ToolID:  "call_1",
+			Content: "result",
+		},
+		model.NewUserMessage("next"),
+	}
+	first := SanitizeMessagesWithTools(in, nil)
+	second := SanitizeMessagesWithTools(first, nil)
+	assert.Equal(t, first, second,
+		"sanitize must be idempotent; second run must not change output")
+}
+
+// TestSanitizeMessagesWithTools_NoAssistantToolCallsFollowedByNonTool is a
+// property-based check: after sanitize, no assistant message with tool_calls
+// should be immediately followed by a non-tool message. This is the exact
+// invariant DeepSeek 400 enforces.
+func TestSanitizeMessagesWithTools_NoAssistantToolCallsFollowedByNonTool(t *testing.T) {
+	cases := [][]model.Message{
+		// hook appended user after orphan tool_call
+		{
+			model.NewUserMessage("q"),
+			{Role: model.RoleAssistant, ToolCalls: []model.ToolCall{{ID: "x",
+				Function: model.FunctionDefinitionParam{Name: "t", Arguments: []byte(`{}`)}}}},
+			model.NewUserMessage("hook-user"),
+		},
+		// middle orphan with content
+		{
+			model.NewUserMessage("q"),
+			{Role: model.RoleAssistant, Content: "c", ToolCalls: []model.ToolCall{{ID: "x",
+				Function: model.FunctionDefinitionParam{Name: "t", Arguments: []byte(`{}`)}}}},
+			model.NewUserMessage("u"),
+			{Role: model.RoleAssistant, ToolCalls: []model.ToolCall{{ID: "y",
+				Function: model.FunctionDefinitionParam{Name: "t", Arguments: []byte(`{}`)}}}},
+			{Role: model.RoleTool, ToolID: "y", Content: "r"},
+		},
+		// valid round + hook user
+		{
+			model.NewUserMessage("q"),
+			{Role: model.RoleAssistant, ToolCalls: []model.ToolCall{{ID: "x",
+				Function: model.FunctionDefinitionParam{Name: "t", Arguments: []byte(`{}`)}}}},
+			{Role: model.RoleTool, ToolID: "x", Content: "r"},
+			model.NewUserMessage("hook-user"),
+		},
+	}
+	for i, in := range cases {
+		out := SanitizeMessagesWithTools(in, nil)
+		for j := 0; j < len(out)-1; j++ {
+			if out[j].Role == model.RoleAssistant && len(out[j].ToolCalls) > 0 {
+				assert.Equal(t, model.RoleTool, out[j+1].Role,
+					"case %d: assistant(tool_calls) at index %d must be followed by tool, got %s",
+					i, j, out[j+1].Role)
+			}
+		}
+		// Last message must not be assistant with tool_calls.
+		if len(out) > 0 {
+			last := out[len(out)-1]
+			if last.Role == model.RoleAssistant {
+				assert.Empty(t, last.ToolCalls,
+					"case %d: last message must not have tool_calls", i)
+			}
+		}
+	}
+}

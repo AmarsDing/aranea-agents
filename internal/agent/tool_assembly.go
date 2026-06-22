@@ -55,7 +55,10 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 
 		cfg.KnowledgeSearch = eff[biz.ToolKeyKnowledgeSearch] && deps.KnowledgeUsecase != nil && !deps.KnowledgeUsecase.IsUnavailable()
 		cfg.KnowledgeReflect = eff[biz.ToolKeyKnowledgeReflect] && deps.KnowledgeUsecase != nil && !deps.KnowledgeUsecase.IsUnavailable()
-		cfg.CallAgent = eff[biz.ToolKeyCallAgent]
+		// CallAgent requires the A2A invoker to be injected at runtime. When A2A
+		// is not configured (a2aEnabled=false), prune the flag to avoid registering
+		// a tool that always fails with "invoker not configured".
+		cfg.CallAgent = eff[biz.ToolKeyCallAgent] && deps.A2AEnabled
 		cfg.AwaitHook = deps.AwaitHook
 
 		if ag.Settings.ToolsDeferredJSON != "" {

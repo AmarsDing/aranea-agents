@@ -31,6 +31,7 @@ import (
 	organizationv1 "aranea-agents/api/kratos/organization/v1"
 	packv1 "aranea-agents/api/kratos/pack/v1"
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
+	runtimeprofilev1 "aranea-agents/api/kratos/runtime_profile/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
 	skilldedupv1 "aranea-agents/api/kratos/skill_dedup/v1"
@@ -142,6 +143,7 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	skilldedupv1.RegisterSkillDedupServiceHTTPServer(srv, s.SkillDedup)
 	skillevosuggv1.RegisterSkillEvolutionSuggestionServiceHTTPServer(srv, s.SkillEvoSuggestion)
 	packv1.RegisterPackServiceHTTPServer(srv, s.Pack)
+	runtimeprofilev1.RegisterRuntimeProfileServiceHTTPServer(srv, s.RuntimeProfile)
 }
 
 // registerCustomRoutes registers cross-cutting operational routes that bypass proto

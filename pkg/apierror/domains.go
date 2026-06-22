@@ -43,4 +43,5 @@ const (
 	DomainPack          = "PACK"
 	DomainAvatar        = "AVATAR"
 	DomainSessionRun    = "SESSION_RUN"
+	DomainRuntimeProfile = "RUNTIME_PROFILE"
 )

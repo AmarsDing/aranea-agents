@@ -104,9 +104,11 @@ func (r *sessionRepo) CreateSessionTurn(ctx context.Context, turn biz.SessionTur
 }
 
 func nextSessionTurnNumber(ctx context.Context, c *ent.Client, d Dialect, sessionID string) (int, error) {
+	// Postgres 不允许在含聚合函数的查询上直接使用 FOR UPDATE（错误 0A000），
+	// 改用子查询先锁定该 session 的行，再在外层做聚合，达到相同的串行化效果。
 	query := `SELECT COALESCE(MAX(turn_number), 0) FROM session_turns WHERE session_id = ?`
 	if d.IsPostgres() {
-		query += ` FOR UPDATE`
+		query = `SELECT COALESCE(MAX(turn_number), 0) FROM (SELECT turn_number FROM session_turns WHERE session_id = ? FOR UPDATE) AS locked_rows`
 	}
 	query = d.RenumberPlaceholders(query)
 	var maxTurnNumber int

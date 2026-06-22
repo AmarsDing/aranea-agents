@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -1581,6 +1582,37 @@ func hasTrackedUserTool(
 	return false
 }
 
+// debugSummarizeLLMFlowMessages renders a compact one-line summary of message
+// roles and tool_call/tool_result pairing for diagnostics. Intended for
+// temporary debug logging when investigating DeepSeek 400 "insufficient tool
+// messages" errors.
+func debugSummarizeLLMFlowMessages(label string, messages []model.Message) {
+	if len(messages) == 0 {
+		log.Debugf("llmflow.%s: empty messages", label)
+		return
+	}
+	parts := make([]string, 0, len(messages))
+	for i, m := range messages {
+		switch {
+		case len(m.ToolCalls) > 0:
+			ids := make([]string, 0, len(m.ToolCalls))
+			for _, tc := range m.ToolCalls {
+				id := tc.ID
+				if id == "" {
+					id = "<empty>"
+				}
+				ids = append(ids, id)
+			}
+			parts = append(parts, fmt.Sprintf("[%d]%s(tc:%s)", i, m.Role, strings.Join(ids, ",")))
+		case m.ToolID != "":
+			parts = append(parts, fmt.Sprintf("[%d]%s(tid:%s)", i, m.Role, m.ToolID))
+		default:
+			parts = append(parts, fmt.Sprintf("[%d]%s", i, m.Role))
+		}
+	}
+	log.Debugf("llmflow.%s: %s", label, strings.Join(parts, " "))
+}
+
 // callLLM performs the actual LLM call using core/model.
 func (f *Flow) callLLM(
 	ctx context.Context,
@@ -1612,6 +1644,7 @@ func (f *Flow) callLLM(
 			yield(customResp)
 		}, nil
 	}
+	debugSummarizeLLMFlowMessages("afterBeforeModelCallbacks", llmRequest.Messages)
 	seq, err := f.generateContentSeq(ctx, invocation, llmRequest, callModel)
 	if err != nil {
 		return ctx, nil, err

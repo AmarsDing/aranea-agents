@@ -43,6 +43,8 @@ func TestToolsetConfigFromEffectiveKeys_allMappings(t *testing.T) {
 		{"workspace_exec", "WorkspaceExec", true},
 		{biz.ToolKeyKanban, "Kanban", true},
 		{biz.ToolKeyWebResearch, "WebResearch", true},
+		{"message", "Message", true},
+		{"browser", "BrowserEnabled", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
@@ -98,6 +100,8 @@ func TestToolsetConfigHasAny(t *testing.T) {
 		{"kanban", ToolsetConfig{Kanban: true}, true},
 		{"memory", ToolsetConfig{MemoryEnabled: true}, true},
 		{"webresearch", ToolsetConfig{WebResearch: true}, true},
+		{"message", ToolsetConfig{Message: true}, true},
+		{"browser", ToolsetConfig{BrowserEnabled: true}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -160,6 +164,10 @@ func fieldByName(cfg ToolsetConfig, name string) bool {
 		return cfg.Kanban
 	case "WebResearch":
 		return cfg.WebResearch
+	case "Message":
+		return cfg.Message
+	case "BrowserEnabled":
+		return cfg.BrowserEnabled
 	default:
 		return false
 	}

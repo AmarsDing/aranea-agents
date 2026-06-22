@@ -25,6 +25,7 @@ import (
 	organizationv1 "aranea-agents/api/kratos/organization/v1"
 	packv1 "aranea-agents/api/kratos/pack/v1"
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
+	runtimeprofilev1 "aranea-agents/api/kratos/runtime_profile/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
 	skilldedupv1 "aranea-agents/api/kratos/skill_dedup/v1"
@@ -107,5 +108,6 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 	skilldedupv1.RegisterSkillDedupServiceServer(srv, s.SkillDedup)
 	skillevosuggv1.RegisterSkillEvolutionSuggestionServiceServer(srv, s.SkillEvoSuggestion)
 	packv1.RegisterPackServiceServer(srv, s.Pack)
+	runtimeprofilev1.RegisterRuntimeProfileServiceServer(srv, s.RuntimeProfile)
 	return srv
 }

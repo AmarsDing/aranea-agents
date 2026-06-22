@@ -33,6 +33,7 @@ import (
 	"github.com/openai/openai-go/shared"
 	"trpc.group/trpc-go/trpc-agent-go/internal/fileref"
 	"trpc.group/trpc-go/trpc-agent-go/internal/modeltelemetry"
+	"trpc.group/trpc-go/trpc-agent-go/internal/toolcall"
 	"trpc.group/trpc-go/trpc-agent-go/internal/toolorder"
 	"trpc.group/trpc-go/trpc-agent-go/log"
 	"trpc.group/trpc-go/trpc-agent-go/model"
@@ -448,6 +449,16 @@ func (m *Model) prepareChatRequest(
 	}
 	// Apply token tailoring if configured.
 	m.applyTokenTailoring(ctx, request)
+	// Re-sanitize after cache optimization, token tailoring, and BeforeModel
+	// hooks to guarantee tool_call/tool_result pairing is intact before
+	// conversion. SanitizeMessagesWithTools is idempotent. This is a
+	// defensive guard against DeepSeek 400 "insufficient tool messages
+	// following tool_calls message" errors caused by any upstream step
+	// breaking the pairing (e.g., hook appending user after assistant
+	// tool_calls, or tailoring dropping tool results).
+	request.Messages = toolcall.SanitizeMessagesWithTools(
+		request.Messages, request.Tools,
+	)
 	chatRequest, opts := m.buildChatRequest(request)
 	return chatRequest, opts, nil
 }
@@ -818,8 +829,40 @@ func (m *Model) shouldBackfillReasoningContent(
 		(msg.Content != "" || len(msg.ContentParts) > 0 || len(msg.ToolCalls) > 0)
 }
 
+// debugSummarizeOpenAIMessages renders a compact one-line summary of message
+// roles and tool_call/tool_result pairing for diagnostics. Intended for
+// temporary debug logging when investigating DeepSeek 400 "insufficient tool
+// messages" errors.
+func debugSummarizeOpenAIMessages(label string, messages []model.Message) {
+	if len(messages) == 0 {
+		log.Debugf("openai.convertMessages %s: empty messages", label)
+		return
+	}
+	parts := make([]string, 0, len(messages))
+	for i, m := range messages {
+		switch {
+		case len(m.ToolCalls) > 0:
+			ids := make([]string, 0, len(m.ToolCalls))
+			for _, tc := range m.ToolCalls {
+				id := tc.ID
+				if id == "" {
+					id = "<empty>"
+				}
+				ids = append(ids, id)
+			}
+			parts = append(parts, fmt.Sprintf("[%d]%s(tc:%s)", i, m.Role, strings.Join(ids, ",")))
+		case m.ToolID != "":
+			parts = append(parts, fmt.Sprintf("[%d]%s(tid:%s)", i, m.Role, m.ToolID))
+		default:
+			parts = append(parts, fmt.Sprintf("[%d]%s", i, m.Role))
+		}
+	}
+	log.Debugf("openai.convertMessages %s: %s", label, strings.Join(parts, " "))
+}
+
 // convertMessages converts our Message format to OpenAI's format.
 func (m *Model) convertMessages(messages []model.Message) []openai.ChatCompletionMessageParamUnion {
+	debugSummarizeOpenAIMessages("convertMessages.input", messages)
 	result := make([]openai.ChatCompletionMessageParamUnion, len(messages))
 
 	for i, msg := range messages {

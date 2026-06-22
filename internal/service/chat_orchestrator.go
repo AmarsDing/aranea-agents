@@ -243,6 +243,12 @@ func (o *ChatOrchestrator) subAgentService() *subagenttool.Service {
 }
 func (o *ChatOrchestrator) lg() loggateway.Logger { return o.infraDeps.LG }
 
+// profileResolver returns the Wire-injected ProfileResolver, or nil when not
+// configured. Callers must nil-check before use.
+func (o *ChatOrchestrator) profileResolver() *chatagent.ProfileResolver {
+	return o.infraDeps.ProfileResolver
+}
+
 // heartbeatEmitter returns the Wire-injected RunHeartbeatEmitter, or nil when
 // not configured. Callers must nil-check before use.
 func (o *ChatOrchestrator) heartbeatEmitter() *RunHeartbeatEmitter {
@@ -319,6 +325,10 @@ type ChatInfraDeps struct {
 	// DeadLetterQueue holds pending-queue messages that failed processing
 	// (A4). When nil, failed messages are only logged (legacy behavior).
 	DeadLetterQueue *lifecycle.DeadLetterQueue
+	// ProfileResolver resolves the active runtime profile for an agent
+	// and converts it to framework RunOptions applied per turn. When nil,
+	// no profile overrides are applied (graceful degradation).
+	ProfileResolver *chatagent.ProfileResolver
 }
 
 // ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.
@@ -427,10 +437,12 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		cmdSafetyChecker: security.NewCommandSafetyPermissionChecker(deps.Infra.LG),
 	}
 	o.agentBuild = newChatAgentBuildDirector(chatAgentBuildDirectorDeps{
-		TurnDeps:    deps.Turn.TurnDeps,
-		RT:          deps.Turn.RT,
-		AwaitCoord:  awaitCoord,
-		SubAgentSvc: deps.Infra.SubAgentService,
+		TurnDeps:       deps.Turn.TurnDeps,
+		RT:             deps.Turn.RT,
+		AwaitCoord:     awaitCoord,
+		SubAgentSvc:    deps.Infra.SubAgentService,
+		OutboundRouter: deps.Infra.OutboundRouter,
+		A2AEnabled:     deps.Infra.A2AUC != nil,
 		CustomToolFunc: func(ctx context.Context, ag biz.Agent) []trpctool.Tool {
 			var tools []trpctool.Tool
 			tools = append(tools, o.cliAdminTools(ctx, ag)...)

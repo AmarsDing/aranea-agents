@@ -34,6 +34,7 @@ import { createSkillEvolutionServiceClient } from "./kratos/skill_evolution/v1/i
 import { createSkillIntelligenceServiceClient } from "./kratos/skill_intelligence/v1/index";
 import { createSkillEvolutionSuggestionServiceClient } from "./kratos/skill_evolution_suggestion/v1/index";
 import { createPackServiceClient } from "./kratos/pack/v1/index";
+import { createRuntimeProfileServiceClient } from "./kratos/runtime_profile/v1/index";
 import { createChatServiceClient } from "./kratos/chat/v1/index";
 import { requestHandler, kratosApi } from "./axiosHandler";
 
@@ -188,6 +189,10 @@ export function createWebhookService() {
 
 export function createPackService() {
   return createPackServiceClient(requestHandler);
+}
+
+export function createRuntimeProfileService() {
+  return createRuntimeProfileServiceClient(requestHandler);
 }
 
 export function createPlanService() {

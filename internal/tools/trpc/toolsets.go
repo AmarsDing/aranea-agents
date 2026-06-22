@@ -65,9 +65,11 @@ type ToolsetConfig struct {
 	ReadSpreadsheet  bool
 	WorkingMemory    bool
 	Datetime         bool
+	Message          bool
 	OutboundRouter   *outbound.Router
 	SubAgentService  *subagenttool.Service
 	Browser          *browser.PlaywrightMCPConfig
+	BrowserEnabled   bool
 }
 
 type AgentToolConfig = tools.AgentToolConfig
@@ -146,6 +148,12 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 	}
 	if cfg.Datetime {
 		enabled = append(enabled, "datetime")
+	}
+	if cfg.Message {
+		enabled = append(enabled, "message")
+	}
+	if cfg.BrowserEnabled && cfg.Browser != nil {
+		enabled = append(enabled, "browser")
 	}
 
 	openAPISpecs := make([]tools.OpenAPISpecConfig, len(cfg.OpenAPISpecs))

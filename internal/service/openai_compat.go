@@ -174,6 +174,8 @@ func (s *ChatService) BuildOpenAIRunner(ctx context.Context, agentKey string) (t
 			Organization:     s.orch.rt().OrganizationUC,
 			ToolResultGate:   s.orch.rt().ToolResultGate,
 			SubAgentService:  s.orch.subAgentService(),
+			OutboundRouter:   s.orch.outboundRouter(),
+			A2AEnabled:       s.orch.a2aUC() != nil,
 			L0SnapshotForcer: s.orch.td().SessionRT,
 		},
 	}

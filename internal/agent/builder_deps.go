@@ -104,6 +104,10 @@ type TRPCExtensionDeps struct {
 	// SubAgentService enables subagent spawn/list/get/cancel tools.
 	// Optional: when nil, subagent tools are unavailable.
 	SubAgentService *subagenttool.Service
+	// A2AEnabled indicates whether the A2A invoker will be injected at runtime.
+	// When false, the call_agent tool is pruned to avoid registering a tool that
+	// always fails with "invoker not configured".
+	A2AEnabled bool
 	// L0SnapshotForcer allows the compression pipeline to signal that the next
 	// L0 snapshot write should bypass throttling. Optional: when nil, force
 	// flags are ignored and normal throttle rules apply.

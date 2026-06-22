@@ -61,6 +61,7 @@ var ProviderSet = wire.NewSet(
 	NewWebhookDispatcher,
 	NewAgentTemplateUsecase,
 	NewLearningLoopUsecase,
+	NewRuntimeProfileUsecase,
 	NewSkillEvolutionUsecase,
 	NewSkillEvolutionOrchestrator,
 	NewPatternTrigger,
