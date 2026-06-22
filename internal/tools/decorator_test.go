@@ -503,3 +503,194 @@ func TestToolDecorator_NilInnerReturnsNil(t *testing.T) {
 		t.Errorf("expected nil for nil inner, got %T", d)
 	}
 }
+
+// --- Browser result budget override tests ---
+
+func TestBudgetOverrideForTool_EmptyName(t *testing.T) {
+	if got := budgetOverrideForTool(""); got != nil {
+		t.Fatalf("expected nil for empty name, got %+v", got)
+	}
+}
+
+func TestBudgetOverrideForTool_NonBrowserTool(t *testing.T) {
+	if got := budgetOverrideForTool("file_read"); got != nil {
+		t.Fatalf("expected nil for non-browser tool, got %+v", got)
+	}
+	if got := budgetOverrideForTool("web_fetch"); got != nil {
+		t.Fatalf("expected nil for web_fetch, got %+v", got)
+	}
+}
+
+func TestBudgetOverrideForTool_BrowserScreenshot(t *testing.T) {
+	b := budgetOverrideForTool("browser_take_screenshot")
+	if b == nil {
+		t.Fatal("expected budget for browser_take_screenshot")
+	}
+	if b.MaxBytes != 100*1024 {
+		t.Errorf("expected 100KB, got %d", b.MaxBytes)
+	}
+}
+
+func TestBudgetOverrideForTool_BrowserSnapshot(t *testing.T) {
+	b := budgetOverrideForTool("browser_snapshot")
+	if b == nil {
+		t.Fatal("expected budget for browser_snapshot")
+	}
+	if b.MaxBytes != 50*1024 {
+		t.Errorf("expected 50KB, got %d", b.MaxBytes)
+	}
+}
+
+func TestBudgetOverrideForTool_PrefixedName(t *testing.T) {
+	// MCP ToolPrefix prefixes should match via suffix-based logic.
+	for _, name := range []string{"bw_browser_take_screenshot", "playwright_browser_snapshot"} {
+		if b := budgetOverrideForTool(name); b == nil {
+			t.Errorf("expected override for prefixed tool %q", name)
+		}
+	}
+}
+
+func TestBudgetOverrideForTool_NonMatchingSuffix(t *testing.T) {
+	// Tools that merely contain the substring but don't end with it should not match.
+	if b := budgetOverrideForTool("browser_take_screenshot_extra"); b != nil {
+		t.Errorf("expected nil for non-matching suffix, got %+v", b)
+	}
+}
+
+// TestToolDecorator_BrowserScreenshotUsesOverrideBudget verifies that a
+// browser_take_screenshot tool uses the 100KB override budget instead of
+// the default 10KB budget. A 20KB result should NOT be truncated (it would
+// be under the default 10KB budget).
+func TestToolDecorator_BrowserScreenshotUsesOverrideBudget(t *testing.T) {
+	// 20KB result: exceeds default 10KB budget but under 100KB override.
+	result := strings.Repeat("x", 20*1024)
+	tool := &decoratorMockTool{
+		name: "browser_take_screenshot",
+		call: func(_ context.Context, _ []byte) (any, error) {
+			return result, nil
+		},
+	}
+	d := NewToolDecorator(tool, ToolDecoratorConfig{
+		ResultBudget: DefaultResultBudget, // 10KB default
+		Logger:       loggateway.NewNoop(),
+	})
+	got, err := d.Call(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Result should NOT be truncated because override budget is 100KB.
+	if _, ok := got.(map[string]any); ok {
+		t.Fatal("expected no truncation for 20KB screenshot under 100KB override")
+	}
+	if s, ok := got.(string); !ok || s != result {
+		t.Fatalf("expected passthrough, got %T", got)
+	}
+}
+
+// TestToolDecorator_BrowserSnapshotUsesOverrideBudget verifies that a
+// browser_snapshot tool uses the 50KB override budget. A 30KB result should
+// NOT be truncated (it would be under default 10KB but over 50KB override).
+func TestToolDecorator_BrowserSnapshotUsesOverrideBudget(t *testing.T) {
+	result := strings.Repeat("y", 30*1024) // 30KB
+	tool := &decoratorMockTool{
+		name: "browser_snapshot",
+		call: func(_ context.Context, _ []byte) (any, error) {
+			return result, nil
+		},
+	}
+	d := NewToolDecorator(tool, ToolDecoratorConfig{
+		ResultBudget: DefaultResultBudget, // 10KB default
+		Logger:       loggateway.NewNoop(),
+	})
+	got, err := d.Call(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := got.(map[string]any); ok {
+		t.Fatal("expected no truncation for 30KB snapshot under 50KB override")
+	}
+}
+
+// TestToolDecorator_BrowserScreenshotTruncatedAtOverride verifies that a
+// browser_take_screenshot result exceeding the 100KB override IS truncated.
+func TestToolDecorator_BrowserScreenshotTruncatedAtOverride(t *testing.T) {
+	// 120KB result: exceeds 100KB override.
+	result := strings.Repeat("z", 120*1024)
+	tool := &decoratorMockTool{
+		name: "browser_take_screenshot",
+		call: func(_ context.Context, _ []byte) (any, error) {
+			return result, nil
+		},
+	}
+	d := NewToolDecorator(tool, ToolDecoratorConfig{
+		ResultBudget: DefaultResultBudget,
+		Logger:       loggateway.NewNoop(),
+	})
+	got, err := d.Call(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	envelope, ok := got.(map[string]any)
+	if !ok {
+		t.Fatalf("expected truncation envelope, got %T", got)
+	}
+	if truncated, _ := envelope["truncated"].(bool); !truncated {
+		t.Error("expected truncated=true")
+	}
+}
+
+// TestToolDecorator_BrowserSnapshotTruncatedAtOverride verifies that a
+// browser_snapshot result exceeding the 50KB override IS truncated.
+func TestToolDecorator_BrowserSnapshotTruncatedAtOverride(t *testing.T) {
+	// 60KB result: exceeds 50KB override.
+	result := strings.Repeat("w", 60*1024)
+	tool := &decoratorMockTool{
+		name: "browser_snapshot",
+		call: func(_ context.Context, _ []byte) (any, error) {
+			return result, nil
+		},
+	}
+	d := NewToolDecorator(tool, ToolDecoratorConfig{
+		ResultBudget: DefaultResultBudget,
+		Logger:       loggateway.NewNoop(),
+	})
+	got, err := d.Call(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	envelope, ok := got.(map[string]any)
+	if !ok {
+		t.Fatalf("expected truncation envelope, got %T", got)
+	}
+	if truncated, _ := envelope["truncated"].(bool); !truncated {
+		t.Error("expected truncated=true")
+	}
+}
+
+// TestToolDecorator_NonBrowserToolUsesDefaultBudget verifies that non-browser
+// tools still use the default 10KB budget (not affected by overrides).
+func TestToolDecorator_NonBrowserToolUsesDefaultBudget(t *testing.T) {
+	// 15KB result: exceeds default 10KB, should be truncated.
+	result := strings.Repeat("a", 15*1024)
+	tool := &decoratorMockTool{
+		name: "file_read",
+		call: func(_ context.Context, _ []byte) (any, error) {
+			return result, nil
+		},
+	}
+	d := NewToolDecorator(tool, ToolDecoratorConfig{
+		ResultBudget: DefaultResultBudget,
+		Logger:       loggateway.NewNoop(),
+	})
+	got, err := d.Call(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	envelope, ok := got.(map[string]any)
+	if !ok {
+		t.Fatalf("expected truncation for non-browser tool at 15KB > 10KB default, got %T", got)
+	}
+	if truncated, _ := envelope["truncated"].(bool); !truncated {
+		t.Error("expected truncated=true")
+	}
+}

@@ -50,10 +50,11 @@ const ROUTES = [
   '/settings',
 ];
 
-const IGNORED_TEXT = /logout|退出|登出|github|twitter|x\.com|docs|帮助文档|privacy|terms|license|重新检测|brightness_auto/i;
+const IGNORED_TEXT = /logout|退出|登出|github|twitter|x\.com|docs|帮助文档|privacy|terms|license|重新检测|brightness_auto|上传|导入|upload|import|cloud_upload|attach_file|^D$|^menu$|^chevron_right$|^chevron_left$|^notifications_none$/i;
 const IGNORED_CONSOLE = /WebSocket connection to .*probe=1.* failed: WebSocket is closed before the connection is established/i;
 const IGNORED_NETWORK_URL = /probe=1|\.png|\.jpg|\.svg|\.ico|\.woff/i;
 const MAX_CLICKS_PER_PAGE = 30;
+const START_INDEX = Number(process.env.QA_START_INDEX || 0);
 
 function slug(path) {
   return path.replace(/\//g, '_') || 'root';
@@ -85,7 +86,7 @@ async function waitForBackend(maxAttempts = 30) {
   });
   const results = [];
 
-  for (const path of ROUTES) {
+  for (const path of ROUTES.slice(START_INDEX)) {
     log(`\n=== Testing ${path} ===`);
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     let page;
@@ -209,6 +210,8 @@ async function waitForBackend(maxAttempts = 30) {
             const tag = await el.evaluate((n) => n.tagName.toLowerCase());
             const box = await el.boundingBox().catch(() => null);
             if (!box || box.width < 4 || box.height < 4) continue;
+            const inDrawer = await el.evaluate((n) => !!n.closest('.q-drawer')).catch(() => false);
+            if (inDrawer) continue;
             const key = `${tag}|${text}|${href || ''}`;
             if (clickedKeys.has(key)) continue;
             picked = { el, tag, text, href, key };
@@ -224,9 +227,11 @@ async function waitForBackend(maxAttempts = 30) {
         log(`  click ${count}: ${picked.tag} "${picked.text}"`);
         const beforeUrl = page.url();
         clicked.push({ tag: picked.tag, text: picked.text, href: picked.href });
-        await picked.el.click({ timeout: 3000 }).catch((e) => {
+        try {
+          await picked.el.click({ timeout: 3000 });
+        } catch (e) {
           log(`    click failed: ${e.message}`);
-        });
+        }
         await page.waitForTimeout(800);
         const afterUrl = page.url();
         if (afterUrl !== beforeUrl) {

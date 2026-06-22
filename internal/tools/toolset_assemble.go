@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/outbound"
+	"aranea-agents/internal/tools/browser"
 	"aranea-agents/internal/tools/custom"
 	"aranea-agents/internal/tools/deferred"
 	documentpkg "aranea-agents/internal/tools/document"
@@ -310,7 +311,11 @@ func (ac *assembleContext) assembleSubagentTools() {
 	}
 }
 
-// assembleBrowserToolset creates the browser MCP toolset.
+// assembleBrowserToolset creates the browser MCP toolset wrapped with a
+// navigation SSRF guard. The guard validates URLs in browser_navigate calls
+// against PlaywrightMCPConfig.Navigation before forwarding to the MCP server.
+// When EnabledSubGroups is configured, a FilteringToolSet wraps the guarded
+// set so only tools in the allowed sub-groups are exposed.
 func (ac *assembleContext) assembleBrowserToolset() error {
 	if !ac.enabled["browser"] || ac.cfg.Browser == nil {
 		return nil
@@ -329,9 +334,15 @@ func (ac *assembleContext) assembleBrowserToolset() error {
 	if err != nil {
 		return apierror.Internal(apierror.DomainTool, "browser mcp: "+err.Error())
 	}
-	if ts != nil {
-		ac.out.ToolSets = append(ac.out.ToolSets, ts)
+	if ts == nil {
+		return nil
 	}
+	policy := bcfg.EffectiveNavigationPolicy()
+	var guarded trpctool.ToolSet = browser.NewNavigationGuardedToolSet(ts, policy)
+	if len(bcfg.EnabledSubGroups) > 0 {
+		guarded = browser.NewFilteringToolSet(guarded, bcfg.EnabledSubGroups)
+	}
+	ac.out.ToolSets = append(ac.out.ToolSets, guarded)
 	return nil
 }
 

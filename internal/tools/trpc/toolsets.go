@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/outbound"
 	"aranea-agents/internal/tools"
+	"aranea-agents/internal/tools/browser"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	knowledgepkg "aranea-agents/internal/tools/knowledge"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
@@ -66,6 +67,7 @@ type ToolsetConfig struct {
 	Datetime         bool
 	OutboundRouter   *outbound.Router
 	SubAgentService  *subagenttool.Service
+	Browser          *browser.PlaywrightMCPConfig
 }
 
 type AgentToolConfig = tools.AgentToolConfig
@@ -240,7 +242,8 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 			SubAgentService: cfg.SubAgentService,
 			BlobReader:      cfg.BlobReader,
 		},
-		Lg: lg,
+		Browser: cfg.Browser,
+		Lg:      lg,
 	})
 	if err != nil {
 		return nil, err

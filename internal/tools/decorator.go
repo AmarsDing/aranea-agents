@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,6 +36,39 @@ type ResultBudget struct {
 // initialization; callers needing custom budgets should construct a new
 // *ResultBudget rather than modifying this variable.
 var DefaultResultBudget = &ResultBudget{MaxBytes: 10 * 1024, Mode: "tail"}
+
+// builtinResultBudgetOverrides maps tool-name suffixes to custom result
+// budgets. Matching is suffix-based (consistent with browser.requiresURLValidation)
+// so MCP ToolPrefix prefixes (e.g. "bw_browser_take_screenshot") are handled
+// transparently.
+//
+// Browser tools return larger payloads than typical tools:
+//   - browser_take_screenshot: base64-encoded image, 10KB truncation corrupts
+//     the image data and makes it undecodable. 100KB allows ~75KB of actual
+//     image data after base64 overhead.
+//   - browser_snapshot: accessibility tree text, complex pages easily exceed
+//     10KB. 50KB preserves most of the page structure for LLM analysis.
+var builtinResultBudgetOverrides = map[string]*ResultBudget{
+	"browser_take_screenshot": {MaxBytes: 100 * 1024, Mode: "tail"},
+	"browser_screenshot":      {MaxBytes: 100 * 1024, Mode: "tail"},
+	"browser_snapshot":        {MaxBytes: 50 * 1024, Mode: "tail"},
+}
+
+// budgetOverrideForTool returns the custom result budget for a tool based on
+// its declaration name, or nil if no override applies. Suffix-based matching
+// handles MCP ToolPrefix prefixes (e.g. "bw_browser_snapshot" matches
+// "browser_snapshot").
+func budgetOverrideForTool(name string) *ResultBudget {
+	if name == "" {
+		return nil
+	}
+	for suffix, budget := range builtinResultBudgetOverrides {
+		if name == suffix || strings.HasSuffix(name, "_"+suffix) {
+			return budget
+		}
+	}
+	return nil
+}
 
 // truncationEnvelopeOverhead is the byte budget reserved for the JSON envelope
 // wrapper fields ({"truncated":true,"original_size":N,"mode":"M","content":"..."}).
@@ -206,14 +240,17 @@ func (d *ToolDecorator) applyTimeout(ctx context.Context) (context.Context, cont
 // own JSON marshaling handles escaping. This avoids double-encoding issues
 // when the result is later embedded in agent messages.
 func (d *ToolDecorator) truncateResult(result any) any {
-	if d.cfg.ResultBudget == nil || d.cfg.ResultBudget.MaxBytes <= 0 {
+	budget := d.cfg.ResultBudget
+	if override := budgetOverrideForTool(d.toolName()); override != nil {
+		budget = override
+	}
+	if budget == nil || budget.MaxBytes <= 0 {
 		return result
 	}
 	data, err := json.Marshal(result)
-	if err != nil || len(data) <= d.cfg.ResultBudget.MaxBytes {
+	if err != nil || len(data) <= budget.MaxBytes {
 		return result
 	}
-	budget := d.cfg.ResultBudget
 	mode := budget.Mode
 	if mode == "" {
 		mode = "tail"

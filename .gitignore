@@ -96,4 +96,6 @@ profile.cov
 /data/artifacts
 /data/model-catalog
 /logs/
+/.dogfood-output/
+/cmd/admin/logs/
 

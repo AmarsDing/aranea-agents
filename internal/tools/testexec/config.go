@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/tools"
+	"aranea-agents/internal/tools/browser"
 	webresearchpkg "aranea-agents/internal/tools/webresearch"
 	"aranea-agents/pkg/loggateway"
 )
@@ -89,6 +90,20 @@ func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresea
 		return tools.AssemblyConfig{EnabledTools: []string{"read_document"}}, true, nil
 	case "read_spreadsheet":
 		return tools.AssemblyConfig{EnabledTools: []string{"read_spreadsheet"}}, true, nil
+	case "browser":
+		// Browser tool requires an external Playwright MCP Server process.
+		// We return a configured AssemblyConfig so the catalog test path
+		// recognizes the tool, but mark it as not testable online (false)
+		// because spinning up the MCP server is out of scope for the
+		// in-tool test runner.
+		bcfg := browser.DefaultPlaywrightMCPConfig()
+		if v := tools.ConfigString(merged, "server_url", "browser_server_url"); v != "" {
+			bcfg.ServerURL = v
+		}
+		if v := tools.ConfigString(merged, "transport", "browser_transport"); v != "" {
+			bcfg.Transport = v
+		}
+		return tools.AssemblyConfig{EnabledTools: []string{"browser"}, Browser: &bcfg}, false, nil
 	default:
 		return tools.AssemblyConfig{}, false, nil
 	}

@@ -62,6 +62,7 @@ var toolGroupsMessaging = []string{"send_email"}
 var toolGroupsSession = []string{"await_user_reply", "todo_write"}
 var toolGroupsIntegration = []string{"call_agent", "knowledge_search", "mcp_tool_set", "mcp_broker"}
 var toolGroupsSubagent = []string{"subagents_spawn", "subagents_list", "subagents_get", "subagents_cancel"}
+var toolGroupsBrowser = []string{"browser"}
 
 // syntheticShellExecTool matches internal/data builtin seeds when the tools table has no shell_exec row.
 func syntheticShellExecTool() Tool {
@@ -138,6 +139,8 @@ func expandToolGroup(name string, catalog []Tool) []string {
 		return append([]string{}, toolGroupsIntegration...)
 	case "subagent":
 		return append([]string{}, toolGroupsSubagent...)
+	case "browser":
+		return append([]string{}, toolGroupsBrowser...)
 	case "cli_admin":
 		return cliAdminKeysFromRegistry(catalog)
 	default:
@@ -174,6 +177,7 @@ var registryOptInOnlyKeys = map[string]bool{
 	"subagents_list":   true,
 	"subagents_get":    true,
 	"subagents_cancel": true,
+	"browser":          true,
 }
 
 func applyRegistryAdminDenials(catalog []Tool, deny map[string]bool) {
@@ -193,7 +197,7 @@ var toolProfiles = map[string][]string{
 	"read_only": {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
 	"coding":    {"group:filesystem", "group:web", "group:skill", "group:session", "datetime"},
 	"research":  {ToolKeyWebResearch, "web_fetch", "arxiv_search", "wikipedia_search", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "skill_search", "memory_search", "todo_write", "datetime"},
-	"full":      {"group:filesystem", "group:web", "group:skill", "group:memory", "group:media", "group:runtime", "group:messaging", "group:session", "group:integration", "group:subagent", "group:cli_admin", "datetime"},
+	"full":      {"group:filesystem", "group:web", "group:skill", "group:memory", "group:media", "group:runtime", "group:messaging", "group:session", "group:integration", "group:subagent", "group:browser", "group:cli_admin", "datetime"},
 
 	"minimal":      {},
 	"safe":         {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
