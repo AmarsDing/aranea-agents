@@ -1,31 +1,29 @@
 <template>
   <div class="act-activity">
     <!-- Card variant -->
-    <template>
-      <!-- Todo write: render structured plan list instead of raw JSON -->
-      <TodoInlineList v-if="isTodo" :event="todoEvent" />
-      <template v-else>
-        <div class="act-activity__header" @click="toggleExpand">
-          <span class="act-activity__icon">🔧</span>
-          <span class="act-activity__tool-label">{{ activity.tool.toolLabel }}</span>
-          <span class="act-activity__status" :class="statusClass">{{ statusIcon }}</span>
-          <span v-if="activity.tool.durationMs != null" class="act-activity__duration">{{ formattedDuration }}</span>
+    <!-- Todo write: render structured plan list instead of raw JSON -->
+    <TodoInlineList v-if="isTodo" :event="todoEvent" />
+    <template v-else>
+      <div class="act-activity__header" @click="toggleExpand">
+        <span class="act-activity__icon">🔧</span>
+        <span class="act-activity__tool-label">{{ activity.tool.toolLabel }}</span>
+        <span class="act-activity__status" :class="statusClass">{{ statusIcon }}</span>
+        <span v-if="activity.tool.durationMs != null" class="act-activity__duration">{{ formattedDuration }}</span>
+      </div>
+      <div v-if="expanded" class="act-activity__detail">
+        <div v-if="activity.tool.arguments" class="act-activity__args">
+          <div class="act-activity__detail-label">参数</div>
+          <pre class="act-activity__code">{{ activity.tool.arguments }}</pre>
         </div>
-        <div v-if="expanded" class="act-activity__detail">
-          <div v-if="activity.tool.arguments" class="act-activity__args">
-            <div class="act-activity__detail-label">参数</div>
-            <pre class="act-activity__code">{{ activity.tool.arguments }}</pre>
-          </div>
-          <div v-if="activity.tool.result" class="act-activity__result">
-            <div class="act-activity__detail-label">结果</div>
-            <pre class="act-activity__code">{{ activity.tool.result }}</pre>
-          </div>
-          <div v-if="activity.tool.error" class="act-activity__error">
-            <div class="act-activity__detail-label">错误</div>
-            <pre class="act-activity__code">{{ activity.tool.error }}</pre>
-          </div>
+        <div v-if="activity.tool.result" class="act-activity__result">
+          <div class="act-activity__detail-label">结果</div>
+          <pre class="act-activity__code">{{ activity.tool.result }}</pre>
         </div>
-      </template>
+        <div v-if="activity.tool.error" class="act-activity__error">
+          <div class="act-activity__detail-label">错误</div>
+          <pre class="act-activity__code">{{ activity.tool.error }}</pre>
+        </div>
+      </div>
     </template>
   </div>
 </template>

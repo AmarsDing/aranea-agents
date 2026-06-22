@@ -70,17 +70,16 @@ func (s *GraphService) UnblockTask(ctx context.Context, req *graphv1.UnblockTask
 }
 
 func (s *GraphService) CreateTask(ctx context.Context, req *graphv1.CreateTaskRequest) (*graphv1.CreateTaskResponse, error) {
-	task, err := s.taskUC.CreateTaskWithParents(
-		ctx,
-		req.ExecutionId,
-		req.NodeId,
-		req.RequiredRole,
-		req.AssignmentMode,
-		req.AssignmentStrategy,
-		req.Input,
-		req.Context,
-		req.ParentTaskIds,
-	)
+	task, err := s.taskUC.CreateTaskWithParents(ctx, biz.CreateTaskParams{
+		ExecutionID:        req.ExecutionId,
+		NodeID:             req.NodeId,
+		RequiredRole:       req.RequiredRole,
+		AssignmentMode:     req.AssignmentMode,
+		AssignmentStrategy: req.AssignmentStrategy,
+		Input:              req.Input,
+		Context:            req.Context,
+		ParentIDs:          req.ParentTaskIds,
+	})
 	if err != nil {
 		return nil, err
 	}

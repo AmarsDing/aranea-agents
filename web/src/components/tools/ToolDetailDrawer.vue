@@ -256,19 +256,19 @@
                 hide-pagination
                 :pagination="{ rowsPerPage: 0 }"
               >
-                <template #body-cell-state="props">
-                  <q-td :props="props">
+                <template #body-cell-state="slotProps">
+                  <q-td :props="slotProps">
                     <q-icon
-                      :name="props.row.effective_state === 'allowed' ? 'check_circle' : 'cancel'"
-                      :color="props.row.effective_state === 'allowed' ? 'positive' : 'grey'"
+                      :name="slotProps.row.effective_state === 'allowed' ? 'check_circle' : 'cancel'"
+                      :color="slotProps.row.effective_state === 'allowed' ? 'positive' : 'grey'"
                       size="sm"
                     />
-                    {{ props.row.effective_state }}
+                    {{ slotProps.row.effective_state }}
                   </q-td>
                 </template>
-                <template #body-cell-reason="props">
-                  <q-td :props="props">
-                    <span class="text-caption">{{ props.row.reason }}</span>
+                <template #body-cell-reason="slotProps">
+                  <q-td :props="slotProps">
+                    <span class="text-caption">{{ slotProps.row.reason }}</span>
                   </q-td>
                 </template>
               </AppRegistryTable>
@@ -358,7 +358,7 @@
 import { computed } from 'vue';
 import { TOOL_POLICY_CHIP_COPY } from '../../features/tools/toolEditorCopy';
 import { bindingSummaryLine } from '../../features/tools/toolAgentBindingSummary';
-import type { ToolAgentBindingRow, ToolAgentBindingSummary } from '../../features/tools/toolAgentBindingSummary';
+import type { ToolAgentBindingSummary } from '../../features/tools/toolAgentBindingSummary';
 import type { Tool, ToolAgentOverride, ToolInvocation, ToolTestResult } from '../../features/tools/types';
 import type { ToolOverrideForm } from '../../stores/tools/toolDetail';
 import {

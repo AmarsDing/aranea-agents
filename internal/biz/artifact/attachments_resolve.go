@@ -40,11 +40,20 @@ func ResolveAttachmentRefs(ctx context.Context, uc *Usecase, sessionID string, i
 		return nil, ErrArtifactServiceRequired
 	}
 	sessionID = strings.TrimSpace(sessionID)
+	// Batch-load all artifact metadata in a single call to avoid N+1 (S2 fix).
+	metas, err := uc.LoadMetas(ctx, ids, 0)
+	if err != nil {
+		return nil, apierror.BadRequest(apierror.DomainArtifact, "load attachments: %s", err.Error()).WithCause(err)
+	}
+	loadedByID := make(map[string]Artifact, len(metas))
+	for _, m := range metas {
+		loadedByID[m.ID] = m
+	}
 	refs := make([]Ref, 0, len(ids))
 	for _, id := range ids {
-		meta, err := uc.LoadMeta(ctx, id, 0)
-		if err != nil {
-			return nil, apierror.BadRequest(apierror.DomainArtifact, "load attachment %s: %s", id, err.Error()).WithCause(err)
+		meta, ok := loadedByID[id]
+		if !ok {
+			return nil, apierror.BadRequest(apierror.DomainArtifact, "attachment %s not found", id)
 		}
 		if strings.TrimSpace(meta.SessionID) != "" && sessionID != "" && meta.SessionID != sessionID {
 			return nil, apierror.BadRequest(apierror.DomainArtifact, "attachment %s belongs to another session", id)

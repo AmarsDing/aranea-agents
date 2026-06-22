@@ -1415,19 +1415,3 @@ func (u *SpiritTeamUsecase) HandleTeamRejection(ctx context.Context, teamID stri
 	)
 	return &tracker, nil
 }
-
-// ---------------------------------------------------------------------------
-// Sub-domain port interfaces (DEV-09 migration scaffolding)
-// ---------------------------------------------------------------------------
-
-// SpiritTeamAssemblyPort defines the assembly sub-domain interface.
-// TODO(debt): DEV-09 — Will be implemented by SpiritTeamAssemblyUsecase.
-type SpiritTeamAssemblyPort interface{}
-
-// SpiritTeamOrchestrationPort defines the orchestration sub-domain interface.
-// TODO(debt): DEV-09 — Will be implemented by SpiritTeamOrchestrationUsecase.
-type SpiritTeamOrchestrationPort interface{}
-
-// SpiritTeamDeliveryPort defines the delivery sub-domain interface.
-// TODO(debt): DEV-09 — Will be implemented by SpiritTeamDeliveryUsecase.
-type SpiritTeamDeliveryPort interface{}

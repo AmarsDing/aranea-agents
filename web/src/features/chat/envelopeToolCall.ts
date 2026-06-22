@@ -2,7 +2,7 @@ import type { Envelope } from './envelope';
 import type { ActivityKind, ToolUseEvent } from './types';
 import type { Message } from './types';
 import { MESSAGE_STATUS } from '../../domain/types';
-import { canonicalToolStatus, messageStatusFromWire } from './lib/statusMap';
+import { canonicalToolStatus } from './lib/statusMap';
 import { activityMessageId } from './lib/activityMessageId';
 import { isToolUseEvent } from './lib/isToolUseEvent';
 import { toolEventToMessage } from './toolEventMarkdown';

@@ -33,7 +33,7 @@
 import { computed, ref } from 'vue';
 import type { EChartsCoreOption } from 'echarts/core';
 import type { ModelUsageBreakdownRow } from '../../features/usage/types';
-import { baseChartOption, usageChartPalette } from '../../features/usage/usageEcharts';
+import { usageChartPalette } from '../../features/usage/usageEcharts';
 import { useUsageChart } from '../../features/usage/useUsageChart';
 import { formatUsdCompact } from '../../features/usage/moneyFormat';
 import {

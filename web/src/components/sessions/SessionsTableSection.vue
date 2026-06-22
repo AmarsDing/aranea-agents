@@ -9,91 +9,91 @@
     :pagination="{ rowsPerPage: pageSize }"
     hide-pagination
   >
-    <template v-if="selectionMode" #header-cell-select="props">
-      <q-th :props="props">
+    <template v-if="selectionMode" #header-cell-select="slotProps">
+      <q-th :props="slotProps">
         <q-checkbox dense :model-value="pageAllSelected" @update:model-value="$emit('toggle-page', $event)" />
       </q-th>
     </template>
 
-    <template v-if="selectionMode" #body-cell-select="props">
-      <q-td :props="props">
+    <template v-if="selectionMode" #body-cell-select="slotProps">
+      <q-td :props="slotProps">
         <q-checkbox
           dense
-          :model-value="isRowSelected(props.row.id)"
-          @update:model-value="$emit('toggle-row', props.row.id, $event)"
+          :model-value="isRowSelected(slotProps.row.id)"
+          @update:model-value="$emit('toggle-row', slotProps.row.id, $event)"
         />
       </q-td>
     </template>
 
-    <template #body-cell-session="props">
-      <q-td :props="props">
+    <template #body-cell-session="slotProps">
+      <q-td :props="slotProps">
         <div class="row items-center no-wrap q-gutter-xs">
-          <q-icon v-if="isSessionPinned(props.row)" name="push_pin" color="primary" size="16px" />
+          <q-icon v-if="isSessionPinned(slotProps.row)" name="push_pin" color="primary" size="16px" />
           <div class="col min-width-0">
             <router-link
-              :to="{ name: 'session-detail', params: { sessionId: props.row.id } }"
+              :to="{ name: 'session-detail', params: { sessionId: slotProps.row.id } }"
               class="app-registry-cell-primary session-title-link"
             >
-              {{ props.row.title }}
+              {{ slotProps.row.title }}
             </router-link>
-            <div class="app-registry-cell-sub ellipsis">{{ props.row.summary || props.row.id }}</div>
+            <div class="app-registry-cell-sub ellipsis">{{ slotProps.row.summary || slotProps.row.id }}</div>
           </div>
         </div>
       </q-td>
     </template>
 
-    <template #body-cell-owner="props">
-      <q-td :props="props">
-        <q-chip dense :color="ownerChipColor(props.row.owner_type)" text-color="white">{{
-          ownerLabel(props.row.owner_type)
+    <template #body-cell-owner="slotProps">
+      <q-td :props="slotProps">
+        <q-chip dense :color="ownerChipColor(slotProps.row.owner_type)" text-color="white">{{
+          ownerLabel(slotProps.row.owner_type)
         }}</q-chip>
         <div class="app-registry-cell-sub ellipsis">
-          {{ props.row.owner_type === 'team' ? props.row.team_id : props.row.agent_id }}
+          {{ slotProps.row.owner_type === 'team' ? slotProps.row.team_id : slotProps.row.agent_id }}
         </div>
       </q-td>
     </template>
 
-    <template #body-cell-context="props">
-      <q-td :props="props">
+    <template #body-cell-context="slotProps">
+      <q-td :props="slotProps">
         <q-linear-progress
           rounded
           size="10px"
-          :value="ratioValue(props.row.context_used_ratio)"
-          :color="contextProgressColor(props.row.context_status)"
+          :value="ratioValue(slotProps.row.context_used_ratio)"
+          :color="contextProgressColor(slotProps.row.context_status)"
         />
         <div class="app-registry-cell-sub q-mt-xs">
-          {{ formatPercent(props.row.context_used_ratio) }} · {{ props.row.context_status }}
+          {{ formatPercent(slotProps.row.context_used_ratio) }} · {{ slotProps.row.context_status }}
         </div>
       </q-td>
     </template>
 
-    <template #body-cell-usage="props">
-      <q-td :props="props">
-        <div class="app-registry-cell-primary">{{ formatNumber(props.row.total_tokens) }} tokens</div>
+    <template #body-cell-usage="slotProps">
+      <q-td :props="slotProps">
+        <div class="app-registry-cell-primary">{{ formatNumber(slotProps.row.total_tokens) }} tokens</div>
         <div class="app-registry-cell-sub">
-          {{ props.row.model_call_count }} model ·
-          {{ props.row.tool_call_count + props.row.skill_call_count + props.row.mcp_call_count }} calls
+          {{ slotProps.row.model_call_count }} model ·
+          {{ slotProps.row.tool_call_count + slotProps.row.skill_call_count + slotProps.row.mcp_call_count }} calls
         </div>
       </q-td>
     </template>
 
-    <template #body-cell-time="props">
-      <q-td :props="props">
+    <template #body-cell-time="slotProps">
+      <q-td :props="slotProps">
         <div class="app-registry-cell-primary">
-          {{ formatSessionDate(props.row.last_message_at || props.row.updated_at) }}
+          {{ formatSessionDate(slotProps.row.last_message_at || slotProps.row.updated_at) }}
         </div>
         <div class="app-registry-cell-sub">
-          {{ t('sessionsPage.createdAt') }} {{ formatSessionDate(props.row.created_at) }}
+          {{ t('sessionsPage.createdAt') }} {{ formatSessionDate(slotProps.row.created_at) }}
         </div>
       </q-td>
     </template>
 
-    <template #body-cell-status="props">
-      <q-td :props="props">
+    <template #body-cell-status="slotProps">
+      <q-td :props="slotProps">
         <SessionStatusBadge
-          :status="props.row.status"
-          :status-reason="props.row.status_reason"
-          :status-changed-at="props.row.status_changed_at"
+          :status="slotProps.row.status"
+          :status-reason="slotProps.row.status_reason"
+          :status-changed-at="slotProps.row.status_changed_at"
         />
       </q-td>
     </template>
@@ -108,8 +108,8 @@
       </div>
     </template>
 
-    <template #body-cell-actions="props">
-      <q-td :props="props">
+    <template #body-cell-actions="slotProps">
+      <q-td :props="slotProps">
         <div class="app-registry-cell-actions">
           <q-btn
             flat
@@ -118,7 +118,7 @@
             icon="visibility"
             color="primary"
             :aria-label="t('sessionsPage.actionView')"
-            :to="{ name: 'session-detail', params: { sessionId: props.row.id } }"
+            :to="{ name: 'session-detail', params: { sessionId: slotProps.row.id } }"
           >
             <q-tooltip>{{ t('sessionsPage.actionView') }}</q-tooltip>
           </q-btn>
@@ -127,12 +127,12 @@
             dense
             round
             icon="push_pin"
-            :color="isSessionPinned(props.row) ? 'primary' : 'grey-6'"
-            :aria-label="isSessionPinned(props.row) ? t('sessionsPage.actionUnpin') : t('sessionsPage.actionPin')"
-            @click="$emit('toggle-pin', props.row.id, !isSessionPinned(props.row))"
+            :color="isSessionPinned(slotProps.row) ? 'primary' : 'grey-6'"
+            :aria-label="isSessionPinned(slotProps.row) ? t('sessionsPage.actionUnpin') : t('sessionsPage.actionPin')"
+            @click="$emit('toggle-pin', slotProps.row.id, !isSessionPinned(slotProps.row))"
           >
             <q-tooltip>{{
-              isSessionPinned(props.row) ? t('sessionsPage.actionUnpin') : t('sessionsPage.actionPin')
+              isSessionPinned(slotProps.row) ? t('sessionsPage.actionUnpin') : t('sessionsPage.actionPin')
             }}</q-tooltip>
           </q-btn>
           <q-btn
@@ -142,21 +142,23 @@
             icon="archive"
             color="primary"
             :aria-label="
-              props.row.status === 'running' || props.row.status === 'awaiting_confirmation'
+              slotProps.row.status === 'running' || slotProps.row.status === 'awaiting_confirmation'
                 ? t('sessionsPage.actionArchiveRunning')
-                : !!props.row.archived_at
+                : !!slotProps.row.archived_at
                   ? t('sessionsPage.actionArchiveArchived')
                   : t('sessionsPage.actionArchive')
             "
             :disable="
-              !!props.row.archived_at || props.row.status === 'running' || props.row.status === 'awaiting_confirmation'
+              !!slotProps.row.archived_at ||
+              slotProps.row.status === 'running' ||
+              slotProps.row.status === 'awaiting_confirmation'
             "
-            @click="$emit('archive-row', props.row.id)"
+            @click="$emit('archive-row', slotProps.row.id)"
           >
             <q-tooltip>{{
-              props.row.status === 'running' || props.row.status === 'awaiting_confirmation'
+              slotProps.row.status === 'running' || slotProps.row.status === 'awaiting_confirmation'
                 ? t('sessionsPage.actionArchiveRunning')
-                : !!props.row.archived_at
+                : !!slotProps.row.archived_at
                   ? t('sessionsPage.actionArchiveArchived')
                   : t('sessionsPage.actionArchive')
             }}</q-tooltip>
@@ -168,15 +170,15 @@
             icon="delete"
             color="negative"
             :aria-label="
-              props.row.status === 'running' || props.row.status === 'awaiting_confirmation'
+              slotProps.row.status === 'running' || slotProps.row.status === 'awaiting_confirmation'
                 ? t('sessionsPage.actionDeleteRunning')
                 : t('sessionsPage.actionDelete')
             "
-            :disable="props.row.status === 'running' || props.row.status === 'awaiting_confirmation'"
-            @click="$emit('delete-row', props.row.id)"
+            :disable="slotProps.row.status === 'running' || slotProps.row.status === 'awaiting_confirmation'"
+            @click="$emit('delete-row', slotProps.row.id)"
           >
             <q-tooltip>{{
-              props.row.status === 'running' || props.row.status === 'awaiting_confirmation'
+              slotProps.row.status === 'running' || slotProps.row.status === 'awaiting_confirmation'
                 ? t('sessionsPage.actionDeleteRunning')
                 : t('sessionsPage.actionDelete')
             }}</q-tooltip>

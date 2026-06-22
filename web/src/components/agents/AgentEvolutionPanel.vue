@@ -237,6 +237,10 @@
 </template>
 
 <script setup lang="ts">
+const evolution = defineModel<Record<EvolutionKey, boolean>>('evolution', { required: true });
+const evolutionSettings = defineModel<AgentRuntimeConfigForm['evolutionSettings']>('evolutionSettings', {
+  required: true,
+});
 // Container: approved — evolution Tab 内指标/建议编排；内部调用 useAgentEvolutionPanel。
 import { computed, ref } from 'vue';
 import type { EvolutionKey } from './agentUi';
@@ -244,15 +248,13 @@ import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeC
 import { useAgentEvolutionPanel } from '../../features/agents/useAgentEvolutionPanel';
 import { evoActionTypeColor, evoActionTypeLabel } from '../skills/evolutionSuggestionTableUi';
 
+const guardrails = defineModel<{
+  max_change_per_period: number;
+  min_data_points: number;
+  rollback_on_decline_percent: number;
+}>('guardrails', { required: true });
 const props = defineProps<{
   agentId: string;
-  evolution: Record<EvolutionKey, boolean>;
-  evolutionSettings: AgentRuntimeConfigForm['evolutionSettings'];
-  guardrails: {
-    max_change_per_period: number;
-    min_data_points: number;
-    rollback_on_decline_percent: number;
-  };
 }>();
 
 const evolutionRange = ref('30d');

@@ -222,7 +222,6 @@ const {
   error: dlError,
   rows: deadLetterRows,
   load: loadDeadLetters,
-  resolve: resolveDeadLetter,
   pendingCount,
 } = useTaskDeadLetters(toRef(props, 'sessionId'), refreshRef);
 

@@ -85,7 +85,7 @@ import { createWebhookColumns } from './webhookTableUi';
 
 const { t } = useI18n();
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
     rows: WebhookRow[];
     loading: boolean;

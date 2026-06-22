@@ -62,7 +62,7 @@
 import { computed } from 'vue';
 import type { AgentFile } from './agentUi';
 import { tokenEstimateFor, tokenText } from './agentUi';
-import AiRefineButton from './AIRefineButton.vue';
+import AIRefineButton from './AIRefineButton.vue';
 import type { RefineResponse } from '../../features/agents/aiRefine';
 
 const props = defineProps<{
@@ -72,7 +72,7 @@ const props = defineProps<{
   dirty: boolean;
   fileTokenByName?: Record<string, number>;
   agentId?: string;
-  refineFn?: (params: {
+  refineFn: (params: {
     scope: string;
     fileName?: string;
     resourceId?: string;

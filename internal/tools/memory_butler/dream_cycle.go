@@ -186,7 +186,12 @@ func newDreamCycleTool(deps Deps) trpctool.Tool {
 
 // findLowQualityFactIDs returns fact IDs that are misaligned (high negative feedback rate).
 func findLowQualityFactIDs(ctx context.Context, deps Deps, agentID string) []string {
-	rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, "agent", agentID, "", "", "", defaultFactListLimit, 0)
+	rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, biz.ListFactRowsParams{
+		ScopeType: "agent",
+		ScopeID:   agentID,
+		Limit:     defaultFactListLimit,
+		Offset:    0,
+	})
 	if err != nil {
 		return nil
 	}
@@ -213,7 +218,12 @@ func findInactiveFactIDs(ctx context.Context, deps Deps, agentID string, thresho
 	}
 	cutoff := time.Now().UTC().AddDate(0, 0, -thresholdDays)
 
-	rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, "agent", agentID, "", "", "", defaultFactListLimit, 0)
+	rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, biz.ListFactRowsParams{
+		ScopeType: "agent",
+		ScopeID:   agentID,
+		Limit:     defaultFactListLimit,
+		Offset:    0,
+	})
 	if err != nil {
 		return nil
 	}
@@ -249,7 +259,12 @@ func findDuplicateFactIDs(ctx context.Context, deps Deps, agentID string, thresh
 	if threshold <= 0 {
 		threshold = defaultSimilarityThreshold
 	}
-	rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, "agent", agentID, "", "", "", defaultFactListLimit, 0)
+	rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, biz.ListFactRowsParams{
+		ScopeType: "agent",
+		ScopeID:   agentID,
+		Limit:     defaultFactListLimit,
+		Offset:    0,
+	})
 	if err != nil {
 		return nil
 	}
@@ -301,7 +316,13 @@ func findDuplicateFactIDs(ctx context.Context, deps Deps, agentID string, thresh
 
 // consolidateEpisodesCount consolidates episodic facts and returns the distilled count.
 func consolidateEpisodesCount(ctx context.Context, deps Deps, agentID string) (int, error) {
-	rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, "agent", agentID, "episode", "", "", defaultFactListLimit, 0)
+	rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, biz.ListFactRowsParams{
+		ScopeType: "agent",
+		ScopeID:   agentID,
+		Kind:      "episode",
+		Limit:     defaultFactListLimit,
+		Offset:    0,
+	})
 	if err != nil || len(rows) == 0 {
 		return 0, err
 	}
@@ -361,7 +382,12 @@ func buildFactSnapshotsForIDs(ctx context.Context, deps Deps, agentID string, id
 	for _, id := range ids {
 		idSet[id] = true
 	}
-	rows, _, _, _, listErr := deps.MemoryAdmin.ListFactRows(ctx, "agent", agentID, "", "", "", defaultFactListLimit, 0)
+	rows, _, _, _, listErr := deps.MemoryAdmin.ListFactRows(ctx, biz.ListFactRowsParams{
+		ScopeType: "agent",
+		ScopeID:   agentID,
+		Limit:     defaultFactListLimit,
+		Offset:    0,
+	})
 	if listErr != nil {
 		return nil
 	}

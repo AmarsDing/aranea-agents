@@ -43,7 +43,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { ActivitySnapshot, AgentNodeState } from '../../features/orchestration/types';
+import type { AgentNodeState } from '../../features/orchestration/types';
 import OrchestrationStatusChip from './OrchestrationStatusChip.vue';
 
 const props = defineProps<{

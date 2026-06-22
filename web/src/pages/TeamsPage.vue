@@ -118,9 +118,9 @@
     <TeamEditorDialog
       v-model="editorOpen"
       v-model:selected-template-key="selectedTeamTemplateKey"
+      v-model:form="form"
+      v-model:definition="definition"
       :editing-id="editingId"
-      :form="form"
-      :definition="definition"
       :definition-json="definitionJSON"
       :agent-options="agentOptions"
       :industry-options="industryOptions"

@@ -7,6 +7,7 @@
       <span v-if="activity.streaming" class="pulse-dot"></span>
     </div>
     <div class="reply-block__content">
+      <!-- eslint-disable-next-line vue/no-v-html -- sanitized markdown HTML -->
       <div class="reply-block__markdown chat-message-prose" v-html="renderedContent"></div>
       <span v-if="activity.streaming" class="cursor-blink"></span>
     </div>

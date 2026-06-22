@@ -24,16 +24,16 @@
       :pagination="{ rowsPerPage: 10 }"
       table-class="channel-turn-jobs-table"
     >
-      <template #body-cell-peer_id="props">
-        <q-td :props="props">
-          <AppRegistryHoverTip :text="props.row.content_preview" :empty-label="t('channelEditor.noContent')">
-            <span class="app-registry-cell-primary ellipsis">{{ props.row.peer_id || '—' }}</span>
+      <template #body-cell-peer_id="slotProps">
+        <q-td :props="slotProps">
+          <AppRegistryHoverTip :text="slotProps.row.content_preview" :empty-label="t('channelEditor.noContent')">
+            <span class="app-registry-cell-primary ellipsis">{{ slotProps.row.peer_id || '—' }}</span>
           </AppRegistryHoverTip>
         </q-td>
       </template>
-      <template #body-cell-status="props">
-        <q-td :props="props">
-          <q-badge :color="statusColor(String(props.row.status))" :label="props.row.status" />
+      <template #body-cell-status="slotProps">
+        <q-td :props="slotProps">
+          <q-badge :color="statusColor(String(slotProps.row.status))" :label="slotProps.row.status" />
         </q-td>
       </template>
       <template #no-data>

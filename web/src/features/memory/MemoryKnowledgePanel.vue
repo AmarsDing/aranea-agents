@@ -75,36 +75,38 @@
             hide-pagination
             :pagination="{ rowsPerPage: 0 }"
           >
-            <template #body-cell-scope="props">
-              <q-td :props="props">
-                <AppRegistryHoverTip :text="factHoverText(props.row)">
-                  <q-chip dense square color="primary" text-color="white">{{ props.row.scope_type || 'agent' }}</q-chip>
+            <template #body-cell-scope="slotProps">
+              <q-td :props="slotProps">
+                <AppRegistryHoverTip :text="factHoverText(slotProps.row)">
+                  <q-chip dense square color="primary" text-color="white">{{
+                    slotProps.row.scope_type || 'agent'
+                  }}</q-chip>
                 </AppRegistryHoverTip>
               </q-td>
             </template>
-            <template #body-cell-confidence="props">
-              <q-td :props="props">
+            <template #body-cell-confidence="slotProps">
+              <q-td :props="slotProps">
                 <q-linear-progress
                   rounded
                   size="9px"
-                  :value="bounded(props.row.confidence)"
-                  :color="scoreColor(props.row.confidence)"
+                  :value="bounded(slotProps.row.confidence)"
+                  :color="scoreColor(slotProps.row.confidence)"
                 />
-                <div class="text-caption q-mt-xs">{{ formatPercent(props.row.confidence) }}</div>
+                <div class="text-caption q-mt-xs">{{ formatPercent(slotProps.row.confidence) }}</div>
               </q-td>
             </template>
-            <template #body-cell-source="props">
-              <q-td :props="props">
-                <span class="app-registry-cell-sub ellipsis">{{ props.row.source_kind || '—' }}</span>
+            <template #body-cell-source="slotProps">
+              <q-td :props="slotProps">
+                <span class="app-registry-cell-sub ellipsis">{{ slotProps.row.source_kind || '—' }}</span>
               </q-td>
             </template>
-            <template #body-cell-updated="props">
-              <q-td :props="props">
-                <span class="app-registry-cell-sub">{{ formatFactDate(props.row.updated_at) }}</span>
+            <template #body-cell-updated="slotProps">
+              <q-td :props="slotProps">
+                <span class="app-registry-cell-sub">{{ formatFactDate(slotProps.row.updated_at) }}</span>
               </q-td>
             </template>
-            <template #body-cell-actions="props">
-              <q-td :props="props">
+            <template #body-cell-actions="slotProps">
+              <q-td :props="slotProps">
                 <div class="app-registry-cell-actions">
                   <q-btn
                     flat
@@ -113,7 +115,7 @@
                     icon="visibility"
                     color="primary"
                     aria-label="查看知识详情"
-                    @click="$emit('openFact', props.row)"
+                    @click="$emit('openFact', slotProps.row)"
                   />
                 </div>
               </q-td>

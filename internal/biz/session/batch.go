@@ -24,6 +24,16 @@ type SessionBatchScope struct {
 	UserID        string
 }
 
+// BatchOperationParams encapsulates parameters for batch session operations.
+// Introduced to keep method signatures under the 5-parameter limit (S4/S5 fix).
+type BatchOperationParams struct {
+	Mode            string
+	IDs             []string
+	OlderThanDays   int
+	Scope           SessionBatchScope
+	IncludeArchived bool
+}
+
 // SessionBatchPreview is dry-run output for batch operations.
 type SessionBatchPreview struct {
 	Matched         int
@@ -183,25 +193,25 @@ func (uc *SessionUsecase) loadBatchCandidatesByScope(ctx context.Context, scope 
 	return all, true, nil
 }
 
-func (uc *SessionUsecase) resolveBatchOperation(ctx context.Context, mode string, ids []string, olderThanDays int, scope SessionBatchScope, includeArchived bool) ([]string, int, int, bool, error) {
-	mode = strings.TrimSpace(strings.ToLower(mode))
+func (uc *SessionUsecase) resolveBatchOperation(ctx context.Context, p BatchOperationParams) ([]string, int, int, bool, error) {
+	mode := strings.TrimSpace(strings.ToLower(p.Mode))
 	if mode != "archive" && mode != "delete" {
 		return nil, 0, 0, false, validationErr("mode must be archive or delete")
 	}
-	if err := validateBatchParams(len(ids), olderThanDays); err != nil {
+	if err := validateBatchParams(len(p.IDs), p.OlderThanDays); err != nil {
 		return nil, 0, 0, false, err
 	}
-	loaded, err := uc.loadBatchCandidates(ctx, ids, scope)
+	loaded, err := uc.loadBatchCandidates(ctx, p.IDs, p.Scope)
 	if err != nil {
 		return nil, 0, 0, false, err
 	}
-	matched, skipped := resolveBatchTargets(loaded.sessions, mode, olderThanDays, includeArchived)
+	matched, skipped := resolveBatchTargets(loaded.sessions, mode, p.OlderThanDays, p.IncludeArchived)
 	return matched, skipped, len(loaded.notFoundIDs), loaded.truncated, nil
 }
 
 // PreviewBatch returns matched session ids for archive/delete without mutating.
-func (uc *SessionUsecase) PreviewBatch(ctx context.Context, mode string, ids []string, olderThanDays int, scope SessionBatchScope, includeArchived bool) (SessionBatchPreview, error) {
-	matched, skipped, notFound, truncated, err := uc.resolveBatchOperation(ctx, mode, ids, olderThanDays, scope, includeArchived)
+func (uc *SessionUsecase) PreviewBatch(ctx context.Context, p BatchOperationParams) (SessionBatchPreview, error) {
+	matched, skipped, notFound, truncated, err := uc.resolveBatchOperation(ctx, p)
 	if err != nil {
 		return SessionBatchPreview{}, err
 	}
@@ -216,7 +226,12 @@ func (uc *SessionUsecase) PreviewBatch(ctx context.Context, mode string, ids []s
 
 // BatchArchive archives sessions by ids and/or retention cutoff.
 func (uc *SessionUsecase) BatchArchive(ctx context.Context, ids []string, olderThanDays int, scope SessionBatchScope) (SessionBatchResult, error) {
-	matched, skipped, notFound, truncated, err := uc.resolveBatchOperation(ctx, "archive", ids, olderThanDays, scope, false)
+	matched, skipped, notFound, truncated, err := uc.resolveBatchOperation(ctx, BatchOperationParams{
+		Mode:          "archive",
+		IDs:           ids,
+		OlderThanDays: olderThanDays,
+		Scope:         scope,
+	})
 	if err != nil {
 		return SessionBatchResult{}, err
 	}
@@ -243,7 +258,13 @@ func (uc *SessionUsecase) BatchArchive(ctx context.Context, ids []string, olderT
 
 // BatchDelete soft-deletes sessions by ids and/or retention cutoff.
 func (uc *SessionUsecase) BatchDelete(ctx context.Context, ids []string, olderThanDays int, scope SessionBatchScope, includeArchived bool) (SessionBatchResult, error) {
-	matched, skipped, notFound, truncated, err := uc.resolveBatchOperation(ctx, "delete", ids, olderThanDays, scope, includeArchived)
+	matched, skipped, notFound, truncated, err := uc.resolveBatchOperation(ctx, BatchOperationParams{
+		Mode:            "delete",
+		IDs:             ids,
+		OlderThanDays:   olderThanDays,
+		Scope:           scope,
+		IncludeArchived: includeArchived,
+	})
 	if err != nil {
 		return SessionBatchResult{}, err
 	}

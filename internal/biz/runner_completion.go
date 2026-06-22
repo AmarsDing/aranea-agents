@@ -358,7 +358,14 @@ func RecordRunnerCompletion(ctx context.Context, u *MonitorUsecase, de DomainEve
 		Status:       status,
 		MetadataJSON: BuildRunnerCompletionMetadataJSON(de, status),
 	}
-	return u.RecordRunnerCompletion(ctx, write, sessionID, runID, invocationID, de.UsageEventID, de.TraceID, DefaultTurnCompletionBridge())
+	return u.RecordRunnerCompletion(ctx, write, RunnerCompletionLinkParams{
+		SessionID:    sessionID,
+		RunID:        runID,
+		InvocationID: invocationID,
+		UsageEventID: de.UsageEventID,
+		TraceID:      de.TraceID,
+		Bridge:       DefaultTurnCompletionBridge(),
+	})
 }
 
 // LinkRunnerCompletionUsage patches the latest completion row for session+run with usage_event_id.
@@ -366,5 +373,11 @@ func LinkRunnerCompletionUsage(ctx context.Context, u *MonitorUsecase, sessionID
 	if u == nil {
 		return nil
 	}
-	return u.LinkRunnerCompletionUsage(ctx, sessionID, runID, usageEventID, traceID, DefaultTurnCompletionBridge())
+	return u.LinkRunnerCompletionUsage(ctx, RunnerCompletionLinkParams{
+		SessionID:    sessionID,
+		RunID:        runID,
+		UsageEventID: usageEventID,
+		TraceID:      traceID,
+		Bridge:       DefaultTurnCompletionBridge(),
+	})
 }

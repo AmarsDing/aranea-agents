@@ -42,7 +42,6 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import { useI18n } from 'vue-i18n';
 import ArtifactPreview from '../../features/artifact/ArtifactPreview.vue';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import {
@@ -51,7 +50,7 @@ import {
   type MessageAttachmentRef,
 } from '../../features/chat/messageAttachments';
 
-const props = defineProps<{
+defineProps<{
   attachments: MessageAttachmentRef[];
 }>();
 

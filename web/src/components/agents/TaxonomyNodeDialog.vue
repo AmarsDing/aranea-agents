@@ -91,6 +91,7 @@
 </template>
 
 <script setup lang="ts">
+const form = defineModel<PlatformResourceInput & { level: TaxonomyLevel }>('form', { required: true });
 import { computed } from 'vue';
 import AiRefineButton from './AIRefineButton.vue';
 import { refinePromptField } from '../../features/agents/aiRefine';
@@ -107,7 +108,6 @@ import type { TaxonomyLevel } from '../../features/platform/taxonomyTreeUtils';
 const props = defineProps<{
   modelValue: boolean;
   editingId: string;
-  form: PlatformResourceInput & { level: TaxonomyLevel };
   parentName: string;
   saving: boolean;
 }>();
@@ -123,11 +123,11 @@ const open = computed({
   set: (v) => emit('update:modelValue', v),
 });
 
-const currentLevelNum = computed(() => parseLevelNumber(props.form.level));
+const currentLevelNum = computed(() => parseLevelNumber(form.value.level));
 const currentDescLabel = computed(() => descriptionLabel(currentLevelNum.value));
 const currentDescPlaceholder = computed(() => descriptionPlaceholder(currentLevelNum.value));
 
 function onApplyRefinedDescription(v: string) {
-  props.form.description = v;
+  form.value.description = v;
 }
 </script>

@@ -135,6 +135,28 @@ func (r *organizationRepo) ListOrgNodesByParentID(ctx context.Context, parentID 
 	return out, nil
 }
 
+// ListOrgNodesByIDs returns org nodes matching the given IDs in a single query.
+// Missing IDs are silently skipped. Returns nil for empty input.
+func (r *organizationRepo) ListOrgNodesByIDs(ctx context.Context, ids []string) ([]biz.OrganizationNode, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := r.data.RW().Read(ctx).Organization.Query().
+		Where(
+			organization.IDIn(ids...),
+			organization.DeletedAtEQ(""),
+		).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.OrganizationNode, 0, len(rows))
+	for _, e := range rows {
+		out = append(out, entToBizOrganization(e))
+	}
+	return out, nil
+}
+
 func (r *organizationRepo) ListOrgNodesByLevel(ctx context.Context, level string) ([]biz.OrganizationNode, error) {
 	rows, err := r.data.RW().Read(ctx).Organization.Query().
 		Where(

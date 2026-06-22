@@ -123,7 +123,11 @@ const props = withDefaults(
     }) => Promise<RefineResponse>;
   }>(),
   {
+    fileName: undefined,
+    resourceId: undefined,
     targetMode: 'complete',
+    label: undefined,
+    color: undefined,
     flat: false,
     outline: true,
   },

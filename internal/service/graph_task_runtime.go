@@ -131,7 +131,15 @@ func (r *GraphTaskRuntime) OnGraphNodeStart(ctx context.Context, exec *biz.Graph
 	if strings.TrimSpace(inputPreview) != "" {
 		input = inputPreview
 	}
-	_, err := r.taskUC.CreateTask(ctx, node.ID, exec.ID, role, mode, strategy, input, "{}")
+	_, err := r.taskUC.CreateTask(ctx, biz.CreateTaskParams{
+		NodeID:             node.ID,
+		ExecutionID:        exec.ID,
+		RequiredRole:       role,
+		AssignmentMode:     mode,
+		AssignmentStrategy: strategy,
+		Input:              input,
+		Context:            "{}",
+	})
 	return err
 }
 

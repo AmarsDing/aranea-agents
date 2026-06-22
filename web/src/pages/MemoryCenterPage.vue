@@ -183,7 +183,6 @@ const {
   cascadePreviewProposalId,
   loadingCascadePreview,
   cascadeSagaDrawerOpen,
-  cascadeSagaProposalId,
   sagaSteps,
   loadingCascadeSaga,
   settingChecklist,

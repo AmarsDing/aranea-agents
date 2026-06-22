@@ -15,6 +15,7 @@ type mockRepo struct {
 	saveFn                 func(ctx context.Context, sessionID, name, mimeType string, data []byte) (artifact.Artifact, error)
 	loadFn                 func(ctx context.Context, id string, version int) (artifact.Artifact, []byte, error)
 	loadMetaFn             func(ctx context.Context, id string, version int) (artifact.Artifact, error)
+	loadMetasFn            func(ctx context.Context, ids []string, version int) ([]artifact.Artifact, error)
 	listFn                 func(ctx context.Context, sessionID string, limit, offset int) ([]artifact.Artifact, int, error)
 	deleteFn               func(ctx context.Context, id string) error
 	deleteVersionFn        func(ctx context.Context, sessionID, name string, version int) error
@@ -40,6 +41,22 @@ func (m *mockRepo) LoadMeta(ctx context.Context, id string, version int) (artifa
 		return m.loadMetaFn(ctx, id, version)
 	}
 	return artifact.Artifact{}, nil
+}
+
+func (m *mockRepo) LoadMetas(ctx context.Context, ids []string, version int) ([]artifact.Artifact, error) {
+	if m.loadMetasFn != nil {
+		return m.loadMetasFn(ctx, ids, version)
+	}
+	// Default: fall back to per-id LoadMeta to keep existing tests working.
+	out := make([]artifact.Artifact, 0, len(ids))
+	for _, id := range ids {
+		a, err := m.LoadMeta(ctx, id, version)
+		if err != nil {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out, nil
 }
 
 func (m *mockRepo) List(ctx context.Context, sessionID string, limit, offset int) ([]artifact.Artifact, int, error) {

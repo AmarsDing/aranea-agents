@@ -854,6 +854,7 @@ func (u *Usecase) quotaSpent(ctx context.Context, scopeType, scopeID string, q Q
 
 // CheckTeamMemberQuotas validates that all enabled team members are within quota.
 // Returns nil when teamID is empty or no team reader is configured.
+// Uses batch queries to avoid N+1 (S3 fix).
 func (u *Usecase) CheckTeamMemberQuotas(ctx context.Context, teamID string) error {
 	if u == nil || u.teamReader == nil {
 		return nil
@@ -866,9 +867,47 @@ func (u *Usecase) CheckTeamMemberQuotas(ctx context.Context, teamID string) erro
 	if err != nil {
 		return err
 	}
-	for _, agentID := range agentIDs {
-		if err := u.enforceQuota(ctx, "agent", agentID); err != nil {
-			return err
+	if len(agentIDs) == 0 {
+		return nil
+	}
+	// Batch-fetch all active quotas in a single query.
+	allQuotas, err := u.repo.ListActiveQuotas(ctx)
+	if err != nil {
+		return err
+	}
+	// Filter to agent-scope quotas matching the team members.
+	agentIDSet := make(map[string]struct{}, len(agentIDs))
+	for _, id := range agentIDs {
+		agentIDSet[id] = struct{}{}
+	}
+	relevant := make([]Quota, 0, len(agentIDs))
+	for _, q := range allQuotas {
+		if q.ScopeType != "agent" {
+			continue
+		}
+		if _, ok := agentIDSet[q.ScopeID]; !ok {
+			continue
+		}
+		if q.MonthlyMicroUSD <= 0 {
+			continue // quota disabled
+		}
+		relevant = append(relevant, q)
+	}
+	if len(relevant) == 0 {
+		return nil // no active quotas for these agents
+	}
+	// Batch-sum spent cost for all relevant quotas in one query per scope type.
+	spentMap, err := u.repo.BatchSumScopeCost(ctx, relevant)
+	if err != nil {
+		return err
+	}
+	for _, q := range relevant {
+		key := q.ScopeType + ":" + q.ScopeID
+		spent := spentMap[key]
+		if spent >= q.MonthlyMicroUSD {
+			return apierror.Forbidden("USAGE_QUOTA",
+				"monthly quota exceeded for agent %s: spent %d >= cap %d micro-USD",
+				q.ScopeID, spent, q.MonthlyMicroUSD)
 		}
 	}
 	return nil

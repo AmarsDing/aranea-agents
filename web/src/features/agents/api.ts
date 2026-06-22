@@ -11,7 +11,6 @@ import type {
   EvolutionMetrics,
   EvolutionSuggestion,
   AgentPromptPreview,
-  AgentPromptSection,
 } from './types';
 import {
   normalizeAgentFromService,

@@ -45,7 +45,7 @@ import type { SpiritTeam } from '../../features/spirit/types';
 
 const { t } = useI18n();
 
-const props = defineProps<{
+defineProps<{
   team: SpiritTeam;
   /** Whether the team supports checkpoint recovery (has graphExecutionId). */
   canResume: boolean;

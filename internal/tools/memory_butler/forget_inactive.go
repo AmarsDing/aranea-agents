@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/jsonutil"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -32,7 +33,12 @@ func newForgetInactiveTool(deps Deps) trpctool.Tool {
 		}
 		cutoff := time.Now().UTC().AddDate(0, 0, -threshold)
 
-		rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, "agent", input.AgentID, "", "", "", defaultFactListLimit, 0)
+		rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, biz.ListFactRowsParams{
+			ScopeType: "agent",
+			ScopeID:   input.AgentID,
+			Limit:     defaultFactListLimit,
+			Offset:    0,
+		})
 		if err != nil {
 			return forgetInactiveOutput{}, err
 		}

@@ -73,10 +73,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 import { graphic, type EChartsCoreOption } from 'echarts/core';
 import type { ModelUsageOverview } from '../../features/usage/types';
-import type { PlatformResource, ProviderConfig } from '../../features/platform/types';
+import type { PlatformResource } from '../../features/platform/types';
 import { toNullableNumber } from '../../features/platform/providerUtils';
 import { baseChartOption, readCssVar, usageChartPalette } from '../../features/usage/usageEcharts';
 import { useUsageChart } from '../../features/usage/useUsageChart';

@@ -99,14 +99,14 @@ function graphLayoutForMode(mode: string) {
   return 'linear';
 }
 
-function graphX(mode: string, index: number, total: number) {
+function graphX(mode: string, index: number, _total: number) {
   if (mode === 'parallel') return 160;
   return 160 + index * 150;
 }
 
-function graphY(mode: string, index: number, total: number) {
+function graphY(mode: string, index: number, _total: number) {
   if (mode !== 'parallel') return 80;
-  const offset = (index - (total - 1) / 2) * 74;
+  const offset = (index - (_total - 1) / 2) * 74;
   return 80 + offset;
 }
 

@@ -3,7 +3,7 @@
     "path": "/overview",
     "url": "http://localhost:9001/overview",
     "loadOk": true,
-    "loadMs": 9782,
+    "loadMs": 9954,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_overview.png"
@@ -12,7 +12,7 @@
     "path": "/usage/events",
     "url": "http://localhost:9001/usage/events",
     "loadOk": true,
-    "loadMs": 9088,
+    "loadMs": 9112,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_usage_events.png"
@@ -21,7 +21,7 @@
     "path": "/chat",
     "url": "http://localhost:9001/chat",
     "loadOk": true,
-    "loadMs": 8990,
+    "loadMs": 9026,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_chat.png"
@@ -30,7 +30,7 @@
     "path": "/sessions",
     "url": "http://localhost:9001/sessions",
     "loadOk": true,
-    "loadMs": 9342,
+    "loadMs": 9377,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_sessions.png"
@@ -39,7 +39,7 @@
     "path": "/memory",
     "url": "http://localhost:9001/memory",
     "loadOk": true,
-    "loadMs": 9038,
+    "loadMs": 9076,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_memory.png"
@@ -48,7 +48,7 @@
     "path": "/agents",
     "url": "http://localhost:9001/agents",
     "loadOk": true,
-    "loadMs": 9401,
+    "loadMs": 9426,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_agents.png"
@@ -57,7 +57,7 @@
     "path": "/settings/organization",
     "url": "http://localhost:9001/settings/organization",
     "loadOk": true,
-    "loadMs": 9496,
+    "loadMs": 9483,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_settings_organization.png"
@@ -66,7 +66,7 @@
     "path": "/team",
     "url": "http://localhost:9001/team",
     "loadOk": true,
-    "loadMs": 9027,
+    "loadMs": 9081,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_team.png"
@@ -75,7 +75,7 @@
     "path": "/graphs",
     "url": "http://localhost:9001/graphs",
     "loadOk": true,
-    "loadMs": 9065,
+    "loadMs": 9045,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_graphs.png"
@@ -84,7 +84,7 @@
     "path": "/models",
     "url": "http://localhost:9001/models",
     "loadOk": true,
-    "loadMs": 9050,
+    "loadMs": 9047,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_models.png"
@@ -93,7 +93,7 @@
     "path": "/channels",
     "url": "http://localhost:9001/channels",
     "loadOk": true,
-    "loadMs": 9023,
+    "loadMs": 9036,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_channels.png"
@@ -102,7 +102,7 @@
     "path": "/mcp-servers",
     "url": "http://localhost:9001/mcp-servers",
     "loadOk": true,
-    "loadMs": 9025,
+    "loadMs": 9004,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_mcp-servers.png"
@@ -111,7 +111,7 @@
     "path": "/skills",
     "url": "http://localhost:9001/skills",
     "loadOk": true,
-    "loadMs": 9051,
+    "loadMs": 9046,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_skills.png"
@@ -120,7 +120,7 @@
     "path": "/skills/runs",
     "url": "http://localhost:9001/skills/runs",
     "loadOk": true,
-    "loadMs": 9049,
+    "loadMs": 9033,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_skills_runs.png"
@@ -129,7 +129,7 @@
     "path": "/skills/evolution-suggestions",
     "url": "http://localhost:9001/skills/evolution-suggestions",
     "loadOk": true,
-    "loadMs": 9027,
+    "loadMs": 9011,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_skills_evolution-suggestions.png"
@@ -138,7 +138,7 @@
     "path": "/skills/experience-reports",
     "url": "http://localhost:9001/skills/experience-reports",
     "loadOk": true,
-    "loadMs": 9029,
+    "loadMs": 9071,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_skills_experience-reports.png"
@@ -147,7 +147,7 @@
     "path": "/plugins",
     "url": "http://localhost:9001/plugins",
     "loadOk": true,
-    "loadMs": 9059,
+    "loadMs": 9042,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_plugins.png"
@@ -156,7 +156,7 @@
     "path": "/plugins/runs",
     "url": "http://localhost:9001/plugins/runs",
     "loadOk": true,
-    "loadMs": 9045,
+    "loadMs": 9078,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_plugins_runs.png"
@@ -165,7 +165,7 @@
     "path": "/hooks",
     "url": "http://localhost:9001/hooks",
     "loadOk": true,
-    "loadMs": 9055,
+    "loadMs": 9027,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_hooks.png"
@@ -174,7 +174,7 @@
     "path": "/hooks/deliveries",
     "url": "http://localhost:9001/hooks/deliveries",
     "loadOk": true,
-    "loadMs": 9069,
+    "loadMs": 9038,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_hooks_deliveries.png"
@@ -183,7 +183,7 @@
     "path": "/webhooks",
     "url": "http://localhost:9001/webhooks",
     "loadOk": true,
-    "loadMs": 9029,
+    "loadMs": 9019,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_webhooks.png"
@@ -192,7 +192,7 @@
     "path": "/knowledge",
     "url": "http://localhost:9001/knowledge",
     "loadOk": true,
-    "loadMs": 9040,
+    "loadMs": 9043,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_knowledge.png"
@@ -201,7 +201,7 @@
     "path": "/artifacts",
     "url": "http://localhost:9001/artifacts",
     "loadOk": true,
-    "loadMs": 9026,
+    "loadMs": 9025,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_artifacts.png"
@@ -210,7 +210,7 @@
     "path": "/evaluation",
     "url": "http://localhost:9001/evaluation",
     "loadOk": true,
-    "loadMs": 9030,
+    "loadMs": 9013,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_evaluation.png"
@@ -219,7 +219,7 @@
     "path": "/a2a",
     "url": "http://localhost:9001/a2a",
     "loadOk": true,
-    "loadMs": 9072,
+    "loadMs": 9035,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_a2a.png"
@@ -228,7 +228,7 @@
     "path": "/tools",
     "url": "http://localhost:9001/tools",
     "loadOk": true,
-    "loadMs": 9413,
+    "loadMs": 9401,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_tools.png"
@@ -237,7 +237,7 @@
     "path": "/tools/runs",
     "url": "http://localhost:9001/tools/runs",
     "loadOk": true,
-    "loadMs": 9091,
+    "loadMs": 9068,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_tools_runs.png"
@@ -246,7 +246,7 @@
     "path": "/tools/audits",
     "url": "http://localhost:9001/tools/audits",
     "loadOk": true,
-    "loadMs": 9077,
+    "loadMs": 9076,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_tools_audits.png"
@@ -255,7 +255,7 @@
     "path": "/cron",
     "url": "http://localhost:9001/cron",
     "loadOk": true,
-    "loadMs": 9329,
+    "loadMs": 9010,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_cron.png"
@@ -264,7 +264,7 @@
     "path": "/monitor/logs",
     "url": "http://localhost:9001/monitor/logs",
     "loadOk": true,
-    "loadMs": 9041,
+    "loadMs": 9032,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_monitor_logs.png"
@@ -273,7 +273,7 @@
     "path": "/observability",
     "url": "http://localhost:9001/observability",
     "loadOk": true,
-    "loadMs": 9033,
+    "loadMs": 9017,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_observability.png"
@@ -282,7 +282,7 @@
     "path": "/shop",
     "url": "http://localhost:9001/shop",
     "loadOk": true,
-    "loadMs": 9029,
+    "loadMs": 9072,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_shop.png"
@@ -291,7 +291,7 @@
     "path": "/settings",
     "url": "http://localhost:9001/settings",
     "loadOk": true,
-    "loadMs": 9134,
+    "loadMs": 9088,
     "error": null,
     "logs": [],
     "screenshot": "F:\\aranea-agents\\.dogfood-output\\screenshots\\_settings.png"

@@ -89,6 +89,9 @@ func (s channelTestAgentRepo) GetAgentByID(context.Context, string) (biz.Agent, 
 func (s channelTestAgentRepo) GetAgentByAgentKey(context.Context, string) (biz.Agent, error) {
 	return biz.Agent{}, nil
 }
+func (s channelTestAgentRepo) ListAgentsByIDs(context.Context, []string) ([]biz.Agent, error) {
+	return nil, nil
+}
 func (s channelTestAgentRepo) CreateAgent(context.Context, biz.Agent) (biz.Agent, error) {
 	return biz.Agent{}, nil
 }

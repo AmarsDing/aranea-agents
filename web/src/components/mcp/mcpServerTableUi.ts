@@ -1,11 +1,6 @@
 import type { QTableColumn } from 'quasar';
 import type { PlatformResource } from '../../features/platform/types';
-import {
-  REGISTRY_COL_W,
-  registryCol,
-  registryColActions,
-  registryColEnabled,
-} from '../../features/ui/registryTableColumns';
+import { registryCol, registryColActions, registryColEnabled } from '../../features/ui/registryTableColumns';
 
 /** McpServersTable 列定义 */
 export const MCP_SERVER_TABLE_COLUMNS: QTableColumn<PlatformResource>[] = [

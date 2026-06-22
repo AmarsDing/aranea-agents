@@ -38,7 +38,7 @@ import { useI18n } from 'vue-i18n';
 
 const { t } = useI18n();
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
     modelValue: string;
     label?: string;
@@ -80,7 +80,7 @@ function onFileSelected(event: Event) {
   &__label {
     display: block;
     font-size: 12px;
-    color: #666;
+    color: var(--color-text-secondary); // S9 fix: theme token replaces hardcoded #666
     margin-bottom: 4px;
     line-height: 1;
   }
@@ -101,7 +101,7 @@ function onFileSelected(event: Event) {
 
   &__hint {
     font-size: 12px;
-    color: #999;
+    color: var(--color-text-tertiary); // S9 fix: theme token replaces hardcoded #999
     margin-top: 2px;
     line-height: 1.3;
   }

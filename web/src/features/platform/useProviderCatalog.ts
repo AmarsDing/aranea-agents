@@ -2,8 +2,8 @@ import { computed, ref, watch, type ComputedRef, type Ref } from 'vue';
 import { useQuasar } from 'quasar';
 import type { ProviderForm } from './types';
 import { errorMessage } from './providerUtils';
-import type { ProviderPreset, ProviderModelPreset } from '../../config/providerPresets';
-import { PROVIDER_RUNTIME_OVERLAY, runtimeProfileFor } from '../../config/providerRuntimeOverlay';
+import type { ProviderPreset } from '../../config/providerPresets';
+import { runtimeProfileFor } from '../../config/providerRuntimeOverlay';
 import { applyCatalogModelFields, applyCatalogProviderFields, catalogModelToCost } from '../model-catalog/applyCatalog';
 // TECH-DEBT: direct API calls; move to store — issue #catalog-bypass
 // useProviderCatalog 直接调用 listCatalogProviders / listCatalogModels，

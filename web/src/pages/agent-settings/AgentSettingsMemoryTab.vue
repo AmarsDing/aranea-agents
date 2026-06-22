@@ -12,7 +12,7 @@
       </div>
     </section>
 
-    <memory-heartbeat-section :config="config" :memory-layers-disabled="memoryLayersDisabled" />
+    <memory-heartbeat-section v-model:config="config" :memory-layers-disabled="memoryLayersDisabled" />
 
     <memory-optional-files-section
       :available-optional-files="availableOptionalFiles"
@@ -21,7 +21,7 @@
     />
 
     <memory-level-section
-      :config="config"
+      v-model:config="config"
       :truncate-strategy-options="truncateStrategyOptions"
       :snapshot-mode-options="snapshotModeOptions"
       :memory-scope-options="memoryScopeOptions"
@@ -33,6 +33,7 @@
 </template>
 
 <script setup lang="ts">
+const config = defineModel<AgentRuntimeConfigForm>('config', { required: true });
 import { computed } from 'vue';
 import type { AgentFile } from '../../components/agents/agentUi';
 import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeConfig';
@@ -40,9 +41,8 @@ import MemoryHeartbeatSection from '../../components/agents/MemoryHeartbeatSecti
 import MemoryOptionalFilesSection from '../../components/agents/MemoryOptionalFilesSection.vue';
 import MemoryLevelSection from '../../components/agents/MemoryLevelSection.vue';
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
-    config: AgentRuntimeConfigForm;
     truncateStrategyOptions: { label: string; value: string }[];
     snapshotModeOptions: { label: string; value: string }[];
     memoryScopeOptions: { label: string; value: string }[];
@@ -59,5 +59,5 @@ defineEmits<{
   'add-optional-file': [name: string];
 }>();
 
-const memoryLayersDisabled = computed(() => !props.config.memory.enabled);
+const memoryLayersDisabled = computed(() => !config.value.memory.enabled);
 </script>

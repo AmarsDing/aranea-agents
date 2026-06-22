@@ -38,8 +38,9 @@
 <script setup lang="ts">
 import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeConfig';
 
+const config = defineModel<AgentRuntimeConfigForm>('config', { required: true });
+
 defineProps<{
-  config: AgentRuntimeConfigForm;
   memoryLayersDisabled: boolean;
 }>();
 </script>

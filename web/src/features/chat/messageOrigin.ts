@@ -13,7 +13,7 @@ export type { MessageOrigin };
  * Migration plan: after streamHandlers / toolEventMarkdown always set origin,
  * flip `ensureOrigin` to throw on missing origin, then remove `originFromId`.
  */
-export function originFromId(id: string, role: string): MessageOrigin {
+export function originFromId(id: string, _role: string): MessageOrigin {
   if (id.startsWith('pending-user-')) return { kind: 'pending_user', localId: id };
   if (id.startsWith('actv-')) return { kind: 'streaming', sessionId: '' };
   if (id.startsWith('ws-stream-')) return { kind: 'streaming', sessionId: '' };

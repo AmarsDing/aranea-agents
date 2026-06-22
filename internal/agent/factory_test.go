@@ -35,6 +35,9 @@ func (m *memAgentRepo) GetAgentByAgentKey(_ context.Context, key string) (biz.Ag
 	}
 	return biz.Agent{}, sql.ErrNoRows
 }
+func (m *memAgentRepo) ListAgentsByIDs(_ context.Context, _ []string) ([]biz.Agent, error) {
+	return nil, nil
+}
 func (m *memAgentRepo) CreateAgent(context.Context, biz.Agent) (biz.Agent, error) {
 	return biz.Agent{}, nil
 }

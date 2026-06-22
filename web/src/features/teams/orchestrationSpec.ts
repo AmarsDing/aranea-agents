@@ -24,7 +24,7 @@ export function toOrchestrationSpec(def: TeamDefinition): OrchestrationSpec {
 }
 
 export function fromOrchestrationSpec(spec: OrchestrationSpec): TeamDefinition {
-  const { turn_timeout_sec, first_byte_timeout_sec, ...rest } = spec;
+  const { turn_timeout_sec, ...rest } = spec;
   return {
     ...rest,
     version: spec.version ?? 2,

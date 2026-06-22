@@ -1,4 +1,4 @@
-import { nextTick, ref, type Ref, type ComputedRef } from 'vue';
+import { nextTick, ref, type Ref } from 'vue';
 import { useQuasar } from 'quasar';
 import { useRouter } from 'vue-router';
 import { useSessionStore } from '../../../stores/session';

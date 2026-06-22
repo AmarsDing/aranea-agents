@@ -57,6 +57,10 @@ func (s *stubAgentReader) ListExtrasForAgents(_ context.Context, _ []string) (ma
 	return nil, nil
 }
 
+func (s *stubAgentReader) ListAgentsByIDs(_ context.Context, _ []string) ([]biz.Agent, error) {
+	return nil, nil
+}
+
 func (s *stubAgentReader) Calls() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -1,0 +1,58 @@
+[
+  {
+    "file": "\\src\\components\\agents\\AgentHooksPanel.vue",
+    "line": 4
+  },
+  {
+    "file": "\\src\\components\\chat\\ChatReasoningDrawer.vue",
+    "line": 24
+  },
+  {
+    "file": "\\src\\components\\chat\\CodeBlock.vue",
+    "line": 21
+  },
+  {
+    "file": "\\src\\components\\chat\\ReplyBlock.vue",
+    "line": 10
+  },
+  {
+    "file": "\\src\\components\\chat\\ThinkingBlock.vue",
+    "line": 63
+  },
+  {
+    "file": "\\src\\components\\chat\\UserMessageBubble.vue",
+    "line": 5
+  },
+  {
+    "file": "\\src\\components\\common\\CodeEditor.vue",
+    "line": 14
+  },
+  {
+    "file": "\\src\\components\\common\\JsonCodeViewer.vue",
+    "line": 10
+  },
+  {
+    "file": "\\src\\components\\platform\\ProviderLogo.vue",
+    "line": 3
+  },
+  {
+    "file": "\\src\\components\\sessions\\SessionMessagesPanel.vue",
+    "line": 27
+  },
+  {
+    "file": "\\src\\components\\spirit\\MemberReadOnlyPanel.vue",
+    "line": 78
+  },
+  {
+    "file": "\\src\\components\\spirit\\SynthesisResultCard.vue",
+    "line": 22
+  },
+  {
+    "file": "\\src\\components\\spirit\\TaskExecutionPanel.vue",
+    "line": 79
+  },
+  {
+    "file": "\\src\\components\\spirit\\TaskExecutionPanel.vue",
+    "line": 102
+  }
+]

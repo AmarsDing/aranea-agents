@@ -131,7 +131,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     };
   }
 
-  function sessionContextHandlers(sessionId: string) {
+  function sessionContextHandlers(_sessionId: string) {
     return {
       onSessionContextPatch: (sid: string, patch: Parameters<typeof deps.sessionStore.patchSessionMetricsLocal>[1]) => {
         deps.sessionStore.patchSessionMetricsLocal(sid, patch);

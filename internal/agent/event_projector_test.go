@@ -612,9 +612,10 @@ func TestEventProjector_projectMemberText_Partial(t *testing.T) {
 		t.Errorf("second-call envelope type=%q want %q",
 			envs2[0].Type, event.EnvelopeTypeMemberDelta)
 	}
-	// visibleStreamDelta returns only the suffix delta (" world").
-	if envs2[0].Content.Text != " world" {
-		t.Errorf("second delta content text=%q want %q", envs2[0].Content.Text, " world")
+	// visibleStreamDelta returns only the suffix delta (" world"), but
+	// projectMemberText applies strings.TrimSpace before building the envelope.
+	if envs2[0].Content.Text != "world" {
+		t.Errorf("second delta content text=%q want %q", envs2[0].Content.Text, "world")
 	}
 }
 

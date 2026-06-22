@@ -18,6 +18,7 @@
     </div>
 
     <!-- Expanded code body -->
+    <!-- eslint-disable-next-line vue/no-v-html -- syntax highlighted HTML from trusted highlighter -->
     <pre v-else class="code-block__body"><code v-html="highlightedHtml" /></pre>
 
     <!-- Collapse toggle (only when expanded and > 20 lines) -->

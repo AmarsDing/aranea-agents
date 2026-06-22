@@ -1,4 +1,4 @@
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import axios from 'axios';
 import { hasIndexingDocuments } from './knowledgeUi';
@@ -247,7 +247,7 @@ export function useKnowledgePage() {
       if (textLike) {
         try {
           ingestForm.value.text = new TextDecoder('utf-8', { fatal: false }).decode(buf);
-        } catch {
+        } catch (_e) {
           ingestForm.value.text = '';
         }
       } else {
@@ -396,7 +396,7 @@ export function useKnowledgePage() {
   async function loadEmbedderConfig() {
     try {
       await knowledgeStore.loadEmbedderConfig();
-    } catch (e) {
+    } catch (_e) {
       $q.notify({ type: 'warning', message: 'Embedder 配置加载失败，检索功能可能不可用' });
     }
   }

@@ -11,6 +11,7 @@
         <span v-for="n in lineCount" :key="n">{{ n }}</span>
       </div>
       <div class="code-editor__editor">
+        <!-- eslint-disable-next-line vue/no-v-html -- syntax highlighted code HTML -->
         <pre class="code-editor__highlight" aria-hidden="true"><code v-html="highlightedCode"></code></pre>
         <textarea
           ref="textareaEl"
@@ -35,7 +36,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { useQuasar } from 'quasar';
 
 const props = withDefaults(
@@ -224,31 +225,18 @@ watch(
 
 <style lang="scss">
 .code-editor {
-  --ce-bg: #fff;
-  --ce-text: #1d1d1d;
-  --ce-line-bg: #f5f5f5;
-  --ce-line-text: #999;
-  --ce-border: #c0c0c0;
-  --ce-key-color: #0451a5;
-  --ce-string-color: #a31515;
-  --ce-number-color: #098658;
-  --ce-boolean-color: #0000ff;
-  --ce-null-color: #0000ff;
-  --ce-placeholder: #aaa;
-
-  &--dark {
-    --ce-bg: #1e1e1e;
-    --ce-text: #d4d4d4;
-    --ce-line-bg: #252526;
-    --ce-line-text: #858585;
-    --ce-border: #3c3c3c;
-    --ce-key-color: #9cdcfe;
-    --ce-string-color: #ce9178;
-    --ce-number-color: #b5cea8;
-    --ce-boolean-color: #569cd6;
-    --ce-null-color: #569cd6;
-    --ce-placeholder: #555;
-  }
+  --ce-bg: var(--color-surface-solid);
+  --ce-text: var(--color-text-primary);
+  --ce-line-bg: var(--color-surface-soft);
+  --ce-line-text: var(--color-text-secondary);
+  --ce-border: var(--color-border-soft);
+  --ce-key-color: var(--color-json-key);
+  --ce-string-color: var(--color-json-string);
+  --ce-number-color: var(--color-json-number);
+  --ce-boolean-color: var(--color-json-boolean);
+  --ce-null-color: var(--color-json-null);
+  --ce-placeholder: var(--color-text-tertiary);
+  --ce-error: var(--color-danger);
 
   &__label {
     display: block;
@@ -373,21 +361,13 @@ watch(
 
   &__error {
     font-size: 12px;
-    color: #c10015;
+    color: var(--ce-error);
     margin-top: 2px;
     line-height: 1.3;
   }
 
   &--error &__wrapper {
-    border-color: #c10015;
-  }
-
-  &--dark &__error {
-    color: #ff6b6b;
-  }
-
-  &--dark.code-editor--error &__wrapper {
-    border-color: #ff6b6b;
+    border-color: var(--ce-error);
   }
 }
 </style>

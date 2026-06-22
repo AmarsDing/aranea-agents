@@ -17,12 +17,14 @@
       </div>
       <q-separator />
       <div ref="viewportRef" class="chat-reasoning-drawer__body" @wheel="onWheel">
+        <!-- eslint-disable vue/no-v-html -- sanitized markdown HTML -->
         <div
           class="chat-reasoning-drawer__content chat-message-prose"
           :class="{ 'chat-message-content--dark': isDark }"
           :style="contentStyle"
           v-html="renderedHtml"
-        />
+        ></div>
+        <!-- eslint-enable vue/no-v-html -->
       </div>
       <div v-if="canScroll && !followTail" class="chat-reasoning-drawer__hint text-caption">
         {{ t('chat.reasoningScrollHint', '滚轮查看更多') }}

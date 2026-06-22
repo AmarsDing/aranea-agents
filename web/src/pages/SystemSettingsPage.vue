@@ -139,7 +139,7 @@
                     </div>
                   </div>
                   <web-research-fields
-                    :form="webResearchForm"
+                    v-model:form="webResearchForm"
                     :configured="webResearchConfigured"
                     :has-api-key="webResearchHasApiKey"
                     :testing="webResearchTesting"
@@ -172,7 +172,7 @@
                     </div>
                   </div>
                   <knowledge-embedder-fields
-                    :form="knowledgeEmbedForm"
+                    v-model:form="knowledgeEmbedForm"
                     :configured="knowledgeEmbedConfigured"
                     :has-api-key="knowledgeEmbedHasApiKey"
                     show-status

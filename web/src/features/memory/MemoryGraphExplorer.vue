@@ -94,7 +94,11 @@
             </svg>
           </div>
 
-          <AppRegistryMarkupTable :rows="neighborhood.relations" :columns="relationColumns" row-key="id">
+          <AppRegistryMarkupTable
+            :rows="neighborhood.relations"
+            :columns="relationColumns as RegistryTableColumn[]"
+            row-key="id"
+          >
             <template #cell-source_id="{ row }">
               {{ entityName(String(row.source_id)) }}
             </template>
@@ -123,6 +127,7 @@ import { computed, ref, watch } from 'vue';
 import AppRegistryMarkupTable from '../../components/layout/AppRegistryMarkupTable.vue';
 import { RELATION_COLUMNS } from './memoryTableUi';
 import type { MemoryEntity } from './types';
+import type { RegistryTableColumn } from '../ui/registryTableColumns';
 import { useMemoryGraphExplorer } from './composables/useMemoryGraphExplorer';
 const {
   neighborhood,

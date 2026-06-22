@@ -89,6 +89,7 @@
 </template>
 
 <script setup lang="ts">
+const form = defineModel<WebResearchFormState>('form', { required: true });
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
@@ -97,8 +98,7 @@ import {
   type WebResearchFormState,
 } from '../../features/system-settings/web-research';
 
-const props = defineProps<{
-  form: WebResearchFormState;
+defineProps<{
   configured?: boolean;
   hasApiKey?: boolean;
   showStatus?: boolean;
@@ -114,7 +114,7 @@ const providerOptions = WEB_RESEARCH_PROVIDER_OPTIONS;
 const depthOptions = WEB_RESEARCH_DEPTH_OPTIONS;
 
 const apiKeyLabel = computed(() =>
-  props.form.provider === 'serpapi'
+  form.value.provider === 'serpapi'
     ? t('settingsPage.webResearch.serpApiKey')
     : t('settingsPage.webResearch.tavilyApiKey'),
 );

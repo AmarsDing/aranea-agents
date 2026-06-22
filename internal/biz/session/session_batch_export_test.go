@@ -119,7 +119,13 @@ func TestPreviewBatch(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &testRepo{listSessionsByIDsFn: tt.listByIDsFn}
 			uc := newTestUc(repo)
-			got, err := uc.PreviewBatch(context.Background(), tt.mode, tt.ids, tt.olderThanDays, tt.scope, tt.includeArchived)
+			got, err := uc.PreviewBatch(context.Background(), BatchOperationParams{
+				Mode:            tt.mode,
+				IDs:             tt.ids,
+				OlderThanDays:   tt.olderThanDays,
+				Scope:           tt.scope,
+				IncludeArchived: tt.includeArchived,
+			})
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")

@@ -1,6 +1,7 @@
 <template>
   <div class="agent-hooks-panel">
     <div class="row items-center justify-between q-mb-md">
+      <!-- eslint-disable-next-line vue/no-v-html -- trusted i18n HTML hint -->
       <p class="agent-hooks-panel__hint q-ma-none" v-html="t('hooksPage.agentPanel.hint')" />
       <q-btn
         flat

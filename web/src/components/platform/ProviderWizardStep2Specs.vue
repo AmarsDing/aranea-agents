@@ -161,10 +161,10 @@
 </template>
 
 <script setup lang="ts">
+const providerForm = defineModel<ProviderForm>('providerForm', { required: true });
 import type { ProviderForm, ModelCategory } from '../../features/platform/types';
 
 defineProps<{
-  providerForm: ProviderForm;
   providerAddMode: 'catalog' | 'custom';
   categoryOptions: ModelCategory[];
   catalogPricingMissing: boolean;

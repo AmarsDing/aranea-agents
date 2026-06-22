@@ -1,4 +1,4 @@
-import { asRecord, pickI32, pickNum, pickStr } from '../../shared/wireJson';
+import { asRecord, pickI32, pickStr } from '../../shared/wireJson';
 
 /** @deprecated Use mapCollection from features/knowledge/api.ts instead — this type omits description/workspace/updated_at. */
 export type KnowledgeCollectionRow = {

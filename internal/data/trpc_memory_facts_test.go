@@ -206,7 +206,12 @@ func TestMemoryAdminUsecase_RequireAdminWhenStoreMissing(t *testing.T) {
 	if uc == nil {
 		t.Fatal("expected vec-only usecase")
 	}
-	_, _, _, _, err := uc.ListFactRows(context.Background(), "agent", "a1", "", "", "", 10, 0)
+	_, _, _, _, err := uc.ListFactRows(context.Background(), biz.ListFactRowsParams{
+		ScopeType: "agent",
+		ScopeID:   "a1",
+		Limit:     10,
+		Offset:    0,
+	})
 	if err == nil {
 		t.Fatal("expected error when admin store missing")
 	}

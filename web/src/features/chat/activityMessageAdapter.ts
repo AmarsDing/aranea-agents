@@ -4,7 +4,6 @@ import type { Activity, ActivityStartMeta, ActivityDeltaMeta, ActivityDoneMeta }
 import { createPlaceholderMessage } from './streamHandlers';
 import { toolEventToMessage } from './toolEventMarkdown';
 import { canonicalToolStatus } from './lib/statusMap';
-import { activityMessageId } from './lib/activityMessageId';
 
 /**
  * activityMessageAdapter translates Activity event metadata into Message

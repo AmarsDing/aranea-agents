@@ -21,6 +21,8 @@ withDefaults(
     feature?: boolean;
   }>(),
   {
+    kicker: undefined,
+    subtitle: undefined,
     feature: false,
   },
 );

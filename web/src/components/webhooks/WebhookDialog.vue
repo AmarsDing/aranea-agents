@@ -88,21 +88,21 @@ const { t } = useI18n();
 
 const open = defineModel<boolean>('open', { required: true });
 
-const props = defineProps<{
+defineProps<{
   editingId: string;
   saving: boolean;
 }>();
 
 defineEmits<{ save: [] }>();
 
-const form = reactive({
+let form = reactive({
   name: '',
   url: '',
   secret: '',
   enabled: true,
 });
 
-const selectedEventTypes = reactive<string[]>([]);
+let selectedEventTypes = reactive<string[]>([]);
 const headerEntries = reactive<{ key: string; value: string }[]>([]);
 
 function reset() {

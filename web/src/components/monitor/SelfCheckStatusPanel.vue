@@ -92,7 +92,7 @@
 <script setup lang="ts">
 import type { SelfCheckReport, SelfCheckStatus } from '../../features/monitor/types';
 
-const props = defineProps<{
+defineProps<{
   loading: boolean;
   triggering: boolean;
   latestReport: SelfCheckReport | null;

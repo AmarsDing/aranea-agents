@@ -74,6 +74,18 @@ func (r *memArtifactRepo) LoadMeta(_ context.Context, id string, _ int) (biz.Art
 	return e.meta, nil
 }
 
+func (r *memArtifactRepo) LoadMetas(_ context.Context, ids []string, _ int) ([]biz.Artifact, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]biz.Artifact, 0, len(ids))
+	for _, id := range ids {
+		if e, ok := r.store[id]; ok {
+			out = append(out, e.meta)
+		}
+	}
+	return out, nil
+}
+
 func (r *memArtifactRepo) List(_ context.Context, sessionID string, _, _ int) ([]biz.Artifact, int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

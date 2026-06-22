@@ -1,5 +1,4 @@
 import { REGISTRY_COL_W, registryCol } from '../../features/ui/registryTableColumns';
-import type { ModelTokenUsageEvent } from '../../features/usage/types';
 
 export const usageAnomalyColumns = [
   registryCol('occurred_at', '时间', 'occurred_at', 'left', REGISTRY_COL_W.time),

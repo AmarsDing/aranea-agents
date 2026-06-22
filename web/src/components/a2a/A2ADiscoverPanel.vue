@@ -25,29 +25,31 @@
       hide-pagination
       :pagination="{ rowsPerPage: 0 }"
     >
-      <template #body-cell-agent_id="props">
-        <q-td :props="props">
-          <div class="app-registry-cell-primary ellipsis" :title="props.row.agent_id">{{ props.row.agent_id }}</div>
+      <template #body-cell-agent_id="slotProps">
+        <q-td :props="slotProps">
+          <div class="app-registry-cell-primary ellipsis" :title="slotProps.row.agent_id">
+            {{ slotProps.row.agent_id }}
+          </div>
         </q-td>
       </template>
-      <template #body-cell-display_name="props">
-        <q-td :props="props">
-          <span class="app-registry-cell-sub ellipsis" :title="props.row.display_name">{{
-            props.row.display_name || '—'
+      <template #body-cell-display_name="slotProps">
+        <q-td :props="slotProps">
+          <span class="app-registry-cell-sub ellipsis" :title="slotProps.row.display_name">{{
+            slotProps.row.display_name || '—'
           }}</span>
         </q-td>
       </template>
-      <template #body-cell-enabled="props">
-        <q-td :props="props">
-          <q-chip dense :color="props.row.enabled ? 'positive' : 'grey'" text-color="white" size="sm">
-            {{ props.row.enabled ? '启用' : '禁用' }}
+      <template #body-cell-enabled="slotProps">
+        <q-td :props="slotProps">
+          <q-chip dense :color="slotProps.row.enabled ? 'positive' : 'grey'" text-color="white" size="sm">
+            {{ slotProps.row.enabled ? '启用' : '禁用' }}
           </q-chip>
         </q-td>
       </template>
-      <template #body-cell-capabilities="props">
-        <q-td :props="props">
+      <template #body-cell-capabilities="slotProps">
+        <q-td :props="slotProps">
           <div class="app-registry-chip-wrap">
-            <q-chip v-for="c in props.row.capabilities" :key="c.name" dense outline size="sm">{{ c.name }}</q-chip>
+            <q-chip v-for="c in slotProps.row.capabilities" :key="c.name" dense outline size="sm">{{ c.name }}</q-chip>
           </div>
         </q-td>
       </template>

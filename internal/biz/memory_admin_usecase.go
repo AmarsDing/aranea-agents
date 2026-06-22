@@ -137,18 +137,44 @@ func (uc *MemoryAdminUsecase) ListL1FieldRows(ctx context.Context, taskID string
 	return uc.admin.ListL1FieldRows(ctx, taskID, includeInternal, requestingAgentID...)
 }
 
-func (uc *MemoryAdminUsecase) ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword string, limit, offset int32) ([][]byte, int32, int32, int32, error) {
+// ListFactRowsParams encapsulates parameters for ListFactRows.
+// Introduced to keep the method signature under the 5-parameter limit (S4/S5 fix).
+type ListFactRowsParams struct {
+	ScopeType string
+	ScopeID   string
+	Kind      string
+	Status    string
+	Keyword   string
+	Limit     int32
+	Offset    int32
+}
+
+func (uc *MemoryAdminUsecase) ListFactRows(ctx context.Context, p ListFactRowsParams) ([][]byte, int32, int32, int32, error) {
 	if err := uc.requireAdmin(); err != nil {
 		return nil, 0, 0, 0, err
 	}
-	return uc.admin.ListFactRows(ctx, scopeType, scopeID, kind, status, keyword, limit, offset)
+	return uc.admin.ListFactRows(ctx, p.ScopeType, p.ScopeID, p.Kind, p.Status, p.Keyword, p.Limit, p.Offset)
 }
 
-func (uc *MemoryAdminUsecase) ListEntityRows(ctx context.Context, scopeType, scopeID, workspaceID, userID, entityType, status, keyword string, limit, offset int32) ([][]byte, int32, error) {
+// ListEntityRowsParams encapsulates parameters for ListEntityRows.
+// Introduced to keep the method signature under the 5-parameter limit (S4/S5 fix).
+type ListEntityRowsParams struct {
+	ScopeType   string
+	ScopeID     string
+	WorkspaceID string
+	UserID      string
+	EntityType  string
+	Status      string
+	Keyword     string
+	Limit       int32
+	Offset      int32
+}
+
+func (uc *MemoryAdminUsecase) ListEntityRows(ctx context.Context, p ListEntityRowsParams) ([][]byte, int32, error) {
 	if err := uc.requireAdmin(); err != nil {
 		return nil, 0, err
 	}
-	return uc.admin.ListEntityRows(ctx, scopeType, scopeID, workspaceID, userID, entityType, status, keyword, limit, offset)
+	return uc.admin.ListEntityRows(ctx, p.ScopeType, p.ScopeID, p.WorkspaceID, p.UserID, p.EntityType, p.Status, p.Keyword, p.Limit, p.Offset)
 }
 
 func (uc *MemoryAdminUsecase) NeighborhoodJSON(ctx context.Context, centerID string, hops, maxNodes int32, queryAtRFC3339 string) ([]byte, error) {

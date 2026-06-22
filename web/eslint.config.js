@@ -52,7 +52,14 @@ export default tseslint.config(
       'prettier/prettier': 'warn',
       'vue/multi-word-component-names': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    files: ['**/*.spec.ts', '**/*.test.ts'],
+    rules: {
+      // Tests use `any` for partial mocks; keep production code strict.
+      '@typescript-eslint/no-explicit-any': 'off',
     },
   },
 )

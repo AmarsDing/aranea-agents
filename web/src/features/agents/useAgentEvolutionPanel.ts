@@ -1,6 +1,6 @@
 import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
-import type { EvolutionKey } from '../../components/agents/agentUi';
+
 import type { EvolutionMetrics } from './types';
 import { useAgentDetailStore } from '../../stores/agents/detail';
 import { useSkillEvolutionStore } from '../../stores/skillEvolution';

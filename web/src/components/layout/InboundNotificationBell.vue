@@ -48,7 +48,7 @@ import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import type { InboundNotification } from '../../stores/inboundNotifications';
 
-const props = defineProps<{
+defineProps<{
   items: InboundNotification[];
   unreadCount: number;
 }>();

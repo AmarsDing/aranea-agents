@@ -38,44 +38,44 @@
         hide-pagination
         :pagination="{ rowsPerPage: 0 }"
       >
-        <template #body-cell-name="props">
-          <q-td :props="props">
+        <template #body-cell-name="slotProps">
+          <q-td :props="slotProps">
             <div class="min-width-0">
               <div class="app-registry-cell-primary ellipsis">
-                {{ props.row.name || props.row.key || 'unknown' }}
+                {{ slotProps.row.name || slotProps.row.key || 'unknown' }}
               </div>
               <div class="app-registry-cell-sub ellipsis">
-                {{ props.row.provider || 'provider' }} / {{ props.row.model || 'model' }}
+                {{ slotProps.row.provider || 'provider' }} / {{ slotProps.row.model || 'model' }}
                 ·
-                <q-badge dense :color="statusColor(props.row.status)" text-color="white">{{
-                  props.row.status || 'unknown'
+                <q-badge dense :color="statusColor(slotProps.row.status)" text-color="white">{{
+                  slotProps.row.status || 'unknown'
                 }}</q-badge>
               </div>
             </div>
           </q-td>
         </template>
-        <template #body-cell-agent="props">
-          <q-td :props="props">
-            <span class="app-registry-cell-sub">{{ props.row.agent_id || '-' }}</span>
+        <template #body-cell-agent="slotProps">
+          <q-td :props="slotProps">
+            <span class="app-registry-cell-sub">{{ slotProps.row.agent_id || '-' }}</span>
           </q-td>
         </template>
-        <template #body-cell-provider="props">
-          <q-td :props="props">
-            <span class="app-registry-cell-sub">{{ props.row.provider || '-' }}</span>
+        <template #body-cell-provider="slotProps">
+          <q-td :props="slotProps">
+            <span class="app-registry-cell-sub">{{ slotProps.row.provider || '-' }}</span>
           </q-td>
         </template>
-        <template #body-cell-model="props">
-          <q-td :props="props">
-            <span class="app-registry-cell-sub">{{ props.row.model || '-' }}</span>
+        <template #body-cell-model="slotProps">
+          <q-td :props="slotProps">
+            <span class="app-registry-cell-sub">{{ slotProps.row.model || '-' }}</span>
           </q-td>
         </template>
-        <template #body-cell-time="props">
-          <q-td :props="props">
-            <span class="app-registry-cell-sub">{{ formatDate(props.row.created_at) }}</span>
+        <template #body-cell-time="slotProps">
+          <q-td :props="slotProps">
+            <span class="app-registry-cell-sub">{{ formatDate(slotProps.row.created_at) }}</span>
           </q-td>
         </template>
-        <template #body-cell-actions="props">
-          <q-td :props="props">
+        <template #body-cell-actions="slotProps">
+          <q-td :props="slotProps">
             <div class="app-registry-cell-actions">
               <q-btn
                 flat
@@ -84,7 +84,7 @@
                 icon="account_tree"
                 color="accent"
                 aria-label="查看 Trace"
-                @click="$emit('openTrace', props.row)"
+                @click="$emit('openTrace', slotProps.row)"
               >
                 <q-tooltip>详情</q-tooltip>
               </q-btn>

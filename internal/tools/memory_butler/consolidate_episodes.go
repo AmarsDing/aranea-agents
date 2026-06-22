@@ -27,7 +27,13 @@ func newConsolidateEpisodesTool(deps Deps) trpctool.Tool {
 		}
 
 		// List episodic facts (kind="episode") for the agent.
-		rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, "agent", input.AgentID, "episode", "", "", defaultFactListLimit, 0)
+		rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, biz.ListFactRowsParams{
+			ScopeType: "agent",
+			ScopeID:   input.AgentID,
+			Kind:      "episode",
+			Limit:     defaultFactListLimit,
+			Offset:    0,
+		})
 		if err != nil {
 			return consolidateEpisodesOutput{}, err
 		}

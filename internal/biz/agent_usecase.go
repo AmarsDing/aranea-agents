@@ -38,6 +38,9 @@ type AgentReader interface {
 	GetAgentByID(ctx context.Context, id string) (Agent, error)
 	GetAgentByAgentKey(ctx context.Context, agentKey string) (Agent, error)
 	ListExtrasForAgents(ctx context.Context, agentIDs []string) (map[string]AgentListExtras, error)
+	// ListAgentsByIDs returns agents matching the given IDs (order not guaranteed).
+	// Missing IDs are silently skipped — callers should check len(result) vs len(ids).
+	ListAgentsByIDs(ctx context.Context, ids []string) ([]Agent, error)
 }
 
 // Stability:stable

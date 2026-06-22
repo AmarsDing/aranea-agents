@@ -958,7 +958,10 @@ func TestRecordRunnerCompletion_NewCompletion(t *testing.T) {
 	err := uc.RecordRunnerCompletion(
 		context.Background(),
 		monitor.EventWrite{EventKey: "runner.completion"},
-		"sess1", "run1", "inv1", "usage1", "trace1", bridge,
+		monitor.RunnerCompletionLinkParams{
+			SessionID: "sess1", RunID: "run1", InvocationID: "inv1",
+			UsageEventID: "usage1", TraceID: "trace1", Bridge: bridge,
+		},
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -998,7 +1001,10 @@ func TestRecordRunnerCompletion_ExistingCompletion(t *testing.T) {
 	err := uc.RecordRunnerCompletion(
 		context.Background(),
 		monitor.EventWrite{EventKey: "runner.completion"},
-		"sess1", "run1", "inv1", "usage1", "trace1", bridge,
+		monitor.RunnerCompletionLinkParams{
+			SessionID: "sess1", RunID: "run1", InvocationID: "inv1",
+			UsageEventID: "usage1", TraceID: "trace1", Bridge: bridge,
+		},
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1022,7 +1028,10 @@ func TestRecordRunnerCompletion_ExistsCheckError(t *testing.T) {
 	err := uc.RecordRunnerCompletion(
 		context.Background(),
 		monitor.EventWrite{EventKey: "runner.completion"},
-		"sess1", "run1", "inv1", "", "", bridge,
+		monitor.RunnerCompletionLinkParams{
+			SessionID: "sess1", RunID: "run1", InvocationID: "inv1",
+			Bridge: bridge,
+		},
 	)
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -1043,7 +1052,10 @@ func TestRecordRunnerCompletion_InsertError(t *testing.T) {
 	err := uc.RecordRunnerCompletion(
 		context.Background(),
 		monitor.EventWrite{EventKey: "runner.completion"},
-		"sess1", "run1", "inv1", "", "", bridge,
+		monitor.RunnerCompletionLinkParams{
+			SessionID: "sess1", RunID: "run1", InvocationID: "inv1",
+			Bridge: bridge,
+		},
 	)
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -1067,7 +1079,10 @@ func TestRecordRunnerCompletion_PatchError(t *testing.T) {
 	err := uc.RecordRunnerCompletion(
 		context.Background(),
 		monitor.EventWrite{EventKey: "runner.completion"},
-		"sess1", "run1", "inv1", "usage1", "trace1", bridge,
+		monitor.RunnerCompletionLinkParams{
+			SessionID: "sess1", RunID: "run1", InvocationID: "inv1",
+			UsageEventID: "usage1", TraceID: "trace1", Bridge: bridge,
+		},
 	)
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -1079,7 +1094,9 @@ func TestRecordRunnerCompletion_NilUsecase(t *testing.T) {
 	err := uc.RecordRunnerCompletion(
 		context.Background(),
 		monitor.EventWrite{EventKey: "runner.completion"},
-		"sess1", "run1", "inv1", "", "", nil,
+		monitor.RunnerCompletionLinkParams{
+			SessionID: "sess1", RunID: "run1", InvocationID: "inv1",
+		},
 	)
 	if err != nil {
 		t.Fatalf("nil usecase should return nil, got: %v", err)
@@ -1102,7 +1119,9 @@ func TestRecordRunnerCompletion_EmptySessionID(t *testing.T) {
 	err := uc.RecordRunnerCompletion(
 		context.Background(),
 		monitor.EventWrite{EventKey: "runner.completion"},
-		"", "run1", "inv1", "", "", bridge,
+		monitor.RunnerCompletionLinkParams{
+			RunID: "run1", InvocationID: "inv1", Bridge: bridge,
+		},
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1132,7 +1151,10 @@ func TestRecordRunnerCompletion_UsageEventIDClearsTurn(t *testing.T) {
 	err := uc.RecordRunnerCompletion(
 		context.Background(),
 		monitor.EventWrite{EventKey: "runner.completion"},
-		"sess1", "run1", "inv1", "usage1", "", bridge,
+		monitor.RunnerCompletionLinkParams{
+			SessionID: "sess1", RunID: "run1", InvocationID: "inv1",
+			UsageEventID: "usage1", Bridge: bridge,
+		},
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1681,7 +1703,9 @@ func TestLinkRunnerCompletionUsage_Success(t *testing.T) {
 		},
 	}
 	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
-	err := uc.LinkRunnerCompletionUsage(context.Background(), "sess1", "run1", "usage1", "trace1", bridge)
+	err := uc.LinkRunnerCompletionUsage(context.Background(), monitor.RunnerCompletionLinkParams{
+		SessionID: "sess1", RunID: "run1", UsageEventID: "usage1", TraceID: "trace1", Bridge: bridge,
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1700,7 +1724,9 @@ func TestLinkRunnerCompletionUsage_EmptySessionID(t *testing.T) {
 	repo := &mockRepo{}
 	bridge := &mockRunnerCompletionBridge{}
 	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
-	err := uc.LinkRunnerCompletionUsage(context.Background(), "", "run1", "usage1", "trace1", bridge)
+	err := uc.LinkRunnerCompletionUsage(context.Background(), monitor.RunnerCompletionLinkParams{
+		RunID: "run1", UsageEventID: "usage1", TraceID: "trace1", Bridge: bridge,
+	})
 	if err != nil {
 		t.Fatalf("empty sessionID should return nil, got: %v", err)
 	}
@@ -1710,7 +1736,9 @@ func TestLinkRunnerCompletionUsage_EmptyRunID(t *testing.T) {
 	repo := &mockRepo{}
 	bridge := &mockRunnerCompletionBridge{}
 	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
-	err := uc.LinkRunnerCompletionUsage(context.Background(), "sess1", "", "usage1", "trace1", bridge)
+	err := uc.LinkRunnerCompletionUsage(context.Background(), monitor.RunnerCompletionLinkParams{
+		SessionID: "sess1", UsageEventID: "usage1", TraceID: "trace1", Bridge: bridge,
+	})
 	if err != nil {
 		t.Fatalf("empty runID should return nil, got: %v", err)
 	}
@@ -1720,7 +1748,9 @@ func TestLinkRunnerCompletionUsage_EmptyUsageEventID(t *testing.T) {
 	repo := &mockRepo{}
 	bridge := &mockRunnerCompletionBridge{}
 	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
-	err := uc.LinkRunnerCompletionUsage(context.Background(), "sess1", "run1", "", "trace1", bridge)
+	err := uc.LinkRunnerCompletionUsage(context.Background(), monitor.RunnerCompletionLinkParams{
+		SessionID: "sess1", RunID: "run1", TraceID: "trace1", Bridge: bridge,
+	})
 	if err != nil {
 		t.Fatalf("empty usageEventID should return nil, got: %v", err)
 	}
@@ -1728,7 +1758,9 @@ func TestLinkRunnerCompletionUsage_EmptyUsageEventID(t *testing.T) {
 
 func TestLinkRunnerCompletionUsage_NilUsecase(t *testing.T) {
 	var uc *monitor.Usecase
-	err := uc.LinkRunnerCompletionUsage(context.Background(), "sess1", "run1", "usage1", "trace1", nil)
+	err := uc.LinkRunnerCompletionUsage(context.Background(), monitor.RunnerCompletionLinkParams{
+		SessionID: "sess1", RunID: "run1", UsageEventID: "usage1",
+	})
 	if err != nil {
 		t.Fatalf("nil usecase should return nil, got: %v", err)
 	}
@@ -1747,7 +1779,10 @@ func TestPatchRunnerCompletionLink_WithUsageEventID(t *testing.T) {
 	}
 	bridge := &mockRunnerCompletionBridge{}
 	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
-	patched, err := uc.PatchRunnerCompletionLink(context.Background(), "sess1", "run1", "inv1", "usage1", "trace1", bridge)
+	patched, err := uc.PatchRunnerCompletionLink(context.Background(), monitor.RunnerCompletionLinkParams{
+		SessionID: "sess1", RunID: "run1", InvocationID: "inv1",
+		UsageEventID: "usage1", TraceID: "trace1", Bridge: bridge,
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1773,7 +1808,9 @@ func TestPatchRunnerCompletionLink_NoUsageEventID_BridgePending(t *testing.T) {
 		},
 	}
 	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
-	patched, err := uc.PatchRunnerCompletionLink(context.Background(), "sess1", "run1", "inv1", "", "", bridge)
+	patched, err := uc.PatchRunnerCompletionLink(context.Background(), monitor.RunnerCompletionLinkParams{
+		SessionID: "sess1", RunID: "run1", InvocationID: "inv1", Bridge: bridge,
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1793,7 +1830,9 @@ func TestPatchRunnerCompletionLink_NoUsageEventID_NoBridge(t *testing.T) {
 		},
 	}
 	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
-	patched, err := uc.PatchRunnerCompletionLink(context.Background(), "sess1", "run1", "inv1", "", "", bridge)
+	patched, err := uc.PatchRunnerCompletionLink(context.Background(), monitor.RunnerCompletionLinkParams{
+		SessionID: "sess1", RunID: "run1", InvocationID: "inv1", Bridge: bridge,
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1810,7 +1849,10 @@ func TestPatchRunnerCompletionLink_PatchError(t *testing.T) {
 	}
 	bridge := &mockRunnerCompletionBridge{}
 	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
-	_, err := uc.PatchRunnerCompletionLink(context.Background(), "sess1", "run1", "inv1", "usage1", "", bridge)
+	_, err := uc.PatchRunnerCompletionLink(context.Background(), monitor.RunnerCompletionLinkParams{
+		SessionID: "sess1", RunID: "run1", InvocationID: "inv1",
+		UsageEventID: "usage1", Bridge: bridge,
+	})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

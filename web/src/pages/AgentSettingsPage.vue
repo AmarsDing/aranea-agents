@@ -45,8 +45,8 @@
               v-model:planner-form="plannerForm"
               v-model:ralph-loop-form="ralphLoopForm"
               v-model:selected-provider-model-id="selectedProviderModelIDModel"
-              :form="form"
-              :config="config"
+              v-model:form="form"
+              v-model:config="config"
               :agent-id="agentId"
               :prompt-modes="promptModes"
               :status-options="statusOptions"
@@ -69,7 +69,7 @@
 
           <q-tab-panel name="memory">
             <agent-settings-memory-tab
-              :config="config"
+              v-model:config="config"
               :truncate-strategy-options="truncateStrategyOptions"
               :snapshot-mode-options="snapshotModeOptions"
               :memory-scope-options="memoryScopeOptions"
@@ -105,7 +105,7 @@
 
           <q-tab-panel name="skills">
             <agent-settings-skills-tab
-              :config="config"
+              v-model:config="config"
               :agent-id="toValue(agentId)"
               :skill-slug-options="skillSlugOptions"
               :loading-skill-slugs="loadingSkillSlugs"
@@ -120,10 +120,10 @@
           </q-tab-panel>
           <q-tab-panel name="evolution">
             <agent-evolution-panel
+              v-model:evolution="config.evolution"
+              v-model:evolution-settings="config.evolutionSettings"
+              v-model:guardrails="config.evolution_guardrails"
               :agent-id="agentId"
-              :evolution="config.evolution"
-              :evolution-settings="config.evolutionSettings"
-              :guardrails="config.evolution_guardrails"
             />
           </q-tab-panel>
 

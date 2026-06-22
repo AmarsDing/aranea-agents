@@ -13,17 +13,17 @@
           hide-pagination
           :pagination="{ rowsPerPage: 0 }"
         >
-          <template #body-cell-case_id="props">
-            <q-td :props="props">
-              <AppRegistryHoverTip :text="props.row.error_message">
-                <span class="app-registry-cell-primary ellipsis">{{ props.row.case_id }}</span>
+          <template #body-cell-case_id="slotProps">
+            <q-td :props="slotProps">
+              <AppRegistryHoverTip :text="slotProps.row.error_message">
+                <span class="app-registry-cell-primary ellipsis">{{ slotProps.row.case_id }}</span>
               </AppRegistryHoverTip>
             </q-td>
           </template>
-          <template #body-cell-human_pass="props">
-            <q-td :props="props">
+          <template #body-cell-human_pass="slotProps">
+            <q-td :props="slotProps">
               <q-btn-toggle
-                :model-value="passValue(props.row)"
+                :model-value="passValue(slotProps.row)"
                 toggle-color="primary"
                 dense
                 unelevated
@@ -32,12 +32,12 @@
                   { label: 'Pass', value: 'pass' },
                   { label: 'Fail', value: 'fail' },
                 ]"
-                @update:model-value="(v: string) => onPassChange(props.row, v)"
+                @update:model-value="(v: string) => onPassChange(slotProps.row, v)"
               />
             </q-td>
           </template>
-          <template #body-cell-human_score="props">
-            <q-td :props="props">
+          <template #body-cell-human_score="slotProps">
+            <q-td :props="slotProps">
               <q-input
                 dense
                 outlined
@@ -45,25 +45,25 @@
                 step="0.01"
                 min="0"
                 max="1"
-                :model-value="props.row.human_score ?? ''"
+                :model-value="slotProps.row.human_score ?? ''"
                 style="max-width: 88px"
-                @update:model-value="(v: string | number | null) => onScoreChange(props.row, v)"
+                @update:model-value="(v: string | number | null) => onScoreChange(slotProps.row, v)"
               />
             </q-td>
           </template>
-          <template #body-cell-human_comment="props">
-            <q-td :props="props">
+          <template #body-cell-human_comment="slotProps">
+            <q-td :props="slotProps">
               <q-input
                 dense
                 outlined
-                :model-value="props.row.human_comment ?? ''"
+                :model-value="slotProps.row.human_comment ?? ''"
                 placeholder="评语"
-                @update:model-value="(v: string | number | null) => onCommentChange(props.row, String(v ?? ''))"
+                @update:model-value="(v: string | number | null) => onCommentChange(slotProps.row, String(v ?? ''))"
               />
             </q-td>
           </template>
-          <template #body-cell-annotate="props">
-            <q-td :props="props">
+          <template #body-cell-annotate="slotProps">
+            <q-td :props="slotProps">
               <div class="app-registry-cell-actions">
                 <q-btn
                   dense
@@ -72,8 +72,8 @@
                   icon="save"
                   color="primary"
                   aria-label="保存"
-                  :loading="savingId === props.row.id"
-                  @click="$emit('annotate', props.row)"
+                  :loading="savingId === slotProps.row.id"
+                  @click="$emit('annotate', slotProps.row)"
                 />
               </div>
             </q-td>

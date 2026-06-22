@@ -189,7 +189,7 @@
             <q-card-section class="provider-wizard-body">
               <ProviderWizardStep1Connect
                 v-show="providerStep === 1"
-                :provider-form="providerForm"
+                v-model:provider-form="providerForm"
                 :editing-id="editingId"
                 :provider-add-mode="providerAddMode"
                 :catalog-provider-search="catalogProviderSearch"
@@ -241,7 +241,7 @@
 
               <ProviderWizardStep2Specs
                 v-show="providerStep === 2"
-                :provider-form="providerForm"
+                v-model:provider-form="providerForm"
                 :provider-add-mode="providerAddMode"
                 :category-options="categoryOptions"
                 :catalog-pricing-missing="catalogPricingMissing"
@@ -256,7 +256,7 @@
                 @update:ha-form="updateHAForm"
               />
 
-              <ProviderWizardStep4Advanced v-show="providerStep === 4" :provider-form="providerForm" />
+              <ProviderWizardStep4Advanced v-show="providerStep === 4" v-model:provider-form="providerForm" />
             </q-card-section>
           </div>
         </template>

@@ -75,6 +75,7 @@
     <div v-if="assistantMessages.length > 0" class="member-readonly-panel__assistant q-pa-md">
       <div class="text-caption text-weight-medium text-grey q-mb-sm">{{ t('spirit.dialogOutput') }}</div>
       <div v-for="msg in assistantMessages" :key="msg.id" class="member-readonly-panel__assistant-item">
+        <!-- eslint-disable-next-line vue/no-v-html -- sanitized markdown HTML -->
         <div class="chat-message-prose" v-html="renderMarkdown(msg.content_markdown)" />
       </div>
     </div>

@@ -124,8 +124,8 @@
 
     <TaxonomyNodeDialog
       v-model="dialogOpen"
+      v-model:form="form"
       :editing-id="editingId"
-      :form="form"
       :parent-name="parentName"
       :saving="saving"
       @submit="saveNode"

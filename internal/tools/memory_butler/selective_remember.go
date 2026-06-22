@@ -32,7 +32,12 @@ func newSelectiveRememberTool(deps Deps) trpctool.Tool {
 		}
 
 		// Check for redundancy by listing existing facts and comparing.
-		rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, "agent", input.AgentID, "", "", "", defaultFactListLimit, 0)
+		rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, biz.ListFactRowsParams{
+			ScopeType: "agent",
+			ScopeID:   input.AgentID,
+			Limit:     defaultFactListLimit,
+			Offset:    0,
+		})
 		if err != nil {
 			return selectiveRememberOutput{}, err
 		}

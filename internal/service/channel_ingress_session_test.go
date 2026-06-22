@@ -286,6 +286,14 @@ func (s ingressAgentRepo) GetAgentByID(_ context.Context, id string) (biz.Agent,
 func (s ingressAgentRepo) GetAgentByAgentKey(context.Context, string) (biz.Agent, error) {
 	return biz.Agent{}, apierror.NotFound(apierror.DomainAgent, "not found")
 }
+func (s ingressAgentRepo) ListAgentsByIDs(_ context.Context, ids []string) ([]biz.Agent, error) {
+	for _, id := range ids {
+		if id == s.id {
+			return []biz.Agent{{ID: s.id, AgentKey: "agent-key"}}, nil
+		}
+	}
+	return nil, nil
+}
 func (s ingressAgentRepo) CreateAgent(context.Context, biz.Agent) (biz.Agent, error) {
 	return biz.Agent{}, nil
 }

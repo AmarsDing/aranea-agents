@@ -197,25 +197,40 @@ func (uc *TaskUsecase) afterTaskMutation(ctx context.Context, task *GraphTask, e
 	}
 }
 
-func (uc *TaskUsecase) CreateTask(ctx context.Context, nodeID string, executionID string, requiredRole string, assignmentMode string, assignmentStrategy string, input string, contextStr string) (*GraphTask, error) {
-	if existing, err := uc.reader.GetActiveTaskByExecutionNode(ctx, executionID, nodeID); err == nil && existing != nil {
+// CreateTaskParams encapsulates parameters for creating a graph task.
+// Introduced to keep CreateTask / CreateTaskWithParents signatures under the
+// 5-parameter limit (S4/S5 fix). ParentIDs is optional and only honoured by
+// CreateTaskWithParents.
+type CreateTaskParams struct {
+	NodeID             string
+	ExecutionID        string
+	RequiredRole       string
+	AssignmentMode     string
+	AssignmentStrategy string
+	Input              string
+	Context            string
+	ParentIDs          []string
+}
+
+func (uc *TaskUsecase) CreateTask(ctx context.Context, p CreateTaskParams) (*GraphTask, error) {
+	if existing, err := uc.reader.GetActiveTaskByExecutionNode(ctx, p.ExecutionID, p.NodeID); err == nil && existing != nil {
 		return existing, nil
 	}
 	task := &GraphTask{
 		TaskID:             uuid.New().String(),
-		NodeID:             nodeID,
-		ExecutionID:        executionID,
+		NodeID:             p.NodeID,
+		ExecutionID:        p.ExecutionID,
 		Status:             TaskStatusPending,
-		Input:              input,
-		Context:            contextStr,
-		RequiredRole:       requiredRole,
-		AssignmentMode:     assignmentMode,
-		AssignmentStrategy: assignmentStrategy,
+		Input:              p.Input,
+		Context:            p.Context,
+		RequiredRole:       p.RequiredRole,
+		AssignmentMode:     p.AssignmentMode,
+		AssignmentStrategy: p.AssignmentStrategy,
 		CreatedAt:          time.Now(),
 	}
 
-	if assignmentMode == "dynamic" && requiredRole != "" {
-		agents, err := uc.agentLister(ctx, requiredRole)
+	if p.AssignmentMode == "dynamic" && p.RequiredRole != "" {
+		agents, err := uc.agentLister(ctx, p.RequiredRole)
 		if err != nil || len(agents) == 0 {
 			task.Status = TaskStatusPendingAssignment
 		}
@@ -225,7 +240,7 @@ func (uc *TaskUsecase) CreateTask(ctx context.Context, nodeID string, executionI
 		return nil, apierror.Internal("TASK", "task usecase create: %s", err)
 	}
 
-	uc.recordTaskEvent(ctx, task.TaskID, "task_created", nodeID, "task created")
+	uc.recordTaskEvent(ctx, task.TaskID, "task_created", p.NodeID, "task created")
 	uc.afterTaskMutation(ctx, task, nil)
 	return task, nil
 }
@@ -377,13 +392,13 @@ func (uc *TaskUsecase) UnblockTask(ctx context.Context, taskID string, comment s
 	return task, nil
 }
 
-func (uc *TaskUsecase) CreateTaskWithParents(ctx context.Context, executionID, nodeID, requiredRole, assignmentMode, assignmentStrategy, input, contextStr string, parentIDs []string) (*GraphTask, error) {
-	task, err := uc.CreateTask(ctx, nodeID, executionID, requiredRole, assignmentMode, assignmentStrategy, input, contextStr)
+func (uc *TaskUsecase) CreateTaskWithParents(ctx context.Context, p CreateTaskParams) (*GraphTask, error) {
+	task, err := uc.CreateTask(ctx, p)
 	if err != nil {
 		return nil, err
 	}
 	linked := false
-	for _, pid := range parentIDs {
+	for _, pid := range p.ParentIDs {
 		pid = strings.TrimSpace(pid)
 		if pid == "" {
 			continue

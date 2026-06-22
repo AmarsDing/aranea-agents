@@ -37,6 +37,9 @@ type Reader interface {
 	Load(ctx context.Context, id string, version int) (Artifact, []byte, error)
 	// LoadMeta returns artifact metadata without loading payload bytes. version <= 0 means latest.
 	LoadMeta(ctx context.Context, id string, version int) (Artifact, error)
+	// LoadMetas returns metadata for multiple artifacts in a single call.
+	// Missing IDs are silently skipped. version <= 0 means latest for each ID.
+	LoadMetas(ctx context.Context, ids []string, version int) ([]Artifact, error)
 	// List returns artifact metadata for a session (no data payload).
 	List(ctx context.Context, sessionID string, limit, offset int) ([]Artifact, int, error)
 	// ListBySessionAndName lists all version metadata for a session+name combo.
@@ -95,6 +98,12 @@ func (uc *Usecase) Load(ctx context.Context, id string, version int) (Artifact, 
 // LoadMeta retrieves artifact metadata without reading artifact bytes.
 func (uc *Usecase) LoadMeta(ctx context.Context, id string, version int) (Artifact, error) {
 	return uc.repo.LoadMeta(ctx, id, version)
+}
+
+// LoadMetas retrieves metadata for multiple artifacts in a single call.
+// Missing IDs are silently skipped. version <= 0 means latest for each ID.
+func (uc *Usecase) LoadMetas(ctx context.Context, ids []string, version int) ([]Artifact, error) {
+	return uc.repo.LoadMetas(ctx, ids, version)
 }
 
 // List returns artifact metadata for a session. query and mimePrefix filter in-memory when set.

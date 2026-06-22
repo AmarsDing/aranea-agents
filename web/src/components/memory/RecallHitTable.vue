@@ -3,7 +3,12 @@
     <q-card-section>
       <div class="text-subtitle1">{{ title }}</div>
     </q-card-section>
-    <AppRegistryMarkupTable v-if="rows.length" :rows="rowRecords" :columns="columns" row-key="id">
+    <AppRegistryMarkupTable
+      v-if="rows.length"
+      :rows="rowRecords"
+      :columns="columns as RegistryTableColumn[]"
+      row-key="id"
+    >
       <template #cell-id="{ row }">
         <span class="text-caption">
           <AppRegistryHoverTip :text="displayText(hitRow(row))" empty-label="暂无文本">
@@ -28,6 +33,7 @@ import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import AppRegistryMarkupTable from '../layout/AppRegistryMarkupTable.vue';
 import { recallHitColumns } from './recallHitTableUi';
 import type { MemoryRecallHit } from '../../features/memory/types';
+import type { RegistryTableColumn } from '../../features/ui/registryTableColumns';
 
 const props = defineProps<{
   title: string;

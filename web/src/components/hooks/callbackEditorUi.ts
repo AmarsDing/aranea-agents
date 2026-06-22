@@ -1,4 +1,4 @@
-import type { HookActionType, HookRuleConfig } from '../../features/hooks/types';
+import type { HookActionType } from '../../features/hooks/types';
 
 export function isToolCallbackPoint(point: string) {
   return point === 'before_tool' || point === 'after_tool';

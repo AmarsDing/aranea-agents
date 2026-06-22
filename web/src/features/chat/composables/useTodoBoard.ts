@@ -1,7 +1,6 @@
 import { computed } from 'vue';
 import type { ComputedRef } from 'vue';
 import type { Message } from '../../../domain/types';
-import type { ToolUseEvent } from '../types';
 import type { TodoItem, TodoBoardState } from '../agentTreeTypes';
 import { toolEventFromMessage } from '../envelopeToolCall';
 

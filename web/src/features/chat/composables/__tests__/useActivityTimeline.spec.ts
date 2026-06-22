@@ -1,10 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type {
-  ActivityStartMeta,
-  ActivityDeltaMeta,
-  ActivityDoneMeta,
-  ActivityChildStartMeta,
-} from '../../activityTypes';
+import type { ActivityStartMeta } from '../../activityTypes';
 
 // Mock the listActivities import to avoid real API calls.
 // Individual tests can override the mock implementation via vi.mocked(listActivities).

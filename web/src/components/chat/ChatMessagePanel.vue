@@ -541,7 +541,7 @@ const messagesScrollEl = computed(() => messageListRef.value?.getScrollTarget() 
 const sessionKey = computed(() => props.sessionId?.trim() || props.sessionTitle);
 const sessionTitleRef = computed(() => props.sessionTitle);
 
-const { showScrollBtn, highlightedTurnId, onMessagesScroll, scrollToBottom, scrollToTurnId } = useChatMessageScroll({
+const { showScrollBtn, onMessagesScroll, scrollToBottom, scrollToTurnId } = useChatMessageScroll({
   sessionKey,
   messages: messagesRef,
   messagesScrollEl,
@@ -566,12 +566,6 @@ function onCompactSession(sid: string) {
 }
 
 const { handleMessagesClick } = useChatCodeCopy();
-
-function turnIsFocused(turnId: string, userMsgId?: string) {
-  const h = highlightedTurnId.value;
-  if (!h) return false;
-  return h === turnId || (!!userMsgId && h === userMsgId);
-}
 
 watch(
   () => props.focusTurnId,

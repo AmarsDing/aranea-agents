@@ -92,7 +92,14 @@ func (b *KanbanToolBridge) Create(ctx context.Context, executionID, nodeID, titl
 	if nodeID == "" {
 		nodeID = "kanban-" + strings.ReplaceAll(title, " ", "-")
 	}
-	task, err := b.tasks.CreateTaskWithParents(ctx, executionID, nodeID, "", "static", "", input, "{}", parentIDs)
+	task, err := b.tasks.CreateTaskWithParents(ctx, biz.CreateTaskParams{
+		ExecutionID:    executionID,
+		NodeID:         nodeID,
+		AssignmentMode: "static",
+		Input:          input,
+		Context:        "{}",
+		ParentIDs:      parentIDs,
+	})
 	if err != nil {
 		return nil, err
 	}

@@ -27,102 +27,104 @@
         hide-pagination
         :pagination="{ rowsPerPage: 0 }"
       >
-        <template #body-cell-change="props">
-          <q-td :props="props">
-            <AppRegistryHoverTip :text="props.row.rationale">
+        <template #body-cell-change="slotProps">
+          <q-td :props="slotProps">
+            <AppRegistryHoverTip :text="slotProps.row.rationale">
               <div class="min-width-0">
-                <div class="app-registry-cell-primary">{{ props.row.old_value }} → {{ props.row.new_value }}</div>
-                <div class="app-registry-cell-sub ellipsis">{{ props.row.trigger_entity_name }}</div>
+                <div class="app-registry-cell-primary">
+                  {{ slotProps.row.old_value }} → {{ slotProps.row.new_value }}
+                </div>
+                <div class="app-registry-cell-sub ellipsis">{{ slotProps.row.trigger_entity_name }}</div>
               </div>
             </AppRegistryHoverTip>
           </q-td>
         </template>
-        <template #body-cell-status="props">
-          <q-td :props="props">
-            <q-badge :color="statusColor(props.row.status)" :label="props.row.status" />
+        <template #body-cell-status="slotProps">
+          <q-td :props="slotProps">
+            <q-badge :color="statusColor(slotProps.row.status)" :label="slotProps.row.status" />
           </q-td>
         </template>
-        <template #body-cell-risk="props">
-          <q-td :props="props">
-            <q-badge :color="riskColor(props.row.risk_level)" :label="props.row.risk_level || 'unknown'" />
+        <template #body-cell-risk="slotProps">
+          <q-td :props="slotProps">
+            <q-badge :color="riskColor(slotProps.row.risk_level)" :label="slotProps.row.risk_level || 'unknown'" />
           </q-td>
         </template>
-        <template #body-cell-affected="props">
-          <q-td :props="props">
+        <template #body-cell-affected="slotProps">
+          <q-td :props="slotProps">
             <q-chip dense square color="blue-grey" text-color="white">{{
-              props.row.affected_entities?.length ?? 0
+              slotProps.row.affected_entities?.length ?? 0
             }}</q-chip>
           </q-td>
         </template>
-        <template #body-cell-actions="props">
-          <q-td :props="props">
+        <template #body-cell-actions="slotProps">
+          <q-td :props="slotProps">
             <div class="app-registry-cell-actions">
               <q-btn
-                v-if="props.row.status === 'pending'"
+                v-if="slotProps.row.status === 'pending'"
                 dense
                 flat
                 round
                 color="info"
                 icon="visibility"
-                @click="$emit('preview', props.row)"
+                @click="$emit('preview', slotProps.row)"
               >
                 <q-tooltip>Dry-Run 预览</q-tooltip>
               </q-btn>
               <q-btn
-                v-if="props.row.status === 'pending'"
+                v-if="slotProps.row.status === 'pending'"
                 dense
                 flat
                 round
                 color="positive"
                 icon="check"
-                :loading="actingId === props.row.id"
-                @click="$emit('approve', props.row)"
+                :loading="actingId === slotProps.row.id"
+                @click="$emit('approve', slotProps.row)"
               >
                 <q-tooltip>批准</q-tooltip>
               </q-btn>
               <q-btn
-                v-if="props.row.status === 'pending'"
+                v-if="slotProps.row.status === 'pending'"
                 dense
                 flat
                 round
                 color="negative"
                 icon="close"
-                :loading="actingId === props.row.id"
-                @click="$emit('reject', props.row)"
+                :loading="actingId === slotProps.row.id"
+                @click="$emit('reject', slotProps.row)"
               >
                 <q-tooltip>拒绝</q-tooltip>
               </q-btn>
               <q-btn
-                v-if="props.row.status === 'partial'"
+                v-if="slotProps.row.status === 'partial'"
                 dense
                 flat
                 round
                 color="warning"
                 icon="replay"
-                :loading="actingId === props.row.id"
-                @click="$emit('retry', props.row)"
+                :loading="actingId === slotProps.row.id"
+                @click="$emit('retry', slotProps.row)"
               >
                 <q-tooltip>重试</q-tooltip>
               </q-btn>
               <q-btn
-                v-if="props.row.status === 'partial' || props.row.status === 'failed'"
+                v-if="slotProps.row.status === 'partial' || slotProps.row.status === 'failed'"
                 dense
                 flat
                 round
                 color="deep-orange"
                 icon="undo"
-                :loading="actingId === props.row.id"
-                @click="$emit('compensate', props.row)"
+                :loading="actingId === slotProps.row.id"
+                @click="$emit('compensate', slotProps.row)"
               >
                 <q-tooltip>补偿回滚</q-tooltip>
               </q-btn>
               <q-btn
-                v-if="props.row.status !== 'pending'"
+                v-if="slotProps.row.status !== 'pending'"
                 dense
                 flat
                 round
                 icon="account_tree"
-                @click="$emit('saga', props.row)"
+                @click="$emit('saga', slotProps.row)"
               >
                 <q-tooltip>Saga 步骤</q-tooltip>
               </q-btn>

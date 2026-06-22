@@ -201,6 +201,26 @@ func (r *FSArtifactRepo) LoadMeta(_ context.Context, id string, version int) (bi
 	return meta.toBiz(), nil
 }
 
+// LoadMetas returns metadata for multiple artifacts in a single lock acquisition.
+// Missing IDs are silently skipped. version <= 0 means latest for each ID.
+func (r *FSArtifactRepo) LoadMetas(_ context.Context, ids []string, version int) ([]biz.Artifact, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	out := make([]biz.Artifact, 0, len(ids))
+	for _, id := range ids {
+		meta, err := r.findMeta(id, version)
+		if err != nil {
+			continue // skip missing
+		}
+		out = append(out, meta.toBiz())
+	}
+	return out, nil
+}
+
 // resolveBinPath returns the on-disk path for a metadata entry. New entries
 // store a relative URI (OUT-05 / ART-03); legacy entries written before this
 // change stored either an absolute path or a path that already includes the

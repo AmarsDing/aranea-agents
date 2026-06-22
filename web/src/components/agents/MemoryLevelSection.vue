@@ -459,10 +459,10 @@
 </template>
 
 <script setup lang="ts">
+const config = defineModel<AgentRuntimeConfigForm>('config', { required: true });
 import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeConfig';
 
 defineProps<{
-  config: AgentRuntimeConfigForm;
   truncateStrategyOptions: { label: string; value: string }[];
   snapshotModeOptions: { label: string; value: string }[];
   memoryScopeOptions: { label: string; value: string }[];

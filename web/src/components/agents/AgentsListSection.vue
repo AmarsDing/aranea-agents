@@ -111,102 +111,106 @@
       hide-pagination
       :pagination="{ rowsPerPage: 0 }"
     >
-      <template #body-cell-name="props">
-        <q-td :props="props">
+      <template #body-cell-name="slotProps">
+        <q-td :props="slotProps">
           <div class="row items-center no-wrap q-gutter-sm">
             <q-btn
-              v-if="!props.row.readonly"
+              v-if="!slotProps.row.readonly"
               flat
               dense
               round
               size="sm"
-              :color="isFavorite(props.row.id) ? 'amber-8' : 'grey-5'"
-              :icon="isFavorite(props.row.id) ? 'star' : 'star_border'"
-              @click="$emit('toggle-favorite', props.row.id)"
+              :color="isFavorite(slotProps.row.id) ? 'amber-8' : 'grey-5'"
+              :icon="isFavorite(slotProps.row.id) ? 'star' : 'star_border'"
+              @click="$emit('toggle-favorite', slotProps.row.id)"
             />
-            <agent-avatar-q :icon="props.row.icon" :alt="props.row.display_name" size="36px" />
+            <agent-avatar-q :icon="slotProps.row.icon" :alt="slotProps.row.display_name" size="36px" />
             <div class="min-width-0">
               <div class="app-registry-cell-primary ellipsis">
-                {{ props.row.display_name || getCategoryLabel(props.row.taxonomy_position_id) }}
+                {{ slotProps.row.display_name || getCategoryLabel(slotProps.row.taxonomy_position_id) }}
               </div>
-              <button type="button" class="agent-handle ellipsis" @click="$emit('copy-key', props.row.agent_key)">
-                {{ props.row.agent_key }}
+              <button type="button" class="agent-handle ellipsis" @click="$emit('copy-key', slotProps.row.agent_key)">
+                {{ slotProps.row.agent_key }}
               </button>
             </div>
           </div>
         </q-td>
       </template>
-      <template #body-cell-model="props">
-        <q-td :props="props">
-          <span class="app-registry-cell-sub ellipsis">{{ props.row.provider }} / {{ props.row.model }}</span>
+      <template #body-cell-model="slotProps">
+        <q-td :props="slotProps">
+          <span class="app-registry-cell-sub ellipsis">{{ slotProps.row.provider }} / {{ slotProps.row.model }}</span>
         </q-td>
       </template>
-      <template #body-cell-status="props">
-        <q-td :props="props">
-          <q-badge rounded :color="props.row.status === 'active' ? 'positive' : 'grey'">{{
-            statusLabel(props.row.status)
+      <template #body-cell-status="slotProps">
+        <q-td :props="slotProps">
+          <q-badge rounded :color="slotProps.row.status === 'active' ? 'positive' : 'grey'">{{
+            statusLabel(slotProps.row.status)
           }}</q-badge>
         </q-td>
       </template>
-      <template #body-cell-memory_mode="props">
-        <q-td :props="props">
+      <template #body-cell-memory_mode="slotProps">
+        <q-td :props="slotProps">
           <q-badge
             rounded
             :color="
-              props.value === 'working_memory' ? 'info' : props.value === 'framework_memory' ? 'warning' : 'positive'
+              slotProps.value === 'working_memory'
+                ? 'info'
+                : slotProps.value === 'framework_memory'
+                  ? 'warning'
+                  : 'positive'
             "
-            >{{ MEMORY_TOOL_MODE_LABELS[props.value as keyof typeof MEMORY_TOOL_MODE_LABELS] }}</q-badge
+            >{{ MEMORY_TOOL_MODE_LABELS[slotProps.value as keyof typeof MEMORY_TOOL_MODE_LABELS] }}</q-badge
           >
         </q-td>
       </template>
-      <template #body-cell-actions="props">
-        <q-td :props="props">
+      <template #body-cell-actions="slotProps">
+        <q-td :props="slotProps">
           <div class="app-registry-cell-actions">
             <q-btn
-              v-if="!props.row.readonly"
+              v-if="!slotProps.row.readonly"
               flat
               dense
               round
               color="primary"
               icon="edit"
-              :to="`/agents/${props.row.id}/settings`"
+              :to="`/agents/${slotProps.row.id}/settings`"
             >
               <q-tooltip>编辑</q-tooltip>
             </q-btn>
             <q-btn
-              v-if="props.row.readonly"
+              v-if="slotProps.row.readonly"
               flat
               dense
               round
               color="primary"
               icon="settings"
-              :to="`/agents/${props.row.id}/settings`"
+              :to="`/agents/${slotProps.row.id}/settings`"
             >
               <q-tooltip>设置</q-tooltip>
             </q-btn>
             <q-btn
-              v-if="!props.row.readonly"
+              v-if="!slotProps.row.readonly"
               flat
               dense
               round
               color="secondary"
               icon="content_copy"
-              @click="$emit('duplicate', props.row)"
+              @click="$emit('duplicate', slotProps.row)"
             >
               <q-tooltip>复制</q-tooltip>
             </q-btn>
             <q-btn
-              v-if="!props.row.readonly"
+              v-if="!slotProps.row.readonly"
               flat
               dense
               round
               color="negative"
               icon="delete"
-              @click="$emit('delete', props.row)"
+              @click="$emit('delete', slotProps.row)"
             >
               <q-tooltip>删除</q-tooltip>
             </q-btn>
-            <q-chip v-if="props.row.readonly" dense square class="agent-card__readonly-chip" icon="verified_user"
+            <q-chip v-if="slotProps.row.readonly" dense square class="agent-card__readonly-chip" icon="verified_user"
               >内置</q-chip
             >
           </div>
@@ -224,14 +228,7 @@ import type { Agent } from '../../features/agents/types';
 import AgentCard from './AgentCard.vue';
 import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
-import {
-  formatLastRunContext,
-  isAgentEvolving,
-  statusLabel,
-  deriveMemoryToolMode,
-  MEMORY_TOOL_MODE_LABELS,
-  type MemoryToolMode,
-} from './agentUi';
+import { formatLastRunContext, isAgentEvolving, statusLabel, MEMORY_TOOL_MODE_LABELS } from './agentUi';
 
 type ViewMode = 'grid' | 'list';
 

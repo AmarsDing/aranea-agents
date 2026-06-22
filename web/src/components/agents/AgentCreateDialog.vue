@@ -185,6 +185,8 @@
 </template>
 
 <script setup lang="ts">
+const form = defineModel<CreateForm>('form', { required: true });
+const a2aProxy = defineModel<A2AProxyConfig>('a2aProxy', { required: true });
 import { computed, ref } from 'vue';
 import { useQuasar } from 'quasar';
 import AgentAvatarPicker from '../avatar/AgentAvatarPicker.vue';
@@ -208,8 +210,6 @@ type CreateForm = {
 
 const props = defineProps<{
   modelValue: boolean;
-  form: CreateForm;
-  a2aProxy: A2AProxyConfig;
   isA2AProxy: boolean;
   selfEvolve: boolean;
   agentKind: AgentKind;
@@ -254,7 +254,7 @@ const selfEvolveModel = computed({
 });
 
 function onCategoryPick(value: string | null) {
-  props.form.taxonomy_position_id = value ?? '';
+  form.value.taxonomy_position_id = value ?? '';
 }
 
 const avatarPickerOpen = ref(false);

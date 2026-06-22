@@ -58,37 +58,37 @@
           hide-pagination
           :pagination="{ rowsPerPage: 0 }"
         >
-          <template #body-cell-event="props">
-            <q-td :props="props" class="cursor-pointer" @click="openDetail(props.row)">
-              <q-chip dense square :color="eventColor(props.row.action)" text-color="white">
-                {{ props.row.action }}.{{ props.row.resource }}
+          <template #body-cell-event="slotProps">
+            <q-td :props="slotProps" class="cursor-pointer" @click="openDetail(slotProps.row)">
+              <q-chip dense square :color="eventColor(slotProps.row.action)" text-color="white">
+                {{ slotProps.row.action }}.{{ slotProps.row.resource }}
               </q-chip>
             </q-td>
           </template>
-          <template #body-cell-resource="props">
-            <q-td :props="props">
-              <AppRegistryHoverTip :text="props.row.detail">
+          <template #body-cell-resource="slotProps">
+            <q-td :props="slotProps">
+              <AppRegistryHoverTip :text="slotProps.row.detail">
                 <div class="min-width-0">
-                  <div class="app-registry-cell-primary ellipsis">{{ props.row.resource }}</div>
-                  <div class="app-registry-cell-sub ellipsis">{{ props.row.resource_id || '—' }}</div>
+                  <div class="app-registry-cell-primary ellipsis">{{ slotProps.row.resource }}</div>
+                  <div class="app-registry-cell-sub ellipsis">{{ slotProps.row.resource_id || '—' }}</div>
                 </div>
               </AppRegistryHoverTip>
             </q-td>
           </template>
-          <template #body-cell-actor="props">
-            <q-td :props="props">
-              <div class="app-registry-cell-primary ellipsis">{{ props.row.actor || 'system' }}</div>
-              <div v-if="props.row.ip" class="app-registry-cell-sub">{{ props.row.ip }}</div>
+          <template #body-cell-actor="slotProps">
+            <q-td :props="slotProps">
+              <div class="app-registry-cell-primary ellipsis">{{ slotProps.row.actor || 'system' }}</div>
+              <div v-if="slotProps.row.ip" class="app-registry-cell-sub">{{ slotProps.row.ip }}</div>
             </q-td>
           </template>
-          <template #body-cell-request="props">
-            <q-td :props="props">
-              <code class="monitor-code ellipsis">{{ props.row.request_id || '—' }}</code>
+          <template #body-cell-request="slotProps">
+            <q-td :props="slotProps">
+              <code class="monitor-code ellipsis">{{ slotProps.row.request_id || '—' }}</code>
             </q-td>
           </template>
-          <template #body-cell-created="props">
-            <q-td :props="props">
-              <span class="app-registry-cell-sub">{{ formatDate(props.row.created_at) }}</span>
+          <template #body-cell-created="slotProps">
+            <q-td :props="slotProps">
+              <span class="app-registry-cell-sub">{{ formatDate(slotProps.row.created_at) }}</span>
             </q-td>
           </template>
         </AppRegistryTable>

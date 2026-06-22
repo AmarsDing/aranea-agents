@@ -17,6 +17,8 @@ import type {
   TaskRun,
   TaskEvent,
   TaskStatus,
+  GraphTemplateInfo,
+  GraphVersionInfo,
 } from './types';
 
 export type {

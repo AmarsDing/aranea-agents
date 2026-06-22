@@ -275,15 +275,15 @@ func (s *MemoryService) ListMemoryFacts(ctx context.Context, req *v1.ListMemoryF
 	if err := s.requireAdmin(); err != nil {
 		return nil, err
 	}
-	rows, total, lim, off, err := s.admin.ListFactRows(ctx,
-		strings.TrimSpace(req.GetScopeType()),
-		strings.TrimSpace(req.GetScopeId()),
-		strings.TrimSpace(req.GetKind()),
-		strings.TrimSpace(req.GetStatus()),
-		strings.TrimSpace(req.GetKeyword()),
-		req.GetLimit(),
-		req.GetOffset(),
-	)
+	rows, total, lim, off, err := s.admin.ListFactRows(ctx, biz.ListFactRowsParams{
+		ScopeType: strings.TrimSpace(req.GetScopeType()),
+		ScopeID:   strings.TrimSpace(req.GetScopeId()),
+		Kind:      strings.TrimSpace(req.GetKind()),
+		Status:    strings.TrimSpace(req.GetStatus()),
+		Keyword:   strings.TrimSpace(req.GetKeyword()),
+		Limit:     req.GetLimit(),
+		Offset:    req.GetOffset(),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -307,17 +307,17 @@ func (s *MemoryService) ListMemoryEntities(ctx context.Context, req *v1.ListMemo
 	if err := s.requireAdmin(); err != nil {
 		return nil, err
 	}
-	rows, total, err := s.admin.ListEntityRows(ctx,
-		strings.TrimSpace(req.GetScopeType()),
-		strings.TrimSpace(req.GetScopeId()),
-		strings.TrimSpace(req.GetWorkspaceId()),
-		strings.TrimSpace(req.GetUserId()),
-		strings.TrimSpace(req.GetEntityType()),
-		strings.TrimSpace(req.GetStatus()),
-		strings.TrimSpace(req.GetKeyword()),
-		req.GetLimit(),
-		req.GetOffset(),
-	)
+	rows, total, err := s.admin.ListEntityRows(ctx, biz.ListEntityRowsParams{
+		ScopeType:   strings.TrimSpace(req.GetScopeType()),
+		ScopeID:     strings.TrimSpace(req.GetScopeId()),
+		WorkspaceID: strings.TrimSpace(req.GetWorkspaceId()),
+		UserID:      strings.TrimSpace(req.GetUserId()),
+		EntityType:  strings.TrimSpace(req.GetEntityType()),
+		Status:      strings.TrimSpace(req.GetStatus()),
+		Keyword:     strings.TrimSpace(req.GetKeyword()),
+		Limit:       req.GetLimit(),
+		Offset:      req.GetOffset(),
+	})
 	if err != nil {
 		return nil, err
 	}

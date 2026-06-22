@@ -148,7 +148,7 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
       }
     };
 
-    ws.onclose = (ev) => {
+    ws.onclose = () => {
       _connected = false;
       stopHeartbeat();
       opts.onDisconnected?.();

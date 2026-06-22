@@ -47,7 +47,10 @@ func (u *AgentUsecase) Duplicate(ctx context.Context, id string) (Agent, error) 
 	copy.CreatedBy = ""
 	copy.PositionID = ""
 	copy.PositionKey = ""
-	copy.AgentVariant = ""
+	// The (position_key, agent_variant) unique index requires a distinct pair.
+	// Use the already-unique duplicated agent_key as the variant so the copy never
+	// collides with the source or any other agent.
+	copy.AgentVariant = copy.AgentKey
 	copy.VariantDescription = ""
 	if copy.Settings != nil {
 		settings := *copy.Settings

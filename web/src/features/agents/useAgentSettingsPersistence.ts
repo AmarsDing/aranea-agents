@@ -1,6 +1,6 @@
 /** Agent settings persistence: save, load, reload, and advanced-save logic. */
 
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
 import type { ComputedRef, Ref } from 'vue';
 import type { Agent, AgentPromptFile, AgentRuntimeSettings } from './types';
 import type { AgentAdvancedSettingsForm } from './agentRuntimeConfig';
@@ -153,6 +153,7 @@ export function useAgentSettingsPersistence(deps: UseAgentSettingsPersistenceDep
     }
     const fileRows = deps.filesForSave();
     try {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { settings: _settings, ...formWithoutSettings } = deps.form;
       const updated = await deps.detailStore.patch(deps.form.id, {
         ...formWithoutSettings,

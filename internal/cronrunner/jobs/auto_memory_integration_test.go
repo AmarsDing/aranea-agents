@@ -46,6 +46,15 @@ func (r *memoryTestAgentRepo) GetAgentByID(_ context.Context, id string) (biz.Ag
 func (r *memoryTestAgentRepo) GetAgentByAgentKey(context.Context, string) (biz.Agent, error) {
 	return biz.Agent{}, sql.ErrNoRows
 }
+func (r *memoryTestAgentRepo) ListAgentsByIDs(_ context.Context, ids []string) ([]biz.Agent, error) {
+	out := make([]biz.Agent, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := r.ids[id]; ok {
+			out = append(out, biz.Agent{ID: id, AgentKey: id})
+		}
+	}
+	return out, nil
+}
 func (r *memoryTestAgentRepo) CreateAgent(context.Context, biz.Agent) (biz.Agent, error) {
 	return biz.Agent{}, nil
 }

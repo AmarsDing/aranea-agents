@@ -1,4 +1,4 @@
-import { shallowRef, computed, triggerRef, onUnmounted, getCurrentInstance, type ComputedRef } from 'vue';
+import { shallowRef, computed, triggerRef, onUnmounted, getCurrentInstance } from 'vue';
 import type {
   Activity,
   ActivityStatus,

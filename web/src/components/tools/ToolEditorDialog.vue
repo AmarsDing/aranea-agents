@@ -453,13 +453,7 @@ import { useQuasar } from 'quasar';
 import { TOOL_CREATE_TEMPLATES, TOOL_FIELD_HINTS, isRegistryLockedTool } from '../../features/tools/toolEditorCopy';
 import { configExtraKeys, configDiffSummary } from '../../features/tools/jsonSchemaBuilder';
 import type { ToolUpsertInput } from '../../features/tools/types';
-import {
-  toolEditorJsonKeys,
-  validateToolJsonFields,
-  categoryFilterOptions,
-  riskLevelOptions,
-  sourceSuggestions,
-} from './toolUi';
+import { toolEditorJsonKeys, validateToolJsonFields, riskLevelOptions, sourceSuggestions } from './toolUi';
 import ToolFieldHintInput from './editor/ToolFieldHintInput.vue';
 import ToolEditorHelpDrawer from './editor/ToolEditorHelpDrawer.vue';
 import ToolSchemaBuilder from './editor/ToolSchemaBuilder.vue';

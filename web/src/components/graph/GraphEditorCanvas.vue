@@ -136,8 +136,9 @@ import { useSnapGuide } from '../../features/graph/useSnapGuide';
 import type { SnapGuideNode } from '../../features/graph/useSnapGuide';
 import { graphNodeDisplayLabel } from '../../features/orchestration/teamNodeDisplay';
 
+const graphDef = defineModel<GraphDefinition>('graphDef', { required: true });
+
 const props = defineProps<{
-  graphDef: GraphDefinition;
   isDark: boolean;
   execNodeStates?: Map<
     string,
@@ -287,9 +288,9 @@ function buildNodes(): Node[] {
   for (const n of internalNodes.value) {
     existingPositions.set(n.id, n.position);
   }
-  const savedLayout = readGraphLayout(props.graphDef);
+  const savedLayout = readGraphLayout(graphDef.value);
 
-  return props.graphDef.nodes.map((n, index) => {
+  return graphDef.value.nodes.map((n, index) => {
     const style = NODE_TYPE_STYLES[n.type as NodeType] ?? NODE_TYPE_STYLES.function;
     const isDiamond = n.type === 'router' || n.type === 'join';
     const execState = resolvedExecNodeStates.value.get(n.id);
@@ -326,7 +327,7 @@ function buildNodes(): Node[] {
 
 function buildEdges(): Edge[] {
   const edges: Edge[] = [];
-  for (const e of props.graphDef.edges) {
+  for (const e of graphDef.value.edges) {
     const isTransfer = (e.kind ?? '').toLowerCase() === 'transfer';
     const isDispatch = (e.kind ?? '').toLowerCase() === 'dispatch';
     const edgeClass = isTransfer ? 'graph-edge--transfer' : isDispatch ? 'graph-edge--dispatch' : '';
@@ -351,7 +352,7 @@ function buildEdges(): Edge[] {
       labelBgBorderRadius: 6,
     });
   }
-  for (const ce of props.graphDef.conditionalEdges) {
+  for (const ce of graphDef.value.conditionalEdges) {
     const pathMap = ce.pathMap ?? {};
     for (const [label, target] of Object.entries(pathMap)) {
       edges.push({
@@ -398,7 +399,7 @@ let lastLayoutSig = '';
 let lastExecFp = '';
 
 watch(
-  () => props.graphDef.nodes.map((n) => n.id).join('\0'),
+  () => graphDef.value.nodes.map((n) => n.id).join('\0'),
   (sig) => {
     if (sig === lastNodeSig) return;
     lastNodeSig = sig;
@@ -408,7 +409,7 @@ watch(
 );
 
 watch(
-  () => props.graphDef.edges.map((e) => `${e.from}->${e.to}:${e.kind ?? ''}`).join('\0'),
+  () => graphDef.value.edges.map((e) => `${e.from}->${e.to}:${e.kind ?? ''}`).join('\0'),
   (sig) => {
     if (sig === lastEdgeSig) return;
     lastEdgeSig = sig;
@@ -419,7 +420,7 @@ watch(
 
 watch(
   () =>
-    props.graphDef.conditionalEdges
+    graphDef.value.conditionalEdges
       .map(
         (ce) =>
           `${ce.from}:${Object.keys(ce.pathMap ?? {})
@@ -436,7 +437,7 @@ watch(
 );
 
 watch(
-  () => JSON.stringify(readGraphLayout(props.graphDef)),
+  () => JSON.stringify(readGraphLayout(graphDef.value)),
   (sig) => {
     if (sig === lastLayoutSig) return;
     lastLayoutSig = sig;
@@ -547,7 +548,7 @@ const ctxMenuItems = computed<ContextMenuItem[]>(() => {
 const searchMatches = computed(() => {
   if (!searchQuery.value.trim()) return [];
   const q = searchQuery.value.trim().toLowerCase();
-  return props.graphDef.nodes
+  return graphDef.value.nodes
     .filter(
       (n) =>
         n.id.toLowerCase().includes(q) ||
@@ -590,17 +591,17 @@ function onCtxMenuSelect(action: string) {
       break;
     case 'setEntry':
       if (props.undoRedo) {
-        props.undoRedo.pushSetGraphProperty('entryPoint', props.graphDef.entryPoint, nodeId);
+        props.undoRedo.pushSetGraphProperty('entryPoint', graphDef.value.entryPoint, nodeId);
       } else {
-        props.graphDef.entryPoint = nodeId;
+        graphDef.value.entryPoint = nodeId;
         emit('updateGraph');
       }
       break;
     case 'setFinish':
       if (props.undoRedo) {
-        props.undoRedo.pushSetGraphProperty('finishPoint', props.graphDef.finishPoint, nodeId);
+        props.undoRedo.pushSetGraphProperty('finishPoint', graphDef.value.finishPoint, nodeId);
       } else {
-        props.graphDef.finishPoint = nodeId;
+        graphDef.value.finishPoint = nodeId;
         emit('updateGraph');
       }
       break;
@@ -633,11 +634,11 @@ function onEdgeContextMenu({ edge, event }: { edge: Edge; event: MouseEvent }) {
 function deleteEdgeById(edgeId: string) {
   const resolved = resolveConditionalEdgeRemoval(edgeId);
   if (resolved) {
-    const ce = props.graphDef.conditionalEdges[resolved.ceIdx];
+    const ce = graphDef.value.conditionalEdges[resolved.ceIdx];
     const newPathMap = { ...ce.pathMap };
     delete newPathMap[resolved.label];
     if (Object.keys(newPathMap).length === 0) {
-      props.graphDef.conditionalEdges.splice(resolved.ceIdx, 1);
+      graphDef.value.conditionalEdges.splice(resolved.ceIdx, 1);
     } else {
       ce.pathMap = newPathMap;
     }
@@ -647,12 +648,12 @@ function deleteEdgeById(edgeId: string) {
       emit('updateGraph');
     }
   } else {
-    const edgeIdx = props.graphDef.edges.findIndex(
-      (_, i) => `e-${props.graphDef.edges[i].from}-${props.graphDef.edges[i].to}` === edgeId,
+    const edgeIdx = graphDef.value.edges.findIndex(
+      (_, i) => `e-${graphDef.value.edges[i].from}-${graphDef.value.edges[i].to}` === edgeId,
     );
     if (edgeIdx >= 0) {
-      const edge = { ...props.graphDef.edges[edgeIdx] };
-      props.graphDef.edges.splice(edgeIdx, 1);
+      const edge = { ...graphDef.value.edges[edgeIdx] };
+      graphDef.value.edges.splice(edgeIdx, 1);
       if (props.undoRedo) {
         props.undoRedo.pushDeleteEdge(edge, edgeIdx);
       } else {
@@ -719,16 +720,16 @@ function onSearchClose() {
 
 function duplicateNode(nodeId: string) {
   if (readOnly.value) return;
-  const src = props.graphDef.nodes.find((n) => n.id === nodeId);
+  const src = graphDef.value.nodes.find((n) => n.id === nodeId);
   if (!src) return;
   const newId = `${src.type}_${Date.now()}`;
   const dup: NodeDef = { ...src, id: newId, description: `${src.description || src.id} (副本)` };
-  const index = props.graphDef.nodes.length;
-  props.graphDef.nodes.push(dup);
+  const index = graphDef.value.nodes.length;
+  graphDef.value.nodes.push(dup);
 
   const srcNode = (internalNodes.value as SnapGuideNode[]).find((n) => n.id === nodeId);
   const pos = srcNode ? { x: srcNode.position.x + 40, y: srcNode.position.y + 40 } : { x: 100, y: 100 };
-  writeGraphNodePosition(props.graphDef, newId, pos);
+  writeGraphNodePosition(graphDef.value, newId, pos);
 
   if (props.undoRedo) {
     props.undoRedo.pushDuplicateNode(nodeId, dup, index);
@@ -740,11 +741,11 @@ function duplicateNode(nodeId: string) {
 
 function deleteNode(nodeId: string) {
   if (readOnly.value) return;
-  const nodeIdx = props.graphDef.nodes.findIndex((n) => n.id === nodeId);
+  const nodeIdx = graphDef.value.nodes.findIndex((n) => n.id === nodeId);
   if (nodeIdx < 0) return;
-  const nodeLabel = props.graphDef.nodes[nodeIdx].description || nodeId;
-  const connectedEdges = props.graphDef.edges.filter((e) => e.from === nodeId || e.to === nodeId);
-  const connectedCondEdges = props.graphDef.conditionalEdges.filter(
+  const nodeLabel = graphDef.value.nodes[nodeIdx].description || nodeId;
+  const connectedEdges = graphDef.value.edges.filter((e) => e.from === nodeId || e.to === nodeId);
+  const connectedCondEdges = graphDef.value.conditionalEdges.filter(
     (e) => e.from === nodeId || Object.values(e.pathMap ?? {}).includes(nodeId),
   );
   const totalEdges = connectedEdges.length + connectedCondEdges.length;
@@ -755,16 +756,16 @@ function deleteNode(nodeId: string) {
     cancel: true,
     persistent: true,
   }).onOk(() => {
-    const idx = props.graphDef.nodes.findIndex((n) => n.id === nodeId);
+    const idx = graphDef.value.nodes.findIndex((n) => n.id === nodeId);
     if (idx < 0) return;
-    const node = { ...props.graphDef.nodes[idx] };
-    const edges = props.graphDef.edges.filter((e) => e.from === nodeId || e.to === nodeId);
-    const condEdges = props.graphDef.conditionalEdges.filter(
+    const node = { ...graphDef.value.nodes[idx] };
+    const edges = graphDef.value.edges.filter((e) => e.from === nodeId || e.to === nodeId);
+    const condEdges = graphDef.value.conditionalEdges.filter(
       (e) => e.from === nodeId || Object.values(e.pathMap ?? {}).includes(nodeId),
     );
-    props.graphDef.nodes.splice(idx, 1);
-    props.graphDef.edges = props.graphDef.edges.filter((e) => e.from !== nodeId && e.to !== nodeId);
-    props.graphDef.conditionalEdges = props.graphDef.conditionalEdges.filter(
+    graphDef.value.nodes.splice(idx, 1);
+    graphDef.value.edges = graphDef.value.edges.filter((e) => e.from !== nodeId && e.to !== nodeId);
+    graphDef.value.conditionalEdges = graphDef.value.conditionalEdges.filter(
       (e) => e.from !== nodeId && !Object.values(e.pathMap ?? {}).includes(nodeId),
     );
     if (props.undoRedo) {
@@ -777,12 +778,12 @@ function deleteNode(nodeId: string) {
 
 function disconnectNode(nodeId: string) {
   if (readOnly.value) return;
-  const edges = props.graphDef.edges.filter((e) => e.from === nodeId || e.to === nodeId);
-  const condEdges = props.graphDef.conditionalEdges.filter(
+  const edges = graphDef.value.edges.filter((e) => e.from === nodeId || e.to === nodeId);
+  const condEdges = graphDef.value.conditionalEdges.filter(
     (e) => e.from === nodeId || Object.values(e.pathMap ?? {}).includes(nodeId),
   );
-  props.graphDef.edges = props.graphDef.edges.filter((e) => e.from !== nodeId && e.to !== nodeId);
-  props.graphDef.conditionalEdges = props.graphDef.conditionalEdges.filter(
+  graphDef.value.edges = graphDef.value.edges.filter((e) => e.from !== nodeId && e.to !== nodeId);
+  graphDef.value.conditionalEdges = graphDef.value.conditionalEdges.filter(
     (e) => e.from !== nodeId && !Object.values(e.pathMap ?? {}).includes(nodeId),
   );
   if (props.undoRedo) {
@@ -809,22 +810,22 @@ function deleteSelectedNodes() {
   }).onOk(() => {
     const deleted: { node: NodeDef; index: number; edges: EdgeDef[]; condEdges: ConditionalEdgeDef[] }[] = [];
     for (const id of ids) {
-      const idx = props.graphDef.nodes.findIndex((n) => n.id === id);
+      const idx = graphDef.value.nodes.findIndex((n) => n.id === id);
       if (idx >= 0) {
         deleted.push({
-          node: { ...props.graphDef.nodes[idx] },
+          node: { ...graphDef.value.nodes[idx] },
           index: idx,
-          edges: props.graphDef.edges.filter((e) => e.from === id || e.to === id),
-          condEdges: props.graphDef.conditionalEdges.filter(
+          edges: graphDef.value.edges.filter((e) => e.from === id || e.to === id),
+          condEdges: graphDef.value.conditionalEdges.filter(
             (e) => e.from === id || Object.values(e.pathMap ?? {}).includes(id),
           ),
         });
       }
     }
     const idSet = new Set(ids);
-    props.graphDef.nodes = props.graphDef.nodes.filter((n) => !idSet.has(n.id));
-    props.graphDef.edges = props.graphDef.edges.filter((e) => !idSet.has(e.from) && !idSet.has(e.to));
-    props.graphDef.conditionalEdges = props.graphDef.conditionalEdges.filter(
+    graphDef.value.nodes = graphDef.value.nodes.filter((n) => !idSet.has(n.id));
+    graphDef.value.edges = graphDef.value.edges.filter((e) => !idSet.has(e.from) && !idSet.has(e.to));
+    graphDef.value.conditionalEdges = graphDef.value.conditionalEdges.filter(
       (e) => !idSet.has(e.from) && !Object.values(e.pathMap ?? {}).some((v) => idSet.has(v)),
     );
     if (props.undoRedo) {
@@ -839,10 +840,10 @@ function deleteSelectedNodes() {
 function onConnect(connection: Connection) {
   if (readOnly.value) return;
   if (connection.source && connection.target) {
-    const existing = props.graphDef.edges.find((e) => e.from === connection.source && e.to === connection.target);
+    const existing = graphDef.value.edges.find((e) => e.from === connection.source && e.to === connection.target);
     if (!existing) {
       const edge: EdgeDef = { from: connection.source, to: connection.target, kind: '' };
-      props.graphDef.edges.push(edge);
+      graphDef.value.edges.push(edge);
       if (props.undoRedo) {
         props.undoRedo.pushAddEdge(edge);
       } else {
@@ -862,8 +863,8 @@ function onConnectEnd() {
 
 function resolveConditionalEdgeRemoval(edgeId: string): { ceIdx: number; label: string } | null {
   if (!edgeId.startsWith('ce-')) return null;
-  for (let ceIdx = 0; ceIdx < props.graphDef.conditionalEdges.length; ceIdx++) {
-    const ce = props.graphDef.conditionalEdges[ceIdx];
+  for (let ceIdx = 0; ceIdx < graphDef.value.conditionalEdges.length; ceIdx++) {
+    const ce = graphDef.value.conditionalEdges[ceIdx];
     for (const [label, target] of Object.entries(ce.pathMap ?? {})) {
       if (`ce-${ce.from}-${target}-${label}` === edgeId) {
         return { ceIdx, label };
@@ -884,15 +885,15 @@ function onEdgesChange(changes: EdgeChange[]) {
 
 function onEdgeUpdate({ edge, connection }: EdgeUpdateEvent) {
   if (readOnly.value || !edge) return;
-  const edgeIdx = props.graphDef.edges.findIndex((e) => e.from === edge.source && e.to === edge.target);
+  const edgeIdx = graphDef.value.edges.findIndex((e) => e.from === edge.source && e.to === edge.target);
   if (edgeIdx < 0) return;
-  const oldFrom = props.graphDef.edges[edgeIdx].from;
-  const oldTo = props.graphDef.edges[edgeIdx].to;
+  const oldFrom = graphDef.value.edges[edgeIdx].from;
+  const oldTo = graphDef.value.edges[edgeIdx].to;
   const newFrom = connection.source;
   const newTo = connection.target;
   if (oldFrom === newFrom && oldTo === newTo) return;
-  props.graphDef.edges[edgeIdx].from = newFrom;
-  props.graphDef.edges[edgeIdx].to = newTo;
+  graphDef.value.edges[edgeIdx].from = newFrom;
+  graphDef.value.edges[edgeIdx].to = newTo;
   if (props.undoRedo) {
     props.undoRedo.pushReconnectEdge(edgeIdx, oldFrom, oldTo, newFrom, newTo);
   } else {
@@ -960,10 +961,10 @@ function onDrop(event: DragEvent) {
 
   const dropPosition = project({ x: event.clientX, y: event.clientY });
 
-  const index = props.graphDef.nodes.length;
-  props.graphDef.nodes.push(newNode);
+  const index = graphDef.value.nodes.length;
+  graphDef.value.nodes.push(newNode);
 
-  writeGraphNodePosition(props.graphDef, id, dropPosition);
+  writeGraphNodePosition(graphDef.value, id, dropPosition);
 
   if (props.undoRedo) {
     props.undoRedo.pushAddNode(newNode, index);
@@ -1022,7 +1023,7 @@ function onNodeDragStop({ node }: { node: Node }) {
     props.undoRedo.pushMoveNodes(moves);
   } else {
     for (const move of moves) {
-      writeGraphNodePosition(props.graphDef, move.nodeId, move.newPos);
+      writeGraphNodePosition(graphDef.value, move.nodeId, move.newPos);
     }
     emit('updateGraph');
   }
@@ -1058,7 +1059,7 @@ function onCanvasKeydown(e: KeyboardEvent) {
       return;
     }
     // 删除选中的边
-    const selectedEdges = internalEdges.value.filter((edge) => (edge as Edge & { selected?: boolean }).selected);
+    const selectedEdges = (internalEdges.value as Array<Edge & { selected?: boolean }>).filter((edge) => edge.selected);
     if (selectedEdges.length > 0) {
       for (const edge of selectedEdges) {
         deleteEdgeById(edge.id);

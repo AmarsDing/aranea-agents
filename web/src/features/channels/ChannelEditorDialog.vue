@@ -1,6 +1,3 @@
-// Container: approved — feature-local dialog; manages channel CRUD lifecycle. // Uses channels store for channel
-operations and avatar store for avatar catalog // lookup (auxiliary data for channel icon selection). // FB4 fix: icon
-refresh + $q.notify extracted to useChannelIconRefresh composable.
 <template>
   <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">
     <q-card class="app-dialog-card app-dialog-card--900 app-glass-dialog channel-editor-dialog">

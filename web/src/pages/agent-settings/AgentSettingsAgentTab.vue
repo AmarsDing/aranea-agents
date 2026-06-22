@@ -318,6 +318,8 @@
 </template>
 
 <script setup lang="ts">
+const form = defineModel<Agent>('form', { required: true });
+const config = defineModel<AgentRuntimeConfigForm>('config', { required: true });
 import type { Agent } from '../../features/agents/types';
 import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeConfig';
 import AgentChannelRefsSection from './AgentChannelRefsSection.vue';
@@ -335,8 +337,6 @@ const selectedProviderModelId = defineModel<string>('selectedProviderModelId', {
 
 withDefaults(
   defineProps<{
-    form: Agent;
-    config: AgentRuntimeConfigForm;
     agentId?: string;
     promptModes?: { value: string; label: string; caption: string; tokens: string }[];
     statusOptions?: { label: string; value: string }[];

@@ -8,10 +8,10 @@
       hide-pagination
       :pagination="{ rowsPerPage: 0 }"
     >
-      <template #body-cell-status="props">
-        <q-td :props="props">
-          <q-chip dense :color="statusColor(props.row.status)" text-color="white" size="sm">{{
-            props.row.status
+      <template #body-cell-status="slotProps">
+        <q-td :props="slotProps">
+          <q-chip dense :color="statusColor(slotProps.row.status)" text-color="white" size="sm">{{
+            slotProps.row.status
           }}</q-chip>
         </q-td>
       </template>

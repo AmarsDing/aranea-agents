@@ -24,6 +24,15 @@ func (r *batchAgentRepo) GetAgentByID(_ context.Context, id string) (Agent, erro
 func (r *batchAgentRepo) GetAgentByAgentKey(context.Context, string) (Agent, error) {
 	return Agent{}, ErrNotFound
 }
+func (r *batchAgentRepo) ListAgentsByIDs(_ context.Context, ids []string) ([]Agent, error) {
+	out := make([]Agent, 0, len(ids))
+	for _, id := range ids {
+		if a, ok := r.agents[id]; ok {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
 func (r *batchAgentRepo) CreateAgent(context.Context, Agent) (Agent, error) { return Agent{}, nil }
 func (r *batchAgentRepo) UpdateAgent(_ context.Context, a Agent) (Agent, error) {
 	r.agents[a.ID] = a

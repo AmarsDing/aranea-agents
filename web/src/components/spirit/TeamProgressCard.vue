@@ -137,7 +137,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { SpiritTeam, SpiritMember, TopologyType } from '../../features/spirit/types';
+import type { SpiritTeam, SpiritMember } from '../../features/spirit/types';
 import OrchestrationModeBadge from './OrchestrationModeBadge.vue';
 import AgentStatusLabel from './AgentStatusLabel.vue';
 import { formatDuration, spiritMemberStatusToLabel, nameInitial, modeToTopology } from '../../features/spirit/spiritUi';

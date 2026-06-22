@@ -27,30 +27,33 @@
           hide-pagination
           :pagination="{ rowsPerPage: 0 }"
         >
-          <template #body-cell-token_estimate="props">
-            <q-td :props="props">
-              {{ props.row.token_estimate.toLocaleString() }}
+          <template #body-cell-token_estimate="slotProps">
+            <q-td :props="slotProps">
+              {{ slotProps.row.token_estimate.toLocaleString() }}
             </q-td>
           </template>
-          <template #body-cell-detail="props">
-            <q-td :props="props">
-              <span v-if="props.row.field_count != null" class="text-caption text-grey-7">
-                {{ props.row.field_count }} fields
+          <template #body-cell-detail="slotProps">
+            <q-td :props="slotProps">
+              <span v-if="slotProps.row.field_count != null" class="text-caption text-grey-7">
+                {{ slotProps.row.field_count }} fields
               </span>
-              <span v-if="props.row.fact_count != null" class="text-caption text-grey-7">
-                {{ props.row.fact_count }} facts
+              <span v-if="slotProps.row.fact_count != null" class="text-caption text-grey-7">
+                {{ slotProps.row.fact_count }} facts
               </span>
-              <span v-if="props.row.entity_count != null" class="text-caption text-grey-7">
-                {{ props.row.entity_count }} entities
+              <span v-if="slotProps.row.entity_count != null" class="text-caption text-grey-7">
+                {{ slotProps.row.entity_count }} entities
               </span>
-              <span v-if="props.row.result_count != null" class="text-caption text-grey-7">
-                {{ props.row.result_count }} results
+              <span v-if="slotProps.row.result_count != null" class="text-caption text-grey-7">
+                {{ slotProps.row.result_count }} results
               </span>
-              <span v-if="props.row.turn_count != null" class="text-caption text-grey-7">
-                {{ props.row.turn_count }} turns
+              <span v-if="slotProps.row.turn_count != null" class="text-caption text-grey-7">
+                {{ slotProps.row.turn_count }} turns
               </span>
-              <span v-if="props.row.from_turn != null && props.row.to_turn != null" class="text-caption text-grey-7">
-                T{{ props.row.from_turn }}–T{{ props.row.to_turn }}
+              <span
+                v-if="slotProps.row.from_turn != null && slotProps.row.to_turn != null"
+                class="text-caption text-grey-7"
+              >
+                T{{ slotProps.row.from_turn }}–T{{ slotProps.row.to_turn }}
               </span>
             </q-td>
           </template>

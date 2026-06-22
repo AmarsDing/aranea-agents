@@ -404,6 +404,7 @@
 </template>
 
 <script setup lang="ts">
+const definition = defineModel<TeamDefinition>('definition', { required: true });
 import { computed, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import type { TeamDefinition } from '../../features/teams/types';
@@ -423,19 +424,18 @@ import {
 
 const $q = useQuasar();
 
+const form = defineModel<{
+  team_key: string;
+  display_name: string;
+  status: string;
+  app_name: string;
+  taxonomy_industry_id: string;
+}>('form', { required: true });
 const props = withDefaults(
   defineProps<{
     modelValue: boolean;
-    selectedTemplateKey: TeamTemplateKey | null;
+    selectedTemplateKey?: TeamTemplateKey | null;
     editingId: string;
-    form: {
-      team_key: string;
-      display_name: string;
-      status: string;
-      app_name: string;
-      taxonomy_industry_id: string;
-    };
-    definition: TeamDefinition;
     definitionJSON?: string;
     agentOptions: Array<{ label: string; value: string }>;
     industryOptions: Array<{ label: string; value: string }>;
@@ -463,7 +463,7 @@ const { compileResult, compileLoading, compileError, compileIssues } = useTeamCo
 );
 
 const intentAnchorOptions = computed(() =>
-  props.definition.members
+  definition.value.members
     .filter((m) => m.enabled !== false && String(m.agent_id || '').trim() !== '')
     .map((m) => ({
       label: [m.name, m.role].filter(Boolean).join(' · ') || String(m.agent_id).slice(0, 8),
@@ -489,15 +489,15 @@ const filteredRuntimeEngineOptions = computed(() =>
 );
 
 const nativeLocked = computed(
-  () => !props.isPlatformAdmin && String(props.definition.runtime_engine || 'graph').toLowerCase() === 'native',
+  () => !props.isPlatformAdmin && String(definition.value.runtime_engine || 'graph').toLowerCase() === 'native',
 );
 
 watch(
   nativeLocked,
   (locked) => {
     if (locked) {
-      props.definition.runtime_engine = 'graph';
-      props.definition.team_graph_runtime = true;
+      definition.value.runtime_engine = 'graph';
+      definition.value.team_graph_runtime = true;
     }
   },
   { immediate: true },
@@ -508,62 +508,62 @@ const a2aFormatOptions = [
   { label: 'Plain', value: 'plain' },
 ];
 const a2aEnabled = computed({
-  get: () => props.definition.a2a?.enabled ?? true,
+  get: () => definition.value.a2a?.enabled ?? true,
   set: (value: boolean) => {
-    props.definition.a2a = { ...props.definition.a2a, enabled: value };
+    definition.value.a2a = { ...definition.value.a2a, enabled: value };
   },
 });
 const a2aEnvelopeVersion = computed({
-  get: () => props.definition.a2a?.envelope_version || 'a2a.v1',
+  get: () => definition.value.a2a?.envelope_version || 'a2a.v1',
   set: (value: string) => {
-    props.definition.a2a = { ...props.definition.a2a, envelope_version: value };
+    definition.value.a2a = { ...definition.value.a2a, envelope_version: value };
   },
 });
 const a2aMessageFormat = computed({
-  get: () => props.definition.a2a?.message_format || 'markdown_json',
+  get: () => definition.value.a2a?.message_format || 'markdown_json',
   set: (value: string) => {
-    props.definition.a2a = { ...props.definition.a2a, message_format: value };
+    definition.value.a2a = { ...definition.value.a2a, message_format: value };
   },
 });
 const a2aMaxPayloadChars = computed({
-  get: () => props.definition.a2a?.max_payload_chars || 6000,
+  get: () => definition.value.a2a?.max_payload_chars || 6000,
   set: (value: number) => {
-    props.definition.a2a = { ...props.definition.a2a, max_payload_chars: value };
+    definition.value.a2a = { ...definition.value.a2a, max_payload_chars: value };
   },
 });
 const a2aIncludeTrace = computed({
-  get: () => props.definition.a2a?.include_trace ?? true,
+  get: () => definition.value.a2a?.include_trace ?? true,
   set: (value: boolean) => {
-    props.definition.a2a = { ...props.definition.a2a, include_trace: value };
+    definition.value.a2a = { ...definition.value.a2a, include_trace: value };
   },
 });
 
 const criticLoopMaxIterations = computed({
-  get: () => props.definition.critic_loop?.max_iterations ?? 2,
+  get: () => definition.value.critic_loop?.max_iterations ?? 2,
   set: (value: number) => {
     const n = Number.isFinite(value) ? Math.min(32, Math.max(1, Math.floor(value))) : 2;
-    const prev = props.definition.critic_loop ?? { max_iterations: 2, score_threshold: 0.8 };
-    props.definition.critic_loop = { ...prev, max_iterations: n };
+    const prev = definition.value.critic_loop ?? { max_iterations: 2, score_threshold: 0.8 };
+    definition.value.critic_loop = { ...prev, max_iterations: n };
   },
 });
 
 const runtimeEngine = computed({
-  get: () => (String(props.definition.runtime_engine || 'graph').toLowerCase() === 'native' ? 'native' : 'graph'),
+  get: () => (String(definition.value.runtime_engine || 'graph').toLowerCase() === 'native' ? 'native' : 'graph'),
   set: (value: 'native' | 'graph') => {
-    props.definition.runtime_engine = value;
-    props.definition.team_graph_runtime = value === 'graph';
+    definition.value.runtime_engine = value;
+    definition.value.team_graph_runtime = value === 'graph';
   },
 });
 
 function ensureFailurePolicy() {
-  if (!props.definition.failure_policy) {
-    props.definition.failure_policy = { default: 'retry_then_block', parallel_fail: 'continue' };
+  if (!definition.value.failure_policy) {
+    definition.value.failure_policy = { default: 'retry_then_block', parallel_fail: 'continue' };
   }
-  return props.definition.failure_policy;
+  return definition.value.failure_policy;
 }
 
 const failureDefault = computed({
-  get: () => props.definition.failure_policy?.default ?? 'retry_then_block',
+  get: () => definition.value.failure_policy?.default ?? 'retry_then_block',
   set: (value: string | null) => {
     const policy = ensureFailurePolicy();
     policy.default = value || 'retry_then_block';
@@ -571,7 +571,7 @@ const failureDefault = computed({
 });
 
 const parallelFail = computed({
-  get: () => props.definition.failure_policy?.parallel_fail ?? 'continue',
+  get: () => definition.value.failure_policy?.parallel_fail ?? 'continue',
   set: (value: string | null) => {
     const policy = ensureFailurePolicy();
     policy.parallel_fail = value || 'continue';
@@ -579,7 +579,7 @@ const parallelFail = computed({
 });
 
 const failureRetryMax = computed({
-  get: () => props.definition.failure_policy?.retry?.max_attempts ?? 3,
+  get: () => definition.value.failure_policy?.retry?.max_attempts ?? 3,
   set: (value: number) => {
     const policy = ensureFailurePolicy();
     policy.retry = { ...(policy.retry ?? {}), max_attempts: Math.max(0, Math.floor(Number(value) || 0)) };
@@ -587,7 +587,7 @@ const failureRetryMax = computed({
 });
 
 const circuitFailureThreshold = computed({
-  get: () => props.definition.failure_policy?.circuit_breaker?.failure_threshold ?? 0,
+  get: () => definition.value.failure_policy?.circuit_breaker?.failure_threshold ?? 0,
   set: (value: number) => {
     const policy = ensureFailurePolicy();
     const n = Math.max(0, Math.floor(Number(value) || 0));
@@ -604,7 +604,7 @@ const circuitFailureThreshold = computed({
 });
 
 const failureOnError = computed({
-  get: () => props.definition.failure_policy?.on_error ?? '',
+  get: () => definition.value.failure_policy?.on_error ?? '',
   set: (value: string | null) => {
     const policy = ensureFailurePolicy();
     policy.on_error = value || undefined;

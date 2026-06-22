@@ -25,28 +25,31 @@ Self-contained CRUD lifecycle within this panel.
       :pagination="{ rowsPerPage: 10 }"
       table-class="channel-deliveries-table"
     >
-      <template #body-cell-status="props">
-        <q-td :props="props">
-          <q-badge :color="statusColor(String(props.row.status))" :label="statusLabel(String(props.row.status))" />
+      <template #body-cell-status="slotProps">
+        <q-td :props="slotProps">
+          <q-badge
+            :color="statusColor(String(slotProps.row.status))"
+            :label="statusLabel(String(slotProps.row.status))"
+          />
         </q-td>
       </template>
-      <template #body-cell-agent_id="props">
-        <q-td :props="props">
-          <span class="app-registry-cell-primary ellipsis">{{ agentNameById(props.row.agent_id) }}</span>
+      <template #body-cell-agent_id="slotProps">
+        <q-td :props="slotProps">
+          <span class="app-registry-cell-primary ellipsis">{{ agentNameById(slotProps.row.agent_id) }}</span>
         </q-td>
       </template>
-      <template #body-cell-payload="props">
-        <q-td :props="props">
+      <template #body-cell-payload="slotProps">
+        <q-td :props="slotProps">
           <AppRegistryHoverTip
-            :text="props.row.error_message || props.row.payload_json"
+            :text="slotProps.row.error_message || slotProps.row.payload_json"
             :empty-label="t('channelEditor.noContent')"
           >
-            <span class="app-registry-cell-sub ellipsis">{{ payloadPreview(props.row.payload_json) }}</span>
+            <span class="app-registry-cell-sub ellipsis">{{ payloadPreview(slotProps.row.payload_json) }}</span>
           </AppRegistryHoverTip>
         </q-td>
       </template>
-      <template #body-cell-updated_at="props">
-        <q-td :props="props">{{ props.row.updated_at || props.row.created_at || '—' }}</q-td>
+      <template #body-cell-updated_at="slotProps">
+        <q-td :props="slotProps">{{ slotProps.row.updated_at || slotProps.row.created_at || '—' }}</q-td>
       </template>
       <template #no-data>
         <div class="full-width text-center text-grey-6 q-pa-md">{{ t('channelEditor.deliveriesEmpty') }}</div>

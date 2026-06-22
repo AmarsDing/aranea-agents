@@ -56,7 +56,7 @@ import NoticeBlock from './NoticeBlock.vue';
 
 const { t } = useI18n();
 
-const props = defineProps<{
+defineProps<{
   events: TimelineActivity[];
   agentColor?: string;
 }>();

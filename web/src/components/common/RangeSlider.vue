@@ -1,5 +1,5 @@
 <template>
-  <div :class="['range-slider', { 'range-slider--dark': isDark, 'range-slider--disabled': disabled }]">
+  <div :class="['range-slider', { 'range-slider--disabled': disabled }]">
     <label v-if="label" class="range-slider__label">{{ label }}</label>
     <div class="range-slider__row">
       <q-slider
@@ -19,9 +19,6 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import { useQuasar } from 'quasar';
-
 const props = withDefaults(
   defineProps<{
     modelValue: number;
@@ -46,9 +43,6 @@ const emit = defineEmits<{
   'update:modelValue': [value: number];
 }>();
 
-const $q = useQuasar();
-const isDark = computed(() => $q.dark.isActive);
-
 function onInput(val: number | null) {
   if (val !== null) {
     const clamped = Math.min(props.max, Math.max(props.min, val));
@@ -59,15 +53,10 @@ function onInput(val: number | null) {
 
 <style lang="scss">
 .range-slider {
-  --rs-label-color: #666;
-  --rs-hint-color: #999;
-  --rs-value-color: #333;
-
-  &--dark {
-    --rs-label-color: #aaa;
-    --rs-hint-color: #777;
-    --rs-value-color: #ddd;
-  }
+  // Use theme tokens so colors adapt to light/dark automatically (S9 fix).
+  --rs-label-color: var(--color-text-secondary);
+  --rs-hint-color: var(--color-text-tertiary);
+  --rs-value-color: var(--color-text-primary);
 
   &__label {
     display: block;

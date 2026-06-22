@@ -63,7 +63,13 @@ func (s *SessionService) BatchPreviewSessions(ctx context.Context, req *v1.Batch
 	if err := validateBatchHTTPRequest(req.GetIds(), req.GetOlderThanDays()); err != nil {
 		return nil, err
 	}
-	out, err := s.uc.PreviewBatch(ctx, req.GetMode(), req.GetIds(), int(req.GetOlderThanDays()), batchScopeFromProto(req.GetScope()), req.GetIncludeArchived())
+	out, err := s.uc.PreviewBatch(ctx, biz.BatchOperationParams{
+		Mode:            req.GetMode(),
+		IDs:             req.GetIds(),
+		OlderThanDays:   int(req.GetOlderThanDays()),
+		Scope:           batchScopeFromProto(req.GetScope()),
+		IncludeArchived: req.GetIncludeArchived(),
+	})
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}

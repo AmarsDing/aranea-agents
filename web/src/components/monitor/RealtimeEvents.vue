@@ -45,50 +45,52 @@
           hide-pagination
           :pagination="{ rowsPerPage: 0 }"
         >
-          <template #body-cell-title="props">
-            <q-td :props="props" class="cursor-pointer" @click="$emit('openDetail', props.row)">
-              <AppRegistryHoverTip :text="props.row.subtitle">
-                <div class="app-registry-cell-primary ellipsis">{{ props.row.title }}</div>
+          <template #body-cell-title="slotProps">
+            <q-td :props="slotProps" class="cursor-pointer" @click="$emit('openDetail', slotProps.row)">
+              <AppRegistryHoverTip :text="slotProps.row.subtitle">
+                <div class="app-registry-cell-primary ellipsis">{{ slotProps.row.title }}</div>
               </AppRegistryHoverTip>
             </q-td>
           </template>
-          <template #body-cell-tags="props">
-            <q-td :props="props">
+          <template #body-cell-tags="slotProps">
+            <q-td :props="slotProps">
               <div class="app-registry-chip-wrap">
-                <q-chip dense outline>{{ props.row.source }}</q-chip>
-                <q-chip dense :color="eventColor(props.row.type)" text-color="white">{{ props.row.type }}</q-chip>
+                <q-chip dense outline>{{ slotProps.row.source }}</q-chip>
+                <q-chip dense :color="eventColor(slotProps.row.type)" text-color="white">{{
+                  slotProps.row.type
+                }}</q-chip>
               </div>
             </q-td>
           </template>
-          <template #body-cell-time="props">
-            <q-td :props="props">
-              <span class="app-registry-cell-sub">{{ props.row.time }}</span>
+          <template #body-cell-time="slotProps">
+            <q-td :props="slotProps">
+              <span class="app-registry-cell-sub">{{ slotProps.row.time }}</span>
             </q-td>
           </template>
-          <template #body-cell-actions="props">
-            <q-td :props="props">
+          <template #body-cell-actions="slotProps">
+            <q-td :props="slotProps">
               <div class="app-registry-cell-actions">
                 <q-btn
-                  v-if="props.row.canOpenInRuns && props.row.completionMeta"
+                  v-if="slotProps.row.canOpenInRuns && slotProps.row.completionMeta"
                   flat
                   dense
                   round
                   icon="timeline"
                   color="accent"
                   aria-label="在 Runs 中查看"
-                  @click="$emit('openLinkedRun', props.row)"
+                  @click="$emit('openLinkedRun', slotProps.row)"
                 >
                   <q-tooltip>在 Runs 中查看</q-tooltip>
                 </q-btn>
                 <q-btn
-                  v-else-if="props.row.completionSessionId"
+                  v-else-if="slotProps.row.completionSessionId"
                   flat
                   dense
                   round
                   icon="chat"
                   color="accent"
                   aria-label="打开会话"
-                  @click="$emit('openChatSession', props.row.completionSessionId!)"
+                  @click="$emit('openChatSession', slotProps.row.completionSessionId!)"
                 >
                   <q-tooltip>打开会话</q-tooltip>
                 </q-btn>
@@ -99,7 +101,7 @@
                   icon="visibility"
                   color="accent"
                   aria-label="查看详情"
-                  @click="$emit('openDetail', props.row)"
+                  @click="$emit('openDetail', slotProps.row)"
                 />
               </div>
             </q-td>

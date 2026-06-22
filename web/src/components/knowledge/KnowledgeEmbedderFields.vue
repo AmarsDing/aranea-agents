@@ -58,8 +58,9 @@ import {
   type KnowledgeEmbedFormState,
 } from '../../features/knowledge/embedder-constants';
 
+const form = defineModel<KnowledgeEmbedFormState>('form', { required: true });
+
 defineProps<{
-  form: KnowledgeEmbedFormState;
   configured?: boolean;
   hasApiKey?: boolean;
   showStatus?: boolean;

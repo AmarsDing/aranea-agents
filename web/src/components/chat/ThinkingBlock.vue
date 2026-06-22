@@ -60,6 +60,7 @@
       <div v-else class="thinking-block__collapse-wrapper">
         <div class="thinking-block__collapse-inner">
           <div class="thinking-block__body" :class="{ 'thinking-block__body--streaming': streaming }">
+            <!-- eslint-disable-next-line vue/no-v-html -- sanitized markdown HTML -->
             <div class="thinking-block__content chat-message-prose" v-html="renderedHtml" />
             <span v-if="streaming" class="thinking-block__cursor" aria-hidden="true" />
           </div>
@@ -123,20 +124,6 @@ const userScrolledUp = ref(false);
 
 // --- Plain text extraction ---
 
-const plainText = computed(() => {
-  const raw = props.reasoning || '';
-  return raw
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/`[^`]+`/g, '')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/#{1,6}\s+/g, '')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/>\s+/g, '')
-    .replace(/[-*+]\s+/g, '')
-    .trim();
-});
-
 /** Preview text for card collapsed state. */
 const previewText = computed(() => {
   const content = props.reasoning || '';
@@ -159,14 +146,6 @@ function scrollToBottom() {
   if (vp) {
     vp.scrollTop = vp.scrollHeight;
   }
-}
-
-function onViewportScroll() {
-  const vp = viewportRef.value;
-  if (!vp) return;
-  // If user is near the bottom (within 30px), we consider them following
-  const atBottom = vp.scrollHeight - vp.scrollTop - vp.clientHeight < 30;
-  userScrolledUp.value = !atBottom;
 }
 
 // Auto-scroll during streaming

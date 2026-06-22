@@ -76,6 +76,7 @@
         <template v-if="assistantMessages.length > 0">
           <div v-for="msg in assistantMessages" :key="msg.id" class="task-execution-panel__output-item">
             <div class="text-caption text-grey q-mb-xs">{{ formatTime(msg.created_at) }}</div>
+            <!-- eslint-disable-next-line vue/no-v-html -- sanitized markdown HTML -->
             <div class="chat-message-prose" v-html="props.renderMarkdown(msg.content_markdown)" />
           </div>
         </template>
@@ -99,6 +100,7 @@
       <q-separator />
       <div class="q-pa-md">
         <div class="text-caption text-weight-medium text-grey q-mb-xs">{{ t('spirit.spiritReply') }}</div>
+        <!-- eslint-disable-next-line vue/no-v-html -- sanitized markdown HTML -->
         <div class="task-execution-panel__spirit-reply chat-message-prose" v-html="props.renderMarkdown(spiritReply)" />
       </div>
     </template>

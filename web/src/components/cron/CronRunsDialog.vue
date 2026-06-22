@@ -148,7 +148,7 @@ defineProps<{
   total: number;
 }>();
 
-const emit = defineEmits<{
+defineEmits<{
   'update:modelValue': [value: boolean];
   'update:taskId': [value: string];
   'update:status': [value: string];

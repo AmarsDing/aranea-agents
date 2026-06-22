@@ -1,5 +1,6 @@
 <template>
   <q-avatar :size="size" class="provider-logo" :class="{ 'provider-logo--loaded': !!svg }">
+    <!-- eslint-disable-next-line vue/no-v-html -- SVG logo from controlled provider catalog -->
     <span v-if="svg" class="provider-logo__svg" v-html="svg" />
     <q-icon v-else :name="fallbackIcon" />
   </q-avatar>
@@ -18,6 +19,7 @@ const props = withDefaults(
   {
     size: '32px',
     fallbackIcon: 'memory',
+    fetchSvg: undefined,
   },
 );
 

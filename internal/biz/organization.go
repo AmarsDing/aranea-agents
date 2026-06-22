@@ -58,6 +58,9 @@ type OrganizationReader interface {
 	ListOrgNodes(ctx context.Context) ([]OrganizationNode, error)
 	ListOrgNodesByLevel(ctx context.Context, level string) ([]OrganizationNode, error)
 	ListOrgNodesByParentID(ctx context.Context, parentID string) ([]OrganizationNode, error)
+	// ListOrgNodesByIDs returns org nodes matching the given IDs in a single query.
+	// Missing IDs are silently skipped.
+	ListOrgNodesByIDs(ctx context.Context, ids []string) ([]OrganizationNode, error)
 }
 
 // OrganizationWriter provides write access to organization nodes.

@@ -368,7 +368,6 @@ const {
   providerBrowseNext,
   providerDocHref,
   onJsonFilterChange,
-  loadJsonSearch,
   jsonSearchPrev,
   jsonSearchNext,
   t,

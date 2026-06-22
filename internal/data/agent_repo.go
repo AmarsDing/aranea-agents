@@ -641,6 +641,25 @@ func (r *agentRepo) GetAgentByID(ctx context.Context, id string) (biz.Agent, err
 	return entAgentToBiz(row, r.data.lg), nil
 }
 
+// ListAgentsByIDs returns agents matching the given IDs in a single query.
+// Missing IDs are silently skipped. Returns an empty slice for empty input.
+func (r *agentRepo) ListAgentsByIDs(ctx context.Context, ids []string) ([]biz.Agent, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := r.data.RW().Read(ctx).Agent.Query().
+		Where(agent.IDIn(ids...), agent.DeletedAtEQ("")).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "AGENT")
+	}
+	items := make([]biz.Agent, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, entAgentToBiz(row, r.data.lg))
+	}
+	return items, nil
+}
+
 // isAgentKeyConstraintError reports whether a constraint error is for the
 // agents.agent_key unique index rather than another unique constraint such as
 // agent_position_key_agent_variant.
@@ -649,6 +668,11 @@ func isAgentKeyConstraintError(err error) bool {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
+	// The composite (position_key, agent_variant) constraint name contains
+	// "agent_" and "_key" but is not an agent_key conflict; exclude it first.
+	if strings.Contains(msg, "agent_position_key_agent_variant") {
+		return false
+	}
 	return strings.Contains(msg, "agent_key")
 }
 

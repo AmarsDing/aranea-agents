@@ -11,7 +11,7 @@
  * 2. isFinal：Turn 内最后一个 SayActivity 的 isFinal=true
  */
 
-import { computed, type ComputedRef, type Ref } from 'vue';
+import { computed, type ComputedRef } from 'vue';
 import type { Message } from '../types';
 import type { Envelope } from '../../../realtime/envelope';
 import type { ConversationTurn, AgentWorkProcess, Activity } from '../activityTimelineTypes';
@@ -116,7 +116,6 @@ export function useConversationTimeline(deps: {
 
     const plannerKind = deps.plannerKind?.value ?? '';
 
-    const afActivities = deps.activityTimelineActivities?.value;
     const afTree = deps.activityTree?.value;
     const afRawRecords = deps.activityRawRecords?.value;
 
@@ -237,52 +236,6 @@ function computeActivityTreeSignature(tree: ActivityTreeNode[]): string {
 }
 
 // ── AF-FE-14: Build ALL ConversationTurns from raw Activity records ──
-
-function buildAllConversationTurnsFromActivities(
-  messages: Message[],
-  rawRecords: readonly import('../activityTypes').Activity[],
-  timelineActivities: readonly Activity[],
-  opts: {
-    agentKey: string;
-    taskContent: string | null;
-    activityTree: ActivityTreeNode[];
-    progressByStep: Map<string, ProgressSection>;
-    plannerKind: string;
-  },
-): ConversationTurn[] {
-  const ensured = messages.map(ensureOrigin);
-  const userTurns = splitByUserMessages(ensured);
-  if (userTurns.length === 0) return [];
-
-  // Group raw Activity records by turnId
-  const activitiesByTurn = new Map<string, import('../activityTypes').Activity[]>();
-  for (const record of rawRecords) {
-    const tid = record.turnId;
-    if (!tid) continue;
-    const group = activitiesByTurn.get(tid);
-    if (group) group.push(record);
-    else activitiesByTurn.set(tid, [record]);
-  }
-
-  const result: ConversationTurn[] = [];
-
-  for (const turn of userTurns) {
-    const userMessage = turn.userMessage || turn.messages.find((m) => m.role === 'user');
-    const turnId = userMessage?.turn_id || turn.messages.find((m) => m.role === 'assistant')?.turn_id || '';
-
-    const turnActivities = turnId ? activitiesByTurn.get(turnId) : undefined;
-
-    // 修复：即使没有 Activity 数据，也构建 turn（显示用户消息 + 等待指示器/失败状态）。
-    // 这解决了"用户发送消息后 UI 无响应"的问题：
-    // - 用户发送消息后，messageStore 有 pending-user 占位消息，但 Activity 数据尚未到达
-    // - 原逻辑跳过无 Activity 数据的 turn，导致 UI 显示为空
-    // - 新逻辑构建 turn，agentWork.status 根据消息状态设置为 'running' 或 'failed'
-    // Pre-AF 会话由 T6.3 回填保证有 AF 数据；AF API 失败由 AF-GAP-05 显示错误提示。
-    result.push(buildSingleTurnFromActivities(turn, turnActivities ?? [], opts));
-  }
-
-  return result;
-}
 
 function buildSingleTurnFromActivities(
   turn: UserTurn,

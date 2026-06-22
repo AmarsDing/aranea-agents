@@ -1,0 +1,33 @@
+import fs from "fs";
+const file = "src/components/teams/TeamEditorDialog.vue";
+let c = fs.readFileSync(file, "utf8");
+const oldBlock = `    form: {
+      team_key: string;
+      display_name: string;
+      status: string;
+      app_name: string;
+      taxonomy_industry_id: string;
+    };
+`;
+if (!c.includes(oldBlock)) throw new Error("TeamEditorDialog oldBlock not found");
+c = c.replace(oldBlock, "");
+const modelLine = `const form = defineModel<{ team_key: string; display_name: string; status: string; app_name: string; taxonomy_industry_id: string; }>("form", { required: true });
+`;
+c = c.replace("const props = withDefaults(", modelLine + "const props = withDefaults(");
+fs.writeFileSync(file, c);
+console.log("fixed TeamEditorDialog");
+const file2 = "src/components/agents/AgentEvolutionPanel.vue";
+let c2 = fs.readFileSync(file2, "utf8");
+const oldBlock2 = `  guardrails: {
+    max_change_per_period: number;
+    min_data_points: number;
+    rollback_on_decline_percent: number;
+  };
+`;
+if (!c2.includes(oldBlock2)) throw new Error("AgentEvolutionPanel oldBlock not found");
+c2 = c2.replace(oldBlock2, "");
+const modelLine2 = `const guardrails = defineModel<{ max_change_per_period: number; min_data_points: number; rollback_on_decline_percent: number; }>("guardrails", { required: true });
+`;
+c2 = c2.replace("const props = defineProps<{", modelLine2 + "const props = defineProps<{");
+fs.writeFileSync(file2, c2);
+console.log("fixed AgentEvolutionPanel");

@@ -4,7 +4,6 @@ import type {
   AuditLog,
   AuditQuery,
   CodeExecutorCapability,
-  MonitorTrace,
   MonitorTraceDetail,
   MonitorTracesQuery,
   MonitorTraceRow,

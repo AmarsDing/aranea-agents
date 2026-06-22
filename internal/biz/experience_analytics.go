@@ -476,7 +476,11 @@ func (uc *ExperienceAnalyticsUsecase) AnalyzeMemoryQuality(ctx context.Context, 
 
 	var factCount int
 	if uc.memoryAdmin != nil {
-		_, total, _, _, listErr := uc.memoryAdmin.ListFactRows(ctx, "agent", agentID, "", "", "", 1, 0)
+		_, total, _, _, listErr := uc.memoryAdmin.ListFactRows(ctx, ListFactRowsParams{
+			ScopeType: "agent",
+			ScopeID:   agentID,
+			Limit:     1,
+		})
 		if listErr != nil {
 			uc.lg.Warn("list fact rows for memory quality", loggateway.StepID("xp_analytics.memory_quality"), loggateway.Err(listErr))
 		} else {

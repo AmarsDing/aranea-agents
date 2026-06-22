@@ -519,7 +519,6 @@ export function bindStreamHandlers(
     const active = ctx.resolveActiveSessionId();
     if (sid !== ctx.sessionId || (active && sid !== active)) return;
     const md = (env.metadata ?? {}) as Record<string, unknown>;
-    const field = String(md.delta_field ?? '');
     const chunk = String(md.delta_chunk ?? '');
     if (!chunk) return;
 

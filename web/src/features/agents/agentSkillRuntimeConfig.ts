@@ -1,4 +1,4 @@
-import { nextTick, ref, watch, type Ref } from 'vue';
+import { nextTick, ref, watch } from 'vue';
 import type { AgentRuntimeConfigForm } from './agentRuntimeConfig';
 
 export type SkillRuntimeForm = AgentRuntimeConfigForm['skillRuntime'];

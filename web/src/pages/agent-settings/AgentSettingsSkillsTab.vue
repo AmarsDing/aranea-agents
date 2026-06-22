@@ -283,6 +283,7 @@
 </template>
 
 <script setup lang="ts">
+const config = defineModel<AgentRuntimeConfigForm>('config', { required: true });
 import { computed } from 'vue';
 import AgentToolsSection from '../../components/agents/AgentToolsSection.vue';
 import type { CodeExecutorCapability } from '../../features/monitor/types';
@@ -297,7 +298,6 @@ const baseExecutorOptions = [
 
 const props = withDefaults(
   defineProps<{
-    config: AgentRuntimeConfigForm;
     agentId?: string;
     skillSlugOptions: { label: string; value: string }[];
     loadingSkillSlugs: boolean;
@@ -347,7 +347,7 @@ const codeExecutorOptions = computed(() =>
 );
 
 const fallbackHint = computed(() => {
-  const selected = String(props.config.code_executor_type ?? 'local');
+  const selected = String(config.value.code_executor_type ?? 'local');
   const cap = capabilityByType.value.get(selected);
   if (!cap || cap.available) {
     return '';

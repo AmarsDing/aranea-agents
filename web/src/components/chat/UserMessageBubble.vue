@@ -2,6 +2,7 @@
   <div class="user-message-bubble">
     <div class="user-message-bubble__avatar">👤</div>
     <div class="user-message-bubble__content">
+      <!-- eslint-disable-next-line vue/no-v-html -- sanitized markdown HTML -->
       <div class="user-message-bubble__text" v-html="renderedContent"></div>
     </div>
   </div>

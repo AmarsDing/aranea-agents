@@ -251,12 +251,12 @@
 </template>
 
 <script setup lang="ts">
+const providerForm = defineModel<ProviderForm>('providerForm', { required: true });
 import type { ProviderForm } from '../../features/platform/types';
 
 type SelectOption = { label: string; value: string; caption?: string };
 
 const props = defineProps<{
-  providerForm: ProviderForm;
   editingId: string | null;
   providerAddMode: 'catalog' | 'custom';
   catalogProviderSearch: string;

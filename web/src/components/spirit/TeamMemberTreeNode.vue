@@ -23,7 +23,7 @@ import AgentStatusLabel from './AgentStatusLabel.vue';
 import type { SpiritMember } from '../../features/spirit/types';
 import { spiritMemberStatusToLabel } from '../../features/spirit/spiritUi';
 
-const props = defineProps<{
+defineProps<{
   members: SpiritMember[];
   selectable: boolean;
 }>();

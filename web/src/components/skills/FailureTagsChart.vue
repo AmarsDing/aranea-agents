@@ -15,7 +15,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import type { EChartsCoreOption } from 'echarts/core';
-import { usageChartPalette, ensureUsageEcharts, echarts } from '../../features/usage/usageEcharts';
+import { usageChartPalette } from '../../features/usage/usageEcharts';
 import { useUsageChart } from '../../features/usage/useUsageChart';
 
 const props = defineProps<{

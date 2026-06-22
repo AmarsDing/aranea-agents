@@ -26,6 +26,7 @@ type (
 	MonitorUsecase              = monitor.Usecase
 	RunnerMetricsSummary        = monitor.RunnerMetricsSummary
 	RunnerCompletionBridge      = monitor.RunnerCompletionBridge
+	RunnerCompletionLinkParams  = monitor.RunnerCompletionLinkParams
 	FlowFileAppender            = monitor.FlowFileAppender
 	RunnerCompletionRow         = monitor.RunnerCompletionRow
 	AlertMetricRegistry         = monitor.AlertMetricRegistry

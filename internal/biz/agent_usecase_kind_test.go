@@ -32,6 +32,15 @@ func (s *stubAgentRepo) GetAgentByID(_ context.Context, id string) (Agent, error
 func (s *stubAgentRepo) GetAgentByAgentKey(context.Context, string) (Agent, error) {
 	return Agent{}, ErrNotFound
 }
+func (s *stubAgentRepo) ListAgentsByIDs(_ context.Context, ids []string) ([]Agent, error) {
+	out := make([]Agent, 0, len(ids))
+	for _, id := range ids {
+		if s.agent.ID == id {
+			out = append(out, s.agent)
+		}
+	}
+	return out, nil
+}
 func (s *stubAgentRepo) CreateAgent(context.Context, Agent) (Agent, error) { return Agent{}, nil }
 func (s *stubAgentRepo) UpdateAgent(context.Context, Agent) (Agent, error) { return Agent{}, nil }
 func (s *stubAgentRepo) DeleteAgent(context.Context, string) error         { return nil }

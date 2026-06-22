@@ -26,48 +26,51 @@
       hide-pagination
       :pagination="{ rowsPerPage: 0 }"
     >
-      <template #body-cell-source="props">
-        <q-td :props="props">
-          <q-chip dense :color="props.row.source === 'local' ? 'primary' : 'orange'" text-color="white" size="sm">
-            {{ props.row.source === 'local' ? '本地' : '远程' }}
+      <template #body-cell-source="slotProps">
+        <q-td :props="slotProps">
+          <q-chip dense :color="slotProps.row.source === 'local' ? 'primary' : 'orange'" text-color="white" size="sm">
+            {{ slotProps.row.source === 'local' ? '本地' : '远程' }}
           </q-chip>
         </q-td>
       </template>
-      <template #body-cell-display_name="props">
-        <q-td :props="props">
+      <template #body-cell-display_name="slotProps">
+        <q-td :props="slotProps">
           <span class="app-registry-cell-primary ellipsis">{{
-            props.row.card?.display_name || props.row.card?.agent_id || '—'
+            slotProps.row.card?.display_name || slotProps.row.card?.agent_id || '—'
           }}</span>
         </q-td>
       </template>
-      <template #body-cell-workspace="props">
-        <q-td :props="props">
-          <span class="app-registry-cell-sub ellipsis">{{ props.row.card?.workspace || '—' }}</span>
+      <template #body-cell-workspace="slotProps">
+        <q-td :props="slotProps">
+          <span class="app-registry-cell-sub ellipsis">{{ slotProps.row.card?.workspace || '—' }}</span>
         </q-td>
       </template>
-      <template #body-cell-capabilities="props">
-        <q-td :props="props">
+      <template #body-cell-capabilities="slotProps">
+        <q-td :props="slotProps">
           <div class="app-registry-chip-wrap">
-            <q-chip v-for="c in props.row.card?.capabilities ?? []" :key="c.name" dense outline size="sm">{{
+            <q-chip v-for="c in slotProps.row.card?.capabilities ?? []" :key="c.name" dense outline size="sm">{{
               c.name
             }}</q-chip>
           </div>
         </q-td>
       </template>
-      <template #body-cell-healthy="props">
-        <q-td :props="props">
-          <q-badge :color="props.row.healthy ? 'positive' : 'negative'" :label="props.row.healthy ? '健康' : '异常'" />
+      <template #body-cell-healthy="slotProps">
+        <q-td :props="slotProps">
+          <q-badge
+            :color="slotProps.row.healthy ? 'positive' : 'negative'"
+            :label="slotProps.row.healthy ? '健康' : '异常'"
+          />
         </q-td>
       </template>
-      <template #body-cell-endpoint_url="props">
-        <q-td :props="props">
+      <template #body-cell-endpoint_url="slotProps">
+        <q-td :props="slotProps">
           <AppRegistryHoverTip
-            v-if="props.row.endpoint_url || props.row.remote_url"
-            :text="props.row.endpoint_url || props.row.remote_url"
+            v-if="slotProps.row.endpoint_url || slotProps.row.remote_url"
+            :text="slotProps.row.endpoint_url || slotProps.row.remote_url"
             empty-label="暂无 URL"
           >
             <span class="app-registry-cell-sub ellipsis">{{
-              props.row.endpoint_url || props.row.remote_url || '—'
+              slotProps.row.endpoint_url || slotProps.row.remote_url || '—'
             }}</span>
           </AppRegistryHoverTip>
           <span v-else class="text-grey-6">—</span>

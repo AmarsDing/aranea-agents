@@ -168,6 +168,11 @@ func (uc *ChatUsecase) InterruptAndSendMessage(ctx context.Context, sessionID, p
 
 // SetRunStatus updates the run status with WBPF (Write-Before-Publish-Fire) semantics.
 //
+// Deprecated: This variant swallows the persistence error (S7 fix). New callers
+// should use SetRunStatusWithError to observe DB write / state-machine failures
+// and react appropriately. Retained only for backward compatibility with
+// callers that cannot handle the error.
+//
 // State machine validation (AS-FSM-01): The transition from the current run
 // state to the new state is validated via RunStateMachine. Illegal transitions
 // are rejected and logged. When no prior status record exists (e.g., crash

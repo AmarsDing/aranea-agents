@@ -97,15 +97,10 @@ function onInputBlur() {
 
 <style lang="scss">
 .slider-input {
-  --si-label-color: #666;
-  --si-hint-color: #999;
-  --si-track-color: #e0e0e0;
-
-  &--dark {
-    --si-label-color: #aaa;
-    --si-hint-color: #777;
-    --si-track-color: #444;
-  }
+  // Use theme tokens so colors adapt to light/dark automatically (S9 fix).
+  --si-label-color: var(--color-text-secondary);
+  --si-hint-color: var(--color-text-tertiary);
+  --si-track-color: var(--color-border-soft);
 
   &__label {
     display: block;

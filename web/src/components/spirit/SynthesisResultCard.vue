@@ -19,6 +19,7 @@
     </div>
 
     <div class="synthesis-result-card__content">
+      <!-- eslint-disable-next-line vue/no-v-html -- sanitized markdown HTML -->
       <div class="synthesis-result-card__text" v-html="renderedContent" />
     </div>
 

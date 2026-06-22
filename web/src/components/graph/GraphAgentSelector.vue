@@ -56,6 +56,7 @@ const props = withDefaults(
     rules?: Array<(val: string | number | null | undefined) => boolean | string>;
   }>(),
   {
+    options: () => [],
     rules: () => [],
   },
 );

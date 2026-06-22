@@ -39,7 +39,7 @@
       />
       <section class="team-run-observatory__graph">
         <GraphEditorCanvas
-          :graph-def="graphDef"
+          v-model:graph-def="graphDef"
           :is-dark="isDark"
           :exec-node-states="execNodeStates"
           :selected-node-id="selectedNodeId"

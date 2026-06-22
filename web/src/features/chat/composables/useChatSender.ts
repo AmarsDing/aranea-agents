@@ -122,7 +122,7 @@ export function useChatSender(deps: SenderDeps) {
     }, CHAT_RUN_STALL_CHECK_INTERVAL_MS);
   }
 
-  function markSending(sessionId?: string) {
+  function markSending(_sessionId?: string) {
     sending.value = true;
     startStallCheck();
   }
@@ -579,7 +579,7 @@ export function useChatSender(deps: SenderDeps) {
         // If the backend fails, the error envelope will arrive later and
         // the user can retry with the same attachments still attached.
         clearAttachments = true;
-      } catch (wsError) {
+      } catch {
         $q.notify({ type: 'info', message: t('chat.wsFallbackHttp', 'WebSocket 不可用，正在通过 HTTP 发送…') });
         try {
           await sendViaHttpFallback(
@@ -605,7 +605,7 @@ export function useChatSender(deps: SenderDeps) {
           // the server-persisted user message. If the WS is disconnected,
           // the next reconnect sync (event_replay) will fetch missed messages.
           dropPendingUserRow(sessionId, pendingUserId);
-        } catch (httpError) {
+        } catch {
           markPendingUserFailed(sessionId, pendingUserId, t('chat.sendFailedRetry', '发送失败，请点击重试'));
           if (!followUp) markSendingDone();
         }

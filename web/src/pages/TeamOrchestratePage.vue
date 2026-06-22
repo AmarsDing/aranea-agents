@@ -81,7 +81,7 @@
 
       <div v-show="activeTab === 'canvas'" class="team-orchestrate-page__body graph-workbench__body">
         <GraphEditorCanvas
-          :graph-def="graphDef"
+          v-model:graph-def="graphDef"
           :is-dark="isDark"
           :exec-node-states="execNodeStates"
           :selected-node-id="selectedNodeId"

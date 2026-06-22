@@ -43,7 +43,5 @@
 <script setup lang="ts">
 import type { ProviderForm } from '../../features/platform/types';
 
-defineProps<{
-  providerForm: ProviderForm;
-}>();
+const providerForm = defineModel<ProviderForm>('providerForm', { required: true });
 </script>

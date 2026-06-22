@@ -44,7 +44,7 @@ import { formatTime } from '../../features/graph/utils';
 
 const $q = useQuasar();
 
-const props = defineProps<{
+defineProps<{
   modelValue: boolean;
   versions: GraphVersionInfo[];
   loading: boolean;

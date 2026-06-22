@@ -49,7 +49,7 @@ const props = withDefaults(
     selectedNodeId?: string | null;
     emptyLabel?: string;
   }>(),
-  { emptyLabel: '暂无 Agent' },
+  { emptyLabel: '暂无 Agent', selectedNodeId: null },
 );
 
 defineEmits<{ selectNode: [nodeId: string] }>();

@@ -1,10 +1,6 @@
 import type { FieldScope } from './fieldGuides';
 import { createAIRefineService } from '../../services';
-import type {
-  RefineScope,
-  RefineRequest as KratosRefineRequest,
-  RefineResponse as KratosRefineResponse,
-} from '../../services/kratos/ai_refine/v1/index';
+import type { RefineScope, RefineResponse as KratosRefineResponse } from '../../services/kratos/ai_refine/v1/index';
 
 const fieldScopeToRefineScope: Record<FieldScope, RefineScope> = {
   'category.industry': 'REFINE_SCOPE_CATEGORY_INDUSTRY',

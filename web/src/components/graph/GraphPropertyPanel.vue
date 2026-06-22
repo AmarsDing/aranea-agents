@@ -539,6 +539,8 @@
 </template>
 
 <script setup lang="ts">
+const selectedNode = defineModel<NodeDef | null>('selectedNode', { required: true });
+const graphDef = defineModel<GraphDefinition | null>('graphDef', { required: true });
 import { computed } from 'vue';
 import GraphValidationPanel from './GraphValidationPanel.vue';
 import type {
@@ -562,8 +564,6 @@ import { useConditionalRoutes } from '../../features/graph/useConditionalRoutes'
 import GraphVariablePicker from './GraphVariablePicker.vue';
 
 const props = defineProps<{
-  selectedNode: NodeDef | null;
-  graphDef: GraphDefinition | null;
   availableTools: string[];
   isDark: boolean;
   validationErrors?: ValidationError[];
@@ -585,36 +585,36 @@ function notifyChange() {
 }
 
 function updateNodeField<K extends keyof NodeDef>(field: K, value: NodeDef[K]) {
-  if (props.selectedNode) {
-    const oldValue = props.selectedNode[field];
+  if (selectedNode.value) {
+    const oldValue = selectedNode.value[field];
     if (props.undoRedo) {
-      props.undoRedo.pushSetProperty(props.selectedNode.id, field, oldValue, value);
+      props.undoRedo.pushSetProperty(selectedNode.value.id, field, oldValue, value);
     } else {
-      props.selectedNode[field] = value;
+      selectedNode.value[field] = value;
       notifyChange();
     }
   }
 }
 
 function updateGraphField<K extends keyof GraphDefinition>(field: K, value: GraphDefinition[K]) {
-  if (props.graphDef) {
-    const oldValue = props.graphDef[field];
+  if (graphDef.value) {
+    const oldValue = graphDef.value[field];
     if (props.undoRedo) {
       props.undoRedo.pushSetGraphProperty(field, oldValue, value);
     } else {
-      props.graphDef[field] = value;
+      graphDef.value[field] = value;
       notifyChange();
     }
   }
 }
 
 function updateStateField<K extends keyof StateFieldDef>(idx: number, field: K, value: StateFieldDef[K]) {
-  if (props.graphDef && props.graphDef.stateFields[idx]) {
-    const oldValue = props.graphDef.stateFields[idx][field];
+  if (graphDef.value && graphDef.value.stateFields[idx]) {
+    const oldValue = graphDef.value.stateFields[idx][field];
     if (props.undoRedo) {
       props.undoRedo.pushSetStateProperty(idx, field, oldValue, value);
     } else {
-      props.graphDef.stateFields[idx][field] = value;
+      graphDef.value.stateFields[idx][field] = value;
       notifyChange();
     }
   }
@@ -628,8 +628,8 @@ const validationIssues = computed(() => [
 const validationValid = computed(() => props.validationValid ?? true);
 
 const panelAccentStyle = computed(() => {
-  if (!props.selectedNode) return {};
-  const style = NODE_TYPE_STYLES[props.selectedNode.type as NodeType];
+  if (!selectedNode.value) return {};
+  const style = NODE_TYPE_STYLES[selectedNode.value.type as NodeType];
   return style ? { '--node-accent': style.borderColor } : {};
 });
 
@@ -637,11 +637,11 @@ const nodeTypeOptions = computed(() =>
   Object.entries(NODE_TYPE_STYLES).map(([key, val]) => ({ label: val.label, value: key })),
 );
 
-const nodeIdOptions = computed(() => (props.graphDef?.nodes ?? []).map((n) => ({ label: n.id, value: n.id })));
+const nodeIdOptions = computed(() => (graphDef.value?.nodes ?? []).map((n) => ({ label: n.id, value: n.id })));
 
 const destinationOptions = computed(() =>
-  (props.graphDef?.nodes ?? [])
-    .filter((n) => n.id !== props.selectedNode?.id)
+  (graphDef.value?.nodes ?? [])
+    .filter((n) => n.id !== selectedNode.value?.id)
     .map((n) => ({ label: `${n.id} (${n.type})`, value: n.id })),
 );
 
@@ -665,15 +665,15 @@ const {
   addPathMapEntry,
   addConditionalEdge,
 } = useConditionalRoutes(
-  computed(() => props.graphDef),
-  computed(() => props.selectedNode?.id ?? null),
+  computed(() => graphDef.value),
+  computed(() => selectedNode.value?.id ?? null),
   computed(() => props.undoRedo),
   notifyChange,
   destinationOptions,
 );
 
 function addStateField() {
-  if (props.graphDef) {
+  if (graphDef.value) {
     const field = {
       name: '',
       type: 'string' as const,
@@ -681,8 +681,8 @@ function addStateField() {
       required: false,
       disableDeepCopy: false,
     };
-    const idx = props.graphDef.stateFields.length;
-    props.graphDef.stateFields.push(field);
+    const idx = graphDef.value.stateFields.length;
+    graphDef.value.stateFields.push(field);
     if (props.undoRedo) {
       props.undoRedo.pushAddStateField(field, idx);
     } else {
@@ -692,10 +692,10 @@ function addStateField() {
 }
 
 function removeStateField(index: number) {
-  if (props.graphDef) {
-    const field = props.graphDef.stateFields[index];
+  if (graphDef.value) {
+    const field = graphDef.value.stateFields[index];
     if (field) {
-      props.graphDef.stateFields.splice(index, 1);
+      graphDef.value.stateFields.splice(index, 1);
       if (props.undoRedo) {
         props.undoRedo.pushRemoveStateField(field, index);
       } else {

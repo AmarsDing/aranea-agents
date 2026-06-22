@@ -364,25 +364,73 @@ func (m *DeptLeadManager) CancelBorrowRequestsByFromDept(ctx context.Context, de
 // ValidateBorrowRatio checks that cross-department members do not exceed 50%
 // of the total enabled members in a team.
 // deptID is the team's home department; agentIDs are the enabled member agent IDs.
-// TODO(debt): current implementation queries agent department one-by-one (N+1).
-// Should batch-fetch agent departments via a single query when AgentRepository
-// provides a BatchGetAgentDepartments method.
 func (m *DeptLeadManager) ValidateBorrowRatio(ctx context.Context, deptID string, agentIDs []string) error {
 	if deptID == "" || len(agentIDs) == 0 {
 		return nil
 	}
 	total := len(agentIDs)
-	crossDept := 0
-	for _, aid := range agentIDs {
-		agentDeptID, err := m.agentDepartment(ctx, aid)
-		if err != nil {
-			m.lg.Warn("failed to query agent department for borrow ratio validation",
-				loggateway.StepID("dept_lead.borrow_ratio"),
-				loggateway.Str("agent_id", aid),
-				loggateway.Err(err))
+	// Batch-fetch all agents in a single query to avoid N+1 (S1 fix).
+	agents, err := m.agentRepo.ListAgentsByIDs(ctx, agentIDs)
+	if err != nil {
+		m.lg.Warn("failed to batch-fetch agents for borrow ratio validation",
+			loggateway.StepID("dept_lead.borrow_ratio"),
+			loggateway.Int("agent_count", total),
+			loggateway.Err(err))
+		// Fallback: skip validation rather than block the operation.
+		return nil
+	}
+	// Collect unique non-empty position IDs for batch org-node lookup.
+	positionToAgent := make(map[string]string, len(agents))
+	positionIDs := make([]string, 0, len(agents))
+	for _, a := range agents {
+		if a.PositionID == "" {
 			continue
 		}
-		if agentDeptID != "" && agentDeptID != deptID {
+		if _, exists := positionToAgent[a.PositionID]; !exists {
+			positionToAgent[a.PositionID] = a.ID
+			positionIDs = append(positionIDs, a.PositionID)
+		}
+	}
+	// Batch-fetch org nodes for all positions.
+	posNodes, err := m.orgRepo.ListOrgNodesByIDs(ctx, positionIDs)
+	if err != nil {
+		m.lg.Warn("failed to batch-fetch org nodes for borrow ratio validation",
+			loggateway.StepID("dept_lead.borrow_ratio"),
+			loggateway.Err(err))
+		return nil
+	}
+	posByID := make(map[string]OrganizationNode, len(posNodes))
+	for _, p := range posNodes {
+		posByID[p.ID] = p
+	}
+	// For each agent, resolve its department ID from the position tree.
+	agentDept := make(map[string]string, len(agents))
+	for _, a := range agents {
+		if a.PositionID == "" {
+			continue
+		}
+		pos, ok := posByID[a.PositionID]
+		if !ok {
+			continue
+		}
+		if pos.Level == "department" {
+			agentDept[a.ID] = pos.ID
+			continue
+		}
+		if pos.ParentID != "" {
+			parent, ok := posByID[pos.ParentID]
+			if ok && parent.Level == "department" {
+				agentDept[a.ID] = parent.ID
+			}
+		}
+	}
+	crossDept := 0
+	for _, aid := range agentIDs {
+		dept, ok := agentDept[aid]
+		if !ok {
+			continue
+		}
+		if dept != "" && dept != deptID {
 			crossDept++
 		}
 	}

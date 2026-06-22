@@ -74,7 +74,7 @@ import LogLevelToggle, { type LogLevel } from './LogLevelToggle.vue';
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 defineProps<{}>();
-const emit = defineEmits<{
+defineEmits<{
   clear: [];
 }>();
 

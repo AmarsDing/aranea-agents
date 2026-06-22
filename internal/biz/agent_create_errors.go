@@ -13,5 +13,9 @@ func isAgentKeyDuplicate(err error) bool {
 		return true
 	}
 	msg := strings.ToLower(err.Error())
+	// The (position_key, agent_variant) unique constraint is not an agent_key conflict.
+	if strings.Contains(msg, "agent_position_key_agent_variant") {
+		return false
+	}
 	return strings.Contains(msg, "unique") && strings.Contains(msg, "agent_key")
 }

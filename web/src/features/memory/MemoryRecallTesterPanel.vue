@@ -47,7 +47,11 @@
           <q-card-section>
             <div class="text-subtitle1">Composite Search（L2 + L3 融合）</div>
           </q-card-section>
-          <AppRegistryMarkupTable :rows="compositeRows" :columns="compositeColumns" row-key="row_uid">
+          <AppRegistryMarkupTable
+            :rows="compositeRows"
+            :columns="compositeColumns as RegistryTableColumn[]"
+            row-key="row_uid"
+          >
             <template #cell-layer="{ row }">
               <AppRegistryHoverTip :text="String(row.text || row.id)" empty-label="暂无文本">
                 <q-badge :color="row.layer === 'L2' ? 'teal' : 'deep-purple'">{{ row.layer }}</q-badge>
@@ -80,6 +84,7 @@ import RecallHitTable from '../../components/memory/RecallHitTable.vue';
 import AppRegistryHoverTip from '../../components/layout/AppRegistryHoverTip.vue';
 import AppRegistryMarkupTable from '../../components/layout/AppRegistryMarkupTable.vue';
 import { COMPOSITE_COLUMNS } from './memoryTableUi';
+import type { RegistryTableColumn } from '../ui/registryTableColumns';
 
 const compositeColumns = COMPOSITE_COLUMNS;
 

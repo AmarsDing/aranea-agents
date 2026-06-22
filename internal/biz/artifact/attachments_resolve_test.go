@@ -40,6 +40,16 @@ func (m *resolveMemRepo) LoadMeta(_ context.Context, id string, _ int) (artifact
 	return a, nil
 }
 
+func (m *resolveMemRepo) LoadMetas(_ context.Context, ids []string, _ int) ([]artifact.Artifact, error) {
+	out := make([]artifact.Artifact, 0, len(ids))
+	for _, id := range ids {
+		if a, ok := m.items[id]; ok {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
 func (m *resolveMemRepo) List(context.Context, string, int, int) ([]artifact.Artifact, int, error) {
 	return nil, 0, nil
 }

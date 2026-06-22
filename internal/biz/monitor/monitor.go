@@ -814,23 +814,36 @@ func (u *Usecase) GetRunnerMetrics(ctx context.Context, windowMinutes int) (Runn
 	return out, nil
 }
 
+// RunnerCompletionLinkParams encapsulates the parameters for linking runner
+// completion rows with usage rows. Introduced to keep method signatures under
+// the 5-parameter limit (S4/S5 fix). Bridge may be nil for LinkRunnerCompletionUsage
+// (the method returns early in that case).
+type RunnerCompletionLinkParams struct {
+	SessionID    string
+	RunID        string
+	InvocationID string
+	UsageEventID string
+	TraceID      string
+	Bridge       RunnerCompletionBridge
+}
+
 // RecordRunnerCompletion persists a runner.completion event and patches metadata.
-func (u *Usecase) RecordRunnerCompletion(ctx context.Context, write EventWrite, sessionID, runID, invocationID, usageEventID, traceID string, bridge RunnerCompletionBridge) error {
+func (u *Usecase) RecordRunnerCompletion(ctx context.Context, write EventWrite, p RunnerCompletionLinkParams) error {
 	if u == nil || u.eventRepo == nil {
 		return nil
 	}
-	if sessionID != "" && invocationID != "" {
-		exists, err := u.runnerCompletion.ExistsRunnerCompletion(ctx, sessionID, invocationID)
+	if p.SessionID != "" && p.InvocationID != "" {
+		exists, err := u.runnerCompletion.ExistsRunnerCompletion(ctx, p.SessionID, p.InvocationID)
 		if err != nil {
 			return err
 		}
 		if exists {
-			patched, err := u.PatchRunnerCompletionLink(ctx, sessionID, runID, invocationID, usageEventID, traceID, bridge)
+			patched, err := u.PatchRunnerCompletionLink(ctx, p)
 			if err != nil {
 				return err
 			}
-			if patched || strings.TrimSpace(usageEventID) != "" {
-				bridge.ClearTurn(sessionID, runID)
+			if patched || strings.TrimSpace(p.UsageEventID) != "" {
+				p.Bridge.ClearTurn(p.SessionID, p.RunID)
 			}
 			return nil
 		}
@@ -838,55 +851,56 @@ func (u *Usecase) RecordRunnerCompletion(ctx context.Context, write EventWrite, 
 	if err := u.eventRepo.InsertMonitorEvent(ctx, write); err != nil {
 		return err
 	}
-	patched, err := u.PatchRunnerCompletionLink(ctx, sessionID, runID, invocationID, usageEventID, traceID, bridge)
+	patched, err := u.PatchRunnerCompletionLink(ctx, p)
 	if err != nil {
 		return err
 	}
-	if patched || strings.TrimSpace(usageEventID) != "" {
-		bridge.ClearTurn(sessionID, runID)
+	if patched || strings.TrimSpace(p.UsageEventID) != "" {
+		p.Bridge.ClearTurn(p.SessionID, p.RunID)
 	}
 	return nil
 }
 
 // LinkRunnerCompletionUsage patches the latest completion row with usage_event_id.
-func (u *Usecase) LinkRunnerCompletionUsage(ctx context.Context, sessionID, runID, usageEventID, traceID string, bridge RunnerCompletionBridge) error {
+func (u *Usecase) LinkRunnerCompletionUsage(ctx context.Context, p RunnerCompletionLinkParams) error {
 	if u == nil || u.runnerCompletion == nil {
 		return nil
 	}
-	sessionID = strings.TrimSpace(sessionID)
-	runID = strings.TrimSpace(runID)
-	usageEventID = strings.TrimSpace(usageEventID)
-	if sessionID == "" || runID == "" || usageEventID == "" {
+	p.SessionID = strings.TrimSpace(p.SessionID)
+	p.RunID = strings.TrimSpace(p.RunID)
+	p.UsageEventID = strings.TrimSpace(p.UsageEventID)
+	if p.SessionID == "" || p.RunID == "" || p.UsageEventID == "" {
 		return nil
 	}
-	bridge.RegisterTurnUsage(sessionID, runID, usageEventID, traceID, "", "")
-	patched, err := u.PatchRunnerCompletionLink(ctx, sessionID, runID, runID, usageEventID, traceID, bridge)
+	p.Bridge.RegisterTurnUsage(p.SessionID, p.RunID, p.UsageEventID, p.TraceID, "", "")
+	p.InvocationID = p.RunID
+	patched, err := u.PatchRunnerCompletionLink(ctx, p)
 	if err != nil {
 		return err
 	}
 	if patched {
-		bridge.ClearTurn(sessionID, runID)
+		p.Bridge.ClearTurn(p.SessionID, p.RunID)
 	}
 	return nil
 }
 
 // PatchRunnerCompletionLink patches runner completion metadata with usage correlation.
-func (u *Usecase) PatchRunnerCompletionLink(ctx context.Context, sessionID, runID, invocationID, usageEventID, traceID string, bridge RunnerCompletionBridge) (bool, error) {
-	usageEventID = strings.TrimSpace(usageEventID)
-	traceID = strings.TrimSpace(traceID)
-	if usageEventID == "" {
-		if u2, t2, ok := bridge.PendingUsage(sessionID, runID); ok {
-			usageEventID = u2
-			if traceID == "" {
-				traceID = t2
+func (u *Usecase) PatchRunnerCompletionLink(ctx context.Context, p RunnerCompletionLinkParams) (bool, error) {
+	p.UsageEventID = strings.TrimSpace(p.UsageEventID)
+	p.TraceID = strings.TrimSpace(p.TraceID)
+	if p.UsageEventID == "" {
+		if u2, t2, ok := p.Bridge.PendingUsage(p.SessionID, p.RunID); ok {
+			p.UsageEventID = u2
+			if p.TraceID == "" {
+				p.TraceID = t2
 			}
 		}
 	}
-	if usageEventID == "" {
+	if p.UsageEventID == "" {
 		return false, nil
 	}
-	patch := MergeRunnerCompletionUsagePatch(usageEventID, traceID)
-	return u.runnerCompletion.PatchRunnerCompletionMetadata(ctx, sessionID, runID, invocationID, patch)
+	patch := MergeRunnerCompletionUsagePatch(p.UsageEventID, p.TraceID)
+	return u.runnerCompletion.PatchRunnerCompletionMetadata(ctx, p.SessionID, p.RunID, p.InvocationID, patch)
 }
 
 // RunnerCompletionBridge links runner.completion rows with usage rows.

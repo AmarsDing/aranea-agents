@@ -7,6 +7,7 @@
       <span v-if="parseError" class="text-caption text-negative">{{ parseError }}</span>
     </div>
     <q-scroll-area :style="{ height: scrollHeight }" class="json-code-viewer__scroll">
+      <!-- eslint-disable-next-line vue/no-v-html -- JSON syntax highlighted HTML -->
       <pre class="json-code-viewer__pre" v-html="highlightedHtml"></pre>
     </q-scroll-area>
   </div>

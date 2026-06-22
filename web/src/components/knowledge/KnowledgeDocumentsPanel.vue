@@ -15,28 +15,28 @@
       hide-pagination
       :pagination="{ rowsPerPage: 0 }"
     >
-      <template #body-cell-source="props">
-        <q-td :props="props">
-          <AppRegistryHoverTip :text="props.row.source" empty-label="—">
-            <span class="app-registry-cell-primary ellipsis">{{ props.row.source }}</span>
+      <template #body-cell-source="slotProps">
+        <q-td :props="slotProps">
+          <AppRegistryHoverTip :text="slotProps.row.source" empty-label="—">
+            <span class="app-registry-cell-primary ellipsis">{{ slotProps.row.source }}</span>
           </AppRegistryHoverTip>
         </q-td>
       </template>
-      <template #body-cell-mime_type="props">
-        <q-td :props="props">
-          <span class="text-caption">{{ props.row.mime_type || '—' }}</span>
+      <template #body-cell-mime_type="slotProps">
+        <q-td :props="slotProps">
+          <span class="text-caption">{{ slotProps.row.mime_type || '—' }}</span>
         </q-td>
       </template>
-      <template #body-cell-status="props">
-        <q-td :props="props">
-          <q-chip dense :color="statusColor(props.row.status)" text-color="white" size="sm">{{
-            props.row.status
+      <template #body-cell-status="slotProps">
+        <q-td :props="slotProps">
+          <q-chip dense :color="statusColor(slotProps.row.status)" text-color="white" size="sm">{{
+            slotProps.row.status
           }}</q-chip>
-          <q-tooltip v-if="props.row.status === 'error' && props.row.error_message" max-width="360px">
-            {{ props.row.error_message }}
+          <q-tooltip v-if="slotProps.row.status === 'error' && slotProps.row.error_message" max-width="360px">
+            {{ slotProps.row.error_message }}
           </q-tooltip>
           <q-chip
-            v-if="props.row.status === 'indexed' && props.row.extract_supported === false"
+            v-if="slotProps.row.status === 'indexed' && slotProps.row.extract_supported === false"
             dense
             color="warning"
             text-color="dark"
@@ -49,16 +49,16 @@
           </q-chip>
         </q-td>
       </template>
-      <template #body-cell-size_bytes="props">
-        <q-td :props="props">{{ formatKnowledgeDocSize(props.row.size_bytes) }}</q-td>
+      <template #body-cell-size_bytes="slotProps">
+        <q-td :props="slotProps">{{ formatKnowledgeDocSize(slotProps.row.size_bytes) }}</q-td>
       </template>
-      <template #body-cell-created_at="props">
-        <q-td :props="props">
-          <span class="text-caption">{{ formatKnowledgeTime(props.row.created_at) }}</span>
+      <template #body-cell-created_at="slotProps">
+        <q-td :props="slotProps">
+          <span class="text-caption">{{ formatKnowledgeTime(slotProps.row.created_at) }}</span>
         </q-td>
       </template>
-      <template #body-cell-actions="props">
-        <q-td :props="props">
+      <template #body-cell-actions="slotProps">
+        <q-td :props="slotProps">
           <div class="app-registry-cell-actions">
             <q-btn
               flat
@@ -67,7 +67,7 @@
               color="negative"
               icon="delete"
               aria-label="删除"
-              @click="$emit('delete-document', props.row)"
+              @click="$emit('delete-document', slotProps.row)"
             />
           </div>
         </q-td>

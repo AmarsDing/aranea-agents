@@ -63,7 +63,7 @@
         @create-from-template="createFromTemplate"
       />
       <GraphEditorCanvas
-        :graph-def="graphDef"
+        v-model:graph-def="graphDef"
         :is-dark="isDark"
         :undo-redo="undoRedo"
         @select-node="onSelectNode"
@@ -73,8 +73,8 @@
       />
       <GraphPropertyPanel
         ref="propertyPanelRef"
-        :selected-node="selectedNode"
-        :graph-def="graphDef"
+        v-model:selected-node="selectedNode"
+        v-model:graph-def="graphDef"
         :available-tools="availableTools"
         :is-dark="isDark"
         :validation-errors="mergedValidationErrors"
@@ -149,9 +149,6 @@ const {
   runInitialState,
   runLoading,
   availableTools,
-  validationErrors,
-  validationWarnings,
-  validationValid,
   mergedValidationErrors,
   mergedValidationWarnings,
   mergedValidationValid,

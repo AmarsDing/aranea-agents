@@ -78,6 +78,9 @@ func (s *fakeFactoryAgentStore) GetAgentByID(_ context.Context, _ string) (biz.A
 func (s *fakeFactoryAgentStore) ListExtrasForAgents(_ context.Context, _ []string) (map[string]biz.AgentListExtras, error) {
 	return nil, nil
 }
+func (s *fakeFactoryAgentStore) ListAgentsByIDs(_ context.Context, _ []string) ([]biz.Agent, error) {
+	return nil, nil
+}
 
 // Unused AgentWriter methods
 func (s *fakeFactoryAgentStore) UpdateAgent(_ context.Context, a biz.Agent) (biz.Agent, error) {

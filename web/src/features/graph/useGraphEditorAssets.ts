@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router';
 import type { GraphDefinition, GraphVersionInfo } from './types';
 import { useGraphStore } from '../../stores/graph';
 
-export function useGraphEditorAssets(graphDef: GraphDefinition, isNew: () => boolean) {
+export function useGraphEditorAssets(graphDef: GraphDefinition, _isNew: () => boolean) {
   const $q = useQuasar();
   const router = useRouter();
   const graphStore = useGraphStore();

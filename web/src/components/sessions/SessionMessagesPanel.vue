@@ -24,6 +24,7 @@
               msg.status
             }}</q-badge>
           </div>
+          <!-- eslint-disable-next-line vue/no-v-html -- sanitized markdown HTML -->
           <div class="session-message-row__content" v-html="renderMarkdown(msg.content_markdown)"></div>
           <div v-if="msg.token_in || msg.token_out" class="text-caption text-grey-6 q-mt-xs">
             IN {{ msg.token_in }} · OUT {{ msg.token_out }}

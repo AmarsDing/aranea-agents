@@ -50,7 +50,7 @@ const ROUTES = [
   '/settings',
 ];
 
-const IGNORED_TEXT = /logout|退出|登出|github|twitter|x\.com|docs|帮助文档|privacy|terms|license|重新检测/i;
+const IGNORED_TEXT = /logout|退出|登出|github|twitter|x\.com|docs|帮助文档|privacy|terms|license|重新检测|brightness_auto/i;
 const IGNORED_CONSOLE = /WebSocket connection to .*probe=1.* failed: WebSocket is closed before the connection is established/i;
 const IGNORED_NETWORK_URL = /probe=1|\.png|\.jpg|\.svg|\.ico|\.woff/i;
 const MAX_CLICKS_PER_PAGE = 30;
@@ -83,17 +83,18 @@ async function waitForBackend(maxAttempts = 30) {
     headless: true,
     executablePath: process.env.CHROME_EXE || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
   });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const results = [];
 
   for (const path of ROUTES) {
     log(`\n=== Testing ${path} ===`);
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     let page;
     try {
       page = await context.newPage();
     } catch (e) {
       log(`  failed to create page: ${e.message}`);
       results.push({ path, url: `${BASE_URL}${path}`, loadOk: false, error: e.message, clickedCount: 0, clicked: [], logs: [], network: [] });
+      try { await context.close(); } catch {}
       continue;
     }
     const logs = [];
@@ -155,12 +156,24 @@ async function waitForBackend(maxAttempts = 30) {
             await bd.click({ timeout: 1000 }).catch(() => {});
             await page.waitForTimeout(200);
           }
-          const closeBtns = await page.locator('.q-dialog button, .q-dialog [role="button"]').all();
-          for (const btn of closeBtns) {
-            const text = (await btn.textContent().catch(() => '')).trim();
-            if (/^(取消|关闭|Close|Cancel|Dismiss|OK|确定|确认)$/i.test(text)) {
-              await btn.click({ timeout: 1000 }).catch(() => {});
-              await page.waitForTimeout(200);
+          const closeBtnSelectors = [
+            '.q-dialog .q-btn[icon="close"]',
+            '.q-dialog [v-close-popup]',
+            '.q-dialog button',
+            '.q-dialog [role="button"]',
+          ];
+          for (const selector of closeBtnSelectors) {
+            const closeBtns = await page.locator(selector).all();
+            for (const btn of closeBtns) {
+              const text = (await btn.textContent().catch(() => '')).trim();
+              const icon = (await btn.getAttribute('icon').catch(() => '')) || '';
+              if (
+                icon === 'close' ||
+                /^(取消|关闭|Close|Cancel|Dismiss|OK|确定|确认)$/i.test(text)
+              ) {
+                await btn.click({ timeout: 1000 }).catch(() => {});
+                await page.waitForTimeout(200);
+              }
             }
           }
         }
@@ -261,6 +274,9 @@ async function waitForBackend(maxAttempts = 30) {
 
     try {
       await page.close();
+    } catch {}
+    try {
+      await context.close();
     } catch {}
   }
 

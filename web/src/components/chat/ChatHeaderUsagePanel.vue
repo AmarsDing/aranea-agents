@@ -62,7 +62,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useQuasar } from 'quasar';
 import {
   composerContextColor,
   composerUsageParts,
@@ -80,7 +79,7 @@ const props = withDefaults(
     breakdown?: PromptBreakdown | null;
     sessionId?: string | null;
   }>(),
-  { isDark: false },
+  { contextStatus: undefined, usageSnapshot: null, breakdown: null, sessionId: null, isDark: false },
 );
 
 const emit = defineEmits<{
@@ -88,7 +87,6 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const $q = useQuasar();
 
 const popoverOpen = ref(false);
 const compactLoading = ref(false);

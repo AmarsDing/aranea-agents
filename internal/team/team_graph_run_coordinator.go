@@ -513,12 +513,30 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 	}
 	updatedRun, transitionErr := c.runTransitioner.TransitionRunStatus(ctx, run.ID, newStatus)
 	if transitionErr != nil {
-		c.lg.Warn("TransitionRunStatus failed in coordinator.finalizeTeamRun",
+		// S8 fix: Distinguish state-machine rejection from transient persistence failures.
+		// The pre-check at line 507 only verified run.Status is WaitingHuman or Running;
+		// it did NOT call sm.CanTransition. Re-validate explicitly here so we don't
+		// bypass the state machine on illegal transitions (AS-FSM-01).
+		sm := biz.NewTeamRunStateMachine()
+		if !sm.CanTransition(biz.TeamRunState(run.Status), biz.TeamRunState(newStatus)) {
+			// State machine rejects this transition — do NOT fall back to direct
+			// mutation. Log and return so the caller sees the inconsistency.
+			c.lg.Warn("TransitionRunStatus rejected by state machine in finalizeTeamRun",
+				loggateway.StepID("team.run.transition_rejected"),
+				loggateway.Str("team_run_id", run.ID),
+				loggateway.Str("from_status", run.Status),
+				loggateway.Str("to_status", newStatus),
+				loggateway.Err(transitionErr))
+			return
+		}
+		// TECH-DEBT(S8): Transition was valid per state machine but failed for
+		// another reason (e.g., DB error, CAS rejection due to concurrent update).
+		// Falling back to direct mutation bypasses the state machine and CAS guard.
+		// This should be replaced with a retry loop or a reconciler that re-reads
+		// the current state and re-attempts the transition.
+		c.lg.Warn("TransitionRunStatus failed in coordinator.finalizeTeamRun (using persistence-recovery fallback)",
 			loggateway.StepID("team.run.transition_fail"),
 			loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
-		// Persistence-recovery fallback: CanTransition validated above (line 523-525
-		// checks run.Status is WaitingHuman or Running, both of which can transition
-		// to Success/Failed). TransitionRunStatus failed for another reason.
 		now := agent.RFC3339Now()
 		run.FinishedAt = now
 		run.UpdatedAt = now

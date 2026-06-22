@@ -45,7 +45,7 @@
 import { useQuasar } from 'quasar';
 import type { AgentNodeState } from '../../features/orchestration/types';
 
-const props = defineProps<{
+defineProps<{
   open: boolean;
   node: AgentNodeState | null;
   advancedJson: string;

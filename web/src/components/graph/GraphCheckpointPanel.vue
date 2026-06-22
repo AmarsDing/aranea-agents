@@ -55,7 +55,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import { useQuasar } from 'quasar';
 import type { CheckpointInfo } from '../../features/graph/types';
 import { formatTime } from '../../features/graph/utils';

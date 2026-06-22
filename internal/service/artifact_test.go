@@ -51,6 +51,16 @@ func (m *memArtifactRepo) LoadMeta(_ context.Context, id string, _ int) (biz.Art
 	return a, nil
 }
 
+func (m *memArtifactRepo) LoadMetas(_ context.Context, ids []string, _ int) ([]biz.Artifact, error) {
+	out := make([]biz.Artifact, 0, len(ids))
+	for _, id := range ids {
+		if a, ok := m.items[id]; ok {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
 func (m *memArtifactRepo) List(_ context.Context, sessionID string, limit, _ int) ([]biz.Artifact, int, error) {
 	var out []biz.Artifact
 	for _, a := range m.items {

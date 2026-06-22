@@ -50,6 +50,7 @@ type (
 	SessionBatchScope       = session.SessionBatchScope
 	SessionBatchPreview     = session.SessionBatchPreview
 	SessionBatchResult      = session.SessionBatchResult
+	BatchOperationParams    = session.BatchOperationParams
 	SessionParticipant      = session.SessionParticipant
 	SessionMetricsReader    = session.SessionMetricsReader
 	SessionMetricsWriter    = session.SessionMetricsWriter
