@@ -137,7 +137,10 @@ func isNotFound(err error) bool {
 		return ae.Code == apierror.CodeNotFound
 	}
 	// Check for kratos 404 errors (not apierror).
-	var ke interface{ Error() string; GRPCStatus() }
+	var ke interface {
+		Error() string
+		GRPCStatus()
+	}
 	if stderrors.As(err, &ke) {
 		// Kratos errors carry HTTP status in their Code field.
 		type statusCoder interface{ Code() int32 }

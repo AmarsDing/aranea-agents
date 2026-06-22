@@ -324,11 +324,11 @@ func TestToProtoProposal(t *testing.T) {
 		{
 			name: "status_approved",
 			in: biz.KnowledgeProposal{
-				ID:        "prop-3",
-				Status:    biz.ProposalStatusApproved,
+				ID:         "prop-3",
+				Status:     biz.ProposalStatusApproved,
 				ApprovedBy: "system",
-				CreatedAt: createdAt,
-				UpdatedAt: updatedAt,
+				CreatedAt:  createdAt,
+				UpdatedAt:  updatedAt,
 			},
 			want: &v1.KnowledgeProposal{
 				Id:         "prop-3",

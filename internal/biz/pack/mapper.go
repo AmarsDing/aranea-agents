@@ -39,11 +39,11 @@ func ParseOrgKeyPath(path string) (company, dept, pos string, err error) {
 // KeyMapper 维护 Pack 导入过程中的 key→ID 映射。
 // 所有访问通过 RWMutex 保护，防御未来并发导入场景。
 type KeyMapper struct {
-	mu             sync.RWMutex
-	agentKeyToID   map[string]string // agent_key → agent_id
-	teamKeyToID    map[string]string // team_key → team_id
-	orgKeyToID     map[string]string // org_key 路径 → organization_node_id
-	graphIDMap     map[string]string // 原始 graph_id → 新 graph_id
+	mu           sync.RWMutex
+	agentKeyToID map[string]string // agent_key → agent_id
+	teamKeyToID  map[string]string // team_key → team_id
+	orgKeyToID   map[string]string // org_key 路径 → organization_node_id
+	graphIDMap   map[string]string // 原始 graph_id → 新 graph_id
 }
 
 // NewKeyMapper 创建新的映射器。

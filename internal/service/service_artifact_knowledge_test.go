@@ -84,9 +84,9 @@ func TestToProtoCollection(t *testing.T) {
 
 func TestToProtoDocument(t *testing.T) {
 	tests := []struct {
-		name              string
-		in                biz.KnowledgeDocument
-		wantExtractSupp   bool
+		name            string
+		in              biz.KnowledgeDocument
+		wantExtractSupp bool
 	}{
 		{
 			name: "pdf_extract_supported",

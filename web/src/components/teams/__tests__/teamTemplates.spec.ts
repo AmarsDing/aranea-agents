@@ -51,7 +51,7 @@ describe('teamTemplates.definitionFromTemplate', () => {
     const def = definitionFromTemplate('critic_loop', mockAgents);
     expect(def.mode).toBe('critic_loop');
     expect(def.critic_loop).toBeDefined();
-    expect(def.critic_loop.max_iterations).toBeGreaterThan(0);
+    expect(def.critic_loop!.max_iterations).toBeGreaterThan(0);
     const roles = def.members.map((m) => m.role);
     expect(roles).toContain('generator');
     expect(roles).toContain('critic');

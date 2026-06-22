@@ -23,7 +23,7 @@ func TestParseFlowLogTimeBounds(t *testing.T) {
 		wantSince time.Time
 		wantUntil time.Time
 		wantErr   bool
-		errMsg string
+		errMsg    string
 	}{
 		{
 			name:      "both_empty",
@@ -68,25 +68,25 @@ func TestParseFlowLogTimeBounds(t *testing.T) {
 			wantUntil: time.Time{},
 		},
 		{
-			name:      "invalid_since",
-			sinceRaw:  "not-a-date",
-			untilRaw:  "",
-			wantErr:   true,
-			errMsg: "invalid since",
+			name:     "invalid_since",
+			sinceRaw: "not-a-date",
+			untilRaw: "",
+			wantErr:  true,
+			errMsg:   "invalid since",
 		},
 		{
-			name:      "invalid_until",
-			sinceRaw:  "",
-			untilRaw:  "bad-time",
-			wantErr:   true,
-			errMsg: "invalid until",
+			name:     "invalid_until",
+			sinceRaw: "",
+			untilRaw: "bad-time",
+			wantErr:  true,
+			errMsg:   "invalid until",
 		},
 		{
-			name:      "until_before_since",
-			sinceRaw:  "2025-06-01T00:00:00Z",
-			untilRaw:  "2025-01-01T00:00:00Z",
-			wantErr:   true,
-			errMsg: "until must be after since",
+			name:     "until_before_since",
+			sinceRaw: "2025-06-01T00:00:00Z",
+			untilRaw: "2025-01-01T00:00:00Z",
+			wantErr:  true,
+			errMsg:   "until must be after since",
 		},
 		{
 			name:      "until_equals_since",
@@ -110,12 +110,12 @@ func TestParseFlowLogTimeBounds(t *testing.T) {
 					t.Fatal("expected error, got nil")
 				}
 				ae, ok := apierror.From(err)
-			if !ok {
-				t.Fatalf("expected apierror, got %T: %v", err, err)
-			}
-			if tc.errMsg != "" && !containsSubstr(ae.Message, tc.errMsg) {
-				t.Fatalf("message = %q, want containing %q", ae.Message, tc.errMsg)
-			}
+				if !ok {
+					t.Fatalf("expected apierror, got %T: %v", err, err)
+				}
+				if tc.errMsg != "" && !containsSubstr(ae.Message, tc.errMsg) {
+					t.Fatalf("message = %q, want containing %q", ae.Message, tc.errMsg)
+				}
 				return
 			}
 			if err != nil {

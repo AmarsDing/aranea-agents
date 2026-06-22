@@ -158,13 +158,13 @@ func toTaskPlanDetail(p *biz.TaskPlan) *chatv1.TaskPlanDetail {
 		return nil
 	}
 	detail := &chatv1.TaskPlanDetail{
-		PlanId:            p.ID,
-		SessionId:         p.SpiritSessionID,
-		TraceId:           p.TraceID,
-		UserMessage:       p.UserMessage,
+		PlanId:             p.ID,
+		SessionId:          p.SpiritSessionID,
+		TraceId:            p.TraceID,
+		UserMessage:        p.UserMessage,
 		IntentArtifactJson: p.IntentArtifactJSON,
-		ComplexityLevel:   string(p.ComplexityLevel),
-		ComplexityScore:   p.ComplexityScore,
+		ComplexityLevel:    string(p.ComplexityLevel),
+		ComplexityScore:    p.ComplexityScore,
 		Dimensions: &chatv1.DimensionScores{
 			Semantic:   p.Dimensions.Semantic,
 			Structural: p.Dimensions.Structural,

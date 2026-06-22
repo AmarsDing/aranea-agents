@@ -8,8 +8,8 @@ import (
 )
 
 type mockRepo struct {
-	insert         func(ctx context.Context, rec Record) error
-	list           func(ctx context.Context, q Query) (ListResult, error)
+	insert          func(ctx context.Context, rec Record) error
+	list            func(ctx context.Context, q Query) (ListResult, error)
 	deleteOlderThan func(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
@@ -50,11 +50,11 @@ func TestNewUsecase_ValidRepo(t *testing.T) {
 
 func TestUsecase_Save(t *testing.T) {
 	tests := []struct {
-		name    string
-		repo    Repo
-		rec     Record
+		name      string
+		repo      Repo
+		rec       Record
 		insertErr error
-		wantErr bool
+		wantErr   bool
 	}{
 		{
 			name:    "success",
@@ -92,12 +92,12 @@ func TestUsecase_Save(t *testing.T) {
 
 func TestUsecase_List(t *testing.T) {
 	tests := []struct {
-		name       string
-		query      Query
-		setupRepo  func() *mockRepo
-		wantEmpty  bool
-		wantLimit  int
-		wantErr    bool
+		name      string
+		query     Query
+		setupRepo func() *mockRepo
+		wantEmpty bool
+		wantLimit int
+		wantErr   bool
 	}{
 		{
 			name:      "missing all 3 IDs returns empty",
@@ -106,8 +106,8 @@ func TestUsecase_List(t *testing.T) {
 			wantEmpty: true,
 		},
 		{
-			name:      "has TraceID delegates to repo",
-			query:     Query{TraceID: "trace-1", Limit: 10},
+			name:  "has TraceID delegates to repo",
+			query: Query{TraceID: "trace-1", Limit: 10},
 			setupRepo: func() *mockRepo {
 				return &mockRepo{list: func(_ context.Context, q Query) (ListResult, error) {
 					return ListResult{Items: []Record{{TraceID: "trace-1"}}, Total: 1}, nil
@@ -117,8 +117,8 @@ func TestUsecase_List(t *testing.T) {
 			wantLimit: 10,
 		},
 		{
-			name:      "has SessionID delegates to repo",
-			query:     Query{SessionID: "sess-1", Limit: 10},
+			name:  "has SessionID delegates to repo",
+			query: Query{SessionID: "sess-1", Limit: 10},
 			setupRepo: func() *mockRepo {
 				return &mockRepo{list: func(_ context.Context, q Query) (ListResult, error) {
 					return ListResult{Items: []Record{{SessionID: "sess-1"}}, Total: 1}, nil
@@ -127,8 +127,8 @@ func TestUsecase_List(t *testing.T) {
 			wantEmpty: false,
 		},
 		{
-			name:      "has RunID delegates to repo",
-			query:     Query{RunID: "run-1", Limit: 10},
+			name:  "has RunID delegates to repo",
+			query: Query{RunID: "run-1", Limit: 10},
 			setupRepo: func() *mockRepo {
 				return &mockRepo{list: func(_ context.Context, q Query) (ListResult, error) {
 					return ListResult{Items: []Record{{RunID: "run-1"}}, Total: 1}, nil
@@ -137,8 +137,8 @@ func TestUsecase_List(t *testing.T) {
 			wantEmpty: false,
 		},
 		{
-			name:      "default limit when zero",
-			query:     Query{TraceID: "t1"},
+			name:  "default limit when zero",
+			query: Query{TraceID: "t1"},
 			setupRepo: func() *mockRepo {
 				return &mockRepo{list: func(_ context.Context, q Query) (ListResult, error) {
 					if q.Limit != 200 {
@@ -149,8 +149,8 @@ func TestUsecase_List(t *testing.T) {
 			},
 		},
 		{
-			name:      "limit capped at 1000",
-			query:     Query{TraceID: "t1", Limit: 5000},
+			name:  "limit capped at 1000",
+			query: Query{TraceID: "t1", Limit: 5000},
 			setupRepo: func() *mockRepo {
 				return &mockRepo{list: func(_ context.Context, q Query) (ListResult, error) {
 					if q.Limit != 1000 {
@@ -161,8 +161,8 @@ func TestUsecase_List(t *testing.T) {
 			},
 		},
 		{
-			name:      "repo error",
-			query:     Query{TraceID: "t1", Limit: 10},
+			name:  "repo error",
+			query: Query{TraceID: "t1", Limit: 10},
 			setupRepo: func() *mockRepo {
 				return &mockRepo{list: func(_ context.Context, _ Query) (ListResult, error) {
 					return ListResult{}, errors.New("db fail")
@@ -206,10 +206,10 @@ func TestUsecase_List_NilUsecase(t *testing.T) {
 
 func TestUsecase_PurgeExpired(t *testing.T) {
 	tests := []struct {
-		name     string
+		name      string
 		setupRepo func() *mockRepo
-		wantErr  bool
-		wantDel  int64
+		wantErr   bool
+		wantDel   int64
 	}{
 		{
 			name: "success",

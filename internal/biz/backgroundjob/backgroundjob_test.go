@@ -32,9 +32,9 @@ func TestJob_IsDone(t *testing.T) {
 
 func TestStatusConstants(t *testing.T) {
 	tests := []struct {
-		name  string
-		got   Status
-		want  string
+		name string
+		got  Status
+		want string
 	}{
 		{name: "StatusQueued", got: StatusQueued, want: "queued"},
 		{name: "StatusClaimed", got: StatusClaimed, want: "claimed"},

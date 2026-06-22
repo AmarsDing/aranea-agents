@@ -63,10 +63,7 @@ export function shouldHideWsRunnerCompletion(type: string): boolean {
   return String(type || '').trim() === 'runner_completion';
 }
 
-export function findRunByUsageEventId(
-  traces: MonitorTrace[],
-  usageEventId: string,
-): MonitorTrace | undefined {
+export function findRunByUsageEventId(traces: MonitorTrace[], usageEventId: string): MonitorTrace | undefined {
   const id = usageEventId.trim();
   if (!id) return undefined;
   return traces.find((row) => String(row.id || '').trim() === id);

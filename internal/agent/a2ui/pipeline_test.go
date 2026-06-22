@@ -132,7 +132,7 @@ func TestSurfaceManager_ApplySurfaceUpdate(t *testing.T) {
 	m := NewSurfaceManager()
 	m.BeginSurface("s1", "root", nil)
 	m.ApplySurfaceUpdate(SurfaceUpdate{
-		SurfaceID: "s1",
+		SurfaceID:  "s1",
 		Components: []Component{{ID: "c1", Component: ComponentBody{Text: &TextComponent{Text: DataBinding{LiteralString: StrPtr("hi")}}}}},
 	})
 	s, _ := m.GetSurface("s1")
@@ -144,7 +144,7 @@ func TestSurfaceManager_ApplySurfaceUpdate(t *testing.T) {
 func TestSurfaceManager_ApplySurfaceUpdate_NewSurface(t *testing.T) {
 	m := NewSurfaceManager()
 	m.ApplySurfaceUpdate(SurfaceUpdate{
-		SurfaceID: "auto",
+		SurfaceID:  "auto",
 		Components: []Component{{ID: "c1"}},
 	})
 	s, ok := m.GetSurface("auto")

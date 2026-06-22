@@ -16,7 +16,10 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { SessionStatus, SessionStatusReason } from '../../features/session/types';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   status: SessionStatus;
@@ -27,25 +30,26 @@ const props = defineProps<{
 const hovered = ref(false);
 
 const statusConfig: Record<SessionStatus, { icon: string; label: string; color: string }> = {
-  idle: { icon: 'circle', label: '空闲', color: 'grey-6' },
-  running: { icon: '', label: '执行中', color: 'accent' },
-  completed: { icon: 'check_circle', label: '已完成', color: 'positive' },
-  interrupted: { icon: 'cancel', label: '已中断', color: 'warning' },
-  awaiting_confirmation: { icon: 'pause_circle', label: '等待确认', color: 'accent' },
+  idle: { icon: 'circle', label: t('session.status.idle'), color: 'grey-6' },
+  running: { icon: '', label: t('session.status.running'), color: 'accent' },
+  completed: { icon: 'check_circle', label: t('session.status.completed'), color: 'positive' },
+  interrupted: { icon: 'cancel', label: t('session.status.interrupted'), color: 'warning' },
+  awaiting_confirmation: { icon: 'pause_circle', label: t('session.status.awaiting_confirmation'), color: 'accent' },
 };
 
 const reasonLabels: Record<Exclude<SessionStatusReason, ''>, string> = {
-  user_cancelled: '用户取消',
-  timeout: '执行超时',
-  user_escalated: '用户转后台',
-  error: '执行出错',
-  context_overflow: '上下文溢出',
-  server_shutdown: '服务关闭',
-  unexpected_shutdown: '服务异常退出',
-  confirmation_timeout: '确认超时',
-  tool_confirmation: '工具执行确认',
-  agent_awaiting_reply: 'Agent 等待回复',
-  manual_override: '手动覆盖',
+  user_cancelled: t('session.statusReason.user_cancelled'),
+  timeout: t('session.statusReason.timeout'),
+  user_escalated: t('session.statusReason.user_escalated'),
+  budget_escalated: t('session.statusReason.budget_escalated'),
+  error: t('session.statusReason.error'),
+  context_overflow: t('session.statusReason.context_overflow'),
+  server_shutdown: t('session.statusReason.server_shutdown'),
+  unexpected_shutdown: t('session.statusReason.unexpected_shutdown'),
+  confirmation_timeout: t('session.statusReason.confirmation_timeout'),
+  tool_confirmation: t('session.statusReason.tool_confirmation'),
+  agent_awaiting_reply: t('session.statusReason.agent_awaiting_reply'),
+  manual_override: t('session.statusReason.manual_override'),
 };
 
 const config = computed(() => statusConfig[props.status] ?? statusConfig.idle);

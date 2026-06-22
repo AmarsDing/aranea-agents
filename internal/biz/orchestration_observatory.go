@@ -54,7 +54,7 @@ func BuildOrchestrationRegistryFromDefinition(definitionJSON string, steps []Tea
 			sortOrder = i + 1
 		}
 		entry := OrchestrationNodeRegistryEntry{
-			NodeID: fmt.Sprintf("member-%d", sortOrder),
+			NodeID:  fmt.Sprintf("member-%d", sortOrder),
 			AgentID: agentID,
 			Role:    strings.TrimSpace(m.Role),
 		}

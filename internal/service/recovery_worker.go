@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -76,7 +77,7 @@ func (w *RecoveryWorker) Run(ctx context.Context) error {
 	}
 	runs, err := w.lister.ListDurablePending(ctx, recoveryWorkerBatchSize)
 	if err != nil {
-		return fmt.Errorf("recovery worker: list stale runs: %w", err)
+		return apierror.Wrap(err, apierror.CodeInternal, apierror.DomainBackgroundJob)
 	}
 	for _, run := range runs {
 		w.recoverOne(ctx, run)

@@ -4,18 +4,20 @@
 //
 // ```mermaid
 // stateDiagram-v2
-//     [*] --> None
-//     None --> Running : start
-//     Running --> Completed : complete
-//     Running --> Failed : fail
-//     Running --> Cancelled : cancel
-//     Running --> AwaitingUser : await
-//     AwaitingUser --> Running : resume
-//     AwaitingUser --> Cancelled : cancel
-//     AwaitingUser --> Failed : fail
-//     Completed --> [*]
-//     Failed --> [*]
-//     Cancelled --> [*]
+//
+//	[*] --> None
+//	None --> Running : start
+//	Running --> Completed : complete
+//	Running --> Failed : fail
+//	Running --> Cancelled : cancel
+//	Running --> AwaitingUser : await
+//	AwaitingUser --> Running : resume
+//	AwaitingUser --> Cancelled : cancel
+//	AwaitingUser --> Failed : fail
+//	Completed --> [*]
+//	Failed --> [*]
+//	Cancelled --> [*]
+//
 // ```
 package biz
 
@@ -44,12 +46,12 @@ const (
 type RunEvent string
 
 const (
-	RunEventStart   RunEvent = "start"
+	RunEventStart    RunEvent = "start"
 	RunEventComplete RunEvent = "complete"
-	RunEventFail    RunEvent = "fail"
-	RunEventCancel  RunEvent = "cancel"
-	RunEventAwait   RunEvent = "await"
-	RunEventResume  RunEvent = "resume"
+	RunEventFail     RunEvent = "fail"
+	RunEventCancel   RunEvent = "cancel"
+	RunEventAwait    RunEvent = "await"
+	RunEventResume   RunEvent = "resume"
 )
 
 // ── Transition rules ─────────────────────────────────────────────────────────

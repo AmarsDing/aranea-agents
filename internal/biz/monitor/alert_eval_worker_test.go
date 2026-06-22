@@ -10,9 +10,9 @@ import (
 )
 
 type workerTestRepo struct {
-	mu                 sync.Mutex
+	mu                   sync.Mutex
 	listAlertRulesCalled bool
-	countCalled        int
+	countCalled          int
 }
 
 func (r *workerTestRepo) ListAuditLogs(ctx context.Context, query AuditQuery) (AuditListResult, error) {

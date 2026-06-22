@@ -146,7 +146,7 @@ func TestCreateDataset(t *testing.T) {
 				Name: "",
 			},
 			wantErr: true,
-			check: func(t *testing.T, _ Dataset) {},
+			check:   func(t *testing.T, _ Dataset) {},
 		},
 		{
 			name: "whitespace_name_returns_error",
@@ -154,7 +154,7 @@ func TestCreateDataset(t *testing.T) {
 				Name: "   ",
 			},
 			wantErr: true,
-			check: func(t *testing.T, _ Dataset) {},
+			check:   func(t *testing.T, _ Dataset) {},
 		},
 		{
 			name: "provided_id_preserved",
@@ -184,7 +184,7 @@ func TestCreateDataset(t *testing.T) {
 				}
 			},
 			wantErr: true,
-			check: func(t *testing.T, _ Dataset) {},
+			check:   func(t *testing.T, _ Dataset) {},
 		},
 	}
 
@@ -241,13 +241,13 @@ func TestGetDataset(t *testing.T) {
 			name:    "empty_id_returns_error",
 			id:      "",
 			wantErr: true,
-			check: func(t *testing.T, _ Dataset) {},
+			check:   func(t *testing.T, _ Dataset) {},
 		},
 		{
 			name:    "whitespace_id_returns_error",
 			id:      "   ",
 			wantErr: true,
-			check: func(t *testing.T, _ Dataset) {},
+			check:   func(t *testing.T, _ Dataset) {},
 		},
 		{
 			name: "not_found",
@@ -258,7 +258,7 @@ func TestGetDataset(t *testing.T) {
 				}
 			},
 			wantErr: true,
-			check: func(t *testing.T, _ Dataset) {},
+			check:   func(t *testing.T, _ Dataset) {},
 		},
 	}
 
@@ -288,15 +288,15 @@ func TestGetDataset(t *testing.T) {
 
 func TestUpdateDataset(t *testing.T) {
 	tests := []struct {
-		name        string
-		id          string
-		updateName  string
-		updateDesc  string
-		setup       func(*dsMockRepo)
-		wantErr     bool
-		wantReason  string
-		wantCode    apierror.Code
-		check       func(t *testing.T, got Dataset)
+		name       string
+		id         string
+		updateName string
+		updateDesc string
+		setup      func(*dsMockRepo)
+		wantErr    bool
+		wantReason string
+		wantCode   apierror.Code
+		check      func(t *testing.T, got Dataset)
 	}{
 		{
 			name:       "valid_update",
@@ -327,7 +327,7 @@ func TestUpdateDataset(t *testing.T) {
 			wantErr:    true,
 			wantReason: "EVAL",
 			wantCode:   apierror.CodeBadRequest,
-			check: func(t *testing.T, _ Dataset) {},
+			check:      func(t *testing.T, _ Dataset) {},
 		},
 		{
 			name:       "empty_name_returns_error",
@@ -336,7 +336,7 @@ func TestUpdateDataset(t *testing.T) {
 			wantErr:    true,
 			wantReason: "EVAL",
 			wantCode:   apierror.CodeBadRequest,
-			check: func(t *testing.T, _ Dataset) {},
+			check:      func(t *testing.T, _ Dataset) {},
 		},
 		{
 			name:       "repo_not_found",
@@ -348,7 +348,7 @@ func TestUpdateDataset(t *testing.T) {
 				}
 			},
 			wantErr: true,
-			check: func(t *testing.T, _ Dataset) {},
+			check:   func(t *testing.T, _ Dataset) {},
 		},
 	}
 
@@ -410,13 +410,13 @@ func TestDeleteDataset(t *testing.T) {
 			name:    "empty_id_returns_error",
 			id:      "",
 			wantErr: true,
-			check: func(t *testing.T) {},
+			check:   func(t *testing.T) {},
 		},
 		{
 			name:    "whitespace_id_returns_error",
 			id:      "   ",
 			wantErr: true,
-			check: func(t *testing.T) {},
+			check:   func(t *testing.T) {},
 		},
 		{
 			name: "not_found",
@@ -427,7 +427,7 @@ func TestDeleteDataset(t *testing.T) {
 				}
 			},
 			wantErr: true,
-			check: func(t *testing.T) {},
+			check:   func(t *testing.T) {},
 		},
 	}
 
@@ -496,7 +496,7 @@ func TestCreateRun(t *testing.T) {
 				AgentID:   "agent-1",
 			},
 			wantErr: true,
-			check: func(t *testing.T, _ Run) {},
+			check:   func(t *testing.T, _ Run) {},
 		},
 		{
 			name: "empty_agent_id_returns_error",
@@ -505,7 +505,7 @@ func TestCreateRun(t *testing.T) {
 				AgentID:   "",
 			},
 			wantErr: true,
-			check: func(t *testing.T, _ Run) {},
+			check:   func(t *testing.T, _ Run) {},
 		},
 		{
 			name: "default_trigger_source",
@@ -576,7 +576,7 @@ func TestCreateRun(t *testing.T) {
 				}
 			},
 			wantErr: true,
-			check: func(t *testing.T, _ Run) {},
+			check:   func(t *testing.T, _ Run) {},
 		},
 	}
 

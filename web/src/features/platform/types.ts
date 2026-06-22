@@ -57,6 +57,7 @@ export type PlatformResourceInput = Partial<
 > & {
   key: string;
   name: string;
+  pricing_configured?: boolean;
 };
 
 export type ValidateModelResult = {

@@ -195,7 +195,6 @@ func (u *MCPServerUsecase) findServerByKey(ctx context.Context, serverKey string
 	return row, nil
 }
 
-
 func sanitizeMCPUserCredentials(items []MCPServerUserCredential, err error) ([]MCPServerUserCredential, error) {
 	if err != nil {
 		return nil, err

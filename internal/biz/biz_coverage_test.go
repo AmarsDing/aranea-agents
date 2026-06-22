@@ -96,7 +96,7 @@ func (m *memTeamRepoB) ListTeamRunSteps(_ context.Context, _ string) ([]biz.Team
 func (m *memTeamRepoB) CreateTeamRun(_ context.Context, r biz.TeamRun) (biz.TeamRun, error) {
 	return r, nil
 }
-func (m *memTeamRepoB) UpdateTeamRun(_ context.Context, _ biz.TeamRun) error          { return nil }
+func (m *memTeamRepoB) UpdateTeamRun(_ context.Context, _ biz.TeamRun) error { return nil }
 func (m *memTeamRepoB) UpdateTeamWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
 	return true, nil
 }

@@ -55,9 +55,9 @@ func TestValidateTeamDefinition(t *testing.T) {
 
 func TestValidRolesForMode(t *testing.T) {
 	tests := []struct {
-		mode       string
-		wantRoles  []string
-		wantEmpty  bool
+		mode      string
+		wantRoles []string
+		wantEmpty bool
 	}{
 		{"critic_loop", []string{"generator", "critic", "synthesizer"}, false},
 		{"parallel", []string{"synthesizer"}, false},
@@ -88,11 +88,11 @@ func TestValidRolesForMode(t *testing.T) {
 
 func TestParseDefinitionForUpdate(t *testing.T) {
 	tests := []struct {
-		name      string
-		raw       string
-		wantMode  string
-		wantLen   int
-		wantErr   bool
+		name     string
+		raw      string
+		wantMode string
+		wantLen  int
+		wantErr  bool
 	}{
 		{"empty string", "", "sequential", 0, false},
 		{"whitespace", "   ", "sequential", 0, false},

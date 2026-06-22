@@ -157,11 +157,11 @@ func (s *SystemSettingService) TestWebResearch(ctx context.Context, req *v1.Test
 		HTTPProxy:   req.GetHttpProxy(),
 	}, req.GetApiKey())
 	out := &v1.TestWebResearchResponse{
-		Ok:             res.OK,
-		Message:        res.Message,
-		Provider:       res.Provider,
-		ResultCount:    int32(res.ResultCount),
-		LatencyMs:      int32(res.LatencyMS),
+		Ok:              res.OK,
+		Message:         res.Message,
+		Provider:        res.Provider,
+		ResultCount:     int32(res.ResultCount),
+		LatencyMs:       int32(res.LatencyMS),
 		ResponseTimeSec: res.ResponseTime,
 	}
 	if err != nil {

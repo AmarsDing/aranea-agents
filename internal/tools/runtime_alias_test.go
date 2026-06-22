@@ -106,8 +106,8 @@ func TestMCPServerConfig_ToConnectionConfig_customTimeout(t *testing.T) {
 
 func TestMCPServerConfig_ToConnectionConfig_headers(t *testing.T) {
 	cfg := MCPServerConfig{
-		Name:     "test",
-		Headers:  map[string]string{"Authorization": "Bearer token"},
+		Name:      "test",
+		Headers:   map[string]string{"Authorization": "Bearer token"},
 		Transport: "sse",
 		ServerURL: "http://localhost:8080",
 	}
@@ -354,8 +354,8 @@ type mockToolSetForAlias struct {
 	tools []Tool
 }
 
-func (m *mockToolSetForAlias) Name() string                                          { return m.name }
-func (m *mockToolSetForAlias) Close() error                                          { return nil }
+func (m *mockToolSetForAlias) Name() string { return m.name }
+func (m *mockToolSetForAlias) Close() error { return nil }
 func (m *mockToolSetForAlias) Tools(_ context.Context) []trpctool.Tool {
 	out := make([]trpctool.Tool, len(m.tools))
 	for i, t := range m.tools {

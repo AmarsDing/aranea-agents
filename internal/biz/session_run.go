@@ -2,7 +2,6 @@ package biz
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -68,6 +67,11 @@ type SessionRunWriter interface {
 	UpdatePhase(ctx context.Context, id, phase string) error
 	UpdateCheckpointID(ctx context.Context, id, checkpointID string) error
 	MarkTerminal(ctx context.Context, id, phase, errMsg string) error
+	// MarkTerminalWherePhase performs a CAS terminal transition: it only marks
+	// the run as terminal if its current phase matches fromPhase. This is the
+	// single authoritative path for Complete/Fail so that terminal transitions
+	// are validated by the state machine and protected from TOCTOU races.
+	MarkTerminalWherePhase(ctx context.Context, id, fromPhase, toPhase, errMsg string) (bool, error)
 }
 
 // Stability:evolving
@@ -132,7 +136,7 @@ func sessionRunNow() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
 
-var errSessionRunNotInit = apierror.Internal("SESSION_RUN", "SessionRunUsecase: not initialized")
+var errSessionRunNotInit = apierror.Internal(apierror.DomainSessionRun, "SessionRunUsecase: not initialized")
 
 func (u *SessionRunUsecase) StartInteractive(ctx context.Context, sessionID, turnID, runtimeRunID, source, agentID string) (SessionRun, error) {
 	if u == nil || u.repo == nil {
@@ -141,7 +145,7 @@ func (u *SessionRunUsecase) StartInteractive(ctx context.Context, sessionID, tur
 	sessionID = strings.TrimSpace(sessionID)
 	turnID = strings.TrimSpace(turnID)
 	if sessionID == "" || turnID == "" {
-		return SessionRun{}, apierror.BadRequest("SESSION_RUN", "sessionID and turnID are required")
+		return SessionRun{}, apierror.BadRequest(apierror.DomainSessionRun, "sessionID and turnID are required")
 	}
 	// 并发守卫：拒绝同一 Session 重复创建活跃 Run。
 	// TODO(debt): 这是 TOCTOU 检查，最终保障应通过 DB 部分唯一索引实现：
@@ -149,7 +153,7 @@ func (u *SessionRunUsecase) StartInteractive(ctx context.Context, sessionID, tur
 	//   WHERE finished_at = '' AND phase IN ('interactive', 'durable')
 	// 配合 entErrToBizErr 的 CodeConflict 翻译，可在 DB 层兜底。
 	if existing, err := u.repo.GetActiveForSession(ctx, sessionID); err == nil && existing.ID != "" {
-		return SessionRun{}, apierror.Conflict("SESSION_RUN", "active run already exists for session")
+		return SessionRun{}, apierror.Conflict(apierror.DomainSessionRun, "active run already exists for session")
 	} else if err != nil && !apierror.IsCode(err, apierror.CodeNotFound) {
 		// 非 NotFound 的查询错误应原样返回，避免静默吞错误。
 		return SessionRun{}, err
@@ -183,7 +187,7 @@ func (u *SessionRunUsecase) MarkPhase(ctx context.Context, id, phase string) err
 		return errSessionRunNotInit
 	}
 	if strings.TrimSpace(id) == "" {
-		return apierror.BadRequest("SESSION_RUN", "id is required")
+		return apierror.BadRequest(apierror.DomainSessionRun, "id is required")
 	}
 	return u.repo.UpdatePhase(ctx, id, NormalizeSessionRunPhase(phase))
 }
@@ -198,7 +202,7 @@ func (u *SessionRunUsecase) TransitionPhase(ctx context.Context, id string, even
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return false, apierror.BadRequest("SESSION_RUN", "id is required")
+		return false, apierror.BadRequest(apierror.DomainSessionRun, "id is required")
 	}
 	cur, err := u.repo.Get(ctx, id)
 	if err != nil {
@@ -207,7 +211,7 @@ func (u *SessionRunUsecase) TransitionPhase(ctx context.Context, id string, even
 	fromPhase := ParseSessionRunPhase(cur.Phase)
 	toPhase, err := sessionRunPhaseMachine.Transition(fromPhase, event)
 	if err != nil {
-		return false, fmt.Errorf("invalid phase transition from %s via %s: %w", fromPhase, event, err)
+		return false, apierror.BadRequest(apierror.DomainSessionRun, "invalid phase transition from %s via %s: %v", fromPhase, event, err)
 	}
 	ok, err := u.repo.TransitionPhase(ctx, id, string(fromPhase), string(toPhase))
 	if err != nil {
@@ -224,10 +228,11 @@ func (u *SessionRunUsecase) Complete(ctx context.Context, id string) error {
 	if u == nil || u.repo == nil {
 		return errSessionRunNotInit
 	}
-	if strings.TrimSpace(id) == "" {
-		return apierror.BadRequest("SESSION_RUN", "id is required")
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return apierror.BadRequest(apierror.DomainSessionRun, "id is required")
 	}
-	return u.repo.MarkTerminal(ctx, id, SessionRunPhaseCompleted, "")
+	return u.markTerminal(ctx, id, PhaseEventComplete, "")
 }
 
 func (u *SessionRunUsecase) Fail(ctx context.Context, id, errMsg string) error {
@@ -236,13 +241,37 @@ func (u *SessionRunUsecase) Fail(ctx context.Context, id, errMsg string) error {
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return apierror.BadRequest("SESSION_RUN", "id is required")
+		return apierror.BadRequest(apierror.DomainSessionRun, "id is required")
 	}
-	if err := u.repo.MarkTerminal(ctx, id, SessionRunPhaseFailed, strings.TrimSpace(errMsg)); err != nil {
+	if err := u.markTerminal(ctx, id, PhaseEventFail, strings.TrimSpace(errMsg)); err != nil {
 		return err
 	}
 	if err := u.repo.ClearResumeClaim(ctx, id); err != nil {
 		u.lg.Warn("clear resume claim failed", loggateway.StepID("session_run"), loggateway.Str("id", id), loggateway.Err(err))
+	}
+	return nil
+}
+
+// markTerminal performs a state-machine-validated CAS terminal transition.
+// It is the single authoritative path for Complete/Fail; callers must not
+// invoke repo.MarkTerminal directly, because that bypasses both the state
+// machine and TOCTOU protection.
+func (u *SessionRunUsecase) markTerminal(ctx context.Context, id string, event SessionRunPhaseEvent, errMsg string) error {
+	cur, err := u.repo.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	fromPhase := ParseSessionRunPhase(cur.Phase)
+	toPhase, err := sessionRunPhaseMachine.Transition(fromPhase, event)
+	if err != nil {
+		return apierror.BadRequest(apierror.DomainSessionRun, "invalid phase transition from %s via %s: %v", fromPhase, event, err)
+	}
+	ok, err := u.repo.MarkTerminalWherePhase(ctx, id, string(fromPhase), string(toPhase), errMsg)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return apierror.Conflict(apierror.DomainSessionRun, "phase changed concurrently; please retry")
 	}
 	return nil
 }
@@ -253,7 +282,7 @@ func (u *SessionRunUsecase) TryClaimDurableResume(ctx context.Context, id string
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return false, apierror.BadRequest("SESSION_RUN", "id is required")
+		return false, apierror.BadRequest(apierror.DomainSessionRun, "id is required")
 	}
 	staleBefore := time.Now().UTC().Add(-time.Duration(DefaultDurableResumeClaimStaleSec) * time.Second).Format(time.RFC3339)
 	return u.repo.TryClaimDurableResume(ctx, id, staleBefore)

@@ -19,15 +19,8 @@
         :duration-ms="event.durationMs"
         :default-collapsed="event.collapsed"
       />
-      <ActionBlock
-        v-else-if="event.kind === 'action'"
-        :activity="event"
-        :agent-color="agentColor"
-      />
-      <ReplyBlock
-        v-else-if="event.kind === 'reply'"
-        :activity="event"
-      />
+      <ActionBlock v-else-if="event.kind === 'action'" :activity="event" :agent-color="agentColor" />
+      <ReplyBlock v-else-if="event.kind === 'reply'" :activity="event" />
       <ErrorBlock
         v-else-if="event.kind === 'error'"
         :event="event"
@@ -38,20 +31,13 @@
         @remove-attachment="(e) => $emit('error-remove-attachment', e)"
         @relogin="(e) => $emit('error-relogin', e)"
       />
-      <PlanBlock
-        v-else-if="event.kind === 'plan'"
-        :activity="event"
-        :agent-color="agentColor"
-      />
+      <PlanBlock v-else-if="event.kind === 'plan'" :activity="event" :agent-color="agentColor" />
       <ConfirmBlock
         v-else-if="event.kind === 'confirm'"
         :activity="event"
         @confirm="(id, approved) => $emit('confirm', id, approved)"
       />
-      <NoticeBlock
-        v-else-if="event.kind === 'notice'"
-        :activity="event"
-      />
+      <NoticeBlock v-else-if="event.kind === 'notice'" :activity="event" />
     </template>
   </div>
 </template>

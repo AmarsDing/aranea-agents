@@ -83,9 +83,9 @@ func NewBeforeModelHook(priority int, layer SystemLayer, fn trpcmodel.BeforeMode
 	return &BeforeModelHookFunc{priority: priority, layer: layer, fn: fn}
 }
 
-func (h *BeforeModelHookFunc) Point() CallbackPoint   { return PointBeforeModel }
-func (h *BeforeModelHookFunc) Priority() int           { return h.priority }
-func (h *BeforeModelHookFunc) Layer() SystemLayer      { return h.layer }
+func (h *BeforeModelHookFunc) Point() CallbackPoint { return PointBeforeModel }
+func (h *BeforeModelHookFunc) Priority() int        { return h.priority }
+func (h *BeforeModelHookFunc) Layer() SystemLayer   { return h.layer }
 func (h *BeforeModelHookFunc) HandleBeforeModel(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 	return h.fn(ctx, args)
 }

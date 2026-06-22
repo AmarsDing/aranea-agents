@@ -1,4 +1,5 @@
 import { computed, onMounted, reactive, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import type { PlatformResourceInput, PlatformResourceTreeNode } from './types';
 import { errorMessage } from './providerUtils';
@@ -19,6 +20,7 @@ const CATEGORY_RESOURCE = 'organization' as const;
 
 export function useTaxonomyPage() {
   const $q = useQuasar();
+  const { t } = useI18n();
   const platformStore = usePlatformStore();
 
   const isDark = computed(() => $q.dark.isActive);
@@ -119,7 +121,7 @@ export function useTaxonomyPage() {
       const payload: PlatformResourceInput = {
         ...form,
         name: trimmedName,
-        key: editingId.value ? form.key : buildTaxonomyKey(form.level, trimmedName, form.parent_id),
+        key: editingId.value ? form.key : buildTaxonomyKey(form.level, trimmedName, form.parent_id || ''),
         parent_id: form.parent_id || '',
         metadata_json: form.metadata_json || '{}',
       };
@@ -172,6 +174,10 @@ export function useTaxonomyPage() {
 
   async function toggleNodeEnabled(node: PlatformResourceTreeNode, enabled: boolean) {
     if (node.enabled === enabled || togglingIds.value.has(node.id)) return;
+    if (parseIsSystem(node)) {
+      $q.notify({ type: 'warning', message: t('organizationPage.systemNodeToggleDisabled') });
+      return;
+    }
 
     const previous = node.enabled;
     togglingIds.value = new Set([...togglingIds.value, node.id]);

@@ -199,19 +199,19 @@ func (r *graphRepo) UpdateDefinition(ctx context.Context, def *biz.GraphDefiniti
 
 func entGraphToBiz(row *ent.GraphDefinition, lg loggateway.Logger) *biz.GraphDefinition {
 	def := &biz.GraphDefinition{
-		ID:               row.ID,
-		Name:             row.Name,
-		Description:      row.Description,
-		EntryPoint:       row.EntryPoint,
-		FinishPoint:      row.FinishPoint,
-		EnableCheckpoint: row.EnableCheckpoint,
-		ExecutionEngine:  biz.ExecutionEngineType(row.ExecutionEngine),
+		ID:                row.ID,
+		Name:              row.Name,
+		Description:       row.Description,
+		EntryPoint:        row.EntryPoint,
+		FinishPoint:       row.FinishPoint,
+		EnableCheckpoint:  row.EnableCheckpoint,
+		ExecutionEngine:   biz.ExecutionEngineType(row.ExecutionEngine),
 		VerificationGates: row.VerificationGates,
-		SortOrder:        row.SortOrder,
-		TeamID:           row.TeamID,
-		IsTemplate:       row.IsTemplate,
-		CreatedAt:        row.CreatedAt,
-		UpdatedAt:        row.UpdatedAt,
+		SortOrder:         row.SortOrder,
+		TeamID:            row.TeamID,
+		IsTemplate:        row.IsTemplate,
+		CreatedAt:         row.CreatedAt,
+		UpdatedAt:         row.UpdatedAt,
 	}
 	if err := json.Unmarshal([]byte(row.StateFields), &def.StateFields); err != nil {
 		lg.Warn("graph json unmarshal failed", loggateway.StepID("data.graph"), loggateway.Err(err))

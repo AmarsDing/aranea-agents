@@ -13,11 +13,7 @@ export interface MtlsFields {
  * Builds the auth_config_json string for A2A auth types.
  * Returns undefined when no auth is needed.
  */
-export function buildA2AAuthJSON(
-  authType: string,
-  secret: string,
-  mtls: MtlsFields,
-): string | undefined {
+export function buildA2AAuthJSON(authType: string, secret: string, mtls: MtlsFields): string | undefined {
   const type = authType?.trim();
   if (!type || type === 'none') return undefined;
   if (type === 'mtls') {

@@ -9,13 +9,13 @@
     <div class="app-inline-stats-metric">
       <span class="app-inline-stats-metric__label">成功</span>
       <span class="app-inline-stats-metric__value text-positive">{{ skill.success_count }}</span>
-      <span class="app-inline-stats-metric__meta text-negative">败 {{ skill.failure_count }}</span>
+      <span class="app-inline-stats-metric__meta text-negative">失败 {{ skill.failure_count }}</span>
     </div>
     <span class="app-inline-stats-sep" aria-hidden="true" />
     <div class="app-inline-stats-metric">
       <span class="app-inline-stats-metric__label">耗时</span>
       <span class="app-inline-stats-metric__value">{{ formatDuration(skill.avg_duration_ms) }}</span>
-      <span class="app-inline-stats-metric__meta">近 {{ formatDuration(skill.last_duration_ms) }}</span>
+      <span class="app-inline-stats-metric__meta">最近 {{ formatDuration(skill.last_duration_ms) }}</span>
     </div>
   </div>
 </template>

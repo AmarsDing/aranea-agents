@@ -137,33 +137,33 @@ func NormalizeTokenUsageStatus(status string) string {
 //   - TeamOrgMeta: DepartmentID, DeptLeadAgentID, Deliverables, InputContract, CrossDeptMemberIDs
 //   - TeamOrchestrationMeta: LinkedGraphID, SpiritSessionID, TaskDescription, AutoCreated, DagNodeID, DependsOn, ParallelConfigJSON, Topology, Readonly, InterruptReason
 type Team struct {
-	ID                  string
-	TeamKey             string
-	DisplayName         string
-	Status              string
-	IsDefault           bool
-	DefinitionJSON      string
-	ADKAppName          string
-	DepartmentID        string
-	DeptLeadAgentID     string
-	Deliverables        string // JSON array of DeliverableContract
-	InputContract       string // JSON array of DeliverableContract (expected from upstream)
-	CrossDeptMemberIDs  string // JSON array of cross-department member agent IDs
+	ID                 string
+	TeamKey            string
+	DisplayName        string
+	Status             string
+	IsDefault          bool
+	DefinitionJSON     string
+	ADKAppName         string
+	DepartmentID       string
+	DeptLeadAgentID    string
+	Deliverables       string // JSON array of DeliverableContract
+	InputContract      string // JSON array of DeliverableContract (expected from upstream)
+	CrossDeptMemberIDs string // JSON array of cross-department member agent IDs
 	LinkedGraphID      string // FK to graph_definitions; bidirectional reference with graph.team_id
-	SpiritSessionID     string
-	TaskDescription     string
-	AutoCreated         bool
-	DagNodeID           string
-	DependsOn           []string
-	ParallelConfigJSON  string
-	Topology            string
-	Readonly            bool
-	Kind                string // user | system_builtin | ecosystem_preset | marketplace | certified (maps from DB kind column)
-	Source              string // user | system | imported
-	InterruptReason     string // reason for team interruption (e.g. server restart, user cancel)
-	CreatedAt           string
-	UpdatedAt           string
-	DeletedAt           string
+	SpiritSessionID    string
+	TaskDescription    string
+	AutoCreated        bool
+	DagNodeID          string
+	DependsOn          []string
+	ParallelConfigJSON string
+	Topology           string
+	Readonly           bool
+	Kind               string // user | system_builtin | ecosystem_preset | marketplace | certified (maps from DB kind column)
+	Source             string // user | system | imported
+	InterruptReason    string // reason for team interruption (e.g. server restart, user cancel)
+	CreatedAt          string
+	UpdatedAt          string
+	DeletedAt          string
 }
 
 type TeamRun struct {

@@ -528,12 +528,12 @@ func TestOnPlanStepUpdate_planPartialFailureWhenAllDoneButSomeFailed(t *testing.
 func TestOnMemberMessageDelta_createsReplyActivityWithMemberID(t *testing.T) {
 	p, bus, _ := newTestProjector(t)
 	p.Configure(ProjectMeta{
-		SessionID:       "sess-team",
-		RequestID:       "turn-1",
-		TeamID:          "team-1",
-		AgentID:         "coordinator",
+		SessionID:        "sess-team",
+		RequestID:        "turn-1",
+		TeamID:           "team-1",
+		AgentID:          "coordinator",
 		AgentDisplayName: "Coordinator",
-		MemberAgentKeys: map[string]struct{}{"worker-a": {}},
+		MemberAgentKeys:  map[string]struct{}{"worker-a": {}},
 	}, nil)
 
 	p.OnMemberMessageDelta(context.Background(), "worker-a", "Hello ")

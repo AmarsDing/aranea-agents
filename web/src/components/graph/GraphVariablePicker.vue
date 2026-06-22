@@ -8,7 +8,7 @@
     autogrow
     type="textarea"
     class="app-field-md"
-    @update:model-value="emit('update:modelValue', $event)"
+    @update:model-value="(v: string | number | null) => emit('update:modelValue', String(v ?? ''))"
   >
     <template #append>
       <q-btn flat dense round icon="data_object" size="sm" @click="showPicker = !showPicker">
@@ -24,7 +24,7 @@
           <q-badge :color="nodeTypeColor(node.type)" :label="node.type" />
         </q-item-section>
         <q-item-section>
-          <q-item-label>{{ node.label || node.id }}</q-item-label>
+          <q-item-label>{{ graphNodeDisplayLabel(node) }}</q-item-label>
           <q-item-label caption>{{ '{{' + node.id + '.output}' + '}' }}</q-item-label>
         </q-item-section>
       </q-item>
@@ -48,6 +48,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import type { NodeDef, StateFieldDef } from '../../features/graph/types';
+import { graphNodeDisplayLabel } from '../../features/orchestration/teamNodeDisplay';
 
 const props = defineProps<{
   modelValue: string;

@@ -22,9 +22,9 @@ type skillUsageItem struct {
 }
 
 type analyzeSkillUsageOutput struct {
-	AgentID  string          `json:"agent_id"`
-	TimeRange string         `json:"time_range"`
-	Skills   []skillUsageItem `json:"skills"`
+	AgentID   string           `json:"agent_id"`
+	TimeRange string           `json:"time_range"`
+	Skills    []skillUsageItem `json:"skills"`
 }
 
 func newAnalyzeSkillUsageTool(deps Deps) trpctool.Tool {

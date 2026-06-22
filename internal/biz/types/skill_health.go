@@ -14,40 +14,40 @@ import "time"
 //
 // ExperienceReport is a value object; direct construction via &ExperienceReport{} is acceptable.
 type ExperienceReport struct {
-	SkillSlug              string   `json:"skill_slug"`
-	Period                 string   `json:"period"` // e.g., "7d", "30d"
-	HealthScore            float64  `json:"health_score"`
-	SuccessRate            float64  `json:"success_rate"`
-	AvgLatencyMs           float64  `json:"avg_latency_ms"`
-	InvocationCount        int64    `json:"invocation_count"`
-	FailurePatterns        []string `json:"failure_patterns,omitempty"`
-	OptimizationSuggestions []string `json:"optimization_suggestions,omitempty"`
-	GeneratedAt            time.Time `json:"generated_at"`
+	SkillSlug               string    `json:"skill_slug"`
+	Period                  string    `json:"period"` // e.g., "7d", "30d"
+	HealthScore             float64   `json:"health_score"`
+	SuccessRate             float64   `json:"success_rate"`
+	AvgLatencyMs            float64   `json:"avg_latency_ms"`
+	InvocationCount         int64     `json:"invocation_count"`
+	FailurePatterns         []string  `json:"failure_patterns,omitempty"`
+	OptimizationSuggestions []string  `json:"optimization_suggestions,omitempty"`
+	GeneratedAt             time.Time `json:"generated_at"`
 }
 
 // SkillHealthDetail holds per-skill health metrics for the GetSkillHealth API.
 // It provides 7-day and 30-day aggregation windows plus daily breakdowns.
 type SkillHealthDetail struct {
-	SkillID              string         `json:"skill_id"`
-	TotalInvocations7d   int            `json:"total_invocations_7d"`
-	SuccessCount7d       int            `json:"success_count_7d"`
-	SuccessRate7d        float64        `json:"success_rate_7d"`
-	P95DurationMs7d      int            `json:"p95_duration_ms_7d"`
-	RouteHitRate7d       float64        `json:"route_hit_rate_7d"`
-	TotalInvocations30d  int            `json:"total_invocations_30d"`
-	SuccessCount30d      int            `json:"success_count_30d"`
-	SuccessRate30d       float64        `json:"success_rate_30d"`
-	P95DurationMs30d     int            `json:"p95_duration_ms_30d"`
-	RouteHitRate30d      float64        `json:"route_hit_rate_30d"`
-	DailyMetrics         []DailyMetric  `json:"daily_metrics,omitempty"`
+	SkillID             string        `json:"skill_id"`
+	TotalInvocations7d  int           `json:"total_invocations_7d"`
+	SuccessCount7d      int           `json:"success_count_7d"`
+	SuccessRate7d       float64       `json:"success_rate_7d"`
+	P95DurationMs7d     int           `json:"p95_duration_ms_7d"`
+	RouteHitRate7d      float64       `json:"route_hit_rate_7d"`
+	TotalInvocations30d int           `json:"total_invocations_30d"`
+	SuccessCount30d     int           `json:"success_count_30d"`
+	SuccessRate30d      float64       `json:"success_rate_30d"`
+	P95DurationMs30d    int           `json:"p95_duration_ms_30d"`
+	RouteHitRate30d     float64       `json:"route_hit_rate_30d"`
+	DailyMetrics        []DailyMetric `json:"daily_metrics,omitempty"`
 }
 
 // DailyMetric holds per-day invocation metrics for a single skill.
 type DailyMetric struct {
-	Date         string  `json:"date"`
-	Invocations  int     `json:"invocations"`
-	Successes    int     `json:"successes"`
+	Date          string  `json:"date"`
+	Invocations   int     `json:"invocations"`
+	Successes     int     `json:"successes"`
 	AvgDurationMs float64 `json:"avg_duration_ms"`
-	RoutedCount  int     `json:"routed_count"`
-	LoadedCount  int     `json:"loaded_count"`
+	RoutedCount   int     `json:"routed_count"`
+	LoadedCount   int     `json:"loaded_count"`
 }

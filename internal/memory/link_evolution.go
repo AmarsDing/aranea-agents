@@ -88,7 +88,7 @@ type LinkEvolutionServiceImpl struct {
 //   - factWriter: the writer for updating memory links/keywords.
 //   - queue:      the queue for async evolution jobs. May be nil.
 //   - tx:         the transaction provider for atomic backlink updates. May be nil
-//                 (falls back to non-atomic best-effort updates).
+//     (falls back to non-atomic best-effort updates).
 //   - lg:         the logger. Falls back to a no-op logger if nil.
 func NewLinkEvolutionService(
 	llm trpcmodel.Model,
@@ -348,7 +348,7 @@ func (s *LinkEvolutionServiceImpl) updateNewMemoryLinks(ctx context.Context, uk 
 
 // linkAnalysisResult holds the LLM-produced keywords and link decisions.
 type linkAnalysisResult struct {
-	Keywords []string      `json:"keywords"`
+	Keywords []string       `json:"keywords"`
 	Links    []linkDecision `json:"links"`
 }
 
@@ -399,8 +399,8 @@ func (s *LinkEvolutionServiceImpl) llmAnalyzeLinks(ctx context.Context, newID, n
 // memory and historical memories for LLM analysis.
 func buildLinkEvolutionPrompt(newID, newMemText string, historical []factRowData) string {
 	type histItem struct {
-		ID      string `json:"id"`
-		Memory  string `json:"memory"`
+		ID       string   `json:"id"`
+		Memory   string   `json:"memory"`
 		Keywords []string `json:"keywords,omitempty"`
 	}
 	items := make([]histItem, 0, len(historical))

@@ -24,15 +24,20 @@ export function useAvatarThumbnailSrc(iconRef: IconRef) {
       onCleanup(() => {
         cancelled = true;
       });
-      const fetchId = await resolveAvatarAssetFetchId(store, trimmed);
-      if (cancelled) return;
-      if (!fetchId) {
+      try {
+        const fetchId = await resolveAvatarAssetFetchId(store, trimmed);
+        if (cancelled) return;
+        if (!fetchId) {
+          src.value = '';
+          return;
+        }
+        await store.ensureThumbnail(fetchId);
+        if (cancelled) return;
+        src.value = store.thumbnailById[fetchId] ?? '';
+      } catch {
+        if (cancelled) return;
         src.value = '';
-        return;
       }
-      await store.ensureThumbnail(fetchId);
-      if (cancelled) return;
-      src.value = store.thumbnailById[fetchId] ?? '';
     },
     { immediate: true },
   );

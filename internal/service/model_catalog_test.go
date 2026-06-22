@@ -79,9 +79,9 @@ func defaultTestDirectory() modelregistry.Directory {
 			Env:  []string{"OPENAI_API_KEY"},
 			Models: map[string]modelregistry.Model{
 				"gpt-4o": {
-					ID:       "gpt-4o",
-					Name:     "GPT-4o",
-					Status:   "active",
+					ID:        "gpt-4o",
+					Name:      "GPT-4o",
+					Status:    "active",
 					Reasoning: true,
 					ToolCall:  true,
 					Limit:     modelregistry.ModelLimit{Context: 128000, Output: 16384},
@@ -102,9 +102,9 @@ func defaultTestDirectory() modelregistry.Directory {
 			Env:  []string{"ANTHROPIC_API_KEY"},
 			Models: map[string]modelregistry.Model{
 				"claude-3-opus": {
-					ID:       "claude-3-opus",
-					Name:     "Claude 3 Opus",
-					Status:   "active",
+					ID:        "claude-3-opus",
+					Name:      "Claude 3 Opus",
+					Status:    "active",
 					Reasoning: true,
 					ToolCall:  true,
 					Limit:     modelregistry.ModelLimit{Context: 200000, Output: 4096},
@@ -399,7 +399,7 @@ func TestModelCatalogService_ListCatalogModels_OptionalFields(t *testing.T) {
 						CacheWrite: 2.5,
 						Reasoning:  3.0,
 					},
-					Limit:     modelregistry.ModelLimit{Context: 100000, Output: 8192},
+					Limit: modelregistry.ModelLimit{Context: 100000, Output: 8192},
 					Modalities: modelregistry.Modalities{
 						Input:  []string{"text"},
 						Output: []string{"text"},
@@ -458,18 +458,18 @@ func TestModelCatalogService_ListCatalogModels_InterleavedJson(t *testing.T) {
 			Name: "Prov",
 			Models: map[string]modelregistry.Model{
 				"m1": {
-					ID:         "m1",
-					Name:       "M1",
+					ID:          "m1",
+					Name:        "M1",
 					Interleaved: json.RawMessage(`["text","image"]`),
-					Limit:      modelregistry.ModelLimit{Context: 100, Output: 50},
-					Modalities: modelregistry.Modalities{Input: []string{"text"}, Output: []string{"text"}},
+					Limit:       modelregistry.ModelLimit{Context: 100, Output: 50},
+					Modalities:  modelregistry.Modalities{Input: []string{"text"}, Output: []string{"text"}},
 				},
 				"m2": {
-					ID:         "m2",
-					Name:       "M2",
+					ID:          "m2",
+					Name:        "M2",
 					Interleaved: json.RawMessage(`null`),
-					Limit:      modelregistry.ModelLimit{Context: 100, Output: 50},
-					Modalities: modelregistry.Modalities{Input: []string{"text"}, Output: []string{"text"}},
+					Limit:       modelregistry.ModelLimit{Context: 100, Output: 50},
+					Modalities:  modelregistry.Modalities{Input: []string{"text"}, Output: []string{"text"}},
 				},
 				"m3": {
 					ID:         "m3",

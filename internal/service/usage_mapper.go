@@ -191,7 +191,7 @@ func toProtoTokenUsageEvent(e biz.TokenUsageEvent) *v1.TokenUsageEvent {
 		OutputPriceMicroUsdPer_1K:      e.OutputPriceMicroUSDPer1K,
 		CachedInputPriceMicroUsdPer_1K: e.CachedInputPriceMicroUSDPer1K,
 		ReasoningPriceMicroUsdPer_1K:   e.ReasoningPriceMicroUSDPer1K,
-		EmbeddingPriceMicroUsdPer_1K: e.EmbeddingPriceMicroUSDPer1K,
+		EmbeddingPriceMicroUsdPer_1K:   e.EmbeddingPriceMicroUSDPer1K,
 		InputCostMicroUsd:              e.InputCostMicroUSD,
 		OutputCostMicroUsd:             e.OutputCostMicroUSD,
 		CachedInputCostMicroUsd:        e.CachedInputCostMicroUSD,

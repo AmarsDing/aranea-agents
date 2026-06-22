@@ -30,13 +30,13 @@ type CompressSwitches struct {
 
 // CompressThreshold defines when compression triggers.
 type CompressThreshold struct {
-	SummaryThreshold float64 // L0SummaryThreshold
-	ForcedThreshold  float64 // forcedCompressThreshold
-	SoftTriggerRatio float64
-	HardTriggerRatio float64
-	BufferRatio      float64 // CompressionBufferRatio
-	KeepTurns        int     // L0SummaryKeepTurns
-	RecentWindowTurns int    // L0RecentWindowTurns
+	SummaryThreshold  float64 // L0SummaryThreshold
+	ForcedThreshold   float64 // forcedCompressThreshold
+	SoftTriggerRatio  float64
+	HardTriggerRatio  float64
+	BufferRatio       float64 // CompressionBufferRatio
+	KeepTurns         int     // L0SummaryKeepTurns
+	RecentWindowTurns int     // L0RecentWindowTurns
 }
 
 // CompressTiming controls compression scheduling.
@@ -111,11 +111,14 @@ func CompressPolicyFromAgent(ag biz.Agent) CompressPolicy {
 	s := ag.Settings
 
 	// Switches
+	// ContextCompactionEnabled is the explicit modern switch; it takes precedence
+	// over the legacy L0SnapshotMode="off" so that agents opting into context
+	// compaction are not silently disabled by a legacy default.
+	if strings.ToLower(strings.TrimSpace(s.L0SnapshotMode)) == "off" && !s.ContextCompactionEnabled {
+		p.Switches.Enabled = false
+	}
 	if s.ContextCompactionEnabled {
 		p.Switches.Enabled = true
-	}
-	if strings.ToLower(strings.TrimSpace(s.L0SnapshotMode)) == "off" {
-		p.Switches.Enabled = false
 	}
 	p.Switches.MicroCompactEnabled = s.MicroCompactEnabled
 	p.Switches.MemoryCompactEnabled = s.MemoryCompactEnabled

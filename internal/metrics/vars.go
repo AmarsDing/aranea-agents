@@ -263,8 +263,8 @@ var (
 	// is intentionally below 24h because a single orchestration phase should
 	// not run uninterrupted for the full task lifetime (checkpoints split it).
 	SpiritOrchDuration = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name: "aranea_spirit_orch_duration_seconds",
-		Help: "Duration of Spirit orchestration phase (graph/team execution).",
+		Name:    "aranea_spirit_orch_duration_seconds",
+		Help:    "Duration of Spirit orchestration phase (graph/team execution).",
 		Buckets: []float64{1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600},
 	})
 

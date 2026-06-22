@@ -8,7 +8,7 @@ const (
 )
 
 const (
-	channelAsyncGraphDoneSummary  = "Graph 任务已完成。"
+	channelAsyncGraphDoneSummary   = "Graph 任务已完成。"
 	channelAsyncCronSkippedSummary = "Cron 任务已跳过。"
 )
 
@@ -19,7 +19,7 @@ const (
 )
 
 const (
-	channelAccessDeniedDefault  = "暂无使用权限，请联系管理员。"
+	channelAccessDeniedDefault    = "暂无使用权限，请联系管理员。"
 	channelAccessDeniedWithReason = "暂无使用权限："
 )
 

@@ -39,7 +39,7 @@ func NewPatternTrigger(
 
 func (t *PatternTrigger) TargetType() EvolutionTargetType { return EvolutionTargetAgent }
 func (t *PatternTrigger) ActionType() EvolutionActionType { return EvolutionActionCreate }
-func (t *PatternTrigger) TriggerSource() string            { return "pattern" }
+func (t *PatternTrigger) TriggerSource() string           { return "pattern" }
 
 func (t *PatternTrigger) Check(ctx context.Context, agentID string) ([]UnifiedEvolutionSuggestion, error) {
 	if t.creator == nil || t.patterns == nil {
@@ -136,7 +136,7 @@ func NewHealthTrigger(
 
 func (t *HealthTrigger) TargetType() EvolutionTargetType { return EvolutionTargetSkill }
 func (t *HealthTrigger) ActionType() EvolutionActionType { return EvolutionActionImprove }
-func (t *HealthTrigger) TriggerSource() string            { return "health" }
+func (t *HealthTrigger) TriggerSource() string           { return "health" }
 
 func (t *HealthTrigger) Check(ctx context.Context, skillID string) ([]UnifiedEvolutionSuggestion, error) {
 	if t.aggregator == nil {
@@ -227,10 +227,10 @@ func (t *HealthTrigger) Check(ctx context.Context, skillID string) ([]UnifiedEvo
 	primaryAction := triggerTypes[0]
 
 	metadata, _ := json.Marshal(map[string]any{
-		"success_rate":       metrics.SuccessRate,
-		"invocation_count":   metrics.InvocationCount,
-		"avg_duration_ms":    metrics.AvgDurationMS,
-		"triggered_actions":  triggeredActionStrs,
+		"success_rate":      metrics.SuccessRate,
+		"invocation_count":  metrics.InvocationCount,
+		"avg_duration_ms":   metrics.AvgDurationMS,
+		"triggered_actions": triggeredActionStrs,
 	})
 
 	return []UnifiedEvolutionSuggestion{
@@ -267,7 +267,7 @@ func NewAgentConfigTrigger(
 
 func (t *AgentConfigTrigger) TargetType() EvolutionTargetType { return EvolutionTargetAgent }
 func (t *AgentConfigTrigger) ActionType() EvolutionActionType { return EvolutionActionEvolve }
-func (t *AgentConfigTrigger) TriggerSource() string            { return "agent_config" }
+func (t *AgentConfigTrigger) TriggerSource() string           { return "agent_config" }
 
 // Check is a reserved entry point for agent-level evolution triggers.
 // Currently returns nil because agent-level evolution requires explicit external
@@ -307,5 +307,3 @@ func extractToolHistoryFromPattern(p Pattern) []ToolCallRecord {
 	}
 	return records
 }
-
-

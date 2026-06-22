@@ -23,9 +23,9 @@ const (
 // VerificationGate defines a verification checkpoint in a graph.
 type VerificationGate struct {
 	GateType    VerificationGateType `json:"gate_type"`
-	AgentID     string               `json:"agent_id,omitempty"`     // for dept_lead_approval
+	AgentID     string               `json:"agent_id,omitempty"` // for dept_lead_approval
 	Description string               `json:"description"`
-	MaxRetries  int                  `json:"max_retries"`            // default 3
+	MaxRetries  int                  `json:"max_retries"` // default 3
 }
 
 // CrossDeptDeliveryGate defines a two-party approval gate for cross-department deliverables.
@@ -35,7 +35,7 @@ type CrossDeptDeliveryGate struct {
 	ReceivingDepartmentID string               `json:"receiving_department_id"` // receiving side department
 	DeliverableName       string               `json:"deliverable_name"`
 	Description           string               `json:"description"`
-	MaxRetries            int                  `json:"max_retries"`             // default 3
+	MaxRetries            int                  `json:"max_retries"` // default 3
 }
 
 // GateResult holds the result of a gate execution.
@@ -98,7 +98,11 @@ func (e *VerificationGateExecutor) executeDeptLeadApproval(ctx context.Context, 
 		User:     userPrompt,
 	})
 	if err != nil {
-		return false, "", func() *apierror.Error { e := apierror.Internal("GATE", "dept lead LLM call failed"); e.Cause = err; return e }()
+		return false, "", func() *apierror.Error {
+			e := apierror.Internal("GATE", "dept lead LLM call failed")
+			e.Cause = err
+			return e
+		}()
 	}
 
 	result, parseErr := parseGateResult(resp)
@@ -134,7 +138,11 @@ func (e *VerificationGateExecutor) executeCrossDeptDelivery(ctx context.Context,
 	if crossGate.OutputDepartmentID != "" {
 		outputLead, err := e.deptLeadMgr.GetDeptLeadForTeam(ctx, crossGate.OutputDepartmentID)
 		if err != nil {
-			return false, "", func() *apierror.Error { e := apierror.Internal("GATE", "output department has no lead agent; cannot perform quality check"); e.Cause = err; return e }()
+			return false, "", func() *apierror.Error {
+				e := apierror.Internal("GATE", "output department has no lead agent; cannot perform quality check")
+				e.Cause = err
+				return e
+			}()
 		}
 		systemPrompt := `你是一个部门主管，负责审核本部门产出的交付物质量。请评估以下交付物是否满足质量标准。
 
@@ -151,7 +159,11 @@ func (e *VerificationGateExecutor) executeCrossDeptDelivery(ctx context.Context,
 			User:     userPrompt,
 		})
 		if err != nil {
-			return false, "", func() *apierror.Error { e := apierror.Internal("GATE", "output dept lead LLM call failed"); e.Cause = err; return e }()
+			return false, "", func() *apierror.Error {
+				e := apierror.Internal("GATE", "output dept lead LLM call failed")
+				e.Cause = err
+				return e
+			}()
 		}
 
 		result, parseErr := parseGateResult(resp)
@@ -171,7 +183,11 @@ func (e *VerificationGateExecutor) executeCrossDeptDelivery(ctx context.Context,
 	if crossGate.ReceivingDepartmentID != "" {
 		receivingLead, err := e.deptLeadMgr.GetDeptLeadForTeam(ctx, crossGate.ReceivingDepartmentID)
 		if err != nil {
-			return false, "", func() *apierror.Error { e := apierror.Internal("GATE", "receiving department has no lead agent; cannot perform acceptance check"); e.Cause = err; return e }()
+			return false, "", func() *apierror.Error {
+				e := apierror.Internal("GATE", "receiving department has no lead agent; cannot perform acceptance check")
+				e.Cause = err
+				return e
+			}()
 		}
 		systemPrompt := `你是一个部门主管，负责验收其他部门交付给本部门的工作成果。请评估以下交付物是否满足本部门的需求。
 
@@ -188,7 +204,11 @@ func (e *VerificationGateExecutor) executeCrossDeptDelivery(ctx context.Context,
 			User:     userPrompt,
 		})
 		if err != nil {
-			return false, "", func() *apierror.Error { e := apierror.Internal("GATE", "receiving dept lead LLM call failed"); e.Cause = err; return e }()
+			return false, "", func() *apierror.Error {
+				e := apierror.Internal("GATE", "receiving dept lead LLM call failed")
+				e.Cause = err
+				return e
+			}()
 		}
 
 		result, parseErr := parseGateResult(resp)
@@ -224,7 +244,11 @@ func (e *VerificationGateExecutor) executeBorrowApproval(ctx context.Context, ga
 		User:     userPrompt,
 	})
 	if err != nil {
-		return false, "", func() *apierror.Error { e := apierror.Internal("GATE", "borrow approval LLM call failed"); e.Cause = err; return e }()
+		return false, "", func() *apierror.Error {
+			e := apierror.Internal("GATE", "borrow approval LLM call failed")
+			e.Cause = err
+			return e
+		}()
 	}
 
 	result, parseErr := parseGateResult(resp)

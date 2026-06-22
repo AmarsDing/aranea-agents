@@ -21,7 +21,7 @@ func (s *deliveryRepoStub) GetByKey(_ context.Context, channelKey string) (Chann
 }
 func (s *deliveryRepoStub) Create(_ context.Context, row Channel) (Channel, error) { return row, nil }
 func (s *deliveryRepoStub) Update(_ context.Context, row Channel) (Channel, error) { return row, nil }
-func (s *deliveryRepoStub) Delete(_ context.Context, id string) error                { return nil }
+func (s *deliveryRepoStub) Delete(_ context.Context, id string) error              { return nil }
 func (s *deliveryRepoStub) ListCredentials(_ context.Context, channelID string) ([]ChannelCredential, error) {
 	return nil, nil
 }

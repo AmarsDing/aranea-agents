@@ -55,6 +55,7 @@ export function useTeamOrchestratePage() {
     interruptAfter: [],
     metadata: {},
     version: 0,
+    sortOrder: 0,
     createdAt: '',
     updatedAt: '',
   });

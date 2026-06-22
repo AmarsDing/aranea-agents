@@ -100,7 +100,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue';
+import { ref, watch, nextTick, computed, onMounted, onUnmounted, markRaw } from 'vue';
+import type { Ref } from 'vue';
 import { useQuasar } from 'quasar';
 import {
   VueFlow,
@@ -133,7 +134,7 @@ import { NODE_TYPE_STYLES, NODE_DEFAULT_WIDTH, NODE_DEFAULT_HEIGHT } from '../..
 import type { useGraphUndoRedo } from '../../features/graph/useGraphUndoRedo';
 import { defaultNodePosition, readGraphLayout, writeGraphNodePosition } from '../../features/graph/editor/graphLayout';
 import { useSnapGuide } from '../../features/graph/useSnapGuide';
-import type { SnapLine } from '../../features/graph/useSnapGuide';
+import type { SnapLine, SnapGuideNode } from '../../features/graph/useSnapGuide';
 import { graphNodeDisplayLabel } from '../../features/orchestration/teamNodeDisplay';
 
 const props = defineProps<{
@@ -180,7 +181,7 @@ const emit = defineEmits<{
 const { project, fitView, getSelectedNodes, onViewportChange, zoomTo, getNodes } = useVueFlow();
 const internalNodes = ref<Node[]>([]);
 const internalEdges = ref<Edge[]>([]);
-const { snapLines, computeSnapLines, clearSnapLines } = useSnapGuide(internalNodes);
+const { snapLines, computeSnapLines, clearSnapLines } = useSnapGuide(internalNodes as Ref<SnapGuideNode[]>);
 const $q = useQuasar();
 
 const ctxMenuVisible = ref(false);
@@ -220,19 +221,19 @@ function zoomToFit() {
   fitView({ padding: 0.2, duration: 300 });
 }
 
-const nodeTypes: Record<string, any> = {
-  function: GraphFlowNode,
-  llm: GraphFlowNode,
-  tool: GraphFlowNode,
-  agent: GraphFlowNode,
-  hitl: GraphFlowNode,
-  router: GraphFlowDiamond,
-  join: GraphFlowDiamond,
-};
+const nodeTypes: Record<string, any> = markRaw({
+  function: markRaw(GraphFlowNode),
+  llm: markRaw(GraphFlowNode),
+  tool: markRaw(GraphFlowNode),
+  agent: markRaw(GraphFlowNode),
+  hitl: markRaw(GraphFlowNode),
+  router: markRaw(GraphFlowDiamond),
+  join: markRaw(GraphFlowDiamond),
+});
 
-const edgeTypes: Record<string, any> = {
-  flowEdge: GraphFlowEdge,
-};
+const edgeTypes: Record<string, any> = markRaw({
+  flowEdge: markRaw(GraphFlowEdge),
+});
 
 const readOnly = computed(() => props.readOnly ?? false);
 
@@ -726,7 +727,7 @@ function duplicateNode(nodeId: string) {
   const index = props.graphDef.nodes.length;
   props.graphDef.nodes.push(dup);
 
-  const srcNode = internalNodes.value.find((n) => n.id === nodeId);
+  const srcNode = (internalNodes.value as SnapGuideNode[]).find((n) => n.id === nodeId);
   const pos = srcNode ? { x: srcNode.position.x + 40, y: srcNode.position.y + 40 } : { x: 100, y: 100 };
   writeGraphNodePosition(props.graphDef, newId, pos);
 
@@ -1002,7 +1003,7 @@ function onNodeDragStop({ node }: { node: Node }) {
   }
   const moves: { nodeId: string; oldPos: { x: number; y: number }; newPos: { x: number; y: number } }[] = [];
   for (const [id, oldPos] of dragStartPositions) {
-    const vfNode = internalNodes.value.find((n) => n.id === id);
+    const vfNode = (internalNodes.value as SnapGuideNode[]).find((n) => n.id === id);
     if (!vfNode) continue;
     // 应用吸附修正
     const newPos = {
@@ -1058,7 +1059,7 @@ function onCanvasKeydown(e: KeyboardEvent) {
       return;
     }
     // 删除选中的边
-    const selectedEdges = internalEdges.value.filter((edge) => edge.selected);
+    const selectedEdges = (internalEdges.value as any[]).filter((edge) => edge.selected);
     if (selectedEdges.length > 0) {
       for (const edge of selectedEdges) {
         deleteEdgeById(edge.id);

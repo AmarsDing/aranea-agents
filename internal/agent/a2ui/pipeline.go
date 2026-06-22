@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	planGCInterval    = 30 * time.Minute
-	planMaxAge        = 2 * time.Hour
+	planGCInterval = 30 * time.Minute
+	planMaxAge     = 2 * time.Hour
 )
 
 type Pipeline struct {

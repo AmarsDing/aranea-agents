@@ -352,8 +352,8 @@ type decoratorMockToolSet struct {
 }
 
 func (m *decoratorMockToolSet) Tools(context.Context) []Tool { return m.tools }
-func (m *decoratorMockToolSet) Close() error                  { return nil }
-func (m *decoratorMockToolSet) Name() string                  { return m.name }
+func (m *decoratorMockToolSet) Close() error                 { return nil }
+func (m *decoratorMockToolSet) Name() string                 { return m.name }
 
 // decoratorMockStreamableTool is a test double implementing both CallableTool
 // and StreamableTool, used to verify the streamableToolDecorator path.

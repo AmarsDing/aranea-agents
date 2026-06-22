@@ -1,0 +1,8 @@
+{
+  "route": "/channels",
+  "url": "http://localhost:9001/channels",
+  "loadOk": true,
+  "network": [],
+  "logs": [],
+  "screenshot": "F:\\aranea-agents\\.dogfood-output\\_channels-check.png"
+}

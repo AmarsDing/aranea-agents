@@ -34,8 +34,10 @@ func (m *mockKnowledgeRepo) GetCollection(_ context.Context, _ string) (biz.Know
 func (m *mockKnowledgeRepo) ListCollections(_ context.Context, _ string, _, _ int) ([]biz.KnowledgeCollection, int, error) {
 	return nil, 0, nil
 }
-func (m *mockKnowledgeRepo) DeleteCollection(_ context.Context, _ string) error               { return nil }
-func (m *mockKnowledgeRepo) UpdateCollectionCounts(_ context.Context, _ string, _, _ int) error { return nil }
+func (m *mockKnowledgeRepo) DeleteCollection(_ context.Context, _ string) error { return nil }
+func (m *mockKnowledgeRepo) UpdateCollectionCounts(_ context.Context, _ string, _, _ int) error {
+	return nil
+}
 func (m *mockKnowledgeRepo) CreateDocument(_ context.Context, d biz.KnowledgeDocument) (biz.KnowledgeDocument, error) {
 	return d, nil
 }
@@ -48,9 +50,9 @@ func (m *mockKnowledgeRepo) UpdateDocumentStatus(_ context.Context, _, _, _ stri
 func (m *mockKnowledgeRepo) ListDocuments(_ context.Context, _ string, _, _ int) ([]biz.KnowledgeDocument, int, error) {
 	return nil, 0, nil
 }
-func (m *mockKnowledgeRepo) DeleteDocument(_ context.Context, _ string) error          { return nil }
+func (m *mockKnowledgeRepo) DeleteDocument(_ context.Context, _ string) error             { return nil }
 func (m *mockKnowledgeRepo) InsertChunks(_ context.Context, _ []biz.KnowledgeChunk) error { return nil }
-func (m *mockKnowledgeRepo) DeleteChunksByDocument(_ context.Context, _ string) error  { return nil }
+func (m *mockKnowledgeRepo) DeleteChunksByDocument(_ context.Context, _ string) error     { return nil }
 func (m *mockKnowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQuery, vec []float32) ([]biz.KnowledgeChunk, error) {
 	if m.searchChunksFn != nil {
 		return m.searchChunksFn(ctx, q, vec)

@@ -117,7 +117,7 @@ func TestBuildArgs_Default(t *testing.T) {
 
 func TestBuildArgs_VisionEnabled(t *testing.T) {
 	cfg := PlaywrightMCPConfig{
-		Args:    []string{"--yes", "@playwright/mcp@latest"},
+		Args:     []string{"--yes", "@playwright/mcp@latest"},
 		Headless: BoolPtr(false),
 		Vision:   BoolPtr(true),
 		Isolated: BoolPtr(false),

@@ -15,8 +15,10 @@ type compileTeamRepo struct {
 	team biz.Team
 }
 
-func (r *compileTeamRepo) ListTeams(context.Context) ([]biz.Team, error)                    { return nil, nil }
-func (r *compileTeamRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) { return nil, nil }
+func (r *compileTeamRepo) ListTeams(context.Context) ([]biz.Team, error) { return nil, nil }
+func (r *compileTeamRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 func (r *compileTeamRepo) GetTeamByID(_ context.Context, id string) (biz.Team, error) {
 	if id == r.team.ID {
 		return r.team, nil
@@ -29,9 +31,13 @@ func (r *compileTeamRepo) CreateTeam(context.Context, biz.Team) (biz.Team, error
 func (r *compileTeamRepo) UpdateTeam(context.Context, biz.Team) (biz.Team, error) {
 	return biz.Team{}, nil
 }
-func (r *compileTeamRepo) UpdateTeamWhereStatus(_ context.Context, _, _, _ string) (bool, error) { return true, nil }
+func (r *compileTeamRepo) UpdateTeamWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
+	return true, nil
+}
 func (r *compileTeamRepo) DeleteTeam(context.Context, string) error { return nil }
-func (r *compileTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
+func (r *compileTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) {
+	return 0, nil
+}
 func (r *compileTeamRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
@@ -51,7 +57,9 @@ func (r *compileTeamRepo) CreateTeamRun(context.Context, biz.TeamRun) (biz.TeamR
 	return biz.TeamRun{}, nil
 }
 func (r *compileTeamRepo) UpdateTeamRun(context.Context, biz.TeamRun) error { return nil }
-func (r *compileTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) { return true, nil }
+func (r *compileTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
+	return true, nil
+}
 func (r *compileTeamRepo) UpdateTeamRunSummaryJSON(context.Context, string, string) error {
 	return nil
 }

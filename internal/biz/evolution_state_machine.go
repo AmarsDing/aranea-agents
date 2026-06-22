@@ -4,12 +4,14 @@
 //
 // ```mermaid
 // stateDiagram-v2
-//     [*] --> Pending
-//     Pending --> Applied : apply
-//     Pending --> Rejected : reject
-//     Applied --> RolledBack : rollback
-//     Rejected --> [*]
-//     RolledBack --> [*]
+//
+//	[*] --> Pending
+//	Pending --> Applied : apply
+//	Pending --> Rejected : reject
+//	Applied --> RolledBack : rollback
+//	Rejected --> [*]
+//	RolledBack --> [*]
+//
 // ```
 package biz
 

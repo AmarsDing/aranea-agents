@@ -203,14 +203,14 @@ func TestDomainEventToEnvelope(t *testing.T) {
 
 	t.Run("full event with all optional fields", func(t *testing.T) {
 		de := biz.DomainEvent{
-			Type:      biz.DomainEventRunnerCompletion,
-			Author:    "agent-2",
-			SessionID: "sess-2",
-			TeamID:    "team-1",
-			Content:   &biz.DomainContent{Text: "done", Reasoning: "thought", IsPartial: false},
-			Error:     &biz.DomainError{Type: "runtime", Message: "oops"},
-			Usage:     &biz.DomainUsage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30},
-			ToolCall:  &biz.DomainToolCall{ID: "tc-1", Name: "search", Status: "completed", DurationMS: 100},
+			Type:       biz.DomainEventRunnerCompletion,
+			Author:     "agent-2",
+			SessionID:  "sess-2",
+			TeamID:     "team-1",
+			Content:    &biz.DomainContent{Text: "done", Reasoning: "thought", IsPartial: false},
+			Error:      &biz.DomainError{Type: "runtime", Message: "oops"},
+			Usage:      &biz.DomainUsage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30},
+			ToolCall:   &biz.DomainToolCall{ID: "tc-1", Name: "search", Status: "completed", DurationMS: 100},
 			StateDelta: &biz.DomainStateDelta{Operation: "set", Path: "x.y", ValueJSON: "1"},
 		}
 		env := biz.DomainEventToEnvelope(de)
@@ -378,14 +378,14 @@ func TestApplyEnvelopeCorrelation(t *testing.T) {
 
 func TestDomainEventToEnvelopeRoundTrip(t *testing.T) {
 	original := biz.DomainEvent{
-		Type:      biz.DomainEventToolCall,
-		Author:    "agent-r",
-		SessionID: "sess-r",
-		TeamID:    "team-r",
-		Content:   &biz.DomainContent{Text: "response", Reasoning: "logic", IsPartial: false},
-		Error:     &biz.DomainError{Type: "test_err", Message: "test msg"},
-		Usage:     &biz.DomainUsage{PromptTokens: 5, CompletionTokens: 10, TotalTokens: 15},
-		ToolCall:  &biz.DomainToolCall{ID: "tc-r", Name: "tool-r", ArgumentsJSON: `{}`, ResultJSON: `{}`, Status: "done", DurationMS: 42},
+		Type:       biz.DomainEventToolCall,
+		Author:     "agent-r",
+		SessionID:  "sess-r",
+		TeamID:     "team-r",
+		Content:    &biz.DomainContent{Text: "response", Reasoning: "logic", IsPartial: false},
+		Error:      &biz.DomainError{Type: "test_err", Message: "test msg"},
+		Usage:      &biz.DomainUsage{PromptTokens: 5, CompletionTokens: 10, TotalTokens: 15},
+		ToolCall:   &biz.DomainToolCall{ID: "tc-r", Name: "tool-r", ArgumentsJSON: `{}`, ResultJSON: `{}`, Status: "done", DurationMS: 42},
 		StateDelta: &biz.DomainStateDelta{Operation: "push", Path: "stack", ValueJSON: `"val"`},
 	}
 

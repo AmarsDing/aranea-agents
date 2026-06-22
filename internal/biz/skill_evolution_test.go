@@ -112,9 +112,9 @@ func (m *mockSkillAutoCreator) GenerateSKILLMD(_ context.Context, _ string, _ []
 
 type mockSkillRegistrar struct {
 	SkillRegistrationPort
-	existing map[string]bool
+	existing   map[string]bool
 	registered map[string]string
-	err      error
+	err        error
 }
 
 func (m *mockSkillRegistrar) RegisterSkill(_ context.Context, agentID string, name string, skillMD string) error {

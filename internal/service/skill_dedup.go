@@ -95,10 +95,10 @@ func mapMergeStrategy(s string) biz.MergeStrategy {
 
 func toProtoSkillDuplicateGroup(g biz.SkillDuplicateGroup) *v1.SkillDuplicateGroup {
 	pb := &v1.SkillDuplicateGroup{
-		GroupId:       g.GroupID,
-		OverlapType:   g.OverlapType,
-		OverlapScore:  float32(g.OverlapScore),
-		ConflictRisk:  g.ConflictRisk,
+		GroupId:        g.GroupID,
+		OverlapType:    g.OverlapType,
+		OverlapScore:   float32(g.OverlapScore),
+		ConflictRisk:   g.ConflictRisk,
 		Recommendation: g.Recommendation,
 	}
 	for _, s := range g.Skills {

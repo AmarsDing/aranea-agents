@@ -256,7 +256,7 @@ func (r *skillRepo) batchInvocationStats(ctx context.Context, c *dataent.Client,
 		placeholders[i] = "?"
 		args = append(args, id)
 	}
-	statsSQL := fmt.Sprintf(
+	statsSQL := r.data.Dialect().RenumberPlaceholders(fmt.Sprintf(
 		`SELECT skill_id,
 			COUNT(*) as total,
 			SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
@@ -267,7 +267,7 @@ func (r *skillRepo) batchInvocationStats(ctx context.Context, c *dataent.Client,
 		 WHERE skill_id IN (%s)
 		 GROUP BY skill_id`,
 		strings.Join(placeholders, ","),
-	)
+	))
 	statsRows, err := c.QueryContext(ctx, statsSQL, args...)
 	if err != nil {
 		r.data.lg.Warn("batch invocation stats query failed", loggateway.StepID("data.skill"), loggateway.Err(err))
@@ -324,7 +324,7 @@ func (r *skillRepo) batchLastInvocations(ctx context.Context, c *dataent.Client,
 		placeholders[i] = "?"
 		args = append(args, id)
 	}
-	lastSQL := fmt.Sprintf(
+	lastSQL := r.data.Dialect().RenumberPlaceholders(fmt.Sprintf(
 		`SELECT si.skill_id, si.agent_id,
 			COALESCE(NULLIF(si.started_at, ''), si.created_at) as invoked_at,
 			si.duration_ms
@@ -337,7 +337,7 @@ func (r *skillRepo) batchLastInvocations(ctx context.Context, c *dataent.Client,
 		 ) latest ON si.skill_id = latest.skill_id
 			AND COALESCE(NULLIF(si.started_at, ''), si.created_at) = latest.max_time`,
 		strings.Join(placeholders, ","),
-	)
+	))
 	lastRows, lErr := c.QueryContext(ctx, lastSQL, args...)
 	if lErr != nil {
 		r.data.lg.Warn("batch last invocation query failed", loggateway.StepID("data.skill"), loggateway.Err(lErr))

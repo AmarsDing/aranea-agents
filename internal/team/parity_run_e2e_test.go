@@ -26,14 +26,20 @@ func newParityMemRepo() *parityMemRepo {
 	return &parityMemRepo{runs: map[string]biz.TeamRun{}}
 }
 
-func (m *parityMemRepo) ListTeams(context.Context) ([]biz.Team, error)          { return nil, nil }
-func (m *parityMemRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) { return nil, nil }
+func (m *parityMemRepo) ListTeams(context.Context) ([]biz.Team, error) { return nil, nil }
+func (m *parityMemRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 func (m *parityMemRepo) GetTeamByID(context.Context, string) (biz.Team, error) {
 	return biz.Team{}, biz.ErrNotFound
 }
-func (m *parityMemRepo) CreateTeam(context.Context, biz.Team) (biz.Team, error) { return biz.Team{}, nil }
-func (m *parityMemRepo) UpdateTeam(context.Context, biz.Team) (biz.Team, error) { return biz.Team{}, nil }
-func (m *parityMemRepo) DeleteTeam(context.Context, string) error               { return nil }
+func (m *parityMemRepo) CreateTeam(context.Context, biz.Team) (biz.Team, error) {
+	return biz.Team{}, nil
+}
+func (m *parityMemRepo) UpdateTeam(context.Context, biz.Team) (biz.Team, error) {
+	return biz.Team{}, nil
+}
+func (m *parityMemRepo) DeleteTeam(context.Context, string) error { return nil }
 func (m *parityMemRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
@@ -67,10 +73,14 @@ func (m *parityMemRepo) UpdateTeamRun(_ context.Context, r biz.TeamRun) error {
 	m.runs[r.ID] = r
 	return nil
 }
-func (m *parityMemRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) { return true, nil }
-func (m *parityMemRepo) UpdateTeamRunGraphExecutionID(context.Context, string, string) error { return nil }
-func (m *parityMemRepo) UpdateTeamRunTraceID(context.Context, string, string) error           { return nil }
-func (m *parityMemRepo) UpdateTeamRunSummaryJSON(context.Context, string, string) error      { return nil }
+func (m *parityMemRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
+	return true, nil
+}
+func (m *parityMemRepo) UpdateTeamRunGraphExecutionID(context.Context, string, string) error {
+	return nil
+}
+func (m *parityMemRepo) UpdateTeamRunTraceID(context.Context, string, string) error     { return nil }
+func (m *parityMemRepo) UpdateTeamRunSummaryJSON(context.Context, string, string) error { return nil }
 func (m *parityMemRepo) CreateTeamRunStep(_ context.Context, step biz.TeamRunStep) (biz.TeamRunStep, error) {
 	m.steps = append(m.steps, step)
 	return step, nil
@@ -112,7 +122,9 @@ func (parityStubAgents) GetAgentByID(_ context.Context, id string) (biz.Agent, e
 		Model:       "stub-model",
 	}, nil
 }
-func (parityStubAgents) ClearPositionByDepartment(context.Context, string) (int, error) { return 0, nil }
+func (parityStubAgents) ClearPositionByDepartment(context.Context, string) (int, error) {
+	return 0, nil
+}
 
 func newParityTestRunner(repo *parityMemRepo, bus event.Bus) *Runner {
 	return &Runner{

@@ -14,9 +14,9 @@ import (
 	"aranea-agents/internal/llmcontext"
 	"aranea-agents/pkg/loggateway"
 
+	"go.opentelemetry.io/otel/trace"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/google/uuid"
 )

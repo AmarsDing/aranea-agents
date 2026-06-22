@@ -100,7 +100,7 @@ var (
 	ToProtoBudgetAlerts           = toProtoBudgetAlerts
 	ToProtoAvatar                 = toProtoAvatar
 	ProductToProto                = productToProto
-	BizTypeItemToProto         = bizTypeItemToProto
+	BizTypeItemToProto            = bizTypeItemToProto
 	BizChannelToProto             = bizChannelToProto
 	BizCredToProto                = bizCredToProto
 	BizDeliveryToProto            = bizDeliveryToProto

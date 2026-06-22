@@ -105,12 +105,7 @@ export interface ReplySection {
  */
 export type ProgressCategory = 'orchestration' | 'team' | 'tool' | 'thinking';
 
-export const PROGRESS_CATEGORIES: readonly ProgressCategory[] = [
-  'orchestration',
-  'team',
-  'tool',
-  'thinking',
-] as const;
+export const PROGRESS_CATEGORIES: readonly ProgressCategory[] = ['orchestration', 'team', 'tool', 'thinking'] as const;
 
 /**
  * S8: Centralized glyph + label maps for the progress card UI.
@@ -235,27 +230,25 @@ export const ROOT_AGENT_KEY = '__root__';
 
 // === TODO Board Types (P1.6 TK-01) ===
 
-export type TodoStatus = 'pending' | 'in_progress' | 'completed'
+export type TodoStatus = 'pending' | 'in_progress' | 'completed';
 
 export interface TodoItem {
-  id: string
-  content: string
-  activeForm: string
-  status: TodoStatus
-  updatedAt: string
+  id: string;
+  content: string;
+  activeForm: string;
+  status: TodoStatus;
+  updatedAt: string;
 }
 
 export interface TodoBoardState {
-  todos: TodoItem[]
-  lastUpdated: string
-  source: 'session_state' | 'tool_result' | 'merged'
+  todos: TodoItem[];
+  lastUpdated: string;
+  source: 'session_state' | 'tool_result' | 'merged';
 }
 
-export type TodoColumnKey = 'pending' | 'in_progress' | 'completed'
+export type TodoColumnKey = 'pending' | 'in_progress' | 'completed';
 
 export interface TodoColumn {
-  key: TodoColumnKey
-  items: TodoItem[]
+  key: TodoColumnKey;
+  items: TodoItem[];
 }
-
-

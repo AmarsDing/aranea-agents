@@ -164,16 +164,16 @@ func profileAllowSet(profile string, catalog []Tool) map[string]bool {
 // profile/allow JSON to opt in (e.g. shell_exec on "full"). Default-enabled tools (gemini_web_fetch)
 // administratively disabled in Tools UI are forced into denySet so profiles cannot re-enable them.
 var registryOptInOnlyKeys = map[string]bool{
-	"shell_exec":        true,
-	"send_email":        true,
-	"claude_code":       true,
-	"workspace_exec":    true,
-	"create_image":      true,
-	"tts":               true,
-	"subagents_spawn":   true,
-	"subagents_list":    true,
-	"subagents_get":     true,
-	"subagents_cancel":  true,
+	"shell_exec":       true,
+	"send_email":       true,
+	"claude_code":      true,
+	"workspace_exec":   true,
+	"create_image":     true,
+	"tts":              true,
+	"subagents_spawn":  true,
+	"subagents_list":   true,
+	"subagents_get":    true,
+	"subagents_cancel": true,
 }
 
 func applyRegistryAdminDenials(catalog []Tool, deny map[string]bool) {

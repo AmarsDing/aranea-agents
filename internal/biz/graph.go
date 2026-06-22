@@ -41,34 +41,34 @@ type StateFieldDef struct {
 // NodeDef is the schema-level (biz) description of a graph node.
 // Func/function pointers are resolved in the graph/trpc adapter layer.
 type NodeDef struct {
-	ID                    string   `json:"id"`
-	FuncRef               string   `json:"func_ref"`
-	Type                  string   `json:"type"`
-	Description           string   `json:"description"`
-	Instruction           string   `json:"instruction"`
-	ModelName             string   `json:"model_name"`
-	ToolNames             []string `json:"tool_names"`
-	AgentName             string   `json:"agent_name"`
-	InterruptBefore       bool     `json:"interrupt_before"`
-	InterruptAfter        bool     `json:"interrupt_after"`
-	Destinations          []string `json:"destinations"`
-	RetryMaxAttempts      int      `json:"retry_max_attempts"`
-	FailureAction         string   `json:"failure_action"`
-	FallbackAgent         string   `json:"fallback_agent"`
-	InputMapperJSON       string   `json:"input_mapper_json"`
-	OutputMapperJSON      string   `json:"output_mapper_json"`
-	IsolatedMessages      bool     `json:"isolated_messages"`
-	InputFromLastResponse bool     `json:"input_from_last_response"`
-	CacheEnabled          bool     `json:"cache_enabled"`
-	CacheTTLSeconds       int      `json:"cache_ttl_seconds"`
-	RequiredRole              string   `json:"required_role"`
-	AssignmentMode            string   `json:"assignment_mode"`
-	AssignmentStrategy        string   `json:"assignment_strategy"`
-	ReviewerAgent             string   `json:"reviewer_agent"`
-	ReviewRules               string   `json:"review_rules"`
-	TimeoutSeconds            int      `json:"timeout_seconds"`
-	HeartbeatIntervalSeconds  int      `json:"heartbeat_interval_seconds"`
-	EnableLeaseExtension      bool     `json:"enable_lease_extension"`
+	ID                       string   `json:"id"`
+	FuncRef                  string   `json:"func_ref"`
+	Type                     string   `json:"type"`
+	Description              string   `json:"description"`
+	Instruction              string   `json:"instruction"`
+	ModelName                string   `json:"model_name"`
+	ToolNames                []string `json:"tool_names"`
+	AgentName                string   `json:"agent_name"`
+	InterruptBefore          bool     `json:"interrupt_before"`
+	InterruptAfter           bool     `json:"interrupt_after"`
+	Destinations             []string `json:"destinations"`
+	RetryMaxAttempts         int      `json:"retry_max_attempts"`
+	FailureAction            string   `json:"failure_action"`
+	FallbackAgent            string   `json:"fallback_agent"`
+	InputMapperJSON          string   `json:"input_mapper_json"`
+	OutputMapperJSON         string   `json:"output_mapper_json"`
+	IsolatedMessages         bool     `json:"isolated_messages"`
+	InputFromLastResponse    bool     `json:"input_from_last_response"`
+	CacheEnabled             bool     `json:"cache_enabled"`
+	CacheTTLSeconds          int      `json:"cache_ttl_seconds"`
+	RequiredRole             string   `json:"required_role"`
+	AssignmentMode           string   `json:"assignment_mode"`
+	AssignmentStrategy       string   `json:"assignment_strategy"`
+	ReviewerAgent            string   `json:"reviewer_agent"`
+	ReviewRules              string   `json:"review_rules"`
+	TimeoutSeconds           int      `json:"timeout_seconds"`
+	HeartbeatIntervalSeconds int      `json:"heartbeat_interval_seconds"`
+	EnableLeaseExtension     bool     `json:"enable_lease_extension"`
 }
 
 // EdgeDef is a directed edge between two graph nodes.
@@ -121,28 +121,28 @@ type GraphExecutor interface {
 }
 
 type GraphDefinition struct {
-	ID               string
-	Name             string
-	Description      string
-	StateFields      []StateFieldDef
-	Nodes            []NodeDef
-	Edges            []EdgeDef
-	ConditionalEdges []ConditionalEdgeDef
-	Subgraphs        []SubgraphDef
-	EntryPoint       string
-	FinishPoint      string
-	EnableCheckpoint bool
-	ExecutionEngine  ExecutionEngineType
-	InterruptBefore  []string
-	InterruptAfter   []string
-	Metadata         map[string]any
-	Version          int
-	SortOrder        int
+	ID                string
+	Name              string
+	Description       string
+	StateFields       []StateFieldDef
+	Nodes             []NodeDef
+	Edges             []EdgeDef
+	ConditionalEdges  []ConditionalEdgeDef
+	Subgraphs         []SubgraphDef
+	EntryPoint        string
+	FinishPoint       string
+	EnableCheckpoint  bool
+	ExecutionEngine   ExecutionEngineType
+	InterruptBefore   []string
+	InterruptAfter    []string
+	Metadata          map[string]any
+	Version           int
+	SortOrder         int
 	VerificationGates string // JSON array of VerificationGate
-	TeamID           string // owning team ID (empty for template graphs)
-	IsTemplate       bool   // whether this graph is a reusable template
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	TeamID            string // owning team ID (empty for template graphs)
+	IsTemplate        bool   // whether this graph is a reusable template
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 type GraphExecution struct {
@@ -161,8 +161,8 @@ type GraphExecution struct {
 	runtime       GraphRuntime
 	StartedAt     time.Time
 	FinishedAt    *time.Time
-	execMu        sync.RWMutex // protects Status, CurrentNode, LineageID, ErrorMessage, Steps, runtime, FinishedAt
-	evicted       bool         // set by GC before removing from map; not persisted
+	execMu        sync.RWMutex    // protects Status, CurrentNode, LineageID, ErrorMessage, Steps, runtime, FinishedAt
+	evicted       bool            // set by GC before removing from map; not persisted
 	ctx           context.Context // detached context preserving trace info for background DB writes
 }
 
@@ -338,22 +338,22 @@ func (a *teamDefinitionJSONAdapter) GetTeamDefinitionJSON(ctx context.Context, t
 // GraphUsecaseDeps groups the dependencies for GraphUsecase construction.
 // Using a deps struct avoids long parameter lists (CS-B7).
 type GraphUsecaseDeps struct {
-	Repo           GraphRepo
-	RunRepo        GraphRunRepo
-	Factory        GraphBuilderFactory
-	Observer       GraphExecutionObserver
-	CompiledTeam   CompiledTeamRepo
-	TeamReader     TeamReader
-	Lg             loggateway.Logger
-	GCConfig       GraphGCConfig
+	Repo         GraphRepo
+	RunRepo      GraphRunRepo
+	Factory      GraphBuilderFactory
+	Observer     GraphExecutionObserver
+	CompiledTeam CompiledTeamRepo
+	TeamReader   TeamReader
+	Lg           loggateway.Logger
+	GCConfig     GraphGCConfig
 }
 
 // GraphUsecase is the facade that composes definition, execution, and cache
 // sub-usecases. It preserves the original public API for backward compatibility
 // while delegating internally to specialized components.
 type GraphUsecase struct {
-	defUC   *GraphDefinitionUsecase
-	execUC  *GraphExecutionUsecase
+	defUC    *GraphDefinitionUsecase
+	execUC   *GraphExecutionUsecase
 	cacheMgr *GraphCacheManager
 }
 
@@ -370,8 +370,8 @@ func NewGraphUsecase(d GraphUsecaseDeps) *GraphUsecase {
 	cacheMgr := NewGraphCacheManager(d.CompiledTeam, defUC, teamDefProvider, d.Lg)
 	execUC := NewGraphExecutionUsecase(d.RunRepo, d.Factory, d.Observer, cacheMgr, defUC, d.Lg, cfg)
 	return &GraphUsecase{
-		defUC:   defUC,
-		execUC:  execUC,
+		defUC:    defUC,
+		execUC:   execUC,
 		cacheMgr: cacheMgr,
 	}
 }

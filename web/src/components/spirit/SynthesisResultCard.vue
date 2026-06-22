@@ -39,10 +39,7 @@
         <div v-if="tr.summary" class="synthesis-result-card__team-summary text-caption text-grey q-ml-lg">
           {{ tr.summary }}
         </div>
-        <div
-          v-if="tr.keyFindings"
-          class="synthesis-result-card__team-findings text-caption q-ml-lg"
-        >
+        <div v-if="tr.keyFindings" class="synthesis-result-card__team-findings text-caption q-ml-lg">
           {{ tr.keyFindings }}
         </div>
       </div>

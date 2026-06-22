@@ -9,10 +9,10 @@ import (
 )
 
 type sessionExportPayload struct {
-	Session   Session              `json:"session"`
-	Messages  []ChatMessage        `json:"messages"`
-	Timeline  SessionTimeline      `json:"timeline"`
-	ExportedAt string              `json:"exported_at"`
+	Session    Session         `json:"session"`
+	Messages   []ChatMessage   `json:"messages"`
+	Timeline   SessionTimeline `json:"timeline"`
+	ExportedAt string          `json:"exported_at"`
 }
 
 func (uc *SessionUsecase) Export(ctx context.Context, id, format string) (content, filename, contentType string, err error) {

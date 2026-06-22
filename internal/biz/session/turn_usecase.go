@@ -55,12 +55,14 @@ func (uc *SessionTurnUsecase) IncrementInvocationCounts(ctx context.Context, ses
 	if sessionID == "" {
 		return validationErr("session id is required")
 	}
-	uc.metricsUsecase.AccumulateMetricsDelta(SessionMetricsDelta{
-		SessionID:      sessionID,
-		ToolCallCount:  toolDelta,
-		McpCallCount:   mcpDelta,
-		SkillCallCount: skillDelta,
-	})
+	if uc.metricsUsecase != nil {
+		uc.metricsUsecase.AccumulateMetricsDelta(SessionMetricsDelta{
+			SessionID:      sessionID,
+			ToolCallCount:  toolDelta,
+			McpCallCount:   mcpDelta,
+			SkillCallCount: skillDelta,
+		})
+	}
 	return nil
 }
 

@@ -180,14 +180,6 @@ func (d *Data) Dialect() Dialect {
 	return d.dialect
 }
 
-// Ent returns the SQLite-backed Ent client.
-func (d *Data) Ent() *ent.Client {
-	if d == nil {
-		return nil
-	}
-	return d.entClient
-}
-
 // SetEntClientForTest sets up a Data instance for testing with the given client and DB.
 func (d *Data) SetEntClientForTest(client *ent.Client, rawDB *sql.DB, lg loggateway.Logger) {
 	d.entClient = client
@@ -216,47 +208,6 @@ func (d *Data) TxTimeout() time.Duration {
 		return 30 * time.Second
 	}
 	return d.txTimeout
-}
-
-// RawDB returns the write *sql.DB handle.
-//
-// Deprecated: Use d.RWDB().WriteDB(ctx) for transaction-aware raw SQL writes,
-// or d.RWDB().ReadDB(ctx) for reads. Direct RawDB() bypasses transaction awareness.
-func (d *Data) RawDB() *sql.DB {
-	if d == nil {
-		return nil
-	}
-	return d.rawDB
-}
-
-// ReadDB returns the read-only *sql.DB handle.
-//
-// Deprecated: Use d.RWDB().ReadDB(ctx) for transaction-aware raw SQL reads.
-func (d *Data) ReadDB() *sql.DB {
-	if d == nil {
-		return nil
-	}
-	return d.readDB
-}
-
-// ReadEnt returns the read-only Ent client.
-//
-// Deprecated: Use d.RW().Read(ctx) for transaction-aware Ent reads.
-func (d *Data) ReadEnt() *ent.Client {
-	if d == nil {
-		return nil
-	}
-	return d.readClient
-}
-
-// ReadClient returns the appropriate Ent client for read operations.
-//
-// Deprecated: Use d.RW().Read(ctx) for transaction-aware Ent reads.
-func (d *Data) ReadClient(ctx context.Context) *ent.Client {
-	if tx, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
-		return tx.Client()
-	}
-	return d.ReadEnt()
 }
 
 // RW returns the ReadWriteClient for read-write separated Ent access.
@@ -743,7 +694,7 @@ func ensureSchemaDDL(rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggate
 func runPendingDataMigrations(d *Data) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	entClient := d.Ent()
+	entClient := d.RW().Write(ctx)
 	migrated, skipped, err := RunLegacyTRPCMemoryMigration(ctx, d, d.lg)
 	if err != nil {
 		d.lg.Error("migration step failed", loggateway.StepID("data.migration.legacy_trpc_memory"), loggateway.Err(err))
@@ -760,6 +711,14 @@ func runPendingDataMigrations(d *Data) error {
 		d.lg.Error("migration step failed", loggateway.StepID("data.migration.turn_index_to_turn_id"), loggateway.Err(err))
 		return fmt.Errorf("turn_index migration: %w", err)
 	}
+	if err := RunSessionTurnNumberBackfillMigration(ctx, entClient, d.Dialect(), d.lg); err != nil {
+		d.lg.Error("migration step failed", loggateway.StepID("data.migration.session_turn_number"), loggateway.Err(err))
+		return fmt.Errorf("session_turn_number backfill migration: %w", err)
+	}
+	if err := RunSessionTurnNumberRebackfillMigration(ctx, entClient, d.Dialect(), d.lg); err != nil {
+		d.lg.Error("migration step failed", loggateway.StepID("data.migration.session_turn_number_rebackfill"), loggateway.Err(err))
+		return fmt.Errorf("session_turn_number rebackfill migration: %w", err)
+	}
 	if err := RunSessionStatusIdleMigration(ctx, entClient, d.Dialect(), d.lg); err != nil {
 		d.lg.Error("migration step failed", loggateway.StepID("data.migration.session_status_idle"), loggateway.Err(err))
 		return fmt.Errorf("session status migration: %w", err)
@@ -772,12 +731,16 @@ func runPendingDataMigrations(d *Data) error {
 		d.lg.Error("migration step failed", loggateway.StepID("data.migration.activity_backfill"), loggateway.Err(err))
 		return fmt.Errorf("activity backfill migration: %w", err)
 	}
+	if err := RunAvatarImageRepairMigration(ctx, entClient, d.Dialect(), d.lg); err != nil {
+		d.lg.Error("migration step failed", loggateway.StepID("data.migration.avatar_image_repair"), loggateway.Err(err))
+		return fmt.Errorf("avatar image repair migration: %w", err)
+	}
 	return nil
 }
 
 // ensureAllSchemas applies DDL patches and pending data migrations (compat wrapper for tests).
 func ensureAllSchemas(rawDB *sql.DB, d *Data, lg loggateway.Logger) error {
-	if err := ensureSchemaDDL(rawDB, d.Ent(), d.Dialect(), lg); err != nil {
+	if err := ensureSchemaDDL(rawDB, d.RW().Write(context.Background()), d.Dialect(), lg); err != nil {
 		return err
 	}
 	return runPendingDataMigrations(d)

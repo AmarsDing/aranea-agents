@@ -8,13 +8,13 @@ import (
 
 func TestEnvelopeErrorFromTurn(t *testing.T) {
 	tests := []struct {
-		name       string
-		code       TurnErrorCode
-		detail     string
-		wantType   string
-		wantCode   string
-		wantHint   string
-		wantInMsg  string
+		name      string
+		code      TurnErrorCode
+		detail    string
+		wantType  string
+		wantCode  string
+		wantHint  string
+		wantInMsg string
 	}{
 		{
 			name:      "empty_code_fallback",

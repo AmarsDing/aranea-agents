@@ -62,12 +62,12 @@ func (s *e2eSyncChatSender) SendChatMessage(ctx context.Context, req *chatv1.Sen
 func (s *e2eSyncChatSender) persistAndPublish(ctx context.Context, env contract.Envelope) {
 	data, _ := json.Marshal(env)
 	_ = s.repo.Insert(ctx, biz.EventStoreRecord{
-		ID:            env.ID,
-		SessionID:     s.session,
-		Type:          string(env.Type),
-		Channel:       env.Channel,
-		EnvelopeJSON:  string(data),
-		CreatedAt:     time.Now().UTC(),
+		ID:           env.ID,
+		SessionID:    s.session,
+		Type:         string(env.Type),
+		Channel:      env.Channel,
+		EnvelopeJSON: string(data),
+		CreatedAt:    time.Now().UTC(),
 	})
 	s.bus.Publish(ctx, env)
 }

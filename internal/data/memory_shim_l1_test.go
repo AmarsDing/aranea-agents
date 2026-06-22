@@ -37,14 +37,14 @@ func TestIsCJKRune(t *testing.T) {
 		r    rune
 		want bool
 	}{
-		{'中', true},    // CJK Unified Ideographs
-		{'あ', true},    // Hiragana
-		{'ア', true},    // Katakana
-		{'한', true},    // Hangul
-		{'a', false},    // ASCII
-		{'é', false},    // Latin extended
-		{'0', false},    // Digit
-		{' ', false},    // Space
+		{'中', true},  // CJK Unified Ideographs
+		{'あ', true},  // Hiragana
+		{'ア', true},  // Katakana
+		{'한', true},  // Hangul
+		{'a', false}, // ASCII
+		{'é', false}, // Latin extended
+		{'0', false}, // Digit
+		{' ', false}, // Space
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.r), func(t *testing.T) {

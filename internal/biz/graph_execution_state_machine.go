@@ -4,17 +4,19 @@
 //
 // ```mermaid
 // stateDiagram-v2
-//     [*] --> Running
-//     Running --> Completed : complete
-//     Running --> Failed : fail
-//     Running --> Cancelled : cancel
-//     Running --> WaitingHuman : interrupt
-//     WaitingHuman --> Running : resume
-//     WaitingHuman --> Cancelled : cancel
-//     WaitingHuman --> Failed : fail
-//     Completed --> [*]
-//     Failed --> [*]
-//     Cancelled --> [*]
+//
+//	[*] --> Running
+//	Running --> Completed : complete
+//	Running --> Failed : fail
+//	Running --> Cancelled : cancel
+//	Running --> WaitingHuman : interrupt
+//	WaitingHuman --> Running : resume
+//	WaitingHuman --> Cancelled : cancel
+//	WaitingHuman --> Failed : fail
+//	Completed --> [*]
+//	Failed --> [*]
+//	Cancelled --> [*]
+//
 // ```
 package biz
 

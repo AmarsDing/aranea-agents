@@ -10,26 +10,26 @@ import (
 )
 
 type mockRepo struct {
-	listAuditLogsFn                        func(ctx context.Context, query monitor.AuditQuery) (monitor.AuditListResult, error)
-	insertAuditLogFn                       func(ctx context.Context, entry monitor.AuditLog) error
-	insertMonitorEventFn                   func(ctx context.Context, ev monitor.EventWrite) error
-	listMonitorEventsFn                    func(ctx context.Context, query monitor.EventsQuery) (monitor.ListResult, error)
-	getMonitorEventFn                      func(ctx context.Context, id string) (monitor.PlatformRow, error)
-	listMonitorTracesFn                    func(ctx context.Context, query monitor.TracesQuery) (monitor.ListResult, error)
-	getMonitorTraceFn                      func(ctx context.Context, id string) (monitor.PlatformRow, error)
-	listAlertRulesFn                       func(ctx context.Context) ([]monitor.AlertRule, error)
-	replaceAlertRulesFn                    func(ctx context.Context, rules []monitor.AlertRule) error
-	updateAlertFiringStateFn               func(ctx context.Context, id string, state monitor.AlertFiringState, lastFiredAt *time.Time, lastFiredValue float64, recoveredAt *time.Time) error
-	countMonitorEventsSinceFn              func(ctx context.Context, eventKey, status, sinceRFC3339, untilRFC3339 string) (int32, error)
-	avgRunnerCompletionDurationMsSinceFn   func(ctx context.Context, sinceRFC3339 string) (float64, error)
-	latencyPercentilesSinceFn              func(ctx context.Context, sinceRFC3339 string) (p50, p95, p99 float64, err error)
-	existsRunnerCompletionFn               func(ctx context.Context, sessionID, invocationID string) (bool, error)
-	patchRunnerCompletionMetadataFn        func(ctx context.Context, sessionID, runID, invocationID, patchJSON string) (bool, error)
-	insertMonitorTraceFn                   func(ctx context.Context, tw monitor.TraceWrite) error
-	upsertMonitorTraceSpanFn               func(ctx context.Context, sw monitor.TraceSpanWrite) error
-	updateMonitorTraceCompletionFn         func(ctx context.Context, traceID string, status string, durationMs int64, spanCount, errorCount int, totalTokens int64, totalCostUsd float64) error
-	ensureTraceSchemaFn                    func(ctx context.Context) error
-	listRecentRunnerCompletionsFn          func(ctx context.Context, since time.Duration, limit int) ([]monitor.RunnerCompletionRow, error)
+	listAuditLogsFn                      func(ctx context.Context, query monitor.AuditQuery) (monitor.AuditListResult, error)
+	insertAuditLogFn                     func(ctx context.Context, entry monitor.AuditLog) error
+	insertMonitorEventFn                 func(ctx context.Context, ev monitor.EventWrite) error
+	listMonitorEventsFn                  func(ctx context.Context, query monitor.EventsQuery) (monitor.ListResult, error)
+	getMonitorEventFn                    func(ctx context.Context, id string) (monitor.PlatformRow, error)
+	listMonitorTracesFn                  func(ctx context.Context, query monitor.TracesQuery) (monitor.ListResult, error)
+	getMonitorTraceFn                    func(ctx context.Context, id string) (monitor.PlatformRow, error)
+	listAlertRulesFn                     func(ctx context.Context) ([]monitor.AlertRule, error)
+	replaceAlertRulesFn                  func(ctx context.Context, rules []monitor.AlertRule) error
+	updateAlertFiringStateFn             func(ctx context.Context, id string, state monitor.AlertFiringState, lastFiredAt *time.Time, lastFiredValue float64, recoveredAt *time.Time) error
+	countMonitorEventsSinceFn            func(ctx context.Context, eventKey, status, sinceRFC3339, untilRFC3339 string) (int32, error)
+	avgRunnerCompletionDurationMsSinceFn func(ctx context.Context, sinceRFC3339 string) (float64, error)
+	latencyPercentilesSinceFn            func(ctx context.Context, sinceRFC3339 string) (p50, p95, p99 float64, err error)
+	existsRunnerCompletionFn             func(ctx context.Context, sessionID, invocationID string) (bool, error)
+	patchRunnerCompletionMetadataFn      func(ctx context.Context, sessionID, runID, invocationID, patchJSON string) (bool, error)
+	insertMonitorTraceFn                 func(ctx context.Context, tw monitor.TraceWrite) error
+	upsertMonitorTraceSpanFn             func(ctx context.Context, sw monitor.TraceSpanWrite) error
+	updateMonitorTraceCompletionFn       func(ctx context.Context, traceID string, status string, durationMs int64, spanCount, errorCount int, totalTokens int64, totalCostUsd float64) error
+	ensureTraceSchemaFn                  func(ctx context.Context) error
+	listRecentRunnerCompletionsFn        func(ctx context.Context, since time.Duration, limit int) ([]monitor.RunnerCompletionRow, error)
 }
 
 func (m *mockRepo) ListAuditLogs(ctx context.Context, query monitor.AuditQuery) (monitor.AuditListResult, error) {
@@ -1148,13 +1148,13 @@ func TestEvaluateAlerts_RunnerErrorRateFires(t *testing.T) {
 		listAlertRulesFn: func(context.Context) ([]monitor.AlertRule, error) {
 			return []monitor.AlertRule{
 				{
-					ID:            "r1",
-					Name:          "High Error Rate",
-					MetricKey:     "runner.error_rate",
-					Threshold:     0.5,
-					WindowMinutes: 60,
-					Enabled:       true,
-					Severity:      "critical",
+					ID:              "r1",
+					Name:            "High Error Rate",
+					MetricKey:       "runner.error_rate",
+					Threshold:       0.5,
+					WindowMinutes:   60,
+					Enabled:         true,
+					Severity:        "critical",
 					CooldownMinutes: 60,
 				},
 			}, nil
@@ -1193,11 +1193,11 @@ func TestEvaluateAlerts_RunnerErrorRateBelowThreshold(t *testing.T) {
 		listAlertRulesFn: func(context.Context) ([]monitor.AlertRule, error) {
 			return []monitor.AlertRule{
 				{
-					ID:            "r1",
-					MetricKey:     "runner.error_rate",
-					Threshold:     0.5,
-					WindowMinutes: 60,
-					Enabled:       true,
+					ID:              "r1",
+					MetricKey:       "runner.error_rate",
+					Threshold:       0.5,
+					WindowMinutes:   60,
+					Enabled:         true,
 					CooldownMinutes: 60,
 				},
 			}, nil
@@ -1254,13 +1254,13 @@ func TestEvaluateAlerts_ZeroTotalDoesNotAutoRecover(t *testing.T) {
 		listAlertRulesFn: func(context.Context) ([]monitor.AlertRule, error) {
 			return []monitor.AlertRule{
 				{
-					ID:            "r1",
-					MetricKey:     "runner.error_rate",
-					Threshold:     0.5,
-					WindowMinutes: 60,
-					Enabled:       true,
+					ID:              "r1",
+					MetricKey:       "runner.error_rate",
+					Threshold:       0.5,
+					WindowMinutes:   60,
+					Enabled:         true,
 					CooldownMinutes: 60,
-					FiringState:   monitor.AlertFiringStateFiring,
+					FiringState:     monitor.AlertFiringStateFiring,
 				},
 			}, nil
 		},
@@ -1287,12 +1287,12 @@ func TestEvaluateAlerts_RegistryMetric(t *testing.T) {
 		listAlertRulesFn: func(context.Context) ([]monitor.AlertRule, error) {
 			return []monitor.AlertRule{
 				{
-					ID:            "r1",
-					MetricKey:     "custom.metric",
-					Threshold:     50,
-					WindowMinutes: 60,
-					Enabled:       true,
-					Severity:      "warning",
+					ID:              "r1",
+					MetricKey:       "custom.metric",
+					Threshold:       50,
+					WindowMinutes:   60,
+					Enabled:         true,
+					Severity:        "warning",
 					CooldownMinutes: 60,
 				},
 			}, nil
@@ -1324,11 +1324,11 @@ func TestEvaluateAlerts_RegistryMetricBelowThreshold(t *testing.T) {
 		listAlertRulesFn: func(context.Context) ([]monitor.AlertRule, error) {
 			return []monitor.AlertRule{
 				{
-					ID:            "r1",
-					MetricKey:     "custom.metric",
-					Threshold:     50,
-					WindowMinutes: 60,
-					Enabled:       true,
+					ID:              "r1",
+					MetricKey:       "custom.metric",
+					Threshold:       50,
+					WindowMinutes:   60,
+					Enabled:         true,
 					CooldownMinutes: 60,
 				},
 			}, nil
@@ -1354,14 +1354,14 @@ func TestEvaluateAlerts_RegistryMetricRecovers(t *testing.T) {
 		listAlertRulesFn: func(context.Context) ([]monitor.AlertRule, error) {
 			return []monitor.AlertRule{
 				{
-					ID:            "r1",
-					MetricKey:     "custom.metric",
-					Threshold:     50,
-					WindowMinutes: 60,
-					Enabled:       true,
+					ID:              "r1",
+					MetricKey:       "custom.metric",
+					Threshold:       50,
+					WindowMinutes:   60,
+					Enabled:         true,
 					CooldownMinutes: 60,
-					FiringState:   monitor.AlertFiringStateFiring,
-					RecoveryFactor: 0.9,
+					FiringState:     monitor.AlertFiringStateFiring,
+					RecoveryFactor:  0.9,
 				},
 			}, nil
 		},
@@ -1393,12 +1393,12 @@ func TestEvaluateAlerts_SkillFilesystemMissingCount(t *testing.T) {
 		listAlertRulesFn: func(context.Context) ([]monitor.AlertRule, error) {
 			return []monitor.AlertRule{
 				{
-					ID:            "r1",
-					MetricKey:     "skill.filesystem_missing_count",
-					Threshold:     5,
-					WindowMinutes: 60,
-					Enabled:       true,
-					Severity:      "warning",
+					ID:              "r1",
+					MetricKey:       "skill.filesystem_missing_count",
+					Threshold:       5,
+					WindowMinutes:   60,
+					Enabled:         true,
+					Severity:        "warning",
 					CooldownMinutes: 60,
 				},
 			}, nil
@@ -1432,11 +1432,11 @@ func TestEvaluateAlerts_SkillFilesystemNilHealth(t *testing.T) {
 		listAlertRulesFn: func(context.Context) ([]monitor.AlertRule, error) {
 			return []monitor.AlertRule{
 				{
-					ID:            "r1",
-					MetricKey:     "skill.filesystem_missing_count",
-					Threshold:     5,
-					WindowMinutes: 60,
-					Enabled:       true,
+					ID:              "r1",
+					MetricKey:       "skill.filesystem_missing_count",
+					Threshold:       5,
+					WindowMinutes:   60,
+					Enabled:         true,
 					CooldownMinutes: 60,
 				},
 			}, nil
@@ -1476,11 +1476,11 @@ func TestEvaluateAlerts_CountTotalError(t *testing.T) {
 		listAlertRulesFn: func(context.Context) ([]monitor.AlertRule, error) {
 			return []monitor.AlertRule{
 				{
-					ID:            "r1",
-					MetricKey:     "runner.error_rate",
-					Threshold:     0.5,
-					WindowMinutes: 60,
-					Enabled:       true,
+					ID:              "r1",
+					MetricKey:       "runner.error_rate",
+					Threshold:       0.5,
+					WindowMinutes:   60,
+					Enabled:         true,
 					CooldownMinutes: 60,
 				},
 			}, nil
@@ -1822,12 +1822,12 @@ func TestEvaluateAlerts_WithRingBuffer(t *testing.T) {
 		listAlertRulesFn: func(context.Context) ([]monitor.AlertRule, error) {
 			return []monitor.AlertRule{
 				{
-					ID:            "r1",
-					MetricKey:     "runner.error_rate",
-					Threshold:     0.5,
-					WindowMinutes: 60,
-					Enabled:       true,
-					Severity:      "critical",
+					ID:              "r1",
+					MetricKey:       "runner.error_rate",
+					Threshold:       0.5,
+					WindowMinutes:   60,
+					Enabled:         true,
+					Severity:        "critical",
 					CooldownMinutes: 60,
 				},
 			}, nil
@@ -1862,13 +1862,13 @@ func TestEvaluateAlerts_CooldownPreventsFire(t *testing.T) {
 		listAlertRulesFn: func(context.Context) ([]monitor.AlertRule, error) {
 			return []monitor.AlertRule{
 				{
-					ID:            "r1",
-					MetricKey:     "runner.error_rate",
-					Threshold:     0.5,
-					WindowMinutes: 60,
-					Enabled:       true,
+					ID:              "r1",
+					MetricKey:       "runner.error_rate",
+					Threshold:       0.5,
+					WindowMinutes:   60,
+					Enabled:         true,
 					CooldownMinutes: 60,
-					LastFiredAt:   &lastFired,
+					LastFiredAt:     &lastFired,
 				},
 			}, nil
 		},
@@ -1887,5 +1887,3 @@ func TestEvaluateAlerts_CooldownPreventsFire(t *testing.T) {
 		t.Error("Alert within cooldown should not fire")
 	}
 }
-
-

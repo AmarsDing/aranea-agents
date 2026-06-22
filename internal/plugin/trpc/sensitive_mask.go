@@ -28,9 +28,9 @@ type compiledCustomPattern struct {
 }
 
 type SensitiveDataMaskPlugin struct {
-	base      basePlugin
-	cfg       sensitiveMaskConfig
-	compiled  []compiledCustomPattern
+	base     basePlugin
+	cfg      sensitiveMaskConfig
+	compiled []compiledCustomPattern
 }
 
 var _ trpcplugin.Plugin = (*SensitiveDataMaskPlugin)(nil)

@@ -14,7 +14,7 @@ func TestDefToBuildConfig_PreservesGraphShape(t *testing.T) {
 			{ID: "route", Type: "router"},
 			{ID: "end", Type: "llm"},
 		},
-		Edges: []EdgeDef{{From: "start", To: "agent"}, {From: "agent", To: "end"}},
+		Edges:            []EdgeDef{{From: "start", To: "agent"}, {From: "agent", To: "end"}},
 		EnableCheckpoint: true,
 		ExecutionEngine:  EngineDAG,
 	}

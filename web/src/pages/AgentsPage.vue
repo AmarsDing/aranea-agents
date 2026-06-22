@@ -52,6 +52,7 @@
       :remote-url-error="remoteUrlError"
       :create-form-error="createFormError"
       :can-create="canCreate"
+      :create-disabled-hint="createDisabledHint"
       :creating="creating"
       :checking-model="checkingModel"
       @apply-template="applyTemplate"
@@ -139,6 +140,7 @@ const {
   remoteUrlError,
   createFormError,
   canCreate,
+  createDisabledHint,
   statusOptions,
   checkModel,
   onCreate,
@@ -150,5 +152,6 @@ const {
   copyAgentKey,
   openCreate,
   taxonomyLabel,
+  onReorder,
 } = useAgentsPage();
 </script>

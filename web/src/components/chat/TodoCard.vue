@@ -1,11 +1,6 @@
 <template>
   <div class="todo-card" :class="`todo-card--${item.status}`">
-    <q-icon
-      :name="statusIconName"
-      size="14px"
-      :color="statusIconColor"
-      class="todo-card__icon"
-    />
+    <q-icon :name="statusIconName" size="14px" :color="statusIconColor" class="todo-card__icon" />
     <span class="todo-card__content" :class="`todo-card__content--${item.status}`">{{ item.content }}</span>
   </div>
 </template>
@@ -20,17 +15,23 @@ const props = defineProps<{
 
 const statusIconName = computed(() => {
   switch (props.item.status) {
-    case 'in_progress': return 'bolt';
-    case 'completed': return 'check_circle';
-    default: return 'radio_button_unchecked';
+    case 'in_progress':
+      return 'bolt';
+    case 'completed':
+      return 'check_circle';
+    default:
+      return 'radio_button_unchecked';
   }
 });
 
 const statusIconColor = computed(() => {
   switch (props.item.status) {
-    case 'in_progress': return 'accent';
-    case 'completed': return 'positive';
-    default: return 'grey';
+    case 'in_progress':
+      return 'accent';
+    case 'completed':
+      return 'positive';
+    default:
+      return 'grey';
   }
 });
 </script>

@@ -17,9 +17,8 @@ import { toolEventToMessage } from './toolEventMarkdown';
 const ACTIVITY_JSON_PREVIEW_LIMIT = 512;
 
 function truncatePreview(raw: string): string {
-  const trimmed = raw.length > ACTIVITY_JSON_PREVIEW_LIMIT
-    ? raw.slice(0, ACTIVITY_JSON_PREVIEW_LIMIT) + '…[truncated]'
-    : raw;
+  const trimmed =
+    raw.length > ACTIVITY_JSON_PREVIEW_LIMIT ? raw.slice(0, ACTIVITY_JSON_PREVIEW_LIMIT) + '…[truncated]' : raw;
   return trimmed;
 }
 
@@ -86,12 +85,14 @@ export function envelopeToToolEvent(env: Envelope, phase: 'before' | 'after'): T
   // an empty error section.
   const status = normalizeToolStatus(tc.status || (phase === 'before' ? 'running' : 'success'));
   const isFailure = status === 'failed';
-  const resultErrorStr = typeof result === 'object' && result !== null && typeof (result as { error?: unknown }).error === 'string'
-    ? (result as { error: string }).error
-    : undefined;
-  const resultI18nKey = typeof result === 'object' && result !== null && typeof (result as { i18n_key?: unknown }).i18n_key === 'string'
-    ? (result as { i18n_key: string }).i18n_key
-    : undefined;
+  const resultErrorStr =
+    typeof result === 'object' && result !== null && typeof (result as { error?: unknown }).error === 'string'
+      ? (result as { error: string }).error
+      : undefined;
+  const resultI18nKey =
+    typeof result === 'object' && result !== null && typeof (result as { i18n_key?: unknown }).i18n_key === 'string'
+      ? (result as { i18n_key: string }).i18n_key
+      : undefined;
   const errorMessage = resultErrorStr ?? (isFailure && tc.error_code ? tc.error_code : undefined);
   return {
     id: tc.id || env.id,
@@ -103,7 +104,10 @@ export function envelopeToToolEvent(env: Envelope, phase: 'before' | 'after'): T
     tool_name: toolName,
     tool_label: tc.display_label || tc.name,
     arguments: args,
-    result: phase === 'after' || (result && typeof result === 'object' && Object.keys(result).length > 0) ? (result as Record<string, unknown>) : undefined,
+    result:
+      phase === 'after' || (result && typeof result === 'object' && Object.keys(result).length > 0)
+        ? (result as Record<string, unknown>)
+        : undefined,
     error: errorMessage,
     occurred_at: tc.finished_at || tc.started_at || env.timestamp || new Date().toISOString(),
     duration_ms: tc.duration_ms,

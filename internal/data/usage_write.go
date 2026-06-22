@@ -55,14 +55,36 @@ func (r *usageRepo) RollupDailyHourly(ctx context.Context, e biz.TokenUsageEvent
 }
 
 func (r *usageRepo) PurgeUsageEventsOlderThan(ctx context.Context, retainDays int) (int64, error) {
-	result, err := r.data.RW().Write(ctx).ExecContext(ctx,
-		r.data.Dialect().RenumberPlaceholders(`DELETE FROM model_token_usage_events WHERE date_key < date('now', '-'||?||' days')`),
+	c := r.data.RW().Write(ctx)
+	dialect := r.data.Dialect()
+	cutoff := `date('now', '-'||?||' days')`
+
+	// Purge raw events.
+	resEvents, err := c.ExecContext(ctx,
+		dialect.RenumberPlaceholders(`DELETE FROM model_token_usage_events WHERE date_key < `+cutoff),
 		retainDays,
 	)
 	if err != nil {
 		return 0, err
 	}
-	affected, _ := result.RowsAffected()
+
+	// Purge daily rollups so aggregate views stay consistent with raw events.
+	if _, err := c.ExecContext(ctx,
+		dialect.RenumberPlaceholders(`DELETE FROM model_token_usage_daily WHERE date_key < `+cutoff),
+		retainDays,
+	); err != nil {
+		return 0, err
+	}
+
+	// Purge hourly rollups. hour_key format is "2006-01-02T15", compare the date prefix.
+	if _, err := c.ExecContext(ctx,
+		dialect.RenumberPlaceholders(`DELETE FROM model_token_usage_hourly WHERE substr(hour_key, 1, 10) < `+cutoff),
+		retainDays,
+	); err != nil {
+		return 0, err
+	}
+
+	affected, _ := resEvents.RowsAffected()
 	return affected, nil
 }
 

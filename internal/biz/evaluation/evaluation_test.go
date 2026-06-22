@@ -73,9 +73,9 @@ func TestMarshalScores(t *testing.T) {
 
 func TestLLMSetting_SimConfigured(t *testing.T) {
 	tests := []struct {
-		name  string
+		name    string
 		setting LLMSetting
-		want  bool
+		want    bool
 	}{
 		{"empty returns false", LLMSetting{}, false},
 		{"provider only returns false", LLMSetting{SimProvider: "openai"}, false},
@@ -98,9 +98,9 @@ func TestLLMSetting_SimConfigured(t *testing.T) {
 
 func TestLLMSetting_JudgeConfigured(t *testing.T) {
 	tests := []struct {
-		name  string
+		name    string
 		setting LLMSetting
-		want  bool
+		want    bool
 	}{
 		{"empty returns false", LLMSetting{}, false},
 		{"provider only returns false", LLMSetting{JudgeProvider: "openai"}, false},

@@ -36,6 +36,7 @@ export function useGraphRunPage() {
     interruptAfter: [],
     metadata: {},
     version: 0,
+    sortOrder: 0,
     createdAt: '',
     updatedAt: '',
   });

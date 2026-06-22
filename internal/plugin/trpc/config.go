@@ -54,8 +54,8 @@ type customPattern struct {
 }
 
 var (
-	emailRE = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
-	phoneRE = regexp.MustCompile(`\b1[3-9]\d{9}\b`)
+	emailRE  = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
+	phoneRE  = regexp.MustCompile(`\b1[3-9]\d{9}\b`)
 	secretRE = regexp.MustCompile(`(?i)(sk-[a-zA-Z0-9]{8,}|api[_-]?key\s*[:=]\s*\S+|Bearer\s+[a-zA-Z0-9._\-]+)`)
 )
 

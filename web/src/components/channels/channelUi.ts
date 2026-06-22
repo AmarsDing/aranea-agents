@@ -6,12 +6,7 @@ import type {
   ChannelMetadata,
   ChannelRow,
 } from '../../features/channels/types';
-import {
-  parseJSON,
-  buildChannelWebhookURL,
-  isLocalhostOrigin,
-  resolvePublicWebhookOrigin,
-} from '../../domain/channel';
+import { parseJSON, buildChannelWebhookURL, isLocalhostOrigin, resolvePublicWebhookOrigin } from '../../domain/channel';
 import { deliveryStatusFromChannelStatus } from '../../domain/conversation';
 import { presentDeliveryStatus, toneToQuasarColor } from '../../domain/conversationPresentation';
 import {

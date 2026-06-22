@@ -260,7 +260,11 @@ import {
   evoActionTypeColor,
   evoActionTypeLabel,
 } from '../components/skills/evolutionSuggestionTableUi';
-import { useEvolutionSuggestionListPage, statusOptions, targetTypeOptions } from '../features/skillEvolutionSuggestions/useEvolutionSuggestionListPage';
+import {
+  useEvolutionSuggestionListPage,
+  statusOptions,
+  targetTypeOptions,
+} from '../features/skillEvolutionSuggestions/useEvolutionSuggestionListPage';
 import { formatDate } from '../features/skillEvolutionSuggestions/formatUtils';
 
 const {

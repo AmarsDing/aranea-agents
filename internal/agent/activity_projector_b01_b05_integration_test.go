@@ -73,8 +73,10 @@ func TestActivityProjector_B01_StartBeforeDeltaConcurrent(t *testing.T) {
 	wg.Wait()
 
 	// Wait for all events to be published.
-	// Expected: 1 start + 50 deltas = 51 events.
-	envs := bus.waitForPublished(t, 51)
+	// With delta batching, the 50 deltas may be coalesced into fewer envelopes,
+	// so we only require the start event to be first and all subsequent events
+	// to be deltas for the same activity.
+	envs := bus.waitForPublished(t, 2)
 
 	// Verify the first event is start.
 	if envs[0].Type != contract.EnvelopeTypeActivityStart {
@@ -87,6 +89,13 @@ func TestActivityProjector_B01_StartBeforeDeltaConcurrent(t *testing.T) {
 	if startActID == "" {
 		t.Fatal("start event missing activity_id metadata")
 	}
+
+	// Allow the batch timer to flush any remaining deltas.
+	time.Sleep(2 * defaultDeltaBatchInterval)
+	bus.mu.Lock()
+	envs = make([]contract.Envelope, len(bus.published))
+	copy(envs, bus.published)
+	bus.mu.Unlock()
 
 	// Verify all subsequent events are deltas for the same activity.
 	for i := 1; i < len(envs); i++ {
@@ -182,6 +191,13 @@ func TestActivityProjector_B05_NoStartDeltaRace(t *testing.T) {
 		}(author)
 	}
 	wg.Wait()
+
+	// Flush the sequencer before inspecting published events. The sequencer is
+	// intentionally asynchronous (events are enqueued and processed by per-activity
+	// goroutines), so wg.Wait() only guarantees that calls to OnTextDelta/OnTextDone
+	// have returned, not that all queued events have been published. Closing the
+	// projector drains all pending events deterministically before assertions.
+	p.Close()
 
 	// Wait for all events: 20 * (1 start + 2 deltas + 1 done) = 80 events.
 	// But OnTextDelta for the same author reuses the same activity, so:

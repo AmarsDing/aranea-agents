@@ -27,14 +27,14 @@ type GraphCheckpointInfo struct {
 
 // GraphCheckpointState is a checkpoint state snapshot suitable for debugging and HITL.
 type GraphCheckpointState struct {
-	Ref          GraphCheckpointRef `json:"ref"`
-	ParentCheckpoint string         `json:"parent_checkpoint,omitempty"`
-	Source       string             `json:"source,omitempty"`
-	Step         int                `json:"step"`
-	Timestamp    time.Time          `json:"timestamp"`
-	State        map[string]any     `json:"state"`
-	NextNodes    []string           `json:"next_nodes,omitempty"`
-	NextChannels []string           `json:"next_channels,omitempty"`
+	Ref              GraphCheckpointRef `json:"ref"`
+	ParentCheckpoint string             `json:"parent_checkpoint,omitempty"`
+	Source           string             `json:"source,omitempty"`
+	Step             int                `json:"step"`
+	Timestamp        time.Time          `json:"timestamp"`
+	State            map[string]any     `json:"state"`
+	NextNodes        []string           `json:"next_nodes,omitempty"`
+	NextChannels     []string           `json:"next_channels,omitempty"`
 }
 
 // GraphEditedState is the result of editing a checkpoint state.
@@ -72,15 +72,15 @@ type GraphVisualization struct {
 
 // GraphTemplateRef is a reference to a graph template with its metadata.
 type GraphTemplateRef struct {
-	ID          string                  `json:"id"`
-	Name        string                  `json:"name"`
-	Description string                  `json:"description"`
-	Category    string                  `json:"category"`
-	Nodes       []GraphTemplateNodeRef  `json:"nodes"`
-	Edges       []GraphTemplateEdgeRef  `json:"edges"`
-	StateFields []StateFieldDef         `json:"state_fields"`
-	EntryPoint  string                  `json:"entry_point"`
-	FinishPoint string                  `json:"finish_point"`
+	ID          string                 `json:"id"`
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	Category    string                 `json:"category"`
+	Nodes       []GraphTemplateNodeRef `json:"nodes"`
+	Edges       []GraphTemplateEdgeRef `json:"edges"`
+	StateFields []StateFieldDef        `json:"state_fields"`
+	EntryPoint  string                 `json:"entry_point"`
+	FinishPoint string                 `json:"finish_point"`
 }
 
 // GraphTemplateNodeRef describes a node within a graph template.

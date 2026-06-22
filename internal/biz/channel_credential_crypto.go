@@ -16,17 +16,17 @@ func (c *CredentialCrypto) EncryptChannelSecretRef(ctx context.Context, plain st
 	}
 	key, err := c.aesKey(ctx)
 	if err != nil {
-		return "", apierror.Internal("CHANNEL", err.Error())
+		return "", apierror.Internal(apierror.DomainChannel, err.Error())
 	}
 	if len(key) != 32 {
-		return "", apierror.Internal("CHANNEL", credentialKeyRequiredMsg)
+		return "", apierror.Internal(apierror.DomainChannel, credentialKeyRequiredMsg)
 	}
 	enc, err := c.encryptCredential(ctx, plain)
 	if err != nil {
 		return "", err
 	}
 	if enc == "" {
-		return "", apierror.Internal("CHANNEL", credentialKeyRequiredMsg)
+		return "", apierror.Internal(apierror.DomainChannel, credentialKeyRequiredMsg)
 	}
 	return channelSecretRefPrefix + enc, nil
 }
@@ -37,14 +37,14 @@ func (c *CredentialCrypto) DecryptChannelSecretRef(ctx context.Context, ref stri
 		return "", nil
 	}
 	if !strings.HasPrefix(ref, channelSecretRefPrefix) {
-		return "", apierror.BadRequest("CHANNEL", "unsupported channel secret_ref")
+		return "", apierror.BadRequest(apierror.DomainChannel, "unsupported channel secret_ref")
 	}
 	plain, err := c.decryptCredential(ctx, strings.TrimPrefix(ref, channelSecretRefPrefix))
 	if err != nil {
-		return "", err
+		return "", apierror.Wrap(err, apierror.CodeInternal, apierror.DomainChannel)
 	}
 	if plain == "" {
-		return "", apierror.BadRequest("CHANNEL", "channel credential could not be decrypted")
+		return "", apierror.BadRequest(apierror.DomainChannel, "channel credential could not be decrypted")
 	}
 	return plain, nil
 }

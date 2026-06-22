@@ -168,21 +168,21 @@ func TestBuildCostUSD_CostBlockOnlyCacheWrite(t *testing.T) {
 }
 
 func TestParsePricingConfig(t *testing.T) {
-	cfg, ok := parsePricingConfig(`{"input_price_micro_usd_per_1k":1000}`)
-	if !ok {
-		t.Fatal("expected valid JSON to parse")
+	cfg, err := parsePricingConfig(`{"input_price_micro_usd_per_1k":1000}`)
+	if err != nil {
+		t.Fatalf("expected valid JSON to parse, got err=%v", err)
 	}
 	if cfg.InputPriceMicroUSDPer1K != 1000 {
 		t.Errorf("InputPriceMicroUSDPer1K = %d, want 1000", cfg.InputPriceMicroUSDPer1K)
 	}
 
-	_, ok = parsePricingConfig(`{invalid}`)
-	if ok {
+	_, err = parsePricingConfig(`{invalid}`)
+	if err == nil {
 		t.Error("expected invalid JSON to fail")
 	}
 
-	_, ok = parsePricingConfig("")
-	if ok {
+	_, err = parsePricingConfig("")
+	if err == nil {
 		t.Error("expected empty string to fail")
 	}
 }

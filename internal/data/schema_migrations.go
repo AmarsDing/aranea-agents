@@ -11,14 +11,18 @@ import (
 )
 
 const (
-	MigrationLegacyTRPCMemoryFacts     = 20260524
-	migrationNameLegacyTRPCMemoryFacts = "legacy_trpc_memory_facts"
-	MigrationTurnIndexToTurnID         = 20260528
-	migrationNameTurnIndexToTurnID     = "turn_index_to_turn_id"
-	MigrationSessionStatusIdle         = 20260531
-	migrationNameSessionStatusIdle     = "session_status_active_to_idle"
-	MigrationActivityBackfill          = 20260801
-	migrationNameActivityBackfill      = "activity_backfill_pre_af"
+	MigrationLegacyTRPCMemoryFacts           = 20260524
+	migrationNameLegacyTRPCMemoryFacts       = "legacy_trpc_memory_facts"
+	MigrationTurnIndexToTurnID               = 20260528
+	migrationNameTurnIndexToTurnID           = "turn_index_to_turn_id"
+	MigrationSessionStatusIdle               = 20260531
+	migrationNameSessionStatusIdle           = "session_status_active_to_idle"
+	MigrationActivityBackfill                = 20260801
+	migrationNameActivityBackfill            = "activity_backfill_pre_af"
+	MigrationSessionTurnNumberBackfill       = 20260802
+	migrationNameSessionTurnNumberBackfill   = "session_turn_number_backfill"
+	MigrationSessionTurnNumberRebackfill     = 20260803
+	migrationNameSessionTurnNumberRebackfill = "session_turn_number_rebackfill"
 )
 
 func isMigrationApplied(ctx context.Context, client *ent.Client, version int, lg loggateway.Logger) (bool, error) {

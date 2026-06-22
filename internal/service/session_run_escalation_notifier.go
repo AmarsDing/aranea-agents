@@ -238,11 +238,11 @@ func (n *channelRunEscalationNotifier) enqueueForSession(
 		text = preview.FormatAssistantReplyForIM(platform, text)
 		if strings.TrimSpace(text) == "" && strings.TrimSpace(cardJSON) == "" {
 			n.lg.Warn("Channel session outbound empty after format",
-			loggateway.StepID(flowStepChannelOutbound),
-			loggateway.Str("session_id", sessionID),
-			loggateway.Str("platform", platform),
-			loggateway.Str("idempotency_key", idempotencyKey),
-		)
+				loggateway.StepID(flowStepChannelOutbound),
+				loggateway.Str("session_id", sessionID),
+				loggateway.Str("platform", platform),
+				loggateway.Str("idempotency_key", idempotencyKey),
+			)
 			return nil
 		}
 	}

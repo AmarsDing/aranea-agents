@@ -1,8 +1,8 @@
 package service
 
 import (
-	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/biz"
+	rt "aranea-agents/internal/runtime"
 )
 
 // runRegistryAdapter adapts *rt.RunRegistry to the biz.RunRegistryPort interface.

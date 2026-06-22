@@ -59,7 +59,8 @@ function messageOrder(message: Message): [number, string] {
   if (message.origin?.kind === 'streaming_snapshot') return [0, message.created_at || ''];
   // Reconstructed action messages (tool_activity origin with terminal status)
   // sort alongside persisted messages to maintain thinking → action → reply order.
-  if (message.origin?.kind === 'tool_activity' && !isInFlightStatus(message.status || '')) return [0, message.created_at || ''];
+  if (message.origin?.kind === 'tool_activity' && !isInFlightStatus(message.status || ''))
+    return [0, message.created_at || ''];
   const inFlight = isInFlightLocalRow(message) ? 1 : 0;
   return [inFlight, message.created_at || ''];
 }
@@ -207,9 +208,7 @@ export function mergeSessionMessages(
   //   ChatMessage merges ALL rounds into one — including it would duplicate
   //   Activity content and cause the UI to show a single merged block
   //   instead of correctly separated rounds.
-  const hasSnapshots = local.some(
-    (m) => m.origin?.kind === 'streaming_snapshot' && m.role === 'assistant',
-  );
+  const hasSnapshots = local.some((m) => m.origin?.kind === 'streaming_snapshot' && m.role === 'assistant');
   const excludeMergedAssistant = hasSnapshots;
 
   const pendingReplacedBy = new Map<string, Message>();

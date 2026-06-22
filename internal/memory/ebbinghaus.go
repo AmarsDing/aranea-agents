@@ -25,8 +25,9 @@ type DecayInput struct {
 }
 
 // ComputeDecay returns R_t = exp(-n_t / S_t) where:
-//   n_t = hours since last access
-//   S_t = stability = creationAgeHours + accessCount*24 + 0.001*creationAgeHours
+//
+//	n_t = hours since last access
+//	S_t = stability = creationAgeHours + accessCount*24 + 0.001*creationAgeHours
 //
 // Returns 1.0 when no decay applies (just created, just accessed, or missing timestamps).
 // Returns a value in [0, 1] — higher means more reachable (less forgotten).

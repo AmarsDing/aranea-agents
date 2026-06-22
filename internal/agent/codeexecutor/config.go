@@ -16,10 +16,10 @@ const (
 
 // EnvConfig holds process-level code executor settings from environment variables.
 type EnvConfig struct {
-	Backend      string
-	DockerImage  string
-	Timeout      time.Duration
-	E2BAPIKey    string
+	Backend          string
+	DockerImage      string
+	Timeout          time.Duration
+	E2BAPIKey        string
 	AllowLocalInProd bool // when false and ARANEA_ENV=production, warn on local
 }
 

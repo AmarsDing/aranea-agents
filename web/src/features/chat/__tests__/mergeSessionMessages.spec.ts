@@ -177,7 +177,11 @@ describe('mergeSessionMessages', () => {
     // The snapshots must be preserved; the server assistant message is excluded
     // to avoid duplicating content.
     const serverUser = { ...msg('srv-u-1', 'ok', '2026-05-20T10:00:00Z'), role: 'user', content_markdown: 'hello' };
-    const serverAsst = { ...msg('srv-asst-1', 'ok', '2026-05-20T10:00:02Z'), role: 'assistant', content_markdown: 'Thinking...Result' };
+    const serverAsst = {
+      ...msg('srv-asst-1', 'ok', '2026-05-20T10:00:02Z'),
+      role: 'assistant',
+      content_markdown: 'Thinking...Result',
+    };
     const server = [serverUser, serverAsst];
     const local = [
       serverUser,

@@ -285,12 +285,12 @@ func TestDeleteToolAgentOverride(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
-		name       string
+		name        string
 		toolIDOrKey string
-		agentID    string
-		repo       *mockRepo
-		wantErr    bool
-		wantMsg    string
+		agentID     string
+		repo        *mockRepo
+		wantErr     bool
+		wantMsg     string
 	}{
 		{
 			name:        "empty agent id",
@@ -546,24 +546,24 @@ func TestRequiresConfirmationForAgent(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
-		name      string
-		agentID   string
-		toolKey   string
-		repo      *mockRepo
+		name       string
+		agentID    string
+		toolKey    string
+		repo       *mockRepo
 		wantResult bool
 	}{
 		{
-			name:     "empty agent id",
-			agentID:  "  ",
-			toolKey:  "test_tool",
-			repo:     &mockRepo{},
+			name:       "empty agent id",
+			agentID:    "  ",
+			toolKey:    "test_tool",
+			repo:       &mockRepo{},
 			wantResult: false,
 		},
 		{
-			name:     "empty tool key",
-			agentID:  "agent_1",
-			toolKey:  "  ",
-			repo:     &mockRepo{},
+			name:       "empty tool key",
+			agentID:    "agent_1",
+			toolKey:    "  ",
+			repo:       &mockRepo{},
 			wantResult: false,
 		},
 		{
@@ -1204,10 +1204,10 @@ func TestRecordToolInvocation(t *testing.T) {
 		{
 			name: "sanitizes and records",
 			input: ToolInvocationWrite{
-				ToolKey:      "shell_exec",
-				InputPreview: "user email is test@example.com",
+				ToolKey:       "shell_exec",
+				InputPreview:  "user email is test@example.com",
 				OutputPreview: "result with password=secret123",
-				ErrorMessage: "",
+				ErrorMessage:  "",
 			},
 			repo: &mockRepo{
 				recordToolInvocation: func(_ context.Context, in ToolInvocationWrite) error {
@@ -1242,8 +1242,8 @@ func TestRecordToolInvocation(t *testing.T) {
 		{
 			name: "empty input passes through",
 			input: ToolInvocationWrite{
-				ToolKey:      "read_file",
-				InputPreview: "",
+				ToolKey:       "read_file",
+				InputPreview:  "",
 				OutputPreview: "",
 			},
 			repo: &mockRepo{

@@ -43,8 +43,8 @@ func TestValidateSpec_MissingDepartmentKey(t *testing.T) {
 	spec := &Spec{
 		Spec: SpecBody{
 			Companies: []OrganizationSpec{{
-				Key:   "tech",
-				Name:  "Technology",
+				Key:         "tech",
+				Name:        "Technology",
 				Departments: []DepartmentSpec{{Name: "Engineering"}},
 			}},
 		},
@@ -339,8 +339,8 @@ func TestApplier_DryRun(t *testing.T) {
 	spec := &Spec{
 		Spec: SpecBody{
 			Companies: []OrganizationSpec{{Key: "tech", Name: "Technology"}},
-			Agents:     []AgentSpec{{Key: "bot-1", DisplayName: "Bot"}},
-			Teams:      []TeamSpec{{Key: "team-1", Name: "Alpha", Members: []MemberSpec{{AgentKey: "bot-1", Role: "member"}}}},
+			Agents:    []AgentSpec{{Key: "bot-1", DisplayName: "Bot"}},
+			Teams:     []TeamSpec{{Key: "team-1", Name: "Alpha", Members: []MemberSpec{{AgentKey: "bot-1", Role: "member"}}}},
 		},
 	}
 	result, err := a.Apply(spec)
@@ -358,7 +358,7 @@ func TestCollectPositionPaths(t *testing.T) {
 			Companies: []OrganizationSpec{{
 				Key: "tech",
 				Departments: []DepartmentSpec{{
-					Key: "eng",
+					Key:       "eng",
 					Positions: []PositionSpec{{Key: "dev"}},
 				}},
 			}},

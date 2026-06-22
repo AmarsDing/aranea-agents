@@ -5,6 +5,7 @@ import (
 	"image"
 	_ "image/gif"
 	"image/jpeg"
+	_ "image/png"
 
 	"aranea-agents/pkg/apierror"
 	"golang.org/x/image/draw"

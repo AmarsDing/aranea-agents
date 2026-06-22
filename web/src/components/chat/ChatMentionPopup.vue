@@ -1,12 +1,12 @@
 <template>
   <q-popup-proxy
     :model-value="open"
-    @update:model-value="emit('update:open', $event)"
     anchor="bottom left"
     self="top left"
     :offset="[0, 4]"
     no-ref-focus
     class="chat-mention-popup-proxy"
+    @update:model-value="emit('update:open', $event)"
   >
     <div class="chat-mention-popup" :class="{ 'chat-mention-popup--dark': isDark }">
       <div class="chat-mention-popup__header text-caption text-weight-medium">

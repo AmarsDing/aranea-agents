@@ -29,15 +29,15 @@ type sourceItem struct {
 
 // researchOutput is the structured tool result.
 type researchOutput struct {
-	Query            string       `json:"query"`
-	Answer           string       `json:"answer,omitempty"`
-	Sources          []sourceItem `json:"sources"`
-	Provider         string       `json:"provider"`
-	ResponseTimeSec  float64      `json:"response_time_sec,omitempty"`
-	FetchedURLCount  int          `json:"fetched_url_count,omitempty"`
-	Summary          string       `json:"summary"`
-	Partial          bool         `json:"partial,omitempty"`
-	FetchWarnings    []string     `json:"fetch_warnings,omitempty"`
+	Query           string       `json:"query"`
+	Answer          string       `json:"answer,omitempty"`
+	Sources         []sourceItem `json:"sources"`
+	Provider        string       `json:"provider"`
+	ResponseTimeSec float64      `json:"response_time_sec,omitempty"`
+	FetchedURLCount int          `json:"fetched_url_count,omitempty"`
+	Summary         string       `json:"summary"`
+	Partial         bool         `json:"partial,omitempty"`
+	FetchWarnings   []string     `json:"fetch_warnings,omitempty"`
 }
 
 // NewTool returns a web_research CallableTool. cfg must include a valid API key.

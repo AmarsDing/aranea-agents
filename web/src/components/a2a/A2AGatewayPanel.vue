@@ -48,22 +48,15 @@
       <template #body-cell-capabilities="props">
         <q-td :props="props">
           <div class="app-registry-chip-wrap">
-            <q-chip
-              v-for="c in props.row.card?.capabilities ?? []"
-              :key="c.name"
-              dense
-              outline
-              size="sm"
-            >{{ c.name }}</q-chip>
+            <q-chip v-for="c in props.row.card?.capabilities ?? []" :key="c.name" dense outline size="sm">{{
+              c.name
+            }}</q-chip>
           </div>
         </q-td>
       </template>
       <template #body-cell-healthy="props">
         <q-td :props="props">
-          <q-badge
-            :color="props.row.healthy ? 'positive' : 'negative'"
-            :label="props.row.healthy ? '健康' : '异常'"
-          />
+          <q-badge :color="props.row.healthy ? 'positive' : 'negative'" :label="props.row.healthy ? '健康' : '异常'" />
         </q-td>
       </template>
       <template #body-cell-endpoint_url="props">

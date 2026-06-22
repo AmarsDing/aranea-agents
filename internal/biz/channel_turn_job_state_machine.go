@@ -4,30 +4,34 @@
 //
 // ```mermaid
 // stateDiagram-v2
-//     [*] --> Accepted
-//     Accepted --> Running : start
-//     Accepted --> Queued : queue
-//     Accepted --> Cancelled : cancel
-//     Accepted --> AsyncQueued : async_queue
-//     Running --> Completed : complete
-//     Running --> Failed : fail
-//     Running --> Timeout : timeout
-//     Running --> Cancelled : cancel
-//     Running --> AsyncQueued : async_queue
-//     Queued --> Running : dequeue
-//     Queued --> Cancelled : cancel
-//     AsyncQueued --> Running : async_start
-//     AsyncQueued --> Failed : async_fail
-//     AsyncQueued --> Cancelled : async_cancel
-//     AsyncQueued --> Timeout : timeout
-//     Completed --> [*]
-//     Failed --> [*]
-//     Timeout --> [*]
-//     Cancelled --> [*]
+//
+//	[*] --> Accepted
+//	Accepted --> Running : start
+//	Accepted --> Queued : queue
+//	Accepted --> Cancelled : cancel
+//	Accepted --> AsyncQueued : async_queue
+//	Running --> Completed : complete
+//	Running --> Failed : fail
+//	Running --> Timeout : timeout
+//	Running --> Cancelled : cancel
+//	Running --> AsyncQueued : async_queue
+//	Queued --> Running : dequeue
+//	Queued --> Cancelled : cancel
+//	AsyncQueued --> Running : async_start
+//	AsyncQueued --> Failed : async_fail
+//	AsyncQueued --> Cancelled : async_cancel
+//	AsyncQueued --> Timeout : timeout
+//	Completed --> [*]
+//	Failed --> [*]
+//	Timeout --> [*]
+//	Cancelled --> [*]
+//
 // ```
 package biz
 
 import (
+	"strings"
+
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/apierror"
 )
@@ -131,10 +135,28 @@ func (sm *ChannelTurnJobStateMachine) ValidTargets(from ChannelTurnJobState) []C
 // defaultChannelTurnJobSM is the singleton used by backward-compatible convenience functions.
 var defaultChannelTurnJobSM = NewChannelTurnJobStateMachine()
 
+// isValidChannelTurnJobStatus reports whether the raw status string matches a
+// known ChannelTurnJob state. NormalizeChannelTurnJobStatus maps unknown values
+// to Accepted for backward compatibility in persistence/normalization, but
+// transitions must only be evaluated on legal states.
+func isValidChannelTurnJobStatus(status string) bool {
+	switch strings.TrimSpace(strings.ToLower(status)) {
+	case ChannelTurnJobStatusAccepted, ChannelTurnJobStatusRunning, ChannelTurnJobStatusQueued,
+		ChannelTurnJobStatusCompleted, ChannelTurnJobStatusFailed, ChannelTurnJobStatusTimeout,
+		ChannelTurnJobStatusCancelled, ChannelTurnJobStatusAsyncQueued:
+		return true
+	default:
+		return false
+	}
+}
+
 // TransitionChannelTurnJob validates and returns the target status for a transition.
-// Returns an error if the transition is illegal.
+// Returns an error if the status is unknown or the transition is illegal.
 // Stability:stable
 func TransitionChannelTurnJob(fromStatus, event string) (string, error) {
+	if !isValidChannelTurnJobStatus(fromStatus) {
+		return "", apierror.BadRequest("CHANNEL_TURN_JOB", "unknown status: "+fromStatus)
+	}
 	from := ChannelTurnJobState(NormalizeChannelTurnJobStatus(fromStatus))
 	to, err := defaultChannelTurnJobSM.Transition(from, ChannelTurnJobEvent(event))
 	if err != nil {

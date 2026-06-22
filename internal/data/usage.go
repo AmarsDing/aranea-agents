@@ -24,8 +24,8 @@ func (r *usageRepo) GetModelUsageSummary(ctx context.Context, query biz.UsageQue
 	where, args := usageWhere(query, true)
 	q := `SELECT
 		 COALESCE(SUM(call_count), 0), COUNT(*),
-		 COALESCE(SUM(CASE WHEN `+sqlUsageStatusSuccess+` THEN 1 ELSE 0 END), 0),
-		 COALESCE(SUM(CASE WHEN `+sqlUsageStatusFailed+` THEN 1 ELSE 0 END), 0),
+		 COALESCE(SUM(CASE WHEN ` + sqlUsageStatusSuccess + ` THEN 1 ELSE 0 END), 0),
+		 COALESCE(SUM(CASE WHEN ` + sqlUsageStatusFailed + ` THEN 1 ELSE 0 END), 0),
 		 COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0),
 		 COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0), COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0)
@@ -50,11 +50,11 @@ func (r *usageRepo) ListModelUsageTrends(ctx context.Context, query biz.UsageQue
 		 COALESCE(SUM(call_count), 0),
 		 COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0),
-		 COALESCE(SUM(CASE WHEN `+sqlUsageStatusSuccess+` THEN 1 ELSE 0 END), 0),
-		 COALESCE(SUM(CASE WHEN `+sqlUsageStatusFailed+` THEN 1 ELSE 0 END), 0),
+		 COALESCE(SUM(CASE WHEN ` + sqlUsageStatusSuccess + ` THEN 1 ELSE 0 END), 0),
+		 COALESCE(SUM(CASE WHEN ` + sqlUsageStatusFailed + ` THEN 1 ELSE 0 END), 0),
 		 COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0),
 		 COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0)
-		 FROM model_token_usage_events`+where+` GROUP BY date_key ORDER BY date_key ASC`)
+		 FROM model_token_usage_events` + where + ` GROUP BY date_key ORDER BY date_key ASC`)
 	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, apierror.DomainData)
@@ -77,8 +77,8 @@ func (r *usageRepo) ListTopModelUsage(ctx context.Context, query biz.UsageQuery)
 	q := r.data.Dialect().RenumberPlaceholders(`SELECT provider_code, model_api_id, MAX(model_display_name),
 		 COALESCE(SUM(call_count), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0), COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0),
-		 COALESCE(1.0 * SUM(CASE WHEN `+sqlUsageStatusSuccess+` THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0)
-		 FROM model_token_usage_events`+where+` GROUP BY provider_code, model_api_id ORDER BY SUM(total_cost_micro_usd) DESC, SUM(call_count) DESC LIMIT ?`)
+		 COALESCE(1.0 * SUM(CASE WHEN ` + sqlUsageStatusSuccess + ` THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0)
+		 FROM model_token_usage_events` + where + ` GROUP BY provider_code, model_api_id ORDER BY SUM(total_cost_micro_usd) DESC, SUM(call_count) DESC LIMIT ?`)
 	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, apierror.DomainData)
@@ -105,7 +105,7 @@ func (r *usageRepo) ListModelUsageEvents(ctx context.Context, query biz.UsageQue
 		 input_cost_micro_usd, output_cost_micro_usd, cached_input_cost_micro_usd, COALESCE(cache_write_cost_micro_usd, 0), reasoning_cost_micro_usd, embedding_cost_micro_usd, total_cost_micro_usd,
 		 latency_ms, time_to_first_token_ms, tokens_per_second, status, error_code, error_message, retry_count,
 		 prompt_mode, max_output_tokens, context_window_k, stream_enabled, metadata_json, created_at
-		 FROM model_token_usage_events`+where+` ORDER BY occurred_at DESC LIMIT ?`)
+		 FROM model_token_usage_events` + where + ` ORDER BY occurred_at DESC LIMIT ?`)
 	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, apierror.DomainData)
@@ -128,8 +128,8 @@ func (r *usageRepo) ListTopAgentUsage(ctx context.Context, query biz.UsageQuery)
 	q := r.data.Dialect().RenumberPlaceholders(`SELECT agent_id, agent_key,
 		 COALESCE(SUM(call_count), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0), COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0),
-		 COALESCE(1.0 * SUM(CASE WHEN `+sqlUsageStatusSuccess+` THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0)
-		 FROM model_token_usage_events`+where+` GROUP BY agent_id, agent_key ORDER BY SUM(total_cost_micro_usd) DESC, SUM(call_count) DESC LIMIT ?`)
+		 COALESCE(1.0 * SUM(CASE WHEN ` + sqlUsageStatusSuccess + ` THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0)
+		 FROM model_token_usage_events` + where + ` GROUP BY agent_id, agent_key ORDER BY SUM(total_cost_micro_usd) DESC, SUM(call_count) DESC LIMIT ?`)
 	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, apierror.DomainData)

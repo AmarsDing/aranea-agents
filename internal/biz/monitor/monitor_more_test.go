@@ -12,9 +12,9 @@ import (
 )
 
 type mockBus struct {
-	ch       chan contract.Envelope
-	unsub    func()
-	dropCnt  uint64
+	ch      chan contract.Envelope
+	unsub   func()
+	dropCnt uint64
 }
 
 func newMockBus() *mockBus {

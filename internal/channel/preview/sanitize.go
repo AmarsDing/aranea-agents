@@ -6,11 +6,11 @@ import (
 )
 
 var (
-	reThinkingBlock      = regexp.MustCompile(`(?is)<think(?:ing)?>.*?</think(?:ing)?>`)
-	reRedactedBlock      = regexp.MustCompile(`(?is)<think>.*?</think>`)
-	reThinkingTag        = regexp.MustCompile(`(?is)</?think(?:ing)?>`)
-	reRedactedThinking   = regexp.MustCompile(`(?is)</?redacted_thinking>`)
-	reMalformedToolXML   = regexp.MustCompile(`(?is)</?(?:tool|function_call|invoke)[^>]*>`)
+	reThinkingBlock    = regexp.MustCompile(`(?is)<think(?:ing)?>.*?</think(?:ing)?>`)
+	reRedactedBlock    = regexp.MustCompile(`(?is)<think>.*?</think>`)
+	reThinkingTag      = regexp.MustCompile(`(?is)</?think(?:ing)?>`)
+	reRedactedThinking = regexp.MustCompile(`(?is)</?redacted_thinking>`)
+	reMalformedToolXML = regexp.MustCompile(`(?is)</?(?:tool|function_call|invoke)[^>]*>`)
 )
 
 // SanitizeStreamText strips thinking tags and malformed tool XML from stream deltas (CH-BOR-12).

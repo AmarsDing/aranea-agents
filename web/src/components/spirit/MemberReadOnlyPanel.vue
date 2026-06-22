@@ -83,8 +83,24 @@
 
     <!-- Back buttons -->
     <div class="q-pa-md row items-center q-gutter-sm">
-      <q-btn flat dense no-caps icon="arrow_back" :label="t('spirit.backToTeam')" color="accent" @click="emit('return-to-team')" />
-      <q-btn flat dense no-caps icon="auto_awesome" :label="t('spirit.backToSpirit')" color="accent" @click="emit('return-to-spirit')" />
+      <q-btn
+        flat
+        dense
+        no-caps
+        icon="arrow_back"
+        :label="t('spirit.backToTeam')"
+        color="accent"
+        @click="emit('return-to-team')"
+      />
+      <q-btn
+        flat
+        dense
+        no-caps
+        icon="auto_awesome"
+        :label="t('spirit.backToSpirit')"
+        color="accent"
+        @click="emit('return-to-spirit')"
+      />
     </div>
   </div>
 </template>
@@ -94,7 +110,12 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AgentStatusLabel from './AgentStatusLabel.vue';
 import ChatExecutionCard from '../chat/ChatExecutionCard.vue';
-import { spiritMemberStatusToLabel, STATUS_LABEL_CONFIG, formatDuration, formatTokenCount } from '../../features/spirit/spiritUi';
+import {
+  spiritMemberStatusToLabel,
+  STATUS_LABEL_CONFIG,
+  formatDuration,
+  formatTokenCount,
+} from '../../features/spirit/spiritUi';
 import type { SpiritMember, SpiritTeam } from '../../features/spirit/types';
 import type { Message, ToolUseEvent } from '../../features/chat/types';
 
@@ -130,10 +151,7 @@ const memberMessages = computed<ToolUseEvent[]>(() => {
 const assistantMessages = computed<Message[]>(() => {
   return props.messages.filter((m) => {
     if (m.role !== 'assistant') return false;
-    return (
-      m.agent_ref?.id === props.member.agentId ||
-      m.team_member?.agent_id === props.member.agentId
-    );
+    return m.agent_ref?.id === props.member.agentId || m.team_member?.agent_id === props.member.agentId;
   });
 });
 

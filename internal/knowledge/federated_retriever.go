@@ -25,9 +25,9 @@ type CollectionMetaFetcher interface {
 }
 
 type FederatedSearchOptions struct {
-	Strategy       FederationStrategy
-	RouteTopN      int
-	RouteMinScore  float32
+	Strategy      FederationStrategy
+	RouteTopN     int
+	RouteMinScore float32
 }
 
 func DefaultFederatedSearchOptions() FederatedSearchOptions {

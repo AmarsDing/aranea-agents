@@ -2,7 +2,7 @@
 // into composable so the .vue file only handles template bindings.
 import { computed, reactive, ref, watch, type Ref } from 'vue';
 import { useQuasar } from 'quasar';
-import type { McpUserCredential } from '../types';
+import type { McpUserCredential } from './types';
 import { useMcpStore } from '../../stores/mcp';
 
 export function useMcpUserCredentialDialog(
@@ -18,16 +18,13 @@ export function useMcpUserCredentialDialog(
   const items = ref<McpUserCredential[]>([]);
   const form = reactive({ credential_key: 'Authorization', secret: '' });
 
-  const canSave = computed(
-    () => Boolean(mcpServerId.value && userId.value && form.credential_key.trim() && form.secret.trim()),
+  const canSave = computed(() =>
+    Boolean(mcpServerId.value && userId.value && form.credential_key.trim() && form.secret.trim()),
   );
 
-  watch(
-    [modelValue, mcpServerId, userId] as const,
-    ([open, serverId, uid]) => {
-      if (open && serverId && uid) void reload();
-    },
-  );
+  watch([modelValue, mcpServerId, userId] as const, ([open, serverId, uid]) => {
+    if (open && serverId && uid) void reload();
+  });
 
   async function reload() {
     if (!mcpServerId.value || !userId.value) return;

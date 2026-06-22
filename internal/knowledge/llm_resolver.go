@@ -22,9 +22,9 @@ func ResolveLLM(ctx context.Context, sys RefineLLMSettingsGetter, catalog LLMCat
 		s, err := sys.Get(ctx)
 		if err != nil {
 			lg.Warn("系统设置获取失败",
-			loggateway.StepID("knowledge.resolve_llm"),
-			loggateway.Str("purpose", purpose),
-			loggateway.Err(err))
+				loggateway.StepID("knowledge.resolve_llm"),
+				loggateway.Str("purpose", purpose),
+				loggateway.Err(err))
 		} else if strings.TrimSpace(s.DefaultRefineLLM.Provider) != "" && strings.TrimSpace(s.DefaultRefineLLM.Model) != "" {
 			return s.DefaultRefineLLM.Provider, s.DefaultRefineLLM.Model, nil
 		}
@@ -33,9 +33,9 @@ func ResolveLLM(ctx context.Context, sys RefineLLMSettingsGetter, catalog LLMCat
 		models, err := catalog.List(ctx)
 		if err != nil {
 			lg.Warn("模型目录获取失败",
-			loggateway.StepID("knowledge.resolve_llm"),
-			loggateway.Str("purpose", purpose),
-			loggateway.Err(err))
+				loggateway.StepID("knowledge.resolve_llm"),
+				loggateway.Str("purpose", purpose),
+				loggateway.Err(err))
 		} else {
 			for _, m := range models {
 				if m.Provider != "" && m.Model != "" && m.Enabled {

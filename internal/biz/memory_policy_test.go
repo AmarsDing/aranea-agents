@@ -140,10 +140,10 @@ func TestStripPrefix(t *testing.T) {
 
 func TestNegationCoreMatches(t *testing.T) {
 	tests := []struct {
-		name string
-		core string
+		name  string
+		core  string
 		other string
-		want bool
+		want  bool
 	}{
 		// Exact match.
 		{"exact match", "available", "available", true},

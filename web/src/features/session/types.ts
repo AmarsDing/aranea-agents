@@ -2,6 +2,7 @@ export type SessionStatus = 'idle' | 'running' | 'completed' | 'interrupted' | '
 
 export type SessionStatusReason =
   | 'user_cancelled'
+  | 'user_escalated'
   | 'timeout'
   | 'budget_escalated'
   | 'error'
@@ -46,6 +47,7 @@ export type Session = {
   archived_at: string;
   deleted_at: string;
   pinned_at?: string;
+  pinned?: boolean;
   metadata_json?: string;
   context_used_tokens?: number;
   last_context_window_tokens?: number;

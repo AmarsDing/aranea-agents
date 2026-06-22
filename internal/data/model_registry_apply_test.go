@@ -36,7 +36,7 @@ func openTestDataWithRawDB(t *testing.T) *Data {
 func seedAgent(t *testing.T, d *Data, id, agentKey, displayName, provider string) {
 	t.Helper()
 	ctx := context.Background()
-	_, err := d.RawDB().ExecContext(ctx,
+	_, err := d.RWDB().WriteHandle().ExecContext(ctx,
 		`INSERT INTO agents (id, agent_key, display_name, provider, model, status, kind, position_key, agent_variant, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, '', 'active', 'user', ?, 'general', datetime('now'), datetime('now'))`,
 		id, agentKey, displayName, provider, agentKey,
@@ -50,7 +50,7 @@ func TestBatchApply_UpdatesRows(t *testing.T) {
 	d := openTestDataWithRawDB(t)
 	ctx := context.Background()
 
-	_, err := d.RawDB().ExecContext(ctx,
+	_, err := d.RWDB().WriteHandle().ExecContext(ctx,
 		`INSERT INTO llm_provider_models (id, provider, model_key, name, model, enabled, config_json, metadata_json, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
 		"pm-1", "openai", "openai:gpt-4o", "GPT-4o", "gpt-4o", true, `{"catalog_managed":true}`, `{}`,
@@ -72,7 +72,7 @@ func TestBatchApply_UpdatesRows(t *testing.T) {
 	}
 
 	var name string
-	if err := d.RawDB().QueryRowContext(ctx, `SELECT name FROM llm_provider_models WHERE id = ?`, "pm-1").Scan(&name); err != nil {
+	if err := d.RWDB().ReadHandle().QueryRowContext(ctx, `SELECT name FROM llm_provider_models WHERE id = ?`, "pm-1").Scan(&name); err != nil {
 		t.Fatal(err)
 	}
 	if name != "GPT-4o Updated" {
@@ -84,7 +84,7 @@ func TestBatchApply_MixedSuccessAndError(t *testing.T) {
 	d := openTestDataWithRawDB(t)
 	ctx := context.Background()
 
-	_, err := d.RawDB().ExecContext(ctx,
+	_, err := d.RWDB().WriteHandle().ExecContext(ctx,
 		`INSERT INTO llm_provider_models (id, provider, model_key, name, model, enabled, config_json, metadata_json, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
 		"pm-1", "openai", "openai:gpt-4o", "GPT-4o", "gpt-4o", true, `{}`, `{}`,
@@ -130,7 +130,7 @@ func TestBatchMigrate_SkipsRules(t *testing.T) {
 	}
 
 	var provider string
-	if err := d.RawDB().QueryRowContext(ctx, `SELECT provider FROM agents WHERE id = ?`, "ag-1").Scan(&provider); err != nil {
+	if err := d.RWDB().ReadHandle().QueryRowContext(ctx, `SELECT provider FROM agents WHERE id = ?`, "ag-1").Scan(&provider); err != nil {
 		t.Fatal(err)
 	}
 	if provider != "legacy_provider" {
@@ -167,7 +167,7 @@ func TestBatchMigrate_AppliesRules(t *testing.T) {
 	}
 
 	var count int
-	if err := d.RawDB().QueryRowContext(ctx,
+	if err := d.RWDB().ReadHandle().QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM agents WHERE provider = ?`, "new_provider",
 	).Scan(&count); err != nil {
 		t.Fatal(err)
@@ -198,10 +198,10 @@ func TestBatchMigrate_MultipleRules(t *testing.T) {
 	}
 
 	var countA, countB int
-	if err := d.RawDB().QueryRowContext(ctx, `SELECT COUNT(*) FROM agents WHERE provider = ?`, "new_a").Scan(&countA); err != nil {
+	if err := d.RWDB().ReadHandle().QueryRowContext(ctx, `SELECT COUNT(*) FROM agents WHERE provider = ?`, "new_a").Scan(&countA); err != nil {
 		t.Fatal(err)
 	}
-	if err := d.RawDB().QueryRowContext(ctx, `SELECT COUNT(*) FROM agents WHERE provider = ?`, "new_b").Scan(&countB); err != nil {
+	if err := d.RWDB().ReadHandle().QueryRowContext(ctx, `SELECT COUNT(*) FROM agents WHERE provider = ?`, "new_b").Scan(&countB); err != nil {
 		t.Fatal(err)
 	}
 	if countA != 1 || countB != 1 {
@@ -231,7 +231,7 @@ func TestBatchMigrate_PartialSkip(t *testing.T) {
 	}
 
 	var providerA string
-	if err := d.RawDB().QueryRowContext(ctx, `SELECT provider FROM agents WHERE id = ?`, "ag-1").Scan(&providerA); err != nil {
+	if err := d.RWDB().ReadHandle().QueryRowContext(ctx, `SELECT provider FROM agents WHERE id = ?`, "ag-1").Scan(&providerA); err != nil {
 		t.Fatal(err)
 	}
 	if providerA != "old_a" {
@@ -239,7 +239,7 @@ func TestBatchMigrate_PartialSkip(t *testing.T) {
 	}
 
 	var providerB string
-	if err := d.RawDB().QueryRowContext(ctx, `SELECT provider FROM agents WHERE id = ?`, "ag-2").Scan(&providerB); err != nil {
+	if err := d.RWDB().ReadHandle().QueryRowContext(ctx, `SELECT provider FROM agents WHERE id = ?`, "ag-2").Scan(&providerB); err != nil {
 		t.Fatal(err)
 	}
 	if providerB != "new_b" {
@@ -269,7 +269,7 @@ func TestBatchApply_PricingInsert(t *testing.T) {
 	}
 
 	var count int
-	if err := d.RawDB().QueryRowContext(ctx,
+	if err := d.RWDB().ReadHandle().QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM model_pricing_rules WHERE provider_code = ? AND model_api_id = ?`,
 		"openai", "gpt-4o",
 	).Scan(&count); err != nil {
@@ -280,7 +280,7 @@ func TestBatchApply_PricingInsert(t *testing.T) {
 	}
 
 	var inputMicro int64
-	if err := d.RawDB().QueryRowContext(ctx,
+	if err := d.RWDB().ReadHandle().QueryRowContext(ctx,
 		`SELECT input_price_micro_usd_per_1k FROM model_pricing_rules WHERE provider_code = ? AND model_api_id = ?`,
 		"openai", "gpt-4o",
 	).Scan(&inputMicro); err != nil {
@@ -323,7 +323,7 @@ func TestBatchApply_PricingUpsert(t *testing.T) {
 	}
 
 	var count int
-	if err := d.RawDB().QueryRowContext(ctx,
+	if err := d.RWDB().ReadHandle().QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM model_pricing_rules WHERE provider_code = ? AND model_api_id = ?`,
 		"openai", "gpt-4o",
 	).Scan(&count); err != nil {
@@ -334,7 +334,7 @@ func TestBatchApply_PricingUpsert(t *testing.T) {
 	}
 
 	var inputMicro int64
-	if err := d.RawDB().QueryRowContext(ctx,
+	if err := d.RWDB().ReadHandle().QueryRowContext(ctx,
 		`SELECT input_price_micro_usd_per_1k FROM model_pricing_rules WHERE provider_code = ? AND model_api_id = ?`,
 		"openai", "gpt-4o",
 	).Scan(&inputMicro); err != nil {
@@ -366,7 +366,7 @@ func TestBatchApply_PatchesAndPricingTogether(t *testing.T) {
 	d := openTestDataWithRawDB(t)
 	ctx := context.Background()
 
-	_, err := d.RawDB().ExecContext(ctx,
+	_, err := d.RWDB().WriteHandle().ExecContext(ctx,
 		`INSERT INTO llm_provider_models (id, provider, model_key, name, model, enabled, config_json, metadata_json, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
 		"pm-1", "openai", "openai:gpt-4o", "GPT-4o", "gpt-4o", true, `{"catalog_managed":true}`, `{}`,

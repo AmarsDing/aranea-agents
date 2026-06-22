@@ -26,10 +26,10 @@ type Closer interface {
 //
 // 并发安全：所有方法均可并发调用。但 Close() 应在应用 shutdown 时串行调用。
 type LifecycleManager struct {
-	mu       sync.Mutex
-	closers  []namedCloser
-	lg       loggateway.Logger
-	closed   bool
+	mu      sync.Mutex
+	closers []namedCloser
+	lg      loggateway.Logger
+	closed  bool
 }
 
 type namedCloser struct {

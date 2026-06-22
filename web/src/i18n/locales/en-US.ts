@@ -240,6 +240,7 @@ export default {
     },
     job: {
       title: 'Background jobs',
+      tab: 'Jobs',
       loading: 'Loading background jobs…',
       empty: 'No background jobs',
       refresh: 'Refresh',
@@ -249,6 +250,9 @@ export default {
       cancelConfirmMsg: 'Are you sure you want to cancel this job? This action cannot be undone.',
       cancelled: 'Job cancelled',
       cancelFailed: 'Cancel failed',
+    },
+    deadLetter: {
+      tab: 'Dead letters',
     },
     turn: {
       block: {
@@ -281,7 +285,6 @@ export default {
     connected: 'Connected',
     sessionEvents: 'Session events',
     thinkingPanel: 'Thinking panel',
-    reasoningTitle: 'Reasoning',
     activity: {
       running: 'Running',
       blocked: 'Awaiting confirmation',
@@ -297,24 +300,6 @@ export default {
       stuckToolBadge: '⚠ {count} tool(s) stuck',
       // AF: Activity-First kinds
       kindTask: 'Task',
-      kindThinking: 'Thinking',
-      kindAction: 'Tool Call',
-      kindReply: 'Reply',
-      kindSubTaskBoard: 'Sub-task',
-      kindEnd: 'Done',
-      kindError: 'Error',
-      kindDelegate: 'Delegate',
-      kindNotice: 'Notice',
-      // AF: Activity-First statuses
-      statusPending: 'Pending',
-      statusRunning: 'Running',
-      statusToolRunning: 'Tool Running',
-      statusToolBlocked: 'Tool Blocked',
-      statusCompleted: 'Completed',
-      statusFailed: 'Failed',
-      statusPartialFailure: 'Partial Failure',
-      statusCancelled: 'Cancelled',
-      statusInterrupted: 'Interrupted',
     },
     react: {
       planning: 'Planning',
@@ -431,6 +416,29 @@ export default {
       removeAttachmentHint: 'Please remove unsupported attachments and retry',
     },
   },
+  session: {
+    status: {
+      idle: 'Idle',
+      running: 'Running',
+      completed: 'Completed',
+      interrupted: 'Interrupted',
+      awaiting_confirmation: 'Awaiting Confirmation',
+    },
+    statusReason: {
+      user_cancelled: 'User Cancelled',
+      timeout: 'Timeout',
+      user_escalated: 'User Escalated',
+      budget_escalated: 'Budget Escalated',
+      error: 'Error',
+      context_overflow: 'Context Overflow',
+      server_shutdown: 'Server Shutdown',
+      unexpected_shutdown: 'Unexpected Shutdown',
+      confirmation_timeout: 'Confirmation Timeout',
+      tool_confirmation: 'Tool Confirmation',
+      agent_awaiting_reply: 'Agent Awaiting Reply',
+      manual_override: 'Manual Override',
+    },
+  },
   plugins: {
     rulesAdd: 'Add rule',
     rulesTargetModel: 'Target model',
@@ -481,6 +489,47 @@ export default {
     observability: 'Observability',
     shop: 'Marketplace',
     settings: 'System settings',
+  },
+  sessionsPage: {
+    kicker: 'Session history',
+    title: 'Session history',
+    description: 'Track task run instances by Agent, Team, status, and context consumption.',
+    refresh: 'Refresh',
+    emptyTitle: 'No matching sessions',
+    emptyHint: 'Try adjusting filters or resetting the search',
+    actionView: 'View details',
+    actionPin: 'Pin',
+    actionUnpin: 'Unpin',
+    actionArchive: 'Archive',
+    actionArchiveRunning: 'Cannot archive while running',
+    actionArchiveArchived: 'Already archived',
+    actionDelete: 'Delete permanently',
+    actionDeleteRunning: 'Cannot delete while running or awaiting confirmation',
+    retentionPreviewHint: 'Click "Preview" first to calculate sessions to {action}',
+    createdAt: 'Created',
+    totalSessions: '{count} sessions',
+    retention: {
+      titleArchive: 'Archive by days',
+      titleDelete: 'Delete by days',
+      subtitleArchive: 'Archive sessions before cutoff, keeping the most recent N days.',
+      subtitleDelete: 'Permanently delete sessions outside cutoff, keeping the most recent N days.',
+      actionArchive: 'archive',
+      actionDelete: 'delete',
+      confirmArchive: 'Confirm archive',
+      confirmDelete: 'Confirm delete',
+      keepDaysLabel: 'Keep recent (days)',
+      includeArchived: 'Include archived sessions',
+      willAction: 'Will {action}',
+      sessionsCountSuffix: 'sessions',
+      keepDays: 'Keep recent {days} days',
+      skippedRunning: '; skipping running ({count})',
+      skippedNotFound: '; not found ({count})',
+      truncated: '; scan limit reached, run in batches',
+      previewing: 'Previewing…',
+      cancel: 'Cancel',
+      preview: 'Preview',
+      previewHint: 'Click "Preview" first to calculate sessions to {action}',
+    },
   },
   settingsPage: {
     kicker: 'System',
@@ -551,7 +600,8 @@ export default {
     tabGeneral: 'General',
     tabCatalog: 'Model Catalog',
     ecosystemTitle: 'Bundled Ecosystems',
-    ecosystemHint: 'Load industry preset ecosystems to auto-create the corresponding Agents, Teams, and taxonomy nodes.',
+    ecosystemHint:
+      'Load industry preset ecosystems to auto-create the corresponding Agents, Teams, and taxonomy nodes.',
     ecosystemLoading: 'Loading ecosystem status…',
     ecosystemLoaded: 'Loaded',
     ecosystemNotLoaded: 'Not loaded',
@@ -974,6 +1024,29 @@ export default {
     noChannelRefs: 'No linked channels',
     loadChannelsFailed: 'Failed to load channels',
   },
+  agentsPage: {
+    taxonomy: {
+      label: 'Organization',
+      labelOptional: 'Organization (optional)',
+      placeholder: 'Select organization / department / position',
+      emptyTree: 'No organization data. Please create one in Organization Management first.',
+      noMatch: 'No matching categories',
+    },
+    filter: {
+      provider: 'Provider',
+    },
+    card: {
+      deleteAriaLabel: 'Delete Agent',
+    },
+    create: {
+      hintDisplayNameAndKey: 'Please enter display name and Agent key',
+      hintA2aUrl: 'Please enter remote A2A URL',
+      hintCheckModel: 'Please click "Check" to validate the selected model first',
+    },
+  },
+  organizationPage: {
+    systemNodeToggleDisabled: 'System preset nodes cannot be disabled/enabled',
+  },
   knowledgeEmbed: {
     title: 'Embedder configuration',
     provider: 'Provider',
@@ -1355,11 +1428,13 @@ export default {
 
   resourceManager: {
     addProvider: 'Add Provider',
-    credentialWarning: 'Credential encryption key is not configured. API keys will be stored in plaintext. Initialize the encryption key in System Settings, or set the ARANEA_CREDENTIAL_KEY environment variable.',
+    credentialWarning:
+      'Credential encryption key is not configured. API keys will be stored in plaintext. Initialize the encryption key in System Settings, or set the ARANEA_CREDENTIAL_KEY environment variable.',
     searchPlaceholder: 'Search providers, models, or types...',
     providerType: 'Provider Type',
     emptyTitle: 'No Provider Models',
-    emptyHint: 'After adding a provider, you can configure capability categories, keys, and performance metrics for each model.',
+    emptyHint:
+      'After adding a provider, you can configure capability categories, keys, and performance metrics for each model.',
     modelsUnit: 'models',
     addNew: 'Add',
     enabled: 'Enabled',
@@ -1379,7 +1454,8 @@ export default {
     prevStep: 'Previous',
     nextStep: 'Next',
     checkRequiredEdit: 'After modifying the Provider/Model ID, you must run "Check" first',
-    checkRequiredCreate: 'Remote models require a successful "Check" before creating; local custom models can be created directly',
+    checkRequiredCreate:
+      'Remote models require a successful "Check" before creating; local custom models can be created directly',
     step1Title: 'Connect',
     step1Caption: 'Keys & Identity',
     step2Title: 'Specs',
@@ -1391,7 +1467,8 @@ export default {
   },
   observabilityPage: {
     title: 'Observability Dashboard',
-    subtitle: 'Unified observability panel for task plans, team execution, graph execution, system metrics, and flow logs',
+    subtitle:
+      'Unified observability panel for task plans, team execution, graph execution, system metrics, and flow logs',
     tabPlans: 'Task Plans',
     tabTeamRuns: 'Team Runs',
     tabGraphExecutions: 'Graph Executions',
@@ -1448,5 +1525,4 @@ export default {
     traceId: 'Trace ID',
     intentArtifact: 'Intent Artifact',
   },
-
 };

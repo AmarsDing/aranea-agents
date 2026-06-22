@@ -4,14 +4,14 @@ export const STATUS_FILTER_OPTIONS = [
   { label: '运行中', value: 'running' },
   { label: '失败', value: 'failed' },
   { label: '已中断', value: 'interrupted' },
-] as const;
+];
 
 export const TIME_RANGE_OPTIONS = [
   { label: '全部时间', value: '' },
   { label: '今天', value: 'today' },
   { label: '最近7天', value: '7d' },
   { label: '最近30天', value: '30d' },
-] as const;
+];
 
 export function statusColor(status: string): string {
   switch (status) {

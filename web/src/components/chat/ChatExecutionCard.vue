@@ -13,12 +13,7 @@
   >
     <template #header>
       <div class="row items-center no-wrap full-width q-gutter-xs">
-        <agent-avatar-q
-          v-if="agentInitials"
-          :icon="agentIcon"
-          size="24px"
-          avatar-class="chat-execution-card__avatar"
-        />
+        <agent-avatar-q v-if="agentInitials" :icon="agentIcon" size="24px" avatar-class="chat-execution-card__avatar" />
         <q-icon v-else :name="activityIcon" :color="statusIconColor" size="20px" />
         <div class="col ellipsis">
           <div class="text-weight-medium ellipsis">{{ title }}</div>
@@ -82,10 +77,7 @@
           <div v-if="event.trace_id"><span class="text-weight-medium">trace_id:</span> {{ event.trace_id }}</div>
         </div>
       </div>
-      <div
-        v-if="expanded && (hasArgs || hasResult)"
-        class="chat-execution-card__audit text-caption text-grey q-mt-sm"
-      >
+      <div v-if="expanded && (hasArgs || hasResult)" class="chat-execution-card__audit text-caption text-grey q-mt-sm">
         {{ t('chat.activity.copyAuditHint', '复制内容可能包含敏感信息；完整审计请前往 Monitor → Traces。') }}
       </div>
     </div>
@@ -94,7 +86,7 @@
 
 <script lang="ts">
 /** Module-level counter for generating unique fallback IDs across ChatExecutionCard instances. */
-// eslint-disable-next-line no-useless-assignment
+
 let _cardInstanceCounter = 0;
 </script>
 
@@ -113,7 +105,6 @@ import { EXECUTION_COLLAPSE_CONTROL_KEY, generateSummaryFallback } from '../../f
 import { isFileEditTool, extractDiffHunks, extractFileName } from '../../features/chat/diffEditHelpers';
 import ChatDiffViewer from './ChatDiffViewer.vue';
 import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
-import { useAppStore } from '../../stores/app';
 
 const props = withDefaults(
   defineProps<{
@@ -203,10 +194,7 @@ watch(
       expanded.value = true;
       userManuallyExpanded.value = false;
       startElapsedTimer();
-    } else if (
-      (newStatus === 'success' || newStatus === 'cancelled') &&
-      !userManuallyExpanded.value
-    ) {
+    } else if ((newStatus === 'success' || newStatus === 'cancelled') && !userManuallyExpanded.value) {
       expanded.value = false;
       stopElapsedTimer();
     } else if (newStatus === 'failed' || newStatus === 'error') {
@@ -271,14 +259,9 @@ const agentInitials = computed(() => {
   if (!name) return '';
   return name.charAt(0);
 });
-// 从 appStore 按 agent_key 查询 agent 配置的 icon（Material 名 / URL / avatar_assets id），
+// icon_key 由调用方（消息适配层 / 父组件）从 agent 配置解析后注入。
 // 空值由 AgentAvatarQ 回退到 smart_toy 图标。
-const appStore = useAppStore();
-const agentIcon = computed(() => {
-  const key = props.event.agent_key?.trim();
-  if (!key) return '';
-  return appStore.agents.find((a) => a.agent_key === key)?.icon ?? '';
-});
+const agentIcon = computed(() => props.event.icon_key?.trim() ?? '');
 const summaryText = computed(() => props.event.summary?.trim() || generateSummaryFallback(props.event));
 const memberLabel = computed(() => {
   if (props.showMemberLabel === false) return '';

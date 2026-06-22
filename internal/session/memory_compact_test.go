@@ -189,12 +189,12 @@ func TestGradedScoreCount(t *testing.T) {
 		weight    float64
 		want      float64
 	}{
-		{3, 2, 0.20, 0.20},   // count >= threshold → full weight
-		{2, 2, 0.20, 0.20},   // count == threshold → full weight
-		{1, 2, 0.20, 0.10},   // count == 1 → half weight
-		{0, 2, 0.20, 0},      // count == 0 → zero
-		{5, 3, 0.10, 0.10},   // count >= threshold → full weight
-		{1, 3, 0.10, 0.05},   // count == 1 → half weight
+		{3, 2, 0.20, 0.20}, // count >= threshold → full weight
+		{2, 2, 0.20, 0.20}, // count == threshold → full weight
+		{1, 2, 0.20, 0.10}, // count == 1 → half weight
+		{0, 2, 0.20, 0},    // count == 0 → zero
+		{5, 3, 0.10, 0.10}, // count >= threshold → full weight
+		{1, 3, 0.10, 0.05}, // count == 1 → half weight
 	}
 	for _, tt := range tests {
 		got := gradedScoreCount(tt.count, tt.threshold, tt.weight)

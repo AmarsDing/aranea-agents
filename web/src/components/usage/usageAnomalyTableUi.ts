@@ -6,4 +6,4 @@ export const usageAnomalyColumns = [
   registryCol('model_api_id', '模型', 'model_api_id', 'left', REGISTRY_COL_W.name),
   registryCol('agent_id', 'Agent', 'agent_id', 'left', REGISTRY_COL_W.agent),
   registryCol('status', '状态', 'status', 'left', REGISTRY_COL_W.status),
-] as const;
+];

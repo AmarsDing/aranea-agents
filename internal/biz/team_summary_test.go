@@ -51,17 +51,27 @@ type runSummaryRepo struct {
 }
 
 // TeamReader stubs
-func (r *runSummaryRepo) ListTeams(_ context.Context) ([]Team, error)                         { return nil, nil }
-func (r *runSummaryRepo) ListTeamsByStatus(_ context.Context, _ string) ([]Team, error)       { return nil, nil }
-func (r *runSummaryRepo) GetTeamByID(_ context.Context, _ string) (Team, error)               { return Team{}, fmt.Errorf("not found") }
-func (r *runSummaryRepo) GetTeamByKey(_ context.Context, _ string) (Team, error)              { return Team{}, fmt.Errorf("not found") }
-func (r *runSummaryRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]Team, error)   { return nil, nil }
-func (r *runSummaryRepo) ListTeamsByDepartmentID(_ context.Context, _ string) ([]Team, error) { return nil, nil }
+func (r *runSummaryRepo) ListTeams(_ context.Context) ([]Team, error) { return nil, nil }
+func (r *runSummaryRepo) ListTeamsByStatus(_ context.Context, _ string) ([]Team, error) {
+	return nil, nil
+}
+func (r *runSummaryRepo) GetTeamByID(_ context.Context, _ string) (Team, error) {
+	return Team{}, fmt.Errorf("not found")
+}
+func (r *runSummaryRepo) GetTeamByKey(_ context.Context, _ string) (Team, error) {
+	return Team{}, fmt.Errorf("not found")
+}
+func (r *runSummaryRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]Team, error) {
+	return nil, nil
+}
+func (r *runSummaryRepo) ListTeamsByDepartmentID(_ context.Context, _ string) ([]Team, error) {
+	return nil, nil
+}
 
 // TeamWriter stubs
-func (r *runSummaryRepo) CreateTeam(_ context.Context, t Team) (Team, error)         { return t, nil }
-func (r *runSummaryRepo) UpdateTeam(_ context.Context, t Team) (Team, error)         { return t, nil }
-func (r *runSummaryRepo) DeleteTeam(_ context.Context, _ string) error               { return nil }
+func (r *runSummaryRepo) CreateTeam(_ context.Context, t Team) (Team, error)           { return t, nil }
+func (r *runSummaryRepo) UpdateTeam(_ context.Context, t Team) (Team, error)           { return t, nil }
+func (r *runSummaryRepo) DeleteTeam(_ context.Context, _ string) error                 { return nil }
 func (r *runSummaryRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
 func (r *runSummaryRepo) UpdateTeamWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
 	return true, nil
@@ -84,11 +94,15 @@ func (r *runSummaryRepo) ListTeamRuns(_ context.Context, _ string, _ int) ([]Tea
 func (r *runSummaryRepo) ListTeamRunsByTeamIDs(_ context.Context, _ []string, _ int) (map[string][]TeamRun, error) {
 	return nil, nil
 }
-func (r *runSummaryRepo) HasActiveTeamRun(_ context.Context, _ string) (bool, error) { return false, nil }
+func (r *runSummaryRepo) HasActiveTeamRun(_ context.Context, _ string) (bool, error) {
+	return false, nil
+}
 
 // TeamRunWriter stubs
-func (r *runSummaryRepo) CreateTeamRun(_ context.Context, run TeamRun) (TeamRun, error) { return run, nil }
-func (r *runSummaryRepo) UpdateTeamRun(_ context.Context, _ TeamRun) error              { return nil }
+func (r *runSummaryRepo) CreateTeamRun(_ context.Context, run TeamRun) (TeamRun, error) {
+	return run, nil
+}
+func (r *runSummaryRepo) UpdateTeamRun(_ context.Context, _ TeamRun) error { return nil }
 func (r *runSummaryRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
 	return true, nil
 }

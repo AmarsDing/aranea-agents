@@ -14,8 +14,8 @@ import (
 type PackService struct {
 	packv1.UnimplementedPackServiceServer
 
-	exporter *pack.Exporter
-	importer *pack.Importer
+	exporter      *pack.Exporter
+	importer      *pack.Importer
 	validatorRepo pack.ValidatorRepo
 }
 
@@ -107,14 +107,14 @@ func (s *PackService) ImportPack(ctx context.Context, req *packv1.ImportPackRequ
 	}
 
 	resp := &packv1.ImportPackResponse{
-		OrgNodes:        int32(result.OrgNodes),
-		AgentsCreated:   int32(result.AgentsCreated),
-		AgentsUpdated:   int32(result.AgentsUpdated),
-		AgentsSkipped:   int32(result.AgentsSkipped),
-		GraphsCreated:   int32(result.GraphsCreated),
-		TeamsCreated:    int32(result.TeamsCreated),
-		TeamsUpdated:    int32(result.TeamsUpdated),
-		TeamsSkipped:    int32(result.TeamsSkipped),
+		OrgNodes:         int32(result.OrgNodes),
+		AgentsCreated:    int32(result.AgentsCreated),
+		AgentsUpdated:    int32(result.AgentsUpdated),
+		AgentsSkipped:    int32(result.AgentsSkipped),
+		GraphsCreated:    int32(result.GraphsCreated),
+		TeamsCreated:     int32(result.TeamsCreated),
+		TeamsUpdated:     int32(result.TeamsUpdated),
+		TeamsSkipped:     int32(result.TeamsSkipped),
 		ConflictStrategy: string(strategy),
 	}
 	for _, f := range result.Failures {
@@ -151,9 +151,9 @@ func (s *PackService) ValidatePack(ctx context.Context, req *packv1.ValidatePack
 	}
 
 	resp := &packv1.ValidatePackResponse{
-		Valid:          result.Valid,
-		Errors:         result.Errors,
-		MissingSkills:  result.MissingSkills,
+		Valid:           result.Valid,
+		Errors:          result.Errors,
+		MissingSkills:   result.MissingSkills,
 		MissingFuncRefs: result.MissingFuncRefs,
 	}
 	for _, c := range result.Conflicts {

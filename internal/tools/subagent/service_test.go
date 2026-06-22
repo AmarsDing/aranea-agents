@@ -195,9 +195,9 @@ func TestNewService_NilRunner(t *testing.T) {
 	// Spawn should fail gracefully when runner is not yet configured.
 	svc.Start(context.Background())
 	_, spawnErr := svc.Spawn(context.Background(), SpawnRequest{
-		OwnerUserID:    "u1",
+		OwnerUserID:     "u1",
 		ParentSessionID: "s1",
-		Task:           "do something",
+		Task:            "do something",
 	})
 	if spawnErr == nil {
 		t.Fatal("expected error when spawning with nil runner")

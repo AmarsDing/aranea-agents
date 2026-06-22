@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz/avatar"
-	"aranea-agents/internal/biz/shared"
 	"aranea-agents/internal/biz/channelicons"
+	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/apierror"
 
 	"github.com/srwiley/oksvg"

@@ -71,7 +71,7 @@ type mockChecker struct {
 	result types.SelfCheckResult
 }
 
-func (m *mockChecker) Name() string                        { return m.name }
+func (m *mockChecker) Name() string                                    { return m.name }
 func (m *mockChecker) Check(ctx context.Context) types.SelfCheckResult { return m.result }
 
 type mockSelfCheckRepo struct {
@@ -157,13 +157,13 @@ func TestTraceProjectorChecker_NilProjector(t *testing.T) {
 // returns the configured values. It is used to drive the three healthy /
 // not-healthy branches of TraceProjectorChecker.Check in isolation.
 type fakeTraceProjectorHealth struct {
-	count          int
-	started        bool
-	lastEventAt    time.Time
-	hasEver        bool
+	count       int
+	started     bool
+	lastEventAt time.Time
+	hasEver     bool
 }
 
-func (f *fakeTraceProjectorHealth) TraceCount() int       { return f.count }
+func (f *fakeTraceProjectorHealth) TraceCount() int        { return f.count }
 func (f *fakeTraceProjectorHealth) Started() bool          { return f.started }
 func (f *fakeTraceProjectorHealth) LastEventAt() time.Time { return f.lastEventAt }
 func (f *fakeTraceProjectorHealth) HasEverProcessed() bool { return f.hasEver }

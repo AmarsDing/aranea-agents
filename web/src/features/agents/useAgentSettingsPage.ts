@@ -20,6 +20,7 @@ import { useAgentEvolutionSettings } from './useAgentEvolutionSettings';
 import { useAgentAvatarIcon } from './useAgentAvatarIcon';
 import { resetSkillRuntimeDefaults } from './agentSkillRuntimeConfig';
 import { useAgentSettingsPersistence } from './useAgentSettingsPersistence';
+import type { UseAgentSettingsPersistenceDeps } from './useAgentSettingsPersistence';
 
 export function useAgentSettingsPage() {
   const $q = useQuasar();
@@ -159,7 +160,7 @@ export function useAgentSettingsPage() {
     form,
     $q,
     agentId,
-    detailStore,
+    detailStore: detailStore as unknown as UseAgentSettingsPersistenceDeps['detailStore'],
     appStore: store,
     channelsStore,
     selectedProviderModelID,

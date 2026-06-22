@@ -25,7 +25,7 @@ func TestToEventPairs(t *testing.T) {
 			want:  []event.Pair{},
 		},
 		{
-			name: "single_pair",
+			name:  "single_pair",
 			pairs: []biz.LogPair{{Key: "session_id", Value: "s1"}},
 			want:  []event.Pair{{Key: "session_id", Value: "s1"}},
 		},

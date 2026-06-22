@@ -107,13 +107,13 @@ func TestBizPortInterfaceMethodCount(t *testing.T) {
 func TestStateMachineCoverage(t *testing.T) {
 	// Entities that must have state machines per AS-FSM-01
 	requiredStateMachines := map[string]string{
-		"Run":              "run_state_machine.go",
-		"SessionRunPhase":  "session_run_phase_machine.go",
-		"TeamRun":          "team_run_state_machine.go",
-		"GraphExecution":   "graph_execution_state_machine.go",
-		"Team":             "team_state_machine.go",
-		"ChannelTurnJob":   "channel_turn_job_state_machine.go",
-		"Session":          filepath.Join("session", "status_machine.go"),
+		"Run":             "run_state_machine.go",
+		"SessionRunPhase": "session_run_phase_machine.go",
+		"TeamRun":         "team_run_state_machine.go",
+		"GraphExecution":  "graph_execution_state_machine.go",
+		"Team":            "team_state_machine.go",
+		"ChannelTurnJob":  "channel_turn_job_state_machine.go",
+		"Session":         filepath.Join("session", "status_machine.go"),
 	}
 
 	bizDir := filepath.Join("..", "..", "internal", "biz")

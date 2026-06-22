@@ -90,7 +90,7 @@ func backfillLegacyTRPCMemoryEntities(ctx context.Context, d *Data) (int, error)
 	type legacyRow struct {
 		id, scopeType, scopeID, userID, agentID, entityType, name, statement, details string
 		sourceKind, sourceSessionID, sourceMessageID, metadataJSON, createdAt         string
-		confidence, importance                                                         float64
+		confidence, importance                                                        float64
 	}
 	var batch []legacyRow
 	var skippedIDs []string

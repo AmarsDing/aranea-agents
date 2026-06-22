@@ -48,9 +48,9 @@ func TestMetaBool(t *testing.T) {
 
 func TestUniqueNonEmptyStrings(t *testing.T) {
 	tests := []struct {
-		name   string
-		parts  []string
-		want   []string
+		name  string
+		parts []string
+		want  []string
 	}{
 		{"nil", nil, nil},
 		{"empty", []string{}, nil},
@@ -75,9 +75,9 @@ func TestUniqueNonEmptyStrings(t *testing.T) {
 
 func TestInboundAccessContextFromEvent(t *testing.T) {
 	tests := []struct {
-		name  string
-		ev    port.InboundEvent
-		want  biz.InboundAccessContext
+		name string
+		ev   port.InboundEvent
+		want biz.InboundAccessContext
 	}{
 		{
 			name: "nil_meta_dm",
@@ -211,7 +211,7 @@ func TestInboundAccessContextFromEvent(t *testing.T) {
 		{
 			name: "full_scenario",
 			ev: port.InboundEvent{
-				PeerID:       "peer-1",
+				PeerID: "peer-1",
 				OutboundMeta: map[string]string{
 					"sender_open_id": "open-1",
 					"sender_user_id": "uid-1",

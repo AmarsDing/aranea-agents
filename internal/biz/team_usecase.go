@@ -663,6 +663,20 @@ func (u *TeamUsecase) UpdateRun(ctx context.Context, r TeamRun) error {
 	if strings.TrimSpace(r.ID) == "" {
 		return apierror.BadRequest("TEAM", "run id is required")
 	}
+	// Status changes must go through TransitionRunStatus/CancelRun, which
+	// enforce the TeamRunStateMachine and CAS. UpdateRun only persists
+	// non-status field changes; any status mismatch is rejected to prevent
+	// callers from bypassing the state machine.
+	current, err := u.runReader.GetTeamRunByID(ctx, r.ID)
+	if err != nil {
+		return err
+	}
+	newStatus := strings.TrimSpace(r.Status)
+	if newStatus == "" {
+		r.Status = current.Status
+	} else if newStatus != current.Status {
+		return apierror.BadRequest("TEAM", "team run status changes must use TransitionRunStatus, not UpdateRun; current=%s requested=%s", current.Status, newStatus)
+	}
 	return u.runWriter.UpdateTeamRun(ctx, r)
 }
 

@@ -9,16 +9,16 @@ import (
 
 // SystemInfo holds the response from GET /v1/system/info.
 type SystemInfo struct {
-	Version               string            `json:"version"`
-	GitCommit             string            `json:"git_commit"`
-	BuildTime             string            `json:"build_time"`
-	DefaultProvider       string            `json:"default_provider"`
-	DefaultModel          string            `json:"default_model"`
-	SystemAdminAgentID    string            `json:"system_admin_agent_id"`
-	SystemAdminAgentKey   string            `json:"system_admin_agent_key"`
-	SkillMaxZipMB         int               `json:"skill_max_zip_mb"`
-	SkillStorageRoot      string            `json:"skill_storage_root"`
-	Features              map[string]string `json:"features"`
+	Version             string            `json:"version"`
+	GitCommit           string            `json:"git_commit"`
+	BuildTime           string            `json:"build_time"`
+	DefaultProvider     string            `json:"default_provider"`
+	DefaultModel        string            `json:"default_model"`
+	SystemAdminAgentID  string            `json:"system_admin_agent_id"`
+	SystemAdminAgentKey string            `json:"system_admin_agent_key"`
+	SkillMaxZipMB       int               `json:"skill_max_zip_mb"`
+	SkillStorageRoot    string            `json:"skill_storage_root"`
+	Features            map[string]string `json:"features"`
 }
 
 // GetSystemInfo calls GET /v1/system/info (requires auth).

@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	defaultInboundDebounce   = 600 * time.Millisecond
+	defaultInboundDebounce     = 600 * time.Millisecond
 	defaultInboundLongDebounce = 2 * time.Second
-	inboundLongTextRunes     = 4000
+	inboundLongTextRunes       = 4000
 )
 
 type inboundBatchKey struct {

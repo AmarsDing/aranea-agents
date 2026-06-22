@@ -15,10 +15,10 @@ func TestResolveModel(t *testing.T) {
 	}
 
 	tests := []struct {
-		name             string
-		tier             string
-		wantProvider     string
-		wantModel        string
+		name         string
+		tier         string
+		wantProvider string
+		wantModel    string
 	}{
 		{"strong tier returns strong model", "strong", "openrouter", "gpt-4.1"},
 		{"fast tier returns fast model", "fast", "openrouter", "gpt-4.1-mini"},
@@ -131,8 +131,8 @@ func TestFillDefaults(t *testing.T) {
 	t.Run("fills all empty defaults", func(t *testing.T) {
 		spec := IndustrySpec{
 			CompanyKey: "finance",
-			Defaults:    AgentDefaults{},
-			Agents:      []AgentSpec{},
+			Defaults:   AgentDefaults{},
+			Agents:     []AgentSpec{},
 		}
 		fillDefaults(&spec)
 
@@ -207,7 +207,7 @@ func TestFillDefaults(t *testing.T) {
 	t.Run("fills agent defaults", func(t *testing.T) {
 		spec := IndustrySpec{
 			CompanyKey: "retail",
-			Defaults:    AgentDefaults{},
+			Defaults:   AgentDefaults{},
 			Agents: []AgentSpec{
 				{Key: "a1"},
 				{Key: "a2", Variant: "special", ModelTier: "strong"},
@@ -235,7 +235,7 @@ func TestFillDefaults(t *testing.T) {
 	t.Run("derives tools profile from position key when tools allow is set", func(t *testing.T) {
 		spec := IndustrySpec{
 			CompanyKey: "legal",
-			Defaults:    AgentDefaults{},
+			Defaults:   AgentDefaults{},
 			Agents: []AgentSpec{
 				{Key: "a1", PositionKey: "data-analyst", ToolsAllow: []string{"search"}},
 			},
@@ -250,7 +250,7 @@ func TestFillDefaults(t *testing.T) {
 	t.Run("preserves explicitly set tools profile", func(t *testing.T) {
 		spec := IndustrySpec{
 			CompanyKey: "legal",
-			Defaults:    AgentDefaults{},
+			Defaults:   AgentDefaults{},
 			Agents: []AgentSpec{
 				{Key: "a1", ToolsProfile: "coordinator"},
 			},
@@ -452,12 +452,12 @@ func TestBuildBizTeam(t *testing.T) {
 
 	t.Run("builds team with members and graph", func(t *testing.T) {
 		ts := &TeamSpec{
-			Key:            "risk-team",
-			DisplayName:    "Risk Analysis Team",
-			Mode:           "sequential",
-			Description:    "Analyzes risk",
-			MaxConcurrency: 2,
-			TimeoutSeconds: 300,
+			Key:             "risk-team",
+			DisplayName:     "Risk Analysis Team",
+			Mode:            "sequential",
+			Description:     "Analyzes risk",
+			MaxConcurrency:  2,
+			TimeoutSeconds:  300,
 			IntentAnchorKey: "analyst",
 			SynthesizerKey:  "writer",
 			Members: []TeamMemberSpec{

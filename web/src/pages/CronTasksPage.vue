@@ -1,10 +1,6 @@
 <template>
   <q-page class="app-standard-page app-registry-page cron-page">
-    <AppPageHero
-      kicker="Scheduled tasks"
-      :title="t('cron.title')"
-      :subtitle="t('cron.subtitle')"
-    >
+    <AppPageHero kicker="Scheduled tasks" :title="t('cron.title')" :subtitle="t('cron.subtitle')">
       <template #actions>
         <q-btn flat rounded no-caps icon="history" :label="t('cron.runHistory')" @click="openRuns()" />
         <q-btn
@@ -43,7 +39,9 @@
         :label="t('cron.status')"
         :options="statusOptions"
       />
-      <div class="app-page-toolbar__meta">{{ t('cron.taskCount', { total: filteredRows.length, active: activeCount }) }}</div>
+      <div class="app-page-toolbar__meta">
+        {{ t('cron.taskCount', { total: filteredRows.length, active: activeCount }) }}
+      </div>
       <template #actions>
         <q-btn flat rounded no-caps icon="restart_alt" :label="t('cron.reset')" @click="resetFilters" />
         <q-btn flat rounded no-caps icon="refresh" :label="t('cron.refresh')" :loading="loading" @click="loadAll" />
@@ -110,7 +108,9 @@
           <q-td :props="props">
             <div class="app-registry-chip-wrap">
               <q-badge color="grey-7">{{ metadata(props.row).run_count || 0 }} {{ t('cron.runCountUnit') }}</q-badge>
-              <q-badge color="positive">{{ metadata(props.row).success_count || 0 }} {{ t('cron.successCount') }}</q-badge>
+              <q-badge color="positive"
+                >{{ metadata(props.row).success_count || 0 }} {{ t('cron.successCount') }}</q-badge
+              >
               <q-badge :color="(metadata(props.row).failure_count || 0) > 0 ? 'negative' : 'grey-7'">
                 {{ metadata(props.row).failure_count || 0 }} {{ t('cron.failureCount') }}
               </q-badge>
@@ -128,8 +128,12 @@
 
         <template #body-cell-timing="props">
           <q-td :props="props">
-            <div class="app-registry-cell-sub">{{ t('cron.lastRun') }} {{ formatCronDate(metadata(props.row).last_run_at) }}</div>
-            <div class="app-registry-cell-sub">{{ t('cron.nextRun') }} {{ formatCronDate(metadata(props.row).next_run_at) }}</div>
+            <div class="app-registry-cell-sub">
+              {{ t('cron.lastRun') }} {{ formatCronDate(metadata(props.row).last_run_at) }}
+            </div>
+            <div class="app-registry-cell-sub">
+              {{ t('cron.nextRun') }} {{ formatCronDate(metadata(props.row).next_run_at) }}
+            </div>
           </q-td>
         </template>
 

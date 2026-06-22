@@ -113,6 +113,7 @@ export function compiledGraphToGraphDef(
     interruptAfter: [],
     metadata: { template_id: compiled.template_id, mode: compiled.mode },
     version: 0,
+    sortOrder: 0,
     createdAt: '',
     updatedAt: '',
   };

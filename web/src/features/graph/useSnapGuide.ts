@@ -1,6 +1,12 @@
 import { ref, type Ref, type ComputedRef, toValue } from 'vue';
-import type { Node } from '@vue-flow/core';
 import { NODE_DEFAULT_WIDTH, NODE_DEFAULT_HEIGHT } from './types';
+
+/** Minimal node shape for snap-guide calculations (avoids deep @vue-flow/core type instantiation). */
+export interface SnapGuideNode {
+  id: string;
+  position: { x: number; y: number };
+  dimensions?: { width?: number; height?: number };
+}
 
 interface SnapLine {
   orientation: 'horizontal' | 'vertical';
@@ -26,11 +32,12 @@ interface NodeBounds {
   right: number;
 }
 
-function getNodesBounds(nodes: Node[]): NodeBounds[] {
+function getNodesBounds(nodes: SnapGuideNode[]): NodeBounds[] {
   const result: NodeBounds[] = [];
   for (const n of nodes) {
-    const w = (n.dimensions?.width ?? NODE_DEFAULT_WIDTH) / 2;
-    const h = (n.dimensions?.height ?? NODE_DEFAULT_HEIGHT) / 2;
+    const dims = n.dimensions;
+    const w = (dims?.width ?? NODE_DEFAULT_WIDTH) / 2;
+    const h = (dims?.height ?? NODE_DEFAULT_HEIGHT) / 2;
     const cx = n.position.x + w;
     const cy = n.position.y + h;
     result.push({
@@ -46,7 +53,7 @@ function getNodesBounds(nodes: Node[]): NodeBounds[] {
   return result;
 }
 
-export function useSnapGuide(internalNodes: Ref<Node[]> | ComputedRef<Node[]>) {
+export function useSnapGuide(internalNodes: Ref<SnapGuideNode[]> | ComputedRef<SnapGuideNode[]>) {
   const snapLines = ref<SnapLine[]>([]);
 
   function computeSnapLines(draggedNodeIds: Set<string>): SnapResult {
@@ -78,8 +85,18 @@ export function useSnapGuide(internalNodes: Ref<Node[]> | ComputedRef<Node[]>) {
         // 垂直方向对齐（cx / left / right）
         const vCandidates = [
           { delta: sb.cx - db.cx, pos: sb.cx, from: Math.min(db.top, sb.top), to: Math.max(db.bottom, sb.bottom) },
-          { delta: sb.left - db.left, pos: sb.left, from: Math.min(db.top, sb.top), to: Math.max(db.bottom, sb.bottom) },
-          { delta: sb.right - db.right, pos: sb.right, from: Math.min(db.top, sb.top), to: Math.max(db.bottom, sb.bottom) },
+          {
+            delta: sb.left - db.left,
+            pos: sb.left,
+            from: Math.min(db.top, sb.top),
+            to: Math.max(db.bottom, sb.bottom),
+          },
+          {
+            delta: sb.right - db.right,
+            pos: sb.right,
+            from: Math.min(db.top, sb.top),
+            to: Math.max(db.bottom, sb.bottom),
+          },
         ];
         for (const c of vCandidates) {
           if (Math.abs(c.delta) < SNAP_THRESHOLD) {
@@ -95,7 +112,12 @@ export function useSnapGuide(internalNodes: Ref<Node[]> | ComputedRef<Node[]>) {
         const hCandidates = [
           { delta: sb.cy - db.cy, pos: sb.cy, from: Math.min(db.left, sb.left), to: Math.max(db.right, sb.right) },
           { delta: sb.top - db.top, pos: sb.top, from: Math.min(db.left, sb.left), to: Math.max(db.right, sb.right) },
-          { delta: sb.bottom - db.bottom, pos: sb.bottom, from: Math.min(db.left, sb.left), to: Math.max(db.right, sb.right) },
+          {
+            delta: sb.bottom - db.bottom,
+            pos: sb.bottom,
+            from: Math.min(db.left, sb.left),
+            to: Math.max(db.right, sb.right),
+          },
         ];
         for (const c of hCandidates) {
           if (Math.abs(c.delta) < SNAP_THRESHOLD) {

@@ -48,15 +48,15 @@ type SkillImportJobStore interface {
 }
 
 type Engine struct {
-	repo   SkillImportRepo
-	llm    llmLister
-	sys    biz.SystemSettingRepo
-	lg     loggateway.Logger
-	store  SkillImportJobStore // DB persistence layer (nil = memory-only fallback)
+	repo  SkillImportRepo
+	llm   llmLister
+	sys   biz.SystemSettingRepo
+	lg    loggateway.Logger
+	store SkillImportJobStore // DB persistence layer (nil = memory-only fallback)
 
-	jobsMu   sync.RWMutex
-	jobs     map[string]*jobState
-	jobTTL   time.Duration
+	jobsMu    sync.RWMutex
+	jobs      map[string]*jobState
+	jobTTL    time.Duration
 	storeOnce sync.Once // protects SetStore from concurrent/late calls
 }
 

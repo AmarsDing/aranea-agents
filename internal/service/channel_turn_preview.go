@@ -33,22 +33,22 @@ type TurnPreviewCoordinator struct {
 	ltCfg     biz.ChannelLongTaskConfig
 	lg        loggateway.Logger
 
-	transcript *preview.Transcript
-	mu         sync.Mutex
-	lastPatch  time.Time
-	lastRender string
-	lastEvent  time.Time
-	started    time.Time
-	messageID  string
-	initialAck string
-	delivery   *turnPreviewDelivery
-	overflowEnqueued int
+	transcript         *preview.Transcript
+	mu                 sync.Mutex
+	lastPatch          time.Time
+	lastRender         string
+	lastEvent          time.Time
+	started            time.Time
+	messageID          string
+	initialAck         string
+	delivery           *turnPreviewDelivery
+	overflowEnqueued   int
 	sentToolCardStatus map[string]string
 	toolCardMessageIDs map[string]string
 	cardSerial         sync.Mutex
-	sessionID  string
-	activeRunID string
-	cardOpts   preview.ToolCardBuildOpts
+	sessionID          string
+	activeRunID        string
+	cardOpts           preview.ToolCardBuildOpts
 }
 
 type turnPreviewParams struct {

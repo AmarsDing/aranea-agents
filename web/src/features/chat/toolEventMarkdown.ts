@@ -78,14 +78,20 @@ function formatToolResultSummary(event: ToolUseEvent): string {
   return parts.join('');
 }
 
+interface ToolArgumentPayload {
+  path?: string;
+  command?: string;
+}
+
 /** Markdown for a chat tool_event row (mirrors backend tool_event envelope projection). */
 export function formatToolEventMarkdown(event: ToolUseEvent): string {
   const label = event.tool_label || event.tool_name;
   const agent = event.agent_name || event.agent_key || 'Agent';
-  const path = typeof event.arguments?.path === 'string' ? ` \`${event.arguments.path}\`` : '';
+  const args = event.arguments as ToolArgumentPayload | undefined;
+  const path = typeof args?.path === 'string' ? ` \`${args.path}\`` : '';
   const cmd =
-    typeof event.arguments?.command === 'string' && event.arguments.command.trim() !== ''
-      ? ` \`${String(event.arguments.command).slice(0, 120)}${String(event.arguments.command).length > 120 ? '…' : ''}\``
+    typeof args?.command === 'string' && args.command.trim() !== ''
+      ? ` \`${args.command.slice(0, 120)}${args.command.length > 120 ? '…' : ''}\``
       : '';
   const argHint = path || cmd;
 

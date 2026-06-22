@@ -1,13 +1,27 @@
 <template>
   <q-card flat bordered class="col column no-wrap chat-mid-card" style="min-height: 0">
     <!-- Breadcrumb navigation for team/member modes -->
-    <div v-if="panelMode === 'team' || panelMode === 'member'" class="row items-center q-px-md q-py-xs spirit-breadcrumb">
-      <q-btn flat dense no-caps icon="auto_awesome" :label="t('chat.spiritLabel')" color="accent" class="spirit-breadcrumb__item" @click="emit('return-to-spirit')" />
+    <div
+      v-if="panelMode === 'team' || panelMode === 'member'"
+      class="row items-center q-px-md q-py-xs spirit-breadcrumb"
+    >
+      <q-btn
+        flat
+        dense
+        no-caps
+        icon="auto_awesome"
+        :label="t('chat.spiritLabel')"
+        color="accent"
+        class="spirit-breadcrumb__item"
+        @click="emit('return-to-spirit')"
+      />
       <template v-if="spiritTeam">
         <q-icon name="chevron_right" size="16px" class="spirit-breadcrumb__sep" />
         <q-btn
           v-if="panelMode === 'member'"
-          flat dense no-caps
+          flat
+          dense
+          no-caps
           :label="spiritTeam.teamName"
           color="accent"
           class="spirit-breadcrumb__item"
@@ -22,10 +36,29 @@
     </div>
 
     <template v-if="panelMode === 'team' && spiritTeam">
-      <TaskExecutionPanel :team="spiritTeam" :messages="props.messages" :max-parallel="spiritMaxConcurrentTeams" :completion-stats="spiritCompletionStats" :render-markdown="renderChatMarkdown" @return-to-spirit="emit('return-to-spirit')" @cancel-team="(teamId) => emit('cancel-team', teamId)" @resume-team="(teamId) => emit('resume-team', teamId)" @retry-team="(teamId) => emit('retry-team', teamId)" @select-member="(memberId) => emit('select-member', memberId)" @archive-team="(teamId) => emit('archive-team', teamId)" />
+      <TaskExecutionPanel
+        :team="spiritTeam"
+        :messages="props.messages"
+        :max-parallel="spiritMaxConcurrentTeams"
+        :completion-stats="spiritCompletionStats"
+        :render-markdown="renderChatMarkdown"
+        @return-to-spirit="emit('return-to-spirit')"
+        @cancel-team="(teamId) => emit('cancel-team', teamId)"
+        @resume-team="(teamId) => emit('resume-team', teamId)"
+        @retry-team="(teamId) => emit('retry-team', teamId)"
+        @select-member="(memberId) => emit('select-member', memberId)"
+        @archive-team="(teamId) => emit('archive-team', teamId)"
+      />
     </template>
     <template v-else-if="panelMode === 'member' && spiritTeam && activeMember">
-      <MemberReadOnlyPanel :member="activeMember" :team="spiritTeam" :messages="props.messages" :render-markdown="renderChatMarkdown" @return-to-team="emit('return-to-team')" @return-to-spirit="emit('return-to-spirit')" />
+      <MemberReadOnlyPanel
+        :member="activeMember"
+        :team="spiritTeam"
+        :messages="props.messages"
+        :render-markdown="renderChatMarkdown"
+        @return-to-team="emit('return-to-team')"
+        @return-to-spirit="emit('return-to-spirit')"
+      />
     </template>
     <template v-else>
       <q-banner v-if="wsReplaying" dense rounded class="q-mx-md q-mt-sm app-info-banner">
@@ -130,7 +163,10 @@
       </div>
       <div class="col row no-wrap chat-messages-area" style="min-height: 0">
         <div class="col column no-wrap chat-messages-main" style="min-height: 0">
-          <TodoKanbanBoard v-if="(showToolCalls ?? true) && (!panelMode || panelMode === 'spirit')" :board-state="todoBoardState" />
+          <TodoKanbanBoard
+            v-if="(showToolCalls ?? true) && (!panelMode || panelMode === 'spirit')"
+            :board-state="todoBoardState"
+          />
           <ChatMessageList
             ref="messageListRef"
             :session-key="sessionKey"
@@ -273,7 +309,7 @@ import { useI18n } from 'vue-i18n';
 import type { Envelope } from '../../realtime/envelope';
 import ChatRunnerStatus from './ChatRunnerStatus.vue';
 import ChatTeamMemberStrip from './ChatTeamMemberStrip.vue';
-import type { TeamMemberLane } from './ChatTeamMemberStrip';
+import type { TeamMemberLane } from './ChatTeamMemberStrip.vue';
 import ChatMessageList from './ChatMessageList.vue';
 import ChatComposer from './ChatComposer.vue';
 import ChatHeaderUsagePanel from './ChatHeaderUsagePanel.vue';
@@ -478,9 +514,12 @@ provide(EXECUTION_COLLAPSE_CONTROL_KEY, {
 });
 
 // ── TK: Provide tool display config for child components ──
-provide(TOOL_DISPLAY_KEY, computed(() => ({
-  showToolCalls: props.showToolCalls ?? true,
-})));
+provide(
+  TOOL_DISPLAY_KEY,
+  computed(() => ({
+    showToolCalls: props.showToolCalls ?? true,
+  })),
+);
 
 // ── TK: Todo board composable ──
 const { todoBoardState } = useTodoBoard(messagesRef);

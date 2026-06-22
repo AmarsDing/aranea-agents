@@ -62,8 +62,8 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *event.Envelope {
 	}
 
 	env := event.FromFrameworkEvent(e, event.FrameworkEventMeta{
-		SessionID:  b.sessionID,
-		FilterKey:  fmt.Sprintf("graph/%s/%s", b.graphID, b.execID),
+		SessionID: b.sessionID,
+		FilterKey: fmt.Sprintf("graph/%s/%s", b.graphID, b.execID),
 	}, envType)
 	env.Channel = "graph"
 

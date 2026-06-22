@@ -22,17 +22,17 @@ var (
 // Create/Update/Delete operations.
 type stubAgentRepoExt struct {
 	stubAgentRepo
-	createErr      error
-	updateErr      error
-	deleteErr      error
-	toggleErr      error
-	toggleResult   Agent
-	createdAgent   Agent
-	updatedAgent   Agent
-	createCalls    int
-	updateCalls    int
-	deleteCalls    int
-	toggleCalls    int
+	createErr    error
+	updateErr    error
+	deleteErr    error
+	toggleErr    error
+	toggleResult Agent
+	createdAgent Agent
+	updatedAgent Agent
+	createCalls  int
+	updateCalls  int
+	deleteCalls  int
+	toggleCalls  int
 }
 
 func (s *stubAgentRepoExt) CreateAgent(_ context.Context, a Agent) (Agent, error) {
@@ -88,7 +88,7 @@ func newAgentUsecaseWithExt(repo *stubAgentRepoExt) *AgentUsecase {
 func TestAgentUsecase_Create_Validation_MissingFields(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name string
+		name  string
 		agent Agent
 	}{
 		{"missing_agent_key", Agent{DisplayName: "Test"}},
@@ -174,10 +174,10 @@ func TestAgentUsecase_Update_StatusTransition_Valid(t *testing.T) {
 			repo := &stubAgentRepoExt{
 				stubAgentRepo: stubAgentRepo{
 					agent: Agent{
-						ID:        "agent-1",
-						AgentKey:  "test",
-						Status:    tc.fromStatus,
-						AgentKind: AgentKindLLM,
+						ID:         "agent-1",
+						AgentKey:   "test",
+						Status:     tc.fromStatus,
+						AgentKind:  AgentKindLLM,
 						ConfigJSON: EmbedAgentKindInConfigJSON("{}", AgentKindLLM, nil, loggateway.NewNoop()),
 					},
 				},
@@ -214,10 +214,10 @@ func TestAgentUsecase_Update_StatusTransition_Illegal(t *testing.T) {
 			repo := &stubAgentRepoExt{
 				stubAgentRepo: stubAgentRepo{
 					agent: Agent{
-						ID:        "agent-1",
-						AgentKey:  "test",
-						Status:    tc.fromStatus,
-						AgentKind: AgentKindLLM,
+						ID:         "agent-1",
+						AgentKey:   "test",
+						Status:     tc.fromStatus,
+						AgentKind:  AgentKindLLM,
 						ConfigJSON: EmbedAgentKindInConfigJSON("{}", AgentKindLLM, nil, loggateway.NewNoop()),
 					},
 				},
@@ -248,10 +248,10 @@ func TestAgentUsecase_Update_AgentKeyImmutable(t *testing.T) {
 	repo := &stubAgentRepoExt{
 		stubAgentRepo: stubAgentRepo{
 			agent: Agent{
-				ID:        "agent-1",
-				AgentKey:  "original",
-				Status:    "active",
-				AgentKind: AgentKindLLM,
+				ID:         "agent-1",
+				AgentKey:   "original",
+				Status:     "active",
+				AgentKind:  AgentKindLLM,
 				ConfigJSON: EmbedAgentKindInConfigJSON("{}", AgentKindLLM, nil, loggateway.NewNoop()),
 			},
 		},
@@ -278,7 +278,7 @@ func TestAgentUsecase_Update_AgentKeyImmutable(t *testing.T) {
 func TestAgentUsecase_ForceDelete_BypassesPermissionChecks(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name string
+		name  string
 		agent Agent
 	}{
 		{"system_builtin", Agent{ID: "agent-1", Kind: "system_builtin"}},

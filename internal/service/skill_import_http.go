@@ -10,11 +10,11 @@ import (
 	"aranea-agents/internal/skill/importer"
 	authpkg "aranea-agents/pkg/auth"
 
+	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
-	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
 )
 
 func (s *SkillService) RegisterSkillImportMultipart(srv *kratoshttp.Server) {

@@ -28,7 +28,7 @@ type ProposalReadWriter interface {
 }
 
 const (
-	ApprovedBySystem = "system"
+	ApprovedBySystem               = "system"
 	defaultObservationLookbackDays = 30
 )
 

@@ -7,7 +7,7 @@ const (
 
 // AgentListExtras is list-row enrichment (not persisted on agents table).
 type AgentListExtras struct {
-	LastRunStatus           string
-	LastRunAt               string
-	PendingEvolutionCount   int
+	LastRunStatus         string
+	LastRunAt             string
+	PendingEvolutionCount int
 }

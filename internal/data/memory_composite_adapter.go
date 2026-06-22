@@ -39,17 +39,17 @@ func (a *MemoryCompositeRecallAdapter) CompositeSearchMemories(ctx context.Conte
 				continue
 			}
 			title, _ := row["title"].(string)
-		summary, _ := row["outcome_summary"].(string)
-		var score float64
-		if v, ok := row["importance"].(float64); ok {
-			score = v
-		}
-		all = append(all, biz.CompositeRecallStoreRow{
-			Layer:   "L2",
-			Title:   title,
-			Summary: summary,
-			Score:   score,
-		})
+			summary, _ := row["outcome_summary"].(string)
+			var score float64
+			if v, ok := row["importance"].(float64); ok {
+				score = v
+			}
+			all = append(all, biz.CompositeRecallStoreRow{
+				Layer:   "L2",
+				Title:   title,
+				Summary: summary,
+				Score:   score,
+			})
 		}
 	}
 
@@ -63,15 +63,15 @@ func (a *MemoryCompositeRecallAdapter) CompositeSearchMemories(ctx context.Conte
 				continue
 			}
 			stmt, _ := row["statement"].(string)
-		var score float64
-		if v, ok := row["importance"].(float64); ok {
-			score = v
-		}
-		all = append(all, biz.CompositeRecallStoreRow{
-			Layer:     "L3",
-			Statement: stmt,
-			Score:     score,
-		})
+			var score float64
+			if v, ok := row["importance"].(float64); ok {
+				score = v
+			}
+			all = append(all, biz.CompositeRecallStoreRow{
+				Layer:     "L3",
+				Statement: stmt,
+				Score:     score,
+			})
 		}
 	}
 

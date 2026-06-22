@@ -88,10 +88,10 @@ func RunSocketMode(
 					}
 					ev.PlatformType = "slack"
 					if err := handler.ProcessInbound(ctx, chRow, ev); err != nil {
-					lg.Warn("Slack 入站处理失败",
-						loggateway.StepID("channel.slack.inbound_failed"),
-						loggateway.Err(err),
-					)
+						lg.Warn("Slack 入站处理失败",
+							loggateway.StepID("channel.slack.inbound_failed"),
+							loggateway.Err(err),
+						)
 					}
 				}
 			}

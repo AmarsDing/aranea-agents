@@ -89,41 +89,41 @@ func BoolEqual(a, b *bool) bool {
 }
 
 type Agent struct {
-	ID                 string
-	AgentKey           string
-	DisplayName        string
-	Provider           string
-	Model              string
-	Status             string
-	IsDefault          *bool // nil = not set (Proto3 zero-value ambiguity); explicit true/false for merge
-	IsFavorite         *bool // nil = not set (Proto3 zero-value ambiguity); explicit true/false for merge
-	Icon               string
-	AgentDescription   string
-	PositionID string
-	PositionKey       string
-	AgentVariant      string
-	VariantDescription string
-	SystemPromptMode   string
-	ContextWindow      int
-	BudgetMonthlyCents int
-	ConfigJSON         string
-	MetadataJSON       string
-	Roles              []string
-	Kind                 string // user | system_builtin | ecosystem_preset | marketplace | certified (ownership, maps from DB kind column)
-	AgentKind            string // llm | a2a_proxy (technical type, derived from config_json by HydrateAgentKind)
-	A2AProxy             *A2AProxyConfig
-	A2AEndpointEnabled   bool // list/get enrichment from a2a_agent_cards.enabled
-	LastRunStatus        string // list enrichment: latest session runtime.status or idle/completed
-	LastRunAt            string
+	ID                    string
+	AgentKey              string
+	DisplayName           string
+	Provider              string
+	Model                 string
+	Status                string
+	IsDefault             *bool // nil = not set (Proto3 zero-value ambiguity); explicit true/false for merge
+	IsFavorite            *bool // nil = not set (Proto3 zero-value ambiguity); explicit true/false for merge
+	Icon                  string
+	AgentDescription      string
+	PositionID            string
+	PositionKey           string
+	AgentVariant          string
+	VariantDescription    string
+	SystemPromptMode      string
+	ContextWindow         int
+	BudgetMonthlyCents    int
+	ConfigJSON            string
+	MetadataJSON          string
+	Roles                 []string
+	Kind                  string // user | system_builtin | ecosystem_preset | marketplace | certified (ownership, maps from DB kind column)
+	AgentKind             string // llm | a2a_proxy (technical type, derived from config_json by HydrateAgentKind)
+	A2AProxy              *A2AProxyConfig
+	A2AEndpointEnabled    bool   // list/get enrichment from a2a_agent_cards.enabled
+	LastRunStatus         string // list enrichment: latest session runtime.status or idle/completed
+	LastRunAt             string
 	PendingEvolutionCount int
-	CreatedBy            string
-	Readonly             bool
-	Source               string // user | system | imported (origin, maps from DB source column)
-	CreatedAt            string
-	UpdatedAt          string
-	DeletedAt          string
-	Settings           *AgentRuntimeSettings
-	Files              []AgentPromptFile
+	CreatedBy             string
+	Readonly              bool
+	Source                string // user | system | imported (origin, maps from DB source column)
+	CreatedAt             string
+	UpdatedAt             string
+	DeletedAt             string
+	Settings              *AgentRuntimeSettings
+	Files                 []AgentPromptFile
 	// CategoryResponsibilityPreview is a transient field populated by the prompt
 	// preview handler to display the injected role_responsibility block.
 	// It is never persisted to DB. PGO-1-BIZ-03.
@@ -160,7 +160,7 @@ func (a Agent) SkipCategoryResponsibility() bool {
 //   - Evolution : SelfEvolve, Subagents*, Evolution*, Guardrail*, Evo*
 //   - Context   : ContextCompactionEnabled, SessionSummaryEnabled, OutputSchemaJSON, ModelSelector, PlannerKind
 type AgentRuntimeSettings struct {
-	AgentID                           string
+	AgentID string
 	// Deprecated: use EvolutionSelfEvolve
 	SelfEvolve                        bool
 	SubagentsEnabled                  bool
@@ -198,8 +198,8 @@ type AgentRuntimeSettings struct {
 	// L0CompressMinGapSec is the minimum seconds between automatic session compressions (0 → default 600).
 	L0CompressMinGapSec int
 	// L0CompressProvider / L0CompressModel select a cheaper catalog model for session summarization; empty → use agent/session chat model.
-	L0CompressProvider        string
-	L0CompressModel           string
+	L0CompressProvider string
+	L0CompressModel    string
 	// MemoryWorkerProvider / MemoryWorkerModel select the LLM for async memory extraction; empty → L0 compress, then chat model.
 	MemoryWorkerProvider      string
 	MemoryWorkerModel         string
@@ -216,8 +216,8 @@ type AgentRuntimeSettings struct {
 	L1FieldMaxTokens          int
 	L1HistoryKeepRevisions    int
 	L1DefaultSchemaID         string
-	L1HistoryEnabled        bool
-	L1ArchiveOnIdleMinutes  int
+	L1HistoryEnabled          bool
+	L1ArchiveOnIdleMinutes    int
 	L2EpisodeEnabled          bool
 	L2EpisodeMinImportance    float64
 	L2IndexEnabled            bool
@@ -267,8 +267,8 @@ type AgentRuntimeSettings struct {
 	// MicroCompactEnabled enables MicroCompact (zero-API tool result clearing) as the first compression tier.
 	MicroCompactEnabled bool
 	// MemoryCompactEnabled enables MemoryCompact (reuse extracted memory facts) as the second compression tier.
-	MemoryCompactEnabled bool
-	ToolResultGateEnabled bool
+	MemoryCompactEnabled       bool
+	ToolResultGateEnabled      bool
 	CompressLLMCacheEnabled    bool
 	CompressLLMCacheMaxEntries int
 	CompressLLMCacheTTLSec     int
@@ -305,7 +305,7 @@ type AgentRuntimeSettings struct {
 	// ToolsParallelEnabled enables parallel tool execution when the model issues multiple tool calls.
 	ToolsParallelEnabled bool
 	// ToolsStreamingEnabled enables StreamableTool support for tools that implement StreamableCall.
-	ToolsStreamingEnabled bool
+	ToolsStreamingEnabled            bool
 	ToolsCircuitBreakerEnabled       bool
 	ToolsCircuitBreakerOverridesJSON string
 	ToolsDeferredJSON                string
@@ -350,8 +350,8 @@ type AgentRuntimeSettings struct {
 	DreamSnapshotJSON string `json:"dream_snapshot_json,omitempty"`
 	// VerificationTruncateChars is the max character count for truncating team output in verification gate prompts (default 2000).
 	VerificationTruncateChars int
-	CreatedAt   string
-	UpdatedAt   string
+	CreatedAt                 string
+	UpdatedAt                 string
 }
 
 // --- Domain view accessors (Q-22: sub-struct API, flat fields as source of truth) ---
@@ -437,31 +437,31 @@ func (s *AgentRuntimeSettings) GetMemory() MemoryCfg {
 // GetTools returns the Tools domain view.
 func (s *AgentRuntimeSettings) GetTools() ToolsCfg {
 	return ToolsCfg{
-		Enabled:                s.ToolsEnabled,
-		Profile:                s.ToolsProfile,
-		ToolCallPrefix:         s.ToolsToolCallPrefix,
-		AllowJSON:              s.ToolsAllowJSON,
-		DenyJSON:               s.ToolsDenyJSON,
-		ConcurrentAllowJSON:    s.ToolsConcurrentAllowJSON,
-		RetryEnabled:           s.ToolsRetryEnabled,
-		RetryMaxAttempts:       s.ToolsRetryMaxAttempts,
-		RetryInitialIntervalMs: s.ToolsRetryInitialIntervalMs,
-		RetryBackoffFactor:     s.ToolsRetryBackoffFactor,
-		RetryMaxIntervalMs:     s.ToolsRetryMaxIntervalMs,
-		RetryJitter:            s.ToolsRetryJitter,
-		ParallelEnabled:        s.ToolsParallelEnabled,
-		StreamingEnabled:       s.ToolsStreamingEnabled,
-		CircuitBreakerEnabled:  s.ToolsCircuitBreakerEnabled,
+		Enabled:                     s.ToolsEnabled,
+		Profile:                     s.ToolsProfile,
+		ToolCallPrefix:              s.ToolsToolCallPrefix,
+		AllowJSON:                   s.ToolsAllowJSON,
+		DenyJSON:                    s.ToolsDenyJSON,
+		ConcurrentAllowJSON:         s.ToolsConcurrentAllowJSON,
+		RetryEnabled:                s.ToolsRetryEnabled,
+		RetryMaxAttempts:            s.ToolsRetryMaxAttempts,
+		RetryInitialIntervalMs:      s.ToolsRetryInitialIntervalMs,
+		RetryBackoffFactor:          s.ToolsRetryBackoffFactor,
+		RetryMaxIntervalMs:          s.ToolsRetryMaxIntervalMs,
+		RetryJitter:                 s.ToolsRetryJitter,
+		ParallelEnabled:             s.ToolsParallelEnabled,
+		StreamingEnabled:            s.ToolsStreamingEnabled,
+		CircuitBreakerEnabled:       s.ToolsCircuitBreakerEnabled,
 		CircuitBreakerOverridesJSON: s.ToolsCircuitBreakerOverridesJSON,
-		DeferredJSON:          s.ToolsDeferredJSON,
-		CommandSafetyEnabled:  s.ToolsCommandSafetyEnabled,
-		ExecutionTimeoutSec:   s.ToolsExecutionTimeoutSec,
-		ToolWeightJSON:        s.ToolWeightJSON,
-		MaxLLMCalls:           s.MaxLLMCalls,
-		MaxToolIterations:     s.MaxToolIterations,
-		EnableTokenTailoring:  s.EnableTokenTailoring,
-		TokenTailoringStrategy:    s.TokenTailoringStrategy,
-		TokenTailoringSafetyMargin: s.TokenTailoringSafetyMargin,
+		DeferredJSON:                s.ToolsDeferredJSON,
+		CommandSafetyEnabled:        s.ToolsCommandSafetyEnabled,
+		ExecutionTimeoutSec:         s.ToolsExecutionTimeoutSec,
+		ToolWeightJSON:              s.ToolWeightJSON,
+		MaxLLMCalls:                 s.MaxLLMCalls,
+		MaxToolIterations:           s.MaxToolIterations,
+		EnableTokenTailoring:        s.EnableTokenTailoring,
+		TokenTailoringStrategy:      s.TokenTailoringStrategy,
+		TokenTailoringSafetyMargin:  s.TokenTailoringSafetyMargin,
 	}
 }
 
@@ -570,15 +570,15 @@ type AgentPromptFile struct {
 
 // AgentListQuery filters the agent catalog list.
 type AgentListQuery struct {
-	Keyword    string
-	Status     string
-	Provider   string
-	OrgNodeID  string
-	CreatedBy  string
-	Role       string
-	Kind       string // filter by ownership classification (user | system_builtin | ecosystem_preset | marketplace | certified)
-	Limit      int
-	Offset     int
+	Keyword   string
+	Status    string
+	Provider  string
+	OrgNodeID string
+	CreatedBy string
+	Role      string
+	Kind      string // filter by ownership classification (user | system_builtin | ecosystem_preset | marketplace | certified)
+	Limit     int
+	Offset    int
 }
 
 // AgentCreator is a distinct agent creator for list filters.

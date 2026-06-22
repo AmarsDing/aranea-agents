@@ -3,8 +3,8 @@ package agent
 import (
 	"aranea-agents/pkg/loggateway"
 
-	trpcllmagent "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	"trpc.group/trpc-go/trpc-agent-go/agent/extension/todoenforcer"
+	trpcllmagent "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	"trpc.group/trpc-go/trpc-agent-go/tool/todo"
 )
 

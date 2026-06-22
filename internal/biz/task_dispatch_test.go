@@ -60,7 +60,7 @@ type stubTaskLinkRepo struct {
 	parents map[string][]*TaskLink
 }
 
-func (s *stubTaskLinkRepo) SaveLink(context.Context, *TaskLink) error { return nil }
+func (s *stubTaskLinkRepo) SaveLink(context.Context, *TaskLink) error        { return nil }
 func (s *stubTaskLinkRepo) DeleteLink(context.Context, string, string) error { return nil }
 func (s *stubTaskLinkRepo) ListParentLinks(_ context.Context, childTaskID string) ([]*TaskLink, error) {
 	return s.parents[childTaskID], nil

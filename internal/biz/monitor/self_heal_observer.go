@@ -42,13 +42,13 @@ func NewSelfHealObserver(runtimeConf *conf.Runtime, repo HealRecordRepo, engine 
 		return nil, apierror.Internal("MONITOR", "RootCauseEngine is required")
 	}
 	return &SelfHealObserver{
-		repo:        repo,
-		engine:      engine,
-		notifier:    notifier,
-		lg:          lg,
-		healConf:    runtimeConf.SelfHealConfig(),
-		cooldowns:   make(map[string]time.Time),
-		healEvents:  make(map[string][]time.Time),
+		repo:       repo,
+		engine:     engine,
+		notifier:   notifier,
+		lg:         lg,
+		healConf:   runtimeConf.SelfHealConfig(),
+		cooldowns:  make(map[string]time.Time),
+		healEvents: make(map[string][]time.Time),
 	}, nil
 }
 
@@ -383,15 +383,15 @@ func (o *SelfHealObserver) fireCircuitOpenAlert(ctx context.Context, ruleID, ste
 			Name:     "Circuit breaker open: " + ruleID,
 			Severity: severity,
 		}, map[string]any{
-			"rule_id":             ruleID,
-			"step_id":             stepID,
-			"session_id":          sessionID,
-			"root_cause":          rootCause,
-			"severity":            severity,
-			"circuit_breaker":     true,
-			"window":              o.healConf.CircuitBreakerWindow.String(),
-			"threshold":           o.healConf.CircuitBreakerThreshold,
-			"auto_reset_after":    o.healConf.CircuitBreakerResetAfter.String(),
+			"rule_id":          ruleID,
+			"step_id":          stepID,
+			"session_id":       sessionID,
+			"root_cause":       rootCause,
+			"severity":         severity,
+			"circuit_breaker":  true,
+			"window":           o.healConf.CircuitBreakerWindow.String(),
+			"threshold":        o.healConf.CircuitBreakerThreshold,
+			"auto_reset_after": o.healConf.CircuitBreakerResetAfter.String(),
 		})
 	}
 }

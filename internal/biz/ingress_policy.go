@@ -18,17 +18,17 @@ const (
 
 // IngressPolicyInput is the pure input for L2 ingress policy evaluation.
 type IngressPolicyInput struct {
-	Text               string
-	EntryPoint         TurnEntryPoint
-	AllowQueue         bool
-	HasActiveRun       bool
-	HasActiveRunner    bool
-	RouteAsync         bool
-	IsCancelCommand    bool
-	IsStatusQuery      bool
+	Text                string
+	EntryPoint          TurnEntryPoint
+	AllowQueue          bool
+	HasActiveRun        bool
+	HasActiveRunner     bool
+	RouteAsync          bool
+	IsCancelCommand     bool
+	IsStatusQuery       bool
 	IsBackgroundCommand bool
-	IsRecentDuplicate  bool
-	ContextPressure    bool
+	IsRecentDuplicate   bool
+	ContextPressure     bool
 }
 
 // IngressPolicyResult is the outcome of ingress policy evaluation.

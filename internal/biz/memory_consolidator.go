@@ -12,9 +12,9 @@ const (
 
 // ConsolidateMessage is one turn message considered for memory extraction.
 type ConsolidateMessage struct {
-	Role           string
-	Content        string
-	MessageID      string
+	Role      string
+	Content   string
+	MessageID string
 }
 
 // ConsolidateInput is the async consolidator payload after a turn completes.
@@ -82,25 +82,25 @@ func (c *HeuristicConsolidator) Extract(_ context.Context, in ConsolidateInput) 
 			continue
 		}
 		for _, pat := range c.patterns {
-		m := pat.FindStringSubmatch(text)
-		if len(m) <= 1 {
-			continue
-		}
-		stmt := strings.TrimSpace(m[1])
-		if stmt == "" {
-			continue
-		}
-		key := strings.ToLower(stmt)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, MemoryProposal{
-			Layer:             MemoryLayerL3,
-			Statement:         stmt,
-			SourceMessageID:   strings.TrimSpace(msg.MessageID),
-			ExtractionQuality: ExtractionQualityHeuristic,
-		})
+			m := pat.FindStringSubmatch(text)
+			if len(m) <= 1 {
+				continue
+			}
+			stmt := strings.TrimSpace(m[1])
+			if stmt == "" {
+				continue
+			}
+			key := strings.ToLower(stmt)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, MemoryProposal{
+				Layer:             MemoryLayerL3,
+				Statement:         stmt,
+				SourceMessageID:   strings.TrimSpace(msg.MessageID),
+				ExtractionQuality: ExtractionQualityHeuristic,
+			})
 		}
 	}
 	return out, nil

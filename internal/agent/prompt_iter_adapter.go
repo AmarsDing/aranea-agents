@@ -113,11 +113,11 @@ func (a *PromptIterAdapter) buildRunRequest(req biz.RefineRequest) *engine.RunRe
 	}
 
 	return &engine.RunRequest{
-		TrainEvalSetIDs:     []string{"refine-train"},
+		TrainEvalSetIDs:      []string{"refine-train"},
 		ValidationEvalSetIDs: []string{"refine-validation"},
-		InitialProfile:      initialProfile,
-		MaxRounds:           1,
-		TargetSurfaceIDs:    []string{surfaceID},
+		InitialProfile:       initialProfile,
+		MaxRounds:            1,
+		TargetSurfaceIDs:     []string{surfaceID},
 	}
 }
 

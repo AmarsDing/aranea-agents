@@ -113,9 +113,9 @@ type DAG struct {
 
 // dagNode is an internal DAG node tracking dependencies and dependents.
 type dagNode struct {
-	call        *ToolCall
-	dependents  []string // IDs that depend on this node
-	dependencies int     // number of unresolved dependencies
+	call         *ToolCall
+	dependents   []string // IDs that depend on this node
+	dependencies int      // number of unresolved dependencies
 }
 
 // TopologicalLayers partitions the DAG into layers such that:

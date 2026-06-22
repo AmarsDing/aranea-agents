@@ -16,8 +16,8 @@ const (
 	SegmentMember    SegmentKind = "member"
 	SegmentSystem    SegmentKind = "system"
 
-	segmentTextID       = "__text__"
-	segmentReasoningID  = "__reasoning__"
+	segmentTextID      = "__text__"
+	segmentReasoningID = "__reasoning__"
 )
 
 // ToolSegmentMeta carries display metadata for tool/MCP/skill segments.

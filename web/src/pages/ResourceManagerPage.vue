@@ -3,7 +3,14 @@
     <template v-if="isProviderResource">
       <AppPageHero kicker="LLM Provider" :title="pageTitle" :subtitle="pageSubtitle">
         <template #actions>
-          <q-btn color="primary" unelevated rounded icon="add" :label="t('resourceManager.addProvider')" @click="openCreate" />
+          <q-btn
+            color="primary"
+            unelevated
+            rounded
+            icon="add"
+            :label="t('resourceManager.addProvider')"
+            @click="openCreate"
+          />
         </template>
       </AppPageHero>
 
@@ -96,7 +103,14 @@
           </q-input>
         </div>
         <div class="col-auto">
-          <q-btn color="primary" unelevated rounded icon="add" :label="t('resourceManager.addNew')" @click="openCreate" />
+          <q-btn
+            color="primary"
+            unelevated
+            rounded
+            icon="add"
+            :label="t('resourceManager.addNew')"
+            @click="openCreate"
+          />
         </div>
       </q-card-section>
       <q-separator />
@@ -209,7 +223,7 @@
                 :filter-catalog-models-local="filterCatalogModelsLocal"
                 @update:provider-add-mode="setProviderAddMode($event === 'custom' ? 'custom' : 'catalog')"
                 @update:catalog-provider-search="
-                  catalogProviderSearch = $event;
+                  catalogProviderSearch = $event ?? '';
                   reloadCatalogProviders();
                 "
                 @update:catalog-provider-id="applyCatalogProvider($event)"

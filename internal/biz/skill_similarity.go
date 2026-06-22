@@ -69,10 +69,10 @@ type DedupEmbedder interface {
 
 // Similarity classification thresholds
 const (
-	similarityHighThreshold     = 0.8  // total score >= this → high risk
-	similarityNameHighThreshold = 0.9  // name score >= this → high risk
-	similarityMediumThreshold   = 0.5  // total score >= this → medium risk
-	embeddingBlendWeight        = 0.5  // Jaccard/Embedding blend ratio for Body dimension
+	similarityHighThreshold     = 0.8 // total score >= this → high risk
+	similarityNameHighThreshold = 0.9 // name score >= this → high risk
+	similarityMediumThreshold   = 0.5 // total score >= this → medium risk
+	embeddingBlendWeight        = 0.5 // Jaccard/Embedding blend ratio for Body dimension
 )
 
 // SkillSimilarityEngine 统一相似度引擎

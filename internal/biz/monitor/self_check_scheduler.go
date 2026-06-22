@@ -278,8 +278,10 @@ func NewSelfCheckUnhealthyCountMetric(scheduler *SelfCheckScheduler) *SelfCheckU
 	return &SelfCheckUnhealthyCountMetric{scheduler: scheduler}
 }
 
-func (m *SelfCheckUnhealthyCountMetric) Key() string        { return "monitor.selfcheck_unhealthy_count" }
-func (m *SelfCheckUnhealthyCountMetric) Description() string { return "Number of unhealthy self-check results" }
+func (m *SelfCheckUnhealthyCountMetric) Key() string { return "monitor.selfcheck_unhealthy_count" }
+func (m *SelfCheckUnhealthyCountMetric) Description() string {
+	return "Number of unhealthy self-check results"
+}
 func (m *SelfCheckUnhealthyCountMetric) Evaluate(ctx context.Context, _ time.Duration) (float64, error) {
 	if m.scheduler == nil {
 		return 0, nil

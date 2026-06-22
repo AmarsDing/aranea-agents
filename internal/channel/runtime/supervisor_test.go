@@ -26,20 +26,28 @@ type countingRepo struct {
 func (r *countingRepo) List(_ context.Context) ([]biz.Channel, error) {
 	return append([]biz.Channel(nil), r.channels...), nil
 }
-func (r *countingRepo) Get(_ context.Context, id string) (biz.Channel, error) { return biz.Channel{}, nil }
+func (r *countingRepo) Get(_ context.Context, id string) (biz.Channel, error) {
+	return biz.Channel{}, nil
+}
 func (r *countingRepo) GetByKey(_ context.Context, key string) (biz.Channel, error) {
 	return biz.Channel{}, nil
 }
-func (r *countingRepo) Create(_ context.Context, row biz.Channel) (biz.Channel, error) { return row, nil }
-func (r *countingRepo) Update(_ context.Context, row biz.Channel) (biz.Channel, error) { return row, nil }
-func (r *countingRepo) Delete(_ context.Context, id string) error                     { return nil }
+func (r *countingRepo) Create(_ context.Context, row biz.Channel) (biz.Channel, error) {
+	return row, nil
+}
+func (r *countingRepo) Update(_ context.Context, row biz.Channel) (biz.Channel, error) {
+	return row, nil
+}
+func (r *countingRepo) Delete(_ context.Context, id string) error { return nil }
 func (r *countingRepo) ListCredentials(_ context.Context, channelID string) ([]biz.ChannelCredential, error) {
 	return nil, nil
 }
 func (r *countingRepo) UpsertCredential(_ context.Context, cred biz.ChannelCredential) (biz.ChannelCredential, error) {
 	return cred, nil
 }
-func (r *countingRepo) DeleteCredential(_ context.Context, channelID, credentialKey string) error { return nil }
+func (r *countingRepo) DeleteCredential(_ context.Context, channelID, credentialKey string) error {
+	return nil
+}
 func (r *countingRepo) ListDeliveries(_ context.Context, channelID string, limit int) ([]biz.ChannelDelivery, error) {
 	return nil, nil
 }

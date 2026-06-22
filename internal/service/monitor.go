@@ -21,14 +21,14 @@ type ProcessLogEnabledProvider interface {
 type MonitorService struct {
 	v1.UnimplementedMonitorServiceServer
 
-	uc     *biz.MonitorUsecase
-	processLogEnabled ProcessLogEnabledProvider
-	diag   *biz.DiagBundleGenerator
-	selfHeal *biz.SelfHealUsecase
-	selfHealObserver *biz.SelfHealObserver
+	uc                 *biz.MonitorUsecase
+	processLogEnabled  ProcessLogEnabledProvider
+	diag               *biz.DiagBundleGenerator
+	selfHeal           *biz.SelfHealUsecase
+	selfHealObserver   *biz.SelfHealObserver
 	selfCheckScheduler *monitor.SelfCheckScheduler
 	selfCheckRepo      monitor.SelfCheckReportRepo
-	lg     loggateway.Logger
+	lg                 loggateway.Logger
 
 	flowLogSvc  *FlowLogService
 	codeExecSvc *CodeExecutorService
@@ -342,17 +342,17 @@ func (s *MonitorService) DiagnoseAndHeal(ctx context.Context, in *v1.DiagnoseAnd
 	}
 
 	resp := &v1.DiagnoseAndHealResponse{
-		HealId:              result.HealID,
-		RuleId:              result.RuleID,
-		Status:              result.Status,
-		Reason:              result.Reason,
-		Confidence:          result.Confidence,
-		FixActionType:       result.FixAction.Type,
+		HealId:               result.HealID,
+		RuleId:               result.RuleID,
+		Status:               result.Status,
+		Reason:               result.Reason,
+		Confidence:           result.Confidence,
+		FixActionType:        result.FixAction.Type,
 		FixActionMaxAttempts: int32(result.FixAction.MaxAttempts),
-		FixActionParamsJson: monitor.DiagnoseAndHealFixParamsJSON(result),
-		RuntimeAutoHealed:   result.RuntimeAutoHealed,
-		RuntimeHealAttempts: int32(result.RuntimeHealAttempts),
-		CreatedAt:           result.CreatedAt,
+		FixActionParamsJson:  monitor.DiagnoseAndHealFixParamsJSON(result),
+		RuntimeAutoHealed:    result.RuntimeAutoHealed,
+		RuntimeHealAttempts:  int32(result.RuntimeHealAttempts),
+		CreatedAt:            result.CreatedAt,
 	}
 
 	if rc := result.RootCauseCondition; rc != nil {
@@ -434,12 +434,12 @@ func bizSelfCheckReportToProto(r *monitor.SelfCheckReport) *v1.SelfCheckReportEn
 			detailsJSON = []byte("{}")
 		}
 		results = append(results, &v1.SelfCheckResultEntry{
-			CheckId:    cr.CheckID,
-			Checker:    cr.Checker,
-			Status:     string(cr.Status),
-			Message:    cr.Message,
+			CheckId:     cr.CheckID,
+			Checker:     cr.Checker,
+			Status:      string(cr.Status),
+			Message:     cr.Message,
 			DetailsJson: string(detailsJSON),
-			CheckedAt:  cr.CheckedAt.Format(time.RFC3339Nano),
+			CheckedAt:   cr.CheckedAt.Format(time.RFC3339Nano),
 		})
 	}
 	repairs := make([]*v1.RepairActionEntry, 0, len(r.RepairActions))

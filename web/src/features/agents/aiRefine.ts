@@ -15,7 +15,7 @@ const fieldScopeToRefineScope: Record<FieldScope, RefineScope> = {
 };
 
 export interface RefineRequest {
-  scope: FieldScope;
+  scope: string;
   resourceId?: string;
   fileName?: string;
   originalText: string;
@@ -35,8 +35,12 @@ export interface RefineResponse {
 
 export async function refinePromptField(req: RefineRequest): Promise<RefineResponse> {
   const client = createAIRefineService();
+  const refineScope = fieldScopeToRefineScope[req.scope as FieldScope];
+  if (!refineScope) {
+    throw new Error(`unsupported refine scope: ${req.scope}`);
+  }
   const res: KratosRefineResponse = await client.Refine({
-    scope: fieldScopeToRefineScope[req.scope],
+    scope: refineScope,
     resourceId: req.resourceId ?? '',
     fileName: req.fileName ?? '',
     originalText: req.originalText,

@@ -164,11 +164,11 @@ func (q *connQueues) backpressurePayload(windowSecs int) []byte {
 		"channel":   "system",
 		"type":      "monitor.backpressure",
 		"payload": map[string]any{
-			"dropped_high":    droppedHigh,
-			"dropped_normal":  droppedNormal,
-			"dropped_low":     droppedLow,
-			"window_seconds":  windowSecs,
-			"advice":          "reduce subscribed channels or pause non-critical streams",
+			"dropped_high":   droppedHigh,
+			"dropped_normal": droppedNormal,
+			"dropped_low":    droppedLow,
+			"window_seconds": windowSecs,
+			"advice":         "reduce subscribed channels or pause non-critical streams",
 		},
 	}
 	data, _ := json.Marshal(msg)

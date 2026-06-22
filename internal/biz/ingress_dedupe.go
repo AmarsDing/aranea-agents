@@ -20,7 +20,7 @@ type IngressMessageDedupe struct {
 	mu   sync.Mutex
 	seen map[string]time.Time
 	ttl  time.Duration
-	inflightSet
+	*inflightSet
 }
 
 // inflightSet tracks in-flight dedup keys with TTL-based cleanup.
@@ -42,7 +42,7 @@ func NewIngressMessageDedupe(ttl time.Duration) *IngressMessageDedupe {
 	}
 	is := &inflightSet{m: make(map[string]inflightEntry), done: make(chan struct{})}
 	safego.Go(context.Background(), "inflightSet.cleanupLoop", is.cleanupLoop)
-	return &IngressMessageDedupe{seen: make(map[string]time.Time), ttl: ttl, inflightSet: *is}
+	return &IngressMessageDedupe{seen: make(map[string]time.Time), ttl: ttl, inflightSet: is}
 }
 
 // ClaimMessage implements IngressDeduplicator.

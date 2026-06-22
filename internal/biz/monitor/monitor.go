@@ -228,8 +228,6 @@ type RunnerCompletionRepo interface {
 	ListRecentRunnerCompletions(ctx context.Context, since time.Duration, limit int) ([]RunnerCompletionRow, error)
 }
 
-
-
 // RunnerMetricsSummary aggregates runner.completion monitor events.
 type RunnerMetricsSummary struct {
 	WindowMinutes int
@@ -470,7 +468,7 @@ func (u *Usecase) EvaluateAlerts(ctx context.Context) {
 				value, err := m.Evaluate(ctx, window)
 				if err != nil {
 					u.lg.Warn("EvaluateAlerts: metric evaluation failed",
-					loggateway.StepID("monitor.alert_eval_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Str("metric_key", metricKey), loggateway.Err(err))
+						loggateway.StepID("monitor.alert_eval_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Str("metric_key", metricKey), loggateway.Err(err))
 					continue
 				}
 				u.evaluateMetricValue(ctx, rule, value)

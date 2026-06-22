@@ -11,11 +11,11 @@ import (
 )
 
 type TaskLink struct {
-	ID            string
-	ParentTaskID  string
-	ChildTaskID   string
-	ExecutionID   string
-	CreatedAt     time.Time
+	ID           string
+	ParentTaskID string
+	ChildTaskID  string
+	ExecutionID  string
+	CreatedAt    time.Time
 }
 
 type TaskLinkRepo interface {

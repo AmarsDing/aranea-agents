@@ -22,7 +22,7 @@ export function useMonitorRunNavigation() {
 
   function openMonitorTab(tab: string, extra: MonitorRunNavQuery = {}) {
     void router.push({
-      path: '/monitor',
+      path: '/monitor/logs',
       query: {
         tab,
         ...(extra.session ? { session: extra.session } : {}),

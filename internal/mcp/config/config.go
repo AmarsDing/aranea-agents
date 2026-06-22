@@ -62,15 +62,15 @@ func (t Transport) String() string { return string(t) }
 
 // AuthConfig is optional OAuth2 / API key metadata inside config_json.
 type AuthConfig struct {
-	Type         string    `json:"type"`
-	APIKey       string    `json:"api_key"`
-	HeaderName   string    `json:"header_name"`
-	TokenURL     string    `json:"token_url"`
-	ClientID     string    `json:"client_id"`
-	ClientSecret string    `json:"client_secret"`
-	Scope        string    `json:"scope"`
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token"`
+	Type         string `json:"type"`
+	APIKey       string `json:"api_key"`
+	HeaderName   string `json:"header_name"`
+	TokenURL     string `json:"token_url"`
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+	Scope        string `json:"scope"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
 	// ExpiresAt is the optional expiry time for oauth2_static tokens.
 	// When set, ResolveMCPAuthToken will reject expired tokens rather
 	// than silently returning them.

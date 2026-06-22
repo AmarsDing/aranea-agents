@@ -16,9 +16,7 @@ const props = defineProps<{
   message: Message;
 }>();
 
-const renderedContent = computed(() =>
-  renderChatMarkdown(props.message.content_markdown || ''),
-);
+const renderedContent = computed(() => renderChatMarkdown(props.message.content_markdown || ''));
 </script>
 
 <style lang="sass" scoped>

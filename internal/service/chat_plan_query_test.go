@@ -11,17 +11,17 @@ import (
 func TestToTaskPlanSummary(t *testing.T) {
 	now := time.Now().UTC()
 	plan := &biz.TaskPlan{
-		ID:                "plan-001",
-		SpiritSessionID:   "sess-001",
-		TraceID:           "trace-001",
-		UserMessage:       "Build a web app",
-		ComplexityLevel:   biz.ComplexityComplex,
-		ComplexityScore:   0.85,
-		Strategy:          biz.StrategyDAG,
-		Status:            biz.PlanStatusConfirmed,
-		SubTasks:          []biz.SubTask{{ID: "st-1"}, {ID: "st-2"}, {ID: "st-3"}},
-		CreatedAt:         now,
-		UpdatedAt:         now,
+		ID:              "plan-001",
+		SpiritSessionID: "sess-001",
+		TraceID:         "trace-001",
+		UserMessage:     "Build a web app",
+		ComplexityLevel: biz.ComplexityComplex,
+		ComplexityScore: 0.85,
+		Strategy:        biz.StrategyDAG,
+		Status:          biz.PlanStatusConfirmed,
+		SubTasks:        []biz.SubTask{{ID: "st-1"}, {ID: "st-2"}, {ID: "st-3"}},
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 
 	summary := toTaskPlanSummary(plan)
@@ -384,4 +384,3 @@ func TestToTaskPlanSummary_StrategyMapping(t *testing.T) {
 		})
 	}
 }
-

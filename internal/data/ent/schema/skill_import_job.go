@@ -24,13 +24,13 @@ func (SkillImportJob) Annotations() []schema.Annotation {
 func (SkillImportJob) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("id").Immutable().Unique().MaxLen(256),
-		field.String("status").Default("processing").MaxLen(64),   // processing, completed, failed, applied
+		field.String("status").Default("processing").MaxLen(64),      // processing, completed, failed, applied
 		field.String("validation_status").Default("pass").MaxLen(64), // pass, warn, block
 		field.String("storage_root").Default("").MaxLen(512),
 		field.Text("message").Default("").Optional(),
-		field.JSON("candidates_json", map[string]any{}).Optional(),   // serialized []SkillImportCandidate
+		field.JSON("candidates_json", map[string]any{}).Optional(),      // serialized []SkillImportCandidate
 		field.JSON("conflict_groups_json", map[string]any{}).Optional(), // serialized []SkillConflictGroup
-		field.String("temp_dir").Default("").MaxLen(512).Optional(),  // path to temp directory for file content
+		field.String("temp_dir").Default("").MaxLen(512).Optional(),     // path to temp directory for file content
 		field.String("created_at").Default(""),
 		field.String("applied_at").Default("").Optional(),
 	}

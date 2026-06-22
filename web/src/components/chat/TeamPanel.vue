@@ -7,11 +7,7 @@
     <DagSection v-if="panel.dag" :section="panel.dag" />
 
     <!-- Team Progress Section -->
-    <TeamProgressSection
-      v-for="team in panel.teamProgress"
-      :key="team.teamId"
-      :section="team"
-    />
+    <TeamProgressSection v-for="team in panel.teamProgress" :key="team.teamId" :section="team" />
   </div>
 </template>
 

@@ -31,10 +31,19 @@ func (s *escalateSessionRunRepoStub) ListForJobs(_ context.Context, _ biz.Sessio
 func (s *escalateSessionRunRepoStub) ListByPhase(_ context.Context, _ string, _ int) ([]biz.SessionRun, error) {
 	return nil, nil
 }
-func (s *escalateSessionRunRepoStub) Create(_ context.Context, _ biz.SessionRun) (string, error) { return "", nil }
-func (s *escalateSessionRunRepoStub) UpdatePhase(_ context.Context, _, _ string) error            { return nil }
-func (s *escalateSessionRunRepoStub) UpdateCheckpointID(_ context.Context, _, _ string) error     { return nil }
-func (s *escalateSessionRunRepoStub) MarkTerminal(_ context.Context, _, _, _ string) error        { return nil }
+func (s *escalateSessionRunRepoStub) Create(_ context.Context, _ biz.SessionRun) (string, error) {
+	return "", nil
+}
+func (s *escalateSessionRunRepoStub) UpdatePhase(_ context.Context, _, _ string) error { return nil }
+func (s *escalateSessionRunRepoStub) UpdateCheckpointID(_ context.Context, _, _ string) error {
+	return nil
+}
+func (s *escalateSessionRunRepoStub) MarkTerminal(_ context.Context, _, _, _ string) error {
+	return nil
+}
+func (s *escalateSessionRunRepoStub) MarkTerminalWherePhase(_ context.Context, _, _, _, _ string) (bool, error) {
+	return true, nil
+}
 func (s *escalateSessionRunRepoStub) TryClaimDurableResume(_ context.Context, _, _ string) (bool, error) {
 	return false, nil
 }

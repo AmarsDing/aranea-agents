@@ -7,9 +7,9 @@
 import type { ComputedRef, InjectionKey } from 'vue';
 
 // Re-export shared domain types
-export type { Message, RunStatus, RunStatusValue } from '../../domain/types';
+export type { Message, MessageOrigin, RunStatus, RunStatusValue } from '../../domain/types';
 
-export const TOOL_DISPLAY_KEY: InjectionKey<ComputedRef<{ showToolCalls: boolean }>> = Symbol('tool-display-key')
+export const TOOL_DISPLAY_KEY: InjectionKey<ComputedRef<{ showToolCalls: boolean }>> = Symbol('tool-display-key');
 
 export type ChatOption = {
   type: string;

@@ -93,7 +93,9 @@ const elapsedLabel = computed(() => {
 });
 
 const showCancel = computed(
-  () => props.showCancel !== false && (props.status === 'running' || props.status === 'pending' || props.status === 'durable'),
+  () =>
+    props.showCancel !== false &&
+    (props.status === 'running' || props.status === 'pending' || props.status === 'durable'),
 );
 </script>
 

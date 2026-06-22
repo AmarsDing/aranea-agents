@@ -5,8 +5,8 @@ import (
 
 	"aranea-agents/internal/event/contract"
 	arametrics "aranea-agents/internal/metrics"
-	frameworkbus "trpc.group/trpc-go/trpc-agent-go/event/bus"
 	"aranea-agents/pkg/loggateway"
+	frameworkbus "trpc.group/trpc-go/trpc-agent-go/event/bus"
 )
 
 // busAdapter wraps a framework bus.Bus[Envelope] to implement contract.Bus.

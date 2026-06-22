@@ -12,10 +12,10 @@ import (
 // Extracted from SessionUsecase to reduce God Object scope.
 // Stability:evolving
 type SessionTimelineUsecase struct {
-	timelineReader  TimelineReader
+	timelineReader   TimelineReader
 	invocationReader InvocationReader
-	messageReader   MessageReader
-	sessionReader   SessionReader
+	messageReader    MessageReader
+	sessionReader    SessionReader
 }
 
 // NewSessionTimelineUsecase creates a new SessionTimelineUsecase.

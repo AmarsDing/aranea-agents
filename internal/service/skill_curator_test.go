@@ -40,7 +40,9 @@ type stubSuggestionWriter struct {
 	err                 error
 }
 
-func (s *stubSuggestionWriter) Create(_ context.Context, _ biz.SkillEvolutionSuggestion) error { return s.err }
+func (s *stubSuggestionWriter) Create(_ context.Context, _ biz.SkillEvolutionSuggestion) error {
+	return s.err
+}
 func (s *stubSuggestionWriter) UpdateStatus(_ context.Context, _ string, _ biz.EvolutionSuggestionStatus, _, _ string) error {
 	return s.err
 }
@@ -55,8 +57,45 @@ func (s *stubSuggestionWriter) UpdateLifecycleStatus(_ context.Context, _ string
 	return s.err
 }
 
+type stubLegacyEvolutionStore struct {
+	*stubSuggestionReader
+	*stubSuggestionWriter
+}
+
+func (s *stubLegacyEvolutionStore) GetEvolutionSuggestion(ctx context.Context, id string) (*biz.SkillEvolutionSuggestion, error) {
+	return s.stubSuggestionReader.GetByID(ctx, id)
+}
+func (s *stubLegacyEvolutionStore) ListEvolutionSuggestions(ctx context.Context, skillID string, status biz.EvolutionSuggestionStatus, limit, offset int) ([]biz.SkillEvolutionSuggestion, error) {
+	return s.stubSuggestionReader.ListBySkill(ctx, skillID, status, limit, offset)
+}
+func (s *stubLegacyEvolutionStore) CountEvolutionSuggestions(ctx context.Context, skillID string, status biz.EvolutionSuggestionStatus) (int, error) {
+	return s.stubSuggestionReader.CountBySkill(ctx, skillID, status)
+}
+func (s *stubLegacyEvolutionStore) CreateSuggestion(ctx context.Context, sug biz.SkillEvolutionSuggestion) error {
+	return s.stubSuggestionWriter.Create(ctx, sug)
+}
+func (s *stubLegacyEvolutionStore) UpdateSuggestionStatus(ctx context.Context, id string, status biz.EvolutionSuggestionStatus, resolvedBy, reason string) error {
+	return s.stubSuggestionWriter.UpdateStatus(ctx, id, status, resolvedBy, reason)
+}
+func (s *stubLegacyEvolutionStore) UpdateSuggestionDraftBody(ctx context.Context, id, draftBody string) error {
+	return s.stubSuggestionWriter.UpdateDraftBody(ctx, id, draftBody)
+}
+func (s *stubLegacyEvolutionStore) UpdateSuggestionLifecycleStatus(ctx context.Context, id string, lifecycleStatus biz.EvolutionLifecycleStatus) error {
+	return s.stubSuggestionWriter.UpdateLifecycleStatus(ctx, id, lifecycleStatus)
+}
+func (s *stubLegacyEvolutionStore) UpdateSuggestionSandboxResult(ctx context.Context, id string, passed bool, result json.RawMessage) error {
+	return s.stubSuggestionWriter.UpdateSandboxResult(ctx, id, passed, result)
+}
+func (s *stubLegacyEvolutionStore) ListPendingSuggestions(ctx context.Context, limit, offset int) ([]biz.SkillEvolutionSuggestion, error) {
+	return s.stubSuggestionReader.ListPending(ctx, limit, offset)
+}
+func (s *stubLegacyEvolutionStore) GetLatestSuggestionBySkill(ctx context.Context, skillID string) (*biz.SkillEvolutionSuggestion, error) {
+	return s.stubSuggestionReader.GetLatestBySkill(ctx, skillID)
+}
+
 func newTestSandboxRunner(reader *stubSuggestionReader, writer *stubSuggestionWriter) *SandboxRunner {
-	uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, nil, nil, loggateway.NewNoop())
+	store := &stubLegacyEvolutionStore{stubSuggestionReader: reader, stubSuggestionWriter: writer}
+	uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, store, nil, loggateway.NewNoop())
 	// Pass nil factory → rule-based only (no CodeExecutor)
 	return NewSandboxRunner(uc, nil, loggateway.NewNoop())
 }
@@ -161,7 +200,8 @@ func TestSandboxRunner_ValidateSuggestion_DraftBodyTooLong(t *testing.T) {
 // ── SkillCuratorService Tests ────────────────────────────────────────────────
 
 func newTestCuratorService(reader *stubSuggestionReader, writer *stubSuggestionWriter) *SkillCuratorService {
-	uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, nil, nil, loggateway.NewNoop())
+	store := &stubLegacyEvolutionStore{stubSuggestionReader: reader, stubSuggestionWriter: writer}
+	uc := biz.NewSkillIntelligenceUsecase(nil, nil, nil, store, nil, loggateway.NewNoop())
 	return NewSkillCuratorService(uc, loggateway.NewNoop())
 }
 

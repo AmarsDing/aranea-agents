@@ -16,9 +16,9 @@ type SkillHealth struct {
 	InvokeCount7d  int     `json:"invoke_count_7d"`
 	SuccessRate    float64 `json:"success_rate"`
 	AvgDurationMS  float64 `json:"avg_duration_ms"`
-	Trend          string  `json:"trend"`           // "rising" | "stable" | "declining" | "dormant"
-	HealthStatus   string  `json:"health_status"`   // "healthy" | "warning" | "critical" | "dormant"
-	Recommendation string  `json:"recommendation"`  // "keep" | "evolve" | "retire" | "merge"
+	Trend          string  `json:"trend"`          // "rising" | "stable" | "declining" | "dormant"
+	HealthStatus   string  `json:"health_status"`  // "healthy" | "warning" | "critical" | "dormant"
+	Recommendation string  `json:"recommendation"` // "keep" | "evolve" | "retire" | "merge"
 }
 
 // OrchestrationQuality is the DQ score for orchestration analysis.

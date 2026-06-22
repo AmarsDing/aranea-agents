@@ -35,8 +35,8 @@ type FieldArtifact struct {
 
 // l1Snapshot is the internal structure for parsing an L1 snapshot JSON.
 type l1Snapshot struct {
-	Task   map[string]any    `json:"task"`
-	Fields []map[string]any  `json:"fields"`
+	Task   map[string]any   `json:"task"`
+	Fields []map[string]any `json:"fields"`
 }
 
 // ExtractStructuredEpisode parses an L1 snapshot JSON and extracts structured episode data.
@@ -347,11 +347,11 @@ func boolVal(m map[string]any, key string) bool {
 
 // EpisodeSignals holds the signals used to determine whether Path B should be triggered.
 type EpisodeSignals struct {
-	Importance     float64 // [0, 1]
-	CriticScore    float64 // [0, 1], -1 if missing
-	ToolCallCount  int
-	DurationMs     int
-	UserMark       string // "star", "consolidate", or ""
+	Importance    float64 // [0, 1]
+	CriticScore   float64 // [0, 1], -1 if missing
+	ToolCallCount int
+	DurationMs    int
+	UserMark      string // "star", "consolidate", or ""
 }
 
 // maxOutcomeAppendChars limits the last_assistant_message appended to outcome.

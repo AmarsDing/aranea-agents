@@ -65,12 +65,12 @@ type SessionL3ScoredRecallStore interface {
 
 // L3FusedRecallQuery parameters for cross-scope fused L3 recall.
 type L3FusedRecallQuery struct {
-	Runtime           MemoryRuntimeContext
-	Scopes            []string
-	Query             string
-	Limit             int32
-	MinScoreQuery     float64
-	MinScorePassive   float64
+	Runtime         MemoryRuntimeContext
+	Scopes          []string
+	Query           string
+	Limit           int32
+	MinScoreQuery   float64
+	MinScorePassive float64
 }
 
 // MemoryL3Recaller performs query-aware L3 fact recall with optional fused multi-scope ranking.

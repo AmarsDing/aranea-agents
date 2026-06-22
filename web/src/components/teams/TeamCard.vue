@@ -90,7 +90,16 @@
           <q-btn flat dense round size="sm" color="primary" icon="timeline" @click="$emit('openRuns', team)">
             <q-tooltip>查看运行轨迹</q-tooltip>
           </q-btn>
-          <q-btn v-if="team.kind !== 'system_builtin'" flat dense round size="sm" color="primary" icon="content_copy" @click="$emit('duplicate', team)">
+          <q-btn
+            v-if="team.kind !== 'system_builtin'"
+            flat
+            dense
+            round
+            size="sm"
+            color="primary"
+            icon="content_copy"
+            @click="$emit('duplicate', team)"
+          >
             <q-tooltip>复制</q-tooltip>
           </q-btn>
           <q-btn flat dense round size="sm" color="primary" icon="edit" @click="$emit('edit', team)">

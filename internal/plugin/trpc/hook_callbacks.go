@@ -246,4 +246,3 @@ func logHookAction(rh biz.ResolvedHook, point, agentID, agentKey, toolName, acti
 		getHookLogger().Info(msg, attrs...)
 	}
 }
-

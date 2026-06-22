@@ -88,7 +88,16 @@ const props = defineProps<{
   sessionId?: string | null;
 }>();
 
-const { l2Hits, l3Hits, compositeHits, loadingDebug, loadingComposite, error, runDebug: runDebugFetch, runComposite: runCompositeFetch } = useMemoryRecallTester(
+const {
+  l2Hits,
+  l3Hits,
+  compositeHits,
+  loadingDebug,
+  loadingComposite,
+  error,
+  runDebug: runDebugFetch,
+  runComposite: runCompositeFetch,
+} = useMemoryRecallTester(
   () => props.agentId,
   () => props.sessionId,
 );
@@ -97,7 +106,9 @@ const query = ref('');
 const l2Limit = ref(5);
 const l3Limit = ref(8);
 
-const compositeRows = computed(() => compositeHits.value.map((row: CompositeSearchHit) => ({ ...row, row_uid: `${row.layer}-${row.id}` })));
+const compositeRows = computed(() =>
+  compositeHits.value.map((row: CompositeSearchHit) => ({ ...row, row_uid: `${row.layer}-${row.id}` })),
+);
 
 async function runDebug() {
   await runDebugFetch(query.value, l2Limit.value, l3Limit.value);

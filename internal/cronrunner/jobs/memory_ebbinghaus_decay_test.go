@@ -148,16 +148,16 @@ func TestMemoryEbbinghausDecay_ScanGlobal(t *testing.T) {
 	// - recently accessed: high decay (close to 1.0)
 	// - old, never accessed: low decay (heavily decayed)
 	recent := makeFactRowWithID("fact-recent",
-		now.Add(-1*time.Hour).Format(time.RFC3339),  // created 1h ago
+		now.Add(-1*time.Hour).Format(time.RFC3339),    // created 1h ago
 		now.Add(-30*time.Minute).Format(time.RFC3339), // updated 30m ago
 		now.Add(-30*time.Minute).Format(time.RFC3339), // last used 30m ago
-		5,                                               // 5 accesses
+		5, // 5 accesses
 	)
 	old := makeFactRowWithID("fact-old",
-		now.Add(-720*time.Hour).Format(time.RFC3339),  // created 30d ago
-		now.Add(-720*time.Hour).Format(time.RFC3339),  // updated 30d ago
-		"",                                              // never accessed
-		0,                                               // 0 accesses
+		now.Add(-720*time.Hour).Format(time.RFC3339), // created 30d ago
+		now.Add(-720*time.Hour).Format(time.RFC3339), // updated 30d ago
+		"", // never accessed
+		0,  // 0 accesses
 	)
 
 	reader := &mockL3FactReader{

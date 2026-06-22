@@ -8,7 +8,6 @@ import {
   listAgentTemplates,
   listAgentsPaged,
   toggleAgentFavorite as toggleAgentFavoriteApi,
-  updateAgent,
 } from '../../features/agents/api';
 import type { Agent, AgentCreatorOption, AgentTemplatePreset } from '../../features/agents/types';
 import { listPlatformResources, listPlatformResourceTree, validateModel } from '../../features/platform/api';

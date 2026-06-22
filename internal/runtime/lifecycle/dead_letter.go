@@ -12,13 +12,13 @@ import (
 
 // DeadLetterMessage 是死信队列中的消息。
 type DeadLetterMessage struct {
-	ID         string        // 唯一 ID（调用方生成，如 UUID）
-	Source     string        // 来源（如 "pending-queue"、"sleep-time-job"）
-	Original   any           // 原始消息（类型由调用方决定）
-	Error      string        // 失败原因
-	FailedAt   time.Time     // 失败时间
-	RetryCount int           // 已重试次数
-	MaxRetries int           // 最大重试次数
+	ID         string    // 唯一 ID（调用方生成，如 UUID）
+	Source     string    // 来源（如 "pending-queue"、"sleep-time-job"）
+	Original   any       // 原始消息（类型由调用方决定）
+	Error      string    // 失败原因
+	FailedAt   time.Time // 失败时间
+	RetryCount int       // 已重试次数
+	MaxRetries int       // 最大重试次数
 }
 
 // RetryHandler 重试处理函数。返回 error 表示重试仍失败。

@@ -24,7 +24,7 @@ func TestEpisodeWrite_ID(t *testing.T) {
 
 func TestEpisodeWrite_ConsolidationStatus(t *testing.T) {
 	ep := EpisodeWrite{
-		ID:                 "ep-789",
+		ID:                  "ep-789",
 		ConsolidationStatus: "consolidated",
 	}
 	if ep.ConsolidationStatus != "consolidated" {

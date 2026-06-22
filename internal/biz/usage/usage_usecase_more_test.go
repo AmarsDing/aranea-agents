@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	usage "aranea-agents/internal/biz/usage"
 	"aranea-agents/internal/biz/shared"
+	usage "aranea-agents/internal/biz/usage"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
@@ -890,20 +890,20 @@ func TestExportUsageEventsCSV(t *testing.T) {
 				r.listModelUsageEventsFn = func(_ context.Context, _ usage.Query) ([]usage.TokenUsageEvent, error) {
 					return []usage.TokenUsageEvent{
 						{
-							OccurredAt:       "2025-03-15T10:00:00Z",
-							UsageKind:        "chat",
-							AgentID:          "agent-1",
-							ProviderCode:     "openai",
-							ModelAPIID:       "gpt-4",
-							SessionID:        "sess-1",
-							TeamID:           "team-1",
-							InputTokens:      100,
-							OutputTokens:     200,
-							TotalTokens:      300,
+							OccurredAt:        "2025-03-15T10:00:00Z",
+							UsageKind:         "chat",
+							AgentID:           "agent-1",
+							ProviderCode:      "openai",
+							ModelAPIID:        "gpt-4",
+							SessionID:         "sess-1",
+							TeamID:            "team-1",
+							InputTokens:       100,
+							OutputTokens:      200,
+							TotalTokens:       300,
 							TotalCostMicroUSD: 500,
-							LatencyMS:        1200,
-							Status:           "success",
-							ErrorMessage:     "",
+							LatencyMS:         1200,
+							Status:            "success",
+							ErrorMessage:      "",
 						},
 					}, nil
 				}
@@ -1228,9 +1228,9 @@ func TestApplyPricingUSDToEvent(t *testing.T) {
 			name:  "micro_per_1k_fallback_when_usd_zero",
 			event: usage.TokenUsageEvent{},
 			snap: usage.ModelPricingSnapshot{
-				InputPriceUSDPer1M:      0,
-				InputPriceMicroUSDPer1K: 5000,
-				OutputPriceUSDPer1M:     0,
+				InputPriceUSDPer1M:       0,
+				InputPriceMicroUSDPer1K:  5000,
+				OutputPriceUSDPer1M:      0,
 				OutputPriceMicroUSDPer1K: 8000,
 			},
 			check: func(t *testing.T, e usage.TokenUsageEvent) {
@@ -1262,12 +1262,12 @@ func TestApplyPricingUSDToEvent(t *testing.T) {
 			name:  "all_six_price_kinds_from_usd_per_1m",
 			event: usage.TokenUsageEvent{},
 			snap: usage.ModelPricingSnapshot{
-				InputPriceUSDPer1M:       2.0,
-				OutputPriceUSDPer1M:      4.0,
-				CacheReadPriceUSDPer1M:   1.0,
-				CacheWritePriceUSDPer1M:  5.0,
-				ReasoningPriceUSDPer1M:   6.0,
-				EmbeddingPriceUSDPer1M:   0.5,
+				InputPriceUSDPer1M:      2.0,
+				OutputPriceUSDPer1M:     4.0,
+				CacheReadPriceUSDPer1M:  1.0,
+				CacheWritePriceUSDPer1M: 5.0,
+				ReasoningPriceUSDPer1M:  6.0,
+				EmbeddingPriceUSDPer1M:  0.5,
 			},
 			check: func(t *testing.T, e usage.TokenUsageEvent) {
 				if e.InputPriceUSDPer1M != 2.0 {
@@ -1312,10 +1312,10 @@ func TestApplyPricingUSDToEvent(t *testing.T) {
 			name:  "mixed_usd_and_micro_fallback",
 			event: usage.TokenUsageEvent{},
 			snap: usage.ModelPricingSnapshot{
-				InputPriceUSDPer1M:       3.0,
-				OutputPriceUSDPer1M:      0,
-				OutputPriceMicroUSDPer1K: 7000,
-				CacheReadPriceUSDPer1M:   0,
+				InputPriceUSDPer1M:            3.0,
+				OutputPriceUSDPer1M:           0,
+				OutputPriceMicroUSDPer1K:      7000,
+				CacheReadPriceUSDPer1M:        0,
 				CachedInputPriceMicroUSDPer1K: 2000,
 			},
 			check: func(t *testing.T, e usage.TokenUsageEvent) {
@@ -1349,43 +1349,43 @@ func TestApplyPricingUSDToEvent_NilEvent(t *testing.T) {
 
 func TestCheckQuota_EmptyScope(t *testing.T) {
 	tests := []struct {
-		name      string
-		scopeType string
-		scopeID   string
+		name       string
+		scopeType  string
+		scopeID    string
 		wantErr    bool
 		wantCode   apierror.Code
 		wantReason string
 	}{
 		{
-			name:      "empty_scope_type",
-			scopeType: "",
-			scopeID:   "agent-1",
-			wantErr:   true,
-			wantCode:  apierror.CodeBadRequest,
+			name:       "empty_scope_type",
+			scopeType:  "",
+			scopeID:    "agent-1",
+			wantErr:    true,
+			wantCode:   apierror.CodeBadRequest,
 			wantReason: "USAGE_QUOTA",
 		},
 		{
-			name:      "empty_scope_id",
-			scopeType: "agent",
-			scopeID:   "",
-			wantErr:   true,
-			wantCode:  apierror.CodeBadRequest,
+			name:       "empty_scope_id",
+			scopeType:  "agent",
+			scopeID:    "",
+			wantErr:    true,
+			wantCode:   apierror.CodeBadRequest,
 			wantReason: "USAGE_QUOTA",
 		},
 		{
-			name:      "whitespace_scope_type",
-			scopeType: "  ",
-			scopeID:   "agent-1",
-			wantErr:   true,
-			wantCode:  apierror.CodeBadRequest,
+			name:       "whitespace_scope_type",
+			scopeType:  "  ",
+			scopeID:    "agent-1",
+			wantErr:    true,
+			wantCode:   apierror.CodeBadRequest,
 			wantReason: "USAGE_QUOTA",
 		},
 		{
-			name:      "whitespace_scope_id",
-			scopeType: "agent",
-			scopeID:   "  ",
-			wantErr:   true,
-			wantCode:  apierror.CodeBadRequest,
+			name:       "whitespace_scope_id",
+			scopeType:  "agent",
+			scopeID:    "  ",
+			wantErr:    true,
+			wantCode:   apierror.CodeBadRequest,
 			wantReason: "USAGE_QUOTA",
 		},
 	}

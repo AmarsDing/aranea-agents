@@ -69,7 +69,7 @@ func (r *Runner) recordMemberUsage(
 		UsageKind:        biz.UsageKindTeamMember,
 		PromptMode:       dialogMode,
 		MetadataJSON:     meta,
-		OccurredAt: now.Format(time.RFC3339),
+		OccurredAt:       now.Format(time.RFC3339),
 	}
 	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
 	defer cancel()
@@ -86,11 +86,11 @@ func (r *Runner) recordMemberUsage(
 	}
 	if r.td.Sessions != nil && strings.TrimSpace(run.SessionID) != "" {
 		r.td.Sessions.AccumulateMetricsDelta(session.SessionMetricsDelta{
-			SessionID:        run.SessionID,
-			ModelCallCount:   ev.CallCount,
-			InputTokens:      int64(ev.InputTokens),
-			OutputTokens:     int64(ev.OutputTokens),
-			TotalTokens:      int64(ev.TotalTokens),
+			SessionID:         run.SessionID,
+			ModelCallCount:    ev.CallCount,
+			InputTokens:       int64(ev.InputTokens),
+			OutputTokens:      int64(ev.OutputTokens),
+			TotalTokens:       int64(ev.TotalTokens),
 			TotalCostMicroUsd: ev.TotalCostMicroUSD,
 		})
 	}
@@ -153,11 +153,11 @@ func (r *Runner) recordTeamRunUsage(
 	}
 	if r.td.Sessions != nil && strings.TrimSpace(run.SessionID) != "" {
 		r.td.Sessions.AccumulateMetricsDelta(session.SessionMetricsDelta{
-			SessionID:        run.SessionID,
-			ModelCallCount:   ev.CallCount,
-			InputTokens:      int64(ev.InputTokens),
-			OutputTokens:     int64(ev.OutputTokens),
-			TotalTokens:      int64(ev.TotalTokens),
+			SessionID:         run.SessionID,
+			ModelCallCount:    ev.CallCount,
+			InputTokens:       int64(ev.InputTokens),
+			OutputTokens:      int64(ev.OutputTokens),
+			TotalTokens:       int64(ev.TotalTokens),
 			TotalCostMicroUsd: ev.TotalCostMicroUSD,
 		})
 	}

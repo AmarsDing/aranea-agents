@@ -147,6 +147,37 @@ func (r *sessionRunRepo) MarkTerminal(ctx context.Context, id, phase, errMsg str
 	return entErrToBizErr(err, "SESSION_RUN")
 }
 
+// MarkTerminalWherePhase performs a CAS terminal transition for SessionRun.
+// It only updates the run if its current phase matches fromPhase, preventing
+// TOCTOU races where a concurrent writer changes the phase between Get and
+// MarkTerminal. Returns true if the row was updated.
+func (r *sessionRunRepo) MarkTerminalWherePhase(ctx context.Context, id, fromPhase, toPhase, errMsg string) (bool, error) {
+	db := r.writeDB(ctx)
+	if db == nil {
+		return false, nil
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false, nil
+	}
+	now := biz.ChannelTurnJobNow()
+	res, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
+UPDATE session_runs
+SET phase=?, error_message=?, finished_at=?, phase_changed_at=?, updated_at=?, resume_started_at=''
+WHERE id=? AND phase=?`),
+		biz.NormalizeSessionRunPhase(toPhase), errMsg, now, now, now, id, biz.NormalizeSessionRunPhase(fromPhase),
+	)
+	if err != nil {
+		r.data.lg.Warn("mark terminal where phase failed", loggateway.StepID("data.session_run.mark_terminal_where_phase"), loggateway.Err(err))
+		return false, entErrToBizErr(err, "SESSION_RUN")
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, entErrToBizErr(err, "SESSION_RUN")
+	}
+	return n > 0, nil
+}
+
 func (r *sessionRunRepo) UpdateCheckpointID(ctx context.Context, id, checkpointID string) error {
 	client := r.writeClient(ctx)
 	if client == nil {

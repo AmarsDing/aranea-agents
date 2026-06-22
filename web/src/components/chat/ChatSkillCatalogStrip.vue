@@ -18,7 +18,9 @@
         <div v-if="skill.tags && skill.tags.length > 0" class="skill-catalog-strip__card-tags">
           <span v-for="tag in visibleTags(skill.tags)" :key="tag" class="skill-catalog-strip__tag">{{ tag }}</span>
         </div>
-        <q-tooltip v-if="skill.description && skill.description.length > descMaxLen" :delay="500">{{ skill.description }}</q-tooltip>
+        <q-tooltip v-if="skill.description && skill.description.length > descMaxLen" :delay="500">{{
+          skill.description
+        }}</q-tooltip>
       </div>
     </div>
     <q-btn
@@ -48,9 +50,7 @@ const props = defineProps<{
 const expanded = ref(false);
 const maxVisible = 8;
 
-const visibleSkills = computed(() =>
-  expanded.value ? props.skills : props.skills.slice(0, maxVisible),
-);
+const visibleSkills = computed(() => (expanded.value ? props.skills : props.skills.slice(0, maxVisible)));
 
 const loadedSet = ref<Set<string>>(new Set());
 

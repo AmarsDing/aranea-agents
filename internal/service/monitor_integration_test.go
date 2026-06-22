@@ -104,7 +104,7 @@ type stubEnvelope struct {
 }
 
 func (e *stubEnvelope) GetMetadata() map[string]any { return e.meta }
-func (e *stubEnvelope) GetType() string              { return e.typ }
+func (e *stubEnvelope) GetType() string             { return e.typ }
 
 // ---------------------------------------------------------------------------
 // Integration Tests: Self-Healing Loop
@@ -511,7 +511,7 @@ func TestMonitorIntegration_RootCauseEngine_AddRules(t *testing.T) {
 // monitor.FailurePatternWriter for integration tests.
 type stubFailurePatternRepo struct {
 	mu       sync.Mutex
-	patterns map[string]monitor.FailurePattern // id → pattern
+	patterns map[string]monitor.FailurePattern  // id → pattern
 	byHash   map[string]*monitor.FailurePattern // pattern_hash → pattern
 }
 
@@ -675,10 +675,10 @@ func TestMonitorIntegration_FailurePatternCRUD(t *testing.T) {
 	t.Run("ListActivePatterns", func(t *testing.T) {
 		// Add an inactive pattern
 		repo.Create(ctx, monitor.FailurePattern{
-			ID:       "fp-ci-inactive-001",
-			Source:   monitor.FailurePatternSourceCI,
+			ID:          "fp-ci-inactive-001",
+			Source:      monitor.FailurePatternSourceCI,
 			PatternHash: "hash-ci-inactive",
-			IsActive: false,
+			IsActive:    false,
 		})
 
 		active, err := repo.ListActive(ctx)

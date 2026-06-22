@@ -35,13 +35,7 @@
                 </q-item>
               </template>
             </q-select>
-            <q-input
-              v-else
-              v-model="calleeAgentId"
-              dense
-              outlined
-              class="app-glass-control"
-            />
+            <q-input v-else v-model="calleeAgentId" dense outlined class="app-glass-control" />
           </div>
         </div>
 
@@ -69,13 +63,7 @@
                 </q-item>
               </template>
             </q-select>
-            <q-input
-              v-else
-              v-model="capability"
-              dense
-              outlined
-              class="app-glass-control"
-            />
+            <q-input v-else v-model="capability" dense outlined class="app-glass-control" />
           </div>
         </div>
       </div>
@@ -95,21 +83,20 @@
         <div class="a2a-form-row">
           <div class="a2a-form-row__label">Timeout</div>
           <div class="a2a-form-row__control">
-            <q-input v-model.number="timeoutSeconds" dense outlined type="number" class="app-glass-control app-field-sm" />
+            <q-input
+              v-model.number="timeoutSeconds"
+              dense
+              outlined
+              type="number"
+              class="app-glass-control app-field-sm"
+            />
           </div>
         </div>
 
         <div class="a2a-form-row">
           <div class="a2a-form-row__label">Payload</div>
           <div class="a2a-form-row__control">
-            <q-input
-              v-model="payloadJson"
-              dense
-              outlined
-              type="textarea"
-              rows="5"
-              class="app-glass-control"
-            />
+            <q-input v-model="payloadJson" dense outlined type="textarea" rows="5" class="app-glass-control" />
           </div>
           <div class="a2a-form-row__hint">例如 {"message":"你好"}</div>
         </div>
@@ -193,10 +180,8 @@ function onFilterAgent(val: string, update: (fn: () => void) => void) {
   });
 }
 
-function onNewAgentValue(val: string, done: (fn: () => void, opts?: { replace?: boolean }) => void) {
-  done(() => {
-    calleeAgentId.value = val;
-  });
+function onNewAgentValue(val: string, done: (item?: any, mode?: 'add' | 'toggle' | 'add-unique') => void) {
+  done(val, 'add-unique');
 }
 
 function onFilterCapability(val: string, update: (fn: () => void) => void) {
@@ -208,13 +193,15 @@ function onFilterCapability(val: string, update: (fn: () => void) => void) {
   });
 }
 
-function onNewCapabilityValue(val: string, done: (fn: () => void, opts?: { replace?: boolean }) => void) {
-  done(() => {
-    capability.value = val;
-  });
+function onNewCapabilityValue(val: string, done: (item?: any, mode?: 'add' | 'toggle' | 'add-unique') => void) {
+  done(val, 'add-unique');
 }
 
 // Sync filtered options when source options change
-watch(agentOptions, (opts) => { filteredAgentOptions.value = opts; });
-watch(capabilityOptions, (opts) => { filteredCapabilityOptions.value = opts; });
+watch(agentOptions, (opts) => {
+  filteredAgentOptions.value = opts;
+});
+watch(capabilityOptions, (opts) => {
+  filteredCapabilityOptions.value = opts;
+});
 </script>

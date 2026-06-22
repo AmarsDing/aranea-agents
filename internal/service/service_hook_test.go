@@ -108,17 +108,17 @@ func TestPatchFromProtoHook_NoID(t *testing.T) {
 
 func TestToProtoHookDelivery(t *testing.T) {
 	d := biz.HookDelivery{
-		ID:            "del-1",
-		HookKey:       "on_run_complete",
-		HookID:        "hook-1",
-		WebhookURL:    "https://example.com/webhook",
-		PayloadJSON:   `{"event":"run.completed"}`,
-		Status:        hook.DeliverySuccess,
-		AttemptCount:  1,
-		MaxAttempts:   3,
-		LastError:     "",
-		CreatedAt:     "2024-01-01T10:00:00Z",
-		UpdatedAt:     "2024-01-01T10:00:01Z",
+		ID:           "del-1",
+		HookKey:      "on_run_complete",
+		HookID:       "hook-1",
+		WebhookURL:   "https://example.com/webhook",
+		PayloadJSON:  `{"event":"run.completed"}`,
+		Status:       hook.DeliverySuccess,
+		AttemptCount: 1,
+		MaxAttempts:  3,
+		LastError:    "",
+		CreatedAt:    "2024-01-01T10:00:00Z",
+		UpdatedAt:    "2024-01-01T10:00:01Z",
 	}
 	pb := service.ToProtoHookDelivery(d)
 	if pb.GetId() != "del-1" || pb.GetHookKey() != "on_run_complete" {

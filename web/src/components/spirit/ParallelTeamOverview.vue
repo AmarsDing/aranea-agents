@@ -24,16 +24,19 @@
         :value="activeCount / maxParallel"
         size="4px"
         rounded
-        :color="activeCount >= maxParallel ? 'negative' : 'accent'"      />
-      <div class="text-caption text-grey q-mt-xs">{{ t('spirit.parallelQuota', { active: activeCount, max: maxParallel }) }}</div>
+        :color="activeCount >= maxParallel ? 'negative' : 'accent'"
+      />
+      <div class="text-caption text-grey q-mt-xs">
+        {{ t('spirit.parallelQuota', { active: activeCount, max: maxParallel }) }}
+      </div>
     </div>
 
     <div v-if="allCompleted" class="parallel-team-overview__all-done q-mb-sm">
       <q-icon name="check_circle" size="16px" color="positive" class="q-mr-xs" />
       <span class="text-caption">{{ t('spirit.allTeamsCompleted') }}</span>
       <span v-if="completionStats" class="text-caption text-grey q-ml-sm">
-        ({{ completionStats.completedTeams }}/{{ completionStats.totalTeams }} {{ t('spirit.success') }}<span
-          v-if="completionStats.failedTeams > 0"
+        ({{ completionStats.completedTeams }}/{{ completionStats.totalTeams }} {{ t('spirit.success')
+        }}<span v-if="completionStats.failedTeams > 0"
           >, {{ completionStats.failedTeams }} {{ t('spirit.failed') }}</span
         >)
       </span>

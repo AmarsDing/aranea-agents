@@ -9,26 +9,26 @@ const OrchestrationSpecVersion = 2
 
 // OrchestrationSpec is the v2 strong-typed team orchestration document (TG-CMP-V2).
 type OrchestrationSpec struct {
-	Version               int                  `json:"version"`
-	Mode                  string               `json:"mode"`
-	Members               []OrchestrationMember `json:"members"`
-	Graph                 *EmbeddedGraphSpec   `json:"graph,omitempty"`
-	LinkedGraphID         string               `json:"linked_graph_id,omitempty"`
-	FailurePolicy         *TeamFailurePolicy   `json:"failure_policy,omitempty"`
-	RuntimeEngine         string               `json:"runtime_engine,omitempty"`
-	TeamGraphRuntime      bool                 `json:"team_graph_runtime,omitempty"`
-	TurnTimeoutSec        int                  `json:"turn_timeout_sec,omitempty"`
-	FirstByteTimeoutSec   int                  `json:"first_byte_timeout_sec,omitempty"`
-	IntentAnchorAgentID   string               `json:"intent_anchor_agent_id,omitempty"`
-	Description           string               `json:"description,omitempty"`
-	MaxConcurrency        int                  `json:"max_concurrency,omitempty"`
+	Version             int                   `json:"version"`
+	Mode                string                `json:"mode"`
+	Members             []OrchestrationMember `json:"members"`
+	Graph               *EmbeddedGraphSpec    `json:"graph,omitempty"`
+	LinkedGraphID       string                `json:"linked_graph_id,omitempty"`
+	FailurePolicy       *TeamFailurePolicy    `json:"failure_policy,omitempty"`
+	RuntimeEngine       string                `json:"runtime_engine,omitempty"`
+	TeamGraphRuntime    bool                  `json:"team_graph_runtime,omitempty"`
+	TurnTimeoutSec      int                   `json:"turn_timeout_sec,omitempty"`
+	FirstByteTimeoutSec int                   `json:"first_byte_timeout_sec,omitempty"`
+	IntentAnchorAgentID string                `json:"intent_anchor_agent_id,omitempty"`
+	Description         string                `json:"description,omitempty"`
+	MaxConcurrency      int                   `json:"max_concurrency,omitempty"`
 	// Deprecated: use RunTimeoutSec
-	TimeoutSeconds        int                  `json:"timeout_seconds,omitempty"`
-	RunTimeoutSec         int                  `json:"run_timeout_sec,omitempty"`
-	LoopMaxIterations     int                  `json:"loop_max_iterations,omitempty"`
-	SynthesizerAgentID    string               `json:"synthesizer_agent_id,omitempty"`
-	CriticLoop            *CriticLoopSpec      `json:"critic_loop,omitempty"`
-	EnableCheckpoint      bool                 `json:"enable_checkpoint,omitempty"`
+	TimeoutSeconds     int             `json:"timeout_seconds,omitempty"`
+	RunTimeoutSec      int             `json:"run_timeout_sec,omitempty"`
+	LoopMaxIterations  int             `json:"loop_max_iterations,omitempty"`
+	SynthesizerAgentID string          `json:"synthesizer_agent_id,omitempty"`
+	CriticLoop         *CriticLoopSpec `json:"critic_loop,omitempty"`
+	EnableCheckpoint   bool            `json:"enable_checkpoint,omitempty"`
 }
 
 type OrchestrationMember struct {
@@ -51,8 +51,8 @@ func (m OrchestrationMember) Enabled() bool {
 }
 
 type EmbeddedGraphSpec struct {
-	Version int                    `json:"version"`
-	Layout  string                 `json:"layout"`
+	Version int                     `json:"version"`
+	Layout  string                  `json:"layout"`
 	Nodes   []EmbeddedGraphNodeSpec `json:"nodes"`
 	Edges   []EmbeddedGraphEdgeSpec `json:"edges"`
 }

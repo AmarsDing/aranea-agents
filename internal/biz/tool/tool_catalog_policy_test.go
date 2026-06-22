@@ -204,8 +204,8 @@ func TestSanitizeToolInvocationWrite(t *testing.T) {
 		check func(t *testing.T, in *ToolInvocationWrite)
 	}{
 		{
-			name: "nil input no panic",
-			in:   nil,
+			name:  "nil input no panic",
+			in:    nil,
 			check: func(t *testing.T, in *ToolInvocationWrite) {},
 		},
 		{
@@ -359,8 +359,8 @@ func TestToolConfigReady(t *testing.T) {
 		{
 			name: "google_search ready",
 			tool: Tool{
-				Key:            "google_search",
-				ConfigJSON:     `{"api_key": "test", "cx": "my-cx"}`,
+				Key:               "google_search",
+				ConfigJSON:        `{"api_key": "test", "cx": "my-cx"}`,
 				DefaultConfigJSON: "",
 			},
 			platform: nil,
@@ -369,8 +369,8 @@ func TestToolConfigReady(t *testing.T) {
 		{
 			name: "google_search missing api_key",
 			tool: Tool{
-				Key:            "google_search",
-				ConfigJSON:     `{"cx": "my-cx"}`,
+				Key:               "google_search",
+				ConfigJSON:        `{"cx": "my-cx"}`,
 				DefaultConfigJSON: "",
 			},
 			platform: nil,
@@ -379,8 +379,8 @@ func TestToolConfigReady(t *testing.T) {
 		{
 			name: "google_search missing cx",
 			tool: Tool{
-				Key:            "google_search",
-				ConfigJSON:     `{"api_key": "test"}`,
+				Key:               "google_search",
+				ConfigJSON:        `{"api_key": "test"}`,
 				DefaultConfigJSON: "",
 			},
 			platform: nil,
@@ -389,8 +389,8 @@ func TestToolConfigReady(t *testing.T) {
 		{
 			name: "google_search with google_api_key alias",
 			tool: Tool{
-				Key:            "google_search",
-				ConfigJSON:     `{"google_api_key": "test", "search_engine_id": "my-cx"}`,
+				Key:               "google_search",
+				ConfigJSON:        `{"google_api_key": "test", "search_engine_id": "my-cx"}`,
 				DefaultConfigJSON: "",
 			},
 			platform: nil,
@@ -399,8 +399,8 @@ func TestToolConfigReady(t *testing.T) {
 		{
 			name: "gemini_web_fetch ready",
 			tool: Tool{
-				Key:            "gemini_web_fetch",
-				ConfigJSON:     `{"model": "gemini-pro"}`,
+				Key:               "gemini_web_fetch",
+				ConfigJSON:        `{"model": "gemini-pro"}`,
 				DefaultConfigJSON: "",
 			},
 			platform: nil,
@@ -409,8 +409,8 @@ func TestToolConfigReady(t *testing.T) {
 		{
 			name: "gemini_web_fetch missing model",
 			tool: Tool{
-				Key:            "gemini_web_fetch",
-				ConfigJSON:     `{}`,
+				Key:               "gemini_web_fetch",
+				ConfigJSON:        `{}`,
 				DefaultConfigJSON: "",
 			},
 			platform: nil,
@@ -419,8 +419,8 @@ func TestToolConfigReady(t *testing.T) {
 		{
 			name: "gemini_web_fetch with gemini_model alias",
 			tool: Tool{
-				Key:            "gemini_web_fetch",
-				ConfigJSON:     `{"gemini_model": "gemini-pro"}`,
+				Key:               "gemini_web_fetch",
+				ConfigJSON:        `{"gemini_model": "gemini-pro"}`,
 				DefaultConfigJSON: "",
 			},
 			platform: nil,
@@ -429,8 +429,8 @@ func TestToolConfigReady(t *testing.T) {
 		{
 			name: "web_research ready via platform HasAPIKey",
 			tool: Tool{
-				Key:            "web_research",
-				ConfigJSON:     "",
+				Key:               "web_research",
+				ConfigJSON:        "",
 				DefaultConfigJSON: "",
 			},
 			platform: &WebResearchSetting{HasAPIKey: true},
@@ -439,8 +439,8 @@ func TestToolConfigReady(t *testing.T) {
 		{
 			name: "web_research ready via platform APIKey",
 			tool: Tool{
-				Key:            "web_research",
-				ConfigJSON:     "",
+				Key:               "web_research",
+				ConfigJSON:        "",
 				DefaultConfigJSON: "",
 			},
 			platform: &WebResearchSetting{APIKey: "sk-test"},
@@ -449,8 +449,8 @@ func TestToolConfigReady(t *testing.T) {
 		{
 			name: "web_research ready via config api_key",
 			tool: Tool{
-				Key:            "web_research",
-				ConfigJSON:     `{"api_key": "sk-test"}`,
+				Key:               "web_research",
+				ConfigJSON:        `{"api_key": "sk-test"}`,
 				DefaultConfigJSON: "",
 			},
 			platform: nil,
@@ -459,8 +459,8 @@ func TestToolConfigReady(t *testing.T) {
 		{
 			name: "web_research not ready",
 			tool: Tool{
-				Key:            "web_research",
-				ConfigJSON:     "",
+				Key:               "web_research",
+				ConfigJSON:        "",
 				DefaultConfigJSON: "",
 			},
 			platform: nil,
@@ -469,8 +469,8 @@ func TestToolConfigReady(t *testing.T) {
 		{
 			name: "default tool always ready",
 			tool: Tool{
-				Key:            "shell_exec",
-				ConfigJSON:     "",
+				Key:               "shell_exec",
+				ConfigJSON:        "",
 				DefaultConfigJSON: "",
 			},
 			platform: nil,
@@ -479,8 +479,8 @@ func TestToolConfigReady(t *testing.T) {
 		{
 			name: "empty config default tool ready",
 			tool: Tool{
-				Key:            "read_file",
-				ConfigJSON:     "",
+				Key:               "read_file",
+				ConfigJSON:        "",
 				DefaultConfigJSON: "",
 			},
 			platform: nil,

@@ -40,11 +40,11 @@ type PlanInput struct {
 
 // PlanAdjustments allows Spirit LLM to adjust the plan
 type PlanAdjustments struct {
-	MergeSubTasks    []string    // subtask IDs to merge
-	SplitSubTask     string      // subtask ID to split
+	MergeSubTasks    []string     // subtask IDs to merge
+	SplitSubTask     string       // subtask ID to split
 	AddSubTask       *SubTaskSpec // new subtask to add
-	RemoveSubTask    string      // subtask ID to remove
-	StrategyOverride string      // override the suggested strategy
+	RemoveSubTask    string       // subtask ID to remove
+	StrategyOverride string       // override the suggested strategy
 	Reason           string
 }
 

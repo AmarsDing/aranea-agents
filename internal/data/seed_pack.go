@@ -116,7 +116,7 @@ func NewPackSeeder(d *Data) *PackSeeder {
 
 // SeedPackIndustry implements biz.PackSeeder.
 func (s *PackSeeder) SeedPackIndustry(ctx context.Context, scenarioDir, industryKey, kindOverride string) (int, int, error) {
-	return SeedPackIndustry(ctx, s.data.Ent(), scenarioDir, industryKey, kindOverride, s.data.lg)
+	return SeedPackIndustry(ctx, s.data.RW().Write(ctx), scenarioDir, industryKey, kindOverride, s.data.lg)
 }
 
 // SeedPackIndustry 使用 Pack 引擎加载行业数据。
@@ -165,8 +165,8 @@ func seedGraphTemplatesCompat(ctx context.Context, client *ent.Client, lg loggat
 }
 
 // newDataFromClient 创建一个最小化的 Data 实例，用于 seed 场景下创建 Repo。
-// WARNING: 此实例缺少 rawDB/readDB/rwDB 字段，仅适用于使用 Ent API（d.RW()/d.Ent()）的 Repo。
-// 任何需要原生 SQL（d.RWDB()/d.RawDB()）的操作都会 panic。
+// WARNING: 此实例缺少 rawDB/readDB/rwDB 字段，仅适用于使用 Ent API（d.RW()）的 Repo。
+// 任何需要原生 SQL（d.RWDB()）的操作都会 panic。
 func newDataFromClient(client *ent.Client, lg loggateway.Logger) *Data {
 	return &Data{
 		entClient:  client,

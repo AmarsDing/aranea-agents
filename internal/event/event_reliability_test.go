@@ -56,7 +56,7 @@ func TestClassifyEventReliability_Informational(t *testing.T) {
 
 func TestIsCriticalWBPFType(t *testing.T) {
 	tests := []struct {
-		typ contract.EnvelopeType
+		typ  contract.EnvelopeType
 		want bool
 	}{
 		{contract.EnvelopeTypeToolResult, true},

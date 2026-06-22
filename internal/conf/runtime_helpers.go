@@ -5,19 +5,19 @@ import "time"
 // RuntimeWSConfig returns resolved WebSocket config values with zero-value defaults.
 // Zero values in config.yaml fall back to the previous hardcoded constants.
 type RuntimeWSConfig struct {
-	ReadLimit              int64
-	PongWait               time.Duration
-	PingPeriod             time.Duration
-	WriteWait              time.Duration
-	TurnTimeout            time.Duration
-	MaxSessionConns        int32
-	MaxGlobalMonitorConns  int32
-	HighCap                int32
-	NormalCap              int32
-	LowCap                 int32
-	HighBlockTimeout       time.Duration
-	BackpressureInterval   time.Duration
-	LowDrainPerLoop        int32
+	ReadLimit             int64
+	PongWait              time.Duration
+	PingPeriod            time.Duration
+	WriteWait             time.Duration
+	TurnTimeout           time.Duration
+	MaxSessionConns       int32
+	MaxGlobalMonitorConns int32
+	HighCap               int32
+	NormalCap             int32
+	LowCap                int32
+	HighBlockTimeout      time.Duration
+	BackpressureInterval  time.Duration
+	LowDrainPerLoop       int32
 }
 
 func (r *Runtime) WSConfig() RuntimeWSConfig {
@@ -78,13 +78,13 @@ func (r *Runtime) WSConfig() RuntimeWSConfig {
 
 // RuntimeHookConfig returns resolved Hook config values with zero-value defaults.
 type RuntimeHookConfig struct {
-	DefaultMaxAttempts  int32
-	DefaultTimeoutSec   int32
-	RetryBackoffBase    time.Duration
-	RetryPollInterval   time.Duration
-	RetryStaleAfter     time.Duration
-	RetryBatchSize      int32
-	RetryQueryTimeout   time.Duration
+	DefaultMaxAttempts int32
+	DefaultTimeoutSec  int32
+	RetryBackoffBase   time.Duration
+	RetryPollInterval  time.Duration
+	RetryStaleAfter    time.Duration
+	RetryBatchSize     int32
+	RetryQueryTimeout  time.Duration
 }
 
 func (r *Runtime) HookConfig() RuntimeHookConfig {
@@ -122,15 +122,15 @@ func (r *Runtime) HookConfig() RuntimeHookConfig {
 
 // RuntimeSelfHealConfig returns resolved SelfHeal config values with zero-value defaults.
 type RuntimeSelfHealConfig struct {
-	MinConfidence             float64
-	MaxHistory                int32
-	CircuitBreakerWindow      time.Duration
-	CircuitBreakerThreshold   int32
-	CircuitBreakerResetAfter  time.Duration
-	SeverityCooldownCritical  time.Duration
-	SeverityCooldownHigh      time.Duration
-	SeverityCooldownMedium    time.Duration
-	SeverityCooldownLow       time.Duration
+	MinConfidence            float64
+	MaxHistory               int32
+	CircuitBreakerWindow     time.Duration
+	CircuitBreakerThreshold  int32
+	CircuitBreakerResetAfter time.Duration
+	SeverityCooldownCritical time.Duration
+	SeverityCooldownHigh     time.Duration
+	SeverityCooldownMedium   time.Duration
+	SeverityCooldownLow      time.Duration
 }
 
 func (r *Runtime) SelfHealConfig() RuntimeSelfHealConfig {
@@ -173,11 +173,11 @@ func (r *Runtime) SelfHealConfig() RuntimeSelfHealConfig {
 
 // RuntimeMemoryQueueConfig returns resolved MemoryQueue config values with zero-value defaults.
 type RuntimeMemoryQueueConfig struct {
-	HighCap             int32
-	NormalCap           int32
-	LowCap              int32
+	HighCap              int32
+	NormalCap            int32
+	LowCap               int32
 	MaxTenantNormalSlots int32
-	Debounce            time.Duration
+	Debounce             time.Duration
 }
 
 func (r *Runtime) MemoryQueueConfig() RuntimeMemoryQueueConfig {
@@ -213,8 +213,8 @@ func (r *Runtime) MemoryQueueConfig() RuntimeMemoryQueueConfig {
 
 // RuntimeWebhookConfig returns resolved Webhook rate-limit config values with zero-value defaults.
 type RuntimeWebhookConfig struct {
-	RateLimitPerMin   int32
-	StaleThreshold    time.Duration
+	RateLimitPerMin int32
+	StaleThreshold  time.Duration
 }
 
 func (r *Runtime) WebhookConfig() RuntimeWebhookConfig {
@@ -261,10 +261,10 @@ func (r *Runtime) AutoMemoryConfig() RuntimeAutoMemoryConfig {
 
 // RuntimeActivityFlusherConfig returns resolved ActivityFlusher config values with zero-value defaults.
 type RuntimeActivityFlusherConfig struct {
-	BatchSize      int32
-	FlushInterval  time.Duration
-	ChannelBuffer  int32
-	DBTimeout      time.Duration
+	BatchSize     int32
+	FlushInterval time.Duration
+	ChannelBuffer int32
+	DBTimeout     time.Duration
 }
 
 func (r *Runtime) ActivityFlusherConfig() RuntimeActivityFlusherConfig {

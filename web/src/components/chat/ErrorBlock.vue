@@ -69,11 +69,7 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { ErrorEvent } from '../../features/chat/streamEventTypes';
-import {
-  getErrorAction,
-  getActionHintLabelKey,
-  type ErrorAction,
-} from '../../features/chat/errorCodeHints';
+import { getErrorAction, getActionHintLabelKey, type ErrorAction } from '../../features/chat/errorCodeHints';
 
 const { t } = useI18n();
 
@@ -106,12 +102,24 @@ const hintLabel = computed(() => {
   return t(key);
 });
 
-function onRetry() { emit('retry', props.event); }
-function onSwitchModel() { emit('switch-model', props.event); }
-function onRephrase() { emit('rephrase', props.event); }
-function onCheckConfig() { emit('check-config', props.event); }
-function onRemoveAttachment() { emit('remove-attachment', props.event); }
-function onRelogin() { emit('relogin', props.event); }
+function onRetry() {
+  emit('retry', props.event);
+}
+function onSwitchModel() {
+  emit('switch-model', props.event);
+}
+function onRephrase() {
+  emit('rephrase', props.event);
+}
+function onCheckConfig() {
+  emit('check-config', props.event);
+}
+function onRemoveAttachment() {
+  emit('remove-attachment', props.event);
+}
+function onRelogin() {
+  emit('relogin', props.event);
+}
 </script>
 
 <style lang="sass" scoped>

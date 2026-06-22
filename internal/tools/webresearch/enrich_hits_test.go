@@ -60,10 +60,10 @@ func TestEnrichHits(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := webresearch.Config{
-				Provider:  "tavily",
-				APIKey:    "test-key",
-				Timeout:   5 * time.Second,
-				FetchTop:  tt.fetchTop,
+				Provider: "tavily",
+				APIKey:   "test-key",
+				Timeout:  5 * time.Second,
+				FetchTop: tt.fetchTop,
 			}
 			warnings, err := webresearch.EnrichHits(context.Background(), tt.hits, tt.fetchTop, cfg, loggateway.NewNoop())
 			if (err != nil) != tt.wantErr {

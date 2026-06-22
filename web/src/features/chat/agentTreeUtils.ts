@@ -3,7 +3,8 @@
  */
 
 /** Format milliseconds into a human-readable duration string. */
-export function formatDuration(ms: number): string {
+export function formatDuration(ms: number | null | undefined): string {
+  if (ms == null || ms <= 0) return '';
   if (ms < 1000) return `${ms}ms`;
   const sec = Math.round(ms / 1000);
   if (sec < 60) return `${sec}s`;

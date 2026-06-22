@@ -1,5 +1,6 @@
 import type { PlatformResource, PlatformResourceTreeNode } from '../../features/platform/types';
 import type { Agent } from '../../features/agents/types';
+import { tokenEstimateFor } from '../../features/agents/agentUtils';
 
 export type PromptMode = 'complete' | 'task' | 'minimized' | 'none';
 export type PromptModeOption = (typeof promptModes)[number];
@@ -165,7 +166,6 @@ export function promptModeLabel(value: string) {
   return promptModes.find((mode) => mode.value === value)?.label ?? '完整';
 }
 
-// Re-export from features/agents/agentUtils.ts (F-07 fix: canonical location)
 export { tokenEstimateFor } from '../../features/agents/agentUtils';
 
 export function tokenText(value: string) {
@@ -247,7 +247,13 @@ export function isAgentEvolving(agent: Agent, pendingSuggestions = agent.pending
 }
 
 /** 框架记忆工具（5 个） */
-const FRAMEWORK_MEMORY_TOOLS = new Set(['memory_add', 'memory_update', 'memory_delete', 'memory_search', 'memory_load']);
+const FRAMEWORK_MEMORY_TOOLS = new Set([
+  'memory_add',
+  'memory_update',
+  'memory_delete',
+  'memory_search',
+  'memory_load',
+]);
 
 /** 工作记忆工具（5 个） */
 const WORKING_MEMORY_TOOLS = new Set([

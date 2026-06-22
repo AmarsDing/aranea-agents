@@ -28,7 +28,7 @@ func TestValidateOutboundMeta_requiredRecipient(t *testing.T) {
 
 func TestValidateOutboundMeta_unknownKey(t *testing.T) {
 	issues := ValidateOutboundMeta("feishu", map[string]string{
-		MetaRecipient: "ou_1",
+		MetaRecipient:  "ou_1",
 		"custom_field": "x",
 	})
 	if len(issues) != 1 || issues[0] != "unknown meta key: custom_field" {

@@ -407,9 +407,9 @@ func TestToolKeyFromTool_trimsName(t *testing.T) {
 
 func TestPlatformFieldsFromBiz_fieldMapping(t *testing.T) {
 	tests := []struct {
-		name    string
+		name     string
 		platform biz.WebResearchSetting
-		want    webresearchpkg.PlatformFields
+		want     webresearchpkg.PlatformFields
 	}{
 		{
 			name: "all_fields_mapped",
@@ -435,9 +435,9 @@ func TestPlatformFieldsFromBiz_fieldMapping(t *testing.T) {
 			},
 		},
 		{
-			name:    "empty_fields",
+			name:     "empty_fields",
 			platform: biz.WebResearchSetting{},
-			want:    webresearchpkg.PlatformFields{},
+			want:     webresearchpkg.PlatformFields{},
 		},
 	}
 	for _, tt := range tests {

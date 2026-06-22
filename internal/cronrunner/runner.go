@@ -78,9 +78,9 @@ type CronRegistrySyncAgent interface {
 
 // Runner executes due cron_task rows on an interval (ported from pkg/backend CronRunner).
 type Runner struct {
-	deps Deps
-	lg   loggateway.Logger
-	mu   sync.Mutex
+	deps   Deps
+	lg     loggateway.Logger
+	mu     sync.Mutex
 	taskMu sync.Map
 }
 

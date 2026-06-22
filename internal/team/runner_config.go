@@ -32,6 +32,6 @@ type RunnerConfig struct {
 	GraphRoot         graphadapter.TeamGraphRootBuilder
 	// TECH-DEBT(COG): concrete_deps=2, limit=0; PluginRT and PluginManager are still concrete types; extract
 	// narrow interfaces once plugin/trpc API surface is stabilized.
-	PluginRT          *plugintrpc.Runtime
-	PluginManager     *plugintrpc.Manager
+	PluginRT      *plugintrpc.Runtime
+	PluginManager *plugintrpc.Manager
 }

@@ -15,11 +15,11 @@ type EcosystemLoadedStatus map[string]IndustryLoadInfo
 
 // IndustryLoadInfo holds the load state for a single industry.
 type IndustryLoadInfo struct {
-	Loaded        bool   `json:"loaded"`
-	LoadedAt      string `json:"loaded_at,omitempty"`
-	Agents        int    `json:"agents,omitempty"`
-	Teams         int    `json:"teams,omitempty"`
-	OrgNodes       int    `json:"org_nodes,omitempty"`
+	Loaded   bool   `json:"loaded"`
+	LoadedAt string `json:"loaded_at,omitempty"`
+	Agents   int    `json:"agents,omitempty"`
+	Teams    int    `json:"teams,omitempty"`
+	OrgNodes int    `json:"org_nodes,omitempty"`
 }
 
 // LoadResult contains the result of loading an industry.
@@ -31,10 +31,10 @@ type LoadResult struct {
 
 // UnloadResult contains the result of unloading an industry.
 type UnloadResult struct {
-	AgentsDeleted        int `json:"agents_deleted"`
-	TeamsDeleted         int `json:"teams_deleted"`
-	OrgNodesDeleted      int `json:"org_nodes_deleted"`
-	TeamsModified        int `json:"teams_modified,omitempty"`
+	AgentsDeleted   int `json:"agents_deleted"`
+	TeamsDeleted    int `json:"teams_deleted"`
+	OrgNodesDeleted int `json:"org_nodes_deleted"`
+	TeamsModified   int `json:"teams_modified,omitempty"`
 }
 
 // EcosystemLoadResponse is the API response for load.
@@ -208,10 +208,10 @@ func (uc *EcosystemPresetUsecase) UnloadEcosystemPreset(ctx context.Context, ind
 		// Mark as unloaded regardless of partial failures, since data has been partially deleted
 		status[ind] = IndustryLoadInfo{Loaded: false}
 		resp.Results[ind] = &UnloadResult{
-			AgentsDeleted:        agentsDeleted,
-			TeamsDeleted:         teamsDeleted,
+			AgentsDeleted:   agentsDeleted,
+			TeamsDeleted:    teamsDeleted,
 			OrgNodesDeleted: taxDeleted,
-			TeamsModified:        teamsModified,
+			TeamsModified:   teamsModified,
 		}
 		if partialErr != "" {
 			resp.Errors[ind] = partialErr

@@ -58,9 +58,7 @@
       <Transition name="thinking-expand" mode="out-in">
         <!-- Collapsed summary -->
         <div v-if="!expanded" key="collapsed" class="thinking-area__collapsed-wrap" @click="expanded = true">
-          <span class="thinking-area__collapsed-btn">
-            🧠 {{ summaryText }}
-          </span>
+          <span class="thinking-area__collapsed-btn"> 🧠 {{ summaryText }} </span>
         </div>
         <!-- Expanded full reasoning -->
         <div v-else key="expanded" class="thinking-area__expanded-wrap">

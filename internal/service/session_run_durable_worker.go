@@ -14,10 +14,10 @@ const sessionRunWorkerPollInterval = 5 * time.Second
 
 // SessionRunDurableWorker resumes agent turns from durable checkpoints (CC-R-03).
 type SessionRunDurableWorker struct {
-	runs     *biz.SessionRunUsecase
-	runCtrl  biz.TurnRunControlGateway
-	resumer  biz.DurableResumeGateway
-	lg       loggateway.Logger
+	runs    *biz.SessionRunUsecase
+	runCtrl biz.TurnRunControlGateway
+	resumer biz.DurableResumeGateway
+	lg      loggateway.Logger
 }
 
 func NewSessionRunDurableWorker(runs *biz.SessionRunUsecase, runCtrl biz.TurnRunControlGateway, resumer biz.DurableResumeGateway, lg loggateway.Logger) *SessionRunDurableWorker {

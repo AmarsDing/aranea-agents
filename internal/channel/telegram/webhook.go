@@ -20,7 +20,7 @@ type InboundMessage struct {
 type updateEnvelope struct {
 	UpdateID int64 `json:"update_id"`
 	Message  *struct {
-		MessageID int64 `json:"message_id"`
+		MessageID int64  `json:"message_id"`
 		Text      string `json:"text"`
 		From      *struct {
 			IsBot    bool   `json:"is_bot"`

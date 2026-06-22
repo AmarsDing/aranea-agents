@@ -302,6 +302,8 @@ export async function getSkillHealth(skillId: string): Promise<SkillHealthMetric
           invocations: Number(dm.invocations ?? 0),
           successes: Number(dm.successes ?? 0),
           avg_duration_ms: Number(dm.avg_duration_ms ?? dm.avgDurationMs ?? 0),
+          routed_count: Number(dm.routed_count ?? dm.routedCount ?? 0),
+          loaded_count: Number(dm.loaded_count ?? dm.loadedCount ?? 0),
         };
       })
     : [];
@@ -315,6 +317,8 @@ export async function getSkillHealth(skillId: string): Promise<SkillHealthMetric
     success_count_30d: n('success_count_30d', 'successCount30d'),
     success_rate_30d: n('success_rate_30d', 'successRate30d'),
     p95_duration_ms_30d: n('p95_duration_ms_30d', 'p95DurationMs30d'),
+    route_hit_rate_7d: n('route_hit_rate_7d', 'routeHitRate7d'),
+    route_hit_rate_30d: n('route_hit_rate_30d', 'routeHitRate30d'),
     daily_metrics: dailyMetrics,
   };
 }
@@ -483,22 +487,39 @@ export async function triggerCuratorFlow(skillId: string): Promise<EvolutionSugg
 
 // ── A-02 fix: add missing Skill RPC wrappers ──────────────────────
 
-export async function createSkill(payload: { name: string; description?: string; slug?: string; tags?: string[] }): Promise<Skill> {
+function toSkillTags(tags?: string[]): SkillTag[] | undefined {
+  if (!tags || tags.length === 0) return undefined;
+  return tags.map((name) => ({ name, source: 'user' }));
+}
+
+export async function createSkill(payload: {
+  name: string;
+  description?: string;
+  slug?: string;
+  tags?: string[];
+  bodyMarkdown?: string;
+}): Promise<Skill> {
   const row = await createSkillService().CreateSkill({
     name: payload.name,
     description: payload.description || undefined,
     slug: payload.slug || undefined,
-    tags: payload.tags?.join(',') || undefined,
+    bodyMarkdown: payload.bodyMarkdown || undefined,
+    tags: toSkillTags(payload.tags),
   });
   return mapSkill(row);
 }
 
-export async function updateSkill(id: string, payload: { name?: string; description?: string; tags?: string[] }): Promise<Skill> {
+export async function updateSkill(
+  id: string,
+  payload: { name?: string; description?: string; tags?: string[]; bodyMarkdown?: string },
+): Promise<Skill> {
   const row = await createSkillService().UpdateSkill({
     id,
     name: payload.name || undefined,
     description: payload.description || undefined,
-    tags: payload.tags?.join(',') || undefined,
+    bodyMarkdown: payload.bodyMarkdown || undefined,
+    replaceTags: true,
+    tags: toSkillTags(payload.tags),
   });
   return mapSkill(row);
 }
@@ -508,13 +529,13 @@ export async function deleteSkillFile(id: string, path: string): Promise<void> {
 }
 
 export async function previewSkillRuntime(id: string): Promise<{ preview: string }> {
-  const res = await createSkillService().PreviewSkillRuntime({ id });
+  const res = await createSkillService().PreviewSkillRuntime({ agentId: id, userQuery: undefined });
   const r = res as Record<string, unknown>;
   return { preview: String(r.preview ?? r.preview_output ?? '') };
 }
 
 export async function getSkillVersions(id: string, page = 1, pageSize = 20): Promise<PaginatedResponse<unknown>> {
-  const res = await createSkillService().GetSkillVersions({ id, page, pageSize });
+  const res = await createSkillService().GetSkillVersions({ skillId: id, page, pageSize });
   const r = res as Record<string, unknown>;
   const items = (r.items ?? []) as unknown[];
   return {
@@ -526,7 +547,7 @@ export async function getSkillVersions(id: string, page = 1, pageSize = 20): Pro
 }
 
 export async function rollbackSkillVersion(id: string, versionId: string): Promise<Skill> {
-  const row = await createSkillService().RollbackSkillVersion({ id, versionId });
+  const row = await createSkillService().RollbackSkillVersion({ skillId: id, versionId });
   return mapSkill(row);
 }
 
@@ -573,7 +594,7 @@ export async function listUnifiedEvolutionSuggestions(params: {
     for (const item of skillRes.items || []) {
       items.push(mapProtoEvolutionSuggestionToView(item));
     }
-    skillTotal = skillRes.total || 0;
+    skillTotal = Number(skillRes.total || 0);
   }
 
   // Fetch from SkillEvolutionService (agent-level)
@@ -588,7 +609,7 @@ export async function listUnifiedEvolutionSuggestions(params: {
     for (const item of agentRes.items || []) {
       items.push(mapProtoSkillProposalToView(item));
     }
-    agentTotal = agentRes.total || (agentRes.items || []).length;
+    agentTotal = Number(agentRes.total || (agentRes.items || []).length);
   }
 
   return { items, total: skillTotal + agentTotal, skillTotal, agentTotal };

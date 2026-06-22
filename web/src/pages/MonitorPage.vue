@@ -97,13 +97,13 @@
         </q-tab-panel>
         <q-tab-panel name="traces">
           <TraceList
+            v-model:detail-open="traceDetailOpen"
             :rows="traces"
             :loading="loadingTraces"
             :highlight-usage-event-id="highlightUsageEventId"
             :flow-lines="flowLines"
             :active-correlation="activeCorrelation"
             :detail="traceDetail"
-            v-model:detail-open="traceDetailOpen"
             @reload="loadTraces"
             @notify="notify"
             @open-trace="openTraceDetail"
@@ -111,11 +111,7 @@
           />
         </q-tab-panel>
         <q-tab-panel name="logs" class="monitor-logs-panel">
-          <LogStreamPanel
-            :sub-tab="subTab"
-            @update:sub-tab="subTab = $event"
-            @clear-flow="confirmClearFlow"
-          />
+          <LogStreamPanel :sub-tab="subTab" @update:sub-tab="subTab = $event" @clear-flow="confirmClearFlow" />
         </q-tab-panel>
       </q-tab-panels>
     </div>

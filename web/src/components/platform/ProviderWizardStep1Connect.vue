@@ -25,7 +25,7 @@
         debounce="300"
         label="搜索供应商"
         class="app-grid-span-full"
-        @update:model-value="$emit('update:catalogProviderSearch', $event)"
+        @update:model-value="$emit('update:catalogProviderSearch', String($event ?? ''))"
       />
       <q-select
         v-if="providerAddMode === 'catalog'"
@@ -292,7 +292,7 @@ const props = defineProps<{
 
 defineEmits<{
   'update:providerAddMode': [value: string];
-  'update:catalogProviderSearch': [value: string | null];
+  'update:catalogProviderSearch': [value: string];
   'update:catalogProviderId': [value: string];
   'update:providerPresetKey': [value: string];
   'toggle-api-key-visibility': [];

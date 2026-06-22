@@ -166,8 +166,8 @@ func TestBizMonitorRowToProto(t *testing.T) {
 		{
 			name: "nil_json_fields",
 			in: biz.MonitorPlatformRow{
-				ID:         "row-2",
-				ConfigJSON: "",
+				ID:           "row-2",
+				ConfigJSON:   "",
 				MetadataJSON: "",
 			},
 			want: &v1.MonitorPlatformRow{
@@ -179,8 +179,8 @@ func TestBizMonitorRowToProto(t *testing.T) {
 		{
 			name: "invalid_json_passthrough",
 			in: biz.MonitorPlatformRow{
-				ID:         "row-3",
-				ConfigJSON: "{not json}",
+				ID:           "row-3",
+				ConfigJSON:   "{not json}",
 				MetadataJSON: "  ",
 			},
 			want: &v1.MonitorPlatformRow{
@@ -457,9 +457,9 @@ func TestFromProtoAlertRule(t *testing.T) {
 
 func TestNotFoundMonitor(t *testing.T) {
 	cases := []struct {
-		name        string
-		err         error
-		wantNotFound bool
+		name            string
+		err             error
+		wantNotFound    bool
 		wantPassThrough bool
 	}{
 		{
@@ -494,8 +494,8 @@ func TestNotFoundMonitor(t *testing.T) {
 				if !ok {
 					t.Fatalf("expected apierror, got %T: %v", got, got)
 				}
-				if ae.Domain != "MONITOR_NOT_FOUND" {
-					t.Errorf("Domain = %q, want %q", ae.Domain, "MONITOR_NOT_FOUND")
+				if ae.Domain != apierror.DomainMonitor {
+					t.Errorf("Domain = %q, want %q", ae.Domain, apierror.DomainMonitor)
 				}
 				if ae.Code != apierror.CodeNotFound {
 					t.Errorf("Code = %v, want NOT_FOUND", ae.Code)

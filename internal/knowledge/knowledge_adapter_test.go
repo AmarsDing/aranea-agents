@@ -48,9 +48,9 @@ func TestKnowledgeAdapter_Search_ConvertsCorrectly(t *testing.T) {
 	adapter := NewKnowledgeAdapter(searchFunc, loggateway.NewNoop())
 
 	req := &knowledge.SearchRequest{
-		Query:       "what is Go",
-		MaxResults:  10,
-		MinScore:    0.5,
+		Query:      "what is Go",
+		MaxResults: 10,
+		MinScore:   0.5,
 		SearchFilter: &knowledge.SearchFilter{
 			Metadata: map[string]any{
 				"collection_id": "col-1",

@@ -40,7 +40,7 @@ func EstimateTokensIfMissing(promptTok, completionTok int, inputPreview, display
 	if promptTok > 0 || completionTok > 0 || displayMarkdown == "" {
 		return promptTok, completionTok
 	}
-	return RoughTokenEstimate(inputPreview+displayMarkdown), RoughTokenEstimate(displayMarkdown)
+	return RoughTokenEstimate(inputPreview + displayMarkdown), RoughTokenEstimate(displayMarkdown)
 }
 
 // ConsumeWithFirstByteGuard runs the turn stream consumer with a first-byte deadline.

@@ -49,43 +49,71 @@ func entSessionTurnToBiz(e *ent.SessionTurn) biz.SessionTurn {
 }
 
 func (r *sessionRepo) CreateSessionTurn(ctx context.Context, turn biz.SessionTurn) (biz.SessionTurn, error) {
-	c := r.data.RW().Write(ctx)
-	saved, err := c.SessionTurn.Create().
-		SetID(turn.ID).
-		SetSessionID(turn.SessionID).
-		SetRunID(turn.RunID).
-		SetTurnNumber(turn.TurnNumber).
-		SetUserMessageID(turn.UserMessageID).
-		SetAssistantMessageID(turn.AssistantMessageID).
-		SetOwnerType(turn.OwnerType).
-		SetAgentID(turn.AgentID).
-		SetTeamID(turn.TeamID).
-		SetStatus(turn.Status).
-		SetStartedAt(turn.StartedAt).
-		SetEndedAt(turn.EndedAt).
-		SetDurationMs(turn.DurationMs).
-		SetFirstTokenMs(turn.FirstTokenMs).
-		SetModelCallCount(turn.ModelCallCount).
-		SetToolCallCount(turn.ToolCallCount).
-		SetSkillCallCount(turn.SkillCallCount).
-		SetMcpCallCount(turn.MCPCallCount).
-		SetInputTokens(turn.InputTokens).
-		SetOutputTokens(turn.OutputTokens).
-		SetTotalTokens(turn.TotalTokens).
-		SetTotalCostMicroUsd(turn.TotalCostMicroUSD).
-		SetFinalProvider(turn.FinalProvider).
-		SetFinalModel(turn.FinalModel).
-		SetFinalContentPreview(turn.FinalContentPreview).
-		SetErrorCode(turn.ErrorCode).
-		SetErrorMessage(turn.ErrorMessage).
-		SetMetadataJSON(turn.MetadataJSON).
-		SetCreatedAt(turn.CreatedAt).
-		SetUpdatedAt(turn.UpdatedAt).
-		Save(ctx)
+	var saved biz.SessionTurn
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		c := EntClientFromCtx(txCtx, r.data.entClient)
+		if turn.TurnNumber <= 0 {
+			maxTurnNumber, err := nextSessionTurnNumber(txCtx, c, r.data.Dialect(), turn.SessionID)
+			if err != nil {
+				return err
+			}
+			turn.TurnNumber = maxTurnNumber
+		}
+		row, err := c.SessionTurn.Create().
+			SetID(turn.ID).
+			SetSessionID(turn.SessionID).
+			SetRunID(turn.RunID).
+			SetTurnNumber(turn.TurnNumber).
+			SetUserMessageID(turn.UserMessageID).
+			SetAssistantMessageID(turn.AssistantMessageID).
+			SetOwnerType(turn.OwnerType).
+			SetAgentID(turn.AgentID).
+			SetTeamID(turn.TeamID).
+			SetStatus(turn.Status).
+			SetStartedAt(turn.StartedAt).
+			SetEndedAt(turn.EndedAt).
+			SetDurationMs(turn.DurationMs).
+			SetFirstTokenMs(turn.FirstTokenMs).
+			SetModelCallCount(turn.ModelCallCount).
+			SetToolCallCount(turn.ToolCallCount).
+			SetSkillCallCount(turn.SkillCallCount).
+			SetMcpCallCount(turn.MCPCallCount).
+			SetInputTokens(turn.InputTokens).
+			SetOutputTokens(turn.OutputTokens).
+			SetTotalTokens(turn.TotalTokens).
+			SetTotalCostMicroUsd(turn.TotalCostMicroUSD).
+			SetFinalProvider(turn.FinalProvider).
+			SetFinalModel(turn.FinalModel).
+			SetFinalContentPreview(turn.FinalContentPreview).
+			SetErrorCode(turn.ErrorCode).
+			SetErrorMessage(turn.ErrorMessage).
+			SetMetadataJSON(turn.MetadataJSON).
+			SetCreatedAt(turn.CreatedAt).
+			SetUpdatedAt(turn.UpdatedAt).
+			Save(txCtx)
+		if err != nil {
+			return err
+		}
+		saved = entSessionTurnToBiz(row)
+		return nil
+	})
 	if err != nil {
 		return biz.SessionTurn{}, entErrToBizErr(err, "SESSION_TURN")
 	}
-	return entSessionTurnToBiz(saved), nil
+	return saved, nil
+}
+
+func nextSessionTurnNumber(ctx context.Context, c *ent.Client, d Dialect, sessionID string) (int, error) {
+	query := `SELECT COALESCE(MAX(turn_number), 0) FROM session_turns WHERE session_id = ?`
+	if d.IsPostgres() {
+		query += ` FOR UPDATE`
+	}
+	query = d.RenumberPlaceholders(query)
+	var maxTurnNumber int
+	if err := QueryRowScan(ctx, c, query, []any{sessionID}, &maxTurnNumber); err != nil {
+		return 0, err
+	}
+	return maxTurnNumber + 1, nil
 }
 
 func (r *sessionRepo) UpdateSessionTurn(ctx context.Context, id string, fields biz.SessionTurnUpdateFields) (biz.SessionTurn, error) {

@@ -3,6 +3,8 @@ package lifecycle
 import (
 	"sync"
 	"time"
+
+	"aranea-agents/pkg/safego"
 )
 
 // ManagedCache 是带 TTL 的并发安全缓存，实现 Closer 接口。
@@ -41,7 +43,7 @@ func NewManagedCache[K comparable, V any](defaultTTL time.Duration, maxSize int)
 		stopCh:     make(chan struct{}),
 	}
 	if defaultTTL > 0 || maxSize > 0 {
-		go c.cleanupLoop()
+		safego.GoBackground("managed_cache.cleanup", c.cleanupLoop)
 	}
 	return c
 }

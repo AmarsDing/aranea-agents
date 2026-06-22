@@ -83,12 +83,12 @@ func TestEvolutionLoop_FiveStages_HappyPath(t *testing.T) {
 	}
 	observer := &mockSkillObserver{
 		report: &EvolutionObservationReport{
-			SuccessRate:       0.85,
-			AvgDurationMS:     1500,
-			AvgTokenUsage:     500,
-			InvocationCount:   20,
-			FailureTagCounts:  map[string]int{},
-			StructuredLogs:    []string{"invocation ok"},
+			SuccessRate:        0.85,
+			AvgDurationMS:      1500,
+			AvgTokenUsage:      500,
+			InvocationCount:    20,
+			FailureTagCounts:   map[string]int{},
+			StructuredLogs:     []string{"invocation ok"},
 			PerformanceMetrics: map[string]float64{"latency_p95": 2000},
 		},
 	}
@@ -324,10 +324,10 @@ func TestGateVerification_PerformanceDegradation(t *testing.T) {
 	// Baseline: 1500ms avg, 500 tokens. New: 2000ms avg, 700 tokens.
 	// Duration degradation: (2000-1500)/1500 = 33% > 20% → reject
 	observation := &EvolutionObservationReport{
-		SuccessRate:     0.9,
-		AvgDurationMS:   2000, // 33% worse than 1500ms baseline
-		AvgTokenUsage:   700,  // 40% worse than 500 token baseline
-		InvocationCount: 20,
+		SuccessRate:        0.9,
+		AvgDurationMS:      2000, // 33% worse than 1500ms baseline
+		AvgTokenUsage:      700,  // 40% worse than 500 token baseline
+		InvocationCount:    20,
 		BaselineDurationMS: 1500,
 		BaselineTokenUsage: 500,
 	}
@@ -798,8 +798,8 @@ func TestGateVerification_TokenOnlyDegradation(t *testing.T) {
 	// Duration is fine (10% degradation), but token usage is 30% worse
 	observation := &EvolutionObservationReport{
 		SuccessRate:        0.9,
-		AvgDurationMS:      1650,  // 10% worse than 1500ms → OK
-		AvgTokenUsage:      650,   // 30% worse than 500 → reject
+		AvgDurationMS:      1650, // 10% worse than 1500ms → OK
+		AvgTokenUsage:      650,  // 30% worse than 500 → reject
 		InvocationCount:    20,
 		BaselineDurationMS: 1500,
 		BaselineTokenUsage: 500,

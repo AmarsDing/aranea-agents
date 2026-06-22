@@ -20,13 +20,13 @@ type InboundMessage struct {
 }
 
 type qqMessage struct {
-	MessageType   string        `json:"message_type"`
-	MessageID     string        `json:"message_id"`
-	GroupID       string        `json:"group_id"`
-	UserID        string        `json:"user_id"`
-	Message       []messageItem `json:"message"`
-	RawMessage    string        `json:"raw_message"`
-	Sender        senderInfo    `json:"sender"`
+	MessageType string        `json:"message_type"`
+	MessageID   string        `json:"message_id"`
+	GroupID     string        `json:"group_id"`
+	UserID      string        `json:"user_id"`
+	Message     []messageItem `json:"message"`
+	RawMessage  string        `json:"raw_message"`
+	Sender      senderInfo    `json:"sender"`
 }
 
 type messageItem struct {

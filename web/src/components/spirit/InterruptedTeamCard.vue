@@ -5,15 +5,36 @@
         <q-icon name="pause_circle" size="24px" :style="{ color: 'var(--color-warning)' }" class="q-mr-sm" />
         <span class="text-subtitle2">{{ t('spirit.teamInterrupted') }}</span>
       </div>
-      <div class="text-body2 q-mb-xs">{{ t('spirit.interruptedBecause', { name: team.teamName, reason: interruptReason || t('spirit.unknownReason') }) }}</div>
+      <div class="text-body2 q-mb-xs">
+        {{
+          t('spirit.interruptedBecause', { name: team.teamName, reason: interruptReason || t('spirit.unknownReason') })
+        }}
+      </div>
       <div v-if="team.totalSteps > 0" class="text-caption text-grey-7">
         {{ t('spirit.completedSteps', { completed: team.completedSteps, total: team.totalSteps }) }}
       </div>
     </q-card-section>
     <q-card-actions align="right">
-      <q-btn v-if="canResume" :label="t('spirit.resumeExecution')" :style="{ color: 'var(--color-accent)' }" flat @click="$emit('resume', team.id)" />
-      <q-btn v-else :label="t('spirit.checkpointRecoveryNotSupported')" :style="{ color: 'var(--color-text-tertiary)' }" flat disable />
-      <q-btn :label="t('spirit.cancelTeam')" :style="{ color: 'var(--color-danger)' }" flat @click="$emit('cancel', team.id)" />
+      <q-btn
+        v-if="canResume"
+        :label="t('spirit.resumeExecution')"
+        :style="{ color: 'var(--color-accent)' }"
+        flat
+        @click="$emit('resume', team.id)"
+      />
+      <q-btn
+        v-else
+        :label="t('spirit.checkpointRecoveryNotSupported')"
+        :style="{ color: 'var(--color-text-tertiary)' }"
+        flat
+        disable
+      />
+      <q-btn
+        :label="t('spirit.cancelTeam')"
+        :style="{ color: 'var(--color-danger)' }"
+        flat
+        @click="$emit('cancel', team.id)"
+      />
     </q-card-actions>
   </q-card>
 </template>

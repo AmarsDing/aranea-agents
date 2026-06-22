@@ -623,11 +623,11 @@ func TestFinishInvocation(t *testing.T) {
 		{
 			name: "valid_finish",
 			inv: Invocation{
-				ID:           "inv-1",
+				ID:            "inv-1",
 				CalleeAgentID: "agent-2",
-				Capability:   "chat",
-				Status:       "success",
-				ResultJSON:   `{"reply":"hello"}`,
+				Capability:    "chat",
+				Status:        "success",
+				ResultJSON:    `{"reply":"hello"}`,
 			},
 			setup: func(r *mockUsecaseRepo) {
 				r.updateInvocationFn = func(_ context.Context, inv Invocation) error {
@@ -644,10 +644,10 @@ func TestFinishInvocation(t *testing.T) {
 		{
 			name: "finish_with_error_status",
 			inv: Invocation{
-				ID:           "inv-2",
+				ID:            "inv-2",
 				CalleeAgentID: "agent-3",
-				Status:       "error",
-				ErrorMessage: "timeout exceeded",
+				Status:        "error",
+				ErrorMessage:  "timeout exceeded",
 			},
 			setup: func(r *mockUsecaseRepo) {
 				r.updateInvocationFn = func(_ context.Context, inv Invocation) error {

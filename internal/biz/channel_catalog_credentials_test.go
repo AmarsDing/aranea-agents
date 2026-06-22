@@ -91,9 +91,9 @@ func TestPropField(t *testing.T) {
 		want     map[string]any
 	}{
 		{
-			name:   "with format and required",
-			title:  "test_title",
-			format: "password",
+			name:     "with format and required",
+			title:    "test_title",
+			format:   "password",
 			required: true,
 			want: map[string]any{
 				"type":       "string",
@@ -103,9 +103,9 @@ func TestPropField(t *testing.T) {
 			},
 		},
 		{
-			name:   "without format",
-			title:  "test_title",
-			format: "",
+			name:     "without format",
+			title:    "test_title",
+			format:   "",
 			required: true,
 			want: map[string]any{
 				"type":       "string",
@@ -114,9 +114,9 @@ func TestPropField(t *testing.T) {
 			},
 		},
 		{
-			name:   "not required",
-			title:  "test_title",
-			format: "password",
+			name:     "not required",
+			title:    "test_title",
+			format:   "password",
 			required: false,
 			want: map[string]any{
 				"type":   "string",

@@ -14,9 +14,9 @@ type stubTextSender struct {
 	sendErr error
 }
 
-func (s *stubTextSender) ID() string                                        { return s.id }
-func (s *stubTextSender) Run(_ context.Context) error                       { return nil }
-func (s *stubTextSender) SendText(_ context.Context, _, _ string) error     { return s.sendErr }
+func (s *stubTextSender) ID() string                                    { return s.id }
+func (s *stubTextSender) Run(_ context.Context) error                   { return nil }
+func (s *stubTextSender) SendText(_ context.Context, _, _ string) error { return s.sendErr }
 
 type stubMessageSender struct {
 	id      string
@@ -24,8 +24,8 @@ type stubMessageSender struct {
 	lastMsg OutboundMessage
 }
 
-func (s *stubMessageSender) ID() string                                                { return s.id }
-func (s *stubMessageSender) Run(_ context.Context) error                               { return nil }
+func (s *stubMessageSender) ID() string                  { return s.id }
+func (s *stubMessageSender) Run(_ context.Context) error { return nil }
 func (s *stubMessageSender) SendMessage(_ context.Context, _ string, msg OutboundMessage) error {
 	s.lastMsg = msg
 	return s.sendErr
@@ -347,7 +347,7 @@ func TestWrapOutboundText(t *testing.T) {
 
 func TestWrapOutboundText_Nil(t *testing.T) {
 	sender := WrapOutboundText(nil)
-	if sender == nil {
+	if sender != nil {
 		t.Fatal("WrapOutboundText(nil) returns non-nil adapter wrapping nil inner")
 	}
 }

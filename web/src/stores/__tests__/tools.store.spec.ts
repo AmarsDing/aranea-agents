@@ -40,8 +40,8 @@ describe('useToolsStore', () => {
       failure_rate_24h: 0.02,
     };
     const mockTools = [
-      { id: 't1', name: 'Tool 1', enabled: true },
-      { id: 't2', name: 'Tool 2', enabled: false },
+      { id: 't1', display_name: 'Tool 1', enabled: true },
+      { id: 't2', display_name: 'Tool 2', enabled: false },
     ];
     (listTools as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       items: mockTools,
@@ -73,13 +73,13 @@ describe('useToolsStore', () => {
 
   it('addTool prepends created tool to the list', async () => {
     const { createTool } = await import('../../features/tools/api');
-    const created = { id: 't-new', name: 'New Tool', enabled: true };
+    const created = { id: 't-new', display_name: 'New Tool', enabled: true };
     (createTool as ReturnType<typeof vi.fn>).mockResolvedValueOnce(created);
 
     const store = useToolsStore();
-    store.tools = [{ id: 't1', name: 'Existing', enabled: true }] as any;
+    store.tools = [{ id: 't1', display_name: 'Existing', enabled: true }] as any;
 
-    const result = await store.addTool({ name: 'New Tool' } as any);
+    const result = await store.addTool({ display_name: 'New Tool' } as any);
 
     expect(result.id).toBe('t-new');
     expect(store.tools[0].id).toBe('t-new');
@@ -88,41 +88,41 @@ describe('useToolsStore', () => {
 
   it('editTool updates the matching item in the list', async () => {
     const { updateTool } = await import('../../features/tools/api');
-    const updated = { id: 't1', name: 'Updated Tool', enabled: true };
+    const updated = { id: 't1', display_name: 'Updated Tool', enabled: true };
     (updateTool as ReturnType<typeof vi.fn>).mockResolvedValueOnce(updated);
 
     const store = useToolsStore();
     store.tools = [
-      { id: 't1', name: 'Old Tool', enabled: false },
-      { id: 't2', name: 'Other', enabled: true },
+      { id: 't1', display_name: 'Old Tool', enabled: false },
+      { id: 't2', display_name: 'Other', enabled: true },
     ] as any;
 
-    const result = await store.editTool('t1', { name: 'Updated Tool' } as any);
+    const result = await store.editTool('t1', { display_name: 'Updated Tool' } as any);
 
-    expect(result.name).toBe('Updated Tool');
-    expect(store.tools[0].name).toBe('Updated Tool');
-    expect(store.tools[1].name).toBe('Other');
+    expect(result.display_name).toBe('Updated Tool');
+    expect(store.tools[0].display_name).toBe('Updated Tool');
+    expect(store.tools[1].display_name).toBe('Other');
   });
 
   it('editTool also updates activeTool when it matches', async () => {
     const { updateTool } = await import('../../features/tools/api');
-    const updated = { id: 't1', name: 'Updated', enabled: true };
+    const updated = { id: 't1', display_name: 'Updated', enabled: true };
     (updateTool as ReturnType<typeof vi.fn>).mockResolvedValueOnce(updated);
 
     const store = useToolsStore();
-    store.tools = [{ id: 't1', name: 'Old', enabled: false }] as any;
-    store.activeTool = { id: 't1', name: 'Old', enabled: false } as any;
+    store.tools = [{ id: 't1', display_name: 'Old', enabled: false }] as any;
+    store.activeTool = { id: 't1', display_name: 'Old', enabled: false } as any;
 
-    await store.editTool('t1', { name: 'Updated' } as any);
+    await store.editTool('t1', { display_name: 'Updated' } as any);
 
-    expect(store.activeTool?.name).toBe('Updated');
+    expect(store.activeTool?.display_name).toBe('Updated');
   });
 
   it('remove deletes tool from list', async () => {
     const store = useToolsStore();
     store.tools = [
-      { id: 't1', name: 'Tool 1', enabled: true },
-      { id: 't2', name: 'Tool 2', enabled: false },
+      { id: 't1', display_name: 'Tool 1', enabled: true },
+      { id: 't2', display_name: 'Tool 2', enabled: false },
     ] as any;
 
     await store.remove('t1');
@@ -133,8 +133,8 @@ describe('useToolsStore', () => {
 
   it('remove clears activeTool when it matches', async () => {
     const store = useToolsStore();
-    store.tools = [{ id: 't1', name: 'Tool 1', enabled: true }] as any;
-    store.activeTool = { id: 't1', name: 'Tool 1', enabled: true } as any;
+    store.tools = [{ id: 't1', display_name: 'Tool 1', enabled: true }] as any;
+    store.activeTool = { id: 't1', display_name: 'Tool 1', enabled: true } as any;
 
     await store.remove('t1');
 
@@ -144,11 +144,11 @@ describe('useToolsStore', () => {
 
   it('toggle updates enabled state in the list', async () => {
     const { toggleToolEnabled } = await import('../../features/tools/api');
-    const updated = { id: 't1', name: 'Tool 1', enabled: true };
+    const updated = { id: 't1', display_name: 'Tool 1', enabled: true };
     (toggleToolEnabled as ReturnType<typeof vi.fn>).mockResolvedValueOnce(updated);
 
     const store = useToolsStore();
-    store.tools = [{ id: 't1', name: 'Tool 1', enabled: false }] as any;
+    store.tools = [{ id: 't1', display_name: 'Tool 1', enabled: false }] as any;
 
     const result = await store.toggle('t1', true);
 

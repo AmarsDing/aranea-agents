@@ -31,8 +31,8 @@ func TestCompiledTeamRepo_SaveAndLoad(t *testing.T) {
 	ctx := context.Background()
 
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{
-		Nodes:      []biz.NodeDef{{ID: "n1", Type: biz.NodeTypeAgent, AgentName: "a1"}},
-		EntryPoint: "n1",
+		Nodes:       []biz.NodeDef{{ID: "n1", Type: biz.NodeTypeAgent, AgentName: "a1"}},
+		EntryPoint:  "n1",
 		FinishPoint: "n1",
 	}, nil, nil, nil)
 
@@ -72,8 +72,8 @@ func TestCompiledTeamRepo_Delete(t *testing.T) {
 	ctx := context.Background()
 
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{
-		Nodes:      []biz.NodeDef{{ID: "n1", Type: biz.NodeTypeAgent}},
-		EntryPoint: "n1",
+		Nodes:       []biz.NodeDef{{ID: "n1", Type: biz.NodeTypeAgent}},
+		EntryPoint:  "n1",
 		FinishPoint: "n1",
 	}, nil, nil, nil)
 
@@ -97,8 +97,8 @@ func TestCompiledTeamRepo_SaveUpsert(t *testing.T) {
 	ctx := context.Background()
 
 	ct1 := biz.NewCompiledTeam(biz.GraphBuildConfig{
-		Nodes:      []biz.NodeDef{{ID: "n1", Type: biz.NodeTypeAgent, AgentName: "v1"}},
-		EntryPoint: "n1",
+		Nodes:       []biz.NodeDef{{ID: "n1", Type: biz.NodeTypeAgent, AgentName: "v1"}},
+		EntryPoint:  "n1",
 		FinishPoint: "n1",
 	}, nil, nil, nil)
 
@@ -107,8 +107,8 @@ func TestCompiledTeamRepo_SaveUpsert(t *testing.T) {
 	}
 
 	ct2 := biz.NewCompiledTeam(biz.GraphBuildConfig{
-		Nodes:      []biz.NodeDef{{ID: "n1", Type: biz.NodeTypeAgent, AgentName: "v2"}},
-		EntryPoint: "n1",
+		Nodes:       []biz.NodeDef{{ID: "n1", Type: biz.NodeTypeAgent, AgentName: "v2"}},
+		EntryPoint:  "n1",
 		FinishPoint: "n1",
 	}, nil, nil, nil)
 

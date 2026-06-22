@@ -12,9 +12,9 @@ import (
 )
 
 var (
-	l4NamePattern             = regexp.MustCompile(`(?i)(?:my name is|I(?:'m| am) called)\s+([A-Za-z][A-Za-z0-9_-]*(?:\s+[A-Za-z][A-Za-z0-9_-]*)?)`)
-	l4PreferencePattern       = regexp.MustCompile(`(?i)I\s+(?:prefer|like|love)\s+([^.!?\n]{2,120})`)
-	l4ChineseNamePattern      = regexp.MustCompile(`(?:我叫|我的名字是)\s*([^\s,.，。!！?？]{1,20})(?:[，。,.!！?？\s]|$)`)
+	l4NamePattern              = regexp.MustCompile(`(?i)(?:my name is|I(?:'m| am) called)\s+([A-Za-z][A-Za-z0-9_-]*(?:\s+[A-Za-z][A-Za-z0-9_-]*)?)`)
+	l4PreferencePattern        = regexp.MustCompile(`(?i)I\s+(?:prefer|like|love)\s+([^.!?\n]{2,120})`)
+	l4ChineseNamePattern       = regexp.MustCompile(`(?:我叫|我的名字是)\s*([^\s,.，。!！?？]{1,20})(?:[，。,.!！?？\s]|$)`)
 	l4ChinesePreferencePattern = regexp.MustCompile(`(?:我喜欢|我偏好|我偏爱|我爱吃|我爱喝|我爱看|我爱听)\s*([^.!?\n，。！？]{2,80})`)
 )
 
@@ -22,19 +22,19 @@ const (
 	l4ConflictMeta = `{"source":"auto_memory","conflict":true}`
 	l4CascadeMeta  = `{"source":"auto_memory","cascade":true}`
 
-	l4AnchorImportance    = 0.8
-	l4AnchorConfidence    = 0.9
-	l4PersonImportance    = 0.85
-	l4PrefImportance      = 0.7
-	l4PrefConfidence      = 0.7
-	l4PrefRelWeight       = 0.9
-	l4PrefRelConfidence   = 0.7
-	l4ArchiveThreshold    = 0.1
-	l4ConflictBaseConf    = 0.75
-	l4ConflictConfStep    = 0.05
-	l4ConflictConfCap     = 0.95
-	l4CascadeEntImportance = 0.85
-	l4CascadeEntConfidence = 0.8
+	l4AnchorImportance       = 0.8
+	l4AnchorConfidence       = 0.9
+	l4PersonImportance       = 0.85
+	l4PrefImportance         = 0.7
+	l4PrefConfidence         = 0.7
+	l4PrefRelWeight          = 0.9
+	l4PrefRelConfidence      = 0.7
+	l4ArchiveThreshold       = 0.1
+	l4ConflictBaseConf       = 0.75
+	l4ConflictConfStep       = 0.05
+	l4ConflictConfCap        = 0.95
+	l4CascadeEntImportance   = 0.85
+	l4CascadeEntConfidence   = 0.8
 	l4CascadeTouchImportance = 0.5
 	l4CascadeTouchConfidence = 0.7
 

@@ -157,7 +157,11 @@
         <q-item v-for="s in suggestions" :key="s.id" class="app-glass-list__item--lg">
           <q-item-section>
             <q-item-label class="text-weight-medium">
-              <q-badge :color="evoActionTypeColor(s.actionType)" class="q-mr-sm" :label="evoActionTypeLabel(s.actionType)" />
+              <q-badge
+                :color="evoActionTypeColor(s.actionType)"
+                class="q-mr-sm"
+                :label="evoActionTypeLabel(s.actionType)"
+              />
               {{ s.targetName || s.targetId }}
             </q-item-label>
             <q-item-label caption class="q-mt-xs">{{ s.triggerReason || s.draftBody?.slice(0, 120) }}</q-item-label>

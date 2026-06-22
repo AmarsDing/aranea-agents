@@ -13,11 +13,7 @@
     </div>
 
     <!-- Collapsed state -->
-    <div
-      v-if="isCollapsed"
-      class="code-block__collapsed"
-      @click="isCollapsed = false"
-    >
+    <div v-if="isCollapsed" class="code-block__collapsed" @click="isCollapsed = false">
       ▶ {{ t('chat.codeBlock.expandLine', { count: lineCount }) }}
     </div>
 
@@ -25,52 +21,48 @@
     <pre v-else class="code-block__body"><code v-html="highlightedHtml" /></pre>
 
     <!-- Collapse toggle (only when expanded and > 20 lines) -->
-    <div
-      v-if="!isCollapsed && lineCount > 20"
-      class="code-block__collapse"
-      @click="isCollapsed = true"
-    >
+    <div v-if="!isCollapsed && lineCount > 20" class="code-block__collapse" @click="isCollapsed = true">
       {{ t('chat.codeBlock.collapseLine') }}
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { detectLanguage, highlight } from '../../features/chat/lib/detectCodeLanguage'
+import { ref, computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { detectLanguage, highlight } from '../../features/chat/lib/detectCodeLanguage';
 
 const props = withDefaults(
   defineProps<{
-    code: string
-    lang?: string
-    defaultCollapsed?: boolean
+    code: string;
+    lang?: string;
+    defaultCollapsed?: boolean;
   }>(),
   {
     lang: undefined,
     defaultCollapsed: undefined,
   },
-)
+);
 
-const { t } = useI18n()
+const { t } = useI18n();
 
-const displayLang = computed(() => detectLanguage(props.code, props.lang))
-const lineCount = computed(() => props.code.split('\n').length)
-const isCollapsed = ref(props.defaultCollapsed ?? lineCount.value > 20)
+const displayLang = computed(() => detectLanguage(props.code, props.lang));
+const lineCount = computed(() => props.code.split('\n').length);
+const isCollapsed = ref(props.defaultCollapsed ?? lineCount.value > 20);
 
-const highlightedHtml = computed(() => highlight(props.code, displayLang.value))
+const highlightedHtml = computed(() => highlight(props.code, displayLang.value));
 
-const copied = ref(false)
-let copyTimer: ReturnType<typeof setTimeout> | undefined
+const copied = ref(false);
+let copyTimer: ReturnType<typeof setTimeout> | undefined;
 
 async function handleCopy() {
   try {
-    await navigator.clipboard.writeText(props.code)
-    copied.value = true
-    clearTimeout(copyTimer)
+    await navigator.clipboard.writeText(props.code);
+    copied.value = true;
+    clearTimeout(copyTimer);
     copyTimer = setTimeout(() => {
-      copied.value = false
-    }, 2000)
+      copied.value = false;
+    }, 2000);
   } catch {
     // clipboard API unavailable — silently ignore
   }

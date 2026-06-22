@@ -3,12 +3,13 @@ package pack
 import (
 	"archive/tar"
 	"compress/gzip"
-	"fmt"
 	"io"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"aranea-agents/pkg/apierror"
 
 	"gopkg.in/yaml.v3"
 )
@@ -25,13 +26,13 @@ func WritePack(p *Pack, w io.Writer) error {
 
 	// 1. 写入 manifest.yaml
 	if err := writeYAMLFile(tw, manifestFile, p.Manifest, now); err != nil {
-		return fmt.Errorf("pack: 写入 manifest.yaml 失败: %w", err)
+		return apierror.Internal(apierror.DomainPack, "write manifest.yaml failed: %s", err.Error())
 	}
 
 	// 2. 写入 taxonomy.yaml
 	if p.Organization != nil {
 		if err := writeYAMLFile(tw, taxonomyFile, p.Organization, now); err != nil {
-			return fmt.Errorf("pack: 写入 taxonomy.yaml 失败: %w", err)
+			return apierror.Internal(apierror.DomainPack, "write taxonomy.yaml failed: %s", err.Error())
 		}
 	}
 
@@ -42,7 +43,7 @@ func WritePack(p *Pack, w io.Writer) error {
 	for _, agent := range p.Agents {
 		path := agentsDir + agent.Key + ".yaml"
 		if err := writeYAMLFile(tw, path, agent, now); err != nil {
-			return fmt.Errorf("pack: 写入 %s 失败: %w", path, err)
+			return apierror.Internal(apierror.DomainPack, "write %s failed: %s", path, err.Error())
 		}
 	}
 
@@ -57,7 +58,7 @@ func WritePack(p *Pack, w io.Writer) error {
 		for _, name := range names {
 			path := agentsDir + agentKey + "/" + name
 			if err := writeRawFile(tw, path, []byte(files[name]), now); err != nil {
-				return fmt.Errorf("pack: 写入 %s 失败: %w", path, err)
+				return apierror.Internal(apierror.DomainPack, "write %s failed: %s", path, err.Error())
 			}
 		}
 	}
@@ -69,7 +70,7 @@ func WritePack(p *Pack, w io.Writer) error {
 	for _, team := range p.Teams {
 		path := teamsDir + team.Key + ".yaml"
 		if err := writeYAMLFile(tw, path, team, now); err != nil {
-			return fmt.Errorf("pack: 写入 %s 失败: %w", path, err)
+			return apierror.Internal(apierror.DomainPack, "write %s failed: %s", path, err.Error())
 		}
 	}
 
@@ -80,7 +81,7 @@ func WritePack(p *Pack, w io.Writer) error {
 	for _, graph := range p.Graphs {
 		path := graphsDir + graph.ID + ".yaml"
 		if err := writeYAMLFile(tw, path, graph, now); err != nil {
-			return fmt.Errorf("pack: 写入 %s 失败: %w", path, err)
+			return apierror.Internal(apierror.DomainPack, "write %s failed: %s", path, err.Error())
 		}
 	}
 
@@ -90,7 +91,7 @@ func WritePack(p *Pack, w io.Writer) error {
 func writeYAMLFile(tw *tar.Writer, name string, v any, modTime int64) error {
 	data, err := yaml.Marshal(v)
 	if err != nil {
-		return fmt.Errorf("序列化 %s 失败: %w", name, err)
+		return apierror.Internal(apierror.DomainPack, "serialize %s failed: %s", name, err.Error())
 	}
 	return writeRawFile(tw, name, data, modTime)
 }
@@ -100,9 +101,9 @@ func writeRawFile(tw *tar.Writer, name string, data []byte, modTime int64) error
 	name = strings.ReplaceAll(name, string(filepath.Separator), "/")
 
 	hdr := &tar.Header{
-		Name: name,
-		Mode: 0644,
-		Size: int64(len(data)),
+		Name:    name,
+		Mode:    0644,
+		Size:    int64(len(data)),
 		ModTime: time.Unix(modTime, 0),
 	}
 	if err := tw.WriteHeader(hdr); err != nil {

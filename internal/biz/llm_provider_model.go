@@ -226,14 +226,14 @@ type AgentReferenceChecker interface {
 }
 
 type LlmProviderModelUsecase struct {
-	reader     LlmProviderModelReader
-	writer     LlmProviderModelWriter
-	validator  LlmProviderModelValidator
-	pricing    ModelPricingRepo
-	inspector  LLMInspector
-	crypto     *CredentialCrypto
-	agentRefs  AgentReferenceChecker
-	lg         loggateway.Logger
+	reader    LlmProviderModelReader
+	writer    LlmProviderModelWriter
+	validator LlmProviderModelValidator
+	pricing   ModelPricingRepo
+	inspector LLMInspector
+	crypto    *CredentialCrypto
+	agentRefs AgentReferenceChecker
+	lg        loggateway.Logger
 }
 
 func NewLlmProviderModelUsecase(reader LlmProviderModelReader, writer LlmProviderModelWriter, validator LlmProviderModelValidator, pricing ModelPricingRepo, inspector LLMInspector, crypto *CredentialCrypto, agentRefs AgentReferenceChecker, lg loggateway.Logger) *LlmProviderModelUsecase {
@@ -427,8 +427,8 @@ func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) 
 				prepared, decErr := u.crypto.PrepareProviderModelForRuntime(ctx, row)
 				if decErr != nil {
 					u.lg.Warn("解密 config_json 失败", loggateway.StepID("llm_provider_model.inspect"), loggateway.Err(decErr))
-				} else {
-					mergeInspectConfigJSON(prepared.ConfigJSON, &in)
+				} else if mergeErr := mergeInspectConfigJSON(prepared.ConfigJSON, &in); mergeErr != nil {
+					u.lg.Warn("合并 inspect config 失败", loggateway.StepID("llm_provider_model.inspect"), loggateway.Err(mergeErr))
 				}
 			}
 		} else if in.ProviderCode != "" && in.ModelAPIID != "" {
@@ -437,8 +437,8 @@ func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) 
 				prepared, decErr := u.crypto.PrepareProviderModelForRuntime(ctx, row)
 				if decErr != nil {
 					u.lg.Warn("解密 config_json 失败", loggateway.StepID("llm_provider_model.inspect"), loggateway.Err(decErr))
-				} else {
-					mergeInspectConfigJSON(prepared.ConfigJSON, &in)
+				} else if mergeErr := mergeInspectConfigJSON(prepared.ConfigJSON, &in); mergeErr != nil {
+					u.lg.Warn("合并 inspect config 失败", loggateway.StepID("llm_provider_model.inspect"), loggateway.Err(mergeErr))
 				}
 			}
 		}
@@ -474,7 +474,7 @@ func inspectCredentialsComplete(in InspectMerge) bool {
 	return false
 }
 
-func mergeInspectConfigJSON(cfg string, in *InspectMerge) {
+func mergeInspectConfigJSON(cfg string, in *InspectMerge) error {
 	var c struct {
 		ProviderType string `json:"provider_type"`
 		APIBaseURL   string `json:"api_base_url"`
@@ -484,8 +484,8 @@ func mergeInspectConfigJSON(cfg string, in *InspectMerge) {
 		SecretKey    string `json:"secret_key"`
 		AWSRegion    string `json:"aws_region"`
 	}
-	if json.Unmarshal([]byte(cfg), &c) != nil {
-		return
+	if err := json.Unmarshal([]byte(cfg), &c); err != nil {
+		return apierror.BadRequest(apierror.DomainLLMProvider, "invalid provider config JSON: %s", err.Error())
 	}
 	if in.ProviderType == "" {
 		in.ProviderType = c.ProviderType
@@ -508,14 +508,15 @@ func mergeInspectConfigJSON(cfg string, in *InspectMerge) {
 	if in.AWSRegion == "" {
 		in.AWSRegion = c.AWSRegion
 	}
+	return nil
 }
 
-func parsePricingConfig(configJSON string) (providerPricingConfig, bool) {
+func parsePricingConfig(configJSON string) (providerPricingConfig, error) {
 	var cfg providerPricingConfig
-	if json.Unmarshal([]byte(configJSON), &cfg) != nil {
-		return cfg, false
+	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+		return cfg, apierror.BadRequest(apierror.DomainLLMProvider, "invalid pricing config JSON: %s", err.Error())
 	}
-	return cfg, true
+	return cfg, nil
 }
 
 // costBlockHasValue checks all 6 pricing dimensions in the cost block.
@@ -594,9 +595,9 @@ func buildModelPricingRule(row ProviderModel, micro modelregistry.MicroPricing, 
 }
 
 func (u *LlmProviderModelUsecase) syncProviderModelPricing(ctx context.Context, row ProviderModel) error {
-	cfg, ok := parsePricingConfig(row.ConfigJSON)
-	if !ok {
-		return nil
+	cfg, err := parsePricingConfig(row.ConfigJSON)
+	if err != nil {
+		return err
 	}
 	micro := buildMicroPricing(cfg)
 	if !isValidPricing(micro) {

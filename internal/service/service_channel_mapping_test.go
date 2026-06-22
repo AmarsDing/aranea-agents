@@ -11,10 +11,10 @@ import (
 
 func TestMergeChannelMetadataJSON(t *testing.T) {
 	tests := []struct {
-		name string
-		base string
+		name  string
+		base  string
 		patch string
-		want string
+		want  string
 	}{
 		{
 			name:  "merge_patch_into_base",

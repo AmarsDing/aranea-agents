@@ -54,7 +54,7 @@ defineEmits<{
   download: [meta: ArtifactMeta];
 }>();
 
-const { preview, loading, error, kindIcon, imageSrc, pdfSrc } = useArtifactPreview(
+const { preview, loading, error, kindIcon, imageSrc, pdfSrc, formatBytes } = useArtifactPreview(
   () => props.artifactId,
   () => props.version,
 );

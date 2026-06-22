@@ -8,23 +8,23 @@ import (
 
 func TestResolveChannelAsyncGraphTarget(t *testing.T) {
 	cases := []struct {
-		name       string
-		cfg        biz.ChannelLongTaskConfig
-		wantType   string
+		name        string
+		cfg         biz.ChannelLongTaskConfig
+		wantType    string
 		wantGraphID string
 		wantTeamID  string
-		wantErr    bool
+		wantErr     bool
 	}{
 		{
-			name:     "async_team_id takes precedence",
-			cfg:      biz.ChannelLongTaskConfig{AsyncTeamID: "team1", AsyncGraphID: "graph1"},
-			wantType: "team_graph",
+			name:       "async_team_id takes precedence",
+			cfg:        biz.ChannelLongTaskConfig{AsyncTeamID: "team1", AsyncGraphID: "graph1"},
+			wantType:   "team_graph",
 			wantTeamID: "team1",
 		},
 		{
-			name:       "async_graph_id when no team",
-			cfg:        biz.ChannelLongTaskConfig{AsyncGraphID: "graph1"},
-			wantType:   "graph",
+			name:        "async_graph_id when no team",
+			cfg:         biz.ChannelLongTaskConfig{AsyncGraphID: "graph1"},
+			wantType:    "graph",
 			wantGraphID: "graph1",
 		},
 		{
@@ -33,15 +33,15 @@ func TestResolveChannelAsyncGraphTarget(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:     "whitespace team id trimmed and used",
-			cfg:      biz.ChannelLongTaskConfig{AsyncTeamID: "  team1  "},
-			wantType: "team_graph",
+			name:       "whitespace team id trimmed and used",
+			cfg:        biz.ChannelLongTaskConfig{AsyncTeamID: "  team1  "},
+			wantType:   "team_graph",
 			wantTeamID: "team1",
 		},
 		{
-			name:       "whitespace graph id trimmed and used",
-			cfg:        biz.ChannelLongTaskConfig{AsyncGraphID: "  graph1  "},
-			wantType:   "graph",
+			name:        "whitespace graph id trimmed and used",
+			cfg:         biz.ChannelLongTaskConfig{AsyncGraphID: "  graph1  "},
+			wantType:    "graph",
 			wantGraphID: "graph1",
 		},
 		{

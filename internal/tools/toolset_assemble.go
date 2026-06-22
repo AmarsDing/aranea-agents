@@ -15,13 +15,13 @@ import (
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	trpcagenttool "trpc.group/trpc-go/trpc-agent-go/tool/agent"
 	trpcclaudecode "trpc.group/trpc-go/trpc-agent-go/tool/claudecode"
 	trpcfile "trpc.group/trpc-go/trpc-agent-go/tool/file"
-	trpcgeminifetch "trpc.group/trpc-go/trpc-agent-go/tool/webfetch/geminifetch"
 	trpcgooglesearch "trpc.group/trpc-go/trpc-agent-go/tool/google/search"
 	trpcopenapi "trpc.group/trpc-go/trpc-agent-go/tool/openapi"
-	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
+	trpcgeminifetch "trpc.group/trpc-go/trpc-agent-go/tool/webfetch/geminifetch"
 )
 
 // assembleContext holds shared state for the Assemble function.

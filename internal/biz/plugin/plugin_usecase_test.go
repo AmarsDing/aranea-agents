@@ -1,23 +1,23 @@
 package plugin
 
 import (
-	"context"
 	"aranea-agents/internal/biz/shared"
+	"context"
 	"testing"
 
 	"aranea-agents/pkg/apierror"
 )
 
 type mockRepo struct {
-	searchFn   func(ctx context.Context, q ListQuery) (ListResult, error)
-	getFn      func(ctx context.Context, id string) (Plugin, error)
-	getByKeyFn func(ctx context.Context, key string) (Plugin, error)
-	createFn   func(ctx context.Context, p Plugin) (Plugin, error)
-	updateEnFn func(ctx context.Context, id string, enabled bool) (Plugin, error)
+	searchFn    func(ctx context.Context, q ListQuery) (ListResult, error)
+	getFn       func(ctx context.Context, id string) (Plugin, error)
+	getByKeyFn  func(ctx context.Context, key string) (Plugin, error)
+	createFn    func(ctx context.Context, p Plugin) (Plugin, error)
+	updateEnFn  func(ctx context.Context, id string, enabled bool) (Plugin, error)
 	updateCfgFn func(ctx context.Context, id string, configJSON string) (Plugin, error)
-	updateSOFn func(ctx context.Context, id string, sortOrder int) (Plugin, error)
-	updateScFn func(ctx context.Context, id string, scope string) (Plugin, error)
-	incrStatFn func(ctx context.Context, pluginKey string, delta StatUpdate) error
+	updateSOFn  func(ctx context.Context, id string, sortOrder int) (Plugin, error)
+	updateScFn  func(ctx context.Context, id string, scope string) (Plugin, error)
+	incrStatFn  func(ctx context.Context, pluginKey string, delta StatUpdate) error
 }
 
 func (m *mockRepo) SearchPlugins(ctx context.Context, q ListQuery) (ListResult, error) {
@@ -49,12 +49,12 @@ func (m *mockRepo) IncrementStats(ctx context.Context, pluginKey string, delta S
 }
 
 type mockRunRepo struct {
-	insertFn   func(ctx context.Context, run Run) error
-	listFn     func(ctx context.Context, q RunQuery) (RunListResult, error)
+	insertFn    func(ctx context.Context, run Run) error
+	listFn      func(ctx context.Context, q RunQuery) (RunListResult, error)
 	deleteAllFn func(ctx context.Context) (int32, error)
 }
 
-func (m *mockRunRepo) Insert(ctx context.Context, run Run) error  { return m.insertFn(ctx, run) }
+func (m *mockRunRepo) Insert(ctx context.Context, run Run) error { return m.insertFn(ctx, run) }
 func (m *mockRunRepo) List(ctx context.Context, q RunQuery) (RunListResult, error) {
 	return m.listFn(ctx, q)
 }
@@ -74,18 +74,26 @@ func noOpRepo() *mockRepo {
 		getFn:      func(_ context.Context, id string) (Plugin, error) { return Plugin{ID: id}, nil },
 		getByKeyFn: func(_ context.Context, key string) (Plugin, error) { return Plugin{Key: key}, nil },
 		createFn:   func(_ context.Context, p Plugin) (Plugin, error) { return p, nil },
-		updateEnFn: func(_ context.Context, id string, enabled bool) (Plugin, error) { return Plugin{ID: id, Enabled: enabled}, nil },
-		updateCfgFn: func(_ context.Context, id string, configJSON string) (Plugin, error) { return Plugin{ID: id, ConfigJSON: configJSON}, nil },
-		updateSOFn: func(_ context.Context, id string, sortOrder int) (Plugin, error) { return Plugin{ID: id, SortOrder: sortOrder}, nil },
-		updateScFn: func(_ context.Context, id string, scope string) (Plugin, error) { return Plugin{ID: id, Scope: scope}, nil },
+		updateEnFn: func(_ context.Context, id string, enabled bool) (Plugin, error) {
+			return Plugin{ID: id, Enabled: enabled}, nil
+		},
+		updateCfgFn: func(_ context.Context, id string, configJSON string) (Plugin, error) {
+			return Plugin{ID: id, ConfigJSON: configJSON}, nil
+		},
+		updateSOFn: func(_ context.Context, id string, sortOrder int) (Plugin, error) {
+			return Plugin{ID: id, SortOrder: sortOrder}, nil
+		},
+		updateScFn: func(_ context.Context, id string, scope string) (Plugin, error) {
+			return Plugin{ID: id, Scope: scope}, nil
+		},
 		incrStatFn: func(_ context.Context, _ string, _ StatUpdate) error { return nil },
 	}
 }
 
 func noOpRunRepo() *mockRunRepo {
 	return &mockRunRepo{
-		insertFn:   func(_ context.Context, _ Run) error { return nil },
-		listFn:     func(_ context.Context, _ RunQuery) (RunListResult, error) { return RunListResult{}, nil },
+		insertFn:    func(_ context.Context, _ Run) error { return nil },
+		listFn:      func(_ context.Context, _ RunQuery) (RunListResult, error) { return RunListResult{}, nil },
 		deleteAllFn: func(_ context.Context) (int32, error) { return 0, nil },
 	}
 }

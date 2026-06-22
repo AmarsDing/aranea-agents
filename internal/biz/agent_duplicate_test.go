@@ -1,8 +1,8 @@
 package biz
 
 import (
-	"context"
 	"aranea-agents/internal/biz/shared"
+	"context"
 	"testing"
 
 	"aranea-agents/pkg/auth"
@@ -70,8 +70,12 @@ func (r *duplicateAgentRepo) ReplaceAgentPromptFiles(ctx context.Context, agentI
 func (r *duplicateAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }
-func (r *duplicateAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) { return 0, nil }
-func (r *duplicateAgentRepo) ToggleFavorite(context.Context, string) (Agent, error) { return Agent{}, nil }
+func (r *duplicateAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) {
+	return 0, nil
+}
+func (r *duplicateAgentRepo) ToggleFavorite(context.Context, string) (Agent, error) {
+	return Agent{}, nil
+}
 
 func TestDuplicate_copiesFilesWithNewIDs(t *testing.T) {
 	src := Agent{

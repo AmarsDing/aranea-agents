@@ -25,17 +25,17 @@ type readFlowLogsOutput struct {
 }
 
 type flowLogEntry struct {
-	ID            string `json:"id"`
-	StepID        string `json:"step_id"`
-	Phase         string `json:"phase"`
-	Severity      string `json:"severity"`
-	Title         string `json:"title"`
-	Message       string `json:"message"`
-	AutoHealed    bool   `json:"auto_healed"`
-	HealStrategy  string `json:"heal_strategy,omitempty"`
-	HealAttempts  int    `json:"heal_attempts,omitempty"`
-	HealSuccess   bool   `json:"heal_success,omitempty"`
-	CreatedAt     string `json:"created_at"`
+	ID           string `json:"id"`
+	StepID       string `json:"step_id"`
+	Phase        string `json:"phase"`
+	Severity     string `json:"severity"`
+	Title        string `json:"title"`
+	Message      string `json:"message"`
+	AutoHealed   bool   `json:"auto_healed"`
+	HealStrategy string `json:"heal_strategy,omitempty"`
+	HealAttempts int    `json:"heal_attempts,omitempty"`
+	HealSuccess  bool   `json:"heal_success,omitempty"`
+	CreatedAt    string `json:"created_at"`
 }
 
 // NewReadFlowLogsTool creates a tool that allows an Agent to read its own flow logs.

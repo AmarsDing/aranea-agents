@@ -68,7 +68,7 @@ type ProactiveRecaller interface {
 // MemoryCompositeRecallUsecase wraps SessionCompositeRecallStore and
 // optionally a ProactiveRecaller for conversation-driven memory surfacing.
 type MemoryCompositeRecallUsecase struct {
-	store          SessionCompositeRecallStore
+	store             SessionCompositeRecallStore
 	proactiveRecaller ProactiveRecaller
 }
 

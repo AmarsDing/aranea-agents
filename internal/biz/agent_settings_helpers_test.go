@@ -59,10 +59,10 @@ func TestJsonList(t *testing.T) {
 
 func TestStrFallback(t *testing.T) {
 	cases := []struct {
-		name      string
-		value     string
-		fallback  string
-		want      string
+		name     string
+		value    string
+		fallback string
+		want     string
 	}{
 		{"non-empty value", "hello", "default", "hello"},
 		{"empty value", "", "default", "default"},
@@ -403,11 +403,11 @@ func TestComposePromptPreview(t *testing.T) {
 
 	t.Run("with category responsibility preview", func(t *testing.T) {
 		agent := biz.Agent{
-			DisplayName:                    "TestAgent",
-			AgentKey:                       "test",
-			Provider:                       "openrouter",
-			Model:                          "gpt-4",
-			CategoryResponsibilityPreview:  "You are a senior engineer",
+			DisplayName:                   "TestAgent",
+			AgentKey:                      "test",
+			Provider:                      "openrouter",
+			Model:                         "gpt-4",
+			CategoryResponsibilityPreview: "You are a senior engineer",
 		}
 		got := biz.ComposePromptPreview(agent, "none")
 		if !strings.Contains(got, "角色职责") {

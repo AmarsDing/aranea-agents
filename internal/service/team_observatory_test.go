@@ -17,8 +17,10 @@ type observatoryTeamRepo struct {
 	runs  []biz.TeamRun
 }
 
-func (r *observatoryTeamRepo) ListTeams(context.Context) ([]biz.Team, error)                    { return nil, nil }
-func (r *observatoryTeamRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) { return nil, nil }
+func (r *observatoryTeamRepo) ListTeams(context.Context) ([]biz.Team, error) { return nil, nil }
+func (r *observatoryTeamRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 func (r *observatoryTeamRepo) GetTeamByID(_ context.Context, id string) (biz.Team, error) {
 	if id == r.team.ID {
 		return r.team, nil
@@ -31,9 +33,13 @@ func (r *observatoryTeamRepo) CreateTeam(context.Context, biz.Team) (biz.Team, e
 func (r *observatoryTeamRepo) UpdateTeam(context.Context, biz.Team) (biz.Team, error) {
 	return biz.Team{}, nil
 }
-func (r *observatoryTeamRepo) UpdateTeamWhereStatus(_ context.Context, _, _, _ string) (bool, error) { return true, nil }
+func (r *observatoryTeamRepo) UpdateTeamWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
+	return true, nil
+}
 func (r *observatoryTeamRepo) DeleteTeam(context.Context, string) error { return nil }
-func (r *observatoryTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
+func (r *observatoryTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) {
+	return 0, nil
+}
 func (r *observatoryTeamRepo) ListTeamRuns(_ context.Context, teamID string, _ int) ([]biz.TeamRun, error) {
 	if teamID == r.team.ID {
 		return r.runs, nil
@@ -62,7 +68,9 @@ func (r *observatoryTeamRepo) CreateTeamRun(context.Context, biz.TeamRun) (biz.T
 	return biz.TeamRun{}, nil
 }
 func (r *observatoryTeamRepo) UpdateTeamRun(context.Context, biz.TeamRun) error { return nil }
-func (r *observatoryTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) { return true, nil }
+func (r *observatoryTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
+	return true, nil
+}
 func (r *observatoryTeamRepo) UpdateTeamRunSummaryJSON(context.Context, string, string) error {
 	return nil
 }
@@ -79,7 +87,9 @@ func (r *observatoryTeamRepo) ListOrchestrationSteps(_ context.Context, runID, _
 	}
 	return nil, nil
 }
-func (r *observatoryTeamRepo) CreateTaskDeadLetter(_ context.Context, _ biz.TaskDeadLetter) error { return nil }
+func (r *observatoryTeamRepo) CreateTaskDeadLetter(_ context.Context, _ biz.TaskDeadLetter) error {
+	return nil
+}
 func (r *observatoryTeamRepo) ListTaskDeadLetters(_ context.Context, _ biz.TaskDeadLetterListFilter) ([]biz.TaskDeadLetter, error) {
 	return nil, nil
 }
@@ -106,8 +116,8 @@ func TestGetTeamRunObservatory(t *testing.T) {
 			DefinitionJSON: `{"members":[{"agent_id":"a1","sort_order":1,"name":"A"}]}`,
 		},
 		run: biz.TeamRun{ID: "run-1", TeamID: "t1", SessionID: "s1", Status: biz.TeamRunStatusSuccess, Mode: "sequential"},
-	steps: []biz.TeamRunStep{
-		{AgentID: "a1", AgentKey: "k1", AgentName: "A", SortOrder: 1, Status: biz.TeamMemberStepStatusOK, OutputPreview: "done"},
+		steps: []biz.TeamRunStep{
+			{AgentID: "a1", AgentKey: "k1", AgentName: "A", SortOrder: 1, Status: biz.TeamMemberStepStatusOK, OutputPreview: "done"},
 		},
 	}
 	svc := &TeamService{uc: biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()})}

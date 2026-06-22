@@ -111,5 +111,3 @@ func toProtoFailureTagCount(fc biz.FailureTagCount) *v1.FailureTagCount {
 		Count: int32(fc.Count),
 	}
 }
-
-

@@ -484,6 +484,12 @@ service AgentService {
       body: "*"
     };
   }
+  // Static sub-resource GET paths MUST be registered before /v1/agents/{id}
+  // to avoid gorilla/mux matching the variable segment first
+  // (e.g. "creators" as {id}).
+  rpc ListAgentCreators(google.protobuf.Empty) returns (ListAgentCreatorsResponse) {
+    option (google.api.http) = {get: "/v1/agents/creators"};
+  }
   rpc GetAgent(GetAgentRequest) returns (Agent) {
     option (google.api.http) = {get: "/v1/agents/{id}"};
   }
@@ -540,9 +546,6 @@ service AgentService {
   }
   rpc ListAgentTemplates(google.protobuf.Empty) returns (ListAgentTemplatesResponse) {
     option (google.api.http) = {get: "/v1/agent-templates"};
-  }
-  rpc ListAgentCreators(google.protobuf.Empty) returns (ListAgentCreatorsResponse) {
-    option (google.api.http) = {get: "/v1/agents/creators"};
   }
   rpc DuplicateAgent(DuplicateAgentRequest) returns (Agent) {
     option (google.api.http) = {post: "/v1/agents/{id}/duplicate" body: "*"};

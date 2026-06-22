@@ -8,14 +8,7 @@
       </div>
 
       <div class="observability-tabs-wrap q-mt-md">
-        <q-tabs
-          v-model="activeTab"
-          align="left"
-          no-caps
-          outside-arrows
-          mobile-arrows
-          class="observability-tabs"
-        >
+        <q-tabs v-model="activeTab" align="left" no-caps outside-arrows mobile-arrows class="observability-tabs">
           <q-tab name="plans" icon="fact_check" :label="t('observabilityPage.tabPlans')" />
           <q-tab name="teamRuns" icon="groups" :label="t('observabilityPage.tabTeamRuns')" />
           <q-tab name="graphExecutions" icon="hub" :label="t('observabilityPage.tabGraphExecutions')" />
@@ -70,8 +63,8 @@
                   <q-item
                     v-for="plan in plans"
                     :key="plan.planId"
-                    clickable
                     v-ripple
+                    clickable
                     :active="selectedPlan?.planId === plan.planId"
                     active-class="bg-primary text-white"
                     @click="loadPlanDetail(plan.planId)"
@@ -93,9 +86,7 @@
                       <div class="text-caption q-mt-xs">
                         {{ t('observabilityPage.strategy') }}: {{ plan.strategy || '-' }}
                       </div>
-                      <div class="text-caption">
-                        {{ t('observabilityPage.subtaskCount') }}: {{ plan.subtaskCount }}
-                      </div>
+                      <div class="text-caption">{{ t('observabilityPage.subtaskCount') }}: {{ plan.subtaskCount }}</div>
                     </q-item-section>
                   </q-item>
                 </q-list>
@@ -130,7 +121,10 @@
                   </div>
                   <div class="row q-gutter-sm items-center q-mt-xs">
                     <div class="text-caption text-grey-7">{{ t('observabilityPage.complexity') }}:</div>
-                    <q-badge :color="complexityColor(selectedPlan.complexityLevel)" :label="selectedPlan.complexityLevel || '-'" />
+                    <q-badge
+                      :color="complexityColor(selectedPlan.complexityLevel)"
+                      :label="selectedPlan.complexityLevel || '-'"
+                    />
                     <div class="text-caption text-grey-7">
                       {{ t('observabilityPage.complexityScore') }}: {{ selectedPlan.complexityScore }}
                     </div>
@@ -198,13 +192,12 @@
                         <q-item-label>{{ sub.name || sub.id }}</q-item-label>
                         <q-item-label caption lines="2">{{ sub.description || '-' }}</q-item-label>
                         <q-item-label caption>
-                          {{ t('observabilityPage.subTaskDependsOn') }}: {{ sub.dependsOn.length ? sub.dependsOn.join(', ') : '-' }}
+                          {{ t('observabilityPage.subTaskDependsOn') }}:
+                          {{ sub.dependsOn.length ? sub.dependsOn.join(', ') : '-' }}
                         </q-item-label>
                       </q-item-section>
                       <q-item-section side top>
-                        <div class="text-caption">
-                          {{ t('observabilityPage.subTaskPriority') }}: {{ sub.priority }}
-                        </div>
+                        <div class="text-caption">{{ t('observabilityPage.subTaskPriority') }}: {{ sub.priority }}</div>
                         <div class="text-caption">
                           {{ t('observabilityPage.subTaskComplexity') }}: {{ sub.estimatedComplexity }}
                         </div>
@@ -236,11 +229,7 @@
                 </q-expansion-item>
                 <q-separator v-if="selectedPlan.memoryHit" />
 
-                <q-expansion-item
-                  v-if="selectedPlan.memoryHit"
-                  :label="t('observabilityPage.memoryHit')"
-                  icon="memory"
-                >
+                <q-expansion-item v-if="selectedPlan.memoryHit" :label="t('observabilityPage.memoryHit')" icon="memory">
                   <q-card-section>
                     <div class="row q-gutter-sm items-center q-mb-xs">
                       <div class="text-caption text-grey-7">{{ t('observabilityPage.memoryCacheId') }}:</div>
@@ -257,7 +246,11 @@
                     <div class="row q-gutter-sm items-center">
                       <div class="text-caption text-grey-7">{{ t('observabilityPage.memoryAgentKeys') }}:</div>
                       <div class="text-body2">
-                        {{ selectedPlan.memoryHit.agentKeysUsed.length ? selectedPlan.memoryHit.agentKeysUsed.join(', ') : '-' }}
+                        {{
+                          selectedPlan.memoryHit.agentKeysUsed.length
+                            ? selectedPlan.memoryHit.agentKeysUsed.join(', ')
+                            : '-'
+                        }}
                       </div>
                     </div>
                   </q-card-section>

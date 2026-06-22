@@ -110,6 +110,7 @@ function platformResourceFromWire(raw: unknown): PlatformResource {
     agent_id: String(r.agent_id ?? r.agentId ?? ''),
     provider: String(r.provider ?? ''),
     model: String(r.model ?? ''),
+    is_system: Boolean(r.is_system ?? r.isSystem ?? false),
     config_json: String(r.config_json ?? r.configJson ?? '{}'),
     metadata_json: String(r.metadata_json ?? r.metadataJson ?? '{}'),
     created_at: String(r.created_at ?? r.createdAt ?? ''),

@@ -1,11 +1,5 @@
 <template>
-  <q-chip
-    v-if="count > 0"
-    dense
-    size="sm"
-    class="tool-stuck-badge"
-    icon="warning"
-  >
+  <q-chip v-if="count > 0" dense size="sm" class="tool-stuck-badge" icon="warning">
     {{ t('chat.activity.stuckToolBadge', { count }, '⚠ {count} 工具未返回') }}
   </q-chip>
 </template>

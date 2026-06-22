@@ -255,9 +255,9 @@ func TestKnownSensitiveValues(t *testing.T) {
 
 	t.Run("sorted by value length descending", func(t *testing.T) {
 		env := map[string]string{
-			"TOKEN_A": "mediumsecret",  // 12 chars
+			"TOKEN_A": "mediumsecret",        // 12 chars
 			"TOKEN_B": "verylongsecretvalue", // 19 chars
-			"TOKEN_C": "shortval",      // 8 chars
+			"TOKEN_C": "shortval",            // 8 chars
 		}
 		values := knownSensitiveValues(env)
 		for i := 1; i < len(values); i++ {

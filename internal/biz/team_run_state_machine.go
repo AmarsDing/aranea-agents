@@ -4,20 +4,22 @@
 //
 // ```mermaid
 // stateDiagram-v2
-//     [*] --> Pending
-//     Pending --> Running : start
-//     Pending --> Cancelled : cancel
-//     Running --> WaitingHuman : await_human
-//     Running --> Success : succeed
-//     Running --> Failed : fail
-//     Running --> Cancelled : cancel
-//     WaitingHuman --> Running : resume
-//     WaitingHuman --> Success : succeed
-//     WaitingHuman --> Failed : fail
-//     WaitingHuman --> Cancelled : cancel
-//     Success --> [*]
-//     Failed --> [*]
-//     Cancelled --> [*]
+//
+//	[*] --> Pending
+//	Pending --> Running : start
+//	Pending --> Cancelled : cancel
+//	Running --> WaitingHuman : await_human
+//	Running --> Success : succeed
+//	Running --> Failed : fail
+//	Running --> Cancelled : cancel
+//	WaitingHuman --> Running : resume
+//	WaitingHuman --> Success : succeed
+//	WaitingHuman --> Failed : fail
+//	WaitingHuman --> Cancelled : cancel
+//	Success --> [*]
+//	Failed --> [*]
+//	Cancelled --> [*]
+//
 // ```
 package biz
 
@@ -46,12 +48,12 @@ const (
 type TeamRunEvent string
 
 const (
-	TeamRunEventStart       TeamRunEvent = "start"
-	TeamRunEventSucceed     TeamRunEvent = "succeed"
-	TeamRunEventFail        TeamRunEvent = "fail"
-	TeamRunEventCancel      TeamRunEvent = "cancel"
-	TeamRunEventAwaitHuman  TeamRunEvent = "await_human"
-	TeamRunEventResume      TeamRunEvent = "resume"
+	TeamRunEventStart      TeamRunEvent = "start"
+	TeamRunEventSucceed    TeamRunEvent = "succeed"
+	TeamRunEventFail       TeamRunEvent = "fail"
+	TeamRunEventCancel     TeamRunEvent = "cancel"
+	TeamRunEventAwaitHuman TeamRunEvent = "await_human"
+	TeamRunEventResume     TeamRunEvent = "resume"
 )
 
 // ── Transition rules ─────────────────────────────────────────────────────────

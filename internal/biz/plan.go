@@ -19,16 +19,16 @@ const (
 )
 
 type Plan struct {
-	ID          string
-	SessionID   string
-	AgentKey    string
-	Goal        string
-	Steps       []PlanStep
-	Status      PlanStatus
-	SurfaceID   string
-	GraphID     string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID        string
+	SessionID string
+	AgentKey  string
+	Goal      string
+	Steps     []PlanStep
+	Status    PlanStatus
+	SurfaceID string
+	GraphID   string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type PlanStep struct {

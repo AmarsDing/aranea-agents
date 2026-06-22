@@ -86,7 +86,7 @@ func TestApplyImport_compensatesOnPartialFailure(t *testing.T) {
 	cands := []biz.SkillImportCandidate{
 		{CandidateID: "c1", Name: "Skill One", Slug: "skill-one", ValidationStatus: "pass"},
 		{CandidateID: "c2", Name: "Skill Two", Slug: "skill-two", ValidationStatus: "pass"},
-		{CandidateID: "c3", Name: "Risky",     Slug: "risky",     ValidationStatus: "block"},
+		{CandidateID: "c3", Name: "Risky", Slug: "risky", ValidationStatus: "block"},
 	}
 	seedJob(eng, "job-1", cands...)
 

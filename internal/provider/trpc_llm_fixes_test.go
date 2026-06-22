@@ -51,9 +51,9 @@ func TestBuildGeminiSpecificOptions_NoAPIKeyNoTransportReturnsNil(t *testing.T) 
 
 func TestResolveAndMergeConfig_PropagatesJSONError(t *testing.T) {
 	cases := []string{
-		`{`,                         // truncated
-		`{"api_key":`,               // incomplete value
-		`{"rate_limit_rpm":"bad"}`,  // wrong type
+		`{`,                        // truncated
+		`{"api_key":`,              // incomplete value
+		`{"rate_limit_rpm":"bad"}`, // wrong type
 	}
 	for _, raw := range cases {
 		_, err := ResolveModelConfig(ModelCatalogInput{Model: "m", ConfigJSON: raw})
@@ -239,8 +239,8 @@ func TestCapabilitiesForProviderModel_HonoursExplicitDisable(t *testing.T) {
 
 func TestCapabilitiesForProviderModel_ReturnsConservativeDefaultsOnBadConfig(t *testing.T) {
 	pm := biz.ProviderModel{
-		Provider:  "openai",
-		Model:     "m",
+		Provider:   "openai",
+		Model:      "m",
 		ConfigJSON: `{invalid`,
 	}
 	caps := CapabilitiesForProviderModel(pm)
@@ -272,8 +272,8 @@ func noopLogger() loggateway.Logger {
 
 type nopLogger struct{}
 
-func (*nopLogger) Debug(_ string, _ ...loggateway.Field) {}
-func (*nopLogger) Info(_ string, _ ...loggateway.Field)  {}
-func (*nopLogger) Warn(_ string, _ ...loggateway.Field)  {}
-func (*nopLogger) Error(_ string, _ ...loggateway.Field) {}
+func (*nopLogger) Debug(_ string, _ ...loggateway.Field)          {}
+func (*nopLogger) Info(_ string, _ ...loggateway.Field)           {}
+func (*nopLogger) Warn(_ string, _ ...loggateway.Field)           {}
+func (*nopLogger) Error(_ string, _ ...loggateway.Field)          {}
 func (n *nopLogger) With(_ ...loggateway.Field) loggateway.Logger { return n }

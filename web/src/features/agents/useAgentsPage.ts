@@ -1,5 +1,6 @@
 import { storeToRefs } from 'pinia';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { copyToClipboard, useQuasar } from 'quasar';
 import { mapAgentCreateFieldErrors, parseKratosApiError } from '../../utils/kratosError';
 import type { Agent, AgentKind, A2AProxyConfig, AgentTemplatePreset } from './types';
@@ -29,6 +30,7 @@ const LS_VIEW = 'agents.viewMode';
 /** Agent 列表页：组合 Pinia Store 与局部 UI（表单 / 对话框），不包含裸 HTTP（见 aranea-frontend-guide SKILL §3）。 */
 export function useAgentsPage() {
   const $q = useQuasar();
+  const { t } = useI18n();
   const appStore = useAppStore();
   const avatarCatalog = useAvatarCatalogStore();
   const pageStore = useAgentsPageStore();
@@ -117,6 +119,15 @@ export function useAgentsPage() {
       return base && Boolean(a2aProxy.remote_url.trim());
     }
     return base && Boolean(form.provider && form.model && modelCheckPassed.value);
+  });
+
+  const createDisabledHint = computed(() => {
+    if (canCreate.value) return '';
+    if (!form.display_name || !form.agent_key) return t('agentsPage.create.hintDisplayNameAndKey');
+    if (agentKeyError.value) return agentKeyError.value;
+    if (isA2AProxyCreate.value) return t('agentsPage.create.hintA2aUrl');
+    if (!modelCheckPassed.value) return t('agentsPage.create.hintCheckModel');
+    return '';
   });
 
   async function runLoadList() {
@@ -393,6 +404,7 @@ export function useAgentsPage() {
     remoteUrlError,
     createFormError,
     canCreate,
+    createDisabledHint,
     statusOptions,
     taxonomyLabel,
     isFavorite,

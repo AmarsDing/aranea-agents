@@ -20,10 +20,19 @@ func (r *ingressChannelRepo) AddDelivery(_ context.Context, _ biz.ChannelDeliver
 	r.deliveries++
 	return biz.ChannelDelivery{}, nil
 }
+func (r *ingressChannelRepo) AddDeliveryIfNotExists(_ context.Context, d biz.ChannelDelivery) (biz.ChannelDelivery, bool, error) {
+	r.deliveries++
+	return d, true, nil
+}
+
+func testIngressChannelUsecase(repo *ingressChannelRepo) *biz.ChannelUsecase {
+	peerUc := biz.NewChannelPeerUsecase(nil, nil, loggateway.NewNoop())
+	return biz.NewChannelUsecase(repo, repo, repo, repo, peerUc, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+}
 
 func TestAcceptInboundReturnsExecuteSync(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+	uc := testIngressChannelUsecase(repo)
 	dedupe := biz.NewIngressMessageDedupe(biz.DefaultMessageDedupeTTL)
 	h := &ChannelIngress{
 		channels:     uc,
@@ -55,7 +64,7 @@ func TestAcceptInboundReturnsExecuteSync(t *testing.T) {
 
 func TestAcceptInboundDefersAckWhenStreaming(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+	uc := testIngressChannelUsecase(repo)
 	dedupe := biz.NewIngressMessageDedupe(biz.DefaultMessageDedupeTTL)
 	h := &ChannelIngress{
 		channels:     uc,
@@ -86,7 +95,7 @@ func TestAcceptInboundDefersAckWhenStreaming(t *testing.T) {
 
 func TestAcceptInboundReturnsDispatchAsync(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+	uc := testIngressChannelUsecase(repo)
 	dedupe := biz.NewIngressMessageDedupe(biz.DefaultMessageDedupeTTL)
 	h := &ChannelIngress{
 		channels:     uc,
@@ -115,7 +124,7 @@ func TestAcceptInboundReturnsDispatchAsync(t *testing.T) {
 
 func TestAcceptInboundSkipsDuplicateInbound(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+	uc := testIngressChannelUsecase(repo)
 	dedupe := biz.NewIngressMessageDedupe(biz.DefaultMessageDedupeTTL)
 	h := &ChannelIngress{
 		channels:     uc,
@@ -143,7 +152,7 @@ func TestAcceptInboundSkipsDuplicateInbound(t *testing.T) {
 
 func TestProcessInboundHTTPResponds200(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+	uc := testIngressChannelUsecase(repo)
 	dedupe := biz.NewIngressMessageDedupe(biz.DefaultMessageDedupeTTL)
 	h := &ChannelIngress{
 		channels:     uc,

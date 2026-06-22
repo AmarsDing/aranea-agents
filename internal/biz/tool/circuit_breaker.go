@@ -18,9 +18,9 @@ const (
 )
 
 type CircuitBreakerConfig struct {
-	FailureThreshold  int `json:"failure_threshold"`
+	FailureThreshold   int `json:"failure_threshold"`
 	RecoveryTimeoutSec int `json:"recovery_timeout_sec"`
-	HalfOpenMaxProbe  int `json:"half_open_max_probe"`
+	HalfOpenMaxProbe   int `json:"half_open_max_probe"`
 }
 
 func (c CircuitBreakerConfig) recoveryTimeout() time.Duration {

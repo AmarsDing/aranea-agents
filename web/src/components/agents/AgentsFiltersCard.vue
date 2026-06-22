@@ -48,7 +48,7 @@
       clearable
       emit-value
       map-options
-      label="Provider"
+      :label="$t('agentsPage.filter.provider')"
       :options="providerOptions"
     />
     <template #actions>

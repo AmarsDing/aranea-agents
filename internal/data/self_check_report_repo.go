@@ -84,12 +84,12 @@ func (r *selfCheckReportRepo) ListSelfCheckReports(ctx context.Context, limit, o
 	var reports []bizmonitor.SelfCheckReport
 	for rows.Next() {
 		var (
-			id, overallStatus   string
-			checkResultsJSON    string
-			repairActionsJSON   string
-			startedAtStr        string
-			finishedAtStr       string
-			durationMs          int64
+			id, overallStatus string
+			checkResultsJSON  string
+			repairActionsJSON string
+			startedAtStr      string
+			finishedAtStr     string
+			durationMs        int64
 		)
 		if err := rows.Scan(&id, &checkResultsJSON, &overallStatus, &repairActionsJSON, &startedAtStr, &finishedAtStr, &durationMs); err != nil {
 			return nil, 0, entErrToBizErr(err, "SELF_CHECK_REPORT")

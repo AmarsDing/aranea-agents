@@ -36,10 +36,10 @@ func (m *mockToolSet) Close() error                            { return nil }
 
 func TestFirstCommandToken(t *testing.T) {
 	tests := []struct {
-		name    string
-		cmd     string
-		want    string
-		wantOK  bool
+		name   string
+		cmd    string
+		want   string
+		wantOK bool
 	}{
 		{"simple command", "git status", "git", true},
 		{"command with args", "ls -la /tmp", "ls", true},

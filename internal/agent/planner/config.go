@@ -16,13 +16,13 @@ type A2UIResult struct {
 }
 
 type a2uiConfigJSON struct {
-	Instruction                            string `json:"instruction"`
-	ServerToClientWithStandardCatalogJSON  string `json:"server_to_client_with_standard_catalog_schema_json"`
-	ClientToServerSchemaJSON               string `json:"client_to_server_schema_json"`
-	ClientCapabilitiesSchemaJSON           string `json:"client_capabilities_schema_json"`
-	ServerToClientOnlySchemaJSON           string `json:"server_to_client_only_schema_json"`
-	StandardCatalogDefinitionJSON          string `json:"standard_catalog_definition_json"`
-	CatalogDescriptionSchemaJSON           string `json:"catalog_description_schema_json"`
+	Instruction                           string `json:"instruction"`
+	ServerToClientWithStandardCatalogJSON string `json:"server_to_client_with_standard_catalog_schema_json"`
+	ClientToServerSchemaJSON              string `json:"client_to_server_schema_json"`
+	ClientCapabilitiesSchemaJSON          string `json:"client_capabilities_schema_json"`
+	ServerToClientOnlySchemaJSON          string `json:"server_to_client_only_schema_json"`
+	StandardCatalogDefinitionJSON         string `json:"standard_catalog_definition_json"`
+	CatalogDescriptionSchemaJSON          string `json:"catalog_description_schema_json"`
 }
 
 func parseBuiltinConfigJSON(raw string) builtinConfigJSON {

@@ -16,9 +16,9 @@ const (
 const (
 	ChannelTurnErrorRateLimitMsg       = "模型调用过于频繁，请稍后再试。"
 	ChannelTurnErrorContextOverflowMsg = "对话上下文过长，请发送 /background 转入后台继续，或在 Web 端查看。"
-	ChannelTurnErrorSyncCapMsg        = "任务执行较慢，建议使用 /background 转入后台继续。"
-	ChannelTurnErrorGenericMsg        = "任务执行失败，请稍后重试。"
-	ChannelTurnErrorBusyMsg           = "上一条仍在处理中，请稍候再试。"
+	ChannelTurnErrorSyncCapMsg         = "任务执行较慢，建议使用 /background 转入后台继续。"
+	ChannelTurnErrorGenericMsg         = "任务执行失败，请稍后重试。"
+	ChannelTurnErrorBusyMsg            = "上一条仍在处理中，请稍候再试。"
 )
 
 // FormatChannelTurnErrorMessage maps an error kind to a user-visible IM message.

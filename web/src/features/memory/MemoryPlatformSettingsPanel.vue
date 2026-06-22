@@ -1,5 +1,5 @@
-// Container: approved — platform memory policy toggles (persisted to system_settings).
-// FD4+FB3 fix: data fetching/saving + error handling extracted to useMemoryPlatformSettings composable.
+// Container: approved — platform memory policy toggles (persisted to system_settings). // FD4+FB3 fix: data
+fetching/saving + error handling extracted to useMemoryPlatformSettings composable.
 <template>
   <q-card flat bordered class="memory-card">
     <q-card-section class="row items-center justify-between">

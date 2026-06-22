@@ -161,9 +161,9 @@ func TestFromProtoNode(t *testing.T) {
 		Description: "test node", Instruction: "do stuff",
 		ModelName: "gpt-4", ToolNames: []string{"tool1"},
 		AgentName: "agent1", InterruptBefore: true, InterruptAfter: false,
-		Destinations: []string{"node2"},
+		Destinations:     []string{"node2"},
 		RetryMaxAttempts: 3, FailureAction: "fallback",
-		FallbackAgent: "fallback1",
+		FallbackAgent:   "fallback1",
 		InputMapperJson: `{"in":"x"}`, OutputMapperJson: `{"out":"y"}`,
 		IsolatedMessages: true, InputFromLastResponse: false,
 		CacheEnabled: true, CacheTtlSeconds: 300,
@@ -451,7 +451,7 @@ func TestToProtoTask_NilTimes(t *testing.T) {
 	now := time.Now()
 	task := &biz.GraphTask{
 		TaskID: "task2", NodeID: "n1",
-		Status: biz.TaskStatusPending,
+		Status:    biz.TaskStatusPending,
 		CreatedAt: now,
 	}
 	got := service.ToProtoTask(task)

@@ -22,11 +22,11 @@ var (
 )
 
 type stubChatRunGateway struct {
-	mu          sync.Mutex
-	hasActive   bool
-	status      ChatRunStatus
-	hasStatus   bool
-	setStatusCnt int
+	mu             sync.Mutex
+	hasActive      bool
+	status         ChatRunStatus
+	hasStatus      bool
+	setStatusCnt   int
 	setStatusCalls []stubChatSetStatusCall
 }
 
@@ -37,7 +37,7 @@ type stubChatSetStatusCall struct {
 	ErrMsg    string
 }
 
-func (s *stubChatRunGateway) HasActive(_ string) bool { return s.hasActive }
+func (s *stubChatRunGateway) HasActive(_ string) bool                  { return s.hasActive }
 func (s *stubChatRunGateway) Cancel(_ string, _ string) (bool, string) { return false, "" }
 func (s *stubChatRunGateway) EnqueueUserMessage(_ string, _ string) (bool, error) {
 	return false, nil
@@ -64,24 +64,26 @@ func (stubChatSessionLocker) Lock(_ string) func() { return func() {} }
 
 type stubChatPendingQueue struct{}
 
-func (stubChatPendingQueue) List(string) []PendingQueueEntry                       { return nil }
-func (stubChatPendingQueue) Enqueue(_, _ string) string                            { return "" }
-func (stubChatPendingQueue) EnqueueFollowup(_, _ string) string                    { return "" }
-func (stubChatPendingQueue) Dequeue(string) (PendingQueueEntry, bool)              { return PendingQueueEntry{}, false }
-func (stubChatPendingQueue) Peek(string) (PendingQueueEntry, bool)                 { return PendingQueueEntry{}, false }
-func (stubChatPendingQueue) Remove(string, string) bool                            { return false }
-func (stubChatPendingQueue) Update(string, string, string) bool                    { return false }
-func (stubChatPendingQueue) PromoteToFront(string, string) error                   { return nil }
-func (stubChatPendingQueue) SetPriority(string, string, int) error                 { return nil }
-func (stubChatPendingQueue) Close()                                                {}
+func (stubChatPendingQueue) List(string) []PendingQueueEntry    { return nil }
+func (stubChatPendingQueue) Enqueue(_, _ string) string         { return "" }
+func (stubChatPendingQueue) EnqueueFollowup(_, _ string) string { return "" }
+func (stubChatPendingQueue) Dequeue(string) (PendingQueueEntry, bool) {
+	return PendingQueueEntry{}, false
+}
+func (stubChatPendingQueue) Peek(string) (PendingQueueEntry, bool) { return PendingQueueEntry{}, false }
+func (stubChatPendingQueue) Remove(string, string) bool            { return false }
+func (stubChatPendingQueue) Update(string, string, string) bool    { return false }
+func (stubChatPendingQueue) PromoteToFront(string, string) error   { return nil }
+func (stubChatPendingQueue) SetPriority(string, string, int) error { return nil }
+func (stubChatPendingQueue) Close()                                {}
 
 type stubChatPersister struct {
-	mu              sync.Mutex
-	persistCnt      int
-	persistCalls    []stubChatPersistCall
-	failWith        error // if non-nil, PersistRunStatus returns this error
-	awaitMarkerCnt  int
-	clearAwaitCnt   int
+	mu             sync.Mutex
+	persistCnt     int
+	persistCalls   []stubChatPersistCall
+	failWith       error // if non-nil, PersistRunStatus returns this error
+	awaitMarkerCnt int
+	clearAwaitCnt  int
 }
 
 type stubChatPersistCall struct {
@@ -112,7 +114,7 @@ func (s *stubChatPersister) ClearAwaitingRunState(_ context.Context, _ string) {
 }
 
 type stubChatEventPublisher struct {
-	mu                 sync.Mutex
+	mu                  sync.Mutex
 	publishRunStatusCnt int
 	publishRunCalls     []stubChatPublishCall
 	publishQueuedCnt    int

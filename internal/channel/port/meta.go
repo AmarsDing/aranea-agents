@@ -7,25 +7,25 @@ import (
 // Well-known OutboundMeta keys (CH-BOR-10). Adapters must use these names; routing
 // fields like thread_id must not be hard-coded outside port/build helpers.
 const (
-	MetaRecipient         = "recipient"
-	MetaReceiveIDType     = "receive_id_type"
-	MetaChatID            = "chat_id"
-	MetaChatType          = "chat_type"
-	MetaThreadID          = "thread_id"
-	MetaReplyInThread     = "reply_in_thread"
-	MetaSenderOpenID      = "sender_open_id"
-	MetaSenderUserID      = "sender_user_id"
-	MetaSenderType        = "sender_type"
-	MetaMentioned         = "mentioned"
-	MetaIngressSource     = "ingress_source"
-	MetaInboundMessageID  = "inbound_message_id"
-	MetaSessionID         = "session_id"
-	MetaSessionWebhook    = "session_webhook"
-	MetaResponseURL       = "response_url"
-	MetaServiceURL        = "service_url"
-	MetaConversationID    = "conversation_id"
-	MetaReplyToken        = "reply_token"
-	MetaChannel           = "channel"
+	MetaRecipient        = "recipient"
+	MetaReceiveIDType    = "receive_id_type"
+	MetaChatID           = "chat_id"
+	MetaChatType         = "chat_type"
+	MetaThreadID         = "thread_id"
+	MetaReplyInThread    = "reply_in_thread"
+	MetaSenderOpenID     = "sender_open_id"
+	MetaSenderUserID     = "sender_user_id"
+	MetaSenderType       = "sender_type"
+	MetaMentioned        = "mentioned"
+	MetaIngressSource    = "ingress_source"
+	MetaInboundMessageID = "inbound_message_id"
+	MetaSessionID        = "session_id"
+	MetaSessionWebhook   = "session_webhook"
+	MetaResponseURL      = "response_url"
+	MetaServiceURL       = "service_url"
+	MetaConversationID   = "conversation_id"
+	MetaReplyToken       = "reply_token"
+	MetaChannel          = "channel"
 )
 
 var knownOutboundMetaKeys = map[string]struct{}{
@@ -45,9 +45,9 @@ var knownOutboundMetaKeys = map[string]struct{}{
 	MetaSessionWebhook:   {},
 	MetaResponseURL:      {},
 	MetaServiceURL:       {},
-	MetaConversationID: {},
-	MetaReplyToken:     {},
-	MetaChannel:        {},
+	MetaConversationID:   {},
+	MetaReplyToken:       {},
+	MetaChannel:          {},
 }
 
 var platformRequiredOutboundMeta = map[string][]string{

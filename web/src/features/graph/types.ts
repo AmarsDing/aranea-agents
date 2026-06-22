@@ -77,6 +77,9 @@ export type GraphDefinition = {
   interruptBefore: string[];
   interruptAfter: string[];
   metadata: Record<string, unknown>;
+  teamId?: string;
+  isTemplate?: boolean;
+  verificationGates?: string;
   version: number;
   sortOrder: number;
   createdAt: string;

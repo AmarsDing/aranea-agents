@@ -21,12 +21,12 @@ import (
 
 // FrameworkBridge runs evaluations via trpc-agent-go AgentEvaluator (MultiRun, etc.).
 type FrameworkBridge struct {
-	runFactory   func(agentID string) (runner.Runner, error)
-	judgeRunner  runner.Runner
-	callbacks    *service.Callbacks
-	llmUserSim   usersimulation.Simulator
-	multiRunCfg  MultiRunConfig
-	lg           loggateway.Logger
+	runFactory  func(agentID string) (runner.Runner, error)
+	judgeRunner runner.Runner
+	callbacks   *service.Callbacks
+	llmUserSim  usersimulation.Simulator
+	multiRunCfg MultiRunConfig
+	lg          loggateway.Logger
 }
 
 func NewFrameworkBridge(

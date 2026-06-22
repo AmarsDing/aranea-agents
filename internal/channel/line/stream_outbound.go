@@ -15,9 +15,9 @@ import (
 const defaultLineStreamEditInterval = 2 * time.Second
 
 type StreamSender struct {
-	ChannelToken  string
-	HTTP          *http.Client
-	EditInterval  time.Duration
+	ChannelToken string
+	HTTP         *http.Client
+	EditInterval time.Duration
 
 	mu        sync.Mutex
 	recipient string
@@ -93,5 +93,3 @@ func (s *StreamSender) pushMessage(ctx context.Context, recipient, text string) 
 	}
 	return "", apierror.Internal("LINE_PROTOCOL", "line stream: push succeeded but no message id returned")
 }
-
-

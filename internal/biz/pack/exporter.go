@@ -168,16 +168,16 @@ func (e *Exporter) ExportIndustry(ctx context.Context, industryKey string) (*Pac
 			CreatedAt:  time.Now().Format("2006-01-02"),
 			Contents: &PackContents{
 				Organization: true,
-				Agents:   buildContentRefsFromAgentSpecs(agentSpecs),
-				Teams:    buildContentRefsFromTeamSpecs(teamSpecs),
-				Graphs:   buildContentRefsFromGraphSpecs(graphSpecs),
+				Agents:       buildContentRefsFromAgentSpecs(agentSpecs),
+				Teams:        buildContentRefsFromTeamSpecs(teamSpecs),
+				Graphs:       buildContentRefsFromGraphSpecs(graphSpecs),
 			},
 		},
 		Organization: orgSpec,
-		Agents:     agentSpecs,
-		Teams:      teamSpecs,
-		Graphs:     graphSpecs,
-		AgentFiles: agentFiles,
+		Agents:       agentSpecs,
+		Teams:        teamSpecs,
+		Graphs:       graphSpecs,
+		AgentFiles:   agentFiles,
 	}
 
 	e.collectDependencies(p)

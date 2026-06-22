@@ -174,4 +174,3 @@ func TestQqAppID(t *testing.T) {
 		}
 	}
 }
-

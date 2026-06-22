@@ -1,8 +1,13 @@
 <template>
-  <div :class="['code-editor', { 'code-editor--dark': isDark, 'code-editor--readonly': readonly, 'code-editor--error': validationError }]">
+  <div
+    :class="[
+      'code-editor',
+      { 'code-editor--dark': isDark, 'code-editor--readonly': readonly, 'code-editor--error': validationError },
+    ]"
+  >
     <label v-if="label" class="code-editor__label">{{ label }}</label>
     <div class="code-editor__wrapper">
-      <div class="code-editor__line-numbers" ref="lineNumbersEl">
+      <div ref="lineNumbersEl" class="code-editor__line-numbers">
         <span v-for="n in lineCount" :key="n">{{ n }}</span>
       </div>
       <div class="code-editor__editor">

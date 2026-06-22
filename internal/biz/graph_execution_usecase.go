@@ -79,7 +79,7 @@ func (uc *GraphExecutionUsecase) applyExecTransition(exec *GraphExecution, event
 			loggateway.Str("from", string(from)),
 			loggateway.Str("event", string(event)),
 			loggateway.Err(err))
-		return err
+		return apierror.BadRequest(apierror.DomainGraph, "invalid graph execution transition from %s via %s", from, event)
 	}
 	exec.Status = string(newState)
 	return nil

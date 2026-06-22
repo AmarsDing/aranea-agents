@@ -62,10 +62,10 @@ export function patchStreamingMessageFromDelta(msg: Message, md: ActivityDeltaMe
 /** Finalize a streaming Message from an activity_done event. */
 export function finalizeStreamingMessageFromDone(msg: Message, md: ActivityDoneMeta): Message {
   const updates: Partial<Message> = { status: 'ok' };
-  if (md.kind === 'reply' && md.content !== undefined) {
+  if (md.kind === 'reply' && md.content != null) {
     updates.content_markdown = md.content;
   }
-  if (md.kind === 'thinking' && md.reasoning !== undefined) {
+  if (md.kind === 'thinking' && md.reasoning != null) {
     updates.reasoning_markdown = md.reasoning;
   }
   // Upgrade origin from 'streaming' to 'streaming_snapshot' to mark this as
@@ -105,7 +105,7 @@ export function toolEventFromActivityStart(md: ActivityStartMeta): ToolUseEvent 
     occurred_at: md.timestamp ?? new Date().toISOString(),
     duration_ms: undefined,
     activity_kind: (md.kind === 'action' ? 'tool' : md.kind) as LegacyActivityKind,
-    display_label: md.label,
+    display_label: md.label ?? undefined,
     started_at: md.timestamp,
   };
 }
@@ -194,7 +194,6 @@ export function reconstructMessagesFromActivities(activities: readonly Activity[
     // Skip non-content activities
     if (
       record.kind === 'task' ||
-      record.kind === 'end' ||
       record.kind === 'sub_task_board' ||
       record.kind === 'delegate' ||
       record.kind === 'notice'
@@ -295,13 +294,13 @@ export function reconstructMessagesFromActivities(activities: readonly Activity[
           agent_name: record.agentName || record.agentKey || 'Agent',
           tool_name: record.toolName || '',
           tool_label: record.label || record.toolName || '',
-          arguments: parseToolArgs(record.toolArguments),
-          result: parseToolResult(record.toolResult),
+          arguments: parseToolArgs(record.toolArguments ?? undefined),
+          result: parseToolResult(record.toolResult ?? undefined),
           error: record.toolErrorCode || undefined,
           occurred_at: createdAt,
           duration_ms: record.toolDurationMs ?? record.durationMs ?? undefined,
           activity_kind: 'tool' as LegacyActivityKind,
-          display_label: record.label,
+          display_label: record.label ?? undefined,
           started_at: createdAt,
           finished_at: createdAt,
         };

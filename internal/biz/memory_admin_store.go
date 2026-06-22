@@ -111,25 +111,25 @@ type L1TaskInsert struct {
 
 // L1FieldInsert is the domain-level DTO for upserting L1 fields.
 type L1FieldInsert struct {
-	ID              string
-	TaskID          string
-	SessionID       string
-	AgentID         string
-	FieldPath       string
-	FieldKind       string
-	Visibility      string
-	PinToPrompt     bool
-	IsRequired      bool
-	ValueText       string
-	ValueJSON       string
-	ValueRef        string
-	Preview         string
-	TokenEstimate   int
-	Source          string
-	SourceRef       string
-	TTLSeconds      int
-	ChangedBy       string
-	HistoryEnabled  bool // whether to archive old value to field_history
+	ID             string
+	TaskID         string
+	SessionID      string
+	AgentID        string
+	FieldPath      string
+	FieldKind      string
+	Visibility     string
+	PinToPrompt    bool
+	IsRequired     bool
+	ValueText      string
+	ValueJSON      string
+	ValueRef       string
+	Preview        string
+	TokenEstimate  int
+	Source         string
+	SourceRef      string
+	TTLSeconds     int
+	ChangedBy      string
+	HistoryEnabled bool // whether to archive old value to field_history
 }
 
 // L1TaskWriter exposes L1 task write operations.

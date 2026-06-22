@@ -15,8 +15,7 @@ export type { MessageOrigin };
  */
 export function originFromId(id: string, role: string): MessageOrigin {
   if (id.startsWith('pending-user-')) return { kind: 'pending_user', localId: id };
-  if (id.startsWith('actv-'))
-    return { kind: 'streaming', sessionId: '' };
+  if (id.startsWith('actv-')) return { kind: 'streaming', sessionId: '' };
   if (id.startsWith('ws-stream-')) return { kind: 'streaming', sessionId: '' };
   if (id.startsWith('member-')) return { kind: 'team_member', agentKey: id.replace(/^member-/, '') };
   if (id.startsWith('act-') || id.startsWith('tool-')) return { kind: 'tool_activity', toolEventId: id };
@@ -30,7 +29,12 @@ export function isEphemeralOrigin(origin: MessageOrigin | undefined): boolean {
 
 export function isInFlightOrigin(origin: MessageOrigin | undefined): boolean {
   if (!origin) return false;
-  return origin.kind === 'pending_user' || origin.kind === 'streaming' || origin.kind === 'streaming_snapshot' || origin.kind === 'tool_activity';
+  return (
+    origin.kind === 'pending_user' ||
+    origin.kind === 'streaming' ||
+    origin.kind === 'streaming_snapshot' ||
+    origin.kind === 'tool_activity'
+  );
 }
 
 export function isPendingUserOrigin(origin: MessageOrigin | undefined): boolean {
@@ -41,7 +45,9 @@ export function isStreamingOrigin(origin: MessageOrigin | undefined): boolean {
   return origin?.kind === 'streaming' || origin?.kind === 'streaming_snapshot';
 }
 
-export function isTeamMemberOrigin(origin: MessageOrigin | undefined): boolean {
+export function isTeamMemberOrigin(
+  origin: MessageOrigin | undefined,
+): origin is Extract<MessageOrigin, { kind: 'team_member' }> {
   return origin?.kind === 'team_member';
 }
 
@@ -49,7 +55,7 @@ export function isToolActivityOrigin(origin: MessageOrigin | undefined): boolean
   return origin?.kind === 'tool_activity';
 }
 
-export function ensureOrigin(message: Message): Message {
-  if (message.origin) return message;
+export function ensureOrigin(message: Message): Message & { origin: MessageOrigin } {
+  if (message.origin) return message as Message & { origin: MessageOrigin };
   return { ...message, origin: originFromId(message.id, message.role) };
 }

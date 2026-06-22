@@ -33,10 +33,10 @@ type mockRepo struct {
 
 func newMockRepo() *mockRepo {
 	return &mockRepo{
-		skills:       make(map[string]Skill),
-		markdown:     make(map[string]string),
-		batchMD:      make(map[string]map[string]string),
-		storageDir:   make(map[string]string),
+		skills:        make(map[string]Skill),
+		markdown:      make(map[string]string),
+		batchMD:       make(map[string]map[string]string),
+		storageDir:    make(map[string]string),
 		updateEnabled: make(map[string]bool),
 	}
 }

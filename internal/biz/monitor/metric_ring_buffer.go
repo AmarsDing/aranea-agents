@@ -49,9 +49,9 @@ func (b *metricBucket) addDuration(key string, ms int64) {
 // It is safe for concurrent use: Increment is called from event bus consumers
 // (hot path), while SumLastN is called from the periodic alert evaluator.
 type MetricRingBuffer struct {
-	mu        sync.Mutex
-	buckets   []metricBucket
-	capacity  int
+	mu         sync.Mutex
+	buckets    []metricBucket
+	capacity   int
 	bucketSize time.Duration
 }
 

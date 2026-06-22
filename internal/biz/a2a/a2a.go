@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"strings"
 	"time"
 )
@@ -283,7 +282,7 @@ func NewUsecase(card CardRepo, invocation InvocationRepo, audit AuditRepo, remot
 func NewID() (string, error) {
 	buf := make([]byte, 10)
 	if _, err := rand.Read(buf); err != nil {
-		return "", errors.New("a2a: crypto/rand.Read failed: " + err.Error())
+		return "", apierror.Internal(apierror.DomainA2A, "crypto/rand.Read failed: %v", err)
 	}
 	return "a2a-" + hex.EncodeToString(buf), nil
 }

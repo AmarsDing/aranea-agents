@@ -23,14 +23,14 @@ func (Organization) Annotations() []schema.Annotation {
 func (Organization) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("id").Immutable().Unique().MaxLen(256),
-		field.String("org_key").Unique().MaxLen(512),    // renamed from taxonomy_key
+		field.String("org_key").Unique().MaxLen(512), // renamed from taxonomy_key
 		field.String("name").MaxLen(1024),
 		field.Text("description").Default(""),
 		field.String("status").Default("active"),
 		field.Bool("enabled").Default(true),
 		field.Int("sort_order").Default(0),
 		field.String("parent_id").Default(""),
-		field.String("level").Default(""),               // "company" | "department" | "position"
+		field.String("level").Default(""), // "company" | "department" | "position"
 		field.String("scenario_key").Default(""),
 		field.String("workspace_id").Default(""),
 		field.String("owner_user_id").Default(""),

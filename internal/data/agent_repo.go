@@ -10,15 +10,15 @@ import (
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/agent"
-	"aranea-agents/internal/data/ent/organization"
 	"aranea-agents/internal/data/ent/agentpromptfile"
 	"aranea-agents/internal/data/ent/agentruntimesetting"
+	"aranea-agents/internal/data/ent/organization"
 	"aranea-agents/internal/data/ent/predicate"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
-	"entgo.io/ent/dialect/sql/sqlgraph"
 	entsql "entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqlgraph"
 )
 
 type agentRepo struct {
@@ -111,9 +111,9 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 		return biz.AgentRuntimeSettings{}
 	}
 	s := &biz.AgentRuntimeSettings{
-		AgentID:    e.ID,
-		CreatedAt:  e.CreatedAt,
-		UpdatedAt:  e.UpdatedAt,
+		AgentID:   e.ID,
+		CreatedAt: e.CreatedAt,
+		UpdatedAt: e.UpdatedAt,
 	}
 	s.ApplyIdentity(fromEntIdentity(e))
 	s.ApplyReasoning(fromEntReasoning(e))

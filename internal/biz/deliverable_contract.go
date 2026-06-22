@@ -7,9 +7,9 @@ import (
 
 // DeliverableContract defines the input/output contract between teams.
 type DeliverableContract struct {
-	Name        string `json:"name"`         // e.g., "design_spec"
-	Type        string `json:"type"`         // e.g., "document", "code", "data"
-	Format      string `json:"format"`       // e.g., "markdown", "json", "zip"
+	Name        string `json:"name"`   // e.g., "design_spec"
+	Type        string `json:"type"`   // e.g., "document", "code", "data"
+	Format      string `json:"format"` // e.g., "markdown", "json", "zip"
 	Description string `json:"description"`
 }
 

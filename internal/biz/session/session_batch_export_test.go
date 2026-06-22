@@ -9,8 +9,8 @@ import (
 )
 
 type testParticipantRepo struct {
-	syncFn  func(ctx context.Context, sess Session, messages []ChatMessage) error
-	listFn  func(ctx context.Context, sessionID string) ([]SessionParticipant, error)
+	syncFn func(ctx context.Context, sess Session, messages []ChatMessage) error
+	listFn func(ctx context.Context, sessionID string) ([]SessionParticipant, error)
 }
 
 func (r *testParticipantRepo) SyncFromSession(ctx context.Context, sess Session, messages []ChatMessage) error {
@@ -33,16 +33,16 @@ func newTestUcWithParticipants(repo *testRepo, participants *testParticipantRepo
 
 func TestPreviewBatch(t *testing.T) {
 	tests := []struct {
-		name           string
-		mode           string
-		ids            []string
-		olderThanDays  int
-		scope          SessionBatchScope
+		name            string
+		mode            string
+		ids             []string
+		olderThanDays   int
+		scope           SessionBatchScope
 		includeArchived bool
-		listByIDsFn    func(ctx context.Context, ids []string) ([]Session, error)
-		wantErr        bool
-		wantMsg        string
-		checkResult    func(t *testing.T, got SessionBatchPreview)
+		listByIDsFn     func(ctx context.Context, ids []string) ([]Session, error)
+		wantErr         bool
+		wantMsg         string
+		checkResult     func(t *testing.T, got SessionBatchPreview)
 	}{
 		{
 			name:          "valid preview with sessions",
@@ -141,15 +141,15 @@ func TestPreviewBatch(t *testing.T) {
 
 func TestBatchArchive(t *testing.T) {
 	tests := []struct {
-		name            string
-		ids             []string
-		olderThanDays   int
-		scope           SessionBatchScope
-		listByIDsFn     func(ctx context.Context, ids []string) ([]Session, error)
-		archiveByIDsFn  func(ctx context.Context, ids []string) (int, []string, error)
-		wantErr         bool
-		wantMsg         string
-		checkResult     func(t *testing.T, got SessionBatchResult)
+		name           string
+		ids            []string
+		olderThanDays  int
+		scope          SessionBatchScope
+		listByIDsFn    func(ctx context.Context, ids []string) ([]Session, error)
+		archiveByIDsFn func(ctx context.Context, ids []string) (int, []string, error)
+		wantErr        bool
+		wantMsg        string
+		checkResult    func(t *testing.T, got SessionBatchResult)
 	}{
 		{
 			name:          "valid archive",
@@ -456,9 +456,9 @@ func TestExport(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:   "invalid format returns error",
-			id:     "sess-1",
-			format: "csv",
+			name:    "invalid format returns error",
+			id:      "sess-1",
+			format:  "csv",
 			wantErr: true,
 			wantMsg: "format must be markdown or json",
 		},

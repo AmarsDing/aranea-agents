@@ -475,7 +475,7 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 		       ti.source, ti.status, ti.started_at, ti.ended_at, ti.duration_ms,
 		       ti.input_preview, ti.input_hash, ti.output_preview, ti.output_hash,
 		       ti.error_code, ti.error_message, ti.redaction_applied,
-		       COALESCE(ti.streaming, 0), COALESCE(ti.chunk_count, 0),
+		       COALESCE(ti.streaming, false), COALESCE(ti.chunk_count, 0),
 		       ti.metadata_json, ti.created_at
 		FROM tool_invocations ti
 		LEFT JOIN tools t ON t.tool_key = ti.tool_key
@@ -490,8 +490,8 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 	items := []biz.ToolInvocation{}
 	for rows.Next() {
 		var item biz.ToolInvocation
-		var redact int64
-		var streaming int64
+		var redact bool
+		var streaming bool
 		if err := rows.Scan(
 			&item.ID, &item.RequestID, &item.InvocationID, &item.ToolID, &item.ToolKey, &item.ToolDisplayName,
 			&item.AgentID, &item.AgentKey, &item.AgentDisplayName, &item.SessionID, &item.MessageID, &item.UserID,
@@ -501,8 +501,8 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 		); err != nil {
 			return biz.ToolRunResult{}, entErrToBizErr(err, "TOOL")
 		}
-		item.RedactionApplied = redact != 0
-		item.Streaming = streaming != 0
+		item.RedactionApplied = redact
+		item.Streaming = streaming
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {

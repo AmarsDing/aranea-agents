@@ -27,8 +27,8 @@ func TestValidateURL_Allowed(t *testing.T) {
 
 func TestValidateURL_Blocked(t *testing.T) {
 	cases := []struct {
-		url     string
-		reason  string
+		url    string
+		reason string
 	}{
 		{"http://localhost/api", "localhost"},
 		{"http://127.0.0.1/api", "loopback IP"},

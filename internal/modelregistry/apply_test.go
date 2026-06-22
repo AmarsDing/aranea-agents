@@ -55,11 +55,11 @@ func (s *stubApplyBackend) BatchApply(ctx context.Context, patches []ApplyRow, p
 func TestApplier_metadataAndPricing(t *testing.T) {
 	backend := &stubApplyBackend{
 		rows: []ApplyRow{{
-			ID:       "1",
-			Key:      "openai:gpt-4o",
-			Provider: "openai",
-			Model:    "gpt-4o",
-			Enabled:  true,
+			ID:         "1",
+			Key:        "openai:gpt-4o",
+			Provider:   "openai",
+			Model:      "gpt-4o",
+			Enabled:    true,
 			ConfigJSON: `{"catalog_managed":true,"catalog_source":"models.dev"}`,
 		}},
 	}

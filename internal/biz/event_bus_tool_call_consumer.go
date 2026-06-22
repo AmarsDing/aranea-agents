@@ -88,10 +88,10 @@ func (c *toolCallConsumer) handle(ctx context.Context, env contract.Envelope) {
 		}
 	}
 	write := ToolInvocationWrite{
-		ToolKey:       toolKey,
-		AgentKey:      coalesceNonEmpty(tc.AgentKey, env.Author),
-		AgentID:       strings.TrimSpace(tc.AgentID),
-		SessionID:     strings.TrimSpace(env.SessionID),
+		ToolKey:   toolKey,
+		AgentKey:  coalesceNonEmpty(tc.AgentKey, env.Author),
+		AgentID:   strings.TrimSpace(tc.AgentID),
+		SessionID: strings.TrimSpace(env.SessionID),
 		// TODO(debt): UserID is not available in Envelope; requires adding user_id
 		// to Envelope or querying session store. Tracked as TECH-DEBT.
 		UserID:        "",

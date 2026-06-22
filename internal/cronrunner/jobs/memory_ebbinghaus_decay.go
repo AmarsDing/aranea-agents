@@ -47,10 +47,10 @@ const (
 type MemoryEbbinghausDecayWorker struct {
 	interval   time.Duration
 	calculator *memory.EbbinghausDecayCalculator
-	reader     biz.L3FactReader   // for scanning fact rows (DB read)
+	reader     biz.L3FactReader     // for scanning fact rows (DB read)
 	writer     biz.DecayScoreWriter // for persisting R_t back to DB (optional)
-	agents     *biz.AgentUsecase  // for ListMemoryMaintenanceTargets
-	runner     *JobRunner         // unified Job framework (retry + dead letter)
+	agents     *biz.AgentUsecase    // for ListMemoryMaintenanceTargets
+	runner     *JobRunner           // unified Job framework (retry + dead letter)
 	lg         loggateway.Logger
 }
 

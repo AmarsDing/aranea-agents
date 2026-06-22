@@ -127,7 +127,7 @@ func TestValidateToolUpsert(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "valid with all json fields",
+			name: "valid with all json fields",
 			input: ToolUpsertInput{
 				Key:                  "t",
 				DisplayName:          "T",

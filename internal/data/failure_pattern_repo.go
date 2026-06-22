@@ -143,7 +143,7 @@ func (r *failurePatternRepo) ListActive(ctx context.Context) ([]bizmonitor.Failu
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		`SELECT id, source, type, pattern_hash, pattern_regex, fix_action,
 			confidence, success_count, fail_count, version, is_active, created_at, updated_at
-		 FROM failure_pattern WHERE is_active = 1 ORDER BY confidence DESC`,
+		 FROM failure_pattern WHERE is_active = TRUE ORDER BY confidence DESC`,
 	)
 	if err != nil {
 		return nil, entErrToBizErr(err, "FAILURE_PATTERN")
@@ -183,7 +183,7 @@ func (r *failurePatternRepo) Deactivate(ctx context.Context, id string) error {
 	}
 
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		r.data.Dialect().RenumberPlaceholders(`UPDATE failure_pattern SET is_active = 0, updated_at = ? WHERE id = ?`),
+		r.data.Dialect().RenumberPlaceholders(`UPDATE failure_pattern SET is_active = FALSE, updated_at = ? WHERE id = ?`),
 		time.Now().UTC().Format(time.RFC3339Nano), id,
 	)
 	return err
@@ -198,11 +198,11 @@ func scanFailurePatterns(rows interface {
 	for rows.Next() {
 		var (
 			id, source, fpType, patternHash, patternRegex string
-			fixActionJSON                                string
-			confidence                                   float64
-			successCount, failCount, version             int
-			isActive                                     bool
-			createdAtStr, updatedAtStr                   string
+			fixActionJSON                                 string
+			confidence                                    float64
+			successCount, failCount, version              int
+			isActive                                      bool
+			createdAtStr, updatedAtStr                    string
 		)
 		if err := rows.Scan(&id, &source, &fpType, &patternHash, &patternRegex, &fixActionJSON,
 			&confidence, &successCount, &failCount, &version, &isActive, &createdAtStr, &updatedAtStr); err != nil {

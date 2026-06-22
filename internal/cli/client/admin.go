@@ -9,6 +9,7 @@ import (
 
 	adminv1 "aranea-agents/api/kratos/admin/v1"
 )
+
 // Login calls POST /v1/admins/login and extracts the token from the Set-Cookie header.
 //
 // Code archaeology A1: The backend Login handler calls auth.SetCookie which sets a

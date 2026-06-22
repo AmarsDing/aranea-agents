@@ -28,11 +28,11 @@ func HandleWSInbound(
 	defer func() {
 		if r := recover(); r != nil {
 			lg.Error("飞书 WebSocket 入站 panic",
-			loggateway.StepID(flowStepFeishuWSPanic),
-			loggateway.Str("channel_id", ch.ID),
-			loggateway.Str("channel_key", ch.Key),
-			loggateway.Any("recover", r),
-		)
+				loggateway.StepID(flowStepFeishuWSPanic),
+				loggateway.Str("channel_id", ch.ID),
+				loggateway.Str("channel_key", ch.Key),
+				loggateway.Any("recover", r),
+			)
 		}
 	}()
 	procCtx := context.WithoutCancel(parentCtx)

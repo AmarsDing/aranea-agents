@@ -31,22 +31,22 @@ type MemoryRuntimePolicy struct {
 	InjectL3 bool
 	InjectL4 bool
 
-	WriteL3Facts    bool
-	WriteL2Episode  bool
-	WriteL4Graph    bool
+	WriteL3Facts     bool
+	WriteL2Episode   bool
+	WriteL4Graph     bool
 	WriteConsolidate bool
 
-	L2RecallMax           int
-	L3RecallTopK          int
-	L3MinScoreQuery       float64
-	L3MinScorePassive     float64
-	L3MaxPerRecallChars   int
-	L3RecallScopes        []string
-	L0L3MaxChunks         int
-	L0L4MaxPaths          int
-	L1FieldMaxChars       int
-	L1BudgetTokens        int
-	L4PersonaMaxChars     int
+	L2RecallMax            int
+	L3RecallTopK           int
+	L3MinScoreQuery        float64
+	L3MinScorePassive      float64
+	L3MaxPerRecallChars    int
+	L3RecallScopes         []string
+	L0L3MaxChunks          int
+	L0L4MaxPaths           int
+	L1FieldMaxChars        int
+	L1BudgetTokens         int
+	L4PersonaMaxChars      int
 	L4GraphInjectNeighbors bool
 	L4GraphMaxNeighbors    int
 	L4GraphMaxHops         int

@@ -71,15 +71,15 @@ type AgentSpec struct {
 	Model            string            `yaml:"model"`
 	SystemPromptMode string            `yaml:"system_prompt_mode"` // complete|task|minimized|none
 	AgentDescription string            `yaml:"agent_description"`
-	Files            map[string]string `yaml:"files"` // filename → body; empty → use V2 defaults
+	Files            map[string]string `yaml:"files"`  // filename → body; empty → use V2 defaults
 	Refine           bool              `yaml:"refine"` // trigger AI refinement for this agent
 }
 
 // TeamSpec describes one team to create.
 type TeamSpec struct {
-	Key        string       `yaml:"key"`
-	Name       string       `yaml:"name"`
-	Members    []MemberSpec `yaml:"members"`
+	Key     string       `yaml:"key"`
+	Name    string       `yaml:"name"`
+	Members []MemberSpec `yaml:"members"`
 }
 
 // MemberSpec is one agent within a team.

@@ -34,15 +34,15 @@ func TestEmbedConfigured(t *testing.T) {
 
 func TestApplyEmbedPatch(t *testing.T) {
 	tests := []struct {
-		name        string
-		cur         EmbedSetting
-		provider    string
-		baseURL     string
-		apiKey      string
-		model       string
-		dim         int
+		name         string
+		cur          EmbedSetting
+		provider     string
+		baseURL      string
+		apiKey       string
+		model        string
+		dim          int
 		updateAPIKey bool
-		want        EmbedSetting
+		want         EmbedSetting
 	}{
 		{
 			"patch provider only",

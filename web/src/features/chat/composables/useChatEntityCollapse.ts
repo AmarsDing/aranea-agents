@@ -4,15 +4,19 @@ const LS_SECTION_COLLAPSED = 'chat:collapsed:sections';
 const LS_GROUP_COLLAPSED = 'chat:collapsed:groups';
 
 export function useChatEntityCollapse() {
-  const sectionCollapsed = reactive<{ agents: boolean; teams: boolean; activeTeams: boolean; interruptedTeams: boolean; completedTeams: boolean }>(
-    {
-      agents: false,
-      teams: false,
-      activeTeams: false,
-      interruptedTeams: false,
-      completedTeams: true,
-    },
-  );
+  const sectionCollapsed = reactive<{
+    agents: boolean;
+    teams: boolean;
+    activeTeams: boolean;
+    interruptedTeams: boolean;
+    completedTeams: boolean;
+  }>({
+    agents: false,
+    teams: false,
+    activeTeams: false,
+    interruptedTeams: false,
+    completedTeams: false,
+  });
   const groupCollapsed = reactive<Record<string, boolean>>({});
 
   /** Snapshot of group collapse state before search activation, used to restore on clear. */

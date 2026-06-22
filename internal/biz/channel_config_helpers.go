@@ -6,11 +6,11 @@ import (
 )
 
 const (
-	defaultChannelAckMessage      = "收到，正在处理…"
-	defaultChannelAckOnQueued     = "当前有任务进行中，你的消息已排队，将在当前任务完成后处理。"
-	defaultChannelHeartbeatMsg    = "仍在处理中…"
-	defaultChannelTurnTimeoutSec  = 0 // 0 = use service default (300s)
-	defaultChannelFirstByteSec    = 0 // 0 = use service default (30s)
+	defaultChannelAckMessage     = "收到，正在处理…"
+	defaultChannelAckOnQueued    = "当前有任务进行中，你的消息已排队，将在当前任务完成后处理。"
+	defaultChannelHeartbeatMsg   = "仍在处理中…"
+	defaultChannelTurnTimeoutSec = 0 // 0 = use service default (300s)
+	defaultChannelFirstByteSec   = 0 // 0 = use service default (30s)
 	// DefaultContextAdmissionThreshold blocks new channel turns when session context exceeds this ratio (CH-BOR-11).
 	DefaultContextAdmissionThreshold = 0.6
 )
@@ -20,22 +20,22 @@ var DefaultChannelAsyncKeywords = []string{"/async", "分析", "全量", "研报
 
 // ChannelLongTaskConfig holds IM long-running task settings from config_json.config.
 type ChannelLongTaskConfig struct {
-	AckMessage          string
-	AckOnQueued         string
-	TurnTimeoutSec      int
-	FirstByteTimeoutSec int
-	ProgressMode        string
-	ProgressQuietSec    int
-	HeartbeatMessage    string
-	ExecutionMode       string
-	AsyncGraphID        string
-	AsyncTeamID         string
-	AsyncCronTaskID     string
-	AsyncKeywords       []string
-	DurableDeadlineSec          int
-	BusyInputMode               string
-	SessionMaxConcurrentDM      int
-	SessionMaxConcurrentGroup   int
+	AckMessage                string
+	AckOnQueued               string
+	TurnTimeoutSec            int
+	FirstByteTimeoutSec       int
+	ProgressMode              string
+	ProgressQuietSec          int
+	HeartbeatMessage          string
+	ExecutionMode             string
+	AsyncGraphID              string
+	AsyncTeamID               string
+	AsyncCronTaskID           string
+	AsyncKeywords             []string
+	DurableDeadlineSec        int
+	BusyInputMode             string
+	SessionMaxConcurrentDM    int
+	SessionMaxConcurrentGroup int
 	// ContextAdmissionThreshold: 0 = disabled; unset defaults to DefaultContextAdmissionThreshold.
 	ContextAdmissionThreshold float64
 }
@@ -52,26 +52,26 @@ func ParseChannelLongTaskConfig(configJSON string) ChannelLongTaskConfig {
 	}
 	var env struct {
 		Config struct {
-			AckMessage          *string `json:"ack_message"`
-			AckOnQueued         *string `json:"ack_on_queued"`
-			TurnTimeoutSec      *int    `json:"turn_timeout_sec"`
-			FirstByteTimeoutSec *int    `json:"first_byte_timeout_sec"`
-			ProgressMode        *string `json:"progress_mode"`
-			ProgressQuietSec    *int    `json:"progress_quiet_sec"`
-			HeartbeatMessage    *string `json:"heartbeat_message"`
-			ExecutionMode       *string `json:"execution_mode"`
-			AsyncGraphID        *string   `json:"async_graph_id"`
-			AsyncTeamID         *string   `json:"async_team_id"`
-			AsyncCronTaskID     *string   `json:"async_cron_task_id"`
-			AsyncKeywords       *[]string `json:"async_keywords"`
-			BusyInputMode               *string `json:"busy_input_mode"`
-			SessionMaxConcurrentDM      *int     `json:"session_max_concurrent_dm"`
-			SessionMaxConcurrentGroup   *int     `json:"session_max_concurrent_group"`
-			ContextAdmissionThreshold   *float64 `json:"context_admission_threshold"`
-			DurableDeadlineSec          *int  `json:"durable_deadline_sec"`
+			AckMessage                *string   `json:"ack_message"`
+			AckOnQueued               *string   `json:"ack_on_queued"`
+			TurnTimeoutSec            *int      `json:"turn_timeout_sec"`
+			FirstByteTimeoutSec       *int      `json:"first_byte_timeout_sec"`
+			ProgressMode              *string   `json:"progress_mode"`
+			ProgressQuietSec          *int      `json:"progress_quiet_sec"`
+			HeartbeatMessage          *string   `json:"heartbeat_message"`
+			ExecutionMode             *string   `json:"execution_mode"`
+			AsyncGraphID              *string   `json:"async_graph_id"`
+			AsyncTeamID               *string   `json:"async_team_id"`
+			AsyncCronTaskID           *string   `json:"async_cron_task_id"`
+			AsyncKeywords             *[]string `json:"async_keywords"`
+			BusyInputMode             *string   `json:"busy_input_mode"`
+			SessionMaxConcurrentDM    *int      `json:"session_max_concurrent_dm"`
+			SessionMaxConcurrentGroup *int      `json:"session_max_concurrent_group"`
+			ContextAdmissionThreshold *float64  `json:"context_admission_threshold"`
+			DurableDeadlineSec        *int      `json:"durable_deadline_sec"`
 		} `json:"config"`
 	}
-	if json.Unmarshal([]byte(defaultJSON(configJSON)), &env) != nil {
+	if err := json.Unmarshal([]byte(defaultJSON(configJSON)), &env); err != nil {
 		return cfg
 	}
 	if env.Config.AckMessage != nil {
@@ -182,7 +182,7 @@ func ParseWeChatActiveMode(configJSON string) bool {
 			ActiveMode bool `json:"active_mode"`
 		} `json:"config"`
 	}
-	if json.Unmarshal([]byte(defaultJSON(configJSON)), &env) != nil {
+	if err := json.Unmarshal([]byte(defaultJSON(configJSON)), &env); err != nil {
 		return false
 	}
 	return env.Config.ActiveMode
@@ -205,7 +205,7 @@ func ChannelStreamingEnabled(configJSON string) bool {
 			StreamingEnabled bool `json:"streaming_enabled"`
 		} `json:"config"`
 	}
-	if json.Unmarshal([]byte(defaultJSON(configJSON)), &env) != nil {
+	if err := json.Unmarshal([]byte(configJSON), &env); err != nil {
 		return false
 	}
 	return env.Config.StreamingEnabled
@@ -257,7 +257,9 @@ func ChannelTypeFromConfig(configJSON string) string {
 	var env struct {
 		Type string `json:"type"`
 	}
-	_ = json.Unmarshal([]byte(configJSON), &env)
+	if err := json.Unmarshal([]byte(configJSON), &env); err != nil {
+		return ""
+	}
 	return strings.TrimSpace(strings.ToLower(env.Type))
 }
 
@@ -266,7 +268,9 @@ func ChannelReceiveModeFromConfig(configJSON string) string {
 	var env struct {
 		ReceiveMode string `json:"receive_mode"`
 	}
-	_ = json.Unmarshal([]byte(configJSON), &env)
+	if err := json.Unmarshal([]byte(configJSON), &env); err != nil {
+		return ""
+	}
 	return strings.TrimSpace(strings.ToLower(env.ReceiveMode))
 }
 

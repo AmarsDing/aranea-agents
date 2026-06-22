@@ -244,7 +244,7 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
         reasoning: env.content?.reasoning,
         partialText: env.content?.text,
       });
-      writer.update((cur) => patchStreamingEnvelope(cur, sessionId, streamId, env, false));
+      writer.batchPatch((msgs) => patchStreamingEnvelope(msgs, sessionId, streamId, env, false));
       return true;
     }
     if (env.type === 'text_done') {
@@ -254,15 +254,15 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
         partialText: env.content?.text,
         replace: true,
       });
-      writer.update((cur) => patchStreamingEnvelope(cur, sessionId, streamId, env, true));
+      writer.batchPatch((msgs) => patchStreamingEnvelope(msgs, sessionId, streamId, env, true));
       return true;
     }
     if (env.type === 'tool_call' && env.tool_call) {
-      writer.update((cur) => upsertToolMessage(cur, sessionId, env, 'before'));
+      writer.batchPatch((msgs) => upsertToolMessage(msgs, sessionId, env, 'before'));
       return true;
     }
     if (env.type === 'tool_result' && env.tool_call) {
-      writer.update((cur) => upsertToolMessage(cur, sessionId, env, 'after'));
+      writer.batchPatch((msgs) => upsertToolMessage(msgs, sessionId, env, 'after'));
       return true;
     }
     return false;

@@ -25,6 +25,12 @@ interface TodoWriteOutput {
   todos: RawTodoItem[];
 }
 
+export interface TodoBoardEntry {
+  agentKey: string;
+  agentName: string;
+  board: TodoBoardState;
+}
+
 function parseTodoItems(raw: unknown): TodoItem[] {
   if (!raw || typeof raw !== 'object') return [];
   const output = raw as TodoWriteOutput;

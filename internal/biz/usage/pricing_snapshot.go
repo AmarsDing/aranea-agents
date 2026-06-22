@@ -62,11 +62,11 @@ func SnapshotFromProviderConfig(cfg ProviderModelPricingJSON) ModelPricingSnapsh
 		return ModelPricingSnapshot{}
 	}
 	cost := modelregistry.CostUSDPer1M{
-		Input:      modelregistry.MicroPer1KToUSDPer1M(cfg.InputPriceMicroUSDPer1K),
-		Output:     modelregistry.MicroPer1KToUSDPer1M(cfg.OutputPriceMicroUSDPer1K),
-		CacheRead:  modelregistry.MicroPer1KToUSDPer1M(cfg.CachedInputPriceMicroUSDPer1K),
-		Reasoning:  modelregistry.MicroPer1KToUSDPer1M(cfg.ReasoningPriceMicroUSDPer1K),
-		Embedding:  modelregistry.MicroPer1KToUSDPer1M(cfg.EmbeddingPriceMicroUSDPer1K),
+		Input:     modelregistry.MicroPer1KToUSDPer1M(cfg.InputPriceMicroUSDPer1K),
+		Output:    modelregistry.MicroPer1KToUSDPer1M(cfg.OutputPriceMicroUSDPer1K),
+		CacheRead: modelregistry.MicroPer1KToUSDPer1M(cfg.CachedInputPriceMicroUSDPer1K),
+		Reasoning: modelregistry.MicroPer1KToUSDPer1M(cfg.ReasoningPriceMicroUSDPer1K),
+		Embedding: modelregistry.MicroPer1KToUSDPer1M(cfg.EmbeddingPriceMicroUSDPer1K),
 	}
 	return SnapshotFromUSD(cost)
 }

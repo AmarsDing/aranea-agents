@@ -10,11 +10,11 @@ package types
 //
 // SessionTreeNode is a value object; direct construction via &SessionTreeNode{} is acceptable.
 type SessionTreeNode struct {
-	SessionID   string              `json:"session_id"`
-	Title       string              `json:"title"`
-	Status      string              `json:"status"`       // references biz.SessionStatus values
-	AgentKey    string              `json:"agent_key,omitempty"`
-	Children    []SessionTreeNode   `json:"children,omitempty"`
-	CreatedAt   string              `json:"created_at"`
-	UpdatedAt   string              `json:"updated_at"`
+	SessionID string            `json:"session_id"`
+	Title     string            `json:"title"`
+	Status    string            `json:"status"` // references biz.SessionStatus values
+	AgentKey  string            `json:"agent_key,omitempty"`
+	Children  []SessionTreeNode `json:"children,omitempty"`
+	CreatedAt string            `json:"created_at"`
+	UpdatedAt string            `json:"updated_at"`
 }

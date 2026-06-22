@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
-	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/biz/session"
+	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/pkg/loggateway"
 )
 

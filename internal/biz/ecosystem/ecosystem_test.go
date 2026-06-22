@@ -10,12 +10,12 @@ import (
 )
 
 type mockRepo struct {
-	listProducts   func(ctx context.Context, q Query) (ListResult, error)
-	getProduct     func(ctx context.Context, id string) (Product, error)
-	createProduct  func(ctx context.Context, p Product) (Product, error)
-	recordInstall  func(ctx context.Context, productID, refID string) error
-	removeInstall  func(ctx context.Context, productID string) error
-	isInstalled    func(ctx context.Context, productID string) (bool, error)
+	listProducts  func(ctx context.Context, q Query) (ListResult, error)
+	getProduct    func(ctx context.Context, id string) (Product, error)
+	createProduct func(ctx context.Context, p Product) (Product, error)
+	recordInstall func(ctx context.Context, productID, refID string) error
+	removeInstall func(ctx context.Context, productID string) error
+	isInstalled   func(ctx context.Context, productID string) (bool, error)
 }
 
 func (m *mockRepo) ListProducts(ctx context.Context, q Query) (ListResult, error) {
@@ -155,18 +155,18 @@ func TestUsecase_Get(t *testing.T) {
 		checkFunc func(t *testing.T, p Product)
 	}{
 		{
-			name:    "empty ID returns bad request",
-			id:      "",
+			name:      "empty ID returns bad request",
+			id:        "",
 			setupRepo: func() *mockRepo { return &mockRepo{} },
-			wantErr: true,
-			reason:  "ECOSYSTEM",
+			wantErr:   true,
+			reason:    "ECOSYSTEM",
 		},
 		{
-			name:    "whitespace ID returns bad request",
-			id:      "   ",
+			name:      "whitespace ID returns bad request",
+			id:        "   ",
 			setupRepo: func() *mockRepo { return &mockRepo{} },
-			wantErr: true,
-			reason:  "ECOSYSTEM",
+			wantErr:   true,
+			reason:    "ECOSYSTEM",
 		},
 		{
 			name: "valid ID returns product",
@@ -251,18 +251,18 @@ func TestUsecase_Publish(t *testing.T) {
 		checkFunc func(t *testing.T, p Product)
 	}{
 		{
-			name:    "empty name returns bad request",
-			input:   Product{Name: ""},
+			name:      "empty name returns bad request",
+			input:     Product{Name: ""},
 			setupRepo: func() *mockRepo { return &mockRepo{} },
-			wantErr: true,
-			reason:  "ECOSYSTEM",
+			wantErr:   true,
+			reason:    "ECOSYSTEM",
 		},
 		{
-			name:    "whitespace name returns bad request",
-			input:   Product{Name: "   "},
+			name:      "whitespace name returns bad request",
+			input:     Product{Name: "   "},
 			setupRepo: func() *mockRepo { return &mockRepo{} },
-			wantErr: true,
-			reason:  "ECOSYSTEM",
+			wantErr:   true,
+			reason:    "ECOSYSTEM",
 		},
 		{
 			name:  "defaults filled when empty",

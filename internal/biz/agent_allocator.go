@@ -34,15 +34,15 @@ const (
 type TaskAllocation struct {
 	SubTaskID      string   `json:"sub_task_id"`
 	SubTaskName    string   `json:"sub_task_name"`
-	AssignedType   string   `json:"assigned_type"`   // "agent" or "team"
-	AssignedKey    string   `json:"assigned_key"`    // agent_key or team definition key
+	AssignedType   string   `json:"assigned_type"` // "agent" or "team"
+	AssignedKey    string   `json:"assigned_key"`  // agent_key or team definition key
 	AssignedName   string   `json:"assigned_name"`
 	MatchScore     float64  `json:"match_score"`
-	MatchLayer     string   `json:"match_layer"`     // "exact", "semantic", "llm_cold_start"
+	MatchLayer     string   `json:"match_layer"` // "exact", "semantic", "llm_cold_start"
 	MatchReason    string   `json:"match_reason"`
 	FallbackKey    string   `json:"fallback_key,omitempty"`
 	FallbackScore  float64  `json:"fallback_score,omitempty"`
-	TeamMode       string   `json:"team_mode,omitempty"`         // coordinator/sequential/parallel
+	TeamMode       string   `json:"team_mode,omitempty"` // coordinator/sequential/parallel
 	TeamMemberKeys []string `json:"team_member_keys,omitempty"`
 }
 

@@ -71,10 +71,10 @@ func TestRuntimeLease_Valid(t *testing.T) {
 		{
 			name: "valid lease",
 			lease: biz.RuntimeLease{
-				Key: "channel-runtime:feishu:ch1",
+				Key:       "channel-runtime:feishu:ch1",
 				ChannelID: "ch1",
-				Platform: "feishu",
-				OwnerID: "owner1",
+				Platform:  "feishu",
+				OwnerID:   "owner1",
 				ExpiresAt: now.Add(5 * time.Minute),
 			},
 			want: true,
@@ -82,10 +82,10 @@ func TestRuntimeLease_Valid(t *testing.T) {
 		{
 			name: "empty key",
 			lease: biz.RuntimeLease{
-				Key: "",
+				Key:       "",
 				ChannelID: "ch1",
-				Platform: "feishu",
-				OwnerID: "owner1",
+				Platform:  "feishu",
+				OwnerID:   "owner1",
 				ExpiresAt: now.Add(5 * time.Minute),
 			},
 			want: false,
@@ -93,10 +93,10 @@ func TestRuntimeLease_Valid(t *testing.T) {
 		{
 			name: "empty channel id",
 			lease: biz.RuntimeLease{
-				Key: "channel-runtime:feishu:ch1",
+				Key:       "channel-runtime:feishu:ch1",
 				ChannelID: "",
-				Platform: "feishu",
-				OwnerID: "owner1",
+				Platform:  "feishu",
+				OwnerID:   "owner1",
 				ExpiresAt: now.Add(5 * time.Minute),
 			},
 			want: false,
@@ -104,10 +104,10 @@ func TestRuntimeLease_Valid(t *testing.T) {
 		{
 			name: "empty platform",
 			lease: biz.RuntimeLease{
-				Key: "channel-runtime:feishu:ch1",
+				Key:       "channel-runtime:feishu:ch1",
 				ChannelID: "ch1",
-				Platform: "",
-				OwnerID: "owner1",
+				Platform:  "",
+				OwnerID:   "owner1",
 				ExpiresAt: now.Add(5 * time.Minute),
 			},
 			want: false,
@@ -115,10 +115,10 @@ func TestRuntimeLease_Valid(t *testing.T) {
 		{
 			name: "empty owner id",
 			lease: biz.RuntimeLease{
-				Key: "channel-runtime:feishu:ch1",
+				Key:       "channel-runtime:feishu:ch1",
 				ChannelID: "ch1",
-				Platform: "feishu",
-				OwnerID: "",
+				Platform:  "feishu",
+				OwnerID:   "",
 				ExpiresAt: now.Add(5 * time.Minute),
 			},
 			want: false,
@@ -126,10 +126,10 @@ func TestRuntimeLease_Valid(t *testing.T) {
 		{
 			name: "zero expires at",
 			lease: biz.RuntimeLease{
-				Key: "channel-runtime:feishu:ch1",
+				Key:       "channel-runtime:feishu:ch1",
 				ChannelID: "ch1",
-				Platform: "feishu",
-				OwnerID: "owner1",
+				Platform:  "feishu",
+				OwnerID:   "owner1",
 				ExpiresAt: time.Time{},
 			},
 			want: false,

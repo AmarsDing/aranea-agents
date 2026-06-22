@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	flowStepChannelTurnBackground = "channel.turn.background"
-	flowStepRunEscalate           = "run.escalate.durable"
+	flowStepChannelTurnBackground     = "channel.turn.background"
+	flowStepRunEscalate               = "run.escalate.durable"
 	channelBackgroundReplyOK          = "已转入后台继续执行。"
 	channelBackgroundReplyAlready     = "任务已在后台执行中。"
 	channelBackgroundReplyNoActiveRun = "当前没有可转入后台的任务。"

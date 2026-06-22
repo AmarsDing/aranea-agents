@@ -30,13 +30,13 @@ type casTeamRepo struct {
 	stubOrchestrationStepRepo
 	stubTaskDeadLetterRepo
 
-	mu             sync.Mutex
-	team           Team
-	teamRun        TeamRun
-	updateTeamCnt  int32
-	updateRunCnt   int32
-	teamCASFail    bool // if true, second and subsequent CAS calls return false
-	runCASFail     bool
+	mu            sync.Mutex
+	team          Team
+	teamRun       TeamRun
+	updateTeamCnt int32
+	updateRunCnt  int32
+	teamCASFail   bool // if true, second and subsequent CAS calls return false
+	runCASFail    bool
 }
 
 func (r *casTeamRepo) GetTeamByID(_ context.Context, id string) (Team, error) {
@@ -60,9 +60,9 @@ func (r *casTeamRepo) UpdateTeamWhereStatus(_ context.Context, id, newStatus, ex
 }
 
 // TeamWriter stubs (not used in CAS tests but required by interface)
-func (r *casTeamRepo) CreateTeam(_ context.Context, t Team) (Team, error) { return t, nil }
-func (r *casTeamRepo) UpdateTeam(_ context.Context, t Team) (Team, error) { return t, nil }
-func (r *casTeamRepo) DeleteTeam(_ context.Context, _ string) error       { return nil }
+func (r *casTeamRepo) CreateTeam(_ context.Context, t Team) (Team, error)           { return t, nil }
+func (r *casTeamRepo) UpdateTeam(_ context.Context, t Team) (Team, error)           { return t, nil }
+func (r *casTeamRepo) DeleteTeam(_ context.Context, _ string) error                 { return nil }
 func (r *casTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
 
 func (r *casTeamRepo) GetTeamRunByID(_ context.Context, id string) (TeamRun, error) {
@@ -86,37 +86,40 @@ func (r *casTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, id, newStatus,
 }
 
 // TeamRunWriter stubs (not used in CAS tests but required by interface)
-func (r *casTeamRepo) CreateTeamRun(_ context.Context, run TeamRun) (TeamRun, error) { return run, nil }
-func (r *casTeamRepo) UpdateTeamRun(_ context.Context, _ TeamRun) error              { return nil }
+func (r *casTeamRepo) CreateTeamRun(_ context.Context, run TeamRun) (TeamRun, error)      { return run, nil }
+func (r *casTeamRepo) UpdateTeamRun(_ context.Context, _ TeamRun) error                   { return nil }
 func (r *casTeamRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error { return nil }
-func (r *casTeamRepo) UpdateTeamRunTraceID(_ context.Context, _, _ string) error        { return nil }
-func (r *casTeamRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error    { return nil }
-func (r *casTeamRepo) CreateTeamRunStep(_ context.Context, s TeamRunStep) (TeamRunStep, error) { return s, nil }
+func (r *casTeamRepo) UpdateTeamRunTraceID(_ context.Context, _, _ string) error          { return nil }
+func (r *casTeamRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error      { return nil }
+func (r *casTeamRepo) CreateTeamRunStep(_ context.Context, s TeamRunStep) (TeamRunStep, error) {
+	return s, nil
+}
 
 // TestTeamUsecase_TransitionStatus_CAS_ConcurrentReject verifies that when
 // two concurrent TransitionStatus calls try to transition the same team,
 // only one succeeds and the other is rejected (P2-15).
 //
 // The rejection may come from either:
-// - CAS failure (Conflict): the goroutine read the old status but CAS fails
-// - State machine validation (BadRequest): the goroutine reads the updated
-//   status and the transition is invalid
+//   - CAS failure (Conflict): the goroutine read the old status but CAS fails
+//   - State machine validation (BadRequest): the goroutine reads the updated
+//     status and the transition is invalid
+//
 // Both outcomes are acceptable — the key invariant is that exactly one
 // transition succeeds.
 func TestTeamUsecase_TransitionStatus_CAS_ConcurrentReject(t *testing.T) {
 	t.Parallel()
 	repo := &casTeamRepo{
-		team: Team{ID: "team-1", Status: TeamStatusPending},
+		team:        Team{ID: "team-1", Status: TeamStatusPending},
 		teamCASFail: true,
 	}
 	uc := NewTeamUsecase(TeamUsecaseOpts{
-		Reader:      repo,
-		Writer:      repo,
-		RunReader:   repo,
-		RunWriter:   repo,
-		StepRepo:    repo,
-		DeadLetter:  repo,
-		Lg:          loggateway.NewNoop(),
+		Reader:     repo,
+		Writer:     repo,
+		RunReader:  repo,
+		RunWriter:  repo,
+		StepRepo:   repo,
+		DeadLetter: repo,
+		Lg:         loggateway.NewNoop(),
 	})
 
 	var wg sync.WaitGroup
@@ -149,17 +152,17 @@ func TestTeamUsecase_TransitionStatus_CAS_ConcurrentReject(t *testing.T) {
 func TestTeamUsecase_TransitionRunStatus_CAS_ConcurrentReject(t *testing.T) {
 	t.Parallel()
 	repo := &casTeamRepo{
-		teamRun: TeamRun{ID: "run-1", Status: TeamRunStatusRunning},
+		teamRun:    TeamRun{ID: "run-1", Status: TeamRunStatusRunning},
 		runCASFail: true,
 	}
 	uc := NewTeamUsecase(TeamUsecaseOpts{
-		Reader:      repo,
-		Writer:      repo,
-		RunReader:   repo,
-		RunWriter:   repo,
-		StepRepo:    repo,
-		DeadLetter:  repo,
-		Lg:          loggateway.NewNoop(),
+		Reader:     repo,
+		Writer:     repo,
+		RunReader:  repo,
+		RunWriter:  repo,
+		StepRepo:   repo,
+		DeadLetter: repo,
+		Lg:         loggateway.NewNoop(),
 	})
 
 	var wg sync.WaitGroup
@@ -195,13 +198,13 @@ func TestTeamUsecase_TransitionStatus_CAS_SequentialSuccess(t *testing.T) {
 		team: Team{ID: "team-1", Status: TeamStatusPending},
 	}
 	uc := NewTeamUsecase(TeamUsecaseOpts{
-		Reader:      repo,
-		Writer:      repo,
-		RunReader:   repo,
-		RunWriter:   repo,
-		StepRepo:    repo,
-		DeadLetter:  repo,
-		Lg:          loggateway.NewNoop(),
+		Reader:     repo,
+		Writer:     repo,
+		RunReader:  repo,
+		RunWriter:  repo,
+		StepRepo:   repo,
+		DeadLetter: repo,
+		Lg:         loggateway.NewNoop(),
 	})
 
 	// pending → running
@@ -214,5 +217,55 @@ func TestTeamUsecase_TransitionStatus_CAS_SequentialSuccess(t *testing.T) {
 	_, err = uc.TransitionStatus(context.Background(), "team-1", TeamStatusCompleted)
 	if err != nil {
 		t.Fatalf("second transition failed: %v", err)
+	}
+}
+
+// TestTeamUsecase_UpdateRun_RejectsStatusChange verifies that UpdateRun refuses
+// to change team run status directly, forcing callers through TransitionRunStatus
+// so the state machine cannot be bypassed.
+func TestTeamUsecase_UpdateRun_RejectsStatusChange(t *testing.T) {
+	t.Parallel()
+	repo := &casTeamRepo{
+		teamRun: TeamRun{ID: "run-1", Status: TeamRunStatusRunning},
+	}
+	uc := NewTeamUsecase(TeamUsecaseOpts{
+		Reader:     repo,
+		Writer:     repo,
+		RunReader:  repo,
+		RunWriter:  repo,
+		StepRepo:   repo,
+		DeadLetter: repo,
+		Lg:         loggateway.NewNoop(),
+	})
+
+	err := uc.UpdateRun(context.Background(), TeamRun{ID: "run-1", Status: TeamRunStatusSuccess})
+	if err == nil {
+		t.Fatal("expected error when changing status via UpdateRun, got nil")
+	}
+	if !apierror.IsCode(err, apierror.CodeBadRequest) {
+		t.Fatalf("expected CodeBadRequest, got %v", err)
+	}
+}
+
+// TestTeamUsecase_UpdateRun_AllowsNonStatusUpdate verifies that UpdateRun still
+// persists changes to non-status fields when the status is unchanged.
+func TestTeamUsecase_UpdateRun_AllowsNonStatusUpdate(t *testing.T) {
+	t.Parallel()
+	repo := &casTeamRepo{
+		teamRun: TeamRun{ID: "run-1", Status: TeamRunStatusRunning},
+	}
+	uc := NewTeamUsecase(TeamUsecaseOpts{
+		Reader:     repo,
+		Writer:     repo,
+		RunReader:  repo,
+		RunWriter:  repo,
+		StepRepo:   repo,
+		DeadLetter: repo,
+		Lg:         loggateway.NewNoop(),
+	})
+
+	err := uc.UpdateRun(context.Background(), TeamRun{ID: "run-1", Status: TeamRunStatusRunning, TopologyJSON: `{"ok":true}`})
+	if err != nil {
+		t.Fatalf("unexpected error for non-status update: %v", err)
 	}
 }

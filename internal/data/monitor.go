@@ -57,8 +57,8 @@ func (r *monitorRepo) InsertAuditLog(ctx context.Context, entry biz.AuditLog) er
 		entry.CreatedAt = now
 	}
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`INSERT INTO audit_logs (id, action, resource, resource_id, request_id, detail, created_at, actor, ip, user_agent, severity, metadata_json)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.data.Dialect().RenumberPlaceholders(`INSERT INTO audit_logs (id, action, resource, resource_id, request_id, detail, created_at, actor, ip, user_agent, severity, metadata_json)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		id, entry.Action, entry.Resource, entry.ResourceID, entry.RequestID, entry.Detail, entry.CreatedAt,
 		entry.Actor, entry.IP, entry.UserAgent, entry.Severity, entry.MetadataJSON,
 	)
@@ -73,8 +73,8 @@ func (r *monitorRepo) InsertMonitorEvent(ctx context.Context, ev biz.MonitorEven
 		status = "ok"
 	}
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`INSERT INTO monitor_events (id, event_key, name, description, status, metadata_json, created_at, updated_at, deleted_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, '')`,
+		r.data.Dialect().RenumberPlaceholders(`INSERT INTO monitor_events (id, event_key, name, description, status, metadata_json, created_at, updated_at, deleted_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, '')`),
 		id, ev.EventKey, ev.Name, ev.Description, status, ev.MetadataJSON, now, now,
 	)
 	if err != nil && r.data.Dialect().UniqueConstraintErr(err) {
@@ -96,21 +96,22 @@ func (r *monitorRepo) ListAuditLogs(ctx context.Context, query biz.AuditQuery) (
 		offset = 0
 	}
 
+	d := r.data.Dialect()
 	where, args := auditWhere(query)
-	countSQL := `SELECT COUNT(*) FROM audit_logs` + where
-	listSQL := `SELECT id, action, resource, resource_id, request_id, detail, created_at,
+	countSQL := d.RenumberPlaceholders(`SELECT COUNT(*) FROM audit_logs` + where)
+	listSQL := d.RenumberPlaceholders(`SELECT id, action, resource, resource_id, request_id, detail, created_at,
 		COALESCE(actor, '') AS actor, COALESCE(ip, '') AS ip,
 		COALESCE(user_agent, '') AS user_agent, COALESCE(severity, '') AS severity,
 		COALESCE(metadata_json, '') AS metadata_json
-		FROM audit_logs` + where + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
-	args = append(args, limit, offset)
+		FROM audit_logs` + where + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+	listArgs := append(args, limit, offset)
 
 	var total int32
-	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), countSQL, args[:len(args)-2], &total); err != nil {
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), countSQL, args, &total); err != nil {
 		return biz.AuditListResult{}, entErrToBizErr(err, "MONITOR")
 	}
 
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, listSQL, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, listSQL, listArgs...)
 	if err != nil {
 		return biz.AuditListResult{}, entErrToBizErr(err, "MONITOR")
 	}
@@ -233,7 +234,7 @@ func monitorEventsWhere(q biz.MonitorEventsQuery, d Dialect) (string, []any) {
 }
 
 func (r *monitorRepo) GetMonitorEvent(ctx context.Context, id string) (biz.MonitorPlatformRow, error) {
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlMonitorEventsGet, id)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(sqlMonitorEventsGet), id)
 	if err != nil {
 		return biz.MonitorPlatformRow{}, entErrToBizErr(err, "MONITOR")
 	}
@@ -371,7 +372,7 @@ func (r *monitorRepo) patchRunnerCompletionByDualKey(ctx context.Context, sessio
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE monitor_events SET metadata_json = ?, updated_at = ? WHERE id = ?`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE monitor_events SET metadata_json = ?, updated_at = ? WHERE id = ?`),
 		merged, now, id,
 	)
 	if err != nil {
@@ -409,7 +410,7 @@ func (r *monitorRepo) patchRunnerCompletionByKey(ctx context.Context, sessionID,
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		`UPDATE monitor_events SET metadata_json = ?, updated_at = ? WHERE id = ?`,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE monitor_events SET metadata_json = ?, updated_at = ? WHERE id = ?`),
 		merged, now, id,
 	)
 	if err != nil {
@@ -443,7 +444,7 @@ func mergeJSONMetadata(lg loggateway.Logger, existing, patch string) (string, er
 }
 
 func (r *monitorRepo) GetMonitorTrace(ctx context.Context, id string) (biz.MonitorPlatformRow, error) {
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlMonitorTracesGet, id)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(sqlMonitorTracesGet), id)
 	if err != nil {
 		return biz.MonitorPlatformRow{}, entErrToBizErr(err, "MONITOR")
 	}

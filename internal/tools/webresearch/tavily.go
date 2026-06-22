@@ -41,10 +41,10 @@ type tavilySearchRequest struct {
 }
 
 type tavilySearchResponse struct {
-	Query        string        `json:"query"`
-	Answer       string        `json:"answer"`
-	Results      []tavilyHit   `json:"results"`
-	ResponseTime float64       `json:"response_time"`
+	Query        string      `json:"query"`
+	Answer       string      `json:"answer"`
+	Results      []tavilyHit `json:"results"`
+	ResponseTime float64     `json:"response_time"`
 }
 
 type tavilyHit struct {

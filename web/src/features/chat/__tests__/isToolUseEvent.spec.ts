@@ -29,8 +29,6 @@ describe('isToolUseEvent', () => {
   });
 
   it('rejects wrong types (status being a number, etc.)', () => {
-    expect(
-      isToolUseEvent({ tool_name: 'x', tool_label: 'y', phase: 'p', status: 1 }),
-    ).toBe(false);
+    expect(isToolUseEvent({ tool_name: 'x', tool_label: 'y', phase: 'p', status: 1 })).toBe(false);
   });
 });

@@ -13,12 +13,12 @@ import (
 )
 
 type FileSinkConfig struct {
-	OutputDir   string
-	MaxSizeMB   int
-	MaxBackups  int
-	MaxAgeDays  int
-	Compress    bool
-	Filename    string
+	OutputDir  string
+	MaxSizeMB  int
+	MaxBackups int
+	MaxAgeDays int
+	Compress   bool
+	Filename   string
 }
 
 type FileSink struct {

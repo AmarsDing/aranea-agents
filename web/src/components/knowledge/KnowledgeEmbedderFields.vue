@@ -18,7 +18,13 @@
       :label="t('knowledgeEmbed.baseUrl')"
       placeholder="https://api.openai.com"
     />
-    <q-input v-model="form.model" class="app-glass-control app-field-md" dense outlined :label="t('knowledgeEmbed.model')" />
+    <q-input
+      v-model="form.model"
+      class="app-glass-control app-field-md"
+      dense
+      outlined
+      :label="t('knowledgeEmbed.model')"
+    />
     <q-input
       v-model.number="form.dim"
       class="app-glass-control app-field-sm"

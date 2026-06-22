@@ -4,17 +4,17 @@ import (
 	"context"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	sessstatus "aranea-agents/internal/biz/session"
+	"aranea-agents/internal/event"
 	loggateway "aranea-agents/pkg/loggateway"
 )
 
 type SessionStatusGuard struct {
-	uc              *biz.SessionUsecase
-	teamUC          *biz.TeamUsecase
-	orchestrator    biz.TaskOrchestratorPort
-	bus             event.Bus
-	lg              loggateway.Logger
+	uc           *biz.SessionUsecase
+	teamUC       *biz.TeamUsecase
+	orchestrator biz.TaskOrchestratorPort
+	bus          event.Bus
+	lg           loggateway.Logger
 }
 
 func NewSessionStatusGuard(uc *biz.SessionUsecase, teamUC *biz.TeamUsecase, orchestrator biz.TaskOrchestratorPort, bus event.Bus, lg loggateway.Logger) *SessionStatusGuard {

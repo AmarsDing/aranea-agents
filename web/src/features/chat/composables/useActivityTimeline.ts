@@ -190,7 +190,7 @@ export function useActivityTimeline() {
     return {
       ...a,
       durationMs: toNumberOrNull(a.durationMs),
-      toolDurationMs: a.toolDurationMs == null ? a.toolDurationMs : toNumberOrNull(a.toolDurationMs),
+      toolDurationMs: a.toolDurationMs == null ? undefined : (toNumberOrNull(a.toolDurationMs) ?? undefined),
     };
   }
 

@@ -377,5 +377,3 @@ var (
 	_ biz.MemoryFactDecayer           = (*memoryFactDecayerAdapter)(nil)
 	_ biz.MemoryEpisodeBackfillReader = (*memoryEpisodeBackfillReaderAdapter)(nil)
 )
-
-

@@ -187,10 +187,10 @@ type reflectInput struct {
 }
 
 type reflectOutput struct {
-	Sufficient       bool           `json:"sufficient"`
-	Confidence       float32        `json:"confidence"`
-	SupplementQuery  string         `json:"supplement_query,omitempty"`
-	Chunks           []chunkSummary `json:"chunks"`
+	Sufficient      bool           `json:"sufficient"`
+	Confidence      float32        `json:"confidence"`
+	SupplementQuery string         `json:"supplement_query,omitempty"`
+	Chunks          []chunkSummary `json:"chunks"`
 }
 
 func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
@@ -227,8 +227,8 @@ func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
 		}
 
 		q := biz.KnowledgeSearchQuery{
-			Query:    in.Query,
-			TopK:     in.TopK,
+			Query: in.Query,
+			TopK:  in.TopK,
 		}
 
 		var chunks []biz.KnowledgeChunk

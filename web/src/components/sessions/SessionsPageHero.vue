@@ -1,5 +1,5 @@
 <template>
-  <AppPageHero :kicker="overline" :title="title" :subtitle="description">
+  <AppPageHero :kicker="displayOverline" :title="displayTitle" :subtitle="displayDescription">
     <template #actions>
       <q-btn
         outline
@@ -7,7 +7,7 @@
         no-caps
         color="primary"
         icon="refresh"
-        label="刷新"
+        :label="t('sessionsPage.refresh')"
         :loading="loading"
         @click="$emit('refresh')"
       />
@@ -16,9 +16,13 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import AppPageHero from '../layout/AppPageHero.vue';
 
-withDefaults(
+const { t } = useI18n();
+
+const props = withDefaults(
   defineProps<{
     title?: string;
     overline?: string;
@@ -26,11 +30,15 @@ withDefaults(
     loading?: boolean;
   }>(),
   {
-    title: '会话历史',
-    overline: 'Session history',
-    description: '按 Agent、Team、状态与上下文消耗追踪任务运行实例。',
+    title: '',
+    overline: '',
+    description: '',
   },
 );
+
+const displayTitle = computed(() => props.title || t('menu.sessions'));
+const displayOverline = computed(() => props.overline || t('sessionsPage.kicker'));
+const displayDescription = computed(() => props.description || t('sessionsPage.description'));
 
 defineEmits<{ refresh: [] }>();
 </script>

@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
 	"strings"
 
 	"aranea-agents/pkg/apierror"
@@ -283,7 +282,7 @@ func (u *Usecase) InsertChunks(ctx context.Context, chunks []Chunk) error {
 		if strings.Contains(err.Error(), "dimension mismatch") {
 			return ErrDimensionMismatch
 		}
-		return fmt.Errorf("knowledge: %w", err)
+		return apierror.Wrap(err, apierror.CodeInternal, apierror.DomainKnowledge)
 	}
 	return nil
 }
@@ -307,7 +306,7 @@ func (u *Usecase) Search(ctx context.Context, q SearchQuery, queryEmbedding []fl
 		if strings.Contains(err.Error(), "embedding is empty") {
 			return nil, ErrEmbeddingEmpty
 		}
-		return nil, fmt.Errorf("knowledge: %w", err)
+		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainKnowledge)
 	}
 	return chunks, nil
 }

@@ -117,8 +117,7 @@ export function mergeProgressEvents(
       if (existing) {
         existing.status = 'done';
         existing.message = meta.message;
-        existing.durationMs =
-          typeof meta.duration_ms === 'number' ? meta.duration_ms : startedAt - existing.startedAt;
+        existing.durationMs = typeof meta.duration_ms === 'number' ? meta.duration_ms : startedAt - existing.startedAt;
       } else {
         byStep.set(meta.step_id, {
           id: meta.step_id,

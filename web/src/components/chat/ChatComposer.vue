@@ -195,25 +195,27 @@
             @navigate="$emit('navigate', $event)"
             @cancel-job="$emit('cancel-job', $event)"
           />
-          <q-btn
-            dense
-            unelevated
-            outline
-            color="accent"
-            :disable="fileSupported === false"
-            :aria-label="t('chat.fileImport')"
-            class="chat-toolbar-btn chat-toolbar-btn--outline"
-            @click="$emit('pick-file')"
-          >
-            <q-icon name="attach_file" size="18px" />
-            <q-tooltip>{{
+          <span class="chat-toolbar-btn-wrapper">
+            <q-btn
+              dense
+              unelevated
+              outline
+              color="accent"
+              :disable="fileSupported === false"
+              :aria-label="t('chat.fileImport')"
+              class="chat-toolbar-btn chat-toolbar-btn--outline"
+              @click="$emit('pick-file')"
+            >
+              <q-icon name="attach_file" size="18px" />
+            </q-btn>
+            <q-tooltip anchor="top middle" self="bottom middle">{{
               fileSupported === false
                 ? t('chat.fileNotSupported')
                 : fileAccept
                   ? t('chat.limitedFileTypes')
                   : artifactMaxSizeHint()
             }}</q-tooltip>
-          </q-btn>
+          </span>
           <q-btn
             dense
             unelevated
@@ -369,3 +371,9 @@ function onInputKeydown(event: KeyboardEvent) {
   }
 }
 </script>
+
+<style scoped>
+.chat-toolbar-btn-wrapper {
+  display: inline-flex;
+}
+</style>

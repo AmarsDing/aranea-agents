@@ -11,9 +11,9 @@ import (
 
 func TestCircuitBreaker_ClosedState(t *testing.T) {
 	cb := NewCircuitBreaker("test", CircuitBreakerConfig{
-		FailureThreshold:  3,
+		FailureThreshold:   3,
 		RecoveryTimeoutSec: 1,
-		HalfOpenMaxProbe:  1,
+		HalfOpenMaxProbe:   1,
 	})
 	if cb.State() != CircuitClosed {
 		t.Fatalf("expected closed, got %s", cb.State())

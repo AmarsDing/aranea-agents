@@ -83,7 +83,9 @@
     <div v-if="team.totalSteps > 0" class="team-progress-card__progress q-mt-xs">
       <q-linear-progress :value="progressValue" size="3px" rounded :color="progressColor" />
       <div class="row items-center justify-between q-mt-xs">
-        <span class="text-caption text-grey"> {{ team.completedSteps }} / {{ team.totalSteps }} {{ t('spirit.steps') }} </span>
+        <span class="text-caption text-grey">
+          {{ team.completedSteps }} / {{ team.totalSteps }} {{ t('spirit.steps') }}
+        </span>
         <span class="text-caption text-grey">
           <template v-if="etaText">{{ t('spirit.estimated', { time: etaText }) }}</template>
           <template v-else-if="durationText">{{ durationText }}</template>
@@ -100,9 +102,7 @@
       <div v-for="(m, idx) in team.members.slice(0, 4)" :key="idx" class="team-progress-card__avatar-initial">
         {{ nameInitial(m.displayName) }}
       </div>
-      <span v-if="team.members.length > 4" class="text-caption text-grey">
-        +{{ team.members.length - 4 }}
-      </span>
+      <span v-if="team.members.length > 4" class="text-caption text-grey"> +{{ team.members.length - 4 }} </span>
     </div>
 
     <!-- Expandable agent details body -->
@@ -119,7 +119,10 @@
             <div class="team-progress-card__detail-body col min-width-0">
               <span class="text-caption ellipsis">{{ member.displayName }}</span>
               <AgentStatusLabel :label="spiritMemberStatusToLabel(member.status)" />
-              <div v-if="member.status === 'idle' && team.status === 'running'" class="team-progress-card__detail-waiting">
+              <div
+                v-if="member.status === 'idle' && team.status === 'running'"
+                class="team-progress-card__detail-waiting"
+              >
                 {{ t('spirit.waitingForPredecessor') }}
               </div>
             </div>
@@ -169,13 +172,17 @@ const teamInitial = computed(() => nameInitial(props.team.teamName));
 
 const isRunning = computed(() => props.team.status === 'running' || props.team.status === 'pending');
 
-const isWaitingDeps = computed(() => props.team.status === 'pending' && !!(props.team.dependsOn && props.team.dependsOn.length > 0));
+const isWaitingDeps = computed(
+  () => props.team.status === 'pending' && !!(props.team.dependsOn && props.team.dependsOn.length > 0),
+);
 
 const canCancel = computed(() => props.team.status === 'running' || props.team.status === 'pending');
 
 const canRetry = computed(() => props.team.status === 'failed');
 
-const canArchive = computed(() => props.team.status === 'completed' || props.team.status === 'failed' || props.team.status === 'cancelled');
+const canArchive = computed(
+  () => props.team.status === 'completed' || props.team.status === 'failed' || props.team.status === 'cancelled',
+);
 
 const statusClass = computed(() => {
   switch (props.team.status) {
@@ -211,7 +218,8 @@ const durationText = computed(() => formatDuration(props.team.durationMs));
 /** ETA: estimate remaining time based on completed steps and elapsed duration. */
 const etaText = computed(() => {
   const { completedSteps, totalSteps, durationMs } = props.team;
-  if (props.team.status !== 'running' || completedSteps <= 0 || totalSteps <= 0 || completedSteps >= totalSteps) return '';
+  if (props.team.status !== 'running' || completedSteps <= 0 || totalSteps <= 0 || completedSteps >= totalSteps)
+    return '';
   if (durationMs <= 0) return '';
   const msPerStep = durationMs / completedSteps;
   const remainingMs = Math.round(msPerStep * (totalSteps - completedSteps));

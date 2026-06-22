@@ -36,11 +36,11 @@ const backgroundJobWorkerPollInterval = 5 * time.Second
 //     marked failed with a descriptive error. This prevents unprocessable
 //     jobs from blocking the queue indefinitely.
 type BackgroundJobWorker struct {
-	repo        backgroundjob.Repo
-	registry    backgroundjob.Registry
-	lg          loggateway.Logger
+	repo         backgroundjob.Repo
+	registry     backgroundjob.Registry
+	lg           loggateway.Logger
 	pollInterval time.Duration
-	workerID    string
+	workerID     string
 }
 
 // NewBackgroundJobWorker constructs a BackgroundJobWorker. Returns nil if

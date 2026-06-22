@@ -65,7 +65,11 @@
         <div class="row q-col-gutter-md">
           <div class="col-6">
             <div class="text-caption text-grey-7">7d 路由命中率</div>
-            <div v-if="health.route_hit_rate_7d > 0" class="text-h6" :class="hitRateColorClass(health.route_hit_rate_7d)">
+            <div
+              v-if="health.route_hit_rate_7d > 0"
+              class="text-h6"
+              :class="hitRateColorClass(health.route_hit_rate_7d)"
+            >
               {{ formatPercent(health.route_hit_rate_7d) }}
             </div>
             <div v-else class="text-h6 text-grey-6">-</div>
@@ -75,7 +79,11 @@
           </div>
           <div class="col-6">
             <div class="text-caption text-grey-7">30d 路由命中率</div>
-            <div v-if="health.route_hit_rate_30d > 0" class="text-h6" :class="hitRateColorClass(health.route_hit_rate_30d)">
+            <div
+              v-if="health.route_hit_rate_30d > 0"
+              class="text-h6"
+              :class="hitRateColorClass(health.route_hit_rate_30d)"
+            >
               {{ formatPercent(health.route_hit_rate_30d) }}
             </div>
             <div v-else class="text-h6 text-grey-6">-</div>

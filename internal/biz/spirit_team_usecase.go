@@ -41,18 +41,18 @@ type TimeoutHandler interface {
 }
 
 type SpiritTeamParams struct {
-	SpiritSessionID       string
-	TaskDescription       string
-	AgentKeys             []string
-	Mode                  string
-	DagNodeID             string
-	TeamName              string
-	TaskSummary           string
-	DependsOn             []string
-	ParallelConfigJSON    string
-	TopologyReason        string
-	AutoStart             bool
-	DepartmentID          string   // home department for the team
+	SpiritSessionID         string
+	TaskDescription         string
+	AgentKeys               []string
+	Mode                    string
+	DagNodeID               string
+	TeamName                string
+	TaskSummary             string
+	DependsOn               []string
+	ParallelConfigJSON      string
+	TopologyReason          string
+	AutoStart               bool
+	DepartmentID            string   // home department for the team
 	CrossDeptMemberAgentIDs []string // agent IDs from other departments requiring borrow approval
 }
 
@@ -104,21 +104,22 @@ func WithTimeoutHandler(h TimeoutHandler) SpiritTeamUsecaseOption {
 //   - SpiritTeamAssemblyUsecase: assembly + creation (AssembleTeam, InjectDeptLeadIntoTeam, UpdateTeamDefinitionJSON, etc.)
 //   - SpiritTeamOrchestrationUsecase: DAG scheduling + timeout + completion (ScheduleDependentTeams, registerTeamTimeout, RecordTeamCompletion, etc.)
 //   - SpiritTeamDeliveryUsecase: deliverable passing + verification gate (WriteDeliverablesToSession, ExecuteVerificationGates, etc.)
+//
 // Current plan: Define interfaces first, then gradually move methods to sub-Usecases
 // while keeping SpiritTeamUsecase as a facade during migration.
 type SpiritTeamUsecase struct {
-	_                SpiritTeamController // interface assertion
-	teamUC           *TeamUsecase
-	sessionUC        *SessionUsecase
-	agentUC          *AgentUsecase
-	transactor       SpiritTransactor
-	orchCache        *OrchestrationCache
-	evolutionSugg    EvolutionSuggestionRepo
-	timeoutHandler   TimeoutHandler
+	_                 SpiritTeamController // interface assertion
+	teamUC            *TeamUsecase
+	sessionUC         *SessionUsecase
+	agentUC           *AgentUsecase
+	transactor        SpiritTransactor
+	orchCache         *OrchestrationCache
+	evolutionSugg     EvolutionSuggestionRepo
+	timeoutHandler    TimeoutHandler
 	contractValidator *DeliverableContractValidator
-	gateExecutor     *VerificationGateExecutor
-	deptLeadMgr      *DeptLeadManager
-	lg               loggateway.Logger
+	gateExecutor      *VerificationGateExecutor
+	deptLeadMgr       *DeptLeadManager
+	lg                loggateway.Logger
 
 	timeoutOnce sync.Once
 
@@ -184,18 +185,18 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 	var result SpiritTeamResult
 	err = u.transactor.ExecInTx(ctx, func(txCtx context.Context) error {
 		team, err := u.teamUC.Create(txCtx, Team{
-			TeamKey:           fmt.Sprintf("spirit_%s_%s", spiritSessionID, uuid.New().String()[:8]),
-			DisplayName:       TruncateRunes(taskDesc, MaxTeamDisplayNameLen),
-			Status:            initialStatus,
-			SpiritSessionID:   spiritSessionID,
-			TaskDescription:   taskDesc,
-			AutoCreated:       true,
-			DefinitionJSON:    defJSON,
-			DagNodeID:         params.DagNodeID,
-			DependsOn:         params.DependsOn,
+			TeamKey:            fmt.Sprintf("spirit_%s_%s", spiritSessionID, uuid.New().String()[:8]),
+			DisplayName:        TruncateRunes(taskDesc, MaxTeamDisplayNameLen),
+			Status:             initialStatus,
+			SpiritSessionID:    spiritSessionID,
+			TaskDescription:    taskDesc,
+			AutoCreated:        true,
+			DefinitionJSON:     defJSON,
+			DagNodeID:          params.DagNodeID,
+			DependsOn:          params.DependsOn,
 			ParallelConfigJSON: params.ParallelConfigJSON,
-			Topology:          mode,
-			DepartmentID:      params.DepartmentID,
+			Topology:           mode,
+			DepartmentID:       params.DepartmentID,
 		})
 		if err != nil {
 			return apierror.Wrap(err, apierror.CodeInternal, "SPIRIT")
@@ -672,11 +673,11 @@ const (
 	SpiritTeamDefaultMaxConc = 2
 
 	// Truncation limits for display strings.
-	MaxTeamDisplayNameLen    = 64
-	MaxTeamTitleLen          = 128
-	MaxSummaryLen            = 500
-	MaxSuggestionTitleLen    = 40
-	MaxSpiritQueryLen        = 500
+	MaxTeamDisplayNameLen = 64
+	MaxTeamTitleLen       = 128
+	MaxSummaryLen         = 500
+	MaxSuggestionTitleLen = 40
+	MaxSpiritQueryLen     = 500
 
 	// TimeoutHandlerContextTimeout is the maximum duration for DB operations
 	// inside the timeout callback goroutine.
@@ -779,9 +780,9 @@ func (u *SpiritTeamUsecase) RecordTeamCompletion(ctx context.Context, team Team,
 		TeamID:   team.ID,
 		TeamName: team.DisplayName,
 		TaskName: team.TaskDescription,
-	// RecordTeamCompletion always records for a completed team; the "completed"
-	// status is intentional — DQ Score is only meaningful for successful executions.
-	Status:   TeamStatusCompleted,
+		// RecordTeamCompletion always records for a completed team; the "completed"
+		// status is intentional — DQ Score is only meaningful for successful executions.
+		Status: TeamStatusCompleted,
 	}, durationMs)
 	taskPattern := ExtractTaskPattern(team.TaskDescription)
 	topology = InferTopologyFromTeam(team, u.lg)
@@ -821,11 +822,11 @@ func (u *SpiritTeamUsecase) RecordTeamCompletion(ctx context.Context, team Team,
 
 // DependentTeamAction represents an action to take on a dependent team.
 type DependentTeamAction struct {
-	TeamID   string
-	TeamName string
+	TeamID    string
+	TeamName  string
 	DagNodeID string
-	Action   string // "activate" or "fail"
-	Reason   string
+	Action    string // "activate" or "fail"
+	Reason    string
 }
 
 // ScheduleDependentTeams resolves DAG dependencies after a team completes.

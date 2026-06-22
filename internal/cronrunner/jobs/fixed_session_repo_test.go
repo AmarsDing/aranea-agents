@@ -104,17 +104,23 @@ func (fixedSessionRepo) UpdateSessionContextFromLLMUsage(context.Context, string
 func (fixedSessionRepo) UpdateSessionContextAfterCompression(context.Context, string, int, int) error {
 	return nil
 }
-func (fixedSessionRepo) InsertSessionSummary(context.Context, sessionsess.SessionSummary) error { return nil }
+func (fixedSessionRepo) InsertSessionSummary(context.Context, sessionsess.SessionSummary) error {
+	return nil
+}
 func (fixedSessionRepo) MaxSessionSummaryToTurn(context.Context, string) (int, error) { return 0, nil }
 func (fixedSessionRepo) ListSessionSummaries(context.Context, string) ([]sessionsess.SessionSummary, error) {
 	return nil, nil
 }
-func (fixedSessionRepo) LatestSessionSummaryTime(context.Context, string) (string, error) { return "", nil }
-func (fixedSessionRepo) UpdateSessionListSummary(context.Context, string, string) error     { return nil }
+func (fixedSessionRepo) LatestSessionSummaryTime(context.Context, string) (string, error) {
+	return "", nil
+}
+func (fixedSessionRepo) UpdateSessionListSummary(context.Context, string, string) error { return nil }
 func (fixedSessionRepo) GetSessionState(context.Context, string) (map[string]string, error) {
 	return nil, nil
 }
-func (fixedSessionRepo) SaveSessionState(context.Context, string, map[string]string) error { return nil }
+func (fixedSessionRepo) SaveSessionState(context.Context, string, map[string]string) error {
+	return nil
+}
 func (fixedSessionRepo) CreateSessionTurn(context.Context, sessionsess.SessionTurn) (sessionsess.SessionTurn, error) {
 	return sessionsess.SessionTurn{}, errors.New("not implemented")
 }

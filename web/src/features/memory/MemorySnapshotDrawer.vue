@@ -100,9 +100,7 @@ const segmentRows = computed<SegmentRow[]>(() =>
   Object.entries(segmentsMap.value).map(([section, stats]) => ({ section, ...stats })),
 );
 
-const totalTokens = computed(() =>
-  segmentRows.value.reduce((sum, r) => sum + (r.token_estimate || 0), 0),
-);
+const totalTokens = computed(() => segmentRows.value.reduce((sum, r) => sum + (r.token_estimate || 0), 0));
 
 function parseJSON<T>(raw: string, fallback: T): T {
   try {

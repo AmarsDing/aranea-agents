@@ -9,8 +9,8 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
-	agenttool "trpc.group/trpc-go/trpc-agent-go/tool/agent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
+	agenttool "trpc.group/trpc-go/trpc-agent-go/tool/agent"
 )
 
 const maxAgentDelegationDepth = 3

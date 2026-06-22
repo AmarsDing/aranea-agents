@@ -6,7 +6,7 @@ import { categoryDescriptionLabel, categoryDescriptionPlaceholder, type FieldSco
 
 /** Level to FieldScope mapping. */
 const levelToScope: Record<1 | 2 | 3, FieldScope> = {
-  1: 'category.company',
+  1: 'category.industry',
   2: 'category.department',
   3: 'category.position',
 };

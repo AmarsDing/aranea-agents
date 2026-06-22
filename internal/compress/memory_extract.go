@@ -81,8 +81,8 @@ type MemoryExtractFact struct {
 }
 
 type memoryExtractPayload struct {
-	Facts          []MemoryExtractFact `json:"facts"`
-	NoFactsReason  string              `json:"no_facts_reason"`
+	Facts         []MemoryExtractFact `json:"facts"`
+	NoFactsReason string              `json:"no_facts_reason"`
 }
 
 func ParseMemoryExtractFunctionCallArgs(raw string) ([]MemoryExtractFact, string, error) {

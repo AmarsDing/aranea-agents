@@ -8,58 +8,58 @@ import (
 
 func TestParseChannelAccessPolicy(t *testing.T) {
 	cases := []struct {
-		name       string
-		configJSON string
-		wantMention bool
-		wantUserLen int
+		name         string
+		configJSON   string
+		wantMention  bool
+		wantUserLen  int
 		wantGroupLen int
-		wantErr     bool
+		wantErr      bool
 	}{
 		{
-			name:       "empty config",
-			configJSON: `{}`,
-			wantMention: false,
-			wantUserLen: 0,
+			name:         "empty config",
+			configJSON:   `{}`,
+			wantMention:  false,
+			wantUserLen:  0,
 			wantGroupLen: 0,
 		},
 		{
-			name:       "require_mention true",
-			configJSON: `{"config":{"require_mention":true}}`,
+			name:        "require_mention true",
+			configJSON:  `{"config":{"require_mention":true}}`,
 			wantMention: true,
 		},
 		{
-			name:       "require_mention string true",
-			configJSON: `{"config":{"require_mention":"true"}}`,
+			name:        "require_mention string true",
+			configJSON:  `{"config":{"require_mention":"true"}}`,
 			wantMention: true,
 		},
 		{
-			name:       "require_mention string 1",
-			configJSON: `{"config":{"require_mention":"1"}}`,
+			name:        "require_mention string 1",
+			configJSON:  `{"config":{"require_mention":"1"}}`,
 			wantMention: true,
 		},
 		{
-			name:       "require_mention false",
-			configJSON: `{"config":{"require_mention":false}}`,
+			name:        "require_mention false",
+			configJSON:  `{"config":{"require_mention":false}}`,
 			wantMention: false,
 		},
 		{
-			name:       "allowed_user_ids comma string",
-			configJSON: `{"config":{"allowed_user_ids":"u1,u2"}}`,
+			name:        "allowed_user_ids comma string",
+			configJSON:  `{"config":{"allowed_user_ids":"u1,u2"}}`,
 			wantUserLen: 2,
 		},
 		{
-			name:       "allowed_user_ids array",
-			configJSON: `{"config":{"allowed_user_ids":["a1","a2","a3"]}}`,
+			name:        "allowed_user_ids array",
+			configJSON:  `{"config":{"allowed_user_ids":["a1","a2","a3"]}}`,
 			wantUserLen: 3,
 		},
 		{
-			name:       "allowed_group_ids comma string",
-			configJSON: `{"config":{"allowed_group_ids":"g1,g2"}}`,
+			name:         "allowed_group_ids comma string",
+			configJSON:   `{"config":{"allowed_group_ids":"g1,g2"}}`,
 			wantGroupLen: 2,
 		},
 		{
-			name:       "deny all user ids",
-			configJSON: `{"config":{"allowed_user_ids":"0"}}`,
+			name:        "deny all user ids",
+			configJSON:  `{"config":{"allowed_user_ids":"0"}}`,
 			wantUserLen: 1,
 		},
 		{
@@ -102,26 +102,26 @@ func TestChannelAccessPolicy_Allows(t *testing.T) {
 		wantMsg string
 	}{
 		{
-			name: "empty policy allows all",
+			name:   "empty policy allows all",
 			policy: biz.ChannelAccessPolicy{},
 			ctx:    biz.InboundAccessContext{UserIDs: []string{"u1"}, IsGroup: false},
 			want:   true,
 		},
 		{
-			name: "require mention group not mentioned",
-			policy: biz.ChannelAccessPolicy{RequireMention: true},
-			ctx:    biz.InboundAccessContext{IsGroup: true, Mentioned: false},
-			want:   false,
+			name:    "require mention group not mentioned",
+			policy:  biz.ChannelAccessPolicy{RequireMention: true},
+			ctx:     biz.InboundAccessContext{IsGroup: true, Mentioned: false},
+			want:    false,
 			wantMsg: "group message requires @mention",
 		},
 		{
-			name: "require mention group mentioned",
+			name:   "require mention group mentioned",
 			policy: biz.ChannelAccessPolicy{RequireMention: true},
 			ctx:    biz.InboundAccessContext{IsGroup: true, Mentioned: true},
 			want:   true,
 		},
 		{
-			name: "require mention DM ok",
+			name:   "require mention DM ok",
 			policy: biz.ChannelAccessPolicy{RequireMention: true},
 			ctx:    biz.InboundAccessContext{IsGroup: false, Mentioned: false},
 			want:   true,

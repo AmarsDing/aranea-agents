@@ -27,25 +27,25 @@ type SessionRuntimeWriter interface {
 
 // SessionMetrics holds the metrics fields for a session.
 type SessionMetrics struct {
-	SessionID            string
-	MessageCount         int
-	RunCount             int
-	ModelCallCount       int
-	ToolCallCount        int
-	SkillCallCount       int
-	MCPCallCount         int
-	InputTokens          int
-	OutputTokens         int
-	TotalTokens          int
-	TotalCostMicroUSD    int64
-	AvgLatencyMs         float64
-	ErrorCount           int
-	ContextUsedTokens    int
-	ContextUsedRatio     float64
-	MaxContextUsedRatio  float64
-	ContextStatus        string
-	LastMessageAt        string
-	UpdatedAt            string
+	SessionID           string
+	MessageCount        int
+	RunCount            int
+	ModelCallCount      int
+	ToolCallCount       int
+	SkillCallCount      int
+	MCPCallCount        int
+	InputTokens         int
+	OutputTokens        int
+	TotalTokens         int
+	TotalCostMicroUSD   int64
+	AvgLatencyMs        float64
+	ErrorCount          int
+	ContextUsedTokens   int
+	ContextUsedRatio    float64
+	MaxContextUsedRatio float64
+	ContextStatus       string
+	LastMessageAt       string
+	UpdatedAt           string
 }
 
 // SessionRuntime holds the runtime state for a session.

@@ -140,11 +140,7 @@ function latestPendingUserId(messages: Message[]): string {
  * If `member_id` is absent or `resolveMemberMeta` is unavailable, the message
  * is left unchanged (coordinator or single-agent reply).
  */
-function applyMemberMetaToMessage(
-  msg: Message,
-  md: Record<string, unknown>,
-  ctx: StreamHandlerCtx,
-): void {
+function applyMemberMetaToMessage(msg: Message, md: Record<string, unknown>, ctx: StreamHandlerCtx): void {
   const metaObj = md.meta as Record<string, unknown> | undefined;
   const memberId = typeof metaObj?.member_id === 'string' ? metaObj.member_id : '';
   if (!memberId || !ctx.resolveMemberMeta) return;
@@ -460,7 +456,7 @@ export function bindStreamHandlers(
       case 'thinking': {
         const newMsg = createStreamingMessageFromActivity(activityId, sid, md as unknown as ActivityStartMeta);
         if (writer && sid === ctx.sessionId) {
-          writer.update((cur) => [...cur, newMsg]);
+          writer.insert(newMsg);
         } else {
           const msgs = ctx.getMessages(sid);
           ctx.setMessages(sid, [...msgs, newMsg]);
@@ -477,7 +473,7 @@ export function bindStreamHandlers(
         // coordinator's reply (avatar, role badge, options_json).
         applyMemberMetaToMessage(newMsg, md, ctx);
         if (writer && sid === ctx.sessionId) {
-          writer.update((cur) => [...cur, newMsg]);
+          writer.insert(newMsg);
         } else {
           const msgs = ctx.getMessages(sid);
           ctx.setMessages(sid, [...msgs, newMsg]);
@@ -489,7 +485,7 @@ export function bindStreamHandlers(
       case 'action': {
         const toolMsg = createToolMessageFromActivityStart(sid, md as unknown as ActivityStartMeta);
         if (writer && sid === ctx.sessionId) {
-          writer.update((cur) => [...cur, toolMsg]);
+          writer.insert(toolMsg);
         } else {
           const msgs = ctx.getMessages(sid);
           ctx.setMessages(sid, [...msgs, toolMsg]);
@@ -534,17 +530,13 @@ export function bindStreamHandlers(
     ctx.onRunActivity?.();
 
     if (writer && sid === ctx.sessionId) {
-      writer.update((cur) => {
-        const idx = cur.findIndex((m) => m.id === activityId);
-        if (idx < 0) return cur;
-        const patched = patchStreamingMessageFromDelta(cur[idx], md as unknown as ActivityDeltaMeta);
+      writer.update(activityId, (cur) => {
+        const patched = patchStreamingMessageFromDelta(cur, md as unknown as ActivityDeltaMeta);
         // P2-F1: skip array copy when the patch is a no-op (terminal status
         // or unknown delta_field). patchStreamingMessageFromDelta returns the
-        // same reference in those cases, so we can avoid the O(n) spread.
-        if (patched === cur[idx]) return cur;
-        const next = [...cur];
-        next[idx] = patched;
-        return next;
+        // same reference in those cases.
+        if (patched === cur) return undefined;
+        return patched;
       });
     } else {
       const msgs = ctx.getMessages(sid);
@@ -605,17 +597,13 @@ export function bindStreamHandlers(
         const toolCallId = String(md.tool_call_id ?? '');
         const actId = `act-${toolCallId}`;
         if (writer && sid === ctx.sessionId) {
-          writer.update((cur) => {
-            const idx = cur.findIndex((m) => m.id === actId);
-            if (idx < 0) return cur;
-            const existing = toolEventFromMessage(cur[idx]);
-            if (!existing) return cur;
+          writer.update(actId, (cur) => {
+            const existing = toolEventFromMessage(cur);
+            if (!existing) return undefined;
             const merged = mergeToolResultFromDone(existing, md as unknown as ActivityDoneMeta);
             const updated = toolEventToMessage(sid, merged);
             updated.id = actId;
-            const next = [...cur];
-            next[idx] = { ...cur[idx], ...updated, id: actId };
-            return next;
+            return { ...cur, ...updated, id: actId };
           });
         } else {
           const msgs = ctx.getMessages(sid);

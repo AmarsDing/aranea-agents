@@ -88,7 +88,7 @@ func TestRenderReplyOnly(t *testing.T) {
 	tr := NewTranscript()
 	tr.SetSystem("收到")
 	tr.Apply(event.Envelope{
-		Type: event.EnvelopeTypeTextDone,
+		Type:    event.EnvelopeTypeTextDone,
 		Content: &event.EnvelopeContent{Text: "final answer"},
 	})
 	out := RenderPlainText(tr, biz.ChannelIMRenderPolicy{Mode: biz.ChannelIMRenderModeReplyOnly})

@@ -235,6 +235,7 @@ export default {
     },
     job: {
       title: '后台任务',
+      tab: '任务',
       loading: '加载后台任务…',
       empty: '暂无后台任务',
       refresh: '刷新',
@@ -244,6 +245,9 @@ export default {
       cancelConfirmMsg: '确定要取消此任务吗？此操作不可撤销。',
       cancelled: '任务已取消',
       cancelFailed: '取消失败',
+    },
+    deadLetter: {
+      tab: '死信',
     },
     turn: {
       block: {
@@ -276,7 +280,6 @@ export default {
     connected: '已连接',
     sessionEvents: '会话事件',
     thinkingPanel: '思考面板',
-    reasoningTitle: '思考过程',
     activity: {
       running: '正在执行',
       blocked: '待确认',
@@ -429,6 +432,29 @@ export default {
       removeAttachmentHint: '请移除不支持的附件后重试',
     },
   },
+  session: {
+    status: {
+      idle: '空闲',
+      running: '执行中',
+      completed: '已完成',
+      interrupted: '已中断',
+      awaiting_confirmation: '等待确认',
+    },
+    statusReason: {
+      user_cancelled: '用户取消',
+      timeout: '执行超时',
+      user_escalated: '用户转后台',
+      budget_escalated: '预算转后台',
+      error: '执行出错',
+      context_overflow: '上下文溢出',
+      server_shutdown: '服务关闭',
+      unexpected_shutdown: '服务异常退出',
+      confirmation_timeout: '确认超时',
+      tool_confirmation: '工具执行确认',
+      agent_awaiting_reply: 'Agent 等待回复',
+      manual_override: '手动覆盖',
+    },
+  },
   plugins: {
     rulesAdd: '添加规则',
     rulesTargetModel: '目标模型',
@@ -479,6 +505,47 @@ export default {
     observability: '可观测性',
     shop: '商城',
     settings: '系统设置',
+  },
+  sessionsPage: {
+    kicker: '会话历史',
+    title: '会话历史',
+    description: '按 Agent、Team、状态与上下文消耗追踪任务运行实例。',
+    refresh: '刷新',
+    emptyTitle: '未找到匹配的会话',
+    emptyHint: '尝试调整筛选条件或重置搜索',
+    actionView: '查看详情',
+    actionPin: '置顶',
+    actionUnpin: '取消置顶',
+    actionArchive: '归档',
+    actionArchiveRunning: '执行中不可归档',
+    actionArchiveArchived: '已归档',
+    actionDelete: '永久删除',
+    actionDeleteRunning: '执行中或等待确认时不可删除',
+    retentionPreviewHint: '请先点击“预览”以计算可{action}的会话',
+    createdAt: '创建',
+    totalSessions: '共 {count} 个会话',
+    retention: {
+      titleArchive: '按天数批量归档',
+      titleDelete: '按天数批量删除',
+      subtitleArchive: '归档 cutoff 之前的会话，保留最近 N 天。',
+      subtitleDelete: '永久删除 cutoff 之外的会话，保留最近 N 天。',
+      actionArchive: '归档',
+      actionDelete: '删除',
+      confirmArchive: '确认归档',
+      confirmDelete: '确认删除',
+      keepDaysLabel: '保留最近（天）',
+      includeArchived: '包含已归档会话',
+      willAction: '将{action}',
+      sessionsCountSuffix: '个会话',
+      keepDays: '保留最近 {days} 天',
+      skippedRunning: '；运行中将跳过（{count}）',
+      skippedNotFound: '；未找到（{count}）',
+      truncated: '；扫描达上限，请分批执行',
+      previewing: '正在预览…',
+      cancel: '取消',
+      preview: '预览',
+      previewHint: '请先点击“预览”以计算可{action}的会话',
+    },
   },
   settingsPage: {
     kicker: '系统',
@@ -1009,6 +1076,29 @@ export default {
     noChannelRefs: '暂无关联通道',
     loadChannelsFailed: '加载通道失败',
   },
+  agentsPage: {
+    taxonomy: {
+      label: '组织架构',
+      labelOptional: '组织架构（可选）',
+      placeholder: '选择组织 / 部门 / 职位',
+      emptyTree: '暂无组织架构数据，请先到「管理组织」创建',
+      noMatch: '暂无匹配分类',
+    },
+    filter: {
+      provider: '提供商',
+    },
+    card: {
+      deleteAriaLabel: '删除 Agent',
+    },
+    create: {
+      hintDisplayNameAndKey: '请填写显示名称和 Agent 标识',
+      hintA2aUrl: '请填写远程 A2A URL',
+      hintCheckModel: '请先点击「检查」校验所选模型',
+    },
+  },
+  organizationPage: {
+    systemNodeToggleDisabled: '系统预置分类不可停用/启用',
+  },
   knowledgeEmbed: {
     title: 'Embedder 配置',
     provider: 'Provider',
@@ -1342,7 +1432,8 @@ export default {
 
   resourceManager: {
     addProvider: '添加 Provider',
-    credentialWarning: '凭据加密密钥未配置，API 密钥将以明文存储。请在「系统设置」中初始化加密密钥，或设置 ARANEA_CREDENTIAL_KEY 环境变量。',
+    credentialWarning:
+      '凭据加密密钥未配置，API 密钥将以明文存储。请在「系统设置」中初始化加密密钥，或设置 ARANEA_CREDENTIAL_KEY 环境变量。',
     searchPlaceholder: '搜索 Provider、模型或类型...',
     providerType: 'Provider 类型',
     emptyTitle: '暂无 Provider 模型',
@@ -1435,5 +1526,4 @@ export default {
     traceId: 'Trace ID',
     intentArtifact: '意图产物',
   },
-
 };

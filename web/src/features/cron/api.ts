@@ -83,7 +83,7 @@ export async function updateCronTask(id: string, payload: Partial<PlatformResour
   if (payload.agent_id !== undefined) task.agentId = payload.agent_id;
   if (payload.config_json !== undefined) task.configJson = payload.config_json;
   if (payload.metadata_json !== undefined) task.metadataJson = payload.metadata_json;
-  const row = await cron.UpdateCronTask({ id, task });
+  const row = await cron.UpdateCronTask({ id, task: task as WireCronTask });
   return wireCronTask(row);
 }
 

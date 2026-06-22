@@ -211,11 +211,7 @@ import { computed, ref, watch } from 'vue';
 import { copyToClipboard } from 'quasar';
 import type { MonitorTrace } from '../../features/monitor/types';
 import type { MonitorLogLine } from '../../features/monitor/types';
-import {
-  compactJSON,
-  formatDate,
-  parseJSON,
-} from '../../features/monitor/utils';
+import { compactJSON, formatDate, parseJSON } from '../../features/monitor/utils';
 import { downloadFlowDiagnosticJsonl } from '../../features/monitor/flow';
 import TraceWaterfall from './TraceWaterfall.vue';
 import FlowTracePanel from './FlowTracePanel.vue';
@@ -260,15 +256,7 @@ const filteredRows = computed(() => {
   const q = keyword.value.trim().toLowerCase();
   if (!q) return props.rows;
   return props.rows.filter((row) =>
-    [
-      row.name,
-      row.key,
-      row.agent_id,
-      row.provider,
-      row.model,
-      row.status,
-      row.description,
-    ].some((value) =>
+    [row.name, row.key, row.agent_id, row.provider, row.model, row.status, row.description].some((value) =>
       String(value || '')
         .toLowerCase()
         .includes(q),

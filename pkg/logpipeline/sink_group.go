@@ -107,10 +107,10 @@ func (sg *SinkGroup) Flush() {
 
 // Stats returns per-SinkGroup statistics.
 type SinkGroupStats struct {
-	Name     string
-	Dropped  uint64
-	ChanLen  int
-	ChanCap  int
+	Name    string
+	Dropped uint64
+	ChanLen int
+	ChanCap int
 }
 
 // Stats returns current statistics for this SinkGroup.

@@ -13,11 +13,11 @@ import (
 )
 
 type MonitorTraceBackfillWorker struct {
-	traceRepo         biz.MonitorTraceRepo
-	runnerCompletion  biz.MonitorRunnerCompletionRepo
-	interval          time.Duration
-	watermark         string
-	lg                loggateway.Logger
+	traceRepo        biz.MonitorTraceRepo
+	runnerCompletion biz.MonitorRunnerCompletionRepo
+	interval         time.Duration
+	watermark        string
+	lg               loggateway.Logger
 }
 
 func defaultBackfillInterval() time.Duration {

@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"strings"
 
@@ -87,7 +86,7 @@ func (c *CredentialCrypto) decryptCredential(ctx context.Context, enc string) (s
 	}
 	nonceSize := gcm.NonceSize()
 	if len(raw) < nonceSize {
-		return "", fmt.Errorf("ciphertext too short: %d < %d", len(raw), nonceSize)
+		return "", apierror.BadRequest(apierror.DomainProvider, "ciphertext too short: %d < %d", len(raw), nonceSize)
 	}
 	plain, err := gcm.Open(nil, raw[:nonceSize], raw[nonceSize:], nil)
 	if err != nil {
@@ -348,8 +347,8 @@ func sanitizeConfigJSONForAPI(cfg string) string {
 		return cfg
 	}
 	var m map[string]any
-	if json.Unmarshal([]byte(cfg), &m) != nil {
-		return cfg
+	if err := json.Unmarshal([]byte(cfg), &m); err != nil {
+		return ""
 	}
 	if _, ok := m["api_key_enc"]; ok {
 		m["api_key_set"] = true
@@ -377,7 +376,10 @@ func sanitizeConfigJSONForAPI(cfg string) string {
 		}
 		m["ha_candidates"] = cands
 	}
-	out, _ := json.Marshal(m)
+	out, err := json.Marshal(m)
+	if err != nil {
+		return ""
+	}
 	return string(out)
 }
 
@@ -387,8 +389,8 @@ func (c *CredentialCrypto) DecryptConfigJSONForRuntime(ctx context.Context, cfg 
 		return cfg, nil
 	}
 	var m map[string]any
-	if json.Unmarshal([]byte(cfg), &m) != nil {
-		return cfg, nil
+	if err := json.Unmarshal([]byte(cfg), &m); err != nil {
+		return "", apierror.BadRequest(apierror.DomainLLMProvider, invalidProviderConfigJSONMsg)
 	}
 	if enc, ok := m["api_key_enc"].(string); ok && strings.TrimSpace(enc) != "" {
 		if plain, err := c.decryptCredential(ctx, enc); err != nil {
@@ -424,7 +426,10 @@ func (c *CredentialCrypto) DecryptConfigJSONForRuntime(ctx context.Context, cfg 
 		}
 		m["ha_candidates"] = cands
 	}
-	out, _ := json.Marshal(m)
+	out, err := json.Marshal(m)
+	if err != nil {
+		return "", apierror.Internal(apierror.DomainLLMProvider, "marshal decrypted config failed: %s", err.Error())
+	}
 	return string(out), nil
 }
 

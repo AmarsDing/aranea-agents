@@ -67,7 +67,7 @@
             :model-value="form.taxonomy_position_id || null"
             class="app-field-long"
             :tree="taxonomyTree"
-            label="组织架构"
+            :label="$t('agentsPage.taxonomy.labelOptional')"
             placeholder="选择组织 / 部门 / 职位"
             @update:model-value="onCategoryPick"
           />
@@ -92,6 +92,7 @@
               min="5"
               label="超时（秒）"
             />
+            <q-toggle v-model="selfEvolveModel" color="primary" label="自我进化" dense />
           </template>
           <template v-else>
             <q-select
@@ -127,7 +128,7 @@
                 label="检查"
                 :disable="!form.provider || !form.model"
                 :loading="checkingModel"
-                @click="$emit('check-model')"
+                @click.stop="$emit('check-model')"
               />
               <q-toggle v-model="selfEvolveModel" color="primary" label="自我进化" dense />
             </div>
@@ -163,17 +164,20 @@
         </section>
       </q-card-section>
 
-      <q-card-actions align="right" class="create-agent-card__actions app-actions-bar">
-        <q-btn v-close-popup flat rounded label="取消" />
-        <q-btn
-          color="primary"
-          rounded
-          unelevated
-          label="创建"
-          :disable="!canCreate"
-          :loading="creating"
-          @click="$emit('create')"
-        />
+      <q-card-actions align="between" class="create-agent-card__actions app-actions-bar">
+        <div v-if="createDisabledHint" class="text-caption text-negative">{{ createDisabledHint }}</div>
+        <div class="row items-center q-gutter-sm">
+          <q-btn v-close-popup flat rounded label="取消" />
+          <q-btn
+            color="primary"
+            rounded
+            unelevated
+            label="创建"
+            :disable="!canCreate"
+            :loading="creating"
+            @click="$emit('create')"
+          />
+        </div>
       </q-card-actions>
     </q-card>
     <agent-avatar-picker v-model="form.icon" v-model:open="avatarPickerOpen" />
@@ -219,6 +223,7 @@ const props = defineProps<{
   remoteUrlError?: string;
   createFormError?: string;
   canCreate: boolean;
+  createDisabledHint?: string;
   creating: boolean;
   checkingModel: boolean;
   templates?: AgentTemplatePreset[];

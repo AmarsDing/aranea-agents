@@ -6,7 +6,11 @@
         <q-breadcrumbs-el :label="t('spirit.breadcrumbSpirit')" icon="auto_awesome" />
         <q-breadcrumbs-el :label="team.teamName" />
       </q-breadcrumbs>
-      <OrchestrationModeBadge v-if="topology && topology !== 'coordinator'" :topology="topology" :reason="team.topologyReason" />
+      <OrchestrationModeBadge
+        v-if="topology && topology !== 'coordinator'"
+        :topology="topology"
+        :reason="team.topologyReason"
+      />
       <q-space />
       <SessionStatusBadge :status="mappedStatus" :status-reason="undefined" :status-changed-at="undefined" />
       <ToolStuckBadge :count="stuckToolCount" />
@@ -14,7 +18,9 @@
 
     <!-- v7: User message bubble -->
     <div v-if="userMessage" class="task-execution-panel__user-bubble q-mx-md q-mt-sm">
-      <div class="task-execution-panel__user-bubble-label text-caption text-grey q-mb-xs">{{ t('spirit.userMessage') }}</div>
+      <div class="task-execution-panel__user-bubble-label text-caption text-grey q-mb-xs">
+        {{ t('spirit.userMessage') }}
+      </div>
       <div class="task-execution-panel__user-bubble-content">{{ userMessage }}</div>
     </div>
 
@@ -38,11 +44,7 @@
     <template v-if="allTeams && allTeams.length > 0">
       <q-separator />
       <div class="q-pa-md">
-        <UnifiedExecutionPanel
-          :teams="allTeams"
-          :task-nodes="taskNodes"
-          :plan-entries="planEntries"
-        />
+        <UnifiedExecutionPanel :teams="allTeams" :task-nodes="taskNodes" :plan-entries="planEntries" />
       </div>
     </template>
 
@@ -85,7 +87,10 @@
     <template v-if="synthesisResult">
       <q-separator />
       <div class="q-pa-md">
-        <SynthesisResultCard :result="synthesisResult" :rendered-content="props.renderMarkdown(synthesisResult.content)" />
+        <SynthesisResultCard
+          :result="synthesisResult"
+          :rendered-content="props.renderMarkdown(synthesisResult.content)"
+        />
       </div>
     </template>
 
@@ -122,7 +127,13 @@ import InterruptedTeamCard from './InterruptedTeamCard.vue';
 import SpiritStatusBar from './SpiritStatusBar.vue';
 import { mapSpiritStatusToSession, modeToTopology } from '../../features/spirit/spiritUi';
 import { isStuckTool } from '../../features/chat/lib/isStuckTool';
-import type { SpiritTeam, SynthesisOutput, CompletionStats, TaskNode, SpiritStatusBarData } from '../../features/spirit/types';
+import type {
+  SpiritTeam,
+  SynthesisOutput,
+  CompletionStats,
+  TaskNode,
+  SpiritStatusBarData,
+} from '../../features/spirit/types';
 import type { PlanEntry } from '../../features/chat/agentTreeTypes';
 import OrchestrationModeBadge from './OrchestrationModeBadge.vue';
 import type { Message, ToolUseEvent } from '../../features/chat/types';
@@ -192,9 +203,7 @@ const topology = computed<TopologyType>(() => modeToTopology(props.team.mode));
 
 // ── v7: ThinkingArea computed ──
 const thinkingContent = computed(() => {
-  const reasoningMsgs = props.messages.filter(
-    (m) => m.role === 'assistant' && m.reasoning_markdown?.trim(),
-  );
+  const reasoningMsgs = props.messages.filter((m) => m.role === 'assistant' && m.reasoning_markdown?.trim());
   if (reasoningMsgs.length === 0) return '';
   return reasoningMsgs[reasoningMsgs.length - 1].reasoning_markdown ?? '';
 });
@@ -206,7 +215,7 @@ const isThinkingActive = computed(() => {
 // ── v7: ToolStuckBadge computed ──
 const stuckToolCount = computed(() => {
   return props.messages.filter(
-    (m) => m.role === 'tool' && m.tool_event && isStuckTool(m.tool_event),
+    (m) => m.role === 'tool' && m.tool_event && isStuckTool(m.tool_event as unknown as ToolUseEvent),
   ).length;
 });
 

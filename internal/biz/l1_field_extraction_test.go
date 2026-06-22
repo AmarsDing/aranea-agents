@@ -11,20 +11,20 @@ import (
 
 func TestExtractStructuredEpisode(t *testing.T) {
 	tests := []struct {
-		name       string
-		snapshot   []byte
-		wantTitle  string
-		wantGoal   string
-		wantOSum   string
-		wantDecN   int
-		wantArtN   int
-		wantImp    float64
-		wantConf   float64
-		wantKind   string
+		name      string
+		snapshot  []byte
+		wantTitle string
+		wantGoal  string
+		wantOSum  string
+		wantDecN  int
+		wantArtN  int
+		wantImp   float64
+		wantConf  float64
+		wantKind  string
 	}{
 		{
-			name:     "empty JSON returns defaults",
-			snapshot: []byte(``),
+			name:      "empty JSON returns defaults",
+			snapshot:  []byte(``),
 			wantTitle: "",
 			wantGoal:  "",
 			wantOSum:  "",
@@ -35,8 +35,8 @@ func TestExtractStructuredEpisode(t *testing.T) {
 			wantKind:  "l1_archive_structured",
 		},
 		{
-			name:     "invalid JSON returns defaults",
-			snapshot: []byte(`{invalid`),
+			name:      "invalid JSON returns defaults",
+			snapshot:  []byte(`{invalid`),
 			wantTitle: "",
 			wantGoal:  "",
 			wantOSum:  "",
@@ -68,7 +68,7 @@ func TestExtractStructuredEpisode(t *testing.T) {
 		{
 			name: "status mapping cancelled",
 			snapshot: mustMarshalTest(map[string]any{
-				"task": map[string]any{"status": "cancelled"},
+				"task":   map[string]any{"status": "cancelled"},
 				"fields": []any{},
 			}),
 			wantOSum: "任务被取消（空闲超时）",
@@ -79,7 +79,7 @@ func TestExtractStructuredEpisode(t *testing.T) {
 		{
 			name: "status mapping failed",
 			snapshot: mustMarshalTest(map[string]any{
-				"task": map[string]any{"status": "failed"},
+				"task":   map[string]any{"status": "failed"},
 				"fields": []any{},
 			}),
 			wantOSum: "任务失败",
@@ -90,7 +90,7 @@ func TestExtractStructuredEpisode(t *testing.T) {
 		{
 			name: "status mapping timeout",
 			snapshot: mustMarshalTest(map[string]any{
-				"task": map[string]any{"status": "timeout"},
+				"task":   map[string]any{"status": "timeout"},
 				"fields": []any{},
 			}),
 			wantOSum: "任务超时",
@@ -101,7 +101,7 @@ func TestExtractStructuredEpisode(t *testing.T) {
 		{
 			name: "status mapping unknown passes through",
 			snapshot: mustMarshalTest(map[string]any{
-				"task": map[string]any{"status": "unknown"},
+				"task":   map[string]any{"status": "unknown"},
 				"fields": []any{},
 			}),
 			wantOSum: "unknown",
@@ -113,12 +113,12 @@ func TestExtractStructuredEpisode(t *testing.T) {
 			name: "last_assistant_message appended to outcome",
 			snapshot: mustMarshalTest(map[string]any{
 				"task": map[string]any{
-					"status":                "completed",
+					"status":                 "completed",
 					"last_assistant_message": "All done!",
 				},
 				"fields": []any{},
 			}),
-			wantOSum: "任务已完成",
+			wantOSum:  "任务已完成",
 			wantTitle: "",
 			wantGoal:  "",
 			wantDecN:  0,
@@ -131,7 +131,7 @@ func TestExtractStructuredEpisode(t *testing.T) {
 			name: "last_assistant_message truncated to 200 chars",
 			snapshot: mustMarshalTest(map[string]any{
 				"task": map[string]any{
-					"status":                "completed",
+					"status":                 "completed",
 					"last_assistant_message": string(make([]byte, 300)),
 				},
 				"fields": []any{},
@@ -215,7 +215,7 @@ func TestExtractStructuredEpisode(t *testing.T) {
 	t.Run("outcome includes last_assistant_message", func(t *testing.T) {
 		snap := mustMarshalTest(map[string]any{
 			"task": map[string]any{
-				"status":                "completed",
+				"status":                 "completed",
 				"last_assistant_message": "All done!",
 			},
 			"fields": []any{},
@@ -232,7 +232,7 @@ func TestExtractStructuredEpisode(t *testing.T) {
 		longMsg := strings.Repeat("A", 300)
 		snap := mustMarshalTest(map[string]any{
 			"task": map[string]any{
-				"status":                "completed",
+				"status":                 "completed",
 				"last_assistant_message": longMsg,
 			},
 			"fields": []any{},
@@ -417,9 +417,9 @@ func TestMapStatusToOutcome(t *testing.T) {
 
 func TestShouldTriggerPathB(t *testing.T) {
 	tests := []struct {
-		name  string
-		sig   EpisodeSignals
-		want  bool
+		name string
+		sig  EpisodeSignals
+		want bool
 	}{
 		{
 			name: "importance >= 0.7 triggers",
@@ -478,7 +478,7 @@ func TestShouldTriggerPathB(t *testing.T) {
 		},
 		{
 			name: "all below thresholds does not trigger",
-			sig:  EpisodeSignals{
+			sig: EpisodeSignals{
 				Importance:    0.1,
 				CriticScore:   0.2,
 				ToolCallCount: 5,

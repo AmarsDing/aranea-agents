@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	ChannelIMRenderModeReplyOnly              = "reply_only"
-	ChannelIMRenderModeTranscript             = "transcript"
+	ChannelIMRenderModeReplyOnly               = "reply_only"
+	ChannelIMRenderModeTranscript              = "transcript"
 	ChannelIMRenderModeTranscriptWithReasoning = "transcript_with_reasoning"
 
 	ChannelIMToolDetailOff          = "off"
@@ -18,7 +18,7 @@ const (
 	ChannelIMTeamModeInline = "inline"
 	ChannelIMTeamModeSteps  = "steps"
 
-	ChannelIMToolCardModeOff         = "off"
+	ChannelIMToolCardModeOff          = "off"
 	ChannelIMToolCardModeFeishuAppend = "feishu_append"
 
 	defaultIMReasoningMaxRunes = 500
@@ -61,17 +61,17 @@ func ParseChannelIMRenderPolicy(configJSON string, ltCfg ChannelLongTaskConfig) 
 
 	var env struct {
 		Config struct {
-			IMRenderMode         *string `json:"im_render_mode"`
-			IMShowReasoning      *bool   `json:"im_show_reasoning"`
-			IMReasoningMaxChars  *int    `json:"im_reasoning_max_chars"`
-			IMToolDetail         *string `json:"im_tool_detail"`
-			IMTeamMode           *string `json:"im_team_mode"`
-			IMMaxPreviewChars    *int    `json:"im_max_preview_chars"`
-			IMToolCardMode       *string `json:"im_tool_card_mode"`
-			IMSplitOverflow      *bool   `json:"im_split_overflow"`
-			ProgressMode         *string `json:"progress_mode"`
-			ProgressQuietSec     *int    `json:"progress_quiet_sec"`
-			HeartbeatMessage     *string `json:"heartbeat_message"`
+			IMRenderMode        *string `json:"im_render_mode"`
+			IMShowReasoning     *bool   `json:"im_show_reasoning"`
+			IMReasoningMaxChars *int    `json:"im_reasoning_max_chars"`
+			IMToolDetail        *string `json:"im_tool_detail"`
+			IMTeamMode          *string `json:"im_team_mode"`
+			IMMaxPreviewChars   *int    `json:"im_max_preview_chars"`
+			IMToolCardMode      *string `json:"im_tool_card_mode"`
+			IMSplitOverflow     *bool   `json:"im_split_overflow"`
+			ProgressMode        *string `json:"progress_mode"`
+			ProgressQuietSec    *int    `json:"progress_quiet_sec"`
+			HeartbeatMessage    *string `json:"heartbeat_message"`
 		} `json:"config"`
 	}
 	if json.Unmarshal([]byte(defaultJSON(configJSON)), &env) != nil {

@@ -13,10 +13,10 @@ import (
 )
 
 const (
-	stateKeyRunnerSnapshot       = "aranea:runner_snapshot"
-	stateKeyCompressedSummary    = "aranea:compressed_summary"
-	stateKVPrefix                = "aranea:state:"
-	stateKeyForceL0Snapshot      = "aranea:force_l0_snapshot"
+	stateKeyRunnerSnapshot    = "aranea:runner_snapshot"
+	stateKeyCompressedSummary = "aranea:compressed_summary"
+	stateKVPrefix             = "aranea:state:"
+	stateKeyForceL0Snapshot   = "aranea:force_l0_snapshot"
 )
 
 // Runtime wraps trpc session.Service with Aranea session-key conventions.

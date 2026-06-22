@@ -4,22 +4,31 @@
       <q-card-section class="app-glass-dialog__head taxonomy-dialog__head row items-start justify-between no-wrap">
         <div class="min-width-0">
           <div class="app-glass-dialog__title taxonomy-dialog__title">
-            {{ editingId ? '编辑分类' : `新增${levelLabel(form.level)}` }}
+            {{ editingId ? '编辑组织节点' : `新增${levelLabel(form.level)}` }}
           </div>
-          <div class="app-glass-dialog__subtitle taxonomy-dialog__subtitle">固定三层结构：行业 → 部门 → 职位</div>
+          <div class="app-glass-dialog__subtitle taxonomy-dialog__subtitle">固定三层结构：公司 → 部门 → 职位</div>
         </div>
         <q-btn v-close-popup flat round dense icon="close" />
       </q-card-section>
       <q-separator />
       <q-card-section class="app-glass-dialog__body taxonomy-dialog__body">
         <div class="app-form-field-grid app-form-field-grid--2col taxonomy-dialog__form">
-          <q-input v-model.trim="form.name" class="taxonomy-control" dense outlined label="名称 *" />
+          <q-input
+            v-model.trim="form.name"
+            class="taxonomy-control"
+            dense
+            outlined
+            label="名称 *"
+            maxlength="120"
+            counter
+          />
           <q-input
             v-model.number="form.sort_order"
             class="taxonomy-control"
             dense
             outlined
             type="number"
+            min="0"
             label="排序"
           />
         </div>

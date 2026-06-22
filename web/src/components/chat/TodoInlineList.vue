@@ -7,7 +7,9 @@
       <span class="todo-inline-list__meta text-caption">{{ headerMeta }}</span>
       <q-space />
       <span v-if="isRunning" class="todo-inline-list__pulse" aria-hidden="true" />
-      <span v-if="durationLabel" class="text-caption" style="color: var(--color-text-tertiary)">{{ durationLabel }}</span>
+      <span v-if="durationLabel" class="text-caption" style="color: var(--color-text-tertiary)">{{
+        durationLabel
+      }}</span>
       <q-icon v-if="isFailed" name="error" color="negative" size="16px" />
       <q-icon v-else-if="isRunning" name="hourglass_top" color="warning" size="16px" />
       <q-icon v-else name="check_circle" color="positive" size="16px" />
@@ -15,11 +17,7 @@
 
     <!-- Task cards -->
     <div class="todo-inline-list__cards">
-      <TodoCard
-        v-for="item in todoItems"
-        :key="item.id"
-        :item="item"
-      />
+      <TodoCard v-for="item in todoItems" :key="item.id" :item="item" />
     </div>
 
     <!-- Error message -->
@@ -70,9 +68,9 @@ const headerMeta = computed(() => {
   const pending = todoItems.value.filter((t) => t.status === 'pending').length;
 
   const parts: string[] = [];
-  if (inProgress > 0) parts.push(t('chat.todo.inProgressCount', '{count} 进行中', { count: inProgress }));
-  if (pending > 0) parts.push(t('chat.todo.pendingCount', '{count} 待处理', { count: pending }));
-  if (completed > 0) parts.push(t('chat.todo.completedCount', '{count} 已完成', { count: completed }));
+  if (inProgress > 0) parts.push(t('chat.todo.inProgressCount', { count: inProgress }, '{count} 进行中'));
+  if (pending > 0) parts.push(t('chat.todo.pendingCount', { count: pending }, '{count} 待处理'));
+  if (completed > 0) parts.push(t('chat.todo.completedCount', { count: completed }, '{count} 已完成'));
   return `· ${total} ${t('chat.todo.items', '项')}` + (parts.length ? ` · ${parts.join(' · ')}` : '');
 });
 

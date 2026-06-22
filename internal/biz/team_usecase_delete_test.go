@@ -14,7 +14,7 @@ type stubTeamReader struct {
 	team Team
 }
 
-func (s *stubTeamReader) ListTeams(context.Context) ([]Team, error)            { return nil, nil }
+func (s *stubTeamReader) ListTeams(context.Context) ([]Team, error)                 { return nil, nil }
 func (s *stubTeamReader) ListTeamsByStatus(context.Context, string) ([]Team, error) { return nil, nil }
 func (s *stubTeamReader) GetTeamByID(_ context.Context, id string) (Team, error) {
 	if s.team.ID != id {
@@ -22,9 +22,15 @@ func (s *stubTeamReader) GetTeamByID(_ context.Context, id string) (Team, error)
 	}
 	return s.team, nil
 }
-func (s *stubTeamReader) GetTeamByKey(context.Context, string) (Team, error) { return Team{}, ErrNotFound }
-func (s *stubTeamReader) ListBySpiritSessionID(context.Context, string) ([]Team, error) { return nil, nil }
-func (s *stubTeamReader) ListTeamsByDepartmentID(context.Context, string) ([]Team, error) { return nil, nil }
+func (s *stubTeamReader) GetTeamByKey(context.Context, string) (Team, error) {
+	return Team{}, ErrNotFound
+}
+func (s *stubTeamReader) ListBySpiritSessionID(context.Context, string) ([]Team, error) {
+	return nil, nil
+}
+func (s *stubTeamReader) ListTeamsByDepartmentID(context.Context, string) ([]Team, error) {
+	return nil, nil
+}
 
 type stubTeamWriter struct {
 	deletedID string
@@ -45,27 +51,41 @@ func (s *stubTeamWriter) UpdateTeamWhereStatus(_ context.Context, _, _, _ string
 
 type stubTeamRunReader struct{}
 
-func (s *stubTeamRunReader) ListTeamRuns(context.Context, string, int) ([]TeamRun, error) { return nil, nil }
+func (s *stubTeamRunReader) ListTeamRuns(context.Context, string, int) ([]TeamRun, error) {
+	return nil, nil
+}
 func (s *stubTeamRunReader) ListTeamRunsByTeamIDs(context.Context, []string, int) (map[string][]TeamRun, error) {
 	return nil, nil
 }
-func (s *stubTeamRunReader) HasActiveTeamRun(context.Context, string) (bool, error)       { return false, nil }
-func (s *stubTeamRunReader) GetTeamRunByID(context.Context, string) (TeamRun, error)      { return TeamRun{}, nil }
+func (s *stubTeamRunReader) HasActiveTeamRun(context.Context, string) (bool, error) {
+	return false, nil
+}
+func (s *stubTeamRunReader) GetTeamRunByID(context.Context, string) (TeamRun, error) {
+	return TeamRun{}, nil
+}
 func (s *stubTeamRunReader) ListTeamRunSteps(context.Context, string) ([]TeamRunStep, error) {
 	return nil, nil
 }
 
 type stubTeamRunWriter struct{}
 
-func (s *stubTeamRunWriter) CreateTeamRun(context.Context, TeamRun) (TeamRun, error)          { return TeamRun{}, nil }
-func (s *stubTeamRunWriter) UpdateTeamRun(context.Context, TeamRun) error                      { return nil }
+func (s *stubTeamRunWriter) CreateTeamRun(context.Context, TeamRun) (TeamRun, error) {
+	return TeamRun{}, nil
+}
+func (s *stubTeamRunWriter) UpdateTeamRun(context.Context, TeamRun) error { return nil }
 func (s *stubTeamRunWriter) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
 	return true, nil
 }
-func (s *stubTeamRunWriter) UpdateTeamRunGraphExecutionID(context.Context, string, string) error { return nil }
-func (s *stubTeamRunWriter) UpdateTeamRunTraceID(context.Context, string, string) error        { return nil }
-func (s *stubTeamRunWriter) UpdateTeamRunSummaryJSON(context.Context, string, string) error    { return nil }
-func (s *stubTeamRunWriter) CreateTeamRunStep(context.Context, TeamRunStep) (TeamRunStep, error) { return TeamRunStep{}, nil }
+func (s *stubTeamRunWriter) UpdateTeamRunGraphExecutionID(context.Context, string, string) error {
+	return nil
+}
+func (s *stubTeamRunWriter) UpdateTeamRunTraceID(context.Context, string, string) error { return nil }
+func (s *stubTeamRunWriter) UpdateTeamRunSummaryJSON(context.Context, string, string) error {
+	return nil
+}
+func (s *stubTeamRunWriter) CreateTeamRunStep(context.Context, TeamRunStep) (TeamRunStep, error) {
+	return TeamRunStep{}, nil
+}
 
 type stubOrchestrationStepRepo struct{}
 
@@ -78,7 +98,9 @@ func (s *stubOrchestrationStepRepo) ListOrchestrationSteps(context.Context, stri
 
 type stubTaskDeadLetterRepo struct{}
 
-func (s *stubTaskDeadLetterRepo) CreateTaskDeadLetter(context.Context, TaskDeadLetter) error        { return nil }
+func (s *stubTaskDeadLetterRepo) CreateTaskDeadLetter(context.Context, TaskDeadLetter) error {
+	return nil
+}
 func (s *stubTaskDeadLetterRepo) ListTaskDeadLetters(context.Context, TaskDeadLetterListFilter) ([]TaskDeadLetter, error) {
 	return nil, nil
 }

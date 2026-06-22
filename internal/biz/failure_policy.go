@@ -4,12 +4,12 @@ import "strings"
 
 // TeamFailurePolicy is the team-level failure handling configuration (M53 Phase 4).
 type TeamFailurePolicy struct {
-	Default        string                         `json:"default"` // retry_then_block | skip | fail_fast
-	Retry          TeamRetryPolicy                `json:"retry"`
+	Default        string                             `json:"default"` // retry_then_block | skip | fail_fast
+	Retry          TeamRetryPolicy                    `json:"retry"`
 	NodeOverrides  map[string]TeamNodeFailureOverride `json:"node_overrides"`
-	ParallelFail   string                         `json:"parallel_fail"` // continue | abort
-	CircuitBreaker *CircuitBreakerPolicy          `json:"circuit_breaker,omitempty"`
-	OnError        string                         `json:"on_error,omitempty"` // await_review | halt
+	ParallelFail   string                             `json:"parallel_fail"` // continue | abort
+	CircuitBreaker *CircuitBreakerPolicy              `json:"circuit_breaker,omitempty"`
+	OnError        string                             `json:"on_error,omitempty"` // await_review | halt
 }
 
 // TeamRetryPolicy maps to graph.RetryPolicy at compile time.

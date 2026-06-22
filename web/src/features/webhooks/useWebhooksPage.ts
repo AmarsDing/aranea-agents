@@ -6,6 +6,12 @@ import { WEBHOOK_SECRET_MASK, type WebhookRow } from './types';
 import { useWebhooksStore } from '../../stores/webhooks';
 import { useLocalPagination } from '../../composables/useLocalPagination';
 
+interface WebhookDialogExposed {
+  reset: () => void;
+  fill: (row: WebhookRow) => void;
+  getPayload: () => Partial<WebhookRow> | null;
+}
+
 export function useWebhooksPage() {
   const { t } = useI18n();
   const $q = useQuasar();
@@ -18,7 +24,7 @@ export function useWebhooksPage() {
   const editorOpen = ref(false);
   const editingId = ref('');
   const busyId = ref('');
-  const dialogRef = ref<InstanceType<import('../../components/webhooks/WebhookDialog.vue').default> | null>(null);
+  const dialogRef = ref<WebhookDialogExposed | null>(null);
 
   const {
     page,
@@ -73,11 +79,19 @@ export function useWebhooksPage() {
       return;
     }
     saving.value = true;
+    const body = {
+      name: payload.name.trim(),
+      url: payload.url.trim(),
+      event_types_json: payload.event_types_json,
+      secret: payload.secret,
+      headers: payload.headers,
+      enabled: payload.enabled,
+    };
     try {
       if (editingId.value) {
-        await webhooksStore.saveWebhook(editingId.value, payload);
+        await webhooksStore.saveWebhook(editingId.value, body);
       } else {
-        const created = await webhooksStore.addWebhook(payload);
+        const created = await webhooksStore.addWebhook(body);
         // Show plaintext secret if present (only returned on create)
         if (created.secret && created.secret !== WEBHOOK_SECRET_MASK) {
           showSecretReveal(created.secret);

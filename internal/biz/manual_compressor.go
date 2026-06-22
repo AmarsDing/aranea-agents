@@ -7,9 +7,9 @@ type ManualCompressor interface {
 }
 
 type CompactResult struct {
-	Compacted            bool
-	FromTurn             int
-	ToTurn               int
+	Compacted             bool
+	FromTurn              int
+	ToTurn                int
 	EstimatedTokensBefore int
 	EstimatedTokensAfter  int
 	CompressionLevel      string

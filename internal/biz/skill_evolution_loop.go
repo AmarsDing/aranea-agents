@@ -76,9 +76,9 @@ type GateVerificationResult struct {
 
 // EvolutionLoopResult is the final result of running the five-stage evolution loop.
 type EvolutionLoopResult struct {
-	Passed    bool
-	Stage     string
-	DraftBody string
+	Passed     bool
+	Stage      string
+	DraftBody  string
 	GateResult *GateVerificationResult
 	// Err is non-nil when a stage failed due to a system error (not business rejection).
 	// Business rejection: Passed=false, Err=nil. System failure: Passed=false, Err!=nil.

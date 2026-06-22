@@ -10,36 +10,36 @@ import (
 // only this struct and the Wire provider need updating — server constructors
 // are unaffected.
 type ServiceRegistry struct {
-	Admin          *service.AdminService
-	Avatar         *service.AvatarService
-	Agents         *service.AgentService
-	LLM            *service.LlmProviderModelService
-	Hook           *service.HookService
-	Cron           *service.CronService
-	Plugin         *service.PluginService
-	MCPServer      *service.MCPServerService
-	Skill          *service.SkillService
-	Tool           *service.ToolService
-	Session        *service.SessionService
-	Channel        *service.ChannelService
-	Usage          *service.UsageService
-	Monitor        *service.MonitorService
-	Memory         *service.MemoryService
-	SystemSetting  *service.SystemSettingService
-	ModelCatalog   *service.ModelCatalogService
-	Teams          *service.TeamService
-	Chat           *service.ChatService
-	Graph          *service.GraphService
-	Artifact       *service.ArtifactService
-	Knowledge      *service.KnowledgeService
-	Eval           *service.EvaluationService
-	A2A            *service.A2AService
-	A2APublic      *a2atrpc.EndpointRegistry
-	Ecosystem      *service.EcosystemService
-	Event          *service.EventService
-	Gateway        *service.GatewayService
-	ChannelIngress *service.ChannelIngress
-	AIRefine       *service.AIRefineService
+	Admin              *service.AdminService
+	Avatar             *service.AvatarService
+	Agents             *service.AgentService
+	LLM                *service.LlmProviderModelService
+	Hook               *service.HookService
+	Cron               *service.CronService
+	Plugin             *service.PluginService
+	MCPServer          *service.MCPServerService
+	Skill              *service.SkillService
+	Tool               *service.ToolService
+	Session            *service.SessionService
+	Channel            *service.ChannelService
+	Usage              *service.UsageService
+	Monitor            *service.MonitorService
+	Memory             *service.MemoryService
+	SystemSetting      *service.SystemSettingService
+	ModelCatalog       *service.ModelCatalogService
+	Teams              *service.TeamService
+	Chat               *service.ChatService
+	Graph              *service.GraphService
+	Artifact           *service.ArtifactService
+	Knowledge          *service.KnowledgeService
+	Eval               *service.EvaluationService
+	A2A                *service.A2AService
+	A2APublic          *a2atrpc.EndpointRegistry
+	Ecosystem          *service.EcosystemService
+	Event              *service.EventService
+	Gateway            *service.GatewayService
+	ChannelIngress     *service.ChannelIngress
+	AIRefine           *service.AIRefineService
 	Taxonomy           *service.TaxonomyService
 	Organization       *service.OrganizationService
 	SkillEvo           *service.SkillEvolutionService
@@ -49,9 +49,9 @@ type ServiceRegistry struct {
 	SkillEvoSuggestion *service.SkillEvolutionSuggestionService
 	EcosystemPreset    *service.EcosystemPresetService
 	// Compat service wrappers: lazily wire trpc-agent-go framework servers.
-	AGUICompat        *service.AGUICompatService
-	OpenAISession     *service.OpenAISessionCompatService
-	A2AExtension      *service.A2AExtensionCompatService
+	AGUICompat    *service.AGUICompatService
+	OpenAISession *service.OpenAISessionCompatService
+	A2AExtension  *service.A2AExtensionCompatService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -100,42 +100,42 @@ func NewServiceRegistry(
 	a2aExtension *service.A2AExtensionCompatService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
-		Admin:          admin,
-		Avatar:         avatar,
-		Agents:         agents,
-		LLM:            llm,
-		Hook:           hookSvc,
-		Cron:           cronSvc,
-		Plugin:         pluginSvc,
-		MCPServer:      mcpSvc,
-		Skill:          skillSvc,
-		Tool:           toolSvc,
-		Session:        sessionSvc,
-		Channel:        channelSvc,
-		Usage:          usageSvc,
-		Monitor:        monitorSvc,
-		Memory:         memorySvc,
-		SystemSetting:  systemSettingSvc,
-		ModelCatalog:   modelCatalogSvc,
-		Teams:          teams,
-		Chat:           chatSvc,
-		Graph:          graphSvc,
-		Artifact:       artifactSvc,
-		Knowledge:      knowledgeSvc,
-		Eval:           evalSvc,
-		A2A:            a2aSvc,
-		A2APublic:      a2aPublic,
-		Ecosystem:      ecosystemSvc,
-		Event:          eventSvc,
-		Gateway:        gatewaySvc,
-		ChannelIngress: channelIngress,
-		AIRefine:       aiRefine,
-		Taxonomy:         taxonomy,
-		Organization:     organization,
-		SkillEvo:         skillEvo,
-		SkillIntel:       skillIntel,
-		SkillDedup:       skillDedup,
-		Pack:           packSvc,
+		Admin:              admin,
+		Avatar:             avatar,
+		Agents:             agents,
+		LLM:                llm,
+		Hook:               hookSvc,
+		Cron:               cronSvc,
+		Plugin:             pluginSvc,
+		MCPServer:          mcpSvc,
+		Skill:              skillSvc,
+		Tool:               toolSvc,
+		Session:            sessionSvc,
+		Channel:            channelSvc,
+		Usage:              usageSvc,
+		Monitor:            monitorSvc,
+		Memory:             memorySvc,
+		SystemSetting:      systemSettingSvc,
+		ModelCatalog:       modelCatalogSvc,
+		Teams:              teams,
+		Chat:               chatSvc,
+		Graph:              graphSvc,
+		Artifact:           artifactSvc,
+		Knowledge:          knowledgeSvc,
+		Eval:               evalSvc,
+		A2A:                a2aSvc,
+		A2APublic:          a2aPublic,
+		Ecosystem:          ecosystemSvc,
+		Event:              eventSvc,
+		Gateway:            gatewaySvc,
+		ChannelIngress:     channelIngress,
+		AIRefine:           aiRefine,
+		Taxonomy:           taxonomy,
+		Organization:       organization,
+		SkillEvo:           skillEvo,
+		SkillIntel:         skillIntel,
+		SkillDedup:         skillDedup,
+		Pack:               packSvc,
 		SkillEvoSuggestion: skillEvoSuggestion,
 		EcosystemPreset:    ecosystemPresetSvc,
 		AGUICompat:         aguiCompat,

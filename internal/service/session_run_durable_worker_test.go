@@ -90,6 +90,16 @@ func (s *durableWorkerRepoStub) TransitionPhase(_ context.Context, id, fromPhase
 	s.runs[id] = run
 	return true, nil
 }
+func (s *durableWorkerRepoStub) MarkTerminalWherePhase(_ context.Context, id, fromPhase, toPhase, errMsg string) (bool, error) {
+	run, ok := s.runs[id]
+	if !ok || string(run.Phase) != fromPhase {
+		return false, nil
+	}
+	run.Phase = biz.NormalizeSessionRunPhase(toPhase)
+	run.ErrorMessage = errMsg
+	s.runs[id] = run
+	return true, nil
+}
 
 type durableWorkerCheckpointStub struct {
 	cps map[string]biz.SessionRunCheckpoint

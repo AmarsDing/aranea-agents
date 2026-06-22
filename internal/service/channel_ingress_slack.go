@@ -52,7 +52,7 @@ func (h *ChannelIngress) handleSlackWebhook(w http.ResponseWriter, r *http.Reque
 		IdempotencyKey: "slack:" + msg.ChannelID + ":" + msg.EventTS,
 		OutboundMeta: map[string]string{
 			port.MetaRecipient: msg.ChannelID,
-			"channel":         msg.ChannelID,
+			"channel":          msg.ChannelID,
 		},
 	}))
 	return nil

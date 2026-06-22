@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  canonicalToolStatus,
-  messageStatusFromCanonical,
-  messageStatusFromWire,
-} from '../lib/statusMap';
+import { canonicalToolStatus, messageStatusFromCanonical, messageStatusFromWire } from '../lib/statusMap';
 import { MESSAGE_STATUS } from '../../../domain/types';
 
 describe('statusMap', () => {
@@ -46,13 +42,7 @@ describe('statusMap', () => {
 
   it('canonical form is closed (5 values only)', () => {
     // Type-level guarantee; the runtime check is that nothing escapes the 5 forms.
-    const allForms: Canonical[] = [
-      'running',
-      'success',
-      'failed',
-      'blocked',
-      'cancelled',
-    ];
+    const allForms: Canonical[] = ['running', 'success', 'failed', 'blocked', 'cancelled'];
     allForms.forEach((s) => {
       expect(typeof messageStatusFromCanonical(s)).toBe('string');
     });

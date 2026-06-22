@@ -16,9 +16,7 @@ function env(partial: Partial<Envelope> & { metadata?: Record<string, unknown> }
 
 describe('readExecutionProgressMetadata', () => {
   it('returns null for non-execution_progress envelopes', () => {
-    expect(
-      readExecutionProgressMetadata(env({ type: 'text_delta' as unknown as 'execution_progress' })),
-    ).toBeNull();
+    expect(readExecutionProgressMetadata(env({ type: 'text_delta' as unknown as 'execution_progress' }))).toBeNull();
   });
 
   it('returns null when metadata is missing', () => {
@@ -27,9 +25,7 @@ describe('readExecutionProgressMetadata', () => {
 
   it('returns null when required fields are missing', () => {
     expect(
-      readExecutionProgressMetadata(
-        env({ metadata: { phase: 'start', message: 'x', category: 'orchestration' } }),
-      ),
+      readExecutionProgressMetadata(env({ metadata: { phase: 'start', message: 'x', category: 'orchestration' } })),
     ).toBeNull();
   });
 

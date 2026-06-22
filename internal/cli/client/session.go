@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"net/url"
 
-	sessionv1 "aranea-agents/api/kratos/session/v1"
 	chatv1 "aranea-agents/api/kratos/chat/v1"
+	sessionv1 "aranea-agents/api/kratos/session/v1"
 )
 
 // SearchSessions calls GET /v1/sessions with filter params.

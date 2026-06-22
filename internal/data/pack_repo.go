@@ -10,13 +10,13 @@ import (
 
 // PackRepoAdapter adapts existing biz repos to satisfy pack engine interfaces.
 type PackRepoAdapter struct {
-	agents      biz.AgentRepository
-	teamReader  biz.TeamReader
-	teamWriter  biz.TeamWriter
+	agents       biz.AgentRepository
+	teamReader   biz.TeamReader
+	teamWriter   biz.TeamWriter
 	organization biz.OrganizationRepo
-	graphs      biz.GraphRepo
-	skillLookup biz.SkillLookupReader
-	execInTx    func(ctx context.Context, fn func(ctx context.Context) error) error
+	graphs       biz.GraphRepo
+	skillLookup  biz.SkillLookupReader
+	execInTx     func(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
 var _ pack.ExporterRepo = (*PackRepoAdapter)(nil)

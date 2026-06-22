@@ -9,9 +9,9 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
 
+	a2aclient "trpc.group/trpc-go/trpc-a2a-go/client"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	a2aagent "trpc.group/trpc-go/trpc-agent-go/agent/a2aagent"
-	a2aclient "trpc.group/trpc-go/trpc-a2a-go/client"
 )
 
 // BuildTRPCA2AAgent wraps a remote A2A service as a local agent.Agent.

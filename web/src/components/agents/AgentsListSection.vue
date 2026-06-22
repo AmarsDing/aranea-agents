@@ -41,7 +41,7 @@
             :key="agent.id"
             :agent="agent"
             :favorite="isFavorite(agent.id)"
-            :category-label="getCategoryLabel(agent.taxonomy_position_id)"
+            :taxonomy-label="getCategoryLabel(agent.taxonomy_position_id)"
             :context-label="formatLastRunContext(agent)"
             :evolving="isAgentEvolving(agent)"
             @toggle-favorite="$emit('toggle-favorite', $event)"
@@ -61,7 +61,7 @@
             :key="agent.id"
             :agent="agent"
             :favorite="isFavorite(agent.id)"
-            :category-label="getCategoryLabel(agent.taxonomy_position_id)"
+            :taxonomy-label="getCategoryLabel(agent.taxonomy_position_id)"
             :context-label="formatLastRunContext(agent)"
             :evolving="isAgentEvolving(agent)"
             @toggle-favorite="$emit('toggle-favorite', $event)"
@@ -89,7 +89,7 @@
             <agent-card
               :agent="agent"
               :favorite="isFavorite(agent.id)"
-              :category-label="getCategoryLabel(agent.taxonomy_position_id)"
+              :taxonomy-label="getCategoryLabel(agent.taxonomy_position_id)"
               :context-label="formatLastRunContext(agent)"
               :evolving="isAgentEvolving(agent)"
               @toggle-favorite="$emit('toggle-favorite', $event)"
@@ -153,13 +153,9 @@
           <q-badge
             rounded
             :color="
-              props.value === 'working_memory'
-                ? 'info'
-                : props.value === 'framework_memory'
-                  ? 'warning'
-                  : 'positive'
+              props.value === 'working_memory' ? 'info' : props.value === 'framework_memory' ? 'warning' : 'positive'
             "
-            >{{ MEMORY_TOOL_MODE_LABELS[props.value] }}</q-badge
+            >{{ MEMORY_TOOL_MODE_LABELS[props.value as keyof typeof MEMORY_TOOL_MODE_LABELS] }}</q-badge
           >
         </q-td>
       </template>
@@ -228,7 +224,14 @@ import type { Agent } from '../../features/agents/types';
 import AgentCard from './AgentCard.vue';
 import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
-import { formatLastRunContext, isAgentEvolving, statusLabel, deriveMemoryToolMode, MEMORY_TOOL_MODE_LABELS } from './agentUi';
+import {
+  formatLastRunContext,
+  isAgentEvolving,
+  statusLabel,
+  deriveMemoryToolMode,
+  MEMORY_TOOL_MODE_LABELS,
+  type MemoryToolMode,
+} from './agentUi';
 
 type ViewMode = 'grid' | 'list';
 
@@ -253,12 +256,8 @@ const emit = defineEmits<{
 }>();
 
 const builtinAgents = computed(() => props.agents.filter((a) => a.readonly));
-const presetAgents = computed(() =>
-  props.agents.filter((a) => !a.readonly && a.kind === 'ecosystem_preset'),
-);
-const userAgents = computed(() =>
-  props.agents.filter((a) => !a.readonly && a.kind !== 'ecosystem_preset'),
-);
+const presetAgents = computed(() => props.agents.filter((a) => !a.readonly && a.kind === 'ecosystem_preset'));
+const userAgents = computed(() => props.agents.filter((a) => !a.readonly && a.kind !== 'ecosystem_preset'));
 
 const draggableUserAgents = computed({
   get: () => userAgents.value,

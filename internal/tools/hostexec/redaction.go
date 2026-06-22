@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	redactedValue      = "[REDACTED]"
-	redactedNameFormat = "[REDACTED:%s]"
+	redactedValue           = "[REDACTED]"
+	redactedNameFormat      = "[REDACTED:%s]"
 	minSensitiveValueLength = 6
 )
 

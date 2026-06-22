@@ -2,7 +2,6 @@ package artifact
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"aranea-agents/pkg/apierror"
@@ -45,10 +44,10 @@ func ResolveAttachmentRefs(ctx context.Context, uc *Usecase, sessionID string, i
 	for _, id := range ids {
 		meta, err := uc.LoadMeta(ctx, id, 0)
 		if err != nil {
-			return nil, fmt.Errorf("%w: load attachment %s: %s", ErrAttachmentLoadFailed, id, err.Error())
+			return nil, apierror.BadRequest(apierror.DomainArtifact, "load attachment %s: %s", id, err.Error()).WithCause(err)
 		}
 		if strings.TrimSpace(meta.SessionID) != "" && sessionID != "" && meta.SessionID != sessionID {
-			return nil, fmt.Errorf("%w: attachment %s", ErrAttachmentWrongSession, id)
+			return nil, apierror.BadRequest(apierror.DomainArtifact, "attachment %s belongs to another session", id)
 		}
 		refs = append(refs, Ref{
 			ID:       meta.ID,

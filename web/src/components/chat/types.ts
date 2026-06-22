@@ -25,6 +25,8 @@ export type SessionView = {
   output_tokens?: number;
   total_tokens?: number;
   total_cost_micro_usd?: number;
+  tool_call_count?: number;
+  message_count?: number;
   at: string;
   timeline_at?: string;
   agent_id?: string;

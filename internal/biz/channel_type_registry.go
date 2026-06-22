@@ -118,7 +118,7 @@ func buildCredentialSchema(spec ChannelTypeSpec) map[string]any {
 func init() {
 	specs := []ChannelTypeSpec{
 		{
-			TypeItem: feishuTypeItem(),
+			TypeItem:            feishuTypeItem(),
 			RequiredCredentials: []string{"app_secret"},
 			CredentialProps: []CredentialProperty{
 				{Key: "app_secret", Title: "lark_app_secret", Format: "password", Required: true},
@@ -126,7 +126,7 @@ func init() {
 			SupportsLightTest: true,
 		},
 		{
-			TypeItem: dingtalkTypeItem(),
+			TypeItem:            dingtalkTypeItem(),
 			RequiredCredentials: []string{"secret"},
 			CredentialProps: []CredentialProperty{
 				{Key: "client_secret", Title: "ding_client_secret", Format: "password", Required: false},
@@ -135,7 +135,7 @@ func init() {
 			SupportsLightTest: true,
 		},
 		{
-			TypeItem: wecomTypeItem("wecom", "企业微信智能机器人", "群机器人或智能机器人", 30),
+			TypeItem:            wecomTypeItem("wecom", "企业微信智能机器人", "群机器人或智能机器人", 30),
 			RequiredCredentials: []string{"token"},
 			CredentialProps: []CredentialProperty{
 				{Key: "token", Title: "com_wechat_token", Format: "password", Required: true},
@@ -145,7 +145,7 @@ func init() {
 			SupportsLightTest: true,
 		},
 		{
-			TypeItem: wecomTypeItem("wecom-app", "企业微信自建应用", "企业微信自建应用", 40),
+			TypeItem:            wecomTypeItem("wecom-app", "企业微信自建应用", "企业微信自建应用", 40),
 			RequiredCredentials: []string{"token"},
 			CredentialProps: []CredentialProperty{
 				{Key: "token", Title: "com_wechat_token", Format: "password", Required: true},
@@ -155,7 +155,7 @@ func init() {
 			SupportsLightTest: true,
 		},
 		{
-			TypeItem: wechatTypeItem(),
+			TypeItem:            wechatTypeItem(),
 			RequiredCredentials: []string{"app_secret"},
 			CredentialProps: []CredentialProperty{
 				{Key: "app_secret", Title: "wechat_app_secret", Format: "password", Required: true},
@@ -165,7 +165,7 @@ func init() {
 			SupportsLightTest: true,
 		},
 		{
-			TypeItem: slackTypeItem(),
+			TypeItem:            slackTypeItem(),
 			RequiredCredentials: []string{"bot_token", "signing_secret"},
 			CredentialProps: []CredentialProperty{
 				{Key: "bot_token", Title: "slack_bot_token", Format: "password", Required: true},
@@ -175,7 +175,7 @@ func init() {
 			SupportsLightTest: true,
 		},
 		{
-			TypeItem: telegramTypeItem(),
+			TypeItem:            telegramTypeItem(),
 			RequiredCredentials: []string{"bot_token"},
 			CredentialProps: []CredentialProperty{
 				{Key: "bot_token", Title: "telegram_bot_token", Format: "password", Required: true},
@@ -183,7 +183,7 @@ func init() {
 			SupportsLightTest: true,
 		},
 		{
-			TypeItem: discordTypeItem(),
+			TypeItem:            discordTypeItem(),
 			RequiredCredentials: []string{"bot_token"},
 			CredentialProps: []CredentialProperty{
 				{Key: "bot_token", Title: "discord_bot_token", Format: "password", Required: true},
@@ -191,7 +191,7 @@ func init() {
 			SupportsLightTest: true,
 		},
 		{
-			TypeItem: lineTypeItem(),
+			TypeItem:            lineTypeItem(),
 			RequiredCredentials: []string{"channel_secret", "channel_token"},
 			CredentialProps: []CredentialProperty{
 				{Key: "channel_secret", Title: "line_channel_secret", Format: "password", Required: true},
@@ -200,7 +200,7 @@ func init() {
 			SupportsLightTest: false,
 		},
 		{
-			TypeItem: mattermostTypeItem(),
+			TypeItem:            mattermostTypeItem(),
 			RequiredCredentials: []string{"server_url", "bot_token"},
 			CredentialProps: []CredentialProperty{
 				{Key: "server_url", Title: "mattermost_server_url", Format: "", Required: true},
@@ -209,7 +209,7 @@ func init() {
 			SupportsLightTest: false,
 		},
 		{
-			TypeItem: teamsTypeItem(),
+			TypeItem:            teamsTypeItem(),
 			RequiredCredentials: []string{"app_id", "app_secret"},
 			CredentialProps: []CredentialProperty{
 				{Key: "app_id", Title: "teams_app_id", Format: "", Required: true},
@@ -218,7 +218,7 @@ func init() {
 			SupportsLightTest: false,
 		},
 		{
-			TypeItem: qqTypeItem(),
+			TypeItem:            qqTypeItem(),
 			RequiredCredentials: []string{"app_secret"},
 			CredentialProps: []CredentialProperty{
 				{Key: "app_secret", Title: "qq_app_secret", Format: "password", Required: true},
@@ -226,7 +226,7 @@ func init() {
 			SupportsLightTest: true,
 		},
 		{
-			TypeItem: personalQQTypeItem(),
+			TypeItem:            personalQQTypeItem(),
 			RequiredCredentials: []string{"receive_token", "send_token"},
 			CredentialProps: []CredentialProperty{
 				{Key: "receive_token", Title: "qq_one_bot_receive_token", Format: "password", Required: true},

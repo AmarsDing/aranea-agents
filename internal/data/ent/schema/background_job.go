@@ -34,7 +34,7 @@ func (BackgroundJob) Fields() []ent.Field {
 		field.Int("attempts").Default(0),
 		field.Int("max_attempts").Default(3),
 		field.Text("last_error").Default(""),
-		field.Int64("scheduled_at").Default(0),  // Unix milliseconds; 0 = immediately claimable
+		field.Int64("scheduled_at").Default(0), // Unix milliseconds; 0 = immediately claimable
 		field.Int64("claimed_at").Default(0),
 		field.Int64("finished_at").Default(0),
 		field.String("created_at").Default(""),

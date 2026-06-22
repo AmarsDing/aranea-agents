@@ -31,10 +31,10 @@ type ConditionalBranch struct {
 
 // BuildOrchestrationGraphInput is the input for the build_orchestration_graph tool.
 type BuildOrchestrationGraphInput struct {
-	TaskDescription     string               `json:"task_description" jsonschema:"description=Overall task description"`
-	Agents              []AgentAssignment    `json:"agents" jsonschema:"description=Agent assignments for the graph"`
-	Mode                string               `json:"mode" jsonschema:"description=Graph mode: parallel|sequential|hybrid|coordinator"`
-	ConditionalBranches []ConditionalBranch  `json:"conditional_branches,omitempty" jsonschema:"description=Conditional routing branches (optional)"`
+	TaskDescription     string              `json:"task_description" jsonschema:"description=Overall task description"`
+	Agents              []AgentAssignment   `json:"agents" jsonschema:"description=Agent assignments for the graph"`
+	Mode                string              `json:"mode" jsonschema:"description=Graph mode: parallel|sequential|hybrid|coordinator"`
+	ConditionalBranches []ConditionalBranch `json:"conditional_branches,omitempty" jsonschema:"description=Conditional routing branches (optional)"`
 }
 
 // BuildOrchestrationGraphOutput is the output for the build_orchestration_graph tool.

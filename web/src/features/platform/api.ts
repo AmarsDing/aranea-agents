@@ -414,6 +414,27 @@ function providerInputToCreateBody(payload: PlatformResourceInput): CreateProvid
     model: payload.model ?? '',
     configJson: payload.config_json ?? '{}',
     metadataJson: payload.metadata_json ?? '{}',
+    capabilities: payload.capabilities
+      ? {
+          text: payload.capabilities.text ?? false,
+          vision: payload.capabilities.vision ?? false,
+          audio: payload.capabilities.audio ?? false,
+          file: payload.capabilities.file ?? false,
+          toolCall: payload.capabilities.tool_call ?? false,
+          cache: payload.capabilities.cache ?? false,
+          thinking: payload.capabilities.thinking ?? false,
+          textOnly: payload.capabilities.text_only ?? false,
+        }
+      : {
+          text: false,
+          vision: false,
+          audio: false,
+          file: false,
+          toolCall: false,
+          cache: false,
+          thinking: false,
+          textOnly: false,
+        },
   };
 }
 
@@ -448,6 +469,28 @@ function mergeProviderModel(base: ProviderModel, patch: Partial<PlatformResource
     model: patch.model ?? base.model,
     configJson: patch.config_json ?? baseConfig ?? base.configJson ?? '{}',
     metadataJson: patch.metadata_json ?? baseMeta ?? base.metadataJson ?? '{}',
+    capabilities: patch.capabilities
+      ? {
+          text: patch.capabilities.text ?? false,
+          vision: patch.capabilities.vision ?? false,
+          audio: patch.capabilities.audio ?? false,
+          file: patch.capabilities.file ?? false,
+          toolCall: patch.capabilities.tool_call ?? false,
+          cache: patch.capabilities.cache ?? false,
+          thinking: patch.capabilities.thinking ?? false,
+          textOnly: patch.capabilities.text_only ?? false,
+        }
+      : (base.capabilities ?? {
+          text: false,
+          vision: false,
+          audio: false,
+          file: false,
+          toolCall: false,
+          cache: false,
+          thinking: false,
+          textOnly: false,
+        }),
+    pricingConfigured: patch.pricing_configured ?? base.pricingConfigured ?? false,
     createdAt: base.createdAt,
     updatedAt: base.updatedAt,
     deletedAt: base.deletedAt,
@@ -600,6 +643,8 @@ export async function createPlatformResource(
         ownerUserId: undefined,
         configJson: payload.config_json ?? '{}',
         metadataJson: payload.metadata_json ?? '{}',
+        deptLeadAgentId: undefined,
+        deptLeadConfigJson: '{}',
       });
       return organizationWireToPlatform(row);
     }
@@ -746,6 +791,8 @@ export async function updatePlatformResource(
         isSystem: curIsSystem,
         configJson: payload.config_json ?? cur.configJson,
         metadataJson: payload.metadata_json ?? cur.metadataJson,
+        deptLeadAgentId: cur.deptLeadAgentId,
+        deptLeadConfigJson: cur.deptLeadConfigJson,
         createdAt: cur.createdAt,
         updatedAt: cur.updatedAt,
         deletedAt: cur.deletedAt,

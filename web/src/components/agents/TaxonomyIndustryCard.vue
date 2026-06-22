@@ -67,7 +67,7 @@
               :disable="isToggling(dept.id)"
               @click.stop="$emit('toggle-enabled', dept, !dept.enabled)"
             >
-              <q-tooltip>{{ dept.enabled ? '停用' : '启用' }}</q-tooltip>
+              <q-tooltip>{{ dept.enabled ? '停用部门' : '启用部门' }}</q-tooltip>
             </q-btn>
             <q-btn
               v-if="!parseIsSystem(dept)"
@@ -142,9 +142,10 @@
           size="sm"
           :color="industry.enabled ? 'negative' : 'positive'"
           :icon="industry.enabled ? 'pause' : 'play_arrow'"
+          :disable="isToggling(industry.id)"
           @click.stop="$emit('toggle-enabled', industry, !industry.enabled)"
         >
-          <q-tooltip>{{ industry.enabled ? '停用' : '启用' }}</q-tooltip>
+          <q-tooltip>{{ industry.enabled ? '停用公司' : '启用公司' }}</q-tooltip>
         </q-btn>
         <q-btn
           v-if="!isSystem"
@@ -156,7 +157,7 @@
           icon="delete"
           @click.stop="$emit('remove', industry)"
         >
-          <q-tooltip>删除</q-tooltip>
+          <q-tooltip>删除公司</q-tooltip>
         </q-btn>
       </div>
     </footer>

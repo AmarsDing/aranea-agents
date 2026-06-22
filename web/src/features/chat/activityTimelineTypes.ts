@@ -12,12 +12,7 @@
  */
 
 import type { Message } from './types';
-import type {
-  OrchestrationPlan,
-  PlanEntry,
-  TeamStatusSummary,
-  ProgressSection,
-} from './agentTreeTypes';
+import type { OrchestrationPlan, PlanEntry, TeamStatusSummary, ProgressSection } from './agentTreeTypes';
 import type { StreamEvent } from './streamEventTypes';
 import type { ActivityTreeNode } from './activityTypes';
 
@@ -86,10 +81,12 @@ export interface TeamPanel {
 /** 任务拆解 — 扩展现有 PlanEntry */
 export interface TaskBoardSection {
   /** 复用现有 OrchestrationPlan 的 PlanEntry，增加序号和 Agent 分配 */
-  entries: Array<PlanEntry & {
-    num: number;
-    agentName: string | null;
-  }>;
+  entries: Array<
+    PlanEntry & {
+      num: number;
+      agentName: string | null;
+    }
+  >;
 }
 
 /** DAG 依赖关系 */

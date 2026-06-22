@@ -199,13 +199,19 @@ const pagedEvents = computed(() => {
   return props.visibleEvents.slice(start, start + pageSize.value);
 });
 
-watch(() => props.category, () => {
-  page.value = 1;
-});
+watch(
+  () => props.category,
+  () => {
+    page.value = 1;
+  },
+);
 
-watch(() => props.visibleEvents.length, () => {
-  page.value = 1;
-});
+watch(
+  () => props.visibleEvents.length,
+  () => {
+    page.value = 1;
+  },
+);
 </script>
 
 <style scoped>

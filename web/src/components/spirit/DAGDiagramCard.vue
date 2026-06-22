@@ -25,10 +25,11 @@
       >
         <span class="dag-diagram-card__prefix">{{ verifyIcon(vn) }}</span>
         <span class="dag-diagram-card__name">{{ verifyLabel(vn) }}</span>
-        <span class="dag-diagram-card__deps text-caption text-grey">
-          ({{ vn.failureAction }})
-        </span>
-        <span v-if="vn.retryCount != null && vn.maxRetries != null" class="dag-diagram-card__retry text-caption text-grey">
+        <span class="dag-diagram-card__deps text-caption text-grey"> ({{ vn.failureAction }}) </span>
+        <span
+          v-if="vn.retryCount != null && vn.maxRetries != null"
+          class="dag-diagram-card__retry text-caption text-grey"
+        >
           {{ t('spirit.retryCount', { current: vn.retryCount, max: vn.maxRetries }) }}
         </span>
         <q-tooltip v-if="vn.status === 'failed' && vn.failureReason" :delay="300">
@@ -70,11 +71,16 @@ const dagNodes = computed(() =>
 
 const verifyIcon = (vn: VerificationNode) => {
   switch (vn.status) {
-    case 'passed': return '✓';
-    case 'failed': return '✗';
-    case 'pending': return '⏳';
-    case 'skipped': return '⊘';
-    default: return '🔍';
+    case 'passed':
+      return '✓';
+    case 'failed':
+      return '✗';
+    case 'pending':
+      return '⏳';
+    case 'skipped':
+      return '⊘';
+    default:
+      return '🔍';
   }
 };
 
@@ -89,11 +95,16 @@ const verifyLabel = (vn: VerificationNode) => {
 
 const verifyNodeClass = (vn: VerificationNode) => {
   switch (vn.status) {
-    case 'passed': return 'dag-diagram-card__node--passed';
-    case 'failed': return 'dag-diagram-card__node--failed';
-    case 'pending': return 'dag-diagram-card__node--pending';
-    case 'skipped': return 'dag-diagram-card__node--skipped';
-    default: return '';
+    case 'passed':
+      return 'dag-diagram-card__node--passed';
+    case 'failed':
+      return 'dag-diagram-card__node--failed';
+    case 'pending':
+      return 'dag-diagram-card__node--pending';
+    case 'skipped':
+      return 'dag-diagram-card__node--skipped';
+    default:
+      return '';
   }
 };
 </script>

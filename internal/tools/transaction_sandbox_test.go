@@ -13,10 +13,10 @@ import (
 // fakeTxProvider is an in-memory TxProvider for testing. It records whether
 // the transaction committed (fn returned nil) or rolled back (fn returned err).
 type fakeTxProvider struct {
-	mu          sync.Mutex
-	commitCount int
+	mu            sync.Mutex
+	commitCount   int
 	rollbackCount int
-	injectErr   error // if non-nil, ExecInTx returns this before calling fn
+	injectErr     error // if non-nil, ExecInTx returns this before calling fn
 }
 
 func (p *fakeTxProvider) ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error {

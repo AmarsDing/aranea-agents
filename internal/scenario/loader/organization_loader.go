@@ -7,31 +7,31 @@ import (
 )
 
 type OrgCompanySpec struct {
-	Key         string                 `yaml:"key"`
-	Name        string                 `yaml:"name"`
-	Icon        string                 `yaml:"icon"`
-	Description string                 `yaml:"description"`
-	SortOrder   int                    `yaml:"sort_order"`
-	Departments []OrgDepartmentSpec    `yaml:"departments"`
+	Key         string              `yaml:"key"`
+	Name        string              `yaml:"name"`
+	Icon        string              `yaml:"icon"`
+	Description string              `yaml:"description"`
+	SortOrder   int                 `yaml:"sort_order"`
+	Departments []OrgDepartmentSpec `yaml:"departments"`
 }
 
 type OrgDepartmentSpec struct {
-	Key         string                  `yaml:"key"`
-	Name        string                  `yaml:"name"`
-	Description string                  `yaml:"description"`
-	SortOrder   int                     `yaml:"sort_order"`
-	Positions   []OrgPositionSpec       `yaml:"positions"`
+	Key         string            `yaml:"key"`
+	Name        string            `yaml:"name"`
+	Description string            `yaml:"description"`
+	SortOrder   int               `yaml:"sort_order"`
+	Positions   []OrgPositionSpec `yaml:"positions"`
 }
 
 type OrgPositionSpec struct {
-	Key             string                `yaml:"key"`
-	Name            string                `yaml:"name"`
-	Description     string                `yaml:"description"`
-	SortOrder       int                   `yaml:"sort_order"`
-	SeniorityLevel  string                `yaml:"seniority_level"`
-	SkillsRequired  []string              `yaml:"skills_required"`
-	Responsibilities []string             `yaml:"responsibilities"`
-	Variants        []OrgVariantSpec      `yaml:"variants"`
+	Key              string           `yaml:"key"`
+	Name             string           `yaml:"name"`
+	Description      string           `yaml:"description"`
+	SortOrder        int              `yaml:"sort_order"`
+	SeniorityLevel   string           `yaml:"seniority_level"`
+	SkillsRequired   []string         `yaml:"skills_required"`
+	Responsibilities []string         `yaml:"responsibilities"`
+	Variants         []OrgVariantSpec `yaml:"variants"`
 }
 
 type OrgVariantSpec struct {

@@ -81,8 +81,8 @@ func (ins *Installer) Install(pkgDir string, manifest *Manifest) (*Result, error
 			Version: 1,
 			Spec: orgimport.SpecBody{
 				Companies: manifest.Spec.Companies,
-				Agents:     manifest.Spec.Agents,
-				Teams:      manifest.Spec.Teams,
+				Agents:    manifest.Spec.Agents,
+				Teams:     manifest.Spec.Teams,
 			},
 		}
 		if !ins.DryRun {

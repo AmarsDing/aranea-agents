@@ -6,15 +6,15 @@ import (
 )
 
 type stubBridge struct {
-	showFn       func(ctx context.Context, taskID string) (map[string]any, error)
-	listFn       func(ctx context.Context, executionID, status string, limit int) ([]map[string]any, error)
-	completeFn   func(ctx context.Context, taskID, summary, output, metadata string) (map[string]any, error)
-	blockFn      func(ctx context.Context, taskID, reason, metadata string) (map[string]any, error)
-	unblockFn    func(ctx context.Context, taskID, comment string) (map[string]any, error)
-	heartbeatFn  func(ctx context.Context, taskID, agentKey, metadata string) (map[string]any, error)
-	commentFn    func(ctx context.Context, taskID, author, body, commentType string) (map[string]any, error)
-	createFn     func(ctx context.Context, executionID, nodeID, title, assignee, input string, parentIDs []string) (map[string]any, error)
-	linkFn       func(ctx context.Context, parentTaskID, childTaskID string) error
+	showFn      func(ctx context.Context, taskID string) (map[string]any, error)
+	listFn      func(ctx context.Context, executionID, status string, limit int) ([]map[string]any, error)
+	completeFn  func(ctx context.Context, taskID, summary, output, metadata string) (map[string]any, error)
+	blockFn     func(ctx context.Context, taskID, reason, metadata string) (map[string]any, error)
+	unblockFn   func(ctx context.Context, taskID, comment string) (map[string]any, error)
+	heartbeatFn func(ctx context.Context, taskID, agentKey, metadata string) (map[string]any, error)
+	commentFn   func(ctx context.Context, taskID, author, body, commentType string) (map[string]any, error)
+	createFn    func(ctx context.Context, executionID, nodeID, title, assignee, input string, parentIDs []string) (map[string]any, error)
+	linkFn      func(ctx context.Context, parentTaskID, childTaskID string) error
 }
 
 func (s *stubBridge) Show(ctx context.Context, taskID string) (map[string]any, error) {

@@ -34,7 +34,7 @@
         <q-chip dense square size="sm" class="teams-industry-section__count">{{ group.teams.length }}</q-chip>
       </header>
       <draggable
-        v-model="draggableTeamsMap[group.id]"
+        :list="draggableTeamsMap[group.id]?.value ?? []"
         item-key="id"
         class="teams-draggable-grid"
         ghost-class="team-card--ghost"
@@ -42,6 +42,12 @@
         drag-class="team-card--dragging"
         :animation="200"
         :delay="100"
+        @update:list="
+          (val: unknown[]) => {
+            const ref = draggableTeamsMap[group.id];
+            if (ref) ref.value = val as Team[];
+          }
+        "
       >
         <template #item="{ element: team }">
           <TeamCard
@@ -162,7 +168,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, watchEffect, type WritableComputedRef } from 'vue';
+import { computed, shallowReactive, watchEffect, type WritableComputedRef } from 'vue';
 import draggable from 'vuedraggable';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import TeamCard from '../components/teams/TeamCard.vue';
@@ -242,7 +248,7 @@ const {
   reorderTeams,
 } = useTeamsPage();
 
-const draggableTeamsMap = reactive<Record<string, WritableComputedRef<Team[]>>>({});
+const draggableTeamsMap = shallowReactive<Record<string, WritableComputedRef<Team[]>>>({});
 
 watchEffect(() => {
   for (const group of teamIndustryGroups.value) {

@@ -128,13 +128,13 @@ func TestMatchFilterKey_NoMatch(t *testing.T) {
 
 func TestEnvelope_Clone(t *testing.T) {
 	orig := Envelope{
-		ID:        "e-1",
-		Type:      EnvelopeTypeTextDelta,
-		Author:    "agent-1",
-		SessionID: "sess-1",
-		Content:   &EnvelopeContent{Text: "hello"},
-		ToolCall:  &EnvelopeToolCall{ID: "tc-1", Name: "search"},
-		Error:     &EnvelopeError{Type: "runtime", Message: "oops"},
+		ID:         "e-1",
+		Type:       EnvelopeTypeTextDelta,
+		Author:     "agent-1",
+		SessionID:  "sess-1",
+		Content:    &EnvelopeContent{Text: "hello"},
+		ToolCall:   &EnvelopeToolCall{ID: "tc-1", Name: "search"},
+		Error:      &EnvelopeError{Type: "runtime", Message: "oops"},
 		Extensions: map[string]string{"key": "val"},
 		Metadata:   map[string]any{"count": 42},
 	}

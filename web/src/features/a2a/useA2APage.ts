@@ -4,7 +4,12 @@ import { useQuasar } from 'quasar';
 import type { A2AAgentCard, A2AInvokeResult, RegisterRemoteAgentInput, DiscoverRemoteInput } from './types';
 import { useA2AStore } from '../../stores/a2a';
 
-import { A2A_AUDIT_TABLE_COLUMNS, A2A_CARD_TABLE_COLUMNS, A2A_GATEWAY_TABLE_COLUMNS, A2A_REMOTE_TABLE_COLUMNS } from './a2aTableUi';
+import {
+  A2A_AUDIT_TABLE_COLUMNS,
+  A2A_CARD_TABLE_COLUMNS,
+  A2A_GATEWAY_TABLE_COLUMNS,
+  A2A_REMOTE_TABLE_COLUMNS,
+} from './a2aTableUi';
 
 export function useA2APage() {
   const $q = useQuasar();

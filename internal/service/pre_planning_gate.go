@@ -94,10 +94,10 @@ func (g *PrePlanningGate) publishPlanningPhase(ctx context.Context, eventType co
 	}
 	env := contract.NewEnvelope(eventType, "pre-planning-gate", sessionID)
 	env.Metadata = map[string]any{
-		"phase":        phase,
-		"message":      message,
-		"duration_ms":  durationMs,
-		"session_id":   sessionID,
+		"phase":       phase,
+		"message":     message,
+		"duration_ms": durationMs,
+		"session_id":  sessionID,
 	}
 	g.bus.Publish(ctx, env)
 }

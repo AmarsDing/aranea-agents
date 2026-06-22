@@ -1,6 +1,13 @@
 <template>
   <div class="monitor-log-stream-panel">
-    <q-tabs :model-value="subTab" dense align="left" no-caps class="monitor-log-stream-tabs" @update:model-value="$emit('update:subTab', $event)">
+    <q-tabs
+      :model-value="subTab"
+      dense
+      align="left"
+      no-caps
+      class="monitor-log-stream-tabs"
+      @update:model-value="$emit('update:subTab', $event)"
+    >
       <q-tab name="flow" icon="timeline" label="流程日志" />
       <q-tab name="process" icon="terminal" label="进程日志" />
     </q-tabs>

@@ -11,46 +11,46 @@ import (
 
 type testRepo struct {
 	mockSessionRepo
-	updateSessionFn             func(ctx context.Context, id string, fields SessionUpdateFields) (Session, error)
-	restoreSessionFn            func(ctx context.Context, id string) (Session, error)
-	archiveSessionFn            func(ctx context.Context, id string) (int, error)
-	deleteSessionFn             func(ctx context.Context, id string) (int, error)
-	pinSessionFn                func(ctx context.Context, id string) (Session, error)
-	unpinSessionFn              func(ctx context.Context, id string) (Session, error)
-	updateSessionTitleFn        func(ctx context.Context, id, title string) (Session, error)
-	appendChatMessageFn         func(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
-	updateChatMessageStatusFn   func(ctx context.Context, sessionID, messageID, status, errorMessage string) error
-	updateMessageFeedbackJSONFn func(ctx context.Context, sessionID, messageID, rating, comment string) error
-	listTimelineEventRefsPagedFn func(ctx context.Context, sessionID string, q TimelineQuery) ([]TimelineEventRef, int, error)
-	countMessagesBySessionFn     func(ctx context.Context, sessionID string) (int, error)
-	listMessagesBySessionFn      func(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error)
-	listMessagesByIDsFn          func(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error)
-	listToolInvocationsByIDsFn   func(ctx context.Context, sessionID string, ids []string) ([]ToolInvocationView, error)
-	listSkillInvocationsByIDsFn  func(ctx context.Context, sessionID string, ids []string) ([]SkillInvocationView, error)
-	lookupAgentDisplayNamesFn    func(ctx context.Context, agentIDs []string) (map[string]string, error)
-	createSessionTurnFn          func(ctx context.Context, turn SessionTurn) (SessionTurn, error)
-	listSessionTurnsFn           func(ctx context.Context, sessionID string, limit, offset int) (SessionTurnListResult, error)
-	incrementInvocationCountsFn  func(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error
-	insertSessionSummaryFn       func(ctx context.Context, row SessionSummary) error
-	listSessionSummariesFn       func(ctx context.Context, sessionID string) ([]SessionSummary, error)
-	getSessionStateFn            func(ctx context.Context, sessionID string) (map[string]string, error)
-	saveSessionStateFn           func(ctx context.Context, sessionID string, state map[string]string) error
-	patchSessionStateFn          func(ctx context.Context, sessionID string, sets map[string]string, deletes []string) error
-	listSessionsByIDsFn          func(ctx context.Context, ids []string) ([]Session, error)
-	listSessionsForBatchFn       func(ctx context.Context, q SessionSearchQuery) ([]Session, error)
-	archiveSessionsByIDsFn       func(ctx context.Context, ids []string) (int, []string, error)
-	deleteSessionsByIDsFn        func(ctx context.Context, ids []string) (int, []string, error)
-	compressSessionInTxFn        func(ctx context.Context, sessionID string, fn func(ctx context.Context) error) error
+	updateSessionFn               func(ctx context.Context, id string, fields SessionUpdateFields) (Session, error)
+	restoreSessionFn              func(ctx context.Context, id string) (Session, error)
+	archiveSessionFn              func(ctx context.Context, id string) (int, error)
+	deleteSessionFn               func(ctx context.Context, id string) (int, error)
+	pinSessionFn                  func(ctx context.Context, id string) (Session, error)
+	unpinSessionFn                func(ctx context.Context, id string) (Session, error)
+	updateSessionTitleFn          func(ctx context.Context, id, title string) (Session, error)
+	appendChatMessageFn           func(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
+	updateChatMessageStatusFn     func(ctx context.Context, sessionID, messageID, status, errorMessage string) error
+	updateMessageFeedbackJSONFn   func(ctx context.Context, sessionID, messageID, rating, comment string) error
+	listTimelineEventRefsPagedFn  func(ctx context.Context, sessionID string, q TimelineQuery) ([]TimelineEventRef, int, error)
+	countMessagesBySessionFn      func(ctx context.Context, sessionID string) (int, error)
+	listMessagesBySessionFn       func(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error)
+	listMessagesByIDsFn           func(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error)
+	listToolInvocationsByIDsFn    func(ctx context.Context, sessionID string, ids []string) ([]ToolInvocationView, error)
+	listSkillInvocationsByIDsFn   func(ctx context.Context, sessionID string, ids []string) ([]SkillInvocationView, error)
+	lookupAgentDisplayNamesFn     func(ctx context.Context, agentIDs []string) (map[string]string, error)
+	createSessionTurnFn           func(ctx context.Context, turn SessionTurn) (SessionTurn, error)
+	listSessionTurnsFn            func(ctx context.Context, sessionID string, limit, offset int) (SessionTurnListResult, error)
+	incrementInvocationCountsFn   func(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error
+	insertSessionSummaryFn        func(ctx context.Context, row SessionSummary) error
+	listSessionSummariesFn        func(ctx context.Context, sessionID string) ([]SessionSummary, error)
+	getSessionStateFn             func(ctx context.Context, sessionID string) (map[string]string, error)
+	saveSessionStateFn            func(ctx context.Context, sessionID string, state map[string]string) error
+	patchSessionStateFn           func(ctx context.Context, sessionID string, sets map[string]string, deletes []string) error
+	listSessionsByIDsFn           func(ctx context.Context, ids []string) ([]Session, error)
+	listSessionsForBatchFn        func(ctx context.Context, q SessionSearchQuery) ([]Session, error)
+	archiveSessionsByIDsFn        func(ctx context.Context, ids []string) (int, []string, error)
+	deleteSessionsByIDsFn         func(ctx context.Context, ids []string) (int, []string, error)
+	compressSessionInTxFn         func(ctx context.Context, sessionID string, fn func(ctx context.Context) error) error
 	tryIncrementCompressVersionFn func(ctx context.Context, sessionID string) (int64, error)
-	sessionSummaryExistsFn       func(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error)
-	deleteSessionsByAgentIDFn    func(ctx context.Context, agentID string) error
-	bumpSessionRevisionFn        func(ctx context.Context, sessionID string) (int64, error)
-	getSessionRevisionFn         func(ctx context.Context, sessionID string) (int64, error)
-	updateSessionTurnFn          func(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error)
-	upsertChatActivityMessageFn  func(ctx context.Context, sessionID string, msg ChatMessage) (bool, error)
-	listMessagesAfterTurnFn      func(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error)
-	listMessagesRecentFn         func(ctx context.Context, sessionID string, limit int) ([]ChatMessage, error)
-	listMessagesAfterRevisionFn  func(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error)
+	sessionSummaryExistsFn        func(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error)
+	deleteSessionsByAgentIDFn     func(ctx context.Context, agentID string) error
+	bumpSessionRevisionFn         func(ctx context.Context, sessionID string) (int64, error)
+	getSessionRevisionFn          func(ctx context.Context, sessionID string) (int64, error)
+	updateSessionTurnFn           func(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error)
+	upsertChatActivityMessageFn   func(ctx context.Context, sessionID string, msg ChatMessage) (bool, error)
+	listMessagesAfterTurnFn       func(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error)
+	listMessagesRecentFn          func(ctx context.Context, sessionID string, limit int) ([]ChatMessage, error)
+	listMessagesAfterRevisionFn   func(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error)
 }
 
 var _ SessionRepo = (*testRepo)(nil)
@@ -446,12 +446,12 @@ func TestRestore(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	tests := []struct {
-		name      string
-		id        string
-		deleteFn  func(ctx context.Context, id string) (int, error)
-		getFn     func(ctx context.Context, id string) (Session, error)
-		wantErr   bool
-		wantMsg   string
+		name     string
+		id       string
+		deleteFn func(ctx context.Context, id string) (int, error)
+		getFn    func(ctx context.Context, id string) (Session, error)
+		wantErr  bool
+		wantMsg  string
 	}{
 		{
 			name: "valid delete",
@@ -840,12 +840,12 @@ func TestUnpin(t *testing.T) {
 
 func TestAppendChatMessage(t *testing.T) {
 	tests := []struct {
-		name    string
-		sid     string
-		msg     ChatMessage
-		bump    bool
+		name     string
+		sid      string
+		msg      ChatMessage
+		bump     bool
 		appendFn func(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
-		wantErr bool
+		wantErr  bool
 	}{
 		{
 			name: "valid append assistant message",
@@ -912,14 +912,14 @@ func TestAppendChatMessage(t *testing.T) {
 
 func TestUpdateChatMessageStatus(t *testing.T) {
 	tests := []struct {
-		name       string
-		sessionID  string
-		messageID  string
-		status     string
-		errMsg     string
-		statusFn   func(ctx context.Context, sessionID, messageID, status, errorMessage string) error
-		wantErr    bool
-		wantMsg    string
+		name      string
+		sessionID string
+		messageID string
+		status    string
+		errMsg    string
+		statusFn  func(ctx context.Context, sessionID, messageID, status, errorMessage string) error
+		wantErr   bool
+		wantMsg   string
 	}{
 		{
 			name:      "valid status update",

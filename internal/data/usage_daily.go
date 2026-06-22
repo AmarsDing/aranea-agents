@@ -43,7 +43,7 @@ func (r *usageRepo) ListModelUsageDailyTrends(ctx context.Context, query biz.Usa
 		 COALESCE(SUM(cancelled_count), 0),
 		 COALESCE(SUM(avg_latency_ms * request_count) / NULLIF(SUM(request_count), 0), 0),
 		 COALESCE(SUM(avg_tokens_per_second * request_count) / NULLIF(SUM(request_count), 0), 0)
-		 FROM model_token_usage_daily`+where+` GROUP BY date_key ORDER BY date_key ASC`)
+		 FROM model_token_usage_daily` + where + ` GROUP BY date_key ORDER BY date_key ASC`)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, apierror.DomainData)
@@ -69,7 +69,7 @@ func (r *usageRepo) ListTopModelUsageFromDaily(ctx context.Context, query biz.Us
 		 COALESCE(SUM(avg_latency_ms * request_count) / NULLIF(SUM(request_count), 0), 0),
 		 COALESCE(SUM(avg_tokens_per_second * request_count) / NULLIF(SUM(request_count), 0), 0),
 		 COALESCE(1.0 * SUM(success_count) / NULLIF(SUM(request_count), 0), 0)
-		 FROM model_token_usage_daily`+where+` GROUP BY provider_code, model_api_id ORDER BY SUM(total_cost_micro_usd) DESC, SUM(call_count) DESC LIMIT ?`)
+		 FROM model_token_usage_daily` + where + ` GROUP BY provider_code, model_api_id ORDER BY SUM(total_cost_micro_usd) DESC, SUM(call_count) DESC LIMIT ?`)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, apierror.DomainData)
@@ -96,7 +96,7 @@ func (r *usageRepo) ListTopAgentUsageFromDaily(ctx context.Context, query biz.Us
 		 COALESCE(SUM(avg_latency_ms * request_count) / NULLIF(SUM(request_count), 0), 0),
 		 COALESCE(SUM(avg_tokens_per_second * request_count) / NULLIF(SUM(request_count), 0), 0),
 		 COALESCE(1.0 * SUM(success_count) / NULLIF(SUM(request_count), 0), 0)
-		 FROM model_token_usage_daily`+where+` GROUP BY agent_id, agent_key ORDER BY SUM(total_cost_micro_usd) DESC, SUM(call_count) DESC LIMIT ?`)
+		 FROM model_token_usage_daily` + where + ` GROUP BY agent_id, agent_key ORDER BY SUM(total_cost_micro_usd) DESC, SUM(call_count) DESC LIMIT ?`)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, apierror.DomainData)

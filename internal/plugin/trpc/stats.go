@@ -56,9 +56,9 @@ type RepoStatsRecorder struct {
 	lg           loggateway.Logger
 	persistOK    bool // persist successful runs to plugin_runs table
 
-	ch   chan CallbackEvent
-	done chan struct{}
-	wg   sync.WaitGroup
+	ch        chan CallbackEvent
+	done      chan struct{}
+	wg        sync.WaitGroup
 	closeOnce sync.Once
 }
 

@@ -16,9 +16,7 @@ export function useAgentEvolutionPanel(agentId: () => string, range: () => strin
   const rejectingId = ref<string | null>(null);
 
   const suggestions = computed<SkillEvolutionView[]>(() =>
-    evolutionStore.suggestions.filter(
-      (s) => s.targetType === 'agent' && s.targetId === agentId(),
-    ),
+    evolutionStore.suggestions.filter((s) => s.targetType === 'agent' && s.targetId === agentId()),
   );
 
   const pendingSuggestionsCount = computed(() => suggestions.value.filter((s) => s.status === 'pending').length);

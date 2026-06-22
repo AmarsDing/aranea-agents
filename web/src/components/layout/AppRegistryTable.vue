@@ -90,8 +90,8 @@ const { displayColumns, onResizeStart } = useResizableRegistryColumns(() => sour
 });
 
 /** 将 columns.style 同步到 headerStyle，并应用用户拖拽后的列宽 */
-const tableBind = computed(() => {
-  const bind = { ...(attrs as Record<string, unknown>) };
+const tableBind = computed<QTableProps>(() => {
+  const bind = { ...(attrs as Record<string, unknown>) } as unknown as QTableProps;
   if (displayColumns.value) {
     bind.columns = displayColumns.value;
   }

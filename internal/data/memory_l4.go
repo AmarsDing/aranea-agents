@@ -422,5 +422,3 @@ func NewL4GraphUsecaseFromData(data *Data, cascade *biz.L4CascadeUsecase, lg log
 	}
 	return uc
 }
-
-

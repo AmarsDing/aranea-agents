@@ -189,7 +189,7 @@ func TestConfigFromMap_includeAnswerFalse(t *testing.T) {
 
 func TestConfigFromMap_includeRawContentFalse(t *testing.T) {
 	cfg := webresearch.ConfigFromMap(map[string]any{
-		"api_key":              "k",
+		"api_key":             "k",
 		"include_raw_content": false,
 	})
 	if cfg.IncludeRawContent {

@@ -9,13 +9,13 @@ import (
 )
 
 type mockRepo struct {
-	listFn    func(ctx context.Context) ([]Task, error)
-	getFn     func(ctx context.Context, id string) (Task, error)
-	createFn  func(ctx context.Context, t Task) (Task, error)
-	updateFn  func(ctx context.Context, t Task) (Task, error)
-	deleteFn  func(ctx context.Context, id string) error
-	getRunFn  func(ctx context.Context, id string) (TaskRun, error)
-	listRunFn func(ctx context.Context, q TaskRunQuery) ([]TaskRun, error)
+	listFn      func(ctx context.Context) ([]Task, error)
+	getFn       func(ctx context.Context, id string) (Task, error)
+	createFn    func(ctx context.Context, t Task) (Task, error)
+	updateFn    func(ctx context.Context, t Task) (Task, error)
+	deleteFn    func(ctx context.Context, id string) error
+	getRunFn    func(ctx context.Context, id string) (TaskRun, error)
+	listRunFn   func(ctx context.Context, q TaskRunQuery) ([]TaskRun, error)
 	insertRunFn func(ctx context.Context, in TaskRunInput) error
 	updateRunFn func(ctx context.Context, id, status, finishedAt, outputJSON, errorMessage string) error
 }
@@ -58,13 +58,15 @@ func (m *mockTaskTrigger) TriggerTask(ctx context.Context, taskID string) (TaskR
 
 func noOpRepo() *mockRepo {
 	return &mockRepo{
-		listFn:    func(_ context.Context) ([]Task, error) { return nil, nil },
-		getFn:     func(_ context.Context, id string) (Task, error) { return Task{ID: id, TaskKey: "key", Name: "name", Status: "active"}, nil },
-		createFn:  func(_ context.Context, t Task) (Task, error) { return t, nil },
-		updateFn:  func(_ context.Context, t Task) (Task, error) { return t, nil },
-		deleteFn:  func(_ context.Context, _ string) error { return nil },
-		getRunFn:  func(_ context.Context, id string) (TaskRun, error) { return TaskRun{ID: id}, nil },
-		listRunFn: func(_ context.Context, _ TaskRunQuery) ([]TaskRun, error) { return nil, nil },
+		listFn: func(_ context.Context) ([]Task, error) { return nil, nil },
+		getFn: func(_ context.Context, id string) (Task, error) {
+			return Task{ID: id, TaskKey: "key", Name: "name", Status: "active"}, nil
+		},
+		createFn:    func(_ context.Context, t Task) (Task, error) { return t, nil },
+		updateFn:    func(_ context.Context, t Task) (Task, error) { return t, nil },
+		deleteFn:    func(_ context.Context, _ string) error { return nil },
+		getRunFn:    func(_ context.Context, id string) (TaskRun, error) { return TaskRun{ID: id}, nil },
+		listRunFn:   func(_ context.Context, _ TaskRunQuery) ([]TaskRun, error) { return nil, nil },
 		insertRunFn: func(_ context.Context, _ TaskRunInput) error { return nil },
 		updateRunFn: func(_ context.Context, _, _, _, _, _ string) error { return nil },
 	}

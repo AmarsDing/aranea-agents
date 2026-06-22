@@ -55,6 +55,7 @@ export function teamDefinitionToGraphDef(definition: TeamDefinition): GraphDefin
     interruptAfter: [],
     metadata: {},
     version: 0,
+    sortOrder: 0,
     createdAt: '',
     updatedAt: '',
   };

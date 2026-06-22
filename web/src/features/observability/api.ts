@@ -8,7 +8,16 @@ import type {
   MemoryHitData,
 } from './types';
 
-function mapDimensions(d?: { semantic?: number; structural?: number; domain?: number; tool?: number; context?: number; historical?: number } | null): DimensionScoresData | null {
+function mapDimensions(
+  d?: {
+    semantic?: number;
+    structural?: number;
+    domain?: number;
+    tool?: number;
+    context?: number;
+    historical?: number;
+  } | null,
+): DimensionScoresData | null {
   if (!d) return null;
   return {
     semantic: d.semantic ?? 0,
@@ -40,7 +49,21 @@ function mapSubTask(s: {
   };
 }
 
-function mapDag(dag?: { nodes?: SubTaskData[]; rootIds?: string[]; leafIds?: string[] } | null): PlanTaskDagData | null {
+function mapDag(
+  dag?: {
+    nodes?: {
+      id?: string;
+      name?: string;
+      description?: string;
+      dependsOn?: string[];
+      requiredCapabilities?: string[];
+      priority?: number;
+      estimatedComplexity?: number;
+    }[];
+    rootIds?: string[];
+    leafIds?: string[];
+  } | null,
+): PlanTaskDagData | null {
   if (!dag) return null;
   return {
     nodes: (dag.nodes ?? []).map(mapSubTask),
@@ -49,7 +72,9 @@ function mapDag(dag?: { nodes?: SubTaskData[]; rootIds?: string[]; leafIds?: str
   };
 }
 
-function mapMemoryHit(m?: { cacheId?: string; dqScore?: number; topologyUsed?: string; agentKeysUsed?: string[] } | null): MemoryHitData | null {
+function mapMemoryHit(
+  m?: { cacheId?: string; dqScore?: number; topologyUsed?: string; agentKeysUsed?: string[] } | null,
+): MemoryHitData | null {
   if (!m) return null;
   return {
     cacheId: m.cacheId ?? '',

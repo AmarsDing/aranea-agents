@@ -40,9 +40,9 @@ func (s *stubKnowledgeRepo) UpdateDocumentStatus(context.Context, string, string
 func (s *stubKnowledgeRepo) ListDocuments(context.Context, string, int, int) ([]biz.KnowledgeDocument, int, error) {
 	return nil, 0, nil
 }
-func (s *stubKnowledgeRepo) DeleteDocument(context.Context, string) error { return nil }
+func (s *stubKnowledgeRepo) DeleteDocument(context.Context, string) error             { return nil }
 func (s *stubKnowledgeRepo) InsertChunks(context.Context, []biz.KnowledgeChunk) error { return nil }
-func (s *stubKnowledgeRepo) DeleteChunksByDocument(context.Context, string) error       { return nil }
+func (s *stubKnowledgeRepo) DeleteChunksByDocument(context.Context, string) error     { return nil }
 
 func (s *stubKnowledgeRepo) SearchChunks(_ context.Context, q biz.KnowledgeSearchQuery, _ []float32) ([]biz.KnowledgeChunk, error) {
 	s.lastLimit = q.TopK

@@ -23,7 +23,10 @@
           <span class="plan-block__step-index">{{ idx + 1 }}</span>
           <span class="plan-block__step-task">{{ step.label }}</span>
           <span v-if="step.agentName" class="plan-block__step-agent">{{ step.agentName }}</span>
-          <span v-if="step.durationMs != null && (step.status === 'completed' || step.status === 'partial_failure')" class="plan-block__step-duration">
+          <span
+            v-if="step.durationMs != null && (step.status === 'completed' || step.status === 'partial_failure')"
+            class="plan-block__step-duration"
+          >
             {{ formatDuration(step.durationMs) }}
           </span>
         </div>
@@ -67,11 +70,16 @@ const statusClass = computed(() => ({
 
 const statusIcon = computed(() => {
   switch (props.activity.status) {
-    case 'planning': return '📝';
-    case 'executing': return '⏳';
-    case 'completed': return '✓';
-    case 'failed': return '✗';
-    default: return '📋';
+    case 'planning':
+      return '📝';
+    case 'executing':
+      return '⏳';
+    case 'completed':
+      return '✓';
+    case 'failed':
+      return '✗';
+    default:
+      return '📋';
   }
 });
 </script>

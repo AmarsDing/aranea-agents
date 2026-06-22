@@ -22,13 +22,13 @@ func (p *GraphOrchestrationProjector) PublishGraphTaskStatus(ctx context.Context
 	env.Channel = "graph"
 	env.FilterKey = "graph/" + strings.TrimSpace(graphID) + "/" + execID
 	env.Metadata = map[string]any{
-		"execution_id": execID,
-		"graph_id":     graphID,
-		"node_id":      task.NodeID,
-		"task_id":      task.TaskID,
-		"task_status":  string(task.Status),
-		"assignee":     task.Assignee,
-		"summary":      task.Summary,
+		"execution_id":  execID,
+		"graph_id":      graphID,
+		"node_id":       task.NodeID,
+		"task_id":       task.TaskID,
+		"task_status":   string(task.Status),
+		"assignee":      task.Assignee,
+		"summary":       task.Summary,
 		"webhook_topic": "graph.task.status",
 	}
 	for k, v := range extra {

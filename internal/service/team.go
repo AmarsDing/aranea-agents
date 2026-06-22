@@ -19,15 +19,15 @@ import (
 type TeamService struct {
 	v1.UnimplementedTeamServiceServer
 
-	uc          *biz.TeamUsecase
-	graphUC     *biz.GraphUsecase
-	agents      *biz.AgentUsecase
-	sessions    *biz.SessionUsecase
-	teamRunner  biz.TeamTurnRunnerPort
-	runs        biz.RunRegistryPort
-	eventBus    event.Bus
-	lg          loggateway.Logger
-	synthesis   *SpiritSynthesisService
+	uc         *biz.TeamUsecase
+	graphUC    *biz.GraphUsecase
+	agents     *biz.AgentUsecase
+	sessions   *biz.SessionUsecase
+	teamRunner biz.TeamTurnRunnerPort
+	runs       biz.RunRegistryPort
+	eventBus   event.Bus
+	lg         loggateway.Logger
+	synthesis  *SpiritSynthesisService
 }
 
 func NewTeamService(

@@ -89,9 +89,9 @@ var (
 //	    return scanAndCompute(ctx)
 //	})
 type JobRunner struct {
-	lg          loggateway.Logger
-	breaker     *CircuitBreaker // optional, nil disables circuit breaking
-	deadLetter  DeadLetterWriter // optional, nil disables dead-letter writes
+	lg         loggateway.Logger
+	breaker    *CircuitBreaker  // optional, nil disables circuit breaking
+	deadLetter DeadLetterWriter // optional, nil disables dead-letter writes
 }
 
 // NewJobRunner creates a JobRunner. When lg is nil, a no-op logger is used.

@@ -11,7 +11,7 @@ import (
 
 // mockHealHandler records fix action calls for test assertions.
 type mockHealHandler struct {
-	calls    atomic.Int32
+	calls      atomic.Int32
 	lastAction monitor.FixAction
 	lastMeta   map[string]any
 	shouldErr  bool

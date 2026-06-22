@@ -58,19 +58,19 @@ func isRegisteredWebhookPath(path string) bool {
 // their handlers perform the real verification.
 func hasWebhookSigningHeader(r *http.Request) bool {
 	knownHeaders := []string{
-		"X-Lark-Signature",              // Feishu / Lark
-		"X-Hub-Signature-256",           // GitHub
-		"X-Hub-Signature",               // GitHub (legacy SHA-1)
-		"X-Slack-Signature",             // Slack Events API
+		"X-Lark-Signature",                // Feishu / Lark
+		"X-Hub-Signature-256",             // GitHub
+		"X-Hub-Signature",                 // GitHub (legacy SHA-1)
+		"X-Slack-Signature",               // Slack Events API
 		"X-Telegram-Bot-Api-Secret-Token", // Telegram
-		"X-Signature-Ed25519",           // Discord
-		"X-Signature-Timestamp",         // Discord (companion)
-		"X-DingTalk-Signature",          // DingTalk stream
-		"X-WxBizMsgCrypt",               // WeWork (enterprise WeChat)
-		"X-WeChat-Signature",            // WeChat (some modes)
-		"Authorization",                 // OneBot / generic bearer
-		"X-Signature",                   // generic
-		"X-Webhook-Signature",           // generic
+		"X-Signature-Ed25519",             // Discord
+		"X-Signature-Timestamp",           // Discord (companion)
+		"X-DingTalk-Signature",            // DingTalk stream
+		"X-WxBizMsgCrypt",                 // WeWork (enterprise WeChat)
+		"X-WeChat-Signature",              // WeChat (some modes)
+		"Authorization",                   // OneBot / generic bearer
+		"X-Signature",                     // generic
+		"X-Webhook-Signature",             // generic
 	}
 	for _, h := range knownHeaders {
 		if strings.TrimSpace(r.Header.Get(h)) != "" {

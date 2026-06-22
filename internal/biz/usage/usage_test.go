@@ -6,8 +6,8 @@ import (
 	"math"
 	"testing"
 
-	"aranea-agents/pkg/apierror"
 	"aranea-agents/internal/biz/shared"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestNormalizeStatus(t *testing.T) {
@@ -99,9 +99,9 @@ func TestApplyTokenUsageCosts(t *testing.T) {
 
 	t.Run("zero_tokens_skips_cost", func(t *testing.T) {
 		e := &TokenUsageEvent{
-			InputTokens:        0,
-			InputPriceUSDPer1M: 3.0,
-			OutputTokens:       0,
+			InputTokens:         0,
+			InputPriceUSDPer1M:  3.0,
+			OutputTokens:        0,
 			OutputPriceUSDPer1M: 15.0,
 		}
 		ApplyTokenUsageCosts(e)
@@ -115,9 +115,9 @@ func TestApplyTokenUsageCosts(t *testing.T) {
 
 	t.Run("total_cost_is_sum_of_all_fields", func(t *testing.T) {
 		e := &TokenUsageEvent{
-			InputTokens:        1000,
-			InputPriceUSDPer1M: 3.0,
-			OutputTokens:       500,
+			InputTokens:         1000,
+			InputPriceUSDPer1M:  3.0,
+			OutputTokens:        500,
 			OutputPriceUSDPer1M: 15.0,
 		}
 		ApplyTokenUsageCosts(e)
@@ -131,18 +131,18 @@ func TestApplyTokenUsageCosts(t *testing.T) {
 
 	t.Run("all_six_cost_kinds", func(t *testing.T) {
 		e := &TokenUsageEvent{
-			InputTokens:               100,
-			InputPriceUSDPer1M:        2.0,
-			OutputTokens:              200,
-			OutputPriceUSDPer1M:       4.0,
-			CachedInputTokens:         50,
-			CacheReadPriceUSDPer1M:    1.0,
-			CacheWriteTokens:          80,
-			CacheWritePriceUSDPer1M:   5.0,
-			ReasoningTokens:           300,
-			ReasoningPriceUSDPer1M:    6.0,
-			EmbeddingTokens:           400,
-			EmbeddingPriceUSDPer1M:    0.5,
+			InputTokens:             100,
+			InputPriceUSDPer1M:      2.0,
+			OutputTokens:            200,
+			OutputPriceUSDPer1M:     4.0,
+			CachedInputTokens:       50,
+			CacheReadPriceUSDPer1M:  1.0,
+			CacheWriteTokens:        80,
+			CacheWritePriceUSDPer1M: 5.0,
+			ReasoningTokens:         300,
+			ReasoningPriceUSDPer1M:  6.0,
+			EmbeddingTokens:         400,
+			EmbeddingPriceUSDPer1M:  0.5,
 		}
 		ApplyTokenUsageCosts(e)
 

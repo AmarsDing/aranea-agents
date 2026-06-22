@@ -369,29 +369,29 @@ func (uc *ChatUsecase) StartBackgroundGoroutines() {
 	ctx, cancel := context.WithCancel(context.Background())
 	uc.bgCancel = cancel
 	safego.Go(ctx, "chat-usecase-gc", func() {
-			ticker := time.NewTicker(awaitChanGCInterval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					now := time.Now()
-					uc.mu.Lock()
-					for sid, entry := range uc.awaitChans {
-						if strings.TrimSpace(sid) == "" {
-							close(entry.done)
-							delete(uc.awaitChans, sid)
-							continue
-						}
-						if now.Sub(entry.createdAt) > awaitChanMaxAge {
-							uc.lg.Warn("await channel expired, cleaning up", loggateway.StepID("session.compress"), loggateway.SessionID(sid), loggateway.Str("age", now.Sub(entry.createdAt).Round(time.Second).String()))
-							close(entry.done)
-							delete(uc.awaitChans, sid)
-						}
+		ticker := time.NewTicker(awaitChanGCInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				now := time.Now()
+				uc.mu.Lock()
+				for sid, entry := range uc.awaitChans {
+					if strings.TrimSpace(sid) == "" {
+						close(entry.done)
+						delete(uc.awaitChans, sid)
+						continue
 					}
-					uc.mu.Unlock()
+					if now.Sub(entry.createdAt) > awaitChanMaxAge {
+						uc.lg.Warn("await channel expired, cleaning up", loggateway.StepID("session.compress"), loggateway.SessionID(sid), loggateway.Str("age", now.Sub(entry.createdAt).Round(time.Second).String()))
+						close(entry.done)
+						delete(uc.awaitChans, sid)
+					}
 				}
+				uc.mu.Unlock()
 			}
-		})
+		}
+	})
 }

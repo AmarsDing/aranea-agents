@@ -78,16 +78,16 @@ func promptSnapshotCallIndex(ctx context.Context) int {
 }
 
 type promptComposeReport struct {
-	SystemChars     int
-	UserChars       int
-	AssistantChars  int
-	ToolChars       int
-	SystemMsgs      int
-	UserMsgs        int
-	AssistantMsgs   int
-	ToolMsgs        int
-	EstTokens       int
-	Sections        map[string]int
+	SystemChars    int
+	UserChars      int
+	AssistantChars int
+	ToolChars      int
+	SystemMsgs     int
+	UserMsgs       int
+	AssistantMsgs  int
+	ToolMsgs       int
+	EstTokens      int
+	Sections       map[string]int
 }
 
 func analyzePromptRequest(messages []trpcmodel.Message) promptComposeReport {

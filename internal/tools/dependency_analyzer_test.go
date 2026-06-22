@@ -68,7 +68,9 @@ func TestDependencyAnalyzer_ChainedDependencies(t *testing.T) {
 }
 
 // TestDependencyAnalyzer_DiamondDependency verifies a diamond dependency:
-//   a -> b, a -> c, b -> d, c -> d
+//
+//	a -> b, a -> c, b -> d, c -> d
+//
 // produces 3 layers: [a], [b,c], [d].
 func TestDependencyAnalyzer_DiamondDependency(t *testing.T) {
 	calls := []ToolCall{

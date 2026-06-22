@@ -493,6 +493,7 @@ export function useMemoryCenterPage() {
     factKeyword.value = '';
     factScope.value = null;
     factStatus.value = 'active';
+    void loadFacts();
   }
 
   function openSnapshot(row: L0AssemblySnapshot) {

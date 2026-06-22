@@ -60,10 +60,10 @@ func TestIsRecentReconnect(t *testing.T) {
 
 func TestEffectiveSessionReconnectMax(t *testing.T) {
 	tests := []struct {
-		name        string
-		transport   string
-		configured  int
-		want        int
+		name       string
+		transport  string
+		configured int
+		want       int
 	}{
 		{
 			name:       "configured_positive_returns_configured",

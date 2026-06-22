@@ -33,8 +33,7 @@ function parseRawItems(raw: unknown): RawTodoItem[] {
   const obj = raw as Record<string, unknown>;
   if (!Array.isArray(obj.todos)) return [];
   return obj.todos.filter(
-    (item): item is RawTodoItem =>
-      item != null && typeof item === 'object' && 'content' in item && 'status' in item,
+    (item): item is RawTodoItem => item != null && typeof item === 'object' && 'content' in item && 'status' in item,
   );
 }
 

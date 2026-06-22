@@ -22,13 +22,13 @@ type GraphDefinitionProvider interface {
 // GraphDefinitionUsecase handles graph definition CRUD, templates, and versioning.
 // Separated from execution lifecycle to isolate concerns and enable independent testing.
 type GraphDefinitionUsecase struct {
-	reader    GraphReader
-	writer    GraphWriter
-	factory   GraphDefinitionFactory
-	nodeInfo  GraphNodeInfoProvider
-	mu        sync.RWMutex
-	defs      map[string]*GraphDefinition
-	lg        loggateway.Logger
+	reader   GraphReader
+	writer   GraphWriter
+	factory  GraphDefinitionFactory
+	nodeInfo GraphNodeInfoProvider
+	mu       sync.RWMutex
+	defs     map[string]*GraphDefinition
+	lg       loggateway.Logger
 }
 
 // NewGraphDefinitionUsecase creates a definition usecase with in-memory definition cache.

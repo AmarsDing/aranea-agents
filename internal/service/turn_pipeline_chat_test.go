@@ -9,15 +9,15 @@ import (
 
 func TestTurnResultFromNative(t *testing.T) {
 	tests := []struct {
-		name   string
-		input  biz.NativeTurnResult
-		want   biz.TurnResult
+		name  string
+		input biz.NativeTurnResult
+		want  biz.TurnResult
 	}{
 		{
 			name: "completed",
 			input: biz.NativeTurnResult{
-				Outcome: biz.NativeTurnOutcomeCompleted,
-				UserMsg: biz.ChatMessage{ID: "u1", ContentMarkdown: "hello"},
+				Outcome:      biz.NativeTurnOutcomeCompleted,
+				UserMsg:      biz.ChatMessage{ID: "u1", ContentMarkdown: "hello"},
 				AssistantMsg: biz.ChatMessage{ID: "a1", ContentMarkdown: "world"},
 			},
 			want: biz.TurnResult{

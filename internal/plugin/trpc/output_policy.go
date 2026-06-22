@@ -145,4 +145,3 @@ func eventText(e *trpcevent.Event) string {
 	}
 	return b.String()
 }
-

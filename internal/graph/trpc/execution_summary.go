@@ -18,12 +18,12 @@ type NodeExecutionSummary struct {
 
 // ExecutionSummary aggregates a single graph run for graph_execution_done events.
 type ExecutionSummary struct {
-	ExecutionID   string                 `json:"execution_id"`
-	GraphID       string                 `json:"graph_id"`
-	TotalSteps    int                    `json:"total_steps"`
-	DurationMS    int64                  `json:"duration_ms"`
-	Nodes         []NodeExecutionSummary `json:"nodes"`
-	FinalStateKeys int                   `json:"final_state_keys,omitempty"`
+	ExecutionID    string                 `json:"execution_id"`
+	GraphID        string                 `json:"graph_id"`
+	TotalSteps     int                    `json:"total_steps"`
+	DurationMS     int64                  `json:"duration_ms"`
+	Nodes          []NodeExecutionSummary `json:"nodes"`
+	FinalStateKeys int                    `json:"final_state_keys,omitempty"`
 }
 
 // ExecutionSummaryTracker records node completions until the graph finishes.
@@ -44,7 +44,7 @@ func NewExecutionSummaryTracker(executionID, graphID string) *ExecutionSummaryTr
 
 const (
 	NodeExecStatusSuccess = "success"
-	NodeExecStatusError  = "error"
+	NodeExecStatusError   = "error"
 )
 
 func (t *ExecutionSummaryTracker) RecordNodeComplete(meta trpcgraph.NodeExecutionMetadata) {

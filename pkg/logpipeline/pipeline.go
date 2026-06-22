@@ -89,16 +89,16 @@ type ThrottleRule struct {
 }
 
 type pipeline struct {
-	mu          sync.RWMutex
-	sinkGroups  []*SinkGroup
-	ch          chan LogEntry
-	wg          sync.WaitGroup
-	cancel      context.CancelFunc
-	dropped     atomic.Uint64
-	throttled   atomic.Uint64
-	sinkErrors  atomic.Uint64
-	throttler   *stepThrottler
-	closed      atomic.Bool
+	mu         sync.RWMutex
+	sinkGroups []*SinkGroup
+	ch         chan LogEntry
+	wg         sync.WaitGroup
+	cancel     context.CancelFunc
+	dropped    atomic.Uint64
+	throttled  atomic.Uint64
+	sinkErrors atomic.Uint64
+	throttler  *stepThrottler
+	closed     atomic.Bool
 }
 
 const DefaultBufSize = 4096
@@ -314,10 +314,10 @@ func (t *stepThrottler) shouldThrottle(stepID string) bool {
 	b, ok := t.buckets[matched]
 	if !ok {
 		b = &tokenBucket{
-			tokens:     1,
-			maxTokens:  float64(matchedMaxPerSec),
-			lastTime:   time.Now(),
-			rate:       float64(matchedMaxPerSec),
+			tokens:    1,
+			maxTokens: float64(matchedMaxPerSec),
+			lastTime:  time.Now(),
+			rate:      float64(matchedMaxPerSec),
 		}
 		t.buckets[matched] = b
 	}

@@ -7,8 +7,8 @@ import (
 	"aranea-agents/internal/biz"
 
 	a2aprotocol "trpc.group/trpc-go/trpc-a2a-go/server"
-	a2atrpcserver "trpc.group/trpc-go/trpc-agent-go/server/a2a"
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
+	a2atrpcserver "trpc.group/trpc-go/trpc-agent-go/server/a2a"
 )
 
 // BuildA2AEndpointServer exposes a catalog LLM agent via the A2A HTTP protocol.

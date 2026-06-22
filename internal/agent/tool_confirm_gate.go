@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/alias"
-	plugintrpc "aranea-agents/internal/plugin/trpc"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/loggateway"
 )

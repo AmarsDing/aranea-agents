@@ -14,7 +14,7 @@ type Status string
 
 const (
 	StatusQueued    Status = "queued"
-	StatusClaimed   Status = "claimed"  // claimed by a worker, running
+	StatusClaimed   Status = "claimed" // claimed by a worker, running
 	StatusSucceeded Status = "succeeded"
 	StatusFailed    Status = "failed"
 	StatusCancelled Status = "cancelled"
@@ -39,14 +39,14 @@ const (
 // Job is the persisted record of one unit of async work.
 type Job struct {
 	ID          string
-	Kind        string     // registered runner kind, e.g. "session_run_durable"
+	Kind        string // registered runner kind, e.g. "session_run_durable"
 	OwnerType   OwnerType
 	OwnerID     string
-	ParentJobID string    // empty for root jobs; set for child jobs in a DAG
-	Priority    int       // lower = higher urgency
+	ParentJobID string // empty for root jobs; set for child jobs in a DAG
+	Priority    int    // lower = higher urgency
 	Status      Status
-	Payload     []byte    // opaque JSON understood by the registered Runner
-	WorkerID    string    // worker that claimed this job
+	Payload     []byte // opaque JSON understood by the registered Runner
+	WorkerID    string // worker that claimed this job
 	Attempts    int
 	MaxAttempts int
 	LastError   string

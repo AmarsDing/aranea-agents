@@ -34,7 +34,10 @@ func APIToKratos() middleware.Middleware {
 // translateError converts any internal error into a Kratos-compatible error.
 func translateError(err error) error {
 	// Already a Kratos error — pass through.
-	var ke interface{ Error() string; GRPCStatus() }
+	var ke interface {
+		Error() string
+		GRPCStatus()
+	}
 	if errors.As(err, &ke) {
 		return err
 	}

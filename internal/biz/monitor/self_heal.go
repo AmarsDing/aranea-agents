@@ -17,14 +17,14 @@ import (
 type HealStatus string
 
 const (
-	HealStatusApplied             HealStatus = "applied"
+	HealStatusApplied              HealStatus = "applied"
 	HealStatusSkippedLowConfidence HealStatus = "skipped_low_confidence"
-	HealStatusSkippedCooldown     HealStatus = "skipped_cooldown"
-	HealStatusSkippedNoAction     HealStatus = "skipped_no_action"
-	HealStatusFailed              HealStatus = "failed"
-	HealStatusObservedHealed      HealStatus = "observed_healed"
-	HealStatusObservedFailed      HealStatus = "observed_failed"
-	HealStatusAlertFired          HealStatus = "alert_fired"
+	HealStatusSkippedCooldown      HealStatus = "skipped_cooldown"
+	HealStatusSkippedNoAction      HealStatus = "skipped_no_action"
+	HealStatusFailed               HealStatus = "failed"
+	HealStatusObservedHealed       HealStatus = "observed_healed"
+	HealStatusObservedFailed       HealStatus = "observed_failed"
+	HealStatusAlertFired           HealStatus = "alert_fired"
 )
 
 // HealRecord documents a self-heal action taken.
@@ -75,8 +75,8 @@ type HealRecordListResult struct {
 
 // HealStats aggregates self-heal statistics.
 type HealStats struct {
-	TotalHeals   int     `json:"total_heals"`
-	SuccessRate  float64 `json:"success_rate"`
+	TotalHeals   int             `json:"total_heals"`
+	SuccessRate  float64         `json:"success_rate"`
 	TopFailRules []RuleFailCount `json:"top_fail_rules,omitempty"`
 }
 
@@ -95,11 +95,11 @@ type RuleFailCount struct {
 // outcomes, firing alerts) has moved to SelfHealObserver. The execution role (applying
 // fix actions) is now handled by the trpc-agent-go runtime.
 type SelfHealUsecase struct {
-	diag    *DiagBundleGenerator
-	handler HealActionHandler
-	history []HealRecord
-	mu      sync.Mutex
-	lg      loggateway.Logger
+	diag      *DiagBundleGenerator
+	handler   HealActionHandler
+	history   []HealRecord
+	mu        sync.Mutex
+	lg        loggateway.Logger
 	cooldowns map[string]time.Time // ruleID → last heal time
 }
 

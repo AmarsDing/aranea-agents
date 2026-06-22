@@ -98,7 +98,7 @@ type circuitBreakerBeforeHook struct {
 }
 
 func (h *circuitBreakerBeforeHook) Point() callbacks.CallbackPoint { return callbacks.PointBeforeTool }
-func (h *circuitBreakerBeforeHook) Priority() int                   { return 5 }
+func (h *circuitBreakerBeforeHook) Priority() int                  { return 5 }
 
 func (h *circuitBreakerBeforeHook) HandleBeforeTool(ctx context.Context, args *trpctool.BeforeToolArgs) (*trpctool.BeforeToolResult, error) {
 	cb := h.registry.Get(args.ToolName, categoryForTool(args.ToolName))
@@ -129,7 +129,7 @@ type circuitBreakerAfterHook struct {
 }
 
 func (h *circuitBreakerAfterHook) Point() callbacks.CallbackPoint { return callbacks.PointAfterTool }
-func (h *circuitBreakerAfterHook) Priority() int                   { return 5 }
+func (h *circuitBreakerAfterHook) Priority() int                  { return 5 }
 
 func (h *circuitBreakerAfterHook) HandleAfterTool(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
 	cb := h.registry.Get(args.ToolName, categoryForTool(args.ToolName))

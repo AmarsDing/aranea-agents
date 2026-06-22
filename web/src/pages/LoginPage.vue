@@ -32,7 +32,13 @@
                 {{ t('auth.backendDown') }}
               </q-banner>
               <div class="text-center q-mt-md">
-                <q-btn outline color="primary" :loading="rechecking" :label="t('auth.recheck')" @click="recheckBackend" />
+                <q-btn
+                  outline
+                  color="primary"
+                  :loading="rechecking"
+                  :label="t('auth.recheck')"
+                  @click="recheckBackend"
+                />
               </div>
             </q-card-section>
           </template>

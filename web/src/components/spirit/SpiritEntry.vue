@@ -1,41 +1,46 @@
 <template>
-  <div
-    class="spirit-entry"
-    :class="{ 'spirit-entry--active': active }"
-    role="button"
-    tabindex="0"
-    @click="$emit('click')"
-    @keydown.enter="$emit('click')"
-    @keydown.space.prevent="$emit('click')"
-  >
-    <AgentAvatarQ
-      v-if="icon"
-      :icon="icon"
-      size="36px"
-      avatar-class="spirit-entry__avatar-img"
-    />
-    <div v-else class="spirit-entry__avatar">
-      <span class="spirit-entry__emoji">🧚</span>
-    </div>
-    <div class="spirit-entry__info col min-width-0">
-      <div class="spirit-entry__name ellipsis">{{ t('spirit.spiritAssistant') }}</div>
-      <div class="spirit-entry__status ellipsis">
-        <span class="spirit-entry__online-dot" />
-        {{ t('spirit.online') }}
+  <div class="spirit-entry" :class="{ 'spirit-entry--active': active }">
+    <div
+      class="spirit-entry__main"
+      role="button"
+      tabindex="0"
+      :aria-label="t('spirit.spiritAssistant')"
+      @click="$emit('click')"
+      @keydown.enter="$emit('click')"
+      @keydown.space.prevent="$emit('click')"
+    >
+      <AgentAvatarQ
+        v-if="icon"
+        :icon="icon"
+        size="36px"
+        avatar-class="spirit-entry__avatar-img"
+        :alt="t('spirit.spiritAssistant')"
+      />
+      <div v-else class="spirit-entry__avatar">
+        <span class="spirit-entry__emoji">🧚</span>
+      </div>
+      <div class="spirit-entry__info col min-width-0">
+        <div class="spirit-entry__name ellipsis">{{ t('spirit.spiritAssistant') }}</div>
+        <div class="spirit-entry__status ellipsis">
+          <span class="spirit-entry__online-dot" />
+          {{ t('spirit.online') }}
+        </div>
       </div>
     </div>
-    <q-btn
-      v-if="showSettings"
-      dense
-      round
-      flat
-      size="sm"
-      icon="settings"
-      class="spirit-entry__settings-btn"
-      :aria-label="t('chat.settings')"
-      @click.stop="$emit('settings')"
-    />
-    <div v-if="active" class="spirit-entry__indicator" />
+    <div class="spirit-entry__actions">
+      <q-btn
+        v-if="showSettings"
+        dense
+        round
+        flat
+        size="12px"
+        icon="settings"
+        class="spirit-entry__settings-btn"
+        :aria-label="t('chat.settings')"
+        @click.stop="$emit('settings')"
+      />
+      <div v-if="active" class="spirit-entry__indicator" />
+    </div>
   </div>
 </template>
 
@@ -61,13 +66,21 @@ defineEmits<{
 .spirit-entry
   display: flex
   align-items: center
-  gap: var(--space-3)
+  gap: var(--space-2)
   padding: var(--space-3) var(--space-3)
   border-radius: 12px
-  cursor: pointer
   transition: background 0.15s ease, border-color 0.15s ease
   border: 1px solid transparent
   background: color-mix(in srgb, var(--glass-surface) 40%, transparent)
+
+.spirit-entry__main
+  display: flex
+  align-items: center
+  gap: var(--space-3)
+  flex: 1
+  min-width: 0
+  cursor: pointer
+  border-radius: 10px
 
 .spirit-entry:hover
   background: color-mix(in srgb, var(--glass-surface) 65%, transparent)
@@ -115,10 +128,15 @@ defineEmits<{
 .spirit-entry__avatar-img
   flex-shrink: 0
 
+.spirit-entry__actions
+  display: flex
+  align-items: center
+  gap: var(--space-1)
+
 .spirit-entry__settings-btn
-  width: 24px
-  height: 24px
-  min-height: 24px
+  width: 28px
+  height: 28px
+  min-height: 28px
   border-radius: 10px
   background: var(--glass-elevated)
   opacity: 0

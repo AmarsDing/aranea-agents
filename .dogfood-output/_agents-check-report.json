@@ -1,0 +1,8 @@
+{
+  "route": "/agents",
+  "url": "http://localhost:9001/agents",
+  "loadOk": true,
+  "network": [],
+  "logs": [],
+  "screenshot": "F:\\aranea-agents\\.dogfood-output\\_agents-check.png"
+}

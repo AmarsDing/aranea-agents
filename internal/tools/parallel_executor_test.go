@@ -35,10 +35,10 @@ func slowHandler(d time.Duration, recorded *[]string, mu *sync.Mutex) ToolHandle
 // serial time (5*80ms = 400ms; 40% = 160ms). This is the AC-2 acceptance criterion.
 func TestParallelExecutor_IndependentCallsRunInParallel(t *testing.T) {
 	const (
-		numCalls     = 5
-		callDelay    = 80 * time.Millisecond
-		serialTotal  = numCalls * callDelay // 400ms
-		parallelMax  = serialTotal * 40 / 100 // 160ms (40% threshold)
+		numCalls    = 5
+		callDelay   = 80 * time.Millisecond
+		serialTotal = numCalls * callDelay   // 400ms
+		parallelMax = serialTotal * 40 / 100 // 160ms (40% threshold)
 	)
 
 	var mu sync.Mutex

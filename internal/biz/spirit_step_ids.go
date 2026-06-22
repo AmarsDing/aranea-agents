@@ -13,19 +13,19 @@ import (
 
 // Phase 1 — TaskPlanner
 const (
-	SpiritStepPlannerAssess   = "spirit.planner.assess"
-	SpiritStepPlannerRoute    = "spirit.planner.route"
-	SpiritStepPlannerMemory   = "spirit.planner.memory"
+	SpiritStepPlannerAssess    = "spirit.planner.assess"
+	SpiritStepPlannerRoute     = "spirit.planner.route"
+	SpiritStepPlannerMemory    = "spirit.planner.memory"
 	SpiritStepPlannerDecompose = "spirit.planner.decompose"
-	SpiritStepPlannerPersist  = "spirit.planner.persist"
-	SpiritStepPlannerConfirm  = "spirit.planner.confirm"
+	SpiritStepPlannerPersist   = "spirit.planner.persist"
+	SpiritStepPlannerConfirm   = "spirit.planner.confirm"
 )
 
 // Phase 2 — AgentAllocator
 const (
-	SpiritStepAllocatorMatch   = "spirit.allocator.match"
+	SpiritStepAllocatorMatch    = "spirit.allocator.match"
 	SpiritStepAllocatorConflict = "spirit.allocator.conflict"
-	SpiritStepAllocatorPersist = "spirit.allocator.persist"
+	SpiritStepAllocatorPersist  = "spirit.allocator.persist"
 )
 
 // Phase 3 — TaskOrchestrator

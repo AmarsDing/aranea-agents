@@ -8,12 +8,12 @@ import (
 
 func TestParseChannelIMRenderPolicy(t *testing.T) {
 	cases := []struct {
-		name        string
-		configJSON  string
-		ltCfg       biz.ChannelLongTaskConfig
-		wantMode    string
-		wantDetail  string
-		wantTeam    string
+		name       string
+		configJSON string
+		ltCfg      biz.ChannelLongTaskConfig
+		wantMode   string
+		wantDetail string
+		wantTeam   string
 	}{
 		{
 			name:       "defaults with empty config",
@@ -169,9 +169,9 @@ func TestChannelACKDeferredToPreview(t *testing.T) {
 
 func TestNormalizeIMRenderMode(t *testing.T) {
 	cases := []struct {
-		name  string
-		mode  string
-		want  string
+		name string
+		mode string
+		want string
 	}{
 		{"transcript", "transcript", biz.ChannelIMRenderModeTranscript},
 		{"transcript with reasoning", "transcript_with_reasoning", biz.ChannelIMRenderModeTranscriptWithReasoning},
@@ -257,11 +257,11 @@ func TestNormalizeIMToolCardMode(t *testing.T) {
 
 func TestApplyLegacyProgressMode(t *testing.T) {
 	cases := []struct {
-		name        string
+		name         string
 		progressMode string
-		wantMode    string
-		wantDetail  string
-		wantTeam    string
+		wantMode     string
+		wantDetail   string
+		wantTeam     string
 	}{
 		{"text mode", "text", biz.ChannelIMRenderModeTranscript, biz.ChannelIMToolDetailLabelSummary, biz.ChannelIMTeamModeOff},
 		{"steps mode", "steps", biz.ChannelIMRenderModeTranscript, biz.ChannelIMToolDetailLabelSummary, biz.ChannelIMTeamModeSteps},

@@ -470,7 +470,7 @@ func (u *unseekableReader) Read(p []byte) (int, error) { return 0, io.EOF }
 
 func TestDefaultRetryMaxAttempts(t *testing.T) {
 	tests := []struct {
-		name      string
+		name       string
 		configured int
 		want       int
 	}{

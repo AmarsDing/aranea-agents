@@ -1,5 +1,13 @@
 <template>
-  <div class="chat-section-header" @click="$emit('update:collapsed', !collapsed)">
+  <div
+    class="chat-section-header"
+    role="button"
+    tabindex="0"
+    :aria-expanded="!collapsed"
+    @click="$emit('update:collapsed', !collapsed)"
+    @keydown.enter="$emit('update:collapsed', !collapsed)"
+    @keydown.space.prevent="$emit('update:collapsed', !collapsed)"
+  >
     <q-icon :name="icon" size="14px" />
     <span class="chat-section-header__label">{{ label }}</span>
     <q-badge v-if="count > 0" rounded color="accent" :label="count" />
@@ -42,6 +50,12 @@ defineEmits<{
 
 .chat-section-header:hover {
   color: var(--color-text-primary);
+}
+
+.chat-section-header:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 
 .chat-section-header__label {

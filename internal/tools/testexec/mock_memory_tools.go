@@ -3,8 +3,8 @@ package testexec
 import (
 	"context"
 
-	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
+	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
 // newMockMemoryTools returns a set of mock memory tools for the test harness.

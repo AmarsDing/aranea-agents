@@ -332,7 +332,7 @@ func TestGetRun(t *testing.T) {
 			name:    "empty_id_bad_request_reason",
 			id:      "",
 			wantErr: true,
-			check: func(t *testing.T, _ Run) {},
+			check:   func(t *testing.T, _ Run) {},
 		},
 	}
 

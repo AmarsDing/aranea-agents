@@ -33,7 +33,7 @@ type (
 	ToolOverrideReader       = tool.ToolOverrideReader
 	ToolOverrideWriter       = tool.ToolOverrideWriter
 	ToolSyncer               = tool.ToolSyncer
-	ToolRegistryReader        = tool.ToolRegistryReader
+	ToolRegistryReader       = tool.ToolRegistryReader
 	ToolUsecase              = tool.ToolUsecase
 	ToolTestResult           = tool.ToolTestResult
 	ToolSettingRepo          = tool.SettingRepo
@@ -43,15 +43,15 @@ type (
 var (
 	NewToolUsecase = tool.NewToolUsecase
 
-	NormalizeToolPolicyKey               = tool.NormalizeToolPolicyKey
-	PropagateAllowAliases                = tool.PropagateAllowAliases
-	PropagateDenyAliases                 = tool.PropagateDenyAliases
-	LoadWebResearchPlatform              = tool.LoadWebResearchPlatform
+	NormalizeToolPolicyKey              = tool.NormalizeToolPolicyKey
+	PropagateAllowAliases               = tool.PropagateAllowAliases
+	PropagateDenyAliases                = tool.PropagateDenyAliases
+	LoadWebResearchPlatform             = tool.LoadWebResearchPlatform
 	EnrichToolRuntimeFieldsWithPlatform = tool.EnrichToolRuntimeFieldsWithPlatform
-	CheckerToReadinessFunc            = tool.CheckerToReadinessFunc
-	MergeToolConfigMaps                  = tool.MergeToolConfigMaps
-	MergeJSONMapInto                     = tool.MergeJSONMapInto
-	ToolRequiresConfirmation             = tool.ToolRequiresConfirmation
+	CheckerToReadinessFunc              = tool.CheckerToReadinessFunc
+	MergeToolConfigMaps                 = tool.MergeToolConfigMaps
+	MergeJSONMapInto                    = tool.MergeJSONMapInto
+	ToolRequiresConfirmation            = tool.ToolRequiresConfirmation
 )
 
 const (

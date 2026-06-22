@@ -27,6 +27,8 @@ export function sessionToView(session: Session, t: (key: string) => string): Ses
     output_tokens: session.output_tokens,
     total_tokens: session.total_tokens,
     total_cost_micro_usd: session.total_cost_micro_usd,
+    tool_call_count: session.tool_call_count,
+    message_count: session.message_count,
     at: formatSessionTime(session.last_message_at || session.updated_at || session.created_at),
     timeline_at: session.last_message_at || session.updated_at || session.created_at,
     agent_id: session.agent_id,
@@ -60,7 +62,10 @@ export function applyStoredOrder<T extends { id: string }>(items: T[], key: stri
 
 export function loadAgentOrder(agents: Agent[], defaultId: string | null): Agent[] {
   if (agents.length === 0) return [];
-  const defaultResolved = defaultId && agents.some((agent) => agent.id === defaultId) ? defaultId : (agents.find((a) => a.agent_key === '__spirit__')?.id || agents[0]!.id);
+  const defaultResolved =
+    defaultId && agents.some((agent) => agent.id === defaultId)
+      ? defaultId
+      : agents.find((a) => a.agent_key === '__spirit__')?.id || agents[0]!.id;
   const ordered = applyStoredOrder(agents, LS_AG_ORDER);
   const fixed = ordered.find((agent) => agent.id === defaultResolved) ?? ordered[0]!;
   return [fixed, ...ordered.filter((agent) => agent.id !== fixed.id)];

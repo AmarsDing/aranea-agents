@@ -90,12 +90,12 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		// 和 10KB 结果预算保护。ConcurrentSafe 工具可安全并行且启用确定性
 		// 缓存；Exclusive 工具虽然也可能被框架并行调度，但装饰器的超时
 		// 和结果预算同样适用。详见 ADR: docs/reports/2026-06-15-review-adr-tool-parallel-execution.md
-		ToolsParallelEnabled:              true,
-		ToolsStreamingEnabled:             false,
-		L4DecayIntervalHours:              168,
-		VerificationTruncateChars:         2000,
-		CompressionBufferRatio:            DefaultCompressionBufferRatio,
-		SoftTriggerRatio:                  DefaultSoftTriggerRatio,
-		HardTriggerRatio:                  DefaultHardTriggerRatio,
+		ToolsParallelEnabled:      true,
+		ToolsStreamingEnabled:     false,
+		L4DecayIntervalHours:      168,
+		VerificationTruncateChars: 2000,
+		CompressionBufferRatio:    DefaultCompressionBufferRatio,
+		SoftTriggerRatio:          DefaultSoftTriggerRatio,
+		HardTriggerRatio:          DefaultHardTriggerRatio,
 	}
 }

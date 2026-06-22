@@ -143,7 +143,7 @@ func (e *Encoder) buildPlanComponents(plan *Plan) []Component {
 	components = append(components, Component{
 		ID: "plan_actions",
 		Component: ComponentBody{Row: &RowComponent{
-			Children: ChildrenDef{ExplicitList: []string{"btn_approve", "btn_reject"}},
+			Children:     ChildrenDef{ExplicitList: []string{"btn_approve", "btn_reject"}},
 			Distribution: "spaceEvenly",
 		}},
 	})

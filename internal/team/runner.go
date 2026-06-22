@@ -25,19 +25,19 @@ type StreamOptsFactory interface {
 }
 
 type Runner struct {
-	teamReader       biz.TeamReader
-	runReader        biz.TeamRunReader
-	runWriter        biz.TeamRunWriter
-	runTransitioner  biz.TeamRunStatusTransitioner
-	stepRepo         biz.OrchestrationStepRepo
-	deadLetter       biz.TaskDeadLetterRepo
-	usage            biz.TeamUsageQuerier
-	td               rt.TurnDeps
-	skillDBRepo      trpcskill.Repository
-	codeExecFactory  *localexec.Factory
-	cfg              RunnerConfig
-	mediator         *TeamRunMediator
-	lg               loggateway.Logger
+	teamReader      biz.TeamReader
+	runReader       biz.TeamRunReader
+	runWriter       biz.TeamRunWriter
+	runTransitioner biz.TeamRunStatusTransitioner
+	stepRepo        biz.OrchestrationStepRepo
+	deadLetter      biz.TaskDeadLetterRepo
+	usage           biz.TeamUsageQuerier
+	td              rt.TurnDeps
+	skillDBRepo     trpcskill.Repository
+	codeExecFactory *localexec.Factory
+	cfg             RunnerConfig
+	mediator        *TeamRunMediator
+	lg              loggateway.Logger
 }
 
 // SetMediator wires the TeamRunMediator that breaks the circular dependency

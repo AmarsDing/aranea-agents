@@ -170,7 +170,7 @@ export function useProviderWizard(deps: {
       parts.push('留空表示不修改');
     }
     if (!inspect.isLocalProviderModel.value) parts.push('远程 Provider 检查模型前需填写密钥');
-    return parts.join('；') || undefined;
+    return parts.join('；') || '';
   });
 
   const apiKeyMaskedPlaceholder = computed(() => {
@@ -182,7 +182,7 @@ export function useProviderWizard(deps: {
     ) {
       return '••••••••••••';
     }
-    return undefined;
+    return '';
   });
 
   const secretKeyMaskedPlaceholder = computed(() => {
@@ -194,7 +194,7 @@ export function useProviderWizard(deps: {
     ) {
       return '••••••••••••';
     }
-    return undefined;
+    return '';
   });
 
   const providerRuntimeLocked = computed(() => {

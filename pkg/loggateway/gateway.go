@@ -17,13 +17,13 @@ import (
 // LoggingConfig is a pkg-level config struct that decouples loggateway from
 // internal/conf. The caller (cmd/admin/main.go) converts conf.Logging to this.
 type LoggingConfig struct {
-	Level       string
-	OutputDir   string
-	MaxSizeMB   int
-	MaxBackups  int
-	MaxAgeDays  int
-	Compress    bool
-	Stdout      bool
+	Level      string
+	OutputDir  string
+	MaxSizeMB  int
+	MaxBackups int
+	MaxAgeDays int
+	Compress   bool
+	Stdout     bool
 }
 
 type Gateway struct {

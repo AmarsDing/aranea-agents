@@ -5,12 +5,12 @@ import "encoding/json"
 type Directory map[string]Provider
 
 type Provider struct {
-	ID     string          `json:"id"`
-	Name   string          `json:"name"`
-	Env    []string        `json:"env"`
-	Npm    string          `json:"npm"`
-	API    string          `json:"api,omitempty"`
-	Doc    string          `json:"doc"`
+	ID     string           `json:"id"`
+	Name   string           `json:"name"`
+	Env    []string         `json:"env"`
+	Npm    string           `json:"npm"`
+	API    string           `json:"api,omitempty"`
+	Doc    string           `json:"doc"`
 	Models map[string]Model `json:"models"`
 }
 

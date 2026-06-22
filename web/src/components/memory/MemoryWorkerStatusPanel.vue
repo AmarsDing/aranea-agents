@@ -39,7 +39,10 @@
         </tbody>
       </q-markup-table>
     </q-card-section>
-    <q-card-section v-if="status && (status.fact_index_stale_count || status.fact_index_disabled_count)" class="q-pt-none">
+    <q-card-section
+      v-if="status && (status.fact_index_stale_count || status.fact_index_disabled_count)"
+      class="q-pt-none"
+    >
       <div class="text-caption text-grey-7 q-mb-xs">索引健康</div>
       <div class="row q-col-gutter-sm">
         <div v-if="status.fact_index_stale_count" class="col-auto">

@@ -12,12 +12,12 @@ import (
 // FailurePolicy is the team-level failure handling configuration.
 // Mirrors biz.TeamFailurePolicy to avoid import cycle (biz → team → biz).
 type FailurePolicy struct {
-	Default        string                       `json:"default"`
-	Retry          RetryPolicy                  `json:"retry"`
+	Default        string                         `json:"default"`
+	Retry          RetryPolicy                    `json:"retry"`
 	NodeOverrides  map[string]NodeFailureOverride `json:"node_overrides"`
-	ParallelFail   string                       `json:"parallel_fail"`
-	CircuitBreaker *CircuitBreakerPolicyDef     `json:"circuit_breaker,omitempty"`
-	OnError        string                       `json:"on_error,omitempty"`
+	ParallelFail   string                         `json:"parallel_fail"`
+	CircuitBreaker *CircuitBreakerPolicyDef       `json:"circuit_breaker,omitempty"`
+	OnError        string                         `json:"on_error,omitempty"`
 }
 
 type RetryPolicy struct {
@@ -28,9 +28,9 @@ type RetryPolicy struct {
 }
 
 type NodeFailureOverride struct {
-	Policy        string      `json:"policy"`
+	Policy        string       `json:"policy"`
 	Retry         *RetryPolicy `json:"retry"`
-	FallbackAgent string      `json:"fallback_agent"`
+	FallbackAgent string       `json:"fallback_agent"`
 }
 
 type CircuitBreakerPolicyDef struct {
@@ -41,20 +41,20 @@ type CircuitBreakerPolicyDef struct {
 
 // Definition mirrors team DefinitionJSON (subset used by native runner).
 type Definition struct {
-	Version            int               `json:"version"`
-	Mode               string            `json:"mode"`
-	SynthesizerAgentID string            `json:"synthesizer_agent_id"`
-	Members            []MemberDef       `json:"members"`
-	MaxConcurrency     int               `json:"max_concurrency"`
-	TimeoutSeconds     int               `json:"timeout_seconds"`
-	LoopMaxIterations  int               `json:"loop_max_iterations,omitempty"`
-	RuntimeEngine      string            `json:"runtime_engine,omitempty"`
-	TeamGraphRuntime   bool              `json:"team_graph_runtime,omitempty"`
-	CriticLoop         *CriticLoopConfig `json:"critic_loop,omitempty"`
-	IntentAnchorAgentID string                `json:"intent_anchor_agent_id,omitempty"`
-	Swarm               *SwarmConfigDef        `json:"swarm,omitempty"`
-	MemberTool          *MemberToolDef         `json:"member_tool_config,omitempty"`
-	FailurePolicy       *FailurePolicy         `json:"failure_policy,omitempty"`
+	Version             int               `json:"version"`
+	Mode                string            `json:"mode"`
+	SynthesizerAgentID  string            `json:"synthesizer_agent_id"`
+	Members             []MemberDef       `json:"members"`
+	MaxConcurrency      int               `json:"max_concurrency"`
+	TimeoutSeconds      int               `json:"timeout_seconds"`
+	LoopMaxIterations   int               `json:"loop_max_iterations,omitempty"`
+	RuntimeEngine       string            `json:"runtime_engine,omitempty"`
+	TeamGraphRuntime    bool              `json:"team_graph_runtime,omitempty"`
+	CriticLoop          *CriticLoopConfig `json:"critic_loop,omitempty"`
+	IntentAnchorAgentID string            `json:"intent_anchor_agent_id,omitempty"`
+	Swarm               *SwarmConfigDef   `json:"swarm,omitempty"`
+	MemberTool          *MemberToolDef    `json:"member_tool_config,omitempty"`
+	FailurePolicy       *FailurePolicy    `json:"failure_policy,omitempty"`
 }
 
 type SwarmConfigDef struct {
@@ -201,9 +201,9 @@ func failurePolicyToBiz(fp *FailurePolicy) *biz.TeamFailurePolicy {
 		return nil
 	}
 	p := &biz.TeamFailurePolicy{
-		Default:       fp.Default,
-		ParallelFail:  fp.ParallelFail,
-		OnError:       fp.OnError,
+		Default:      fp.Default,
+		ParallelFail: fp.ParallelFail,
+		OnError:      fp.OnError,
 		Retry: biz.TeamRetryPolicy{
 			MaxAttempts:       fp.Retry.MaxAttempts,
 			InitialIntervalMs: fp.Retry.InitialIntervalMs,

@@ -4,12 +4,12 @@ import (
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
 	biztool "aranea-agents/internal/biz/tool"
-	kanbanpkg "aranea-agents/internal/tools/kanban"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/outbound"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
 	"aranea-agents/internal/tools/deferred"
+	kanbanpkg "aranea-agents/internal/tools/kanban"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	tooltrpc "aranea-agents/internal/tools/trpc"
 	"aranea-agents/pkg/loggateway"
@@ -23,10 +23,10 @@ import (
 // TRPCModelCatalogDeps documents model-catalog/repo dependencies on TRPCBuilderDeps.
 type TRPCModelCatalogDeps struct {
 	ModelCatalog biz.TeamModelCatalog
-	AgentUC  biz.TeamAgentLookup
-	Agents   biz.AgentRepository
-	Sys      biz.SystemSettingRepo
-	Sessions biz.SessionTurnManager
+	AgentUC      biz.TeamAgentLookup
+	Agents       biz.AgentRepository
+	Sys          biz.SystemSettingRepo
+	Sessions     biz.SessionTurnManager
 }
 
 // TRPCModelRouteDeps documents provider/model routing on TRPCBuilderDeps.
@@ -83,7 +83,7 @@ type TRPCExtensionDeps struct {
 	// PGO-1: Taxonomy is used to resolve the 岗位职责 (position description)
 	// from industry_taxonomy for injection into the system instruction.
 	// Optional: when nil, category responsibility injection is skipped.
-	Organization *biz.OrganizationUsecase
+	Organization   *biz.OrganizationUsecase
 	ToolResultGate *biz.ToolResultGate
 	// DeferredManager controls lazy tool visibility. Optional: when nil,
 	// deferred tool filtering is skipped and all tools are always visible.
@@ -91,7 +91,7 @@ type TRPCExtensionDeps struct {
 	// CircuitBreakerRegistry exposes per-tool circuit breakers for admin reset.
 	// Optional: when nil, circuit breaker state is not accessible externally.
 	CircuitBreakerRegistry *biztool.CircuitBreakerRegistry
-	LG loggateway.Logger
+	LG                     loggateway.Logger
 	// Cache version hashes: optional strings computed by the caller.
 	// When non-empty they are folded into the build cache fingerprint so that
 	// tool / skill / MCP changes invalidate the cached agent.

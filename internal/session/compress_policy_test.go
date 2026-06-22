@@ -365,8 +365,8 @@ func TestCompressThresholdAndKeep(t *testing.T) {
 
 	t.Run("recent_window_fallback", func(t *testing.T) {
 		ag := biz.Agent{Settings: &biz.AgentRuntimeSettings{
-			L0SummaryKeepTurns:   0,
-			L0RecentWindowTurns:  7,
+			L0SummaryKeepTurns:  0,
+			L0RecentWindowTurns: 7,
 		}}
 		_, keepTurns := compressThresholdAndKeep(ag)
 		if keepTurns != 7 {
@@ -376,8 +376,8 @@ func TestCompressThresholdAndKeep(t *testing.T) {
 
 	t.Run("keep_turns_takes_precedence_over_recent_window", func(t *testing.T) {
 		ag := biz.Agent{Settings: &biz.AgentRuntimeSettings{
-			L0SummaryKeepTurns:   5,
-			L0RecentWindowTurns:  7,
+			L0SummaryKeepTurns:  5,
+			L0RecentWindowTurns: 7,
 		}}
 		_, keepTurns := compressThresholdAndKeep(ag)
 		if keepTurns != 5 {
@@ -397,8 +397,8 @@ func TestSessionCompressThreshold(t *testing.T) {
 
 	t.Run("always_mode_clamps_high_threshold", func(t *testing.T) {
 		ag := biz.Agent{Settings: &biz.AgentRuntimeSettings{
-			L0SnapshotMode:      "always",
-			L0SummaryThreshold:  0.8,
+			L0SnapshotMode:     "always",
+			L0SummaryThreshold: 0.8,
 		}}
 		got := sessionCompressThreshold(ag)
 		if got != forcedCompressThreshold {
@@ -408,8 +408,8 @@ func TestSessionCompressThreshold(t *testing.T) {
 
 	t.Run("always_mode_no_clamp_low_threshold", func(t *testing.T) {
 		ag := biz.Agent{Settings: &biz.AgentRuntimeSettings{
-			L0SnapshotMode:      "always",
-			L0SummaryThreshold:  0.2,
+			L0SnapshotMode:     "always",
+			L0SummaryThreshold: 0.2,
 		}}
 		got := sessionCompressThreshold(ag)
 		if got != 0.2 {
@@ -429,8 +429,8 @@ func TestSessionCompressThreshold(t *testing.T) {
 
 	t.Run("on_warning_mode_no_clamp", func(t *testing.T) {
 		ag := biz.Agent{Settings: &biz.AgentRuntimeSettings{
-			L0SnapshotMode:      "on_warning",
-			L0SummaryThreshold:  0.8,
+			L0SnapshotMode:     "on_warning",
+			L0SummaryThreshold: 0.8,
 		}}
 		got := sessionCompressThreshold(ag)
 		if got != 0.8 {
@@ -497,7 +497,7 @@ func TestAtFullContextUsage(t *testing.T) {
 
 	t.Run("tokens_at_window", func(t *testing.T) {
 		sess := biz.Session{
-			ContextUsedTokens:     100000,
+			ContextUsedTokens:       100000,
 			LastContextWindowTokens: 100000,
 		}
 		if !atFullContextUsage(sess) {
@@ -507,7 +507,7 @@ func TestAtFullContextUsage(t *testing.T) {
 
 	t.Run("tokens_above_window", func(t *testing.T) {
 		sess := biz.Session{
-			ContextUsedTokens:     120000,
+			ContextUsedTokens:       120000,
 			LastContextWindowTokens: 100000,
 		}
 		if !atFullContextUsage(sess) {
@@ -517,8 +517,8 @@ func TestAtFullContextUsage(t *testing.T) {
 
 	t.Run("neither_condition", func(t *testing.T) {
 		sess := biz.Session{
-			ContextUsedRatio:       0.5,
-			ContextUsedTokens:      50000,
+			ContextUsedRatio:        0.5,
+			ContextUsedTokens:       50000,
 			LastContextWindowTokens: 100000,
 		}
 		if atFullContextUsage(sess) {
@@ -528,8 +528,8 @@ func TestAtFullContextUsage(t *testing.T) {
 
 	t.Run("zero_window_tokens", func(t *testing.T) {
 		sess := biz.Session{
-			ContextUsedRatio:       0.9,
-			ContextUsedTokens:      90000,
+			ContextUsedRatio:        0.9,
+			ContextUsedTokens:       90000,
 			LastContextWindowTokens: 0,
 		}
 		if atFullContextUsage(sess) {

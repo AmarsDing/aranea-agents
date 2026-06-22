@@ -87,4 +87,3 @@ func agentKeyFromCtx(ctx context.Context, inv *trpcagent.Invocation) string {
 	_, key := sessionAgentKey(ctx, inv)
 	return key
 }
-

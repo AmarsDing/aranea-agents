@@ -10,8 +10,8 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/evaluator/llm/rubricreferencecritic"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/evaluator/llm/rubricresponse"
 	llmtemplate "trpc.group/trpc-go/trpc-agent-go/evaluation/evaluator/llm/template"
-	tooltrajectory "trpc.group/trpc-go/trpc-agent-go/evaluation/evaluator/tooltrajectory"
 	trpcevalregistry "trpc.group/trpc-go/trpc-agent-go/evaluation/evaluator/registry"
+	tooltrajectory "trpc.group/trpc-go/trpc-agent-go/evaluation/evaluator/tooltrajectory"
 )
 
 func RegisterBuiltinEvaluators(reg trpcevalregistry.Registry) error {

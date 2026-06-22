@@ -23,18 +23,18 @@ import (
 //	FAILURE_PATTERN_SYNC_INTERVAL — sync tick interval (e.g. "6h", "24h"); default 24h
 //	FAILURE_PATTERN_SYNC_FILE     — path to patterns.jsonl; default ".auto-fix/patterns.jsonl"
 type FailurePatternSyncJob struct {
-	interval   time.Duration
-	engine     *bizmonitor.RootCauseEngine
-	writer     bizmonitor.FailurePatternWriter
-	reader     bizmonitor.FailurePatternReader
+	interval     time.Duration
+	engine       *bizmonitor.RootCauseEngine
+	writer       bizmonitor.FailurePatternWriter
+	reader       bizmonitor.FailurePatternReader
 	patternsFile string
-	lg         loggateway.Logger
+	lg           loggateway.Logger
 }
 
 // ciPatternEntry represents a single line in patterns.jsonl.
 type ciPatternEntry struct {
-	Type         string         `json:"type"`
-	PatternRegex string         `json:"pattern_regex"`
+	Type         string               `json:"type"`
+	PatternRegex string               `json:"pattern_regex"`
 	FixAction    bizmonitor.FixAction `json:"fix_action"`
 }
 

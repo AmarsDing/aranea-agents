@@ -3,7 +3,6 @@ package biz
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"aranea-agents/internal/biz/agenticons"
 	"aranea-agents/internal/biz/avatar"
@@ -17,7 +16,7 @@ func EnsureAgentAvatars(ctx context.Context, repo AvatarRepo) error {
 	}
 	for _, spec := range AgentAvatarSpecs() {
 		if err := ensureOneAgentAvatar(ctx, repo, spec); err != nil {
-			return apierror.Internal("AVATAR", "agent avatar %s: %s", spec.AssetKey, err.Error())
+			return apierror.Internal(apierror.DomainAvatar, "agent avatar %s: %s", spec.AssetKey, err.Error())
 		}
 	}
 	return nil
@@ -33,7 +32,7 @@ func ensureOneAgentAvatar(ctx context.Context, repo AvatarRepo, spec AgentAvatar
 		// 元数据不一致，需要重新处理图像
 		pngData, err := agenticons.LoadPNG(spec.AssetKey)
 		if err != nil {
-			return fmt.Errorf("load embedded png %s: %w", spec.AssetKey, err)
+			return apierror.Internal(apierror.DomainAvatar, "load embedded png %s: %s", spec.AssetKey, err.Error())
 		}
 		main, thumb, w, h, mime, procErr := avatar.ProcessAvatarUpload(pngData, "image/png")
 		if procErr != nil {
@@ -48,7 +47,7 @@ func ensureOneAgentAvatar(ctx context.Context, repo AvatarRepo, spec AgentAvatar
 	// 不存在，创建新头像
 	pngData, err := agenticons.LoadPNG(spec.AssetKey)
 	if err != nil {
-		return fmt.Errorf("load embedded png %s: %w", spec.AssetKey, err)
+		return apierror.Internal(apierror.DomainAvatar, "load embedded png %s: %s", spec.AssetKey, err.Error())
 	}
 	main, thumb, w, h, mime, procErr := avatar.ProcessAvatarUpload(pngData, "image/png")
 	if procErr != nil {

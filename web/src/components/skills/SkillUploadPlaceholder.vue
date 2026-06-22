@@ -216,8 +216,7 @@ const busy = computed(() => uploading.value || applying.value || refiningGroupId
 const canApply = computed(() => {
   if (!job.value) return false;
   const hasPass = job.value.candidates.some((candidate) => candidate.validation_status === 'pass');
-  const hasPositiveAction =
-    hasPass || !!refineResult.value || approvedRiskyCandidateIds.value.length > 0;
+  const hasPositiveAction = hasPass || !!refineResult.value || approvedRiskyCandidateIds.value.length > 0;
   // Pure-reject (no actual import) should not enable "apply".
   return hasPositiveAction;
 });
@@ -367,9 +366,6 @@ function firstRefinedGroup(groups: SkillConflictGroup[], candidateIds: string[],
     if (found) return found.group_id;
   }
   // Fallback: match by candidate IDs.
-  return (
-    groups.find((group) => group.candidate_ids.some((id) => candidateIds.includes(id)))?.group_id ??
-    ''
-  );
+  return groups.find((group) => group.candidate_ids.some((id) => candidateIds.includes(id)))?.group_id ?? '';
 }
 </script>

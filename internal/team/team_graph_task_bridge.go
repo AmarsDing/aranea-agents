@@ -83,10 +83,10 @@ func StartTeamGraphTaskBridge(ctx context.Context, bus event.Bus, cfg TeamGraphT
 				}
 				if err := cfg.Creator.CreateGraphTask(procCtx, execID, sessionID, node); err != nil {
 					lg.Warn("创建 Kanban 任务失败",
-					loggateway.StepID("team.graph.task.bridge"),
-					loggateway.Str("execution_id", execID),
-					loggateway.Str("node_id", nodeID),
-					loggateway.Err(err))
+						loggateway.StepID("team.graph.task.bridge"),
+						loggateway.Str("execution_id", execID),
+						loggateway.Str("node_id", nodeID),
+						loggateway.Err(err))
 					continue
 				}
 				created[nodeID] = struct{}{}

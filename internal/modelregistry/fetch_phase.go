@@ -6,7 +6,7 @@ type FetchPhase struct{}
 
 func NewFetchPhase() *FetchPhase { return &FetchPhase{} }
 
-func (p *FetchPhase) Name() string         { return "fetch" }
+func (p *FetchPhase) Name() string           { return "fetch" }
 func (p *FetchPhase) Timeout() time.Duration { return 120 * time.Second }
 
 func (p *FetchPhase) Run(pc *PhaseContext) PhaseResult {

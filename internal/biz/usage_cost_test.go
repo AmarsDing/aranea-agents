@@ -22,9 +22,9 @@ func TestNormalizeUsageStatus(t *testing.T) {
 
 func TestApplyTokenUsageCosts(t *testing.T) {
 	e := &TokenUsageEvent{
-		InputTokens:        2000,
-		OutputTokens:       1000,
-		InputPriceUSDPer1M: 3,
+		InputTokens:         2000,
+		OutputTokens:        1000,
+		InputPriceUSDPer1M:  3,
 		OutputPriceUSDPer1M: 6,
 	}
 	ApplyTokenUsageCosts(e)
@@ -41,9 +41,9 @@ func TestApplyTokenUsageCosts(t *testing.T) {
 
 func TestApplyTokenUsageCostsLegacyMicro(t *testing.T) {
 	e := &TokenUsageEvent{
-		InputTokens:             2000,
-		OutputTokens:            1000,
-		InputPriceMicroUSDPer1K: 3000,
+		InputTokens:              2000,
+		OutputTokens:             1000,
+		InputPriceMicroUSDPer1K:  3000,
 		OutputPriceMicroUSDPer1K: 6000,
 	}
 	ApplyTokenUsageCosts(e)

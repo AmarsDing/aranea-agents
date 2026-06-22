@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"aranea-agents/pkg/apierror"
 	"aranea-agents/internal/biz/shared"
+	"aranea-agents/pkg/apierror"
 )
 
 func TestRecordTokenUsageEvent(t *testing.T) {
@@ -20,16 +20,16 @@ func TestRecordTokenUsageEvent(t *testing.T) {
 		{
 			name: "valid_with_normalization",
 			input: TokenUsageEvent{
-				ID:            "evt-1",
-				ProviderCode:  "openai",
-				ModelAPIID:    "gpt-4",
-				InputTokens:   100,
-				OutputTokens:  50,
-				TotalTokens:   150,
-				UsageKind:     "",
-				CallCount:     0,
-				Status:        "",
-				AgentID:       "agent-1",
+				ID:           "evt-1",
+				ProviderCode: "openai",
+				ModelAPIID:   "gpt-4",
+				InputTokens:  100,
+				OutputTokens: 50,
+				TotalTokens:  150,
+				UsageKind:    "",
+				CallCount:    0,
+				Status:       "",
+				AgentID:      "agent-1",
 			},
 			setup: func(r *mockUsageRepo) {
 				r.recordTokenUsageEventFn = func(_ context.Context, e TokenUsageEvent) (TokenUsageEvent, error) {
@@ -66,7 +66,7 @@ func TestRecordTokenUsageEvent(t *testing.T) {
 				ID: "",
 			},
 			wantErr: true,
-			check: func(t *testing.T, _ TokenUsageEvent) {},
+			check:   func(t *testing.T, _ TokenUsageEvent) {},
 		},
 		{
 			name: "whitespace_id_returns_error",
@@ -74,7 +74,7 @@ func TestRecordTokenUsageEvent(t *testing.T) {
 				ID: "   ",
 			},
 			wantErr: true,
-			check: func(t *testing.T, _ TokenUsageEvent) {},
+			check:   func(t *testing.T, _ TokenUsageEvent) {},
 		},
 		{
 			name: "repo_error_propagation",
@@ -87,7 +87,7 @@ func TestRecordTokenUsageEvent(t *testing.T) {
 				}
 			},
 			wantErr: true,
-			check: func(t *testing.T, _ TokenUsageEvent) {},
+			check:   func(t *testing.T, _ TokenUsageEvent) {},
 		},
 		{
 			name: "status_normalization_ok_to_success",
@@ -190,7 +190,7 @@ func TestSetQuota(t *testing.T) {
 			wantErr:    true,
 			wantReason: "USAGE_QUOTA",
 			wantCode:   apierror.CodeBadRequest,
-			check: func(t *testing.T, _ Quota) {},
+			check:      func(t *testing.T, _ Quota) {},
 		},
 		{
 			name: "empty_scope_id_returns_error",
@@ -202,7 +202,7 @@ func TestSetQuota(t *testing.T) {
 			wantErr:    true,
 			wantReason: "USAGE_QUOTA",
 			wantCode:   apierror.CodeBadRequest,
-			check: func(t *testing.T, _ Quota) {},
+			check:      func(t *testing.T, _ Quota) {},
 		},
 		{
 			name: "negative_monthly_micro_usd_returns_error",
@@ -214,7 +214,7 @@ func TestSetQuota(t *testing.T) {
 			wantErr:    true,
 			wantReason: "USAGE_QUOTA",
 			wantCode:   apierror.CodeBadRequest,
-			check: func(t *testing.T, _ Quota) {},
+			check:      func(t *testing.T, _ Quota) {},
 		},
 		{
 			name: "repo_scope_required_maps_to_bad_request",
@@ -231,7 +231,7 @@ func TestSetQuota(t *testing.T) {
 			wantErr:    true,
 			wantReason: "USAGE",
 			wantCode:   apierror.CodeBadRequest,
-			check: func(t *testing.T, _ Quota) {},
+			check:      func(t *testing.T, _ Quota) {},
 		},
 	}
 
@@ -329,7 +329,7 @@ func TestListBudgetAlerts(t *testing.T) {
 				}
 			},
 			wantErr: true,
-			check: func(t *testing.T, _ []BudgetAlert) {},
+			check:   func(t *testing.T, _ []BudgetAlert) {},
 		},
 	}
 
@@ -400,7 +400,7 @@ func TestSetBudgetAlert(t *testing.T) {
 			wantErr:    true,
 			wantReason: "USAGE_ALERT",
 			wantCode:   apierror.CodeBadRequest,
-			check: func(t *testing.T, _ BudgetAlert) {},
+			check:      func(t *testing.T, _ BudgetAlert) {},
 		},
 		{
 			name: "empty_scope_id_returns_error",
@@ -412,7 +412,7 @@ func TestSetBudgetAlert(t *testing.T) {
 			wantErr:    true,
 			wantReason: "USAGE_ALERT",
 			wantCode:   apierror.CodeBadRequest,
-			check: func(t *testing.T, _ BudgetAlert) {},
+			check:      func(t *testing.T, _ BudgetAlert) {},
 		},
 		{
 			name: "zero_alert_ratio_returns_error",
@@ -424,7 +424,7 @@ func TestSetBudgetAlert(t *testing.T) {
 			wantErr:    true,
 			wantReason: "USAGE_ALERT",
 			wantCode:   apierror.CodeBadRequest,
-			check: func(t *testing.T, _ BudgetAlert) {},
+			check:      func(t *testing.T, _ BudgetAlert) {},
 		},
 		{
 			name: "negative_alert_ratio_returns_error",
@@ -436,7 +436,7 @@ func TestSetBudgetAlert(t *testing.T) {
 			wantErr:    true,
 			wantReason: "USAGE_ALERT",
 			wantCode:   apierror.CodeBadRequest,
-			check: func(t *testing.T, _ BudgetAlert) {},
+			check:      func(t *testing.T, _ BudgetAlert) {},
 		},
 		{
 			name: "alert_ratio_above_one_returns_error",
@@ -448,7 +448,7 @@ func TestSetBudgetAlert(t *testing.T) {
 			wantErr:    true,
 			wantReason: "USAGE_ALERT",
 			wantCode:   apierror.CodeBadRequest,
-			check: func(t *testing.T, _ BudgetAlert) {},
+			check:      func(t *testing.T, _ BudgetAlert) {},
 		},
 		{
 			name: "ratio_exactly_one_is_valid",
@@ -483,7 +483,7 @@ func TestSetBudgetAlert(t *testing.T) {
 			wantErr:    true,
 			wantReason: "USAGE_ALERT",
 			wantCode:   apierror.CodeNotFound,
-			check: func(t *testing.T, _ BudgetAlert) {},
+			check:      func(t *testing.T, _ BudgetAlert) {},
 		},
 	}
 

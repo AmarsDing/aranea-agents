@@ -63,8 +63,8 @@ func StartTeamGraphExecutionTracker(ctx context.Context, bus event.Bus, cfg Team
 				lineageID := trackerMetaString(env.Metadata, "lineage_id")
 				if markErr := cfg.Registry.MarkTeamGraphInterrupt(procCtx, execID, nodeID, lineageID); markErr != nil {
 					lg.Warn("MarkTeamGraphInterrupt failed",
-					loggateway.StepID("team.graph.interrupt_mark_fail"),
-					loggateway.Str("exec_id", execID), loggateway.Str("node_id", nodeID), loggateway.Err(markErr))
+						loggateway.StepID("team.graph.interrupt_mark_fail"),
+						loggateway.Str("exec_id", execID), loggateway.Str("node_id", nodeID), loggateway.Err(markErr))
 				}
 			}
 		}

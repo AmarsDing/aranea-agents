@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	authpkg "aranea-agents/pkg/auth"
 	"aranea-agents/pkg/apierror"
+	authpkg "aranea-agents/pkg/auth"
 )
 
 // SkillTag mirrors admin JSON.

@@ -28,9 +28,9 @@ func SeedSystemAdminAgent(ctx context.Context, client *ent.Client, d Dialect, lg
 		position_key, agent_variant
 	) VALUES (
 		'agent___system_admin__', ?, '系统管家', 'openrouter', 'gpt-4.1-mini',
-		'active', 0, 0, '', '系统内置管理助手，负责管理 Skill、Agent、Team 等系统资源，提供系统级运维能力。',
+		'active', FALSE, FALSE, '', '系统内置管理助手，负责管理 Skill、Agent、Team 等系统资源，提供系统级运维能力。',
 		'', 'complete', 0, 0, '{"tools_profile":"system_admin"}', '[]', 'system',
-		?, ?, '', 1, 'system_builtin', 'system',
+		?, ?, '', TRUE, 'system_builtin', 'system',
 		'system_admin', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		status = excluded.status,
@@ -65,9 +65,9 @@ func SeedSpiritAgent(ctx context.Context, client *ent.Client, d Dialect, lg logg
 		position_key, agent_variant
 	) VALUES (
 		'agent___spirit__', ?, '精灵助手', 'openrouter', 'gpt-4.1-mini',
-		'active', 0, 0, '', '系统内置总管家，用户唯一对话入口，自动组装团队并委派工作。',
+		'active', FALSE, FALSE, '', '系统内置总管家，用户唯一对话入口，自动组装团队并委派工作。',
 		'', 'complete', 0, 0, '{"tools":{"profile":"spirit"}}', '[]', 'system',
-		?, ?, '', 1, 'system_builtin', 'system',
+		?, ?, '', TRUE, 'system_builtin', 'system',
 		'spirit', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		status = excluded.status,
@@ -146,9 +146,9 @@ func SeedMemoryAgent(ctx context.Context, client *ent.Client, d Dialect, lg logg
 		position_key, agent_variant
 	) VALUES (
 		'agent___memory__', ?, '记忆管家', 'openrouter', 'gpt-4.1',
-		'active', 0, 0, '', '基于学术原则的智能记忆管理者：选择性记忆、质量驱动遗忘、记忆蒸馏',
+		'active', FALSE, FALSE, '', '基于学术原则的智能记忆管理者：选择性记忆、质量驱动遗忘、记忆蒸馏',
 		'', 'complete', 0, 0, '{"tools_profile":"system_memory"}', '[]', 'system',
-		?, ?, '', 1, 'system_builtin', 'system',
+		?, ?, '', TRUE, 'system_builtin', 'system',
 		'memory', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		status = excluded.status,
@@ -183,9 +183,9 @@ func SeedSkillsAgent(ctx context.Context, client *ent.Client, d Dialect, lg logg
 		position_key, agent_variant
 	) VALUES (
 		'agent___skills__', ?, '技能管家', 'openrouter', 'gpt-4.1',
-		'active', 0, 0, '', '基于使用数据的技能进化/消亡决策、工具权重优化、编排分析',
+		'active', FALSE, FALSE, '', '基于使用数据的技能进化/消亡决策、工具权重优化、编排分析',
 		'', 'complete', 0, 0, '{"tools_profile":"system_skills"}', '[]', 'system',
-		?, ?, '', 1, 'system_builtin', 'system',
+		?, ?, '', TRUE, 'system_builtin', 'system',
 		'skills', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		status = excluded.status,
@@ -295,7 +295,7 @@ func SeedCronTasks(ctx context.Context, client *ent.Client, d Dialect, lg loggat
 		id, task_key, name, description, status, enabled, sort_order,
 		agent_id, config_json, metadata_json, created_at, updated_at, deleted_at
 	) VALUES (
-		?, ?, ?, ?, 'active', 1, 0,
+		?, ?, ?, ?, 'active', TRUE, 0,
 		?, ?, '{}', ?, ?, ''
 	) ON CONFLICT(task_key) DO UPDATE SET
 		name = excluded.name,
@@ -338,8 +338,8 @@ func SeedBuiltinCLIAdminTools(ctx context.Context, client *ent.Client, d Dialect
 		config_json, default_config_json, metadata_json,
 		created_at, updated_at, deleted_at
 	) VALUES (
-		?, ?, ?, ?, 'cli_admin', 'builtin', 'medium', 0, 1,
-		0, 0, 0, '{}', '{}', '{}', '{}', '{}', '{}',
+		?, ?, ?, ?, 'cli_admin', 'builtin', 'medium', FALSE, TRUE,
+		FALSE, FALSE, FALSE, '{}', '{}', '{}', '{}', '{}', '{}',
 		?, ?, ''
 	) ON CONFLICT(tool_key) DO NOTHING`
 	for _, t := range tools {
@@ -391,9 +391,9 @@ func SeedDeptLeadAgents(ctx context.Context, client *ent.Client, d Dialect, lg l
 			position_key, agent_variant
 		) VALUES (
 			?, ?, ?, 'openrouter', 'gpt-4.1-mini',
-			'active', 0, 0, '', ?,
+			'active', FALSE, FALSE, '', ?,
 			'', 'complete', 0, 0, '{"tools_profile":"dept_lead","memory_enabled":true}', '[]', 'system',
-			?, ?, '', 1, 'system_builtin', 'system',
+			?, ?, '', TRUE, 'system_builtin', 'system',
 			?, 'dept_lead'
 		) ON CONFLICT(agent_key) DO UPDATE SET
 			status = excluded.status,

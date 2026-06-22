@@ -9,9 +9,9 @@ import (
 )
 
 type skillListInput struct {
-	Keyword  string `json:"keyword" jsonschema:"description=搜索关键词"`
-	Limit    int32  `json:"limit" jsonschema:"description=最多返回条数,default=20"`
-	Offset   int32  `json:"offset" jsonschema:"description=偏移量,default=0"`
+	Keyword string `json:"keyword" jsonschema:"description=搜索关键词"`
+	Limit   int32  `json:"limit" jsonschema:"description=最多返回条数,default=20"`
+	Offset  int32  `json:"offset" jsonschema:"description=偏移量,default=0"`
 }
 
 type skillListOutput struct {

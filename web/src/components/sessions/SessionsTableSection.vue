@@ -1,5 +1,6 @@
 <template>
   <AppRegistryTable
+    :key="selectionMode ? 'sessions-table-with-select' : 'sessions-table-without-select'"
     table-class="app-registry-table--sessions"
     row-key="id"
     :rows="rows"
@@ -29,7 +30,12 @@
         <div class="row items-center no-wrap q-gutter-xs">
           <q-icon v-if="isSessionPinned(props.row)" name="push_pin" color="primary" size="16px" />
           <div class="col min-width-0">
-            <div class="app-registry-cell-primary">{{ props.row.title }}</div>
+            <router-link
+              :to="{ name: 'session-detail', params: { sessionId: props.row.id } }"
+              class="app-registry-cell-primary session-title-link"
+            >
+              {{ props.row.title }}
+            </router-link>
             <div class="app-registry-cell-sub ellipsis">{{ props.row.summary || props.row.id }}</div>
           </div>
         </div>
@@ -76,7 +82,9 @@
         <div class="app-registry-cell-primary">
           {{ formatSessionDate(props.row.last_message_at || props.row.updated_at) }}
         </div>
-        <div class="app-registry-cell-sub">创建 {{ formatSessionDate(props.row.created_at) }}</div>
+        <div class="app-registry-cell-sub">
+          {{ t('sessionsPage.createdAt') }} {{ formatSessionDate(props.row.created_at) }}
+        </div>
       </q-td>
     </template>
 
@@ -90,6 +98,16 @@
       </q-td>
     </template>
 
+    <template #no-data>
+      <div class="full-width row flex-center q-py-xl text-center">
+        <div>
+          <q-icon name="search_off" size="48px" color="grey-5" />
+          <div class="text-h6 text-weight-medium q-mt-sm">{{ t('sessionsPage.emptyTitle') }}</div>
+          <div class="text-caption text-grey-6">{{ t('sessionsPage.emptyHint') }}</div>
+        </div>
+      </div>
+    </template>
+
     <template #body-cell-actions="props">
       <q-td :props="props">
         <div class="app-registry-cell-actions">
@@ -99,9 +117,10 @@
             round
             icon="visibility"
             color="primary"
+            :aria-label="t('sessionsPage.actionView')"
             :to="{ name: 'session-detail', params: { sessionId: props.row.id } }"
           >
-            <q-tooltip>查看详情</q-tooltip>
+            <q-tooltip>{{ t('sessionsPage.actionView') }}</q-tooltip>
           </q-btn>
           <q-btn
             flat
@@ -109,9 +128,12 @@
             round
             icon="push_pin"
             :color="isSessionPinned(props.row) ? 'primary' : 'grey-6'"
+            :aria-label="isSessionPinned(props.row) ? t('sessionsPage.actionUnpin') : t('sessionsPage.actionPin')"
             @click="$emit('toggle-pin', props.row.id, !isSessionPinned(props.row))"
           >
-            <q-tooltip>{{ isSessionPinned(props.row) ? '取消置顶' : '置顶' }}</q-tooltip>
+            <q-tooltip>{{
+              isSessionPinned(props.row) ? t('sessionsPage.actionUnpin') : t('sessionsPage.actionPin')
+            }}</q-tooltip>
           </q-btn>
           <q-btn
             flat
@@ -119,6 +141,13 @@
             round
             icon="archive"
             color="primary"
+            :aria-label="
+              props.row.status === 'running' || props.row.status === 'awaiting_confirmation'
+                ? t('sessionsPage.actionArchiveRunning')
+                : !!props.row.archived_at
+                  ? t('sessionsPage.actionArchiveArchived')
+                  : t('sessionsPage.actionArchive')
+            "
             :disable="
               !!props.row.archived_at || props.row.status === 'running' || props.row.status === 'awaiting_confirmation'
             "
@@ -126,10 +155,10 @@
           >
             <q-tooltip>{{
               props.row.status === 'running' || props.row.status === 'awaiting_confirmation'
-                ? '执行中不可归档'
+                ? t('sessionsPage.actionArchiveRunning')
                 : !!props.row.archived_at
-                  ? '已归档'
-                  : '归档'
+                  ? t('sessionsPage.actionArchiveArchived')
+                  : t('sessionsPage.actionArchive')
             }}</q-tooltip>
           </q-btn>
           <q-btn
@@ -138,13 +167,18 @@
             round
             icon="delete"
             color="negative"
+            :aria-label="
+              props.row.status === 'running' || props.row.status === 'awaiting_confirmation'
+                ? t('sessionsPage.actionDeleteRunning')
+                : t('sessionsPage.actionDelete')
+            "
             :disable="props.row.status === 'running' || props.row.status === 'awaiting_confirmation'"
             @click="$emit('delete-row', props.row.id)"
           >
             <q-tooltip>{{
               props.row.status === 'running' || props.row.status === 'awaiting_confirmation'
-                ? '执行中或等待确认时不可删除'
-                : '永久删除'
+                ? t('sessionsPage.actionDeleteRunning')
+                : t('sessionsPage.actionDelete')
             }}</q-tooltip>
           </q-btn>
         </div>
@@ -153,7 +187,7 @@
   </AppRegistryTable>
 
   <div class="app-registry-pagination q-mt-md">
-    <div class="text-caption">共 {{ total }} 个 Session</div>
+    <div class="text-caption">{{ t('sessionsPage.totalSessions', { count: total }) }}</div>
     <div class="row items-center q-gutter-sm">
       <q-select
         :model-value="pageSize"
@@ -180,8 +214,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import SessionStatusBadge from './SessionStatusBadge.vue';
+
+const { t } = useI18n();
 import type { Session } from '../../features/session/types';
 import {
   contextProgressColor,

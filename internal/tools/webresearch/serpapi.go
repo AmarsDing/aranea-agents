@@ -81,12 +81,12 @@ func (p *serpAPIProvider) search(ctx context.Context, query string) (*SearchResp
 			Snippet string `json:"snippet"`
 		} `json:"organic_results"`
 		AnswerBox struct {
-			Answer     string `json:"answer"`
-			Snippet    string `json:"snippet"`
-			Title      string `json:"title"`
-			Link       string `json:"link"`
-			Result     string `json:"result"`
-			Displayed  string `json:"displayed_link"`
+			Answer    string `json:"answer"`
+			Snippet   string `json:"snippet"`
+			Title     string `json:"title"`
+			Link      string `json:"link"`
+			Result    string `json:"result"`
+			Displayed string `json:"displayed_link"`
 		} `json:"answer_box"`
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil {

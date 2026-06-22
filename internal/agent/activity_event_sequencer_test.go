@@ -351,3 +351,133 @@ func (b *blockingBus) Subscribe(_ contract.SubscribeOptions) (<-chan contract.En
 }
 
 func (b *blockingBus) DropCount() uint64 { return 0 }
+
+// deltaTask creates a publishTask for an activity_delta envelope.
+func deltaTask(field, chunk string) publishTask {
+	env := contract.NewEnvelope(contract.EnvelopeTypeActivityDelta, "agent-1", "sess-1")
+	env.Metadata = map[string]any{
+		"delta_field": field,
+		"delta_chunk": chunk,
+	}
+	return publishTask{env: env}
+}
+
+// TestActivityEventSequencer_DeltaBatching verifies that consecutive
+// activity_delta envelopes for the same field are coalesced into a single
+// envelope, reducing frontend event frequency.
+func TestActivityEventSequencer_DeltaBatching(t *testing.T) {
+	bus := newSyncCaptureBus()
+	seq := newActivityEventSequencer(bus, loggateway.NewNoop())
+	seq.deltaBatchInterval = 5 * time.Millisecond
+	defer seq.Close()
+
+	activityID := "act-batch"
+	ctx := context.Background()
+
+	_ = seq.publish(ctx, activityID, publishTask{
+		env: contract.NewEnvelope(contract.EnvelopeTypeActivityStart, "agent-1", "sess-1"),
+	})
+	_ = seq.publish(ctx, activityID, deltaTask("content", "a"))
+	_ = seq.publish(ctx, activityID, deltaTask("content", "b"))
+	_ = seq.publish(ctx, activityID, deltaTask("content", "c"))
+	_ = seq.publish(ctx, activityID, publishTask{
+		env: contract.NewEnvelope(contract.EnvelopeTypeActivityDone, "agent-1", "sess-1"),
+	})
+
+	envs := bus.waitForPublished(t, 3)
+
+	expected := []contract.EnvelopeType{
+		contract.EnvelopeTypeActivityStart,
+		contract.EnvelopeTypeActivityDelta,
+		contract.EnvelopeTypeActivityDone,
+	}
+	for i, want := range expected {
+		if envs[i].Type != want {
+			t.Errorf("envelope[%d] type=%q want %q", i, envs[i].Type, want)
+		}
+	}
+	if envs[1].Metadata["delta_chunk"] != "abc" {
+		t.Errorf("batched delta chunk=%q want %q", envs[1].Metadata["delta_chunk"], "abc")
+	}
+}
+
+// TestActivityEventSequencer_DeltaBatchingDifferentFields verifies that delta
+// envelopes for different fields are not merged.
+func TestActivityEventSequencer_DeltaBatchingDifferentFields(t *testing.T) {
+	bus := newSyncCaptureBus()
+	seq := newActivityEventSequencer(bus, loggateway.NewNoop())
+	seq.deltaBatchInterval = 5 * time.Millisecond
+	defer seq.Close()
+
+	activityID := "act-fields"
+	ctx := context.Background()
+
+	_ = seq.publish(ctx, activityID, deltaTask("content", "a"))
+	_ = seq.publish(ctx, activityID, deltaTask("reasoning", "b"))
+	_ = seq.publish(ctx, activityID, deltaTask("content", "c"))
+
+	envs := bus.waitForPublished(t, 3)
+
+	chunks := []string{
+		envs[0].Metadata["delta_chunk"].(string),
+		envs[1].Metadata["delta_chunk"].(string),
+		envs[2].Metadata["delta_chunk"].(string),
+	}
+	want := []string{"a", "b", "c"}
+	for i, w := range want {
+		if chunks[i] != w {
+			t.Errorf("envelope[%d] chunk=%q want %q", i, chunks[i], w)
+		}
+	}
+}
+
+// TestActivityEventSequencer_DeltaBatchingTimerFlush verifies that a single
+// delta envelope is flushed after the batch interval expires.
+func TestActivityEventSequencer_DeltaBatchingTimerFlush(t *testing.T) {
+	bus := newSyncCaptureBus()
+	seq := newActivityEventSequencer(bus, loggateway.NewNoop())
+	seq.deltaBatchInterval = 10 * time.Millisecond
+	defer seq.Close()
+
+	activityID := "act-timer"
+	ctx := context.Background()
+
+	_ = seq.publish(ctx, activityID, deltaTask("content", "x"))
+
+	envs := bus.waitForPublished(t, 1)
+	if len(envs) != 1 {
+		t.Fatalf("expected 1 envelope, got %d", len(envs))
+	}
+	if envs[0].Metadata["delta_chunk"] != "x" {
+		t.Errorf("chunk=%q want %q", envs[0].Metadata["delta_chunk"], "x")
+	}
+}
+
+// TestActivityEventSequencer_DeltaBatchingFlushOnNonDelta verifies that the
+// pending batched delta is flushed immediately when a non-delta event arrives.
+func TestActivityEventSequencer_DeltaBatchingFlushOnNonDelta(t *testing.T) {
+	bus := newSyncCaptureBus()
+	seq := newActivityEventSequencer(bus, loggateway.NewNoop())
+	seq.deltaBatchInterval = 100 * time.Millisecond
+	defer seq.Close()
+
+	activityID := "act-flush"
+	ctx := context.Background()
+
+	_ = seq.publish(ctx, activityID, deltaTask("content", "a"))
+	_ = seq.publish(ctx, activityID, deltaTask("content", "b"))
+	_ = seq.publish(ctx, activityID, publishTask{
+		env: contract.NewEnvelope(contract.EnvelopeTypeActivityDone, "agent-1", "sess-1"),
+	})
+
+	envs := bus.waitForPublished(t, 2)
+	if envs[0].Type != contract.EnvelopeTypeActivityDelta {
+		t.Errorf("first envelope type=%q want activity_delta", envs[0].Type)
+	}
+	if envs[0].Metadata["delta_chunk"] != "ab" {
+		t.Errorf("batched chunk=%q want %q", envs[0].Metadata["delta_chunk"], "ab")
+	}
+	if envs[1].Type != contract.EnvelopeTypeActivityDone {
+		t.Errorf("second envelope type=%q want activity_done", envs[1].Type)
+	}
+}

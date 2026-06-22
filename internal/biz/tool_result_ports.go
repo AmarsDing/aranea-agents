@@ -14,12 +14,12 @@ type ToolResultBlob struct {
 }
 
 type ToolResultReplacement struct {
-	ID            string
-	SessionID     string
-	MessageID     string
-	ResultBlobID  string
-	PreviewText   string
-	ReplacedAt    string
+	ID           string
+	SessionID    string
+	MessageID    string
+	ResultBlobID string
+	PreviewText  string
+	ReplacedAt   string
 }
 
 type ToolResultBlobReader interface {

@@ -79,8 +79,10 @@
         :compress-status="session.compressStatus"
         :show-tool-calls="uiConfig.showToolCalls"
         :activity-timeline-activities="session.activityTimeline.streamEvents"
-        :activity-agent-key="session.activityTimeline.activities[0]?.agentKey"
-        :activity-task-content="session.activityTimeline.activities.find((a: {kind: string}) => a.kind === 'task')?.content"
+        :activity-agent-key="session.activityTimeline.activities[0]?.agentKey ?? undefined"
+        :activity-task-content="
+          session.activityTimeline.activities.find((a: { kind: string }) => a.kind === 'task')?.content ?? undefined
+        "
         :activity-tree="session.activityTimeline.activityTree"
         :activity-raw-records="session.activityTimeline.activities"
         :session-loading="session.sessionLoading"

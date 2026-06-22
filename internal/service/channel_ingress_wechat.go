@@ -61,7 +61,7 @@ func (h *ChannelIngress) handleWeChatWebhook(w http.ResponseWriter, r *http.Requ
 		IdempotencyKey: fmt.Sprintf("wechat:%d", parsed.MsgID),
 		OutboundMeta: map[string]string{
 			port.MetaRecipient: parsed.FromUser,
-			"to_user":         parsed.ToUser,
+			"to_user":          parsed.ToUser,
 		},
 	}
 	if wechat.ActiveModeFromConfig(chRow.ConfigJSON, h.lg) {

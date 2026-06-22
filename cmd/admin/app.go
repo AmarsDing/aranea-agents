@@ -93,15 +93,15 @@ func newApp(
 						}
 						lg.Info("post-readiness: data ready, starting dependent services", loggateway.StepID("startup.gate"))
 						startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pgEventStore, pipeline, loggingSinks, lg)
-				})
+					})
+				} else {
+					// No readiness gate (unlikely), start immediately.
+					startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pgEventStore, pipeline, loggingSinks, lg)
+				}
 			} else {
-				// No readiness gate (unlikely), start immediately.
+				// No data layer (unlikely), start immediately.
 				startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pgEventStore, pipeline, loggingSinks, lg)
 			}
-		} else {
-			// No data layer (unlikely), start immediately.
-			startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pgEventStore, pipeline, loggingSinks, lg)
-		}
 			return nil
 		}),
 		kratos.AfterStart(func(startCtx context.Context) error {

@@ -116,4 +116,3 @@ func looksLikeCodeTask(prompt string) bool {
 	}
 	return false
 }
-

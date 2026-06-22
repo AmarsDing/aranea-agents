@@ -82,4 +82,3 @@ func (h *ChannelIngress) executeAsyncGraphTarget(
 		return "", "", "", apierror.BadRequest("CHANNEL", fmt.Sprintf("unsupported target type %q", target.TargetType))
 	}
 }
-

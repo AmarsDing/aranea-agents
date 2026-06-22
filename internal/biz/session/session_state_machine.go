@@ -4,17 +4,19 @@
 //
 // ```mermaid
 // stateDiagram-v2
-//     [*] --> Idle
-//     Idle --> Running : start
-//     Running --> Completed : complete
-//     Running --> Interrupted : interrupt
-//     Running --> AwaitingConfirmation : await_confirmation
-//     Completed --> Running : start
-//     Interrupted --> Running : resume
-//     AwaitingConfirmation --> Running : resume
-//     AwaitingConfirmation --> Interrupted : cancel
-//     Completed --> [*]
-//     Interrupted --> [*]
+//
+//	[*] --> Idle
+//	Idle --> Running : start
+//	Running --> Completed : complete
+//	Running --> Interrupted : interrupt
+//	Running --> AwaitingConfirmation : await_confirmation
+//	Completed --> Running : start
+//	Interrupted --> Running : resume
+//	AwaitingConfirmation --> Running : resume
+//	AwaitingConfirmation --> Interrupted : cancel
+//	Completed --> [*]
+//	Interrupted --> [*]
+//
 // ```
 package session
 
@@ -42,12 +44,12 @@ const (
 type SessionEvent string
 
 const (
-	SessionEventStart              SessionEvent = "start"
-	SessionEventComplete           SessionEvent = "complete"
-	SessionEventInterrupt          SessionEvent = "interrupt"
-	SessionEventAwaitConfirmation  SessionEvent = "await_confirmation"
-	SessionEventResume             SessionEvent = "resume"
-	SessionEventCancel             SessionEvent = "cancel"
+	SessionEventStart             SessionEvent = "start"
+	SessionEventComplete          SessionEvent = "complete"
+	SessionEventInterrupt         SessionEvent = "interrupt"
+	SessionEventAwaitConfirmation SessionEvent = "await_confirmation"
+	SessionEventResume            SessionEvent = "resume"
+	SessionEventCancel            SessionEvent = "cancel"
 )
 
 // ── Transition rules ─────────────────────────────────────────────────────────

@@ -17,17 +17,17 @@ type (
 )
 
 var (
-	NewKnowledgeUsecase        = knowledge.NewUsecase
-	NewKnowledgeUsecaseFromRepo = knowledge.NewUsecaseFromRepo
-	ErrKnowledgeUnavailable    = knowledge.ErrUnavailable
-	ErrKnowledgeNameRequired   = knowledge.ErrNameRequired
+	NewKnowledgeUsecase                = knowledge.NewUsecase
+	NewKnowledgeUsecaseFromRepo        = knowledge.NewUsecaseFromRepo
+	ErrKnowledgeUnavailable            = knowledge.ErrUnavailable
+	ErrKnowledgeNameRequired           = knowledge.ErrNameRequired
 	ErrKnowledgeEmbeddingModelRequired = knowledge.ErrEmbeddingModelRequired
-	ErrKnowledgeIDRequired     = knowledge.ErrIDRequired
-	ErrKnowledgeCollectionIDRequired = knowledge.ErrCollectionIDRequired
-	ErrKnowledgeSourceRequired = knowledge.ErrSourceRequired
-	ErrKnowledgeQueryRequired  = knowledge.ErrQueryRequired
-	ErrKnowledgeDimensionMismatch = knowledge.ErrDimensionMismatch
-	ErrKnowledgeEmbeddingEmpty = knowledge.ErrEmbeddingEmpty
-	KnowledgeEmbedConfigured  = knowledge.EmbedConfigured
-	ApplyKnowledgeEmbedPatch  = knowledge.ApplyEmbedPatch
+	ErrKnowledgeIDRequired             = knowledge.ErrIDRequired
+	ErrKnowledgeCollectionIDRequired   = knowledge.ErrCollectionIDRequired
+	ErrKnowledgeSourceRequired         = knowledge.ErrSourceRequired
+	ErrKnowledgeQueryRequired          = knowledge.ErrQueryRequired
+	ErrKnowledgeDimensionMismatch      = knowledge.ErrDimensionMismatch
+	ErrKnowledgeEmbeddingEmpty         = knowledge.ErrEmbeddingEmpty
+	KnowledgeEmbedConfigured           = knowledge.EmbedConfigured
+	ApplyKnowledgeEmbedPatch           = knowledge.ApplyEmbedPatch
 )

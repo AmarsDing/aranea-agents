@@ -18,11 +18,11 @@ import (
 
 // fakeFactReader implements biz.L3FactReader for testing.
 type fakeFactReader struct {
-	mu           sync.Mutex
-	rowsByUser   map[string][][]byte // userID -> raw JSON rows
-	rowsByID     map[string][][]byte // factID -> raw JSON rows
-	readErr      error
-	getByIDErr   error
+	mu            sync.Mutex
+	rowsByUser    map[string][][]byte // userID -> raw JSON rows
+	rowsByID      map[string][][]byte // factID -> raw JSON rows
+	readErr       error
+	getByIDErr    error
 	listCallCount int
 }
 
@@ -78,10 +78,10 @@ func (f *fakeFactReader) RecallL3Facts(_ context.Context, scopeType, scopeID, us
 
 // fakeFactWriter implements biz.L3FactWriter for testing.
 type fakeFactWriter struct {
-	mu          sync.Mutex
-	upserts     []biz.FactUpsert
-	upsertErr   error
-	upsertByID  map[string]biz.FactUpsert
+	mu         sync.Mutex
+	upserts    []biz.FactUpsert
+	upsertErr  error
+	upsertByID map[string]biz.FactUpsert
 }
 
 func newFakeFactWriter() *fakeFactWriter {
@@ -199,26 +199,26 @@ func (f *fakeTxProvider) calls() int {
 // shape produced by scanFactRowJSON in the data layer.
 func buildFactRowJSON(id, statement string, opts ...func(map[string]any)) []byte {
 	row := map[string]any{
-		"id":           id,
-		"scope_type":   "agent",
-		"scope_id":     "agent-1",
-		"user_id":      "user-1",
-		"agent_id":     "agent-1",
-		"statement":    statement,
-		"fingerprint":  "fp-" + id,
-		"fact_kind":    "fact",
-		"tags_json":    "[]",
-		"importance":   0.5,
-		"confidence":   1.0,
-		"source_kind":  "trpc_memory",
-		"status":       "active",
+		"id":            id,
+		"scope_type":    "agent",
+		"scope_id":      "agent-1",
+		"user_id":       "user-1",
+		"agent_id":      "agent-1",
+		"statement":     statement,
+		"fingerprint":   "fp-" + id,
+		"fact_kind":     "fact",
+		"tags_json":     "[]",
+		"importance":    0.5,
+		"confidence":    1.0,
+		"source_kind":   "trpc_memory",
+		"status":        "active",
 		"metadata_json": "{}",
-		"created_at":   "2026-01-01T00:00:00Z",
-		"updated_at":   "2026-01-01T00:00:00Z",
-		"valid_from":   "2026-01-01T00:00:00Z",
-		"valid_until":  "",
-		"links":        "[]",
-		"keywords":     "[]",
+		"created_at":    "2026-01-01T00:00:00Z",
+		"updated_at":    "2026-01-01T00:00:00Z",
+		"valid_from":    "2026-01-01T00:00:00Z",
+		"valid_until":   "",
+		"links":         "[]",
+		"keywords":      "[]",
 	}
 	for _, opt := range opts {
 		opt(row)

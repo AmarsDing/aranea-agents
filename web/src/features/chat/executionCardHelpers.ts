@@ -28,33 +28,51 @@ function truncate(str: string, max: number): string {
   return str.slice(0, max) + '...';
 }
 
+interface FileToolPayload {
+  path?: string;
+  file_name?: string;
+}
+
+interface SearchToolPayload {
+  pattern?: string;
+  query?: string;
+}
+
+interface CommandToolPayload {
+  command?: string;
+}
+
 /**
  * Generate a fallback summary from tool_name + arguments when the backend
  * doesn't provide `event.summary`.
  */
 export function generateSummaryFallback(event: ToolUseEvent): string {
-  const args = event.arguments ?? {};
+  const args = (event.arguments ?? {}) as Record<string, unknown>;
   const toolName = event.tool_name;
 
   switch (toolName) {
     case 'file_edit':
     case 'file_write': {
-      const path = (args.path as string) || (args.file_name as string) || '';
+      const payload = args as FileToolPayload | undefined;
+      const path = payload?.path || payload?.file_name || '';
       const filename = path.split('/').pop() || path;
       return filename ? `修改 ${filename}` : '';
     }
     case 'file_read': {
-      const path = (args.path as string) || (args.file_name as string) || '';
+      const payload = args as FileToolPayload | undefined;
+      const path = payload?.path || payload?.file_name || '';
       const filename = path.split('/').pop() || path;
       return filename ? `读取 ${filename}` : '';
     }
     case 'grep':
     case 'search_files': {
-      const pattern = (args.pattern as string) || (args.query as string) || '';
+      const payload = args as SearchToolPayload | undefined;
+      const pattern = payload?.pattern || payload?.query || '';
       return pattern ? `搜索 "${truncate(pattern, 30)}"` : '';
     }
     case 'bash': {
-      const command = (args.command as string) || '';
+      const payload = args as CommandToolPayload | undefined;
+      const command = payload?.command || '';
       return command ? `> ${truncate(command, 40)}` : '';
     }
     default:

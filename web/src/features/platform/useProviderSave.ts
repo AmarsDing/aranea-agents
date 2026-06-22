@@ -1,5 +1,5 @@
 import { useQuasar } from 'quasar';
-import type { PlatformResource, ProviderConfig, ProviderForm } from './types';
+import type { PlatformResource, PlatformResourceName, ProviderConfig, ProviderForm } from './types';
 import { errorMessage, getConfig } from './providerUtils';
 import { usePlatformStore } from '../../stores/platform';
 import type { Ref, ComputedRef } from 'vue';
@@ -141,10 +141,12 @@ export function useProviderSave(deps: {
     deps.saving.value = true;
     try {
       if (deps.editingId.value) {
-        const updated = await platformStore.editResource(deps.resource.value, deps.editingId.value, payload);
+        const resourceName = deps.resource.value as PlatformResourceName;
+        const updated = await platformStore.editResource(resourceName, deps.editingId.value, payload);
         deps.rows.value = deps.rows.value.map((row) => (row.id === updated.id ? updated : row));
       } else {
-        const created = await platformStore.addResource(deps.resource.value, payload);
+        const resourceName = deps.resource.value as PlatformResourceName;
+        const created = await platformStore.addResource(resourceName, payload);
         deps.rows.value = [created, ...deps.rows.value];
       }
       deps.dialogOpen.value = false;

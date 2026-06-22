@@ -42,9 +42,9 @@ const truncationEnvelopeOverhead = 200
 
 // ToolDecoratorConfig configures the ToolDecorator behavior.
 type ToolDecoratorConfig struct {
-	Timeout      time.Duration   // 0 = use DefaultToolTimeout
-	ResultBudget *ResultBudget   // nil = no truncation
-	EnableCache  bool            // cache ConcurrentSafe tools
+	Timeout      time.Duration // 0 = use DefaultToolTimeout
+	ResultBudget *ResultBudget // nil = no truncation
+	EnableCache  bool          // cache ConcurrentSafe tools
 	Logger       loggateway.Logger
 }
 

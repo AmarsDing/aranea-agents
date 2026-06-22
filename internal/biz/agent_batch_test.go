@@ -71,7 +71,9 @@ func (r *batchAgentRepo) UpdateAgentAtomic(_ context.Context, a Agent, _ []Agent
 	r.agents[a.ID] = a
 	return a, nil
 }
-func (r *batchAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) { return 0, nil }
+func (r *batchAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) {
+	return 0, nil
+}
 func (r *batchAgentRepo) ToggleFavorite(_ context.Context, id string) (Agent, error) {
 	a, ok := r.agents[id]
 	if !ok {

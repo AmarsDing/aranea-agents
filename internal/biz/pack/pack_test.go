@@ -18,14 +18,14 @@ func TestPackRoundTrip(t *testing.T) {
 		Organization: &OrganizationPackSpec{
 			Companies: []CompanySpec{
 				{
-					Key:   "finance",
-					Name:  "金融",
-					Icon:  "trending_up",
+					Key:       "finance",
+					Name:      "金融",
+					Icon:      "trending_up",
 					SortOrder: 1,
 					Departments: []DepartmentSpec{
 						{
-							Key:   "quant_trading",
-							Name:  "量化交易",
+							Key:       "quant_trading",
+							Name:      "量化交易",
 							SortOrder: 1,
 							Positions: []PositionSpec{
 								{Key: "quant_researcher", Name: "量化研究员", SortOrder: 1},

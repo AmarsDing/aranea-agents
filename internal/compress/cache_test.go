@@ -137,7 +137,7 @@ func TestContextWithSessionID(t *testing.T) {
 }
 
 type mockCompressor struct {
-	calls int
+	calls  int
 	result Result
 	err    error
 }

@@ -2,11 +2,7 @@
   <div class="agent-work-panel">
     <!-- Agent header -->
     <div class="agent-work-panel__header">
-      <agent-avatar-q
-        :icon="agentWork.agentIcon"
-        size="24px"
-        avatar-class="agent-work-panel__avatar"
-      />
+      <agent-avatar-q :icon="agentWork.agentIcon" size="24px" avatar-class="agent-work-panel__avatar" />
       <span class="agent-work-panel__name" :style="{ color: agentWork.agentColor }">
         {{ agentWork.agentName }}
       </span>
@@ -21,19 +17,39 @@
     <!-- Branch: TeamPanel, EventStream -->
     <div class="agent-work-panel__body">
       <!-- Running indicator when no activities yet (waiting for LLM first byte) -->
-      <div v-if="agentWork.status === 'running' && !agentWork.activities.length && !agentWork.progressSections?.length" class="agent-work-panel__waiting">
+      <div
+        v-if="agentWork.status === 'running' && !agentWork.activities.length && !agentWork.progressSections?.length"
+        class="agent-work-panel__waiting"
+      >
         <span class="pulse-dot"></span>
         <span class="agent-work-panel__waiting-text">{{ t('chat.thinking.thinking', '正在思考…') }}</span>
       </div>
       <!-- Progress sections (orchestration / thinking / tool steps from execution_progress envelopes) -->
       <template v-if="agentWork.progressSections?.length">
-        <div v-for="(ps, psi) in agentWork.progressSections" :key="'ps-' + psi" class="agent-work-panel__progress" :class="progressClass(ps)">
+        <div
+          v-for="(ps, psi) in agentWork.progressSections"
+          :key="'ps-' + psi"
+          class="agent-work-panel__progress"
+          :class="progressClass(ps)"
+        >
           <span class="agent-work-panel__progress-icon">{{ progressIcon(ps.category) }}</span>
           <span class="agent-work-panel__progress-message">{{ ps.message }}</span>
-          <span v-if="ps.durationMs != null" class="agent-work-panel__progress-duration">{{ formatDuration(ps.durationMs) }}</span>
+          <span v-if="ps.durationMs != null" class="agent-work-panel__progress-duration">{{
+            formatDuration(ps.durationMs)
+          }}</span>
           <span v-else-if="ps.status === 'running'" class="pulse-dot" />
-          <span v-if="ps.status === 'failed'" class="agent-work-panel__progress-status" :title="t('chat.turn.block.failed')">{{ progressStatusGlyph('failed') }}</span>
-          <span v-else-if="ps.status === 'timeout'" class="agent-work-panel__progress-status" :title="t('chat.agentBlock.timeout')">{{ progressStatusGlyph('timeout') }}</span>
+          <span
+            v-if="ps.status === 'failed'"
+            class="agent-work-panel__progress-status"
+            :title="t('chat.turn.block.failed')"
+            >{{ progressStatusGlyph('failed') }}</span
+          >
+          <span
+            v-else-if="ps.status === 'timeout'"
+            class="agent-work-panel__progress-status"
+            :title="t('chat.agentBlock.timeout')"
+            >{{ progressStatusGlyph('timeout') }}</span
+          >
         </div>
       </template>
       <!-- Team panel (v7 style) — displayed above EventStream when panel data exists -->
@@ -92,14 +108,20 @@ const statusClass = computed(() => ({
 
 const statusLabel = computed(() => {
   switch (props.agentWork.status) {
-    case 'running': return t('chat.turn.block.running');
-    case 'completed': return t('chat.turn.block.completed');
-    case 'failed': return t('chat.turn.block.failed');
-    default: return '';
+    case 'running':
+      return t('chat.turn.block.running');
+    case 'completed':
+      return t('chat.turn.block.completed');
+    case 'failed':
+      return t('chat.turn.block.failed');
+    default:
+      return '';
   }
 });
 
-const formattedDuration = computed(() => props.agentWork.durationMs != null ? formatDuration(props.agentWork.durationMs) : '');
+const formattedDuration = computed(() =>
+  props.agentWork.durationMs != null ? formatDuration(props.agentWork.durationMs) : '',
+);
 
 function progressIcon(category: ProgressCategory): string {
   return PROGRESS_GLYPHS[category] ?? '•';

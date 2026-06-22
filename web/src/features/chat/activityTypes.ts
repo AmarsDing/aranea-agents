@@ -55,40 +55,40 @@ export interface Activity {
   durationMs: number | null;
 
   // === Content fields (by kind) ===
-  content?: string;
-  reasoning?: string;
+  content?: string | null;
+  reasoning?: string | null;
 
   // === Tool fields (kind=action) ===
-  toolName?: string;
-  toolCallId?: string;
-  toolArguments?: string;
-  toolResult?: string;
-  toolDurationMs?: number;
-  toolErrorCode?: string;
+  toolName?: string | null;
+  toolCallId?: string | null;
+  toolArguments?: string | null;
+  toolResult?: string | null;
+  toolDurationMs?: number | null;
+  toolErrorCode?: string | null;
 
   // === Sub-task board (kind=sub_task_board) ===
-  childBoardId?: string;
+  childBoardId?: string | null;
 
   // === Spirit extension fields ===
-  spiritSessionId?: string;
-  teamId?: string;
-  dagNodeId?: string;
-  dependsOn?: string[];
+  spiritSessionId?: string | null;
+  teamId?: string | null;
+  dagNodeId?: string | null;
+  dependsOn?: string[] | null;
 
   // === Agent info ===
-  agentKey?: string;
-  agentName?: string;
+  agentKey?: string | null;
+  agentName?: string | null;
 
   // === Token usage (kind=task, root Activity only) ===
-  promptTokens?: number;
-  completionTokens?: number;
+  promptTokens?: number | null;
+  completionTokens?: number | null;
 
   // === Display hints ===
   collapsed: boolean;
-  label?: string;
+  label?: string | null;
 
   // === Kind-specific metadata ===
-  meta?: Record<string, unknown>;
+  meta?: Record<string, unknown> | null;
 }
 
 // === Activity Tree Node (computed from flat Activity list) ===
@@ -103,31 +103,31 @@ export interface ActivityStartMeta {
   activity_id: string;
   kind: ActivityKind;
   status: ActivityStatus;
-  parent_activity_id: string;
+  parent_activity_id: string | null;
   session_id: string;
   turn_id: string;
   timestamp: string;
-  duration_ms: number;
+  duration_ms: number | null;
   collapsed: boolean;
-  content?: string;
-  reasoning?: string;
-  tool_name?: string;
-  tool_call_id?: string;
-  tool_arguments?: string;
-  tool_result?: string;
-  tool_duration_ms?: number;
-  tool_error_code?: string;
-  child_board_id?: string;
-  spirit_session_id?: string;
-  team_id?: string;
-  dag_node_id?: string;
-  depends_on?: string[];
-  agent_key?: string;
-  agent_name?: string;
-  label?: string;
-  error_type?: string;
-  error_code?: string;
-  meta?: Record<string, unknown>;
+  content?: string | null;
+  reasoning?: string | null;
+  tool_name?: string | null;
+  tool_call_id?: string | null;
+  tool_arguments?: string | null;
+  tool_result?: string | null;
+  tool_duration_ms?: number | null;
+  tool_error_code?: string | null;
+  child_board_id?: string | null;
+  spirit_session_id?: string | null;
+  team_id?: string | null;
+  dag_node_id?: string | null;
+  depends_on?: string[] | null;
+  agent_key?: string | null;
+  agent_name?: string | null;
+  label?: string | null;
+  error_type?: string | null;
+  error_code?: string | null;
+  meta?: Record<string, unknown> | null;
 }
 
 export interface ActivityDeltaMeta {
@@ -145,26 +145,26 @@ export interface ActivityDoneMeta {
   duration_ms: number;
   collapsed: boolean;
   timestamp?: string;
-  content?: string;
-  reasoning?: string;
-  tool_result?: string;
-  tool_duration_ms?: number;
-  tool_error_code?: string;
-  child_board_id?: string;
-  label?: string;
+  content?: string | null;
+  reasoning?: string | null;
+  tool_result?: string | null;
+  tool_duration_ms?: number | null;
+  tool_error_code?: string | null;
+  child_board_id?: string | null;
+  label?: string | null;
   usage?: Record<string, unknown>;
-  error_type?: string;
-  error_code?: string;
+  error_type?: string | null;
+  error_code?: string | null;
 }
 
 export interface ActivityChildStartMeta {
   activity_id: string;
   kind: ActivityKind;
   status: ActivityStatus;
-  parent_activity_id: string;
-  child_board_id?: string;
-  team_id?: string;
-  spirit_session_id?: string;
-  dag_node_id?: string;
-  depends_on?: string[];
+  parent_activity_id: string | null;
+  child_board_id?: string | null;
+  team_id?: string | null;
+  spirit_session_id?: string | null;
+  dag_node_id?: string | null;
+  depends_on?: string[] | null;
 }

@@ -16,8 +16,12 @@ type statsRepoStub struct {
 func (s *statsRepoStub) SearchPlugins(context.Context, biz.PluginListQuery) (biz.PluginListResult, error) {
 	return biz.PluginListResult{}, nil
 }
-func (s *statsRepoStub) GetPlugin(context.Context, string) (biz.Plugin, error) { return biz.Plugin{}, nil }
-func (s *statsRepoStub) GetByKey(context.Context, string) (biz.Plugin, error)  { return biz.Plugin{}, nil }
+func (s *statsRepoStub) GetPlugin(context.Context, string) (biz.Plugin, error) {
+	return biz.Plugin{}, nil
+}
+func (s *statsRepoStub) GetByKey(context.Context, string) (biz.Plugin, error) {
+	return biz.Plugin{}, nil
+}
 func (s *statsRepoStub) CreatePlugin(context.Context, biz.Plugin) (biz.Plugin, error) {
 	return biz.Plugin{}, nil
 }

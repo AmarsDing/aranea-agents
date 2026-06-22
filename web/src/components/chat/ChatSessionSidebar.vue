@@ -94,7 +94,8 @@
                     v-if="sessionChannelLabel(session)"
                     dense
                     outline
-                    color="accent"                    class="q-mr-xs chat-session-channel-badge"
+                    color="accent"
+                    class="q-mr-xs chat-session-channel-badge"
                     :label="sessionChannelLabel(session)"
                   />
                   <q-badge class="chat-session-time-badge" rounded :label="shortTime(session)" />

@@ -39,9 +39,9 @@ function resolveRequestTimeoutMs(path: string, override?: number): number {
 
 function humanizeAxiosError(err: AxiosError): AxiosError {
   if (err.code === "ECONNABORTED" && !err.response) {
-    err.message = "请求超时，请确认后端 admin 是否在 :8000 运行并重试";
+    err.message = "请求超时，请确认后端 admin 是否运行并重试";
   } else if (!err.response && (err.code === "ERR_NETWORK" || err.message === "Network Error")) {
-    err.message = "无法连接后端，请确认 admin 是否在 :8000 运行";
+    err.message = "无法连接后端，请确认 admin 是否运行";
   }
   return err;
 }

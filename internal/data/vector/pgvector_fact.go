@@ -228,11 +228,11 @@ func (s *PgVectorFactStore) UpsertFactVector(ctx context.Context, agentID, userI
 
 // Row mirrors the legacy pgvector.Row for transitional compatibility.
 type Row struct {
-	ID        int64
-	AgentID   string
-	UserID    string
-	Content   string
-	Distance  float64
+	ID       int64
+	AgentID  string
+	UserID   string
+	Content  string
+	Distance float64
 }
 
 // SearchNearestRows returns legacy Row objects for the old memoryRepo.

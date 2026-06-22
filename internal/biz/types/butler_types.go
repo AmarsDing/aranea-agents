@@ -8,11 +8,11 @@ import "time"
 type ButlerTier string
 
 const (
-	ButlerTierSpirit      ButlerTier = "spirit"      // Top-level orchestrator (plan_and_execute)
+	ButlerTierSpirit       ButlerTier = "spirit"       // Top-level orchestrator (plan_and_execute)
 	ButlerTierOrchestrator ButlerTier = "orchestrator" // Task orchestration (check_progress, cancel)
-	ButlerTierMemory      ButlerTier = "memory"      // Memory lifecycle management
-	ButlerTierSkills      ButlerTier = "skills"      // Skill health & evolution
-	ButlerTierMonitor     ButlerTier = "monitor"     // Self-check & auto-heal
+	ButlerTierMemory       ButlerTier = "memory"       // Memory lifecycle management
+	ButlerTierSkills       ButlerTier = "skills"       // Skill health & evolution
+	ButlerTierMonitor      ButlerTier = "monitor"      // Self-check & auto-heal
 )
 
 // ButlerCapability enumerates the capabilities a butler tier can perform.
@@ -34,11 +34,11 @@ const (
 //
 // OrchestrationStepRecord is a value object; direct construction via &OrchestrationStepRecord{} is acceptable.
 type OrchestrationStepRecord struct {
-	StepName  string `json:"step_name"`  // e.g., "classify_industry", "assemble_team"
-	InputJSON string `json:"input_json,omitempty"`
-	OutputJSON string `json:"output_json,omitempty"`
-	Status    string `json:"status"`     // "pending", "running", "completed", "failed", "skipped"
-	Error     string `json:"error,omitempty"`
+	StepName   string    `json:"step_name"` // e.g., "classify_industry", "assemble_team"
+	InputJSON  string    `json:"input_json,omitempty"`
+	OutputJSON string    `json:"output_json,omitempty"`
+	Status     string    `json:"status"` // "pending", "running", "completed", "failed", "skipped"
+	Error      string    `json:"error,omitempty"`
 	StartedAt  time.Time `json:"started_at,omitempty"`
 	FinishedAt time.Time `json:"finished_at,omitempty"`
 }

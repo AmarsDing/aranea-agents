@@ -142,7 +142,7 @@ func TestInboundAccessContextFromEvent(t *testing.T) {
 		{
 			name: "dm_with_user_ids",
 			ev: port.InboundEvent{
-				PeerID:      "user1",
+				PeerID:       "user1",
 				OutboundMeta: map[string]string{"sender_open_id": "ou_123", "sender_user_id": "uid_456"},
 			},
 			want: biz.InboundAccessContext{
@@ -152,7 +152,7 @@ func TestInboundAccessContextFromEvent(t *testing.T) {
 		{
 			name: "group_chat",
 			ev: port.InboundEvent{
-				PeerID:      "peer1",
+				PeerID:       "peer1",
 				OutboundMeta: map[string]string{"chat_id": "oc_abc", "chat_type": "group", "mentioned": "true"},
 			},
 			want: biz.InboundAccessContext{
@@ -165,7 +165,7 @@ func TestInboundAccessContextFromEvent(t *testing.T) {
 		{
 			name: "group_fallback_peer_id",
 			ev: port.InboundEvent{
-				PeerID:      "peer1",
+				PeerID:       "peer1",
 				OutboundMeta: map[string]string{"chat_type": "group"},
 			},
 			want: biz.InboundAccessContext{
@@ -177,7 +177,7 @@ func TestInboundAccessContextFromEvent(t *testing.T) {
 		{
 			name: "group_conversation_type",
 			ev: port.InboundEvent{
-				PeerID:      "peer1",
+				PeerID:       "peer1",
 				OutboundMeta: map[string]string{"conversation_type": "GROUP", "chat_id": "oc_xyz"},
 			},
 			want: biz.InboundAccessContext{
@@ -189,7 +189,7 @@ func TestInboundAccessContextFromEvent(t *testing.T) {
 		{
 			name: "mentioned_via_mentions_field",
 			ev: port.InboundEvent{
-				PeerID:      "peer1",
+				PeerID:       "peer1",
 				OutboundMeta: map[string]string{"chat_type": "group", "mentions": "@bot"},
 			},
 			want: biz.InboundAccessContext{
@@ -202,7 +202,7 @@ func TestInboundAccessContextFromEvent(t *testing.T) {
 		{
 			name: "deduped_user_ids",
 			ev: port.InboundEvent{
-				PeerID:      "same_id",
+				PeerID:       "same_id",
 				OutboundMeta: map[string]string{"sender_open_id": "same_id", "user_id": "same_id"},
 			},
 			want: biz.InboundAccessContext{

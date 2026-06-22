@@ -91,11 +91,11 @@ func TestGraphDefinitionFromBuildConfig(t *testing.T) {
 func TestCompactNodesForVersion(t *testing.T) {
 	nodes := []NodeDef{
 		{
-			ID:              "n1",
-			Type:            "llm",
-			Description:     "some desc",
-			Instruction:     "do this",
-			InputMapperJSON: `{"x":1}`,
+			ID:               "n1",
+			Type:             "llm",
+			Description:      "some desc",
+			Instruction:      "do this",
+			InputMapperJSON:  `{"x":1}`,
 			OutputMapperJSON: `{"y":2}`,
 		},
 	}

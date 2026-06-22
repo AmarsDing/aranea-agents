@@ -13,9 +13,9 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
-	trpcopenai "trpc.group/trpc-go/trpc-agent-go/server/openai"
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
+	trpcopenai "trpc.group/trpc-go/trpc-agent-go/server/openai"
 )
 
 // OpenAIRunnerBuilder builds a trpc-agent-go Runner suitable for the

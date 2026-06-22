@@ -379,9 +379,9 @@ func TestTeamFromProto(t *testing.T) {
 
 func TestMapTeamErr(t *testing.T) {
 	tests := []struct {
-		name       string
-		input      error
-		wantNil    bool
+		name         string
+		input        error
+		wantNil      bool
 		wantNotFound bool
 	}{
 		{
@@ -390,8 +390,8 @@ func TestMapTeamErr(t *testing.T) {
 			wantNil: true,
 		},
 		{
-			name:       "apierror.NotFound passes through as NotFound",
-			input:      apierror.NotFound(apierror.DomainTeam, "not found"),
+			name:         "apierror.NotFound passes through as NotFound",
+			input:        apierror.NotFound(apierror.DomainTeam, "not found"),
 			wantNotFound: true,
 		},
 		{

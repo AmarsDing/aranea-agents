@@ -16,7 +16,7 @@ import (
 var RuntimeToolNameAliases = alias.RuntimeToolNameAliases
 
 type aliasTool struct {
-	name string
+	name  string
 	inner Tool
 }
 

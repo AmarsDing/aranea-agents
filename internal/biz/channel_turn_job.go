@@ -23,16 +23,16 @@ const (
 
 // ChannelTurnJob transition events.
 const (
-	JobEventStart       = "start"       // accepted -> running
-	JobEventQueue       = "queue"       // accepted -> queued
-	JobEventDequeue     = "dequeue"     // queued -> running
-	JobEventComplete    = "complete"    // running -> completed
-	JobEventFail        = "fail"        // running -> failed
-	JobEventTimeout     = "timeout"     // running -> timeout
-	JobEventCancel      = "cancel"      // accepted/running/queued -> cancelled
-	JobEventAsyncQueue  = "async_queue" // accepted/running -> async_queued
-	JobEventAsyncStart  = "async_start" // async_queued -> running
-	JobEventAsyncFail   = "async_fail"  // async_queued -> failed
+	JobEventStart       = "start"        // accepted -> running
+	JobEventQueue       = "queue"        // accepted -> queued
+	JobEventDequeue     = "dequeue"      // queued -> running
+	JobEventComplete    = "complete"     // running -> completed
+	JobEventFail        = "fail"         // running -> failed
+	JobEventTimeout     = "timeout"      // running -> timeout
+	JobEventCancel      = "cancel"       // accepted/running/queued -> cancelled
+	JobEventAsyncQueue  = "async_queue"  // accepted/running -> async_queued
+	JobEventAsyncStart  = "async_start"  // async_queued -> running
+	JobEventAsyncFail   = "async_fail"   // async_queued -> failed
 	JobEventAsyncCancel = "async_cancel" // async_queued -> cancelled
 )
 

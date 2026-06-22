@@ -361,7 +361,7 @@ function mapEvolutionMetrics(raw: unknown): EvolutionMetricsReport {
 }
 
 export async function listL0Snapshots(sessionID: string, limit = 20): Promise<L0AssemblySnapshot[]> {
-  const res = asRecord(await memory.ListL0Snapshots({ sessionId: sessionID, limit }));
+  const res = asRecord(await memory.ListL0Snapshots({ sessionId: sessionID, agentId: undefined, limit }));
   const items = res.items ?? res.Items;
   return Array.isArray(items) ? items.map(mapL0) : [];
 }
@@ -386,6 +386,7 @@ export async function listL1Fields(sessionID: string, taskID: string, includeInt
   const res = asRecord(
     await memory.ListL1Fields({
       sessionId: sessionID,
+      agentId: undefined,
       taskId: taskID,
       includeInternal: includeInternal ? 'true' : 'false',
     }),
@@ -533,7 +534,11 @@ export async function listCascadeProposals(
   params: { status?: string; limit?: number } = {},
 ): Promise<CascadeProposal[]> {
   const res = asRecord(
-    await memory.ListCascadeProposals({ agentId: agentID, status: params.status ?? 'pending', limit: params.limit ?? 20 }),
+    await memory.ListCascadeProposals({
+      agentId: agentID,
+      status: params.status ?? 'pending',
+      limit: params.limit ?? 20,
+    }),
   );
   const items = res.items ?? res.Items;
   return Array.isArray(items) ? items.map(mapCascadeProposal) : [];
@@ -586,7 +591,7 @@ export async function getCascadeSagaSteps(proposalId: string): Promise<CascadeSa
   return raw.map((s: unknown) => {
     const r = asRecord(s);
     return {
-      id: pickI64(r, 'id', 'id'),
+      id: pickStr(r, 'id', 'id'),
       proposal_id: pickStr(r, 'proposal_id', 'proposalId'),
       step_index: pickNum(r, 'step_index', 'stepIndex'),
       step_name: pickStr(r, 'step_name', 'stepName'),
@@ -794,14 +799,24 @@ export async function abandonMemoryDeadLetter(id: number, reason = ''): Promise<
 
 // ── A-03 fix: add missing Memory PII RPC wrappers ──────────────────
 
-export async function listConflictingFacts(scopeType: string, scopeId: string, limit = 50, offset = 0): Promise<MemoryFact[]> {
+export async function listConflictingFacts(
+  scopeType: string,
+  scopeId: string,
+  limit = 50,
+  offset = 0,
+): Promise<MemoryFact[]> {
   const raw = await memory.ListConflictingFacts({ scopeType, scopeId, limit, offset });
   const resp = asRecord(raw);
   const items = resp.items ?? [];
   return (Array.isArray(items) ? items : []).map(mapFact);
 }
 
-export async function listPIIFlaggedFacts(scopeType: string, scopeId: string, limit = 50, offset = 0): Promise<MemoryFact[]> {
+export async function listPIIFlaggedFacts(
+  scopeType: string,
+  scopeId: string,
+  limit = 50,
+  offset = 0,
+): Promise<MemoryFact[]> {
   const raw = await memory.ListPIIFlaggedFacts({ scopeType, scopeId, limit, offset });
   const resp = asRecord(raw);
   const items = resp.items ?? [];

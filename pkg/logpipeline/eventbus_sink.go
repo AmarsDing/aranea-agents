@@ -20,9 +20,9 @@ const (
 )
 
 const (
-	cbFailureThreshold = 5          // consecutive failures before opening
+	cbFailureThreshold = 5                // consecutive failures before opening
 	cbOpenDuration     = 10 * time.Second // how long to stay open
-	cbHalfOpenMaxProbe = 3          // successful probes needed to close
+	cbHalfOpenMaxProbe = 3                // successful probes needed to close
 )
 
 type EventBusSink struct {

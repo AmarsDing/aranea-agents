@@ -5,12 +5,7 @@
       <span class="dag-section__title">依赖关系</span>
     </div>
     <div class="dag-section__graph">
-      <div
-        v-for="node in section.nodes"
-        :key="node.id"
-        class="dag-node"
-        :class="`dag-node--${node.status}`"
-      >
+      <div v-for="node in section.nodes" :key="node.id" class="dag-node" :class="`dag-node--${node.status}`">
         <span class="dag-node__dot"></span>
         <span class="dag-node__label">{{ node.label }}</span>
       </div>

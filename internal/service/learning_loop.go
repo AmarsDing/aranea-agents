@@ -108,16 +108,16 @@ func toProtoPattern(p biz.Pattern) *v1.Pattern {
 
 func toProtoProposal(p biz.KnowledgeProposal) *v1.KnowledgeProposal {
 	out := &v1.KnowledgeProposal{
-		Id:        p.ID,
-		AgentId:   p.AgentID,
-		PatternId: p.PatternID,
-		Title:     p.Title,
-		Content:   p.Content,
-		Kind:      p.Kind,
-		Status:    string(p.Status),
+		Id:         p.ID,
+		AgentId:    p.AgentID,
+		PatternId:  p.PatternID,
+		Title:      p.Title,
+		Content:    p.Content,
+		Kind:       p.Kind,
+		Status:     string(p.Status),
 		ApprovedBy: p.ApprovedBy,
-		CreatedAt: p.CreatedAt.Format(time.RFC3339),
-		UpdatedAt: p.UpdatedAt.Format(time.RFC3339),
+		CreatedAt:  p.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:  p.UpdatedAt.Format(time.RFC3339),
 	}
 	if p.ValidatedAt != nil {
 		out.ValidatedAt = p.ValidatedAt.Format(time.RFC3339)

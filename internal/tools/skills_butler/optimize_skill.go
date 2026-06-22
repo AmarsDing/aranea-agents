@@ -21,9 +21,9 @@ type optimizationSuggestion struct {
 }
 
 type optimizeSkillOutput struct {
-	AgentID     string                 `json:"agent_id"`
-	SkillName   string                 `json:"skill_name"`
-	Health      string                 `json:"health"`
+	AgentID     string                   `json:"agent_id"`
+	SkillName   string                   `json:"skill_name"`
+	Health      string                   `json:"health"`
 	Suggestions []optimizationSuggestion `json:"suggestions"`
 }
 

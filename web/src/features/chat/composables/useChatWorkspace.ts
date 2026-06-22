@@ -24,7 +24,7 @@ import { useFollowUpQueue } from './useFollowUpQueue';
 import { useAwaitReply } from './useAwaitReply';
 import { formatUserActionMessage, type A2UIUserActionPayload } from '../a2uiUserAction';
 import { clearChatMarkdownCache } from '../chatMessageMarkdown';
-import { formatSessionTime, getProviderModelValue, sessionToView } from './chatWorkspaceUtils';
+import { getProviderModelValue, sessionToView } from './chatWorkspaceUtils';
 import { useChatSidebarOrder } from './useChatSidebarOrder';
 import { useChatAttachments } from './useChatAttachments';
 import { fileAcceptForModel, modelSupportsFileInput, type ChatModelDescriptor } from '../modelCapabilities';
@@ -120,14 +120,6 @@ export function useChatWorkspace() {
       }
     }
     const md = env.metadata as Record<string, unknown> | undefined;
-    console.info('[AF-DBG] handleActivityEnvelope', {
-      type: env.type,
-      env_turn_id: env.turn_id,
-      md_turn_id: md?.turn_id,
-      md_kind: md?.kind,
-      md_activity_id: md?.activity_id,
-      has_md: !!md,
-    });
     if (!md) return;
     switch (env.type) {
       case 'activity_start':
@@ -586,11 +578,6 @@ export function useChatWorkspace() {
     settingsMode,
     settingsId,
     editName,
-    editKey,
-    editProvider,
-    editModel,
-    settingsSaving,
-    settingsTitle,
     onSaveSettings: saveSettingsDialog,
   } = settingsDialog;
 

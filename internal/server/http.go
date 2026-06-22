@@ -24,11 +24,11 @@ import (
 	hookv1 "aranea-agents/api/kratos/hook/v1"
 	knowledgev1 "aranea-agents/api/kratos/knowledge/v1"
 	llmprovidermodelv1 "aranea-agents/api/kratos/llm_provider_model/v1"
-	organizationv1 "aranea-agents/api/kratos/organization/v1"
 	mcpserverv1 "aranea-agents/api/kratos/mcp_server/v1"
 	memoryv1 "aranea-agents/api/kratos/memory/v1"
 	modelcatalogv1 "aranea-agents/api/kratos/model_catalog/v1"
 	monitorv1 "aranea-agents/api/kratos/monitor/v1"
+	organizationv1 "aranea-agents/api/kratos/organization/v1"
 	packv1 "aranea-agents/api/kratos/pack/v1"
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
@@ -313,8 +313,8 @@ func contentTypeWithCharset(subtype string) string {
 // clients still call the old endpoints directly.
 func registerCompatibilityRedirects(srv *kratoshttp.Server) {
 	redirects := map[string]string{
-		"/v1/taxonomy/legacy/list":   "/v1/organization",
-		"/v1/taxonomy/legacy/tree":   "/v1/organization/tree",
+		"/v1/taxonomy/legacy/list": "/v1/organization",
+		"/v1/taxonomy/legacy/tree": "/v1/organization/tree",
 	}
 	for from, to := range redirects {
 		srv.Route("/").GET(from, func(ctx kratoshttp.Context) error {

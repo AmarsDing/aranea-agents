@@ -18,7 +18,7 @@ const (
 type OrchestrationStrategy string
 
 const (
-	StrategyDirect      OrchestrationStrategy = "direct"      // Spirit answers directly
+	StrategyDirect      OrchestrationStrategy = "direct"       // Spirit answers directly
 	StrategySingleAgent OrchestrationStrategy = "single_agent" // Agent-as-Tool
 	StrategyParallel    OrchestrationStrategy = "parallel"     // ParallelAgent
 	StrategyDAG         OrchestrationStrategy = "dag"          // GraphAgent DAG
@@ -27,10 +27,10 @@ const (
 
 // TaskPlan is the output of the TaskPlanner
 type TaskPlan struct {
-	ID                string `json:"id"`
-	SpiritSessionID   string `json:"spirit_session_id"`
-	TraceID           string `json:"trace_id"`
-	UserMessage       string `json:"user_message"`
+	ID                 string `json:"id"`
+	SpiritSessionID    string `json:"spirit_session_id"`
+	TraceID            string `json:"trace_id"`
+	UserMessage        string `json:"user_message"`
 	IntentArtifactJSON string `json:"intent_artifact_json"`
 
 	// Complexity assessment
@@ -90,9 +90,9 @@ type PlanTaskDAG struct {
 
 // MemoryHit represents a memory cache hit from OrchestrationCache
 type MemoryHit struct {
-	CacheID       string  `json:"cache_id"`
-	DQScore       float64 `json:"dq_score"`
-	TopologyUsed  string  `json:"topology_used"`
+	CacheID       string   `json:"cache_id"`
+	DQScore       float64  `json:"dq_score"`
+	TopologyUsed  string   `json:"topology_used"`
 	AgentKeysUsed []string `json:"agent_keys_used"`
 }
 

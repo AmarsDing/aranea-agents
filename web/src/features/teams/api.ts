@@ -36,7 +36,7 @@ function wireTeam(t: WireTeam | null | undefined): Team {
     app_name: t?.adkAppName ?? '',
     linked_graph_id: t?.linkedGraphId ?? '',
     has_active_run: t?.hasActiveRun ?? false,
-    taxonomy_industry_id: t?.categoryIndustryId ?? '',
+    taxonomy_industry_id: '',
     readonly: t?.readonly ?? false,
     source: t?.source ?? '',
     kind: t?.kind ?? '',
@@ -140,7 +140,6 @@ function patchToWire(payload: Partial<Team>): WireTeam {
   if (payload.definition_json !== undefined) t.definitionJson = payload.definition_json;
   if (payload.app_name !== undefined) t.adkAppName = payload.app_name;
   if (payload.linked_graph_id !== undefined) t.linkedGraphId = payload.linked_graph_id;
-  if (payload.taxonomy_industry_id !== undefined) t.categoryIndustryId = payload.taxonomy_industry_id;
   if (payload.created_at !== undefined) t.createdAt = payload.created_at;
   if (payload.updated_at !== undefined) t.updatedAt = payload.updated_at;
   if (payload.deleted_at !== undefined) t.deletedAt = payload.deleted_at;
@@ -162,7 +161,7 @@ export async function createTeam(payload: Partial<Team>): Promise<Team> {
     status: payload.status,
     definitionJson: payload.definition_json,
     adkAppName: payload.app_name,
-    categoryIndustryId: payload.taxonomy_industry_id,
+    departmentId: '',
   });
   return wireTeam(data);
 }

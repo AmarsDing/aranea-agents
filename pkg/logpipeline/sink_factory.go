@@ -39,9 +39,9 @@ func NewSinkFromConfig(cfg SinkConfig, deps SinkFactoryDeps) (Sink, error) {
 
 func newFileSinkFromConfig(cfg SinkConfig) (*FileSink, error) {
 	fileCfg := FileSinkConfig{
-		OutputDir:  cfg.Config["output_dir"],
-		Filename:   cfg.Config["filename"],
-		Compress:   cfg.Config["compress"] == "true",
+		OutputDir: cfg.Config["output_dir"],
+		Filename:  cfg.Config["filename"],
+		Compress:  cfg.Config["compress"] == "true",
 	}
 	if v, ok := cfg.Config["max_size_mb"]; ok {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {

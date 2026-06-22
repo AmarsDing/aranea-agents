@@ -29,11 +29,11 @@ func TestRootCauseEngine_Evaluate_BuiltinRules(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
-		name      string
-		stepID    string
-		phase     string
-		metadata  map[string]any
-		wantMatch bool
+		name       string
+		stepID     string
+		phase      string
+		metadata   map[string]any
+		wantMatch  bool
 		wantRuleID string
 	}{
 		{
@@ -52,11 +52,11 @@ func TestRootCauseEngine_Evaluate_BuiltinRules(t *testing.T) {
 			wantMatch: false,
 		},
 		{
-			name:      "provider_timeout_wrong_step",
-			stepID:    "tool.exec",
-			phase:     "error",
-			metadata:  map[string]any{"error_message": "request timeout exceeded"},
-			wantMatch: true,
+			name:       "provider_timeout_wrong_step",
+			stepID:     "tool.exec",
+			phase:      "error",
+			metadata:   map[string]any{"error_message": "request timeout exceeded"},
+			wantMatch:  true,
 			wantRuleID: "rc-tool-execution-failure",
 		},
 		{
@@ -76,11 +76,11 @@ func TestRootCauseEngine_Evaluate_BuiltinRules(t *testing.T) {
 			wantRuleID: "rc-provider-rate-limit",
 		},
 		{
-			name:      "provider_rate_limit_wrong_step",
-			stepID:    "tool.exec",
-			phase:     "error",
-			metadata:  map[string]any{"error_code": "429"},
-			wantMatch: true,
+			name:       "provider_rate_limit_wrong_step",
+			stepID:     "tool.exec",
+			phase:      "error",
+			metadata:   map[string]any{"error_code": "429"},
+			wantMatch:  true,
 			wantRuleID: "rc-tool-execution-failure",
 		},
 		{

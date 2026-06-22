@@ -7,11 +7,19 @@
         <span>{{ complexityLabel }}</span>
         <q-tooltip v-if="complexityReason" :delay="300">{{ complexityReason }}</q-tooltip>
       </div>
-      <div v-if="runningTeamCount > 0" class="spirit-status-bar__item spirit-status-bar__item--clickable" @click="emit('click-running')">
+      <div
+        v-if="runningTeamCount > 0"
+        class="spirit-status-bar__item spirit-status-bar__item--clickable"
+        @click="emit('click-running')"
+      >
         <q-icon name="bolt" size="14px" :style="{ color: 'var(--color-accent)' }" />
         <span>{{ t('spirit.runningCount', { count: runningTeamCount }) }}</span>
       </div>
-      <div v-if="interruptedTeamCount > 0" class="spirit-status-bar__item spirit-status-bar__item--clickable" @click="emit('click-interrupted')">
+      <div
+        v-if="interruptedTeamCount > 0"
+        class="spirit-status-bar__item spirit-status-bar__item--clickable"
+        @click="emit('click-interrupted')"
+      >
         <q-icon name="pause_circle" size="14px" :style="{ color: 'var(--color-warning)' }" />
         <span>{{ t('spirit.interruptedCount', { count: interruptedTeamCount }) }}</span>
       </div>
@@ -39,7 +47,11 @@
         <span :style="{ color: dqScoreColor }">DQ: {{ dqScore.toFixed(2) }}</span>
         <q-tooltip :delay="300">{{ t('spirit.dqScoreTooltip') }}</q-tooltip>
       </div>
-      <div v-if="lastEvent" class="spirit-status-bar__item spirit-status-bar__last-event spirit-status-bar__item--clickable" @click="emit('click-last-event')">
+      <div
+        v-if="lastEvent"
+        class="spirit-status-bar__item spirit-status-bar__last-event spirit-status-bar__item--clickable"
+        @click="emit('click-last-event')"
+      >
         <q-icon
           :name="lastEvent.type === 'completed' ? 'check_circle' : 'error'"
           :style="{ color: lastEvent.type === 'completed' ? 'var(--color-success)' : 'var(--color-danger)' }"
@@ -81,7 +93,16 @@ const emit = defineEmits<{
   'click-last-event': [];
 }>();
 
-const visible = computed(() => props.runningTeamCount > 0 || props.interruptedTeamCount > 0 || props.quotaMax > 0 || !!props.lastEvent || !!props.complexityLevel || !!props.checkpointStep || props.dqScore != null);
+const visible = computed(
+  () =>
+    props.runningTeamCount > 0 ||
+    props.interruptedTeamCount > 0 ||
+    props.quotaMax > 0 ||
+    !!props.lastEvent ||
+    !!props.complexityLevel ||
+    !!props.checkpointStep ||
+    props.dqScore != null,
+);
 
 const tokenLabel = computed(() => formatTokenCount(props.tokenUsage?.in, props.tokenUsage?.out));
 

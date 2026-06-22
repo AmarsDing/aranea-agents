@@ -61,7 +61,9 @@ func (m *memTeamRepo) UpdateTeam(_ context.Context, t biz.Team) (biz.Team, error
 	m.teams[t.ID] = t
 	return t, nil
 }
-func (m *memTeamRepo) UpdateTeamWhereStatus(_ context.Context, _, _, _ string) (bool, error) { return true, nil }
+func (m *memTeamRepo) UpdateTeamWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
+	return true, nil
+}
 
 func (m *memTeamRepo) DeleteTeam(_ context.Context, id string) error {
 	delete(m.teams, id)
@@ -87,8 +89,10 @@ func (m *memTeamRepo) ListTeamRunSteps(_ context.Context, _ string) ([]biz.TeamR
 func (m *memTeamRepo) CreateTeamRun(_ context.Context, r biz.TeamRun) (biz.TeamRun, error) {
 	return r, nil
 }
-func (m *memTeamRepo) UpdateTeamRun(_ context.Context, _ biz.TeamRun) error               { return nil }
-func (m *memTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) { return true, nil }
+func (m *memTeamRepo) UpdateTeamRun(_ context.Context, _ biz.TeamRun) error { return nil }
+func (m *memTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
+	return true, nil
+}
 func (m *memTeamRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error      { return nil }
 func (m *memTeamRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error { return nil }
 func (m *memTeamRepo) UpdateTeamRunTraceID(_ context.Context, _, _ string) error          { return nil }

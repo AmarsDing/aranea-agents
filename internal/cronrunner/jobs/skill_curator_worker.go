@@ -29,13 +29,13 @@ func curatorDailyMaxFromEnv() int32 {
 // semi-automatic evolution pipeline: trigger detection → draft generation
 // → sandbox verification → lifecycle update.
 type CuratorWorker struct {
-	interval     time.Duration
-	uc           *biz.SkillIntelligenceUsecase
-	skills       biz.SkillQueryReader
-	lg           loggateway.Logger
-	dailyMax     int32
-	dailyCount   atomic.Int32
-	dailyReset   atomic.Int64 // Unix timestamp of last daily reset
+	interval   time.Duration
+	uc         *biz.SkillIntelligenceUsecase
+	skills     biz.SkillQueryReader
+	lg         loggateway.Logger
+	dailyMax   int32
+	dailyCount atomic.Int32
+	dailyReset atomic.Int64 // Unix timestamp of last daily reset
 }
 
 // NewCuratorWorker creates a CuratorWorker. If interval <= 0, defaults to 2 hours.

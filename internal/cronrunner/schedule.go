@@ -19,7 +19,7 @@ type cronTaskConfig struct {
 	RunAt            string `json:"run_at"`
 	Timezone         string `json:"timezone"`
 	Message          string `json:"message"`
-	RetryMaxAttempts *int `json:"retry_max_attempts"`
+	RetryMaxAttempts *int   `json:"retry_max_attempts"`
 }
 
 const defaultRetryMaxAttempts = 3

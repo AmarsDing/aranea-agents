@@ -87,7 +87,9 @@ func (r *memoryTestAgentRepo) ExecInTx(ctx context.Context, fn func(context.Cont
 	return fn(ctx)
 }
 func (r *memoryTestAgentRepo) ReorderAgents(context.Context, []string) error { return nil }
-func (r *memoryTestAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) { return 0, nil }
+func (r *memoryTestAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) {
+	return 0, nil
+}
 func (r *memoryTestAgentRepo) CountAgentsByProviderAndModel(context.Context, string, string) (int, error) {
 	return 0, nil
 }

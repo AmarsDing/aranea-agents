@@ -84,4 +84,3 @@ func bizDeadLetterEntryToProto(e biz.MemoryDeadLetterEntry) *v1.MemoryDeadLetter
 		LastError:  e.LastError,
 	}
 }
-

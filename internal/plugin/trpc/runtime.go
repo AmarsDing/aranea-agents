@@ -155,15 +155,15 @@ func (rt *Runtime) Apply(_ context.Context, plugins []biz.Plugin) {
 			continue
 		}
 		e := runtimeEntry{
-			plugin:        ap.plugin,
-			scope:         strings.TrimSpace(p.Scope),
-			key:           p.Key,
-			enabled:       true,
-			sortOrder:     p.SortOrder,
-			orchestration: ResolvePluginOrchestration(p),
-			modelRouter:         ap.modelRouter,
-			costGuard:           ap.costGuard,
-			confirmationGuard:   ap.confirmationGuard,
+			plugin:            ap.plugin,
+			scope:             strings.TrimSpace(p.Scope),
+			key:               p.Key,
+			enabled:           true,
+			sortOrder:         p.SortOrder,
+			orchestration:     ResolvePluginOrchestration(p),
+			modelRouter:       ap.modelRouter,
+			costGuard:         ap.costGuard,
+			confirmationGuard: ap.confirmationGuard,
 		}
 		built = append(built, e)
 	}

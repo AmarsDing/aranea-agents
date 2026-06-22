@@ -63,10 +63,7 @@ const defaultCollapsed = computed(() => contentLength.value > RESULT_COLLAPSE_TH
 // Note: useCollapseState reads the initial defaultCollapsed at setup time.
 // For activity blocks, the content is typically available immediately, so
 // this is fine. If content arrives later, the watch below syncs the default.
-const { collapsed, toggle, setCollapsed } = useCollapseState(
-  `action:${props.activity.id}`,
-  defaultCollapsed.value,
-);
+const { collapsed, toggle, setCollapsed } = useCollapseState(`action:${props.activity.id}`, defaultCollapsed.value);
 
 // If content grows beyond threshold after initial render (e.g., streaming result),
 // auto-collapse unless the user has explicitly expanded.
@@ -80,9 +77,17 @@ watch(contentLength, (len, prevLen) => {
 const todoEvent = computed<ToolUseEvent>(() => {
   const t = props.activity.tool;
   let parsedArgs: unknown;
-  try { parsedArgs = t.arguments ? JSON.parse(t.arguments) : undefined; } catch { parsedArgs = t.arguments; }
+  try {
+    parsedArgs = t.arguments ? JSON.parse(t.arguments) : undefined;
+  } catch {
+    parsedArgs = t.arguments;
+  }
   let parsedResult: unknown;
-  try { parsedResult = t.result ? JSON.parse(t.result) : undefined; } catch { parsedResult = t.result; }
+  try {
+    parsedResult = t.result ? JSON.parse(t.result) : undefined;
+  } catch {
+    parsedResult = t.result;
+  }
   return {
     id: props.activity.id,
     phase: t.status === 'running' ? 'before' : 'after',
@@ -115,12 +120,18 @@ const statusClass = computed(() => ({
 
 const statusIcon = computed(() => {
   switch (props.activity.tool.status) {
-    case 'running': return '⏳';
-    case 'success': return '✓';
-    case 'failed': return '✗';
-    case 'blocked': return '🔒';
-    case 'cancelled': return '⊘';
-    default: return '🔧';
+    case 'running':
+      return '⏳';
+    case 'success':
+      return '✓';
+    case 'failed':
+      return '✗';
+    case 'blocked':
+      return '🔒';
+    case 'cancelled':
+      return '⊘';
+    default:
+      return '🔧';
   }
 });
 

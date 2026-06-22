@@ -65,10 +65,10 @@ func BuildFeishuToolCardJSON(seg Segment, opts ToolCardBuildOpts) (string, error
 		},
 		"elements": []any{
 			map[string]any{
-				"tag":        "column_set",
-				"flex_mode":  "none",
+				"tag":                "column_set",
+				"flex_mode":          "none",
 				"horizontal_spacing": "8px",
-				"columns":    columns,
+				"columns":            columns,
 			},
 		},
 	}

@@ -12,8 +12,8 @@ import (
 // evolutionStoreBridge implements biz.EvolutionStoreBridge by composing
 // UnifiedEvolutionRepo and SkillEvolutionSuggestionRepo.
 type evolutionStoreBridge struct {
-	unified  *UnifiedEvolutionRepo
-	legacy   *SkillEvolutionSuggestionRepo
+	unified *UnifiedEvolutionRepo
+	legacy  *SkillEvolutionSuggestionRepo
 }
 
 var _ biz.EvolutionStoreBridge = (*evolutionStoreBridge)(nil)

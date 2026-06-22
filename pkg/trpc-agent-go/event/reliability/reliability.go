@@ -72,9 +72,9 @@ func IsCriticalWBPF(t Tier) bool {
 // The Classifier is safe for concurrent reads and writes. Register/RegisterBulk
 // acquire a write lock; Classify/IsRegistered/Tiers acquire a read lock.
 type Classifier[T comparable] struct {
-	mu             sync.RWMutex
+	mu              sync.RWMutex
 	classifications map[T]Tier
-	fallback       Tier
+	fallback        Tier
 }
 
 // NewClassifier creates a new Classifier with the given fallback tier

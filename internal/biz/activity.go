@@ -10,31 +10,31 @@ import (
 type ActivityKind string
 
 const (
-	ActivityKindTask        ActivityKind = "task"         // Task description (user/agent perspective)
-	ActivityKindThinking    ActivityKind = "thinking"     // Reasoning content
-	ActivityKindAction      ActivityKind = "action"       // Tool invocation
-	ActivityKindReply       ActivityKind = "reply"        // Agent reply (including final answer)
+	ActivityKindTask         ActivityKind = "task"           // Task description (user/agent perspective)
+	ActivityKindThinking     ActivityKind = "thinking"       // Reasoning content
+	ActivityKindAction       ActivityKind = "action"         // Tool invocation
+	ActivityKindReply        ActivityKind = "reply"          // Agent reply (including final answer)
 	ActivityKindSubTaskBoard ActivityKind = "sub_task_board" // Sub-task board (recursive nesting)
-	ActivityKindError       ActivityKind = "error"        // Error information
-	ActivityKindDelegate    ActivityKind = "delegate"     // Spirit delegates to team
-	ActivityKindNotice      ActivityKind = "notice"       // System notification
-	ActivityKindConfirm     ActivityKind = "confirm"      // User confirmation required
-	ActivityKindPlan        ActivityKind = "plan"         // Multi-step plan
+	ActivityKindError        ActivityKind = "error"          // Error information
+	ActivityKindDelegate     ActivityKind = "delegate"       // Spirit delegates to team
+	ActivityKindNotice       ActivityKind = "notice"         // System notification
+	ActivityKindConfirm      ActivityKind = "confirm"        // User confirmation required
+	ActivityKindPlan         ActivityKind = "plan"           // Multi-step plan
 )
 
 // ActivityStatus represents the lifecycle status of an Activity.
 type ActivityStatus string
 
 const (
-	ActivityStatusPending       ActivityStatus = "pending"
-	ActivityStatusRunning       ActivityStatus = "running"
-	ActivityStatusToolRunning   ActivityStatus = "tool_running"
-	ActivityStatusToolBlocked   ActivityStatus = "tool_blocked"
-	ActivityStatusCompleted     ActivityStatus = "completed"
-	ActivityStatusFailed        ActivityStatus = "failed"
+	ActivityStatusPending        ActivityStatus = "pending"
+	ActivityStatusRunning        ActivityStatus = "running"
+	ActivityStatusToolRunning    ActivityStatus = "tool_running"
+	ActivityStatusToolBlocked    ActivityStatus = "tool_blocked"
+	ActivityStatusCompleted      ActivityStatus = "completed"
+	ActivityStatusFailed         ActivityStatus = "failed"
 	ActivityStatusPartialFailure ActivityStatus = "partial_failure"
-	ActivityStatusCancelled     ActivityStatus = "cancelled"
-	ActivityStatusInterrupted   ActivityStatus = "interrupted"
+	ActivityStatusCancelled      ActivityStatus = "cancelled"
+	ActivityStatusInterrupted    ActivityStatus = "interrupted"
 )
 
 // Activity is the domain model for a projected semantic unit.

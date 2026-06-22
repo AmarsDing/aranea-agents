@@ -27,9 +27,10 @@ func newCommandSafetyBeforeHook(lg loggateway.Logger) *commandSafetyBeforeHook {
 }
 
 func (h *commandSafetyBeforeHook) Point() callbacks.CallbackPoint { return callbacks.PointBeforeTool }
+
 // Priority 4 executes before circuit breaker (priority 5), ensuring security
 // checks run first: a blocked tool should never reach the circuit breaker.
-func (h *commandSafetyBeforeHook) Priority() int                   { return 4 }
+func (h *commandSafetyBeforeHook) Priority() int { return 4 }
 
 func (h *commandSafetyBeforeHook) HandleBeforeTool(ctx context.Context, args *trpctool.BeforeToolArgs) (*trpctool.BeforeToolResult, error) {
 	if args == nil {

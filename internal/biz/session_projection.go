@@ -22,11 +22,11 @@ type SessionProjection interface {
 // SessionActivity is a read model summarizing the current state of a session
 // for projection consumers.
 type SessionActivity struct {
-	SessionID   string
-	RunStatus   string
-	RunID       string
-	HasActive   bool
-	PendingIDs  []string
-	AwaitKind   string
+	SessionID    string
+	RunStatus    string
+	RunID        string
+	HasActive    bool
+	PendingIDs   []string
+	AwaitKind    string
 	AwaitToolKey string
 }

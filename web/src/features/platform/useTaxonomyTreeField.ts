@@ -26,7 +26,7 @@ export function useTaxonomyTreeField(opts: {
     () => opts.tree.value,
     (tree) => {
       if (Array.isArray(tree) && tree.length > 0 && expanded.value.length === 0) {
-        expanded.value = collectDefaultExpandedIds(tree);
+        expanded.value = Array.from(collectDefaultExpandedIds(tree));
       }
     },
     { immediate: true },
@@ -63,8 +63,8 @@ export function useTaxonomyTreeField(opts: {
     opts.onUpdate(null);
   }
 
-  function onExpandedUpdate(ids: string[]) {
-    expanded.value = ids;
+  function onExpandedUpdate(ids: readonly string[]) {
+    expanded.value = [...ids];
   }
 
   // Expand matching nodes when keyword changes

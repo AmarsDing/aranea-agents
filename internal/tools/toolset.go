@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/pkg/loggateway"
 	"aranea-agents/internal/outbound"
+	"aranea-agents/pkg/loggateway"
 
 	"aranea-agents/pkg/apierror"
 
@@ -336,21 +336,21 @@ func Registry() []*ToolRegistration {
 				RequiresConfirmation: true,
 			},
 			{
-				Name:        "read_document",
-				Description: "Read a document from a local path (PDF, DOCX, plain text). Use instead of exec_command to inspect documents.",
-				Category:    "media",
-				Tags:        []string{"document", "pdf", "docx", "read"},
-				EnabledByDefault: true,
-				RiskLevel:        "medium",
+				Name:                "read_document",
+				Description:         "Read a document from a local path (PDF, DOCX, plain text). Use instead of exec_command to inspect documents.",
+				Category:            "media",
+				Tags:                []string{"document", "pdf", "docx", "read"},
+				EnabledByDefault:    true,
+				RiskLevel:           "medium",
 				SupportsConcurrency: true,
 			},
 			{
-				Name:        "read_spreadsheet",
-				Description: "Read tabular files (XLSX, CSV). Use instead of exec_command when the user asks for rows, sheets, or table excerpts.",
-				Category:    "media",
-				Tags:        []string{"spreadsheet", "xlsx", "csv", "read"},
-				EnabledByDefault: true,
-				RiskLevel:        "medium",
+				Name:                "read_spreadsheet",
+				Description:         "Read tabular files (XLSX, CSV). Use instead of exec_command when the user asks for rows, sheets, or table excerpts.",
+				Category:            "media",
+				Tags:                []string{"spreadsheet", "xlsx", "csv", "read"},
+				EnabledByDefault:    true,
+				RiskLevel:           "medium",
 				SupportsConcurrency: true,
 			},
 			{
@@ -475,12 +475,12 @@ type MCPConfig struct {
 
 // SessionConfig holds configuration for session-scoped tools (memory, custom, message, subagent, blob).
 type SessionConfig struct {
-	MemoryEnabled    bool
-	MemoryTools      []Tool
-	CustomTools      []Tool
-	OutboundRouter   *outbound.Router
-	SubAgentService  *subagenttool.Service
-	BlobReader       biz.ToolResultBlobReader
+	MemoryEnabled   bool
+	MemoryTools     []Tool
+	CustomTools     []Tool
+	OutboundRouter  *outbound.Router
+	SubAgentService *subagenttool.Service
+	BlobReader      biz.ToolResultBlobReader
 }
 
 // AssemblyConfig holds all configuration for tool assembly.

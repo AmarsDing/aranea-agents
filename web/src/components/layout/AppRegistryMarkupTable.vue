@@ -6,7 +6,7 @@
           v-for="col in normalizedColumns"
           :key="String(col.name)"
           :class="cellAlignClass(col.align)"
-          :style="col.headerStyle"
+          :style="typeof col.headerStyle === 'string' ? col.headerStyle : undefined"
         >
           {{ col.label }}
         </th>
@@ -18,7 +18,7 @@
           v-for="col in normalizedColumns"
           :key="String(col.name)"
           :class="cellAlignClass(col.align)"
-          :style="col.style"
+          :style="typeof col.style === 'string' ? col.style : undefined"
         >
           <slot :name="`cell-${col.name}`" :row="row" :col="col" :value="cellValue(row, col.field)">
             {{ cellValue(row, col.field) }}

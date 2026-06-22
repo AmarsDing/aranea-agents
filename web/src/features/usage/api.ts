@@ -238,8 +238,8 @@ function queryToKratos(q: ModelUsageQuery): KUsageQuery {
     status: q.status,
     limit: q.limit,
     granularity: q.granularity,
-    teamId: q.team_id?.trim() ?? '',
-    usageKind: q.usage_kind?.trim() ?? '',
+    teamId: q.team_id?.trim() || undefined,
+    usageKind: q.usage_kind?.trim() || undefined,
   };
   if (q.team_id?.trim()) out.teamId = q.team_id.trim();
   if (q.usage_kind?.trim()) out.usageKind = q.usage_kind.trim();

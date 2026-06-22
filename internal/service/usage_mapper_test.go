@@ -76,21 +76,21 @@ func TestFromProtoTokenUsageEvent(t *testing.T) {
 
 	t.Run("full_mapping", func(t *testing.T) {
 		in := &v1.TokenUsageEvent{
-			Id:                   "evt-1",
-			OccurredAt:           "2026-01-01T00:00:00Z",
-			ProviderCode:         "openai",
-			ModelApiId:           "gpt-4o",
-			CallCount:            5,
-			InputTokens:          1000,
-			OutputTokens:         500,
-			TotalTokens:          1500,
-			InputCostMicroUsd:    100,
-			OutputCostMicroUsd:   50,
-			TotalCostMicroUsd:    150,
-			Status:               "success",
-			LatencyMs:            2000,
-			TimeToFirstTokenMs:   300,
-			TokensPerSecond:      25.5,
+			Id:                 "evt-1",
+			OccurredAt:         "2026-01-01T00:00:00Z",
+			ProviderCode:       "openai",
+			ModelApiId:         "gpt-4o",
+			CallCount:          5,
+			InputTokens:        1000,
+			OutputTokens:       500,
+			TotalTokens:        1500,
+			InputCostMicroUsd:  100,
+			OutputCostMicroUsd: 50,
+			TotalCostMicroUsd:  150,
+			Status:             "success",
+			LatencyMs:          2000,
+			TimeToFirstTokenMs: 300,
+			TokensPerSecond:    25.5,
 		}
 		got := fromProtoTokenUsageEvent(in)
 		if got.ID != "evt-1" {
@@ -237,16 +237,16 @@ func TestToProtoUsageSummary(t *testing.T) {
 
 func TestToProtoUsageTrendPoint(t *testing.T) {
 	in := biz.UsageTrendPoint{
-		DateKey:           "2026-01-01",
-		CallCount:         50,
-		InputTokens:       20000,
-		OutputTokens:      10000,
-		TotalTokens:       30000,
-		TotalCostMicroUSD: 2000,
-		SuccessCount:      48,
-		FailedCount:       2,
-		CancelledCount:    0,
-		AvgLatencyMS:      1200.0,
+		DateKey:            "2026-01-01",
+		CallCount:          50,
+		InputTokens:        20000,
+		OutputTokens:       10000,
+		TotalTokens:        30000,
+		TotalCostMicroUSD:  2000,
+		SuccessCount:       48,
+		FailedCount:        2,
+		CancelledCount:     0,
+		AvgLatencyMS:       1200.0,
 		AvgTokensPerSecond: 25.0,
 	}
 	got := toProtoUsageTrendPoint(in)
@@ -263,19 +263,19 @@ func TestToProtoUsageTrendPoint(t *testing.T) {
 
 func TestToProtoUsageBreakdownRow(t *testing.T) {
 	in := biz.UsageBreakdownRow{
-		ProviderCode:      "openai",
-		ModelAPIID:        "gpt-4o",
-		ModelDisplayName:  "GPT-4o",
-		AgentID:           "agent-1",
-		AgentKey:          "helper",
-		CallCount:         200,
-		InputTokens:       80000,
-		OutputTokens:      40000,
-		TotalTokens:       120000,
-		TotalCostMicroUSD: 10000,
-		AvgLatencyMS:      1800.0,
+		ProviderCode:       "openai",
+		ModelAPIID:         "gpt-4o",
+		ModelDisplayName:   "GPT-4o",
+		AgentID:            "agent-1",
+		AgentKey:           "helper",
+		CallCount:          200,
+		InputTokens:        80000,
+		OutputTokens:       40000,
+		TotalTokens:        120000,
+		TotalCostMicroUSD:  10000,
+		AvgLatencyMS:       1800.0,
 		AvgTokensPerSecond: 22.5,
-		SuccessRate:       0.95,
+		SuccessRate:        0.95,
 	}
 	got := toProtoUsageBreakdownRow(in)
 	if got.ProviderCode != "openai" {
@@ -297,20 +297,20 @@ func TestToProtoUsageBreakdownRow(t *testing.T) {
 
 func TestToProtoTokenUsageEvent(t *testing.T) {
 	in := biz.TokenUsageEvent{
-		ID:                   "evt-1",
-		OccurredAt:           "2026-01-01T00:00:00Z",
-		ProviderCode:         "openai",
-		ModelAPIID:           "gpt-4o",
-		CallCount:            3,
-		InputTokens:          500,
-		OutputTokens:         250,
-		TotalTokens:          750,
-		InputCostMicroUSD:    50,
-		OutputCostMicroUSD:   25,
-		TotalCostMicroUSD:    75,
-		Status:               "success",
-		LatencyMS:            1500,
-		TokensPerSecond:      20.0,
+		ID:                 "evt-1",
+		OccurredAt:         "2026-01-01T00:00:00Z",
+		ProviderCode:       "openai",
+		ModelAPIID:         "gpt-4o",
+		CallCount:          3,
+		InputTokens:        500,
+		OutputTokens:       250,
+		TotalTokens:        750,
+		InputCostMicroUSD:  50,
+		OutputCostMicroUSD: 25,
+		TotalCostMicroUSD:  75,
+		Status:             "success",
+		LatencyMS:          1500,
+		TokensPerSecond:    20.0,
 	}
 	got := toProtoTokenUsageEvent(in)
 	if got.Id != "evt-1" {
@@ -329,10 +329,10 @@ func TestToProtoTokenUsageEvent(t *testing.T) {
 
 func TestToProtoQuotaDashboard(t *testing.T) {
 	in := biz.QuotaDashboard{
-		ConfiguredCount:   5,
-		TotalCapMicroUSD:  5000000,
+		ConfiguredCount:    5,
+		TotalCapMicroUSD:   5000000,
 		TotalSpentMicroUSD: 2000000,
-		MaxUtilization:    0.85,
+		MaxUtilization:     0.85,
 	}
 	got := toProtoQuotaDashboard(in)
 	if got.ConfiguredCount != 5 {
@@ -360,16 +360,16 @@ func TestToProtoUsageModelInsights(t *testing.T) {
 	t.Run("multiple", func(t *testing.T) {
 		items := []biz.UsageModelInsight{
 			{
-				ProviderCode:      "openai",
-				ModelAPIID:        "gpt-4o",
-				ModelDisplayName:  "GPT-4o",
-				CallCount:         100,
-				TotalTokens:       50000,
-				TotalCostMicroUSD: 3000,
-				AvgLatencyMS:      1200.0,
+				ProviderCode:       "openai",
+				ModelAPIID:         "gpt-4o",
+				ModelDisplayName:   "GPT-4o",
+				CallCount:          100,
+				TotalTokens:        50000,
+				TotalCostMicroUSD:  3000,
+				AvgLatencyMS:       1200.0,
 				AvgTokensPerSecond: 28.0,
-				SuccessRate:       0.97,
-				Flags:             []string{"high_cost"},
+				SuccessRate:        0.97,
+				Flags:              []string{"high_cost"},
 			},
 			{
 				ProviderCode:      "anthropic",

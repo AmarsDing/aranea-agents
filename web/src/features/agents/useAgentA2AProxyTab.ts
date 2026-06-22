@@ -51,7 +51,7 @@ export function useAgentA2AProxyTab(
   }
 
   function buildAuthConfigJson(): string | undefined {
-    return buildA2AAuthJSON(proxyForm.auth_type, authSecret.value, mtls);
+    return buildA2AAuthJSON(proxyForm.auth_type ?? 'none', authSecret.value, mtls);
   }
 
   watch(

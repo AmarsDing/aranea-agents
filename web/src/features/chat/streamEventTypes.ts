@@ -147,4 +147,11 @@ export interface NoticeEvent extends StreamEventBase {
 // ── Stream Event Union ──
 
 /** 统一事件流类型 */
-export type StreamEvent = ThinkingEvent | ActionEvent | ReplyEvent | ErrorEvent | PlanEvent | ConfirmEvent | NoticeEvent;
+export type StreamEvent =
+  | ThinkingEvent
+  | ActionEvent
+  | ReplyEvent
+  | ErrorEvent
+  | PlanEvent
+  | ConfirmEvent
+  | NoticeEvent;

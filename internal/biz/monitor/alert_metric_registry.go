@@ -67,7 +67,7 @@ func NewRunnerErrorRateMetric(repo EventRepo, rb *MetricRingBuffer) *RunnerError
 	return &RunnerErrorRateMetric{repo: repo, rb: rb}
 }
 
-func (m *RunnerErrorRateMetric) Key() string        { return "runner.error_rate" }
+func (m *RunnerErrorRateMetric) Key() string         { return "runner.error_rate" }
 func (m *RunnerErrorRateMetric) Description() string { return "Runner error rate within time window" }
 func (m *RunnerErrorRateMetric) Evaluate(ctx context.Context, window time.Duration) (float64, error) {
 	windowMin := int(math.Ceil(window.Minutes()))
@@ -104,8 +104,10 @@ func NewSkillFilesystemMissingMetric(fsHealth FilesystemHealthReader) *SkillFile
 	return &SkillFilesystemMissingMetric{fsHealth: fsHealth}
 }
 
-func (m *SkillFilesystemMissingMetric) Key() string        { return "skill.filesystem_missing_count" }
-func (m *SkillFilesystemMissingMetric) Description() string { return "Number of skills with missing filesystem" }
+func (m *SkillFilesystemMissingMetric) Key() string { return "skill.filesystem_missing_count" }
+func (m *SkillFilesystemMissingMetric) Description() string {
+	return "Number of skills with missing filesystem"
+}
 func (m *SkillFilesystemMissingMetric) Evaluate(ctx context.Context, _ time.Duration) (float64, error) {
 	if m.fsHealth == nil {
 		return 0, nil

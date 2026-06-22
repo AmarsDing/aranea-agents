@@ -1,0 +1,20 @@
+[
+  {
+    "path": "/agents",
+    "url": "http://localhost:9001/agents",
+    "loadOk": true,
+    "error": null,
+    "logs": [],
+    "network": [],
+    "screenshot": "F:\\aranea-agents\\.dogfood-output\\target-screenshots\\_agents_check.png"
+  },
+  {
+    "path": "/channels",
+    "url": "http://localhost:9001/channels",
+    "loadOk": true,
+    "error": null,
+    "logs": [],
+    "network": [],
+    "screenshot": "F:\\aranea-agents\\.dogfood-output\\target-screenshots\\_channels_check.png"
+  }
+]

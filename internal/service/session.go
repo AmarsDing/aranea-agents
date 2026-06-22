@@ -19,13 +19,13 @@ import (
 type SessionService struct {
 	v1.UnimplementedSessionServiceServer
 
-	uc               *biz.SessionUsecase
-	mon              *biz.MonitorUsecase
-	runs             *biz.SessionRunUsecase
-	compress         biz.ManualCompressor
-	compressStatus   biz.CompressStatusReader
-	metricsCache     biz.SessionMetricsReader
-	activityReader   biz.ActivityReader
+	uc             *biz.SessionUsecase
+	mon            *biz.MonitorUsecase
+	runs           *biz.SessionRunUsecase
+	compress       biz.ManualCompressor
+	compressStatus biz.CompressStatusReader
+	metricsCache   biz.SessionMetricsReader
+	activityReader biz.ActivityReader
 }
 
 func NewSessionService(
@@ -440,7 +440,7 @@ func toProtoSessionTurn(t biz.SessionTurn) *v1.SessionTurn {
 		Id:                  t.ID,
 		SessionId:           t.SessionID,
 		RunId:               t.RunID,
-		TurnNumber:         int32(t.TurnNumber),
+		TurnNumber:          int32(t.TurnNumber),
 		UserMessageId:       t.UserMessageID,
 		AssistantMessageId:  t.AssistantMessageID,
 		OwnerType:           t.OwnerType,
@@ -494,9 +494,9 @@ func (s *SessionService) CompactSession(ctx context.Context, req *v1.CompactSess
 		return &v1.CompactSessionResponse{Compacted: false}, nil
 	}
 	return &v1.CompactSessionResponse{
-		Compacted:            true,
-		FromTurn:             int32(result.FromTurn),
-		ToTurn:               int32(result.ToTurn),
+		Compacted:             true,
+		FromTurn:              int32(result.FromTurn),
+		ToTurn:                int32(result.ToTurn),
 		EstimatedTokensBefore: int32(result.EstimatedTokensBefore),
 		EstimatedTokensAfter:  int32(result.EstimatedTokensAfter),
 		CompressionLevel:      result.CompressionLevel,

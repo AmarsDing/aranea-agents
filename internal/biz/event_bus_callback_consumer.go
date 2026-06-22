@@ -23,10 +23,10 @@ func newCallbackConsumer(bus contract.Bus, webhooks *WebhookDispatcher, logger S
 
 func terminalRunStatuses() map[string]struct{} {
 	return map[string]struct{}{
-		"completed":  {},
-		"failed":     {},
-		"cancelled":  {},
-		"canceled":   {},
+		"completed": {},
+		"failed":    {},
+		"cancelled": {},
+		"canceled":  {},
 	}
 }
 

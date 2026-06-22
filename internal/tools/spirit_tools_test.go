@@ -16,10 +16,10 @@ import (
 // acceptance criterion from the integration plan.
 func TestBatchExecuteSpiritTools_ParallelFasterThanSerial(t *testing.T) {
 	const (
-		numCalls     = 5
-		callDelay    = 80 * time.Millisecond
-		serialTotal  = numCalls * callDelay // 400ms
-		parallelMax  = serialTotal * 40 / 100 // 160ms (40% threshold)
+		numCalls    = 5
+		callDelay   = 80 * time.Millisecond
+		serialTotal = numCalls * callDelay   // 400ms
+		parallelMax = serialTotal * 40 / 100 // 160ms (40% threshold)
 	)
 
 	var active int32

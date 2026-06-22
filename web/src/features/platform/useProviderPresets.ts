@@ -31,8 +31,8 @@ export function useProviderPresets(deps: {
     deps.applyModelPresetValues(preset, false);
   }
 
-  function setCustomModelValue(value: string, done: (value: string, mode?: 'add' | 'add-unique' | 'toggle') => void) {
-    done(value, 'add-unique');
+  function setCustomModelValue(value: string, done?: (value: string, mode?: 'add' | 'add-unique' | 'toggle') => void) {
+    done?.(value, 'add-unique');
     deps.providerForm.model_api_id = value;
   }
 

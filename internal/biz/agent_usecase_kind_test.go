@@ -33,8 +33,8 @@ func (s *stubAgentRepo) GetAgentByAgentKey(context.Context, string) (Agent, erro
 	return Agent{}, ErrNotFound
 }
 func (s *stubAgentRepo) CreateAgent(context.Context, Agent) (Agent, error) { return Agent{}, nil }
-func (s *stubAgentRepo) UpdateAgent(context.Context, Agent) (Agent, error)   { return Agent{}, nil }
-func (s *stubAgentRepo) DeleteAgent(context.Context, string) error           { return nil }
+func (s *stubAgentRepo) UpdateAgent(context.Context, Agent) (Agent, error) { return Agent{}, nil }
+func (s *stubAgentRepo) DeleteAgent(context.Context, string) error         { return nil }
 func (s *stubAgentRepo) GetAgentRuntimeSettings(context.Context, string) (AgentRuntimeSettings, error) {
 	return AgentRuntimeSettings{}, nil
 }
@@ -67,7 +67,9 @@ func (s *stubAgentRepo) CreateAgentAtomic(_ context.Context, a Agent, _ []AgentP
 func (s *stubAgentRepo) UpdateAgentAtomic(_ context.Context, a Agent, _ []AgentPromptFile, _ *AgentRuntimeSettings) (Agent, error) {
 	return a, nil
 }
-func (s *stubAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) { return 0, nil }
+func (s *stubAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) {
+	return 0, nil
+}
 func (s *stubAgentRepo) ToggleFavorite(_ context.Context, id string) (Agent, error) {
 	return Agent{ID: id}, nil
 }

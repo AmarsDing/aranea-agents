@@ -12,17 +12,19 @@ type stubTeamRepo struct {
 	team biz.Team
 }
 
-func (s stubTeamRepo) ListTeams(context.Context) ([]biz.Team, error)                    { return nil, nil }
-func (s stubTeamRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) { return nil, nil }
+func (s stubTeamRepo) ListTeams(context.Context) ([]biz.Team, error) { return nil, nil }
+func (s stubTeamRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 func (s stubTeamRepo) GetTeamByID(_ context.Context, id string) (biz.Team, error) {
 	if id != s.team.ID {
 		return biz.Team{}, nil
 	}
 	return s.team, nil
 }
-func (s stubTeamRepo) CreateTeam(context.Context, biz.Team) (biz.Team, error) { return biz.Team{}, nil }
-func (s stubTeamRepo) UpdateTeam(context.Context, biz.Team) (biz.Team, error) { return biz.Team{}, nil }
-func (s stubTeamRepo) DeleteTeam(context.Context, string) error               { return nil }
+func (s stubTeamRepo) CreateTeam(context.Context, biz.Team) (biz.Team, error)       { return biz.Team{}, nil }
+func (s stubTeamRepo) UpdateTeam(context.Context, biz.Team) (biz.Team, error)       { return biz.Team{}, nil }
+func (s stubTeamRepo) DeleteTeam(context.Context, string) error                     { return nil }
 func (s stubTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
 func (s stubTeamRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
 	return nil, nil
@@ -137,12 +139,29 @@ func (s channelTestAgentRepo) ToggleFavorite(_ context.Context, id string) (biz.
 func (s channelTestAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }
-func (s channelTestAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) { return 0, nil }
+func (s channelTestAgentRepo) ClearPositionByDepartment(context.Context, string) (int, error) {
+	return 0, nil
+}
 
 type stubGraphExecutor struct {
 	lastGraphID string
 	lastSession string
 	lastCfg     biz.GraphBuildConfig
+}
+
+type stubTeamCompiler struct {
+	agentRepo biz.AgentRepository
+}
+
+func (c *stubTeamCompiler) Compile(ctx context.Context, teamID string) (biz.GraphBuildConfig, error) {
+	ag, _ := c.agentRepo.GetAgentByID(ctx, "agent-1")
+	return biz.GraphBuildConfig{
+		Nodes: []biz.NodeDef{{ID: "agent-1", AgentName: ag.AgentKey}},
+	}, nil
+}
+
+func (c *stubTeamCompiler) CompileFromDefinition(_ biz.TeamDefinition, _ func(string) string) (biz.GraphBuildConfig, error) {
+	return biz.GraphBuildConfig{}, nil
 }
 
 func (s *stubGraphExecutor) ExecuteGraphByID(_ context.Context, graphID, _ string, _ map[string]any) (string, error) {
@@ -160,20 +179,22 @@ func (s *stubGraphExecutor) ExecuteGraphBuildConfig(_ context.Context, graphID, 
 func TestExecuteAsyncGraphTarget_teamGraph(t *testing.T) {
 	defJSON := `{"version":1,"mode":"sequential","linked_graph_id":"linked-g-1","members":[{"agent_id":"agent-1","sort_order":1}]}`
 	exec := &stubGraphExecutor{}
+	agentRepo := channelTestAgentRepo{key: "worker-key"}
 	h := &ChannelIngress{
-		channels: biz.NewChannelUsecase(nil, nil, nil, nil, nil, channelTestAgentRepo{key: "worker-key"}, stubTeamRepo{team: biz.Team{
+		channels: biz.NewChannelUsecase(nil, nil, nil, nil, nil, agentRepo, stubTeamRepo{team: biz.Team{
 			ID:             "team-42",
 			DefinitionJSON: defJSON,
 		}}, nil, nil),
-		graphs: exec,
-		lg:     loggateway.NewNoop(),
+		graphs:       exec,
+		teamCompiler: &stubTeamCompiler{agentRepo: agentRepo},
+		lg:           loggateway.NewNoop(),
 	}
 	target := biz.ChannelAsyncGraphTarget{TargetType: "team_graph", TeamID: "team-42"}
 	tt, gid, asyncID, err := h.executeAsyncGraphTarget(context.Background(), target, "sess-99", map[string]any{"input": "hi"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tt != "team_graph" || gid != "linked-g-1" || asyncID != "exec-team-1" {
+	if tt != "team_graph" || gid != "team-team-42" || asyncID != "exec-team-1" {
 		t.Fatalf("got type=%q graph=%q async=%q", tt, gid, asyncID)
 	}
 	if exec.lastSession != "sess-99" {
@@ -190,13 +211,15 @@ func TestExecuteAsyncGraphTarget_teamGraph(t *testing.T) {
 func TestExecuteAsyncGraphTarget_teamGraphFallbackGraphID(t *testing.T) {
 	defJSON := `{"version":1,"mode":"sequential","members":[{"agent_id":"agent-1","sort_order":1}]}`
 	exec := &stubGraphExecutor{}
+	agentRepo := channelTestAgentRepo{key: "k1"}
 	h := &ChannelIngress{
-		channels: biz.NewChannelUsecase(nil, nil, nil, nil, nil, channelTestAgentRepo{key: "k1"}, stubTeamRepo{team: biz.Team{
+		channels: biz.NewChannelUsecase(nil, nil, nil, nil, nil, agentRepo, stubTeamRepo{team: biz.Team{
 			ID:             "team-7",
 			DefinitionJSON: defJSON,
 		}}, nil, nil),
-		graphs: exec,
-		lg:     loggateway.NewNoop(),
+		graphs:       exec,
+		teamCompiler: &stubTeamCompiler{agentRepo: agentRepo},
+		lg:           loggateway.NewNoop(),
 	}
 	target := biz.ChannelAsyncGraphTarget{TargetType: "team_graph", TeamID: "team-7"}
 	_, gid, _, err := h.executeAsyncGraphTarget(context.Background(), target, "sess-1", nil)

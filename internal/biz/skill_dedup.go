@@ -23,11 +23,11 @@ const (
 type SkillDuplicateGroup struct {
 	GroupID        string
 	Skills         []SkillSummary
-	OverlapType    string            // "name_similarity" / "description_similarity" / "invocation_overlap"
-	OverlapScore   float64           // 0-1, higher = more similar
-	Dimensions     []DimensionScore  // 维度明细
-	ConflictRisk   string            // "low" / "medium" / "high"
-	Recommendation string            // "keep_separate" / "suggest_refine" / "block_duplicate"
+	OverlapType    string           // "name_similarity" / "description_similarity" / "invocation_overlap"
+	OverlapScore   float64          // 0-1, higher = more similar
+	Dimensions     []DimensionScore // 维度明细
+	ConflictRisk   string           // "low" / "medium" / "high"
+	Recommendation string           // "keep_separate" / "suggest_refine" / "block_duplicate"
 }
 
 // SkillSummary is a lightweight skill representation for dedup comparison.
@@ -165,11 +165,11 @@ func (uc *SkillDedupUsecase) DetectDuplicateGroups(ctx context.Context) ([]Skill
 
 	// Track overlap info per group root — aggregate all overlap types.
 	type groupMeta struct {
-		overlapTypes  map[string]bool
-		bestScore     float64
-		bestDims      []DimensionScore
-		bestRisk      string
-		bestRec       string
+		overlapTypes map[string]bool
+		bestScore    float64
+		bestDims     []DimensionScore
+		bestRisk     string
+		bestRec      string
 	}
 	groupInfo := make(map[int]*groupMeta)
 

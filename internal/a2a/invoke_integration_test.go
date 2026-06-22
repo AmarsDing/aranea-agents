@@ -30,9 +30,9 @@ func TestInvokeIntegration_LocalChatCapability(t *testing.T) {
 	repo := &invokeIntegrationRepo{
 		memA2ARepo: memA2ARepo{cards: map[string]biz.A2AAgentCard{
 			"agent-a": {
-				AgentID:    "agent-a",
-				Enabled:    true,
-				Workspace:  "ws-1",
+				AgentID:      "agent-a",
+				Enabled:      true,
+				Workspace:    "ws-1",
 				Capabilities: []biz.A2ACapability{{Name: "chat"}},
 			},
 		}},

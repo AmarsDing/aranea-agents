@@ -762,7 +762,10 @@ func (o *ChatOrchestrator) publishAwaitResumed(sessionID, runID string) {
 
 // sessionAwaitingUser delegates to the awaitCoord sub-manager.
 func (o *ChatOrchestrator) sessionAwaitingUser(ctx context.Context, sessionID string) (persistedRunStatus, bool) {
-	return o.awaitCoord().SessionAwaitingUser(ctx, sessionID)
+	if coord := o.awaitCoord(); coord != nil {
+		return coord.SessionAwaitingUser(ctx, sessionID)
+	}
+	return persistedRunStatus{}, false
 }
 
 // canResumeAwait delegates to the awaitCoord sub-manager.

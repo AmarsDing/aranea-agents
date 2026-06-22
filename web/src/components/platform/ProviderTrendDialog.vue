@@ -153,7 +153,7 @@ function buildChartOption(): EChartsCoreOption {
 
   return baseChartOption({
     animationDuration: 480,
-    grid: { left: 8, right: 12, top: 28, bottom: 8, containLabel: true },
+    grid: { left: 8, right: 12, top: 28, bottom: 8 },
     tooltip: {
       trigger: 'axis',
       backgroundColor: glassElevated,

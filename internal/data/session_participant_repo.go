@@ -155,14 +155,14 @@ func (r *sessionParticipantRepo) SyncFromSession(ctx context.Context, sess bizse
 				SetContextUsedRatio(0).
 				SetMetadataJSON("{}").
 				SetCreatedAt(now).
-			SetUpdatedAt(now).
-			Save(txCtx)
-		if err != nil {
-			return entErrToBizErr(err, "SESSION_PARTICIPANT")
+				SetUpdatedAt(now).
+				Save(txCtx)
+			if err != nil {
+				return entErrToBizErr(err, "SESSION_PARTICIPANT")
+			}
 		}
-	}
-	return nil
-})
+		return nil
+	})
 }
 
 func participantFromMessage(msg bizsess.ChatMessage, sess bizsess.Session, lg loggateway.Logger) (pType, pID, name, role string) {

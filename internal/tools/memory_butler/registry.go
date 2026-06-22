@@ -11,13 +11,13 @@ import (
 
 // Deps holds the external dependencies for all memory butler tools.
 type Deps struct {
-	Analytics     *biz.ExperienceAnalyticsUsecase
-	MemoryAdmin   *biz.MemoryAdminUsecase
-	Embedder      skill.SkillEmbedder
+	Analytics   *biz.ExperienceAnalyticsUsecase
+	MemoryAdmin *biz.MemoryAdminUsecase
+	Embedder    skill.SkillEmbedder
 	// EventBus is reserved for future event-driven memory operations.
-	EventBus      contract.Bus
-	Agents        biz.AgentRuntimeSettingsRepo
-	LG            loggateway.Logger
+	EventBus contract.Bus
+	Agents   biz.AgentRuntimeSettingsRepo
+	LG       loggateway.Logger
 }
 
 // RegisterAll creates and returns all memory butler tools.

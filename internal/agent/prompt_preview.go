@@ -19,12 +19,12 @@ type PreviewSection struct {
 
 // PreviewReport is the structured prompt preview for Agent settings.
 type PreviewReport struct {
-	Instruction          string
-	Summary              string
-	Sections             []PreviewSection
-	StaticTotalTokens    int
-	RuntimeOverlayEst    int
-	RuntimeNote          string
+	Instruction       string
+	Summary           string
+	Sections          []PreviewSection
+	StaticTotalTokens int
+	RuntimeOverlayEst int
+	RuntimeNote       string
 }
 
 // BuildPreviewReport assembles static instruction text and token breakdown for preview API.

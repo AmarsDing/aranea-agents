@@ -15,17 +15,24 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { TodoItem } from '../../features/chat/agentTreeTypes';
-import { computeTodoFingerprint, readLastFingerprint, writeLastFingerprint } from '../../features/chat/composables/todoColumnFingerprint';
+import {
+  computeTodoFingerprint,
+  readLastFingerprint,
+  writeLastFingerprint,
+} from '../../features/chat/composables/todoColumnFingerprint';
 import TodoCard from './TodoCard.vue';
 
-const props = withDefaults(defineProps<{
-  title: string;
-  items: TodoItem[];
-  color?: string;
-  columnKey: string;
-}>(), {
-  color: undefined,
-});
+const props = withDefaults(
+  defineProps<{
+    title: string;
+    items: TodoItem[];
+    color?: string;
+    columnKey: string;
+  }>(),
+  {
+    color: undefined,
+  },
+);
 
 const pulsing = ref(false);
 let pulseTimer: ReturnType<typeof setTimeout> | null = null;
@@ -33,7 +40,10 @@ let pulseTimer: ReturnType<typeof setTimeout> | null = null;
 function triggerPulse(): void {
   pulsing.value = true;
   if (pulseTimer) clearTimeout(pulseTimer);
-  pulseTimer = setTimeout(() => { pulsing.value = false; pulseTimer = null; }, 800);
+  pulseTimer = setTimeout(() => {
+    pulsing.value = false;
+    pulseTimer = null;
+  }, 800);
 }
 
 watch(
@@ -53,7 +63,10 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  if (pulseTimer) { clearTimeout(pulseTimer); pulseTimer = null; }
+  if (pulseTimer) {
+    clearTimeout(pulseTimer);
+    pulseTimer = null;
+  }
 });
 </script>
 

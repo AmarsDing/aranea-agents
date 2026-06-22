@@ -1,0 +1,9 @@
+{
+  "network": [],
+  "consoleLogs": [
+    {
+      "type": "warning",
+      "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: WebSocket is closed before the connection is established."
+    }
+  ]
+}

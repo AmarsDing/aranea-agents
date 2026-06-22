@@ -165,6 +165,7 @@ func (r *sessionRepo) queryMaxTurnNumber(ctx context.Context, c *ent.Client, ses
 //	running / completing    �?user         �?new turn (status=running)
 //	completed / failed /    �?any          �?new turn (status=running)
 //	cancelled               �?             �?//	no existing turn        �?any          �?new turn (status=running)
+//
 // AF-correlation: 当 preferredTurnID 非空时，新创建的 SessionTurn 使用该 ID，
 // 使 message.turn_id 与 activity.turnId（= userMsg.ID）一致，前端
 // useConversationTimeline 才能将 Activity 记录关联到对应 UserTurn。
@@ -190,8 +191,8 @@ func (r *sessionRepo) assignTurnForNewMessage(ctx context.Context, c *ent.Client
 				Order(message.BySeqInTurn(entsql.OrderDesc())).
 				First(ctx)
 			if seqErr != nil && !ent.IsNotFound(seqErr) {
-			return "", 0, 0, entErrToBizErr(seqErr, "SESSION_MESSAGE")
-		}
+				return "", 0, 0, entErrToBizErr(seqErr, "SESSION_MESSAGE")
+			}
 			nextSeq := 1
 			if maxSeq != nil {
 				nextSeq = maxSeq.SeqInTurn + 1

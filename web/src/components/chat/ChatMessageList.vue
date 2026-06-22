@@ -41,12 +41,7 @@
       @click="$emit('messages-click', $event)"
     >
       <template #default="{ item, itemIndex, active }">
-        <DynamicScrollerItem
-          :item="item"
-          :active="active"
-          :data-index="itemIndex"
-          :data-turn-id="item.id"
-        >
+        <DynamicScrollerItem :item="item" :active="active" :data-index="itemIndex" :data-turn-id="item.id">
           <ConversationTurn
             :turn="item"
             @confirm="(id: string, approved: boolean) => $emit('confirm', id, approved)"

@@ -11,14 +11,10 @@
  * 2. isFinal：Turn 内最后一个 SayActivity 的 isFinal=true
  */
 
-import { computed, type ComputedRef } from 'vue';
+import { computed, type ComputedRef, type Ref } from 'vue';
 import type { Message } from '../types';
 import type { Envelope } from '../../../realtime/envelope';
-import type {
-  ConversationTurn,
-  AgentWorkProcess,
-  Activity,
-} from '../activityTimelineTypes';
+import type { ConversationTurn, AgentWorkProcess, Activity } from '../activityTimelineTypes';
 import type { ReplyEvent, ThinkingEvent } from '../streamEventTypes';
 import type { ActivityTreeNode } from '../activityTypes';
 import type { AgentBlock, ProgressSection } from '../agentTreeTypes';
@@ -54,9 +50,7 @@ function buildProgressSections(
   userMessage: Message | undefined,
 ): ProgressSection[] {
   if (progressByStep.size === 0) return [];
-  const turnStartTs = userMessage?.created_at
-    ? new Date(userMessage.created_at).getTime()
-    : Date.now();
+  const turnStartTs = userMessage?.created_at ? new Date(userMessage.created_at).getTime() : Date.now();
   const sections: ProgressSection[] = [];
   for (const section of progressByStep.values()) {
     // Clamp startedAt to turn start to avoid progress events appearing before the turn
@@ -103,9 +97,17 @@ export function useConversationTimeline(deps: {
   activityTree?: ComputedRef<readonly ActivityTreeNode[]>;
   activityRawRecords?: ComputedRef<readonly import('../activityTypes').Activity[]>;
 }) {
+  // Per-turn memoization: historical turns keep the same object reference as
+  // long as their inputs haven't changed. This avoids DynamicScroller / Vue
+  // diffing the entire list on every streaming delta.
+  const turnCache = new Map<string, { signature: string; turn: ConversationTurn }>();
+
   const conversationTurns = computed((): ConversationTurn[] => {
     const allMessages = deps.messages.value;
-    if (allMessages.length === 0) return [];
+    if (allMessages.length === 0) {
+      turnCache.clear();
+      return [];
+    }
 
     // Merge execution_progress envelopes into ProgressSection map
     const progressByStep = deps.progressEnvelopes?.value
@@ -114,23 +116,64 @@ export function useConversationTimeline(deps: {
 
     const plannerKind = deps.plannerKind?.value ?? '';
 
-    // T7.3a + 修复: Activity-First 是主路径，但不能因无 Activity 数据而完全隐藏用户消息。
-    // 修复场景：用户发送消息后，messageStore 已有 pending-user 占位消息，但 Activity 数据
-    // 尚未到达（WS 未连接/后端未处理）。原逻辑返回空数组导致 UI 完全无响应。
-    // 新逻辑：无 Activity 数据时仍构建 turn，agentWork.status 根据消息状态设为 'running'
-    // （显示"正在思考…"）或 'failed'（显示失败）。Pre-AF 会话由 T6.3 回填保证有 AF 数据；
-    // AF API 失败时由 AF-GAP-05 显示错误提示。
     const afActivities = deps.activityTimelineActivities?.value;
     const afTree = deps.activityTree?.value;
     const afRawRecords = deps.activityRawRecords?.value;
 
-    return buildAllConversationTurnsFromActivities(allMessages, afRawRecords ?? [], afActivities ?? [], {
-      agentKey: deps.activityAgentKey?.value || '',
-      taskContent: deps.activityTaskContent?.value || null,
-      activityTree: afTree ? [...afTree] : [],
-      progressByStep,
-      plannerKind,
-    });
+    const ensured = allMessages.map(ensureOrigin);
+    const userTurns = splitByUserMessages(ensured);
+    if (userTurns.length === 0) return [];
+
+    const activitiesByTurn = groupRawRecordsByTurn(afRawRecords ?? []);
+
+    const agentKey = deps.activityAgentKey?.value || '';
+    const taskContent = deps.activityTaskContent?.value || null;
+    const activityTree = afTree ? [...afTree] : [];
+    const activityTreeSig = computeActivityTreeSignature(activityTree);
+
+    const result: ConversationTurn[] = [];
+    const seenTurnKeys = new Set<string>();
+
+    for (const turn of userTurns) {
+      const userMessage = turn.userMessage || turn.messages.find((m) => m.role === 'user');
+      const turnId = userMessage?.turn_id || turn.messages.find((m) => m.role === 'assistant')?.turn_id || '';
+      const turnActivities = turnId ? activitiesByTurn.get(turnId) : undefined;
+
+      const cacheKey = turnId || `turn-${userMessage?.id || 'no-user'}`;
+      const signature = buildTurnSignature(turn, turnActivities ?? [], {
+        agentKey,
+        taskContent,
+        activityTreeSig,
+        progressByStep,
+        plannerKind,
+      });
+
+      const cached = turnCache.get(cacheKey);
+      if (cached && cached.signature === signature) {
+        result.push(cached.turn);
+        seenTurnKeys.add(cacheKey);
+        continue;
+      }
+
+      const built = buildSingleTurnFromActivities(turn, turnActivities ?? [], {
+        agentKey,
+        taskContent,
+        activityTree,
+        progressByStep,
+      });
+      turnCache.set(cacheKey, { signature, turn: built });
+      result.push(built);
+      seenTurnKeys.add(cacheKey);
+    }
+
+    // Remove cache entries for turns that no longer exist (e.g. session switch).
+    for (const key of turnCache.keys()) {
+      if (!seenTurnKeys.has(key)) {
+        turnCache.delete(key);
+      }
+    }
+
+    return result;
   });
 
   return {
@@ -140,13 +183,72 @@ export function useConversationTimeline(deps: {
   };
 }
 
+function groupRawRecordsByTurn(
+  rawRecords: readonly import('../activityTypes').Activity[],
+): Map<string, import('../activityTypes').Activity[]> {
+  const map = new Map<string, import('../activityTypes').Activity[]>();
+  for (const record of rawRecords) {
+    const tid = record.turnId;
+    if (!tid) continue;
+    const group = map.get(tid);
+    if (group) group.push(record);
+    else map.set(tid, [record]);
+  }
+  return map;
+}
+
+function buildTurnSignature(
+  turn: UserTurn,
+  rawRecords: readonly import('../activityTypes').Activity[],
+  opts: {
+    agentKey: string;
+    taskContent: string | null;
+    activityTreeSig: string;
+    progressByStep: Map<string, ProgressSection>;
+    plannerKind: string;
+  },
+): string {
+  const parts: string[] = [];
+  parts.push(`u=${turn.userMessage?.id ?? 'n'}`);
+  for (const m of turn.messages) {
+    // Include content length and status; full content comparison is avoided
+    // to keep signatures compact, while still catching meaningful changes.
+    parts.push(`m=${m.id}:${m.status}:${m.turn_id}:${m.content_markdown.length}`);
+  }
+  parts.push(`r=${rawRecords.map((r) => `${r.id}:${r.status}:${r.kind}:${(r.content ?? '').length}`).join(',')}`);
+  parts.push(`ak=${opts.agentKey}`);
+  parts.push(`tc=${opts.taskContent ?? ''}`);
+  parts.push(`pl=${opts.plannerKind}`);
+  parts.push(`ps=${opts.progressByStep.size}`);
+  parts.push(`at=${opts.activityTreeSig}`);
+  return parts.join('|');
+}
+
+function computeActivityTreeSignature(tree: ActivityTreeNode[]): string {
+  const parts: string[] = [];
+  function walk(nodes: ActivityTreeNode[]) {
+    for (const node of nodes) {
+      parts.push(`${node.id}:${node.status}:${node.kind}`);
+      walk(node.children);
+    }
+  }
+  walk(tree);
+  return parts.join(',');
+}
+
 // ── AF-FE-14: Build ALL ConversationTurns from raw Activity records ──
 
 function buildAllConversationTurnsFromActivities(
   messages: Message[],
   rawRecords: readonly import('../activityTypes').Activity[],
   timelineActivities: readonly Activity[],
-  opts: { agentKey: string; taskContent: string | null; activityTree: ActivityTreeNode[]; progressByStep: Map<string, ProgressSection>; plannerKind: string },
+  opts: {
+    agentKey: string;
+    taskContent: string | null;
+    activityTree: ActivityTreeNode[];
+    progressByStep: Map<string, ProgressSection>;
+    plannerKind: string;
+  },
 ): ConversationTurn[] {
   const ensured = messages.map(ensureOrigin);
   const userTurns = splitByUserMessages(ensured);
@@ -166,9 +268,7 @@ function buildAllConversationTurnsFromActivities(
 
   for (const turn of userTurns) {
     const userMessage = turn.userMessage || turn.messages.find((m) => m.role === 'user');
-    const turnId = userMessage?.turn_id
-      || turn.messages.find((m) => m.role === 'assistant')?.turn_id
-      || '';
+    const turnId = userMessage?.turn_id || turn.messages.find((m) => m.role === 'assistant')?.turn_id || '';
 
     const turnActivities = turnId ? activitiesByTurn.get(turnId) : undefined;
 
@@ -187,7 +287,12 @@ function buildAllConversationTurnsFromActivities(
 function buildSingleTurnFromActivities(
   turn: UserTurn,
   rawRecords: readonly import('../activityTypes').Activity[],
-  opts: { agentKey: string; taskContent: string | null; activityTree: ActivityTreeNode[]; progressByStep: Map<string, ProgressSection> },
+  opts: {
+    agentKey: string;
+    taskContent: string | null;
+    activityTree: ActivityTreeNode[];
+    progressByStep: Map<string, ProgressSection>;
+  },
 ): ConversationTurn {
   const userMessage = turn.userMessage || turn.messages.find((m) => m.role === 'user');
   const firstAssistant = turn.messages.find((m) => m.role === 'assistant' && !isTeamMemberOrigin(m.origin));
@@ -212,7 +317,9 @@ function buildSingleTurnFromActivities(
   const agentIcon = refIcon || resolveAgentIconFromStore(agentKey);
 
   // Determine status from activities
-  const hasRunning = rawRecords.some((a) => a.status === 'running' || a.status === 'tool_running' || a.status === 'tool_blocked');
+  const hasRunning = rawRecords.some(
+    (a) => a.status === 'running' || a.status === 'tool_running' || a.status === 'tool_blocked',
+  );
   const hasFailedAction = rawRecords.some((a) => a.kind === 'action' && a.status === 'failed');
   const hasError = rawRecords.some((a) => a.kind === 'error');
   const rootTaskCompleted = rootTask?.status === 'completed';
@@ -258,7 +365,7 @@ function buildSingleTurnFromActivities(
     teamStatus: null,
     progressSections,
     startedAt: userMessage?.created_at || firstAssistant?.created_at || '',
-    finishedAt: status !== 'running' ? (lastMsg?.created_at || '') : null,
+    finishedAt: status !== 'running' ? lastMsg?.created_at || '' : null,
   };
 
   return {
@@ -286,7 +393,10 @@ function mergeAdjacentThinkActivities(activities: Activity[]): Activity[] {
     if (group.length === 1) {
       result.push(group[0]);
     } else {
-      const mergedContent = group.map((s) => s.content).filter(Boolean).join('\n\n');
+      const mergedContent = group
+        .map((s) => s.content)
+        .filter(Boolean)
+        .join('\n\n');
       const totalDuration = group.reduce((sum, s) => sum + (s.durationMs ?? 0), 0) || null;
       const anyStreaming = group.some((s) => s.streaming);
       result.push({
@@ -339,5 +449,3 @@ function flattenTree(tree: ActivityTreeNode[]): ActivityTreeNode[] {
   }
   return result;
 }
-
-

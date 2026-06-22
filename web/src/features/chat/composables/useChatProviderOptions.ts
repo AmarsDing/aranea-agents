@@ -48,6 +48,7 @@ function chatModelOptionsToPlatform(rows: ChatOption[]): PlatformResource[] {
         agent_id: '',
         provider,
         model,
+        is_system: false,
         config_json: '{}',
         metadata_json: item.metadata_json,
         capabilities,

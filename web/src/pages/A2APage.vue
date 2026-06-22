@@ -62,7 +62,14 @@
             hint="留空列出全部"
           />
           <template #actions>
-            <q-btn outline no-caps color="primary" label="刷新列表" :loading="remote.remoteLoading" @click="remote.loadRemote" />
+            <q-btn
+              outline
+              no-caps
+              color="primary"
+              label="刷新列表"
+              :loading="remote.remoteLoading"
+              @click="remote.loadRemote"
+            />
           </template>
         </AppPageToolbar>
         <div class="a2a-remote-split">
@@ -75,59 +82,62 @@
             @discover="remote.previewRemote"
           />
           <AppRegistryTable
-          row-key="id"
-          :rows="remote.remoteAgents"
-          :columns="remote.remoteColumns"
-          :loading="remote.remoteLoading"
-          hide-pagination
-          :pagination="{ rowsPerPage: 0 }"
-          no-data-label="暂无远程注册"
-        >
-          <template #body-cell-display_name="props">
-            <q-td :props="props">
-              <AppRegistryHoverTip :text="props.row.remote_url" empty-label="暂无 URL">
-                <span class="app-registry-cell-primary ellipsis">{{
-                  props.row.display_name || props.row.remote_url || '—'
-                }}</span>
-              </AppRegistryHoverTip>
-            </q-td>
-          </template>
-          <template #body-cell-enabled="props">
-            <q-td :props="props">
-              <q-badge :color="props.row.enabled ? 'positive' : 'grey'" :label="props.row.enabled ? '启用' : '禁用'" />
-            </q-td>
-          </template>
-          <template #body-cell-auth_type="props">
-            <q-td :props="props">
-              {{ a2aAuthTypeLabel(props.row.auth_type) }}
-            </q-td>
-          </template>
-          <template #body-cell-healthy="props">
-            <q-td :props="props">
-              <q-badge
-                v-if="props.row.last_health_at"
-                :color="props.row.healthy ? 'positive' : 'negative'"
-                :label="props.row.healthy ? '健康' : '异常'"
-              />
-              <span v-else class="text-grey-6">未探测</span>
-            </q-td>
-          </template>
-          <template #body-cell-actions="props">
-            <q-td :props="props">
-              <div class="app-registry-cell-actions">
-                <q-btn
-                  flat
-                  dense
-                  round
-                  color="negative"
-                  icon="delete"
-                  aria-label="删除"
-                  @click="remote.confirmRemoveRemote(props.row.id, props.row.display_name)"
+            row-key="id"
+            :rows="remote.remoteAgents"
+            :columns="remote.remoteColumns"
+            :loading="remote.remoteLoading"
+            hide-pagination
+            :pagination="{ rowsPerPage: 0 }"
+            no-data-label="暂无远程注册"
+          >
+            <template #body-cell-display_name="props">
+              <q-td :props="props">
+                <AppRegistryHoverTip :text="props.row.remote_url" empty-label="暂无 URL">
+                  <span class="app-registry-cell-primary ellipsis">{{
+                    props.row.display_name || props.row.remote_url || '—'
+                  }}</span>
+                </AppRegistryHoverTip>
+              </q-td>
+            </template>
+            <template #body-cell-enabled="props">
+              <q-td :props="props">
+                <q-badge
+                  :color="props.row.enabled ? 'positive' : 'grey'"
+                  :label="props.row.enabled ? '启用' : '禁用'"
                 />
-              </div>
-            </q-td>
-          </template>
-        </AppRegistryTable>
+              </q-td>
+            </template>
+            <template #body-cell-auth_type="props">
+              <q-td :props="props">
+                {{ a2aAuthTypeLabel(props.row.auth_type) }}
+              </q-td>
+            </template>
+            <template #body-cell-healthy="props">
+              <q-td :props="props">
+                <q-badge
+                  v-if="props.row.last_health_at"
+                  :color="props.row.healthy ? 'positive' : 'negative'"
+                  :label="props.row.healthy ? '健康' : '异常'"
+                />
+                <span v-else class="text-grey-6">未探测</span>
+              </q-td>
+            </template>
+            <template #body-cell-actions="props">
+              <q-td :props="props">
+                <div class="app-registry-cell-actions">
+                  <q-btn
+                    flat
+                    dense
+                    round
+                    color="negative"
+                    icon="delete"
+                    aria-label="删除"
+                    @click="remote.confirmRemoveRemote(props.row.id, props.row.display_name)"
+                  />
+                </div>
+              </q-td>
+            </template>
+          </AppRegistryTable>
         </div>
       </q-tab-panel>
       <q-tab-panel name="audit" class="q-pa-none">
@@ -172,10 +182,7 @@ import { useA2APage } from '../features/a2a/useA2APage';
 import { a2aAuthTypeLabel } from '../features/a2a/a2aTableUi';
 import type { RegisterRemoteAgentInput } from '../features/a2a/types';
 
-const {
-  tab, error, loading, reload, runtimeConfig,
-  discover, invoke, audit, remote, gateway,
-} = useA2APage();
+const { tab, error, loading, reload, runtimeConfig, discover, invoke, audit, remote, gateway } = useA2APage();
 
 const remoteAgentPanelRef = ref<InstanceType<typeof A2ARemoteAgentPanel> | null>(null);
 

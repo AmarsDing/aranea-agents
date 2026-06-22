@@ -11,13 +11,13 @@ import (
 )
 
 const (
-	dirName                   = "model-catalog"
-	policyFile                = "policy.json"
-	currentFile               = "current.json"
-	metaFile                  = "current.meta.json"
-	syncLogsFile              = "sync-logs.jsonl"
-	migrationCheckpointFile   = "migration-checkpoint.json"
-	logosDirName              = "logos"
+	dirName                 = "model-catalog"
+	policyFile              = "policy.json"
+	currentFile             = "current.json"
+	metaFile                = "current.meta.json"
+	syncLogsFile            = "sync-logs.jsonl"
+	migrationCheckpointFile = "migration-checkpoint.json"
+	logosDirName            = "logos"
 )
 
 type Store struct {

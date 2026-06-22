@@ -8,10 +8,10 @@ import (
 type ObservationKind string
 
 const (
-	ObservationKindToolCall    ObservationKind = "tool_call"
-	ObservationKindFeedback    ObservationKind = "feedback"
-	ObservationKindMemoryHit   ObservationKind = "memory_hit"
-	ObservationKindMemoryMiss  ObservationKind = "memory_miss"
+	ObservationKindToolCall   ObservationKind = "tool_call"
+	ObservationKindFeedback   ObservationKind = "feedback"
+	ObservationKindMemoryHit  ObservationKind = "memory_hit"
+	ObservationKindMemoryMiss ObservationKind = "memory_miss"
 )
 
 type Observation struct {

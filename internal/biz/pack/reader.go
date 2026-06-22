@@ -3,11 +3,12 @@ package pack
 import (
 	"archive/tar"
 	"compress/gzip"
-	"fmt"
 	"io"
 	"io/fs"
 	"path/filepath"
 	"strings"
+
+	"aranea-agents/pkg/apierror"
 
 	"gopkg.in/yaml.v3"
 )
@@ -20,8 +21,8 @@ const (
 	graphsDir    = "graphs/"
 
 	// 安全限制常量
-	MaxTarEntries     = 1000               // 单个 Pack 最多 1000 个 tar 条目
-	MaxEntrySize  int64 = 10 * 1024 * 1024 // 单个条目最大 10MB
+	MaxTarEntries       = 1000              // 单个 Pack 最多 1000 个 tar 条目
+	MaxEntrySize  int64 = 10 * 1024 * 1024  // 单个条目最大 10MB
 	MaxTotalSize  int64 = 200 * 1024 * 1024 // Pack 解压后总大小上限 200MB
 	MaxPackSize         = 200 * 1024 * 1024 // Pack 原始文件大小上限 200MB
 )
@@ -32,18 +33,18 @@ func parsePackEntry(relPath string, data []byte, p *Pack) error {
 	switch {
 	case relPath == manifestFile:
 		if err := yaml.Unmarshal(data, &p.Manifest); err != nil {
-			return fmt.Errorf("pack: 解析 manifest.yaml 失败: %w", err)
+			return apierror.BadRequest(apierror.DomainPack, "parse manifest.yaml failed: %s", err.Error())
 		}
 	case relPath == taxonomyFile:
 		var spec OrganizationPackSpec
 		if err := yaml.Unmarshal(data, &spec); err != nil {
-			return fmt.Errorf("pack: 解析 taxonomy.yaml 失败: %w", err)
+			return apierror.BadRequest(apierror.DomainPack, "parse taxonomy.yaml failed: %s", err.Error())
 		}
 		p.Organization = &spec
 	case strings.HasPrefix(relPath, agentsDir) && strings.HasSuffix(relPath, ".yaml"):
 		var spec AgentPackSpec
 		if err := yaml.Unmarshal(data, &spec); err != nil {
-			return fmt.Errorf("pack: 解析 %s 失败: %w", relPath, err)
+			return apierror.BadRequest(apierror.DomainPack, "parse %s failed: %s", relPath, err.Error())
 		}
 		p.Agents = append(p.Agents, spec)
 	case strings.HasPrefix(relPath, agentsDir) && !strings.HasSuffix(relPath, ".yaml"):
@@ -60,13 +61,13 @@ func parsePackEntry(relPath string, data []byte, p *Pack) error {
 	case strings.HasPrefix(relPath, teamsDir) && strings.HasSuffix(relPath, ".yaml"):
 		var spec TeamPackSpec
 		if err := yaml.Unmarshal(data, &spec); err != nil {
-			return fmt.Errorf("pack: 解析 %s 失败: %w", relPath, err)
+			return apierror.BadRequest(apierror.DomainPack, "parse %s failed: %s", relPath, err.Error())
 		}
 		p.Teams = append(p.Teams, spec)
 	case strings.HasPrefix(relPath, graphsDir) && strings.HasSuffix(relPath, ".yaml"):
 		var spec GraphPackSpec
 		if err := yaml.Unmarshal(data, &spec); err != nil {
-			return fmt.Errorf("pack: 解析 %s 失败: %w", relPath, err)
+			return apierror.BadRequest(apierror.DomainPack, "parse %s failed: %s", relPath, err.Error())
 		}
 		p.Graphs = append(p.Graphs, spec)
 	}
@@ -76,10 +77,10 @@ func parsePackEntry(relPath string, data []byte, p *Pack) error {
 // validatePackManifest 校验 Pack 的 manifest 必填字段。
 func validatePackManifest(p *Pack) error {
 	if p.Manifest.APIVersion == "" {
-		return fmt.Errorf("pack: manifest.yaml 缺少 api_version")
+		return apierror.BadRequest(apierror.DomainPack, "manifest.yaml missing api_version")
 	}
 	if p.Manifest.Kind == "" {
-		return fmt.Errorf("pack: manifest.yaml 缺少 kind")
+		return apierror.BadRequest(apierror.DomainPack, "manifest.yaml missing kind")
 	}
 	return nil
 }
@@ -91,7 +92,7 @@ func ReadPack(r io.Reader) (*Pack, error) {
 
 	gzr, err := gzip.NewReader(lr)
 	if err != nil {
-		return nil, fmt.Errorf("pack: gzip 解压失败: %w", err)
+		return nil, apierror.BadRequest(apierror.DomainPack, "gzip decompression failed: %s", err.Error())
 	}
 	defer gzr.Close()
 
@@ -108,12 +109,12 @@ func ReadPack(r io.Reader) (*Pack, error) {
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("pack: 读取 tar 条目失败: %w", err)
+			return nil, apierror.BadRequest(apierror.DomainPack, "read tar entry failed: %s", err.Error())
 		}
 
 		entryCount++
 		if entryCount > MaxTarEntries {
-			return nil, fmt.Errorf("pack: tar 条目数超过上限 %d", MaxTarEntries)
+			return nil, apierror.BadRequest(apierror.DomainPack, "tar entry count exceeds limit %d", MaxTarEntries)
 		}
 
 		// 路径遍历检查：清洗路径后验证
@@ -121,7 +122,7 @@ func ReadPack(r io.Reader) (*Pack, error) {
 		// filepath.Clean 已解析 ..，所以检查清洗前原始路径是否包含 ..
 		// 同时验证清洗后路径不以 / 开头（绝对路径）
 		if strings.Contains(hdr.Name, "..") || strings.HasPrefix(cleanName, "/") {
-			return nil, fmt.Errorf("pack: 条目路径包含非法遍历: %s", hdr.Name)
+			return nil, apierror.BadRequest(apierror.DomainPack, "entry path contains illegal traversal: %s", hdr.Name)
 		}
 
 		// 跳过符号链接和硬链接
@@ -131,16 +132,16 @@ func ReadPack(r io.Reader) (*Pack, error) {
 
 		// 单条目大小检查
 		if hdr.Size > MaxEntrySize {
-			return nil, fmt.Errorf("pack: 条目 %s 大小 %d 超过上限 %d", hdr.Name, hdr.Size, MaxEntrySize)
+			return nil, apierror.BadRequest(apierror.DomainPack, "entry %s size %d exceeds limit %d", hdr.Name, hdr.Size, MaxEntrySize)
 		}
 
 		// 使用 LimitedReader 读取条目内容
 		data, err := io.ReadAll(io.LimitReader(tr, MaxEntrySize+1))
 		if err != nil {
-			return nil, fmt.Errorf("pack: 读取 %s 内容失败: %w", hdr.Name, err)
+			return nil, apierror.BadRequest(apierror.DomainPack, "read %s content failed: %s", hdr.Name, err.Error())
 		}
 		if int64(len(data)) > MaxEntrySize {
-			return nil, fmt.Errorf("pack: 条目 %s 内容超过大小上限", hdr.Name)
+			return nil, apierror.BadRequest(apierror.DomainPack, "entry %s content exceeds size limit", hdr.Name)
 		}
 
 		if err := parsePackEntry(cleanName, data, p); err != nil {
@@ -174,7 +175,7 @@ func ReadPackFromFS(fsys fs.FS, root string) (*Pack, error) {
 
 		entryCount++
 		if entryCount > MaxTarEntries {
-			return fmt.Errorf("pack: fs 条目数超过上限 %d", MaxTarEntries)
+			return apierror.Internal(apierror.DomainPack, "fs entry count exceeds limit %d", MaxTarEntries)
 		}
 
 		// 获取相对于 root 的路径
@@ -183,10 +184,10 @@ func ReadPackFromFS(fsys fs.FS, root string) (*Pack, error) {
 
 		data, readErr := fs.ReadFile(fsys, path)
 		if readErr != nil {
-			return fmt.Errorf("pack: 读取 %s 失败: %w", path, readErr)
+			return apierror.Internal(apierror.DomainPack, "read %s failed: %s", path, readErr.Error())
 		}
 		if int64(len(data)) > MaxEntrySize {
-			return fmt.Errorf("pack: 条目 %s 内容超过大小上限", path)
+			return apierror.Internal(apierror.DomainPack, "entry %s content exceeds size limit", path)
 		}
 
 		if parseErr := parsePackEntry(relPath, data, p); parseErr != nil {

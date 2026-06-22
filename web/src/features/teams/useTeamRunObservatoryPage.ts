@@ -56,6 +56,7 @@ export function useTeamRunObservatoryPage() {
     interruptAfter: [],
     metadata: {},
     version: 0,
+    sortOrder: 0,
     createdAt: '',
     updatedAt: '',
   });

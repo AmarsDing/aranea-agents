@@ -110,21 +110,21 @@
       >
         <template #body-cell-model_api_id="props">
           <q-td :props="props">
-            <AppRegistryHoverTip :text="props.row.error_message">
-              <span class="app-registry-cell-primary ellipsis">{{ props.row.model_api_id }}</span>
-            </AppRegistryHoverTip>
+            <span class="app-registry-cell-primary ellipsis">{{ props.row.model_api_id }}</span>
           </q-td>
         </template>
         <template #body-cell-status="props">
           <q-td :props="props">
-            <q-chip
-              dense
-              :color="props.row.status === 'success' || props.row.status === 'ok' ? 'positive' : 'negative'"
-              text-color="white"
-              size="sm"
-            >
-              {{ props.row.status }}
-            </q-chip>
+            <AppRegistryHoverTip :text="props.row.error_message">
+              <q-chip
+                dense
+                :color="props.row.status === 'success' ? 'positive' : 'negative'"
+                text-color="white"
+                size="sm"
+              >
+                {{ props.row.status }}
+              </q-chip>
+            </AppRegistryHoverTip>
           </q-td>
         </template>
         <template #body-cell-total_cost_micro_usd="props">
@@ -145,7 +145,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { onMounted, watch } from 'vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
@@ -165,15 +165,12 @@ const {
   rangeOptions,
   statusOptions,
   usageKindOptions,
-  retainDays,
   purging,
   load,
   exportCsv,
-  purgeEvents,
   onPurgeConfirm,
   resetFilters,
   formatMoney,
-  truncate,
 } = useUsageEventsPage();
 
 const {

@@ -127,8 +127,8 @@ func TestChatTurnIntegration_TurnPipeline_AdmitAndComplete(t *testing.T) {
 		store := newStubTurnStore()
 		projector := newStubTurnProjector()
 		executor := newStubTurnExecutor(biz.NativeTurnResult{
-			Outcome: biz.NativeTurnOutcomeCompleted,
-			UserMsg: biz.ChatMessage{ID: "msg-user-1", Role: "user", ContentMarkdown: "Hello"},
+			Outcome:      biz.NativeTurnOutcomeCompleted,
+			UserMsg:      biz.ChatMessage{ID: "msg-user-1", Role: "user", ContentMarkdown: "Hello"},
 			AssistantMsg: biz.ChatMessage{ID: "msg-assistant-1", Role: "assistant", ContentMarkdown: "Hi there!"},
 		})
 
@@ -342,7 +342,7 @@ func TestChatTurnIntegration_TurnIntentCanonicalize(t *testing.T) {
 // NativeTurnOutcome to canonical TurnStatus.
 func TestChatTurnIntegration_TurnStatusMapping(t *testing.T) {
 	cases := []struct {
-		outcome   biz.NativeTurnOutcome
+		outcome    biz.NativeTurnOutcome
 		wantStatus biz.TurnStatus
 	}{
 		{biz.NativeTurnOutcomeCompleted, biz.TurnStatusCompleted},

@@ -62,7 +62,7 @@ export const usePlatformStore = defineStore('platform', () => {
     }
   }
 
-  async function loadTaxonomyTree(resource: 'taxonomy-nodes' | 'taxonomy' = 'taxonomy') {
+  async function loadTaxonomyTree(resource: 'taxonomy-nodes' | 'taxonomy' | 'organization' = 'taxonomy') {
     taxonomyTree.value = await listPlatformResourceTree(resource);
   }
 

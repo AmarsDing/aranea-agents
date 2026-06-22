@@ -13,7 +13,7 @@ import (
 type QueryComplexity int
 
 const (
-	QuerySimple    QueryComplexity = iota
+	QuerySimple QueryComplexity = iota
 	QueryModerate
 	QueryComplex
 )

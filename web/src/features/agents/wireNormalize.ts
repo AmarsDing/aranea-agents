@@ -272,7 +272,7 @@ export function normalizeAgentFromService(raw: unknown): Agent {
     pending_evolution_count: pickNum(w, 'pendingEvolutionCount', 'pending_evolution_count', 0),
     readonly: pickBool(w, 'readonly', 'readonly', false),
     source: pickStrOpt(w, 'source', 'source'),
-    kind: pickStrOpt(w, 'kind', 'kind'),
+    kind: pickStrOpt(w, 'kind', 'kind') as Agent['kind'],
     settings: normalizeRuntimeSettingsFromWire(w.settings),
     files,
   };
@@ -325,7 +325,9 @@ export function runtimeSettingsToWire(s: AgentRuntimeSettings): KratosRuntimeWir
     l0L3MaxChunks: s.l0_l3_max_chunks,
     l0L4MaxPaths: s.l0_l4_max_paths,
     l0SnapshotMode: s.l0_snapshot_mode,
+    l0SnapshotEnabled: undefined,
     l1Enabled: s.l1_enabled,
+    l1HistoryEnabled: undefined,
     l1BudgetTokens: s.l1_budget_tokens,
     l1FieldMaxTokens: s.l1_field_max_tokens,
     l1HistoryKeepRevisions: s.l1_history_keep_revisions,
@@ -403,6 +405,9 @@ export function runtimeSettingsToWire(s: AgentRuntimeSettings): KratosRuntimeWir
     compressLlmCacheEnabled: s.compress_llm_cache_enabled,
     compressLlmCacheMaxEntries: s.compress_llm_cache_max_entries,
     compressLlmCacheTtlSec: s.compress_llm_cache_ttl_sec,
+    compressionBufferRatio: undefined,
+    softTriggerRatio: undefined,
+    hardTriggerRatio: undefined,
     verificationTruncateChars: s.verification_truncate_chars,
     createdAt: s.created_at,
     updatedAt: s.updated_at,
@@ -436,7 +441,7 @@ export function partialAgentToWire(payload: Partial<Agent>): KratosAgentWire {
   if (payload.position_key !== undefined) o.positionKey = payload.position_key;
   if (payload.agent_variant !== undefined) o.agentVariant = payload.agent_variant;
   if (payload.variant_description !== undefined) o.variantDescription = payload.variant_description;
-  if (payload.taxonomy_position_id !== undefined) o.taxonomyPositionId = payload.taxonomy_position_id;
+  if (payload.taxonomy_position_id !== undefined) o.positionId = payload.taxonomy_position_id;
   if (payload.system_prompt_mode !== undefined) o.systemPromptMode = payload.system_prompt_mode;
   if (payload.context_window !== undefined) o.contextWindow = payload.context_window;
   if (payload.budget_monthly_cents !== undefined) o.budgetMonthlyCents = payload.budget_monthly_cents;

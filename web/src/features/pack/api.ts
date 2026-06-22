@@ -31,7 +31,7 @@ export type ImportFailureRow = ReturnType<typeof mapImportFailure>;
 
 function mapImportResponse(raw: ImportPackResponse) {
   return {
-    taxonomy_nodes: Number(raw.taxonomyNodes ?? 0),
+    taxonomy_nodes: Number(raw.orgNodes ?? 0),
     agents_created: Number(raw.agentsCreated ?? 0),
     agents_updated: Number(raw.agentsUpdated ?? 0),
     agents_skipped: Number(raw.agentsSkipped ?? 0),

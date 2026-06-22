@@ -14,6 +14,8 @@ package lifecycle
 import (
 	"sync"
 	"time"
+
+	"aranea-agents/pkg/safego"
 )
 
 // ManagedMap 是带内置锁的并发安全 map，提供原子复合操作与可选 TTL 清理。
@@ -29,11 +31,11 @@ import (
 //
 // 并发安全：所有方法均可并发调用。
 type ManagedMap[K comparable, V any] struct {
-	mu      sync.Mutex
-	items   map[K]managedEntry[V]
-	ttl     time.Duration // 0 表示无 TTL
+	mu       sync.Mutex
+	items    map[K]managedEntry[V]
+	ttl      time.Duration // 0 表示无 TTL
 	stopOnce sync.Once
-	stopCh  chan struct{}
+	stopCh   chan struct{}
 }
 
 // managedEntry 包装值与过期时间。
@@ -48,12 +50,12 @@ type managedEntry[V any] struct {
 // 调用 Close() 停止后台 goroutine。
 func NewManagedMap[K comparable, V any](ttl time.Duration) *ManagedMap[K, V] {
 	m := &ManagedMap[K, V]{
-		items: make(map[K]managedEntry[V]),
-		ttl:   ttl,
+		items:  make(map[K]managedEntry[V]),
+		ttl:    ttl,
 		stopCh: make(chan struct{}),
 	}
 	if ttl > 0 {
-		go m.cleanupLoop()
+		safego.GoBackground("managed_map.cleanup", m.cleanupLoop)
 	}
 	return m
 }

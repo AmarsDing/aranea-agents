@@ -99,11 +99,11 @@ func monitorTracesColumnPatches() []columnPatch {
 func monitorEventsColumnPatches(d Dialect) []columnPatch {
 	if d.IsPostgres() {
 		return []columnPatch{
-			{"monitor_events", "meta_session_id", "ALTER TABLE monitor_events ADD COLUMN meta_session_id TEXT GENERATED ALWAYS AS (metadata_json ->> 'session_id') STORED"},
-			{"monitor_events", "meta_invocation_id", "ALTER TABLE monitor_events ADD COLUMN meta_invocation_id TEXT GENERATED ALWAYS AS (metadata_json ->> 'invocation_id') STORED"},
-			{"monitor_events", "meta_agent_id", "ALTER TABLE monitor_events ADD COLUMN meta_agent_id TEXT GENERATED ALWAYS AS (metadata_json ->> 'agent_id') STORED"},
-			{"monitor_events", "meta_trace_id", "ALTER TABLE monitor_events ADD COLUMN meta_trace_id TEXT GENERATED ALWAYS AS (metadata_json ->> 'trace_id') STORED"},
-			{"monitor_events", "meta_duration_ms", "ALTER TABLE monitor_events ADD COLUMN meta_duration_ms DOUBLE PRECISION GENERATED ALWAYS AS (CAST(metadata_json ->> 'duration_ms' AS DOUBLE PRECISION)) STORED"},
+			{"monitor_events", "meta_session_id", "ALTER TABLE monitor_events ADD COLUMN meta_session_id TEXT GENERATED ALWAYS AS (" + d.JSONExtract("metadata_json", "session_id") + ") STORED"},
+			{"monitor_events", "meta_invocation_id", "ALTER TABLE monitor_events ADD COLUMN meta_invocation_id TEXT GENERATED ALWAYS AS (" + d.JSONExtract("metadata_json", "invocation_id") + ") STORED"},
+			{"monitor_events", "meta_agent_id", "ALTER TABLE monitor_events ADD COLUMN meta_agent_id TEXT GENERATED ALWAYS AS (" + d.JSONExtract("metadata_json", "agent_id") + ") STORED"},
+			{"monitor_events", "meta_trace_id", "ALTER TABLE monitor_events ADD COLUMN meta_trace_id TEXT GENERATED ALWAYS AS (" + d.JSONExtract("metadata_json", "trace_id") + ") STORED"},
+			{"monitor_events", "meta_duration_ms", "ALTER TABLE monitor_events ADD COLUMN meta_duration_ms DOUBLE PRECISION GENERATED ALWAYS AS (CAST(" + d.JSONExtract("metadata_json", "duration_ms") + " AS DOUBLE PRECISION)) STORED"},
 		}
 	}
 	return []columnPatch{

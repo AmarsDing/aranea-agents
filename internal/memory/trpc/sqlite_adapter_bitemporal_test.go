@@ -53,22 +53,22 @@ func (s *bitemporalMockStore) upsert(in biz.FactUpsert) ([]byte, error) {
 		validFrom = createdAt
 	}
 	row := map[string]any{
-		"id":           id,
-		"scope_type":   in.ScopeType,
-		"scope_id":     in.ScopeID,
-		"user_id":      in.UserID,
-		"agent_id":     in.AgentID,
-		"statement":    in.Statement,
-		"fact_kind":    in.FactKind,
-		"tags_json":    in.TagsJSON,
-		"importance":   in.Importance,
-		"status":       "active",
+		"id":            id,
+		"scope_type":    in.ScopeType,
+		"scope_id":      in.ScopeID,
+		"user_id":       in.UserID,
+		"agent_id":      in.AgentID,
+		"statement":     in.Statement,
+		"fact_kind":     in.FactKind,
+		"tags_json":     in.TagsJSON,
+		"importance":    in.Importance,
+		"status":        "active",
 		"metadata_json": in.MetadataJSON,
-		"created_at":   createdAt,
-		"updated_at":   updatedAt,
-		"valid_from":   validFrom,
-		"valid_until":  in.ValidUntil,
-		"deleted_at":   "",
+		"created_at":    createdAt,
+		"updated_at":    updatedAt,
+		"valid_from":    validFrom,
+		"valid_until":   in.ValidUntil,
+		"deleted_at":    "",
 	}
 	s.facts[id] = row
 	return s.rowToJSON(row), nil

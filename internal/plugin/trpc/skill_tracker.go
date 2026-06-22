@@ -117,4 +117,3 @@ func formatToolResult(result any) string {
 		return fmt.Sprintf("%v", v)
 	}
 }
-

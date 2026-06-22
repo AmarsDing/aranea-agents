@@ -275,17 +275,17 @@ func orphanMetrics(ctx context.Context, db *sql.DB) {
 // ---------------------------------------------------------------------------
 
 type runtimeRow struct {
-	sessionID            string
-	sSessionRevision     int64
-	rSessionRevision     int64
-	sStateJSON           string
-	rStateJSON           string
-	sRunnerSnapshotJSON  string
-	rRunnerSnapshotJSON  string
-	sMetadataJSON        string
-	rMetadataJSON        string
-	sCompressVersion     int64
-	rCompressVersion     int64
+	sessionID           string
+	sSessionRevision    int64
+	rSessionRevision    int64
+	sStateJSON          string
+	rStateJSON          string
+	sRunnerSnapshotJSON string
+	rRunnerSnapshotJSON string
+	sMetadataJSON       string
+	rMetadataJSON       string
+	sCompressVersion    int64
+	rCompressVersion    int64
 }
 
 func checkSessionRuntime(ctx context.Context, db *sql.DB) int {

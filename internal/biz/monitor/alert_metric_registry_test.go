@@ -9,12 +9,12 @@ import (
 )
 
 type stubAlertMetric struct {
-	keyVal string
+	keyVal  string
 	descVal string
-	evalFn func(ctx context.Context, window time.Duration) (float64, error)
+	evalFn  func(ctx context.Context, window time.Duration) (float64, error)
 }
 
-func (m *stubAlertMetric) Key() string        { return m.keyVal }
+func (m *stubAlertMetric) Key() string         { return m.keyVal }
 func (m *stubAlertMetric) Description() string { return m.descVal }
 func (m *stubAlertMetric) Evaluate(ctx context.Context, window time.Duration) (float64, error) {
 	if m.evalFn != nil {

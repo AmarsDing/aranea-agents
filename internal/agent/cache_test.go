@@ -21,10 +21,10 @@ func (m *mockAgent) Run(ctx context.Context, invocation *trpcagent.Invocation) (
 	return nil, nil
 }
 
-func (m *mockAgent) Tools() []trpctool.Tool                    { return nil }
-func (m *mockAgent) Info() trpcagent.Info                      { return trpcagent.Info{} }
-func (m *mockAgent) SubAgents() []trpcagent.Agent              { return nil }
-func (m *mockAgent) FindSubAgent(name string) trpcagent.Agent  { return nil }
+func (m *mockAgent) Tools() []trpctool.Tool                   { return nil }
+func (m *mockAgent) Info() trpcagent.Info                     { return trpcagent.Info{} }
+func (m *mockAgent) SubAgents() []trpcagent.Agent             { return nil }
+func (m *mockAgent) FindSubAgent(name string) trpcagent.Agent { return nil }
 
 // makeAgent returns a distinct trpcagent.Agent for cache tests.
 func makeAgent(key string) trpcagent.Agent { return &mockAgent{key: key} }

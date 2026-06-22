@@ -114,7 +114,7 @@ const props = withDefaults(
     outline?: boolean;
     rounded?: boolean;
     refineFn: (params: {
-      scope: string;
+      scope: FieldScope;
       fileName?: string;
       resourceId?: string;
       originalText: string;

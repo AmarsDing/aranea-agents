@@ -12,16 +12,16 @@ import (
 // ExperienceAnalytics weight and threshold constants.
 const (
 	// Tool weight formula: WeightScore = normSR*W + normCount*W + normInvDur*W
-	ToolWeightSuccessRate  = 0.5
-	ToolWeightCallCount    = 0.3
-	ToolWeightInvDuration  = 0.2
+	ToolWeightSuccessRate = 0.5
+	ToolWeightCallCount   = 0.3
+	ToolWeightInvDuration = 0.2
 
 	// Memory health formula: 0.4*coverage + 0.4*retrieval + 0.2*(1-penalty)
-	MemoryCoverageWeight    = 0.4
-	MemoryRetrievalWeight   = 0.4
-	MemoryPenaltyWeight     = 0.2
-	MemoryMaxFactCount      = 100.0
-	MemoryMaxNegFeedback    = 10.0
+	MemoryCoverageWeight  = 0.4
+	MemoryRetrievalWeight = 0.4
+	MemoryPenaltyWeight   = 0.2
+	MemoryMaxFactCount    = 100.0
+	MemoryMaxNegFeedback  = 10.0
 )
 
 // ── Result types ──────────────────────────────────────────────────────────────
@@ -87,12 +87,12 @@ type OrchestrationModeItem struct {
 
 // MemoryQualityAnalysis is the result of AnalyzeMemoryQuality.
 type MemoryQualityAnalysis struct {
-	AgentID              string
-	FactCount            int
-	RetrievalQuality     float64
-	NegativeFeedback     int
-	HealthScore          float64
-	Recommendation       string
+	AgentID          string
+	FactCount        int
+	RetrievalQuality float64
+	NegativeFeedback int
+	HealthScore      float64
+	Recommendation   string
 }
 
 // AgentCapabilityAnalysis is the combined result of AnalyzeAgentCapability.
@@ -116,15 +116,15 @@ type CostSummary struct {
 
 // ExperienceAnalyticsUsecase provides data-driven analysis for memory and skills butlers.
 type ExperienceAnalyticsUsecase struct {
-	metricsRepo  EvolutionMetricsRepo
-	skillRepo    SkillQueryReader
-	teamReader   TeamReader
-	runReader    TeamRunReader
-	usageRepo    UsageAnalyticsRepo
-	memoryAdmin  *MemoryAdminUsecase
-	sessionRepo  SessionReader
-	toolInvData  ToolInvocationReader
-	lg           loggateway.Logger
+	metricsRepo EvolutionMetricsRepo
+	skillRepo   SkillQueryReader
+	teamReader  TeamReader
+	runReader   TeamRunReader
+	usageRepo   UsageAnalyticsRepo
+	memoryAdmin *MemoryAdminUsecase
+	sessionRepo SessionReader
+	toolInvData ToolInvocationReader
+	lg          loggateway.Logger
 }
 
 // NewExperienceAnalyticsUsecase creates a new ExperienceAnalyticsUsecase.
@@ -140,15 +140,15 @@ func NewExperienceAnalyticsUsecase(
 	lg loggateway.Logger,
 ) *ExperienceAnalyticsUsecase {
 	return &ExperienceAnalyticsUsecase{
-		metricsRepo:  metricsRepo,
-		skillRepo:    skillRepo,
-		teamReader:   teamReader,
-		runReader:    runReader,
-		usageRepo:    usageRepo,
-		memoryAdmin:  memoryAdmin,
-		sessionRepo:  sessionRepo,
-		toolInvData:  toolInvData,
-		lg:           lg,
+		metricsRepo: metricsRepo,
+		skillRepo:   skillRepo,
+		teamReader:  teamReader,
+		runReader:   runReader,
+		usageRepo:   usageRepo,
+		memoryAdmin: memoryAdmin,
+		sessionRepo: sessionRepo,
+		toolInvData: toolInvData,
+		lg:          lg,
 	}
 }
 
@@ -197,10 +197,10 @@ func (uc *ExperienceAnalyticsUsecase) AnalyzeToolWeights(ctx context.Context, ag
 			avgDur = float64(a.TotalDurationMS) / float64(a.CallCount)
 		}
 		items = append(items, ToolWeightItem{
-			ToolKey:      a.ToolKey,
-			CallCount:    a.CallCount,
-			SuccessCount: a.SuccessCount,
-			SuccessRate:  sr,
+			ToolKey:       a.ToolKey,
+			CallCount:     a.CallCount,
+			SuccessCount:  a.SuccessCount,
+			SuccessRate:   sr,
 			AvgDurationMS: avgDur,
 		})
 	}
@@ -218,9 +218,9 @@ func (uc *ExperienceAnalyticsUsecase) AnalyzeToolWeights(ctx context.Context, ag
 }
 
 type toolAgg struct {
-	ToolKey        string
-	CallCount      int
-	SuccessCount   int
+	ToolKey         string
+	CallCount       int
+	SuccessCount    int
 	TotalDurationMS int
 }
 
@@ -336,11 +336,11 @@ func (uc *ExperienceAnalyticsUsecase) AnalyzeSkillHealth(ctx context.Context, ag
 }
 
 type skillAgg struct {
-	SkillID        string
-	SkillName      string
-	InvokeCount    int
-	SuccessCount   int
-	FailureCount   int
+	SkillID         string
+	SkillName       string
+	InvokeCount     int
+	SuccessCount    int
+	FailureCount    int
 	TotalDurationMS int
 }
 
@@ -443,10 +443,10 @@ func (uc *ExperienceAnalyticsUsecase) AnalyzeOrchestration(ctx context.Context, 
 }
 
 type orchAgg struct {
-	Mode           string
-	RunCount       int
-	SuccessCount   int
-	ErrorCount     int
+	Mode            string
+	RunCount        int
+	SuccessCount    int
+	ErrorCount      int
 	TotalDurationMS int
 }
 

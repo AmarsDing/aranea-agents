@@ -88,7 +88,7 @@ func (r *healRecordRepo) ListHealRecords(ctx context.Context, query bizmonitor.H
 	for rows.Next() {
 		var (
 			id, ruleID, triggerType, traceID, sessionID, stepID string
-			fixActionType, status, reason, createdAt             string
+			fixActionType, status, reason, createdAt            string
 			confidence                                          float64
 			runtimeAutoHealed                                   bool
 			runtimeHealAttempts                                 int

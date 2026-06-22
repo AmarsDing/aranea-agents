@@ -6,24 +6,8 @@
         {{ t('chat.skillHint.detected') }}: <strong>{{ hint.matched_skill }}</strong>
         <span v-if="hint.trigger" class="text-grey">（{{ t('chat.skillHint.match') }}: {{ hint.trigger }}）</span>
       </span>
-      <q-btn
-        flat
-        dense
-        size="xs"
-        :label="t('chat.skillHint.load')"
-        color="accent"
-        class="q-ml-sm"
-        @click="onLoad"
-      />
-      <q-btn
-        flat
-        dense
-        round
-        size="xs"
-        icon="close"
-        class="q-ml-xs"
-        @click="onDismiss"
-      />
+      <q-btn flat dense size="xs" :label="t('chat.skillHint.load')" color="accent" class="q-ml-sm" @click="onLoad" />
+      <q-btn flat dense round size="xs" icon="close" class="q-ml-xs" @click="onDismiss" />
     </div>
   </transition>
 </template>

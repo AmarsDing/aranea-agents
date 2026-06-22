@@ -30,8 +30,8 @@ type RetryAndReflectPlugin struct {
 	bus  event.Bus
 	rt   *Runtime
 
-	mu      sync.Mutex
-	retries map[string]int
+	mu        sync.Mutex
+	retries   map[string]int
 	lastPurge time.Time
 }
 
@@ -184,4 +184,3 @@ func (r *RetryAndReflectPlugin) bump(key string) int {
 	r.retries[key]++
 	return r.retries[key]
 }
-

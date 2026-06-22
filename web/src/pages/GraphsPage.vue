@@ -1,13 +1,23 @@
 <template>
   <q-page :class="['app-standard-page graphs-page', { 'is-dark': isDark }]">
-    <AppPageHero
-      :kicker="t('graphs.kicker')"
-      :title="t('graphs.title')"
-      :subtitle="t('graphs.subtitle')"
-    >
+    <AppPageHero :kicker="t('graphs.kicker')" :title="t('graphs.title')" :subtitle="t('graphs.subtitle')">
       <template #actions>
-        <q-btn outline rounded icon="dashboard" :label="t('graphs.createFromTemplate')" class="q-mr-sm" @click="templateDialogOpen = true" />
-        <q-btn class="graphs-page__create-btn" rounded unelevated icon="add" :label="t('graphs.createGraph')" @click="openCreate" />
+        <q-btn
+          outline
+          rounded
+          icon="dashboard"
+          :label="t('graphs.createFromTemplate')"
+          class="q-mr-sm"
+          @click="templateDialogOpen = true"
+        />
+        <q-btn
+          class="graphs-page__create-btn"
+          rounded
+          unelevated
+          icon="add"
+          :label="t('graphs.createGraph')"
+          @click="openCreate"
+        />
       </template>
     </AppPageHero>
 
@@ -19,7 +29,13 @@
     <div class="graphs-page__body">
       <div class="graphs-page__list">
         <section class="graphs-filter-bar q-mt-md">
-          <q-input v-model="searchQuery" dense outlined :placeholder="t('graphs.searchPlaceholder')" class="graphs-filter-bar__search">
+          <q-input
+            v-model="searchQuery"
+            dense
+            outlined
+            :placeholder="t('graphs.searchPlaceholder')"
+            class="graphs-filter-bar__search"
+          >
             <template #prepend><q-icon name="search" /></template>
             <template v-if="searchQuery" #append
               ><q-icon name="close" class="cursor-pointer" @click="searchQuery = ''"
@@ -152,7 +168,8 @@
                     <span v-if="graph.enableCheckpoint" class="graph-card__tag">{{ t('graphs.checkpoint') }}</span>
                   </div>
                   <span class="graph-card__summary"
-                    >{{ graph.nodes?.length ?? 0 }}{{ t('graphs.nodesUnit') }}·{{ graph.edges?.length ?? 0 }}{{ t('graphs.edgesUnit') }}</span
+                    >{{ graph.nodes?.length ?? 0 }}{{ t('graphs.nodesUnit') }}·{{ graph.edges?.length ?? 0
+                    }}{{ t('graphs.edgesUnit') }}</span
                   >
                 </div>
               </div>
@@ -167,8 +184,6 @@
             </div>
           </template>
         </draggable>
-
-
       </div>
 
       <GraphDetailPanel
@@ -231,7 +246,9 @@
                 <q-icon name="dashboard" size="24px" color="primary" class="q-mr-md" />
                 <div class="col min-width-0">
                   <div class="text-subtitle2">{{ tpl.name }}</div>
-                  <div class="text-caption text-grey-7 ellipsis">{{ tpl.description || t('graphs.noDescription') }}</div>
+                  <div class="text-caption text-grey-7 ellipsis">
+                    {{ tpl.description || t('graphs.noDescription') }}
+                  </div>
                 </div>
               </q-card-section>
             </q-card>
@@ -331,11 +348,15 @@ watch(
 
 // 空状态时自动加载模板
 const isEmpty = computed(() => !loading.value && rows.value.length === 0);
-watch(isEmpty, (empty) => {
-  if (empty && templates.value.length === 0) {
-    void loadTemplates();
-  }
-}, { immediate: true });
+watch(
+  isEmpty,
+  (empty) => {
+    if (empty && templates.value.length === 0) {
+      void loadTemplates();
+    }
+  },
+  { immediate: true },
+);
 
 const TEMPLATE_CATEGORY_ICON: Record<string, string> = {
   pipeline: 'linear_scale',

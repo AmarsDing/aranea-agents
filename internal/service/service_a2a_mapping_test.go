@@ -51,9 +51,9 @@ func TestToProtoA2ACard(t *testing.T) {
 				Enabled:     false,
 			},
 			want: &v1.A2AAgentCard{
-				AgentId:     "agent-2",
-				DisplayName: "No Caps",
-				Enabled:     false,
+				AgentId:      "agent-2",
+				DisplayName:  "No Caps",
+				Enabled:      false,
 				Capabilities: []*v1.A2ACapability{},
 			},
 		},
@@ -66,10 +66,10 @@ func TestToProtoA2ACard(t *testing.T) {
 				EndpointURL: "https://remote.example.com/ep",
 			},
 			want: &v1.A2AAgentCard{
-				AgentId:     "remote-1",
-				Source:      "remote",
-				RemoteUrl:   "https://remote.example.com",
-				EndpointUrl: "https://remote.example.com/ep",
+				AgentId:      "remote-1",
+				Source:       "remote",
+				RemoteUrl:    "https://remote.example.com",
+				EndpointUrl:  "https://remote.example.com/ep",
 				Capabilities: []*v1.A2ACapability{},
 			},
 		},
@@ -142,7 +142,7 @@ func TestToProtoA2ACard(t *testing.T) {
 
 func TestToProtoRemoteAgent(t *testing.T) {
 	tests := []struct {
-		name string
+		name  string
 		agent biz.A2ARemoteAgent
 		want  *v1.A2ARemoteAgent
 	}{
@@ -191,7 +191,7 @@ func TestToProtoRemoteAgent(t *testing.T) {
 				ID: "ra-2",
 			},
 			want: &v1.A2ARemoteAgent{
-				Id:            "ra-2",
+				Id:             "ra-2",
 				DiscoveredCard: &v1.A2AAgentCard{Capabilities: []*v1.A2ACapability{}},
 			},
 		},

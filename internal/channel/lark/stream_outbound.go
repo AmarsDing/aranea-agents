@@ -21,12 +21,12 @@ const FeishuStreamTextLimit = 11800
 
 // StreamSender posts the first reply then patches in place (Feishu im.v1 message update).
 type StreamSender struct {
-	Region         string
-	AppID          string
-	AppSecret      string
-	HTTP           *http.Client
-	EditInterval   time.Duration
-	ReceiveIDType  string
+	Region        string
+	AppID         string
+	AppSecret     string
+	HTTP          *http.Client
+	EditInterval  time.Duration
+	ReceiveIDType string
 
 	mu         sync.Mutex
 	receiveID  string

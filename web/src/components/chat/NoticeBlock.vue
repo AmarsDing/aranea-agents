@@ -15,9 +15,12 @@ const props = defineProps<{
 
 const iconForType = computed(() => {
   switch (props.activity.type) {
-    case 'warning': return '⚠️';
-    case 'success': return '✅';
-    default: return 'ℹ️';
+    case 'warning':
+      return '⚠️';
+    case 'success':
+      return '✅';
+    default:
+      return 'ℹ️';
   }
 });
 </script>

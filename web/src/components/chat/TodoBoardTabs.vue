@@ -22,10 +22,7 @@
       </button>
     </div>
     <!-- Active board -->
-    <TodoKanbanBoard
-      v-if="activeBoard"
-      :board-state="activeBoard"
-    />
+    <TodoKanbanBoard v-if="activeBoard" :board-state="activeBoard" />
   </div>
 </template>
 

@@ -18,7 +18,7 @@ func NewApplyPhase(reader ApplyReader, writer ApplyWriter, lg loggateway.Logger)
 	return &ApplyPhase{reader: reader, writer: writer, lg: lg}
 }
 
-func (p *ApplyPhase) Name() string         { return "apply" }
+func (p *ApplyPhase) Name() string           { return "apply" }
 func (p *ApplyPhase) Timeout() time.Duration { return 300 * time.Second }
 
 func (p *ApplyPhase) Run(pc *PhaseContext) PhaseResult {

@@ -15,9 +15,10 @@ vi.mock('../../../session/api', () => ({
 import { listActivities } from '../../../session/api';
 import { useActivityTimeline } from '../useActivityTimeline';
 
-function makeStartMeta(overrides: Partial<ActivityStartMeta> & Pick<ActivityStartMeta, 'activity_id' | 'kind'>): ActivityStartMeta {
+function makeStartMeta(
+  overrides: Partial<ActivityStartMeta> & Pick<ActivityStartMeta, 'activity_id' | 'kind'>,
+): ActivityStartMeta {
   return {
-    kind: overrides.kind,
     status: 'running',
     session_id: 'sess-1',
     turn_id: 'turn-1',
@@ -45,12 +46,14 @@ describe('useActivityTimeline', () => {
   });
 
   it('handleActivityStart adds an activity', () => {
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'act-1',
-      kind: 'task',
-      agent_key: 'agent-a',
-      agent_name: 'Agent A',
-    }));
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'act-1',
+        kind: 'task',
+        agent_key: 'agent-a',
+        agent_name: 'Agent A',
+      }),
+    );
 
     expect(tl.activities.value).toHaveLength(1);
     expect(tl.activities.value[0].id).toBe('act-1');
@@ -59,33 +62,43 @@ describe('useActivityTimeline', () => {
   });
 
   it('handleActivityStart tracks root activity (no parent)', () => {
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'root',
-      kind: 'task',
-      parent_activity_id: null,
-    }));
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'child',
-      kind: 'thinking',
-      parent_activity_id: 'root',
-    }));
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'root',
+        kind: 'task',
+        parent_activity_id: null,
+      }),
+    );
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'child',
+        kind: 'thinking',
+        parent_activity_id: 'root',
+      }),
+    );
 
     expect(tl.rootActivityId.value).toBe('root');
   });
 
   it('handleActivityDelta updates reasoning content', () => {
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'think-1',
-      kind: 'thinking',
-    }));
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'think-1',
+        kind: 'thinking',
+      }),
+    );
 
     tl.handleActivityDelta({
       activity_id: 'think-1',
+      kind: 'thinking',
+      status: 'running',
       delta_field: 'reasoning',
       delta_chunk: 'Hello ',
     });
     tl.handleActivityDelta({
       activity_id: 'think-1',
+      kind: 'thinking',
+      status: 'running',
       delta_field: 'reasoning',
       delta_chunk: 'World',
     });
@@ -95,13 +108,17 @@ describe('useActivityTimeline', () => {
   });
 
   it('handleActivityDelta updates content field', () => {
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'reply-1',
-      kind: 'reply',
-    }));
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'reply-1',
+        kind: 'reply',
+      }),
+    );
 
     tl.handleActivityDelta({
       activity_id: 'reply-1',
+      kind: 'reply',
+      status: 'running',
       delta_field: 'content',
       delta_chunk: 'Hi',
     });
@@ -113,6 +130,8 @@ describe('useActivityTimeline', () => {
   it('handleActivityDelta ignores unknown activity_id', () => {
     tl.handleActivityDelta({
       activity_id: 'nonexistent',
+      kind: 'reply',
+      status: 'running',
       delta_field: 'content',
       delta_chunk: 'x',
     });
@@ -121,13 +140,16 @@ describe('useActivityTimeline', () => {
   });
 
   it('handleActivityDone updates status and fields', () => {
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'act-1',
-      kind: 'thinking',
-    }));
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'act-1',
+        kind: 'thinking',
+      }),
+    );
 
     tl.handleActivityDone({
       activity_id: 'act-1',
+      kind: 'thinking',
       status: 'completed',
       duration_ms: 1500,
       collapsed: true,
@@ -146,6 +168,7 @@ describe('useActivityTimeline', () => {
   it('handleActivityDone ignores unknown activity_id', () => {
     tl.handleActivityDone({
       activity_id: 'nonexistent',
+      kind: 'thinking',
       status: 'completed',
       duration_ms: 0,
       collapsed: true,
@@ -172,10 +195,12 @@ describe('useActivityTimeline', () => {
   });
 
   it('reset clears all activities', () => {
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'act-1',
-      kind: 'task',
-    }));
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'act-1',
+        kind: 'task',
+      }),
+    );
     expect(tl.activities.value).toHaveLength(1);
 
     tl.reset();
@@ -184,10 +209,12 @@ describe('useActivityTimeline', () => {
   });
 
   it('loadActivities replaces all activities', () => {
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'old',
-      kind: 'task',
-    }));
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'old',
+        kind: 'task',
+      }),
+    );
 
     tl.loadActivities([
       {
@@ -225,21 +252,27 @@ describe('useActivityTimeline', () => {
   });
 
   it('activityTree builds parent-child relationships', () => {
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'root',
-      kind: 'task',
-      parent_activity_id: null,
-    }));
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'child-1',
-      kind: 'thinking',
-      parent_activity_id: 'root',
-    }));
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'child-2',
-      kind: 'reply',
-      parent_activity_id: 'root',
-    }));
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'root',
+        kind: 'task',
+        parent_activity_id: null,
+      }),
+    );
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'child-1',
+        kind: 'thinking',
+        parent_activity_id: 'root',
+      }),
+    );
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'child-2',
+        kind: 'reply',
+        parent_activity_id: 'root',
+      }),
+    );
 
     const tree = tl.activityTree.value;
     expect(tree).toHaveLength(1); // one root
@@ -250,24 +283,32 @@ describe('useActivityTimeline', () => {
   });
 
   it('streamEvents maps kinds correctly', () => {
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'think-1',
-      kind: 'thinking',
-    }));
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'act-1',
-      kind: 'action',
-      tool_name: 'search',
-    }));
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'reply-1',
-      kind: 'reply',
-    }));
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'error-1',
-      kind: 'error',
-      content: 'something went wrong',
-    }));
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'think-1',
+        kind: 'thinking',
+      }),
+    );
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'act-1',
+        kind: 'action',
+        tool_name: 'search',
+      }),
+    );
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'reply-1',
+        kind: 'reply',
+      }),
+    );
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'error-1',
+        kind: 'error',
+        content: 'something went wrong',
+      }),
+    );
 
     const activities = tl.streamEvents.value;
     // task, delegate, sub_task_board are filtered out; thinking, action, reply, error remain
@@ -279,16 +320,20 @@ describe('useActivityTimeline', () => {
   });
 
   it('delta creates new object for reactivity (not mutating existing)', () => {
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'reply-1',
-      kind: 'reply',
-    }));
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'reply-1',
+        kind: 'reply',
+      }),
+    );
 
     const before = tl.activities.value.find((a) => a.id === 'reply-1');
     const beforeRef = before;
 
     tl.handleActivityDelta({
       activity_id: 'reply-1',
+      kind: 'reply',
+      status: 'running',
       delta_field: 'content',
       delta_chunk: 'updated',
     });
@@ -300,15 +345,18 @@ describe('useActivityTimeline', () => {
   });
 
   it('done creates new object for reactivity (not mutating existing)', () => {
-    tl.handleActivityStart(makeStartMeta({
-      activity_id: 'think-1',
-      kind: 'thinking',
-    }));
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'think-1',
+        kind: 'thinking',
+      }),
+    );
 
     const before = tl.activities.value.find((a) => a.id === 'think-1');
 
     tl.handleActivityDone({
       activity_id: 'think-1',
+      kind: 'thinking',
       status: 'completed',
       duration_ms: 500,
       collapsed: true,

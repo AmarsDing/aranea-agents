@@ -28,8 +28,8 @@ type ManifestMetadata struct {
 type ManifestSpec struct {
 	// Org structure (reuse orgimport types).
 	Companies []orgimport.OrganizationSpec `yaml:"companies"`
-	Agents     []orgimport.AgentSpec    `yaml:"agents"`
-	Teams      []orgimport.TeamSpec     `yaml:"teams"`
+	Agents    []orgimport.AgentSpec        `yaml:"agents"`
+	Teams     []orgimport.TeamSpec         `yaml:"teams"`
 	// New resource types.
 	MCPServers []MCPServerSpec `yaml:"mcp_servers"`
 	Skills     []SkillSpec     `yaml:"skills"`
@@ -41,7 +41,7 @@ type MCPServerSpec struct {
 	Name        string         `yaml:"name"`
 	Key         string         `yaml:"key"`
 	URL         string         `yaml:"url"`
-	Type        string         `yaml:"type"`        // sse | stdio
+	Type        string         `yaml:"type"` // sse | stdio
 	Description string         `yaml:"description"`
 	Config      map[string]any `yaml:"config"`
 	Enabled     bool           `yaml:"enabled"`

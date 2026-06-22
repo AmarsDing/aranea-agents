@@ -53,6 +53,21 @@ func (s *sessionRunRepoStub) MarkTerminal(_ context.Context, id, phase, errMsg s
 	return nil
 }
 
+func (s *sessionRunRepoStub) MarkTerminalWherePhase(_ context.Context, id, fromPhase, toPhase, errMsg string) (bool, error) {
+	run, ok := s.runs[id]
+	if !ok {
+		return false, nil
+	}
+	if run.Phase != NormalizeSessionRunPhase(fromPhase) {
+		return false, nil
+	}
+	run.Phase = NormalizeSessionRunPhase(toPhase)
+	run.ErrorMessage = errMsg
+	run.FinishedAt = sessionRunNow()
+	s.runs[id] = run
+	return true, nil
+}
+
 func (s *sessionRunRepoStub) Get(_ context.Context, id string) (SessionRun, error) {
 	return s.runs[id], nil
 }
@@ -272,6 +287,9 @@ func (s *sessionRunRepoStubErr) UpdateCheckpointID(_ context.Context, _, _ strin
 	return s.err
 }
 func (s *sessionRunRepoStubErr) MarkTerminal(_ context.Context, _, _, _ string) error { return s.err }
+func (s *sessionRunRepoStubErr) MarkTerminalWherePhase(_ context.Context, _, _, _, _ string) (bool, error) {
+	return false, s.err
+}
 func (s *sessionRunRepoStubErr) Get(_ context.Context, _ string) (SessionRun, error) {
 	return SessionRun{}, s.err
 }
@@ -335,5 +353,78 @@ func TestSessionRunTryClaimDurableResume(t *testing.T) {
 	claimed3, err := uc.TryClaimDurableResume(context.Background(), "run-1")
 	if err != nil || !claimed3 {
 		t.Fatalf("after clear: claimed=%v err=%v", claimed3, err)
+	}
+}
+
+// TestSessionRunUsecase_Complete_ValidTransition verifies that Complete
+// transitions an interactive run to completed via the state machine.
+func TestSessionRunUsecase_Complete_ValidTransition(t *testing.T) {
+	repo := &sessionRunRepoStub{runs: map[string]SessionRun{
+		"run-1": {
+			ID:        "run-1",
+			SessionID: "sess-1",
+			Phase:     SessionRunPhaseInteractive,
+			StartedAt: sessionRunNow(),
+		},
+	}}
+	uc := NewSessionRunUsecase(repo, nil, loggateway.NewNoop())
+	if err := uc.Complete(context.Background(), "run-1"); err != nil {
+		t.Fatalf("Complete failed: %v", err)
+	}
+	run := repo.runs["run-1"]
+	if run.Phase != SessionRunPhaseCompleted {
+		t.Errorf("phase=%q want %q", run.Phase, SessionRunPhaseCompleted)
+	}
+	if run.FinishedAt == "" {
+		t.Error("expected FinishedAt to be set")
+	}
+}
+
+// TestSessionRunUsecase_Complete_RejectedFromTerminal verifies that Complete
+// is rejected when the run is already terminal (state machine enforcement).
+func TestSessionRunUsecase_Complete_RejectedFromTerminal(t *testing.T) {
+	repo := &sessionRunRepoStub{runs: map[string]SessionRun{
+		"run-1": {
+			ID:         "run-1",
+			SessionID:  "sess-1",
+			Phase:      SessionRunPhaseCompleted,
+			StartedAt:  sessionRunNow(),
+			FinishedAt: sessionRunNow(),
+		},
+	}}
+	uc := NewSessionRunUsecase(repo, nil, loggateway.NewNoop())
+	err := uc.Complete(context.Background(), "run-1")
+	if err == nil {
+		t.Fatal("expected error for terminal->terminal transition, got nil")
+	}
+	if !apierror.IsCode(err, apierror.CodeBadRequest) {
+		t.Fatalf("expected CodeBadRequest, got %v", err)
+	}
+}
+
+// TestSessionRunUsecase_Fail_SetsErrorMessage verifies that Fail transitions
+// an interactive run to failed and records the error message.
+func TestSessionRunUsecase_Fail_SetsErrorMessage(t *testing.T) {
+	repo := &sessionRunRepoStub{runs: map[string]SessionRun{
+		"run-1": {
+			ID:        "run-1",
+			SessionID: "sess-1",
+			Phase:     SessionRunPhaseInteractive,
+			StartedAt: sessionRunNow(),
+		},
+	}}
+	uc := NewSessionRunUsecase(repo, nil, loggateway.NewNoop())
+	if err := uc.Fail(context.Background(), "run-1", "something went wrong"); err != nil {
+		t.Fatalf("Fail failed: %v", err)
+	}
+	run := repo.runs["run-1"]
+	if run.Phase != SessionRunPhaseFailed {
+		t.Errorf("phase=%q want %q", run.Phase, SessionRunPhaseFailed)
+	}
+	if run.ErrorMessage != "something went wrong" {
+		t.Errorf("error_message=%q want %q", run.ErrorMessage, "something went wrong")
+	}
+	if run.FinishedAt == "" {
+		t.Error("expected FinishedAt to be set")
 	}
 }

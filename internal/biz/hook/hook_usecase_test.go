@@ -372,12 +372,12 @@ func TestUsecase_Update(t *testing.T) {
 			},
 		},
 		{
-			name:     "non-existent hook returns error from repo",
-			id:       "missing",
-			getErr:   apierror.NotFound("HOOK", "hook not found"),
-			wantErr:  true,
-			reason:   "HOOK",
-			message:  "hook not found",
+			name:    "non-existent hook returns error from repo",
+			id:      "missing",
+			getErr:  apierror.NotFound("HOOK", "hook not found"),
+			wantErr: true,
+			reason:  "HOOK",
+			message: "hook not found",
 		},
 		{
 			name:    "empty id returns error",
@@ -455,7 +455,7 @@ func TestResolver(t *testing.T) {
 			},
 		}
 		uc := NewUsecase(repo, loggateway.NewNoop())
-	r := NewResolver(uc, loggateway.NewNoop())
+		r := NewResolver(uc, loggateway.NewNoop())
 		err := r.Reload(context.Background())
 		if err != nil {
 			t.Fatalf("Reload returned error: %v", err)

@@ -6,7 +6,7 @@ type LogoPhase struct{}
 
 func NewLogoPhase() *LogoPhase { return &LogoPhase{} }
 
-func (p *LogoPhase) Name() string         { return "logos" }
+func (p *LogoPhase) Name() string           { return "logos" }
 func (p *LogoPhase) Timeout() time.Duration { return 120 * time.Second }
 
 func (p *LogoPhase) Run(pc *PhaseContext) PhaseResult {

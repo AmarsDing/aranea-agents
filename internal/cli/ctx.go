@@ -16,15 +16,15 @@ type contextKey struct{}
 
 // Context holds per-command dependencies threaded via cobra.Command.Context().
 type Context struct {
-	Cfg      *config.CLIConfig
-	Client   *client.Client
-	Printer  output.Printer
-	UI       ui.UI
-	Logger   *log.Logger
-	Debug    bool
-	Quiet    bool
-	AutoYes  bool
-	BI       BuildInfo
+	Cfg     *config.CLIConfig
+	Client  *client.Client
+	Printer output.Printer
+	UI      ui.UI
+	Logger  *log.Logger
+	Debug   bool
+	Quiet   bool
+	AutoYes bool
+	BI      BuildInfo
 }
 
 // ContextOpts carries optional overrides when building a Context.

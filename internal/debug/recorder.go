@@ -59,8 +59,8 @@ type Trace struct {
 	closed    bool
 }
 
-func (t *Trace) Dir() string  { return t.root }
-func (t *Trace) Mode() Mode   { return t.mode }
+func (t *Trace) Dir() string { return t.root }
+func (t *Trace) Mode() Mode  { return t.mode }
 
 func (t *Trace) Record(kind string, payload any) error {
 	if t == nil {

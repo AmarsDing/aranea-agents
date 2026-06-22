@@ -40,8 +40,13 @@ export function useMonitorPage() {
   const loading = computed(() => loadingAudit.value || loadingEvents.value || loadingTraces.value);
 
   // ── Runner Metrics (was in MonitorRunnerMetrics.vue) ──
-  const { runnerMetrics, runnerLoading, windowMinutes: runnerWindowMinutes, reload: reloadRunnerMetrics } = useRunnerMetrics(60);
-  const { openRunsTab, openChatSession } = useMonitorRunNavigation();
+  const {
+    runnerMetrics,
+    runnerLoading,
+    windowMinutes: runnerWindowMinutes,
+    reload: reloadRunnerMetrics,
+  } = useRunnerMetrics(60);
+  const { openRunsTab } = useMonitorRunNavigation();
 
   // ── Realtime Events (was in RealtimeEvents.vue) ──
   const realtimeEvents = useMonitorRealtimeEvents(
@@ -196,7 +201,6 @@ export function useMonitorPage() {
     runnerWindowMinutes,
     reloadRunnerMetrics,
     openRunsTab,
-    openChatSession,
     // Realtime events
     ...realtimeEvents,
     // Trace flow

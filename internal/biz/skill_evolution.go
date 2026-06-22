@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	defaultScanAgentLimit   = 500
+	defaultScanAgentLimit     = 500
 	skillPatternMinConfidence = 0.15
 )
 
@@ -311,16 +311,16 @@ func (uc *SkillEvolutionUsecase) ScanAndProposeAll(ctx context.Context) error {
 // UnifiedEvolutionSuggestion{TargetType: "agent", ActionType: "create_skill", TargetID: p.AgentID, DraftBody: p.SkillMD, DraftName: p.SkillName}.
 func (uc *SkillEvolutionUsecase) SuggestionFromProposal(p SkillProposal) SkillEvolutionSuggestion {
 	return SkillEvolutionSuggestion{
-		ID:              p.ID,
-		SkillID:         "",                       // no equivalent; SkillProposal is agent-scoped
-		Type:            EvoSuggestionCreateSkill,  // SkillProposal is agent-scoped skill creation
-		Status:          ProposalStatusToSuggestion(p.Status),
-		TriggerReason:   p.PatternDesc,
-		DraftSkillBody:  p.SkillMD,
-		ApprovedBy:      p.ApprovedBy,
-		RejectedBy:      p.RejectedBy,
-		CreatedAt:       p.CreatedAt,
-		ResolvedAt:      p.ApprovedAt,
+		ID:             p.ID,
+		SkillID:        "",                       // no equivalent; SkillProposal is agent-scoped
+		Type:           EvoSuggestionCreateSkill, // SkillProposal is agent-scoped skill creation
+		Status:         ProposalStatusToSuggestion(p.Status),
+		TriggerReason:  p.PatternDesc,
+		DraftSkillBody: p.SkillMD,
+		ApprovedBy:     p.ApprovedBy,
+		RejectedBy:     p.RejectedBy,
+		CreatedAt:      p.CreatedAt,
+		ResolvedAt:     p.ApprovedAt,
 	}
 }
 

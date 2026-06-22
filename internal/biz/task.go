@@ -154,18 +154,18 @@ type TaskUsecase struct {
 
 func NewTaskUsecase(repo TaskRepo, graphUC TaskGraphResolver, agents AgentRepository, lg loggateway.Logger) *TaskUsecase {
 	return &TaskUsecase{
-		reader:      repo,
-		writer:      repo,
-		comments:    repo,
-		logs:        repo,
-		runs:        repo,
-		events:      repo,
-		graph:       graphUC,
-		roleChecker: ProvideAgentRoleChecker(agents),
-		agentLister: ProvideAgentListerByRole(agents),
-		heartbeats:  make(map[string]time.Time),
+		reader:        repo,
+		writer:        repo,
+		comments:      repo,
+		logs:          repo,
+		runs:          repo,
+		events:        repo,
+		graph:         graphUC,
+		roleChecker:   ProvideAgentRoleChecker(agents),
+		agentLister:   ProvideAgentListerByRole(agents),
+		heartbeats:    make(map[string]time.Time),
 		leaseDeadline: make(map[string]time.Time),
-		lg:          lg,
+		lg:            lg,
 	}
 }
 

@@ -4,12 +4,14 @@
 //
 // ```mermaid
 // stateDiagram-v2
-//     [*] --> Active
-//     Active --> Inactive : deactivate
-//     Inactive --> Active : activate
-//     Active --> Archived : archive
-//     Inactive --> Archived : archive
-//     Archived --> [*]
+//
+//	[*] --> Active
+//	Active --> Inactive : deactivate
+//	Inactive --> Active : activate
+//	Active --> Archived : archive
+//	Inactive --> Archived : archive
+//	Archived --> [*]
+//
 // ```
 package biz
 

@@ -1,0 +1,3281 @@
+[
+  {
+    "path": "/overview",
+    "url": "http://localhost:9001/overview",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 26,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "menu",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "chevron_right",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "chevron_left",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "notifications_none",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "D",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "brightness_auto",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "monitor_heart运维监控arrow_drop_down",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "warning_amber查看告警",
+        "href": null
+      },
+      {
+        "tag": "a",
+        "text": "receipt_long查看明细",
+        "href": "/usage/events?range=30d"
+      },
+      {
+        "tag": "a",
+        "text": "smart_toy32活跃 Agent",
+        "href": "/agents"
+      },
+      {
+        "tag": "a",
+        "text": "dns1模型提供商",
+        "href": "/models"
+      },
+      {
+        "tag": "a",
+        "text": "category3公司数量",
+        "href": "/settings/organization"
+      },
+      {
+        "tag": "a",
+        "text": "groups7团队数量",
+        "href": "/team"
+      },
+      {
+        "tag": "a",
+        "text": "chat0今日调用",
+        "href": "/chat"
+      },
+      {
+        "tag": "a",
+        "text": "data_usage0今日 Token",
+        "href": null
+      },
+      {
+        "tag": "a",
+        "text": "chat新建对话与 AI 智能体对话chevron_right",
+        "href": "/chat"
+      },
+      {
+        "tag": "a",
+        "text": "smart_toy创建 Agent配置新的智能体chevron_right",
+        "href": "/agents"
+      },
+      {
+        "tag": "a",
+        "text": "schedule定时任务管理自动化任务chevron_right",
+        "href": "/cron"
+      },
+      {
+        "tag": "a",
+        "text": "settings系统设置系统参数配置chevron_right",
+        "href": "/settings"
+      },
+      {
+        "tag": "button",
+        "text": "Token",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "调用次数",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "费用",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "成功率",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "refresh刷新",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "0",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "0.0%",
+        "href": null
+      }
+    ],
+    "logs": [],
+    "network": []
+  },
+  {
+    "path": "/usage/events",
+    "url": "http://localhost:9001/usage/events",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 10,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "menu",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "chevron_right",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "chevron_left",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "notifications_none",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "D",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "brightness_auto",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "download导出 CSV",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "restart_alt重置",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "manage_search查询",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "delete_outline删除记录",
+        "href": null
+      }
+    ],
+    "logs": [],
+    "network": []
+  },
+  {
+    "path": "/chat",
+    "url": "http://localhost:9001/chat",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 22,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "menu",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "chevron_right",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "chevron_left",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "notifications_none",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "D",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "brightness_auto",
+        "href": null
+      },
+      {
+        "tag": "div",
+        "text": "精灵助手 在线",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "settings",
+        "href": null
+      },
+      {
+        "tag": "div",
+        "text": "groups进行中的团队expand_more",
+        "href": null
+      },
+      {
+        "tag": "div",
+        "text": "check_circle已完成的团队expand_more",
+        "href": null
+      },
+      {
+        "tag": "div",
+        "text": "pause_circle中断expand_more",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "bolt",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "build_circle",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "build_circle_outlined",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "unfold_more展开全部",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "unfold_less折叠全部",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "inventory_2",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "work_history",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "mic",
+        "href": null
+      },
+      {
+        "tag": "div",
+        "text": "新对话10:150% more_horiz",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "more_horiz",
+        "href": null
+      },
+      {
+        "tag": "div",
+        "text": "你好00:020% more_horiz",
+        "href": null
+      }
+    ],
+    "logs": [],
+    "network": []
+  },
+  {
+    "path": "/sessions",
+    "url": "http://localhost:9001/sessions",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 25,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "menu",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "chevron_right",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "chevron_left",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "notifications_none",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "D",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "brightness_auto",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "refresh刷新",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "restart_alt重置",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "checklist批量选择",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "close取消选择",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "inventory_2按天数归档",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "delete_sweep按天数删除",
+        "href": null
+      },
+      {
+        "tag": "a",
+        "text": "新对话",
+        "href": "/sessions/0bfdc71b-7e12-432f-ab56-e836bb2ed516"
+      },
+      {
+        "tag": "a",
+        "text": "visibility",
+        "href": "/sessions/0bfdc71b-7e12-432f-ab56-e836bb2ed516"
+      },
+      {
+        "tag": "button",
+        "text": "push_pin",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "delete",
+        "href": null
+      },
+      {
+        "tag": "a",
+        "text": "你好",
+        "href": "/sessions/c9f476d9-ad24-45e0-99a4-1d5416e82bee"
+      },
+      {
+        "tag": "a",
+        "text": "visibility",
+        "href": "/sessions/c9f476d9-ad24-45e0-99a4-1d5416e82bee"
+      },
+      {
+        "tag": "a",
+        "text": "你好",
+        "href": "/sessions/b5faa165-94a7-4227-9fbe-c35628d353d0"
+      },
+      {
+        "tag": "a",
+        "text": "visibility",
+        "href": "/sessions/b5faa165-94a7-4227-9fbe-c35628d353d0"
+      },
+      {
+        "tag": "a",
+        "text": "团队自我介绍任务",
+        "href": "/sessions/6eafde27-07ef-4f32-8456-c3bd7c47fa0c"
+      },
+      {
+        "tag": "a",
+        "text": "visibility",
+        "href": "/sessions/6eafde27-07ef-4f32-8456-c3bd7c47fa0c"
+      },
+      {
+        "tag": "a",
+        "text": "你好",
+        "href": "/sessions/60228878-857d-4195-b757-613ba5a2b461"
+      },
+      {
+        "tag": "a",
+        "text": "visibility",
+        "href": "/sessions/60228878-857d-4195-b757-613ba5a2b461"
+      },
+      {
+        "tag": "button",
+        "text": "1",
+        "href": null
+      }
+    ],
+    "logs": [],
+    "network": []
+  },
+  {
+    "path": "/memory",
+    "url": "http://localhost:9001/memory",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 8,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "menu",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "chevron_right",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "chevron_left",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "notifications_none",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "D",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "brightness_auto",
+        "href": null
+      },
+      {
+        "tag": "i",
+        "text": "cancel",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "refresh刷新",
+        "href": null
+      }
+    ],
+    "logs": [],
+    "network": []
+  },
+  {
+    "path": "/agents",
+    "url": "http://localhost:9001/agents",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 30,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "menu",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "chevron_right",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "chevron_left",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "notifications_none",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "D",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "brightness_auto",
+        "href": null
+      },
+      {
+        "tag": "a",
+        "text": "account_tree管理组织",
+        "href": "/settings/organization"
+      },
+      {
+        "tag": "button",
+        "text": "add创建 Agent",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "grid_view",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "view_list",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "__spirit__",
+        "href": null
+      },
+      {
+        "tag": "a",
+        "text": "settings",
+        "href": "/agents/agent___spirit__/settings"
+      },
+      {
+        "tag": "button",
+        "text": "__dept_lead_quant_trading__",
+        "href": null
+      },
+      {
+        "tag": "a",
+        "text": "settings",
+        "href": "/agents/agent___dept_lead_quant_trading__/settings"
+      },
+      {
+        "tag": "button",
+        "text": "__memory__",
+        "href": null
+      },
+      {
+        "tag": "a",
+        "text": "settings",
+        "href": "/agents/agent___memory__/settings"
+      },
+      {
+        "tag": "button",
+        "text": "star_border",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "star",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "fox",
+        "href": null
+      },
+      {
+        "tag": "a",
+        "text": "edit",
+        "href": "/agents/1b8cdcc324ac6ad960bb4ead/settings"
+      },
+      {
+        "tag": "button",
+        "text": "content_copy",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "delete",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "luo",
+        "href": null
+      },
+      {
+        "tag": "a",
+        "text": "edit",
+        "href": "/agents/7ba34dedd5aef8b755f5db33/settings"
+      },
+      {
+        "tag": "button",
+        "text": "__skills__",
+        "href": null
+      },
+      {
+        "tag": "a",
+        "text": "settings",
+        "href": "/agents/agent___skills__/settings"
+      },
+      {
+        "tag": "button",
+        "text": "mimi",
+        "href": null
+      },
+      {
+        "tag": "a",
+        "text": "edit",
+        "href": "/agents/a8f49d17f605d14bfd44a889/settings"
+      },
+      {
+        "tag": "button",
+        "text": "programmer",
+        "href": null
+      },
+      {
+        "tag": "a",
+        "text": "edit",
+        "href": "/agents/ca2a9d6d91c20fdc15a0d250/settings"
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+        "location": {
+          "url": "http://localhost:9001/v1/agents/1b8cdcc324ac6ad960bb4ead/duplicate",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/agents/1b8cdcc324ac6ad960bb4ead/duplicate",
+        "method": "POST",
+        "status": 400,
+        "statusText": "Bad Request",
+        "body": "{\"code\":400,\"reason\":\"AGENT_BAD_REQUEST\",\"message\":\"provider/model is not enabled: provider/model is not enabled\",\"metadata\":{}}"
+      }
+    ]
+  },
+  {
+    "path": "/settings/organization",
+    "url": "http://localhost:9001/settings/organization",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 19,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "menu",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "chevron_right",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "chevron_left",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "notifications_none",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "D",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "brightness_auto",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "refresh刷新",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "add新增公司",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "account_tree树形",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "dashboard卡片",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "expand_more查看 6 个部门",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "expand_less收起部门",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "add",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "edit",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "pause",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "expand_more查看 5 个部门",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "play_arrow",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "add新增职位",
+        "href": null
+      },
+      {
+        "tag": "button",
+        "text": "重新登录",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/team",
+    "url": "http://localhost:9001/team",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/graphs",
+    "url": "http://localhost:9001/graphs",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/models",
+    "url": "http://localhost:9001/models",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/channels",
+    "url": "http://localhost:9001/channels",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/mcp-servers",
+    "url": "http://localhost:9001/mcp-servers",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/skills",
+    "url": "http://localhost:9001/skills",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/skills/runs",
+    "url": "http://localhost:9001/skills/runs",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/skills/evolution-suggestions",
+    "url": "http://localhost:9001/skills/evolution-suggestions",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/skills/experience-reports",
+    "url": "http://localhost:9001/skills/experience-reports",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/plugins",
+    "url": "http://localhost:9001/plugins",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/plugins/runs",
+    "url": "http://localhost:9001/plugins/runs",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/hooks",
+    "url": "http://localhost:9001/hooks",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/hooks/deliveries",
+    "url": "http://localhost:9001/hooks/deliveries",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/webhooks",
+    "url": "http://localhost:9001/webhooks",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/knowledge",
+    "url": "http://localhost:9001/knowledge",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/artifacts",
+    "url": "http://localhost:9001/artifacts",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/evaluation",
+    "url": "http://localhost:9001/evaluation",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/a2a",
+    "url": "http://localhost:9001/a2a",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/tools",
+    "url": "http://localhost:9001/tools",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/tools/runs",
+    "url": "http://localhost:9001/tools/runs",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/tools/audits",
+    "url": "http://localhost:9001/tools/audits",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/cron",
+    "url": "http://localhost:9001/cron",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/monitor/logs",
+    "url": "http://localhost:9001/monitor/logs",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/observability",
+    "url": "http://localhost:9001/observability",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/shop",
+    "url": "http://localhost:9001/shop",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  },
+  {
+    "path": "/settings",
+    "url": "http://localhost:9001/settings",
+    "loadOk": true,
+    "error": null,
+    "clickedCount": 1,
+    "clicked": [
+      {
+        "tag": "button",
+        "text": "关闭",
+        "href": null
+      }
+    ],
+    "logs": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/v1/admins/current",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)",
+        "location": {
+          "url": "http://localhost:9001/healthz",
+          "line": 0,
+          "column": 0,
+          "lineNumber": 0,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      },
+      {
+        "type": "error",
+        "text": "WebSocket connection to 'ws://localhost:9001/v1/ws?session_id=*&probe=1' failed: Connection closed before receiving a handshake response",
+        "location": {
+          "url": "http://localhost:9001/src/features/heartbeat/useServerHeartbeat.ts?t=1782069335867",
+          "line": 109,
+          "column": 0,
+          "lineNumber": 109,
+          "columnNumber": 0
+        }
+      }
+    ],
+    "network": [
+      {
+        "url": "http://localhost:9001/v1/admins/current",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      },
+      {
+        "url": "http://localhost:9001/healthz",
+        "method": "GET",
+        "status": 502,
+        "statusText": "Bad Gateway",
+        "body": ""
+      }
+    ]
+  }
+]

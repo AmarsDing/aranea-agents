@@ -39,8 +39,10 @@ func newToolConfirmationBeforeHook(gate *toolConfirmGate, ag biz.Agent, deps TRP
 	return &toolConfirmationBeforeHook{gate: gate, ag: ag, deps: deps}
 }
 
-func (h *toolConfirmationBeforeHook) Point() callbacks.CallbackPoint { return callbacks.PointBeforeTool }
-func (h *toolConfirmationBeforeHook) Priority() int                    { return 10 }
+func (h *toolConfirmationBeforeHook) Point() callbacks.CallbackPoint {
+	return callbacks.PointBeforeTool
+}
+func (h *toolConfirmationBeforeHook) Priority() int { return 10 }
 
 func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args *trpctool.BeforeToolArgs) (*trpctool.BeforeToolResult, error) {
 	if args == nil || h.gate == nil {

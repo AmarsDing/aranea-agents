@@ -137,4 +137,3 @@ func (c *Client) UpdateAgentToolPolicy(ctx context.Context, agentID string, req 
 	}
 	return resp, nil
 }
-

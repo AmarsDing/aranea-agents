@@ -25,10 +25,10 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 
+	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpcguardrail "trpc.group/trpc-go/trpc-agent-go/plugin/guardrail"
 	trpcidentity "trpc.group/trpc-go/trpc-agent-go/plugin/identity"
 	trpcmessagemerger "trpc.group/trpc-go/trpc-agent-go/plugin/messagemerger"
-	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpctoolcallid "trpc.group/trpc-go/trpc-agent-go/plugin/toolcallid"
 )
 
@@ -216,5 +216,3 @@ func (m *Manager) RunnerPluginsForAgent(agentID string) []trpcplugin.Plugin {
 	)
 	return plugins
 }
-
-

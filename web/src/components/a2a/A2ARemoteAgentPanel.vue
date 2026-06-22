@@ -65,7 +65,13 @@
               class="app-glass-control"
             >
               <template #append>
-                <q-btn flat dense round :icon="showSecret ? 'visibility_off' : 'visibility'" @click="showSecret = !showSecret" />
+                <q-btn
+                  flat
+                  dense
+                  round
+                  :icon="showSecret ? 'visibility_off' : 'visibility'"
+                  @click="showSecret = !showSecret"
+                />
               </template>
             </q-input>
           </div>
@@ -97,8 +103,24 @@
 
       <!-- Actions -->
       <div class="a2a-form-actions">
-        <q-btn outline no-caps color="primary" icon="search" label="预览 Discover" :loading="discovering" @click="onDiscover" />
-        <q-btn unelevated no-caps color="primary" icon="cloud_upload" label="注册" :loading="loading" @click="onRegister" />
+        <q-btn
+          outline
+          no-caps
+          color="primary"
+          icon="search"
+          label="预览 Discover"
+          :loading="discovering"
+          @click="onDiscover"
+        />
+        <q-btn
+          unelevated
+          no-caps
+          color="primary"
+          icon="cloud_upload"
+          label="注册"
+          :loading="loading"
+          @click="onRegister"
+        />
       </div>
 
       <!-- Preview -->
@@ -150,7 +172,7 @@ function payload(): RegisterRemoteAgentInput {
     remote_url: form.remote_url.trim(),
     display_name: form.display_name?.trim(),
     auth_type: form.auth_type,
-    auth_config_json: buildA2AAuthJSON(form.auth_type, authSecret.value, mtls),
+    auth_config_json: buildA2AAuthJSON(form.auth_type ?? 'none', authSecret.value, mtls),
     enabled: true,
   };
 }
@@ -159,7 +181,7 @@ function onDiscover() {
   emit('discover', {
     remote_url: form.remote_url.trim(),
     auth_type: form.auth_type,
-    auth_config_json: buildA2AAuthJSON(form.auth_type, authSecret.value, mtls),
+    auth_config_json: buildA2AAuthJSON(form.auth_type ?? 'none', authSecret.value, mtls),
   });
 }
 

@@ -9,10 +9,10 @@ import (
 // SessionCompressionUsecase handles context compression logic,
 // extracted from SessionUsecase to reduce God Object scope.
 type SessionCompressionUsecase struct {
-	compressRepo    CompressRepo
-	contextUpdater  ContextUpdater
-	summaryReader   SummaryReader
-	summaryWriter   SummaryWriter
+	compressRepo   CompressRepo
+	contextUpdater ContextUpdater
+	summaryReader  SummaryReader
+	summaryWriter  SummaryWriter
 }
 
 // NewSessionCompressionUsecase creates a new SessionCompressionUsecase.

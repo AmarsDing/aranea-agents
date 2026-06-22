@@ -4,9 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
 	"strconv"
 	"time"
+
+	"aranea-agents/pkg/apierror"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -73,18 +74,18 @@ func (l *redisSlidingWindowLimiter) Allow(ctx context.Context, caller, callee st
 	}
 	member, err := uniqueMember(nowMs)
 	if err != nil {
-		return false, fmt.Errorf("a2a limiter: generate member: %w", err)
+		return false, apierror.Internal(apierror.DomainA2A, "generate member: %s", err.Error())
 	}
 
 	res, err := l.script.Run(ctx, l.client, []string{key},
 		nowMs, windowMs, l.cfg.MaxInvokes, ttlMs, member,
 	).Result()
 	if err != nil {
-		return false, fmt.Errorf("a2a limiter: redis eval: %w", err)
+		return false, apierror.Internal(apierror.DomainA2A, "redis eval: %s", err.Error())
 	}
 	n, ok := res.(int64)
 	if !ok {
-		return false, fmt.Errorf("a2a limiter: unexpected redis return type %T", res)
+		return false, apierror.Internal(apierror.DomainA2A, "unexpected redis return type %T", res)
 	}
 	return n == 1, nil
 }

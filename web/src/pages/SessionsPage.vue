@@ -147,7 +147,6 @@ const {
   togglePinRow,
   promptDeleteSelected,
   archiveSelected,
-  exportSession,
   exportSelectedDetail,
 } = useSessionsPage();
 

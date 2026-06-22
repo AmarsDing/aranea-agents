@@ -3,7 +3,10 @@
     <div class="team-progress-section__header">
       <span class="team-progress-section__icon">{{ section.teamIcon }}</span>
       <span class="team-progress-section__name">{{ section.teamName }}</span>
-      <span class="team-progress-section__status-badge" :class="`team-progress-section__status-badge--${section.status}`">
+      <span
+        class="team-progress-section__status-badge"
+        :class="`team-progress-section__status-badge--${section.status}`"
+      >
         {{ statusLabel }}
       </span>
       <span v-if="section.durationMs != null" class="team-progress-section__duration">
@@ -13,10 +16,7 @@
 
     <!-- Progress bar -->
     <div class="team-progress-section__bar">
-      <div
-        class="team-progress-section__bar-fill"
-        :style="{ width: `${section.progressPercent}%` }"
-      ></div>
+      <div class="team-progress-section__bar-fill" :style="{ width: `${section.progressPercent}%` }"></div>
     </div>
 
     <!-- Agent details -->
@@ -29,9 +29,7 @@
             {{ agentStatusIcon(agent.status) }}
           </span>
         </div>
-        <EventStream
-          :events="agent.activities"
-        />
+        <EventStream :events="agent.activities" />
       </div>
     </div>
   </div>
@@ -53,11 +51,16 @@ const props = defineProps<{
 
 const statusLabel = computed(() => {
   switch (props.section.status) {
-    case 'running': return t('chat.turn.block.running');
-    case 'completed': return t('chat.turn.block.completed');
-    case 'failed': return t('chat.turn.block.failed');
-    case 'interrupted': return t('chat.agentBlock.interrupted', '中断');
-    default: return '';
+    case 'running':
+      return t('chat.turn.block.running');
+    case 'completed':
+      return t('chat.turn.block.completed');
+    case 'failed':
+      return t('chat.turn.block.failed');
+    case 'interrupted':
+      return t('chat.agentBlock.interrupted', '中断');
+    default:
+      return '';
   }
 });
 
@@ -65,11 +68,16 @@ const formattedDuration = computed(() => formatDuration(props.section.durationMs
 
 function agentStatusIcon(status: string): string {
   switch (status) {
-    case 'running': return '⏳';
-    case 'completed': return '✓';
-    case 'failed': return '✗';
-    case 'waiting': return '⏸';
-    default: return '○';
+    case 'running':
+      return '⏳';
+    case 'completed':
+      return '✓';
+    case 'failed':
+      return '✗';
+    case 'waiting':
+      return '⏸';
+    default:
+      return '○';
   }
 }
 </script>

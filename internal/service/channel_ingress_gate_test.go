@@ -14,10 +14,12 @@ import (
 
 func TestGateInboundBeforeTurnDeniesAccess(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+	uc := testIngressChannelUsecase(repo)
+	dedupe := biz.NewIngressMessageDedupe(biz.DefaultMessageDedupeTTL)
 	h := &ChannelIngress{
-		channels: uc,
-		lg:       loggateway.NewNoop(),
+		channels:     uc,
+		lg:           loggateway.NewNoop(),
+		deduplicator: dedupe,
 	}
 	ch := biz.Channel{
 		ID:         "ch-1",

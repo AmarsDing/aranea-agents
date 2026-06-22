@@ -60,7 +60,7 @@ func (c *Client) PackExport(ctx context.Context, kind, ref string) (*PackExportR
 
 // PackImportResult holds the import response.
 type PackImportResult struct {
-	OrgNodes    int
+	OrgNodes         int
 	AgentsCreated    int
 	AgentsUpdated    int
 	AgentsSkipped    int
@@ -114,7 +114,7 @@ func (c *Client) PackImport(ctx context.Context, data []byte, strategy string) (
 	}
 
 	result := &PackImportResult{
-		OrgNodes:    int(pb.OrgNodes),
+		OrgNodes:         int(pb.OrgNodes),
 		AgentsCreated:    int(pb.AgentsCreated),
 		AgentsUpdated:    int(pb.AgentsUpdated),
 		AgentsSkipped:    int(pb.AgentsSkipped),

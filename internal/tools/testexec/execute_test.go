@@ -219,10 +219,10 @@ func TestFindCallable(t *testing.T) {
 			wantName: "my_tool",
 		},
 		{
-			name:     "not found",
-			ts:       &tools.AssembledToolsets{Tools: []tools.Tool{otherTool}},
-			names:    []string{"my_tool"},
-			wantErr:  true,
+			name:    "not found",
+			ts:      &tools.AssembledToolsets{Tools: []tools.Tool{otherTool}},
+			names:   []string{"my_tool"},
+			wantErr: true,
 		},
 		{
 			name:    "nil AssembledToolsets",
@@ -246,10 +246,10 @@ func TestFindCallable(t *testing.T) {
 			wantName: "my_tool",
 		},
 		{
-			name:     "empty names",
-			ts:       &tools.AssembledToolsets{Tools: []tools.Tool{myTool}},
-			names:    []string{},
-			wantErr:  true,
+			name:    "empty names",
+			ts:      &tools.AssembledToolsets{Tools: []tools.Tool{myTool}},
+			names:   []string{},
+			wantErr: true,
 		},
 		{
 			name:     "multiple names found by second",

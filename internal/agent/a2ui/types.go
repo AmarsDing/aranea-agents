@@ -28,13 +28,13 @@ type UserAction struct {
 }
 
 type BeginRendering struct {
-	SurfaceID string       `json:"surfaceId"`
-	Root      string       `json:"root"`
+	SurfaceID string         `json:"surfaceId"`
+	Root      string         `json:"root"`
 	Styles    *SurfaceStyles `json:"styles,omitempty"`
 }
 
 type SurfaceStyles struct {
-	Font        string `json:"font,omitempty"`
+	Font         string `json:"font,omitempty"`
 	PrimaryColor string `json:"primaryColor,omitempty"`
 }
 
@@ -54,30 +54,30 @@ type DeleteSurface struct {
 }
 
 type Component struct {
-	ID        string         `json:"id"`
-	Weight    *float64       `json:"weight,omitempty"`
-	Component ComponentBody  `json:"component"`
+	ID        string        `json:"id"`
+	Weight    *float64      `json:"weight,omitempty"`
+	Component ComponentBody `json:"component"`
 }
 
 type ComponentBody struct {
-	Text             *TextComponent             `json:"Text,omitempty"`
-	Image            *ImageComponent            `json:"Image,omitempty"`
-	Icon             *IconComponent             `json:"Icon,omitempty"`
-	Video            *VideoComponent            `json:"Video,omitempty"`
-	AudioPlayer      *AudioPlayerComponent      `json:"AudioPlayer,omitempty"`
-	Row              *RowComponent              `json:"Row,omitempty"`
-	Column           *ColumnComponent           `json:"Column,omitempty"`
-	List             *ListComponent             `json:"List,omitempty"`
-	Card             *CardComponent             `json:"Card,omitempty"`
-	Tabs             *TabsComponent             `json:"Tabs,omitempty"`
-	Divider          *DividerComponent          `json:"Divider,omitempty"`
-	Modal            *ModalComponent            `json:"Modal,omitempty"`
-	Button           *ButtonComponent           `json:"Button,omitempty"`
-	CheckBox         *CheckBoxComponent         `json:"CheckBox,omitempty"`
-	TextField        *TextFieldComponent        `json:"TextField,omitempty"`
-	DateTimeInput    *DateTimeInputComponent    `json:"DateTimeInput,omitempty"`
-	MultipleChoice   *MultipleChoiceComponent   `json:"MultipleChoice,omitempty"`
-	Slider           *SliderComponent           `json:"Slider,omitempty"`
+	Text           *TextComponent           `json:"Text,omitempty"`
+	Image          *ImageComponent          `json:"Image,omitempty"`
+	Icon           *IconComponent           `json:"Icon,omitempty"`
+	Video          *VideoComponent          `json:"Video,omitempty"`
+	AudioPlayer    *AudioPlayerComponent    `json:"AudioPlayer,omitempty"`
+	Row            *RowComponent            `json:"Row,omitempty"`
+	Column         *ColumnComponent         `json:"Column,omitempty"`
+	List           *ListComponent           `json:"List,omitempty"`
+	Card           *CardComponent           `json:"Card,omitempty"`
+	Tabs           *TabsComponent           `json:"Tabs,omitempty"`
+	Divider        *DividerComponent        `json:"Divider,omitempty"`
+	Modal          *ModalComponent          `json:"Modal,omitempty"`
+	Button         *ButtonComponent         `json:"Button,omitempty"`
+	CheckBox       *CheckBoxComponent       `json:"CheckBox,omitempty"`
+	TextField      *TextFieldComponent      `json:"TextField,omitempty"`
+	DateTimeInput  *DateTimeInputComponent  `json:"DateTimeInput,omitempty"`
+	MultipleChoice *MultipleChoiceComponent `json:"MultipleChoice,omitempty"`
+	Slider         *SliderComponent         `json:"Slider,omitempty"`
 }
 
 type DataBinding struct {
@@ -87,13 +87,13 @@ type DataBinding struct {
 	LiteralBoolean *bool    `json:"literalBoolean,omitempty"`
 }
 
-func StrPtr(s string) *string    { return &s }
-func NumPtr(n float64) *float64  { return &n }
-func BoolPtr(b bool) *bool       { return &b }
+func StrPtr(s string) *string   { return &s }
+func NumPtr(n float64) *float64 { return &n }
+func BoolPtr(b bool) *bool      { return &b }
 
 type TextComponent struct {
-	Text       DataBinding `json:"text"`
-	UsageHint  string      `json:"usageHint,omitempty"`
+	Text      DataBinding `json:"text"`
+	UsageHint string      `json:"usageHint,omitempty"`
 }
 
 type ImageComponent struct {
@@ -116,8 +116,8 @@ type AudioPlayerComponent struct {
 }
 
 type ChildrenDef struct {
-	ExplicitList []string       `json:"explicitList,omitempty"`
-	Template     *TemplateDef   `json:"template,omitempty"`
+	ExplicitList []string     `json:"explicitList,omitempty"`
+	Template     *TemplateDef `json:"template,omitempty"`
 }
 
 type TemplateDef struct {
@@ -171,12 +171,12 @@ type ActionContextEntry struct {
 }
 
 type ActionDef struct {
-	Name    string              `json:"name"`
+	Name    string               `json:"name"`
 	Context []ActionContextEntry `json:"context,omitempty"`
 }
 
 type ButtonComponent struct {
-	Child  string     `json:"child"`
+	Child   string    `json:"child"`
 	Primary bool      `json:"primary,omitempty"`
 	Action  ActionDef `json:"action"`
 }
@@ -217,9 +217,9 @@ type SliderComponent struct {
 }
 
 type DataEntry struct {
-	Key          string        `json:"key"`
-	ValueString  *string       `json:"valueString,omitempty"`
-	ValueNumber  *float64      `json:"valueNumber,omitempty"`
-	ValueBoolean *bool         `json:"valueBoolean,omitempty"`
-	ValueMap     []DataEntry   `json:"valueMap,omitempty"`
+	Key          string      `json:"key"`
+	ValueString  *string     `json:"valueString,omitempty"`
+	ValueNumber  *float64    `json:"valueNumber,omitempty"`
+	ValueBoolean *bool       `json:"valueBoolean,omitempty"`
+	ValueMap     []DataEntry `json:"valueMap,omitempty"`
 }

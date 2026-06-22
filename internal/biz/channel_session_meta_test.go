@@ -8,39 +8,39 @@ import (
 
 func TestBuildChannelSessionMetadataJSON(t *testing.T) {
 	cases := []struct {
-		name     string
-		ch       biz.Channel
-		platform string
-		peerID   string
-		peerKey  string
+		name         string
+		ch           biz.Channel
+		platform     string
+		peerID       string
+		peerKey      string
 		wantContains []string
 	}{
 		{
-			name:     "basic channel",
-			ch:       biz.Channel{ID: "ch1", Key: "mykey", ConfigJSON: `{"type":"telegram"}`},
-			platform: "telegram",
-			peerID:   "p1",
-			peerKey:  "pk1",
+			name:         "basic channel",
+			ch:           biz.Channel{ID: "ch1", Key: "mykey", ConfigJSON: `{"type":"telegram"}`},
+			platform:     "telegram",
+			peerID:       "p1",
+			peerKey:      "pk1",
 			wantContains: []string{`"source":"channel"`, `"channel_id":"ch1"`, `"channel_key":"mykey"`, `"platform":"telegram"`, `"peer_id":"p1"`, `"peer_key":"pk1"`},
 		},
 		{
-			name:     "empty platform falls back to config type",
-			ch:       biz.Channel{ID: "ch2", Key: "k2", ConfigJSON: `{"type":"feishu"}`},
-			platform: "",
-			peerID:   "",
-			peerKey:  "",
+			name:         "empty platform falls back to config type",
+			ch:           biz.Channel{ID: "ch2", Key: "k2", ConfigJSON: `{"type":"feishu"}`},
+			platform:     "",
+			peerID:       "",
+			peerKey:      "",
 			wantContains: []string{`"platform":"feishu"`},
 		},
 		{
-			name:     "explicit platform overrides config type",
-			ch:       biz.Channel{ID: "ch3", Key: "k3", ConfigJSON: `{"type":"telegram"}`},
-			platform: "slack",
+			name:         "explicit platform overrides config type",
+			ch:           biz.Channel{ID: "ch3", Key: "k3", ConfigJSON: `{"type":"telegram"}`},
+			platform:     "slack",
 			wantContains: []string{`"platform":"slack"`},
 		},
 		{
-			name:     "receive_mode from config",
-			ch:       biz.Channel{ID: "ch4", Key: "k4", ConfigJSON: `{"type":"telegram","receive_mode":"webhook"}`},
-			platform: "telegram",
+			name:         "receive_mode from config",
+			ch:           biz.Channel{ID: "ch4", Key: "k4", ConfigJSON: `{"type":"telegram","receive_mode":"webhook"}`},
+			platform:     "telegram",
 			wantContains: []string{`"receive_mode":"webhook"`},
 		},
 	}
@@ -58,9 +58,9 @@ func TestBuildChannelSessionMetadataJSON(t *testing.T) {
 
 func TestParseChannelSessionMeta(t *testing.T) {
 	cases := []struct {
-		name string
-		json string
-		want bool
+		name       string
+		json       string
+		want       bool
 		wantSource string
 	}{
 		{"empty string", "", false, ""},
@@ -165,11 +165,11 @@ func TestListChannelsReferencingAgent(t *testing.T) {
 
 func TestChannelRoutingReferencesAgent(t *testing.T) {
 	cases := []struct {
-		name      string
+		name       string
 		configJSON string
-		agentID   string
-		agentKey  string
-		want      bool
+		agentID    string
+		agentKey   string
+		want       bool
 	}{
 		{"default agent match", `{"routing":{"default_agent_id":"a1"}}`, "a1", "", true},
 		{"agent key match", `{"routing":{"default_agent_id":"mykey"}}`, "", "mykey", true},

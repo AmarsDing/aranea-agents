@@ -60,9 +60,11 @@ function mapSpiritTeam(raw: Record<string, unknown>): SpiritTeam {
     id: String(raw.id ?? ''),
     teamName: String(raw.team_name ?? raw.teamName ?? ''),
     taskSummary: String(raw.task_summary ?? raw.taskSummary ?? ''),
-    status: isValidTeamStatus(String(raw.status ?? '')) ? String(raw.status) as SpiritTeamStatus : 'pending',
-    mode: isValidTeamMode(String(raw.mode ?? '')) ? String(raw.mode) as SpiritTeamMode : 'coordinator',
-    memberAvatars: Array.isArray(raw.member_avatars ?? raw.memberAvatars) ? ((raw.member_avatars ?? raw.memberAvatars) as string[]) : [],
+    status: isValidTeamStatus(String(raw.status ?? '')) ? (String(raw.status) as SpiritTeamStatus) : 'pending',
+    mode: isValidTeamMode(String(raw.mode ?? '')) ? (String(raw.mode) as SpiritTeamMode) : 'coordinator',
+    memberAvatars: Array.isArray(raw.member_avatars ?? raw.memberAvatars)
+      ? ((raw.member_avatars ?? raw.memberAvatars) as string[])
+      : [],
     completedSteps: Number(raw.completed_steps ?? raw.completedSteps ?? 0),
     totalSteps: Number(raw.total_steps ?? raw.totalSteps ?? 0),
     progressPct: Number(raw.progress_pct ?? raw.progressPct ?? 0),
@@ -70,10 +72,14 @@ function mapSpiritTeam(raw: Record<string, unknown>): SpiritTeam {
     spiritSessionId: String(raw.spirit_session_id ?? raw.spiritSessionId ?? ''),
     teamSessionId: String(raw.team_session_id ?? raw.teamSessionId ?? ''),
     members: Array.isArray(raw.members) ? (raw.members as Record<string, unknown>[]).map(mapSpiritMember) : [],
-    sharedAgentIds: Array.isArray(raw.shared_agent_ids ?? raw.sharedAgentIds) ? ((raw.shared_agent_ids ?? raw.sharedAgentIds) as unknown[]).map(String) : [],
+    sharedAgentIds: Array.isArray(raw.shared_agent_ids ?? raw.sharedAgentIds)
+      ? ((raw.shared_agent_ids ?? raw.sharedAgentIds) as unknown[]).map(String)
+      : [],
     dagNodeId: String(raw.dag_node_id ?? raw.dagNodeId ?? ''),
     graphExecutionId: String(raw.graph_execution_id ?? raw.graphExecutionId ?? '') || undefined,
-    dependsOn: Array.isArray(raw.depends_on ?? raw.dependsOn) ? ((raw.depends_on ?? raw.dependsOn) as unknown[]).map(String) : [],
+    dependsOn: Array.isArray(raw.depends_on ?? raw.dependsOn)
+      ? ((raw.depends_on ?? raw.dependsOn) as unknown[]).map(String)
+      : [],
     topologyReason: String(raw.topology_reason ?? raw.topologyReason ?? ''),
     interruptReason: String(raw.interrupt_reason ?? raw.interruptReason ?? '') || undefined,
     tokenIn: Number(raw.token_in ?? raw.tokenIn ?? 0) || undefined,

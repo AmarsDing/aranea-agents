@@ -138,7 +138,9 @@ func (uc *SessionMessageUsecase) AppendChatTurn(ctx context.Context, sessionID s
 		return err
 	}
 	delta := SessionMetricsDelta{SessionID: sessionID, MessageCount: 2, LastMessageAt: assistant.CreatedAt}
-	uc.metricsUsecase.AccumulateMetricsDelta(delta)
+	if uc.metricsUsecase != nil {
+		uc.metricsUsecase.AccumulateMetricsDelta(delta)
+	}
 	if strings.EqualFold(strings.TrimSpace(user.Role), "user") {
 		if err := uc.maybeAutoTitleFromUserMessage(ctx, sessionID, user.ContentMarkdown); err != nil {
 			uc.lg.Warn("maybeAutoTitleFromUserMessage failed", loggateway.StepID("session.auto_title"), loggateway.SessionID(sessionID), loggateway.Err(err))
@@ -153,7 +155,9 @@ func (uc *SessionMessageUsecase) AppendChatMessage(ctx context.Context, sessionI
 		return err
 	}
 	delta := SessionMetricsDelta{SessionID: sessionID, MessageCount: 1, LastMessageAt: msg.CreatedAt}
-	uc.metricsUsecase.AccumulateMetricsDelta(delta)
+	if uc.metricsUsecase != nil {
+		uc.metricsUsecase.AccumulateMetricsDelta(delta)
+	}
 	if strings.EqualFold(strings.TrimSpace(msg.Role), "user") {
 		if err := uc.maybeAutoTitleFromUserMessage(ctx, sessionID, msg.ContentMarkdown); err != nil {
 			uc.lg.Warn("maybeAutoTitleFromUserMessage failed", loggateway.StepID("session.auto_title"), loggateway.SessionID(sessionID), loggateway.Err(err))
@@ -235,7 +239,7 @@ func (uc *SessionMessageUsecase) UpsertChatActivityMessage(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	if inserted {
+	if inserted && uc.metricsUsecase != nil {
 		uc.metricsUsecase.AccumulateMetricsDelta(SessionMetricsDelta{SessionID: sessionID, MessageCount: 1, LastMessageAt: msg.CreatedAt})
 	}
 	return nil

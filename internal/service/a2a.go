@@ -7,9 +7,9 @@ import (
 
 	v1 "aranea-agents/api/kratos/a2a/v1"
 	a2apkg "aranea-agents/internal/a2a"
+	a2atrpc "aranea-agents/internal/a2a/trpc"
 	"aranea-agents/internal/biz"
 	a2abiz "aranea-agents/internal/biz/a2a"
-	a2atrpc "aranea-agents/internal/a2a/trpc"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 
@@ -36,13 +36,13 @@ var (
 // A2AService implements kratos a2a.v1.
 type A2AService struct {
 	v1.UnimplementedA2AServiceServer
-	uc          *biz.A2AUsecase
-	runner      a2apkg.AgentTurnRunner
-	agents      biz.AgentRepository
-	endpoints          *a2atrpc.EndpointRegistry
-	publicBaseStore    *a2apkg.PublicBaseURLStore
-	limiter            a2abiz.Limiter
-	lg                 loggateway.Logger
+	uc              *biz.A2AUsecase
+	runner          a2apkg.AgentTurnRunner
+	agents          biz.AgentRepository
+	endpoints       *a2atrpc.EndpointRegistry
+	publicBaseStore *a2apkg.PublicBaseURLStore
+	limiter         a2abiz.Limiter
+	lg              loggateway.Logger
 }
 
 func NewA2AService(uc *biz.A2AUsecase, runner a2apkg.AgentTurnRunner, agents biz.AgentRepository, endpoints *a2atrpc.EndpointRegistry, publicBaseStore *a2apkg.PublicBaseURLStore, limiter a2abiz.Limiter, lg loggateway.Logger) *A2AService {

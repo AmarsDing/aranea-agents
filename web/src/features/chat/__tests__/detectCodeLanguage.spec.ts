@@ -62,9 +62,7 @@ describe('highlight', () => {
 
 describe('escapeHtml', () => {
   it('escapes all HTML special characters', () => {
-    expect(escapeHtml('<div class="x">&amp;</div>')).toBe(
-      '&lt;div class=&quot;x&quot;&gt;&amp;amp;&lt;/div&gt;',
-    );
+    expect(escapeHtml('<div class="x">&amp;</div>')).toBe('&lt;div class=&quot;x&quot;&gt;&amp;amp;&lt;/div&gt;');
   });
 
   it('escapes single quotes', () => {

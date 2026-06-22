@@ -2,10 +2,9 @@
 
 import { computed, ref } from 'vue';
 import type { ComputedRef, Ref } from 'vue';
-import type { Agent, AgentRuntimeSettings } from './types';
+import type { Agent, AgentPromptFile, AgentRuntimeSettings } from './types';
 import type { AgentAdvancedSettingsForm } from './agentRuntimeConfig';
 import type { AgentRuntimeHydrateHooks } from './useAgentRuntimeConfig';
-import type { AgentFile } from '../../components/agents/agentUi';
 
 export interface UseAgentSettingsPersistenceDeps {
   form: Agent;
@@ -16,7 +15,7 @@ export interface UseAgentSettingsPersistenceDeps {
     fetchById: (id: string) => Promise<Agent>;
     patch: (
       id: string,
-      data: Partial<Agent> & {
+      data: Partial<Omit<Agent, 'settings' | 'files' | 'config_json'>> & {
         settings?: Record<string, unknown>;
         files?: { name: string; body: string; sort_order: number }[];
         config_json?: string;
@@ -58,7 +57,7 @@ export interface UseAgentSettingsPersistenceDeps {
   // Prompt files
   filesForSave: () => { name: string; body: string; sort_order: number }[];
   snapshotFiles: () => void;
-  hydrateFiles: (files: AgentFile[]) => void;
+  hydrateFiles: (files: AgentPromptFile[]) => void;
   refreshFileTokenEstimates: (id: string) => Promise<void>;
 
   // Prompt preview
@@ -110,6 +109,8 @@ export function useAgentSettingsPersistence(deps: UseAgentSettingsPersistenceDep
     void deps.refreshFileTokenEstimates(deps.form.id);
     if (agent.files?.length) {
       deps.hydrateFiles(agent.files);
+    } else {
+      deps.hydrateFiles([]);
     }
     modelChanged.value = false;
     return true;
@@ -152,8 +153,9 @@ export function useAgentSettingsPersistence(deps: UseAgentSettingsPersistenceDep
     }
     const fileRows = deps.filesForSave();
     try {
+      const { settings: _settings, ...formWithoutSettings } = deps.form;
       const updated = await deps.detailStore.patch(deps.form.id, {
-        ...deps.form,
+        ...formWithoutSettings,
         settings: deps.buildSettingsPayload({
           ...deps.serializePlannerFormState(),
           ...deps.serializeRalphLoopFormState(),

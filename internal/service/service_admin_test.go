@@ -118,35 +118,35 @@ func TestConvertAdmin_FieldsMapping(t *testing.T) {
 		errMsg  string
 	}{
 		{
-			name: "id mapping",
-			admin: &biz.Admin{ID: 42, CreateTime: time.Now(), UpdateTime: time.Now()},
+			name:    "id mapping",
+			admin:   &biz.Admin{ID: 42, CreateTime: time.Now(), UpdateTime: time.Now()},
 			checkFn: func(pb *adminv1.Admin) bool { return pb.Id == 42 },
-			errMsg: "id mismatch",
+			errMsg:  "id mismatch",
 		},
 		{
-			name: "name mapping",
-			admin: &biz.Admin{Name: "testuser", CreateTime: time.Now(), UpdateTime: time.Now()},
+			name:    "name mapping",
+			admin:   &biz.Admin{Name: "testuser", CreateTime: time.Now(), UpdateTime: time.Now()},
 			checkFn: func(pb *adminv1.Admin) bool { return pb.Name == "testuser" },
-			errMsg: "name mismatch",
+			errMsg:  "name mismatch",
 		},
 		{
-			name: "email mapping",
-			admin: &biz.Admin{Email: "test@test.com", CreateTime: time.Now(), UpdateTime: time.Now()},
+			name:    "email mapping",
+			admin:   &biz.Admin{Email: "test@test.com", CreateTime: time.Now(), UpdateTime: time.Now()},
 			checkFn: func(pb *adminv1.Admin) bool { return pb.Email == "test@test.com" },
-			errMsg: "email mismatch",
+			errMsg:  "email mismatch",
 		},
 		{
-			name: "access mapping",
-			admin: &biz.Admin{Access: "admin", CreateTime: time.Now(), UpdateTime: time.Now()},
+			name:    "access mapping",
+			admin:   &biz.Admin{Access: "admin", CreateTime: time.Now(), UpdateTime: time.Now()},
 			checkFn: func(pb *adminv1.Admin) bool { return pb.Access == "admin" },
-			errMsg: "access mismatch",
+			errMsg:  "access mismatch",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pb := service.ConvertAdmin(tt.admin)
 			if !tt.checkFn(pb) {
-				t.Fatalf(tt.errMsg + ": %+v", pb)
+				t.Fatalf(tt.errMsg+": %+v", pb)
 			}
 		})
 	}

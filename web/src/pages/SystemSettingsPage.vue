@@ -248,13 +248,27 @@
                       <div v-for="[industry, info] in ecosystemEntries" :key="industry" class="ecosystem-industry-row">
                         <div class="ecosystem-industry-row__label">
                           <span class="text-body2 text-weight-medium">{{ industry }}</span>
-                          <q-badge v-if="info.loaded" color="positive" outline :label="t('settingsPage.ecosystemLoaded')" class="q-ml-sm" />
-                          <q-badge v-else color="grey" outline :label="t('settingsPage.ecosystemNotLoaded')" class="q-ml-sm" />
+                          <q-badge
+                            v-if="info.loaded"
+                            color="positive"
+                            outline
+                            :label="t('settingsPage.ecosystemLoaded')"
+                            class="q-ml-sm"
+                          />
+                          <q-badge
+                            v-else
+                            color="grey"
+                            outline
+                            :label="t('settingsPage.ecosystemNotLoaded')"
+                            class="q-ml-sm"
+                          />
                         </div>
                         <div v-if="info.loaded" class="ecosystem-industry-row__stats text-caption text-grey-7">
                           <span>Agent: {{ info.agents ?? 0 }}</span>
                           <span class="q-ml-md">Team: {{ info.teams ?? 0 }}</span>
-                          <span class="q-ml-md">{{ t('settingsPage.ecosystemTaxonomyNodes') }}: {{ info.taxonomy_nodes ?? 0 }}</span>
+                          <span class="q-ml-md"
+                            >{{ t('settingsPage.ecosystemTaxonomyNodes') }}: {{ info.taxonomy_nodes ?? 0 }}</span
+                          >
                         </div>
                         <div class="ecosystem-industry-row__action">
                           <q-btn
@@ -347,9 +361,13 @@
           <ul class="q-pl-md q-mt-sm">
             <li>{{ t('settingsPage.unloadConfirmAgents', { count: unloadTargetInfo?.agents ?? 0 }) }}</li>
             <li>{{ t('settingsPage.unloadConfirmTeams', { count: unloadTargetInfo?.teams ?? 0 }) }}</li>
-            <li>{{ t('settingsPage.unloadConfirmTaxonomyNodes', { count: unloadTargetInfo?.taxonomy_nodes ?? 0 }) }}</li>
+            <li>
+              {{ t('settingsPage.unloadConfirmTaxonomyNodes', { count: unloadTargetInfo?.taxonomy_nodes ?? 0 }) }}
+            </li>
           </ul>
-          <q-banner dense rounded class="bg-warning text-dark q-mt-md"> {{ t('settingsPage.unloadConfirmWarning') }} </q-banner>
+          <q-banner dense rounded class="bg-warning text-dark q-mt-md">
+            {{ t('settingsPage.unloadConfirmWarning') }}
+          </q-banner>
         </q-card-section>
         <q-card-actions align="right">
           <q-btn v-close-popup flat no-caps :label="t('common.cancel')" />

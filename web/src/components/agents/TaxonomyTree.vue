@@ -38,7 +38,7 @@
               @edit="$emit('edit', $event)"
               @create-child="$emit('create-child', 'position', department)"
               @remove="$emit('remove', $event)"
-              @toggle-enabled="$emit('toggle-enabled', department, $event)"
+              @toggle-enabled="(_node, enabled) => $emit('toggle-enabled', department, enabled)"
               @update:expanded="setExpanded(department.id, $event)"
               @reorder-positions="$emit('reorder-positions', department, $event)"
             />

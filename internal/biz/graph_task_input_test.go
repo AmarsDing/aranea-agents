@@ -8,13 +8,13 @@ import (
 
 func TestGraphTaskInputFromNode(t *testing.T) {
 	cases := []struct {
-		name                string
-		node                biz.NodeDef
-		meta                biz.NodeTaskMeta
-		wantRole            string
-		wantAssignmentMode  string
-		wantStrategy        string
-		wantInput           string
+		name               string
+		node               biz.NodeDef
+		meta               biz.NodeTaskMeta
+		wantRole           string
+		wantAssignmentMode string
+		wantStrategy       string
+		wantInput          string
 	}{
 		{
 			name:               "full node",

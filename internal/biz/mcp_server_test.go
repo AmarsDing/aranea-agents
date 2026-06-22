@@ -184,9 +184,9 @@ func TestMCPServerUsecase_Create_SSRFBlock(t *testing.T) {
 
 func TestMCPServerUsecase_Update_SSRFBlock(t *testing.T) {
 	repo := &stubMCPRepo{rows: []MCPServer{{
-		ID:        "m1",
-		Key:       "my-server",
-		Name:      "My Server",
+		ID:         "m1",
+		Key:        "my-server",
+		Name:       "My Server",
 		ConfigJSON: `{"transport":"stdio","command":"npx"}`,
 	}}}
 	uc := NewMCPServerUsecase(repo, stubMCPCredRepo{}, nil, mcpMetadataAdapter{}, NewCredentialCrypto(nil, loggateway.NewNoop()))

@@ -87,7 +87,7 @@ export async function sendMessage(payload: {
     return {
       messageId: data.messageId ?? '',
       turnId: data.turnId ?? '',
-      status: data.status ?? (data.accepted ? 'accepted' : 'rejected'),
+      status: (data.status as 'queued' | 'accepted') ?? (data.accepted ? 'accepted' : 'rejected'),
     };
   } catch (err) {
     wrapChatError(err, 'sendMessage failed');

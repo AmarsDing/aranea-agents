@@ -4,9 +4,9 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	taskrunruntime "trpc.group/trpc-go/trpc-agent-go/agent/taskrun"
+	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	trpctaskrun "trpc.group/trpc-go/trpc-agent-go/tool/taskrun"
-	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
 // TECH-DEBT(B-7): TaskRunAdapter 已实现但未接入生产路径。
@@ -27,9 +27,9 @@ import (
 // those tools into the project's tool registry so agents can delegate
 // subtasks to background workers.
 type TaskRunAdapter struct {
-	tools     trpctaskrun.Tools
+	tools      trpctaskrun.Tools
 	controller taskrunruntime.Controller
-	lg        loggateway.Logger
+	lg         loggateway.Logger
 }
 
 // TaskRunConfig holds the configuration for creating a TaskRunAdapter.

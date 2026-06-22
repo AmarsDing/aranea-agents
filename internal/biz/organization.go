@@ -17,26 +17,26 @@ func newRandID() string {
 }
 
 type OrganizationNode struct {
-	ID                  string
-	Key                 string
-	Name                string
-	Description         string
-	Status              string
-	Enabled             bool
-	SortOrder           int
-	ParentID            string
-	Level               string
-	ScenarioKey         string
-	WorkspaceID         string
-	OwnerUserID         string
-	IsSystem            bool
-	ConfigJSON          string
-	MetadataJSON        string
-	DeptLeadAgentID     string
-	DeptLeadConfigJSON  string
-	CreatedAt           string
-	UpdatedAt           string
-	DeletedAt           string
+	ID                 string
+	Key                string
+	Name               string
+	Description        string
+	Status             string
+	Enabled            bool
+	SortOrder          int
+	ParentID           string
+	Level              string
+	ScenarioKey        string
+	WorkspaceID        string
+	OwnerUserID        string
+	IsSystem           bool
+	ConfigJSON         string
+	MetadataJSON       string
+	DeptLeadAgentID    string
+	DeptLeadConfigJSON string
+	CreatedAt          string
+	UpdatedAt          string
+	DeletedAt          string
 }
 
 type OrganizationTreeNode struct {
@@ -281,7 +281,9 @@ func (u *OrganizationUsecase) Delete(ctx context.Context, id string) error {
 // Note: This operation is not wrapped in a single DB transaction because:
 // (a) SQLite single-writer model provides implicit serialization for writes,
 // (b) the steps involve multiple tables and cross-service calls (e.g., Agent deletion)
-//     that cannot be rolled back atomically, and
+//
+//	that cannot be rolled back atomically, and
+//
 // (c) each step is idempotent — re-running after partial failure is safe.
 // TODO(debt): wrap steps 3-7 in a transaction when migrating to PostgreSQL.
 func (u *OrganizationUsecase) deleteDepartmentWithCascade(ctx context.Context, dept OrganizationNode) error {

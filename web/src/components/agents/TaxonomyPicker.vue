@@ -7,6 +7,7 @@
     stack-label
     :label="label"
     :disable="disable"
+    @click="menuOpen = true"
   >
     <template #control>
       <div
@@ -20,7 +21,13 @@
     </template>
 
     <template #append>
-      <q-icon v-if="clearable && displayLabel" name="close" size="16px" class="cursor-pointer taxonomy-field__clear" @click.stop="clearSelection" />
+      <q-icon
+        v-if="clearable && displayLabel"
+        name="close"
+        size="16px"
+        class="cursor-pointer taxonomy-field__clear"
+        @click.stop="clearSelection"
+      />
     </template>
 
     <q-menu v-model="menuOpen" anchor="bottom left" self="top left" fit :offset="[0, 6]" class="taxonomy-field-menu">
@@ -73,7 +80,9 @@
                 </div>
               </template>
             </q-tree>
-            <div v-if="menuNodes.length === 0" class="text-caption text-grey-7 q-pa-md text-center">暂无匹配分类</div>
+            <div v-if="menuNodes.length === 0" class="text-caption text-grey-7 q-pa-md text-center">
+              {{ tree.length === 0 ? $t('agentsPage.taxonomy.emptyTree') : $t('agentsPage.taxonomy.noMatch') }}
+            </div>
           </div>
         </q-scroll-area>
       </q-card>

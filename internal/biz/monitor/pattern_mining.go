@@ -27,10 +27,10 @@ const PatternMiningAutoDisableRatio = 2
 
 // PatternMiningResult summarizes the outcome of a mining run.
 type PatternMiningResult struct {
-	PatternsCreated    int
-	PatternsUpdated    int
+	PatternsCreated     int
+	PatternsUpdated     int
 	PatternsDeactivated int
-	ClustersAnalyzed   int
+	ClustersAnalyzed    int
 }
 
 // PatternMiningUsecase automatically extracts fix templates from historical
@@ -41,10 +41,10 @@ type PatternMiningResult struct {
 // cluster has >= 3 successful fixes. Mined patterns are written to the
 // failure_pattern table with source="mined".
 type PatternMiningUsecase struct {
-	healRepo       HealRecordRepo
-	patternReader  FailurePatternReader
-	patternWriter  FailurePatternWriter
-	lg             loggateway.Logger
+	healRepo      HealRecordRepo
+	patternReader FailurePatternReader
+	patternWriter FailurePatternWriter
+	lg            loggateway.Logger
 }
 
 // NewPatternMiningUsecase creates a new PatternMiningUsecase.

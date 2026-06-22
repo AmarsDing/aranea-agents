@@ -214,20 +214,20 @@ func (s *EvaluationService) CompareEvalRuns(ctx context.Context, req *v1.Compare
 	out := make([]*v1.EvalRunComparison, 0, len(items))
 	for _, c := range items {
 		out = append(out, &v1.EvalRunComparison{
-			RunId:                  c.RunID,
-			AgentId:                c.AgentID,
-			DatasetId:              c.DatasetID,
-			CreatedAt:              c.CreatedAt,
-			ExactMatchScore:        c.ExactMatchScore,
-			ContainsMatchScore:     c.ContainsMatchScore,
-			LlmJudgeScore:          c.LLMJudgeScore,
-			ToolCallAccuracy:       c.ToolCallAccuracy,
-			PassAtK:                c.PassAtK,
-			PassHatK:               c.PassHatK,
-			DeltaExactMatch:        c.DeltaExactMatch,
-			DeltaContainsMatch:     c.DeltaContainsMatch,
-			DeltaLlmJudge:          c.DeltaLLMJudge,
-			DeltaToolCallAccuracy:  c.DeltaToolAccuracy,
+			RunId:                 c.RunID,
+			AgentId:               c.AgentID,
+			DatasetId:             c.DatasetID,
+			CreatedAt:             c.CreatedAt,
+			ExactMatchScore:       c.ExactMatchScore,
+			ContainsMatchScore:    c.ContainsMatchScore,
+			LlmJudgeScore:         c.LLMJudgeScore,
+			ToolCallAccuracy:      c.ToolCallAccuracy,
+			PassAtK:               c.PassAtK,
+			PassHatK:              c.PassHatK,
+			DeltaExactMatch:       c.DeltaExactMatch,
+			DeltaContainsMatch:    c.DeltaContainsMatch,
+			DeltaLlmJudge:         c.DeltaLLMJudge,
+			DeltaToolCallAccuracy: c.DeltaToolAccuracy,
 		})
 	}
 	return &v1.CompareEvalRunsResponse{Items: out}, nil

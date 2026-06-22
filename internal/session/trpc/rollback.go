@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/internal/data"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/ctxuser"
 	loggateway "aranea-agents/pkg/loggateway"
@@ -19,8 +20,9 @@ import (
 const trpcSessionEventsTable = "trpc_session_events"
 
 type RunnerRollbackStore struct {
-	db *sql.DB
-	lg loggateway.Logger
+	rwdb    *data.ReadWriteDB
+	dialect data.Dialect
+	lg      loggateway.Logger
 }
 
 type rollbackCursor struct {
@@ -30,15 +32,15 @@ type rollbackCursor struct {
 	EventID   int64  `json:"event_id"`
 }
 
-func NewRunnerRollbackStore(db *sql.DB, lg loggateway.Logger) *RunnerRollbackStore {
-	if db == nil {
+func NewRunnerRollbackStore(rwdb *data.ReadWriteDB, dialect data.Dialect, lg loggateway.Logger) *RunnerRollbackStore {
+	if rwdb == nil {
 		return nil
 	}
-	return &RunnerRollbackStore{db: db, lg: lg}
+	return &RunnerRollbackStore{rwdb: rwdb, dialect: dialect, lg: lg}
 }
 
 func (s *RunnerRollbackStore) MarkBoundary(ctx context.Context, sessionID, _, _ string) (string, error) {
-	if s == nil || s.db == nil {
+	if s == nil || s.rwdb == nil {
 		return "", nil
 	}
 	cur := rollbackCursor{
@@ -50,10 +52,10 @@ func (s *RunnerRollbackStore) MarkBoundary(ctx context.Context, sessionID, _, _ 
 		return "", apierror.BadRequest(apierror.DomainSession, "runner rollback: session_id is required")
 	}
 	var maxID sql.NullInt64
-	err := s.db.QueryRowContext(ctx,
-		`SELECT MAX(id) FROM `+trpcSessionEventsTable+` WHERE app_name = ? AND user_id = ? AND session_id = ? AND deleted_at IS NULL`,
-		cur.AppName, cur.UserID, cur.SessionID,
-	).Scan(&maxID)
+	query := s.dialect.RenumberPlaceholders(
+		`SELECT MAX(id) FROM ` + trpcSessionEventsTable + ` WHERE app_name = ? AND user_id = ? AND session_id = ? AND deleted_at IS NULL`,
+	)
+	err := data.QueryRowScan(ctx, s.rwdb.ReadDB(ctx), query, []any{cur.AppName, cur.UserID, cur.SessionID}, &maxID)
 	if err != nil {
 		s.lg.Warn("runner rollback mark failed", loggateway.StepID("system.session.rollback_fail"), loggateway.Str("session_id", sessionID), loggateway.Err(err))
 		return "", apierror.Internal(apierror.DomainSession, "runner rollback mark").WithCause(err)
@@ -65,7 +67,7 @@ func (s *RunnerRollbackStore) MarkBoundary(ctx context.Context, sessionID, _, _ 
 }
 
 func (s *RunnerRollbackStore) RollbackToBoundary(ctx context.Context, sessionID, boundaryID string) error {
-	if s == nil || s.db == nil || strings.TrimSpace(boundaryID) == "" {
+	if s == nil || s.rwdb == nil || strings.TrimSpace(boundaryID) == "" {
 		return nil
 	}
 	cur, err := decodeRollbackCursor(boundaryID)
@@ -77,10 +79,10 @@ func (s *RunnerRollbackStore) RollbackToBoundary(ctx context.Context, sessionID,
 		return apierror.BadRequest(apierror.DomainSession, fmt.Sprintf("runner rollback: boundary session %q does not match %q", cur.SessionID, sid))
 	}
 	now := time.Now().UTC().UnixNano()
-	_, err = s.db.ExecContext(ctx,
-		`UPDATE `+trpcSessionEventsTable+` SET deleted_at = ?, updated_at = ? WHERE app_name = ? AND user_id = ? AND session_id = ? AND id > ? AND deleted_at IS NULL`,
-		now, now, cur.AppName, cur.UserID, cur.SessionID, cur.EventID,
+	query := s.dialect.RenumberPlaceholders(
+		`UPDATE ` + trpcSessionEventsTable + ` SET deleted_at = ?, updated_at = ? WHERE app_name = ? AND user_id = ? AND session_id = ? AND id > ? AND deleted_at IS NULL`,
 	)
+	_, err = s.rwdb.WriteDB(ctx).ExecContext(ctx, query, now, now, cur.AppName, cur.UserID, cur.SessionID, cur.EventID)
 	if err != nil {
 		s.lg.Warn("runner rollback update failed", loggateway.StepID("system.session.rollback_fail"), loggateway.Str("session_id", cur.SessionID), loggateway.Err(err))
 		return apierror.Internal(apierror.DomainSession, "runner rollback").WithCause(err)

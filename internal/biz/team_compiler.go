@@ -20,10 +20,10 @@ type TeamCompiler interface {
 // TeamDefinition is the biz-level representation of a team definition,
 // decoupled from the internal/team.Definition concrete type.
 type TeamDefinition struct {
-	ID          string
-	Name        string
-	Mode        string
-	Members     []TeamMember
+	ID            string
+	Name          string
+	Mode          string
+	Members       []TeamMember
 	FailurePolicy FailurePolicyConfig
 	// RawDefinitionJSON carries the orchestration spec JSON for embedded graph compilation.
 	RawDefinitionJSON string
@@ -31,9 +31,9 @@ type TeamDefinition struct {
 
 // TeamMember is a biz-level team member.
 type TeamMember struct {
-	AgentID   string
-	AgentKey  string
-	Role      string
+	AgentID    string
+	AgentKey   string
+	Role       string
 	TaskPrompt string
-	Enabled   bool
+	Enabled    bool
 }

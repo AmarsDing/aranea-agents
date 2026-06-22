@@ -488,9 +488,9 @@ func TestResolveChatModel(t *testing.T) {
 	t.Run("explicit_provider_model_no_match", func(t *testing.T) {
 		rows := []biz.ProviderModel{
 			{
-				Provider:  "openai",
-				Model:     "gpt-4",
-				Enabled:   true,
+				Provider:   "openai",
+				Model:      "gpt-4",
+				Enabled:    true,
 				ConfigJSON: `{"provider_type":"openai","api_base_url":"https://api.openai.com","api_key_set":true}`,
 			},
 		}
@@ -509,22 +509,22 @@ func TestResolveChatModel_WithCredentials(t *testing.T) {
 	t.Run("explicit_provider_and_model", func(t *testing.T) {
 		rows := []biz.ProviderModel{
 			{
-				Provider:  "openai",
-				Model:     "gpt-4",
-				Enabled:   true,
+				Provider:   "openai",
+				Model:      "gpt-4",
+				Enabled:    true,
 				ConfigJSON: `{"provider_type":"openai","api_base_url":"https://api.openai.com","api_key_set":true}`,
 			},
 			{
-				Provider:  "deepseek",
-				Model:     "deepseek-chat",
-				Enabled:   true,
+				Provider:   "deepseek",
+				Model:      "deepseek-chat",
+				Enabled:    true,
 				ConfigJSON: `{"provider_type":"deepseek","api_base_url":"https://api.deepseek.com","api_key_set":true}`,
 			},
 		}
 		resolved := map[string]biz.ProviderModel{
 			stubKey("deepseek", "deepseek-chat"): {
-				Provider:  "deepseek",
-				Model:     "deepseek-chat",
+				Provider:   "deepseek",
+				Model:      "deepseek-chat",
 				ConfigJSON: `{"provider_type":"deepseek","api_base_url":"https://api.deepseek.com","api_key":"ds-xyz"}`,
 			},
 		}
@@ -551,22 +551,22 @@ func TestResolveChatModel_WithCredentials(t *testing.T) {
 	t.Run("empty_provider_picks_first_enabled_with_credentials", func(t *testing.T) {
 		rows := []biz.ProviderModel{
 			{
-				Provider:  "disabled-provider",
-				Model:     "model-a",
-				Enabled:   false,
+				Provider:   "disabled-provider",
+				Model:      "model-a",
+				Enabled:    false,
 				ConfigJSON: `{"api_base_url":"https://api.example.com","api_key_set":true}`,
 			},
 			{
-				Provider:  "openai",
-				Model:     "gpt-4",
-				Enabled:   true,
+				Provider:   "openai",
+				Model:      "gpt-4",
+				Enabled:    true,
 				ConfigJSON: `{"provider_type":"openai","api_base_url":"https://api.openai.com","api_key_set":true}`,
 			},
 		}
 		resolved := map[string]biz.ProviderModel{
 			stubKey("openai", "gpt-4"): {
-				Provider:  "openai",
-				Model:     "gpt-4",
+				Provider:   "openai",
+				Model:      "gpt-4",
 				ConfigJSON: `{"provider_type":"openai","api_base_url":"https://api.openai.com","api_key":"sk-abc"}`,
 			},
 		}
@@ -594,16 +594,16 @@ func TestResolveChatModel_WithCredentials(t *testing.T) {
 				ConfigJSON: `{"provider_type":"openai","api_base_url":"https://api.openai.com","api_key_set":true}`,
 			},
 			{
-				Provider:  "deepseek",
-				Model:     "deepseek-chat",
-				Enabled:   true,
+				Provider:   "deepseek",
+				Model:      "deepseek-chat",
+				Enabled:    true,
 				ConfigJSON: `{"provider_type":"deepseek","api_base_url":"https://api.deepseek.com","api_key_set":true}`,
 			},
 		}
 		resolved := map[string]biz.ProviderModel{
 			stubKey("deepseek", "deepseek-chat"): {
-				Provider:  "deepseek",
-				Model:     "deepseek-chat",
+				Provider:   "deepseek",
+				Model:      "deepseek-chat",
 				ConfigJSON: `{"provider_type":"deepseek","api_base_url":"https://api.deepseek.com","api_key":"ds-xyz"}`,
 			},
 		}

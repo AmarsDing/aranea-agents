@@ -116,7 +116,7 @@ func (uc *SkillReportUsecase) GenerateReport(ctx context.Context, inv SkillInvoc
 				loggateway.StepID("skill_intelligence.generate"),
 				loggateway.Str("skill_id", inv.SkillID),
 				loggateway.Err(err))
-			return nil, fmt.Errorf("persist experience report: %w", err)
+			return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 		}
 	}
 

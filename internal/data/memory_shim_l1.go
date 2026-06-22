@@ -340,7 +340,7 @@ func (r *l1WorkingMemoryRepo) ArchiveAndCreateEpisodeTx(ctx context.Context, ses
 			keyArtifactsJSON,
 			l1SnapshotJSON,
 			consolidationStatus, 0, "{}", now, now,
-	); err != nil {
+		); err != nil {
 			return entErrToBizErr(err, "MEMORY_L1")
 		}
 		return nil

@@ -10,7 +10,7 @@ func NewMigratePhase(backend MigrationWriter) *MigratePhase {
 	return &MigratePhase{backend: backend}
 }
 
-func (p *MigratePhase) Name() string         { return "migrate" }
+func (p *MigratePhase) Name() string           { return "migrate" }
 func (p *MigratePhase) Timeout() time.Duration { return 300 * time.Second }
 
 func (p *MigratePhase) Run(pc *PhaseContext) PhaseResult {

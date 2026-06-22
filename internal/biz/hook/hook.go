@@ -173,9 +173,9 @@ func (u *Usecase) Delete(ctx context.Context, id string) error {
 
 // Config is the JSON shape stored in hooks.config_json.
 type Config struct {
-	CallbackPoint string     `json:"callback_point"`
-	Condition     Condition  `json:"condition"`
-	Action        Action     `json:"action"`
+	CallbackPoint string    `json:"callback_point"`
+	Condition     Condition `json:"condition"`
+	Action        Action    `json:"action"`
 }
 
 // Condition scopes when a hook fires.

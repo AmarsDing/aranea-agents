@@ -9,7 +9,7 @@ type ChannelPlatformAvatarSpec struct {
 	Name        string
 	Label       string
 	// Background RGB for icon tile when compositing Simple Icons glyph.
-	R, G, B uint8
+	R, G, B   uint8
 	SortOrder int
 }
 

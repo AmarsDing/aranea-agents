@@ -6,8 +6,8 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 
-	trpcextractor "trpc.group/trpc-go/trpc-agent-go/memory/extractor"
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
+	trpcextractor "trpc.group/trpc-go/trpc-agent-go/memory/extractor"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -114,7 +114,7 @@ func (a *ConsolidatorExtractorAdapter) SetModel(trpcmodel.Model) {}
 // Metadata returns adapter metadata for telemetry.
 func (a *ConsolidatorExtractorAdapter) Metadata() map[string]any {
 	return map[string]any{
-		"type":    "consolidator_adapter",
-		"source":  "aranea",
+		"type":   "consolidator_adapter",
+		"source": "aranea",
 	}
 }

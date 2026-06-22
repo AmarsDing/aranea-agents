@@ -114,7 +114,7 @@ func TestUsageLimit_Normal(t *testing.T) {
 
 func TestMicroPricingToBizRule_Fields(t *testing.T) {
 	micro := modelregistry.MicroPricing{
-		Input:  30000, Output: 60000, CacheRead: 1500,
+		Input: 30000, Output: 60000, CacheRead: 1500,
 		CacheWrite: 7500, Reasoning: 12000, Embedding: 100,
 	}
 	rule := microPricingToBizRule("openai", "gpt-4", micro, "catalog")

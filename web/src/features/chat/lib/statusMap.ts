@@ -17,12 +17,7 @@
 import { MESSAGE_STATUS } from '../../../domain/types';
 
 /** Internal canonical status of a tool call. */
-export type CanonicalToolStatus =
-  | 'running'
-  | 'success'
-  | 'failed'
-  | 'blocked'
-  | 'cancelled';
+export type CanonicalToolStatus = 'running' | 'success' | 'failed' | 'blocked' | 'cancelled';
 
 const WIRE_TO_CANONICAL: Record<string, CanonicalToolStatus> = {
   calling: 'running',

@@ -133,3 +133,115 @@ WHERE m.id = r.id
 	lg.Info("turn_index -> turn_id/turn_number/seq_in_turn: done", loggateway.StepID("migration.turn_index"))
 	return nil
 }
+
+func RunSessionTurnNumberBackfillMigration(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if client == nil {
+		return fmt.Errorf("session_turn_number backfill: ent client required")
+	}
+	applied, err := isMigrationApplied(ctx, client, MigrationSessionTurnNumberBackfill, lg)
+	if err != nil {
+		return fmt.Errorf("session_turn_number backfill: check gate: %w", err)
+	}
+	if applied {
+		return nil
+	}
+	lg.Info("session_turn_number backfill: starting", loggateway.StepID("migration.session_turn_number"))
+
+	hasTable, err := tableExistsWithDialect(ctx, client, lg, "session_turns", d)
+	if err != nil {
+		return err
+	}
+	if !hasTable {
+		return recordMigrationApplied(ctx, client, d, MigrationSessionTurnNumberBackfill, migrationNameSessionTurnNumberBackfill, lg)
+	}
+
+	var query string
+	if d.IsPostgres() {
+		query = `
+WITH ranked AS (
+  SELECT id,
+         ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at, id) AS rn
+  FROM session_turns
+  WHERE turn_number = 0
+)
+UPDATE session_turns st
+SET turn_number = r.rn
+FROM ranked r
+WHERE st.id = r.id`
+	} else {
+		query = `
+WITH ranked AS (
+  SELECT id,
+         ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at, id) AS rn
+  FROM session_turns
+  WHERE turn_number = 0
+)
+UPDATE session_turns
+SET turn_number = COALESCE((SELECT rn FROM ranked WHERE ranked.id = session_turns.id), turn_number)
+WHERE id IN (SELECT id FROM ranked)`
+	}
+
+	res, err := client.ExecContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("session_turn_number backfill: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	lg.Info("session_turn_number backfill: done", loggateway.StepID("migration.session_turn_number"), loggateway.Int64("affected", affected))
+
+	return recordMigrationApplied(ctx, client, d, MigrationSessionTurnNumberBackfill, migrationNameSessionTurnNumberBackfill, lg)
+}
+
+func RunSessionTurnNumberRebackfillMigration(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if client == nil {
+		return fmt.Errorf("session_turn_number rebackfill: ent client required")
+	}
+	applied, err := isMigrationApplied(ctx, client, MigrationSessionTurnNumberRebackfill, lg)
+	if err != nil {
+		return fmt.Errorf("session_turn_number rebackfill: check gate: %w", err)
+	}
+	if applied {
+		return nil
+	}
+	lg.Info("session_turn_number rebackfill: starting", loggateway.StepID("migration.session_turn_number_rebackfill"))
+
+	hasTable, err := tableExistsWithDialect(ctx, client, lg, "session_turns", d)
+	if err != nil {
+		return err
+	}
+	if !hasTable {
+		return recordMigrationApplied(ctx, client, d, MigrationSessionTurnNumberRebackfill, migrationNameSessionTurnNumberRebackfill, lg)
+	}
+
+	var query string
+	if d.IsPostgres() {
+		query = `
+WITH ranked AS (
+  SELECT id,
+         ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at, id) AS rn
+  FROM session_turns
+)
+UPDATE session_turns st
+SET turn_number = r.rn
+FROM ranked r
+WHERE st.id = r.id`
+	} else {
+		query = `
+WITH ranked AS (
+  SELECT id,
+         ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at, id) AS rn
+  FROM session_turns
+)
+UPDATE session_turns
+SET turn_number = COALESCE((SELECT rn FROM ranked WHERE ranked.id = session_turns.id), turn_number)
+WHERE id IN (SELECT id FROM ranked)`
+	}
+
+	res, err := client.ExecContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("session_turn_number rebackfill: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	lg.Info("session_turn_number rebackfill: done", loggateway.StepID("migration.session_turn_number_rebackfill"), loggateway.Int64("affected", affected))
+
+	return recordMigrationApplied(ctx, client, d, MigrationSessionTurnNumberRebackfill, migrationNameSessionTurnNumberRebackfill, lg)
+}

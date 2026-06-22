@@ -499,5 +499,3 @@ func (s *SkillService) skillDir(ctx context.Context, id string) (string, error) 
 	}
 	return dir, nil
 }
-
-

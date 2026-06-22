@@ -22,10 +22,10 @@ type ExpectedTool struct {
 
 // CaseMetadata is parsed from eval_cases.metadata_json.
 type CaseMetadata struct {
-	ExpectedTools   []string       `json:"expected_tools"`
-	ExpectedToolCalls []ExpectedTool `json:"expected_tool_calls"`
-	Turns           []EvalTurn     `json:"turns"`
-	UserSimulation  *UserSimMetadata `json:"user_simulation"`
+	ExpectedTools     []string         `json:"expected_tools"`
+	ExpectedToolCalls []ExpectedTool   `json:"expected_tool_calls"`
+	Turns             []EvalTurn       `json:"turns"`
+	UserSimulation    *UserSimMetadata `json:"user_simulation"`
 }
 
 // UserSimMetadata configures user simulation (scripted or LLM-driven).

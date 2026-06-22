@@ -1,5 +1,5 @@
 <template>
-  <teleport to=".q-layout">
+  <teleport to="body">
     <transition name="drawer-backdrop">
       <div v-if="open" class="tool-detail-backdrop" @click="$emit('close')" />
     </transition>
@@ -361,7 +361,14 @@ import { bindingSummaryLine } from '../../features/tools/toolAgentBindingSummary
 import type { ToolAgentBindingRow, ToolAgentBindingSummary } from '../../features/tools/toolAgentBindingSummary';
 import type { Tool, ToolAgentOverride, ToolInvocation, ToolTestResult } from '../../features/tools/types';
 import type { ToolOverrideForm } from '../../stores/tools/toolDetail';
-import { AGENT_BINDING_COLUMNS, riskLabel, riskQuasarColor, runtimeStatusLabel, runtimeStatusColor, prettyJSON } from './toolUi';
+import {
+  AGENT_BINDING_COLUMNS,
+  riskLabel,
+  riskQuasarColor,
+  runtimeStatusLabel,
+  runtimeStatusColor,
+  prettyJSON,
+} from './toolUi';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import ToolDetailConfigPanel from './ToolDetailConfigPanel.vue';
 import ToolJsonBlock from './ToolJsonBlock.vue';

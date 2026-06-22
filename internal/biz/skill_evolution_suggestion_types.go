@@ -51,8 +51,8 @@ type SkillEvolutionSuggestion struct {
 	CreatedAt       time.Time
 	ResolvedAt      *time.Time // When approved/rejected/applied
 	// Curator Agent evolution tracking fields
-	ParentVersionID string // ID of the parent skill version this evolution is based on
-	EvolutionReason string // Detailed reason for the evolution (populated by Curator Agent)
+	ParentVersionID string                   // ID of the parent skill version this evolution is based on
+	EvolutionReason string                   // Detailed reason for the evolution (populated by Curator Agent)
 	LifecycleStatus EvolutionLifecycleStatus // Current lifecycle status: draft, validating, ready, applied
 }
 
@@ -75,9 +75,9 @@ const (
 	EvoTriggerCooldownHours  = 168 // Same skill: 7 days between suggestions
 
 	// Curator Agent semi-automatic evolution triggers
-	EvoTrigger7dSuccessRate     = 0.6 // 7d success rate < 60% triggers suggestion
-	EvoTrigger7dMinInvocations  = 5   // Minimum invocations in 7d window for significance
-	EvoTriggerSameTagThreshold  = 5   // Same failure tag >= 5 times triggers suggestion
+	EvoTrigger7dSuccessRate    = 0.6 // 7d success rate < 60% triggers suggestion
+	EvoTrigger7dMinInvocations = 5   // Minimum invocations in 7d window for significance
+	EvoTriggerSameTagThreshold = 5   // Same failure tag >= 5 times triggers suggestion
 )
 
 // Pre-computed duration constants derived from EvoExpirationDays and EvoTriggerCooldownHours.

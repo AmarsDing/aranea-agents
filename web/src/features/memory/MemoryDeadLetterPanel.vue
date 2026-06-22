@@ -1,5 +1,5 @@
-// Container: approved — dead-letter queue management with replay/abandon actions.
-// FD4+FB3 fix: data fetching + error handling extracted to useMemoryDeadLetterPanel composable.
+// Container: approved — dead-letter queue management with replay/abandon actions. // FD4+FB3 fix: data fetching + error
+handling extracted to useMemoryDeadLetterPanel composable.
 <template>
   <q-card flat bordered class="memory-card">
     <q-card-section class="row items-center justify-between">
@@ -32,7 +32,9 @@
             <td>
               <q-badge :color="priorityColor(r.priority)">{{ priorityLabel(r.priority) }}</q-badge>
             </td>
-            <td class="ellipsis-cell" style="max-width: var(--col-w-lg, 200px)" :title="r.drop_reason">{{ r.drop_reason }}</td>
+            <td class="ellipsis-cell" style="max-width: var(--col-w-lg, 200px)" :title="r.drop_reason">
+              {{ r.drop_reason }}
+            </td>
             <td>{{ r.attempts }}</td>
             <td>
               <q-badge :color="stateColor(r.state)">{{ r.state }}</q-badge>

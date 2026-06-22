@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"aranea-agents/pkg/apierror"
 	"aranea-agents/internal/biz/shared"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -32,7 +32,7 @@ type mockUsageRepo struct {
 	listBudgetAlertsFn              func(context.Context, string, string) ([]BudgetAlert, error)
 	setBudgetAlertFn                func(context.Context, BudgetAlert) (BudgetAlert, error)
 	updateBudgetAlertLastFiredFn    func(context.Context, string, string) error
-	purgeUsageEventsOlderThanFn    func(context.Context, int) (int64, error)
+	purgeUsageEventsOlderThanFn     func(context.Context, int) (int64, error)
 }
 
 func (m *mockUsageRepo) GetModelUsageSummary(ctx context.Context, q Query) (Summary, error) {

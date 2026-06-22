@@ -32,11 +32,11 @@ type SystemMetricsReader interface {
 // PredictiveHealUsecase predicts upcoming errors based on historical patterns
 // and takes preventive action when confidence exceeds the threshold.
 type PredictiveHealUsecase struct {
-	metricsReader  SystemMetricsReader
-	patternReader  FailurePatternReader
-	handler        HealActionHandler
-	repo           HealRecordRepo
-	lg             loggateway.Logger
+	metricsReader SystemMetricsReader
+	patternReader FailurePatternReader
+	handler       HealActionHandler
+	repo          HealRecordRepo
+	lg            loggateway.Logger
 
 	mu        sync.Mutex
 	cooldowns map[string]time.Time // actionType → last heal time

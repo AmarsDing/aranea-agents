@@ -116,12 +116,12 @@ func (c *filterCache) InvalidateAll() {
 // AgentVisibilityFilter narrows visible skills per invocation using Layer A + Layer B
 // policy from agent_runtime_settings.skill_runtime_json and the turn query in RuntimeState.
 type AgentVisibilityFilter struct {
-	skillUC    SkillResolver
-	runtime    RuntimeSettings
-	cache      filterCache
-	lg         loggateway.Logger
-	agentKey   string
-	lastGoodMu sync.RWMutex
+	skillUC     SkillResolver
+	runtime     RuntimeSettings
+	cache       filterCache
+	lg          loggateway.Logger
+	agentKey    string
+	lastGoodMu  sync.RWMutex
 	lastGoodSet map[string]bool
 }
 

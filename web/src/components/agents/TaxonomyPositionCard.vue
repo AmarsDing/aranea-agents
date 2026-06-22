@@ -34,6 +34,7 @@
       <div v-if="!readonly" class="position-card__foot row items-center justify-end q-gutter-xs">
         <q-btn flat dense round color="primary" icon="edit" aria-label="编辑职位" @click="$emit('edit', position)" />
         <q-btn
+          v-if="!isSystem"
           flat
           dense
           round

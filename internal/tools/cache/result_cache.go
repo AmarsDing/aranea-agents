@@ -11,8 +11,8 @@ import (
 const defaultCacheTTLSec = 300
 
 type entry struct {
-	result    any
-	expiresAt time.Time
+	result     any
+	expiresAt  time.Time
 	accessedAt time.Time
 }
 

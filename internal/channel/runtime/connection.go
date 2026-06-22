@@ -14,7 +14,7 @@ type ConnectionInfo struct {
 
 // connectionStore holds channel connection state, scoped to a Manager instance.
 type connectionStore struct {
-	mu       sync.RWMutex
+	mu        sync.RWMutex
 	byChannel map[string]ConnectionInfo
 }
 

@@ -18,10 +18,10 @@ import (
 type SkillEvolutionSuggestionService struct {
 	v1.UnimplementedSkillEvolutionSuggestionServiceServer
 
-	uc       *biz.SkillIntelligenceUsecase
-	curator  *SkillCuratorService
-	sandbox  *SandboxRunner
-	lg       loggateway.Logger
+	uc      *biz.SkillIntelligenceUsecase
+	curator *SkillCuratorService
+	sandbox *SandboxRunner
+	lg      loggateway.Logger
 }
 
 func NewSkillEvolutionSuggestionService(

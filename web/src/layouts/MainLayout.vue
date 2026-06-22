@@ -40,42 +40,22 @@
             </q-menu>
           </q-btn>
         </div>
-        <q-btn
-          flat
-          round
-          :icon="themeIcon"
-          :aria-label="t('common.autoMode')"
-        >
+        <q-btn flat round :icon="themeIcon" :aria-label="t('common.autoMode')">
           <q-menu anchor="bottom right" self="top right" auto-close>
             <q-list dense style="min-width: 160px">
-              <q-item
-                clickable
-                :active="themeMode === 'auto'"
-                active-class="text-primary"
-                @click="setTheme('auto')"
-              >
+              <q-item clickable :active="themeMode === 'auto'" active-class="text-primary" @click="setTheme('auto')">
                 <q-item-section avatar>
                   <q-icon name="brightness_auto" size="xs" />
                 </q-item-section>
                 <q-item-section>{{ t('common.autoMode') }}</q-item-section>
               </q-item>
-              <q-item
-                clickable
-                :active="themeMode === 'light'"
-                active-class="text-primary"
-                @click="setTheme('light')"
-              >
+              <q-item clickable :active="themeMode === 'light'" active-class="text-primary" @click="setTheme('light')">
                 <q-item-section avatar>
                   <q-icon name="light_mode" size="xs" />
                 </q-item-section>
                 <q-item-section>{{ t('common.lightMode') }}</q-item-section>
               </q-item>
-              <q-item
-                clickable
-                :active="themeMode === 'dark'"
-                active-class="text-primary"
-                @click="setTheme('dark')"
-              >
+              <q-item clickable :active="themeMode === 'dark'" active-class="text-primary" @click="setTheme('dark')">
                 <q-item-section avatar>
                   <q-icon name="dark_mode" size="xs" />
                 </q-item-section>

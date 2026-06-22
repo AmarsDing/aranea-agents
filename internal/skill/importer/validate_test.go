@@ -131,8 +131,8 @@ func TestValidateSkillPackage_EmptyNameAndDesc(t *testing.T) {
 
 func TestValidateSkillPackage_ShellScriptWarning(t *testing.T) {
 	files := map[string][]byte{
-		"SKILL.md":  []byte(makeSkillMD("Shell Skill", "Has shell script")),
-		"setup.sh":  []byte("#!/bin/bash\necho hi"),
+		"SKILL.md": []byte(makeSkillMD("Shell Skill", "Has shell script")),
+		"setup.sh": []byte("#!/bin/bash\necho hi"),
 	}
 	candidate, _ := ValidateSkillPackage(files, "shell-skill", nil, false)
 	if candidate.ValidationStatus != "pass" {
@@ -171,8 +171,8 @@ func TestValidateSkillPackage_HighRiskFile(t *testing.T) {
 
 func TestValidateSkillPackage_HighRiskFileBat(t *testing.T) {
 	files := map[string][]byte{
-		"SKILL.md":   []byte(makeSkillMD("Bat Skill", "Has bat file")),
-		"run.bat":    []byte("@echo off"),
+		"SKILL.md": []byte(makeSkillMD("Bat Skill", "Has bat file")),
+		"run.bat":  []byte("@echo off"),
 	}
 	candidate, _ := ValidateSkillPackage(files, "bat-skill", nil, false)
 	if candidate.ValidationStatus != "block" {
@@ -202,8 +202,8 @@ func TestValidateSkillPackage_HighRiskFileCmd(t *testing.T) {
 
 func TestValidateSkillPackage_HighRiskFileDll(t *testing.T) {
 	files := map[string][]byte{
-		"SKILL.md":    []byte(makeSkillMD("Dll Skill", "Has dll")),
-		"lib.dll":     []byte("binary"),
+		"SKILL.md": []byte(makeSkillMD("Dll Skill", "Has dll")),
+		"lib.dll":  []byte("binary"),
 	}
 	candidate, _ := ValidateSkillPackage(files, "dll-skill", nil, false)
 	if candidate.ValidationStatus != "block" {
@@ -213,8 +213,8 @@ func TestValidateSkillPackage_HighRiskFileDll(t *testing.T) {
 
 func TestValidateSkillPackage_HighRiskFilePs1(t *testing.T) {
 	files := map[string][]byte{
-		"SKILL.md":    []byte(makeSkillMD("Ps1 Skill", "Has ps1")),
-		"script.ps1":  []byte("Write-Host hi"),
+		"SKILL.md":   []byte(makeSkillMD("Ps1 Skill", "Has ps1")),
+		"script.ps1": []byte("Write-Host hi"),
 	}
 	candidate, _ := ValidateSkillPackage(files, "ps1-skill", nil, false)
 	if candidate.ValidationStatus != "block" {
@@ -224,8 +224,8 @@ func TestValidateSkillPackage_HighRiskFilePs1(t *testing.T) {
 
 func TestValidateSkillPackage_HighRiskFileSo(t *testing.T) {
 	files := map[string][]byte{
-		"SKILL.md":    []byte(makeSkillMD("So Skill", "Has so")),
-		"lib.so":      []byte("binary"),
+		"SKILL.md": []byte(makeSkillMD("So Skill", "Has so")),
+		"lib.so":   []byte("binary"),
 	}
 	candidate, _ := ValidateSkillPackage(files, "so-skill", nil, false)
 	if candidate.ValidationStatus != "block" {
@@ -235,8 +235,8 @@ func TestValidateSkillPackage_HighRiskFileSo(t *testing.T) {
 
 func TestValidateSkillPackage_HighRiskFileDylib(t *testing.T) {
 	files := map[string][]byte{
-		"SKILL.md":    []byte(makeSkillMD("Dylib Skill", "Has dylib")),
-		"lib.dylib":   []byte("binary"),
+		"SKILL.md":  []byte(makeSkillMD("Dylib Skill", "Has dylib")),
+		"lib.dylib": []byte("binary"),
 	}
 	candidate, _ := ValidateSkillPackage(files, "dylib-skill", nil, false)
 	if candidate.ValidationStatus != "block" {
@@ -308,7 +308,7 @@ func TestValidateSkillPackage_SkipDuplicateCheck(t *testing.T) {
 
 func TestValidateSkillPackage_MultipleWarnings(t *testing.T) {
 	files := map[string][]byte{
-		"SKILL.md": []byte(makeSkillMD("Multi Warn", "Multiple warnings")),
+		"SKILL.md":  []byte(makeSkillMD("Multi Warn", "Multiple warnings")),
 		"deploy.sh": []byte("#!/bin/bash\necho deploy"),
 		"setup.sh":  []byte("#!/bin/bash\necho setup"),
 	}
@@ -688,11 +688,11 @@ func TestSlugify_LeadingTrailingDashes(t *testing.T) {
 
 func TestHighRiskFileNames(t *testing.T) {
 	files := map[string][]byte{
-		"SKILL.md":    {},
-		"app.exe":     {},
-		"run.bat":     {},
-		"script.sh":   {},
-		"data.json":   {},
+		"SKILL.md":  {},
+		"app.exe":   {},
+		"run.bat":   {},
+		"script.sh": {},
+		"data.json": {},
 	}
 	names := highRiskFileNames(files)
 	if len(names) != 2 {

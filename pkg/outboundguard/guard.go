@@ -17,8 +17,8 @@ package outboundguard
 import (
 	"fmt"
 	"net"
-	"net/netip"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"

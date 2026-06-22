@@ -11,9 +11,9 @@ func TestSessionStateMachine_ValidTransitions(t *testing.T) {
 	sm := NewSessionStateMachine()
 
 	tests := []struct {
-		from      SessionState
-		event    SessionEvent
-		wantTo   SessionState
+		from   SessionState
+		event  SessionEvent
+		wantTo SessionState
 	}{
 		{SessionStateIdle, SessionEventStart, SessionStateRunning},
 		{SessionStateRunning, SessionEventComplete, SessionStateCompleted},
@@ -41,7 +41,7 @@ func TestSessionStateMachine_InvalidTransitions(t *testing.T) {
 	sm := NewSessionStateMachine()
 
 	tests := []struct {
-		from   SessionState
+		from  SessionState
 		event SessionEvent
 	}{
 		// No transition from idle except start

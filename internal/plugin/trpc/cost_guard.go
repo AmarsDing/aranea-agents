@@ -123,4 +123,3 @@ func (c *CostGuardPlugin) emitNotice(ctx context.Context, noticeType, content st
 		}
 	}
 }
-

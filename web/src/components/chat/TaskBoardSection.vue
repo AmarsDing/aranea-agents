@@ -13,8 +13,13 @@
       >
         <span class="task-board-entry__num">{{ entry.num }}</span>
         <span class="task-board-entry__task">{{ entry.task }}</span>
-        <span v-if="entry.agentName" class="task-board-entry__agent" :style="{ color: entry.agentColor || 'var(--color-text-secondary)' }">
-          <agent-avatar-q :icon="entry.agentIcon || ''" size="16px" avatar-class="task-board-entry__agent-avatar" /> {{ entry.agentName }}
+        <span
+          v-if="entry.agentName"
+          class="task-board-entry__agent"
+          :style="{ color: entry.agentColor || 'var(--color-text-secondary)' }"
+        >
+          <agent-avatar-q :icon="entry.agentIcon || ''" size="16px" avatar-class="task-board-entry__agent-avatar" />
+          {{ entry.agentName }}
         </span>
         <q-icon
           :name="statusIconName(entry.status)"
@@ -37,19 +42,27 @@ defineProps<{
 
 function statusIconName(status: string): string {
   switch (status) {
-    case 'running': return 'hourglass_top';
-    case 'completed': return 'check_circle';
-    case 'failed': return 'cancel';
-    default: return 'radio_button_unchecked';
+    case 'running':
+      return 'hourglass_top';
+    case 'completed':
+      return 'check_circle';
+    case 'failed':
+      return 'cancel';
+    default:
+      return 'radio_button_unchecked';
   }
 }
 
 function statusIconColor(status: string): string {
   switch (status) {
-    case 'running': return 'warning';
-    case 'completed': return 'positive';
-    case 'failed': return 'negative';
-    default: return 'grey';
+    case 'running':
+      return 'warning';
+    case 'completed':
+      return 'positive';
+    case 'failed':
+      return 'negative';
+    default:
+      return 'grey';
   }
 }
 </script>

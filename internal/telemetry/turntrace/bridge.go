@@ -45,11 +45,11 @@ type Config struct {
 
 // Bridge manages OTel spans for one turn/run.
 type Bridge struct {
-	mu       sync.Mutex
-	domain   Domain
-	root     trace.Span
-	llm      trace.Span
-	tool     map[string]trace.Span
+	mu     sync.Mutex
+	domain Domain
+	root   trace.Span
+	llm    trace.Span
+	tool   map[string]trace.Span
 	// Orchestration phase spans (P3-2): plan/alloc/orch are children of root.
 	plan     trace.Span
 	alloc    trace.Span

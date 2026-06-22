@@ -7,20 +7,20 @@ import (
 )
 
 type TaxonomyIndustrySpec struct {
-	Key         string                 `yaml:"key"`
-	Name        string                 `yaml:"name"`
-	Icon        string                 `yaml:"icon"`
-	Description string                 `yaml:"description"`
-	SortOrder   int                    `yaml:"sort_order"`
-	Departments []TaxonomyDeptSpec     `yaml:"departments"`
+	Key         string             `yaml:"key"`
+	Name        string             `yaml:"name"`
+	Icon        string             `yaml:"icon"`
+	Description string             `yaml:"description"`
+	SortOrder   int                `yaml:"sort_order"`
+	Departments []TaxonomyDeptSpec `yaml:"departments"`
 }
 
 type TaxonomyDeptSpec struct {
-	Key         string                  `yaml:"key"`
-	Name        string                  `yaml:"name"`
-	Description string                  `yaml:"description"`
-	SortOrder   int                     `yaml:"sort_order"`
-	Positions   []TaxonomyPositionSpec  `yaml:"positions"`
+	Key         string                 `yaml:"key"`
+	Name        string                 `yaml:"name"`
+	Description string                 `yaml:"description"`
+	SortOrder   int                    `yaml:"sort_order"`
+	Positions   []TaxonomyPositionSpec `yaml:"positions"`
 }
 
 type TaxonomyPositionSpec struct {

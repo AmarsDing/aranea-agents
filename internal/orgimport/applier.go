@@ -243,14 +243,14 @@ func (a *Applier) upsertAgent(ag AgentSpec, spec *Spec, result *ApplyResult) err
 
 	catPositionID := a.resolvePositionID(ag.CategoryPosition, spec)
 	payload := map[string]any{
-		"agent_key":            ag.Key,
-		"display_name":         ag.DisplayName,
-		"provider":             ag.Provider,
-		"model":                ag.Model,
-		"agent_description":    desc,
-		"position_id":          catPositionID,
-		"system_prompt_mode":   ag.SystemPromptMode,
-		"status":               "active",
+		"agent_key":          ag.Key,
+		"display_name":       ag.DisplayName,
+		"provider":           ag.Provider,
+		"model":              ag.Model,
+		"agent_description":  desc,
+		"position_id":        catPositionID,
+		"system_prompt_mode": ag.SystemPromptMode,
+		"status":             "active",
 	}
 
 	existingID, err := a.lookupAgentByKey(ag.Key)

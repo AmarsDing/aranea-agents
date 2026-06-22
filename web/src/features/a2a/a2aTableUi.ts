@@ -29,7 +29,7 @@ export const A2A_REMOTE_TABLE_COLUMNS: QTableColumn<A2ARemoteAgent>[] = [
   registryCol<A2ARemoteAgent>('auth_type', '鉴权', 'auth_type', 'left', REGISTRY_COL_W.metric),
   registryCol<A2ARemoteAgent>('enabled', '状态', 'enabled', 'left', REGISTRY_COL_W.status),
   registryCol<A2ARemoteAgent>('healthy', '健康', 'healthy', 'left', REGISTRY_COL_W.status),
-  registryColActions<A2ARemoteAgent>(REGISTRY_COL_W.actions, '', 'actions'),
+  registryColActions<A2ARemoteAgent>(REGISTRY_COL_W.actions, ''),
 ];
 
 /** A2A 审计列表 */
@@ -45,9 +45,9 @@ export const A2A_AUDIT_TABLE_COLUMNS: QTableColumn<A2AAuditEntry>[] = [
 /** A2A Gateway 联邦列表 */
 export const A2A_GATEWAY_TABLE_COLUMNS: QTableColumn<A2AGatewayEntry>[] = [
   registryCol<A2AGatewayEntry>('source', '来源', 'source', 'left', REGISTRY_COL_W.metric),
-  registryCol<A2AGatewayEntry>('display_name', '名称', 'card.display_name', 'left', REGISTRY_COL_W.nameWide),
-  registryCol<A2AGatewayEntry>('workspace', 'Workspace', 'card.workspace', 'left', REGISTRY_COL_W.metric),
-  registryCol<A2AGatewayEntry>('capabilities', '能力', 'card.capabilities', 'left', REGISTRY_COL_W.category),
+  registryCol<A2AGatewayEntry>('display_name', '名称', (row) => row.card.display_name, 'left', REGISTRY_COL_W.nameWide),
+  registryCol<A2AGatewayEntry>('workspace', 'Workspace', (row) => row.card.workspace, 'left', REGISTRY_COL_W.metric),
+  registryCol<A2AGatewayEntry>('capabilities', '能力', (row) => row.card.capabilities, 'left', REGISTRY_COL_W.category),
   registryCol<A2AGatewayEntry>('healthy', '健康', 'healthy', 'left', REGISTRY_COL_W.status),
   registryCol<A2AGatewayEntry>('endpoint_url', '端点 URL', 'endpoint_url', 'left', REGISTRY_COL_W.nameWide),
 ];

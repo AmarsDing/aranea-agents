@@ -25,7 +25,7 @@
         checked-icon="check"
         unchecked-icon="close"
         :disable="toggleLoading"
-        :aria-label="node.enabled ? '停用分类' : '启用分类'"
+        :aria-label="node.enabled ? `停用${levelLabel(node.level)}` : `启用${levelLabel(node.level)}`"
         @update:model-value="$emit('toggle-enabled', Boolean($event))"
         @click.stop
       />
@@ -50,7 +50,15 @@
         label="职位"
         @click.stop="$emit('create-child')"
       />
-      <q-btn flat dense round color="negative" icon="delete" @click.stop="$emit('remove')" />
+      <q-btn
+        v-if="!parseIsSystem(node)"
+        flat
+        dense
+        round
+        color="negative"
+        icon="delete"
+        @click.stop="$emit('remove')"
+      />
     </div>
   </div>
 </template>
@@ -58,7 +66,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { PlatformResourceTreeNode } from '../../features/platform/types';
-import { parseIsSystem, trimmedDesc } from '../../features/platform/taxonomyTreeUtils';
+import { levelLabel, parseIsSystem, trimmedDesc } from '../../features/platform/taxonomyTreeUtils';
 
 const props = defineProps<{
   node: PlatformResourceTreeNode;

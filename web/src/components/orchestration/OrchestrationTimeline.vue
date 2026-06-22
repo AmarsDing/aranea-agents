@@ -11,7 +11,10 @@
           <q-icon :name="phaseIcon(phase.status)" :color="phaseColor(phase.status)" />
           <span class="phase-name">{{ t(`orchestration.timeline.phases.${phase.phase}`) }}</span>
           <span class="phase-duration">{{ formatDuration(phase.durationMs) }}</span>
-          <q-icon v-if="phase.steps.length > 0" :name="expandedPhases.has(phase.phase) ? 'expand_less' : 'expand_more'" />
+          <q-icon
+            v-if="phase.steps.length > 0"
+            :name="expandedPhases.has(phase.phase) ? 'expand_less' : 'expand_more'"
+          />
         </div>
         <!-- 步骤列表 -->
         <div v-if="expandedPhases.has(phase.phase) && phase.steps.length > 0" class="phase-steps">

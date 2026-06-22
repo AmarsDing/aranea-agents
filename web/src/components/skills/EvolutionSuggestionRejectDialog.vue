@@ -23,7 +23,7 @@
             autogrow
             label="拒绝原因"
             placeholder="请输入拒绝原因（可选）"
-            @update:model-value="$emit('update:reason', $event)"
+            @update:model-value="(v: string | number | null) => $emit('update:reason', String(v ?? ''))"
           />
         </q-card-section>
       </div>

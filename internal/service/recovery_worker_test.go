@@ -93,7 +93,7 @@ func (errorCheckpointSaver) PutFull(context.Context, trpcgraph.PutFullRequest) (
 	return nil, nil
 }
 func (errorCheckpointSaver) DeleteLineage(context.Context, string) error { return nil }
-func (errorCheckpointSaver) Close() error                                 { return nil }
+func (errorCheckpointSaver) Close() error                                { return nil }
 
 // okCheckpointSaver returns a non-nil checkpoint for any config with a
 // non-empty checkpoint_id.
@@ -125,7 +125,7 @@ func (okCheckpointSaver) PutFull(context.Context, trpcgraph.PutFullRequest) (map
 	return nil, nil
 }
 func (okCheckpointSaver) DeleteLineage(context.Context, string) error { return nil }
-func (okCheckpointSaver) Close() error                                 { return nil }
+func (okCheckpointSaver) Close() error                                { return nil }
 
 // --- Tests ---
 

@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"aranea-agents/pkg/apierror"
-	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
+	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
 type mockKnowledgeReflectInput struct {

@@ -4,7 +4,8 @@
       <template v-if="!expanded">
         <span class="todo-kanban__summary">
           <q-icon name="checklist" size="14px" class="todo-kanban__summary-icon" />
-          {{ pendingCount }} {{ t('chat.todo.pending') }} · {{ inProgressCount }} {{ t('chat.todo.inProgress') }} · {{ completedCount }} {{ t('chat.todo.completed') }}
+          {{ pendingCount }} {{ t('chat.todo.pending') }} · {{ inProgressCount }} {{ t('chat.todo.inProgress') }} ·
+          {{ completedCount }} {{ t('chat.todo.completed') }}
         </span>
       </template>
       <template v-else>
@@ -57,16 +58,14 @@ const props = defineProps<{
 const { t } = useI18n();
 const expanded = ref(false);
 
-const pendingItems = computed<TodoItem[]>(() =>
-  props.boardState?.todos.filter((t) => t.status === 'pending') ?? [],
+const pendingItems = computed<TodoItem[]>(() => props.boardState?.todos.filter((t) => t.status === 'pending') ?? []);
+
+const inProgressItems = computed<TodoItem[]>(
+  () => props.boardState?.todos.filter((t) => t.status === 'in_progress') ?? [],
 );
 
-const inProgressItems = computed<TodoItem[]>(() =>
-  props.boardState?.todos.filter((t) => t.status === 'in_progress') ?? [],
-);
-
-const completedItems = computed<TodoItem[]>(() =>
-  props.boardState?.todos.filter((t) => t.status === 'completed') ?? [],
+const completedItems = computed<TodoItem[]>(
+  () => props.boardState?.todos.filter((t) => t.status === 'completed') ?? [],
 );
 
 const pendingCount = computed(() => pendingItems.value.length);

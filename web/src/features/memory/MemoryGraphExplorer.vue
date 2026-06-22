@@ -124,7 +124,13 @@ import AppRegistryMarkupTable from '../../components/layout/AppRegistryMarkupTab
 import { RELATION_COLUMNS } from './memoryTableUi';
 import type { MemoryEntity } from './types';
 import { useMemoryGraphExplorer } from './composables/useMemoryGraphExplorer';
-const { neighborhood, loadingGraph, graphError, loadNeighborhood: fetchNeighborhood, resetNeighborhood } = useMemoryGraphExplorer();
+const {
+  neighborhood,
+  loadingGraph,
+  graphError,
+  loadNeighborhood: fetchNeighborhood,
+  resetNeighborhood,
+} = useMemoryGraphExplorer();
 
 const relationColumns = RELATION_COLUMNS;
 

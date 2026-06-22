@@ -58,4 +58,3 @@ func (c *ConfirmationGuardPlugin) beforeTool(ctx context.Context, args *trpctool
 	c.base.record(ctx, "before_tool", "success")
 	return &trpctool.BeforeToolResult{Context: ctx}, nil
 }
-

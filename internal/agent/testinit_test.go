@@ -17,5 +17,8 @@ func TestMain(m *testing.M) {
 	// VerifyTestMain runs m.Run() internally and exits on leak detection.
 	goleak.VerifyTestMain(m,
 		goleak.IgnoreCurrent(),
+		// HTTP/2 client read loops from the shared OAuth2 client may still be
+		// winding down when tests finish; they are not production leaks.
+		goleak.IgnoreAnyFunction("net/http.(*http2ClientConn).readLoop"),
 	)
 }

@@ -35,7 +35,14 @@ const accentColor = computed(() => {
 
 <template>
   <g>
-    <path fill="none" :stroke="accentColor" stroke-width="2" stroke-dasharray="5 5" class="graph-connection-line__path" :d="path" />
+    <path
+      fill="none"
+      :stroke="accentColor"
+      stroke-width="2"
+      stroke-dasharray="5 5"
+      class="graph-connection-line__path"
+      :d="path"
+    />
     <circle :cx="targetX" :cy="targetY" fill="var(--glass-surface)" r="5" :stroke="accentColor" stroke-width="1.5" />
   </g>
 </template>

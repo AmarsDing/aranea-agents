@@ -95,8 +95,8 @@ func TestCompileToGraphBuildConfig_embeddedTaskNode(t *testing.T) {
 func TestCompileToGraphBuildConfig_embeddedSubgraph(t *testing.T) {
 	loader := stubGraphLoader{configs: map[string]biz.GraphBuildConfig{
 		"g-nested": {
-			Nodes: []biz.NodeDef{{ID: "inner", Type: "agent", AgentName: "inner-agent"}},
-			Edges: []biz.EdgeDef{},
+			Nodes:      []biz.NodeDef{{ID: "inner", Type: "agent", AgentName: "inner-agent"}},
+			Edges:      []biz.EdgeDef{},
 			EntryPoint: "inner", FinishPoint: "inner",
 		},
 	}}

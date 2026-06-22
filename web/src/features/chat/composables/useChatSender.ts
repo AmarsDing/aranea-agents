@@ -317,10 +317,7 @@ export function useChatSender(deps: SenderDeps) {
         } else {
           $q.notify({
             type: 'negative',
-            message:
-              err instanceof Error
-                ? err.message
-                : t('chat.retryEnqueueRejected', '重试失败，请稍后再试'),
+            message: err instanceof Error ? err.message : t('chat.retryEnqueueRejected', '重试失败，请稍后再试'),
           });
         }
       }
@@ -463,7 +460,7 @@ export function useChatSender(deps: SenderDeps) {
 
   function getTeamStrategy(): SendStrategy {
     return {
-      resolveSessionId: () => deps.sessionStore.teamSelectedSessionId,
+      resolveSessionId: () => deps.sessionStore.teamSelectedSessionId ?? undefined,
       ensureSession: async (title) => {
         if (!deps.sessionStore.teamSelectedSessionId) await deps.onNewSession(title);
       },

@@ -293,20 +293,20 @@ func (r *l4EntityRepo) AgentStrategyJSON(ctx context.Context, agentID string) ([
 		return nil, err
 	}
 	strategy := map[string]any{
-		"agent_id":     aid,
-		"exploration":  exploration,
-		"conciseness":  conciseness,
-		"caution":      caution,
-		"delegation":   delegation,
+		"agent_id":            aid,
+		"exploration":         exploration,
+		"conciseness":         conciseness,
+		"caution":             caution,
+		"delegation":          delegation,
 		"tool_preference":     decodeJSONFloatMap(toolPrefJSON, r.data.lg),
 		"tool_blacklist":      decodeJSONStringSlice(toolBlacklistJSON, r.data.lg),
 		"provider_preference": decodeJSONFloatMap(providerPrefJSON, r.data.lg),
 		"model_preference":    decodeJSONFloatMap(modelPrefJSON, r.data.lg),
-		"stats_json":   statsJSON,
-		"metadata_json": meta,
-		"version":      version,
-		"created_at":   ca,
-		"updated_at":   ua,
+		"stats_json":          statsJSON,
+		"metadata_json":       meta,
+		"version":             version,
+		"created_at":          ca,
+		"updated_at":          ua,
 	}
 	return json.Marshal(map[string]any{"agent_id": agentID, "strategy": strategy})
 }
@@ -510,9 +510,9 @@ func (r *l4EntityRepo) InsertEvolutionEventRow(ctx context.Context, in biz.Evolu
 		strings.TrimSpace(in.TriggerSource),
 		"[]", // evidence_json
 		strings.TrimSpace(in.Reason),
-		1,    // applied
-		0,    // reverted
-		"",   // reverted_by_event_id
+		1,                  // applied
+		0,                  // reverted
+		"",                 // reverted_by_event_id
 		meta, now, now, "", // applied_at=now, reverted_at=''
 	)
 	if err != nil {

@@ -3,8 +3,8 @@ package testexec
 import (
 	"testing"
 
-	"aranea-agents/pkg/loggateway"
 	webresearchpkg "aranea-agents/internal/tools/webresearch"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestAssemblyForCatalogKey(t *testing.T) {

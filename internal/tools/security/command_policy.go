@@ -35,11 +35,11 @@ var DefaultProtectedPaths = []string{
 }
 
 var DefaultProtectedTools = map[string]bool{
-	"exec_command":    true,
-	"shell_exec":      true,
-	"hostexec":        true,
-	"file":            true,
-	"read_document":   true,
+	"exec_command":     true,
+	"shell_exec":       true,
+	"hostexec":         true,
+	"file":             true,
+	"read_document":    true,
 	"read_spreadsheet": true,
 }
 

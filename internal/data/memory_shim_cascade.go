@@ -95,7 +95,7 @@ func (r *cascadeRepo) ListCascadeProposalRows(ctx context.Context, agentID, stat
 	}
 	q := cascadeProposalSelect + where + ` ORDER BY created_at DESC LIMIT ?`
 	args = append(args, lim)
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +115,7 @@ func (r *cascadeRepo) GetCascadeProposalRow(ctx context.Context, id string) ([]b
 	if r == nil {
 		return nil, biz.ErrCascadeUnavailable
 	}
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, cascadeProposalSelect+` WHERE id = ?`, id)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(cascadeProposalSelect+` WHERE id = ?`), id)
 	if err != nil {
 		return nil, err
 	}
@@ -242,9 +242,9 @@ func (r *cascadeRepo) ReplaceNameInAgentFacts(ctx context.Context, agentID, oldN
 
 	// Phase 1: Collect all matching facts (CS-B10: no per-row writes in loop).
 	type factUpdate struct {
-		ID       string
-		NewStmt  string
-		NewMeta  string
+		ID      string
+		NewStmt string
+		NewMeta string
 	}
 	var updates []factUpdate
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -579,4 +579,3 @@ func (r *cascadeRepo) HasCascadeSaga(ctx context.Context, proposalID string) (bo
 	}
 	return count > 0, nil
 }
-

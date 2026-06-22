@@ -14,14 +14,14 @@ import (
 // recordingSessionStatePort is a test double for biz.SessionStatePort that
 // records all PatchSessionState calls for verification.
 type recordingSessionStatePort struct {
-	mu     sync.Mutex
-	state  map[string]string
+	mu      sync.Mutex
+	state   map[string]string
 	patches []recordedPatch
-	err    error
+	err     error
 }
 
 type recordedPatch struct {
-	sets   map[string]string
+	sets    map[string]string
 	deletes []string
 }
 

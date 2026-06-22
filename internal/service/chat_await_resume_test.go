@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestTerminalRunStatus_AwaitingUserPersists(t *testing.T) {
@@ -20,7 +22,9 @@ func TestSessionAwaitingUser(t *testing.T) {
 }
 
 func TestTryBeginResume_dedup(t *testing.T) {
-	s := &ChatService{orch: &ChatOrchestrator{}}
+	coord := newChatAwaitCoordinator(chatAwaitCoordinatorDeps{Logger: loggateway.NewNoop()})
+	orch := &ChatOrchestrator{runMgr: &chatRunManagerImpl{awaitCoordinator: coord}}
+	s := &ChatService{orch: orch}
 	if !s.tryBeginResume("sess-1") {
 		t.Fatal("first resume should begin")
 	}

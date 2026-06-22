@@ -6,32 +6,40 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { CompressStatus } from '../../features/session/types'
+import { computed } from 'vue';
+import type { CompressStatus } from '../../features/session/types';
 
 const props = defineProps<{
-  status: CompressStatus
-}>()
+  status: CompressStatus;
+}>();
 
-const statusClass = computed(() => `context-indicator--${props.status}`)
+const statusClass = computed(() => `context-indicator--${props.status}`);
 
 const statusIcon = computed(() => {
   switch (props.status) {
-    case 'optimizing': return 'schedule'
-    case 'compressing': return 'compress'
-    case 'optimized': return 'check_circle'
-    default: return 'info'
+    case 'optimizing':
+      return 'schedule';
+    case 'compressing':
+      return 'compress';
+    case 'optimized':
+      return 'check_circle';
+    default:
+      return 'info';
   }
-})
+});
 
 const statusLabel = computed(() => {
   switch (props.status) {
-    case 'optimizing': return '正在优化上下文...'
-    case 'compressing': return '正在压缩上下文...'
-    case 'optimized': return '上下文已优化'
-    default: return ''
+    case 'optimizing':
+      return '正在优化上下文...';
+    case 'compressing':
+      return '正在压缩上下文...';
+    case 'optimized':
+      return '上下文已优化';
+    default:
+      return '';
   }
-})
+});
 </script>
 
 <style scoped lang="scss">

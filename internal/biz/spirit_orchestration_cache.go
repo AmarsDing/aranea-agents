@@ -224,10 +224,10 @@ const (
 	DQScoreMin          = 0.1
 
 	// Specificity thresholds based on summary length.
-	DQSpecificityBase      = 0.7
-	DQSpecificityMedium    = 0.85 // summary > 50 chars
-	DQSpecificityHigh      = 1.0  // summary > 100 chars
-	DQSpecificityFindings  = 0.15 // bonus for key findings
+	DQSpecificityBase     = 0.7
+	DQSpecificityMedium   = 0.85 // summary > 50 chars
+	DQSpecificityHigh     = 1.0  // summary > 100 chars
+	DQSpecificityFindings = 0.15 // bonus for key findings
 
 	// Time penalty constants.
 	DQTimePenaltyDivisorMs = 60000.0 // convert ms to minutes

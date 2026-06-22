@@ -559,7 +559,7 @@ func TestSessionTimelineSummary(t *testing.T) {
 		{
 			name: "counts from session fields",
 			sess: Session{
-				MessageCount: 10,
+				MessageCount:   10,
 				ToolCallCount:  3,
 				SkillCallCount: 2,
 				MCPCallCount:   1,

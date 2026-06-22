@@ -10,7 +10,7 @@ import (
 
 // CircuitBreakerStateEntry represents the persistent state of a circuit breaker.
 type CircuitBreakerStateEntry struct {
-	State           string    // closed | open | half_open
+	State           string // closed | open | half_open
 	FailureCount    int
 	SuccessCount    int
 	HalfOpenProbes  int

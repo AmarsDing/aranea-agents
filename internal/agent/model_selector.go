@@ -192,10 +192,10 @@ func CostAwareModelSelector(
 		}
 		// Find the cheapest alternative with same-or-superset capabilities.
 		type candidate struct {
-			model       biz.ProviderModel
-			inputCost   float64
-			outputCost  float64
-			totalCost   float64
+			model      biz.ProviderModel
+			inputCost  float64
+			outputCost float64
+			totalCost  float64
 		}
 		var candidates []candidate
 		for _, m := range models {
@@ -390,7 +390,7 @@ func LatencyAwareModelSelector(
 		}
 		// Find the fastest alternative with same-or-superset capabilities.
 		type candidate struct {
-			model       biz.ProviderModel
+			model        biz.ProviderModel
 			latencyScore int
 		}
 		var best *candidate

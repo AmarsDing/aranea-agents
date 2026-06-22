@@ -9,24 +9,24 @@ import (
 )
 
 type mockRepo struct {
-	searchTools                   func(ctx context.Context, q ToolListQuery) (ToolListResult, error)
-	getTool                       func(ctx context.Context, idOrKey string) (Tool, error)
-	createTool                    func(ctx context.Context, in ToolUpsertInput) (Tool, error)
-	updateTool                    func(ctx context.Context, idOrKey string, in ToolUpsertInput) (Tool, error)
-	deleteTool                    func(ctx context.Context, idOrKey string) error
-	updateToolEnabled             func(ctx context.Context, idOrKey string, enabled bool) (Tool, error)
-	updateToolConfig              func(ctx context.Context, idOrKey string, configJSON string) (Tool, error)
-	searchToolInvocations         func(ctx context.Context, q ToolRunQuery) (ToolRunResult, error)
-	getToolInvocationParams       func(ctx context.Context, invocationID string) (ToolInvocationParam, error)
-	recordToolInvocation          func(ctx context.Context, in ToolInvocationWrite) error
-	recordToolInvocationAudit     func(ctx context.Context, in ToolInvocationAuditWrite) error
-	searchToolInvocationAudits    func(ctx context.Context, q ToolAuditQuery) (ToolAuditResult, error)
+	searchTools                     func(ctx context.Context, q ToolListQuery) (ToolListResult, error)
+	getTool                         func(ctx context.Context, idOrKey string) (Tool, error)
+	createTool                      func(ctx context.Context, in ToolUpsertInput) (Tool, error)
+	updateTool                      func(ctx context.Context, idOrKey string, in ToolUpsertInput) (Tool, error)
+	deleteTool                      func(ctx context.Context, idOrKey string) error
+	updateToolEnabled               func(ctx context.Context, idOrKey string, enabled bool) (Tool, error)
+	updateToolConfig                func(ctx context.Context, idOrKey string, configJSON string) (Tool, error)
+	searchToolInvocations           func(ctx context.Context, q ToolRunQuery) (ToolRunResult, error)
+	getToolInvocationParams         func(ctx context.Context, invocationID string) (ToolInvocationParam, error)
+	recordToolInvocation            func(ctx context.Context, in ToolInvocationWrite) error
+	recordToolInvocationAudit       func(ctx context.Context, in ToolInvocationAuditWrite) error
+	searchToolInvocationAudits      func(ctx context.Context, q ToolAuditQuery) (ToolAuditResult, error)
 	purgeToolInvocationAuditsBefore func(ctx context.Context, cutoffRFC3339 string) (int64, error)
-	listToolAgentOverrides        func(ctx context.Context, toolKey string) ([]ToolAgentOverride, error)
-	listToolAgentOverridesByAgent func(ctx context.Context, agentID string) ([]ToolAgentOverride, error)
-	upsertToolAgentOverride       func(ctx context.Context, in ToolAgentOverrideInput, toolID string) (ToolAgentOverride, error)
-	deleteToolAgentOverride       func(ctx context.Context, toolKey string, agentID string) error
-	syncBuiltinTools              func(ctx context.Context) error
+	listToolAgentOverrides          func(ctx context.Context, toolKey string) ([]ToolAgentOverride, error)
+	listToolAgentOverridesByAgent   func(ctx context.Context, agentID string) ([]ToolAgentOverride, error)
+	upsertToolAgentOverride         func(ctx context.Context, in ToolAgentOverrideInput, toolID string) (ToolAgentOverride, error)
+	deleteToolAgentOverride         func(ctx context.Context, toolKey string, agentID string) error
+	syncBuiltinTools                func(ctx context.Context) error
 }
 
 func (m *mockRepo) SearchTools(ctx context.Context, q ToolListQuery) (ToolListResult, error) {
@@ -708,16 +708,16 @@ func TestGetTool(t *testing.T) {
 					return Tool{}, apierror.NotFound("TOOL", "tool not found")
 				},
 			},
-			wantErr: true,
-			wantMsg: "tool not found",
+			wantErr:  true,
+			wantMsg:  "tool not found",
 			wantCode: apierror.CodeNotFound,
 		},
 		{
-			name:    "empty id",
-			id:      "  ",
-			repo:    &mockRepo{},
-			wantErr: true,
-			wantMsg: "id is required",
+			name:     "empty id",
+			id:       "  ",
+			repo:     &mockRepo{},
+			wantErr:  true,
+			wantMsg:  "id is required",
 			wantCode: apierror.CodeBadRequest,
 		},
 		{

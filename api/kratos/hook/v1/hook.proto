@@ -94,6 +94,12 @@ service HookService {
       body: "*"
     };
   }
+  // Static sub-resource GET paths MUST be registered before /v1/hooks/{id}
+  // to avoid gorilla/mux matching the variable segment first
+  // (e.g. "deliveries" as {id}).
+  rpc ListHookDeliveries(ListHookDeliveriesRequest) returns (ListHookDeliveriesResponse) {
+    option (google.api.http) = {get: "/v1/hooks/deliveries"};
+  }
   rpc GetHook(GetHookRequest) returns (Hook) {
     option (google.api.http) = {get: "/v1/hooks/{id}"};
   }
@@ -105,8 +111,5 @@ service HookService {
   }
   rpc DeleteHook(DeleteHookRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {delete: "/v1/hooks/{id}"};
-  }
-  rpc ListHookDeliveries(ListHookDeliveriesRequest) returns (ListHookDeliveriesResponse) {
-    option (google.api.http) = {get: "/v1/hooks/deliveries"};
   }
 }

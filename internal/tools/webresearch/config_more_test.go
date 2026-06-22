@@ -9,15 +9,15 @@ import (
 
 func TestConfigFromMap_allFieldTypes(t *testing.T) {
 	m := map[string]any{
-		"search_depth":       "advanced",
-		"max_results":        float64(5),
-		"fetch_top":          float64(3),
-		"include_answer":     true,
+		"search_depth":        "advanced",
+		"max_results":         float64(5),
+		"fetch_top":           float64(3),
+		"include_answer":      true,
 		"include_raw_content": false,
-		"timeout_sec":        float64(30),
-		"http_proxy":         "http://proxy:8080",
-		"api_key":            "test-key",
-		"provider":           "tavily",
+		"timeout_sec":         float64(30),
+		"http_proxy":          "http://proxy:8080",
+		"api_key":             "test-key",
+		"provider":            "tavily",
 	}
 	cfg := webresearch.ConfigFromMap(m)
 	if cfg.SearchDepth != "advanced" {

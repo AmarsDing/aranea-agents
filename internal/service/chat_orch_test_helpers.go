@@ -17,7 +17,7 @@ type noopRunStatusTracker struct{}
 func (noopRunStatusTracker) SetRunStatus(context.Context, string, string, string, string) {}
 func (noopRunStatusTracker) SetRunStatusWithAwait(context.Context, string, string, string, string, *AwaitStatusMeta) {
 }
-func (noopRunStatusTracker) PublishRunStatus(string, string, string, string)      {}
+func (noopRunStatusTracker) PublishRunStatus(string, string, string, string)                  {}
 func (noopRunStatusTracker) PersistRunStatus(context.Context, string, string, string, string) {}
 func (noopRunStatusTracker) GetRunStatus(context.Context, string) (string, string, string, string, bool) {
 	return "", "", "", "", false
@@ -29,7 +29,7 @@ func (noopRunStatusTracker) StoreBinding(string, sessionRunTurnBinding) {}
 func (noopRunStatusTracker) LoadBinding(string) (sessionRunTurnBinding, bool) {
 	return sessionRunTurnBinding{}, false
 }
-func (noopRunStatusTracker) DeleteBinding(string) {}
+func (noopRunStatusTracker) DeleteBinding(string)                        {}
 func (noopRunStatusTracker) SetAwaitMetaCache(string, biz.ChatAwaitMeta) {}
 func (noopRunStatusTracker) GetAwaitMetaCache(string) (biz.ChatAwaitMeta, bool) {
 	return biz.ChatAwaitMeta{}, false
@@ -66,10 +66,10 @@ func (noopPendingQueueManager) Sweep()                                          
 // noopAwaitCoordinator satisfies awaitCoordinator.
 type noopAwaitCoordinator struct{}
 
-func (noopAwaitCoordinator) TryBeginResume(string) bool       { return false }
-func (noopAwaitCoordinator) EndResume(string)                 {}
+func (noopAwaitCoordinator) TryBeginResume(string) bool                    { return false }
+func (noopAwaitCoordinator) EndResume(string)                              {}
 func (noopAwaitCoordinator) RegisterAwaitChannel(string, biz.AwaitChannel) {}
-func (noopAwaitCoordinator) DeleteAwaitChannel(string)        {}
+func (noopAwaitCoordinator) DeleteAwaitChannel(string)                     {}
 func (noopAwaitCoordinator) LoadAwaitChannel(string) (biz.AwaitChannel, bool) {
 	return nil, false
 }
@@ -113,7 +113,7 @@ func (noopSessionStateTransitor) TransitionStatus(context.Context, string, sesss
 // noopTurnRecorder satisfies turnRecorder.
 type noopTurnRecorder struct{}
 
-func (noopTurnRecorder) RecordTurnUsage(context.Context, TurnUsageParams)          {}
+func (noopTurnRecorder) RecordTurnUsage(context.Context, TurnUsageParams)           {}
 func (noopTurnRecorder) RecordSessionTurn(context.Context, SessionTurnRecordParams) {}
 
 // noopTurnEventPublisher satisfies turnEventPublisher.

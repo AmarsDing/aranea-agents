@@ -4,8 +4,6 @@ import type {
   GraphExecution,
   GraphExecutionSummary,
   GraphStepSnapshot,
-  VisualGraphNode,
-  VisualGraphEdge,
   CheckpointInfo,
   StateFieldDef,
   NodeDef,
@@ -13,12 +11,6 @@ import type {
   ConditionalEdgeDef,
   SubgraphDef,
   ValidationResult,
-  ValidationError,
-  ValidationWarning,
-  GraphTemplateInfo,
-  GraphVersionInfo,
-  TemplateNodeInfo,
-  TemplateEdgeInfo,
   Task,
   TaskComment,
   TaskLog,
@@ -205,6 +197,9 @@ export async function createGraph(payload: Partial<GraphDefinition>): Promise<Gr
     interruptBefore: payload.interruptBefore,
     interruptAfter: payload.interruptAfter,
     metadata: payload.metadata,
+    teamId: payload.teamId,
+    isTemplate: payload.isTemplate,
+    verificationGates: payload.verificationGates,
   });
   return wireGraph(res.graph);
 }
@@ -227,6 +222,9 @@ export async function updateGraph(id: string, payload: Partial<GraphDefinition>)
     interruptBefore: payload.interruptBefore,
     interruptAfter: payload.interruptAfter,
     metadata: payload.metadata,
+    teamId: payload.teamId,
+    isTemplate: payload.isTemplate,
+    verificationGates: payload.verificationGates,
   });
   return wireGraph(res.graph);
 }

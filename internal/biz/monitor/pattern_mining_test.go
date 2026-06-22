@@ -103,9 +103,11 @@ func (m *mockPatternMiningPatternWriter) Update(_ context.Context, pattern monit
 	return nil
 }
 
-func (m *mockPatternMiningPatternWriter) IncrementSuccess(_ context.Context, _ string) error { return nil }
-func (m *mockPatternMiningPatternWriter) IncrementFail(_ context.Context, _ string) error    { return nil }
-func (m *mockPatternMiningPatternWriter) Deactivate(_ context.Context, _ string) error       { return nil }
+func (m *mockPatternMiningPatternWriter) IncrementSuccess(_ context.Context, _ string) error {
+	return nil
+}
+func (m *mockPatternMiningPatternWriter) IncrementFail(_ context.Context, _ string) error { return nil }
+func (m *mockPatternMiningPatternWriter) Deactivate(_ context.Context, _ string) error    { return nil }
 
 // --- helpers ---
 

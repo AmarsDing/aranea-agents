@@ -36,10 +36,17 @@
     </q-dialog>
   </template>
   <template v-else-if="kind === 'Tabs'">
-    <q-tabs :model-value="ctx.activeTab" @update:model-value="emit('update:activeTab', Number($event))" dense class="text-grey-7" active-color="accent" indicator-color="accent">
+    <q-tabs
+      :model-value="ctx.activeTab"
+      dense
+      class="text-grey-7"
+      active-color="accent"
+      indicator-color="accent"
+      @update:model-value="emit('update:activeTab', Number($event))"
+    >
       <q-tab v-for="(tab, idx) in ctx.tabItems" :key="idx" :name="idx" :label="tab.label" />
     </q-tabs>
-    <q-tab-panels :model-value="ctx.activeTab" @update:model-value="emit('update:activeTab', Number($event))" animated>
+    <q-tab-panels :model-value="ctx.activeTab" animated @update:model-value="emit('update:activeTab', Number($event))">
       <q-tab-panel v-for="(tab, idx) in ctx.tabItems" :key="idx" :name="idx">
         <A2UIComponentNode
           v-if="tab.childId"

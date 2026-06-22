@@ -119,15 +119,15 @@ func TestSkillIntelligenceService_GetExperienceReport(t *testing.T) {
 	reader := newStubExperienceReportReader()
 	now := time.Now().UTC()
 	report := &biz.ExperienceReport{
-		ID:          "r1",
-		TenantID:    "t1",
-		SessionID:   "s1",
+		ID:           "r1",
+		TenantID:     "t1",
+		SessionID:    "s1",
 		InvocationID: "inv1",
-		SkillID:     "sk1",
-		IsSuccess:   true,
-		Score:       85,
-		FlowSummary: "Skill completed successfully.",
-		CreatedAt:   now,
+		SkillID:      "sk1",
+		IsSuccess:    true,
+		Score:        85,
+		FlowSummary:  "Skill completed successfully.",
+		CreatedAt:    now,
 	}
 	reader.byID["r1"] = report
 

@@ -28,7 +28,7 @@ func (r *usageRepo) GetActiveModelPricing(ctx context.Context, providerCode, mod
 		        COALESCE(cached_input_price_usd_per_1m, 0), COALESCE(cache_write_price_usd_per_1m, 0),
 		        COALESCE(reasoning_price_usd_per_1m, 0), COALESCE(embedding_price_usd_per_1m, 0)
 		 FROM model_pricing_rules
-		 WHERE provider_code = ? AND model_api_id = ? AND is_active = 1 AND (effective_to = '' OR effective_to IS NULL)
+		 WHERE provider_code = ? AND model_api_id = ? AND is_active = TRUE AND (effective_to = '' OR effective_to IS NULL)
 		 ORDER BY effective_from DESC
 		 LIMIT 1`),
 		[]any{providerCode, modelAPIID},

@@ -31,14 +31,14 @@ func TestValidateRalphLoopSettings(t *testing.T) {
 		t.Fatal("expected error without promise or verify command")
 	}
 	if err := biz.ValidateRalphLoopSettings(&biz.AgentRuntimeSettings{
-		RalphLoopVerifyCommand:   "go test ./...",
-		RalphLoopMaxIterations:   1,
+		RalphLoopVerifyCommand: "go test ./...",
+		RalphLoopMaxIterations: 1,
 	}); err != nil {
 		t.Fatalf("verify only: %v", err)
 	}
 	if err := biz.ValidateRalphLoopSettings(&biz.AgentRuntimeSettings{
-		RalphLoopMaxIterations:        -1,
-		RalphLoopCompletionPromise:    "x",
+		RalphLoopMaxIterations:     -1,
+		RalphLoopCompletionPromise: "x",
 	}); err == nil {
 		t.Fatal("expected negative max_iterations error")
 	}

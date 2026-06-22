@@ -4,20 +4,22 @@
 //
 // ```mermaid
 // stateDiagram-v2
-//     [*] --> Pending
-//     Pending --> Running : start
-//     Pending --> Cancelled : cancel
-//     Running --> Completed : complete
-//     Running --> Failed : fail
-//     Running --> Cancelled : cancel
-//     Running --> Interrupted : interrupt
-//     Interrupted --> Running : recover
-//     Completed --> Archived : archive
-//     Failed --> Archived : archive
-//     Failed --> Pending : recover
-//     Cancelled --> Archived : archive
-//     Cancelled --> Pending : recover
-//     Archived --> [*]
+//
+//	[*] --> Pending
+//	Pending --> Running : start
+//	Pending --> Cancelled : cancel
+//	Running --> Completed : complete
+//	Running --> Failed : fail
+//	Running --> Cancelled : cancel
+//	Running --> Interrupted : interrupt
+//	Interrupted --> Running : recover
+//	Completed --> Archived : archive
+//	Failed --> Archived : archive
+//	Failed --> Pending : recover
+//	Cancelled --> Archived : archive
+//	Cancelled --> Pending : recover
+//	Archived --> [*]
+//
 // ```
 package biz
 
@@ -51,13 +53,13 @@ const (
 type TeamEvent string
 
 const (
-	TeamEventStart    TeamEvent = "start"
-	TeamEventComplete TeamEvent = "complete"
-	TeamEventFail     TeamEvent = "fail"
-	TeamEventCancel   TeamEvent = "cancel"
+	TeamEventStart     TeamEvent = "start"
+	TeamEventComplete  TeamEvent = "complete"
+	TeamEventFail      TeamEvent = "fail"
+	TeamEventCancel    TeamEvent = "cancel"
 	TeamEventInterrupt TeamEvent = "interrupt"
-	TeamEventRecover  TeamEvent = "recover"
-	TeamEventArchive  TeamEvent = "archive"
+	TeamEventRecover   TeamEvent = "recover"
+	TeamEventArchive   TeamEvent = "archive"
 )
 
 // ── Transition rules ─────────────────────────────────────────────────────────

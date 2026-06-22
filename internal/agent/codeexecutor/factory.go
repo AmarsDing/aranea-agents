@@ -17,16 +17,16 @@ import (
 // Factory builds and resolves CodeExecutor instances for Skill runtime.
 // Wire injects a process-level singleton; heavy backends (E2B, container) register lazily.
 type Factory struct {
-	mu        sync.RWMutex
-	env       EnvConfig
-	docker    trpcagentcodeexec.CodeExecutor
-	e2b       trpcagentcodeexec.CodeExecutor
-	e2bOnce   sync.Once
-	container trpcagentcodeexec.CodeExecutor
+	mu            sync.RWMutex
+	env           EnvConfig
+	docker        trpcagentcodeexec.CodeExecutor
+	e2b           trpcagentcodeexec.CodeExecutor
+	e2bOnce       sync.Once
+	container     trpcagentcodeexec.CodeExecutor
 	containerOnce sync.Once
-	localWD   string
-	localExec trpcagentcodeexec.CodeExecutor
-	lg        loggateway.Logger
+	localWD       string
+	localExec     trpcagentcodeexec.CodeExecutor
+	lg            loggateway.Logger
 }
 
 // Deprecated: use NewFactoryWithLogger for proper logger injection.

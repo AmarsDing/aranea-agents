@@ -313,9 +313,9 @@ var (
 	heartbeatSchema = &trpctool.Schema{
 		Type: "object",
 		Properties: map[string]*trpctool.Schema{
-			"task_id":    {Type: strType, Description: "Task ID (defaults to ARANEA_TASK_ID env)"},
-			"agent_key":  {Type: strType, Description: "Agent key (defaults to ARANEA_AGENT_KEY env)"},
-			"metadata":   {Type: strType, Description: "Optional metadata JSON"},
+			"task_id":   {Type: strType, Description: "Task ID (defaults to ARANEA_TASK_ID env)"},
+			"agent_key": {Type: strType, Description: "Agent key (defaults to ARANEA_AGENT_KEY env)"},
+			"metadata":  {Type: strType, Description: "Optional metadata JSON"},
 		},
 	}
 

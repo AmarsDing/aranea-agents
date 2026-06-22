@@ -33,7 +33,7 @@
 //   - Event Bus: event_bus_*.go, domain_event.go
 //   - Evolution: evolution*.go
 //   - Utility:   evaluation.go (Agent 评估模型与评分),
-//               json_list.go (JSON 列表工具函数),
-//               json_schema.go (JSON Schema 验证辅助),
-//               pagination.go (通用分页模型)
+//     json_list.go (JSON 列表工具函数),
+//     json_schema.go (JSON Schema 验证辅助),
+//     pagination.go (通用分页模型)
 package biz

@@ -11,10 +11,10 @@ import (
 )
 
 type adaptedPlugin struct {
-	plugin              trpcplugin.Plugin
-	modelRouter         *ModelRouterConfig
-	costGuard           *CostGuardConfig
-	confirmationGuard   *ConfirmationGuardConfig
+	plugin            trpcplugin.Plugin
+	modelRouter       *ModelRouterConfig
+	costGuard         *CostGuardConfig
+	confirmationGuard *ConfirmationGuardConfig
 }
 
 func builtin(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime, lg loggateway.Logger) trpcplugin.Plugin {

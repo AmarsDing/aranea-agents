@@ -16,7 +16,7 @@ func TestResearchTool_Call_mockTavily(t *testing.T) {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"query": "test query",
+			"query":  "test query",
 			"answer": "summary answer",
 			"results": []map[string]any{
 				{"title": "Example", "url": "https://example.com", "content": "snippet text", "score": 0.9},

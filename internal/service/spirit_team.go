@@ -532,5 +532,3 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 	}
 	a.bus.Publish(ctx, env)
 }
-
-

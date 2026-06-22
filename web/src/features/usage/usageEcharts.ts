@@ -39,7 +39,7 @@ export function baseChartOption(partial: EChartsCoreOption = {}): EChartsCoreOpt
   const palette = usageChartPalette();
   return {
     textStyle: { color: palette.text, fontFamily: 'inherit' },
-    grid: { left: 48, right: 16, top: 40, bottom: 28, containLabel: true },
+    grid: { left: 48, right: 16, top: 40, bottom: 28 },
     tooltip: { trigger: 'axis' },
     ...partial,
   };

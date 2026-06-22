@@ -30,9 +30,9 @@ func TestTurnStatusFromNativeOutcome(t *testing.T) {
 
 func TestDeliveryStatusFromChannelRecord(t *testing.T) {
 	cases := []struct {
-		name   string
-		input  string
-		want   biz.DeliveryStatus
+		name  string
+		input string
+		want  biz.DeliveryStatus
 	}{
 		{"queued", "queued", biz.DeliveryStatusPending},
 		{"pending", "pending", biz.DeliveryStatusPending},

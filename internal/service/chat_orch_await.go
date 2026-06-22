@@ -60,13 +60,13 @@ type awaitCoordinator interface {
 // Part of the TECH-DEBT(BL8) resolution: extracting await/resume coordination
 // from ChatOrchestrator to reduce cognitive complexity (AS-COG-01).
 type chatAwaitCoordinator struct {
-	chatUC        *biz.ChatUsecase
-	runStatus     runStatusTracker
-	sessionState  sessionStateTransitor
-	sessionRT     func() *araneasession.Runtime // lazy accessor
-	bus           event.Bus
+	chatUC         *biz.ChatUsecase
+	runStatus      runStatusTracker
+	sessionState   sessionStateTransitor
+	sessionRT      func() *araneasession.Runtime // lazy accessor
+	bus            event.Bus
 	resumeInFlight *TypedSyncMap[string, struct{}]
-	lg            loggateway.Logger
+	lg             loggateway.Logger
 }
 
 // chatAwaitCoordinatorDeps aggregates constructor dependencies for chatAwaitCoordinator.

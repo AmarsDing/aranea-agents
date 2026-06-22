@@ -26,14 +26,17 @@ function mapCategory(raw: AgentCategory) {
 
 export type AgentCategoryRow = ReturnType<typeof mapCategory>;
 
-function mapTreeNode(raw: AgentCategoryTreeNode) {
+export type AgentCategoryTreeNodeRow = {
+  category: AgentCategoryRow;
+  children: AgentCategoryTreeNodeRow[];
+};
+
+function mapTreeNode(raw: AgentCategoryTreeNode): AgentCategoryTreeNodeRow {
   return {
     category: mapCategory(raw.category!),
     children: (raw.children ?? []).map(mapTreeNode),
   };
 }
-
-export type AgentCategoryTreeNodeRow = ReturnType<typeof mapTreeNode>;
 
 export async function listAgentCategories(): Promise<AgentCategoryRow[]> {
   const svc = createAgentCategoryService();
@@ -93,6 +96,7 @@ export async function updateAgentCategory(
   const res = await svc.UpdateAgentCategory({
     id,
     category: {
+      id: undefined,
       key: patch.key,
       name: patch.name,
       description: patch.description,
@@ -103,8 +107,12 @@ export async function updateAgentCategory(
       level: patch.level,
       workspaceId: patch.workspace_id,
       ownerUserId: patch.owner_user_id,
+      isSystem: undefined,
       configJson: patch.config_json,
       metadataJson: patch.metadata_json,
+      createdAt: undefined,
+      updatedAt: undefined,
+      deletedAt: undefined,
     },
   });
   return mapCategory(res);

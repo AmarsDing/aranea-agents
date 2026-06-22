@@ -31,9 +31,9 @@ const (
 type SystemLayer int
 
 const (
-	LayerStatic    SystemLayer = iota // Layer 1: content unchanged within session
-	LayerSemiStatic                   // Layer 2: content changes on task/turn switch
-	LayerDynamic                      // Layer 3: content changes every turn
+	LayerStatic     SystemLayer = iota // Layer 1: content unchanged within session
+	LayerSemiStatic                    // Layer 2: content changes on task/turn switch
+	LayerDynamic                       // Layer 3: content changes every turn
 )
 
 // LayeredCallback is optionally implemented by Callback entries that
