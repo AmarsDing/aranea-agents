@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"strings"
 
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/telemetry/turntrace"
+	"aranea-agents/pkg/apierror"
 
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -13,6 +15,9 @@ import (
 )
 
 func (s *GraphService) ExecuteGraph(ctx context.Context, req *graphv1.ExecuteGraphRequest) (*graphv1.ExecuteGraphResponse, error) {
+	if strings.TrimSpace(req.GetGraphId()) == "" {
+		return nil, apierror.BadRequest("GRAPH", "graph_id is required")
+	}
 	var initialState map[string]any
 	if req.InitialState != nil {
 		initialState = req.InitialState.AsMap()
@@ -164,7 +169,7 @@ func (s *GraphService) TimeTravelGraph(ctx context.Context, req *graphv1.TimeTra
 	}
 	idx := int(req.StepIndex)
 	if idx < 0 || idx >= len(exec.Steps) {
-		return nil, biz.ErrNotFound
+		return nil, apierror.NotFound("GRAPH", "step index out of range")
 	}
 	step := exec.Steps[idx]
 	resp := &graphv1.TimeTravelGraphResponse{

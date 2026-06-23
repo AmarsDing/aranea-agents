@@ -69,8 +69,11 @@ func NewReadToolResultTool(reader biz.ToolResultBlobReader) *trpcfunction.Functi
 			// Enforce session ownership: a blob can only be read by the
 			// session that created it. This prevents cross-session
 			// information leakage when blob IDs are guessed or leaked.
+			// Deny by default: if the current session ID is unavailable
+			// (e.g., tool invoked outside agent runtime) or the blob has
+			// no owning session, access is refused.
 			currentSessionID := sessionIDFromContext(ctx)
-			if currentSessionID != "" && blob.SessionID != "" && currentSessionID != blob.SessionID {
+			if currentSessionID == "" || blob.SessionID == "" || currentSessionID != blob.SessionID {
 				return readToolResultOutput{Found: false}, nil
 			}
 

@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"aranea-agents/internal/pkginstall"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -28,7 +28,7 @@ type skillInstallOutput struct {
 func newSkillInstallFromURLTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input skillInstallInput) (skillInstallOutput, error) {
 		if input.URL == "" {
-			return skillInstallOutput{}, kerrors.BadRequest("CLI_ADMIN", "url is required")
+			return skillInstallOutput{}, apierror.BadRequest(apierror.DomainTool, "url is required")
 		}
 		if err := validateRepoURL(input.URL); err != nil {
 			return skillInstallOutput{}, err
@@ -49,7 +49,7 @@ func newSkillInstallFromURLTool(deps Deps) trpctool.Tool {
 			},
 		}
 		if err := pkginstall.ValidateManifest(manifest); err != nil {
-			return skillInstallOutput{}, kerrors.BadRequest("CLI_ADMIN", fmt.Sprintf("invalid skill install manifest: %v", err))
+			return skillInstallOutput{}, apierror.BadRequest(apierror.DomainTool, "invalid skill install manifest: %v", err)
 		}
 
 		var stepLog []string
@@ -63,7 +63,7 @@ func newSkillInstallFromURLTool(deps Deps) trpctool.Tool {
 		}
 		result, err := ins.Install("", manifest)
 		if err != nil {
-			return skillInstallOutput{}, err
+			return skillInstallOutput{}, apierror.Internal(apierror.DomainTool, "install skill: %v", err)
 		}
 		for _, sr := range result.Steps {
 			stepLog = append(stepLog, fmt.Sprintf("%s %s %s", sr.Resource, sr.Action, sr.Message))

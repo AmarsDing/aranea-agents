@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
@@ -18,7 +19,9 @@ import (
 func NewKnowledgeEmbedder(c *conf.Data, sys biz.SystemSettingRepo, lg loggateway.Logger) *knowledge.MultiProviderEmbedder {
 	cfg := loadKnowledgeEmbedFromEnv(c)
 	if sys != nil {
-		if stored, err := sys.GetKnowledgeEmbed(context.Background()); err == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if stored, err := sys.GetKnowledgeEmbed(ctx); err == nil {
 			cfg = mergeKnowledgeEmbedConfig(cfg, stored)
 		}
 	}

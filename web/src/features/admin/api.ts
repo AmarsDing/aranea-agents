@@ -10,26 +10,26 @@ const adminSvc = createAdminService();
 
 function mapAdmin(raw: unknown): AdminSession {
   const r = raw as Record<string, unknown>;
-  const id = Number(r.id ?? r.Id ?? 0);
+  const id = Number(r.id ?? 0);
   return {
     id,
-    name: String(r.name ?? r.Name ?? ''),
-    email: String(r.email ?? r.Email ?? ''),
-    access: String(r.access ?? r.Access ?? ''),
-    avatar: String(r.avatar ?? r.Avatar ?? ''),
+    name: String(r.name ?? ''),
+    email: String(r.email ?? ''),
+    access: String(r.access ?? ''),
+    avatar: String(r.avatar ?? ''),
   };
 }
 
 export async function loginAdminByUsername(username: string, password: string): Promise<AdminSession> {
   const req: LoginRequest = { password, username: username.trim() };
   const data = await adminSvc.Login(req);
-  return mapAdmin(data as Admin);
+  return mapAdmin(data);
 }
 
 export async function loginAdminByEmail(email: string, password: string): Promise<AdminSession> {
   const req: LoginRequest = { password, email: email.trim() };
   const data = await adminSvc.Login(req);
-  return mapAdmin(data as Admin);
+  return mapAdmin(data);
 }
 
 export async function logoutAdmin(): Promise<void> {

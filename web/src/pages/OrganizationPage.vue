@@ -128,6 +128,7 @@
       :editing-id="editingId"
       :parent-name="parentName"
       :saving="saving"
+      :refine-fn="refinePromptField"
       @submit="saveNode"
       @refine-error="onRefineError"
     />
@@ -141,6 +142,7 @@ import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import TaxonomyTree from '../components/agents/TaxonomyTree.vue';
 import TaxonomyIndustryCard from '../components/agents/TaxonomyIndustryCard.vue';
 import TaxonomyNodeDialog from '../components/agents/TaxonomyNodeDialog.vue';
+import { refinePromptField } from '../features/agents/aiRefine';
 import { useTaxonomyPage } from '../features/platform/useTaxonomyPage';
 
 const {

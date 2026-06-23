@@ -9,10 +9,12 @@
 package browser
 
 import (
-	"fmt"
+	"net"
 	"net/netip"
 	"net/url"
 	"strings"
+
+	"aranea-agents/pkg/apierror"
 )
 
 // NavigationPolicy controls which URLs the browser tool may navigate to.
@@ -53,7 +55,7 @@ func (p NavigationPolicy) Validate(raw string) error {
 
 	u, err := url.Parse(raw)
 	if err != nil {
-		return fmt.Errorf("invalid browser url %q: %w", raw, err)
+		return apierror.BadRequest(apierror.DomainTool, "invalid browser url %q: %v", raw, err)
 	}
 
 	scheme := strings.ToLower(strings.TrimSpace(u.Scheme))
@@ -65,9 +67,9 @@ func (p NavigationPolicy) Validate(raw string) error {
 		if p.AllowFileURLs {
 			return nil
 		}
-		return fmt.Errorf("browser file URLs are blocked: %s", raw)
+		return apierror.BadRequest(apierror.DomainTool, "browser file URLs are blocked: %s", raw)
 	default:
-		return fmt.Errorf("browser url scheme %q is not allowed", u.Scheme)
+		return apierror.BadRequest(apierror.DomainTool, "browser url scheme %q is not allowed", u.Scheme)
 	}
 
 	host := normalizeHost(u.Hostname())
@@ -76,21 +78,30 @@ func (p NavigationPolicy) Validate(raw string) error {
 	}
 
 	if isLoopbackHost(host) && !p.AllowLoopback {
-		return fmt.Errorf("browser loopback host is blocked: %s", host)
+		return apierror.BadRequest(apierror.DomainTool, "browser loopback host is blocked: %s", host)
 	}
 
 	if ip, err := netip.ParseAddr(host); err == nil {
 		if ip.IsLoopback() && !p.AllowLoopback {
-			return fmt.Errorf("browser loopback address is blocked: %s", host)
+			return apierror.BadRequest(apierror.DomainTool, "browser loopback address is blocked: %s", host)
 		}
 		if isPrivateAddress(ip) && !p.AllowPrivateNet {
-			return fmt.Errorf("browser private network address is blocked: %s", host)
+			return apierror.BadRequest(apierror.DomainTool, "browser private network address is blocked: %s", host)
+		}
+	} else if !p.AllowLoopback || !p.AllowPrivateNet {
+		// DNS-rebinding protection: resolve non-IP hosts and check resolved
+		// IPs against loopback/private ranges. This prevents bypasses like
+		// "127.0.0.1.nip.io" which is neither "localhost" nor an IP literal
+		// but resolves to 127.0.0.1. Only needed when loopback or private
+		// net is blocked (the default secure mode).
+		if err := p.checkResolvedIPs(host); err != nil {
+			return err
 		}
 	}
 
 	for i := range p.BlockedDomains {
 		if hostMatchesDomain(host, p.BlockedDomains[i]) {
-			return fmt.Errorf("browser domain is blocked: %s", host)
+			return apierror.BadRequest(apierror.DomainTool, "browser domain is blocked: %s", host)
 		}
 	}
 
@@ -102,7 +113,7 @@ func (p NavigationPolicy) Validate(raw string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("browser domain is not allowed: %s", host)
+	return apierror.BadRequest(apierror.DomainTool, "browser domain is not allowed: %s", host)
 }
 
 // normalizeDomains deduplicates and lowercases a domain list, trimming
@@ -157,4 +168,31 @@ func isPrivateAddress(addr netip.Addr) bool {
 		addr.IsLinkLocalMulticast() ||
 		addr.IsMulticast() ||
 		addr.IsUnspecified()
+}
+
+// checkResolvedIPs resolves host via DNS and blocks if any resolved IP is
+// loopback (when AllowLoopback is false) or private (when AllowPrivateNet is
+// false). This closes the DNS-rebinding bypass where a host like
+// "127.0.0.1.nip.io" is neither "localhost" nor an IP literal.
+func (p NavigationPolicy) checkResolvedIPs(host string) error {
+	addrs, err := net.LookupIP(host)
+	if err != nil {
+		// DNS resolution failure — allow navigation; the browser will fail
+		// on its own. Blocking here would break legitimate domains with
+		// transient DNS issues.
+		return nil
+	}
+	for _, addr := range addrs {
+		ip, ok := netip.AddrFromSlice(addr)
+		if !ok {
+			continue
+		}
+		if ip.IsLoopback() && !p.AllowLoopback {
+			return apierror.BadRequest(apierror.DomainTool, "browser host resolves to loopback address: %s", host)
+		}
+		if isPrivateAddress(ip) && !p.AllowPrivateNet {
+			return apierror.BadRequest(apierror.DomainTool, "browser host resolves to private network address: %s", host)
+		}
+	}
+	return nil
 }

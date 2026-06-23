@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -43,7 +44,7 @@ type researchOutput struct {
 // NewTool returns a web_research CallableTool. cfg must include a valid API key.
 func NewTool(cfg Config, lg loggateway.Logger) (trpctool.CallableTool, error) {
 	if !cfg.Ready() {
-		return nil, fmt.Errorf("web_research: api_key is required (tool config or TAVILY_API_KEY / SERPAPI_API_KEY)")
+		return nil, apierror.BadRequest(apierror.DomainTool, "web_research: api_key is required (tool config or TAVILY_API_KEY / SERPAPI_API_KEY)")
 	}
 	if lg == nil {
 		lg = loggateway.NewNoop()
@@ -55,7 +56,7 @@ func NewTool(cfg Config, lg loggateway.Logger) (trpctool.CallableTool, error) {
 	execute := func(ctx context.Context, in researchInput) (researchOutput, error) {
 		query := strings.TrimSpace(in.Query)
 		if query == "" {
-			return researchOutput{}, fmt.Errorf("web_research: query is required")
+			return researchOutput{}, apierror.BadRequest(apierror.DomainTool, "web_research: query is required")
 		}
 
 		runCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)

@@ -4,7 +4,7 @@
       <div class="row items-center q-gutter-sm">
         <q-icon name="dns" class="overview-provider-health__icon" :class="healthIconClass" />
         <div>
-          <div class="text-h6 overview-section-title">Provider 健康</div>
+          <div class="text-h6 overview-section-title">模型端点健康</div>
           <div class="text-caption overview-section-caption">模型端点连通性状态</div>
         </div>
       </div>

@@ -5,7 +5,7 @@
  * 在生产存储未配置时，写接口可能返回错误，前端应做友好提示。
  */
 import { createArtifactService } from '../../services';
-import { asRecord, pickI32, pickNum, pickStr } from '../../shared/wireJson';
+import { asRecord, pickI32, pickI64, pickStr } from '../../shared/wireJson';
 import type {
   ArtifactData,
   ArtifactMeta,
@@ -25,7 +25,7 @@ function mapMeta(raw: unknown): ArtifactMeta {
     session_id: pickStr(r, 'session_id', 'sessionId'),
     name: pickStr(r, 'name', 'name'),
     mime_type: pickStr(r, 'mime_type', 'mimeType'),
-    size: pickNum(r, 'size', 'size'),
+    size: pickI64(r, 'size', 'size'),
     sha256: pickStr(r, 'sha256', 'sha256'),
     storage_kind: pickStr(r, 'storage_kind', 'storageKind'),
     storage_uri: pickStr(r, 'storage_uri', 'storageUri'),

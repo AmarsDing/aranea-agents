@@ -11,8 +11,8 @@ package serviceawaitreply
 
 import (
 	"context"
-	"fmt"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -90,7 +90,7 @@ func (t *ServiceTool) Call(ctx context.Context, _ []byte) (any, error) {
 
 	reply, err := fn(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("await_user_reply: %w", err)
+		return nil, apierror.Internal(apierror.DomainTool, "await_user_reply: %v", err)
 	}
 	return map[string]any{
 		"success": true,

@@ -92,12 +92,14 @@ export type AgentRuntimeSettings = {
   l0_l3_max_chunks?: number;
   l0_l4_max_paths?: number;
   l0_snapshot_mode?: string;
+  l0_snapshot_enabled?: boolean;
   l1_enabled?: boolean;
   l1_budget_tokens?: number;
   l1_field_max_tokens?: number;
   l1_history_keep_revisions?: number;
   l1_default_schema_id?: string;
   l1_archive_on_idle_minutes?: number;
+  l1_history_enabled?: boolean;
   l2_episode_enabled?: boolean;
   l2_episode_min_importance?: number;
   l2_index_enabled?: boolean;
@@ -171,6 +173,9 @@ export type AgentRuntimeSettings = {
   compress_llm_cache_enabled?: boolean;
   compress_llm_cache_max_entries?: number;
   compress_llm_cache_ttl_sec?: number;
+  compression_buffer_ratio?: number;
+  soft_trigger_ratio?: number;
+  hard_trigger_ratio?: number;
   verification_truncate_chars?: number;
   created_at?: string;
   updated_at?: string;

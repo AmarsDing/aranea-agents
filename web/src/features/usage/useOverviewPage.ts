@@ -5,11 +5,16 @@ import { useI18n } from 'vue-i18n';
 import { useUsageStore } from '../../stores/usage';
 import { usePlatformStore } from '../../stores/platform';
 import { useMonitorStore } from '../../stores/monitor';
+// TECH-DEBT(O-8): 概览页直接调 agents/teams API 取 total，未走 Store。
+//   原因：Store 的 load 逻辑含分页/过滤，概览只需 total；迁入 Store 需重构 load 签名。
+//   待办：agent/team Store 增加 countOnly 模式后迁入。
 import { listAgentsPaged } from '../agents/api';
 import type { AgentListQuery } from '../agents/types';
 import type { ModelUsageQuery } from './types';
 import { formatUsdFromMicro, formatCount as fmtCount, formatPercent as fmtPercent } from './moneyFormat';
 import { useMonitorRunNavigation } from '../monitor/useMonitorRunNavigation';
+// TECH-DEBT(O-9): listTeams 拉取全量数据仅取 length，Team 数量多时有性能问题。
+//   待办：后端 ListTeams 支持分页后改用 total 字段，或新增 CountTeams RPC。
 import { listTeams } from '../teams/api';
 
 const VALID_RANGES = new Set(['today', '7d', '30d', 'month']);
@@ -38,6 +43,7 @@ export function useOverviewPage() {
   const statusOptions = computed(() => [
     { label: t('overviewPage.statusSuccess'), value: 'success' },
     { label: t('overviewPage.statusFailed'), value: 'failed' },
+    { label: t('overviewPage.statusAbnormal'), value: 'error' },
     { label: t('overviewPage.statusCancelled'), value: 'cancelled' },
     { label: t('overviewPage.statusTimeout'), value: 'timeout' },
   ]);

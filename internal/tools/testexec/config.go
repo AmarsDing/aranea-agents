@@ -1,12 +1,12 @@
 package testexec
 
 import (
-	"fmt"
 	"strings"
 
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/browser"
 	webresearchpkg "aranea-agents/internal/tools/webresearch"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -44,7 +44,7 @@ func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresea
 		}
 		t, err := webresearchpkg.NewTool(wcfg, lg)
 		if err != nil {
-			return tools.AssemblyConfig{}, false, fmt.Errorf("web_research: %w", err)
+			return tools.AssemblyConfig{}, false, apierror.Internal(apierror.DomainTool, "web_research: %v", err)
 		}
 		return tools.AssemblyConfig{Session: tools.SessionConfig{CustomTools: []tools.Tool{t}}}, true, nil
 	case "web_fetch":

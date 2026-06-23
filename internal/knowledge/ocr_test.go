@@ -26,8 +26,8 @@ func TestExtractDocumentTextWithOCRImage(t *testing.T) {
 func TestNewOCRProviderFromEnvStub(t *testing.T) {
 	t.Setenv("KNOWLEDGE_OCR", "stub")
 	p := NewOCRProviderFromEnv()
-	text, err := p.Extract(context.Background(), nil, "image/png", "x.png")
-	if err != nil || text == "" {
-		t.Fatalf("stub ocr: text=%q err=%v", text, err)
+	_, err := p.Extract(context.Background(), nil, "image/png", "x.png")
+	if err == nil {
+		t.Fatal("stub ocr should return error, not placeholder text")
 	}
 }

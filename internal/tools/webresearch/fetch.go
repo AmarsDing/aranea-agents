@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/outboundguard"
 
@@ -51,19 +52,19 @@ func enrichHits(ctx context.Context, hits []Hit, fetchTop int, cfg Config, lg lo
 		Call(context.Context, []byte) (any, error)
 	})
 	if !ok {
-		return nil, fmt.Errorf("web_research: http fetch tool unavailable")
+		return nil, apierror.Internal(apierror.DomainTool, "web_research: http fetch tool unavailable")
 	}
 	args, err := json.Marshal(map[string][]string{"urls": urls})
 	if err != nil {
-		return nil, err
+		return nil, apierror.Internal(apierror.DomainTool, "web_research: marshal fetch args: %v", err)
 	}
 	out, err := ct.Call(ctx, args)
 	if err != nil {
-		return nil, err
+		return nil, apierror.Internal(apierror.DomainTool, "web_research: fetch failed: %v", err)
 	}
 	raw, err := json.Marshal(out)
 	if err != nil {
-		return nil, err
+		return nil, apierror.Internal(apierror.DomainTool, "web_research: marshal fetch result: %v", err)
 	}
 	var parsed struct {
 		Results []struct {
@@ -73,7 +74,7 @@ func enrichHits(ctx context.Context, hits []Hit, fetchTop int, cfg Config, lg lo
 		} `json:"results"`
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, err
+		return nil, apierror.Internal(apierror.DomainTool, "web_research: unmarshal fetch result: %v", err)
 	}
 	byURL := make(map[string]string, len(parsed.Results))
 	var warnings []string

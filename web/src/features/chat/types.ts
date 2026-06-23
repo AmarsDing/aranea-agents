@@ -26,7 +26,6 @@ export type SendMessageOptions = {
   model?: string;
   attachments?: Array<{ id: string }>;
   knowledge_bases?: string[];
-  context_refs?: ContextRef[];
 };
 
 import type { Message } from '../../domain/types';
@@ -102,12 +101,6 @@ export type ContextRefItem = {
   description: string;
   icon: string;
   iconColor: string;
-};
-
-export type ContextRef = {
-  kind: ContextRefKind;
-  ref_id: string;
-  label: string;
 };
 
 export type PendingMessage = {

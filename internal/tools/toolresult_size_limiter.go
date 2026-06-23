@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"unicode/utf8"
 
 	"aranea-agents/pkg/loggateway"
 
@@ -44,12 +45,12 @@ func NewOutputSizeLimiterHook(maxChars int, lg loggateway.Logger) trpctool.After
 			return &trpctool.AfterToolResult{}, nil
 		}
 
-		if len(resultStr) <= maxChars {
+		if utf8.RuneCountInString(resultStr) <= maxChars {
 			// Within limit — pass through unchanged
 			return &trpctool.AfterToolResult{}, nil
 		}
 
-		originalSize := len(resultStr)
+		originalSize := utf8.RuneCountInString(resultStr)
 		truncated := truncateRunes(resultStr, maxChars)
 		marker := fmt.Sprintf(defaultTruncationMarker, maxChars, originalSize)
 		newResult := truncated + marker

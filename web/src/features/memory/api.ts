@@ -709,23 +709,23 @@ export async function getMemoryWorkerStatus(): Promise<MemoryWorkerStatus> {
     const obj = asRecord(raw[snakeKey] || raw[camelKey]);
     if (!obj || Object.keys(obj).length === 0) return undefined;
     return {
-      capacity: pickI32(obj, 'capacity', 'capacity'),
-      in_flight: pickI32(obj, 'in_flight', 'inFlight'),
+      capacity: pickI64(obj, 'capacity', 'capacity'),
+      in_flight: pickI64(obj, 'in_flight', 'inFlight'),
       dropped_total: pickI64(obj, 'dropped_total', 'droppedTotal'),
       debounced_total: pickI64(obj, 'debounced_total', 'debouncedTotal'),
     };
   };
   return {
-    jobs_done: pickI32(raw, 'jobs_done', 'jobsDone'),
-    jobs_dead: pickI32(raw, 'jobs_dead', 'jobsDead'),
-    llm_fallback_total: pickI32(raw, 'llm_fallback_total', 'llmFallbackTotal'),
+    jobs_done: pickI64(raw, 'jobs_done', 'jobsDone'),
+    jobs_dead: pickI64(raw, 'jobs_dead', 'jobsDead'),
+    llm_fallback_total: pickI64(raw, 'llm_fallback_total', 'llmFallbackTotal'),
     avg_extraction_seconds: pickNum(raw, 'avg_extraction_seconds', 'avgExtractionSeconds'),
-    episode_backfill_total: pickI32(raw, 'episode_backfill_total', 'episodeBackfillTotal'),
+    episode_backfill_total: pickI64(raw, 'episode_backfill_total', 'episodeBackfillTotal'),
     queue_high: mapQueueStats('queue_high'),
     queue_normal: mapQueueStats('queue_normal'),
     queue_low: mapQueueStats('queue_low'),
-    fact_index_stale_count: pickI32(raw, 'fact_index_stale_count', 'factIndexStaleCount'),
-    fact_index_disabled_count: pickI32(raw, 'fact_index_disabled_count', 'factIndexDisabledCount'),
+    fact_index_stale_count: pickI64(raw, 'fact_index_stale_count', 'factIndexStaleCount'),
+    fact_index_disabled_count: pickI64(raw, 'fact_index_disabled_count', 'factIndexDisabledCount'),
     db_available: pickBool(raw, 'db_available', 'dbAvailable'),
     dead_letter_pending: pickI64(raw, 'dead_letter_pending', 'deadLetterPending'),
     oldest_pending_age_ms: pickI64(raw, 'oldest_pending_age_ms', 'oldestPendingAgeMs'),

@@ -391,7 +391,7 @@ func TestSkillEvolutionUsecase_ListProposals_EmptyAgentID(t *testing.T) {
 }
 
 func TestSkillEvolutionUsecase_DetectAndPropose_NoCreator(t *testing.T) {
-	uc := NewSkillEvolutionUsecase(newMockProposalRepo(), nil, nil, nil, nil, loggateway.NewNoop())
+	uc := NewSkillEvolutionUsecase(newMockProposalRepo(), nil, &stubAgentRepo{agent: Agent{ID: "a1"}}, nil, nil, loggateway.NewNoop())
 
 	proposals, err := uc.DetectAndPropose(context.Background(), "a1")
 	if err != nil {
@@ -418,7 +418,7 @@ func TestSkillEvolutionUsecase_DetectAndPropose_WithPatterns(t *testing.T) {
 		},
 	}
 	creator := &mockSkillAutoCreator{name: "web-search-skill", content: "---\nname: web-search-skill\n---\nbody"}
-	uc := NewSkillEvolutionUsecase(repo, patterns, nil, creator, nil, loggateway.NewNoop())
+	uc := NewSkillEvolutionUsecase(repo, patterns, &stubAgentRepo{agent: Agent{ID: "a1"}}, creator, nil, loggateway.NewNoop())
 
 	proposals, err := uc.DetectAndPropose(context.Background(), "a1")
 	if err != nil {
@@ -451,7 +451,7 @@ func TestSkillEvolutionUsecase_DetectAndPropose_DedupByHash(t *testing.T) {
 		},
 	}
 	creator := &mockSkillAutoCreator{name: "web-search", content: "---\nname: web-search\n---\nbody"}
-	uc := NewSkillEvolutionUsecase(repo, patterns, nil, creator, nil, loggateway.NewNoop())
+	uc := NewSkillEvolutionUsecase(repo, patterns, &stubAgentRepo{agent: Agent{ID: "a1"}}, creator, nil, loggateway.NewNoop())
 
 	proposals1, _ := uc.DetectAndPropose(context.Background(), "a1")
 	if len(proposals1) != 1 {
@@ -480,7 +480,7 @@ func TestSkillEvolutionUsecase_DetectAndPropose_LowConfidence(t *testing.T) {
 		},
 	}
 	creator := &mockSkillAutoCreator{name: "web-search", content: "body"}
-	uc := NewSkillEvolutionUsecase(repo, patterns, nil, creator, nil, loggateway.NewNoop())
+	uc := NewSkillEvolutionUsecase(repo, patterns, &stubAgentRepo{agent: Agent{ID: "a1"}}, creator, nil, loggateway.NewNoop())
 
 	proposals, err := uc.DetectAndPropose(context.Background(), "a1")
 	if err != nil {
@@ -551,5 +551,57 @@ func TestExtractToolNamesFromDesc(t *testing.T) {
 				t.Errorf("extractToolNamesFromDesc(%q)[%d]: got %q, want %q", tt.desc, i, got[i], tt.want[i])
 			}
 		}
+	}
+}
+
+// TestSkillEvolutionUsecase_DetectAndPropose_NonExistentAgent verifies that
+// DetectAndPropose rejects an agentID that does not correspond to an existing
+// agent. This is the REL-2 fix: previously only requireNonEmpty was called.
+func TestSkillEvolutionUsecase_DetectAndPropose_NonExistentAgent(t *testing.T) {
+	repo := newMockProposalRepo()
+	patterns := &mockPatternReader{
+		patterns: []Pattern{
+			{
+				ID:          "pat1",
+				AgentID:     "ghost",
+				Kind:        string(ObservationKindToolCall),
+				Description: "web_search(query)",
+				Confidence:  0.8,
+				Status:      PatternStatusDetected,
+				DetectedAt:  time.Now().UTC(),
+			},
+		},
+	}
+	creator := &mockSkillAutoCreator{name: "web-search", content: "body"}
+	// stubAgentRepo with a different agent ID → GetAgentByID returns ErrNotFound
+	agents := &stubAgentRepo{agent: Agent{ID: "a1"}}
+	uc := NewSkillEvolutionUsecase(repo, patterns, agents, creator, nil, loggateway.NewNoop())
+
+	proposals, err := uc.DetectAndPropose(context.Background(), "ghost")
+	if err == nil {
+		t.Fatal("expected error for non-existent agent, got nil")
+	}
+	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
+		t.Errorf("expected BadRequest for non-existent agent, got %v", err)
+	}
+	if len(proposals) != 0 {
+		t.Errorf("expected 0 proposals, got %d", len(proposals))
+	}
+}
+
+// TestSkillEvolutionUsecase_DetectAndPropose_NilAgentsFailClosed verifies that
+// when the AgentRepository dependency is nil (misconfiguration), DetectAndPropose
+// fails closed instead of silently proceeding. This is the REL-2 fix.
+func TestSkillEvolutionUsecase_DetectAndPropose_NilAgentsFailClosed(t *testing.T) {
+	repo := newMockProposalRepo()
+	creator := &mockSkillAutoCreator{name: "web-search", content: "body"}
+	uc := NewSkillEvolutionUsecase(repo, nil, nil, creator, nil, loggateway.NewNoop())
+
+	_, err := uc.DetectAndPropose(context.Background(), "a1")
+	if err == nil {
+		t.Fatal("expected error when agents dependency is nil, got nil")
+	}
+	if !isAPIErrorCode(err, apierror.CodeInternal) {
+		t.Errorf("expected Internal when agents is nil, got %v", err)
 	}
 }

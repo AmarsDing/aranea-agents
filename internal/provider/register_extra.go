@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -10,6 +11,10 @@ import (
 	trpchuggingface "trpc.group/trpc-go/trpc-agent-go/model/huggingface"
 	trpcprovider "trpc.group/trpc-go/trpc-agent-go/model/provider"
 )
+
+// bedrockConfigLoadTimeout 限制 AWS SDK 加载默认配置（含 IMDS 元数据查询）的最大耗时，
+// 避免在 EC2 环境下因 IMDS 不可达导致 provider 构造阻塞数十秒。
+const bedrockConfigLoadTimeout = 10 * time.Second
 
 // RegisterExtraProviders registers non-built-in provider constructors
 // (huggingface, bedrock) with the trpc-agent-go provider registry.
@@ -52,7 +57,11 @@ func bedrockProvider(opts *trpcprovider.Options) (trpcmodel.Model, error) {
 	if region == "" {
 		region = "us-east-1"
 	}
-	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
+	// 使用带超时的 context，避免 IMDS 元数据查询阻塞。
+	// 框架 Options 不携带请求 ctx，这里用 Background + 超时兜底。
+	ctx, cancel := context.WithTimeout(context.Background(), bedrockConfigLoadTimeout)
+	defer cancel()
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	if err != nil {
 		return nil, err
 	}

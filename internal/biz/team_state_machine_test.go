@@ -26,10 +26,12 @@ func TestTeamStateMachine_ValidTransitions(t *testing.T) {
 	}{
 		{TeamStatePending, TeamEventStart, TeamStateRunning},
 		{TeamStatePending, TeamEventCancel, TeamStateCancelled},
+		{TeamStatePending, TeamEventFail, TeamStateFailed},
 		{TeamStateRunning, TeamEventComplete, TeamStateCompleted},
 		{TeamStateRunning, TeamEventFail, TeamStateFailed},
 		{TeamStateRunning, TeamEventCancel, TeamStateCancelled},
 		{TeamStateRunning, TeamEventInterrupt, TeamStateInterrupted},
+		{TeamStateRunning, TeamEventRework, TeamStatePending},
 		{TeamStateInterrupted, TeamEventRecover, TeamStateRunning},
 		{TeamStateCompleted, TeamEventArchive, TeamStateArchived},
 		{TeamStateFailed, TeamEventArchive, TeamStateArchived},
@@ -75,9 +77,8 @@ func TestTeamStateMachine_InvalidTransitions(t *testing.T) {
 		{"running→recover", TeamStateRunning, TeamEventRecover},
 		{"running→archive", TeamStateRunning, TeamEventArchive},
 
-		// Pending cannot complete/fail/interrupt directly
+		// Pending cannot complete/interrupt directly (can fail via B-01 fix)
 		{"pending→complete", TeamStatePending, TeamEventComplete},
-		{"pending→fail", TeamStatePending, TeamEventFail},
 		{"pending→interrupt", TeamStatePending, TeamEventInterrupt},
 		{"pending→archive", TeamStatePending, TeamEventArchive},
 		{"pending→recover", TeamStatePending, TeamEventRecover},
@@ -115,10 +116,12 @@ func TestTeamStateMachine_CanTransition(t *testing.T) {
 	}{
 		{TeamStatePending, TeamStateRunning, true},
 		{TeamStatePending, TeamStateCancelled, true},
+		{TeamStatePending, TeamStateFailed, true},
 		{TeamStateRunning, TeamStateCompleted, true},
 		{TeamStateRunning, TeamStateFailed, true},
 		{TeamStateRunning, TeamStateCancelled, true},
 		{TeamStateRunning, TeamStateInterrupted, true},
+		{TeamStateRunning, TeamStatePending, true},
 		{TeamStateInterrupted, TeamStateRunning, true},
 		{TeamStateCompleted, TeamStateArchived, true},
 		{TeamStateFailed, TeamStateArchived, true},
@@ -154,8 +157,8 @@ func TestTeamStateMachine_ValidTargets(t *testing.T) {
 		from TeamState
 		want []TeamState
 	}{
-		{TeamStatePending, []TeamState{TeamStateCancelled, TeamStateRunning}},
-		{TeamStateRunning, []TeamState{TeamStateCancelled, TeamStateCompleted, TeamStateFailed, TeamStateInterrupted}},
+		{TeamStatePending, []TeamState{TeamStateCancelled, TeamStateFailed, TeamStateRunning}},
+		{TeamStateRunning, []TeamState{TeamStateCancelled, TeamStateCompleted, TeamStateFailed, TeamStateInterrupted, TeamStatePending}},
 		{TeamStateInterrupted, []TeamState{TeamStateRunning}},
 		{TeamStateCompleted, []TeamState{TeamStateArchived}},
 		{TeamStateFailed, []TeamState{TeamStateArchived, TeamStatePending}},

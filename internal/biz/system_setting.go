@@ -228,7 +228,9 @@ func (u *SystemSettingUsecase) UpdateKnowledgeEmbed(ctx context.Context, patch K
 	return u.repo.UpdateKnowledgeEmbed(ctx, merged, updateAPIKey)
 }
 
-// GetKnowledgeEmbed returns stored knowledge embedder defaults (API key redacted).
+// GetKnowledgeEmbed returns stored knowledge embedder defaults.
+// NOTE: API key is returned in plaintext for internal embedder construction.
+// Use embedderAdmin.Config() (which only exposes HasAPIKey) for API responses.
 func (u *SystemSettingUsecase) GetKnowledgeEmbed(ctx context.Context) (KnowledgeEmbedSetting, error) {
 	return u.repo.GetKnowledgeEmbed(ctx)
 }

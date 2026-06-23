@@ -16,17 +16,21 @@ func buildHTTPClient(cfg Config, lg loggateway.Logger) *http.Client {
 		timeout = defaultTimeoutSec * time.Second
 	}
 	client := outboundguard.NewClient(timeout)
-	// Preserve proxy configuration on top of the SSRF-safe transport.
+	// Configure proxy support. The SSRF-safe CheckRedirect lives on the
+	// http.Client (set by outboundguard.NewClient), so replacing the
+	// Transport does not affect redirect validation.
 	if proxyURL := strings.TrimSpace(cfg.HTTPProxy); proxyURL != "" {
 		if u, err := url.Parse(proxyURL); err == nil {
-			// Clone the base transport to add proxy support.
-			// outboundguard.NewClient may use a custom RoundTripper,
-			// so we create a fresh Transport that inherits the SSRF
-			// CheckRedirect from the client while adding proxy support.
-			transport := http.DefaultTransport.(*http.Transport).Clone()
-			transport.Proxy = http.ProxyURL(u)
-			// Preserve the SSRF-safe CheckRedirect by wrapping the transport.
-			client.Transport = transport
+			// Use a checked type assertion to avoid a panic when
+			// http.DefaultTransport has been replaced (e.g., in tests).
+			base, ok := http.DefaultTransport.(*http.Transport)
+			if !ok {
+				client.Transport = &http.Transport{Proxy: http.ProxyURL(u)}
+			} else {
+				cloned := base.Clone()
+				cloned.Proxy = http.ProxyURL(u)
+				client.Transport = cloned
+			}
 		} else {
 			// Sanitize proxy URL before logging — strip userinfo to avoid
 			// leaking credentials in log output.

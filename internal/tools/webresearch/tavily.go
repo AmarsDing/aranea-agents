@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -23,7 +23,7 @@ type tavilyProvider struct {
 
 func newTavilyProvider(cfg Config, lg loggateway.Logger) (*tavilyProvider, error) {
 	if strings.TrimSpace(cfg.APIKey) == "" {
-		return nil, fmt.Errorf("web_research: tavily api_key is required (tool config or TAVILY_API_KEY)")
+		return nil, apierror.BadRequest(apierror.DomainTool, "web_research: tavily api_key is required (tool config or TAVILY_API_KEY)")
 	}
 	return &tavilyProvider{
 		client: buildHTTPClient(cfg, lg),
@@ -58,7 +58,7 @@ type tavilyHit struct {
 func (p *tavilyProvider) search(ctx context.Context, query string) (*SearchResponse, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
-		return nil, fmt.Errorf("web_research: query is required")
+		return nil, apierror.BadRequest(apierror.DomainTool, "web_research: query is required")
 	}
 	body, err := json.Marshal(tavilySearchRequest{
 		Query:             query,
@@ -84,7 +84,7 @@ func (p *tavilyProvider) search(ctx context.Context, query string) (*SearchRespo
 	started := time.Now()
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("web_research: tavily request failed: %w", err)
+		return nil, apierror.Internal(apierror.DomainTool, "web_research: tavily request failed: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -93,12 +93,12 @@ func (p *tavilyProvider) search(ctx context.Context, query string) (*SearchRespo
 		return nil, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("web_research: tavily status %d: %s", resp.StatusCode, truncateUTF8(string(raw), 512))
+		return nil, apierror.Internal(apierror.DomainTool, "web_research: tavily status %d: %s", resp.StatusCode, truncateUTF8(string(raw), 512))
 	}
 
 	var parsed tavilySearchResponse
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, fmt.Errorf("web_research: tavily decode: %w", err)
+		return nil, apierror.Internal(apierror.DomainTool, "web_research: tavily decode: %v", err)
 	}
 
 	out := &SearchResponse{

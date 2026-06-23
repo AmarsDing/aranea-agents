@@ -72,6 +72,12 @@ func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]b
 	if err != nil {
 		return nil, err
 	}
+	return r.RerankChunks(ctx, q, chunks, topK)
+}
+
+// RerankChunks applies the reranker to pre-retrieved chunks and returns top-k results.
+// If reranker is not configured or reranking fails, returns the original chunks trimmed to topK.
+func (r *Retriever) RerankChunks(ctx context.Context, q biz.KnowledgeSearchQuery, chunks []biz.KnowledgeChunk, topK int) ([]biz.KnowledgeChunk, error) {
 	if !r.shouldRerank(q) || len(chunks) == 0 {
 		return trimChunks(chunks, topK), nil
 	}

@@ -390,7 +390,7 @@ func (uc *MemoryAdminUsecase) archiveAndCreateEpisode(ctx context.Context, sessi
 // runPathBExtraction performs the Path B LLM-enhanced extraction as a best-effort enhancement.
 // If extraction fails, the Path A (zero-cost) episode is still used.
 // pathATitle is the title used by the Path A episode; Path B reuses it so the
-// ON CONFLICT(session_id, title, agent_id) clause updates the existing row instead
+// ON CONFLICT(session_id, l1_task_id) clause updates the existing row instead
 // of inserting a duplicate.
 func (uc *MemoryAdminUsecase) runPathBExtraction(ctx context.Context, sessionID, agentID, userID, taskID, pathATitle string, snapshot []byte, score float64) {
 	// Build ConsolidateInput from session messages (not L1 snapshot fields).
@@ -437,7 +437,7 @@ func (uc *MemoryAdminUsecase) runPathBExtraction(ctx context.Context, sessionID,
 		loggateway.Int("relations", len(enhancedResult.Relations)))
 
 	// Update the existing Path A episode with enhanced data.
-	// Reuse pathATitle so ON CONFLICT(session_id, title, agent_id) matches the
+	// Reuse pathATitle so ON CONFLICT(session_id, l1_task_id) matches the
 	// Path A row and updates it in-place instead of creating a duplicate.
 	decisionsJSON := safeMarshalJSON(enhancedResult.Episode.KeyDecisions, uc.lg)
 	artifactsJSON := safeMarshalJSON(enhancedResult.Episode.KeyArtifacts, uc.lg)

@@ -97,6 +97,8 @@ function mapSkill(row: unknown): Skill {
     },
     filesystem_missing: b('filesystem_missing', 'filesystemMissing'),
     sync_origin: s('sync_origin', 'syncOrigin') || undefined,
+    visibility: s('visibility', 'visibility') || '',
+    default_config_json: s('default_config_json', 'defaultConfigJson') || '',
   };
 }
 
@@ -151,6 +153,9 @@ function mapSkillInvocation(row: unknown): SkillInvocation {
     permissions: {
       can_view_detail: pb('can_view_detail', 'canViewDetail'),
     },
+    source: s('source', 'source') || undefined,
+    activation_id: s('activation_id', 'activationId') || undefined,
+    message_id: s('message_id', 'messageId') || undefined,
   };
 }
 
@@ -235,7 +240,7 @@ export async function listSkillRuns(query: SkillRunQuery = {}): Promise<Paginate
   const res = await svc.ListSkillRuns({
     skillId: query.skill_id?.trim() || undefined,
     agentId: query.agent_id?.trim() || undefined,
-    sessionId: undefined,
+    sessionId: query.session_id?.trim() || undefined,
     status: query.status?.trim() || undefined,
     from: query.from?.trim() || undefined,
     to: query.to?.trim() || undefined,

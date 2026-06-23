@@ -44,7 +44,7 @@ type HybridRetriever struct {
 
 type rerankerForHybrid interface {
 	HasReranker() bool
-	searchWithRerank(ctx context.Context, q biz.KnowledgeSearchQuery, vec []float32) ([]biz.KnowledgeChunk, error)
+	RerankChunks(ctx context.Context, q biz.KnowledgeSearchQuery, chunks []biz.KnowledgeChunk, topK int) ([]biz.KnowledgeChunk, error)
 }
 
 type retrieverAdapter struct {
@@ -53,10 +53,6 @@ type retrieverAdapter struct {
 
 func (a *retrieverAdapter) HasReranker() bool {
 	return a.Retriever != nil && a.Retriever.HasReranker()
-}
-
-func (a *retrieverAdapter) searchWithRerank(ctx context.Context, q biz.KnowledgeSearchQuery, vec []float32) ([]biz.KnowledgeChunk, error) {
-	return a.Retriever.Search(ctx, q)
 }
 
 func NewHybridRetriever(retriever *Retriever, sparse SparseSearcher, lg loggateway.Logger) *HybridRetriever {
@@ -111,7 +107,7 @@ func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery
 			return nil, err
 		}
 		if h.reranker != nil && h.reranker.HasReranker() && len(chunks) > 0 {
-			return h.reranker.searchWithRerank(ctx, q, vec)
+			return h.reranker.RerankChunks(ctx, q, chunks, topK)
 		}
 		return trimChunks(chunks, topK), nil
 	}

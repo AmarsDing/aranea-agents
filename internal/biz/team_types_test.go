@@ -105,14 +105,16 @@ func TestExtractScore(t *testing.T) {
 func TestValidTeamStatusTransition(t *testing.T) {
 	sm := NewTeamStateMachine()
 	valid := [][2]string{
-		// pending → running, cancelled
+		// pending → running, cancelled, failed
 		{TeamStatusPending, TeamStatusRunning},
 		{TeamStatusPending, TeamStatusCancelled},
-		// running → completed, failed, cancelled, interrupted
+		{TeamStatusPending, TeamStatusFailed},
+		// running → completed, failed, cancelled, interrupted, pending (rework)
 		{TeamStatusRunning, TeamStatusCompleted},
 		{TeamStatusRunning, TeamStatusFailed},
 		{TeamStatusRunning, TeamStatusCancelled},
 		{TeamStatusRunning, TeamStatusInterrupted},
+		{TeamStatusRunning, TeamStatusPending},
 		// interrupted → running (recovery)
 		{TeamStatusInterrupted, TeamStatusRunning},
 		// failed/cancelled → pending (recover, used by RetryTeam)
@@ -133,7 +135,6 @@ func TestValidTeamStatusTransition(t *testing.T) {
 		{TeamStatusCancelled, TeamStatusRunning},
 		// Cannot skip states
 		{TeamStatusPending, TeamStatusCompleted},
-		{TeamStatusPending, TeamStatusFailed},
 		{TeamStatusPending, TeamStatusInterrupted},
 		// interrupted can only go to running
 		{TeamStatusInterrupted, TeamStatusCompleted},

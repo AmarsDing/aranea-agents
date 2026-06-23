@@ -162,6 +162,8 @@ func (a *AdaptiveRouter) searchMultiQuery(ctx context.Context, q biz.KnowledgeSe
 			loggateway.StepID("knowledge.adaptive.all_sub_query_fail"),
 			loggateway.Str("original_query", q.Query),
 			loggateway.Int("sub_query_count", len(queries)))
+		return nil, apierror.Internal(apierror.DomainKnowledge,
+			"adaptive_router: all sub-queries failed")
 	}
 
 	return mergeMultiQueryResults(allChunks, topK), nil

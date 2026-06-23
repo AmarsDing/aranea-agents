@@ -2,9 +2,9 @@ package webresearch
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -37,6 +37,6 @@ func newSearchProvider(cfg Config, lg loggateway.Logger) (searchProvider, error)
 	case ProviderTavily, "":
 		return newTavilyProvider(cfg, lg)
 	default:
-		return nil, fmt.Errorf("web_research: unsupported provider %q (use tavily or serpapi)", cfg.Provider)
+		return nil, apierror.BadRequest(apierror.DomainTool, "web_research: unsupported provider %q (use tavily or serpapi)", cfg.Provider)
 	}
 }

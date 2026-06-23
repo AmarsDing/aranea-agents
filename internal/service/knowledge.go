@@ -160,6 +160,22 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 	if err != nil {
 		return nil, err
 	}
+
+	// Validate metadata and extract text BEFORE creating the document record.
+	// This avoids orphaned pending documents when validation or extraction fails.
+	metaJSON, err := knowledge.NormalizeMetadataJSON(req.GetMetadataJson())
+	if err != nil {
+		return nil, apierror.BadRequest("KNOWLEDGE", err.Error())
+	}
+
+	text, err := knowledge.ExtractDocumentTextWithOCR(ctx, nil, raw, req.GetSource(), req.GetMimeType())
+	if err != nil {
+		return nil, apierror.BadRequest("KNOWLEDGE", err.Error())
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil, apierror.BadRequest("KNOWLEDGE", "document contains no extractable text")
+	}
+
 	doc, err := s.uc.CreateDocument(ctx, biz.KnowledgeDocument{
 		CollectionID: req.GetCollectionId(),
 		Source:       req.GetSource(),
@@ -168,19 +184,6 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 	})
 	if err != nil {
 		return nil, err
-	}
-
-	metaJSON, err := knowledge.NormalizeMetadataJSON(req.GetMetadataJson())
-	if err != nil {
-		return nil, apierror.BadRequest("KNOWLEDGE", err.Error())
-	}
-
-	text, err := knowledge.ExtractDocumentText(raw, req.GetSource(), req.GetMimeType())
-	if err != nil {
-		return nil, apierror.BadRequest("KNOWLEDGE", err.Error())
-	}
-	if strings.TrimSpace(text) == "" {
-		return nil, apierror.BadRequest("KNOWLEDGE", "document contains no extractable text")
 	}
 
 	strategy := knowledge.ParseChunkStrategy(req.GetChunkStrategy())
@@ -241,6 +244,9 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 				loggateway.Str("doc_id", doc.ID),
 				loggateway.Err(err),
 			)
+			// Document was likely deleted mid-ingest; skip counter update to avoid drift.
+			s.publishKnowledgeIngest(col.ID, doc.ID, "error", "document deleted during ingest", 0)
+			return
 		}
 		if err := uc.UpdateCollectionCounts(ingestCtx, col.ID, 1, len(bizChunks)); err != nil {
 			s.lg.Error("failed to update collection counts",

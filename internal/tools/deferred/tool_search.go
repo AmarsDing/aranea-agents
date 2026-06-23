@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 
+	"aranea-agents/pkg/apierror"
+
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -82,15 +84,15 @@ func (m *DeferredToolManager) Activate(ctx context.Context, toolName string) (tr
 	}
 	idx, ok := m.catalogIndex[toolName]
 	if !ok {
-		return nil, fmt.Errorf("deferred tool %q not found in catalog", toolName)
+		return nil, apierror.NotFound(apierror.DomainTool, "deferred tool %q not found in catalog", toolName)
 	}
 	entry := m.catalog[idx]
 	if entry.Factory == nil {
-		return nil, fmt.Errorf("deferred tool %q has no factory", toolName)
+		return nil, apierror.Internal(apierror.DomainTool, "deferred tool %q has no factory", toolName)
 	}
 	t, err := entry.Factory(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("deferred tool factory failed for %q: %w", toolName, err)
+		return nil, apierror.Internal(apierror.DomainTool, "deferred tool factory failed for %q: %v", toolName, err)
 	}
 	m.activated[toolName] = t
 	m.activateCount[toolName]++

@@ -45,7 +45,7 @@ function mapDocument(raw: unknown): KnowledgeDocument {
     collection_id: pickStr(r, 'collection_id', 'collectionId'),
     source: pickStr(r, 'source', 'source'),
     mime_type: pickStr(r, 'mime_type', 'mimeType'),
-    size_bytes: pickNum(r, 'size_bytes', 'sizeBytes'),
+    size_bytes: pickI64(r, 'size_bytes', 'sizeBytes'),
     chunk_count: pickI32(r, 'chunk_count', 'chunkCount'),
     status: pickStr(r, 'status', 'status'),
     error_message: pickStr(r, 'error_message', 'errorMessage'),

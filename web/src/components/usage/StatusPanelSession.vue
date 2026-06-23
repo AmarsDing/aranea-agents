@@ -7,7 +7,7 @@
           size="16px"
           class="command-center-stat-panel__icon command-center-stat-panel__icon--session"
         />
-        <span class="command-center-stat-panel__title">会话活跃</span>
+        <span class="command-center-stat-panel__title">今日调用</span>
       </div>
     </q-card-section>
     <q-card-section class="q-pt-none">
@@ -16,7 +16,7 @@
       </div>
       <template v-else>
         <div class="command-center-stat-panel__big-value">{{ activeCount }}</div>
-        <div class="command-center-stat-panel__caption">今日活跃会话</div>
+        <div class="command-center-stat-panel__caption">模型调用次数 · 近期趋势</div>
         <div v-if="sparkline.length > 1" class="command-center-stat-panel__sparkline">
           <svg viewBox="0 0 100 24" preserveAspectRatio="none" class="command-center-stat-panel__sparkline-svg">
             <polyline

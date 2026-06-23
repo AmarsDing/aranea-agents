@@ -209,6 +209,59 @@ func (s *bitemporalMockStore) InvalidateFact(ctx context.Context, factID string)
 	return s.invalidate(factID)
 }
 
+// InvalidateAndUpsertFactTx atomically invalidates the old fact and upserts
+// the new fact. In this mock, atomicity is simulated by holding the mutex
+// across both operations.
+func (s *bitemporalMockStore) InvalidateAndUpsertFactTx(ctx context.Context, oldFactID string, in biz.FactUpsert) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if oldFactID != "" {
+		if row, ok := s.facts[oldFactID]; ok {
+			now := time.Now().UTC().Format(time.RFC3339Nano)
+			row["valid_until"] = now
+			row["updated_at"] = now
+		}
+	}
+	// Inline upsert (cannot call s.upsert because it re-locks the mutex).
+	id := in.ID
+	if id == "" {
+		id = "fact-" + in.Statement
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	createdAt := in.CreatedAt
+	if createdAt == "" {
+		createdAt = now
+	}
+	updatedAt := in.UpdatedAt
+	if updatedAt == "" {
+		updatedAt = now
+	}
+	validFrom := in.ValidFrom
+	if validFrom == "" {
+		validFrom = createdAt
+	}
+	row := map[string]any{
+		"id":            id,
+		"scope_type":    in.ScopeType,
+		"scope_id":      in.ScopeID,
+		"user_id":       in.UserID,
+		"agent_id":      in.AgentID,
+		"statement":     in.Statement,
+		"fact_kind":     in.FactKind,
+		"tags_json":     in.TagsJSON,
+		"importance":    in.Importance,
+		"status":        "active",
+		"metadata_json": in.MetadataJSON,
+		"created_at":    createdAt,
+		"updated_at":    updatedAt,
+		"valid_from":    validFrom,
+		"valid_until":   in.ValidUntil,
+		"deleted_at":    "",
+	}
+	s.facts[id] = row
+	return s.rowToJSON(row), nil
+}
+
 // Compile-time interface checks.
 var (
 	_ biz.L3FactReader = (*bitemporalMockStore)(nil)

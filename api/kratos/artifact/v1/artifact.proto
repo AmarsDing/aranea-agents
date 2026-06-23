@@ -46,7 +46,7 @@ message GetArtifactRequest {
 }
 
 message ListArtifactsRequest {
-  string session_id = 1;
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
   int32 limit = 2;
   int32 offset = 3;
   // query filters by name, session_id, or mime_type (case-insensitive substring).

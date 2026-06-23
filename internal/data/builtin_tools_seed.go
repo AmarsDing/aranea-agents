@@ -65,8 +65,11 @@ var builtinPlatformToolSeeds = []platformToolSeed{
 	{key: "search_file", displayName: "文件搜索", description: "按文件名模式搜索工作区文件。", category: "filesystem", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"pattern":{"type":"string","description":"glob 匹配模式"},"path":{"type":"string","description":"搜索根目录"}},"required":["pattern"]}`, registryName: "file"},
 	{key: "search_content", displayName: "内容搜索", description: "在工作区内搜索文本内容，结果带路径与行号。", category: "filesystem", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"content_pattern":{"type":"string","description":"正则表达式搜索模式"},"file_pattern":{"type":"string","description":"文件 glob 匹配模式，如 *.go"},"path":{"type":"string","description":"搜索根目录"},"file_case_sensitive":{"type":"boolean","description":"文件匹配是否区分大小写"},"content_case_sensitive":{"type":"boolean","description":"内容匹配是否区分大小写"}},"required":["content_pattern","file_pattern"]}`, registryName: "file"},
 	{key: "replace_content", displayName: "替换内容", description: "按精确匹配替换文件中的文本片段。", category: "filesystem", riskLevel: "medium", enabled: true, paramsSchema: `{"type":"object","properties":{"file_name":{"type":"string","description":"文件路径"},"old_string":{"type":"string","description":"要替换的原始文本"},"new_string":{"type":"string","description":"替换后的文本"},"num_replacements":{"type":"integer","description":"替换次数，0 表示 1，负数表示全部"}},"required":["file_name","old_string","new_string"]}`, registryName: "file"},
-	{key: "diff_edit", displayName: "片段编辑", description: "对已有文件施加一处或多处 search/replace 片段替换，原子提交。", category: "filesystem", riskLevel: "medium", enabled: true, paramsSchema: `{"type":"object","properties":{"file_name":{"type":"string","description":"文件路径"},"edits":{"type":"array","items":{"type":"object","properties":{"search":{"type":"string"},"replace":{"type":"string"},"replace_all":{"type":"boolean"}},"required":["search","replace"]}},"expected_mtime_ms":{"type":"integer","description":"可选，来自 read_file 的 mtime_ms"}},"required":["file_name","edits"]}`, registryName: "file"},
-	{key: "patch_file", displayName: "应用补丁", description: "应用 unified diff 或结构化 hunk 列表修改文件。", category: "filesystem", riskLevel: "medium", enabled: true, paramsSchema: `{"type":"object","properties":{"file_name":{"type":"string","description":"文件路径"},"patch":{"type":"string","description":"Unified diff 文本"},"hunks":{"type":"array","description":"结构化 hunk，与 patch 二选一"},"expected_mtime_ms":{"type":"integer","description":"可选，来自 read_file 的 mtime_ms"}},"required":["file_name"]}`, registryName: "file"},
+	// TODO(debt): diff_edit/patch_file runtime not implemented. file ToolSet (pkg/trpc-agent-go/tool/file)
+	// only provides read_file/save_file/list_file/search_file/search_content/replace_content.
+	// Seeded as enabled=false to prevent LLM tool_call failures. See internal/tools/toolset.go Registry.
+	{key: "diff_edit", displayName: "片段编辑", description: "对已有文件施加一处或多处 search/replace 片段替换，原子提交。", category: "filesystem", riskLevel: "medium", enabled: false, paramsSchema: `{"type":"object","properties":{"file_name":{"type":"string","description":"文件路径"},"edits":{"type":"array","items":{"type":"object","properties":{"search":{"type":"string"},"replace":{"type":"string"},"replace_all":{"type":"boolean"}},"required":["search","replace"]}},"expected_mtime_ms":{"type":"integer","description":"可选，来自 read_file 的 mtime_ms"}},"required":["file_name","edits"]}`, registryName: "file"},
+	{key: "patch_file", displayName: "应用补丁", description: "应用 unified diff 或结构化 hunk 列表修改文件。", category: "filesystem", riskLevel: "medium", enabled: false, paramsSchema: `{"type":"object","properties":{"file_name":{"type":"string","description":"文件路径"},"patch":{"type":"string","description":"Unified diff 文本"},"hunks":{"type":"array","description":"结构化 hunk，与 patch 二选一"},"expected_mtime_ms":{"type":"integer","description":"可选，来自 read_file 的 mtime_ms"}},"required":["file_name"]}`, registryName: "file"},
 	{key: "skill_search", displayName: "Skill 搜索", description: "搜索当前系统可用 Skill。", category: "skill", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}`},
 	{key: "use_skill", displayName: "使用 Skill", description: "标记本次运行使用某个 Skill，用于追踪。", category: "skill", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`},
 	{key: "memory_search", displayName: "Memory 搜索", description: "搜索 Agent 长期记忆。", category: "memory", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}`},
@@ -102,6 +105,13 @@ var builtinPlatformToolSeeds = []platformToolSeed{
 	{key: "cancel_orchestration", displayName: "取消编排", description: "取消正在运行的编排。基于 orchestration_id 取消。", category: "spirit", source: "builtin", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"orchestration_id":{"type":"string","description":"The orchestration ID to cancel"}},"required":["orchestration_id"]}`},
 	{key: "synthesize_results", displayName: "合成团队结果", description: "将所有已完成团队的执行结果合成为综合报告。", category: "spirit", source: "builtin", riskLevel: "low", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"strategy":{"type":"string","description":"合成策略","enum":["template","llm","hybrid"]}}}`},
 	{key: "build_orchestration_graph", displayName: "构建编排图", description: "构建 DAG 编排图，定义子任务依赖关系和执行顺序。", category: "spirit", source: "builtin", riskLevel: "low", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"task_description":{"type":"string","description":"任务描述"},"nodes":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"agent_key":{"type":"string"},"depends_on":{"type":"array","items":{"type":"string"}}}}},"verification_gates":{"type":"array","items":{"type":"object"}}},"required":["task_description","nodes"]}`},
+	// Subagent tools: implementation in internal/tools/subagent/service.go (FrameworkTools).
+	// Registered at runtime via cfg.SubAgent in internal/tools/trpc/toolsets.go.
+	// Seeded as enabled=false; users opt-in per Agent via effective tool keys.
+	{key: "subagents_spawn", displayName: "启动子 Agent", description: "为当前会话启动一个后台子 Agent。适用于长时间运行、可并行化或独立验证的工作。立即返回 run id。", category: "orchestration", source: "builtin", riskLevel: "medium", enabled: false, reqConfirm: true, paramsSchema: `{"type":"object","properties":{"task":{"type":"string","description":"Delegated task for the background subagent."},"timeout_seconds":{"type":"integer","description":"Optional timeout in seconds for the delegated run."}},"required":["task"]}`},
+	{key: "subagents_list", displayName: "列出子 Agent", description: "列出从当前会话创建的后台子 Agent。", category: "orchestration", source: "builtin", riskLevel: "low", enabled: false, readonly: true, paramsSchema: `{"type":"object","properties":{}}`},
+	{key: "subagents_get", displayName: "获取子 Agent", description: "获取一个后台子 Agent 运行的最新状态和结果。", category: "orchestration", source: "builtin", riskLevel: "low", enabled: false, readonly: true, paramsSchema: `{"type":"object","properties":{"id":{"type":"string","description":"Subagent run id returned by spawn."}},"required":["id"]}`},
+	{key: "subagents_cancel", displayName: "取消子 Agent", description: "取消一个后台子 Agent 运行。这是 best-effort 操作。", category: "orchestration", source: "builtin", riskLevel: "medium", enabled: false, reqConfirm: true, paramsSchema: `{"type":"object","properties":{"id":{"type":"string","description":"Subagent run id returned by spawn."}},"required":["id"]}`},
 }
 
 func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
@@ -140,6 +150,9 @@ func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client, d Diale
 	}
 	if err := syncBuiltinWebToolCatalogPatches(ctx, client, d); err != nil {
 		lg.Warn("内置 Web 工具元数据同步失败", loggateway.StepID("data.builtin_tool_sync"), loggateway.Err(err))
+	}
+	if err := syncBuiltinFilesystemToolCatalogPatches(ctx, client, d); err != nil {
+		lg.Warn("内置文件工具元数据同步失败", loggateway.StepID("data.builtin_tool_sync"), loggateway.Err(err))
 	}
 	return nil
 }
@@ -184,6 +197,24 @@ func syncBuiltinWebToolCatalogPatches(ctx context.Context, client *ent.Client, d
 		if _, err := client.ExecContext(ctx, updDialect, p.enabled, p.desc, p.params, p.config, now, p.key); err != nil {
 			return fmt.Errorf("sync web tool %q: %w", p.key, err)
 		}
+	}
+	return nil
+}
+
+// syncBuiltinFilesystemToolCatalogPatches disables diff_edit/patch_file on existing DBs
+// because their runtime implementations are not yet available (file ToolSet does not
+// include them). Seed uses ON CONFLICT DO NOTHING, so existing rows need an explicit
+// UPDATE to flip enabled from true to false.
+func syncBuiltinFilesystemToolCatalogPatches(ctx context.Context, client *ent.Client, d Dialect) error {
+	if client == nil {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	const upd = `UPDATE tools SET enabled = 0, updated_at = ?
+		WHERE tool_key IN (?, ?) AND source = 'builtin' AND deleted_at = ''`
+	updDialect := d.RenumberPlaceholders(upd)
+	if _, err := client.ExecContext(ctx, updDialect, now, "diff_edit", "patch_file"); err != nil {
+		return fmt.Errorf("sync filesystem tools (diff_edit/patch_file): %w", err)
 	}
 	return nil
 }

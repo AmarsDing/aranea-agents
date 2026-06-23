@@ -132,10 +132,26 @@ func ApplyRuntimeNameAliases(ctx context.Context, out *AssembledToolsets) {
 		if _, exists := byName[alias]; exists {
 			continue
 		}
-		target, ok := byName[canonical]
-		if !ok {
-			continue
+		// Resolve chained aliases (e.g. "shell" → "shell_exec" → "exec_command").
+		// Follow the chain until we find a mounted tool or hit a cycle.
+		resolved := canonical
+		visited := map[string]bool{alias: true}
+		for {
+			if visited[resolved] {
+				break // cycle guard
+			}
+			visited[resolved] = true
+			if target, ok := byName[resolved]; ok {
+				aliasT := &aliasTool{name: alias, inner: target}
+				out.Tools = append(out.Tools, aliasT)
+				byName[alias] = target // allow further aliases to chain off this one
+				break
+			}
+			next, ok := RuntimeToolNameAliases[resolved]
+			if !ok {
+				break // no further alias chain
+			}
+			resolved = next
 		}
-		out.Tools = append(out.Tools, &aliasTool{name: alias, inner: target})
 	}
 }

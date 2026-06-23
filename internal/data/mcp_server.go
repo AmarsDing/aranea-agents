@@ -51,7 +51,7 @@ func (r *mcpServerRepo) ListMCPServers(ctx context.Context) ([]biz.MCPServer, er
 		).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, apierror.DomainMCP)
 	}
 	out := make([]biz.MCPServer, 0, len(rows))
 	for _, e := range rows {
@@ -65,10 +65,7 @@ func (r *mcpServerRepo) GetMCPServer(ctx context.Context, id string) (biz.MCPSer
 		Where(platformmcpserver.IDEQ(id), platformmcpserver.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
-		if ent.IsNotFound(err) {
-			return biz.MCPServer{}, apierror.NotFound(apierror.DomainMCP, "not found")
-		}
-		return biz.MCPServer{}, err
+		return biz.MCPServer{}, entErrToBizErr(err, apierror.DomainMCP)
 	}
 	return entToBizMCP(row), nil
 }
@@ -78,10 +75,7 @@ func (r *mcpServerRepo) GetMCPServerByKey(ctx context.Context, key string) (biz.
 		Where(platformmcpserver.ServerKeyEQ(key), platformmcpserver.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
-		if ent.IsNotFound(err) {
-			return biz.MCPServer{}, apierror.NotFound(apierror.DomainMCP, "not found")
-		}
-		return biz.MCPServer{}, err
+		return biz.MCPServer{}, entErrToBizErr(err, apierror.DomainMCP)
 	}
 	return entToBizMCP(row), nil
 }
@@ -93,7 +87,7 @@ func (r *mcpServerRepo) UpdateMCPServerMetadata(ctx context.Context, id string, 
 	if status != "" {
 		update = update.SetStatus(status)
 	}
-	return update.Exec(ctx)
+	return entErrToBizErr(update.Exec(ctx), apierror.DomainMCP)
 }
 
 func (r *mcpServerRepo) CreateMCPServer(ctx context.Context, m biz.MCPServer) (biz.MCPServer, error) {
@@ -117,7 +111,7 @@ func (r *mcpServerRepo) CreateMCPServer(ctx context.Context, m biz.MCPServer) (b
 		SetDeletedAt("").
 		Save(ctx)
 	if err != nil {
-		return biz.MCPServer{}, err
+		return biz.MCPServer{}, entErrToBizErr(err, apierror.DomainMCP)
 	}
 	return entToBizMCP(saved), nil
 }
@@ -136,29 +130,34 @@ func (r *mcpServerRepo) UpdateMCPServer(ctx context.Context, m biz.MCPServer) (b
 		SetUpdatedAt(m.UpdatedAt).
 		Save(ctx)
 	if err != nil {
-		return biz.MCPServer{}, err
+		return biz.MCPServer{}, entErrToBizErr(err, apierror.DomainMCP)
 	}
 	return entToBizMCP(saved), nil
 }
 
+// DeleteMCPServer soft-deletes the server and cascades to its user credentials
+// in a single transaction. If either write fails the whole operation rolls
+// back, preventing the inconsistent state where credentials are deleted but
+// the server remains (or vice versa).
 func (r *mcpServerRepo) DeleteMCPServer(ctx context.Context, id string) error {
 	now := nowRFC3339()
-	// Cascade: soft-delete all user credentials belonging to this server.
-	_, credErr := r.data.RW().Write(ctx).PlatformMCPUserCredential.Update().
-		Where(
-			platformmcpusercredential.McpServerIDEQ(id),
-			platformmcpusercredential.DeletedAtEQ(""),
-		).
-		SetDeletedAt(now).
-		SetUpdatedAt(now).
-		Save(ctx)
-	if credErr != nil {
-		return credErr
-	}
-	// Soft-delete the server itself.
-	return r.data.RW().Write(ctx).PlatformMCPServer.UpdateOneID(id).
-		SetDeletedAt(now).
-		SetStatus("deleted").
-		SetUpdatedAt(now).
-		Exec(ctx)
+	return entErrToBizErr(r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		// Cascade: soft-delete all user credentials belonging to this server.
+		if _, err := r.data.RW().Write(txCtx).PlatformMCPUserCredential.Update().
+			Where(
+				platformmcpusercredential.McpServerIDEQ(id),
+				platformmcpusercredential.DeletedAtEQ(""),
+			).
+			SetDeletedAt(now).
+			SetUpdatedAt(now).
+			Save(txCtx); err != nil {
+			return err
+		}
+		// Soft-delete the server itself.
+		return r.data.RW().Write(txCtx).PlatformMCPServer.UpdateOneID(id).
+			SetDeletedAt(now).
+			SetStatus("deleted").
+			SetUpdatedAt(now).
+			Exec(txCtx)
+	}), apierror.DomainMCP)
 }

@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"strings"
 
 	v1 "aranea-agents/api/kratos/ecosystem/v1"
 	"aranea-agents/internal/biz"
@@ -61,8 +60,8 @@ func (s *EcosystemService) ListProducts(ctx context.Context, req *v1.ListProduct
 func (s *EcosystemService) GetProduct(ctx context.Context, req *v1.GetProductRequest) (*v1.Product, error) {
 	p, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, apierror.NotFound("ECOSYSTEM_NOT_FOUND", err.Error())
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return nil, err
 		}
 		return nil, err
 	}

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -49,7 +50,7 @@ func ConfigFromSetting(provider string, apiKey string, maxResults, fetchTop int,
 // TestConnection runs a minimal search against the configured provider.
 func TestConnection(ctx context.Context, cfg Config, lg loggateway.Logger) (TestResult, error) {
 	if !cfg.Ready() {
-		return TestResult{}, fmt.Errorf("web_research: api_key is required")
+		return TestResult{}, apierror.BadRequest(apierror.DomainTool, "web_research: api_key is required")
 	}
 	if lg == nil {
 		lg = loggateway.NewNoop()

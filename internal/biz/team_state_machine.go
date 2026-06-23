@@ -8,10 +8,12 @@
 //	[*] --> Pending
 //	Pending --> Running : start
 //	Pending --> Cancelled : cancel
+//	Pending --> Failed : fail
 //	Running --> Completed : complete
 //	Running --> Failed : fail
 //	Running --> Cancelled : cancel
 //	Running --> Interrupted : interrupt
+//	Running --> Pending : rework
 //	Interrupted --> Running : recover
 //	Completed --> Archived : archive
 //	Failed --> Archived : archive
@@ -21,6 +23,14 @@
 //	Archived --> [*]
 //
 // ```
+//
+// Notes:
+//   - Pending → Failed: used when a DAG dependency fails and the pending team
+//     should be marked failed without executing (B-01 fix), and when a pending
+//     team times out before starting execution.
+//   - Running → Pending (rework): used by HandleTeamRejection when a
+//     verification gate rejects a team's output and the team should be
+//     re-executed (B-02 fix).
 package biz
 
 import (
@@ -60,6 +70,7 @@ const (
 	TeamEventInterrupt TeamEvent = "interrupt"
 	TeamEventRecover   TeamEvent = "recover"
 	TeamEventArchive   TeamEvent = "archive"
+	TeamEventRework    TeamEvent = "rework"
 )
 
 // ── Transition rules ─────────────────────────────────────────────────────────
@@ -69,10 +80,12 @@ const (
 var teamTransitionRules = []shared.TransitionRule[TeamState, TeamEvent]{
 	{From: TeamStatePending, Event: TeamEventStart, To: TeamStateRunning},
 	{From: TeamStatePending, Event: TeamEventCancel, To: TeamStateCancelled},
+	{From: TeamStatePending, Event: TeamEventFail, To: TeamStateFailed},
 	{From: TeamStateRunning, Event: TeamEventComplete, To: TeamStateCompleted},
 	{From: TeamStateRunning, Event: TeamEventFail, To: TeamStateFailed},
 	{From: TeamStateRunning, Event: TeamEventCancel, To: TeamStateCancelled},
 	{From: TeamStateRunning, Event: TeamEventInterrupt, To: TeamStateInterrupted},
+	{From: TeamStateRunning, Event: TeamEventRework, To: TeamStatePending},
 	{From: TeamStateInterrupted, Event: TeamEventRecover, To: TeamStateRunning},
 	{From: TeamStateCompleted, Event: TeamEventArchive, To: TeamStateArchived},
 	{From: TeamStateFailed, Event: TeamEventArchive, To: TeamStateArchived},

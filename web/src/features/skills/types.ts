@@ -41,6 +41,8 @@ export type Skill = {
   permissions: SkillPermissions;
   filesystem_missing?: boolean;
   sync_origin?: 'filesystem' | 'import' | 'manual' | string;
+  visibility?: string;
+  default_config_json?: string;
 };
 
 export type SkillFilesystemHealth = {
@@ -84,11 +86,15 @@ export type SkillInvocation = {
   error_code?: string;
   error_message?: string;
   permissions: SkillInvocationPermissions;
+  source?: string;
+  activation_id?: string;
+  message_id?: string;
 };
 
 export type SkillRunQuery = {
   skill_id?: string;
   agent_id?: string;
+  session_id?: string;
   status?: string;
   from?: string;
   to?: string;

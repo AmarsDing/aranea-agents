@@ -75,6 +75,10 @@ func BuildIndexedChunks(ctx context.Context, embedder Embedder, p IngestParams) 
 	if err != nil {
 		return nil, err
 	}
+	if len(vecs) != len(chunks) {
+		return nil, apierror.Internal(apierror.DomainKnowledge,
+			fmt.Sprintf("ingest: embedding count mismatch: expected %d, got %d", len(chunks), len(vecs)))
+	}
 
 	out := make([]biz.KnowledgeChunk, 0, len(chunks))
 	for i, ch := range chunks {

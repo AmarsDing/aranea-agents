@@ -90,12 +90,21 @@ type ToolDecoratorConfig struct {
 // ToolDecorator satisfies the CallableTool interface. It also implements
 // StreamableCall as a pass-through so streaming tools retain their
 // streaming capability (timeout/budget/cache apply only to Call).
+//
+// The cache is bounded by decoratorCacheMaxEntries. When the limit is
+// reached, the entire cache is cleared (crude but prevents unbounded
+// memory growth from varying arguments on cacheable read-only tools).
 type ToolDecorator struct {
 	inner   trpctool.CallableTool
 	cfg     ToolDecoratorConfig
 	cache   map[string]any
 	cacheMu sync.RWMutex
 }
+
+// decoratorCacheMaxEntries is the per-tool cache limit. 256 is generous for
+// typical read-only tools (e.g. read_file with different paths) while
+// preventing unbounded growth.
+const decoratorCacheMaxEntries = 256
 
 // NewToolDecorator wraps a CallableTool with the given config.
 // When EnableCache is true, a cache map is allocated only for
@@ -322,5 +331,13 @@ func (d *ToolDecorator) lookupCache(jsonArgs []byte) (any, bool) {
 func (d *ToolDecorator) storeCache(jsonArgs []byte, result any) {
 	d.cacheMu.Lock()
 	defer d.cacheMu.Unlock()
+	if len(d.cache) >= decoratorCacheMaxEntries {
+		// Bounded eviction: clear the cache when the limit is reached.
+		// This is crude (no LRU) but prevents unbounded memory growth.
+		// Read-only tools rarely hit 256 unique argument combinations in
+		// a single session; when they do, older entries are unlikely to
+		// be reused.
+		d.cache = make(map[string]any)
+	}
 	d.cache[d.cacheKey(jsonArgs)] = result
 }

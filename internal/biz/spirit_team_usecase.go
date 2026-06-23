@@ -1383,6 +1383,9 @@ func (u *SpiritTeamUsecase) EscalateToSpirit(ctx context.Context, teamID string,
 // its status back to pending for re-execution; otherwise it escalates
 // to the Spirit assistant.
 // Domain: Orchestration — handle verification gate rejection with retry/escalation logic.
+// Note: The Running → Pending transition (TeamEventRework) was added in B-02 fix
+// to support the rework flow. Before the fix, this transition was illegal and
+// would silently fail.
 func (u *SpiritTeamUsecase) HandleTeamRejection(ctx context.Context, teamID string, tracker ReworkTracker, reason string) (*ReworkTracker, error) {
 	tracker.LastReason = reason
 

@@ -89,6 +89,8 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260728, Name: "memory_job_deadletter_schema", SQL: "sql/migrations/20260728_memory_job_deadletter_schema.sql"},
 	{Version: 20260730, Name: "runtime_profile_schema", SQL: "sql/migrations/20260730_runtime_profile_schema.sql"},
 	{Version: 20260731, Name: "heal_record_metadata_column", Func: ddlHealRecordMetadataColumn},
+	{Version: 20260801, Name: "memory_job_deadletter_unique", SQL: "sql/migrations/20260801_memory_job_deadletter_unique.sql"},
+	{Version: 20260802, Name: "memory_episodes_l1_task_unique", SQL: "sql/migrations/20260802_memory_episodes_l1_task_unique.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

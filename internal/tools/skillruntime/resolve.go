@@ -428,9 +428,16 @@ func applyRankResults(scored []slugScore, ranked []skillrecommend.RankResult, re
 	}
 	for i := range scored {
 		if r, ok := rankMap[scored[i].slug]; ok {
-			rankScore := int(r.Score * 10000)
-			// Weighted fusion: 60% rank + 40% existing (keyword+embedding).
-			blended := int(float64(scored[i].score)*0.4 + float64(rankScore)*0.6)
+			// Both scores are normalised to 0–1000 before fusion so that the
+			// 60/40 weighting is dimensionally consistent. Previously rank
+			// was scaled to 0–10000 while the existing score was 0–~2000,
+			// causing rank to dominate at ~88% instead of the intended 60%.
+			rankScore := int(r.Score * 1000)
+			existingScore := scored[i].score
+			if existingScore > 1000 {
+				existingScore = 1000
+			}
+			blended := int(float64(existingScore)*0.4 + float64(rankScore)*0.6)
 			scored[i].score = blended
 			scored[i].reason += " | " + skillrecommend.FormatSelectionReason(r)
 			reasons[scored[i].slug] = scored[i].reason

@@ -73,10 +73,18 @@ CREATE TABLE IF NOT EXISTS memory_job_deadletter (
 	}
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_memory_job_dl_state_enq ON memory_job_deadletter(state, enqueued_at)`)
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_memory_job_dl_session   ON memory_job_deadletter(session_id)`)
+	// P0-5: unique partial index prevents duplicate pending rows.
+	// Allows INSERT ON CONFLICT atomic upsert in WriteMemoryDeadLetter.
+	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_job_dl_unique_pending ON memory_job_deadletter(session_id, app_name, priority) WHERE state = 'pending'`)
 }
 
 // WriteMemoryDeadLetter implements biz.MemoryDeadLetterSink (H-01).
 // Persists a dropped job (goroutine-safe, best-effort).
+//
+// P0-5 fix: uses INSERT ON CONFLICT for atomic upsert, eliminating the
+// UPDATE-then-INSERT race condition that could produce duplicate pending rows.
+// The unique partial index idx_memory_job_dl_unique_pending (session_id, app_name, priority)
+// WHERE state='pending' is created by DDL migration 20260801 and ensureTable().
 func (r *MemoryJobDeadLetterRepo) WriteMemoryDeadLetter(
 	req biz.MemoryDeadLetterRequest,
 	reason biz.MemoryDeadLetterReason,
@@ -85,7 +93,7 @@ func (r *MemoryJobDeadLetterRepo) WriteMemoryDeadLetter(
 	if r == nil || r.data == nil {
 		return
 	}
-	payload, _ := json.Marshal(map[string]any{
+	payload, mErr := json.Marshal(map[string]any{
 		"app_name":            req.AppName,
 		"session_id":          req.SessionID,
 		"user_id":             req.UserID,
@@ -95,35 +103,37 @@ func (r *MemoryJobDeadLetterRepo) WriteMemoryDeadLetter(
 		"priority":            req.Priority,
 		"tenant_id":           req.TenantID,
 	})
+	if mErr != nil {
+		if r.data != nil && r.data.lg != nil {
+			r.data.lg.Warn("deadletter payload marshal failed", loggateway.StepID("memory.deadletter"), loggateway.Err(mErr))
+		}
+		return
+	}
 	now := time.Now().UnixMilli()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
-UPDATE memory_job_deadletter
-   SET attempts = attempts + 1,
-       last_error = ?,
-       failed_at = ?
- WHERE session_id = ?
-   AND app_name = ?
-   AND priority = ?
-   AND state = 'pending'
-   AND attempts < 3`), lastErr, now, req.SessionID, req.AppName, int(req.Priority))
-	if err == nil {
-		if n, _ := res.RowsAffected(); n > 0 {
-			return
-		}
-	}
-	_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
+	// Atomic upsert: INSERT a new pending row, or on conflict (same session_id,
+	// app_name, priority with state='pending') increment attempts (reset to 0
+	// after 3, preserving the original "reset after max retries" semantics).
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 INSERT INTO memory_job_deadletter
   (enqueued_at, failed_at, session_id, app_name, user_id, feedback_msg_id,
    payload_json, drop_reason, priority, attempts, last_error, state)
-VALUES (?,?,?,?,?,?,?,?,?,0,?,'pending')`),
+VALUES (?,?,?,?,?,?,?,?,?,0,?,'pending')
+ON CONFLICT(session_id, app_name, priority) WHERE state='pending'
+DO UPDATE SET
+  attempts = CASE WHEN memory_job_deadletter.attempts < 3
+    THEN memory_job_deadletter.attempts + 1
+    ELSE 0
+  END,
+  last_error = excluded.last_error,
+  failed_at = excluded.failed_at`),
 		now, now,
 		req.SessionID, req.AppName, req.UserID, req.FeedbackMessageID,
 		string(payload), string(reason), int(req.Priority), lastErr,
 	)
 	if err != nil {
-		r.data.lg.Warn("WriteMemoryDeadLetter: insert failed", loggateway.StepID("memory.extract_fail"), loggateway.Str("reason", string(reason)), loggateway.Err(err))
+		r.data.lg.Warn("WriteMemoryDeadLetter: upsert failed", loggateway.StepID("memory.extract_fail"), loggateway.Str("reason", string(reason)), loggateway.Err(err))
 	}
 }
 
@@ -142,7 +152,7 @@ WHERE state = ?
 ORDER BY enqueued_at ASC
 LIMIT ?`), state, limit)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_DL")
 	}
 	defer rows.Close()
 	var out []biz.MemoryDeadLetterEntry
@@ -152,27 +162,27 @@ LIMIT ?`), state, limit)
 		if err := rows.Scan(&row.ID, &enqueuedMs, &failedMs,
 			&row.SessionID, &row.AppName, &row.DropReason,
 			&row.Priority, &row.Attempts, &row.State, &row.LastError); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "MEMORY_DL")
 		}
 		row.EnqueuedAt = time.UnixMilli(enqueuedMs).UTC()
 		row.FailedAt = time.UnixMilli(failedMs).UTC()
 		out = append(out, row)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "MEMORY_DL")
 }
 
 // MarkDeadLetterReplayed marks a dead-letter job as replayed.
 func (r *MemoryJobDeadLetterRepo) MarkDeadLetterReplayed(ctx context.Context, id int64) error {
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_job_deadletter SET state='replayed', attempts=attempts+1 WHERE id=?`), id)
-	return err
+	return entErrToBizErr(err, "MEMORY_DL")
 }
 
 // MarkDeadLetterAbandoned marks a dead-letter job as permanently abandoned.
 func (r *MemoryJobDeadLetterRepo) MarkDeadLetterAbandoned(ctx context.Context, id int64, reason string) error {
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_job_deadletter SET state='abandoned', last_error=?, attempts=attempts+1 WHERE id=?`), reason, id)
-	return err
+	return entErrToBizErr(err, "MEMORY_DL")
 }
 
 func (r *MemoryJobDeadLetterRepo) GetDeadLetter(ctx context.Context, id int64) (biz.MemoryDeadLetterEntry, error) {
@@ -189,7 +199,7 @@ FROM memory_job_deadletter WHERE id=?`), []any{id},
 		&row.SessionID, &row.AppName, &row.DropReason,
 		&row.Priority, &row.Attempts, &row.State, &row.LastError)
 	if err != nil {
-		return biz.MemoryDeadLetterEntry{}, err
+		return biz.MemoryDeadLetterEntry{}, entErrToBizErr(err, "MEMORY_DL")
 	}
 	row.EnqueuedAt = time.UnixMilli(enqueuedMs).UTC()
 	row.FailedAt = time.UnixMilli(failedMs).UTC()
@@ -201,7 +211,7 @@ func (r *MemoryJobDeadLetterRepo) CountDeadLettersByState(ctx context.Context) (
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		`SELECT state, COUNT(*) FROM memory_job_deadletter GROUP BY state`)
 	if err != nil {
-		return
+		return 0, 0, 0, entErrToBizErr(err, "MEMORY_DL")
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -219,7 +229,7 @@ func (r *MemoryJobDeadLetterRepo) CountDeadLettersByState(ctx context.Context) (
 			abandoned = n
 		}
 	}
-	err = rows.Err()
+	err = entErrToBizErr(rows.Err(), "MEMORY_DL")
 	return
 }
 
@@ -248,7 +258,7 @@ func (r *MemoryJobDeadLetterRepo) ReplayDeadLetterIntoQueue(
 		return nil // already replayed or abandoned
 	}
 	if err != nil {
-		return err
+		return entErrToBizErr(err, "MEMORY_DL")
 	}
 	enqueue(sessionID, appName, userID, feedbackMsgID, biz.MemoryJobPriority(priority))
 	return r.MarkDeadLetterReplayed(ctx, id)

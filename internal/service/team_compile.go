@@ -28,7 +28,7 @@ func (s *TeamService) CompileTeamGraph(ctx context.Context, req *v1.CompileTeamG
 	}
 	def, err := team.ParseDefinition(rawDef)
 	if err != nil {
-		return nil, apierror.BadRequest("TEAM", "invalid definition_json")
+		return nil, apierror.BadRequest("TEAM", "invalid definition_json: "+err.Error())
 	}
 	return s.buildCompileTeamGraphResponse(ctx, def, rawDef)
 }

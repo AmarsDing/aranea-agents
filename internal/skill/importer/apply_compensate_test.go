@@ -116,6 +116,13 @@ func TestApplyImport_compensatesOnPartialFailure(t *testing.T) {
 		t.Errorf("expected disk dir %s to be removed after compensation, but it still exists", firstDir)
 	}
 
+	// The failed skill's disk directory must also have been cleaned up
+	// (createImportedSkill cleans up on DB failure to prevent orphan resources).
+	secondDir := filepath.Join(root, "skill-two")
+	if _, statErr := os.Stat(secondDir); !os.IsNotExist(statErr) {
+		t.Errorf("expected failed skill dir %s to be cleaned up, but it still exists", secondDir)
+	}
+
 	// Skip decisions processed before the failure must be preserved in the partial result.
 	if len(partial.SkippedCandidateIDs) != 1 || partial.SkippedCandidateIDs[0] != "c3" {
 		t.Errorf("expected partial result to preserve skipped candidate c3, got %v", partial.SkippedCandidateIDs)

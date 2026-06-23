@@ -76,16 +76,20 @@ func (a *KnowledgeAdapter) toBizQuery(req *knowledge.SearchRequest) biz.Knowledg
 			}
 		}
 		// Serialize filter metadata as FilterJSON for downstream consumption.
-		if req.SearchFilter.Metadata != nil || req.SearchFilter.FilterCondition != nil {
+		// Exclude collection_id (already extracted above) and skip FilterCondition
+		// (downstream SQL uses JSONB containment which cannot express complex conditions).
+		if req.SearchFilter.Metadata != nil {
 			filterMap := make(map[string]any)
 			for k, v := range req.SearchFilter.Metadata {
+				if k == "collection_id" {
+					continue
+				}
 				filterMap[k] = v
 			}
-			if req.SearchFilter.FilterCondition != nil {
-				filterMap["_filter_condition"] = req.SearchFilter.FilterCondition
-			}
-			if raw, err := json.Marshal(filterMap); err == nil {
-				q.FilterJSON = string(raw)
+			if len(filterMap) > 0 {
+				if raw, err := json.Marshal(filterMap); err == nil {
+					q.FilterJSON = string(raw)
+				}
 			}
 		}
 	}

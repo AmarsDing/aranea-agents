@@ -81,8 +81,10 @@ OpenAI Provider 通过 `Variant` 区分子类型行为差异，由 `openai.WithV
 
 | 模式 | trpc 包 | 说明 | 关键配置 |
 |------|---------|------|---------|
-| **Failover** | `model/failover` | 按顺序尝试候选模型，首个成功响应即返回；适用于主备切换 | `WithCandidates(m1, m2, ...)`、`WithSwitchCallback(cb)` |
-| **Hedge** | `model/hedge` | 并发发起多个候选请求，首个有效响应即返回；可配置延迟启动偏移；适用于降低尾部延迟 | `WithCandidates(...)`、`WithDelay(100ms)`、`WithDelays(...)`、`WithName(...)`、`WithContextWindow(...)`、`WithSwitchCallback(cb)` |
+| **Failover** | `model/failover` | 按顺序尝试候选模型，首个成功响应即返回；适用于主备切换 | `WithCandidates(m1, m2, ...)` |
+| **Hedge** | `model/hedge` | 并发发起多个候选请求，首个有效响应即返回；可配置延迟启动偏移；适用于降低尾部延迟 | `WithCandidates(...)`、`WithDelay(100ms)`、`WithDelays(...)`、`WithName(...)`、`WithContextWindow(...)` |
+
+> **注**：trpc-agent-go 的 `model/failover` 和 `model/hedge` 包当前未提供 `WithSwitchCallback` 选项。HA 切换的可观测性通过 `WrapModelWithMetrics`（Prometheus 指标）和候选构建失败时的 `lg.Warn` 日志实现。
 
 ### 2.4 通用能力（provider.Option）
 
@@ -980,14 +982,14 @@ func wrapHA(primary trpcmodel.Model, cfg ProviderModelConfig, rt *RoundTrip, lg 
 
 func wrapFailover(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, lg loggateway.Logger) (trpcmodel.Model, error) {
     // 1. 构建候选模型列表（含 outboundguard.ValidateURL 预检 + WrapModelWithMetrics）
-    // 2. trpcfailover.New(trpcfailover.WithCandidates(candidates...), trpcfailover.WithSwitchCallback(cb))
-    // 3. 回调发射 event.CtxFlowLogWarn（step ID: system.provider.ha_failover）
+    // 2. trpcfailover.New(trpcfailover.WithCandidates(candidates...))
+    // 3. 候选构建失败时 lg.Warn 记录（step ID: provider.ha_failover_candidate_skip）
 }
 
 func wrapHedge(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, lg loggateway.Logger) (trpcmodel.Model, error) {
     // 1. 构建候选模型列表（含预检 + 指标装饰）
-    // 2. trpchedge.New(trpchedge.WithCandidates(...), trpchedge.WithDelay(...), trpchedge.WithSwitchCallback(cb))
-    // 3. 回调发射 event.CtxFlowLogWarn（step ID: system.provider.ha_hedge）
+    // 2. trpchedge.New(trpchedge.WithCandidates(...), trpchedge.WithDelay(...))
+    // 3. 候选构建失败时 lg.Warn 记录（step ID: provider.ha_hedge_candidate_skip）
 }
 ```
 

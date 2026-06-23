@@ -22,7 +22,7 @@ func (noopOCR) Extract(context.Context, []byte, string, string) (string, error) 
 type stubOCR struct{}
 
 func (stubOCR) Extract(_ context.Context, _ []byte, _, _ string) (string, error) {
-	return "[ocr: text extraction pending — configure KNOWLEDGE_OCR provider]", nil
+	return "", apierror.Unavailable(apierror.DomainKnowledge, "ocr: KNOWLEDGE_OCR=stub is not a real OCR backend; configure tesseract/docling or remove the env var")
 }
 
 // NewOCRProviderFromEnv returns the configured OCR backend (default noop).

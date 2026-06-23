@@ -246,7 +246,7 @@ export async function submitMessageFeedback(payload: {
       rating: payload.rating,
       comment: payload.comment,
     });
-    return Boolean((data as { accepted?: boolean })?.accepted);
+    return Boolean(data?.accepted);
   } catch (err) {
     wrapChatError(err, 'submitMessageFeedback failed');
   }
@@ -290,9 +290,8 @@ export async function confirmActivity(sessionId: string, activityId: string, app
       activityId,
       approved,
     });
-    return Boolean((data as { accepted?: boolean })?.accepted);
+    return Boolean(data?.accepted);
   } catch (err) {
     wrapChatError(err, 'confirmActivity failed');
-    return false;
   }
 }

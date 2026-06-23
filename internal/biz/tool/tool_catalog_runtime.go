@@ -72,12 +72,23 @@ var registryBackedToolKeys = map[string]struct{}{
 	"claude_code": {}, "workspace_exec": {},
 }
 
+// spiritOrchestrationToolKeys are orchestration tools injected via CustomTools path
+// (internal/service/cli_admin_tools.go spiritCustomTools). They have runtime implementations
+// but bypass the Registry factory path, so they are not in registryBackedToolKeys.
+// Available only to Spirit Agent (or agents with explicit ToolsAllowJSON grant).
+var spiritOrchestrationToolKeys = map[string]struct{}{
+	"plan_and_execute": {}, "check_progress": {}, "cancel_orchestration": {},
+	"synthesize_results": {}, "build_orchestration_graph": {},
+}
+
 // sessionBoundToolKeys need a live agent/session to execute even when globally enabled.
 var sessionBoundToolKeys = map[string]struct{}{
 	ToolKeyKnowledgeSearch: {}, ToolKeyKnowledgeReflect: {}, ToolKeyCallAgent: {},
 	"mcp_tool_set": {}, ToolKeyMCPBroker: {},
 	"memory_search": {}, "memory_get": {},
 	"skill_search": {}, "use_skill": {},
+	// subagents_* require SubAgentService wired at runtime (cfg.SubAgent && cfg.SubAgentService != nil).
+	"subagents_spawn": {}, "subagents_list": {}, "subagents_get": {}, "subagents_cancel": {},
 }
 
 // WebResearchReadinessFunc is the function signature for checking web_research tool readiness.
@@ -134,6 +145,9 @@ func toolRuntimeStatus(t Tool, platform *WebResearchSetting, readiness WebResear
 	}
 	if !toolConfigReady(t, platform, readiness) {
 		return RuntimeStatusRegisteredOnly
+	}
+	if _, ok := spiritOrchestrationToolKeys[t.Key]; ok {
+		return RuntimeStatusAvailable
 	}
 	if _, ok := registryBackedToolKeys[t.Key]; ok {
 		return RuntimeStatusAvailable

@@ -199,6 +199,11 @@ func (f *FederatedRetriever) searchBroadcast(ctx context.Context, collectionIDs 
 		collQ.CollectionID = cid
 		safego.Go(ctx, "knowledge-federated-search", func() {
 			defer wg.Done()
+			// Set default error in case of panic (safego recovers panics,
+			// but results[idx] would otherwise remain zero-valued {nil, nil},
+			// causing silent result loss).
+			results[idx] = collResult{err: apierror.Internal(apierror.DomainKnowledge,
+				fmt.Sprintf("federated search: collection %s panicked or did not complete", collectionIDs[idx]))}
 			if f.router != nil {
 				chunks, err := f.router.Search(ctx, collQ, rewriteResult, modeOverride)
 				results[idx] = collResult{chunks: chunks, err: err}

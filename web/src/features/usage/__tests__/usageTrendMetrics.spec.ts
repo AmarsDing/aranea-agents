@@ -31,6 +31,7 @@ describe('usageTrendMetrics', () => {
     expect(trendMetricValue(point, 'tokens')).toBe(150);
     expect(trendMetricValue(point, 'calls')).toBe(10);
     expect(trendMetricValue(point, 'cost')).toBeCloseTo(2.5);
-    expect(trendMetricValue(point, 'success_rate')).toBeCloseTo(80);
+    // success_rate 由 successRateStackFromPoint 处理（堆叠柱状图），trendMetricValue 不再取值
+    expect(trendMetricValue(point, 'success_rate')).toBe(0);
   });
 });

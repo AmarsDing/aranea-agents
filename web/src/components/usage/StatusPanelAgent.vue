@@ -43,9 +43,9 @@
         </div>
         <div class="command-center-stat-panel__detail">
           <span class="command-center-stat-panel__dot command-center-stat-panel__dot--active" />
-          <span>在线 {{ active }}</span>
+          <span>启用 {{ active }}</span>
           <span class="command-center-stat-panel__dot command-center-stat-panel__dot--inactive q-ml-sm" />
-          <span>离线 {{ total - active }}</span>
+          <span>停用 {{ total - active }}</span>
         </div>
       </template>
     </q-card-section>

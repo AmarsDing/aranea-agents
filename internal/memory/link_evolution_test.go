@@ -127,6 +127,13 @@ func (f *fakeFactWriter) InvalidateFact(_ context.Context, factID string) ([]byt
 	return nil, nil
 }
 
+// InvalidateAndUpsertFactTx simulates the atomic invalidate + upsert operation.
+// For testing purposes, it delegates to UpsertFactRow and ignores oldFactID
+// (the fake writer does not track valid_until state).
+func (f *fakeFactWriter) InvalidateAndUpsertFactTx(ctx context.Context, oldFactID string, in biz.FactUpsert) ([]byte, error) {
+	return f.UpsertFactRow(ctx, in)
+}
+
 // fakeEvolutionQueue implements EvolutionQueue for testing.
 type fakeEvolutionQueue struct {
 	mu   sync.Mutex

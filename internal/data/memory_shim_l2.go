@@ -83,14 +83,14 @@ func (r *l2EpisodeRepo) InsertL1ArchiveEpisode(ctx context.Context, in biz.L1Arc
 		key_decisions_json, key_artifacts_json, l1_snapshot_json,
 		consolidation_status, consolidated_l3_count, metadata_json, ended_at, created_at
 	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-	ON CONFLICT(session_id, title, agent_id) DO UPDATE SET
+	ON CONFLICT(session_id, l1_task_id) WHERE l1_task_id != '' DO UPDATE SET
 		goal = excluded.goal, outcome = excluded.outcome,
 		outcome_summary = excluded.outcome_summary, importance = excluded.importance,
 		confidence = excluded.confidence,
 		key_decisions_json = excluded.key_decisions_json,
 		key_artifacts_json = excluded.key_artifacts_json,
 		l1_snapshot_json = excluded.l1_snapshot_json,
-		l1_task_id = excluded.l1_task_id,
+		title = excluded.title,
 		episode_kind = excluded.episode_kind,
 		ended_at = excluded.ended_at`),
 		id,
@@ -109,7 +109,7 @@ func (r *l2EpisodeRepo) InsertL1ArchiveEpisode(ctx context.Context, in biz.L1Arc
 		l1SnapshotJSON,
 		consolidationStatus, 0, "{}", now, now,
 	)
-	return err
+	return entErrToBizErr(err, "MEMORY_L2")
 }
 
 // --- L2RecallStore ---
@@ -129,18 +129,18 @@ func (r *l2EpisodeRepo) ListEpisodeRowsForRecall(ctx context.Context, agentID, s
 	args = append(args, lim)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L2")
 	}
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
 		b, err := scanEpisodeRowJSON(rows)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "MEMORY_L2")
 		}
 		out = append(out, b)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "MEMORY_L2")
 }
 
 func (r *l2EpisodeRepo) RecallL2Episodes(ctx context.Context, agentID, sessionID, query string, queryEmbedding []float32, limit int32) ([][]byte, error) {

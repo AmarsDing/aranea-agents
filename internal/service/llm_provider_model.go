@@ -264,8 +264,6 @@ func logRevealCredentialsDenied(ctx context.Context, resourceID string, err erro
 			switch se.Code {
 			case apierror.CodeBadRequest:
 				reason = "bad_request"
-			case apierror.CodeNotFound:
-				reason = "not_found"
 			}
 		}
 	}

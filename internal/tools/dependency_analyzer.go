@@ -2,7 +2,6 @@ package tools
 
 import (
 	"errors"
-	"fmt"
 
 	"aranea-agents/pkg/apierror"
 )
@@ -45,7 +44,7 @@ func (a *DependencyAnalyzer) Analyze(calls []ToolCall) (*DAG, error) {
 			return nil, apierror.BadRequest(apierror.DomainTool, "tool call at index %d has empty id", i)
 		}
 		if _, exists := nodes[c.ID]; exists {
-			return nil, fmt.Errorf("%w: id=%s", ErrDuplicateCallID, c.ID)
+			return nil, apierror.BadRequest(apierror.DomainTool, "duplicate call id: id=%s", c.ID).WithCause(ErrDuplicateCallID)
 		}
 		nodes[c.ID] = &dagNode{call: c}
 		order = append(order, c.ID)
@@ -56,11 +55,11 @@ func (a *DependencyAnalyzer) Analyze(calls []ToolCall) (*DAG, error) {
 		c := &calls[i]
 		for _, dep := range c.DependsOn {
 			if dep == c.ID {
-				return nil, fmt.Errorf("%w: self-loop on id=%s", ErrCycleDetected, c.ID)
+				return nil, apierror.BadRequest(apierror.DomainTool, "cycle detected: self-loop on id=%s", c.ID).WithCause(ErrCycleDetected)
 			}
 			depNode, ok := nodes[dep]
 			if !ok {
-				return nil, fmt.Errorf("%w: call %s depends on unknown id=%s", ErrMissingDependency, c.ID, dep)
+				return nil, apierror.BadRequest(apierror.DomainTool, "missing dependency: call %s depends on unknown id=%s", c.ID, dep).WithCause(ErrMissingDependency)
 			}
 			depNode.dependents = append(depNode.dependents, c.ID)
 			nodes[c.ID].dependencies++

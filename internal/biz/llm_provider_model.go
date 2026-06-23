@@ -382,15 +382,27 @@ func (u *LlmProviderModelUsecase) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	if u.agentRefs != nil {
-		count, refErr := u.agentRefs.CountAgentsByProviderAndModel(ctx, m.Provider, m.Model)
-		if refErr != nil {
-			u.lg.Warn("agent reference check failed, proceeding with delete",
-				loggateway.StepID("llm_provider_model.agent_ref_check"),
-				loggateway.Err(refErr))
-		} else if count > 0 {
-			return apierror.Conflict("LLM_PROVIDER_MODEL", "cannot delete provider model referenced by %d agent(s); reassign agents first", count)
-		}
+	// Fail-closed: a nil AgentReferenceChecker indicates misconfiguration.
+	// Deleting a provider model that might be referenced by agents would
+	// break runtime resolution, so we refuse to proceed.
+	if u.agentRefs == nil {
+		u.lg.Error("agent reference checker not configured, refusing to delete provider model",
+			loggateway.StepID("llm_provider_model.agent_ref_check"),
+			loggateway.Str("model_id", id))
+		return apierror.Internal("LLM_PROVIDER_MODEL", "agent reference checker not configured; cannot safely delete provider model")
+	}
+	count, refErr := u.agentRefs.CountAgentsByProviderAndModel(ctx, m.Provider, m.Model)
+	if refErr != nil {
+		// Fail-closed: the reference check itself failed. Proceeding would
+		// risk deleting a model still referenced by agents.
+		u.lg.Error("agent reference check failed, refusing to delete provider model",
+			loggateway.StepID("llm_provider_model.agent_ref_check"),
+			loggateway.Str("model_id", id),
+			loggateway.Err(refErr))
+		return apierror.Internal("LLM_PROVIDER_MODEL", "agent reference check failed; cannot safely delete provider model")
+	}
+	if count > 0 {
+		return apierror.Conflict("LLM_PROVIDER_MODEL", "cannot delete provider model referenced by %d agent(s); reassign agents first", count)
 	}
 	return u.writer.DeleteProviderModel(ctx, id)
 }

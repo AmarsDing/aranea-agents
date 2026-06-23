@@ -405,10 +405,13 @@ func (r *l4EntityRepo) EvolutionEventRows(ctx context.Context, agentID string, l
 			"metadata_json": meta, "created_at": ca,
 			"reverted": reverted != 0,
 		}
-		b, _ := json.Marshal(m)
+		b, mErr := json.Marshal(m)
+		if mErr != nil {
+			return nil, entErrToBizErr(mErr, "MEMORY_L4")
+		}
 		out = append(out, b)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "MEMORY_L4")
 }
 
 func (r *l4EntityRepo) EvolutionMetricsJSON(ctx context.Context, agentID string, timeRange string) ([]byte, error) {

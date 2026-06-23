@@ -1263,6 +1263,7 @@ export default {
     rangeMonth: '本月',
     statusSuccess: '成功',
     statusFailed: '失败',
+    statusAbnormal: '全部失败',
     statusCancelled: '取消',
     statusTimeout: '超时',
     granularityDay: '按天',

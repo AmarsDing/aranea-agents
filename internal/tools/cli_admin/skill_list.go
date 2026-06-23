@@ -3,7 +3,7 @@ package cli_admin
 import (
 	"context"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"aranea-agents/pkg/apierror"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -22,7 +22,7 @@ type skillListOutput struct {
 func newSkillListTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input skillListInput) (skillListOutput, error) {
 		if input.Offset < 0 {
-			return skillListOutput{}, kerrors.BadRequest("CLI_ADMIN", "offset must be >= 0")
+			return skillListOutput{}, apierror.BadRequest(apierror.DomainTool, "offset must be >= 0")
 		}
 		limit := input.Limit
 		if limit <= 0 {

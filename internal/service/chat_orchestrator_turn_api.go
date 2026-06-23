@@ -18,6 +18,14 @@ import (
 
 // nativeSendChatMessage is the native implementation of SendChatMessage.
 func (o *ChatOrchestrator) nativeSendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error) {
+	sessionID := strings.TrimSpace(req.GetSessionId())
+	if sessionID == "" {
+		return nil, apierror.BadRequest("CHAT", "session_id is required")
+	}
+	content := strings.TrimSpace(req.GetContent())
+	if content == "" {
+		return nil, apierror.BadRequest("CHAT", "content is required")
+	}
 	tr, err := o.Execute(ctx, turnInputFromProto(req))
 	if err != nil {
 		if isTurnMessageQueued(err) {

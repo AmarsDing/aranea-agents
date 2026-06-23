@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -23,7 +24,7 @@ type serpAPIProvider struct {
 
 func newSerpAPIProvider(cfg Config, lg loggateway.Logger) (*serpAPIProvider, error) {
 	if strings.TrimSpace(cfg.APIKey) == "" {
-		return nil, fmt.Errorf("web_research: serpapi api_key is required (tool config or SERPAPI_API_KEY)")
+		return nil, apierror.BadRequest(apierror.DomainTool, "web_research: serpapi api_key is required (tool config or SERPAPI_API_KEY)")
 	}
 	return &serpAPIProvider{
 		client: buildHTTPClient(cfg, lg),
@@ -35,7 +36,7 @@ func newSerpAPIProvider(cfg Config, lg loggateway.Logger) (*serpAPIProvider, err
 func (p *serpAPIProvider) search(ctx context.Context, query string) (*SearchResponse, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
-		return nil, fmt.Errorf("web_research: query is required")
+		return nil, apierror.BadRequest(apierror.DomainTool, "web_research: query is required")
 	}
 	baseURL := serpAPIBaseURL
 	if u := strings.TrimSpace(p.cfg.SerpAPIBaseURL); u != "" {
@@ -62,7 +63,7 @@ func (p *serpAPIProvider) search(ctx context.Context, query string) (*SearchResp
 	started := time.Now()
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("web_research: serpapi request failed for %s: %w", redactedURL(u), err)
+		return nil, apierror.Internal(apierror.DomainTool, "web_research: serpapi request failed for %s: %v", redactedURL(u), err)
 	}
 	defer resp.Body.Close()
 
@@ -71,7 +72,7 @@ func (p *serpAPIProvider) search(ctx context.Context, query string) (*SearchResp
 		return nil, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("web_research: serpapi status %d: %s", resp.StatusCode, truncateUTF8(string(raw), 512))
+		return nil, apierror.Internal(apierror.DomainTool, "web_research: serpapi status %d: %s", resp.StatusCode, truncateUTF8(string(raw), 512))
 	}
 
 	var parsed struct {
@@ -90,7 +91,7 @@ func (p *serpAPIProvider) search(ctx context.Context, query string) (*SearchResp
 		} `json:"answer_box"`
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, fmt.Errorf("web_research: serpapi decode: %w", err)
+		return nil, apierror.Internal(apierror.DomainTool, "web_research: serpapi decode: %v", err)
 	}
 
 	out := &SearchResponse{

@@ -30,8 +30,7 @@ export function trendMetricValue(point: ModelUsageTrendPoint, metric: UsageTrend
       return point.call_count ?? 0;
     case 'cost':
       return (point.total_cost_micro_usd ?? 0) / 1_000_000;
-    case 'success_rate':
-      return trendSuccessRate(point) * 100;
+    // success_rate 由 successRateStackFromPoint 处理（堆叠柱状图），不在此函数取值
     default:
       return 0;
   }

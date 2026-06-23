@@ -73,6 +73,9 @@ function wireGraph(g: Record<string, unknown> | null | undefined): GraphDefiniti
     sortOrder: (g?.sortOrder as number) ?? 0,
     createdAt: (g?.createdAt as string) ?? '',
     updatedAt: (g?.updatedAt as string) ?? '',
+    teamId: (g?.teamId as string) ?? '',
+    isTemplate: (g?.isTemplate as boolean) ?? false,
+    verificationGates: (g?.verificationGates as string) ?? '',
   };
 }
 
@@ -333,10 +336,14 @@ export async function editState(
   checkpointId: string,
   namespace: string,
   patch: Record<string, unknown>,
-): Promise<{ newCheckpointId: string; lineageId: string }> {
+): Promise<{ newCheckpointId: string; lineageId: string; namespace: string }> {
   const svc = createGraphService();
   const res = await svc.EditState({ executionId, checkpointId, namespace, patch });
-  return { newCheckpointId: res.newCheckpointId ?? '', lineageId: res.lineageId ?? '' };
+  return {
+    newCheckpointId: res.newCheckpointId ?? '',
+    lineageId: res.lineageId ?? '',
+    namespace: res.namespace ?? '',
+  };
 }
 
 export async function validateGraph(graphId: string): Promise<ValidationResult> {

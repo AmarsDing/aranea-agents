@@ -130,24 +130,42 @@ func (i *WorktreeIsolator) createWorktree(ctx context.Context, branchName string
 	return worktreePath, nil
 }
 
-// mergeWorktree fast-forwards the base branch to include the worktree branch's
-// changes. Uses --ff-only to avoid accidental merge commits.
+// mergeWorktree merges the worktree branch back into the base branch.
+// It tries fast-forward first to preserve linear history; if HEAD has
+// moved due to a concurrent worktree merge, it falls back to a merge
+// commit (--no-ff) so that non-conflicting parallel changes succeed.
 func (i *WorktreeIsolator) mergeWorktree(ctx context.Context, branchName string) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	if err := i.runGit(ctx, "merge", "--ff-only", branchName); err != nil {
-		return err
+	// Fast path: fast-forward merge (works when no concurrent merges
+	// have moved HEAD since the worktree was created).
+	if err := i.runGit(ctx, "merge", "--ff-only", branchName); err == nil {
+		i.deleteMergedBranch(ctx, branchName)
+		return nil
 	}
-	// Delete the merged branch to keep the ref namespace clean. Best-effort:
-	// log failures but don't fail the merge (the branch will be pruned later).
+
+	// Fallback: HEAD has moved. Use --no-ff to create a merge commit.
+	// This only fails on actual file conflicts, which is correct behavior.
+	if err := i.runGit(ctx, "merge", "--no-ff", "-m",
+		"merge parallel-exec branch "+branchName, branchName); err != nil {
+		// Abort the failed merge to leave HEAD clean for the next call.
+		_ = i.runGit(ctx, "merge", "--abort")
+		return apierror.Wrap(err, apierror.CodeInternal, apierror.DomainTool)
+	}
+	i.deleteMergedBranch(ctx, branchName)
+	return nil
+}
+
+// deleteMergedBranch is best-effort cleanup after a successful merge.
+// Failures are logged but do not fail the merge.
+func (i *WorktreeIsolator) deleteMergedBranch(ctx context.Context, branchName string) {
 	if err := i.runGit(ctx, "branch", "-d", branchName); err != nil {
 		i.lg.Warn("worktree branch delete failed (post-merge)",
 			loggateway.StepID("worktree.merge.cleanup"),
 			loggateway.Str("branch", branchName),
 			loggateway.Err(err))
 	}
-	return nil
 }
 
 // removeWorktree prunes the worktree and deletes its branch. Errors are logged

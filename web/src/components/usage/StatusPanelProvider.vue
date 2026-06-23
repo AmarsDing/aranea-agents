@@ -7,7 +7,7 @@
           size="16px"
           class="command-center-stat-panel__icon command-center-stat-panel__icon--provider"
         />
-        <span class="command-center-stat-panel__title">Provider 健康</span>
+        <span class="command-center-stat-panel__title">模型端点健康</span>
       </div>
     </q-card-section>
     <q-card-section class="q-pt-none">

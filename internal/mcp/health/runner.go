@@ -9,7 +9,6 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/mcp"
-	"aranea-agents/internal/mcp/alert"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -35,7 +34,14 @@ var (
 type Deps struct {
 	MCP    biz.MCPServerReader
 	UC     *biz.MCPServerUsecase
-	Alerts *alert.Publisher
+	Alerts AlertEmitter
+}
+
+// AlertEmitter is the contract used by the health runner to emit alerts after
+// a probe completes. *alert.Publisher satisfies this interface in production;
+// tests inject a fake implementation to verify alert behavior.
+type AlertEmitter interface {
+	MaybeEmitAfterHealth(ctx context.Context, srv biz.MCPServer, result biz.MCPTestResult)
 }
 
 type Runner struct {

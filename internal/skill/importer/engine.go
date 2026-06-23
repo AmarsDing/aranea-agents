@@ -584,6 +584,20 @@ func (e *Engine) resolveDecision(job *jobState, decision biz.SkillImportDecision
 		}
 		return nil, []string{decision.CandidateID}, nil
 	case "merge_group_with_ai":
+		if strings.TrimSpace(decision.GroupID) == "" {
+			return nil, nil, validationError("group_id is required for merge_group_with_ai")
+		}
+		// 验证冲突组存在，防止引用不存在的 GroupID 创建任意 skill
+		groupExists := false
+		for _, g := range job.public.ConflictGroups {
+			if g.GroupID == decision.GroupID {
+				groupExists = true
+				break
+			}
+		}
+		if !groupExists {
+			return nil, nil, detailErr(ErrConflictGroupNotFound, "conflict group "+decision.GroupID+" not found")
+		}
 		if strings.TrimSpace(decision.MergedName) == "" {
 			return nil, nil, validationError("merged_name is required")
 		}
@@ -636,6 +650,15 @@ func (e *Engine) createImportedSkill(ctx context.Context, p skillCreateParams) (
 	}
 	skill, err := e.repo.CreateSkillWithVersion(ctx, biz.SkillCreateInput{Name: p.name, Slug: slug, Description: p.description, Body: p.body, Tags: p.tags, StorageDir: targetDir, SyncOrigin: biz.SkillSyncOriginImport})
 	if err != nil {
+		// DB 创建失败时清理已写入的磁盘文件，防止孤儿资源残留。
+		// 调用方 ApplyImport 的 compensate() 只清理已提交到 committed 列表的 skill，
+		// 失败的 skill 未加入列表，因此必须在此处自行清理。
+		if rmErr := os.RemoveAll(absTarget); rmErr != nil {
+			e.lg.Warn("createImportedSkill: failed to cleanup disk after DB failure",
+				loggateway.StepID("skill.import"),
+				loggateway.Str("dir", absTarget),
+				loggateway.Err(rmErr))
+		}
 		return biz.Skill{}, "", err
 	}
 	return skill, absTarget, nil

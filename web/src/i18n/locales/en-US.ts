@@ -1258,6 +1258,7 @@ export default {
     rangeMonth: 'This month',
     statusSuccess: 'Success',
     statusFailed: 'Failed',
+    statusAbnormal: 'All failures',
     statusCancelled: 'Cancelled',
     statusTimeout: 'Timeout',
     granularityDay: 'Daily',

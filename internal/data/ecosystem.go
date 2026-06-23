@@ -3,12 +3,12 @@ package data
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
 	bizecosystem "aranea-agents/internal/biz/ecosystem"
+	"aranea-agents/pkg/apierror"
 )
 
 type ecosystemRepo struct {
@@ -81,7 +81,7 @@ FROM ecosystem_products WHERE id = ? AND deleted_at = ''`), id)
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return biz.EcosystemProduct{}, fmt.Errorf("product not found")
+		return biz.EcosystemProduct{}, apierror.NotFound("ECOSYSTEM", "product not found")
 	}
 	p, err := scanProduct(rows)
 	if err != nil {

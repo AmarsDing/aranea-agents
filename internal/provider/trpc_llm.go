@@ -312,6 +312,13 @@ func buildProviderOptions(cfg ProviderModelConfig, rt *RoundTrip, lg loggateway.
 	if hasCustomTransport {
 		transport = rt.HTTP.Transport
 	}
+	// 透传 rt.HTTP.Timeout：框架 DefaultNewHTTPClient 创建客户端时不设置 Timeout，
+	// 这里通过 timeoutTransport 在 transport 层注入超时，避免 LLM 调用无限挂起。
+	// 参考：wire.go 通过 http.Client.Timeout 设置 60min 基线超时。
+	if rt != nil && rt.HTTP != nil && rt.HTTP.Timeout > 0 {
+		transport = newTimeoutTransport(transport, rt.HTTP.Timeout)
+		hasCustomTransport = true // 强制传给框架，否则框架用默认客户端（无超时）
+	}
 	if cfg.RateLimitRPM > 0 {
 		transport = wrapRateLimitTransport(transport, cfg.RateLimitRPM)
 	}
@@ -429,14 +436,20 @@ func buildAnthropicSpecificOptions(cfg ProviderModelConfig) []trpcprovider.Optio
 func buildGeminiSpecificOptions(cfg ProviderModelConfig, rt *RoundTrip) []trpcprovider.Option {
 	var providerOpts []trpcgemini.Option
 	apiKey := strings.TrimSpace(cfg.APIKey)
-	if apiKey != "" || (rt != nil && rt.HTTP != nil && rt.HTTP.Transport != nil) {
+	hasCustomTransport := rt != nil && rt.HTTP != nil && rt.HTTP.Transport != nil
+	// 仅当有 API Key 或自定义 transport 时才构造 ClientConfig。
+	// 拆分条件：避免仅有 transport 时传入空 API Key 导致 SDK 报错。
+	if apiKey != "" || hasCustomTransport {
 		// API-key auth must use GeminiAPI backend; VertexAI requires ADC.
 		backend := genai.BackendGeminiAPI
 		gcc := &genai.ClientConfig{
-			APIKey:  apiKey,
 			Backend: backend,
 		}
-		if rt != nil && rt.HTTP != nil && rt.HTTP.Transport != nil {
+		// 仅在 API Key 非空时设置，避免传入空字符串。
+		if apiKey != "" {
+			gcc.APIKey = apiKey
+		}
+		if hasCustomTransport {
 			gcc.HTTPClient = &http.Client{Transport: rt.HTTP.Transport}
 		}
 		providerOpts = append(providerOpts, trpcgemini.WithGeminiClientConfig(gcc))
@@ -496,6 +509,12 @@ func wrapFailover(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Mode
 	for _, c := range cfg.HA.Candidates {
 		m, err := trpcModelFromCandidate(c, rt, lg)
 		if err != nil {
+			lg.Warn("HA failover 候选模型构建失败，跳过该候选",
+				loggateway.StepID("provider.ha_failover_candidate_skip"),
+				loggateway.Str("ha_mode", "failover"),
+				loggateway.Str("candidate_name", c.Name),
+				loggateway.Str("candidate_provider_type", c.ProviderType),
+				loggateway.Err(err))
 			continue
 		}
 		candidates = append(candidates, m)
@@ -519,6 +538,12 @@ func wrapHedge(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, 
 	for _, c := range cfg.HA.Candidates {
 		m, err := trpcModelFromCandidate(c, rt, lg)
 		if err != nil {
+			lg.Warn("HA hedge 候选模型构建失败，跳过该候选",
+				loggateway.StepID("provider.ha_hedge_candidate_skip"),
+				loggateway.Str("ha_mode", "hedge"),
+				loggateway.Str("candidate_name", c.Name),
+				loggateway.Str("candidate_provider_type", c.ProviderType),
+				loggateway.Err(err))
 			continue
 		}
 		candidates = append(candidates, m)
@@ -544,6 +569,11 @@ func wrapHedge(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, 
 func trpcModelFromCandidate(c HACandidateConfig, rt *RoundTrip, lg loggateway.Logger) (trpcmodel.Model, error) {
 	if baseURL := strings.TrimSpace(c.BaseURL); baseURL != "" {
 		if err := outboundguard.ValidateURL(baseURL); err != nil {
+			lg.Warn("HA 候选模型 URL 校验失败",
+				loggateway.StepID("provider.ha_candidate_url_blocked"),
+				loggateway.Str("candidate_name", c.Name),
+				loggateway.Str("base_url", baseURL),
+				loggateway.Err(err))
 			return nil, fmt.Errorf("HA candidate URL blocked: %w", err)
 		}
 	}

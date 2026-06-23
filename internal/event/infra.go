@@ -105,15 +105,23 @@ func ProvideBuffer(infra *Infra) *Buffer {
 // ProvideEventWAL creates an EventWAL instance. Returns nil if pgDB is nil
 // (e.g., in test environments without Postgres).
 //
-// Production deployments require Postgres for WAL storage.
+// Production deployments require Postgres for WAL storage. When WAL is
+// unavailable, Critical events (ToolResult/Error/RunnerCompletion/Checkpoint)
+// lose WBPF protection and may be lost on process crash.
 func ProvideEventWAL(pgDB *sql.DB, lg loggateway.Logger) *EventWAL {
 	if pgDB == nil {
+		if lg != nil {
+			lg.Error("event_wal: postgres not configured, Critical events will not have WBPF protection (risk of data loss on crash)",
+				loggateway.StepID("event_wal.init"),
+			)
+		}
 		return nil
 	}
 	wal, err := NewEventWAL(pgDB, lg)
 	if err != nil {
 		if lg != nil {
-			lg.Warn("event_wal: failed to create, Critical events will not have WBPF protection",
+			lg.Error("event_wal: failed to create, Critical events will not have WBPF protection (risk of data loss on crash)",
+				loggateway.StepID("event_wal.init"),
 				loggateway.Err(err),
 			)
 		}

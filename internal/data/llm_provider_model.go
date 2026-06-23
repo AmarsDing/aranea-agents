@@ -70,7 +70,7 @@ func (r *llmProviderModelRepo) ListProviderModels(ctx context.Context) ([]biz.Pr
 		).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "LLM_PROVIDER_MODEL")
 	}
 	out := make([]biz.ProviderModel, 0, len(rows))
 	for _, e := range rows {
@@ -87,7 +87,7 @@ func (r *llmProviderModelRepo) GetProviderModel(ctx context.Context, id string) 
 		if ent.IsNotFound(err) {
 			return biz.ProviderModel{}, biz.ErrProviderModelNotFound
 		}
-		return biz.ProviderModel{}, err
+		return biz.ProviderModel{}, entErrToBizErr(err, "LLM_PROVIDER_MODEL")
 	}
 	return entToBizPM(r.data.lg, row), nil
 }
@@ -105,7 +105,7 @@ func (r *llmProviderModelRepo) GetProviderModelByProviderAndModel(ctx context.Co
 		if ent.IsNotFound(err) {
 			return biz.ProviderModel{}, biz.ErrProviderModelNotFound
 		}
-		return biz.ProviderModel{}, err
+		return biz.ProviderModel{}, entErrToBizErr(err, "LLM_PROVIDER_MODEL")
 	}
 	return entToBizPM(r.data.lg, row), nil
 }
@@ -122,7 +122,7 @@ func (r *llmProviderModelRepo) ValidateProviderPair(ctx context.Context, provide
 			llmprovidermodel.DeletedAtEQ(""),
 		).
 		Count(ctx)
-	return n > 0, err
+	return n > 0, entErrToBizErr(err, "LLM_PROVIDER_MODEL")
 }
 
 func (r *llmProviderModelRepo) CreateProviderModel(ctx context.Context, m biz.ProviderModel) (biz.ProviderModel, error) {
@@ -157,7 +157,7 @@ func (r *llmProviderModelRepo) CreateProviderModel(ctx context.Context, m biz.Pr
 		SetDeletedAt("").
 		Save(ctx)
 	if err != nil {
-		return biz.ProviderModel{}, err
+		return biz.ProviderModel{}, entErrToBizErr(err, "LLM_PROVIDER_MODEL")
 	}
 	return entToBizPM(r.data.lg, saved), nil
 }
@@ -187,26 +187,26 @@ func (r *llmProviderModelRepo) UpdateProviderModel(ctx context.Context, m biz.Pr
 		SetUpdatedAt(m.UpdatedAt).
 		Exec(ctx)
 	if err != nil {
-		return biz.ProviderModel{}, err
+		return biz.ProviderModel{}, entErrToBizErr(err, "LLM_PROVIDER_MODEL")
 	}
 	return r.GetProviderModel(ctx, m.ID)
 }
 
 func (r *llmProviderModelRepo) DeleteProviderModel(ctx context.Context, id string) error {
 	now := nowRFC3339()
-	return r.data.RW().Write(ctx).LlmProviderModel.UpdateOneID(id).
+	return entErrToBizErr(r.data.RW().Write(ctx).LlmProviderModel.UpdateOneID(id).
 		SetDeletedAt(now).
 		SetStatus("deleted").
 		SetUpdatedAt(now).
-		Exec(ctx)
+		Exec(ctx), "LLM_PROVIDER_MODEL")
 }
 
 func (r *llmProviderModelRepo) UpdateProviderModelStatus(ctx context.Context, id string, status string) error {
 	now := nowRFC3339()
-	return r.data.RW().Write(ctx).LlmProviderModel.UpdateOneID(id).
+	return entErrToBizErr(r.data.RW().Write(ctx).LlmProviderModel.UpdateOneID(id).
 		SetStatus(status).
 		SetUpdatedAt(now).
-		Exec(ctx)
+		Exec(ctx), "LLM_PROVIDER_MODEL")
 }
 
 func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule biz.ModelPricingRule) error {
@@ -228,7 +228,7 @@ func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule 
 	}
 	tx, err := r.data.RW().Write(ctx).Tx(ctx)
 	if err != nil {
-		return err
+		return entErrToBizErr(err, "MODEL_PRICING_RULE")
 	}
 	client := tx.Client()
 	row, err := client.ModelPricingRule.Query().
@@ -264,13 +264,13 @@ func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule 
 			Exec(ctx)
 		if err != nil {
 			_ = tx.Rollback()
-			return err
+			return entErrToBizErr(err, "MODEL_PRICING_RULE")
 		}
-		return tx.Commit()
+		return entErrToBizErr(tx.Commit(), "MODEL_PRICING_RULE")
 	}
 	if !ent.IsNotFound(err) {
 		_ = tx.Rollback()
-		return err
+		return entErrToBizErr(err, "MODEL_PRICING_RULE")
 	}
 	rid := rule.ID
 	if rid == "" {
@@ -304,9 +304,9 @@ func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule 
 		Save(ctx)
 	if err != nil {
 		_ = tx.Rollback()
-		return err
+		return entErrToBizErr(err, "MODEL_PRICING_RULE")
 	}
-	return tx.Commit()
+	return entErrToBizErr(tx.Commit(), "MODEL_PRICING_RULE")
 }
 
 func configJSONHasPricing(lg loggateway.Logger, cfg string) bool {

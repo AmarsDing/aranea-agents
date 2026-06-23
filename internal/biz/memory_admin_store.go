@@ -226,6 +226,14 @@ type L3FactWriter interface {
 	// updated row as JSON (same shape as UpsertFactRow) so callers can
 	// sync downstream indexes.
 	InvalidateFact(ctx context.Context, factID string) ([]byte, error)
+	// InvalidateAndUpsertFactTx atomically invalidates the old fact (by setting
+	// valid_until) and upserts the new fact in a single transaction (P0-2 fix).
+	// This ensures bi-temporal consistency: either both operations succeed or
+	// neither does, preventing data loss (invalidate succeeds but upsert fails)
+	// and duplicate active facts (invalidate fails silently but upsert succeeds).
+	// If oldFactID is empty, only the upsert is performed (no invalidation).
+	// Returns the upserted fact row as JSON.
+	InvalidateAndUpsertFactTx(ctx context.Context, oldFactID string, in FactUpsert) ([]byte, error)
 }
 
 // DecayScoreWriter updates the persisted Ebbinghaus decay score (R_t) for

@@ -41,17 +41,17 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 
 	// Validate kind
 	if activity.Kind != biz.ActivityKindConfirm {
-		return nil, apierror.BadRequest("activity", "expected confirm kind, got %s", activity.Kind)
+		return nil, apierror.BadRequest("CHAT", "expected confirm kind, got %s", activity.Kind)
 	}
 
 	// Validate status
 	if activity.Status != biz.ActivityStatusToolBlocked {
-		return nil, apierror.BadRequest("activity", "activity is not in tool_blocked state (current: %s)", activity.Status)
+		return nil, apierror.BadRequest("CHAT", "activity is not in tool_blocked state (current: %s)", activity.Status)
 	}
 
 	// Validate session ownership
 	if activity.SessionID != sessionID {
-		return nil, apierror.BadRequest("activity", "activity does not belong to session %s", sessionID)
+		return nil, apierror.BadRequest("CHAT", "activity does not belong to session %s", sessionID)
 	}
 
 	// Validate user identity - reject anonymous (default_user) confirm requests

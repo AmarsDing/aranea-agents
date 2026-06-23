@@ -65,7 +65,7 @@
               :scope="levelScope(currentLevelNum)"
               :resource-id="editingId || undefined"
               :text="form.description ?? ''"
-              :refine-fn="refinePromptField"
+              :refine-fn="refineFn"
               flat
               size="sm"
               label="AI 优化描述"
@@ -94,7 +94,6 @@
 const form = defineModel<PlatformResourceInput & { level: TaxonomyLevel }>('form', { required: true });
 import { computed } from 'vue';
 import AiRefineButton from './AIRefineButton.vue';
-import { refinePromptField } from '../../features/agents/aiRefine';
 import { levelLabel } from '../../features/platform/taxonomyTreeUtils';
 import {
   descriptionLabel,
@@ -104,12 +103,14 @@ import {
 } from '../../features/platform/taxonomyLabels';
 import type { PlatformResourceInput } from '../../features/platform/types';
 import type { TaxonomyLevel } from '../../features/platform/taxonomyTreeUtils';
+import type { RefineRequest, RefineResponse } from '../../features/agents/aiRefine';
 
 const props = defineProps<{
   modelValue: boolean;
   editingId: string;
   parentName: string;
   saving: boolean;
+  refineFn: (req: RefineRequest) => Promise<RefineResponse>;
 }>();
 
 const emit = defineEmits<{

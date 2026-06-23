@@ -29,9 +29,12 @@ func ExtractDocumentTextWithOCR(ctx context.Context, ocr OCRProvider, raw []byte
 	}
 	ext := resolveDocumentExtension(source, mimeType)
 	if isImageMime(mimeType) || ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp" {
-		if text, err := tryOCR(ctx, ocr, raw, mimeType, source); err == nil {
-			return text, nil
+		text, err := tryOCR(ctx, ocr, raw, mimeType, source)
+		if err != nil {
+			return "", apierror.BadRequest(apierror.DomainKnowledge,
+				"image document requires OCR but extraction failed: %s", err.Error()).WithCause(err)
 		}
+		return text, nil
 	}
 	if ext == ".html" || ext == ".htm" {
 		return stripHTML(string(raw)), nil

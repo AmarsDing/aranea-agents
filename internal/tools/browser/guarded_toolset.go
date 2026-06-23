@@ -14,8 +14,16 @@ import (
 // and must be SSRF-validated before the call is forwarded to the browser.
 // Matching is suffix-based so MCP ToolPrefix prefixes (e.g. "bw_browser_navigate")
 // are handled transparently.
+//
+// browser_navigate_back and browser_navigate_forward are included for
+// completeness: although they typically don't carry a URL argument, listing
+// them ensures that if the Playwright MCP server ever accepts a URL hint for
+// these operations, it will be validated. When no URL is present, the guard
+// is a no-op (empty URL passes validation).
 var navigateToolSuffixes = []string{
 	"browser_navigate",
+	"browser_navigate_back",
+	"browser_navigate_forward",
 }
 
 // requiresURLValidation reports whether the tool with the given declaration

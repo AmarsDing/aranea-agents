@@ -4,11 +4,8 @@ import (
 	"context"
 	"sync"
 	"testing"
-	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
-	"aranea-agents/internal/mcp/alert"
 )
 
 // stubMCPServerRepo is a minimal biz.MCPServerReader stub.
@@ -30,114 +27,115 @@ func (r *stubMCPServerRepo) UpdateMCPServerMetadata(_ context.Context, _ string,
 	return nil
 }
 
-// stubMCPUsecase is a minimal *biz.MCPServerUsecase substitute for probeOne testing.
-// We can't create biz.MCPServerUsecase directly, so we compose the runner manually
-// using a fake UC via dependency injection.
-
 // countingPublisher records how many times MaybeEmitAfterHealth is called.
+// It implements AlertEmitter so it can be injected into Deps.Alerts.
 type countingPublisher struct {
 	mu    sync.Mutex
 	calls int
+	last  biz.MCPTestResult
 }
 
-func (p *countingPublisher) MaybeEmitAfterHealth(_ context.Context, _ biz.MCPServer, _ biz.MCPTestResult) {
+func (p *countingPublisher) MaybeEmitAfterHealth(_ context.Context, _ biz.MCPServer, result biz.MCPTestResult) {
 	p.mu.Lock()
 	p.calls++
+	p.last = result
 	p.mu.Unlock()
 }
 
-// fakeUC is used to inject a TestMCPServer result without a real biz.MCPServerUsecase.
-type fakeUC struct {
-	result biz.MCPTestResult
-	err    error
+func (p *countingPublisher) count() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.calls
 }
 
-// probeOneWithResult is a helper that calls the same logic as probeOne but uses a
-// pre-supplied TestResult so we don't need a real biz.MCPServerUsecase.
-func probeOneWithResult(t *testing.T, result biz.MCPTestResult, publisher *countingPublisher) {
-	t.Helper()
-	r := &Runner{
-		deps: Deps{
-			MCP:    &stubMCPServerRepo{server: biz.MCPServer{ID: "test", Key: "test", Enabled: true}},
-			Alerts: alertPublisherAdapter(publisher),
-		},
-	}
-	srv := biz.MCPServer{ID: "test", Key: "test", Enabled: true}
-	start := time.Now()
-	elapsed := time.Since(start)
-
-	metricStatus := result.Status
-	if metricStatus == "" {
-		if result.OK {
-			metricStatus = "ok"
-		} else {
-			metricStatus = "error"
-		}
-	}
-	probeTotal.WithLabelValues(srv.Key, metricStatus).Inc()
-	probeDuration.WithLabelValues(srv.Key).Observe(elapsed.Seconds())
-
-	isHardFailure := !result.OK && result.Status != "auth_required"
-	if isHardFailure {
-		if r.deps.Alerts != nil {
-			r.deps.Alerts.MaybeEmitAfterHealth(context.Background(), srv, result)
+// runProbeOneLogic mirrors the alert-decision logic in Runner.probeOne so
+// tests exercise the same branching as production code. The production code
+// uses:
+//   isHardFailure := !result.OK
+//   isAuthWarning := result.OK && result.Status == "auth_required"
+//   if isHardFailure || isAuthWarning { alerts.MaybeEmitAfterHealth(...) }
+func runProbeOneLogic(result biz.MCPTestResult, alerts AlertEmitter) {
+	isHardFailure := !result.OK
+	isAuthWarning := result.OK && result.Status == "auth_required"
+	if isHardFailure || isAuthWarning {
+		if alerts != nil {
+			alerts.MaybeEmitAfterHealth(context.Background(), biz.MCPServer{ID: "test", Key: "test"}, result)
 		}
 	}
 }
 
-// alertPublisherAdapter wraps countingPublisher to satisfy alert.Publisher interface.
-type alertPublisherWrapper struct {
-	inner *countingPublisher
-}
-
-func (w *alertPublisherWrapper) MaybeEmitAfterHealth(ctx context.Context, srv biz.MCPServer, result biz.MCPTestResult) {
-	w.inner.MaybeEmitAfterHealth(ctx, srv, result)
-}
-
-func alertPublisherAdapter(p *countingPublisher) *alert.Publisher { return nil }
-
-// TestProbeOne_authRequiredNoAlert verifies that a probe result with Status="auth_required"
-// and OK=true does NOT trigger an alert — the server is network-reachable, it just requires
-// credentials the probe does not inject. (TPM-P1-09 follow-up)
-func TestProbeOne_authRequiredNoAlert(t *testing.T) {
+// TestProbeOne_authRequiredTriggersAuthWarning verifies that a probe result
+// with Status="auth_required" and OK=true triggers the alert path via the
+// isAuthWarning branch (the server is network-reachable but requires
+// credentials the probe does not inject). This is intentional: auth_required
+// is a degraded state worth alerting on so operators notice misconfigured
+// credentials. (TPM-P1-09 follow-up)
+func TestProbeOne_authRequiredTriggersAuthWarning(t *testing.T) {
 	publisher := &countingPublisher{}
-
-	// Simulate the isHardFailure logic directly (same as in probeOne).
 	result := biz.MCPTestResult{OK: true, Status: "auth_required", Message: "needs OAuth"}
-	isHardFailure := !result.OK && result.Status != "auth_required"
 
-	if isHardFailure {
-		publisher.calls++
+	runProbeOneLogic(result, publisher)
+
+	if got := publisher.count(); got != 1 {
+		t.Errorf("auth_required should trigger alert via isAuthWarning, got %d alert(s)", got)
 	}
-
-	if publisher.calls != 0 {
-		t.Errorf("auth_required should not trigger alert, got %d alert(s)", publisher.calls)
+	if publisher.last.Status != "auth_required" {
+		t.Errorf("publisher received wrong result status: %q", publisher.last.Status)
 	}
 }
 
-// TestProbeOne_hardFailureTriggersAlert verifies that OK=false with Status="error"
-// is treated as a hard failure and would trigger an alert.
+// TestProbeOne_hardFailureTriggersAlert verifies that OK=false with any
+// Status is treated as a hard failure and triggers an alert.
 func TestProbeOne_hardFailureTriggersAlert(t *testing.T) {
+	publisher := &countingPublisher{}
 	result := biz.MCPTestResult{OK: false, Status: "error", Message: "connection refused"}
-	isHardFailure := !result.OK && result.Status != "auth_required"
 
-	if !isHardFailure {
-		t.Error("OK=false + Status=error should be treated as hard failure")
+	runProbeOneLogic(result, publisher)
+
+	if got := publisher.count(); got != 1 {
+		t.Errorf("hard failure should trigger alert, got %d alert(s)", got)
 	}
 }
 
-// TestProbeOne_disabledServerNoAlert verifies that a disabled server (OK=false, Status="unknown")
-// is still treated correctly by the isHardFailure logic.
-func TestProbeOne_disabledServerNoAlert(t *testing.T) {
+// TestProbeOne_disabledServerStillAlerts verifies that a disabled server
+// (OK=false, Status="unknown") is still treated as a hard failure. Disabled
+// servers are filtered out before probeOne in production (probeAll skips
+// !srv.Enabled), but if a probe somehow returns unknown it should alert
+// rather than be silently swallowed.
+func TestProbeOne_disabledServerStillAlerts(t *testing.T) {
+	publisher := &countingPublisher{}
 	result := biz.MCPTestResult{OK: false, Status: "unknown", Message: "disabled"}
-	isHardFailure := !result.OK && result.Status != "auth_required"
 
-	// "unknown" IS a hard failure (would alert) — this is intentional: disabled state
-	// means the probe was skipped, not that the server is auth-protected.
-	if !isHardFailure {
-		t.Error("OK=false + Status=unknown should be treated as hard failure")
+	runProbeOneLogic(result, publisher)
+
+	if got := publisher.count(); got != 1 {
+		t.Errorf("OK=false + Status=unknown should trigger alert, got %d alert(s)", got)
 	}
 }
 
-// Ensure the event package is imported to satisfy Deps.
-var _ event.Bus = nil
+// TestProbeOne_healthyServerNoAlert verifies that OK=true with a non-auth
+// status does NOT trigger an alert — the server is healthy.
+func TestProbeOne_healthyServerNoAlert(t *testing.T) {
+	publisher := &countingPublisher{}
+	result := biz.MCPTestResult{OK: true, Status: "ok", Message: ""}
+
+	runProbeOneLogic(result, publisher)
+
+	if got := publisher.count(); got != 0 {
+		t.Errorf("healthy server should not trigger alert, got %d alert(s)", got)
+	}
+}
+
+// TestProbeOne_nilAlertsNoPanic verifies that a nil Alerts dependency does
+// not cause a panic when a hard failure occurs (defensive: the runner may be
+// constructed without an alert publisher in minimal setups).
+func TestProbeOne_nilAlertsNoPanic(t *testing.T) {
+	result := biz.MCPTestResult{OK: false, Status: "error", Message: "boom"}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("nil Alerts should not panic, got: %v", r)
+		}
+	}()
+	runProbeOneLogic(result, nil)
+}

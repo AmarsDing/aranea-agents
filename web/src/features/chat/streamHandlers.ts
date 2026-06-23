@@ -526,6 +526,16 @@ export function bindStreamHandlers(
     if (!rawActivityId) return; // Guard: activity_id must be present
     const activityId = `actv-${rawActivityId}`;
 
+    // P3 fallback: backfill pending-user turn_id if activity_start(task) was
+    // missed/lost. activity_delta metadata carries turn_id (see
+    // buildActivityEnvelope). Without this, useConversationTimeline cannot
+    // associate Activity records to UserTurn, causing thinking/reply UI to
+    // not render.
+    const turnId = String(md.turn_id ?? '');
+    if (turnId) {
+      backfillPendingUserTurnId(sid, turnId);
+    }
+
     ctx.onRunActivity?.();
 
     if (writer && sid === ctx.sessionId) {
@@ -564,6 +574,14 @@ export function bindStreamHandlers(
     const kind = String(md.kind ?? '');
     const rawActivityId = String(md.activity_id ?? '');
     const activityId = rawActivityId ? `actv-${rawActivityId}` : '';
+
+    // P3 fallback: backfill pending-user turn_id if activity_start(task) was
+    // missed/lost. activity_done metadata carries turn_id (see
+    // buildActivityEnvelope).
+    const turnId = String(md.turn_id ?? '');
+    if (turnId) {
+      backfillPendingUserTurnId(sid, turnId);
+    }
 
     switch (kind) {
       case 'thinking': {

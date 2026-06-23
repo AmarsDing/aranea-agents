@@ -329,6 +329,7 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 
 	record := s.newRunRecord(req)
 	s.runs[record.ID] = record
+	view := record.publicView()
 	s.mu.Unlock()
 
 	if err := s.persist(); err != nil {
@@ -337,7 +338,6 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 		s.mu.Unlock()
 		return trpcsubagent.Run{}, apierror.Internal(apierror.DomainSubagent, "persist: "+err.Error())
 	}
-	view := record.publicView()
 
 	s.wg.Add(1)
 	safego.Go(s.baseCtx, "subagent.execute", func() {
@@ -658,12 +658,16 @@ func (s *Service) finishRun(runID string, output string, runErr error, summaryRu
 			loggateway.Err(err))
 	}
 
-	// Notify via outbound router if configured
+	// Notify via outbound router if configured.
+	// Clone the record under lock so doNotifyCompletion reads a
+	// consistent snapshot without holding the lock during the
+	// (potentially slow) router.SendText call.
 	s.mu.Lock()
 	router := s.outboundRouter
+	cloned := record.clone()
 	s.mu.Unlock()
-	if router != nil && record.Status == trpcsubagent.StatusCompleted {
-		s.doNotifyCompletion(router, record)
+	if router != nil && cloned != nil && cloned.Status == trpcsubagent.StatusCompleted {
+		s.doNotifyCompletion(router, cloned)
 	}
 }
 
@@ -887,7 +891,7 @@ func (a *replyAccumulator) consume(evt *trpcevent.Event) {
 		return
 	}
 	if evt.Error != nil {
-		a.err = errors.New(evt.Error.Message)
+		a.err = apierror.Internal(apierror.DomainTool, evt.Error.Message)
 		return
 	}
 	if evt.Response == nil {

@@ -314,10 +314,14 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 		body = string(files["skill.md"])
 	}
 	if strings.TrimSpace(body) == "" {
-		r.lg.Warn("syncSlug: SKILL.md is empty or missing, skipping",
+		// 防御性检查：ValidateSkillPackage 正常会拒绝空 body，此处处理边缘情况。
+		// 必须报告失败而非静默返回，否则前端/运维无法感知异常。
+		r.recordFailure(ctx, slug, source, t0, "empty_body", errors.New("SKILL.md content is empty"))
+		r.lg.Warn("syncSlug: SKILL.md is empty or missing",
 			loggateway.StepID("skill.watch"),
 			loggateway.Str("slug", slug),
 			loggateway.Str("dir", dir))
+		r.reportSync(ctx, "skill.filesystem.rejected", slug, "SKILL.md 内容为空", "warn")
 		return
 	}
 	wasMissing := false

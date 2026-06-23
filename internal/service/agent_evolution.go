@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"strings"
 
 	v1 "aranea-agents/api/kratos/agent/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 )
 
 func toProtoSuggestion(s biz.EvolutionSuggestion) *v1.EvolutionSuggestion {
@@ -22,6 +24,9 @@ func toProtoSuggestion(s biz.EvolutionSuggestion) *v1.EvolutionSuggestion {
 }
 
 func (s *AgentService) GetAgentEvolutionMetrics(ctx context.Context, req *v1.GetAgentEvolutionMetricsRequest) (*v1.EvolutionMetricsResponse, error) {
+	if strings.TrimSpace(req.GetAgentId()) == "" {
+		return nil, apierror.BadRequest("AGENT", "agent_id is required")
+	}
 	m, err := s.evoUC.GetEvolutionMetrics(ctx, req.GetAgentId(), req.GetTimeRange())
 	if err != nil {
 		return nil, err

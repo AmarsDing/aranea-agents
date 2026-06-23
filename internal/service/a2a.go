@@ -74,7 +74,10 @@ func (s *A2AService) Discover(ctx context.Context, req *v1.DiscoverRequest) (*v1
 	if err != nil {
 		return nil, err
 	}
-	endpointEnabled, _ := s.uc.MapEndpointEnabled(ctx, biz.AgentIDsFromCards(cards))
+	endpointEnabled, mapErr := s.uc.MapEndpointEnabled(ctx, biz.AgentIDsFromCards(cards))
+	if mapErr != nil {
+		s.lg.Warn("map endpoint enabled failed", loggateway.Err(mapErr))
+	}
 	publicBase, _ := s.effectivePublicBase()
 	out := make([]*v1.A2AAgentCard, 0, len(cards))
 	for _, c := range cards {

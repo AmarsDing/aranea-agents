@@ -226,7 +226,13 @@ CREATE INDEX IF NOT EXISTS idx_memory_episodes_agent ON memory_episodes(agent_id
 CREATE INDEX IF NOT EXISTS idx_memory_episodes_consolidation ON memory_episodes(consolidation_status, importance DESC, ended_at);
 CREATE INDEX IF NOT EXISTS idx_memory_episodes_kind ON memory_episodes(episode_kind, ended_at DESC);
 CREATE INDEX IF NOT EXISTS idx_memory_episodes_l1_task ON memory_episodes(l1_task_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_episodes_session_title_agent ON memory_episodes(session_id, title, agent_id);
+-- P0-3: split unique index by episode origin. L1-archive episodes
+-- (l1_task_id != '') are deduplicated by (session_id, l1_task_id) so each
+-- task maps to exactly one episode regardless of title changes during
+-- Path A/B enrichment. Consolidation episodes (l1_task_id = '') are still
+-- deduplicated by (session_id, title, agent_id).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_episodes_session_l1_task ON memory_episodes(session_id, l1_task_id) WHERE l1_task_id != '';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_episodes_session_title_agent ON memory_episodes(session_id, title, agent_id) WHERE l1_task_id = '';
 CREATE INDEX IF NOT EXISTS idx_memory_event_marks_session ON memory_event_marks(session_id, mark_type, created_at);
 CREATE INDEX IF NOT EXISTS idx_memory_event_marks_episode ON memory_event_marks(episode_id);
 

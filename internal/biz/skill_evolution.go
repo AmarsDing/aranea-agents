@@ -3,11 +3,13 @@ package biz
 import (
 	"context"
 	"crypto/sha256"
+	stderrors "errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
+	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
@@ -84,6 +86,23 @@ func (uc *SkillEvolutionUsecase) SetOrchestrator(o *SkillEvolutionOrchestrator) 
 func (uc *SkillEvolutionUsecase) DetectAndPropose(ctx context.Context, agentID string) ([]SkillProposal, error) {
 	agentID, err := requireNonEmpty(agentID, "SKILL_EVO", "agent_id")
 	if err != nil {
+		return nil, err
+	}
+	// Fail-closed: the AgentRepository is required to validate that the target
+	// agent exists before spending LLM calls or writing proposals. A nil
+	// dependency indicates misconfiguration.
+	if uc.agents == nil {
+		uc.lg.Error("agent repository not configured, refusing to detect skill evolution",
+			loggateway.StepID("skill_evo.detect"),
+			loggateway.Str("agent_id", agentID))
+		return nil, apierror.Internal("SKILL_EVO", "agent repository not configured; cannot validate agent existence")
+	}
+	// REL-2: validate agent existence. Without this, a non-existent agentID
+	// would silently produce zero proposals, masking caller errors.
+	if _, err := uc.agents.GetAgentByID(ctx, agentID); err != nil {
+		if stderrors.Is(err, shared.ErrNotFound) {
+			return nil, apierror.BadRequest("SKILL_EVO", "agent not found: %s", agentID)
+		}
 		return nil, err
 	}
 	if uc.creator == nil {

@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"aranea-agents/internal/pkginstall"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/outboundguard"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -34,7 +34,7 @@ type pkgInstallOutput struct {
 func newPkgInstallFromURLTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input pkgInstallInput) (pkgInstallOutput, error) {
 		if input.URL == "" {
-			return pkgInstallOutput{}, kerrors.BadRequest("CLI_ADMIN", "url is required")
+			return pkgInstallOutput{}, apierror.BadRequest(apierror.DomainTool, "url is required")
 		}
 		if err := validateRepoURL(input.URL); err != nil {
 			return pkgInstallOutput{}, err
@@ -42,17 +42,17 @@ func newPkgInstallFromURLTool(deps Deps) trpctool.Tool {
 
 		pkgDir, cleanup, err := pkginstall.FetchFromURL(input.URL, input.Ref, true)
 		if err != nil {
-			return pkgInstallOutput{}, kerrors.InternalServer("CLI_ADMIN", fmt.Sprintf("fetch package: %v", err))
+			return pkgInstallOutput{}, apierror.Internal(apierror.DomainTool, "fetch package: %v", err)
 		}
 		defer cleanup()
 
 		// Load and validate manifest.
 		manifest, err := pkginstall.LoadManifestFromDir(pkgDir)
 		if err != nil {
-			return pkgInstallOutput{}, kerrors.InternalServer("CLI_ADMIN", fmt.Sprintf("load manifest: %v", err))
+			return pkgInstallOutput{}, apierror.Internal(apierror.DomainTool, "load manifest: %v", err)
 		}
 		if err := pkginstall.ValidateManifest(manifest); err != nil {
-			return pkgInstallOutput{}, kerrors.BadRequest("CLI_ADMIN", fmt.Sprintf("invalid manifest: %v", err))
+			return pkgInstallOutput{}, apierror.BadRequest(apierror.DomainTool, "invalid manifest: %v", err)
 		}
 
 		// Apply decision to skills.
@@ -77,12 +77,16 @@ func newPkgInstallFromURLTool(deps Deps) trpctool.Tool {
 
 		result, err := ins.Install(pkgDir, manifest)
 		if err != nil {
-			return pkgInstallOutput{}, err
+			return pkgInstallOutput{}, apierror.Internal(apierror.DomainTool, "install package: %v", err)
 		}
 
 		// Also append per-step results.
 		for _, sr := range result.Steps {
-			b, _ := json.Marshal(sr)
+			b, marshalErr := json.Marshal(sr)
+			if marshalErr != nil {
+				stepLog = append(stepLog, fmt.Sprintf("step marshal error: %v", marshalErr))
+				continue
+			}
 			stepLog = append(stepLog, string(b))
 		}
 
@@ -104,42 +108,42 @@ func newPkgInstallFromURLTool(deps Deps) trpctool.Tool {
 func validateRepoURL(raw string) error {
 	// Reject local paths: absolute, relative, and Windows drive letters.
 	if strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "./") || strings.HasPrefix(raw, "../") {
-		return kerrors.BadRequest("CLI_ADMIN", "local paths are not allowed")
+		return apierror.BadRequest(apierror.DomainTool, "local paths are not allowed")
 	}
 	// Windows drive letter: C:/path or C:\path
 	if len(raw) >= 2 && raw[1] == ':' && isAlpha(rune(raw[0])) {
-		return kerrors.BadRequest("CLI_ADMIN", "local paths are not allowed")
+		return apierror.BadRequest(apierror.DomainTool, "local paths are not allowed")
 	}
 	// Reject paths containing ".." components (path traversal).
 	for _, seg := range strings.Split(raw, "/") {
 		if seg == ".." {
-			return kerrors.BadRequest("CLI_ADMIN", "path traversal (..) is not allowed")
+			return apierror.BadRequest(apierror.DomainTool, "path traversal (..) is not allowed")
 		}
 	}
 	for _, seg := range strings.Split(raw, `\`) {
 		if seg == ".." {
-			return kerrors.BadRequest("CLI_ADMIN", "path traversal (..) is not allowed")
+			return apierror.BadRequest(apierror.DomainTool, "path traversal (..) is not allowed")
 		}
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return kerrors.BadRequest("CLI_ADMIN", fmt.Sprintf("parse url: %v", err))
+		return apierror.BadRequest(apierror.DomainTool, "parse url: %v", err)
 	}
 	scheme := strings.ToLower(u.Scheme)
 	switch scheme {
 	case "https":
 		host := u.Hostname()
 		if host == "" {
-			return kerrors.BadRequest("CLI_ADMIN", "host is empty")
+			return apierror.BadRequest(apierror.DomainTool, "host is empty")
 		}
 		if err := outboundguard.ValidatePublicHost(host); err != nil {
-			return kerrors.BadRequest("CLI_ADMIN", fmt.Sprintf("host %q: %v", host, err))
+			return apierror.BadRequest(apierror.DomainTool, "host %q: %v", host, err)
 		}
 		return nil
 	case "http":
-		return kerrors.BadRequest("CLI_ADMIN", "http scheme is not allowed; use https instead")
+		return apierror.BadRequest(apierror.DomainTool, "http scheme is not allowed; use https instead")
 	case "file":
-		return kerrors.BadRequest("CLI_ADMIN", "file scheme is not allowed")
+		return apierror.BadRequest(apierror.DomainTool, "file scheme is not allowed")
 	case "":
 		// No scheme: treat as SCP-style Git URL (e.g. github.com/user/repo).
 		// Parse the first path segment as the host and validate it.
@@ -148,14 +152,14 @@ func validateRepoURL(raw string) error {
 			host = host[:slashIdx]
 		}
 		if host == "" {
-			return kerrors.BadRequest("CLI_ADMIN", fmt.Sprintf("cannot determine host from URL %q", raw))
+			return apierror.BadRequest(apierror.DomainTool, "cannot determine host from URL %q", raw)
 		}
 		if err := outboundguard.ValidatePublicHost(host); err != nil {
-			return kerrors.BadRequest("CLI_ADMIN", fmt.Sprintf("host %q: %v", host, err))
+			return apierror.BadRequest(apierror.DomainTool, "host %q: %v", host, err)
 		}
 		return nil
 	default:
-		return kerrors.BadRequest("CLI_ADMIN", fmt.Sprintf("scheme %q is not allowed; only https and SCP-style Git URLs are permitted", u.Scheme))
+		return apierror.BadRequest(apierror.DomainTool, "scheme %q is not allowed; only https and SCP-style Git URLs are permitted", u.Scheme)
 	}
 }
 

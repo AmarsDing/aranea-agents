@@ -315,14 +315,14 @@ func (r *l1WorkingMemoryRepo) ArchiveAndCreateEpisodeTx(ctx context.Context, ses
 			key_decisions_json, key_artifacts_json, l1_snapshot_json,
 			consolidation_status, consolidated_l3_count, metadata_json, ended_at, created_at
 		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(session_id, title, agent_id) DO UPDATE SET
+		ON CONFLICT(session_id, l1_task_id) WHERE l1_task_id != '' DO UPDATE SET
 			goal = excluded.goal, outcome = excluded.outcome,
 			outcome_summary = excluded.outcome_summary, importance = excluded.importance,
 			confidence = excluded.confidence,
 			key_decisions_json = excluded.key_decisions_json,
 			key_artifacts_json = excluded.key_artifacts_json,
 			l1_snapshot_json = excluded.l1_snapshot_json,
-			l1_task_id = excluded.l1_task_id,
+			title = excluded.title,
 			episode_kind = excluded.episode_kind,
 			ended_at = excluded.ended_at`),
 			epID,
@@ -633,7 +633,10 @@ func (r *l1WorkingMemoryRepo) ListIdleL1Tasks(ctx context.Context, cutoffRFC3339
 			"id": id, "session_id": sessID, "agent_id": agentID,
 			"task_title": title, "status": status, "updated_at": updatedAt,
 		}
-		b, _ := json.Marshal(m)
+		b, mErr := json.Marshal(m)
+		if mErr != nil {
+			return nil, entErrToBizErr(mErr, "MEMORY_L1")
+		}
 		out = append(out, b)
 	}
 	return out, entErrToBizErr(rows.Err(), "MEMORY_L1")

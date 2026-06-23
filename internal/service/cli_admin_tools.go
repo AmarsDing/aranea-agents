@@ -246,8 +246,10 @@ type graphBuilderAdapter struct {
 var _ orchtools.GraphBuilderPort = graphBuilderAdapter{}
 
 func (a graphBuilderAdapter) BuildAndExecute(ctx context.Context, config biz.GraphBuildConfig, sessionID string) (string, error) {
-	// Generate a deterministic graph ID from the config for idempotency.
-	graphID := "spirit_graph_" + config.EntryPoint
+	// Generate a deterministic graph ID from the config and session for idempotency.
+	// Include sessionID to ensure uniqueness across concurrent Spirit sessions
+	// that may share the same entry point (S-04 fix).
+	graphID := "spirit_graph_" + config.EntryPoint + "_" + sessionID
 	execID, err := a.exec.ExecuteGraphBuildConfig(ctx, graphID, sessionID, config, nil)
 	if err != nil {
 		return "", err

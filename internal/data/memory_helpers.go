@@ -657,7 +657,11 @@ func mergeCascadeFactMeta(base, oldName, newName string, lg loggateway.Logger) s
 	m["cascade_renamed_from"] = oldName
 	m["cascade_renamed_to"] = newName
 	m["source"] = "cascade_approve"
-	b, _ := json.Marshal(m)
+	b, mErr := json.Marshal(m)
+	if mErr != nil {
+		lg.Warn("session memory json marshal failed", loggateway.StepID("data.sessionmemory"), loggateway.Err(mErr))
+		return base
+	}
 	return string(b)
 }
 
@@ -671,7 +675,11 @@ func mergeCascadeReviewNote(metaJSON, status, note string, lg loggateway.Logger)
 	}
 	m["review_status"] = status
 	m["review_note"] = note
-	b, _ := json.Marshal(m)
+	b, mErr := json.Marshal(m)
+	if mErr != nil {
+		lg.Warn("session memory json marshal failed", loggateway.StepID("data.sessionmemory"), loggateway.Err(mErr))
+		return metaJSON
+	}
 	return string(b)
 }
 

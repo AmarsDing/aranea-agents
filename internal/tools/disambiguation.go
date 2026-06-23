@@ -104,6 +104,20 @@ func (d *disambiguatedTool) StreamableCall(ctx context.Context, jsonArgs []byte)
 	return nil, fmt.Errorf("tool %q is not streamable", d.decl.Name)
 }
 
+// ShouldDefer forwards the DeferredTool interface so that deferred tools
+// wrapped by ApplyDisambiguationHints retain their deferred semantics.
+// Without this, the framework's trpctool.ShouldDefer type assertion fails on
+// the wrapper and deferred tools are eagerly loaded (B2 fix).
+func (d *disambiguatedTool) ShouldDefer(ctx context.Context) bool {
+	type deferred interface {
+		ShouldDefer(context.Context) bool
+	}
+	if dt, ok := d.inner.(deferred); ok {
+		return dt.ShouldDefer(ctx)
+	}
+	return false
+}
+
 func filterNames(names []string, exclude string) []string {
 	var result []string
 	for _, n := range names {

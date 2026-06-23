@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"aranea-agents/pkg/apierror"
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -19,7 +18,7 @@ type skillGetInput struct {
 func newSkillGetTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input skillGetInput) (*SkillItem, error) {
 		if input.ID == "" {
-			return nil, kerrors.BadRequest("CLI_ADMIN", "id is required")
+			return nil, apierror.BadRequest(apierror.DomainTool, "id is required")
 		}
 		return deps.SkillRepo.GetSkill(ctx, input.ID)
 	}
@@ -46,7 +45,7 @@ type agentListOutput struct {
 func newAgentListTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input agentListInput) (agentListOutput, error) {
 		if input.Offset < 0 {
-			return agentListOutput{}, kerrors.BadRequest("CLI_ADMIN", "offset must be >= 0")
+			return agentListOutput{}, apierror.BadRequest(apierror.DomainTool, "offset must be >= 0")
 		}
 		limit := input.Limit
 		if limit <= 0 {
@@ -77,7 +76,7 @@ type agentGetInput struct {
 func newAgentGetTool(deps Deps) trpctool.Tool {
 	execute := func(ctx context.Context, input agentGetInput) (*AgentItem, error) {
 		if input.ID == "" {
-			return nil, kerrors.BadRequest("CLI_ADMIN", "id is required")
+			return nil, apierror.BadRequest(apierror.DomainTool, "id is required")
 		}
 		item, err := deps.AgentRepo.GetAgent(ctx, input.ID)
 		if err != nil {
@@ -88,7 +87,14 @@ func newAgentGetTool(deps Deps) trpctool.Tool {
 			}
 			byKey, keyErr := deps.AgentRepo.GetAgentByAgentKey(ctx, input.ID)
 			if keyErr != nil {
-				return nil, err // return original error
+				// If the key lookup also failed with a non-NotFound error
+				// (e.g. DB connection), return that more informative error
+				// instead of masking it with the original NotFound.
+				var keyAE *apierror.Error
+				if errors.As(keyErr, &keyAE) && keyAE.Code == apierror.CodeNotFound {
+					return nil, err // both lookups failed with NotFound
+				}
+				return nil, keyErr
 			}
 			return byKey, nil
 		}

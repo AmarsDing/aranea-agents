@@ -171,21 +171,20 @@ func (s *memoryService) UpdateMemory(ctx context.Context, mk trpcmemory.Key, mem
 	// from the existing fact, invalidate the old fact (set ValidUntil)
 	// rather than overwriting it. This preserves history for temporal
 	// reconstruction queries.
+	// P0-2 fix: use InvalidateAndUpsertFactTx to atomically invalidate + upsert
+	// in a single transaction, preventing data loss (invalidate succeeds but
+	// upsert fails) and duplicate active facts (invalidate fails silently).
 	upsertID := id
-	if oldID := s.detectContentConflict(ctx, id, mem); oldID != "" {
-		if _, invErr := s.factWriter.InvalidateFact(ctx, oldID); invErr != nil {
-			s.lg.Warn("invalidate old fact on update conflict failed",
-				loggateway.StepID("memory.update.invalidate"),
-				loggateway.Str("fact_id", oldID),
-				loggateway.Err(invErr))
-		}
+	oldID := ""
+	if conflictID := s.detectContentConflict(ctx, id, mem); conflictID != "" {
+		oldID = conflictID
 		// Create a new fact with a fresh ID so the old row is preserved.
 		upsertID = ""
 	}
 	upsert := trpcFactUpsert(uk, upsertID, mem, topics, factKind, now, now)
 	upsert.ValidFrom = now
 	applyPIIScan(&upsert, mem)
-	raw, err := s.factWriter.UpsertFactRow(ctx, upsert)
+	raw, err := s.factWriter.InvalidateAndUpsertFactTx(ctx, oldID, upsert)
 	if err != nil {
 		return err
 	}
