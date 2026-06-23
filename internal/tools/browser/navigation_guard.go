@@ -183,8 +183,16 @@ func (p NavigationPolicy) checkResolvedIPs(host string) error {
 		return nil
 	}
 	for _, addr := range addrs {
-		ip, ok := netip.AddrFromSlice(addr)
-		if !ok {
+		// net.LookupIP may return 16-byte IPv4-mapped IPv6 addresses
+		// (e.g. ::ffff:127.0.0.1). Convert to 4-byte form first so that
+		// netip.Addr.IsLoopback/IsPrivate check the real IPv4 ranges.
+		var ip netip.Addr
+		if v4 := addr.To4(); v4 != nil {
+			ip, _ = netip.AddrFromSlice(v4)
+		} else {
+			ip, _ = netip.AddrFromSlice(addr)
+		}
+		if !ip.IsValid() {
 			continue
 		}
 		if ip.IsLoopback() && !p.AllowLoopback {

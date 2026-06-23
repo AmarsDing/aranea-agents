@@ -205,12 +205,16 @@ func toProtoStep(step biz.GraphStepSnapshot) *graphv1.GraphStepSnapshot {
 		st, err := structpb.NewStruct(step.InputState)
 		if err == nil {
 			pb.InputState = st
+		} else {
+			// TODO: log conversion error
 		}
 	}
 	if step.OutputState != nil {
 		st, err := structpb.NewStruct(step.OutputState)
 		if err == nil {
 			pb.OutputState = st
+		} else {
+			// TODO: log conversion error
 		}
 	}
 	if !step.Timestamp.IsZero() {
@@ -325,6 +329,9 @@ func bizTemplateToProto(t biz.GraphTemplateRef, lg loggateway.Logger) *graphv1.G
 }
 
 func toProtoTask(task *biz.GraphTask) *graphv1.Task {
+	if task == nil {
+		return &graphv1.Task{}
+	}
 	pb := &graphv1.Task{
 		TaskId:         task.TaskID,
 		NodeId:         task.NodeID,

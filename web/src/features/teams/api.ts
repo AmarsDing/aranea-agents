@@ -12,6 +12,9 @@ import { createEnvelopeStream } from '../../realtime/useEnvelopeStream';
 import { TEAM_RUNTIME_ENVELOPE_TYPES, teamRunEventFromEnvelope } from './teamRunEventFromEnvelope';
 import type { Envelope } from '../../realtime/envelope';
 
+/** Session id alias that triggers admin-wide monitoring (maps to GLOBAL_WS_SESSION_ID). */
+const TEAM_MONITOR_SESSION_ALIAS = 'team-monitor';
+
 export type {
   Team,
   TeamDefinition,
@@ -40,6 +43,10 @@ function wireTeam(t: WireTeam | null | undefined): Team {
     readonly: t?.readonly ?? false,
     source: t?.source ?? '',
     kind: t?.kind ?? '',
+    spirit_session_id: t?.spiritSessionId ?? '',
+    task_description: t?.taskDescription ?? '',
+    dag_node_id: t?.dagNodeId ?? '',
+    depends_on: t?.dependsOn ?? [],
     created_at: t?.createdAt ?? '',
     updated_at: t?.updatedAt ?? '',
     deleted_at: t?.deletedAt ?? '',
@@ -63,6 +70,7 @@ function wireRun(r: WireTeamRun | null | undefined): TeamRun {
     error_message: r?.errorMessage ?? '',
     topology_json: r?.topologyJson ?? '',
     graph_execution_id: r?.graphExecutionId ?? '',
+    trace_id: r?.traceId ?? '',
     started_at: r?.startedAt ?? '',
     finished_at: r?.finishedAt ?? '',
     created_at: r?.createdAt ?? '',
@@ -244,7 +252,7 @@ export function subscribeTeamRunEventsWs(
   onError?: (error: string) => void,
   onReplayState?: (replaying: boolean) => void,
 ) {
-  const effectiveSession = sessionId.trim() === '' || sessionId === 'team-monitor' ? GLOBAL_WS_SESSION_ID : sessionId;
+  const effectiveSession = sessionId.trim() === '' || sessionId === TEAM_MONITOR_SESSION_ALIAS ? GLOBAL_WS_SESSION_ID : sessionId;
   const stream = createEnvelopeStream({
     sessionId: effectiveSession,
     channels: ['team', 'monitor', 'system'],

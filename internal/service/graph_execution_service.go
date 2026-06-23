@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/telemetry/turntrace"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -126,7 +127,10 @@ func (s *GraphService) CancelGraphExecution(ctx context.Context, req *graphv1.Ca
 	if err != nil {
 		return nil, err
 	}
-	exec, _ := s.uc.GetExecution(ctx, req.ExecutionId)
+	exec, execErr := s.uc.GetExecution(ctx, req.ExecutionId)
+	if execErr != nil {
+		s.lg.Warn("get execution after cancel failed", loggateway.Err(execErr))
+	}
 	status := string(biz.GraphExecCancelled)
 	if exec != nil {
 		status = exec.Status

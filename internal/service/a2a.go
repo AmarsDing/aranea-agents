@@ -186,9 +186,9 @@ func (s *A2AService) Invoke(ctx context.Context, req *v1.A2AInvokeRequest) (*v1.
 	if runErr != nil {
 		status = "error"
 		errMsg = runErr.Error()
-		a2aInvokeTotal.WithLabelValues("", calleeID, "error").Inc()
+		a2aInvokeTotal.WithLabelValues(callerKey, calleeID, "error").Inc()
 	} else {
-		a2aInvokeTotal.WithLabelValues("", calleeID, "success").Inc()
+		a2aInvokeTotal.WithLabelValues(callerKey, calleeID, "success").Inc()
 	}
 
 	inv.Status = status

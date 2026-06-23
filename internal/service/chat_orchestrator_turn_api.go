@@ -136,6 +136,7 @@ func (o *ChatOrchestrator) nativeGetProviderOptions(ctx context.Context) (*chatv
 	}
 	rows, err := o.td().ReadDeps.LLM.List(ctx)
 	if err != nil {
+		o.lg().Warn("list providers failed", loggateway.Err(err))
 		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
 	}
 	seen := make(map[string]struct{})
@@ -166,6 +167,7 @@ func (o *ChatOrchestrator) nativeGetModelOptions(ctx context.Context) (*chatv1.G
 	}
 	rows, err := o.td().ReadDeps.LLM.List(ctx)
 	if err != nil {
+		o.lg().Warn("list models failed", loggateway.Err(err))
 		return &chatv1.GetChatOptionsResponse{Items: nil}, nil
 	}
 	var items []*chatv1.ChatOption

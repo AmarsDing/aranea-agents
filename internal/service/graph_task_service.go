@@ -120,6 +120,7 @@ func (s *GraphService) ListTaskComments(ctx context.Context, req *graphv1.ListTa
 			TaskId:    c.TaskID,
 			Author:    c.Author,
 			Content:   c.Content,
+			Type:      c.Type,
 			CreatedAt: timestamppb.New(c.CreatedAt),
 		}
 	}
@@ -136,6 +137,7 @@ func (s *GraphService) AddTaskComment(ctx context.Context, req *graphv1.AddTaskC
 		TaskId:    comment.TaskID,
 		Author:    comment.Author,
 		Content:   comment.Content,
+		Type:      comment.Type,
 		CreatedAt: timestamppb.New(comment.CreatedAt),
 	}}, nil
 }

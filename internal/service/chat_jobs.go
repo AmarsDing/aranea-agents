@@ -8,6 +8,7 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 )
 
@@ -131,7 +132,8 @@ func (s *ChatService) CancelChatBackgroundJob(ctx context.Context, req *chatv1.C
 			return &chatv1.CancelChatBackgroundJobResponse{Cancelled: false}, nil
 		}
 		if err := s.orch.chJobs().SessionRuns.Fail(ctx, id, "cancelled by user"); err != nil {
-			return nil, apierror.Internal("CHAT_JOBS", "cancel session run failed: %v", err)
+			s.lg.Warn("cancel session run failed", loggateway.Err(err))
+			return nil, apierror.Internal("CHAT_JOBS", "cancel session run failed")
 		}
 		return &chatv1.CancelChatBackgroundJobResponse{Cancelled: true}, nil
 
@@ -140,7 +142,8 @@ func (s *ChatService) CancelChatBackgroundJob(ctx context.Context, req *chatv1.C
 			return nil, apierror.NotFound("CHAT_JOBS", "turn job service not available")
 		}
 		if err := s.orch.chJobs().TurnJobs.Cancel(ctx, id); err != nil {
-			return nil, apierror.Internal("CHAT_JOBS", "cancel turn job failed: %v", err)
+			s.lg.Warn("cancel turn job failed", loggateway.Err(err))
+			return nil, apierror.Internal("CHAT_JOBS", "cancel turn job failed")
 		}
 		return &chatv1.CancelChatBackgroundJobResponse{Cancelled: true}, nil
 

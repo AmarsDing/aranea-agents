@@ -198,6 +198,9 @@ func mapTeamErr(err error) error {
 	if apierror.IsCode(err, apierror.CodeNotFound) {
 		return apierror.NotFound("TEAM", "team not found")
 	}
+	if apierror.IsCode(err, apierror.CodeConflict) {
+		return apierror.Conflict("TEAM", "team conflict")
+	}
 	return err
 }
 

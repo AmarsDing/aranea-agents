@@ -77,10 +77,7 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 			return nil, apierror.Forbidden("CHAT", "only the session owner can confirm activities")
 		}
 	} else {
-		s.lg.Warn("confirm activity skipped ownership check: sessions unavailable",
-			loggateway.Str("session_id", sessionID),
-			loggateway.Str("activity_id", activityID),
-		)
+		return nil, apierror.Internal("CHAT", "session store unavailable, cannot verify ownership")
 	}
 
 	// Update status

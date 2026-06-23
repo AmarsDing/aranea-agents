@@ -83,10 +83,7 @@ func (s *ChatService) ConfirmPlan(ctx context.Context, req *chatv1.ConfirmPlanRe
 			return nil, apierror.Forbidden("CHAT", "only the session owner can confirm plans")
 		}
 	} else {
-		s.lg.Warn("confirm plan skipped ownership check: sessions unavailable",
-			loggateway.Str("session_id", sessionID),
-			loggateway.Str("plan_id", planID),
-		)
+		return nil, apierror.Internal("CHAT", "session store unavailable, cannot verify ownership")
 	}
 
 	// Rejection path: leave the plan in draft status and publish an event.

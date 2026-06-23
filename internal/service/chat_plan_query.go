@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"strings"
+	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
@@ -52,9 +53,7 @@ func (s *ChatService) ListPlans(ctx context.Context, req *chatv1.ListPlansReques
 			return nil, apierror.Forbidden("CHAT", "only the session owner can list plans")
 		}
 	} else {
-		s.lg.Warn("list plans skipped ownership check: sessions unavailable",
-			loggateway.Str("session_id", sessionID),
-		)
+		return nil, apierror.Internal("CHAT", "session store unavailable, cannot verify ownership")
 	}
 
 	plans, err := planner.ListPlans(ctx, sessionID)
@@ -112,10 +111,7 @@ func (s *ChatService) GetPlan(ctx context.Context, req *chatv1.GetPlanRequest) (
 			return nil, apierror.Forbidden("CHAT", "only the session owner can view plan details")
 		}
 	} else {
-		s.lg.Warn("get plan skipped ownership check: sessions unavailable",
-			loggateway.Str("session_id", sessionID),
-			loggateway.Str("plan_id", planID),
-		)
+		return nil, apierror.Internal("CHAT", "session store unavailable, cannot verify ownership")
 	}
 
 	plan, err := planner.GetPlan(ctx, planID)
@@ -147,8 +143,8 @@ func toTaskPlanSummary(p *biz.TaskPlan) *chatv1.TaskPlanSummary {
 		Strategy:        string(p.Strategy),
 		Status:          string(p.Status),
 		SubtaskCount:    int32(len(p.SubTasks)),
-		CreatedAt:       p.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:       p.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		CreatedAt:       p.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:       p.UpdatedAt.Format(time.RFC3339),
 	}
 }
 
@@ -178,8 +174,8 @@ func toTaskPlanDetail(p *biz.TaskPlan) *chatv1.TaskPlanDetail {
 		StrategyReason:  p.StrategyReason,
 		TopologyHint:    string(p.TopologyHint),
 		Status:          string(p.Status),
-		CreatedAt:       p.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		UpdatedAt:       p.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		CreatedAt:       p.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:       p.UpdatedAt.Format(time.RFC3339),
 	}
 
 	for _, st := range p.SubTasks {

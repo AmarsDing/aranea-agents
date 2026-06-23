@@ -17,6 +17,14 @@ export type Team = {
   readonly?: boolean;
   source?: string; // user | system | imported
   kind?: string; // system_builtin | ecosystem_preset | marketplace | certified
+  // Spirit session this team belongs to (M54 spirit teams).
+  spirit_session_id?: string;
+  // Free-form task description for spirit teams.
+  task_description?: string;
+  // DAG node id when team is part of a spirit DAG.
+  dag_node_id?: string;
+  // DAG predecessor node ids (depends_on).
+  depends_on?: string[];
   created_at: string;
   updated_at: string;
   deleted_at: string;
@@ -131,6 +139,8 @@ export type TeamRun = {
   error_message: string;
   topology_json: string;
   graph_execution_id: string;
+  // Cross-domain trace id (M53 OPS-TRACE-01).
+  trace_id?: string;
   started_at: string;
   finished_at: string;
   created_at: string;

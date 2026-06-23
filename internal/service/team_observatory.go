@@ -64,7 +64,10 @@ func (s *TeamService) buildObservatoryCompiledTopology(ctx context.Context, defi
 			}},
 		}
 	}
-	resp, _ := s.buildCompileTeamGraphResponse(ctx, def, definitionJSON)
+	resp, compileErr := s.buildCompileTeamGraphResponse(ctx, def, definitionJSON)
+	if compileErr != nil {
+		s.lg.Warn("compile team graph failed", loggateway.Err(compileErr))
+	}
 	return resp
 }
 
