@@ -1,5 +1,13 @@
 import { createTeamService } from '../../services';
-import type { Team, TeamRun, TeamRunEvent, TeamRunStep, TeamRunSummary, TaskDeadLetterRow } from './types';
+import type {
+  Team,
+  TeamRun,
+  TeamRunEvent,
+  TeamRunStep,
+  TeamRunSummary,
+  TeamRunMemberSummary,
+  TaskDeadLetterRow,
+} from './types';
 import type {
   Team as WireTeam,
   TeamRun as WireTeamRun,
@@ -14,6 +22,9 @@ import type { Envelope } from '../../realtime/envelope';
 
 /** Session id alias that triggers admin-wide monitoring (maps to GLOBAL_WS_SESSION_ID). */
 const TEAM_MONITOR_SESSION_ALIAS = 'team-monitor';
+
+/** Scan limit for findActiveTeamRun: max runs to fetch when filtering for active statuses. */
+const ACTIVE_RUN_SCAN_LIMIT = 200;
 
 export type {
   Team,
@@ -103,7 +114,7 @@ function wireStep(s: WireTeamRunStep | null | undefined): TeamRunStep {
   };
 }
 
-function wireMemberSummary(m: WireTeamRunMemberSummary | null | undefined) {
+function wireMemberSummary(m: WireTeamRunMemberSummary | null | undefined): TeamRunMemberSummary {
   return {
     agent_id: m?.agentId ?? '',
     agent_key: m?.agentKey ?? '',
@@ -202,7 +213,7 @@ const ACTIVE_RUN_STATUSES = new Set(['running', 'pending']);
 
 // TECH-DEBT: findActiveTeamRun uses frontend filtering; backend should expose GetActiveTeamRun RPC — issue #TBD
 export async function findActiveTeamRun(teamID: string): Promise<TeamRun | null> {
-  const runs = await listTeamRuns(teamID, 200);
+  const runs = await listTeamRuns(teamID, ACTIVE_RUN_SCAN_LIMIT);
   return runs.find((run) => ACTIVE_RUN_STATUSES.has(run.status)) ?? null;
 }
 
@@ -252,7 +263,8 @@ export function subscribeTeamRunEventsWs(
   onError?: (error: string) => void,
   onReplayState?: (replaying: boolean) => void,
 ) {
-  const effectiveSession = sessionId.trim() === '' || sessionId === TEAM_MONITOR_SESSION_ALIAS ? GLOBAL_WS_SESSION_ID : sessionId;
+  const effectiveSession =
+    sessionId.trim() === '' || sessionId === TEAM_MONITOR_SESSION_ALIAS ? GLOBAL_WS_SESSION_ID : sessionId;
   const stream = createEnvelopeStream({
     sessionId: effectiveSession,
     channels: ['team', 'monitor', 'system'],

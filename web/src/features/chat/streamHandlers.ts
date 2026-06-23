@@ -20,6 +20,9 @@ import {
 import { toolEventToMessage } from './toolEventMarkdown';
 import type { ActivityStartMeta, ActivityDeltaMeta, ActivityDoneMeta } from './activityTypes';
 
+/** H-03: Default stream timeout (ms) when ctx.streamTimeoutMs is not provided. */
+const CHAT_STREAM_TIMEOUT_DEFAULT_MS = 10 * 60 * 1000;
+
 export function createPlaceholderMessage(id: string, sessionID: string, role: string, content: string): Message {
   return {
     id,
@@ -245,7 +248,7 @@ export function bindStreamHandlers(
   // (e.g., WS disconnect), force-finalize all streaming/tool_running messages
   // after the timeout expires. The timer starts on the first streaming event
   // and is cleared when runner_completion or error arrives.
-  const STREAM_TIMEOUT_MS = ctx.streamTimeoutMs ?? 10 * 60 * 1_000;
+  const STREAM_TIMEOUT_MS = ctx.streamTimeoutMs ?? CHAT_STREAM_TIMEOUT_DEFAULT_MS;
   let streamTimeoutId: ReturnType<typeof setTimeout> | null = null;
   let streamStarted = false;
 

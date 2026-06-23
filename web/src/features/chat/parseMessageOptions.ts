@@ -73,7 +73,7 @@ function extractTeamMember(opts: RawOptions): MessageTeamMemberRef | null {
   return null;
 }
 
-export const VALID_SOURCES = new Set<string>(['web', 'channel', 'cron', 'a2a', 'api', '']);
+export const VALID_SOURCES = new Set<string>(['web', 'channel', 'cron', 'a2a', 'api']);
 
 function extractSourceMeta(opts: RawOptions): MessageSourceMeta | null {
   const src = (opts.source ?? '').trim().toLowerCase();

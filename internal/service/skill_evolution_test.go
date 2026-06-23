@@ -80,8 +80,8 @@ func (s *stubProposalRepo) UpdateStatus(_ context.Context, id string, status biz
 	return p, nil
 }
 
-func newTestSkillEvolutionService(repo *stubProposalRepo) *SkillEvolutionService {
-	uc := biz.NewSkillEvolutionUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+func newTestSkillEvolutionService(repo *stubProposalRepo, agents biz.AgentRepository) *SkillEvolutionService {
+	uc := biz.NewSkillEvolutionUsecase(repo, nil, agents, nil, nil, loggateway.NewNoop())
 	return NewSkillEvolutionService(uc, loggateway.NewNoop())
 }
 
@@ -94,7 +94,7 @@ func TestSkillEvolutionService_ListSkillProposals(t *testing.T) {
 		ID: "p2", AgentID: "a1", Status: biz.SkillProposalStatusApproved, CreatedAt: time.Now().UTC(),
 	})
 
-	svc := newTestSkillEvolutionService(repo)
+	svc := newTestSkillEvolutionService(repo, nil)
 	resp, err := svc.ListSkillProposals(context.Background(), &v1.ListSkillProposalsRequest{AgentId: "a1"})
 	if err != nil {
 		t.Fatalf("ListSkillProposals: %v", err)
@@ -116,7 +116,7 @@ func TestSkillEvolutionService_ListSkillProposals_FilterByStatus(t *testing.T) {
 		ID: "p2", AgentID: "a1", Status: biz.SkillProposalStatusApproved, CreatedAt: time.Now().UTC(),
 	})
 
-	svc := newTestSkillEvolutionService(repo)
+	svc := newTestSkillEvolutionService(repo, nil)
 	resp, err := svc.ListSkillProposals(context.Background(), &v1.ListSkillProposalsRequest{AgentId: "a1", Status: "pending"})
 	if err != nil {
 		t.Fatalf("ListSkillProposals: %v", err)
@@ -138,7 +138,7 @@ func TestSkillEvolutionService_ListSkillProposals_EmptyAgentID(t *testing.T) {
 		ID: "p2", AgentID: "a2", Status: biz.SkillProposalStatusApproved, CreatedAt: time.Now().UTC(),
 	})
 
-	svc := newTestSkillEvolutionService(repo)
+	svc := newTestSkillEvolutionService(repo, nil)
 	resp, err := svc.ListSkillProposals(context.Background(), &v1.ListSkillProposalsRequest{})
 	if err != nil {
 		t.Fatalf("ListSkillProposals with empty agentID: %v", err)
@@ -154,7 +154,7 @@ func TestSkillEvolutionService_GetSkillProposal(t *testing.T) {
 		ID: "p1", AgentID: "a1", SkillName: "test-skill", Status: biz.SkillProposalStatusPending, CreatedAt: time.Now().UTC(),
 	})
 
-	svc := newTestSkillEvolutionService(repo)
+	svc := newTestSkillEvolutionService(repo, nil)
 	resp, err := svc.GetSkillProposal(context.Background(), &v1.GetSkillProposalRequest{Id: "p1"})
 	if err != nil {
 		t.Fatalf("GetSkillProposal: %v", err)
@@ -166,7 +166,7 @@ func TestSkillEvolutionService_GetSkillProposal(t *testing.T) {
 
 func TestSkillEvolutionService_GetSkillProposal_NotFound(t *testing.T) {
 	repo := newStubProposalRepo()
-	svc := newTestSkillEvolutionService(repo)
+	svc := newTestSkillEvolutionService(repo, nil)
 
 	_, err := svc.GetSkillProposal(context.Background(), &v1.GetSkillProposalRequest{Id: "nonexistent"})
 	if err == nil {
@@ -180,7 +180,7 @@ func TestSkillEvolutionService_ApproveSkillProposal(t *testing.T) {
 		ID: "p1", AgentID: "a1", Status: biz.SkillProposalStatusPending, CreatedAt: time.Now().UTC(),
 	})
 
-	svc := newTestSkillEvolutionService(repo)
+	svc := newTestSkillEvolutionService(repo, nil)
 	resp, err := svc.ApproveSkillProposal(context.Background(), &v1.ApproveSkillProposalRequest{Id: "p1", ApprovedBy: "admin"})
 	if err != nil {
 		t.Fatalf("ApproveSkillProposal: %v", err)
@@ -196,7 +196,7 @@ func TestSkillEvolutionService_RejectSkillProposal(t *testing.T) {
 		ID: "p1", AgentID: "a1", Status: biz.SkillProposalStatusPending, CreatedAt: time.Now().UTC(),
 	})
 
-	svc := newTestSkillEvolutionService(repo)
+	svc := newTestSkillEvolutionService(repo, nil)
 	resp, err := svc.RejectSkillProposal(context.Background(), &v1.RejectSkillProposalRequest{Id: "p1", RejectedBy: "admin"})
 	if err != nil {
 		t.Fatalf("RejectSkillProposal: %v", err)
@@ -208,7 +208,9 @@ func TestSkillEvolutionService_RejectSkillProposal(t *testing.T) {
 
 func TestSkillEvolutionService_TriggerSkillDetection(t *testing.T) {
 	repo := newStubProposalRepo()
-	svc := newTestSkillEvolutionService(repo)
+	// DetectAndPropose fail-closes when agents==nil; provide a stub agent repo
+	// so the test reaches the creator==nil path (0 proposals, no error).
+	svc := newTestSkillEvolutionService(repo, channelTestAgentRepo{})
 
 	resp, err := svc.TriggerSkillDetection(context.Background(), &v1.TriggerSkillDetectionRequest{AgentId: "a1"})
 	if err != nil {

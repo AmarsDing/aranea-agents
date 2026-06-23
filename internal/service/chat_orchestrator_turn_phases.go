@@ -31,6 +31,9 @@ import (
 	"github.com/google/uuid"
 )
 
+// llmInvokeSlowLogThreshold is the threshold for logging slow LLM invocations.
+const llmInvokeSlowLogThreshold = 60 * time.Second
+
 // turnAdmissionResult holds the outputs of the ADMISSION phase.
 // Stability:internal
 type turnAdmissionResult struct {
@@ -155,7 +158,6 @@ func (o *ChatOrchestrator) prepareTurnUserOptions(
 	sess biz.Session,
 ) (string, error) {
 	sessionID := strings.TrimSpace(input.SessionID)
-	_ = strings.TrimSpace(input.Content) // content used by caller
 	runID := admit.runID
 	dialogMode := admit.dialogMode
 	prov := admit.provider
@@ -408,7 +410,7 @@ func (o *ChatOrchestrator) invokeLLMCall(
 
 	safego.Go(runCtx, "llm-call-timeout-log", func() {
 		select {
-		case <-time.After(60 * time.Second):
+		case <-time.After(llmInvokeSlowLogThreshold):
 			emitter.Log("chat.llm.invoke", event.FlowPhaseStart, "语言模型调用超过 60 秒仍在等待", event.P("run_id", runID))
 		case <-runCtx.Done():
 		}

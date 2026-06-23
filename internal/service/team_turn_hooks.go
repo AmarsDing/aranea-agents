@@ -25,7 +25,7 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 		if unlock != nil {
 			unlock()
 		}
-		return biz.ChatMessage{}, biz.ChatMessage{}, apierror.Internal("CHAT_TEAM_NATIVE", "team runner not wired")
+		return biz.ChatMessage{}, biz.ChatMessage{}, apierror.Internal(apierror.DomainChatTeamNative, "team runner not wired")
 	}
 	sessionID := strings.TrimSpace(input.SessionID)
 	content := strings.TrimSpace(input.Content)

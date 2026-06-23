@@ -18,23 +18,23 @@ import (
 // (default_user) requests are rejected to prevent unauthenticated access.
 func (s *ChatService) ListPlans(ctx context.Context, req *chatv1.ListPlansRequest) (*chatv1.ListPlansResponse, error) {
 	if s == nil || s.orch == nil {
-		return nil, apierror.Internal("CHAT", "service unavailable")
+		return nil, apierror.Internal(apierror.DomainChat, "service unavailable")
 	}
 
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, apierror.BadRequest("CHAT", "session_id is required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
 	}
 
 	planner := s.orch.team().TaskPlanner
 	if planner == nil {
-		return nil, apierror.Internal("CHAT", "task planner unavailable")
+		return nil, apierror.Internal(apierror.DomainChat, "task planner unavailable")
 	}
 
 	// Authorization: reject anonymous users.
 	userID := ctxuser.FromContext(ctx)
 	if userID == ctxuser.DefaultUserID {
-		return nil, apierror.Unauthorized("CHAT", "user authentication required for plan listing")
+		return nil, apierror.Unauthorized(apierror.DomainChat, "user authentication required for plan listing")
 	}
 
 	// Authorization: only the session owner may list plans.
@@ -42,7 +42,7 @@ func (s *ChatService) ListPlans(ctx context.Context, req *chatv1.ListPlansReques
 	if sessions != nil {
 		session, err := sessions.Get(ctx, sessionID)
 		if err != nil {
-			return nil, apierror.NotFound("CHAT", "session not found")
+			return nil, apierror.NotFound(apierror.DomainChat, "session not found")
 		}
 		if session.UserID != userID {
 			s.lg.Warn("list plans ownership denied",
@@ -50,10 +50,10 @@ func (s *ChatService) ListPlans(ctx context.Context, req *chatv1.ListPlansReques
 				loggateway.Str("user_id", userID),
 				loggateway.Str("owner_id", session.UserID),
 			)
-			return nil, apierror.Forbidden("CHAT", "only the session owner can list plans")
+			return nil, apierror.Forbidden(apierror.DomainChat, "only the session owner can list plans")
 		}
 	} else {
-		return nil, apierror.Internal("CHAT", "session store unavailable, cannot verify ownership")
+		return nil, apierror.Internal(apierror.DomainChat, "session store unavailable, cannot verify ownership")
 	}
 
 	plans, err := planner.ListPlans(ctx, sessionID)
@@ -74,24 +74,24 @@ func (s *ChatService) ListPlans(ctx context.Context, req *chatv1.ListPlansReques
 // (default_user) requests are rejected to prevent unauthenticated access.
 func (s *ChatService) GetPlan(ctx context.Context, req *chatv1.GetPlanRequest) (*chatv1.GetPlanResponse, error) {
 	if s == nil || s.orch == nil {
-		return nil, apierror.Internal("CHAT", "service unavailable")
+		return nil, apierror.Internal(apierror.DomainChat, "service unavailable")
 	}
 
 	planID := strings.TrimSpace(req.GetPlanId())
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if planID == "" || sessionID == "" {
-		return nil, apierror.BadRequest("CHAT", "plan_id and session_id are required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "plan_id and session_id are required")
 	}
 
 	planner := s.orch.team().TaskPlanner
 	if planner == nil {
-		return nil, apierror.Internal("CHAT", "task planner unavailable")
+		return nil, apierror.Internal(apierror.DomainChat, "task planner unavailable")
 	}
 
 	// Authorization: reject anonymous users.
 	userID := ctxuser.FromContext(ctx)
 	if userID == ctxuser.DefaultUserID {
-		return nil, apierror.Unauthorized("CHAT", "user authentication required for plan details")
+		return nil, apierror.Unauthorized(apierror.DomainChat, "user authentication required for plan details")
 	}
 
 	// Authorization: only the session owner may view plan details.
@@ -99,7 +99,7 @@ func (s *ChatService) GetPlan(ctx context.Context, req *chatv1.GetPlanRequest) (
 	if sessions != nil {
 		session, err := sessions.Get(ctx, sessionID)
 		if err != nil {
-			return nil, apierror.NotFound("CHAT", "session not found")
+			return nil, apierror.NotFound(apierror.DomainChat, "session not found")
 		}
 		if session.UserID != userID {
 			s.lg.Warn("get plan ownership denied",
@@ -108,10 +108,10 @@ func (s *ChatService) GetPlan(ctx context.Context, req *chatv1.GetPlanRequest) (
 				loggateway.Str("user_id", userID),
 				loggateway.Str("owner_id", session.UserID),
 			)
-			return nil, apierror.Forbidden("CHAT", "only the session owner can view plan details")
+			return nil, apierror.Forbidden(apierror.DomainChat, "only the session owner can view plan details")
 		}
 	} else {
-		return nil, apierror.Internal("CHAT", "session store unavailable, cannot verify ownership")
+		return nil, apierror.Internal(apierror.DomainChat, "session store unavailable, cannot verify ownership")
 	}
 
 	plan, err := planner.GetPlan(ctx, planID)
@@ -119,10 +119,10 @@ func (s *ChatService) GetPlan(ctx context.Context, req *chatv1.GetPlanRequest) (
 		return nil, err
 	}
 	if plan == nil {
-		return nil, apierror.NotFound("CHAT", "plan not found")
+		return nil, apierror.NotFound(apierror.DomainChat, "plan not found")
 	}
 	if plan.SpiritSessionID != sessionID {
-		return nil, apierror.BadRequest("CHAT", "plan does not belong to session %s", sessionID)
+		return nil, apierror.BadRequest(apierror.DomainChat, "plan does not belong to session %s", sessionID)
 	}
 
 	return &chatv1.GetPlanResponse{Plan: toTaskPlanDetail(plan)}, nil

@@ -37,30 +37,63 @@ func (m *metricsModel) GenerateContent(ctx context.Context, request *trpcmodel.R
 	start := time.Now()
 	ch, err := m.inner.GenerateContent(ctx, request)
 	if err != nil {
-		metrics.ProviderRequestTotal.WithLabelValues(m.provider, m.model, "error").Inc()
-		metrics.ProviderRequestDuration.WithLabelValues(m.provider, m.model).Observe(time.Since(start).Seconds())
+		m.recordMetrics(start, "error")
 		return nil, err
 	}
 	// BUG-6 fix: inner model returning (nil, nil) violates the framework
 	// contract and would cause a goroutine leak (range on nil channel blocks
 	// forever). Surface the violation as an explicit error.
 	if ch == nil {
-		metrics.ProviderRequestTotal.WithLabelValues(m.provider, m.model, "error").Inc()
-		metrics.ProviderRequestDuration.WithLabelValues(m.provider, m.model).Observe(time.Since(start).Seconds())
+		m.recordMetrics(start, "error")
 		return nil, ErrModelNilChannel
 	}
 	out := make(chan *trpcmodel.Response, 16)
 	safego.Go(ctx, "metrics-model-stream", func() {
 		defer close(out)
 		status := "ok"
-		for resp := range ch {
-			if resp != nil && resp.Error != nil {
-				status = "error"
+		// BUG-9 fix: goroutine must respect ctx cancellation to avoid leak
+		// when the consumer stops reading (e.g. error early-return) or ctx
+		// is cancelled. Without this, the goroutine blocks forever on
+		// `out <- resp` after the consumer abandons the channel.
+		for {
+			select {
+			case <-ctx.Done():
+				// ctx 取消：排空 ch 避免 inner model goroutine 阻塞，
+				// 记录 cancelled 指标后退出。
+				go drainResponseChannel(ch)
+				m.recordMetrics(start, "cancelled")
+				return
+			case resp, ok := <-ch:
+				if !ok {
+					// channel 正常关闭，记录最终指标。
+					m.recordMetrics(start, status)
+					return
+				}
+				if resp != nil && resp.Error != nil {
+					status = "error"
+				}
+				select {
+				case <-ctx.Done():
+					go drainResponseChannel(ch)
+					m.recordMetrics(start, "cancelled")
+					return
+				case out <- resp:
+				}
 			}
-			out <- resp
 		}
-		metrics.ProviderRequestTotal.WithLabelValues(m.provider, m.model, status).Inc()
-		metrics.ProviderRequestDuration.WithLabelValues(m.provider, m.model).Observe(time.Since(start).Seconds())
 	})
 	return out, nil
+}
+
+// recordMetrics records request total and duration for the given status.
+func (m *metricsModel) recordMetrics(start time.Time, status string) {
+	metrics.ProviderRequestTotal.WithLabelValues(m.provider, m.model, status).Inc()
+	metrics.ProviderRequestDuration.WithLabelValues(m.provider, m.model).Observe(time.Since(start).Seconds())
+}
+
+// drainResponseChannel exhausts a response channel to unblock the producer
+// goroutine when the consumer is no longer reading (e.g. after ctx cancel).
+func drainResponseChannel(ch <-chan *trpcmodel.Response) {
+	for range ch {
+	}
 }

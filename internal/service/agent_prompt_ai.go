@@ -30,11 +30,11 @@ func NewPromptFileAIEditor(catalog *biz.LlmProviderModelUsecase, rt *provider.Ro
 
 func (e *PromptFileAIEditor) Revise(ctx context.Context, providerName, modelName, fileName, currentBody, instruction string) (string, error) {
 	if e == nil || e.catalog == nil || e.rt == nil {
-		return "", apierror.Internal("AGENT_FILE", "prompt file ai editor not configured")
+		return "", apierror.Internal(apierror.DomainAgentFile, "prompt file ai editor not configured")
 	}
 	instruction = strings.TrimSpace(instruction)
 	if instruction == "" {
-		return "", apierror.BadRequest("AGENT_FILE", "instruction is required")
+		return "", apierror.BadRequest(apierror.DomainAgentFile, "instruction is required")
 	}
 	m, err := e.resolveModel(ctx, providerName, modelName)
 	if err != nil {
@@ -51,12 +51,18 @@ func (e *PromptFileAIEditor) Revise(ctx context.Context, providerName, modelName
 	}
 	ch, err := m.GenerateContent(ctx, req)
 	if err != nil {
-		return "", apierror.Internal("AGENT_FILE", "prompt file ai: %v", err)
+		e.lg.Warn("prompt file ai generate content failed",
+			loggateway.StepID("agent_prompt_ai.generate"),
+			loggateway.Err(err))
+		return "", apierror.Internal(apierror.DomainAgentFile, "prompt file ai edit failed")
 	}
 	var sb strings.Builder
 	for resp := range ch {
 		if resp.Error != nil {
-			return "", apierror.Internal("AGENT_FILE", "prompt file ai: %s", resp.Error.Message)
+			e.lg.Warn("prompt file ai stream error",
+				loggateway.StepID("agent_prompt_ai.stream"),
+				loggateway.Str("error", resp.Error.Message))
+			return "", apierror.Internal(apierror.DomainAgentFile, "prompt file ai edit failed")
 		}
 		for _, c := range resp.Choices {
 			if c.Delta.Content != "" {
@@ -97,7 +103,7 @@ func (e *PromptFileAIEditor) resolveModel(ctx context.Context, providerName, mod
 		picked = models[0]
 	}
 	if picked.Provider == "" {
-		return nil, apierror.BadRequest("AGENT_FILE", "no matching model in catalog")
+		return nil, apierror.BadRequest(apierror.DomainAgentFile, "no matching model in catalog")
 	}
 	return provider.TRPCModelForProviderModel(ctx, e.catalog, e.rt, picked.Provider, picked.Model, e.lg)
 }

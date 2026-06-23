@@ -17,7 +17,7 @@ export function runStatusFromEnvelope(env: Envelope): RunStatusFromWs | null {
   if (env.type !== 'run_status') return null;
   const meta = env.metadata ?? {};
   let status = String(meta.status ?? 'idle');
-  // Backward compat: map legacy 'escalating' to 'durable' (matches backend ParseSessionRunPhase)
+  // TECH-DEBT: legacy escalating→durable mapping, remove after DB migration completes
   if (status === 'escalating') status = 'durable';
   if (status === 'background_job') return null;
   return {

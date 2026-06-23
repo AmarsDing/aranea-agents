@@ -154,7 +154,7 @@ func (s *CronService) TriggerCronTask(ctx context.Context, req *v1.TriggerCronTa
 	return toProtoCronTaskRun(run), nil
 }
 
-// GetTaskRun returns a cron task run row for internal async completion watchers.
+// GetTaskRun is internal-only (not a proto RPC); used by cronTriggerGatewayAdapter for async completion watchers.
 func (s *CronService) GetTaskRun(ctx context.Context, id string) (biz.CronTaskRun, error) {
 	if s == nil || s.uc == nil {
 		return biz.CronTaskRun{}, apierror.Internal("CRON", "cron service not configured")

@@ -34,16 +34,16 @@ func (r *memoryFactReader) ReadSessionMemoryFacts(ctx context.Context, sessionID
 		ORDER BY importance DESC
 		LIMIT 50`), sessionID)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
 	defer rows.Close()
 	var result []biz.MemoryFactEntry
 	for rows.Next() {
 		var e biz.MemoryFactEntry
 		if err := rows.Scan(&e.Statement, &e.Scope, &e.Confidence); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "MEMORY_L3")
 		}
 		result = append(result, e)
 	}
-	return result, rows.Err()
+	return result, entErrToBizErr(rows.Err(), "MEMORY_L3")
 }

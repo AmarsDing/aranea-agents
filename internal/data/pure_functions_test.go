@@ -73,18 +73,14 @@ func TestUsageDailyWhere_WithProvider(t *testing.T) {
 
 func TestUsageDailyWhere_WithTeamID(t *testing.T) {
 	where, args := usageDailyWhere(biz.UsageQuery{TeamID: "team-1"})
-	if !strings.Contains(where, "workspace_id = ?") {
-		t.Fatalf("expected workspace_id filter, got %q", where)
+	// Daily 表无 team_id 列，不应添加任何 team 相关过滤
+	if strings.Contains(where, "workspace_id = ?") || strings.Contains(where, "team_id = ?") {
+		t.Fatalf("daily query should not filter by team: %q", where)
 	}
-	found := false
 	for _, a := range args {
 		if a == "team-1" {
-			found = true
-			break
+			t.Fatalf("daily query should not contain team-1 in args: %v", args)
 		}
-	}
-	if !found {
-		t.Fatalf("expected 'team-1' in args, got %v", args)
 	}
 }
 

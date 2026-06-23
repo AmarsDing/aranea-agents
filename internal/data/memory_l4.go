@@ -67,7 +67,7 @@ func (r *l4GraphRepo) UpsertEntity(ctx context.Context, params biz.L4EntityWrite
 		"active", meta, now, now,
 	)
 	if err != nil {
-		return err
+		return entErrToBizErr(err, "MEMORY_L4")
 	}
 	// Write action log (best-effort)
 	if logErr := r.writeActionLog(ctx, "UPSERT", "entity", id, params.EntityType, "consolidate_v1", params.MetadataJSON); logErr != nil {
@@ -106,7 +106,7 @@ func (r *l4GraphRepo) UpsertRelation(ctx context.Context, params biz.L4RelationW
 		"{}", "{}", "active", "",
 		"{}", "", "", now, now,
 	)
-	return err
+	return entErrToBizErr(err, "MEMORY_L4")
 }
 
 func (r *l4GraphRepo) GetEntityByScopeKey(ctx context.Context, scopeType, scopeID, entityType, nameNormalized string) (biz.L4EntitySnapshot, bool, error) {
@@ -122,7 +122,7 @@ func (r *l4GraphRepo) GetEntityByScopeKey(ctx context.Context, scopeType, scopeI
 		if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 			return biz.L4EntitySnapshot{}, false, nil
 		}
-		return biz.L4EntitySnapshot{}, false, err
+		return biz.L4EntitySnapshot{}, false, entErrToBizErr(err, "MEMORY_L4")
 	}
 	return biz.L4EntitySnapshot{
 		ID:             id,
@@ -146,7 +146,7 @@ func (r *l4GraphRepo) GetFirstEntityByType(ctx context.Context, scopeType, scope
 		if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 			return biz.L4EntitySnapshot{}, false, nil
 		}
-		return biz.L4EntitySnapshot{}, false, err
+		return biz.L4EntitySnapshot{}, false, entErrToBizErr(err, "MEMORY_L4")
 	}
 	return biz.L4EntitySnapshot{
 		ID:             id,
@@ -289,7 +289,7 @@ func (r *l4GraphRepo) RecordEntityReinforcement(ctx context.Context, entityID st
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_entities SET confidence = MIN(1.0, MAX(0.0, confidence + ?)), use_count = use_count + 1, updated_at = ? WHERE id = ?`),
 		delta, now, entityID)
-	return err
+	return entErrToBizErr(err, "MEMORY_L4")
 }
 
 func (r *l4GraphRepo) GetRecentReinforcementCounts(ctx context.Context, scopeType, scopeID string, windowDays int) (map[string]int, error) {
@@ -382,7 +382,7 @@ func (r *l4GraphRepo) writeActionLog(ctx context.Context, action, targetKind, ta
 		id, action, target_kind, target_id, reason, policy_version, turn_id, source_event_ids_json, metadata_json, created_at
 	) VALUES (?,?,?,?,?,?,?,?,?,?)`),
 		id, action, targetKind, targetID, reason, policyVersion, "", "[]", meta, now)
-	return err
+	return entErrToBizErr(err, "MEMORY_L4")
 }
 
 type l4GraphWriterAdapter struct {

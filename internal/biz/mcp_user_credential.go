@@ -175,7 +175,14 @@ func (u *MCPServerUsecase) ResolveUserAuthHeaders(ctx context.Context, serverKey
 	if err != nil {
 		return headers, err
 	}
-	headerName := strings.TrimSpace(picked.CredentialKey)
+	// Header name precedence: server-configured keyName > picked credential's
+	// key > default "Authorization". Using keyName (when set) ensures the
+	// secret lands in the header the MCP server actually expects, even when
+	// falling back to a credential whose credential_key differs.
+	headerName := strings.TrimSpace(keyName)
+	if headerName == "" {
+		headerName = strings.TrimSpace(picked.CredentialKey)
+	}
 	if headerName == "" {
 		headerName = "Authorization"
 	}

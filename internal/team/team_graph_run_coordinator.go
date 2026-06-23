@@ -511,58 +511,62 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 	if failed {
 		newStatus = biz.TeamRunStatusFailed
 	}
+	// Bounded retry loop: re-read current state and re-attempt transition.
+	// This replaces the previous TECH-DEBT(S8) fallback that bypassed the FSM
+	// and CAS guard via direct mutation. If all retries fail, we log and return
+	// without mutating — a reconciler or manual intervention must resolve it.
+	const maxRetries = 3
+	var lastErr error
 	updatedRun, transitionErr := c.runTransitioner.TransitionRunStatus(ctx, run.ID, newStatus)
 	if transitionErr != nil {
-		// S8 fix: Distinguish state-machine rejection from transient persistence failures.
-		// The pre-check at line 507 only verified run.Status is WaitingHuman or Running;
-		// it did NOT call sm.CanTransition. Re-validate explicitly here so we don't
-		// bypass the state machine on illegal transitions (AS-FSM-01).
 		sm := biz.NewTeamRunStateMachine()
-		if !sm.CanTransition(biz.TeamRunState(run.Status), biz.TeamRunState(newStatus)) {
-			// State machine rejects this transition — do NOT fall back to direct
-			// mutation. Log and return so the caller sees the inconsistency.
-			c.lg.Warn("TransitionRunStatus rejected by state machine in finalizeTeamRun",
-				loggateway.StepID("team.run.transition_rejected"),
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			// Re-read current state to handle concurrent updates.
+			currentRun, rerr := c.teamRunReader.GetTeamRunByID(ctx, run.ID)
+			if rerr != nil {
+				lastErr = rerr
+				break
+			}
+			if !sm.CanTransition(biz.TeamRunState(currentRun.Status), biz.TeamRunState(newStatus)) {
+				// State machine rejects this transition — do NOT fall back to direct
+				// mutation. Log and return so the caller sees the inconsistency.
+				c.lg.Warn("TransitionRunStatus rejected by state machine in finalizeTeamRun",
+					loggateway.StepID("team.run.transition_rejected"),
+					loggateway.Str("team_run_id", run.ID),
+					loggateway.Str("from_status", currentRun.Status),
+					loggateway.Str("to_status", newStatus),
+					loggateway.Err(transitionErr))
+				return
+			}
+			updatedRun, transitionErr = c.runTransitioner.TransitionRunStatus(ctx, run.ID, newStatus)
+			if transitionErr == nil {
+				lastErr = nil
+				break
+			}
+			lastErr = transitionErr
+		}
+		if lastErr != nil {
+			c.lg.Error("TransitionRunStatus exhausted retries in finalizeTeamRun",
+				loggateway.StepID("team.run.transition_exhausted"),
 				loggateway.Str("team_run_id", run.ID),
-				loggateway.Str("from_status", run.Status),
 				loggateway.Str("to_status", newStatus),
-				loggateway.Err(transitionErr))
+				loggateway.Int("attempts", maxRetries),
+				loggateway.Err(lastErr))
 			return
 		}
-		// TECH-DEBT(S8): Transition was valid per state machine but failed for
-		// another reason (e.g., DB error, CAS rejection due to concurrent update).
-		// Falling back to direct mutation bypasses the state machine and CAS guard.
-		// This should be replaced with a retry loop or a reconciler that re-reads
-		// the current state and re-attempts the transition.
-		c.lg.Warn("TransitionRunStatus failed in coordinator.finalizeTeamRun (using persistence-recovery fallback)",
-			loggateway.StepID("team.run.transition_fail"),
-			loggateway.Str("team_run_id", run.ID), loggateway.Err(transitionErr))
-		now := agent.RFC3339Now()
-		run.FinishedAt = now
-		run.UpdatedAt = now
-		run.Status = newStatus
-		if failed {
-			run.ErrorMessage = errMsg
-		}
-		if err := c.teamRunWriter.UpdateTeamRun(ctx, run); err != nil {
+	}
+	// Preserve extra fields that TransitionRunStatus doesn't set.
+	if failed {
+		updatedRun.ErrorMessage = errMsg
+	}
+	if updatedRun.ErrorMessage != "" || !failed {
+		if err := c.teamRunWriter.UpdateTeamRun(ctx, updatedRun); err != nil {
 			c.lg.Warn("UpdateTeamRun failed in finalizeTeamRun",
 				loggateway.StepID("team.graph.finalize_update_fail"),
-				loggateway.Str("team_run_id", run.ID), loggateway.Str("update_error", err.Error()))
+				loggateway.Str("team_run_id", updatedRun.ID), loggateway.Str("update_error", err.Error()))
 		}
-	} else {
-		// Preserve extra fields that TransitionRunStatus doesn't set.
-		if failed {
-			updatedRun.ErrorMessage = errMsg
-		}
-		if updatedRun.ErrorMessage != "" || !failed {
-			if err := c.teamRunWriter.UpdateTeamRun(ctx, updatedRun); err != nil {
-				c.lg.Warn("UpdateTeamRun failed in finalizeTeamRun",
-					loggateway.StepID("team.graph.finalize_update_fail"),
-					loggateway.Str("team_run_id", updatedRun.ID), loggateway.Str("update_error", err.Error()))
-			}
-		}
-		run = updatedRun
 	}
+	run = updatedRun
 	if c.bus != nil {
 		typ := event.EnvelopeTypeTeamRunFinished
 		if failed {

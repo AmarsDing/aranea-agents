@@ -57,5 +57,5 @@ func (r *actionLogRepo) WriteMemoryActionLog(ctx context.Context, rec biz.Memory
 		strings.TrimSpace(rec.TurnID),
 		sourceEventIDs, meta, now,
 	)
-	return err
+	return entErrToBizErr(err, "MEMORY_ACTION_LOG")
 }

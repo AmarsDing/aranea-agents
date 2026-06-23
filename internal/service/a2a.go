@@ -33,6 +33,10 @@ var (
 	})
 )
 
+// defaultA2AInvokeTimeoutSec is the fallback timeout (seconds) for A2A Invoke
+// when the request does not specify a positive TimeoutSeconds value.
+const defaultA2AInvokeTimeoutSec = 30
+
 // A2AService implements kratos a2a.v1.
 type A2AService struct {
 	v1.UnimplementedA2AServiceServer
@@ -99,10 +103,10 @@ func (s *A2AService) Invoke(ctx context.Context, req *v1.A2AInvokeRequest) (*v1.
 	calleeID := strings.TrimSpace(req.GetCalleeAgentId())
 	capability := strings.TrimSpace(req.GetCapability())
 	if calleeID == "" {
-		return nil, apierror.BadRequest("A2A", "callee_agent_id is required")
+		return nil, apierror.BadRequest(apierror.DomainA2A, "callee_agent_id is required")
 	}
 	if capability == "" {
-		return nil, apierror.BadRequest("A2A", "capability is required")
+		return nil, apierror.BadRequest(apierror.DomainA2A, "capability is required")
 	}
 
 	target, err := a2apkg.ResolveInvokeTarget(ctx, s.uc, calleeID)
@@ -132,7 +136,7 @@ func (s *A2AService) Invoke(ctx context.Context, req *v1.A2AInvokeRequest) (*v1.
 		}
 	default:
 		a2aInvokeTotal.WithLabelValues("", calleeID, "forbidden").Inc()
-		return nil, apierror.Internal("A2A", "unknown invoke target")
+		return nil, apierror.Internal(apierror.DomainA2A, "unknown invoke target")
 	}
 	if err := a2apkg.ValidateAdminInvokeWorkspace(ctx, req.GetWorkspace(), card); err != nil {
 		a2aInvokeTotal.WithLabelValues("", calleeID, "forbidden").Inc()
@@ -151,15 +155,15 @@ func (s *A2AService) Invoke(ctx context.Context, req *v1.A2AInvokeRequest) (*v1.
 			loggateway.Str("callee", calleeID),
 		)
 		a2aInvokeTotal.WithLabelValues(callerKey, calleeID, "rate_limited").Inc()
-		return nil, apierror.RateLimit("A2A", "invoke rate limit exceeded")
+		return nil, apierror.RateLimit(apierror.DomainA2A, "invoke rate limit exceeded")
 	} else if !allowed {
 		a2aInvokeTotal.WithLabelValues(callerKey, calleeID, "rate_limited").Inc()
-		return nil, apierror.RateLimit("A2A", "invoke rate limit exceeded")
+		return nil, apierror.RateLimit(apierror.DomainA2A, "invoke rate limit exceeded")
 	}
 
 	timeoutSec := int(req.GetTimeoutSeconds())
 	if timeoutSec <= 0 {
-		timeoutSec = 30
+		timeoutSec = defaultA2AInvokeTimeoutSec
 	}
 
 	inv, err := s.uc.StartInvocation(ctx, biz.A2AInvocation{
@@ -221,7 +225,7 @@ func (s *A2AService) Invoke(ctx context.Context, req *v1.A2AInvokeRequest) (*v1.
 // UpdateAgentCard sets or updates the A2A capabilities of an agent.
 func (s *A2AService) UpdateAgentCard(ctx context.Context, req *v1.UpdateAgentCardRequest) (*v1.A2AAgentCard, error) {
 	if strings.TrimSpace(req.GetAgentId()) == "" {
-		return nil, apierror.BadRequest("A2A", "agent_id is required")
+		return nil, apierror.BadRequest(apierror.DomainA2A, "agent_id is required")
 	}
 	caps := make([]biz.A2ACapability, 0, len(req.GetCapabilities()))
 	for _, c := range req.GetCapabilities() {
@@ -377,10 +381,10 @@ func (s *A2AService) GetA2AConfig(context.Context, *emptypb.Empty) (*v1.A2ARunti
 func requireA2AAdmin(ctx context.Context) error {
 	a, ok := auth.FromContext(ctx)
 	if !ok || a == nil {
-		return apierror.Unauthorized("A2A", "authentication required")
+		return apierror.Unauthorized(apierror.DomainA2A, "authentication required")
 	}
 	if !a.HasAdminAccess() {
-		return apierror.Forbidden("A2A", "admin access required for invoke")
+		return apierror.Forbidden(apierror.DomainA2A, "admin access required for invoke")
 	}
 	return nil
 }

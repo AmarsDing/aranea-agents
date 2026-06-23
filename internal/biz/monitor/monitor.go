@@ -805,11 +805,15 @@ func (u *Usecase) GetRunnerMetrics(ctx context.Context, windowMinutes int) (Runn
 	}
 	if avg, err := u.runnerCompletion.AvgRunnerCompletionDurationMsSince(ctx, since); err == nil {
 		out.AvgDurationMs = avg
+	} else {
+		u.lg.Warn("runner_metrics.avg_duration_failed", loggateway.Err(err))
 	}
 	if p50, p95, p99, err := u.runnerCompletion.LatencyPercentilesSince(ctx, since); err == nil {
 		out.P50DurationMs = p50
 		out.P95DurationMs = p95
 		out.P99DurationMs = p99
+	} else {
+		u.lg.Warn("runner_metrics.percentiles_failed", loggateway.Err(err))
 	}
 	return out, nil
 }

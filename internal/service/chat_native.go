@@ -179,7 +179,7 @@ func (a chatServiceGatewayAdapter) CancelPendingMessage(ctx context.Context, ses
 	if a.svc.orch.CancelPendingMessage(sessionID, pendingID) {
 		return nil
 	}
-	return apierror.NotFound("CHAT", "pending message not found")
+	return apierror.NotFound(apierror.DomainChat, "pending message not found")
 }
 
 // UpdatePendingMessage implements biz.PendingMessageGateway.
@@ -187,7 +187,7 @@ func (a chatServiceGatewayAdapter) UpdatePendingMessage(ctx context.Context, ses
 	if a.svc.orch.UpdatePendingMessage(sessionID, pendingID, content) {
 		return nil
 	}
-	return apierror.NotFound("CHAT", "pending message not found")
+	return apierror.NotFound(apierror.DomainChat, "pending message not found")
 }
 
 // GetPendingMessages implements biz.PendingMessageGateway.

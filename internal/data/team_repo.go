@@ -411,10 +411,13 @@ func (r *TeamRepo) ListTeamRunsByTeamIDs(ctx context.Context, teamIDs []string, 
 }
 
 func (r *TeamRepo) HasActiveTeamRun(ctx context.Context, teamID string) (bool, error) {
+	// Active statuses must match the DB partial unique index (migration 20260724):
+	//   WHERE status NOT IN ('success', 'failed', 'cancelled')
+	// i.e., active = pending, running, waiting_human.
 	count, err := r.data.RW().Read(ctx).TeamRun.Query().
 		Where(
 			teamrun.TeamIDEQ(teamID),
-			teamrun.StatusIn(biz.TeamRunStatusRunning, biz.TeamRunStatusPending),
+			teamrun.StatusIn(biz.TeamRunStatusRunning, biz.TeamRunStatusPending, biz.TeamRunStatusWaitingHuman),
 		).
 		Limit(1).
 		Count(ctx)

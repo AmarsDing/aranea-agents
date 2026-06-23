@@ -121,3 +121,9 @@ func IsGraphExecutionTerminal(state GraphExecutionState) bool {
 		return false
 	}
 }
+
+// IsActive reports whether the state is an active (non-terminal, evictable-later) state.
+// Running and WaitingHuman are active; Completed/Failed/Cancelled are not.
+func (s GraphExecutionState) IsActive() bool {
+	return s == GraphExecRunning || s == GraphExecWaitingHuman
+}

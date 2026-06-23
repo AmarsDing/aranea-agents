@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -77,12 +78,14 @@ func (cm *GraphCacheManager) RemoveBuildConfig(execID string) {
 // When loading from the repo, it verifies the definition hash; on mismatch the
 // cached entry is treated as a miss and the definition is re-resolved.
 func (cm *GraphCacheManager) BuildConfigForExecution(ctx context.Context, exec *GraphExecution) (*CompiledTeam, error) {
-	if exec != nil {
-		if ct, ok := cm.GetTeamBuildConfig(exec.ID); ok {
-			return ct, nil
-		}
+	if exec == nil {
+		return nil, apierror.BadRequest("GRAPH", "graph execution is nil")
 	}
-	if cm.compiledTeamRepo != nil && exec != nil && strings.HasPrefix(exec.GraphID, GraphIDTeamPrefix) {
+	if ct, ok := cm.GetTeamBuildConfig(exec.ID); ok {
+		return ct, nil
+	}
+	// Try loading from compiledTeamRepo for team: prefixed graphIDs.
+	if cm.compiledTeamRepo != nil && strings.HasPrefix(exec.GraphID, GraphIDTeamPrefix) {
 		parts := strings.SplitN(exec.GraphID, ":", 2)
 		if len(parts) == 2 {
 			ct, err := cm.compiledTeamRepo.LoadForSession(ctx, parts[1], exec.GraphID, exec.SessionID)
@@ -97,8 +100,14 @@ func (cm *GraphCacheManager) BuildConfigForExecution(ctx context.Context, exec *
 								loggateway.StepID("graph.build_config"),
 							)
 							// Stale cache — fall through to re-resolve from definition.
-							goto resolveFromDef
+						} else {
+							cm.SetTeamBuildConfig(exec.ID, ct)
+							return ct, nil
 						}
+					} else {
+						// Hash verification failed (e.g. team def not found); use cached entry as-is.
+						cm.SetTeamBuildConfig(exec.ID, ct)
+						return ct, nil
 					}
 				}
 				cm.SetTeamBuildConfig(exec.ID, ct)
@@ -106,7 +115,7 @@ func (cm *GraphCacheManager) BuildConfigForExecution(ctx context.Context, exec *
 			}
 		}
 	}
-resolveFromDef:
+	// Final fallback: resolve from graph definition.
 	def, err := cm.defProvider.GetGraph(ctx, exec.GraphID)
 	if err != nil {
 		return nil, err

@@ -9,8 +9,6 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	"github.com/go-kratos/kratos/v2/log"
 )
 
 const (
@@ -25,11 +23,10 @@ type MemoryDeadLetterReplayer struct {
 	interval    time.Duration
 	repo        biz.MemoryDeadLetterAdminRepo
 	enqueueFunc DeadLetterEnqueueFunc
-	log         *log.Helper
 	lg          loggateway.Logger
 }
 
-func NewMemoryDeadLetterReplayer(interval time.Duration, repo biz.MemoryDeadLetterAdminRepo, enqueueFunc DeadLetterEnqueueFunc, logger log.Logger, lg loggateway.Logger) *MemoryDeadLetterReplayer {
+func NewMemoryDeadLetterReplayer(interval time.Duration, repo biz.MemoryDeadLetterAdminRepo, enqueueFunc DeadLetterEnqueueFunc, lg loggateway.Logger) *MemoryDeadLetterReplayer {
 	if interval <= 0 {
 		interval = memoryDeadLetterReplayDefaultInterval
 	}
@@ -37,7 +34,6 @@ func NewMemoryDeadLetterReplayer(interval time.Duration, repo biz.MemoryDeadLett
 		interval:    interval,
 		repo:        repo,
 		enqueueFunc: enqueueFunc,
-		log:         log.NewHelper(logger),
 		lg:          lg,
 	}
 }
@@ -64,9 +60,6 @@ func (w *MemoryDeadLetterReplayer) runOnce(ctx context.Context) {
 		entries, err := w.repo.ListDeadLetters(ctx, "pending", memoryDeadLetterReplayBatchSize)
 		if err != nil {
 			w.lg.Warn("list pending dead letters failed", loggateway.Err(err))
-			if w.log != nil {
-				w.log.Warnf("dead letter replay: list: %v", err)
-			}
 			return
 		}
 		if len(entries) == 0 {
@@ -90,8 +83,12 @@ func (w *MemoryDeadLetterReplayer) runOnce(ctx context.Context) {
 			}
 			replayed++
 		}
-		if (replayed > 0 || failed > 0 || abandoned > 0) && w.log != nil {
-			w.log.Infof("dead letter replay: replayed=%d failed=%d abandoned=%d total=%d", replayed, failed, abandoned, len(entries))
+		if replayed > 0 || failed > 0 || abandoned > 0 {
+			w.lg.Info("dead letter replay summary",
+				loggateway.Int("replayed", replayed),
+				loggateway.Int("failed", failed),
+				loggateway.Int("abandoned", abandoned),
+				loggateway.Int("total", len(entries)))
 		}
 	})
 }

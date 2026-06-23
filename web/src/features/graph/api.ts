@@ -85,7 +85,7 @@ function wireNode(n: Record<string, unknown> | null | undefined): NodeDef {
     funcRef: (n?.funcRef as string) ?? '',
     interruptBefore: (n?.interruptBefore as boolean) ?? false,
     interruptAfter: (n?.interruptAfter as boolean) ?? false,
-    type: ((n?.type as NodeDef['type']) ?? 'function') as NodeDef['type'],
+    type: (n?.type as NodeDef['type'] | undefined) ?? 'function',
     description: (n?.description as string) ?? '',
     instruction: (n?.instruction as string) ?? '',
     modelName: (n?.modelName as string) ?? '',
@@ -113,14 +113,16 @@ function wireNode(n: Record<string, unknown> | null | undefined): NodeDef {
 }
 
 // wireStateFields maps state fields, migrating legacy reducer values.
-// Cast to string for comparison since server may return old 'replace'/'custom' values.
+// Returns a new array; does not mutate the input. Cast to string for comparison
+// since server may return old 'replace'/'custom' values.
 function wireStateFields(fields: StateFieldDef[] | undefined): StateFieldDef[] {
   if (!fields) return [];
   return fields.map((sf) => {
     const r = sf.reducer as string;
-    if (r === 'replace') sf.reducer = 'cover';
-    if (r === 'custom') sf.reducer = 'default';
-    return sf;
+    return {
+      ...sf,
+      reducer: r === 'replace' ? 'cover' : r === 'custom' ? 'default' : sf.reducer,
+    };
   });
 }
 
@@ -286,10 +288,13 @@ export async function listGraphExecutions(
   };
 }
 
-export async function cancelGraphExecution(executionId: string): Promise<string> {
+export async function cancelGraphExecution(executionId: string): Promise<{ executionId: string; status: string }> {
   const svc = createGraphService();
   const res = await svc.CancelGraphExecution({ executionId });
-  return res.status ?? '';
+  return {
+    executionId: res.executionId ?? '',
+    status: res.status ?? '',
+  };
 }
 
 export async function resumeGraph(
@@ -386,7 +391,7 @@ export async function listGraphTemplates(): Promise<GraphTemplateInfo[]> {
       type: e.type ?? '',
       label: e.label ?? '',
     })),
-    stateFields: (t.stateFields ?? []) as StateFieldDef[],
+    stateFields: wireStateFields(t.stateFields as StateFieldDef[] | undefined),
     entryPoint: t.entryPoint ?? '',
     finishPoint: t.finishPoint ?? '',
   }));
@@ -615,7 +620,7 @@ export async function saveGraphAsTemplate(
         type: e.type ?? '',
         label: e.label ?? '',
       })),
-      stateFields: (t?.stateFields ?? []) as StateFieldDef[],
+      stateFields: wireStateFields(t?.stateFields as StateFieldDef[] | undefined),
       entryPoint: t?.entryPoint ?? '',
       finishPoint: t?.finishPoint ?? '',
     },

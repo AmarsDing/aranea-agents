@@ -114,13 +114,13 @@ func (uc *GraphExecutionUsecase) evictIfNeeded() {
 	var oldestTime time.Time
 	for id, exec := range uc.executions {
 		exec.execMu.RLock()
-		status := exec.Status
+		status := ParseGraphExecutionState(exec.Status)
 		finishTime := exec.StartedAt
 		if exec.FinishedAt != nil {
 			finishTime = *exec.FinishedAt
 		}
 		exec.execMu.RUnlock()
-		if status == "running" || status == "waiting_human" {
+		if status.IsActive() {
 			continue
 		}
 		if oldestID == "" || finishTime.Before(oldestTime) {
@@ -197,7 +197,7 @@ func (uc *GraphExecutionUsecase) ExecuteGraph(ctx context.Context, graphID, sess
 	}
 	def, err := uc.defProvider.GetGraph(ctx, graphID)
 	if err != nil {
-		failedExec := NewGraphExecution(context.Background(), execID, graphID, sessionID, "failed")
+		failedExec := NewGraphExecution(context.Background(), execID, graphID, sessionID, string(GraphExecFailed))
 		failedExec.ErrorMessage = err.Error()
 		uc.notifyExecComplete(failedExec)
 		return nil, err
@@ -207,13 +207,13 @@ func (uc *GraphExecutionUsecase) ExecuteGraph(ctx context.Context, graphID, sess
 
 	runtime, eventCh, err := uc.factory.BuildAndRun(ctx, cfg, sessionID, graphID, execID, initialState)
 	if err != nil {
-		failedExec := NewGraphExecution(context.Background(), execID, graphID, sessionID, "failed")
+		failedExec := NewGraphExecution(context.Background(), execID, graphID, sessionID, string(GraphExecFailed))
 		failedExec.ErrorMessage = err.Error()
 		uc.notifyExecComplete(failedExec)
 		return nil, err
 	}
 
-	exec := NewGraphExecution(context.WithoutCancel(ctx), execID, graphID, sessionID, "running")
+	exec := NewGraphExecution(context.WithoutCancel(ctx), execID, graphID, sessionID, string(GraphExecRunning))
 	exec.runtime = runtime
 	exec.LineageID = runtime.GetLineageID()
 
@@ -255,13 +255,13 @@ func (uc *GraphExecutionUsecase) ExecuteGraphBuildConfig(ctx context.Context, gr
 
 	runtime, eventCh, err := uc.factory.BuildAndRun(ctx, cfg, sessionID, graphID, execID, initialState)
 	if err != nil {
-		failedExec := NewGraphExecution(context.Background(), execID, graphID, sessionID, "failed")
+		failedExec := NewGraphExecution(context.Background(), execID, graphID, sessionID, string(GraphExecFailed))
 		failedExec.ErrorMessage = err.Error()
 		uc.notifyExecComplete(failedExec)
 		return nil, err
 	}
 
-	exec := NewGraphExecution(context.WithoutCancel(ctx), execID, graphID, sessionID, "running")
+	exec := NewGraphExecution(context.WithoutCancel(ctx), execID, graphID, sessionID, string(GraphExecRunning))
 	exec.runtime = runtime
 	exec.LineageID = runtime.GetLineageID()
 
@@ -308,7 +308,7 @@ func (uc *GraphExecutionUsecase) CancelExecution(ctx context.Context, executionI
 	}
 	var persistSnap *GraphExecution
 	exec.execMu.Lock()
-	if exec.Status != "running" && exec.Status != "waiting_human" {
+	if !ParseGraphExecutionState(exec.Status).IsActive() {
 		exec.execMu.Unlock()
 		return ErrGraphInvalidStatus
 	}
@@ -424,7 +424,7 @@ func (uc *GraphExecutionUsecase) RegisterTeamGraphExecution(ctx context.Context,
 	if teamRunID != "" {
 		graphID = graphID + ":" + strings.TrimSpace(teamRunID)
 	}
-	exec := NewGraphExecution(context.Background(), execID, graphID, strings.TrimSpace(sessionID), TeamRunStatusRunning)
+	exec := NewGraphExecution(context.Background(), execID, graphID, strings.TrimSpace(sessionID), string(GraphExecRunning))
 
 	if uc.runRepo != nil {
 		if err := uc.runRepo.SaveRun(ctx, exec); err != nil {
@@ -522,7 +522,7 @@ func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExec
 	switch e.Type {
 	case DomainEventGraphNodeStart:
 		exec.execMu.Lock()
-		if exec.Status != "failed" {
+		if ParseGraphExecutionState(exec.Status) != GraphExecFailed {
 			exec.CurrentNode = e.NodeID
 		}
 		exec.execMu.Unlock()
@@ -687,7 +687,7 @@ func (uc *GraphExecutionUsecase) gc() {
 	now := time.Now()
 	for id, exec := range uc.executions {
 		exec.execMu.RLock()
-		status := exec.Status
+		status := ParseGraphExecutionState(exec.Status)
 		startedAt := exec.StartedAt
 		var finishedAt *time.Time
 		if exec.FinishedAt != nil {
@@ -697,7 +697,7 @@ func (uc *GraphExecutionUsecase) gc() {
 		rt := exec.runtime
 		exec.execMu.RUnlock()
 
-		if status == "running" || status == "waiting_human" {
+		if status.IsActive() {
 			continue
 		}
 		if finishedAt != nil && now.Sub(*finishedAt) > uc.gcConfig.ExecutionMaxAge {

@@ -117,7 +117,7 @@ func (s *ChatService) GetChatOptions(ctx context.Context, req *chatv1.GetChatOpt
 func (s *ChatService) StopGeneration(ctx context.Context, req *chatv1.StopGenerationRequest) (*chatv1.StopGenerationResponse, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, apierror.BadRequest("CHAT", "session_id is required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
 	}
 	stopped := s.orch.CancelRun(ctx, sessionID)
 	return &chatv1.StopGenerationResponse{Stopped: stopped}, nil
@@ -198,7 +198,7 @@ func (s *ChatService) LastPendingMessageID(sessionID string) string {
 func (s *ChatService) GetPendingMessages(ctx context.Context, req *chatv1.GetPendingMessagesRequest) (*chatv1.GetPendingMessagesResponse, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, apierror.BadRequest("CHAT", "session_id is required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
 	}
 	entries := s.orch.GetPendingMessages(sessionID)
 	items := make([]*chatv1.PendingMessage, 0, len(entries))
@@ -216,11 +216,11 @@ func (s *ChatService) GetPendingMessages(ctx context.Context, req *chatv1.GetPen
 func (s *ChatService) CancelPendingMessage(ctx context.Context, req *chatv1.CancelPendingMessageRequest) (*chatv1.CancelPendingMessageResponse, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, apierror.BadRequest("CHAT", "session_id is required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
 	}
 	pendingID := strings.TrimSpace(req.GetPendingId())
 	if pendingID == "" {
-		return nil, apierror.BadRequest("CHAT", "pending_id is required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "pending_id is required")
 	}
 	cancelled := s.orch.CancelPendingMessage(sessionID, pendingID)
 	return &chatv1.CancelPendingMessageResponse{Cancelled: cancelled}, nil
@@ -229,15 +229,15 @@ func (s *ChatService) CancelPendingMessage(ctx context.Context, req *chatv1.Canc
 func (s *ChatService) UpdatePendingMessage(ctx context.Context, req *chatv1.UpdatePendingMessageRequest) (*chatv1.UpdatePendingMessageResponse, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, apierror.BadRequest("CHAT", "session_id is required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
 	}
 	pendingID := strings.TrimSpace(req.GetPendingId())
 	if pendingID == "" {
-		return nil, apierror.BadRequest("CHAT", "pending_id is required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "pending_id is required")
 	}
 	content := strings.TrimSpace(req.GetContent())
 	if content == "" {
-		return nil, apierror.BadRequest("CHAT", "content is required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "content is required")
 	}
 	updated := s.orch.UpdatePendingMessage(sessionID, pendingID, content)
 	return &chatv1.UpdatePendingMessageResponse{Updated: updated}, nil
@@ -246,11 +246,11 @@ func (s *ChatService) UpdatePendingMessage(ctx context.Context, req *chatv1.Upda
 func (s *ChatService) InterruptAndSendMessage(ctx context.Context, req *chatv1.InterruptAndSendMessageRequest) (*chatv1.InterruptAndSendMessageResponse, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, apierror.BadRequest("CHAT", "session_id is required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
 	}
 	pendingID := strings.TrimSpace(req.GetPendingId())
 	if pendingID == "" {
-		return nil, apierror.BadRequest("CHAT", "pending_id is required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "pending_id is required")
 	}
 	if err := s.orch.InterruptAndSendMessage(ctx, sessionID, pendingID); err != nil {
 		return nil, err
@@ -261,11 +261,11 @@ func (s *ChatService) InterruptAndSendMessage(ctx context.Context, req *chatv1.I
 func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.EnqueueUserMessageRequest) (*chatv1.EnqueueUserMessageResponse, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, apierror.BadRequest("CHAT", "session_id is required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
 	}
 	content := strings.TrimSpace(req.GetContent())
 	if content == "" {
-		return nil, apierror.BadRequest("CHAT", "content is required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "content is required")
 	}
 
 	accepted, queued, pendingID, _, err := s.orch.EnqueueUserMessage(sessionID, content)
@@ -277,7 +277,7 @@ func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.Enqueu
 	}
 	if queued {
 		if pendingID == "" {
-			return nil, apierror.Internal("CHAT", "queued message missing pending id")
+			return nil, apierror.Internal(apierror.DomainChat, "queued message missing pending id")
 		}
 		return &chatv1.EnqueueUserMessageResponse{
 			Accepted:  true,
@@ -292,7 +292,7 @@ func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.Enqueu
 func (s *ChatService) GetRunStatus(ctx context.Context, req *chatv1.GetRunStatusRequest) (*chatv1.RunStatus, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, apierror.BadRequest("CHAT", "session_id is required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
 	}
 	resp := &chatv1.RunStatus{Status: "idle"}
 	if runID, status, errMsg, updatedAt, ok := s.orch.GetRunStatus(ctx, sessionID); ok {
@@ -348,11 +348,11 @@ func applyFrameworkRunStatus(resp *chatv1.RunStatus, runner trpcrunner.Runner, r
 func (s *ChatService) AwaitUserReply(ctx context.Context, req *chatv1.AwaitUserReplyRequest) (*chatv1.AwaitUserReplyResponse, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, apierror.BadRequest("CHAT", "session_id is required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
 	}
 	reply := strings.TrimSpace(req.GetReply())
 	if reply == "" {
-		return nil, apierror.BadRequest("CHAT", "reply is required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "reply is required")
 	}
 	runID := ""
 	if req.RunId != nil {

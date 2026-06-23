@@ -42,7 +42,7 @@ func (o *ChatOrchestrator) RunNativeAgentTurnWithOutcome(ctx context.Context, in
 	sessionID := strings.TrimSpace(input.SessionID)
 	content := strings.TrimSpace(input.Content)
 	if sessionID == "" || content == "" {
-		return biz.NativeTurnResult{}, apierror.BadRequest("CHAT_NATIVE", "session_id and content are required")
+		return biz.NativeTurnResult{}, apierror.BadRequest(apierror.DomainChatNative, "session_id and content are required")
 	}
 
 	// Ensure spirit_trace_id is present in context for all Spirit orchestration paths.
@@ -141,13 +141,13 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 
 	if rtid := strings.TrimSpace(input.TeamID); rtid != "" {
 		unlock()
-		return biz.ChatMessage{}, biz.ChatMessage{}, apierror.Forbidden("CHAT_TEAM_NATIVE", "team_id is only valid for team sessions")
+		return biz.ChatMessage{}, biz.ChatMessage{}, apierror.Forbidden(apierror.DomainChatTeamNative, "team_id is only valid for team sessions")
 	}
 
 	agentID := strings.TrimSpace(sess.AgentID)
 	if agentID == "" {
 		unlock()
-		return biz.ChatMessage{}, biz.ChatMessage{}, apierror.BadRequest("CHAT_NATIVE", "session has no agent_id")
+		return biz.ChatMessage{}, biz.ChatMessage{}, apierror.BadRequest(apierror.DomainChatNative, "session has no agent_id")
 	}
 	hydrateStart := time.Now()
 	ag, err := o.hydratedAgent(ctx, agentID)
@@ -155,7 +155,7 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 		unlock()
 		flow.LogError("chat.agent_hydrate", "加载Agent配置失败", event.P("agent_id", agentID), event.P("error", err.Error()))
 		if apierror.IsCode(err, apierror.CodeNotFound) {
-			return biz.ChatMessage{}, biz.ChatMessage{}, apierror.NotFound("AGENT", "agent not found")
+			return biz.ChatMessage{}, biz.ChatMessage{}, apierror.NotFound(apierror.DomainAgent, "agent not found")
 		}
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
@@ -199,20 +199,25 @@ func (o *ChatOrchestrator) resolveProviderModelFallback(ctx context.Context, pro
 func (o *ChatOrchestrator) syncSessionProviderModel(ctx context.Context, sessionID string, sess biz.Session, prov, mod string) {
 	// BA4: business rule (sync session defaults when resolved values differ)
 	// lives in biz layer. Error is logged inside the biz method.
-	_ = o.chatUC.SyncSessionProviderModel(ctx, sessionID, sess, prov, mod)
+	if err := o.chatUC.SyncSessionProviderModel(ctx, sessionID, sess, prov, mod); err != nil {
+		o.lg().Debug("SyncSessionProviderModel failed",
+			loggateway.StepID("chat_orchestrator.sync_provider_model"),
+			loggateway.SessionID(sessionID),
+			loggateway.Err(err))
+	}
 }
 
 // hydratedAgent loads and returns an Agent by ID.
 func (o *ChatOrchestrator) hydratedAgent(ctx context.Context, agentID string) (biz.Agent, error) {
 	agentID = strings.TrimSpace(agentID)
 	if agentID == "" {
-		return biz.Agent{}, apierror.BadRequest("CHAT_NATIVE", "agent id is required")
+		return biz.Agent{}, apierror.BadRequest(apierror.DomainChatNative, "agent id is required")
 	}
 	if o.td().ReadDeps.AgentsUC != nil {
 		return o.td().ReadDeps.AgentsUC.Get(ctx, agentID)
 	}
 	if o.td().ReadDeps.Agents == nil {
-		return biz.Agent{}, apierror.Internal("CHAT_NATIVE", "agent repository not configured")
+		return biz.Agent{}, apierror.Internal(apierror.DomainChatNative, "agent repository not configured")
 	}
 	return o.td().ReadDeps.Agents.GetAgentByID(ctx, agentID)
 }
@@ -318,7 +323,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	attachmentRefs, err := o.resolveUserAttachmentRefs(ctx, sessionID, input.Options.AttachmentIDs)
 	if err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
-		o.publishRunStatus(sessionID, runID, "failed", err.Error())
+		o.publishRunStatus(sessionID, runID, "failed", safeErrMsgForWS(err))
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
@@ -326,7 +331,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	if err := o.validateTurnAttachmentCapabilities(ctx, prov, mod, attachmentRefs); err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		emitter.LogWarn("chat.attachment.preflight", "模型不支持当前附件类型", "", event.P("provider", prov), event.P("model", mod), event.P("error", err.Error()))
-		o.publishRunStatus(sessionID, runID, "failed", err.Error())
+		o.publishRunStatus(sessionID, runID, "failed", safeErrMsgForWS(err))
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
@@ -384,7 +389,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	if err := eg.Wait(); err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		o.runs.Finish(sessionID)
-		o.publishRunStatus(sessionID, runID, "failed", err.Error())
+		o.publishRunStatus(sessionID, runID, "failed", safeErrMsgForWS(err))
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
@@ -489,7 +494,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			// input box never clears (root cause of "no response after send").
 			// Use context.Background() because ctx may be cancelled (timeout).
 			failCtx := context.Background()
-			o.publishRunStatus(sessionID, runID, "failed", turnErrMsg)
+			o.publishRunStatus(sessionID, runID, "failed", safeErrMsgForWS(turnErr))
 			o.transitionSessionStatus(failCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 			if turnErr != nil {
 				o.publishTurnFailure(sessionID, runID, "chat-service", turnErr, "")

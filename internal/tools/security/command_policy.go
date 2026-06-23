@@ -34,13 +34,22 @@ var DefaultProtectedPaths = []string{
 	"**/id_ecdsa*",
 }
 
+// DefaultProtectedTools maps individual tool names (NOT ToolSet names) to
+// protected status. The framework's PermissionChecker receives the individual
+// tool name from toolCall.Function.Name (see state_graph.go PermissionRequest
+// construction), so entries must use the actual tool function names.
 var DefaultProtectedTools = map[string]bool{
-	"exec_command":     true,
-	"shell_exec":       true,
-	"hostexec":         true,
-	"file":             true,
-	"read_document":    true,
-	"read_spreadsheet": true,
+	"exec_command":        true,
+	"shell_exec":          true,
+	"read_file":           true,
+	"read_multiple_files": true,
+	"save_file":           true,
+	"list_file":           true,
+	"search_file":         true,
+	"search_content":      true,
+	"replace_content":     true,
+	"read_document":       true,
+	"read_spreadsheet":    true,
 }
 
 type CommandSafetyPolicy struct {

@@ -35,7 +35,7 @@ func (r *SkillDedupRepo) ListAllSkillSummaries(ctx context.Context) ([]biz.Skill
 		).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_DEDUP")
 	}
 
 	// Batch-fetch latest published skill versions for body previews.

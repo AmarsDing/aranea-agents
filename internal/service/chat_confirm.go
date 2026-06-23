@@ -19,18 +19,18 @@ import (
 // awaiting run via the await channel.
 func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmActivityRequest) (*chatv1.ConfirmActivityResponse, error) {
 	if s == nil || s.orch == nil {
-		return nil, apierror.Internal("CHAT", "service unavailable")
+		return nil, apierror.Internal(apierror.DomainChat, "service unavailable")
 	}
 
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	activityID := strings.TrimSpace(req.GetActivityId())
 	if sessionID == "" || activityID == "" {
-		return nil, apierror.BadRequest("CHAT", "session_id and activity_id are required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "session_id and activity_id are required")
 	}
 
 	reader := s.orch.activityReader()
 	if reader == nil {
-		return nil, apierror.Internal("CHAT", "activity reader unavailable")
+		return nil, apierror.Internal(apierror.DomainChat, "activity reader unavailable")
 	}
 
 	// Load activity from DB
@@ -41,23 +41,23 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 
 	// Validate kind
 	if activity.Kind != biz.ActivityKindConfirm {
-		return nil, apierror.BadRequest("CHAT", "expected confirm kind, got %s", activity.Kind)
+		return nil, apierror.BadRequest(apierror.DomainChat, "expected confirm kind, got %s", activity.Kind)
 	}
 
 	// Validate status
 	if activity.Status != biz.ActivityStatusToolBlocked {
-		return nil, apierror.BadRequest("CHAT", "activity is not in tool_blocked state (current: %s)", activity.Status)
+		return nil, apierror.BadRequest(apierror.DomainChat, "activity is not in tool_blocked state (current: %s)", activity.Status)
 	}
 
 	// Validate session ownership
 	if activity.SessionID != sessionID {
-		return nil, apierror.BadRequest("CHAT", "activity does not belong to session %s", sessionID)
+		return nil, apierror.BadRequest(apierror.DomainChat, "activity does not belong to session %s", sessionID)
 	}
 
 	// Validate user identity - reject anonymous (default_user) confirm requests
 	userID := ctxuser.FromContext(ctx)
 	if userID == ctxuser.DefaultUserID {
-		return nil, apierror.Unauthorized("CHAT", "user authentication required for activity confirmation")
+		return nil, apierror.Unauthorized(apierror.DomainChat, "user authentication required for activity confirmation")
 	}
 
 	// Validate session ownership - only the session owner can confirm/reject activities
@@ -65,7 +65,7 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 	if sessions != nil {
 		session, err := sessions.Get(ctx, sessionID)
 		if err != nil {
-			return nil, apierror.NotFound("CHAT", "session not found")
+			return nil, apierror.NotFound(apierror.DomainChat, "session not found")
 		}
 		if session.UserID != userID {
 			s.lg.Warn("confirm activity ownership denied",
@@ -74,10 +74,10 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 				loggateway.Str("user_id", userID),
 				loggateway.Str("owner_id", session.UserID),
 			)
-			return nil, apierror.Forbidden("CHAT", "only the session owner can confirm activities")
+			return nil, apierror.Forbidden(apierror.DomainChat, "only the session owner can confirm activities")
 		}
 	} else {
-		return nil, apierror.Internal("CHAT", "session store unavailable, cannot verify ownership")
+		return nil, apierror.Internal(apierror.DomainChat, "session store unavailable, cannot verify ownership")
 	}
 
 	// Update status
@@ -90,7 +90,7 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 	// Persist the status update
 	writer := s.orch.activityWriter()
 	if writer == nil {
-		return nil, apierror.Internal("CHAT", "activity writer unavailable")
+		return nil, apierror.Internal(apierror.DomainChat, "activity writer unavailable")
 	}
 	if _, err := writer.UpdateActivity(ctx, activity); err != nil {
 		return nil, err

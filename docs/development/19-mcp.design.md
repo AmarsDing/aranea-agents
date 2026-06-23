@@ -291,7 +291,7 @@ AgentMCPTooling.EffectiveServersForAgent
 - `NewMCPServerUsecase` → `NewMCPServerService`
 - `NewAgentMCPTooling` → `runtime.PersistenceSet.AgentMCP`
 - `provideMCPHealthRunner` → `main` 启动后台探活
-- `chat` 启动时 `mcpobserve.SetBus` + `SetMetadataRecorder(RecordReconnectMetadata)`
+- MCP 会话重连遥测由框架内部处理（`mcpobserve` 包仅保留辅助函数 `DefaultSessionReconnectMax`/`EffectiveSessionReconnectMax`/`IsRecentReconnect`；框架已移除 `ReconnectObserver`/`ReconnectEvent` 回调，不再需要在 chat 启动时调用 `SetBus`/`SetMetadataRecorder`）
 
 ---
 

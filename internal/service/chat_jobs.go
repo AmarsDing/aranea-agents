@@ -25,7 +25,7 @@ func (s *ChatService) ListChatBackgroundJobs(ctx context.Context, req *chatv1.Li
 		q.Status = strings.TrimSpace(*req.Status)
 	}
 	if q.SessionID == "" && q.AgentID == "" {
-		return nil, apierror.BadRequest("CHAT_JOBS", "session_id or agent_id is required")
+		return nil, apierror.BadRequest(apierror.DomainChatJobs, "session_id or agent_id is required")
 	}
 
 	out := make([]*chatv1.ChatBackgroundJob, 0)
@@ -114,18 +114,18 @@ func bizTurnJobToChatBackgroundJob(j biz.ChannelTurnJob) *chatv1.ChatBackgroundJ
 func (s *ChatService) CancelChatBackgroundJob(ctx context.Context, req *chatv1.CancelChatBackgroundJobRequest) (*chatv1.CancelChatBackgroundJobResponse, error) {
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
-		return nil, apierror.BadRequest("CHAT_JOBS", "id is required")
+		return nil, apierror.BadRequest(apierror.DomainChatJobs, "id is required")
 	}
 	source := strings.TrimSpace(req.GetSource())
 
 	switch source {
 	case "session_run":
 		if s == nil || s.orch.chJobs().SessionRuns == nil {
-			return nil, apierror.NotFound("CHAT_JOBS", "session run service not available")
+			return nil, apierror.NotFound(apierror.DomainChatJobs, "session run service not available")
 		}
 		run, err := s.orch.chJobs().SessionRuns.Get(ctx, id)
 		if err != nil {
-			return nil, apierror.NotFound("CHAT_JOBS", "session run %s not found", id)
+			return nil, apierror.NotFound(apierror.DomainChatJobs, "session run %s not found", id)
 		}
 		// Only allow cancelling active runs
 		if run.FinishedAt != "" {
@@ -133,21 +133,21 @@ func (s *ChatService) CancelChatBackgroundJob(ctx context.Context, req *chatv1.C
 		}
 		if err := s.orch.chJobs().SessionRuns.Fail(ctx, id, "cancelled by user"); err != nil {
 			s.lg.Warn("cancel session run failed", loggateway.Err(err))
-			return nil, apierror.Internal("CHAT_JOBS", "cancel session run failed")
+			return nil, apierror.Internal(apierror.DomainChatJobs, "cancel session run failed")
 		}
 		return &chatv1.CancelChatBackgroundJobResponse{Cancelled: true}, nil
 
 	case "channel":
 		if s == nil || s.orch.chJobs().TurnJobs == nil {
-			return nil, apierror.NotFound("CHAT_JOBS", "turn job service not available")
+			return nil, apierror.NotFound(apierror.DomainChatJobs, "turn job service not available")
 		}
 		if err := s.orch.chJobs().TurnJobs.Cancel(ctx, id); err != nil {
 			s.lg.Warn("cancel turn job failed", loggateway.Err(err))
-			return nil, apierror.Internal("CHAT_JOBS", "cancel turn job failed")
+			return nil, apierror.Internal(apierror.DomainChatJobs, "cancel turn job failed")
 		}
 		return &chatv1.CancelChatBackgroundJobResponse{Cancelled: true}, nil
 
 	default:
-		return nil, apierror.BadRequest("CHAT_JOBS", "unsupported source: %s (expected 'session_run' or 'channel')", source)
+		return nil, apierror.BadRequest(apierror.DomainChatJobs, "unsupported source: %s (expected 'session_run' or 'channel')", source)
 	}
 }

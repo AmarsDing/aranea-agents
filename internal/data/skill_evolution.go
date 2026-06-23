@@ -91,7 +91,7 @@ func (r *skillProposalRepo) GetByID(ctx context.Context, id string) (biz.SkillPr
 	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, []any{id},
 		&p.ID, &p.AgentID, &p.PatternHash, &p.PatternDesc, &p.SkillName, &p.SkillMD, &p.Status, &p.ApprovedBy, &p.RejectedBy, &createdAt, &approvedAt)
 	if err != nil {
-		return biz.SkillProposal{}, apierror.NotFound("SKILL_EVO", "skill proposal not found")
+		return biz.SkillProposal{}, entErrToBizErr(err, "SKILL_EVO")
 	}
 	t, err := time.Parse(time.RFC3339, createdAt)
 	if err != nil {
@@ -172,26 +172,24 @@ func (r *skillProposalRepo) UpdateStatus(ctx context.Context, id string, status 
 	args = append(args, id)
 
 	d := r.data.Dialect()
-	writeDB := r.data.RWDB().WriteHandle()
-	tx, txErr := writeDB.BeginTx(ctx, nil)
-	if txErr != nil {
-		return biz.SkillProposal{}, entErrToBizErr(txErr, "SKILL_EVO")
-	}
-	defer tx.Rollback()
-
-	if _, err := tx.ExecContext(ctx, d.RenumberPlaceholders(q), args...); err != nil {
-		return biz.SkillProposal{}, entErrToBizErr(err, "SKILL_EVO")
-	}
-
 	var p biz.SkillProposal
 	var createdAt string
 	var approvedAt *string
-	selectQ := d.RenumberPlaceholders(`SELECT id, agent_id, pattern_hash, pattern_desc, skill_name, skill_md, status, approved_by, rejected_by, created_at, approved_at FROM skill_proposals WHERE id = ?`)
-	if err := tx.QueryRowContext(ctx, selectQ, id).Scan(&p.ID, &p.AgentID, &p.PatternHash, &p.PatternDesc, &p.SkillName, &p.SkillMD, &p.Status, &p.ApprovedBy, &p.RejectedBy, &createdAt, &approvedAt); err != nil {
-		return biz.SkillProposal{}, entErrToBizErr(err, "SKILL_EVO")
-	}
-	if err := tx.Commit(); err != nil {
-		return biz.SkillProposal{}, entErrToBizErr(err, "SKILL_EVO")
+
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		e := TxExecerFromCtx(txCtx, r.data.RWDB().WriteHandle())
+		if _, err := e.ExecContext(txCtx, d.RenumberPlaceholders(q), args...); err != nil {
+			return entErrToBizErr(err, "SKILL_EVO")
+		}
+		selectQ := d.RenumberPlaceholders(`SELECT id, agent_id, pattern_hash, pattern_desc, skill_name, skill_md, status, approved_by, rejected_by, created_at, approved_at FROM skill_proposals WHERE id = ?`)
+		if err := queryRowScan(txCtx, e, selectQ, []any{id},
+			&p.ID, &p.AgentID, &p.PatternHash, &p.PatternDesc, &p.SkillName, &p.SkillMD, &p.Status, &p.ApprovedBy, &p.RejectedBy, &createdAt, &approvedAt); err != nil {
+			return entErrToBizErr(err, "SKILL_EVO")
+		}
+		return nil
+	})
+	if err != nil {
+		return biz.SkillProposal{}, err
 	}
 
 	t, err := time.Parse(time.RFC3339, createdAt)

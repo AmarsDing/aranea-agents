@@ -20,11 +20,11 @@ import (
 func (o *ChatOrchestrator) nativeSendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, apierror.BadRequest("CHAT", "session_id is required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
 	}
 	content := strings.TrimSpace(req.GetContent())
 	if content == "" {
-		return nil, apierror.BadRequest("CHAT", "content is required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "content is required")
 	}
 	tr, err := o.Execute(ctx, turnInputFromProto(req))
 	if err != nil {
@@ -41,12 +41,18 @@ func (o *ChatOrchestrator) nativeSendChatMessage(ctx context.Context, req *chatv
 	am := chatMessageToMap(assistantMsg)
 	out := &chatv1.SendChatMessageResponse{}
 	if st, err := structpb.NewStruct(um); err != nil {
-		return nil, apierror.Internal("CHAT_NATIVE", "encode user_message: %v", err)
+		o.lg().Warn("encode user_message struct failed",
+			loggateway.StepID("chat_native.encode_user_msg"),
+			loggateway.Err(err))
+		return nil, apierror.Internal(apierror.DomainChat, "encode user_message failed")
 	} else {
 		out.UserMessage = st
 	}
 	if st, err := structpb.NewStruct(am); err != nil {
-		return nil, apierror.Internal("CHAT_NATIVE", "encode agent_message: %v", err)
+		o.lg().Warn("encode agent_message struct failed",
+			loggateway.StepID("chat_native.encode_agent_msg"),
+			loggateway.Err(err))
+		return nil, apierror.Internal(apierror.DomainChat, "encode agent_message failed")
 	} else {
 		out.AgentMessage = st
 	}
@@ -79,10 +85,10 @@ func (o *ChatOrchestrator) nativeSendChatMessage(ctx context.Context, req *chatv
 //     (`message.persisted`, `run_status=running`).
 func (o *ChatOrchestrator) submitChatMessageAsync(_ context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SubmitChatMessageResponse, error) {
 	if strings.TrimSpace(req.GetSessionId()) == "" {
-		return nil, apierror.BadRequest("CHAT", "session_id is required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
 	}
 	if strings.TrimSpace(req.GetContent()) == "" {
-		return nil, apierror.BadRequest("CHAT", "content is required")
+		return nil, apierror.BadRequest(apierror.DomainChat, "content is required")
 	}
 	input := turnInputFromProto(req)
 	sessionID := input.SessionID

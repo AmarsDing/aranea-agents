@@ -36,17 +36,17 @@ func NewArtifactService(uc *biz.ArtifactUsecase, signer *artifact.Signer) *Artif
 // UploadArtifact stores a base64-encoded artifact and returns its metadata.
 func (s *ArtifactService) UploadArtifact(ctx context.Context, req *v1.UploadArtifactRequest) (*v1.ArtifactMeta, error) {
 	if strings.TrimSpace(req.GetSessionId()) == "" {
-		return nil, apierror.BadRequest("ARTIFACT", "session_id is required")
+		return nil, apierror.BadRequest(apierror.DomainArtifact, "session_id is required")
 	}
 	if strings.TrimSpace(req.GetName()) == "" {
-		return nil, apierror.BadRequest("ARTIFACT", "name is required")
+		return nil, apierror.BadRequest(apierror.DomainArtifact, "name is required")
 	}
 	data, err := base64.StdEncoding.DecodeString(req.GetDataBase64())
 	if err != nil {
-		return nil, apierror.BadRequest("ARTIFACT", "data_base64 is not valid base64: "+err.Error())
+		return nil, apierror.BadRequest(apierror.DomainArtifact, "data_base64 is not valid base64")
 	}
 	if len(data) > artifactbiz.MaxUploadBytes {
-		return nil, apierror.BadRequest("ARTIFACT", "单个制品最大支持 10 MB，当前文件过大暂不支持上传")
+		return nil, apierror.BadRequest(apierror.DomainArtifact, "file exceeds 10 MB upload limit")
 	}
 	mime := strings.TrimSpace(req.GetMimeType())
 	if mime == "" {
@@ -65,13 +65,13 @@ func (s *ArtifactService) UploadArtifact(ctx context.Context, req *v1.UploadArti
 func (s *ArtifactService) GetArtifact(ctx context.Context, req *v1.GetArtifactRequest) (*v1.ArtifactData, error) {
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
-		return nil, apierror.BadRequest("ARTIFACT", "id is required")
+		return nil, apierror.BadRequest(apierror.DomainArtifact, "id is required")
 	}
 	version := int(req.GetVersion())
 	meta, data, err := s.uc.Load(ctx, id, version)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, apierror.NotFound("ARTIFACT", err.Error())
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return nil, apierror.NotFound(apierror.DomainArtifact, "artifact not found")
 		}
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func (s *ArtifactService) GetArtifact(ctx context.Context, req *v1.GetArtifactRe
 func (s *ArtifactService) ListArtifacts(ctx context.Context, req *v1.ListArtifactsRequest) (*v1.ListArtifactsResponse, error) {
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
-		return nil, apierror.BadRequest("ARTIFACT", "session_id is required")
+		return nil, apierror.BadRequest(apierror.DomainArtifact, "session_id is required")
 	}
 	limit := int(req.GetLimit())
 	offset := int(req.GetOffset())
@@ -113,12 +113,12 @@ func (s *ArtifactService) ListArtifacts(ctx context.Context, req *v1.ListArtifac
 func (s *ArtifactService) ListArtifactVersions(ctx context.Context, req *v1.ListArtifactVersionsRequest) (*v1.ListArtifactVersionsResponse, error) {
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
-		return nil, apierror.BadRequest("ARTIFACT", "id is required")
+		return nil, apierror.BadRequest(apierror.DomainArtifact, "id is required")
 	}
 	meta, _, err := s.uc.Load(ctx, id, 0)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, apierror.NotFound("ARTIFACT", err.Error())
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return nil, apierror.NotFound(apierror.DomainArtifact, "artifact not found")
 		}
 		return nil, err
 	}
@@ -137,7 +137,7 @@ func (s *ArtifactService) ListArtifactVersions(ctx context.Context, req *v1.List
 func (s *ArtifactService) DeleteArtifact(ctx context.Context, req *v1.DeleteArtifactRequest) (*emptypb.Empty, error) {
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
-		return nil, apierror.BadRequest("ARTIFACT", "id is required")
+		return nil, apierror.BadRequest(apierror.DomainArtifact, "id is required")
 	}
 	if err := s.uc.Delete(ctx, id); err != nil {
 		return nil, err
@@ -150,15 +150,15 @@ func (s *ArtifactService) DeleteArtifact(ctx context.Context, req *v1.DeleteArti
 func (s *ArtifactService) DeleteArtifactVersion(ctx context.Context, req *v1.DeleteArtifactVersionRequest) (*emptypb.Empty, error) {
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
-		return nil, apierror.BadRequest("ARTIFACT", "id is required")
+		return nil, apierror.BadRequest(apierror.DomainArtifact, "id is required")
 	}
 	version := int(req.GetVersion())
 	if version <= 0 {
-		return nil, apierror.BadRequest("ARTIFACT", "version must be > 0")
+		return nil, apierror.BadRequest(apierror.DomainArtifact, "version must be > 0")
 	}
 	if err := s.uc.DeleteVersion(ctx, id, version); err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, apierror.NotFound("ARTIFACT", err.Error())
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return nil, apierror.NotFound(apierror.DomainArtifact, "artifact version not found")
 		}
 		return nil, err
 	}
@@ -170,13 +170,13 @@ func (s *ArtifactService) DeleteArtifactVersion(ctx context.Context, req *v1.Del
 func (s *ArtifactService) PreviewArtifact(ctx context.Context, req *v1.PreviewArtifactRequest) (*v1.PreviewArtifactResponse, error) {
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
-		return nil, apierror.BadRequest("ARTIFACT", "id is required")
+		return nil, apierror.BadRequest(apierror.DomainArtifact, "id is required")
 	}
 	version := int(req.GetVersion())
 	result, err := s.uc.Preview(ctx, id, version)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, apierror.NotFound("ARTIFACT", err.Error())
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return nil, apierror.NotFound(apierror.DomainArtifact, "artifact not found")
 		}
 		return nil, err
 	}
@@ -201,12 +201,12 @@ func (s *ArtifactService) PreviewArtifact(ctx context.Context, req *v1.PreviewAr
 func (s *ArtifactService) SignDownloadUrl(ctx context.Context, req *v1.SignDownloadUrlRequest) (*v1.SignDownloadUrlResponse, error) {
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
-		return nil, apierror.BadRequest("ARTIFACT", "id is required")
+		return nil, apierror.BadRequest(apierror.DomainArtifact, "id is required")
 	}
 	version := int(req.GetVersion())
 	if _, _, err := s.uc.Load(ctx, id, version); err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, apierror.NotFound("ARTIFACT", err.Error())
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return nil, apierror.NotFound(apierror.DomainArtifact, "artifact not found")
 		}
 		return nil, err
 	}
@@ -222,7 +222,7 @@ func (s *ArtifactService) SignDownloadUrl(ctx context.Context, req *v1.SignDownl
 	if err != nil {
 		// OUT-05 / ART-02: prod environments without a configured key must
 		// fail closed; never hand out a forgeable URL signed with the dev key.
-		return nil, apierror.Unavailable("ARTIFACT", err.Error())
+		return nil, apierror.Unavailable(apierror.DomainArtifact, "download signing unavailable")
 	}
 	q := fmt.Sprintf("/v1/artifacts/download?id=%s&version=%d&expires=%d&token=%s",
 		id, version, expires.Unix(), token)
@@ -252,7 +252,7 @@ func (s *ArtifactService) ServeSignedDownload(w http.ResponseWriter, r *http.Req
 	if verr != nil {
 		// OUT-05 / ART-02: surface a clear 503 instead of a 403 storm when prod
 		// is missing its key — operators see misconfig, not a generic auth error.
-		http.Error(w, verr.Error(), http.StatusServiceUnavailable)
+		http.Error(w, "download signing unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	if !ok {
@@ -261,11 +261,11 @@ func (s *ArtifactService) ServeSignedDownload(w http.ResponseWriter, r *http.Req
 	}
 	meta, data, err := s.uc.Load(r.Context(), id, version)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
 			http.Error(w, "not found", http.StatusNotFound)
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	mime := strings.TrimSpace(meta.MimeType)

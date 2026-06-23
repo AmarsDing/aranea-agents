@@ -149,6 +149,13 @@ func mapVariantFromBaseURL(baseURL string) string {
 // When the catalog is unavailable, it falls back to a conservative heuristic
 // (allow all except DeepSeek-like models). When the catalog returns a real
 // error (DB failure, parse error), it logs a warning before falling back.
+//
+// 默认策略说明（与 CapabilitiesForProviderModel 的差异）：
+//   - 本函数用于运行时附件校验，采用"保守允许"策略——无显式能力声明时
+//     默认允许图片附件（除非启发式判定为 DeepSeek），避免阻断用户正常使用。
+//   - CapabilitiesForProviderModel 用于能力集展示，采用"保守不声明"策略——
+//     无显式能力声明时 Vision 默认 false，避免错误声明能力。
+//   - 两种策略服务于不同场景，差异是有意为之，非 bug。
 func ModelSupportsImageAttachments(ctx context.Context, catalog biz.TeamModelCatalog, prov, model string, lg loggateway.Logger) bool {
 	cfg, err := resolveCapabilities(ctx, catalog, prov, model)
 	if err != nil {
@@ -507,7 +514,7 @@ func wrapHA(primary trpcmodel.Model, cfg ProviderModelConfig, rt *RoundTrip, lg 
 func wrapFailover(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, lg loggateway.Logger) (trpcmodel.Model, error) {
 	candidates := []trpcmodel.Model{primary}
 	for _, c := range cfg.HA.Candidates {
-		m, err := trpcModelFromCandidate(c, rt, lg)
+		m, err := trpcModelFromCandidate(c, cfg, rt, lg)
 		if err != nil {
 			lg.Warn("HA failover 候选模型构建失败，跳过该候选",
 				loggateway.StepID("provider.ha_failover_candidate_skip"),
@@ -536,7 +543,7 @@ func wrapFailover(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Mode
 func wrapHedge(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, lg loggateway.Logger) (trpcmodel.Model, error) {
 	candidates := []trpcmodel.Model{primary}
 	for _, c := range cfg.HA.Candidates {
-		m, err := trpcModelFromCandidate(c, rt, lg)
+		m, err := trpcModelFromCandidate(c, cfg, rt, lg)
 		if err != nil {
 			lg.Warn("HA hedge 候选模型构建失败，跳过该候选",
 				loggateway.StepID("provider.ha_hedge_candidate_skip"),
@@ -566,7 +573,7 @@ func wrapHedge(cfg ProviderModelConfig, rt *RoundTrip, primary trpcmodel.Model, 
 	return h, nil
 }
 
-func trpcModelFromCandidate(c HACandidateConfig, rt *RoundTrip, lg loggateway.Logger) (trpcmodel.Model, error) {
+func trpcModelFromCandidate(c HACandidateConfig, parentCfg ProviderModelConfig, rt *RoundTrip, lg loggateway.Logger) (trpcmodel.Model, error) {
 	if baseURL := strings.TrimSpace(c.BaseURL); baseURL != "" {
 		if err := outboundguard.ValidateURL(baseURL); err != nil {
 			lg.Warn("HA 候选模型 URL 校验失败",
@@ -580,11 +587,16 @@ func trpcModelFromCandidate(c HACandidateConfig, rt *RoundTrip, lg loggateway.Lo
 	// Build a ProviderModelConfig from the candidate so it flows through the
 	// same buildProviderOptions pipeline as the primary model (rate-limit,
 	// variant, provider-specific options, etc.).
+	// 继承主模型的可靠性配置（Retry/CB/RateLimitRPM），确保候选模型
+	// 也有重试/熔断/限流保护，避免 HA 切换后候选模型因瞬时故障失败。
 	cfg := ProviderModelConfig{
 		ProviderType: strings.TrimSpace(c.ProviderType),
 		BaseURL:      strings.TrimSpace(c.BaseURL),
 		APIKey:       strings.TrimSpace(c.APIKey),
 		ModelAPI:     strings.TrimSpace(c.Name),
+		Retry:        parentCfg.Retry,
+		CB:           parentCfg.CB,
+		RateLimitRPM: parentCfg.RateLimitRPM,
 	}
 	providerName := MapProviderType(cfg.ProviderType)
 	opts := buildProviderOptions(cfg, rt, lg)

@@ -31,11 +31,11 @@ func TestCommandSafetyPolicy_SSHGlobPattern(t *testing.T) {
 
 func TestCommandSafetyPolicy_RecursiveGlobEnv(t *testing.T) {
 	policy := NewCommandSafetyPolicy(loggateway.NewNoop())
-	violation := policy.Evaluate("file", []byte(`{"path": "/home/user/project/.env"}`))
+	violation := policy.Evaluate("read_file", []byte(`{"path": "/home/user/project/.env"}`))
 	if violation == nil {
 		t.Fatal("expected violation for **/.env pattern")
 	}
-	violation = policy.Evaluate("file", []byte(`{"path": "/app/config/.env.production"}`))
+	violation = policy.Evaluate("read_file", []byte(`{"path": "/app/config/.env.production"}`))
 	if violation == nil {
 		t.Fatal("expected violation for **/.env.* pattern")
 	}
@@ -43,11 +43,11 @@ func TestCommandSafetyPolicy_RecursiveGlobEnv(t *testing.T) {
 
 func TestCommandSafetyPolicy_RecursiveGlobCredentials(t *testing.T) {
 	policy := NewCommandSafetyPolicy(loggateway.NewNoop())
-	violation := policy.Evaluate("file", []byte(`{"path": "/opt/secrets/credentials.json"}`))
+	violation := policy.Evaluate("read_file", []byte(`{"path": "/opt/secrets/credentials.json"}`))
 	if violation == nil {
 		t.Fatal("expected violation for **/credentials.json pattern")
 	}
-	violation = policy.Evaluate("file", []byte(`{"path": "/etc/service-account-prod.json"}`))
+	violation = policy.Evaluate("read_file", []byte(`{"path": "/etc/service-account-prod.json"}`))
 	if violation == nil {
 		t.Fatal("expected violation for **/service-account*.json pattern")
 	}
@@ -87,7 +87,7 @@ func TestCommandSafetyPolicy_UnprotectedTool(t *testing.T) {
 
 func TestCommandSafetyPolicy_AWSCredentials(t *testing.T) {
 	policy := NewCommandSafetyPolicy(loggateway.NewNoop())
-	violation := policy.Evaluate("file", []byte(`{"file_path": "/home/user/.aws/credentials"}`))
+	violation := policy.Evaluate("read_file", []byte(`{"file_path": "/home/user/.aws/credentials"}`))
 	if violation == nil {
 		t.Fatal("expected violation for accessing .aws/credentials")
 	}
@@ -106,8 +106,8 @@ func TestCommandSafetyPolicy_IsProtectedTool(t *testing.T) {
 	if !policy.IsProtectedTool("exec_command") {
 		t.Fatal("exec_command should be a protected tool")
 	}
-	if !policy.IsProtectedTool("file") {
-		t.Fatal("file should be a protected tool")
+	if !policy.IsProtectedTool("read_file") {
+		t.Fatal("read_file should be a protected tool")
 	}
 	if policy.IsProtectedTool("duckduckgo") {
 		t.Fatal("duckduckgo should not be a protected tool")
@@ -123,8 +123,8 @@ func TestCommandSafetyPolicyWithConfig(t *testing.T) {
 	if !policy.IsProtectedTool("custom_tool") {
 		t.Fatal("custom_tool should be protected")
 	}
-	if !policy.IsProtectedTool("file") {
-		t.Fatal("default file tool should still be protected")
+	if !policy.IsProtectedTool("read_file") {
+		t.Fatal("default read_file tool should still be protected")
 	}
 	violation := policy.Evaluate("custom_tool", []byte(`{"path": "/opt/custom_secret_dir/data.pem"}`))
 	if violation == nil {

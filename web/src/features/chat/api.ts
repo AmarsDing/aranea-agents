@@ -115,8 +115,7 @@ export async function stopGeneration(sessionId: string): Promise<boolean> {
     const data = await chatService.StopGeneration({ sessionId });
     return !!data?.stopped;
   } catch (err) {
-    console.warn('[chat] stopGeneration failed:', err);
-    return false;
+    wrapChatError(err, 'stopGeneration failed');
   }
 }
 
@@ -265,7 +264,7 @@ export async function listChatBackgroundJobs(opts: {
       status: opts.status,
       limit: opts.limit,
     });
-    const items = (data as { items?: unknown[] })?.items ?? [];
+    const items = data.items ?? [];
     return items.map(wireChatBackgroundJob);
   } catch (err) {
     wrapChatError(err, 'listChatBackgroundJobs failed');

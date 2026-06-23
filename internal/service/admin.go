@@ -170,10 +170,13 @@ func (s *AdminService) UpdateAdmin(ctx context.Context, req *v1.UpdateAdminReque
 	if req.Admin.Password != "" {
 		req.Admin.Password = encodePassword(req.Admin.Password)
 	}
-	admin, err := s.GetAdmin(ctx, &v1.GetAdminRequest{Id: req.Admin.Id})
+	// Call biz layer directly to bypass the redundant permission check in
+	// s.GetAdmin (UpdateAdmin already verified HasAdminAccess above).
+	bizAdmin, err := s.uc.GetAdmin(ctx, req.Admin.Id)
 	if err != nil {
 		return nil, err
 	}
+	admin := convertAdmin(bizAdmin)
 	fieldmask.Update(req.UpdateMask, admin, req.Admin)
 	updated, err := s.uc.UpdateAdmin(ctx, &biz.Admin{
 		ID:       admin.Id,

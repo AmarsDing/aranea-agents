@@ -1592,7 +1592,7 @@ func provideMemoryFactIndexReconciler(maintainer biz.MemoryFactIndexMaintainer, 
 	return jobs.NewMemoryFactIndexReconciler(0, maintainer, factSync, lg)
 }
 
-func provideMemoryDeadLetterReplayer(repo biz.MemoryDeadLetterAdminRepo, queue memtrpc.AutoMemoryQueue, logger log.Logger, lg loggateway.Logger) *jobs.MemoryDeadLetterReplayer {
+func provideMemoryDeadLetterReplayer(repo biz.MemoryDeadLetterAdminRepo, queue memtrpc.AutoMemoryQueue, lg loggateway.Logger) *jobs.MemoryDeadLetterReplayer {
 	if jobs.MemoryDeadLetterReplayDisabled() {
 		return nil
 	}
@@ -1605,7 +1605,7 @@ func provideMemoryDeadLetterReplayer(repo biz.MemoryDeadLetterAdminRepo, queue m
 			Priority:          priority,
 		})
 	}
-	return jobs.NewMemoryDeadLetterReplayer(0, repo, enqueue, logger, lg)
+	return jobs.NewMemoryDeadLetterReplayer(0, repo, enqueue, lg)
 }
 
 func provideEventStoreCleanup(store *biz.EventStoreUsecase, lg loggateway.Logger) *jobs.EventStoreCleanup {

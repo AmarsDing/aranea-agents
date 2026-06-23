@@ -52,7 +52,7 @@ const maxPendingQueueDepth = 32
 // RunAgentTurn implements a2a.AgentTurnRunner for call_agent and HTTP Invoke dispatch.
 func (o *ChatOrchestrator) RunAgentTurn(ctx context.Context, agentID, input string, timeoutSec int) (string, error) {
 	if o == nil || o.td().Sessions == nil {
-		return "", apierror.Internal("A2A", "chat service not configured")
+		return "", apierror.Internal(apierror.DomainA2A, "chat service not configured")
 	}
 	if timeoutSec <= 0 {
 		timeoutSec = 30
@@ -72,7 +72,10 @@ func (o *ChatOrchestrator) RunAgentTurn(ctx context.Context, agentID, input stri
 		UserID:    uid,
 	})
 	if err != nil {
-		return "", apierror.Internal("A2A", "create session: "+err.Error())
+		o.lg().Warn("a2a create session failed",
+			loggateway.StepID("chat_orchestrator.a2a_create_session"),
+			loggateway.Err(err))
+		return "", apierror.Internal(apierror.DomainA2A, "create session failed")
 	}
 	tr, err := o.Execute(runCtx, biz.TurnInput{
 		SessionID: sess.ID,
@@ -86,7 +89,7 @@ func (o *ChatOrchestrator) RunAgentTurn(ctx context.Context, agentID, input stri
 		return "", err
 	}
 	if tr.Outcome != biz.TurnOutcomeCompleted {
-		return "", apierror.Internal("CHAT", "a2a turn outcome: "+string(tr.Outcome))
+		return "", apierror.Internal(apierror.DomainA2A, "a2a turn did not complete: "+string(tr.Outcome))
 	}
 	return tr.AssistantMsg.ContentMarkdown, nil
 }
@@ -94,12 +97,12 @@ func (o *ChatOrchestrator) RunAgentTurn(ctx context.Context, agentID, input stri
 // RunEvalAgentTurn runs an evaluation agent turn.
 func (o *ChatOrchestrator) RunEvalAgentTurn(ctx context.Context, agentID, input string) (string, error) {
 	if o == nil || o.td().Sessions == nil {
-		return "", apierror.Internal("CHAT", "eval: chat service not configured")
+		return "", apierror.Internal(apierror.DomainChat, "eval: chat service not configured")
 	}
 	agentID = strings.TrimSpace(agentID)
 	input = strings.TrimSpace(input)
 	if agentID == "" || input == "" {
-		return "", apierror.BadRequest("CHAT", "eval: agent_id and input are required")
+		return "", apierror.BadRequest(apierror.DomainChat, "eval: agent_id and input are required")
 	}
 	sess, err := o.td().Sessions.Create(ctx, biz.Session{
 		ID:        uuid.NewString(),
@@ -109,7 +112,10 @@ func (o *ChatOrchestrator) RunEvalAgentTurn(ctx context.Context, agentID, input 
 		UserID:    "1",
 	})
 	if err != nil {
-		return "", apierror.Internal("CHAT", "eval: create session: %v", err)
+		o.lg().Warn("eval create session failed",
+			loggateway.StepID("chat_orchestrator.eval_create_session"),
+			loggateway.Err(err))
+		return "", apierror.Internal(apierror.DomainChat, "eval: create session failed")
 	}
 	_, asst, err := o.RunNativeAgentTurnFromInput(ctx, biz.TurnInput{
 		SessionID: sess.ID,

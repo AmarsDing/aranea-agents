@@ -457,6 +457,13 @@ func MapRepoErr(err error) error {
 	return err
 }
 
+// dailySupported returns false when the query uses filters not supported by the
+// daily rollup table. The daily table (model_token_usage_daily) has no team_id
+// column, so TeamID-filtered queries must use the real-time events path.
+func (u *Usecase) dailySupported(query Query) bool {
+	return query.TeamID == ""
+}
+
 // Overview returns the full usage dashboard data.
 func (u *Usecase) Overview(ctx context.Context, query Query) (Overview, error) {
 	now := u.now()
@@ -472,6 +479,10 @@ func (u *Usecase) Overview(ctx context.Context, query Query) (Overview, error) {
 	monthQuery := query
 	monthQuery.StartDate = dateKey(time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC))
 	monthQuery.EndDate = dateKey(now)
+
+	// Daily rollup table has no team_id column; fall back to real-time queries
+	// when TeamID filter is set to ensure correct filtering.
+	useDaily := u.dailySupported(query)
 
 	var (
 		today            Summary
@@ -493,12 +504,16 @@ func (u *Usecase) Overview(ctx context.Context, query Query) (Overview, error) {
 	eg.Go(func() error { var e error; today, e = u.repo.GetModelUsageSummary(egCtx, todayQuery); return e })
 	eg.Go(func() error {
 		var e error
-		yesterdaySummary, e = u.repo.GetModelUsageSummaryFromDaily(egCtx, yesterdayQuery)
+		if useDaily {
+			yesterdaySummary, e = u.repo.GetModelUsageSummaryFromDaily(egCtx, yesterdayQuery)
+		} else {
+			yesterdaySummary, e = u.repo.GetModelUsageSummary(egCtx, yesterdayQuery)
+		}
 		return e
 	})
 	eg.Go(func() error {
 		var e error
-		if monthQuery.EndDate < todayKey {
+		if useDaily && monthQuery.EndDate < todayKey {
 			month, e = u.repo.GetModelUsageSummaryFromDaily(egCtx, monthQuery)
 		} else {
 			month, e = u.repo.GetModelUsageSummary(egCtx, monthQuery)
@@ -507,7 +522,7 @@ func (u *Usecase) Overview(ctx context.Context, query Query) (Overview, error) {
 	})
 	eg.Go(func() error {
 		var e error
-		if rangeQuery.EndDate < todayKey {
+		if useDaily && rangeQuery.EndDate < todayKey {
 			rangeSummary, e = u.repo.GetModelUsageSummaryFromDaily(egCtx, rangeQuery)
 		} else {
 			rangeSummary, e = u.repo.GetModelUsageSummary(egCtx, rangeQuery)
@@ -517,7 +532,7 @@ func (u *Usecase) Overview(ctx context.Context, query Query) (Overview, error) {
 	eg.Go(func() error { var e error; trends, e = u.Trends(egCtx, rangeQuery); return e })
 	eg.Go(func() error {
 		var e error
-		if rangeQuery.EndDate < todayKey {
+		if useDaily && rangeQuery.EndDate < todayKey {
 			topModels, e = u.repo.ListTopModelUsageFromDaily(egCtx, withLimit(rangeQuery, 8))
 		} else {
 			topModels, e = u.repo.ListTopModelUsage(egCtx, withLimit(rangeQuery, 8))
@@ -526,7 +541,7 @@ func (u *Usecase) Overview(ctx context.Context, query Query) (Overview, error) {
 	})
 	eg.Go(func() error {
 		var e error
-		if rangeQuery.EndDate < todayKey {
+		if useDaily && rangeQuery.EndDate < todayKey {
 			topAgents, e = u.repo.ListTopAgentUsageFromDaily(egCtx, withLimit(rangeQuery, 8))
 		} else {
 			topAgents, e = u.repo.ListTopAgentUsage(egCtx, withLimit(rangeQuery, 8))
@@ -543,9 +558,11 @@ func (u *Usecase) Overview(ctx context.Context, query Query) (Overview, error) {
 		return Overview{}, err
 	}
 	if quotaErr != nil {
+		u.lg.Warn("overview.quota_dashboard_failed", loggateway.Err(quotaErr))
 		quotaDash = QuotaDashboard{}
 	}
 	if ineffErr != nil {
+		u.lg.Warn("overview.inefficient_models_failed", loggateway.Err(ineffErr))
 		inefficient = nil
 	}
 
@@ -570,7 +587,8 @@ func (u *Usecase) Trends(ctx context.Context, query Query) ([]TrendPoint, error)
 		return u.repo.ListModelUsageHourlyTrends(ctx, q)
 	}
 	todayKey := dateKey(u.now())
-	if q.EndDate < todayKey {
+	// Daily rollup table has no team_id column; fall back to real-time when TeamID is set.
+	if u.dailySupported(q) && q.EndDate < todayKey {
 		return u.repo.ListModelUsageDailyTrends(ctx, q)
 	}
 	return u.repo.ListModelUsageTrends(ctx, q)
@@ -1168,7 +1186,15 @@ const (
 // InefficientModels returns top models in range that match high-cost + (low TPS or low success).
 func (u *Usecase) InefficientModels(ctx context.Context, query Query) ([]ModelInsight, error) {
 	q := withLimit(u.normalizeQuery(query, u.now()), inefficientModelLimit)
-	rows, err := u.repo.ListTopModelUsage(ctx, q)
+	var rows []BreakdownRow
+	var err error
+	// Use daily rollup for historical ranges (consistent with Overview); fall back
+	// to real-time when TeamID is set (daily table has no team_id column).
+	if u.dailySupported(q) && q.EndDate < dateKey(u.now()) {
+		rows, err = u.repo.ListTopModelUsageFromDaily(ctx, q)
+	} else {
+		rows, err = u.repo.ListTopModelUsage(ctx, q)
+	}
 	if err != nil {
 		return nil, err
 	}

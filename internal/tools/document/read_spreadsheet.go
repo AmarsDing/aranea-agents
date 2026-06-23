@@ -280,17 +280,18 @@ func spreadsheetRange(totalRows int, in readSpreadsheetInput) (int, int, error) 
 	end := minInt(totalRows, defaultSheetPreviewRows)
 	if v := normalizedPositive(in.EndRow); v != nil {
 		end = *v
-	}
-	if end < start {
-		return 0, 0, apierror.BadRequest(apierror.DomainTool, fmt.Sprintf("end_row %d is smaller than start_row %d", end, start))
+	} else if v := normalizedPositive(in.StartRow); v != nil {
+		// When start_row is specified but end_row is not, return a window of
+		// defaultSheetPreviewRows starting from start_row. This must happen
+		// before the end < start check below, otherwise a start_row beyond
+		// defaultSheetPreviewRows would incorrectly trigger the error.
+		end = minInt(totalRows, *v+defaultSheetPreviewRows-1)
 	}
 	if end > totalRows {
 		end = totalRows
 	}
-	// When start_row is specified but end_row is not, return a window of
-	// defaultSheetPreviewRows starting from start_row.
-	if v := normalizedPositive(in.StartRow); v != nil && normalizedPositive(in.EndRow) == nil {
-		end = minInt(totalRows, start+defaultSheetPreviewRows-1)
+	if end < start {
+		return 0, 0, apierror.BadRequest(apierror.DomainTool, fmt.Sprintf("end_row %d is smaller than start_row %d", end, start))
 	}
 	return start, end, nil
 }

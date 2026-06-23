@@ -489,3 +489,105 @@ func TestDefaultRetryMaxAttempts(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Retry-After header parsing and usage
+// ---------------------------------------------------------------------------
+
+func TestParseRetryAfter_Seconds(t *testing.T) {
+	cases := []struct {
+		input string
+		want  time.Duration
+	}{
+		{"120", 120 * time.Second},
+		{"0", 0},
+		{"-1", 0},
+		{"", 0},
+		{"not-a-number", 0},
+	}
+	for _, tc := range cases {
+		got := parseRetryAfter(tc.input)
+		if got != tc.want {
+			t.Errorf("parseRetryAfter(%q) = %v, want %v", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestParseRetryAfter_HTTPDate(t *testing.T) {
+	// HTTP date format — future time.
+	future := time.Now().Add(2 * time.Minute).UTC().Format(http.TimeFormat)
+	got := parseRetryAfter(future)
+	// Should be roughly 2 minutes (allow 5s slack for test execution).
+	if got <= 0 || got > 125*time.Second {
+		t.Errorf("parseRetryAfter(%q) = %v, want ~120s", future, got)
+	}
+
+	// Past date — should return 0.
+	past := time.Now().Add(-1 * time.Minute).UTC().Format(http.TimeFormat)
+	if got := parseRetryAfter(past); got != 0 {
+		t.Errorf("parseRetryAfter(past date) = %v, want 0", got)
+	}
+}
+
+func TestRetryTransport_RetryAfterHeaderHonoured(t *testing.T) {
+	// First response: 429 with Retry-After: 1 (1 second)
+	retryResp := newErrorResponse(429)
+	retryResp.Header.Set("Retry-After", "1")
+	// Second response: 200 OK
+	okResp := newOKResponse()
+	stub := &stubTransport{
+		responses: []*http.Response{retryResp, okResp},
+	}
+	var delays []time.Duration
+	rt := newRetryTransportForTest(stub, 3, func(req *http.Request, attempt, maxRetries int, err error, delay time.Duration) {
+		delays = append(delays, delay)
+	})
+
+	req, _ := http.NewRequestWithContext(context.Background(), "GET", "http://test", nil)
+	resp, err := rt.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+	// Retry-After=1s should be used instead of baseDelay (1ms).
+	if len(delays) != 1 {
+		t.Fatalf("expected 1 retry, got %d", len(delays))
+	}
+	if delays[0] != 1*time.Second {
+		t.Errorf("delay = %v, want 1s (from Retry-After header)", delays[0])
+	}
+}
+
+func TestRetryTransport_RetryAfterCappedAtMaxDelay(t *testing.T) {
+	// Retry-After: 999999 (way above maxDelay of 10ms)
+	retryResp := newErrorResponse(429)
+	retryResp.Header.Set("Retry-After", "999999")
+	okResp := newOKResponse()
+	stub := &stubTransport{
+		responses: []*http.Response{retryResp, okResp},
+	}
+	var delays []time.Duration
+	// maxDelay = 10ms (from newRetryTransportForTest)
+	rt := newRetryTransportForTest(stub, 3, func(req *http.Request, attempt, maxRetries int, err error, delay time.Duration) {
+		delays = append(delays, delay)
+	})
+
+	req, _ := http.NewRequestWithContext(context.Background(), "GET", "http://test", nil)
+	resp, err := rt.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if len(delays) != 1 {
+		t.Fatalf("expected 1 retry, got %d", len(delays))
+	}
+	// Retry-After 999999s should be capped at maxDelay (10ms).
+	if delays[0] != 10*time.Millisecond {
+		t.Errorf("delay = %v, want 10ms (capped at maxDelay)", delays[0])
+	}
+}

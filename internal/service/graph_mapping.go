@@ -11,6 +11,9 @@ import (
 )
 
 func fromProtoStateField(sf *graphv1.StateFieldDef) biz.StateFieldDef {
+	if sf == nil {
+		return biz.StateFieldDef{}
+	}
 	def := biz.StateFieldDef{
 		Name:            sf.Name,
 		Type:            sf.Type,
@@ -25,6 +28,9 @@ func fromProtoStateField(sf *graphv1.StateFieldDef) biz.StateFieldDef {
 }
 
 func fromProtoNode(n *graphv1.NodeDef) biz.NodeDef {
+	if n == nil {
+		return biz.NodeDef{}
+	}
 	return biz.NodeDef{
 		ID:                       n.Id,
 		FuncRef:                  n.FuncRef,
@@ -58,10 +64,16 @@ func fromProtoNode(n *graphv1.NodeDef) biz.NodeDef {
 }
 
 func fromProtoEdge(e *graphv1.EdgeDef) biz.EdgeDef {
+	if e == nil {
+		return biz.EdgeDef{}
+	}
 	return biz.EdgeDef{From: e.From, To: e.To, Kind: e.Kind}
 }
 
 func fromProtoCondEdge(ce *graphv1.ConditionalEdgeDef) biz.ConditionalEdgeDef {
+	if ce == nil {
+		return biz.ConditionalEdgeDef{}
+	}
 	return biz.ConditionalEdgeDef{
 		From:        ce.From,
 		CondFuncRef: ce.CondFuncRef,
@@ -70,6 +82,9 @@ func fromProtoCondEdge(ce *graphv1.ConditionalEdgeDef) biz.ConditionalEdgeDef {
 }
 
 func fromProtoSubgraph(sub *graphv1.SubgraphDef) biz.SubgraphDef {
+	if sub == nil {
+		return biz.SubgraphDef{}
+	}
 	return biz.SubgraphDef{
 		ID:              sub.Id,
 		GraphID:         sub.GraphId,
@@ -384,10 +399,8 @@ func bizTaskStatusToProto(status biz.TaskStatus) graphv1.TaskStatus {
 }
 
 // protoTaskStatusToBiz converts a proto TaskStatus enum to the biz TaskStatus string.
-// Returns "" when the filter should not be applied (TASK_PENDING is treated as a
-// concrete status filter since proto3 has no presence for enums; callers that want
-// "no filter" should leave status_filter unset which still arrives as 0 — mapped
-// here to TaskStatusPending to match the proto semantic).
+// Returns TaskStatusPending for unknown/default values; callers that want no filter
+// should leave status_filter unset (arrives as 0 → TASK_PENDING).
 func protoTaskStatusToBiz(s graphv1.TaskStatus) biz.TaskStatus {
 	switch s {
 	case graphv1.TaskStatus_TASK_PENDING:

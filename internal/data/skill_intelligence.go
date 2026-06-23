@@ -49,7 +49,7 @@ func (r *SkillIntelligenceRepo) ListBySkill(ctx context.Context, skillID string,
 		Offset(offset).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
 	return mapEntReports(rows), nil
 }
@@ -57,7 +57,7 @@ func (r *SkillIntelligenceRepo) ListBySkill(ctx context.Context, skillID string,
 func (r *SkillIntelligenceRepo) GetByID(ctx context.Context, id string) (*biz.ExperienceReport, error) {
 	row, err := r.data.RW().Read(ctx).ExperienceReport.Get(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
 	report := mapEntReport(row)
 	return &report, nil
@@ -79,7 +79,7 @@ func (r *SkillIntelligenceRepo) ListByTimeRange(ctx context.Context, from, to ti
 		Offset(offset).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
 	return mapEntReports(rows), nil
 }
@@ -112,7 +112,7 @@ func (r *SkillIntelligenceRepo) ListFiltered(ctx context.Context, skillID string
 		Where(preds...).
 		Count(ctx)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
 
 	rows, err := r.data.RW().Read(ctx).ExperienceReport.Query().
@@ -122,7 +122,7 @@ func (r *SkillIntelligenceRepo) ListFiltered(ctx context.Context, skillID string
 		Offset(offset).
 		All(ctx)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
 	return mapEntReports(rows), count, nil
 }
@@ -137,7 +137,7 @@ func (r *SkillIntelligenceRepo) GetFailureTagCountsFiltered(ctx context.Context,
 		Where(preds...).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
 
 	tagCountMap := make(map[string]int)
@@ -174,7 +174,7 @@ func (r *SkillIntelligenceRepo) GetRootCauseReportsFiltered(ctx context.Context,
 		Limit(limit).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
 	return mapEntReports(rows), nil
 }
@@ -220,7 +220,7 @@ func (r *SkillIntelligenceRepo) Create(ctx context.Context, report biz.Experienc
 		return err
 	}
 	_, err = builder.Save(ctx)
-	return err
+	return entErrToBizErr(err, "SKILL_INTELLIGENCE")
 }
 
 func (r *SkillIntelligenceRepo) BatchCreate(ctx context.Context, reports []biz.ExperienceReport) error {
@@ -236,7 +236,7 @@ func (r *SkillIntelligenceRepo) BatchCreate(ctx context.Context, reports []biz.E
 		builders = append(builders, builder)
 	}
 	_, err := r.data.RW().Write(ctx).ExperienceReport.CreateBulk(builders...).Save(ctx)
-	return err
+	return entErrToBizErr(err, "SKILL_INTELLIGENCE")
 }
 
 // ── SkillHealthAggregator ─────────────────────────────────────────────────────
@@ -257,7 +257,7 @@ WHERE skill_id = ? AND created_at >= ?`)
 
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, aggQuery, skillID, sinceStr)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
 	defer rows.Close()
 
@@ -267,7 +267,7 @@ WHERE skill_id = ? AND created_at >= ?`)
 		var avgDurationMS sql.NullFloat64
 		var avgTokenUsage float64
 		if err := rows.Scan(&invocationCount, &successCount, &avgDurationMS, &avgTokenUsage); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 		}
 		metrics.InvocationCount = invocationCount
 		metrics.SuccessCount = successCount
@@ -280,7 +280,7 @@ WHERE skill_id = ? AND created_at >= ?`)
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
 
 	// P95: for small row counts (<20), load durations and compute in Go;
@@ -289,16 +289,16 @@ WHERE skill_id = ? AND created_at >= ?`)
 	var durCount int
 	cRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, countQuery, skillID, sinceStr)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
 	defer cRows.Close()
 	if cRows.Next() {
 		if err := cRows.Scan(&durCount); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 		}
 	}
 	if err := cRows.Err(); err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
 
 	if durCount == 0 {
@@ -308,19 +308,19 @@ WHERE skill_id = ? AND created_at >= ?`)
 		durQuery := d.RenumberPlaceholders(`SELECT duration_ms FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND duration_ms > 0 ORDER BY duration_ms ASC`)
 		dRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, durQuery, skillID, sinceStr)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 		}
 		defer dRows.Close()
 		var durations []int
 		for dRows.Next() {
 			var d int
 			if err := dRows.Scan(&d); err != nil {
-				return nil, err
+				return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 			}
 			durations = append(durations, d)
 		}
 		if err := dRows.Err(); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 		}
 		metrics.P95DurationMS = types.P95(durations)
 	} else {
@@ -333,16 +333,16 @@ WHERE skill_id = ? AND created_at >= ?`)
 		var p95 int
 		pRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, p95Query, skillID, sinceStr, offset)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 		}
 		defer pRows.Close()
 		if pRows.Next() {
 			if err := pRows.Scan(&p95); err != nil {
-				return nil, err
+				return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 			}
 		}
 		if err := pRows.Err(); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 		}
 		metrics.P95DurationMS = p95
 	}
@@ -382,16 +382,16 @@ func (r *SkillIntelligenceRepo) GetFailureStats(ctx context.Context, skillID str
 	var failureCount int
 	fRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, failCountQuery, skillID, sinceStr)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
 	defer fRows.Close()
 	if fRows.Next() {
 		if err := fRows.Scan(&failureCount); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 		}
 	}
 	if err := fRows.Err(); err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
 
 	// Top error codes via SQL GROUP BY.
@@ -405,7 +405,7 @@ ORDER BY count DESC
 LIMIT 5`)
 	cRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, topCodesQuery, skillID, sinceStr)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
 	defer cRows.Close()
 
@@ -414,12 +414,12 @@ LIMIT 5`)
 		var code string
 		var count int
 		if err := cRows.Scan(&code, &count); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 		}
 		topCodes = append(topCodes, biz.ErrorCodeCount{ErrorCode: code, Count: count})
 	}
 	if err := cRows.Err(); err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
 
 	return &biz.SkillFailureStats{
@@ -441,7 +441,7 @@ func (r *SkillIntelligenceRepo) GetFailureTagCounts(ctx context.Context, skillID
 		).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
 
 	tagCountMap := make(map[string]int)
@@ -519,7 +519,7 @@ func (r *SkillIntelligenceRepo) ListUnanalyzed(ctx context.Context, batchSize in
 		Limit(batchSize).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
 	result := make([]biz.SkillInvocationWrite, 0, len(rows))
 	for _, row := range rows {
@@ -538,7 +538,7 @@ func (r *SkillIntelligenceRepo) MarkAnalyzed(ctx context.Context, activationID s
 		SetAnalyzedAt(time.Now().UTC().Format(time.RFC3339)).
 		Save(ctx)
 	if err != nil {
-		return err
+		return entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
 	if n == 0 {
 		return apierror.NotFound("SKILL_INTELLIGENCE", fmt.Sprintf("skill invocation with activation_id %s not found", activationID))

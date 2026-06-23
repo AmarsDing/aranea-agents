@@ -56,7 +56,7 @@ func (s *memoryFactIndexSync) SyncFactIndex(ctx context.Context, agentID, userID
 	if err := s.syncEmbeddingBlob(ctx, factID, embedding); err != nil {
 		s.lg.Warn("sync embedding blob failed", loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(err))
 		markStale(err)
-		return err
+		return entErrToBizErr(err, "MEMORY_L3")
 	}
 	// Mark fresh on full success.
 	if s.data != nil {
@@ -98,19 +98,19 @@ func (s *memoryFactIndexSync) syncEmbeddingBlob(ctx context.Context, factID stri
 	_, err := s.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		s.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET embedding_blob = ?, embedding_norm = ?, embedding_dim = ?, embedding_status = 'fresh', embedding_model = 'memory_embedder', updated_at = ? WHERE id = ?`),
 		blob, norm, len(embedding), now, factID)
-	return err
+	return entErrToBizErr(err, "MEMORY_L3")
 }
 
 func (s *memoryFactIndexSync) markFactIndexStale(ctx context.Context, factID, reason string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	_, err := s.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		s.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET embedding_status = 'stale', updated_at = ? WHERE id = ?`), now, factID)
-	return err
+	return entErrToBizErr(err, "MEMORY_L3")
 }
 
 func (s *memoryFactIndexSync) markFactIndexSynced(ctx context.Context, factID string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	_, err := s.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		s.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET embedding_status = 'fresh', updated_at = ? WHERE id = ?`), now, factID)
-	return err
+	return entErrToBizErr(err, "MEMORY_L3")
 }

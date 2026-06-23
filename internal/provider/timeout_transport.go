@@ -19,8 +19,10 @@ import (
 //     层生效（不含连接池获取阶段，实际差异可忽略）
 //
 // 与 retryTransport/circuitBreakerTransport 的交互：
-//   - 传输链顺序：rate-limit → retry → circuit-breaker → timeoutTransport → base
+//   - 传输链执行顺序（从外到内）：circuit-breaker → retry → rate-limit → timeoutTransport → base
 //   - timeout 在最内层，确保每次重试都受超时约束
+//   - 组装顺序（buildProviderOptions 中）：timeout → rate-limit → retry → circuit-breaker
+//     （每层包裹前一层，最终 circuit-breaker 在最外层）
 type timeoutTransport struct {
 	base    http.RoundTripper
 	timeout time.Duration

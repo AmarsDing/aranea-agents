@@ -204,6 +204,8 @@ export function useOverviewPage() {
 
   const sessionActiveCount = computed(() => overview.value?.today?.call_count ?? 0);
 
+  // Sparkline shows the last 24 trend points as "recent trend" context for today's call count.
+  // Semantic depends on granularity: hourly = last 24 hours, daily = last 24 days.
   const sessionSparkline = computed(() => {
     const trends = overview.value?.trends ?? [];
     return trends.slice(-24).map((t: { call_count: number }) => t.call_count ?? 0);
@@ -217,6 +219,7 @@ export function useOverviewPage() {
   }));
 
   onMounted(() => {
+    void loadOverview();
     void loadProviderHealth();
     void reloadRunnerMetrics();
     void loadAgentStats();

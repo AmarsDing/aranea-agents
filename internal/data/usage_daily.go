@@ -137,10 +137,8 @@ func usageDailyWhere(query biz.UsageQuery) (string, []any) {
 		parts = append(parts, "agent_id = ?")
 		args = append(args, query.AgentID)
 	}
-	if query.TeamID != "" {
-		parts = append(parts, "workspace_id = ?")
-		args = append(args, query.TeamID)
-	}
+	// NOTE: model_token_usage_daily 表无 team_id 列，不支持按 TeamID 过滤。
+	// 调用方在使用 TeamID 过滤时应回退到实时查询路径（见 biz/usage Usecase.dailySupported）。
 	if query.UsageKind != "" {
 		parts = append(parts, "usage_kind = ?")
 		args = append(args, query.UsageKind)

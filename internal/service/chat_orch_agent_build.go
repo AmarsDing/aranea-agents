@@ -117,7 +117,11 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 		mcpHash = d.computeMCPHash(egCtx, p.Agent.ID)
 		return nil
 	})
-	_ = eg.Wait() // errors are non-fatal; hashes default to ""
+	if err := eg.Wait(); err != nil {
+		d.lg.Warn("agent build hash computation failed, hashes default to empty",
+			loggateway.StepID("chat_orch_agent_build.hash"),
+			loggateway.Err(err))
+	}
 
 	// Compute tool hash from cached result (depends on GetEffectiveTools above).
 	toolHash := d.computeToolHashFromCached(cachedEffTools)

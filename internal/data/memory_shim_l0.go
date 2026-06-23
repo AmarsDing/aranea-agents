@@ -44,18 +44,18 @@ func (r *l0SnapshotRepo) ListL0SnapshotRows(ctx context.Context, sessionID, agen
 	args = append(args, lim)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L0")
 	}
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
 		b, err := scanL0SnapshotRow(rows)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "MEMORY_L0")
 		}
 		out = append(out, b)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "MEMORY_L0")
 }
 
 func (r *l0SnapshotRepo) GetL0SnapshotRow(ctx context.Context, sessionID, id string) ([]byte, error) {
@@ -69,7 +69,7 @@ func (r *l0SnapshotRepo) GetL0SnapshotRow(ctx context.Context, sessionID, id str
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(sqlL0Select+` WHERE id = ? AND session_id = ?`), id, sessionID)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L0")
 	}
 	defer rows.Close()
 	if !rows.Next() {
@@ -132,7 +132,7 @@ func (r *l0SnapshotRepo) InsertL0AssemblySnapshot(ctx context.Context, in biz.L0
 		in.SummarizedTurnTo,
 		segs, warns, meta, created,
 	)
-	return err
+	return entErrToBizErr(err, "MEMORY_L0")
 }
 
 func (r *l0SnapshotRepo) UpdateL0SnapshotActual(ctx context.Context, id, sessionID string, actualPromptTokens, contextWindowTokens int) error {
@@ -157,7 +157,7 @@ func (r *l0SnapshotRepo) UpdateL0SnapshotActual(ctx context.Context, id, session
 		 WHERE id = ? AND session_id = ?`),
 		actualPromptTokens, usedRatio, biz.L0WarningCodesJSON(biz.L0WarningCodesFromRatio(usedRatio)), id, sessionID,
 	)
-	return err
+	return entErrToBizErr(err, "MEMORY_L0")
 }
 
 // newUUIDString generates a new UUID string.

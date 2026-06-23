@@ -201,6 +201,11 @@ func catalogConfigToConfig(c catalogConfigJSON, modelAPI string) ProviderModelCo
 // (5xx / 429 / network) should be retried with exponential backoff until
 // success or user-initiated cancel. Callers who want to disable retry can
 // explicitly set retry_max_attempts=0 in the model config JSON.
+//
+// 前提条件：无限重试依赖调用方设置 context 超时（通过 TimeoutPolicy 或
+// http.Client.Timeout）。所有调用路径（wire.go 中所有 RoundTrip 均设置了
+// http.Client.Timeout；buildProviderOptions 中 timeoutTransport 注入超时）
+// 都满足此前提条件。若新增调用路径未设置超时，将导致 goroutine 永久阻塞。
 func defaultRetryMaxAttempts(configured int) int {
 	if configured == 0 {
 		return -1

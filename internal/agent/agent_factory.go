@@ -77,6 +77,11 @@ func NewAgentFactoryImpl(
 // If a matching Agent already exists (deterministic AgentKey), it is reused.
 // Otherwise a new Agent is generated via LLM, persisted with Source="system",
 // and an EnvelopeTypeAgentCreated event is published.
+//
+// NOTE: CreateAgent + publishAgentCreated 不在事务中。顺序为先持久化后发布（符合
+// AS-EVT-01）。若进程在 publish 前崩溃，事件丢失但 Agent 已落库。这是可接受的降级：
+// agent_created 事件为 Informational 级别，丢失不影响业务正确性，前端通过 Agent
+// 列表轮询/刷新可发现新 Agent。
 func (f *AgentFactoryImpl) EnsureAgent(ctx context.Context, profile biz.TaskProfile) (string, error) {
 	if strings.TrimSpace(profile.TaskDescription) == "" {
 		return "", apierror.BadRequest(apierror.DomainAgent, "task description is required")

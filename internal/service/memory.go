@@ -351,7 +351,10 @@ func (s *MemoryService) GetMemoryNeighborhood(ctx context.Context, req *v1.GetMe
 	}
 	top, err := jsonutil.ParseMap(body)
 	if err != nil {
-		return nil, apierror.Internal("MEMORY", "failed to parse neighborhood: %s", err.Error())
+		s.lg.Warn("failed to parse neighborhood JSON",
+			loggateway.StepID("memory.neighborhood_parse"),
+			loggateway.Err(err))
+		return nil, apierror.Internal("MEMORY", "failed to parse neighborhood")
 	}
 	out := &v1.GraphNeighborhood{
 		Hops:    jsonutil.IfaceI32(top, "hops"),

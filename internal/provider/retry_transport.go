@@ -3,6 +3,8 @@ package provider
 import (
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"aranea-agents/pkg/loggateway"
@@ -42,6 +44,7 @@ func newRetryTransport(base http.RoundTripper, maxRetries int, baseDelay, maxDel
 
 func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	var lastErr error
+	var retryAfterDelay time.Duration // 从 Retry-After header 解析的延迟，优先于指数退避
 	attempt := 0
 	for {
 		// On retry, reset the request body so the full payload is sent again.
@@ -54,6 +57,15 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			delay := t.baseDelay * time.Duration(1<<(attempt-1)) // exponential backoff
 			if delay > t.maxDelay {
 				delay = t.maxDelay
+			}
+			// 如果服务端返回了 Retry-After，优先使用该值（封顶 maxDelay）。
+			// 这避免在 provider 明确告知等待时间后仍过早重试，加重负载。
+			if retryAfterDelay > 0 {
+				delay = retryAfterDelay
+				if delay > t.maxDelay {
+					delay = t.maxDelay
+				}
+				retryAfterDelay = 0
 			}
 			// Notify callback before sleeping so the frontend can show
 			// "正在重试" feedback.
@@ -84,6 +96,10 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		// Retry on server errors (5xx) and 429 (rate limited).
 		if resp.StatusCode >= 500 || resp.StatusCode == 429 {
+			// 解析 Retry-After header（429 和部分 5xx 可能携带）。
+			if d := parseRetryAfter(resp.Header.Get("Retry-After")); d > 0 {
+				retryAfterDelay = d
+			}
 			resp.Body.Close()
 			lastErr = fmt.Errorf("server returned %d", resp.StatusCode)
 			if t.lg != nil {
@@ -129,4 +145,29 @@ func resetRequestBody(req *http.Request) error {
 	}
 	req.Body = body
 	return nil
+}
+
+// parseRetryAfter 解析 HTTP Retry-After header。
+// 支持两种格式：
+//   - 秒数（如 "120"）
+//   - HTTP 日期（如 "Wed, 21 Oct 2026 07:28:00 GMT"）
+//
+// 返回 0 表示无效或缺失。
+func parseRetryAfter(value string) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	// 尝试解析为秒数
+	if seconds, err := strconv.Atoi(value); err == nil && seconds > 0 {
+		return time.Duration(seconds) * time.Second
+	}
+	// 尝试解析为 HTTP 日期
+	if t, err := http.ParseTime(value); err == nil {
+		d := time.Until(t)
+		if d > 0 {
+			return d
+		}
+	}
+	return 0
 }

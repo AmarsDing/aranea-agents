@@ -821,6 +821,10 @@ func (u *TeamUsecase) UpdateSwarmMembers(ctx context.Context, teamID string, add
 	if err := validateTeamDefinition(t.DefinitionJSON); err != nil {
 		return false, err
 	}
+	// Validate that all added members exist and are active (consistent with Create/Update).
+	if err := u.validateTeamMembersExist(ctx, t.DefinitionJSON); err != nil {
+		return false, err
+	}
 	_, err = u.writer.UpdateTeam(ctx, t)
 	if err != nil {
 		return false, err

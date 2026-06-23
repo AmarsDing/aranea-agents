@@ -580,14 +580,11 @@ func (s *SessionService) ListActivities(ctx context.Context, req *v1.ListActivit
 }
 
 func toProtoActivity(a biz.Activity) *v1.Activity {
-	var dependsOnJSON string
-	if len(a.DependsOn) > 0 {
-		if b, err := json.Marshal(a.DependsOn); err == nil {
-			dependsOnJSON = string(b)
-		}
-	} else {
-		dependsOnJSON = "[]"
+	dependsOn := a.DependsOn
+	if dependsOn == nil {
+		dependsOn = []string{}
 	}
+	dependsOnJSON, _ := json.Marshal(dependsOn)
 	return &v1.Activity{
 		Id:               a.ID,
 		Kind:             string(a.Kind),
@@ -609,7 +606,7 @@ func toProtoActivity(a biz.Activity) *v1.Activity {
 		SpiritSessionId:  a.SpiritSessionID,
 		TeamId:           a.TeamID,
 		DagNodeId:        a.DagNodeID,
-		DependsOnJson:    dependsOnJSON,
+		DependsOnJson:    string(dependsOnJSON),
 		AgentKey:         a.AgentKey,
 		AgentName:        a.AgentName,
 		Collapsed:        a.Collapsed,

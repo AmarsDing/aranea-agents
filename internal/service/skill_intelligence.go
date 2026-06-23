@@ -43,6 +43,9 @@ func (s *SkillIntelligenceService) ListExperienceReports(ctx context.Context, re
 
 	result, err := s.uc.GetExperienceReportsFiltered(ctx, req.GetSkillId(), startTime, endTime, limit, offset)
 	if err != nil {
+		if _, ok := apierror.From(err); ok {
+			return nil, err // Already a properly typed domain error
+		}
 		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
 	}
 
@@ -66,7 +69,15 @@ func (s *SkillIntelligenceService) ListExperienceReports(ctx context.Context, re
 func (s *SkillIntelligenceService) GetExperienceReport(ctx context.Context, req *v1.GetExperienceReportRequest) (*v1.GetExperienceReportResponse, error) {
 	r, err := s.uc.GetExperienceReport(ctx, req.GetId())
 	if err != nil {
+		if _, ok := apierror.From(err); ok {
+			return nil, err // Already a properly typed domain error
+		}
 		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
+	}
+	// B-11 fix: nil check before dereference to prevent panic if usecase
+	// returns (nil, nil) — defensive against contract violations.
+	if r == nil {
+		return nil, apierror.NotFound(apierror.DomainSkill, "experience report not found")
 	}
 	return &v1.GetExperienceReportResponse{
 		Report: toProtoExperienceReport(*r),

@@ -146,6 +146,7 @@ type SkillEvolutionOrchestrator struct {
 	writer      UnifiedEvolutionWriter
 	triggers    []EvolutionTrigger
 	triggersMu  sync.RWMutex // protects triggers for concurrent RegisterTrigger calls
+	unifiedSM   *UnifiedEvolutionStateMachine // AS-FSM-01: validates status transitions
 	lg          loggateway.Logger
 }
 
@@ -159,6 +160,7 @@ func NewSkillEvolutionOrchestrator(
 		checkReader: checkReader,
 		queryReader: queryReader,
 		writer:      writer,
+		unifiedSM:   NewUnifiedEvolutionStateMachine(),
 		lg:          lg,
 	}
 }
@@ -259,7 +261,8 @@ func (o *SkillEvolutionOrchestrator) Approve(ctx context.Context, id string, app
 	if err != nil {
 		return err
 	}
-	if s.Status != "pending" {
+	// AS-FSM-01: validate transition via state machine instead of direct string comparison.
+	if _, err := o.unifiedSM.Transition(ParseUnifiedEvolutionState(s.Status), UnifiedEvolutionEventApprove); err != nil {
 		return apierror.BadRequest("EVO_ORCHESTRATOR", "only pending suggestions can be approved, current status: "+s.Status)
 	}
 	return o.writer.UpdateStatus(ctx, id, "approved", approvedBy, "")
@@ -271,7 +274,8 @@ func (o *SkillEvolutionOrchestrator) Reject(ctx context.Context, id string, reje
 	if err != nil {
 		return err
 	}
-	if s.Status != "pending" {
+	// AS-FSM-01: validate transition via state machine instead of direct string comparison.
+	if _, err := o.unifiedSM.Transition(ParseUnifiedEvolutionState(s.Status), UnifiedEvolutionEventReject); err != nil {
 		return apierror.BadRequest("EVO_ORCHESTRATOR", "only pending suggestions can be rejected, current status: "+s.Status)
 	}
 	return o.writer.UpdateStatus(ctx, id, "rejected", rejectedBy, reason)

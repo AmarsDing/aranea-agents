@@ -27,7 +27,7 @@ func (a *memoryDebugRecallAdapter) RecallL2EpisodesDebug(ctx context.Context, ag
 	l2 := newL2EpisodeRepo(a.data, nil)
 	candidates, err := l2.ListEpisodeRowsForRecall(ctx, agentID, sessionID, l2RecallCandidatePool)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_DEBUG")
 	}
 	tokens := tokenizeQuery(query)
 	now := time.Now().UTC()
@@ -70,7 +70,7 @@ func (a *memoryDebugRecallAdapter) RecallL3FactsDebug(ctx context.Context, scope
 	l3 := newL3FactRepo(a.data, nil)
 	candidates, err := l3.RecallL3Facts(ctx, scopeType, scopeID, userID, query, nil, limit, 0)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_DEBUG")
 	}
 	var rows []biz.RecallDebugRow
 	for _, raw := range candidates {
@@ -123,17 +123,17 @@ func (a *memoryFactIndexCounterAdapter) CountFactsByIndexStatus(ctx context.Cont
 	if err := queryRowScan(ctx, a.data.RWDB().ReadDB(ctx),
 		`SELECT COALESCE(SUM(CASE WHEN embedding_status = 'fresh' THEN 1 ELSE 0 END), 0) FROM memory_facts WHERE status = 'active' AND deleted_at = ''`,
 		nil, &fresh); err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, entErrToBizErr(err, "MEMORY_DEBUG")
 	}
 	if err := queryRowScan(ctx, a.data.RWDB().ReadDB(ctx),
 		`SELECT COALESCE(SUM(CASE WHEN embedding_status = 'stale' THEN 1 ELSE 0 END), 0) FROM memory_facts WHERE status = 'active' AND deleted_at = ''`,
 		nil, &stale); err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, entErrToBizErr(err, "MEMORY_DEBUG")
 	}
 	if err := queryRowScan(ctx, a.data.RWDB().ReadDB(ctx),
 		`SELECT COALESCE(SUM(CASE WHEN embedding_status = 'disabled' THEN 1 ELSE 0 END), 0) FROM memory_facts WHERE status = 'active' AND deleted_at = ''`,
 		nil, &disabled); err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, entErrToBizErr(err, "MEMORY_DEBUG")
 	}
 	return fresh, stale, disabled, nil
 }

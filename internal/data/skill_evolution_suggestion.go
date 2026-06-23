@@ -44,7 +44,7 @@ func (r *SkillEvolutionSuggestionRepo) ListBySkill(ctx context.Context, skillID 
 	}
 	rows, err := q.All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_EVO_SUGGESTION")
 	}
 	return mapEntEvoSuggestions(rows), nil
 }
@@ -57,13 +57,17 @@ func (r *SkillEvolutionSuggestionRepo) CountBySkill(ctx context.Context, skillID
 	if status != "" {
 		q = q.Where(skillevolutionsuggestion.StatusEQ(string(status)))
 	}
-	return q.Count(ctx)
+	count, err := q.Count(ctx)
+	if err != nil {
+		return 0, entErrToBizErr(err, "SKILL_EVO_SUGGESTION")
+	}
+	return count, nil
 }
 
 func (r *SkillEvolutionSuggestionRepo) GetByID(ctx context.Context, id string) (*biz.SkillEvolutionSuggestion, error) {
 	row, err := r.data.RW().Read(ctx).SkillEvolutionSuggestion.Get(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_EVO_SUGGESTION")
 	}
 	s := mapEntEvoSuggestion(row)
 	return &s, nil
@@ -80,7 +84,7 @@ func (r *SkillEvolutionSuggestionRepo) ListPending(ctx context.Context, limit, o
 		Offset(offset).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_EVO_SUGGESTION")
 	}
 	return mapEntEvoSuggestions(rows), nil
 }
@@ -92,7 +96,7 @@ func (r *SkillEvolutionSuggestionRepo) GetLatestBySkill(ctx context.Context, ski
 		Limit(1).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "SKILL_EVO_SUGGESTION")
 	}
 	if len(rows) == 0 {
 		return nil, nil
@@ -145,7 +149,7 @@ func (r *SkillEvolutionSuggestionRepo) Create(ctx context.Context, suggestion bi
 		builder.SetLifecycleStatus(string(suggestion.LifecycleStatus))
 	}
 	_, err := builder.Save(ctx)
-	return err
+	return entErrToBizErr(err, "SKILL_EVO_SUGGESTION")
 }
 
 func (r *SkillEvolutionSuggestionRepo) UpdateStatus(ctx context.Context, id string, status biz.EvolutionSuggestionStatus, resolvedBy string, reason string) error {
@@ -160,14 +164,14 @@ func (r *SkillEvolutionSuggestionRepo) UpdateStatus(ctx context.Context, id stri
 		builder.SetRejectionReason(reason)
 	}
 	_, err := builder.Save(ctx)
-	return err
+	return entErrToBizErr(err, "SKILL_EVO_SUGGESTION")
 }
 
 func (r *SkillEvolutionSuggestionRepo) UpdateDraftBody(ctx context.Context, id string, draftBody string) error {
 	_, err := r.data.RW().Write(ctx).SkillEvolutionSuggestion.UpdateOneID(id).
 		SetDraftSkillBody(draftBody).
 		Save(ctx)
-	return err
+	return entErrToBizErr(err, "SKILL_EVO_SUGGESTION")
 }
 
 func (r *SkillEvolutionSuggestionRepo) UpdateSandboxResult(ctx context.Context, id string, passed bool, result json.RawMessage) error {
@@ -180,14 +184,14 @@ func (r *SkillEvolutionSuggestionRepo) UpdateSandboxResult(ctx context.Context, 
 		}
 	}
 	_, err := builder.Save(ctx)
-	return err
+	return entErrToBizErr(err, "SKILL_EVO_SUGGESTION")
 }
 
 func (r *SkillEvolutionSuggestionRepo) UpdateLifecycleStatus(ctx context.Context, id string, lifecycleStatus biz.EvolutionLifecycleStatus) error {
 	_, err := r.data.RW().Write(ctx).SkillEvolutionSuggestion.UpdateOneID(id).
 		SetLifecycleStatus(string(lifecycleStatus)).
 		Save(ctx)
-	return err
+	return entErrToBizErr(err, "SKILL_EVO_SUGGESTION")
 }
 
 // ── Mapping helpers ───────────────────────────────────────────────────────────

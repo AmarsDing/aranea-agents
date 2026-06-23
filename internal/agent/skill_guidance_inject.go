@@ -142,7 +142,13 @@ func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 // skillRoutedSlugsStateKey so the invocation recorder can persist them for
 // health metrics. Returns nil when no skills are resolved or on error.
 func resolveAndWriteSkillState(ctx context.Context, runtime *biz.AgentRuntimeSettings, deps TRPCBuilderDeps, progressive bool) *skillruntime.ResolveResult {
-	opts := &skillruntime.SkillToolsetOptions{Runtime: runtime, UserQuery: skillruntime.TurnQueryFromContext(ctx)}
+	opts := &skillruntime.SkillToolsetOptions{UserQuery: skillruntime.TurnQueryFromContext(ctx)}
+	// Avoid typed-nil interface: only set Runtime if runtime is non-nil,
+	// otherwise the nil *biz.AgentRuntimeSettings creates a non-nil interface
+	// wrapping a nil pointer, causing panic in ResolveSkillSlugsDetailed.
+	if runtime != nil {
+		opts.Runtime = runtime
+	}
 	result, err := skillruntime.ResolveSkillSlugsDetailed(ctx, deps.SkillUC, opts, deps.Logger())
 	if err != nil {
 		deps.Logger().Warn("resolveAndWriteSkillState: ResolveSkillSlugsDetailed failed",

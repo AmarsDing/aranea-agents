@@ -33,7 +33,7 @@ func (g *LLMSessionTitleGenerator) Generate(ctx context.Context, userMessage str
 	m, err := g.resolveModel(ctx)
 	if err != nil {
 		g.lg.Warn("session title: resolve model failed", loggateway.StepID("session.title_fail"), loggateway.Err(err))
-		return "", apierror.Internal("SESSION", "session title: resolve model: %v", err)
+		return "", apierror.Internal("SESSION", "session title: resolve model failed")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -49,7 +49,7 @@ func (g *LLMSessionTitleGenerator) Generate(ctx context.Context, userMessage str
 	ch, err := m.GenerateContent(ctx, req)
 	if err != nil {
 		g.lg.Warn("session title: llm call failed", loggateway.StepID("session.title_fail"), loggateway.Err(err))
-		return "", apierror.Internal("SESSION", "session title: llm call: %v", err)
+		return "", apierror.Internal("SESSION", "session title: llm call failed")
 	}
 
 	var sb strings.Builder

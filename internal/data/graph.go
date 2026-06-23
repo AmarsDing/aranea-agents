@@ -242,16 +242,17 @@ func entGraphToBiz(row *ent.GraphDefinition, lg loggateway.Logger) *biz.GraphDef
 }
 
 func (r *graphRepo) ReorderGraphs(ctx context.Context, ids []string) error {
-	client := r.data.RW().Write(ctx)
-	for i, id := range ids {
-		_, err := client.GraphDefinition.UpdateOneID(id).
-			SetSortOrder(i + 1).
-			Save(ctx)
-		if err != nil {
-			return entErrToBizErr(err, "GRAPH")
+	return r.data.ExecInTx(ctx, func(ctx context.Context) error {
+		client := EntClientFromCtx(ctx, r.data.entClient)
+		for i, id := range ids {
+			if err := client.GraphDefinition.UpdateOneID(id).
+				SetSortOrder(i + 1).
+				Exec(ctx); err != nil {
+				return entErrToBizErr(err, "GRAPH")
+			}
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 type graphRunRepo struct {

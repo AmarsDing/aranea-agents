@@ -67,7 +67,7 @@ func (r *l4EntityRepo) ListEntityRows(ctx context.Context, scopeType, scopeID, w
 	where := " WHERE " + strings.Join(clauses, " AND ")
 	var total int32
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders("SELECT COUNT(*) FROM memory_entities"+where), args, &total); err != nil {
-		return nil, 0, err
+		return nil, 0, entErrToBizErr(err, "MEMORY_L4")
 	}
 	lim := int(limit)
 	if lim <= 0 {
@@ -81,7 +81,7 @@ func (r *l4EntityRepo) ListEntityRows(ctx context.Context, scopeType, scopeID, w
 	args = append(args, lim, off)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, entErrToBizErr(err, "MEMORY_L4")
 	}
 	defer rows.Close()
 	lg := r.data.lg
@@ -89,11 +89,11 @@ func (r *l4EntityRepo) ListEntityRows(ctx context.Context, scopeType, scopeID, w
 	for rows.Next() {
 		b, err := scanEntityRowJSON(rows, lg)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, entErrToBizErr(err, "MEMORY_L4")
 		}
 		out = append(out, b)
 	}
-	return out, total, rows.Err()
+	return out, total, entErrToBizErr(rows.Err(), "MEMORY_L4")
 }
 
 func (r *l4EntityRepo) NeighborhoodJSON(ctx context.Context, centerID string, hops, maxNodes int32, queryAtRFC3339 string) ([]byte, error) {
@@ -125,7 +125,7 @@ func (r *l4EntityRepo) NeighborhoodJSON(ctx context.Context, centerID string, ho
 			ph[i] = "?"
 			args = append(args, id)
 		}
-		relQ := fmt.Sprintf(`SELECT%s FROM memory_relation WHERE (source_id IN (%s) OR target_id IN (%s)) AND status = 'active' AND deleted_at = ''`,
+		relQ := fmt.Sprintf(`SELECT%s FROM memory_relations WHERE (source_id IN (%s) OR target_id IN (%s)) AND status = 'active' AND deleted_at = ''`,
 			sqlRelationCols, strings.Join(ph, ","), strings.Join(ph, ","))
 		// Duplicate args for second IN clause
 		args2 := make([]any, len(args))
@@ -133,14 +133,14 @@ func (r *l4EntityRepo) NeighborhoodJSON(ctx context.Context, centerID string, ho
 		args = append(args, args2...)
 		rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(relQ), args...)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "MEMORY_L4")
 		}
 		lg := r.data.lg
 		for rows.Next() {
 			b, err := scanRelationRowJSON(rows)
 			if err != nil {
 				rows.Close()
-				return nil, err
+				return nil, entErrToBizErr(err, "MEMORY_L4")
 			}
 			relations = append(relations, b)
 			var rm map[string]any
@@ -183,13 +183,13 @@ func (r *l4EntityRepo) NeighborhoodJSON(ctx context.Context, centerID string, ho
 				sqlEntityCols, strings.Join(ph2, ","))
 			entRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(entQ), args2...)
 			if err != nil {
-				return nil, err
+				return nil, entErrToBizErr(err, "MEMORY_L4")
 			}
 			for entRows.Next() {
 				b, err := scanEntityRowJSON(entRows, lg)
 				if err != nil {
 					entRows.Close()
-					return nil, err
+					return nil, entErrToBizErr(err, "MEMORY_L4")
 				}
 				entities = append(entities, b)
 			}
@@ -206,14 +206,14 @@ func (r *l4EntityRepo) NeighborhoodJSON(ctx context.Context, centerID string, ho
 	centerRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		r.data.Dialect().RenumberPlaceholders("SELECT"+sqlEntityCols+" FROM memory_entities WHERE id = ? AND status = 'active' AND deleted_at = ''"), centerID)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L4")
 	}
 	lg := r.data.lg
 	for centerRows.Next() {
 		b, err := scanEntityRowJSON(centerRows, lg)
 		if err != nil {
 			centerRows.Close()
-			return nil, err
+			return nil, entErrToBizErr(err, "MEMORY_L4")
 		}
 		entities = append([][]byte{b}, entities...)
 	}
@@ -240,7 +240,7 @@ func (r *l4EntityRepo) AgentIdentityJSON(ctx context.Context, agentID string) ([
 		        current_phase, metadata_json, version, created_at, updated_at
 		 FROM agent_identity WHERE agent_id = ?`), agentID)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L4")
 	}
 	defer rows.Close()
 	if !rows.Next() {
@@ -249,7 +249,7 @@ func (r *l4EntityRepo) AgentIdentityJSON(ctx context.Context, agentID string) ([
 	var aid, persona, valuesJSON, tone, domainsJSON, userExp, phase, meta, ca, ua string
 	var version int
 	if err := rows.Scan(&aid, &persona, &valuesJSON, &tone, &domainsJSON, &userExp, &phase, &meta, &version, &ca, &ua); err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L4")
 	}
 	identity := map[string]any{
 		"agent_id":          aid,
@@ -278,7 +278,7 @@ func (r *l4EntityRepo) AgentStrategyJSON(ctx context.Context, agentID string) ([
 		        stats_json, metadata_json, version, created_at, updated_at
 		 FROM agent_strategy_profile WHERE agent_id = ?`), agentID)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L4")
 	}
 	defer rows.Close()
 	if !rows.Next() {
@@ -290,7 +290,7 @@ func (r *l4EntityRepo) AgentStrategyJSON(ctx context.Context, agentID string) ([
 	if err := rows.Scan(&aid, &exploration, &conciseness, &caution, &delegation,
 		&toolPrefJSON, &toolBlacklistJSON, &providerPrefJSON, &modelPrefJSON,
 		&statsJSON, &meta, &version, &ca, &ua); err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L4")
 	}
 	strategy := map[string]any{
 		"agent_id":            aid,
@@ -317,7 +317,7 @@ func (r *l4EntityRepo) DeleteSessionEventEntities(ctx context.Context, sessionID
 	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`UPDATE memory_entities SET deleted_at = ?, status = 'deleted' WHERE scope_id = ? AND scope_type = 'session' AND entity_type = 'event'`),
 		now, sessionID)
-	return err
+	return entErrToBizErr(err, "MEMORY_L4")
 }
 
 // --- L4EvolutionStore ---
@@ -345,18 +345,18 @@ func (r *l4EntityRepo) EvolutionProposalRows(ctx context.Context, agentID, statu
 	args = append(args, lim)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L4")
 	}
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
 		b, err := scanCascadeProposalJSON(rows)
 		if err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "MEMORY_L4")
 		}
 		out = append(out, b)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "MEMORY_L4")
 }
 
 func (r *l4EntityRepo) EvolutionEventRows(ctx context.Context, agentID string, limit int32) ([][]byte, error) {
@@ -376,7 +376,7 @@ func (r *l4EntityRepo) EvolutionEventRows(ctx context.Context, agentID string, l
 	args = append(args, lim)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L4")
 	}
 	defer rows.Close()
 	lg := r.data.lg
@@ -385,7 +385,7 @@ func (r *l4EntityRepo) EvolutionEventRows(ctx context.Context, agentID string, l
 		var id, aid, wid, ek, tf, reason, tk, ts, meta, ca string
 		var reverted int
 		if err := rows.Scan(&id, &aid, &wid, &ek, &tf, &reason, &tk, &ts, &meta, &ca, &reverted); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "MEMORY_L4")
 		}
 		// `kind` is not a column on agent_evolution_events; it is round-tripped
 		// via metadata_json (see InsertEvolutionEventRow). If absent, fall back to event_kind.
@@ -436,7 +436,7 @@ func (r *l4EntityRepo) EvolutionMetricsJSON(ctx context.Context, agentID string,
 		metricsQ += " WHERE " + strings.Join(whereClauses, " AND ")
 	}
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders(metricsQ), args, &total, &pending, &approved, &rejected); err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L4")
 	}
 	return json.Marshal(map[string]any{
 		"agent_id": agentID,
@@ -519,14 +519,14 @@ func (r *l4EntityRepo) InsertEvolutionEventRow(ctx context.Context, in biz.Evolu
 		meta, now, now, "", // applied_at=now, reverted_at=''
 	)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L4")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`SELECT id, agent_id, workspace_id, event_kind, target_field, reason,
 		        trigger_kind, trigger_source, metadata_json, created_at, reverted
 		 FROM agent_evolution_events WHERE id = ?`), id)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L4")
 	}
 	defer rows.Close()
 	if !rows.Next() {
@@ -535,7 +535,7 @@ func (r *l4EntityRepo) InsertEvolutionEventRow(ctx context.Context, in biz.Evolu
 	var rowID, aid, wid, ek, tf, reason, tk, ts, m, ca string
 	var reverted int
 	if err := rows.Scan(&rowID, &aid, &wid, &ek, &tf, &reason, &tk, &ts, &m, &ca, &reverted); err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_L4")
 	}
 	outKind := kind
 	if outKind == "" {

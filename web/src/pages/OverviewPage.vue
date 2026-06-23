@@ -204,7 +204,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
+import { computed, defineAsyncComponent, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useOverviewPage } from '../features/usage/useOverviewPage';
 import CommandCenterHero from '../components/usage/CommandCenterHero.vue';
@@ -281,6 +281,4 @@ const eventsPageQuery = computed(() => {
   if (filters.status) query.status = filters.status;
   return { path: '/usage/events', query };
 });
-
-onMounted(() => void loadOverview());
 </script>

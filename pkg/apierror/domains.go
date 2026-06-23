@@ -44,4 +44,13 @@ const (
 	DomainAvatar        = "AVATAR"
 	DomainSessionRun    = "SESSION_RUN"
 	DomainRuntimeProfile = "RUNTIME_PROFILE"
+	DomainEcosystemPreset = "ECOSYSTEM_PRESET"
+	DomainAgentFile      = "AGENT_FILE"
+	DomainChatAgent      = "CHAT_AGENT"
+	DomainChatJobs       = "CHAT_JOBS"
+	DomainChatNative     = "CHAT_NATIVE"
+	DomainChatTeamNative = "CHAT_TEAM_NATIVE"
+	DomainChatQueueFull  = "CHAT_QUEUE_FULL"
+	DomainChatRunEnded   = "CHAT_RUN_ENDED"
+	DomainChatEnqueueRejected = "CHAT_ENQUEUE_REJECTED"
 )

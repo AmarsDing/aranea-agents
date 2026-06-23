@@ -201,7 +201,7 @@ function mapFact(raw: unknown): MemoryFact {
     version: pickI32(f, 'version', 'version'),
     status: pickStr(f, 'status', 'status'),
     pii_flag: pickBool(f, 'pii_flag', 'piiFlag'),
-    pii_types: parseJsonArray(pickStr(f, 'pii_types', 'piiTypes')),
+    pii_types: parseJsonArray(pickStr(f, 'pii_types_json', 'piiTypesJson')),
     quality_score: pickNum(f, 'quality_score', 'qualityScore'),
     created_at: pickStr(f, 'created_at', 'createdAt'),
     updated_at: pickStr(f, 'updated_at', 'updatedAt'),

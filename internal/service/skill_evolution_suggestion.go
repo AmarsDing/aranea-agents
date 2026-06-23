@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	structpb "google.golang.org/protobuf/types/known/structpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -53,7 +54,7 @@ func (s *SkillEvolutionSuggestionService) ListSkillEvolutionSuggestions(ctx cont
 		PageSize: pageSize,
 	}
 	for i := range suggestions {
-		resp.Items = append(resp.Items, toProtoEvolutionSuggestion(suggestions[i]))
+		resp.Items = append(resp.Items, toProtoEvolutionSuggestion(suggestions[i], s.lg))
 	}
 	return resp, nil
 }
@@ -67,7 +68,7 @@ func (s *SkillEvolutionSuggestionService) GetSkillEvolutionSuggestion(ctx contex
 		return nil, apierror.NotFound("SKILL_EVO_SUGGESTION", "suggestion %s not found", req.GetId())
 	}
 	return &v1.GetSkillEvolutionSuggestionResponse{
-		Suggestion: toProtoEvolutionSuggestion(*suggestion),
+		Suggestion: toProtoEvolutionSuggestion(*suggestion, s.lg),
 	}, nil
 }
 
@@ -76,23 +77,31 @@ func (s *SkillEvolutionSuggestionService) ApproveSkillEvolutionSuggestion(ctx co
 		return nil, err
 	}
 
-	// After approval, generate draft and run sandbox validation asynchronously.
-	// Errors are logged but not blocking the approval response.
-	if s.curator != nil {
-		if _, err := s.curator.GenerateDraft(ctx, req.GetId()); err != nil {
-			s.lg.Warn("ApproveSkillEvolutionSuggestion: GenerateDraft failed",
-				loggateway.StepID("skill_evo_suggestion.approve"),
-				loggateway.Str("suggestion_id", req.GetId()),
-				loggateway.Err(err))
-		}
-	}
-	if s.sandbox != nil {
-		if _, _, err := s.sandbox.ValidateSuggestion(ctx, req.GetId()); err != nil {
-			s.lg.Warn("ApproveSkillEvolutionSuggestion: ValidateSuggestion failed",
-				loggateway.StepID("skill_evo_suggestion.approve"),
-				loggateway.Str("suggestion_id", req.GetId()),
-				loggateway.Err(err))
-		}
+	// B-14 fix: actually run draft generation and sandbox validation
+	// asynchronously (previously the comment claimed async but the code was
+	// synchronous, blocking the approval response). Use context.WithoutCancel
+	// so the background work survives HTTP response delivery.
+	suggestionID := req.GetId()
+	if s.curator != nil || s.sandbox != nil {
+		safego.Go(context.WithoutCancel(ctx), "skill_evo_suggestion.approve.async", func() {
+			bgCtx := context.Background()
+			if s.curator != nil {
+				if _, err := s.curator.GenerateDraft(bgCtx, suggestionID); err != nil {
+					s.lg.Warn("ApproveSkillEvolutionSuggestion: GenerateDraft failed",
+						loggateway.StepID("skill_evo_suggestion.approve"),
+						loggateway.Str("suggestion_id", suggestionID),
+						loggateway.Err(err))
+				}
+			}
+			if s.sandbox != nil {
+				if _, _, err := s.sandbox.ValidateSuggestion(bgCtx, suggestionID); err != nil {
+					s.lg.Warn("ApproveSkillEvolutionSuggestion: ValidateSuggestion failed",
+						loggateway.StepID("skill_evo_suggestion.approve"),
+						loggateway.Str("suggestion_id", suggestionID),
+						loggateway.Err(err))
+				}
+			}
+		})
 	}
 
 	return &v1.ApproveSkillEvolutionSuggestionResponse{}, nil
@@ -120,13 +129,13 @@ func (s *SkillEvolutionSuggestionService) TriggerCuratorFlow(ctx context.Context
 		return &v1.TriggerCuratorFlowResponse{}, nil
 	}
 	return &v1.TriggerCuratorFlowResponse{
-		Suggestion: toProtoEvolutionSuggestion(*suggestion),
+		Suggestion: toProtoEvolutionSuggestion(*suggestion, s.lg),
 	}, nil
 }
 
 // ── Proto conversion helpers ──────────────────────────────────────────────────
 
-func toProtoEvolutionSuggestion(s biz.SkillEvolutionSuggestion) *v1.SkillEvolutionSuggestionMsg {
+func toProtoEvolutionSuggestion(s biz.SkillEvolutionSuggestion, lg loggateway.Logger) *v1.SkillEvolutionSuggestionMsg {
 	pb := &v1.SkillEvolutionSuggestionMsg{
 		Id:              s.ID,
 		SkillId:         s.SkillID,
@@ -147,18 +156,34 @@ func toProtoEvolutionSuggestion(s biz.SkillEvolutionSuggestion) *v1.SkillEvoluti
 	}
 	if s.SandboxResult != nil {
 		var m map[string]interface{}
-		if err := json.Unmarshal(s.SandboxResult, &m); err == nil {
-			if st, err := structpb.NewStruct(m); err == nil {
-				pb.SandboxResult = st
-			}
+		if err := json.Unmarshal(s.SandboxResult, &m); err != nil {
+			lg.Warn("toProtoEvolutionSuggestion: unmarshal sandbox_result failed",
+				loggateway.StepID("skill_evo_suggestion"),
+				loggateway.Str("suggestion_id", s.ID),
+				loggateway.Err(err))
+		} else if st, err := structpb.NewStruct(m); err != nil {
+			lg.Warn("toProtoEvolutionSuggestion: structpb.NewStruct sandbox_result failed",
+				loggateway.StepID("skill_evo_suggestion"),
+				loggateway.Str("suggestion_id", s.ID),
+				loggateway.Err(err))
+		} else {
+			pb.SandboxResult = st
 		}
 	}
 	if s.PreVerifyResult != nil {
 		var m map[string]interface{}
-		if err := json.Unmarshal(s.PreVerifyResult, &m); err == nil {
-			if st, err := structpb.NewStruct(m); err == nil {
-				pb.PreVerifyResult = st
-			}
+		if err := json.Unmarshal(s.PreVerifyResult, &m); err != nil {
+			lg.Warn("toProtoEvolutionSuggestion: unmarshal pre_verify_result failed",
+				loggateway.StepID("skill_evo_suggestion"),
+				loggateway.Str("suggestion_id", s.ID),
+				loggateway.Err(err))
+		} else if st, err := structpb.NewStruct(m); err != nil {
+			lg.Warn("toProtoEvolutionSuggestion: structpb.NewStruct pre_verify_result failed",
+				loggateway.StepID("skill_evo_suggestion"),
+				loggateway.Str("suggestion_id", s.ID),
+				loggateway.Err(err))
+		} else {
+			pb.PreVerifyResult = st
 		}
 	}
 	if s.ResolvedAt != nil {

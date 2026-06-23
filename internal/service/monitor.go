@@ -80,7 +80,7 @@ func bizMonitorRowToProto(row biz.MonitorPlatformRow, lg loggateway.Logger) *v1.
 
 func notFoundMonitor(err error) error {
 	if apierror.IsCode(err, apierror.CodeNotFound) {
-		return apierror.NotFound(apierror.DomainMonitor, err.Error())
+		return apierror.NotFound(apierror.DomainMonitor, "monitor resource not found")
 	}
 	return err
 }
@@ -91,7 +91,7 @@ func wrapInternalError(err error) error {
 	if ae, ok := apierror.From(err); ok {
 		return ae
 	}
-	return apierror.Internal(apierror.DomainMonitor, err.Error())
+	return apierror.Internal(apierror.DomainMonitor, "monitor internal error")
 }
 
 func (s *MonitorService) ListAuditLogs(ctx context.Context, in *v1.ListAuditLogsRequest) (*v1.ListAuditLogsResponse, error) {

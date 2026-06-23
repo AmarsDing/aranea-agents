@@ -301,7 +301,16 @@ func buildSkillDeps(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (tr
 	if ag.Settings != nil {
 		runtime = ag.Settings
 	}
-	filter := skillruntime.NewAgentVisibilityFilter(deps.SkillUC, runtime, deps.Logger(), ag.AgentKey)
+	// Avoid typed-nil interface: passing nil *biz.AgentRuntimeSettings to a
+	// RuntimeSettings parameter creates a non-nil interface wrapping a nil
+	// pointer, causing panic on method calls (resolve.go opts.Runtime != nil).
+	// Use a nil interface instead so the nil check in ResolveSkillSlugsDetailed
+	// works correctly.
+	var runtimeIface skillruntime.RuntimeSettings
+	if runtime != nil {
+		runtimeIface = runtime
+	}
+	filter := skillruntime.NewAgentVisibilityFilter(deps.SkillUC, runtimeIface, deps.Logger(), ag.AgentKey)
 
 	execType := ""
 	if runtime != nil {

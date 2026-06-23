@@ -298,8 +298,8 @@ func (u *MCPServerUsecase) persistHealth(ctx context.Context, row *MCPServer, re
 }
 
 // validateMCPConfigURLs parses configJSON and validates that any HTTP
-// transport URL passes SSRF checks. This prevents saving MCP server
-// configurations that target internal/private networks.
+// transport URL and OAuth2 token_url pass SSRF checks. This prevents
+// saving MCP server configurations that target internal/private networks.
 func validateMCPConfigURLs(configJSON string) error {
 	raw := strings.TrimSpace(configJSON)
 	if raw == "" || raw == "{}" {
@@ -324,6 +324,17 @@ func validateMCPConfigURLs(configJSON string) error {
 		}
 		if err := outboundguard.ValidateURL(url); err != nil {
 			return apierror.BadRequest("MCP_SERVER", "mcp url failed SSRF check: "+err.Error())
+		}
+	}
+	// Validate OAuth2 token_url regardless of transport: token_url is used by
+	// the runtime to fetch access tokens and must not target internal/private
+	// networks (SSRF). Applies to all auth types that carry a token_url
+	// (oauth2_client_credentials / oauth2_refresh).
+	if authRaw, ok := cfg["auth"].(map[string]any); ok {
+		if tokenURL, _ := authRaw["token_url"].(string); strings.TrimSpace(tokenURL) != "" {
+			if err := outboundguard.ValidateURL(tokenURL); err != nil {
+				return apierror.BadRequest("MCP_SERVER", "mcp auth.token_url failed SSRF check: "+err.Error())
+			}
 		}
 	}
 	return nil

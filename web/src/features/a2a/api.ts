@@ -127,7 +127,7 @@ export async function listA2AAudit(params: ListAuditParams = {}): Promise<ListAu
   );
   const itemsRaw = res.items ?? res.Items;
   const items = Array.isArray(itemsRaw) ? itemsRaw.map(mapAuditEntry) : [];
-  return { items, total: pickI32(res, 'total', 'total') || items.length };
+  return { items, total: pickI32(res, 'total', 'total') };
 }
 
 function mapRemoteAgent(raw: unknown): A2ARemoteAgent {

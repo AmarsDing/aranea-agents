@@ -40,11 +40,11 @@ func TurnError(code TurnErrorCode, detail string) error {
 	var ae *apierror.Error
 	switch code {
 	case TurnErrAgentForbidden:
-		ae = apierror.Forbidden("CHAT_AGENT", msg)
+		ae = apierror.Forbidden(apierror.DomainChatAgent, msg)
 	case TurnErrAttachmentFailed, TurnErrAttachmentUnsupported:
-		ae = apierror.BadRequest("CHAT_AGENT", msg)
+		ae = apierror.BadRequest(apierror.DomainChatAgent, msg)
 	default:
-		ae = apierror.Internal("CHAT_AGENT", msg)
+		ae = apierror.Internal(apierror.DomainChatAgent, msg)
 	}
 	return ae.WithMeta(metaKeyTurnErrorCode, string(code))
 }

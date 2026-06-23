@@ -65,7 +65,7 @@ func (a *recentMessageListerAdapter) ListRecentMessages(ctx context.Context, ses
 		Order(message.ByTurnID(entsql.OrderDesc()), message.BySeqInTurn(entsql.OrderDesc()), message.ByCreatedAt(entsql.OrderDesc())).
 		Limit(limit).All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "MEMORY_MESSAGE")
 	}
 	// Reverse to chronological order.
 	out := make([]biz.ConsolidateMessage, 0, len(rows))

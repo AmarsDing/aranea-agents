@@ -619,18 +619,16 @@ func (r *skillRepo) DeleteSkill(ctx context.Context, id string) error {
 		return apierror.NotFound(apierror.DomainSkill, "skill not found or already deleted")
 	}
 
-	// Mark associated versions as deleted to prevent orphan access
-	_, vErr := tx.SkillVersion.Update().
+	// Mark associated versions as deleted to prevent orphan access.
+	// B-10 fix: version deletion failure must be fatal to maintain referential
+	// integrity. Returning the error triggers tx.Rollback() via defer, so the
+	// skill soft-delete is also rolled back — keeping skill + versions atomic.
+	if _, vErr := tx.SkillVersion.Update().
 		Where(skillversion.SkillIDEQ(id)).
 		SetStatus("deleted").
 		SetUpdatedAt(now).
-		Save(ctx)
-	if vErr != nil {
-		r.data.lg.Warn("DeleteSkill: failed to mark versions as deleted",
-			loggateway.StepID("data.skill"),
-			loggateway.Str("skill_id", id),
-			loggateway.Err(vErr))
-		// Non-fatal: the skill itself is already soft-deleted
+		Save(ctx); vErr != nil {
+		return entErrToBizErr(vErr, apierror.DomainSkill)
 	}
 
 	return entErrToBizErr(tx.Commit(), apierror.DomainSkill)
@@ -1260,12 +1258,12 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 			return biz.Skill{}, apierror.Internal("SKILL", "skill file path escapes storage directory")
 		}
 
-		// Write filesystem FIRST (before DB transaction)
-		if writeErr := os.WriteFile(skillPath, []byte(body), 0o644); writeErr != nil {
-			return biz.Skill{}, apierror.Wrap(writeErr, apierror.CodeInternal, apierror.DomainSkill)
-		}
-
-		// Then commit DB transaction
+		// B-08 fix: commit DB transaction FIRST, then write filesystem.
+		// Previous order (filesystem → DB) left filesystem modified when DB
+		// transaction failed, causing divergence between SKILL.md and the
+		// SkillVersion.content_markdown row. DB is the source of truth; if
+		// the filesystem write fails after commit we log and continue — the
+		// agent runtime can be re-synced from DB.
 		tx, txErr := r.data.RW().Write(ctx).Tx(ctx)
 		if txErr != nil {
 			return biz.Skill{}, entErrToBizErr(txErr, apierror.DomainSkill)
@@ -1308,55 +1306,74 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 		if err = tx.Commit(); err != nil {
 			return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 		}
-	} else {
-		// No body change — single update, no transaction needed.
-		upd := r.data.RW().Write(ctx).PlatformSkill.UpdateOneID(id).SetUpdatedAt(now)
-		if patch.HasName {
-			upd.SetName(strings.TrimSpace(patch.Name))
-		}
-		if patch.HasDescription {
-			upd.SetDescription(strings.TrimSpace(patch.Description))
-		}
-		if patch.HasTags {
-			md := parseSkillMetadata(r.data.lg, e.MetadataJSON)
-			md.Tags = normalizeSkillTags(patch.Tags)
-			metaJSON, jerr := json.Marshal(md)
-			if jerr != nil {
-				return biz.Skill{}, jerr
-			}
-			upd.SetMetadataJSON(string(metaJSON))
-		}
-		if err := upd.Exec(ctx); err != nil {
-			return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
-		}
 
-		// Sync tags to latest SkillVersion metadata
-		if patch.HasTags {
-			sv, svErr := r.data.RW().Read(ctx).SkillVersion.Query().
-				Where(skillversion.SkillIDEQ(id)).
-				Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
-				First(ctx)
-			if svErr == nil {
-				md := parseSkillMetadata(r.data.lg, sv.MetadataJSON)
-				md.Tags = normalizeSkillTags(patch.Tags)
-				svMetaJSON, jerr := json.Marshal(md)
-				if jerr == nil {
-					if tagSyncErr := r.data.RW().Write(ctx).SkillVersion.UpdateOneID(sv.ID).
-						SetMetadataJSON(string(svMetaJSON)).
-						SetUpdatedAt(now).
-						Exec(ctx); tagSyncErr != nil {
-						r.data.lg.Warn("PatchSkill: failed to sync tags to SkillVersion metadata",
-							loggateway.StepID("data.skill"),
-							loggateway.Str("skill_id", id),
-							loggateway.Err(tagSyncErr))
-					}
-				}
-			} else if !dataent.IsNotFound(svErr) {
-				r.data.lg.Warn("PatchSkill: failed to query latest version for tag sync",
-					loggateway.StepID("data.skill"),
-					loggateway.Str("skill_id", id),
-					loggateway.Err(svErr))
+		// Filesystem write AFTER successful DB commit. Failure here is
+		// non-fatal: DB is the source of truth; filesystem is a cache the
+		// agent runtime reads. Log for operator follow-up.
+		if writeErr := os.WriteFile(skillPath, []byte(body), 0o644); writeErr != nil {
+			r.data.lg.Warn("PatchSkill: filesystem write failed after DB commit",
+				loggateway.StepID("data.skill"),
+				loggateway.Str("skill_id", id),
+				loggateway.Str("path", skillPath),
+				loggateway.Err(writeErr))
+		}
+	} else {
+		// B-07 fix: wrap PlatformSkill metadata update and SkillVersion tag
+		// sync in a single transaction. Previously these were two independent
+		// writes — if the second failed (silently), tags diverged between
+		// PlatformSkill.metadata_json and SkillVersion.metadata_json.
+		txErr := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+			client := r.data.RW().Write(txCtx)
+			upd := client.PlatformSkill.UpdateOneID(id).SetUpdatedAt(now)
+			if patch.HasName {
+				upd.SetName(strings.TrimSpace(patch.Name))
 			}
+			if patch.HasDescription {
+				upd.SetDescription(strings.TrimSpace(patch.Description))
+			}
+			if patch.HasTags {
+				md := parseSkillMetadata(r.data.lg, e.MetadataJSON)
+				md.Tags = normalizeSkillTags(patch.Tags)
+				metaJSON, jerr := json.Marshal(md)
+				if jerr != nil {
+					return jerr
+				}
+				upd.SetMetadataJSON(string(metaJSON))
+			}
+			if err := upd.Exec(txCtx); err != nil {
+				return entErrToBizErr(err, apierror.DomainSkill)
+			}
+
+			// Sync tags to latest SkillVersion metadata within the same tx.
+			if patch.HasTags {
+				sv, svErr := client.SkillVersion.Query().
+					Where(skillversion.SkillIDEQ(id)).
+					Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
+					First(txCtx)
+				if svErr != nil {
+					if dataent.IsNotFound(svErr) {
+						// No version exists yet — nothing to sync. Not fatal.
+						return nil
+					}
+					return entErrToBizErr(svErr, apierror.DomainSkill)
+				}
+				svMd := parseSkillMetadata(r.data.lg, sv.MetadataJSON)
+				svMd.Tags = normalizeSkillTags(patch.Tags)
+				svMetaJSON, jerr := json.Marshal(svMd)
+				if jerr != nil {
+					return jerr
+				}
+				if err := client.SkillVersion.UpdateOneID(sv.ID).
+					SetMetadataJSON(string(svMetaJSON)).
+					SetUpdatedAt(now).
+					Exec(txCtx); err != nil {
+					return entErrToBizErr(err, apierror.DomainSkill)
+				}
+			}
+			return nil
+		})
+		if txErr != nil {
+			return biz.Skill{}, txErr
 		}
 	}
 	return r.GetSkillByID(ctx, id)

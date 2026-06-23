@@ -320,6 +320,8 @@ func findDuplicateFactIDs(ctx context.Context, deps Deps, agentID string, thresh
 }
 
 // consolidateEpisodesCount consolidates episodic facts and returns the distilled count.
+// It also deletes the original episodic facts after distillation, consistent with
+// the standalone consolidate_episodes tool.
 func consolidateEpisodesCount(ctx context.Context, deps Deps, agentID string) (int, error) {
 	rows, _, _, _, err := deps.MemoryAdmin.ListFactRows(ctx, biz.ListFactRowsParams{
 		ScopeType: "agent",
@@ -334,6 +336,7 @@ func consolidateEpisodesCount(ctx context.Context, deps Deps, agentID string) (i
 
 	seen := make(map[string]bool)
 	var unique []string
+	var episodeIDs []string
 	for _, raw := range rows {
 		m, _ := jsonutil.ParseMap(raw)
 		if m == nil {
@@ -342,6 +345,9 @@ func consolidateEpisodesCount(ctx context.Context, deps Deps, agentID string) (i
 		stmt := jsonutil.IfaceStr(m, "statement")
 		if stmt == "" {
 			continue
+		}
+		if id := jsonutil.IfaceStr(m, "id"); id != "" {
+			episodeIDs = append(episodeIDs, id)
 		}
 		lower := strings.ToLower(stmt)
 		if !seen[lower] {
@@ -375,6 +381,17 @@ func consolidateEpisodesCount(ctx context.Context, deps Deps, agentID string) (i
 	})
 	if err != nil {
 		return 0, err
+	}
+
+	// Delete the original episodic facts now that they have been distilled.
+	// Best-effort: log but don't fail — the distillation succeeded.
+	if len(episodeIDs) > 0 {
+		if _, delErr := deps.MemoryAdmin.DeleteFactRowsByIDs(ctx, episodeIDs); delErr != nil {
+			deps.LG.Warn("dream_cycle: consolidate_episodes failed to delete original episodic facts",
+				loggateway.StepID("memory_butler.dream.consolidate.delete_episodes"),
+				loggateway.Str("agent_id", agentID),
+				loggateway.Err(delErr))
+		}
 	}
 	return len(unique), nil
 }

@@ -77,87 +77,89 @@ func (r *SkillMergeRepo) GetFullSkillForMerge(ctx context.Context, skillID strin
 
 // ApplyMerge 事务性应用合并结果
 func (r *SkillMergeRepo) ApplyMerge(ctx context.Context, params biz.SkillMergeApplyParams) (*biz.SkillMergeResult, error) {
-	tx, err := r.data.RW().Write(ctx).Tx(ctx)
+	var newVersionID string
+	var transferred int
+
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		client := r.data.RW().Write(txCtx)
+
+		// 1. 创建新版本（fused 内容）— version 从目标最新版本递增
+		now := nowRFC3339()
+		newVersionID = fmt.Sprintf("skillver_%d", time.Now().UTC().UnixNano())
+		latestVer, lvErr := client.SkillVersion.Query().
+			Where(skillversion.SkillIDEQ(params.TargetID)).
+			Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
+			First(txCtx)
+		nextVer := "1.0.0"
+		if lvErr == nil && latestVer != nil {
+			nextVer = incrementVersion(latestVer.Version)
+		}
+		newVersion, vErr := client.SkillVersion.Create().
+			SetID(newVersionID).
+			SetSkillID(params.TargetID).
+			SetVersion(nextVer).
+			SetContentMarkdown(params.FusedBody).
+			SetStatus("published").
+			SetEvolutionReason(params.MergeReason).
+			SetCreatedAt(now).
+			SetUpdatedAt(now).
+			Save(txCtx)
+		if vErr != nil {
+			return entErrToBizErr(vErr, "SKILL")
+		}
+		newVersionID = newVersion.ID
+
+		// 2. 更新目标 Skill 的 metadata（tags）
+		target, tErr := client.PlatformSkill.Query().
+			Where(platformskill.IDEQ(params.TargetID)).
+			Only(txCtx)
+		if tErr != nil {
+			return entErrToBizErr(tErr, "SKILL")
+		}
+		md := parseSkillMetadata(r.lg, target.MetadataJSON)
+		md.Tags = stringSliceToSkillTags(params.FusedTags)
+		metaJSON, jErr := json.Marshal(md)
+		if jErr != nil {
+			return entErrToBizErr(jErr, "SKILL")
+		}
+
+		_, uErr := client.PlatformSkill.UpdateOneID(params.TargetID).
+			SetMetadataJSON(string(metaJSON)).
+			SetUpdatedAt(now).
+			Save(txCtx)
+		if uErr != nil {
+			return entErrToBizErr(uErr, "SKILL")
+		}
+
+		// 3. 转移调用记录
+		var trErr error
+		transferred, trErr = client.SkillInvocation.Update().
+			Where(skillinvocation.SkillIDEQ(params.SourceID)).
+			SetSkillID(params.TargetID).
+			Save(txCtx)
+		if trErr != nil {
+			return entErrToBizErr(trErr, "SKILL")
+		}
+
+		// 4. 废弃源 Skill
+		_, dErr := client.PlatformSkill.UpdateOneID(params.SourceID).
+			SetEnabled(false).
+			SetStatus("deprecated").
+			SetDeletedAt(now).
+			SetUpdatedAt(now).
+			Save(txCtx)
+		if dErr != nil {
+			return entErrToBizErr(dErr, "SKILL")
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, entErrToBizErr(err, "SKILL")
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	// 1. 创建新版本（fused 内容）— version 从目标最新版本递增
-	now := nowRFC3339()
-	newVersionID := fmt.Sprintf("skillver_%d", time.Now().UTC().UnixNano())
-	latestVer, lvErr := tx.SkillVersion.Query().
-		Where(skillversion.SkillIDEQ(params.TargetID)).
-		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
-		First(ctx)
-	nextVer := "1.0.0"
-	if lvErr == nil && latestVer != nil {
-		nextVer = incrementVersion(latestVer.Version)
-	}
-	newVersion, vErr := tx.SkillVersion.Create().
-		SetID(newVersionID).
-		SetSkillID(params.TargetID).
-		SetVersion(nextVer).
-		SetContentMarkdown(params.FusedBody).
-		SetStatus("published").
-		SetEvolutionReason(params.MergeReason).
-		SetCreatedAt(now).
-		SetUpdatedAt(now).
-		Save(ctx)
-	if vErr != nil {
-		return nil, entErrToBizErr(vErr, "SKILL")
-	}
-
-	// 2. 更新目标 Skill 的 metadata（tags）
-	// 先读取当前 metadata，更新 tags，再写回
-	target, tErr := tx.PlatformSkill.Query().
-		Where(platformskill.IDEQ(params.TargetID)).
-		Only(ctx)
-	if tErr != nil {
-		return nil, entErrToBizErr(tErr, "SKILL")
-	}
-	md := parseSkillMetadata(r.lg, target.MetadataJSON)
-	md.Tags = stringSliceToSkillTags(params.FusedTags)
-	metaJSON, jErr := json.Marshal(md)
-	if jErr != nil {
-		return nil, entErrToBizErr(jErr, "SKILL")
-	}
-
-	_, uErr := tx.PlatformSkill.UpdateOneID(params.TargetID).
-		SetMetadataJSON(string(metaJSON)).
-		SetUpdatedAt(now).
-		Save(ctx)
-	if uErr != nil {
-		return nil, entErrToBizErr(uErr, "SKILL")
-	}
-
-	// 3. 转移调用记录
-	transferred, trErr := tx.SkillInvocation.Update().
-		Where(skillinvocation.SkillIDEQ(params.SourceID)).
-		SetSkillID(params.TargetID).
-		Save(ctx)
-	if trErr != nil {
-		return nil, entErrToBizErr(trErr, "SKILL")
-	}
-
-	// 4. 废弃源 Skill
-	_, dErr := tx.PlatformSkill.UpdateOneID(params.SourceID).
-		SetEnabled(false).
-		SetStatus("deprecated").
-		SetDeletedAt(now).
-		SetUpdatedAt(now).
-		Save(ctx)
-	if dErr != nil {
-		return nil, entErrToBizErr(dErr, "SKILL")
-	}
-
-	if cErr := tx.Commit(); cErr != nil {
-		return nil, entErrToBizErr(cErr, "SKILL")
+		return nil, err
 	}
 
 	return &biz.SkillMergeResult{
 		TargetSkillID:    params.TargetID,
-		NewVersionID:     newVersion.ID,
+		NewVersionID:     newVersionID,
 		FusedBody:        params.FusedBody,
 		FusedTags:        params.FusedTags,
 		TransferredCount: transferred,

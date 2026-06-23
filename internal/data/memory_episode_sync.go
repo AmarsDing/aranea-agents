@@ -41,5 +41,5 @@ func (s *memoryEpisodeIndexSync) SyncEpisodeIndex(ctx context.Context, _ string,
 	_, err = s.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		s.data.Dialect().RenumberPlaceholders(`UPDATE memory_episodes SET embedding_blob = ?, embedding_norm = ?, embedding_dim = ?, embedding_status = 'fresh', embedding_model = 'memory_embedder', updated_at = ? WHERE id = ?`),
 		blob, norm, len(embedding), now, episodeID)
-	return err
+	return entErrToBizErr(err, "MEMORY_L2")
 }

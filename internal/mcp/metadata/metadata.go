@@ -47,11 +47,17 @@ func Marshal(m map[string]any) (string, error) {
 
 // ApplyHealth returns a new map with health_* keys updated and the row status to persist ("active" or "error").
 // The input map is not modified.
+//
+// Special case: when ok=true but healthStatus=="auth_required", the server is
+// network-reachable but requires credentials the probe does not inject. This is
+// a degraded state worth alerting on, so health_error_since is preserved (or
+// initialized) to feed the alert debounce window — same as the error branch.
+// The persisted row status remains "active" because the server itself is up.
 func ApplyHealth(m map[string]any, healthStatus string, ok bool, errMsg string, at time.Time) (map[string]any, string) {
 	out := cloneMap(m)
 	out[KeyHealthStatus] = healthStatus
 	out[KeyLastHealthAt] = at.UTC().Format(time.RFC3339)
-	if ok {
+	if ok && healthStatus != "auth_required" {
 		out[KeyLastErrorMessage] = ""
 		delete(out, KeyHealthErrorSince)
 		return out, "active"
@@ -59,6 +65,10 @@ func ApplyHealth(m map[string]any, healthStatus string, ok bool, errMsg string, 
 	out[KeyLastErrorMessage] = errMsg
 	if _, exists := out[KeyHealthErrorSince]; !exists || strings.TrimSpace(metaString(out[KeyHealthErrorSince])) == "" {
 		out[KeyHealthErrorSince] = at.UTC().Format(time.RFC3339)
+	}
+	if ok {
+		// auth_required: degraded but server is up — persist as "active".
+		return out, "active"
 	}
 	return out, "error"
 }
@@ -90,12 +100,15 @@ func metaString(v any) string {
 	return s
 }
 
-// ErrorSince returns RFC3339 health_error_since when health_status is error.
+// ErrorSince returns RFC3339 health_error_since when health_status indicates
+// a degraded state ("error" or "auth_required"). Both states feed the alert
+// debounce window in ShouldEmitHealthAlert.
 func ErrorSince(m map[string]any) string {
 	if m == nil {
 		return ""
 	}
-	if strings.TrimSpace(metaString(m[KeyHealthStatus])) != "error" {
+	status := strings.TrimSpace(metaString(m[KeyHealthStatus]))
+	if status != "error" && status != "auth_required" {
 		return ""
 	}
 	return metaString(m[KeyHealthErrorSince])

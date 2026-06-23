@@ -130,6 +130,33 @@ func NewActivityProjector(eventBus event.Bus, activityRepo biz.ActivityWriter, l
 	return p
 }
 
+// transitionActivityStatus validates and applies a state transition on the
+// activity using the AS-FSM-01 state machine.
+//
+// On illegal transitions, the target status is still applied (to preserve the
+// existing behavior of recording the intended terminal state for debugging),
+// but a warning is logged so operators can detect state-machine violations.
+// This avoids breaking the streaming flow when a transition rule is missing
+// from the table, while still surfacing the violation.
+//
+// Caller must hold p.mu.
+func (p *ActivityProjector) transitionActivityStatus(a *biz.Activity, target biz.ActivityStatus) {
+	from := a.Status
+	if from == target {
+		return
+	}
+	if !biz.CanTransitionActivityStatus(from, target) {
+		p.lg.Warn("ActivityProjector: illegal activity state transition",
+			loggateway.StepID("agent.activity_projector.transition"),
+			loggateway.Str("activity_id", a.ID),
+			loggateway.Str("kind", string(a.Kind)),
+			loggateway.Str("from", string(from)),
+			loggateway.Str("to", string(target)),
+		)
+	}
+	a.Status = target
+}
+
 // Close releases resources held by the projector, including the event sequencer.
 // It blocks until all queued events have been published and persisted.
 // After Close, subsequent publish operations are silently dropped.
@@ -436,7 +463,7 @@ func (p *ActivityProjector) OnReasoningDone(ctx context.Context, author string, 
 		delete(p.kindAuthorMap, kindKey(biz.ActivityKindThinking, author))
 	}
 
-	a.Status = biz.ActivityStatusCompleted
+	p.transitionActivityStatus(a, biz.ActivityStatusCompleted)
 	now := time.Now().UTC()
 	a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
 	a.Collapsed = true
@@ -526,7 +553,7 @@ func (p *ActivityProjector) OnMemberMessageDone(ctx context.Context, author stri
 	}
 	a := p.activities[activityID]
 	a.Content = fullText
-	a.Status = biz.ActivityStatusCompleted
+	p.transitionActivityStatus(a, biz.ActivityStatusCompleted)
 	now := time.Now().UTC()
 	a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
 	a.Collapsed = false
@@ -549,7 +576,7 @@ func (p *ActivityProjector) OnTextDone(ctx context.Context, author string, fullT
 	}
 	a := p.activities[activityID]
 	a.Content = fullText
-	a.Status = biz.ActivityStatusCompleted
+	p.transitionActivityStatus(a, biz.ActivityStatusCompleted)
 	now := time.Now().UTC()
 	a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
 	a.Collapsed = false
@@ -613,11 +640,11 @@ func (p *ActivityProjector) OnToolResult(ctx context.Context, toolCallID, result
 
 	switch status {
 	case "success":
-		a.Status = biz.ActivityStatusCompleted
+		p.transitionActivityStatus(a, biz.ActivityStatusCompleted)
 	case "failed":
-		a.Status = biz.ActivityStatusFailed
+		p.transitionActivityStatus(a, biz.ActivityStatusFailed)
 	default:
-		a.Status = biz.ActivityStatusCompleted
+		p.transitionActivityStatus(a, biz.ActivityStatusCompleted)
 	}
 
 	now := time.Now().UTC()
@@ -1086,7 +1113,7 @@ func (p *ActivityProjector) OnStuckTools(ctx context.Context, pending map[string
 		})
 		a.ToolResult = string(errPayload)
 		a.ToolErrorCode = contract.ErrorCodeToolTimeout
-		a.Status = biz.ActivityStatusFailed
+		p.transitionActivityStatus(a, biz.ActivityStatusFailed)
 		now := time.Now().UTC()
 		a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
 		a.Collapsed = true
@@ -1109,7 +1136,7 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, usage *ActivityUsage)
 		return
 	}
 
-	a.Status = biz.ActivityStatusCompleted
+	p.transitionActivityStatus(a, biz.ActivityStatusCompleted)
 	now := time.Now().UTC()
 	a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
 

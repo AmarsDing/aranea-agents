@@ -2,7 +2,9 @@ package biz
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -65,10 +67,12 @@ func (s *stubMCPRepo) UpdateMCPServerMetadata(_ context.Context, id string, meta
 }
 
 // stubMCPCredRepo is a stub for MCPServerUserCredentialRepo.
-type stubMCPCredRepo struct{}
+type stubMCPCredRepo struct {
+	creds []MCPServerUserCredential
+}
 
-func (stubMCPCredRepo) ListMCPServerUserCredentials(_ context.Context, _, _ string) ([]MCPServerUserCredential, error) {
-	return nil, nil
+func (s stubMCPCredRepo) ListMCPServerUserCredentials(_ context.Context, _, _ string) ([]MCPServerUserCredential, error) {
+	return s.creds, nil
 }
 func (stubMCPCredRepo) UpsertMCPServerUserCredential(_ context.Context, c MCPServerUserCredential) (MCPServerUserCredential, error) {
 	return c, nil
@@ -134,6 +138,14 @@ func TestValidateMCPConfigURLs(t *testing.T) {
 		{"cloud metadata blocked", `{"transport":"sse","url":"http://169.254.169.254/meta"}`, true},
 		{"invalid scheme blocked", `{"transport":"sse","url":"ftp://evil.com/payload"}`, true},
 		{"invalid JSON", `{bad`, true},
+		// OAuth2 token_url SSRF checks (B1 fix): token_url must pass the same
+		// SSRF validation as the transport url, regardless of transport type.
+		{"oauth2 token_url public allowed", `{"transport":"sse","url":"https://mcp.example.com/sse","auth":{"type":"oauth2_client_credentials","token_url":"https://auth.example.com/token"}}`, false},
+		{"oauth2 token_url localhost blocked", `{"transport":"sse","url":"https://mcp.example.com/sse","auth":{"type":"oauth2_client_credentials","token_url":"http://localhost:8080/token"}}`, true},
+		{"oauth2 token_url cloud metadata blocked", `{"transport":"streamable_http","url":"https://mcp.example.com/mcp","auth":{"type":"oauth2_refresh","token_url":"http://169.254.169.254/latest/meta-data/iam/security-credentials/"}}`, true},
+		{"oauth2 token_url private IP blocked", `{"transport":"sse","url":"https://mcp.example.com/sse","auth":{"type":"oauth2_client_credentials","token_url":"http://10.0.0.1/token"}}`, true},
+		{"oauth2 token_url empty allowed", `{"transport":"sse","url":"https://mcp.example.com/sse","auth":{"type":"oauth2_client_credentials","token_url":""}}`, false},
+		{"oauth2 token_url missing auth allowed", `{"transport":"sse","url":"https://mcp.example.com/sse"}`, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -194,5 +206,74 @@ func TestMCPServerUsecase_Update_SSRFBlock(t *testing.T) {
 	_, err := uc.Update(context.Background(), "m1", MCPServerUpdate{ConfigJSON: &ssrfURL})
 	if err == nil {
 		t.Fatal("expected SSRF error on Update with private IP URL")
+	}
+}
+
+// TestResolveUserAuthHeaders_FallbackUsesServerHeaderName verifies the S2 fix:
+// when falling back to a credential whose credential_key differs from the
+// server-configured header name, the secret must be written to the
+// server-configured header (keyName), not the credential's own key.
+//
+// Scenario: server expects "Authorization" header (keyName="authorization"),
+// but the only configured credential has credential_key="x-api-key".
+// Pass 1 (exact match) and Pass 2 (authorization fallback) both miss,
+// so Pass 3 picks the x-api-key credential. The fix ensures the secret
+// is written to "authorization" (keyName), not "x-api-key".
+func TestResolveUserAuthHeaders_FallbackUsesServerHeaderName(t *testing.T) {
+	// Set up a real CredentialCrypto with a test key.
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i + 20)
+	}
+	_ = os.Setenv(envCredentialKey, hex.EncodeToString(key))
+	defer os.Unsetenv(envCredentialKey)
+
+	crypto := NewCredentialCrypto(nil, loggateway.NewNoop())
+	secretRef, err := crypto.EncryptChannelSecretRef(context.Background(), "my-token-value")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := &stubMCPRepo{rows: []MCPServer{{
+		ID:  "m1",
+		Key: "srv",
+	}}}
+	credRepo := stubMCPCredRepo{creds: []MCPServerUserCredential{{
+		ID:            "c1",
+		MCPServerID:   "m1",
+		UserID:        "u1",
+		CredentialKey: "x-api-key",
+		SecretRef:     secretRef,
+		Configured:    true,
+	}}}
+	uc := NewMCPServerUsecase(repo, credRepo, nil, mcpMetadataAdapter{}, crypto)
+
+	// Server expects Authorization header.
+	sc := MCPServerConfig{
+		Auth:                   MCPServerConfig{}.Auth,
+		RequireUserCredentials: true,
+	}
+	sc.Auth.HeaderName = "authorization"
+
+	headers, err := uc.ResolveUserAuthHeaders(context.Background(), "srv", "u1", sc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// S2 fix: secret should be in "authorization" (keyName), not "x-api-key".
+	authVal, ok := headers["authorization"]
+	if !ok {
+		t.Fatalf("expected secret in 'authorization' header, got headers: %v", headers)
+	}
+	if !strings.HasPrefix(strings.ToLower(authVal), "bearer ") {
+		t.Fatalf("expected Bearer prefix, got %q", authVal)
+	}
+	if strings.TrimPrefix(authVal, "Bearer ") != "my-token-value" {
+		t.Fatalf("expected 'my-token-value', got %q", authVal)
+	}
+
+	// Ensure secret was NOT written to the credential's own key.
+	if _, leaked := headers["x-api-key"]; leaked {
+		t.Fatal("S2 bug: secret leaked to 'x-api-key' header instead of server-configured 'authorization'")
 	}
 }

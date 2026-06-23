@@ -48,7 +48,7 @@ func TestCommandSafetyPermissionChecker_DenyFileWithSensitivePath(t *testing.T) 
 	checker := NewCommandSafetyPermissionChecker(loggateway.NewNoop())
 
 	req := &trpctool.PermissionRequest{
-		ToolName:  "file",
+		ToolName:  "read_file",
 		Arguments: []byte(`{"path": "/home/user/.aws/credentials"}`),
 	}
 	decision, err := checker.CheckPermission(context.Background(), req)

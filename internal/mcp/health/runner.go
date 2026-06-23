@@ -96,21 +96,29 @@ func (r *Runner) probeAll(ctx context.Context) {
 	}
 	sem := make(chan struct{}, maxConcurrentProbes)
 	var wg sync.WaitGroup
+loop:
 	for _, srv := range servers {
 		if ctx.Err() != nil {
-			break
+			break loop
 		}
 		// ListMCPServers already filters deleted rows; only skip disabled ones.
 		if !srv.Enabled {
 			continue
 		}
 		srv := srv
-		sem <- struct{}{}
-		wg.Add(1)
-		safego.Go(ctx, "mcp.health.probe."+srv.Key, func() {
-			defer func() { <-sem; wg.Done() }()
-			r.probeOne(ctx, srv)
-		})
+		// Use select so ctx cancellation can preempt a blocked semaphore send.
+		// Without this, a full semaphore would block until an in-flight probe
+		// completes (up to ProbeTimeout), delaying shutdown.
+		select {
+		case sem <- struct{}{}:
+			wg.Add(1)
+			safego.Go(ctx, "mcp.health.probe."+srv.Key, func() {
+				defer func() { <-sem; wg.Done() }()
+				r.probeOne(ctx, srv)
+			})
+		case <-ctx.Done():
+			break loop
+		}
 	}
 	wg.Wait()
 }

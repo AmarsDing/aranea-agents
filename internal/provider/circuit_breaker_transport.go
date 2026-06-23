@@ -40,7 +40,10 @@ func (t *circuitBreakerTransport) RoundTrip(req *http.Request) (*http.Response, 
 		t.cb.RecordFailure()
 		return resp, err
 	}
-	if resp.StatusCode >= 500 {
+	// 429（限流）和 5xx（服务端错误）都表示 provider 不可用，
+	// 应触发熔断。否则 retry 层会无限重试 429，而熔断器永不开启，
+	// 形成对已过载 provider 的持续请求（雪崩）。
+	if resp.StatusCode >= 500 || resp.StatusCode == 429 {
 		t.cb.RecordFailure()
 		return resp, nil
 	}

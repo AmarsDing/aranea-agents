@@ -1,0 +1,13 @@
+[1mdiff --git a/internal/service/chat_orchestrator.go b/internal/service/chat_orchestrator.go[m
+[1mindex 94291d142..64c385ce7 100644[m
+[1m--- a/internal/service/chat_orchestrator.go[m
+[1m+++ b/internal/service/chat_orchestrator.go[m
+[36m@@ -482,7 +482,7 @@[m [mfunc NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {[m
+ [m
+ 	configureMCPObserve(deps.Turn.TurnDeps.Pipeline.Bus, deps.Infra.MCPServers)[m
+ 	o.sweepStop = make(chan struct{})[m
+[31m-	safego.Go(nil, "orch-map-sweep", o.sweepLoop)[m
+[32m+[m	[32msafego.GoBackground("orch-map-sweep", o.sweepLoop)[m
+ 	return o[m
+ }[m
+ [m

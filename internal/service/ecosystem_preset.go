@@ -40,23 +40,23 @@ func (s *EcosystemPresetService) HandleLoad() func(ctx kratoshttp.Context) error
 	return func(ctx kratoshttp.Context) error {
 		body, err := io.ReadAll(ctx.Request().Body)
 		if err != nil {
-			return apierror.BadRequest("ECOSYSTEM_PRESET", "failed to read request body")
+			return apierror.BadRequest(apierror.DomainEcosystemPreset, "failed to read request body")
 		}
 		defer ctx.Request().Body.Close()
 
 		var req ecosystemPresetLoadRequest
 		if err := json.Unmarshal(body, &req); err != nil {
-			return apierror.BadRequest("ECOSYSTEM_PRESET", "invalid request body")
+			return apierror.BadRequest(apierror.DomainEcosystemPreset, "invalid request body")
 		}
 
 		if len(req.Industries) == 0 {
-			return apierror.BadRequest("ECOSYSTEM_PRESET", "industries must not be empty")
+			return apierror.BadRequest(apierror.DomainEcosystemPreset, "industries must not be empty")
 		}
 
 		resp, err := s.uc.LoadEcosystemPreset(ctx, req.Industries, req.Force)
 		if err != nil {
 			s.lg.Warn("ecosystem preset load failed", loggateway.Err(err))
-			return apierror.Wrap(err, apierror.CodeInternal, "ECOSYSTEM_PRESET")
+			return apierror.Wrap(err, apierror.CodeInternal, apierror.DomainEcosystemPreset)
 		}
 
 		s.lg.Info("ecosystem preset loaded", loggateway.Str("industries", strings.Join(req.Industries, ",")))
@@ -69,23 +69,23 @@ func (s *EcosystemPresetService) HandleUnload() func(ctx kratoshttp.Context) err
 	return func(ctx kratoshttp.Context) error {
 		body, err := io.ReadAll(ctx.Request().Body)
 		if err != nil {
-			return apierror.BadRequest("ECOSYSTEM_PRESET", "failed to read request body")
+			return apierror.BadRequest(apierror.DomainEcosystemPreset, "failed to read request body")
 		}
 		defer ctx.Request().Body.Close()
 
 		var req ecosystemPresetUnloadRequest
 		if err := json.Unmarshal(body, &req); err != nil {
-			return apierror.BadRequest("ECOSYSTEM_PRESET", "invalid request body")
+			return apierror.BadRequest(apierror.DomainEcosystemPreset, "invalid request body")
 		}
 
 		if len(req.Industries) == 0 {
-			return apierror.BadRequest("ECOSYSTEM_PRESET", "industries must not be empty")
+			return apierror.BadRequest(apierror.DomainEcosystemPreset, "industries must not be empty")
 		}
 
 		resp, err := s.uc.UnloadEcosystemPreset(ctx, req.Industries)
 		if err != nil {
 			s.lg.Warn("ecosystem preset unload failed", loggateway.Err(err))
-			return apierror.Wrap(err, apierror.CodeInternal, "ECOSYSTEM_PRESET")
+			return apierror.Wrap(err, apierror.CodeInternal, apierror.DomainEcosystemPreset)
 		}
 
 		s.lg.Info("ecosystem preset unloaded", loggateway.Str("industries", strings.Join(req.Industries, ",")))
@@ -98,7 +98,7 @@ func (s *EcosystemPresetService) HandleStatus() func(ctx kratoshttp.Context) err
 	return func(ctx kratoshttp.Context) error {
 		status, err := s.uc.GetEcosystemStatus(ctx)
 		if err != nil {
-			return apierror.Wrap(err, apierror.CodeInternal, "ECOSYSTEM_PRESET")
+			return apierror.Wrap(err, apierror.CodeInternal, apierror.DomainEcosystemPreset)
 		}
 		return ctx.JSON(http.StatusOK, status)
 	}

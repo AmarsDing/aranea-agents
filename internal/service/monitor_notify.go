@@ -137,7 +137,7 @@ func postAlertWebhook(rawURL string, payload map[string]any) error {
 	// SSRF protection: reject URLs pointing to private/internal networks.
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return apierror.BadRequest("MONITOR", "invalid URL: %v", err)
+		return apierror.BadRequest("MONITOR", "invalid URL")
 	}
 	host := parsed.Hostname()
 	if host == "" {
@@ -145,7 +145,7 @@ func postAlertWebhook(rawURL string, payload map[string]any) error {
 	}
 	ips, err := net.LookupIP(host)
 	if err != nil {
-		return apierror.Internal("MONITOR", "DNS lookup failed for %s: %v", host, err)
+		return apierror.Internal("MONITOR", "DNS lookup failed for %s", host)
 	}
 	for _, ip := range ips {
 		if ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {

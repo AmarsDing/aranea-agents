@@ -1,5 +1,10 @@
--- Version 20260609: Cascade saga patches
-CREATE TABLE IF NOT EXISTS cascade_saga_steps (
+-- Version 20260803: Fix cascade_saga_steps id type
+-- The original 20260609 migration created id as INTEGER PRIMARY KEY AUTOINCREMENT,
+-- but the data layer inserts UUID strings. Since the table was never successfully
+-- used (due to a table-name prefix bug fixed in the same patch), it is safe to
+-- drop and recreate with TEXT PRIMARY KEY.
+DROP TABLE IF EXISTS cascade_saga_steps;
+CREATE TABLE cascade_saga_steps (
     id TEXT PRIMARY KEY,
     proposal_id TEXT NOT NULL,
     step_index INTEGER NOT NULL,
@@ -17,4 +22,3 @@ CREATE TABLE IF NOT EXISTS cascade_saga_steps (
     UNIQUE(proposal_id, step_index)
 );
 CREATE INDEX IF NOT EXISTS idx_cascade_saga_steps_proposal ON cascade_saga_steps(proposal_id, step_index);
-ALTER TABLE memory_facts ADD COLUMN last_cascade_original_statement TEXT NOT NULL DEFAULT '';
