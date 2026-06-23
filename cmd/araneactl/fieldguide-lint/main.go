@@ -23,7 +23,7 @@ import (
 	"strings"
 )
 
-var tsScopeLineRE = regexp.MustCompile(`^\s*\|\s*'([^']+)'\s*,?\s*$`)
+var tsScopeLineRE = regexp.MustCompile(`^\s*\|\s*'([^']+)'\s*,?\s*;?\s*$`)
 
 func main() {
 	root := flag.String("root", ".", "repository root directory")

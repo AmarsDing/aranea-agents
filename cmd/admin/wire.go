@@ -420,6 +420,7 @@ func provideGlobalBuildCache() *agent.BuildCache {
 // process-level resources can be registered here as they are migrated to
 // the lifecycle abstraction.
 func provideLifecycleManager(cache *agent.BuildCache, lg loggateway.Logger) *lifecycle.LifecycleManager {
+	cache.SetLogger(lg)
 	mgr := lifecycle.NewLifecycleManager(lg)
 	mgr.Register("global-build-cache", cache)
 	return mgr
@@ -620,9 +621,10 @@ func (a *envelopePublisherAdapter) PublishTokenUsageEnvelope(ctx context.Context
 	biz.PublishTokenUsageEnvelope(ctx, a.bus, e)
 }
 
-func provideSystemSettingUsecase(repo biz.SystemSettingRepo, quota biz.UsageQuotaRepo, tester biz.WebResearchTester) *biz.SystemSettingUsecase {
+func provideSystemSettingUsecase(repo biz.SystemSettingRepo, quota biz.UsageQuotaRepo, tester biz.WebResearchTester, tp biz.SystemSettingTxProvider) *biz.SystemSettingUsecase {
 	uc := biz.NewSystemSettingUsecase(repo, quota)
 	uc.SetWebResearchTester(tester)
+	uc.SetTxProvider(tp)
 	return uc
 }
 
@@ -1265,6 +1267,7 @@ func provideAutoMemoryWorker(
 	episodeSync biz.EpisodeIndexSyncer,
 	extractor biz.MemoryTextExtractor,
 	queue memtrpc.AutoMemoryQueue,
+	workerStats *biz.MemoryWorkerStats,
 	lg loggateway.Logger,
 ) (*jobs.AutoMemoryWorker, error) {
 	return jobs.NewAutoMemoryWorker(jobs.AutoMemoryWorkerConfig{
@@ -1278,6 +1281,7 @@ func provideAutoMemoryWorker(
 		L4:           l4,
 		Consolidator: biz.DefaultMemoryConsolidator(extractor),
 		Queue:        queue,
+		Stats:        workerStats,
 		Logger:       lg,
 	})
 }
@@ -1453,11 +1457,11 @@ func provideMemoryL1ArchiveWorker(admin biz.SessionAdminStore, agents *biz.Agent
 	return jobs.NewMemoryL1ArchiveWorker(0, admin, agents, lg)
 }
 
-func provideMemoryEpisodeBackfillWorker(reader biz.MemoryEpisodeBackfillReader, episodeSync biz.EpisodeIndexSyncer, sys biz.SystemSettingRepo, lg loggateway.Logger) *jobs.MemoryEpisodeBackfillWorker {
+func provideMemoryEpisodeBackfillWorker(reader biz.MemoryEpisodeBackfillReader, episodeSync biz.EpisodeIndexSyncer, sys biz.SystemSettingRepo, stats *biz.MemoryWorkerStats, lg loggateway.Logger) *jobs.MemoryEpisodeBackfillWorker {
 	if biz.ResolveEpisodeBackfillDisabled(context.Background(), sys) {
 		return nil
 	}
-	return jobs.NewMemoryEpisodeBackfillWorker(0, reader, episodeSync, sys, lg)
+	return jobs.NewMemoryEpisodeBackfillWorker(0, reader, episodeSync, sys, stats, lg)
 }
 
 func provideMemoryDataMigrationWorker(migrator biz.MemoryLegacyMigrator, lg loggateway.Logger) *jobs.MemoryDataMigrationWorker {
@@ -1651,6 +1655,21 @@ func provideTraceProjector(traceRepo biz.MonitorTraceRepo, infra *event.Infra, l
 		monitorBus = infra.MonitorBus
 	}
 	return monitor.NewTraceProjector(traceRepo, lg, sessionBus, monitorBus)
+}
+
+// provideMonitorBus removed: it conflicted with ProvideSessionBus (both bound
+// to event.Bus). Callers that need the monitor bus now take *event.Infra
+// directly and extract infra.MonitorBus, matching the provideTraceProjector
+// pattern. This keeps SessionBus as the default event.Bus Wire binding.
+
+// monitorBusFromInfra extracts the monitor event bus from Infra, returning nil
+// when infra is nil (graceful degradation — SelfHealObserver skips event
+// subscription when bus is nil).
+func monitorBusFromInfra(infra *event.Infra) event.Bus {
+	if infra == nil {
+		return nil
+	}
+	return infra.MonitorBus
 }
 
 func provideFlowFileAppender(lg loggateway.Logger) *monitor.FlowFileAppender {
@@ -1940,6 +1959,8 @@ type wireOut struct {
 	MemoryDeadLetterReplayer    *jobs.MemoryDeadLetterReplayer
 	ModelRegistrySyncAgent      *agent.ModelRegistrySyncAgent
 	SelfCheckScheduler          *monitor.SelfCheckScheduler
+	SelfHealObserver            *biz.SelfHealObserver
+	MonitorBus                  event.Bus
 	SelfCheckCleanup            *jobs.SelfCheckCleanup
 	SelfCheckJob                *jobs.SelfCheckJob
 	CronRepo                    biz.CronRepo
@@ -1990,6 +2011,8 @@ func provideWireOut(
 	memoryDeadLetterReplayer *jobs.MemoryDeadLetterReplayer,
 	modelRegistrySyncAgent *agent.ModelRegistrySyncAgent,
 	selfCheckScheduler *monitor.SelfCheckScheduler,
+	selfHealObserver *biz.SelfHealObserver,
+	eventInfra *event.Infra,
 	selfCheckCleanup *jobs.SelfCheckCleanup,
 	selfCheckJob *jobs.SelfCheckJob,
 	cronRepo biz.CronRepo,
@@ -2024,6 +2047,8 @@ func provideWireOut(
 		MemoryDeadLetterReplayer:  memoryDeadLetterReplayer,
 		ModelRegistrySyncAgent:    modelRegistrySyncAgent,
 		SelfCheckScheduler:        selfCheckScheduler,
+		SelfHealObserver:          selfHealObserver,
+		MonitorBus:                eventInfra.MonitorBus,
 		SelfCheckCleanup:          selfCheckCleanup,
 		SelfCheckJob:              selfCheckJob,
 		CronRepo:                  cronRepo,

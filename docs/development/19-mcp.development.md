@@ -193,3 +193,43 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 - **P2-30 无 worker pool**：✅ 已修复。semaphore bounded concurrency（`maxConcurrentProbes=8`）
 - **D-M2 Probe 策略化**：✅ 已完成。ConnectivityProbe（默认，仅网络连通性）+ AuthAwareProbe（带 OAuth/API Key 探活）。full_handshake 模式预留但未实现，需 trpc-agent-go 框架侧支持 MCP Initialize 探活接口
 - **D-M3 Lifecycle FSM**：📋 待规划。是中长期最大架构改动，需要独立 design 文档
+
+---
+
+## 11. 2026-06-23 MCP 加载链路审计修复
+
+> 来源：MCP 模块功能代码逻辑深入检查，发现三个问题并修复。
+
+### 11.1 修复清单
+
+| # | 问题 | 严重度 | 修复方案 | 状态 |
+|---|------|--------|---------|------|
+| 27 | Env 字段传递链路断裂：`config_json.env` → `MCPServerConfig.Env` 已解析，但 `ToConnectionConfig()` 丢弃 + 框架 `ConnectionConfig` 无 `Env` 字段 + `createClient` 未传 `StdioServerParameters.Env` | 高（BUG） | 框架 `ConnectionConfig` 增 `Env` 字段 + `createClient`/broker `createClient` 传 `Env` + `normalizeConnectionConfig` 保留 `Env` + 应用层 `ToConnectionConfig` 映射 `Env` | ✅ 2026-06-23 |
+| 28 | MCP 服务器不可达时静默失败：`Init()` 从未被调用，`Tools()` 失败仅框架 log 记录后返回空，Agent 无 MCP 工具无告警 | 中 | `assembleMCPTools` 创建 ToolSet 后调用 `Init(ctx)`，失败时通过 `loggateway` 记录结构化告警（含 server 名），不中断组装保持弹性降级 | ✅ 2026-06-23 |
+| 29 | 缓存淘汰时 ToolSet 未关闭：`BuildCache.evict`/`Close` 不调用 `ToolSet.Close()`，MCP 会话/stdio 子进程/HTTP 连接泄漏 | 中（资源泄漏） | `buildCacheEntry` 增 `toolSets` 字段 + `BuildTRPCLLMAgent` 拆分为 `buildTRPCLLMAgentWithToolSets` 返回 ToolSets + `put`/`evict`/`Close` 关闭 ToolSets | ✅ 2026-06-23 |
+
+### 11.2 改动文件清单
+
+**框架层（pkg/trpc-agent-go/）**：
+- `tool/mcp/config.go`：`ConnectionConfig` 增加 `Env map[string]string` 字段
+- `tool/mcp/toolset.go`：`createClient` stdio 分支传 `Env` 给 `StdioServerParameters`
+- `tool/mcpbroker/client.go`：broker `createClient` stdio 分支传 `Env`
+- `tool/mcpbroker/config.go`：`normalizeConnectionConfig` 保留 `Env`（`cloneStringMap`）
+
+**应用层（internal/）**：
+- `internal/tools/toolset.go`：`ToConnectionConfig` 映射 `Env` 字段
+- `internal/tools/toolset_assemble.go`：`assembleMCPTools` 调用 `Init(ctx)` + loggateway 告警
+- `internal/agent/trpc_build.go`：拆分 `buildTRPCLLMAgentWithToolSets` 返回 `(Agent, []ToolSet, error)`
+- `internal/agent/cache.go`：`buildCacheEntry` 增 `toolSets` 字段 + `put`/`evict`/`Close` 关闭 ToolSets + `closeToolSets` 辅助函数
+
+**测试**：
+- `internal/tools/mcp_verify_issue_test.go`：Env 传递回归测试
+
+### 11.3 验收标准
+
+- [x] `TestMCPEnvPropagation_Regression` 验证 `config_json.env` → `ConnectionConfig.Env` 全链路传递
+- [x] `TestBuildCache*` 全部 9 个缓存测试通过
+- [x] 框架 `tool/mcp/...` + `tool/mcpbroker/...` 测试全部通过
+- [x] `internal/tools/...` 全量测试通过
+- [x] Init 失败不中断组装（弹性降级语义保持）
+- [x] 缓存淘汰/关闭时 ToolSet 被关闭（资源释放）

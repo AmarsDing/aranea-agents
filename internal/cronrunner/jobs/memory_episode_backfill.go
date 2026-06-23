@@ -17,14 +17,15 @@ type MemoryEpisodeBackfillWorker struct {
 	reader      biz.MemoryEpisodeBackfillReader
 	episodeSync biz.EpisodeIndexSyncer
 	sys         biz.SystemSettingRepo
+	stats       *biz.MemoryWorkerStats
 	lg          loggateway.Logger
 }
 
-func NewMemoryEpisodeBackfillWorker(interval time.Duration, reader biz.MemoryEpisodeBackfillReader, episodeSync biz.EpisodeIndexSyncer, sys biz.SystemSettingRepo, lg loggateway.Logger) *MemoryEpisodeBackfillWorker {
+func NewMemoryEpisodeBackfillWorker(interval time.Duration, reader biz.MemoryEpisodeBackfillReader, episodeSync biz.EpisodeIndexSyncer, sys biz.SystemSettingRepo, stats *biz.MemoryWorkerStats, lg loggateway.Logger) *MemoryEpisodeBackfillWorker {
 	if interval <= 0 {
 		interval = memoryEpisodeBackfillInterval
 	}
-	return &MemoryEpisodeBackfillWorker{interval: interval, reader: reader, episodeSync: episodeSync, sys: sys, lg: lg}
+	return &MemoryEpisodeBackfillWorker{interval: interval, reader: reader, episodeSync: episodeSync, sys: sys, stats: stats, lg: lg}
 }
 
 func (w *MemoryEpisodeBackfillWorker) Start(ctx context.Context) {
@@ -62,7 +63,7 @@ func (w *MemoryEpisodeBackfillWorker) runOnce(ctx context.Context) {
 			n++
 		}
 		if n > 0 {
-			biz.MemoryWorkerStatsGlobal().RecordEpisodeBackfill(n)
+			w.stats.RecordEpisodeBackfill(n)
 			w.lg.Info("memory episode backfill embedded episodes", loggateway.Int("count", int(n)))
 		}
 	})

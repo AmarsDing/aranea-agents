@@ -73,6 +73,9 @@ func newDreamCycleTool(deps Deps) trpctool.Tool {
 		// Step 2: Execute forget_low_quality logic.
 		lowQualIDs := findLowQualityFactIDs(ctx, deps, input.AgentID)
 		if len(lowQualIDs) > 0 {
+			// Snapshot must be taken BEFORE deletion, otherwise ListFactRows
+			// returns nothing and the snapshot is permanently empty.
+			lowQualSnapshots := buildFactSnapshotsForIDs(ctx, deps, input.AgentID, lowQualIDs)
 			deleted, delErr := deps.MemoryAdmin.DeleteFactRowsByIDs(ctx, lowQualIDs)
 			if delErr != nil {
 				deps.LG.Warn("dream_cycle: forget_low_quality delete failed",
@@ -82,13 +85,14 @@ func newDreamCycleTool(deps Deps) trpctool.Tool {
 			} else {
 				totalDeleted += deleted
 				actions = append(actions, "forget_low_quality")
-				deletedFactSnapshots = append(deletedFactSnapshots, buildFactSnapshotsForIDs(ctx, deps, input.AgentID, lowQualIDs)...)
+				deletedFactSnapshots = append(deletedFactSnapshots, lowQualSnapshots...)
 			}
 		}
 
 		// Step 3: Execute forget_inactive logic.
 		inactiveIDs := findInactiveFactIDs(ctx, deps, input.AgentID, defaultInactiveThresholdDays)
 		if len(inactiveIDs) > 0 {
+			inactiveSnapshots := buildFactSnapshotsForIDs(ctx, deps, input.AgentID, inactiveIDs)
 			deleted, delErr := deps.MemoryAdmin.DeleteFactRowsByIDs(ctx, inactiveIDs)
 			if delErr != nil {
 				deps.LG.Warn("dream_cycle: forget_inactive delete failed",
@@ -98,13 +102,14 @@ func newDreamCycleTool(deps Deps) trpctool.Tool {
 			} else {
 				totalDeleted += deleted
 				actions = append(actions, "forget_inactive")
-				deletedFactSnapshots = append(deletedFactSnapshots, buildFactSnapshotsForIDs(ctx, deps, input.AgentID, inactiveIDs)...)
+				deletedFactSnapshots = append(deletedFactSnapshots, inactiveSnapshots...)
 			}
 		}
 
 		// Step 4: Execute deduplicate logic.
 		dedupIDs := findDuplicateFactIDs(ctx, deps, input.AgentID, defaultSimilarityThreshold)
 		if len(dedupIDs) > 0 {
+			dedupSnapshots := buildFactSnapshotsForIDs(ctx, deps, input.AgentID, dedupIDs)
 			deleted, delErr := deps.MemoryAdmin.DeleteFactRowsByIDs(ctx, dedupIDs)
 			if delErr != nil {
 				deps.LG.Warn("dream_cycle: deduplicate delete failed",
@@ -114,7 +119,7 @@ func newDreamCycleTool(deps Deps) trpctool.Tool {
 			} else {
 				totalMerged += deleted
 				actions = append(actions, "deduplicate_memories")
-				deletedFactSnapshots = append(deletedFactSnapshots, buildFactSnapshotsForIDs(ctx, deps, input.AgentID, dedupIDs)...)
+				deletedFactSnapshots = append(deletedFactSnapshots, dedupSnapshots...)
 			}
 		}
 

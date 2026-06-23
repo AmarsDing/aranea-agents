@@ -345,7 +345,7 @@ func writeExecute(ctx context.Context, input WriteInput) (WriteOutput, error) {
 	reader := L1ReaderFromCtx(ctx)
 	sessID := SessionIDFromCtx(ctx)
 	agentID := AgentIDFromCtx(ctx)
-	if taskWriter == nil || fieldWriter == nil || sessID == "" {
+	if taskWriter == nil || fieldWriter == nil || reader == nil || sessID == "" {
 		return WriteOutput{}, apierror.Internal(apierror.DomainWorkingMemory, "working_memory not available")
 	}
 	// Validate field_kind against known enum values.
@@ -419,7 +419,7 @@ func patchExecute(ctx context.Context, input PatchInput) (PatchOutput, error) {
 	reader := L1ReaderFromCtx(ctx)
 	sessID := SessionIDFromCtx(ctx)
 	agentID := AgentIDFromCtx(ctx)
-	if taskWriter == nil || fieldWriter == nil || sessID == "" {
+	if taskWriter == nil || fieldWriter == nil || reader == nil || sessID == "" {
 		return PatchOutput{}, apierror.Internal(apierror.DomainWorkingMemory, "working_memory not available")
 	}
 	taskID, err := ensureActiveTask(ctx, taskWriter, reader, sessID, agentID)
@@ -485,7 +485,7 @@ func deleteExecute(ctx context.Context, input DeleteInput) (DeleteOutput, error)
 	reader := L1ReaderFromCtx(ctx)
 	sessID := SessionIDFromCtx(ctx)
 	agentID := AgentIDFromCtx(ctx)
-	if fieldWriter == nil || sessID == "" {
+	if fieldWriter == nil || reader == nil || sessID == "" {
 		return DeleteOutput{}, apierror.Internal(apierror.DomainWorkingMemory, "working_memory not available")
 	}
 	taskID, err := findActiveTaskID(ctx, reader, sessID, agentID)

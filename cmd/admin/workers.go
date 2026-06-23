@@ -9,7 +9,9 @@ import (
 
 	a2ahealth "aranea-agents/internal/a2a/health"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/cronrunner"
+	"aranea-agents/internal/event"
 	mcphealth "aranea-agents/internal/mcp/health"
 	loggateway "aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -46,6 +48,9 @@ type backgroundWorkersConfig struct {
 	AutoHealTTLCleanup          BackgroundStarter
 	MonitorAlertEvalWorker      BackgroundStarter
 	MonitorTraceBackfillWorker  BackgroundStarter
+	SelfCheckScheduler          *monitor.SelfCheckScheduler
+	SelfHealObserver            *biz.SelfHealObserver
+	MonitorBus                  event.Bus
 	FailurePatternSyncJob       BackgroundStarter
 	PredictiveHealJob           BackgroundStarter
 	PatternMiningJob            BackgroundStarter
@@ -227,6 +232,18 @@ func startBackgroundWorkers(
 	if cfg.MonitorTraceBackfillWorker != nil {
 		goAfterReady("monitor_trace_backfill", func() { cfg.MonitorTraceBackfillWorker.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "monitor trace backfill worker scheduled", "interval", "6h")
+	}
+
+	if cfg.SelfCheckScheduler != nil {
+		goAfterReady("self_check_scheduler", func() { cfg.SelfCheckScheduler.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "self-check scheduler scheduled", "interval", "5m")
+	}
+
+	if cfg.SelfHealObserver != nil {
+		goAfterReady("self_heal_observer", func() {
+			cfg.SelfHealObserver.StartEventDrivenObservation(ctx, cfg.MonitorBus)
+		})
+		logger.Log(log.LevelInfo, "msg", "self-heal observer scheduled")
 	}
 
 	if cfg.FailurePatternSyncJob != nil {

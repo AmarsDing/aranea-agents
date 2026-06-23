@@ -166,10 +166,6 @@ export function createGatewayService() {
   return createGatewayServiceClient(requestHandler);
 }
 
-export function createAgentCategoryService() {
-  return createAgentCategoryServiceClient(requestHandler);
-}
-
 export function createSkillEvolutionService() {
   return createSkillEvolutionServiceClient(requestHandler);
 }

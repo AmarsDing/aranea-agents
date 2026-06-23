@@ -69,8 +69,8 @@ var _ trpctool.ToolSet = (*NavigationGuardedToolSet)(nil)
 
 // NavigationGuardedToolSet wraps inner with a navigation URL validator.
 type NavigationGuardedToolSet struct {
-	inner   trpctool.ToolSet
-	policy  NavigationPolicy
+	inner  trpctool.ToolSet
+	policy NavigationPolicy
 }
 
 // NewNavigationGuardedToolSet wraps inner so navigation tool calls are

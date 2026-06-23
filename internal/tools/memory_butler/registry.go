@@ -20,8 +20,17 @@ type Deps struct {
 	LG       loggateway.Logger
 }
 
-// RegisterAll creates and returns all memory butler tools.
+// RegisterAll creates and returns all memory butler tools. It validates that
+// required dependencies are present and ensures LG is non-nil (defaulting to
+// a Noop logger) so that downstream tools can call deps.LG.Warn without nil
+// checks.
 func RegisterAll(deps Deps) []trpctool.Tool {
+	if deps.Analytics == nil || deps.MemoryAdmin == nil || deps.Agents == nil {
+		return nil
+	}
+	if deps.LG == nil {
+		deps.LG = loggateway.NewNoop()
+	}
 	return []trpctool.Tool{
 		newAnalyzeMemoryQualityTool(deps),
 		newSelectiveRememberTool(deps),

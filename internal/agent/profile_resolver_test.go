@@ -38,9 +38,9 @@ func TestProfileResolver_WithActiveProfile(t *testing.T) {
 	repo := &profileResolverMockRepo{
 		profiles: map[string]biz.RuntimeProfile{
 			"p1": {
-				ID:      "p1",
-				AgentID: "agent-1",
-				Name:    "p1",
+				ID:       "p1",
+				AgentID:  "agent-1",
+				Name:     "p1",
 				IsActive: true,
 				PromptConfig: biz.PromptConfig{
 					Instruction:  "test-instruction",

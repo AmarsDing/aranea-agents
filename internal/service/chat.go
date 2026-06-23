@@ -268,7 +268,7 @@ func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.Enqueu
 		return nil, apierror.BadRequest("CHAT", "content is required")
 	}
 
-	accepted, queued, pendingID, rejectReason, err := s.orch.EnqueueUserMessage(sessionID, content)
+	accepted, queued, pendingID, _, err := s.orch.EnqueueUserMessage(sessionID, content)
 	if err != nil {
 		return nil, err
 	}

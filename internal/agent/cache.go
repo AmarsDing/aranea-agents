@@ -55,6 +55,7 @@ type BuildCache struct {
 	cap     int
 	items   map[string]*buildCacheEntry
 	lruList *list.List // front = most-recently-used
+	lg      loggateway.Logger
 
 	// singleflight coalesces concurrent cache-miss builds for the same key.
 	sfGroup singleflight.Group
@@ -70,7 +71,20 @@ func newBuildCache(cap int) *BuildCache {
 		cap:     cap,
 		items:   make(map[string]*buildCacheEntry),
 		lruList: list.New(),
+		lg:      loggateway.NewNoop(),
 	}
+}
+
+// SetLogger injects a Logger into the cache. Should be called once during
+// Wire initialization (before any cache operations). The Logger is used by
+// closeToolSets to log ToolSet Close errors during eviction and shutdown.
+func (c *BuildCache) SetLogger(lg loggateway.Logger) {
+	if lg == nil {
+		return
+	}
+	c.mu.Lock()
+	c.lg = lg
+	c.mu.Unlock()
 }
 
 // get returns the cached agent for the given key, or nil if not found.
@@ -104,7 +118,7 @@ func (c *BuildCache) put(key string, ag trpcagent.Agent, a2uiResult *planner.A2U
 	}
 	if e, ok := c.items[key]; ok {
 		// Close old ToolSets before replacing — the new agent brings its own.
-		closeToolSets(e.toolSets, key)
+		c.closeToolSets(e.toolSets, key)
 		c.lruList.MoveToFront(e.elem)
 		e.agent = ag
 		e.a2ui = a2uiResult
@@ -155,7 +169,7 @@ func (c *BuildCache) InvalidateAll() {
 // evict must be called with c.mu held.
 func (c *BuildCache) evict(key string) {
 	if e, ok := c.items[key]; ok {
-		closeToolSets(e.toolSets, key)
+		c.closeToolSets(e.toolSets, key)
 		c.lruList.Remove(e.elem)
 		delete(c.items, key)
 	}
@@ -167,7 +181,7 @@ func (c *BuildCache) evict(key string) {
 func (c *BuildCache) Close() error {
 	c.mu.Lock()
 	for key, e := range c.items {
-		closeToolSets(e.toolSets, key)
+		c.closeToolSets(e.toolSets, key)
 	}
 	c.items = make(map[string]*buildCacheEntry)
 	c.lruList.Init()
@@ -179,15 +193,14 @@ func (c *BuildCache) Close() error {
 // It is best-effort: a Close error on one ToolSet does not prevent the
 // others from being closed. This function is called during cache eviction
 // and shutdown to prevent resource leaks (MCP sessions, stdio subprocesses).
-func closeToolSets(toolSets []trpctool.ToolSet, cacheKey string) {
+// Caller must hold c.mu.
+func (c *BuildCache) closeToolSets(toolSets []trpctool.ToolSet, cacheKey string) {
 	for _, ts := range toolSets {
 		if ts == nil {
 			continue
 		}
 		if err := ts.Close(); err != nil {
-			// Use a background logger since closeToolSets may be called
-			// during shutdown when the injected logger is unavailable.
-			loggateway.Global().Warn("ToolSet Close 失败",
+			c.lg.Warn("ToolSet Close 失败",
 				loggateway.Domain("agent.cache"),
 				loggateway.Str("cache_key", cacheKey),
 				loggateway.Str("toolset", ts.Name()),

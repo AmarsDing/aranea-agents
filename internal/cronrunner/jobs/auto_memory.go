@@ -37,6 +37,7 @@ type AutoMemoryWorker struct {
 	feedback     biz.MemoryConsolidator
 	queue        memtrpc.AutoMemoryQueue
 	memConf      conf.RuntimeAutoMemoryConfig
+	stats        *biz.MemoryWorkerStats
 	lg           loggateway.Logger
 }
 
@@ -54,6 +55,7 @@ type AutoMemoryWorkerConfig struct {
 	L4           biz.L4GraphWriter
 	Consolidator biz.MemoryConsolidator
 	Queue        memtrpc.AutoMemoryQueue
+	Stats        *biz.MemoryWorkerStats
 	Logger       loggateway.Logger
 }
 
@@ -82,6 +84,7 @@ func NewAutoMemoryWorker(cfg AutoMemoryWorkerConfig) (*AutoMemoryWorker, error) 
 		feedback:     biz.NewFeedbackConsolidator(),
 		queue:        cfg.Queue,
 		memConf:      cfg.RuntimeConf.AutoMemoryConfig(),
+		stats:        cfg.Stats,
 		lg:           cfg.Logger,
 	}, nil
 }
@@ -150,7 +153,7 @@ func (w *AutoMemoryWorker) processWithRetry(ctx context.Context, req memtrpc.Aut
 		if err == nil {
 			servmetrics.AutoMemoryJobTotal.WithLabelValues("done").Inc()
 			servmetrics.AutoMemoryExtractionDuration.Observe(duration)
-			biz.MemoryWorkerStatsGlobal().RecordJobDone(int64(duration * 1000))
+			w.stats.RecordJobDone(int64(duration * 1000))
 			return
 		}
 		lastErr = err
@@ -158,7 +161,7 @@ func (w *AutoMemoryWorker) processWithRetry(ctx context.Context, req memtrpc.Aut
 			loggateway.Int("attempt", attempt+1), loggateway.Err(err))
 	}
 	servmetrics.AutoMemoryJobTotal.WithLabelValues("dead").Inc()
-	biz.MemoryWorkerStatsGlobal().RecordJobDead()
+	w.stats.RecordJobDead()
 	w.lg.With(loggateway.SessionID(req.SessionID)).Warn("自动记忆提取重试耗尽", loggateway.Err(lastErr))
 }
 
@@ -220,7 +223,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 
 	proposals, err := biz.ExtractWithFallbackHook(w.consolidator, ctx, in, func(primaryErr error) {
 		servmetrics.AutoMemoryLLMFallbackTotal.Inc()
-		biz.MemoryWorkerStatsGlobal().RecordLLMFallback()
+		w.stats.RecordLLMFallback()
 		if primaryErr != nil && !errors.Is(primaryErr, biz.ErrLLMExtractorUnavailable) {
 			w.lg.With(loggateway.SessionID(sid)).Warn("LLM 记忆提取失败，已降级启发式", loggateway.Err(primaryErr))
 		}

@@ -60,10 +60,17 @@ type SystemSettingRepo interface {
 	UpdateRefineLLM(ctx context.Context, patch RefineLLMSetting, updateAPIKey bool) (RefineLLMSetting, error)
 }
 
+// SystemSettingTxProvider provides transactional execution for atomic
+// multi-step system setting updates. Implemented by *data.Data.
+type SystemSettingTxProvider interface {
+	ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
 type SystemSettingUsecase struct {
 	repo              SystemSettingRepo
 	quota             UsageQuotaRepo
 	webResearchTester WebResearchTester
+	txProvider        SystemSettingTxProvider
 }
 
 func NewSystemSettingUsecase(repo SystemSettingRepo, quota UsageQuotaRepo) *SystemSettingUsecase {
@@ -72,6 +79,98 @@ func NewSystemSettingUsecase(repo SystemSettingRepo, quota UsageQuotaRepo) *Syst
 
 func (u *SystemSettingUsecase) SetWebResearchTester(tester WebResearchTester) {
 	u.webResearchTester = tester
+}
+
+func (u *SystemSettingUsecase) SetTxProvider(tp SystemSettingTxProvider) {
+	u.txProvider = tp
+}
+
+// SystemSettingAllPatch encapsulates all optional sub-setting updates for
+// atomic persistence via UpdateAll. Sub-settings are applied only when their
+// pointer field is non-nil.
+type SystemSettingAllPatch struct {
+	// Core settings (always applied)
+	RootDir               string
+	WorkDir               string
+	GlobalMonthlyMicroUSD int64
+	A2APublicBaseURL      string
+	MCPAllowAdHocHTTP     bool
+
+	// Optional sub-settings (applied when non-nil)
+	KnowledgeEmbed          *KnowledgeEmbedSetting
+	KnowledgeEmbedUpdateKey bool
+	EvalLLM                 *EvalLLMSetting
+	WebResearch             *WebResearchSetting
+	WebResearchUpdateKey    bool
+}
+
+// UpdateAll atomically persists core settings and any optional sub-settings
+// in a single transaction when txProvider is set. Falls back to sequential
+// non-transactional updates for backward compatibility.
+func (u *SystemSettingUsecase) UpdateAll(ctx context.Context, p SystemSettingAllPatch) (SystemSetting, error) {
+	if u.txProvider != nil {
+		var result SystemSetting
+		err := u.txProvider.ExecInTx(ctx, func(txCtx context.Context) error {
+			row, err := u.Update(txCtx, p.RootDir, p.WorkDir, p.GlobalMonthlyMicroUSD, p.A2APublicBaseURL, p.MCPAllowAdHocHTTP)
+			if err != nil {
+				return err
+			}
+			if p.KnowledgeEmbed != nil {
+				embed, err := u.UpdateKnowledgeEmbed(txCtx, *p.KnowledgeEmbed, p.KnowledgeEmbedUpdateKey)
+				if err != nil {
+					return err
+				}
+				row.KnowledgeEmbed = embed
+			}
+			if p.EvalLLM != nil {
+				evalLLM, err := u.UpdateEvalLLM(txCtx, *p.EvalLLM)
+				if err != nil {
+					return err
+				}
+				row.EvalLLM = evalLLM
+			}
+			if p.WebResearch != nil {
+				web, err := u.UpdateWebResearch(txCtx, *p.WebResearch, p.WebResearchUpdateKey)
+				if err != nil {
+					return err
+				}
+				row.WebResearch = web
+			}
+			result = row
+			return nil
+		})
+		if err != nil {
+			return SystemSetting{}, err
+		}
+		return result, nil
+	}
+	// Legacy non-transactional path (backward compatibility).
+	row, err := u.Update(ctx, p.RootDir, p.WorkDir, p.GlobalMonthlyMicroUSD, p.A2APublicBaseURL, p.MCPAllowAdHocHTTP)
+	if err != nil {
+		return SystemSetting{}, err
+	}
+	if p.KnowledgeEmbed != nil {
+		embed, err := u.UpdateKnowledgeEmbed(ctx, *p.KnowledgeEmbed, p.KnowledgeEmbedUpdateKey)
+		if err != nil {
+			return SystemSetting{}, err
+		}
+		row.KnowledgeEmbed = embed
+	}
+	if p.EvalLLM != nil {
+		evalLLM, err := u.UpdateEvalLLM(ctx, *p.EvalLLM)
+		if err != nil {
+			return SystemSetting{}, err
+		}
+		row.EvalLLM = evalLLM
+	}
+	if p.WebResearch != nil {
+		web, err := u.UpdateWebResearch(ctx, *p.WebResearch, p.WebResearchUpdateKey)
+		if err != nil {
+			return SystemSetting{}, err
+		}
+		row.WebResearch = web
+	}
+	return row, nil
 }
 
 func (u *SystemSettingUsecase) Get(ctx context.Context) (SystemSetting, error) {

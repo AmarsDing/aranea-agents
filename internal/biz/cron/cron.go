@@ -174,6 +174,9 @@ func (u *Usecase) UpdateTask(ctx context.Context, id string, patch TaskPatch) (T
 	if patch.Status != nil && *patch.Status != "" {
 		merged.Status = *patch.Status
 	}
+	// Description intentionally allows empty-string clearing (nil pointer =
+	// skip, non-nil empty = clear). This is the documented behavior tested
+	// by TestUsecase_UpdateTask/patch_description_allows_empty.
 	if patch.Description != nil {
 		merged.Description = *patch.Description
 	}
@@ -183,7 +186,11 @@ func (u *Usecase) UpdateTask(ctx context.Context, id string, patch TaskPatch) (T
 	if patch.SortOrder != nil {
 		merged.SortOrder = *patch.SortOrder
 	}
-	if patch.AgentID != nil {
+	// AgentID uses a zero-value guard (consistent with ConfigJSON/MetadataJSON)
+	// to prevent proto3 zero-value clobbering when the caller only intends to
+	// patch other fields (e.g. toggleRow sending only enabled/status). An empty
+	// AgentID would leave the task orphaned with no executing agent.
+	if patch.AgentID != nil && *patch.AgentID != "" {
 		merged.AgentID = *patch.AgentID
 	}
 	// ConfigJSON and MetadataJSON contain structured data (cron expression, etc.)

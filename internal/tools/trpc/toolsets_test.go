@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/internal/tools/subagent"
 	"aranea-agents/internal/tools/trpc"
 )
@@ -82,7 +83,17 @@ func TestBuildToolsets_AwaitReplyNoHook(t *testing.T) {
 }
 
 func TestBuildToolsets_AwaitReplyWithHook(t *testing.T) {
-	var hook trpc.ReplyFunc = func(ctx context.Context) (string, error) { return "", nil }
+	// When AwaitHook is set, the service-integrated tool (serviceawaitreply.New)
+	// must be used instead of the framework built-in (trpcawaitreply.New).
+	// Both tools share the name "await_user_reply", so we distinguish them by
+	// the Call return type: the service tool returns map[string]any with a
+	// "reply" field (when a ReplyFunc is injected), while the framework tool
+	// returns a struct (awaitreply.Response) with an "agent_name" field.
+	var hookCalled bool
+	var hook trpc.ReplyFunc = func(ctx context.Context) (string, error) {
+		hookCalled = true
+		return "user-reply", nil
+	}
 	out, err := trpc.BuildToolsets(context.Background(), trpc.ToolsetConfig{
 		AwaitReply: true,
 		AwaitHook:  hook,
@@ -90,22 +101,44 @@ func TestBuildToolsets_AwaitReplyWithHook(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	foundFramework := false
-	foundService := false
-	for _, tool := range out.Tools {
-		if d := tool.Declaration(); d != nil {
-			if d.Name == "await_user_reply" {
-				foundFramework = true
-			}
-		}
-	}
+
+	var found bool
 	for _, tool := range out.Tools {
 		if d := tool.Declaration(); d != nil && d.Name == "await_user_reply" {
-			foundService = true
+			found = true
+			// Inject a ReplyFunc into context so the service tool can invoke it.
+			callable, ok := tool.(interface {
+				Call(context.Context, []byte) (any, error)
+			})
+			if !ok {
+				t.Fatal("await_user_reply tool is not callable")
+			}
+			ctx := serviceawaitreply.WithReplyFunc(context.Background(), hook)
+			result, callErr := callable.Call(ctx, nil)
+			if callErr != nil {
+				t.Fatalf("Call returned error: %v", callErr)
+			}
+			// The service tool returns map[string]any; the framework tool
+			// returns a struct. Verify we got the service tool by checking
+			// for the "reply" field that only the service tool produces.
+			m, isMap := result.(map[string]any)
+			if !isMap {
+				t.Fatalf("expected service tool to return map[string]any, got %T (framework tool was used instead)", result)
+			}
+			if success, _ := m["success"].(bool); !success {
+				t.Fatalf("expected success=true, got result: %v", result)
+			}
+			if reply, _ := m["reply"].(string); reply != "user-reply" {
+				t.Fatalf("expected reply='user-reply', got %v", m["reply"])
+			}
+			if !hookCalled {
+				t.Fatal("expected AwaitHook to be invoked by service tool")
+			}
+			break
 		}
 	}
-	if foundFramework && !foundService {
-		t.Fatal("expected await_user_reply service tool when AwaitHook is set")
+	if !found {
+		t.Fatal("expected await_user_reply tool when AwaitHook is set")
 	}
 }
 

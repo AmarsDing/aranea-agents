@@ -278,9 +278,6 @@ func spreadsheetRange(totalRows int, in readSpreadsheetInput) (int, int, error) 
 	}
 
 	end := minInt(totalRows, defaultSheetPreviewRows)
-	if start > 1 {
-		end = start
-	}
 	if v := normalizedPositive(in.EndRow); v != nil {
 		end = *v
 	}
@@ -290,6 +287,8 @@ func spreadsheetRange(totalRows int, in readSpreadsheetInput) (int, int, error) 
 	if end > totalRows {
 		end = totalRows
 	}
+	// When start_row is specified but end_row is not, return a window of
+	// defaultSheetPreviewRows starting from start_row.
 	if v := normalizedPositive(in.StartRow); v != nil && normalizedPositive(in.EndRow) == nil {
 		end = minInt(totalRows, start+defaultSheetPreviewRows-1)
 	}

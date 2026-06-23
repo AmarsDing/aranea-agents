@@ -66,6 +66,7 @@ var ProviderSet = wire.NewSet(
 	// writes in a single transaction (red line #24).
 	wire.Bind(new(biz.ChannelTxProvider), new(*Data)),
 	wire.Bind(new(biz.EvolutionTxProvider), new(*Data)),
+	wire.Bind(new(biz.SystemSettingTxProvider), new(*Data)),
 	NewChannelPeerSessionRepo,
 	NewChannelInboundReceiptRepo,
 	NewChannelTurnJobRepo,

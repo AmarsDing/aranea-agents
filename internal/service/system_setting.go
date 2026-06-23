@@ -33,37 +33,33 @@ func (s *SystemSettingService) GetSystemSettings(ctx context.Context, _ *emptypb
 }
 
 func (s *SystemSettingService) UpdateSystemSettings(ctx context.Context, req *v1.UpdateSystemSettingsRequest) (*v1.SystemSettings, error) {
-	row, err := s.uc.Update(ctx, req.GetRootDirectory(), req.GetWorkDirectory(), req.GetGlobalMonthlyMicroUsd(), req.GetA2APublicBaseUrl(), req.GetMcpAllowAdhocHttp())
-	if err != nil {
-		return nil, err
+	patch := biz.SystemSettingAllPatch{
+		RootDir:               req.GetRootDirectory(),
+		WorkDir:               req.GetWorkDirectory(),
+		GlobalMonthlyMicroUSD: req.GetGlobalMonthlyMicroUsd(),
+		A2APublicBaseURL:      req.GetA2APublicBaseUrl(),
+		MCPAllowAdHocHTTP:     req.GetMcpAllowAdhocHttp(),
 	}
 	if hasKnowledgeEmbedUpdate(req) {
-		embed, err := s.uc.UpdateKnowledgeEmbed(ctx, biz.KnowledgeEmbedSetting{
+		patch.KnowledgeEmbed = &biz.KnowledgeEmbedSetting{
 			Provider: req.GetKnowledgeEmbedProvider(),
 			BaseURL:  req.GetKnowledgeEmbedBaseUrl(),
 			APIKey:   req.GetKnowledgeEmbedApiKey(),
 			Model:    req.GetKnowledgeEmbedModel(),
 			Dim:      int(req.GetKnowledgeEmbedDim()),
-		}, strings.TrimSpace(req.GetKnowledgeEmbedApiKey()) != "")
-		if err != nil {
-			return nil, err
 		}
-		row.KnowledgeEmbed = embed
+		patch.KnowledgeEmbedUpdateKey = strings.TrimSpace(req.GetKnowledgeEmbedApiKey()) != ""
 	}
 	if hasEvalLLMUpdate(req) {
-		evalLLM, err := s.uc.UpdateEvalLLM(ctx, biz.EvalLLMSetting{
+		patch.EvalLLM = &biz.EvalLLMSetting{
 			SimProvider:   req.GetEvalSimProvider(),
 			SimModel:      req.GetEvalSimModel(),
 			JudgeProvider: req.GetEvalJudgeProvider(),
 			JudgeModel:    req.GetEvalJudgeModel(),
-		})
-		if err != nil {
-			return nil, err
 		}
-		row.EvalLLM = evalLLM
 	}
 	if hasWebResearchUpdate(req) {
-		web, err := s.uc.UpdateWebResearch(ctx, biz.WebResearchSetting{
+		patch.WebResearch = &biz.WebResearchSetting{
 			Provider:    req.GetWebResearchProvider(),
 			APIKey:      req.GetWebResearchApiKey(),
 			MaxResults:  int(req.GetWebResearchMaxResults()),
@@ -71,11 +67,12 @@ func (s *SystemSettingService) UpdateSystemSettings(ctx context.Context, req *v1
 			SearchDepth: req.GetWebResearchSearchDepth(),
 			TimeoutSec:  int(req.GetWebResearchTimeoutSec()),
 			HTTPProxy:   req.GetWebResearchHttpProxy(),
-		}, strings.TrimSpace(req.GetWebResearchApiKey()) != "")
-		if err != nil {
-			return nil, err
 		}
-		row.WebResearch = web
+		patch.WebResearchUpdateKey = strings.TrimSpace(req.GetWebResearchApiKey()) != ""
+	}
+	row, err := s.uc.UpdateAll(ctx, patch)
+	if err != nil {
+		return nil, err
 	}
 	if s.a2aPublicBase != nil {
 		s.a2aPublicBase.Reload(row.A2APublicBaseURL)

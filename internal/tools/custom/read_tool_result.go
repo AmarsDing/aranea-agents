@@ -2,6 +2,7 @@ package custom
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"unicode/utf8"
 
@@ -51,6 +52,17 @@ func NewReadToolResultTool(reader biz.ToolResultBlobReader) *trpcfunction.Functi
 
 			blob, err := reader.GetBlob(ctx, input.BlobID)
 			if err != nil {
+				// Distinguish "not found" (return Found:false) from real DB
+				// failures (propagate as Internal error). Swallowing DB errors
+				// would let the LLM mistake a DB outage for "result not yet
+				// persisted" and retry indefinitely.
+				var ae *apierror.Error
+				if errors.As(err, &ae) && ae.Code == apierror.CodeNotFound {
+					return readToolResultOutput{Found: false}, nil
+				}
+				return readToolResultOutput{}, apierror.Internal(apierror.DomainTool, "read blob: "+err.Error())
+			}
+			if blob == nil {
 				return readToolResultOutput{Found: false}, nil
 			}
 
