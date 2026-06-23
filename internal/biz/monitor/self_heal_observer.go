@@ -138,7 +138,7 @@ func (o *SelfHealObserver) ObserveFlowLogEvent(ctx context.Context, meta map[str
 
 			if countInWindow >= int(o.healConf.CircuitBreakerThreshold) {
 				ruleID := "rc-repeated-auto-heal-failure"
-				if o.checkCooldown(ruleID, "critical") {
+				if o.checkAndSetCooldown(ruleID, "critical") {
 					o.fireCircuitOpenAlert(ctx, ruleID, stepID, sessionID, "Runtime auto-heal has failed repeatedly in sliding window ("+healStrategy+")", "critical", meta)
 				}
 			}
@@ -175,14 +175,16 @@ func (o *SelfHealObserver) ObserveFlowLogEvent(ctx context.Context, meta map[str
 	})
 
 	if best.Confidence >= o.healConf.MinConfidence {
-		if o.checkCooldown(best.RuleID, best.Severity) {
+		if o.checkAndSetCooldown(best.RuleID, best.Severity) {
 			o.fireAlert(ctx, best.RuleID, stepID, sessionID, best.RootCause, best.Severity, meta)
 		}
 	}
 }
 
 // StartEventDrivenObservation subscribes to FlowLog error events and observes them.
-func (o *SelfHealObserver) StartEventDrivenObservation(ctx context.Context, ch <-chan Envelope) {
+// It subscribes to the provided event buses (typically the monitor bus) and
+// processes FlowLog envelopes through ObserveFlowLogEvent.
+func (o *SelfHealObserver) StartEventDrivenObservation(ctx context.Context, buses ...contract.Bus) {
 	// Periodic cleanup of stale cooldowns and heal events to prevent unbounded map growth.
 	safego.Go(ctx, "self-heal-observer-cleanup", func() {
 		ticker := time.NewTicker(observerCleanupInterval)
@@ -198,19 +200,35 @@ func (o *SelfHealObserver) StartEventDrivenObservation(ctx context.Context, ch <
 		}
 	})
 
-	safego.Go(ctx, "self-heal-observer-event-driven", func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case env, ok := <-ch:
-				if !ok {
-					return
-				}
-				o.ObserveFlowLogEvent(ctx, env.GetMetadata())
-			}
+	opts := contract.SubscribeOptions{
+		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeFlowLog},
+		BufferSize: 1024,
+		DropPolicy: contract.DropNewest,
+	}
+	for i, bus := range buses {
+		if bus == nil {
+			continue
 		}
-	})
+		name := "self-heal-observer"
+		if len(buses) > 1 {
+			name = fmt.Sprintf("self-heal-observer-%d", i)
+		}
+		ch, unsub := bus.Subscribe(opts)
+		safego.Go(ctx, name, func() {
+			defer unsub()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case env, ok := <-ch:
+					if !ok {
+						return
+					}
+					o.ObserveFlowLogEvent(ctx, env.Metadata)
+				}
+			}
+		})
+	}
 }
 
 // GetHealStats returns aggregated heal statistics.
@@ -325,10 +343,7 @@ func (o *SelfHealObserver) fireAlert(ctx context.Context, ruleID, stepID, sessio
 		Metadata:    meta,
 	})
 
-	// Set cooldown for this rule
-	o.mu.Lock()
-	o.cooldowns[ruleID] = now
-	o.mu.Unlock()
+	// Cooldown is set atomically by checkAndSetCooldown before calling fireAlert.
 
 	// Notify via AlertNotifier
 	if o.notifier != nil {
@@ -371,10 +386,7 @@ func (o *SelfHealObserver) fireCircuitOpenAlert(ctx context.Context, ruleID, ste
 		Metadata:    meta,
 	})
 
-	// Set cooldown with 30-minute auto-reset
-	o.mu.Lock()
-	o.cooldowns[ruleID] = now
-	o.mu.Unlock()
+	// Cooldown is set atomically by checkAndSetCooldown before calling fireCircuitOpenAlert.
 
 	// Notify via AlertNotifier
 	if o.notifier != nil {
@@ -396,8 +408,37 @@ func (o *SelfHealObserver) fireCircuitOpenAlert(ctx context.Context, ruleID, ste
 	}
 }
 
+// checkAndSetCooldown atomically checks the cooldown and, if allowed, sets it.
+// Returns true if the alert may fire (cooldown was not active and is now set).
+// REQ-SO-08: Cooldown is severity-dependent.
+//
+// This replaces the previous checkCooldown + fireAlert.setCooldown sequence
+// which had a TOCTOU race: between the unlock in checkCooldown and the re-lock
+// in fireAlert, another goroutine could also pass the check and fire a
+// duplicate alert before either sets the cooldown.
+func (o *SelfHealObserver) checkAndSetCooldown(ruleID, severity string) bool {
+	if o == nil {
+		return false
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	cooldown := o.severityCooldown(severity)
+	if last, ok := o.cooldowns[ruleID]; ok {
+		if time.Since(last) <= cooldown {
+			return false
+		}
+	}
+	o.cooldowns[ruleID] = time.Now().UTC()
+	return true
+}
+
 // checkCooldown returns true if the rule can fire an alert (not in cooldown).
 // REQ-SO-08: Cooldown is severity-dependent.
+//
+// Deprecated: Use checkAndSetCooldown to avoid the TOCTOU race between
+// checking and setting the cooldown. Kept only for DiagnoseAndObserve which
+// still uses the check-then-set pattern via fireAlert.
 func (o *SelfHealObserver) checkCooldown(ruleID, severity string) bool {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -489,7 +530,7 @@ func (o *SelfHealObserver) DiagnoseAndObserve(ctx context.Context, traceID, sess
 
 		// Fire alert for unhealed error if confidence is high enough
 		if best.Confidence >= o.healConf.MinConfidence {
-			if o.checkCooldown(best.RuleID, best.Severity) {
+			if o.checkAndSetCooldown(best.RuleID, best.Severity) {
 				o.fireAlert(ctx, best.RuleID, stepID, sessionID, best.RootCause, best.Severity, best.Metadata)
 			}
 		}

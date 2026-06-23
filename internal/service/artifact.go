@@ -84,6 +84,10 @@ func (s *ArtifactService) GetArtifact(ctx context.Context, req *v1.GetArtifactRe
 
 // ListArtifacts returns artifact metadata for a session (no payload).
 func (s *ArtifactService) ListArtifacts(ctx context.Context, req *v1.ListArtifactsRequest) (*v1.ListArtifactsResponse, error) {
+	sessionID := strings.TrimSpace(req.GetSessionId())
+	if sessionID == "" {
+		return nil, apierror.BadRequest("ARTIFACT", "session_id is required")
+	}
 	limit := int(req.GetLimit())
 	offset := int(req.GetOffset())
 	if limit <= 0 {
@@ -91,7 +95,7 @@ func (s *ArtifactService) ListArtifacts(ctx context.Context, req *v1.ListArtifac
 	}
 	query := strings.TrimSpace(req.GetQuery())
 	mimePrefix := strings.TrimSpace(req.GetMimeTypePrefix())
-	items, total, err := s.uc.List(ctx, req.GetSessionId(), limit, offset, query, mimePrefix)
+	items, total, err := s.uc.List(ctx, sessionID, limit, offset, query, mimePrefix)
 	if err != nil {
 		return nil, err
 	}

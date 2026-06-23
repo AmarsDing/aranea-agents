@@ -99,6 +99,7 @@ func normalizeConnectionConfig(cfg mcpcfg.ConnectionConfig, adHoc bool) (mcpcfg.
 		Headers:     cloneStringMap(cfg.Headers),
 		Command:     command,
 		Args:        cloneStringSlice(cfg.Args),
+		Env:         cloneStringMap(cfg.Env),
 		Timeout:     cfg.Timeout,
 		Description: strings.TrimSpace(cfg.Description),
 		ClientInfo:  cfg.ClientInfo,

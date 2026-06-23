@@ -39,9 +39,9 @@ func newTestCache(cap int) *BuildCache {
 // least-recently-used entry is the one evicted.
 func TestBuildCacheLRUEviction(t *testing.T) {
 	c := newTestCache(2)
-	c.put("a", makeAgent("a"), nil)
-	c.put("b", makeAgent("b"), nil)
-	c.put("c", makeAgent("c"), nil) // should evict "a"
+	c.put("a", makeAgent("a"), nil, nil)
+	c.put("b", makeAgent("b"), nil, nil)
+	c.put("c", makeAgent("c"), nil, nil) // should evict "a"
 	if got := c.get("a"); got != nil {
 		t.Fatalf("expected a to be evicted, got %v", got)
 	}
@@ -57,7 +57,7 @@ func TestBuildCacheLRUEviction(t *testing.T) {
 // no TTL-based expiry exists in the Always-Ready design.
 func TestBuildCacheNoTTL(t *testing.T) {
 	c := newTestCache(4)
-	c.put("k", makeAgent("k"), nil)
+	c.put("k", makeAgent("k"), nil, nil)
 	// Wait longer than any reasonable TTL would be.
 	time.Sleep(50 * time.Millisecond)
 	if got := c.get("k"); got == nil {
@@ -93,7 +93,7 @@ func TestBuildCacheSingleflightCollapsesConcurrentMisses(t *testing.T) {
 				if buildErr != nil {
 					return nil, buildErr
 				}
-				c.put("shared", ag, nil)
+				c.put("shared", ag, nil, nil)
 				return ag, nil
 			})
 			if err != nil {
@@ -161,7 +161,7 @@ func TestBuildCacheSingleflightReturnsErrorOnBuildFailure(t *testing.T) {
 // clears all entries.
 func TestBuildCacheCloseStopsAndClears(t *testing.T) {
 	c := newTestCache(4)
-	c.put("k", makeAgent("k"), nil)
+	c.put("k", makeAgent("k"), nil, nil)
 	c.Close()
 	c.Close() // second call must not panic
 	c.mu.Lock()
@@ -177,9 +177,9 @@ func TestBuildCacheCloseStopsAndClears(t *testing.T) {
 // continues serving while a background rebuild runs.
 func TestBuildCacheInvalidateMarksDirty(t *testing.T) {
 	c := newTestCache(8)
-	c.put("agent-1:hash1", makeAgent("a1h1"), nil)
-	c.put("agent-1:hash2", makeAgent("a1h2"), nil)
-	c.put("agent-2:hash3", makeAgent("a2h3"), nil)
+	c.put("agent-1:hash1", makeAgent("a1h1"), nil, nil)
+	c.put("agent-1:hash2", makeAgent("a1h2"), nil, nil)
+	c.put("agent-2:hash3", makeAgent("a2h3"), nil, nil)
 
 	c.Invalidate("agent-1")
 
@@ -220,7 +220,7 @@ func TestBuildCacheInvalidateMarksDirty(t *testing.T) {
 // in the lookup path.
 func TestBuildCachePutNilAgentIsNoop(t *testing.T) {
 	c := newTestCache(2)
-	c.put("k", nil, nil)
+	c.put("k", nil, nil, nil)
 	if got := c.get("k"); got != nil {
 		t.Fatalf("expected nil agent to be rejected, got %v", got)
 	}
@@ -269,7 +269,7 @@ func TestBuildCacheSingleflightContextIsolation(t *testing.T) {
 				return nil, errors.New("build timeout")
 			}
 			ag := makeAgent("isolated")
-			c.put("isolated", ag, nil)
+			c.put("isolated", ag, nil, nil)
 			return ag, nil
 		})
 		caller1Err = err
@@ -331,7 +331,7 @@ func TestBuildCacheSingleflightContextIsolation(t *testing.T) {
 // clears the dirty flag, allowing the entry to serve normally again.
 func TestBuildCachePutClearsDirty(t *testing.T) {
 	c := newTestCache(4)
-	c.put("agent-1:hash1", makeAgent("v1"), nil)
+	c.put("agent-1:hash1", makeAgent("v1"), nil, nil)
 	c.Invalidate("agent-1")
 
 	c.mu.Lock()
@@ -342,7 +342,7 @@ func TestBuildCachePutClearsDirty(t *testing.T) {
 	}
 
 	// Put a fresh agent — should clear dirty.
-	c.put("agent-1:hash1", makeAgent("v2"), nil)
+	c.put("agent-1:hash1", makeAgent("v2"), nil, nil)
 	c.mu.Lock()
 	e = c.items["agent-1:hash1"]
 	c.mu.Unlock()

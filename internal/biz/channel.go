@@ -185,6 +185,16 @@ type ChannelUsecase struct {
 	crypto                 *CredentialCrypto
 	healthCheckConcurrency int
 	lg                     loggateway.Logger
+	txProvider             ChannelTxProvider
+}
+
+// ChannelTxProvider provides transactional execution for atomic channel +
+// credential writes. When set via SetTxProvider, Create/Update wrap the
+// channel write and credential upsert in a single transaction so a credential
+// failure rolls back the channel row (red line #24).
+// Stability:stable
+type ChannelTxProvider interface {
+	ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
 const defaultHealthCheckConcurrency = 8
@@ -203,6 +213,27 @@ func NewChannelUsecase(
 	return &ChannelUsecase{reader: reader, writer: writer, credentials: credentials, deliveries: deliveries, peerUsecase: peerUsecase, agents: agents, teams: teams, crypto: crypto, healthCheckConcurrency: defaultHealthCheckConcurrency, lg: lg}
 }
 
+// ProvideChannelUsecase is the Wire provider that constructs a ChannelUsecase
+// and injects the transaction provider so Create/Update wrap channel + credential
+// writes in a single transaction (red line #24). Tests call NewChannelUsecase
+// directly (without a txProvider) to preserve legacy non-transactional behavior.
+func ProvideChannelUsecase(
+	reader ChannelReader,
+	writer ChannelWriter,
+	credentials ChannelCredentialRepo,
+	deliveries ChannelDeliveryRepo,
+	peerUsecase *ChannelPeerUsecase,
+	agents AgentRepository,
+	teams TeamReader,
+	crypto *CredentialCrypto,
+	tp ChannelTxProvider,
+	lg loggateway.Logger,
+) *ChannelUsecase {
+	uc := NewChannelUsecase(reader, writer, credentials, deliveries, peerUsecase, agents, teams, crypto, lg)
+	uc.SetTxProvider(tp)
+	return uc
+}
+
 // SetHealthCheckConcurrency configures the maximum concurrent health checks.
 // If n <= 0, the default (8) is used.
 func (u *ChannelUsecase) SetHealthCheckConcurrency(n int) {
@@ -210,6 +241,14 @@ func (u *ChannelUsecase) SetHealthCheckConcurrency(n int) {
 		n = defaultHealthCheckConcurrency
 	}
 	u.healthCheckConcurrency = n
+}
+
+// SetTxProvider sets the transaction provider used to wrap multi-step writes
+// (channel + credentials) in a single atomic transaction. When not set, the
+// writes execute non-transactionally (preserving legacy behavior for tests
+// and offline tooling).
+func (u *ChannelUsecase) SetTxProvider(tp ChannelTxProvider) {
+	u.txProvider = tp
 }
 
 func (u *ChannelUsecase) ChannelTypes() []ChannelTypeItem {
@@ -252,6 +291,24 @@ func (u *ChannelUsecase) Create(ctx context.Context, row Channel, credentials []
 	}
 	if err := normalizeChannel(&row); err != nil {
 		return Channel{}, err
+	}
+	if u.txProvider != nil {
+		var created Channel
+		err := u.txProvider.ExecInTx(ctx, func(txCtx context.Context) error {
+			c, err := u.writer.Create(txCtx, row)
+			if err != nil {
+				return err
+			}
+			created = c
+			if _, err = u.UpsertCredentials(txCtx, created.ID, credentials); err != nil {
+				return err
+			}
+			return nil
+		})
+		if err != nil {
+			return Channel{}, err
+		}
+		return created, nil
 	}
 	created, err := u.writer.Create(ctx, row)
 	if err != nil {
@@ -315,6 +372,24 @@ func (u *ChannelUsecase) Update(ctx context.Context, id string, opts ChannelUpda
 	// peer sessions, and runtime leases that are type-specific.
 	if ChannelTypeFromConfig(row.ConfigJSON) != ChannelTypeFromConfig(current.ConfigJSON) {
 		return Channel{}, apierror.BadRequest("CHANNEL", "channel type cannot be changed after creation; delete and recreate the channel instead")
+	}
+	if u.txProvider != nil {
+		var updated Channel
+		err := u.txProvider.ExecInTx(ctx, func(txCtx context.Context) error {
+			upd, err := u.writer.Update(txCtx, row)
+			if err != nil {
+				return err
+			}
+			updated = upd
+			if _, err = u.UpsertCredentials(txCtx, updated.ID, credentials); err != nil {
+				return err
+			}
+			return nil
+		})
+		if err != nil {
+			return Channel{}, err
+		}
+		return updated, nil
 	}
 	updated, err := u.writer.Update(ctx, row)
 	if err != nil {

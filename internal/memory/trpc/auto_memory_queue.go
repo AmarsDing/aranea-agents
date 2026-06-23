@@ -87,6 +87,7 @@ type MemoryJobQueue struct {
 	deadLetter MemoryDeadLetterSink
 
 	done chan struct{}
+	wg   sync.WaitGroup
 
 	lg loggateway.Logger
 }
@@ -112,17 +113,20 @@ func NewMemoryJobQueue(runtimeConf *conf.Runtime, size int, debounce time.Durati
 		done:           make(chan struct{}),
 		lg:             lg,
 	}
+	q.wg.Add(2)
 	safego.Go(appctx.Ctx(), "memory.job_queue.drain", q.drain)
 	safego.Go(appctx.Ctx(), "memory.job_queue.cleanup_recent", q.cleanupRecent)
 	return q
 }
 
-// Close shuts down background goroutines. Call during graceful shutdown.
+// Close shuts down background goroutines and waits for them to exit.
+// Call during graceful shutdown.
 func (q *MemoryJobQueue) Close() {
 	if q == nil {
 		return
 	}
 	close(q.done)
+	q.wg.Wait()
 }
 
 // SetDeadLetterSink wires a persistent dead-letter store (MEM-OPT-03).
@@ -249,6 +253,7 @@ func (q *MemoryJobQueue) AckDone(r AutoMemoryJobRequest) {
 // Respects q.done for graceful shutdown (H-03). Every send to q.out uses
 // a select on q.done so that a full output channel cannot block shutdown.
 func (q *MemoryJobQueue) drain() {
+	defer q.wg.Done()
 	defer close(q.out)
 	const lowBatchMax = 4
 	// sendOut writes to q.out while respecting q.done for graceful shutdown.
@@ -319,6 +324,7 @@ func (q *MemoryJobQueue) drain() {
 // cleanupRecent periodically removes stale debounce entries to prevent memory
 // accumulation from long-lived sessions (H-05).
 func (q *MemoryJobQueue) cleanupRecent() {
+	defer q.wg.Done()
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 	for {

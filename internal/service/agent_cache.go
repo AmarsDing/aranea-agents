@@ -1,9 +1,6 @@
 package service
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"sort"
 	"strings"
 
 	chatagent "aranea-agents/internal/agent"
@@ -30,23 +27,15 @@ type versionHashEntry struct {
 	UpdatedAt string
 }
 
-// computeVersionHash produces a SHA-256 hex digest from a set of id:updatedAt pairs.
-// Entries are sorted by ID before hashing so the result is deterministic regardless
-// of insertion order. An empty slice yields an empty string (no hash contribution).
+// computeVersionHash delegates to the shared agent package implementation so
+// chat, team, and graph paths all produce identical cache fingerprints.
 func computeVersionHash(entries []versionHashEntry) string {
 	if len(entries) == 0 {
 		return ""
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].ID < entries[j].ID
-	})
-	var b strings.Builder
-	for _, e := range entries {
-		b.WriteString(e.ID)
-		b.WriteByte(':')
-		b.WriteString(e.UpdatedAt)
-		b.WriteByte('\n')
+	shared := make([]chatagent.VersionHashEntry, len(entries))
+	for i, e := range entries {
+		shared[i] = chatagent.VersionHashEntry{ID: e.ID, UpdatedAt: e.UpdatedAt}
 	}
-	sum := sha256.Sum256([]byte(b.String()))
-	return hex.EncodeToString(sum[:])
+	return chatagent.ComputeVersionHash(shared)
 }

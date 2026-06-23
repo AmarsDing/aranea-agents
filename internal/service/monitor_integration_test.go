@@ -212,7 +212,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 		engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
-		observer, err := monitor.NewSelfHealObserver(repo, engine, notifier, loggateway.NewNoop())
+		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("NewSelfHealObserver failed: %v", err)
 		}
@@ -254,7 +254,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 		engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
-		observer, err := monitor.NewSelfHealObserver(repo, engine, notifier, loggateway.NewNoop())
+		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("NewSelfHealObserver failed: %v", err)
 		}
@@ -294,7 +294,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 		engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
-		observer, err := monitor.NewSelfHealObserver(repo, engine, notifier, loggateway.NewNoop())
+		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("NewSelfHealObserver failed: %v", err)
 		}
@@ -342,7 +342,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 		engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
-		observer, err := monitor.NewSelfHealObserver(repo, engine, notifier, loggateway.NewNoop())
+		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("NewSelfHealObserver failed: %v", err)
 		}
@@ -362,7 +362,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 		engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
-		observer, err := monitor.NewSelfHealObserver(repo, engine, notifier, loggateway.NewNoop())
+		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("NewSelfHealObserver failed: %v", err)
 		}
@@ -386,7 +386,7 @@ func TestMonitorIntegration_SelfHealObserver_Flow(t *testing.T) {
 		engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
-		observer, err := monitor.NewSelfHealObserver(repo, engine, notifier, loggateway.NewNoop())
+		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("NewSelfHealObserver failed: %v", err)
 		}
@@ -807,7 +807,7 @@ func TestMonitorIntegration_SelfHealWithFailurePattern(t *testing.T) {
 			IsActive:     true,
 		})
 
-		observer, err := monitor.NewSelfHealObserver(healRepo, engine, notifier, loggateway.NewNoop())
+		observer, err := monitor.NewSelfHealObserver(nil, healRepo, engine, notifier, loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("NewSelfHealObserver failed: %v", err)
 		}

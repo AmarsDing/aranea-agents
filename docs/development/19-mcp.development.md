@@ -148,7 +148,7 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 |---|------|------|---------|------|
 | 9 | Transport 类型化 + NormalizeTransport 全链统一 | ✅ | 2026-05-28 | TPM-P1-10：Transport 类型 + UnmarshalJSON 自动 normalize |
 | 10 | probe SSRF CheckRedirect 修复 | ✅ | 2026-05-26 | TPM-P1-11：outboundguard.NewClient 已内置 CheckRedirect |
-| 11 | ToConnectionConfig 统一 + MCPServerConfig 补全 Env | ✅ | 2026-05-28 | TPM-P1-12：ToConnectionConfig 补 Env 字段 |
+| 11 | ToConnectionConfig 统一 + MCPServerConfig 补全 Env | ✅ | 2026-06-23 | TPM-P1-12：MCPServerConfig.Env 已补；ToConnectionConfig 映射 Env + 框架 ConnectionConfig.Env + createClient 传递（2026-06-23 审计修复全链路） |
 | 12 | mcpobserve 统一使用 config.NormalizeTransport | ✅ | 2026-05-28 | TPM-P1-10 残留：删除本地 switch |
 | 13 | MCP Broker 显式挂载 | ✅ | 2026-05-28 | 需 mcp_broker 工具键启用才挂载 |
 | 14 | mcpobserve context.WithoutCancel | ✅ | 2026-05-28 | TPM-P2-07：保留 trace |

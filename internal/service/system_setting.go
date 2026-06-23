@@ -50,16 +50,18 @@ func (s *SystemSettingService) UpdateSystemSettings(ctx context.Context, req *v1
 		}
 		row.KnowledgeEmbed = embed
 	}
-	evalLLM, err := s.uc.UpdateEvalLLM(ctx, biz.EvalLLMSetting{
-		SimProvider:   req.GetEvalSimProvider(),
-		SimModel:      req.GetEvalSimModel(),
-		JudgeProvider: req.GetEvalJudgeProvider(),
-		JudgeModel:    req.GetEvalJudgeModel(),
-	})
-	if err != nil {
-		return nil, err
+	if hasEvalLLMUpdate(req) {
+		evalLLM, err := s.uc.UpdateEvalLLM(ctx, biz.EvalLLMSetting{
+			SimProvider:   req.GetEvalSimProvider(),
+			SimModel:      req.GetEvalSimModel(),
+			JudgeProvider: req.GetEvalJudgeProvider(),
+			JudgeModel:    req.GetEvalJudgeModel(),
+		})
+		if err != nil {
+			return nil, err
+		}
+		row.EvalLLM = evalLLM
 	}
-	row.EvalLLM = evalLLM
 	if hasWebResearchUpdate(req) {
 		web, err := s.uc.UpdateWebResearch(ctx, biz.WebResearchSetting{
 			Provider:    req.GetWebResearchProvider(),
@@ -103,6 +105,16 @@ func hasKnowledgeEmbedUpdate(req *v1.UpdateSystemSettingsRequest) bool {
 		req.GetKnowledgeEmbedModel() != "" ||
 		req.GetKnowledgeEmbedDim() > 0 ||
 		strings.TrimSpace(req.GetKnowledgeEmbedApiKey()) != ""
+}
+
+func hasEvalLLMUpdate(req *v1.UpdateSystemSettingsRequest) bool {
+	if req == nil {
+		return false
+	}
+	return req.GetEvalSimProvider() != "" ||
+		req.GetEvalSimModel() != "" ||
+		req.GetEvalJudgeProvider() != "" ||
+		req.GetEvalJudgeModel() != ""
 }
 
 func toProtoSystemSettings(row biz.SystemSetting) *v1.SystemSettings {

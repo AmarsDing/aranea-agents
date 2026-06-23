@@ -317,17 +317,21 @@ func (a *FlowFileAppender) routeFileLocked(env contract.Envelope) *rotatingFile 
 
 func (a *FlowFileAppender) ensureFile(slot **rotatingFile, prefix string) *rotatingFile {
 	today := time.Now().UTC().Format("2006-01-02")
+	// Fast path: same date and no rotation needed.
 	if *slot != nil && (*slot).date == today && !(*slot).shouldRotate() {
 		return *slot
 	}
+	// Capture rotation decision BEFORE Close(): shouldRotate() returns false
+	// once rf.file is nil (set by Close), so checking after Close would never
+	// trigger size-based rotation — causing unbounded growth of a single file.
+	seq := 1
 	if *slot != nil {
+		if (*slot).date == today && (*slot).shouldRotate() {
+			seq = (*slot).seq + 1
+		}
 		(*slot).Close()
 	}
 	baseName := fmt.Sprintf("%s-%s.jsonl", prefix, today)
-	seq := 1
-	if *slot != nil && (*slot).date == today && (*slot).shouldRotate() {
-		seq = (*slot).seq + 1
-	}
 	path := baseName
 	if seq > 1 {
 		path = fmt.Sprintf("%s.%d", baseName, seq)

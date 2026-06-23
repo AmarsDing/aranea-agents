@@ -258,6 +258,18 @@ func (ac *assembleContext) assembleMCPTools() error {
 			return apierror.Internal(apierror.DomainTool, fmt.Sprintf("mcp %s: %s", mcpCfg.Name, err.Error()))
 		}
 		if ts != nil {
+			// Eagerly initialize the MCP session so connection failures are
+			// visible via loggateway at build time. We do NOT fail the assembly
+			// — the ToolSet is still added and will retry on the next Tools()
+			// call, preserving the Always-Ready Agent resilience semantics.
+			if init, ok := ts.(interface{ Init(context.Context) error }); ok {
+				if initErr := init.Init(ac.ctx); initErr != nil {
+					ac.lg.Warn("MCP ToolSet 初始化失败（降级运行，将在下次调用时重试）",
+						loggateway.Domain("tools.mcp"),
+						loggateway.Str("server", mcpCfg.Name),
+						loggateway.Err(initErr))
+				}
+			}
 			ac.out.ToolSets = append(ac.out.ToolSets, ts)
 		}
 	}

@@ -165,8 +165,9 @@ func seedGraphTemplatesCompat(ctx context.Context, client *ent.Client, lg loggat
 }
 
 // newDataFromClient 创建一个最小化的 Data 实例，用于 seed 场景下创建 Repo。
-// WARNING: 此实例缺少 rawDB/readDB/rwDB 字段，仅适用于使用 Ent API（d.RW()）的 Repo。
-// 任何需要原生 SQL（d.RWDB()）的操作都会 panic。
+// 此实例缺少 rawDB/readDB/rwDB 字段。RWDB() 返回 nil，但 ReadDB/WriteDB
+// 已做 nil-safe 处理（返回 ErrRawDBUnavailable 而非 panic），因此仅适用于
+// 使用 Ent API（d.RW()）的 Repo；需要原生 SQL 的操作会返回明确错误。
 func newDataFromClient(client *ent.Client, lg loggateway.Logger) *Data {
 	return &Data{
 		entClient:  client,

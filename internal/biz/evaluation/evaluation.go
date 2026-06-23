@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"strings"
+	"sync/atomic"
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -159,10 +160,16 @@ func NewUsecase(repo Repo, lg loggateway.Logger) *Usecase {
 	return &Usecase{repo: repo, lg: lg}
 }
 
+var fallbackEvalID atomic.Uint64
+
 func newEvalID() string {
 	buf := make([]byte, 10)
 	if _, err := rand.Read(buf); err != nil {
-		return "ev-fallback"
+		n := fallbackEvalID.Add(1)
+		return hex.EncodeToString([]byte{
+			byte(n >> 56), byte(n >> 48), byte(n >> 40), byte(n >> 32),
+			byte(n >> 24), byte(n >> 16), byte(n >> 8), byte(n),
+		})
 	}
 	return hex.EncodeToString(buf)
 }

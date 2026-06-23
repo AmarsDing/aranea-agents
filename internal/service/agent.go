@@ -542,6 +542,8 @@ func (s *AgentService) enrichEndpointFlags(ctx context.Context, agents []biz.Age
 	}
 	enabled, err := s.a2aUC.MapEndpointEnabled(ctx, ids)
 	if err != nil {
+		s.lg.Warn("agent list: a2a endpoint lookup failed",
+			loggateway.StepID("agent.enrich_endpoints"), loggateway.Err(err))
 		return
 	}
 	for i := range agents {
@@ -555,6 +557,8 @@ func (s *AgentService) enrichAgentEndpoint(ctx context.Context, a *biz.Agent) {
 	}
 	enabled, err := s.a2aUC.MapEndpointEnabled(ctx, []string{a.ID})
 	if err != nil {
+		s.lg.Warn("agent get: a2a endpoint lookup failed",
+			loggateway.StepID("agent.enrich_endpoint"), loggateway.Str("agent_id", a.ID), loggateway.Err(err))
 		return
 	}
 	a.A2AEndpointEnabled = enabled[a.ID]

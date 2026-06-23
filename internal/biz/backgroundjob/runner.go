@@ -1,6 +1,9 @@
 package backgroundjob
 
-import "context"
+import (
+	"context"
+	"sync"
+)
 
 // Runner executes a single BackgroundJob. Implementations register themselves
 // with the worker via BackgroundJobRegistry and are dispatched by Kind.
@@ -50,6 +53,7 @@ func NewRegistry() Registry {
 }
 
 type registryImpl struct {
+	mu      sync.RWMutex
 	runners map[string]Runner
 }
 
@@ -58,6 +62,8 @@ func (r *registryImpl) Register(run Runner) {
 		return
 	}
 	kind := run.Kind()
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if _, exists := r.runners[kind]; exists {
 		panic("backgroundjob: duplicate runner kind: " + kind)
 	}
@@ -65,10 +71,14 @@ func (r *registryImpl) Register(run Runner) {
 }
 
 func (r *registryImpl) Lookup(kind string) Runner {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.runners[kind]
 }
 
 func (r *registryImpl) Kinds() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	kinds := make([]string, 0, len(r.runners))
 	for k := range r.runners {
 		kinds = append(kinds, k)

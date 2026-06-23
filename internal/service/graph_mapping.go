@@ -375,3 +375,35 @@ func bizTaskStatusToProto(status biz.TaskStatus) graphv1.TaskStatus {
 		return graphv1.TaskStatus_TASK_PENDING
 	}
 }
+
+// protoTaskStatusToBiz converts a proto TaskStatus enum to the biz TaskStatus string.
+// Returns "" when the filter should not be applied (TASK_PENDING is treated as a
+// concrete status filter since proto3 has no presence for enums; callers that want
+// "no filter" should leave status_filter unset which still arrives as 0 — mapped
+// here to TaskStatusPending to match the proto semantic).
+func protoTaskStatusToBiz(s graphv1.TaskStatus) biz.TaskStatus {
+	switch s {
+	case graphv1.TaskStatus_TASK_PENDING:
+		return biz.TaskStatusPending
+	case graphv1.TaskStatus_TASK_CLAIMED:
+		return biz.TaskStatusClaimed
+	case graphv1.TaskStatus_TASK_COMPLETE:
+		return biz.TaskStatusComplete
+	case graphv1.TaskStatus_TASK_BLOCKED:
+		return biz.TaskStatusBlocked
+	case graphv1.TaskStatus_TASK_REVIEW_REQUIRED:
+		return biz.TaskStatusReviewRequired
+	case graphv1.TaskStatus_TASK_FAILED:
+		return biz.TaskStatusFailed
+	case graphv1.TaskStatus_TASK_TIMED_OUT:
+		return biz.TaskStatusTimedOut
+	case graphv1.TaskStatus_TASK_CANCELLED:
+		return biz.TaskStatusCancelled
+	case graphv1.TaskStatus_TASK_CRASHED:
+		return biz.TaskStatusCrashed
+	case graphv1.TaskStatus_TASK_PENDING_ASSIGNMENT:
+		return biz.TaskStatusPendingAssignment
+	default:
+		return biz.TaskStatusPending
+	}
+}

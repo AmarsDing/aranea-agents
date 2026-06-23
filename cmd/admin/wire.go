@@ -719,6 +719,7 @@ func provideRunnerConfig(
 	knowledgeRouter *knowledge.AdaptiveRouter,
 	knowledgeFederatedRetriever *knowledge.FederatedRetriever,
 	knowledgeEvaluator *knowledge.RetrievalEvaluator,
+	knowledgeUC *biz.KnowledgeUsecase,
 	graphs *biz.GraphUsecase,
 	graphFactory biz.GraphBuilderFactory,
 	tasks *biz.TaskUsecase,
@@ -728,6 +729,12 @@ func provideRunnerConfig(
 	sessions biz.SessionTurnExtrasPort,
 	activityWriter biz.ActivityWriter,
 	eventBus event.Bus,
+	orgUC *biz.OrganizationUsecase,
+	toolResultGate *biz.ToolResultGate,
+	outboundRouter *outbound.Router,
+	subAgentSvc *subagenttool.Service,
+	kanbanBridge kanbanpkg.Bridge,
+	a2aUC *biz.A2AUsecase,
 	lg loggateway.Logger,
 ) team.RunnerConfig {
 	cfg := team.RunnerConfig{
@@ -739,12 +746,19 @@ func provideRunnerConfig(
 			FederatedRetriever: knowledgeFederatedRetriever,
 			Evaluator:          knowledgeEvaluator,
 		},
-		Runs: runs,
+		KnowledgeUsecase: knowledgeUC,
+		Runs:             runs,
 		StreamOptsFactory: &chatactivity.StreamOptsFactoryAdapter{
 			Tools: tools, Agents: agents, Sessions: sessions,
 			ActivityWriter: activityWriter, EventBus: eventBus, Logger: lg,
 		},
-		AgentHelper: &chatagent.TeamAgentHelperAdapter{},
+		AgentHelper:     &chatagent.TeamAgentHelperAdapter{},
+		OrganizationUC:  orgUC,
+		ToolResultGate:  toolResultGate,
+		OutboundRouter:  outboundRouter,
+		SubAgentService: subAgentSvc,
+		KanbanBridge:    kanbanBridge,
+		A2AEnabled:      a2aUC != nil,
 	}
 	if graphs != nil {
 		cfg.GraphLoader = graphadapter.NewLinkedGraphBuildConfigLoader(graphs)
@@ -1162,6 +1176,18 @@ func provideGraphBuildDeps(
 	agentUC *biz.AgentUsecase,
 	agents biz.AgentRepository,
 	sys biz.SystemSettingRepo,
+	skillUC *biz.SkillUsecase,
+	persist rt.PersistenceSet,
+	skillDBRepo trpcskill.Repository,
+	codeExecFactory *localexec.Factory,
+	knowledgeRetriever *knowledge.Retriever,
+	knowledgeUC *biz.KnowledgeUsecase,
+	pluginMgr *plugintrpc.Manager,
+	orgUC *biz.OrganizationUsecase,
+	toolResultGate *biz.ToolResultGate,
+	outboundRouter *outbound.Router,
+	subAgentSvc *subagenttool.Service,
+	a2aUC *biz.A2AUsecase,
 	lg loggateway.Logger,
 ) graphtrpc.GraphNodeResolverSet {
 	if catalog == nil || toolUC == nil {
@@ -1179,7 +1205,34 @@ func provideGraphBuildDeps(
 			RT: rtTrip,
 		},
 		TRPCToolAssemblyDeps: chatagent.TRPCToolAssemblyDeps{
-			ToolUC: toolUC,
+			ToolUC:     toolUC,
+			MCPTooling: persist.AgentMCP,
+		},
+		TRPCMemoryKnowledgeDeps: chatagent.TRPCMemoryKnowledgeDeps{
+			HasMemory:             persist.Memory.Available(),
+			MemoryService:         persist.Memory.TRPC,
+			MemoryAdmin:           persist.Memory.Admin,
+			MemoryL2Recall:        persist.Memory.L2Recall,
+			MemoryL3Recall:        persist.Memory.L3Recall,
+			MemoryCompositeRecall: persist.Memory.CompositeRecall,
+			KnowledgeRetriever:    knowledgeRetriever,
+			KnowledgeUsecase:      knowledgeUC,
+		},
+		TRPCPluginDeps: chatagent.TRPCPluginDeps{
+			PluginManager: pluginMgr,
+		},
+		TRPCSkillDeps: chatagent.TRPCSkillDeps{
+			SkillUC:         skillUC,
+			SkillDBRepo:     skillDBRepo,
+			CodeExecFactory: codeExecFactory,
+		},
+		TRPCExtensionDeps: chatagent.TRPCExtensionDeps{
+			Organization:    orgUC,
+			ToolResultGate:  toolResultGate,
+			OutboundRouter:  outboundRouter,
+			SubAgentService: subAgentSvc,
+			A2AEnabled:      a2aUC != nil,
+			LG:              lg,
 		},
 	}
 	return graphtrpc.GraphNodeResolverSet{
@@ -1690,7 +1743,19 @@ func provideSelfCheckScheduler(
 	registry *monitor.AlertMetricRegistry,
 	lg loggateway.Logger,
 ) *monitor.SelfCheckScheduler {
-	return monitor.NewSelfCheckScheduler(checkers, repairers, repo, registry, lg)
+	// Wrap repairers in SelfCheckRepairDispatcher to enforce per-checker cooldown
+	// (5min) and prevent repeated repairs of the same failing check within the
+	// cooldown window. Without the dispatcher, SelfCheckScheduler would call
+	// repairers directly on every cycle (every 5min), bypassing cooldown logic.
+	dispatcher := monitor.NewSelfCheckRepairDispatcher(repairers, lg)
+	scheduler := monitor.NewSelfCheckScheduler(checkers, []monitor.SelfCheckRepairer{dispatcher}, repo, registry, lg)
+	// Register the unhealthy-count metric so AlertEvalWorker can evaluate
+	// alert rules against it. Without this registration, the metric is never
+	// polled and self-check degradation goes undetected by the alerting system.
+	if registry != nil {
+		registry.Register(monitor.NewSelfCheckUnhealthyCountMetric(scheduler))
+	}
+	return scheduler
 }
 
 func provideEventBusHealthChecker() monitor.EventBusHealthChecker { return nil }

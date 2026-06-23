@@ -528,10 +528,24 @@ export async function deleteSkillFile(id: string, path: string): Promise<void> {
   await createSkillService().DeleteSkillFile({ id, path });
 }
 
-export async function previewSkillRuntime(id: string): Promise<{ preview: string }> {
+export type SkillRuntimePreview = {
+  resolved_storage_root: string;
+  enabled_published_count: number;
+  enabled_skill_slugs: string[];
+  reasons: Record<string, string>;
+};
+
+export async function previewSkillRuntime(id: string): Promise<SkillRuntimePreview> {
   const res = await createSkillService().PreviewSkillRuntime({ agentId: id, userQuery: undefined });
   const r = res as Record<string, unknown>;
-  return { preview: String(r.preview ?? r.preview_output ?? '') };
+  return {
+    resolved_storage_root: String(r.resolvedStorageRoot ?? r.resolved_storage_root ?? ''),
+    enabled_published_count: Number(r.enabledPublishedCount ?? r.enabled_published_count ?? 0),
+    enabled_skill_slugs: Array.isArray(r.enabledSkillSlugs ?? r.enabled_skill_slugs)
+      ? ((r.enabledSkillSlugs ?? r.enabled_skill_slugs) as string[])
+      : [],
+    reasons: (r.reasons ?? {}) as Record<string, string>,
+  };
 }
 
 export async function getSkillVersions(id: string, page = 1, pageSize = 20): Promise<PaginatedResponse<unknown>> {

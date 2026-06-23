@@ -34,6 +34,7 @@ func (HealRecord) Fields() []ent.Field {
 		field.Int("runtime_heal_attempts").Default(0),
 		field.Text("reason").Default(""),
 		field.Time("created_at"),
+		field.Text("metadata").Default("{}"), // JSON-encoded map[string]any for extra context
 	}
 }
 

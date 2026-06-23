@@ -88,6 +88,7 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260727, Name: "memory_decay_columns", SQL: "sql/migrations/20260727_memory_decay_columns.sql"},
 	{Version: 20260728, Name: "memory_job_deadletter_schema", SQL: "sql/migrations/20260728_memory_job_deadletter_schema.sql"},
 	{Version: 20260730, Name: "runtime_profile_schema", SQL: "sql/migrations/20260730_runtime_profile_schema.sql"},
+	{Version: 20260731, Name: "heal_record_metadata_column", Func: ddlHealRecordMetadataColumn},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -448,6 +449,20 @@ func ddlEvolutionSuggestionPreApplySnapshot(ctx context.Context, rawDB *sql.DB, 
 	}
 	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE evolution_suggestions ADD COLUMN pre_apply_snapshot TEXT NOT NULL DEFAULT ''`); err != nil && !d.AlreadyExistsErr(err) {
 		return fmt.Errorf("add evolution_suggestions.pre_apply_snapshot: %w", err)
+	}
+	return nil
+}
+
+// ddlHealRecordMetadataColumn adds the metadata column to heal_records table
+// for persisting extra context (root cause metadata, event metadata, etc.)
+// as a JSON-encoded TEXT field. Idempotent: "duplicate column" errors are
+// treated as success per DB-N6.
+func ddlHealRecordMetadataColumn(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, _ loggateway.Logger) error {
+	if rawDB == nil {
+		return nil
+	}
+	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE heal_records ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'`); err != nil && !d.AlreadyExistsErr(err) {
+		return fmt.Errorf("add heal_records.metadata: %w", err)
 	}
 	return nil
 }

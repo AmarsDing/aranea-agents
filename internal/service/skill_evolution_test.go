@@ -52,6 +52,16 @@ func (s *stubProposalRepo) ListByAgent(_ context.Context, agentID string, status
 	return result, nil
 }
 
+func (s *stubProposalRepo) CountByAgent(_ context.Context, agentID string, status string) (int, error) {
+	count := 0
+	for _, p := range s.proposals {
+		if (agentID == "" || p.AgentID == agentID) && (status == "" || string(p.Status) == status) {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func (s *stubProposalRepo) UpdateStatus(_ context.Context, id string, status biz.SkillProposalStatus, operator string) (biz.SkillProposal, error) {
 	p, ok := s.proposals[id]
 	if !ok {

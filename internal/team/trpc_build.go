@@ -18,6 +18,8 @@ type TRPCTeamBuilderDeps struct {
 }
 
 // BuildTeamMemberAgents builds member trpc agents and a runner lookup map keyed by agent_key.
+// Per-member effective-tool, skill, and MCP version hashes are computed so that cache entries
+// invalidate correctly when a member's tooling configuration changes.
 func BuildTeamMemberAgents(
 	ctx context.Context,
 	def Definition,
@@ -33,11 +35,20 @@ func BuildTeamMemberAgents(
 		if err != nil {
 			return nil, nil, apierror.BadRequest(apierror.DomainTeam, fmt.Sprintf("member %s: %v", m.AgentID, err))
 		}
+
+		memberDeps := deps.BuilderDeps
+		if eff, err := fetchEffectiveTools(ctx, memberDeps, ag.ID); err == nil {
+			memberDeps.CachedEffectiveTools = eff
+			memberDeps.ToolVersionHash = chatagent.ComputeToolVersionHash(eff)
+		}
+		memberDeps.SkillVersionHash = chatagent.ComputeSkillVersionHash(fetchEnabledSkillSlugs(ctx, memberDeps))
+		memberDeps.MCPVersionHash = chatagent.ComputeMCPVersionHash(fetchEffectiveMCPServers(ctx, memberDeps, ag.ID))
+
 		var trpcAg trpcagent.Agent
 		if deps.UseCache {
-			trpcAg, err = chatagent.BuildTRPCAgentCached(ctx, ag, deps.BuilderDeps, lg)
+			trpcAg, err = chatagent.BuildTRPCAgentCached(ctx, ag, memberDeps, lg)
 		} else {
-			trpcAg, err = chatagent.BuildTRPCAgent(ctx, ag, deps.BuilderDeps, lg)
+			trpcAg, err = chatagent.BuildTRPCAgent(ctx, ag, memberDeps, lg)
 		}
 		if err != nil {
 			return nil, nil, apierror.Internal(apierror.DomainTeam, fmt.Sprintf("build member %s: %v", m.AgentID, err))
@@ -48,4 +59,37 @@ func BuildTeamMemberAgents(
 		}
 	}
 	return memberAgents, lookup, nil
+}
+
+func fetchEffectiveTools(ctx context.Context, deps chatagent.TRPCBuilderDeps, agentID string) (*biz.AgentEffectiveTools, error) {
+	if deps.AgentUC == nil || strings.TrimSpace(agentID) == "" {
+		return nil, fmt.Errorf("agentUC not available")
+	}
+	eff, err := deps.AgentUC.GetEffectiveTools(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	return &eff, nil
+}
+
+func fetchEnabledSkillSlugs(ctx context.Context, deps chatagent.TRPCBuilderDeps) []string {
+	if deps.SkillUC == nil {
+		return nil
+	}
+	slugs, err := deps.SkillUC.ListEnabledPublishedSkillKeys(ctx)
+	if err != nil {
+		return nil
+	}
+	return slugs
+}
+
+func fetchEffectiveMCPServers(ctx context.Context, deps chatagent.TRPCBuilderDeps, agentID string) []biz.EffectiveMCPServer {
+	if deps.MCPTooling == nil || strings.TrimSpace(agentID) == "" {
+		return nil
+	}
+	servers, err := deps.MCPTooling.EffectiveServersForAgent(ctx, agentID)
+	if err != nil {
+		return nil
+	}
+	return servers
 }

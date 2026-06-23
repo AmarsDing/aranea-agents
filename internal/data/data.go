@@ -61,6 +61,11 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(biz.ChannelWriter), new(*channelRepo)),
 	wire.Bind(new(biz.ChannelCredentialRepo), new(*channelRepo)),
 	wire.Bind(new(biz.ChannelDeliveryRepo), new(*channelRepo)),
+	// Bind *Data to the biz-layer transaction provider interfaces so that
+	// ProvideChannelUsecase / ProvideEvolutionUsecase can wrap multi-step
+	// writes in a single transaction (red line #24).
+	wire.Bind(new(biz.ChannelTxProvider), new(*Data)),
+	wire.Bind(new(biz.EvolutionTxProvider), new(*Data)),
 	NewChannelPeerSessionRepo,
 	NewChannelInboundReceiptRepo,
 	NewChannelTurnJobRepo,

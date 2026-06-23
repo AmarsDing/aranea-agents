@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -197,7 +198,7 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 	}
 	params.ApplyDefaults()
 
-	ingestCtx := ctx
+	ingestCtx := appctx.Ctx()
 	safego.Go(ingestCtx, "knowledge-ingest", func() {
 		if err := uc.UpdateDocumentStatus(ingestCtx, doc.ID, "indexing", "", 0); err != nil {
 			s.lg.Error("failed to update document status to indexing",

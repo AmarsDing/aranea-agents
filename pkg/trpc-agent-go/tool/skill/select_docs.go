@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"trpc.group/trpc-go/trpc-agent-go/agent"
@@ -270,6 +271,10 @@ func (t *SelectDocsTool) outAdd(
 	for n := range set {
 		res = append(res, n)
 	}
+	// Deterministic order: map iteration is non-deterministic in Go.
+	// Sorting ensures stable tool result content, which is important for
+	// prompt caching and reproducible behavior across calls.
+	sort.Strings(res)
 	out := selectDocsOutput{
 		Skill:          in.Skill,
 		Selected:       res,

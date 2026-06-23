@@ -851,6 +851,7 @@ func (s *MemoryService) UpsertMemoryFact(ctx context.Context, req *v1.UpsertMemo
 		Version:               f.GetVersion(),
 		Status:                f.GetStatus(),
 		PIIFlag:               f.GetPiiFlag(),
+		PIITypes:              parsePIITypesJSON(f.GetPiiTypesJson()),
 		CreatedAt:             strings.TrimSpace(f.GetCreatedAt()),
 		UpdatedAt:             strings.TrimSpace(f.GetUpdatedAt()),
 	})
@@ -862,6 +863,21 @@ func (s *MemoryService) UpsertMemoryFact(ctx context.Context, req *v1.UpsertMemo
 		return nil, apierror.Internal("MEMORY", "failed to hydrate fact after upsert")
 	}
 	return &v1.UpsertMemoryFactResponse{Fact: pb}, nil
+}
+
+// parsePIITypesJSON decodes a JSON array string (e.g. '["email","phone"]') into
+// a []string. Returns nil for empty/invalid input so the biz layer treats it as
+// "no PII types specified".
+func parsePIITypesJSON(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "null" {
+		return nil
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil
+	}
+	return out
 }
 
 func (s *MemoryService) AppendEvolutionEvent(ctx context.Context, req *v1.AppendEvolutionEventRequest) (*v1.AppendEvolutionEventResponse, error) {

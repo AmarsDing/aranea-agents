@@ -300,6 +300,7 @@ func createClient(cfg mcpcfg.ConnectionConfig, extraHTTP []tmcp.ClientOption, ex
 			ServerParams: tmcp.StdioServerParameters{
 				Command: cfg.Command,
 				Args:    cfg.Args,
+				Env:     cfg.Env,
 			},
 			Timeout: cfg.Timeout,
 		}, clientInfo, extraStdio...)

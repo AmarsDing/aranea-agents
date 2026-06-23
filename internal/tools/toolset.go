@@ -440,6 +440,7 @@ func (c MCPServerConfig) ToConnectionConfig() trpcmcp.ConnectionConfig {
 		Headers:   c.Headers,
 		Command:   strings.TrimSpace(c.Command),
 		Args:      c.Args,
+		Env:       c.Env,
 		Timeout:   mcpTimeoutDuration(c.TimeoutSec),
 	}
 }

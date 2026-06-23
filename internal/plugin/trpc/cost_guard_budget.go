@@ -237,6 +237,11 @@ func (t *CostGuardBudgetTracker) aggregatePersist(batch []costGuardPersistEntry)
 	return m
 }
 
+// ensureDayLocked must be called while holding t.mu. It detects day rollover
+// and loads the persisted daily usage from the repo. The DB read happens
+// in-lock: this is intentional because (a) it only occurs once per day per
+// scope, and (b) releasing the lock mid-load would let concurrent TryConsume
+// callers see t.tokens=0 and bypass the daily budget (CVE-style race).
 func (t *CostGuardBudgetTracker) ensureDayLocked() {
 	day := time.Now().UTC().Format("2006-01-02")
 	if t.day == day {
@@ -246,11 +251,9 @@ func (t *CostGuardBudgetTracker) ensureDayLocked() {
 	scope := t.scopeKey
 	t.day = day
 	t.tokens = 0
-	t.mu.Unlock()
-	var loaded int
 	if repo != nil {
 		if n, err := repo.GetTokens(context.Background(), day, scope); err == nil {
-			loaded = n
+			t.tokens = n
 		} else {
 			t.lg.Warn("cost_guard daily usage load failed, starting from zero",
 				loggateway.StepID("plugin.cost_guard.load_fail"),
@@ -258,10 +261,6 @@ func (t *CostGuardBudgetTracker) ensureDayLocked() {
 				loggateway.Str("day", day),
 				loggateway.Err(err))
 		}
-	}
-	t.mu.Lock()
-	if t.day == day {
-		t.tokens = loaded
 	}
 }
 

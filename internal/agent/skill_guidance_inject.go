@@ -46,11 +46,16 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 	if ag.Settings == nil || deps.SkillUC == nil {
 		return nil
 	}
-	if !SkillsUseFullProfile(ag.SystemPromptMode) {
-		return nil
-	}
+	// Progressive mode takes precedence over Full Profile: it works in both
+	// "task" and "complete" prompt modes. Without this, "task" + progressive
+	// would never write routed slugs, breaking health metrics observability.
 	if biz.IsProgressiveSkillLoad(ag.Settings.GetSkillLoadMode()) {
 		return newProgressiveSkillGuidanceHook(ag, deps)
+	}
+	// Full Profile mode (non-progressive): inject full skill guidance.
+	// Only active in "complete" prompt mode.
+	if !SkillsUseFullProfile(ag.SystemPromptMode) {
+		return nil
 	}
 	return callbacks.NewBeforeModelHook(5, callbacks.LayerSemiStatic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 		if args == nil || args.Request == nil {
@@ -96,23 +101,46 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 	})
 }
 
+// newProgressiveSkillGuidanceHook returns a BeforeModel hook that:
+//  1. Resolves routed skill slugs and writes them to invocation state (for
+//     health metrics persistence by the invocation recorder).
+//  2. Injects a compact system message listing routed slugs so the LLM knows
+//     which skills were routed for this turn.
+//
+// The framework's SkillsRequestProcessor.injectOverview lists ALL skills with
+// descriptions but does not distinguish routed ones. This message complements
+// the overview by highlighting routed slugs, guiding the LLM's skill_load
+// decisions. This is the progressive mode's [routed] marker equivalent.
 func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback {
 	return callbacks.NewBeforeModelHook(5, callbacks.LayerSemiStatic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		// resolveAndWriteSkillState writes routed slugs and selection
-		// reasons to invocation state. No system message is injected;
-		// injectOverview handles all Skill display with [routed] markers.
-		resolveAndWriteSkillState(ctx, ag.Settings, deps, true)
+		result := resolveAndWriteSkillState(ctx, ag.Settings, deps, true)
+		if result == nil || len(result.Slugs) == 0 {
+			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
+		// Inject routed slugs as a compact system message. The framework's
+		// injectOverview will append the full skill list (names+descriptions)
+		// to the system message; this prefix highlights routed skills so the
+		// LLM can prioritize loading them via skill_load.
+		var b strings.Builder
+		b.WriteString("## Routed Skills\n\n")
+		b.WriteString("The following skills are routed for this turn. ")
+		b.WriteString("Prefer loading these with the skill_load tool before invoking skill_run.\n\n")
+		for _, slug := range result.Slugs {
+			b.WriteString(fmt.Sprintf("- %s\n", slug))
+		}
+		sys := trpcmodel.NewSystemMessage(b.String())
+		args.Request.Messages = append([]trpcmodel.Message{sys}, args.Request.Messages...)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
 
 // resolveAndWriteSkillState resolves routed skill slugs and writes them to
 // invocation state. When progressive is true, routed slugs are stored under
-// RoutedSkillsStateKey so the SkillsRequestProcessor can mark them as [routed].
-// Returns nil when no skills are resolved or on error.
+// skillRoutedSlugsStateKey so the invocation recorder can persist them for
+// health metrics. Returns nil when no skills are resolved or on error.
 func resolveAndWriteSkillState(ctx context.Context, runtime *biz.AgentRuntimeSettings, deps TRPCBuilderDeps, progressive bool) *skillruntime.ResolveResult {
 	opts := &skillruntime.SkillToolsetOptions{Runtime: runtime, UserQuery: skillruntime.TurnQueryFromContext(ctx)}
 	result, err := skillruntime.ResolveSkillSlugsDetailed(ctx, deps.SkillUC, opts, deps.Logger())

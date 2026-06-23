@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"encoding/json"
 	nethttp "net/http"
 
@@ -22,7 +21,7 @@ type SystemInfoResponse struct {
 
 func (s *SystemSettingService) GetSystemInfoHandler(version, gitCommit, buildTime string) kratoshttp.HandlerFunc {
 	return func(ctx kratoshttp.Context) error {
-		row, err := s.uc.Get(context.Background())
+		row, err := s.uc.Get(ctx.Request().Context())
 		if err != nil {
 			w := ctx.Response()
 			w.WriteHeader(nethttp.StatusInternalServerError)

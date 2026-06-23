@@ -7,6 +7,7 @@ import (
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/service"
+	"aranea-agents/pkg/loggateway"
 )
 
 type afterRevisionSessionRepo struct {
@@ -40,7 +41,7 @@ func TestSessionService_ListSessionMessages_afterRevision(t *testing.T) {
 		},
 	}
 	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil)
-	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil, nil)
+	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	after := int64(1)
 	resp, err := svc.ListSessionMessages(context.Background(), &v1.ListSessionMessagesRequest{

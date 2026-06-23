@@ -277,7 +277,7 @@ func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.Enqueu
 	}
 	if queued {
 		if pendingID == "" {
-			return nil, apierror.BadRequest("CHAT", enqueueRejectMessage(rejectReason))
+			return nil, apierror.Internal("CHAT", "queued message missing pending id")
 		}
 		return &chatv1.EnqueueUserMessageResponse{
 			Accepted:  true,

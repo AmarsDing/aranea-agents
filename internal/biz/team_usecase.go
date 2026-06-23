@@ -317,7 +317,7 @@ func (u *TeamUsecase) EnabledMemberAgentIDs(ctx context.Context, teamID string) 
 	}
 	spec, err := ParseOrchestrationSpec(t.DefinitionJSON)
 	if err != nil {
-		return nil, nil
+		return nil, apierror.BadRequest("TEAM", "invalid definition_json: %s", err.Error())
 	}
 	ids := make([]string, 0, len(spec.Members))
 	for _, m := range spec.Members {
@@ -939,15 +939,17 @@ func (u *TeamUsecase) ResolveMemberAgentKeys(ctx context.Context, raw string, ag
 	}
 	if spec.IntentAnchorAgentID != "" && !isHexID(spec.IntentAnchorAgentID) {
 		resolved, err := agentKeyResolver(spec.IntentAnchorAgentID)
-		if err == nil {
-			spec.IntentAnchorAgentID = resolved
+		if err != nil {
+			return "", apierror.BadRequest("TEAM", "intent_anchor agent_key %s 解析失败: %s", spec.IntentAnchorAgentID, err.Error())
 		}
+		spec.IntentAnchorAgentID = resolved
 	}
 	if spec.SynthesizerAgentID != "" && !isHexID(spec.SynthesizerAgentID) {
 		resolved, err := agentKeyResolver(spec.SynthesizerAgentID)
-		if err == nil {
-			spec.SynthesizerAgentID = resolved
+		if err != nil {
+			return "", apierror.BadRequest("TEAM", "synthesizer agent_key %s 解析失败: %s", spec.SynthesizerAgentID, err.Error())
 		}
+		spec.SynthesizerAgentID = resolved
 	}
 	return OrchestrationSpecToDefinitionJSON(spec)
 }

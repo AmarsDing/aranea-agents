@@ -63,6 +63,25 @@ func (r *skillProposalRepo) ListByAgent(ctx context.Context, agentID string, sta
 	return result, nil
 }
 
+func (r *skillProposalRepo) CountByAgent(ctx context.Context, agentID string, status string) (int, error) {
+	q := `SELECT COUNT(*) FROM skill_proposals WHERE 1=1`
+	args := []any{}
+	if agentID != "" {
+		q += ` AND agent_id = ?`
+		args = append(args, agentID)
+	}
+	if status != "" {
+		q += ` AND status = ?`
+		args = append(args, status)
+	}
+	var count int
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), r.data.Dialect().RenumberPlaceholders(q), args, &count)
+	if err != nil {
+		return 0, entErrToBizErr(err, "SKILL_EVO")
+	}
+	return count, nil
+}
+
 func (r *skillProposalRepo) GetByID(ctx context.Context, id string) (biz.SkillProposal, error) {
 	q := r.data.Dialect().RenumberPlaceholders(`SELECT id, agent_id, pattern_hash, pattern_desc, skill_name, skill_md, status, approved_by, rejected_by, created_at, approved_at
 	       FROM skill_proposals WHERE id = ?`)

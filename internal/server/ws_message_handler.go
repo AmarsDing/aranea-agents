@@ -96,10 +96,14 @@ func (s *WSServer) handleUpstream(wc *wsConn, raw []byte) {
 func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 	payload, ok := up.Payload.(map[string]any)
 	if !ok {
+		s.lg.Warn("WebSocket user_message dropped: payload is not an object",
+			loggateway.StepID("ws.user_msg_drop"), loggateway.SessionID(wc.sessionID))
 		return
 	}
 	content, _ := payload["content"].(string)
 	if strings.TrimSpace(content) == "" {
+		s.lg.Warn("WebSocket user_message dropped: empty content",
+			loggateway.StepID("ws.user_msg_drop"), loggateway.SessionID(wc.sessionID))
 		return
 	}
 
@@ -189,14 +193,20 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 // handleEnqueueMessage processes an enqueue_message upstream event.
 func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
 	if s == nil || s.sender == nil {
+		s.lg.Warn("WebSocket enqueue_message dropped: sender not available",
+			loggateway.StepID("ws.enqueue_msg_drop"), loggateway.SessionID(wc.sessionID))
 		return
 	}
 	payload, ok := up.Payload.(map[string]any)
 	if !ok {
+		s.lg.Warn("WebSocket enqueue_message dropped: payload is not an object",
+			loggateway.StepID("ws.enqueue_msg_drop"), loggateway.SessionID(wc.sessionID))
 		return
 	}
 	content, _ := payload["content"].(string)
 	if strings.TrimSpace(content) == "" {
+		s.lg.Warn("WebSocket enqueue_message dropped: empty content",
+			loggateway.StepID("ws.enqueue_msg_drop"), loggateway.SessionID(wc.sessionID))
 		return
 	}
 

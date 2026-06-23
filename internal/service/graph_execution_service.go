@@ -155,37 +155,26 @@ func (s *GraphService) ResumeGraph(ctx context.Context, req *graphv1.ResumeGraph
 }
 
 func (s *GraphService) TimeTravelGraph(ctx context.Context, req *graphv1.TimeTravelGraphRequest) (*graphv1.TimeTravelGraphResponse, error) {
-	result, err := s.uc.TimeTravelGetState(ctx, req.ExecutionId, "", "")
+	// Use step_index to locate the execution step directly. The biz-layer
+	// TimeTravelGetState signature accepts checkpointID/namespace (not stepIndex),
+	// so we resolve the step from the execution and use its OutputState.
+	exec, err := s.uc.GetExecution(ctx, req.ExecutionId)
 	if err != nil {
-		exec, execErr := s.uc.GetExecution(ctx, req.ExecutionId)
-		if execErr != nil {
-			return nil, execErr
-		}
-		idx := int(req.StepIndex)
-		if idx < 0 || idx >= len(exec.Steps) {
-			return nil, biz.ErrNotFound
-		}
-		step := exec.Steps[idx]
-		resp := &graphv1.TimeTravelGraphResponse{
-			ExecutionId: exec.ID,
-			StepIndex:   int32(idx),
-			NodeId:      step.NodeID,
-		}
-		if step.OutputState != nil {
-			st, err := structpb.NewStruct(step.OutputState)
-			if err == nil {
-				resp.StateSnapshot = st
-			}
-		}
-		return resp, nil
+		return nil, err
 	}
+	idx := int(req.StepIndex)
+	if idx < 0 || idx >= len(exec.Steps) {
+		return nil, biz.ErrNotFound
+	}
+	step := exec.Steps[idx]
 	resp := &graphv1.TimeTravelGraphResponse{
-		ExecutionId: req.ExecutionId,
-		StepIndex:   req.StepIndex,
+		ExecutionId: exec.ID,
+		StepIndex:   int32(idx),
+		NodeId:      step.NodeID,
 	}
-	if result != nil && result.State != nil {
-		st, err := structpb.NewStruct(result.State)
-		if err == nil {
+	if step.OutputState != nil {
+		st, stErr := structpb.NewStruct(step.OutputState)
+		if stErr == nil {
 			resp.StateSnapshot = st
 		}
 	}

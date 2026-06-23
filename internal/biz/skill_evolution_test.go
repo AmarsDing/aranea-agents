@@ -64,6 +64,16 @@ func (m *mockProposalRepo) ListByAgent(_ context.Context, agentID string, status
 	return result, nil
 }
 
+func (m *mockProposalRepo) CountByAgent(_ context.Context, agentID string, status string) (int, error) {
+	count := 0
+	for _, p := range m.proposals {
+		if (agentID == "" || p.AgentID == agentID) && (status == "" || string(p.Status) == status) {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func (m *mockProposalRepo) UpdateStatus(_ context.Context, id string, status SkillProposalStatus, operator string) (SkillProposal, error) {
 	p, ok := m.proposals[id]
 	if !ok {

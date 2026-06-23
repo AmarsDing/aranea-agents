@@ -321,9 +321,13 @@ func (u *LlmProviderModelUsecase) Update(ctx context.Context, id string, patch P
 	if patch.Status != "" {
 		merged.Status = patch.Status
 	}
-	merged.Description = patch.Description
+	if patch.Description != "" {
+		merged.Description = patch.Description
+	}
 	merged.Enabled = patch.Enabled
-	merged.SortOrder = patch.SortOrder
+	if patch.SortOrder != 0 {
+		merged.SortOrder = patch.SortOrder
+	}
 	if p := strings.TrimSpace(patch.Provider); p != "" {
 		merged.Provider = p
 	}

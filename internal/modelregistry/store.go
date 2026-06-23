@@ -58,7 +58,9 @@ func (s *Store) LoadMigrationCheckpoint() (MigrationCheckpoint, error) {
 		s.lg.Warn("Model registry read migration checkpoint failed", loggateway.StepID("model_registry.store.read_checkpoint_fail"), loggateway.Err(err))
 		return cp, err
 	}
-	if json.Unmarshal(b, &cp) != nil {
+	if err := json.Unmarshal(b, &cp); err != nil {
+		s.lg.Warn("Model registry migration checkpoint file is corrupted, treating as empty",
+			loggateway.StepID("model_registry.store.read_checkpoint_fail"), loggateway.Err(err))
 		return MigrationCheckpoint{}, nil
 	}
 	return cp, nil
@@ -123,7 +125,9 @@ func (s *Store) LoadPolicy() (Policy, error) {
 		s.lg.Warn("Model registry read policy file failed", loggateway.StepID("model_registry.store.read_policy_fail"), loggateway.Err(err))
 		return p, err
 	}
-	if json.Unmarshal(b, &p) != nil {
+	if err := json.Unmarshal(b, &p); err != nil {
+		s.lg.Warn("Model registry policy file is corrupted, falling back to default policy",
+			loggateway.StepID("model_registry.store.read_policy_fail"), loggateway.Err(err))
 		return DefaultPolicy(), nil
 	}
 	if strings.TrimSpace(p.SourceURL) == "" {
@@ -165,10 +169,13 @@ func (s *Store) LoadDirectory() (Directory, Meta, error) {
 		s.lg.Warn("Model registry read catalog file failed", loggateway.StepID("model_registry.store.read_catalog_fail"), loggateway.Err(err))
 		return nil, meta, err
 	}
-	if json.Unmarshal(b, &dir) != nil {
-		return nil, meta, fmt.Errorf("invalid catalog json")
+	if err := json.Unmarshal(b, &dir); err != nil {
+		return nil, meta, fmt.Errorf("invalid catalog json: %w", err)
 	}
-	_ = s.loadMeta(&meta)
+	if err := s.loadMeta(&meta); err != nil && !os.IsNotExist(err) {
+		s.lg.Warn("Model registry meta file load failed, continuing with empty meta",
+			loggateway.StepID("model_registry.store.read_meta_fail"), loggateway.Err(err))
+	}
 	return dir, meta, nil
 }
 
@@ -222,11 +229,15 @@ func (s *Store) LoadRawPretty() (string, int64, error) {
 		return "", 0, err
 	}
 	var raw json.RawMessage
-	if json.Unmarshal(b, &raw) != nil {
+	if err := json.Unmarshal(b, &raw); err != nil {
+		s.lg.Warn("Model registry catalog file is not valid JSON, returning raw bytes",
+			loggateway.StepID("model_registry.store.read_raw_pretty_fail"), loggateway.Err(err))
 		return string(b), int64(len(b)), nil
 	}
 	pretty, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
+		s.lg.Warn("Model registry catalog pretty-print failed, returning raw bytes",
+			loggateway.StepID("model_registry.store.read_raw_pretty_fail"), loggateway.Err(err))
 		return string(b), int64(len(b)), nil
 	}
 	return string(pretty), int64(len(pretty)), nil

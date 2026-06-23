@@ -10,7 +10,7 @@ import (
 )
 
 func (s *GraphService) ListTasks(ctx context.Context, req *graphv1.ListTasksRequest) (*graphv1.ListTasksResponse, error) {
-	tasks, _, err := s.taskUC.ListTasks(ctx, req.ExecutionId, biz.TaskStatus(req.StatusFilter), int(req.PageSize), req.PageToken)
+	tasks, _, err := s.taskUC.ListTasks(ctx, req.ExecutionId, protoTaskStatusToBiz(req.StatusFilter), int(req.PageSize), req.PageToken)
 	if err != nil {
 		return nil, err
 	}

@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"strings"
+	"sync/atomic"
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -251,11 +252,17 @@ func (uc *Usecase) Preview(ctx context.Context, id string, version int) (Preview
 	return result, nil
 }
 
+var fallbackArtifactID atomic.Uint64
+
 // NewArtifactID generates a random hex ID for a new artifact.
 func NewArtifactID() string {
 	buf := make([]byte, 12)
 	if _, err := rand.Read(buf); err != nil {
-		return hex.EncodeToString([]byte("artifact"))
+		n := fallbackArtifactID.Add(1)
+		return hex.EncodeToString([]byte{
+			byte(n >> 56), byte(n >> 48), byte(n >> 40), byte(n >> 32),
+			byte(n >> 24), byte(n >> 16), byte(n >> 8), byte(n),
+		})
 	}
 	return hex.EncodeToString(buf)
 }

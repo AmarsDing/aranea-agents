@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 )
 
 func taskDeadLetterToProto(dl biz.TaskDeadLetter) *v1.TaskDeadLetter {
@@ -86,18 +87,34 @@ func (s *TeamService) ListSpiritTeams(ctx context.Context, req *v1.ListSpiritTea
 	if err != nil {
 		return nil, err
 	}
+	// Batch-fetch latest TeamRun per team to populate run-derived fields
+	// (duration, tokens, session, graph execution id).
+	teamIDs := make([]string, 0, len(teams))
+	for i := range teams {
+		teamIDs = append(teamIDs, teams[i].ID)
+	}
+	runsByTeam, err := s.uc.ListRunsByTeamIDs(ctx, teamIDs, 1)
+	if err != nil {
+		s.lg.Warn("failed to batch-fetch team runs for spirit view", loggateway.Err(err))
+		runsByTeam = nil
+	}
 	out := make([]*v1.SpiritTeamView, 0, len(teams))
 	for i := range teams {
-		out = append(out, toProtoSpiritTeamView(&teams[i]))
+		var run *biz.TeamRun
+		if runs := runsByTeam[teams[i].ID]; len(runs) > 0 {
+			run = &runs[0]
+		}
+		out = append(out, toProtoSpiritTeamView(&teams[i], run))
 	}
 	return &v1.ListSpiritTeamsResponse{Teams: out}, nil
 }
 
-// toProtoSpiritTeamView converts a biz.Team to SpiritTeamView proto.
-// Fields not available on biz.Team (duration, tokens, steps, members) are left as zero values
-// and should be populated from TeamRun data when available.
-func toProtoSpiritTeamView(t *biz.Team) *v1.SpiritTeamView {
-	return &v1.SpiritTeamView{
+// toProtoSpiritTeamView converts a biz.Team and optional latest TeamRun to
+// SpiritTeamView proto. Fields not available on biz.Team or TeamRun (members,
+// member_avatars, completed_steps, total_steps, shared_agent_ids,
+// topology_reason) are left as zero values.
+func toProtoSpiritTeamView(t *biz.Team, run *biz.TeamRun) *v1.SpiritTeamView {
+	view := &v1.SpiritTeamView{
 		Id:              t.ID,
 		TeamName:        t.DisplayName,
 		TaskSummary:     t.TaskDescription,
@@ -108,6 +125,14 @@ func toProtoSpiritTeamView(t *biz.Team) *v1.SpiritTeamView {
 		DependsOn:       t.DependsOn,
 		InterruptReason: t.InterruptReason,
 	}
+	if run != nil {
+		view.DurationMs = int64(run.DurationMS)
+		view.TokenIn = int64(run.TokenIn)
+		view.TokenOut = int64(run.TokenOut)
+		view.TeamSessionId = run.SessionID
+		view.GraphExecutionId = run.GraphExecutionID
+	}
+	return view
 }
 
 // SynthesizeResults merges results from multiple teams (B-4).
@@ -159,7 +184,10 @@ func (s *TeamService) ArchiveTeam(ctx context.Context, req *v1.ArchiveTeamReques
 	return &v1.ArchiveTeamResponse{TeamId: team.ID, Status: team.Status}, nil
 }
 
-// RetryTeam retries a failed/cancelled team by resetting its status and re-starting (SP-BE-26).
+// RetryTeam resets a failed/cancelled team to pending status so it can be
+// re-started by the caller or scheduler (SP-BE-26). Note: this only resets
+// the status; actual execution re-trigger must be initiated separately via
+// the team run lifecycle (e.g. StartTeamTurn).
 func (s *TeamService) RetryTeam(ctx context.Context, req *v1.RetryTeamRequest) (*v1.RetryTeamResponse, error) {
 	if s == nil || s.uc == nil {
 		return nil, apierror.Internal("TEAM", "team service not configured")

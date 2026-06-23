@@ -96,7 +96,10 @@ func (w *MonitorTraceBackfillWorker) runOnce(ctx context.Context) {
 		inserted++
 	}
 	if len(rows) > 0 {
-		lastRow := rows[len(rows)-1]
+		// ListRecentRunnerCompletions returns rows ordered by created_at DESC,
+		// so rows[0] is the newest record. Using rows[len-1] would pick the
+		// oldest row and cause the watermark to regress on each run.
+		lastRow := rows[0]
 		if lastRow.CreatedAt != "" {
 			latestCreatedAt = lastRow.CreatedAt
 		} else {

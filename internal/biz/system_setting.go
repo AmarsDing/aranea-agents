@@ -135,13 +135,20 @@ func (u *SystemSettingUsecase) GetKnowledgeEmbed(ctx context.Context) (Knowledge
 }
 
 // UpdateEvalLLM persists evaluation UserSim / LLM-as-Judge model defaults.
+// Empty fields in the patch are preserved from the current value to avoid
+// proto3 zero-value clobbering when the caller only intends to patch a subset.
 func (u *SystemSettingUsecase) UpdateEvalLLM(ctx context.Context, patch EvalLLMSetting) (EvalLLMSetting, error) {
-	return u.repo.UpdateEvalLLM(ctx, EvalLLMSetting{
-		SimProvider:   strings.TrimSpace(patch.SimProvider),
-		SimModel:      strings.TrimSpace(patch.SimModel),
-		JudgeProvider: strings.TrimSpace(patch.JudgeProvider),
-		JudgeModel:    strings.TrimSpace(patch.JudgeModel),
-	})
+	cur, err := u.repo.Get(ctx)
+	if err != nil {
+		return EvalLLMSetting{}, err
+	}
+	merged := EvalLLMSetting{
+		SimProvider:   firstNonEmpty(strings.TrimSpace(patch.SimProvider), cur.EvalLLM.SimProvider),
+		SimModel:      firstNonEmpty(strings.TrimSpace(patch.SimModel), cur.EvalLLM.SimModel),
+		JudgeProvider: firstNonEmpty(strings.TrimSpace(patch.JudgeProvider), cur.EvalLLM.JudgeProvider),
+		JudgeModel:    firstNonEmpty(strings.TrimSpace(patch.JudgeModel), cur.EvalLLM.JudgeModel),
+	}
+	return u.repo.UpdateEvalLLM(ctx, merged)
 }
 
 // UpdateWebResearch persists Tavily/SerpAPI defaults for web_research.

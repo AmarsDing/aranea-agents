@@ -19,6 +19,12 @@ type dbSkillEntry struct {
 	slug    string
 }
 
+// dbQueryTimeout is the maximum duration for a single DB query performed by
+// the adapter. The framework's skill.Repository interface does not accept a
+// context, so we use context.Background() with an internal timeout to prevent
+// unbounded DB queries from blocking the request goroutine.
+const dbQueryTimeout = 5 * time.Second
+
 // DBRepositoryAdapter implements trpcskill.Repository backed by the skill DB.
 // Skills are loaded from biz.SkillUsecase and cached in-process with a TTL.
 //
@@ -72,9 +78,18 @@ func (r *DBRepositoryAdapter) loadSkillCache() *sync.Map {
 	return r.skillCache
 }
 
+// queryCtx returns a context with an internal timeout for DB queries.
+// Used because the framework's skill.Repository interface does not accept
+// a context parameter, so we cannot propagate the request context.
+func (r *DBRepositoryAdapter) queryCtx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), dbQueryTimeout)
+}
+
 // Summaries returns all enabled+published skill summaries, refreshing from DB when stale.
 func (r *DBRepositoryAdapter) Summaries() []trpcskill.Summary {
-	r.refreshIfStale(context.Background())
+	ctx, cancel := r.queryCtx()
+	defer cancel()
+	r.refreshIfStale(ctx)
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	out := make([]trpcskill.Summary, 0, len(r.entries))
@@ -86,7 +101,9 @@ func (r *DBRepositoryAdapter) Summaries() []trpcskill.Summary {
 
 // Get returns the full skill by name (slug), loading body from DB on demand.
 func (r *DBRepositoryAdapter) Get(name string) (*trpcskill.Skill, error) {
-	r.refreshIfStale(context.Background())
+	ctx, cancel := r.queryCtx()
+	defer cancel()
+	r.refreshIfStale(ctx)
 	key := canonicalSlug(name)
 
 	// Fast path: check skillCache (no lock needed, sync.Map is concurrent-safe).
@@ -109,7 +126,9 @@ func (r *DBRepositoryAdapter) Get(name string) (*trpcskill.Skill, error) {
 	r.mu.RUnlock()
 
 	// Load body from DB (slow path).
-	body := r.loadBody(context.Background(), entry)
+	bodyCtx, bodyCancel := r.queryCtx()
+	defer bodyCancel()
+	body := r.loadBody(bodyCtx, entry)
 	sk := &trpcskill.Skill{
 		Summary: entry.summary,
 		Body:    body,
@@ -126,7 +145,9 @@ func (r *DBRepositoryAdapter) Get(name string) (*trpcskill.Skill, error) {
 
 // Path returns the on-disk storage directory for the skill (may be empty for DB-only skills).
 func (r *DBRepositoryAdapter) Path(name string) (string, error) {
-	r.refreshIfStale(context.Background())
+	ctx, cancel := r.queryCtx()
+	defer cancel()
+	r.refreshIfStale(ctx)
 	key := canonicalSlug(name)
 	r.mu.RLock()
 	idx, ok := r.index[key]
@@ -138,7 +159,9 @@ func (r *DBRepositoryAdapter) Path(name string) (string, error) {
 	r.mu.RUnlock()
 
 	// Resolve dir from DB on demand (dir is not part of the immutable snapshot).
-	sk, err := r.uc.GetBySlug(context.Background(), slug)
+	dirCtx, dirCancel := r.queryCtx()
+	defer dirCancel()
+	sk, err := r.uc.GetBySlug(dirCtx, slug)
 	if err != nil {
 		var notFound *skillNotFoundError
 		if errors.As(err, &notFound) {
@@ -153,7 +176,9 @@ func (r *DBRepositoryAdapter) Path(name string) (string, error) {
 	if sk.ID == "" {
 		return "", nil
 	}
-	dir, _ := r.uc.GetStorageDir(context.Background(), sk.ID)
+	storageCtx, storageCancel := r.queryCtx()
+	defer storageCancel()
+	dir, _ := r.uc.GetStorageDir(storageCtx, sk.ID)
 	return dir, nil
 }
 

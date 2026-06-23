@@ -67,6 +67,7 @@ type ToolsetConfig struct {
 	Datetime         bool
 	Message          bool
 	OutboundRouter   *outbound.Router
+	SubAgent         bool
 	SubAgentService  *subagenttool.Service
 	Browser          *browser.PlaywrightMCPConfig
 	BrowserEnabled   bool
@@ -212,11 +213,13 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 		}
 	}
 
-	// Auto-enable subagent tools when SubAgentService is wired.
-	if cfg.SubAgentService != nil {
+	// Only enable subagent tools when the agent's effective tools include them
+	// AND the SubAgentService is actually wired. This prevents every agent from
+	// gaining subagent capability just because the service is available.
+	if cfg.SubAgent && cfg.SubAgentService != nil {
 		enabled = append(enabled, "subagents_spawn", "subagents_list", "subagents_get", "subagents_cancel")
-		lg.Info("subagent tools auto-enabled",
-			loggateway.StepID("tool.subagent_auto_enable"),
+		lg.Info("subagent tools enabled",
+			loggateway.StepID("tool.subagent_enabled"),
 			loggateway.Bool("subagent_service_wired", cfg.SubAgentService != nil))
 	}
 

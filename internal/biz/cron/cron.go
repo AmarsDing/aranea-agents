@@ -186,10 +186,15 @@ func (u *Usecase) UpdateTask(ctx context.Context, id string, patch TaskPatch) (T
 	if patch.AgentID != nil {
 		merged.AgentID = *patch.AgentID
 	}
-	if patch.ConfigJSON != nil {
+	// ConfigJSON and MetadataJSON contain structured data (cron expression, etc.)
+	// and must not be overwritten by empty strings from proto3 zero values when
+	// the caller only intends to patch other fields. A nil pointer still clears
+	// the field via the explicit nil check; a non-nil empty string is ignored to
+	// protect against proto3 zero-value clobbering.
+	if patch.ConfigJSON != nil && *patch.ConfigJSON != "" {
 		merged.ConfigJSON = *patch.ConfigJSON
 	}
-	if patch.MetadataJSON != nil {
+	if patch.MetadataJSON != nil && *patch.MetadataJSON != "" {
 		merged.MetadataJSON = *patch.MetadataJSON
 	}
 	if merged.TaskKey == "" {

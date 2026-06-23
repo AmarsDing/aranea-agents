@@ -30,8 +30,17 @@ import (
 )
 
 func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, lg loggateway.Logger) (trpcagent.Agent, error) {
+	a, _, err := buildTRPCLLMAgentWithToolSets(ctx, ag, deps, lg)
+	return a, err
+}
+
+// buildTRPCLLMAgentWithToolSets builds the agent and also returns the
+// ToolSets created during assembly. The caller (cache layer) uses these
+// ToolSets to close them when the agent is evicted, preventing resource
+// leaks (MCP sessions, stdio subprocesses, HTTP connections).
+func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, lg loggateway.Logger) (trpcagent.Agent, []trpctool.ToolSet, error) {
 	if strings.TrimSpace(ag.AgentKey) == "" {
-		return nil, apierror.BadRequest(apierror.DomainAgent, "agent_key required")
+		return nil, nil, apierror.BadRequest(apierror.DomainAgent, "agent_key required")
 	}
 	// Always use the Agent's own provider/model for the cached build.
 	// Per-request provider/model overrides are applied via RunOption
@@ -49,7 +58,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 	if agentModelEmpty {
 		prov, mod = resolveBuildDefaultModel(ctx, deps, lg)
 		if prov == "" || mod == "" {
-			return nil, apierror.BadRequest(apierror.DomainAgent, "agent provider and model required (no system default available)")
+			return nil, nil, apierror.BadRequest(apierror.DomainAgent, "agent provider and model required (no system default available)")
 		}
 		lg.Info("Agent 无配置模型，使用系统默认模型构建",
 			loggateway.StepID("agent.build_default_model"),
@@ -64,7 +73,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 	m, err := provider.TRPCModelForProviderModel(ctx, deps.ModelCatalog, deps.RT, prov, mod, lg)
 	if err != nil {
 		lg.Error("Agent 构建失败：模型解析", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Str("provider", prov), loggateway.Str("model", mod), loggateway.Err(err))
-		return nil, err
+		return nil, nil, err
 	}
 
 	files := ag.Files
@@ -72,7 +81,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 		files, err = deps.Agents.ListAgentPromptFiles(ctx, ag.ID)
 		if err != nil {
 			lg.Error("Agent 构建失败：提示文件加载", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	// PGO-1-AGENT-02: Inject 岗位职责 from the category tree when the flag is on
@@ -139,7 +148,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 		repo, filter, exec, err := buildSkillDeps(ctx, ag, deps)
 		if err != nil {
 			lg.Error("Agent 构建失败：技能依赖", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
-			return nil, err
+			return nil, nil, err
 		}
 		if repo != nil {
 			opts = append(opts, trpcllmagent.WithSkills(repo))
@@ -152,9 +161,10 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 		}
 		skillProfile, dirHints := skillOptionsForPromptMode(ag.SystemPromptMode)
 		if ag.Settings != nil && biz.IsProgressiveSkillLoad(ag.Settings.GetSkillLoadMode()) {
-			if skillProfile == "" {
-				skillProfile = trpcllmagent.SkillToolProfileKnowledgeOnly
-			}
+			// Progressive mode: enable tool result mode and directory hints.
+			// skillProfile is preserved as-is from skillOptionsForPromptMode:
+			//   - "complete" mode → Full profile (includes skill_run)
+			//   - other modes → KnowledgeOnly profile (skill_load/list_docs/select_docs only)
 			dirHints = true
 			opts = append(opts,
 				trpcllmagent.WithSkillsLoadedContentInToolResults(true),
@@ -166,12 +176,14 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 		)
 	}
 
+	var assembledToolSets []trpctool.ToolSet
 	if ts, err := buildToolsetsForAgent(ctx, ag, deps); err != nil {
 		lg.Error("Agent 构建失败：工具构建", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
-		return nil, apierror.Internal(apierror.DomainAgent, "tool build failed").WithCause(err)
+		return nil, nil, apierror.Internal(apierror.DomainAgent, "tool build failed").WithCause(err)
 	} else if ts != nil {
 		if len(ts.ToolSets) > 0 {
 			opts = append(opts, trpcllmagent.WithToolSets(ts.ToolSets))
+			assembledToolSets = ts.ToolSets
 			// WithRefreshToolSetsOnRun is intentionally set to false (disabled).
 			// Previously this was true, causing 0.2-5s MCP Initialize+ListTools
 			// on every LLM call. Now MCP ToolSets are initialized once during
@@ -241,7 +253,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 		),
 	))
 
-	return trpcllmagent.New(strings.TrimSpace(ag.AgentKey), opts...), nil
+	return trpcllmagent.New(strings.TrimSpace(ag.AgentKey), opts...), assembledToolSets, nil
 }
 
 // buildSkillDeps resolves the Skill repository, per-invocation visibility filter, and code executor.

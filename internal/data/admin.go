@@ -52,7 +52,7 @@ func (r *adminRepo) FindByID(ctx context.Context, id int64) (*biz.Admin, error) 
 		if ent.IsNotFound(err) {
 			return nil, biz.ErrAdminNotFound
 		}
-		return nil, err
+		return nil, entErrToBizErr(err, "ADMIN")
 	}
 	return convertAdmin(po), nil
 }
@@ -63,7 +63,7 @@ func (r *adminRepo) FindByName(ctx context.Context, name string) (*biz.Admin, er
 		if ent.IsNotFound(err) {
 			return nil, biz.ErrAdminNotFound
 		}
-		return nil, err
+		return nil, entErrToBizErr(err, "ADMIN")
 	}
 	return convertAdmin(po), nil
 }
@@ -74,7 +74,7 @@ func (r *adminRepo) FindByEmail(ctx context.Context, email string) (*biz.Admin, 
 		if ent.IsNotFound(err) {
 			return nil, biz.ErrAdminNotFound
 		}
-		return nil, err
+		return nil, entErrToBizErr(err, "ADMIN")
 	}
 	return convertAdmin(po), nil
 }
@@ -91,7 +91,7 @@ func (r *adminRepo) ListAdmins(ctx context.Context, opts ...biz.ListOption) ([]*
 		Limit(o.Limit).
 		All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "ADMIN")
 	}
 	var admins []*biz.Admin
 	for _, po := range pos {
@@ -111,7 +111,7 @@ func (r *adminRepo) CreateAdmin(ctx context.Context, admin *biz.Admin) (*biz.Adm
 		SetUpdateTime(time.Now()).
 		Save(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "ADMIN")
 	}
 	return convertAdmin(po), nil
 }
@@ -129,11 +129,11 @@ func (r *adminRepo) UpdateAdmin(ctx context.Context, admin *biz.Admin) (*biz.Adm
 	}
 	po, err := update.Save(ctx)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "ADMIN")
 	}
 	return convertAdmin(po), nil
 }
 
 func (r *adminRepo) DeleteAdmin(ctx context.Context, id int64) error {
-	return r.data.RW().Write(ctx).Admin.DeleteOneID(id).Exec(ctx)
+	return entErrToBizErr(r.data.RW().Write(ctx).Admin.DeleteOneID(id).Exec(ctx), "ADMIN")
 }

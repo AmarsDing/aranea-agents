@@ -660,10 +660,13 @@ func (uc *SessionUsecase) Archive(ctx context.Context, id string) error {
 		return apierror.Conflict("SESSION", fmt.Sprintf("session is %s, cannot archive", sess.Status))
 	}
 	n, err := uc.sessionMutator.ArchiveSession(ctx, id)
+	if err != nil {
+		return err
+	}
 	if n == 0 {
 		return apierror.NotFound("SESSION", id)
 	}
-	return err
+	return nil
 }
 
 func (uc *SessionUsecase) Delete(ctx context.Context, id string) error {
@@ -679,10 +682,13 @@ func (uc *SessionUsecase) Delete(ctx context.Context, id string) error {
 		return apierror.Conflict("SESSION", fmt.Sprintf("session is %s, cannot delete", sess.Status))
 	}
 	n, err := uc.sessionMutator.DeleteSession(ctx, id)
+	if err != nil {
+		return err
+	}
 	if n == 0 {
 		return apierror.NotFound("SESSION", id)
 	}
-	return err
+	return nil
 }
 
 func (uc *SessionUsecase) DeleteByAgent(ctx context.Context, agentID string) error {

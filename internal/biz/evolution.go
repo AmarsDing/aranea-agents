@@ -78,6 +78,17 @@ type EvolutionUsecase struct {
 	orchestratorOnce sync.Once
 	lg               loggateway.Logger
 	evolutionSM      *EvolutionStateMachine
+	txProvider       EvolutionTxProvider
+}
+
+// EvolutionTxProvider provides transactional execution for atomic prompt-file
+// + suggestion-status writes. When set via SetTxProvider, ApplySuggestion and
+// RollbackSuggestion wrap the file replacement and status update in a single
+// transaction so a status-update failure rolls back the prompt files
+// (red line #24).
+// Stability:stable
+type EvolutionTxProvider interface {
+	ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
 func NewEvolutionUsecase(
@@ -95,6 +106,23 @@ func NewEvolutionUsecase(
 	}
 }
 
+// ProvideEvolutionUsecase is the Wire provider that constructs an
+// EvolutionUsecase and injects the transaction provider so ApplySuggestion
+// and RollbackSuggestion wrap file replacement + status update in a single
+// transaction (red line #24). Tests call NewEvolutionUsecase directly
+// (without a txProvider) to preserve legacy non-transactional behavior.
+func ProvideEvolutionUsecase(
+	metricsRepo EvolutionMetricsRepo,
+	suggestionRepo EvolutionSuggestionRepo,
+	agents AgentRepository,
+	tp EvolutionTxProvider,
+	lg loggateway.Logger,
+) *EvolutionUsecase {
+	uc := NewEvolutionUsecase(metricsRepo, suggestionRepo, agents, lg)
+	uc.SetTxProvider(tp)
+	return uc
+}
+
 // SetCoordinator sets the evolution coordinator for cross-pipeline dedup.
 // NOTE: Must only be called during initialization, before any concurrent access.
 //
@@ -110,6 +138,14 @@ func (uc *EvolutionUsecase) SetOrchestrator(o *SkillEvolutionOrchestrator) {
 	uc.orchestratorOnce.Do(func() {
 		uc.orchestrator = o
 	})
+}
+
+// SetTxProvider sets the transaction provider used to wrap multi-step writes
+// (prompt-file replacement + suggestion status update) in a single atomic
+// transaction. When not set, the writes execute non-transactionally
+// (preserving legacy behavior for tests and offline tooling).
+func (uc *EvolutionUsecase) SetTxProvider(tp EvolutionTxProvider) {
+	uc.txProvider = tp
 }
 
 func (uc *EvolutionUsecase) GetEvolutionMetrics(ctx context.Context, agentID string, timeRange string) (EvolutionMetrics, error) {
@@ -233,9 +269,7 @@ func (uc *EvolutionUsecase) ApplySuggestion(ctx context.Context, agentID string,
 				SortOrder: 30,
 			})
 		}
-		if _, err := uc.agents.ReplaceAgentPromptFiles(ctx, agentID, files); err != nil {
-			return EvolutionSuggestion{}, err
-		}
+		return uc.applyAndMark(ctx, agentID, suggestionID, files)
 	case "prompt":
 		files, err := uc.agents.ListAgentPromptFiles(ctx, agentID)
 		if err != nil {
@@ -259,9 +293,38 @@ func (uc *EvolutionUsecase) ApplySuggestion(ctx context.Context, agentID string,
 			// overwriting an unrelated file (SOUL.md, IDENTITY.md, etc.).
 			return EvolutionSuggestion{}, apierror.BadRequest("EVOLUTION", "no AGENTS*.md prompt file found; create one before applying prompt suggestions")
 		}
-		if _, err := uc.agents.ReplaceAgentPromptFiles(ctx, agentID, files); err != nil {
+		return uc.applyAndMark(ctx, agentID, suggestionID, files)
+	}
+	// Unknown suggestion type — nothing to apply.
+	return EvolutionSuggestion{}, apierror.BadRequest("EVOLUTION", "unsupported suggestion type: "+s.Type)
+}
+
+// applyAndMark replaces the agent's prompt files and marks the suggestion as
+// applied. When a txProvider is configured, both writes execute in a single
+// transaction so a status-update failure rolls back the prompt files
+// (red line #24). Without a txProvider, the writes execute sequentially
+// (legacy behavior for tests and offline tooling).
+func (uc *EvolutionUsecase) applyAndMark(ctx context.Context, agentID, suggestionID string, files []AgentPromptFile) (EvolutionSuggestion, error) {
+	if uc.txProvider != nil {
+		var updated EvolutionSuggestion
+		err := uc.txProvider.ExecInTx(ctx, func(txCtx context.Context) error {
+			if _, err := uc.agents.ReplaceAgentPromptFiles(txCtx, agentID, files); err != nil {
+				return err
+			}
+			u, err := uc.suggestionRepo.UpdateStatus(txCtx, suggestionID, EvolutionStatusApplied)
+			if err != nil {
+				return err
+			}
+			updated = u
+			return nil
+		})
+		if err != nil {
 			return EvolutionSuggestion{}, err
 		}
+		return updated, nil
+	}
+	if _, err := uc.agents.ReplaceAgentPromptFiles(ctx, agentID, files); err != nil {
+		return EvolutionSuggestion{}, err
 	}
 	updated, err := uc.suggestionRepo.UpdateStatus(ctx, suggestionID, EvolutionStatusApplied)
 	if err != nil {
@@ -332,6 +395,27 @@ func (uc *EvolutionUsecase) RollbackSuggestion(ctx context.Context, agentID stri
 		if content, ok := snapshot[f.Name]; ok {
 			files[i].Body = content
 		}
+	}
+	// Wrap file replacement + status update in a transaction when a txProvider
+	// is configured so a status-update failure rolls back the file restore
+	// (red line #24).
+	if uc.txProvider != nil {
+		var updated EvolutionSuggestion
+		err := uc.txProvider.ExecInTx(ctx, func(txCtx context.Context) error {
+			if _, err := uc.agents.ReplaceAgentPromptFiles(txCtx, agentID, files); err != nil {
+				return err
+			}
+			u, err := uc.suggestionRepo.UpdateStatus(txCtx, suggestionID, EvolutionStatusRolledBack)
+			if err != nil {
+				return err
+			}
+			updated = u
+			return nil
+		})
+		if err != nil {
+			return EvolutionSuggestion{}, err
+		}
+		return updated, nil
 	}
 	if _, err := uc.agents.ReplaceAgentPromptFiles(ctx, agentID, files); err != nil {
 		return EvolutionSuggestion{}, err

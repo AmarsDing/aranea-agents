@@ -140,6 +140,8 @@ func (s *WSServer) eventPump(wc *wsConn, eventCh <-chan event.Envelope) {
 		}
 		data, err := json.Marshal(msg)
 		if err != nil {
+			s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket 下行消息序列化失败，跳过",
+				loggateway.StepID("ws.marshal_fail"), loggateway.Err(err), loggateway.Any("envelope_type", env.Type))
 			continue
 		}
 		// MON-OPT-04: route to priority queue; close connection on high-queue timeout.

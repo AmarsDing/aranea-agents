@@ -380,6 +380,8 @@ message SkillHealthMetric {
   double success_rate_30d = 8;
   int32 p95_duration_ms_30d = 9;
   repeated SkillHealthDailyMetric daily_metrics = 10;
+  double route_hit_rate_7d = 11;
+  double route_hit_rate_30d = 12;
 }
 
 message SkillHealthDailyMetric {
@@ -387,6 +389,8 @@ message SkillHealthDailyMetric {
   int32 invocations = 2;
   int32 successes = 3;
   double avg_duration_ms = 4;
+  int32 routed_count = 5;
+  int32 loaded_count = 6;
 }
 
 service SkillService {

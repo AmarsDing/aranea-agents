@@ -48,9 +48,26 @@
 `resolveAndWriteSkillState(ctx, runtime, deps, progressive bool)` 行为：
 
 - 调用 `skillruntime.ResolveSkillSlugsDetailed` 解析路由结果
-- `progressive=true` 时写入 `skillRoutedSlugsStateKey`（供 SkillsRequestProcessor 标记 `[routed]`，并供 recorder 持久化）
+- `progressive=true` 时写入 `skillRoutedSlugsStateKey`（供 recorder 持久化路由命中率）
 - 始终写入 `skillSelectionReasonStateKey`
 - Full Profile 模式（`progressive=false`）当前不写入 `skillRoutedSlugsStateKey`，路由命中率仅 Progressive 模式可观测
+
+**Progressive 模式的 [routed] 标记实现**：
+
+框架的 `SkillsRequestProcessor.injectOverview` 列出所有 skill 摘要但不支持 `[routed]` 标记。Aranea 在 `newProgressiveSkillGuidanceHook`（BeforeModel hook）中注入一个紧凑的 system message 作为 `[routed]` 标记等价物：
+
+```
+## Routed Skills
+
+The following skills are routed for this turn. Prefer loading these with the skill_load tool before invoking skill_run.
+
+- skill-a
+- skill-b
+```
+
+该 system message 在框架 `injectOverview` 之前注入，最终 LLM 看到：routed slugs（前）+ 完整 overview（后），互补不冲突。
+
+**Hook 优先级**：`newSkillGuidanceBeforeHook` 中 Progressive 判断优先于 Full Profile 判断，确保 Progressive 模式在所有 prompt mode（"task" / "complete"）下都能写入 routed slugs 并注入 guidance。
 
 ### 2.3 Skill 加载捕获
 

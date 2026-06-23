@@ -146,8 +146,9 @@ func (r *Runner) buildTeamBuilderDeps(ctx context.Context, sess biz.Session, run
 			DialogMode: dialogMode,
 		},
 		TRPCToolAssemblyDeps: agent.TRPCToolAssemblyDeps{
-			ToolUC:     r.td.ReadDeps.ToolUC,
-			MCPTooling: r.td.Persist.AgentMCP,
+			ToolUC:       r.td.ReadDeps.ToolUC,
+			MCPTooling:   r.td.Persist.AgentMCP,
+			KanbanBridge: r.cfg.KanbanBridge,
 		},
 		TRPCMemoryKnowledgeDeps: agent.TRPCMemoryKnowledgeDeps{
 			HasMemory:             r.td.Persist.Memory.Available(),
@@ -157,6 +158,7 @@ func (r *Runner) buildTeamBuilderDeps(ctx context.Context, sess biz.Session, run
 			MemoryL3Recall:        r.td.Persist.Memory.L3Recall,
 			MemoryCompositeRecall: r.td.Persist.Memory.CompositeRecall,
 			KnowledgeRetriever:    r.cfg.Knowledge.Retriever,
+			KnowledgeUsecase:      r.cfg.KnowledgeUsecase,
 		},
 		TRPCPluginDeps: agent.TRPCPluginDeps{
 			PluginManager: r.cfg.PluginManager,
@@ -165,6 +167,15 @@ func (r *Runner) buildTeamBuilderDeps(ctx context.Context, sess biz.Session, run
 			SkillUC:         r.td.ReadDeps.SkillUC,
 			SkillDBRepo:     r.skillDBRepo,
 			CodeExecFactory: r.codeExecFactory,
+		},
+		TRPCExtensionDeps: agent.TRPCExtensionDeps{
+			Organization:     r.cfg.OrganizationUC,
+			ToolResultGate:   r.cfg.ToolResultGate,
+			OutboundRouter:   r.cfg.OutboundRouter,
+			SubAgentService:  r.cfg.SubAgentService,
+			A2AEnabled:       r.cfg.A2AEnabled,
+			L0SnapshotForcer: r.td.SessionRT,
+			LG:               r.lg,
 		},
 	}
 	if r.cfg.AwaitHookProvider != nil {

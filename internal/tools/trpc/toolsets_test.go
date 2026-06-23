@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"aranea-agents/internal/tools/subagent"
 	"aranea-agents/internal/tools/trpc"
 )
 
@@ -243,5 +244,44 @@ func TestBuildToolsets_WikipediaEnabled(t *testing.T) {
 	}
 	if len(out.ToolSets) == 0 {
 		t.Fatal("expected at least one toolset for wikipedia")
+	}
+}
+
+func TestBuildToolsets_SubAgentNotAutoEnabled(t *testing.T) {
+	// SubAgentService wired but no subagent flag: tools must NOT be auto-added.
+	// This prevents every agent from gaining subagent capability just because
+	// the service is available.
+	out, err := trpc.BuildToolsets(context.Background(), trpc.ToolsetConfig{
+		Todo:            true,
+		SubAgentService: &subagent.Service{},
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, tool := range out.Tools {
+		if d := tool.Declaration(); d != nil {
+			if d.Name == "subagents_spawn" || d.Name == "subagents_list" || d.Name == "subagents_get" || d.Name == "subagents_cancel" {
+				t.Fatalf("subagent tool %q should not be auto-enabled when SubAgent=false", d.Name)
+			}
+		}
+	}
+}
+
+func TestBuildToolsets_SubAgentEnabledWhenFlagSet(t *testing.T) {
+	out, err := trpc.BuildToolsets(context.Background(), trpc.ToolsetConfig{
+		SubAgent:        true,
+		SubAgentService: &subagent.Service{},
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	found := false
+	for _, tool := range out.Tools {
+		if d := tool.Declaration(); d != nil && d.Name == "subagents_spawn" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected subagents_spawn when SubAgent=true and service is wired")
 	}
 }

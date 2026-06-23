@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 
 	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
 )
@@ -36,18 +37,18 @@ func (s *EcosystemPresetService) HandleLoad() func(ctx kratoshttp.Context) error
 	return func(ctx kratoshttp.Context) error {
 		body, err := io.ReadAll(ctx.Request().Body)
 		if err != nil {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "failed to read request body"})
+			return apierror.BadRequest("ECOSYSTEM_PRESET", "failed to read request body")
 		}
 		defer ctx.Request().Body.Close()
 
 		var req ecosystemPresetLoadRequest
 		if err := json.Unmarshal(body, &req); err != nil {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return apierror.BadRequest("ECOSYSTEM_PRESET", "invalid request body")
 		}
 
 		resp, err := s.uc.LoadEcosystemPreset(ctx, req.Industries, req.Force)
 		if err != nil {
-			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return apierror.Internal("ECOSYSTEM_PRESET", err.Error())
 		}
 
 		return ctx.JSON(http.StatusOK, resp)
@@ -59,18 +60,18 @@ func (s *EcosystemPresetService) HandleUnload() func(ctx kratoshttp.Context) err
 	return func(ctx kratoshttp.Context) error {
 		body, err := io.ReadAll(ctx.Request().Body)
 		if err != nil {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "failed to read request body"})
+			return apierror.BadRequest("ECOSYSTEM_PRESET", "failed to read request body")
 		}
 		defer ctx.Request().Body.Close()
 
 		var req ecosystemPresetUnloadRequest
 		if err := json.Unmarshal(body, &req); err != nil {
-			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return apierror.BadRequest("ECOSYSTEM_PRESET", "invalid request body")
 		}
 
 		resp, err := s.uc.UnloadEcosystemPreset(ctx, req.Industries)
 		if err != nil {
-			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return apierror.Internal("ECOSYSTEM_PRESET", err.Error())
 		}
 
 		return ctx.JSON(http.StatusOK, resp)
@@ -82,7 +83,7 @@ func (s *EcosystemPresetService) HandleStatus() func(ctx kratoshttp.Context) err
 	return func(ctx kratoshttp.Context) error {
 		status, err := s.uc.GetEcosystemStatus(ctx)
 		if err != nil {
-			return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return apierror.Internal("ECOSYSTEM_PRESET", err.Error())
 		}
 		return ctx.JSON(http.StatusOK, status)
 	}

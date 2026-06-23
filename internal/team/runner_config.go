@@ -6,8 +6,11 @@ import (
 	"aranea-agents/internal/biz"
 	graphadapter "aranea-agents/internal/graph/adapter"
 	"aranea-agents/internal/knowledge"
+	"aranea-agents/internal/outbound"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	rt "aranea-agents/internal/runtime"
+	kanbanpkg "aranea-agents/internal/tools/kanban"
+	subagenttool "aranea-agents/internal/tools/subagent"
 	tooltrpc "aranea-agents/internal/tools/trpc"
 )
 
@@ -26,6 +29,7 @@ type RunnerConfig struct {
 	TeamGraphTasks    TeamGraphTaskCreator
 	AwaitHookProvider func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc
 	Knowledge         *KnowledgeFacade
+	KnowledgeUsecase  *biz.KnowledgeUsecase
 	StreamOptsFactory StreamOptsFactory
 	AgentHelper       biz.TeamAgentHelper
 	Runs              *rt.RunRegistry
@@ -34,4 +38,14 @@ type RunnerConfig struct {
 	// narrow interfaces once plugin/trpc API surface is stabilized.
 	PluginRT      *plugintrpc.Runtime
 	PluginManager *plugintrpc.Manager
+	// Runtime extensions previously only injected for single-agent chat turns.
+	// These are threaded into member-agent builds so team agents have the same
+	// capability surface as chat agents (subagent, outbound, tool-result gate,
+	// organization taxonomy, kanban, A2A call_agent).
+	OrganizationUC  *biz.OrganizationUsecase
+	ToolResultGate  *biz.ToolResultGate
+	OutboundRouter  *outbound.Router
+	SubAgentService *subagenttool.Service
+	KanbanBridge    kanbanpkg.Bridge
+	A2AEnabled      bool
 }

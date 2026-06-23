@@ -29,7 +29,6 @@ import { createModelCatalogServiceClient } from "./kratos/model_catalog/v1/index
 import { createMonitorServiceClient } from "./kratos/monitor/v1/index";
 import { createMemoryServiceClient } from "./kratos/memory/v1/index";
 import { createGraphServiceClient } from "./kratos/graph/v1/index";
-import { createAgentCategoryServiceClient } from "./kratos/agent_category/v1/index";
 import { createSkillEvolutionServiceClient } from "./kratos/skill_evolution/v1/index";
 import { createSkillIntelligenceServiceClient } from "./kratos/skill_intelligence/v1/index";
 import { createSkillEvolutionSuggestionServiceClient } from "./kratos/skill_evolution_suggestion/v1/index";
@@ -195,24 +194,6 @@ export function createRuntimeProfileService() {
   return createRuntimeProfileServiceClient(requestHandler);
 }
 
-export function createPlanService() {
-  const basePath = "/v1/plan";
-  return {
-    listPlans(sessionId: string) {
-      return kratosApi.get(`${basePath}`, { params: { sessionId } });
-    },
-    getPlan(id: string) {
-      return kratosApi.get(`${basePath}/${encodeURIComponent(id)}`);
-    },
-    createPlan(input: { sessionId: string; agentKey: string; goal: string; steps?: unknown[] }) {
-      return kratosApi.post(`${basePath}`, input);
-    },
-    updatePlan(id: string, input: { status?: string; steps?: unknown[] }) {
-      return kratosApi.patch(`${basePath}/${encodeURIComponent(id)}`, input);
-    },
-  };
-}
-
 export { kratosApi, requestHandler, syncHttpClients } from "./axiosHandler";
 
 // TODO: Replace createSpiritService with proto-generated client from spirit/v1
@@ -227,7 +208,7 @@ export function createSpiritService() {
       return kratosApi.get(`/v1/teams/${encodeURIComponent(teamId)}`);
     },
     listTeamRuns(teamId: string) {
-      return kratosApi.get(`/v1/teams/${encodeURIComponent(teamId)}/runs?limit=1`);
+      return kratosApi.get(`/v1/team-runs?team_id=${encodeURIComponent(teamId)}&limit=1`);
     },
     cancelTeamRun(teamRunId: string) {
       return kratosApi.post(`/v1/team-runs/${encodeURIComponent(teamRunId)}/cancel`);

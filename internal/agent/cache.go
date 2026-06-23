@@ -17,6 +17,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 var buildCacheDefaultCap = 128
@@ -31,6 +32,10 @@ type buildCacheEntry struct {
 	elem  *list.Element
 	a2ui  *planner.A2UIResult
 	dirty bool // if true, a background rebuild is in progress
+	// toolSets holds the ToolSets created during agent build. They are
+	// closed when the entry is evicted or the cache is shut down, preventing
+	// resource leaks (MCP sessions, stdio subprocesses, HTTP connections).
+	toolSets []trpctool.ToolSet
 }
 
 // BuildCache is a thread-safe LRU cache for built trpc LLMAgents.
@@ -91,17 +96,20 @@ func (c *BuildCache) getA2UI(key string) *planner.A2UIResult {
 }
 
 // put stores an agent under the given key, evicting LRU entries if over capacity.
-func (c *BuildCache) put(key string, ag trpcagent.Agent, a2uiResult *planner.A2UIResult) {
+func (c *BuildCache) put(key string, ag trpcagent.Agent, a2uiResult *planner.A2UIResult, toolSets []trpctool.ToolSet) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if ag == nil {
 		return // never cache a nil agent
 	}
 	if e, ok := c.items[key]; ok {
+		// Close old ToolSets before replacing — the new agent brings its own.
+		closeToolSets(e.toolSets, key)
 		c.lruList.MoveToFront(e.elem)
 		e.agent = ag
 		e.a2ui = a2uiResult
 		e.dirty = false
+		e.toolSets = toolSets
 		return
 	}
 	for len(c.items) >= c.cap {
@@ -112,9 +120,10 @@ func (c *BuildCache) put(key string, ag trpcagent.Agent, a2uiResult *planner.A2U
 		c.evict(back.Value.(*buildCacheEntry).key)
 	}
 	entry := &buildCacheEntry{
-		key:   key,
-		agent: ag,
-		a2ui:  a2uiResult,
+		key:      key,
+		agent:    ag,
+		a2ui:     a2uiResult,
+		toolSets: toolSets,
 	}
 	entry.elem = c.lruList.PushFront(entry)
 	c.items[key] = entry
@@ -146,6 +155,7 @@ func (c *BuildCache) InvalidateAll() {
 // evict must be called with c.mu held.
 func (c *BuildCache) evict(key string) {
 	if e, ok := c.items[key]; ok {
+		closeToolSets(e.toolSets, key)
 		c.lruList.Remove(e.elem)
 		delete(c.items, key)
 	}
@@ -156,10 +166,34 @@ func (c *BuildCache) evict(key string) {
 // the cache can be registered with LifecycleManager (A3).
 func (c *BuildCache) Close() error {
 	c.mu.Lock()
+	for key, e := range c.items {
+		closeToolSets(e.toolSets, key)
+	}
 	c.items = make(map[string]*buildCacheEntry)
 	c.lruList.Init()
 	c.mu.Unlock()
 	return nil
+}
+
+// closeToolSets closes each ToolSet in the slice, logging any errors.
+// It is best-effort: a Close error on one ToolSet does not prevent the
+// others from being closed. This function is called during cache eviction
+// and shutdown to prevent resource leaks (MCP sessions, stdio subprocesses).
+func closeToolSets(toolSets []trpctool.ToolSet, cacheKey string) {
+	for _, ts := range toolSets {
+		if ts == nil {
+			continue
+		}
+		if err := ts.Close(); err != nil {
+			// Use a background logger since closeToolSets may be called
+			// during shutdown when the injected logger is unavailable.
+			loggateway.Global().Warn("ToolSet Close 失败",
+				loggateway.Domain("agent.cache"),
+				loggateway.Str("cache_key", cacheKey),
+				loggateway.Str("toolset", ts.Name()),
+				loggateway.Err(err))
+		}
+	}
 }
 
 // GetGlobalBuildCache returns the process-level BuildCache singleton.
@@ -258,12 +292,12 @@ func BuildTRPCLLMAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilder
 			safego.Go(context.Background(), "agent.cache.dirty_rebuild", func() {
 				globalBuildCache.sfGroup.Do(key, func() (interface{}, error) {
 					buildCtx := context.WithoutCancel(ctx)
-					built, buildErr := BuildTRPCLLMAgent(buildCtx, ag, deps, lg)
+					built, toolSets, buildErr := buildTRPCLLMAgentWithToolSets(buildCtx, ag, deps, lg)
 					if buildErr != nil {
 						lg.Warn("Agent 后台重建失败", loggateway.StepID("agent.cache_rebuild_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(buildErr))
 						return nil, buildErr
 					}
-					globalBuildCache.put(key, built, nil)
+					globalBuildCache.put(key, built, nil, toolSets)
 					lg.Info("Agent 后台重建完成", loggateway.StepID("agent.cache_rebuild_done"), loggateway.Str("agent_id", ag.ID), loggateway.Str("cache_key", key))
 					return built, nil
 				})
@@ -285,11 +319,11 @@ func BuildTRPCLLMAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilder
 	// abort the build shared by other callers.
 	v, err, _ := globalBuildCache.sfGroup.Do(key, func() (interface{}, error) {
 		buildCtx := context.WithoutCancel(ctx)
-		built, buildErr := BuildTRPCLLMAgent(buildCtx, ag, deps, lg)
+		built, toolSets, buildErr := buildTRPCLLMAgentWithToolSets(buildCtx, ag, deps, lg)
 		if buildErr != nil {
 			return nil, buildErr
 		}
-		globalBuildCache.put(key, built, nil)
+		globalBuildCache.put(key, built, nil, toolSets)
 		return built, nil
 	})
 	if err != nil {

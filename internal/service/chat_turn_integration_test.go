@@ -517,7 +517,7 @@ func TestChatTurnIntegration_SelfHealObserverIntegration(t *testing.T) {
 		engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
 		notifier := newStubAlertNotifier()
 
-		observer, err := monitor.NewSelfHealObserver(repo, engine, notifier, loggateway.NewNoop())
+		observer, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("NewSelfHealObserver failed: %v", err)
 		}

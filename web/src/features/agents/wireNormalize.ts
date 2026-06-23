@@ -255,7 +255,7 @@ export function normalizeAgentFromService(raw: unknown): Agent {
     position_key: pickStrOpt(w, 'positionKey', 'position_key'),
     agent_variant: pickStrOpt(w, 'agentVariant', 'agent_variant'),
     variant_description: pickStrOpt(w, 'variantDescription', 'variant_description'),
-    taxonomy_position_id: pickStr(w, 'taxonomyPositionId', 'taxonomy_position_id'),
+    taxonomy_position_id: pickStr(w, 'positionId', 'position_id'),
     system_prompt_mode: pickStr(w, 'systemPromptMode', 'system_prompt_mode', 'complete'),
     context_window: pickNum(w, 'contextWindow', 'context_window', 0),
     budget_monthly_cents: pickNum(w, 'budgetMonthlyCents', 'budget_monthly_cents', 0),

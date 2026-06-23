@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	bizmonitor "aranea-agents/internal/biz/monitor"
@@ -24,9 +25,16 @@ func (r *healRecordRepo) InsertHealRecord(ctx context.Context, record bizmonitor
 		return apierror.Internal("HEAL_RECORD", "database not configured")
 	}
 
+	metadataJSON := "{}"
+	if record.Metadata != nil {
+		if raw, err := json.Marshal(record.Metadata); err == nil {
+			metadataJSON = string(raw)
+		}
+	}
+
 	d := r.data.Dialect()
-	columns := "id, rule_id, trigger_type, trace_id, session_id, step_id, fix_action_type, confidence, status, runtime_auto_healed, runtime_heal_attempts, reason, created_at"
-	placeholders := d.Placeholders(13)
+	columns := "id, rule_id, trigger_type, trace_id, session_id, step_id, fix_action_type, confidence, status, runtime_auto_healed, runtime_heal_attempts, reason, created_at, metadata"
+	placeholders := d.Placeholders(14)
 	// SQLite: INSERT OR IGNORE INTO heal_records (...) VALUES (...)
 	// Postgres: INSERT INTO heal_records (...) VALUES (...) ON CONFLICT (id) DO NOTHING
 	stmt := d.BuildInsertOrIgnore("heal_records", columns, placeholders, "id")
@@ -44,6 +52,7 @@ func (r *healRecordRepo) InsertHealRecord(ctx context.Context, record bizmonitor
 		record.RuntimeHealAttempts,
 		record.Reason,
 		record.CreatedAt,
+		metadataJSON,
 	)
 	return err
 }
@@ -69,7 +78,7 @@ func (r *healRecordRepo) ListHealRecords(ctx context.Context, query bizmonitor.H
 	d := r.data.Dialect()
 	countSQL := d.RenumberPlaceholders(`SELECT COUNT(*) FROM heal_records` + where)
 	listSQL := d.RenumberPlaceholders(`SELECT id, rule_id, trigger_type, trace_id, session_id, step_id,
-		fix_action_type, confidence, status, runtime_auto_healed, runtime_heal_attempts, reason, created_at
+		fix_action_type, confidence, status, runtime_auto_healed, runtime_heal_attempts, reason, created_at, metadata
 		FROM heal_records` + where + ` ORDER BY created_at DESC LIMIT ? OFFSET ?`)
 	args = append(args, limit, offset)
 
@@ -92,10 +101,15 @@ func (r *healRecordRepo) ListHealRecords(ctx context.Context, query bizmonitor.H
 			confidence                                          float64
 			runtimeAutoHealed                                   bool
 			runtimeHealAttempts                                 int
+			metadataJSON                                        string
 		)
 		if err := rows.Scan(&id, &ruleID, &triggerType, &traceID, &sessionID, &stepID,
-			&fixActionType, &confidence, &status, &runtimeAutoHealed, &runtimeHealAttempts, &reason, &createdAt); err != nil {
+			&fixActionType, &confidence, &status, &runtimeAutoHealed, &runtimeHealAttempts, &reason, &createdAt, &metadataJSON); err != nil {
 			return bizmonitor.HealRecordListResult{}, entErrToBizErr(err, "HEAL_RECORD")
+		}
+		var metadata map[string]any
+		if metadataJSON != "" && metadataJSON != "{}" {
+			_ = json.Unmarshal([]byte(metadataJSON), &metadata)
 		}
 		items = append(items, bizmonitor.HealRecord{
 			ID: id, RuleID: ruleID, TriggerType: triggerType,
@@ -107,6 +121,7 @@ func (r *healRecordRepo) ListHealRecords(ctx context.Context, query bizmonitor.H
 			RuntimeHealAttempts: runtimeHealAttempts,
 			Reason:              reason,
 			CreatedAt:           createdAt,
+			Metadata:            metadata,
 		})
 	}
 	if err := rows.Err(); err != nil {

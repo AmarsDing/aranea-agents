@@ -1,40 +1,52 @@
 package service_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	adminv1 "aranea-agents/api/kratos/admin/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/service"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestEncodePassword(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		expected string
+		name  string
+		input string
 	}{
-		{"empty string", "", "d41d8cd98f00b204e9800998ecf8427e"},
-		{"simple password", "password", "5f4dcc3b5aa765d61d8327deb882cf99"},
-		{"chinese password", "中文密码", "a43b7b0e4c4f718ee8b7a0efec7e2a3e"},
-		{"special chars", "p@ss!w0rd#", "0f6571e6e9c7e5d1d4c3b2a0987654321"},
+		{"empty string", ""},
+		{"simple password", "password"},
+		{"chinese password", "中文密码"},
+		{"special chars", "p@ss!w0rd#"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := service.EncodePassword(tt.input)
-			if len(got) != 32 {
-				t.Fatalf("expected 32-char hex string, got %d chars: %q", len(got), got)
+			if tt.input == "" {
+				if got != "" {
+					t.Fatalf("empty input should produce empty hash, got %q", got)
+				}
+				return
+			}
+			// bcrypt hashes start with $2 and are ~60 chars long.
+			if !strings.HasPrefix(got, "$2") {
+				t.Fatalf("expected bcrypt hash prefix $2, got %q", got)
+			}
+			if len(got) < 50 {
+				t.Fatalf("bcrypt hash too short: %d chars: %q", len(got), got)
 			}
 		})
 	}
 }
 
-func TestEncodePassword_Deterministic(t *testing.T) {
+func TestEncodePassword_NotDeterministic(t *testing.T) {
+	// bcrypt is salted: same input must produce different hashes.
 	first := service.EncodePassword("test123")
 	second := service.EncodePassword("test123")
-	if first != second {
-		t.Fatalf("encodePassword should be deterministic: first=%q second=%q", first, second)
+	if first == second {
+		t.Fatalf("bcrypt should be non-deterministic: first=%q second=%q", first, second)
 	}
 }
 
@@ -46,10 +58,10 @@ func TestEncodePassword_DifferentInputs(t *testing.T) {
 	}
 }
 
-func TestEncodePassword_KnownValue(t *testing.T) {
+func TestEncodePassword_VerifiableWithBcrypt(t *testing.T) {
 	got := service.EncodePassword("hello")
-	if got != "5d41402abc4b2a76b9719d911017c592" {
-		t.Fatalf("MD5('hello') mismatch: got %q", got)
+	if err := bcrypt.CompareHashAndPassword([]byte(got), []byte("hello")); err != nil {
+		t.Fatalf("bcrypt.CompareHashAndPassword failed: %v", err)
 	}
 }
 

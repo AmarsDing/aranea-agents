@@ -70,6 +70,12 @@ func (o *ChatOrchestrator) nativeSendChatMessage(ctx context.Context, req *chatv
 //     turn_id are empty on accept and delivered via WS events
 //     (`message.persisted`, `run_status=running`).
 func (o *ChatOrchestrator) submitChatMessageAsync(_ context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SubmitChatMessageResponse, error) {
+	if strings.TrimSpace(req.GetSessionId()) == "" {
+		return nil, apierror.BadRequest("CHAT", "session_id is required")
+	}
+	if strings.TrimSpace(req.GetContent()) == "" {
+		return nil, apierror.BadRequest("CHAT", "content is required")
+	}
 	input := turnInputFromProto(req)
 	sessionID := input.SessionID
 	lg := o.lg().With(loggateway.SessionID(sessionID), loggateway.StepID("chat.submit_async"))

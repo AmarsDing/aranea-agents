@@ -462,10 +462,12 @@ func (s *SkillService) GetSkillHealth(ctx context.Context, req *v1.GetSkillHealt
 	dailyMetrics := make([]*v1.SkillHealthDailyMetric, 0, len(detail.DailyMetrics))
 	for _, dm := range detail.DailyMetrics {
 		dailyMetrics = append(dailyMetrics, &v1.SkillHealthDailyMetric{
-			Date:          dm.Date,
-			Invocations:   int32(dm.Invocations),
-			Successes:     int32(dm.Successes),
+			Date:         dm.Date,
+			Invocations:  int32(dm.Invocations),
+			Successes:    int32(dm.Successes),
 			AvgDurationMs: dm.AvgDurationMs,
+			RoutedCount:  int32(dm.RoutedCount),
+			LoadedCount:  int32(dm.LoadedCount),
 		})
 	}
 	return &v1.SkillHealthMetric{
@@ -479,6 +481,8 @@ func (s *SkillService) GetSkillHealth(ctx context.Context, req *v1.GetSkillHealt
 		SuccessRate_30D:      detail.SuccessRate30d,
 		P95DurationMs_30D:    int32(detail.P95DurationMs30d),
 		DailyMetrics:         dailyMetrics,
+		RouteHitRate_7D:      detail.RouteHitRate7d,
+		RouteHitRate_30D:     detail.RouteHitRate30d,
 	}, nil
 }
 

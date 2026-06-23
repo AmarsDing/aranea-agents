@@ -28,8 +28,12 @@ func (s *SkillEvolutionService) ListSkillProposals(ctx context.Context, req *v1.
 	if err != nil {
 		return nil, err
 	}
+	total, err := s.uc.CountProposals(ctx, req.GetAgentId(), req.GetStatus())
+	if err != nil {
+		return nil, err
+	}
 	resp := &v1.ListSkillProposalsResponse{
-		Total:    int32(len(proposals)),
+		Total:    int32(total),
 		Page:     page,
 		PageSize: pageSize,
 	}

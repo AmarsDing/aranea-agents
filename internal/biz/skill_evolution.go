@@ -58,7 +58,8 @@ func NewSkillEvolutionUsecase(
 }
 
 // SetCoordinator sets the evolution coordinator for cross-pipeline dedup.
-// Must only be called once during initialization. Panics on repeated calls.
+// Must only be called once during initialization. Repeated calls are logged
+// and ignored (the first coordinator wins).
 //
 // Deprecated: Use SetOrchestrator instead.
 func (uc *SkillEvolutionUsecase) SetCoordinator(c *EvolutionCoordinator) {
@@ -66,7 +67,8 @@ func (uc *SkillEvolutionUsecase) SetCoordinator(c *EvolutionCoordinator) {
 		uc.coordinator = c
 	})
 	if uc.coordinator != c {
-		panic("SkillEvolutionUsecase: SetCoordinator called more than once")
+		uc.lg.Warn("SkillEvolutionUsecase: SetCoordinator called more than once; ignoring duplicate",
+			loggateway.StepID("skill_evolution.set_coordinator"))
 	}
 }
 
@@ -237,6 +239,12 @@ func (uc *SkillEvolutionUsecase) GetProposal(ctx context.Context, id string) (Sk
 
 func (uc *SkillEvolutionUsecase) ListProposals(ctx context.Context, agentID string, status string, limit int, offset int) ([]SkillProposal, error) {
 	return uc.repo.ListByAgent(ctx, agentID, status, limit, offset)
+}
+
+// CountProposals returns the total number of proposals matching the filter,
+// for pagination metadata. Mirrors the ListProposals filter semantics.
+func (uc *SkillEvolutionUsecase) CountProposals(ctx context.Context, agentID string, status string) (int, error) {
+	return uc.repo.CountByAgent(ctx, agentID, status)
 }
 
 func (uc *SkillEvolutionUsecase) CreateProposal(ctx context.Context, proposal SkillProposal) (SkillProposal, error) {

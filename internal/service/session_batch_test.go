@@ -9,6 +9,7 @@ import (
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/service"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 )
 
 type batchSessionRepo struct {
@@ -214,7 +215,7 @@ func (m *batchSessionRepo) ListActiveAgentUserKeys(_ context.Context, _ int) ([]
 
 func TestSessionService_BatchPreviewSessions_validation(t *testing.T) {
 	uc := biz.NewSessionUsecase(&batchSessionRepo{sessions: map[string]biz.Session{}}, nil, nil, nil, nil, nil, nil, nil, nil)
-	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil, nil)
+	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	_, err := svc.BatchPreviewSessions(context.Background(), &v1.BatchPreviewSessionsRequest{})
 	if err == nil {
@@ -235,7 +236,7 @@ func TestSessionService_BatchPreviewSessions_skippedNotFound(t *testing.T) {
 		"s1": {ID: "s1", Status: "completed", CreatedAt: "2020-01-01T00:00:00Z"},
 	}}
 	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil)
-	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil, nil)
+	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	resp, err := svc.BatchPreviewSessions(context.Background(), &v1.BatchPreviewSessionsRequest{
 		Mode: "delete",

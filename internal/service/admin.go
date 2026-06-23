@@ -6,8 +6,6 @@ import (
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -17,13 +15,27 @@ import (
 	"go.einride.tech/aip/filtering"
 	"go.einride.tech/aip/ordering"
 	"go.einride.tech/aip/pagination"
+	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// encodePassword hashes a plain password with bcrypt. Returns the empty string
+// when the input is empty so callers can distinguish "no password change" from
+// "set password to empty". bcrypt is non-deterministic (salted), so two calls
+// with the same input produce different hashes.
 func encodePassword(password string) string {
-	sum := md5.Sum([]byte(password))
-	return hex.EncodeToString(sum[:])
+	if password == "" {
+		return ""
+	}
+	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		// bcrypt.GenerateFromPassword only fails for invalid cost; DefaultCost
+		// is always valid. Treat any failure as fatal to avoid storing an
+		// unhashed password.
+		panic(fmt.Sprintf("encodePassword: bcrypt hash failed: %v", err))
+	}
+	return string(hashed)
 }
 
 func convertAdmin(m *biz.Admin) *v1.Admin {
@@ -73,13 +85,13 @@ func (s *AdminService) Login(ctx context.Context, req *v1.LoginRequest) (*v1.Adm
 	switch v := req.Identity.(type) {
 	case *v1.LoginRequest_Username:
 		method = "username"
-		admin, err = s.uc.LoginByUsername(ctx, v.Username, encodePassword(req.Password))
+		admin, err = s.uc.LoginByUsername(ctx, v.Username, req.Password)
 		if err != nil {
 			return nil, err
 		}
 	case *v1.LoginRequest_Email:
 		method = "email"
-		admin, err = s.uc.LoginByEmail(ctx, v.Email, encodePassword(req.Password))
+		admin, err = s.uc.LoginByEmail(ctx, v.Email, req.Password)
 		if err != nil {
 			return nil, err
 		}
@@ -120,6 +132,9 @@ func (s *AdminService) CreateAdmin(ctx context.Context, req *v1.CreateAdminReque
 	if !a.HasAdminAccess() {
 		return nil, auth.ErrForbidden
 	}
+	if req.GetAdmin() == nil {
+		return nil, apierror.BadRequest("AUTH", "admin field is required")
+	}
 	pwd := req.Admin.Password
 	if pwd != "" {
 		pwd = encodePassword(pwd)
@@ -147,6 +162,9 @@ func (s *AdminService) UpdateAdmin(ctx context.Context, req *v1.UpdateAdminReque
 	}
 	if !a.HasAdminAccess() {
 		return nil, auth.ErrForbidden
+	}
+	if req.GetAdmin() == nil {
+		return nil, apierror.BadRequest("AUTH", "admin field is required")
 	}
 	// Encode password if it's not empty
 	if req.Admin.Password != "" {

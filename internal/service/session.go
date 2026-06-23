@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -26,6 +27,7 @@ type SessionService struct {
 	compressStatus biz.CompressStatusReader
 	metricsCache   biz.SessionMetricsReader
 	activityReader biz.ActivityReader
+	lg             loggateway.Logger
 }
 
 func NewSessionService(
@@ -36,8 +38,18 @@ func NewSessionService(
 	compressStatus biz.CompressStatusReader,
 	metricsCache biz.SessionMetricsReader,
 	activityReader biz.ActivityReader,
+	lg loggateway.Logger,
 ) *SessionService {
-	return &SessionService{uc: uc, mon: mon, runs: runs, compress: compress, compressStatus: compressStatus, metricsCache: metricsCache, activityReader: activityReader}
+	return &SessionService{
+		uc:             uc,
+		mon:            mon,
+		runs:           runs,
+		compress:       compress,
+		compressStatus: compressStatus,
+		metricsCache:   metricsCache,
+		activityReader: activityReader,
+		lg:             lg,
+	}
 }
 
 func toProtoSession(s biz.Session, metrics *biz.SessionMetrics) *v1.Session {
@@ -197,6 +209,8 @@ func (s *SessionService) getSessionMetrics(ctx context.Context, sessionID string
 	}
 	metrics, err := s.metricsCache.GetSessionMetrics(ctx, sessionID)
 	if err != nil {
+		s.lg.Warn("session metrics lookup failed",
+			loggateway.StepID("session.metrics"), loggateway.Str("session_id", sessionID), loggateway.Err(err))
 		return nil
 	}
 	return metrics

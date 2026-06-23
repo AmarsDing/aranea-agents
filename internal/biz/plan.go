@@ -74,7 +74,7 @@ func (uc *PlanUsecase) GetPlan(ctx context.Context, id string) (*Plan, error) {
 	}
 	plan, err := uc.repo.Get(ctx, id)
 	if err != nil {
-		return nil, apierror.NotFound("PLAN", "plan not found")
+		return nil, err
 	}
 	return plan, nil
 }
