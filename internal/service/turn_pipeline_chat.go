@@ -32,37 +32,13 @@ type chatTurnExecutor struct {
 	orch *ChatOrchestrator
 }
 
-func (e chatTurnExecutor) ExecuteTurn(ctx context.Context, turn biz.Turn, input biz.TurnInput) (biz.NativeTurnResult, error) {
+func (e chatTurnExecutor) ExecuteTurn(ctx context.Context, turn biz.Turn, input biz.TurnInput) (biz.TurnResult, error) {
 	if e.orch == nil {
-		return biz.NativeTurnResult{Outcome: biz.NativeTurnOutcomeFailed}, errChatOrchestratorNil
+		return biz.TurnResult{Outcome: biz.TurnOutcomeFailed}, errChatOrchestratorNil
 	}
 	result, err := e.orch.RunNativeAgentTurnWithOutcome(contextWithAdmittedTurnID(ctx, turn.ID), input)
 	if isTurnMessageQueued(err) {
 		return result, nil
 	}
 	return result, err
-}
-
-func turnResultFromNative(result biz.NativeTurnResult) biz.TurnResult {
-	switch result.Outcome {
-	case biz.NativeTurnOutcomeCompleted:
-		return biz.TurnResult{
-			Outcome:      biz.TurnOutcomeCompleted,
-			UserMsg:      result.UserMsg,
-			AssistantMsg: result.AssistantMsg,
-			Reply:        result.AssistantMsg.ContentMarkdown,
-		}
-	case biz.NativeTurnOutcomeQueued:
-		return biz.TurnResult{
-			Outcome:   biz.TurnOutcomeQueued,
-			PendingID: result.PendingID,
-		}
-	case biz.NativeTurnOutcomeFailed:
-		return biz.TurnResult{
-			Outcome: biz.TurnOutcomeFailed,
-			UserMsg: result.UserMsg,
-		}
-	default:
-		return biz.TurnResult{Outcome: biz.TurnOutcomeFailed}
-	}
 }

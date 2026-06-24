@@ -73,7 +73,6 @@ type EvolutionUsecase struct {
 	metricsRepo      EvolutionMetricsRepo
 	suggestionRepo   EvolutionSuggestionRepo
 	agents           AgentRepository
-	coordinator      *EvolutionCoordinator
 	orchestrator     *SkillEvolutionOrchestrator
 	orchestratorOnce sync.Once
 	lg               loggateway.Logger
@@ -121,14 +120,6 @@ func ProvideEvolutionUsecase(
 	uc := NewEvolutionUsecase(metricsRepo, suggestionRepo, agents, lg)
 	uc.SetTxProvider(tp)
 	return uc
-}
-
-// SetCoordinator sets the evolution coordinator for cross-pipeline dedup.
-// NOTE: Must only be called during initialization, before any concurrent access.
-//
-// Deprecated: Use SetOrchestrator instead.
-func (uc *EvolutionUsecase) SetCoordinator(c *EvolutionCoordinator) {
-	uc.coordinator = c
 }
 
 // SetOrchestrator sets the unified evolution orchestrator for cross-pipeline dedup.

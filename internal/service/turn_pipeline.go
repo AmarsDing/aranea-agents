@@ -16,13 +16,13 @@ type TurnIngress interface {
 // TurnService owns turn admission and persistent lifecycle state.
 type TurnService interface {
 	AdmitTurn(ctx context.Context, intent biz.TurnIntent) (biz.Turn, error)
-	CompleteTurn(ctx context.Context, turn biz.Turn, result biz.NativeTurnResult) (biz.Turn, error)
+	CompleteTurn(ctx context.Context, turn biz.Turn, result biz.TurnResult) (biz.Turn, error)
 	FailTurn(ctx context.Context, turn biz.Turn, err error) (biz.Turn, error)
 }
 
 // TurnExecutor runs an admitted turn against the selected runtime.
 type TurnExecutor interface {
-	ExecuteTurn(ctx context.Context, turn biz.Turn, input biz.TurnInput) (biz.NativeTurnResult, error)
+	ExecuteTurn(ctx context.Context, turn biz.Turn, input biz.TurnInput) (biz.TurnResult, error)
 }
 
 // TurnProjector projects canonical turn events into chat WS, channel outbound, monitor, and session views.
@@ -40,7 +40,7 @@ type TurnPipeline struct {
 }
 
 // Run executes the canonical pipeline without knowing whether the request came from Web, WS, or Channel.
-func (p TurnPipeline) Run(ctx context.Context, intent biz.TurnIntent) (biz.Turn, biz.NativeTurnResult, error) {
+func (p TurnPipeline) Run(ctx context.Context, intent biz.TurnIntent) (biz.Turn, biz.TurnResult, error) {
 	intent = intent.Canonicalize()
 	lg := p.Lg
 	start := time.Now()
@@ -51,7 +51,7 @@ func (p TurnPipeline) Run(ctx context.Context, intent biz.TurnIntent) (biz.Turn,
 			lg.With(loggateway.SessionID(intent.SessionID)).Info("TurnPipeline.Run: AdmitTurn 失败",
 				loggateway.StepID("pipeline.admit_fail"), loggateway.Any("elapsed_ms", time.Since(start).Milliseconds()), loggateway.Err(err))
 		}
-		return biz.Turn{}, biz.NativeTurnResult{}, err
+		return biz.Turn{}, biz.TurnResult{}, err
 	}
 	if lg != nil {
 		lg.With(loggateway.SessionID(intent.SessionID)).Info("TurnPipeline.Run: AdmitTurn 完成",
@@ -91,7 +91,7 @@ func (p TurnPipeline) Run(ctx context.Context, intent biz.TurnIntent) (biz.Turn,
 		return turn, result, execErr
 	}
 
-	if result.Outcome == biz.NativeTurnOutcomeQueued {
+	if result.Outcome == biz.TurnOutcomeQueued {
 		p.project(ctx, biz.TurnEvent{
 			TurnID:     turn.ID,
 			SessionID:  turn.SessionID,
@@ -103,7 +103,7 @@ func (p TurnPipeline) Run(ctx context.Context, intent biz.TurnIntent) (biz.Turn,
 		return turn, result, nil
 	}
 
-	if result.Outcome == biz.NativeTurnOutcomeFailed {
+	if result.Outcome == biz.TurnOutcomeFailed {
 		failed, failErr := p.Service.FailTurn(ctx, turn, nil)
 		if failErr == nil {
 			turn = failed
@@ -129,7 +129,7 @@ func (p TurnPipeline) Run(ctx context.Context, intent biz.TurnIntent) (biz.Turn,
 		SessionID:  turn.SessionID,
 		Type:       biz.TurnEventCompleted,
 		Source:     turn.Source,
-		Status:     biz.TurnStatusFromNativeOutcome(result.Outcome),
+		Status:     biz.TurnStatusFromOutcome(result.Outcome),
 		OccurredAt: p.now(),
 	})
 	return turn, result, nil

@@ -38,11 +38,11 @@ func (o *ChatOrchestrator) RunNativeAgentTurnFromInput(ctx context.Context, inpu
 }
 
 // RunNativeAgentTurnWithOutcome classifies completed vs queued turns explicitly (P1).
-func (o *ChatOrchestrator) RunNativeAgentTurnWithOutcome(ctx context.Context, input biz.TurnInput) (biz.NativeTurnResult, error) {
+func (o *ChatOrchestrator) RunNativeAgentTurnWithOutcome(ctx context.Context, input biz.TurnInput) (biz.TurnResult, error) {
 	sessionID := strings.TrimSpace(input.SessionID)
 	content := strings.TrimSpace(input.Content)
 	if sessionID == "" || content == "" {
-		return biz.NativeTurnResult{}, apierror.BadRequest(apierror.DomainChatNative, "session_id and content are required")
+		return biz.TurnResult{Outcome: biz.TurnOutcomeFailed}, apierror.BadRequest(apierror.DomainChatNative, "session_id and content are required")
 	}
 
 	// Ensure spirit_trace_id is present in context for all Spirit orchestration paths.
@@ -62,23 +62,24 @@ func (o *ChatOrchestrator) RunNativeAgentTurnWithOutcome(ctx context.Context, in
 	flow.Log("chat.active_check", event.FlowPhaseDone, "检查活跃运行", event.P("has_active", hasActive))
 	contextPressure := o.sessionContextPressure(ctx, input)
 	if verdict, handled := o.checkTurnAdmission(input, hasActive, contextPressure); handled {
-		return nativeResultFromAdmissionVerdict(verdict)
+		return turnResultFromAdmissionVerdict(verdict)
 	}
 
 	userMsg, assistantMsg, err := o.runNativeAgentTurnBody(ctx, input, flow)
 	if err != nil {
 		if isTurnMessageQueued(err) {
-			return biz.NativeTurnResult{
-				Outcome:   biz.NativeTurnOutcomeQueued,
+			return biz.TurnResult{
+				Outcome:   biz.TurnOutcomeQueued,
 				PendingID: o.LastPendingMessageID(sessionID),
 			}, err
 		}
-		return biz.NativeTurnResult{Outcome: biz.NativeTurnOutcomeFailed, UserMsg: userMsg}, err
+		return biz.TurnResult{Outcome: biz.TurnOutcomeFailed, UserMsg: userMsg}, err
 	}
-	return biz.NativeTurnResult{
-		Outcome:      biz.NativeTurnOutcomeCompleted,
+	return biz.TurnResult{
+		Outcome:      biz.TurnOutcomeCompleted,
 		UserMsg:      userMsg,
 		AssistantMsg: assistantMsg,
+		Reply:        assistantMsg.ContentMarkdown,
 	}, nil
 }
 

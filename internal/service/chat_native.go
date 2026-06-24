@@ -25,7 +25,7 @@ func nativeDialogModeChatOptions() []*chatv1.ChatOption {
 // that avoids proto dependency. All internal callers (Channel, Cron, A2A) should
 // use this instead of proto-based methods.
 func (s *ChatService) RunNativeTurn(ctx context.Context, input biz.TurnInput) (biz.ChatMessage, biz.ChatMessage, error) {
-	result, err := turnResultToNative(s.ExecuteTurn(ctx, input))
+	result, err := s.ExecuteTurn(ctx, input)
 	if err != nil {
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
@@ -33,9 +33,8 @@ func (s *ChatService) RunNativeTurn(ctx context.Context, input biz.TurnInput) (b
 }
 
 // RunNativeTurnWithOutcome implements biz.ChannelTurnGateway with explicit turn classification.
-func (s *ChatService) RunNativeTurnWithOutcome(ctx context.Context, input biz.TurnInput) (biz.NativeTurnResult, error) {
-	tr, err := s.ExecuteTurn(ctx, input)
-	return turnResultToNative(tr, err)
+func (s *ChatService) RunNativeTurnWithOutcome(ctx context.Context, input biz.TurnInput) (biz.TurnResult, error) {
+	return s.ExecuteTurn(ctx, input)
 }
 
 // RunAgentTurn implements a2a.AgentTurnRunner for call_agent and HTTP Invoke dispatch (EP-A2A-01).
@@ -95,15 +94,14 @@ func (s *ChatService) ExecuteTurn(ctx context.Context, input biz.TurnInput) (biz
 
 	if s != nil && s.turnPipeline != nil {
 		if result, err, handled := s.tryAdmissionBeforePersistence(ctx, input); handled {
-			tr := turnResultFromNative(result)
 			s.lg.With(loggateway.SessionID(input.SessionID)).Info("ChatService.ExecuteTurn: admission handled",
 				loggateway.StepID("chat.execute_turn_admission"),
 				loggateway.Any("elapsed_ms", time.Since(start).Milliseconds()),
 				loggateway.Any("handled", true))
 			if isTurnMessageQueued(err) {
-				return tr, ErrTurnMessageQueued
+				return result, ErrTurnMessageQueued
 			}
-			return tr, err
+			return result, err
 		}
 		_, result, err := s.turnPipeline.Run(ctx, turnIntentFromInput(input))
 		s.lg.With(loggateway.SessionID(input.SessionID)).Info("ChatService.ExecuteTurn: pipeline 完成",
@@ -111,14 +109,13 @@ func (s *ChatService) ExecuteTurn(ctx context.Context, input biz.TurnInput) (biz
 			loggateway.Any("elapsed_ms", time.Since(start).Milliseconds()),
 			loggateway.Any("has_error", err != nil),
 			loggateway.Any("outcome", string(result.Outcome)))
-		tr := turnResultFromNative(result)
 		if err != nil {
-			return tr, err
+			return result, err
 		}
-		if result.Outcome == biz.NativeTurnOutcomeQueued {
-			return tr, ErrTurnMessageQueued
+		if result.Outcome == biz.TurnOutcomeQueued {
+			return result, ErrTurnMessageQueued
 		}
-		return tr, nil
+		return result, nil
 	}
 	result, err := s.orch.Execute(ctx, input)
 	s.lg.With(loggateway.SessionID(input.SessionID)).Info("ChatService.ExecuteTurn: orch.Execute 完成",
@@ -128,24 +125,24 @@ func (s *ChatService) ExecuteTurn(ctx context.Context, input biz.TurnInput) (biz
 	return result, err
 }
 
-func (s *ChatService) tryAdmissionBeforePersistence(ctx context.Context, input biz.TurnInput) (biz.NativeTurnResult, error, bool) {
+func (s *ChatService) tryAdmissionBeforePersistence(ctx context.Context, input biz.TurnInput) (biz.TurnResult, error, bool) {
 	if s == nil || s.orch == nil {
-		return biz.NativeTurnResult{}, nil, false
+		return biz.TurnResult{}, nil, false
 	}
 	sessionID := strings.TrimSpace(input.SessionID)
 	if sessionID == "" {
-		return biz.NativeTurnResult{}, nil, false
+		return biz.TurnResult{}, nil, false
 	}
 	hasActive := s.orch.runs.HasActive(sessionID)
 	if !hasActive {
-		return biz.NativeTurnResult{}, nil, false
+		return biz.TurnResult{}, nil, false
 	}
 	contextPressure := s.orch.sessionContextPressure(ctx, input)
 	verdict, handled := s.orch.checkTurnAdmission(input, hasActive, contextPressure)
 	if !handled {
-		return biz.NativeTurnResult{}, nil, false
+		return biz.TurnResult{}, nil, false
 	}
-	result, err := nativeResultFromAdmissionVerdict(verdict)
+	result, err := turnResultFromAdmissionVerdict(verdict)
 	return result, err, true
 }
 

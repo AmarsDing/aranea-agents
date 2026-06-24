@@ -41,21 +41,21 @@ func (e chatUCMessageEnqueuer) EnqueueUserMessage(sessionID, content string) (bo
 	return accepted, pendingID, rejectReason, err
 }
 
-func nativeResultFromAdmissionVerdict(v turn.AdmissionVerdict) (biz.NativeTurnResult, error) {
+func turnResultFromAdmissionVerdict(v turn.AdmissionVerdict) (biz.TurnResult, error) {
 	switch v.Action {
 	case turn.AdmissionQueued:
-		return biz.NativeTurnResult{
-			Outcome:   biz.NativeTurnOutcomeQueued,
+		return biz.TurnResult{
+			Outcome:   biz.TurnOutcomeQueued,
 			PendingID: v.PendingID,
 		}, ErrTurnMessageQueued
 	case turn.AdmissionRejectBusy:
-		return biz.NativeTurnResult{Outcome: biz.NativeTurnOutcomeFailed}, turnBusyError()
+		return biz.TurnResult{Outcome: biz.TurnOutcomeFailed}, turnBusyError()
 	case turn.AdmissionRejectEnqueue:
 		if v.Err != nil {
-			return biz.NativeTurnResult{Outcome: biz.NativeTurnOutcomeFailed}, v.Err
+			return biz.TurnResult{Outcome: biz.TurnOutcomeFailed}, v.Err
 		}
-		return biz.NativeTurnResult{Outcome: biz.NativeTurnOutcomeFailed}, classifyEnqueueOutcome(false, v.RejectReason, nil)
+		return biz.TurnResult{Outcome: biz.TurnOutcomeFailed}, classifyEnqueueOutcome(false, v.RejectReason, nil)
 	default:
-		return biz.NativeTurnResult{}, nil
+		return biz.TurnResult{}, nil
 	}
 }

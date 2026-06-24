@@ -2,11 +2,9 @@ package service
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/runtime/turn"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -29,19 +27,5 @@ func TestTurnExecutor_ExecuteTurnGateway(t *testing.T) {
 	}
 	if got.Outcome != biz.TurnOutcomeFailed {
 		t.Fatalf("outcome=%q", got.Outcome)
-	}
-}
-
-func TestTurnExecutor_ClassifyQueuedViaTurnPackage(t *testing.T) {
-	native := biz.NativeTurnResult{
-		Outcome:   biz.NativeTurnOutcomeQueued,
-		PendingID: "pending-1",
-	}
-	got, err := turn.ClassifyNativeOutcome(native, turn.QueuedSentinel)
-	if !errors.Is(err, turn.QueuedSentinel) {
-		t.Fatalf("err=%v", err)
-	}
-	if got.Outcome != biz.TurnOutcomeQueued || got.PendingID != "pending-1" {
-		t.Fatalf("got=%+v", got)
 	}
 }

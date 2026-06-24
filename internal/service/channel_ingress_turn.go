@@ -51,7 +51,7 @@ func (h *ChannelIngress) runChatTurnWithOutcomeOnce(ctx context.Context, chRow b
 
 	result, err := h.runNativeTurnWithBusyRetry(ctx, chRow, platform, input)
 	if err != nil {
-		if isTurnMessageQueued(err) || result.Outcome == biz.NativeTurnOutcomeQueued {
+		if isTurnMessageQueued(err) || result.Outcome == biz.TurnOutcomeQueued {
 			pendingID := strings.TrimSpace(result.PendingID)
 			if pendingID == "" {
 				pendingID = h.chat.LastPendingMessageID(sessionID)
@@ -64,15 +64,15 @@ func (h *ChannelIngress) runChatTurnWithOutcomeOnce(ctx context.Context, chRow b
 		h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "chat", "error": err.Error()}, err.Error())
 		return biz.ChannelTurnResult{Outcome: biz.TurnOutcomeFailed}, err
 	}
-	return h.channelTurnResultFromNative(sessionID, result)
+	return h.channelTurnResultFromTurnResult(sessionID, result)
 }
 
 // runNativeTurnWithBusyRetry wraps RunNativeTurnWithOutcome with short retries for CHAT_TURN_BUSY.
-func (h *ChannelIngress) runNativeTurnWithBusyRetry(ctx context.Context, chRow biz.Channel, platform string, input biz.TurnInput) (biz.NativeTurnResult, error) {
+func (h *ChannelIngress) runNativeTurnWithBusyRetry(ctx context.Context, chRow biz.Channel, platform string, input biz.TurnInput) (biz.TurnResult, error) {
 	if h == nil || h.chat == nil {
-		return biz.NativeTurnResult{}, nil
+		return biz.TurnResult{}, nil
 	}
-	var last biz.NativeTurnResult
+	var last biz.TurnResult
 	var lastErr error
 	for attempt := 0; attempt < channelTurnBusyRetries; attempt++ {
 		if attempt > 0 {
@@ -80,7 +80,7 @@ func (h *ChannelIngress) runNativeTurnWithBusyRetry(ctx context.Context, chRow b
 			select {
 			case <-ctx.Done():
 				timer.Stop()
-				return biz.NativeTurnResult{}, ctx.Err()
+				return biz.TurnResult{}, ctx.Err()
 			case <-timer.C:
 			}
 		}
@@ -96,15 +96,15 @@ func (h *ChannelIngress) runNativeTurnWithBusyRetry(ctx context.Context, chRow b
 	return last, lastErr
 }
 
-func (h *ChannelIngress) channelTurnResultFromNative(sessionID string, result biz.NativeTurnResult) (biz.ChannelTurnResult, error) {
+func (h *ChannelIngress) channelTurnResultFromTurnResult(sessionID string, result biz.TurnResult) (biz.ChannelTurnResult, error) {
 	switch result.Outcome {
-	case biz.NativeTurnOutcomeQueued:
+	case biz.TurnOutcomeQueued:
 		pendingID := strings.TrimSpace(result.PendingID)
 		if pendingID == "" && h != nil && h.chat != nil {
 			pendingID = h.chat.LastPendingMessageID(sessionID)
 		}
 		return biz.ChannelTurnResult{Outcome: biz.TurnOutcomeQueued, PendingID: pendingID}, nil
-	case biz.NativeTurnOutcomeCompleted:
+	case biz.TurnOutcomeCompleted:
 		reply := strings.TrimSpace(result.AssistantMsg.ContentMarkdown)
 		return biz.ChannelTurnResult{Outcome: biz.TurnOutcomeCompleted, Reply: reply}, nil
 	default:

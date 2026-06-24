@@ -34,8 +34,6 @@ type SkillEvolutionUsecase struct {
 	agents           AgentRepository
 	creator          SkillAutoCreator
 	registrar        SkillRegistrationPort
-	coordinator      *EvolutionCoordinator
-	coordinatorOnce  sync.Once
 	orchestrator     *SkillEvolutionOrchestrator
 	orchestratorOnce sync.Once
 	lg               loggateway.Logger
@@ -56,21 +54,6 @@ func NewSkillEvolutionUsecase(
 		creator:   creator,
 		registrar: registrar,
 		lg:        lg,
-	}
-}
-
-// SetCoordinator sets the evolution coordinator for cross-pipeline dedup.
-// Must only be called once during initialization. Repeated calls are logged
-// and ignored (the first coordinator wins).
-//
-// Deprecated: Use SetOrchestrator instead.
-func (uc *SkillEvolutionUsecase) SetCoordinator(c *EvolutionCoordinator) {
-	uc.coordinatorOnce.Do(func() {
-		uc.coordinator = c
-	})
-	if uc.coordinator != c {
-		uc.lg.Warn("SkillEvolutionUsecase: SetCoordinator called more than once; ignoring duplicate",
-			loggateway.StepID("skill_evolution.set_coordinator"))
 	}
 }
 
@@ -120,11 +103,6 @@ func (uc *SkillEvolutionUsecase) DetectAndPropose(ctx context.Context, agentID s
 				loggateway.Str("agent_id", agentID))
 			return nil, nil
 		}
-	} else if uc.coordinator != nil && uc.coordinator.HasPendingEvolution(ctx, EvolutionTarget{Type: "agent", ID: agentID}) {
-		uc.lg.Debug("DetectAndPropose: skipped, pending evolution already exists via another pipeline",
-			loggateway.StepID("skill_evo.detect"),
-			loggateway.Str("agent_id", agentID))
-		return nil, nil
 	}
 
 	patterns, err := uc.findSkillPatterns(ctx, agentID)

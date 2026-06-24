@@ -90,16 +90,16 @@ func (p *stubTurnProjector) lastEvent() *biz.TurnEvent {
 // stubTurnExecutor implements TurnExecutor for integration tests.
 type stubTurnExecutor struct {
 	mu       sync.Mutex
-	result   biz.NativeTurnResult
+	result   biz.TurnResult
 	execErr  error
 	executed bool
 }
 
-func newStubTurnExecutor(result biz.NativeTurnResult) *stubTurnExecutor {
+func newStubTurnExecutor(result biz.TurnResult) *stubTurnExecutor {
 	return &stubTurnExecutor{result: result}
 }
 
-func (e *stubTurnExecutor) ExecuteTurn(_ context.Context, _ biz.Turn, _ biz.TurnInput) (biz.NativeTurnResult, error) {
+func (e *stubTurnExecutor) ExecuteTurn(_ context.Context, _ biz.Turn, _ biz.TurnInput) (biz.TurnResult, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.executed = true
@@ -126,8 +126,8 @@ func TestChatTurnIntegration_TurnPipeline_AdmitAndComplete(t *testing.T) {
 	t.Run("SuccessfulTurn_PipelineFlow", func(t *testing.T) {
 		store := newStubTurnStore()
 		projector := newStubTurnProjector()
-		executor := newStubTurnExecutor(biz.NativeTurnResult{
-			Outcome:      biz.NativeTurnOutcomeCompleted,
+		executor := newStubTurnExecutor(biz.TurnResult{
+			Outcome:      biz.TurnOutcomeCompleted,
 			UserMsg:      biz.ChatMessage{ID: "msg-user-1", Role: "user", ContentMarkdown: "Hello"},
 			AssistantMsg: biz.ChatMessage{ID: "msg-assistant-1", Role: "assistant", ContentMarkdown: "Hi there!"},
 		})
@@ -166,7 +166,7 @@ func TestChatTurnIntegration_TurnPipeline_AdmitAndComplete(t *testing.T) {
 		}
 
 		// Verify result
-		if result.Outcome != biz.NativeTurnOutcomeCompleted {
+		if result.Outcome != biz.TurnOutcomeCompleted {
 			t.Errorf("expected outcome completed, got %q", result.Outcome)
 		}
 
@@ -191,7 +191,7 @@ func TestChatTurnIntegration_TurnPipeline_AdmitAndComplete(t *testing.T) {
 		store := newStubTurnStore()
 		projector := newStubTurnProjector()
 		executor := &stubTurnExecutor{
-			result:  biz.NativeTurnResult{},
+			result:  biz.TurnResult{},
 			execErr: fmt.Errorf("LLM provider timeout"),
 		}
 
@@ -228,8 +228,8 @@ func TestChatTurnIntegration_TurnPipeline_AdmitAndComplete(t *testing.T) {
 	t.Run("QueuedTurn_PipelineFlow", func(t *testing.T) {
 		store := newStubTurnStore()
 		projector := newStubTurnProjector()
-		executor := newStubTurnExecutor(biz.NativeTurnResult{
-			Outcome:   biz.NativeTurnOutcomeQueued,
+		executor := newStubTurnExecutor(biz.TurnResult{
+			Outcome:   biz.TurnOutcomeQueued,
 			PendingID: "pending-001",
 		})
 
@@ -253,7 +253,7 @@ func TestChatTurnIntegration_TurnPipeline_AdmitAndComplete(t *testing.T) {
 			t.Fatalf("TurnPipeline.Run for queued turn failed: %v", err)
 		}
 
-		if result.Outcome != biz.NativeTurnOutcomeQueued {
+		if result.Outcome != biz.TurnOutcomeQueued {
 			t.Errorf("expected outcome queued, got %q", result.Outcome)
 		}
 
@@ -339,22 +339,22 @@ func TestChatTurnIntegration_TurnIntentCanonicalize(t *testing.T) {
 }
 
 // TestChatTurnIntegration_TurnStatusMapping verifies the mapping from
-// NativeTurnOutcome to canonical TurnStatus.
+// TurnOutcome to canonical TurnStatus.
 func TestChatTurnIntegration_TurnStatusMapping(t *testing.T) {
 	cases := []struct {
-		outcome    biz.NativeTurnOutcome
+		outcome    biz.TurnOutcome
 		wantStatus biz.TurnStatus
 	}{
-		{biz.NativeTurnOutcomeCompleted, biz.TurnStatusCompleted},
-		{biz.NativeTurnOutcomeQueued, biz.TurnStatusQueued},
-		{biz.NativeTurnOutcomeRejected, biz.TurnStatusRejected},
-		{biz.NativeTurnOutcomeFailed, biz.TurnStatusFailed},
+		{biz.TurnOutcomeCompleted, biz.TurnStatusCompleted},
+		{biz.TurnOutcomeQueued, biz.TurnStatusQueued},
+		{biz.TurnOutcomeRejected, biz.TurnStatusRejected},
+		{biz.TurnOutcomeFailed, biz.TurnStatusFailed},
 	}
 	for _, tc := range cases {
 		t.Run(string(tc.outcome), func(t *testing.T) {
-			got := biz.TurnStatusFromNativeOutcome(tc.outcome)
+			got := biz.TurnStatusFromOutcome(tc.outcome)
 			if got != tc.wantStatus {
-				t.Errorf("TurnStatusFromNativeOutcome(%q) = %q, want %q", tc.outcome, got, tc.wantStatus)
+				t.Errorf("TurnStatusFromOutcome(%q) = %q, want %q", tc.outcome, got, tc.wantStatus)
 			}
 		})
 	}
@@ -419,7 +419,7 @@ func TestChatTurnIntegration_PersistentTurnService(t *testing.T) {
 		}
 
 		turn, _ := svc.AdmitTurn(ctx, intent)
-		result := biz.NativeTurnResult{Outcome: biz.NativeTurnOutcomeCompleted}
+		result := biz.TurnResult{Outcome: biz.TurnOutcomeCompleted}
 
 		completed, err := svc.CompleteTurn(ctx, turn, result)
 		if err != nil {

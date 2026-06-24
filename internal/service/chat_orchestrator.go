@@ -502,21 +502,7 @@ var (
 // Execute implements biz.TurnExecutor — the shared entry point for all turn
 // execution paths (Web, WS, Channel, Cron, A2A).
 func (o *ChatOrchestrator) Execute(ctx context.Context, input biz.TurnInput) (biz.TurnResult, error) {
-	nativeResult, err := o.RunNativeAgentTurnWithOutcome(ctx, input)
-	result, classifyErr := turn.ClassifyNativeOutcome(nativeResult, replaceQueuedWithSentinel(err))
-	if classifyErr != nil && isTurnMessageQueued(classifyErr) {
-		return result, ErrTurnMessageQueued
-	}
-	return result, classifyErr
-}
-
-// replaceQueuedWithSentinel converts a queued-turn error into the framework's
-// QueuedSentinel so that turn.ClassifyNativeOutcome recognises it correctly.
-func replaceQueuedWithSentinel(err error) error {
-	if err == nil || !isTurnMessageQueued(err) {
-		return err
-	}
-	return turn.QueuedSentinel
+	return o.RunNativeAgentTurnWithOutcome(ctx, input)
 }
 
 // RunGateway exposes the shared session run registry.

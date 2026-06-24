@@ -25,8 +25,8 @@ func (s *testTurnService) AdmitTurn(_ context.Context, intent biz.TurnIntent) (b
 	return s.turn, nil
 }
 
-func (s *testTurnService) CompleteTurn(_ context.Context, turn biz.Turn, result biz.NativeTurnResult) (biz.Turn, error) {
-	turn.Status = biz.TurnStatusFromNativeOutcome(result.Outcome)
+func (s *testTurnService) CompleteTurn(_ context.Context, turn biz.Turn, result biz.TurnResult) (biz.Turn, error) {
+	turn.Status = biz.TurnStatusFromOutcome(result.Outcome)
 	s.turn = turn
 	return turn, nil
 }
@@ -41,11 +41,11 @@ type testTurnExecutor struct {
 	err error
 }
 
-func (e testTurnExecutor) ExecuteTurn(_ context.Context, _ biz.Turn, _ biz.TurnInput) (biz.NativeTurnResult, error) {
+func (e testTurnExecutor) ExecuteTurn(_ context.Context, _ biz.Turn, _ biz.TurnInput) (biz.TurnResult, error) {
 	if e.err != nil {
-		return biz.NativeTurnResult{Outcome: biz.NativeTurnOutcomeFailed}, e.err
+		return biz.TurnResult{Outcome: biz.TurnOutcomeFailed}, e.err
 	}
-	return biz.NativeTurnResult{Outcome: biz.NativeTurnOutcomeCompleted}, nil
+	return biz.TurnResult{Outcome: biz.TurnOutcomeCompleted}, nil
 }
 
 type testTurnProjector struct {
@@ -80,7 +80,7 @@ func TestTurnPipelineRunProjectsCompletion(t *testing.T) {
 	if turn.Status != biz.TurnStatusCompleted {
 		t.Fatalf("turn.Status = %q, want completed", turn.Status)
 	}
-	if result.Outcome != biz.NativeTurnOutcomeCompleted {
+	if result.Outcome != biz.TurnOutcomeCompleted {
 		t.Fatalf("result.Outcome = %q, want completed", result.Outcome)
 	}
 	if len(projector.events) != 2 {

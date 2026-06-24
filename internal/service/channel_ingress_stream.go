@@ -50,7 +50,7 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 
 	result, err := h.runNativeTurnWithBusyRetry(ctx, chRow, platform, turnInput)
 	if err != nil {
-		if isTurnMessageQueued(err) || result.Outcome == biz.NativeTurnOutcomeQueued {
+		if isTurnMessageQueued(err) || result.Outcome == biz.TurnOutcomeQueued {
 			pendingID := strings.TrimSpace(result.PendingID)
 			if pendingID == "" && h.chat != nil {
 				pendingID = h.chat.LastPendingMessageID(sessionID)
@@ -68,7 +68,7 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 		h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "stream", "error": err.Error()}, err.Error())
 		return err
 	}
-	if result.Outcome == biz.NativeTurnOutcomeQueued {
+	if result.Outcome == biz.TurnOutcomeQueued {
 		pendingID := strings.TrimSpace(result.PendingID)
 		if pendingID == "" && h.chat != nil {
 			pendingID = h.chat.LastPendingMessageID(sessionID)

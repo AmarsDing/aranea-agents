@@ -163,16 +163,16 @@ type TurnEvent struct {
 	Metadata        map[string]string
 }
 
-// TurnStatusFromNativeOutcome maps the current native turn outcome into the canonical lifecycle.
-func TurnStatusFromNativeOutcome(outcome NativeTurnOutcome) TurnStatus {
+// TurnStatusFromOutcome maps the unified turn outcome into the canonical lifecycle.
+func TurnStatusFromOutcome(outcome TurnOutcome) TurnStatus {
 	switch outcome {
-	case NativeTurnOutcomeCompleted:
+	case TurnOutcomeCompleted:
 		return TurnStatusCompleted
-	case NativeTurnOutcomeQueued:
+	case TurnOutcomeQueued:
 		return TurnStatusQueued
-	case NativeTurnOutcomeRejected:
+	case TurnOutcomeRejected:
 		return TurnStatusRejected
-	case NativeTurnOutcomeFailed:
+	case TurnOutcomeFailed:
 		return TurnStatusFailed
 	default:
 		return ""

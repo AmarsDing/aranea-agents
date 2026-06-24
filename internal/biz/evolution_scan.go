@@ -54,14 +54,12 @@ func (uc *EvolutionUsecase) ScanAgent(ctx context.Context, agentID string) error
 	}
 
 	// Cross-pipeline dedup: skip if another pipeline already has a pending
-	// suggestion for this agent. Prefer orchestrator over legacy coordinator.
+	// suggestion for this agent.
 	if uc.orchestrator != nil {
 		hasPending, err := uc.orchestrator.HasPendingForTarget(ctx, "agent", agentID)
 		if err == nil && hasPending {
 			return nil
 		}
-	} else if uc.coordinator != nil && uc.coordinator.HasPendingEvolution(ctx, EvolutionTarget{Type: "agent", ID: agentID}) {
-		return nil
 	}
 
 	settings, err := uc.agents.GetAgentRuntimeSettings(ctx, agentID)

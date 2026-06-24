@@ -8,7 +8,7 @@ import "context"
 type TurnExecutorGateway interface {
 	ExecuteTurn(ctx context.Context, input TurnInput) (TurnResult, error)
 	RunNativeTurn(ctx context.Context, input TurnInput) (ChatMessage, ChatMessage, error)
-	RunNativeTurnWithOutcome(ctx context.Context, input TurnInput) (NativeTurnResult, error)
+	RunNativeTurnWithOutcome(ctx context.Context, input TurnInput) (TurnResult, error)
 }
 
 // TurnRunControlGateway is the narrow interface for run lifecycle control.

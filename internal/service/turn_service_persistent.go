@@ -68,11 +68,11 @@ func (s *PersistentTurnService) AdmitTurn(ctx context.Context, intent biz.TurnIn
 	return turnFromSessionTurn(row, turn), nil
 }
 
-func (s *PersistentTurnService) CompleteTurn(ctx context.Context, turn biz.Turn, result biz.NativeTurnResult) (biz.Turn, error) {
+func (s *PersistentTurnService) CompleteTurn(ctx context.Context, turn biz.Turn, result biz.TurnResult) (biz.Turn, error) {
 	if s == nil || s.Sessions == nil {
 		return biz.Turn{}, errors.New("turn service: sessions is nil")
 	}
-	status := biz.TurnStatusFromNativeOutcome(result.Outcome)
+	status := biz.TurnStatusFromOutcome(result.Outcome)
 	if status == "" {
 		status = biz.TurnStatusCompleted
 	}

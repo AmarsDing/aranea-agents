@@ -53,7 +53,7 @@ func TestPersistentTurnServiceLifecycle(t *testing.T) {
 		t.Fatalf("unexpected admitted turn: %+v row=%+v", turn, store.created)
 	}
 
-	completed, err := svc.CompleteTurn(context.Background(), turn, biz.NativeTurnResult{Outcome: biz.NativeTurnOutcomeCompleted})
+	completed, err := svc.CompleteTurn(context.Background(), turn, biz.TurnResult{Outcome: biz.TurnOutcomeCompleted})
 	if err != nil {
 		t.Fatal(err)
 	}
