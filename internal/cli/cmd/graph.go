@@ -15,7 +15,7 @@ import (
 func NewGraphCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "graph",
-		Short: "Graph ??",
+		Short: "Graph 管理",
 	}
 	c.AddCommand(
 		graphLsCmd(),
@@ -32,7 +32,7 @@ func NewGraphCmd() *cobra.Command {
 func graphLsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "ls",
-		Short: "???? Graph",
+		Short: "列出所有 Graph",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
 			resp, err := cc.Client.ListGraphs(cmd.Context())
@@ -56,7 +56,7 @@ func graphLsCmd() *cobra.Command {
 func graphGetCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "get <id>",
-		Short: "?? Graph ??",
+		Short: "查看 Graph 详情",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
@@ -80,7 +80,7 @@ func graphCreateCmd() *cobra.Command {
 	var filePath string
 	cmd := &cobra.Command{
 		Use:   "create --file <file>",
-		Short: "?? Graph?? JSON ???",
+		Short: "创建 Graph（JSON 格式）",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
 			data, err := readFile(filePath)
@@ -90,16 +90,16 @@ func graphCreateCmd() *cobra.Command {
 			req := &graphv1.CreateGraphRequest{}
 			uopts := protojson.UnmarshalOptions{DiscardUnknown: true}
 			if err := uopts.Unmarshal(data, req); err != nil {
-				return &cli.CLIError{Code: "FILE_PARSE_ERROR", Message: fmt.Sprintf("??????: %v", err)}
+				return &cli.CLIError{Code: "FILE_PARSE_ERROR", Message: fmt.Sprintf("文件解析失败: %v", err)}
 			}
 			resp, err := cc.Client.CreateGraph(cmd.Context(), req)
 			if err != nil {
 				return err
 			}
-			return cc.Printer.PrintSuccess("Graph ???", "id", resp.Graph.GetId(), "name", resp.Graph.GetName())
+			return cc.Printer.PrintSuccess("Graph 创建成功", "id", resp.Graph.GetId(), "name", resp.Graph.GetName())
 		},
 	}
-	cmd.Flags().StringVarP(&filePath, "file", "f", "", "Graph ?????JSON?")
+	cmd.Flags().StringVarP(&filePath, "file", "f", "", "Graph 配置文件路径（YAML/JSON）")
 	_ = cmd.MarkFlagRequired("file")
 	return cmd
 }
@@ -108,7 +108,7 @@ func graphUpdateCmd() *cobra.Command {
 	var filePath string
 	cmd := &cobra.Command{
 		Use:   "update <id> --file <file>",
-		Short: "?? Graph",
+		Short: "更新 Graph",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
@@ -119,17 +119,17 @@ func graphUpdateCmd() *cobra.Command {
 			req := &graphv1.UpdateGraphRequest{}
 			uopts := protojson.UnmarshalOptions{DiscardUnknown: true}
 			if err := uopts.Unmarshal(data, req); err != nil {
-				return &cli.CLIError{Code: "FILE_PARSE_ERROR", Message: fmt.Sprintf("??????: %v", err)}
+				return &cli.CLIError{Code: "FILE_PARSE_ERROR", Message: fmt.Sprintf("文件解析失败: %v", err)}
 			}
 			req.Id = args[0]
 			resp, err := cc.Client.UpdateGraph(cmd.Context(), args[0], req)
 			if err != nil {
 				return err
 			}
-			return cc.Printer.PrintSuccess("Graph ???", "id", resp.Graph.GetId())
+			return cc.Printer.PrintSuccess("Graph 更新成功", "id", resp.Graph.GetId())
 		},
 	}
-	cmd.Flags().StringVarP(&filePath, "file", "f", "", "Graph ?????JSON?")
+	cmd.Flags().StringVarP(&filePath, "file", "f", "", "Graph 配置文件路径（YAML/JSON）")
 	_ = cmd.MarkFlagRequired("file")
 	return cmd
 }
@@ -137,20 +137,20 @@ func graphUpdateCmd() *cobra.Command {
 func graphDeleteCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <id>",
-		Short: "?? Graph",
+		Short: "删除 Graph",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
 			if !cc.AutoYes {
-				ok, err := cc.UI.ConfirmYesNo(fmt.Sprintf("???? Graph %q?", args[0]), false)
+				ok, err := cc.UI.ConfirmYesNo(fmt.Sprintf("确认删除 Graph %q？此操作不可撤销", args[0]), false)
 				if err != nil || !ok {
-					return &cli.CLIError{Code: "USER_CANCELED", Message: "?????"}
+					return &cli.CLIError{Code: "USER_CANCELED", Message: "操作已取消"}
 				}
 			}
 			if err := cc.Client.DeleteGraph(cmd.Context(), args[0]); err != nil {
 				return err
 			}
-			return cc.Printer.PrintSuccess("Graph ???", "id", args[0])
+			return cc.Printer.PrintSuccess("Graph 已删除", "id", args[0])
 		},
 	}
 	return cmd
@@ -160,7 +160,7 @@ func graphImportCmd() *cobra.Command {
 	var filePath, name, description string
 	cmd := &cobra.Command{
 		Use:   "import --file <file>",
-		Short: "?? Graph?POST /v1/graph/import?",
+		Short: "导入 Graph（POST /v1/graph/import）",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
 			data, err := readFile(filePath)
@@ -168,7 +168,7 @@ func graphImportCmd() *cobra.Command {
 				return &cli.CLIError{Code: "FILE_READ_ERROR", Message: err.Error()}
 			}
 			if !json.Valid(data) {
-				return &cli.CLIError{Code: "FILE_PARSE_ERROR", Message: "??????? JSON"}
+				return &cli.CLIError{Code: "FILE_PARSE_ERROR", Message: "文件内容不是有效 JSON"}
 			}
 			req := &graphv1.ImportGraphRequest{
 				Json:        string(data),
@@ -179,12 +179,12 @@ func graphImportCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cc.Printer.PrintSuccess("Graph ???", "id", resp.Graph.GetId(), "name", resp.Graph.GetName())
+			return cc.Printer.PrintSuccess("Graph 导入成功", "id", resp.Graph.GetId(), "name", resp.Graph.GetName())
 		},
 	}
-	cmd.Flags().StringVarP(&filePath, "file", "f", "", "Graph JSON ???- ?? stdin")
-	cmd.Flags().StringVar(&name, "name", "", "?? Graph ??")
-	cmd.Flags().StringVar(&description, "description", "", "?? Graph ??")
+	cmd.Flags().StringVarP(&filePath, "file", "f", "", "Graph JSON 文件路径（- 表示 stdin）")
+	cmd.Flags().StringVar(&name, "name", "", "覆盖 Graph 名称")
+	cmd.Flags().StringVar(&description, "description", "", "覆盖 Graph 描述")
 	_ = cmd.MarkFlagRequired("file")
 	return cmd
 }
@@ -193,7 +193,7 @@ func graphExportCmd() *cobra.Command {
 	var outputPath string
 	cmd := &cobra.Command{
 		Use:   "export <id>",
-		Short: "?? Graph ? JSON",
+		Short: "导出 Graph 为 JSON",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
@@ -209,12 +209,12 @@ func graphExportCmd() *cobra.Command {
 				if err := os.WriteFile(outputPath, b, 0600); err != nil {
 					return err
 				}
-				return cc.Printer.PrintSuccess("Graph ???", "file", outputPath)
+				return cc.Printer.PrintSuccess("Graph 导出成功", "file", outputPath)
 			}
 			_, _ = os.Stdout.Write(b)
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&outputPath, "output", "o", "-", "???????- ?? stdout")
+	cmd.Flags().StringVarP(&outputPath, "output", "o", "-", "输出文件路径（- 表示 stdout）")
 	return cmd
 }

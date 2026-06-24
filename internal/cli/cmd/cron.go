@@ -13,7 +13,7 @@ import (
 func NewCronCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "cron",
-		Short: "??????",
+		Short: "定时任务管理",
 	}
 	c.AddCommand(
 		cronLsCmd(),
@@ -23,6 +23,8 @@ func NewCronCmd() *cobra.Command {
 		cronDeleteCmd(),
 		cronTriggerCmd(),
 		cronRunsCmd(),
+		cronPauseCmd(),
+		cronResumeCmd(),
 	)
 	return c
 }
@@ -30,7 +32,7 @@ func NewCronCmd() *cobra.Command {
 func cronLsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "ls",
-		Short: "????????",
+		Short: "列出所有定时任务",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
 			resp, err := cc.Client.ListCronTasks(cmd.Context())
@@ -46,7 +48,7 @@ func cronLsCmd() *cobra.Command {
 func cronGetCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "get <id>",
-		Short: "????????",
+		Short: "查看定时任务详情",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
@@ -63,7 +65,7 @@ func cronAddCmd() *cobra.Command {
 	var filePath string
 	cmd := &cobra.Command{
 		Use:   "add --file <file>",
-		Short: "??????",
+		Short: "添加定时任务",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
 			data, err := readFile(filePath)
@@ -73,16 +75,16 @@ func cronAddCmd() *cobra.Command {
 			req := &cronv1.CreateCronTaskRequest{}
 			uopts := protojson.UnmarshalOptions{DiscardUnknown: true}
 			if err := uopts.Unmarshal(data, req); err != nil {
-				return &cli.CLIError{Code: "FILE_PARSE_ERROR", Message: fmt.Sprintf("??????: %v", err)}
+				return &cli.CLIError{Code: "FILE_PARSE_ERROR", Message: fmt.Sprintf("文件解析失败: %v", err)}
 			}
 			task, err := cc.Client.CreateCronTask(cmd.Context(), req)
 			if err != nil {
 				return err
 			}
-			return cc.Printer.PrintSuccess("???????", "id", task.Id, "name", task.Name)
+			return cc.Printer.PrintSuccess("定时任务创建成功", "id", task.Id, "name", task.Name)
 		},
 	}
-	cmd.Flags().StringVarP(&filePath, "file", "f", "", "???????JSON?")
+	cmd.Flags().StringVarP(&filePath, "file", "f", "", "定时任务配置文件路径（YAML/JSON）")
 	_ = cmd.MarkFlagRequired("file")
 	return cmd
 }
@@ -91,7 +93,7 @@ func cronUpdateCmd() *cobra.Command {
 	var filePath string
 	cmd := &cobra.Command{
 		Use:   "update <id> --file <file>",
-		Short: "??????",
+		Short: "更新定时任务",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
@@ -102,16 +104,16 @@ func cronUpdateCmd() *cobra.Command {
 			var task cronv1.CronTask
 			uopts := protojson.UnmarshalOptions{DiscardUnknown: true}
 			if err := uopts.Unmarshal(data, &task); err != nil {
-				return &cli.CLIError{Code: "FILE_PARSE_ERROR", Message: fmt.Sprintf("??????: %v", err)}
+				return &cli.CLIError{Code: "FILE_PARSE_ERROR", Message: fmt.Sprintf("文件解析失败: %v", err)}
 			}
 			updated, err := cc.Client.UpdateCronTask(cmd.Context(), args[0], &task)
 			if err != nil {
 				return err
 			}
-			return cc.Printer.PrintSuccess("???????", "id", updated.Id)
+			return cc.Printer.PrintSuccess("定时任务更新成功", "id", updated.Id)
 		},
 	}
-	cmd.Flags().StringVarP(&filePath, "file", "f", "", "???????JSON?")
+	cmd.Flags().StringVarP(&filePath, "file", "f", "", "定时任务配置文件路径（YAML/JSON）")
 	_ = cmd.MarkFlagRequired("file")
 	return cmd
 }
@@ -119,20 +121,20 @@ func cronUpdateCmd() *cobra.Command {
 func cronDeleteCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <id>",
-		Short: "??????",
+		Short: "删除定时任务",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
 			if !cc.AutoYes {
-				ok, err := cc.UI.ConfirmYesNo(fmt.Sprintf("???????? %q?", args[0]), false)
+				ok, err := cc.UI.ConfirmYesNo(fmt.Sprintf("确认删除定时任务 %q？此操作不可撤销", args[0]), false)
 				if err != nil || !ok {
-					return &cli.CLIError{Code: "USER_CANCELED", Message: "?????"}
+					return &cli.CLIError{Code: "USER_CANCELED", Message: "操作已取消"}
 				}
 			}
 			if err := cc.Client.DeleteCronTask(cmd.Context(), args[0]); err != nil {
 				return err
 			}
-			return cc.Printer.PrintSuccess("???????", "id", args[0])
+			return cc.Printer.PrintSuccess("定时任务已删除", "id", args[0])
 		},
 	}
 	return cmd
@@ -141,7 +143,7 @@ func cronDeleteCmd() *cobra.Command {
 func cronTriggerCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "trigger <id>",
-		Short: "????????",
+		Short: "手动触发定时任务",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
@@ -149,7 +151,7 @@ func cronTriggerCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cc.Printer.PrintSuccess("???????", "run_id", run.Id)
+			return cc.Printer.PrintSuccess("定时任务已触发", "run_id", run.Id)
 		},
 	}
 }
@@ -159,7 +161,7 @@ func cronRunsCmd() *cobra.Command {
 	var limit int32
 	cmd := &cobra.Command{
 		Use:   "runs",
-		Short: "??????????",
+		Short: "查看定时任务执行记录",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
 			resp, err := cc.Client.ListCronTaskRuns(cmd.Context(), taskID, limit)
@@ -179,12 +181,54 @@ func cronRunsCmd() *cobra.Command {
 			return cc.Printer.PrintList(rows, len(resp.Items))
 		},
 	}
-	cmd.Flags().StringVar(&taskID, "task-id", "", "?????? ID")
-	cmd.Flags().Int32Var(&limit, "limit", 20, "??????")
+	cmd.Flags().StringVar(&taskID, "task-id", "", "定时任务 ID")
+	cmd.Flags().Int32Var(&limit, "limit", 20, "返回数量")
 	return cmd
 }
 
-// ??? helpers ??????????????????????????????????????????????????????????????????
+func cronPauseCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "pause <id>",
+		Short: "暂停定时任务（enabled=false）",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cc := cli.CLIFrom(cmd.Context())
+			task, err := cc.Client.GetCronTask(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			task.Enabled = false
+			updated, err := cc.Client.UpdateCronTask(cmd.Context(), args[0], task)
+			if err != nil {
+				return err
+			}
+			return cc.Printer.PrintSuccess("定时任务已暂停", "id", updated.Id, "enabled", "false")
+		},
+	}
+}
+
+func cronResumeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "resume <id>",
+		Short: "恢复定时任务（enabled=true）",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cc := cli.CLIFrom(cmd.Context())
+			task, err := cc.Client.GetCronTask(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			task.Enabled = true
+			updated, err := cc.Client.UpdateCronTask(cmd.Context(), args[0], task)
+			if err != nil {
+				return err
+			}
+			return cc.Printer.PrintSuccess("定时任务已恢复", "id", updated.Id, "enabled", "true")
+		},
+	}
+}
+
+// Row helpers convert proto items to display rows.
 
 func cronTasksToRows(items []*cronv1.CronTask) []map[string]string {
 	rows := make([]map[string]string, 0, len(items))

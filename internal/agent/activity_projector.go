@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -91,6 +92,12 @@ type ActivityProjector struct {
 	// This fixes B-01 (start/delta ordering), B-04 (delta holds global lock),
 	// and B-05 (async start races with sync delta).
 	sequencer *activityEventSequencer
+
+	// seq is a monotonically increasing counter assigned to every emitted
+	// envelope. It lets the frontend reconstruct the exact backend emission
+	// order even when the per-activity sequencer publishes events for different
+	// activities concurrently (e.g. thinking done vs reply start).
+	seq int64
 
 	// Turn-scoped state (reset per turn)
 	rootActivityID string
@@ -259,6 +266,16 @@ func (p *ActivityProjector) processChatCompletionChunk(ctx context.Context, ev *
 		// differentiation. Non-member authors (coordinator, single-agent chat)
 		// continue through OnTextDelta/OnTextDone/OnReasoning*.
 		isMember := isTeamMemberAuthor(author, p.meta)
+		// Reasoning is emitted before text so that the timeline always presents
+		// thinking ahead of the reply it supports, even when a single chunk
+		// contains both content types.
+		if reasoning != "" {
+			if ev.Response.IsPartial {
+				p.OnReasoningDelta(ctx, author, reasoning, true)
+			} else {
+				p.OnReasoningDone(ctx, author, reasoning, false)
+			}
+		}
 		if text != "" {
 			if ev.Response.IsPartial {
 				if isMember {
@@ -272,13 +289,6 @@ func (p *ActivityProjector) processChatCompletionChunk(ctx context.Context, ev *
 				} else {
 					p.OnTextDone(ctx, author, text)
 				}
-			}
-		}
-		if reasoning != "" {
-			if ev.Response.IsPartial {
-				p.OnReasoningDelta(ctx, author, reasoning, true)
-			} else {
-				p.OnReasoningDone(ctx, author, reasoning, false)
 			}
 		}
 	}
@@ -305,15 +315,17 @@ func (p *ActivityProjector) processChatCompletion(ctx context.Context, ev *trpce
 		// AF-GAP-04: Route team member authors to OnMemberMessage* so the
 		// resulting reply Activity carries meta.member_id.
 		isMember := isTeamMemberAuthor(author, p.meta)
+		// Reasoning is emitted before text so that the timeline presents
+		// thinking ahead of the final reply.
+		if reasoning != "" {
+			p.OnReasoningDone(ctx, author, reasoning, false)
+		}
 		if text != "" {
 			if isMember {
 				p.OnMemberMessageDone(ctx, author, text)
 			} else {
 				p.OnTextDone(ctx, author, text)
 			}
-		}
-		if reasoning != "" {
-			p.OnReasoningDone(ctx, author, reasoning, false)
 		}
 	}
 }
@@ -1235,6 +1247,9 @@ func (p *ActivityProjector) buildActivityEnvelope(a *biz.Activity, envType contr
 		// Activity 记录被 if (!tid) continue 跳过，思考和回复 UI 不显示。
 		"turn_id":    a.TurnID,
 		"session_id": a.SessionID,
+		// Global emission sequence so the frontend can order events even when
+		// the per-activity sequencer publishes different activities concurrently.
+		"_seq": atomic.AddInt64(&p.seq, 1),
 	}
 
 	// Content fields

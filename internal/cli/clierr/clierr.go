@@ -45,6 +45,7 @@ func ExitCodeOf(err error) int {
 	}
 	var ce *CLIError
 	if !errors.As(err, &ce) {
+		// Non-CLIError: likely a transport/network error (DNS, TLS, connection refused).
 		return ExitNetworkError
 	}
 
@@ -69,7 +70,7 @@ func ExitCodeOf(err error) int {
 	case "UNAUTHENTICATED", "UNAUTHORIZED", "FORBIDDEN", "LOGIN_NO_TOKEN":
 		return ExitAuthError
 	case "INSECURE_CONFIG_PERM", "CONFIG_INVALID",
-		"FILE_READ_ERROR", "FILE_PARSE_ERROR", "MISSING_CONTENT",
+		"FILE_READ_ERROR", "FILE_PARSE_ERROR", "MISSING_CONTENT", "MISSING_ARGS",
 		"CONFIG_KEY_UNKNOWN", "CONFIG_VALUE_INVALID", "CONFIG_SAVE_ERROR",
 		"PKG_MANIFEST_INVALID":
 		return ExitUsage
@@ -78,5 +79,5 @@ func ExitCodeOf(err error) int {
 		return ExitNetworkError
 	}
 
-	return ExitNetworkError
+	return ExitBackendBizError
 }

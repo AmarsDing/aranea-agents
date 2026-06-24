@@ -86,8 +86,9 @@ func (s *WSServer) writePump(wc *wsConn) {
 func (s *WSServer) readPump(wc *wsConn) {
 	cfg := s.wsConfig()
 	defer func() {
-		// COR-03: cancel connection context so in-flight turns started by this
-		// connection are cancelled when the client disconnects.
+		// Cancel connection context to stop connection-scoped goroutines
+		// (eventPump, replay, sync_request). Turns are NOT cancelled here —
+		// they use appctx.Ctx() and are cancelled via RunRegistry.Cancel.
 		s.removeConn(wc)
 		wc.close()
 	}()

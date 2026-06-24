@@ -323,19 +323,13 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 
 	attachmentRefs, err := o.resolveUserAttachmentRefs(ctx, sessionID, input.Options.AttachmentIDs)
 	if err != nil {
-		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
-		o.publishRunStatus(sessionID, runID, "failed", safeErrMsgForWS(err))
-		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
-		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
-		return biz.ChatMessage{}, biz.ChatMessage{}, err
+		return o.failTurn(ctx, sessionID, runID, &turnStatus, &turnErr, &turnErrMsg, err)
 	}
 	if err := o.validateTurnAttachmentCapabilities(ctx, prov, mod, attachmentRefs); err != nil {
-		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
-		emitter.LogWarn("chat.attachment.preflight", "模型不支持当前附件类型", "", event.P("provider", prov), event.P("model", mod), event.P("error", err.Error()))
-		o.publishRunStatus(sessionID, runID, "failed", safeErrMsgForWS(err))
-		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
-		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
-		return biz.ChatMessage{}, biz.ChatMessage{}, err
+		return o.failTurn(ctx, sessionID, runID, &turnStatus, &turnErr, &turnErrMsg, err,
+			withBeforePublish(func() {
+				emitter.LogWarn("chat.attachment.preflight", "模型不支持当前附件类型", "", event.P("provider", prov), event.P("model", mod), event.P("error", err.Error()))
+			}))
 	}
 
 	// ── BUILD + INTENT PASS (parallel) ──
@@ -388,12 +382,8 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 
 	buildIntentStart := time.Now()
 	if err := eg.Wait(); err != nil {
-		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
-		o.runs.Finish(sessionID)
-		o.publishRunStatus(sessionID, runID, "failed", safeErrMsgForWS(err))
-		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
-		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
-		return biz.ChatMessage{}, biz.ChatMessage{}, err
+		return o.failTurn(ctx, sessionID, runID, &turnStatus, &turnErr, &turnErrMsg, err,
+			withBeforePublish(func() { o.runs.Finish(sessionID) }))
 	}
 	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: BUILD+IntentPass parallel",
 		loggateway.StepID("chat.build_intent_parallel"),
@@ -516,6 +506,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	turnPhase.Store("executing")
 	execResult, err := o.executeTurn(ctx, sess, input, ag, admit, emitter, traceBridge, deps, runner, attachmentRefs, intentRunOpts, turnStart)
 	if err != nil {
+		// EXECUTE phase error: only markTurnError; the defer block above
+		// (runSingleAgentViaTRPC L477-503) handles publishRunStatus +
+		// transitionSessionStatus + publishTurnFailure.
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		return execResult.userMsg, biz.ChatMessage{}, err
 	}
@@ -527,6 +520,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	turnPhase.Store("persisting")
 	persistResult, err := o.persistTurn(&ctx, sess, ag, admit, execResult, emitter, turnStart, &turnStatus, &turnErr, &turnErrMsg)
 	if err != nil {
+		// PERSIST phase error: only markTurnError; the defer block above
+		// (runSingleAgentViaTRPC L477-503) handles publishRunStatus +
+		// transitionSessionStatus + publishTurnFailure.
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		return execResult.userMsg, biz.ChatMessage{}, err
 	}

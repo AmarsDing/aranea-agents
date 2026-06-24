@@ -386,12 +386,24 @@ function buildTreeFromRecords(records: readonly import('../activityTypes').Activ
   }
 
   const sortTree = (nodes: ActivityTreeNode[]) => {
-    nodes.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    nodes.sort(compareActivities);
     for (const node of nodes) sortTree(node.children);
   };
   sortTree(roots);
 
   return roots;
+}
+
+/** Stable activity comparator: timestamp ASC, then backend seq ASC.
+ * When both seqs are absent/identical, return 0 so the stable sort preserves
+ * insertion order (e.g. unit tests with identical timestamps). */
+function compareActivities(a: ActivityTreeNode, b: ActivityTreeNode): number {
+  const ts = a.timestamp.localeCompare(b.timestamp);
+  if (ts !== 0) return ts;
+  const sa = a.seq ?? 0;
+  const sb = b.seq ?? 0;
+  if (sa !== sb) return sa - sb;
+  return 0;
 }
 
 function flattenTree(tree: ActivityTreeNode[]): ActivityTreeNode[] {

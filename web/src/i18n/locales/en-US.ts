@@ -278,6 +278,9 @@ export default {
     expandAll: 'Expand all',
     toolArgs: 'Arguments',
     toolResult: 'Result',
+    toolResultSummary: 'Result Summary',
+    toolRawResult: 'Raw Result',
+    toolError: 'Error',
     tool: {
       stuckTimeout: 'Tool execution timed out without result',
     },

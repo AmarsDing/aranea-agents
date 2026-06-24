@@ -95,7 +95,7 @@ func TestMaskToken(t *testing.T) {
 		{"", ""},
 		{"abc", "***"},
 		{"abcd", "***"},
-		{"eyJhbGciOiJIUzI1NiJ9", "***J9"},
+		{"eyJhbGciOiJIUzI1NiJ9", "***NiJ9"},
 	}
 	for _, c := range cases {
 		got := config.MaskToken(c.input)

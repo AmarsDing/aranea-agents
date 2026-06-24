@@ -16,8 +16,8 @@ func TestTokenDisplay_ShowFull(t *testing.T) {
 
 func TestTokenDisplay_Masked(t *testing.T) {
 	got := config.TokenDisplay("secret", false)
-	if got != "***" {
-		t.Errorf("TokenDisplay(%q, false) = %q, want %q", "secret", got, "***")
+	if got != "***cret" {
+		t.Errorf("TokenDisplay(%q, false) = %q, want %q", "secret", got, "***cret")
 	}
 }
 
@@ -52,7 +52,7 @@ func TestStripBearerPrefix_Empty(t *testing.T) {
 func TestMaskToken_LongToken(t *testing.T) {
 	token := strings.Repeat("x", 40)
 	got := config.MaskToken(token)
-	want := "***x"
+	want := "***xxxx"
 	if got != want {
 		t.Errorf("MaskToken(40-char) = %q, want %q", got, want)
 	}
@@ -61,7 +61,7 @@ func TestMaskToken_LongToken(t *testing.T) {
 func TestMaskToken_VeryLongToken(t *testing.T) {
 	token := strings.Repeat("x", 100)
 	got := config.MaskToken(token)
-	want := "***"
+	want := "***xxxx"
 	if got != want {
 		t.Errorf("MaskToken(100-char) = %q, want %q", got, want)
 	}
@@ -70,7 +70,7 @@ func TestMaskToken_VeryLongToken(t *testing.T) {
 func TestMaskToken_Exactly10Chars(t *testing.T) {
 	token := strings.Repeat("x", 10)
 	got := config.MaskToken(token)
-	want := "***"
+	want := "***xxxx"
 	if got != want {
 		t.Errorf("MaskToken(10-char) = %q, want %q", got, want)
 	}
@@ -79,7 +79,7 @@ func TestMaskToken_Exactly10Chars(t *testing.T) {
 func TestMaskToken_11Chars(t *testing.T) {
 	token := strings.Repeat("x", 10) + "y"
 	got := config.MaskToken(token)
-	want := "***xy"
+	want := "***xxxy"
 	if got != want {
 		t.Errorf("MaskToken(11-char) = %q, want %q", got, want)
 	}

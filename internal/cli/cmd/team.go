@@ -13,7 +13,7 @@ import (
 func NewTeamCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "team",
-		Short: "Team ??",
+		Short: "Team 管理",
 	}
 	c.AddCommand(
 		teamLsCmd(),
@@ -30,7 +30,7 @@ func NewTeamCmd() *cobra.Command {
 func teamLsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "ls",
-		Short: "???? Team",
+		Short: "列出所有 Team",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
 			resp, err := cc.Client.ListTeams(cmd.Context())
@@ -46,7 +46,7 @@ func teamLsCmd() *cobra.Command {
 func teamGetCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "get <id>",
-		Short: "?? Team ??",
+		Short: "查看 Team 详情",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
@@ -63,7 +63,7 @@ func teamCreateCmd() *cobra.Command {
 	var filePath string
 	cmd := &cobra.Command{
 		Use:   "create --file <file>",
-		Short: "?? Team?? JSON ???",
+		Short: "创建 Team（JSON 格式）",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
 			req, err := loadTeamCreateFromFile(filePath)
@@ -74,10 +74,10 @@ func teamCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cc.Printer.PrintSuccess("Team ???", "id", team.Id, "name", team.DisplayName)
+			return cc.Printer.PrintSuccess("Team 创建成功", "id", team.Id, "name", team.DisplayName)
 		},
 	}
-	cmd.Flags().StringVarP(&filePath, "file", "f", "", "Team ?????JSON??- ?? stdin")
+	cmd.Flags().StringVarP(&filePath, "file", "f", "", "Team 配置文件路径（YAML/JSON，- 表示 stdin）")
 	_ = cmd.MarkFlagRequired("file")
 	return cmd
 }
@@ -86,7 +86,7 @@ func teamUpdateCmd() *cobra.Command {
 	var filePath string
 	cmd := &cobra.Command{
 		Use:   "update <id> --file <file>",
-		Short: "?? Team",
+		Short: "更新 Team",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
@@ -97,16 +97,16 @@ func teamUpdateCmd() *cobra.Command {
 			var team teamv1.Team
 			uopts := protojson.UnmarshalOptions{DiscardUnknown: true}
 			if err := uopts.Unmarshal(data, &team); err != nil {
-				return &cli.CLIError{Code: "FILE_PARSE_ERROR", Message: fmt.Sprintf("??????: %v", err)}
+				return &cli.CLIError{Code: "FILE_PARSE_ERROR", Message: fmt.Sprintf("文件解析失败: %v", err)}
 			}
 			updated, err := cc.Client.UpdateTeam(cmd.Context(), args[0], &team)
 			if err != nil {
 				return err
 			}
-			return cc.Printer.PrintSuccess("Team ???", "id", updated.Id)
+			return cc.Printer.PrintSuccess("Team 更新成功", "id", updated.Id)
 		},
 	}
-	cmd.Flags().StringVarP(&filePath, "file", "f", "", "Team ?????JSON?")
+	cmd.Flags().StringVarP(&filePath, "file", "f", "", "Team 配置文件路径（YAML/JSON）")
 	_ = cmd.MarkFlagRequired("file")
 	return cmd
 }
@@ -114,20 +114,20 @@ func teamUpdateCmd() *cobra.Command {
 func teamDeleteCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <id>",
-		Short: "?? Team",
+		Short: "删除 Team",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
 			if !cc.AutoYes {
-				ok, err := cc.UI.ConfirmYesNo(fmt.Sprintf("???? Team %q?", args[0]), false)
+				ok, err := cc.UI.ConfirmYesNo(fmt.Sprintf("确认删除 Team %q？此操作不可撤销", args[0]), false)
 				if err != nil || !ok {
-					return &cli.CLIError{Code: "USER_CANCELED", Message: "?????"}
+					return &cli.CLIError{Code: "USER_CANCELED", Message: "操作已取消"}
 				}
 			}
 			if err := cc.Client.DeleteTeam(cmd.Context(), args[0]); err != nil {
 				return err
 			}
-			return cc.Printer.PrintSuccess("Team ???", "id", args[0])
+			return cc.Printer.PrintSuccess("Team 已删除", "id", args[0])
 		},
 	}
 	return cmd
@@ -137,7 +137,7 @@ func teamRunCmd() *cobra.Command {
 	var content string
 	cmd := &cobra.Command{
 		Use:   "run <id>",
-		Short: "?? Team ??",
+		Short: "运行 Team 测试",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
@@ -149,10 +149,10 @@ func teamRunCmd() *cobra.Command {
 			if resp.Reply != "" {
 				kv = append(kv, "reply", resp.Reply)
 			}
-			return cc.Printer.PrintSuccess("Team ?????", kv...)
+			return cc.Printer.PrintSuccess("Team 运行完成", kv...)
 		},
 	}
-	cmd.Flags().StringVar(&content, "content", "", "??????")
+	cmd.Flags().StringVar(&content, "content", "", "测试输入内容")
 	return cmd
 }
 
@@ -160,7 +160,7 @@ func teamRunsCmd() *cobra.Command {
 	var limit int32
 	cmd := &cobra.Command{
 		Use:   "runs [team-id]",
-		Short: "?? Team ????",
+		Short: "查看 Team 运行记录",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
 			teamID := ""
@@ -175,11 +175,11 @@ func teamRunsCmd() *cobra.Command {
 			return cc.Printer.PrintList(rows, len(resp.Items))
 		},
 	}
-	cmd.Flags().Int32Var(&limit, "limit", 20, "??????")
+	cmd.Flags().Int32Var(&limit, "limit", 20, "返回数量")
 	return cmd
 }
 
-// ??? helpers ??????????????????????????????????????????????????????????????????
+// Row helpers convert proto items to display rows.
 
 func teamsToRows(items []*teamv1.Team) []map[string]string {
 	rows := make([]map[string]string, 0, len(items))
@@ -220,7 +220,7 @@ func loadTeamCreateFromFile(path string) (*teamv1.CreateTeamRequest, error) {
 	req := &teamv1.CreateTeamRequest{}
 	uopts := protojson.UnmarshalOptions{DiscardUnknown: true}
 	if err := uopts.Unmarshal(data, req); err != nil {
-		return nil, &cli.CLIError{Code: "FILE_PARSE_ERROR", Message: fmt.Sprintf("??????: %v", err)}
+		return nil, &cli.CLIError{Code: "FILE_PARSE_ERROR", Message: fmt.Sprintf("文件解析失败: %v", err)}
 	}
 	return req, nil
 }

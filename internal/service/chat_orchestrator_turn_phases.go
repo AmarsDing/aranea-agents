@@ -820,14 +820,12 @@ func (o *ChatOrchestrator) buildAndPersistAssistantMessage(
 
 	assistantOptsStr, err := chatagent.AssistantOptionsJSON(ag, nil)
 	if err != nil {
-		markTurnError(turnStatus, turnErr, turnErrMsg, err)
-		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+		o.markAndPublish(sessionID, runID, turnStatus, turnErr, turnErrMsg, err)
 		return biz.ChatMessage{}, err
 	}
 	if s := result.Reasoning.String(); s != "" {
 		if assistantOptsStr, err = chatagent.MergeReasoningIntoAssistantOptionsJSON(assistantOptsStr, s); err != nil {
-			markTurnError(turnStatus, turnErr, turnErrMsg, err)
-			o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+			o.markAndPublish(sessionID, runID, turnStatus, turnErr, turnErrMsg, err)
 			return biz.ChatMessage{}, err
 		}
 	}
@@ -836,15 +834,13 @@ func (o *ChatOrchestrator) buildAndPersistAssistantMessage(
 	// ensuring thinking and replying are visually separated per the Activity Timeline proposal.
 	if reasoningAsDisplay {
 		if assistantOptsStr, err = chatagent.MergeReasoningAsDisplayFlag(assistantOptsStr, true); err != nil {
-			markTurnError(turnStatus, turnErr, turnErrMsg, err)
-			o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+			o.markAndPublish(sessionID, runID, turnStatus, turnErr, turnErrMsg, err)
 			return biz.ChatMessage{}, err
 		}
 	}
 	if execResult.turnArtCollector != nil {
 		if merged, merr := mergeTurnArtifactRefs(assistantOptsStr, execResult.turnArtCollector.Refs()); merr != nil {
-			markTurnError(turnStatus, turnErr, turnErrMsg, merr)
-			o.publishTurnFailure(sessionID, runID, "chat-service", merr, "")
+			o.markAndPublish(sessionID, runID, turnStatus, turnErr, turnErrMsg, merr)
 			return biz.ChatMessage{}, merr
 		} else {
 			assistantOptsStr = merged
@@ -869,8 +865,7 @@ func (o *ChatOrchestrator) buildAndPersistAssistantMessage(
 		AttachmentsCount: assistantAttN,
 	}
 	if err := o.td().Sessions.AppendChatMessage(ctx, sessionID, assistantMsg, true); err != nil {
-		markTurnError(turnStatus, turnErr, turnErrMsg, err)
-		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+		o.markAndPublish(sessionID, runID, turnStatus, turnErr, turnErrMsg, err)
 		return biz.ChatMessage{}, err
 	}
 	if execResult.userMsgPersisted {

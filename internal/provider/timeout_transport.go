@@ -2,7 +2,9 @@ package provider
 
 import (
 	"context"
+	"io"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -42,6 +44,34 @@ func newTimeoutTransport(base http.RoundTripper, timeout time.Duration) http.Rou
 
 func (t *timeoutTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	ctx, cancel := context.WithTimeout(req.Context(), t.timeout)
-	defer cancel()
-	return t.base.RoundTrip(req.WithContext(ctx))
+	resp, err := t.base.RoundTrip(req.WithContext(ctx))
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	if resp.Body == nil {
+		cancel()
+		return resp, nil
+	}
+	// http.Client.Timeout covers the entire request including response body
+	// reads. A naive defer cancel() here would cancel the context as soon as
+	// RoundTrip returns (after response headers), breaking streaming bodies.
+	// Delay cancellation until the body is fully read/closed to match the
+	// expected lifecycle.
+	resp.Body = &cancelOnClose{ReadCloser: resp.Body, cancel: cancel}
+	return resp, nil
+}
+
+// cancelOnClose wraps an io.ReadCloser and cancels the associated context once
+// the body is closed.
+type cancelOnClose struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+	once   sync.Once
+}
+
+func (c *cancelOnClose) Close() error {
+	err := c.ReadCloser.Close()
+	c.once.Do(c.cancel)
+	return err
 }

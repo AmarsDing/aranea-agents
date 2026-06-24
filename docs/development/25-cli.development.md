@@ -41,13 +41,13 @@
 | Chat `AwaitUserReply` / `EnqueueUserMessage` | 已 proto-first | `api/kratos/chat/v1/chat.proto:223,229` |
 | `cmd/araneactl/lint` 规则 | **已实现** | `cmd/araneactl/lint/main.go` 含 R12 黑名单检查（`r12CLINoBackendImport`）；配套 `r12_test.go` + `testdata/r12_violation.go.txt` |
 | `docs/guides/cli-quickstart.md` | **已创建** | 文件存在；`docs/README.md` 索引文件不存在（仓库无顶层 docs/README） |
-| `monitor` 命令 | **未实现** | `cmd/aranea/main.go` 未注册 `NewMonitorCmd`；`internal/cli/cmd/` 下无 `monitor.go`（CLI-27 其余 6 类资源已实现） |
+| `monitor` 命令 | **已实现** | `cmd/aranea/main.go` 已注册 `NewMonitorCmd`；`internal/cli/cmd/monitor.go` 提供 `audit-logs`/`events`/`traces` 子命令；`internal/cli/client/monitor.go` 调用 `/v1/monitor/*` RPC（CLI-27 全部 7 类资源已实现） |
 | `make cli` target | **已实现** | Makefile 含 `cli` / `cli-all` target |
 | REPL | **已实现** | `internal/cli/repl/` 含 repl.go / slash.go / render.go / history.go |
 | 额外命令（实施中新增） | **已实现** | `graph` / `pkg` / `import` / `pack` 命令已存在 |
 | `--timeout` 全局 flag | **已实现** | `cmd/aranea/main.go:160` 注册为 PersistentFlag，默认 60s |
 
-> 结论：P0 核心任务（CLI-01~13）已基本完成（R12 lint 已上线、quickstart 已落地）；P1 部分任务（CLI-20/21/22/23/27）已实现；主要缺口为 `monitor` 命令（CLI-27 残留）、`tool.error` envelope、`SystemInfoResponse` 字段补齐、CLI-28/29/30。
+> 结论：P0 核心任务（CLI-01~13）已基本完成（R12 lint 已上线、quickstart 已落地）；P1 部分任务（CLI-20/21/22/23/27）已实现（CLI-27 全部 7 类资源完成）；主要缺口为 `tool.error` envelope、`SystemInfoResponse` 字段补齐、CLI-28/29/30。
 
 ### 1.1 后端契约（BE-1~BE-6）实现状态
 
@@ -403,7 +403,7 @@ WS 客户端已实现，但 `tool.error` envelope 类型未定义（使用通用
 - **DoD**：每个子命令各一条 httptest；手工对真实后端 import 一个本地 zip → 看到 job_id → status pending → apply → 成功。
 - **关联**：PRD US-12 / R26
 
-#### CLI-27 剩余资源命令（team / plugin / mcp / cron / channel / session / monitor） ⚠️ 部分完成（6/7）
+#### CLI-27 剩余资源命令（team / plugin / mcp / cron / channel / session / monitor） ✅ 已完成
 - **工种**：CLI
 - **估时**：3（建议拆 CLI-27.1 team、CLI-27.2 plugin、CLI-27.3 mcp、CLI-27.4 cron、CLI-27.5 channel、CLI-27.6 session、CLI-27.7 monitor，每个 0.5d）
 - **依赖**：CLI-03, CLI-05
@@ -413,7 +413,7 @@ WS 客户端已实现，但 `tool.error` envelope 类型未定义（使用通用
 - **DoD**：每个资源至少 1 条 happy-path smoke + 1 条 httptest；`channel send` 必须 `--yes`，否则即使 TTY 也拒绝（与删除不同：channel send 是外部副作用，无 prompt 路径）。
 - **关联**：PRD US-12 / R27
 
-✅ team / plugin / mcp / cron / channel / session 六类已实现（`cmd/aranea/main.go` 已注册）；❌ `monitor` 未实现（`main.go` 未注册 `NewMonitorCmd`，`internal/cli/cmd/` 下无 `monitor.go`）
+✅ team / plugin / mcp / cron / channel / session / monitor 七类已实现（`cmd/aranea/main.go` 已注册全部命令）；`cron pause`/`cron resume` 额外补充实现（PRD §3.2 要求）；`monitor` 提供 `audit-logs`/`events`/`traces` 三个子命令，支持 `--action`/`--resource`/`--actor`/`--keyword`/`--event-type`/`--agent-id`/`--status`/`--provider`/`--model` 过滤
 
 #### CLI-28 `aranea completion <shell>` ❌ 未完成
 - **工种**：CLI
@@ -446,12 +446,12 @@ WS 客户端已实现，但 `tool.error` envelope 类型未定义（使用通用
 
 #### **P1 退出条件**
 
-- [ ] CLI-20..30 全绿（CLI-20/21/23 ✅；CLI-22 ⚠️ 部分完成；CLI-24/25/26 ⚠️ 待确认；CLI-27 ⚠️ 6/7（monitor 缺）；CLI-28/29/30 ❌ 未完成）；
+- [ ] CLI-20..30 全绿（CLI-20/21/23/27 ✅；CLI-22 ⚠️ 部分完成；CLI-24/25/26 ⚠️ 待确认；CLI-28/29/30 ❌ 未完成）；
 - [ ] PRD §9.2 R20..R29 + §9.3 R30..R34 全绿；
 - [ ] 手工跑 `aranea` 进 REPL → "帮我把 figma-code-connect 装上" → 看到工具调用 + 二次确认 + 成功；
 - [ ] Web 控制台 `/tools/runs` 看到 `source=cli` 的记录。
 
-> **差距汇总**：CLI-22 `tool.error` envelope 类型未定义；CLI-24/25/26 待确认实现状态；CLI-27 `monitor` 命令未实现；CLI-28/29/30 未完成。
+> **差距汇总**：CLI-22 `tool.error` envelope 类型未定义；CLI-24/25/26 待确认实现状态；CLI-28/29/30 未完成。
 
 ---
 
@@ -607,8 +607,8 @@ P1
 - [x] 原 `25-cli-development.md` 顶部已加 superseded 指向本计划
 
 ### 8.2 P1 出口
-- [ ] CLI-20..30 全绿（CLI-20/21/23 ✅；CLI-22 ⚠️；CLI-24/25/26 ⚠️ 待确认；CLI-27 ⚠️ 6/7（monitor 缺）；CLI-28/29/30 ❌）
-- [ ] PRD §9.2 R20..R29 全绿（R27 monitor 缺）
+- [ ] CLI-20..30 全绿（CLI-20/21/23/27 ✅；CLI-22 ⚠️；CLI-24/25/26 ⚠️ 待确认；CLI-28/29/30 ❌）
+- [ ] PRD §9.2 R20..R29 全绿（R27 monitor 已实现）
 - [ ] PRD §9.3 R30..R34 全绿
 - [ ] 手工跑通对话模式 + skill install
 - [ ] Web 控制台 `/tools/runs` 可见 `source=cli` 的记录
@@ -647,4 +647,4 @@ P1
 
 ---
 
-*文档版本：3.1 — 2026-06-06；与 [`25-cli.md`](./25-cli.md) / [`25-cli.design.md`](./25-cli.design.md) 同步。*
+*文档版本：3.2 — 2026-06-24；与 [`25-cli.md`](./25-cli.md) / [`25-cli.design.md`](./25-cli.design.md) 同步。CLI-27 monitor 命令已实现，cron pause/resume 补充。*

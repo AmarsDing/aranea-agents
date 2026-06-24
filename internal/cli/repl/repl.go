@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"aranea-agents/internal/cli/client"
-	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
@@ -96,7 +95,7 @@ func (r *REPL) Run(ctx context.Context) error {
 	defer conn.Close()
 
 	// Start render goroutine.
-	safego.Go(appctx.Ctx(), "cli.repl.renderLoop", r.renderLoop)
+	safego.Go(r.ctx, "cli.repl.renderLoop", r.renderLoop)
 
 	// Set up liner.
 	l := liner.NewLiner()

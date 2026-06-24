@@ -8,7 +8,7 @@ function truncateBlock(s: string, max: number): string {
 }
 
 /** Appends stdout/stderr (shell) or a short key summary for other tools. */
-function formatToolResultSummary(event: ToolUseEvent): string {
+export function formatToolResultSummary(event: Pick<ToolUseEvent, 'tool_name' | 'result'>): string {
   const r = event.result;
   if (!r || typeof r !== 'object' || Array.isArray(r)) {
     return '';

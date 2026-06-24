@@ -158,16 +158,17 @@ watch(
   },
 );
 
-// When streaming starts, reset scroll follow but stay collapsed
+// When streaming starts, expand so users can follow the reasoning live.
+// When streaming ends, collapse to keep the timeline compact.
 watch(
   () => props.streaming,
   (live) => {
     if (live) {
       userScrolledUp.value = false;
-      setCollapsed(true); // 流式时保持折叠，显示状态指示器
+      setCollapsed(false);
       void nextTick(scrollToBottom);
     } else {
-      // streaming 结束时保持折叠
+      // streaming 结束时折叠
       setCollapsed(true);
     }
   },

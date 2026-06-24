@@ -99,6 +99,7 @@ func sessionSendCmd() *cobra.Command {
 	cmd.Flags().StringVar(&sessionID, "session", "", "会话 ID")
 	cmd.Flags().StringVar(&agentID, "agent", "", "Agent ID（新建会话时必填）")
 	cmd.Flags().StringVar(&content, "content", "", "消息内容")
+	_ = cmd.MarkFlagRequired("session")
 	_ = cmd.MarkFlagRequired("content")
 	return cmd
 }

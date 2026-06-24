@@ -244,17 +244,18 @@ export function bindStreamHandlers(
     ctx.setMessages(sid, updated);
   }
 
-  // H-03: Stream timeout protection. If runner_completion never arrives
-  // (e.g., WS disconnect), force-finalize all streaming/tool_running messages
-  // after the timeout expires. The timer starts on the first streaming event
-  // and is cleared when runner_completion or error arrives.
+  // H-03: Stream idle-timeout protection. If no streaming event arrives for
+  // STREAM_TIMEOUT_MS (e.g., backend stuck, WS disconnect without reconnect),
+  // force-finalize all streaming/tool_running messages. The timer resets on
+  // each activity_delta so actively-streaming turns never time out (No-Timeout
+  // principle). Terminal events (runner_completion/error/activity_done) clear it.
   const STREAM_TIMEOUT_MS = ctx.streamTimeoutMs ?? CHAT_STREAM_TIMEOUT_DEFAULT_MS;
   let streamTimeoutId: ReturnType<typeof setTimeout> | null = null;
-  let streamStarted = false;
 
-  function startStreamTimeout() {
-    if (streamStarted) return;
-    streamStarted = true;
+  function resetStreamTimeout() {
+    if (streamTimeoutId !== null) {
+      clearTimeout(streamTimeoutId);
+    }
     streamTimeoutId = setTimeout(() => {
       const sid = ctx.resolveActiveSessionId() ?? ctx.sessionId;
       if (!sid) return;
@@ -464,7 +465,7 @@ export function bindStreamHandlers(
           const msgs = ctx.getMessages(sid);
           ctx.setMessages(sid, [...msgs, newMsg]);
         }
-        startStreamTimeout();
+        resetStreamTimeout();
         break;
       }
       case 'reply': {
@@ -481,7 +482,7 @@ export function bindStreamHandlers(
           const msgs = ctx.getMessages(sid);
           ctx.setMessages(sid, [...msgs, newMsg]);
         }
-        startStreamTimeout();
+        resetStreamTimeout();
         ctx.onFirstByteArrived?.();
         break;
       }
@@ -540,6 +541,9 @@ export function bindStreamHandlers(
     }
 
     ctx.onRunActivity?.();
+    // H-03: Reset idle timer on each delta so actively-streaming turns
+    // never time out (No-Timeout principle).
+    resetStreamTimeout();
 
     if (writer && sid === ctx.sessionId) {
       writer.update(activityId, (cur) => {

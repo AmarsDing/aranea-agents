@@ -758,3 +758,65 @@ func TestProcessEvent_routesCoordinatorToOnTextDelta(t *testing.T) {
 		}
 	}
 }
+
+// TestProcessEvent_reasoningBeforeTextInSameChunk verifies that when a single
+// streaming chunk carries both reasoning and text, the thinking activity is
+// created before the reply activity. This prevents the timeline from showing
+// a reply followed by a thinking block.
+func TestProcessEvent_reasoningBeforeTextInSameChunk(t *testing.T) {
+	p, bus, _ := newTestProjector(t)
+	p.Configure(ProjectMeta{SessionID: "sess-1", RequestID: "turn-1", AgentID: "agent-1"}, nil)
+
+	ev := &trpcevent.Event{
+		Author: "agent-1",
+		Response: &trpcmodel.Response{
+			Object:    trpcmodel.ObjectTypeChatCompletionChunk,
+			IsPartial: true,
+			Choices: []trpcmodel.Choice{{
+				Delta: trpcmodel.Message{
+					Content:          "final answer",
+					ReasoningContent: "let me think",
+				},
+			}},
+		},
+	}
+	p.ProcessEvent(context.Background(), ev)
+
+	// First delta for reasoning emits activity_start + activity_delta;
+	// first delta for text emits activity_start + activity_delta.
+	envs := bus.waitForPublished(t, 4)
+	var thinkingStart, replyStart *event.Envelope
+	for i := range envs {
+		if envs[i].Type != contract.EnvelopeTypeActivityStart {
+			continue
+		}
+		kind, _ := envs[i].Metadata["kind"].(string)
+		if kind == string(biz.ActivityKindThinking) {
+			thinkingStart = &envs[i]
+		} else if kind == string(biz.ActivityKindReply) {
+			replyStart = &envs[i]
+		}
+	}
+	if thinkingStart == nil {
+		t.Fatalf("no thinking activity_start envelope found")
+	}
+	if replyStart == nil {
+		t.Fatalf("no reply activity_start envelope found")
+	}
+
+	// The thinking start envelope must be published before the reply start
+	// envelope, because ProcessEvent handles reasoning before text.
+	thinkingIdx := -1
+	replyIdx := -1
+	for i := range envs {
+		if &envs[i] == thinkingStart {
+			thinkingIdx = i
+		}
+		if &envs[i] == replyStart {
+			replyIdx = i
+		}
+	}
+	if thinkingIdx == -1 || replyIdx == -1 || thinkingIdx >= replyIdx {
+		t.Errorf("thinking activity must be created before reply activity in publish order, got thinkingIdx=%d replyIdx=%d", thinkingIdx, replyIdx)
+	}
+}

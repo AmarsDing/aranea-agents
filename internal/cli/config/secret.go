@@ -3,23 +3,16 @@ package config
 import "strings"
 
 // MaskToken returns a masked version of a token.
-// Tokens up to 10 chars are fully masked. For longer tokens, shows a tiny
-// trailing suffix proportional to length (at most 2 chars).
+// Tokens up to 4 chars are fully masked. For longer tokens, shows the last 4
+// chars prefixed by "***" (per PRD §7.1: get 显示为 ***<last4>).
 func MaskToken(token string) string {
 	if token == "" {
 		return ""
 	}
-	if len(token) <= 10 {
+	if len(token) <= 4 {
 		return "***"
 	}
-	n := 40 / len(token)
-	if n > 2 {
-		n = 2
-	}
-	if n == 0 {
-		return "***"
-	}
-	return "***" + token[len(token)-n:]
+	return "***" + token[len(token)-4:]
 }
 
 // TokenDisplay returns the token display string:

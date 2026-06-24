@@ -54,6 +54,9 @@ export interface Activity {
   timestamp: string;
   durationMs: number | null;
 
+  // === Global emission order (backend-assigned, for stable sorting) ===
+  seq?: number;
+
   // === Content fields (by kind) ===
   content?: string | null;
   reasoning?: string | null;
@@ -109,6 +112,7 @@ export interface ActivityStartMeta {
   timestamp: string;
   duration_ms: number | null;
   collapsed: boolean;
+  _seq?: number;
   content?: string | null;
   reasoning?: string | null;
   tool_name?: string | null;
@@ -136,6 +140,7 @@ export interface ActivityDeltaMeta {
   status: ActivityStatus;
   delta_field: 'content' | 'reasoning';
   delta_chunk: string;
+  _seq?: number;
 }
 
 export interface ActivityDoneMeta {
@@ -145,6 +150,7 @@ export interface ActivityDoneMeta {
   duration_ms: number;
   collapsed: boolean;
   timestamp?: string;
+  _seq?: number;
   content?: string | null;
   reasoning?: string | null;
   tool_result?: string | null;

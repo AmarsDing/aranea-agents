@@ -25,8 +25,11 @@ type wsConn struct {
 	logEnabled bool
 	globalMode bool
 	probeMode  bool
-	// connCtx is cancelled when this WebSocket connection closes so that
-	// in-flight turns started by this connection are also cancelled (COR-03).
+	// connCtx is cancelled when this WebSocket connection closes. It governs
+	// connection-scoped goroutines (readPump/writePump/eventPump) and short-
+	// lived handlers (sync_request). Turn execution no longer derives from
+	// connCtx — turns use appctx.Ctx() and are cancelled via RunRegistry.Cancel
+	// (No-Timeout principle, 2026-06-18).
 	connCtx    context.Context
 	connCancel context.CancelFunc
 	// stateMu protects channels, logEnabled, and filterKey from concurrent

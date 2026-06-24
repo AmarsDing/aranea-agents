@@ -176,6 +176,7 @@ func newRoot(ctx context.Context, bi cli.BuildInfo) *cobra.Command {
 		cmdpkg.NewChannelCmd(),
 		cmdpkg.NewGraphCmd(),
 		cmdpkg.NewSessionCmd(),
+		cmdpkg.NewMonitorCmd(),
 		// Phase A: package install.
 		cmdpkg.NewPkgCmd(),
 		// Phase D: chat / REPL.

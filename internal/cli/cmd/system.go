@@ -41,16 +41,17 @@ func systemInfoCmd() *cobra.Command {
 				return s
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "version              : %s\n", na(info.Version))
-			fmt.Fprintf(cmd.OutOrStdout(), "git_commit           : %s\n", na(info.GitCommit))
-			fmt.Fprintf(cmd.OutOrStdout(), "build_time           : %s\n", na(info.BuildTime))
-			fmt.Fprintf(cmd.OutOrStdout(), "default_provider     : %s\n", na(info.DefaultProvider))
-			fmt.Fprintf(cmd.OutOrStdout(), "default_model        : %s\n", na(info.DefaultModel))
-			fmt.Fprintf(cmd.OutOrStdout(), "system_admin_agent_id: %s\n", na(info.SystemAdminAgentID))
-			fmt.Fprintf(cmd.OutOrStdout(), "system_admin_key     : %s\n", na(info.SystemAdminAgentKey))
-			fmt.Fprintf(cmd.OutOrStdout(), "skill_max_zip_mb     : %d\n", info.SkillMaxZipMB)
-			fmt.Fprintf(cmd.OutOrStdout(), "skill_storage_root   : %s\n", na(info.SkillStorageRoot))
-			return nil
+			return cc.Printer.PrintDetail(map[string]string{
+				"version":                na(info.Version),
+				"git_commit":             na(info.GitCommit),
+				"build_time":             na(info.BuildTime),
+				"default_provider":       na(info.DefaultProvider),
+				"default_model":          na(info.DefaultModel),
+				"system_admin_agent_id":  na(info.SystemAdminAgentID),
+				"system_admin_key":       na(info.SystemAdminAgentKey),
+				"skill_max_zip_mb":       fmt.Sprintf("%d", info.SkillMaxZipMB),
+				"skill_storage_root":     na(info.SkillStorageRoot),
+			})
 		},
 	}
 }

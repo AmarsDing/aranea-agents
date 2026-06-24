@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"aranea-agents/internal/cli"
@@ -17,13 +16,16 @@ func NewVersionCmd(version, commit, buildTime string) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
 
-			// Always print local version.
 			bTime := buildTime
 			if bTime == "" {
 				bTime = "unknown"
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "aranea %s (commit=%s build=%s)\n",
-				version, commit, bTime)
+
+			row := map[string]string{
+				"cli_version": version,
+				"commit":      commit,
+				"build_time":  bTime,
+			}
 
 			// Probe backend reachability.
 			ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Second)
@@ -31,10 +33,11 @@ func NewVersionCmd(version, commit, buildTime string) *cobra.Command {
 
 			err := cc.Client.CheckReachability(ctx)
 			if err != nil {
-				fmt.Fprintf(cmd.OutOrStdout(), "backend: unreachable (%s)\n", cc.Cfg.Backend.BaseURL)
-				// Do not set exit code for unreachability in version command.
-				return nil
+				row["backend_url"] = cc.Cfg.Backend.BaseURL
+				row["backend_status"] = "unreachable"
+				return cc.Printer.PrintDetail(row)
 			}
+			row["backend_status"] = "reachable"
 
 			// Try to get system info if we have a token.
 			if cc.Cfg.Backend.Token != "" {
@@ -44,14 +47,14 @@ func NewVersionCmd(version, commit, buildTime string) *cobra.Command {
 					if backendVer == "" {
 						backendVer = "unknown"
 					}
-					fmt.Fprintf(cmd.OutOrStdout(), "backend: %s ✓ (version=%s)\n",
-						cc.Cfg.Backend.BaseURL, backendVer)
-					return nil
+					row["backend_url"] = cc.Cfg.Backend.BaseURL
+					row["backend_version"] = backendVer
+					return cc.Printer.PrintDetail(row)
 				}
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "backend: %s ✓\n", cc.Cfg.Backend.BaseURL)
-			return nil
+			row["backend_url"] = cc.Cfg.Backend.BaseURL
+			return cc.Printer.PrintDetail(row)
 		},
 	}
 	return cmd

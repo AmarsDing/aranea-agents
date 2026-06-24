@@ -273,6 +273,9 @@ export default {
     expandAll: '展开全部',
     toolArgs: '参数',
     toolResult: '结果',
+    toolResultSummary: '结果摘要',
+    toolRawResult: '原始结果',
+    toolError: '错误',
     tool: {
       stuckTimeout: '工具执行超时，未返回结果',
     },

@@ -55,9 +55,11 @@ export function useActivityTimeline() {
       }
     }
 
-    // Sort tree by timestamp to ensure correct order even if WS events arrive out-of-order
+    // Sort tree by timestamp, then by backend-assigned global seq, to ensure
+    // correct order even when the per-activity sequencer publishes different
+    // activities concurrently (e.g. thinking done vs reply start).
     const sortTree = (nodes: ActivityTreeNode[]) => {
-      nodes.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+      nodes.sort(compareActivities);
       for (const node of nodes) sortTree(node.children);
     };
     sortTree(roots);
@@ -103,6 +105,7 @@ export function useActivityTimeline() {
       collapsed: meta.collapsed,
       label: meta.label,
       meta: meta.meta,
+      seq: meta._seq,
     };
     activities.value.set(activity.id, activity);
     triggerRef(activities);
@@ -124,6 +127,7 @@ export function useActivityTimeline() {
     } else if (meta.delta_field === 'content') {
       updated.content = (existing.content || '') + meta.delta_chunk;
     }
+    if (meta._seq != null) updated.seq = meta._seq;
     activities.value.set(meta.activity_id, updated);
     triggerRef(activities);
   }
@@ -146,6 +150,7 @@ export function useActivityTimeline() {
     if (meta.tool_error_code !== undefined) updated.toolErrorCode = meta.tool_error_code;
     if (meta.child_board_id !== undefined) updated.childBoardId = meta.child_board_id;
     if (meta.label !== undefined) updated.label = meta.label;
+    if (meta._seq != null) updated.seq = meta._seq;
     activities.value.set(meta.activity_id, updated);
     triggerRef(activities);
   }
@@ -214,12 +219,20 @@ export function useActivityTimeline() {
     // reactivity exactly once — no manual triggerRef needed.
     const newMap = new Map<string, Activity>();
     let newRootId: string | null = null;
+    let fallbackSeq = 1;
     for (const a of activityList) {
       // AF-FE-15: Backend may return numeric fields as JSON strings (e.g.
       // durationMs="1745"). Coerce them here so downstream reduce/sum/arithmetic
       // never falls into implicit string concatenation (e.g. 1745 + "1588"
       // = "17451588"), which would corrupt displayed durations and turn totals.
-      newMap.set(a.id, normalizeActivityNumericFields(a));
+      const normalized = normalizeActivityNumericFields(a);
+      // Older backends may not persist seq. Preserve it if present, otherwise
+      // derive a stable fallback from the API order (already timestamp-sorted).
+      const withSeq: Activity = {
+        ...normalized,
+        seq: normalized.seq ?? fallbackSeq++,
+      };
+      newMap.set(a.id, withSeq);
       if (!a.parentActivityId) {
         newRootId = a.id;
       }
@@ -447,4 +460,16 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
         message: node.content || node.label || '',
       } satisfies ErrorEvent;
   }
+}
+
+/** Stable activity comparator: timestamp ASC, then backend seq ASC.
+ * When both seqs are absent/identical, return 0 so the stable sort preserves
+ * insertion order (e.g. unit tests with identical timestamps). */
+function compareActivities(a: ActivityTreeNode, b: ActivityTreeNode): number {
+  const ts = a.timestamp.localeCompare(b.timestamp);
+  if (ts !== 0) return ts;
+  const sa = a.seq ?? 0;
+  const sb = b.seq ?? 0;
+  if (sa !== sb) return sa - sb;
+  return 0;
 }

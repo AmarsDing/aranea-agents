@@ -13,7 +13,7 @@ import (
 func NewMCPCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "mcp",
-		Short: "MCP ?????",
+		Short: "MCP 服务器管理",
 	}
 	c.AddCommand(
 		mcpLsCmd(),
@@ -29,7 +29,7 @@ func NewMCPCmd() *cobra.Command {
 func mcpLsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "ls",
-		Short: "???? MCP ???",
+		Short: "列出所有 MCP 服务器",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
 			resp, err := cc.Client.ListMCPServers(cmd.Context())
@@ -45,7 +45,7 @@ func mcpLsCmd() *cobra.Command {
 func mcpGetCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "get <id>",
-		Short: "?? MCP ?????",
+		Short: "查看 MCP 服务器详情",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
@@ -62,7 +62,7 @@ func mcpAddCmd() *cobra.Command {
 	var filePath string
 	cmd := &cobra.Command{
 		Use:   "add --file <file>",
-		Short: "?? MCP ???",
+		Short: "添加 MCP 服务器",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
 			data, err := readFile(filePath)
@@ -72,16 +72,16 @@ func mcpAddCmd() *cobra.Command {
 			req := &mcpv1.CreateMCPServerRequest{}
 			uopts := protojson.UnmarshalOptions{DiscardUnknown: true}
 			if err := uopts.Unmarshal(data, req); err != nil {
-				return &cli.CLIError{Code: "FILE_PARSE_ERROR", Message: fmt.Sprintf("??????: %v", err)}
+				return &cli.CLIError{Code: "FILE_PARSE_ERROR", Message: fmt.Sprintf("文件解析失败: %v", err)}
 			}
 			mcp, err := cc.Client.CreateMCPServer(cmd.Context(), req)
 			if err != nil {
 				return err
 			}
-			return cc.Printer.PrintSuccess("MCP ??????", "id", mcp.Id, "name", mcp.Name)
+			return cc.Printer.PrintSuccess("MCP 服务器创建成功", "id", mcp.Id, "name", mcp.Name)
 		},
 	}
-	cmd.Flags().StringVarP(&filePath, "file", "f", "", "MCP ????????JSON?")
+	cmd.Flags().StringVarP(&filePath, "file", "f", "", "MCP 服务器配置文件路径（YAML/JSON）")
 	_ = cmd.MarkFlagRequired("file")
 	return cmd
 }
@@ -90,7 +90,7 @@ func mcpUpdateCmd() *cobra.Command {
 	var filePath string
 	cmd := &cobra.Command{
 		Use:   "update <id> --file <file>",
-		Short: "?? MCP ???",
+		Short: "更新 MCP 服务器",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
@@ -101,16 +101,16 @@ func mcpUpdateCmd() *cobra.Command {
 			var mcp mcpv1.MCPServer
 			uopts := protojson.UnmarshalOptions{DiscardUnknown: true}
 			if err := uopts.Unmarshal(data, &mcp); err != nil {
-				return &cli.CLIError{Code: "FILE_PARSE_ERROR", Message: fmt.Sprintf("??????: %v", err)}
+				return &cli.CLIError{Code: "FILE_PARSE_ERROR", Message: fmt.Sprintf("文件解析失败: %v", err)}
 			}
 			updated, err := cc.Client.UpdateMCPServer(cmd.Context(), args[0], &mcp)
 			if err != nil {
 				return err
 			}
-			return cc.Printer.PrintSuccess("MCP ??????", "id", updated.Id)
+			return cc.Printer.PrintSuccess("MCP 服务器更新成功", "id", updated.Id)
 		},
 	}
-	cmd.Flags().StringVarP(&filePath, "file", "f", "", "MCP ????????JSON?")
+	cmd.Flags().StringVarP(&filePath, "file", "f", "", "MCP 服务器配置文件路径（YAML/JSON）")
 	_ = cmd.MarkFlagRequired("file")
 	return cmd
 }
@@ -118,20 +118,20 @@ func mcpUpdateCmd() *cobra.Command {
 func mcpDeleteCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <id>",
-		Short: "?? MCP ???",
+		Short: "删除 MCP 服务器",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
 			if !cc.AutoYes {
-				ok, err := cc.UI.ConfirmYesNo(fmt.Sprintf("???? MCP ??? %q?", args[0]), false)
+				ok, err := cc.UI.ConfirmYesNo(fmt.Sprintf("确认删除 MCP 服务器 %q？此操作不可撤销", args[0]), false)
 				if err != nil || !ok {
-					return &cli.CLIError{Code: "USER_CANCELED", Message: "?????"}
+					return &cli.CLIError{Code: "USER_CANCELED", Message: "操作已取消"}
 				}
 			}
 			if err := cc.Client.DeleteMCPServer(cmd.Context(), args[0]); err != nil {
 				return err
 			}
-			return cc.Printer.PrintSuccess("MCP ??????", "id", args[0])
+			return cc.Printer.PrintSuccess("MCP 服务器已删除", "id", args[0])
 		},
 	}
 	return cmd
@@ -140,7 +140,7 @@ func mcpDeleteCmd() *cobra.Command {
 func mcpTestCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "test <id>",
-		Short: "?? MCP ??????",
+		Short: "测试 MCP 服务器连通性",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc := cli.CLIFrom(cmd.Context())
@@ -149,14 +149,14 @@ func mcpTestCmd() *cobra.Command {
 				return err
 			}
 			if result.Ok {
-				return cc.Printer.PrintSuccess("MCP ????????", "status", result.Status)
+				return cc.Printer.PrintSuccess("MCP 服务器测试成功", "status", result.Status)
 			}
-			return cc.Printer.PrintSuccess("MCP ????????", "status", result.Status, "message", result.Message)
+			return cc.Printer.PrintSuccess("MCP 服务器测试失败", "status", result.Status, "message", result.Message)
 		},
 	}
 }
 
-// ??? helpers ??????????????????????????????????????????????????????????????????
+// Row helpers convert proto items to display rows.
 
 func mcpServersToRows(items []*mcpv1.MCPServer) []map[string]string {
 	rows := make([]map[string]string, 0, len(items))

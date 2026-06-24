@@ -39,13 +39,13 @@ func packExportCmd() *cobra.Command {
 		Short: "导出为 .arpack 场景包",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if kind == "" || ref == "" {
-				return fmt.Errorf("--kind and --ref are required")
+				return &cli.CLIError{Code: "MISSING_ARGS", Message: "--kind and --ref are required"}
 			}
 			cc := cli.CLIFrom(cmd.Context())
 
 			resp, err := cc.Client.PackExport(cmd.Context(), kind, ref)
 			if err != nil {
-				return fmt.Errorf("export failed: %w", err)
+				return err
 			}
 
 			outPath := output
@@ -53,10 +53,10 @@ func packExportCmd() *cobra.Command {
 				outPath = resp.Name + ".arpack"
 			}
 			if err := os.WriteFile(outPath, resp.Data, 0644); err != nil {
-				return fmt.Errorf("write file failed: %w", err)
+				return &cli.CLIError{Code: "FILE_READ_ERROR", Message: fmt.Sprintf("write file failed: %v", err)}
 			}
-			fmt.Fprintf(os.Stderr, "Exported %s pack to %s (%d bytes)\n", kind, outPath, len(resp.Data))
-			return nil
+			return cc.Printer.PrintSuccess("Pack 导出成功",
+				"kind", kind, "file", outPath, "bytes", fmt.Sprintf("%d", len(resp.Data)))
 		},
 	}
 	c.Flags().StringVar(&kind, "kind", "", "Export granularity: agent, team, or industry")
@@ -75,7 +75,7 @@ func packImportCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			data, err := os.ReadFile(args[0])
 			if err != nil {
-				return fmt.Errorf("read file failed: %w", err)
+				return &cli.CLIError{Code: "FILE_READ_ERROR", Message: fmt.Sprintf("read file failed: %v", err)}
 			}
 
 			cc := cli.CLIFrom(cmd.Context())
@@ -85,22 +85,19 @@ func packImportCmd() *cobra.Command {
 			}
 			resp, err := cc.Client.PackImport(cmd.Context(), data, strategy)
 			if err != nil {
-				return fmt.Errorf("import failed: %w", err)
+				return err
 			}
 
-			fmt.Fprintf(os.Stderr, "Import result:\n")
-			fmt.Fprintf(os.Stderr, "  Org nodes: %d\n", resp.OrgNodes)
-			fmt.Fprintf(os.Stderr, "  Agents created: %d, updated: %d, skipped: %d\n", resp.AgentsCreated, resp.AgentsUpdated, resp.AgentsSkipped)
-			fmt.Fprintf(os.Stderr, "  Graphs created: %d\n", resp.GraphsCreated)
-			fmt.Fprintf(os.Stderr, "  Teams created: %d, updated: %d, skipped: %d\n", resp.TeamsCreated, resp.TeamsUpdated, resp.TeamsSkipped)
-			fmt.Fprintf(os.Stderr, "  Strategy: %s\n", resp.ConflictStrategy)
-			if len(resp.Failures) > 0 {
-				fmt.Fprintf(os.Stderr, "  Failures:\n")
-				for _, f := range resp.Failures {
-					fmt.Fprintf(os.Stderr, "    %s/%s: %s\n", f.EntityType, f.Key, f.Reason)
-				}
-			}
-			return nil
+			return cc.Printer.PrintSuccess("Pack 导入完成",
+				"org_nodes", fmt.Sprintf("%d", resp.OrgNodes),
+				"agents_created", fmt.Sprintf("%d", resp.AgentsCreated),
+				"agents_updated", fmt.Sprintf("%d", resp.AgentsUpdated),
+				"agents_skipped", fmt.Sprintf("%d", resp.AgentsSkipped),
+				"graphs_created", fmt.Sprintf("%d", resp.GraphsCreated),
+				"teams_created", fmt.Sprintf("%d", resp.TeamsCreated),
+				"teams_updated", fmt.Sprintf("%d", resp.TeamsUpdated),
+				"teams_skipped", fmt.Sprintf("%d", resp.TeamsSkipped),
+				"strategy", resp.ConflictStrategy)
 		},
 	}
 	c.Flags().StringVar(&strategy, "strategy", "skip", "Conflict strategy: skip, overwrite, duplicate")
@@ -115,40 +112,26 @@ func packValidateCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			data, err := os.ReadFile(args[0])
 			if err != nil {
-				return fmt.Errorf("read file failed: %w", err)
+				return &cli.CLIError{Code: "FILE_READ_ERROR", Message: fmt.Sprintf("read file failed: %v", err)}
 			}
 
 			cc := cli.CLIFrom(cmd.Context())
 
 			resp, err := cc.Client.PackValidate(cmd.Context(), data)
 			if err != nil {
-				return fmt.Errorf("validate failed: %w", err)
+				return err
 			}
 
+			valid := "false"
 			if resp.Valid {
-				fmt.Fprintf(os.Stderr, "Pack is valid.\n")
-			} else {
-				fmt.Fprintf(os.Stderr, "Pack is INVALID.\n")
+				valid = "true"
 			}
-			if len(resp.Errors) > 0 {
-				fmt.Fprintf(os.Stderr, "Errors:\n")
-				for _, e := range resp.Errors {
-					fmt.Fprintf(os.Stderr, "  - %s\n", e)
-				}
-			}
-			if len(resp.MissingSkills) > 0 {
-				fmt.Fprintf(os.Stderr, "Missing skills: %v\n", resp.MissingSkills)
-			}
-			if len(resp.MissingFuncRefs) > 0 {
-				fmt.Fprintf(os.Stderr, "Missing func_refs: %v\n", resp.MissingFuncRefs)
-			}
-			if len(resp.Conflicts) > 0 {
-				fmt.Fprintf(os.Stderr, "Conflicts:\n")
-				for _, c := range resp.Conflicts {
-					fmt.Fprintf(os.Stderr, "  - %s/%s\n", c.EntityType, c.Key)
-				}
-			}
-			return nil
+			return cc.Printer.PrintSuccess("Pack 校验完成",
+				"valid", valid,
+				"errors", fmt.Sprintf("%d", len(resp.Errors)),
+				"missing_skills", fmt.Sprintf("%d", len(resp.MissingSkills)),
+				"missing_func_refs", fmt.Sprintf("%d", len(resp.MissingFuncRefs)),
+				"conflicts", fmt.Sprintf("%d", len(resp.Conflicts)))
 		},
 	}
 	return c

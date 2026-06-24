@@ -132,11 +132,12 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 			loggateway.Any("agent_key", input.AgentKey),
 			loggateway.Any("team_id", input.TeamID),
 			loggateway.Any("content_len", len(content)))
-		connCtx := wc.contextOrBackground()
+		// Derive from appctx.Ctx() so the turn outlives the WebSocket connection.
+		// Disconnecting the WS no longer cancels in-flight turns; users cancel via
+		// StopGeneration (RunRegistry.Cancel) instead. Aligns with HTTP path
+		// (submitChatMessageAsync) and the No-Timeout principle (2026-06-18).
 		safego.Go(appctx.Ctx(), "ws-user-message", func() {
-			ctx, cancel := context.WithTimeout(connCtx, s.wsConfig().TurnTimeout)
-			defer cancel()
-			if err := s.turnExecutor.ExecuteTurn(ctx, input); err != nil {
+			if err := s.turnExecutor.ExecuteTurn(appctx.Ctx(), input); err != nil {
 				s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
 				env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
 				env.RequestID = requestID
@@ -170,13 +171,11 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 		req.Options = buildChatOptions(opts)
 	}
 
-	// COR-03: derive turn context from the connection context so disconnecting
-	// the WebSocket also cancels in-flight agent turns for this connection.
-	connCtx := wc.contextOrBackground()
+	// Derive from appctx.Ctx() so the turn outlives the WebSocket connection
+	// (aligns with HTTP path and No-Timeout principle). Cancellation is handled
+	// via StopGeneration (RunRegistry.Cancel), not via the connection context.
 	safego.Go(appctx.Ctx(), "ws-user-message", func() {
-		ctx, cancel := context.WithTimeout(connCtx, s.wsConfig().TurnTimeout)
-		defer cancel()
-		_, err := s.sender.SendChatMessage(ctx, req)
+		_, err := s.sender.SendChatMessage(appctx.Ctx(), req)
 		if err != nil {
 			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
 			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
@@ -217,11 +216,10 @@ func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
 		Content:   strings.TrimSpace(content),
 	}
 
-	connCtxEq := wc.contextOrBackground()
+	// Derive from appctx.Ctx() so the enqueue outlives the WebSocket connection
+	// (aligns with HTTP path and No-Timeout principle).
 	safego.Go(appctx.Ctx(), "ws-enqueue-message", func() {
-		ctx, cancel := context.WithTimeout(connCtxEq, s.wsConfig().TurnTimeout)
-		defer cancel()
-		resp, err := s.sender.EnqueueUserMessage(ctx, req)
+		resp, err := s.sender.EnqueueUserMessage(appctx.Ctx(), req)
 		if err != nil {
 			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 入队消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
 			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)

@@ -129,9 +129,9 @@ func TestExitCodeOf_WrappedCLIError(t *testing.T) {
 	}
 }
 
-func TestExitCodeOf_UnknownCode_DefaultsNetwork(t *testing.T) {
+func TestExitCodeOf_UnknownCode_DefaultsBackendBiz(t *testing.T) {
 	e := &CLIError{Code: "UNKNOWN_CODE", Message: "mystery"}
-	if got := ExitCodeOf(e); got != ExitNetworkError {
-		t.Fatalf("unknown code should default to ExitNetworkError, got %d", got)
+	if got := ExitCodeOf(e); got != ExitBackendBizError {
+		t.Fatalf("unknown code should default to ExitBackendBizError, got %d", got)
 	}
 }

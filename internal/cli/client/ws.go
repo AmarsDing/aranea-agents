@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/safego"
 
 	"github.com/gorilla/websocket"
@@ -75,7 +75,7 @@ func (w *WSClient) Dial(ctx context.Context, sessionID string) (*WSConn, error) 
 		events: make(chan Envelope, 128),
 		done:   make(chan struct{}),
 	}
-	safego.Go(appctx.Ctx(), "cli.ws.readPump", wc.readPump)
+	safego.Go(ctx, "cli.ws.readPump", wc.readPump)
 	return wc, nil
 }
 
@@ -92,12 +92,14 @@ func (c *WSConn) readPump() {
 		}
 		var env Envelope
 		if jsonErr := json.Unmarshal(msg, &env); jsonErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: dropping malformed WS message: %v\n", jsonErr)
 			continue
 		}
 		select {
 		case c.events <- env:
 		default:
-			// drop if channel is full (slow consumer)
+			// Drop if channel is full (slow consumer); warn so user knows events were lost.
+			fmt.Fprintln(os.Stderr, "warning: WS event buffer full, dropping event (slow consumer)")
 		}
 	}
 }

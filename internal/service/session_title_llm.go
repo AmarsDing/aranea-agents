@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"strings"
-	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
@@ -36,9 +35,7 @@ func (g *LLMSessionTitleGenerator) Generate(ctx context.Context, userMessage str
 		return "", apierror.Internal(apierror.DomainSession, "session title: resolve model failed")
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-
+	// Timeout is owned by the caller (generateTitleAsync wraps with 15s).
 	req := &trpcmodel.Request{
 		Messages: []trpcmodel.Message{
 			trpcmodel.NewSystemMessage(titleGenPrompt),
