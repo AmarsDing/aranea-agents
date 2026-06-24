@@ -365,16 +365,24 @@ function buildTreeFromRecords(records: readonly import('../activityTypes').Activ
   return roots;
 }
 
-/** Stable activity comparator: timestamp ASC, then backend seq ASC.
- * When both seqs are absent/identical, return 0 so the stable sort preserves
- * insertion order (e.g. unit tests with identical timestamps). */
+/** Stable activity comparator: backend seq ASC, then timestamp ASC.
+ *
+ * `_seq` is the projector's global emission counter, so it is the most
+ * reliable ordering signal. Timestamp strings are compared numerically as a
+ * fallback because RFC3339Nano strings with variable fractional-digit lengths
+ * do not sort lexicographically (e.g. `.100` vs `.99`). */
 function compareActivities(a: ActivityTreeNode, b: ActivityTreeNode): number {
-  const ts = a.timestamp.localeCompare(b.timestamp);
-  if (ts !== 0) return ts;
   const sa = a.seq ?? 0;
   const sb = b.seq ?? 0;
   if (sa !== sb) return sa - sb;
-  return 0;
+
+  const ta = new Date(a.timestamp).getTime();
+  const tb = new Date(b.timestamp).getTime();
+  if (!Number.isNaN(ta) && !Number.isNaN(tb) && ta !== tb) {
+    return ta - tb;
+  }
+
+  return a.timestamp.localeCompare(b.timestamp);
 }
 
 function flattenTree(tree: ActivityTreeNode[]): ActivityTreeNode[] {

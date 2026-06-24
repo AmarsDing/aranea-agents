@@ -54,14 +54,21 @@ export function useChatComposerActions(deps: ComposerActionDeps) {
       streamManager.cancelActiveStream();
       sender.stopStreaming(sid);
     }
-    const msgs = messageStore.getMessages(sid);
-    const userIdx = msgs.findIndex((m) => m.id === message.id);
-    if (userIdx < 0) return;
+
     let userMsg = '';
-    for (let i = userIdx - 1; i >= 0; i--) {
-      if (msgs[i].role === 'user') {
-        userMsg = msgs[i].content_markdown;
-        break;
+    if (message.role === 'user') {
+      // Regenerate from the selected user message itself.
+      userMsg = message.content_markdown;
+    } else {
+      // For assistant/tool/etc messages, find the user message in the same turn.
+      const msgs = messageStore.getMessages(sid);
+      const idx = msgs.findIndex((m) => m.id === message.id);
+      if (idx < 0) return;
+      for (let i = idx - 1; i >= 0; i--) {
+        if (msgs[i].role === 'user') {
+          userMsg = msgs[i].content_markdown;
+          break;
+        }
       }
     }
     if (!userMsg) return;

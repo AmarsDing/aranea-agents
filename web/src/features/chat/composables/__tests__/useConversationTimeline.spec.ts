@@ -207,6 +207,68 @@ describe('useConversationTimeline', () => {
     );
   });
 
+  it('orders activities by backend seq, not lexicographic timestamp', () => {
+    const messages = ref<Message[]>([
+      makeMessage({ id: 'u1', role: 'user', turn_id: 't1', content_markdown: 'q' }),
+      makeMessage({ id: 'a1', role: 'assistant', turn_id: 't1', content_markdown: 'a' }),
+    ]);
+    // Same timestamp with variable fractional digits; lexicographic sort would
+    // place reply (.200) before thinking (.100). Backend seq must win.
+    const rawRecords = ref<Activity[]>([
+      {
+        id: 'reply-1',
+        kind: 'reply',
+        status: 'completed',
+        sessionId: 'sess-1',
+        turnId: 't1',
+        parentActivityId: null,
+        timestamp: '2026-06-21T00:00:00.200Z',
+        durationMs: null,
+        collapsed: false,
+        content: 'final',
+        seq: 3,
+      } as Activity,
+      {
+        id: 'think-1',
+        kind: 'thinking',
+        status: 'completed',
+        sessionId: 'sess-1',
+        turnId: 't1',
+        parentActivityId: null,
+        timestamp: '2026-06-21T00:00:00.100Z',
+        durationMs: null,
+        collapsed: true,
+        reasoning: 'think',
+        seq: 1,
+      } as Activity,
+      {
+        id: 'action-1',
+        kind: 'action',
+        status: 'completed',
+        sessionId: 'sess-1',
+        turnId: 't1',
+        parentActivityId: null,
+        timestamp: '2026-06-21T00:00:00.150Z',
+        durationMs: null,
+        collapsed: true,
+        toolName: 'read_file',
+        toolArguments: '{}',
+        toolResult: '{}',
+        seq: 2,
+      } as Activity,
+    ]);
+    const { conversationTurns } = useConversationTimeline({
+      messages: computed(() => messages.value),
+      activityRawRecords: computed(() => rawRecords.value),
+    });
+
+    const acts = conversationTurns.value[0].agentWork.activities;
+    expect(acts).toHaveLength(3);
+    expect(acts[0].kind).toBe('thinking');
+    expect(acts[1].kind).toBe('action');
+    expect(acts[2].kind).toBe('reply');
+  });
+
   it('rebuilds a turn when its activity status changes', async () => {
     const messages = ref<Message[]>([
       makeMessage({ id: 'u1', role: 'user', turn_id: 't1', content_markdown: 'q' }),
