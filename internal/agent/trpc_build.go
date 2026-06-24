@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -72,8 +73,29 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 
 	m, err := provider.TRPCModelForProviderModel(ctx, deps.ModelCatalog, deps.RT, prov, mod, lg)
 	if err != nil {
-		lg.Error("Agent 构建失败：模型解析", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Str("provider", prov), loggateway.Str("model", mod), loggateway.Err(err))
-		return nil, nil, err
+		// Fallback: when the agent's configured model is not found in the catalog
+		// (e.g. model was disabled or deleted after agent creation), fall back to
+		// the system default model. The actual runtime model will be overridden by
+		// WithModel RunOption from the chat request, so the build-time model only
+		// needs to be valid for agent construction.
+		if !agentModelEmpty && errors.Is(err, biz.ErrProviderModelNotFound) {
+			lg.Warn("Agent 配置模型在目录中不可用，回退到系统默认模型",
+				loggateway.StepID("agent.build_model_fallback"),
+				loggateway.Str("agent_id", ag.ID),
+				loggateway.Str("agent_key", ag.AgentKey),
+				loggateway.Str("orig_provider", prov),
+				loggateway.Str("orig_model", mod),
+				loggateway.Err(err))
+			fbProv, fbMod := resolveBuildDefaultModel(ctx, deps, lg)
+			if fbProv != "" && fbMod != "" {
+				prov, mod = fbProv, fbMod
+				m, err = provider.TRPCModelForProviderModel(ctx, deps.ModelCatalog, deps.RT, prov, mod, lg)
+			}
+		}
+		if err != nil {
+			lg.Error("Agent 构建失败：模型解析", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Str("provider", prov), loggateway.Str("model", mod), loggateway.Err(err))
+			return nil, nil, err
+		}
 	}
 
 	files := ag.Files
