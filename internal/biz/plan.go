@@ -85,7 +85,7 @@ func (uc *PlanUsecase) ApprovePlan(ctx context.Context, id string) (*Plan, error
 		return nil, err
 	}
 	// S-01 fix: use state machine instead of hardcoded status check
-	if !canTransitionPlan(plan.Status, PlanStatusApproved) {
+	if !CanPlanTransition(plan.Status, PlanStatusApproved) {
 		return nil, apierror.BadRequest("PLAN", "plan cannot transition from %s to approved", string(plan.Status))
 	}
 	plan.Status = PlanStatusApproved
@@ -93,36 +93,12 @@ func (uc *PlanUsecase) ApprovePlan(ctx context.Context, id string) (*Plan, error
 	return uc.repo.Update(ctx, plan)
 }
 
-// validPlanTransitions defines the legal state transitions for Plan.
-// B-04 fix: add state machine validation to prevent invalid status changes.
-var validPlanTransitions = map[PlanStatus][]PlanStatus{
-	PlanStatusDraft:     {PlanStatusApproved},
-	PlanStatusApproved:  {PlanStatusConfirmed, PlanStatusExecuting},
-	PlanStatusConfirmed: {PlanStatusExecuting},
-	PlanStatusExecuting: {PlanStatusCompleted, PlanStatusFailed},
-	PlanStatusFailed:    {PlanStatusDraft}, // allow retry
-	// PlanStatusCompleted is terminal — no outgoing transitions.
-}
-
-func canTransitionPlan(from, to PlanStatus) bool {
-	allowed, ok := validPlanTransitions[from]
-	if !ok {
-		return false
-	}
-	for _, s := range allowed {
-		if s == to {
-			return true
-		}
-	}
-	return false
-}
-
 func (uc *PlanUsecase) MarkExecuting(ctx context.Context, id string) (*Plan, error) {
 	plan, err := uc.GetPlan(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if !canTransitionPlan(plan.Status, PlanStatusExecuting) {
+	if !CanPlanTransition(plan.Status, PlanStatusExecuting) {
 		return nil, apierror.BadRequest("PLAN", "plan cannot transition from %s to executing", string(plan.Status))
 	}
 	plan.Status = PlanStatusExecuting
@@ -135,7 +111,7 @@ func (uc *PlanUsecase) MarkCompleted(ctx context.Context, id string) (*Plan, err
 	if err != nil {
 		return nil, err
 	}
-	if !canTransitionPlan(plan.Status, PlanStatusCompleted) {
+	if !CanPlanTransition(plan.Status, PlanStatusCompleted) {
 		return nil, apierror.BadRequest("PLAN", "plan cannot transition from %s to completed", string(plan.Status))
 	}
 	plan.Status = PlanStatusCompleted
@@ -148,7 +124,7 @@ func (uc *PlanUsecase) MarkFailed(ctx context.Context, id string) (*Plan, error)
 	if err != nil {
 		return nil, err
 	}
-	if !canTransitionPlan(plan.Status, PlanStatusFailed) {
+	if !CanPlanTransition(plan.Status, PlanStatusFailed) {
 		return nil, apierror.BadRequest("PLAN", "plan cannot transition from %s to failed", string(plan.Status))
 	}
 	plan.Status = PlanStatusFailed

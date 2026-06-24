@@ -22,6 +22,37 @@ type TeamStarterPort interface {
 	HandleTeamTurnResult(ctx context.Context, spiritSessionID, teamID, status, errMsg string)
 }
 
+// SpiritTeamAssembler provides the team CRUD operations needed by SpiritTeamUsecase.
+// Narrow interface over TeamUsecase to avoid injecting the full god object (O-4 fix).
+// Stability:evolving
+type SpiritTeamAssembler interface {
+	Create(ctx context.Context, in Team) (Team, error)
+	Get(ctx context.Context, id string) (Team, error)
+	Update(ctx context.Context, id string, patch Team) (Team, error)
+	TransitionStatus(ctx context.Context, id string, newStatus string) (Team, error)
+	ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]Team, error)
+	BatchArchiveTeams(ctx context.Context, ids []string) (int, error)
+	ListRuns(ctx context.Context, teamID string, limit int) ([]TeamRun, error)
+}
+
+// SpiritSessionAccessor provides the session operations needed by SpiritTeamUsecase.
+// Narrow interface over SessionUsecase to avoid injecting the full god object (O-4 fix).
+// Stability:evolving
+type SpiritSessionAccessor interface {
+	Get(ctx context.Context, id string) (Session, error)
+	Create(ctx context.Context, in Session) (Session, error)
+	Search(ctx context.Context, q SessionSearchQuery) (SessionListResult, error)
+	ListMessagesRecent(ctx context.Context, sessionID string, limit int) ([]ChatMessage, error)
+	ListChildSessions(ctx context.Context, parentSessionID string) ([]Session, error)
+}
+
+// SpiritAgentResolver provides the agent query operations needed by SpiritTeamUsecase.
+// Narrow interface over AgentUsecase to avoid injecting the full god object (O-4 fix).
+// Stability:evolving
+type SpiritAgentResolver interface {
+	List(ctx context.Context, q AgentListQuery) (AgentListResult, error)
+}
+
 // SpiritTeamController exposes the methods needed by the service layer's
 // TeamOrchestrationDeps for team lifecycle orchestration (timeout, completion,
 // dependency scheduling, and completion checks).
@@ -82,20 +113,12 @@ func WithEvolutionSuggestionRepo(r EvolutionSuggestionRepo) SpiritTeamUsecaseOpt
 	return func(u *SpiritTeamUsecase) { u.evolutionSugg = r }
 }
 
-func WithDeliverableContractValidator(v *DeliverableContractValidator) SpiritTeamUsecaseOption {
-	return func(u *SpiritTeamUsecase) { u.contractValidator = v }
-}
-
 func WithVerificationGateExecutor(e *VerificationGateExecutor) SpiritTeamUsecaseOption {
 	return func(u *SpiritTeamUsecase) { u.gateExecutor = e }
 }
 
 func WithDeptLeadMgr(m *DeptLeadManager) SpiritTeamUsecaseOption {
 	return func(u *SpiritTeamUsecase) { u.deptLeadMgr = m }
-}
-
-func WithTimeoutHandler(h TimeoutHandler) SpiritTeamUsecaseOption {
-	return func(u *SpiritTeamUsecase) { u.timeoutHandler = h }
 }
 
 // SpiritTeamUsecase manages Spirit team lifecycle.
@@ -109,9 +132,9 @@ func WithTimeoutHandler(h TimeoutHandler) SpiritTeamUsecaseOption {
 // while keeping SpiritTeamUsecase as a facade during migration.
 type SpiritTeamUsecase struct {
 	_                 SpiritTeamController // interface assertion
-	teamUC            *TeamUsecase
-	sessionUC         *SessionUsecase
-	agentUC           *AgentUsecase
+	teamUC            SpiritTeamAssembler
+	sessionUC         SpiritSessionAccessor
+	agentUC           SpiritAgentResolver
 	transactor        SpiritTransactor
 	orchCache         *OrchestrationCache
 	evolutionSugg     EvolutionSuggestionRepo
@@ -128,7 +151,7 @@ type SpiritTeamUsecase struct {
 	timeoutTimers sync.Map // map[string]*time.Timer
 }
 
-func NewSpiritTeamUsecase(teamUC *TeamUsecase, sessionUC *SessionUsecase, agentUC *AgentUsecase, lg loggateway.Logger, opts ...SpiritTeamUsecaseOption) *SpiritTeamUsecase {
+func NewSpiritTeamUsecase(teamUC SpiritTeamAssembler, sessionUC SpiritSessionAccessor, agentUC SpiritAgentResolver, lg loggateway.Logger, opts ...SpiritTeamUsecaseOption) *SpiritTeamUsecase {
 	u := &SpiritTeamUsecase{teamUC: teamUC, sessionUC: sessionUC, agentUC: agentUC, lg: lg}
 	for _, opt := range opts {
 		opt(u)

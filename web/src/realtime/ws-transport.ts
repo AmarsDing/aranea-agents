@@ -34,8 +34,6 @@ export type WsTransportOptions = {
   onServerShutdown?: (reason: string) => void;
   /** Fired when EventBuffer replay starts/ends (reconnect with last_event_id). */
   onReplayState?: (replaying: boolean, count?: number) => void;
-  /** Fired when all reconnect attempts have been exhausted. */
-  onReconnectFailed?: () => void;
 };
 
 export type WsTransport = {

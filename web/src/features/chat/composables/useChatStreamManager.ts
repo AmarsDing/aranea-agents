@@ -199,14 +199,6 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       onReplayState: (replaying) => {
         wsReplaying.value = replaying;
       },
-      onReconnectFailed: () => {
-        $q.notify({
-          type: 'negative',
-          message: t('chat.reconnectFailed', '连接已断开，请刷新页面重试'),
-          timeout: 0,
-          actions: [{ label: t('chat.refresh', '刷新页面'), color: 'white', handler: () => window.location.reload() }],
-        });
-      },
     });
 
     chatStreamCleanup = bindStreamHandlers(
@@ -271,14 +263,6 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     teamStream = createTeamStream(sessionId, {
       onReplayState: (replaying) => {
         wsReplaying.value = replaying;
-      },
-      onReconnectFailed: () => {
-        $q.notify({
-          type: 'negative',
-          message: t('chat.reconnectFailed', '连接已断开，请刷新页面重试'),
-          timeout: 0,
-          actions: [{ label: t('chat.refresh', '刷新页面'), color: 'white', handler: () => window.location.reload() }],
-        });
       },
       onServerShutdown: () => {
         $q.notify({

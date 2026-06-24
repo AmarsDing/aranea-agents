@@ -6,6 +6,15 @@ export type ChatStreamingSnapshot = {
   updatedAt: number;
 };
 
+// TECH-DEBT(S13): module-level singleton ref bypasses Pinia.
+// Reason: streaming snapshot cache is hot-path (updated on every text_delta /
+// reasoning_delta envelope, potentially hundreds of times per second). Pinia's
+// proxy wrapping adds overhead that is undesirable here. The state is also
+// session-scoped and ephemeral (cleared on session switch), not persisted.
+// Migration plan: if DevTools visibility becomes necessary, wrap in a
+// defineStore('chatStreamingSnapshots', ...) with direct state mutation
+// (no actions needed). All consumers already go through useChatStreamingSnapshots().
+// Issue: tracking — frontend architecture cleanup.
 const snapshots = ref<Record<string, ChatStreamingSnapshot>>({});
 
 export function useChatStreamingSnapshots() {

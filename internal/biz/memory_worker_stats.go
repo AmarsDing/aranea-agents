@@ -19,14 +19,6 @@ func NewMemoryWorkerStats() *MemoryWorkerStats {
 	return &MemoryWorkerStats{}
 }
 
-// globalMemoryWorkerStats is the process-level default stats instance.
-// Deprecated: use NewMemoryWorkerStats() + Wire injection instead of MemoryWorkerStatsGlobal().
-var globalMemoryWorkerStats MemoryWorkerStats
-
-// MemoryWorkerStatsGlobal returns the process-level stats singleton.
-// Deprecated: inject *MemoryWorkerStats via Wire instead of using this global accessor.
-func MemoryWorkerStatsGlobal() *MemoryWorkerStats { return &globalMemoryWorkerStats }
-
 func (s *MemoryWorkerStats) RecordJobDone(durationMs int64) {
 	if s == nil {
 		return

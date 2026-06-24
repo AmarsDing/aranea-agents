@@ -32,7 +32,6 @@ export type ChatStreamFactoryOpts = {
   onDisconnected?: () => void;
   onServerShutdown?: (reason: string) => void;
   onReplayState?: (replaying: boolean, count?: number) => void;
-  onReconnectFailed?: () => void;
 };
 
 /** Chat session WS stream; use in `setup()` via {@link useChatStream} or imperatively via this factory. */
@@ -46,7 +45,6 @@ export function createChatStream(sessionId: string, streamOpts?: ChatStreamFacto
     onDisconnected: () => streamOpts?.onDisconnected?.(),
     onServerShutdown: streamOpts?.onServerShutdown,
     onReplayState: streamOpts?.onReplayState,
-    onReconnectFailed: streamOpts?.onReconnectFailed,
   });
 }
 
@@ -129,7 +127,6 @@ export function createTeamStream(
   sessionId: string,
   streamOpts?: {
     onReplayState?: (replaying: boolean, count?: number) => void;
-    onReconnectFailed?: () => void;
     onConnected?: () => void;
     onServerShutdown?: (reason: string) => void;
   },
@@ -139,7 +136,6 @@ export function createTeamStream(
     channels: ['chat', 'team', 'system'],
     autoConnect: false,
     onReplayState: streamOpts?.onReplayState,
-    onReconnectFailed: streamOpts?.onReconnectFailed,
     onConnected: () => streamOpts?.onConnected?.(),
     onServerShutdown: streamOpts?.onServerShutdown,
   });

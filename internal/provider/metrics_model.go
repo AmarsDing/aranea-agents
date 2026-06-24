@@ -60,7 +60,7 @@ func (m *metricsModel) GenerateContent(ctx context.Context, request *trpcmodel.R
 			case <-ctx.Done():
 				// ctx 取消：排空 ch 避免 inner model goroutine 阻塞，
 				// 记录 cancelled 指标后退出。
-				go drainResponseChannel(ch)
+				safego.Go(ctx, "metrics-model-drain", func() { drainResponseChannel(ch) })
 				m.recordMetrics(start, "cancelled")
 				return
 			case resp, ok := <-ch:
@@ -74,7 +74,7 @@ func (m *metricsModel) GenerateContent(ctx context.Context, request *trpcmodel.R
 				}
 				select {
 				case <-ctx.Done():
-					go drainResponseChannel(ch)
+					safego.Go(ctx, "metrics-model-drain", func() { drainResponseChannel(ch) })
 					m.recordMetrics(start, "cancelled")
 					return
 				case out <- resp:

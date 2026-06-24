@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 )
 
 type ObservationReadWriter interface {
@@ -44,6 +45,7 @@ type LearningLoopUsecase struct {
 	evolution        *EvolutionUsecase
 	orchestrator     *SkillEvolutionOrchestrator
 	orchestratorOnce sync.Once
+	lg               loggateway.Logger
 }
 
 func NewLearningLoopUsecase(
@@ -52,6 +54,7 @@ func NewLearningLoopUsecase(
 	prop ProposalReadWriter,
 	agents AgentRepository,
 	evolution *EvolutionUsecase,
+	lg loggateway.Logger,
 ) *LearningLoopUsecase {
 	return &LearningLoopUsecase{
 		obs:       obs,
@@ -59,6 +62,7 @@ func NewLearningLoopUsecase(
 		proposals: prop,
 		agents:    agents,
 		evolution: evolution,
+		lg:        lg,
 	}
 }
 
@@ -300,7 +304,12 @@ func (uc *LearningLoopUsecase) RegisterKnowledge(ctx context.Context, proposalID
 			}
 		}
 		if !dup {
-			uc.evolution.ensurePendingSuggestion(ctx, p.AgentID, p.Kind, p.Title, p.Content)
+			if err := uc.evolution.ensurePendingSuggestion(ctx, p.AgentID, p.Kind, p.Title, p.Content); err != nil {
+				uc.lg.Warn("learning_loop: ensure pending suggestion failed",
+					loggateway.StepID("learning_loop.ensure_pending_suggestion"),
+					loggateway.Str("agent_id", p.AgentID),
+					loggateway.Err(err))
+			}
 		}
 	}
 	applied, err := uc.proposals.UpdateStatus(ctx, proposalID, ProposalStatusApplied, approvedBy)
@@ -374,14 +383,26 @@ func (uc *LearningLoopUsecase) RunLoop(ctx context.Context, agentID string) erro
 	}
 	for _, prop := range proposals {
 		if _, err := uc.ValidateProposal(ctx, prop.ID); err != nil {
+			uc.lg.Warn("learning_loop: validate proposal failed",
+				loggateway.StepID("learning_loop.validate_proposal"),
+				loggateway.Str("proposal_id", prop.ID),
+				loggateway.Err(err))
 			continue
 		}
 		settings, serr := uc.agents.GetAgentRuntimeSettings(ctx, agentID)
 		if serr != nil {
+			uc.lg.Warn("learning_loop: get agent runtime settings failed",
+				loggateway.StepID("learning_loop.get_agent_settings"),
+				loggateway.Str("agent_id", agentID),
+				loggateway.Err(serr))
 			continue
 		}
 		if settings.EvoAutoApply {
 			if _, err := uc.RegisterKnowledge(ctx, prop.ID, "auto"); err != nil {
+				uc.lg.Warn("learning_loop: register knowledge failed",
+					loggateway.StepID("learning_loop.register_knowledge"),
+					loggateway.Str("proposal_id", prop.ID),
+					loggateway.Err(err))
 				continue
 			}
 		}

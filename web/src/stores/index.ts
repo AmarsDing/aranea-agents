@@ -48,4 +48,3 @@ export { useLearningLoopStore } from './learningLoop';
 export { useModelCatalogStore } from './model-catalog';
 export { useSkillIntelligenceStore } from './skillIntelligence';
 export { useSkillEvolutionStore } from './skillEvolution';
-export { useRuntimeProfileStore } from './runtimeProfile';

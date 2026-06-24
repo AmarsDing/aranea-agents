@@ -35,7 +35,6 @@ export type UseEnvelopeStreamOptions = {
   onDisconnected?: () => void;
   onServerShutdown?: (reason: string) => void;
   onReplayState?: (replaying: boolean, count?: number) => void;
-  onReconnectFailed?: () => void;
 };
 
 export type UseEnvelopeStreamReturn = {
@@ -128,9 +127,6 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
       onReplayState: (replaying, count) => {
         wsReplaying.value = replaying;
         opts.onReplayState?.(replaying, count);
-      },
-      onReconnectFailed: () => {
-        opts.onReconnectFailed?.();
       },
     });
 

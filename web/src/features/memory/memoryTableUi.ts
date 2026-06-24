@@ -1,6 +1,28 @@
 import type { QTableColumn } from 'quasar';
-import type { CascadeProposal, CompositeSearchHit, L0AssemblySnapshot, MemoryFact, MemoryRelation } from './types';
+import type {
+  CascadeProposal,
+  CompositeSearchHit,
+  L0AssemblySegmentStats,
+  L0AssemblySnapshot,
+  MemoryFact,
+  MemoryRelation,
+} from './types';
 import { REGISTRY_COL_W, registryCol, registryColActions } from '../ui/registryTableColumns';
+
+/** MemorySnapshotDrawer — 段落统计行（map entry 展开为行） */
+export type MemorySnapshotSegmentRow = L0AssemblySegmentStats & { section: string };
+
+/** MemorySnapshotDrawer — Prompt 段落统计列 */
+export const MEMORY_SNAPSHOT_SEGMENT_COLUMNS: QTableColumn<MemorySnapshotSegmentRow>[] = [
+  registryCol<MemorySnapshotSegmentRow>('section', 'Section', 'section', 'left', '20%', { sortable: true }),
+  registryCol<MemorySnapshotSegmentRow>('token_estimate', 'Token Estimate', 'token_estimate', 'right', '20%', {
+    sortable: true,
+  }),
+  registryCol<MemorySnapshotSegmentRow>('message_count', 'Message Count', 'message_count', 'right', '20%', {
+    sortable: true,
+  }),
+  registryCol<MemorySnapshotSegmentRow>('detail', 'Detail', () => '', 'left', '40%', { sortable: false }),
+];
 
 export const CASCADE_SAGA_TABLE_COLUMNS: QTableColumn<CascadeProposal>[] = [
   registryCol<CascadeProposal>('change', '更名', 'old_value', 'left', REGISTRY_COL_W.name),

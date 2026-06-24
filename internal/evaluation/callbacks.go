@@ -24,14 +24,10 @@ func NewEvalCallbacks(lg loggateway.Logger) *service.Callbacks {
 			if args.Result != nil {
 				caseID = args.Result.EvalCaseID
 			}
-			errStr := ""
-			if args.Error != nil {
-				errStr = args.Error.Error()
-			}
 			lg.Info("eval.inference.case_done",
 				loggateway.StepID("evaluation.inference.case_done"),
 				loggateway.Str("eval_case_id", caseID),
-				loggateway.Str("error", errStr),
+				loggateway.Err(args.Error),
 				loggateway.Str("duration", time.Since(args.StartTime).Round(time.Millisecond).String()),
 			)
 			return &service.AfterInferenceCaseResult{Context: ctx}, nil
@@ -50,16 +46,12 @@ func NewEvalCallbacks(lg loggateway.Logger) *service.Callbacks {
 				caseID = args.Result.EvalID
 				passed = args.Result.FinalEvalStatus == status.EvalStatusPassed
 			}
-			errStr := ""
-			if args.Error != nil {
-				errStr = args.Error.Error()
-			}
 			lg.Info("eval.evaluate.case_done",
 				loggateway.StepID("evaluation.evaluate.case_done"),
 				loggateway.Str("eval_set_id", evalSetID),
 				loggateway.Str("eval_case_id", caseID),
 				loggateway.Bool("passed", passed),
-				loggateway.Str("error", errStr),
+				loggateway.Err(args.Error),
 				loggateway.Str("duration", time.Since(args.StartTime).Round(time.Millisecond).String()),
 			)
 			return &service.AfterEvaluateCaseResult{Context: ctx}, nil
