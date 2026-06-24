@@ -145,7 +145,7 @@ type SkillEvolutionOrchestrator struct {
 	queryReader UnifiedEvolutionQueryReader
 	writer      UnifiedEvolutionWriter
 	triggers    []EvolutionTrigger
-	triggersMu  sync.RWMutex // protects triggers for concurrent RegisterTrigger calls
+	triggersMu  sync.RWMutex                  // protects triggers for concurrent RegisterTrigger calls
 	unifiedSM   *UnifiedEvolutionStateMachine // AS-FSM-01: validates status transitions
 	lg          loggateway.Logger
 }

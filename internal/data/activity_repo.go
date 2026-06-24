@@ -33,7 +33,7 @@ func (r *activityRepo) ListBySessionTurn(ctx context.Context, sessionID, turnID 
 			activity.SessionIDEQ(sessionID),
 			activity.TurnIDEQ(turnID),
 		).
-		Order(ent.Asc(activity.FieldTimestamp)).
+		Order(ent.Asc(activity.FieldSeq), ent.Asc(activity.FieldTimestamp)).
 		All(ctx)
 	if err != nil {
 		return nil, entErrToBizErr(err, "ACTIVITY")
@@ -47,7 +47,7 @@ func (r *activityRepo) ListBySession(ctx context.Context, sessionID string) ([]b
 	}
 	rows, err := r.data.RW().Read(ctx).Activity.Query().
 		Where(activity.SessionIDEQ(sessionID)).
-		Order(ent.Asc(activity.FieldTimestamp)).
+		Order(ent.Asc(activity.FieldSeq), ent.Asc(activity.FieldTimestamp)).
 		All(ctx)
 	if err != nil {
 		return nil, entErrToBizErr(err, "ACTIVITY")
@@ -79,6 +79,7 @@ func (r *activityRepo) CreateActivity(ctx context.Context, a biz.Activity) (biz.
 		SetParentActivityID(a.ParentActivityID).
 		SetTimestamp(a.Timestamp.UTC().Format(time.RFC3339Nano)).
 		SetDurationMs(a.DurationMs).
+		SetSeq(a.Seq).
 		SetPromptTokens(a.PromptTokens).
 		SetCompletionTokens(a.CompletionTokens).
 		SetContent(a.Content).
@@ -115,6 +116,7 @@ func (r *activityRepo) UpdateActivity(ctx context.Context, a biz.Activity) (biz.
 		SetKind(string(a.Kind)).
 		SetStatus(string(a.Status)).
 		SetDurationMs(a.DurationMs).
+		SetSeq(a.Seq).
 		SetPromptTokens(a.PromptTokens).
 		SetCompletionTokens(a.CompletionTokens).
 		SetContent(a.Content).
@@ -160,6 +162,7 @@ func (r *activityRepo) UpsertActivity(ctx context.Context, a biz.Activity) (biz.
 		SetParentActivityID(a.ParentActivityID).
 		SetTimestamp(now).
 		SetDurationMs(a.DurationMs).
+		SetSeq(a.Seq).
 		SetPromptTokens(a.PromptTokens).
 		SetCompletionTokens(a.CompletionTokens).
 		SetContent(a.Content).
@@ -210,6 +213,7 @@ func entActivityToBiz(row *ent.Activity) biz.Activity {
 		ParentActivityID: row.ParentActivityID,
 		Timestamp:        ts,
 		DurationMs:       row.DurationMs,
+		Seq:              row.Seq,
 		PromptTokens:     row.PromptTokens,
 		CompletionTokens: row.CompletionTokens,
 		Content:          row.Content,

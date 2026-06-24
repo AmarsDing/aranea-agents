@@ -92,9 +92,7 @@ describe('useChatComposerActions', () => {
     });
 
     it('resends the first user message when it is the only message', () => {
-      const messages: Message[] = [
-        makeMessage({ id: 'u1', role: 'user', content_markdown: 'first question' }),
-      ];
+      const messages: Message[] = [makeMessage({ id: 'u1', role: 'user', content_markdown: 'first question' })];
       const deps = makeDeps({
         messageStore: {
           getMessages: vi.fn().mockReturnValue(messages),
@@ -129,9 +127,7 @@ describe('useChatComposerActions', () => {
     });
 
     it('cancels an active stream before regenerating', () => {
-      const messages: Message[] = [
-        makeMessage({ id: 'u1', role: 'user', content_markdown: 'hello' }),
-      ];
+      const messages: Message[] = [makeMessage({ id: 'u1', role: 'user', content_markdown: 'hello' })];
       const deps = makeDeps({
         runStatus: ref('running') as Ref<string>,
         messageStore: {

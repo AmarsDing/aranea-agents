@@ -23,7 +23,10 @@ type SystemSetting struct {
 	// DefaultRefineLLM is the platform-level LLM config used by PromptRefiner
 	// when the target agent doesn't have a model configured. PGO-3.
 	DefaultRefineLLM RefineLLMSetting
-	UpdateTime       time.Time
+	// PlannerModel controls how plan_and_execute planner/allocator resolve
+	// their internal LLM model. Replaces ARANEA_PLANNER_PROVIDER/MODEL env vars.
+	PlannerModel PlannerModelSetting
+	UpdateTime   time.Time
 }
 
 // RefineLLMSetting holds the platform default provider/model for AI refinement.
@@ -32,6 +35,24 @@ type RefineLLMSetting struct {
 	Model    string
 	BaseURL  string
 	APIKey   string
+}
+
+// PlannerModelMode controls how the plan_and_execute planner/allocator resolve
+// their internal LLM model.
+const (
+	// PlannerModelModeSpecify uses the admin-specified provider+model from
+	// system settings. If that model is unavailable, falls back to inherit.
+	PlannerModelModeSpecify = "specify"
+	// PlannerModelModeInherit uses the session's selected provider/model
+	// (the effective model driving the current Spirit agent turn).
+	PlannerModelModeInherit = "inherit"
+)
+
+// PlannerModelSetting holds the plan_and_execute planner model configuration.
+type PlannerModelSetting struct {
+	Mode     string // "specify" or "inherit" (default)
+	Provider string // used when Mode == specify
+	Model    string // used when Mode == specify
 }
 
 // SystemSettingRepo is the repository interface for the singleton system
@@ -58,6 +79,9 @@ type SystemSettingRepo interface {
 	// PGO-3: platform default LLM for AI refinement.
 	GetRefineLLM(ctx context.Context) (RefineLLMSetting, error)
 	UpdateRefineLLM(ctx context.Context, patch RefineLLMSetting, updateAPIKey bool) (RefineLLMSetting, error)
+	// PlannerModel: plan_and_execute planner/allocator model resolution config.
+	GetPlannerModel(ctx context.Context) (PlannerModelSetting, error)
+	UpdatePlannerModel(ctx context.Context, patch PlannerModelSetting) (PlannerModelSetting, error)
 }
 
 // SystemSettingTxProvider provides transactional execution for atomic
@@ -280,4 +304,25 @@ func (u *SystemSettingUsecase) UpdateRefineLLM(ctx context.Context, patch Refine
 		BaseURL:  strings.TrimSpace(patch.BaseURL),
 		APIKey:   strings.TrimSpace(patch.APIKey),
 	}, updateAPIKey)
+}
+
+// GetPlannerModel returns the plan_and_execute planner model configuration.
+func (u *SystemSettingUsecase) GetPlannerModel(ctx context.Context) (PlannerModelSetting, error) {
+	return u.repo.GetPlannerModel(ctx)
+}
+
+// UpdatePlannerModel persists the plan_and_execute planner model configuration.
+func (u *SystemSettingUsecase) UpdatePlannerModel(ctx context.Context, patch PlannerModelSetting) (PlannerModelSetting, error) {
+	mode := strings.TrimSpace(patch.Mode)
+	if mode == "" {
+		mode = PlannerModelModeInherit
+	}
+	if mode != PlannerModelModeSpecify && mode != PlannerModelModeInherit {
+		return PlannerModelSetting{}, apierror.BadRequest("SYSTEM_SETTING", "planner_model_mode must be 'specify' or 'inherit'")
+	}
+	return u.repo.UpdatePlannerModel(ctx, PlannerModelSetting{
+		Mode:     mode,
+		Provider: strings.TrimSpace(patch.Provider),
+		Model:    strings.TrimSpace(patch.Model),
+	})
 }

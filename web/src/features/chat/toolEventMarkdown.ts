@@ -150,7 +150,6 @@ export function toolEventToMessage(sessionID: string, event: ToolUseEvent): Mess
     }),
     error_message: event.error || '',
     created_at: event.occurred_at || new Date().toISOString(),
-    origin: { kind: 'tool_activity', toolEventId: messageId },
     agent_ref: agentRef,
     tool_event: { ...event, is_long_running: event.is_long_running },
   };

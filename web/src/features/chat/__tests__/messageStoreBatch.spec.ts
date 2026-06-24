@@ -21,7 +21,6 @@ function msg(id: string, content = ''): Message {
     options_json: '',
     error_message: '',
     created_at: new Date().toISOString(),
-    origin: { kind: 'streaming', sessionId: 's1' },
     agent_ref: null,
     team_member: null,
     source_meta: null,

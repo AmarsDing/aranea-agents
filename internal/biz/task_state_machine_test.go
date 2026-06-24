@@ -124,8 +124,8 @@ func TestTaskStateMachine_CanTransition(t *testing.T) {
 func TestTaskStateMachine_ValidTargets(t *testing.T) {
 	sm := NewTaskStateMachine()
 	tests := []struct {
-		from       TaskStatus
-		wantCount  int
+		from        TaskStatus
+		wantCount   int
 		mustContain []TaskStatus
 	}{
 		{TaskStatusPending, 2, []TaskStatus{TaskStatusClaimed, TaskStatusPendingAssignment}},

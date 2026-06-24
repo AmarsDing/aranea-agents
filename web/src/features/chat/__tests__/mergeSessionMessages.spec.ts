@@ -1,22 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { Message, MessageOrigin } from '../types';
+import type { Message } from '../types';
 import {
-  isActivityMessage,
   mergeIncrementalSessionMessages,
   mergeSessionMessages,
   dropPendingUserPlaceholders,
 } from '../mergeSessionMessages';
-
-function originFromId(id: string): MessageOrigin | undefined {
-  if (id.startsWith('pending-user-')) return { kind: 'pending_user', localId: id };
-  if (id.startsWith('ws-stream-') || id.startsWith('ws-team-stream-'))
-    return { kind: 'streaming', sessionId: id.replace(/^ws-(team-)?stream-/, '') };
-  if (id.startsWith('ws-snap-'))
-    return { kind: 'streaming_snapshot', sessionId: id.replace(/^ws-snap-/, '').replace(/-\d+$/, '') };
-  if (id.startsWith('member-')) return { kind: 'team_member', agentKey: id.replace(/^member-/, '') };
-  if (id.startsWith('act-') || id.startsWith('tool-')) return { kind: 'tool_activity', toolEventId: id };
-  return undefined;
-}
 
 function msg(id: string, status = 'ok', created = '2026-05-20T10:00:00Z'): Message {
   return {
@@ -37,7 +25,6 @@ function msg(id: string, status = 'ok', created = '2026-05-20T10:00:00Z'): Messa
     options_json: '',
     error_message: '',
     created_at: created,
-    origin: originFromId(id),
   };
 }
 
@@ -60,12 +47,6 @@ describe('mergeSessionMessages', () => {
     const merged = mergeSessionMessages(server, local);
     // Persisted sorted by created_at, in-flight after
     expect(merged.map((m) => m.id)).toEqual(['b', 'a', 'ws-stream-sess-1']);
-  });
-
-  it('detects chat.activity schema', () => {
-    const row = msg('act-tc-2');
-    row.options_json = JSON.stringify({ schema: 'chat.activity/v1', tool_event: { id: 'tc-2' } });
-    expect(isActivityMessage(row)).toBe(true);
   });
 
   it('drops pending-user placeholders', () => {
@@ -170,48 +151,18 @@ describe('mergeSessionMessages', () => {
     expect(merged.some((m) => m.id === 'pending-user-abc')).toBe(false);
   });
 
-  it('preserves ws-snap-* snapshots when hasSnapshots=true (C-01 fix)', () => {
-    // Scenario: multi-round LLM conversation with tool_call in between.
-    // The server returns a single merged assistant message, but the local
-    // state has ws-snap-* snapshots with correctly separated per-round content.
-    // The snapshots must be preserved; the server assistant message is excluded
-    // to avoid duplicating content.
-    const serverUser = { ...msg('srv-u-1', 'ok', '2026-05-20T10:00:00Z'), role: 'user', content_markdown: 'hello' };
-    const serverAsst = {
-      ...msg('srv-asst-1', 'ok', '2026-05-20T10:00:02Z'),
-      role: 'assistant',
-      content_markdown: 'Thinking...Result',
-    };
-    const server = [serverUser, serverAsst];
-    const local = [
-      serverUser,
-      // Snapshot from first LLM round (before tool call)
-      { ...msg('ws-snap-sess-1-1', 'ok', '2026-05-20T10:00:01Z'), role: 'assistant', content_markdown: 'Thinking...' },
-      // Active streaming row for second round
-      msg('ws-stream-sess-1', 'streaming', '2026-05-20T10:00:02Z'),
-    ];
-    const merged = mergeSessionMessages(server, local);
-    // Snapshot must be preserved — it has correct per-round content
-    expect(merged.some((m) => m.id === 'ws-snap-sess-1-1')).toBe(true);
-    // Server assistant message is excluded (would duplicate snapshot content)
-    expect(merged.some((m) => m.id === 'srv-asst-1')).toBe(false);
-    // Active streaming row is preserved
-    expect(merged.some((m) => m.id === 'ws-stream-sess-1')).toBe(true);
-  });
-
-  it('sorts ws-snap-* snapshots alongside persisted messages by timestamp (M-05 fix)', () => {
+  it('keeps terminal local rows with tool_event as persisted', () => {
     const serverUser = { ...msg('srv-u-1', 'ok', '2026-05-20T10:00:00Z'), role: 'user', content_markdown: 'hello' };
     const server = [serverUser];
     const local = [
       serverUser,
-      // Snapshot with earlier timestamp than the next server message
-      { ...msg('ws-snap-sess-1-1', 'ok', '2026-05-20T10:00:01Z'), role: 'assistant', content_markdown: 'Round 1' },
-      msg('ws-stream-sess-1', 'streaming', '2026-05-20T10:00:03Z'),
+      {
+        ...msg('act-tc-1', 'ok', '2026-05-20T10:00:01Z'),
+        options_json: JSON.stringify({ schema: 'chat.activity/v1', tool_event: { id: 'tc-1' } }),
+      },
     ];
     const merged = mergeSessionMessages(server, local);
-    const snapIdx = merged.findIndex((m) => m.id === 'ws-snap-sess-1-1');
-    const streamIdx = merged.findIndex((m) => m.id === 'ws-stream-sess-1');
-    // Snapshot should sort with persisted messages (group 0), not with in-flight (group 1)
-    expect(snapIdx).toBeLessThan(streamIdx);
+    expect(merged.some((m) => m.id === 'act-tc-1')).toBe(true);
+    expect(merged.findIndex((m) => m.id === 'act-tc-1')).toBeGreaterThan(merged.findIndex((m) => m.id === 'srv-u-1'));
   });
 });

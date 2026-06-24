@@ -49,6 +49,7 @@ type Activity struct {
 	ParentActivityID string
 	Timestamp        time.Time
 	DurationMs       int64
+	Seq              int64 // Global emission sequence for stable frontend ordering
 
 	// Token usage (kind=task, root Activity only)
 	PromptTokens     int64

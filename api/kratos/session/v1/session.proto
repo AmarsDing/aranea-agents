@@ -462,6 +462,7 @@ message Activity {
   string label = 25;
   int64 prompt_tokens = 26;
   int64 completion_tokens = 27;
+  int64 seq = 28;
 }
 
 message ListActivitiesRequest {

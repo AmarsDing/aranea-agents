@@ -20,16 +20,17 @@ import (
 
 // agentAllocatorImpl implements biz.AgentAllocatorPort.
 type agentAllocatorImpl struct {
-	repo         biz.AllocationPlanRepository
-	agentReader  biz.AgentReader
-	perfRepo     biz.AgentPerformanceRepository
-	capBuilder   *AgentCapabilityBuilder
-	catalog      *biz.LlmProviderModelUsecase
-	httpClient   *http.Client
-	bus          contract.Bus
-	lg           loggateway.Logger
-	embedder     knowledge.Embedder
-	agentFactory biz.AgentFactory
+	repo           biz.AllocationPlanRepository
+	agentReader    biz.AgentReader
+	perfRepo       biz.AgentPerformanceRepository
+	capBuilder     *AgentCapabilityBuilder
+	catalog        *biz.LlmProviderModelUsecase
+	httpClient     *http.Client
+	bus            contract.Bus
+	lg             loggateway.Logger
+	embedder       knowledge.Embedder
+	agentFactory   biz.AgentFactory
+	plannerSetting PlannerModelLookup
 }
 
 var _ biz.AgentAllocatorPort = (*agentAllocatorImpl)(nil)
@@ -46,18 +47,20 @@ func NewAgentAllocator(
 	lg loggateway.Logger,
 	embedder knowledge.Embedder,
 	agentFactory biz.AgentFactory,
+	plannerSetting PlannerModelLookup,
 ) biz.AgentAllocatorPort {
 	return &agentAllocatorImpl{
-		repo:         repo,
-		agentReader:  agentReader,
-		perfRepo:     perfRepo,
-		capBuilder:   capBuilder,
-		catalog:      catalog,
-		httpClient:   httpClient,
-		bus:          bus,
-		lg:           lg,
-		embedder:     embedder,
-		agentFactory: agentFactory,
+		repo:           repo,
+		agentReader:    agentReader,
+		perfRepo:       perfRepo,
+		capBuilder:     capBuilder,
+		catalog:        catalog,
+		httpClient:     httpClient,
+		bus:            bus,
+		lg:             lg,
+		embedder:       embedder,
+		agentFactory:   agentFactory,
+		plannerSetting: plannerSetting,
 	}
 }
 
@@ -644,12 +647,18 @@ func (impl *agentAllocatorImpl) llmColdStart(ctx context.Context, subTask biz.Su
 
 	prompt := buildAllocatorColdStartPrompt(subTask, capabilities)
 
-	provider, model := resolvePlannerProviderModel()
-	if provider == "" || model == "" {
-		provider, model = resolveFallbackProviderModelFromCatalog(ctx, impl.catalog, impl.lg, "allocator.fallback_model", "AgentAllocator")
+	// Resolve planner model via system setting (specify/inherit) with session
+	// model fallback. Replaces legacy env-var + catalog-first approach.
+	setting := biz.PlannerModelSetting{Mode: biz.PlannerModelModeInherit}
+	if impl.plannerSetting != nil {
+		if s, err := impl.plannerSetting.GetPlannerModel(ctx); err == nil {
+			setting = s
+		}
 	}
+	sessionProvider, sessionModel := biz.PlannerSessionModelFromCtx(ctx)
+	provider, model := ResolvePlannerModel(ctx, setting, sessionProvider, sessionModel, impl.catalog, impl.lg, biz.SpiritStepAllocatorMatch, "AgentAllocator")
 	if provider == "" || model == "" {
-		return "", apierror.Internal(apierror.DomainSpirit, "no provider/model configured for agent allocation (set ARANEA_PLANNER_PROVIDER/ARANEA_PLANNER_MODEL env vars or add models in system settings)")
+		return "", apierror.Internal(apierror.DomainSpirit, "no provider/model configured for agent allocation (set planner_model_mode in system settings or add enabled models in catalog)")
 	}
 
 	row, err := impl.catalog.GetByProviderAndModel(ctx, provider, model)
@@ -789,12 +798,18 @@ func (impl *agentAllocatorImpl) llmColdStartForPlan(ctx context.Context, taskPla
 
 	prompt := buildAllocatorColdStartPromptForPlan(taskPlan, capabilities)
 
-	provider, model := resolvePlannerProviderModel()
-	if provider == "" || model == "" {
-		provider, model = resolveFallbackProviderModelFromCatalog(ctx, impl.catalog, impl.lg, "allocator.fallback_model", "AgentAllocator")
+	// Resolve planner model via system setting (specify/inherit) with session
+	// model fallback. Replaces legacy env-var + catalog-first approach.
+	setting := biz.PlannerModelSetting{Mode: biz.PlannerModelModeInherit}
+	if impl.plannerSetting != nil {
+		if s, err := impl.plannerSetting.GetPlannerModel(ctx); err == nil {
+			setting = s
+		}
 	}
+	sessionProvider, sessionModel := biz.PlannerSessionModelFromCtx(ctx)
+	provider, model := ResolvePlannerModel(ctx, setting, sessionProvider, sessionModel, impl.catalog, impl.lg, biz.SpiritStepAllocatorMatch, "AgentAllocator")
 	if provider == "" || model == "" {
-		return "", apierror.Internal(apierror.DomainSpirit, "no provider/model configured for agent allocation (set ARANEA_PLANNER_PROVIDER/ARANEA_PLANNER_MODEL env vars or add models in system settings)")
+		return "", apierror.Internal(apierror.DomainSpirit, "no provider/model configured for agent allocation (set planner_model_mode in system settings or add enabled models in catalog)")
 	}
 
 	row, err := impl.catalog.GetByProviderAndModel(ctx, provider, model)

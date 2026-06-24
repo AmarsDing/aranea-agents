@@ -101,6 +101,10 @@ func (r *systemSettingRepo) Get(ctx context.Context) (biz.SystemSetting, error) 
 	if rl, rerr := r.getRefineLLMRedacted(ctx); rerr == nil {
 		out.DefaultRefineLLM = rl
 	}
+	// Overlay planner model config (stored via DDL migration columns).
+	if pm, perr := r.GetPlannerModel(ctx); perr == nil {
+		out.PlannerModel = pm
+	}
 	return out, nil
 }
 
@@ -303,6 +307,42 @@ func (r *systemSettingRepo) UpdateRefineLLM(ctx context.Context, patch biz.Refin
 		}
 	}
 	return biz.RefineLLMSetting{Provider: patch.Provider, Model: patch.Model, BaseURL: patch.BaseURL}, nil
+}
+
+// GetPlannerModel returns the plan_and_execute planner model configuration.
+// Uses raw SQL because the columns are managed via DDL migration (same pattern
+// as RefineLLM).
+func (r *systemSettingRepo) GetPlannerModel(ctx context.Context) (biz.PlannerModelSetting, error) {
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`SELECT planner_model_mode, planner_model_provider, planner_model_model
+		 FROM system_settings WHERE id = ? LIMIT 1`), systemSettingSingletonID)
+	if err != nil {
+		return biz.PlannerModelSetting{}, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return biz.PlannerModelSetting{}, apierror.NotFound(apierror.DomainData, "not found")
+	}
+	var s biz.PlannerModelSetting
+	if err := rows.Scan(&s.Mode, &s.Provider, &s.Model); err != nil {
+		return biz.PlannerModelSetting{}, err
+	}
+	if strings.TrimSpace(s.Mode) == "" {
+		s.Mode = biz.PlannerModelModeInherit
+	}
+	return s, nil
+}
+
+// UpdatePlannerModel persists the plan_and_execute planner model configuration.
+// Uses raw SQL because the columns are managed via DDL migration.
+func (r *systemSettingRepo) UpdatePlannerModel(ctx context.Context, patch biz.PlannerModelSetting) (biz.PlannerModelSetting, error) {
+	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`UPDATE system_settings SET planner_model_mode=?, planner_model_provider=?, planner_model_model=? WHERE id=?`),
+		patch.Mode, patch.Provider, patch.Model, systemSettingSingletonID)
+	if err != nil {
+		return biz.PlannerModelSetting{}, err
+	}
+	return patch, nil
 }
 
 func (r *systemSettingRepo) UpdateMemoryPlatform(ctx context.Context, patch biz.MemoryPlatformSetting) (biz.MemoryPlatformSetting, error) {

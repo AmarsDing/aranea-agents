@@ -101,13 +101,13 @@ func auditLogsToRows(items []*monitorv1.AuditLog) []map[string]string {
 	rows := make([]map[string]string, 0, len(items))
 	for _, a := range items {
 		rows = append(rows, map[string]string{
-			"id":         a.Id,
-			"action":     a.Action,
-			"resource":   a.Resource,
+			"id":          a.Id,
+			"action":      a.Action,
+			"resource":    a.Resource,
 			"resource_id": a.ResourceId,
-			"actor":      a.Actor,
-			"severity":   a.Severity,
-			"created_at": a.CreatedAt,
+			"actor":       a.Actor,
+			"severity":    a.Severity,
+			"created_at":  a.CreatedAt,
 		})
 	}
 	return rows

@@ -5,7 +5,6 @@ import { useRoute } from 'vue-router';
 import type { SessionView, TeamRow } from '../../../components/chat/types';
 import type { Agent } from '../../agents/types';
 import type { CompressStatus } from '../../session/types';
-import type { Message } from '../types';
 import { useAppStore } from '../../../stores/app';
 import { useChatSessionStore } from '../../../stores/chat/sessionStore';
 import { useChatMessageStore } from '../../../stores/chat/messageStore';
@@ -50,7 +49,6 @@ import { useReasoningSidebar } from './useReasoningSidebar';
 import { useContextualLoadingMessage } from './useContextualLoadingMessage';
 import { useStatusPulse } from './useStatusPulse';
 import { useActivityTimeline } from './useActivityTimeline';
-import { reconstructMessagesFromActivities } from '../activityMessageAdapter';
 import type { ActivityStartMeta, ActivityDeltaMeta, ActivityDoneMeta, ActivityChildStartMeta } from '../activityTypes';
 
 export function useChatWorkspace() {
@@ -155,24 +153,6 @@ export function useChatWorkspace() {
   const selectedProviderModel = computed(() =>
     providerModels.value.find((row) => getProviderModelValue(row) === modelProvider.value),
   );
-
-  // AF-FE-15: Shared loader used by the channel-focus path (route watch,
-  // sidebar click, session restore). It mirrors the AF data load used by
-  // `bindSessionView` so both routes produce the same per-round
-  // `actv-*` messages. Returns [] on failure so the caller can still
-  // render the server's merged assistant message as a fallback.
-  async function loadActivitiesAndReconstruct(sessionId: string): Promise<Message[]> {
-    try {
-      await activityTimeline.loadActivitiesFromAPI(sessionId);
-      if (activityTimeline.loadError.value) return [];
-      const afActivities = activityTimeline.activities.value;
-      if (!afActivities.length) return [];
-      return reconstructMessagesFromActivities(afActivities, sessionId);
-    } catch (e) {
-      console.warn('[chatWorkspace] loadActivitiesAndReconstruct failed', e);
-      return [];
-    }
-  }
 
   const fileSupported = computed(() => {
     const m = selectedProviderModel.value;
@@ -462,7 +442,6 @@ export function useChatWorkspace() {
     selectedProviderModel,
     makeSessionTitle,
     t,
-    loadActivitiesAndReconstruct,
   });
 
   useChatInboundSync({
@@ -931,22 +910,10 @@ export function useChatWorkspace() {
     try {
       if (replace) clearChatMarkdownCache();
 
-      // AF-FE-14: Load Activity data BEFORE messages so that:
-      // 1. The AF path (buildAllConversationTurnsFromActivities) has data
-      //    available when conversationTurns is computed.
-      // 2. Reconstructed actv-* messages (streaming_snapshot origin) are
-      //    available to merge into local state, which automatically excludes
-      //    the server's merged assistant ChatMessage via the hasSnapshots
-      //    guard in mergeSessionMessages, preventing content duplication.
-      // Without this ordering, the server's merged message and AF data
-      // coexist, causing "thinking/reply merged into one UI block" and
-      // content duplication bugs.
-      //
-      // Only reconstruct Activity messages when Activity data is actually
-      // available. Pre-AF sessions (no Activity records) rely on the
-      // server's merged assistant message for content display.
-      let hasActivityData = false;
-      let activityReconstructedMessages: Message[] = [];
+      // AF-FE-14: Load Activity data BEFORE messages so that the AF path
+      // (useConversationTimeline) has data available when conversationTurns
+      // is computed. Activity events are consumed directly by the timeline;
+      // we no longer reconstruct synthetic message rows from Activity records.
       await activityTimeline.loadActivitiesFromAPI(sessionId);
       // AF-GAP-05: When AF API fails after 5 retries, show a visible
       // "数据加载失败，请刷新" notice instead of silently falling back to
@@ -963,22 +930,8 @@ export function useChatWorkspace() {
           ],
         });
       }
-      // Check if Activity data was successfully loaded (loadError indicates API failure)
-      const afActivities = activityTimeline.activities.value;
-      hasActivityData = afActivities.length > 0 && !activityTimeline.loadError.value;
-      // Reconstruct per-round actv-* messages from Activity records.
-      // These streaming_snapshot messages provide the per-round structure
-      // needed for correct interleaved display (thinking → tool → reply)
-      // and automatically exclude the server's merged assistant ChatMessage.
-      if (hasActivityData) {
-        activityReconstructedMessages = reconstructMessagesFromActivities(afActivities, sessionId);
-      }
 
-      await messageStore.loadMessages(
-        replace
-          ? { sessionId, replace: true, activityMessages: activityReconstructedMessages }
-          : { sessionId, activityMessages: activityReconstructedMessages },
-      );
+      await messageStore.loadMessages(replace ? { sessionId, replace: true } : { sessionId });
     } catch (err) {
       $q.notify({
         type: 'negative',

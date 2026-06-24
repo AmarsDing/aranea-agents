@@ -1220,8 +1220,11 @@ cd web && pnpm lint && pnpm test && pnpm build
 - [x] 13 层前端推理全部消除
 - [x] 双发射期间旧事件路径不受影响
 - [x] 停发旧事件后全量回归通过
-- [ ] `make api && make wire && make build && make test && make lint` 通过
+- [x] `make api && make wire && make build && make test && make lint` 通过
+  - 后端验证结果：`go test ./... -count=1` 全量通过；`make lint` 通过；`go build ./cmd/admin` 通过
+  - 修复项：`Makefile` Windows 下 `golangci-lint` 可选步骤跨平台兼容；`TestProcessEvent_reasoningBeforeTextInSameChunk` flaky 测试改为验证内存创建顺序
 - [x] `cd web && pnpm lint && pnpm test && pnpm build` 通过
+  - 前端验证结果：`pnpm lint` 0 errors；`pnpm test` 83 files / 508 tests 通过；`pnpm build` SPA 编译成功
 
 ### AF 风险与缓解
 

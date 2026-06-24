@@ -342,7 +342,6 @@ import type { SpiritTeam, SpiritMember, SynthesisOutput, CompletionStats } from 
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import type { ContextualMessage } from '../../features/chat/composables/useContextualLoadingMessage';
 import { EXECUTION_COLLAPSE_CONTROL_KEY } from '../../features/chat/executionCardHelpers';
-import { isTeamMemberOrigin, ensureOrigin } from '../../features/chat/messageOrigin';
 import type { ErrorEvent } from '../../features/chat/streamEventTypes';
 
 type Option = { label: string; value: string; caption?: string };
@@ -489,10 +488,9 @@ const teamMemberLanes = computed((): TeamMemberLane[] => {
   if (!props.isTeamSession) return [];
   const lanes = new Map<string, TeamMemberLane>();
   for (const message of props.messages) {
-    const origin = ensureOrigin(message).origin;
-    if (!isTeamMemberOrigin(origin)) continue;
-    const key = origin.agentKey || message.id;
-    const label = message.agent_ref?.name || origin.agentKey || key;
+    if (!message.team_member) continue;
+    const key = message.team_member.agent_id || message.id;
+    const label = message.agent_ref?.name || message.team_member.name || key;
     const streaming = message.status === 'streaming' || message.status === 'tool_running';
     const prev = lanes.get(key);
     lanes.set(key, {

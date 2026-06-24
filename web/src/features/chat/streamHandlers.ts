@@ -2,23 +2,12 @@ import type { Envelope } from './envelope';
 import type { UseEnvelopeStreamReturn } from './useEnvelopeStream';
 import type { Message } from './types';
 import type { Session } from '../session/types';
-import { finalizeOrphanToolMessages, toolEventFromMessage } from './envelopeToolCall';
+import { finalizeOrphanToolMessages } from './envelopeToolCall';
 import { patchStreamingMessage } from './streamContentPatch';
 import { createMessageBatchWriter } from './messageStoreBatch';
 import { shouldSessionWsSkipEnvelope } from './inboundSyncRouting';
 import { sessionContextPatchFromEnvelope, isSessionCompressNotice } from './sessionContextPatch';
 import type { SessionContextPatch } from './sessionContextPatch';
-
-import { originFromId } from './messageOrigin';
-import {
-  createStreamingMessageFromActivity,
-  patchStreamingMessageFromDelta,
-  finalizeStreamingMessageFromDone,
-  createToolMessageFromActivityStart,
-  mergeToolResultFromDone,
-} from './activityMessageAdapter';
-import { toolEventToMessage } from './toolEventMarkdown';
-import type { ActivityStartMeta, ActivityDeltaMeta, ActivityDoneMeta } from './activityTypes';
 
 /** H-03: Default stream timeout (ms) when ctx.streamTimeoutMs is not provided. */
 const CHAT_STREAM_TIMEOUT_DEFAULT_MS = 10 * 60 * 1000;
@@ -42,7 +31,6 @@ export function createPlaceholderMessage(id: string, sessionID: string, role: st
     options_json: '',
     error_message: '',
     created_at: new Date().toISOString(),
-    origin: originFromId(id, role),
     agent_ref: null,
     team_member: null,
     source_meta: null,
@@ -109,7 +97,6 @@ function markPendingUserFailed(messages: Message[], pendingId: string, errorMess
 function markStreamingMessagesFailed(messages: Message[], sessionId: string, errorMessage: string): Message[] {
   return messages.map((m) => {
     if (m.role !== 'assistant' || m.status !== 'streaming') return m;
-    if (m.origin?.kind !== 'streaming') return m;
     if (m.session_id !== sessionId) return m;
     return {
       ...m,
@@ -125,33 +112,6 @@ function latestPendingUserId(messages: Message[]): string {
     if (id.startsWith('pending-user-')) return id;
   }
   return '';
-}
-
-/**
- * AF-GAP-04: Apply team member metadata to a reply Activity message.
- *
- * When the backend ActivityProjector detects a team member author, it sets
- * `Meta: { member_id: <author> }` on the Activity (see OnMemberMessageDelta
- * in internal/agent/activity_projector.go). The envelope builder surfaces
- * this as `metadata.meta.member_id`.
- *
- * This function mirrors the Legacy `member_message_start` handler's message
- * fields so the AF path produces identical team_member / origin / options_json
- * data, enabling the frontend to render member avatars and role badges without
- * relying on the Legacy member_message_* handlers.
- *
- * If `member_id` is absent or `resolveMemberMeta` is unavailable, the message
- * is left unchanged (coordinator or single-agent reply).
- */
-function applyMemberMetaToMessage(msg: Message, md: Record<string, unknown>, ctx: StreamHandlerCtx): void {
-  const metaObj = md.meta as Record<string, unknown> | undefined;
-  const memberId = typeof metaObj?.member_id === 'string' ? metaObj.member_id : '';
-  if (!memberId || !ctx.resolveMemberMeta) return;
-  const memberMeta = ctx.resolveMemberMeta(memberId);
-  msg.model_name = `team/${memberMeta.role || 'member'}`;
-  msg.options_json = JSON.stringify({ team_member: memberMeta });
-  msg.origin = { kind: 'team_member', agentKey: memberId };
-  msg.team_member = { agent_id: '', name: memberMeta.name, role: memberMeta.role };
 }
 
 /** Shared streaming row patch for WS handlers and inbound sync. */
@@ -320,7 +280,6 @@ export function bindStreamHandlers(
           ...createPlaceholderMessage(placeholderId, sid, 'assistant', ''),
           status: 'streaming',
           model_name: 'thinking',
-          origin: { kind: 'streaming', sessionId: sid },
         };
         writer?.flushSync();
         ctx.setMessages(sid, [...existing, placeholder]);
@@ -335,9 +294,9 @@ export function bindStreamHandlers(
 
   // T7.3d: Legacy member_message_start / member_delta / member_message_done
   // handlers removed. Team member messages are now handled exclusively by
-  // the AF path: activity_start(kind=reply) with meta.member_id triggers
-  // applyMemberMetaToMessage (see case 'reply' below), which sets the same
-  // team_member / origin / options_json fields the Legacy handlers did.
+  // the AF path: activity_start(kind=reply) with meta.member_id carries the
+  // member metadata directly. The UI resolves member name/role from the
+  // Activity record rather than reconstructing synthetic message rows.
   // The Legacy handlers are no longer needed and have been removed to
   // eliminate dual-path rendering bugs.
 
@@ -428,7 +387,14 @@ export function bindStreamHandlers(
   });
 
   // === Activity Handlers ===
-  // These handlers drive the messageStore via Activity envelopes.
+  // Activity-First (AF): the backend projects runtime events into semantic
+  // Activity units and pushes them via activity_start/delta/done/child_start.
+  // The messageStore no longer reconstructs intermediate assistant/tool rows
+  // from these envelopes; rendering is driven by useActivityTimeline, which
+  // consumes the same envelopes through ctx.onActivityEnvelope.
+  //
+  // This block only retains control-flow side effects (placeholder cleanup,
+  // pending-user turn_id backfill, error handling, completion reload).
 
   stream.onType('activity_start', (env: Envelope) => {
     if (shouldSessionWsSkipEnvelope(env)) return;
@@ -443,7 +409,6 @@ export function bindStreamHandlers(
       ctx.onFirstByteArrived?.();
 
       // Remove the placeholder message created on run_status=running.
-      // The real streaming message will be created by the Activity handlers below.
       removeThinkingPlaceholder(sid);
 
       // AF-correlation: 用 md.turn_id 回填 pending-user 占位消息的 turn_id，
@@ -452,66 +417,20 @@ export function bindStreamHandlers(
       backfillPendingUserTurnId(sid, turnId);
     }
 
-    const rawActivityId = String(md.activity_id ?? '');
-    if (!rawActivityId) return; // Guard: activity_id must be present
-    const activityId = `actv-${rawActivityId}`;
-
-    switch (kind) {
-      case 'thinking': {
-        const newMsg = createStreamingMessageFromActivity(activityId, sid, md as unknown as ActivityStartMeta);
-        if (writer && sid === ctx.sessionId) {
-          writer.insert(newMsg);
-        } else {
-          const msgs = ctx.getMessages(sid);
-          ctx.setMessages(sid, [...msgs, newMsg]);
-        }
-        resetStreamTimeout();
-        break;
+    if (kind === 'error') {
+      clearStreamTimeout();
+      const errMsg = String(md.content ?? 'stream failed');
+      const errType = String(md.error_type ?? '');
+      if (!errType.startsWith('flow_')) {
+        ctx.onErrorNotify?.(errMsg);
+        writer?.flushSync();
+        const msgs = ctx.getMessages(sid);
+        const withFailed = markStreamingMessagesFailed(msgs, sid, errMsg);
+        const pendingId = latestPendingUserId(withFailed);
+        const final = pendingId ? markPendingUserFailed(withFailed, pendingId, errMsg) : withFailed;
+        ctx.setMessages(sid, final);
       }
-      case 'reply': {
-        const newMsg = createStreamingMessageFromActivity(activityId, sid, md as unknown as ActivityStartMeta);
-        // AF-GAP-04: When meta.member_id is present, this reply Activity was
-        // produced by a team member (OnMemberMessageDelta/Done on the backend).
-        // Apply the same team_member metadata as the Legacy member_message_start
-        // handler so the frontend can distinguish member replies from the
-        // coordinator's reply (avatar, role badge, options_json).
-        applyMemberMetaToMessage(newMsg, md, ctx);
-        if (writer && sid === ctx.sessionId) {
-          writer.insert(newMsg);
-        } else {
-          const msgs = ctx.getMessages(sid);
-          ctx.setMessages(sid, [...msgs, newMsg]);
-        }
-        resetStreamTimeout();
-        ctx.onFirstByteArrived?.();
-        break;
-      }
-      case 'action': {
-        const toolMsg = createToolMessageFromActivityStart(sid, md as unknown as ActivityStartMeta);
-        if (writer && sid === ctx.sessionId) {
-          writer.insert(toolMsg);
-        } else {
-          const msgs = ctx.getMessages(sid);
-          ctx.setMessages(sid, [...msgs, toolMsg]);
-        }
-        break;
-      }
-      case 'error': {
-        clearStreamTimeout();
-        const errMsg = String(md.content ?? 'stream failed');
-        const errType = String(md.error_type ?? '');
-        if (!errType.startsWith('flow_')) {
-          ctx.onErrorNotify?.(errMsg);
-          writer?.flushSync();
-          const msgs = ctx.getMessages(sid);
-          const withFailed = markStreamingMessagesFailed(msgs, sid, errMsg);
-          const pendingId = latestPendingUserId(withFailed);
-          const final = pendingId ? markPendingUserFailed(withFailed, pendingId, errMsg) : withFailed;
-          ctx.setMessages(sid, final);
-        }
-        ctx.markSendingDone();
-        break;
-      }
+      ctx.markSendingDone();
     }
 
     ctx.onActivityEnvelope?.(env);
@@ -523,12 +442,6 @@ export function bindStreamHandlers(
     const active = ctx.resolveActiveSessionId();
     if (sid !== ctx.sessionId || (active && sid !== active)) return;
     const md = (env.metadata ?? {}) as Record<string, unknown>;
-    const chunk = String(md.delta_chunk ?? '');
-    if (!chunk) return;
-
-    const rawActivityId = String(md.activity_id ?? '');
-    if (!rawActivityId) return; // Guard: activity_id must be present
-    const activityId = `actv-${rawActivityId}`;
 
     // P3 fallback: backfill pending-user turn_id if activity_start(task) was
     // missed/lost. activity_delta metadata carries turn_id (see
@@ -545,30 +458,6 @@ export function bindStreamHandlers(
     // never time out (No-Timeout principle).
     resetStreamTimeout();
 
-    if (writer && sid === ctx.sessionId) {
-      writer.update(activityId, (cur) => {
-        const patched = patchStreamingMessageFromDelta(cur, md as unknown as ActivityDeltaMeta);
-        // P2-F1: skip array copy when the patch is a no-op (terminal status
-        // or unknown delta_field). patchStreamingMessageFromDelta returns the
-        // same reference in those cases.
-        if (patched === cur) return undefined;
-        return patched;
-      });
-    } else {
-      const msgs = ctx.getMessages(sid);
-      const idx = msgs.findIndex((m) => m.id === activityId);
-      if (idx >= 0) {
-        const patched = patchStreamingMessageFromDelta(msgs[idx], md as unknown as ActivityDeltaMeta);
-        // P2-F1: skip array copy + setMessages when the patch is a no-op.
-        // Do NOT return early — onActivityEnvelope must still fire below.
-        if (patched !== msgs[idx]) {
-          const next = [...msgs];
-          next[idx] = patched;
-          ctx.setMessages(sid, next);
-        }
-      }
-    }
-
     ctx.onActivityEnvelope?.(env);
   });
 
@@ -579,8 +468,6 @@ export function bindStreamHandlers(
     if (sid !== ctx.sessionId || (active && sid !== active)) return;
     const md = (env.metadata ?? {}) as Record<string, unknown>;
     const kind = String(md.kind ?? '');
-    const rawActivityId = String(md.activity_id ?? '');
-    const activityId = rawActivityId ? `actv-${rawActivityId}` : '';
 
     // P3 fallback: backfill pending-user turn_id if activity_start(task) was
     // missed/lost. activity_done metadata carries turn_id (see
@@ -590,80 +477,22 @@ export function bindStreamHandlers(
       backfillPendingUserTurnId(sid, turnId);
     }
 
-    switch (kind) {
-      case 'thinking': {
-        if (!activityId) break;
-        writer?.flushSync();
-        const msgs = ctx.getMessages(sid);
-        const idx = msgs.findIndex((m) => m.id === activityId);
-        if (idx >= 0) {
-          const finalized = finalizeStreamingMessageFromDone(msgs[idx], md as unknown as ActivityDoneMeta);
-          const next = [...msgs];
-          next[idx] = finalized;
-          ctx.setMessages(sid, next);
-        }
-        break;
+    if (kind === 'task') {
+      clearStreamTimeout();
+      ctx.markSendingDone();
+      writer?.flushSync();
+      const finalized = finalizeOrphanToolMessages(ctx.getMessages(sid));
+      ctx.setMessages(sid, finalized);
+      // Apply usage if present
+      const usage = md.usage as Record<string, unknown> | undefined;
+      if (usage) {
+        applySessionContextPatch(sid, env);
       }
-      case 'reply': {
-        if (!activityId) break;
-        writer?.flushSync();
-        const msgs = ctx.getMessages(sid);
-        const idx = msgs.findIndex((m) => m.id === activityId);
-        if (idx >= 0) {
-          const finalized = finalizeStreamingMessageFromDone(msgs[idx], md as unknown as ActivityDoneMeta);
-          const next = [...msgs];
-          next[idx] = finalized;
-          ctx.setMessages(sid, next);
-        }
-        break;
-      }
-      case 'action': {
-        const toolCallId = String(md.tool_call_id ?? '');
-        const actId = `act-${toolCallId}`;
-        if (writer && sid === ctx.sessionId) {
-          writer.update(actId, (cur) => {
-            const existing = toolEventFromMessage(cur);
-            if (!existing) return undefined;
-            const merged = mergeToolResultFromDone(existing, md as unknown as ActivityDoneMeta);
-            const updated = toolEventToMessage(sid, merged);
-            updated.id = actId;
-            return { ...cur, ...updated, id: actId };
-          });
-        } else {
-          const msgs = ctx.getMessages(sid);
-          const idx = msgs.findIndex((m) => m.id === actId);
-          if (idx >= 0) {
-            const existing = toolEventFromMessage(msgs[idx]);
-            if (existing) {
-              const merged = mergeToolResultFromDone(existing, md as unknown as ActivityDoneMeta);
-              const updated = toolEventToMessage(sid, merged);
-              updated.id = actId;
-              const next = [...msgs];
-              next[idx] = { ...msgs[idx], ...updated, id: actId };
-              ctx.setMessages(sid, next);
-            }
-          }
-        }
-        break;
-      }
-      case 'task': {
-        clearStreamTimeout();
-        ctx.markSendingDone();
-        writer?.flushSync();
-        const finalized = finalizeOrphanToolMessages(ctx.getMessages(sid));
-        ctx.setMessages(sid, finalized);
-        // Apply usage if present
-        const usage = md.usage as Record<string, unknown> | undefined;
-        if (usage) {
-          applySessionContextPatch(sid, env);
-        }
-        if (shouldSessionWsSkipEnvelope(env)) return;
-        try {
-          await ctx.onReloadAfterCompletion?.(sid);
-        } catch {
-          /* caller may surface errors */
-        }
-        break;
+      if (shouldSessionWsSkipEnvelope(env)) return;
+      try {
+        await ctx.onReloadAfterCompletion?.(sid);
+      } catch {
+        /* caller may surface errors */
       }
     }
 

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -24,25 +23,27 @@ const minSubTasksForParallel = 3
 
 // taskPlannerImpl implements biz.TaskPlannerPort.
 type taskPlannerImpl struct {
-	repo       biz.TaskPlanRepository
-	catalog    *biz.LlmProviderModelUsecase
-	httpClient *http.Client
-	bus        contract.Bus
-	orchCache  *biz.OrchestrationCache
-	lg         loggateway.Logger
+	repo           biz.TaskPlanRepository
+	catalog        *biz.LlmProviderModelUsecase
+	httpClient     *http.Client
+	bus            contract.Bus
+	orchCache      *biz.OrchestrationCache
+	lg             loggateway.Logger
+	plannerSetting PlannerModelLookup
 }
 
 var _ biz.TaskPlannerPort = (*taskPlannerImpl)(nil)
 
 // NewTaskPlanner creates a new TaskPlanner implementation.
-func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, bus contract.Bus, orchCache *biz.OrchestrationCache, lg loggateway.Logger) biz.TaskPlannerPort {
+func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, bus contract.Bus, orchCache *biz.OrchestrationCache, lg loggateway.Logger, plannerSetting PlannerModelLookup) biz.TaskPlannerPort {
 	return &taskPlannerImpl{
-		repo:       repo,
-		catalog:    catalog,
-		httpClient: httpClient,
-		bus:        bus,
-		orchCache:  orchCache,
-		lg:         lg,
+		repo:           repo,
+		catalog:        catalog,
+		httpClient:     httpClient,
+		bus:            bus,
+		orchCache:      orchCache,
+		lg:             lg,
+		plannerSetting: plannerSetting,
 	}
 }
 
@@ -565,14 +566,18 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 
 	prompt := buildDecompositionPrompt(userMessage, artifact)
 
-	// Use the default provider/model from catalog (same pattern as intent pass)
-	provider, model := resolvePlannerProviderModel()
-	if provider == "" || model == "" {
-		// Fallback: use the first available model from catalog
-		provider, model = resolveFallbackProviderModelFromCatalog(ctx, impl.catalog, impl.lg, biz.SpiritStepPlannerAssess, "TaskPlanner")
+	// Resolve planner model via system setting (specify/inherit) with session
+	// model fallback. Replaces legacy env-var + catalog-first approach.
+	setting := biz.PlannerModelSetting{Mode: biz.PlannerModelModeInherit}
+	if impl.plannerSetting != nil {
+		if s, err := impl.plannerSetting.GetPlannerModel(ctx); err == nil {
+			setting = s
+		}
 	}
+	sessionProvider, sessionModel := biz.PlannerSessionModelFromCtx(ctx)
+	provider, model := ResolvePlannerModel(ctx, setting, sessionProvider, sessionModel, impl.catalog, impl.lg, biz.SpiritStepPlannerAssess, "TaskPlanner")
 	if provider == "" || model == "" {
-		return nil, nil, apierror.Internal(apierror.DomainSpirit, "no provider/model configured for task decomposition (set ARANEA_PLANNER_PROVIDER/ARANEA_PLANNER_MODEL env vars or add models in system settings)")
+		return nil, nil, apierror.Internal(apierror.DomainSpirit, "no provider/model configured for task decomposition (set planner_model_mode in system settings or add enabled models in catalog)")
 	}
 
 	row, err := impl.catalog.GetByProviderAndModel(ctx, provider, model)
@@ -637,47 +642,10 @@ Rules:
 - Subtasks should be independently executable where possible` + intentContext
 }
 
-// resolvePlannerProviderModel returns the provider and model for task decomposition.
-// Uses environment variables or defaults to the same model as intent pass.
-func resolvePlannerProviderModel() (string, string) {
-	// TODO: Make configurable via system settings
-	// For now, use environment variables with sensible defaults
-	provider := strings.TrimSpace(getEnvOrDefault("ARANEA_PLANNER_PROVIDER", ""))
-	model := strings.TrimSpace(getEnvOrDefault("ARANEA_PLANNER_MODEL", ""))
-	return provider, model
-}
-
-func getEnvOrDefault(key, defaultVal string) string {
-	v := strings.TrimSpace(os.Getenv(key))
-	if v == "" {
-		return defaultVal
-	}
-	return v
-}
-
-// resolveFallbackProviderModelFromCatalog attempts to find the first available
-// provider/model from the catalog when environment variables are not configured.
-// Shared by TaskPlanner and AgentAllocator.
-func resolveFallbackProviderModelFromCatalog(ctx context.Context, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger, stepID, component string) (string, string) {
-	if catalog == nil {
-		return "", ""
-	}
-	models, err := catalog.List(ctx)
-	if err != nil || len(models) == 0 {
-		return "", ""
-	}
-	for _, m := range models {
-		if m.Provider != "" && m.Model != "" {
-			lg.Info(component+": using fallback provider/model from catalog",
-				loggateway.StepID(stepID),
-				loggateway.Str("provider", m.Provider),
-				loggateway.Str("model", m.Model),
-			)
-			return m.Provider, m.Model
-		}
-	}
-	return "", ""
-}
+// resolvePlannerProviderModel and resolveFallbackProviderModelFromCatalog
+// were removed in favor of ResolvePlannerModel (planner_model_resolver.go),
+// which reads the planner_model_mode system setting and falls back to the
+// session's effective model (inherit mode) or the first enabled catalog model.
 
 // parseDecompositionOutput parses the LLM output into SubTask slice.
 func parseDecompositionOutput(text string) ([]biz.SubTask, error) {

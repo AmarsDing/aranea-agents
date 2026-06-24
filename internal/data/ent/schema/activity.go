@@ -38,6 +38,7 @@ func (Activity) Fields() []ent.Field {
 		// === Timing ===
 		field.String("timestamp").Default("").Comment("ISO8601 start timestamp"),
 		field.Int64("duration_ms").Default(0).Comment("Duration in ms, filled on completion"),
+		field.Int64("seq").Default(0).Comment("Global emission sequence for stable frontend ordering"),
 
 		// === Token usage (kind=task, root Activity only) ===
 		field.Int64("prompt_tokens").Default(0).Comment("LLM prompt tokens for this turn (root task only)"),

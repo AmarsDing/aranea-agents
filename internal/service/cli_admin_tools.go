@@ -15,6 +15,26 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
+// sessionModelLookup resolves the effective provider/model for a Spirit session.
+// It implements tools.SessionModelLookup for plan_and_execute "inherit" mode.
+type sessionModelLookup struct {
+	sessions biz.SessionTurnManager
+}
+
+func (s sessionModelLookup) GetSessionModel(ctx context.Context, sessionID string) (provider, model string) {
+	if s.sessions == nil || sessionID == "" {
+		return "", ""
+	}
+	sess, err := s.sessions.Get(ctx, sessionID)
+	if err != nil {
+		return "", ""
+	}
+	if sess.LastProvider != "" && sess.LastModel != "" {
+		return sess.LastProvider, sess.LastModel
+	}
+	return sess.DefaultProvider, sess.DefaultModel
+}
+
 type cliAdminSkillRepo struct {
 	uc biz.CLIAdminSkillLister
 }
@@ -134,7 +154,7 @@ func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
 		allocator := o.team().AgentAllocator
 		orchestrator := o.team().TaskOrchestrator
 		if planner != nil && allocator != nil && orchestrator != nil {
-			out = append(out, tools.NewPlanAndExecuteTool(planner, allocator, orchestrator, o.spiritAssembler(), o.td().Pipeline.Bus, o.lg()))
+			out = append(out, tools.NewPlanAndExecuteTool(planner, allocator, orchestrator, o.spiritAssembler(), sessionModelLookup{sessions: o.td().Sessions}, o.td().Pipeline.Bus, o.lg()))
 			out = append(out, tools.NewCheckOrchestrationProgressTool(orchestrator, o.lg()))
 			out = append(out, tools.NewCancelOrchestrationTool(orchestrator, o.lg()))
 		}

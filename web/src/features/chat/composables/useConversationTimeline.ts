@@ -20,7 +20,6 @@ import type { ActivityTreeNode } from '../activityTypes';
 import type { AgentBlock, ProgressSection } from '../agentTreeTypes';
 import { agentColorFromKey, ROOT_AGENT_KEY } from '../agentTreeTypes';
 import { activityToStreamEvent } from './useActivityTimeline';
-import { isTeamMemberOrigin, ensureOrigin } from '../messageOrigin';
 import { mergeProgressEvents } from '../executionProgress';
 import { useAppStore } from '../../../stores/app';
 
@@ -119,8 +118,7 @@ export function useConversationTimeline(deps: {
     const afTree = deps.activityTree?.value;
     const afRawRecords = deps.activityRawRecords?.value;
 
-    const ensured = allMessages.map(ensureOrigin);
-    const userTurns = splitByUserMessages(ensured);
+    const userTurns = splitByUserMessages(allMessages);
     if (userTurns.length === 0) return [];
 
     const activitiesByTurn = groupRawRecordsByTurn(afRawRecords ?? []);
@@ -262,7 +260,7 @@ function buildSingleTurnFromActivities(
   },
 ): ConversationTurn {
   const userMessage = turn.userMessage || turn.messages.find((m) => m.role === 'user');
-  const firstAssistant = turn.messages.find((m) => m.role === 'assistant' && !isTeamMemberOrigin(m.origin));
+  const firstAssistant = turn.messages.find((m) => m.role === 'assistant' && !m.team_member);
 
   // Build Activity tree from raw records for this turn
   const treeNodes = buildTreeFromRecords(rawRecords);

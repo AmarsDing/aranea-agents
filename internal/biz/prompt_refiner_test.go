@@ -191,6 +191,12 @@ func (mockSystemSettingRepo) GetRefineLLM(context.Context) (RefineLLMSetting, er
 func (mockSystemSettingRepo) UpdateRefineLLM(context.Context, RefineLLMSetting, bool) (RefineLLMSetting, error) {
 	return RefineLLMSetting{}, nil
 }
+func (mockSystemSettingRepo) GetPlannerModel(context.Context) (PlannerModelSetting, error) {
+	return PlannerModelSetting{}, nil
+}
+func (mockSystemSettingRepo) UpdatePlannerModel(context.Context, PlannerModelSetting) (PlannerModelSetting, error) {
+	return PlannerModelSetting{}, nil
+}
 
 type mockLLMCaller struct {
 	got LLMCallRequest

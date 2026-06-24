@@ -42,15 +42,15 @@ func systemInfoCmd() *cobra.Command {
 			}
 
 			return cc.Printer.PrintDetail(map[string]string{
-				"version":                na(info.Version),
-				"git_commit":             na(info.GitCommit),
-				"build_time":             na(info.BuildTime),
-				"default_provider":       na(info.DefaultProvider),
-				"default_model":          na(info.DefaultModel),
-				"system_admin_agent_id":  na(info.SystemAdminAgentID),
-				"system_admin_key":       na(info.SystemAdminAgentKey),
-				"skill_max_zip_mb":       fmt.Sprintf("%d", info.SkillMaxZipMB),
-				"skill_storage_root":     na(info.SkillStorageRoot),
+				"version":               na(info.Version),
+				"git_commit":            na(info.GitCommit),
+				"build_time":            na(info.BuildTime),
+				"default_provider":      na(info.DefaultProvider),
+				"default_model":         na(info.DefaultModel),
+				"system_admin_agent_id": na(info.SystemAdminAgentID),
+				"system_admin_key":      na(info.SystemAdminAgentKey),
+				"skill_max_zip_mb":      fmt.Sprintf("%d", info.SkillMaxZipMB),
+				"skill_storage_root":    na(info.SkillStorageRoot),
 			})
 		},
 	}

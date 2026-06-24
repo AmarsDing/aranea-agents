@@ -50,17 +50,6 @@ export const useChatMessageStore = defineStore('chatMessage', () => {
     replace?: boolean;
     afterRevision?: number;
     dropStaleInFlight?: boolean;
-    /**
-     * Pre-constructed Activity messages (from `reconstructMessagesFromActivities`).
-     * When Activity data is available, these per-round `actv-*` messages replace
-     * the server's single merged assistant ChatMessage, preserving the multi-round
-     * structure needed for correct interleaved display (thinking → tool → reply).
-     *
-     * These are merged as local messages alongside server messages. The server
-     * merged assistant is automatically excluded when streaming_snapshot messages
-     * are present (detected via `hasSnapshots` in mergeSessionMessages).
-     */
-    activityMessages?: Message[];
   }) {
     const sid = opts.sessionId;
     if (!sid) return;
@@ -70,7 +59,6 @@ export const useChatMessageStore = defineStore('chatMessage', () => {
     // running → success), which would make cached parse results stale.
     clearToolEventCache();
 
-    const activityMessages = opts.activityMessages ?? [];
     const local = getMessages(sid);
     const mergeOpts = {
       dropStaleInFlight: opts.dropStaleInFlight ?? false,
@@ -80,14 +68,11 @@ export const useChatMessageStore = defineStore('chatMessage', () => {
       const { items, currentRevision } = await listSessionChatMessagesAfterRevision(sid, opts.afterRevision);
       sessionRevisionBySession.value[sid] = currentRevision;
       if (items.length > 0) {
-        setMessages(
-          sid,
-          mergeIncrementalSessionMessages(items, mergeLocalWithActivity(local, activityMessages), mergeOpts),
-        );
+        setMessages(sid, mergeIncrementalSessionMessages(items, local, mergeOpts));
       } else if (currentRevision > opts.afterRevision || opts?.dropStaleInFlight) {
         const { items: server, currentRevision: fullRev } = await listMessages(sid);
         sessionRevisionBySession.value[sid] = fullRev;
-        setMessages(sid, mergeSessionMessages(server, mergeLocalWithActivity(local, activityMessages), mergeOpts));
+        setMessages(sid, mergeSessionMessages(server, local, mergeOpts));
       }
       return;
     }
@@ -95,19 +80,11 @@ export const useChatMessageStore = defineStore('chatMessage', () => {
     const { items: server, currentRevision } = await listMessages(sid);
     sessionRevisionBySession.value[sid] = currentRevision;
     if (opts.replace || local.length === 0) {
-      const merged = mergeSessionMessages(server, activityMessages, mergeOpts);
+      const merged = mergeSessionMessages(server, [], mergeOpts);
       setMessages(sid, merged);
       return;
     }
-    setMessages(sid, mergeSessionMessages(server, mergeLocalWithActivity(local, activityMessages), mergeOpts));
-  }
-
-  /** Merge local messages with pre-constructed Activity messages, deduplicating by ID. */
-  function mergeLocalWithActivity(local: Message[], activityMessages: Message[]): Message[] {
-    if (!activityMessages.length) return local;
-    const existingIds = new Set(local.map((m) => m.id));
-    const newActivityMsgs = activityMessages.filter((m) => !existingIds.has(m.id));
-    return [...local, ...newActivityMsgs];
+    setMessages(sid, mergeSessionMessages(server, local, mergeOpts));
   }
 
   function deleteSessionMessages(sessionId: string) {

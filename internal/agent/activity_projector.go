@@ -109,6 +109,11 @@ type ActivityProjector struct {
 	planActivityID string // current turn's plan activity ID (graph node events)
 	planStepIndex  int    // monotonic counter for plan steps within this turn
 
+	// memberToolCalls tracks per-member tool call counts for team run step
+	// persistence. Populated directly from OnToolCall so stream_consumer no
+	// longer needs EventProjector output to compute MemberToolCalls.
+	memberToolCalls map[string]int
+
 	// resetDone prevents Reset() from clearing state that was initialized
 	// before stream consumption started. When the projector is pre-created
 	// (e.g. in invokeTurnLLMAndStream for early emission access), Reset()
@@ -135,6 +140,19 @@ func NewActivityProjector(eventBus event.Bus, activityRepo biz.ActivityWriter, l
 	p.sequencer = newActivityEventSequencer(eventBus, lg)
 	p.sequencer.activityRepo = activityRepo
 	return p
+}
+
+// activitySeq returns the stable emission sequence for an activity. The first
+// call assigns a new monotonic sequence number and stores it on the activity;
+// subsequent calls return the stored value. This ensures an activity's timeline
+// position is determined by its creation order and survives persistence/refresh.
+func (p *ActivityProjector) activitySeq(a *biz.Activity) int64 {
+	if a.Seq != 0 {
+		return a.Seq
+	}
+	seq := atomic.AddInt64(&p.seq, 1)
+	a.Seq = seq
+	return seq
 }
 
 // transitionActivityStatus validates and applies a state transition on the
@@ -200,6 +218,7 @@ func (p *ActivityProjector) Reset() {
 	p.reasoningBuf = make(map[string]*strings.Builder)
 	p.planActivityID = ""
 	p.planStepIndex = 0
+	p.memberToolCalls = make(map[string]int)
 	p.resetDone = true
 	p.turnStarted = false
 }
@@ -716,6 +735,16 @@ func (p *ActivityProjector) OnToolCall(ctx context.Context, toolCallID, toolName
 	p.activities[id] = a
 	p.toolCalls[toolCallID] = a
 
+	// Track per-member tool call counts for team run step persistence.
+	// stream_consumer reads this in AF mode instead of deriving it from
+	// EventProjector envelopes.
+	if isTeamMemberAuthor(author, p.meta) {
+		if p.memberToolCalls == nil {
+			p.memberToolCalls = make(map[string]int)
+		}
+		p.memberToolCalls[author]++
+	}
+
 	p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityStart)
 }
 
@@ -1185,21 +1214,46 @@ func (p *ActivityProjector) OnPlanStepUpdate(ctx context.Context, activityID str
 	return activity, nil
 }
 
+// MemberToolCalls returns a copy of the per-member tool call counts observed
+// during the current turn. Used by stream_consumer in AF mode to populate
+// EventStreamResult.MemberToolCalls for team run step persistence.
+func (p *ActivityProjector) MemberToolCalls() map[string]int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.memberToolCalls) == 0 {
+		return nil
+	}
+	out := make(map[string]int, len(p.memberToolCalls))
+	for k, v := range p.memberToolCalls {
+		out[k] = v
+	}
+	return out
+}
+
 // OnStuckTools finalizes action Activities whose tool_result never arrived.
 // Called from stream_consumer.finalize() when the turn ends with pending tool calls.
 // This is the AF equivalent of PublishStuckToolResultEnvelopes — instead of
 // publishing a legacy tool_result envelope (which AF mode doesn't process),
 // it publishes activity_done(kind=action, status=failed) envelopes so the
 // frontend can update the tool card from running → failed.
-func (p *ActivityProjector) OnStuckTools(ctx context.Context, pending map[string]event.EnvelopeToolCall) {
+func (p *ActivityProjector) OnStuckTools(ctx context.Context) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	for toolCallID := range pending {
-		a, ok := p.toolCalls[toolCallID]
-		if !ok {
+	for toolCallID, a := range p.toolCalls {
+		// Skip activities that already received a terminal status; only
+		// tool_running activities are stuck.
+		if a.Status != biz.ActivityStatusToolRunning {
 			continue
 		}
+
+		p.lg.Warn("stuck tool detected at turn finalization",
+			loggateway.StepID("agent.activity_projector.stuck_tool"),
+			loggateway.Str("tool_call_id", toolCallID),
+			loggateway.Str("tool_name", a.ToolName),
+			loggateway.Str("status", string(a.Status)),
+			loggateway.Str("session_id", p.meta.SessionID),
+		)
 
 		// Mark as failed with timeout error
 		errPayload, _ := json.Marshal(map[string]string{
@@ -1362,7 +1416,10 @@ func (p *ActivityProjector) buildActivityEnvelope(a *biz.Activity, envType contr
 		"session_id": a.SessionID,
 		// Global emission sequence so the frontend can order events even when
 		// the per-activity sequencer publishes different activities concurrently.
-		"_seq": atomic.AddInt64(&p.seq, 1),
+		// The sequence is assigned on the activity's first envelope and reused
+		// for subsequent deltas/dones so the activity's timeline position is
+		// determined by its creation order, not by the last event envelope.
+		"_seq": p.activitySeq(a),
 	}
 
 	// Content fields

@@ -23,9 +23,9 @@ func TestResolveDecision_mergeGroupWithAI_MissingGroupID(t *testing.T) {
 	}
 
 	_, _, err := eng.resolveDecision(job, biz.SkillImportDecision{
-		Action:      "merge_group_with_ai",
-		MergedName:  "Merged Skill",
-		MergedBody:  "---\nname: Merged Skill\n---\nbody",
+		Action:     "merge_group_with_ai",
+		MergedName: "Merged Skill",
+		MergedBody: "---\nname: Merged Skill\n---\nbody",
 	})
 	if err == nil {
 		t.Fatal("expected error for missing group_id, got nil")
@@ -51,10 +51,10 @@ func TestResolveDecision_mergeGroupWithAI_GroupNotFound(t *testing.T) {
 	}
 
 	_, _, err := eng.resolveDecision(job, biz.SkillImportDecision{
-		Action:      "merge_group_with_ai",
-		GroupID:     "grp-nonexistent",
-		MergedName:  "Merged Skill",
-		MergedBody:  "---\nname: Merged Skill\n---\nbody",
+		Action:     "merge_group_with_ai",
+		GroupID:    "grp-nonexistent",
+		MergedName: "Merged Skill",
+		MergedBody: "---\nname: Merged Skill\n---\nbody",
 	})
 	if err == nil {
 		t.Fatal("expected error for non-existent group_id, got nil")
@@ -80,11 +80,11 @@ func TestResolveDecision_mergeGroupWithAI_ValidGroup(t *testing.T) {
 	}
 
 	params, _, err := eng.resolveDecision(job, biz.SkillImportDecision{
-		Action:             "merge_group_with_ai",
-		GroupID:            "grp-valid",
-		MergedName:         "Merged Skill",
-		MergedBody:         "---\nname: Merged Skill\n---\nbody",
-		MergedDescription:  "A merged skill",
+		Action:            "merge_group_with_ai",
+		GroupID:           "grp-valid",
+		MergedName:        "Merged Skill",
+		MergedBody:        "---\nname: Merged Skill\n---\nbody",
+		MergedDescription: "A merged skill",
 	})
 	if err != nil {
 		t.Fatalf("expected success for valid group_id, got: %v", err)

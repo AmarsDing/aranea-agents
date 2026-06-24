@@ -36,6 +36,15 @@ else
 	API_PROTO_FILES=$(shell find api -name '*.proto')
 endif
 
+# Cross-platform helpers for the optional golangci-lint step in `make lint`.
+ifeq ($(GOHOSTOS),windows)
+GOLANGCI_NULL:=2>nul
+GOLANGCI_IGNORE:=cmd /c "exit /b 0"
+else
+GOLANGCI_NULL:=2>/dev/null
+GOLANGCI_IGNORE:=true
+endif
+
 .PHONY: init
 # init env
 init:
@@ -114,7 +123,7 @@ lint:
 	go vet ./...
 	go run ./cmd/araneactl/fmtcheck --root .
 	$(MAKE) fieldguide-lint
-	@golangci-lint run ./... 2>/dev/null || true
+	@golangci-lint run ./... $(GOLANGCI_NULL) || $(GOLANGCI_IGNORE)
 
 .PHONY: golangci-lint
 # EP-ENG-05: run golangci-lint (must be installed: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)

@@ -41,7 +41,12 @@ describe('chat send → delta → completion → merge flow', () => {
       server,
       local.filter((m) => !m.id.startsWith('pending-user-')),
     );
-    expect(merged.some((m) => m.id === 'ws-stream-sess-1')).toBe(true);
+    // AF-3: Terminal local preview rows are dropped once the server has the
+    // persisted turn. Streaming content is now rendered from Activity events,
+    // so the ws-stream placeholder is no longer kept as a duplicate message.
+    expect(merged.some((m) => m.id === 'ws-stream-sess-1')).toBe(false);
+    expect(merged.map((m) => m.id)).toEqual(['db-user-1', 'db-asst-1']);
+    expect(merged.find((m) => m.id === 'db-asst-1')?.content_markdown).toBe('Hello world');
 
     const afterPersist = mergeSessionMessages(server, []);
     expect(afterPersist.map((m) => m.id)).toEqual(['db-user-1', 'db-asst-1']);

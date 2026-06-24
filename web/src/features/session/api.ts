@@ -605,5 +605,6 @@ export async function listActivities(
     completionTokens: a.completionTokens ?? undefined,
     collapsed: a.collapsed ?? false,
     label: a.label || undefined,
+    seq: a.seq ?? undefined,
   }));
 }

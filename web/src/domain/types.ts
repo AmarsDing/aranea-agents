@@ -38,15 +38,6 @@ export type MessageAttachmentRef = {
   size?: number;
 };
 
-/** Message origin — replaces ID prefix conventions for lifecycle tracking. */
-export type MessageOrigin =
-  | { kind: 'persisted' }
-  | { kind: 'pending_user'; localId: string }
-  | { kind: 'streaming'; sessionId: string }
-  | { kind: 'streaming_snapshot'; sessionId: string }
-  | { kind: 'team_member'; agentKey: string }
-  | { kind: 'tool_activity'; toolEventId: string };
-
 /** Message status values — replaces bare string comparisons. */
 export type MessageStatus =
   | 'ok'
@@ -105,7 +96,6 @@ export type Message = {
   error_message: string;
   created_at: string;
 
-  origin?: MessageOrigin;
   agent_ref?: MessageAgentRef | null;
   team_member?: MessageTeamMemberRef | null;
   source_meta?: MessageSourceMeta | null;

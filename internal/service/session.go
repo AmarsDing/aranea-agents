@@ -594,6 +594,7 @@ func toProtoActivity(a biz.Activity) *v1.Activity {
 		ParentActivityId: a.ParentActivityID,
 		Timestamp:        a.Timestamp.Format(time.RFC3339Nano),
 		DurationMs:       a.DurationMs,
+		Seq:              a.Seq,
 		Content:          a.Content,
 		Reasoning:        a.Reasoning,
 		ToolName:         a.ToolName,

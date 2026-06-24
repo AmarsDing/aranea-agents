@@ -2126,9 +2126,9 @@ func provideA2AService(
 	return service.NewA2AService(uc, chat, agents, reg, store, limiter, lg)
 }
 
-func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, bus contract.Bus, lg loggateway.Logger) biz.TaskPlannerPort {
+func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, bus contract.Bus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase) biz.TaskPlannerPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
-	return chatagent.NewTaskPlanner(repo, catalog, httpClient, bus, orchCache, lg)
+	return chatagent.NewTaskPlanner(repo, catalog, httpClient, bus, orchCache, lg, sysUC)
 }
 
 func provideAgentAllocator(
@@ -2140,29 +2140,43 @@ func provideAgentAllocator(
 	embedder knowledge.Embedder,
 	agentFactory biz.AgentFactory,
 	lg loggateway.Logger,
+	sysUC *biz.SystemSettingUsecase,
 ) biz.AgentAllocatorPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
 	capBuilder := chatagent.NewAgentCapabilityBuilder(agentReader, lg)
-	return chatagent.NewAgentAllocator(repo, agentReader, perfRepo, capBuilder, catalog, httpClient, bus, lg, embedder, agentFactory)
+	return chatagent.NewAgentAllocator(repo, agentReader, perfRepo, capBuilder, catalog, httpClient, bus, lg, embedder, agentFactory, sysUC)
 }
 
 // provideAgentFactory constructs the AgentFactory (P1-4). The LLM model is
-// resolved from ARANEA_PLANNER_PROVIDER/ARANEA_PLANNER_MODEL env vars; when
-// unset, llm is nil and EnsureAgent returns an Internal error so callers can
-// fall back to other strategies.
+// resolved from the planner_model system setting (specify mode) or the first
+// enabled catalog model (inherit/fallback). At init time there is no session
+// context, so inherit mode falls through to the catalog fallback. When no
+// model is available, llm is nil and EnsureAgent returns an Internal error so
+// callers can fall back to other strategies.
 func provideAgentFactory(
 	agentReader biz.AgentReader,
 	agentWriter biz.AgentWriter,
 	templateRepo biz.AgentTemplateRepo,
 	bus contract.Bus,
 	catalog *biz.LlmProviderModelUsecase,
+	sysUC *biz.SystemSettingUsecase,
 	lg loggateway.Logger,
 ) biz.AgentFactory {
 	rt := &provider.RoundTrip{HTTP: &http.Client{Timeout: 60 * time.Second}}
-	prov := strings.TrimSpace(os.Getenv("ARANEA_PLANNER_PROVIDER"))
-	mod := strings.TrimSpace(os.Getenv("ARANEA_PLANNER_MODEL"))
+
+	// Resolve planner model via system setting. At init time the session
+	// model is unavailable (empty strings), so inherit mode falls through
+	// to the catalog fallback.
+	setting := biz.PlannerModelSetting{Mode: biz.PlannerModelModeInherit}
+	if sysUC != nil {
+		if s, err := sysUC.GetPlannerModel(context.Background()); err == nil {
+			setting = s
+		}
+	}
+	prov, mod := chatagent.ResolvePlannerModel(context.Background(), setting, "", "", catalog, lg, "agent_factory.wire", "AgentFactory")
+
 	var llm trpcmodel.Model
-	if prov != "" && mod != "" && catalog != nil {
+	if prov != "" && mod != "" {
 		if m, err := provider.TRPCModelForProviderModel(context.Background(), catalog, rt, prov, mod, lg); err == nil {
 			llm = m
 		} else {

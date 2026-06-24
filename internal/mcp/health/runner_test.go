@@ -51,9 +51,10 @@ func (p *countingPublisher) count() int {
 // runProbeOneLogic mirrors the alert-decision logic in Runner.probeOne so
 // tests exercise the same branching as production code. The production code
 // uses:
-//   isHardFailure := !result.OK
-//   isAuthWarning := result.OK && result.Status == "auth_required"
-//   if isHardFailure || isAuthWarning { alerts.MaybeEmitAfterHealth(...) }
+//
+//	isHardFailure := !result.OK
+//	isAuthWarning := result.OK && result.Status == "auth_required"
+//	if isHardFailure || isAuthWarning { alerts.MaybeEmitAfterHealth(...) }
 func runProbeOneLogic(result biz.MCPTestResult, alerts AlertEmitter) {
 	isHardFailure := !result.OK
 	isAuthWarning := result.OK && result.Status == "auth_required"

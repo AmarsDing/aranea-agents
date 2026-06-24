@@ -2,64 +2,32 @@ import type { Message } from './types';
 import { normalizeServerMessageOptions } from './streamContentPatch';
 import { parseMessageOptions } from './parseMessageOptions';
 import { isInFlightStatus } from '../../domain/types';
-import {
-  ensureOrigin,
-  isEphemeralOrigin,
-  isPendingUserOrigin,
-  isStreamingOrigin,
-  isTeamMemberOrigin,
-} from './messageOrigin';
 
 function normalizeMessage(m: Message): Message {
-  const withOrigin = ensureOrigin(m);
-  const normalized = { ...withOrigin, options_json: normalizeServerMessageOptions(withOrigin.options_json ?? '') };
+  const normalized = { ...m, options_json: normalizeServerMessageOptions(m.options_json ?? '') };
   const parsed = parseMessageOptions(normalized.options_json);
   return { ...normalized, ...parsed };
 }
 
-function isEphemeralMessage(message: Message): boolean {
-  return isEphemeralOrigin(message.origin);
+function isPendingUserRow(message: Message): boolean {
+  return message.id.startsWith('pending-user-');
 }
 
-/** Whether this row is a local-only in-flight message (not yet persisted by server). */
+/** Whether this row is an activity-derived tool / execution card. */
+function isActivityDerivedRow(message: Message): boolean {
+  return Boolean(message.tool_event);
+}
+
+/** Whether this row is a local-only row that should be preserved during merge
+ * when the server does not yet have a matching persisted message. */
 export function isInFlightLocalRow(message: Message): boolean {
-  // Finalized snapshots (streaming_snapshot origin) — treat as persisted for sorting.
-  // T7.3b: Covers AF mode finalized messages (actv-* upgraded to streaming_snapshot
-  // by finalizeStreamingMessageFromDone).
-  if (message.origin?.kind === 'streaming_snapshot') return false;
-  // Reconstructed action messages (tool_activity origin with terminal status)
-  // are finalized snapshots from Activity API data — treat as persisted for sorting.
-  if (message.origin?.kind === 'tool_activity' && !isInFlightStatus(message.status || '')) return false;
-  if (isEphemeralMessage(message)) return true;
-  return isInFlightStatus(message.status || '');
-}
-
-/**
- * Whether a local-only message should be included in the merge output.
- *
- * Messages fall into three categories for merge purposes:
- *   1. **persisted** — has a server counterpart, managed by server data
- *   2. **in-flight-active** — still streaming/running, must be preserved
- *   3. **af-finalized** — Activity-First mode messages (streaming_snapshot
- *      origin) that have been finalized. These carry per-round content
- *      from Activity events and must be preserved when
- *      excludeMergedAssistant=true, because the server's merged assistant
- *      ChatMessage is excluded.
- */
-function shouldIncludeInMerge(message: Message, excludeMergedAssistant: boolean): boolean {
-  // Streaming snapshots: finalized local snapshots carrying round-separated content
-  if (message.origin?.kind === 'streaming_snapshot' && excludeMergedAssistant) return true;
-  return isInFlightLocalRow(message);
+  if (isPendingUserRow(message)) return true;
+  if (isInFlightStatus(message.status || '')) return true;
+  if (isActivityDerivedRow(message)) return true;
+  return false;
 }
 
 function messageOrder(message: Message): [number, string] {
-  // Finalized local messages (streaming_snapshot origin) sort alongside
-  // persisted messages by timestamp, not pushed to the end with active in-flight.
-  if (message.origin?.kind === 'streaming_snapshot') return [0, message.created_at || ''];
-  // Reconstructed action messages (tool_activity origin with terminal status)
-  // sort alongside persisted messages to maintain thinking → action → reply order.
-  if (message.origin?.kind === 'tool_activity' && !isInFlightStatus(message.status || ''))
-    return [0, message.created_at || ''];
   const inFlight = isInFlightLocalRow(message) ? 1 : 0;
   return [inFlight, message.created_at || ''];
 }
@@ -87,23 +55,20 @@ function compareTimestamps(a: string, b: string): number {
 
 /** Drop optimistic user placeholders after the server turn completes. */
 export function dropPendingUserPlaceholders(messages: Message[]): Message[] {
-  return messages.filter((m) => !isPendingUserOrigin(m.origin));
+  return messages.filter((m) => !isPendingUserRow(m));
 }
 
 function shouldDropStaleInFlight(message: Message): boolean {
-  const origin = message.origin;
-  if (isPendingUserOrigin(origin)) return message.status !== 'failed';
-  if (isStreamingOrigin(origin)) {
-    // streaming_snapshot messages (AF mode finalized) represent correctly
-    // separated LLM round content. They must NOT be dropped during merge,
-    // because the server-persisted assistant message contains ALL rounds'
-    // content merged into one, and dropping snapshots would lose the round
-    // separation.
-    if (origin?.kind === 'streaming_snapshot') return false;
-    return !isInFlightStatus(message.status || '');
-  }
-  if (isTeamMemberOrigin(origin)) return false;
-  return isInFlightStatus(message.status || '');
+  if (isPendingUserRow(message)) return message.status !== 'failed';
+  // Team member messages are rendered from Activity events; never drop them here.
+  if (message.team_member) return false;
+  // Activity-derived tool cards represent completed work and should survive a reconnect.
+  if (isActivityDerivedRow(message)) return false;
+  const status = message.status || '';
+  // Stale tool states are dropped on reconnect; streaming text is kept because
+  // the user is actively watching the LLM reply and a reconnect should not blink it.
+  if (status === 'tool_running' || status === 'tool_blocked') return true;
+  return !isInFlightStatus(status);
 }
 
 /**
@@ -155,43 +120,22 @@ function findServerMatchForPending(
   return null;
 }
 
-/** Merge server history with in-flight WS rows (streaming text, running tool cards). */
+/** Merge server history with local-only rows (pending placeholders, streaming text, activity-derived cards). */
 export function mergeSessionMessages(
   server: Message[],
   local: Message[],
   opts?: { dropStaleInFlight?: boolean },
 ): Message[] {
   const normalizedServer = server.map(normalizeMessage);
-  if (local.length === 0) return normalizedServer;
+  const normalizedLocal = local.map(normalizeMessage);
+  if (normalizedLocal.length === 0) return normalizedServer;
   const serverById = new Map(normalizedServer.map((m) => [m.id, m]));
   const serverUserByContent = buildServerUserContentMap(normalizedServer);
 
-  // Determine whether to exclude the server's merged assistant message.
-  //
-  // excludeMergedAssistant is only true when we actually have local
-  // streaming_snapshot assistant messages to replace the server's merged
-  // content. This is a safety guard: if no snapshots exist (e.g. AF API
-  // failed and returned no data), falling back to the server's merged
-  // message prevents a blank UI.
-  //
-  // T7.3b: Legacy ws-snap-* references removed. streaming_snapshot origin
-  // now covers both AF mode finalized messages (actv-*) and any remaining
-  // snapshot messages. The hasSnapshots guard is retained as an AF safety
-  // fallback, not Legacy logic.
-  //
-  // Trigger for hasSnapshots:
-  //   Activity-First mode: Activity events/data provide complete per-round
-  //   content (thinking/reply/action). The server-persisted assistant
-  //   ChatMessage merges ALL rounds into one — including it would duplicate
-  //   Activity content and cause the UI to show a single merged block
-  //   instead of correctly separated rounds.
-  const hasSnapshots = local.some((m) => m.origin?.kind === 'streaming_snapshot' && m.role === 'assistant');
-  const excludeMergedAssistant = hasSnapshots;
-
   const pendingReplacedBy = new Map<string, Message>();
   const matchedServerIDs = new Set<string>();
-  for (const row of local) {
-    if (!isPendingUserOrigin(row.origin) || row.role !== 'user') continue;
+  for (const row of normalizedLocal) {
+    if (!isPendingUserRow(row) || row.role !== 'user') continue;
     if (row.status === 'failed') continue;
     const serverMatch = findServerMatchForPending(row, serverUserByContent, matchedServerIDs);
     if (serverMatch) {
@@ -199,34 +143,14 @@ export function mergeSessionMessages(
     }
   }
 
-  // When excluding merged assistant messages, identify server assistant
-  // messages that are NOT activity messages (tool cards). These "main"
-  // assistant messages contain ALL rounds merged into one — including them
-  // would duplicate Activity/snapshot content.
-  //
-  // Tool activity messages (act-*, schema=chat.activity/v1) must NOT
-  // be excluded: they contain tool call details (name/args/result) that are
-  // distinct from the reasoning/text in Activities/snapshots.
-  const serverMainAssistantIds = new Set<string>();
-  if (excludeMergedAssistant) {
-    for (const m of normalizedServer) {
-      if (m.role === 'assistant' && !isActivityMessage(m)) {
-        serverMainAssistantIds.add(m.id);
-      }
-    }
-  }
-
   const merged: Message[] = [];
   for (const srv of normalizedServer) {
-    // Skip server main assistant messages when Activity data or snapshots
-    // provide correctly separated per-round content
-    if (excludeMergedAssistant && serverMainAssistantIds.has(srv.id)) continue;
     merged.push(srv);
   }
-  for (const row of local) {
+  for (const row of normalizedLocal) {
     if (pendingReplacedBy.has(row.id)) continue;
     if (serverById.has(row.id)) continue;
-    if (!shouldIncludeInMerge(row, excludeMergedAssistant)) continue;
+    if (!isInFlightLocalRow(row)) continue;
     if (opts?.dropStaleInFlight && shouldDropStaleInFlight(row)) continue;
     merged.push(row);
   }
@@ -237,14 +161,4 @@ export function mergeSessionMessages(
     return compareTimestamps(timeA, timeB);
   });
   return merged;
-}
-
-export function isActivityMessage(message: Message): boolean {
-  if (message.tool_event) return true;
-  try {
-    const raw = JSON.parse(message.options_json || '{}') as { schema?: string; tool_event?: unknown };
-    return raw.schema === 'chat.activity/v1' || Boolean(raw.tool_event);
-  } catch {
-    return message.status.startsWith('tool_');
-  }
 }

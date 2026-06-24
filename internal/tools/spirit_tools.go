@@ -51,24 +51,33 @@ type PlanAndExecuteOutput struct {
 
 // planAndExecuteDeps holds the shared dependencies for plan_and_execute phases.
 type planAndExecuteDeps struct {
-	planner      biz.TaskPlannerPort
-	allocator    biz.AgentAllocatorPort
-	orchestrator biz.TaskOrchestratorPort
-	teamQuery    SpiritTeamQueryPort
-	bus          contract.Bus
-	lg           loggateway.Logger
+	planner            biz.TaskPlannerPort
+	allocator          biz.AgentAllocatorPort
+	orchestrator       biz.TaskOrchestratorPort
+	teamQuery          SpiritTeamQueryPort
+	sessionModelLookup SessionModelLookup
+	bus                contract.Bus
+	lg                 loggateway.Logger
+}
+
+// SessionModelLookup resolves the effective provider/model for a Spirit session.
+// Used by plan_and_execute to inject the session model into the context for
+// "inherit" mode LLM resolution in the planner/allocator.
+type SessionModelLookup interface {
+	GetSessionModel(ctx context.Context, sessionID string) (provider, model string)
 }
 
 // NewPlanAndExecuteTool creates the plan_and_execute tool that replaces
 // assess_complexity + assemble_team + list_butlers + query_butler_status.
-func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAllocatorPort, orchestrator biz.TaskOrchestratorPort, teamQuery SpiritTeamQueryPort, bus contract.Bus, lg loggateway.Logger) *trpcfunction.FunctionTool[PlanAndExecuteInput, PlanAndExecuteOutput] {
+func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAllocatorPort, orchestrator biz.TaskOrchestratorPort, teamQuery SpiritTeamQueryPort, sessionModelLookup SessionModelLookup, bus contract.Bus, lg loggateway.Logger) *trpcfunction.FunctionTool[PlanAndExecuteInput, PlanAndExecuteOutput] {
 	deps := planAndExecuteDeps{
-		planner:      planner,
-		allocator:    allocator,
-		orchestrator: orchestrator,
-		teamQuery:    teamQuery,
-		bus:          bus,
-		lg:           lg,
+		planner:            planner,
+		allocator:          allocator,
+		orchestrator:       orchestrator,
+		teamQuery:          teamQuery,
+		sessionModelLookup: sessionModelLookup,
+		bus:                bus,
+		lg:                 lg,
 	}
 
 	return trpcfunction.NewFunctionTool(
@@ -81,6 +90,14 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			taskPrompt := strings.TrimSpace(input.TaskPrompt)
 			if taskPrompt == "" {
 				return PlanAndExecuteOutput{}, apierror.BadRequest(apierror.DomainSpirit, "task_prompt is required")
+			}
+
+			// Inject the session's effective provider/model into the context so
+			// the planner/allocator can resolve their LLM via "inherit" mode.
+			if deps.sessionModelLookup != nil {
+				if p, m := deps.sessionModelLookup.GetSessionModel(ctx, spiritSessionID); p != "" && m != "" {
+					ctx = biz.WithPlannerSessionModel(ctx, p, m)
+				}
 			}
 
 			// Emit ButlerOrchestrationStarted event.

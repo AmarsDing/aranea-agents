@@ -92,6 +92,7 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260801, Name: "memory_job_deadletter_unique", SQL: "sql/migrations/20260801_memory_job_deadletter_unique.sql"},
 	{Version: 20260802, Name: "memory_episodes_l1_task_unique", SQL: "sql/migrations/20260802_memory_episodes_l1_task_unique.sql"},
 	{Version: 20260803, Name: "cascade_saga_id_type_fix", SQL: "sql/migrations/20260803_cascade_saga_id_type_fix.sql"},
+	{Version: 20260804, Name: "planner_model_columns", SQL: "sql/migrations/20260804_planner_model_columns.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

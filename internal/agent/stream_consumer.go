@@ -50,16 +50,23 @@ func newTurnStreamConsumer(
 		lg:                lg,
 	}
 	if eventBus != nil {
-		c.projector = NewEventProjector(eventBus, lg)
 		c.observer = event.NewTurnObserver(eventBus)
-		if projectMeta.TeamID != "" && len(projectMeta.MemberAgentKeys) > 0 {
-			c.projector.memberStarted = make(map[string]bool)
-		}
-		if opts != nil {
-			c.projector.Configure(projectMeta, opts.MetaResolver)
+	}
+	// Legacy path: EventProjector is only needed when ActivityProjector is not
+	// active (tests or fallback mode). In AF mode ActivityProjector owns all
+	// event projection, persistence, and WS publishing.
+	if opts == nil || opts.ActivityProjector == nil {
+		if eventBus != nil {
+			c.projector = NewEventProjector(eventBus, lg)
+			if projectMeta.TeamID != "" && len(projectMeta.MemberAgentKeys) > 0 {
+				c.projector.memberStarted = make(map[string]bool)
+			}
+			if opts != nil {
+				c.projector.Configure(projectMeta, opts.MetaResolver)
+			}
 		}
 	}
-	// AF phase: configure ActivityProjector for dual-emission
+	// AF phase: configure ActivityProjector for direct event consumption.
 	if opts != nil && opts.ActivityProjector != nil {
 		opts.ActivityProjector.Configure(projectMeta, opts.MetaResolver)
 		opts.ActivityProjector.Reset()
@@ -241,6 +248,18 @@ func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {
 }
 
 func (c *turnStreamConsumer) projectAndTrackTools(ev *trpcevent.Event) {
+	// AF-3: ActivityProjector directly consumes trpc events and owns all
+	// projection, persistence, and WS publishing. In production it is always
+	// non-nil (wired via Wire DI). Return immediately after feeding the event.
+	hasAF := c.opts != nil && c.opts.ActivityProjector != nil
+	if hasAF {
+		c.opts.ActivityProjector.ProcessEvent(c.turnCtx, ev)
+		return
+	}
+
+	// Legacy path (no ActivityProjector): EventProjector handles projection,
+	// WS publishing, activity persistence, tool tracking, and member tool call
+	// counting for tests and fallback mode.
 	if c.projector == nil {
 		return
 	}
@@ -250,22 +269,6 @@ func (c *turnStreamConsumer) projectAndTrackTools(ev *trpcevent.Event) {
 		meta.TurnCompletionTok = c.result.CompletionTok
 	}
 
-	// AF-3: ActivityProjector directly consumes trpc events.
-	// It no longer depends on EventProjector output for translation.
-	// In production, ActivityProjector is always non-nil (wired via Wire DI).
-	// In tests, it may be nil — in that case EventProjector output is published
-	// to WS as a test-only path.
-	hasAF := c.opts != nil && c.opts.ActivityProjector != nil
-	if hasAF {
-		c.opts.ActivityProjector.ProcessEvent(c.turnCtx, ev)
-	}
-
-	// EventProjector still runs for persistence-only purposes:
-	// - trackToolEnvelope (stuck tool detection at finalize)
-	// - PublishActivityEnvelopes (activity persistence)
-	// - Member tool call counting
-	// When ActivityProjector is active (production), EventProjector output is
-	// NEVER published to WS — ActivityProjector owns the WS path.
 	envelopes := c.projector.Project(c.turnCtx, ev, meta)
 
 	for _, env := range envelopes {
@@ -279,18 +282,13 @@ func (c *turnStreamConsumer) projectAndTrackTools(ev *trpcevent.Event) {
 				c.result.MemberToolCalls[author]++
 			}
 		}
-		if !hasAF {
-			// Test-only path: ActivityProjector not configured.
-			// Production always has ActivityProjector (wired via Wire DI),
-			// so this WS-publish branch never executes in production.
-			if c.observer != nil {
-				c.observer.PublishChat(c.turnCtx, env)
-			} else if c.eventBus != nil {
-				c.eventBus.Publish(c.turnCtx, env)
-			}
+		if c.observer != nil {
+			c.observer.PublishChat(c.turnCtx, env)
+		} else if c.eventBus != nil {
+			c.eventBus.Publish(c.turnCtx, env)
 		}
 	}
-	if c.opts != nil {
+	if c.opts != nil && c.opts.ActivityPersister != nil {
 		PublishActivityEnvelopes(c.turnCtx, c.projectMeta, c.opts.ActivityPersister, envelopes, c.lg)
 	}
 }
@@ -344,39 +342,33 @@ func (c *turnStreamConsumer) trackToolEnvelope(env event.Envelope) {
 }
 
 func (c *turnStreamConsumer) finalize() {
-	// AF phase: finalize root task Activity with token usage
-	if c.opts != nil && c.opts.ActivityProjector != nil {
+	hasAF := c.opts != nil && c.opts.ActivityProjector != nil
+
+	// AF phase: finalize root task Activity with token usage and copy per-member
+	// tool call counts to the result. ActivityProjector owns stuck-tool handling
+	// and persistence via its sequencer.
+	if hasAF {
 		usage := &ActivityUsage{
 			PromptTokens:     c.result.PromptTok,
 			CompletionTokens: c.result.CompletionTok,
 			TotalTokens:      c.result.PromptTok + c.result.CompletionTok,
 		}
 		c.opts.ActivityProjector.OnTurnEnd(c.turnCtx, usage)
-
-		// AF-FIX: Finalize stuck tool Activities in the ActivityProjector.
-		// When a turn ends with pending tool calls (no tool_result received),
-		// the ActivityProjector's toolCalls map still holds action Activities
-		// in tool_running status. Without this step, the frontend never receives
-		// activity_done(kind=action) for these tools, leaving them stuck in
-		// running state indefinitely. This is the AF equivalent of
-		// PublishStuckToolResultEnvelopes (which publishes tool_result envelopes
-		// for the persistence/test path that AF mode doesn't process).
-		if len(c.pendingToolCalls) > 0 {
-			c.opts.ActivityProjector.OnStuckTools(c.turnCtx, c.pendingToolCalls)
-		}
-
-		// Close the projector's event sequencer to ensure all queued events
-		// are flushed before the stream consumer exits. This blocks until all
-		// per-activity consumer goroutines have finished publishing and
-		// persisting, preventing goroutine leaks and ensuring the frontend
-		// receives all terminal events (activity_done) before the turn ends.
+		c.opts.ActivityProjector.OnStuckTools(c.turnCtx)
 		c.opts.ActivityProjector.Close()
+
+		if mtc := c.opts.ActivityProjector.MemberToolCalls(); len(mtc) > 0 {
+			c.result.MemberToolCalls = mtc
+		}
+		return
 	}
+
+	// Legacy path (no ActivityProjector): emit tool_result envelopes and persist
+	// stuck tool Activities for tests and fallback mode.
 	if len(c.pendingToolCalls) == 0 {
 		return
 	}
 	pending := c.pendingToolCalls
-	// Log each stuck tool for observability before publishing failure envelopes.
 	for id, tc := range pending {
 		c.lg.Warn("stuck tool detected at turn finalization",
 			loggateway.StepID("stream.stuck_tool"),

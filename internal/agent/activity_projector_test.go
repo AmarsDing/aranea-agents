@@ -804,19 +804,28 @@ func TestProcessEvent_reasoningBeforeTextInSameChunk(t *testing.T) {
 		t.Fatalf("no reply activity_start envelope found")
 	}
 
-	// The thinking start envelope must be published before the reply start
-	// envelope, because ProcessEvent handles reasoning before text.
-	thinkingIdx := -1
-	replyIdx := -1
-	for i := range envs {
-		if &envs[i] == thinkingStart {
-			thinkingIdx = i
+	// ProcessEvent handles reasoning before text, so the thinking activity must
+	// be created before the reply activity in memory. The per-activity sequencer
+	// publishes envelopes for different activities concurrently, so bus order is
+	// not deterministic; verify the in-memory creation order instead.
+	p.mu.Lock()
+	var thinkingCreated, replyCreated time.Time
+	for _, a := range p.activities {
+		if a.Kind == biz.ActivityKindThinking && thinkingCreated.IsZero() {
+			thinkingCreated = a.Timestamp
 		}
-		if &envs[i] == replyStart {
-			replyIdx = i
+		if a.Kind == biz.ActivityKindReply && replyCreated.IsZero() {
+			replyCreated = a.Timestamp
 		}
 	}
-	if thinkingIdx == -1 || replyIdx == -1 || thinkingIdx >= replyIdx {
-		t.Errorf("thinking activity must be created before reply activity in publish order, got thinkingIdx=%d replyIdx=%d", thinkingIdx, replyIdx)
+	p.mu.Unlock()
+	if thinkingCreated.IsZero() {
+		t.Fatalf("no thinking activity created")
+	}
+	if replyCreated.IsZero() {
+		t.Fatalf("no reply activity created")
+	}
+	if thinkingCreated.After(replyCreated) {
+		t.Errorf("thinking activity must be created before reply activity, got thinking=%v reply=%v", thinkingCreated, replyCreated)
 	}
 }
