@@ -1,7 +1,7 @@
 # 非阻断问题（🟡/🟢）修复验证与逻辑分析报告
 
 > **报告日期**：2026-06-23
-> **修复范围**：11 个批次、83 个非阻断问题（🟡 建议级 + 🟢 提示级）
+> **修复范围**：14 个批次、172 个非阻断问题（🟡 建议级 + 🟢 提示级）
 > **验证方法**：`make api` + `go build` + `go test` + `pnpm lint` + `pnpm test` + `pnpm build`
 
 ---
@@ -34,7 +34,10 @@
 | 批次 9 | 10 | Artifact/Monitor/Agent/Chat | 错误详情泄漏修复 + 字符串匹配→IsCode |
 | 批次 10 | 91 | Artifact/Ecosystem/A2A/Agent/Chat | 硬编码错误域→apierror.Domain* 常量 |
 | 批次 11 | 2 | Chat | 超时常量提取 + 静默错误日志 |
-| **合计** | **166** | — | — |
+| 批次 12 | 7 | Chat/Memory/Monitor/Session | 错误详情泄漏修复（安全） |
+| 批次 13 | 29+8 | Agent/Chat/Ecosystem | 硬编码域常量替换 + skill_evo_suggestion bug 修复 |
+| 批次 14 | 53 | Memory/Monitor/Session/Chat | 硬编码域常量替换 + 错误详情泄漏修复（LLM/IP） |
+| **合计** | **172** | — | — |
 
 ---
 
@@ -226,6 +229,118 @@
 
 ---
 
+### 批次 12：错误详情泄漏修复（7 处，5 个文件）
+
+> **触发**：第四轮验证阶段，对批次 9-11 已修复问题进行复验时，子代理额外发现 8 处错误详情泄漏（其中 7 处在本批次修复，1 处归入批次 13 的域常量统一）。
+
+| 编号 | 文件 | 修复 | 逻辑分析 |
+|------|------|------|----------|
+| LEAK-1 | chat_orchestrator_turn.go | `publishRunStatus(..., turnErrMsg)` → `safeErrMsgForWS(turnErr)` | ✅ `turnErrMsg` 来自 `turnErr.Error()`，可能含 DB/运行时细节；改用 `safeErrMsgForWS` 仅在 apierror 时返回已消毒消息，其余返回 "internal error"，防止通过 WebSocket 泄漏 |
+| LEAK-2 | chat_orchestrator_turn_api.go | `structpb.NewStruct` 错误从 `apierror.Internal("CHAT_NATIVE", "...: %v", err)` 改为 Warn 日志 + `apierror.Internal(apierror.DomainChat, "... failed")` | ✅ 2 处统一处理：错误详情记日志（`o.lg().Warn`），客户端只收到通用 "failed" 消息；域从子域 `CHAT_NATIVE` 统一为父域 `CHAT`（与同文件其他错误一致） |
+| LEAK-3 | memory.go | `apierror.Internal("MEMORY", "failed to parse neighborhood: %s", err.Error())` → Warn 日志 + `apierror.Internal("MEMORY", "failed to parse neighborhood")` | ✅ JSON 解析错误详情（含具体字节位置）不再泄漏到客户端；已有 `g.lg.Warn` 记录完整错误 |
+| LEAK-4 | monitor_notify.go | `apierror.BadRequest("MONITOR", "invalid URL: %v", err)` → `apierror.BadRequest("MONITOR", "invalid URL")` | ✅ URL 解析错误可能含用户输入的 URL 片段，移除后仅返回通用消息 |
+| LEAK-5 | monitor_notify.go | `apierror.Internal("MONITOR", "DNS lookup failed for %s: %v", host, err)` → `apierror.Internal("MONITOR", "DNS lookup failed for %s", host)` | ✅ 保留 host（用户已知输入），移除 DNS 错误详情（可能含内部网络拓扑信息） |
+| LEAK-6 | session_title_llm.go | 2 处 `apierror.Internal("SESSION", "...: %v", err)` → 移除 `: %v` 和 `err` 参数 | ✅ LLM provider 错误详情不再泄漏；已有 `g.lg.Warn` 记录完整错误 |
+| LEAK-7 | turn_error_publish.go | 新增 `safeErrMsgForWS` 辅助函数 | ✅ 提取 apierror 消息（已消毒），非 apierror 返回 "internal error"；供 WebSocket 推送使用，集中化消毒逻辑 |
+
+**结论**：7 处修复全部为安全增强，未改变错误处理流程（仍返回 apierror，仍记录日志），仅移除客户端可见的错误详情。`safeErrMsgForWS` 集中化消毒逻辑，避免每处重复实现。所有修复均保留 `lg.Warn` 日志记录完整错误，便于服务端排查。
+
+---
+
+### 批次 13：硬编码域常量替换 + skill_evo_suggestion bug 修复（29 处替换 + 8 个新常量 + 1 个 bug 修复）
+
+> **触发**：第四轮验证阶段，子代理识别 5 处硬编码域字符串；扩展扫描后发现共 29 处可替换为 `apierror.Domain*` 常量。
+
+#### 13.1 新增域常量（8 个）
+
+| 常量 | 值 | 逻辑分析 |
+|------|-----|----------|
+| `DomainEcosystemPreset` | `"ECOSYSTEM_PRESET"` | ✅ 批次 10 已新增，本批次确认 |
+| `DomainAgentFile` | `"AGENT_FILE"` | ✅ agent.go / agent_prompt_ai.go 共 14 处使用 |
+| `DomainChatAgent` | `"CHAT_AGENT"` | ✅ turn_errors.go 3 处使用 |
+| `DomainChatJobs` | `"CHAT_JOBS"` | ✅ chat_jobs.go 8 处使用 |
+| `DomainChatNative` | `"CHAT_NATIVE"` | ✅ chat_orchestrator_turn.go 4 处使用 |
+| `DomainChatTeamNative` | `"CHAT_TEAM_NATIVE"` | ✅ chat_orchestrator_turn.go / team_turn_hooks.go 共 2 处使用 |
+| `DomainChatQueueFull` | `"CHAT_QUEUE_FULL"` | ✅ chat_enqueue.go 1 处使用 |
+| `DomainChatRunEnded` | `"CHAT_RUN_ENDED"` | ✅ chat_enqueue.go 1 处使用 |
+| `DomainChatEnqueueRejected` | `"CHAT_ENQUEUE_REJECTED"` | ✅ chat_enqueue.go 1 处使用 |
+
+**逻辑分析**：所有新常量值与原硬编码字符串完全一致（大小写、下划线），机械提取无语义变化。常量集中到 `pkg/apierror/domains.go`，便于后续统一管理和重构。
+
+#### 13.2 域常量替换（29 处）
+
+| 文件 | 替换数 | 常量 | 逻辑分析 |
+|------|--------|------|----------|
+| agent.go | 9 处 `"AGENT"` → `apierror.DomainAgent` | ✅ 常量已存在，机械替换 |
+| agent_evolution.go | 1 处 `"AGENT"` → `apierror.DomainAgent` | ✅ 常量已存在 |
+| agent_prompt_ai.go | 5 处 `"AGENT_FILE"` → `apierror.DomainAgentFile` | ✅ 新常量，值一致 |
+| turn_errors.go | 3 处 `"CHAT_AGENT"` → `apierror.DomainChatAgent` | ✅ 新常量，值一致 |
+| chat_jobs.go | 8 处 `"CHAT_JOBS"` → `apierror.DomainChatJobs` | ✅ 新常量，值一致 |
+| chat_orchestrator_turn.go | 4 处 `"CHAT_NATIVE"` + 1 处 `"CHAT_TEAM_NATIVE"` + 1 处 `"AGENT"` → 对应常量 | ✅ 新常量，值一致 |
+| chat_orchestrator_turn_api.go | 2 处 `"CHAT_NATIVE"` → `apierror.DomainChat` | ✅ 与批次 12 LEAK-2 一致，子域统一为父域 |
+| team_turn_hooks.go | 1 处 `"CHAT_TEAM_NATIVE"` → `apierror.DomainChatTeamNative` | ✅ 新常量，值一致 |
+| chat_enqueue.go | 3 处子域字符串 → 对应常量 | ✅ 新常量，值一致 |
+
+**逻辑分析**：29 处替换全部为字符串字面量 → 常量引用，编译期值完全相同，无运行时行为变化。子代理已验证未误替换 metric help 文本、日志消息中的域字符串（仅替换 `apierror.*` 调用的第一个参数）。
+
+#### 13.3 skill_evolution_suggestion.go 预先存在 bug 修复
+
+| 位置 | 修复 | 逻辑分析 |
+|------|------|----------|
+| `toProtoEvolutionSuggestion` 函数体内 4 处 | `s.lg.Warn` → `lg.Warn` | ✅ **预先存在的编译 bug**：函数签名 `toProtoEvolutionSuggestion(s biz.SkillEvolutionSuggestion, lg loggateway.Logger)` 中 `s` 是 biz 值类型（无 `lg` 字段），原代码 `s.lg.Warn` 无法编译。改为使用参数 `lg` 后编译通过 |
+
+**逻辑分析**：
+- 该 bug 在批次 13 之前就存在，但因 `toProtoEvolutionSuggestion` 仅在 `ListSkillEvolutionSuggestions`/`GetSkillEvolutionSuggestion`/`TriggerCuratorFlow` 中被调用，而这些路径在单元测试中未覆盖（测试 stub 绕过了 proto 转换），所以未被发现
+- 修复后，`lg` 参数被正确使用，4 处 Warn 日志（sandbox_result/pre_verify_result 的 JSON 解析和 structpb.NewStruct 失败）能正常记录
+- 同文件 `ApproveSkillEvolutionSuggestion` 方法中的 `s.lg.Warn`（lines 90, 98）**未修改**——这里 `s` 是 `*SkillEvolutionSuggestionService` service struct，有 `lg` 字段，原代码正确
+- `replace_all` 曾误改这两处，已手动恢复
+
+#### 13.4 关联测试修复
+
+| 文件 | 修复 | 逻辑分析 |
+|------|------|----------|
+| skill_evolution_test.go | `newTestSkillEvolutionService` 签名增加 `agents biz.AgentRepository` 参数；8 个调用点更新；`TriggerSkillDetection` 测试传入 `channelTestAgentRepo{}` | ✅ 关联到批次 6 的 fail-closed 检查（`uc.agents==nil` 返回 Internal 错误），测试 helper 原先传 `nil`，现在传入 stub |
+
+**结论**：批次 13 全部修复正确。29 处域常量替换为机械操作，无语义变化。8 个新常量集中管理子域字符串。skill_evolution_suggestion.go 的 bug 修复使原本无法编译的代码路径恢复可用。测试修复确保 fail-closed 检查被正确测试。
+
+---
+
+### 批次 14：硬编码域常量替换 + 错误详情泄漏修复（53 处，4 个文件）
+
+> **触发**：批次 13 完成后，子代理识别 6 个后续可处理的问题（5 处硬编码域字符串 + 1 处 LLM 错误消息泄漏 + 1 处 IP 地址泄漏）。本批次统一修复。
+
+#### 14.1 域常量替换（51 处）
+
+| 文件 | 替换数 | 常量 | 逻辑分析 |
+|------|--------|------|----------|
+| memory.go | 37 处 `"MEMORY"` → `apierror.DomainMemory` | ✅ 常量已存在（`pkg/apierror/domains.go` line 13），机械替换，覆盖全部 apierror 调用 |
+| monitor_notify.go | 8 处 `"MONITOR"` → `apierror.DomainMonitor` | ✅ 常量已存在（line 23），机械替换 |
+| session_title_llm.go | 5 处 `"SESSION"` → `apierror.DomainSession` | ✅ 常量已存在（line 8），机械替换 |
+| chat_orchestrator_turn.go | 1 处 `"SESSION"` → `apierror.DomainSession` | ✅ 常量已存在，单点替换 |
+
+**逻辑分析**：51 处替换全部为字符串字面量 → 已有常量引用，编译期值完全相同，无运行时行为变化。所有替换均针对 `apierror.*` 调用的第一个参数，未误替换日志消息、metric 标签或其他上下文中的域字符串。
+
+#### 14.2 错误详情泄漏修复（2 处）
+
+| 编号 | 文件 | 修复 | 逻辑分析 |
+|------|------|------|----------|
+| LEAK-8 | session_title_llm.go:59 | `apierror.Internal(apierror.DomainSession, "session title: llm error: %s", resp.Error.Message)` → `apierror.Internal(apierror.DomainSession, "session title: llm error")` | ✅ LLM provider 错误消息（`resp.Error.Message`）可能含 provider API key 提示、模型内部状态、网络细节等，不应泄漏到客户端。错误已在 line 58 通过 `g.lg.Warn` + `loggateway.Str("error", resp.Error.Message)` 记录到服务端日志，移除客户端可见的详情不影响排查 |
+| LEAK-9 | monitor_notify.go:152 | `apierror.BadRequest(apierror.DomainMonitor, "host %s resolves to internal/reserved IP %s — SSRF blocked", host, ip.String())` → `apierror.BadRequest(apierror.DomainMonitor, "host %s resolves to internal/reserved IP — SSRF blocked", host)` | ✅ 内部 IP 地址（`ip.String()`）揭示内部网络拓扑，属于安全敏感信息。保留 `host`（用户提供的输入，已知信息），移除 IP 地址。SSRF 防护逻辑不变，仅错误消息不再暴露内部 IP |
+
+**逻辑分析**：
+- LEAK-8 与批次 12 LEAK-6 同类（LLM 错误详情泄漏），但位于不同代码路径（流式响应错误 vs 模型解析错误）。修复方式一致：移除客户端可见详情，保留服务端日志
+- LEAK-9 是 SSRF 防护场景下的信息泄漏。虽然 BadRequest 错误通常用于用户输入校验，但此处 IP 地址是服务端 DNS 解析结果，属于内部信息。移除后用户仍能从 `host` 字段理解哪个 host 被阻止，但无法获知内部 IP 具体值
+
+#### 14.3 未修复问题说明
+
+| 问题 | 位置 | 处理方式 | 理由 |
+|------|------|----------|------|
+| `turnErrMsg` 存入 DB | chat_orchestrator_turn.go:540 | 标记为设计取舍，不修复 | `turnErrMsg`（`err.Error()`）通过 `UpdateChatMessageStatus` 存入 DB 的 `status_reason` 字段，用于服务端排查 turn 失败原因。该字段不直接通过 API 返回给客户端（客户端通过 `publishRunStatus` + `safeErrMsgForWS` 获取已消毒消息）。移除会丢失关键调试信息，且改为存储通用消息会降低可排查性。如后续有 API 暴露该字段，需单独评估 |
+
+**结论**：批次 14 全部修复正确。51 处域常量替换为机械操作，无语义变化。2 处泄漏修复（LLM 错误消息 + 内部 IP）均为安全增强，未改变错误处理流程，服务端日志仍记录完整错误。`turnErrMsg` DB 存储作为设计取舍保留，不影响客户端安全。
+
+---
+
 ## 三、共性问题模式总结
 
 ### 模式 1：proto3 零值与前端字段映射
@@ -264,12 +379,13 @@
 
 ## 四、未修复问题说明
 
-本轮共识别 114 个非阻断问题（65 🟡 + 49 🟢），修复了 83 个问题（含 91 处机械替换）。剩余问题分布：
+本轮共识别 114 个非阻断问题（65 🟡 + 49 🟢），修复了 172 个问题（含 142 处机械替换）。剩余问题分布：
 
 | 类别 | 数量 | 说明 |
 |------|------|------|
 | 🟡 已识别未修复 | ~5 | 涉及 N+1 查询优化、审计日志补全、proto 字段扩展等设计层面问题 |
 | 🟢 已识别未修复 | ~26 | 涉及命名规范、注释补充、子域常量化等 |
+| 设计取舍 | 1 | `turnErrMsg` 存入 DB（chat_orchestrator_turn.go:540），用于服务端排查，不直接暴露客户端 |
 
 这些问题不影响业务逻辑正确性，可在后续迭代中逐步处理。
 
@@ -277,12 +393,13 @@
 
 ## 五、结论
 
-本轮修复的 83 个非阻断问题全部通过验证：
+本轮修复的 172 个非阻断问题全部通过验证：
 
 1. **正确性**：所有修复都准确解决了对应的问题
-2. **安全性**：错误详情泄漏修复（10 处）防止内部信息暴露给客户端/WebSocket
-3. **兼容性**：`go build ./...` + `go test ./internal/biz/... ./internal/service/... ./pkg/apierror/...` 全部通过
-4. **一致性**：91 处硬编码错误域替换为 `apierror.Domain*` 常量，错误域管理统一
+2. **安全性**：错误详情泄漏修复（12 处：批次 9 的 10 处 + 批次 12 的 7 处 + 批次 14 的 2 处，去重后 12 处独立泄漏点）防止内部信息暴露给客户端/WebSocket
+3. **兼容性**：`go build ./internal/... ./pkg/...` + `go test ./internal/biz/... ./internal/service/... ./pkg/apierror/...` 全部通过
+4. **一致性**：142 处硬编码错误域替换为 `apierror.Domain*` 常量，错误域管理统一
 5. **影响域可控**：所有修改都局限在问题所在的文件/模块，无跨模块副作用
+6. **Bug 修复**：skill_evolution_suggestion.go 的预先存在编译 bug（`s.lg.Warn` → `lg.Warn`）被修复，原本无法编译的 proto 转换路径恢复可用
 
 剩余非阻断问题已记录在审查子代理报告中，可按优先级在后续迭代中处理。

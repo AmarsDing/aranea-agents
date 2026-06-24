@@ -539,7 +539,9 @@ func TestRetryTransport_RetryAfterHeaderHonoured(t *testing.T) {
 		responses: []*http.Response{retryResp, okResp},
 	}
 	var delays []time.Duration
-	rt := newRetryTransportForTest(stub, 3, func(req *http.Request, attempt, maxRetries int, err error, delay time.Duration) {
+	// 使用 maxDelay=2s（大于 Retry-After=1s），验证 Retry-After 值被原样使用，
+	// 而非被封顶。封顶行为由 TestRetryTransport_RetryAfterCappedAtMaxDelay 验证。
+	rt := newRetryTransport(stub, 3, 1*time.Millisecond, 2*time.Second, loggateway.NewNoop(), func(req *http.Request, attempt, maxRetries int, err error, delay time.Duration) {
 		delays = append(delays, delay)
 	})
 

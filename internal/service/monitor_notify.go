@@ -73,7 +73,7 @@ func (n *MonitorAlertNotifier) notifyViaChannel(ctx context.Context, channelID s
 		return err
 	}
 	if !ch.Enabled {
-		return apierror.BadRequest("MONITOR", "channel disabled")
+		return apierror.BadRequest(apierror.DomainMonitor, "channel disabled")
 	}
 	creds, err := n.channels.ListCredentialsRaw(ctx, channelID)
 	if err != nil {
@@ -81,7 +81,7 @@ func (n *MonitorAlertNotifier) notifyViaChannel(ctx context.Context, channelID s
 	}
 	webhookURL, err := resolveCredentialPlain(ctx, n.channels, creds, "webhook_url", n.lg)
 	if err != nil || webhookURL == "" {
-		return apierror.BadRequest("MONITOR", "channel has no webhook_url credential")
+		return apierror.BadRequest(apierror.DomainMonitor, "channel has no webhook_url credential")
 	}
 	metricKey := rule.MetricKey
 	if metricKey == "" {
@@ -132,24 +132,24 @@ var alertWebhookClient = &http.Client{
 
 func postAlertWebhook(rawURL string, payload map[string]any) error {
 	if !strings.HasPrefix(rawURL, "https://") && !strings.HasPrefix(rawURL, "http://") {
-		return apierror.BadRequest("MONITOR", "invalid URL scheme, must be http:// or https://: %s", rawURL)
+		return apierror.BadRequest(apierror.DomainMonitor, "invalid URL scheme, must be http:// or https://: %s", rawURL)
 	}
 	// SSRF protection: reject URLs pointing to private/internal networks.
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return apierror.BadRequest("MONITOR", "invalid URL")
+		return apierror.BadRequest(apierror.DomainMonitor, "invalid URL")
 	}
 	host := parsed.Hostname()
 	if host == "" {
-		return apierror.BadRequest("MONITOR", "URL has no host")
+		return apierror.BadRequest(apierror.DomainMonitor, "URL has no host")
 	}
 	ips, err := net.LookupIP(host)
 	if err != nil {
-		return apierror.Internal("MONITOR", "DNS lookup failed for %s", host)
+		return apierror.Internal(apierror.DomainMonitor, "DNS lookup failed for %s", host)
 	}
 	for _, ip := range ips {
 		if ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-			return apierror.BadRequest("MONITOR", "host %s resolves to internal/reserved IP %s — SSRF blocked", host, ip.String())
+			return apierror.BadRequest(apierror.DomainMonitor, "host %s resolves to internal/reserved IP — SSRF blocked", host)
 		}
 	}
 	body, err := json.Marshal(payload)
@@ -169,7 +169,7 @@ func postAlertWebhook(rawURL string, payload map[string]any) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return apierror.Internal("MONITOR", "webhook status %d", resp.StatusCode)
+		return apierror.Internal(apierror.DomainMonitor, "webhook status %d", resp.StatusCode)
 	}
 	return nil
 }

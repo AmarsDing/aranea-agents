@@ -33,7 +33,7 @@ func (g *LLMSessionTitleGenerator) Generate(ctx context.Context, userMessage str
 	m, err := g.resolveModel(ctx)
 	if err != nil {
 		g.lg.Warn("session title: resolve model failed", loggateway.StepID("session.title_fail"), loggateway.Err(err))
-		return "", apierror.Internal("SESSION", "session title: resolve model failed")
+		return "", apierror.Internal(apierror.DomainSession, "session title: resolve model failed")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -49,14 +49,14 @@ func (g *LLMSessionTitleGenerator) Generate(ctx context.Context, userMessage str
 	ch, err := m.GenerateContent(ctx, req)
 	if err != nil {
 		g.lg.Warn("session title: llm call failed", loggateway.StepID("session.title_fail"), loggateway.Err(err))
-		return "", apierror.Internal("SESSION", "session title: llm call failed")
+		return "", apierror.Internal(apierror.DomainSession, "session title: llm call failed")
 	}
 
 	var sb strings.Builder
 	for resp := range ch {
 		if resp.Error != nil {
 			g.lg.Warn("session title: llm error", loggateway.StepID("session.title_fail"), loggateway.Str("error", resp.Error.Message))
-			return "", apierror.Internal("SESSION", "session title: llm error: %s", resp.Error.Message)
+			return "", apierror.Internal(apierror.DomainSession, "session title: llm error")
 		}
 		for _, c := range resp.Choices {
 			if c.Delta.Content != "" {
@@ -81,12 +81,12 @@ func (g *LLMSessionTitleGenerator) resolveModel(ctx context.Context) (trpcmodel.
 		return nil, err
 	}
 	if len(models) == 0 {
-		return nil, apierror.NotFound("SESSION", "no models in catalog")
+		return nil, apierror.NotFound(apierror.DomainSession, "no models in catalog")
 	}
 
 	pm, ok := biz.PickTitleModel(models)
 	if !ok {
-		return nil, apierror.NotFound("SESSION", "no models in catalog")
+		return nil, apierror.NotFound(apierror.DomainSession, "no models in catalog")
 	}
 	return provider.TRPCModelForProviderModel(ctx, g.catalog, g.rt, pm.Provider, pm.Model, g.lg)
 }

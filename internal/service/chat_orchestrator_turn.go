@@ -123,7 +123,7 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 		o.lg().With(loggateway.SessionID(sessionID)).Info("runNativeAgentTurnBody: Sessions.Get 失败",
 			loggateway.StepID("chat.session_get_fail"), loggateway.Err(err))
 		if apierror.IsCode(err, apierror.CodeNotFound) {
-			return biz.ChatMessage{}, biz.ChatMessage{}, apierror.NotFound("SESSION", "session not found")
+			return biz.ChatMessage{}, biz.ChatMessage{}, apierror.NotFound(apierror.DomainSession, "session not found")
 		}
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
