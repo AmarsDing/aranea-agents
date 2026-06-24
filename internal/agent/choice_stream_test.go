@@ -39,6 +39,36 @@ func TestChoiceStreamContent_partialReasoningDelta(t *testing.T) {
 	}
 }
 
+func TestChoiceStreamContent_partialFallsBackToContentParts(t *testing.T) {
+	textPart := "hello from parts"
+	choice := trpcmodel.Choice{
+		Delta: trpcmodel.Message{
+			ContentParts: []trpcmodel.ContentPart{
+				{Type: "text", Text: &textPart},
+			},
+		},
+	}
+	text, _ := ChoiceStreamContent(choice, true)
+	if text != textPart {
+		t.Fatalf("partial text from content_parts = %q, want %q", text, textPart)
+	}
+}
+
+func TestChoiceStreamContent_nonPartialFallsBackToContentParts(t *testing.T) {
+	textPart := "final from parts"
+	choice := trpcmodel.Choice{
+		Message: trpcmodel.Message{
+			ContentParts: []trpcmodel.ContentPart{
+				{Type: "text", Text: &textPart},
+			},
+		},
+	}
+	text, _ := ChoiceStreamContent(choice, false)
+	if text != textPart {
+		t.Fatalf("non-partial text from content_parts = %q, want %q", text, textPart)
+	}
+}
+
 func TestEventProjector_partialDeltaPreservesSpace(t *testing.T) {
 	bus := event.NewBus(nil)
 	p := NewEventProjector(bus, nil)

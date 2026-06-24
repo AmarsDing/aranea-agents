@@ -11,14 +11,27 @@
         <span class="event-stream__transition-line" />
       </div>
 
-      <ThinkingBlock
-        v-if="event.kind === 'thinking'"
-        :message-id="event.id"
-        :reasoning="event.content"
-        :streaming="event.streaming"
-        :duration-ms="event.durationMs"
-        :default-collapsed="event.collapsed"
-      />
+      <template v-if="event.kind === 'thinking'">
+        <template v-if="(event as ThinkingEvent).subSteps?.length">
+          <ThinkingBlock
+            v-for="step in (event as ThinkingEvent).subSteps"
+            :key="step.id"
+            :message-id="step.id"
+            :reasoning="step.content"
+            :streaming="step.streaming"
+            :duration-ms="step.durationMs"
+            :default-collapsed="step.collapsed"
+          />
+        </template>
+        <ThinkingBlock
+          v-else
+          :message-id="event.id"
+          :reasoning="event.content"
+          :streaming="event.streaming"
+          :duration-ms="event.durationMs"
+          :default-collapsed="event.collapsed"
+        />
+      </template>
       <ActionBlock v-else-if="event.kind === 'action'" :activity="event" :agent-color="agentColor" />
       <ReplyBlock v-else-if="event.kind === 'reply'" :activity="event" />
       <ErrorBlock
@@ -45,7 +58,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
 import type { Activity as TimelineActivity } from '../../features/chat/activityTimelineTypes';
-import type { ErrorEvent } from '../../features/chat/streamEventTypes';
+import type { ErrorEvent, ThinkingEvent } from '../../features/chat/streamEventTypes';
 import ThinkingBlock from './ThinkingBlock.vue';
 import ActionBlock from './ActionBlock.vue';
 import ReplyBlock from './ReplyBlock.vue';

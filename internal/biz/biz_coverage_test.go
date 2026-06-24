@@ -215,6 +215,30 @@ func TestTeamUsecase_Duplicate(t *testing.T) {
 	}
 }
 
+func TestTeamUsecase_Duplicate_BuiltinBecomesUserOwned(t *testing.T) {
+	repo := newMemTeamRepoB()
+	uc := biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()})
+	ctx := context.Background()
+
+	builtin, err := uc.Create(ctx, biz.Team{TeamKey: "eco", DisplayName: "Eco", Kind: "ecosystem_preset", Source: "imported"})
+	if err != nil {
+		t.Fatalf("create builtin: %v", err)
+	}
+	copy, err := uc.Duplicate(ctx, builtin.ID)
+	if err != nil {
+		t.Fatalf("duplicate: %v", err)
+	}
+	if copy.Kind != "user" {
+		t.Errorf("duplicate kind = %q, want user", copy.Kind)
+	}
+	if copy.Source != "user" {
+		t.Errorf("duplicate source = %q, want user", copy.Source)
+	}
+	if err := uc.Delete(ctx, copy.ID); err != nil {
+		t.Errorf("delete duplicated copy: %v", err)
+	}
+}
+
 // --- CronUsecase tests ---
 
 type memCronRepoB struct {

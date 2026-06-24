@@ -27,11 +27,13 @@
       </div>
     </div>
     <!--
-      T8.3 VirtualScroller: messages > VIRTUAL_SCROLL_THRESHOLD use DynamicScroller
-      for dynamic-height virtualization. Falls back to normal v-for for short lists.
+      P2 #6: 统一使用 DynamicScroller，移除阈值切换。
+      原实现在 conversationTurns.length > 100 时从 v-for 切换到 DynamicScroller，
+      导致组件树完全重建（v-if/v-else 切换不同组件类型），在阈值临界点引起 UI 冻结。
+      vue-virtual-scroller 对短列表性能足够好，无需双模式。
     -->
     <DynamicScroller
-      v-else-if="useVirtualScroll"
+      v-else
       ref="virtualScrollRef"
       :items="conversationTurns"
       :min-item-size="80"
@@ -55,26 +57,6 @@
         </DynamicScrollerItem>
       </template>
     </DynamicScroller>
-    <div
-      v-else
-      ref="normalScrollEl"
-      class="col relative-position chat-messages__viewport"
-      @scroll.passive="$emit('scroll', $event)"
-      @click="$emit('messages-click', $event)"
-    >
-      <ConversationTurn
-        v-for="turn in conversationTurns"
-        :key="turn.id"
-        :turn="turn"
-        @confirm="(id, approved) => $emit('confirm', id, approved)"
-        @error-retry="(e) => $emit('error-retry', e)"
-        @error-switch-model="(e) => $emit('error-switch-model', e)"
-        @error-rephrase="(e) => $emit('error-rephrase', e)"
-        @error-check-config="(e) => $emit('error-check-config', e)"
-        @error-remove-attachment="(e) => $emit('error-remove-attachment', e)"
-        @error-relogin="(e) => $emit('error-relogin', e)"
-      />
-    </div>
     <ChatPendingQueue
       :messages="pendingMessages"
       :is-dark="isDark"
@@ -112,8 +94,8 @@ import type { Envelope } from '../../realtime/envelope';
 import type { Activity as TimelineActivity } from '../../features/chat/activityTimelineTypes';
 import type { ErrorEvent } from '../../features/chat/streamEventTypes';
 
-/** T8.3: Virtual scrolling threshold — only enable for long conversations. */
-const VIRTUAL_SCROLL_THRESHOLD = 100;
+// P2 #6: 原阈值 VIRTUAL_SCROLL_THRESHOLD=100 已移除，统一使用 DynamicScroller。
+// 原实现在消息数 >100 时从 v-for 切换到 DynamicScroller，导致组件树完全重建。
 
 const props = defineProps<{
   sessionKey: string;
@@ -170,7 +152,7 @@ const quickStartHints = [
 ];
 
 const emptyScrollEl = ref<HTMLElement | null>(null);
-const normalScrollEl = ref<HTMLElement | null>(null);
+// P2 #6: normalScrollEl 已移除（统一使用 DynamicScroller，不再有 v-for 模式）
 // T8.3: DynamicScroller ref for virtual scrolling mode
 const virtualScrollRef = ref<InstanceType<typeof DynamicScroller> | null>(null);
 
@@ -186,44 +168,39 @@ const { conversationTurns } = useConversationTimeline({
   activityRawRecords: computed(() => props.activityRawRecords ?? []),
 });
 
-/** T8.3: Enable virtual scrolling only for long conversations to keep short-list UX simple. */
-const useVirtualScroll = computed(() => conversationTurns.value.length > VIRTUAL_SCROLL_THRESHOLD);
+/**
+ * P2 #6: 统一使用 DynamicScroller。useVirtualScroll 在有消息时始终为 true，
+ * 保留暴露是为了 ChatMessagePanel/useChatScrollTitle 的 API 兼容性。
+ */
+const useVirtualScroll = computed(() => conversationTurns.value.length > 0);
 
 /**
  * T8.3: Scroll to a specific turn by id.
- * In virtual mode, uses DynamicScroller.scrollToItem; in normal mode, uses DOM query.
- * Returns true if the turn was found and scrolled to.
+ * Uses DynamicScroller.scrollToItem. Returns true if the turn was found.
  */
 async function scrollToTurnId(turnId: string): Promise<boolean> {
   const id = turnId.trim();
   if (!id) return false;
-  if (useVirtualScroll.value && virtualScrollRef.value) {
-    const index = conversationTurns.value.findIndex((t) => t.id === id);
-    if (index < 0) return false;
-    // DynamicScroller.scrollToItem scrolls the item into view, then we wait
-    // for the DOM to update before the caller can highlight the element.
-    virtualScrollRef.value.scrollToItem(index);
-    await nextTick();
-    return true;
-  }
-  // Normal mode: caller (useChatMessageScroll) handles DOM query + highlight.
-  return false;
+  if (!virtualScrollRef.value) return false;
+  const index = conversationTurns.value.findIndex((t) => t.id === id);
+  if (index < 0) return false;
+  // DynamicScroller.scrollToItem scrolls the item into view, then we wait
+  // for the DOM to update before the caller can highlight the element.
+  virtualScrollRef.value.scrollToItem(index);
+  await nextTick();
+  return true;
 }
 
 defineExpose({
   emptyScrollEl,
-  normalScrollEl,
   virtualScrollRef,
   useVirtualScroll,
   scrollToTurnId,
   getScrollTarget: () => {
     if (!props.messages.length) return emptyScrollEl.value;
-    if (useVirtualScroll.value) {
-      // DynamicScroller root element (the scrollable container)
-      const vsRef = virtualScrollRef.value as { $el?: HTMLElement } | null;
-      return vsRef?.$el ?? null;
-    }
-    return normalScrollEl.value;
+    // P2 #6: 统一使用 DynamicScroller 的根元素作为滚动容器
+    const vsRef = virtualScrollRef.value as { $el?: HTMLElement } | null;
+    return vsRef?.$el ?? null;
   },
 });
 </script>

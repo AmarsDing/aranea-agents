@@ -269,26 +269,26 @@ func (p *ActivityProjector) processChatCompletionChunk(ctx context.Context, ev *
 		// Reasoning is emitted before text so that the timeline always presents
 		// thinking ahead of the reply it supports, even when a single chunk
 		// contains both content types.
-		if reasoning != "" {
-			if ev.Response.IsPartial {
+		if ev.Response.IsPartial {
+			if reasoning != "" {
 				p.OnReasoningDelta(ctx, author, reasoning, true)
-			} else {
-				p.OnReasoningDone(ctx, author, reasoning, false)
 			}
-		}
-		if text != "" {
-			if ev.Response.IsPartial {
+			if text != "" {
 				if isMember {
 					p.OnMemberMessageDelta(ctx, author, text)
 				} else {
 					p.OnTextDelta(ctx, author, text)
 				}
+			}
+		} else {
+			// Final chunks must finalize the corresponding activity even when
+			// the payload is empty, otherwise streaming activities stay in the
+			// running state and accumulated content is lost.
+			p.OnReasoningDone(ctx, author, reasoning, false)
+			if isMember {
+				p.OnMemberMessageDone(ctx, author, text)
 			} else {
-				if isMember {
-					p.OnMemberMessageDone(ctx, author, text)
-				} else {
-					p.OnTextDone(ctx, author, text)
-				}
+				p.OnTextDone(ctx, author, text)
 			}
 		}
 	}
@@ -341,8 +341,9 @@ func (p *ActivityProjector) processToolResponse(ctx context.Context, ev *trpceve
 		return
 	}
 
-	resultRaw, _ := json.Marshal(msg.Content)
-	resultJSON := string(resultRaw)
+	// Avoid double-encoding string content: tool runtimes return a JSON string
+	// as msg.Content, and json.Marshal would wrap it in another pair of quotes.
+	resultJSON := msg.Content
 	status := "success"
 	errorCode := ""
 	if ev.Response.Error != nil {
@@ -444,6 +445,7 @@ func (p *ActivityProjector) OnReasoningDelta(ctx context.Context, author string,
 
 	// Emit delta
 	a := p.activities[activityID]
+	a.Reasoning += chunk
 	p.publishActivityDelta(ctx, a, "reasoning", chunk)
 }
 
@@ -465,10 +467,17 @@ func (p *ActivityProjector) OnReasoningDone(ctx context.Context, author string, 
 		delete(p.kindAuthorMap, kindKey(biz.ActivityKindThinking, author))
 		p.kindAuthorMap[kindKey(biz.ActivityKindReply, author)] = activityID
 		a.Kind = biz.ActivityKindReply
-		a.Content = fullReasoning
-		a.Reasoning = ""
+		if fullReasoning != "" {
+			a.Content = fullReasoning
+			a.Reasoning = ""
+		} else {
+			a.Content = a.Reasoning
+			a.Reasoning = ""
+		}
 	} else {
-		a.Reasoning = fullReasoning
+		if fullReasoning != "" {
+			a.Reasoning = fullReasoning
+		}
 		// Remove completed thinking from lookup so the next ReAct round
 		// creates a new thinking Activity instead of appending to this one.
 		// This mirrors OnToolResult's delete(p.toolCalls, toolCallID) pattern.
@@ -513,6 +522,7 @@ func (p *ActivityProjector) OnTextDelta(ctx context.Context, author string, chun
 	}
 
 	a := p.activities[activityID]
+	a.Content += chunk
 	p.publishActivityDelta(ctx, a, "content", chunk)
 }
 
@@ -550,21 +560,50 @@ func (p *ActivityProjector) OnMemberMessageDelta(ctx context.Context, author str
 	}
 
 	a := p.activities[activityID]
+	a.Content += chunk
 	p.publishActivityDelta(ctx, a, "content", chunk)
 }
 
 // OnMemberMessageDone finalizes a team member's reply activity.
+// If no prior delta created the reply (e.g. the model only emits text in the
+// final chunk), a new activity is created from the final text so the UI still
+// has a reply to render.
 func (p *ActivityProjector) OnMemberMessageDone(ctx context.Context, author string, fullText string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	activityID := p.findActivityByKindAuthor(biz.ActivityKindReply, author)
+	var a *biz.Activity
 	if activityID == "" {
-		// Defensive: ignore Done without a prior Delta (e.g. empty member message)
-		return
+		if fullText == "" {
+			return
+		}
+		id := uuid.NewString()
+		now := time.Now().UTC()
+		a = &biz.Activity{
+			ID:               id,
+			Kind:             biz.ActivityKindReply,
+			Status:           biz.ActivityStatusRunning,
+			SessionID:        p.meta.SessionID,
+			TurnID:           p.meta.RequestID,
+			ParentActivityID: p.rootActivityID,
+			Timestamp:        now,
+			Content:          fullText,
+			AgentKey:         author,
+			AgentName:        p.resolveAgentName(ctx, author),
+			SpiritSessionID:  p.meta.SessionID,
+			TeamID:           p.meta.TeamID,
+			Meta:             map[string]any{"member_id": author},
+		}
+		p.activities[id] = a
+		p.kindAuthorMap[kindKey(biz.ActivityKindReply, author)] = id
+		p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityStart)
+	} else {
+		a = p.activities[activityID]
+		if fullText != "" {
+			a.Content = fullText
+		}
 	}
-	a := p.activities[activityID]
-	a.Content = fullText
 	p.transitionActivityStatus(a, biz.ActivityStatusCompleted)
 	now := time.Now().UTC()
 	a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
@@ -578,16 +617,44 @@ func (p *ActivityProjector) OnMemberMessageDone(ctx context.Context, author stri
 }
 
 // OnTextDone finalizes a reply activity.
+// If no prior delta created the reply (e.g. the model only emits text in the
+// final chunk after reasoning/tool calls), a new activity is created from the
+// final text so the reply UI is not left empty.
 func (p *ActivityProjector) OnTextDone(ctx context.Context, author string, fullText string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	activityID := p.findActivityByKindAuthor(biz.ActivityKindReply, author)
+	var a *biz.Activity
 	if activityID == "" {
-		return
+		if fullText == "" {
+			return
+		}
+		id := uuid.NewString()
+		now := time.Now().UTC()
+		a = &biz.Activity{
+			ID:               id,
+			Kind:             biz.ActivityKindReply,
+			Status:           biz.ActivityStatusRunning,
+			SessionID:        p.meta.SessionID,
+			TurnID:           p.meta.RequestID,
+			ParentActivityID: p.rootActivityID,
+			Timestamp:        now,
+			Content:          fullText,
+			AgentKey:         author,
+			AgentName:        p.resolveAgentName(ctx, author),
+			SpiritSessionID:  p.meta.SessionID,
+			TeamID:           p.meta.TeamID,
+		}
+		p.activities[id] = a
+		p.kindAuthorMap[kindKey(biz.ActivityKindReply, author)] = id
+		p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityStart)
+	} else {
+		a = p.activities[activityID]
+		if fullText != "" {
+			a.Content = fullText
+		}
 	}
-	a := p.activities[activityID]
-	a.Content = fullText
 	p.transitionActivityStatus(a, biz.ActivityStatusCompleted)
 	now := time.Now().UTC()
 	a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
@@ -600,10 +667,26 @@ func (p *ActivityProjector) OnTextDone(ctx context.Context, author string, fullT
 	p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityDone)
 }
 
-// OnToolCall creates an action Activity when a tool call is detected.
+// OnToolCall creates or updates an action Activity for a tool call.
+// Streaming tool calls may arrive as multiple deltas for the same tool_call_id;
+// those deltas are merged into a single Activity.
 func (p *ActivityProjector) OnToolCall(ctx context.Context, toolCallID, toolName, argsJSON, author string, startedAt time.Time) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	// Merge streaming deltas for the same tool call.
+	if existing, ok := p.toolCalls[toolCallID]; ok {
+		if toolName != "" {
+			existing.ToolName = toolName
+		}
+		if argsJSON != "" {
+			existing.ToolArguments += argsJSON
+		}
+		// Persist streaming tool call deltas so the accumulated arguments are
+		// available for history and the UI does not show stale empty args.
+		p.publishActivityDeltaWithPersist(ctx, existing, "tool_arguments", argsJSON, true)
+		return
+	}
 
 	id := uuid.NewString()
 	a := &biz.Activity{
@@ -1140,6 +1223,28 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, usage *ActivityUsage)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	// Finalize any still-running child activities so the UI does not leave
+	// streaming indicators (reply/thinking/action) dangling when the turn ends.
+	now := time.Now().UTC()
+	for _, a := range p.activities {
+		switch a.Kind {
+		case biz.ActivityKindReply, biz.ActivityKindThinking:
+			if a.Status == biz.ActivityStatusRunning {
+				p.transitionActivityStatus(a, biz.ActivityStatusCompleted)
+				a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
+				a.Collapsed = a.Kind == biz.ActivityKindThinking
+				p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityDone)
+			}
+		case biz.ActivityKindAction:
+			if a.Status == biz.ActivityStatusToolRunning {
+				p.transitionActivityStatus(a, biz.ActivityStatusCompleted)
+				a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
+				a.Collapsed = true
+				p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityDone)
+			}
+		}
+	}
+
 	if p.rootActivityID == "" {
 		return
 	}
@@ -1149,7 +1254,6 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, usage *ActivityUsage)
 	}
 
 	p.transitionActivityStatus(a, biz.ActivityStatusCompleted)
-	now := time.Now().UTC()
 	a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
 
 	// Store token usage in the root task Activity record.
@@ -1209,6 +1313,13 @@ func (p *ActivityProjector) publishEnvelope(ctx context.Context, env contract.En
 // Unlike the previous sync implementation, this no longer blocks the event loop
 // on bus.Publish; backpressure is applied via the sequencer's channel buffer.
 func (p *ActivityProjector) publishActivityDelta(ctx context.Context, a *biz.Activity, field, chunk string) {
+	p.publishActivityDeltaWithPersist(ctx, a, field, chunk, false)
+}
+
+// publishActivityDeltaWithPersist publishes an activity_delta envelope and,
+// when persist is true, also persists the updated activity. Used for streaming
+// tool call deltas whose accumulated arguments must be saved.
+func (p *ActivityProjector) publishActivityDeltaWithPersist(ctx context.Context, a *biz.Activity, field, chunk string, persist bool) {
 	if p.sequencer == nil {
 		return
 	}
@@ -1218,9 +1329,11 @@ func (p *ActivityProjector) publishActivityDelta(ctx context.Context, a *biz.Act
 	}
 	env.Metadata["delta_field"] = field
 	env.Metadata["delta_chunk"] = chunk
+	activityCopy := *a
 	if err := p.sequencer.publish(ctx, a.ID, publishTask{
-		env:     env,
-		persist: false,
+		env:      env,
+		persist:  persist,
+		activity: activityCopy,
 	}); err != nil {
 		p.lg.Warn("activity delta publish failed",
 			loggateway.StepID("agent.activity_projector.delta"),

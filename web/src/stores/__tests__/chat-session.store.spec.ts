@@ -255,4 +255,55 @@ describe('useChatSessionStore', () => {
     const result = await store.addAgentSession('', 'Title');
     expect(result).toBeNull();
   });
+
+  // P0 #4: 验证快速切换 Agent↔Team 时，旧请求不污染状态
+  it('loadAgentSessions is invalidated by resetForTeamSwitch during in-flight request', async () => {
+    const { listSessions } = await import('../../features/session/api');
+    const s1 = mockSession({ id: 's1' });
+    let resolveList: (rows: any[]) => void = () => {};
+    (listSessions as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveList = resolve;
+      }),
+    );
+
+    const store = useChatSessionStore();
+    const loadPromise = store.loadAgentSessions('agent-1');
+
+    // 在 loadAgentSessions 在途时切换到 Team 模式
+    store.resetForTeamSwitch('team-1');
+    expect(store.entityKind).toBe('team');
+
+    // 现在 resolve 旧的 loadAgentSessions 请求
+    resolveList([s1]);
+    await loadPromise;
+
+    // 旧请求不应污染 sessions / selectedSession（已切换到 team 模式）
+    expect(store.sessions).toEqual([]);
+    expect(store.selectedSession).toBeNull();
+  });
+
+  it('loadTeamSessions is invalidated by resetForAgentSwitch during in-flight request', async () => {
+    const { listTeamSessions } = await import('../../features/session/api');
+    let resolveList: (rows: any[]) => void = () => {};
+    (listTeamSessions as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveList = resolve;
+      }),
+    );
+
+    const store = useChatSessionStore();
+    store.resetForTeamSwitch('team-1');
+    const loadPromise = store.loadTeamSessions('team-1');
+
+    // 在途时切回 Agent 模式
+    store.resetForAgentSwitch();
+    expect(store.entityKind).toBe('agent');
+
+    resolveList([mockSession({ id: 'ts1', team_id: 'team-1' })]);
+    await loadPromise;
+
+    // 旧请求不应写入 teamSessions
+    expect(store.teamSessions['team-1']).toBeUndefined();
+  });
 });

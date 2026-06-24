@@ -78,6 +78,10 @@ export const useChatSessionStore = defineStore('chatSession', () => {
   const error = ref<string | null>(null);
 
   let _currentAgentId: string | null = null;
+  // P0 #4: 异步请求代际令牌。每次 resetForXxxSwitch 递增，使在途的
+  // loadAgentSessions/loadTeamSessions 在 await 返回后能识别自己已过期，
+  // 避免快速切换 Agent↔Team 时旧请求污染 selectedSession / teamSessions。
+  let _loadGeneration = 0;
 
   onSessionMutation((mutation) => {
     switch (mutation.type) {
@@ -112,12 +116,14 @@ export const useChatSessionStore = defineStore('chatSession', () => {
   }
 
   function resetForAgentSwitch() {
+    _loadGeneration++; // P0 #4: 作废所有在途的 loadTeamSessions 请求
     entityKind.value = 'agent';
     selectedTeamId.value = null;
     teamSelectedSessionId.value = null;
   }
 
   function resetForTeamSwitch(teamId: string) {
+    _loadGeneration++; // P0 #4: 作废所有在途的 loadAgentSessions 请求
     entityKind.value = 'team';
     selectedTeamId.value = teamId;
     selectedSession.value = null;
@@ -190,8 +196,12 @@ export const useChatSessionStore = defineStore('chatSession', () => {
     if (!agentId) return;
     _currentAgentId = agentId;
     error.value = null;
+    // P0 #4: 捕获当前代际，await 后校验。若用户在请求在途时切换了 entityKind，
+    // 该请求视为过期，不修改 selectedSession / sessions，避免竞态污染。
+    const myGeneration = _loadGeneration;
     try {
       const rows = await listSessions(agentId);
+      if (myGeneration !== _loadGeneration) return; // 已被后续切换作废
       sessions.value = sortSessionsForDisplay(rows);
 
       if (opts?.refreshOnly) {
@@ -210,6 +220,7 @@ export const useChatSessionStore = defineStore('chatSession', () => {
         selectedSession.value = rows[0];
       }
     } catch (e: unknown) {
+      if (myGeneration !== _loadGeneration) return; // 过期请求的错误不污染 error 状态
       error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
@@ -217,10 +228,13 @@ export const useChatSessionStore = defineStore('chatSession', () => {
 
   async function loadTeamSessions(teamId: string) {
     error.value = null;
+    const myGeneration = _loadGeneration;
     try {
       const rows = await listTeamSessions(teamId);
+      if (myGeneration !== _loadGeneration) return; // P0 #4: 已被后续切换作废
       teamSessions.value[teamId] = sortSessionsForDisplay(rows).map(withTeamAt);
     } catch (e: unknown) {
+      if (myGeneration !== _loadGeneration) return;
       error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }

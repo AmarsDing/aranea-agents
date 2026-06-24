@@ -119,6 +119,9 @@ func (r *activityRepo) UpdateActivity(ctx context.Context, a biz.Activity) (biz.
 		SetCompletionTokens(a.CompletionTokens).
 		SetContent(a.Content).
 		SetReasoning(a.Reasoning).
+		SetToolName(a.ToolName).
+		SetToolCallID(a.ToolCallID).
+		SetToolArguments(a.ToolArguments).
 		SetToolResult(a.ToolResult).
 		SetToolDurationMs(a.ToolDurationMs).
 		SetToolErrorCode(a.ToolErrorCode).

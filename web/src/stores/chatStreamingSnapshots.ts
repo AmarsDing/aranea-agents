@@ -1,21 +1,21 @@
-import { ref } from 'vue';
-
+/**
+ * Chat streaming snapshot cache.
+ *
+ * P2 #1: 原实现使用模块级 `ref<Record<string, ChatStreamingSnapshot>>`，
+ * 但经验证 `snapshots.value` 从未在任何响应式上下文（template/computed）中被读取，
+ * `get()` 方法也从未被调用。该 ref 实质上是一个"恰好用了 ref 包装的非响应式缓存"，
+ * 反而误导维护者以为存在响应式订阅。
+ *
+ * 现改为 `Map` 实现：消除伪响应式开销和 API 误导，保留 put/get/clear 语义。
+ * 若未来需要 DevTools 可见性，应迁入 Pinia defineStore。
+ */
 export type ChatStreamingSnapshot = {
   reasoning: string;
   partialText: string;
   updatedAt: number;
 };
 
-// TECH-DEBT(S13): module-level singleton ref bypasses Pinia.
-// Reason: streaming snapshot cache is hot-path (updated on every text_delta /
-// reasoning_delta envelope, potentially hundreds of times per second). Pinia's
-// proxy wrapping adds overhead that is undesirable here. The state is also
-// session-scoped and ephemeral (cleared on session switch), not persisted.
-// Migration plan: if DevTools visibility becomes necessary, wrap in a
-// defineStore('chatStreamingSnapshots', ...) with direct state mutation
-// (no actions needed). All consumers already go through useChatStreamingSnapshots().
-// Issue: tracking — frontend architecture cleanup.
-const snapshots = ref<Record<string, ChatStreamingSnapshot>>({});
+const snapshots = new Map<string, ChatStreamingSnapshot>();
 
 export function useChatStreamingSnapshots() {
   function put(
@@ -25,32 +25,30 @@ export function useChatStreamingSnapshots() {
     const sid = sessionId.trim();
     if (!sid) return;
     if (patch.replace) {
-      snapshots.value[sid] = {
+      snapshots.set(sid, {
         reasoning: patch.reasoning ?? '',
         partialText: patch.partialText ?? '',
         updatedAt: Date.now(),
-      };
+      });
       return;
     }
-    const cur = snapshots.value[sid] ?? { reasoning: '', partialText: '', updatedAt: 0 };
-    snapshots.value[sid] = {
+    const cur = snapshots.get(sid) ?? { reasoning: '', partialText: '', updatedAt: 0 };
+    snapshots.set(sid, {
       reasoning: patch.reasoning !== undefined ? `${cur.reasoning}${patch.reasoning}` : cur.reasoning,
       partialText: patch.partialText !== undefined ? `${cur.partialText}${patch.partialText}` : cur.partialText,
       updatedAt: Date.now(),
-    };
+    });
   }
 
   function get(sessionId: string): ChatStreamingSnapshot | undefined {
-    return snapshots.value[sessionId.trim()];
+    return snapshots.get(sessionId.trim());
   }
 
   function clear(sessionId: string) {
     const sid = sessionId.trim();
     if (!sid) return;
-    const next = { ...snapshots.value };
-    delete next[sid];
-    snapshots.value = next;
+    snapshots.delete(sid);
   }
 
-  return { snapshots, put, get, clear };
+  return { put, get, clear };
 }

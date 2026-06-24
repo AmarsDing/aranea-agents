@@ -122,6 +122,36 @@ describe('useActivityTimeline', () => {
     expect(activity?.content).toBe('Hi');
   });
 
+  it('handleActivityDelta accumulates tool_arguments for action activities', () => {
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'action-1',
+        kind: 'action',
+        tool_call_id: 'call-1',
+        tool_name: 'read_file',
+        tool_arguments: '{"path": "',
+      }),
+    );
+
+    tl.handleActivityDelta({
+      activity_id: 'action-1',
+      kind: 'action',
+      status: 'tool_running',
+      delta_field: 'tool_arguments',
+      delta_chunk: 'README.md',
+    });
+    tl.handleActivityDelta({
+      activity_id: 'action-1',
+      kind: 'action',
+      status: 'tool_running',
+      delta_field: 'tool_arguments',
+      delta_chunk: '"}',
+    });
+
+    const activity = tl.activities.value.find((a) => a.id === 'action-1');
+    expect(activity?.toolArguments).toBe('{"path": "README.md"}');
+  });
+
   it('handleActivityDelta ignores unknown activity_id', () => {
     tl.handleActivityDelta({
       activity_id: 'nonexistent',

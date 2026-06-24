@@ -1,8 +1,15 @@
 import type { EntityItem } from './ChatEntityGroup.vue';
 
+/**
+ * 工作中状态白名单（精确匹配）。
+ * 修复 P0 #5：原 /work|run|busy|ing/i 的 `ing` 子串会误匹配 pending/interesting/swing 等。
+ * isEntityInactive 保持原正则不变（其子串 inactive/disabled/stop/pause 无误匹配风险）。
+ */
+const WORKING_STATUSES = new Set(['working', 'running', 'busy']);
+
 /** EntityItem 是否处于"工作中"状态 */
 export function isEntityWorking(item: EntityItem) {
-  return /work|run|busy|ing/i.test(item.status || '');
+  return WORKING_STATUSES.has((item.status || '').trim().toLowerCase());
 }
 
 /** EntityItem 是否处于"停用"状态 */

@@ -126,6 +126,8 @@ export function useActivityTimeline() {
       updated.reasoning = (existing.reasoning || '') + meta.delta_chunk;
     } else if (meta.delta_field === 'content') {
       updated.content = (existing.content || '') + meta.delta_chunk;
+    } else if (meta.delta_field === 'tool_arguments') {
+      updated.toolArguments = (existing.toolArguments || '') + meta.delta_chunk;
     }
     if (meta._seq != null) updated.seq = meta._seq;
     activities.value.set(meta.activity_id, updated);

@@ -742,6 +742,10 @@ func runPendingDataMigrations(d *Data) error {
 		d.lg.Error("migration step failed", loggateway.StepID("data.migration.avatar_image_repair"), loggateway.Err(err))
 		return fmt.Errorf("avatar image repair migration: %w", err)
 	}
+	if err := RunTeamCopyOwnershipMigration(ctx, entClient, d.Dialect(), d.lg); err != nil {
+		d.lg.Error("migration step failed", loggateway.StepID("data.migration.team_copy_ownership"), loggateway.Err(err))
+		return fmt.Errorf("team copy ownership migration: %w", err)
+	}
 	return nil
 }
 

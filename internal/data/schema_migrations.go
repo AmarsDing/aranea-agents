@@ -23,6 +23,8 @@ const (
 	migrationNameSessionTurnNumberBackfill   = "session_turn_number_backfill"
 	MigrationSessionTurnNumberRebackfill     = 20260803
 	migrationNameSessionTurnNumberRebackfill = "session_turn_number_rebackfill"
+	MigrationTeamCopyOwnership               = 20260624
+	migrationNameTeamCopyOwnership           = "team_copy_ownership_to_user"
 )
 
 func isMigrationApplied(ctx context.Context, client *ent.Client, version int, lg loggateway.Logger) (bool, error) {

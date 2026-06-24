@@ -17,10 +17,29 @@ import {
   WS_RECONNECT_BASE_DELAY_MS,
 } from '../features/constants/timeouts';
 
-// T1.8: pendingQueue max length. Prevents unbounded memory growth when the
-// WebSocket is disconnected for a long time. When the queue is full, new
-// messages are rejected (the caller should fall back to HTTP).
-const WS_PENDING_QUEUE_MAX_LENGTH = 100;
+// T1.8 + P1 #2: 队列分级。控制消息（ping/subscribe 等）可丢弃；业务消息
+// （user_message/cancel 等）不丢弃，满时通过 onDrop 回调通知调用方走 HTTP 回退。
+const WS_CONTROL_QUEUE_MAX_LENGTH = 50;
+const WS_BUSINESS_QUEUE_MAX_LENGTH = 200;
+
+/**
+ * P1 #2: 按消息 type 分类优先级。
+ * - control：系统控制消息（ping/subscribe/unsubscribe/enable_log/sync_request），
+ *   断连堆积时可安全丢弃（重连后会重新订阅/同步）。
+ * - business：用户业务消息（user_message/cancel/user_feedback 等），不可丢弃。
+ */
+function classifyMessagePriority(upstream: WsUpstream): 'control' | 'business' {
+  switch (upstream.type) {
+    case 'ping':
+    case 'subscribe':
+    case 'unsubscribe':
+    case 'enable_log':
+    case 'sync_request':
+      return 'control';
+    default:
+      return 'business';
+  }
+}
 
 export type WsTransportOptions = {
   sessionId: string;
@@ -34,6 +53,11 @@ export type WsTransportOptions = {
   onServerShutdown?: (reason: string) => void;
   /** Fired when EventBuffer replay starts/ends (reconnect with last_event_id). */
   onReplayState?: (replaying: boolean, count?: number) => void;
+  /**
+   * P1 #2: 业务消息因队列满而被拒绝入队时触发。调用方应回退到 HTTP。
+   * 仅对 business 优先级消息触发；control 消息满时静默丢弃最旧的。
+   */
+  onDrop?: (upstream: WsUpstream) => void;
 };
 
 export type WsTransport = {
@@ -61,7 +85,9 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
   // reconnectAttempts is reset to 0 in onopen, so we can't rely on it in the
   // connected message handler (which arrives after onopen).
   let hasConnectedBefore = false;
-  const pendingQueue: WsUpstream[] = [];
+  // P1 #2: 分级队列。control 可丢弃，business 不丢弃。
+  const controlQueue: WsUpstream[] = [];
+  const businessQueue: WsUpstream[] = [];
   // T3.4: Per-session revision tracker for sync_request replay after reconnect.
   // Updated on every envelope carrying session_revision; used on reconnect to
   // request replay of envelopes with revision > last known.
@@ -198,7 +224,8 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
       reconnectTimer = null;
     }
     stopHeartbeat();
-    pendingQueue.length = 0;
+    controlQueue.length = 0;
+    businessQueue.length = 0;
     if (ws) {
       ws.onclose = null;
       ws.close(1000, 'client disconnect');
@@ -211,15 +238,21 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
     // T1.8: try-catch around each send to prevent a single JSON.stringify
     // or send error from breaking the entire flush loop. Messages that
     // fail to send are left in the queue for the next flush attempt.
-    while (pendingQueue.length > 0 && ws && ws.readyState === WebSocket.OPEN) {
-      const msg = pendingQueue.shift()!;
+    // P1 #2: business 优先刷新（用户消息优先于控制消息）。
+    flushQueue(businessQueue);
+    flushQueue(controlQueue);
+  }
+
+  function flushQueue(queue: WsUpstream[]): void {
+    while (queue.length > 0 && ws && ws.readyState === WebSocket.OPEN) {
+      const msg = queue.shift()!;
       try {
         ws.send(JSON.stringify(msg));
       } catch (err) {
         // Send failed — re-enqueue the message and stop flushing.
         // The next onopen or manual flush will retry.
-        pendingQueue.unshift(msg);
-        console.warn('ws-transport: flushPendingQueue send failed, re-enqueued', err);
+        queue.unshift(msg);
+        console.warn('ws-transport: flushQueue send failed, re-enqueued', err);
         break;
       }
     }
@@ -242,19 +275,32 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
     }
   }
 
-  // T1.8: enqueuePending enforces the max queue length. When the queue is
-  // full, the oldest message is dropped (FIFO eviction). This prevents
-  // unbounded memory growth during long disconnections.
+  // P1 #2: 分级入队策略。
+  // - control 消息（ping/subscribe 等）：满时丢弃最旧的（重连后会重新订阅）。
+  // - business 消息（user_message/cancel 等）：满时不丢弃，通过 onDrop 通知调用方
+  //   走 HTTP 回退，避免用户消息静默丢失而前端仍显示"已发送"。
   function enqueuePending(upstream: WsUpstream): void {
-    if (pendingQueue.length >= WS_PENDING_QUEUE_MAX_LENGTH) {
-      // Drop the oldest message to make room for the new one.
-      // This is acceptable because the oldest messages are likely stale
-      // (e.g., ping/subscribe) and the caller should fall back to HTTP
-      // for important messages.
-      pendingQueue.shift();
-      console.warn(`ws-transport: pendingQueue full (${WS_PENDING_QUEUE_MAX_LENGTH}), dropped oldest message`);
+    const priority = classifyMessagePriority(upstream);
+    if (priority === 'control') {
+      if (controlQueue.length >= WS_CONTROL_QUEUE_MAX_LENGTH) {
+        controlQueue.shift();
+        console.warn(
+          `ws-transport: controlQueue full (${WS_CONTROL_QUEUE_MAX_LENGTH}), dropped oldest control message`,
+        );
+      }
+      controlQueue.push(upstream);
+      return;
     }
-    pendingQueue.push(upstream);
+    // business 优先级
+    if (businessQueue.length >= WS_BUSINESS_QUEUE_MAX_LENGTH) {
+      // 不丢弃业务消息：通知调用方走 HTTP 回退
+      console.warn(
+        `ws-transport: businessQueue full (${WS_BUSINESS_QUEUE_MAX_LENGTH}), rejecting business message (caller should HTTP fallback)`,
+      );
+      opts.onDrop?.(upstream);
+      return;
+    }
+    businessQueue.push(upstream);
   }
 
   function subscribe(channel: string): void {

@@ -103,6 +103,110 @@ describe('useConversationTimeline', () => {
     expect(secondTurns[1].agentWork.result).toBe('a2 updated');
   });
 
+  it('rebuilds a turn when thinking reasoning content changes', async () => {
+    const messages = ref<Message[]>([
+      makeMessage({ id: 'u1', role: 'user', turn_id: 't1', content_markdown: 'q' }),
+      makeMessage({ id: 'a1', role: 'assistant', turn_id: 't1', content_markdown: 'a' }),
+    ]);
+    const rawRecords = ref<Activity[]>([
+      {
+        id: 'think-1',
+        kind: 'thinking',
+        status: 'running',
+        sessionId: 'sess-1',
+        turnId: 't1',
+        parentActivityId: null,
+        timestamp: '2026-06-21T00:00:00Z',
+        durationMs: null,
+        collapsed: false,
+        reasoning: 'Hello',
+      } as Activity,
+    ]);
+    const { conversationTurns } = useConversationTimeline({
+      messages: computed(() => messages.value),
+      activityRawRecords: computed(() => rawRecords.value),
+    });
+
+    const firstTurn = conversationTurns.value[0];
+    expect(firstTurn.agentWork.activities).toHaveLength(1);
+    expect(firstTurn.agentWork.activities[0].content).toBe('Hello');
+
+    rawRecords.value = [
+      {
+        id: 'think-1',
+        kind: 'thinking',
+        status: 'running',
+        sessionId: 'sess-1',
+        turnId: 't1',
+        parentActivityId: null,
+        timestamp: '2026-06-21T00:00:00Z',
+        durationMs: null,
+        collapsed: false,
+        reasoning: 'Hello World',
+      } as Activity,
+    ];
+    await nextTick();
+
+    const secondTurn = conversationTurns.value[0];
+    expect(secondTurn).not.toBe(firstTurn);
+    expect(secondTurn.agentWork.activities[0].content).toBe('Hello World');
+  });
+
+  it('rebuilds a turn when action toolArguments change', async () => {
+    const messages = ref<Message[]>([
+      makeMessage({ id: 'u1', role: 'user', turn_id: 't1', content_markdown: 'q' }),
+      makeMessage({ id: 'a1', role: 'assistant', turn_id: 't1', content_markdown: 'a' }),
+    ]);
+    const rawRecords = ref<Activity[]>([
+      {
+        id: 'action-1',
+        kind: 'action',
+        status: 'tool_running',
+        sessionId: 'sess-1',
+        turnId: 't1',
+        parentActivityId: null,
+        timestamp: '2026-06-21T00:00:00Z',
+        durationMs: null,
+        collapsed: false,
+        toolName: 'read_file',
+        toolArguments: '{"path":"README.md"}',
+      } as Activity,
+    ]);
+    const { conversationTurns } = useConversationTimeline({
+      messages: computed(() => messages.value),
+      activityRawRecords: computed(() => rawRecords.value),
+    });
+
+    const firstTurn = conversationTurns.value[0];
+    expect(firstTurn.agentWork.activities).toHaveLength(1);
+    expect((firstTurn.agentWork.activities[0] as import('../../streamEventTypes').ActionEvent).tool.arguments).toBe(
+      '{"path":"README.md"}',
+    );
+
+    rawRecords.value = [
+      {
+        id: 'action-1',
+        kind: 'action',
+        status: 'tool_running',
+        sessionId: 'sess-1',
+        turnId: 't1',
+        parentActivityId: null,
+        timestamp: '2026-06-21T00:00:00Z',
+        durationMs: null,
+        collapsed: false,
+        toolName: 'read_file',
+        toolArguments: '{"path":"README.md","offset":0}',
+      } as Activity,
+    ];
+    await nextTick();
+
+    const secondTurn = conversationTurns.value[0];
+    expect(secondTurn).not.toBe(firstTurn);
+    expect((secondTurn.agentWork.activities[0] as import('../../streamEventTypes').ActionEvent).tool.arguments).toBe(
+      '{"path":"README.md","offset":0}',
+    );
+  });
+
   it('rebuilds a turn when its activity status changes', async () => {
     const messages = ref<Message[]>([
       makeMessage({ id: 'u1', role: 'user', turn_id: 't1', content_markdown: 'q' }),

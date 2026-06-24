@@ -15,7 +15,7 @@ import { computed, type ComputedRef } from 'vue';
 import type { Message } from '../types';
 import type { Envelope } from '../../../realtime/envelope';
 import type { ConversationTurn, AgentWorkProcess, Activity } from '../activityTimelineTypes';
-import type { ReplyEvent, ThinkingEvent } from '../streamEventTypes';
+import type { ReplyEvent } from '../streamEventTypes';
 import type { ActivityTreeNode } from '../activityTypes';
 import type { AgentBlock, ProgressSection } from '../agentTreeTypes';
 import { agentColorFromKey, ROOT_AGENT_KEY } from '../agentTreeTypes';
@@ -214,7 +214,21 @@ function buildTurnSignature(
     // to keep signatures compact, while still catching meaningful changes.
     parts.push(`m=${m.id}:${m.status}:${m.turn_id}:${m.content_markdown.length}`);
   }
-  parts.push(`r=${rawRecords.map((r) => `${r.id}:${r.status}:${r.kind}:${(r.content ?? '').length}`).join(',')}`);
+  parts.push(
+    `r=${rawRecords
+      .map((r) => {
+        // Include kind-specific payload lengths so streaming deltas for
+        // thinking/action/reply all invalidate the turn cache correctly.
+        let payloadLen = (r.content ?? '').length;
+        if (r.kind === 'thinking') {
+          payloadLen = (r.reasoning ?? '').length;
+        } else if (r.kind === 'action') {
+          payloadLen = (r.toolArguments ?? '').length + (r.toolResult ?? '').length;
+        }
+        return `${r.id}:${r.status}:${r.kind}:${payloadLen}`;
+      })
+      .join(',')}`,
+  );
   parts.push(`ak=${opts.agentKey}`);
   parts.push(`tc=${opts.taskContent ?? ''}`);
   parts.push(`pl=${opts.plannerKind}`);
@@ -253,12 +267,9 @@ function buildSingleTurnFromActivities(
   // Build Activity tree from raw records for this turn
   const treeNodes = buildTreeFromRecords(rawRecords);
   const allNodes = flattenTree(treeNodes);
-  let turnTimelineActivities: Activity[] = allNodes
+  const turnTimelineActivities: Activity[] = allNodes
     .filter((node) => node.kind !== 'task' && node.kind !== 'sub_task_board' && node.kind !== 'delegate')
     .map(activityToStreamEvent);
-
-  // D3: Merge adjacent ThinkActivities
-  turnTimelineActivities = mergeAdjacentThinkActivities(turnTimelineActivities);
 
   const rootTask = rawRecords.find((r) => r.kind === 'task');
   const agentKey = rootTask?.agentKey || opts.agentKey || firstAssistant?.agent_ref?.agent_key || ROOT_AGENT_KEY;
@@ -326,46 +337,6 @@ function buildSingleTurnFromActivities(
     userMessage: userMessage ?? null,
     agentWork,
   };
-}
-
-function mergeAdjacentThinkActivities(activities: Activity[]): Activity[] {
-  const result: Activity[] = [];
-  let i = 0;
-  while (i < activities.length) {
-    const current = activities[i];
-    if (current.kind !== 'thinking') {
-      result.push(current);
-      i++;
-      continue;
-    }
-    const group: ThinkingEvent[] = [current as ThinkingEvent];
-    while (i + 1 < activities.length && activities[i + 1].kind === 'thinking') {
-      i++;
-      group.push(activities[i] as ThinkingEvent);
-    }
-    if (group.length === 1) {
-      result.push(group[0]);
-    } else {
-      const mergedContent = group
-        .map((s) => s.content)
-        .filter(Boolean)
-        .join('\n\n');
-      const totalDuration = group.reduce((sum, s) => sum + (s.durationMs ?? 0), 0) || null;
-      const anyStreaming = group.some((s) => s.streaming);
-      result.push({
-        kind: 'thinking',
-        id: group[0].id + '-merged',
-        content: mergedContent,
-        label: undefined,
-        collapsed: !anyStreaming,
-        streaming: anyStreaming,
-        durationMs: totalDuration,
-        subSteps: group,
-      });
-    }
-    i++;
-  }
-  return result;
 }
 
 function buildTreeFromRecords(records: readonly import('../activityTypes').Activity[]): ActivityTreeNode[] {
