@@ -327,16 +327,18 @@ describe('useActivityTimeline', () => {
         kind: 'reply',
       }),
     );
+    // Phase 3: errors are now task.failed (not a separate error kind)
     tl.handleActivityStart(
       makeStartMeta({
-        activity_id: 'error-1',
-        kind: 'error',
+        activity_id: 'task-failed-1',
+        kind: 'task',
+        status: 'failed',
         content: 'something went wrong',
       }),
     );
 
     const activities = tl.streamEvents.value;
-    // task, delegate, sub_task_board are filtered out; thinking, action, reply, error remain
+    // task (non-failed) is filtered out; thinking, action, reply, task.failed→error remain
     expect(activities).toHaveLength(4);
     expect(activities[0].kind).toBe('thinking');
     expect(activities[1].kind).toBe('action');

@@ -19,15 +19,16 @@ import (
 type TeamService struct {
 	v1.UnimplementedTeamServiceServer
 
-	uc         *biz.TeamUsecase
-	graphUC    *biz.GraphUsecase
-	agents     *biz.AgentUsecase
-	sessions   *biz.SessionUsecase
-	teamRunner biz.TeamTurnRunnerPort
-	runs       biz.RunRegistryPort
-	eventBus   event.Bus
-	lg         loggateway.Logger
-	synthesis  *SpiritSynthesisService
+	uc           *biz.TeamUsecase
+	graphUC      *biz.GraphUsecase
+	agents       *biz.AgentUsecase
+	sessions     *biz.SessionUsecase
+	teamRunner   biz.TeamTurnRunnerPort
+	runs         biz.RunRegistryPort
+	eventBus     event.Bus
+	lg           loggateway.Logger
+	synthesis    *SpiritSynthesisService
+	activityRepo biz.ActivityRepo
 }
 
 func NewTeamService(
@@ -40,11 +41,12 @@ func NewTeamService(
 	eventBus event.Bus,
 	lg loggateway.Logger,
 	synthesis *SpiritSynthesisService,
+	activityRepo biz.ActivityRepo,
 ) *TeamService {
 	return &TeamService{
 		uc: uc, graphUC: graphUC, agents: agents, sessions: sessions,
 		teamRunner: teamRunner, runs: runs, eventBus: eventBus, lg: lg,
-		synthesis: synthesis,
+		synthesis: synthesis, activityRepo: activityRepo,
 	}
 }
 
@@ -329,7 +331,7 @@ func (s *TeamService) CancelTeamRun(ctx context.Context, req *v1.CancelTeamRunRe
 		if entry, ok := s.runs.GetStatus(r.SessionID); ok && strings.TrimSpace(entry.RunID) != "" {
 			runID = entry.RunID
 		}
-		CancelSessionRunSideEffects(ctx, s.eventBus, s.sessions, r.SessionID, runID, s.lg)
+		CancelSessionRunSideEffects(ctx, s.eventBus, s.activityRepo, s.activityRepo, r.SessionID, runID, s.lg)
 	}
 	return toProtoTeamRun(r), nil
 }

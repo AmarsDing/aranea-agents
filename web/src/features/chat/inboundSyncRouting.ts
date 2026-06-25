@@ -1,3 +1,11 @@
+/**
+ * @deprecated The Activity-First architecture replaces envelope-based
+ * inbound sync routing with ActivityEvent consumption. Chat code should
+ * route ActivityEvent via useChatWorkspace.handleActivityEvent instead.
+ * This module is retained until legacy envelope consumers migrate.
+ * See ADR-02 §遗留项.
+ */
+
 import type { Envelope } from './envelope';
 import { envelopeSource } from './inboundSyncEnvelope';
 import { SESSION_RUN_STATUS } from './sessionRunStatus';

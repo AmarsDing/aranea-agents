@@ -629,7 +629,7 @@ func (o *ChatOrchestrator) consumeTurnStream(
 		TaskContent: userContent,
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
-	streamOpts := NewChatStreamConsumeOptions(o.td().ReadDeps.ToolUC, o.td().ReadDeps.Agents, o.td().Sessions, o.activityWriter(), o.td().Pipeline.ActivityBus, o.lg())
+	streamOpts := NewChatStreamConsumeOptions(o.td().ReadDeps.ToolUC, o.td().ReadDeps.Agents, o.activityWriter(), o.td().Pipeline.ActivityBus, o.lg())
 	// N-21/N-03: Reuse the ActivityProjector injected in invokeTurnLLMAndStream
 	// so that emissions from plugins/hooks (which fire during invokeLLMCall)
 	// are visible to the stream consumer. This avoids a race where Reset() in

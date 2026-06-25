@@ -235,6 +235,16 @@ func (r *Runner) buildTeamProjectMeta(ctx context.Context, sess biz.Session, run
 		memberKeySet[k] = struct{}{}
 	}
 	contextWin := sessctx.ResolveContextWindowTokens(ctx, r.teamLLMCatalog(), sess, ar.agent, ar.prov, ar.mod)
+	// Phase 1a fix: propagate session tree hierarchy so team activities are
+	// correctly attributed to the originating spirit session. sess is the team
+	// session created by SpiritTeamAssembler with ParentSessionID/RootSessionID
+	// pointing to the spirit session. SpiritSessionID for a team session equals
+	// its RootSessionID (the spirit session that initiated the tree).
+	spiritSessionID := sess.RootSessionID
+	if spiritSessionID == "" {
+		// Fallback: if RootSessionID not set (legacy data), use ParentSessionID
+		spiritSessionID = sess.ParentSessionID
+	}
 	return agent.ProjectMeta{
 		SessionID:        sess.ID,
 		RequestID:        run.ID,
@@ -248,6 +258,10 @@ func (r *Runner) buildTeamProjectMeta(ctx context.Context, sess biz.Session, run
 		ContextWindow:    contextWin,
 		Source:           event.EnvelopeSourceFromContext(ctx),
 		TaskContent:      content,
+		// Phase 1a: session tree hierarchy for cross-session aggregation.
+		SpiritSessionID: spiritSessionID,
+		ParentSessionID: sess.ParentSessionID,
+		RootSessionID:   sess.RootSessionID,
 	}
 }
 

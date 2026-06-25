@@ -71,7 +71,6 @@ func NewRunnerDepsFromRuntimeWithLogger(trpcSession trpcsession.Service, memory 
 
 type StreamConsumeOptions struct {
 	MetaResolver      ActivityMetaResolver
-	ActivityPersister ActivityPersister
 	ActivityProjector *ActivityProjector // AF phase: projects runtime events into Activity semantic units
 }
 

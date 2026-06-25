@@ -4,118 +4,161 @@ import (
 	"context"
 	"testing"
 
-	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 )
 
-func TestCancelRunningActivityMessages_NilSessions(t *testing.T) {
-	n, err := CancelRunningActivityMessages(context.Background(), nil, "sess1", loggateway.NewNoop())
+func TestCancelRunningActivityMessages_NilReader(t *testing.T) {
+	n, err := CancelRunningActivityMessages(context.Background(), nil, nil, "sess1", loggateway.NewNoop())
 	if err != nil || n != 0 {
 		t.Fatalf("expected 0,nil got %d,%v", n, err)
 	}
 }
 
 func TestCancelRunningActivityMessages_EmptySessionID(t *testing.T) {
-	n, err := CancelRunningActivityMessages(context.Background(), nil, "  ", loggateway.NewNoop())
+	n, err := CancelRunningActivityMessages(context.Background(), &stubActivityRepo{}, &stubActivityRepo{}, "  ", loggateway.NewNoop())
 	if err != nil || n != 0 {
 		t.Fatalf("expected 0,nil got %d,%v", n, err)
 	}
 }
 
-func TestNewStreamConsumeOptions_Nil(t *testing.T) {
-	opts := NewStreamConsumeOptions(nil, nil, nil, nil, nil, nil)
-	if opts == nil {
-		t.Fatal("expected non-nil options")
+func TestCancelRunningActivityMessages_SkipsTerminalStatuses(t *testing.T) {
+	repo := &stubActivityRepo{
+		activities: []biz.Activity{
+			{ID: "a1", SessionID: "sess1", Status: biz.ActivityStatusCompleted},
+			{ID: "a2", SessionID: "sess1", Status: biz.ActivityStatusFailed},
+			{ID: "a3", SessionID: "sess1", Status: biz.ActivityStatusCancelled},
+			{ID: "a4", SessionID: "sess1", Status: biz.ActivityStatusInterrupted},
+		},
+	}
+	n, err := CancelRunningActivityMessages(context.Background(), repo, repo, "sess1", loggateway.NewNoop())
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("expected 0 cancellations, got %d", n)
+	}
+	if len(repo.updated) != 0 {
+		t.Fatalf("expected no updates, got %d", len(repo.updated))
 	}
 }
 
-func TestNewStreamConsumeOptions_WithDeps(t *testing.T) {
-	opts := NewStreamConsumeOptions(&biz.ToolUsecase{}, &stubAgentRepo{}, nil, nil, nil, nil)
-	if opts == nil {
-		t.Fatal("expected non-nil options")
+func TestCancelRunningActivityMessages_CancelsInFlight(t *testing.T) {
+	repo := &stubActivityRepo{
+		activities: []biz.Activity{
+			{ID: "a1", SessionID: "sess1", Status: biz.ActivityStatusRunning},
+			{ID: "a2", SessionID: "sess1", Status: biz.ActivityStatusToolRunning},
+			{ID: "a3", SessionID: "sess1", Status: biz.ActivityStatusToolBlocked},
+			{ID: "a4", SessionID: "sess1", Status: biz.ActivityStatusCompleted},
+		},
 	}
-	if opts.MetaResolver == nil {
-		t.Fatal("expected non-nil resolver")
+	n, err := CancelRunningActivityMessages(context.Background(), repo, repo, "sess1", loggateway.NewNoop())
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
 	}
-}
-
-func TestStreamOptsFactoryAdapter(t *testing.T) {
-	a := &StreamOptsFactoryAdapter{
-		Tools:  &biz.ToolUsecase{},
-		Agents: &stubAgentRepo{},
+	if n != 3 {
+		t.Fatalf("expected 3 cancellations, got %d", n)
 	}
-	opts := a.NewStreamConsumeOptions()
-	if opts == nil {
-		t.Fatal("expected non-nil options")
+	if len(repo.updated) != 3 {
+		t.Fatalf("expected 3 updates, got %d", len(repo.updated))
 	}
-}
-
-func TestStreamOptsFactoryAdapter_Nil(t *testing.T) {
-	a := &StreamOptsFactoryAdapter{}
-	opts := a.NewStreamConsumeOptions()
-	if opts == nil {
-		t.Fatal("expected non-nil options")
+	for _, u := range repo.updated {
+		if u.Status != biz.ActivityStatusCancelled {
+			t.Fatalf("expected cancelled status, got %s", u.Status)
+		}
 	}
 }
 
-func TestCatalogActivityMetaResolver_Nil(t *testing.T) {
-	var r *catalogActivityMetaResolver
-	if r.ResolveDisplayLabel(context.Background(), "tool1") != "" {
-		t.Fatal("expected empty for nil resolver")
+func TestCancelRunningActivityMessages_UpdateErrorContinues(t *testing.T) {
+	reader := &stubActivityRepo{
+		activities: []biz.Activity{
+			{ID: "a1", SessionID: "sess1", Status: biz.ActivityStatusRunning},
+			{ID: "a2", SessionID: "sess1", Status: biz.ActivityStatusToolRunning},
+		},
 	}
-	if r.ResolveAgentDisplayName(context.Background(), "agent1") != "" {
-		t.Fatal("expected empty for nil resolver")
+	writer := &stubActivityRepo{updateErr: errUpdateFailed}
+	n, err := CancelRunningActivityMessages(context.Background(), reader, writer, "sess1", loggateway.NewNoop())
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
 	}
-	if r.ResolveAgentID(context.Background(), "agent1") != "" {
-		t.Fatal("expected empty for nil resolver")
-	}
-}
-
-func TestCatalogActivityMetaResolver_EmptyInput(t *testing.T) {
-	r := newCatalogActivityMetaResolver(nil, nil)
-	if r.ResolveDisplayLabel(context.Background(), "") != "" {
-		t.Fatal("expected empty for empty tool name")
-	}
-	if r.ResolveAgentDisplayName(context.Background(), "") != "" {
-		t.Fatal("expected empty for empty agent key")
-	}
-	if r.ResolveAgentID(context.Background(), "") != "" {
-		t.Fatal("expected empty for empty agent key")
+	if n != 0 {
+		t.Fatalf("expected 0 successful cancellations, got %d", n)
 	}
 }
 
-func TestSessionActivityPersister_Nil(t *testing.T) {
-	var p *sessionActivityPersister
-	if p.UpsertActivity(context.Background(), chatagent.ProjectMeta{}, event.EnvelopeToolCall{}) != nil {
-		t.Fatal("expected nil for nil persister")
+func TestIsInFlightActivity(t *testing.T) {
+	cases := []struct {
+		status biz.ActivityStatus
+		want   bool
+	}{
+		{biz.ActivityStatusPending, false},
+		{biz.ActivityStatusRunning, true},
+		{biz.ActivityStatusToolRunning, true},
+		{biz.ActivityStatusToolBlocked, true},
+		{biz.ActivityStatusCompleted, false},
+		{biz.ActivityStatusFailed, false},
+		{biz.ActivityStatusPartialFailure, false},
+		{biz.ActivityStatusCancelled, false},
+		{biz.ActivityStatusInterrupted, false},
+	}
+	for _, c := range cases {
+		if got := isInFlightActivity(c.status); got != c.want {
+			t.Fatalf("isInFlightActivity(%s)=%v, want %v", c.status, got, c.want)
+		}
 	}
 }
 
-func TestCatalogActivityMetaResolver_WithAgentRepo(t *testing.T) {
-	r := newCatalogActivityMetaResolver(nil, &stubAgentRepo{
-		names: map[string]string{"test-agent": "Agent test-agent"},
-		ids:   map[string]string{"test-agent": "id-test-agent"},
-	})
-	name := r.ResolveAgentDisplayName(context.Background(), "test-agent")
-	if name != "Agent test-agent" {
-		t.Fatalf("expected 'Agent test-agent', got %q", name)
-	}
-	id := r.ResolveAgentID(context.Background(), "test-agent")
-	if id != "id-test-agent" {
-		t.Fatalf("expected 'id-test-agent', got %q", id)
-	}
+// stubActivityRepo implements biz.ActivityRepo for cancel tests.
+// The same instance can serve as both reader and writer.
+type stubActivityRepo struct {
+	activities []biz.Activity
+	updated    []biz.Activity
+	updateErr  error
 }
 
-func TestCatalogActivityMetaResolver_CachesResult(t *testing.T) {
-	r := newCatalogActivityMetaResolver(nil, &stubAgentRepo{
-		names: map[string]string{"cache-agent": "Cache Agent"},
-		ids:   map[string]string{"cache-agent": "id-cache-agent"},
-	})
-	name1 := r.ResolveAgentDisplayName(context.Background(), "cache-agent")
-	name2 := r.ResolveAgentDisplayName(context.Background(), "cache-agent")
-	if name1 != name2 {
-		t.Fatalf("cache should return same result: %q vs %q", name1, name2)
-	}
+func (s *stubActivityRepo) ListBySessionTurn(_ context.Context, _, _ string) ([]biz.Activity, error) {
+	return nil, nil
 }
+
+func (s *stubActivityRepo) ListBySession(_ context.Context, _ string) ([]biz.Activity, error) {
+	return s.activities, nil
+}
+
+func (s *stubActivityRepo) GetActivity(_ context.Context, _ string) (biz.Activity, error) {
+	return biz.Activity{}, nil
+}
+
+func (s *stubActivityRepo) ListBySpiritSession(_ context.Context, _ string) ([]biz.Activity, error) {
+	return nil, nil
+}
+
+func (s *stubActivityRepo) ListByTeam(_ context.Context, _ string) ([]biz.Activity, error) {
+	return nil, nil
+}
+
+func (s *stubActivityRepo) ListByParentSession(_ context.Context, _ string) ([]biz.Activity, error) {
+	return nil, nil
+}
+
+func (s *stubActivityRepo) CreateActivity(_ context.Context, a biz.Activity) (biz.Activity, error) {
+	return a, nil
+}
+
+func (s *stubActivityRepo) UpdateActivity(_ context.Context, a biz.Activity) (biz.Activity, error) {
+	if s.updateErr != nil {
+		return biz.Activity{}, s.updateErr
+	}
+	s.updated = append(s.updated, a)
+	return a, nil
+}
+
+func (s *stubActivityRepo) UpsertActivity(_ context.Context, a biz.Activity) (biz.Activity, error) {
+	return a, nil
+}
+
+// errUpdateFailed is a sentinel error for stub update failures.
+var errUpdateFailed = errSimple("update failed")
+
+type errSimple string
+
+func (e errSimple) Error() string { return string(e) }

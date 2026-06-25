@@ -1099,8 +1099,8 @@ TK-FE-24 (i18n) — 与上述三项并行，最后补齐
 | AF-BE-07 | `ActivityProjector.OnReasoningDelta/Done` — thinking/reply Activity | `internal/agent/` | reasoning_as_display 场景正确升级为 reply | ✅ |
 | AF-BE-08 | `ActivityProjector.OnTextDelta/Done` — reply Activity | `internal/agent/` | 单测通过 | ✅ |
 | AF-BE-09 | `ActivityProjector.OnToolCall/Result` — action Activity | `internal/agent/` | tool_timeout 场景正确设置 toolErrorCode | ✅ |
-| AF-BE-10 | `ActivityProjector.OnDelegate` — delegate + sub_task_board Activity | `internal/agent/` | Spirit 上下文字段正确填充 | ✅ |
-| AF-BE-11 | `ActivityProjector.OnError` — error Activity | `internal/agent/` | 单测通过 | ✅ |
+| AF-BE-10 | ~~`ActivityProjector.OnDelegate` — delegate + sub_task_board Activity~~ | `internal/agent/` | ~~Spirit 上下文字段正确填充~~ ✅ → **Phase AF-3 已删除**（见 §12.2 AF3-BE-03） |
+| AF-BE-11 | ~~`ActivityProjector.OnError` — error Activity~~ → **root task.failed** | `internal/agent/` | ~~单测通过~~ ✅ → **Phase AF-3 重构**（见 §12.2 AF3-BE-02） |
 | AF-BE-12 | 新增 EnvelopeType：activity_start / activity_delta / activity_done / activity_child_start | `internal/event/contract/envelope.go` | 注册到 channel 路由表 | ✅ |
 | AF-BE-13 | 集成 ActivityProjector 到 chat_orchestrator_turn.go | `internal/service/` | 双发射：旧事件 + Activity 事件并行 | ✅ |
 | AF-BE-14 | ActivityProjector 与 EventProjector 共享 mutex | `internal/agent/` | 顺序发射，无竞态 | ✅ |
@@ -1481,4 +1481,87 @@ cd web && pnpm lint && pnpm test && pnpm build
 **替代方案**：
 - 仅在 streamHandlers 路径处理当前 session：回到 AF-GAP-02 之前的问题，WS 重连间隙事件丢失
 - 改 `handleActivityDelta` 为幂等（基于 delta_index）：需要后端配合，改动范围过大
+
+---
+
+## 12. Phase AF-3: Legacy Kind 清理 + 持久化补偿（2026-06-25 新增）
+
+> **目标**：移除 legacy ActivityKind（sub_task_board/error/delegate）；重构 OnError 为 root task.failed 模型；持久化失败补偿（dead-letter 缓冲 + 重试预算提升）；前端类型同步清理
+> **来源**：[2026-06-25-analysis-chat-module-refactor.md](../reports/2026-06-25-analysis-chat-module-refactor.md) Phase 3
+> **设计**：[ADR-02: Activity-First 事件持久化策略](../reports/2026-06-25-review-adr-activity-event-persistence.md)
+> **纪律**：两阶段审查（规格合规 + 代码质量）；后端 build/test + 前端 lint/test/build 全量通过
+
+### 12.1 代码锚点
+
+| 文件 | 用途 |
+|------|------|
+| `internal/biz/activity.go` | 删除 `ActivityKindSubTaskBoard`/`ActivityKindError`/`ActivityKindDelegate` 常量 |
+| `internal/agent/activity_projector.go` | `OnError` 重构为 root task.failed；删除 `OnDelegate`；`OnTurnEnd` 终态保护；`ListDeadLetterActivities` 暴露 |
+| `internal/agent/activity_event_sequencer.go` | 重试预算 350ms→3100ms；dead-letter 环形缓冲（cap=512）+ `pushDeadLetter`/`ListDeadLetterActivities` |
+| `web/src/features/chat/activityTypes.ts` | 移除 `'sub_task_board' \| 'error' \| 'delegate'` 类型 |
+| `web/src/features/chat/composables/useActivityTimeline.ts` | `task.failed` → `ErrorEvent` 转换；移除 `case 'error'` |
+| `web/src/features/chat/composables/useConversationTimeline.ts` | `hasError` 兼容新错误模型 + legacy cast |
+| `web/src/features/chat/composables/__tests__/useActivityTimeline.spec.ts` | 测试用例从 `kind: 'error'` 改为 `kind: 'task', status: 'failed'` |
+| `web/src/components/spirit/TaskExecutionPanel.vue` | `@deprecated` 标注（Phase 3 遗留项） |
+| `web/src/components/spirit/MemberReadOnlyPanel.vue` | `@deprecated` 标注（Phase 3 遗留项） |
+| `web/src/realtime/envelope.ts` + `useEnvelopeStream.ts` | `@deprecated` JSDoc 标注 |
+| `web/src/features/chat/envelope.ts` + `useEnvelopeStream.ts` + `inboundSyncRouting.ts` | `@deprecated` JSDoc 标注 |
+
+### 12.2 任务清单
+
+| ID | 任务 | 影响文件 | 验收标准 | 状态 |
+|----|------|----------|----------|------|
+| AF3-BE-01 | 删除 legacy ActivityKind 常量 | `internal/biz/activity.go` | 编译通过；保留 `ChildBoardId` 字段兼容 DB/proto | ✅ |
+| AF3-BE-02 | OnError 重构为 root task.failed | `internal/agent/activity_projector.go` | 存在 root task 时转换 status=failed；无 root 时创建兜底 failed task | ✅ |
+| AF3-BE-03 | 删除 OnDelegate 方法 | `internal/agent/activity_projector.go` | 无调用方；编译通过 | ✅ |
+| AF3-BE-04 | OnTurnEnd 终态保护 | `internal/agent/activity_projector.go` | root 已是终态时不覆盖 status，仅附加 token usage | ✅ |
+| AF3-BE-05 | 持久化重试预算提升 | `internal/agent/activity_event_sequencer.go` | persistMaxRetries=5, persistInitialBackoffMs=100, 总预算 3100ms | ✅ |
+| AF3-BE-06 | Dead-letter 环形缓冲 | `internal/agent/activity_event_sequencer.go` | cap=512, FIFO 淘汰；`ListDeadLetterActivities` 暴露 | ✅ |
+| AF3-FE-01 | 前端 ActivityKind 类型清理 | `activityTypes.ts` | 移除 `'sub_task_board' \| 'error' \| 'delegate'` | ✅ |
+| AF3-FE-02 | useActivityTimeline 转换逻辑更新 | `useActivityTimeline.ts` | `task.failed` → `ErrorEvent`；移除 `case 'error'` | ✅ |
+| AF3-FE-03 | useConversationTimeline hasError 更新 | `useConversationTimeline.ts` | 兼容新错误模型 + legacy `(a.kind as string) === 'error'` cast | ✅ |
+| AF3-FE-04 | 测试用例修复 | `useActivityTimeline.spec.ts` | `kind: 'error'` → `kind: 'task', status: 'failed'` | ✅ |
+| AF3-DOC-01 | ADR-02 编写 | `docs/reports/2026-06-25-review-adr-activity-event-persistence.md` | 含背景/决策/后果/替代方案/遗留项 | ✅ |
+| AF3-DEP-01 | Legacy spirit 面板 @deprecated 标注 | `TaskExecutionPanel.vue` + `MemberReadOnlyPanel.vue` | HTML 注释指向 ADR-02 §遗留项 | ✅ |
+| AF3-DEP-02 | Legacy envelope 文件 @deprecated 标注 | 5 个 envelope 相关文件 | JSDoc `@deprecated` 指向 ADR-02 §遗留项 | ✅ |
+
+### 12.3 验收标准
+
+- [x] 后端 `go build ./internal/agent/... ./internal/biz/... ./internal/event/...` 通过
+- [x] 后端 `go test ./internal/agent/... ./internal/biz/... -run "Activity|Projector|Sequencer|Turn"` 通过
+- [x] 前端 `pnpm test -- --run useActivityTimeline` 通过（19 tests）
+- [x] 前端 `pnpm test -- --run useConversationTimeline` 通过（8 tests）
+- [x] 前端 `pnpm lint` 通过（0 errors，i18n baseline 不变）
+- [x] 前端 `pnpm build` 通过（SPA 编译成功，TypeScript 类型检查通过）
+- [x] ADR-02 文档完整（背景/决策 D1-D4/后果/替代方案 A1-A4/适用范围/遗留项）
+- [x] Legacy 文件 @deprecated 标注完整（7 个文件）
+
+### 12.4 遗留项（defer 到后续迭代）
+
+以下重构因影响面大、需独立迁移而 defer，不阻塞本 Phase 落地（详见 ADR-02 §遗留项）：
+
+1. **Legacy spirit 面板删除**（`TaskExecutionPanel.vue` / `MemberReadOnlyPanel.vue`）：仍服务于 team/member 模式，需先完成 AF 管线对 team/member 模式的覆盖后方可删除。当前已标注 `@deprecated`。
+2. **Legacy envelope 文件删除**（`envelope.ts` / `useEnvelopeStream.ts` / `inboundSyncRouting.ts` 等）：59+ 文件仍依赖 envelope 类型，需逐步迁移至 ActivityEvent 后方可整体删除。当前已标注 `@deprecated`。
+3. **event_store/event_wal 表删除**：DDL 迁移已就绪（`20260901_drop_event_store_subsystem.sql`），但需等待 legacy envelope 系统完全退役后方可执行。
+
+### 12.5 改动文件清单
+
+| 文件 | 变更类型 | 说明 |
+|------|---------|------|
+| `internal/biz/activity.go` | 修改 | 删除 3 个 legacy ActivityKind 常量 |
+| `internal/agent/activity_projector.go` | 修改 | OnError 重构 + OnDelegate 删除 + OnTurnEnd 终态保护 + ListDeadLetterActivities |
+| `internal/agent/activity_event_sequencer.go` | 修改 | 重试预算提升 + dead-letter 环形缓冲 |
+| `web/src/features/chat/activityTypes.ts` | 修改 | 移除 3 个 legacy kind |
+| `web/src/features/chat/composables/useActivityTimeline.ts` | 修改 | task.failed → ErrorEvent 转换 |
+| `web/src/features/chat/composables/useConversationTimeline.ts` | 修改 | hasError 兼容新模型 |
+| `web/src/features/chat/composables/__tests__/useActivityTimeline.spec.ts` | 修改 | 测试用例更新 |
+| `web/src/components/spirit/TaskExecutionPanel.vue` | 修改 | @deprecated 标注 |
+| `web/src/components/spirit/MemberReadOnlyPanel.vue` | 修改 | @deprecated 标注 |
+| `web/src/realtime/envelope.ts` | 修改 | @deprecated JSDoc |
+| `web/src/realtime/useEnvelopeStream.ts` | 修改 | @deprecated JSDoc |
+| `web/src/features/chat/envelope.ts` | 修改 | @deprecated JSDoc |
+| `web/src/features/chat/useEnvelopeStream.ts` | 修改 | @deprecated JSDoc |
+| `web/src/features/chat/inboundSyncRouting.ts` | 修改 | @deprecated JSDoc |
+| `docs/reports/2026-06-25-review-adr-activity-event-persistence.md` | 新增 | ADR-02 |
+| `docs/development/59-chat-ui-optimization.development.md` | 修改 | 新增 §12 Phase AF-3 |
 

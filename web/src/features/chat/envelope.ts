@@ -4,6 +4,10 @@
  * so that existing imports from "features/chat/envelope" continue to work.
  *
  * New code should import from "realtime/envelope" directly.
+ *
+ * @deprecated The Activity-First architecture replaces envelope-based chat
+ * events with ActivityEvent. Chat code should consume ActivityEvent via
+ * useActivityTimeline instead of envelope types. See ADR-02 §遗留项.
  */
 
 export type {

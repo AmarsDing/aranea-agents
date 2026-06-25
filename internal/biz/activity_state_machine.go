@@ -17,8 +17,11 @@
 //	ToolRunning --> Running : tool_end
 //	ToolRunning --> Completed : done
 //	ToolRunning --> Failed : fail
+//	ToolRunning --> Cancelled : cancel
 //	ToolBlocked --> Running : tool_unblock
+//	ToolBlocked --> Completed : done
 //	ToolBlocked --> Failed : fail
+//	ToolBlocked --> Cancelled : cancel
 //	Completed --> [*]
 //	Failed --> [*]
 //	Cancelled --> [*]
@@ -73,9 +76,12 @@ var activityTransitionRules = []shared.TransitionRule[ActivityStatus, ActivityTr
 	{From: ActivityStatusToolRunning, Event: ActivityTransitionToolEnd, To: ActivityStatusRunning},
 	{From: ActivityStatusToolRunning, Event: ActivityTransitionDone, To: ActivityStatusCompleted},
 	{From: ActivityStatusToolRunning, Event: ActivityTransitionFail, To: ActivityStatusFailed},
+	{From: ActivityStatusToolRunning, Event: ActivityTransitionCancel, To: ActivityStatusCancelled},
 	// ToolBlocked → *
 	{From: ActivityStatusToolBlocked, Event: ActivityTransitionToolUnblock, To: ActivityStatusRunning},
+	{From: ActivityStatusToolBlocked, Event: ActivityTransitionDone, To: ActivityStatusCompleted},
 	{From: ActivityStatusToolBlocked, Event: ActivityTransitionFail, To: ActivityStatusFailed},
+	{From: ActivityStatusToolBlocked, Event: ActivityTransitionCancel, To: ActivityStatusCancelled},
 }
 
 // ── ActivityStateMachine ─────────────────────────────────────────────────────

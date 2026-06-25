@@ -9,7 +9,17 @@ import (
 )
 
 // TraceEmitter is the v2 unified writer: FlowLog (WS) + span buffer (usage metadata).
-// It embeds FlowTracker and adds ObserveFrameworkEvent for trpc-agent-go event stream.
+//
+// It embeds *FlowTracker for method promotion (composition, NOT inheritance):
+// FlowTracker's exported methods (LogStart/LogDone/LogError/...) are surfaced
+// on TraceEmitter so callers can use a single value for both flow logging
+// and framework event observation. TraceEmitter does not override any
+// FlowTracker method; it only adds ObserveFrameworkEvent and EmitProgress.
+//
+// Embedding is preferred over a forwarding wrapper here because every
+// FlowTracker method is part of the public flow-log API and would otherwise
+// need to be manually re-declared. See go-oop-review §3.2 for the
+// "embedding for composition" pattern.
 type TraceEmitter struct {
 	*FlowTracker
 }
@@ -61,7 +71,6 @@ func (e *TraceEmitter) EmitProgress(ctx context.Context, stepID, phase, message,
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	stepID = normalizeStepID(stepID)
 	if phase == "start" && e.fc != nil {
 		e.fc.RecordStart(stepID)
 	}

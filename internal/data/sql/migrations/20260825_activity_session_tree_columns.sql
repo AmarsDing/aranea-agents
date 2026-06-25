@@ -21,7 +21,7 @@ ALTER TABLE sessions ADD COLUMN total_steps INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE sessions ADD COLUMN progress_pct REAL NOT NULL DEFAULT 0.0;
 
 -- Backfill session_type for existing sessions.
--- Root sessions (no parent) become 'standalone' (default); spirit sessions are
+-- Root sessions (no parent) become 'standalone' (default). Spirit sessions are
 -- identified by having a root_session_id equal to their own id and no parent.
 UPDATE sessions SET session_type = 'spirit'
 WHERE parent_session_id = '' AND root_session_id = id AND id != '';

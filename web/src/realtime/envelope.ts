@@ -6,6 +6,12 @@
  * Previously these types lived in features/chat/envelope.ts; they have
  * been lifted to this shared location so that features don't need to
  * reach into the chat domain for protocol-level types.
+ *
+ * @deprecated The Activity-First architecture replaces envelope-based
+ * chat events with ActivityEvent (see realtime/activityEvent.ts). This
+ * module is retained only for non-chat features (monitor/teams/graph/
+ * orchestration) that have not yet migrated. Chat features should
+ * consume ActivityEvent via useActivityTimeline. See ADR-02 §遗留项.
  */
 
 import type { ActivityEvent } from './activityEvent';

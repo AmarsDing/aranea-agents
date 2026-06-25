@@ -2,13 +2,11 @@ package chatactivity
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -99,45 +97,20 @@ func (r *catalogActivityMetaResolver) ResolveAgentID(ctx context.Context, agentK
 	return id
 }
 
-type sessionActivityPersister struct {
-	sessions biz.SessionTurnExtrasPort
-}
-
-func newSessionActivityPersister(sessions biz.SessionTurnExtrasPort) chatagent.ActivityPersister {
-	return &sessionActivityPersister{sessions: sessions}
-}
-
-func (p *sessionActivityPersister) UpsertActivity(ctx context.Context, meta chatagent.ProjectMeta, tc event.EnvelopeToolCall) error {
-	if p == nil || isNilInterface(p.sessions) {
-		return nil
-	}
-	sessionID := strings.TrimSpace(meta.SessionID)
-	if sessionID == "" {
-		return fmt.Errorf("session id required")
-	}
-	if strings.TrimSpace(tc.ID) == "" {
-		return fmt.Errorf("tool_call id required")
-	}
-	msg, err := chatagent.ChatMessageFromToolActivity(meta, tc)
-	if err != nil {
-		return err
-	}
-	return p.sessions.UpsertChatActivityMessage(ctx, sessionID, msg)
-}
-
-// NewStreamConsumeOptions wires catalog lookup and activity persistence for a chat turn.
-func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepository, sessions biz.SessionTurnExtrasPort, activityWriter biz.ActivityWriter, activityBus biz.ActivityEventBus, lg loggateway.Logger) *chatagent.StreamConsumeOptions {
+// NewStreamConsumeOptions wires catalog lookup and the ActivityProjector for a chat turn.
+//
+// Phase 1c: the legacy sessionActivityPersister (which routed through
+// SessionTurnExtrasPort.UpsertChatActivityMessage backed by NoopMessageWriter)
+// has been removed. Activity persistence is owned exclusively by the
+// ActivityProjector via its internal sequencer (see activity_event_sequencer.go).
+// The Sessions parameter has been removed from the signature accordingly.
+func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepository, activityWriter biz.ActivityWriter, activityBus biz.ActivityEventBus, lg loggateway.Logger) *chatagent.StreamConsumeOptions {
 	var resolver chatagent.ActivityMetaResolver
-	var persister chatagent.ActivityPersister
 	if tools != nil || agents != nil {
 		resolver = newCatalogActivityMetaResolver(tools, agents)
 	}
-	if sessions != nil {
-		persister = newSessionActivityPersister(sessions)
-	}
 	opts := &chatagent.StreamConsumeOptions{
-		MetaResolver:      resolver,
-		ActivityPersister: persister,
+		MetaResolver: resolver,
 	}
 	// AF phase: create ActivityProjector for dual-emission.
 	// When ActivityProjector is active, stream_consumer.go uses hasAF
@@ -160,12 +133,11 @@ func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepositor
 type StreamOptsFactoryAdapter struct {
 	Tools          biz.TeamToolLookup
 	Agents         biz.AgentRepository
-	Sessions       biz.SessionTurnExtrasPort
 	ActivityWriter biz.ActivityWriter
 	ActivityBus    biz.ActivityEventBus
 	Logger         loggateway.Logger
 }
 
 func (a *StreamOptsFactoryAdapter) NewStreamConsumeOptions() *chatagent.StreamConsumeOptions {
-	return NewStreamConsumeOptions(a.Tools, a.Agents, a.Sessions, a.ActivityWriter, a.ActivityBus, a.Logger)
+	return NewStreamConsumeOptions(a.Tools, a.Agents, a.ActivityWriter, a.ActivityBus, a.Logger)
 }

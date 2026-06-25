@@ -27,6 +27,27 @@ const defaultPersistBufferSize = 256
 // "at most one per 60fps frame", eliminating UI jank without perceptible lag.
 const defaultDeltaBatchInterval = 16 * time.Millisecond
 
+// persist retry configuration (CS-B15: retry upper bound + exponential backoff).
+// On transient DB errors (lock contention, brief unavailability), retrying
+// avoids data loss that would force the frontend to backfill via API.
+//
+// Tuned to align with SQLite's busy_timeout=30000ms: total worst-case added
+// latency is 100+200+400+800+1600 = 3100ms before giving up, which is well
+// within the busy_timeout window and gives lock holders ample time to release.
+const (
+	persistMaxRetries       = 5
+	persistInitialBackoffMs = 100
+	persistBackoffFactor    = 2
+)
+
+// deadLetterCapacity is the maximum number of failed-persist activities
+// retained in the dead-letter buffer. The buffer is a ring: when full, the
+// oldest entry is evicted. Activities here could not be persisted after all
+// retries — the WS stream still delivered them (fire-and-forget publish),
+// so the buffer serves as a short-term compensation source for reconnect
+// replay via ListDeadLetterActivities.
+const deadLetterCapacity = 512
+
 // errSequencerClosed is returned when publishing to a closed sequencer.
 var errSequencerClosed = errors.New("activity event sequencer closed")
 
@@ -68,6 +89,15 @@ type activityEventSequencer struct {
 	// persistChan is closed by Close() AFTER all consumers have exited,
 	// ensuring no items are lost.
 	persistChan chan persistItem
+
+	// deadLetter is a short-term ring buffer holding activities whose
+	// persist failed after all retries. The WS layer already delivered
+	// them (fire-and-forget publish), so on reconnect the replay path
+	// must merge ListActivities RPC results with this buffer to avoid
+	// showing users a gap. The buffer is process-scoped (not persisted):
+	// it survives WS reconnects but not process restarts.
+	deadLetterMu sync.Mutex
+	deadLetter   []biz.Activity
 }
 
 // persistItem is a single activity to persist, paired with its activity ID
@@ -277,19 +307,86 @@ func (s *activityEventSequencer) processTask(activityID string, task publishTask
 			// Channel full (extreme DB latency): fall back to synchronous
 			// persist to avoid losing data. This blocks the consumer but
 			// only under exceptional conditions.
-			if _, err := s.activityRepo.UpsertActivity(context.Background(), task.activity); err != nil {
-				s.lg.Warn("activity persist failed (sync fallback); frontend will backfill via API",
-					loggateway.StepID("agent.activity_sequencer.persist"),
-					loggateway.Str("activity_id", activityID),
-					loggateway.Str("kind", string(task.activity.Kind)),
-					loggateway.Str("status", string(task.activity.Status)),
-					loggateway.Err(err))
-			}
+			s.persistWithRetry(activityID, task.activity, true)
 		}
 	}
 	if s.eventBus != nil {
 		s.eventBus.Publish(context.Background(), task.event)
 	}
+}
+
+// persistWithRetry calls UpsertActivity with exponential backoff retry
+// (CS-B15: upper bound + exponential backoff).
+//
+// Retries up to persistMaxRetries times with exponential backoff starting at
+// persistInitialBackoffMs (100ms, 200ms, 400ms, 800ms, 1600ms). On final
+// failure, the activity is pushed into the dead-letter buffer so the WS
+// reconnect replay path can compensate via ListDeadLetterActivities.
+//
+// The syncFallback flag is used for log attribution to distinguish between
+// the persist worker path and the synchronous fallback path.
+func (s *activityEventSequencer) persistWithRetry(activityID string, a biz.Activity, syncFallback bool) {
+	backoff := persistInitialBackoffMs
+	path := "worker"
+	if syncFallback {
+		path = "sync_fallback"
+	}
+	for attempt := 0; attempt <= persistMaxRetries; attempt++ {
+		if _, err := s.activityRepo.UpsertActivity(context.Background(), a); err == nil {
+			return
+		} else if attempt == persistMaxRetries {
+			s.lg.Warn("activity persist failed after retries; pushed to dead-letter buffer",
+				loggateway.StepID("agent.activity_sequencer.persist"),
+				loggateway.Str("activity_id", activityID),
+				loggateway.Str("kind", string(a.Kind)),
+				loggateway.Str("status", string(a.Status)),
+				loggateway.Str("path", path),
+				loggateway.Int("attempts", attempt+1),
+				loggateway.Err(err))
+			s.pushDeadLetter(a)
+			return
+		}
+		// Exponential backoff between attempts. Uses time.Sleep instead of
+		// select-on-context because this runs in a background goroutine
+		// with no request context to honor.
+		time.Sleep(time.Duration(backoff) * time.Millisecond)
+		backoff *= persistBackoffFactor
+	}
+}
+
+// pushDeadLetter appends a failed-persist activity to the dead-letter ring
+// buffer. When the buffer is full, the oldest entry is evicted (FIFO eviction).
+func (s *activityEventSequencer) pushDeadLetter(a biz.Activity) {
+	s.deadLetterMu.Lock()
+	defer s.deadLetterMu.Unlock()
+	if len(s.deadLetter) >= deadLetterCapacity {
+		// Evict oldest (slice header reuse avoids GC pressure).
+		s.deadLetter = append(s.deadLetter[:0], s.deadLetter[1:]...)
+	}
+	s.deadLetter = append(s.deadLetter, a)
+}
+
+// ListDeadLetterActivities returns a snapshot of activities whose persist
+// failed after all retries, filtered by sessionID. The WS reconnect replay
+// path should merge these with ListActivities RPC results to avoid showing
+// users a gap for events that were live-delivered but not persisted.
+//
+// The returned slice is a copy; callers may modify it freely. The buffer
+// itself is not cleared (it remains available for diagnostics until the
+// process exits or the buffer rolls over).
+func (s *activityEventSequencer) ListDeadLetterActivities(sessionID string) []biz.Activity {
+	s.deadLetterMu.Lock()
+	defer s.deadLetterMu.Unlock()
+	if len(s.deadLetter) == 0 {
+		return nil
+	}
+	out := make([]biz.Activity, 0, len(s.deadLetter))
+	for _, a := range s.deadLetter {
+		if sessionID == "" || a.SessionID == sessionID {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // SetActivityRepo sets the activity repository and starts the persist worker.
@@ -313,17 +410,12 @@ func (s *activityEventSequencer) SetActivityRepo(repo biz.ActivityWriter) {
 // sends start→done, the worker processes start→done in that exact order.
 // The worker exits when persistChan is closed (which happens in Close()
 // after all consumers have finished).
+//
+// Each persist call retries on transient failures via persistWithRetry.
 func (s *activityEventSequencer) runPersistWorker() {
 	defer s.persistWg.Done()
 	for item := range s.persistChan {
-		if _, err := s.activityRepo.UpsertActivity(context.Background(), item.activity); err != nil {
-			s.lg.Warn("activity persist failed; frontend will backfill via API",
-				loggateway.StepID("agent.activity_sequencer.persist"),
-				loggateway.Str("activity_id", item.activityID),
-				loggateway.Str("kind", string(item.activity.Kind)),
-				loggateway.Str("status", string(item.activity.Status)),
-				loggateway.Err(err))
-		}
+		s.persistWithRetry(item.activityID, item.activity, false)
 	}
 }
 

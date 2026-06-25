@@ -5,6 +5,10 @@
  *
  * Chat-specific helpers (useChatStream, useTeamStream, useMonitorStream,
  * useGraphStream) remain in their respective feature directories.
+ *
+ * @deprecated For chat sessions, prefer the ActivityEvent-based stream
+ * (realtime/activityEvent.ts + useActivityTimeline). This envelope stream
+ * is retained for non-chat features until they migrate. See ADR-02 §遗留项.
  */
 import { onUnmounted, ref, shallowRef } from 'vue';
 import { createWsTransport, type WsTransport } from './ws-transport';

@@ -322,19 +322,34 @@ func MatchFilterKey(subscriberKey, eventKey string) bool {
 
 | 级别 | 事件类型 | 可靠性保证 | 持久化 |
 |------|---------|-----------|--------|
-| Critical | ToolResult / Error / RunnerCompletion / Checkpoint | WBPF（先写后发）+ 重试 | SQLite WAL |
+| Critical | ToolResult / Error / RunnerCompletion / Checkpoint | ~~WBPF（先写后发）+ 重试~~ 已于 Phase 1c-2 移除；订阅者需幂等 | ~~SQLite WAL~~ 已删除 |
 | Important | StateDelta / TokenUsage / RunStatus / SessionStatusChanged / GraphNodeEnd / TeamRunFinished / TeamRunFailed / Spirit* / UserFeedback / Activity* | BlockUpTo + 异步持久化 | SQLite EventStore |
 | Informational | TextDelta / FlowLog / Log / MemberDelta / 其他 | 尽力而为 | 不持久化 |
 
 **分类入口**：
 - `ClassifyEventReliability(t) EventReliability` — 单一真相源
-- `IsCriticalWBPFType(t) bool` — 是否需要 WBPF
+- `IsCriticalWBPFType(t) bool` — 是否需要 WBPF（legacy，WAL 已删除）
 - `RequiresBlockUpTo(t) bool` — 是否必须 BlockUpTo 投递（Critical + Important）
 
-**WAL 实现**：`internal/event/wal.go` + `wal_storage.go`
-- Critical 事件先写入 SQLite WAL 表，再 publish
-- WAL 写失败则**不 publish**（避免不一致）
-- 进程重启时从 WAL 恢复未 publish 的事件
+**WAL 实现**：~~`internal/event/wal.go` + `wal_storage.go`~~ 已于 Phase 1c-2 删除
+- ~~Critical 事件先写入 SQLite WAL 表，再 publish~~
+- ~~WAL 写失败则**不 publish**（避免不一致）~~
+- ~~进程重启时从 WAL 恢复未 publish 的事件~~
+- 订阅者需幂等，重放走 Activity 记录（`listActivities` API）
+
+### 5.1 Activity-First 事件持久化（ADR-02）
+
+> **详见**：[ADR-02: Activity-First 事件持久化策略](../reports/2026-06-25-review-adr-activity-event-persistence.md)
+
+Activity 事件流（`biz.ActivityEventBus`）采用**并行异步**持久化，替代 legacy WBPF：
+
+| 维度 | Legacy WBPF（已弃用） | AF 并行异步（现行） |
+|------|----------------------|-------------------|
+| 持久化时机 | 先写 WAL，成功后才 publish | fire-and-forget（独立 worker goroutine） |
+| 推送时机 | 持久化成功后 | 同步（保留 per-activity FIFO） |
+| 失败处理 | 不 publish（强一致） | 重试 5 次（100/200/400/800/1600ms）+ dead-letter 环形缓冲（cap=512）+ API backfill |
+| 阻塞 | DB I/O 阻塞推送（~50-200ms） | 不阻塞（~5ms 推送延迟） |
+| 适用范围 | Legacy envelope Critical 事件（待退役） | Activity 事件流（chat 渲染主路径） |
 
 ---
 

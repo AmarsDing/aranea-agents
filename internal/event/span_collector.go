@@ -3,17 +3,19 @@ package event
 import (
 	"encoding/json"
 	"strings"
+
+	frameworktracing "trpc.group/trpc-go/trpc-agent-go/event/tracing"
 )
 
 // SpanCollector manages the span tree using a SpanContext.
 type SpanCollector struct {
-	sc *SpanContext
-	uc *UsageContext
+	sc *frameworktracing.SpanContext
+	uc *frameworktracing.UsageContext
 	tc TraceContext
 }
 
 // NewSpanCollector creates a SpanCollector and opens the root chat.turn span.
-func NewSpanCollector(sc *SpanContext, uc *UsageContext, tc TraceContext) *SpanCollector {
+func NewSpanCollector(sc *frameworktracing.SpanContext, uc *frameworktracing.UsageContext, tc TraceContext) *SpanCollector {
 	col := &SpanCollector{sc: sc, uc: uc, tc: tc}
 	col.startSpan("chat.turn", "", map[string]any{
 		"trace_id":  tc.TraceID,

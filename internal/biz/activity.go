@@ -10,16 +10,13 @@ import (
 type ActivityKind string
 
 const (
-	ActivityKindTask         ActivityKind = "task"           // Task description (user/agent perspective)
-	ActivityKindThinking     ActivityKind = "thinking"       // Reasoning content
-	ActivityKindAction       ActivityKind = "action"         // Tool invocation
-	ActivityKindReply        ActivityKind = "reply"          // Agent reply (including final answer)
-	ActivityKindSubTaskBoard ActivityKind = "sub_task_board" // Sub-task board (recursive nesting)
-	ActivityKindError        ActivityKind = "error"          // Error information
-	ActivityKindDelegate     ActivityKind = "delegate"       // Spirit delegates to team
-	ActivityKindNotice       ActivityKind = "notice"         // System notification
-	ActivityKindConfirm      ActivityKind = "confirm"        // User confirmation required
-	ActivityKindPlan         ActivityKind = "plan"           // Multi-step plan
+	ActivityKindTask     ActivityKind = "task"     // Task description (user/agent perspective)
+	ActivityKindThinking ActivityKind = "thinking" // Reasoning content
+	ActivityKindAction   ActivityKind = "action"   // Tool invocation
+	ActivityKindReply    ActivityKind = "reply"    // Agent reply (including final answer)
+	ActivityKindNotice   ActivityKind = "notice"   // System notification
+	ActivityKindConfirm  ActivityKind = "confirm"  // User confirmation required
+	ActivityKindPlan     ActivityKind = "plan"     // Multi-step plan
 
 	// === Session/Team/Graph lifecycle (Phase 1a additive) ===
 	// These kinds allow ActivityProjector to emit session/team/graph stage

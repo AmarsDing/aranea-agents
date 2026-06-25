@@ -61,9 +61,10 @@ type (
 	SessionRuntime          = session.SessionRuntime
 
 	// Phase 2: Session tree hierarchy types
-	SessionType     = session.SessionType
-	SessionTree     = session.SessionTree
-	SessionTreeNode = session.SessionTreeNode
+	SessionType           = session.SessionType
+	SessionTree           = session.SessionTree
+	SessionTreeNode       = session.SessionTreeNode
+	DepthValidationConfig = session.DepthValidationConfig
 )
 
 // Session tree type constants (Phase 2).
@@ -73,6 +74,10 @@ const (
 	SessionTypeAgent      = session.SessionTypeAgent
 	SessionTypeStandalone = session.SessionTypeStandalone
 )
+
+// ValidateDepth is re-exported from session package for use by biz callers
+// (SpiritTeamUsecase, etc.) without importing the session subpackage directly.
+var ValidateDepth = session.ValidateDepth
 
 // Session interfaces for dependency injection.
 type (

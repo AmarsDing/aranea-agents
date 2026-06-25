@@ -8,6 +8,10 @@
  *
  * New code that only needs the generic stream should import from
  * "realtime/useEnvelopeStream" directly.
+ *
+ * @deprecated The Activity-First architecture replaces envelope-based chat
+ * streams with ActivityEvent consumption via useActivityTimeline. Chat code
+ * should not extend this module. See ADR-02 §遗留项.
  */
 
 export { createEnvelopeStream, useEnvelopeStream } from '../../realtime/useEnvelopeStream';

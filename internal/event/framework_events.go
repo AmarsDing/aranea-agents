@@ -18,12 +18,8 @@ type OtelSpanIDSource interface {
 	ToolSpanOtelID(toolCallID string) string
 }
 
-// WrapFrameworkEvents tees framework events into usage spans and an optional OTel observer.
-func WrapFrameworkEvents(in <-chan *trpcevent.Event, emitter *TraceEmitter, observer FrameworkSpanObserver) <-chan *trpcevent.Event {
-	return WrapFrameworkEventsWithOtel(in, emitter, observer, nil)
-}
-
-// WrapFrameworkEventsWithOtel also syncs per-span otel_id onto usage waterfall rows when otelSrc is set.
+// WrapFrameworkEventsWithOtel tees framework events into usage spans and an optional OTel observer,
+// also syncing per-span otel_id onto usage waterfall rows when otelSrc is set.
 func WrapFrameworkEventsWithOtel(in <-chan *trpcevent.Event, emitter *TraceEmitter, observer FrameworkSpanObserver, otelSrc OtelSpanIDSource) <-chan *trpcevent.Event {
 	if in == nil {
 		return in

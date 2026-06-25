@@ -2,17 +2,19 @@ package event
 
 import (
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
+
+	frameworktracing "trpc.group/trpc-go/trpc-agent-go/event/tracing"
 )
 
 // UsageAggregator observes framework events and aggregates usage metadata.
 type UsageAggregator struct {
 	sc *SpanCollector
-	uc *UsageContext
+	uc *frameworktracing.UsageContext
 	tc TraceContext
 }
 
 // NewUsageAggregator creates a UsageAggregator.
-func NewUsageAggregator(sc *SpanCollector, uc *UsageContext, tc TraceContext) *UsageAggregator {
+func NewUsageAggregator(sc *SpanCollector, uc *frameworktracing.UsageContext, tc TraceContext) *UsageAggregator {
 	return &UsageAggregator{sc: sc, uc: uc, tc: tc}
 }
 

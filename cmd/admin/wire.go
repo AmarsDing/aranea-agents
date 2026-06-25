@@ -725,7 +725,6 @@ func provideRunnerConfig(
 	runs *rt.RunRegistry,
 	tools *biz.ToolUsecase,
 	agents biz.AgentRepository,
-	sessions biz.SessionTurnExtrasPort,
 	activityWriter biz.ActivityWriter,
 	eventBus event.Bus,
 	activityBus biz.ActivityEventBus,
@@ -749,7 +748,7 @@ func provideRunnerConfig(
 		KnowledgeUsecase: knowledgeUC,
 		Runs:             runs,
 		StreamOptsFactory: &chatactivity.StreamOptsFactoryAdapter{
-			Tools: tools, Agents: agents, Sessions: sessions,
+			Tools: tools, Agents: agents,
 			ActivityWriter: activityWriter, ActivityBus: activityBus, Logger: lg,
 		},
 		AgentHelper:     &chatagent.TeamAgentHelperAdapter{},
@@ -2473,7 +2472,6 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		// Team-layer narrow interface bindings
 		wire.Bind(new(biz.TeamUsageQuerier), new(*biz.UsageUsecase)),
 		wire.Bind(new(biz.TeamRunStatusTransitioner), new(*biz.TeamUsecase)),
-		wire.Bind(new(biz.SessionTurnExtrasPort), new(*biz.SessionUsecase)),
 		wire.Bind(new(biz.SpiritTeamController), new(*biz.SpiritTeamUsecase)),
 		// Self-check integration
 		provideSelfCheckScheduler,

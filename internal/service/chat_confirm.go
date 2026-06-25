@@ -78,10 +78,19 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 		return nil, apierror.Internal(apierror.DomainChat, "session store unavailable, cannot verify ownership")
 	}
 
-	// Update status
-	newStatus := biz.ActivityStatusCompleted
+	// Update status via state machine (AS-FSM-01).
+	// ToolBlocked → Completed (approved) or Cancelled (rejected).
+	// Using TransitionActivityStatus enforces legal transitions and prevents
+	// illegal direct assignments that bypass the state machine.
+	transitionEvent := biz.ActivityTransitionDone
 	if !req.GetApproved() {
-		newStatus = biz.ActivityStatusCancelled
+		transitionEvent = biz.ActivityTransitionCancel
+	}
+	newStatus, err := biz.TransitionActivityStatus(activity.Status, transitionEvent)
+	if err != nil {
+		return nil, apierror.BadRequest(apierror.DomainChat,
+			"illegal activity transition from %s via %s: %v",
+			activity.Status, transitionEvent, err)
 	}
 	activity.Status = newStatus
 

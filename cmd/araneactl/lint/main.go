@@ -274,7 +274,6 @@ func r11WireNoGlobalBootstrap(rel string, lines []string) []violation {
 			"SetCredentialKeyResolver(",
 			"mcpobserve.SetBus(",
 			"mcpobserve.SetMetadataRecorder(",
-			"event.BindInfra(",
 		} {
 			if strings.Contains(trimmed, marker) {
 				vs = append(vs, violation{

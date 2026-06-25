@@ -77,7 +77,13 @@ export function useActivityTimeline() {
 
   const streamEvents = computed<StreamEvent[]>(() => {
     return activityTree.value
-      .filter((node) => node.kind !== 'task' && node.kind !== 'sub_task_board' && node.kind !== 'delegate')
+      .filter((node) => {
+        // Root task activities are containers, not rendered as blocks —
+        // EXCEPT task.failed, which surfaces as an ErrorBlock so turn-level
+        // errors are visible to the user.
+        if (node.kind === 'task' && node.status !== 'failed') return false;
+        return true;
+      })
       .map(activityToStreamEvent);
   });
 
@@ -471,6 +477,17 @@ function mapPlanStatus(status: ActivityStatus): PlanEvent['status'] {
  */
 export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
   switch (node.kind) {
+    case 'task':
+      // task.failed → ErrorBlock (turn-level error surfaced to user).
+      // task with non-failed status is filtered out upstream (container).
+      return {
+        kind: 'error',
+        id: node.id,
+        type: 'degradation',
+        message: node.content || node.toolErrorCode || (node.meta?.error_message as string | undefined) || '',
+        errorCode: node.toolErrorCode || (node.meta?.error_code as string | undefined) || undefined,
+      } satisfies ErrorEvent;
+
     case 'thinking':
       return {
         kind: 'thinking',
@@ -512,18 +529,6 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
         durationMs: node.durationMs,
       } satisfies ReplyEvent;
 
-    case 'error':
-      return {
-        kind: 'error',
-        id: node.id,
-        type: 'degradation',
-        message: node.content || node.toolErrorCode || '',
-        // P3-4: surface the error code so ErrorBlock can pick an inline
-        // action. Prefer toolErrorCode (turn-level), then meta.error_code
-        // (backend apierror.Code), so the most specific code wins.
-        errorCode: node.toolErrorCode || (node.meta?.error_code as string | undefined) || undefined,
-      } satisfies ErrorEvent;
-
     case 'plan': {
       // Map backend ActivityStatus → frontend PlanEvent.status
       const planStatus = mapPlanStatus(node.status);
@@ -533,7 +538,7 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
       // This replaces the direct activityTree consumption in PlanBlock,
       // unifying the data flow through the event model.
       const childEvents: StreamEvent[] = (node.children ?? [])
-        .filter((child) => child.kind !== 'task' && child.kind !== 'sub_task_board' && child.kind !== 'delegate')
+        .filter((child) => !(child.kind === 'task' && child.status !== 'failed'))
         .map((child) => activityToStreamEvent(child));
       return {
         kind: 'plan',
@@ -614,7 +619,9 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
     }
 
     default:
-      // Fallback: task, sub_task_board, delegate → error (degradation)
+      // Fallback for legacy kinds (sub_task_board, delegate, error) that may
+      // still appear in persisted Activity records from older backend versions.
+      // Maps to ErrorEvent (degradation) so historical data still renders.
       return {
         kind: 'error',
         id: node.id,

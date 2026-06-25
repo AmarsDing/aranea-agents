@@ -9,15 +9,17 @@
  */
 
 // === ActivityKind (aligned with TaskBoardNodeKind + Spirit extensions) ===
+//
+// Phase 3 cleanup: legacy kinds (sub_task_board, error, delegate) have been
+// removed. Errors are now expressed as status=failed on the relevant kind
+// (e.g. task.failed for turn errors, action.failed for tool failures,
+// team_stage.failed for team errors). Spirit→Team delegation uses team_stage.
 
 export type ActivityKind =
-  | 'task' // Task description (user/agent perspective)
+  | 'task' // Task description (user/agent perspective); task.failed = turn error
   | 'thinking' // Reasoning content
   | 'action' // Tool invocation
   | 'reply' // Agent reply (including final answer)
-  | 'sub_task_board' // Sub-task board (recursive nesting)
-  | 'error' // Error information
-  | 'delegate' // Spirit delegates to team
   | 'plan' // Execution plan (Spirit→Team orchestration)
   | 'notice' // System notification
   | 'confirm' // User confirmation required
@@ -74,7 +76,8 @@ export interface Activity {
   toolDurationMs?: number | null;
   toolErrorCode?: string | null;
 
-  // === Sub-task board (kind=sub_task_board) ===
+  // === Legacy sub-task board field (retained for backward-compat with persisted data) ===
+  // Phase 3: sub_task_board kind removed; field kept for reading old Activity records.
   childBoardId?: string | null;
 
   // === Spirit extension fields ===

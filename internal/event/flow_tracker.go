@@ -16,7 +16,7 @@ type FlowTracker struct {
 	infra  *Infra
 	buffer *Buffer
 	tc     TraceContext
-	fc     *FlowContext
+	fc     *frameworktracing.FlowContext
 	sc     *SpanCollector
 	ua     *UsageAggregator
 	lg     loggateway.Logger
@@ -24,15 +24,15 @@ type FlowTracker struct {
 
 // NewFlowTracker creates a FlowTracker with injected Infra (replaces bus parameter).
 func NewFlowTracker(infra *Infra, buffer *Buffer, tc TraceContext, lg loggateway.Logger) *FlowTracker {
-	fc := NewFlowContext()
-	uc := NewUsageContext()
+	fc := frameworktracing.NewFlowContext()
+	uc := frameworktracing.NewUsageContext()
 	ft := &FlowTracker{
 		infra:  infra,
 		buffer: buffer,
 		tc:     tc,
 		fc:     fc,
 	}
-	sc := NewSpanCollector(NewSpanContext(), uc, tc)
+	sc := NewSpanCollector(frameworktracing.NewSpanContext(), uc, tc)
 	ft.sc = sc
 	ft.ua = NewUsageAggregator(sc, uc, tc)
 	return ft
@@ -45,7 +45,7 @@ func (ft *FlowTracker) SpanCollector() *SpanCollector { return ft.sc }
 func (ft *FlowTracker) UsageAggregator() *UsageAggregator { return ft.ua }
 
 // FlowContextState returns the flow context state.
-func (ft *FlowTracker) FlowContextState() *FlowContext { return ft.fc }
+func (ft *FlowTracker) FlowContextState() *frameworktracing.FlowContext { return ft.fc }
 
 func (ft *FlowTracker) LogStart(stepID, message string, extra ...Pair) {
 	ft.fc.RecordStart(stepID)
@@ -69,13 +69,12 @@ func (ft *FlowTracker) LogError(stepID, message string, extra ...Pair) {
 	timing := ft.fc.TakeTiming(stepID)
 	ft.emit(stepID, FlowPhaseError, FlowSeverityError, message, "", timing, extra)
 	if ft.shouldPublishFlowChatError(stepID) {
-		// AS-EVT-01: Error is a Critical event — must go through Infra.Publish (WBPF)
-		// to ensure durability. Direct bus.Publish would lose the event on crash,
-		// leaving the user without error feedback.
+		// AS-EVT-01: Error is a Critical event — must go through Infra.Publish
+		// to ensure routing. Subscribers must be idempotent (Phase 1c-2: WAL removed).
 		if ft.infra != nil {
 			errEnv := NewEnvelope(EnvelopeTypeError, "flow", ft.tc.SessionID)
 			errEnv.Error = &EnvelopeError{
-				Type:    "flow_" + normalizeStepID(stepID),
+				Type:    "flow_" + stepID,
 				Message: message,
 			}
 			ft.infra.Publish(context.Background(), errEnv)
@@ -155,7 +154,7 @@ var flowStepsSkipChatError = map[string]struct{}{
 
 // shouldPublishFlowChatError checks if a flow error should surface as a chat toast.
 func (ft *FlowTracker) shouldPublishFlowChatError(stepID string) bool {
-	_, skip := flowStepsSkipChatError[normalizeStepID(stepID)]
+	_, skip := flowStepsSkipChatError[stepID]
 	return !skip
 }
 

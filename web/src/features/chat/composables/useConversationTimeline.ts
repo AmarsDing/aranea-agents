@@ -266,7 +266,7 @@ function buildSingleTurnFromActivities(
   const treeNodes = buildTreeFromRecords(rawRecords);
   const allNodes = flattenTree(treeNodes);
   const turnTimelineActivities: Activity[] = allNodes
-    .filter((node) => node.kind !== 'task' && node.kind !== 'sub_task_board' && node.kind !== 'delegate')
+    .filter((node) => !(node.kind === 'task' && node.status !== 'failed'))
     .map(activityToStreamEvent);
 
   const rootTask = rawRecords.find((r) => r.kind === 'task');
@@ -283,7 +283,11 @@ function buildSingleTurnFromActivities(
     (a) => a.status === 'running' || a.status === 'tool_running' || a.status === 'tool_blocked',
   );
   const hasFailedAction = rawRecords.some((a) => a.kind === 'action' && a.status === 'failed');
-  const hasError = rawRecords.some((a) => a.kind === 'error');
+  // Phase 3: errors are now task.failed (not a separate error kind).
+  // Also check legacy error kind for backward-compat with old persisted data.
+  const hasError = rawRecords.some(
+    (a) => (a.kind === 'task' && a.status === 'failed') || (a.kind as string) === 'error',
+  );
   const rootTaskCompleted = rootTask?.status === 'completed';
   const lastSay = [...turnTimelineActivities].reverse().find((a) => a.kind === 'reply') as ReplyEvent | undefined;
   const hasResult = lastSay != null && !!lastSay.content;

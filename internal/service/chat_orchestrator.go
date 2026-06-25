@@ -604,7 +604,7 @@ func (o *ChatOrchestrator) cancelActiveRun(ctx context.Context, sessionID string
 			loggateway.Err(err))
 	}
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonUserCancelled)
-	if _, err := chatactivity.CancelRunningActivityMessages(ctx, o.td().Sessions, sessionID, o.lg()); err != nil {
+	if _, err := chatactivity.CancelRunningActivityMessages(ctx, o.activityReader(), o.activityWriter(), sessionID, o.lg()); err != nil {
 		o.lg().Warn("取消执行卡片查询失败",
 			loggateway.StepID("chat.activity.cancel"),
 			loggateway.Str("session_id", sessionID),

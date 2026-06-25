@@ -16,16 +16,11 @@
 --
 -- Idempotent: all statements use IF EXISTS.
 
--- 1. Drop event_store foreign key constraint (if exists)
-DO $$ BEGIN
-    IF EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'fk_event_store_session'
-    ) THEN
-        ALTER TABLE event_store
-            DROP CONSTRAINT fk_event_store_session;
-    END IF;
-END $$;
+-- 1. Drop event_store foreign key constraint (if exists).
+--    Native DROP CONSTRAINT IF EXISTS avoids DO $$ blocks (which contain
+--    semicolons incompatible with splitDDLStatements). If the table is
+--    already gone, the 42P01 error is skipped by UndefinedObjectErr.
+ALTER TABLE event_store DROP CONSTRAINT IF EXISTS fk_event_store_session;
 
 -- 2. Drop event_store indexes
 DROP INDEX IF EXISTS idx_event_store_session_created;

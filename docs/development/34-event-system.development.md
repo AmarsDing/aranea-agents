@@ -19,9 +19,9 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 | event | `internal/event/envelope.go` | contract 类型的向后兼容 type alias |
 | event | `internal/event/bus.go` + `bus_adapter.go` | NewBus + 框架 bus.Bus 适配（DropLogger） |
 | event | `internal/event/buffer.go` | 环形缓冲 + TTL 淘汰 + Replay |
-| event | `internal/event/infra.go` | Infra 双 Bus（SessionBus / MonitorBus）+ BindInfra + Publish（WBPF 路由）+ InfraProviderSet |
-| event | `internal/event/wal.go` + `wal_storage.go` | EventWAL（WBPF for Critical events） |
-| event | `internal/event/event_reliability.go` | reliability 兼容别名 |
+| event | `internal/event/infra.go` | Infra 双 Bus（SessionBus / MonitorBus）+ Publish（split 路由）+ InfraProviderSet |
+| event | ~~`internal/event/wal.go` + `wal_storage.go`~~ | 已删除（Phase 1c-2：WAL/WBPF 子系统下线，Critical 事件不再有 crash-recovery 保证，订阅者需幂等） |
+| event | ~~`internal/event/event_reliability.go`~~ | 已删除（reliability 别名零调用，直接使用 `contract/reliability.go`） |
 | event | `internal/event/flow_log.go` + `flow_tracker.go` + `trace_emitter.go` + `trace_context.go` + `flow_context.go` | Flow Log v2（替代 SlogBridge） |
 | event | `internal/event/framework_adapter.go` + `framework_events.go` | trpc Event → Envelope 投影 + tee 框架事件 |
 | event | `internal/event/span_collector.go` + `usage_aggregator.go` | Span 收集与 Usage 汇总 |
@@ -62,8 +62,8 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 |---|------|------|
 | 1 | contract 子包（纯接口与值对象） | `internal/event/contract/` 三个文件 |
 | 2 | Envelope 60+ 类型（按 Channel 分组） | `contract/envelope.go` EnvelopeType 枚举 + RegisterChannelRoute |
-| 3 | 双 Bus 隔离（SessionBus / MonitorBus） | `internal/event/infra.go` + `MONITOR_BUS_ROUTING` |
-| 4 | EventWAL（WBPF for Critical events） | `internal/event/wal.go` + `wal_storage.go` |
+| 3 | 双 Bus 隔离（SessionBus / MonitorBus） | `internal/event/infra.go`（split 路由模式，MONITOR_BUS_ROUTING 已移除） |
+| 4 | ~~EventWAL（WBPF for Critical events）~~ | 已删除（Phase 1c-2：订阅者需幂等，重放走 Activity 记录） |
 | 5 | 事件可靠性分级（AS-EVT-01） | `contract/reliability.go` ClassifyEventReliability |
 | 6 | EventBusConsumer 核心 4 handler | `event_bus_consumer.go` + buffer/runner/state/persist handler |
 | 7 | EventBusSideConsumers 旁路 6 typed consumer | `event_bus_side_consumers.go` + 6 个 consumer 文件 |
@@ -91,7 +91,7 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| 后端 Event 核心 | ✅ | Bus / Envelope / WS / StateDelta / event_store / 双 Bus / WAL |
+| 后端 Event 核心 | ✅ | Bus / Envelope / WS / StateDelta / event_store / 双 Bus（WAL 已于 Phase 1c-2 移除） |
 | Monitor 实时事件 UI | ✅ | `RealtimeEvents.vue` |
 | Chat 会话事件检视 | ✅ | `SessionTimelineDialog` 双 Tab + Inspector 组件群 |
 | Monitor EventTimeline 原型 | ✅ | 已删除（O1） |

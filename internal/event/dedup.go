@@ -12,10 +12,11 @@ const DefaultDedupCapacity = 4096
 
 // EventDeduplicator tracks seen event IDs to filter duplicates.
 //
-// Used by subscribers to handle WAL recovery replays (AS-EVT-01 post-publish
-// failure scenario) where the same Critical event may be delivered twice:
-// once before crash (post-publish failure — event reached subscribers but
-// WAL mark failed) and once during Recover.
+// Originally introduced to handle WAL recovery replays (AS-EVT-01 post-publish
+// failure scenario); with WAL/event_store removed in Phase 1c-2 the replay
+// path no longer exists. Retained as a defensive measure against accidental
+// double-publish by upstream producers — subscribers of Critical event types
+// (Error/Checkpoint) use IsDuplicate to skip the second delivery.
 //
 // The deduplicator uses a bounded ring buffer with O(1) lookup via a companion
 // map. When capacity is reached, the oldest entries are evicted (FIFO).

@@ -43,10 +43,9 @@ WHERE NOT EXISTS (
       AND a.content = m.content_markdown
 );
 
--- 2. Drop FTS5 triggers (SQLite only; Postgres has no messages_fts triggers).
-DROP TRIGGER IF EXISTS messages_fts_ai;
-DROP TRIGGER IF EXISTS messages_fts_ad;
-DROP TRIGGER IF EXISTS messages_fts_au;
+-- 2. FTS5 triggers (messages_fts_ai/ad/au) are dropped implicitly when the
+--    messages table is dropped in step 5. SQLite and Postgres both cascade
+--    trigger drops on DROP TABLE. Postgres never had these triggers anyway.
 
 -- 3. Drop FTS5 virtual table (SQLite) and FTS indexes (Postgres).
 --    These statements are idempotent: missing objects are skipped by the

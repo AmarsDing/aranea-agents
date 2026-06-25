@@ -231,6 +231,13 @@ func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Se
 		SetParentSessionID(in.ParentSessionID).
 		SetRootSessionID(in.RootSessionID).
 		SetAgentDepth(in.AgentDepth).
+		SetSessionType(in.SessionType).
+		SetMemberAgentKey(in.MemberAgentKey).
+		SetMemberRole(in.MemberRole).
+		SetExecutionStage(in.ExecutionStage).
+		SetCompletedSteps(in.CompletedSteps).
+		SetTotalSteps(in.TotalSteps).
+		SetProgressPct(in.ProgressPct).
 		Save(ctx)
 	if err != nil {
 		return biz.Session{}, entErrToBizErr(err, "SESSION")

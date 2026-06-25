@@ -184,21 +184,6 @@ func stepTitle(stepID string) string {
 	if t, ok := stepTitleRegistry[stepID]; ok {
 		return t
 	}
-	// Legacy aliases during call-site migration.
-	switch stepID {
-	case "chat.agent_build":
-		return stepTitleRegistry["chat.agent.build"]
-	case "chat.llm_call":
-		return stepTitleRegistry["chat.llm.invoke"]
-	case "chat.turn_execute":
-		return stepTitleRegistry["chat.turn.execute"]
-	case "chat.intent_pass":
-		return stepTitleRegistry["chat.intent.pass"]
-	case "chat.empty_reply":
-		return stepTitleRegistry["chat.turn.empty_reply"]
-	case "chat.turn_timeout":
-		return stepTitleRegistry["chat.turn.timeout"]
-	}
 	return stepID
 }
 
@@ -208,40 +193,6 @@ func stepSubsystem(stepID string) string {
 		return parts[1]
 	}
 	return ""
-}
-
-func normalizeStepID(stepID string) string {
-	switch stepID {
-	case "chat.agent_build":
-		return "chat.agent.build"
-	case "chat.llm_call":
-		return "chat.llm.invoke"
-	case "chat.turn_execute":
-		return "chat.turn.execute"
-	case "chat.intent_pass":
-		return "chat.intent.pass"
-	case "chat.empty_reply":
-		return "chat.turn.empty_reply"
-	case "chat.turn_timeout":
-		return "chat.turn.timeout"
-	case "chat.stream_consume":
-		return "chat.stream.consume"
-	case "chat.user_msg_persist":
-		return "chat.user_msg_persist"
-	case "chat.assistant_msg_persist":
-		return "chat.assistant_msg_persist"
-	case "chat.first_byte_timeout":
-		return "chat.first_byte_timeout"
-	case "chat.usage_record":
-		return "chat.usage_record"
-	case "chat.pending_dequeue":
-		return "chat.pending_dequeue"
-	case "chat.plugins_load":
-		return "chat.plugins_load"
-	case "chat.runner_create":
-		return "chat.runner.create"
-	}
-	return stepID
 }
 
 func severityForPhase(phase FlowPhase, explicit FlowSeverity) FlowSeverity {
@@ -319,7 +270,6 @@ func (e FlowLogEntry) toMetadata() map[string]any {
 }
 
 func newFlowLogEntry(tc TraceContext, stepID string, phase FlowPhase, sev FlowSeverity, title, message, hint string, timing *FlowTiming, flowErr *FlowError, extra map[string]any) FlowLogEntry {
-	stepID = normalizeStepID(stepID)
 	if title == "" {
 		title = stepTitle(stepID)
 	}

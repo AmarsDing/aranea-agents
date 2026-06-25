@@ -215,6 +215,19 @@ func (p *ActivityProjector) Close() {
 	}
 }
 
+// ListDeadLetterActivities returns activities whose persist failed after all
+// retries, filtered by sessionID. The WS reconnect replay path should merge
+// these with ListActivities RPC results to avoid showing users a gap for
+// events that were live-delivered via WS but could not be persisted.
+//
+// Returns nil if no dead-letter entries exist for the session.
+func (p *ActivityProjector) ListDeadLetterActivities(sessionID string) []biz.Activity {
+	if p.sequencer == nil {
+		return nil
+	}
+	return p.sequencer.ListDeadLetterActivities(sessionID)
+}
+
 // Configure sets the ProjectMeta for the current turn.
 func (p *ActivityProjector) Configure(meta ProjectMeta, resolver ActivityMetaResolver) {
 	p.mu.Lock()
@@ -823,54 +836,6 @@ func (p *ActivityProjector) OnToolResult(ctx context.Context, toolCallID, result
 	delete(p.toolCalls, toolCallID)
 }
 
-// OnDelegate creates a delegate + sub_task_board Activity for Spirit→Team delegation.
-func (p *ActivityProjector) OnDelegate(ctx context.Context, teamID, spiritSessionID string, dagNodeID string, dependsOn []string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	id := uuid.NewString()
-	now := time.Now().UTC()
-	a := &biz.Activity{
-		ID:               id,
-		Kind:             biz.ActivityKindDelegate,
-		Status:           biz.ActivityStatusRunning,
-		SessionID:        p.meta.SessionID,
-		TurnID:           p.meta.RequestID,
-		ParentActivityID: p.rootActivityID,
-		Timestamp:        now,
-		TeamID:           teamID,
-		SpiritSessionID:  spiritSessionID,
-		DagNodeID:        dagNodeID,
-		DependsOn:        dependsOn,
-		AgentKey:         p.meta.AgentID,
-		AgentName:        p.meta.AgentDisplayName,
-	}
-
-	p.activities[id] = a
-	p.publishAndPersist(ctx, a, biz.ActivityEventCreated)
-
-	// Also create a sub_task_board child
-	childID := uuid.NewString()
-	child := &biz.Activity{
-		ID:               childID,
-		Kind:             biz.ActivityKindSubTaskBoard,
-		Status:           biz.ActivityStatusRunning,
-		SessionID:        p.meta.SessionID,
-		TurnID:           p.meta.RequestID,
-		ParentActivityID: id,
-		Timestamp:        now,
-		ChildBoardID:     childID,
-		TeamID:           teamID,
-		SpiritSessionID:  spiritSessionID,
-		DagNodeID:        dagNodeID,
-		DependsOn:        dependsOn,
-	}
-	a.ChildBoardID = childID
-
-	p.activities[childID] = child
-	p.publishAndPersist(ctx, child, biz.ActivityEventChildCreated)
-}
-
 // ActivityUsage carries token consumption data for a completed turn.
 type ActivityUsage struct {
 	PromptTokens     int
@@ -878,44 +843,74 @@ type ActivityUsage struct {
 	TotalTokens      int
 }
 
-// OnError creates an error Activity with full error classification.
+// OnError marks the root task Activity as failed and attaches error info.
+//
+// Phase 3 cleanup: errors are no longer expressed as a separate error-kind
+// Activity. Instead, the root task Activity transitions to status=failed
+// and the error message + classification are stored in Meta. This gives
+// the frontend a single source of truth for turn failure (task.failed)
+// without needing a parallel error kind.
+//
+// If no root task Activity exists (e.g. error before OnTurnStart), a
+// minimal failed task Activity is created so the error is still visible.
 func (p *ActivityProjector) OnError(ctx context.Context, errMsg string, errType string, errCode string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	id := uuid.NewString()
 	now := time.Now().UTC()
+
+	// Attach error classification to Meta.
+	meta := map[string]any{
+		"error_message": errMsg,
+	}
+	if errType != "" {
+		meta["error_type"] = errType
+	}
+	if errCode != "" {
+		meta["error_code"] = errCode
+	}
+
+	// Case 1: root task Activity exists — transition it to failed.
+	if p.rootActivityID != "" {
+		a, ok := p.activities[p.rootActivityID]
+		if ok {
+			p.transitionActivityStatus(a, biz.ActivityStatusFailed)
+			a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
+			if a.Meta == nil {
+				a.Meta = make(map[string]any)
+			}
+			for k, v := range meta {
+				a.Meta[k] = v
+			}
+			if a.Content == "" {
+				a.Content = errMsg
+			}
+			p.publishAndPersist(ctx, a, biz.ActivityEventCompleted)
+			return
+		}
+	}
+
+	// Case 2: no root task Activity — create a minimal failed task Activity
+	// so the error is still surfaced to the frontend.
+	id := uuid.NewString()
 	a := &biz.Activity{
-		ID:               id,
-		Kind:             biz.ActivityKindError,
-		Status:           biz.ActivityStatusFailed,
-		SessionID:        p.meta.SessionID,
-		TurnID:           p.meta.RequestID,
-		ParentActivityID: p.rootActivityID,
-		Timestamp:        now,
-		Content:          errMsg,
-		AgentKey:         p.meta.AgentID,
-		AgentName:        p.meta.AgentDisplayName,
+		ID:              id,
+		Kind:            biz.ActivityKindTask,
+		Status:          biz.ActivityStatusFailed,
+		SessionID:       p.meta.SessionID,
+		TurnID:          p.meta.RequestID,
+		Timestamp:       now,
+		DurationMs:      0,
+		Content:         errMsg,
+		AgentKey:        p.meta.AgentID,
+		AgentName:       p.meta.AgentDisplayName,
+		SpiritSessionID: p.meta.SpiritSessionID,
+		TeamID:          p.meta.TeamID,
+		Meta:            meta,
 	}
-
+	p.rootActivityID = id
 	p.activities[id] = a
-
-	// Attach error classification so the frontend can drive messageStore
-	// error handling (markStreamingMessagesFailed, onErrorNotify) without
-	// needing the legacy error envelope.
-	if errType != "" || errCode != "" {
-		if a.Meta == nil {
-			a.Meta = make(map[string]any)
-		}
-		if errType != "" {
-			a.Meta["error_type"] = errType
-		}
-		if errCode != "" {
-			a.Meta["error_code"] = errCode
-		}
-	}
-	ev := p.buildActivityEvent(a, biz.ActivityEventCreated)
-	p.publishEvent(ctx, ev, a)
+	p.publishAndPersist(ctx, a, biz.ActivityEventCreated)
 }
 
 // OnNotice creates a notice Activity for system notifications.
@@ -1348,6 +1343,27 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, usage *ActivityUsage)
 	}
 	a, ok := p.activities[p.rootActivityID]
 	if !ok {
+		return
+	}
+
+	// Respect terminal states set by OnError (Failed) or upstream cancel.
+	// Overwriting a Failed root with Completed would hide the error from
+	// the frontend and the activity record.
+	if biz.IsActivityTerminal(a.Status) {
+		// Still attach token usage if provided, but do not change status.
+		if usage != nil {
+			a.PromptTokens = int64(usage.PromptTokens)
+			a.CompletionTokens = int64(usage.CompletionTokens)
+			if a.Meta == nil {
+				a.Meta = make(map[string]any)
+			}
+			a.Meta["usage"] = map[string]any{
+				"prompt_tokens":     usage.PromptTokens,
+				"completion_tokens": usage.CompletionTokens,
+				"total_tokens":      usage.TotalTokens,
+			}
+			p.publishAndPersist(ctx, a, biz.ActivityEventUpdated)
+		}
 		return
 	}
 

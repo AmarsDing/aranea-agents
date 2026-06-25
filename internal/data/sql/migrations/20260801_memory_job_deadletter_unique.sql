@@ -29,7 +29,7 @@ WHERE state = 'pending'
   );
 
 -- Step 2: Create unique partial index.
--- SQLite supports partial indexes since 3.8.0; Postgres since 7.2.
+-- SQLite supports partial indexes since 3.8.0. Postgres since 7.2.
 -- IF NOT EXISTS makes this idempotent (DB-N6).
 CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_job_dl_unique_pending
 ON memory_job_deadletter(session_id, app_name, priority)

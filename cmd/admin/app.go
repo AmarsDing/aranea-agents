@@ -164,7 +164,6 @@ func startReadinessDependentServices(
 	}
 	sessions.StartMetricsFlusher(ctx)
 	if eventInfra != nil {
-		event.BindInfra(eventInfra)
 		if pipeline != nil {
 			if len(loggingSinks) > 0 {
 				// Config-driven: create eventbus sinks from config

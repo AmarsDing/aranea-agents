@@ -187,17 +187,21 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 
 	defJSON := buildSpiritTeamDefinitionJSON(mode, params.AgentKeys, u.lg, params.ParallelConfigJSON)
 
-	// Check session tree depth limit before creating team.
+	// Check session tree depth limit before creating team (P1-4: extracted
+	// to session.ValidateDepth for reuse across all child-session creators).
 	cfg := u.resolveParallelConfig(ctx, spiritSessionID)
 	parentSession, err := u.sessionUC.Get(ctx, spiritSessionID)
 	if err != nil {
 		return SpiritTeamResult{}, apierror.Wrap(err, apierror.CodeInternal, "SPIRIT")
 	}
-	if parentSession.AgentDepth >= cfg.MaxSessionDepth {
-		return SpiritTeamResult{}, apierror.BadRequest("SPIRIT",
-			"session tree depth (%d) exceeds max (%d)", parentSession.AgentDepth, cfg.MaxSessionDepth)
-	}
 	childDepth := parentSession.AgentDepth + 1
+	if verr := ValidateDepth(parentSession, childDepth, DepthValidationConfig{
+		SpiritMaxDepth: cfg.MaxSessionDepth,
+		// Spirit creating a team — no agent-level relative depth applies
+		// because spirit is not an agent session (MemberAgentKey empty).
+	}); verr != nil {
+		return SpiritTeamResult{}, apierror.BadRequest("SPIRIT", verr.Error())
+	}
 
 	// All teams start as pending regardless of depends_on.
 	// AutoStart=true teams transition to running when StartTeamTurn is called.
@@ -227,6 +231,7 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 
 		teamSession, err := u.sessionUC.Create(txCtx, Session{
 			OwnerType:       "team",
+			SessionType:     string(SessionTypeTeam),
 			TeamID:          team.ID,
 			ParentSessionID: spiritSessionID,
 			RootSessionID:   spiritSessionID,
@@ -235,6 +240,48 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 		})
 		if err != nil {
 			return apierror.Wrap(err, apierror.CodeInternal, "SPIRIT")
+		}
+
+		// Phase 2 (P0-4): create one agent session per team member.
+		// Each member's activity records are attributed to its agent session,
+		// enabling session-tree isolation and per-member activity streams.
+		// Depth: spirit(0) → team(1) → agent(2). Guard against MaxSessionDepth
+		// via ValidateDepth (P1-4) to avoid creating agent sessions deeper
+		// than the spirit config allows.
+		agentDepth := childDepth + 1
+		if verr := ValidateDepth(teamSession, agentDepth, DepthValidationConfig{
+			SpiritMaxDepth: cfg.MaxSessionDepth,
+		}); verr != nil {
+			u.lg.Warn("跳过成员 agent session 创建：深度超限",
+				loggateway.StepID("spirit.assemble.agent_session.depth"),
+				loggateway.Str("team_id", team.ID),
+				loggateway.Int("agent_depth", agentDepth),
+				loggateway.Int("spirit_max_depth", cfg.MaxSessionDepth))
+		} else {
+			for _, agentKey := range params.AgentKeys {
+				agentKey = strings.TrimSpace(agentKey)
+				if agentKey == "" {
+					continue
+				}
+				if _, aerr := u.sessionUC.Create(txCtx, Session{
+					OwnerType:       "agent",
+					SessionType:     string(SessionTypeAgent),
+					TeamID:          team.ID,
+					ParentSessionID: teamSession.ID,
+					RootSessionID:   spiritSessionID,
+					AgentDepth:      agentDepth,
+					MemberAgentKey:  agentKey,
+					Title:           TruncateRunes(taskDesc, MaxTeamTitleLen),
+				}); aerr != nil {
+					u.lg.Warn("创建成员 agent session 失败",
+						loggateway.StepID("spirit.assemble.agent_session"),
+						loggateway.Str("team_id", team.ID),
+						loggateway.Str("agent_key", agentKey),
+						loggateway.Err(aerr))
+					// Continue rather than fail: team can still run without
+					// per-member sessions; activities will fall back to team session.
+				}
+			}
 		}
 
 		result = SpiritTeamResult{Team: team, Session: teamSession}
