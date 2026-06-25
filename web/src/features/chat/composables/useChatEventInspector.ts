@@ -1,5 +1,6 @@
 import { onBeforeUnmount, ref, shallowRef, watch, type Ref } from 'vue';
-import { useEventStore } from '../../../stores/event';
+import { listActivities } from '../../session/api';
+import type { Activity } from '../activityTypes';
 import type { Envelope, EnvelopeType } from '../envelope';
 import { createEnvelopeStream, type UseEnvelopeStreamReturn } from '../useEnvelopeStream';
 import { useEventFilter } from './useEventFilter';
@@ -47,12 +48,23 @@ export type ChatEventInspectorStreamDeps = {
   ) => () => void;
 };
 
+/**
+ * useChatEventInspector provides a unified view of historical Activities and
+ * live Envelopes for the session event inspector dialog.
+ *
+ * Phase 1c-2: history is now sourced from Activity records via the
+ * ListActivities RPC. Live events continue to flow through the WS envelope
+ * stream. The two collections are exposed separately so the UI can render
+ * Activity-derived history (with kind/status/tool fields) distinct from
+ * raw real-time envelopes.
+ */
 export function useChatEventInspector(
   sessionId: Ref<string | null | undefined>,
   active: Ref<boolean>,
   streamDeps?: ChatEventInspectorStreamDeps,
 ) {
   const events = ref<Envelope[]>([]);
+  const activities = ref<Activity[]>([]);
   const paused = ref(false);
   const loading = ref(false);
   const error = ref('');
@@ -79,14 +91,10 @@ export function useChatEventInspector(
     loading.value = true;
     error.value = '';
     try {
-      const eventStore = useEventStore();
-      const { items } = await eventStore.fetchSessionEvents({ sessionId: id, limit: 500 });
-      const byId = new Map<string, Envelope>();
-      for (const item of items) byId.set(item.id, item);
-      for (const live of events.value) byId.set(live.id, live);
-      events.value = [...byId.values()].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, MAX_EVENTS);
+      const items = await listActivities(id);
+      activities.value = items;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to load events';
+      error.value = err instanceof Error ? err.message : 'Failed to load activities';
     } finally {
       loading.value = false;
     }
@@ -144,10 +152,12 @@ export function useChatEventInspector(
 
   function clearEvents(): void {
     events.value = [];
+    activities.value = [];
   }
 
   return {
     events,
+    activities,
     paused,
     loading,
     error,

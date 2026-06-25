@@ -8,7 +8,6 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/agent"
-	"aranea-agents/internal/data/ent/message"
 	skillinvocationpkg "aranea-agents/internal/data/ent/skillinvocation"
 	toolinvocationpkg "aranea-agents/internal/data/ent/toolinvocation"
 	"aranea-agents/pkg/apierror"
@@ -116,31 +115,6 @@ func buildTimelineUnionSQL(sessionID, kindFilter string) (string, []any) {
 		return "", nil
 	}
 	return strings.Join(branches, " UNION ALL "), args
-}
-
-func (r *sessionRepo) ListMessagesByIDs(ctx context.Context, sessionID string, ids []string) ([]biz.ChatMessage, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	ids = dedupeStrings(ids)
-	if sessionID == "" || len(ids) == 0 {
-		return nil, nil
-	}
-	rows, err := r.data.RW().Read(ctx).Message.Query().
-		Where(message.SessionIDEQ(sessionID), message.IDIn(ids...)).
-		All(ctx)
-	if err != nil {
-		return nil, err
-	}
-	byID := make(map[string]biz.ChatMessage, len(rows))
-	for _, m := range rows {
-		byID[m.ID] = entMessageToBiz(m)
-	}
-	out := make([]biz.ChatMessage, 0, len(ids))
-	for _, id := range ids {
-		if msg, ok := byID[id]; ok {
-			out = append(out, msg)
-		}
-	}
-	return out, nil
 }
 
 func (r *sessionRepo) ListToolInvocationsByIDs(ctx context.Context, sessionID string, ids []string) ([]biz.ToolInvocationView, error) {

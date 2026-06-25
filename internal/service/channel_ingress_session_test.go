@@ -272,6 +272,15 @@ func (m *ingressSessionRepo) ListByParentSessionID(_ context.Context, _ string) 
 func (m *ingressSessionRepo) ListActiveAgentUserKeys(_ context.Context, _ int) ([]sessstatus.AgentUserKey, error) {
 	return nil, nil
 }
+func (m *ingressSessionRepo) GetSessionTree(_ context.Context, _ string) (*biz.SessionTree, error) {
+	return nil, nil
+}
+func (m *ingressSessionRepo) ListChildSessions(_ context.Context, _ string) ([]biz.Session, error) {
+	return nil, nil
+}
+func (m *ingressSessionRepo) ListTeamAgentSessions(_ context.Context, _ string) ([]biz.Session, error) {
+	return nil, nil
+}
 
 type ingressAgentRepo struct {
 	id string
@@ -365,7 +374,7 @@ func TestEnsureChannelSessionRebindsStalePeerBind(t *testing.T) {
 	}
 	sessRepo := &ingressSessionRepo{sessions: map[string]biz.Session{}}
 	agents := ingressAgentRepo{id: agentID}
-	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil, nil, nil, nil, nil)
+	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	h := &ChannelIngress{
 		channels: biz.NewChannelUsecase(nil, nil, nil, nil, biz.NewChannelPeerUsecase(peerRepo, nil, loggateway.NewNoop()), agents, nil, nil, nil),
 		sessions: sessions,
@@ -419,7 +428,7 @@ func TestEnsureChannelSessionReusesLivePeerBind(t *testing.T) {
 		},
 	}
 	agents := ingressAgentRepo{id: agentID}
-	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil, nil, nil, nil, nil)
+	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	h := &ChannelIngress{
 		channels: biz.NewChannelUsecase(nil, nil, nil, nil, biz.NewChannelPeerUsecase(peerRepo, nil, loggateway.NewNoop()), agents, nil, nil, nil),
 		sessions: sessions,

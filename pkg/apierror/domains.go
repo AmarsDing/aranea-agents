@@ -39,7 +39,6 @@ const (
 	DomainPlugin              = "PLUGIN"
 	DomainA2A                 = "A2A"
 	DomainOutbound            = "OUTBOUND"
-	DomainEventStore          = "EVENT_STORE"
 	DomainPack                = "PACK"
 	DomainAvatar              = "AVATAR"
 	DomainSessionRun          = "SESSION_RUN"

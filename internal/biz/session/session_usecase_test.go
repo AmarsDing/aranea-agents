@@ -3,6 +3,7 @@ package session
 import (
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 	"context"
 	"errors"
 	"testing"
@@ -11,7 +12,6 @@ import (
 type mockSessionRepo struct {
 	searchSessionsFn func(ctx context.Context, q SessionSearchQuery) (SessionListResult, error)
 	createSessionFn  func(ctx context.Context, s Session) (Session, error)
-	searchMessagesFn func(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
 	getSessionByIDFn func(ctx context.Context, id string) (Session, error)
 }
 
@@ -120,10 +120,9 @@ func (m *mockSessionRepo) ListMessagesByStatus(_ context.Context, _, _ string, _
 	return nil, nil
 }
 
-func (m *mockSessionRepo) SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error) {
-	if m.searchMessagesFn != nil {
-		return m.searchMessagesFn(ctx, q)
-	}
+func (m *mockSessionRepo) SearchMessages(_ context.Context, _ MessageSearchQuery) (MessageSearchResult, error) {
+	// Phase 1c-3: searchMessagesFn removed — production code reads via
+	// ActivityMessageReader (backed by ActivityLister), not via this method.
 	return MessageSearchResult{}, nil
 }
 
@@ -275,6 +274,17 @@ func (m *mockSessionRepo) TransitionSessionStatus(_ context.Context, _ string, _
 	return nil
 }
 
+// ListBySession implements ActivityLister for mockSessionRepo (no-op default).
+// Phase 1c-3: returns empty so ActivityMessageReader yields empty results.
+func (m *mockSessionRepo) ListBySession(_ context.Context, _ string) ([]ActivityEntry, error) {
+	return nil, nil
+}
+
+// ListBySessionTurn implements ActivityLister for mockSessionRepo (no-op default).
+func (m *mockSessionRepo) ListBySessionTurn(_ context.Context, _, _ string) ([]ActivityEntry, error) {
+	return nil, nil
+}
+
 type mockAgentLookup struct {
 	getAgentByIDFn func(ctx context.Context, id string) (struct{}, error)
 }
@@ -308,7 +318,7 @@ func (m *mockParticipantRepo) ListBySession(_ context.Context, _ string) ([]Sess
 }
 
 func newTestUsecase(repo *mockSessionRepo, agents *mockAgentLookup, teams *mockTeamLookup) *SessionUsecase {
-	return NewSessionUsecase(repo, agents, teams, nil, &mockParticipantRepo{}, nil, NewSessionMetricsUsecase(repo, nil, nil), nil, nil)
+	return NewSessionUsecase(repo, agents, teams, nil, &mockParticipantRepo{}, nil, NewSessionMetricsUsecase(repo, nil, nil), nil, repo, loggateway.NewNoop())
 }
 
 func assertBadRequest(t *testing.T, err error, wantMsg string) {
@@ -713,10 +723,13 @@ func TestSearch(t *testing.T) {
 }
 
 func TestSearchMessages(t *testing.T) {
+	// Phase 1c-3: SearchMessages now backs onto ActivityLister.ListBySession
+	// (via ActivityMessageReader), so mockSessionRepo.searchMessagesFn is dead.
+	// Mock listMessagesBySessionFn on testRepo instead.
 	tests := []struct {
 		name        string
 		query       MessageSearchQuery
-		searchFn    func(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
+		listMsgFn   func(_ context.Context, _ string, _, _ int) ([]ChatMessage, error)
 		wantErr     bool
 		wantMsg     string
 		checkResult func(t *testing.T, got MessageSearchResult)
@@ -748,12 +761,10 @@ func TestSearchMessages(t *testing.T) {
 		{
 			name:  "valid search returns results",
 			query: MessageSearchQuery{SessionID: "s1", Keyword: "hello", Limit: 10},
-			searchFn: func(_ context.Context, q MessageSearchQuery) (MessageSearchResult, error) {
-				return MessageSearchResult{
-					Items: []MessageSearchHit{
-						{ID: "m1", SessionID: "s1", ContentMarkdown: "hello world", Highlight: "<b>hello</b> world"},
-					},
-					Total: 1,
+			listMsgFn: func(_ context.Context, _ string, _, _ int) ([]ChatMessage, error) {
+				return []ChatMessage{
+					{ID: "m1", Role: "user", ContentMarkdown: "hello world"},
+					{ID: "m2", Role: "user", ContentMarkdown: "goodbye"},
 				}, nil
 			},
 			wantErr: false,
@@ -770,24 +781,27 @@ func TestSearchMessages(t *testing.T) {
 			},
 		},
 		{
-			name:  "limit passed through to repo",
-			query: MessageSearchQuery{SessionID: "s1", Keyword: "test", Limit: 50, Offset: 10},
-			searchFn: func(_ context.Context, q MessageSearchQuery) (MessageSearchResult, error) {
-				if q.Limit != 50 {
-					t.Fatalf("expected limit 50 passed through, got %d", q.Limit)
-				}
-				if q.Offset != 10 {
-					t.Fatalf("expected offset 10 passed through, got %d", q.Offset)
-				}
-				return MessageSearchResult{Total: 0}, nil
+			name:  "limit applied to results",
+			query: MessageSearchQuery{SessionID: "s1", Keyword: "test", Limit: 2},
+			listMsgFn: func(_ context.Context, _ string, _, _ int) ([]ChatMessage, error) {
+				return []ChatMessage{
+					{ID: "m1", Role: "user", ContentMarkdown: "test 1"},
+					{ID: "m2", Role: "user", ContentMarkdown: "test 2"},
+					{ID: "m3", Role: "user", ContentMarkdown: "test 3"},
+				}, nil
 			},
 			wantErr: false,
+			checkResult: func(t *testing.T, got MessageSearchResult) {
+				if len(got.Items) != 2 {
+					t.Fatalf("expected 2 items after limit, got %d", len(got.Items))
+				}
+			},
 		},
 		{
 			name:  "repo error propagated",
 			query: MessageSearchQuery{SessionID: "s1", Keyword: "test"},
-			searchFn: func(_ context.Context, _ MessageSearchQuery) (MessageSearchResult, error) {
-				return MessageSearchResult{}, errors.New("db error")
+			listMsgFn: func(_ context.Context, _ string, _, _ int) ([]ChatMessage, error) {
+				return nil, errors.New("db error")
 			},
 			wantErr: true,
 		},
@@ -795,8 +809,11 @@ func TestSearchMessages(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := &mockSessionRepo{searchMessagesFn: tt.searchFn}
-			uc := newTestUsecase(repo, &mockAgentLookup{}, &mockTeamLookup{})
+			repo := &testRepo{}
+			if tt.listMsgFn != nil {
+				repo.listMessagesBySessionFn = tt.listMsgFn
+			}
+			uc := newTestUc(repo)
 
 			got, err := uc.SearchMessages(context.Background(), tt.query)
 

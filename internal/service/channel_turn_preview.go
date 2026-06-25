@@ -214,58 +214,9 @@ func (c *TurnPreviewCoordinator) consume(ctx context.Context, env event.Envelope
 	if !c.envelopeMatchesRun(env) {
 		return
 	}
-	switch env.Type {
-	case event.EnvelopeTypeTextDelta, event.EnvelopeTypeTextDone,
-		event.EnvelopeTypeToolCall, event.EnvelopeTypeToolResult,
-		event.EnvelopeTypeMemberMessageStart, event.EnvelopeTypeMemberDelta,
-		event.EnvelopeTypeMemberMessageDone:
-		c.mu.Lock()
-		c.transcript.Apply(env)
-		c.lastEvent = time.Now()
-		toolID := ""
-		sendCard := false
-		var cardSnap preview.Segment
-		if env.ToolCall != nil &&
-			(env.Type == event.EnvelopeTypeToolCall || env.Type == event.EnvelopeTypeToolResult) &&
-			c.policy.ToolCardMode == biz.ChannelIMToolCardModeFeishuAppend {
-			toolID = strings.TrimSpace(env.ToolCall.ID)
-			if toolID == "" {
-				toolID = strings.TrimSpace(env.ToolCall.Name)
-			}
-			if toolID != "" {
-				for _, s := range c.transcript.Segments() {
-					if s.Kind == preview.SegmentTool && s.ID == toolID {
-						cardSnap = s
-						sendCard = true
-						break
-					}
-				}
-			}
-		}
-		rendered := preview.RenderPlainText(c.transcript, c.policy)
-		segmentsCount := len(c.transcript.Segments())
-		c.mu.Unlock()
-		if sendCard {
-			tid := toolID
-			snap := cardSnap
-			safego.Go(ctx, "channel.tool.card", func() {
-				c.cardSerial.Lock()
-				defer c.cardSerial.Unlock()
-				c.maybeSendToolCard(ctx, tid, snap)
-			})
-		}
-		if c.updater != nil {
-			patchText := preview.FormatRenderedTranscriptForIM(c.platform, rendered)
-			if strings.TrimSpace(patchText) == "" && segmentsCount > 0 {
-				patchText = channelPreviewThinkingHint
-			}
-			if strings.TrimSpace(patchText) != "" {
-				if err := c.patch(ctx, patchText, false); err != nil {
-					c.lg.Warn("envelope patch failed", loggateway.Err(err))
-				}
-			}
-		}
-	}
+	// Phase 1c-5: TextDelta/TextDone/ToolCall/ToolResult/MemberMessage* envelope types
+	// were deleted (replaced by Activity-First). The IM channel preview rendering is now
+	// a no-op for chat content; it will be rebuilt on ActivityEventBus in Phase 3-4.
 }
 
 func (c *TurnPreviewCoordinator) patch(ctx context.Context, text string, force bool) error {

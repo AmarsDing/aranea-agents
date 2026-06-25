@@ -25,6 +25,7 @@ import { ref } from 'vue';
 import { createEnvelopeStream, useEnvelopeStream } from '../../realtime/useEnvelopeStream';
 import { CHAT_ENVELOPE_LOG_LOCAL_MAX } from '../constants/queryLimits';
 import type { UseEnvelopeStreamReturn } from '../../realtime/useEnvelopeStream';
+import type { ActivityEvent } from '../../realtime/activityEvent';
 
 export type ChatStreamFactoryOpts = {
   lastEventId?: string;
@@ -32,6 +33,11 @@ export type ChatStreamFactoryOpts = {
   onDisconnected?: () => void;
   onServerShutdown?: (reason: string) => void;
   onReplayState?: (replaying: boolean, count?: number) => void;
+  /**
+   * Activity-First (AF): called when an activity_event WS message arrives.
+   * Replaces the legacy activity_start/delta/done/child_start envelopes.
+   */
+  onActivityEvent?: (ev: ActivityEvent) => void;
 };
 
 /** Chat session WS stream; use in `setup()` via {@link useChatStream} or imperatively via this factory. */
@@ -45,6 +51,7 @@ export function createChatStream(sessionId: string, streamOpts?: ChatStreamFacto
     onDisconnected: () => streamOpts?.onDisconnected?.(),
     onServerShutdown: streamOpts?.onServerShutdown,
     onReplayState: streamOpts?.onReplayState,
+    onActivityEvent: streamOpts?.onActivityEvent,
   });
 }
 
@@ -129,6 +136,7 @@ export function createTeamStream(
     onReplayState?: (replaying: boolean, count?: number) => void;
     onConnected?: () => void;
     onServerShutdown?: (reason: string) => void;
+    onActivityEvent?: (ev: ActivityEvent) => void;
   },
 ): UseEnvelopeStreamReturn {
   return createEnvelopeStream({
@@ -138,6 +146,7 @@ export function createTeamStream(
     onReplayState: streamOpts?.onReplayState,
     onConnected: () => streamOpts?.onConnected?.(),
     onServerShutdown: streamOpts?.onServerShutdown,
+    onActivityEvent: streamOpts?.onActivityEvent,
   });
 }
 

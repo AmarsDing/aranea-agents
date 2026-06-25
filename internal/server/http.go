@@ -18,7 +18,6 @@ import (
 	cronv1 "aranea-agents/api/kratos/cron/v1"
 	ecosystemv1 "aranea-agents/api/kratos/ecosystem/v1"
 	evaluationv1 "aranea-agents/api/kratos/evaluation/v1"
-	eventv1 "aranea-agents/api/kratos/event/v1"
 	gatewayv1 "aranea-agents/api/kratos/gateway/v1"
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	hookv1 "aranea-agents/api/kratos/hook/v1"
@@ -134,7 +133,6 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	evaluationv1.RegisterEvaluationServiceHTTPServer(srv, s.Eval)
 	a2av1.RegisterA2AServiceHTTPServer(srv, s.A2A)
 	ecosystemv1.RegisterEcosystemServiceHTTPServer(srv, s.Ecosystem)
-	eventv1.RegisterEventServiceHTTPServer(srv, s.Event)
 	gatewayv1.RegisterGatewayServiceHTTPServer(srv, s.Gateway)
 	taxonomyv1.RegisterTaxonomyServiceHTTPServer(srv, s.Taxonomy)
 	organizationv1.RegisterOrganizationServiceHTTPServer(srv, s.Organization)

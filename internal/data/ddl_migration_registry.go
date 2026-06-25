@@ -94,6 +94,8 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260803, Name: "cascade_saga_id_type_fix", SQL: "sql/migrations/20260803_cascade_saga_id_type_fix.sql"},
 	{Version: 20260804, Name: "planner_model_columns", SQL: "sql/migrations/20260804_planner_model_columns.sql"},
 	{Version: 20260825, Name: "activity_session_tree_columns", SQL: "sql/migrations/20260825_activity_session_tree_columns.sql"},
+	{Version: 20260901, Name: "drop_event_store_subsystem", SQL: "sql/migrations/20260901_drop_event_store_subsystem.sql"},
+	{Version: 20260902, Name: "drop_messages_subsystem", SQL: "sql/migrations/20260902_drop_messages_subsystem.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -283,7 +285,10 @@ func ddlFlowLogSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client,
 }
 
 func ddlMessageFTSSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
-	return EnsureMessageFTSSchemaWithDialect(ctx, rawDB, d)
+	// Phase 1c-3: messages_fts schema maintenance removed. The FTS5 virtual
+	// table and triggers are dropped by migration 20260902_drop_messages_subsystem.sql.
+	// This migration entry is retained for gate continuity on existing deployments.
+	return nil
 }
 
 func ddlChannelInboundSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 
@@ -151,6 +152,52 @@ func (s *WSServer) eventPump(wc *wsConn, eventCh <-chan event.Envelope) {
 			s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket 高优先级队列超时，关闭连接",
 				loggateway.StepID("ws.high_queue_timeout"), loggateway.Any("type", env.Type))
 			wc.closeSend() // signal writePump to exit (safe: sync.Once protects)
+			return
+		}
+		wc.wakeWriter()
+	}
+}
+
+// activityEventPump forwards ActivityEvents from the ActivityEventBus channel
+// to the connection's priority queues. This is the AF (Activity-First) path:
+// chat lifecycle events (created/streaming/completed/failed/cancelled/child_created)
+// are delivered as structured ActivityEvent JSON, replacing the legacy Envelope
+// metadata-packing approach.
+func (s *WSServer) activityEventPump(wc *wsConn, activityCh <-chan biz.ActivityEvent) {
+	cfg := s.wsConfig()
+	if wc.replayDone != nil {
+		<-wc.replayDone
+	}
+	for ev := range activityCh {
+		// All ActivityEvents go to the "chat" channel (AF rendering pipeline).
+		if !wc.hasChannel("chat") {
+			continue
+		}
+		msg := wsDownstream{
+			Direction:     "server_to_client",
+			Channel:       "chat",
+			ActivityEvent: &ev,
+		}
+		data, err := json.Marshal(msg)
+		if err != nil {
+			s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket ActivityEvent 序列化失败，跳过",
+				loggateway.StepID("ws.marshal_fail_activity"),
+				loggateway.Err(err),
+				loggateway.Any("event_type", ev.Event),
+				loggateway.Any("activity_kind", ev.Activity.Kind))
+			continue
+		}
+		// Streaming events use normal priority; lifecycle events (created/completed/failed)
+		// use high priority so the frontend receives them even under load.
+		prio := wsPriorityNormal
+		if ev.Event != biz.ActivityEventStreaming && ev.Event != biz.ActivityEventUpdated {
+			prio = wsPriorityHigh
+		}
+		if ok := wc.queues.enqueue(cfg, prio, data); !ok {
+			s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket ActivityEvent 队列超时，关闭连接",
+				loggateway.StepID("ws.activity_queue_timeout"),
+				loggateway.Any("event_type", ev.Event))
+			wc.closeSend()
 			return
 		}
 		wc.wakeWriter()

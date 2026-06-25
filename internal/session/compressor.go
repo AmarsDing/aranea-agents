@@ -813,9 +813,10 @@ func (c *Compressor) publishCompressionNotice(ctx context.Context, sessionID str
 	if c.EventBus == nil {
 		return
 	}
-	env := event.NewEnvelope(event.EnvelopeTypeTextDone, "system", sessionID)
-	env.Content = &event.EnvelopeContent{Text: text, IsPartial: false}
+	env := event.NewEnvelope(event.EnvelopeTypeAlertNotify, "system", sessionID)
 	env.Metadata = map[string]any{
+		"alert_kind":          "session_compress",
+		"message":             text,
 		"kind":                "system.session.compress",
 		"from_turn":           fromTurn,
 		"to_turn":             toTurn,

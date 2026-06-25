@@ -190,8 +190,6 @@ func TestParityRunEnvelopeDiff_documented(t *testing.T) {
 	shared := []event.EnvelopeType{
 		event.EnvelopeTypeTeamSummary,
 		event.EnvelopeTypeTeamRunFinished,
-		event.EnvelopeTypeMemberMessageStart,
-		event.EnvelopeTypeMemberMessageDone,
 	}
 	for _, typ := range shared {
 		if _, ok := graphSet[typ]; ok {

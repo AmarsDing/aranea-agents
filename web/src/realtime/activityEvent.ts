@@ -202,6 +202,16 @@ export interface ActivityEvent {
   event: ActivityEventType;
   /** Full Activity snapshot (current state after the event). */
   activity: Activity;
+  /**
+   * Identifies the append field for streaming events
+   * (content/reasoning/tool_arguments). Empty for non-streaming events.
+   */
+  delta_field?: string;
+  /**
+   * Carries the incremental text for streaming events.
+   * Empty for non-streaming events.
+   */
+  delta_chunk?: string;
 }
 
 // --- WS downstream message ---

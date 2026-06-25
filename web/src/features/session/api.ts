@@ -46,6 +46,7 @@ export type {
   CompactSessionResult,
   CompressStatus,
   MessageSearchResult,
+  SessionTreeNode,
 } from './types';
 
 const sessionApi = createSessionService();
@@ -88,6 +89,9 @@ function kratosSessionToLegacy(s: KratosSession): Session {
     metadata_json: s.metadataJson ?? '',
     context_used_tokens: s.contextUsedTokens,
     last_context_window_tokens: s.lastContextWindowTokens,
+    parent_session_id: s.parentSessionId ?? '',
+    root_session_id: s.rootSessionId ?? '',
+    agent_depth: s.agentDepth ?? 0,
   };
 }
 
@@ -167,6 +171,16 @@ export async function searchSessions(query: SessionSearchQuery = {}): Promise<Se
 export async function getSession(id: string): Promise<Session> {
   const data = await sessionApi.GetSession({ id });
   return kratosSessionToLegacy(data);
+}
+
+/**
+ * ListChildSessions returns direct child sessions of a parent session.
+ * Used to build the session tree sidebar (Phase 3-6).
+ * Backend: GET /v1/sessions/{parent_session_id}/children
+ */
+export async function listChildSessions(parentSessionId: string): Promise<Session[]> {
+  const data = await sessionApi.ListChildSessions({ parentSessionId });
+  return (data.sessions ?? []).map(kratosSessionToLegacy);
 }
 
 export async function getSessionTimeline(

@@ -45,11 +45,16 @@ type PersistenceSet struct {
 	RunnerRollback RunnerSessionRollbackStore // optional framework-session rollback boundary store
 }
 
-// EventPipeline wraps the event bus used for projecting runtime events
+// EventPipeline wraps the event buses used for projecting runtime events
 // to WebSocket subscribers and internal consumers.
+//
+// Bus is the legacy Envelope bus, retained for monitor events (§6.3).
+// ActivityBus is the new bus transporting biz.ActivityEvent for chat
+// lifecycle events (created/streaming/completed/failed/cancelled/child_created).
 type EventPipeline struct {
-	Bus    event.Bus
-	Buffer *event.Buffer
+	Bus         event.Bus
+	Buffer      *event.Buffer
+	ActivityBus biz.ActivityEventBus
 }
 
 // TurnDeps is the consolidated dependency set threaded through each chat turn.

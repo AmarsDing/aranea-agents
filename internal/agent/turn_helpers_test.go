@@ -12,15 +12,6 @@ import (
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
-type recordingPersister struct {
-	upserts []event.EnvelopeToolCall
-}
-
-func (r *recordingPersister) UpsertActivity(_ context.Context, _ ProjectMeta, tc event.EnvelopeToolCall) error {
-	r.upserts = append(r.upserts, tc)
-	return nil
-}
-
 func TestAccumulateStreamUsage_multiLLMRounds(t *testing.T) {
 	var result EventStreamResult
 	meta := ProjectMeta{SessionID: "s1"}
@@ -104,28 +95,6 @@ func TestConsumeEventStream_accumulatesDeltaReasoning(t *testing.T) {
 	}
 }
 
-func TestConsumeEventStream_finalizesStuckTools(t *testing.T) {
-	bus := event.NewBus(nil)
-	persister := &recordingPersister{}
-	events := make(chan *trpcevent.Event, 3)
-	go func() {
-		defer close(events)
-		events <- toolCallEvent("tc-stuck", "hostexec_exec_command")
-		events <- chatChunkEvent("done", "", false)
-		events <- runnerCompletionEvent()
-	}()
-
-	opts := &StreamConsumeOptions{ActivityPersister: persister}
-	_ = ConsumeEventStream(context.Background(), events, bus, ProjectMeta{SessionID: "s1"}, opts, loggateway.NewNoop())
-	if len(persister.upserts) < 2 {
-		t.Fatalf("expected tool_call + finalize upserts, got %d", len(persister.upserts))
-	}
-	last := persister.upserts[len(persister.upserts)-1]
-	if last.ID != "tc-stuck" || last.Status != "failed" {
-		t.Fatalf("finalize stuck: %+v", last)
-	}
-}
-
 func chatChunkEvent(text, reasoning string, partial bool) *trpcevent.Event {
 	return &trpcevent.Event{
 		Author: "agent",
@@ -152,25 +121,6 @@ func toolResponseEvent(content string) *trpcevent.Event {
 				Message: trpcmodel.Message{
 					ToolID:  "tc1",
 					Content: content,
-				},
-			}},
-		},
-	}
-}
-
-func toolCallEvent(id, name string) *trpcevent.Event {
-	return &trpcevent.Event{
-		Author: "agent",
-		Response: &trpcmodel.Response{
-			Object: trpcmodel.ObjectTypeChatCompletionChunk,
-			Choices: []trpcmodel.Choice{{
-				Delta: trpcmodel.Message{
-					ToolCalls: []trpcmodel.ToolCall{{
-						ID: id,
-						Function: trpcmodel.FunctionDefinitionParam{
-							Name: name,
-						},
-					}},
 				},
 			}},
 		},

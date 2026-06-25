@@ -10,6 +10,7 @@ import { onUnmounted, ref, shallowRef } from 'vue';
 import { createWsTransport, type WsTransport } from './ws-transport';
 import { EnvelopeDispatcher } from './dispatcher';
 import type { Envelope, EnvelopeType } from './envelope';
+import type { ActivityEvent } from './activityEvent';
 import {
   acquireGlobalWsConsumer,
   globalWsConsumerEnableLog,
@@ -35,6 +36,12 @@ export type UseEnvelopeStreamOptions = {
   onDisconnected?: () => void;
   onServerShutdown?: (reason: string) => void;
   onReplayState?: (replaying: boolean, count?: number) => void;
+  /**
+   * Activity-First (AF): called when a downstream message carries an
+   * activity_event payload. If not provided, activity_event messages are
+   * silently ignored by the transport.
+   */
+  onActivityEvent?: (ev: ActivityEvent) => void;
 };
 
 export type UseEnvelopeStreamReturn = {
@@ -104,6 +111,7 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
       onEnvelope: (env) => {
         dispatcher.dispatch(env);
       },
+      onActivityEvent: opts.onActivityEvent ? (ev) => opts.onActivityEvent!(ev) : undefined,
       onConnected: (info) => {
         connected.value = true;
         lastEventId.value = info.lastEventId;

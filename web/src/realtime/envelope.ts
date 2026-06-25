@@ -8,6 +8,8 @@
  * reach into the chat domain for protocol-level types.
  */
 
+import type { ActivityEvent } from './activityEvent';
+
 export type EnvelopeType =
   | 'text_delta'
   | 'text_done'
@@ -263,6 +265,13 @@ export type WsDownstream = {
   type?: string;
   payload?: unknown;
   envelope?: Envelope;
+  /**
+   * Activity-First (AF) downstream: carries a business-semantic ActivityEvent
+   * snapshot. When present, the transport dispatches it via onActivityEvent
+   * instead of onEnvelope. This replaces the legacy activity_start/delta/done/
+   * child_start envelopes for chat events.
+   */
+  activity_event?: ActivityEvent;
 };
 
 export type WsUpstream = {

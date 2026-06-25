@@ -1,6 +1,7 @@
 import { onMounted, onUnmounted, type Ref } from 'vue';
 import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from '../globalWsHub';
 import type { Envelope } from '../envelope';
+import type { ActivityEvent } from '../../../realtime/activityEvent';
 import type { UseEnvelopeStreamReturn } from '../useEnvelopeStream';
 import type { useAppStore } from '../../../stores/app';
 import type { useChatSessionStore } from '../../../stores/chat/sessionStore';
@@ -46,6 +47,8 @@ export type ChatInboundSyncDeps = {
   wsReplaying?: Ref<boolean>;
   onSpiritEnvelope?: (envelope: Envelope) => void;
   onActivityEnvelope?: (envelope: Envelope) => void;
+  /** Activity-First (AF): route new ActivityEvent messages to the timeline. */
+  onActivityEvent?: (ev: ActivityEvent) => void;
   isChatRoute?: () => boolean;
   shouldAutoFocusChannel?: () => boolean;
   onTurnComplete?: (sessionId: string) => void;
@@ -460,6 +463,7 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
         if (env.channel !== 'chat') return;
         void handleInboundEnvelope(env);
       },
+      onActivityEvent: deps.onActivityEvent ? (ev) => deps.onActivityEvent!(ev) : undefined,
     });
   });
 

@@ -5,7 +5,7 @@
     <TodoInlineList v-if="isTodo" :event="todoEvent" />
     <template v-else>
       <div class="act-activity__header" @click="toggleExpand">
-        <span class="act-activity__icon">🔧</span>
+        <span class="act-activity__icon">{{ toolIcon }}</span>
         <span class="act-activity__tool-label">{{ activity.tool.toolLabel }}</span>
         <span v-if="headerHint" class="act-activity__hint" :title="headerHint">{{ headerHint }}</span>
         <span class="act-activity__status" :class="statusClass">{{ statusIcon }}</span>
@@ -55,6 +55,27 @@ const props = defineProps<{
 
 const isTodo = computed(() => isTodoWriteTool(props.activity.tool.toolName));
 
+/**
+ * Tool icon based on tool_category (AF).
+ * Falls back to a generic wrench when category is unknown.
+ */
+const toolIcon = computed(() => {
+  const cat = props.activity.tool.toolCategory;
+  if (!cat || cat === 'other') return '🔧';
+  const iconMap: Record<string, string> = {
+    shell: '$',
+    browser: '🌐',
+    file_read: '📖',
+    file_write: '✏️',
+    file_search: '🔍',
+    web_search: '🔎',
+    mcp: '🔌',
+    code: '💻',
+    todo: '✅',
+  };
+  return iconMap[cat] ?? '🔧';
+});
+
 function tryParseJson(s: string | null): unknown {
   if (!s) return undefined;
   try {
@@ -89,12 +110,24 @@ const renderedResultSummary = computed(() =>
  * Compact execution-result hint shown in the tool header.
  * For read_file this is the file path; for exec_command the command; etc.
  * It surfaces the "what happened" instead of a generic tool label.
+ *
+ * AF: When tool_category is available, use it to pick the hint strategy
+ * directly (no need to match tool_name strings). Falls back to name-based
+ * matching for legacy events without tool_category.
  */
 const headerHint = computed(() => {
   const name = props.activity.tool.toolName;
   const args = parsedToolArgs.value;
   const result = parsedToolResult.value;
+  const cat = props.activity.tool.toolCategory;
 
+  // AF path: use tool_category to pick hint strategy.
+  if (cat) {
+    const hint = hintByCategory(cat, name, args, result);
+    if (hint) return hint;
+  }
+
+  // Legacy fallback: name-based matching (for events without tool_category).
   const fileOps = new Set([
     'read_file',
     'file_read_file',
@@ -154,6 +187,45 @@ const headerHint = computed(() => {
   }
   return '';
 });
+
+/** Extract a compact hint from tool arguments/result based on tool_category. */
+function hintByCategory(
+  cat: string,
+  name: string,
+  args: Record<string, unknown> | undefined,
+  result: Record<string, unknown> | undefined,
+): string {
+  const truncate = (s: string, max = 80) => (s.length > max ? `${s.slice(0, max)}…` : s);
+  switch (cat) {
+    case 'shell':
+      if (typeof args?.command === 'string' && args.command) return truncate(args.command);
+      if (typeof args?.cmd === 'string' && args.cmd) return truncate(args.cmd);
+      break;
+    case 'browser':
+      if (typeof args?.url === 'string' && args.url) return truncate(args.url, 60);
+      if (typeof args?.action === 'string' && args.action) return truncate(args.action, 60);
+      break;
+    case 'file_read':
+    case 'file_write':
+    case 'file_search':
+      if (typeof args?.path === 'string' && args.path) return truncate(args.path, 60);
+      if (typeof args?.file_path === 'string' && args.file_path) return truncate(args.file_path, 60);
+      if (typeof args?.pattern === 'string' && args.pattern) return truncate(args.pattern, 60);
+      if (typeof result?.path === 'string' && result.path) return truncate(result.path, 60);
+      break;
+    case 'web_search':
+      if (typeof args?.query === 'string' && args.query) return truncate(args.query);
+      break;
+    case 'mcp':
+      if (typeof args?.method === 'string' && args.method) return truncate(args.method, 60);
+      if (typeof args?.server === 'string' && args.server) return truncate(args.server, 60);
+      break;
+    case 'code':
+      if (typeof args?.language === 'string' && args.language) return truncate(args.language, 30);
+      break;
+  }
+  return '';
+}
 
 /** T8.4: Compute total content length to decide auto-collapse. */
 const contentLength = computed(() => {

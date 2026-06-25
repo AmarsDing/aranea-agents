@@ -95,7 +95,6 @@ var ProviderSet = wire.NewSet(
 	NewA2ARepoFromData,
 	NewEcosystemRepo,
 	NewEcosystemPresetRepo,
-	NewEventStoreRepo,
 	NewFlowLogRepo,
 	NewWebhookRepo,
 	NewWebhookReader,
@@ -235,8 +234,8 @@ func (d *Data) RWDB() *ReadWriteDB {
 	return d.rwDB
 }
 
-// Postgres returns the Postgres write DB handle (16 connections) for vectors,
-// WAL, EventStore, and Checkpoint writes. Returns nil if not configured.
+// Postgres returns the Postgres write DB handle (16 connections) for vectors
+// and Checkpoint writes. Returns nil if not configured.
 func (d *Data) Postgres() *sql.DB {
 	if d == nil {
 		return nil
@@ -367,7 +366,7 @@ func entSQLDebugEnabled() bool {
 	return v == "1" || v == "true" || v == "yes"
 }
 
-// NewData opens Postgres for Ent CRUD + pgvector + WAL + EventStore.
+// NewData opens Postgres for Ent CRUD + pgvector.
 // The underlying *sql.DB is shared with trpc session/checkpoint adapters via RawDB().
 //
 // SQLite is no longer supported as a primary database in production. It remains
@@ -419,7 +418,7 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 	}, lg); err != nil {
 		return nil, nil, err
 	}
-	// Postgres is primary: pgvector/WAL/EventStore share the same pool.
+	// Postgres is primary: pgvector/Checkpoint share the same pool.
 	pg = rawDB
 	pgRead = readDB
 	activeDialect := DialectPostgres
@@ -758,8 +757,9 @@ func ensureAllSchemas(rawDB *sql.DB, d *Data, lg loggateway.Logger) error {
 }
 
 // ensurePostgresSchemas applies vector and knowledge schema on Postgres if configured.
-// Also runs Phase 1 migration (event_wal/event_store/session_run_checkpoints tables
-// + invariant constraints) for Postgres-native WAL/EventStore/Checkpoint support.
+// Also runs Phase 1 migration (session_run_checkpoints table + invariant constraints)
+// for Postgres-native Checkpoint support. Phase 1c-2: event_wal/event_store tables are
+// dropped via migration (no longer used; Activity records replace them).
 func ensurePostgresSchemas(pg *sql.DB, vdim int, lg loggateway.Logger) error {
 	if pg == nil {
 		return nil

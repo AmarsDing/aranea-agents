@@ -50,15 +50,3 @@ type Bus interface {
 	Subscribe(opts SubscribeOptions) (<-chan Envelope, func())
 	DropCount() uint64
 }
-
-// CrossProcessStore is an optional event persistence target for cross-process
-// replay (WS reconnect across server instances). When configured (e.g.
-// PostgresEventStore), events are dual-written here in addition to the
-// in-process EventStore, and WS replay falls back to this store when the
-// in-memory buffer has no events for the session.
-//
-// Stability:evolving
-type CrossProcessStore interface {
-	Save(ctx context.Context, env *Envelope) error
-	Replay(ctx context.Context, sessionID string, afterEventID string, limit int) ([]*Envelope, error)
-}

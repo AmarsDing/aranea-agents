@@ -14,7 +14,7 @@
       </span>
     </div>
 
-    <!-- Branch: TeamPanel, EventStream -->
+    <!-- Branch: EventStream -->
     <div class="agent-work-panel__body">
       <!-- Running indicator when no activities yet (waiting for LLM first byte) -->
       <div
@@ -52,8 +52,6 @@
           >
         </div>
       </template>
-      <!-- Team panel (v7 style) — displayed above EventStream when panel data exists -->
-      <TeamPanel v-if="agentWork.panel" :panel="agentWork.panel" />
       <!-- Unified event stream rendering (replaces TaskBoard + ActivityTimeline) -->
       <EventStream
         v-if="agentWork.activities.length"
@@ -81,7 +79,6 @@ import { PROGRESS_GLYPHS, PROGRESS_STATUS_GLYPHS } from '../../features/chat/age
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 import type { ErrorEvent } from '../../features/chat/streamEventTypes';
 import EventStream from './EventStream.vue';
-import TeamPanel from './TeamPanel.vue';
 import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
 
 const { t } = useI18n();

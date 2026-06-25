@@ -4,70 +4,12 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	webresearchpkg "aranea-agents/internal/tools/webresearch"
 )
 
-func TestToEventPairs(t *testing.T) {
-	cases := []struct {
-		name  string
-		pairs []biz.LogPair
-		want  []event.Pair
-	}{
-		{
-			name:  "nil_input",
-			pairs: nil,
-			want:  []event.Pair{},
-		},
-		{
-			name:  "empty_slice",
-			pairs: []biz.LogPair{},
-			want:  []event.Pair{},
-		},
-		{
-			name:  "single_pair",
-			pairs: []biz.LogPair{{Key: "session_id", Value: "s1"}},
-			want:  []event.Pair{{Key: "session_id", Value: "s1"}},
-		},
-		{
-			name: "multiple_pairs",
-			pairs: []biz.LogPair{
-				{Key: "session_id", Value: "s1"},
-				{Key: "agent_id", Value: "a1"},
-				{Key: "error", Value: "timeout"},
-			},
-			want: []event.Pair{
-				{Key: "session_id", Value: "s1"},
-				{Key: "agent_id", Value: "a1"},
-				{Key: "error", Value: "timeout"},
-			},
-		},
-		{
-			name: "value_types",
-			pairs: []biz.LogPair{
-				{Key: "count", Value: 42},
-				{Key: "flag", Value: true},
-			},
-			want: []event.Pair{
-				{Key: "count", Value: 42},
-				{Key: "flag", Value: true},
-			},
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := toEventPairs(tc.pairs)
-			if len(got) != len(tc.want) {
-				t.Fatalf("len = %d, want %d", len(got), len(tc.want))
-			}
-			for i, p := range got {
-				if p.Key != tc.want[i].Key || p.Value != tc.want[i].Value {
-					t.Fatalf("pair[%d] = {%q, %v}, want {%q, %v}", i, p.Key, p.Value, tc.want[i].Key, tc.want[i].Value)
-				}
-			}
-		})
-	}
-}
+// Phase 1c-3: TestToEventPairs removed — it tested toEventPairs which lives in
+// cmd/admin/wire.go behind a //go:build wireinject tag (not in package service).
+// The test never compiled; trivial function doesn't warrant moving out of wire.
 
 func TestWebResearchTesterAdapter_ConfigFromSetting(t *testing.T) {
 	a := webResearchTesterAdapter{}

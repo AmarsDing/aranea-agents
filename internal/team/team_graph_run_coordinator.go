@@ -419,7 +419,7 @@ func (c *TeamGraphRunCoordinator) handleGraphWatchEnvelope(ctx context.Context, 
 		changed := sess.obsStore.ApplyEnvelope(env, sess.obsReg)
 		for _, st := range changed {
 			switch env.Type {
-			case event.EnvelopeTypeMemberMessageDone, event.EnvelopeTypeGraphNodeEnd, event.EnvelopeTypeTeamStepFinished:
+			case event.EnvelopeTypeGraphNodeEnd, event.EnvelopeTypeTeamStepFinished:
 				if biz.IsTerminalAgentNodeStatus(st.Status) && c.finisher != nil && stepCtx != nil {
 					skipped := st.Status == biz.AgentNodeStatusSkipped
 					errText := st.ErrorMessage

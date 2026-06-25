@@ -65,97 +65,14 @@ func (t *Transcript) SetSystem(text string) {
 }
 
 // Apply updates transcript state from a chat Envelope.
+//
+// Phase 1c-5: All chat content envelope types (TextDelta/TextDone/ToolCall/
+// ToolResult/MemberMessage*) were deleted — replaced by the Activity-First
+// pipeline. This method is now a no-op; the Transcript struct is retained
+// because the IM channel preview coordinator still uses it for system ACK
+// placeholders. Phase 3-4 will rebuild IM rendering on ActivityEventBus.
 func (t *Transcript) Apply(env event.Envelope) {
-	switch env.Type {
-	case event.EnvelopeTypeTextDelta:
-		if env.Content == nil {
-			return
-		}
-		if s := SanitizeStreamText(env.Content.Reasoning); s != "" {
-			t.appendText(segmentReasoningID, s, env.Content.IsPartial)
-		}
-		if s := SanitizeStreamText(env.Content.Text); s != "" {
-			t.appendText(segmentTextID, s, env.Content.IsPartial)
-		}
-	case event.EnvelopeTypeTextDone:
-		if env.Content == nil {
-			return
-		}
-		if s := SanitizeStreamText(env.Content.Reasoning); s != "" {
-			t.setText(segmentReasoningID, s)
-		}
-		if s := SanitizeStreamText(env.Content.Text); s != "" {
-			t.setText(segmentTextID, s)
-		}
-	case event.EnvelopeTypeToolCall:
-		if env.ToolCall == nil {
-			return
-		}
-		tc := env.ToolCall
-		status := NormalizeToolStatus(tc.Status)
-		if status == "" {
-			status = ToolStatusCalling
-		}
-		seg := Segment{
-			Kind:   SegmentTool,
-			ID:     strings.TrimSpace(tc.ID),
-			Status: status,
-			Meta:   toolMetaFromEnvelope(tc),
-		}
-		if seg.ID == "" {
-			seg.ID = seg.Meta.Name
-		}
-		if idx, ok := t.index[seg.ID]; ok {
-			t.segments[idx].Status = status
-			t.segments[idx].Meta = mergeToolMeta(t.segments[idx].Meta, tc)
-			return
-		}
-		t.breakTextSegment()
-		t.breakReasoningSegment()
-		t.append(seg)
-	case event.EnvelopeTypeToolResult:
-		if env.ToolCall == nil {
-			return
-		}
-		id := strings.TrimSpace(env.ToolCall.ID)
-		if id == "" {
-			id = strings.TrimSpace(env.ToolCall.Name)
-		}
-		status := NormalizeToolStatus(env.ToolCall.Status)
-		if status == "" {
-			status = ToolStatusOK
-		}
-		if idx, ok := t.index[id]; ok {
-			t.segments[idx].Status = status
-			t.segments[idx].Meta = mergeToolMeta(t.segments[idx].Meta, env.ToolCall)
-			return
-		}
-		t.append(Segment{
-			Kind:   SegmentTool,
-			ID:     id,
-			Status: status,
-			Meta:   toolMetaFromEnvelope(env.ToolCall),
-		})
-	case event.EnvelopeTypeMemberMessageStart, event.EnvelopeTypeMemberDelta:
-		author := strings.TrimSpace(env.Author)
-		if author == "" {
-			return
-		}
-		text := ""
-		if env.Content != nil {
-			text = strings.TrimSpace(env.Content.Text)
-		}
-		if text == "" && env.Type == event.EnvelopeTypeMemberMessageStart {
-			return
-		}
-		t.appendMember(author, text, env.Type == event.EnvelopeTypeMemberDelta)
-	case event.EnvelopeTypeMemberMessageDone:
-		author := strings.TrimSpace(env.Author)
-		if author == "" || env.Content == nil {
-			return
-		}
-		t.setMember(author, strings.TrimSpace(env.Content.Text))
-	}
+	_ = env
 }
 
 func (t *Transcript) appendText(id, piece string, partial bool) {

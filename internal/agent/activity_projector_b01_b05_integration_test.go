@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"aranea-agents/internal/event/contract"
+	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -32,18 +32,18 @@ func TestActivityProjector_B01_StartBeforeDelta(t *testing.T) {
 	// Wait for both events (start + delta)
 	envs := bus.waitForPublished(t, 2)
 
-	if envs[0].Type != contract.EnvelopeTypeActivityStart {
+	if envs[0].Event != biz.ActivityEventCreated {
 		t.Errorf("event[0] type=%q want %q (start must arrive before delta)",
-			envs[0].Type, contract.EnvelopeTypeActivityStart)
+			envs[0].Event, biz.ActivityEventCreated)
 	}
-	if envs[1].Type != contract.EnvelopeTypeActivityDelta {
+	if envs[1].Event != biz.ActivityEventStreaming {
 		t.Errorf("event[1] type=%q want %q",
-			envs[1].Type, contract.EnvelopeTypeActivityDelta)
+			envs[1].Event, biz.ActivityEventStreaming)
 	}
 
 	// Verify both events reference the same activity_id
-	startActID, _ := envs[0].Metadata["activity_id"].(string)
-	deltaActID, _ := envs[1].Metadata["activity_id"].(string)
+	startActID := envs[0].Activity.ID
+	deltaActID := envs[1].Activity.ID
 	if startActID == "" {
 		t.Fatal("start event missing activity_id metadata")
 	}
@@ -73,19 +73,19 @@ func TestActivityProjector_B01_StartBeforeDeltaConcurrent(t *testing.T) {
 	wg.Wait()
 
 	// Wait for all events to be published.
-	// With delta batching, the 50 deltas may be coalesced into fewer envelopes,
+	// With delta batching, the 50 deltas may be coalesced into fewer events,
 	// so we only require the start event to be first and all subsequent events
 	// to be deltas for the same activity.
 	envs := bus.waitForPublished(t, 2)
 
 	// Verify the first event is start.
-	if envs[0].Type != contract.EnvelopeTypeActivityStart {
+	if envs[0].Event != biz.ActivityEventCreated {
 		t.Fatalf("event[0] type=%q want %q (start must be first)",
-			envs[0].Type, contract.EnvelopeTypeActivityStart)
+			envs[0].Event, biz.ActivityEventCreated)
 	}
 
 	// Extract the activity_id from the start event.
-	startActID, _ := envs[0].Metadata["activity_id"].(string)
+	startActID := envs[0].Activity.ID
 	if startActID == "" {
 		t.Fatal("start event missing activity_id metadata")
 	}
@@ -93,17 +93,17 @@ func TestActivityProjector_B01_StartBeforeDeltaConcurrent(t *testing.T) {
 	// Allow the batch timer to flush any remaining deltas.
 	time.Sleep(2 * defaultDeltaBatchInterval)
 	bus.mu.Lock()
-	envs = make([]contract.Envelope, len(bus.published))
+	envs = make([]biz.ActivityEvent, len(bus.published))
 	copy(envs, bus.published)
 	bus.mu.Unlock()
 
 	// Verify all subsequent events are deltas for the same activity.
 	for i := 1; i < len(envs); i++ {
-		if envs[i].Type != contract.EnvelopeTypeActivityDelta {
+		if envs[i].Event != biz.ActivityEventStreaming {
 			t.Errorf("event[%d] type=%q want %q",
-				i, envs[i].Type, contract.EnvelopeTypeActivityDelta)
+				i, envs[i].Event, biz.ActivityEventStreaming)
 		}
-		deltaActID, _ := envs[i].Metadata["activity_id"].(string)
+		deltaActID := envs[i].Activity.ID
 		if deltaActID != startActID {
 			t.Errorf("event[%d] activity_id=%q want %q",
 				i, deltaActID, startActID)
@@ -224,31 +224,31 @@ func TestActivityProjector_B05_NoStartDeltaRace(t *testing.T) {
 	// Verify per-activity FIFO ordering: for each activity_id, the first
 	// event must be start and the last must be done.
 	bus.mu.Lock()
-	envs := make([]contract.Envelope, len(bus.published))
+	envs := make([]biz.ActivityEvent, len(bus.published))
 	copy(envs, bus.published)
 	bus.mu.Unlock()
 
-	perActivity := make(map[string][]contract.EnvelopeType)
+	perActivity := make(map[string][]biz.ActivityEventType)
 	for _, env := range envs {
-		actID, _ := env.Metadata["activity_id"].(string)
+		actID := env.Activity.ID
 		if actID == "" {
 			continue
 		}
-		perActivity[actID] = append(perActivity[actID], env.Type)
+		perActivity[actID] = append(perActivity[actID], env.Event)
 	}
 
 	for actID, seq := range perActivity {
 		if len(seq) == 0 {
 			continue
 		}
-		if seq[0] != contract.EnvelopeTypeActivityStart {
+		if seq[0] != biz.ActivityEventCreated {
 			t.Errorf("activity %s: first event=%q want %q (B-05 race detected)",
-				actID, seq[0], contract.EnvelopeTypeActivityStart)
+				actID, seq[0], biz.ActivityEventCreated)
 		}
 		// The last event should be done (OnTextDone emits done).
-		if seq[len(seq)-1] != contract.EnvelopeTypeActivityDone {
+		if seq[len(seq)-1] != biz.ActivityEventCompleted {
 			t.Errorf("activity %s: last event=%q want %q",
-				actID, seq[len(seq)-1], contract.EnvelopeTypeActivityDone)
+				actID, seq[len(seq)-1], biz.ActivityEventCompleted)
 		}
 	}
 }
@@ -293,7 +293,7 @@ func TestActivityProjector_BackpressurePropagation(t *testing.T) {
 			dctx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
 			defer cancel()
 			if err := p.sequencer.publish(dctx, "agent-1", publishTask{
-				env: contract.NewEnvelope(contract.EnvelopeTypeActivityDelta, "agent-1", "sess-1"),
+				event: biz.ActivityEvent{Event: biz.ActivityEventStreaming, Activity: biz.Activity{ID: "agent-1", SessionID: "sess-1"}},
 			}); err == nil {
 				atomic.AddInt32(&deltasEnqueued, 1)
 			}

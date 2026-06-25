@@ -12,7 +12,6 @@ import (
 	cronv1 "aranea-agents/api/kratos/cron/v1"
 	ecosystemv1 "aranea-agents/api/kratos/ecosystem/v1"
 	evaluationv1 "aranea-agents/api/kratos/evaluation/v1"
-	eventv1 "aranea-agents/api/kratos/event/v1"
 	gatewayv1 "aranea-agents/api/kratos/gateway/v1"
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	hookv1 "aranea-agents/api/kratos/hook/v1"
@@ -99,7 +98,6 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 	evaluationv1.RegisterEvaluationServiceServer(srv, s.Eval)
 	a2av1.RegisterA2AServiceServer(srv, s.A2A)
 	ecosystemv1.RegisterEcosystemServiceServer(srv, s.Ecosystem)
-	eventv1.RegisterEventServiceServer(srv, s.Event)
 	gatewayv1.RegisterGatewayServiceServer(srv, s.Gateway)
 	taxonomyv1.RegisterTaxonomyServiceServer(srv, s.Taxonomy)
 	organizationv1.RegisterOrganizationServiceServer(srv, s.Organization)

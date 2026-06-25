@@ -10,12 +10,15 @@
 import { GLOBAL_WS_SESSION_ID } from '../config/runtime';
 import { createWsTransport, type WsTransport } from './ws-transport';
 import type { Envelope } from './envelope';
+import type { ActivityEvent } from './activityEvent';
 
 export type GlobalWsConsumer = {
   id: string;
   channels: Set<string>;
   logEnabled: boolean;
   onEnvelope: (env: Envelope) => void;
+  /** Activity-First (AF): called when an activity_event message arrives. */
+  onActivityEvent?: (ev: ActivityEvent) => void;
   onConnected?: () => void;
   onDisconnected?: () => void;
   onServerShutdown?: (reason: string) => void;
@@ -60,6 +63,12 @@ function ensureHubTransport(): WsTransport {
         if (env.channel && c.channels.has(env.channel)) {
           c.onEnvelope(env);
         }
+      }
+    },
+    onActivityEvent: (ev) => {
+      // Activity-First (AF): dispatch to all consumers that have opted in.
+      for (const c of consumers.values()) {
+        c.onActivityEvent?.(ev);
       }
     },
     onConnected: () => {

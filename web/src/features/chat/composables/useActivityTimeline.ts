@@ -19,7 +19,13 @@ import type {
   ConfirmEvent,
   NoticeEvent,
   ToolActivity,
+  TeamStageEvent,
+  GraphStageEvent,
+  SessionStageEvent,
+  TeamMemberStatus,
+  GraphNodeStatus,
 } from '../streamEventTypes';
+import type { ActivityEvent as AFActivityEvent, Activity as AFActivity } from '../../../realtime/activityEvent';
 import { listActivities } from '../../session/api';
 
 /**
@@ -178,6 +184,111 @@ export function useActivityTimeline() {
     triggerRef(activities);
   }
 
+  // === Activity-First (AF) Event Handler ===
+  //
+  // handleActivityEvent consumes the new business-semantic ActivityEvent format
+  // (event + full Activity snapshot + optional delta_field/delta_chunk), which
+  // replaces the legacy activity_start/delta/done/child_start envelopes.
+  //
+  // The AF Activity uses snake_case field names (matching backend JSON tags);
+  // we convert to the internal camelCase Activity model.
+
+  function afActivityToInternal(a: AFActivity): Activity {
+    return {
+      id: a.id,
+      kind: a.kind as Activity['kind'],
+      status: a.status as ActivityStatus,
+      sessionId: a.session_id,
+      turnId: a.turn_id,
+      parentActivityId: a.parent_activity_id || null,
+      timestamp: a.timestamp,
+      durationMs: a.duration_ms || null,
+      seq: a.seq,
+      content: a.content || null,
+      reasoning: a.reasoning || null,
+      toolName: a.tool_name || null,
+      toolCategory: a.tool_category || null,
+      toolCallId: a.tool_call_id || null,
+      toolArguments: a.tool_arguments || null,
+      toolResult: a.tool_result || null,
+      toolDurationMs: a.tool_duration_ms || null,
+      toolErrorCode: a.tool_error_code || null,
+      childBoardId: a.child_board_id || null,
+      spiritSessionId: a.spirit_session_id || null,
+      teamId: a.team_id || null,
+      dagNodeId: a.dag_node_id || null,
+      dependsOn: a.depends_on || null,
+      stage: a.stage || null,
+      agentKey: a.agent_key || null,
+      agentName: a.agent_name || null,
+      promptTokens: a.prompt_tokens || null,
+      completionTokens: a.completion_tokens || null,
+      collapsed: a.collapsed,
+      label: a.label || null,
+      meta: a.meta || null,
+    };
+  }
+
+  function handleActivityEvent(ev: AFActivityEvent) {
+    const snapshot = afActivityToInternal(ev.activity);
+
+    switch (ev.event) {
+      case 'created':
+      case 'child_created': {
+        // Full snapshot: create or replace the Activity in the map.
+        activities.value.set(snapshot.id, snapshot);
+        triggerRef(activities);
+        if (!snapshot.parentActivityId) {
+          rootActivityId.value = snapshot.id;
+        }
+        break;
+      }
+      case 'streaming': {
+        // Streaming append: the Activity snapshot carries the accumulated
+        // state, and delta_field/delta_chunk carry the incremental text.
+        // We apply the delta to the existing Activity (or create if missing).
+        const existing = activities.value.get(snapshot.id);
+        if (!existing) {
+          // Activity not yet in map (race or missed created event):
+          // use the full snapshot as the base.
+          activities.value.set(snapshot.id, snapshot);
+        } else if (ev.delta_field && ev.delta_chunk) {
+          const updated: Activity = { ...existing };
+          if (ev.delta_field === 'reasoning') {
+            updated.reasoning = (existing.reasoning || '') + ev.delta_chunk;
+          } else if (ev.delta_field === 'content') {
+            updated.content = (existing.content || '') + ev.delta_chunk;
+          } else if (ev.delta_field === 'tool_arguments') {
+            updated.toolArguments = (existing.toolArguments || '') + ev.delta_chunk;
+          }
+          if (snapshot.seq != null) updated.seq = snapshot.seq;
+          activities.value.set(snapshot.id, updated);
+        } else {
+          // No delta info: use the full snapshot (backend may send
+          // accumulated content in the snapshot).
+          activities.value.set(snapshot.id, { ...existing, ...snapshot });
+        }
+        triggerRef(activities);
+        break;
+      }
+      case 'updated':
+      case 'completed':
+      case 'failed':
+      case 'cancelled': {
+        // Terminal or state-change event: merge the full snapshot into
+        // the existing Activity (or create if missing).
+        const existing = activities.value.get(snapshot.id);
+        if (existing) {
+          activities.value.set(snapshot.id, { ...existing, ...snapshot });
+        } else {
+          activities.value.set(snapshot.id, snapshot);
+        }
+        triggerRef(activities);
+        break;
+      }
+    }
+  }
+
   // === Reset (called on turn start) ===
 
   function reset() {
@@ -296,6 +407,7 @@ export function useActivityTimeline() {
     handleActivityDelta,
     handleActivityDone,
     handleActivityChildStart,
+    handleActivityEvent,
     reset,
     loadActivities,
     loadActivitiesFromAPI,
@@ -375,6 +487,7 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
       const tool: ToolActivity = {
         toolName: node.toolName || '',
         toolLabel: node.label || node.toolName || '',
+        toolCategory: node.toolCategory || undefined,
         status: toolStatus,
         durationMs: node.toolDurationMs ?? node.durationMs,
         arguments: node.toolArguments || null,
@@ -453,6 +566,53 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
         autoApproveAt: (node.meta?.autoApproveAt as string) ?? null,
       } satisfies ConfirmEvent;
 
+    case 'team_stage': {
+      // Phase 3: Team stage — members list lives in meta.members
+      const members = Array.isArray(node.meta?.members) ? (node.meta.members as TeamMemberStatus[]) : undefined;
+      const taskSummary = typeof node.meta?.task_summary === 'string' ? node.meta.task_summary : undefined;
+      return {
+        kind: 'team_stage',
+        id: node.id,
+        status: mapActivityStatusToStageStatus(node.status),
+        title: node.label || node.content || '',
+        teamId: node.teamId || undefined,
+        members,
+        taskSummary,
+        durationMs: node.durationMs,
+      } satisfies TeamStageEvent;
+    }
+
+    case 'graph_stage': {
+      // Phase 3: Graph stage — DAG nodes live in meta.nodes
+      const nodes = Array.isArray(node.meta?.nodes) ? (node.meta.nodes as GraphNodeStatus[]) : undefined;
+      return {
+        kind: 'graph_stage',
+        id: node.id,
+        status: mapActivityStatusToStageStatus(node.status),
+        title: node.label || node.content || '',
+        dagNodeId: node.dagNodeId || undefined,
+        nodes,
+        durationMs: node.durationMs,
+      } satisfies GraphStageEvent;
+    }
+
+    case 'session': {
+      // Phase 3: Child session stage — child_session_id lives in meta
+      const childSessionId = typeof node.meta?.child_session_id === 'string' ? node.meta.child_session_id : undefined;
+      return {
+        kind: 'session',
+        id: node.id,
+        status: mapActivityStatusToStageStatus(node.status),
+        title: node.label || node.content || '',
+        childSessionId,
+        agentKey: node.agentKey || undefined,
+        agentName: node.agentName || undefined,
+        teamId: node.teamId || undefined,
+        spiritSessionId: node.spiritSessionId || undefined,
+        durationMs: node.durationMs,
+      } satisfies SessionStageEvent;
+    }
+
     default:
       // Fallback: task, sub_task_board, delegate → error (degradation)
       return {
@@ -461,6 +621,32 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
         type: 'degradation',
         message: node.content || node.label || '',
       } satisfies ErrorEvent;
+  }
+}
+
+/**
+ * Maps backend ActivityStatus → StageEvent.status for team_stage/graph_stage/session.
+ * Mirrors the AgentWorkProcess convention: partial_failure → completed
+ * (the stage reached a terminal state; member/node-level failures are
+ * visible in their respective lists).
+ */
+function mapActivityStatusToStageStatus(status: ActivityStatus): 'running' | 'completed' | 'failed' | 'cancelled' {
+  switch (status) {
+    case 'pending':
+    case 'running':
+    case 'tool_running':
+    case 'tool_blocked':
+      return 'running';
+    case 'completed':
+    case 'partial_failure':
+      return 'completed';
+    case 'failed':
+    case 'interrupted':
+      return 'failed';
+    case 'cancelled':
+      return 'cancelled';
+    default:
+      return 'running';
   }
 }
 

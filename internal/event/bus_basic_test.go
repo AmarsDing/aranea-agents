@@ -14,7 +14,7 @@ func TestBusPublishSubscribe(t *testing.T) {
 	ch, cancel := b.Subscribe(event.SubscribeOptions{SessionID: "s1", BufferSize: 8})
 	defer cancel()
 
-	env := event.NewEnvelope(event.EnvelopeTypeTextDelta, "agent-1", "s1")
+	env := event.NewEnvelope(event.EnvelopeTypeStateDelta, "agent-1", "s1")
 	env.Channel = "session:s1"
 	b.Publish(context.Background(), env)
 
@@ -34,7 +34,7 @@ func TestBusSubscribeCancel(t *testing.T) {
 	ch, cancel := b.Subscribe(event.SubscribeOptions{SessionID: "s2", BufferSize: 8})
 	cancel()
 
-	env := event.NewEnvelope(event.EnvelopeTypeTextDelta, "agent-1", "s2")
+	env := event.NewEnvelope(event.EnvelopeTypeStateDelta, "agent-1", "s2")
 	env.Channel = "session:s2"
 	b.Publish(context.Background(), env)
 
@@ -58,13 +58,13 @@ func TestBusEventTypeFilter(t *testing.T) {
 
 	ch, cancel := b.Subscribe(event.SubscribeOptions{
 		SessionID:  "s3",
-		EventTypes: []event.EnvelopeType{event.EnvelopeTypeTextDelta},
+		EventTypes: []event.EnvelopeType{event.EnvelopeTypeStateDelta},
 		BufferSize: 8,
 	})
 	defer cancel()
 
 	// Publish matching type.
-	textEnv := event.NewEnvelope(event.EnvelopeTypeTextDelta, "agent-1", "s3")
+	textEnv := event.NewEnvelope(event.EnvelopeTypeStateDelta, "agent-1", "s3")
 	textEnv.Channel = "session:s3"
 	b.Publish(context.Background(), textEnv)
 
@@ -75,8 +75,8 @@ func TestBusEventTypeFilter(t *testing.T) {
 
 	select {
 	case got := <-ch:
-		if got.Type != event.EnvelopeTypeTextDelta {
-			t.Fatalf("expected text_delta event, got %v", got.Type)
+		if got.Type != event.EnvelopeTypeStateDelta {
+			t.Fatalf("expected state_delta event, got %v", got.Type)
 		}
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("timed out waiting for text event")
@@ -91,7 +91,7 @@ func TestBusEventTypeFilter(t *testing.T) {
 }
 
 func TestRouteChannel(t *testing.T) {
-	env := event.NewEnvelope(event.EnvelopeTypeTextDelta, "agent-1", "sess-abc")
+	env := event.NewEnvelope(event.EnvelopeTypeStateDelta, "agent-1", "sess-abc")
 	ch := event.RouteChannel(env)
 	if ch == "" {
 		t.Fatal("RouteChannel should return non-empty channel for session event")
@@ -99,8 +99,8 @@ func TestRouteChannel(t *testing.T) {
 }
 
 func TestNewEnvelopeFields(t *testing.T) {
-	env := event.NewEnvelope(event.EnvelopeTypeToolCall, "my-agent", "sess-xyz")
-	if env.Type != event.EnvelopeTypeToolCall {
+	env := event.NewEnvelope(event.EnvelopeTypeCheckpoint, "my-agent", "sess-xyz")
+	if env.Type != event.EnvelopeTypeCheckpoint {
 		t.Errorf("expected ToolCall type, got %v", env.Type)
 	}
 	if env.Author != "my-agent" {
@@ -125,7 +125,7 @@ func TestBusMultipleSubscribers(t *testing.T) {
 	ch2, cancel2 := b.Subscribe(event.SubscribeOptions{SessionID: "ms-1", BufferSize: 4})
 	defer cancel2()
 
-	env := event.NewEnvelope(event.EnvelopeTypeTextDelta, "agent", "ms-1")
+	env := event.NewEnvelope(event.EnvelopeTypeStateDelta, "agent", "ms-1")
 	env.Channel = "session:ms-1"
 	b.Publish(context.Background(), env)
 
@@ -148,7 +148,7 @@ func TestBusNoMatchingSubscriber(t *testing.T) {
 	defer cancel()
 
 	// Publish to a different session.
-	env := event.NewEnvelope(event.EnvelopeTypeTextDelta, "agent", "sess-B")
+	env := event.NewEnvelope(event.EnvelopeTypeStateDelta, "agent", "sess-B")
 	env.Channel = "session:sess-B"
 	b.Publish(context.Background(), env)
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	sessionsess "aranea-agents/internal/biz/session"
 )
@@ -184,6 +185,68 @@ func (fixedSessionRepo) ListByParentSessionID(_ context.Context, _ string) ([]se
 func (fixedSessionRepo) ListActiveAgentUserKeys(_ context.Context, _ int) ([]sessionsess.AgentUserKey, error) {
 	return nil, nil
 }
+func (fixedSessionRepo) GetSessionTree(_ context.Context, _ string) (*sessionsess.SessionTree, error) {
+	return nil, nil
+}
+func (fixedSessionRepo) ListChildSessions(_ context.Context, _ string) ([]sessionsess.Session, error) {
+	return nil, nil
+}
+func (fixedSessionRepo) ListTeamAgentSessions(_ context.Context, _ string) ([]sessionsess.Session, error) {
+	return nil, nil
+}
+
+// ListBySession implements sessionsess.ActivityLister for fixedSessionRepo.
+// Phase 1c-3: ActivityMessageReader reads via ActivityLister, so the test repo
+// must convert its ChatMessage fixtures back to ActivityEntry shape.
+func (r fixedSessionRepo) ListBySession(_ context.Context, sessionID string) ([]sessionsess.ActivityEntry, error) {
+	if sessionID != r.sess.ID {
+		return nil, nil
+	}
+	return chatMessagesToActivityEntries(r.msgs), nil
+}
+
+// ListBySessionTurn implements sessionsess.ActivityLister for fixedSessionRepo.
+func (r fixedSessionRepo) ListBySessionTurn(ctx context.Context, sessionID, _ string) ([]sessionsess.ActivityEntry, error) {
+	return r.ListBySession(ctx, sessionID)
+}
+
+// chatMessagesToActivityEntries converts ChatMessage fixtures to ActivityEntry
+// shape, reversing activityToChatMessage (round-trip for tests).
+func chatMessagesToActivityEntries(msgs []sessionsess.ChatMessage) []sessionsess.ActivityEntry {
+	acts := make([]sessionsess.ActivityEntry, 0, len(msgs))
+	for _, m := range msgs {
+		var kind string
+		switch m.Role {
+		case "user":
+			kind = "task"
+		case "assistant":
+			kind = "reply"
+		case "tool":
+			kind = "action"
+		case "system":
+			kind = "notice"
+		default:
+			kind = "task"
+		}
+		a := sessionsess.ActivityEntry{
+			ID:        m.ID,
+			Kind:      kind,
+			SessionID: m.SessionID,
+			TurnID:    m.TurnID,
+			Content:   m.ContentMarkdown,
+		}
+		if kind == "action" {
+			a.ToolResult = m.ContentMarkdown
+		}
+		if m.CreatedAt != "" {
+			if t, err := time.Parse(time.RFC3339Nano, m.CreatedAt); err == nil {
+				a.Timestamp = t
+			}
+		}
+		acts = append(acts, a)
+	}
+	return acts
+}
 
 var _ sessionsess.SessionRepo = fixedSessionRepo{}
 
@@ -204,4 +267,5 @@ var (
 	_ sessionsess.TurnRepo            = fixedSessionRepo{}
 	_ sessionsess.ContextUpdater      = fixedSessionRepo{}
 	_ sessionsess.CompressRepo        = fixedSessionRepo{}
+	_ sessionsess.ActivityLister      = fixedSessionRepo{}
 )

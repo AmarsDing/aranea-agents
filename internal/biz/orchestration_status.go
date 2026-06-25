@@ -179,22 +179,6 @@ func (s *OrchestrationStatusStore) ApplyEnvelope(env contract.Envelope, reg Orch
 		if st := s.applyToResolved(env, reg, AgentNodeStatusRunning, WorkPhaseDoing); st != nil {
 			changed = append(changed, st)
 		}
-	case contract.EnvelopeTypeMemberMessageStart:
-		if st := s.applyToResolved(env, reg, AgentNodeStatusThinking, WorkPhaseDoing); st != nil {
-			changed = append(changed, st)
-		}
-	case contract.EnvelopeTypeToolCall:
-		if st := s.applyToolCall(env, reg); st != nil {
-			changed = append(changed, st)
-		}
-	case contract.EnvelopeTypeToolResult:
-		if st := s.applyToolResult(env, reg); st != nil {
-			changed = append(changed, st)
-		}
-	case contract.EnvelopeTypeMemberMessageDone:
-		if st := s.applyMemberDone(env, reg); st != nil {
-			changed = append(changed, st)
-		}
 	case contract.EnvelopeTypeTeamStepFinished:
 		if st := s.applyStepFinished(env, reg); st != nil {
 			changed = append(changed, st)
@@ -216,8 +200,6 @@ func (s *OrchestrationStatusStore) ApplyEnvelope(env contract.Envelope, reg Orch
 		if st := s.applyGraphNodeError(env, reg); st != nil {
 			changed = append(changed, st)
 		}
-	case contract.EnvelopeTypeTransfer:
-		changed = append(changed, s.applyTransfer(env, reg)...)
 	case contract.EnvelopeTypeCheckpoint:
 		if st := s.applyToResolved(env, reg, AgentNodeStatusWaitingInput, WorkPhaseDoing); st != nil {
 			changed = append(changed, st)
@@ -269,74 +251,6 @@ func (s *OrchestrationStatusStore) applyToResolved(
 		return nil
 	}
 	st.Phase = phase
-	return cloneNodeState(st)
-}
-
-func (s *OrchestrationStatusStore) applyToolCall(env contract.Envelope, reg OrchestrationRegistry) *AgentNodeState {
-	st := s.resolveState(env, reg)
-	if st == nil || env.ToolCall == nil {
-		return nil
-	}
-	tc := env.ToolCall
-	if !s.setStatus(st, AgentNodeStatusToolRunning) {
-		return nil
-	}
-	st.Phase = WorkPhaseDoing
-	st.CurrentActivity = &ActivitySnapshot{
-		Kind:          strings.TrimSpace(tc.ActivityKind),
-		DisplayLabel:  strings.TrimSpace(tc.DisplayLabel),
-		ToolName:      strings.TrimSpace(tc.Name),
-		Status:        "running",
-		Summary:       strings.TrimSpace(tc.Summary),
-		ArgumentsJSON: redactActivityJSON(tc.ArgumentsJSON),
-		StartedAt:     strings.TrimSpace(tc.StartedAt),
-	}
-	if st.CurrentActivity.Kind == "" {
-		st.CurrentActivity.Kind = "tool"
-	}
-	if st.CurrentActivity.DisplayLabel == "" {
-		st.CurrentActivity.DisplayLabel = st.CurrentActivity.ToolName
-	}
-	appendActivityHistory(st, *st.CurrentActivity)
-	return cloneNodeState(st)
-}
-
-func (s *OrchestrationStatusStore) applyToolResult(env contract.Envelope, reg OrchestrationRegistry) *AgentNodeState {
-	st := s.resolveState(env, reg)
-	if st == nil || env.ToolCall == nil {
-		return nil
-	}
-	tc := env.ToolCall
-	if st.CurrentActivity != nil {
-		st.CurrentActivity.Status = strings.TrimSpace(tc.Status)
-		if st.CurrentActivity.Status == "" {
-			st.CurrentActivity.Status = "success"
-		}
-		st.CurrentActivity.ResultJSON = redactActivityJSON(tc.ResultJSON)
-		st.CurrentActivity.FinishedAt = strings.TrimSpace(tc.FinishedAt)
-		st.CurrentActivity.DurationMS = tc.DurationMS
-		st.CurrentActivity.ErrorCode = strings.TrimSpace(tc.ErrorCode)
-		appendActivityHistory(st, *st.CurrentActivity)
-	}
-	if st.Status == AgentNodeStatusToolRunning {
-		s.setStatus(st, AgentNodeStatusThinking)
-	}
-	return cloneNodeState(st)
-}
-
-func (s *OrchestrationStatusStore) applyMemberDone(env contract.Envelope, reg OrchestrationRegistry) *AgentNodeState {
-	st := s.resolveState(env, reg)
-	if st == nil {
-		return nil
-	}
-	if env.Content != nil {
-		st.OutputPreview = strings.TrimSpace(env.Content.Text)
-	}
-	if !s.setStatus(st, AgentNodeStatusSuccess) {
-		return nil
-	}
-	st.Phase = WorkPhaseDelivered
-	st.CurrentActivity = nil
 	return cloneNodeState(st)
 }
 
@@ -484,26 +398,6 @@ func (s *OrchestrationStatusStore) applyGraphTaskStatus(env contract.Envelope, r
 		stored.OutputPreview = summary
 	}
 	return cloneNodeState(stored)
-}
-
-func (s *OrchestrationStatusStore) applyTransfer(env contract.Envelope, reg OrchestrationRegistry) []*AgentNodeState {
-	if env.Transfer == nil {
-		return nil
-	}
-	var changed []*AgentNodeState
-	if from := s.resolveByAgentKey(reg, env.Transfer.FromAgent); from != nil {
-		if s.setStatus(from, AgentNodeStatusIdle) {
-			from.Phase = WorkPhaseDelivered
-			changed = append(changed, cloneNodeState(from))
-		}
-	}
-	if to := s.resolveByAgentKey(reg, env.Transfer.ToAgent); to != nil {
-		to.Phase = WorkPhaseDoing
-		if s.setStatus(to, AgentNodeStatusRunning) {
-			changed = append(changed, cloneNodeState(to))
-		}
-	}
-	return changed
 }
 
 func (s *OrchestrationStatusStore) resolveState(env contract.Envelope, reg OrchestrationRegistry) *AgentNodeState {

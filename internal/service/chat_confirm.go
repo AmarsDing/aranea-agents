@@ -6,8 +6,6 @@ import (
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
@@ -15,7 +13,7 @@ import (
 
 // ConfirmActivity handles user approval/rejection of a tool-blocked confirm Activity.
 // It loads the Activity from DB, validates kind=confirm + status=tool_blocked,
-// updates the status, publishes an activity_done envelope, and resumes the
+// updates the status, publishes an ActivityEvent (completed/cancelled), and resumes the
 // awaiting run via the await channel.
 func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmActivityRequest) (*chatv1.ConfirmActivityResponse, error) {
 	if s == nil || s.orch == nil {
@@ -96,16 +94,18 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 		return nil, err
 	}
 
-	// Publish activity_done envelope via event bus
-	if bus := s.orch.td().Pipeline.Bus; bus != nil {
-		env := event.NewEnvelope(contract.EnvelopeTypeActivityDone, "activity-confirm", sessionID)
-		env.Metadata = map[string]any{
-			"activity_id": activityID,
-			"kind":        biz.ActivityKindConfirm,
-			"status":      string(newStatus),
-			"approved":    req.GetApproved(),
+	// Publish ActivityEvent (completed/cancelled) via ActivityEventBus so the
+	// frontend's unified rendering pipeline receives the lifecycle transition.
+	// This replaces the legacy EnvelopeTypeActivityDone envelope.
+	if bus := s.orch.td().Pipeline.ActivityBus; bus != nil {
+		eventType := biz.ActivityEventCompleted
+		if !req.GetApproved() {
+			eventType = biz.ActivityEventCancelled
 		}
-		bus.Publish(ctx, env)
+		bus.Publish(ctx, biz.ActivityEvent{
+			Event:    eventType,
+			Activity: activity,
+		})
 	}
 
 	// Resume the awaiting run by sending the approval/rejection through the await channel.

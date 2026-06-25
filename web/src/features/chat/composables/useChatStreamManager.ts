@@ -9,6 +9,7 @@ import { useChatMessageStore } from '../../../stores/chat/messageStore';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import { createChatStream, createTeamStream, type UseEnvelopeStreamReturn } from '../useEnvelopeStream';
 import type { Envelope, EnvelopeType, WsUpstream } from '../envelope';
+import type { ActivityEvent } from '../../../realtime/activityEvent';
 import { bindStreamHandlers, patchStreamingEnvelope } from '../streamHandlers';
 import { getChannelWsCursor } from '../channelWsCursor';
 import { reloadSessionAfterCompletion } from '../sessionCompletionReload';
@@ -33,6 +34,12 @@ export type StreamManagerDeps = {
   // directly to useActivityTimeline so the UI updates in real-time without
   // waiting for the inbound-sync polling path.
   onActivityEnvelope?: (env: Envelope) => void;
+  /**
+   * Activity-First (AF): called when an activity_event WS message arrives.
+   * Replaces the legacy onActivityEnvelope for chat events. The handler
+   * receives a business-semantic ActivityEvent with a full Activity snapshot.
+   */
+  onActivityEvent?: (ev: ActivityEvent) => void;
 };
 
 export function useChatStreamManager(deps: StreamManagerDeps) {
@@ -199,6 +206,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       onReplayState: (replaying) => {
         wsReplaying.value = replaying;
       },
+      onActivityEvent: deps.onActivityEvent,
     });
 
     chatStreamCleanup = bindStreamHandlers(
@@ -280,6 +288,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         deps.runtimeStore.setWsConnected(sessionId, true);
         void deps.refreshRunStatus(sessionId);
       },
+      onActivityEvent: deps.onActivityEvent,
     });
 
     teamStreamCleanup = bindStreamHandlers(teamStream, {

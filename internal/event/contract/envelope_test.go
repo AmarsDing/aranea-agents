@@ -5,12 +5,12 @@ import (
 )
 
 func TestNewEnvelope(t *testing.T) {
-	env := NewEnvelope(EnvelopeTypeTextDelta, "agent-1", "sess-1")
+	env := NewEnvelope(EnvelopeTypeLog, "agent-1", "sess-1")
 	if env.ID == "" {
 		t.Fatal("expected non-empty ID")
 	}
-	if env.Type != EnvelopeTypeTextDelta {
-		t.Fatalf("expected text_delta, got %q", env.Type)
+	if env.Type != EnvelopeTypeLog {
+		t.Fatalf("expected log, got %q", env.Type)
 	}
 	if env.Author != "agent-1" {
 		t.Fatalf("expected agent-1, got %q", env.Author)
@@ -27,8 +27,8 @@ func TestNewEnvelope(t *testing.T) {
 }
 
 func TestNewEnvelope_UniqueIDs(t *testing.T) {
-	a := NewEnvelope(EnvelopeTypeTextDelta, "a", "s")
-	b := NewEnvelope(EnvelopeTypeTextDelta, "a", "s")
+	a := NewEnvelope(EnvelopeTypeLog, "a", "s")
+	b := NewEnvelope(EnvelopeTypeLog, "a", "s")
 	if a.ID == b.ID {
 		t.Fatal("each envelope should have unique ID")
 	}
@@ -44,7 +44,6 @@ func TestRouteChannel_Monitor(t *testing.T) {
 
 func TestRouteChannel_Team(t *testing.T) {
 	for _, typ := range []EnvelopeType{
-		EnvelopeTypeMemberMessageStart, EnvelopeTypeMemberDelta, EnvelopeTypeMemberMessageDone,
 		EnvelopeTypeTeamRunStarted, EnvelopeTypeTeamRunFinished, EnvelopeTypeTeamStepStarted,
 		EnvelopeTypeTeamStepFinished, EnvelopeTypeTeamRunFailed, EnvelopeTypeTeamSummary,
 		EnvelopeTypeOrchestrationAgentStatus,
@@ -82,13 +81,13 @@ func TestRouteChannel_MCP(t *testing.T) {
 }
 
 func TestRouteChannel_DefaultWithTeamID(t *testing.T) {
-	if ch := RouteChannel(Envelope{Type: EnvelopeTypeTextDelta, TeamID: "team-1"}); ch != "team" {
+	if ch := RouteChannel(Envelope{Type: EnvelopeTypeError, TeamID: "team-1"}); ch != "team" {
 		t.Fatalf("expected team, got %q", ch)
 	}
 }
 
 func TestRouteChannel_DefaultChat(t *testing.T) {
-	if ch := RouteChannel(Envelope{Type: EnvelopeTypeTextDelta}); ch != "chat" {
+	if ch := RouteChannel(Envelope{Type: EnvelopeTypeError}); ch != "chat" {
 		t.Fatalf("expected chat, got %q", ch)
 	}
 }
@@ -129,7 +128,7 @@ func TestMatchFilterKey_NoMatch(t *testing.T) {
 func TestEnvelope_Clone(t *testing.T) {
 	orig := Envelope{
 		ID:         "e-1",
-		Type:       EnvelopeTypeTextDelta,
+		Type:       EnvelopeTypeLog,
 		Author:     "agent-1",
 		SessionID:  "sess-1",
 		Content:    &EnvelopeContent{Text: "hello"},
@@ -157,7 +156,7 @@ func TestEnvelope_Clone(t *testing.T) {
 }
 
 func TestEnvelope_Clone_NilFields(t *testing.T) {
-	orig := Envelope{ID: "e-1", Type: EnvelopeTypeTextDelta}
+	orig := Envelope{ID: "e-1", Type: EnvelopeTypeLog}
 	clone := orig.Clone()
 	if clone.Content != nil {
 		t.Fatal("nil Content should remain nil")
@@ -197,13 +196,10 @@ func TestEnvelope_ContainsTag_Empty(t *testing.T) {
 
 func TestRouteChannel_AllTypes(t *testing.T) {
 	allTypes := []EnvelopeType{
-		EnvelopeTypeTextDelta, EnvelopeTypeTextDone, EnvelopeTypeToolCall,
-		EnvelopeTypeToolResult, EnvelopeTypeStateDelta, EnvelopeTypeTransfer,
-		EnvelopeTypeRunnerCompletion, EnvelopeTypeContextUsage, EnvelopeTypeRunStatus,
+		EnvelopeTypeStateDelta, EnvelopeTypeContextUsage, EnvelopeTypeRunStatus,
 		EnvelopeTypeError, EnvelopeTypeLog, EnvelopeTypeFlowLog,
 		EnvelopeTypeGraphNodeStart, EnvelopeTypeGraphNodeEnd, EnvelopeTypeCheckpoint,
-		EnvelopeTypeIntentPass, EnvelopeTypeMemberMessageStart, EnvelopeTypeMemberDelta,
-		EnvelopeTypeMemberMessageDone, EnvelopeTypeTeamRunStarted, EnvelopeTypeTeamRunFinished,
+		EnvelopeTypeIntentPass, EnvelopeTypeTeamRunStarted, EnvelopeTypeTeamRunFinished,
 		EnvelopeTypeTeamStepStarted, EnvelopeTypeTeamStepFinished, EnvelopeTypeTeamRunFailed,
 		EnvelopeTypeTeamSummary, EnvelopeTypeGraphStep, EnvelopeTypeGraphExecutionDone,
 		EnvelopeTypeGraphNodeError, EnvelopeTypeGraphNodeCustom, EnvelopeTypeGraphTaskStatus,

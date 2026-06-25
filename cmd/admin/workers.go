@@ -40,8 +40,6 @@ type backgroundWorkersConfig struct {
 	BackgroundJobWorker         BackgroundStarter
 	PluginRuntime               PluginRuntimeStarter
 	ChannelRuntime              ChannelRuntimeStarter
-	EventStoreCleanup           BackgroundStarter
-	EventWALCleanup             BackgroundStarter
 	ToolAuditCleanup            BackgroundStarter
 	FlowLogCleanup              BackgroundStarter
 	MonitorAlertCooldownCleanup BackgroundStarter
@@ -192,16 +190,6 @@ func startBackgroundWorkers(
 	if cfg.ChannelRuntime != nil {
 		goAfterReady("channel_runtime", func() { cfg.ChannelRuntime.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "channel runtime manager scheduled")
-	}
-
-	if cfg.EventStoreCleanup != nil {
-		goAfterReady("event_store_cleanup", func() { cfg.EventStoreCleanup.Start(ctx) })
-		logger.Log(log.LevelInfo, "msg", "event store cleanup scheduled", "interval", "1h")
-	}
-
-	if cfg.EventWALCleanup != nil {
-		goAfterReady("event_wal_cleanup", func() { cfg.EventWALCleanup.Start(ctx) })
-		logger.Log(log.LevelInfo, "msg", "event WAL cleanup scheduled", "interval", "1h", "ttl", "7d")
 	}
 
 	if cfg.ToolAuditCleanup != nil {

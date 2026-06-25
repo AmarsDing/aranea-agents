@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 )
 
 type testParticipantRepo struct {
@@ -28,7 +29,7 @@ func (r *testParticipantRepo) ListBySession(ctx context.Context, sessionID strin
 }
 
 func newTestUcWithParticipants(repo *testRepo, participants *testParticipantRepo) *SessionUsecase {
-	return NewSessionUsecase(repo, &mockAgentLookup{}, &mockTeamLookup{}, nil, participants, nil, NewSessionMetricsUsecase(repo, nil, nil), nil, nil)
+	return NewSessionUsecase(repo, &mockAgentLookup{}, &mockTeamLookup{}, nil, participants, nil, NewSessionMetricsUsecase(repo, nil, nil), nil, repo, loggateway.NewNoop())
 }
 
 func TestPreviewBatch(t *testing.T) {
@@ -367,12 +368,15 @@ func TestBatchDelete(t *testing.T) {
 }
 
 func TestExport(t *testing.T) {
+	// Phase 1c-3: countFn is dead — CountMessagesBySession is derived from
+	// ListBySession (which delegates to listMessagesBySessionFn with limit=0).
+	// listAllMessages calls Count then List in a loop; both go through
+	// ActivityMessageReader → testRepo.ListBySession → listMessagesBySessionFn.
 	tests := []struct {
 		name        string
 		id          string
 		format      string
 		getFn       func(ctx context.Context, id string) (Session, error)
-		countFn     func(ctx context.Context, sessionID string) (int, error)
 		listMsgFn   func(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error)
 		timelineFn  func(ctx context.Context, sessionID string, q TimelineQuery) ([]TimelineEventRef, int, error)
 		wantErr     bool
@@ -385,9 +389,6 @@ func TestExport(t *testing.T) {
 			format: "markdown",
 			getFn: func(_ context.Context, id string) (Session, error) {
 				return Session{ID: id, Title: "Test Session", OwnerType: "agent", AgentID: "a1", MessageCount: 1, TotalTokens: 100}, nil
-			},
-			countFn: func(_ context.Context, _ string) (int, error) {
-				return 1, nil
 			},
 			listMsgFn: func(_ context.Context, _ string, _, _ int) ([]ChatMessage, error) {
 				return []ChatMessage{{ID: "m1", Role: "user", ContentMarkdown: "Hello", TurnNumber: 1}}, nil
@@ -411,8 +412,8 @@ func TestExport(t *testing.T) {
 			getFn: func(_ context.Context, id string) (Session, error) {
 				return Session{ID: id, Title: "JSON Session", OwnerType: "agent", AgentID: "a1", MessageCount: 0, TotalTokens: 0}, nil
 			},
-			countFn: func(_ context.Context, _ string) (int, error) {
-				return 0, nil
+			listMsgFn: func(_ context.Context, _ string, _, _ int) ([]ChatMessage, error) {
+				return nil, nil
 			},
 			timelineFn: func(_ context.Context, _ string, _ TimelineQuery) ([]TimelineEventRef, int, error) {
 				return nil, 0, nil
@@ -450,14 +451,14 @@ func TestExport(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:   "repo error on count messages",
+			name:   "repo error on list messages",
 			id:     "sess-1",
 			format: "markdown",
 			getFn: func(_ context.Context, id string) (Session, error) {
 				return Session{ID: id, Title: "Test", OwnerType: "agent"}, nil
 			},
-			countFn: func(_ context.Context, _ string) (int, error) {
-				return 0, errors.New("db error")
+			listMsgFn: func(_ context.Context, _ string, _, _ int) ([]ChatMessage, error) {
+				return nil, errors.New("db error")
 			},
 			wantErr: true,
 		},
@@ -475,8 +476,8 @@ func TestExport(t *testing.T) {
 			getFn: func(_ context.Context, id string) (Session, error) {
 				return Session{ID: id, Title: "Default", OwnerType: "agent"}, nil
 			},
-			countFn: func(_ context.Context, _ string) (int, error) {
-				return 0, nil
+			listMsgFn: func(_ context.Context, _ string, _, _ int) ([]ChatMessage, error) {
+				return nil, nil
 			},
 			timelineFn: func(_ context.Context, _ string, _ TimelineQuery) ([]TimelineEventRef, int, error) {
 				return nil, 0, nil
@@ -496,7 +497,6 @@ func TestExport(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &testRepo{
 				listTimelineEventRefsPagedFn: tt.timelineFn,
-				countMessagesBySessionFn:     tt.countFn,
 				listMessagesBySessionFn:      tt.listMsgFn,
 			}
 			if tt.getFn != nil {
@@ -524,11 +524,11 @@ func TestExport(t *testing.T) {
 }
 
 func TestListParticipants(t *testing.T) {
+	// Phase 1c-3: countFn is dead — count is derived from ListBySession.
 	tests := []struct {
 		name        string
 		sessionID   string
 		getFn       func(ctx context.Context, id string) (Session, error)
-		countFn     func(ctx context.Context, sessionID string) (int, error)
 		listMsgFn   func(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error)
 		syncFn      func(ctx context.Context, sess Session, messages []ChatMessage) error
 		listPartFn  func(ctx context.Context, sessionID string) ([]SessionParticipant, error)
@@ -541,9 +541,6 @@ func TestListParticipants(t *testing.T) {
 			sessionID: "sess-1",
 			getFn: func(_ context.Context, id string) (Session, error) {
 				return Session{ID: id, Status: "active"}, nil
-			},
-			countFn: func(_ context.Context, _ string) (int, error) {
-				return 1, nil
 			},
 			listMsgFn: func(_ context.Context, _ string, _, _ int) ([]ChatMessage, error) {
 				return []ChatMessage{{ID: "m1", Role: "user"}}, nil
@@ -591,8 +588,8 @@ func TestListParticipants(t *testing.T) {
 			getFn: func(_ context.Context, id string) (Session, error) {
 				return Session{ID: id, Status: "active"}, nil
 			},
-			countFn: func(_ context.Context, _ string) (int, error) {
-				return 0, nil
+			listMsgFn: func(_ context.Context, _ string, _, _ int) ([]ChatMessage, error) {
+				return nil, nil
 			},
 			syncFn: func(_ context.Context, _ Session, _ []ChatMessage) error {
 				return errors.New("sync error")
@@ -605,8 +602,8 @@ func TestListParticipants(t *testing.T) {
 			getFn: func(_ context.Context, id string) (Session, error) {
 				return Session{ID: id, Status: "active"}, nil
 			},
-			countFn: func(_ context.Context, _ string) (int, error) {
-				return 0, nil
+			listMsgFn: func(_ context.Context, _ string, _, _ int) ([]ChatMessage, error) {
+				return nil, nil
 			},
 			syncFn: func(_ context.Context, _ Session, _ []ChatMessage) error {
 				return nil
@@ -621,8 +618,7 @@ func TestListParticipants(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &testRepo{
-				countMessagesBySessionFn: tt.countFn,
-				listMessagesBySessionFn:  tt.listMsgFn,
+				listMessagesBySessionFn: tt.listMsgFn,
 			}
 			if tt.getFn != nil {
 				repo.getSessionByIDFn = tt.getFn

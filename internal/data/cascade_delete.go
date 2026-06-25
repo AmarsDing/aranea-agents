@@ -102,11 +102,6 @@ func cascadeDeleteBySession(ctx context.Context, d *Data, sessionID string) erro
 			return err
 		}
 
-		// Hard-delete event_store entries
-		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM event_store WHERE session_id = ?`), sessionID); err != nil {
-			return err
-		}
-
 		// Hard-delete session_runs (created by DDL migration, not Ent schema)
 		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM session_runs WHERE session_id = ?`), sessionID); err != nil {
 			return err

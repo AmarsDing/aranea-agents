@@ -182,31 +182,6 @@ func TestFlowFileAppender_OnEnvelope_MCPHealthAlert(t *testing.T) {
 	}
 }
 
-func TestFlowFileAppender_OnEnvelope_RunnerCompletion(t *testing.T) {
-	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
-	defer a.CloseAllFiles()
-
-	env := contract.Envelope{
-		ID:        "env-trace",
-		Type:      contract.EnvelopeTypeRunnerCompletion,
-		SessionID: "sess-5",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Metadata:  map[string]any{},
-	}
-	a.OnEnvelopeExposed(env)
-	a.SyncOpenFilesExposed()
-
-	pattern := filepath.Join(dir, "trace-*.jsonl")
-	matches, err := filepath.Glob(pattern)
-	if err != nil {
-		t.Fatalf("glob error: %v", err)
-	}
-	if len(matches) == 0 {
-		t.Fatalf("no trace file found in %q", dir)
-	}
-}
-
 func TestFlowFileAppender_OnEnvelope_NilMetadata(t *testing.T) {
 	dir := t.TempDir()
 	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
@@ -248,7 +223,7 @@ func TestFlowFileAppender_OnEnvelope_UnknownType(t *testing.T) {
 
 	env := contract.Envelope{
 		ID:        "env-unknown",
-		Type:      contract.EnvelopeTypeTextDelta,
+		Type:      contract.EnvelopeTypeStateDelta,
 		SessionID: "sess-7",
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Metadata:  map[string]any{},
@@ -274,7 +249,6 @@ func TestFlowFileAppender_OnEnvelope_RoutesToCorrectFiles(t *testing.T) {
 		{ID: "f1", Type: contract.EnvelopeTypeFlowLog, SessionID: "s1", Timestamp: time.Now().UTC().Format(time.RFC3339), Channel: "chat", Metadata: map[string]any{}},
 		{ID: "s1", Type: contract.EnvelopeTypeFlowLog, SessionID: "s2", Timestamp: time.Now().UTC().Format(time.RFC3339), Channel: "monitor", Metadata: map[string]any{}},
 		{ID: "a1", Type: contract.EnvelopeTypeAlertNotify, SessionID: "s3", Timestamp: time.Now().UTC().Format(time.RFC3339), Metadata: map[string]any{}},
-		{ID: "t1", Type: contract.EnvelopeTypeRunnerCompletion, SessionID: "s4", Timestamp: time.Now().UTC().Format(time.RFC3339), Metadata: map[string]any{}},
 	}
 	for _, env := range envs {
 		a.OnEnvelopeExposed(env)
@@ -282,8 +256,8 @@ func TestFlowFileAppender_OnEnvelope_RoutesToCorrectFiles(t *testing.T) {
 	a.SyncOpenFilesExposed()
 
 	paths := a.RotatingFilePaths()
-	if len(paths) != 4 {
-		t.Errorf("RotatingFilePaths() = %d files, want 4", len(paths))
+	if len(paths) != 3 {
+		t.Errorf("RotatingFilePaths() = %d files, want 3", len(paths))
 	}
 
 	prefixes := map[string]bool{}
@@ -291,7 +265,7 @@ func TestFlowFileAppender_OnEnvelope_RoutesToCorrectFiles(t *testing.T) {
 		prefix := strings.SplitN(p, "-", 2)[0]
 		prefixes[prefix] = true
 	}
-	for _, want := range []string{"flow", "system", "alert", "trace"} {
+	for _, want := range []string{"flow", "system", "alert"} {
 		if !prefixes[want] {
 			t.Errorf("missing file prefix %q in paths %v", want, paths)
 		}

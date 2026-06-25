@@ -126,7 +126,7 @@ func (p *sessionActivityPersister) UpsertActivity(ctx context.Context, meta chat
 }
 
 // NewStreamConsumeOptions wires catalog lookup and activity persistence for a chat turn.
-func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepository, sessions biz.SessionTurnExtrasPort, activityWriter biz.ActivityWriter, eventBus event.Bus, lg loggateway.Logger) *chatagent.StreamConsumeOptions {
+func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepository, sessions biz.SessionTurnExtrasPort, activityWriter biz.ActivityWriter, activityBus biz.ActivityEventBus, lg loggateway.Logger) *chatagent.StreamConsumeOptions {
 	var resolver chatagent.ActivityMetaResolver
 	var persister chatagent.ActivityPersister
 	if tools != nil || agents != nil {
@@ -144,11 +144,11 @@ func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepositor
 	// (opts.ActivityProjector != nil) to skip WS publishing of
 	// EventProjector envelopes. The frontend AF path consumes Activity
 	// events exclusively.
-	if activityWriter != nil && eventBus != nil {
+	if activityWriter != nil && activityBus != nil {
 		if lg == nil {
 			lg = loggateway.NewNoop()
 		}
-		opts.ActivityProjector = chatagent.NewActivityProjector(eventBus, activityWriter, lg)
+		opts.ActivityProjector = chatagent.NewActivityProjector(activityBus, activityWriter, lg)
 	}
 	return opts
 }
@@ -162,10 +162,10 @@ type StreamOptsFactoryAdapter struct {
 	Agents         biz.AgentRepository
 	Sessions       biz.SessionTurnExtrasPort
 	ActivityWriter biz.ActivityWriter
-	EventBus       event.Bus
+	ActivityBus    biz.ActivityEventBus
 	Logger         loggateway.Logger
 }
 
 func (a *StreamOptsFactoryAdapter) NewStreamConsumeOptions() *chatagent.StreamConsumeOptions {
-	return NewStreamConsumeOptions(a.Tools, a.Agents, a.Sessions, a.ActivityWriter, a.EventBus, a.Logger)
+	return NewStreamConsumeOptions(a.Tools, a.Agents, a.Sessions, a.ActivityWriter, a.ActivityBus, a.Logger)
 }

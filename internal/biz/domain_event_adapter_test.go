@@ -187,7 +187,7 @@ func TestDomainEventToEnvelope(t *testing.T) {
 			SessionID: "sess-1",
 		}
 		env := biz.DomainEventToEnvelope(de)
-		if env.Type != contract.EnvelopeTypeTextDelta {
+		if env.Type != contract.EnvelopeType(biz.DomainEventTextDelta) {
 			t.Fatalf("Type = %q, want text_delta", env.Type)
 		}
 		if env.Author != "agent-1" {
@@ -237,7 +237,7 @@ func TestDomainEventToEnvelope(t *testing.T) {
 
 func TestEnvelopeToDomainEvent(t *testing.T) {
 	t.Run("minimal envelope", func(t *testing.T) {
-		env := contract.NewEnvelope(contract.EnvelopeTypeTextDelta, "agent-1", "sess-1")
+		env := contract.NewEnvelope(contract.EnvelopeType(biz.DomainEventTextDelta), "agent-1", "sess-1")
 		de := biz.EnvelopeToDomainEvent(env)
 		if de == nil {
 			t.Fatalf("expected non-nil DomainEvent")
@@ -254,7 +254,7 @@ func TestEnvelopeToDomainEvent(t *testing.T) {
 	})
 
 	t.Run("envelope with content", func(t *testing.T) {
-		env := contract.NewEnvelope(contract.EnvelopeTypeTextDelta, "agent-1", "sess-1")
+		env := contract.NewEnvelope(contract.EnvelopeType(biz.DomainEventTextDelta), "agent-1", "sess-1")
 		env.Content = &contract.EnvelopeContent{Text: "hello", Reasoning: "think", IsPartial: true}
 		de := biz.EnvelopeToDomainEvent(env)
 		if de.Content == nil || de.Content.Text != "hello" {
@@ -272,7 +272,7 @@ func TestEnvelopeToDomainEvent(t *testing.T) {
 	})
 
 	t.Run("envelope with usage", func(t *testing.T) {
-		env := contract.NewEnvelope(contract.EnvelopeTypeRunnerCompletion, "agent-1", "sess-1")
+		env := contract.NewEnvelope(contract.EnvelopeType(biz.DomainEventRunnerCompletion), "agent-1", "sess-1")
 		env.Usage = &contract.EnvelopeUsage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150}
 		de := biz.EnvelopeToDomainEvent(env)
 		if de.Usage == nil || de.Usage.TotalTokens != 150 {
@@ -281,7 +281,7 @@ func TestEnvelopeToDomainEvent(t *testing.T) {
 	})
 
 	t.Run("envelope with tool call", func(t *testing.T) {
-		env := contract.NewEnvelope(contract.EnvelopeTypeToolCall, "agent-1", "sess-1")
+		env := contract.NewEnvelope(contract.EnvelopeType(biz.DomainEventToolCall), "agent-1", "sess-1")
 		env.ToolCall = &contract.EnvelopeToolCall{ID: "tc-1", Name: "search", Status: "completed", DurationMS: 200}
 		de := biz.EnvelopeToDomainEvent(env)
 		if de.ToolCall == nil || de.ToolCall.Name != "search" {
@@ -424,7 +424,7 @@ func TestDomainEventToEnvelopeRoundTrip(t *testing.T) {
 func TestEnvelopeToDomainEventTimestamp(t *testing.T) {
 	t.Run("valid timestamp", func(t *testing.T) {
 		ts := time.Date(2024, 6, 15, 10, 30, 0, 0, time.UTC).Format(time.RFC3339Nano)
-		env := contract.NewEnvelope(contract.EnvelopeTypeTextDelta, "a", "s")
+		env := contract.NewEnvelope(contract.EnvelopeType(biz.DomainEventTextDelta), "a", "s")
 		env.Timestamp = ts
 		de := biz.EnvelopeToDomainEvent(env)
 		if de.Timestamp.Year() != 2024 {
@@ -433,7 +433,7 @@ func TestEnvelopeToDomainEventTimestamp(t *testing.T) {
 	})
 
 	t.Run("invalid timestamp uses now", func(t *testing.T) {
-		env := contract.NewEnvelope(contract.EnvelopeTypeTextDelta, "a", "s")
+		env := contract.NewEnvelope(contract.EnvelopeType(biz.DomainEventTextDelta), "a", "s")
 		env.Timestamp = "not-a-timestamp"
 		de := biz.EnvelopeToDomainEvent(env)
 		if de.Timestamp.IsZero() {
@@ -442,7 +442,7 @@ func TestEnvelopeToDomainEventTimestamp(t *testing.T) {
 	})
 
 	t.Run("empty timestamp uses now", func(t *testing.T) {
-		env := contract.NewEnvelope(contract.EnvelopeTypeTextDelta, "a", "s")
+		env := contract.NewEnvelope(contract.EnvelopeType(biz.DomainEventTextDelta), "a", "s")
 		env.Timestamp = ""
 		de := biz.EnvelopeToDomainEvent(env)
 		if de.Timestamp.IsZero() {

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -23,8 +22,8 @@ const defaultChannelBufferSize = 64
 const defaultPersistBufferSize = 256
 
 // defaultDeltaBatchInterval is the maximum time window during which consecutive
-// activity_delta envelopes for the same field are coalesced into a single
-// envelope. This reduces frontend event frequency from "one per token" to
+// streaming events for the same field are coalesced into a single event.
+// This reduces frontend event frequency from "one per token" to
 // "at most one per 60fps frame", eliminating UI jank without perceptible lag.
 const defaultDeltaBatchInterval = 16 * time.Millisecond
 
@@ -35,8 +34,8 @@ var errSequencerClosed = errors.New("activity event sequencer closed")
 //
 // Each activity gets its own buffered channel and a dedicated consumer
 // goroutine. Events for the same activity are strictly ordered
-// (start → delta → done), while events for different activities can be
-// processed concurrently.
+// (created → streaming → completed), while events for different activities
+// can be processed concurrently.
 //
 // Design rationale:
 //   - Per-activity channel: guarantees FIFO without a global lock
@@ -52,9 +51,7 @@ var errSequencerClosed = errors.New("activity event sequencer closed")
 type activityEventSequencer struct {
 	mu       sync.Mutex
 	channels map[string]chan publishTask
-	eventBus interface {
-		Publish(ctx context.Context, envelope contract.Envelope)
-	}
+	eventBus biz.ActivityEventBus
 	activityRepo       biz.ActivityWriter
 	lg                 loggateway.Logger
 	wg                 sync.WaitGroup // consumer goroutines
@@ -80,21 +77,16 @@ type persistItem struct {
 	activity   biz.Activity
 }
 
-// publishTask represents a single event to publish and optionally persist.
+// publishTask represents a single ActivityEvent to publish and optionally persist.
 type publishTask struct {
-	env      contract.Envelope
+	event    biz.ActivityEvent
 	persist  bool
 	activity biz.Activity
 }
 
 // newActivityEventSequencer creates a new sequencer.
 // The sequencer must be Closed when no longer needed to release goroutines.
-func newActivityEventSequencer(
-	eventBus interface {
-		Publish(ctx context.Context, envelope contract.Envelope)
-	},
-	lg loggateway.Logger,
-) *activityEventSequencer {
+func newActivityEventSequencer(eventBus biz.ActivityEventBus, lg loggateway.Logger) *activityEventSequencer {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
@@ -150,9 +142,9 @@ func (s *activityEventSequencer) publish(ctx context.Context, activityID string,
 //
 // It reads tasks from the channel and processes them in FIFO order:
 //  1. Persist the activity to the database (if persist=true)
-//  2. Publish the envelope to the event bus
+//  2. Publish the ActivityEvent to the event bus
 //
-// Consecutive activity_delta envelopes for the same field are batched within
+// Consecutive streaming events for the same field are batched within
 // deltaBatchInterval to reduce frontend event frequency while preserving order.
 //
 // The goroutine exits when the channel is drained and closed, or when the
@@ -195,10 +187,8 @@ func (s *activityEventSequencer) consume(activityID string, ch <-chan publishTas
 		timer.Reset(batchInterval)
 	}
 
-	mergeDelta := func(dst, src publishTask) {
-		dstChunk, _ := dst.env.Metadata["delta_chunk"].(string)
-		srcChunk, _ := src.env.Metadata["delta_chunk"].(string)
-		dst.env.Metadata["delta_chunk"] = dstChunk + srcChunk
+	mergeDelta := func(dst *publishTask, src publishTask) {
+		dst.event.DeltaChunk += src.event.DeltaChunk
 	}
 
 	for {
@@ -207,15 +197,15 @@ func (s *activityEventSequencer) consume(activityID string, ch <-chan publishTas
 			if !ok {
 				return
 			}
-			if task.env.Type != contract.EnvelopeTypeActivityDelta {
-				// Non-delta envelopes (start/done) must be published immediately
-				// so that terminal events are not delayed by the batch window.
+			if task.event.Event != biz.ActivityEventStreaming {
+				// Non-streaming events (created/completed/etc.) must be published
+				// immediately so that terminal events are not delayed by the batch window.
 				flush()
 				s.processTask(activityID, task)
 				continue
 			}
 			if pending != nil && s.canMergeDeltas(*pending, task) {
-				mergeDelta(*pending, task)
+				mergeDelta(pending, task)
 				resetTimer()
 				continue
 			}
@@ -232,13 +222,13 @@ func (s *activityEventSequencer) consume(activityID string, ch <-chan publishTas
 			for {
 				select {
 				case task := <-ch:
-					if task.env.Type != contract.EnvelopeTypeActivityDelta {
+					if task.event.Event != biz.ActivityEventStreaming {
 						flush()
 						s.processTask(activityID, task)
 						continue
 					}
 					if pending != nil && s.canMergeDeltas(*pending, task) {
-						mergeDelta(*pending, task)
+						mergeDelta(pending, task)
 						continue
 					}
 					flush()
@@ -251,23 +241,21 @@ func (s *activityEventSequencer) consume(activityID string, ch <-chan publishTas
 	}
 }
 
-// canMergeDeltas reports whether two consecutive publish tasks can be
-// coalesced into a single activity_delta envelope. Only delta envelopes for
-// the same activity and the same delta_field are merged.
+// canMergeDeltas reports whether two consecutive streaming events can be
+// coalesced into a single event. Only streaming events for the same activity
+// and the same delta_field are merged.
 func (s *activityEventSequencer) canMergeDeltas(a, b publishTask) bool {
-	if a.env.Type != contract.EnvelopeTypeActivityDelta || b.env.Type != contract.EnvelopeTypeActivityDelta {
+	if a.event.Event != biz.ActivityEventStreaming || b.event.Event != biz.ActivityEventStreaming {
 		return false
 	}
-	aField, _ := a.env.Metadata["delta_field"].(string)
-	bField, _ := b.env.Metadata["delta_field"].(string)
-	if aField == "" || bField == "" || aField != bField {
+	if a.event.DeltaField == "" || b.event.DeltaField == "" || a.event.DeltaField != b.event.DeltaField {
 		return false
 	}
 	return true
 }
 
 // processTask persists the activity (fire-and-forget) and publishes the
-// envelope synchronously.
+// ActivityEvent synchronously.
 //
 // Phase 1b parallel-async design:
 //   - Persist: sent to a single persist worker via a buffered channel
@@ -277,7 +265,7 @@ func (s *activityEventSequencer) canMergeDeltas(a, b publishTask) bool {
 //   - Publish: synchronous. Preserves per-activity FIFO ordering for WS push.
 //     WS publish typically completes in <5ms, independent of DB I/O.
 //
-// On persist failure, the envelope is still published (fire-and-forget). The
+// On persist failure, the event is still published (fire-and-forget). The
 // frontend recovers via API backfill on next reload (eventual consistency).
 func (s *activityEventSequencer) processTask(activityID string, task publishTask) {
 	if task.persist && s.activityRepo != nil {
@@ -300,7 +288,7 @@ func (s *activityEventSequencer) processTask(activityID string, task publishTask
 		}
 	}
 	if s.eventBus != nil {
-		s.eventBus.Publish(context.Background(), task.env)
+		s.eventBus.Publish(context.Background(), task.event)
 	}
 }
 

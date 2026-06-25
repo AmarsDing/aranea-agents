@@ -5,8 +5,10 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 )
 
 type testRepo struct {
@@ -18,13 +20,8 @@ type testRepo struct {
 	pinSessionFn                  func(ctx context.Context, id string) (Session, error)
 	unpinSessionFn                func(ctx context.Context, id string) (Session, error)
 	updateSessionTitleFn          func(ctx context.Context, id, title string) (Session, error)
-	appendChatMessageFn           func(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
-	updateChatMessageStatusFn     func(ctx context.Context, sessionID, messageID, status, errorMessage string) error
-	updateMessageFeedbackJSONFn   func(ctx context.Context, sessionID, messageID, rating, comment string) error
 	listTimelineEventRefsPagedFn  func(ctx context.Context, sessionID string, q TimelineQuery) ([]TimelineEventRef, int, error)
-	countMessagesBySessionFn      func(ctx context.Context, sessionID string) (int, error)
 	listMessagesBySessionFn       func(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error)
-	listMessagesByIDsFn           func(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error)
 	listToolInvocationsByIDsFn    func(ctx context.Context, sessionID string, ids []string) ([]ToolInvocationView, error)
 	listSkillInvocationsByIDsFn   func(ctx context.Context, sessionID string, ids []string) ([]SkillInvocationView, error)
 	lookupAgentDisplayNamesFn     func(ctx context.Context, agentIDs []string) (map[string]string, error)
@@ -47,10 +44,6 @@ type testRepo struct {
 	bumpSessionRevisionFn         func(ctx context.Context, sessionID string) (int64, error)
 	getSessionRevisionFn          func(ctx context.Context, sessionID string) (int64, error)
 	updateSessionTurnFn           func(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error)
-	upsertChatActivityMessageFn   func(ctx context.Context, sessionID string, msg ChatMessage) (bool, error)
-	listMessagesAfterTurnFn       func(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error)
-	listMessagesRecentFn          func(ctx context.Context, sessionID string, limit int) ([]ChatMessage, error)
-	listMessagesAfterRevisionFn   func(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error)
 }
 
 var _ SessionRepo = (*testRepo)(nil)
@@ -104,27 +97,6 @@ func (r *testRepo) UpdateSessionTitle(ctx context.Context, id, title string) (Se
 	return r.mockSessionRepo.UpdateSessionTitle(ctx, id, title)
 }
 
-func (r *testRepo) AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error {
-	if r.appendChatMessageFn != nil {
-		return r.appendChatMessageFn(ctx, sessionID, msg, bumpModelCall)
-	}
-	return r.mockSessionRepo.AppendChatMessage(ctx, sessionID, msg, bumpModelCall)
-}
-
-func (r *testRepo) UpdateChatMessageStatus(ctx context.Context, sessionID, messageID, status, errorMessage string) error {
-	if r.updateChatMessageStatusFn != nil {
-		return r.updateChatMessageStatusFn(ctx, sessionID, messageID, status, errorMessage)
-	}
-	return r.mockSessionRepo.UpdateChatMessageStatus(ctx, sessionID, messageID, status, errorMessage)
-}
-
-func (r *testRepo) UpdateMessageFeedbackJSON(ctx context.Context, sessionID, messageID, rating, comment string) error {
-	if r.updateMessageFeedbackJSONFn != nil {
-		return r.updateMessageFeedbackJSONFn(ctx, sessionID, messageID, rating, comment)
-	}
-	return r.mockSessionRepo.UpdateMessageFeedbackJSON(ctx, sessionID, messageID, rating, comment)
-}
-
 func (r *testRepo) ListSessionsByIDs(ctx context.Context, ids []string) ([]Session, error) {
 	if r.listSessionsByIDsFn != nil {
 		return r.listSessionsByIDsFn(ctx, ids)
@@ -153,8 +125,69 @@ func (r *testRepo) DeleteSessionsByIDs(ctx context.Context, ids []string) (int, 
 	return r.mockSessionRepo.DeleteSessionsByIDs(ctx, ids)
 }
 
+// chatMessagesToActivities converts ChatMessages to ActivityEntries for test shims.
+// This is the reverse of activitiesToChatMessages (round-trip for tests).
+// Phase 1c-3: messages-table mocks now back ActivityLister for ActivityMessageReader.
+func chatMessagesToActivities(msgs []ChatMessage) []ActivityEntry {
+	acts := make([]ActivityEntry, 0, len(msgs))
+	for _, m := range msgs {
+		acts = append(acts, chatMessageToActivity(m))
+	}
+	return acts
+}
+
+func chatMessageToActivity(m ChatMessage) ActivityEntry {
+	var kind string
+	switch m.Role {
+	case "user":
+		kind = "task"
+	case "assistant":
+		kind = "reply"
+	case "tool":
+		kind = "action"
+	case "system":
+		kind = "notice"
+	default:
+		kind = "task"
+	}
+	a := ActivityEntry{
+		ID:        m.ID,
+		Kind:      kind,
+		SessionID: m.SessionID,
+		TurnID:    m.TurnID,
+		Content:   m.ContentMarkdown,
+	}
+	if kind == "action" {
+		a.ToolResult = m.ContentMarkdown
+	}
+	if m.CreatedAt != "" {
+		if t, err := time.Parse(time.RFC3339Nano, m.CreatedAt); err == nil {
+			a.Timestamp = t
+		}
+	}
+	return a
+}
+
+// ListBySession implements ActivityLister for testRepo.
+// Delegates to ListMessagesBySession (limit=0, offset=0 to fetch all) and converts
+// the result to ActivityEntry slice so ActivityMessageReader can re-convert it.
+func (r *testRepo) ListBySession(ctx context.Context, sessionID string) ([]ActivityEntry, error) {
+	msgs, err := r.ListMessagesBySession(ctx, sessionID, 0, 0)
+	if err != nil {
+		return nil, err
+	}
+	return chatMessagesToActivities(msgs), nil
+}
+
+// ListBySessionTurn implements ActivityLister for testRepo.
+// For test purposes, delegates to ListBySession (turn-based filtering is not needed
+// since ActivityMessageReader.ListMessagesAfterTurn also returns all messages).
+func (r *testRepo) ListBySessionTurn(ctx context.Context, sessionID, _ string) ([]ActivityEntry, error) {
+	return r.ListBySession(ctx, sessionID)
+}
+
 func newTestUc(repo *testRepo) *SessionUsecase {
-	return NewSessionUsecase(repo, &mockAgentLookup{}, &mockTeamLookup{}, nil, &mockParticipantRepo{}, nil, NewSessionMetricsUsecase(repo, nil, nil), nil, nil)
+	return NewSessionUsecase(repo, &mockAgentLookup{}, &mockTeamLookup{}, nil, &mockParticipantRepo{}, nil, NewSessionMetricsUsecase(repo, nil, nil), nil, repo, loggateway.NewNoop())
 }
 
 func strPtr(s string) *string {
@@ -838,345 +871,14 @@ func TestUnpin(t *testing.T) {
 	}
 }
 
-func TestAppendChatMessage(t *testing.T) {
-	tests := []struct {
-		name     string
-		sid      string
-		msg      ChatMessage
-		bump     bool
-		appendFn func(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
-		wantErr  bool
-	}{
-		{
-			name: "valid append assistant message",
-			sid:  "sess-1",
-			msg: ChatMessage{
-				ID: "msg-1", Role: "assistant", ContentMarkdown: "Hello!",
-			},
-			bump: false,
-			appendFn: func(_ context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error {
-				if sessionID != "sess-1" {
-					t.Fatalf("expected sessionID sess-1, got %s", sessionID)
-				}
-				if msg.ID != "msg-1" {
-					t.Fatalf("expected msg ID msg-1, got %s", msg.ID)
-				}
-				if bumpModelCall {
-					t.Fatal("expected bumpModelCall false")
-				}
-				return nil
-			},
-		},
-		{
-			name: "valid append with bump model call",
-			sid:  "sess-1",
-			msg: ChatMessage{
-				ID: "msg-2", Role: "assistant", ContentMarkdown: "Response",
-			},
-			bump: true,
-			appendFn: func(_ context.Context, _ string, _ ChatMessage, bumpModelCall bool) error {
-				if !bumpModelCall {
-					t.Fatal("expected bumpModelCall true")
-				}
-				return nil
-			},
-		},
-		{
-			name: "repo error propagated",
-			sid:  "sess-1",
-			msg:  ChatMessage{ID: "msg-3", Role: "assistant", ContentMarkdown: "Hi"},
-			appendFn: func(_ context.Context, _ string, _ ChatMessage, _ bool) error {
-				return errors.New("db error")
-			},
-			wantErr: true,
-		},
-	}
+// Phase 1c-3: TestAppendChatMessage, TestUpdateChatMessageStatus, TestUpdateMessageFeedback
+// removed — these tested the messages-table writer path which is now a no-op
+// (ActivityProjector handles persistence). The corresponding mock fields and
+// delegate methods on testRepo (appendChatMessageFn, updateChatMessageStatusFn,
+// updateMessageFeedbackJSONFn, countMessagesBySessionFn, listMessagesByIDsFn,
+// upsertChatActivityMessageFn, listMessagesAfterTurnFn, listMessagesRecentFn,
+// listMessagesAfterRevisionFn) were also removed — production code reads via
+// ActivityMessageReader (backed by testRepo.ListBySession) and writes via
+// NoopMessageWriter. testRepo now satisfies MessageReader/Writer interfaces
+// purely through mockSessionRepo embedding (all returning zero values).
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			repo := &testRepo{appendChatMessageFn: tt.appendFn}
-			uc := newTestUc(repo)
-			err := uc.AppendChatMessage(context.Background(), tt.sid, tt.msg, tt.bump)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-		})
-	}
-}
-
-func TestUpdateChatMessageStatus(t *testing.T) {
-	tests := []struct {
-		name      string
-		sessionID string
-		messageID string
-		status    string
-		errMsg    string
-		statusFn  func(ctx context.Context, sessionID, messageID, status, errorMessage string) error
-		wantErr   bool
-		wantMsg   string
-	}{
-		{
-			name:      "valid status update",
-			sessionID: "sess-1",
-			messageID: "msg-1",
-			status:    "completed",
-			errMsg:    "",
-			statusFn: func(_ context.Context, sessionID, messageID, status, errorMessage string) error {
-				if sessionID != "sess-1" {
-					t.Fatalf("expected sessionID sess-1, got %s", sessionID)
-				}
-				if messageID != "msg-1" {
-					t.Fatalf("expected messageID msg-1, got %s", messageID)
-				}
-				if status != "completed" {
-					t.Fatalf("expected status completed, got %s", status)
-				}
-				return nil
-			},
-		},
-		{
-			name:      "empty session_id returns error",
-			sessionID: "",
-			messageID: "msg-1",
-			status:    "completed",
-			wantErr:   true,
-			wantMsg:   "session_id and message_id are required",
-		},
-		{
-			name:      "empty message_id returns error",
-			sessionID: "sess-1",
-			messageID: "",
-			status:    "completed",
-			wantErr:   true,
-			wantMsg:   "session_id and message_id are required",
-		},
-		{
-			name:      "whitespace session_id returns error",
-			sessionID: "   ",
-			messageID: "msg-1",
-			status:    "completed",
-			wantErr:   true,
-			wantMsg:   "session_id and message_id are required",
-		},
-		{
-			name:      "whitespace message_id returns error",
-			sessionID: "sess-1",
-			messageID: "   ",
-			status:    "completed",
-			wantErr:   true,
-			wantMsg:   "session_id and message_id are required",
-		},
-		{
-			name:      "empty status returns error",
-			sessionID: "sess-1",
-			messageID: "msg-1",
-			status:    "",
-			wantErr:   true,
-			wantMsg:   "status is required",
-		},
-		{
-			name:      "whitespace status returns error",
-			sessionID: "sess-1",
-			messageID: "msg-1",
-			status:    "   ",
-			wantErr:   true,
-			wantMsg:   "status is required",
-		},
-		{
-			name:      "repo error propagated",
-			sessionID: "sess-1",
-			messageID: "msg-1",
-			status:    "failed",
-			errMsg:    "timeout",
-			statusFn: func(_ context.Context, _, _, _, _ string) error {
-				return errors.New("db error")
-			},
-			wantErr: true,
-		},
-		{
-			name:      "error message trimmed and passed through",
-			sessionID: "sess-1",
-			messageID: "msg-1",
-			status:    "failed",
-			errMsg:    "  connection lost  ",
-			statusFn: func(_ context.Context, _, _, status, errorMessage string) error {
-				if errorMessage != "connection lost" {
-					t.Fatalf("expected trimmed error message 'connection lost', got %q", errorMessage)
-				}
-				return nil
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			repo := &testRepo{updateChatMessageStatusFn: tt.statusFn}
-			uc := newTestUc(repo)
-			err := uc.UpdateChatMessageStatus(context.Background(), tt.sessionID, tt.messageID, tt.status, tt.errMsg)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
-				if tt.wantMsg != "" {
-					assertBadRequest(t, err, tt.wantMsg)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-		})
-	}
-}
-
-func TestUpdateMessageFeedback(t *testing.T) {
-	tests := []struct {
-		name       string
-		sessionID  string
-		messageID  string
-		rating     string
-		comment    string
-		feedbackFn func(ctx context.Context, sessionID, messageID, rating, comment string) error
-		wantErr    bool
-		wantMsg    string
-	}{
-		{
-			name:      "valid positive feedback",
-			sessionID: "sess-1",
-			messageID: "msg-1",
-			rating:    "positive",
-			comment:   "Great answer",
-			feedbackFn: func(_ context.Context, _, _, rating, comment string) error {
-				if rating != "positive" {
-					t.Fatalf("expected rating positive, got %s", rating)
-				}
-				if comment != "Great answer" {
-					t.Fatalf("expected comment 'Great Answer', got %q", comment)
-				}
-				return nil
-			},
-		},
-		{
-			name:      "valid negative feedback",
-			sessionID: "sess-1",
-			messageID: "msg-1",
-			rating:    "negative",
-			comment:   "Wrong info",
-			feedbackFn: func(_ context.Context, _, _, rating, comment string) error {
-				if rating != "negative" {
-					t.Fatalf("expected rating negative, got %s", rating)
-				}
-				return nil
-			},
-		},
-		{
-			name:      "rating is lowercased",
-			sessionID: "sess-1",
-			messageID: "msg-1",
-			rating:    "POSITIVE",
-			feedbackFn: func(_ context.Context, _, _, rating, _ string) error {
-				if rating != "positive" {
-					t.Fatalf("expected rating lowercased to 'positive', got %q", rating)
-				}
-				return nil
-			},
-		},
-		{
-			name:      "invalid rating returns error",
-			sessionID: "sess-1",
-			messageID: "msg-1",
-			rating:    "neutral",
-			wantErr:   true,
-			wantMsg:   "rating must be positive or negative",
-		},
-		{
-			name:      "empty rating returns error",
-			sessionID: "sess-1",
-			messageID: "msg-1",
-			rating:    "",
-			wantErr:   true,
-			wantMsg:   "rating must be positive or negative",
-		},
-		{
-			name:      "empty session_id returns error",
-			sessionID: "",
-			messageID: "msg-1",
-			rating:    "positive",
-			wantErr:   true,
-			wantMsg:   "session_id and message_id are required",
-		},
-		{
-			name:      "empty message_id returns error",
-			sessionID: "sess-1",
-			messageID: "",
-			rating:    "positive",
-			wantErr:   true,
-			wantMsg:   "session_id and message_id are required",
-		},
-		{
-			name:      "whitespace session_id returns error",
-			sessionID: "   ",
-			messageID: "msg-1",
-			rating:    "positive",
-			wantErr:   true,
-			wantMsg:   "session_id and message_id are required",
-		},
-		{
-			name:      "whitespace message_id returns error",
-			sessionID: "sess-1",
-			messageID: "   ",
-			rating:    "positive",
-			wantErr:   true,
-			wantMsg:   "session_id and message_id are required",
-		},
-		{
-			name:      "repo error propagated",
-			sessionID: "sess-1",
-			messageID: "msg-1",
-			rating:    "positive",
-			feedbackFn: func(_ context.Context, _, _, _, _ string) error {
-				return errors.New("db error")
-			},
-			wantErr: true,
-		},
-		{
-			name:      "comment is trimmed",
-			sessionID: "sess-1",
-			messageID: "msg-1",
-			rating:    "negative",
-			comment:   "  too slow  ",
-			feedbackFn: func(_ context.Context, _, _, _, comment string) error {
-				if comment != "too slow" {
-					t.Fatalf("expected trimmed comment 'too slow', got %q", comment)
-				}
-				return nil
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			repo := &testRepo{updateMessageFeedbackJSONFn: tt.feedbackFn}
-			uc := newTestUc(repo)
-			err := uc.UpdateMessageFeedback(context.Background(), tt.sessionID, tt.messageID, tt.rating, tt.comment)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
-				if tt.wantMsg != "" {
-					assertBadRequest(t, err, tt.wantMsg)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-		})
-	}
-}

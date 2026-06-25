@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event/contract"
 
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -106,6 +105,6 @@ func BenchmarkBuildActivityEnvelope(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = p.buildActivityEnvelope(a, contract.EnvelopeTypeActivityStart)
+		_ = p.buildActivityEvent(a, biz.ActivityEventCreated)
 	}
 }

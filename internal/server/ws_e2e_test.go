@@ -27,7 +27,7 @@ func (s *e2eChatSender) SendChatMessage(ctx context.Context, req *chatv1.SendCha
 	running.Metadata = map[string]any{"status": "running", "run_id": runID}
 	s.bus.Publish(ctx, running)
 
-	delta := event.NewEnvelope(event.EnvelopeTypeTextDelta, "e2e-agent", s.sessionID)
+	delta := event.NewEnvelope(event.EnvelopeTypeExecutionProgress, "e2e-agent", s.sessionID)
 	delta.InvocationID = runID
 	delta.Content = &event.EnvelopeContent{Text: "Hello", IsPartial: true}
 	s.bus.Publish(ctx, delta)
@@ -94,12 +94,12 @@ func TestWSE2E_UserMessageStream(t *testing.T) {
 		switch typ {
 		case "run_status":
 			seen["run_status"] = true
-		case "text_delta":
-			seen["text_delta"] = true
+		case "execution_progress":
+			seen["execution_progress"] = true
 		}
 	}
-	if !seen["run_status"] || !seen["text_delta"] {
-		t.Fatalf("expected run_status and text_delta, seen=%v", seen)
+	if !seen["run_status"] || !seen["execution_progress"] {
+		t.Fatalf("expected run_status and execution_progress, seen=%v", seen)
 	}
 }
 

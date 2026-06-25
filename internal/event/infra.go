@@ -2,24 +2,26 @@ package event
 
 import (
 	"context"
-	"database/sql"
 	"os"
 	"sync"
 
 	"github.com/google/wire"
 
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 )
 
 // Infra holds session vs monitor event buses (P0: isolate flow_log from chat envelopes).
+//
+// Phase 1c-2: WAL and CrossProcessStore fields have been removed along with
+// the deletion of the event_store subsystem. Critical events no longer have
+// WBPF (Write-Before-Publish-Fanout) protection; subscribers must be
+// idempotent. Cross-process WS reconnect replay now relies on Activity
+// records fetched via the ListActivities RPC (see service.SessionService).
 type Infra struct {
-	SessionBus        Bus
-	MonitorBus        Bus
-	Buffer            *Buffer
-	WAL               *EventWAL                  // nil when WAL is not configured (e.g., no SQLite)
-	CrossProcessStore contract.CrossProcessStore // optional (P1-6): nil when Postgres not configured
-	lg                loggateway.Logger
+	SessionBus Bus
+	MonitorBus Bus
+	Buffer     *Buffer
+	lg         loggateway.Logger
 	// routing caches MONITOR_BUS_ROUTING once at construction to avoid per-call os.Getenv (M-01).
 	routing routingMode
 }
@@ -57,25 +59,18 @@ func monitorBusRef() Bus {
 }
 
 // NewInfra wires dual buses for dependency injection.
-// pgStore is optional (nil when Postgres is not configured); when set, it
-// enables cross-process event persistence for WS reconnect replay (P1-6).
-func NewInfra(lg loggateway.Logger, wal *EventWAL, pgStore *PostgresEventStore) *Infra {
+func NewInfra(lg loggateway.Logger) *Infra {
 	mode := routingMode(os.Getenv("MONITOR_BUS_ROUTING"))
 	if mode == "" {
 		mode = routingModeSplit
 	}
-	infra := &Infra{
+	return &Infra{
 		SessionBus: NewBus(lg),
 		MonitorBus: NewBus(lg),
 		Buffer:     NewBuffer(),
-		WAL:        wal,
 		lg:         lg,
 		routing:    mode,
 	}
-	if pgStore != nil {
-		infra.CrossProcessStore = pgStore
-	}
-	return infra
 }
 
 // ProvideSessionBus exposes the interactive/session bus for wire.
@@ -102,34 +97,6 @@ func ProvideBuffer(infra *Infra) *Buffer {
 	return infra.Buffer
 }
 
-// ProvideEventWAL creates an EventWAL instance. Returns nil if pgDB is nil
-// (e.g., in test environments without Postgres).
-//
-// Production deployments require Postgres for WAL storage. When WAL is
-// unavailable, Critical events (ToolResult/Error/RunnerCompletion/Checkpoint)
-// lose WBPF protection and may be lost on process crash.
-func ProvideEventWAL(pgDB *sql.DB, lg loggateway.Logger) *EventWAL {
-	if pgDB == nil {
-		if lg != nil {
-			lg.Error("event_wal: postgres not configured, Critical events will not have WBPF protection (risk of data loss on crash)",
-				loggateway.StepID("event_wal.init"),
-			)
-		}
-		return nil
-	}
-	wal, err := NewEventWAL(pgDB, lg)
-	if err != nil {
-		if lg != nil {
-			lg.Error("event_wal: failed to create, Critical events will not have WBPF protection (risk of data loss on crash)",
-				loggateway.StepID("event_wal.init"),
-				loggateway.Err(err),
-			)
-		}
-		return nil
-	}
-	return wal
-}
-
 // routingMode caches the MONITOR_BUS_ROUTING env var value so Publish does not
 // call os.Getenv on every hot-path invocation (M-01).
 // The value is read once per Infra instance at construction time.
@@ -142,17 +109,10 @@ const (
 
 // Publish routes an envelope to the correct bus(es) based on its type.
 //
-// For Critical events (AS-EVT-01), if WAL is available, the event is persisted
-// before publishing (Write-Before-Publish-Fanout). WBPF error handling distinguishes
-// two failure modes:
-//
-//   - Pre-publish failure (serialize/insert): the event was NOT published.
-//     Logged as Error "dropped" — on crash the event is absent from both WAL
-//     and consumers, preserving consistency.
-//   - Post-publish failure (markPublished): the event WAS already published
-//     (publish callback ran inside WriteBeforePublish before mark). Logged as
-//     Warn "published but mark failed" — the event is NOT dropped; on restart
-//     it may be replayed by Recover, which subscribers must handle idempotently.
+// Phase 1c-2: WAL/Write-Before-Publish-Fanout has been removed along with the
+// event_store subsystem. All envelopes are now published directly to the
+// routing buses. Critical events (ToolResult/Error/Checkpoint — AS-EVT-01)
+// no longer have crash-recovery guarantees; subscribers must be idempotent.
 //
 // Routing mode is controlled by the MONITOR_BUS_ROUTING environment variable
 // (read once at NewInfra / BindInfra time):
@@ -165,42 +125,6 @@ const (
 // Alert and MCP health events are dual-published so both session-scoped and
 // global monitor connections receive them.
 func (infra *Infra) Publish(ctx context.Context, env Envelope) {
-	if infra.WAL != nil {
-		published := false
-		publish := func() {
-			infra.publishToBuses(ctx, env)
-			published = true
-		}
-		if err := infra.WAL.WriteBeforePublish(ctx, env, publish); err != nil {
-			if published {
-				// Post-publish failure (markPublished): event WAS published.
-				// Logging "dropped" would be misleading — the event reached
-				// consumers. On restart, Recover may replay it; subscribers
-				// must be idempotent.
-				if infra.lg != nil {
-					infra.lg.Warn("event_wal: published but mark failed (may republish on restart)",
-						loggateway.Str("type", string(env.Type)),
-						loggateway.Str("id", env.ID),
-						loggateway.Err(err),
-					)
-				}
-				return
-			}
-			// Pre-publish failure (serialize/insert): event was NOT published.
-			// Publishing an unpersisted Critical event violates WBPF: on crash
-			// the event is absent from WAL but consumers may have already
-			// side-effected on it. Dropping is the safer choice.
-			if infra.lg != nil {
-				infra.lg.Error("event_wal: WBPF failed, event dropped to preserve consistency",
-					loggateway.Str("type", string(env.Type)),
-					loggateway.Str("id", env.ID),
-					loggateway.Err(err),
-				)
-			}
-			return
-		}
-		return
-	}
 	infra.publishToBuses(ctx, env)
 }
 
@@ -231,12 +155,9 @@ func (infra *Infra) publishToBuses(ctx context.Context, env Envelope) {
 }
 
 // InfraProviderSet is the wire set replacing standalone NewBus/NewBuffer.
-// SessionBus is the default event.Bus binding; MonitorBus is accessed via *Infra (WS + flow logs).
-//
-// Note: ProvideEventWAL is NOT included here because it requires two *sql.DB
-// handles (SQLite + Postgres) which Wire cannot disambiguate by type alone.
-// Callers should provide a dedicated provider function (e.g., in cmd/admin/wire.go)
-// that extracts both DBs from *data.Data and calls NewEventWAL directly.
+// SessionBus is the default event.Bus binding; MonitorBus is accessed via
+// *Infra (e.g. provideTraceProjector) rather than a separate Bus binding
+// to avoid Wire's "multiple bindings for event.Bus" error.
 var InfraProviderSet = wire.NewSet(
 	NewInfra,
 	ProvideSessionBus,

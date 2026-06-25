@@ -1,12 +1,11 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"time"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
-	"aranea-agents/pkg/loggateway"
 )
 
 // sendConnected sends the initial "connected" downstream message to a new connection.
@@ -26,34 +25,14 @@ func (s *WSServer) sendConnected(wc *wsConn, sessionID, lastEventID string) {
 	wc.sendSystemDownstream(msg)
 }
 
-// replayEvents replays historical events from the buffer to the connection.
-// When the in-memory buffer has no events for the session (e.g. after a
-// server restart or cross-instance reconnect), it falls back to the
-// cross-process Postgres store (P1-6) when configured.
+// replayEvents replays historical events from the in-memory buffer to the connection.
+//
+// Phase 1c-2: cross-process Postgres event store fallback has been removed along
+// with the event_store subsystem. WS reconnect replay now relies solely on the
+// in-memory buffer; clients needing full history should use the ListActivities
+// RPC (GET /v1/sessions/{session_id}/activities) to fetch Activity records.
 func (s *WSServer) replayEvents(wc *wsConn, sessionID, lastEventID string) {
 	events := s.eventBuffer.Replay(sessionID, lastEventID)
-
-	// P1-6: cross-process fallback — when the in-memory buffer is empty and a
-	// Postgres event store is configured, replay from Postgres so that WS
-	// reconnect after a server restart (or to a different instance) still
-	// recovers missed events.
-	if len(events) == 0 && s.crossProcessStore != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		pgEvents, err := s.crossProcessStore.Replay(ctx, sessionID, lastEventID, 100)
-		cancel()
-		if err != nil && s.lg != nil {
-			s.lg.Warn("ws replay: cross-process store replay failed",
-				loggateway.StepID("ws.replay.cross_process"),
-				loggateway.Str("session_id", sessionID),
-				loggateway.Err(err),
-			)
-		}
-		if err == nil {
-			for _, env := range pgEvents {
-				events = append(events, *env)
-			}
-		}
-	}
 
 	startMsg := wsDownstream{
 		Direction: "server_to_client",
@@ -103,11 +82,13 @@ func (s *WSServer) replayEvents(wc *wsConn, sessionID, lastEventID string) {
 	}
 }
 
-// setupEventSubscription subscribes the connection to the event bus and monitor bus.
-// Returns the event and monitor channels, and sets wc.unsubscribe.
-func (s *WSServer) setupEventSubscription(wc *wsConn, globalMode bool) (<-chan event.Envelope, <-chan event.Envelope) {
+// setupEventSubscription subscribes the connection to the event bus, monitor bus,
+// and activity event bus. Returns the event, monitor, and activity event channels,
+// and sets wc.unsubscribe.
+func (s *WSServer) setupEventSubscription(wc *wsConn, globalMode bool) (<-chan event.Envelope, <-chan event.Envelope, <-chan biz.ActivityEvent) {
 	var eventCh <-chan event.Envelope
 	var monitorCh <-chan event.Envelope
+	var activityCh <-chan biz.ActivityEvent
 
 	subOpts := event.SubscribeOptions{
 		BufferSize: 256,
@@ -137,7 +118,26 @@ func (s *WSServer) setupEventSubscription(wc *wsConn, globalMode bool) (<-chan e
 			mUnsub()
 		}
 	}
+
+	// Subscribe to ActivityEventBus for AF (Activity-First) chat rendering.
+	if s.activityBus != nil {
+		actOpts := biz.ActivityEventSubscribeOptions{
+			BufferSize: 256,
+			GlobalMode: globalMode,
+		}
+		if !globalMode {
+			actOpts.SessionID = wc.sessionID
+		}
+		aCh, aUnsub := s.activityBus.Subscribe(actOpts)
+		activityCh = aCh
+		prev := unsubAll
+		unsubAll = func() {
+			prev()
+			aUnsub()
+		}
+	}
+
 	wc.unsubscribe = unsubAll
 
-	return eventCh, monitorCh
+	return eventCh, monitorCh, activityCh
 }

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event/contract"
 
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -72,22 +71,22 @@ func TestProcessEvent_streamingReplyFinalChunkEmpty_preservesAccumulatedContent(
 		t.Errorf("reply status=%q want %q", reply.Status, biz.ActivityStatusCompleted)
 	}
 
-	// The done envelope must also carry the preserved content.
-	envs := bus.published
-	var doneEnv *contract.Envelope
-	for i := len(envs) - 1; i >= 0; i-- {
-		if envs[i].Type == contract.EnvelopeTypeActivityDone {
-			if k, _ := envs[i].Metadata["kind"].(string); k == string(biz.ActivityKindReply) {
-				doneEnv = &envs[i]
+	// The done event must also carry the preserved content.
+	evs := bus.published
+	var doneEv *biz.ActivityEvent
+	for i := len(evs) - 1; i >= 0; i-- {
+		if evs[i].Event == biz.ActivityEventCompleted {
+			if string(evs[i].Activity.Kind) == string(biz.ActivityKindReply) {
+				doneEv = &evs[i]
 				break
 			}
 		}
 	}
-	if doneEnv == nil {
-		t.Fatal("no activity_done envelope for reply")
+	if doneEv == nil {
+		t.Fatal("no activity_done event for reply")
 	}
-	if content, _ := doneEnv.Metadata["content"].(string); content != "Hello world" {
-		t.Errorf("done envelope content=%q want %q", content, "Hello world")
+	if doneEv.Activity.Content != "Hello world" {
+		t.Errorf("done event content=%q want %q", doneEv.Activity.Content, "Hello world")
 	}
 }
 
@@ -159,9 +158,9 @@ func TestProcessEvent_streamingToolCallDeltas_createSingleActivity(t *testing.T)
 
 	// Only one activity_start for action kind should have been published.
 	startCount := 0
-	for _, env := range bus.published {
-		if env.Type == contract.EnvelopeTypeActivityStart {
-			if k, _ := env.Metadata["kind"].(string); k == string(biz.ActivityKindAction) {
+	for _, ev := range bus.published {
+		if ev.Event == biz.ActivityEventCreated {
+			if string(ev.Activity.Kind) == string(biz.ActivityKindAction) {
 				startCount++
 			}
 		}
@@ -276,14 +275,14 @@ func TestProcessEvent_streamingReasoningFinalizedWhenFinalChunkEmpty(t *testing.
 		t.Errorf("thinking reasoning=%q want %q", thinking.Reasoning, wantReasoning)
 	}
 
-	// Verify a done envelope was published with the full reasoning.
+	// Verify a done event was published with the full reasoning.
 	doneCount := 0
-	for _, env := range bus.published {
-		if env.Type == contract.EnvelopeTypeActivityDone {
-			if k, _ := env.Metadata["kind"].(string); k == string(biz.ActivityKindThinking) {
+	for _, ev := range bus.published {
+		if ev.Event == biz.ActivityEventCompleted {
+			if string(ev.Activity.Kind) == string(biz.ActivityKindThinking) {
 				doneCount++
-				if r, _ := env.Metadata["reasoning"].(string); r != wantReasoning {
-					t.Errorf("done envelope reasoning=%q want %q", r, wantReasoning)
+				if ev.Activity.Reasoning != wantReasoning {
+					t.Errorf("done event reasoning=%q want %q", ev.Activity.Reasoning, wantReasoning)
 				}
 			}
 		}
@@ -321,12 +320,11 @@ func TestOnTurnEnd_finalizesChildActivities(t *testing.T) {
 	checkCompleted(biz.ActivityKindThinking, "thinking")
 	checkCompleted(biz.ActivityKindAction, "action")
 
-	// Each child activity should have a done envelope.
+	// Each child activity should have a done event.
 	doneKinds := make(map[biz.ActivityKind]int)
-	for _, env := range bus.published {
-		if env.Type == contract.EnvelopeTypeActivityDone {
-			k, _ := env.Metadata["kind"].(string)
-			switch k {
+	for _, ev := range bus.published {
+		if ev.Event == biz.ActivityEventCompleted {
+			switch string(ev.Activity.Kind) {
 			case string(biz.ActivityKindReply):
 				doneKinds[biz.ActivityKindReply]++
 			case string(biz.ActivityKindThinking):
@@ -337,10 +335,10 @@ func TestOnTurnEnd_finalizesChildActivities(t *testing.T) {
 		}
 	}
 	if doneKinds[biz.ActivityKindReply] != 1 {
-		t.Errorf("reply done envelopes=%d want 1", doneKinds[biz.ActivityKindReply])
+		t.Errorf("reply done events=%d want 1", doneKinds[biz.ActivityKindReply])
 	}
 	if doneKinds[biz.ActivityKindThinking] != 1 {
-		t.Errorf("thinking done envelopes=%d want 1", doneKinds[biz.ActivityKindThinking])
+		t.Errorf("thinking done events=%d want 1", doneKinds[biz.ActivityKindThinking])
 	}
 }
 
@@ -383,26 +381,25 @@ func TestProcessEvent_finalChunkTextWithoutPriorDelta_createsReply(t *testing.T)
 
 	// Must emit start before done (B-05 ordering invariant).
 	startIdx, doneIdx := -1, -1
-	for i, env := range bus.published {
-		if env.Type != contract.EnvelopeTypeActivityStart && env.Type != contract.EnvelopeTypeActivityDone {
+	for i, ev := range bus.published {
+		if ev.Event != biz.ActivityEventCreated && ev.Event != biz.ActivityEventCompleted {
 			continue
 		}
-		k, _ := env.Metadata["kind"].(string)
-		if k != string(biz.ActivityKindReply) {
+		if string(ev.Activity.Kind) != string(biz.ActivityKindReply) {
 			continue
 		}
-		if env.Type == contract.EnvelopeTypeActivityStart {
+		if ev.Event == biz.ActivityEventCreated {
 			startIdx = i
 		}
-		if env.Type == contract.EnvelopeTypeActivityDone {
+		if ev.Event == biz.ActivityEventCompleted {
 			doneIdx = i
 		}
 	}
 	if startIdx == -1 {
-		t.Error("missing reply activity_start envelope")
+		t.Error("missing reply activity_start event")
 	}
 	if doneIdx == -1 {
-		t.Error("missing reply activity_done envelope")
+		t.Error("missing reply activity_done event")
 	}
 	if startIdx > doneIdx {
 		t.Errorf("reply start(%d) after done(%d)", startIdx, doneIdx)

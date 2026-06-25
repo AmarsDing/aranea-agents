@@ -15,25 +15,11 @@ func (r *testRepo) ListTimelineEventRefsPaged(ctx context.Context, sessionID str
 	return r.mockSessionRepo.ListTimelineEventRefsPaged(ctx, sessionID, q)
 }
 
-func (r *testRepo) CountMessagesBySession(ctx context.Context, sessionID string) (int, error) {
-	if r.countMessagesBySessionFn != nil {
-		return r.countMessagesBySessionFn(ctx, sessionID)
-	}
-	return r.mockSessionRepo.CountMessagesBySession(ctx, sessionID)
-}
-
 func (r *testRepo) ListMessagesBySession(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error) {
 	if r.listMessagesBySessionFn != nil {
 		return r.listMessagesBySessionFn(ctx, sessionID, limit, offset)
 	}
 	return r.mockSessionRepo.ListMessagesBySession(ctx, sessionID, limit, offset)
-}
-
-func (r *testRepo) ListMessagesByIDs(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error) {
-	if r.listMessagesByIDsFn != nil {
-		return r.listMessagesByIDsFn(ctx, sessionID, ids)
-	}
-	return r.mockSessionRepo.ListMessagesByIDs(ctx, sessionID, ids)
 }
 
 func (r *testRepo) ListToolInvocationsByIDs(ctx context.Context, sessionID string, ids []string) ([]ToolInvocationView, error) {
@@ -114,21 +100,21 @@ func (r *testRepo) PatchSessionState(ctx context.Context, sessionID string, sets
 }
 
 func TestTimeline(t *testing.T) {
+	// Phase 1c-3: countFn and listMsgIDsFn are dead (count derived from list;
+	// ListMessagesByIDs filters from ListBySession). Mock listMsgFn instead.
 	tests := []struct {
-		name         string
-		id           string
-		query        TimelineQuery
-		getFn        func(ctx context.Context, id string) (Session, error)
-		countFn      func(ctx context.Context, sessionID string) (int, error)
-		listMsgFn    func(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error)
-		listRefsFn   func(ctx context.Context, sessionID string, q TimelineQuery) ([]TimelineEventRef, int, error)
-		listMsgIDsFn func(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error)
-		listToolFn   func(ctx context.Context, sessionID string, ids []string) ([]ToolInvocationView, error)
-		listSkillFn  func(ctx context.Context, sessionID string, ids []string) ([]SkillInvocationView, error)
-		lookupFn     func(ctx context.Context, agentIDs []string) (map[string]string, error)
-		wantErr      bool
-		wantMsg      string
-		checkResult  func(t *testing.T, got SessionTimeline)
+		name        string
+		id          string
+		query       TimelineQuery
+		getFn       func(ctx context.Context, id string) (Session, error)
+		listMsgFn   func(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error)
+		listRefsFn  func(ctx context.Context, sessionID string, q TimelineQuery) ([]TimelineEventRef, int, error)
+		listToolFn  func(ctx context.Context, sessionID string, ids []string) ([]ToolInvocationView, error)
+		listSkillFn func(ctx context.Context, sessionID string, ids []string) ([]SkillInvocationView, error)
+		lookupFn    func(ctx context.Context, agentIDs []string) (map[string]string, error)
+		wantErr     bool
+		wantMsg     string
+		checkResult func(t *testing.T, got SessionTimeline)
 	}{
 		{
 			name:    "empty session_id returns error",
@@ -151,13 +137,7 @@ func TestTimeline(t *testing.T) {
 			getFn: func(_ context.Context, id string) (Session, error) {
 				return Session{ID: id, MessageCount: 2}, nil
 			},
-			countFn: func(_ context.Context, _ string) (int, error) {
-				return 2, nil
-			},
-			listMsgFn: func(_ context.Context, _ string, limit, offset int) ([]ChatMessage, error) {
-				if limit != 10 {
-					t.Fatalf("expected limit 10, got %d", limit)
-				}
+			listMsgFn: func(_ context.Context, _ string, _, _ int) ([]ChatMessage, error) {
 				return []ChatMessage{
 					{ID: "m1", Role: "user", ContentMarkdown: "hello", CreatedAt: "2026-01-01T10:00:00Z"},
 					{ID: "m2", Role: "assistant", ContentMarkdown: "hi", CreatedAt: "2026-01-01T10:01:00Z"},
@@ -192,7 +172,8 @@ func TestTimeline(t *testing.T) {
 					{Kind: "skill", ID: "s1", OccurredAt: "2026-01-01T10:02:00Z"},
 				}, 3, nil
 			},
-			listMsgIDsFn: func(_ context.Context, _ string, ids []string) ([]ChatMessage, error) {
+			listMsgFn: func(_ context.Context, _ string, _, _ int) ([]ChatMessage, error) {
+				// ActivityMessageReader.ListMessagesByIDs filters by ID from ListBySession result.
 				return []ChatMessage{{ID: "m1", Role: "user", ContentMarkdown: "hello", CreatedAt: "2026-01-01T10:00:00Z"}}, nil
 			},
 			listToolFn: func(_ context.Context, _ string, ids []string) ([]ToolInvocationView, error) {
@@ -230,40 +211,6 @@ func TestTimeline(t *testing.T) {
 			},
 		},
 		{
-			name:  "limit clamped to default when zero with message filter",
-			id:    "sess-1",
-			query: TimelineQuery{KindFilter: "message", Limit: 0},
-			getFn: func(_ context.Context, id string) (Session, error) {
-				return Session{ID: id, MessageCount: 0}, nil
-			},
-			countFn: func(_ context.Context, _ string) (int, error) {
-				return 0, nil
-			},
-			listMsgFn: func(_ context.Context, _ string, limit, _ int) ([]ChatMessage, error) {
-				if limit != MessageListDefaultLimit {
-					t.Fatalf("expected limit %d, got %d", MessageListDefaultLimit, limit)
-				}
-				return nil, nil
-			},
-		},
-		{
-			name:  "limit clamped to max when over limit with message filter",
-			id:    "sess-1",
-			query: TimelineQuery{KindFilter: "message", Limit: 9999},
-			getFn: func(_ context.Context, id string) (Session, error) {
-				return Session{ID: id, MessageCount: 0}, nil
-			},
-			countFn: func(_ context.Context, _ string) (int, error) {
-				return 0, nil
-			},
-			listMsgFn: func(_ context.Context, _ string, limit, _ int) ([]ChatMessage, error) {
-				if limit != MessageListMaxLimit {
-					t.Fatalf("expected limit %d, got %d", MessageListMaxLimit, limit)
-				}
-				return nil, nil
-			},
-		},
-		{
 			name:  "get session error propagated",
 			id:    "sess-1",
 			query: TimelineQuery{KindFilter: "message"},
@@ -280,17 +227,11 @@ func TestTimeline(t *testing.T) {
 			if tt.getFn != nil {
 				repo.getSessionByIDFn = tt.getFn
 			}
-			if tt.countFn != nil {
-				repo.countMessagesBySessionFn = tt.countFn
-			}
 			if tt.listMsgFn != nil {
 				repo.listMessagesBySessionFn = tt.listMsgFn
 			}
 			if tt.listRefsFn != nil {
 				repo.listTimelineEventRefsPagedFn = tt.listRefsFn
-			}
-			if tt.listMsgIDsFn != nil {
-				repo.listMessagesByIDsFn = tt.listMsgIDsFn
 			}
 			if tt.listToolFn != nil {
 				repo.listToolInvocationsByIDsFn = tt.listToolFn

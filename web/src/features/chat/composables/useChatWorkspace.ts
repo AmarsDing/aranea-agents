@@ -50,6 +50,7 @@ import { useContextualLoadingMessage } from './useContextualLoadingMessage';
 import { useStatusPulse } from './useStatusPulse';
 import { useActivityTimeline } from './useActivityTimeline';
 import type { ActivityStartMeta, ActivityDeltaMeta, ActivityDoneMeta, ActivityChildStartMeta } from '../activityTypes';
+import type { ActivityEvent as AFActivityEvent } from '../../../realtime/activityEvent';
 
 export function useChatWorkspace() {
   const { t } = useI18n();
@@ -133,6 +134,26 @@ export function useChatWorkspace() {
         activityTimeline.handleActivityChildStart(md as unknown as ActivityChildStartMeta);
         break;
     }
+  };
+
+  // Activity-First (AF): Handler for the new business-semantic ActivityEvent
+  // format (event + full Activity snapshot). This replaces the legacy
+  // activity_start/delta/done/child_start envelopes for chat events.
+  // Dedup is by activity.id + event type for non-streaming events (which
+  // may arrive via both the real-time stream and the inbound-sync path).
+  // Streaming events are NOT deduped — each carries a unique delta chunk.
+  const handleActivityEvent = (ev: AFActivityEvent) => {
+    if (ev.event !== 'streaming') {
+      const dedupKey = `${ev.activity.id}:${ev.event}`;
+      if (activityDedupIds.has(dedupKey)) return;
+      activityDedupIds.add(dedupKey);
+      activityDedupRing.push(dedupKey);
+      if (activityDedupRing.length > ACTIVITY_DEDUP_LIMIT) {
+        const evicted = activityDedupRing.shift();
+        if (evicted) activityDedupIds.delete(evicted);
+      }
+    }
+    activityTimeline.handleActivityEvent(ev);
   };
 
   const runStatusCtrl = useChatRunStatus({ applyAwaitRunStatus });
@@ -291,6 +312,9 @@ export function useChatWorkspace() {
     // T1.6: Real-time AF — route activity envelopes from the stream directly
     // to useActivityTimeline for immediate UI updates.
     onActivityEnvelope: handleActivityEnvelope,
+    // Activity-First (AF): route new business-semantic ActivityEvent messages
+    // from the WS transport to useActivityTimeline.
+    onActivityEvent: handleActivityEvent,
   });
 
   const contextualLoading = useContextualLoadingMessage(streamManager.wsReplaying);
@@ -456,6 +480,9 @@ export function useChatWorkspace() {
     // T1.6: Reuse the shared handler so both real-time stream and
     // inbound-sync paths route to the same useActivityTimeline instance.
     onActivityEnvelope: handleActivityEnvelope,
+    // AF: Route new ActivityEvent messages from the global hub to the same
+    // useActivityTimeline instance. Dedup is handled inside handleActivityEvent.
+    onActivityEvent: handleActivityEvent,
     isChatRoute: () => route.name === 'chat',
     shouldAutoFocusChannel: () => {
       // Default OFF: channel inbound messages no longer auto-focus the session

@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/ent/message"
+	"aranea-agents/internal/data/ent/activity"
 	"aranea-agents/internal/data/vector"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -52,6 +52,23 @@ func NewRecentMessageLister(d *Data) biz.RecentMessageLister {
 	return &recentMessageListerAdapter{data: d}
 }
 
+// activityKindToConsolidateRole maps an Activity kind to a ConsolidateMessage role.
+// Returns ok=false for kinds that don't map to chat messages (thinking/session/etc.).
+func activityKindToConsolidateRole(kind string) (string, bool) {
+	switch strings.TrimSpace(kind) {
+	case "task":
+		return "user", true
+	case "reply":
+		return "assistant", true
+	case "action":
+		return "tool", true
+	case "notice":
+		return "system", true
+	default:
+		return "", false
+	}
+}
+
 func (a *recentMessageListerAdapter) ListRecentMessages(ctx context.Context, sessionID string, limit int) ([]biz.ConsolidateMessage, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
@@ -60,30 +77,44 @@ func (a *recentMessageListerAdapter) ListRecentMessages(ctx context.Context, ses
 	if limit <= 0 || limit > biz.TimelineMessageMaxFetch {
 		limit = biz.TimelineMessageMaxFetch
 	}
-	rows, err := a.data.RW().Read(ctx).Message.Query().
-		Where(message.SessionIDEQ(sessionID)).
-		Order(message.ByTurnID(entsql.OrderDesc()), message.BySeqInTurn(entsql.OrderDesc()), message.ByCreatedAt(entsql.OrderDesc())).
-		Limit(limit).All(ctx)
+	// Phase 1c-3: messages table deleted. Recent messages are now sourced from
+	// the activities table. Only chat-shaped kinds (task/reply/action/notice)
+	// are returned; thinking/session/team_stage/etc. are skipped.
+	rows, err := a.data.RW().Read(ctx).Activity.Query().
+		Where(activity.SessionIDEQ(sessionID)).
+		Order(activity.ByTimestamp(entsql.OrderDesc()), activity.BySeq(entsql.OrderDesc())).
+		Limit(limit * 2).All(ctx)
 	if err != nil {
-		return nil, entErrToBizErr(err, "MEMORY_MESSAGE")
+		return nil, entErrToBizErr(err, "MEMORY_ACTIVITY")
 	}
-	// Reverse to chronological order.
+	// Reverse to chronological order and filter to chat-shaped kinds.
 	out := make([]biz.ConsolidateMessage, 0, len(rows))
 	for i := len(rows) - 1; i >= 0; i-- {
-		m := rows[i]
-		content := strings.TrimSpace(m.ContentMarkdown)
-		if content == "" {
+		row := rows[i]
+		role, ok := activityKindToConsolidateRole(row.Kind)
+		if !ok {
 			continue
 		}
-		role := strings.TrimSpace(m.Role)
-		if role == "" {
+		content := strings.TrimSpace(row.Content)
+		if role == "tool" {
+			// Tool messages use ToolResult as content (falls back to tool name).
+			if tr := strings.TrimSpace(row.ToolResult); tr != "" {
+				content = tr
+			} else if content == "" {
+				content = strings.TrimSpace(row.ToolName)
+			}
+		}
+		if content == "" {
 			continue
 		}
 		out = append(out, biz.ConsolidateMessage{
 			Role:      role,
 			Content:   content,
-			MessageID: m.ID,
+			MessageID: row.ID,
 		})
+		if len(out) >= limit {
+			break
+		}
 	}
 	return out, nil
 }

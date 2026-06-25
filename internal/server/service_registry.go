@@ -36,7 +36,6 @@ type ServiceRegistry struct {
 	A2A                *service.A2AService
 	A2APublic          *a2atrpc.EndpointRegistry
 	Ecosystem          *service.EcosystemService
-	Event              *service.EventService
 	Gateway            *service.GatewayService
 	ChannelIngress     *service.ChannelIngress
 	AIRefine           *service.AIRefineService
@@ -85,7 +84,6 @@ func NewServiceRegistry(
 	a2aSvc *service.A2AService,
 	a2aPublic *a2atrpc.EndpointRegistry,
 	ecosystemSvc *service.EcosystemService,
-	eventSvc *service.EventService,
 	gatewaySvc *service.GatewayService,
 	channelIngress *service.ChannelIngress,
 	aiRefine *service.AIRefineService,
@@ -129,7 +127,6 @@ func NewServiceRegistry(
 		A2A:                a2aSvc,
 		A2APublic:          a2aPublic,
 		Ecosystem:          ecosystemSvc,
-		Event:              eventSvc,
 		Gateway:            gatewaySvc,
 		ChannelIngress:     channelIngress,
 		AIRefine:           aiRefine,

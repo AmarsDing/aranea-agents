@@ -10,9 +10,7 @@ import (
 
 // EventBusSideConsumers runs typed EventBus subscriptions (P3 + FlowLog persist).
 type EventBusSideConsumers struct {
-	toolCall     *toolCallConsumer
 	callback     *callbackConsumer
-	messageStore *messageStoreConsumer
 	flowLog      *flowLogPersistConsumer
 	userFeedback *userFeedbackConsumer
 	usageRollup  *usageRollupConsumer
@@ -39,10 +37,10 @@ func NewEventBusSideConsumers(
 	if sessionBus == nil {
 		return nil
 	}
+	_ = sessions // retained for Phase 1c-3 cleanup; messageStoreConsumer was removed in Phase 1c-5
+	_ = tools    // toolCallConsumer was removed in Phase 1c-5 (ToolResult envelope type deleted)
 	return &EventBusSideConsumers{
-		toolCall:     newToolCallConsumer(sessionBus, tools, logger),
 		callback:     newCallbackConsumer(sessionBus, webhooks, logger),
-		messageStore: newMessageStoreConsumer(sessionBus, sessions, logger),
 		flowLog:      newFlowLogPersistConsumer(flowLogs, logger, sessionBus, monitorBus),
 		userFeedback: newUserFeedbackConsumer(sessionBus, monitorUC, memWorker, logger),
 		usageRollup:  newUsageRollupConsumer(sessionBus, usage, logger),
@@ -57,14 +55,8 @@ func (c *EventBusSideConsumers) Start(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	if c.toolCall != nil {
-		c.toolCall.Start(ctx)
-	}
 	if c.callback != nil {
 		c.callback.Start(ctx)
-	}
-	if c.messageStore != nil {
-		c.messageStore.Start(ctx)
 	}
 	if c.flowLog != nil {
 		c.flowLog.Start(ctx)

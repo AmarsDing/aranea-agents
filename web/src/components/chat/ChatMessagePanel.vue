@@ -305,10 +305,6 @@
         @click-interrupted="emit('status-bar-click-interrupted')"
         @click-last-event="emit('status-bar-click-last-event')"
       />
-      <OrchestrationTimeline
-        v-if="orchestrationTimeline && (!panelMode || panelMode === 'spirit')"
-        :timeline="orchestrationTimeline"
-      />
     </template>
   </q-card>
 </template>
@@ -333,8 +329,6 @@ import UnifiedExecutionPanel from '../spirit/UnifiedExecutionPanel.vue';
 import MemberReadOnlyPanel from '../spirit/MemberReadOnlyPanel.vue';
 import SynthesisResultCard from '../spirit/SynthesisResultCard.vue';
 import SpiritStatusBar from '../spirit/SpiritStatusBar.vue';
-import OrchestrationTimeline from '../orchestration/OrchestrationTimeline.vue';
-import type { OrchestrationTimelineData } from '../../features/orchestration/timelineTypes';
 import type { RunStatusValue } from '../../features/chat/types';
 import { TOOL_DISPLAY_KEY } from '../../features/chat/types';
 import type { CompressStatus } from '../../features/session/types';
@@ -414,8 +408,6 @@ const props = defineProps<{
   spiritLoadingMessage?: ContextualMessage | null;
   /** Spirit status bar data. */
   spiritStatusBar?: SpiritStatusBarData | null;
-  /** P3-1: Orchestration timeline data (Plan→Allocate→Orchestrate→Delivery). */
-  orchestrationTimeline?: OrchestrationTimelineData | null;
   /** Max concurrent teams from store (for TaskExecutionPanel). */
   spiritMaxConcurrentTeams?: number;
   /** Evolution suggestion from DQ analysis (for SynthesisResultCard). */

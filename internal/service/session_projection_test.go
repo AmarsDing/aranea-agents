@@ -6,30 +6,17 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/service"
+	"aranea-agents/pkg/loggateway"
 )
 
-type projectionRepo struct {
-	batchSessionRepo
-	messages []biz.ChatMessage
-}
-
-func (p *projectionRepo) ListMessagesAfterRevision(_ context.Context, _ string, afterRevision int64) ([]biz.ChatMessage, error) {
-	var out []biz.ChatMessage
-	for _, m := range p.messages {
-		if int64(m.TurnNumber) > afterRevision {
-			out = append(out, m)
-		}
-	}
-	return out, nil
-}
+// Phase 1c-3: projectionRepo removed — batchSessionRepo now has messages field
+// + ActivityLister impl. ListMessagesAfterRevision returns ALL messages (full replay).
 
 func TestSessionProjectionAdapter_GetLatestRevision(t *testing.T) {
-	repo := &projectionRepo{
-		batchSessionRepo: batchSessionRepo{sessions: map[string]biz.Session{
-			"s1": {ID: "s1", SessionRevision: 5},
-		}},
-	}
-	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil)
+	repo := &batchSessionRepo{sessions: map[string]biz.Session{
+		"s1": {ID: "s1", SessionRevision: 5},
+	}}
+	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, repo, loggateway.NewNoop())
 	proj := service.NewSessionProjectionAdapter(uc, nil)
 	rev, err := proj.GetLatestRevision(context.Background(), "s1")
 	if err != nil || rev != 5 {
@@ -38,22 +25,23 @@ func TestSessionProjectionAdapter_GetLatestRevision(t *testing.T) {
 }
 
 func TestSessionProjectionAdapter_GetMessagesAfterRevision(t *testing.T) {
-	repo := &projectionRepo{
-		batchSessionRepo: batchSessionRepo{sessions: map[string]biz.Session{
+	repo := &batchSessionRepo{
+		sessions: map[string]biz.Session{
 			"s1": {ID: "s1", SessionRevision: 2},
-		}},
+		},
 		messages: []biz.ChatMessage{
-			{ID: "m1", TurnNumber: 1, TurnID: "t1"},
-			{ID: "m2", TurnNumber: 2, TurnID: "t2"},
+			{ID: "m1", SessionID: "s1", Role: "user", TurnNumber: 1, TurnID: "t1"},
+			{ID: "m2", SessionID: "s1", Role: "assistant", TurnNumber: 2, TurnID: "t2"},
 		},
 	}
-	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil)
+	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, repo, loggateway.NewNoop())
 	proj := service.NewSessionProjectionAdapter(uc, nil)
 	items, err := proj.GetMessagesAfterRevision(context.Background(), "s1", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 1 || items[0].ID != "m2" {
+	// Phase 1c-3: full replay — all messages returned regardless of revision.
+	if len(items) != 2 {
 		t.Fatalf("items=%+v", items)
 	}
 }

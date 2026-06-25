@@ -51,7 +51,18 @@ export type Session = {
   metadata_json?: string;
   context_used_tokens?: number;
   last_context_window_tokens?: number;
+  // Session tree fields (Phase 2: parent-child hierarchy)
+  parent_session_id?: string;
+  root_session_id?: string;
+  agent_depth?: number;
 };
+
+// === Session Tree (Phase 3-6: recursive tree for sidebar) ===
+
+export interface SessionTreeNode {
+  session: Session;
+  children: SessionTreeNode[];
+}
 
 export type SessionSearchQuery = {
   owner_type?: string;

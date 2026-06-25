@@ -36,7 +36,7 @@ func TestFromFrameworkEvent_BasicFields(t *testing.T) {
 		Source:             "test",
 	}
 
-	env := FromFrameworkEvent(ev, meta, EnvelopeTypeTextDelta)
+	env := FromFrameworkEvent(ev, meta, EnvelopeTypeLog)
 
 	// Framework event fields take precedence
 	if env.ID != "evt-123" {
@@ -69,8 +69,8 @@ func TestFromFrameworkEvent_BasicFields(t *testing.T) {
 	if env.Source != "test" {
 		t.Errorf("Source = %q, want %q", env.Source, "test")
 	}
-	if env.Type != EnvelopeTypeTextDelta {
-		t.Errorf("Type = %q, want %q", env.Type, EnvelopeTypeTextDelta)
+	if env.Type != EnvelopeTypeLog {
+		t.Errorf("Type = %q, want %q", env.Type, EnvelopeTypeLog)
 	}
 	if env.Author != "agent-1" {
 		t.Errorf("Author = %q, want %q", env.Author, "agent-1")
@@ -91,7 +91,7 @@ func TestFromFrameworkEvent_MetaFallback(t *testing.T) {
 		FilterKey: "meta/filter",
 	}
 
-	env := FromFrameworkEvent(ev, meta, EnvelopeTypeToolCall)
+	env := FromFrameworkEvent(ev, meta, EnvelopeTypeStateDelta)
 
 	if env.Branch != "meta-branch" {
 		t.Errorf("Branch = %q, want %q (meta fallback)", env.Branch, "meta-branch")
@@ -111,7 +111,7 @@ func TestFromFrameworkEvent_Extensions(t *testing.T) {
 		},
 	}
 
-	env := FromFrameworkEvent(ev, FrameworkEventMeta{SessionID: "s"}, EnvelopeTypeTextDelta)
+	env := FromFrameworkEvent(ev, FrameworkEventMeta{SessionID: "s"}, EnvelopeTypeLog)
 
 	if env.Extensions["simple_string"] != "hello" {
 		t.Errorf("simple_string = %q, want %q (quotes stripped)", env.Extensions["simple_string"], "hello")
@@ -147,7 +147,7 @@ func TestFromFrameworkEvent_NilActions(t *testing.T) {
 		Author: "agent",
 	}
 
-	env := FromFrameworkEvent(ev, FrameworkEventMeta{SessionID: "s"}, EnvelopeTypeTextDelta)
+	env := FromFrameworkEvent(ev, FrameworkEventMeta{SessionID: "s"}, EnvelopeTypeLog)
 
 	if env.Actions != nil {
 		t.Error("Actions should be nil when framework event has no actions")
@@ -159,7 +159,7 @@ func TestFromFrameworkEvent_EmptyTimestamp(t *testing.T) {
 		Author: "agent",
 	}
 
-	env := FromFrameworkEvent(ev, FrameworkEventMeta{SessionID: "s"}, EnvelopeTypeTextDelta)
+	env := FromFrameworkEvent(ev, FrameworkEventMeta{SessionID: "s"}, EnvelopeTypeLog)
 
 	// NewEnvelope sets a default timestamp, FromFrameworkEvent should not overwrite
 	// when framework timestamp is zero.
@@ -176,7 +176,7 @@ func TestFromFrameworkEvent_WithResponse(t *testing.T) {
 		Object: trpcmodel.ObjectTypeChatCompletionChunk,
 	}
 
-	env := FromFrameworkEvent(ev, FrameworkEventMeta{SessionID: "s"}, EnvelopeTypeTextDelta)
+	env := FromFrameworkEvent(ev, FrameworkEventMeta{SessionID: "s"}, EnvelopeTypeLog)
 
 	// Response is not extracted by FromFrameworkEvent (handled by specific projectors)
 	if env.Content != nil {
@@ -223,6 +223,6 @@ func TestCoalesceStr(t *testing.T) {
 // Ensure FromFrameworkEvent returns contract.Envelope (not pointer).
 func TestFromFrameworkEvent_ReturnType(t *testing.T) {
 	ev := &trpcevent.Event{Author: "agent"}
-	env := FromFrameworkEvent(ev, FrameworkEventMeta{SessionID: "s"}, EnvelopeTypeTextDelta)
+	env := FromFrameworkEvent(ev, FrameworkEventMeta{SessionID: "s"}, EnvelopeTypeLog)
 	var _ contract.Envelope = env
 }

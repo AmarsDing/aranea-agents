@@ -35,7 +35,6 @@ func newApp(
 	consumer *biz.EventBusConsumer,
 	sideConsumers *biz.EventBusSideConsumers,
 	eventInfra *event.Infra,
-	pgEventStore *event.PostgresEventStore,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
 	agentUC *biz.AgentUsecase,
 	teamUC *biz.TeamUsecase,
@@ -47,7 +46,6 @@ func newApp(
 	chatSvc *service.ChatService,
 	spiritUC *biz.SpiritTeamUsecase,
 	teamStarter *service.TeamStarter,
-	eventWALCleanup *jobs.EventWALCleanup,
 	lifecycleMgr *lifecycle.LifecycleManager,
 ) *kratos.App {
 	// EP-OBS-03: WSServer implements transport.Server (Start/Stop); register it so
@@ -58,7 +56,6 @@ func newApp(
 	}
 
 	consumerCtx, consumerCancel := context.WithCancel(context.Background())
-	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
 
 	app := kratos.New(
 		kratos.ID(id),
@@ -92,15 +89,15 @@ func newApp(
 							return
 						}
 						lg.Info("post-readiness: data ready, starting dependent services", loggateway.StepID("startup.gate"))
-						startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pgEventStore, pipeline, loggingSinks, lg)
+						startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, lg)
 					})
 				} else {
 					// No readiness gate (unlikely), start immediately.
-					startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pgEventStore, pipeline, loggingSinks, lg)
+					startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, lg)
 				}
 			} else {
 				// No data layer (unlikely), start immediately.
-				startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pgEventStore, pipeline, loggingSinks, lg)
+				startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, lg)
 			}
 			return nil
 		}),
@@ -108,10 +105,6 @@ func newApp(
 			if memoryDataMigration != nil {
 				memoryDataMigration.Start(startCtx)
 				lg.Info("memory data migration worker started", loggateway.StepID("startup.memory_migration"))
-			}
-			if eventWALCleanup != nil {
-				eventWALCleanup.Start(cleanupCtx)
-				lg.Info("event WAL cleanup worker started", loggateway.StepID("startup.event_wal_cleanup"))
 			}
 
 			return nil
@@ -131,7 +124,6 @@ func newApp(
 				lifecycleMgr.Close()
 			}
 			consumerCancel()
-			cleanupCancel()
 			if pipeline != nil {
 				pipeline.Close()
 				if gw, ok := lg.(*loggateway.Gateway); ok {
@@ -156,7 +148,6 @@ func startReadinessDependentServices(
 	sideConsumers *biz.EventBusSideConsumers,
 	sessions *biz.SessionUsecase,
 	eventInfra *event.Infra,
-	pgEventStore *event.PostgresEventStore,
 	pipeline logpipeline.Pipeline,
 	loggingSinks []*conf.LoggingSink,
 	lg loggateway.Logger,
@@ -167,12 +158,6 @@ func startReadinessDependentServices(
 	if orchCache != nil {
 		orchCache.InitFromRepo(ctx)
 	}
-	// P1-6: wire cross-process event store into the consumer for dual-write.
-	// The Infra already has CrossProcessStore set (via NewInfra) for WS replay
-	// fallback; this adds the publish-side dual-write path.
-	if pgEventStore != nil && consumer != nil {
-		consumer.WithCrossProcessSink(pgEventStore)
-	}
 	consumer.Start(ctx)
 	if sideConsumers != nil {
 		sideConsumers.Start(ctx)
@@ -180,22 +165,6 @@ func startReadinessDependentServices(
 	sessions.StartMetricsFlusher(ctx)
 	if eventInfra != nil {
 		event.BindInfra(eventInfra)
-		// AS-EVT-01: Recover unpublished Critical events from WAL after crash.
-		// Must run AFTER Bus and subscribers are ready (consumer.Start above).
-		if eventInfra.WAL != nil {
-			// T5.2: pass PostgresEventStore as EventStoreExistChecker for
-			// idempotent recovery. When Recover replays an unpublished Critical
-			// event that was already persisted by the async consumer before the
-			// crash (post-publish failure scenario), the ExistChecker skips
-			// re-publishing to avoid duplicate side effects on subscribers.
-			// When pgEventStore is nil (Postgres not configured), fall back to
-			// nil checker — subscribers must handle duplicates idempotently.
-			var checker event.EventStoreExistChecker
-			if pgEventStore != nil {
-				checker = pgEventStore
-			}
-			eventInfra.WAL.Recover(ctx, eventInfra.SessionBus, checker)
-		}
 		if pipeline != nil {
 			if len(loggingSinks) > 0 {
 				// Config-driven: create eventbus sinks from config

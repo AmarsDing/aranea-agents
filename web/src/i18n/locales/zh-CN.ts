@@ -417,6 +417,30 @@ export default {
     transition: {
       thinkingToReply: '生成回复',
     },
+    teamStage: {
+      label: '团队',
+      assembling: '团队组建中',
+      executing: '执行中',
+      completed: '团队已完成',
+      failed: '团队执行失败',
+      cancelled: '团队已取消',
+    },
+    graphStage: {
+      label: 'Graph',
+      executing: 'Graph 执行中',
+      completed: 'Graph 已完成',
+      failed: 'Graph 执行失败',
+      cancelled: 'Graph 已取消',
+      dependsOn: '依赖',
+    },
+    sessionStage: {
+      label: '会话',
+      member: '成员',
+      executing: '{name} 执行中',
+      completed: '{name} 已完成',
+      failed: '{name} 执行失败',
+      cancelled: '{name} 已取消',
+    },
     errorBlock: {
       hintRetry: '可点击重试',
       hintSwitchModel: '建议切换模型',

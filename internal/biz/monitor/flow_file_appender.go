@@ -90,7 +90,6 @@ func (a *FlowFileAppender) Start(ctx context.Context, buses ...contract.Bus) {
 			contract.EnvelopeTypeLog,
 			contract.EnvelopeTypeAlertNotify,
 			contract.EnvelopeTypeMCPHealthAlert,
-			contract.EnvelopeTypeRunnerCompletion,
 		},
 		BufferSize: 1024,
 		DropPolicy: contract.DropNewest,
@@ -300,8 +299,6 @@ func (a *FlowFileAppender) routeFileLocked(env contract.Envelope) *rotatingFile 
 	switch env.Type {
 	case contract.EnvelopeTypeAlertNotify, contract.EnvelopeTypeMCPHealthAlert:
 		return a.ensureFile(&a.alertFile, "alert")
-	case contract.EnvelopeTypeRunnerCompletion:
-		return a.ensureFile(&a.traceFile, "trace")
 	case contract.EnvelopeTypeLog:
 		return a.ensureFile(&a.logFile, "log")
 	case contract.EnvelopeTypeFlowLog:

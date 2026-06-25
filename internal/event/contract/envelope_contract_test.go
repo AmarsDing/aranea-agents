@@ -8,13 +8,7 @@ import (
 // have unique string values — no accidental duplication.
 func TestEnvelopeContractNoDuplicates(t *testing.T) {
 	allTypes := []EnvelopeType{
-		EnvelopeTypeTextDelta,
-		EnvelopeTypeTextDone,
-		EnvelopeTypeToolCall,
-		EnvelopeTypeToolResult,
 		EnvelopeTypeStateDelta,
-		EnvelopeTypeTransfer,
-		EnvelopeTypeRunnerCompletion,
 		EnvelopeTypeContextUsage,
 		EnvelopeTypeRunStatus,
 		EnvelopeTypeError,
@@ -24,9 +18,6 @@ func TestEnvelopeContractNoDuplicates(t *testing.T) {
 		EnvelopeTypeGraphNodeEnd,
 		EnvelopeTypeCheckpoint,
 		EnvelopeTypeIntentPass,
-		EnvelopeTypeMemberMessageStart,
-		EnvelopeTypeMemberDelta,
-		EnvelopeTypeMemberMessageDone,
 		EnvelopeTypeTeamRunStarted,
 		EnvelopeTypeTeamRunFinished,
 		EnvelopeTypeTeamStepStarted,
@@ -83,11 +74,8 @@ func TestEnvelopeContractNoDuplicates(t *testing.T) {
 		EnvelopeTypeOrganizationCreated,
 		EnvelopeTypeOrganizationUpdated,
 		EnvelopeTypeOrganizationDeleted,
-		EnvelopeTypeActivityStart,
-		EnvelopeTypeActivityDelta,
-		EnvelopeTypeActivityDone,
-		EnvelopeTypeActivityChildStart,
 		EnvelopeTypeExecutionProgress,
+		EnvelopeTypeLLMRetry,
 	}
 
 	seen := make(map[string]string, len(allTypes))
@@ -99,7 +87,7 @@ func TestEnvelopeContractNoDuplicates(t *testing.T) {
 		seen[v] = string(et)
 	}
 
-	expected := 79 // total number of EnvelopeType constants
+	expected := 67 // total number of EnvelopeType constants after Phase 1c-5 cleanup
 	if len(allTypes) != expected {
 		t.Errorf("expected %d EnvelopeType constants, got %d — update this test when adding new types", expected, len(allTypes))
 	}
@@ -113,9 +101,7 @@ func TestReliabilityClassification(t *testing.T) {
 	t.Parallel()
 
 	criticalCases := []EnvelopeType{
-		EnvelopeTypeToolResult,
 		EnvelopeTypeError,
-		EnvelopeTypeRunnerCompletion,
 		EnvelopeTypeCheckpoint,
 	}
 	for _, et := range criticalCases {
@@ -149,10 +135,6 @@ func TestReliabilityClassification(t *testing.T) {
 		EnvelopeTypeSpiritOrchestrationStarted,
 		// User
 		EnvelopeTypeUserFeedback,
-		// Activity-First
-		EnvelopeTypeActivityStart,
-		EnvelopeTypeActivityDone,
-		EnvelopeTypeActivityChildStart,
 	}
 	for _, et := range importantCases {
 		if got := ClassifyEventReliability(et); got != ReliabilityImportant {
@@ -163,11 +145,10 @@ func TestReliabilityClassification(t *testing.T) {
 		}
 	}
 
-	// Wave 1 Informational types — best-effort, no persistence, may drop under backpressure
+	// Informational types — best-effort, no persistence, may drop under backpressure
 	informationalCases := []EnvelopeType{
 		EnvelopeTypeRunHeartbeat, // loss only degrades progress visibility
 		EnvelopeTypeAgentCreated, // Agent already persisted to DB; event drives UI only
-		EnvelopeTypeTextDelta,
 		EnvelopeTypeLog,
 		EnvelopeTypeFlowLog,
 	}

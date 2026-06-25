@@ -93,13 +93,13 @@ func TestBusReliableOption(t *testing.T) {
 	defer unsub()
 
 	ctx := context.Background()
-	env := event.NewEnvelope(event.EnvelopeTypeToolResult, "agent", "sess-1")
+	env := event.NewEnvelope(event.EnvelopeTypeCheckpoint, "agent", "sess-1")
 	bus.Publish(ctx, env)
 
 	select {
 	case got := <-ch:
-		if got.Type != event.EnvelopeTypeToolResult {
-			t.Fatalf("expected ToolResult, got %v", got.Type)
+		if got.Type != event.EnvelopeTypeCheckpoint {
+			t.Fatalf("expected Checkpoint, got %v", got.Type)
 		}
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("timed out waiting for reliable delivery")
@@ -111,14 +111,14 @@ func TestBusSelectorFilter(t *testing.T) {
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{
 		BufferSize: 8,
 		Selector: func(et event.EnvelopeType) bool {
-			return et == event.EnvelopeTypeTextDelta
+			return et == event.EnvelopeTypeStateDelta
 		},
 	})
 	defer unsub()
 
 	ctx := context.Background()
 	bus.Publish(ctx, event.NewEnvelope(event.EnvelopeTypeLog, "src", "sess"))
-	bus.Publish(ctx, event.NewEnvelope(event.EnvelopeTypeTextDelta, "src", "sess"))
+	bus.Publish(ctx, event.NewEnvelope(event.EnvelopeTypeStateDelta, "src", "sess"))
 	bus.Publish(ctx, event.NewEnvelope(event.EnvelopeTypeError, "src", "sess"))
 
 	time.Sleep(20 * time.Millisecond)

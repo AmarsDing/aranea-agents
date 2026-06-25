@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -28,6 +27,13 @@ const (
 	graphObjectTypeNodeComplete = "graph.node.complete"
 	graphObjectTypeNodeError    = "graph.node.error"
 	graphMetadataKeyNode        = "_node_metadata"
+)
+
+// Stuck tool result i18n/fallback constants used by OnStuckTools to mark
+// in-flight tool cards as failed when the turn ends without tool_result.
+const (
+	stuckToolResultI18nKey  = "chat.tool.stuckTimeout"
+	stuckToolResultFallback = "工具执行未返回结果，已自动标记为失败。如需重试请重新发送指令"
 )
 
 // graphNodeMetadata mirrors trpc-agent-go/graph.NodeExecutionMetadata
@@ -79,10 +85,9 @@ func nodeTypeLabel(nodeType string) string {
 
 // ActivityProjector projects runtime events into Activity semantic units
 // and publishes them via WS, eliminating frontend inference.
-// It runs parallel to EventProjector during the AF-1 dual-emission phase.
 type ActivityProjector struct {
 	mu           sync.Mutex
-	eventBus     event.Bus
+	eventBus     biz.ActivityEventBus
 	activityRepo biz.ActivityWriter
 	metaResolver ActivityMetaResolver
 	lg           loggateway.Logger
@@ -94,7 +99,7 @@ type ActivityProjector struct {
 	sequencer *activityEventSequencer
 
 	// seq is a monotonically increasing counter assigned to every emitted
-	// envelope. It lets the frontend reconstruct the exact backend emission
+	// event. It lets the frontend reconstruct the exact backend emission
 	// order even when the per-activity sequencer publishes events for different
 	// activities concurrently (e.g. thinking done vs reply start).
 	seq int64
@@ -133,7 +138,7 @@ type ActivityProjector struct {
 }
 
 // NewActivityProjector creates a new ActivityProjector.
-func NewActivityProjector(eventBus event.Bus, activityRepo biz.ActivityWriter, lg loggateway.Logger) *ActivityProjector {
+func NewActivityProjector(eventBus biz.ActivityEventBus, activityRepo biz.ActivityWriter, lg loggateway.Logger) *ActivityProjector {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
@@ -458,7 +463,7 @@ func (p *ActivityProjector) OnTurnStart(ctx context.Context, meta ProjectMeta) {
 	p.rootActivityID = id
 	p.activities[id] = a
 
-	p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityStart)
+	p.publishAndPersist(ctx, a, biz.ActivityEventCreated)
 }
 
 // OnReasoningDelta handles a reasoning content chunk during streaming.
@@ -493,7 +498,7 @@ func (p *ActivityProjector) OnReasoningDelta(ctx context.Context, author string,
 		}
 		p.activities[id] = a
 		p.kindAuthorMap[kindKey(biz.ActivityKindThinking, author)] = id
-		p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityStart)
+		p.publishAndPersist(ctx, a, biz.ActivityEventCreated)
 		activityID = id
 	}
 
@@ -543,7 +548,7 @@ func (p *ActivityProjector) OnReasoningDone(ctx context.Context, author string, 
 	a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
 	a.Collapsed = true
 
-	p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityDone)
+	p.publishAndPersist(ctx, a, biz.ActivityEventCompleted)
 }
 
 // OnTextDelta handles a text content chunk during streaming.
@@ -571,7 +576,7 @@ func (p *ActivityProjector) OnTextDelta(ctx context.Context, author string, chun
 		}
 		p.activities[id] = a
 		p.kindAuthorMap[kindKey(biz.ActivityKindReply, author)] = id
-		p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityStart)
+		p.publishAndPersist(ctx, a, biz.ActivityEventCreated)
 		activityID = id
 	}
 
@@ -609,7 +614,7 @@ func (p *ActivityProjector) OnMemberMessageDelta(ctx context.Context, author str
 		}
 		p.activities[id] = a
 		p.kindAuthorMap[kindKey(biz.ActivityKindReply, author)] = id
-		p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityStart)
+		p.publishAndPersist(ctx, a, biz.ActivityEventCreated)
 		activityID = id
 	}
 
@@ -651,7 +656,7 @@ func (p *ActivityProjector) OnMemberMessageDone(ctx context.Context, author stri
 		}
 		p.activities[id] = a
 		p.kindAuthorMap[kindKey(biz.ActivityKindReply, author)] = id
-		p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityStart)
+		p.publishAndPersist(ctx, a, biz.ActivityEventCreated)
 	} else {
 		a = p.activities[activityID]
 		if fullText != "" {
@@ -667,7 +672,7 @@ func (p *ActivityProjector) OnMemberMessageDone(ctx context.Context, author stri
 	// creates a new reply Activity.
 	delete(p.kindAuthorMap, kindKey(biz.ActivityKindReply, author))
 
-	p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityDone)
+	p.publishAndPersist(ctx, a, biz.ActivityEventCompleted)
 }
 
 // OnTextDone finalizes a reply activity.
@@ -702,7 +707,7 @@ func (p *ActivityProjector) OnTextDone(ctx context.Context, author string, fullT
 		}
 		p.activities[id] = a
 		p.kindAuthorMap[kindKey(biz.ActivityKindReply, author)] = id
-		p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityStart)
+		p.publishAndPersist(ctx, a, biz.ActivityEventCreated)
 	} else {
 		a = p.activities[activityID]
 		if fullText != "" {
@@ -718,7 +723,7 @@ func (p *ActivityProjector) OnTextDone(ctx context.Context, author string, fullT
 	// creates a new reply Activity instead of appending to this one.
 	delete(p.kindAuthorMap, kindKey(biz.ActivityKindReply, author))
 
-	p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityDone)
+	p.publishAndPersist(ctx, a, biz.ActivityEventCompleted)
 }
 
 // OnToolCall creates or updates an action Activity for a tool call.
@@ -784,7 +789,7 @@ func (p *ActivityProjector) OnToolCall(ctx context.Context, toolCallID, toolName
 		p.memberToolCalls[author]++
 	}
 
-	p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityStart)
+	p.publishAndPersist(ctx, a, biz.ActivityEventCreated)
 }
 
 // OnToolResult finalizes an action Activity when a tool result arrives.
@@ -814,7 +819,7 @@ func (p *ActivityProjector) OnToolResult(ctx context.Context, toolCallID, result
 	a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
 	a.Collapsed = true
 
-	p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityDone)
+	p.publishAndPersist(ctx, a, biz.ActivityEventCompleted)
 	delete(p.toolCalls, toolCallID)
 }
 
@@ -842,7 +847,7 @@ func (p *ActivityProjector) OnDelegate(ctx context.Context, teamID, spiritSessio
 	}
 
 	p.activities[id] = a
-	p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityStart)
+	p.publishAndPersist(ctx, a, biz.ActivityEventCreated)
 
 	// Also create a sub_task_board child
 	childID := uuid.NewString()
@@ -863,7 +868,7 @@ func (p *ActivityProjector) OnDelegate(ctx context.Context, teamID, spiritSessio
 	a.ChildBoardID = childID
 
 	p.activities[childID] = child
-	p.publishAndPersist(ctx, child, contract.EnvelopeTypeActivityChildStart)
+	p.publishAndPersist(ctx, child, biz.ActivityEventChildCreated)
 }
 
 // ActivityUsage carries token consumption data for a completed turn.
@@ -895,17 +900,22 @@ func (p *ActivityProjector) OnError(ctx context.Context, errMsg string, errType 
 
 	p.activities[id] = a
 
-	env := p.buildActivityEnvelope(a, contract.EnvelopeTypeActivityStart)
 	// Attach error classification so the frontend can drive messageStore
 	// error handling (markStreamingMessagesFailed, onErrorNotify) without
 	// needing the legacy error envelope.
-	if errType != "" {
-		env.Metadata["error_type"] = errType
+	if errType != "" || errCode != "" {
+		if a.Meta == nil {
+			a.Meta = make(map[string]any)
+		}
+		if errType != "" {
+			a.Meta["error_type"] = errType
+		}
+		if errCode != "" {
+			a.Meta["error_code"] = errCode
+		}
 	}
-	if errCode != "" {
-		env.Metadata["error_code"] = errCode
-	}
-	p.publishEnvelope(ctx, env, a)
+	ev := p.buildActivityEvent(a, biz.ActivityEventCreated)
+	p.publishEvent(ctx, ev, a)
 }
 
 // OnNotice creates a notice Activity for system notifications.
@@ -931,10 +941,10 @@ func (p *ActivityProjector) OnNotice(ctx context.Context, turnID, sessionID stri
 	// Notice is immediately completed (pending → completed in the same call).
 	// The sequencer guarantees start → done ordering per-activity, so we can
 	// safely use two publishAndPersist calls without a manual goroutine.
-	p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityStart)
+	p.publishAndPersist(ctx, activity, biz.ActivityEventCreated)
 	activity.Status = biz.ActivityStatusCompleted
 	activity.DurationMs = time.Now().UTC().Sub(activity.Timestamp).Milliseconds()
-	p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityDone)
+	p.publishAndPersist(ctx, activity, biz.ActivityEventCompleted)
 
 	return activity, nil
 }
@@ -979,7 +989,7 @@ func (p *ActivityProjector) OnConfirmRequest(ctx context.Context, turnID, sessio
 		Meta:             map[string]any{"toolName": params.ToolName, "toolArguments": params.ToolArguments},
 	}
 	p.activities[id] = activity
-	p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityStart)
+	p.publishAndPersist(ctx, activity, biz.ActivityEventCreated)
 
 	return activity, nil
 }
@@ -1002,7 +1012,7 @@ func (p *ActivityProjector) OnConfirmResult(ctx context.Context, activityID stri
 		activity.Status = biz.ActivityStatusCancelled
 	}
 	activity.DurationMs = time.Now().UTC().Sub(activity.Timestamp).Milliseconds()
-	p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityDone)
+	p.publishAndPersist(ctx, activity, biz.ActivityEventCompleted)
 
 	return activity, nil
 }
@@ -1080,7 +1090,7 @@ func (p *ActivityProjector) processGraphNodeStart(ctx context.Context, ev *trpce
 		}
 		p.activities[id] = planAct
 		p.planActivityID = id
-		p.publishAndPersist(ctx, planAct, contract.EnvelopeTypeActivityStart)
+		p.publishAndPersist(ctx, planAct, biz.ActivityEventCreated)
 	}
 
 	// Append a new step to the plan
@@ -1101,7 +1111,7 @@ func (p *ActivityProjector) processGraphNodeStart(ctx context.Context, ev *trpce
 	}
 	steps = append(steps, step)
 	planAct.Meta["steps"] = steps
-	p.publishAndPersist(ctx, planAct, contract.EnvelopeTypeActivityDelta)
+	p.publishAndPersist(ctx, planAct, biz.ActivityEventStreaming)
 }
 
 // processGraphNodeComplete handles graph.node.complete and graph.node.error events
@@ -1155,9 +1165,9 @@ func (p *ActivityProjector) processGraphNodeComplete(ctx context.Context, ev *tr
 	}
 	if allDone {
 		planAct.Status = biz.ActivityStatusCompleted
-		p.publishAndPersist(ctx, planAct, contract.EnvelopeTypeActivityDone)
+		p.publishAndPersist(ctx, planAct, biz.ActivityEventCompleted)
 	} else {
-		p.publishAndPersist(ctx, planAct, contract.EnvelopeTypeActivityDelta)
+		p.publishAndPersist(ctx, planAct, biz.ActivityEventStreaming)
 	}
 }
 
@@ -1178,7 +1188,7 @@ func (p *ActivityProjector) OnPlanStart(ctx context.Context, turnID, sessionID s
 		Meta:      map[string]any{"steps": steps},
 	}
 	p.activities[id] = activity
-	p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityStart)
+	p.publishAndPersist(ctx, activity, biz.ActivityEventCreated)
 
 	return activity, nil
 }
@@ -1238,16 +1248,13 @@ func (p *ActivityProjector) OnPlanStepUpdate(ctx context.Context, activityID str
 			activity.Status = biz.ActivityStatusCompleted
 		}
 		activity.DurationMs = time.Now().UTC().Sub(activity.Timestamp).Milliseconds()
-		p.publishAndPersist(ctx, activity, contract.EnvelopeTypeActivityDone)
+		p.publishAndPersist(ctx, activity, biz.ActivityEventCompleted)
 	} else {
 		activity.Status = biz.ActivityStatusRunning
-		env := p.buildActivityEnvelope(activity, contract.EnvelopeTypeActivityDelta)
-		if env.Metadata == nil {
-			env.Metadata = make(map[string]any)
-		}
-		env.Metadata["delta_field"] = "steps"
-		env.Metadata["delta_chunk"] = ""
-		p.publishEnvelope(ctx, env, activity)
+		ev := p.buildActivityEvent(activity, biz.ActivityEventStreaming)
+		ev.DeltaField = "steps"
+		ev.DeltaChunk = ""
+		p.publishEvent(ctx, ev, activity)
 	}
 
 	return activity, nil
@@ -1271,9 +1278,7 @@ func (p *ActivityProjector) MemberToolCalls() map[string]int {
 
 // OnStuckTools finalizes action Activities whose tool_result never arrived.
 // Called from stream_consumer.finalize() when the turn ends with pending tool calls.
-// This is the AF equivalent of PublishStuckToolResultEnvelopes — instead of
-// publishing a legacy tool_result envelope (which AF mode doesn't process),
-// it publishes activity_done(kind=action, status=failed) envelopes so the
+// It publishes activity_done(kind=action, status=failed) envelopes so the
 // frontend can update the tool card from running → failed.
 func (p *ActivityProjector) OnStuckTools(ctx context.Context) {
 	p.mu.Lock()
@@ -1306,7 +1311,7 @@ func (p *ActivityProjector) OnStuckTools(ctx context.Context) {
 		a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
 		a.Collapsed = true
 
-		p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityDone)
+		p.publishAndPersist(ctx, a, biz.ActivityEventCompleted)
 		delete(p.toolCalls, toolCallID)
 	}
 }
@@ -1326,14 +1331,14 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, usage *ActivityUsage)
 				p.transitionActivityStatus(a, biz.ActivityStatusCompleted)
 				a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
 				a.Collapsed = a.Kind == biz.ActivityKindThinking
-				p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityDone)
+				p.publishAndPersist(ctx, a, biz.ActivityEventCompleted)
 			}
 		case biz.ActivityKindAction:
 			if a.Status == biz.ActivityStatusToolRunning {
 				p.transitionActivityStatus(a, biz.ActivityStatusCompleted)
 				a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
 				a.Collapsed = true
-				p.publishAndPersist(ctx, a, contract.EnvelopeTypeActivityDone)
+				p.publishAndPersist(ctx, a, biz.ActivityEventCompleted)
 			}
 		}
 	}
@@ -1357,39 +1362,42 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, usage *ActivityUsage)
 		a.CompletionTokens = int64(usage.CompletionTokens)
 	}
 
-	env := p.buildActivityEnvelope(a, contract.EnvelopeTypeActivityDone)
 	// Attach usage so the frontend can update session context metrics
 	// without needing the legacy runner_completion envelope.
 	if usage != nil {
-		env.Metadata["usage"] = map[string]any{
+		if a.Meta == nil {
+			a.Meta = make(map[string]any)
+		}
+		a.Meta["usage"] = map[string]any{
 			"prompt_tokens":     usage.PromptTokens,
 			"completion_tokens": usage.CompletionTokens,
 			"total_tokens":      usage.TotalTokens,
 		}
 	}
-	p.publishEnvelope(ctx, env, a)
+	ev := p.buildActivityEvent(a, biz.ActivityEventCompleted)
+	p.publishEvent(ctx, ev, a)
 }
 
-// publishAndPersist publishes an Activity envelope and persists to DB.
+// publishAndPersist publishes an ActivityEvent and persists to DB.
 // Called with p.mu held — copies activity data before enqueuing to sequencer.
-// The sequencer's per-activity channel guarantees FIFO ordering (start → delta
-// → done) while performing I/O outside the mutex.
-func (p *ActivityProjector) publishAndPersist(ctx context.Context, a *biz.Activity, envType contract.EnvelopeType) {
-	env := p.buildActivityEnvelope(a, envType)
-	p.publishEnvelope(ctx, env, a)
+// The sequencer's per-activity channel guarantees FIFO ordering (created →
+// streaming → completed) while performing I/O outside the mutex.
+func (p *ActivityProjector) publishAndPersist(ctx context.Context, a *biz.Activity, eventType biz.ActivityEventType) {
+	ev := p.buildActivityEvent(a, eventType)
+	p.publishEvent(ctx, ev, a)
 }
 
-// publishEnvelope publishes a pre-built envelope and persists the activity to DB.
+// publishEvent publishes a pre-built ActivityEvent and persists the activity to DB.
 // Called with p.mu held — copies activity data before enqueuing to sequencer.
 // The sequencer consumer goroutine performs the actual I/O (publish + persist)
 // outside the caller's critical section.
-func (p *ActivityProjector) publishEnvelope(ctx context.Context, env contract.Envelope, a *biz.Activity) {
+func (p *ActivityProjector) publishEvent(ctx context.Context, ev biz.ActivityEvent, a *biz.Activity) {
 	if p.sequencer == nil {
 		return
 	}
 	activityCopy := *a
 	if err := p.sequencer.publish(ctx, a.ID, publishTask{
-		env:      env,
+		event:    ev,
 		persist:  true,
 		activity: activityCopy,
 	}); err != nil {
@@ -1401,7 +1409,7 @@ func (p *ActivityProjector) publishEnvelope(ctx context.Context, env contract.En
 	}
 }
 
-// publishActivityDelta publishes an activity_delta envelope with a content patch.
+// publishActivityDelta publishes a streaming ActivityEvent with a content patch.
 // Called with p.mu held — enqueues to sequencer for ordered async publishing.
 // Unlike the previous sync implementation, this no longer blocks the event loop
 // on bus.Publish; backpressure is applied via the sequencer's channel buffer.
@@ -1409,22 +1417,19 @@ func (p *ActivityProjector) publishActivityDelta(ctx context.Context, a *biz.Act
 	p.publishActivityDeltaWithPersist(ctx, a, field, chunk, false)
 }
 
-// publishActivityDeltaWithPersist publishes an activity_delta envelope and,
+// publishActivityDeltaWithPersist publishes a streaming ActivityEvent and,
 // when persist is true, also persists the updated activity. Used for streaming
 // tool call deltas whose accumulated arguments must be saved.
 func (p *ActivityProjector) publishActivityDeltaWithPersist(ctx context.Context, a *biz.Activity, field, chunk string, persist bool) {
 	if p.sequencer == nil {
 		return
 	}
-	env := p.buildActivityEnvelope(a, contract.EnvelopeTypeActivityDelta)
-	if env.Metadata == nil {
-		env.Metadata = make(map[string]any)
-	}
-	env.Metadata["delta_field"] = field
-	env.Metadata["delta_chunk"] = chunk
+	ev := p.buildActivityEvent(a, biz.ActivityEventStreaming)
+	ev.DeltaField = field
+	ev.DeltaChunk = chunk
 	activityCopy := *a
 	if err := p.sequencer.publish(ctx, a.ID, publishTask{
-		env:      env,
+		event:    ev,
 		persist:  persist,
 		activity: activityCopy,
 	}); err != nil {
@@ -1435,104 +1440,30 @@ func (p *ActivityProjector) publishActivityDeltaWithPersist(ctx context.Context,
 	}
 }
 
-// buildActivityEnvelope creates an Envelope for an Activity event.
-func (p *ActivityProjector) buildActivityEnvelope(a *biz.Activity, envType contract.EnvelopeType) contract.Envelope {
-	env := contract.NewEnvelope(envType, a.AgentKey, a.SessionID)
-	env.TurnID = a.TurnID
-	env.TeamID = a.TeamID
-	env.Metadata = map[string]any{
-		"activity_id":        a.ID,
-		"kind":               string(a.Kind),
-		"status":             string(a.Status),
-		"parent_activity_id": a.ParentActivityID,
-		"timestamp":          a.Timestamp.UTC().Format(time.RFC3339Nano),
-		"duration_ms":        a.DurationMs,
-		"collapsed":          a.Collapsed,
-		// AF-correlation: 前端 useConversationTimeline 通过 turn_id 将 Activity 记录关联到
-		// UserTurn；handleActivityStart 从 metadata 读取 turn_id/session_id。缺失会导致
-		// Activity 记录被 if (!tid) continue 跳过，思考和回复 UI 不显示。
-		"turn_id":    a.TurnID,
-		"session_id": a.SessionID,
-		// Global emission sequence so the frontend can order events even when
-		// the per-activity sequencer publishes different activities concurrently.
-		// The sequence is assigned on the activity's first envelope and reused
-		// for subsequent deltas/dones so the activity's timeline position is
-		// determined by its creation order, not by the last event envelope.
-		"_seq": p.activitySeq(a),
+// buildActivityEvent creates an ActivityEvent for an Activity lifecycle event.
+// The Activity snapshot is included directly — no metadata packing needed,
+// simplifying the frontend contract compared to the legacy Envelope format.
+func (p *ActivityProjector) buildActivityEvent(a *biz.Activity, eventType biz.ActivityEventType) biz.ActivityEvent {
+	// Assign the global emission sequence on first event for this activity.
+	// This lets the frontend order events even when the per-activity sequencer
+	// publishes different activities concurrently.
+	p.activitySeq(a)
+
+	// Build a redacted copy for the event payload. The redaction limit
+	// (512 bytes) matches biz.redactActivityJSON and the frontend
+	// ACTIVITY_JSON_PREVIEW_LIMIT, ensuring consistency.
+	snapshot := *a
+	if snapshot.ToolArguments != "" {
+		snapshot.ToolArguments = biz.RedactActivityJSON(snapshot.ToolArguments)
+	}
+	if snapshot.ToolResult != "" {
+		snapshot.ToolResult = biz.RedactActivityJSON(snapshot.ToolResult)
 	}
 
-	// Content fields
-	if a.Content != "" {
-		env.Metadata["content"] = a.Content
+	return biz.ActivityEvent{
+		Event:    eventType,
+		Activity: snapshot,
 	}
-	if a.Reasoning != "" {
-		env.Metadata["reasoning"] = a.Reasoning
-	}
-
-	// Tool fields — include redacted arguments/result so the frontend message
-	// list can render tool call messages without a separate API round-trip.
-	// The redaction limit (512 bytes) matches biz.redactActivityJSON and the
-	// frontend ACTIVITY_JSON_PREVIEW_LIMIT, ensuring consistency.
-	if a.ToolName != "" {
-		env.Metadata["tool_name"] = a.ToolName
-	}
-	if a.ToolCategory != "" {
-		env.Metadata["tool_category"] = string(a.ToolCategory)
-	}
-	if a.ToolCallID != "" {
-		env.Metadata["tool_call_id"] = a.ToolCallID
-	}
-	if a.ToolArguments != "" {
-		env.Metadata["tool_arguments"] = biz.RedactActivityJSON(a.ToolArguments)
-	}
-	if a.ToolResult != "" {
-		env.Metadata["tool_result"] = biz.RedactActivityJSON(a.ToolResult)
-	}
-	if a.ToolDurationMs > 0 {
-		env.Metadata["tool_duration_ms"] = a.ToolDurationMs
-	}
-	if a.ToolErrorCode != "" {
-		env.Metadata["tool_error_code"] = a.ToolErrorCode
-	}
-
-	// Sub-task board
-	if a.ChildBoardID != "" {
-		env.Metadata["child_board_id"] = a.ChildBoardID
-	}
-
-	// Stage (kind=session/team_stage/graph_stage)
-	if a.Stage != "" {
-		env.Metadata["stage"] = a.Stage
-	}
-
-	// Spirit extension
-	if a.SpiritSessionID != "" {
-		env.Metadata["spirit_session_id"] = a.SpiritSessionID
-	}
-	if a.DagNodeID != "" {
-		env.Metadata["dag_node_id"] = a.DagNodeID
-	}
-	if len(a.DependsOn) > 0 {
-		env.Metadata["depends_on"] = a.DependsOn
-	}
-
-	// Agent info
-	if a.AgentKey != "" {
-		env.Metadata["agent_key"] = a.AgentKey
-	}
-	if a.AgentName != "" {
-		env.Metadata["agent_name"] = a.AgentName
-	}
-	if a.Label != "" {
-		env.Metadata["label"] = a.Label
-	}
-
-	// Meta fields (for notice/confirm/plan kinds)
-	if a.Meta != nil {
-		env.Metadata["meta"] = a.Meta
-	}
-
-	return env
 }
 
 // findActivityByKindAuthor finds an activity by kind and agent key (O(1) via kindAuthorMap).

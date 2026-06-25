@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
@@ -16,11 +14,11 @@ import (
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
-// syncCaptureBus is an event.Bus that captures envelopes with
+// syncCaptureBus is a biz.ActivityEventBus that captures events with
 // channel-based signaling for testing async publishers (safego.Go).
 type syncCaptureBus struct {
 	mu        sync.Mutex
-	published []event.Envelope
+	published []biz.ActivityEvent
 	notify    chan struct{} // signaled on each Publish
 }
 
@@ -28,9 +26,9 @@ func newSyncCaptureBus() *syncCaptureBus {
 	return &syncCaptureBus{notify: make(chan struct{}, 64)}
 }
 
-func (b *syncCaptureBus) Publish(_ context.Context, env event.Envelope) {
+func (b *syncCaptureBus) Publish(_ context.Context, ev biz.ActivityEvent) {
 	b.mu.Lock()
-	b.published = append(b.published, env)
+	b.published = append(b.published, ev)
 	b.mu.Unlock()
 	// Non-blocking signal
 	select {
@@ -39,15 +37,15 @@ func (b *syncCaptureBus) Publish(_ context.Context, env event.Envelope) {
 	}
 }
 
-func (b *syncCaptureBus) Subscribe(_ contract.SubscribeOptions) (<-chan event.Envelope, func()) {
+func (b *syncCaptureBus) Subscribe(_ biz.ActivityEventSubscribeOptions) (<-chan biz.ActivityEvent, func()) {
 	return nil, func() {}
 }
 
 func (b *syncCaptureBus) DropCount() uint64 { return 0 }
 
-// waitForPublished waits until at least n envelopes have been published,
+// waitForPublished waits until at least n events have been published,
 // then returns them. Times out after 2 seconds.
-func (b *syncCaptureBus) waitForPublished(t *testing.T, n int) []event.Envelope {
+func (b *syncCaptureBus) waitForPublished(t *testing.T, n int) []biz.ActivityEvent {
 	t.Helper()
 	timeout := time.After(2 * time.Second)
 	for {
@@ -56,7 +54,7 @@ func (b *syncCaptureBus) waitForPublished(t *testing.T, n int) []event.Envelope 
 		b.mu.Unlock()
 		if count >= n {
 			b.mu.Lock()
-			result := make([]event.Envelope, len(b.published))
+			result := make([]biz.ActivityEvent, len(b.published))
 			copy(result, b.published)
 			b.mu.Unlock()
 			return result
@@ -67,13 +65,13 @@ func (b *syncCaptureBus) waitForPublished(t *testing.T, n int) []event.Envelope 
 			b.mu.Lock()
 			got := len(b.published)
 			b.mu.Unlock()
-			t.Fatalf("timed out waiting for %d published envelopes (got %d)", n, got)
+			t.Fatalf("timed out waiting for %d published events (got %d)", n, got)
 			return nil
 		}
 	}
 }
 
-// reset clears captured envelopes.
+// reset clears captured events.
 func (b *syncCaptureBus) reset() {
 	b.mu.Lock()
 	b.published = nil
@@ -150,13 +148,13 @@ func TestOnNotice_createsActivityWithKindNotice(t *testing.T) {
 		t.Errorf("meta.noticeType=%q want %q", nt, "info")
 	}
 
-	// Expect 2 envelopes: activity_start (pending) + activity_done (completed)
+	// Expect 2 events: created (pending) + completed (completed)
 	envs := bus.waitForPublished(t, 2)
-	if envs[0].Type != contract.EnvelopeTypeActivityStart {
-		t.Errorf("first envelope type=%q want activity_start", envs[0].Type)
+	if envs[0].Event != biz.ActivityEventCreated {
+		t.Errorf("first event type=%q want created", envs[0].Event)
 	}
-	if envs[1].Type != contract.EnvelopeTypeActivityDone {
-		t.Errorf("second envelope type=%q want activity_done", envs[1].Type)
+	if envs[1].Event != biz.ActivityEventCompleted {
+		t.Errorf("second event type=%q want completed", envs[1].Event)
 	}
 }
 
@@ -191,8 +189,8 @@ func TestOnConfirmRequest_createsActivityWithKindConfirm(t *testing.T) {
 	}
 
 	envs := bus.waitForPublished(t, 1)
-	if envs[0].Type != contract.EnvelopeTypeActivityStart {
-		t.Errorf("envelope type=%q want activity_start", envs[0].Type)
+	if envs[0].Event != biz.ActivityEventCreated {
+		t.Errorf("event type=%q want created", envs[0].Event)
 	}
 }
 
@@ -246,7 +244,7 @@ func TestOnConfirmResult_completedWhenApproved(t *testing.T) {
 	params := ConfirmRequestParams{ToolName: "rm", Content: "OK?"}
 	act, _ := p.OnConfirmRequest(context.Background(), "turn-1", "sess-1", params)
 
-	// Wait for the confirm request envelope, then reset
+	// Wait for the confirm request event, then reset
 	bus.waitForPublished(t, 1)
 	bus.reset()
 
@@ -259,8 +257,8 @@ func TestOnConfirmResult_completedWhenApproved(t *testing.T) {
 	}
 
 	envs := bus.waitForPublished(t, 1)
-	if envs[0].Type != contract.EnvelopeTypeActivityDone {
-		t.Errorf("envelope type=%q want activity_done", envs[0].Type)
+	if envs[0].Event != biz.ActivityEventCompleted {
+		t.Errorf("event type=%q want completed", envs[0].Event)
 	}
 }
 
@@ -270,7 +268,7 @@ func TestOnConfirmResult_cancelledWhenNotApproved(t *testing.T) {
 	params := ConfirmRequestParams{ToolName: "rm", Content: "OK?"}
 	act, _ := p.OnConfirmRequest(context.Background(), "turn-1", "sess-1", params)
 
-	// Wait for the confirm request envelope, then reset
+	// Wait for the confirm request event, then reset
 	bus.waitForPublished(t, 1)
 	bus.reset()
 
@@ -283,8 +281,8 @@ func TestOnConfirmResult_cancelledWhenNotApproved(t *testing.T) {
 	}
 
 	envs := bus.waitForPublished(t, 1)
-	if envs[0].Type != contract.EnvelopeTypeActivityDone {
-		t.Errorf("envelope type=%q want activity_done", envs[0].Type)
+	if envs[0].Event != biz.ActivityEventCompleted {
+		t.Errorf("event type=%q want completed", envs[0].Event)
 	}
 }
 
@@ -332,8 +330,8 @@ func TestOnPlanStart_createsActivityWithKindPlan(t *testing.T) {
 	}
 
 	envs := bus.waitForPublished(t, 1)
-	if envs[0].Type != contract.EnvelopeTypeActivityStart {
-		t.Errorf("envelope type=%q want activity_start", envs[0].Type)
+	if envs[0].Event != biz.ActivityEventCreated {
+		t.Errorf("event type=%q want created", envs[0].Event)
 	}
 }
 
@@ -519,12 +517,12 @@ func TestOnPlanStepUpdate_planPartialFailureWhenAllDoneButSomeFailed(t *testing.
 // meta.member_id, so the frontend can distinguish member replies from the
 // coordinator's reply.
 //
-// Note: On first delta, OnMemberMessageDelta publishes two envelopes:
-//   - activity_start (async via safego.Go in publishAndPersist)
-//   - activity_delta (sync via publishActivityDelta)
+// Note: On first delta, OnMemberMessageDelta publishes two events:
+//   - created (async via safego.Go in publishAndPersist)
+//   - streaming (sync via publishActivityDelta)
 //
-// Because the start envelope is async and the delta is sync, arrival order is
-// not guaranteed. We wait for both and locate the activity_start envelope.
+// Because the created event is async and the streaming is sync, arrival order is
+// not guaranteed. We wait for both and locate the created event.
 func TestOnMemberMessageDelta_createsReplyActivityWithMemberID(t *testing.T) {
 	p, bus, _ := newTestProjector(t)
 	p.Configure(ProjectMeta{
@@ -538,23 +536,23 @@ func TestOnMemberMessageDelta_createsReplyActivityWithMemberID(t *testing.T) {
 
 	p.OnMemberMessageDelta(context.Background(), "worker-a", "Hello ")
 
-	// Expect 2 envelopes: activity_start + activity_delta (order not guaranteed)
+	// Expect 2 events: created + streaming (order not guaranteed)
 	envs := bus.waitForPublished(t, 2)
-	var startEnv *event.Envelope
+	var startEnv *biz.ActivityEvent
 	for i := range envs {
-		if envs[i].Type == contract.EnvelopeTypeActivityStart {
+		if envs[i].Event == biz.ActivityEventCreated {
 			startEnv = &envs[i]
 			break
 		}
 	}
 	if startEnv == nil {
-		t.Fatalf("no activity_start envelope found among %d envelopes", len(envs))
+		t.Fatalf("no created event found among %d events", len(envs))
 	}
-	kind, _ := startEnv.Metadata["kind"].(string)
+	kind := string(startEnv.Activity.Kind)
 	if kind != string(biz.ActivityKindReply) {
 		t.Errorf("metadata kind=%q want %q", kind, biz.ActivityKindReply)
 	}
-	meta, _ := startEnv.Metadata["meta"].(map[string]any)
+	meta := startEnv.Activity.Meta
 	if meta == nil {
 		t.Fatal("metadata meta is nil, expected member_id tag")
 	}
@@ -562,8 +560,8 @@ func TestOnMemberMessageDelta_createsReplyActivityWithMemberID(t *testing.T) {
 	if memberID != "worker-a" {
 		t.Errorf("meta.member_id=%q want %q", memberID, "worker-a")
 	}
-	if startEnv.TeamID != "team-1" {
-		t.Errorf("envelope TeamID=%q want %q (should inherit from ProjectMeta)", startEnv.TeamID, "team-1")
+	if startEnv.Activity.TeamID != "team-1" {
+		t.Errorf("event TeamID=%q want %q (should inherit from ProjectMeta)", startEnv.Activity.TeamID, "team-1")
 	}
 }
 
@@ -579,24 +577,24 @@ func TestOnMemberMessageDelta_appendsDeltaToExistingActivity(t *testing.T) {
 	}, nil)
 
 	p.OnMemberMessageDelta(context.Background(), "worker-a", "Hello ")
-	// First Delta publishes 2 envelopes: activity_start (async via safego.Go)
-	// and activity_delta (sync). Wait for both to drain before resetting,
-	// otherwise the lingering activity_start may race with the next call's
+	// First Delta publishes 2 events: created (async via safego.Go)
+	// and streaming (sync). Wait for both to drain before resetting,
+	// otherwise the lingering created event may race with the next call's
 	// async publish and be mis-attributed.
 	bus.waitForPublished(t, 2)
 	bus.reset()
 
 	p.OnMemberMessageDelta(context.Background(), "worker-a", "world")
 
-	// Expect 1 envelope: activity_delta (no new activity_start)
+	// Expect 1 event: streaming (no new created event)
 	envs := bus.waitForPublished(t, 1)
-	if envs[0].Type != contract.EnvelopeTypeActivityDelta {
-		t.Errorf("envelope type=%q want activity_delta", envs[0].Type)
+	if envs[0].Event != biz.ActivityEventStreaming {
+		t.Errorf("event type=%q want streaming", envs[0].Event)
 	}
 }
 
 // TestOnMemberMessageDone_finalizesReplyActivity verifies that Done marks the
-// reply Activity as completed and publishes activity_done.
+// reply Activity as completed and publishes completed event.
 func TestOnMemberMessageDone_finalizesReplyActivity(t *testing.T) {
 	p, bus, _ := newTestProjector(t)
 	p.Configure(ProjectMeta{
@@ -607,24 +605,24 @@ func TestOnMemberMessageDone_finalizesReplyActivity(t *testing.T) {
 	}, nil)
 
 	p.OnMemberMessageDelta(context.Background(), "worker-a", "Hello ")
-	// First Delta publishes 2 envelopes: activity_start (async via safego.Go)
-	// and activity_delta (sync). Wait for both to drain before resetting,
-	// otherwise the lingering activity_start may race with Done's async
-	// publish and be mis-attributed as the Done envelope.
+	// First Delta publishes 2 events: created (async via safego.Go)
+	// and streaming (sync). Wait for both to drain before resetting,
+	// otherwise the lingering created event may race with Done's async
+	// publish and be mis-attributed as the Done event.
 	bus.waitForPublished(t, 2)
 	bus.reset()
 
 	p.OnMemberMessageDone(context.Background(), "worker-a", "Hello world")
 
 	envs := bus.waitForPublished(t, 1)
-	if envs[0].Type != contract.EnvelopeTypeActivityDone {
-		t.Errorf("envelope type=%q want activity_done", envs[0].Type)
+	if envs[0].Event != biz.ActivityEventCompleted {
+		t.Errorf("event type=%q want completed", envs[0].Event)
 	}
-	status, _ := envs[0].Metadata["status"].(string)
+	status := string(envs[0].Activity.Status)
 	if status != string(biz.ActivityStatusCompleted) {
 		t.Errorf("status=%q want %q", status, biz.ActivityStatusCompleted)
 	}
-	content, _ := envs[0].Metadata["content"].(string)
+	content := envs[0].Activity.Content
 	if content != "Hello world" {
 		t.Errorf("content=%q want %q", content, "Hello world")
 	}
@@ -643,9 +641,9 @@ func TestOnMemberMessageDone_noopWhenNoActivity(t *testing.T) {
 
 	p.OnMemberMessageDone(context.Background(), "worker-a", "orphan text")
 
-	// No envelopes should be published
+	// No events should be published
 	if envs := bus.waitForPublished(t, 0); len(envs) != 0 {
-		t.Errorf("expected 0 envelopes, got %d", len(envs))
+		t.Errorf("expected 0 events, got %d", len(envs))
 	}
 }
 
@@ -653,7 +651,7 @@ func TestOnMemberMessageDone_noopWhenNoActivity(t *testing.T) {
 // detects team member authors and routes text to OnMemberMessage* instead of
 // OnTextDelta/OnTextDone, so the resulting Activity carries meta.member_id.
 //
-// Note: First delta publishes activity_start (async) + activity_delta (sync).
+// Note: First delta publishes created (async) + streaming (sync).
 // Arrival order is not guaranteed, so we wait for both and locate the start.
 func TestProcessEvent_routesTeamMemberToMemberMessage(t *testing.T) {
 	p, bus, _ := newTestProjector(t)
@@ -679,23 +677,23 @@ func TestProcessEvent_routesTeamMemberToMemberMessage(t *testing.T) {
 
 	p.ProcessEvent(context.Background(), ev)
 
-	// Expect 2 envelopes: activity_start + activity_delta (order not guaranteed)
+	// Expect 2 events: created + streaming (order not guaranteed)
 	envs := bus.waitForPublished(t, 2)
-	var startEnv *event.Envelope
+	var startEnv *biz.ActivityEvent
 	for i := range envs {
-		if envs[i].Type == contract.EnvelopeTypeActivityStart {
+		if envs[i].Event == biz.ActivityEventCreated {
 			startEnv = &envs[i]
 			break
 		}
 	}
 	if startEnv == nil {
-		t.Fatalf("no activity_start envelope found among %d envelopes", len(envs))
+		t.Fatalf("no created event found among %d events", len(envs))
 	}
-	kind, _ := startEnv.Metadata["kind"].(string)
+	kind := string(startEnv.Activity.Kind)
 	if kind != string(biz.ActivityKindReply) {
 		t.Errorf("metadata kind=%q want %q", kind, biz.ActivityKindReply)
 	}
-	meta, _ := startEnv.Metadata["meta"].(map[string]any)
+	meta := startEnv.Activity.Meta
 	if meta == nil {
 		t.Fatal("metadata meta is nil, expected member_id tag")
 	}
@@ -708,7 +706,7 @@ func TestProcessEvent_routesTeamMemberToMemberMessage(t *testing.T) {
 // TestProcessEvent_routesCoordinatorToOnTextDelta verifies that non-team-member
 // authors still go through the regular OnTextDelta path (no meta.member_id).
 //
-// Note: First delta publishes activity_start (async) + activity_delta (sync).
+// Note: First delta publishes created (async) + streaming (sync).
 // Arrival order is not guaranteed, so we wait for both and locate the start.
 func TestProcessEvent_routesCoordinatorToOnTextDelta(t *testing.T) {
 	p, bus, _ := newTestProjector(t)
@@ -734,24 +732,24 @@ func TestProcessEvent_routesCoordinatorToOnTextDelta(t *testing.T) {
 
 	p.ProcessEvent(context.Background(), ev)
 
-	// Expect 2 envelopes: activity_start + activity_delta (order not guaranteed)
+	// Expect 2 events: created + streaming (order not guaranteed)
 	envs := bus.waitForPublished(t, 2)
-	var startEnv *event.Envelope
+	var startEnv *biz.ActivityEvent
 	for i := range envs {
-		if envs[i].Type == contract.EnvelopeTypeActivityStart {
+		if envs[i].Event == biz.ActivityEventCreated {
 			startEnv = &envs[i]
 			break
 		}
 	}
 	if startEnv == nil {
-		t.Fatalf("no activity_start envelope found among %d envelopes", len(envs))
+		t.Fatalf("no created event found among %d events", len(envs))
 	}
-	kind, _ := startEnv.Metadata["kind"].(string)
+	kind := string(startEnv.Activity.Kind)
 	if kind != string(biz.ActivityKindReply) {
 		t.Errorf("metadata kind=%q want %q", kind, biz.ActivityKindReply)
 	}
 	// Coordinator reply should NOT have meta.member_id
-	meta, _ := startEnv.Metadata["meta"].(map[string]any)
+	meta := startEnv.Activity.Meta
 	if meta != nil {
 		if _, ok := meta["member_id"]; ok {
 			t.Errorf("coordinator reply should not have meta.member_id, got %v", meta["member_id"])
@@ -782,15 +780,15 @@ func TestProcessEvent_reasoningBeforeTextInSameChunk(t *testing.T) {
 	}
 	p.ProcessEvent(context.Background(), ev)
 
-	// First delta for reasoning emits activity_start + activity_delta;
-	// first delta for text emits activity_start + activity_delta.
+	// First delta for reasoning emits created + streaming;
+	// first delta for text emits created + streaming.
 	envs := bus.waitForPublished(t, 4)
-	var thinkingStart, replyStart *event.Envelope
+	var thinkingStart, replyStart *biz.ActivityEvent
 	for i := range envs {
-		if envs[i].Type != contract.EnvelopeTypeActivityStart {
+		if envs[i].Event != biz.ActivityEventCreated {
 			continue
 		}
-		kind, _ := envs[i].Metadata["kind"].(string)
+		kind := string(envs[i].Activity.Kind)
 		if kind == string(biz.ActivityKindThinking) {
 			thinkingStart = &envs[i]
 		} else if kind == string(biz.ActivityKindReply) {
@@ -798,15 +796,15 @@ func TestProcessEvent_reasoningBeforeTextInSameChunk(t *testing.T) {
 		}
 	}
 	if thinkingStart == nil {
-		t.Fatalf("no thinking activity_start envelope found")
+		t.Fatalf("no thinking created event found")
 	}
 	if replyStart == nil {
-		t.Fatalf("no reply activity_start envelope found")
+		t.Fatalf("no reply created event found")
 	}
 
 	// ProcessEvent handles reasoning before text, so the thinking activity must
 	// be created before the reply activity in memory. The per-activity sequencer
-	// publishes envelopes for different activities concurrently, so bus order is
+	// publishes events for different activities concurrently, so bus order is
 	// not deterministic; verify the in-memory creation order instead.
 	p.mu.Lock()
 	var thinkingCreated, replyCreated time.Time

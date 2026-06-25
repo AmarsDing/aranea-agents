@@ -38,6 +38,7 @@ import (
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/debug"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/activityevent"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/graph"
 	graphadapter "aranea-agents/internal/graph/adapter"
@@ -642,10 +643,6 @@ func provideModelRegistryUsecase(sys biz.SystemSettingRepo, backend modelregistr
 	return uc
 }
 
-func provideEventService(store *biz.EventStoreUsecase, sessions *biz.SessionUsecase) *service.EventService {
-	return service.NewEventService(store, sessions)
-}
-
 func provideRuntimeTooling(
 	pluginRT *plugintrpc.Runtime,
 	pluginMgr *plugintrpc.Manager,
@@ -731,6 +728,7 @@ func provideRunnerConfig(
 	sessions biz.SessionTurnExtrasPort,
 	activityWriter biz.ActivityWriter,
 	eventBus event.Bus,
+	activityBus biz.ActivityEventBus,
 	orgUC *biz.OrganizationUsecase,
 	toolResultGate *biz.ToolResultGate,
 	outboundRouter *outbound.Router,
@@ -752,7 +750,7 @@ func provideRunnerConfig(
 		Runs:             runs,
 		StreamOptsFactory: &chatactivity.StreamOptsFactoryAdapter{
 			Tools: tools, Agents: agents, Sessions: sessions,
-			ActivityWriter: activityWriter, EventBus: eventBus, Logger: lg,
+			ActivityWriter: activityWriter, ActivityBus: activityBus, Logger: lg,
 		},
 		AgentHelper:     &chatagent.TeamAgentHelperAdapter{},
 		OrganizationUC:  orgUC,
@@ -813,6 +811,7 @@ func provideTeamTurnDeps(
 	compress biz.NativeTurnCompressor,
 	eventBus event.Bus,
 	eventBuffer *event.Buffer,
+	activityBus biz.ActivityEventBus,
 	lg loggateway.Logger,
 ) rt.TurnDeps {
 	// LLMHTTP timeout is sourced from TimeoutPolicy.
@@ -822,7 +821,7 @@ func provideTeamTurnDeps(
 	return rt.TurnDeps{
 		ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
 		Persist:   persist,
-		Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer},
+		Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer, ActivityBus: activityBus},
 		LLMHTTP:   &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
 		Sessions:  sessions,
 		Compress:  compress,
@@ -868,6 +867,7 @@ func provideChatServiceDeps(
 	compress biz.NativeTurnCompressor,
 	eventBus event.Bus,
 	eventBuffer *event.Buffer,
+	activityBus biz.ActivityEventBus,
 	rtDeps service.RuntimeTooling,
 	teamDeps service.TeamOrchestrationDeps,
 	chJobs service.ChannelTurnJobDeps,
@@ -911,7 +911,7 @@ func provideChatServiceDeps(
 			TurnDeps: rt.TurnDeps{
 				ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
 				Persist:   persist,
-				Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer},
+				Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer, ActivityBus: activityBus},
 				LLMHTTP:   &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
 				Sessions:  sessions,
 				SessionRT: sessionRT,
@@ -1062,42 +1062,6 @@ func providePrimaryRawDB(d *data.Data) *sql.DB {
 		return nil
 	}
 	return d.RWDB().WriteHandle()
-}
-
-// provideEventWAL creates an EventWAL with the Postgres DB handle.
-// Postgres is the only WAL storage backend after A6 (SQLite removed).
-// This provider is needed because Wire cannot disambiguate two *sql.DB args by type.
-func provideEventWAL(d *data.Data, lg loggateway.Logger) *event.EventWAL {
-	if d == nil {
-		return nil
-	}
-	pgDB := d.Postgres()
-	return event.ProvideEventWAL(pgDB, lg)
-}
-
-// providePostgresEventStore creates a Postgres-backed EventStore for cross-process
-// event replay (WS reconnect). Returns nil when Postgres is not configured, allowing
-// the system to degrade gracefully to in-process event delivery only.
-// The store is injected into event.Infra (for WS replay fallback) and
-// EventBusConsumer (for dual-write on publish) in startReadinessDependentServices.
-func providePostgresEventStore(d *data.Data, lg loggateway.Logger) *event.PostgresEventStore {
-	if d == nil {
-		return nil
-	}
-	pgDB := d.Postgres()
-	if pgDB == nil {
-		return nil
-	}
-	store, err := event.NewPostgresEventStore(pgDB, lg)
-	if err != nil {
-		if lg != nil {
-			lg.Warn("event_store: failed to create Postgres store, cross-process replay disabled",
-				loggateway.Err(err),
-			)
-		}
-		return nil
-	}
-	return store
 }
 
 func provideTRPCSessionService(d *data.Data, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) trpcsession.Service {
@@ -1608,20 +1572,6 @@ func provideMemoryDeadLetterReplayer(repo biz.MemoryDeadLetterAdminRepo, queue m
 	return jobs.NewMemoryDeadLetterReplayer(0, repo, enqueue, lg)
 }
 
-func provideEventStoreCleanup(store *biz.EventStoreUsecase, lg loggateway.Logger) *jobs.EventStoreCleanup {
-	if jobs.EventStoreCleanupDisabled() {
-		return nil
-	}
-	return jobs.NewEventStoreCleanup(0, store, lg)
-}
-
-func provideEventWALCleanup(wal *event.EventWAL, lg loggateway.Logger) *jobs.EventWALCleanup {
-	if jobs.EventWALCleanupDisabled() || wal == nil {
-		return nil
-	}
-	return jobs.NewEventWALCleanup(0, 0, wal, lg)
-}
-
 func provideToolAuditCleanup(tools *biz.ToolUsecase, lg loggateway.Logger) *jobs.ToolAuditCleanup {
 	if jobs.ToolAuditCleanupDisabled() {
 		return nil
@@ -1939,8 +1889,6 @@ type wireOut struct {
 	BackgroundJobWorker         *service.BackgroundJobWorker
 	ChannelRuntime              *service.ChannelRuntime
 	PluginRuntime               *plugintrpc.Runtime
-	EventStoreCleanup           *jobs.EventStoreCleanup
-	EventWALCleanup             *jobs.EventWALCleanup
 	ToolAuditCleanup            *jobs.ToolAuditCleanup
 	FlowLogCleanup              *jobs.FlowLogCleanup
 	MonitorAlertCooldownCleanup *jobs.MonitorAlertCooldownCleanup
@@ -1991,8 +1939,6 @@ func provideWireOut(
 	backgroundJobWorker *service.BackgroundJobWorker,
 	channelRuntime *service.ChannelRuntime,
 	pluginRuntime *plugintrpc.Runtime,
-	eventStoreCleanup *jobs.EventStoreCleanup,
-	eventWALCleanup *jobs.EventWALCleanup,
 	toolAuditCleanup *jobs.ToolAuditCleanup,
 	flowLogCleanup *jobs.FlowLogCleanup,
 	monitorAlertCooldown *jobs.MonitorAlertCooldownCleanup,
@@ -2036,9 +1982,8 @@ func provideWireOut(
 		BackgroundJobWorker:     backgroundJobWorker,
 		ChannelRuntime:          channelRuntime,
 		PluginRuntime:           pluginRuntime,
-		EventStoreCleanup:       eventStoreCleanup, ToolAuditCleanup: toolAuditCleanup,
-		EventWALCleanup: eventWALCleanup,
-		FlowLogCleanup:  flowLogCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
+		ToolAuditCleanup:        toolAuditCleanup,
+		FlowLogCleanup:          flowLogCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
 		MemoryEbbinghausDecay:     memoryEbbinghausDecay,
 		MemorySleepTime:           memorySleepTime,
 		MemoryEpisodeBackfill:     memoryEpisodeBackfill,
@@ -2322,6 +2267,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		event.ProviderSet,
 		araneasession.ProviderSet,
 		service.ProviderSet,
+		activityevent.New,
+		wire.Bind(new(biz.ActivityEventBus), new(*activityevent.Bus)),
 		data.NewPackRepoAdapter,
 		wire.Bind(new(service.PackExporterImporterValidator), new(*data.PackRepoAdapter)),
 		provideEventBusSideConsumers,
@@ -2376,8 +2323,6 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideArtifactRuntimeService,
 		provideArtifactSigner,
 		provideMemoryService,
-		provideEventWAL,
-		providePostgresEventStore,
 		provideTRPCSessionService,
 		provideGraphCheckpointSaver,
 		wire.Bind(new(trpcgraph.CheckpointSaver), new(*graphtrpc.CheckpointSaver)),
@@ -2415,8 +2360,6 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideChannelRuntime,
 		provideOutboundRouter,
 		provideSubAgentService,
-		provideEventStoreCleanup,
-		provideEventWALCleanup,
 		provideMemoryL2DecayWorker,
 		provideMemoryAdminUsecase,
 		providePathBExtractor,
@@ -2476,7 +2419,6 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideA2APublicBaseReloader,
 		provideA2ALimiter,
 		provideA2AService,
-		provideEventService,
 		provideTaskPlanner,
 		provideAgentAllocator,
 		provideAgentFactory,
@@ -2493,8 +2435,10 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		wire.Bind(new(biz.UsageQuotaRepo), new(biz.UsageRepo)),
 		wire.Bind(new(biz.ToolRegistryReader), new(biz.ToolRepo)),
 		wire.Bind(new(araneasession.AgentKeyLookup), new(biz.AgentRepository)),
-		wire.Bind(new(araneasession.CompressReadDeps), new(biz.SessionRepo)),
-		wire.Bind(new(araneasession.CompressWriteDeps), new(biz.SessionRepo)),
+		// Phase 1c-3: CompressReadDeps/CompressWriteDeps now provided by
+		// ProvideCompressReadDepsAdapter / ProvideCompressWriteDepsAdapter
+		// (in internal/session) because SessionRepo no longer implements
+		// MessageReader/MessageWriter (messages table removed).
 		wire.Bind(new(araneasession.CompressTxDeps), new(biz.SessionRepo)),
 		wire.Bind(new(server.ReadinessProbe), new(*data.Data)),
 		wire.Bind(new(biz.TaskGraphResolver), new(*biz.GraphUsecase)),

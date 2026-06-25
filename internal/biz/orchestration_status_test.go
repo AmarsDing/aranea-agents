@@ -13,60 +13,6 @@ func testRegistry() OrchestrationRegistry {
 	})
 }
 
-func TestOrchestrationStatusStore_MemberFlow(t *testing.T) {
-	reg := testRegistry()
-	store := NewOrchestrationStatusStore(reg)
-
-	start := contract.NewEnvelope(contract.EnvelopeTypeMemberMessageStart, "worker-a", "sess-1")
-	start.ToolCall = &contract.EnvelopeToolCall{AgentKey: "worker-a", AgentID: "a1"}
-	changed := store.ApplyEnvelope(start, reg)
-	if len(changed) != 1 || changed[0].Status != AgentNodeStatusThinking {
-		t.Fatalf("start: got %+v", changed)
-	}
-
-	tool := contract.NewEnvelope(contract.EnvelopeTypeToolCall, "worker-a", "sess-1")
-	tool.ToolCall = &contract.EnvelopeToolCall{
-		AgentKey: "worker-a",
-		Name:     "read_file",
-		Status:   "running",
-	}
-	changed = store.ApplyEnvelope(tool, reg)
-	if len(changed) != 1 || changed[0].Status != AgentNodeStatusToolRunning {
-		t.Fatalf("tool: got %+v", changed)
-	}
-
-	done := contract.NewEnvelope(contract.EnvelopeTypeMemberMessageDone, "worker-a", "sess-1")
-	done.ToolCall = &contract.EnvelopeToolCall{AgentKey: "worker-a"}
-	done.Content = &contract.EnvelopeContent{Text: "finished output"}
-	changed = store.ApplyEnvelope(done, reg)
-	if len(changed) != 1 {
-		t.Fatalf("done: expected change")
-	}
-	st := store.Nodes["member-1"]
-	if st.Status != AgentNodeStatusSuccess || st.Phase != WorkPhaseDelivered {
-		t.Fatalf("final: status=%s phase=%s", st.Status, st.Phase)
-	}
-	if st.OutputPreview != "finished output" {
-		t.Fatalf("output preview: %q", st.OutputPreview)
-	}
-}
-
-func TestOrchestrationStatusStore_TerminalNotOverwritten(t *testing.T) {
-	reg := testRegistry()
-	store := NewOrchestrationStatusStore(reg)
-
-	done := contract.NewEnvelope(contract.EnvelopeTypeMemberMessageDone, "worker-a", "sess-1")
-	done.ToolCall = &contract.EnvelopeToolCall{AgentKey: "worker-a"}
-	store.ApplyEnvelope(done, reg)
-
-	start := contract.NewEnvelope(contract.EnvelopeTypeMemberMessageStart, "worker-a", "sess-1")
-	start.ToolCall = &contract.EnvelopeToolCall{AgentKey: "worker-a"}
-	changed := store.ApplyEnvelope(start, reg)
-	if len(changed) != 0 {
-		t.Fatalf("terminal should not be overwritten by start")
-	}
-}
-
 func TestOrchestrationStatusStore_GraphTaskReviewRequired(t *testing.T) {
 	reg := NewOrchestrationRegistry([]OrchestrationNodeRegistryEntry{
 		{NodeID: "member-1", AgentID: "a1", AgentKey: "worker-a"},
@@ -113,21 +59,6 @@ func TestApplySkipNodeSemantics(t *testing.T) {
 	}
 	if len(out.StateFields) != 1 || out.StateFields[0].Name != SkippedNodesStateKey {
 		t.Fatalf("state=%+v", out.StateFields)
-	}
-}
-
-func TestOrchestrationStatusStore_Transfer(t *testing.T) {
-	reg := testRegistry()
-	store := NewOrchestrationStatusStore(reg)
-
-	tr := contract.NewEnvelope(contract.EnvelopeTypeTransfer, "team", "sess-1")
-	tr.Transfer = &contract.EnvelopeTransfer{FromAgent: "worker-a", ToAgent: "worker-b"}
-	changed := store.ApplyEnvelope(tr, reg)
-	if len(changed) < 1 {
-		t.Fatalf("transfer: expected changes, got %d", len(changed))
-	}
-	if store.Nodes["member-2"].Status != AgentNodeStatusRunning {
-		t.Fatalf("target status: %s", store.Nodes["member-2"].Status)
 	}
 }
 
@@ -217,50 +148,5 @@ func TestOrchestrationStatusStore_GraphTaskReviewRejected(t *testing.T) {
 	}
 }
 
-func TestActivityHistoryProjection(t *testing.T) {
-	reg := testRegistry()
-	store := NewOrchestrationStatusStore(reg)
-
-	start := contract.NewEnvelope(contract.EnvelopeTypeMemberMessageStart, "worker-a", "sess-1")
-	start.ToolCall = &contract.EnvelopeToolCall{AgentKey: "worker-a", AgentID: "a1"}
-	store.ApplyEnvelope(start, reg)
-
-	for i := 0; i < 10; i++ {
-		tool := contract.NewEnvelope(contract.EnvelopeTypeToolCall, "worker-a", "sess-1")
-		tool.ToolCall = &contract.EnvelopeToolCall{
-			AgentKey:     "worker-a",
-			Name:         "read_file",
-			DisplayLabel: "read_file",
-			Status:       "running",
-			StartedAt:    "2026-05-23T00:00:00Z",
-		}
-		store.ApplyEnvelope(tool, reg)
-
-		result := contract.NewEnvelope(contract.EnvelopeTypeToolResult, "worker-a", "sess-1")
-		result.ToolCall = &contract.EnvelopeToolCall{
-			AgentKey:   "worker-a",
-			Name:       "read_file",
-			Status:     "success",
-			FinishedAt: "2026-05-23T00:00:01Z",
-		}
-		store.ApplyEnvelope(result, reg)
-	}
-
-	st := store.Nodes["member-1"]
-	if st == nil {
-		t.Fatal("missing member-1 state")
-	}
-	if st.CurrentActivity == nil {
-		t.Fatal("expected current activity")
-	}
-	if st.CurrentActivity.Status != "success" {
-		t.Fatalf("current status=%q want success", st.CurrentActivity.Status)
-	}
-	if len(st.ActivityHistory) < 10 {
-		t.Fatalf("activity history len=%d want >= 10", len(st.ActivityHistory))
-	}
-	last := st.ActivityHistory[len(st.ActivityHistory)-1]
-	if last.FinishedAt == "" {
-		t.Fatal("last history entry should have finished_at")
-	}
-}
+// Phase 1c-5: TestActivityHistoryProjection removed — tested deleted
+// EnvelopeType MemberMessageStart/ToolCall/ToolResult behavior in ApplyEnvelope.

@@ -12,7 +12,6 @@ import { createAvatarServiceClient } from "./kratos/avatar/v1/index";
 import { createChannelServiceClient } from "./kratos/channel/v1/index";
 import { createCronServiceClient } from "./kratos/cron/v1/index";
 import { createEvaluationServiceClient } from "./kratos/evaluation/v1/index";
-import { createEventServiceClient } from "./kratos/event/v1/index";
 import { createHookServiceClient } from "./kratos/hook/v1/index";
 import { createKnowledgeServiceClient } from "./kratos/knowledge/v1/index";
 import { createLearningLoopServiceClient } from "./kratos/learning_loop/v1/index";
@@ -144,10 +143,6 @@ export function createLearningLoopService() {
 
 export function createEvaluationService() {
   return createEvaluationServiceClient(requestHandler);
-}
-
-export function createEventService() {
-  return createEventServiceClient(requestHandler);
 }
 
 export function createA2AService() {

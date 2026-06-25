@@ -10,6 +10,7 @@
 
 import { buildWsUrl } from '../config/runtime';
 import type { Envelope, WsDownstream, WsUpstream } from './envelope';
+import type { ActivityEvent } from './activityEvent';
 import { RevisionTracker, requestSyncReplay } from './event_replay';
 import {
   WS_MAX_RECONNECT_DELAY_MS,
@@ -47,6 +48,13 @@ export type WsTransportOptions = {
   token?: string;
   logEnabled?: boolean;
   onEnvelope?: (env: Envelope) => void;
+  /**
+   * Activity-First (AF): called when a downstream message carries an
+   * activity_event payload (business-semantic Activity lifecycle event).
+   * This replaces the legacy activity_start/delta/done/child_start envelopes
+   * for chat events.
+   */
+  onActivityEvent?: (ev: ActivityEvent) => void;
   onConnected?: (info: { sessionId: string; lastEventId?: string }) => void;
   onDisconnected?: () => void;
   onError?: (error: Event) => void;
@@ -166,6 +174,14 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
             revisionTracker.update(opts.sessionId, msg.envelope.session_revision);
           }
           opts.onEnvelope?.(msg.envelope);
+        }
+
+        // Activity-First (AF): dispatch business-semantic ActivityEvent.
+        // This replaces the legacy activity_start/delta/done/child_start
+        // envelopes for chat events. The activity_event carries a full
+        // Activity snapshot, eliminating the need for metadata packing.
+        if (msg.activity_event) {
+          opts.onActivityEvent?.(msg.activity_event);
         }
       } catch {
         // ignore parse errors

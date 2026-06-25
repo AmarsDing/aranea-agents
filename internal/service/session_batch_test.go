@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
@@ -14,7 +15,76 @@ import (
 
 type batchSessionRepo struct {
 	sessions map[string]biz.Session
+	messages []biz.ChatMessage
 }
+
+// ListBySession implements sessstatus.ActivityLister for batchSessionRepo.
+// Phase 1c-3: message reads go through ActivityMessageReader → ActivityLister,
+// not the messages table. Test repos convert stored ChatMessage fixtures to
+// ActivityEntry shape so the production code path works in tests.
+//
+// Filters by sessionID to match the production contract: ActivityLister must
+// only return activities belonging to the requested session.
+func (m *batchSessionRepo) ListBySession(_ context.Context, sessionID string) ([]sessstatus.ActivityEntry, error) {
+	if sessionID == "" {
+		return nil, nil
+	}
+	var filtered []biz.ChatMessage
+	for _, msg := range m.messages {
+		if msg.SessionID == sessionID {
+			filtered = append(filtered, msg)
+		}
+	}
+	return chatMessagesToActivityEntries(filtered), nil
+}
+
+// ListBySessionTurn ignores turnID — matches production behavior where
+// ActivityMessageReader.ListMessagesAfterTurn returns all messages (turn
+// filtering is handled at the Activity layer).
+func (m *batchSessionRepo) ListBySessionTurn(ctx context.Context, sessionID, _ string) ([]sessstatus.ActivityEntry, error) {
+	return m.ListBySession(ctx, sessionID)
+}
+
+// chatMessagesToActivityEntries converts ChatMessage fixtures to ActivityEntry
+// shape for test repos implementing ActivityLister.
+func chatMessagesToActivityEntries(msgs []biz.ChatMessage) []sessstatus.ActivityEntry {
+	acts := make([]sessstatus.ActivityEntry, 0, len(msgs))
+	for _, m := range msgs {
+		var kind string
+		switch m.Role {
+		case "user":
+			kind = "task"
+		case "assistant":
+			kind = "reply"
+		case "tool":
+			kind = "action"
+		case "system":
+			kind = "notice"
+		default:
+			kind = "task"
+		}
+		a := sessstatus.ActivityEntry{
+			ID:        m.ID,
+			Kind:      kind,
+			SessionID: m.SessionID,
+			TurnID:    m.TurnID,
+			Content:   m.ContentMarkdown,
+		}
+		if kind == "action" {
+			a.ToolResult = m.ContentMarkdown
+		}
+		if m.CreatedAt != "" {
+			if t, err := time.Parse(time.RFC3339Nano, m.CreatedAt); err == nil {
+				a.Timestamp = t
+			}
+		}
+		acts = append(acts, a)
+	}
+	return acts
+}
+
+// Compile-time assertion that batchSessionRepo satisfies ActivityLister.
+var _ sessstatus.ActivityLister = (*batchSessionRepo)(nil)
 
 func (m *batchSessionRepo) SearchSessions(context.Context, biz.SessionSearchQuery) (biz.SessionListResult, error) {
 	return biz.SessionListResult{}, nil
@@ -212,9 +282,18 @@ func (m *batchSessionRepo) ListByParentSessionID(_ context.Context, _ string) ([
 func (m *batchSessionRepo) ListActiveAgentUserKeys(_ context.Context, _ int) ([]sessstatus.AgentUserKey, error) {
 	return nil, nil
 }
+func (m *batchSessionRepo) GetSessionTree(_ context.Context, _ string) (*biz.SessionTree, error) {
+	return nil, nil
+}
+func (m *batchSessionRepo) ListChildSessions(_ context.Context, _ string) ([]biz.Session, error) {
+	return nil, nil
+}
+func (m *batchSessionRepo) ListTeamAgentSessions(_ context.Context, _ string) ([]biz.Session, error) {
+	return nil, nil
+}
 
 func TestSessionService_BatchPreviewSessions_validation(t *testing.T) {
-	uc := biz.NewSessionUsecase(&batchSessionRepo{sessions: map[string]biz.Session{}}, nil, nil, nil, nil, nil, nil, nil, nil)
+	uc := biz.NewSessionUsecase(&batchSessionRepo{sessions: map[string]biz.Session{}}, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	_, err := svc.BatchPreviewSessions(context.Background(), &v1.BatchPreviewSessionsRequest{})
@@ -235,7 +314,7 @@ func TestSessionService_BatchPreviewSessions_skippedNotFound(t *testing.T) {
 	repo := &batchSessionRepo{sessions: map[string]biz.Session{
 		"s1": {ID: "s1", Status: "completed", CreatedAt: "2020-01-01T00:00:00Z"},
 	}}
-	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil)
+	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	resp, err := svc.BatchPreviewSessions(context.Background(), &v1.BatchPreviewSessionsRequest{

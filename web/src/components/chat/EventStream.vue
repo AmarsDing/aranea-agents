@@ -51,6 +51,10 @@
         @confirm="(id, approved) => $emit('confirm', id, approved)"
       />
       <NoticeBlock v-else-if="event.kind === 'notice'" :activity="event" />
+      <!-- Phase 3: Stage kinds for unified Team/Graph/Session rendering -->
+      <TeamStageBlock v-else-if="event.kind === 'team_stage'" :activity="event" />
+      <GraphStageBlock v-else-if="event.kind === 'graph_stage'" :activity="event" />
+      <SessionStageBlock v-else-if="event.kind === 'session'" :activity="event" />
     </template>
   </div>
 </template>
@@ -66,6 +70,9 @@ import ErrorBlock from './ErrorBlock.vue';
 import PlanBlock from './PlanBlock.vue';
 import ConfirmBlock from './ConfirmBlock.vue';
 import NoticeBlock from './NoticeBlock.vue';
+import TeamStageBlock from './TeamStageBlock.vue';
+import GraphStageBlock from './GraphStageBlock.vue';
+import SessionStageBlock from './SessionStageBlock.vue';
 
 const { t } = useI18n();
 

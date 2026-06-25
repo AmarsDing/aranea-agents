@@ -8,12 +8,11 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 )
 
 // TestActivityEventSequencer_FIFOOrdering verifies that events for the same
-// activity are published in strict FIFO order: start → delta → done.
+// activity are published in strict FIFO order: created → streaming → completed.
 //
 // This is the core guarantee that fixes B-01 (start/delta ordering issue).
 func TestActivityEventSequencer_FIFOOrdering(t *testing.T) {
@@ -24,40 +23,40 @@ func TestActivityEventSequencer_FIFOOrdering(t *testing.T) {
 	activityID := "act-1"
 	ctx := context.Background()
 
-	// Publish start → delta1 → delta2 → done for the same activity
+	// Publish created → streaming1 → streaming2 → completed for the same activity
 	if err := seq.publish(ctx, activityID, publishTask{
-		env: contract.NewEnvelope(contract.EnvelopeTypeActivityStart, "agent-1", "sess-1"),
+		event: biz.ActivityEvent{Event: biz.ActivityEventCreated, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
 	}); err != nil {
-		t.Fatalf("publish start failed: %v", err)
+		t.Fatalf("publish created failed: %v", err)
 	}
 	if err := seq.publish(ctx, activityID, publishTask{
-		env: contract.NewEnvelope(contract.EnvelopeTypeActivityDelta, "agent-1", "sess-1"),
+		event: biz.ActivityEvent{Event: biz.ActivityEventStreaming, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
 	}); err != nil {
-		t.Fatalf("publish delta1 failed: %v", err)
+		t.Fatalf("publish streaming1 failed: %v", err)
 	}
 	if err := seq.publish(ctx, activityID, publishTask{
-		env: contract.NewEnvelope(contract.EnvelopeTypeActivityDelta, "agent-1", "sess-1"),
+		event: biz.ActivityEvent{Event: biz.ActivityEventStreaming, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
 	}); err != nil {
-		t.Fatalf("publish delta2 failed: %v", err)
+		t.Fatalf("publish streaming2 failed: %v", err)
 	}
 	if err := seq.publish(ctx, activityID, publishTask{
-		env: contract.NewEnvelope(contract.EnvelopeTypeActivityDone, "agent-1", "sess-1"),
+		event: biz.ActivityEvent{Event: biz.ActivityEventCompleted, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
 	}); err != nil {
-		t.Fatalf("publish done failed: %v", err)
+		t.Fatalf("publish completed failed: %v", err)
 	}
 
 	envs := bus.waitForPublished(t, 4)
 
 	// Verify strict FIFO order
-	expected := []contract.EnvelopeType{
-		contract.EnvelopeTypeActivityStart,
-		contract.EnvelopeTypeActivityDelta,
-		contract.EnvelopeTypeActivityDelta,
-		contract.EnvelopeTypeActivityDone,
+	expected := []biz.ActivityEventType{
+		biz.ActivityEventCreated,
+		biz.ActivityEventStreaming,
+		biz.ActivityEventStreaming,
+		biz.ActivityEventCompleted,
 	}
 	for i, want := range expected {
-		if envs[i].Type != want {
-			t.Errorf("envelope[%d] type=%q want %q (FIFO violated)", i, envs[i].Type, want)
+		if envs[i].Event != want {
+			t.Errorf("event[%d] type=%q want %q (FIFO violated)", i, envs[i].Event, want)
 		}
 	}
 }
@@ -73,43 +72,43 @@ func TestActivityEventSequencer_ConcurrentActivities(t *testing.T) {
 	ctx := context.Background()
 	var wg sync.WaitGroup
 
-	// Activity A: start → delta → done
+	// Activity A: created → streaming → completed
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_ = seq.publish(ctx, "act-A", publishTask{env: contract.NewEnvelope(contract.EnvelopeTypeActivityStart, "agent-1", "sess-1")})
-		_ = seq.publish(ctx, "act-A", publishTask{env: contract.NewEnvelope(contract.EnvelopeTypeActivityDelta, "agent-1", "sess-1")})
-		_ = seq.publish(ctx, "act-A", publishTask{env: contract.NewEnvelope(contract.EnvelopeTypeActivityDone, "agent-1", "sess-1")})
+		_ = seq.publish(ctx, "act-A", publishTask{event: biz.ActivityEvent{Event: biz.ActivityEventCreated, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}}})
+		_ = seq.publish(ctx, "act-A", publishTask{event: biz.ActivityEvent{Event: biz.ActivityEventStreaming, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}}})
+		_ = seq.publish(ctx, "act-A", publishTask{event: biz.ActivityEvent{Event: biz.ActivityEventCompleted, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}}})
 	}()
 
-	// Activity B: start → delta → done
+	// Activity B: created → streaming → completed
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_ = seq.publish(ctx, "act-B", publishTask{env: contract.NewEnvelope(contract.EnvelopeTypeActivityStart, "agent-2", "sess-1")})
-		_ = seq.publish(ctx, "act-B", publishTask{env: contract.NewEnvelope(contract.EnvelopeTypeActivityDelta, "agent-2", "sess-1")})
-		_ = seq.publish(ctx, "act-B", publishTask{env: contract.NewEnvelope(contract.EnvelopeTypeActivityDone, "agent-2", "sess-1")})
+		_ = seq.publish(ctx, "act-B", publishTask{event: biz.ActivityEvent{Event: biz.ActivityEventCreated, Activity: biz.Activity{AgentKey: "agent-2", SessionID: "sess-1"}}})
+		_ = seq.publish(ctx, "act-B", publishTask{event: biz.ActivityEvent{Event: biz.ActivityEventStreaming, Activity: biz.Activity{AgentKey: "agent-2", SessionID: "sess-1"}}})
+		_ = seq.publish(ctx, "act-B", publishTask{event: biz.ActivityEvent{Event: biz.ActivityEventCompleted, Activity: biz.Activity{AgentKey: "agent-2", SessionID: "sess-1"}}})
 	}()
 
 	wg.Wait()
 	envs := bus.waitForPublished(t, 6)
 
 	// Extract per-activity event sequences
-	var actA, actB []contract.EnvelopeType
-	for _, env := range envs {
-		// Use Author to distinguish activities (act-A uses agent-1, act-B uses agent-2)
-		if env.Author == "agent-1" {
-			actA = append(actA, env.Type)
-		} else if env.Author == "agent-2" {
-			actB = append(actB, env.Type)
+	var actA, actB []biz.ActivityEventType
+	for _, ev := range envs {
+		// Use AgentKey to distinguish activities (act-A uses agent-1, act-B uses agent-2)
+		if ev.Activity.AgentKey == "agent-1" {
+			actA = append(actA, ev.Event)
+		} else if ev.Activity.AgentKey == "agent-2" {
+			actB = append(actB, ev.Event)
 		}
 	}
 
 	// Verify each activity's FIFO order
-	expectedSeq := []contract.EnvelopeType{
-		contract.EnvelopeTypeActivityStart,
-		contract.EnvelopeTypeActivityDelta,
-		contract.EnvelopeTypeActivityDone,
+	expectedSeq := []biz.ActivityEventType{
+		biz.ActivityEventCreated,
+		biz.ActivityEventStreaming,
+		biz.ActivityEventCompleted,
 	}
 	if len(actA) != 3 {
 		t.Fatalf("activity A: expected 3 events, got %d", len(actA))
@@ -147,7 +146,7 @@ func TestActivityEventSequencer_Persistence(t *testing.T) {
 	}
 
 	if err := seq.publish(ctx, activity.ID, publishTask{
-		env:      contract.NewEnvelope(contract.EnvelopeTypeActivityDone, "agent-1", "sess-1"),
+		event:    biz.ActivityEvent{Event: biz.ActivityEventCompleted, Activity: activity},
 		persist:  true,
 		activity: activity,
 	}); err != nil {
@@ -198,10 +197,10 @@ func TestActivityEventSequencer_CloseWaitsForGoroutines(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		activityID := "act-" + string(rune('A'+i))
 		_ = seq.publish(ctx, activityID, publishTask{
-			env: contract.NewEnvelope(contract.EnvelopeTypeActivityStart, "agent-1", "sess-1"),
+			event: biz.ActivityEvent{Event: biz.ActivityEventCreated, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
 		})
 		_ = seq.publish(ctx, activityID, publishTask{
-			env: contract.NewEnvelope(contract.EnvelopeTypeActivityDone, "agent-1", "sess-1"),
+			event: biz.ActivityEvent{Event: biz.ActivityEventCompleted, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
 		})
 	}
 
@@ -225,7 +224,7 @@ func TestActivityEventSequencer_PublishAfterCloseReturnsError(t *testing.T) {
 	seq.Close()
 
 	err := seq.publish(context.Background(), "act-1", publishTask{
-		env: contract.NewEnvelope(contract.EnvelopeTypeActivityStart, "agent-1", "sess-1"),
+		event: biz.ActivityEvent{Event: biz.ActivityEventCreated, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
 	})
 	if err == nil {
 		t.Errorf("expected error when publishing after Close, got nil")
@@ -252,7 +251,7 @@ func TestActivityEventSequencer_Backpressure(t *testing.T) {
 	// First publish creates the channel and starts the consumer goroutine.
 	// The consumer reads this task and blocks on bus.Publish.
 	_ = seq.publish(context.Background(), activityID, publishTask{
-		env: contract.NewEnvelope(contract.EnvelopeTypeActivityDelta, "agent-1", "sess-1"),
+		event: biz.ActivityEvent{Event: biz.ActivityEventStreaming, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
 	})
 
 	// Wait until the consumer has called bus.Publish (and is now blocked).
@@ -261,7 +260,7 @@ func TestActivityEventSequencer_Backpressure(t *testing.T) {
 	// Consumer is blocked. Fill the channel buffer (defaultChannelBufferSize tasks).
 	for i := 0; i < defaultChannelBufferSize; i++ {
 		_ = seq.publish(context.Background(), activityID, publishTask{
-			env: contract.NewEnvelope(contract.EnvelopeTypeActivityDelta, "agent-1", "sess-1"),
+			event: biz.ActivityEvent{Event: biz.ActivityEventStreaming, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
 		})
 	}
 
@@ -270,7 +269,7 @@ func TestActivityEventSequencer_Backpressure(t *testing.T) {
 	defer cancel()
 
 	err := seq.publish(ctx, activityID, publishTask{
-		env: contract.NewEnvelope(contract.EnvelopeTypeActivityDone, "agent-1", "sess-1"),
+		event: biz.ActivityEvent{Event: biz.ActivityEventCompleted, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
 	})
 
 	// Should return context.DeadlineExceeded (blocked until timeout)
@@ -300,7 +299,7 @@ func TestActivityEventSequencer_ContextCancellation(t *testing.T) {
 
 	// First publish creates channel and starts consumer (which blocks on bus.Publish)
 	_ = seq.publish(context.Background(), activityID, publishTask{
-		env: contract.NewEnvelope(contract.EnvelopeTypeActivityDelta, "agent-1", "sess-1"),
+		event: biz.ActivityEvent{Event: biz.ActivityEventStreaming, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
 	})
 
 	// Wait until consumer is blocked on bus.Publish
@@ -309,14 +308,14 @@ func TestActivityEventSequencer_ContextCancellation(t *testing.T) {
 	// Fill the channel buffer
 	for i := 0; i < defaultChannelBufferSize; i++ {
 		_ = seq.publish(context.Background(), activityID, publishTask{
-			env: contract.NewEnvelope(contract.EnvelopeTypeActivityDelta, "agent-1", "sess-1"),
+			event: biz.ActivityEvent{Event: biz.ActivityEventStreaming, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
 		})
 	}
 
 	// Cancel context before publishing
 	cancel()
 	err := seq.publish(ctx, activityID, publishTask{
-		env: contract.NewEnvelope(contract.EnvelopeTypeActivityDone, "agent-1", "sess-1"),
+		event: biz.ActivityEvent{Event: biz.ActivityEventCompleted, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
 	})
 
 	if err == nil {
@@ -330,7 +329,7 @@ func TestActivityEventSequencer_ContextCancellation(t *testing.T) {
 	close(bus.publishCh)
 }
 
-// blockingBus is an event.Bus that blocks on Publish until publishCh is closed.
+// blockingBus is a biz.ActivityEventBus that blocks on Publish until publishCh is closed.
 // publishCalled signals when the consumer has entered Publish (and is blocked).
 // Used to simulate backpressure for testing.
 type blockingBus struct {
@@ -338,7 +337,7 @@ type blockingBus struct {
 	publishCh     chan struct{}
 }
 
-func (b *blockingBus) Publish(_ context.Context, _ contract.Envelope) {
+func (b *blockingBus) Publish(_ context.Context, _ biz.ActivityEvent) {
 	select {
 	case b.publishCalled <- struct{}{}:
 	default:
@@ -346,25 +345,26 @@ func (b *blockingBus) Publish(_ context.Context, _ contract.Envelope) {
 	<-b.publishCh
 }
 
-func (b *blockingBus) Subscribe(_ contract.SubscribeOptions) (<-chan contract.Envelope, func()) {
+func (b *blockingBus) Subscribe(_ biz.ActivityEventSubscribeOptions) (<-chan biz.ActivityEvent, func()) {
 	return nil, func() {}
 }
 
 func (b *blockingBus) DropCount() uint64 { return 0 }
 
-// deltaTask creates a publishTask for an activity_delta envelope.
+// deltaTask creates a publishTask for a streaming event.
 func deltaTask(field, chunk string) publishTask {
-	env := contract.NewEnvelope(contract.EnvelopeTypeActivityDelta, "agent-1", "sess-1")
-	env.Metadata = map[string]any{
-		"delta_field": field,
-		"delta_chunk": chunk,
+	return publishTask{
+		event: biz.ActivityEvent{
+			Event:      biz.ActivityEventStreaming,
+			DeltaField: field,
+			DeltaChunk: chunk,
+		},
 	}
-	return publishTask{env: env}
 }
 
 // TestActivityEventSequencer_DeltaBatching verifies that consecutive
-// activity_delta envelopes for the same field are coalesced into a single
-// envelope, reducing frontend event frequency.
+// streaming events for the same field are coalesced into a single
+// event, reducing frontend event frequency.
 func TestActivityEventSequencer_DeltaBatching(t *testing.T) {
 	bus := newSyncCaptureBus()
 	seq := newActivityEventSequencer(bus, loggateway.NewNoop())
@@ -375,34 +375,34 @@ func TestActivityEventSequencer_DeltaBatching(t *testing.T) {
 	ctx := context.Background()
 
 	_ = seq.publish(ctx, activityID, publishTask{
-		env: contract.NewEnvelope(contract.EnvelopeTypeActivityStart, "agent-1", "sess-1"),
+		event: biz.ActivityEvent{Event: biz.ActivityEventCreated, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
 	})
 	_ = seq.publish(ctx, activityID, deltaTask("content", "a"))
 	_ = seq.publish(ctx, activityID, deltaTask("content", "b"))
 	_ = seq.publish(ctx, activityID, deltaTask("content", "c"))
 	_ = seq.publish(ctx, activityID, publishTask{
-		env: contract.NewEnvelope(contract.EnvelopeTypeActivityDone, "agent-1", "sess-1"),
+		event: biz.ActivityEvent{Event: biz.ActivityEventCompleted, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
 	})
 
 	envs := bus.waitForPublished(t, 3)
 
-	expected := []contract.EnvelopeType{
-		contract.EnvelopeTypeActivityStart,
-		contract.EnvelopeTypeActivityDelta,
-		contract.EnvelopeTypeActivityDone,
+	expected := []biz.ActivityEventType{
+		biz.ActivityEventCreated,
+		biz.ActivityEventStreaming,
+		biz.ActivityEventCompleted,
 	}
 	for i, want := range expected {
-		if envs[i].Type != want {
-			t.Errorf("envelope[%d] type=%q want %q", i, envs[i].Type, want)
+		if envs[i].Event != want {
+			t.Errorf("event[%d] type=%q want %q", i, envs[i].Event, want)
 		}
 	}
-	if envs[1].Metadata["delta_chunk"] != "abc" {
-		t.Errorf("batched delta chunk=%q want %q", envs[1].Metadata["delta_chunk"], "abc")
+	if envs[1].DeltaChunk != "abc" {
+		t.Errorf("batched delta chunk=%q want %q", envs[1].DeltaChunk, "abc")
 	}
 }
 
 // TestActivityEventSequencer_DeltaBatchingDifferentFields verifies that delta
-// envelopes for different fields are not merged.
+// events for different fields are not merged.
 func TestActivityEventSequencer_DeltaBatchingDifferentFields(t *testing.T) {
 	bus := newSyncCaptureBus()
 	seq := newActivityEventSequencer(bus, loggateway.NewNoop())
@@ -419,20 +419,20 @@ func TestActivityEventSequencer_DeltaBatchingDifferentFields(t *testing.T) {
 	envs := bus.waitForPublished(t, 3)
 
 	chunks := []string{
-		envs[0].Metadata["delta_chunk"].(string),
-		envs[1].Metadata["delta_chunk"].(string),
-		envs[2].Metadata["delta_chunk"].(string),
+		envs[0].DeltaChunk,
+		envs[1].DeltaChunk,
+		envs[2].DeltaChunk,
 	}
 	want := []string{"a", "b", "c"}
 	for i, w := range want {
 		if chunks[i] != w {
-			t.Errorf("envelope[%d] chunk=%q want %q", i, chunks[i], w)
+			t.Errorf("event[%d] chunk=%q want %q", i, chunks[i], w)
 		}
 	}
 }
 
 // TestActivityEventSequencer_DeltaBatchingTimerFlush verifies that a single
-// delta envelope is flushed after the batch interval expires.
+// streaming event is flushed after the batch interval expires.
 func TestActivityEventSequencer_DeltaBatchingTimerFlush(t *testing.T) {
 	bus := newSyncCaptureBus()
 	seq := newActivityEventSequencer(bus, loggateway.NewNoop())
@@ -446,10 +446,10 @@ func TestActivityEventSequencer_DeltaBatchingTimerFlush(t *testing.T) {
 
 	envs := bus.waitForPublished(t, 1)
 	if len(envs) != 1 {
-		t.Fatalf("expected 1 envelope, got %d", len(envs))
+		t.Fatalf("expected 1 event, got %d", len(envs))
 	}
-	if envs[0].Metadata["delta_chunk"] != "x" {
-		t.Errorf("chunk=%q want %q", envs[0].Metadata["delta_chunk"], "x")
+	if envs[0].DeltaChunk != "x" {
+		t.Errorf("chunk=%q want %q", envs[0].DeltaChunk, "x")
 	}
 }
 
@@ -467,17 +467,17 @@ func TestActivityEventSequencer_DeltaBatchingFlushOnNonDelta(t *testing.T) {
 	_ = seq.publish(ctx, activityID, deltaTask("content", "a"))
 	_ = seq.publish(ctx, activityID, deltaTask("content", "b"))
 	_ = seq.publish(ctx, activityID, publishTask{
-		env: contract.NewEnvelope(contract.EnvelopeTypeActivityDone, "agent-1", "sess-1"),
+		event: biz.ActivityEvent{Event: biz.ActivityEventCompleted, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
 	})
 
 	envs := bus.waitForPublished(t, 2)
-	if envs[0].Type != contract.EnvelopeTypeActivityDelta {
-		t.Errorf("first envelope type=%q want activity_delta", envs[0].Type)
+	if envs[0].Event != biz.ActivityEventStreaming {
+		t.Errorf("first event type=%q want streaming", envs[0].Event)
 	}
-	if envs[0].Metadata["delta_chunk"] != "ab" {
-		t.Errorf("batched chunk=%q want %q", envs[0].Metadata["delta_chunk"], "ab")
+	if envs[0].DeltaChunk != "ab" {
+		t.Errorf("batched chunk=%q want %q", envs[0].DeltaChunk, "ab")
 	}
-	if envs[1].Type != contract.EnvelopeTypeActivityDone {
-		t.Errorf("second envelope type=%q want activity_done", envs[1].Type)
+	if envs[1].Event != biz.ActivityEventCompleted {
+		t.Errorf("second event type=%q want completed", envs[1].Event)
 	}
 }

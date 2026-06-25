@@ -28,11 +28,9 @@ const (
 var defaultClassifier = reliability.NewClassifier[EnvelopeType]()
 
 func init() {
-	// Critical (WBPF): ToolResult, Error, RunnerCompletion, Checkpoint
+	// Critical (WBPF): Error, Checkpoint
 	defaultClassifier.RegisterBulk(reliability.Critical,
-		EnvelopeTypeToolResult,
 		EnvelopeTypeError,
-		EnvelopeTypeRunnerCompletion,
 		EnvelopeTypeCheckpoint,
 	)
 
@@ -59,22 +57,18 @@ func init() {
 		EnvelopeTypeSpiritOrchestrationStarted,
 		// User
 		EnvelopeTypeUserFeedback,
-		// Activity-First lifecycle — start/done/child_start must not be silently dropped
-		EnvelopeTypeActivityStart,
-		EnvelopeTypeActivityDone,
-		EnvelopeTypeActivityChildStart,
 	)
 }
 
 // ClassifyEventReliability returns the reliability tier for an event type.
 // Classification follows AS-EVT-01:
-//   - Critical (WBPF): ToolResult, Error, RunnerCompletion, Checkpoint
+//   - Critical (WBPF): Error, Checkpoint
 //   - Important (BlockUpTo + async): see init() for the full list
 //   - Informational (best-effort): everything else
 //
 // This function is the single source of truth for event reliability classification.
-// All consumers (Bus delivery policy, EventWAL, persist handler) must use this
-// function instead of maintaining their own critical/important type sets.
+// All consumers (Bus delivery policy) must use this function instead of maintaining
+// their own critical/important type sets.
 //
 // Stability:stable
 func ClassifyEventReliability(t EnvelopeType) EventReliability {

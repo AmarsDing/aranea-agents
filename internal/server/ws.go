@@ -13,7 +13,6 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -56,14 +55,6 @@ type ChatSender interface {
 	EnqueueUserMessage(ctx context.Context, req *chatv1.EnqueueUserMessageRequest) (*chatv1.EnqueueUserMessageResponse, error)
 }
 
-// EventStoreLister is the narrow interface for querying stored envelopes
-// during revision-based WS replay (T3.4). WSServer holds this instead of the
-// concrete *biz.EventStoreUsecase to reduce coupling and clarify that only
-// List is needed for sync_request replay.
-type EventStoreLister interface {
-	List(ctx context.Context, q biz.EventStoreQuery) (biz.EventStoreListResult, error)
-}
-
 // WSServer is the WebSocket server coordinator. It delegates to focused sub-modules:
 //   - ws_conn.go         — wsConn struct + connStore (connection lifecycle)
 //   - ws_conn_manager.go — connection limit checks and removal
@@ -76,12 +67,11 @@ type WSServer struct {
 	store                 *connStore
 	eventBus              event.Bus
 	monitorBus            event.Bus
+	activityBus           biz.ActivityEventBus
 	eventBuffer           *event.Buffer
-	crossProcessStore     contract.CrossProcessStore // optional (P1-6): Postgres replay fallback
 	canceller             RunCanceller
 	sender                ChatSender
 	turnExecutor          WSTurnExecutor
-	eventStoreUsecase     EventStoreLister // optional (T3.4): revision-based sync replay
 	serverConf            *conf.Server
 	runtimeConf           *conf.Runtime
 	upgrader              websocket.Upgrader
@@ -101,36 +91,28 @@ func NewWSServer(c *conf.Server, eventBus event.Bus, eventBuffer *event.Buffer, 
 }
 
 // NewWSServerFromInfra uses session bus for chat envelopes and monitor bus for flow_log (P0).
-func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnExecutor WSTurnExecutor, runtimeConf *conf.Runtime, lg loggateway.Logger, eventStoreUsecase *biz.EventStoreUsecase) *WSServer {
+// activityBus transports biz.ActivityEvent for the AF (Activity-First) chat rendering pipeline.
+func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnExecutor WSTurnExecutor, runtimeConf *conf.Runtime, lg loggateway.Logger, activityBus biz.ActivityEventBus) *WSServer {
 	if c == nil || c.GetWs() == nil || !c.GetWs().GetEnable() {
 		return nil
 	}
 	if infra == nil {
-		infra = event.NewInfra(lg, nil, nil)
+		infra = event.NewInfra(lg)
 	}
 	monitor := infra.MonitorBus
 	if monitor == nil {
 		monitor = infra.SessionBus
-	}
-	// Avoid the Go nil-interface trap: assigning a nil *biz.EventStoreUsecase
-	// to an EventStoreLister field yields a non-nil interface wrapping a nil
-	// pointer. Keep the field as a true nil interface when the usecase is nil
-	// so the `s.eventStoreUsecase == nil` guard in handleSyncRequest works.
-	var store EventStoreLister
-	if eventStoreUsecase != nil {
-		store = eventStoreUsecase
 	}
 	wsCfg := runtimeConf.WSConfig()
 	return &WSServer{
 		store:                 newConnStore(),
 		eventBus:              infra.SessionBus,
 		monitorBus:            monitor,
+		activityBus:           activityBus,
 		eventBuffer:           infra.Buffer,
-		crossProcessStore:     infra.CrossProcessStore,
 		canceller:             canceller,
 		sender:                sender,
 		turnExecutor:          turnExecutor,
-		eventStoreUsecase:     store,
 		serverConf:            c,
 		runtimeConf:           runtimeConf,
 		maxSessionConns:       envInt("WS_MAX_SESSION_CONNS", int(wsCfg.MaxSessionConns)),
@@ -237,8 +219,9 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 	// Event subscription
 	var eventCh <-chan event.Envelope
 	var monitorCh <-chan event.Envelope
+	var activityCh <-chan biz.ActivityEvent
 	if !probeMode {
-		eventCh, monitorCh = s.setupEventSubscription(wc, globalMode)
+		eventCh, monitorCh, activityCh = s.setupEventSubscription(wc, globalMode)
 	}
 
 	// Register connection
@@ -265,6 +248,9 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 		safego.Go(connCtx, "ws-event-pump", func() { s.eventPump(wc, eventCh) })
 		if monitorCh != nil {
 			safego.Go(connCtx, "ws-monitor-pump", func() { s.eventPump(wc, monitorCh) })
+		}
+		if activityCh != nil {
+			safego.Go(connCtx, "ws-activity-pump", func() { s.activityEventPump(wc, activityCh) })
 		}
 	}
 }

@@ -8,9 +8,7 @@ import (
 
 func TestClassifyEventReliability_Critical(t *testing.T) {
 	criticalTypes := []contract.EnvelopeType{
-		contract.EnvelopeTypeToolResult,
 		contract.EnvelopeTypeError,
-		contract.EnvelopeTypeRunnerCompletion,
 		contract.EnvelopeTypeCheckpoint,
 	}
 	for _, typ := range criticalTypes {
@@ -41,10 +39,8 @@ func TestClassifyEventReliability_Important(t *testing.T) {
 
 func TestClassifyEventReliability_Informational(t *testing.T) {
 	infoTypes := []contract.EnvelopeType{
-		contract.EnvelopeTypeTextDelta,
 		contract.EnvelopeTypeFlowLog,
 		contract.EnvelopeTypeLog,
-		contract.EnvelopeTypeMemberDelta,
 	}
 	for _, typ := range infoTypes {
 		got := ClassifyEventReliability(typ)
@@ -59,14 +55,11 @@ func TestIsCriticalWBPFType(t *testing.T) {
 		typ  contract.EnvelopeType
 		want bool
 	}{
-		{contract.EnvelopeTypeToolResult, true},
 		{contract.EnvelopeTypeError, true},
-		{contract.EnvelopeTypeRunnerCompletion, true},
 		{contract.EnvelopeTypeCheckpoint, true},
 		{contract.EnvelopeTypeStateDelta, false},
 		{contract.EnvelopeTypeTokenUsage, false},
 		{contract.EnvelopeTypeRunStatus, false},
-		{contract.EnvelopeTypeTextDelta, false},
 		{contract.EnvelopeTypeLog, false},
 		{contract.EnvelopeTypeFlowLog, false},
 	}

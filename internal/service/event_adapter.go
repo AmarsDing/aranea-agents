@@ -9,72 +9,83 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-// --- EnvelopeBuffer adapter ---
+// ProvideEnvelopeBuffer adapts *event.Buffer to biz.EnvelopeBuffer so biz
+// consumers don't import internal/event directly (Phase 3 decoupling).
+func ProvideEnvelopeBuffer(buf *event.Buffer) biz.EnvelopeBuffer {
+	if buf == nil {
+		return nil
+	}
+	return envelopeBufferAdapter{buf: buf}
+}
 
 type envelopeBufferAdapter struct {
 	buf *event.Buffer
 }
 
 func (a envelopeBufferAdapter) Append(env contract.Envelope) {
-	if a.buf != nil {
-		a.buf.Append(env)
+	a.buf.Append(env)
+}
+
+// ProvideSessionLogWriter adapts a loggateway.Logger to biz.SessionLogWriter
+// so biz consumers don't depend on loggateway directly for session-scoped logs.
+func ProvideSessionLogWriter(lg loggateway.Logger) biz.SessionLogWriter {
+	if lg == nil {
+		return nil
 	}
+	return sessionLogWriterAdapter{lg: lg}
 }
-
-func ProvideEnvelopeBuffer(buf *event.Buffer) biz.EnvelopeBuffer {
-	return envelopeBufferAdapter{buf: buf}
-}
-
-// --- SessionLogWriter adapter ---
 
 type sessionLogWriterAdapter struct {
 	lg loggateway.Logger
 }
 
 func (a sessionLogWriterAdapter) LogSessionWarn(ctx context.Context, sessionID, stepID, message string, pairs ...biz.LogPair) {
-	a.lg.With(loggateway.SessionID(sessionID)).Warn(message,
-		loggateway.StepID(stepID),
-	)
+	a.lg.Warn(message, appendSessionFields(sessionID, stepID, pairs)...)
 }
 
 func (a sessionLogWriterAdapter) LogSessionError(ctx context.Context, sessionID, stepID, message string, pairs ...biz.LogPair) {
-	a.lg.With(loggateway.SessionID(sessionID)).Error(message,
-		loggateway.StepID(stepID),
-	)
+	a.lg.Error(message, appendSessionFields(sessionID, stepID, pairs)...)
 }
 
-func ProvideSessionLogWriter(lg loggateway.Logger) biz.SessionLogWriter {
-	return sessionLogWriterAdapter{lg: lg}
+// ProvideSystemLogWriter adapts a loggateway.Logger to biz.SystemLogWriter
+// so biz consumers don't depend on loggateway directly for system-scoped logs.
+func ProvideSystemLogWriter(lg loggateway.Logger) biz.SystemLogWriter {
+	if lg == nil {
+		return nil
+	}
+	return systemLogWriterAdapter{lg: lg}
 }
-
-// --- SystemLogWriter adapter ---
 
 type systemLogWriterAdapter struct {
 	lg loggateway.Logger
 }
 
 func (a systemLogWriterAdapter) LogWarn(stepID, message string, pairs ...biz.LogPair) {
-	a.lg.Warn(message,
-		loggateway.StepID(stepID),
-	)
+	a.lg.Warn(message, appendSystemFields(stepID, pairs)...)
 }
 
 func (a systemLogWriterAdapter) LogError(stepID, message string, pairs ...biz.LogPair) {
-	a.lg.Error(message,
-		loggateway.StepID(stepID),
-	)
+	a.lg.Error(message, appendSystemFields(stepID, pairs)...)
 }
 
-func ProvideSystemLogWriter(lg loggateway.Logger) biz.SystemLogWriter {
-	return systemLogWriterAdapter{lg: lg}
-}
-
-// --- helpers ---
-
-func toEventPairs(pairs []biz.LogPair) []event.Pair {
-	out := make([]event.Pair, len(pairs))
-	for i, p := range pairs {
-		out[i] = event.P(p.Key, p.Value)
+// appendSessionFields converts biz.LogPair slices to loggateway field options,
+// prepending session_id and step_id for structured session-scoped logs.
+func appendSessionFields(sessionID, stepID string, pairs []biz.LogPair) []loggateway.Field {
+	fields := make([]loggateway.Field, 0, len(pairs)+2)
+	fields = append(fields, loggateway.SessionID(sessionID), loggateway.StepID(stepID))
+	for _, p := range pairs {
+		fields = append(fields, loggateway.Any(p.Key, p.Value))
 	}
-	return out
+	return fields
+}
+
+// appendSystemFields converts biz.LogPair slices to loggateway field options,
+// prepending step_id for structured system-scoped logs.
+func appendSystemFields(stepID string, pairs []biz.LogPair) []loggateway.Field {
+	fields := make([]loggateway.Field, 0, len(pairs)+1)
+	fields = append(fields, loggateway.StepID(stepID))
+	for _, p := range pairs {
+		fields = append(fields, loggateway.Any(p.Key, p.Value))
+	}
+	return fields
 }

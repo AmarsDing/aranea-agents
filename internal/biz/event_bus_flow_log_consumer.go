@@ -121,3 +121,12 @@ func metaStringFromFlowLog(m map[string]any, key string) string {
 func toString(v any) string {
 	return fmt.Sprint(v)
 }
+
+func coalesceNonEmpty(values ...string) string {
+	for _, v := range values {
+		if s := strings.TrimSpace(v); s != "" {
+			return s
+		}
+	}
+	return ""
+}

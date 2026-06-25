@@ -10,29 +10,15 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-type afterRevisionSessionRepo struct {
-	batchSessionRepo
-	messages []biz.ChatMessage
-}
-
-func (m *afterRevisionSessionRepo) ListMessagesAfterRevision(_ context.Context, _ string, afterRevision int64) ([]biz.ChatMessage, error) {
-	if afterRevision <= 0 {
-		return m.messages, nil
-	}
-	var out []biz.ChatMessage
-	for _, msg := range m.messages {
-		if int64(msg.TurnNumber) > afterRevision {
-			out = append(out, msg)
-		}
-	}
-	return out, nil
-}
+// Phase 1c-3: afterRevisionSessionRepo removed — batchSessionRepo now has
+// messages field + ActivityLister impl. ListMessagesAfterRevision returns ALL
+// messages (full replay); the revision parameter is kept for WS sync signaling.
 
 func TestSessionService_ListSessionMessages_afterRevision(t *testing.T) {
-	repo := &afterRevisionSessionRepo{
-		batchSessionRepo: batchSessionRepo{sessions: map[string]biz.Session{
+	repo := &batchSessionRepo{
+		sessions: map[string]biz.Session{
 			"s1": {ID: "s1", SessionRevision: 2},
-		}},
+		},
 		messages: []biz.ChatMessage{
 			{ID: "u1", SessionID: "s1", Role: "user", TurnNumber: 1, TurnID: "t1"},
 			{ID: "a1", SessionID: "s1", Role: "assistant", TurnNumber: 1, TurnID: "t1"},
@@ -40,7 +26,7 @@ func TestSessionService_ListSessionMessages_afterRevision(t *testing.T) {
 			{ID: "a2", SessionID: "s1", Role: "assistant", TurnNumber: 2, TurnID: "t2"},
 		},
 	}
-	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil)
+	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, repo, loggateway.NewNoop())
 	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	after := int64(1)
@@ -54,10 +40,12 @@ func TestSessionService_ListSessionMessages_afterRevision(t *testing.T) {
 	if resp.GetCurrentRevision() != 2 {
 		t.Fatalf("current_revision: got %d want 2", resp.GetCurrentRevision())
 	}
-	if len(resp.GetItems()) != 2 {
-		t.Fatalf("items: got %d want 2 (turn 2 only)", len(resp.GetItems()))
+	// Phase 1c-3: full replay — all messages returned regardless of revision.
+	// The revision parameter is kept for WS sync signaling; client dedups by ID.
+	if len(resp.GetItems()) != 4 {
+		t.Fatalf("items: got %d want 4 (full replay)", len(resp.GetItems()))
 	}
-	if resp.GetItems()[0].GetId() != "u2" || resp.GetItems()[1].GetId() != "a2" {
+	if resp.GetItems()[0].GetId() != "u1" || resp.GetItems()[3].GetId() != "a2" {
 		t.Fatalf("unexpected items: %+v", resp.GetItems())
 	}
 
@@ -69,7 +57,8 @@ func TestSessionService_ListSessionMessages_afterRevision(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list last: %v", err)
 	}
-	if len(resp2.GetItems()) != 0 {
-		t.Fatalf("after last revision: got %d items want 0", len(resp2.GetItems()))
+	// Full replay: all messages returned regardless of revision value.
+	if len(resp2.GetItems()) != 4 {
+		t.Fatalf("after last revision: got %d items want 4 (full replay)", len(resp2.GetItems()))
 	}
 }

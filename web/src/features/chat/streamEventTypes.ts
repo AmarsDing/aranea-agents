@@ -11,7 +11,17 @@
 // ── Stream Event Kind ──
 
 /** 事件种类 — 时间线节点的语义分类 */
-export type StreamEventKind = 'thinking' | 'action' | 'reply' | 'error' | 'plan' | 'confirm' | 'notice';
+export type StreamEventKind =
+  | 'thinking'
+  | 'action'
+  | 'reply'
+  | 'error'
+  | 'plan'
+  | 'confirm'
+  | 'notice'
+  | 'team_stage'
+  | 'graph_stage'
+  | 'session';
 
 /** 事件状态 */
 export type StreamEventStatus = 'streaming' | 'completed' | 'failed';
@@ -48,6 +58,7 @@ export interface PlanStep {
 export interface ToolActivity {
   toolName: string;
   toolLabel: string;
+  toolCategory?: string;
   status: 'running' | 'success' | 'failed' | 'blocked' | 'cancelled';
   durationMs: number | null;
   arguments: string | null;
@@ -144,6 +155,77 @@ export interface NoticeEvent extends StreamEventBase {
   message: string;
 }
 
+// ── Stage Events (Phase 3: Team/Graph/Session unified rendering) ──
+
+/** 团队成员状态 */
+export interface TeamMemberStatus {
+  agentKey: string;
+  agentName: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  session_id?: string;
+}
+
+/** 团队阶段事件 — 团队组建/执行/完成 */
+export interface TeamStageEvent extends StreamEventBase {
+  kind: 'team_stage';
+  /** 阶段状态 */
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  /** 阶段描述（如"团队已组建"、"团队执行完成"） */
+  title: string;
+  /** 团队 ID */
+  teamId?: string;
+  /** 成员状态列表 */
+  members?: TeamMemberStatus[];
+  /** 任务摘要 */
+  taskSummary?: string;
+  /** 持续时间（毫秒） */
+  durationMs?: number | null;
+}
+
+/** Graph DAG 节点状态 */
+export interface GraphNodeStatus {
+  nodeId: string;
+  label: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+  dependsOn?: string[];
+}
+
+/** Graph 阶段事件 — DAG 执行进度 */
+export interface GraphStageEvent extends StreamEventBase {
+  kind: 'graph_stage';
+  /** 阶段状态 */
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  /** 阶段描述 */
+  title: string;
+  /** DAG 节点 ID */
+  dagNodeId?: string;
+  /** 节点状态列表 */
+  nodes?: GraphNodeStatus[];
+  /** 持续时间（毫秒） */
+  durationMs?: number | null;
+}
+
+/** Session 阶段事件 — 子会话创建/执行 */
+export interface SessionStageEvent extends StreamEventBase {
+  kind: 'session';
+  /** 阶段状态 */
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  /** 会话描述（如"成员 A 正在执行"） */
+  title: string;
+  /** 子会话 ID */
+  childSessionId?: string;
+  /** 关联的 Agent key */
+  agentKey?: string;
+  /** 关联的 Agent 名称 */
+  agentName?: string;
+  /** 关联的团队 ID */
+  teamId?: string;
+  /** 父 Spirit Session ID */
+  spiritSessionId?: string;
+  /** 持续时间（毫秒） */
+  durationMs?: number | null;
+}
+
 // ── Stream Event Union ──
 
 /** 统一事件流类型 */
@@ -154,4 +236,7 @@ export type StreamEvent =
   | ErrorEvent
   | PlanEvent
   | ConfirmEvent
-  | NoticeEvent;
+  | NoticeEvent
+  | TeamStageEvent
+  | GraphStageEvent
+  | SessionStageEvent;

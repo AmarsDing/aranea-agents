@@ -3,9 +3,6 @@ package agent
 import (
 	"testing"
 
-	"aranea-agents/internal/event"
-
-	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -66,30 +63,5 @@ func TestChoiceStreamContent_nonPartialFallsBackToContentParts(t *testing.T) {
 	text, _ := ChoiceStreamContent(choice, false)
 	if text != textPart {
 		t.Fatalf("non-partial text from content_parts = %q, want %q", text, textPart)
-	}
-}
-
-func TestEventProjector_partialDeltaPreservesSpace(t *testing.T) {
-	bus := event.NewBus(nil)
-	p := NewEventProjector(bus, nil)
-	meta := ProjectMeta{SessionID: "sess-1"}
-
-	ev := &trpcevent.Event{
-		Author: "agent",
-		Response: &trpcmodel.Response{
-			Object:    trpcmodel.ObjectTypeChatCompletionChunk,
-			IsPartial: true,
-			Choices: []trpcmodel.Choice{
-				{Delta: trpcmodel.Message{Content: " x"}},
-			},
-		},
-	}
-
-	envelopes := p.Project(t.Context(), ev, meta)
-	if len(envelopes) != 1 {
-		t.Fatalf("expected 1 envelope, got %d", len(envelopes))
-	}
-	if envelopes[0].Content == nil || envelopes[0].Content.Text != " x" {
-		t.Fatalf("text delta = %+v", envelopes[0].Content)
 	}
 }

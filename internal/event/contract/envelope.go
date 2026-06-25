@@ -13,13 +13,9 @@ import (
 type EnvelopeType string
 
 const (
-	EnvelopeTypeTextDelta        EnvelopeType = "text_delta"
-	EnvelopeTypeTextDone         EnvelopeType = "text_done"
-	EnvelopeTypeToolCall         EnvelopeType = "tool_call"
-	EnvelopeTypeToolResult       EnvelopeType = "tool_result"
-	EnvelopeTypeStateDelta       EnvelopeType = "state_delta"
-	EnvelopeTypeTransfer         EnvelopeType = "transfer"
-	EnvelopeTypeRunnerCompletion EnvelopeType = "runner_completion"
+	// EnvelopeTypeStateDelta carries graph state updates from the graph event bridge.
+	// Retained because graph/trpc/event_bridge.go actively publishes it.
+	EnvelopeTypeStateDelta EnvelopeType = "state_delta"
 	// EnvelopeTypeContextUsage carries mid-turn context window fill (ReAct sub-steps).
 	EnvelopeTypeContextUsage                   EnvelopeType = "context_usage"
 	EnvelopeTypeRunStatus                      EnvelopeType = "run_status"
@@ -30,9 +26,6 @@ const (
 	EnvelopeTypeGraphNodeEnd                   EnvelopeType = "graph_node_end"
 	EnvelopeTypeCheckpoint                     EnvelopeType = "checkpoint"
 	EnvelopeTypeIntentPass                     EnvelopeType = "intent_pass"
-	EnvelopeTypeMemberMessageStart             EnvelopeType = "member_message_start"
-	EnvelopeTypeMemberDelta                    EnvelopeType = "member_delta"
-	EnvelopeTypeMemberMessageDone              EnvelopeType = "member_message_done"
 	EnvelopeTypeTeamRunStarted                 EnvelopeType = "team_run_started"
 	EnvelopeTypeTeamRunFinished                EnvelopeType = "team_run_finished"
 	EnvelopeTypeTeamStepStarted                EnvelopeType = "team_step_started"
@@ -133,14 +126,6 @@ const (
 	EnvelopeTypeOrganizationCreated EnvelopeType = "organization.created"
 	EnvelopeTypeOrganizationUpdated EnvelopeType = "organization.updated"
 	EnvelopeTypeOrganizationDeleted EnvelopeType = "organization.deleted"
-
-	// Activity-First lifecycle events (AF phase)
-	// ActivityProjector projects runtime events into Activity semantic units
-	// and pushes them to the frontend, eliminating frontend inference.
-	EnvelopeTypeActivityStart      EnvelopeType = "activity_start"
-	EnvelopeTypeActivityDelta      EnvelopeType = "activity_delta"
-	EnvelopeTypeActivityDone       EnvelopeType = "activity_done"
-	EnvelopeTypeActivityChildStart EnvelopeType = "activity_child_start"
 
 	// EnvelopeTypeLLMRetry signals that the LLM provider call is being retried
 	// after a transient failure (5xx / 429 / network error). Published by the
@@ -416,9 +401,10 @@ func init() {
 		EnvelopeTypeMonitorAutoHealed, EnvelopeTypeMonitorSelfCheckCompleted,
 	)
 
-	// Team channel: member messages, team run lifecycle, orchestration status
+	// Team channel: team run lifecycle, orchestration status.
+	// MemberMessage* types were removed in Phase 1c-5 (replaced by Activity-First);
+	// team member rendering is now driven by ActivityEventBus.
 	RegisterChannelRoutes("team",
-		EnvelopeTypeMemberMessageStart, EnvelopeTypeMemberDelta, EnvelopeTypeMemberMessageDone,
 		EnvelopeTypeTeamRunStarted, EnvelopeTypeTeamRunFinished, EnvelopeTypeTeamStepStarted,
 		EnvelopeTypeTeamStepFinished, EnvelopeTypeTeamRunFailed, EnvelopeTypeTeamSummary,
 		EnvelopeTypeOrchestrationAgentStatus,
@@ -462,8 +448,6 @@ func init() {
 		EnvelopeTypeExecutionProgress,
 		// Organization CRUD events
 		EnvelopeTypeOrganizationCreated, EnvelopeTypeOrganizationUpdated, EnvelopeTypeOrganizationDeleted,
-		// Activity-First lifecycle events
-		EnvelopeTypeActivityStart, EnvelopeTypeActivityDelta, EnvelopeTypeActivityDone, EnvelopeTypeActivityChildStart,
 		// LLM retry feedback (T1.2): "正在重试" notification
 		EnvelopeTypeLLMRetry,
 	)

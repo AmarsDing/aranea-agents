@@ -22,13 +22,7 @@ type (
 
 // Re-export constants.
 const (
-	EnvelopeTypeTextDelta                       = contract.EnvelopeTypeTextDelta
-	EnvelopeTypeTextDone                        = contract.EnvelopeTypeTextDone
-	EnvelopeTypeToolCall                        = contract.EnvelopeTypeToolCall
-	EnvelopeTypeToolResult                      = contract.EnvelopeTypeToolResult
 	EnvelopeTypeStateDelta                      = contract.EnvelopeTypeStateDelta
-	EnvelopeTypeTransfer                        = contract.EnvelopeTypeTransfer
-	EnvelopeTypeRunnerCompletion                = contract.EnvelopeTypeRunnerCompletion
 	EnvelopeTypeContextUsage                    = contract.EnvelopeTypeContextUsage
 	EnvelopeTypeRunStatus                       = contract.EnvelopeTypeRunStatus
 	EnvelopeTypeError                           = contract.EnvelopeTypeError
@@ -38,9 +32,6 @@ const (
 	EnvelopeTypeGraphNodeEnd                    = contract.EnvelopeTypeGraphNodeEnd
 	EnvelopeTypeCheckpoint                      = contract.EnvelopeTypeCheckpoint
 	EnvelopeTypeIntentPass                      = contract.EnvelopeTypeIntentPass
-	EnvelopeTypeMemberMessageStart              = contract.EnvelopeTypeMemberMessageStart
-	EnvelopeTypeMemberDelta                     = contract.EnvelopeTypeMemberDelta
-	EnvelopeTypeMemberMessageDone               = contract.EnvelopeTypeMemberMessageDone
 	EnvelopeTypeTeamRunStarted                  = contract.EnvelopeTypeTeamRunStarted
 	EnvelopeTypeTeamRunFinished                 = contract.EnvelopeTypeTeamRunFinished
 	EnvelopeTypeTeamStepStarted                 = contract.EnvelopeTypeTeamStepStarted

@@ -401,6 +401,30 @@ export default {
     transition: {
       thinkingToReply: 'Generating reply',
     },
+    teamStage: {
+      label: 'Team',
+      assembling: 'Assembling team',
+      executing: 'Executing',
+      completed: 'Team completed',
+      failed: 'Team execution failed',
+      cancelled: 'Team cancelled',
+    },
+    graphStage: {
+      label: 'Graph',
+      executing: 'Graph executing',
+      completed: 'Graph completed',
+      failed: 'Graph execution failed',
+      cancelled: 'Graph cancelled',
+      dependsOn: 'Depends on',
+    },
+    sessionStage: {
+      label: 'Session',
+      member: 'Member',
+      executing: '{name} executing',
+      completed: '{name} completed',
+      failed: '{name} execution failed',
+      cancelled: '{name} cancelled',
+    },
     errorBlock: {
       hintRetry: 'Click retry to resend',
       hintSwitchModel: 'Consider switching model',

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 )
 
@@ -20,11 +21,12 @@ type wsUpstream struct {
 
 // wsDownstream represents a server-to-client WebSocket message.
 type wsDownstream struct {
-	Direction string          `json:"direction"`
-	Channel   string          `json:"channel"`
-	Type      string          `json:"type,omitempty"`
-	Payload   any             `json:"payload,omitempty"`
-	Envelope  *event.Envelope `json:"envelope,omitempty"`
+	Direction     string             `json:"direction"`
+	Channel       string             `json:"channel"`
+	Type          string             `json:"type,omitempty"`
+	Payload       any                `json:"payload,omitempty"`
+	Envelope      *event.Envelope    `json:"envelope,omitempty"`
+	ActivityEvent *biz.ActivityEvent `json:"activity_event,omitempty"`
 }
 
 // wsProbeMode returns true when the client requests a lightweight probe connection.

@@ -22,9 +22,7 @@ type turnStreamConsumer struct {
 	observer          *event.TurnObserver
 	projectMeta       ProjectMeta
 	opts              *StreamConsumeOptions
-	projector         *EventProjector
 	result            EventStreamResult
-	pendingToolCalls  map[string]event.EnvelopeToolCall
 	firstByteReceived *bool
 	received          bool
 	lg                loggateway.Logger
@@ -46,27 +44,13 @@ func newTurnStreamConsumer(
 		projectMeta:       projectMeta,
 		opts:              opts,
 		firstByteReceived: firstByteReceived,
-		pendingToolCalls:  make(map[string]event.EnvelopeToolCall),
 		lg:                lg,
 	}
 	if eventBus != nil {
 		c.observer = event.NewTurnObserver(eventBus)
 	}
-	// Legacy path: EventProjector is only needed when ActivityProjector is not
-	// active (tests or fallback mode). In AF mode ActivityProjector owns all
-	// event projection, persistence, and WS publishing.
-	if opts == nil || opts.ActivityProjector == nil {
-		if eventBus != nil {
-			c.projector = NewEventProjector(eventBus, lg)
-			if projectMeta.TeamID != "" && len(projectMeta.MemberAgentKeys) > 0 {
-				c.projector.memberStarted = make(map[string]bool)
-			}
-			if opts != nil {
-				c.projector.Configure(projectMeta, opts.MetaResolver)
-			}
-		}
-	}
 	// AF phase: configure ActivityProjector for direct event consumption.
+	// ActivityProjector is mandatory — production always wires it via Wire DI.
 	if opts != nil && opts.ActivityProjector != nil {
 		opts.ActivityProjector.Configure(projectMeta, opts.MetaResolver)
 		opts.ActivityProjector.Reset()
@@ -249,47 +233,11 @@ func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {
 
 func (c *turnStreamConsumer) projectAndTrackTools(ev *trpcevent.Event) {
 	// AF-3: ActivityProjector directly consumes trpc events and owns all
-	// projection, persistence, and WS publishing. In production it is always
-	// non-nil (wired via Wire DI). Return immediately after feeding the event.
-	hasAF := c.opts != nil && c.opts.ActivityProjector != nil
-	if hasAF {
+	// projection, persistence, and WS publishing. It is mandatory in
+	// production (wired via Wire DI). When nil (test scenarios without an
+	// ActivityProjector), events are simply not projected.
+	if c.opts != nil && c.opts.ActivityProjector != nil {
 		c.opts.ActivityProjector.ProcessEvent(c.turnCtx, ev)
-		return
-	}
-
-	// Legacy path (no ActivityProjector): EventProjector handles projection,
-	// WS publishing, activity persistence, tool tracking, and member tool call
-	// counting for tests and fallback mode.
-	if c.projector == nil {
-		return
-	}
-	meta := c.projectMeta
-	if ev.IsRunnerCompletion() {
-		meta.TurnPromptTokens = c.result.PromptTok
-		meta.TurnCompletionTok = c.result.CompletionTok
-	}
-
-	envelopes := c.projector.Project(c.turnCtx, ev, meta)
-
-	for _, env := range envelopes {
-		c.trackToolEnvelope(env)
-		if c.projectMeta.TeamID != "" && env.Type == event.EnvelopeTypeToolCall {
-			author := strings.TrimSpace(env.Author)
-			if author != "" && isTeamMemberAuthor(author, c.projectMeta) {
-				if c.result.MemberToolCalls == nil {
-					c.result.MemberToolCalls = make(map[string]int)
-				}
-				c.result.MemberToolCalls[author]++
-			}
-		}
-		if c.observer != nil {
-			c.observer.PublishChat(c.turnCtx, env)
-		} else if c.eventBus != nil {
-			c.eventBus.Publish(c.turnCtx, env)
-		}
-	}
-	if c.opts != nil && c.opts.ActivityPersister != nil {
-		PublishActivityEnvelopes(c.turnCtx, c.projectMeta, c.opts.ActivityPersister, envelopes, c.lg)
 	}
 }
 
@@ -323,75 +271,24 @@ func (c *turnStreamConsumer) publishContextUsageStep() {
 	}
 }
 
-func (c *turnStreamConsumer) trackToolEnvelope(env event.Envelope) {
-	if env.ToolCall == nil {
-		return
-	}
-	id := strings.TrimSpace(env.ToolCall.ID)
-	if id == "" {
-		id = strings.TrimSpace(env.ToolCall.Name)
-	}
-	switch env.Type {
-	case event.EnvelopeTypeToolCall:
-		if id != "" {
-			c.pendingToolCalls[id] = *env.ToolCall
-		}
-	case event.EnvelopeTypeToolResult:
-		delete(c.pendingToolCalls, id)
-	}
-}
-
 func (c *turnStreamConsumer) finalize() {
-	hasAF := c.opts != nil && c.opts.ActivityProjector != nil
-
 	// AF phase: finalize root task Activity with token usage and copy per-member
 	// tool call counts to the result. ActivityProjector owns stuck-tool handling
 	// and persistence via its sequencer.
-	if hasAF {
-		usage := &ActivityUsage{
-			PromptTokens:     c.result.PromptTok,
-			CompletionTokens: c.result.CompletionTok,
-			TotalTokens:      c.result.PromptTok + c.result.CompletionTok,
-		}
-		c.opts.ActivityProjector.OnTurnEnd(c.turnCtx, usage)
-		c.opts.ActivityProjector.OnStuckTools(c.turnCtx)
-		c.opts.ActivityProjector.Close()
-
-		if mtc := c.opts.ActivityProjector.MemberToolCalls(); len(mtc) > 0 {
-			c.result.MemberToolCalls = mtc
-		}
+	if c.opts == nil || c.opts.ActivityProjector == nil {
 		return
 	}
+	usage := &ActivityUsage{
+		PromptTokens:     c.result.PromptTok,
+		CompletionTokens: c.result.CompletionTok,
+		TotalTokens:      c.result.PromptTok + c.result.CompletionTok,
+	}
+	c.opts.ActivityProjector.OnTurnEnd(c.turnCtx, usage)
+	c.opts.ActivityProjector.OnStuckTools(c.turnCtx)
+	c.opts.ActivityProjector.Close()
 
-	// Legacy path (no ActivityProjector): emit tool_result envelopes and persist
-	// stuck tool Activities for tests and fallback mode.
-	if len(c.pendingToolCalls) == 0 {
-		return
-	}
-	pending := c.pendingToolCalls
-	for id, tc := range pending {
-		c.lg.Warn("stuck tool detected at turn finalization",
-			loggateway.StepID("stream.stuck_tool"),
-			loggateway.Str("tool_call_id", id),
-			loggateway.Str("tool_name", tc.Name),
-			loggateway.Str("status", tc.Status),
-			loggateway.Str("session_id", c.projectMeta.SessionID),
-		)
-	}
-	if c.eventBus != nil {
-		// AS-EVT-01: ToolResult is Critical — must go through Infra.Publish (WBPF).
-		// publishStuckToolNotification uses infra.SessionBus for AlertNotify (Informational).
-		var infra *event.Infra
-		if c.opts != nil {
-			infra = c.opts.EventInfra
-		}
-		if infra != nil {
-			PublishStuckToolResultEnvelopes(c.turnCtx, c.projectMeta, infra, pending)
-			publishStuckToolNotification(c.turnCtx, c.projectMeta, infra, pending)
-		}
-	}
-	if c.opts != nil && c.opts.ActivityPersister != nil {
-		FinalizeStuckToolActivities(c.turnCtx, c.projectMeta, c.opts.ActivityPersister, pending, c.lg)
+	if mtc := c.opts.ActivityProjector.MemberToolCalls(); len(mtc) > 0 {
+		c.result.MemberToolCalls = mtc
 	}
 }
 

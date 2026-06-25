@@ -75,7 +75,7 @@ func (s *stubSessionRepo) SearchSessions(_ context.Context, _ biz.SessionSearchQ
 }
 
 func newTestGuardUC(repo *stubSessionRepo) *biz.SessionUsecase {
-	return biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil)
+	return biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 }
 
 func TestSessionStatusGuard_OnStartup(t *testing.T) {

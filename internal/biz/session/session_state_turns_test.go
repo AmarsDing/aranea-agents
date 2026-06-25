@@ -57,34 +57,6 @@ func (r *testRepo) UpdateSessionTurn(ctx context.Context, id string, fields Sess
 	return r.mockSessionRepo.UpdateSessionTurn(ctx, id, fields)
 }
 
-func (r *testRepo) UpsertChatActivityMessage(ctx context.Context, sessionID string, msg ChatMessage) (bool, error) {
-	if r.upsertChatActivityMessageFn != nil {
-		return r.upsertChatActivityMessageFn(ctx, sessionID, msg)
-	}
-	return r.mockSessionRepo.UpsertChatActivityMessage(ctx, sessionID, msg)
-}
-
-func (r *testRepo) ListMessagesAfterTurn(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error) {
-	if r.listMessagesAfterTurnFn != nil {
-		return r.listMessagesAfterTurnFn(ctx, sessionID, afterTurn)
-	}
-	return r.mockSessionRepo.ListMessagesAfterTurn(ctx, sessionID, afterTurn)
-}
-
-func (r *testRepo) ListMessagesRecent(ctx context.Context, sessionID string, limit int) ([]ChatMessage, error) {
-	if r.listMessagesRecentFn != nil {
-		return r.listMessagesRecentFn(ctx, sessionID, limit)
-	}
-	return r.mockSessionRepo.ListMessagesRecent(ctx, sessionID, limit)
-}
-
-func (r *testRepo) ListMessagesAfterRevision(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error) {
-	if r.listMessagesAfterRevisionFn != nil {
-		return r.listMessagesAfterRevisionFn(ctx, sessionID, afterRevision)
-	}
-	return r.mockSessionRepo.ListMessagesAfterRevision(ctx, sessionID, afterRevision)
-}
-
 func TestApplyStateDelta_GetError(t *testing.T) {
 	repo := &testRepo{
 		patchSessionStateFn: func(_ context.Context, _ string, _ map[string]string, _ []string) error {
@@ -112,12 +84,15 @@ func TestApplyStateDelta_SaveError(t *testing.T) {
 }
 
 func TestListMessagesPaged(t *testing.T) {
+	// Phase 1c-3: count is now derived from len(activitiesToChatMessages(acts))
+	// where acts come from testRepo.ListBySession (which delegates to
+	// listMessagesBySessionFn with limit=0, offset=0). So countFn is dead and
+	// Total always equals len(Items) for the mocked data.
 	tests := []struct {
 		name      string
 		sessionID string
 		limit     int
 		offset    int
-		countFn   func(_ context.Context, sid string) (int, error)
 		listFn    func(_ context.Context, sid string, limit, offset int) ([]ChatMessage, error)
 		wantErr   bool
 		wantMsg   string
@@ -125,59 +100,39 @@ func TestListMessagesPaged(t *testing.T) {
 	}{
 		{
 			"empty session id returns error",
-			"", 0, 0, nil, nil, true, "session id is required", nil,
+			"", 0, 0, nil, true, "session id is required", nil,
 		},
 		{
 			"whitespace session id returns error",
-			"  ", 0, 0, nil, nil, true, "session id is required", nil,
+			"  ", 0, 0, nil, true, "session id is required", nil,
 		},
 		{
-			"zero limit defaults to 100",
+			"empty result returns zero total",
 			"sess-1", 0, 0,
-			func(_ context.Context, _ string) (int, error) { return 0, nil },
-			func(_ context.Context, _ string, limit, _ int) ([]ChatMessage, error) {
-				if limit != 100 {
-					t.Errorf("limit = %d, want 100", limit)
-				}
+			func(_ context.Context, _ string, _, _ int) ([]ChatMessage, error) {
 				return nil, nil
 			},
-			false, "", nil,
-		},
-		{
-			"limit capped at 500",
-			"sess-1", 600, 0,
-			func(_ context.Context, _ string) (int, error) { return 0, nil },
-			func(_ context.Context, _ string, limit, _ int) ([]ChatMessage, error) {
-				if limit != 500 {
-					t.Errorf("limit = %d, want 500", limit)
+			false, "",
+			func(t *testing.T, got MessageListResult) {
+				if got.Total != 0 {
+					t.Errorf("Total = %d, want 0", got.Total)
 				}
-				return nil, nil
-			},
-			false, "", nil,
-		},
-		{
-			"negative offset reset to 0",
-			"sess-1", 10, -5,
-			func(_ context.Context, _ string) (int, error) { return 0, nil },
-			func(_ context.Context, _ string, _, offset int) ([]ChatMessage, error) {
-				if offset != 0 {
-					t.Errorf("offset = %d, want 0", offset)
+				if len(got.Items) != 0 {
+					t.Errorf("len(Items) = %d, want 0", len(got.Items))
 				}
-				return nil, nil
 			},
-			false, "", nil,
 		},
 		{
 			"returns total and items",
 			"sess-1", 10, 0,
-			func(_ context.Context, _ string) (int, error) { return 42, nil },
 			func(_ context.Context, _ string, _, _ int) ([]ChatMessage, error) {
-				return []ChatMessage{{ID: "m1"}}, nil
+				return []ChatMessage{{ID: "m1", Role: "user"}}, nil
 			},
 			false, "",
 			func(t *testing.T, got MessageListResult) {
-				if got.Total != 42 {
-					t.Errorf("Total = %d, want 42", got.Total)
+				// Total is derived from len(list) after Activity round-trip.
+				if got.Total != 1 {
+					t.Errorf("Total = %d, want 1", got.Total)
 				}
 				if len(got.Items) != 1 {
 					t.Errorf("len(Items) = %d, want 1", len(got.Items))
@@ -185,15 +140,8 @@ func TestListMessagesPaged(t *testing.T) {
 			},
 		},
 		{
-			"count error propagated",
+			"list error propagated (from count path)",
 			"sess-1", 10, 0,
-			func(_ context.Context, _ string) (int, error) { return 0, errors.New("db error") },
-			nil, true, "", nil,
-		},
-		{
-			"list error propagated",
-			"sess-1", 10, 0,
-			func(_ context.Context, _ string) (int, error) { return 10, nil },
 			func(_ context.Context, _ string, _, _ int) ([]ChatMessage, error) {
 				return nil, errors.New("db error")
 			},
@@ -204,9 +152,6 @@ func TestListMessagesPaged(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &testRepo{}
-			if tt.countFn != nil {
-				repo.countMessagesBySessionFn = tt.countFn
-			}
 			if tt.listFn != nil {
 				repo.listMessagesBySessionFn = tt.listFn
 			}
@@ -233,11 +178,8 @@ func TestListMessagesPaged(t *testing.T) {
 
 func TestListMessages(t *testing.T) {
 	repo := &testRepo{
-		countMessagesBySessionFn: func(_ context.Context, _ string) (int, error) {
-			return 2, nil
-		},
 		listMessagesBySessionFn: func(_ context.Context, _ string, _, _ int) ([]ChatMessage, error) {
-			return []ChatMessage{{ID: "m1"}, {ID: "m2"}}, nil
+			return []ChatMessage{{ID: "m1", Role: "user"}, {ID: "m2", Role: "assistant"}}, nil
 		},
 	}
 	uc := newTestUc(repo)
@@ -526,94 +468,21 @@ func TestDeleteByAgent(t *testing.T) {
 	}
 }
 
-func TestUpsertChatActivityMessage(t *testing.T) {
-	tests := []struct {
-		name      string
-		sessionID string
-		msg       ChatMessage
-		getFn     func(_ context.Context, id string) (Session, error)
-		upsertFn  func(_ context.Context, sid string, msg ChatMessage) (bool, error)
-		wantErr   bool
-		wantMsg   string
-	}{
-		{
-			"empty session id returns error",
-			"", ChatMessage{ID: "msg-1"}, nil, nil, true, "session id is required",
-		},
-		{
-			"empty message id returns error",
-			"sess-1", ChatMessage{ID: ""}, nil, nil, true, "message id is required",
-		},
-		{
-			"session not found returns error",
-			"sess-1", ChatMessage{ID: "msg-1"},
-			func(_ context.Context, _ string) (Session, error) {
-				return Session{}, apierror.NotFound("SESSION", "not found")
-			}, nil, true, "",
-		},
-		{
-			"valid upsert passes",
-			"sess-1", ChatMessage{ID: "msg-1"},
-			func(_ context.Context, id string) (Session, error) {
-				return Session{ID: id}, nil
-			},
-			func(_ context.Context, sid string, msg ChatMessage) (bool, error) {
-				if sid != "sess-1" {
-					t.Errorf("sid = %q, want %q", sid, "sess-1")
-				}
-				if msg.ID != "msg-1" {
-					t.Errorf("msg.ID = %q, want %q", msg.ID, "msg-1")
-				}
-				return true, nil
-			},
-			false, "",
-		},
-		{
-			"upsert repo error propagated",
-			"sess-1", ChatMessage{ID: "msg-1"},
-			func(_ context.Context, id string) (Session, error) {
-				return Session{ID: id}, nil
-			},
-			func(_ context.Context, _ string, _ ChatMessage) (bool, error) {
-				return false, errors.New("db error")
-			},
-			true, "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			repo := &testRepo{}
-			if tt.getFn != nil {
-				repo.getSessionByIDFn = tt.getFn
-			}
-			if tt.upsertFn != nil {
-				repo.upsertChatActivityMessageFn = tt.upsertFn
-			}
-			uc := newTestUc(repo)
-			err := uc.UpsertChatActivityMessage(context.Background(), tt.sessionID, tt.msg)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
-				if tt.wantMsg != "" {
-					assertBadRequest(t, err, tt.wantMsg)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-		})
-	}
-}
+// Phase 1c-3: TestUpsertChatActivityMessage removed — UpsertChatActivityMessage now
+// delegates to NoopMessageWriter (always returns nil). The validation paths
+// (empty session_id, empty message_id, session not found) are still covered by
+// the UpsertChatActivityMessage method itself; the repo-error path is moot since
+// the writer is a no-op.
 
 func TestListMessagesAfterRevision(t *testing.T) {
+	// Phase 1c-3: ListMessagesAfterRevision now backs onto ActivityLister.ListBySession
+	// (via ActivityMessageReader), so listMessagesAfterRevisionFn is dead. Mock
+	// listMessagesBySessionFn instead.
 	tests := []struct {
 		name      string
 		sessionID string
 		getFn     func(_ context.Context, id string) (Session, error)
-		listFn    func(_ context.Context, sid string, rev int64) ([]ChatMessage, error)
+		listMsgFn func(_ context.Context, sid string, limit, offset int) ([]ChatMessage, error)
 		wantErr   bool
 		wantMsg   string
 		check     func(t *testing.T, got []ChatMessage)
@@ -639,11 +508,8 @@ func TestListMessagesAfterRevision(t *testing.T) {
 			func(_ context.Context, id string) (Session, error) {
 				return Session{ID: id}, nil
 			},
-			func(_ context.Context, _ string, rev int64) ([]ChatMessage, error) {
-				if rev != 1 {
-					t.Errorf("rev = %d, want 1", rev)
-				}
-				return []ChatMessage{{ID: "m1"}}, nil
+			func(_ context.Context, _ string, _, _ int) ([]ChatMessage, error) {
+				return []ChatMessage{{ID: "m1", Role: "user"}}, nil
 			},
 			false, "",
 			func(t *testing.T, got []ChatMessage) {
@@ -658,7 +524,7 @@ func TestListMessagesAfterRevision(t *testing.T) {
 			func(_ context.Context, id string) (Session, error) {
 				return Session{ID: id}, nil
 			},
-			func(_ context.Context, _ string, _ int64) ([]ChatMessage, error) {
+			func(_ context.Context, _ string, _, _ int) ([]ChatMessage, error) {
 				return nil, errors.New("db error")
 			},
 			true, "", nil,
@@ -671,8 +537,8 @@ func TestListMessagesAfterRevision(t *testing.T) {
 			if tt.getFn != nil {
 				repo.getSessionByIDFn = tt.getFn
 			}
-			if tt.listFn != nil {
-				repo.listMessagesAfterRevisionFn = tt.listFn
+			if tt.listMsgFn != nil {
+				repo.listMessagesBySessionFn = tt.listMsgFn
 			}
 			uc := newTestUc(repo)
 			got, err := uc.ListMessagesAfterRevision(context.Background(), tt.sessionID, 1)

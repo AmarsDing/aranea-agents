@@ -86,9 +86,6 @@ func (s *WSServer) handleUpstream(wc *wsConn, raw []byte) {
 
 	case "enqueue_message":
 		s.handleEnqueueMessage(wc, up)
-
-	case "sync_request":
-		s.handleSyncRequest(wc, up)
 	}
 }
 

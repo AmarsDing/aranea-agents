@@ -258,15 +258,12 @@ func (o *ChatOrchestrator) persistTurnUserMessage(
 		// user message 的 turn_id 非空，useConversationTimeline 才能将 Activity
 		// 记录关联到此 UserTurn。缺失会导致 loadMessages 用服务器消息替换
 		// pending-user 占位消息后 turn_id 丢失，思考和回复 UI 不显示。
+		//
+		// Phase 1c-3: messages 表已删除，用户消息由 ActivityProjector.OnTurnStart
+		// 持久化为 Task Activity。userMsg.ID 仍作为 RequestID 传给 ActivityProjector。
 		userMsg.TurnID = userMsg.ID
-		if err := o.td().Sessions.AppendChatMessage(ctx, sessionID, userMsg, false); err != nil {
-			o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: AppendChatMessage 失败",
-				loggateway.StepID("chat.append_user_msg_fail"), loggateway.Err(err))
-			o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
-			return biz.ChatMessage{}, false, err
-		}
 		userMsgPersisted = true
-		emitter.LogDone("chat.user_msg_persist", "用户消息已持久化")
+		emitter.LogDone("chat.user_msg_persist", "用户消息已委托给 ActivityProjector")
 		if !input.EntryConfig.AllowStream {
 			o.bumpSessionRevisionSyncAndPublish(ctx, sessionID, runID, userMsg.ID)
 		}
@@ -313,8 +310,8 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 	// notice/confirm Activities via biz.ActivityEmitterFromContext during the
 	// LLM call. The same projector is reused in consumeTurnStream to avoid
 	// races between early emissions and Reset() in newTurnStreamConsumer.
-	if o.activityWriter() != nil && o.td().Pipeline.Bus != nil {
-		ap := chatagent.NewActivityProjector(o.td().Pipeline.Bus, o.activityWriter(), o.lg())
+	if o.activityWriter() != nil && o.td().Pipeline.ActivityBus != nil {
+		ap := chatagent.NewActivityProjector(o.td().Pipeline.ActivityBus, o.activityWriter(), o.lg())
 		ap.Reset() // initialize maps; subsequent Reset() in newTurnStreamConsumer is a no-op
 		earlyMeta := chatagent.ProjectMeta{
 			SessionID:        sessionID,
@@ -632,7 +629,7 @@ func (o *ChatOrchestrator) consumeTurnStream(
 		TaskContent: userContent,
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
-	streamOpts := NewChatStreamConsumeOptions(o.td().ReadDeps.ToolUC, o.td().ReadDeps.Agents, o.td().Sessions, o.activityWriter(), o.td().Pipeline.Bus, o.lg())
+	streamOpts := NewChatStreamConsumeOptions(o.td().ReadDeps.ToolUC, o.td().ReadDeps.Agents, o.td().Sessions, o.activityWriter(), o.td().Pipeline.ActivityBus, o.lg())
 	// N-21/N-03: Reuse the ActivityProjector injected in invokeTurnLLMAndStream
 	// so that emissions from plugins/hooks (which fire during invokeLLMCall)
 	// are visible to the stream consumer. This avoids a race where Reset() in
@@ -864,17 +861,9 @@ func (o *ChatOrchestrator) buildAndPersistAssistantMessage(
 		TokenOut:         completionTok,
 		AttachmentsCount: assistantAttN,
 	}
-	if err := o.td().Sessions.AppendChatMessage(ctx, sessionID, assistantMsg, true); err != nil {
-		o.markAndPublish(sessionID, runID, turnStatus, turnErr, turnErrMsg, err)
-		return biz.ChatMessage{}, err
-	}
-	if execResult.userMsgPersisted {
-		if err := o.td().Sessions.UpdateChatMessageStatus(ctx, sessionID, execResult.userMsg.ID, "ok", ""); err != nil {
-			o.lg().Warn("用户消息成功状态更新失败", loggateway.StepID("chat.user_msg_status_fail"), loggateway.Str("message_id", execResult.userMsg.ID), loggateway.Err(err))
-		} else {
-			execResult.userMsg.Status = "ok"
-		}
-	}
+	// Phase 1c-3: messages 表已删除。assistant 消息由 ActivityProjector.OnAssistantMessage
+	// 持久化为 Reply Activity，用户消息状态由 OnTurnEnd 终结为 completed。
+	// assistantMsg.ID 仍保留用于 recordSessionTurn 的 user/assistant 关联记录。
 	return assistantMsg, nil
 }
 

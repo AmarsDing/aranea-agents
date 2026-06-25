@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/pkg/apierror"
@@ -489,10 +490,6 @@ type SessionRepo interface {
 	SessionWriter
 	SessionMutator
 	SessionBatchMutator
-	MessageReader
-	MessageSearchReader
-	MessageWriter
-	MessageStatusWriter
 	TimelineReader
 	InvocationReader
 	SummaryReader
@@ -548,7 +545,32 @@ type SessionUsecase struct {
 	messageUsecase     *SessionMessageUsecase
 }
 
-func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository, statusPublisher SessionStatusPublisher, metricsUsecase *SessionMetricsUsecase, runtimeWriter SessionRuntimeWriter, lg loggateway.Logger) *SessionUsecase {
+// ActivityLister is the local interface for reading Activities.
+// This mirrors biz.ActivityReader to avoid a circular import (biz → biz/session → biz).
+// The wire binding connects this to the real biz.ActivityRepo.
+// Stability:evolving
+type ActivityLister interface {
+	ListBySessionTurn(ctx context.Context, sessionID, turnID string) ([]ActivityEntry, error)
+	ListBySession(ctx context.Context, sessionID string) ([]ActivityEntry, error)
+}
+
+// ActivityEntry is the local mirror of biz.Activity for the session package.
+// Only the fields needed for ChatMessage conversion are included.
+type ActivityEntry struct {
+	ID         string
+	Kind       string
+	Status     string
+	SessionID  string
+	TurnID     string
+	Timestamp  time.Time
+	Content    string
+	Reasoning  string
+	ToolName   string
+	ToolResult string
+	AgentKey   string
+}
+
+func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository, statusPublisher SessionStatusPublisher, metricsUsecase *SessionMetricsUsecase, runtimeWriter SessionRuntimeWriter, activityReader ActivityLister, lg loggateway.Logger) *SessionUsecase {
 	if titleGenerator == nil {
 		titleGenerator = NewNoopSessionTitleGenerator()
 	}
@@ -567,8 +589,23 @@ func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLooku
 	}
 	// Create sub-usecases with shared repo references.
 	uc.compressionUsecase = NewSessionCompressionUsecase(sessions, sessions, sessions, sessions)
-	uc.timelineUsecase = NewSessionTimelineUsecase(sessions, sessions, sessions, sessions)
-	uc.messageUsecase = NewSessionMessageUsecase(sessions, sessions, sessions, sessions, titleGenerator, sessions, sessions, lg, metricsUsecase, sessions, sessions, participants)
+	// Phase 1c-3: Message reads are now backed by ActivityReader (via ActivityMessageReader),
+	// and writes are no-ops (ActivityProjector handles persistence). The messages table is deleted.
+	// When activityReader is nil (tests/CLI), a noop lister returns empty results.
+	lister := activityReader
+	if lister == nil {
+		lister = noopActivityLister{}
+	}
+	activityMsgReader := NewActivityMessageReader(lister)
+	uc.timelineUsecase = NewSessionTimelineUsecase(sessions, sessions, activityMsgReader, sessions)
+	noopWriter := NewNoopMessageWriter()
+	noopStatusWriter := NewNoopMessageStatusWriter()
+	uc.messageUsecase = NewSessionMessageUsecase(
+		activityMsgReader, // MessageReader
+		activityMsgReader, // MessageSearchReader
+		noopWriter,        // MessageWriter
+		noopStatusWriter,  // MessageStatusWriter
+		titleGenerator, sessions, sessions, lg, metricsUsecase, sessions, sessions, participants)
 	return uc
 }
 

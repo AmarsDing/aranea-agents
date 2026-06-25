@@ -20,7 +20,11 @@ export type ActivityKind =
   | 'delegate' // Spirit delegates to team
   | 'plan' // Execution plan (Spirit→Team orchestration)
   | 'notice' // System notification
-  | 'confirm'; // User confirmation required
+  | 'confirm' // User confirmation required
+  // Phase 3: Stage kinds for unified Team/Graph/Session rendering
+  | 'team_stage' // Team formation/execution/completion stage
+  | 'graph_stage' // Graph DAG execution stage
+  | 'session'; // Child session creation/execution
 
 // === ActivityStatus ===
 
@@ -63,6 +67,7 @@ export interface Activity {
 
   // === Tool fields (kind=action) ===
   toolName?: string | null;
+  toolCategory?: string | null;
   toolCallId?: string | null;
   toolArguments?: string | null;
   toolResult?: string | null;
@@ -77,6 +82,10 @@ export interface Activity {
   teamId?: string | null;
   dagNodeId?: string | null;
   dependsOn?: string[] | null;
+
+  // === Stage phase (kind=team_stage/graph_stage/session) ===
+  // Backend Activity.stage: "assembled"/"planning"/"executing"/"completed"/"failed" etc.
+  stage?: string | null;
 
   // === Agent info ===
   agentKey?: string | null;

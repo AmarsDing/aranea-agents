@@ -11,7 +11,7 @@ import (
 func TestRecordingBusCollectsEvents(t *testing.T) {
 	bus := testutil.NewRecordingBus()
 
-	env1 := event.NewEnvelope(event.EnvelopeTypeTextDelta, "agent-1", "sess-a")
+	env1 := event.NewEnvelope(event.EnvelopeTypeStateDelta, "agent-1", "sess-a")
 	env2 := event.NewEnvelope(event.EnvelopeTypeError, "agent-1", "sess-a")
 
 	bus.Publish(context.Background(), env1)
@@ -26,11 +26,11 @@ func TestRecordingBusCollectsEvents(t *testing.T) {
 func TestRecordingBusEventsOfType(t *testing.T) {
 	bus := testutil.NewRecordingBus()
 
-	bus.Publish(context.Background(), event.NewEnvelope(event.EnvelopeTypeTextDelta, "a", "s"))
+	bus.Publish(context.Background(), event.NewEnvelope(event.EnvelopeTypeStateDelta, "a", "s"))
 	bus.Publish(context.Background(), event.NewEnvelope(event.EnvelopeTypeError, "a", "s"))
-	bus.Publish(context.Background(), event.NewEnvelope(event.EnvelopeTypeTextDelta, "a", "s"))
+	bus.Publish(context.Background(), event.NewEnvelope(event.EnvelopeTypeStateDelta, "a", "s"))
 
-	textEvents := bus.EventsOfType(event.EnvelopeTypeTextDelta)
+	textEvents := bus.EventsOfType(event.EnvelopeTypeStateDelta)
 	if len(textEvents) != 2 {
 		t.Fatalf("expected 2 text events, got %d", len(textEvents))
 	}
