@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/mcp"
 	"aranea-agents/internal/mcp/metadata"
 	"aranea-agents/internal/metrics"
@@ -25,13 +25,13 @@ var healthAlertTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 const DefaultSustainedErrorAfter = mcp.DefaultSustainedErrorAfter
 
 type Publisher struct {
-	bus event.Bus
-	uc  *biz.MCPServerUsecase
-	lg  loggateway.Logger
+	monitorBus contract.MonitorBus
+	uc         *biz.MCPServerUsecase
+	lg         loggateway.Logger
 }
 
-func NewPublisher(bus event.Bus, uc *biz.MCPServerUsecase, lg loggateway.Logger) *Publisher {
-	return &Publisher{bus: bus, uc: uc, lg: lg}
+func NewPublisher(monitorBus contract.MonitorBus, uc *biz.MCPServerUsecase, lg loggateway.Logger) *Publisher {
+	return &Publisher{monitorBus: monitorBus, uc: uc, lg: lg}
 }
 
 func SustainedErrorAfter() time.Duration {
@@ -47,7 +47,7 @@ func SustainedErrorAfter() time.Duration {
 }
 
 func (p *Publisher) MaybeEmitAfterHealth(ctx context.Context, srv biz.MCPServer, result biz.MCPTestResult) {
-	if p == nil || p.bus == nil {
+	if p == nil || p.monitorBus == nil {
 		return
 	}
 	// Only hard failures and auth_required warnings trigger alert logic.
@@ -78,9 +78,9 @@ func (p *Publisher) MaybeEmitAfterHealth(ctx context.Context, srv biz.MCPServer,
 	healthAlertTotal.WithLabelValues(srv.Key).Inc()
 	metrics.AlertNotifyTotal.WithLabelValues("mcp_health", "ok").Inc()
 
-	env := event.NewEnvelope(event.EnvelopeTypeMCPHealthAlert, "mcp", "")
-	env.Channel = "monitor"
-	env.Metadata = map[string]any{
+	ev := contract.NewMonitorEvent(contract.MonitorEventTypeMCPHealthAlert, "mcp")
+	ev.Message = result.Message
+	ev.Metadata = map[string]any{
 		"server_key":          srv.Key,
 		"server_id":           srv.ID,
 		"health_status":       result.Status,
@@ -88,8 +88,5 @@ func (p *Publisher) MaybeEmitAfterHealth(ctx context.Context, srv biz.MCPServer,
 		"health_error_since":  metadata.ErrorSince(meta),
 		"sustained_after_sec": int(SustainedErrorAfter().Seconds()),
 	}
-	if env.Content == nil {
-		env.Content = &event.EnvelopeContent{Text: result.Message}
-	}
-	p.bus.Publish(ctx, env)
+	p.monitorBus.Publish(ctx, ev)
 }

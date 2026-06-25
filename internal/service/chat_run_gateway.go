@@ -11,6 +11,8 @@ import (
 	"aranea-agents/internal/runtime"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
+
+	"github.com/google/uuid"
 )
 
 // isNilInterface checks whether an interface value is nil, including typed-nil
@@ -126,7 +128,8 @@ func NewChatRunStatusPersister(sessions biz.SessionStatePort, lg loggateway.Logg
 }
 
 type chatEventPublisher struct {
-	bus event.Bus
+	bus         event.Bus
+	activityBus biz.ActivityEventBus
 }
 
 func (pub *chatEventPublisher) PublishRunStatus(sessionID, runID, status, errMsg string) {
@@ -134,11 +137,11 @@ func (pub *chatEventPublisher) PublishRunStatus(sessionID, runID, status, errMsg
 }
 
 func (pub *chatEventPublisher) PublishMessageQueued(sessionID string) {
-	publishMessageQueuedToBus(pub.bus, sessionID)
+	publishMessageQueuedToBus(pub.activityBus, sessionID)
 }
 
-func NewChatEventPublisher(bus event.Bus) biz.ChatEventPublisher {
-	return &chatEventPublisher{bus: bus}
+func NewChatEventPublisher(bus event.Bus, activityBus biz.ActivityEventBus) biz.ChatEventPublisher {
+	return &chatEventPublisher{bus: bus, activityBus: activityBus}
 }
 
 // NewChatUsecaseFromDeps wires the shared run registry, pending queue, and session
@@ -149,6 +152,7 @@ func NewChatUsecaseFromDeps(
 	locks *biz.SessionLockManager,
 	sessions biz.SessionStatePort,
 	bus event.Bus,
+	activityBus biz.ActivityEventBus,
 	lg loggateway.Logger,
 ) *biz.ChatUsecase {
 	uc := biz.NewChatUsecase(
@@ -156,7 +160,7 @@ func NewChatUsecaseFromDeps(
 		locks,
 		NewPendingQueueAdapter(pending),
 		NewChatRunStatusPersister(sessions, lg),
-		NewChatEventPublisher(bus),
+		NewChatEventPublisher(bus, activityBus),
 		lg,
 	)
 	uc.StartBackgroundGoroutines()
@@ -282,15 +286,26 @@ func clearAwaitingRunStateFromSession(sessions biz.SessionStatePort, ctx context
 	})
 }
 
-func publishMessageQueuedToBus(bus event.Bus, sessionID string) {
-	if bus == nil || strings.TrimSpace(sessionID) == "" {
+// publishMessageQueuedToBus publishes a message_queued ActivityEvent
+// (Kind=session, Domain=chat). Replaces the legacy EnvelopeTypeRunStatus publish.
+func publishMessageQueuedToBus(activityBus biz.ActivityEventBus, sessionID string) {
+	if activityBus == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
-	env := event.NewEnvelope(event.EnvelopeTypeRunStatus, "chat-service", sessionID)
-	env.Channel = event.RouteChannel(env)
-	env.Metadata = map[string]any{
-		"status": "queued",
-		"hint":   "message_queued",
-	}
-	bus.Publish(context.Background(), env)
+	activityBus.Publish(context.Background(), biz.ActivityEvent{
+		Event: biz.ActivityEventUpdated,
+		Activity: biz.Activity{
+			ID:        uuid.NewString(),
+			Kind:      biz.ActivityKindSession,
+			Status:    biz.ActivityStatusPending,
+			SessionID: sessionID,
+			Timestamp: time.Now().UTC(),
+			Meta: map[string]any{
+				"status": "queued",
+				"hint":   "message_queued",
+				"source": "chat-service",
+			},
+		},
+		Domain: biz.ActivityDomainChat,
+	})
 }

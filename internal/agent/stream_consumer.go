@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/provider"
 	"aranea-agents/pkg/loggateway"
@@ -18,8 +18,6 @@ import (
 type turnStreamConsumer struct {
 	firstByteCtx      context.Context
 	turnCtx           context.Context
-	eventBus          event.Bus
-	observer          *event.TurnObserver
 	projectMeta       ProjectMeta
 	opts              *StreamConsumeOptions
 	result            EventStreamResult
@@ -31,7 +29,6 @@ type turnStreamConsumer struct {
 
 func newTurnStreamConsumer(
 	firstByteCtx, turnCtx context.Context,
-	eventBus event.Bus,
 	projectMeta ProjectMeta,
 	firstByteReceived *bool,
 	opts *StreamConsumeOptions,
@@ -40,14 +37,10 @@ func newTurnStreamConsumer(
 	c := &turnStreamConsumer{
 		firstByteCtx:      firstByteCtx,
 		turnCtx:           turnCtx,
-		eventBus:          eventBus,
 		projectMeta:       projectMeta,
 		opts:              opts,
 		firstByteReceived: firstByteReceived,
 		lg:                lg,
-	}
-	if eventBus != nil {
-		c.observer = event.NewTurnObserver(eventBus)
 	}
 	// AF phase: configure ActivityProjector for direct event consumption.
 	// ActivityProjector is mandatory — production always wires it via Wire DI.
@@ -245,30 +238,27 @@ func (c *turnStreamConsumer) publishContextUsageStep() {
 	if c.projectMeta.ContextWindow <= 0 || c.result.PromptTok <= 0 {
 		return
 	}
-	if c.eventBus == nil && c.observer == nil {
+	if c.opts == nil || c.opts.ActivityProjector == nil {
 		return
 	}
 	turnTotal := c.result.PromptTok + c.result.CompletionTok
-	env := event.NewEnvelope(event.EnvelopeTypeContextUsage, strings.TrimSpace(c.projectMeta.AgentDisplayName), c.projectMeta.SessionID)
-	if env.Author == "" {
-		env.Author = "agent"
+	author := strings.TrimSpace(c.projectMeta.AgentDisplayName)
+	if author == "" {
+		author = "agent"
 	}
-	env.RequestID = c.projectMeta.RequestID
-	env.InvocationID = c.projectMeta.InvocationID
-	env.TeamID = c.projectMeta.TeamID
-	env.Usage = &event.EnvelopeUsage{
-		ContextPromptTokens: c.result.PromptTok,
-		PromptTokens:        c.result.PromptTok,
-		CompletionTokens:    c.result.CompletionTok,
-		TotalTokens:         turnTotal,
-		TurnTotalTokens:     turnTotal,
-		MaxTokens:           c.projectMeta.ContextWindow,
+	meta := map[string]any{
+		"context_prompt_tokens": c.result.PromptTok,
+		"prompt_tokens":         c.result.PromptTok,
+		"completion_tokens":     c.result.CompletionTok,
+		"total_tokens":          turnTotal,
+		"turn_total_tokens":     turnTotal,
+		"max_tokens":            c.projectMeta.ContextWindow,
+		"request_id":            c.projectMeta.RequestID,
+		"invocation_id":         c.projectMeta.InvocationID,
+		"team_id":               c.projectMeta.TeamID,
+		"author":                author,
 	}
-	if c.observer != nil {
-		c.observer.PublishChat(c.turnCtx, env)
-	} else if c.eventBus != nil {
-		c.eventBus.Publish(c.turnCtx, env)
-	}
+	c.opts.ActivityProjector.EmitSystemEvent(c.turnCtx, biz.ActivityKindNotice, "context_usage", meta)
 }
 
 func (c *turnStreamConsumer) finalize() {

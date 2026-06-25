@@ -23,12 +23,12 @@ import (
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
+	"github.com/google/uuid"
+
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
-
-	"github.com/google/uuid"
 )
 
 // llmInvokeSlowLogThreshold is the threshold for logging slow LLM invocations.
@@ -213,10 +213,19 @@ func (o *ChatOrchestrator) runIntentPass(
 	}
 	meta := intent.RunMeta{AgentID: ag.ID, SessionID: sessionID}
 	intentPayload := intent.BuildIntentPassPayload(intRes, meta)
-	if o.td().Pipeline.Bus != nil {
-		env := event.NewEnvelope(event.EnvelopeTypeIntentPass, ag.ID, sessionID)
-		env.Metadata = intentPayload
-		o.td().Pipeline.Bus.Publish(ctx, env)
+	if bus := o.td().Pipeline.ActivityBus; bus != nil {
+		bus.Publish(ctx, biz.ActivityEvent{
+			Event: biz.ActivityEventCreated,
+			Activity: biz.Activity{
+				ID:        uuid.NewString(),
+				Kind:      biz.ActivityKindNotice,
+				AgentKey:  ag.ID,
+				SessionID: sessionID,
+				Timestamp: time.Now().UTC(),
+				Meta:      intentPayload,
+			},
+			Domain: biz.ActivityDomainChat,
+		})
 	}
 	return intentRunOpts, intRes.Artifact
 }

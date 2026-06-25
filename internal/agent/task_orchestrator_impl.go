@@ -39,6 +39,7 @@ type TaskOrchestratorImpl struct {
 	perfRepo        biz.AgentPerformanceRepository
 	evolutionSugg   biz.EvolutionSuggestionRepo
 	bus             contract.Bus
+	activityBus     biz.ActivityEventBus
 	nl2graph        araneagraph.NL2GraphConverter
 	lg              loggateway.Logger
 }
@@ -61,6 +62,7 @@ func NewTaskOrchestratorImpl(
 	perfRepo biz.AgentPerformanceRepository,
 	evolutionSugg biz.EvolutionSuggestionRepo,
 	bus contract.Bus,
+	activityBus biz.ActivityEventBus,
 	nl2graph araneagraph.NL2GraphConverter,
 	lg loggateway.Logger,
 ) *TaskOrchestratorImpl {
@@ -78,6 +80,7 @@ func NewTaskOrchestratorImpl(
 		perfRepo:        perfRepo,
 		evolutionSugg:   evolutionSugg,
 		bus:             bus,
+		activityBus:     activityBus,
 		nl2graph:        nl2graph,
 		lg:              lg,
 	}
@@ -1099,25 +1102,30 @@ func (o *TaskOrchestratorImpl) maybeCreateEvolutionSuggestion(ctx context.Contex
 		)
 		return
 	}
-	// Emit orchestration evolution suggested event
-	if o.bus != nil {
-		o.bus.Publish(ctx, contract.Envelope{
-			ID:        fmt.Sprintf("evo-evt-%s", uuid.NewString()[:12]),
-			Type:      contract.EnvelopeTypeOrchestrationEvolutionSuggested,
-			SessionID: handle.SpiritSessionID,
-			Content: &contract.EnvelopeContent{
-				Text: content,
+	// Emit orchestration evolution suggested event as a system-domain
+	// ActivityEvent (NOT persisted, WS-only broadcast).
+	if o.activityBus != nil {
+		ev := biz.ActivityEvent{
+			Event: biz.ActivityEventCreated,
+			Activity: biz.Activity{
+				ID:              uuid.NewString(),
+				Kind:            biz.ActivityKindNotice,
+				Status:          biz.ActivityStatusCompleted,
+				Timestamp:       time.Now().UTC(),
+				Content:         content,
+				SpiritSessionID: handle.SpiritSessionID,
+				Meta: map[string]any{
+					"event_type":        "orchestration.evolution_suggested",
+					"orchestration_id":  handle.ID,
+					"spirit_session_id": handle.SpiritSessionID,
+					"dq_score":          dqScore,
+					"topology":          string(topology),
+					"suggestion_id":     sugg.ID,
+				},
 			},
-			Metadata: map[string]any{
-				"orchestration_id": handle.ID,
-				"dq_score":         dqScore,
-				"topology":         string(topology),
-				"suggestion_id":    sugg.ID,
-			},
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
-			Version:   1,
-			Source:    "task_orchestrator",
-		})
+			Domain: biz.ActivityDomainSystem,
+		}
+		o.activityBus.Publish(ctx, ev)
 	}
 }
 

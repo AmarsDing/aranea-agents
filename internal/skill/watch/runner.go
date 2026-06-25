@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/skill/storage"
 	"aranea-agents/pkg/appctx"
@@ -38,13 +38,13 @@ type SkillWriter interface {
 }
 
 type Runner struct {
-	reader    SkillReader
-	writer    SkillWriter
-	sys       biz.SystemSettingRepo
-	eventBus  event.Bus
-	reporter  SyncReporter
-	alertEval AlertEvaluator
-	lg        loggateway.Logger
+	reader     SkillReader
+	writer     SkillWriter
+	sys        biz.SystemSettingRepo
+	monitorBus contract.MonitorBus
+	reporter   SyncReporter
+	alertEval  AlertEvaluator
+	lg         loggateway.Logger
 
 	mu           sync.Mutex
 	timer        *time.Timer
@@ -63,8 +63,8 @@ func NewRunner(reader SkillReader, writer SkillWriter, sys biz.SystemSettingRepo
 	return &Runner{reader: reader, writer: writer, sys: sys, lg: lg, pending: map[string]struct{}{}}
 }
 
-func NewRunnerWithBus(reader SkillReader, writer SkillWriter, sys biz.SystemSettingRepo, bus event.Bus, lg loggateway.Logger) *Runner {
-	return &Runner{reader: reader, writer: writer, sys: sys, eventBus: bus, lg: lg, pending: map[string]struct{}{}}
+func NewRunnerWithBus(reader SkillReader, writer SkillWriter, sys biz.SystemSettingRepo, monitorBus contract.MonitorBus, lg loggateway.Logger) *Runner {
+	return &Runner{reader: reader, writer: writer, sys: sys, monitorBus: monitorBus, lg: lg, pending: map[string]struct{}{}}
 }
 
 func (r *Runner) resolveRoot(ctx context.Context) string {
@@ -379,10 +379,10 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 	if isNew {
 		r.checkSimilarityAsync(slug, candidate.Name)
 	}
-	if r.eventBus != nil {
-		env := event.NewEnvelope("skill.reload", "skill.watch", "")
-		env.Metadata = map[string]any{"slug": slug}
-		r.eventBus.Publish(ctx, env)
+	if r.monitorBus != nil {
+		ev := contract.NewMonitorEvent(contract.MonitorEventTypeSkillReload, "skill.watch")
+		ev.Metadata = map[string]any{"slug": slug}
+		r.monitorBus.Publish(ctx, ev)
 	}
 }
 

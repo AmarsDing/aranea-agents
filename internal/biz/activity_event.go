@@ -52,6 +52,28 @@ const (
 	ActivityEventChildCreated ActivityEventType = "child_created"
 )
 
+// ActivityDomain classifies the top-level domain an ActivityEvent belongs to.
+//
+// It distinguishes chat-related agent work (persisted to DB and pushed to
+// chat subscribers) from transient system/domain events (WS-only, not
+// persisted). This allows the unified ActivityEvent bus to carry both
+// kinds of events with different reliability and persistence semantics.
+type ActivityDomain string
+
+const (
+	// ActivityDomainChat marks events that belong to agent work on a chat
+	// session (thinking/action/reply/team_stage/graph_stage etc.).
+	// These events are persisted to the activities table and pushed to
+	// chat subscribers via ActivityEventBus.
+	ActivityDomainChat ActivityDomain = "chat"
+
+	// ActivityDomainSystem marks transient system/domain events
+	// (organization/borrow/skill/knowledge lifecycle, monitor alerts, etc.).
+	// These events are NOT persisted to the activities table; they are only
+	// pushed to WS subscribers via ActivityEventBus for live UI updates.
+	ActivityDomainSystem ActivityDomain = "system"
+)
+
 // ActivityEvent is the unified transport format for Activity lifecycle events.
 //
 // It carries the event type (what happened) and the full Activity snapshot
@@ -63,6 +85,10 @@ const (
 //     → async persist with retry, sync publish
 //   - Informational: streaming/updated
 //     → async persist with drop-on-failure, sync publish (streaming may batch)
+//
+// The Domain field controls persistence:
+//   - ActivityDomainChat   → persist to activities table (subject to event-level rules)
+//   - ActivityDomainSystem → never persist (WS-only broadcast)
 type ActivityEvent struct {
 	Event    ActivityEventType `json:"event"`
 	Activity Activity           `json:"activity"`
@@ -74,6 +100,12 @@ type ActivityEvent struct {
 	// DeltaChunk carries the incremental text for streaming events.
 	// Empty for non-streaming events.
 	DeltaChunk string `json:"delta_chunk,omitempty"`
+
+	// Domain classifies the event as chat (persisted) or system (transient).
+	// Defaults to ActivityDomainChat when empty (zero value of ActivityDomain).
+	// System-domain events skip the activities persistence layer entirely
+	// and are only delivered to live WS subscribers.
+	Domain ActivityDomain `json:"domain,omitempty"`
 }
 
 // ActivityEventBus is the in-process event fanout hub for Activity lifecycle

@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/wire"
 
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -15,20 +16,27 @@ import (
 // WBPF (Write-Before-Publish-Fanout) protection; subscribers must be
 // idempotent. Cross-process WS reconnect replay now relies on Activity
 // records fetched via the ListActivities RPC (see service.SessionService).
+//
+// Dual-bus unification (2026-06-25): MonitorEventBus is the new typed bus
+// carrying contract.MonitorEvent. The legacy MonitorBus (envelope-based)
+// is retained temporarily for migration; it will be removed in Phase 5
+// once all monitor publishers have switched to MonitorEventBus.
 type Infra struct {
-	SessionBus Bus
-	MonitorBus Bus
-	Buffer     *Buffer
-	lg         loggateway.Logger
+	SessionBus       Bus                  // legacy envelope bus (chat/session events)
+	MonitorBus       Bus                  // legacy envelope bus (monitor events — being migrated)
+	MonitorEventBus  contract.MonitorBus  // NEW: typed monitor event bus (replacement for MonitorBus)
+	Buffer           *Buffer
+	lg               loggateway.Logger
 }
 
 // NewInfra wires dual buses for dependency injection.
 func NewInfra(lg loggateway.Logger) *Infra {
 	return &Infra{
-		SessionBus: NewBus(lg),
-		MonitorBus: NewBus(lg),
-		Buffer:     NewBuffer(),
-		lg:         lg,
+		SessionBus:      NewBus(lg),
+		MonitorBus:      NewBus(lg),
+		MonitorEventBus: NewMonitorBus(lg),
+		Buffer:          NewBuffer(),
+		lg:              lg,
 	}
 }
 
@@ -40,12 +48,24 @@ func ProvideSessionBus(infra *Infra) Bus {
 	return infra.SessionBus
 }
 
-// ProvideMonitorBus exposes the monitor/flow bus for wire.
+// ProvideMonitorBus exposes the legacy monitor/flow envelope bus for wire.
+// Deprecated: use ProvideMonitorEventBus for new code. This is retained
+// during the dual-bus migration period and will be removed in Phase 5.
 func ProvideMonitorBus(infra *Infra) Bus {
 	if infra == nil {
 		return NewBus(nil)
 	}
 	return infra.MonitorBus
+}
+
+// ProvideMonitorEventBus exposes the typed MonitorEventBus for wire.
+// This is the canonical monitor bus for new code; it transports
+// contract.MonitorEvent (not legacy Envelope).
+func ProvideMonitorEventBus(infra *Infra) contract.MonitorBus {
+	if infra == nil {
+		return NewMonitorBus(nil)
+	}
+	return infra.MonitorEventBus
 }
 
 // ProvideBuffer exposes the session replay buffer for wire.
@@ -97,8 +117,12 @@ func (infra *Infra) publishToBuses(ctx context.Context, env Envelope) {
 // SessionBus is the default event.Bus binding; MonitorBus is accessed via
 // *Infra (e.g. provideTraceProjector) rather than a separate Bus binding
 // to avoid Wire's "multiple bindings for event.Bus" error.
+//
+// Dual-bus unification: ProvideMonitorEventBus is added to make
+// contract.MonitorBus available to any provider that needs it.
 var InfraProviderSet = wire.NewSet(
 	NewInfra,
 	ProvideSessionBus,
+	ProvideMonitorEventBus,
 	ProvideBuffer,
 )

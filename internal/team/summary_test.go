@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 )
 
 func TestBuildTeamRunSummary(t *testing.T) {
@@ -41,14 +40,34 @@ func TestSummaryMapFromDataMatchesBuildTeamRunSummary(t *testing.T) {
 	}
 }
 
-func TestTeamSummaryEnvelope(t *testing.T) {
+func TestTeamSummaryActivityEvent(t *testing.T) {
 	run := biz.TeamRun{ID: "r1", TeamID: "t1", SessionID: "s1", Status: biz.TeamRunStatusSuccess}
-	env := TeamSummaryEnvelope(run, nil)
-	if env.Type != event.EnvelopeTypeTeamSummary {
-		t.Fatalf("type=%s", env.Type)
+	ev := TeamSummaryActivityEvent(run, nil)
+	if ev.Event != biz.ActivityEventCompleted {
+		t.Fatalf("event=%s want=%s", ev.Event, biz.ActivityEventCompleted)
 	}
-	meta := env.Metadata
-	if meta["team_summary"] == nil {
-		t.Fatal("missing team_summary")
+	if ev.Activity.Kind != biz.ActivityKindTeamStage {
+		t.Fatalf("kind=%s want=%s", ev.Activity.Kind, biz.ActivityKindTeamStage)
+	}
+	if ev.Activity.Status != biz.ActivityStatusCompleted {
+		t.Fatalf("status=%s want=%s", ev.Activity.Status, biz.ActivityStatusCompleted)
+	}
+	if ev.Activity.Stage != "completed" {
+		t.Fatalf("stage=%s want=completed", ev.Activity.Stage)
+	}
+	if ev.Domain != biz.ActivityDomainChat {
+		t.Fatalf("domain=%s want=%s", ev.Domain, biz.ActivityDomainChat)
+	}
+	if ev.Activity.SessionID != "s1" {
+		t.Fatalf("session_id=%s want=s1", ev.Activity.SessionID)
+	}
+	if ev.Activity.TeamID != "t1" {
+		t.Fatalf("team_id=%s want=t1", ev.Activity.TeamID)
+	}
+	if ev.Activity.Meta["team_summary"] == nil {
+		t.Fatal("missing team_summary in meta")
+	}
+	if ev.Activity.Meta["run_id"] != "r1" {
+		t.Fatalf("meta.run_id=%v want=r1", ev.Activity.Meta["run_id"])
 	}
 }

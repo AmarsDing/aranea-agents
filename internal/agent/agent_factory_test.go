@@ -8,7 +8,6 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/shared"
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -104,28 +103,28 @@ func (r *fakeTemplateRepo) ListAgentTemplates(_ context.Context) ([]biz.AgentTem
 	return r.templates, nil
 }
 
-// factoryCaptureBus captures published envelopes for assertions.
+// factoryCaptureBus captures published ActivityEvents for assertions.
 type factoryCaptureBus struct {
 	mu        sync.Mutex
-	published []contract.Envelope
+	published []biz.ActivityEvent
 }
 
-func (b *factoryCaptureBus) Publish(_ context.Context, env contract.Envelope) {
+func (b *factoryCaptureBus) Publish(_ context.Context, ev biz.ActivityEvent) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.published = append(b.published, env)
+	b.published = append(b.published, ev)
 }
 
-func (b *factoryCaptureBus) Subscribe(_ contract.SubscribeOptions) (<-chan contract.Envelope, func()) {
+func (b *factoryCaptureBus) Subscribe(_ biz.ActivityEventSubscribeOptions) (<-chan biz.ActivityEvent, func()) {
 	return nil, func() {}
 }
 
 func (b *factoryCaptureBus) DropCount() uint64 { return 0 }
 
-func (b *factoryCaptureBus) getPublished() []contract.Envelope {
+func (b *factoryCaptureBus) getPublished() []biz.ActivityEvent {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	out := make([]contract.Envelope, len(b.published))
+	out := make([]biz.ActivityEvent, len(b.published))
 	copy(out, b.published)
 	return out
 }
@@ -149,7 +148,7 @@ func newTestAgentFactory(model trpcmodel.Model, store *fakeFactoryAgentStore, te
 		agentWriter:  store,
 		agentReader:  store,
 		templateRepo: &fakeTemplateRepo{templates: templates},
-		bus:          bus,
+		activityBus:  bus,
 		lg:           loggateway.NewNoop().With(loggateway.Domain("agent_factory")),
 	}
 }
@@ -200,15 +199,18 @@ func TestAgentFactory_EnsureAgent_CreateNew(t *testing.T) {
 	if len(published) != 1 {
 		t.Fatalf("published=%d want 1", len(published))
 	}
-	env := published[0]
-	if env.Type != contract.EnvelopeTypeAgentCreated {
-		t.Errorf("event type=%q want %q", env.Type, contract.EnvelopeTypeAgentCreated)
+	ev := published[0]
+	if ev.Activity.Meta["event_type"] != "agent_created" {
+		t.Errorf("event_type=%v want %q", ev.Activity.Meta["event_type"], "agent_created")
 	}
-	if env.Metadata["agent_key"] != agentKey {
-		t.Errorf("metadata agent_key=%v want %q", env.Metadata["agent_key"], agentKey)
+	if ev.Activity.Meta["agent_key"] != agentKey {
+		t.Errorf("metadata agent_key=%v want %q", ev.Activity.Meta["agent_key"], agentKey)
 	}
-	if env.Metadata["source"] != "system" {
-		t.Errorf("metadata source=%v want %q", env.Metadata["source"], "system")
+	if ev.Activity.Meta["source"] != "system" {
+		t.Errorf("metadata source=%v want %q", ev.Activity.Meta["source"], "system")
+	}
+	if ev.Domain != biz.ActivityDomainSystem {
+		t.Errorf("domain=%q want %q", ev.Domain, biz.ActivityDomainSystem)
 	}
 }
 

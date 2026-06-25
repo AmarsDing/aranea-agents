@@ -3,14 +3,16 @@ package service
 import (
 	"context"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
-	"aranea-agents/internal/event"
 	araneasession "aranea-agents/internal/session"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
+
+	"github.com/google/uuid"
 )
 
 // AwaitResumeGuard prevents concurrent await resume.
@@ -64,7 +66,7 @@ type chatAwaitCoordinator struct {
 	runStatus      runStatusTracker
 	sessionState   sessionStateTransitor
 	sessionRT      func() *araneasession.Runtime // lazy accessor
-	bus            event.Bus
+	activityBus    biz.ActivityEventBus
 	resumeInFlight *TypedSyncMap[string, struct{}]
 	lg             loggateway.Logger
 }
@@ -77,7 +79,7 @@ type chatAwaitCoordinatorDeps struct {
 	RunStatus    runStatusTracker
 	SessionState sessionStateTransitor
 	SessionRT    func() *araneasession.Runtime
-	Bus          event.Bus
+	ActivityBus  biz.ActivityEventBus
 	Logger       loggateway.Logger
 }
 
@@ -87,7 +89,7 @@ func newChatAwaitCoordinator(d chatAwaitCoordinatorDeps) *chatAwaitCoordinator {
 		runStatus:      d.RunStatus,
 		sessionState:   d.SessionState,
 		sessionRT:      d.SessionRT,
-		bus:            d.Bus,
+		activityBus:    d.ActivityBus,
 		resumeInFlight: NewTypedSyncMap[string, struct{}](orchMapMaxIdle),
 		lg:             d.Logger,
 	}
@@ -115,19 +117,29 @@ func (a *chatAwaitCoordinator) EndResume(sessionID string) {
 	a.resumeInFlight.Delete(sessionID)
 }
 
-// PublishAwaitResumed publishes an await_resumed WS event.
+// PublishAwaitResumed publishes an await_resumed ActivityEvent (Kind=session,
+// Domain=chat). Replaces the legacy EnvelopeTypeRunStatus publish.
 func (a *chatAwaitCoordinator) PublishAwaitResumed(sessionID, runID string) {
-	if a.bus == nil || strings.TrimSpace(sessionID) == "" {
+	if a.activityBus == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
-	env := event.NewEnvelope(event.EnvelopeTypeRunStatus, "chat-service", sessionID)
-	env.Channel = event.RouteChannel(env)
-	env.Metadata = map[string]any{
-		"run_id":        runID,
-		"status":        "running",
-		"await_resumed": true,
-	}
-	a.bus.Publish(context.Background(), env)
+	a.activityBus.Publish(context.Background(), biz.ActivityEvent{
+		Event: biz.ActivityEventUpdated,
+		Activity: biz.Activity{
+			ID:        uuid.NewString(),
+			Kind:      biz.ActivityKindSession,
+			Status:    biz.ActivityStatusRunning,
+			SessionID: sessionID,
+			Timestamp: time.Now().UTC(),
+			Meta: map[string]any{
+				"run_id":        runID,
+				"status":        "running",
+				"await_resumed": true,
+				"source":        "chat-service",
+			},
+		},
+		Domain: biz.ActivityDomainChat,
+	})
 }
 
 // SessionAwaitingUser checks if a session is in awaiting_user state.

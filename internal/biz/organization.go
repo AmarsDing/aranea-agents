@@ -4,8 +4,8 @@ import (
 	"context"
 	"path/filepath"
 	"strings"
+	"time"
 
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
@@ -99,13 +99,13 @@ type OrganizationUsecase struct {
 	teamLister  DeptTeamLister
 	teamWriter  TeamWriter
 	agentClear  DeptAgentPositionClearer
-	eventBus    contract.Bus
+	activityBus ActivityEventBus
 	lg          loggateway.Logger
 	posPrompt   *PositionPromptUsecase
 }
 
-func NewOrganizationUsecase(repo OrganizationRepo, deptLeadMgr *DeptLeadManager, teamLister DeptTeamLister, teamWriter TeamWriter, agentClear DeptAgentPositionClearer, posPrompt *PositionPromptUsecase, eventBus contract.Bus, lg loggateway.Logger) *OrganizationUsecase {
-	return &OrganizationUsecase{repo: repo, deptLeadMgr: deptLeadMgr, teamLister: teamLister, teamWriter: teamWriter, agentClear: agentClear, eventBus: eventBus, lg: lg, posPrompt: posPrompt}
+func NewOrganizationUsecase(repo OrganizationRepo, deptLeadMgr *DeptLeadManager, teamLister DeptTeamLister, teamWriter TeamWriter, agentClear DeptAgentPositionClearer, posPrompt *PositionPromptUsecase, activityBus ActivityEventBus, lg loggateway.Logger) *OrganizationUsecase {
+	return &OrganizationUsecase{repo: repo, deptLeadMgr: deptLeadMgr, teamLister: teamLister, teamWriter: teamWriter, agentClear: agentClear, activityBus: activityBus, lg: lg, posPrompt: posPrompt}
 }
 
 func (u *OrganizationUsecase) List(ctx context.Context) ([]OrganizationNode, error) {
@@ -184,7 +184,7 @@ func (u *OrganizationUsecase) Create(ctx context.Context, in OrganizationNode) (
 				loggateway.Err(dlErr))
 		}
 	}
-	u.publishOrgEvent(contract.EnvelopeTypeOrganizationCreated, created)
+	u.publishOrgEvent("organization.created", "Organization created", created)
 	return created, nil
 }
 
@@ -235,7 +235,7 @@ func (u *OrganizationUsecase) Update(ctx context.Context, id string, patch Organ
 	if err != nil {
 		return OrganizationNode{}, err
 	}
-	u.publishOrgEvent(contract.EnvelopeTypeOrganizationUpdated, updated)
+	u.publishOrgEvent("organization.updated", "Organization updated", updated)
 	return updated, nil
 }
 
@@ -252,7 +252,7 @@ func (u *OrganizationUsecase) Delete(ctx context.Context, id string) error {
 	if node.Level == "department" {
 		err := u.deleteDepartmentWithCascade(ctx, node)
 		if err == nil {
-			u.publishOrgEvent(contract.EnvelopeTypeOrganizationDeleted, node)
+			u.publishOrgEvent("organization.deleted", "Organization deleted", node)
 		}
 		return err
 	}
@@ -267,7 +267,7 @@ func (u *OrganizationUsecase) Delete(ctx context.Context, id string) error {
 	}
 	err = u.repo.DeleteOrgNode(ctx, id)
 	if err == nil {
-		u.publishOrgEvent(contract.EnvelopeTypeOrganizationDeleted, node)
+		u.publishOrgEvent("organization.deleted", "Organization deleted", node)
 	}
 	return err
 }
@@ -469,20 +469,32 @@ func ErrOrgBadRequest(msg string) error {
 	return apierror.BadRequest("ORG", msg)
 }
 
-// publishOrgEvent publishes an organization CRUD event to the event bus.
+// publishOrgEvent publishes an organization CRUD event as a system-domain
+// ActivityEvent (NOT persisted, WS-only broadcast).
 // Uses context.Background() intentionally: event publishing is fire-and-forget
 // and should not be cancelled when the originating request context expires.
-func (u *OrganizationUsecase) publishOrgEvent(typ contract.EnvelopeType, node OrganizationNode) {
-	if u.eventBus == nil {
+func (u *OrganizationUsecase) publishOrgEvent(eventType, content string, node OrganizationNode) {
+	if u.activityBus == nil {
 		return
 	}
-	env := contract.NewEnvelope(typ, "org", "")
-	env.Metadata = map[string]any{
-		"org_id":   node.ID,
-		"org_key":  node.Key,
-		"org_name": node.Name,
-		"level":    node.Level,
-		"status":   node.Status,
+	ev := ActivityEvent{
+		Event: ActivityEventCreated,
+		Activity: Activity{
+			ID:        uuid.NewString(),
+			Kind:      ActivityKindNotice,
+			Status:    ActivityStatusCompleted,
+			Timestamp: time.Now().UTC(),
+			Content:   content,
+			Meta: map[string]any{
+				"event_type": eventType,
+				"org_id":     node.ID,
+				"org_key":    node.Key,
+				"org_name":   node.Name,
+				"level":      node.Level,
+				"status":     node.Status,
+			},
+		},
+		Domain: ActivityDomainSystem,
 	}
-	u.eventBus.Publish(context.Background(), env)
+	u.activityBus.Publish(context.Background(), ev)
 }

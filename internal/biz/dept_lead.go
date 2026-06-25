@@ -6,9 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+
+	"github.com/google/uuid"
 )
 
 // DeptLeadAgentKeyPrefix is the prefix for department lead agent keys.
@@ -21,13 +22,13 @@ const maxCrossDeptRatio = 0.5
 
 // DeptLeadManagerOpts holds the dependencies for DeptLeadManager.
 type DeptLeadManagerOpts struct {
-	OrgRepo    OrganizationRepo
-	BorrowRepo BorrowRequestRepo
-	AgentRepo  AgentRepository
-	AgentUC    *AgentUsecase
-	TeamGetter DeptLeadTeamGetter
-	EventBus   contract.Bus
-	Logger     loggateway.Logger
+	OrgRepo     OrganizationRepo
+	BorrowRepo  BorrowRequestRepo
+	AgentRepo   AgentRepository
+	AgentUC     *AgentUsecase
+	TeamGetter  DeptLeadTeamGetter
+	ActivityBus ActivityEventBus
+	Logger      loggateway.Logger
 }
 
 // DeptLeadTeamGetter is a narrow interface for fetching team info needed by DeptLeadManager.
@@ -38,24 +39,24 @@ type DeptLeadTeamGetter interface {
 // DeptLeadManager manages department lead agents.
 // Each department automatically gets a system_builtin Agent as its lead.
 type DeptLeadManager struct {
-	orgRepo    OrganizationRepo
-	borrowRepo BorrowRequestRepo
-	agentRepo  AgentRepository
-	agentUC    *AgentUsecase
-	teamGetter DeptLeadTeamGetter
-	eventBus   contract.Bus
-	lg         loggateway.Logger
+	orgRepo     OrganizationRepo
+	borrowRepo  BorrowRequestRepo
+	agentRepo   AgentRepository
+	agentUC     *AgentUsecase
+	teamGetter  DeptLeadTeamGetter
+	activityBus ActivityEventBus
+	lg          loggateway.Logger
 }
 
 func NewDeptLeadManager(opts DeptLeadManagerOpts) *DeptLeadManager {
 	return &DeptLeadManager{
-		orgRepo:    opts.OrgRepo,
-		borrowRepo: opts.BorrowRepo,
-		agentRepo:  opts.AgentRepo,
-		agentUC:    opts.AgentUC,
-		teamGetter: opts.TeamGetter,
-		eventBus:   opts.EventBus,
-		lg:         opts.Logger,
+		orgRepo:     opts.OrgRepo,
+		borrowRepo:  opts.BorrowRepo,
+		agentRepo:   opts.AgentRepo,
+		agentUC:     opts.AgentUC,
+		teamGetter:  opts.TeamGetter,
+		activityBus: opts.ActivityBus,
+		lg:          opts.Logger,
 	}
 }
 
@@ -298,7 +299,7 @@ func (m *DeptLeadManager) ApproveBorrowRequest(ctx context.Context, id string, r
 	if err != nil {
 		return BorrowRequest{}, err
 	}
-	m.publishBorrowEvent(contract.EnvelopeTypeBorrowApproved, updated)
+	m.publishBorrowEvent("borrow.approved", "Borrow request approved", updated)
 	return updated, nil
 }
 
@@ -319,7 +320,7 @@ func (m *DeptLeadManager) RejectBorrowRequest(ctx context.Context, id string, re
 	if err != nil {
 		return BorrowRequest{}, err
 	}
-	m.publishBorrowEvent(contract.EnvelopeTypeBorrowRejected, updated)
+	m.publishBorrowEvent("borrow.rejected", "Borrow request rejected", updated)
 	return updated, nil
 }
 
@@ -346,7 +347,7 @@ func (m *DeptLeadManager) AutoApproveExpiredBorrowRequests(ctx context.Context) 
 				loggateway.Err(updateErr))
 			continue
 		}
-		m.publishBorrowEvent(contract.EnvelopeTypeBorrowAutoApproved, r)
+		m.publishBorrowEvent("borrow.auto_approved", "Borrow request auto-approved", r)
 		approved++
 	}
 	return approved, nil
@@ -470,25 +471,37 @@ func (m *DeptLeadManager) agentDepartment(ctx context.Context, agentID string) (
 	return "", nil
 }
 
-// publishBorrowEvent publishes a borrow request event to the event bus.
+// publishBorrowEvent publishes a borrow request event as a system-domain
+// ActivityEvent (NOT persisted, WS-only broadcast).
 // Uses context.Background() intentionally: event publishing is fire-and-forget
 // and should not be cancelled when the originating request context expires.
-func (m *DeptLeadManager) publishBorrowEvent(typ contract.EnvelopeType, r BorrowRequest) {
-	if m.eventBus == nil {
+func (m *DeptLeadManager) publishBorrowEvent(eventType, content string, r BorrowRequest) {
+	if m.activityBus == nil {
 		return
 	}
-	env := contract.NewEnvelope(typ, "dept_lead", "")
-	env.TeamID = r.TeamID
-	env.Metadata = map[string]any{
-		"borrow_request_id": r.ID,
-		"agent_id":          r.AgentID,
-		"from_dept_id":      r.FromDeptID,
-		"to_dept_id":        r.ToDeptID,
-		"status":            r.Status,
-		"reviewed_by":       r.ReviewedBy,
-		"review_reason":     r.ReviewReason,
+	ev := ActivityEvent{
+		Event: ActivityEventCreated,
+		Activity: Activity{
+			ID:        uuid.NewString(),
+			Kind:      ActivityKindNotice,
+			Status:    ActivityStatusCompleted,
+			Timestamp: time.Now().UTC(),
+			Content:   content,
+			TeamID:    r.TeamID,
+			Meta: map[string]any{
+				"event_type":        eventType,
+				"borrow_request_id": r.ID,
+				"agent_id":          r.AgentID,
+				"from_dept_id":      r.FromDeptID,
+				"to_dept_id":        r.ToDeptID,
+				"status":            r.Status,
+				"reviewed_by":       r.ReviewedBy,
+				"review_reason":     r.ReviewReason,
+			},
+		},
+		Domain: ActivityDomainSystem,
 	}
-	m.eventBus.Publish(context.Background(), env)
+	m.activityBus.Publish(context.Background(), ev)
 }
 
 // BorrowedMemberStatus represents the read-only status of a borrowed member.

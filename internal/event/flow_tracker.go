@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
 	frameworktracing "trpc.group/trpc-go/trpc-agent-go/event/tracing"
@@ -189,6 +190,18 @@ func (ft *FlowTracker) emit(stepID string, phase FlowPhase, explicitSev FlowSeve
 	}
 
 	if ft.infra == nil {
+		return
+	}
+	// Dual-bus migration: prefer the typed MonitorEventBus; fall back to the
+	// legacy envelope bus when MonitorEventBus is not wired (e.g. partial Infra
+	// constructed by NewTraceEmitter from chat-domain callers). The Chat domain
+	// agent will wire MonitorEventBus into EventPipeline in a follow-up.
+	if ft.infra.MonitorEventBus != nil {
+		ev := contract.NewMonitorEvent(contract.MonitorEventTypeFlowLog, "flow")
+		ev.SessionID = ft.tc.SessionID
+		ev.Message = entry.displayText()
+		ev.Metadata = entry.toMetadata()
+		ft.infra.MonitorEventBus.Publish(context.Background(), ev)
 		return
 	}
 	env := NewEnvelope(EnvelopeTypeFlowLog, "flow", ft.tc.SessionID)

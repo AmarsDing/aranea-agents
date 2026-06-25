@@ -6,34 +6,34 @@ import (
 	"testing"
 	"time"
 
-	"aranea-agents/internal/event/contract"
+	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 )
 
-// heartbeatCaptureBus is a thread-safe Bus that captures published envelopes.
+// heartbeatCaptureBus is a thread-safe ActivityEventBus that captures published events.
 // Unlike gateCaptureBus, it uses a mutex because heartbeats are published
 // from a goroutine.
 type heartbeatCaptureBus struct {
 	mu        sync.Mutex
-	published []contract.Envelope
+	published []biz.ActivityEvent
 }
 
-func (b *heartbeatCaptureBus) Publish(_ context.Context, env contract.Envelope) {
+func (b *heartbeatCaptureBus) Publish(_ context.Context, ev biz.ActivityEvent) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.published = append(b.published, env)
+	b.published = append(b.published, ev)
 }
 
-func (b *heartbeatCaptureBus) Subscribe(_ contract.SubscribeOptions) (<-chan contract.Envelope, func()) {
+func (b *heartbeatCaptureBus) Subscribe(_ biz.ActivityEventSubscribeOptions) (<-chan biz.ActivityEvent, func()) {
 	return nil, func() {}
 }
 
 func (b *heartbeatCaptureBus) DropCount() uint64 { return 0 }
 
-func (b *heartbeatCaptureBus) snapshot() []contract.Envelope {
+func (b *heartbeatCaptureBus) snapshot() []biz.ActivityEvent {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	out := make([]contract.Envelope, len(b.published))
+	out := make([]biz.ActivityEvent, len(b.published))
 	copy(out, b.published)
 	return out
 }
@@ -64,27 +64,30 @@ func TestRunHeartbeatEmitter_Start_PublishesPeriodically(t *testing.T) {
 		t.Fatalf("expected at least 2 heartbeats, got %d", len(published))
 	}
 
-	env := published[0]
-	if env.Type != contract.EnvelopeTypeRunHeartbeat {
-		t.Errorf("type = %s, want %s", env.Type, contract.EnvelopeTypeRunHeartbeat)
+	ev := published[0]
+	if ev.Activity.Kind != biz.ActivityKindSession {
+		t.Errorf("kind = %s, want %s", ev.Activity.Kind, biz.ActivityKindSession)
 	}
-	if env.SessionID != "sess-1" {
-		t.Errorf("session_id = %s, want sess-1", env.SessionID)
+	if ev.Activity.SessionID != "sess-1" {
+		t.Errorf("session_id = %s, want sess-1", ev.Activity.SessionID)
 	}
-	if env.Metadata["run_id"] != "run-1" {
-		t.Errorf("run_id = %v, want run-1", env.Metadata["run_id"])
+	if ev.Activity.Meta["run_id"] != "run-1" {
+		t.Errorf("run_id = %v, want run-1", ev.Activity.Meta["run_id"])
 	}
-	if env.Metadata["progress_percent"] != 0.5 {
-		t.Errorf("progress_percent = %v, want 0.5", env.Metadata["progress_percent"])
+	if ev.Activity.Meta["progress_percent"] != 0.5 {
+		t.Errorf("progress_percent = %v, want 0.5", ev.Activity.Meta["progress_percent"])
 	}
-	if env.Metadata["current_step"] != "step1" {
-		t.Errorf("current_step = %v, want step1", env.Metadata["current_step"])
+	if ev.Activity.Meta["current_step"] != "step1" {
+		t.Errorf("current_step = %v, want step1", ev.Activity.Meta["current_step"])
 	}
-	if env.Metadata["total_steps"] != 10 {
-		t.Errorf("total_steps = %v, want 10", env.Metadata["total_steps"])
+	if ev.Activity.Meta["total_steps"] != 10 {
+		t.Errorf("total_steps = %v, want 10", ev.Activity.Meta["total_steps"])
 	}
-	if env.Metadata["eta"] != "5s" {
-		t.Errorf("eta = %v, want 5s", env.Metadata["eta"])
+	if ev.Activity.Meta["eta"] != "5s" {
+		t.Errorf("eta = %v, want 5s", ev.Activity.Meta["eta"])
+	}
+	if ev.Domain != biz.ActivityDomainSystem {
+		t.Errorf("domain = %s, want %s", ev.Domain, biz.ActivityDomainSystem)
 	}
 }
 
@@ -123,14 +126,14 @@ func TestRunHeartbeatEmitter_Start_NilProgress(t *testing.T) {
 	if len(published) == 0 {
 		t.Fatal("expected at least 1 heartbeat")
 	}
-	env := published[0]
-	if env.Metadata["run_id"] != "run-1" {
-		t.Errorf("run_id = %v, want run-1", env.Metadata["run_id"])
+	ev := published[0]
+	if ev.Activity.Meta["run_id"] != "run-1" {
+		t.Errorf("run_id = %v, want run-1", ev.Activity.Meta["run_id"])
 	}
-	if _, ok := env.Metadata["progress_percent"]; ok {
+	if _, ok := ev.Activity.Meta["progress_percent"]; ok {
 		t.Error("progress_percent should be absent for nil progress")
 	}
-	if _, ok := env.Metadata["current_step"]; ok {
+	if _, ok := ev.Activity.Meta["current_step"]; ok {
 		t.Error("current_step should be absent for nil progress")
 	}
 }

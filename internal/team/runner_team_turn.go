@@ -16,6 +16,8 @@ import (
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 
+	"github.com/google/uuid"
+
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
 
@@ -155,17 +157,29 @@ func (r *Runner) prepareUserTurnOptions(
 			return
 		}
 	}
-	if shouldRunIntent && r.td.Pipeline.Bus != nil {
+	if shouldRunIntent && r.td.Pipeline.ActivityBus != nil {
 		meta := intent.RunMeta{
 			AgentID:   ar.agent.ID,
 			SessionID: sess.ID,
 			RunID:     run.ID,
 			TeamID:    teamRow.ID,
 		}
-		env := event.NewEnvelope(event.EnvelopeTypeIntentPass, ar.agent.ID, sess.ID)
-		env.TeamID = teamRow.ID
-		env.Metadata = intent.BuildIntentPassPayload(intRes, meta)
-		r.td.Pipeline.Bus.Publish(ctx, env)
+		ev := biz.ActivityEvent{
+			Event: biz.ActivityEventCreated,
+			Activity: biz.Activity{
+				ID:        uuid.NewString(),
+				Kind:      biz.ActivityKindNotice,
+				Status:    biz.ActivityStatusCompleted,
+				SessionID: sess.ID,
+				TeamID:    teamRow.ID,
+				AgentKey:  ar.agent.ID,
+				Timestamp: time.Now().UTC(),
+				Stage:     "intent_pass",
+				Meta:      intent.BuildIntentPassPayload(intRes, meta),
+			},
+			Domain: biz.ActivityDomainChat,
+		}
+		r.td.Pipeline.ActivityBus.Publish(ctx, ev)
 	}
 	opts = userTurnOptions{
 		userOpts:      userOpts,
@@ -214,12 +228,23 @@ func (r *Runner) finalizeTeamRun(
 	if teamEmitter != nil {
 		teamEmitter.LogDone("team.run.finish", "团队任务结束", event.P("status", run.Status))
 	}
-	if r.td.Pipeline.Bus != nil {
+	if r.td.Pipeline.ActivityBus != nil {
 		cp := run
-		env := event.NewEnvelope(event.EnvelopeTypeTeamRunFinished, "team-runner", run.SessionID)
-		env.TeamID = teamRow.ID
-		env.Metadata = map[string]any{"run_id": run.ID, "run": cp}
-		r.td.Pipeline.Bus.Publish(ctx, env)
+		ev := biz.ActivityEvent{
+			Event: biz.ActivityEventCompleted,
+			Activity: biz.Activity{
+				ID:        uuid.NewString(),
+				Kind:      biz.ActivityKindTeamStage,
+				Status:    biz.ActivityStatusCompleted,
+				SessionID: run.SessionID,
+				TeamID:    teamRow.ID,
+				Timestamp: time.Now().UTC(),
+				Stage:     "completed",
+				Meta:      map[string]any{"run_id": run.ID, "run": cp},
+			},
+			Domain: biz.ActivityDomainChat,
+		}
+		r.td.Pipeline.ActivityBus.Publish(ctx, ev)
 		r.publishTeamRunSummary(ctx, run)
 	}
 	return run

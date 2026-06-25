@@ -5,12 +5,12 @@ import (
 	"time"
 
 	chatagent "aranea-agents/internal/agent"
-	localexec "aranea-agents/internal/agent/codeexecutor"
+	localexec "aranea-agents/internal/agent/codeexecution"
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/chatactivity"
 	"aranea-agents/internal/debug"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/graph"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/outbound"
@@ -362,7 +362,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	runs := coalesceRunRegistry(deps.Turn.Runs)
 	pending := coalescePendingQueue(deps.Turn.PendingQueue)
 	sessionLocks := biz.NewSessionLockManager()
-	chatUC := NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Turn.Sessions, deps.Turn.Pipeline.Bus, deps.Infra.LG)
+	chatUC := NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Turn.Sessions, deps.Turn.Pipeline.Bus, deps.Turn.Pipeline.ActivityBus, deps.Infra.LG)
 	// Wire provider/model resolution ports (BA4): biz-layer methods need
 	// access to RefineLLM config, LLM catalog, and session updates.
 	chatUC.SetRefineLLMLookup(deps.Turn.ReadDeps.Settings)
@@ -372,7 +372,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	// Build individual sub-managers first.
 	stateMgr := sessionStateTransitor(deps.Infra.TurnLifecycle)
 	metrics := turnRecorder(newChatTurnMetrics(deps.Turn.Sessions, deps.Usage.Usage, deps.Infra.LG))
-	evtPub := turnEventPublisher(newChatTurnEventPublisher(deps.Turn.Sessions, deps.Turn.Pipeline.Bus, deps.Infra.LG))
+	evtPub := turnEventPublisher(newChatTurnEventPublisher(deps.Turn.Sessions, deps.Turn.Pipeline.Bus, deps.Turn.Pipeline.ActivityBus, deps.Infra.LG))
 	rStatus := runStatusTracker(newChatRunStatusTracker(runs, deps.Turn.Sessions, deps.Turn.Pipeline.Bus, deps.Infra.LG))
 	pendQ := pendingQueueManager(newChatPendingQueueManager(chatUC))
 	awaitCoord := awaitCoordinator(newChatAwaitCoordinator(chatAwaitCoordinatorDeps{
@@ -388,8 +388,8 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 			}
 			return araneasession.NewRuntime(deps.Turn.Persist.Session, deps.Infra.LG)
 		},
-		Bus:    deps.Turn.Pipeline.Bus,
-		Logger: deps.Infra.LG,
+		ActivityBus: deps.Turn.Pipeline.ActivityBus,
+		Logger:      deps.Infra.LG,
 	}))
 	sessRunLC := sessionRunLifecycle(newChatSessionRunLifecycle(chatSessionRunLifecycleDeps{
 		SessionRuns:  deps.Channel.ChJobs.SessionRuns,
@@ -644,20 +644,21 @@ func (o *ChatOrchestrator) publishRunStatus(sessionID, runID, status, errMsg str
 // publishTurnTimeoutNotification pushes a timeout alert via WS so the user knows
 // the turn is taking longer than expected, without failing the turn.
 func (o *ChatOrchestrator) publishTurnTimeoutNotification(ctx context.Context, sessionID, runID string, timeout time.Duration) {
-	bus := o.td().Pipeline.Bus
-	if bus == nil {
+	monitorBus := o.td().Pipeline.MonitorEventBus
+	if monitorBus == nil {
 		return
 	}
-	env := event.NewEnvelope(event.EnvelopeTypeAlertNotify, "chat-service", sessionID)
-	env.RequestID = sessionID
-	env.InvocationID = runID
-	env.Metadata = map[string]any{
-		"alert_kind": "turn_timeout",
-		"timeout":    timeout.String(),
-		"message":    "对话响应时间较长，请耐心等待或手动停止",
-		"i18n_key":   "chat.turn.timeout_notify",
+	ev := contract.NewMonitorEvent(contract.MonitorEventTypeAlertNotify, "chat-service")
+	ev.SessionID = sessionID
+	ev.Metadata = map[string]any{
+		"alert_kind":    "turn_timeout",
+		"timeout":       timeout.String(),
+		"message":       "对话响应时间较长，请耐心等待或手动停止",
+		"i18n_key":      "chat.turn.timeout_notify",
+		"request_id":    sessionID,
+		"invocation_id": runID,
 	}
-	bus.Publish(ctx, env)
+	monitorBus.Publish(ctx, ev)
 }
 
 func (o *ChatOrchestrator) lockSession(sessionID string) func() {

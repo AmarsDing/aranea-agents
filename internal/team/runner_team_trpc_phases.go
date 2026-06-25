@@ -117,16 +117,27 @@ func (r *Runner) setupTeamTracing(ctx context.Context, sess biz.Session, teamRow
 	return ts
 }
 
-// publishTeamRunStartedEvent publishes the TeamRunStarted envelope if a bus is configured.
+// publishTeamRunStartedEvent publishes the TeamRunStarted ActivityEvent if a bus is configured.
 func (r *Runner) publishTeamRunStartedEvent(ctx context.Context, sess biz.Session, teamRow biz.Team, run biz.TeamRun) {
-	if r.td.Pipeline.Bus == nil {
+	if r.td.Pipeline.ActivityBus == nil {
 		return
 	}
 	cp := run
-	env := event.NewEnvelope(event.EnvelopeTypeTeamRunStarted, "team-runner", sess.ID)
-	env.TeamID = teamRow.ID
-	env.Metadata = map[string]any{"run_id": run.ID, "run": cp}
-	r.td.Pipeline.Bus.Publish(ctx, env)
+	ev := biz.ActivityEvent{
+		Event: biz.ActivityEventCreated,
+		Activity: biz.Activity{
+			ID:        uuid.NewString(),
+			Kind:      biz.ActivityKindTeamStage,
+			Status:    biz.ActivityStatusRunning,
+			SessionID: sess.ID,
+			TeamID:    teamRow.ID,
+			Timestamp: time.Now().UTC(),
+			Stage:     "assembled",
+			Meta:      map[string]any{"run_id": run.ID, "run": cp},
+		},
+		Domain: biz.ActivityDomainChat,
+	}
+	r.td.Pipeline.ActivityBus.Publish(ctx, ev)
 }
 
 // buildTeamBuilderDeps assembles the TRPCBuilderDeps from runner configuration and anchor resolution.

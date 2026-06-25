@@ -3,10 +3,13 @@ package service
 import (
 	"context"
 	"strings"
+	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
+
+	"github.com/google/uuid"
 )
 
 func (s *ChatService) SubmitMessageFeedback(ctx context.Context, req *chatv1.SubmitMessageFeedbackRequest) (*chatv1.SubmitMessageFeedbackResponse, error) {
@@ -26,14 +29,23 @@ func (s *ChatService) SubmitMessageFeedback(ctx context.Context, req *chatv1.Sub
 	if err := s.orch.td().Sessions.UpdateMessageFeedback(ctx, sessionID, messageID, rating, comment); err != nil {
 		return nil, err
 	}
-	if bus := s.orch.td().Pipeline.Bus; bus != nil {
-		env := event.NewEnvelope(event.EnvelopeTypeUserFeedback, "chat-feedback", sessionID)
-		env.Metadata = map[string]any{
-			"message_id": messageID,
-			"rating":     rating,
-			"comment":    comment,
-		}
-		bus.Publish(ctx, env)
+	if bus := s.orch.td().Pipeline.ActivityBus; bus != nil {
+		bus.Publish(ctx, biz.ActivityEvent{
+			Event: biz.ActivityEventCreated,
+			Activity: biz.Activity{
+				ID:        uuid.NewString(),
+				Kind:      biz.ActivityKindNotice,
+				SessionID: sessionID,
+				Timestamp: time.Now().UTC(),
+				Meta: map[string]any{
+					"notice_type": "user_feedback",
+					"message_id":  messageID,
+					"rating":      rating,
+					"comment":     comment,
+				},
+			},
+			Domain: biz.ActivityDomainChat,
+		})
 	}
 	return &chatv1.SubmitMessageFeedbackResponse{Accepted: true}, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	sessiontrpc "aranea-agents/internal/session/trpc"
 	"aranea-agents/pkg/loggateway"
@@ -72,6 +73,7 @@ func NewRunnerDepsFromRuntimeWithLogger(trpcSession trpcsession.Service, memory 
 type StreamConsumeOptions struct {
 	MetaResolver      ActivityMetaResolver
 	ActivityProjector *ActivityProjector // AF phase: projects runtime events into Activity semantic units
+	ActivityBus       biz.ActivityEventBus // AF phase: bus for direct ActivityEvent publishing (context_usage etc.)
 }
 
 func ConsumeEventStream(
@@ -95,7 +97,8 @@ func ConsumeEventStreamWithFirstByte(
 	opts *StreamConsumeOptions,
 	lg loggateway.Logger,
 ) EventStreamResult {
-	consumer := newTurnStreamConsumer(firstByteCtx, turnCtx, eventBus, projectMeta, firstByteReceived, opts, lg)
+	_ = eventBus // legacy parameter; context_usage now published via ActivityProjector.EmitSystemEvent
+	consumer := newTurnStreamConsumer(firstByteCtx, turnCtx, projectMeta, firstByteReceived, opts, lg)
 	return consumer.consume(events)
 }
 

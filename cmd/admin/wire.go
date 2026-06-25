@@ -112,6 +112,8 @@ func provideCronRunnerDeps(
 	teams biz.TeamReader,
 	agents biz.AgentRepository,
 	eventBus event.Bus,
+	activityBus biz.ActivityEventBus,
+	monitorBus contract.MonitorBus,
 	chat *service.ChatService,
 	registrySyncAgent cronrunner.CronRegistrySyncAgent,
 ) cronrunner.Deps {
@@ -121,6 +123,8 @@ func provideCronRunnerDeps(
 		Teams:             teams,
 		Agents:            agents,
 		EventBus:          eventBus,
+		ActivityBus:       activityBus,
+		MonitorBus:        monitorBus,
 		Chat:              chat,
 		RegistrySyncAgent: registrySyncAgent,
 	}
@@ -133,13 +137,13 @@ func provideCronRunner(deps cronrunner.Deps, lg loggateway.Logger) *cronrunner.R
 	return cronrunner.NewRunner(deps, lg)
 }
 
-func provideSkillWatchRunner(skillReader watch.SkillReader, skillWriter watch.SkillWriter, sys biz.SystemSettingRepo, eventBus event.Bus, mon *biz.MonitorUsecase, lg loggateway.Logger) *watch.Runner {
+func provideSkillWatchRunner(skillReader watch.SkillReader, skillWriter watch.SkillWriter, sys biz.SystemSettingRepo, monitorBus contract.MonitorBus, mon *biz.MonitorUsecase, lg loggateway.Logger) *watch.Runner {
 	if strings.TrimSpace(os.Getenv("SKILL_WATCH_DISABLED")) == "1" {
 		return nil
 	}
-	r := watch.NewRunnerWithBus(skillReader, skillWriter, sys, eventBus, lg)
+	r := watch.NewRunnerWithBus(skillReader, skillWriter, sys, monitorBus, lg)
 	if r != nil {
-		watch.SetSyncReporter(r, watch.NewMonitorSyncReporter(mon, eventBus, lg))
+		watch.SetSyncReporter(r, watch.NewMonitorSyncReporter(mon, monitorBus, lg))
 		if mon != nil {
 			watch.SetAlertEvaluator(r, mon)
 		}
@@ -463,14 +467,14 @@ func provideDeadLetterQueue(sink biz.MemoryDeadLetterSink, lg loggateway.Logger)
 // The emit interval is read from the RUN_HEARTBEAT_INTERVAL env var (e.g.
 // "10s", "30s"); when unset or invalid, NewRunHeartbeatEmitter applies its
 // built-in 10s default (interval <= 0 → defaultHeartbeatInterval).
-func provideRunHeartbeatEmitter(bus contract.Bus, lg loggateway.Logger) *service.RunHeartbeatEmitter {
+func provideRunHeartbeatEmitter(activityBus biz.ActivityEventBus, lg loggateway.Logger) *service.RunHeartbeatEmitter {
 	interval := time.Duration(0)
 	if raw := strings.TrimSpace(os.Getenv("RUN_HEARTBEAT_INTERVAL")); raw != "" {
 		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
 			interval = d
 		}
 	}
-	return service.NewRunHeartbeatEmitter(interval, bus, lg)
+	return service.NewRunHeartbeatEmitter(interval, activityBus, lg)
 }
 
 // providePendingMessageQueue builds the Wire-bound PendingMessageQueue with
@@ -525,8 +529,8 @@ func provideBackgroundJobWorker(repo backgroundjob.Repo, registry backgroundjob.
 	return service.NewBackgroundJobWorker(repo, registry, lg)
 }
 
-func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, eventBus event.Bus, lg loggateway.Logger) biz.AlertNotifier {
-	return service.NewMonitorAlertNotifier(channels, eventBus, lg)
+func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, monitorBus contract.MonitorBus, lg loggateway.Logger) biz.AlertNotifier {
+	return service.NewMonitorAlertNotifier(channels, monitorBus, lg)
 }
 
 func provideMonitorUsecase(audit biz.MonitorAuditRepo, event biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, lg loggateway.Logger) *biz.MonitorUsecase {
@@ -811,6 +815,7 @@ func provideTeamTurnDeps(
 	eventBus event.Bus,
 	eventBuffer *event.Buffer,
 	activityBus biz.ActivityEventBus,
+	monitorEventBus contract.MonitorBus,
 	lg loggateway.Logger,
 ) rt.TurnDeps {
 	// LLMHTTP timeout is sourced from TimeoutPolicy.
@@ -820,7 +825,7 @@ func provideTeamTurnDeps(
 	return rt.TurnDeps{
 		ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
 		Persist:   persist,
-		Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer, ActivityBus: activityBus},
+		Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer, ActivityBus: activityBus, MonitorEventBus: monitorEventBus},
 		LLMHTTP:   &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
 		Sessions:  sessions,
 		Compress:  compress,
@@ -867,6 +872,7 @@ func provideChatServiceDeps(
 	eventBus event.Bus,
 	eventBuffer *event.Buffer,
 	activityBus biz.ActivityEventBus,
+	monitorEventBus contract.MonitorBus,
 	rtDeps service.RuntimeTooling,
 	teamDeps service.TeamOrchestrationDeps,
 	chJobs service.ChannelTurnJobDeps,
@@ -910,7 +916,7 @@ func provideChatServiceDeps(
 			TurnDeps: rt.TurnDeps{
 				ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
 				Persist:   persist,
-				Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer, ActivityBus: activityBus},
+				Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer, ActivityBus: activityBus, MonitorEventBus: monitorEventBus},
 				LLMHTTP:   &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
 				Sessions:  sessions,
 				SessionRT: sessionRT,
@@ -1103,8 +1109,8 @@ func provideNL2GraphConverter(lg loggateway.Logger) graph.NL2GraphConverter {
 // recovery. P1 fix (2026-06-18): previously this component was implemented but
 // never wired into production (orphan component). It is now available for
 // Graph executors to call OnNodeFailure on node errors.
-func provideRuntimeReplanner(eventBus event.Bus, lg loggateway.Logger) graph.RuntimeReplanner {
-	return graph.NewRuntimeReplanner(eventBus, lg)
+func provideRuntimeReplanner(activityBus biz.ActivityEventBus, lg loggateway.Logger) graph.RuntimeReplanner {
+	return graph.NewRuntimeReplanner(activityBus, lg)
 }
 
 // provideTopologyEvolver builds the TopologyEvolver for dynamic graph topology
@@ -1115,7 +1121,7 @@ func provideRuntimeReplanner(eventBus event.Bus, lg loggateway.Logger) graph.Run
 // (B4) and is called when execution insights suggest a new transfer edge.
 func provideTopologyEvolver(
 	catalog *biz.LlmProviderModelUsecase,
-	eventBus event.Bus,
+	activityBus biz.ActivityEventBus,
 	lg loggateway.Logger,
 ) graph.TopologyEvolver {
 	var llm trpcmodel.Model
@@ -1132,7 +1138,7 @@ func provideTopologyEvolver(
 				loggateway.Err(err))
 		}
 	}
-	return graph.NewTopologyEvolver(llm, eventBus, lg)
+	return graph.NewTopologyEvolver(llm, activityBus, lg)
 }
 
 func provideGraphBuildDeps(
@@ -1796,11 +1802,11 @@ func provideChannelDeliveryScanner(worker *service.ChannelDeliveryWorker, logger
 	return jobs.NewChannelDeliveryWorker(0, worker, logger)
 }
 
-func provideMCPHealthRunnerDeps(mcpRepo biz.MCPServerReader, mcpUC *biz.MCPServerUsecase, bus event.Bus, lg loggateway.Logger) health.Deps {
+func provideMCPHealthRunnerDeps(mcpRepo biz.MCPServerReader, mcpUC *biz.MCPServerUsecase, monitorBus contract.MonitorBus, lg loggateway.Logger) health.Deps {
 	return health.Deps{
 		MCP:    mcpRepo,
 		UC:     mcpUC,
-		Alerts: alert.NewPublisher(bus, mcpUC, lg),
+		Alerts: alert.NewPublisher(monitorBus, mcpUC, lg),
 	}
 }
 
@@ -2101,7 +2107,7 @@ func provideAgentFactory(
 	agentReader biz.AgentReader,
 	agentWriter biz.AgentWriter,
 	templateRepo biz.AgentTemplateRepo,
-	bus contract.Bus,
+	activityBus biz.ActivityEventBus,
 	catalog *biz.LlmProviderModelUsecase,
 	sysUC *biz.SystemSettingUsecase,
 	lg loggateway.Logger,
@@ -2131,7 +2137,7 @@ func provideAgentFactory(
 				loggateway.Err(err))
 		}
 	}
-	return chatagent.NewAgentFactoryImpl(llm, agentWriter, agentReader, templateRepo, bus, lg)
+	return chatagent.NewAgentFactoryImpl(llm, agentWriter, agentReader, templateRepo, activityBus, lg)
 }
 
 func provideTaskOrchestrator(
@@ -2150,6 +2156,7 @@ func provideTaskOrchestrator(
 	perfRepo biz.AgentPerformanceRepository,
 	evolutionSugg biz.EvolutionSuggestionRepo,
 	bus contract.Bus,
+	activityBus biz.ActivityEventBus,
 	nl2graph graph.NL2GraphConverter,
 	lg loggateway.Logger,
 ) biz.TaskOrchestratorPort {
@@ -2169,7 +2176,7 @@ func provideTaskOrchestrator(
 		},
 	}
 	compiler := chatagent.NewDAGToGraphCompiler(lg)
-	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, compiler, repo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionSugg, bus, nl2graph, lg)
+	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, compiler, repo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionSugg, bus, activityBus, nl2graph, lg)
 }
 
 func provideDeptLeadManager(
@@ -2178,17 +2185,17 @@ func provideDeptLeadManager(
 	agentRepo biz.AgentRepository,
 	agentUC *biz.AgentUsecase,
 	teamGetter biz.DeptLeadTeamGetter,
-	bus contract.Bus,
+	activityBus biz.ActivityEventBus,
 	lg loggateway.Logger,
 ) *biz.DeptLeadManager {
 	return biz.NewDeptLeadManager(biz.DeptLeadManagerOpts{
-		OrgRepo:    orgRepo,
-		BorrowRepo: borrowRepo,
-		AgentRepo:  agentRepo,
-		AgentUC:    agentUC,
-		TeamGetter: teamGetter,
-		EventBus:   bus,
-		Logger:     lg,
+		OrgRepo:     orgRepo,
+		BorrowRepo:  borrowRepo,
+		AgentRepo:   agentRepo,
+		AgentUC:     agentUC,
+		TeamGetter:  teamGetter,
+		ActivityBus: activityBus,
+		Logger:      lg,
 	})
 }
 

@@ -3,10 +3,10 @@ package service
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -35,18 +35,29 @@ func (f *fakePlanner) ConfirmPlan(_ context.Context, _ string, _ biz.PlanAdjustm
 	return nil, nil
 }
 
-// gateCaptureBus captures published envelopes for assertion.
+// gateCaptureBus captures published ActivityEvents for assertion.
 type gateCaptureBus struct {
-	published []contract.Envelope
+	mu        sync.Mutex
+	published []biz.ActivityEvent
 }
 
-func (b *gateCaptureBus) Publish(_ context.Context, env contract.Envelope) {
-	b.published = append(b.published, env)
+func (b *gateCaptureBus) Publish(_ context.Context, ev biz.ActivityEvent) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.published = append(b.published, ev)
 }
-func (b *gateCaptureBus) Subscribe(_ contract.SubscribeOptions) (<-chan contract.Envelope, func()) {
+func (b *gateCaptureBus) Subscribe(_ biz.ActivityEventSubscribeOptions) (<-chan biz.ActivityEvent, func()) {
 	return nil, func() {}
 }
 func (b *gateCaptureBus) DropCount() uint64 { return 0 }
+
+func (b *gateCaptureBus) events() []biz.ActivityEvent {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([]biz.ActivityEvent, len(b.published))
+	copy(out, b.published)
+	return out
+}
 
 func TestPrePlanningGate_Evaluate(t *testing.T) {
 	tests := []struct {
@@ -104,16 +115,20 @@ func TestPrePlanningGate_Evaluate(t *testing.T) {
 			if decision.Score != tt.score {
 				t.Errorf("Score = %.4f, want %.4f", decision.Score, tt.score)
 			}
-			if len(bus.published) != tt.wantEventCount {
-				t.Errorf("published events = %d, want %d", len(bus.published), tt.wantEventCount)
+			if len(bus.events()) != tt.wantEventCount {
+				t.Errorf("published events = %d, want %d", len(bus.events()), tt.wantEventCount)
 			}
-			// Verify start + done events
-			if len(bus.published) >= 2 {
-				if bus.published[0].Type != contract.EnvelopeTypePlanningPhaseStart {
-					t.Errorf("first event = %s, want %s", bus.published[0].Type, contract.EnvelopeTypePlanningPhaseStart)
+			// Verify start (created) + done (completed) events
+			published := bus.events()
+			if len(published) >= 2 {
+				if published[0].Event != biz.ActivityEventCreated {
+					t.Errorf("first event = %s, want %s", published[0].Event, biz.ActivityEventCreated)
 				}
-				if bus.published[1].Type != contract.EnvelopeTypePlanningPhaseDone {
-					t.Errorf("last event = %s, want %s", bus.published[1].Type, contract.EnvelopeTypePlanningPhaseDone)
+				if published[1].Event != biz.ActivityEventCompleted {
+					t.Errorf("last event = %s, want %s", published[1].Event, biz.ActivityEventCompleted)
+				}
+				if published[0].Activity.Kind != biz.ActivityKindPlan {
+					t.Errorf("first activity kind = %s, want %s", published[0].Activity.Kind, biz.ActivityKindPlan)
 				}
 			}
 		})

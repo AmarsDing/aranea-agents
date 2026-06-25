@@ -5,16 +5,17 @@ import (
 	"encoding/base64"
 	"net/http"
 	"strings"
+	"time"
 
 	v1 "aranea-agents/api/kratos/knowledge/v1"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
+	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -64,12 +65,12 @@ type KnowledgeService struct {
 	embedder      knowledge.Embedder
 	embedderAdmin knowledge.EmbedderAdmin
 	search        KnowledgeSearchDeps
-	bus           event.Bus
+	activityBus   biz.ActivityEventBus
 	systemSetting biz.SystemSettingRepo
 	lg            loggateway.Logger
 }
 
-func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, searchDeps KnowledgeSearchDeps, bus event.Bus, systemSetting biz.SystemSettingRepo, lg loggateway.Logger) *KnowledgeService {
+func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, searchDeps KnowledgeSearchDeps, activityBus biz.ActivityEventBus, systemSetting biz.SystemSettingRepo, lg loggateway.Logger) *KnowledgeService {
 	var admin knowledge.EmbedderAdmin
 	if a, ok := embedder.(knowledge.EmbedderAdmin); ok {
 		admin = a
@@ -79,7 +80,7 @@ func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, 
 		embedder:      embedder,
 		embedderAdmin: admin,
 		search:        searchDeps,
-		bus:           bus,
+		activityBus:   activityBus,
 		systemSetting: systemSetting,
 		lg:            lg,
 	}
@@ -400,20 +401,32 @@ func (s *KnowledgeService) embedderConfigProto() *v1.EmbedderConfig {
 	}
 }
 
+// publishKnowledgeIngest publishes a knowledge ingest lifecycle event as a
+// system-domain ActivityEvent (NOT persisted, WS-only broadcast).
 func (s *KnowledgeService) publishKnowledgeIngest(collectionID, docID, status, errMsg string, chunkCount int) {
-	if s.bus == nil {
+	if s.activityBus == nil {
 		return
 	}
-	env := event.NewEnvelope(event.EnvelopeTypeKnowledgeIngest, "knowledge", collectionID)
-	env.Channel = "knowledge"
-	env.Metadata = map[string]any{
-		"collection_id": collectionID,
-		"document_id":   docID,
-		"status":        status,
-		"error_message": errMsg,
-		"chunk_count":   chunkCount,
+	ev := biz.ActivityEvent{
+		Event: biz.ActivityEventCreated,
+		Activity: biz.Activity{
+			ID:        uuid.NewString(),
+			Kind:      biz.ActivityKindNotice,
+			Status:    biz.ActivityStatusCompleted,
+			Timestamp: time.Now().UTC(),
+			Content:   "Knowledge document ingest: " + status,
+			Meta: map[string]any{
+				"event_type":    "knowledge_ingest",
+				"collection_id": collectionID,
+				"document_id":   docID,
+				"status":        status,
+				"error_message": errMsg,
+				"chunk_count":   chunkCount,
+			},
+		},
+		Domain: biz.ActivityDomainSystem,
 	}
-	s.bus.Publish(context.Background(), env)
+	s.activityBus.Publish(context.Background(), ev)
 }
 
 // --- proto conversion helpers ---

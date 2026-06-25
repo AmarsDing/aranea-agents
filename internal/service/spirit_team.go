@@ -3,14 +3,16 @@ package service
 import (
 	"context"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/tools"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
+
+	"github.com/google/uuid"
 )
 
 var (
@@ -24,11 +26,11 @@ var (
 type TeamStarter struct {
 	sessions *biz.SessionUsecase
 	team     TeamOrchestrationDeps
-	bus      event.Bus
+	bus      biz.ActivityEventBus
 	lg       loggateway.Logger
 }
 
-func NewTeamStarter(sessions *biz.SessionUsecase, team TeamOrchestrationDeps, bus event.Bus, lg loggateway.Logger) *TeamStarter {
+func NewTeamStarter(sessions *biz.SessionUsecase, team TeamOrchestrationDeps, bus biz.ActivityEventBus, lg loggateway.Logger) *TeamStarter {
 	return &TeamStarter{sessions: sessions, team: team, bus: bus, lg: lg}
 }
 
@@ -70,14 +72,26 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 	}
 
 	if s.bus != nil && teamID != "" && spiritSessionID != "" {
-		env := event.NewEnvelope(event.EnvelopeTypeSpiritTeamProgress, "team-starter", spiritSessionID)
-		env.TeamID = teamID
-		env.Metadata = map[string]any{
-			"team_id":      teamID,
-			"status":       biz.TeamStatusRunning,
-			"progress_pct": 0,
+		ev := biz.ActivityEvent{
+			Event: biz.ActivityEventUpdated,
+			Activity: biz.Activity{
+				ID:               uuid.NewString(),
+				Kind:             biz.ActivityKindTeamStage,
+				Status:           biz.ActivityStatusRunning,
+				Stage:            "progress",
+				Timestamp:        time.Now().UTC(),
+				SpiritSessionID:  spiritSessionID,
+				TeamID:           teamID,
+				AgentKey:         "team-starter",
+				Meta: map[string]any{
+					"team_id":      teamID,
+					"status":       biz.TeamStatusRunning,
+					"progress_pct": 0,
+				},
+			},
+			Domain: biz.ActivityDomainChat,
 		}
-		s.bus.Publish(ctx, env)
+		s.bus.Publish(ctx, ev)
 	}
 
 	input := biz.TurnInput{
@@ -155,9 +169,7 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		tokenOut = sessResult.Items[0].OutputTokens
 	}
 
-	var envType event.EnvelopeType
 	if status == biz.TeamStatusCompleted {
-		envType = event.EnvelopeTypeSpiritTeamCompleted
 		if _, updateErr := s.team.TeamUC.TransitionStatus(ctx, teamID, biz.TeamStatusCompleted); updateErr != nil {
 			s.lg.Warn("更新团队状态为 completed 失败",
 				loggateway.StepID("spirit.team.completed_err"),
@@ -168,7 +180,6 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		s.recordTeamCompletion(ctx, team, durationMs)
 		s.scheduleDependentTeams(ctx, spiritSessionID, team)
 	} else if status == biz.TeamStatusCancelled {
-		envType = event.EnvelopeTypeSpiritTeamFailed
 		// Note: TransitionStatus is skipped here because the caller (CancelTeam)
 		// has already transitioned the status to cancelled. Double-writing is
 		// unnecessary and wasteful.
@@ -188,7 +199,6 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 			}
 		}
 	} else {
-		envType = event.EnvelopeTypeSpiritTeamFailed
 		if _, updateErr := s.team.TeamUC.TransitionStatus(ctx, teamID, biz.TeamStatusFailed); updateErr != nil {
 			s.lg.Warn("更新团队状态为 failed 失败",
 				loggateway.StepID("spirit.team.failed_err"),
@@ -201,8 +211,23 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 	}
 
 	if s.bus != nil {
-		env := event.NewEnvelope(envType, "spirit-lifecycle", spiritSessionID)
-		env.TeamID = teamID
+		primaryEvent := biz.ActivityEventCreated
+		primaryStatus := biz.ActivityStatusCreated
+		primaryStage := "failed"
+		switch status {
+		case biz.TeamStatusCompleted:
+			primaryEvent = biz.ActivityEventCompleted
+			primaryStatus = biz.ActivityStatusCompleted
+			primaryStage = "completed"
+		case biz.TeamStatusCancelled:
+			primaryEvent = biz.ActivityEventCancelled
+			primaryStatus = biz.ActivityStatusCancelled
+			primaryStage = "cancelled"
+		default:
+			primaryEvent = biz.ActivityEventFailed
+			primaryStatus = biz.ActivityStatusFailed
+			primaryStage = "failed"
+		}
 		meta := map[string]any{
 			"team_id":         teamID,
 			"team_name":       team.DisplayName,
@@ -214,22 +239,48 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		if errMsg != "" {
 			meta["error"] = errMsg
 		}
-		env.Metadata = meta
-		s.bus.Publish(ctx, env)
+		ev := biz.ActivityEvent{
+			Event: primaryEvent,
+			Activity: biz.Activity{
+				ID:              uuid.NewString(),
+				Kind:            biz.ActivityKindTeamStage,
+				Status:          primaryStatus,
+				Stage:           primaryStage,
+				Timestamp:       time.Now().UTC(),
+				SpiritSessionID: spiritSessionID,
+				TeamID:          teamID,
+				AgentKey:        "spirit-lifecycle",
+				Meta:            meta,
+			},
+			Domain: biz.ActivityDomainChat,
+		}
+		s.bus.Publish(ctx, ev)
 
 		progressPct := 100.0
 		if status == biz.TeamStatusFailed || status == biz.TeamStatusCancelled {
 			progressPct = 0
 		}
-		progressEnv := event.NewEnvelope(event.EnvelopeTypeSpiritTeamProgress, "spirit-lifecycle", spiritSessionID)
-		progressEnv.TeamID = teamID
-		progressEnv.Metadata = map[string]any{
-			"team_id":      teamID,
-			"status":       status,
-			"progress_pct": progressPct,
-			"duration_ms":  durationMs,
+		progressEv := biz.ActivityEvent{
+			Event: biz.ActivityEventUpdated,
+			Activity: biz.Activity{
+				ID:              uuid.NewString(),
+				Kind:            biz.ActivityKindTeamStage,
+				Status:          biz.ActivityStatusRunning,
+				Stage:           "progress",
+				Timestamp:       time.Now().UTC(),
+				SpiritSessionID: spiritSessionID,
+				TeamID:          teamID,
+				AgentKey:        "spirit-lifecycle",
+				Meta: map[string]any{
+					"team_id":      teamID,
+					"status":       status,
+					"progress_pct": progressPct,
+					"duration_ms":  durationMs,
+				},
+			},
+			Domain: biz.ActivityDomainChat,
 		}
-		s.bus.Publish(ctx, progressEnv)
+		s.bus.Publish(ctx, progressEv)
 	}
 
 	s.checkAllTeamsCompleted(ctx, spiritSessionID)
@@ -263,14 +314,26 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 					loggateway.Str("dag_node_id", action.DagNodeID),
 				)
 				if s.bus != nil {
-					env := event.NewEnvelope(event.EnvelopeTypeSpiritTeamFailed, "spirit-scheduler", spiritSessionID)
-					env.TeamID = action.TeamID
-					env.Metadata = map[string]any{
-						"team_id":   action.TeamID,
-						"team_name": action.TeamName,
-						"error":     action.Reason,
+					ev := biz.ActivityEvent{
+						Event: biz.ActivityEventFailed,
+						Activity: biz.Activity{
+							ID:              uuid.NewString(),
+							Kind:            biz.ActivityKindTeamStage,
+							Status:          biz.ActivityStatusFailed,
+							Stage:           "failed",
+							Timestamp:       time.Now().UTC(),
+							SpiritSessionID: spiritSessionID,
+							TeamID:          action.TeamID,
+							AgentKey:        "spirit-scheduler",
+							Meta: map[string]any{
+								"team_id":   action.TeamID,
+								"team_name": action.TeamName,
+								"error":     action.Reason,
+							},
+						},
+						Domain: biz.ActivityDomainChat,
 					}
-					s.bus.Publish(ctx, env)
+					s.bus.Publish(ctx, ev)
 				}
 			}
 		} else if action.Action == "activate" {
@@ -289,14 +352,26 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 				loggateway.Str("dag_node_id", action.DagNodeID),
 			)
 			if s.bus != nil {
-				env := event.NewEnvelope(event.EnvelopeTypeSpiritTeamProgress, "spirit-scheduler", spiritSessionID)
-				env.TeamID = action.TeamID
-				env.Metadata = map[string]any{
-					"team_id":   action.TeamID,
-					"team_name": action.TeamName,
-					"status":    biz.TeamStatusRunning,
+				ev := biz.ActivityEvent{
+					Event: biz.ActivityEventUpdated,
+					Activity: biz.Activity{
+						ID:              uuid.NewString(),
+						Kind:            biz.ActivityKindTeamStage,
+						Status:          biz.ActivityStatusRunning,
+						Stage:           "progress",
+						Timestamp:       time.Now().UTC(),
+						SpiritSessionID: spiritSessionID,
+						TeamID:          action.TeamID,
+						AgentKey:        "spirit-scheduler",
+						Meta: map[string]any{
+							"team_id":   action.TeamID,
+							"team_name": action.TeamName,
+							"status":    biz.TeamStatusRunning,
+						},
+					},
+					Domain: biz.ActivityDomainChat,
 				}
-				s.bus.Publish(ctx, env)
+				s.bus.Publish(ctx, ev)
 			}
 			taskDesc := action.TeamName // DagNodeID is used as task description fallback
 			depTeamID := action.TeamID
@@ -338,17 +413,29 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 		return
 	}
 	if s.bus != nil {
-		env := event.NewEnvelope(event.EnvelopeTypeSpiritTeamsAllCompleted, "team-starter", spiritSessionID)
-		env.Metadata = map[string]any{
-			"spirit_session_id": spiritSessionID,
-			"team_ids":          result.TeamIDs,
-			"total_teams":       result.TotalTeams,
-			"completed_teams":   result.CompletedTeams,
-			"failed_teams":      result.FailedTeams,
-			"total_token_in":    result.TotalTokenIn,
-			"total_token_out":   result.TotalTokenOut,
+		ev := biz.ActivityEvent{
+			Event: biz.ActivityEventCompleted,
+			Activity: biz.Activity{
+				ID:              uuid.NewString(),
+				Kind:            biz.ActivityKindSession,
+				Status:          biz.ActivityStatusCompleted,
+				Timestamp:       time.Now().UTC(),
+				SpiritSessionID: spiritSessionID,
+				AgentKey:        "team-starter",
+				Meta: map[string]any{
+					"event_type":        "spirit_teams_all_completed",
+					"spirit_session_id": spiritSessionID,
+					"team_ids":          result.TeamIDs,
+					"total_teams":       result.TotalTeams,
+					"completed_teams":   result.CompletedTeams,
+					"failed_teams":      result.FailedTeams,
+					"total_token_in":    result.TotalTokenIn,
+					"total_token_out":   result.TotalTokenOut,
+				},
+			},
+			Domain: biz.ActivityDomainChat,
 		}
-		s.bus.Publish(ctx, env)
+		s.bus.Publish(ctx, ev)
 	}
 }
 
@@ -362,7 +449,7 @@ func (s *TeamStarter) HandleTeamTimeout(ctx context.Context, spiritSessionID, te
 type SpiritTeamAssembler struct {
 	spiritUC    *biz.SpiritTeamUsecase
 	orchCache   *biz.OrchestrationCache
-	bus         event.Bus
+	bus         biz.ActivityEventBus
 	teamStarter biz.TeamStarterPort
 	lg          loggateway.Logger
 }
@@ -370,7 +457,7 @@ type SpiritTeamAssembler struct {
 func NewSpiritTeamAssembler(
 	spiritUC *biz.SpiritTeamUsecase,
 	orchCache *biz.OrchestrationCache,
-	bus event.Bus,
+	bus biz.ActivityEventBus,
 	teamStarter biz.TeamStarterPort,
 	lg loggateway.Logger,
 ) *SpiritTeamAssembler {
@@ -470,14 +557,26 @@ func (a *SpiritTeamAssembler) CancelTeam(ctx context.Context, teamID string) err
 	}
 	spiritSessionID := strings.TrimSpace(team.SpiritSessionID)
 	if a.bus != nil && spiritSessionID != "" {
-		env := event.NewEnvelope(event.EnvelopeTypeSpiritTeamProgress, "spirit-cancel", spiritSessionID)
-		env.TeamID = teamID
-		env.Metadata = map[string]any{
-			"team_id":   teamID,
-			"team_name": team.DisplayName,
-			"status":    biz.TeamStatusCancelled,
+		ev := biz.ActivityEvent{
+			Event: biz.ActivityEventCancelled,
+			Activity: biz.Activity{
+				ID:              uuid.NewString(),
+				Kind:            biz.ActivityKindTeamStage,
+				Status:          biz.ActivityStatusCancelled,
+				Stage:           "cancelled",
+				Timestamp:       time.Now().UTC(),
+				SpiritSessionID: spiritSessionID,
+				TeamID:          teamID,
+				AgentKey:        "spirit-cancel",
+				Meta: map[string]any{
+					"team_id":   teamID,
+					"team_name": team.DisplayName,
+					"status":    biz.TeamStatusCancelled,
+				},
+			},
+			Domain: biz.ActivityDomainChat,
 		}
-		a.bus.Publish(ctx, env)
+		a.bus.Publish(ctx, ev)
 	}
 	if a.teamStarter != nil && spiritSessionID != "" {
 		a.teamStarter.HandleTeamTurnResult(ctx, spiritSessionID, teamID, biz.TeamStatusCancelled, "")

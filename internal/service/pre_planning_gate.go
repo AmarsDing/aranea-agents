@@ -6,8 +6,9 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
+
+	"github.com/google/uuid"
 )
 
 // GateDecision is the result of the pre-planning gate evaluation (P1-2).
@@ -28,17 +29,17 @@ type GateDecision struct {
 // negligible latency (<1ms) to the turn. Planning timeline events are
 // published so the frontend can render the assessment phase.
 type PrePlanningGate struct {
-	planner biz.TaskPlannerPort
-	bus     contract.Bus
-	lg      loggateway.Logger
+	planner     biz.TaskPlannerPort
+	activityBus biz.ActivityEventBus
+	lg          loggateway.Logger
 }
 
 // NewPrePlanningGate constructs a PrePlanningGate.
-func NewPrePlanningGate(planner biz.TaskPlannerPort, bus contract.Bus, lg loggateway.Logger) *PrePlanningGate {
+func NewPrePlanningGate(planner biz.TaskPlannerPort, activityBus biz.ActivityEventBus, lg loggateway.Logger) *PrePlanningGate {
 	return &PrePlanningGate{
-		planner: planner,
-		bus:     bus,
-		lg:      lg.With(loggateway.Domain("pre-planning-gate")),
+		planner:     planner,
+		activityBus: activityBus,
+		lg:          lg.With(loggateway.Domain("pre-planning-gate")),
 	}
 }
 
@@ -47,7 +48,7 @@ func NewPrePlanningGate(planner biz.TaskPlannerPort, bus contract.Bus, lg loggat
 // to the planner for a more accurate assessment.
 func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (GateDecision, error) {
 	start := time.Now()
-	g.publishPlanningPhase(ctx, contract.EnvelopeTypePlanningPhaseStart, "assess", "开始复杂度评估", input.SpiritSessionID, 0)
+	g.publishPlanningPhase(ctx, biz.ActivityEventCreated, biz.ActivityStatusRunning, "assess", "开始复杂度评估", input.SpiritSessionID, 0)
 
 	level, score, err := g.planner.QuickAssess(ctx, input)
 	if err != nil {
@@ -56,7 +57,7 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 			loggateway.Str("spirit_session_id", input.SpiritSessionID),
 			loggateway.Err(err),
 		)
-		g.publishPlanningPhase(ctx, contract.EnvelopeTypePlanningPhaseDone, "assess", "复杂度评估失败", input.SpiritSessionID, time.Since(start).Seconds()*1000)
+		g.publishPlanningPhase(ctx, biz.ActivityEventFailed, biz.ActivityStatusFailed, "assess", "复杂度评估失败", input.SpiritSessionID, time.Since(start).Seconds()*1000)
 		return GateDecision{}, err
 	}
 
@@ -82,22 +83,33 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 		loggateway.Bool("force_planning", forcePlanning),
 	)
 
-	g.publishPlanningPhase(ctx, contract.EnvelopeTypePlanningPhaseDone, "assess", reason, input.SpiritSessionID, time.Since(start).Seconds()*1000)
+	g.publishPlanningPhase(ctx, biz.ActivityEventCompleted, biz.ActivityStatusCompleted, "assess", reason, input.SpiritSessionID, time.Since(start).Seconds()*1000)
 
 	return decision, nil
 }
 
-// publishPlanningPhase publishes a planning timeline event.
-func (g *PrePlanningGate) publishPlanningPhase(ctx context.Context, eventType contract.EnvelopeType, phase, message, sessionID string, durationMs float64) {
-	if g.bus == nil {
+// publishPlanningPhase publishes a planning timeline event as an ActivityEvent
+// (Kind=plan, Domain=chat). Replaces the legacy EnvelopeTypePlanningPhase* publish.
+func (g *PrePlanningGate) publishPlanningPhase(ctx context.Context, eventType biz.ActivityEventType, status biz.ActivityStatus, phase, message, sessionID string, durationMs float64) {
+	if g.activityBus == nil {
 		return
 	}
-	env := contract.NewEnvelope(eventType, "pre-planning-gate", sessionID)
-	env.Metadata = map[string]any{
-		"phase":       phase,
-		"message":     message,
-		"duration_ms": durationMs,
-		"session_id":  sessionID,
-	}
-	g.bus.Publish(ctx, env)
+	g.activityBus.Publish(ctx, biz.ActivityEvent{
+		Event: eventType,
+		Activity: biz.Activity{
+			ID:        uuid.NewString(),
+			Kind:      biz.ActivityKindPlan,
+			Status:    status,
+			SessionID: sessionID,
+			Timestamp: time.Now().UTC(),
+			Meta: map[string]any{
+				"phase":       phase,
+				"message":     message,
+				"duration_ms": durationMs,
+				"session_id":  sessionID,
+				"source":      "pre-planning-gate",
+			},
+		},
+		Domain: biz.ActivityDomainChat,
+	})
 }

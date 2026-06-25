@@ -173,7 +173,7 @@ func startReadinessDependentServices(
 						continue
 					}
 					sink, err := logpipeline.NewSinkFromConfig(cfg, logpipeline.SinkFactoryDeps{
-						EventBusPublisher: event.NewLogPipelinePublisher(eventInfra.MonitorBus),
+						EventBusPublisher: event.NewLogPipelinePublisher(eventInfra.MonitorEventBus),
 					})
 					if err != nil {
 						lg.Warn("failed to create eventbus sink from config", loggateway.Str("sink", cfg.Name), loggateway.Err(err))
@@ -183,7 +183,7 @@ func startReadinessDependentServices(
 				}
 			} else {
 				// Default: add eventbus sink with "info" level
-				pipeline.AddSink(logpipeline.NewEventBusSink(event.NewLogPipelinePublisher(eventInfra.MonitorBus), "info"))
+				pipeline.AddSink(logpipeline.NewEventBusSink(event.NewLogPipelinePublisher(eventInfra.MonitorEventBus), "info"))
 			}
 		}
 	}

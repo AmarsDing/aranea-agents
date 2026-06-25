@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -19,10 +18,10 @@ func newTestTopologyEvolver(llm trpcmodel.Model, bus *recordingReplanBus) *Topol
 		bus = &recordingReplanBus{}
 	}
 	return &TopologyEvolverImpl{
-		llm:        llm,
-		eventBus:   bus,
-		lg:         loggateway.NewNoop().With(loggateway.Domain("topology_evolver")),
-		addedEdges: make(map[string]map[string]bool),
+		llm:         llm,
+		activityBus: bus,
+		lg:          loggateway.NewNoop().With(loggateway.Domain("topology_evolver")),
+		addedEdges:  make(map[string]map[string]bool),
 	}
 }
 
@@ -79,28 +78,37 @@ func TestTopologyEvolver_AddEdge(t *testing.T) {
 	}
 
 	// Verify event was published
-	envelopes := bus.envelopes()
-	if len(envelopes) != 1 {
-		t.Fatalf("expected 1 published envelope, got %d", len(envelopes))
+	events := bus.events()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 published event, got %d", len(events))
 	}
-	env := envelopes[0]
-	if env.Type != contract.EnvelopeTypeGraphTopologyEvolved {
-		t.Errorf("Type=%q want %q", env.Type, contract.EnvelopeTypeGraphTopologyEvolved)
+	ev := events[0]
+	if ev.Event != biz.ActivityEventUpdated {
+		t.Errorf("Event=%q want %q", ev.Event, biz.ActivityEventUpdated)
 	}
-	if env.SessionID != exec.SessionID {
-		t.Errorf("SessionID=%q want %q", env.SessionID, exec.SessionID)
+	if ev.Activity.Kind != biz.ActivityKindGraphStage {
+		t.Errorf("Kind=%q want %q", ev.Activity.Kind, biz.ActivityKindGraphStage)
 	}
-	if v, ok := env.Metadata["execution_id"].(string); !ok || v != exec.ID {
-		t.Errorf("Metadata[execution_id]=%v want %q", env.Metadata["execution_id"], exec.ID)
+	if ev.Activity.Stage != "topology_evolved" {
+		t.Errorf("Stage=%q want %q", ev.Activity.Stage, "topology_evolved")
 	}
-	if v, ok := env.Metadata["from_node"].(string); !ok || v != insight.SourceNode {
-		t.Errorf("Metadata[from_node]=%v want %q", env.Metadata["from_node"], insight.SourceNode)
+	if ev.Domain != biz.ActivityDomainChat {
+		t.Errorf("Domain=%q want %q", ev.Domain, biz.ActivityDomainChat)
 	}
-	if v, ok := env.Metadata["to_node"].(string); !ok || v != insight.TargetNode {
-		t.Errorf("Metadata[to_node]=%v want %q", env.Metadata["to_node"], insight.TargetNode)
+	if ev.Activity.SessionID != exec.SessionID {
+		t.Errorf("SessionID=%q want %q", ev.Activity.SessionID, exec.SessionID)
 	}
-	if v, ok := env.Metadata["edge_kind"].(string); !ok || v != biz.EdgeKindTransfer {
-		t.Errorf("Metadata[edge_kind]=%v want %q", env.Metadata["edge_kind"], biz.EdgeKindTransfer)
+	if v, ok := ev.Activity.Meta["execution_id"].(string); !ok || v != exec.ID {
+		t.Errorf("Meta[execution_id]=%v want %q", ev.Activity.Meta["execution_id"], exec.ID)
+	}
+	if v, ok := ev.Activity.Meta["from_node"].(string); !ok || v != insight.SourceNode {
+		t.Errorf("Meta[from_node]=%v want %q", ev.Activity.Meta["from_node"], insight.SourceNode)
+	}
+	if v, ok := ev.Activity.Meta["to_node"].(string); !ok || v != insight.TargetNode {
+		t.Errorf("Meta[to_node]=%v want %q", ev.Activity.Meta["to_node"], insight.TargetNode)
+	}
+	if v, ok := ev.Activity.Meta["edge_kind"].(string); !ok || v != biz.EdgeKindTransfer {
+		t.Errorf("Meta[edge_kind]=%v want %q", ev.Activity.Meta["edge_kind"], biz.EdgeKindTransfer)
 	}
 }
 
@@ -119,8 +127,8 @@ func TestTopologyEvolver_SkipEdge(t *testing.T) {
 		t.Errorf("expected nil edge when LLM decides not to add, got %+v", edge)
 	}
 	// No event should be published when edge is not added
-	if len(bus.envelopes()) != 0 {
-		t.Errorf("expected 0 envelopes, got %d", len(bus.envelopes()))
+	if len(bus.events()) != 0 {
+		t.Errorf("expected 0 events, got %d", len(bus.events()))
 	}
 }
 
@@ -139,8 +147,8 @@ func TestTopologyEvolver_LLMFailure(t *testing.T) {
 		t.Errorf("expected nil edge on LLM failure, got %+v", edge)
 	}
 	// No event should be published on LLM failure
-	if len(bus.envelopes()) != 0 {
-		t.Errorf("expected 0 envelopes on LLM failure, got %d", len(bus.envelopes()))
+	if len(bus.events()) != 0 {
+		t.Errorf("expected 0 events on LLM failure, got %d", len(bus.events()))
 	}
 }
 
@@ -158,8 +166,8 @@ func TestTopologyEvolver_MalformedJSON(t *testing.T) {
 	if edge != nil {
 		t.Errorf("expected nil edge on malformed JSON, got %+v", edge)
 	}
-	if len(bus.envelopes()) != 0 {
-		t.Errorf("expected 0 envelopes on malformed JSON, got %d", len(bus.envelopes()))
+	if len(bus.events()) != 0 {
+		t.Errorf("expected 0 events on malformed JSON, got %d", len(bus.events()))
 	}
 }
 
@@ -176,8 +184,8 @@ func TestTopologyEvolver_NilLLM(t *testing.T) {
 	if edge != nil {
 		t.Errorf("expected nil edge on nil LLM, got %+v", edge)
 	}
-	if len(bus.envelopes()) != 0 {
-		t.Errorf("expected 0 envelopes on nil LLM, got %d", len(bus.envelopes()))
+	if len(bus.events()) != 0 {
+		t.Errorf("expected 0 events on nil LLM, got %d", len(bus.events()))
 	}
 }
 
@@ -211,8 +219,8 @@ func TestTopologyEvolver_SelfLoop(t *testing.T) {
 		t.Errorf("Domain=%q want %q", apiErr.Domain, apierror.DomainGraph)
 	}
 	// No event should be published on validation error
-	if len(bus.envelopes()) != 0 {
-		t.Errorf("expected 0 envelopes on self-loop, got %d", len(bus.envelopes()))
+	if len(bus.events()) != 0 {
+		t.Errorf("expected 0 events on self-loop, got %d", len(bus.events()))
 	}
 }
 
@@ -231,8 +239,8 @@ func TestTopologyEvolver_DuplicateEdge(t *testing.T) {
 	if edge1 == nil {
 		t.Fatal("expected non-nil edge on first call")
 	}
-	if len(bus.envelopes()) != 1 {
-		t.Fatalf("expected 1 envelope after first call, got %d", len(bus.envelopes()))
+	if len(bus.events()) != 1 {
+		t.Fatalf("expected 1 event after first call, got %d", len(bus.events()))
 	}
 
 	// Second call with same insight should skip (duplicate)
@@ -244,8 +252,8 @@ func TestTopologyEvolver_DuplicateEdge(t *testing.T) {
 		t.Errorf("expected nil edge on duplicate, got %+v", edge2)
 	}
 	// No new event should be published for duplicate
-	if len(bus.envelopes()) != 1 {
-		t.Errorf("expected 1 envelope after duplicate call, got %d", len(bus.envelopes()))
+	if len(bus.events()) != 1 {
+		t.Errorf("expected 1 event after duplicate call, got %d", len(bus.events()))
 	}
 }
 
@@ -346,7 +354,7 @@ func TestTopologyEvolver_PerExecutionIsolation(t *testing.T) {
 	}
 
 	// Both events should be published
-	if len(bus.envelopes()) != 2 {
-		t.Errorf("expected 2 envelopes, got %d", len(bus.envelopes()))
+	if len(bus.events()) != 2 {
+		t.Errorf("expected 2 events, got %d", len(bus.events()))
 	}
 }

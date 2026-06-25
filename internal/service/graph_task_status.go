@@ -3,14 +3,16 @@ package service
 import (
 	"context"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+
+	"github.com/google/uuid"
 )
 
 // PublishGraphTaskStatus emits orchestration-facing task status for graph Kanban projection.
 func (p *GraphOrchestrationProjector) PublishGraphTaskStatus(ctx context.Context, sessionID, execID, graphID string, task *biz.GraphTask, extra map[string]any) {
-	if p == nil || p.bus == nil || task == nil {
+	if p == nil || p.activityBus == nil || task == nil {
 		return
 	}
 	sessionID = strings.TrimSpace(sessionID)
@@ -18,10 +20,8 @@ func (p *GraphOrchestrationProjector) PublishGraphTaskStatus(ctx context.Context
 	if sessionID == "" || execID == "" {
 		return
 	}
-	env := event.NewEnvelope(event.EnvelopeTypeGraphTaskStatus, "graph-task", sessionID)
-	env.Channel = "graph"
-	env.FilterKey = "graph/" + strings.TrimSpace(graphID) + "/" + execID
-	env.Metadata = map[string]any{
+	graphID = strings.TrimSpace(graphID)
+	meta := map[string]any{
 		"execution_id":  execID,
 		"graph_id":      graphID,
 		"node_id":       task.NodeID,
@@ -30,9 +30,25 @@ func (p *GraphOrchestrationProjector) PublishGraphTaskStatus(ctx context.Context
 		"assignee":      task.Assignee,
 		"summary":       task.Summary,
 		"webhook_topic": "graph.task.status",
+		"filter_key":    "graph/" + graphID + "/" + execID,
+		"channel":       "graph",
+		"author":        "graph-task",
 	}
 	for k, v := range extra {
-		env.Metadata[k] = v
+		meta[k] = v
 	}
-	p.bus.Publish(ctx, env)
+	ev := biz.ActivityEvent{
+		Event: biz.ActivityEventUpdated,
+		Activity: biz.Activity{
+			ID:        uuid.NewString(),
+			Kind:      biz.ActivityKindGraphStage,
+			Status:    biz.ActivityStatusRunning,
+			SessionID: sessionID,
+			Timestamp: time.Now().UTC(),
+			Stage:     "task_status",
+			Meta:      meta,
+		},
+		Domain: biz.ActivityDomainChat,
+	}
+	p.activityBus.Publish(ctx, ev)
 }

@@ -16,11 +16,13 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
 
+	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -67,7 +69,9 @@ type Deps struct {
 	Session           *biz.SessionUsecase
 	Teams             biz.TeamReader
 	Agents            biz.AgentRepository
-	EventBus          event.Bus
+	EventBus          event.Bus           // legacy envelope bus (Teams-domain events: TeamRunFinished)
+	ActivityBus       biz.ActivityEventBus // unified bus for chat/system Activity events (replaces EventBus for TeamRunFinished)
+	MonitorBus        contract.MonitorBus // typed monitor bus (cron.dead_letter)
 	Chat              CronChatRunner
 	RegistrySyncAgent CronRegistrySyncAgent
 }
@@ -238,19 +242,19 @@ func (r *Runner) dispatchSafe(ctx context.Context, task biz.CronTask, cfg cronTa
 	return r.dispatchCronTask(ctx, task, cfg)
 }
 
-// publishDeadLetterEvent emits a dead-letter admin alert event via the event bus.
+// publishDeadLetterEvent emits a dead-letter admin alert event via the typed MonitorBus.
 func (r *Runner) publishDeadLetterEvent(ctx context.Context, task biz.CronTask) {
-	if r.deps.EventBus == nil {
+	if r.deps.MonitorBus == nil {
 		return
 	}
 	safego.Go(ctx, "cron.dead_letter.publish", func() {
-		env := event.NewEnvelope("cron.dead_letter", "cron", "")
-		env.Metadata = map[string]any{
+		ev := contract.NewMonitorEvent(contract.MonitorEventTypeCronDeadLetter, "cron")
+		ev.Metadata = map[string]any{
 			"job_id":   task.ID,
 			"task_key": task.TaskKey,
 			"name":     task.Name,
 		}
-		r.deps.EventBus.Publish(context.Background(), env)
+		r.deps.MonitorBus.Publish(context.Background(), ev)
 	})
 }
 
@@ -405,12 +409,24 @@ func cronChatPOSTRoot() string {
 }
 
 func (r *Runner) publishTeamCronMaybe(ctx context.Context, teamID string) {
-	if r.deps.EventBus != nil {
-		env := event.NewEnvelope(event.EnvelopeTypeTeamRunFinished, "cron", "")
-		env.TeamID = teamID
-		env.Metadata = map[string]any{"hint": true}
-		r.deps.EventBus.Publish(ctx, env)
+	if r.deps.ActivityBus == nil {
+		return
 	}
+	ev := biz.ActivityEvent{
+		Event: biz.ActivityEventCompleted,
+		Activity: biz.Activity{
+			ID:        uuid.NewString(),
+			Kind:      biz.ActivityKindTeamStage,
+			Status:    biz.ActivityStatusCompleted,
+			Timestamp: time.Now().UTC(),
+			TeamID:    teamID,
+			AgentKey:  "cron",
+			Stage:     "finished",
+			Meta:      map[string]any{"hint": true, "stage": "finished"},
+		},
+		Domain: biz.ActivityDomainChat,
+	}
+	r.deps.ActivityBus.Publish(ctx, ev)
 }
 
 func (r *Runner) postChat(ctx context.Context, in sendMessagePayload) (cronDispatchResult, error) {

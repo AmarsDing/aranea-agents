@@ -7,10 +7,12 @@ import (
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
+
+	"github.com/google/uuid"
 )
 
 // handleUpstream dispatches an incoming client message to the appropriate handler.
@@ -136,17 +138,9 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 		safego.Go(appctx.Ctx(), "ws-user-message", func() {
 			if err := s.turnExecutor.ExecuteTurn(appctx.Ctx(), input); err != nil {
 				s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
-				env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
-				env.RequestID = requestID
-				env.Error = &event.EnvelopeError{
-					Type:    "send_failed",
-					Message: err.Error(),
-				}
-				s.eventBus.Publish(context.Background(), env)
-				s.lg.With(loggateway.SessionID(sessionID)).Info("WebSocket error envelope published",
-					loggateway.StepID("ws.error_envelope_published"),
-					loggateway.Any("envelope_id", env.ID),
-					loggateway.Any("channel", env.Channel),
+				s.publishWSErrorActivity(sessionID, requestID, "send_failed", err.Error())
+				s.lg.With(loggateway.SessionID(sessionID)).Info("WebSocket error ActivityEvent published",
+					loggateway.StepID("ws.error_activity_published"),
 					loggateway.Any("request_id", requestID))
 			}
 		})
@@ -175,13 +169,7 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 		_, err := s.sender.SendChatMessage(appctx.Ctx(), req)
 		if err != nil {
 			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
-			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
-			env.RequestID = requestID
-			env.Error = &event.EnvelopeError{
-				Type:    "send_failed",
-				Message: err.Error(),
-			}
-			s.eventBus.Publish(context.Background(), env)
+			s.publishWSErrorActivity(sessionID, requestID, "send_failed", err.Error())
 		}
 	})
 }
@@ -219,23 +207,11 @@ func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
 		resp, err := s.sender.EnqueueUserMessage(appctx.Ctx(), req)
 		if err != nil {
 			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 入队消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
-			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
-			env.RequestID = requestID
-			env.Error = &event.EnvelopeError{
-				Type:    "enqueue_failed",
-				Message: err.Error(),
-			}
-			s.eventBus.Publish(context.Background(), env)
+			s.publishWSErrorActivity(sessionID, requestID, "enqueue_failed", err.Error())
 			return
 		}
 		if resp == nil || !resp.GetAccepted() {
-			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
-			env.RequestID = requestID
-			env.Error = &event.EnvelopeError{
-				Type:    "enqueue_rejected",
-				Message: "no active run for session",
-			}
-			s.eventBus.Publish(context.Background(), env)
+			s.publishWSErrorActivity(sessionID, requestID, "enqueue_rejected", "no active run for session")
 		}
 	})
 }
@@ -269,6 +245,35 @@ func buildChatOptions(opts map[string]any) *chatv1.SendMessageOptions {
 		}
 	}
 	return result
+}
+
+// publishWSErrorActivity publishes a failed ActivityEvent (Kind=task,
+// Status=failed, Domain=chat) for WebSocket error scenarios.
+// Replaces the legacy EnvelopeTypeError publish.
+func (s *WSServer) publishWSErrorActivity(sessionID, requestID, errorType, message string) {
+	if s.activityBus == nil {
+		return
+	}
+	meta := map[string]any{
+		"error_type": errorType,
+		"source":     "ws-handler",
+	}
+	if requestID != "" {
+		meta["request_id"] = requestID
+	}
+	s.activityBus.Publish(context.Background(), biz.ActivityEvent{
+		Event: biz.ActivityEventFailed,
+		Activity: biz.Activity{
+			ID:        uuid.NewString(),
+			Kind:      biz.ActivityKindTask,
+			Status:    biz.ActivityStatusFailed,
+			SessionID: sessionID,
+			Timestamp: time.Now().UTC(),
+			Content:   message,
+			Meta:      meta,
+		},
+		Domain: biz.ActivityDomainChat,
+	})
 }
 
 // buildWSTurnOptions builds a WSTurnOptions from WS payload options.

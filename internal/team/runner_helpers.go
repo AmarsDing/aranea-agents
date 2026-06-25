@@ -9,12 +9,64 @@ import (
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
-	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 
 	"github.com/google/uuid"
 )
+
+// publishTeamRunFailedActivity publishes a team_run_failed ActivityEvent to the
+// ActivityEventBus. Replaces the legacy EnvelopeTypeTeamRunFailed publish.
+func (r *Runner) publishTeamRunFailedActivity(ctx context.Context, run biz.TeamRun, msg string) {
+	if r.td.Pipeline.ActivityBus == nil {
+		return
+	}
+	ev := biz.ActivityEvent{
+		Event: biz.ActivityEventFailed,
+		Activity: biz.Activity{
+			ID:        uuid.NewString(),
+			Kind:      biz.ActivityKindTeamStage,
+			Status:    biz.ActivityStatusFailed,
+			SessionID: strings.TrimSpace(run.SessionID),
+			TeamID:    run.TeamID,
+			Timestamp: time.Now().UTC(),
+			Stage:     "failed",
+			Meta: map[string]any{
+				"run_id":        run.ID,
+				"error_message": msg,
+			},
+		},
+		Domain: biz.ActivityDomainChat,
+	}
+	r.td.Pipeline.ActivityBus.Publish(ctx, ev)
+}
+
+// publishTeamStepActivity publishes a team_step ActivityEvent (started/finished)
+// to the ActivityEventBus. status and stage identify the lifecycle phase.
+func (r *Runner) publishTeamStepActivity(ctx context.Context, run biz.TeamRun, teamID, agentKey string, eventType biz.ActivityEventType, status biz.ActivityStatus, stage string, step any) {
+	if r.td.Pipeline.ActivityBus == nil {
+		return
+	}
+	ev := biz.ActivityEvent{
+		Event: eventType,
+		Activity: biz.Activity{
+			ID:        uuid.NewString(),
+			Kind:      biz.ActivityKindTeamStage,
+			Status:    status,
+			SessionID: run.SessionID,
+			TeamID:    teamID,
+			AgentKey:  agentKey,
+			Timestamp: time.Now().UTC(),
+			Stage:     stage,
+			Meta: map[string]any{
+				"run_id": run.ID,
+				"step":   step,
+			},
+		},
+		Domain: biz.ActivityDomainChat,
+	}
+	r.td.Pipeline.ActivityBus.Publish(ctx, ev)
+}
 
 func preview(s string, max int) string {
 	return strings.TrimSpace(runesTruncate(strings.TrimSpace(s), max))
@@ -112,18 +164,15 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 			r.lg.Warn("CreateTaskDeadLetter failed", loggateway.StepID("team.run.dead_letter_fail"), loggateway.Str("team_run_id", run.ID), loggateway.Err(dlerr))
 		}
 	}
-	if r.td.Pipeline.Bus != nil {
-		failEnv := event.NewEnvelope(event.EnvelopeTypeTeamRunFailed, "team-runner", strings.TrimSpace(run.SessionID))
-		failEnv.TeamID = run.TeamID
-		failEnv.Metadata = map[string]any{"run_id": run.ID, "error_message": msg}
-		r.td.Pipeline.Bus.Publish(ctx, failEnv)
+	if r.td.Pipeline.ActivityBus != nil {
+		r.publishTeamRunFailedActivity(ctx, *run, msg)
 	}
 	r.publishTeamRunSummary(ctx, *run)
 	r.lg.With(loggateway.SessionID(strings.TrimSpace(run.SessionID))).Warn(msg, loggateway.StepID("team.run.finish"), loggateway.Str("team_id", run.TeamID), loggateway.Str("run_id", run.ID))
 }
 
 func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRun) {
-	if r == nil || r.td.Pipeline.Bus == nil || r.runReader == nil {
+	if r == nil || r.td.Pipeline.ActivityBus == nil || r.runReader == nil {
 		return
 	}
 	steps, err := r.runReader.ListTeamRunSteps(ctx, run.ID)
@@ -137,7 +186,7 @@ func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRun) {
 			r.lg.Warn("UpdateTeamRunSummaryJSON failed", loggateway.StepID("team.run.summary_update_fail"), loggateway.Str("team_run_id", run.ID), loggateway.Err(uerr))
 		}
 	}
-	r.td.Pipeline.Bus.Publish(ctx, TeamSummaryEnvelope(run, steps))
+	r.td.Pipeline.ActivityBus.Publish(ctx, TeamSummaryActivityEvent(run, steps))
 }
 
 func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage, prov, mod, dialogMode string, toolCallCount int) {
@@ -163,24 +212,18 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string
 		CreatedAt:     agent.RFC3339Now(),
 		ToolCallCount: toolCallCount,
 	}
-	if r.td.Pipeline.Bus != nil {
+	if r.td.Pipeline.ActivityBus != nil {
 		started := step
 		// TECH-DEBT(FSM): TeamRunStep has no state machine, direct assignment for initialization
 		started.Status = biz.TeamRunStatusRunning
-		envStart := event.NewEnvelope(event.EnvelopeTypeTeamStepStarted, ag.AgentKey, run.SessionID)
-		envStart.TeamID = teamID
-		envStart.Metadata = map[string]any{"run_id": run.ID, "step": started}
-		r.td.Pipeline.Bus.Publish(ctx, envStart)
+		r.publishTeamStepActivity(ctx, run, teamID, ag.AgentKey, biz.ActivityEventCreated, biz.ActivityStatusRunning, "executing", started)
 	}
 	saved, err := r.runWriter.CreateTeamRunStep(ctx, step)
 	if err != nil {
 		return
 	}
 	r.recordMemberUsage(ctx, run, teamID, ag, asst, prov, mod, dialogMode, saved.ID)
-	if r.td.Pipeline.Bus != nil {
-		env := event.NewEnvelope(event.EnvelopeTypeTeamStepFinished, ag.AgentKey, run.SessionID)
-		env.TeamID = teamID
-		env.Metadata = map[string]any{"run_id": run.ID, "step": saved}
-		r.td.Pipeline.Bus.Publish(ctx, env)
+	if r.td.Pipeline.ActivityBus != nil {
+		r.publishTeamStepActivity(ctx, run, teamID, ag.AgentKey, biz.ActivityEventCompleted, biz.ActivityStatusCompleted, "completed", saved)
 	}
 }

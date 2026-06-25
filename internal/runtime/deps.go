@@ -51,10 +51,13 @@ type PersistenceSet struct {
 // Bus is the legacy Envelope bus, retained for monitor events (§6.3).
 // ActivityBus is the new bus transporting biz.ActivityEvent for chat
 // lifecycle events (created/streaming/completed/failed/cancelled/child_created).
+// MonitorEventBus is the typed contract.MonitorBus carrying
+// contract.MonitorEvent for monitor-channel events (alerts, logs, etc.).
 type EventPipeline struct {
-	Bus         event.Bus
-	Buffer      *event.Buffer
-	ActivityBus biz.ActivityEventBus
+	Bus            event.Bus
+	Buffer         *event.Buffer
+	ActivityBus    biz.ActivityEventBus
+	MonitorEventBus contract.MonitorBus
 }
 
 // TurnDeps is the consolidated dependency set threaded through each chat turn.

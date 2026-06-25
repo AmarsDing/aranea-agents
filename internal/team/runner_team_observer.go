@@ -63,6 +63,7 @@ func (r *Runner) startObservers(
 		GraphExecutionID: graphExecID,
 		ActivityFlusher:  setup.activityFlusher,
 		FailureOnError:   failureOnError,
+		ActivityBus:      r.td.Pipeline.ActivityBus,
 	})
 	if r.cfg.TeamGraphTasks != nil && graphExecID != "" {
 		taskNodes := TaskNodesFromBuildConfig(compiledTeam.GraphBuildConfig)

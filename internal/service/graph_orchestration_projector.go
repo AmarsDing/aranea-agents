@@ -12,18 +12,20 @@ import (
 
 // GraphOrchestrationProjector starts run-scoped status projectors for graph executions.
 type GraphOrchestrationProjector struct {
-	bus event.Bus
-	mu  sync.Mutex
+	bus         event.Bus
+	activityBus biz.ActivityEventBus
+	mu          sync.Mutex
 	// execID -> cancel
 	stops map[string]context.CancelFunc
 }
 
 var _ biz.GraphExecutionObserver = (*GraphOrchestrationProjector)(nil)
 
-func NewGraphOrchestrationProjector(bus event.Bus) *GraphOrchestrationProjector {
+func NewGraphOrchestrationProjector(bus event.Bus, activityBus biz.ActivityEventBus) *GraphOrchestrationProjector {
 	return &GraphOrchestrationProjector{
-		bus:   bus,
-		stops: make(map[string]context.CancelFunc),
+		bus:         bus,
+		activityBus: activityBus,
+		stops:       make(map[string]context.CancelFunc),
 	}
 }
 

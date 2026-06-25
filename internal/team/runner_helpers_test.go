@@ -5,7 +5,8 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/activityevent"
+	"aranea-agents/pkg/loggateway"
 	rt "aranea-agents/internal/runtime"
 )
 
@@ -34,14 +35,14 @@ func (r *stepBusRunWriter) UpdateTeamRunSummaryJSON(_ context.Context, _, _ stri
 }
 
 func TestPersistStep_EmitsStartedAndFinished(t *testing.T) {
-	bus := event.NewBus(nil)
-	ch, unsub := bus.Subscribe(event.SubscribeOptions{BufferSize: 8})
+	bus := activityevent.New(loggateway.NewNoop())
+	ch, unsub := bus.Subscribe(biz.ActivityEventSubscribeOptions{BufferSize: 8, GlobalMode: true})
 	defer unsub()
 
 	runner := &Runner{
 		runWriter: &stepBusRunWriter{},
 		td: rt.TurnDeps{
-			Pipeline: rt.EventPipeline{Bus: bus},
+			Pipeline: rt.EventPipeline{ActivityBus: bus},
 		},
 	}
 	run := biz.TeamRun{ID: "run-1", SessionID: "sess-1"}
@@ -61,11 +62,14 @@ func TestPersistStep_EmitsStartedAndFinished(t *testing.T) {
 	var started, finished bool
 	for i := 0; i < 2; i++ {
 		select {
-		case env := <-ch:
-			switch env.Type {
-			case event.EnvelopeTypeTeamStepStarted:
+		case ev := <-ch:
+			if ev.Activity.Kind != biz.ActivityKindTeamStage {
+				continue
+			}
+			switch ev.Event {
+			case biz.ActivityEventCreated:
 				started = true
-			case event.EnvelopeTypeTeamStepFinished:
+			case biz.ActivityEventCompleted:
 				finished = true
 			}
 		default:

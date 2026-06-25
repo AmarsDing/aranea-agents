@@ -122,6 +122,7 @@ func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepositor
 			lg = loggateway.NewNoop()
 		}
 		opts.ActivityProjector = chatagent.NewActivityProjector(activityBus, activityWriter, lg)
+		opts.ActivityBus = activityBus
 	}
 	return opts
 }

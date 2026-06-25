@@ -6,7 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/compress"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/wire"
@@ -34,7 +34,7 @@ func ProvideCompressorConfig(
 	runtime *Runtime,
 	memory MemoryResync,
 	comp compress.Compressor,
-	eventBus event.Bus,
+	monitorBus contract.MonitorBus,
 	memoryReader biz.MemoryFactReader,
 	l1Reader biz.L1AdminReader,
 	lg loggateway.Logger,
@@ -47,7 +47,7 @@ func ProvideCompressorConfig(
 		Runtime:      runtime,
 		Memory:       memory,
 		Compress:     comp,
-		EventBus:     eventBus,
+		MonitorBus:   monitorBus,
 		MemoryReader: memoryReader,
 		L1Reader:     l1Reader,
 		Logger:       lg,

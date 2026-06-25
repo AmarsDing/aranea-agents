@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/runtime/lifecycle"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -16,29 +15,29 @@ import (
 
 // --- Fakes ---
 
-// recordingReplanBus is a contract.Bus that records published envelopes.
+// recordingReplanBus is a biz.ActivityEventBus that records published events.
 type recordingReplanBus struct {
 	mu        sync.Mutex
-	published []contract.Envelope
+	published []biz.ActivityEvent
 }
 
-func (b *recordingReplanBus) Publish(_ context.Context, env contract.Envelope) {
+func (b *recordingReplanBus) Publish(_ context.Context, ev biz.ActivityEvent) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.published = append(b.published, env)
+	b.published = append(b.published, ev)
 }
 
-func (b *recordingReplanBus) Subscribe(_ contract.SubscribeOptions) (<-chan contract.Envelope, func()) {
-	ch := make(chan contract.Envelope)
+func (b *recordingReplanBus) Subscribe(_ biz.ActivityEventSubscribeOptions) (<-chan biz.ActivityEvent, func()) {
+	ch := make(chan biz.ActivityEvent)
 	return ch, func() { close(ch) }
 }
 
 func (b *recordingReplanBus) DropCount() uint64 { return 0 }
 
-func (b *recordingReplanBus) envelopes() []contract.Envelope {
+func (b *recordingReplanBus) events() []biz.ActivityEvent {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	out := make([]contract.Envelope, len(b.published))
+	out := make([]biz.ActivityEvent, len(b.published))
 	copy(out, b.published)
 	return out
 }
@@ -50,7 +49,7 @@ func newTestReplanner(bus *recordingReplanBus) *RuntimeReplannerImpl {
 		bus = &recordingReplanBus{}
 	}
 	return &RuntimeReplannerImpl{
-		eventBus:     bus,
+		activityBus:  bus,
 		lg:           loggateway.NewNoop().With(loggateway.Domain("runtime_replanner")),
 		attemptCount: lifecycle.NewManagedMap[string, int](0),
 	}
@@ -290,29 +289,38 @@ func TestRuntimeReplanner_PublishesReplanEvent(t *testing.T) {
 		t.Fatalf("OnNodeFailure failed: %v", err)
 	}
 
-	envelopes := bus.envelopes()
-	if len(envelopes) != 1 {
-		t.Fatalf("expected 1 published envelope, got %d", len(envelopes))
+	events := bus.events()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 published event, got %d", len(events))
 	}
-	env := envelopes[0]
-	if env.Type != contract.EnvelopeTypeGraphReplanned {
-		t.Errorf("Type=%q want %q", env.Type, contract.EnvelopeTypeGraphReplanned)
+	ev := events[0]
+	if ev.Event != biz.ActivityEventUpdated {
+		t.Errorf("Event=%q want %q", ev.Event, biz.ActivityEventUpdated)
 	}
-	if env.SessionID != exec.SessionID {
-		t.Errorf("SessionID=%q want %q", env.SessionID, exec.SessionID)
+	if ev.Activity.Kind != biz.ActivityKindGraphStage {
+		t.Errorf("Kind=%q want %q", ev.Activity.Kind, biz.ActivityKindGraphStage)
+	}
+	if ev.Activity.Stage != "replanned" {
+		t.Errorf("Stage=%q want %q", ev.Activity.Stage, "replanned")
+	}
+	if ev.Domain != biz.ActivityDomainChat {
+		t.Errorf("Domain=%q want %q", ev.Domain, biz.ActivityDomainChat)
+	}
+	if ev.Activity.SessionID != exec.SessionID {
+		t.Errorf("SessionID=%q want %q", ev.Activity.SessionID, exec.SessionID)
 	}
 	// Verify metadata carries replan details
-	if env.Metadata == nil {
-		t.Fatal("expected non-nil Metadata")
+	if ev.Activity.Meta == nil {
+		t.Fatal("expected non-nil Meta")
 	}
-	if v, ok := env.Metadata["replan_type"].(string); !ok || v != string(ReplanRetry) {
-		t.Errorf("Metadata[replan_type]=%v want %q", env.Metadata["replan_type"], ReplanRetry)
+	if v, ok := ev.Activity.Meta["replan_type"].(string); !ok || v != string(ReplanRetry) {
+		t.Errorf("Meta[replan_type]=%v want %q", ev.Activity.Meta["replan_type"], ReplanRetry)
 	}
-	if v, ok := env.Metadata["failed_node"].(string); !ok || v != "step1" {
-		t.Errorf("Metadata[failed_node]=%v want %q", env.Metadata["failed_node"], "step1")
+	if v, ok := ev.Activity.Meta["failed_node"].(string); !ok || v != "step1" {
+		t.Errorf("Meta[failed_node]=%v want %q", ev.Activity.Meta["failed_node"], "step1")
 	}
-	if v, ok := env.Metadata["execution_id"].(string); !ok || v != exec.ID {
-		t.Errorf("Metadata[execution_id]=%v want %q", env.Metadata["execution_id"], exec.ID)
+	if v, ok := ev.Activity.Meta["execution_id"].(string); !ok || v != exec.ID {
+		t.Errorf("Meta[execution_id]=%v want %q", ev.Activity.Meta["execution_id"], exec.ID)
 	}
 }
 
@@ -327,7 +335,7 @@ func TestRuntimeReplanner_NoEventOnMaxExceeded(t *testing.T) {
 	for i := 0; i < maxReplanAttempts; i++ {
 		_, _ = r.OnNodeFailure(ctx, exec, "step1", transientErr)
 	}
-	// Clear published envelopes so we can verify no new event on the exceeding call
+	// Clear published events so we can verify no new event on the exceeding call
 	bus.mu.Lock()
 	bus.published = bus.published[:0]
 	bus.mu.Unlock()
@@ -337,8 +345,8 @@ func TestRuntimeReplanner_NoEventOnMaxExceeded(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when max replan attempts exceeded")
 	}
-	if len(bus.envelopes()) != 0 {
-		t.Errorf("expected 0 envelopes on max-exceeded error, got %d", len(bus.envelopes()))
+	if len(bus.events()) != 0 {
+		t.Errorf("expected 0 events on max-exceeded error, got %d", len(bus.events()))
 	}
 }
 
@@ -532,11 +540,11 @@ func TestRuntimeReplanner_ConcurrentAccess(t *testing.T) {
 	}
 	wg.Wait()
 
-	// Verify total published envelopes = numExecs * maxReplanAttempts
+	// Verify total published events = numExecs * maxReplanAttempts
 	// (only successful replans publish events; max-exceeded errors don't).
-	got := len(bus.envelopes())
+	got := len(bus.events())
 	want := numExecs * maxReplanAttempts
 	if got != want {
-		t.Errorf("published envelopes = %d, want %d", got, want)
+		t.Errorf("published events = %d, want %d", got, want)
 	}
 }

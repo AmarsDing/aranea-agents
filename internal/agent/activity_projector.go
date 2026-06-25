@@ -1479,6 +1479,7 @@ func (p *ActivityProjector) buildActivityEvent(a *biz.Activity, eventType biz.Ac
 	return biz.ActivityEvent{
 		Event:    eventType,
 		Activity: snapshot,
+		Domain:   biz.ActivityDomainChat,
 	}
 }
 
@@ -1500,4 +1501,53 @@ func (p *ActivityProjector) resolveAgentName(ctx context.Context, agentKey strin
 		}
 	}
 	return agentKey
+}
+
+// EmitSystemEvent publishes a transient system-domain ActivityEvent that is
+// NOT persisted to the activities table. It is only delivered to live WS
+// subscribers via ActivityEventBus.
+//
+// This is the migration target for legacy Envelope publishers that emit
+// domain/system events (organization CRUD, borrow requests, skill evolution,
+// knowledge ingest, etc.). These events drive live UI updates (notifications,
+// sidebar badges) but do not belong to any chat turn's Activity timeline,
+// so they should not pollute the activities table.
+//
+// The activity is emitted as a single ActivityEventCreated with
+// status=Completed (one-shot notification). For multi-stage system events
+// (e.g. long-running skill evolution), callers should emit separate
+// created → completed pairs by calling this method twice with the same
+// Activity ID — but the simpler one-shot form covers >90% of system events.
+//
+// Domain is set to ActivityDomainSystem, which causes the sequencer to
+// skip persistence (persist=false) while still broadcasting via eventBus.
+func (p *ActivityProjector) EmitSystemEvent(ctx context.Context, kind biz.ActivityKind, content string, meta map[string]any) {
+	if p == nil || p.sequencer == nil {
+		return
+	}
+	now := time.Now().UTC()
+	activity := biz.Activity{
+		ID:        uuid.NewString(),
+		Kind:      kind,
+		Status:    biz.ActivityStatusCompleted,
+		Timestamp: now,
+		Content:   content,
+		Meta:      meta,
+	}
+	ev := biz.ActivityEvent{
+		Event:     biz.ActivityEventCreated,
+		Activity:  activity,
+		Domain:    biz.ActivityDomainSystem,
+	}
+	if err := p.sequencer.publish(ctx, activity.ID, publishTask{
+		event:    ev,
+		persist:  false,
+		activity: activity,
+	}); err != nil {
+		p.lg.Warn("system event emit failed",
+			loggateway.StepID("agent.activity_projector.emit_system_event"),
+			loggateway.Str("activity_id", activity.ID),
+			loggateway.Str("kind", string(kind)),
+			loggateway.Err(err))
+	}
 }

@@ -8,30 +8,30 @@ import (
 )
 
 type busPublisher struct {
-	bus contract.Bus
+	monitorBus contract.MonitorBus
 }
 
-func NewLogPipelinePublisher(bus contract.Bus) logpipeline.Publisher {
-	return &busPublisher{bus: bus}
+// NewLogPipelinePublisher publishes logpipeline entries as MonitorEvents on
+// the typed contract.MonitorBus. Replaces the legacy Envelope-based publisher.
+func NewLogPipelinePublisher(monitorBus contract.MonitorBus) logpipeline.Publisher {
+	return &busPublisher{monitorBus: monitorBus}
 }
 
 func (p *busPublisher) Publish(ctx context.Context, kind logpipeline.EntryKind, level, message, sessionID string, fields map[string]any) {
-	if p.bus == nil {
+	if p.monitorBus == nil {
 		return
 	}
-	var envType contract.EnvelopeType
+	var typ contract.MonitorEventType
 	switch kind {
 	case logpipeline.KindFlow:
-		envType = contract.EnvelopeTypeFlowLog
+		typ = contract.MonitorEventTypeFlowLog
 	default:
-		envType = contract.EnvelopeTypeLog
+		typ = contract.MonitorEventTypeLog
 	}
-	envelope := contract.NewEnvelope(envType, "system", sessionID)
-	envelope.Channel = "monitor"
-	envelope.Content = &contract.EnvelopeContent{
-		Text:      message,
-		IsPartial: false,
-	}
-	envelope.Metadata = fields
-	p.bus.Publish(ctx, envelope)
+	ev := contract.NewMonitorEvent(typ, "system")
+	ev.Level = level
+	ev.Message = message
+	ev.SessionID = sessionID
+	ev.Metadata = fields
+	p.monitorBus.Publish(ctx, ev)
 }

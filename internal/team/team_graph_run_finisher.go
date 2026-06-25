@@ -7,7 +7,6 @@ import (
 
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
@@ -101,12 +100,23 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 		r.lg.Warn("UpdateTeamRun failed in FinalizeGraphTeamRun", loggateway.StepID("team.graph.finisher_update_fail"), loggateway.Str("team_run_id", updatedRun.ID), loggateway.Err(err))
 	}
 	run = updatedRun
-	if r.td.Pipeline.Bus != nil {
+	if r.td.Pipeline.ActivityBus != nil {
 		cp := run
-		env := event.NewEnvelope(event.EnvelopeTypeTeamRunFinished, "team-graph-coordinator", stepCtx.SessionID)
-		env.TeamID = stepCtx.TeamID
-		env.Metadata = map[string]any{"run_id": run.ID, "run": cp}
-		r.td.Pipeline.Bus.Publish(ctx, env)
+		ev := biz.ActivityEvent{
+			Event: biz.ActivityEventCompleted,
+			Activity: biz.Activity{
+				ID:        uuid.NewString(),
+				Kind:      biz.ActivityKindTeamStage,
+				Status:    biz.ActivityStatusCompleted,
+				SessionID: stepCtx.SessionID,
+				TeamID:    stepCtx.TeamID,
+				Timestamp: time.Now().UTC(),
+				Stage:     "completed",
+				Meta:      map[string]any{"run_id": run.ID, "run": cp},
+			},
+			Domain: biz.ActivityDomainChat,
+		}
+		r.td.Pipeline.ActivityBus.Publish(ctx, ev)
 		r.publishTeamRunSummary(ctx, run)
 	}
 }

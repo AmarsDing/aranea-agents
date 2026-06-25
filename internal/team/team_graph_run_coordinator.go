@@ -15,6 +15,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -65,6 +66,7 @@ type TeamGraphRunCoordinator struct {
 	teamRunWriter   biz.TeamRunWriter
 	runTransitioner biz.TeamRunStatusTransitioner
 	bus             event.Bus
+	activityBus     biz.ActivityEventBus
 	finisher        *TeamRunMediator
 	sessionRepo     biz.TeamGraphSessionRepo
 	cfg             CoordinatorConfig
@@ -99,7 +101,7 @@ const (
 	graphWatchStepsAndFinalize
 )
 
-func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teamRunReader biz.TeamRunReader, teamRunWriter biz.TeamRunWriter, runTransitioner biz.TeamRunStatusTransitioner, bus event.Bus, sessionRepo biz.TeamGraphSessionRepo, agentKeyFn func(agentID string) string, lg loggateway.Logger) *TeamGraphRunCoordinator {
+func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teamRunReader biz.TeamRunReader, teamRunWriter biz.TeamRunWriter, runTransitioner biz.TeamRunStatusTransitioner, bus event.Bus, activityBus biz.ActivityEventBus, sessionRepo biz.TeamGraphSessionRepo, agentKeyFn func(agentID string) string, lg loggateway.Logger) *TeamGraphRunCoordinator {
 	if agentKeyFn == nil {
 		agentKeyFn = func(agentID string) string { return strings.TrimSpace(agentID) }
 	}
@@ -109,6 +111,7 @@ func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teamRunReader 
 		teamRunWriter:   teamRunWriter,
 		runTransitioner: runTransitioner,
 		bus:             bus,
+		activityBus:     activityBus,
 		sessionRepo:     sessionRepo,
 		agentKeyFn:      agentKeyFn,
 		sessions:        make(map[string]*teamGraphRunSession),
@@ -276,11 +279,25 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 						}
 					}
 				}
-				if c.bus != nil {
-					failEnv := event.NewEnvelope(event.EnvelopeTypeTeamRunFailed, "team-coordinator", sess.sessionID)
-					failEnv.TeamID = sess.teamID
-					failEnv.Metadata = map[string]any{"run_id": run.ID, "error_message": err.Error()}
-					c.bus.Publish(ctx, failEnv)
+				if c.activityBus != nil {
+					ev := biz.ActivityEvent{
+						Event: biz.ActivityEventFailed,
+						Activity: biz.Activity{
+							ID:        uuid.NewString(),
+							Kind:      biz.ActivityKindTeamStage,
+							Status:    biz.ActivityStatusFailed,
+							SessionID: sess.sessionID,
+							TeamID:    sess.teamID,
+							Timestamp: time.Now().UTC(),
+							Stage:     "failed",
+							Meta: map[string]any{
+								"run_id":        run.ID,
+								"error_message": err.Error(),
+							},
+						},
+						Domain: biz.ActivityDomainChat,
+					}
+					c.activityBus.Publish(ctx, ev)
 				}
 			}
 		}
@@ -567,15 +584,34 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 		}
 	}
 	run = updatedRun
-	if c.bus != nil {
-		typ := event.EnvelopeTypeTeamRunFinished
+	if c.activityBus != nil {
+		var eventType biz.ActivityEventType
+		var status biz.ActivityStatus
+		var stage string
 		if failed {
-			typ = event.EnvelopeTypeTeamRunFailed
+			eventType = biz.ActivityEventFailed
+			status = biz.ActivityStatusFailed
+			stage = "failed"
+		} else {
+			eventType = biz.ActivityEventCompleted
+			status = biz.ActivityStatusCompleted
+			stage = "completed"
 		}
-		env := event.NewEnvelope(typ, "team-graph-coordinator", sess.sessionID)
-		env.TeamID = sess.teamID
-		env.Metadata = map[string]any{"run_id": run.ID, "run": run}
-		c.bus.Publish(ctx, env)
+		ev := biz.ActivityEvent{
+			Event: eventType,
+			Activity: biz.Activity{
+				ID:        uuid.NewString(),
+				Kind:      biz.ActivityKindTeamStage,
+				Status:    status,
+				SessionID: sess.sessionID,
+				TeamID:    sess.teamID,
+				Timestamp: time.Now().UTC(),
+				Stage:     stage,
+				Meta:      map[string]any{"run_id": run.ID, "run": run},
+			},
+			Domain: biz.ActivityDomainChat,
+		}
+		c.activityBus.Publish(ctx, ev)
 	}
 	c.evictSession(sess.execID)
 }

@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 )
@@ -25,20 +24,20 @@ type SyncReport struct {
 }
 
 type monitorSyncReporter struct {
-	mon *biz.MonitorUsecase
-	bus event.Bus
-	lg  loggateway.Logger
+	mon        *biz.MonitorUsecase
+	monitorBus contract.MonitorBus
+	lg         loggateway.Logger
 }
 
-// NewMonitorSyncReporter writes monitor events and publishes bus envelopes.
-func NewMonitorSyncReporter(mon *biz.MonitorUsecase, bus event.Bus, lg loggateway.Logger) SyncReporter {
-	if mon == nil && bus == nil {
+// NewMonitorSyncReporter writes monitor events and publishes monitor bus events.
+func NewMonitorSyncReporter(mon *biz.MonitorUsecase, monitorBus contract.MonitorBus, lg loggateway.Logger) SyncReporter {
+	if mon == nil && monitorBus == nil {
 		return nil
 	}
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &monitorSyncReporter{mon: mon, bus: bus, lg: lg}
+	return &monitorSyncReporter{mon: mon, monitorBus: monitorBus, lg: lg}
 }
 
 func (r *monitorSyncReporter) ReportFilesystemSync(ctx context.Context, report SyncReport) {
@@ -73,17 +72,34 @@ func (r *monitorSyncReporter) ReportFilesystemSync(ctx context.Context, report S
 		}
 		r.mon.RecordAdminAudit(ctx, "skill.filesystem.sync", "skill", slug, message)
 	}
-	if r.bus != nil {
-		env := event.NewEnvelope(contract.EnvelopeType(eventKey), "skill.watch", "")
-		env.Channel = "monitor"
-		env.Metadata = map[string]any{
+	if r.monitorBus != nil {
+		ev := contract.NewMonitorEvent(mapEventKeyToMonitorType(eventKey), "skill.watch")
+		ev.Metadata = map[string]any{
 			"slug":     slug,
 			"message":  message,
 			"severity": severity,
 		}
 		if message != "" {
-			env.Content = &event.EnvelopeContent{Text: message}
+			ev.Message = message
 		}
-		r.bus.Publish(ctx, env)
+		r.monitorBus.Publish(ctx, ev)
+	}
+}
+
+// mapEventKeyToMonitorType maps the legacy filesystem event key strings to
+// their corresponding contract.MonitorEventType constants.
+func mapEventKeyToMonitorType(eventKey string) contract.MonitorEventType {
+	switch eventKey {
+	case "skill.filesystem.updated":
+		return contract.MonitorEventTypeSkillFilesystemUpdated
+	case "skill.filesystem.recovered":
+		return contract.MonitorEventTypeSkillFilesystemRecovered
+	case "skill.filesystem.imported":
+		return contract.MonitorEventTypeSkillFilesystemImported
+	default:
+		// Unknown event keys fall back to the generic "updated" type so that
+		// ad-hoc keys (e.g. "skill.filesystem.missing"/".rejected"/".similarity_warn")
+		// still propagate without losing the event.
+		return contract.MonitorEventTypeSkillFilesystemUpdated
 	}
 }

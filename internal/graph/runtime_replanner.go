@@ -5,14 +5,15 @@ package graph
 import (
 	"context"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/runtime/lifecycle"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+
+	"github.com/google/uuid"
 )
 
 // ReplanType identifies the kind of replan action to take after a node failure.
@@ -68,8 +69,8 @@ type RuntimeReplanner interface {
 // analysis. It tracks replan attempts per execution ID to enforce the
 // maxReplanAttempts limit.
 type RuntimeReplannerImpl struct {
-	eventBus event.Bus
-	lg       loggateway.Logger
+	activityBus biz.ActivityEventBus
+	lg          loggateway.Logger
 
 	// attemptCount tracks per-execution replan attempts. ttl=0 means no
 	// automatic TTL cleanup; callers must invoke ReleaseExecution(execID)
@@ -79,15 +80,15 @@ type RuntimeReplannerImpl struct {
 
 var _ RuntimeReplanner = (*RuntimeReplannerImpl)(nil)
 
-// NewRuntimeReplanner creates a RuntimeReplannerImpl with the given event bus
-// and logger. The event bus is used to publish EnvelopeTypeGraphReplanned
-// events so the replan is observable on the frontend timeline.
-func NewRuntimeReplanner(eventBus event.Bus, lg loggateway.Logger) *RuntimeReplannerImpl {
+// NewRuntimeReplanner creates a RuntimeReplannerImpl with the given activity
+// event bus and logger. The bus is used to publish graph_stage ActivityEvents
+// (Stage="replanned") so the replan is observable on the frontend timeline.
+func NewRuntimeReplanner(activityBus biz.ActivityEventBus, lg loggateway.Logger) *RuntimeReplannerImpl {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
 	return &RuntimeReplannerImpl{
-		eventBus:     eventBus,
+		activityBus:  activityBus,
 		lg:           lg.With(loggateway.Domain("runtime_replanner")),
 		attemptCount: lifecycle.NewManagedMap[string, int](0),
 	}
@@ -257,9 +258,9 @@ func (r *RuntimeReplannerImpl) buildRebuildSubgraphAction(
 	}
 }
 
-// publishReplanEvent publishes an EnvelopeTypeGraphReplanned envelope so the
-// frontend timeline can render the replan decision. Classified as Important
-// (AS-EVT-01): loss causes topology drift but execution continues.
+// publishReplanEvent publishes a graph_stage ActivityEvent (Stage="replanned")
+// so the frontend timeline can render the replan decision. Classified as
+// Important (AS-EVT-01): loss causes topology drift but execution continues.
 func (r *RuntimeReplannerImpl) publishReplanEvent(
 	ctx context.Context,
 	exec *biz.GraphExecution,
@@ -267,21 +268,33 @@ func (r *RuntimeReplannerImpl) publishReplanEvent(
 	action *ReplanAction,
 	analysis FailureAnalysis,
 ) {
-	if r.eventBus == nil {
+	if r.activityBus == nil {
 		return
 	}
-	env := contract.NewEnvelope(contract.EnvelopeTypeGraphReplanned, "runtime-replanner", exec.SessionID)
-	env.Metadata = map[string]any{
-		"execution_id":   exec.ID,
-		"graph_id":       exec.GraphID,
-		"failed_node":    failedNode,
-		"replan_type":    string(action.Type),
-		"severity":       analysis.Severity,
-		"reason":         analysis.Reason,
-		"new_node_count": len(action.NewNodes),
-		"skip_nodes":     action.SkipNodes,
+	ev := biz.ActivityEvent{
+		Event: biz.ActivityEventUpdated,
+		Activity: biz.Activity{
+			ID:        uuid.NewString(),
+			Kind:      biz.ActivityKindGraphStage,
+			Status:    biz.ActivityStatusRunning,
+			SessionID: exec.SessionID,
+			Timestamp: time.Now().UTC(),
+			Stage:     "replanned",
+			Meta: map[string]any{
+				"execution_id":   exec.ID,
+				"graph_id":       exec.GraphID,
+				"failed_node":    failedNode,
+				"replan_type":    string(action.Type),
+				"severity":       analysis.Severity,
+				"reason":         analysis.Reason,
+				"new_node_count": len(action.NewNodes),
+				"skip_nodes":     action.SkipNodes,
+				"author":         "runtime-replanner",
+			},
+		},
+		Domain: biz.ActivityDomainChat,
 	}
-	r.eventBus.Publish(ctx, env)
+	r.activityBus.Publish(ctx, ev)
 }
 
 // analyzeFailure inspects the error message using keyword rules and returns

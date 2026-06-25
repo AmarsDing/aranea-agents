@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+
+	"github.com/google/uuid"
+
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -45,9 +46,9 @@ type TopologyEvolver interface {
 // TopologyEvolverImpl implements TopologyEvolver using LLM-based edge decisions.
 // It tracks edges added per execution ID to prevent duplicates.
 type TopologyEvolverImpl struct {
-	llm      trpcmodel.Model
-	eventBus event.Bus
-	lg       loggateway.Logger
+	llm         trpcmodel.Model
+	activityBus biz.ActivityEventBus
+	lg          loggateway.Logger
 
 	mu         sync.Mutex
 	addedEdges map[string]map[string]bool // execID -> "from->to" -> added
@@ -59,19 +60,19 @@ type TopologyEvolverImpl struct {
 
 var _ TopologyEvolver = (*TopologyEvolverImpl)(nil)
 
-// NewTopologyEvolver creates a TopologyEvolverImpl with the given LLM, event
-// bus, and logger. The event bus publishes EnvelopeTypeGraphTopologyEvolved
-// events so topology changes are observable on the frontend timeline.
-// nil logger is replaced with a noop (red line #26).
-func NewTopologyEvolver(llm trpcmodel.Model, eventBus event.Bus, lg loggateway.Logger) *TopologyEvolverImpl {
+// NewTopologyEvolver creates a TopologyEvolverImpl with the given LLM,
+// activity event bus, and logger. The bus publishes graph_stage ActivityEvents
+// (Stage="topology_evolved") so topology changes are observable on the
+// frontend timeline. nil logger is replaced with a noop (red line #26).
+func NewTopologyEvolver(llm trpcmodel.Model, activityBus biz.ActivityEventBus, lg loggateway.Logger) *TopologyEvolverImpl {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
 	return &TopologyEvolverImpl{
-		llm:        llm,
-		eventBus:   eventBus,
-		lg:         lg.With(loggateway.Domain("topology_evolver")),
-		addedEdges: make(map[string]map[string]bool),
+		llm:         llm,
+		activityBus: activityBus,
+		lg:          lg.With(loggateway.Domain("topology_evolver")),
+		addedEdges:  make(map[string]map[string]bool),
 	}
 }
 
@@ -229,29 +230,42 @@ func (e *TopologyEvolverImpl) markEdgeAdded(execID, edgeKey string) {
 	e.addedEdges[execID][edgeKey] = true
 }
 
-// publishTopologyEvolvedEvent publishes an EnvelopeTypeGraphTopologyEvolved
-// envelope so the frontend timeline can render the topology change. Classified
-// as Important (AS-EVT-01): loss causes topology drift but execution continues.
+// publishTopologyEvolvedEvent publishes a graph_stage ActivityEvent
+// (Stage="topology_evolved") so the frontend timeline can render the topology
+// change. Classified as Important (AS-EVT-01): loss causes topology drift but
+// execution continues.
 func (e *TopologyEvolverImpl) publishTopologyEvolvedEvent(
 	ctx context.Context,
 	exec *biz.GraphExecution,
 	edge biz.EdgeDef,
 	insight ExecutionInsight,
 ) {
-	if e.eventBus == nil {
+	if e.activityBus == nil {
 		return
 	}
-	env := contract.NewEnvelope(contract.EnvelopeTypeGraphTopologyEvolved, "topology-evolver", exec.SessionID)
-	env.Metadata = map[string]any{
-		"execution_id": exec.ID,
-		"graph_id":     exec.GraphID,
-		"from_node":    edge.From,
-		"to_node":      edge.To,
-		"edge_kind":    edge.Kind,
-		"reason":       insight.Reason,
-		"evidence":     insight.Evidence,
+	ev := biz.ActivityEvent{
+		Event: biz.ActivityEventUpdated,
+		Activity: biz.Activity{
+			ID:        uuid.NewString(),
+			Kind:      biz.ActivityKindGraphStage,
+			Status:    biz.ActivityStatusRunning,
+			SessionID: exec.SessionID,
+			Timestamp: time.Now().UTC(),
+			Stage:     "topology_evolved",
+			Meta: map[string]any{
+				"execution_id": exec.ID,
+				"graph_id":     exec.GraphID,
+				"from_node":    edge.From,
+				"to_node":      edge.To,
+				"edge_kind":    edge.Kind,
+				"reason":       insight.Reason,
+				"evidence":     insight.Evidence,
+				"author":       "topology-evolver",
+			},
+		},
+		Domain: biz.ActivityDomainChat,
 	}
-	e.eventBus.Publish(ctx, env)
+	e.activityBus.Publish(ctx, ev)
 }
 
 // buildTopologyEvolutionPrompt builds the user prompt for the LLM edge decision.

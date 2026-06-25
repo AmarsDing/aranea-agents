@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/testutil"
 	"aranea-agents/pkg/apierror"
@@ -13,7 +13,8 @@ import (
 
 func TestPublishTurnFailure_usesEnvelopeErrorFromTurn(t *testing.T) {
 	bus := testutil.NewRecordingBus()
-	evtPub := newChatTurnEventPublisher(nil, bus, nil)
+	activityBus := &gateCaptureBus{}
+	evtPub := newChatTurnEventPublisher(nil, bus, activityBus, nil)
 	orch := &ChatOrchestrator{
 		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{Bus: bus}}},
 		turnLC: &chatTurnLifecycleImpl{
@@ -25,25 +26,35 @@ func TestPublishTurnFailure_usesEnvelopeErrorFromTurn(t *testing.T) {
 	te := TurnError(TurnErrLLMCallFailed, "connection reset")
 	orch.publishTurnFailure("sess-1", "run-1", "chat-service", te, "")
 
-	errs := bus.EventsOfType(event.EnvelopeTypeError)
-	if len(errs) != 1 {
-		t.Fatalf("expected 1 error envelope, got %d", len(errs))
+	events := activityBus.events()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 ActivityEvent, got %d", len(events))
 	}
-	env := errs[0]
-	if env.Error == nil || env.Error.Code != string(TurnErrLLMCallFailed) {
-		t.Fatalf("unexpected error envelope: %+v", env.Error)
+	ev := events[0]
+	if ev.Event != biz.ActivityEventFailed {
+		t.Fatalf("expected event %s, got %s", biz.ActivityEventFailed, ev.Event)
 	}
-	if env.InvocationID != "run-1" {
-		t.Fatalf("expected invocation_id run-1, got %q", env.InvocationID)
+	if ev.Activity.Kind != biz.ActivityKindTask {
+		t.Fatalf("expected kind %s, got %s", biz.ActivityKindTask, ev.Activity.Kind)
 	}
-	if env.Error.Hint == "" {
+	if ev.Activity.Status != biz.ActivityStatusFailed {
+		t.Fatalf("expected status %s, got %s", biz.ActivityStatusFailed, ev.Activity.Status)
+	}
+	if ev.Activity.Meta["error_code"] != string(TurnErrLLMCallFailed) {
+		t.Fatalf("unexpected error_code: %v", ev.Activity.Meta["error_code"])
+	}
+	if ev.Activity.Meta["run_id"] != "run-1" {
+		t.Fatalf("expected run_id run-1, got %v", ev.Activity.Meta["run_id"])
+	}
+	if ev.Activity.Meta["error_hint"] == "" {
 		t.Fatal("expected non-empty hint for LLM_CALL_FAILED")
 	}
 }
 
 func TestPublishTurnFailure_pendingID(t *testing.T) {
 	bus := testutil.NewRecordingBus()
-	evtPub := newChatTurnEventPublisher(nil, bus, nil)
+	activityBus := &gateCaptureBus{}
+	evtPub := newChatTurnEventPublisher(nil, bus, activityBus, nil)
 	orch := &ChatOrchestrator{
 		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{Bus: bus}}},
 		turnLC: &chatTurnLifecycleImpl{
@@ -54,9 +65,9 @@ func TestPublishTurnFailure_pendingID(t *testing.T) {
 	}
 	orch.publishTurnFailure("sess-1", "", "pending-queue", TurnError(TurnErrTurnTimeout, "5m"), "pend-1")
 
-	errs := bus.EventsOfType(event.EnvelopeTypeError)
-	if len(errs) != 1 || errs[0].Error.PendingID != "pend-1" {
-		t.Fatalf("expected pending_id pend-1, got %+v", errs[0].Error)
+	events := activityBus.events()
+	if len(events) != 1 || events[0].Activity.Meta["pending_id"] != "pend-1" {
+		t.Fatalf("expected pending_id pend-1, got %+v", events)
 	}
 }
 
@@ -102,8 +113,8 @@ func (r *recordingRunStatusTracker) PublishRunStatus(sessionID, runID, status, e
 
 // newFailTurnTestOrch builds a ChatOrchestrator wired with a recording bus and
 // the given runStatusTracker, suitable for testing failTurn/markAndPublish.
-func newFailTurnTestOrch(bus *testutil.RecordingBus, rs runStatusTracker) *ChatOrchestrator {
-	evtPub := newChatTurnEventPublisher(nil, bus, nil)
+func newFailTurnTestOrch(bus *testutil.RecordingBus, activityBus *gateCaptureBus, rs runStatusTracker) *ChatOrchestrator {
+	evtPub := newChatTurnEventPublisher(nil, bus, activityBus, nil)
 	return &ChatOrchestrator{
 		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{Bus: bus}}},
 		turnLC: &chatTurnLifecycleImpl{
@@ -122,8 +133,9 @@ func newFailTurnTestOrch(bus *testutil.RecordingBus, rs runStatusTracker) *ChatO
 
 func TestFailTurn_cascadeAndReturn(t *testing.T) {
 	bus := testutil.NewRecordingBus()
+	activityBus := &gateCaptureBus{}
 	rs := &recordingRunStatusTracker{}
-	orch := newFailTurnTestOrch(bus, rs)
+	orch := newFailTurnTestOrch(bus, activityBus, rs)
 
 	turnStatus := "ok"
 	var turnErr error
@@ -164,20 +176,21 @@ func TestFailTurn_cascadeAndReturn(t *testing.T) {
 		t.Errorf("PublishRunStatus = %+v", p)
 	}
 
-	// publishTurnFailure emitted an error envelope.
-	errs := bus.EventsOfType(event.EnvelopeTypeError)
-	if len(errs) != 1 {
-		t.Fatalf("expected 1 error envelope, got %d", len(errs))
+	// publishTurnFailure emitted a failed ActivityEvent.
+	events := activityBus.events()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 ActivityEvent, got %d", len(events))
 	}
-	if errs[0].InvocationID != "run-1" {
-		t.Errorf("expected invocation_id run-1, got %q", errs[0].InvocationID)
+	if events[0].Activity.Meta["run_id"] != "run-1" {
+		t.Errorf("expected run_id run-1, got %v", events[0].Activity.Meta["run_id"])
 	}
 }
 
 func TestFailTurn_beforePublishCallback(t *testing.T) {
 	bus := testutil.NewRecordingBus()
+	activityBus := &gateCaptureBus{}
 	rs := &recordingRunStatusTracker{}
-	orch := newFailTurnTestOrch(bus, rs)
+	orch := newFailTurnTestOrch(bus, activityBus, rs)
 
 	var callbackCalled bool
 	var callbackRanBeforePublish bool
@@ -211,7 +224,8 @@ func TestFailTurn_beforePublishCallback(t *testing.T) {
 
 func TestMarkAndPublish_setsStateAndPublishes(t *testing.T) {
 	bus := testutil.NewRecordingBus()
-	orch := newFailTurnTestOrch(bus, noopRunStatusTracker{})
+	activityBus := &gateCaptureBus{}
+	orch := newFailTurnTestOrch(bus, activityBus, noopRunStatusTracker{})
 
 	turnStatus := "ok"
 	var turnErr error
@@ -231,12 +245,12 @@ func TestMarkAndPublish_setsStateAndPublishes(t *testing.T) {
 		t.Errorf("turnErrMsg = %q, want %q", turnErrMsg, testErr.Error())
 	}
 
-	// publishTurnFailure emitted an error envelope.
-	errs := bus.EventsOfType(event.EnvelopeTypeError)
-	if len(errs) != 1 {
-		t.Fatalf("expected 1 error envelope, got %d", len(errs))
+	// publishTurnFailure emitted a failed ActivityEvent.
+	events := activityBus.events()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 ActivityEvent, got %d", len(events))
 	}
-	if errs[0].InvocationID != "run-1" {
-		t.Errorf("expected invocation_id run-1, got %q", errs[0].InvocationID)
+	if events[0].Activity.Meta["run_id"] != "run-1" {
+		t.Errorf("expected run_id run-1, got %v", events[0].Activity.Meta["run_id"])
 	}
 }

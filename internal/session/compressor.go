@@ -10,7 +10,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/compress"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/llmcontext"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/appctx"
@@ -57,7 +57,7 @@ type CompressorConfig struct {
 	Runtime      *Runtime
 	Memory       MemoryResync
 	Compress     compress.Compressor
-	EventBus     event.Bus
+	MonitorBus   contract.MonitorBus
 	MemoryReader biz.MemoryFactReader
 	L1Reader     biz.L1AdminReader
 	Logger       loggateway.Logger
@@ -91,7 +91,7 @@ type Compressor struct {
 	Runtime      *Runtime
 	Compress     compress.Compressor
 	Memory       MemoryResync
-	EventBus     event.Bus
+	monitorBus   contract.MonitorBus
 	memoryReader biz.MemoryFactReader
 	l1Reader     biz.L1AdminReader
 	lg           loggateway.Logger
@@ -254,7 +254,7 @@ func NewCompressor(cfg CompressorConfig) *Compressor {
 		Runtime:      cfg.Runtime,
 		Memory:       cfg.Memory,
 		Compress:     cfg.Compress,
-		EventBus:     cfg.EventBus,
+		monitorBus:   cfg.MonitorBus,
 		memoryReader: cfg.MemoryReader,
 		l1Reader:     cfg.L1Reader,
 		lg:           cfg.Logger,
@@ -281,7 +281,7 @@ func (c *Compressor) AfterNativeTurn(ctx context.Context, sessionID string, ag b
 		defer c.flight.markDone(sid)
 		runCtx, cancel := context.WithTimeout(context.Background(), compressRunTimeout)
 		defer cancel()
-		if err := c.runCompress(runCtx, sid, trpcUserID, ag, false); err != nil && c.EventBus != nil {
+		if err := c.runCompress(runCtx, sid, trpcUserID, ag, false); err != nil && c.monitorBus != nil {
 			c.lg.Warn("会话压缩失败", loggateway.StepID("session.compress"), loggateway.SessionID(sid), loggateway.Err(err))
 		}
 	})
@@ -301,7 +301,7 @@ func (c *Compressor) BeforeDurableTurn(ctx context.Context, sessionID string, ag
 	defer c.flight.markDone(sid)
 	runCtx, cancel := context.WithTimeout(ctx, compressRunTimeout)
 	defer cancel()
-	if err := c.runCompress(runCtx, sid, TRPCUserKey(ctx), ag, true); err != nil && c.EventBus != nil {
+	if err := c.runCompress(runCtx, sid, TRPCUserKey(ctx), ag, true); err != nil && c.monitorBus != nil {
 		c.lg.Warn("Durable turn 前压缩失败", loggateway.StepID("session.compress"), loggateway.SessionID(sid), loggateway.Err(err))
 	}
 	return nil
@@ -548,7 +548,7 @@ func (c *Compressor) executeCompression(ctx context.Context, sess biz.Session, a
 	}
 
 	exists, existsErr := c.deps.summaryWriter.SessionSummaryExists(ctx, sessionID, fromTurn, toTurn)
-	if existsErr != nil && c.EventBus != nil {
+	if existsErr != nil && c.monitorBus != nil {
 		c.lg.Warn("幂等检查失败",
 			loggateway.StepID("session.compress"),
 			loggateway.SessionID(sessionID),
@@ -636,7 +636,7 @@ func (c *Compressor) syncRuntimeSnapshot(ctx context.Context, sess biz.Session, 
 	author := c.resolveAgentAuthor(ctx, ag, sess.AgentID)
 	raw, snapErr := RewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, txMerged, txTail, author)
 	if snapErr == nil {
-		if syncErr := c.Runtime.SyncRunnerSnapshot(ctx, trpcUserID, sessionID, raw, txMerged); syncErr != nil && c.EventBus != nil {
+		if syncErr := c.Runtime.SyncRunnerSnapshot(ctx, trpcUserID, sessionID, raw, txMerged); syncErr != nil && c.monitorBus != nil {
 			c.lg.Warn("trpc 快照同步失败",
 				loggateway.StepID("session.compress"),
 				loggateway.SessionID(sessionID),
@@ -810,11 +810,13 @@ func (c *Compressor) publishCompressionNotice(ctx context.Context, sessionID str
 	if err := c.deps.messageWriter.AppendChatMessage(ctx, sessionID, sysMsg, false); err != nil {
 		c.lg.Warn("append compress notice message failed", loggateway.StepID("session.compress"), loggateway.SessionID(sessionID), loggateway.Err(err))
 	}
-	if c.EventBus == nil {
+	if c.monitorBus == nil {
 		return
 	}
-	env := event.NewEnvelope(event.EnvelopeTypeAlertNotify, "system", sessionID)
-	env.Metadata = map[string]any{
+	ev := contract.NewMonitorEvent(contract.MonitorEventTypeAlertNotify, "system")
+	ev.SessionID = sessionID
+	ev.Message = text
+	ev.Metadata = map[string]any{
 		"alert_kind":          "session_compress",
 		"message":             text,
 		"kind":                "system.session.compress",
@@ -825,7 +827,7 @@ func (c *Compressor) publishCompressionNotice(ctx context.Context, sessionID str
 		"context_used_ratio":  ratio,
 		"context_status":      status,
 	}
-	c.EventBus.Publish(ctx, env)
+	c.monitorBus.Publish(ctx, ev)
 }
 
 func (c *Compressor) resyncSessionMemory(ctx context.Context, sessionID string) {

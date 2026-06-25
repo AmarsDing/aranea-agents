@@ -137,7 +137,11 @@ func (rt *Runtime) SetBus(bus event.Bus) {
 	rt.mu.Lock()
 	rt.bus = bus
 	rt.mu.Unlock()
-	InitHookLogger(bus, rt.lg)
+	// SetBus is retained for backward compatibility; the typed MonitorBus is
+	// injected separately via InitHookLogger from the wiring layer. Passing
+	// nil here preserves the legacy fallback path when SetBus is invoked
+	// directly (currently dead code in production).
+	InitHookLogger(bus, nil, rt.lg)
 }
 
 func (rt *Runtime) Apply(_ context.Context, plugins []biz.Plugin) {

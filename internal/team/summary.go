@@ -2,9 +2,11 @@ package team
 
 import (
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+
+	"github.com/google/uuid"
 )
 
 // BuildTeamRunSummary aggregates run-level and per-member stats for Monitor / automation.
@@ -49,15 +51,27 @@ func SummaryMapFromData(data biz.TeamRunSummaryData) map[string]any {
 	}
 }
 
-// TeamSummaryEnvelope emits a structured team_summary for WS team/monitor consumers.
-func TeamSummaryEnvelope(run biz.TeamRun, steps []biz.TeamRunStep) event.Envelope {
-	env := event.NewEnvelope(event.EnvelopeTypeTeamSummary, "team-runner", strings.TrimSpace(run.SessionID))
-	env.TeamID = run.TeamID
+// TeamSummaryActivityEvent emits a structured team_summary as a biz.ActivityEvent
+// for WS team/monitor consumers. Replaces the legacy TeamSummaryEnvelope helper
+// during the dual-bus unification (Teams domain → ActivityEventBus).
+func TeamSummaryActivityEvent(run biz.TeamRun, steps []biz.TeamRunStep) biz.ActivityEvent {
 	summary := BuildTeamRunSummary(run, steps)
-	env.Metadata = map[string]any{
-		"run_id":       run.ID,
-		"run":          run,
-		"team_summary": summary,
+	return biz.ActivityEvent{
+		Event: biz.ActivityEventCompleted,
+		Activity: biz.Activity{
+			ID:        uuid.NewString(),
+			Kind:      biz.ActivityKindTeamStage,
+			Status:    biz.ActivityStatusCompleted,
+			SessionID: strings.TrimSpace(run.SessionID),
+			TeamID:    run.TeamID,
+			Timestamp: time.Now().UTC(),
+			Stage:     "completed",
+			Meta: map[string]any{
+				"run_id":       run.ID,
+				"run":          run,
+				"team_summary": summary,
+			},
+		},
+		Domain: biz.ActivityDomainChat,
 	}
-	return env
 }

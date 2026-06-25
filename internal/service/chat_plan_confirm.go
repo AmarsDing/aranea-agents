@@ -3,14 +3,15 @@ package service
 import (
 	"context"
 	"strings"
+	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
+
+	"github.com/google/uuid"
 )
 
 // ConfirmPlan handles user confirmation or rejection of a draft TaskPlan created
@@ -161,16 +162,24 @@ func isValidStrategy(s string) bool {
 // so the frontend can refresh UI state. Failures are logged but not returned,
 // since event delivery is best-effort for informational events (AS-EVT-01).
 func (s *ChatService) publishPlanEvent(ctx context.Context, sessionID, planID, decision, reason string) {
-	bus := s.orch.td().Pipeline.Bus
+	bus := s.orch.td().Pipeline.ActivityBus
 	if bus == nil {
 		return
 	}
-	env := event.NewEnvelope(contract.EnvelopeTypePlanningPhaseDone, "chat-plan-confirm", sessionID)
-	env.Metadata = map[string]any{
-		"plan_id":  planID,
-		"decision": decision,
-		"reason":   reason,
-		"status":   decision,
-	}
-	bus.Publish(ctx, env)
+	bus.Publish(ctx, biz.ActivityEvent{
+		Event: biz.ActivityEventCreated,
+		Activity: biz.Activity{
+			ID:        uuid.NewString(),
+			Kind:      biz.ActivityKindPlan,
+			SessionID: sessionID,
+			Timestamp: time.Now().UTC(),
+			Meta: map[string]any{
+				"plan_id":  planID,
+				"decision": decision,
+				"reason":   reason,
+				"status":   decision,
+			},
+		},
+		Domain: biz.ActivityDomainChat,
+	})
 }

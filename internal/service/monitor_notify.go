@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/metrics"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -21,13 +21,13 @@ import (
 
 // MonitorAlertNotifier sends monitor alerts via webhook and optional platform channel webhook URL.
 type MonitorAlertNotifier struct {
-	channels *biz.ChannelUsecase
-	bus      event.Bus
-	lg       loggateway.Logger
+	channels   *biz.ChannelUsecase
+	monitorBus contract.MonitorBus
+	lg         loggateway.Logger
 }
 
-func NewMonitorAlertNotifier(channels *biz.ChannelUsecase, bus event.Bus, lg loggateway.Logger) *MonitorAlertNotifier {
-	return &MonitorAlertNotifier{channels: channels, bus: bus, lg: lg}
+func NewMonitorAlertNotifier(channels *biz.ChannelUsecase, monitorBus contract.MonitorBus, lg loggateway.Logger) *MonitorAlertNotifier {
+	return &MonitorAlertNotifier{channels: channels, monitorBus: monitorBus, lg: lg}
 }
 
 func (n *MonitorAlertNotifier) Notify(ctx context.Context, rule biz.MonitorAlertRule, payload map[string]any) {
@@ -100,25 +100,24 @@ func (n *MonitorAlertNotifier) notifyViaChannel(ctx context.Context, channelID s
 }
 
 func (n *MonitorAlertNotifier) publishNotifyEvent(ctx context.Context, rule biz.MonitorAlertRule, payload map[string]any, webhookStatus, channelStatus string) {
-	if n.bus == nil {
+	if n.monitorBus == nil {
 		return
 	}
 	meta, _ := json.Marshal(payload)
-	env := event.NewEnvelope(event.EnvelopeTypeAlertNotify, "monitor", "")
-	env.Channel = "monitor"
 	overall := "ok"
 	if webhookStatus == "error" || channelStatus == "error" {
 		overall = "error"
 	}
-	env.Metadata = map[string]any{
+	ev := contract.NewMonitorEvent(contract.MonitorEventTypeAlertNotify, "monitor")
+	ev.Metadata = map[string]any{
 		"rule_id":        rule.ID,
 		"name":           rule.Name,
 		"status":         overall,
 		"webhook_status": webhookStatus,
 		"channel_status": channelStatus,
+		"payload":        string(meta),
 	}
-	env.Content = &event.EnvelopeContent{Text: string(meta)}
-	n.bus.Publish(ctx, env)
+	n.monitorBus.Publish(ctx, ev)
 }
 
 var alertWebhookClient = &http.Client{
