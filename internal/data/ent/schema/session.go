@@ -94,5 +94,19 @@ func (Session) Fields() []ent.Field {
 		field.String("parent_session_id").Default("").MaxLen(256),
 		field.String("root_session_id").Default("").MaxLen(256),
 		field.Int("agent_depth").Default(0),
+
+		// === Session tree hierarchy (Phase 2 additive) ===
+		// session_type classifies the session's role in the tree.
+		field.String("session_type").MaxLen(32).Default("standalone").Comment("spirit/team/agent/standalone"),
+		// member_agent_key identifies the executing agent for agent-type sessions.
+		field.String("member_agent_key").Default("").Comment("Agent key for agent-type sessions"),
+		// member_role is the agent's role (e.g. coordinator/worker).
+		field.String("member_role").Default("").Comment("Agent role within team"),
+
+		// === Execution progress (Phase 2 additive) ===
+		field.String("execution_stage").Default("").Comment("Current stage: idle/planning/allocating/executing/completed/failed"),
+		field.Int("completed_steps").Default(0),
+		field.Int("total_steps").Default(0),
+		field.Float("progress_pct").Default(0.0),
 	}
 }

@@ -17,6 +17,11 @@ import (
 // channel full → OnTextDelta blocks → stream_consumer blocks → LLM pauses.
 const defaultChannelBufferSize = 64
 
+// defaultPersistBufferSize is the buffer size of the shared persist channel.
+// When full, persist falls back to synchronous mode (blocking the consumer)
+// to avoid losing data. This only happens under extreme DB latency.
+const defaultPersistBufferSize = 256
+
 // defaultDeltaBatchInterval is the maximum time window during which consecutive
 // activity_delta envelopes for the same field are coalesced into a single
 // envelope. This reduces frontend event frequency from "one per token" to
@@ -52,10 +57,27 @@ type activityEventSequencer struct {
 	}
 	activityRepo       biz.ActivityWriter
 	lg                 loggateway.Logger
-	wg                 sync.WaitGroup
+	wg                 sync.WaitGroup // consumer goroutines
+	persistWg          sync.WaitGroup // persist worker goroutine
 	closed             bool
 	done               chan struct{}
 	deltaBatchInterval time.Duration
+
+	// persistChan feeds the single persist worker goroutine. Using one
+	// shared worker (instead of per-task goroutines) guarantees that
+	// UpsertActivity calls for the same activity execute in FIFO order,
+	// so a late "start" persist can never overwrite an earlier "done"
+	// persist. The worker is started lazily when a repo is set.
+	// persistChan is closed by Close() AFTER all consumers have exited,
+	// ensuring no items are lost.
+	persistChan chan persistItem
+}
+
+// persistItem is a single activity to persist, paired with its activity ID
+// for logging.
+type persistItem struct {
+	activityID string
+	activity   biz.Activity
 }
 
 // publishTask represents a single event to publish and optionally persist.
@@ -244,23 +266,37 @@ func (s *activityEventSequencer) canMergeDeltas(a, b publishTask) bool {
 	return true
 }
 
-// processTask persists the activity and then publishes the envelope.
+// processTask persists the activity (fire-and-forget) and publishes the
+// envelope synchronously.
 //
-// Order matters for event reliability (AS-EVT-01): Activity events are
-// Important-level, so they follow BlockUpTo semantics — the activity is
-// persisted before the envelope is published. If persistence fails, the
-// envelope is not published; the failure is logged and the caller's stream
-// continues, leaving eventual consistency to inbound sync / polling.
+// Phase 1b parallel-async design:
+//   - Persist: sent to a single persist worker via a buffered channel
+//     (non-blocking). The worker processes items in FIFO order, so per-activity
+//     ordering is preserved (start→done). If the channel is full (extreme DB
+//     latency), persist falls back to synchronous mode to avoid data loss.
+//   - Publish: synchronous. Preserves per-activity FIFO ordering for WS push.
+//     WS publish typically completes in <5ms, independent of DB I/O.
+//
+// On persist failure, the envelope is still published (fire-and-forget). The
+// frontend recovers via API backfill on next reload (eventual consistency).
 func (s *activityEventSequencer) processTask(activityID string, task publishTask) {
 	if task.persist && s.activityRepo != nil {
-		if _, err := s.activityRepo.UpsertActivity(context.Background(), task.activity); err != nil {
-			s.lg.Warn("activity persist failed; skipping publish",
-				loggateway.StepID("agent.activity_sequencer.persist"),
-				loggateway.Str("activity_id", activityID),
-				loggateway.Str("kind", string(task.activity.Kind)),
-				loggateway.Str("status", string(task.activity.Status)),
-				loggateway.Err(err))
-			return
+		item := persistItem{activityID: activityID, activity: task.activity}
+		select {
+		case s.persistChan <- item:
+			// enqueued for async persist
+		default:
+			// Channel full (extreme DB latency): fall back to synchronous
+			// persist to avoid losing data. This blocks the consumer but
+			// only under exceptional conditions.
+			if _, err := s.activityRepo.UpsertActivity(context.Background(), task.activity); err != nil {
+				s.lg.Warn("activity persist failed (sync fallback); frontend will backfill via API",
+					loggateway.StepID("agent.activity_sequencer.persist"),
+					loggateway.Str("activity_id", activityID),
+					loggateway.Str("kind", string(task.activity.Kind)),
+					loggateway.Str("status", string(task.activity.Status)),
+					loggateway.Err(err))
+			}
 		}
 	}
 	if s.eventBus != nil {
@@ -268,7 +304,50 @@ func (s *activityEventSequencer) processTask(activityID string, task publishTask
 	}
 }
 
-// Close closes the sequencer and waits for all consumer goroutines to finish.
+// SetActivityRepo sets the activity repository and starts the persist worker.
+// Once set, processTask will fire-and-forget persist activities via a single
+// worker goroutine, preserving FIFO order without blocking WS publish.
+func (s *activityEventSequencer) SetActivityRepo(repo biz.ActivityWriter) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.activityRepo = repo
+	if repo != nil && s.persistChan == nil {
+		s.persistChan = make(chan persistItem, defaultPersistBufferSize)
+		s.persistWg.Add(1)
+		safego.GoBackground("activity_persist_worker", func() {
+			s.runPersistWorker()
+		})
+	}
+}
+
+// runPersistWorker is the single persist goroutine that drains persistChan
+// sequentially. This guarantees per-activity FIFO ordering: if the consumer
+// sends start→done, the worker processes start→done in that exact order.
+// The worker exits when persistChan is closed (which happens in Close()
+// after all consumers have finished).
+func (s *activityEventSequencer) runPersistWorker() {
+	defer s.persistWg.Done()
+	for item := range s.persistChan {
+		if _, err := s.activityRepo.UpsertActivity(context.Background(), item.activity); err != nil {
+			s.lg.Warn("activity persist failed; frontend will backfill via API",
+				loggateway.StepID("agent.activity_sequencer.persist"),
+				loggateway.Str("activity_id", item.activityID),
+				loggateway.Str("kind", string(item.activity.Kind)),
+				loggateway.Str("status", string(item.activity.Status)),
+				loggateway.Err(err))
+		}
+	}
+}
+
+// Close closes the sequencer and waits for all consumer goroutines and the
+// persist worker to finish.
+//
+// Shutdown sequence:
+//  1. Signal consumers to drain and exit (close s.done)
+//  2. Wait for all consumers to finish (s.wg.Wait) — at this point no more
+//     items will be sent to persistChan
+//  3. Close persistChan — signals the persist worker to exit after draining
+//  4. Wait for the persist worker to finish (s.persistWg.Wait)
 //
 // After Close returns, all queued events have been processed (published and
 // persisted). Subsequent publish calls return errSequencerClosed.
@@ -283,5 +362,14 @@ func (s *activityEventSequencer) Close() {
 	s.closed = true
 	close(s.done)
 	s.mu.Unlock()
+
+	// Wait for all consumer goroutines to finish draining.
 	s.wg.Wait()
+
+	// Now that no consumers remain, close persistChan to signal the
+	// persist worker to exit after processing all remaining items.
+	if s.persistChan != nil {
+		close(s.persistChan)
+		s.persistWg.Wait()
+	}
 }

@@ -34,6 +34,17 @@ type ProjectMeta struct {
 	MemberAgentKeys    map[string]struct{} // agent_key set for team member_* envelopes
 	Source             string
 	TaskContent        string // User input text for the root task Activity
+
+	// === Session tree hierarchy (Phase 1a) ===
+	// SpiritSessionID is the root spirit session ID for cross-session aggregation.
+	// When this Activity belongs to a team/agent sub-session, SpiritSessionID
+	// points to the spirit session that initiated the tree. When this Activity
+	// belongs to the spirit session itself, SpiritSessionID == SessionID.
+	SpiritSessionID string
+	// ParentSessionID is the immediate parent session ID (empty for spirit root).
+	ParentSessionID string
+	// RootSessionID is the root session ID of the tree (== SpiritSessionID for spirit-initiated trees).
+	RootSessionID string
 }
 
 // Deprecated: Use ActivityProjector instead (Activity-First architecture).

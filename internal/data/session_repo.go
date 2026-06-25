@@ -109,6 +109,15 @@ func entSessionToBiz(e *ent.Session) biz.Session {
 		ParentSessionID:            e.ParentSessionID,
 		RootSessionID:              e.RootSessionID,
 		AgentDepth:                 e.AgentDepth,
+
+		// Phase 2: Session tree hierarchy
+		SessionType:     e.SessionType,
+		MemberAgentKey:  e.MemberAgentKey,
+		MemberRole:      e.MemberRole,
+		ExecutionStage:  e.ExecutionStage,
+		CompletedSteps:  e.CompletedSteps,
+		TotalSteps:      e.TotalSteps,
+		ProgressPct:     e.ProgressPct,
 	}
 }
 
@@ -885,6 +894,78 @@ func (r *sessionRepo) ListByParentSessionID(ctx context.Context, parentSessionID
 	rows, err := c.Session.Query().
 		Where(entsession.ParentSessionIDEQ(parentSessionID), entsession.DeletedAtEQ("")).
 		Order(entsession.ByCreatedAt(entsql.OrderAsc())).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "SESSION")
+	}
+	out := make([]biz.Session, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entSessionToBiz(row))
+	}
+	return out, nil
+}
+
+// GetSessionTree returns the complete session tree (arbitrary depth) rooted at
+// the given spirit session ID. Uses a single query on root_session_id index,
+// then builds the recursive tree in memory to avoid N recursive queries.
+func (r *sessionRepo) GetSessionTree(ctx context.Context, spiritSessionID string) (*biz.SessionTree, error) {
+	spiritSessionID = strings.TrimSpace(spiritSessionID)
+	if spiritSessionID == "" {
+		return nil, apierror.BadRequest("SESSION", "spirit_session_id is required")
+	}
+	c := r.data.RW().Read(ctx)
+	// One query for all sessions in the tree (root + descendants).
+	rows, err := c.Session.Query().
+		Where(entsession.RootSessionIDEQ(spiritSessionID), entsession.DeletedAtEQ("")).
+		Order(entsession.ByAgentDepth(entsql.OrderAsc()), entsession.ByCreatedAt(entsql.OrderAsc())).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "SESSION")
+	}
+
+	tree := &biz.SessionTree{}
+	nodeMap := make(map[string]*biz.SessionTreeNode, len(rows))
+
+	for _, s := range rows {
+		node := &biz.SessionTreeNode{Session: entSessionToBiz(s)}
+		nodeMap[s.ID] = node
+
+		switch biz.SessionType(s.SessionType) {
+		case biz.SessionTypeSpirit:
+			tree.Root = node.Session
+		default:
+			// Attach to parent node (supports arbitrary depth).
+			if parent, ok := nodeMap[s.ParentSessionID]; ok {
+				parent.Children = append(parent.Children, node)
+			} else {
+				// Parent not found (may be filtered out); attach to root.
+				tree.Children = append(tree.Children, node)
+			}
+		}
+	}
+	return tree, nil
+}
+
+// ListChildSessions returns direct child sessions (single level, non-recursive).
+func (r *sessionRepo) ListChildSessions(ctx context.Context, parentSessionID string) ([]biz.Session, error) {
+	return r.ListByParentSessionID(ctx, parentSessionID)
+}
+
+// ListTeamAgentSessions returns all agent-type sessions under a team
+// (members and their sub-agents).
+func (r *sessionRepo) ListTeamAgentSessions(ctx context.Context, teamID string) ([]biz.Session, error) {
+	teamID = strings.TrimSpace(teamID)
+	if teamID == "" {
+		return nil, apierror.BadRequest("SESSION", "team_id is required")
+	}
+	c := r.data.RW().Read(ctx)
+	rows, err := c.Session.Query().
+		Where(
+			entsession.TeamIDEQ(teamID),
+			entsession.SessionTypeEQ(string(biz.SessionTypeAgent)),
+			entsession.DeletedAtEQ(""),
+		).
+		Order(entsession.ByAgentDepth(entsql.OrderAsc()), entsession.ByCreatedAt(entsql.OrderAsc())).
 		All(ctx)
 	if err != nil {
 		return nil, entErrToBizErr(err, "SESSION")

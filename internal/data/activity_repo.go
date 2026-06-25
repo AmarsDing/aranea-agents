@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/activity"
+	"aranea-agents/internal/data/ent/session"
 	"aranea-agents/pkg/loggateway"
 
 	"entgo.io/ent/dialect/sql"
@@ -66,6 +67,75 @@ func (r *activityRepo) GetActivity(ctx context.Context, id string) (biz.Activity
 	return entActivityToBiz(row), nil
 }
 
+// ListBySpiritSession returns all activities under a spirit session tree
+// (across team/agent sub-sessions). Uses the spirit_session_id index.
+func (r *activityRepo) ListBySpiritSession(ctx context.Context, spiritSessionID string) ([]biz.Activity, error) {
+	if r == nil || r.data == nil {
+		return nil, fmt.Errorf("activity repo: database not configured")
+	}
+	rows, err := r.data.RW().Read(ctx).Activity.Query().
+		Where(activity.SpiritSessionIDEQ(spiritSessionID)).
+		Order(ent.Asc(activity.FieldSeq), ent.Asc(activity.FieldTimestamp)).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "ACTIVITY")
+	}
+	return entActivitiesToBiz(rows), nil
+}
+
+// ListByTeam returns all activities for a given team.
+func (r *activityRepo) ListByTeam(ctx context.Context, teamID string) ([]biz.Activity, error) {
+	if r == nil || r.data == nil {
+		return nil, fmt.Errorf("activity repo: database not configured")
+	}
+	if teamID == "" {
+		return nil, nil
+	}
+	rows, err := r.data.RW().Read(ctx).Activity.Query().
+		Where(activity.TeamIDEQ(teamID)).
+		Order(ent.Asc(activity.FieldSeq), ent.Asc(activity.FieldTimestamp)).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "ACTIVITY")
+	}
+	return entActivitiesToBiz(rows), nil
+}
+
+// ListByParentSession returns activities whose session_id belongs to direct
+// child sessions of parentSessionID. Used for member session activity loading.
+// Implementation: first query child session IDs, then query their activities.
+func (r *activityRepo) ListByParentSession(ctx context.Context, parentSessionID string) ([]biz.Activity, error) {
+	if r == nil || r.data == nil {
+		return nil, fmt.Errorf("activity repo: database not configured")
+	}
+	if parentSessionID == "" {
+		return nil, nil
+	}
+	// Step 1: find direct child session IDs
+	childSessions, err := r.data.RW().Read(ctx).Session.Query().
+		Where(session.ParentSessionIDEQ(parentSessionID)).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "SESSION")
+	}
+	if len(childSessions) == 0 {
+		return nil, nil
+	}
+	childIDs := make([]string, 0, len(childSessions))
+	for _, s := range childSessions {
+		childIDs = append(childIDs, s.ID)
+	}
+	// Step 2: query activities for those sessions
+	rows, err := r.data.RW().Read(ctx).Activity.Query().
+		Where(activity.SessionIDIn(childIDs...)).
+		Order(ent.Asc(activity.FieldSeq), ent.Asc(activity.FieldTimestamp)).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "ACTIVITY")
+	}
+	return entActivitiesToBiz(rows), nil
+}
+
 func (r *activityRepo) CreateActivity(ctx context.Context, a biz.Activity) (biz.Activity, error) {
 	if r == nil || r.data == nil {
 		return biz.Activity{}, fmt.Errorf("activity repo: database not configured")
@@ -85,11 +155,13 @@ func (r *activityRepo) CreateActivity(ctx context.Context, a biz.Activity) (biz.
 		SetContent(a.Content).
 		SetReasoning(a.Reasoning).
 		SetToolName(a.ToolName).
+		SetToolCategory(string(a.ToolCategory)).
 		SetToolCallID(a.ToolCallID).
 		SetToolArguments(a.ToolArguments).
 		SetToolResult(a.ToolResult).
 		SetToolDurationMs(a.ToolDurationMs).
 		SetToolErrorCode(a.ToolErrorCode).
+		SetStage(a.Stage).
 		SetChildBoardID(a.ChildBoardID).
 		SetSpiritSessionID(a.SpiritSessionID).
 		SetTeamID(a.TeamID).
@@ -122,11 +194,13 @@ func (r *activityRepo) UpdateActivity(ctx context.Context, a biz.Activity) (biz.
 		SetContent(a.Content).
 		SetReasoning(a.Reasoning).
 		SetToolName(a.ToolName).
+		SetToolCategory(string(a.ToolCategory)).
 		SetToolCallID(a.ToolCallID).
 		SetToolArguments(a.ToolArguments).
 		SetToolResult(a.ToolResult).
 		SetToolDurationMs(a.ToolDurationMs).
 		SetToolErrorCode(a.ToolErrorCode).
+		SetStage(a.Stage).
 		SetChildBoardID(a.ChildBoardID).
 		SetCollapsed(a.Collapsed).
 		SetLabel(a.Label)
@@ -168,11 +242,13 @@ func (r *activityRepo) UpsertActivity(ctx context.Context, a biz.Activity) (biz.
 		SetContent(a.Content).
 		SetReasoning(a.Reasoning).
 		SetToolName(a.ToolName).
+		SetToolCategory(string(a.ToolCategory)).
 		SetToolCallID(a.ToolCallID).
 		SetToolArguments(a.ToolArguments).
 		SetToolResult(a.ToolResult).
 		SetToolDurationMs(a.ToolDurationMs).
 		SetToolErrorCode(a.ToolErrorCode).
+		SetStage(a.Stage).
 		SetChildBoardID(a.ChildBoardID).
 		SetSpiritSessionID(a.SpiritSessionID).
 		SetTeamID(a.TeamID).
@@ -219,11 +295,13 @@ func entActivityToBiz(row *ent.Activity) biz.Activity {
 		Content:          row.Content,
 		Reasoning:        row.Reasoning,
 		ToolName:         row.ToolName,
+		ToolCategory:     biz.ToolCategory(row.ToolCategory),
 		ToolCallID:       row.ToolCallID,
 		ToolArguments:    row.ToolArguments,
 		ToolResult:       row.ToolResult,
 		ToolDurationMs:   row.ToolDurationMs,
 		ToolErrorCode:    row.ToolErrorCode,
+		Stage:            row.Stage,
 		ChildBoardID:     row.ChildBoardID,
 		SpiritSessionID:  row.SpiritSessionID,
 		TeamID:           row.TeamID,

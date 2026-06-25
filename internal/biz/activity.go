@@ -20,6 +20,31 @@ const (
 	ActivityKindNotice       ActivityKind = "notice"         // System notification
 	ActivityKindConfirm      ActivityKind = "confirm"        // User confirmation required
 	ActivityKindPlan         ActivityKind = "plan"           // Multi-step plan
+
+	// === Session/Team/Graph lifecycle (Phase 1a additive) ===
+	// These kinds allow ActivityProjector to emit session/team/graph stage
+	// events as Activities, enabling unified frontend rendering.
+	ActivityKindSession    ActivityKind = "session"     // Session lifecycle (created/status/completed)
+	ActivityKindTeamStage  ActivityKind = "team_stage"  // Team stage (assembled/executing/completed/failed)
+	ActivityKindGraphStage ActivityKind = "graph_stage" // Graph stage (planned/executing/completed/failed)
+)
+
+// ToolCategory classifies a tool by its functional type for UI rendering.
+// The frontend uses tool_category to pick the appropriate detail component
+// (shell terminal, browser card, file diff, etc.) without parsing tool_name.
+type ToolCategory string
+
+const (
+	ToolCategoryShell      ToolCategory = "shell"       // Shell command execution
+	ToolCategoryBrowser    ToolCategory = "browser"     // Browser automation
+	ToolCategoryFileRead   ToolCategory = "file_read"   // File read
+	ToolCategoryFileWrite  ToolCategory = "file_write"  // File write/edit
+	ToolCategoryFileSearch ToolCategory = "file_search" // File search (find/grep/glob)
+	ToolCategoryWebSearch  ToolCategory = "web_search"  // Web search
+	ToolCategoryMCP        ToolCategory = "mcp"         // MCP tool
+	ToolCategoryCode       ToolCategory = "code"        // Code execution
+	ToolCategoryTodo       ToolCategory = "todo"        // Todo management
+	ToolCategoryOther      ToolCategory = "other"       // Other / unknown
 )
 
 // ActivityStatus represents the lifecycle status of an Activity.
@@ -61,11 +86,16 @@ type Activity struct {
 
 	// Tool fields (kind=action)
 	ToolName       string
+	ToolCategory   ToolCategory // Tool functional category for UI rendering
 	ToolCallID     string
 	ToolArguments  string
 	ToolResult     string
 	ToolDurationMs int64
 	ToolErrorCode  string
+
+	// Stage (kind=session/team_stage/graph_stage)
+	// Represents the current phase: assembled/planning/executing/completed/failed etc.
+	Stage string
 
 	// Sub-task board (kind=sub_task_board)
 	ChildBoardID string
@@ -103,6 +133,17 @@ type ActivityReader interface {
 	ListBySessionTurn(ctx context.Context, sessionID, turnID string) ([]Activity, error)
 	ListBySession(ctx context.Context, sessionID string) ([]Activity, error)
 	GetActivity(ctx context.Context, id string) (Activity, error)
+
+	// ListBySpiritSession returns all activities under a spirit session tree
+	// (across team/agent sub-sessions). Uses spirit_session_id index.
+	ListBySpiritSession(ctx context.Context, spiritSessionID string) ([]Activity, error)
+
+	// ListByTeam returns all activities for a given team.
+	ListByTeam(ctx context.Context, teamID string) ([]Activity, error)
+
+	// ListByParentSession returns activities whose session_id belongs to direct
+	// child sessions of parentSessionID. Used for member session activity loading.
+	ListByParentSession(ctx context.Context, parentSessionID string) ([]Activity, error)
 }
 
 // ActivityWriter provides write access to Activity records.

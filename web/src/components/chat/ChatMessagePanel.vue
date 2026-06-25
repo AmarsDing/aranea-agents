@@ -205,6 +205,16 @@
             @error-relogin="(e) => emit('error-relogin', e)"
           />
 
+          <UnifiedExecutionPanel
+            v-if="showUnifiedPanel"
+            :teams="spiritTeamsRef"
+            :task-nodes="taskNodes"
+            class="q-mx-md q-mb-sm"
+            @team-click="(teamId) => emit('select-spirit-team', teamId)"
+            @resume-team="(teamId) => emit('resume-team', teamId)"
+            @cancel-team="(teamId) => emit('cancel-team', teamId)"
+          />
+
           <SynthesisResultCard
             v-if="synthesisResult && (!panelMode || panelMode === 'spirit')"
             :result="synthesisResult"
@@ -319,6 +329,7 @@ import UiConfigToggle from './UiConfigToggle.vue';
 import TodoKanbanBoard from './TodoKanbanBoard.vue';
 import ContextIndicator from '../sessions/ContextIndicator.vue';
 import TaskExecutionPanel from '../spirit/TaskExecutionPanel.vue';
+import UnifiedExecutionPanel from '../spirit/UnifiedExecutionPanel.vue';
 import MemberReadOnlyPanel from '../spirit/MemberReadOnlyPanel.vue';
 import SynthesisResultCard from '../spirit/SynthesisResultCard.vue';
 import SpiritStatusBar from '../spirit/SpiritStatusBar.vue';
@@ -327,7 +338,8 @@ import type { OrchestrationTimelineData } from '../../features/orchestration/tim
 import type { RunStatusValue } from '../../features/chat/types';
 import { TOOL_DISPLAY_KEY } from '../../features/chat/types';
 import type { CompressStatus } from '../../features/session/types';
-import type { EvolutionSuggestion, SpiritStatusBarData } from '../../features/spirit/types';
+import type { EvolutionSuggestion, SpiritStatusBarData } from '../../features/chat/types';
+import type { TaskNode } from '../../features/spirit/types';
 
 import { useTodoBoard } from '../../features/chat/composables/useTodoBoard';
 import { useChatMessageScroll, useChatCodeCopy } from '../../features/chat/composables/useChatMessageScroll';
@@ -349,6 +361,8 @@ type Option = { label: string; value: string; caption?: string };
 const props = defineProps<{
   panelMode?: 'spirit' | 'team' | 'member';
   spiritTeam?: SpiritTeam | null;
+  /** All teams in the current spirit session (for in-spirit unified panel rendering). */
+  spiritTeams?: SpiritTeam[];
   activeMember?: SpiritMember | null;
   synthesisResult?: SynthesisOutput | null;
   modelValue: string;
@@ -464,6 +478,7 @@ const emit = defineEmits<{
   'retry-team': [teamId: string];
   'select-member': [memberId: string];
   'archive-team': [teamId: string];
+  'select-spirit-team': [teamId: string];
   compact: [sessionId: string];
   'status-bar-click-running': [];
   'status-bar-click-interrupted': [];
@@ -481,6 +496,28 @@ const emit = defineEmits<{
 const { t } = useI18n();
 // T5.5: Mobile (<1024px) responsive logic removed — app targets desktop only.
 // useQuasar/$q were only used for $q.screen.lt.md (isMobile).
+// ── Task nodes derived from spirit teams for UnifiedExecutionPanel ──
+// Each SpiritTeam is treated as a DAG node. When a team carries a `dagNodeId`,
+// that ID is used as the taskNode id (so dependencies from other teams can
+// reference it). Otherwise the team id is used as a fallback.
+const taskNodes = computed<TaskNode[]>(() => {
+  if (!props.spiritTeams || props.spiritTeams.length === 0) return [];
+  return props.spiritTeams.map((team) => ({
+    id: team.dagNodeId && team.dagNodeId.length > 0 ? team.dagNodeId : team.id,
+    taskName: team.teamName || team.taskSummary || team.id,
+    description: team.taskSummary || team.teamName || '',
+    dependsOn: team.dependsOn ?? [],
+    mode: team.mode,
+    agentKeys: team.members.map((m) => m.agentKey).filter(Boolean),
+  }));
+});
+
+const showUnifiedPanel = computed(
+  () => (!props.panelMode || props.panelMode === 'spirit') && (props.spiritTeams?.length ?? 0) > 0,
+);
+
+const spiritTeamsRef = computed(() => props.spiritTeams ?? []);
+
 const messagesRef = computed(() => props.messages);
 
 // ── Team member lanes ──

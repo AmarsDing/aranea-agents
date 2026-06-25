@@ -114,6 +114,11 @@ type ActivityProjector struct {
 	// longer needs EventProjector output to compute MemberToolCalls.
 	memberToolCalls map[string]int
 
+	// toolCategorizer classifies tool names into functional categories for
+	// frontend rendering. Defaults to noop (returns ToolCategoryOther) when
+	// not configured; set via SetToolCategorizer.
+	toolCategorizer ToolCategorizer
+
 	// resetDone prevents Reset() from clearing state that was initialized
 	// before stream consumption started. When the projector is pre-created
 	// (e.g. in invokeTurnLLMAndStream for early emission access), Reset()
@@ -133,13 +138,25 @@ func NewActivityProjector(eventBus event.Bus, activityRepo biz.ActivityWriter, l
 		lg = loggateway.NewNoop()
 	}
 	p := &ActivityProjector{
-		eventBus:     eventBus,
-		activityRepo: activityRepo,
-		lg:           lg,
+		eventBus:        eventBus,
+		activityRepo:    activityRepo,
+		lg:              lg,
+		toolCategorizer: NewNoopToolCategorizer(),
 	}
 	p.sequencer = newActivityEventSequencer(eventBus, lg)
-	p.sequencer.activityRepo = activityRepo
+	p.sequencer.SetActivityRepo(activityRepo)
 	return p
+}
+
+// SetToolCategorizer configures the tool categorizer for action Activities.
+// When set, OnToolCall populates Activity.ToolCategory for frontend rendering.
+func (p *ActivityProjector) SetToolCategorizer(c ToolCategorizer) {
+	if c == nil {
+		c = NewNoopToolCategorizer()
+	}
+	p.mu.Lock()
+	p.toolCategorizer = c
+	p.mu.Unlock()
 }
 
 // activitySeq returns the stable emission sequence for an activity. The first
@@ -199,6 +216,17 @@ func (p *ActivityProjector) Configure(meta ProjectMeta, resolver ActivityMetaRes
 	defer p.mu.Unlock()
 	p.meta = meta
 	p.metaResolver = resolver
+}
+
+// resolveSpiritSessionID returns the spirit session ID for the current turn.
+// When ProjectMeta.SpiritSessionID is set (sub-session scenario), it is used;
+// otherwise falls back to SessionID (spirit root or standalone session).
+// Caller must hold p.mu.
+func (p *ActivityProjector) resolveSpiritSessionID() string {
+	if p.meta.SpiritSessionID != "" {
+		return p.meta.SpiritSessionID
+	}
+	return p.meta.SessionID
 }
 
 // Reset clears turn-scoped state. Called at the start of each turn.
@@ -405,6 +433,13 @@ func (p *ActivityProjector) OnTurnStart(ctx context.Context, meta ProjectMeta) {
 	p.turnStarted = true
 	p.meta = meta
 
+	// Resolve spirit session ID: use explicit SpiritSessionID when set (sub-session),
+	// otherwise fall back to SessionID (spirit root or standalone session).
+	spiritSessionID := meta.SpiritSessionID
+	if spiritSessionID == "" {
+		spiritSessionID = meta.SessionID
+	}
+
 	id := uuid.NewString()
 	now := time.Now().UTC()
 	a := &biz.Activity{
@@ -416,7 +451,7 @@ func (p *ActivityProjector) OnTurnStart(ctx context.Context, meta ProjectMeta) {
 		Timestamp:       now,
 		AgentKey:        meta.AgentID,
 		AgentName:       meta.AgentDisplayName,
-		SpiritSessionID: meta.SessionID,
+		SpiritSessionID: spiritSessionID,
 		TeamID:          meta.TeamID,
 		Content:         meta.TaskContent,
 	}
@@ -453,7 +488,7 @@ func (p *ActivityProjector) OnReasoningDelta(ctx context.Context, author string,
 			Timestamp:        now,
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
-			SpiritSessionID:  p.meta.SessionID,
+			SpiritSessionID:  p.resolveSpiritSessionID(),
 			TeamID:           p.meta.TeamID,
 		}
 		p.activities[id] = a
@@ -531,7 +566,7 @@ func (p *ActivityProjector) OnTextDelta(ctx context.Context, author string, chun
 			Timestamp:        now,
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
-			SpiritSessionID:  p.meta.SessionID,
+			SpiritSessionID:  p.resolveSpiritSessionID(),
 			TeamID:           p.meta.TeamID,
 		}
 		p.activities[id] = a
@@ -568,7 +603,7 @@ func (p *ActivityProjector) OnMemberMessageDelta(ctx context.Context, author str
 			Timestamp:        now,
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
-			SpiritSessionID:  p.meta.SessionID,
+			SpiritSessionID:  p.resolveSpiritSessionID(),
 			TeamID:           p.meta.TeamID,
 			Meta:             map[string]any{"member_id": author},
 		}
@@ -610,7 +645,7 @@ func (p *ActivityProjector) OnMemberMessageDone(ctx context.Context, author stri
 			Content:          fullText,
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
-			SpiritSessionID:  p.meta.SessionID,
+			SpiritSessionID:  p.resolveSpiritSessionID(),
 			TeamID:           p.meta.TeamID,
 			Meta:             map[string]any{"member_id": author},
 		}
@@ -662,7 +697,7 @@ func (p *ActivityProjector) OnTextDone(ctx context.Context, author string, fullT
 			Content:          fullText,
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
-			SpiritSessionID:  p.meta.SessionID,
+			SpiritSessionID:  p.resolveSpiritSessionID(),
 			TeamID:           p.meta.TeamID,
 		}
 		p.activities[id] = a
@@ -721,8 +756,12 @@ func (p *ActivityProjector) OnToolCall(ctx context.Context, toolCallID, toolName
 		ToolArguments:    argsJSON,
 		AgentKey:         author,
 		AgentName:        p.resolveAgentName(ctx, author),
-		SpiritSessionID:  p.meta.SessionID,
+		SpiritSessionID:  p.resolveSpiritSessionID(),
 		TeamID:           p.meta.TeamID,
+	}
+	// Classify tool category for frontend rendering (shell/browser/file/...).
+	if p.toolCategorizer != nil {
+		a.ToolCategory = p.toolCategorizer.Categorize(toolName)
 	}
 
 	// Resolve display label
@@ -1437,6 +1476,9 @@ func (p *ActivityProjector) buildActivityEnvelope(a *biz.Activity, envType contr
 	if a.ToolName != "" {
 		env.Metadata["tool_name"] = a.ToolName
 	}
+	if a.ToolCategory != "" {
+		env.Metadata["tool_category"] = string(a.ToolCategory)
+	}
 	if a.ToolCallID != "" {
 		env.Metadata["tool_call_id"] = a.ToolCallID
 	}
@@ -1456,6 +1498,11 @@ func (p *ActivityProjector) buildActivityEnvelope(a *biz.Activity, envType contr
 	// Sub-task board
 	if a.ChildBoardID != "" {
 		env.Metadata["child_board_id"] = a.ChildBoardID
+	}
+
+	// Stage (kind=session/team_stage/graph_stage)
+	if a.Stage != "" {
+		env.Metadata["stage"] = a.Stage
 	}
 
 	// Spirit extension

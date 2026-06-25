@@ -67,6 +67,23 @@ type Session struct {
 	ParentSessionID            string
 	RootSessionID              string
 	AgentDepth                 int
+
+	// === Session tree hierarchy (Phase 2 additive) ===
+	// SessionType classifies the session's role in the tree:
+	// spirit (root), team, agent (member or sub-agent), standalone.
+	SessionType string
+	// MemberAgentKey identifies the executing agent for agent-type sessions.
+	MemberAgentKey string
+	// MemberRole is the agent's role within a team (e.g. coordinator/worker).
+	MemberRole string
+
+	// === Execution progress (Phase 2 additive) ===
+	// ExecutionStage tracks the current stage:
+	// idle/planning/allocating/executing/completed/failed.
+	ExecutionStage string
+	CompletedSteps int
+	TotalSteps     int
+	ProgressPct    float64
 }
 
 // SessionSearchQuery filters sessions（对齐遗留 REST query）.
@@ -338,6 +355,18 @@ type SessionReader interface {
 // Stability:stable
 type SessionTreeReader interface {
 	ListByParentSessionID(ctx context.Context, parentSessionID string) ([]Session, error)
+
+	// GetSessionTree returns the complete session tree (arbitrary depth) rooted
+	// at the given spirit session ID. Implementation strategy: one query on
+	// root_session_id index, then build the recursive tree in memory.
+	GetSessionTree(ctx context.Context, spiritSessionID string) (*SessionTree, error)
+
+	// ListChildSessions returns direct child sessions (single level, non-recursive).
+	ListChildSessions(ctx context.Context, parentSessionID string) ([]Session, error)
+
+	// ListTeamAgentSessions returns all agent-type sessions under a team
+	// (members and their sub-agents).
+	ListTeamAgentSessions(ctx context.Context, teamID string) ([]Session, error)
 }
 
 // Stability:stable

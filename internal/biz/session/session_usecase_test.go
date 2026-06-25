@@ -259,6 +259,18 @@ func (m *mockSessionRepo) ListByParentSessionID(_ context.Context, _ string) ([]
 	return nil, nil
 }
 
+func (m *mockSessionRepo) GetSessionTree(_ context.Context, _ string) (*SessionTree, error) {
+	return nil, nil
+}
+
+func (m *mockSessionRepo) ListChildSessions(_ context.Context, _ string) ([]Session, error) {
+	return nil, nil
+}
+
+func (m *mockSessionRepo) ListTeamAgentSessions(_ context.Context, _ string) ([]Session, error) {
+	return nil, nil
+}
+
 func (m *mockSessionRepo) TransitionSessionStatus(_ context.Context, _ string, _ string, _ string, _ string) error {
 	return nil
 }

@@ -30,6 +30,7 @@ type (
 	StateDelta              = session.StateDelta
 	SessionRepo             = session.SessionRepo
 	SessionReader           = session.SessionReader
+	SessionTreeReader       = session.SessionTreeReader
 	SessionWriter           = session.SessionWriter
 	SessionMutator          = session.SessionMutator
 	SessionBatchMutator     = session.SessionBatchMutator
@@ -58,6 +59,19 @@ type (
 	SessionRuntimeWriter    = session.SessionRuntimeWriter
 	SessionMetrics          = session.SessionMetrics
 	SessionRuntime          = session.SessionRuntime
+
+	// Phase 2: Session tree hierarchy types
+	SessionType     = session.SessionType
+	SessionTree     = session.SessionTree
+	SessionTreeNode = session.SessionTreeNode
+)
+
+// Session tree type constants (Phase 2).
+const (
+	SessionTypeSpirit     = session.SessionTypeSpirit
+	SessionTypeTeam       = session.SessionTypeTeam
+	SessionTypeAgent      = session.SessionTypeAgent
+	SessionTypeStandalone = session.SessionTypeStandalone
 )
 
 // Session interfaces for dependency injection.

@@ -135,7 +135,7 @@ func TestActivityEventSequencer_Persistence(t *testing.T) {
 	bus := newSyncCaptureBus()
 	repo := newMockActivityWriter()
 	seq := newActivityEventSequencer(bus, loggateway.NewNoop())
-	seq.activityRepo = repo
+	seq.SetActivityRepo(repo)
 	defer seq.Close()
 
 	ctx := context.Background()

@@ -50,11 +50,15 @@ func (Activity) Fields() []ent.Field {
 
 		// === Tool fields (kind=action) ===
 		field.String("tool_name").MaxLen(128).Default(""),
+		field.String("tool_category").MaxLen(32).Default("").Comment("ToolCategory: shell/browser/file_read/file_write/file_search/web_search/mcp/code/todo/other"),
 		field.String("tool_call_id").MaxLen(128).Default(""),
 		field.Text("tool_arguments").Default("").Sensitive().Comment("JSON tool arguments, sensitive"),
 		field.Text("tool_result").Default("").Sensitive().Comment("JSON tool result, sensitive"),
 		field.Int64("tool_duration_ms").Default(0),
 		field.String("tool_error_code").MaxLen(64).Default("").Comment("e.g. tool_timeout, tool_error"),
+
+		// === Stage (kind=session/team_stage/graph_stage) ===
+		field.String("stage").MaxLen(64).Default("").Comment("Current phase: assembled/planning/executing/completed/failed etc."),
 
 		// === Sub-task board (kind=sub_task_board) ===
 		field.String("child_board_id").MaxLen(64).Default("").Comment("Root Activity ID of child board"),

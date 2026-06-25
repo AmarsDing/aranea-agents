@@ -32,24 +32,25 @@ import (
 	"aranea-agents/internal/biz/shared"
 )
 
-// ── Activity Event types ─────────────────────────────────────────────────────
+// ── Activity Transition Event types ──────────────────────────────────────────
 
-// ActivityEvent enumerates all events that can trigger an Activity state
-// transition.
+// ActivityTransitionEvent enumerates all events that can trigger an Activity
+// state transition. These are internal state-machine triggers, distinct from
+// the transport-level ActivityEvent (biz.ActivityEvent) published to EventBus.
 // Stability:evolving
-type ActivityEvent string
+type ActivityTransitionEvent string
 
 const (
-	ActivityEventStart       ActivityEvent = "start"
-	ActivityEventToolStart   ActivityEvent = "tool_start"
-	ActivityEventToolEnd     ActivityEvent = "tool_end"
-	ActivityEventToolBlock   ActivityEvent = "tool_block"
-	ActivityEventToolUnblock ActivityEvent = "tool_unblock"
-	ActivityEventDone        ActivityEvent = "done"
-	ActivityEventFail        ActivityEvent = "fail"
-	ActivityEventCancel      ActivityEvent = "cancel"
-	ActivityEventInterrupt   ActivityEvent = "interrupt"
-	ActivityEventPartial     ActivityEvent = "partial"
+	ActivityTransitionStart       ActivityTransitionEvent = "start"
+	ActivityTransitionToolStart   ActivityTransitionEvent = "tool_start"
+	ActivityTransitionToolEnd     ActivityTransitionEvent = "tool_end"
+	ActivityTransitionToolBlock   ActivityTransitionEvent = "tool_block"
+	ActivityTransitionToolUnblock ActivityTransitionEvent = "tool_unblock"
+	ActivityTransitionDone        ActivityTransitionEvent = "done"
+	ActivityTransitionFail        ActivityTransitionEvent = "fail"
+	ActivityTransitionCancel      ActivityTransitionEvent = "cancel"
+	ActivityTransitionInterrupt   ActivityTransitionEvent = "interrupt"
+	ActivityTransitionPartial     ActivityTransitionEvent = "partial"
 )
 
 // ── Transition rules ─────────────────────────────────────────────────────────
@@ -57,24 +58,24 @@ const (
 // activityTransitionRules defines the legal state transitions for an Activity.
 // Terminal states (Completed/Failed/Cancelled/Interrupted/PartialFailure) have
 // no outgoing transitions.
-var activityTransitionRules = []shared.TransitionRule[ActivityStatus, ActivityEvent]{
+var activityTransitionRules = []shared.TransitionRule[ActivityStatus, ActivityTransitionEvent]{
 	// Pending → *
-	{From: ActivityStatusPending, Event: ActivityEventStart, To: ActivityStatusRunning},
+	{From: ActivityStatusPending, Event: ActivityTransitionStart, To: ActivityStatusRunning},
 	// Running → *
-	{From: ActivityStatusRunning, Event: ActivityEventToolStart, To: ActivityStatusToolRunning},
-	{From: ActivityStatusRunning, Event: ActivityEventToolBlock, To: ActivityStatusToolBlocked},
-	{From: ActivityStatusRunning, Event: ActivityEventDone, To: ActivityStatusCompleted},
-	{From: ActivityStatusRunning, Event: ActivityEventFail, To: ActivityStatusFailed},
-	{From: ActivityStatusRunning, Event: ActivityEventCancel, To: ActivityStatusCancelled},
-	{From: ActivityStatusRunning, Event: ActivityEventInterrupt, To: ActivityStatusInterrupted},
-	{From: ActivityStatusRunning, Event: ActivityEventPartial, To: ActivityStatusPartialFailure},
+	{From: ActivityStatusRunning, Event: ActivityTransitionToolStart, To: ActivityStatusToolRunning},
+	{From: ActivityStatusRunning, Event: ActivityTransitionToolBlock, To: ActivityStatusToolBlocked},
+	{From: ActivityStatusRunning, Event: ActivityTransitionDone, To: ActivityStatusCompleted},
+	{From: ActivityStatusRunning, Event: ActivityTransitionFail, To: ActivityStatusFailed},
+	{From: ActivityStatusRunning, Event: ActivityTransitionCancel, To: ActivityStatusCancelled},
+	{From: ActivityStatusRunning, Event: ActivityTransitionInterrupt, To: ActivityStatusInterrupted},
+	{From: ActivityStatusRunning, Event: ActivityTransitionPartial, To: ActivityStatusPartialFailure},
 	// ToolRunning → *
-	{From: ActivityStatusToolRunning, Event: ActivityEventToolEnd, To: ActivityStatusRunning},
-	{From: ActivityStatusToolRunning, Event: ActivityEventDone, To: ActivityStatusCompleted},
-	{From: ActivityStatusToolRunning, Event: ActivityEventFail, To: ActivityStatusFailed},
+	{From: ActivityStatusToolRunning, Event: ActivityTransitionToolEnd, To: ActivityStatusRunning},
+	{From: ActivityStatusToolRunning, Event: ActivityTransitionDone, To: ActivityStatusCompleted},
+	{From: ActivityStatusToolRunning, Event: ActivityTransitionFail, To: ActivityStatusFailed},
 	// ToolBlocked → *
-	{From: ActivityStatusToolBlocked, Event: ActivityEventToolUnblock, To: ActivityStatusRunning},
-	{From: ActivityStatusToolBlocked, Event: ActivityEventFail, To: ActivityStatusFailed},
+	{From: ActivityStatusToolBlocked, Event: ActivityTransitionToolUnblock, To: ActivityStatusRunning},
+	{From: ActivityStatusToolBlocked, Event: ActivityTransitionFail, To: ActivityStatusFailed},
 }
 
 // ── ActivityStateMachine ─────────────────────────────────────────────────────
@@ -84,7 +85,7 @@ var activityStateMachine = shared.NewGenericStateMachine(activityTransitionRules
 
 // ActivityStateMachine returns the singleton ActivityStatus state machine.
 // Stability:evolving
-func ActivityStateMachine() shared.StateMachine[ActivityStatus, ActivityEvent] {
+func ActivityStateMachine() shared.StateMachine[ActivityStatus, ActivityTransitionEvent] {
 	return activityStateMachine
 }
 
@@ -97,7 +98,7 @@ func CanTransitionActivityStatus(from, to ActivityStatus) bool {
 // TransitionActivityStatus validates and executes a state transition triggered
 // by the given event. Returns the new state on success, or an error for illegal
 // transitions.
-func TransitionActivityStatus(from ActivityStatus, event ActivityEvent) (ActivityStatus, error) {
+func TransitionActivityStatus(from ActivityStatus, event ActivityTransitionEvent) (ActivityStatus, error) {
 	return activityStateMachine.Transition(from, event)
 }
 
