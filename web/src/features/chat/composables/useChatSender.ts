@@ -10,8 +10,7 @@ import { useAppStore } from '../../../stores/app';
 import { checkBackendHealth, getServerHeartbeatState } from '../../heartbeat/useServerHeartbeat';
 import type { ChatAttachment, ChatEntityKind } from '../../../components/chat/types';
 import type { UseEnvelopeStreamReturn } from '../useEnvelopeStream';
-import type { WsUpstream } from '../envelope';
-import { createPlaceholderMessage } from '../streamHandlers';
+import type { WsUpstream } from '../../../realtime/envelope';
 import { shouldBlockAttachmentsForModel } from '../modelCapabilities';
 // TECH-DEBT resolved: moved sendMessage to runtimeStore.send — chat optimization
 import { AWAIT_KIND_TOOL_CONFIRM } from '../awaitConstants';
@@ -274,11 +273,9 @@ export function useChatSender(deps: SenderDeps) {
 
   function markPendingUserFailed(sessionId: string, pendingUserId: string, errorMsg: string) {
     failedPendingIds.set(pendingUserId, sessionId);
-    const msgs = deps.messageStore.getMessages(sessionId);
-    deps.messageStore.setMessages(
-      sessionId,
-      msgs.map((m) => (m.id === pendingUserId ? { ...m, status: 'failed', error_message: errorMsg } : m)),
-    );
+    // T6: placeholder mechanism removed — no local placeholder row to mark
+    // as failed. Surface the error to the user via a notification instead.
+    $q.notify({ type: 'negative', message: errorMsg });
   }
 
   async function retryFailedMessage(pendingUserId: string) {
@@ -520,22 +517,13 @@ export function useChatSender(deps: SenderDeps) {
       }
 
       const pendingUserId = reusePendingId ?? `pending-user-${crypto.randomUUID()}`;
-      if (!reusePendingId) {
-        // T5.3: For follow-up (enqueue during active run), don't create a
-        // pending-user placeholder and don't clear input yet. The queued
-        // message will appear in ChatPendingQueue via refreshPendingMessages,
-        // providing consistent UX with the onEnqueueWhileRunning path (Path B).
-        // Input is cleared only after enqueue succeeds (inside enqueueDuringRun),
-        // so the user can retry if enqueue fails (e.g., backend unavailable,
-        // queue full). The dropPendingUserRow calls in enqueueDuringRun become
-        // no-ops (safe — filter on non-existent id returns unchanged list).
-        if (!followUp) {
-          deps.inputText.value = '';
-          deps.messageStore.setMessages(sessionId, [
-            ...deps.messageStore.getMessages(sessionId),
-            createPlaceholderMessage(pendingUserId, sessionId, 'user', text),
-          ]);
-        }
+      // T6: placeholder mechanism removed — user messages are now rendered
+      // from task activity events via ActivityStream. pendingUserId is kept
+      // only as the WS request_id for idempotency. Input is cleared here for
+      // the primary send path; the follow-up (enqueue) path clears input
+      // after a successful enqueue inside enqueueDuringRun.
+      if (!reusePendingId && !followUp) {
+        deps.inputText.value = '';
       }
 
       const { provider, model } = strategy.resolveProviderModel();
@@ -612,15 +600,8 @@ export function useChatSender(deps: SenderDeps) {
       }
     } catch (error) {
       if (!(error instanceof DOMException && error.name === 'AbortError')) {
-        const sid = strategy.resolveSessionId();
-        if (sid) {
-          const pendingId = deps.messageStore
-            .getMessages(sid)
-            .find((m) => m.content_markdown === text && m.id.startsWith('pending-user-'))?.id;
-          if (pendingId) {
-            markPendingUserFailed(sid, pendingId, t('chat.sendFailedRetry', '发送失败，请点击重试'));
-          }
-        }
+        // T6: placeholder mechanism removed — no local placeholder row to
+        // mark as failed. Surface the error directly via a notification.
         $q.notify({
           type: 'negative',
           message: error instanceof Error ? error.message : strategy.errorLabel,
