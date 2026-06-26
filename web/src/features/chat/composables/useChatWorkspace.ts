@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router';
 import type { SessionView, TeamRow } from '../../../components/chat/types';
 import type { Agent } from '../../agents/types';
 import type { CompressStatus } from '../../session/types';
+import type { SpiritPanelMode } from '../../spirit/types';
 import { useAppStore } from '../../../stores/app';
 import { useChatSessionStore } from '../../../stores/chat/sessionStore';
 import { useChatMessageStore } from '../../../stores/chat/messageStore';
@@ -51,6 +52,29 @@ import { useActivityTimeline } from './useActivityTimeline';
 import { useSessionTree } from './useSessionTree';
 import { useSystemEventNotification } from './useSystemEventNotification';
 import type { ActivityEvent as AFActivityEvent } from '../../../realtime/activityEvent';
+
+/**
+ * Phase B-3: Resolve which session ID should be active given the current
+ * spirit panel mode. Returns null if the session cannot be resolved yet
+ * (e.g. member mode but tree not loaded). Pure function — testable in
+ * isolation without mounting useChatWorkspace.
+ */
+export function resolvePanelSessionId(args: {
+  mode: SpiritPanelMode;
+  spiritSessionId: string | null;
+  activeTeamSessionId: string | null;
+  activeMemberAgentKey: string | null;
+  findMemberSessionId: (spiritSessionId: string, agentKey: string) => string | null;
+}): string | null {
+  const { mode, spiritSessionId, activeTeamSessionId, activeMemberAgentKey, findMemberSessionId } = args;
+  if (mode === 'spirit') return spiritSessionId;
+  if (mode === 'team') return activeTeamSessionId;
+  if (mode === 'member') {
+    if (!spiritSessionId || !activeMemberAgentKey) return null;
+    return findMemberSessionId(spiritSessionId, activeMemberAgentKey);
+  }
+  return null;
+}
 
 export function useChatWorkspace() {
   const { t } = useI18n();
@@ -925,8 +949,8 @@ export function useChatWorkspace() {
 
   let visibleRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
-  async function bindSessionView(sessionId: string, replace = true) {
-    if (sessionStore.entityKind === 'team') {
+  async function bindSessionView(sessionId: string, replace = true, streamKind?: 'chat' | 'team') {
+    if (streamKind === 'team' || (!streamKind && sessionStore.entityKind === 'team')) {
       streamManager.ensureTeamStream(sessionId);
     } else {
       streamManager.ensureChatStream(sessionId);
@@ -1004,6 +1028,61 @@ export function useChatWorkspace() {
       }
     },
     { immediate: true },
+  );
+
+  // Phase B-3: Sync activityTimeline.currentSessionId with spirit panelMode.
+  // - spirit mode: currentSessionId = selectedSessionForUi.id (already set
+  //   by the watcher above; this branch re-asserts it for explicitness)
+  // - team mode:   currentSessionId = activeTeam.teamSessionId
+  // - member mode: resolve via sessionTree.findMemberSessionId
+  watch(
+    () => spiritStore.activePanelMode,
+    async (mode) => {
+      const spiritSessionId = selectedSessionForUi.value?.id ?? null;
+      const teamSessionId = spiritStore.activeTeam?.teamSessionId ?? null;
+      const activeMemberAgentKey = (() => {
+        const memberId = spiritStore.activeMemberId;
+        if (!memberId) return null;
+        return spiritStore.activeTeam?.members.find((m) => m.agentId === memberId)?.agentKey ?? null;
+      })();
+      // For member mode, ensure the tree is loaded before resolving.
+      if (mode === 'member' && spiritSessionId && activeMemberAgentKey) {
+        await sessionTree.loadTreeFor(spiritSessionId);
+      }
+      const targetSessionId = resolvePanelSessionId({
+        mode,
+        spiritSessionId,
+        activeTeamSessionId: teamSessionId,
+        activeMemberAgentKey,
+        findMemberSessionId: sessionTree.findMemberSessionId,
+      });
+      if (targetSessionId) {
+        activityTimeline.setCurrentSession(targetSessionId);
+        const streamKind: 'chat' | 'team' = mode === 'team' ? 'team' : 'chat';
+        void bindSessionView(targetSessionId, true, streamKind);
+      } else if (mode === 'spirit') {
+        // spirit mode with no selected session: clear.
+        activityTimeline.setCurrentSession(null);
+      }
+    },
+  );
+
+  // Phase B-3: When user switches to a different member while already in
+  // member mode (activePanelMode stays 'member' but activeMemberId changes).
+  watch(
+    () => spiritStore.activeMemberId,
+    async (memberId) => {
+      if (spiritStore.activePanelMode !== 'member' || !memberId) return;
+      const spiritSessionId = selectedSessionForUi.value?.id ?? null;
+      const agentKey = spiritStore.activeTeam?.members.find((m) => m.agentId === memberId)?.agentKey ?? null;
+      if (!spiritSessionId || !agentKey) return;
+      await sessionTree.loadTreeFor(spiritSessionId);
+      const memberSessionId = sessionTree.findMemberSessionId(spiritSessionId, agentKey);
+      if (memberSessionId) {
+        activityTimeline.setCurrentSession(memberSessionId);
+        void bindSessionView(memberSessionId, true, 'chat');
+      }
+    },
   );
 
   function onPageVisible() {
