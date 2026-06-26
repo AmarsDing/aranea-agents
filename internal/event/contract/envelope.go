@@ -1,19 +1,23 @@
 // Package contract defines the pure interfaces and value objects for the event system.
 // Biz layer should only import this package, never the parent event package (which contains implementations).
 //
-// TECH-DEBT(ADR-03): This file is scheduled for deletion in Phase 5 of the unified bus
-// architecture refactor. The Envelope struct, EnvelopeType constants, and RouteChannel
-// function are retained only because the legacy Bus (event.Bus) still actively publishes
-// Envelopes for non-chat domains (graph state delta, run status, monitor, etc.).
+// TECH-DEBT(ADR-03): Phase 5 Blocker G (方案 C) deleted the legacy bus layer
+// (event.Bus, contract.Bus, busAdapter, RecordingBus, FromFrameworkEvent) since
+// SessionBus/MonitorBus were removed in Blocker F and no production consumers of
+// contract.Bus remained. This file is RETAINED because several types are still in
+// active production use:
+//   - EnvelopeError / EnvelopeTokenUsage — carried by Envelope and consumed by
+//     service-layer event projectors and usage persistence.
+//   - Envelope / EnvelopeType / NewEnvelope / RouteChannel / RegisterChannelRoute —
+//     still referenced by event projectors that build Envelopes for the WS replay
+//     path and by the activity-event bridge.
 //
-// Phase 5 Blocker dependency chain (see docs/reports/2026-06-26-review-adr-unified-bus-architecture.md):
-//   B (side consumers) → C (DomainEvent bridge) → D (vestigial bus fields)
-//     → A (WS replay path) → E (EventPipeline.Bus/Buffer) → F (Wire DI SessionBus)
-//     → DELETE envelope.go
+// Follow-up work: extract the still-active types into independent files, then delete
+// the remaining vestigial Envelope plumbing. See
+// docs/reports/2026-06-26-review-adr-unified-bus-architecture.md (Blocker G).
 //
-// New code MUST NOT publish Envelopes. Use biz.ActivityEvent (Domain=chat|system) for
-// chat/system events, or MonitorEvent for monitor events. Existing Envelope publishers
-// will be migrated incrementally per the ADR-03 roadmap.
+// New code MUST NOT publish Envelopes via a Bus. Use biz.ActivityEvent
+// (Domain=chat|system) for chat/system events, or MonitorEvent for monitor events.
 package contract
 
 import (

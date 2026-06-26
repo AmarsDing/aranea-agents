@@ -80,18 +80,6 @@ type WSServer struct {
 	lg                    loggateway.Logger
 }
 
-// NewWSServer wires a single bus (tests / legacy).
-//
-// Phase 5 Blocker E: the legacy eventBuffer parameter has been removed
-// (the underlying *event.Buffer was deleted; the WS replay path was
-// deleted in Blocker A). New callers should prefer NewWSServerFromInfra.
-func NewWSServer(c *conf.Server, eventBus event.Bus, canceller RunCanceller, sender ChatSender) *WSServer {
-	return NewWSServerFromInfra(c, &event.Infra{
-		SessionBus: eventBus,
-		MonitorBus: eventBus,
-	}, canceller, sender, nil, nil, nil, nil)
-}
-
 // NewWSServerFromInfra uses monitor bus for monitor events and activity bus
 // for chat/system events (AF pipeline).
 func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnExecutor WSTurnExecutor, runtimeConf *conf.Runtime, lg loggateway.Logger, activityBus biz.ActivityEventBus) *WSServer {

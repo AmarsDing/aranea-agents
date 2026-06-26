@@ -12,26 +12,26 @@ import (
 )
 
 type mockBus struct {
-	ch      chan contract.Envelope
+	ch      chan contract.MonitorEvent
 	unsub   func()
 	dropCnt uint64
 }
 
 func newMockBus() *mockBus {
 	return &mockBus{
-		ch: make(chan contract.Envelope, 64),
+		ch: make(chan contract.MonitorEvent, 64),
 	}
 }
 
-func (m *mockBus) Publish(_ context.Context, env contract.Envelope) {
+func (m *mockBus) Publish(_ context.Context, ev contract.MonitorEvent) {
 	select {
-	case m.ch <- env:
+	case m.ch <- ev:
 	default:
 		m.dropCnt++
 	}
 }
 
-func (m *mockBus) Subscribe(_ contract.SubscribeOptions) (<-chan contract.Envelope, func()) {
+func (m *mockBus) Subscribe(_ contract.MonitorSubscribeOptions) (<-chan contract.MonitorEvent, func()) {
 	return m.ch, func() {}
 }
 

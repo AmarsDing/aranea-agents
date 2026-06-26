@@ -1592,39 +1592,23 @@ func provideMonitorAlertEvalWorker(uc *biz.MonitorUsecase) *monitor.AlertEvalWor
 	return uc.EvalWorker()
 }
 
-// provideTraceProjector wires the TraceProjector to the legacy envelope
-// MonitorBus only.
+// provideTraceProjector wires the TraceProjector to the typed MonitorEventBus.
 //
-// ADR-03 Phase 5 Blocker F cleanup: the previous implementation also passed
-// infra.SessionBus, but TraceProjector subscribes exclusively to
-// EnvelopeTypeFlowLog (see monitor.NewTraceProjector -> SubscribeOptions),
-// and Infra.publishToBuses routes FlowLog/Log envelopes to MonitorBus ONLY
-// (never SessionBus). The sessionBus argument was therefore dead — it could
-// never receive any FlowLog event. Only monitorBus is retained.
-//
-// Tracked under ADR-03 Phase 5 Blocker F.
+// ADR-03 Phase 5 Blocker F: migrated from legacy envelope-based MonitorBus to
+// contract.MonitorBus. TraceProjector now subscribes to MonitorEventTypeFlowLog
+// via a bus-level Filter, matching the FlowFileAppender / SelfHealObserver
+// migration pattern.
 func provideTraceProjector(traceRepo biz.MonitorTraceRepo, infra *event.Infra, lg loggateway.Logger) *monitor.TraceProjector {
-	var monitorBus event.Bus
+	var monitorBus contract.MonitorBus
 	if infra != nil {
-		monitorBus = infra.MonitorBus
+		monitorBus = infra.MonitorEventBus
 	}
 	return monitor.NewTraceProjector(traceRepo, lg, monitorBus)
 }
 
-// provideMonitorBus removed: it conflicted with ProvideSessionBus (both bound
-// to event.Bus). Callers that need the monitor bus now take *event.Infra
-// directly and extract infra.MonitorBus, matching the provideTraceProjector
-// pattern. This keeps SessionBus as the default event.Bus Wire binding.
-
-// monitorBusFromInfra extracts the monitor event bus from Infra, returning nil
-// when infra is nil (graceful degradation — SelfHealObserver skips event
-// subscription when bus is nil).
-func monitorBusFromInfra(infra *event.Infra) event.Bus {
-	if infra == nil {
-		return nil
-	}
-	return infra.MonitorBus
-}
+// provideMonitorBus / ProvideSessionBus removed (ADR-03 Phase 5 Blocker F):
+// the legacy envelope-based bus system has been fully retired. All monitor
+// subscribers now consume contract.MonitorBus via ProvideMonitorEventBus.
 
 func provideFlowFileAppender(lg loggateway.Logger) *monitor.FlowFileAppender {
 	dir := strings.TrimSpace(os.Getenv("MONITOR_FLOW_LOG_DIR"))
@@ -1913,7 +1897,7 @@ type wireOut struct {
 	ModelRegistrySyncAgent      *agent.ModelRegistrySyncAgent
 	SelfCheckScheduler          *monitor.SelfCheckScheduler
 	SelfHealObserver            *biz.SelfHealObserver
-	MonitorBus                  event.Bus
+	MonitorBus                  contract.MonitorBus
 	SelfCheckCleanup            *jobs.SelfCheckCleanup
 	SelfCheckJob                *jobs.SelfCheckJob
 	CronRepo                    biz.CronRepo
@@ -1998,7 +1982,7 @@ func provideWireOut(
 		ModelRegistrySyncAgent:    modelRegistrySyncAgent,
 		SelfCheckScheduler:        selfCheckScheduler,
 		SelfHealObserver:          selfHealObserver,
-		MonitorBus:                eventInfra.MonitorBus,
+		MonitorBus:                eventInfra.MonitorEventBus,
 		SelfCheckCleanup:          selfCheckCleanup,
 		SelfCheckJob:              selfCheckJob,
 		CronRepo:                  cronRepo,

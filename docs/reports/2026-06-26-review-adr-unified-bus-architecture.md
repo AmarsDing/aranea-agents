@@ -1,6 +1,6 @@
 # ADR-03: 统一总线架构（删除 Envelope，统一到 ActivityEvent + MonitorEvent）
 
-## 状态：已接受（Phase 1-4 完成；Phase 5 中 A/B/C/E 已完成，D 解耦中，F 部分完成）
+## 状态：已接受（Phase 1-4 完成；Phase 5 中 A/B/C/D/E/F 已完成，G 部分完成——方案 C：删除 bus 死代码，保留 envelope.go 活类型）
 
 ## 背景
 
@@ -132,7 +132,7 @@ type WSServer struct {
 
 - **Phase 5 复杂度超预期**：原 spec 估计"删文件"即可，实际识别出 6 个耦合 Blocker（WS replay、side consumer、DomainEvent bridge、vestigial 字段、EventPipeline、Wire DI），需多 session 级联迁移
 - **临时性 Envelope 残留**：Phase 5 完成前，后端仍有生产/测试文件引用 Envelope，前端仍有文件 import Envelope 类型（均为合法传输层）
-  - 截至 2026-06-26：Blocker A/B/C/E 已完成，D 因 `event→biz` 架构耦合阻塞（非编译期 cycle，详见下方「Phase 5 实际状态评估」），F 仅完成死参数清理。残留主要源于 `EventBusConsumer` 仍订阅 `contract.Bus`（Envelope 总线），其 Envelope→DomainEvent 转换函数仍被活跃使用
+  - 截至 2026-06-26：Blocker A/B/C/D/E/F 已完成。Blocker G（删除 Envelope 文件）采用方案 C 部分完成：已删除 bus 相关死代码（`event.Bus`/`contract.Bus`/`busAdapter`/`RecordingBus`/`FromFrameworkEvent` + 关联测试），但 `contract/envelope.go` 因 `EnvelopeError`/`EnvelopeTokenUsage` 等活类型仍被生产代码使用而保留；后续需提取活类型到独立文件后再删除剩余部分
 - **WS replay 路径迁移风险**：Blocker A 已通过方案 A2（删除 replay 改用 `ListActivities` RPC）解决，`wsDownstream.Envelope` 字段已删除
 - **Domain 字段语义负担**：publisher 必须正确声明 Domain，错误声明会导致 system 事件被持久化或 chat 事件被丢弃
 
@@ -185,9 +185,10 @@ type WSServer struct {
 | **C: DomainEvent bridge** | `domain_event_adapter.go` 将 biz domain event 包装为 Envelope | ✅ 已完成 | 已迁移到 ActivityEventBus + `ActivityDomainSystem`；`eventBusAdapter` 死代码已清理；`DomainEventPublisher`/`DomainEventSubscriber` 接口已删除 |
 | **D: vestigial bus 字段** | service/team struct 仍持有 `bus event.Bus` 字段 | ✅ 已完成 | 3 个死发布者全部删除：`EmitProgress`（ExecutionProgress envelope）、`FlowTracker.LogError` Error envelope publish、`PublishSessionRevisionEnvelope`（RunStatus envelope）。顺带删除 `Infra.Publish`/`publishToBuses` 死路由代码（无调用者）。保留 bump 半边（`BumpSessionRevision`）——前端通过 ListActivities/GetSession RPCs 读取 |
 | **E: EventPipeline.Bus/Buffer** | `EventPipeline` 保留 `Bus event.Bus` + `Buffer event.Buffer` | ✅ 已完成 | `Buffer event.Buffer` 已删除（replay 源已不需要）。`Bus event.Bus` 字段已在 Blocker F Stage 1 中删除（死参数链清理） |
-| **F: Wire DI** | `cmd/admin/wire.go` 仍绑定 SessionBus | 🟡 Stage 1 完成 | **Stage 1（死参数链清理）已完成**：删除 `EventPipeline.Bus` 字段及 5 个 Wire provider 的 `eventBus` 死参数，删除 `configureMCPObserve` NO-OP stub，删除 `ChannelIngress.eventBus`/`TurnPreviewCoordinator.bus` 死字段及关联死方法。主体 `ProvideSessionBus` 仍绑定，被 8 处 consumer 活跃使用（D 完成后已无 direct publisher）。需先完成 `EventBusConsumer` 整体迁移到 `ActivityEventBus`/`MonitorEventBus` |
+| **F: Wire DI** | `cmd/admin/wire.go` 仍绑定 SessionBus | ✅ 已完成 | **Stage 1（死参数链清理）**：删除 `EventPipeline.Bus` 字段及 5 个 Wire provider 的 `eventBus` 死参数，删除 `configureMCPObserve` NO-OP stub，删除 `ChannelIngress.eventBus`/`TurnPreviewCoordinator.bus` 死字段及关联死方法。**Stage 2（死订阅修复）**：`SelfHealObserver`/`TraceProjector` 从旧 envelope bus 迁移到 `MonitorEventBus`（修复死订阅 bug）；删除 `Infra.MonitorBus` 字段、`ProvideMonitorBus` 函数、`monitorBusFromInfra` helper。**Stage 3（SessionBus 删除）**：确认 `wire_gen.go` 中无 `ProvideSessionBus`/`SessionBus` 引用（所有消费者已在 Stage 1 移除），删除 `Infra.SessionBus` 字段、`ProvideSessionBus` 函数、从 `InfraProviderSet` 移除。`Infra` 只剩 `MonitorEventBus` + `lg` |
+| **G: 删除 Envelope 文件** | 删除 `contract/envelope.go` 及 bus 死代码 | 🟡 部分完成（方案 C） | 采用方案 C：删除 bus 相关死代码（`event.Bus`/`contract.Bus`/`busAdapter`/`RecordingBus`/`FromFrameworkEvent` + 7 个测试文件），保留 `contract/envelope.go` 中的活类型（`EnvelopeError`/`EnvelopeTokenUsage`/`Envelope` 等）。`memory_butler.Deps.EventBus` 死字段一并清理。后续：提取活类型到独立文件后删除 envelope.go 剩余部分 |
 
-**当前迁移顺序**：~~B → C → D → A → E → F~~ → 实际进度：B✅ → C✅ → A✅ → E✅ → D✅ → F(Stage 1 ✅) → 删除 Envelope 文件
+**当前迁移顺序**：~~B → C → D → A → E → F~~ → 实际进度：B✅ → C✅ → A✅ → E✅ → D✅ → F✅ → G🟡（方案 C：bus 死代码已删，envelope.go 活类型保留）→ 删除 Envelope 文件
 
 ### Blocker D 完成总结（2026-06-26）
 
@@ -235,14 +236,58 @@ Blocker D 删除所有 SessionBus 发布者后，`EventPipeline.Bus` 字段及�
 - `provideChatServiceDeps` — 删除 `eventBus` 参数 + `Bus: eventBus` from `EventPipeline`
 - `provideChannelIngress` — 删除 `eventBus` 参数 + `eventBus` from `NewChannelIngress` 调用
 
-**保留的项目**（仍被 `SelfHealObserver` 等活跃使用，不在 Stage 1 范围）：
-- `ProvideSessionBus` Wire 绑定
-- `Infra.SessionBus` 字段
-- `monitorBusFromInfra` helper
-- `Infra.MonitorBus` 字段
-- `event` import in `wire.go`（`ProvideSessionBus`/`monitorBusFromInfra` 仍使用 `event.Bus`）
+**保留的项目**（Stage 1 时仍被 `SelfHealObserver`/`TraceProjector` 等活跃使用）：
+- `ProvideSessionBus` Wire 绑定（仍被 EventBusConsumer 等使用，待 Blocker F 主体迁移）
+- `Infra.SessionBus` 字段（同上）
+- ~~`monitorBusFromInfra` helper~~ — Stage 2 已删除
+- ~~`Infra.MonitorBus` 字段~~ — Stage 2 已删除
+- `event` import in `wire.go`（`ProvideSessionBus` 仍使用 `event.Bus`；`monitorBusFromInfra` 已删除）
 
 **验证结果**：`go build ./...` ✅ | `make wire` ✅ | `go build ./cmd/admin` ✅ | `go test ./internal/event/... ./internal/agent/... ./internal/service/... ./internal/team/... ./internal/runtime/... -count=1` ✅ | `go vet ./...` ✅
+
+### Blocker F Stage 2 完成总结（2026-06-26）：SelfHealObserver / TraceProjector 迁移到 MonitorEventBus
+
+Stage 1 清理死参数链后，`SelfHealObserver` 和 `TraceProjector` 仍订阅旧 envelope bus（`contract.Bus` 传输 `contract.Envelope`），但 FlowTracker（发布者）已迁移到 `contract.MonitorBus`（传输 `contract.MonitorEvent`）。这两个订阅者是**死订阅**——收不到任何 FlowLog 事件，自愈观察与 trace 投影功能已失效。Stage 2 将它们迁移到 `MonitorEventBus`，实质上是修复 bug：让订阅者重新收到 FlowLog 事件。
+
+**迁移的订阅者**（参考 `FlowFileAppender.Start` 的迁移模式）：
+
+1. `SelfHealObserver.StartEventDrivenObservation`（`internal/biz/monitor/self_heal_observer.go`）
+   - 参数类型：`buses ...contract.Bus` → `buses ...contract.MonitorBus`
+   - 订阅选项：`contract.SubscribeOptions{EventTypes, BufferSize, DropPolicy}` → `contract.MonitorSubscribeOptions{Filter: ev.Type == MonitorEventTypeFlowLog, BufferSize: 1024, GlobalMode: true}`
+   - channel 类型：`<-chan contract.Envelope` → `<-chan contract.MonitorEvent`
+   - 处理调用：`o.ObserveFlowLogEvent(ctx, env.Metadata)` → `o.ObserveFlowLogEvent(ctx, ev.Metadata)`
+
+2. `TraceProjector`（`internal/biz/monitor/trace_projector.go`）
+   - `NewTraceProjector` 参数：`buses ...contract.Bus` → `buses ...contract.MonitorBus`
+   - `buses` 字段类型：`[]contract.Bus` → `[]contract.MonitorBus`
+   - `Start()` 订阅选项：同上迁移到 `MonitorSubscribeOptions` + `Filter`
+   - `subscribeBus` / `handle` / `traceProjectorWorker` 全部从 `contract.Envelope` 改为 `contract.MonitorEvent`
+   - `handle` 中 `env.TeamID`（MonitorEvent 无此字段）改为 `metaStr(m, "team_id")`（从 Metadata 读取，行为一致——FlowTracker.toMetadata 不写 team_id，原 Envelope.TeamID 在死订阅期间也是空值）
+
+**Wire 注入更新**（`cmd/admin/wire.go` + `cmd/admin/workers.go`）：
+- `wireOut.MonitorBus` 字段类型：`event.Bus` → `contract.MonitorBus`
+- `provideWireOut` 赋值：`eventInfra.MonitorBus` → `eventInfra.MonitorEventBus`
+- `provideTraceProjector`：`infra.MonitorBus` → `infra.MonitorEventBus`
+- `backgroundWorkersConfig.MonitorBus` 字段类型：`event.Bus` → `contract.MonitorBus`
+- import：`internal/event` → `internal/event/contract`（workers.go）
+
+**删除的死代码**：
+- `monitorBusFromInfra` helper（`cmd/admin/wire.go`）— 返回 `infra.MonitorBus`（旧 bus），无 Go 代码调用者
+- `Infra.MonitorBus` 字段（`internal/event/infra.go`）— 所有使用点已迁移到 `MonitorEventBus`
+- `ProvideMonitorBus` 函数（`internal/event/infra.go`）— 已从 `InfraProviderSet` 移除，无调用者
+- `NewInfra` 中 `MonitorBus: NewBus(lg)` 初始化
+
+**测试更新**：
+- `mockBus`（`internal/biz/monitor/monitor_more_test.go`）— 从实现 `contract.Bus` 改为实现 `contract.MonitorBus`（Publish/Subscribe/DropCount 签名全部改为 MonitorEvent 类型）
+- `ws_auth_test.go` / `ws_protocol_test.go`（`internal/server/`）— `event.Infra` 字面量中移除 `MonitorBus` 字段，保留 `MonitorEventBus`
+- `NewWSServer`（`internal/server/ws.go`）— 遗留构造函数中移除 `MonitorBus: eventBus` 行（MonitorEventBus 为 nil，函数无 Go 调用者，仅保留兼容性）
+
+**保留的项目**（待 Blocker F 主体迁移）：
+- `ProvideSessionBus` Wire 绑定 — 仍被 EventBusConsumer 等 8+ 调用者使用
+- `Infra.SessionBus` 字段 — 同上
+- `event` import in `wire.go` — `ProvideSessionBus` 仍使用 `event.Bus`
+
+**验证结果**：`make wire` ✅ | `go build ./...` ✅ | `go test ./internal/biz/monitor/... ./internal/event/... ./internal/service/... ./internal/server/... -count=1` ✅ | `go vet ./...` ✅
 
 ### Blocker F 真实阻塞：`event→biz` 架构耦合 + 消费者迁移
 
@@ -262,6 +307,79 @@ internal/biz                 → internal/event  (单向，父包，唯一硬依
 - ⏳ 后续：迁移 `EventBusConsumer` 整体到 `ActivityEventBus` 订阅（多 session 工作量，不在本次会话范围）
 
 **解耦后的影响**：`biz` 包对 `event` 父包的硬依赖消除，`EventBusConsumer` 可在后续 session 中迁移到 `ActivityEventBus`，迁移完成后即可删除 `ProvideSessionBus` 绑定（Blocker F 主体）和最终删除 `envelope.go`（Blocker G）。
+
+### Blocker F 主体完成总结（2026-06-26）：死代码清理
+
+**关键发现**：代码级核查显示 Blocker F 的主体迁移工作在 Blocker B/D/E 期间已完成，ADR-03 文档此前的状态记录严重过时：
+
+1. **`event_bus_consumer.go` 不存在** — 旧 `EventBusConsumer` 已被拆分为 4 个 typed consumer（`event_bus_callback_consumer.go`/`event_bus_flow_log_consumer.go`/`event_bus_usage_rollup_consumer.go`/`event_bus_user_feedback_consumer.go`），全部订阅 `ActivityEventBus` 或 `contract.MonitorBus`（Blocker B 已完成）
+2. **8 个声称的 `ProvideSessionBus` 消费者全部已迁移** — `wire_gen.go` 中无 `contractBus` 局部变量、无 `ProvideSessionBus` 调用、无 `infra.SessionBus` 引用
+3. **硬依赖已解决** — `event_bus_consumer.go:40` 的 `event.NewEventDeduplicator` 调用因文件删除而消失；`biz` 包不再 import `internal/event` 父包（仅 import `internal/event/contract` 子包）
+
+**本次清理的死代码**：
+
+| 项目 | 文件 | 说明 |
+|------|------|------|
+| `NewWSServer` legacy 构造器 | `internal/server/ws.go` | 0 生产调用者；仅委托 `NewWSServerFromInfra` 并传死 `SessionBus` |
+| `ProvideSessionBus` 函数 | `internal/event/infra.go` | 0 wire 消费者（wire_gen.go 无引用） |
+| `Infra.SessionBus` 字段 | `internal/event/infra.go` | `NewInfra` 初始化但无生产读取者 |
+| `internal/event/dedup.go` | 整个文件 | deprecated 别名，0 调用者（`contract.NewEventDeduplicator` 已是唯一入口） |
+
+**测试更新**：
+- `ws_protocol_test.go`：`newTestWSServer`/`newTestWSServerWithActivity` 移除 `bus event.Bus` 参数；6 处调用去掉 `event.NewBus(nil)`；`TestWSUpstreamCancelInvokesCanceller` 移除 `bus.Subscribe` 死行为验证（仅保留 `canceller.called` 断言）
+- `ws_auth_test.go`：2 处 `event.Infra` 字面量移除 `SessionBus` 字段
+- `ws_e2e_test.go`：已由前次提交清理（无 `event.NewBus` 引用）
+
+**保留的项目**（Blocker G 范围）：
+- `internal/event/bus.go`（`NewBus` 实现）— 仍被 `bus_*_test.go` 自测引用
+- `internal/event/contract/envelope.go`（`Envelope`/`EnvelopeType`/`RouteChannel`）— 活类型 `EnvelopeError`/`EnvelopeTokenUsage` 仍被生产代码使用
+- `internal/testutil/bus.go`（`RecordingBus`）— 测试工具，实现 `event.Bus` 接口
+
+**验证结果**：`make wire` ✅ | `go build ./...` ✅ | `go vet ./...` ✅ | `go test ./internal/server/... ./internal/event/... ./internal/testutil/... ./internal/biz/... ./internal/agent/... ./internal/service/... ./internal/team/... ./internal/runtime/... -count=1` ✅
+
+### Blocker G 完成总结（2026-06-26）：方案 C——删除 bus 死代码，保留 envelope.go 活类型
+
+Blocker F 完成后，`event.Bus` 接口和 `contract.Bus` 接口已无生产消费者（SessionBus/MonitorBus 均已删除）。但 `contract/envelope.go` 中有多个活类型（`EnvelopeError`/`EnvelopeTokenUsage` 等）仍被生产代码使用，不能删除整个文件。本任务执行方案 C：删除 bus 相关死代码，保留 envelope.go 中的活类型。
+
+**删除的死代码文件**（10 个）：
+
+| 文件 | 内容 | 说明 |
+|------|------|------|
+| `internal/event/bus.go` | `event.Bus` 类型别名 + `NewBus` 函数 | `NewBus` 仅被 bus 测试调用 |
+| `internal/event/bus_adapter.go` | `busAdapter` 结构 | 仅被 `NewBus` 使用 |
+| `internal/event/framework_adapter.go` | `FromFrameworkEvent` 函数 + `FrameworkEventMeta` + `coalesceStr`/`isJSONString` | 仅被自身测试调用 |
+| `internal/event/framework_adapter_test.go` | 测试 | 测试死代码 |
+| `internal/event/bus_basic_test.go` | 测试 | 测试 `event.NewBus` |
+| `internal/event/bus_race_test.go` | 测试 | 测试 `event.NewBus` |
+| `internal/event/bus_backpressure_test.go` | 测试 | 测试 `event.NewBus` |
+| `internal/event/contract/bus.go` | `contract.Bus`/`SubscribeOptions`/`DropPolicy`/`ChannelPriority` | `MonitorBus` 是独立接口，不依赖 `contract.Bus` |
+| `internal/testutil/bus.go` | `RecordingBus`（实现 `event.Bus`） | 仅在自身测试中使用 |
+| `internal/testutil/bus_test.go` | 测试 | 测试死代码 |
+
+**修改的文件**（2 个）：
+
+| 文件 | 修改内容 |
+|------|----------|
+| `internal/event/contract/envelope.go` | 更新过时的包注释（原注释引用已删除的 `event.Bus`），说明 Blocker G 方案 C 已删除 bus 层，本文件因活类型保留 |
+| `internal/tools/memory_butler/registry.go` | 删除 `Deps.EventBus contract.Bus` 死字段（未被赋值/未被读取的"预留"字段）及其 `contract` import |
+
+**保留的活代码**：
+
+| 类型/函数 | 定义位置 | 保留原因 |
+|-----------|----------|----------|
+| `contract.EnvelopeError` | `contract/envelope.go` | 活跃生产使用（service 层事件投影） |
+| `contract.EnvelopeTokenUsage` | `contract/envelope.go` | 活跃生产使用（usage 持久化） |
+| `contract.Envelope`/`EnvelopeType`/`NewEnvelope`/`RouteChannel` 等 | `contract/envelope.go` | 仍被事件投影、activity-event bridge 等引用 |
+| `contract.MonitorBus`/`MonitorEvent` | `contract/monitor_event.go` | 独立文件，活代码 |
+| `EnvelopeSourceFromContext` 等 | `internal/event/source.go` | 独立文件，活跃使用 |
+| `internal/event/envelope.go` 中的类型别名 | `internal/event/envelope.go` | 重导出 contract 类型（含 `EnvelopeError`），被 `internal/service/envelope_error.go` 等通过 `event.EnvelopeError` 引用 |
+
+**后续工作**（不在本次会话范围）：
+1. 提取 `EnvelopeError`/`EnvelopeTokenUsage` 等活类型到独立文件
+2. 迁移剩余 Envelope 投影代码到 ActivityEvent
+3. 删除 `contract/envelope.go` 剩余部分
+
+**验证结果**：`go build ./...` ✅ | `go test ./internal/event/... ./internal/testutil/... -count=1` ✅ | `go vet ./...` ✅
 
 ## 关联文档
 

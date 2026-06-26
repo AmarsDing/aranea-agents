@@ -16,7 +16,7 @@ import (
 
 type TraceProjector struct {
 	repo  TraceRepo
-	buses []contract.Bus
+	buses []contract.MonitorBus
 	lg    loggateway.Logger
 
 	mu     sync.Mutex
@@ -44,11 +44,11 @@ type activeTrace struct {
 	costUsd   float64
 }
 
-func NewTraceProjector(repo TraceRepo, lg loggateway.Logger, buses ...contract.Bus) *TraceProjector {
+func NewTraceProjector(repo TraceRepo, lg loggateway.Logger, buses ...contract.MonitorBus) *TraceProjector {
 	if repo == nil {
 		return nil
 	}
-	seen := make([]contract.Bus, 0, len(buses))
+	seen := make([]contract.MonitorBus, 0, len(buses))
 	for _, bus := range buses {
 		if bus == nil {
 			continue
@@ -85,10 +85,12 @@ func (p *TraceProjector) Start(ctx context.Context) {
 		p.lg.Warn("EnsureTraceSchema failed", loggateway.StepID("monitor.trace_schema_fail"), loggateway.Err(err))
 	}
 	p.started.Store(true)
-	opts := contract.SubscribeOptions{
-		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeFlowLog},
+	opts := contract.MonitorSubscribeOptions{
 		BufferSize: 256,
-		Reliable:   true,
+		GlobalMode: true,
+		Filter: func(ev contract.MonitorEvent) bool {
+			return ev.Type == contract.MonitorEventTypeFlowLog
+		},
 	}
 	for i, bus := range p.buses {
 		name := "monitor-trace-projector"
@@ -122,7 +124,7 @@ func (p *TraceProjector) evictStaleTraces() {
 	p.mu.Unlock()
 }
 
-func (p *TraceProjector) subscribeBus(ctx context.Context, name string, bus contract.Bus, opts contract.SubscribeOptions) {
+func (p *TraceProjector) subscribeBus(ctx context.Context, name string, bus contract.MonitorBus, opts contract.MonitorSubscribeOptions) {
 	worker := newTraceProjectorWorker(name, p.lg)
 	worker.Start(ctx, p.handle)
 	ch, unsub := bus.Subscribe(opts)
@@ -132,37 +134,37 @@ func (p *TraceProjector) subscribeBus(ctx context.Context, name string, bus cont
 			select {
 			case <-ctx.Done():
 				return
-			case env, ok := <-ch:
+			case ev, ok := <-ch:
 				if !ok {
 					return
 				}
-				worker.Offer(ctx, env)
+				worker.Offer(ctx, ev)
 			}
 		}
 	})
 }
 
-func (p *TraceProjector) handle(ctx context.Context, env contract.Envelope) {
-	if p == nil || env.Metadata == nil {
+func (p *TraceProjector) handle(ctx context.Context, ev contract.MonitorEvent) {
+	if p == nil || ev.Metadata == nil {
 		return
 	}
-	// Record last-event time on every invocation, even for envelopes that
+	// Record last-event time on every invocation, even for events that
 	// don't carry a trace_id. This lets the self-check verify the projector
 	// is still receiving flow_log traffic from the bus.
 	p.lastEventUnixNano.Store(time.Now().UnixNano())
-	m := env.Metadata
+	m := ev.Metadata
 	traceID := metaStr(m, "trace_id")
 	if traceID == "" {
 		return
 	}
 
-	sessionID := coalesceStr(metaStr(m, "session_id"), env.SessionID)
+	sessionID := coalesceStr(metaStr(m, "session_id"), ev.SessionID)
 	runID := metaStr(m, "run_id")
 	agentID := metaStr(m, "agent_id")
 	agentKey := metaStr(m, "agent_key")
 	provider := metaStr(m, "provider")
 	model := metaStr(m, "model")
-	teamID := strings.TrimSpace(env.TeamID)
+	teamID := metaStr(m, "team_id")
 	stepID := metaStr(m, "step_id")
 	flowPhase := metaStr(m, "flow_phase")
 	domain := metaStr(m, "domain")
@@ -435,7 +437,7 @@ func coalesceStr(a, b string) string {
 
 type traceProjectorWorker struct {
 	name      string
-	queue     chan contract.Envelope
+	queue     chan contract.MonitorEvent
 	dropCount atomic.Int64
 	lg        loggateway.Logger
 }
@@ -443,34 +445,34 @@ type traceProjectorWorker struct {
 func newTraceProjectorWorker(name string, lg loggateway.Logger) *traceProjectorWorker {
 	return &traceProjectorWorker{
 		name:  name,
-		queue: make(chan contract.Envelope, 256),
+		queue: make(chan contract.MonitorEvent, 256),
 		lg:    lg,
 	}
 }
 
-func (w *traceProjectorWorker) Start(ctx context.Context, fn func(context.Context, contract.Envelope)) {
+func (w *traceProjectorWorker) Start(ctx context.Context, fn func(context.Context, contract.MonitorEvent)) {
 	safego.Go(ctx, w.name, func() {
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case env, ok := <-w.queue:
+			case ev, ok := <-w.queue:
 				if !ok {
 					return
 				}
-				fn(ctx, env)
+				fn(ctx, ev)
 			}
 		}
 	})
 }
 
-func (w *traceProjectorWorker) Offer(ctx context.Context, env contract.Envelope) {
+func (w *traceProjectorWorker) Offer(ctx context.Context, ev contract.MonitorEvent) {
 	select {
-	case w.queue <- env:
+	case w.queue <- ev:
 	default:
 		w.dropCount.Add(1)
 		if w.dropCount.Load()%100 == 1 {
-			w.lg.Warn("TraceProjector queue full, dropping envelope",
+			w.lg.Warn("TraceProjector queue full, dropping event",
 				loggateway.StepID("monitor.trace_projector_queue_full"), loggateway.Str("worker", w.name), loggateway.Str("total_drops", fmt.Sprint(w.dropCount.Load())))
 		}
 	}

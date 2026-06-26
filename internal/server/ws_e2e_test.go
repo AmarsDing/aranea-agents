@@ -11,7 +11,6 @@ import (
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/activityevent"
 	"aranea-agents/pkg/loggateway"
 
@@ -79,10 +78,9 @@ func TestWSE2E_UserMessageStream(t *testing.T) {
 	t.Setenv("DEPLOY_ENV", "dev")
 
 	const sessionID = "sess-e2e"
-	bus := event.NewBus(nil)
 	activityBus := activityevent.New(loggateway.NewNoop())
 	sender := &e2eChatSender{activityBus: activityBus, sessionID: sessionID}
-	srv := newTestWSServerWithActivity(bus, nil, sender, activityBus)
+	srv := newTestWSServerWithActivity(nil, sender, activityBus)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/ws", srv.handleWS)

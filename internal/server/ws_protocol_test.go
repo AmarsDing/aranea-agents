@@ -15,26 +15,26 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-func newTestWSServer(bus event.Bus, canceller RunCanceller, sender ChatSender) *WSServer {
+func newTestWSServer(canceller RunCanceller, sender ChatSender) *WSServer {
 	return NewWSServerFromInfra(
 		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
-		&event.Infra{SessionBus: bus, MonitorBus: bus, MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop())},
+		&event.Infra{MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop())},
 		canceller, sender, nil, nil, loggateway.NewNoop(), nil,
 	)
 }
 
 // newTestWSServerWithActivity wires a server with a real ActivityEventBus so
 // tests can subscribe to biz.ActivityEvent published by the WS handler.
-func newTestWSServerWithActivity(bus event.Bus, canceller RunCanceller, sender ChatSender, activityBus biz.ActivityEventBus) *WSServer {
+func newTestWSServerWithActivity(canceller RunCanceller, sender ChatSender, activityBus biz.ActivityEventBus) *WSServer {
 	return NewWSServerFromInfra(
 		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
-		&event.Infra{SessionBus: bus, MonitorBus: bus, MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop())},
+		&event.Infra{MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop())},
 		canceller, sender, nil, nil, loggateway.NewNoop(), activityBus,
 	)
 }
 
 func TestCountGlobalMonitorConnsExcludesProbe(t *testing.T) {
-	srv := newTestWSServer(event.NewBus(nil), nil, nil)
+	srv := newTestWSServer(nil, nil)
 	srv.store.conns["*"] = []*wsConn{
 		{probeMode: true},
 		{probeMode: false},
@@ -47,7 +47,7 @@ func TestCountGlobalMonitorConnsExcludesProbe(t *testing.T) {
 }
 
 func TestWSUpstreamPingProducesPong(t *testing.T) {
-	srv := newTestWSServer(event.NewBus(nil), nil, nil)
+	srv := newTestWSServer(nil, nil)
 	wc := &wsConn{
 		channels: map[string]bool{"system": true},
 		send:     make(chan []byte, 4),
@@ -79,7 +79,7 @@ func TestWSUpstreamPingProducesPong(t *testing.T) {
 }
 
 func TestWSUpstreamSubscribeAddsChannel(t *testing.T) {
-	srv := newTestWSServer(event.NewBus(nil), nil, nil)
+	srv := newTestWSServer(nil, nil)
 	wc := &wsConn{
 		channels: map[string]bool{"chat": true, "system": true},
 		send:     make(chan []byte, 1),
@@ -97,16 +97,13 @@ func TestWSUpstreamSubscribeAddsChannel(t *testing.T) {
 }
 
 func TestWSUpstreamCancelInvokesCanceller(t *testing.T) {
-	bus := event.NewBus(nil)
 	canceller := &stubRunCanceller{}
-	srv := newTestWSServer(bus, canceller, nil)
+	srv := newTestWSServer(canceller, nil)
 	wc := &wsConn{
 		sessionID: "sess-1",
 		channels:  map[string]bool{"system": true},
 		send:      make(chan []byte, 1),
 	}
-	ch, unsub := bus.Subscribe(event.SubscribeOptions{SessionID: "sess-1", BufferSize: 4})
-	defer unsub()
 
 	raw, _ := json.Marshal(wsUpstream{
 		Direction: "client_to_server",
@@ -117,15 +114,10 @@ func TestWSUpstreamCancelInvokesCanceller(t *testing.T) {
 	if !canceller.called {
 		t.Fatal("expected CancelRun to be invoked")
 	}
-	select {
-	case <-ch:
-		t.Fatal("unexpected envelope; cancel status comes from ChatService only")
-	default:
-	}
 }
 
 func TestWSUpstreamUnsubscribeRemovesChannel(t *testing.T) {
-	srv := newTestWSServer(event.NewBus(nil), nil, nil)
+	srv := newTestWSServer(nil, nil)
 	wc := &wsConn{
 		channels: map[string]bool{"chat": true, "monitor": true, "system": true},
 		send:     make(chan []byte, 1),
@@ -145,7 +137,7 @@ func TestWSUpstreamUnsubscribeRemovesChannel(t *testing.T) {
 }
 
 func TestWSUpstreamBadDirectionIgnored(t *testing.T) {
-	srv := newTestWSServer(event.NewBus(nil), nil, nil)
+	srv := newTestWSServer(nil, nil)
 	wc := &wsConn{
 		channels: map[string]bool{"system": true},
 		send:     make(chan []byte, 1),
@@ -163,7 +155,7 @@ func TestWSUpstreamBadDirectionIgnored(t *testing.T) {
 }
 
 func TestWSUpstreamEnqueueMessageAccepted(t *testing.T) {
-	srv := newTestWSServer(event.NewBus(nil), nil, nil)
+	srv := newTestWSServer(nil, nil)
 	wc := &wsConn{
 		sessionID: "sess-enq",
 		channels:  map[string]bool{"chat": true, "system": true},
@@ -215,9 +207,8 @@ func (s stubTurnExecutor) ExecuteTurn(_ context.Context, _ WSTurnInput) error {
 }
 
 func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
-	bus := event.NewBus(nil)
 	activityBus := activityevent.New(loggateway.NewNoop())
-	srv := newTestWSServerWithActivity(bus, nil, stubChatSender{sendErr: context.Canceled}, activityBus)
+	srv := newTestWSServerWithActivity(nil, stubChatSender{sendErr: context.Canceled}, activityBus)
 	wc := &wsConn{
 		sessionID: "sess-user",
 		channels:  map[string]bool{"chat": true, "system": true},
@@ -258,11 +249,10 @@ func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
 }
 
 func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
-	bus := event.NewBus(nil)
 	activityBus := activityevent.New(loggateway.NewNoop())
 	srv := NewWSServerFromInfra(
 		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
-		&event.Infra{SessionBus: bus, MonitorBus: bus, MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop())},
+		&event.Infra{MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop())},
 		nil,
 		stubChatSender{},
 		stubTurnExecutor{err: errors.New("provider raw error")},
@@ -310,8 +300,7 @@ func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
 }
 
 func TestWSUpstreamUserMessageAccepted(t *testing.T) {
-	bus := event.NewBus(nil)
-	srv := newTestWSServer(bus, nil, stubChatSender{})
+	srv := newTestWSServer(nil, stubChatSender{})
 	wc := &wsConn{
 		sessionID: "sess-ok",
 		channels:  map[string]bool{"chat": true, "system": true},

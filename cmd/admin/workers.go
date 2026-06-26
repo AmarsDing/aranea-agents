@@ -11,7 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/cronrunner"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	mcphealth "aranea-agents/internal/mcp/health"
 	loggateway "aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -48,7 +48,7 @@ type backgroundWorkersConfig struct {
 	MonitorTraceBackfillWorker  BackgroundStarter
 	SelfCheckScheduler          *monitor.SelfCheckScheduler
 	SelfHealObserver            *biz.SelfHealObserver
-	MonitorBus                  event.Bus
+	MonitorBus                  contract.MonitorBus
 	FailurePatternSyncJob       BackgroundStarter
 	PredictiveHealJob           BackgroundStarter
 	PatternMiningJob            BackgroundStarter

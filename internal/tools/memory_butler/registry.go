@@ -3,7 +3,6 @@ package memory_butler
 import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/skill"
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -14,10 +13,8 @@ type Deps struct {
 	Analytics   *biz.ExperienceAnalyticsUsecase
 	MemoryAdmin *biz.MemoryAdminUsecase
 	Embedder    skill.SkillEmbedder
-	// EventBus is reserved for future event-driven memory operations.
-	EventBus contract.Bus
-	Agents   biz.AgentRuntimeSettingsRepo
-	LG       loggateway.Logger
+	Agents      biz.AgentRuntimeSettingsRepo
+	LG          loggateway.Logger
 }
 
 // RegisterAll creates and returns all memory butler tools. It validates that

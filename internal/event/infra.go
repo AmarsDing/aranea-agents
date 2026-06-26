@@ -7,7 +7,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-// Infra holds session vs monitor event buses (P0: isolate flow_log from chat envelopes).
+// Infra holds the typed monitor event bus.
 //
 // Phase 1c-2: WAL and CrossProcessStore fields have been removed along with
 // the deletion of the event_store subsystem. Critical events no longer have
@@ -20,73 +20,24 @@ import (
 // write-only with no reader. All Append callsites were dead writes and have
 // been cleaned up (FlowTracker.emit / EventBusConsumer.handleEnvelope).
 //
-// Dual-bus unification (2026-06-25): MonitorEventBus is the new typed bus
-// carrying contract.MonitorEvent. The legacy MonitorBus (envelope-based)
-// is retained temporarily for migration; it will be removed in Phase 5
-// once all monitor publishers have switched to MonitorEventBus.
+// Phase 5 Blocker F (2026-06-26): the legacy envelope-based SessionBus has
+// been removed. All chat/session event publishers and subscribers now use
+// biz.ActivityEventBus (transporting biz.ActivityEvent). The legacy
+// envelope-based MonitorBus was also removed; all monitor publishers and
+// subscribers (FlowFileAppender, SelfHealObserver, TraceProjector,
+// FlowTracker) now use the typed MonitorEventBus carrying
+// contract.MonitorEvent.
 type Infra struct {
-	// SessionBus — TECH-DEBT(ADR-03 Phase 5 Blocker F): legacy envelope bus
-	// (chat/session events). Bound as the default event.Bus via
-	// ProvideSessionBus (consumed by EventBusConsumer and 7+ other callers).
-	// Phase 5 Blocker D removed all publishers to SessionBus
-	// (EmitProgress / Error envelope / session_revision publish /
-	// Infra.Publish routing). The remaining consumers subscribe to a bus
-	// that no longer receives events — they will be migrated to
-	// ActivityEventBus/MonitorEventBus in Blocker F. See ProvideSessionBus
-	// doc for the full caller list and migration blocker.
-	SessionBus      Bus
-	MonitorBus      Bus                 // legacy envelope bus (monitor events — being migrated)
-	MonitorEventBus contract.MonitorBus  // NEW: typed monitor event bus (replacement for MonitorBus)
+	MonitorEventBus contract.MonitorBus // typed monitor event bus
 	lg              loggateway.Logger
 }
 
-// NewInfra wires dual buses for dependency injection.
+// NewInfra wires the monitor bus for dependency injection.
 func NewInfra(lg loggateway.Logger) *Infra {
 	return &Infra{
-		SessionBus:      NewBus(lg),
-		MonitorBus:      NewBus(lg),
 		MonitorEventBus: NewMonitorBus(lg),
 		lg:              lg,
 	}
-}
-
-// ProvideSessionBus exposes the interactive/session bus for wire.
-//
-// TECH-DEBT(ADR-03 Phase 5 Blocker F): ProvideSessionBus is the default
-// event.Bus Wire binding and is still actively consumed by 8+ callers via
-// the generated `contractBus` local in cmd/admin/wire_gen.go:
-//   - biz.NewEventBusConsumer (subscribes to SessionBus for Critical envelope
-//     dedup / eventBuffer / domain-event routing — see event_bus_consumer.go)
-//   - service.NewGraphOrchestrationProjector
-//   - provideChatServiceDeps / provideRunnerConfig / provideTeamTurnDeps
-//   - team.ProvideTeamGraphRunCoordinator
-//   - provideCronRunnerDeps / provideChannelIngress
-//
-// Phase 5 Blocker D removed all direct publishers to SessionBus:
-//   - TraceEmitter.EmitProgress (deleted — ExecutionProgress envelopes)
-//   - FlowTracker.LogError Error envelope publish (deleted)
-//   - PublishSessionRevisionEnvelope (deleted — RunStatus envelopes)
-//   - Infra.Publish / publishToBuses routing (deleted — no callers remained)
-// The remaining consumers subscribe to a bus that receives no events;
-// they will be migrated to ActivityEventBus/MonitorEventBus in Blocker F.
-// ProvideSessionBus cannot be removed until that migration completes.
-// Note: provideTraceProjector's sessionBus argument was a dead binding and
-// has been removed (Blocker F cleanup); see cmd/admin/wire.go.
-func ProvideSessionBus(infra *Infra) Bus {
-	if infra == nil {
-		return NewBus(nil)
-	}
-	return infra.SessionBus
-}
-
-// ProvideMonitorBus exposes the legacy monitor/flow envelope bus for wire.
-// Deprecated: use ProvideMonitorEventBus for new code. This is retained
-// during the dual-bus migration period and will be removed in Phase 5.
-func ProvideMonitorBus(infra *Infra) Bus {
-	if infra == nil {
-		return NewBus(nil)
-	}
-	return infra.MonitorBus
 }
 
 // ProvideMonitorEventBus exposes the typed MonitorEventBus for wire.
@@ -99,15 +50,13 @@ func ProvideMonitorEventBus(infra *Infra) contract.MonitorBus {
 	return infra.MonitorEventBus
 }
 
-// InfraProviderSet is the wire set replacing standalone NewBus/NewBuffer.
-// SessionBus is the default event.Bus binding; MonitorBus is accessed via
-// *Infra (e.g. provideTraceProjector) rather than a separate Bus binding
-// to avoid Wire's "multiple bindings for event.Bus" error.
+// InfraProviderSet is the wire set for event infrastructure.
 //
-// Dual-bus unification: ProvideMonitorEventBus is added to make
-// contract.MonitorBus available to any provider that needs it.
+// Phase 5 Blocker F: the legacy ProvideSessionBus (envelope-based) has been
+// removed along with Infra.SessionBus. All chat/session subscribers now
+// consume biz.ActivityEventBus; all monitor subscribers consume
+// contract.MonitorBus via ProvideMonitorEventBus.
 var InfraProviderSet = wire.NewSet(
 	NewInfra,
-	ProvideSessionBus,
 	ProvideMonitorEventBus,
 )

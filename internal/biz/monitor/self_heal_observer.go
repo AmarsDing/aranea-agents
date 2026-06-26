@@ -184,9 +184,13 @@ func (o *SelfHealObserver) ObserveFlowLogEvent(ctx context.Context, meta map[str
 }
 
 // StartEventDrivenObservation subscribes to FlowLog error events and observes them.
-// It subscribes to the provided event buses (typically the monitor bus) and
-// processes FlowLog envelopes through ObserveFlowLogEvent.
-func (o *SelfHealObserver) StartEventDrivenObservation(ctx context.Context, buses ...contract.Bus) {
+// It subscribes to the provided MonitorBuses and processes FlowLog events through
+// ObserveFlowLogEvent.
+//
+// Phase 5 Blocker F: migrated from legacy Envelope-based contract.Bus to typed
+// contract.MonitorBus. The filter at the bus level accepts only FlowLog events,
+// preventing non-matching events from filling the queue.
+func (o *SelfHealObserver) StartEventDrivenObservation(ctx context.Context, buses ...contract.MonitorBus) {
 	// Periodic cleanup of stale cooldowns and heal events to prevent unbounded map growth.
 	safego.Go(ctx, "self-heal-observer-cleanup", func() {
 		ticker := time.NewTicker(observerCleanupInterval)
@@ -202,10 +206,12 @@ func (o *SelfHealObserver) StartEventDrivenObservation(ctx context.Context, buse
 		}
 	})
 
-	opts := contract.SubscribeOptions{
-		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeFlowLog},
+	opts := contract.MonitorSubscribeOptions{
 		BufferSize: 1024,
-		DropPolicy: contract.DropNewest,
+		GlobalMode: true,
+		Filter: func(ev contract.MonitorEvent) bool {
+			return ev.Type == contract.MonitorEventTypeFlowLog
+		},
 	}
 	for i, bus := range buses {
 		if bus == nil {
@@ -222,11 +228,11 @@ func (o *SelfHealObserver) StartEventDrivenObservation(ctx context.Context, buse
 				select {
 				case <-ctx.Done():
 					return
-				case env, ok := <-ch:
+				case ev, ok := <-ch:
 					if !ok {
 						return
 					}
-					o.ObserveFlowLogEvent(ctx, env.Metadata)
+					o.ObserveFlowLogEvent(ctx, ev.Metadata)
 				}
 			}
 		})
