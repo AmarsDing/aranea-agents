@@ -541,12 +541,16 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
   switch (node.kind) {
     case 'task':
       // task.failed → ErrorBlock (turn-level error surfaced to user).
-      // task with non-failed status is filtered out upstream (container).
+      // The error message comes from meta.error_message (set by
+      // ActivityProjector.OnError), NOT from node.content — node.content
+      // holds the user's input text and is rendered separately via
+      // UserMessageBubble in ActivityStream. Echoing content here would
+      // surface the user's own message inside the red error box.
       return {
         kind: 'error',
         id: node.id,
         type: 'degradation',
-        message: node.content || node.toolErrorCode || (node.meta?.error_message as string | undefined) || '',
+        message: (node.meta?.error_message as string | undefined) || node.toolErrorCode || '',
         errorCode: node.toolErrorCode || (node.meta?.error_code as string | undefined) || undefined,
       } satisfies ErrorEvent;
 

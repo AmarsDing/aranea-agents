@@ -62,57 +62,62 @@ const (
 // Activity is the domain model for a projected semantic unit.
 // The backend projects runtime events into Activity records and pushes
 // them to the frontend via WS, eliminating the need for frontend inference.
+//
+// JSON tags use snake_case to match the ActivityEvent contract consumed by
+// the Activity-First frontend (web/src/realtime/activityEvent.ts). The WS
+// path serializes biz.Activity directly inside biz.ActivityEvent, so these
+// tags are the source of truth for field names on the wire.
 type Activity struct {
-	ID               string
-	Kind             ActivityKind
-	Status           ActivityStatus
-	SessionID        string
-	TurnID           string
-	ParentActivityID string
-	Timestamp        time.Time
-	DurationMs       int64
-	Seq              int64 // Global emission sequence for stable frontend ordering
+	ID               string         `json:"id"`
+	Kind             ActivityKind   `json:"kind"`
+	Status           ActivityStatus `json:"status"`
+	SessionID        string         `json:"session_id"`
+	TurnID           string         `json:"turn_id"`
+	ParentActivityID string         `json:"parent_activity_id,omitempty"`
+	Timestamp        time.Time      `json:"timestamp"`
+	DurationMs       int64          `json:"duration_ms"`
+	Seq              int64          `json:"seq"` // Global emission sequence for stable frontend ordering
 
 	// Token usage (kind=task, root Activity only)
-	PromptTokens     int64
-	CompletionTokens int64
+	PromptTokens     int64 `json:"prompt_tokens"`
+	CompletionTokens int64 `json:"completion_tokens"`
 
 	// Content fields (by kind)
-	Content   string // task/reply/error text
-	Reasoning string // thinking reasoning content
+	Content   string `json:"content,omitempty"`   // task/reply/error text
+	Reasoning string `json:"reasoning,omitempty"` // thinking reasoning content
 
 	// Tool fields (kind=action)
-	ToolName       string
-	ToolCategory   ToolCategory // Tool functional category for UI rendering
-	ToolCallID     string
-	ToolArguments  string
-	ToolResult     string
-	ToolDurationMs int64
-	ToolErrorCode  string
+	ToolName       string       `json:"tool_name,omitempty"`
+	ToolCategory   ToolCategory `json:"tool_category,omitempty"` // Tool functional category for UI rendering
+	ToolCallID     string       `json:"tool_call_id,omitempty"`
+	ToolArguments  string       `json:"tool_arguments,omitempty"`
+	ToolResult     string       `json:"tool_result,omitempty"`
+	ToolDurationMs int64        `json:"tool_duration_ms"`
+	ToolErrorCode  string       `json:"tool_error_code,omitempty"`
 
 	// Stage (kind=session/team_stage/graph_stage)
 	// Represents the current phase: assembled/planning/executing/completed/failed etc.
-	Stage string
+	Stage string `json:"stage,omitempty"`
 
 	// Sub-task board (kind=sub_task_board)
-	ChildBoardID string
+	ChildBoardID string `json:"child_board_id,omitempty"`
 
 	// Spirit extension fields
-	SpiritSessionID string
-	TeamID          string
-	DagNodeID       string
-	DependsOn       []string
+	SpiritSessionID string   `json:"spirit_session_id,omitempty"`
+	TeamID          string   `json:"team_id,omitempty"`
+	DagNodeID       string   `json:"dag_node_id,omitempty"`
+	DependsOn       []string `json:"depends_on,omitempty"`
 
 	// Agent info
-	AgentKey  string
-	AgentName string
+	AgentKey  string `json:"agent_key,omitempty"`
+	AgentName string `json:"agent_name,omitempty"`
 
 	// Display hints
-	Collapsed bool
-	Label     string
+	Collapsed bool   `json:"collapsed"`
+	Label     string `json:"label,omitempty"`
 
 	// Meta stores kind-specific metadata (noticeType, toolName, steps, etc.)
-	Meta map[string]any
+	Meta map[string]any `json:"meta,omitempty"`
 }
 
 // ActivityPlanStep represents a step in a plan Activity.

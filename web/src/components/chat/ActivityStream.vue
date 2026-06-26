@@ -1,6 +1,6 @@
 <template>
   <div class="event-stream">
-    <template v-for="(item, idx) in renderItems" :key="item.activity.id">
+    <template v-for="(item, idx) in renderItems" :key="item.activity.id + (item.keySuffix ? '-' + item.keySuffix : '')">
       <!-- Phase transition indicator between thinking and reply -->
       <div
         v-if="idx > 0 && item.event?.kind === 'reply' && renderItems[idx - 1].event?.kind === 'thinking'"
@@ -81,8 +81,11 @@
            Renders child activities (sub-thinking, sub-action, sub-reply, etc.)
            in an indented container. This is the unified renderer's nested-rendering
            layer — replaces the previous flat sortedActivities pipeline that
-           stripped children via `activityToStreamEvent({ ...activity, children: [] })`. -->
-      <div v-if="item.activity.children?.length" class="event-stream__children">
+           stripped children via `activityToStreamEvent({ ...activity, children: [] })`.
+           For failed tasks (which expand to two render items: msg + err), only
+           render children on the 'msg' item so the order becomes
+           UserMessageBubble → Children → ErrorBlock and children are not duplicated. -->
+      <div v-if="item.activity.children?.length && item.keySuffix !== 'err'" class="event-stream__children">
         <ActivityStream
           :activity-tree="item.activity.children"
           :agent-color="agentColor"
@@ -164,25 +167,38 @@ interface RenderItem {
   activity: ActivityTreeNode;
   /** StreamEvent for dispatch; null when task (non-failed) renders as UserMessageBubble. */
   event: StreamEvent | null;
+  /** Suffix appended to the v-for key to keep it unique when a single activity
+   * expands to multiple render items (e.g. failed task → bubble + error block). */
+  keySuffix: string;
 }
 
 // Map tree nodes → { activity, event } pairs. Non-failed task activities
 // are flagged with event=null so they render as UserMessageBubble; everything
-// else (incl. task.failed → ErrorEvent) goes through the existing kind dispatch.
+// else goes through the existing kind dispatch.
+// A failed task expands to TWO render items so the user's input is preserved:
+//   1. { event: null }           → UserMessageBubble (shows activity.content)
+//   2. { event: ErrorEvent }     → ErrorBlock (shows meta.error_message)
+// Without this, a failed turn would replace the user's message bubble with a
+// red error box that echoed the user's own text.
 // B-04: Pass the tree node directly (with children intact) — do NOT strip
 // children via `{ ...activity, children: [] }`. activityToStreamEvent's plan
 // case still maps children into PlanEvent.children for any non-rendering
 // consumers, but the actual nested rendering is handled by the recursive
 // <ActivityStream :activity-tree="item.activity.children" /> in the template.
-const renderItems = computed<RenderItem[]>(() =>
-  props.activityTree.map((activity) => ({
-    activity,
-    event:
-      activity.kind === 'task' && activity.status !== 'failed'
-        ? null
-        : activityToStreamEvent(activity),
-  })),
-);
+const renderItems = computed<RenderItem[]>(() => {
+  const items: RenderItem[] = [];
+  for (const activity of props.activityTree) {
+    if (activity.kind === 'task' && activity.status === 'failed') {
+      items.push({ activity, event: null, keySuffix: 'msg' });
+      items.push({ activity, event: activityToStreamEvent(activity), keySuffix: 'err' });
+    } else if (activity.kind === 'task') {
+      items.push({ activity, event: null, keySuffix: 'msg' });
+    } else {
+      items.push({ activity, event: activityToStreamEvent(activity), keySuffix: '' });
+    }
+  }
+  return items;
+});
 
 /** Adapt a task Activity into the Message shape expected by UserMessageBubble. */
 function taskToMessage(activity: Activity): Message {

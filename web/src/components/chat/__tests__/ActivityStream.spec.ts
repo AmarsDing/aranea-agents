@@ -63,12 +63,37 @@ describe('ActivityStream', () => {
     expect(container.textContent).toContain('hello world');
   });
 
-  it('does not render UserMessageBubble for task.failed', () => {
+  it('renders UserMessageBubble + ErrorBlock for task.failed (error from meta.error_message, not content)', () => {
+    // Bug repro: previously a failed task was converted entirely to an
+    // ErrorEvent whose `message` came from `node.content` (the user's input
+    // text), so the red error box echoed the user's own message and the user
+    // message bubble disappeared. The fix renders BOTH:
+    //   1. UserMessageBubble showing the user's input (activity.content)
+    //   2. ErrorBlock showing the real error (meta.error_message)
     const activityTree: ActivityTreeNode[] = [
-      asTreeNode(makeActivity({ id: 't1', kind: 'task', status: 'failed', content: 'failed task' })),
+      asTreeNode(
+        makeActivity({
+          id: 't1',
+          kind: 'task',
+          status: 'failed',
+          content: '好的，好的...',
+          meta: { error_message: 'LLM call failed', error_code: 'LLM_CALL_FAILED' },
+        }),
+      ),
     ];
     const { container } = mountActivityStream(activityTree);
-    expect(container.querySelector('.user-message-bubble')).toBeNull();
+
+    // 1. User message bubble still renders and shows the user's input text.
+    const userBubble = container.querySelector('.user-message-bubble');
+    expect(userBubble).toBeTruthy();
+    expect(userBubble?.textContent).toContain('好的，好的...');
+
+    // 2. Error block renders and shows the real error from meta.error_message.
+    const errorBlock = container.querySelector('.error-block');
+    expect(errorBlock).toBeTruthy();
+    expect(errorBlock?.textContent).toContain('LLM call failed');
+    // The error block must NOT echo the user's input as the error message.
+    expect(errorBlock?.querySelector('.error-block__message')?.textContent).not.toContain('好的，好的...');
   });
 
   it('renders thinking and reply activities', () => {

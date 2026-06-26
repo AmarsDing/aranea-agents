@@ -897,13 +897,13 @@ type ToolCallSnapshot struct {
 | `cancelled` | Activity 被用户取消（StopGeneration） | chat=是 / system=否 | 卡片灰色 + 「已取消」 |
 | `child_created` | 子 Session 被创建（subagent spawn / team dispatch） | chat=是 / system=否 | Session 树侧栏追加节点 |
 
-> **失败语义（ADR-02 D3）**：原 `ActivityKindError` 已删除。失败统一通过 `task.failed` 表达——任务 Activity 进入 `failed` 状态，错误摘要写入 `Content`，错误码写入 `Metadata.error_code`，`PendingID` 填充关联的待执行消息 ID。
+> **失败语义（ADR-02 D3）**：原 `ActivityKindError` 已删除。失败统一通过 `task.failed` 表达——任务 Activity 进入 `failed` 状态，错误摘要写入 `Metadata.error_message`，错误码写入 `Metadata.error_code`，`PendingID` 填充关联的待执行消息 ID。`Content` 字段保留用户输入文本（由 `OnTurnStart` 写入），前端 `UserMessageBubble` 据此渲染用户消息；仅在无根任务的孤儿错误场景下 `Content` 才被设为错误消息。前端 `task.failed` 渲染为 `UserMessageBubble`（用户输入）+ `ErrorBlock`（真实错误）两个组件，避免用户消息被红色错误框替代。
 
 #### 8.5.3 ActivityKind（10 种，无 error kind）
 
 | Kind | 含义 | 前端组件 | 典型来源 |
 |------|------|---------|---------|
-| `task` | 用户消息/任务 | `UserMessageBubble` | WS `user_message` 上行后投影 |
+| `task` | 用户消息/任务 | `UserMessageBubble`（`task.failed` 额外渲染 `ErrorBlock`，错误消息取自 `meta.error_message`） | WS `user_message` 上行后投影 |
 | `thinking` | LLM 推理过程 | `ThinkingBlock` | trpc-agent-go `reasoning_delta` |
 | `action` | 工具调用 | `ActionBlock`（按 `tool_category` 细分） | trpc-agent-go `tool_call` / `tool_result` |
 | `reply` | LLM 最终回复 | `ReplyBlock` | trpc-agent-go `text_delta` / `text_done` |
