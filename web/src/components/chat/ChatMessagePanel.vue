@@ -35,6 +35,12 @@
       </template>
     </div>
 
+    <!-- TECH-DEBT(ADR-03): Dual rendering path. The team/member branches below use
+         the deprecated TaskExecutionPanel/MemberReadOnlyPanel -> ChatExecutionCard
+         pipeline. The spirit/default branch uses the new ActivityStream pipeline.
+         Phase 5 of the chat refactor will unify these by extending ActivityStream
+         to cover team/member rendering, then delete the deprecated components.
+         See docs/reports/2026-06-25-analysis-chat-module-refactor.md §7. -->
     <template v-if="panelMode === 'team' && spiritTeam">
       <TaskExecutionPanel
         :team="spiritTeam"
@@ -177,11 +183,7 @@
             :planner-kind="props.plannerKind"
             :reasoning-sidebar-open="props.reasoningSidebarOpen"
             :show-scroll-btn="showScrollBtn"
-            :activity-timeline-activities="props.activityTimelineActivities"
-            :activity-agent-key="props.activityAgentKey"
-            :activity-task-content="props.activityTaskContent"
-            :activity-tree="props.activityTree"
-            :activity-raw-records="props.activityRawRecords"
+            :activities="props.activities ?? []"
             @messages-click="handleMessagesClick"
             @scroll="onMessagesScrollWrapped"
             @scroll-to-bottom="scrollToBottom"
@@ -415,16 +417,9 @@ const props = defineProps<{
   spiritCompletionStats?: CompletionStats | null;
   compressStatus?: CompressStatus;
   showToolCalls?: boolean;
-  /** AF-FE-06: Activity-First timeline activities */
-  activityTimelineActivities?: readonly import('../../features/chat/activityTimelineTypes').Activity[];
-  /** AF-FE-06: Agent key from Activity data */
-  activityAgentKey?: string;
-  /** AF-FE-06: Root task content from Activity data */
-  activityTaskContent?: string;
-  /** AF-FE-06: Activity tree for building TeamPanel */
-  activityTree?: readonly import('../../features/chat/activityTypes').ActivityTreeNode[];
-  /** AF-FE-14: Raw Activity records (with turnId) for grouping by turn */
-  activityRawRecords?: readonly import('../../features/chat/activityTypes').Activity[];
+  /** Phase A: flat sorted Activity list (current session, includes task).
+   * Drives ActivityStream rendering inside ChatMessageList. */
+  activities?: import('../../features/chat/activityTypes').Activity[];
 }>();
 
 const emit = defineEmits<{

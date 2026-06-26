@@ -27,36 +27,30 @@
       </div>
     </div>
     <!--
-      P2 #6: 统一使用 DynamicScroller，移除阈值切换。
-      原实现在 conversationTurns.length > 100 时从 v-for 切换到 DynamicScroller，
-      导致组件树完全重建（v-if/v-else 切换不同组件类型），在阈值临界点引起 UI 冻结。
-      vue-virtual-scroller 对短列表性能足够好，无需双模式。
+      Phase A refactor: ActivityStream renders the full sorted Activity list.
+      DynamicScroller + ConversationTurn + useConversationTimeline removed.
+      Virtual scrolling is a future optimization (YAGNI); for typical chat
+      lengths the native DOM is sufficient. If long-conversation perf returns,
+      wrap ActivityStream items in DynamicScroller with per-activity items.
     -->
-    <DynamicScroller
+    <div
       v-else
-      ref="virtualScrollRef"
-      :items="conversationTurns"
-      :min-item-size="80"
-      key-field="id"
+      ref="scrollViewportEl"
       class="col chat-messages__viewport chat-messages__viewport--virtual"
       @scroll.passive="$emit('scroll', $event)"
       @click="$emit('messages-click', $event)"
     >
-      <template #default="{ item, itemIndex, active }">
-        <DynamicScrollerItem :item="item" :active="active" :data-index="itemIndex" :data-turn-id="item.id">
-          <ConversationTurn
-            :turn="item"
-            @confirm="(id: string, approved: boolean) => $emit('confirm', id, approved)"
-            @error-retry="(e: ErrorEvent) => $emit('error-retry', e)"
-            @error-switch-model="(e: ErrorEvent) => $emit('error-switch-model', e)"
-            @error-rephrase="(e: ErrorEvent) => $emit('error-rephrase', e)"
-            @error-check-config="(e: ErrorEvent) => $emit('error-check-config', e)"
-            @error-remove-attachment="(e: ErrorEvent) => $emit('error-remove-attachment', e)"
-            @error-relogin="(e: ErrorEvent) => $emit('error-relogin', e)"
-          />
-        </DynamicScrollerItem>
-      </template>
-    </DynamicScroller>
+      <ActivityStream
+        :activities="props.activities"
+        @confirm="(id: string, approved: boolean) => $emit('confirm', id, approved)"
+        @error-retry="(e: ErrorEvent) => $emit('error-retry', e)"
+        @error-switch-model="(e: ErrorEvent) => $emit('error-switch-model', e)"
+        @error-rephrase="(e: ErrorEvent) => $emit('error-rephrase', e)"
+        @error-check-config="(e: ErrorEvent) => $emit('error-check-config', e)"
+        @error-remove-attachment="(e: ErrorEvent) => $emit('error-remove-attachment', e)"
+        @error-relogin="(e: ErrorEvent) => $emit('error-relogin', e)"
+      />
+    </div>
     <ChatPendingQueue
       :messages="pendingMessages"
       :is-dark="isDark"
@@ -80,21 +74,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue';
+import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { DynamicScroller, DynamicScrollerItem } from 'vue-virtual-scroller';
-import 'vue-virtual-scroller/dist/vue-virtual-scroller.css';
 import ChatPendingQueue from './ChatPendingQueue.vue';
-import ConversationTurn from './ConversationTurn.vue';
-import { useConversationTimeline } from '../../features/chat/composables/useConversationTimeline';
+import ActivityStream from './ActivityStream.vue';
 import type { Message, PendingMessage } from '../../features/chat/types';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
-import type { Activity as TimelineActivity } from '../../features/chat/activityTimelineTypes';
+import type { Activity } from '../../features/chat/activityTypes';
 import type { ErrorEvent } from '../../features/chat/streamEventTypes';
-
-// P2 #6: 原阈值 VIRTUAL_SCROLL_THRESHOLD=100 已移除，统一使用 DynamicScroller。
-// 原实现在消息数 >100 时从 v-for 切换到 DynamicScroller，导致组件树完全重建。
 
 const props = defineProps<{
   sessionKey: string;
@@ -105,16 +93,8 @@ const props = defineProps<{
   plannerKind?: string;
   reasoningSidebarOpen?: boolean;
   showScrollBtn: boolean;
-  /** AF-FE-06: Activity-First timeline activities (from useActivityTimeline) */
-  activityTimelineActivities?: readonly TimelineActivity[];
-  /** AF-FE-06: Agent key from Activity data */
-  activityAgentKey?: string;
-  /** AF-FE-06: Root task content from Activity data */
-  activityTaskContent?: string;
-  /** AF-FE-06: Activity tree for building TeamPanel */
-  activityTree?: readonly import('../../features/chat/activityTypes').ActivityTreeNode[];
-  /** AF-FE-14: Raw Activity records (with turnId) for grouping by turn */
-  activityRawRecords?: readonly import('../../features/chat/activityTypes').Activity[];
+  /** Phase A: flat sorted Activity list (current session, includes task). */
+  activities: Activity[];
 }>();
 
 defineEmits<{
@@ -150,54 +130,38 @@ const quickStartHints = [
 ];
 
 const emptyScrollEl = ref<HTMLElement | null>(null);
-// P2 #6: normalScrollEl 已移除（统一使用 DynamicScroller，不再有 v-for 模式）
-// T8.3: DynamicScroller ref for virtual scrolling mode
-const virtualScrollRef = ref<InstanceType<typeof DynamicScroller> | null>(null);
-
-const { conversationTurns } = useConversationTimeline({
-  messages: computed(() => props.messages),
-  isTeamSession: props.isTeamSession,
-  plannerKind: computed(() => props.plannerKind ?? ''),
-  activityTimelineActivities: computed(() => props.activityTimelineActivities ?? []),
-  activityAgentKey: computed(() => props.activityAgentKey ?? ''),
-  activityTaskContent: computed(() => props.activityTaskContent ?? null),
-  activityTree: computed(() => props.activityTree ?? []),
-  activityRawRecords: computed(() => props.activityRawRecords ?? []),
-});
+// Phase A: native scroll container replacing DynamicScroller.
+const scrollViewportEl = ref<HTMLElement | null>(null);
 
 /**
- * P2 #6: 统一使用 DynamicScroller。useVirtualScroll 在有消息时始终为 true，
- * 保留暴露是为了 ChatMessagePanel/useChatScrollTitle 的 API 兼容性。
+ * Phase A: Virtual scrolling removed (DynamicScroller gone).
+ * `useVirtualScroll` is kept as `false` for ChatMessagePanel /
+ * useChatScrollTitle API compatibility — they fall back to
+ * `messagesScrollEl` (getScrollTarget) which now returns the native
+ * scroll viewport.
  */
-const useVirtualScroll = computed(() => conversationTurns.value.length > 0);
+const useVirtualScroll = false;
 
 /**
- * T8.3: Scroll to a specific turn by id.
- * Uses DynamicScroller.scrollToItem. Returns true if the turn was found.
+ * Phase A: `scrollToTurnId` previously used DynamicScroller.scrollToItem.
+ * Without virtual scrolling, focus-turn relies on useChatMessageScroll's
+ * DOM query (`[data-turn-id="..."]`). This stub keeps the exposed API
+ * contract but is a no-op; ChatMessagePanel only calls it when
+ * `useVirtualScroll` is true (now always false).
  */
-async function scrollToTurnId(turnId: string): Promise<boolean> {
-  const id = turnId.trim();
-  if (!id) return false;
-  if (!virtualScrollRef.value) return false;
-  const index = conversationTurns.value.findIndex((t) => t.id === id);
-  if (index < 0) return false;
-  // DynamicScroller.scrollToItem scrolls the item into view, then we wait
-  // for the DOM to update before the caller can highlight the element.
-  virtualScrollRef.value.scrollToItem(index);
-  await nextTick();
-  return true;
+async function scrollToTurnId(_turnId: string): Promise<boolean> {
+  return false;
 }
 
 defineExpose({
   emptyScrollEl,
-  virtualScrollRef,
+  scrollViewportEl,
+  virtualScrollRef: null,
   useVirtualScroll,
   scrollToTurnId,
   getScrollTarget: () => {
     if (!props.messages.length) return emptyScrollEl.value;
-    // P2 #6: 统一使用 DynamicScroller 的根元素作为滚动容器
-    const vsRef = virtualScrollRef.value as { $el?: HTMLElement } | null;
-    return vsRef?.$el ?? null;
+    return scrollViewportEl.value;
   },
 });
 </script>
