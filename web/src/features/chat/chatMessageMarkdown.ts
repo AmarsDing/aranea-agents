@@ -97,14 +97,14 @@ export function renderChatMarkdown(content: string): string {
 const MD_CACHE_MAX = 400;
 const mdCache = new Map<string, string>();
 
-function markdownCacheKey(messageId: string, content: string, streaming: boolean): string {
+function markdownCacheKey(messageId: string, content: string): string {
   const id = messageId || 'anon';
   const len = content.length;
   // Use a hash-like key: combine length with head and tail to avoid collisions
   // where different content shares the same length and tail (common during streaming).
   const head = len > 48 ? content.slice(0, 48) : content;
   const tail = len > 48 ? content.slice(-48) : '';
-  return `${id}:${streaming ? 's' : 'f'}:${len}:${head}:${tail}`;
+  return `${id}:${len}:${head}:${tail}`;
 }
 
 function trimMarkdownCache() {
@@ -115,12 +115,23 @@ function trimMarkdownCache() {
   }
 }
 
-/** Cached markdown render for chat rows (avoids re-parsing 100+ messages on each WS tick). */
-export function renderChatMarkdownForMessage(messageId: string, content: string, streaming = false): string {
-  const key = markdownCacheKey(messageId, content, streaming);
+/** Cached markdown render for chat rows (avoids re-parsing 100+ messages on each WS tick).
+ *
+ * Unified MD rendering: streaming and completed states use the same markdown-it
+ * + DOMPurify pipeline. The `streaming` parameter is preserved for API
+ * compatibility but no longer branches the rendering path.
+ *
+ * Rationale: with the backend's 16ms delta batch window (≤60fps), markdown-it
+ * parsing at 0.5-2ms/call is well within budget. The previous "escape-only"
+ * fast path was an over-optimization whose premise (per-token parse) no
+ * longer holds — but caused users to perceive "data arrived but no render"
+ * since plain text is visibly different from MD-formatted output.
+ */
+export function renderChatMarkdownForMessage(messageId: string, content: string, _streaming = false): string {
+  const key = markdownCacheKey(messageId, content);
   const hit = mdCache.get(key);
   if (hit !== undefined) return hit;
-  const html = streaming ? renderStreamingChatMarkdown(content) : renderChatMarkdown(content);
+  const html = renderChatMarkdown(content);
   mdCache.set(key, html);
   trimMarkdownCache();
   return html;
@@ -128,10 +139,4 @@ export function renderChatMarkdownForMessage(messageId: string, content: string,
 
 export function clearChatMarkdownCache() {
   mdCache.clear();
-}
-
-export function renderStreamingChatMarkdown(content: string): string {
-  // During streaming, avoid full markdown-it parsing on every token. The final
-  // text_done render still uses complete Markdown above.
-  return markdown.utils.escapeHtml(content || '').replace(/\n/g, '<br>');
 }
