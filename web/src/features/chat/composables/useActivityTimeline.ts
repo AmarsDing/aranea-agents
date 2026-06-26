@@ -33,9 +33,9 @@ import { listActivities } from '../../session/api';
  *
  * Phase 3 refactor: activities are isolated per session_id. Each session owns
  * its own Map<activityId, Activity>, and `currentSessionId` drives the public
- * computed properties (activities / activityTree / streamEvents / rootActivityId
- * / loadError). Switching sessions no longer requires `reset()` — the data
- * for each session is preserved and naturally isolated.
+ * computed properties (activities / activityTree / sortedActivities /
+ * rootActivityId / loadError). Switching sessions no longer requires `reset()`
+ * — the data for each session is preserved and naturally isolated.
  *
  * This composable consumes WS activity events (activity_start/delta/done/
  * child_start) and the new ActivityEvent format (handleActivityEvent).
@@ -93,6 +93,24 @@ export function useActivityTimeline() {
     return loadErrorBySession.value.get(sid) ?? null;
   });
 
+  // === Flat sorted Activity list (current session, includes task) ===
+  //
+  // sortedActivities is the Activity-First render pipeline entry point: it
+  // returns every Activity in the current session (including root task) as a
+  // flat list, ordered by backend seq then timestamp. ActivityStream.vue
+  // dispatches rendering by `kind` (task → UserMessageBubble, thinking →
+  // ThinkingBlock, reply → ReplyBlock, …). Replaces the legacy streamEvents
+  // computed which filtered out root task activities (dead code — task is the
+  // turn container and must be rendered).
+
+  const sortedActivities = computed<Activity[]>(() => {
+    const sid = currentSessionId.value;
+    if (!sid) return [];
+    const map = activitiesBySession.value.get(sid);
+    if (!map) return [];
+    return Array.from(map.values()).sort(compareActivities);
+  });
+
   // === Activity tree computed from flat list (current session only) ===
 
   const activityTree = computed<ActivityTreeNode[]>(() => {
@@ -128,20 +146,6 @@ export function useActivityTimeline() {
     sortTree(roots);
 
     return roots;
-  });
-
-  // === Stream Events (AF → streamEventTypes bridge) ===
-
-  const streamEvents = computed<StreamEvent[]>(() => {
-    return activityTree.value
-      .filter((node) => {
-        // Root task activities are containers, not rendered as blocks —
-        // EXCEPT task.failed, which surfaces as an ErrorBlock so turn-level
-        // errors are visible to the user.
-        if (node.kind === 'task' && node.status !== 'failed') return false;
-        return true;
-      })
-      .map(activityToStreamEvent);
   });
 
   // === Internal helpers for per-session root tracking ===
@@ -575,7 +579,7 @@ export function useActivityTimeline() {
   return {
     activities,
     activityTree,
-    streamEvents,
+    sortedActivities,
     rootActivityId,
     loadError,
     currentSessionId: computed(() => currentSessionId.value),
@@ -836,8 +840,12 @@ function mapActivityStatusToStageStatus(status: ActivityStatus): 'running' | 'co
  * `_seq` is the projector's global emission counter, so it is the most
  * reliable ordering signal. Timestamp strings are compared numerically as a
  * fallback because RFC3339Nano strings with variable fractional-digit lengths
- * do not sort lexicographically (e.g. `.100` vs `.99`). */
-function compareActivities(a: ActivityTreeNode, b: ActivityTreeNode): number {
+ * do not sort lexicographically (e.g. `.100` vs `.99`).
+ *
+ * Accepts the base `Activity` type so it can sort both flat lists
+ * (sortedActivities) and tree nodes (ActivityTreeNode[] — TreeNode extends
+ * Activity). */
+function compareActivities(a: Activity, b: Activity): number {
   const sa = a.seq ?? 0;
   const sb = b.seq ?? 0;
   if (sa !== sb) return sa - sb;

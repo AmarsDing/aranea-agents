@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ActivityStartMeta } from '../../activityTypes';
+import type { Activity as AFActivity } from '../../../realtime/activityEvent';
 
 // Mock the listActivities import to avoid real API calls.
 // Individual tests can override the mock implementation via vi.mocked(listActivities).
@@ -25,6 +26,44 @@ function makeStartMeta(
   };
 }
 
+/** Builds an AF (Activity-First) Activity snapshot for handleActivityEvent tests. */
+function makeAFActivity(
+  overrides: Partial<AFActivity> & Pick<AFActivity, 'id' | 'kind'>,
+): AFActivity {
+  return {
+    status: 'running',
+    session_id: 'sess-1',
+    turn_id: 'turn-1',
+    parent_activity_id: '',
+    timestamp: '2026-06-13T00:00:00Z',
+    duration_ms: 0,
+    seq: 0,
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    content: '',
+    reasoning: '',
+    tool_name: '',
+    tool_category: 'other',
+    tool_call_id: '',
+    tool_arguments: '',
+    tool_result: '',
+    tool_duration_ms: 0,
+    tool_error_code: '',
+    stage: '',
+    child_board_id: '',
+    spirit_session_id: '',
+    team_id: '',
+    dag_node_id: '',
+    depends_on: [],
+    agent_key: '',
+    agent_name: '',
+    collapsed: false,
+    label: '',
+    meta: {},
+    ...overrides,
+  };
+}
+
 describe('useActivityTimeline', () => {
   let tl: ReturnType<typeof useActivityTimeline>;
 
@@ -41,7 +80,7 @@ describe('useActivityTimeline', () => {
   it('starts with empty activities', () => {
     expect(tl.activities.value).toEqual([]);
     expect(tl.activityTree.value).toEqual([]);
-    expect(tl.streamEvents.value).toEqual([]);
+    expect(tl.sortedActivities.value).toEqual([]);
   });
 
   it('handleActivityStart adds an activity', () => {
@@ -350,45 +389,6 @@ describe('useActivityTimeline', () => {
     expect(tree[0].children[1].id).toBe('child-2');
   });
 
-  it('streamEvents maps kinds correctly', () => {
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'think-1',
-        kind: 'thinking',
-      }),
-    );
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'act-1',
-        kind: 'action',
-        tool_name: 'search',
-      }),
-    );
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'reply-1',
-        kind: 'reply',
-      }),
-    );
-    // Phase 3: errors are now task.failed (not a separate error kind)
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'task-failed-1',
-        kind: 'task',
-        status: 'failed',
-        content: 'something went wrong',
-      }),
-    );
-
-    const activities = tl.streamEvents.value;
-    // task (non-failed) is filtered out; thinking, action, reply, task.failed→error remain
-    expect(activities).toHaveLength(4);
-    expect(activities[0].kind).toBe('thinking');
-    expect(activities[1].kind).toBe('action');
-    expect(activities[2].kind).toBe('reply');
-    expect(activities[3].kind).toBe('error');
-  });
-
   it('delta creates new object for reactivity (not mutating existing)', () => {
     tl.handleActivityStart(
       makeStartMeta({
@@ -522,5 +522,45 @@ describe('useActivityTimeline', () => {
     await promise;
     expect(tl.loadError.value).toBeNull();
     vi.useRealTimers();
+  });
+
+  describe('sortedActivities', () => {
+    it('returns flat list including task, sorted by timestamp', () => {
+      tl.setCurrentSession('s1');
+      // 创建 task + thinking + reply
+      tl.handleActivityEvent({
+        event: 'created',
+        activity: makeAFActivity({
+          id: 't1',
+          kind: 'task',
+          session_id: 's1',
+          timestamp: '2026-01-01T00:00:00Z',
+          content: 'hi',
+        }),
+      });
+      tl.handleActivityEvent({
+        event: 'created',
+        activity: makeAFActivity({
+          id: 'th1',
+          kind: 'thinking',
+          session_id: 's1',
+          timestamp: '2026-01-01T00:00:01Z',
+          parent_activity_id: 't1',
+        }),
+      });
+      tl.handleActivityEvent({
+        event: 'created',
+        activity: makeAFActivity({
+          id: 'r1',
+          kind: 'reply',
+          session_id: 's1',
+          timestamp: '2026-01-01T00:00:02Z',
+          parent_activity_id: 't1',
+        }),
+      });
+
+      const ids = tl.sortedActivities.value.map((a) => a.id);
+      expect(ids).toEqual(['t1', 'th1', 'r1']); // 含 task，按 timestamp 排序
+    });
   });
 });
