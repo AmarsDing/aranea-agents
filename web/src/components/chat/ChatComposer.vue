@@ -280,8 +280,6 @@ const props = defineProps<{
   contextRatio: number;
   contextStatus?: string;
   usageSnapshot?: ComposerUsageSnapshot | null;
-  /** @deprecated use usageSnapshot */
-  sessionTotalTokens?: number | null;
   knowledgeBaseOptions?: Option[];
   selectedKnowledgeBases?: string[];
   isDark: boolean;

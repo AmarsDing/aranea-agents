@@ -1,3 +1,6 @@
+// TECH-DEBT resolved: moved sendMessage to runtimeStore.send — chat optimization
+// TECH-DEBT: WS send (deps.sendChatViaWs + sendCommand) bypasses Store action —
+// see aranea-frontend-guide §3.1 (API → Store → Composable → Page).
 import { ref, reactive, computed, type Ref, type ComputedRef } from 'vue';
 import { useQuasar } from 'quasar';
 import { useRouter } from 'vue-router';
@@ -12,7 +15,6 @@ import type { ChatAttachment, ChatEntityKind } from '../../../components/chat/ty
 import type { UseEnvelopeStreamReturn } from '../useEnvelopeStream';
 import type { WsUpstream } from '../../../realtime/ws-transport';
 import { shouldBlockAttachmentsForModel } from '../modelCapabilities';
-// TECH-DEBT resolved: moved sendMessage to runtimeStore.send — chat optimization
 import { AWAIT_KIND_TOOL_CONFIRM } from '../awaitConstants';
 import { sendCommand } from '../../../realtime/command_channel';
 import {
@@ -137,12 +139,6 @@ export function useChatSender(deps: SenderDeps) {
       clearTimeout(firstByteNoticeTimeout);
       firstByteNoticeTimeout = null;
     }
-  }
-
-  // T1.5: clearSendingTimeout is now a no-op — the sending timeout was removed.
-  // Kept for backward compatibility with streamHandlers and useChatWorkspace.
-  function clearSendingTimeout() {
-    // no-op: No-Timeout principle
   }
 
   // T1.5: turnAckTimeout removed — no client-side turn-ack timeout.
@@ -632,7 +628,6 @@ export function useChatSender(deps: SenderDeps) {
     inputDisabled,
     markSending,
     markSendingDone,
-    clearSendingTimeout,
     onRunAccepted,
     onFirstByteArrived,
     stopStreaming,

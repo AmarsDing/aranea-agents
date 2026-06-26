@@ -20,7 +20,7 @@ Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_
 | Data | `internal/data/team_repo.go` · `team_graph_session_repo.go` · `team_graph_session_schema.go` |
 | Schema | `internal/data/ent/schema/team.go` · `team_run.go` · `team_run_step.go` · `orchestration.go` · `orchestration_step.go` · `task_dead_letter.go` |
 | Runtime | `internal/team/`（55+ 文件；graph_compile / graph_runtime / runner / status_projector / summary / state_machine 等） |
-| 事件 | `internal/event/envelope.go`（Team 相关 Envelope 类型） · `internal/team/status_projector.go` |
+| 事件 | `internal/event/activityevent/bus.go`（ActivityEventBus） · `internal/biz/activity_event.go`（ActivityEvent / ActivityKind / ActivityEventType） · `internal/team/status_projector.go`（已重构为 ActivityProjector，投影 ActivityEvent Domain=chat） · `internal/event/monitor/eventbus.go`（MonitorEventBus，监控事件 Domain=system） |
 | 前端 | `TeamsPage` · `TeamOrchestratePage` · `TeamRunObservatoryPage` · `TeamTestDialog` · `TeamRunsDialog` · `ChatTeamMemberStrip` · `TeamProgressSection` · `TeamPanel` |
 
 ---
@@ -45,7 +45,7 @@ Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_
 | ListTaskDeadLetters / ResolveTaskDeadLetter | ✅ |
 | OrchestrationSpec v2 + FailurePolicy + CircuitBreaker | ✅ |
 | embedded graph 五种节点（agent/task/review/subgraph/function） | ✅ |
-| StatusProjector（orchestration_agent_status） | ✅ |
+| StatusProjector（已重构为 ActivityProjector，`orchestration_agent_status` → `ActivityKind=team_stage` stage=agent_status） | ✅ |
 | OrchestrationStep 持久化 | ✅ |
 | Team Kind/Source/Readonly 分类 | ✅ |
 | ResolveMemberAgentKeys / SaveTeamWithGraph（Pack 导入） | ✅ |
@@ -134,6 +134,16 @@ Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_
 - ✅ 配置化（runner_config.go / graph_runtime_options.go）
 - ✅ 错误处理规范化（graphRuntimeDiagnosticError）
 
+### Phase AF（✅ Activity-First 迁移 · ADR-02/ADR-03）— 已完成
+
+> 详见 ADR-02（活动事件持久化）与 ADR-03（统一总线架构）。
+
+- ✅ Envelope Bus / SessionBus 删除；Team 事件改走 `ActivityEventBus`（`biz.ActivityEvent`，Domain=chat 持久化 / Domain=system 仅 WS）
+- ✅ `member_*` / `team_*` / `graph_*` EnvelopeType → `ActivityKind`（team_stage / graph_stage / reply，成员回复带 `agent_key` + `session_type=agent`）
+- ✅ `StatusProjector` → `ActivityProjector`；监控事件走 `MonitorEventBus`（`contract.MonitorEvent`）
+- ✅ Session 父子树：Team Run 经 `buildTeamProjectMeta` 填充 SpiritSessionID/ParentSessionID，创建 `session_type=team` Session 挂到 Spirit 根（详见 [10-session.design.md §3.6.6](./10-session.design.md#366-spiritsessionid-传播)）
+- ✅ 前端 `teamRunEventFromEnvelope.ts` / `useEnvelopeStream.ts` 内部切换为 ActivityEvent 解析（legacy 文件名保留）
+
 ### Phase 9（🔄 Spirit 集成扩展）— 进行中
 
 - ✅ ListSpiritTeams / SynthesizeResults / ArchiveTeam / RetryTeam 后端 RPC
@@ -149,7 +159,7 @@ Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_
 - [x] TeamRuns 步骤有 started/finished 与工具调用数
 - [x] `GET /v1/team-runs/{id}/summary` 返回结构化汇总
 - [x] Chat Team 会话顶部展示成员流式 chip
-- [x] Runner persistStep 单测覆盖 started/finished Envelope
+- [x] Runner persistStep 单测覆盖 started/finished ActivityEvent（`team_stage` stage=step_started/step_finished）
 
 ### Phase 4–7（已完成）
 

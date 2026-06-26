@@ -15,9 +15,9 @@ Team 与 Graph 编排融合：统一 OrchestrationSpec、Agent 状态观测、Ka
 |------|------|------|
 | Biz 状态 | `internal/biz/orchestration_status.go` | 0.5 ✅ |
 | Biz 状态机 | `internal/biz/team_run_state_machine.go` | 8.1 ✅ |
-| Team 投影 | `internal/team/status_projector.go` | 0.5 ✅ |
+| Team 投影 | `internal/team/status_projector.go`（已重构为 ActivityProjector） | 0.5 ✅ |
 | Team 编译 | `internal/team/graph_compile.go` | 2 |
-| Event | `internal/event/envelope.go` | 0.5 ✅ |
+| Event | `internal/event/activityevent/bus.go`（ActivityEventBus）+ `internal/biz/activity_event.go`（原 `envelope.go` 已删除，详见 ADR-03） | 0.5 ✅ |
 | Service | `internal/service/team_observatory.go` | 1 |
 | Graph 挂钩 | `internal/service/graph.go` | 1 |
 | 前端 | `web/src/features/orchestration/` | 1 |
@@ -34,7 +34,7 @@ Team 与 Graph 编排融合：统一 OrchestrationSpec、Agent 状态观测、Ka
 | Graph Vue Flow + Run 页 | ✅ | `GraphEditorPage` / `GraphRunPage` |
 | Graph EventBridge | ✅ | `internal/graph/trpc/event_bridge.go` |
 | ExecutionSummary | ✅ | `execution_summary.go` |
-| 统一 Agent 状态 | ✅ | Phase 0.5 StatusProjector + ActivityHistory |
+| 统一 Agent 状态 | ✅ | Phase 0.5 StatusProjector（已重构为 ActivityProjector） + ActivityHistory |
 | Kanban UI | ✅ | Phase 1 Observatory 页 |
 | mode→Graph 编译器 | ✅ | Phase 2 `graph_compile.go` + Phase 8 模板注册表 |
 | GraphAgent 统一 Team Run | ✅ | Phase 7 Native 移除 + Phase 8 单轨化 |
@@ -52,13 +52,14 @@ Team 与 Graph 编排融合：统一 OrchestrationSpec、Agent 状态观测、Ka
 ### Phase 0.5 — Agent 状态模型 + StatusProjector（P0，约 1 周）
 
 > **目标**：不切换 Team 运行时，先统一 WS 状态投影，为 Kanban/Graph 提供真相源。
+> **架构演进**：原 `StatusProjector` + `EnvelopeType` 已在 ADR-03 重构为 `ActivityProjector` + `ActivityEvent`（Domain=chat）；下方任务描述为 Phase 0.5 原始计划，括号内标注当前实际实现。
 
 | ID | 任务 | 影响域 | 验收 |
 |----|------|--------|------|
-| TG-OBS-01 | `biz.AgentNodeStatus` + `ApplyOrchestrationEnvelope` + 单测 | `internal/biz` | 优先级/终态/transfer 单测绿 |
-| TG-OBS-02 | `EnvelopeTypeOrchestrationAgentStatus` + RouteChannel | `internal/event` | team/graph 通道路由 |
-| TG-OBS-03 | `team.StartOrchestrationStatusProjector` | `internal/team` | 订阅 session Bus |
-| TG-OBS-04 | `runner_team_trpc` 启动/停止投影器 | `internal/team` | Run 期间有 status WS |
+| TG-OBS-01 | `biz.AgentNodeStatus` + `ApplyOrchestrationEnvelope`（已重构为 `ApplyActivityEvent`） + 单测 | `internal/biz` | 优先级/终态/transfer 单测绿 |
+| TG-OBS-02 | `EnvelopeTypeOrchestrationAgentStatus` + RouteChannel（已重构为 `ActivityKind=team_stage` stage=agent_status + `ActivityEventBus` 订阅，RouteChannel 已删除） | `internal/event` | team/graph 通道路由（现走 ActivityEventBus Domain=chat） |
+| TG-OBS-03 | `team.StartOrchestrationStatusProjector`（已重构为 ActivityProjector，订阅 `ActivityEventBus`） | `internal/team` | 订阅 ActivityEventBus（原 session Bus 已删除） |
+| TG-OBS-04 | `runner_team_trpc` 启动/停止投影器（含 `buildTeamProjectMeta` 填充 SpiritSessionID） | `internal/team` | Run 期间有 status WS |
 | TG-OBS-05 | 前端 `features/orchestration/types.ts` + 样式常量 | `web/src` | 类型与 Graph 对齐 |
 
 **不涉及**：Proto 变更、DB 迁移、Team 运行时替换。
@@ -75,7 +76,7 @@ Team 与 Graph 编排融合：统一 OrchestrationSpec、Agent 状态观测、Ka
 | TG-FE-04 | Kanban ↔ Graph focus 联动 | orchestration store | OBS-03 |
 | TG-FE-05 | `useOrchestrationStream` 订阅 WS | `web/src/features/orchestration` | OBS-04 |
 | TG-API-01 | `GetTeamRunObservatory` RPC + service | `api` · `internal/service` | 首屏 < 500ms |
-| TG-API-02 | Graph Run 启动 StatusProjector | `internal/service/graph.go` | graph 通道 status |
+| TG-API-02 | Graph Run 启动 StatusProjector（已重构为 ActivityProjector） | `internal/service/graph.go` | graph 通道 status（经 ActivityEventBus） |
 | TG-API-03 | `TeamRun.definition_snapshot_json` 字段 | `data` · `team.proto` | ✅ Run 创建冻结；Observatory 读快照 |
 | TG-API-04 | `HasActiveRun` 锁定 UpdateTeam | `internal/biz` | 运行中 PATCH 拒绝 |
 
@@ -110,7 +111,7 @@ Team 与 Graph 编排融合：统一 OrchestrationSpec、Agent 状态观测、Ka
 |----|------|--------|------|
 | TG-FP-01 | FailurePolicy schema + 编译 Retry | `biz` · `graph/trpc` | ✅ `ApplyFailurePolicy` + `WithRetryPolicy` |
 | TG-FP-02 | fallback_agent / skip 策略 | `graph_compile` · `graph/trpc` | ✅ 编译期 skip + 运行时 recovery + ParallelFail continue |
-| TG-FP-03 | Task review_required → waiting_review | StatusProjector | ✅ `graph_task_status` envelope + `applyGraphTaskStatus` |
+| TG-FP-03 | Task review_required → waiting_review | StatusProjector（ActivityProjector） | ✅ `graph_task_status` ActivityEvent + `applyGraphTaskStatus` |
 | TG-FP-04 | Channel async_graph 与编译路径对齐 | `internal/service/channel` | ✅ `async_team_id` + `ResolveChannelAsyncGraphTarget` + team_graph 执行 |
 | TG-OPT-01 | Observatory `compiled_topology` 走后端 Compile | `team` · `service` · `web` | ✅ 移除前端假拓扑 |
 | TG-OPT-02 | embedded `definition.graph` 编译 | `team/embedded_graph.go` | ✅ agent 节点/边参与 Compile |
@@ -171,8 +172,8 @@ Team 与 Graph 编排融合：统一 OrchestrationSpec、Agent 状态观测、Ka
 | 排序 | ID | 任务 | 状态 |
 |------|-----|------|------|
 | 1 | TG-OBS-01 | biz 状态归约器 | ✅ |
-| 2 | TG-OBS-02 | Envelope 类型 | ✅ |
-| 3 | TG-OBS-03 | StatusProjector | ✅ |
+| 2 | TG-OBS-02 | ActivityKind（原 Envelope 类型，已重构） | ✅ |
+| 3 | TG-OBS-03 | StatusProjector（已重构为 ActivityProjector） | ✅ |
 | 4 | TG-OBS-04 | Runner 挂钩 | ✅ |
 | 5 | TG-OBS-05 | 前端类型 | ✅ |
 | 6 | TG-FE-01 | Kanban 组件 | ✅ |
@@ -180,7 +181,7 @@ Team 与 Graph 编排融合：统一 OrchestrationSpec、Agent 状态观测、Ka
 | 8 | TG-FE-02 | Observatory 页 + 路由 | ✅ |
 | 9 | TG-FE-03 | GraphFlowNode 细态 | ✅ |
 | 10 | TG-FE-05 | useOrchestrationStream | ✅ |
-| 11 | TG-API-02 | Graph Run StatusProjector | ✅ |
+| 11 | TG-API-02 | Graph Run StatusProjector（ActivityProjector） | ✅ |
 | 12 | TG-API-04 | HasActiveRun 锁定 | ✅ |
 | 13 | TG-FE-04 | Kanban ↔ Graph 选中联动 | ✅ |
 | 14 | TG-API-03 | definition_snapshot_json | ✅ |
@@ -253,8 +254,8 @@ OrchestrationSpec (definition_json)
         │
         ├─ BuildTeamGraphRoot → GraphAgent（唯一执行）
         │
-        └─ StatusProjector / Observatory / Channel async_team_id
-                （同一编译链、同一 WS 状态模型）
+        └─ ActivityProjector（原 StatusProjector） / Observatory / Channel async_team_id
+                （同一编译链、同一 WS 状态模型；ActivityEvent Domain=chat 经 ActivityEventBus）
 ```
 
 **不再存在**：Native 路径按 mode 分发 ChainAgent / ParallelAgent / Swarm 的 **主执行路径**。
@@ -384,22 +385,22 @@ OrchestrationSpec (definition_json)
 
 ## 已知可接受 diff（蓝图 §519）
 
-Graph 路径额外 WS envelope（Native 无）：
+Graph 路径额外 WS ActivityEvent（Native 无）：
 
-- `graph_node_start` / `graph_node_end` / `graph_node_error`
-- `graph_execution_done`
-- `orchestration_agent_status`（Observatory 投影）
+- `graph_stage`（stage=node_start/node_end/node_error）
+- `graph_stage`（stage=execution_done）
+- `team_stage`（stage=agent_status，Observatory 投影）
 
-Native 路径额外 envelope：
+Native 路径额外 ActivityEvent：
 
-- 同步 `team_step_started` / `team_step_finished` bulk 序列（Graph 改为 per-node 事件驱动）
+- 同步 `team_stage`（stage=step_started/step_finished）bulk 序列（Graph 改为 per-node 事件驱动）
 
 ## Run 级 parity
 
 | 检查项 | 状态 | 说明 |
 |--------|------|------|
 | `team_summary` 成员指纹（agent_key / tool_call_count / tokens / status） | ✅ | `TestParityRunSummary_AllModes` |
-| Native vs Graph WS 独占 envelope 文档化 | ✅ | `TestParityRunEnvelopeDiff_documented` |
+| Native vs Graph WS 独占 ActivityEvent 文档化 | ✅ | `TestParityRunEnvelopeDiff_documented`（legacy 测试名保留，验证 ActivityEvent diff） |
 | `team_run.token_in/out` run 级聚合 | ✅ | Native 总量 vs Graph `enrichTeamRunMetricsFromSteps` |
 | 真实 LLM stub 六 mode 执行对比 | ✅ | `TestParityRunE2E_stubStreamAllModes` |
 | WS 序列 hash 逐条对比（harness） | ✅ | persistStep 双路径 hash 一致 |
@@ -413,7 +414,7 @@ Harness：`internal/team/parity_run_test.go`（fixture 级）；全 LLM E2E 待�
 - [11-multi-agent.md](./11-multi-agent.md) — 增加 M53 交叉引用（编排融合）
 - [36-graph-workflow.md](./36-graph-workflow.md) — §0.1 增加 Team 融合路径
 - [0-system-diagram.md](./0-system-diagram.md) — Team 执行路径单链
-- [51-message-mechanism.md](./51-message-mechanism.md) — Envelope 类型同步
+- [51-message-mechanism.md](./51-message-mechanism.md) — ActivityEvent 类型同步（原 Envelope 类型同步，详见 ADR-03）
 
 ---
 

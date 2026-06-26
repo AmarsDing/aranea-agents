@@ -780,9 +780,11 @@ pending → running → completed
 
 ### 5.7 事件驱动（功能需求）
 
-精灵模式新增 15+ 种 EnvelopeType，覆盖团队生命周期（assembled/completed/failed/interrupted/progress）、三阶段编排（plan_created/allocation_created/orchestration_started/checkpoint/interrupted）、合成完成、Butler 编排等场景。
+> **架构变更（2026-06-27 更新）**：原 15+ 种 EnvelopeType 已彻底合并到 **10 种 ActivityKind** + **7 种 ActivityEventType**。团队生命周期、三阶段编排、合成完成、Butler 编排等场景统一由 `team_stage`/`graph_stage`/`notice`/`plan`/`reply` 等 kind 配合 `created`/`streaming`/`updated`/`completed`/`failed`/`cancelled` 事件表达。Envelope 结构体已删除（后端 `contract/envelope.go` + 前端 `realtime/envelope.ts` 均已删除，详见 ADR-03 Blocker G）。
 
-> 详见 [59-chat-ui-optimization.design.md §4.1](./59-chat-ui-optimization.design.md#41-新增-envelopetype)（EnvelopeType 定义）、[§4.2](./59-chat-ui-optimization.design.md#42-事件载荷)（事件载荷）
+精灵模式新增 `team_stage`/`graph_stage` 等 ActivityKind，覆盖团队生命周期（assembled/executing/completed/failed/cancelled）、三阶段编排（planning/allocating/orchestrating/completed 通过 `notice` kind + `meta.phase` 表达）、合成完成（`reply` kind + `meta.synthesis`）、Graph DAG 阶段（planned/executing/completed/failed）等场景。
+
+> 详见 [59-chat-ui-optimization.design.md §14.3](./59-chat-ui-optimization.design.md#143-activityevent-协议2026-06-27-更新替代旧-envelope-协议)（ActivityEvent 协议 + 7 种事件 + 10 种 ActivityKind 分发）、[§14.14](./59-chat-ui-optimization.design.md#1414-原-envelopetype--activitykind-完整映射表2026-06-27-新增)（原 EnvelopeType → ActivityKind 完整映射表）
 
 ### 5.8 TODO 看板与工具时间线（功能需求）
 
@@ -999,23 +1001,38 @@ M59 在展示层做了大量工作（全部 ✅ 已完成），但数据源层�
 
 > 13 层推理详细清单（含文件路径和脆弱度分析）详见 [59-chat-ui-optimization.design.md §14.1](./59-chat-ui-optimization.design.md#141-设计定位)（设计定位）、[§14.6](./59-chat-ui-optimization.design.md#146-13-层推理消除映射)（13 层推理消除映射）
 
-### 15.2 ActivityKind 定义（用户视角）
+### 15.2 ActivityKind 与 ActivityEventType 定义（用户视角）
 
-对齐 M59 TaskBoardNodeKind，扩展为 9 种语义类型：
+> **架构变更（2026-06-27 更新）**：原 9 种 ActivityKind（含 `sub_task_board`/`error`/`delegate`）已升级为 **10 种**（合并所有事件类型，无 `error` kind）。错误通过对应 kind 的 `failed` 事件表达（如工具失败 = `kind=action` + `event=failed`，团队失败 = `kind=team_stage` + `event=failed`），避免同一错误产生两个 Activity。详见 Chat 重构方案 §3.1、ADR-03。
 
-| ActivityKind | 对应 TaskBoardNodeKind | 图标 | 说明 |
-|-------------|----------------------|------|------|
-| `task` | `task` | 📋 | 任务描述（用户/Agent 视角） |
-| `thinking` | `thinking` | 🧠 | reasoning 内容 |
-| `action` | `action` | ⚡ | 工具调用 |
-| `reply` | `reply` | 💬 | Agent 回复（含最终答案） |
-| `sub_task_board` | `sub_task_board` | 🗂️ | 子任务看板（递归嵌套） |
-| `end` | `end` | ✅ | 任务完成标记 |
-| `error` | `error` | ❌ | 错误信息 |
-| `delegate` | — | 🤝 | 精灵委派团队（Spirit→Team） |
-| `notice` | — | 💡 | 系统通知（语境加载消息、状态变更提示） |
+**ActivityKind（10 种，无 error kind）**：
 
-> Activity 数据结构（TypeScript interface）详见 [59-chat-ui-optimization.design.md §14.4](./59-chat-ui-optimization.design.md#144-activities-表-schema)（activities 表 Schema + Activity 模型）
+| ActivityKind | 图标 | 说明 | 前端组件 |
+|-------------|------|------|---------|
+| `task` | 📋 | 用户消息/任务根 | UserMessageBubble |
+| `thinking` | 🧠 | 推理过程 | ThinkingBlock |
+| `action` | ⚡ | 工具调用（按 `tool_category` 细分 10 类，见 §15.7） | ActionBlock |
+| `reply` | 💬 | Agent 回复（含最终答案） | ReplyBlock |
+| `plan` | 📝 | 计划 | PlanBlock |
+| `confirm` | ❓ | 确认 | ConfirmBlock |
+| `notice` | 💡 | 系统通知（语境加载消息、状态变更提示） | NoticeBlock |
+| `session` | 🗂️ | Session 生命周期（创建/状态变更/完成） | SessionStageBlock |
+| `team_stage` | 👥 | 团队阶段（assembled/executing/completed/failed/cancelled） | TeamStageBlock |
+| `graph_stage` | 🔀 | Graph 阶段（DAG 节点状态变更） | GraphStageBlock |
+
+**ActivityEventType（7 种业务语义事件）**：
+
+| ActivityEventType | 业务含义 | 前端行为 |
+|------------------|---------|---------|
+| `created` | 新的思考/工具调用/回复/团队阶段等开始 | 新增对应 Block 组件 |
+| `streaming` | 流式追加（替代技术术语 "delta"）：思考/回复/工具参数 | 向现有 Block 追加文本，光标闪烁 |
+| `updated` | 状态变更（非流式）：团队阶段变更、Graph 节点状态、进度更新 | 更新 Block 状态/阶段/进度，不追加文本 |
+| `completed` | 正常完成 | 停止光标，标记完成状态，可展开查看详情 |
+| `failed` | 失败（独立事件）：工具失败、团队失败、Graph 节点错误 | 高亮错误，展示错误详情，可重试 |
+| `cancelled` | 取消（用户主动停止） | 标记已取消，展示取消原因 |
+| `child_created` | 子 Activity 创建（工具产生子任务、团队产生成员任务） | 在父 Block 下新增子 Block（折叠状态） |
+
+> Activity 数据结构（TypeScript interface）详见 [59-chat-ui-optimization.design.md §14.4](./59-chat-ui-optimization.design.md#144-activities-表-schema)（activities 表 Schema + Activity 模型）、[§14.3](./59-chat-ui-optimization.design.md#143-activityevent-协议2026-06-27-更新替代旧-envelope-协议)（ActivityEvent 协议 + 7 种事件 + 10 种 ActivityKind 分发）
 
 ### 15.3 用户故事
 
@@ -1027,10 +1044,10 @@ M59 在展示层做了大量工作（全部 ✅ 已完成），但数据源层�
 
 **验收**：
 - 后端 `ActivityProjector` 从运行时事件中投影出 Activity
-- 新增 `activity_start` / `activity_delta` / `activity_done` / `activity_child_start` 四种 EnvelopeType
-- Activity 携带 `kind`（ActivityKind）、`status`（ActivityStatus）、`parentActivityId`（树形嵌套）
+- 新增 7 种 `ActivityEventType`（`created`/`streaming`/`updated`/`completed`/`failed`/`cancelled`/`child_created`），替代旧的 `activity_start`/`activity_delta`/`activity_done`/`activity_child_start` 四种 EnvelopeType
+- Activity 携带 `kind`（ActivityKind，10 种）、`status`（ActivityStatus）、`parentActivityId`（树形嵌套）
 - `reasoning_as_display` 场景在流式阶段即判断为 `reply` 而非 `thinking`
-- ReAct Planner 标签由后端解析为 `activity_start(kind=thinking, label="规划")` 等
+- ReAct Planner 标签由后端解析为 `ActivityEvent(event=created, kind=thinking, label="规划")` 等
 
 #### AF-02 Activity 树形嵌套
 
@@ -1040,9 +1057,10 @@ M59 在展示层做了大量工作（全部 ✅ 已完成），但数据源层�
 
 **验收**：
 - `Activity.parentActivityId` 指向父 Activity，null 表示根节点
-- `sub_task_board` 类型的 Activity 通过 `childBoardId` 关联子看板根节点
-- 嵌套深度受 `MaxSessionDepth=2` 约束
-- 前端 `useActivityTimeline` 直接从 Activity 树构建 TaskBoardNode 树
+- 子 Activity 通过 `ActivityEvent(event=child_created)` 通知前端在父 Block 下新增子 Block
+- 父子 Activity 解耦：子 Activity 有独立生命周期（独立发送 `created`/`streaming`/`completed`/...），可独立查询和渲染
+- 嵌套深度受 `MaxSessionDepth` 约束（spirit=0, team=1, member=2，可配置）
+- 前端 `useActivityTimeline` 直接从 Activity 树构建渲染树，按 `session_id` 隔离（见 §15.7）
 
 #### AF-03 Activity 持久化
 
@@ -1061,13 +1079,14 @@ M59 在展示层做了大量工作（全部 ✅ 已完成），但数据源层�
 
 **作为** 用户
 **我希望** Activity 携带 Spirit 上下文（spiritSessionId/teamId/dagNodeId/dependsOn）
-**以便** 精灵模式下的团队委派、DAG 依赖、成员状态由数据结构直接表达
+**以便** 精灵模式下的团队阶段、DAG 依赖、成员状态由数据结构直接表达
 
 **验收**：
-- `delegate` 类型 Activity 携带 `teamId`、`dagNodeId`、`dependsOn`
-- `action` 类型 Activity 携带 `agentKey`、`agentName`
-- `notice` 类型 Activity 携带 `spiritSessionId`
-- UnifiedExecutionPanel 从 Activity 树过滤构建三区数据
+- `team_stage` 类型 Activity 携带 `teamId`、`stage`（assembled/executing/completed/failed/cancelled）、`dagNodeId`、`dependsOn`
+- `graph_stage` 类型 Activity 携带 DAG 节点状态（`currentNode`/`errorNode`/`completedNodes`）
+- `action` 类型 Activity 携带 `agentKey`、`agentName`、`toolCategory`（10 类细分，见 §15.7）
+- `notice` 类型 Activity 携带 `spiritSessionId`、`phase`（planning/allocating/orchestrating/completed）
+- ActivityStream 从 Activity 流过滤构建三区数据（替代旧 UnifiedExecutionPanel）
 
 #### AF-05 前端 Activity 消费
 
@@ -1076,10 +1095,10 @@ M59 在展示层做了大量工作（全部 ✅ 已完成），但数据源层�
 **以便** 替代 `useAgentBlocks` 的 13 层推理，前端零推理
 
 **验收**：
-- 新增 `useActivityTimeline` composable
-- `activityTree` 计算属性直接从 Activity 列表构建树
-- `taskBoardNodes` 计算属性直接映射 Activity → TaskBoardNode
-- M59 组件（TaskBoard/ThinkingArea/UnifiedExecutionPanel 等）数据源切换到 Activity
+- 新增 `useActivityTimeline` composable，按 `session_id` 隔离 Activity Map（`activitiesBySession`）
+- `sortedActivities` 计算属性直接从 Activity Map 排序输出
+- M59 组件（ActivityStream/ThinkingBlock/ActionBlock/ReplyBlock 等）数据源切换到 Activity
+- ActivityStream 作为 spirit/team/member 三模式统一渲染器（见 §15.7）
 - Feature flag 控制切换：`useActivityTimeline` vs `useAgentBlocks`
 
 #### AF-06 双发射迁移
@@ -1101,11 +1120,11 @@ M59 在展示层做了大量工作（全部 ✅ 已完成），但数据源层�
 **以便** 代码可维护性提升，"思考/回复"显示问题不再复发
 
 **验收**：
-- `reasoning_as_display` 推理 → `activity_done(kind=reply)` 直接告知
-- ReAct 标签解析 → `activity_start(kind=thinking, label=xxx)` 后端解析
-- member ID 前缀约定 → `activity_start(agentKey=xxx)` 直接携带
-- EnvelopeContent 无语义 → `activity_start(kind=xxx)` 语义在 kind 中
-- snapshotStreamingMessage → `activity_done` 替代
+- `reasoning_as_display` 推理 → `ActivityEvent(event=completed, kind=reply)` 直接告知
+- ReAct 标签解析 → `ActivityEvent(event=created, kind=thinking, label=xxx)` 后端解析
+- member ID 前缀约定 → `ActivityEvent(event=created, agentKey=xxx)` 直接携带
+- EnvelopeContent 无语义 → `ActivityEvent(event=created, kind=xxx)` 语义在 kind 中
+- snapshotStreamingMessage → `ActivityEvent(event=completed)` 替代
 - mergeSessionMessages 内容匹配 → `activity.id` 全局唯一 ID 匹配
 - classifyActivityKind → `activity.kind` 直接给出
 - resolveAssistantPresentation → `activity.kind=reply` 直接给出
@@ -1119,16 +1138,16 @@ M59 在展示层做了大量工作（全部 ✅ 已完成），但数据源层�
 **以便** TaskBoard 树形嵌套、ThinkingArea v7、UnifiedExecutionPanel v7 等成果不受影响
 
 **验收**：
-- 7 种 ActivityKind（task/thinking/action/reply/sub_task_board/end/error）与 TaskBoardNodeKind 一一映射，delegate 和 notice 为 Spirit 扩展类型由前端特殊渲染
-- Activity 树可直接转换为 AgentBlock 树
-- ThinkingArea v7 从 `activity_delta(kind=thinking)` 获取流式数据
-- UnifiedExecutionPanel v7 从 Activity 树过滤构建三区
-- Spirit 模式侧边栏从 `Activity(kind=delegate)` 聚合团队列表
-- TODO 看板从 `Activity(kind=action, toolName=todo_write)` 获取数据
+- 10 种 ActivityKind（task/thinking/action/reply/plan/confirm/notice/session/team_stage/graph_stage，无 `error` kind）覆盖所有展示场景，错误通过对应 kind 的 `failed` 事件表达
+- Activity 树可直接转换为渲染树（ActivityStream 按 `activity.kind` 分发到 10 个 Block 组件）
+- ThinkingBlock 从 `ActivityEvent(event=streaming, kind=thinking)` 获取流式数据
+- ActivityStream 从 Activity 流过滤构建三区（替代旧 UnifiedExecutionPanel）
+- Spirit 模式侧边栏从 `Activity(kind=team_stage)` 聚合团队列表（替代旧 `delegate` kind）
+- TODO 看板从 `Activity(kind=action, toolCategory=todo)` 获取数据
 - 工具时间线从 `Activity(kind=action)[]` 按 timestamp 排序
-- ChatExecutionCard 从 `Activity(kind=action)` 获取工具调用数据，折叠状态由 `Activity.collapsed` 建议
-- 中断恢复提示从 `Activity(status=interrupted)` 直接获取中断状态
-- §10.4 中 AC-17~AC-25 的验收项在 Activity 模式下仍可通过 Activity→AgentBlock 转换满足
+- ActionBlock 按 `tool_category` 细分 10 类（shell/browser/file_read/.../other），见 §15.7
+- 中断恢复提示从 `ActivityEvent(event=cancelled)` 直接获取中断状态
+- §10.4 中 AC-17~AC-25 的验收项在 Activity 模式下仍可通过 Activity→Block 转换满足
 
 ### 15.4 Activity 数据结构
 
@@ -1151,3 +1170,141 @@ M59 在展示层做了大量工作（全部 ✅ 已完成），但数据源层�
 | 迁移 | 双发射期间旧事件路径不受影响 |
 | 存储 | activities 表按 session_id 索引，单会话 Activity 数 ≤ 1000 |
 | 可靠性 | ActivityProjector 与 EventProjector 共享 mutex，顺序发射 |
+
+### 15.7 Activity-First 统一渲染需求（2026-06-27 新增）
+
+> **触发**：Chat 重构方案 §7-§10 落地，三模式（spirit/team/member）统一到 ActivityStream 渲染器；旧 ChatMessageList + TaskExecutionPanel + MemberReadOnlyPanel 三套渲染管线合并为一。
+
+#### AF-UR-01 三模式统一渲染（ActivityStream）
+
+**作为** 用户
+**我希望** 精灵模式、团队模式、成员模式使用同一渲染管线（ActivityStream），按 `activity.kind` 动态分发到对应 Block 组件
+**以便** 三模式视觉一致、行为一致，不再有"精灵模式能看到、团队模式看不到"的体验割裂
+
+**验收**：
+- `ActivityStream.vue` 是 spirit/team/member 三模式唯一渲染入口（替代 ChatMessageList + TaskExecutionPanel + MemberReadOnlyPanel）
+- 按 `activity.kind` 分发：`task`→UserMessageBubble / `thinking`→ThinkingBlock / `action`→ActionBlock / `reply`→ReplyBlock / `plan`→PlanBlock / `confirm`→ConfirmBlock / `notice`→NoticeBlock / `session`→SessionStageBlock / `team_stage`→TeamStageBlock / `graph_stage`→GraphStageBlock
+- 不保留 `error → ErrorBlock` 分支：错误通过对应 kind 的 `failed` 事件表达（如 `action+failed` 在 ActionBlock 内高亮，`team_stage+failed` 在 TeamStageBlock 内显示失败状态）
+- 兜底：未知 kind 分发到 NoticeBlock
+- 旧组件 `TeamPanel.vue` / `OrchestrationTimeline.vue` / `TaskExecutionPanel.vue` / `MemberReadOnlyPanel.vue` / `ConversationTurn.vue` 已删除
+
+#### AF-UR-02 Activity Timeline 按 session 隔离
+
+**作为** 用户
+**我希望** 切换 session 时 Activity Timeline 自然隔离，无需手动 reset
+**以便** 不同 session 的 Activity 流不串扰
+
+**验收**：
+- `useActivityTimeline` 维护 `activitiesBySession: Map<sessionId, Map<activityId, Activity>>`，按 session_id 隔离
+- 切换 session 时无需 reset，自然隔离
+- `ensureActivitiesLoaded(sessionId)` 缓存命中（含空 Map）时跳过 API 调用，失败时不写缓存以便下次自动重试
+- WS replay 负责重连后补齐缺失事件（替代旧 `RevisionTracker` + `requestSyncReplay` 机制，重连改用 `ListActivities` RPC）
+
+#### AF-UR-03 工具类别细分显示
+
+**作为** 用户
+**我希望** 工具调用按类型（shell/browser/file_read/file_write/file_search/web_search/mcp/code/todo/other）显示不同 UI
+**以便** 不同类型工具有差异化的视觉表达（终端样式/网页卡片/文件卡片/diff 视图/搜索结果/代码块等），快速识别工具行为
+
+**验收**：
+- 后端 `ToolCategorizer`（`internal/agent/tool_category.go`）识别 10 种 `ToolCategory`：shell/browser/file_read/file_write/file_search/web_search/mcp/code/todo/other
+- 识别策略：优先查询工具注册表（准确），前缀/名称匹配兜底（覆盖未注册工具）
+- `Activity.tool_category` 字段携带分类结果
+- 前端 `ActionBlock.vue` 按 `tool_category` 动态分发到 10 个详情组件：ShellToolDetail / BrowserToolDetail / FileReadToolDetail / FileWriteToolDetail / FileSearchToolDetail / WebSearchToolDetail / McpToolDetail / CodeToolDetail / TodoToolDetail / GenericToolDetail
+- 各类型有独立图标、布局、折叠/展开内容（如 shell 显示终端样式 + stdout/stderr，browser 显示 URL + 截图，file_write 显示 diff 视图等）
+
+#### AF-UR-04 Team 阶段显示（TeamStageBlock）
+
+**作为** 用户
+**我希望** 团队阶段（assembled/executing/completed/failed/cancelled）通过 TeamStageBlock 显示，包含阶段、进度、控制按钮、成员列表
+**以便** 直观了解团队执行进展，可停止/恢复，可展开查看成员子 session Activity
+
+**验收**：
+- `team_stage` kind + `created` 事件 → 新增 TeamStageBlock，显示"团队已组建"+ 成员头像列表 + 任务摘要
+- `updated` 事件（`stage=executing`）→ 更新阶段为"执行中"+ 进度条（completed_steps/total_steps）+ 停止/恢复按钮
+- `updated` 事件（`changed_fields=progress`）→ 更新进度条
+- `completed` 事件 → 更新阶段为"已完成"+ 最终结果摘要 + DQ 评分
+- `failed` 事件 → 更新阶段为"失败"+ 失败原因
+- `cancelled` 事件 → 更新阶段为"已取消"+ 取消原因
+- `child_created` 事件 → 在成员列表新增成员 Block（折叠状态）
+- 成员列表可折叠，点击成员展开时懒加载该成员 session 的 Activity（通过 `ensureActivitiesLoaded`）
+
+#### AF-UR-05 Graph 阶段显示（GraphStageBlock）
+
+**作为** 用户
+**我希望** Graph DAG 阶段（planned/executing/completed/failed）通过 GraphStageBlock 显示，包含 DAG 节点列表、当前执行节点、错误节点
+**以便** 直观了解 Graph 编排进展，定位失败节点
+
+**验收**：
+- `graph_stage` kind + `created` 事件（`stage=planned`）→ 新增 GraphStageBlock，显示"Graph 已规划"+ DAG 节点列表（依赖关系）
+- `updated` 事件（`changed_fields=current_node`）→ 高亮当前执行节点 + 展示已完成/进行中/待执行节点状态
+- `completed` 事件 → 所有节点标记完成 + 展示最终结果
+- `failed` 事件（`meta.error_node=xxx`）→ 高亮错误节点 + 展示错误详情
+- `child_created` 事件 → 在 DAG 中新增子节点
+
+#### AF-UR-06 Session 父子树 UI（SessionTreeSidebar + SessionTreeNode）
+
+**作为** 用户
+**我希望** 左侧栏显示 Spirit → Team → Agent 的 Session 父子树，支持任意深度递归，可折叠展开
+**以便** 直观看到精灵→团队→成员→子 Agent 的执行层级，快速定位某个成员的 Activity 流
+
+**验收**：
+- `SessionTreeSidebar.vue` 渲染 Spirit Session 列表，每个 Spirit Session 下递归展示 Team/Agent Session 树
+- `SessionTreeNode.vue` 递归组件，支持任意深度（受 `max_session_depth` 限制）
+- `session_type` 驱动图标：spirit→`auto_awesome` / team→`groups` / agent→`person` / standalone→`forum`
+- `execution_stage` 驱动阶段徽章颜色：planning/allocating→blue / executing→orange / completed→green / failed→red
+- `agent_depth > 0` 时显示 `L{depth}` 深度徽章
+- `total_steps > 0` 时显示 `{completed}/{total}` 进度
+- 点击节点切换 session，触发 `useActivityTimeline` 加载对应 session 的 Activity
+- 节点可折叠/展开子节点
+- i18n key `session.executionStage.*` 覆盖中英文
+
+#### AF-UR-07 编排阶段进度条
+
+**作为** 用户
+**我希望** Spirit 视图顶部展示编排阶段进度条（规划 → 分配 → 执行 → 完成）
+**以便** 直观了解三阶段编排当前进展
+
+**验收**：
+- 通过 `notice` kind + `meta.phase` 的 Activity 事件驱动
+- 阶段枚举：`planning` / `allocating` / `orchestrating` / `completed`
+- 当前阶段高亮，已完成阶段标记 ✅，未开始阶段标记 ⏳
+
+### 15.8 验收标准（2026-06-27 新增）
+
+> **来源**：Chat 重构方案 §12.1（功能验收）、§12.2（架构验收 14 项全部达成）（已归档，设计内容已并入本文档）。
+
+#### 15.8.1 功能验收
+
+| 场景 | 验收标准 | 状态 |
+|------|---------|------|
+| Spirit 发送指令 | 左侧栏显示 Spirit Session，工具/思考/回复正确渲染 | ✅ |
+| 组建团队 | 团队 Session 出现在 Spirit 下，TeamStageBlock 显示阶段 | ✅ |
+| 团队执行 | 成员 Session 出现在 Team 下，进度条更新，停止/恢复按钮可用 | ✅ |
+| 成员展开 | 点击成员显示其子 session 的 Activity 流 | ✅ |
+| 工具调用 | 按 `tool_category` 显示不同 UI（shell/browser/file/...） | ✅ |
+| Graph 规划 | GraphStageBlock 显示 DAG 节点和执行进度 | ✅ |
+| 切换 Session | Activity Timeline 按 session 隔离，无串扰 | ✅ |
+| 持久化失败 | 前端仍有实时事件，reload 时通过 API backfill | ✅ |
+| LLM 上下文 | 从 Activity 表正确构建，无 Message 表依赖 | ✅ |
+
+#### 15.8.2 架构验收（14 项全部达成）
+
+> **实际状态评估（2026-06-27）**：14 项验收中 **14 项达成 / 0 项部分达成 / 0 项未达成**。后端 ADR-03 Phase 5 Blocker A-G 全部完成；前端 Envelope 路径已在任务 8 中彻底删除。详见 ADR-03「Blocker G 前端完成总结」。
+
+| 指标 | 目标 | 实际状态 | 评估 |
+|------|------|---------|------|
+| 后端数据模型 | 1 套（Activity） | Activity 表是唯一真相源，messages 表已 DROP | ✅ 达成 |
+| 事件类型 | 7 种业务语义事件（created/streaming/updated/completed/failed/cancelled/child_created） | ActivityEventType 已定义 7 种 | ✅ 达成 |
+| ActivityKind | 10 种（task/thinking/action/reply/plan/confirm/notice/session/team_stage/graph_stage，无 error） | 10 种，无 ActivityKindError | ✅ 达成 |
+| Envelope 结构体 | 删除 | 后端 `contract/envelope.go` 已删（Blocker G ✅，活类型提取到 `envelope_types.go`）；前端 `realtime/envelope.ts` 已删（任务 8 ✅） | ✅ 达成 |
+| Message 表 | 删除 | DROP TABLE 已执行（迁移 20260902） | ✅ 达成 |
+| `role` 字段 | 不存在（用 kind 表达） | 不存在 | ✅ 达成 |
+| `error` kind | 不存在（用 `failed` 事件表达） | 不存在 | ✅ 达成 |
+| Channel 路由 | 删除 RouteChannel，统一 chat | `RouteChannel` 已随 `contract/envelope.go` 删除（Blocker G ✅） | ✅ 达成 |
+| EventBus 传输 | ActivityEvent | `ActivityEventBus`（biz.ActivityEvent）+ `MonitorEventBus`（contract.MonitorEvent），legacy Envelope Bus / SessionBus / MonitorBus 全部删除 | ✅ 达成 |
+| 死代码（后端） | 0 | `contract/envelope.go`/`buffer.go`/`reliability.go`/`bus.go` 等 10+ 文件已删（Blocker F/G ✅） | ✅ 达成 |
+| 死代码（前端） | 0 | `TeamPanel`/`OrchestrationTimeline`/`TaskExecutionPanel`/`MemberReadOnlyPanel` 已删；`envelope.ts`/`dispatcher.ts`/`data_channel.ts`/`event_replay.ts`/`features/chat/dispatcher.ts` 已删（任务 8 ✅）；`inboundSyncRouting.ts`/`inboundSyncEnvelope.ts` 已迁移到 ActivityEvent | ✅ 达成 |
+| 前端渲染管线 | 1 套（ActivityStream） | ActivityStream 为 spirit/team/member 三模式唯一渲染器（panelMode watcher 同步 currentSessionId + bindSessionView streamKind 覆盖） | ✅ 达成 |
+| Session 隔离 | 按 session_id 自然隔离，无手动 reset | 已实现（`activitiesBySession` Map） | ✅ 达成 |
+| 持久化与推送 | 并行异步，互不阻塞 | processTask fire-and-forget + publish 同步 | ✅ 达成 |

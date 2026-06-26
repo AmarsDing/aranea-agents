@@ -1,10 +1,12 @@
 # Chat 对话 — 开发计划
 
-> **版本**：2026-05-23 | **状态**：✅ 端到端可用；Follow-up / Await / Admission 两轮 P1–P2 已收口  
+> **版本**：2026-05-23 | **状态**：✅ 端到端可用；Follow-up / Await / Admission 两轮 P1–P2 已收口；ADR-02 + ADR-03 Activity-First 架构迁移已完成  
 > **Review**：[2026-05-23-Chat-Flow-Full-Review.md](../review/2026-05-23-Chat-Flow-Full-Review.md)  
 > **M55 Cursor 对标**：[55-chat-channel-cursor-solution.md](./55-chat-channel-cursor-solution.md) · [55-chat-channel-cursor-development.md](./55-chat-channel-cursor-development.md)  
 > **四层解耦（DECO）**：[0-module-decoupling-architecture.md §3.1](./0-module-decoupling-architecture.md#31-推荐目标架构channel--chat--agent) · 任务板 [17-channel-development.md §14](./17-channel-development.md#14-phase-deco--四层架构解耦deco)（DECO-06/13/14）
 > **需求**：[1-chat.md](./1-chat.md) · **设计**：[1-chat.design.md](./1-chat.design.md)  
+> **ADR-02**：Activity-First 事件持久化（已归档，设计内容已并入 1-chat.design.md / 34-event-system.design.md）  
+> **ADR-03**：统一总线架构（已归档，设计内容已并入 1-chat.design.md / 34-event-system.design.md）  
 > **执行卡片 v2**：[1-chat-execution-trace.md](./1-chat-execution-trace.md) · [1-chat-execution-trace.design.md](./1-chat-execution-trace.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 >
@@ -14,15 +16,17 @@
 
 ## 1. 模块定位
 
-Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话、WebSocket + EventBus 实时事件、上下文管理、用量记录、停止生成、人工等待回复与待执行队列。
+Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话、WebSocket + ActivityEventBus 实时事件（ADR-03 后 Envelope 已删除，统一为 ActivityEvent + MonitorEvent）、上下文管理、用量记录、停止生成、人工等待回复与待执行队列。
 
-**代码锚点**（已校验存在）：
+**代码锚点**（已校验存在，2026-06-27 ADR-02/03 后）：
 - `api/kratos/chat/v1/chat.proto` — Chat RPC（含 `EnqueueUserMessage` → `POST /v1/chat/enqueue`）
 - `internal/runtime/run_registry.go` — 会话级 active run / cancel / run status
 - `internal/runtime/pending_queue.go` — PendingMessageQueue FIFO（T1.4: 支持 snapshot 持久化，`NewPendingMessageQueueWithDirAndLogger`）
 - `internal/server/ws.go` — WebSocket（`user_message` / `cancel` / `enqueue_message`）
 - `internal/server/ws_message_handler.go` — WS 上行消息分发（user_message/enqueue_message/cancel/ping/subscribe/unsubscribe/enable_log）
 - `internal/biz/chat_usecase.go` — Follow-up Queue 编排（EnqueueUserMessage / Pending CRUD）
+- `internal/biz/activity.go` — Activity 模型 + ActivityKind(10) + ActivityEventType(7) + ToolCategory(10)
+- `internal/biz/llm_context_builder.go` — LLM 上下文构建（从 Activity 表，替代原 Message 查询）
 - `internal/service/chat.go` — ChatService 薄传输桥（委托 ChatOrchestrator）
 - `internal/service/chat_orchestrator.go` — ChatOrchestrator 编排核心
 - `internal/service/chat_orchestrator_turn.go` — Turn 编排
@@ -31,39 +35,61 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 - `internal/service/turn_outcome.go` — `ErrTurnMessageQueued` / `CHAT_TURN_BUSY`
 - `internal/service/turn_pipeline.go` · `turn_pipeline_chat.go` — Turn Pipeline（PersistentTurnService + chatTurnExecutor）
 - `internal/agent/choice_stream.go` · `stream_consumer.go` — 流式 delta 与 turn 消费
-- `internal/agent/event_projector.go` — trpc event → Envelope（含 Team `member_*`）
-- `internal/agent/activity_projector.go` · `activity_meta.go` · `activity_persist.go` — Activity 投影/分类/持久化
-- `internal/event/envelope.go` — WS Envelope 协议与 channel 路由
+- `internal/agent/activity_projector.go` — 唯一投影器：trpc event → ActivityEvent（含 Team `member_agent_key`）
+- `internal/agent/activity_event_sequencer.go` — ActivityEvent 序列化（并行异步持久化 + WS 推送 + dead-letter + retry）
+- `internal/agent/tool_category.go` — 工具类型识别（ToolCategorizer：注册表 + 前缀兜底）
+- `internal/agent/activity_meta.go` — ActivityKind 分类
+- `internal/event/activity_event.go` — ActivityEvent 类型定义（Event/Activity/Domain）
+- `internal/event/activityevent/bus.go` — ActivityEventBus（传输 biz.ActivityEvent，chat+system 事件）
+- `internal/event/contract/monitor_event.go` — MonitorEvent 类型 + MonitorBus 接口（log/flow_log/mcp/alert）
+- `internal/event/contract/envelope_types.go` — 活类型提取（EnvelopeError/EnvelopeTokenUsage + 5 个 ErrorCode 常量）
 - `web/src/features/chat/composables/useChatWorkspace.ts` — Chat 页编排
 - `web/src/features/chat/composables/useChatStreamManager.ts` · `useChatSender.ts` · `useFollowUpQueue.ts` · `useAwaitReply.ts`
+- `web/src/features/chat/composables/useActivityTimeline.ts` — Activity 时间线（activitiesBySession Map + ensureActivitiesLoaded 缓存）
+- `web/src/features/chat/composables/useSystemEventNotification.ts` — Domain=system 事件通知处理
 - `web/src/features/chat/ws-transport.ts` — WS 客户端（心跳、重连、控制消息）
-- `web/src/components/chat/ChatExecutionCard.vue` — 执行过程卡片 v2
-- `web/src/components/chat/ConversationTurn.vue` — 对话轮次组件（TurnBlock 后继）
+- `web/src/components/chat/ActivityStream.vue` — Activity 统一渲染器（按 kind 分发 Block）
+- `web/src/components/chat/ActionBlock.vue` — 工具调用块（按 tool_category 细分子组件）
+- `web/src/components/chat/SessionTreeSidebar.vue` · `SessionTreeNode.vue` — Session 父子树侧栏（递归）
+
+> **已删除代码锚点**（ADR-02 + ADR-03）：
+> - `internal/agent/event_projector.go`（已废弃，被 `activity_projector.go` 取代）
+> - `internal/agent/activity_persist.go`（`ChatMessageFromToolActivity` 转换，WBPF 策略废弃）
+> - `internal/event/contract/envelope.go`（活类型提取到 `envelope_types.go`）
+> - `internal/event/buffer.go`（WS replay Buffer 死代码）
+> - `internal/event/bus.go`（SessionBus 死代码）
+> - `internal/event/wal.go` · `internal/biz/event_persist_handler.go` · `internal/biz/event_store.go` · `internal/data/message_repo.go`
+> - `messages` / `event_store` / `event_wal` 表（已 DROP）
+> - 前端：`ConversationTurn.vue`、`TeamPanel.vue`、`useConversationTimeline.ts`、`streamHandlers.ts`、`envelope.ts`、`dispatcher.ts`、`envelopeToolCall.ts`、`envelopeRunStatus.ts`、`inboundSyncEnvelope.ts`
 
 > 代码分层、请求流转、Proto 契约、WebSocket 协议、Biz/Data/Service/运行时层详细设计详见 [1-chat.design.md §二~§七](./1-chat.design.md#二代码分层遵循-ai-development-specificationmd)。
 
 ---
 
-## 2. 现状评估（2026-05-19）
+## 2. 现状评估（2026-06-27 ADR-02/03 后）
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| WS 实时对话 | ✅ | `/v1/ws` + `user_message` + EventBus Envelope |
+| WS 实时对话 | ✅ | `/v1/ws` + `user_message` + ActivityEventBus（activity_event? + monitor_event?） |
 | HTTP unary 对话 | ✅ | `SendChatMessage` / `RunNativeTurnUnary` |
 | Channel / Cron 入口 | ✅ | `lockSession` + `RunRegistry` |
 | 停止 / 运行中追加 | ✅ | `StopGeneration` / WS `cancel`；`EnqueueUserMessage` |
-| 待执行 / Follow-up Queue | ✅ | Steerable + Pending FIFO；WS `enqueue_message` + `message_queued` 刷新 |
-| RunStatus + AwaitUserReply | ✅ | RPC + WS；`useAwaitReply` submit（Round2） |
-| Team member_* Envelope | ✅ | `EventProjector` + `useChatWorkspace` 成员流 |
-| WS 控制消息 | 🟡 | `ws-transport`：`connected`/`pong`/`replay_*`/`server_shutdown`；页面无回放提示 |
-| 工具事件 UI | ✅ | `ChatExecutionCard`：参数/结果/耗时/`is_long_running` 折叠卡片 |
-| Reasoning UI | ✅ | 默认折叠 `<details>` 展示 `reasoning_markdown` |
-| RunStatus | ✅ | WS `run_status` Envelope 驱动；会话切换时 HTTP 快照一次 |
-| WS 回放提示 | ✅ | `replay_start/end` → 顶栏「正在同步历史事件…」 |
-| Team 成员流 UX | ✅ | `team_member` 元数据 + 左侧色条分栏 |
+| 待执行 / Follow-up Queue | ✅ | Steerable + Pending FIFO；WS `enqueue_message` + ActivityEvent（Domain=system）刷新 |
+| RunStatus + AwaitUserReply | ✅ | RPC + WS ActivityEvent；`useAwaitReply` submit（Round2） |
+| Team member_agent_key Activity | ✅ | `ActivityProjector` + `useActivityTimeline` 成员流 |
+| WS 控制消息 | ✅ | `ws-transport`：`connected`/`pong`/`server_shutdown`；replay 协议已删除（改用 ListActivities RPC） |
+| 工具事件 UI | ✅ | `ActivityStream` → `ActionBlock`（按 tool_category 细分子组件，10 种） |
+| Reasoning UI | ✅ | 默认折叠 `<details>` 展示 `activity.reasoning`（Kind=thinking） |
+| RunStatus | ✅ | WS ActivityEvent（Kind=notice/task）驱动；会话切换时 HTTP 快照一次 |
+| WS 重连恢复 | ✅ | `ListActivities?since={updated_at}` 拉取增量 → 顶栏「正在同步历史 Activity…」 |
+| Team 成员流 UX | ✅ | `activity.member_agent_key` + 左侧色条分栏 |
 | 模型选项 | 🟡 | Platform 优先 + `GetChatOptions("model")` 回退 |
 | 附件 / Vision | ✅ | Artifact 上传 + `buildUserMessage` 多 part 装配 |
 | RunStatus 持久化 | ✅ | `state_json` + trpc `PendingAwaitUserReplyRoute`；resume 同步清状态 + `resumeInFlight` 防双 turn |
+| Activity-First 架构 | ✅ | ADR-02 + ADR-03 全部完成；Envelope 已删除，2 bus/2 pump |
+| Session 父子树 | ✅ | 9 个新字段 + `GetSessionTree` RPC + `SessionTreeSidebar`/`SessionTreeNode` |
+| 工具类别细分 | ✅ | `ToolCategorizer` + 10 种 ToolCategory + 10 种 ActionBlock 子组件 |
+| 并行异步持久化 | ✅ | `ActivityEventSequencer`：persist fire-and-forget + publish 同步 + retry 5 次 + dead-letter 512 FIFO |
 
 > API 端点清单、Proto 定义、RunStatus 字段详见 [1-chat.design.md §四](./1-chat.design.md#四proto-层)。
 
@@ -75,7 +101,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 1. ~~**运行中连续发送**~~ ✅ `useChatSender` → `enqueue_message`（Round1）
 2. ~~**WS 驱动 Pending 刷新**~~ ✅ `messageQueuedFromEnvelope`（Round1）
-3. **（P3）** 可选 `pending_enqueued` Envelope 携带 `pending_id` + 内容预览。
+3. **（P3）** 可选 `pending_enqueued` ActivityEvent 携带 `pending_id` + 内容预览。
 
 ### P1 — Admission / 并发（2026-05-23 收口）
 
@@ -92,7 +118,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 ### P2 — 实时与 Team UX
 
-3. **RunStatus WS 驱动**：用 `state_delta` 或专用 Envelope 替代 2s `getRunStatus` 轮询。✅ 已实现
+3. **RunStatus WS 驱动**：用 `state_delta` 或专用 ActivityEvent 替代 2s `getRunStatus` 轮询。✅ 已实现
 4. **Team 成员分栏**：`member-{agent_key}` 消息增加头像、角色标签、独立气泡样式。✅ 已实现
 5. **WS 回放 UX**：`ws-transport.onReplayState` → Chat 顶栏「同步历史事件…」提示。✅ 已实现
 
@@ -132,13 +158,16 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 | 方向 | 描述 | 优先级 | 状态 |
 |------|------|--------|------|
-| Activity Envelope 独立类型 | 当 tool_call 过载时评估 `activity_*` 专用 Envelope 类型 | P2 | 📋 暂不需要 |
-| Running 态落库 | 执行卡片 running 状态持久化到 session messages | P2 | ✅ running upsert + StopGeneration 取消落库 |
+| Activity-First 架构 | 删除 Envelope，统一为 ActivityEvent + MonitorEvent 双类型协议 | P0 | ✅ ADR-03 完成 |
+| 并行异步持久化 | persist fire-and-forget + publish 同步 + retry + dead-letter | P0 | ✅ ADR-02 D1-D2 完成 |
+| Session 父子树 | 9 个新字段 + GetSessionTree RPC + SessionTreeSidebar | P1 | ✅ 完成 |
+| 工具类别细分 | ToolCategorizer + 10 种 ToolCategory + 10 种 ActionBlock 子组件 | P1 | ✅ 完成 |
+| Running 态落库 | 执行卡片 running 状态持久化到 activities 表 | P2 | ✅ Activity upsert + StopGeneration 取消落库 |
 | catalog display_name 查表 | `ActivityMetaResolver` + ToolUC 统一能力名查表 | P1 | ✅ 已实现 |
-| Team 成员标识 | Envelope author + UI 展示执行成员 Agent | P1 | ✅ 已实现 |
-| messages 持久化 schema | `chat.activity/v1` schema + 历史还原 | P1 | ✅ 已实现 |
+| Team 成员标识 | `activity.member_agent_key` + UI 展示执行成员 Agent | P1 | ✅ 已实现 |
+| activities 持久化 schema | `activities` 表为唯一真相源；messages/event_store/event_wal 表已 DROP | P1 | ✅ 已实现 |
 
-> 执行卡片 v2 详细设计、状态机、实施分期详见 [1-chat.design.md 子模块](./1-chat.design.md#子模块chat-执行过程卡片--技术设计)。
+> 执行卡片 v2 详细设计、状态机、实施分期详见 [1-chat.design.md 子模块](./1-chat.design.md#子模块chat-执行过程卡片--技术设计)。Activity-First 架构设计详见 [1-chat.design.md §十二](./1-chat.design.md#十二activity-first-架构设计adr-02--adr-03-综合)。
 
 ---
 
@@ -156,6 +185,46 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 7 | Reasoning 展示 | ✅ | 折叠 UI + 空壳/双轨（ReAct vs reasoning）已收口 CC-C-UX-01~03 |
 | 8 | 附件 / RunStatus 持久化 | ✅ |
 | 9 | M55 ConversationTurn + Channel 同步 | ✅ | Phase A–D ✅；UX 收口 CC-C-UX-* ✅ |
+| 10 | **ADR-02 + ADR-03 Activity-First 架构迁移** | ✅ | Envelope 删除 + 统一总线 + 并行异步持久化 + Session 父子树 + 工具类别 |
+
+### 5.1 Phase 10 ADR-02 + ADR-03 迁移任务块
+
+> **来源**：ADR-02 + ADR-03
+
+#### ADR-02 Activity 事件持久化（全部 ✅）
+
+| 决策 | 描述 | 状态 |
+|------|------|------|
+| D1 | 并行异步持久化（persist fire-and-forget + publish 同步，替代 WBPF） | ✅ |
+| D2 | 重试预算（5 次指数退避 100/200/400/800/1600ms）+ 死信环形缓冲（512 FIFO + activityID 去重）+ API backfill | ✅ |
+| D3 | OnError 语义（删除 ActivityKindError，失败统一通过 task.failed 表达） | ✅ |
+| D4 | legacy ActivityKind 清理（删除 ActivityKindError/ActivityKindMember 等） | ✅ |
+
+#### ADR-03 统一总线架构（Phase 1-5 全部 ✅）
+
+| Phase | Blocker | 描述 | 状态 |
+|-------|---------|------|------|
+| 1 | — | ActivityEvent 新增 Domain 字段 + MonitorEvent 类型拆分 | ✅ |
+| 1 | — | 80+ publisher 迁移到 ActivityEventBus/MonitorBus | ✅ |
+| 1 | — | WSServer 3 bus/3 pump → 2 bus/2 pump | ✅ |
+| 1 | — | ActivityProjector.EmitSystemEvent（Domain=system 不持久化） | ✅ |
+| 1 | — | 前端统一到 ActivityEvent + MonitorEvent + 本地类型解耦 | ✅ |
+| 5 | A: WS Replay 路径 | 删除 EventBuffer replay，改用 ListActivities RPC 拉取增量 | ✅ |
+| 5 | B: 4 个 side consumer | 迁移到 ActivityEventBus/MonitorBus 订阅 | ✅ |
+| 5 | C: DomainEvent bridge | 迁移到 ActivityEventBus + ActivityDomainSystem | ✅ |
+| 5 | D: vestigial bus 字段 | 删除 3 个死发布者（EmitProgress/LogError/PublishSessionRevisionEnvelope） | ✅ |
+| 5 | E: EventPipeline | 删除 EventPipeline.Bus/Buffer | ✅ |
+| 5 | F: Wire DI | 移除 ProvideSessionBus + 8 个 EventBusConsumer 迁移 | ✅ |
+| 5 | G: contract/envelope.go | 活类型提取到 envelope_types.go，删除死代码 | ✅ |
+
+#### Phase 10 后续清理（全部 ✅）
+
+| 任务 | 描述 | 状态 |
+|------|------|------|
+| Session 7 字段断层补全 | api/kratos/session/v1/session.proto + toProtoSession + 前端 types.ts/api.ts + SessionTreeNode.vue | ✅ |
+| 子 Session Activity 懒加载缓存 | useActivityTimeline.ensureActivitiesLoaded（缓存命中跳过 RPC） | ✅ |
+| 前端 Envelope import 清理 | envelope.ts/dispatcher.ts/data_channel.ts/event_replay.ts/features/chat/dispatcher.ts 删除 | ✅ |
+| 后端 Envelope 死代码清理 | transcript.go/tool_display.go/parity_run_test.go 死方法清理 | ✅ |
 
 ---
 
@@ -167,53 +236,99 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 2 | Team turn active run / pending | P1 | ✅ |
 | 3 | Team defer `processPendingQueue` | P1 | ✅ |
 | 4 | AwaitUserReply Chat UI | P1 | ✅ |
-| 5 | `EnvelopeError.PendingID` 统一 | P1 | ✅ |
+| 5 | `Activity.PendingID` 统一（原 EnvelopeError.PendingID） | P1 | ✅ |
 | 6 | WS 控制消息协议 + transport | P1 | ✅ |
 | 7 | `recordTeamSessionTurn` | P2 | ✅ |
 | 8 | Channel/Cron 互斥 | P2 | ✅ |
-| 9 | Team `member_*` 发射与消费 | P2 | ✅ |
+| 9 | Team `member_agent_key` 发射与消费 | P2 | ✅ |
 | 10 | 工具事件结构化卡片 | P1 | ✅ |
 | 11 | Reasoning 展示规格与实现 | P1 | ✅ |
-| 12 | EventBuffer TTL | P2 | ✅ |
+| 12 | ~~EventBuffer TTL~~ → ListActivities RPC 重连 | P2 | ✅ ADR-03 Blocker A |
 | 13 | RunStatus WS 事件驱动 | P2 | ✅ |
 | 14 | 多模态附件后端 | P3 | ✅ |
 | 15 | 模型选项单一来源（长期） | P3 | 🟡 回退已实现 |
 | 16 | RunStatus 持久化 | P3 | ✅ `state_json` + `PendingAwaitUserReplyRoute` |
 | 17 | ChatService / WS 单测 | P1 | ⏳ |
 | 18 | RunRegistry + EnqueueUserMessage | P0 | ✅ |
-| 19 | 执行过程卡片 v2（EnvelopeToolCall v2、ChatExecutionCard） | P0 | ✅ |
+| 19 | 执行过程卡片 v2（EnvelopeToolCall v2 → Activity.ToolCall + tool_category） | P0 | ✅ |
 | 20 | 执行卡片持久化 + catalog 名 + Team 标识 + 流式修复 | P1 | ✅ |
 | 21 | **T1.1** 移除 24h hard deadline + Team/pending/resumeAwait 路径统一 WithCancel（No-Timeout 原则） | P0 | ✅ Sprint 1 |
 | 22 | **T1.2** LLM 无限重试 + llm_retry 事件 + RetryCallback 回调模式 | P0 | ✅ Sprint 1 |
 | 23 | **T1.3** processPendingQueue 迭代式循环（替代 goroutine 递归）+ inPendingLoop 标志 | P0 | ✅ Sprint 1 |
 | 24 | **T1.4** PendingMessageQueue snapshot 持久化（进程重启恢复） | P0 | ✅ Sprint 1 |
+| 25 | **ADR-02 D1** ActivityEventSequencer 并行异步持久化 | P0 | ✅ Phase 10 |
+| 26 | **ADR-02 D2** 重试 5 次 + 死信 512 FIFO + activityID 去重 + API backfill | P0 | ✅ Phase 10 |
+| 27 | **ADR-02 D3** OnError 语义（删除 ActivityKindError，task.failed 表达） | P0 | ✅ Phase 10 |
+| 28 | **ADR-02 D4** legacy ActivityKind 清理 | P0 | ✅ Phase 10 |
+| 29 | **ADR-03 D1** ActivityEvent Domain 字段（chat/system） | P0 | ✅ Phase 10 |
+| 30 | **ADR-03 D2** MonitorEvent 类型拆分 + MonitorBus 接口 | P0 | ✅ Phase 10 |
+| 31 | **ADR-03 D3** 80+ publisher 迁移 | P0 | ✅ Phase 10 |
+| 32 | **ADR-03 D4** ActivityProjector.EmitSystemEvent | P0 | ✅ Phase 10 |
+| 33 | **ADR-03 D5** WSServer 2 bus/2 pump | P0 | ✅ Phase 10 |
+| 34 | **ADR-03 D6** 前端统一 ActivityEvent + MonitorEvent + 本地类型解耦 | P0 | ✅ Phase 10 |
+| 35 | **ADR-03 Blocker A** WS Replay 删除 + ListActivities RPC 重连 | P0 | ✅ Phase 5 |
+| 36 | **ADR-03 Blocker B** 4 个 side consumer 迁移 | P0 | ✅ Phase 5 |
+| 37 | **ADR-03 Blocker C** DomainEvent bridge 迁移 | P0 | ✅ Phase 5 |
+| 38 | **ADR-03 Blocker D** vestigial bus 字段删除 | P0 | ✅ Phase 5 |
+| 39 | **ADR-03 Blocker E** EventPipeline.Bus/Buffer 删除 | P0 | ✅ Phase 5 |
+| 40 | **ADR-03 Blocker F** Wire DI SessionBus 移除 | P0 | ✅ Phase 5 |
+| 41 | **ADR-03 Blocker G** contract/envelope.go 活类型提取 + 死代码删除 | P0 | ✅ Phase 5 |
+| 42 | Session 7 字段断层补全（proto + toProtoSession + 前端 + SessionTreeNode） | P1 | ✅ |
+| 43 | 子 Session Activity 懒加载缓存（ensureActivitiesLoaded） | P1 | ✅ |
+| 44 | 前端 Envelope import 清理（5 文件删除） | P0 | ✅ |
+| 45 | 后端 Envelope 死代码清理（transcript/tool_display/parity_run_test） | P0 | ✅ |
 
 ---
 
 ## 7. 验收标准
 
+### 7.1 核心对话（历史）
+
 - [x] 无 `/v1/chat/messages/stream` 当前端点表述
 - [x] WS 控制消息在需求/设计文档中完整描述
 - [x] Team 停止/待执行与单 Agent 一致
 - [x] AwaitUserReply：后端 + Chat 页可提交回复
-- [x] `error.pending_id` 前端可消费
+- [x] `activity.pending_id` 前端可消费（原 `error.pending_id`）
 - [x] `session_turns` Agent + Team 均有记录
 - [x] Channel/Cron 不绕过 active run 互斥
-- [x] Team `member_*` 后端发射 + 前端增量展示
+- [x] Team `member_agent_key` 后端发射 + 前端增量展示
 - [x] 工具执行结构化卡片（参数/结果/耗时/`is_long_running`）
 - [x] Reasoning 折叠/展示符合产品规格
-- [x] RunStatus 与 WS `run_status` 一致（切换会话时 HTTP 校准）
-- [x] WS 重连回放时用户可见「同步中」状态
+- [x] RunStatus 与 WS ActivityEvent 一致（切换会话时 HTTP 校准）
+- [x] WS 重连后用户可见「同步中」状态（ListActivities RPC 拉取增量）
 - [x] `go test ./internal/service/... -run TestChat` 通过
+
+### 7.2 Activity-First 架构（ADR-02 + ADR-03）
+
+- [x] Envelope 通用信封已删除，WS 下行为 `activity_event?` + `monitor_event?` 双类型协议
+- [x] 10 种 ActivityKind + 7 种 ActivityEventType + ActivityDomain 全覆盖
+- [x] `ActivityStream.vue` 统一渲染器按 `activity.kind` 分发到 10 种 Block 组件
+- [x] 并行异步持久化：persist fire-and-forget + publish 同步 + retry 5 次 + dead-letter 512 FIFO
+- [x] `select` on done channel（Close 不阻塞）
+- [x] `messages`/`event_store`/`event_wal` 表已 DROP，`activities` 表为唯一真相源
+- [x] WSServer 2 bus/2 pump（ActivityEventBus + MonitorBus）
+- [x] 前端 Envelope import 清理（5 文件删除）
+- [x] 后端 Envelope 死代码清理（transcript/tool_display/parity_run_test）
+
+### 7.3 Session 父子树 + 工具类别
+
+- [x] Session 表含 9 个父子树字段 + `GetSessionTree` RPC
+- [x] 深度受 `subagents_max_generation_depth`（默认 3）+ `max_session_depth`（默认 5）限制
+- [x] 前端 `SessionTreeSidebar.vue` + `SessionTreeNode.vue`（递归）渲染
+- [x] 子 Session Activity 懒加载缓存（`ensureActivitiesLoaded` 命中跳过 RPC）
+- [x] 10 种 ToolCategory + `ToolCategorizer`（精确匹配 + 前缀兜底）
+- [x] `ActionBlock.vue` 按 `tool_category` 动态渲染 10 种差异化子组件
+- [x] `team_stage` / `graph_stage` / `session` Activity + 对应 Block 组件
 
 ---
 
 ## 8. 依赖与风险
 
-- Team 成员 UX 依赖 `MemberAgentKeys` 在 turn 元数据中完整传递
-- 工具卡片依赖 `EventProjector` 对 `duration_ms` / `is_long_running` 的稳定填充
+- Team 成员 UX 依赖 `MemberAgentKey` 在 turn 元数据中完整传递
+- 工具卡片依赖 `ActivityProjector` 对 `duration_ms` / `is_long_running` / `tool_category` 的稳定填充
 - RunStatus 持久化可能依赖 M2 多租户 Session 改造
 - 附件闭环依赖 Artifact / 对象存储与 LlmProvider Vision 能力
+- Domain 字段语义负担：publisher 必须正确声明 Domain，错误声明会导致 system 事件被持久化或 chat 事件被丢弃
 
 
 ---

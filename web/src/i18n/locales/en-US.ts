@@ -121,7 +121,6 @@ export default {
     contextPromptUse: 'Prompt ctx',
     contextUsageEmpty: 'No usage data yet',
     headerPromptPlaceholder: "Scroll to view that turn's question",
-    sessionTotalTokens: 'Session {n} tok',
     knowledgeBases: 'Knowledge',
     feedbackPositive: 'Helpful',
     feedbackNegative: 'Not helpful',

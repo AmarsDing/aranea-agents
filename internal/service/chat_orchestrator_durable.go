@@ -59,7 +59,7 @@ func (d durableResumeTurnCtx) buildUserMessage(sessionID, userOpts string, attN 
 		AttachmentsCount: attN,
 	}
 	// AF-correlation: TurnID 必须等于 msg.ID（= d.spec.TurnID），使前端通过 API
-	// 加载的 user message 的 turn_id 非空，useConversationTimeline 才能将 Activity
+	// 加载的 user message 的 turn_id 非空，useActivityTimeline 才能将 Activity
 	// 记录关联到此 UserTurn。
 	msg.TurnID = msg.ID
 	if emitter != nil {

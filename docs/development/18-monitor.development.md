@@ -445,10 +445,10 @@ Monitor 已实现六大 Tab（Audit / Alerts / Events / Runs / Usage / Logs）�
 
 | ID | 任务 | 优先级 | 状态 | 关键实现 |
 |----|------|--------|------|----------|
-| MON-OPT-01 | FlowLog 流彻底分离到 MonitorBus | P1 | ✅ | `event.Infra.Publish()` 按 EnvelopeType 路由表自动分发；默认 `split` 模式；WS 全局连接单 pump |
+| MON-OPT-01 | FlowLog 流彻底分离到 MonitorBus | P1 | ✅ | ADR-03 Phase 5 后：`FlowTracker` 直接发布到 `MonitorEventBus`（`contract.MonitorEvent`），不再走 `event.Infra.Publish()` 路由表；`SelfHealObserver`/`TraceProjector` 已迁移到 `MonitorEventBus` 订阅；WS 全局连接单 pump |
 | MON-OPT-02 | 告警冷却持久化 + firing 状态机 | P1 | ✅ | `monitor_alert_rules` 新增 `last_fired_at`/`firing_state` 等列；`ShouldFireAlert`/`MarkAlertFiredPersistent`/`MarkAlertRecovered`；`recovery_factor` 默认 0.9 |
 | MON-OPT-03 | 告警评估批量化 + 滑动窗口 | P1 | ✅ | `MetricRingBuffer`（60 个 1 分钟桶）+ `AlertEvalWorker`（30s ticker）+ `singleflight.Group`；`RebuildRingBuffer` 启动时从 DB 加载 |
-| MON-OPT-04 | WS 反压可观测 + 优先级队列 | P1 | ✅ | WS 连接按 EnvelopeType 分 high/normal/low 优先级 channel；high 永不丢弃；`monitor.backpressure` envelope 反馈客户端 |
+| MON-OPT-04 | WS 反压可观测 + 优先级队列 | P1 | ✅ | WS 连接按 ActivityKind/MonitorEventType 分 high/normal/low 优先级 channel；high 永不丢弃；`monitor.backpressure` 反馈客户端（ADR-03 后 envelope 已迁移到 ActivityEvent/MonitorEvent） |
 | MON-OPT-05 | Trace 写入回路 + 历史回填 | P1 | ✅ | `TraceProjector` 订阅 EventBus；`EnsureTraceSchema` 扩展列 + `monitor_trace_spans` 建表；`MonitorTraceBackfillWorker` 6 小时间隔 cron |
 | MON-OPT-06 | 告警规则注册表 | P2 | ✅ | `AlertMetric` 接口 + `AlertMetricRegistry`（`sync.RWMutex`）；`RunnerErrorRateMetric`/`SkillFilesystemMissingMetric`；DSL 解析器（Phase 2）暂未实现 |
 

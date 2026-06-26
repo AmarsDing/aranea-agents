@@ -9,7 +9,13 @@
 
 ## 一、模块概述
 
-Team 多智能体编排：将多个 Agent 按 Definition JSON 组装为 Graph 运行时，经 Chat Service 桥点执行，事件经 EventBus 投影为 WS Envelope。
+Team 多智能体编排：将多个 Agent 按 Definition JSON 组装为 Graph 运行时，经 Chat Service 桥点执行，事件经 **ActivityEventBus** 投影为 **`ActivityEvent`（`biz.ActivityEvent`，Domain=chat）** 推送到 WS（详见 ADR-03（统一总线架构））。
+
+> **架构要点（Activity-First）**：
+> - Team/Graph 业务事件统一为 `Activity` 行，经 `ActivityEventBus` 传输；Domain=`chat` 持久化到 `activities` 表，Domain=`system` 仅 WS 推送（ADR-03 D1）。
+> - Team 编排阶段事件 → `ActivityKind=team_stage`；Graph 执行阶段事件 → `ActivityKind=graph_stage`；成员回复 → `ActivityKind=reply`（带 `agent_key` + `session_type=agent`）。
+> - 监控事件（FlowLog/TokenUsage 等）走独立 `MonitorEventBus`（`contract.MonitorEvent`），不持久化。
+> - Session 父子树：Team Run 创建 `session_type=team` 的 Session，挂到 Spirit 根；member 执行创建 `session_type=agent` 的子 Session（详见 [10-session.design.md §3.6](./10-session.design.md#36-session-父子树--activity-模型activity-first-重构核心)）。
 
 ### 分层与依赖
 
@@ -72,18 +78,21 @@ pkg/trpc-agent-go/team            ← 框架 Team / Swarm 真相源
 ```
 用户消息 → ChatService (owner_type=team)
              ↓
-         team.Runner.runTeamTRPCFromInput()
+         team.Runner.runTeamTRPCFromInput()  ← buildTeamProjectMeta 填充 SpiritSessionID/ParentSessionID
              ↓
          compileTeamRuntime() → CompileToGraphRuntimeConfigFromJSON(def) → GraphAgent
              ↓
          graph_node_start → TeamGraphTaskBridge（task/review 节点建 Task）
              ↓
-         StatusProjector → member_* / team_* / graph_* Envelope → EventBus → /v1/ws
+         ActivityProjector → ActivityEvent(kind=team_stage/graph_stage/reply, Domain=chat)
+             → ActivityEventBus → /v1/ws + 持久化 activities 表
              ↓
          persistStep + UpdateTeamRun + team_summary
 ```
 
 编译/构建失败不 silent fallback，直接返回错误。
+
+> **ActivityProjector vs 旧 StatusProjector**：原 `StatusProjector` 投影 `member_*`/`team_*`/`graph_*` EnvelopeType 到 WS；已替换为 `ActivityProjector`，将运行时事件投影为 `ActivityEvent`（`ActivityKind=team_stage`/`graph_stage`/`reply`，Domain=chat）。成员回复通过 `agent_key` + `session_type=agent` 标识来源。详见 [10-session.design.md §3.6.7](./10-session.design.md#367-activity-模型单一真相源) 与 [53-team-graph-orchestration.design.md §四](./53-team-graph-orchestration.design.md#四statusprojector)。
 
 ---
 
@@ -419,7 +428,7 @@ type TeamService struct {
     sessions    *biz.SessionUsecase
     teamRunner  biz.TeamTurnRunnerPort
     runs        biz.RunRegistryPort
-    eventBus    event.Bus
+    activityBus biz.ActivityEventBus // ADR-03 Phase 5：legacy event.Bus (SessionBus) 已删除
     lg          loggateway.Logger
     synthesis   *SpiritSynthesisService
 }
@@ -475,7 +484,7 @@ Graph 路径要点：
 - `ResumeTeamRunExecution`：Graph checkpoint / HITL resume（见 M53 Phase 6）
 - `graph_runtime.go`：Graph 运行时开关（`TeamGraphRuntimeEnabled` / `SupportsTeamGraphRuntimeMode`）
 - `graph_runtime_canary.go`：灰度控制
-- `status_projector.go`：WS 状态投影（`orchestration_agent_status` 等）
+- `status_projector.go`：WS 状态投影（已重构为 **ActivityProjector**，投影 `ActivityEvent` 到 `ActivityEventBus`；详见 [53-team-graph §四](./53-team-graph-orchestration.design.md#四statusprojector)）
 - `activity_step_flusher.go`：Activity 步骤刷盘
 - `runner_mediator.go`：Mediator 模式（HITL defer）
 - `team_graph_run_coordinator.go`：Graph 运行协调器
@@ -529,32 +538,36 @@ Graph 路径要点：
 
 ## 七、WS / EventBus 事件模型
 
-主链路：`internal/event` + `internal/server/ws.go`。Team 相关 Envelope 类型（`internal/event/envelope.go`）：
+> **统一总线架构（ADR-03 Phase 5 已完成，2026-06-27）**：legacy Envelope Bus / SessionBus 已删除。Team 事件通过 `biz.ActivityEvent`（Domain=chat）在 `ActivityEventBus` 上传输，监控事件通过 `contract.MonitorEvent` 在 `MonitorEventBus` 上传输。下方表格保留历史 EnvelopeType 名称作为对照，当前实际类型为 `biz.ActivityKind`（见 `internal/biz/activity_event.go`）。
 
-| EnvelopeType | 发射时机 |
-|--------------|----------|
-| `team_run_started` | Run 创建后 |
-| `team_run_finished` | Run 成功结束 |
-| `team_run_failed` | Run 失败 |
-| `team_step_started` | 成员步骤开始 |
-| `team_step_finished` | 每成员 step 持久化后 |
-| `team_summary` | Run 结束（成功/失败）后聚合 steps |
-| `member_message_start` | 子 Agent 首次输出（EventProjector） |
-| `member_delta` | 子 Agent 流式增量 |
-| `member_message_done` | 子 Agent 输出完成 |
-| `intent_pass` | 意图传递 |
-| `transfer` | Swarm handoff |
-| `run_status` | CancelTeamRun 取消 |
-| `orchestration_agent_status` | Agent 节点状态变更（StatusProjector） |
-| `graph_node_start` | Graph 节点开始执行 |
-| `graph_node_end` | Graph 节点执行完成 |
-| `graph_node_error` | Graph 节点执行错误 |
-| `graph_node_custom` | Graph 节点自定义事件 |
+主链路：`internal/event` + `internal/server/ws.go`。Team 相关 ActivityKind 类型（`internal/biz/activity_event.go`）：
+
+| 当前 `ActivityKind` | legacy EnvelopeType（已删除，仅对照） | 发射时机 |
+|--------------|--------------|----------|
+| `team_stage`（stage=run_started） | `team_run_started` | Run 创建后 |
+| `team_stage`（stage=run_finished） | `team_run_finished` | Run 成功结束 |
+| `team_stage`（stage=run_failed） | `team_run_failed` | Run 失败 |
+| `team_stage`（stage=step_started） | `team_step_started` | 成员步骤开始 |
+| `team_stage`（stage=step_finished） | `team_step_finished` | 每成员 step 持久化后 |
+| `team_stage`（stage=summary） | `team_summary` | Run 结束（成功/失败）后聚合 steps |
+| `reply`（agent_key=member） | `member_message_start` | 子 Agent 首次输出（ActivityProjector） |
+| `reply`（streaming） | `member_delta` | 子 Agent 流式增量 |
+| `reply`（completed） | `member_message_done` | 子 Agent 输出完成 |
+| `team_stage`（stage=intent_pass） | `intent_pass` | 意图传递 |
+| `team_stage`（stage=transfer） | `transfer` | Swarm handoff |
+| `session`（stage=cancelled） | `run_status` | CancelTeamRun 取消 |
+| `team_stage`（stage=agent_status） | `orchestration_agent_status` | Agent 节点状态变更（ActivityProjector） |
+| `graph_stage`（stage=node_start） | `graph_node_start` | Graph 节点开始执行 |
+| `graph_stage`（stage=node_end） | `graph_node_end` | Graph 节点执行完成 |
+| `graph_stage`（stage=node_error） | `graph_node_error` | Graph 节点执行错误 |
+| `graph_stage`（stage=node_custom） | `graph_node_custom` | Graph 节点自定义事件 |
+
+> **Domain 语义**（ADR-03 D1）：上述 Team/Graph 业务事件 `Domain=chat`（持久化到 `activities` 表 + WS 推送）；监控类事件（FlowLog/TokenUsage）走 `MonitorEventBus`，`Domain=system`，仅 WS 不持久化。系统级通知可通过 `EmitSystemEvent`（ADR-03 D4）发射 `Domain=system` 事件。
 
 前端映射：
 
-- `web/src/features/teams/teamRunEventFromEnvelope.ts` — TeamRunsDialog / Monitor
-- `web/src/realtime/useEnvelopeStream.ts` — WS Envelope 流
+- `web/src/features/teams/teamRunEventFromEnvelope.ts` — TeamRunsDialog / Monitor（legacy 命名保留，内部已切换为 ActivityEvent 解析）
+- `web/src/realtime/useEnvelopeStream.ts` — WS 流（legacy 命名保留，实际订阅 `ActivityEventBus` 推送的 ActivityEvent）
 - `web/src/features/chat/composables/useChatStreamManager.ts` — Team 分栏
 
 ---
@@ -591,9 +604,9 @@ Graph 路径要点：
 
 | 路径 | 职责 |
 |------|------|
-| `web/src/features/teams/api.ts` | Kratos Client + Envelope 订阅 + 全部 API 调用 |
+| `web/src/features/teams/api.ts` | Kratos Client + ActivityEvent 订阅 + 全部 API 调用 |
 | `web/src/features/teams/types.ts` | Team / TeamDefinition / TeamRun / TeamRunStep / TeamRunSummary / TaskDeadLetter 类型 |
-| `web/src/features/teams/teamRunEventFromEnvelope.ts` | WS Envelope → TeamRunEvent 映射 |
+| `web/src/features/teams/teamRunEventFromEnvelope.ts` | WS ActivityEvent → TeamRunEvent 映射（legacy 文件名保留，内部已切换为 ActivityEvent 解析） |
 | `web/src/features/teams/graphUtils.ts` | 根据 mode 生成 graph 节点/边 |
 | `web/src/features/teams/orchestrationSpec.ts` | OrchestrationSpec v2 类型与转换 |
 | `web/src/features/teams/useTeamsPage.ts` | TeamsPage composable |
@@ -622,7 +635,7 @@ Graph 路径要点：
 | `web/src/features/orchestration/teamGraphAdapter.ts` | Graph 适配器 |
 | `web/src/features/orchestration/teamNodeDisplay.ts` | 节点展示 |
 
-数据流：`TeamsPage` → `features/teams/api` → `services/kratos/team/v1`；实时经 `createEnvelopeStream` + `GLOBAL_WS_SESSION_ID`。
+数据流：`TeamsPage` → `features/teams/api` → `services/kratos/team/v1`；实时经 `createEnvelopeStream`（legacy 命名保留，实际订阅 `ActivityEventBus` 推送）+ `GLOBAL_WS_SESSION_ID`。
 
 ---
 
@@ -633,12 +646,14 @@ Graph 路径要点：
 | Chat (M1) | Team Session Turn 入口；共享 RunGateway / RunRegistry |
 | Agent (M2–8) | 成员 Agent 构建；call_agent 依赖 A2A 工具启用 |
 | Session (M10) | owner_type=team；RunTeamTest 临时 Session |
-| Monitor (M18) | EventTimeline 订阅 Team Envelope |
+| Monitor (M18) | EventTimeline 订阅 Team ActivityEvent（经 MonitorEventBus） |
 | Usage/Token (M29) | `team_turn` / `team_member` usage_kind |
 | A2A (M26) | call_agent 远程 Invoke |
 | Graph (M36) | Team 编译为 Graph 运行时；embedded graph 定义；CompileTeamGraph / ResumeTeamRunExecution |
 | Task (M53) | task/review 节点创建 Task；TaskDeadLetter 死信队列 |
 | Spirit/Pack | Team Kind/Source 分类；ResolveMemberAgentKeys / SaveTeamWithGraph 导入 |
+
+> **Session 父子树关联**：Team Run 启动时通过 `buildTeamProjectMeta` 填充 `SpiritSessionID` / `ParentSessionID`，创建 `session_type=team` 的 Session 挂到 Spirit 根；成员执行创建 `session_type=agent` 子 Session。详见 [10-session.design.md §3.6.6 SpiritSessionID 传播](./10-session.design.md#366-spiritsessionid-传播)。
 
 ---
 
@@ -650,7 +665,7 @@ Graph 路径要点：
 |------|------|
 | `internal/service/team_test.go` | CRUD |
 | `internal/service/team_run_test.go` | Run 管理 |
-| `internal/service/team_cancel_test.go` | CancelTeamRun + run_status Envelope |
+| `internal/service/team_cancel_test.go` | CancelTeamRun + run_status ActivityEvent（`session` stage=cancelled） |
 | `internal/service/team_compile_test.go` | CompileTeamGraph |
 | `internal/service/team_compile_view_test.go` | 编译视图 |
 | `internal/service/team_dead_letter_test.go` | 死信 |

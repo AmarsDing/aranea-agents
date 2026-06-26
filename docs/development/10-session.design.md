@@ -240,8 +240,9 @@ message SessionRunRecord {
 | `ListSessionParticipants` | `GET /v1/sessions/{session_id}/participants` | 获取会话参与者列表 |
 | `CompactSession` | `POST /v1/sessions:compact` | 手动触发上下文压缩 |
 | `GetCompressStatus` | `GET /v1/sessions/{session_id}/compress-status` | 查询压缩状态 |
-| `ListChildSessions` | `GET /v1/sessions/{parent_session_id}/children` | 查询子会话列表（session tree） |
-| `ListActivities` | `GET /v1/sessions/{session_id}/activities` | 查询活动列表（Activity-First 架构） |
+| `ListChildSessions` | `GET /v1/sessions/{parent_session_id}/children` | 查询子会话列表（单层，session tree Tab 用） |
+| `GetSessionTree` | `GET /v1/sessions/{spirit_session_id}/tree` | 获取完整递归会话树（一次查询 + 内存构树，详见 §3.6.5） |
+| `ListActivities` | `GET /v1/sessions/{session_id}/activities` | 查询活动列表（Activity-First 单一真相源，详见 §3.6.7） |
 
 ### 2.3 批量操作 RPC
 
@@ -442,6 +443,19 @@ type ChatMessage struct {
     ErrorMessage     string
     CreatedAt        string
 }
+```
+
+> **⚠️ ChatMessage / `messages` 表已 DELETED（Activity-First 重构，详见 ADR-03）**：
+>
+> - 后端 `messages` 表已 DROP（DDL 迁移 `20260902`），`message_repo.go` 已删除；`message_usecase.go` 经评估保留为合法子用例（仅作 Activity 适配读取的 Facade，满足 AS-COG-01 复杂度预算）。
+> - 上述 `ChatMessage` 结构仅为历史 proto/biz 类型对照，运行时**不再写入 `messages` 表**；所有用户消息、Agent 回复、工具调用、系统通知统一为 `Activity` 行（详见 §3.6 Session 父子树 + Activity 模型）。
+> - **角色映射**（LLM API 仅接受 user/assistant/tool/system）：
+>   - `task` Activity → `user` 角色
+>   - `reply` Activity → `assistant` 角色（含团队成员回复，通过 `agent_key` 标识来源，不改变 role）
+>   - `action` Activity → `tool` 角色
+>   - `notice` Activity → `system` 角色
+> - LLM 上下文构建改走 `BuildLLMContext`（`internal/biz/llm_context_builder.go`），从 `activities` 表查询 session/turn 内的 Activity 行并按上表映射为 LLM 消息；详见 Chat 模块重构方案 §3.5（已归档）。
+> - `ListSessionMessages` / `SearchSessionMessages` RPC 当前仍向后兼容（基于 Activity 表实现），proto `ChatMessageRow` 仅作传输载体。
 
 type SessionTurn struct {
     ID                  string
@@ -793,6 +807,246 @@ const (
 
 ---
 
+## 3.6 Session 父子树 + Activity 模型（Activity-First 重构核心）
+
+> **本节为 Activity-First 重构后的核心设计**，详见 ADR-02（活动事件持久化）与 ADR-03（统一总线架构）。
+
+### 3.6.1 SessionType 枚举（父子树角色）
+
+```go
+// internal/biz/session/types.go（或 status.go 同包）
+type SessionType string
+
+const (
+    // SessionTypeSpirit：根会话，用户与平台的入口（一个 Spirit 一次对话根）
+    SessionTypeSpirit     SessionType = "spirit"
+    // SessionTypeTeam：Team 编排产生的会话节点
+    SessionTypeTeam       SessionType = "team"
+    // SessionTypeAgent：单个 Agent 执行产生的会话节点（含 Team member 与 sub-agent）
+    SessionTypeAgent      SessionType = "agent"
+    // SessionTypeStandalone：独立会话（无父，默认）
+    SessionTypeStandalone SessionType = "standalone"
+)
+```
+
+> **DELETED**：原 `member` 类型已删除，统一并入 `agent`（Team member 与 sub-agent 共用 `agent` 类型，通过 `member_agent_key` + `member_role` 区分来源）。
+
+### 3.6.2 父子树字段（Session 表新增）
+
+参见 §4.2 Ent Schema — Session 主表（字段 50–59）：
+
+| 字段 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `parent_session_id` | string(256) | `""` | 父会话 ID；spirit/standalone 为空 |
+| `root_session_id` | string(256) | `""` | 根会话 ID（spirit ID）；自身为 spirit 时填自身 ID |
+| `agent_depth` | int | `0` | Agent 层相对深度（spirit=0，team=1，team member=2，sub-agent 递增） |
+| `session_type` | string(32) | `"standalone"` | 父子树角色枚举（见 §3.6.1） |
+| `member_agent_key` | string | `""` | agent 类型 Session 标识执行 Agent 的 key |
+| `member_role` | string | `""` | Agent 在 Team 中的角色（coordinator/worker/critic 等） |
+| `execution_stage` | string | `""` | 当前阶段：`idle`/`planning`/`allocating`/`executing`/`completed`/`failed` |
+| `completed_steps` | int | `0` | 已完成步骤数 |
+| `total_steps` | int | `0` | 总步骤数 |
+| `progress_pct` | float | `0.0` | 进度百分比（0–100） |
+
+### 3.6.3 树构建规则
+
+1. **Spirit 为根**：用户首次发起对话时创建 `session_type=spirit` 的根 Session，`root_session_id` 填自身 ID，`agent_depth=0`，`parent_session_id` 为空。
+2. **Team 编派**：Team Run 启动时创建 `session_type=team` 的 Session，`parent_session_id=spirit_id`，`root_session_id=spirit_id`，`agent_depth=1`。
+3. **Member 执行**：Team 成员执行时创建 `session_type=agent` 的 Session，`parent_session_id=team_session_id`，`root_session_id=spirit_id`，`agent_depth=2`，并填 `member_agent_key` + `member_role`。
+4. **Sub-Agent 递归**：Agent 通过 AgentTool 调用 sub-agent 时创建 `session_type=agent` 的 Session，`parent_session_id=caller_agent_session_id`，`agent_depth=caller_depth+1`。
+5. **Standalone**：未挂载到 Spirit 树的独立 Session（如 `RunTeamTest` 临时会话），`session_type=standalone`，`parent_session_id` 为空。
+
+### 3.6.4 深度校验 `validateDepth`
+
+```go
+// internal/biz/session/tree_validate.go（伪代码）
+func validateDepth(parent *Session, agentConfig AgentRuntimeSetting) error {
+    // Agent 级别：相对深度（subagents_max_generation_depth 来自 Agent 配置）
+    maxGen := agentConfig.SubagentsMaxGenerationDepth
+    if parent.AgentDepth+1 > maxGen {
+        return ErrMaxGenerationDepthExceeded
+    }
+    // Spirit 级别：绝对深度（max_session_depth 来自 Spirit 全局配置）
+    spirit, ok := lookupSpirit(parent.RootSessionID)
+    if ok && parent.AgentDepth+1 > spirit.MaxSessionDepth {
+        return ErrMaxSessionDepthExceeded
+    }
+    return nil
+}
+```
+
+**双层深度控制**：
+- `subagents_max_generation_depth`（Agent 级别，相对）：单个 Agent 最多递归派生多少代 sub-agent。
+- `max_session_depth`（Spirit 级别，绝对）：一棵 Spirit 树允许的最大 agent_depth，整树封顶。
+
+### 3.6.5 GetSessionTree RPC 设计
+
+```protobuf
+message GetSessionTreeRequest {
+  string root_session_id = 1;  // Spirit 根 ID
+}
+message SessionTreeNode {
+  Session session = 1;
+  repeated SessionTreeNode children = 2;
+}
+message GetSessionTreeResponse {
+  SessionTreeNode root = 1;  // 完整树
+}
+```
+
+**实现策略（一次查询 + 内存构树，任意深度）**：
+
+```go
+// 伪代码：避免 N+1 查询
+func (u *SessionUsecase) GetSessionTree(ctx, rootSessionID) (*SessionTreeNode, error) {
+    // 单次查询：按 root_session_id 取回整棵树的所有节点
+    all, err := u.sessionRepo.ListByRootSessionID(ctx, rootSessionID)
+    if err != nil { return nil, err }
+    // 内存中按 parent_session_id 构建多叉树
+    nodes := make(map[string]*SessionTreeNode, len(all))
+    for _, s := range all {
+        nodes[s.ID] = &SessionTreeNode{Session: s}
+    }
+    var root *SessionTreeNode
+    for _, s := range all {
+        node := nodes[s.ID]
+        if s.ParentSessionID == "" {
+            root = node  // Spirit 根
+        } else if parent, ok := nodes[s.ParentSessionID]; ok {
+            parent.Children = append(parent.Children, node)
+        }
+    }
+    return root, nil
+}
+```
+
+**辅助 RPC**：
+- `ListChildSessions(parent_session_id)`：单层子节点列表（详情页 Tab 用）。
+- `ListTeamAgentSessions(team_session_id)`：Team 下所有 agent member session。
+
+### 3.6.6 SpiritSessionID 传播
+
+**问题背景**：原实现中 SpiritSessionID 在 Team/Graph 多层嵌套下会丢失，导致跨会话聚合（如 `ListSpiritTeams`、`SynthesizeResults`）失效。
+
+**解决方案**：通过 `ProjectMeta` 显式传播 Spirit 会话身份。
+
+```go
+// ProjectMeta 字段（trpc-agent-go 运行时元数据）
+type ProjectMeta struct {
+    SpiritSessionID string  // Spirit 根会话 ID（贯穿整树）
+    ParentSessionID string  // 父会话 ID（用于挂载新 session）
+    RootSessionID   string  // = SpiritSessionID（冗余便于查询）
+    // ... 其他元数据
+}
+```
+
+**传播规则**：
+- Spirit 创建 Session 时：`SpiritSessionID = self.ID`，写入 `ProjectMeta`。
+- Team Run 启动：从 Spirit 的 `ProjectMeta` 继承 `SpiritSessionID`，新建 team Session 时设 `parent_session_id = spirit_id`。
+- Member/Sub-Agent 执行：继承上游 `ProjectMeta.SpiritSessionID`，新建 agent Session 时设 `parent_session_id = caller_session_id`。
+
+**`buildTeamProjectMeta`**（跨会话聚合）：
+
+```go
+// internal/team/runner_team_trpc.go（伪代码）
+func buildTeamProjectMeta(spiritSessionID, parentSessionID string) ProjectMeta {
+    return ProjectMeta{
+        SpiritSessionID: spiritSessionID,
+        ParentSessionID: parentSessionID,
+        RootSessionID:   spiritSessionID,
+    }
+}
+```
+
+Team Runner 启动时调用 `buildTeamProjectMeta` 填充下游 Agent 的 `ProjectMeta`，保证子 Agent 创建 Session 时 `root_session_id` / `parent_session_id` 正确。
+
+### 3.6.7 Activity 模型（单一真相源）
+
+> `messages` 表已 DELETED（详见 §4.5），所有用户消息、Agent 回复、工具调用、系统通知统一为 `Activity` 行。
+
+**ActivityKind（10 种，无 error）**：
+
+```go
+type ActivityKind string
+const (
+    ActivityKindTask        ActivityKind = "task"        // 用户输入任务
+    ActivityKindThinking    ActivityKind = "thinking"    // 思考/推理过程
+    ActivityKindAction      ActivityKind = "action"      // 工具/Skill 调用
+    ActivityKindReply       ActivityKind = "reply"       // Agent 回复（含 Team member 回复）
+    ActivityKindPlan        ActivityKind = "plan"        // 计划
+    ActivityKindConfirm     ActivityKind = "confirm"     // 需用户确认
+    ActivityKindNotice      ActivityKind = "notice"      // 系统通知
+    ActivityKindSession     ActivityKind = "session"     // 会话级事件（创建/压缩等）
+    ActivityKindTeamStage   ActivityKind = "team_stage"  // Team 编排阶段事件
+    ActivityKindGraphStage  ActivityKind = "graph_stage" // Graph 执行阶段事件
+)
+```
+
+> **DELETED**：原 `error` / `SubTaskBoard` / `Delegate` 等 ActivityKind 已删除（详见 ADR-02 D3/D4）。失败语义改为 `ActivityEventType=failed` + `ActivityKind=task`。
+
+**ActivityEventType（7 种）**：
+
+```go
+type ActivityEventType string
+const (
+    ActivityEventCreated       ActivityEventType = "created"
+    ActivityEventStreaming     ActivityEventType = "streaming"
+    ActivityEventUpdated       ActivityEventType = "updated"
+    ActivityEventCompleted     ActivityEventType = "completed"
+    ActivityEventFailed        ActivityEventType = "failed"
+    ActivityEventCancelled     ActivityEventType = "cancelled"
+    ActivityEventChildCreated  ActivityEventType = "child_created"
+)
+```
+
+**ActivityEvent 结构**：
+
+```go
+type ActivityEvent struct {
+    Event    ActivityEventType  // 7 种事件类型
+    Activity Activity           // Activity 行（kind/content/agent_key/session_id 等）
+    Domain   ActivityDomain     // chat（持久化）| system（仅 WS 推送）
+}
+```
+
+**LLM 角色映射**（`BuildLLMContext`）：
+
+| ActivityKind | LLM Role |
+|--------------|----------|
+| `task` | `user` |
+| `reply` | `assistant`（含 Team member 回复，通过 `agent_key` 标识来源） |
+| `action` | `tool` |
+| `notice` | `system` |
+
+### 3.6.8 双总线架构（ActivityEventBus + MonitorEventBus）
+
+> 详见 ADR-03。**已删除**：`SessionBus`、基于 Envelope 的 `MonitorBus`、`event_projector.go`、`activity_publish.go`、`activity_persist.go`。
+
+| 总线 | 事件类型 | 持久化 | 用途 |
+|------|---------|--------|------|
+| `ActivityEventBus` | `biz.ActivityEvent` | chat 域持久化到 `activities` 表；system 域仅 WS | Chat 域业务事件（task/reply/action 等） |
+| `MonitorEventBus` | `contract.MonitorEvent` | 不持久化 | 系统监控事件（FlowLog/TokenUsage 等） |
+
+**ActivityEventBus 持久化策略**（ADR-02 D1）：
+- 并行异步：`persistChan` fire-and-forget + 同步发布到总线
+- 三级补偿：重试预算（5 次/3100ms）→ 死信环形缓冲（512 容量，FIFO 驱逐，activityID 去重）→ API Backfill（最终一致兜底）
+- OnError 语义：根 Task 转 `failed`；无根场景创建最小失败 Task
+
+### 3.6.9 替换的旧组件
+
+| 旧组件 | 状态 | 新组件 |
+|--------|------|--------|
+| `messages` 表 | DELETED | `activities` 表 |
+| `message_repo.go` / `session_message_repo.go` | DELETED | `activity_repo.go` |
+| `message_usecase.go` | 保留为合法子用例（Facade） | — |
+| `event_projector.go` | DELETED | `activity_projector.go`（ActivityProjector） |
+| `activity_publish.go` / `activity_persist.go` | DELETED | `ActivityEventBus` 内置持久化 |
+| `StatusProjector` | 替换 | `ActivityProjector` |
+| `SessionBus` + Envelope `MonitorBus` | DELETED | `ActivityEventBus` + `MonitorEventBus` |
+| `event_store` 表 | DELETED | `activities` 表 + 死信缓冲 |
+
+---
+
 ## 四、数据层
 
 ### 4.1 数据模型总览
@@ -801,14 +1055,16 @@ Session 数据分为四层：
 
 | 层级 | 表 | 说明 |
 |------|----|------|
-| 会话主表 | `sessions` | 一条 session 的归属、标题、状态、时间、上下文消耗摘要 |
+| 会话主表 | `sessions` | 一条 session 的归属、标题、状态、时间、上下文消耗摘要、父子树字段（§3.6） |
 | 运行时拆分表 | `session_runtime` | 高频运行时字段拆分（session_revision/state_json/runner_snapshot_json/compress_version） |
 | 指标拆分表 | `session_metrics` | 高频更新 metrics 字段拆分（message_count/token/cost/context_*） |
-| 内容层 | `messages`、`session_turns`、`chat_attachments` | 用户、assistant、system、tool、agent 产出的内容与每轮对话指标 |
+| **活动层（内容真相源）** | **`activities`** | **Activity-First 单一真相源**：用户消息、Agent 回复、工具调用、系统通知、Team/Graph 阶段事件统一为 Activity 行（详见 §3.6.7） |
 | 编排层 | `session_runs`、`session_run_checkpoints`、`session_participants` | Run 生命周期、检查点、参与者 |
 | 摘要层 | `session_summaries` | 滚动摘要（原生 SQL 表） |
 
 > **拆分表策略**：`session_runtime` 与 `session_metrics` 将高频更新字段从 `sessions` 主表拆出，减少写放大。`sessions` 主表保留查询列表所需字段，拆分表通过 `session_id` 一对一关联。
+>
+> **⚠️ `messages` 表已 DELETED**（DDL 迁移 `20260902`，详见 §4.5）：内容层改由 `activities` 表承载，`session_turns` / `chat_attachments` 保留。`event_store` 表亦已 DELETED，事件持久化改由 `ActivityEventBus` 内置并行异步机制 + 死信缓冲 + API Backfill 完成（详见 ADR-02）。
 
 ### 4.2 Ent Schema — Session 主表
 
@@ -891,6 +1147,18 @@ func (Session) Fields() []ent.Field {
         field.String("parent_session_id").Default("").MaxLen(256),
         field.String("root_session_id").Default("").MaxLen(256),
         field.Int("agent_depth").Default(0),
+        // —— Session 父子树字段（Phase D 补全，详见 §3.6） ——
+        // session_type: spirit (root) | team | agent (member 或 sub-agent) | standalone
+        field.String("session_type").MaxLen(32).Default("standalone").Comment("spirit/team/agent/standalone"),
+        // member_agent_key: agent 类型 Session 标识执行 Agent 的 key
+        field.String("member_agent_key").Default("").Comment("Agent key for agent-type sessions"),
+        // member_role: Agent 在 Team 中的角色（coordinator/worker 等）
+        field.String("member_role").Default("").Comment("Agent role within team"),
+        // execution_stage: idle/planning/allocating/executing/completed/failed
+        field.String("execution_stage").Default("").Comment("Current stage"),
+        field.Int("completed_steps").Default(0),
+        field.Int("total_steps").Default(0),
+        field.Float("progress_pct").Default(0.0),
     }
 }
 ```
@@ -963,52 +1231,27 @@ func (SessionMetrics) Fields() []ent.Field {
 }
 ```
 
-### 4.5 Ent Schema — Message
+### 4.5 Ent Schema — Message（DEPRECATED · 已 DELETED）
 
-文件：`internal/data/ent/schema/message.go`
-
-```go
-type Message struct {
-    ent.Schema
-}
-
-func (Message) Annotations() []schema.Annotation {
-    return []schema.Annotation{
-        entsql.Annotation{Table: "messages"},
-    }
-}
-
-func (Message) Indexes() []ent.Index {
-    return []ent.Index{
-        index.Fields("session_id"),
-        index.Fields("session_id", "turn_id"),
-        index.Fields("session_id", "turn_number").StorageKey("idx_messages_session_turn"),
-        index.Fields("session_id", "status"),
-    }
-}
-
-func (Message) Fields() []ent.Field {
-    return []ent.Field{
-        field.String("id").Immutable().Unique().MaxLen(256),
-        field.String("session_id").MaxLen(256),
-        field.String("parent_message_id").Default(""),
-        field.String("turn_id").Default("").MaxLen(256),
-        field.Int("turn_number").Default(0),
-        field.Int("seq_in_turn").Default(0),
-        field.String("role"),
-        field.Text("content_markdown").Default(""),
-        field.String("model_name").Default(""),
-        field.Int("token_in").Default(0),
-        field.Int("token_out").Default(0),
-        field.Int("latency_ms").Default(0),
-        field.String("status").Default("ok"),
-        field.Int("attachments_count").Default(0),
-        field.Text("options_json").Default(""),
-        field.Text("error_message").Default(""),
-        field.String("created_at"),
-    }
-}
-```
+> **⚠️ 本节 Schema 已 DELETED（Activity-First 重构，详见 ADR-03）**：
+>
+> - 后端 `messages` 表已 DROP（DDL 迁移 `20260902`），`internal/data/ent/schema/message.go` 与 `internal/data/session_message_repo.go` / `internal/data/message_repo.go` 均已删除。
+> - 所有用户消息、Agent 回复、工具调用、系统通知统一为 **`Activity` 行**，单一真相源位于 `activities` 表（Schema 定义见 §4.13，运行时模型见 §3.6.7 与 Chat 模块重构方案 §3.4（已归档））。
+> - `ListSessionMessages` / `SearchSessionMessages` RPC 当前仍向后兼容（基于 Activity 表实现），proto `ChatMessageRow` 仅作传输载体。
+> - 下表保留仅作历史对照，**禁止再据此 Schema 创建/迁移 `messages` 表**。
+>
+> **历史 Schema（仅供回溯）**：
+>
+> ```go
+> // 已删除：internal/data/ent/schema/message.go
+> type Message struct { ent.Schema }
+> // 索引：session_id / (session_id, turn_id) / (session_id, turn_number) / (session_id, status)
+> // 字段：id, session_id, parent_message_id, turn_id, turn_number, seq_in_turn,
+> //       role, content_markdown, model_name, token_in, token_out, latency_ms,
+> //       status, attachments_count, options_json, error_message, created_at
+> ```
+>
+> **替代方案**：所有写入/查询走 `Activity` 模型（`internal/biz/activity.go` + `internal/data/activity_repo.go`），LLM 上下文构建走 `BuildLLMContext`（`internal/biz/llm_context_builder.go`）。
 
 ### 4.6 Ent Schema — SessionTurn
 
@@ -1279,11 +1522,93 @@ func entSessionToBiz(e *ent.Session) biz.Session {
         // ... 全字段映射
         PinnedAt: e.PinnedAt,
         SessionRevision: e.SessionRevision, CompressVersion: e.CompressVersion,
+        // —— 父子树字段（Phase D 补全，详见 §3.6） ——
         ParentSessionID: e.ParentSessionID, RootSessionID: e.RootSessionID,
-        AgentDepth: e.AgentDepth,
+        AgentDepth: e.AgentDepth, SessionType: e.SessionType,
+        MemberAgentKey: e.MemberAgentKey, MemberRole: e.MemberRole,
+        ExecutionStage: e.ExecutionStage, CompletedSteps: e.CompletedSteps,
+        TotalSteps: e.TotalSteps, ProgressPct: e.ProgressPct,
     }
 }
 ```
+
+### 4.13 Ent Schema — Activity（Activity-First 单一真相源）
+
+文件：`internal/data/ent/schema/activity.go`
+
+> Activity-First 架构核心表，承载原 `messages` 表删除后的全部内容（用户消息/Agent 回复/工具调用/系统通知/Team/Graph 阶段事件）。运行时模型见 §3.6.7。
+
+```go
+type Activity struct {
+    ent.Schema
+}
+
+func (Activity) Annotations() []schema.Annotation {
+    return []schema.Annotation{
+        entsql.Annotation{Table: "activities"},
+    }
+}
+
+func (Activity) Fields() []ent.Field {
+    return []ent.Field{
+        // === 主键 ===
+        field.String("id").MaxLen(64).Unique().Immutable(),
+        // === 分类 ===
+        field.String("kind").MaxLen(32).Comment("ActivityKind: task/thinking/action/reply/notice/confirm/plan/session/team_stage/graph_stage"),
+        field.String("status").MaxLen(32).Default("pending").Comment("ActivityStatus"),
+        // === 归属 ===
+        field.String("session_id").MaxLen(128).Default(""),
+        field.String("turn_id").MaxLen(128).Default(""),
+        field.String("parent_activity_id").MaxLen(64).Default("").Comment("父 Activity，树形嵌套"),
+        // === 时序 ===
+        field.String("timestamp").Default(""),
+        field.Int64("duration_ms").Default(0),
+        field.Int64("seq").Default(0).Comment("全局发射序号，前端稳定排序"),
+        // === Token 用量（仅 kind=task 根 Activity） ===
+        field.Int64("prompt_tokens").Default(0),
+        field.Int64("completion_tokens").Default(0),
+        // === 内容字段（按 kind） ===
+        field.Text("content").Default("").Comment("task/reply/notice 文本"),
+        field.Text("reasoning").Default("").Comment("thinking 推理内容"),
+        // === 工具字段（kind=action） ===
+        field.String("tool_name").MaxLen(128).Default(""),
+        field.String("tool_category").MaxLen(32).Default(""),
+        field.String("tool_call_id").MaxLen(128).Default(""),
+        field.Text("tool_arguments").Default("").Sensitive(),
+        field.Text("tool_result").Default("").Sensitive(),
+        field.Int64("tool_duration_ms").Default(0),
+        field.String("tool_error_code").MaxLen(64).Default(""),
+        // === 阶段（kind=session/team_stage/graph_stage） ===
+        field.String("stage").MaxLen(64).Default(""),
+        // === Sub-task board（kind=sub_task_board，遗留） ===
+        field.String("child_board_id").MaxLen(64).Default(""),
+        // === Spirit 扩展 ===
+        field.String("spirit_session_id").MaxLen(128).Default("").Comment("Spirit Session ID"),
+        field.String("team_id").MaxLen(128).Default(""),
+        field.String("dag_node_id").MaxLen(128).Default(""),
+        field.JSON("depends_on", []string{}).Optional(),
+        // === Agent 信息 ===
+        field.String("agent_key").MaxLen(128).Default(""),
+        field.String("agent_name").MaxLen(128).Default(""),
+        // === 展示提示 ===
+        field.Bool("collapsed").Default(false),
+        field.String("label").MaxLen(128).Default("").Comment("自定义标签如 规划/推理/重规划"),
+        // === Kind 特定元数据 ===
+        field.JSON("meta", map[string]any{}).Optional(),
+    }
+}
+
+func (Activity) Indexes() []ent.Index {
+    return []ent.Index{
+        index.Fields("session_id", "turn_id").StorageKey("idx_activities_session_turn"),
+        index.Fields("parent_activity_id").StorageKey("idx_activities_parent"),
+        index.Fields("spirit_session_id").StorageKey("idx_activities_spirit_session"),
+        index.Fields("team_id").StorageKey("idx_activities_team"),
+    }
+}
+```
+
+> **持久化机制**：由 `ActivityEventBus` 内置并行异步机制写入（`persistChan` fire-and-forget + 同步发布），三级补偿（重试预算 → 死信环形缓冲 512 容量 FIFO 驱逐 activityID 去重 → API Backfill）。详见 ADR-02 D1。
 
 ---
 

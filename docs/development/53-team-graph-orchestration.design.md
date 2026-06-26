@@ -14,7 +14,7 @@
 
 - **Team 简视图**：mode + members + 参数 → 编译器生成 graph 拓扑
 - **Graph 高级视图**：Vue Flow 自由编辑，可 `linked_graph_id` 引用
-- **运行态**：StatusProjector 将异构 Envelope 投影为 `AgentNodeState`；Kanban 与 Graph 共用
+- **运行态**：ActivityProjector 将 `ActivityEvent`（`biz.ActivityEvent`，Domain=chat）投影为 `AgentNodeState`；Kanban 与 Graph 共用。原 `StatusProjector` 投影异构 EnvelopeType 的实现已替换（详见 ADR-03）。
 
 **终态（执行单链）**：所有 Team Run 经 `CompileToGraphRuntimeConfig` → `GraphAgent` 执行；Native 路径已移除，`ARANEA_TEAM_GRAPH_RUNTIME=0` 为 Graph 执行熔断开关。
 
@@ -31,13 +31,13 @@ internal/service/
   team_observatory.go              ← GetTeamRunObservatory（Phase 1）
         ↓
 internal/biz/
-  orchestration_status.go              ← AgentNodeStatus + ApplyEnvelope（纯领域，无 trpc）
+  orchestration_status.go              ← AgentNodeStatus + ApplyActivityEvent（纯领域，无 trpc）
   team_usecase.go                      ← HasActiveRun 锁定校验（Phase 1）
         ↓
 internal/team/
   graph_compile.go                     ← CompileToGraphBuildConfig（Phase 2）
-  status_projector.go                  ← 订阅 Bus → 投影 WS（Phase 0.5）
-  runner_team_trpc.go                  ← 启动/停止投影器
+  status_projector.go                  ← 订阅 ActivityEventBus → 投影 ActivityEvent → WS（Phase 0.5；已重构为 ActivityProjector）
+  runner_team_trpc.go                  ← 启动/停止投影器（含 buildTeamProjectMeta 填充 SpiritSessionID）
         ↓
 internal/graph/trpc/                   ← Graph 构建与 EventBridge（既有）
         ↓
@@ -51,9 +51,9 @@ pkg/trpc-agent-go/graph · team         ← 框架真相源
 | 包 | 变更类型 | 说明 |
 |----|----------|------|
 | `internal/biz` | 新增 | 状态枚举、归约器、Observatory 读模型 |
-| `internal/team` | 新增/修改 | 编译器、StatusProjector、Runner 挂钩、Coordinator、模板注册表 |
+| `internal/team` | 新增/修改 | 编译器、ActivityProjector（原 StatusProjector）、Runner 挂钩、Coordinator、模板注册表 |
 | `internal/service` | 新增 | Observatory RPC、Run 锁定 |
-| `internal/event` | 扩展 | `orchestration_agent_status` EnvelopeType |
+| `internal/event` | 扩展 | `orchestration_agent_status` 改为 `ActivityKind=team_stage`（stage=agent_status），通过 `ActivityEventBus` 传输（Domain=chat）；详见 ADR-03 |
 | `internal/graph/trpc` | 修改 | Graph Run 启动投影器、failure_recovery |
 | `web/src/features/orchestration` | 新增 | 类型、Kanban、store、Timeline |
 | `web/src/components/graph` | 扩展 | 节点细态、边状态、属性面板（Retry/Destinations/Mapper） |
@@ -100,7 +100,7 @@ Run 开始时由 members + graph.nodes 构建 `OrchestrationRegistry`：
 |----|-----|
 | `agent_key` / `agent_id` | `node_id`, `role`, `display_name` |
 
-用于将 `member_*` Envelope 的 author/agent_key 映射到 graph 节点。
+用于将 `member_*` ActivityEvent（`ActivityKind=reply`，带 `agent_key`）的 author/agent_key 映射到 graph 节点。
 
 ### 2.3 TeamRun 扩展
 
@@ -160,7 +160,7 @@ blocked / waiting_* > retrying > tool_running > thinking > running > queued > id
 终态不可被非 retry/resume 信号覆盖
 ```
 
-实现：`OrchestrationStatusStore.ApplyEnvelope` 纯领域方法，便于单测。
+实现：`OrchestrationStatusStore.ApplyActivityEvent` 纯领域方法（原 `ApplyEnvelope`，已重构为接收 `ActivityEvent`），便于单测。
 
 ### 3.4 工作阶段 `WorkPhase`
 
@@ -176,11 +176,13 @@ const (
 
 ---
 
-## 四、StatusProjector
+## 四、StatusProjector（已重构为 ActivityProjector）
+
+> **架构变更**：原 `StatusProjector` 投影异构 `EnvelopeType` 已替换为 `ActivityProjector`，订阅 `ActivityEventBus` 上的 `biz.ActivityEvent`（Domain=chat）并投影为 `AgentNodeState`。详见 ADR-03。
 
 ### 4.1 职责（单一）
 
-订阅 Session 级 EventBus，将异构 Envelope **归约**为 `AgentNodeState`，发布 `orchestration_agent_status`。
+订阅 Session 级 `ActivityEventBus`，将 `ActivityEvent` **归约**为 `AgentNodeState`，发布 `ActivityKind=team_stage`（stage=agent_status）的 `ActivityEvent`。
 
 **不负责**：持久化（由 `ActivityStepFlusher` 异步批 flush 到 `orchestration_steps` 表）、Graph 构建、Team Run 生命周期。
 
@@ -188,40 +190,49 @@ const (
 
 ### 4.2 事件映射
 
-| EnvelopeType | 状态更新 |
+| 当前 `ActivityKind`（legacy EnvelopeType） | 状态更新 |
 |--------------|----------|
-| `team_step_started` | → `running`, phase=`doing` |
-| `member_message_start` | → `thinking` |
-| `tool_call` | → `tool_running`, 记录 CurrentActivity |
-| `tool_result` | 完成 Activity；若仍 streaming → `thinking` |
-| `member_message_done` | → `success`, phase=`delivered` |
-| `team_step_finished` | step.status → success/failed |
-| `graph_node_start` | node_id → `running` |
-| `graph_node_end` | → `success` |
-| `graph_node_error` | → `failed` |
-| `transfer` | 源 idle, 目标 `transferring`→`running` |
-| `checkpoint` | → `waiting_input` |
-| `run_status` (cancelled) | 全部活跃 → `cancelled` |
+| `team_stage`（step_started） / `team_step_started` | → `running`, phase=`doing` |
+| `reply`（streaming，agent_key=member） / `member_message_start` | → `thinking` |
+| `action`（tool） / `tool_call` | → `tool_running`, 记录 CurrentActivity |
+| `action`（tool result） / `tool_result` | 完成 Activity；若仍 streaming → `thinking` |
+| `reply`（completed） / `member_message_done` | → `success`, phase=`delivered` |
+| `team_stage`（step_finished） / `team_step_finished` | step.status → success/failed |
+| `graph_stage`（node_start） / `graph_node_start` | node_id → `running` |
+| `graph_stage`（node_end） / `graph_node_end` | → `success` |
+| `graph_stage`（node_error） / `graph_node_error` | → `failed` |
+| `team_stage`（transfer） / `transfer` | 源 idle, 目标 `transferring`→`running` |
+| `team_stage`（checkpoint） / `checkpoint` | → `waiting_input` |
+| `session`（cancelled） / `run_status` (cancelled) | 全部活跃 → `cancelled` |
 
-### 4.3 输出 Envelope
+### 4.3 输出 ActivityEvent
 
 ```go
-env := event.NewEnvelope(event.EnvelopeTypeOrchestrationAgentStatus, "orchestration-projector", sessionID)
-env.TeamID = teamID
-env.Metadata = map[string]any{
-    "run_id": runID,
-    "node_id": state.NodeID,
-    "agent_id": state.AgentID,
-    "status": string(state.Status),
-    "display_status": state.DisplayStatus,
-    "phase": string(state.Phase),
-    "input_preview": state.InputPreview,
-    "output_preview": state.OutputPreview,
-    "current_activity": state.CurrentActivity,
-    "retry_count": state.RetryCount,
+// 投影后发射 ActivityEvent（替代原 NewEnvelope）
+evt := biz.ActivityEvent{
+    Event: biz.ActivityEventUpdated,  // 状态更新事件
+    Activity: biz.Activity{
+        Kind:      biz.ActivityKindTeamStage,
+        Stage:     "agent_status",
+        SessionID: sessionID,
+        TeamID:    teamID,
+        AgentKey:  state.AgentKey(),
+        Meta: map[string]any{
+            "run_id":           runID,
+            "node_id":          state.NodeID,
+            "agent_id":         state.AgentID,
+            "status":           string(state.Status),
+            "display_status":   state.DisplayStatus,
+            "phase":            string(state.Phase),
+            "input_preview":    state.InputPreview,
+            "output_preview":   state.OutputPreview,
+            "current_activity": state.CurrentActivity,
+            "retry_count":      state.RetryCount,
+        },
+    },
+    Domain: biz.ActivityDomainChat,  // 持久化到 activities 表 + WS 推送
 }
-env.Channel = "team" // graph run 时可为 "graph"
-env.FilterKey = fmt.Sprintf("orchestration/%s/%s", runID, nodeID)
+activityEventBus.Publish(ctx, evt)  // FilterKey 由前端按 runID/nodeID 过滤
 ```
 
 ### 4.4 生命周期
@@ -230,12 +241,12 @@ env.FilterKey = fmt.Sprintf("orchestration/%s/%s", runID, nodeID)
 // internal/team/status_projector.go
 func StartOrchestrationStatusProjector(
     ctx context.Context,
-    bus event.Bus,
+    activityBus *activityevent.Bus,  // 原 event.Bus → ActivityEventBus
     cfg OrchestrationProjectorConfig,
 ) context.CancelFunc
 ```
 
-由 `runner_team_trpc.runTeamTRPC` 在 `team_run_started` 之后启动，`defer cancel()` 于 Run 结束。
+由 `runner_team_trpc.runTeamTRPC` 在 `team_stage`（stage=run_started）之后启动，`defer cancel()` 于 Run 结束。
 
 Graph Run：`internal/service/graph.go` Execute 路径同样启动。
 
@@ -392,7 +403,7 @@ message GetTeamRunObservatoryResponse {
 }
 ```
 
-首屏 REST + WS `orchestration_agent_status` 增量。
+首屏 REST + WS `ActivityKind=team_stage`（stage=agent_status）增量（经 `ActivityEventBus` 推送）。
 
 **RPC 契约**：`GetTeamRunObservatory` RPC + `GetTeamRunObservatoryTimeline` RPC（Activity 时间线）。
 
@@ -402,10 +413,11 @@ message GetTeamRunObservatoryResponse {
 
 | 模块 | 关系 |
 |------|------|
-| 11 Team | Definition、Run、member_* 事件源 |
-| 36 Graph | GraphAgent、graph_node_*、Checkpoint |
-| 51 Message | Envelope 通道；`orchestration_agent_status` 路由 team/graph |
-| 52 FlowLogger | `domain=team|graph` span 与 status 对齐 |
+| 11 Team | Definition、Run、`team_stage`/`reply` ActivityEvent 事件源 |
+| 36 Graph | GraphAgent、`graph_stage` ActivityEvent、Checkpoint |
+| 51 Message | `ActivityEvent` 通道（Domain=chat）；`orchestration_agent_status` → `ActivityKind=team_stage` 路由 team/graph（详见 ADR-03） |
+| 10 Session | Session 父子树：Team Run 创建 `session_type=team` Session 挂到 Spirit 根（详见 [10-session.design.md §3.6](./10-session.design.md#36-session-父子树--activity-模型activity-first-重构核心)） |
+| 52 FlowLogger | `domain=team|graph` span 与 status 对齐（监控事件走 `MonitorEventBus`） |
 | 17 Channel | Phase 4：`async_graph_id` 与编译路径统一 |
 
 ---
@@ -414,8 +426,8 @@ message GetTeamRunObservatoryResponse {
 
 | 层 | 文件 | 覆盖 |
 |----|------|------|
-| Biz | `orchestration_status_test.go` | ApplyEnvelope 优先级、终态、transfer |
-| Team | `status_projector_test.go` | 事件序列 → WS 输出 |
+| Biz | `orchestration_status_test.go` | ApplyActivityEvent（原 ApplyEnvelope）优先级、终态、transfer |
+| Team | `status_projector_test.go` | ActivityEvent 序列 → WS 输出（经 ActivityEventBus） |
 | Service | `team_observatory_test.go` | RPC 首屏 |
 | 前端 | `agentNodeStatusStyles.test.ts` | 样式映射 |
 
@@ -638,7 +650,7 @@ type AgentNodeState struct {
 |------|------|
 | `retry { max_attempts, backoff }` | `WithRetryPolicy(WithSimpleRetry(N))`；暴露 backoff strategy（exp / linear） |
 | `skip` | 编译期 `SkipNodeFuncRef`；UI 展示 skip 边 + Kanban "skipped" 状态 |
-| `fallback_agent` | `node_wiring.go` Agent 节点支持 + `failure_recovery.go`；UI 编辑；envelope `agent_failover` |
+| `fallback_agent` | `node_wiring.go` Agent 节点支持 + `failure_recovery.go`；UI 编辑；ActivityEvent `team_stage` stage=agent_failover |
 | `continue_on_failure` | ParallelFail；UI 标注；统计 partial-success |
 | **circuit_breaker** | 类型预留（`TeamFailurePolicy.circuit_breaker`）；目标：阈值 N 次连续失败 → 节点冻结 + WS alert |
 | **HITL 接管** | InterruptBefore/After + `OrchestrationFailureBanner`；错误时进入 `waiting_review`；前端 banner + 审核 |
@@ -716,7 +728,7 @@ internal/team                         ← Team 运行时（Compile + Project + R
 internal/graph                        ← Graph 运行时（trpc Builder + adapter）
 internal/biz                          ← OrchestrationSpec / GraphBuildConfig / Status / FailurePolicy
 internal/data                         ← Ent ORM（team_runs / graph_executions / orchestration_steps）
-internal/event                        ← Envelope + Bus + Buffer
+internal/event                        ← ActivityEventBus + MonitorEventBus（原 Envelope + Bus + Buffer 已删除，详见 ADR-03）
 ```
 
 **红线检查**：
@@ -744,25 +756,30 @@ internal/event                        ← Envelope + Bus + Buffer
 
 > 迁移实施状态详见 [53-team-graph-orchestration.development.md §8.2 已完成](./53-team-graph-orchestration.development.md#82-已完成一条链的完整实现)
 
-### 3.3 Envelope 协议增量
+### 3.3 ActivityEvent 协议增量（原 Envelope 协议，已重构）
+
+> **架构变更**：原 `Envelope` struct 与 `EnvelopeType` 常量已删除（详见 ADR-03）。Orchestration 相关事件改用 `biz.ActivityEvent` 在 `ActivityEventBus` 上传输（Domain=chat 持久化）。`TraceID` / `GraphExecutionID` / `NodeID` 等字段改由 `Activity.Meta` 承载。
 
 ```go
-type Envelope struct {
-    // 已有字段...
-    TraceID         string `json:"trace_id,omitempty"`         // ★ 已存在于 EnvelopeTrace；目标提升到顶层
-    GraphExecutionID string `json:"graph_execution_id,omitempty"` // ★ 新增
-    NodeID          string `json:"node_id,omitempty"`          // 已用于 orchestration_agent_status；统一覆盖 graph_node_*
+// 已删除：type Envelope struct { TraceID / GraphExecutionID / NodeID ... }
+// 当前：ActivityEvent.Meta 承载以下字段
+meta := map[string]any{
+    "trace_id":           traceID,           // ★ 原 Envelope.TraceID
+    "graph_execution_id": graphExecID,       // ★ 原 Envelope.GraphExecutionID
+    "node_id":            nodeID,            // ★ 原 Envelope.NodeID（统一覆盖 graph_node_*）
+    "run_id":             runID,
 }
 ```
 
-新类型：
+新 `ActivityKind`（替代原 `EnvelopeType` 常量）：
 
 ```go
-const (
-    EnvelopeTypeOrchestrationActivity EnvelopeType = "orchestration_activity"   // 单次 activity 起止
-    EnvelopeTypeAgentFailover          EnvelopeType = "agent_failover"           // fallback / retry 触发
-    EnvelopeTypeCircuitOpened          EnvelopeType = "circuit_opened"           // 熔断
-)
+// 已删除：EnvelopeTypeOrchestrationActivity / EnvelopeTypeAgentFailover / EnvelopeTypeCircuitOpened
+// 当前映射：
+//   orchestration_activity → ActivityKind=team_stage（stage=activity 起止）
+//   agent_failover         → ActivityKind=team_stage（stage=agent_failover，fallback/retry 触发）
+//   circuit_opened         → ActivityKind=team_stage（stage=circuit_opened，熔断）
+//   graph_node_*           → ActivityKind=graph_stage（stage=node_start/node_end/node_error/node_custom）
 ```
 
 ### 3.4 API 增量
@@ -835,17 +852,16 @@ message OrchestrationSpec {
       ├─ CompileToGraphRuntimeConfig
       ├─ adapter.BuildTeamGraphRoot → GraphAgent
       ├─ runner.StoreRunner
-      ├─ StartOrchestrationStatusProjector
-      │     ├─ member_message_start → status=thinking
-      │     ├─ tool_call_start      → status=tool_running + activity push
-      │     ├─ tool_call_end        → activity finish
-      │     ├─ member_message_done  → status=success
-      │     └─ graph_node_error     → status=failed → FailurePolicy 决策
-      ├─ RunTRPCUserTurn → ConsumeEventStream → EventProjector → EventBus
+      ├─ StartOrchestrationStatusProjector（ActivityProjector）
+      │     ├─ reply(streaming, agent_key=member) → status=thinking
+      │     ├─ action(tool_call_start)            → status=tool_running + activity push
+      │     ├─ action(tool_call_end)              → activity finish
+      │     ├─ reply(completed)                   → status=success
+      │     └─ graph_stage(node_error)            → status=failed → FailurePolicy 决策
+      ├─ RunTRPCUserTurn → ConsumeEventStream → ActivityProjector → ActivityEventBus
       │     → WS:
-      │         channel:chat（member_* / text_delta）
-      │         channel:team（orchestration_agent_status / team_summary）
-      │         channel:graph（graph_node_* / graph_execution_done）
+      │         Domain=chat（reply / team_stage / graph_stage）
+      │         Domain=system（监控事件走 MonitorEventBus）
       └─ persistStep + UpdateTeamRun + flushActivityHistory（★ 新增）
 ```
 
@@ -860,17 +876,17 @@ Channel webhook（async_team_id 配置）
   → GraphAgent 执行（与 §4.1 同一引擎）
   → enqueueOutboundReply（"后台任务已创建（Job: X）"）
   → watchAsyncGraphCompletion（短期）/ Worker deadline（Phase F）
-  → 完成 → outbound 通知 + Job done envelope + Web Observatory 自动刷新
+  → 完成 → outbound 通知 + Job done ActivityEvent（`team_stage` stage=job_done）+ Web Observatory 自动刷新
 ```
 
 ### 4.3 失败接管路径（FailurePolicy 完整化）
 
 ```
 Agent 节点失败
-  ├─ retry: 自动重试 → envelope `agent_retry` + Kanban "retrying"
-  ├─ skip: 跳过 + envelope `node_skipped` + Graph 灰线 + ParallelFail.continue_on_failure
-  ├─ fallback_agent: 切备用 → envelope `agent_failover` + Kanban 显示新 Agent
-  ├─ circuit_open（连续 N 失败）: 节点冻结 + envelope `circuit_opened` + 全局 banner
+  ├─ retry: 自动重试 → ActivityEvent(`team_stage` stage=agent_retry) + Kanban "retrying"
+  ├─ skip: 跳过 + ActivityEvent(`team_stage` stage=node_skipped) + Graph 灰线 + ParallelFail.continue_on_failure
+  ├─ fallback_agent: 切备用 → ActivityEvent(`team_stage` stage=agent_failover) + Kanban 显示新 Agent
+  ├─ circuit_open（连续 N 失败）: 节点冻结 + ActivityEvent(`team_stage` stage=circuit_opened) + 全局 banner
   ├─ halt: TeamRun 失败收口
   └─ await_review（HITL）: status=waiting_review
         ↓
@@ -924,7 +940,7 @@ Team A 内某 Agent 调 call_agent(b)
 
 ### 5.3 实时性 SLA
 
-- WS envelope 到达 → Kanban / Graph chip 状态 < 50ms（rAF batch）
+- WS ActivityEvent 到达 → Kanban / Graph chip 状态 < 50ms（rAF batch）
 - Observatory 首屏 30 节点 < 500ms（已有目标）
 - Activity Timeline 增量更新无闪烁（使用 `<TransitionGroup>` + key=`activity.id`）
 
@@ -967,7 +983,7 @@ cd web && pnpm i && pnpm lint && pnpm test && pnpm build
 |------|------|------|
 | `TestParityNativeVsGraph_<mode>` | `internal/team/parity_test.go` | 六模式 parity |
 | `TestActivityHistoryProjection` | `internal/team/status_projector_test.go` | history capped + ordering |
-| `TestFallbackAgentEnvelope` | `internal/graph/trpc/failure_recovery_test.go` | envelope agent_failover |
+| `TestFallbackAgentEnvelope` | `internal/graph/trpc/failure_recovery_test.go` | ActivityEvent `team_stage` stage=agent_failover（legacy 测试名保留） |
 | `TestSpecV2RoundTrip` | `internal/biz/orchestration_spec_test.go` | v1 ↔ v2 双向转换 |
 
 > 任务级代码锚点、验收标准与状态标记详见 [53-team-graph-orchestration.development.md §3 开发阶段](./53-team-graph-orchestration.development.md#3-开发阶段)
@@ -978,7 +994,7 @@ cd web && pnpm i && pnpm lint && pnpm test && pnpm build
 |----|------|---------|
 | M53-PARITY-01 | Sequential 5 成员，Native 与 Graph 输出相等 | parity report 通过 |
 | M53-OBS-01 | 5 工具调用 / Agent，Kanban Activity Timeline 全部可见 | history 5 条都在 |
-| M53-FP-01 | Agent 配 fallback_agent，主 fail 时切到备 | UI 显示切换；envelope `agent_failover` |
+| M53-FP-01 | Agent 配 fallback_agent，主 fail 时切到备 | UI 显示切换；ActivityEvent `team_stage` stage=agent_failover |
 | M53-FP-02 | Circuit Breaker 阈值 3 | 3 次失败后节点冻结 + banner |
 | M53-HITL-01 | InterruptBefore 节点 → 等审核 → 继续 | Banner + Resume 成功 |
 | M53-RT-01 | Team Run 进程重启 | Checkpoint 恢复后继续 |
@@ -991,7 +1007,7 @@ cd web && pnpm i && pnpm lint && pnpm test && pnpm build
 | Team Run 首字节（5 成员 sequential） | < 5s | E2E 计时 |
 | Observatory 首屏（30 节点）| < 500ms | Lighthouse |
 | Activity Timeline 渲染（100 条） | < 100ms | Vue devtools |
-| 状态投影延迟（envelope → chip） | < 50ms | DevTools timeline |
+| 状态投影延迟（ActivityEvent → chip） | < 50ms | DevTools timeline |
 | Graph parity 测试套件 | < 5min | CI |
 
 ---
@@ -1002,14 +1018,14 @@ cd web && pnpm i && pnpm lint && pnpm test && pnpm build
 
 | 共用机制 | 在 M55 中的作用 | 在 M53+ 中的作用 |
 |---------|----------------|------------------|
-| `trace_id`（顶层 Envelope） | 跨 Chat Turn / Channel Job 关联 | 跨 Team Run / Graph Execution 关联 |
+| `trace_id`（顶层 ActivityEvent.Meta） | 跨 Chat Turn / Channel Job 关联 | 跨 Team Run / Graph Execution 关联 |
 | Background Job 面板 | Channel async / Chat 长任务列表 | Team async / Graph Run 列表共用 |
 | `session_revision` | Chat Web 增量同步 | Team Run UI 同样使用（Observatory 数据来自 Session） |
 | FailurePolicy / TurnError 模型 | Channel IM 错误文案 | Team / Graph 错误接管 banner |
 | Checkpoint / Resume | Chat 长任务 24h（Phase F） | Team Graph Run resume（Phase 6） |
 | HITL UX | Chat AwaitUserReply 复用 | Observatory HITL Tab 复用 |
 
-**协同执行原则**：M55 Phase B（`session_revision`）+ M53 Phase 5b（`trace_id`）应在同一 sprint 完成，因为 envelope 协议改一处其他必须跟上。
+**协同执行原则**：M55 Phase B（`session_revision`）+ M53 Phase 5b（`trace_id`）应在同一 sprint 完成，因为 ActivityEvent 协议改一处其他必须跟上。
 
 ---
 

@@ -2,7 +2,7 @@
 
 > **版本**：2026-06-27 | **状态**：🟢 P1 + P2 + P3 + P5(T3.4) 已实现，P4 工具生命周期事件未实现；✅ 统一总线迁移 Phase 5 Blocker A-G 全部完成（legacy Envelope Bus / SessionBus / MonitorBus 已删除）
 > **需求**：[34-event-system.md](./34-event-system.md) · **设计**：[34-event-system.design.md](./34-event-system.design.md)
-> **统一总线迁移**：[2026-06-25-unified-bus-architecture-design.md](../superpowers/specs/2026-06-25-unified-bus-architecture-design.md) · **ADR-03**：[2026-06-26-review-adr-unified-bus-architecture.md](../reports/2026-06-26-review-adr-unified-bus-architecture.md)
+> **统一总线迁移**：[2026-06-25-unified-bus-architecture-design.md](../superpowers/specs/2026-06-25-unified-bus-architecture-design.md) · **ADR-03**：统一总线架构（已归档，设计内容已并入 34-event-system.design.md）
 
 ---
 
@@ -15,7 +15,7 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 > - **MonitorEventBus**（`contract.MonitorBus`）：传输 `MonitorEvent`，承载高频监控事件（log/flow_log/mcp/alert）。
 > - ~~**Legacy Envelope Bus**（`event.Bus`）~~：已删除（Blocker F/G）。`contract/envelope.go` 已删，活类型 `EnvelopeError`/`EnvelopeTokenUsage` 提取到 `envelope_types.go`。`ProvideSessionBus`/`Infra.SessionBus` 已删，8 个 consumer 全部迁移到 `ActivityEventBus`/`MonitorEventBus`。
 >
-> 详见 [统一总线架构设计](../superpowers/specs/2026-06-25-unified-bus-architecture-design.md) 和 [ADR-03](../reports/2026-06-26-review-adr-unified-bus-architecture.md)。
+> 详见 [统一总线架构设计](../superpowers/specs/2026-06-25-unified-bus-architecture-design.md) 和 ADR-03（统一总线架构）。
 
 **代码锚点**：
 
@@ -81,14 +81,17 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 | 10 | ~~事件缓冲与重放（Buffer + Replay）~~ | 已删除（Blocker G）：`buffer.go` 环形缓冲在 Blocker A 后无读取者 |
 | 11 | WebSocket 传输（`/v1/ws`，2 pump） | `internal/server/ws.go` + `ws_*.go`（monitorEventPump + activityEventPump） |
 | 12 | 前端架构（WsTransport + useEnvelopeStream） | `web/src/realtime/ws-transport.ts` + `useEnvelopeStream.ts`（🟡 待迁移到 ActivityEvent） |
-| 13 | 事件持久化（event_store + 异步 persist + TTL） | `event_store_repo.go` + `event_persist_handler.go` + cron 清理 |
+| 13 | ~~事件持久化（event_store + 异步 persist + TTL）~~ | 已删除（ADR-02）：`event_store` 表 DROP，由 `activities` 表 + 并行异步持久化替代；`event_persist_handler.go`/`event_store_repo.go`/`event_store.go` 已删 |
 | 14 | Chat 会话事件检视（Dialog 双 Tab） | `SessionTimelineDialog.vue` + Inspector 组件群 |
 | 15 | Flow Log v2（替代 SlogBridge） | `flow_log.go` + `flow_tracker.go` + `trace_emitter.go` |
 | 16 | Monitor 实时事件 UI | `web/src/components/monitor/RealtimeEvents.vue` |
-| 17 | 事件回放 API（`GET /v1/events`） | `internal/service/event.go` + `event.proto` |
-| 18 | ~~事件丢弃可观测（Prometheus）~~ | 已删除（Blocker G）：`bus_adapter.go` DropLogger 随 `bus.go` 删除 |
+| 17 | ~~事件回放 API（`GET /v1/events`）~~ | 已删除（ADR-03 Blocker A）：replay 改用 `ListActivities` RPC（API Backfill） |
+| 18 | ~~事件丢弃可观测（Prometheus）~~ | 已删除（Blocker G）：`bus_adapter.go` DropLogger 随 `bus.go` 删除；MonitorBus 丢弃通过 `MonitorBusDropCount` 暴露 |
 | 19 | Graph 事件桥接 | `internal/graph/trpc/event_bridge.go` |
-| 20 | T3.4 revision-based sync replay（sync_request 上行 + EventStore 重放） | `internal/server/ws_sync_request.go` + `web/src/realtime/event_replay.ts` |
+| 20 | ~~T3.4 revision-based sync replay（sync_request 上行 + EventStore 重放）~~ | 已删除（ADR-03 Blocker A）：`ws_sync_request.go`/`event_replay.ts` 删除，重连改用 `ListActivities` RPC（API Backfill） |
+| 21 | API Backfill（WS 重连恢复） | ✅ 现行：前端调用 `ListActivities` RPC 拉取持久化 Activity（替代 Buffer replay + sync_request） |
+| 22 | Activity-First 并行异步持久化 | ✅ 现行（ADR-02）：`activity_event_sequencer.go` processTask + persistChan + worker goroutine + retry + dead-letter |
+| 23 | Dead-letter 环形缓冲 | ✅ 现行（ADR-02）：容量 512，FIFO 淘汰，activityID 去重，`ListDeadLetterActivities` RPC 暴露 |
 
 ### 2.2 能力清单（未实现）
 
@@ -100,14 +103,15 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| 后端 Event 核心 | ✅ | ActivityEventBus / MonitorEventBus / WS / StateDelta / event_store（legacy Envelope Bus 已删，Blocker F/G） |
+| 后端 Event 核心 | ✅ | ActivityEventBus / MonitorEventBus / WS / StateDelta / Activity 表持久化（legacy Envelope Bus / event_store 已删） |
 | Monitor 实时事件 UI | ✅ | `RealtimeEvents.vue` |
 | Chat 会话事件检视 | ✅ | `SessionTimelineDialog` 双 Tab + Inspector 组件群 |
 | Monitor EventTimeline 原型 | ✅ | 已删除（O1） |
-| T3.4 revision-based sync replay | ✅ | `ws_sync_request.go` + `event_replay.ts` + E2E 测试 |
+| ~~T3.4 revision-based sync replay~~ | ✅ 已删除 | ADR-03 Blocker A：`ws_sync_request.go`/`event_replay.ts` 删除，改用 `ListActivities` RPC（API Backfill） |
 | 统一总线迁移 | ✅ | ADR-03 Phase 5 Blocker A-G 全部完成 |
+| Activity-First 持久化 | ✅ | ADR-02：并行异步 + 三重补偿（retry + dead-letter + API Backfill） |
 | 工具生命周期事件 | ❌ | ActivityEventKind 无 ToolRegistered/ToolUpdated/ToolRemoved |
-| 前端 Envelope → ActivityEvent 迁移 | 🟡 | `web/src/realtime/envelope.ts` 仍存在，23 文件 30 处引用待迁移 |
+| 前端 Envelope → ActivityEvent 迁移 | ✅ | Envelope import 从 46 降至 7（残留为合法传输层/事件检查器，依赖后续清理） |
 
 ---
 
@@ -213,7 +217,7 @@ Envelope 元数据扩展（StateDelta / Extensions / FilterKey / Branch / Tag / 
 | 5 | contract 子包抽取 | 1 | ✅ |
 | 6 | 双 Bus 隔离（~~SessionBus / MonitorBus~~ → ActivityEventBus / MonitorEventBus） | 1 | ✅→🔄（Blocker F 迁移完成） |
 | 7 | ~~EventWAL（WBPF for Critical events）~~ | 1 | ✅→🗑️（Phase 1c-2 下线） |
-| 8 | P2 持久化 / API / TTL | 2 | ✅ |
+| 8 | ~~P2 持久化 / API / TTL（event_store）~~ | 2 | ✅→🗑️（ADR-02：event_store 表 DROP，由 Activity 表 + 并行异步持久化替代） |
 | 9 | 删除 Monitor EventTimeline 原型 | 3 | ✅ |
 | 10 | useEventFilter + eventFilter.ts | 3 | ✅ |
 | 11 | StateDeltaIndicator / TransferBadge | 3 | ✅ |
@@ -227,9 +231,9 @@ Envelope 元数据扩展（StateDelta / Extensions / FilterKey / Branch / Tag / 
 | 19 | ToolUpdated → 缓存失效 | 4 | ❌ |
 | 20 | ToolRemoved → Agent 配置告警 | 4 | ❌ |
 | 21 | 异步触发 + FlowLog 记录 | 4 | ❌ |
-| 22 | T3.4 后端 sync_request 处理（ws_sync_request.go + EventStoreLister 窄接口） | 5 | ✅ |
-| 23 | T3.4 前端 RevisionTracker + requestSyncReplay（event_replay.ts + ws-transport.ts 集成） | 5 | ✅ |
-| 24 | T3.4 E2E 测试（ws_sync_e2e_test.go） | 5 | ✅ |
+| 22 | ~~T3.4 后端 sync_request 处理（ws_sync_request.go + EventStoreLister 窄接口）~~ | 5 | ✅→🗑️（ADR-03 Blocker A：sync_request 删除，改用 API Backfill） |
+| 23 | ~~T3.4 前端 RevisionTracker + requestSyncReplay（event_replay.ts + ws-transport.ts 集成）~~ | 5 | ✅→🗑️（ADR-03 Blocker A：event_replay.ts 删除） |
+| 24 | ~~T3.4 E2E 测试（ws_sync_e2e_test.go）~~ | 5 | ✅→🗑️（随 sync_request 一起删除） |
 | 25 | ADR-03 Blocker A：删除 WS replay Buffer 路径 | 5 | ✅ |
 | 26 | ADR-03 Blocker B：side consumer 迁移到 ActivityEventBus/MonitorBus | 5 | ✅ |
 | 27 | ADR-03 Blocker C：DomainEvent bridge 迁移 | 5 | ✅ |
@@ -237,7 +241,12 @@ Envelope 元数据扩展（StateDelta / Extensions / FilterKey / Branch / Tag / 
 | 29 | ADR-03 Blocker E：删除 Buffer 字段 + 死写入 | 5 | ✅ |
 | 30 | ADR-03 Blocker F：删除 ProvideSessionBus + Infra.SessionBus + 8 consumer 迁移 | 5 | ✅ |
 | 31 | ADR-03 Blocker G：提取活类型 + 删除 contract/envelope.go 死代码 | 5 | ✅ |
-| 32 | 前端 Envelope → ActivityEvent 类型迁移（23 文件 30 处引用） | 6 | 🟡 |
+| 32 | 前端 Envelope → ActivityEvent 类型迁移（46→7 处残留） | 6 | ✅ |
+| 33 | ADR-02 D1：Activity-First 并行异步持久化（processTask + persistChan + worker） | 6 | ✅ |
+| 34 | ADR-02 D2：三重补偿（retry 5 次 + dead-letter 512 + API Backfill） | 6 | ✅ |
+| 35 | ADR-02 D3：OnError 语义重构（删除 ActivityKindError，task.failed 统一） | 6 | ✅ |
+| 36 | ADR-02 D4：Legacy Kind 清理（sub_task_board/error/delegate） | 6 | ✅ |
+| 37 | 前端 Envelope 残留清理（7 处合法传输层 import） | 6 | ❌ |
 
 ---
 
@@ -249,15 +258,13 @@ Envelope 元数据扩展（StateDelta / Extensions / FilterKey / Branch / Tag / 
 - [x] 多 Agent 场景中可追踪执行链（Branch + InvocationID / ParentInvocationID）
 - [x] 事件可携带自定义扩展元数据（Extensions 命名空间化）
 - [x] Runner 正确处理 Actions 提示（SkipSummarization）
-- [x] 系统重启后可查询历史事件
-- [x] 可按时间范围回放事件
-- [x] Chat 会话事件检视：Drawer/Dialog 双 Tab（Trace + 实时 Envelope），支持类型/分支/标签过滤与 Branch 树
-- [x] 关键事件 WBPF（先写后发），进程崩溃不丢失
-- [x] Monitor 高频事件与 Chat 业务事件走独立 Bus，避免相互挤压
-- [x] T3.4 WS 断连重连后，客户端发送 `sync_request { after_revision }`，服务端从 EventStore 重放 `session_revision > after_revision` 的 Envelope
-- [x] T3.4 重放按 `SessionRevision` 升序排序，仅投递当前连接已订阅 Channel 的事件
-- [x] T3.4 EventStore 未配置时静默降级到 event-ID replay，不阻断连接
-- [x] T3.4 sync_request 处理不阻塞 readPump（EventStore 查询通过 `safego.Go` 异步执行）
+- [x] 系统重启后可查询历史 Activity 事件（`Domain=chat` 持久化到 `activities` 表，`Domain=system` 不持久化）
+- [x] WS 重连后通过 `ListActivities` RPC（API Backfill）恢复一致视图，无需服务端 replay Buffer
+- [x] Chat 会话事件检视：Drawer/Dialog 双 Tab（Trace + 实时 ActivityEvent），支持 kind/event/agent 过滤与 Activity 树
+- [x] ~~关键事件 WBPF（先写后发），进程崩溃不丢失~~ → **并行异步持久化 + 三重补偿**：`Domain=chat` Activity 事件持久化与推送解耦，失败通过重试 5 次（100/200/400/800/1600ms）+ dead-letter 环形缓冲（容量 512，FIFO，activityID 去重）+ API Backfill 保证最终一致
+- [x] 订阅者幂等：所有 typed consumer 重复投递无副作用
+- [x] Monitor 高频事件与 Chat 业务事件走独立 Bus（ActivityEventBus + MonitorEventBus），避免相互挤压
+- [x] ~~T3.4 WS 断连重连后 sync_request + EventStore 重放~~ → **已删除**（ADR-03 Blocker A：改用 `ListActivities` RPC，无需服务端维护 replay Buffer）
 - [ ] 新工具注册后自动生成描述和 embedding
 - [ ] 工具更新后相关 Agent 缓存自动失效
 - [ ] 触发操作异步执行，不阻塞主流程
@@ -267,11 +274,14 @@ Envelope 元数据扩展（StateDelta / Extensions / FilterKey / Branch / Tag / 
 
 ## 7. 依赖与风险
 
-- Chat Inspector 依赖 P2 `GET /v1/events` 与 WS 同时在线
-- 高流量 session 下 Envelope 列表需上限（Inspector 保留最近 N 条，`useChatEventInspector` MAX_EVENTS=2000）
-- FlowLogger 落库与 event_store 已分流（exclude flow_log）
-- Critical 事件 WAL 写失败会阻塞 publish（避免不一致），需监控 WAL 写延迟
-- 双 Bus 路由模式由 `MONITOR_BUS_ROUTING` 控制，`split` 模式下若误配会导致事件丢失
+- Chat Inspector 依赖 `ListActivities` RPC 与 WS 同时在线
+- 高流量 session 下 Activity 列表需上限（Inspector 保留最近 N 条，`useChatEventInspector` MAX_EVENTS=2000）
+- FlowLogger 落库与 Activity 持久化已分流（FlowLog 走 `MonitorEventBus` → `FlowLogPersistConsumer`，Activity 走 `ActivityEventBus` → `ActivityEventSequencer`）
+- ~~Critical 事件 WAL 写失败会阻塞 publish~~ → **已删除**（ADR-02：WAL 废弃，并行异步持久化 + 三重补偿替代；persist 失败不阻塞推送）
+- ~~双 Bus 路由模式由 `MONITOR_BUS_ROUTING` 控制~~ → **已删除**（ADR-03：2 Bus 固定路由，ActivityEventBus 传输 chat+system，MonitorEventBus 传输 monitor，无路由模式配置）
 - P4 工具生命周期事件需与 `internal/biz/tool/` 和 `internal/biz/skill/` 模块协同，触发链需遵守红线 #8（框架 plugin 回调不得直接写数据库）
-- T3.4 sync_request 依赖 EventStore 持久化（P2），EventStore 未配置时降级到 event-ID replay；24h 回溯窗口外的历史事件不重放（客户端应在初次加载时通过 `GET /v1/events` 补齐）
-- T3.4 单连接 sync_request 重放上限 500 条，超过的会话需客户端分页拉取
+- persist worker 单线程瓶颈：per-activity FIFO 要求串行处理，高并发 turn 可能成为瓶颈，需监控 `persistChan` 满载率
+- Dead-letter 容量有限：512 条，极端场景（DB 长时间不可用）可能丢失部分 persist 失败记录，API Backfill 兜底
+- 临时不一致窗口：persist 失败时前端实时状态与 DB 不一致，最长持续到下次 API Backfill（通常 < 5s）
+- 前端 Envelope 残留：7 处合法传输层 import，依赖后续前端清理
+- `Domain=system` 语义负担：publisher 必须正确声明 Domain，错误声明会导致 system 事件被持久化或 chat 事件被丢弃

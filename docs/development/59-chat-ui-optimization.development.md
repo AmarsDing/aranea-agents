@@ -1,8 +1,9 @@
 # M59: Chat UI 优化 — 开发计划
 
-> **版本**：2026-06-10 | **状态**：P0/P0.5/OBS-P0/OBS-P1/M60-P1/M60-P2/M60-P4/P1/P1.5 已完成 · ✅ P1.6 TK 批次全部完成（前端 30/30 + 后端 4/4） · ✅ P2 进化闭环（5/6 完成） · ✅ M69 P0/P1/P2/P3/P4 全部完成
+> **版本**：2026-06-10 | **状态**：P0/P0.5/OBS-P0/OBS-P1/M60-P1/M60-P2/M60-P4/P1/P1.5 已完成 · ✅ P1.6 TK 批次全部完成（前端 30/30 + 后端 4/4） · ✅ P2 进化闭环（5/6 完成） · ✅ M69 P0/P1/P2/P3/P4 全部完成 · ✅ **Phase AF Activity-First 迁移已完成**（ActivityStream 为 spirit/team/member 三模式统一渲染器，Envelope 路径已彻底删除）
 > **需求**：[59-chat-ui-optimization.md](./59-chat-ui-optimization.md) · **设计**：[59-chat-ui-optimization.design.md](./59-chat-ui-optimization.design.md)
 > **合并来源**：原 M59（精灵模式 + 可观测性 + 并行编排）+ M69（时间线展示 + 团队列表修复 + useAgentBlocks 业务逻辑审查）
+> **架构变更**：ADR-03（统一总线架构，Phase 5 Blocker A-G 全部完成）· Chat 重构方案（§7-§10 前端动态渲染 + §12 验收 14 项全达成，已归档）
 
 ---
 
@@ -30,12 +31,12 @@ Chat UI 优化：精灵为唯一对话入口，左侧列表重构为精灵 + 任
 | DAG 依赖字段 | ✅ | DAGNodeID / DependsOn |
 | 并行配置 | ✅ | ParallelConfig（MaxConcurrentTeams / AutoArchiveSeconds 等） |
 | `ChatExecutionCard` 已有折叠/展开 | ✅ | 使用 `<q-expansion-item>` |
-| `tool_call`/`tool_result` Envelope 携带 AgentName | ✅ | `EnvelopeToolCall.AgentName`/`AgentKey`/`ActivityKind` |
+| `tool_call`/`tool_result` Activity 携带 AgentName | ✅ | `Activity.ToolCall.AgentName`/`AgentKey`/`ActivityKind`（ADR-03 后由 EnvelopeToolCall 迁移到 Activity.ToolCall） |
 | `AgentNodeStatus` 17 种状态已定义 | ✅ | `orchestration_status.go` |
 | `SpiritMember.status` 字段存在 | ✅ | 类型为 `string`，典型值 idle/running/error |
 | `OptionsJSON.team_member` 字段存在 | ✅ | 成员消息过滤基础 |
 | `ResumeTeamRunExecution` API 存在 | ✅ | 需要 `graph_execution_id` |
-| WS 事件回放机制 | ✅ | `lastEventId` + `onReplayState` 回调 |
+| WS 事件回放机制 | ✅ | `lastEventId` + `onReplayState` 回调（Phase AF 后：`onReplayState` 已删除，重连改用 `ListActivities` RPC 拉取历史 Activity；详见 §13） |
 | `groupMessagesByTurn` 分组 | ✅ | 需扩展 `isCompleted` 字段 |
 | EvolutionUsecase | ✅ | DQ Score 计算和建议生成 |
 | LearningLoopUsecase | ✅ | Pattern 检测和 Proposal 生成 |
@@ -44,16 +45,30 @@ Chat UI 优化：精灵为唯一对话入口，左侧列表重构为精灵 + 任
 
 ## 3. 开发阶段
 
-> **代码锚点说明（2026-06-17 更新）**：以下各 Phase 任务表中的文件路径为**任务完成时的历史锚点**。Activity-First 架构（Phase AF）迁移后，部分前端文件已重命名/替换：
-> - `useAgentBlocks.ts` → `useActivityTimeline.ts`
-> - `useChatTimeline.ts` → `useConversationTimeline.ts`
+> **代码锚点说明（2026-06-27 更新）**：以下各 Phase 任务表中的文件路径为**任务完成时的历史锚点**。Activity-First 架构（Phase AF）迁移后，部分前端文件已重命名/替换/删除：
+> - `useAgentBlocks.ts` → ✅ 已删除（由 `useActivityTimeline.ts` 替代）
+> - `useChatTimeline.ts` → `useConversationTimeline.ts` → ✅ 已删除（由 `useActivityTimeline.ts` 替代）
+> - `ConversationTurn.vue` → ✅ 已删除（由 `ActivityStream.vue` 三模式统一渲染器替代）
+> - `TaskExecutionPanel.vue` / `MemberReadOnlyPanel.vue` / `TeamPanel.vue` / `OrchestrationTimeline.vue` → ✅ 已删除（由 `ActivityStream.vue` 替代）
+> - `streamHandlers.ts` → ✅ 已删除（占位机制移除）
+> - `realtime/envelope.ts` / `realtime/dispatcher.ts` / `realtime/data_channel.ts` / `realtime/event_replay.ts` / `features/chat/dispatcher.ts` → ✅ 已删除（ADR-03 Blocker G 前端完成）
 > - `timelineTypes.ts` → `agentTreeTypes.ts` / `activityTypes.ts` / `activityTimelineTypes.ts`
-> - `TaskBoard.vue` / `TaskBoardNode.vue` → `ConversationTurn.vue` + Block 组件（`ThinkingBlock.vue` / `ActionBlock.vue` / `ReplyBlock.vue` 等）
-> - `TurnBlock.vue` → `ConversationTurn.vue`
+> - `TaskBoard.vue` / `TaskBoardNode.vue` → Block 组件（`ThinkingBlock.vue` / `ActionBlock.vue` / `ReplyBlock.vue` 等）
+> - `TurnBlock.vue` → ✅ 已删除（由 `ActivityStream.vue` 替代）
 > - `ChatReasoningPeek.vue` → `ThinkingBlock.vue` / `ThinkingArea.vue`
-> - `ToolCallTimeline.vue` / `ToolCallTimelineItem.vue` → `ActionBlock.vue`
+> - `ToolCallTimeline.vue` / `ToolCallTimelineItem.vue` → `ActionBlock.vue`（按 `tool_category` 分发到 10 个详情组件）
 > - `MarkdownView.vue` → `chatMessageMarkdown.ts`
 > - `useAutoCollapse.ts` → `ChatExecutionCard.vue` autoCollapse prop / `useChatEntityCollapse.ts`
+>
+> **当前活跃代码锚点（Phase AF 完成后）**：
+> - `web/src/components/chat/ActivityStream.vue` — 三模式统一渲染器（按 `activity.kind` 分发到 10 个 Block 组件）
+> - `web/src/features/chat/composables/useActivityTimeline.ts` — Activity Timeline（按 `session_id` 隔离 + `ensureActivitiesLoaded` 缓存跳过）
+> - `web/src/components/chat/SessionTreeSidebar.vue` + `SessionTreeNode.vue` — Session 父子树递归渲染
+> - `web/src/components/chat/TeamStageBlock.vue` / `GraphStageBlock.vue` — Team/Graph 阶段显示
+> - `web/src/components/chat/ActionBlock.vue` + `tools/` 详情组件（10 个：ShellToolDetail/BrowserToolDetail/.../GenericToolDetail）
+> - `internal/agent/tool_category.go` — ToolCategorizer（10 种 ToolCategory 识别器）
+> - `internal/event/activity_event.go` — ActivityEventType（7 种）+ ActivityEvent 结构体
+> - `internal/biz/activity.go` — ActivityKind（10 种）+ ToolCategory 枚举
 >
 > 历史任务记录中的旧文件名保留不变（记录"当时改了什么"），当前开发请参考 Phase AF 中的新文件名。
 
@@ -71,7 +86,7 @@ Chat UI 优化：精灵为唯一对话入口，左侧列表重构为精灵 + 任
 | SP-BE-05 | Team Biz：Create 支持 AutoCreated / SpiritSessionID | `internal/biz/team` | 单测通过 | ✅ |
 | SP-BE-06 | spirit_team.go：AssembleTeam 流程 | `internal/service` | 集成测试通过 | ✅ |
 | SP-BE-07 | chat.go：识别 `__spirit__` → buildSpiritTeam 路由 | `internal/service` | 精灵对话走 Team 路径 | ✅ → P0.5 重构 |
-| SP-BE-08 | Event：spirit_team_assembled / completed / failed EnvelopeType | `internal/event` | 单测通过 | ✅ |
+| SP-BE-08 | Event：spirit_team_assembled / completed / failed ActivityKind | `internal/event` | 单测通过 | ✅ |
 | SP-BE-09 | 精灵 Agent 种子数据 | `internal/data/seed` | 启动后精灵 Agent 可查 | ✅ |
 | SP-FE-01 | `features/spirit/types.ts` + `api.ts` | `web/src/features/spirit` | 类型与 Proto 对齐 | ✅ |
 | SP-FE-02 | `useSpiritTeamStore`：团队列表 + 面板模式 + 展开/折叠 | `web/src/stores/spirit` | Store 单测通过 | ✅ |
@@ -110,7 +125,7 @@ Chat UI 优化：精灵为唯一对话入口，左侧列表重构为精灵 + 任
 | SP-BE-17 | `AutoArchiveCompletedTeams` | `internal/biz/spirit_team_usecase.go` | ✅ |
 | SP-BE-18 | `CancelTeam` + 级联依赖处理 | `internal/biz/spirit_team_usecase.go` | ✅ |
 | SP-BE-19 | `TeamStarter`：团队生命周期管理 | `internal/service/spirit_team.go` | ✅ |
-| SP-BE-20~22 | 三阶段编排事件 / Progress / AllCompleted 事件 | `internal/event/contract/envelope.go` | ✅ |
+| SP-BE-20~22 | 三阶段编排事件 / Progress / AllCompleted 事件 | `internal/biz/activity_event.go`（legacy `internal/event/contract/envelope.go` 已删除，事件类型迁移到 `biz.ActivityKind`，见 ADR-03） | ✅ |
 | SP-BE-23 | 旧工具标记 DEPRECATED | `internal/tools/spirit_tools.go` | ✅ |
 | SP-FE-09~16 | 前端联合类型 + 进度卡片 + DAG 图 + 合成卡片 + 编排徽章 + Store 事件扩展 | `web/src/` | ✅ |
 
@@ -328,7 +343,7 @@ cd web && pnpm lint && pnpm test -- useAgentBlocks && pnpm build
 |----|------|------|
 | SP-BE-27 | `todo_write` 工具调用 result 平铺 | ✅ |
 | SP-BE-28 | `stuckToolResultReason` 文案改为可配置 i18n 文案 | ✅ |
-| SP-BE-29 | `EnvelopeToolCall` `error_code` 字段校验 | ✅ |
+| SP-BE-29 | `Activity.ToolCall` `error_code` 字段校验（legacy `EnvelopeToolCall` 已迁移） | ✅ |
 | SP-BE-30 | `todo_write` 工具 LLM Prompt 检查：拦截把 todos 参数错给非 todo 工具的请求（**根因修复**） | ✅ |
 
 #### P1.6 前端
@@ -630,7 +645,7 @@ TK-FE-24 (i18n) — 与上述三项并行，最后补齐
 | 5 | SP-BE-05 | Team Biz AutoCreated | ✅ |
 | 6 | SP-BE-06 | spirit_team.go AssembleTeam | ✅ |
 | 7 | SP-BE-07 | chat.go 精灵路由 | ✅ |
-| 8 | SP-BE-08 | Event 新增 EnvelopeType | ✅ |
+| 8 | SP-BE-08 | Event 新增 ActivityKind（legacy EnvelopeType 已迁移） | ✅ |
 | 9 | SP-BE-09 | 精灵 Agent 种子数据 | ✅ |
 | 10 | SP-FE-01 | 前端 types + api | ✅ |
 | 11 | SP-FE-02 | useSpiritTeamStore | ✅ |
@@ -680,7 +695,7 @@ TK-FE-24 (i18n) — 与上述三项并行，最后补齐
 
 | 排序 | ID | 任务 | 状态 |
 |------|-----|------|------|
-| 1 | SP-BE-29 | EnvelopeToolCall error_code 字段校验 | ✅ |
+| 1 | SP-BE-29 | Activity.ToolCall error_code 字段校验（legacy EnvelopeToolCall 已迁移） | ✅ |
 | 2 | SP-BE-28 | stuckToolResultReason i18n 化 | ✅ |
 | 3 | SP-BE-27 | todo_write result 平铺 | ✅ |
 | 4 | SP-BE-30 | Prompt 检查拦截 LLM 误用工具（根因） | ✅ |
@@ -1487,8 +1502,8 @@ cd web && pnpm lint && pnpm test && pnpm build
 ## 12. Phase AF-3: Legacy Kind 清理 + 持久化补偿（2026-06-25 新增）
 
 > **目标**：移除 legacy ActivityKind（sub_task_board/error/delegate）；重构 OnError 为 root task.failed 模型；持久化失败补偿（dead-letter 缓冲 + 重试预算提升）；前端类型同步清理
-> **来源**：[2026-06-25-analysis-chat-module-refactor.md](../reports/2026-06-25-analysis-chat-module-refactor.md) Phase 3
-> **设计**：[ADR-02: Activity-First 事件持久化策略](../reports/2026-06-25-review-adr-activity-event-persistence.md)
+> **来源**：Chat 模块重构方案 Phase 3（已归档，设计内容已并入本文档）
+> **设计**：ADR-02（Activity-First 事件持久化策略，已归档）
 > **纪律**：两阶段审查（规格合规 + 代码质量）；后端 build/test + 前端 lint/test/build 全量通过
 
 ### 12.1 代码锚点
@@ -1521,7 +1536,7 @@ cd web && pnpm lint && pnpm test && pnpm build
 | AF3-FE-02 | useActivityTimeline 转换逻辑更新 | `useActivityTimeline.ts` | `task.failed` → `ErrorEvent`；移除 `case 'error'` | ✅ |
 | AF3-FE-03 | useConversationTimeline hasError 更新 | `useConversationTimeline.ts` | 兼容新错误模型 + legacy `(a.kind as string) === 'error'` cast | ✅ |
 | AF3-FE-04 | 测试用例修复 | `useActivityTimeline.spec.ts` | `kind: 'error'` → `kind: 'task', status: 'failed'` | ✅ |
-| AF3-DOC-01 | ADR-02 编写 | `docs/reports/2026-06-25-review-adr-activity-event-persistence.md` | 含背景/决策/后果/替代方案/遗留项 | ✅ |
+| AF3-DOC-01 | ADR-02 编写 | `docs/reports/2026-06-25-review-adr-activity-event-persistence.md`（已删除） | 含背景/决策/后果/替代方案/遗留项 | ✅ |
 | AF3-DEP-01 | Legacy spirit 面板 @deprecated 标注 | `TaskExecutionPanel.vue` + `MemberReadOnlyPanel.vue` | HTML 注释指向 ADR-02 §遗留项 | ✅ |
 | AF3-DEP-02 | Legacy envelope 文件 @deprecated 标注 | 5 个 envelope 相关文件 | JSDoc `@deprecated` 指向 ADR-02 §遗留项 | ✅ |
 
@@ -1562,7 +1577,7 @@ cd web && pnpm lint && pnpm test && pnpm build
 | `web/src/features/chat/envelope.ts` | 修改 | @deprecated JSDoc |
 | `web/src/features/chat/useEnvelopeStream.ts` | 修改 | @deprecated JSDoc |
 | `web/src/features/chat/inboundSyncRouting.ts` | 修改 | @deprecated JSDoc |
-| `docs/reports/2026-06-25-review-adr-activity-event-persistence.md` | 新增 | ADR-02 |
+| `docs/reports/2026-06-25-review-adr-activity-event-persistence.md` | 已删除 | ADR-02（内容已并入 51-message-mechanism.design.md / 34-event-system.design.md） |
 | `docs/development/59-chat-ui-optimization.development.md` | 修改 | 新增 §12 Phase AF-3 |
 
 ### 12.6 审查优化（2026-06-26 新增）
@@ -1588,5 +1603,115 @@ cd web && pnpm lint && pnpm test && pnpm build
 | `internal/agent/activity_event_sequencer.go` | 修改 | S3: 退避可中断（`select` on `s.done`）；S4: 死信按 activityID 去重；可配置重试参数（测试用，默认值不变） |
 | `internal/agent/activity_event_sequencer_test.go` | 修改 | S1: 新增 7 个 sequencer 测试（含 `failingActivityWriter`/`flakyActivityWriter`/`fastRetryConfig` 辅助） |
 | `internal/agent/activity_projector_chat_display_test.go` | 修改 | S2: 新增 4 个 D3 projector 测试 + `findRootTask` 辅助 |
-| `docs/reports/2026-06-25-review-adr-activity-event-persistence.md` | 修改 | 同步 S3/S4 行引用与描述 |
+| `docs/reports/2026-06-25-review-adr-activity-event-persistence.md` | 已删除 | （原修改 S3/S4 行引用与描述，源文档已归档） |
+
+---
+
+## 13. Phase AF-G — ADR-03 Blocker G 前端 Envelope 路径删除（2026-06-27 新增）
+
+> **目标**：删除前端 legacy Envelope 路径（realtime/envelope.ts 等 5 个死文件），完成 ADR-03 Phase 5 Blocker G 前端清理，让 `ActivityStream.vue` 成为 spirit/team/member 三模式唯一渲染器
+> **状态**：✅ 已完成（前端 Envelope 路径彻底删除；保留 `createEnvelopeStream`/`useEnvelopeStream`/`onActivityEvent`/`onMonitorEvent` 活路径；tsc 0 新错误、lint 0 errors、543 测试全过、build 成功）
+> **来源**：ADR-03（统一总线架构）Blocker G · Chat 重构方案 §11.3 Phase 3 前端 + §12 验收（均已归档，设计内容已并入本文档）
+> **设计**：[59-chat-ui-optimization.design.md §14.9-§14.13](./59-chat-ui-optimization.design.md)
+> **纪律**：两阶段审查（规格合规 + 代码质量）；前端 lint/test/build 全量通过
+
+### 13.1 删除的 5 个死文件
+
+| 文件 | 原用途 | 删除原因 |
+|------|--------|----------|
+| `web/src/realtime/envelope.ts` | Envelope 类型定义 | 由 `web/src/features/chat/activityTypes.ts` + `monitorTypes.ts` 替代 |
+| `web/src/realtime/dispatcher.ts` | Envelope 事件分发器 | 由 `useActivityTimeline.ts` + `useMonitorEvents.ts` 替代 |
+| `web/src/realtime/data_channel.ts` | Envelope 数据通道 | 由 `useEnvelopeStream.ts` 内联 + WS transport 直接订阅替代 |
+| `web/src/realtime/event_replay.ts` | Envelope 重连回放（`onReplayState`） | 重连改用 `ListActivities` RPC 拉取历史 Activity |
+| `web/src/features/chat/dispatcher.ts` | Chat 域 Envelope 分发 | 由 `ActivityStream.vue` 按 `activity.kind` 直接分发替代 |
+
+### 13.2 核心改造表
+
+| 文件 | 变更类型 | 说明 |
+|------|---------|------|
+| `web/src/realtime/ws-transport.ts` | 修改 | 内联 `WsDownstream` 类型（`activity_event?` + `monitor_event?`）；删除 `envelope?` 字段；保留 `createEnvelopeStream` 工厂函数（活路径） |
+| `web/src/realtime/useEnvelopeStream.ts` | 修改 | 删除 dispatcher 调用；保留 `useEnvelopeStream` composable 作为 WS 订阅入口（活路径）；事件流分发由 `onActivityEvent`/`onMonitorEvent` 回调处理 |
+| `web/src/realtime/globalWsHub.ts` | 修改 | 删除 `onEnvelope` 全局回调注册；保留 `onActivityEvent`/`onMonitorEvent` 双通道回调 |
+| `web/src/stores/spirit/index.ts` | 修改 | 内联 5 个 Spirit payload 类型（替换原 `realtime/envelope.ts` import）；事件分发走 `onActivityEvent` |
+| `web/src/features/chat/composables/useActivityTimeline.ts` | 修改 | `ensureActivitiesLoaded` 缓存命中（含空 Map）跳过 API；WS 重连 replay 走 `ListActivities` RPC |
+| `web/src/components/chat/ActivityStream.vue` | 修改 | 三模式统一渲染器（spirit/team/member）；按 `activity.kind` 分发到 10 个 Block 组件 |
+| `web/src/components/chat/SessionTreeSidebar.vue` + `SessionTreeNode.vue` | 修改 | Session 父子树递归渲染（任意深度） |
+| `web/src/components/chat/TeamStageBlock.vue` / `GraphStageBlock.vue` | 修改 | Team/Graph 阶段显示（stage/progress/member list 可折叠；DAG 节点/current/error node） |
+| `web/src/components/chat/ActionBlock.vue` + `tools/` 详情组件 | 修改 | 按 `tool_category` 分发到 10 个详情组件（ShellToolDetail/BrowserToolDetail/.../GenericToolDetail） |
+
+### 13.3 保留的活路径
+
+| 路径 | 用途 | 说明 |
+|------|------|------|
+| `createEnvelopeStream` | WS 传输流创建工厂 | `ws-transport.ts` 内保留；仅为命名兼容，实际传输 `activity_event?` + `monitor_event?` |
+| `useEnvelopeStream` | WS 订阅 composable | `realtime/useEnvelopeStream.ts` 保留；作为 WS 事件流入口 |
+| `onActivityEvent` | Activity 事件回调注册 | `globalWsHub.ts` 保留；分发到 `useActivityTimeline` |
+| `onMonitorEvent` | Monitor 事件回调注册 | `globalWsHub.ts` 保留；分发到 `useMonitorEvents` |
+
+### 13.4 任务清单
+
+| ID | 任务 | 影响文件 | 验收标准 | 状态 |
+|----|------|----------|----------|------|
+| AFG-FE-01 | 删除 5 个 legacy Envelope 死文件 | `realtime/envelope.ts` 等 | 无残留 import；编译通过 | ✅ |
+| AFG-FE-02 | `ws-transport.ts` 内联 `WsDownstream` 类型 | `realtime/ws-transport.ts` | 删除 `envelope?` 字段；`activity_event?`/`monitor_event?` 双通道 | ✅ |
+| AFG-FE-03 | `useEnvelopeStream.ts` 删除 dispatcher 调用 | `realtime/useEnvelopeStream.ts` | 事件流通过 `onActivityEvent`/`onMonitorEvent` 回调分发 | ✅ |
+| AFG-FE-04 | `globalWsHub.ts` 删除 `onEnvelope` 注册 | `realtime/globalWsHub.ts` | 仅保留 `onActivityEvent`/`onMonitorEvent` 双通道 | ✅ |
+| AFG-FE-05 | `stores/spirit/index.ts` 内联 Spirit payload 类型 | `stores/spirit/index.ts` | 5 个 Spirit 事件载荷类型内联；编译通过 | ✅ |
+| AFG-FE-06 | WS 重连 replay 改用 `ListActivities` RPC | `useActivityTimeline.ts` | `ensureActivitiesLoaded` 缓存命中跳过 API；失败不写缓存以重试 | ✅ |
+| AFG-FE-07 | `ActivityStream.vue` 三模式统一分发 | `components/chat/ActivityStream.vue` | spirit/team/member 三模式按 `activity.kind` 分发到 10 个 Block | ✅ |
+| AFG-FE-08 | `SessionTreeSidebar` + `SessionTreeNode` 递归 | `components/chat/SessionTreeNode.vue` | 任意深度递归；session_type 图标 + execution_stage 徽章 + depth 徽章 + 进度 | ✅ |
+| AFG-FE-09 | `TeamStageBlock` / `GraphStageBlock` 实现 | `components/chat/TeamStageBlock.vue` 等 | stage/progress/control 按钮/member list 可折叠；DAG 节点/current/error node | ✅ |
+| AFG-FE-10 | `ActionBlock` 按 `tool_category` 分发 | `components/chat/ActionBlock.vue` + `tools/` | 10 个详情组件：Shell/Browser/FileRead/FileWrite/FileSearch/WebSearch/Mcp/Code/Todo/Generic | ✅ |
+| AFG-FE-11 | `tool_category.go` ToolCategorizer 后端识别器 | `internal/agent/tool_category.go` | 10 种 ToolCategory；注册表查询 + 前缀匹配兜底 | ✅ |
+| AFG-FE-12 | `ActivityEvent` + `ActivityKind` + `ActivityEventType` 后端定义 | `internal/event/activity_event.go` + `internal/biz/activity.go` | 10 种 ActivityKind + 7 种 ActivityEventType | ✅ |
+
+### 13.5 验收标准
+
+- [x] 5 个 legacy Envelope 死文件已删除（`realtime/envelope.ts` / `dispatcher.ts` / `data_channel.ts` / `event_replay.ts` / `features/chat/dispatcher.ts`）
+- [x] WS 协议传输 `activity_event?` + `monitor_event?`（`envelope?` 已删除）
+- [x] WS 重连 replay 走 `ListActivities` RPC（`onReplayState` 已删除）
+- [x] `ActivityStream.vue` 为 spirit/team/member 三模式统一渲染器
+- [x] 10 种 ActivityKind 全部有对应 Block 组件
+- [x] 10 种 ToolCategory 全部有对应详情组件
+- [x] `SessionTreeNode.vue` 支持任意深度递归
+- [x] `TeamStageBlock` / `GraphStageBlock` 事件响应正确（stage/progress/member list）
+- [x] `pnpm lint` 0 errors
+- [x] `pnpm test` 543 测试全过
+- [x] `pnpm build` SPA 编译成功
+- [x] `tsc` 0 新错误
+- [x] ADR-03 Blocker G 标记完成
+
+### 13.6 改动文件清单
+
+| 文件 | 变更类型 | 说明 |
+|------|---------|------|
+| `web/src/realtime/envelope.ts` | 删除 | Envelope 类型定义（由 activityTypes.ts + monitorTypes.ts 替代） |
+| `web/src/realtime/dispatcher.ts` | 删除 | Envelope 事件分发器（由 useActivityTimeline + useMonitorEvents 替代） |
+| `web/src/realtime/data_channel.ts` | 删除 | Envelope 数据通道（由 useEnvelopeStream 内联替代） |
+| `web/src/realtime/event_replay.ts` | 删除 | Envelope 重连回放（由 ListActivities RPC 替代） |
+| `web/src/features/chat/dispatcher.ts` | 删除 | Chat 域 Envelope 分发（由 ActivityStream 按 kind 分发替代） |
+| `web/src/realtime/ws-transport.ts` | 修改 | 内联 WsDownstream 类型；删除 envelope? 字段；保留 createEnvelopeStream |
+| `web/src/realtime/useEnvelopeStream.ts` | 修改 | 删除 dispatcher 调用；保留为 WS 订阅入口 |
+| `web/src/realtime/globalWsHub.ts` | 修改 | 删除 onEnvelope；保留 onActivityEvent/onMonitorEvent |
+| `web/src/stores/spirit/index.ts` | 修改 | 内联 5 个 Spirit payload 类型 |
+| `web/src/features/chat/composables/useActivityTimeline.ts` | 修改 | ensureActivitiesLoaded 缓存优化；WS replay 走 ListActivities |
+| `web/src/components/chat/ActivityStream.vue` | 修改 | 三模式统一渲染器 |
+| `web/src/components/chat/SessionTreeSidebar.vue` | 修改 | Session 树侧栏 |
+| `web/src/components/chat/SessionTreeNode.vue` | 修改 | 递归树节点组件 |
+| `web/src/components/chat/TeamStageBlock.vue` | 修改 | Team 阶段显示 |
+| `web/src/components/chat/GraphStageBlock.vue` | 修改 | Graph DAG 阶段显示 |
+| `web/src/components/chat/ActionBlock.vue` | 修改 | tool_category 分发 |
+| `web/src/components/chat/tools/*.vue` | 修改 | 10 个工具详情组件 |
+| `internal/agent/tool_category.go` | 新增 | ToolCategorizer（10 种 ToolCategory） |
+| `internal/event/activity_event.go` | 新增 | ActivityEvent + ActivityEventType（7 种） |
+| `internal/biz/activity.go` | 修改 | ActivityKind（10 种）+ ToolCategory 枚举 |
+| `docs/reports/2026-06-26-review-adr-unified-bus-architecture.md` | 已删除 | ADR-03 Blocker G 标记完成（内容已并入 34-event-system.design.md） |
+| `docs/development/59-chat-ui-optimization.development.md` | 修改 | 新增 §13 Phase AF-G |
+
+### 13.7 关联文档
+
+- ADR-03（统一总线架构，已归档） — Blocker G 前端完成总结
+- Chat 重构方案（已归档） — §7 前端动态渲染 + §8 工具类别 + §9 Team/Graph UI + §10 Session 树 UI + §11.3 Phase 3 前端 + §12 验收 14 项全达成
+- [59-chat-ui-optimization.md §15.7-§15.8](./59-chat-ui-optimization.md) — Activity-First 统一渲染需求 + 验收标准
+- [59-chat-ui-optimization.design.md §14.9-§14.14](./59-chat-ui-optimization.design.md) — ActivityStream 统一渲染器 + useActivityTimeline + ActionBlock tool_category + SessionTreeSidebar + TeamStageBlock/GraphStageBlock + 原 EnvelopeType → ActivityKind 映射表
 

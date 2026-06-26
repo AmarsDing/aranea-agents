@@ -18,14 +18,14 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 |------|------|------|
 | `session.go` | 571 | SessionService：CRUD、Timeline、消息、Turn、Pin/Unpin、Export |
 | `session_batch.go` | 90 | BatchPreview / BatchArchive / BatchDelete + Audit |
-| `session_observability.go` | 103 | Export / ListSessionRuns / ListSessionParticipants / ListChildSessions / ListActivities |
+| `session_observability.go` | 103 | Export / ListSessionRuns / ListSessionParticipants / ListChildSessions / **GetSessionTree** / ListActivities |
 | `session_status_guard.go` | 85 | 状态守卫（running/awaiting_confirmation 不可删/归档） |
 | `session_context_window.go` | 9 | 上下文窗口解析（薄封装） |
 | `session_projection.go` | 66 | Runner 事件投影 |
 | `session_run_durable_worker.go` | 73 | Run 持久化 worker |
 | `session_run_escalation_notifier.go` | 243 | Run 升级通知 |
 | `session_title_llm.go` | 77 | LLM 标题生成 |
-| `session_revision_publish.go` | 8 | Session 修订发布 |
+| `session_revision_publish.go` | 8 | Session 修订发布（**publish 已 DELETED**，仅保留 BumpSessionRevision） |
 
 #### Biz 层（`internal/biz/session/`）
 
@@ -42,7 +42,7 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | `timeline.go` | 6 | Timeline 入口（薄封装） |
 | `timeline_items.go` | 170 | Timeline 条目构建 |
 | `timeline_usecase.go` | 204 | Timeline 聚合用例 |
-| `message_usecase.go` | 321 | 消息用例（AppendChatTurn/AppendChatMessage/Search） |
+| `message_usecase.go` | 336 | 消息子用例 Facade（Activity 适配读取 + 标题生成 + metrics 累积 + state/turn/participant 委托） |
 | `messages.go` | 69 | 消息辅助逻辑 |
 | `turns.go` | 18 | Turn 入口（薄封装） |
 | `turn_usecase.go` | 72 | Turn 用例（Create/Update/List） |
@@ -59,6 +59,12 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | `metrics_repo.go` | 53 | SessionRuntimeWriter/SessionMetricsReader/Writer 拆分接口 |
 | `recovery.go` | 52 | Session 恢复逻辑 |
 | `limits.go` | 41 | 分页/扫描限制常量 |
+| **`types.go` / `status.go`** | — | **SessionType 枚举**（spirit/team/agent/standalone，member DELETED）— 详见 [design §3.6.1](./10-session.design.md#361-sessiontype-枚举父子树角色) |
+| **`tree_validate.go`** | — | **validateDepth 深度校验**（subagents_max_generation_depth 相对 + max_session_depth 绝对）— 详见 [design §3.6.4](./10-session.design.md#364-深度校验-validatedepth) |
+| **`activity.go`**（`internal/biz/`） | — | Activity 领域模型 + ActivityKind(10) + ActivityEventType(7) + ActivityEvent — 详见 [design §3.6.7](./10-session.design.md#367-activity-模型单一真相源) |
+| **`activity_event.go`**（`internal/biz/`） | — | ActivityEvent 定义（Event + Activity + Domain chat\|system） |
+| **`llm_context_builder.go`**（`internal/biz/`） | — | BuildLLMContext：Activity → LLM 消息角色映射（task→user/reply→assistant/action→tool/notice→system） |
+| **`activity_repo.go`**（`internal/data/`） | — | Activity Ent 持久化实现（替代 message_repo.go） |
 
 #### Data 层（`internal/data/`）
 
@@ -98,9 +104,9 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | `internal/session/provider.go` | Provider 辅助 |
 | `internal/session/key.go` | Key 辅助 |
 | `internal/agent/trpc_runtime.go` | trpc Runtime 集成 |
-| `internal/agent/event_projector.go` | 事件投影 |
-| `internal/agent/activity_projector.go` | 活动投影 |
-| `internal/agent/activity_persist.go` | 活动持久化 |
+| `internal/agent/event_projector.go` | 事件投影（**DELETED** — 已被 `activity_projector.go` 替换，详见 §AF-01） |
+| `internal/agent/activity_projector.go` | ActivityProjector：运行时事件 → ActivityEvent（Activity-First 架构核心，详见 [design §3.6.8](./10-session.design.md#368-双总线架构activityeventbus--monitoreventbus)） |
+| `internal/agent/activity_persist.go` | 活动持久化（**DELETED** — 已并入 `ActivityEventBus` 内置 `persistChan` 并行异步机制 + 死信缓冲，详见 ADR-02 D1） |
 | `internal/agent/l0_snapshot_persist.go` | L0 Snapshot 持久化 |
 
 #### 前端（`web/src/`）
@@ -134,13 +140,13 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 
 ---
 
-## 2. 现状评估（2026-06-17）
+## 2. 现状评估（2026-06-17 · 2026-06-26 更新）
 
 | 项 | 状态 | 证据 |
 |----|------|------|
 | Session CRUD / 归档 / 恢复 / 部分更新 | ✅ | Proto + Ent + Service `session.go` (571 行) |
 | 列表删除 + 批量治理（Phase 1b） | ✅ | Batch* RPC + `session_batch.go` + `useSessionsPage` |
-| 消息 DB 分页 + FTS 搜索 | ✅ | `ListSessionMessages`（含 after_revision）/ `SearchSessionMessages` |
+| 消息 DB 分页 + FTS 搜索 | ✅ | `ListSessionMessages`（基于 Activity 表向后兼容，含 after_revision）/ `SearchSessionMessages` |
 | Timeline 混合 kind SQL UNION | ✅ | `session_timeline.go` (257 行)；全量无 cap |
 | 上下文压缩 + L0 防抖可配置 | ✅ | `compress_policy.go` · `L0CompressMinGapSec` |
 | Session 置顶 | ✅ | `pinned_at` + Pin/Unpin RPC；Search 排序；聊天侧栏 + 管理页 |
@@ -150,8 +156,13 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | M55 session_runs 生命周期 | ✅ | CC-R-01~05；Chat 写入；`session_run_repo.go` (434 行) |
 | ListSessionRuns + Runs 详情 Tab | ✅ | 读 M55 表 |
 | ListSessionParticipants + Participants Tab | ✅ | 读时 Sync（`SyncFromSession`） |
-| ListChildSessions（会话树） | ✅ | `SessionTreeReader.ListByParentSessionID` |
-| ListActivities（活动列表） | ✅ | Activity-First 架构 |
+| ListChildSessions（会话树，单层） | ✅ | `SessionTreeReader.ListByParentSessionID` |
+| **GetSessionTree（完整递归树）** | ✅ | Phase D — 一次查询 + 内存构树，任意深度（详见 [design §3.6.5](./10-session.design.md#365-getsessiontree-rpc-设计)） |
+| ListActivities（活动列表） | ✅ | Activity-First 单一真相源 |
+| **Session 父子树字段（10 字段 50-59）** | ✅ | Phase D — session_type/parent_session_id/root_session_id/agent_depth/member_agent_key/member_role/execution_stage/completed_steps/total_steps/progress_pct |
+| **Activity-First 单一真相源** | ✅ | AF-01 — `messages` 表 DELETED，`activities` 表承载全部内容（详见 [design §3.6.7](./10-session.design.md#367-activity-模型单一真相源)） |
+| **ActivityEventBus + MonitorEventBus 双总线** | ✅ | AF-02 — 替换 SessionBus + Envelope MonitorBus（详见 ADR-03） |
+| **ActivityEventBus 并行异步持久化 + 三级补偿** | ✅ | AF-03 — persistChan fire-and-forget + 死信缓冲 + API Backfill（详见 ADR-02） |
 | CompactSession / GetCompressStatus | ✅ | 手动压缩 + 状态查询 RPC |
 | Session 状态机（5 状态） | ✅ | `status_machine.go` + `session_state_machine.go` |
 | SessionRuntime / SessionMetrics 拆分表 | ✅ | 高频字段拆出，减少写放大 |
@@ -268,11 +279,12 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 ## 7. 依赖与风险
 
 - 消息 FTS 依赖 `messages_fts`；无表时 LIKE 回退。
-- **双存储**：Ent `messages` = transcript 真相；trpc `trpc_*` = Runner 事件/state（见 design §〇）。
+- **⚠️ 单一真相源（Activity-First）**：原 `messages` 表已 DELETED（DDL 迁移 `20260902`），transcript 真相改由 `activities` 表承载（详见 [design §3.6](./10-session.design.md#36-session-父子树--activity-模型activity-first-重构核心)）；trpc `trpc_*` = Runner 事件/state（见 design §〇）。`ListSessionMessages` / `SearchSessionMessages` RPC 当前基于 Activity 表向后兼容实现。
 - **M55 vs F4**：当前 `session_runs` 为 Run 生命周期（phase/budget/checkpoint），与设计文档编排 runs（token 聚合/plan_json）字段不同；扩展前需 schema 决策。
-- Participants **读时 Sync** 在大会话上 O(n) 扫 messages；生产应改增量写。
+- Participants **读时 Sync** 在大会话上 O(n) 扫 Activity；生产应改增量写。
 - Timeline 全量导出/全量 UNION 在超大会话（10w+ 事件）可能慢；必要时加 export 流式或 cursor。
-- Export 上限受 `MessageListMaxLimit=500` 分批拉消息，Timeline 走 UNION total，整体可完成但耗时长。
+- Export 上限受 `MessageListMaxLimit=500` 分批拉 Activity，Timeline 走 UNION total，整体可完成但耗时长。
+- **ActivityEventBus 持久化风险**（ADR-02）：fire-and-forget 通道在异常退出时可能丢未 flush 事件；已通过三级补偿（重试预算 5 次/3100ms → 死信环形缓冲 512 容量 FIFO 驱逐 activityID 去重 → API Backfill 最终一致）兜底。
 
 ### 7.1 接口拆分（O7 — 2026-05-29）
 
@@ -327,6 +339,65 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | data 层文件拆分 | session_repo.go → 多文件 | 主表 843 行 + 消息 409 行 + 状态 86 行 + timeline 257 行 + participant 216 行 + run 434 行 + runtime 117 行 + metrics 173 行 + batch 192 行 + summaries 104 行 |
 | deep-purple → teal | sessionUi.ts + SessionTurnsPanel.vue | 修复前端红线 #8（禁止日间用霓虹紫作强调色） |
 | exportSelectedDetail 迁移 | SessionsPage.vue → useSessionsPage.ts | Page 不直接 import features/api，经 composable |
+
+### 7.4 Activity-First 迁移任务块（2026-06-26 · ADR-02/ADR-03）
+
+> 本节记录 Activity-First 架构重构在 Session 模块的迁移任务，全部完成（✅）。详见 ADR-02（活动事件持久化）与 ADR-03（统一总线架构）。
+
+#### 7.4.1 AF-01：messages 表删除 + activities 单一真相源 ✅
+
+| 任务 | 说明 | 状态 |
+|------|------|------|
+| DROP `messages` 表 | DDL 迁移 `20260902` | ✅ |
+| 删除 `message_repo.go` / `session_message_repo.go` | Ent 实现移除 | ✅ |
+| 删除 `event_projector.go` | 替换为 `activity_projector.go` | ✅ |
+| 删除 `activity_publish.go` / `activity_persist.go` | 并入 `ActivityEventBus` 内置持久化 | ✅ |
+| 保留 `message_usecase.go` 为合法子用例 Facade | 满足 AS-COG-01 复杂度预算 | ✅ |
+| `ListSessionMessages` / `SearchSessionMessages` 向后兼容 | 基于 Activity 表实现，proto `ChatMessageRow` 作传输载体 | ✅ |
+| `BuildLLMContext` 实现 | `internal/biz/llm_context_builder.go` — task→user/reply→assistant/action→tool/notice→system | ✅ |
+
+#### 7.4.2 AF-02：双总线架构（ActivityEventBus + MonitorEventBus）✅
+
+| 任务 | 说明 | 状态 |
+|------|------|------|
+| 新增 `ActivityEventBus`（`biz.ActivityEvent`） | chat 域持久化到 `activities`；system 域仅 WS | ✅ |
+| 新增 `MonitorEventBus`（`contract.MonitorEvent`） | 替代 Envelope MonitorBus；不持久化 | ✅ |
+| 删除 `SessionBus` | 死 publisher 全部移除（Blocker D） | ✅ |
+| 删除 Envelope 文件 | `contract/envelope.go` / `buffer.go` / `reliability.go` 删除；`EnvelopeError` / `EnvelopeTokenUsage` 提取到 `envelope_types.go` | ✅ |
+| 删除 `event_projector.go` / `activity_publish.go` / `activity_persist.go` | ActivityProjector 替代 | ✅ |
+| WSServer 双总线双 pump | ActivityEventBus + MonitorEventBus 独立分发 | ✅ |
+
+#### 7.4.3 AF-03：ActivityEventBus 并行异步持久化 + 三级补偿 ✅
+
+> 详见 ADR-02 D1/D2。
+
+| 任务 | 说明 | 状态 |
+|------|------|------|
+| 并行异步持久化 | `persistChan` fire-and-forget + 同步发布到总线 | ✅ |
+| 三级补偿 — 重试预算 | 5 次重试 / 3100ms 退避 | ✅ |
+| 三级补偿 — 死信环形缓冲 | 512 容量，FIFO 驱逐，activityID 去重 | ✅ |
+| 三级补偿 — API Backfill | 最终一致兜底（`ListActivities` 拉取补齐） | ✅ |
+| OnError 语义重构 | 删除 `ActivityKindError`；根 Task 转 `failed`；无根场景创建最小失败 Task | ✅ |
+| 旧 ActivityKind 清理 | 删除 `SubTaskBoard` / `Error` / `Delegate` | ✅ |
+
+#### 7.4.4 Phase D：Session 父子树字段断层补全 ✅
+
+| 任务 | 说明 | 状态 |
+|------|------|------|
+| Proto 新增字段 53–59 | `session_type` / `member_agent_key` / `member_role` / `execution_stage` / `completed_steps` / `total_steps` / `progress_pct` | ✅ |
+| Ent Schema 同步 | `internal/data/ent/schema/session.go` 7 字段补全 | ✅ |
+| Service 映射 | `toProtoSession`（`internal/service/session.go`） | ✅ |
+| 前端类型同步 | `web/src/features/session/types.ts` + `api.ts` | ✅ |
+| 前端树节点增强 | `SessionTreeNode.vue`：session_type 图标、depth 徽章、execution_stage 徽章、进度展示 | ✅ |
+| GetSessionTree RPC | 一次查询 + 内存构树，任意深度 | ✅ |
+
+#### 7.4.5 Phase E：子会话 Activity 懒加载缓存 ✅
+
+| 任务 | 说明 | 状态 |
+|------|------|------|
+| `ensureActivitiesLoaded` 缓存 | `useActivityTimeline.ts` — 缓存命中跳过 API；失败回退 | ✅ |
+| `useChatWorkspace.ts` 联动 | 子会话切换时懒加载 | ✅ |
+| 单测 | 3 个用例覆盖缓存命中/未命中/失败 | ✅ |
 
 ---
 
@@ -423,4 +494,4 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | [10-session.md](./10-session.md) | 需求文档 — 用户故事/功能需求/验收标准 |
 | [0-system.development.md](./0-system.development.md) | Session 架构边界 — ARCH-01 完成后更新 |
 
-**最后同步**：2026-06-17
+**最后同步**：2026-06-26（Activity-First 迁移 AF-01~03 + Phase D/E 完成，详见 §7.4）

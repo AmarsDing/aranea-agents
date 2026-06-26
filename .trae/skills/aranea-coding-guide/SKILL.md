@@ -575,7 +575,7 @@ type Service interface {
 | `team` | `internal/team` | Team 编排 |
 | `graph` | `internal/graph` | 图编排 |
 | `plugin` | `internal/agent` | 插件注册（DefaultRunnerPlugins） |
-| `event` | `internal/service` | 事件投影为 Envelope → EventBus → `/v1/ws` |
+| `event` | `internal/service` | 事件投影为 ActivityEvent（chat/system）/ MonitorEvent（监控）→ ActivityEventBus / MonitorBus → `/v1/ws`（ADR-03 Phase 5 完成后 Envelope Bus 已删除，详见 [2026-06-26-review-adr-unified-bus-architecture.md](../../docs/reports/2026-06-26-review-adr-unified-bus-architecture.md)） |
 
 ### 6.12 关键桥接函数
 
@@ -768,7 +768,7 @@ if err != nil {
 | 通道 | 错误模型 | 前端消费方式 |
 |------|---------|------------|
 | HTTP CRUD | apierror → APIToKratos → HTTP status + reason + message | axiosHandler.ts 按 status 分流，kratosError.ts 按 reason 分支 |
-| WebSocket Chat | TurnError → EnvelopeError → WS push | errorCodeHints.ts 按 error_code 分流 |
+| WebSocket Chat | TurnError → EnvelopeError（活类型，定义于 `contract/envelope_types.go`）→ ActivityEvent.Meta → WS push | errorCodeHints.ts 按 error_code 分流 |
 
 #### 7.1.5 错误码速查
 
@@ -1166,12 +1166,12 @@ cmd/admin/wire.go                         ← Wire 注入
 |-----------|---------------------|
 | 新增/修改 biz 端口接口 | §四·端口接口变更影响表 + 目标模块卡片「下游影响」 |
 | 新增/修改共享类型（DTO/struct） | §四·共享类型变更影响表 + 目标模块卡片「共享类型」 |
-| 新增/修改事件类型（Envelope/EventBus） | §四·事件类型变更影响表 + 目标模块卡片「事件生产/消费」 |
+| 新增/修改事件类型（ActivityEvent/MonitorEvent） | §四·事件类型变更影响表 + 目标模块卡片「事件生产/消费」 |
 | 新增/修改数据库 Schema | §四·数据库 Schema 变更影响表 + 目标模块卡片「数据库」 |
 | 新增 LLM Provider | §五·场景演练 #1（7 个模块链路） |
 | 新增工具 | §五·场景演练 #2（6 个模块链路） |
 | 新增渠道平台 | §五·场景演练 #3（5 个模块链路） |
-| 新增 Envelope 类型 | §五·场景演练 #4（前后端 4 层链路） |
+| 新增 ActivityEvent 类型 | §五·场景演练 #4（前后端 4 层链路） |
 | 修改 TurnInput/TurnResult | §五·场景演练 #5（最大影响面 8 模块） |
 
 ### 13.4 典型遗漏案例
@@ -1180,7 +1180,7 @@ cmd/admin/wire.go                         ← Wire 注入
 |------|------|
 | 改了 biz 接口签名但忘了 data 层实现 | 编译不通过 |
 | 改了 AssemblyConfig 但忘了 service/chat 的 Wire 构造函数 | 运行时 nil pointer |
-| 新增 Envelope 类型但没加前端 dispatcher 处理 | WS 消息丢失 |
+| 新增 ActivityEvent 类型但没加前端 dispatcher 处理 | WS 消息丢失 |
 | 加了 Ent 字段但没跑 go generate | ORM 不认识新列 |
 | 改了 TRPCBuilderDeps 但没同步 team/trpc_build.go | Team 功能崩溃 |
 | 新增工具但只在 Chat 验证没在 Team 验证 | Team 场景缺工具 |
@@ -1505,8 +1505,9 @@ func TestChatRun_EventSequence(t *testing.T) {
     }
     svc := NewChatService(runner, /* ... */)
 
-    var collected []*event.Envelope
-    svc.eventBus.Subscribe(func(ctx context.Context, e *event.Envelope) {
+    // 事件统一通过 ActivityEventBus（biz.ActivityEvent）传输，Envelope Bus 已删除（ADR-03 Phase 5）
+    var collected []biz.ActivityEvent
+    svc.activityBus.Subscribe(func(ctx context.Context, e biz.ActivityEvent) {
         collected = append(collected, e)
     })
 
@@ -1515,11 +1516,11 @@ func TestChatRun_EventSequence(t *testing.T) {
 
     // 验证事件序列
     require.Len(t, collected, 5)
-    assert.Equal(t, "run_status", collected[0].Type)
-    assert.Equal(t, "text_delta", collected[1].Type)
-    assert.Equal(t, "text_delta", collected[2].Type)
-    assert.Equal(t, "tool_result", collected[3].Type)
-    assert.Equal(t, "run_status", collected[4].Type)
+    assert.Equal(t, biz.ActivityKindRunStatus, collected[0].Activity.Kind)
+    assert.Equal(t, biz.ActivityKindText, collected[1].Activity.Kind)
+    assert.Equal(t, biz.ActivityKindText, collected[2].Activity.Kind)
+    assert.Equal(t, biz.ActivityKindToolResult, collected[3].Activity.Kind)
+    assert.Equal(t, biz.ActivityKindRunStatus, collected[4].Activity.Kind)
 }
 ```
 

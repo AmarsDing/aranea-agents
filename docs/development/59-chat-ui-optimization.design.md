@@ -65,11 +65,14 @@ internal/data/ent/schema/
 web/src/
   features/spirit/                    ← 精灵域（api.ts / types.ts / spiritUi.ts / observabilityConstants.ts）
   features/chat/                      ← Chat 域（types / agentTreeTypes / activityTypes / activityTimelineTypes / useActivityTimeline / useTodoBoard 等）
-  features/chat/composables/          ← useContextualLoadingMessage / useStatusPulse / useConversationTimeline 等
+  features/chat/composables/          ← useContextualLoadingMessage / useStatusPulse 等（useConversationTimeline 已删除，由 useActivityTimeline 替代）
+  features/session/                   ← Session 域（types.ts 含 SessionTreeNode 递归类型 / api.ts 含 GetSessionTree RPC）
   stores/spirit/                      ← useSpiritTeamStore
   components/spirit/                  ← 精灵专用组件（17 个）
-  components/chat/                    ← Chat 面板扩展（ConversationTurn / ThinkingBlock / ActionBlock / ReplyBlock / ChatExecutionCard 等）
+  components/chat/                    ← Chat 面板扩展（ActivityStream / ThinkingBlock / ActionBlock / ReplyBlock / ChatExecutionCard / SessionTreeSidebar / SessionTreeNode / TeamStageBlock / GraphStageBlock 等）
 ```
+
+> **架构变更（2026-06-27 更新）**：原 `ConversationTurn.vue` + `useConversationTimeline.ts` 已删除，由 `ActivityStream.vue` + `useActivityTimeline.ts` 替代（三模式统一渲染器）。旧 `TaskExecutionPanel.vue` / `MemberReadOnlyPanel.vue` / `TeamPanel.vue` / `OrchestrationTimeline.vue` 已删除。详见 §14.9（ActivityStream 统一渲染器设计）、§14.12（Session 树 UI 递归设计）、§14.13（TeamStageBlock / GraphStageBlock 设计）。
 
 **红线**：
 - `internal/biz` 不 import `pkg/trpc-agent-go`
@@ -92,15 +95,18 @@ web/src/
 | `internal/biz/spirit_synthesis` | 新增 | Synthesis Engine 逻辑 |
 | `internal/service` | 新增 | spirit_team.go / spirit_synthesis.go / chat_orchestrator_spirit.go / team_turn_hooks.go |
 | `internal/tools` | 新增 | spirit_tools.go / orchestrator/ |
-| `internal/event` | 扩展 | spirit_team_assembled 等 15+ 个新 EnvelopeType |
+| `internal/event` | 扩展 | `team_stage`/`graph_stage`/`session`/`plan`/`notice` 等 ActivityKind + 7 种 ActivityEventType（替代旧 15+ EnvelopeType）；`ActivityEventBus`（biz.ActivityEvent）+ `MonitorEventBus`（contract.MonitorEvent），legacy Envelope Bus / SessionBus / MonitorBus 全部删除 |
+| `internal/agent` | 新增 | `tool_category.go` — ToolCategorizer（10 种 ToolCategory：shell/browser/file_read/file_write/file_search/web_search/mcp/code/todo/other），注册表查询 + 前缀匹配兜底 |
 | `internal/data/ent/schema/team` | 扩展 | spirit_session_id 索引 |
+| `internal/data/ent/schema/activity` | 扩展 | 新增 `tool_category`/`stage`/`session_type`/`member_agent_key`/`execution_stage`/`completed_steps`/`total_steps`/`progress_pct` 字段；删除 `role`/`tool_icon`（`child_board_id` 保留） |
 | `web/src/features/spirit` | 新增 | 类型、API、UI 工具函数、可观测性常量 |
 | `web/src/features/chat` | 新增 | useActivityTimeline / useTodoBoard / agentTreeTypes / activityTypes / activityTimelineTypes |
-| `web/src/features/chat/composables` | 新增 | useContextualLoadingMessage / useStatusPulse / useConversationTimeline |
+| `web/src/features/chat/composables` | 新增 | useContextualLoadingMessage / useStatusPulse（useConversationTimeline 已删除） |
+| `web/src/features/session` | 新增 | types.ts（SessionTreeNode 递归类型）/ api.ts（GetSessionTree RPC） |
 | `web/src/stores/spirit` | 新增 | useSpiritTeamStore |
 | `web/src/components/spirit` | 新增 | 17 个新组件 |
-| `web/src/components/chat` | 修改 | ChatEntitySidebar 重构、ChatMessagePanel 三模式 + Activity-First 树形嵌套 + 可观测性集成 |
-| `api/kratos/session/v1` | 扩展 | Session Proto 字段 |
+| `web/src/components/chat` | 修改 | ChatEntitySidebar 重构；ActivityStream 三模式统一渲染器（替代 ChatMessageList + TaskExecutionPanel + MemberReadOnlyPanel）；SessionTreeSidebar + SessionTreeNode 递归；TeamStageBlock / GraphStageBlock / ActionBlock（按 tool_category 分发 10 详情组件） |
+| `api/kratos/session/v1` | 扩展 | Session Proto 字段（含 `session_type`/`member_agent_key`/`member_role`/`execution_stage`/`completed_steps`/`total_steps`/`progress_pct`，编号 53-59） |
 | `api/kratos/team/v1` | 扩展 | Team Proto 字段 |
 
 **不改动**：`internal/server` 直连 runtime；`internal/data` 除新增字段外无 schema 变更；Team 编译/运行流程不变。
@@ -221,35 +227,53 @@ pending → running → completed → archived
 
 ## 四、WS 事件协议
 
-### 4.1 新增 EnvelopeType
+> **架构变更（2026-06-27 更新）**：本节原列的 15+ 种 `EnvelopeType` 已**全部废弃并删除**。Envelope 结构体已删除（后端 `contract/envelope.go` + 前端 `realtime/envelope.ts` 均已删除，详见 ADR-03 Blocker G）。所有事件统一为 **10 种 ActivityKind** + **7 种 ActivityEventType**，通过 `ActivityEventBus`（biz.ActivityEvent）+ `MonitorEventBus`（contract.MonitorEvent）传输。WS 协议传输 `activity_event?` + `monitor_event?`（`envelope?` 已删除）。完整映射表见 §14.8（原 EnvelopeType → ActivityKind 映射）。
 
-```go
-const (
-    // 团队生命周期事件
-    EnvelopeTypeSpiritTeamAssembled       EnvelopeType = "spirit_team_assembled"
-    EnvelopeTypeSpiritTeamCompleted       EnvelopeType = "spirit_team_completed"
-    EnvelopeTypeSpiritTeamFailed          EnvelopeType = "spirit_team_failed"
-    EnvelopeTypeSpiritTeamProgress        EnvelopeType = "spirit_team_progress"
-    EnvelopeTypeSpiritTeamsAllCompleted   EnvelopeType = "spirit_teams_all_completed"
+### 4.1 ActivityKind + ActivityEventType（替代旧 EnvelopeType）
 
-    // 三阶段编排事件
-    EnvelopeTypeSpiritPlanCreated              EnvelopeType = "spirit_plan_created"
-    EnvelopeTypeSpiritAllocationCreated        EnvelopeType = "spirit_allocation_created"
-    EnvelopeTypeSpiritOrchestrationStarted     EnvelopeType = "spirit_orchestration_started"
-    EnvelopeTypeSpiritOrchestrationCheckpoint  EnvelopeType = "spirit_orchestration_checkpoint"
-    EnvelopeTypeSpiritOrchestrationInterrupted EnvelopeType = "spirit_orchestration_interrupted"
-    EnvelopeTypeSpiritSynthesisCompleted       EnvelopeType = "spirit_synthesis_completed"
+> **完整定义见** §14.7（ActivityEvent 类型设计）。
 
-    // Butler 编排事件
-    EnvelopeTypeButlerOrchestrationStarted   EnvelopeType = "butler.orchestration.started"
-    EnvelopeTypeButlerOrchestrationCompleted EnvelopeType = "butler.orchestration.completed"
-    EnvelopeTypeButlerOrchestrationFailed    EnvelopeType = "butler.orchestration.failed"
-)
-```
+**ActivityKind（10 种，无 error kind）**：
+- 基础交互：`task` / `thinking` / `action` / `reply` / `plan` / `confirm` / `notice`
+- Session 生命周期：`session`（合并 `session_created`/`session_status`/`session_completed`）
+- Team/Graph 阶段：`team_stage`（合并 `spirit_team_*` / `team_run_*` / `team_step_*` / `orchestration_agent_status`）/ `graph_stage`（合并 `graph_node_*` / `graph_step` 等）
 
-### 4.2 事件载荷
+**ActivityEventType（7 种业务语义事件）**：
+- `created` — Activity 创建（新增 Block 组件）
+- `streaming` — 流式追加（替代技术术语 "delta"，追加文本）
+- `updated` — 状态变更（非流式，更新 stage/progress/成员列表）
+- `completed` — 正常完成
+- `failed` — 失败（独立事件，非 completed + status=failed）
+- `cancelled` — 取消（用户主动停止）
+- `child_created` — 子 Activity 创建（在父 Block 下新增子 Block）
 
-**spirit_team_completed**：
+**原 EnvelopeType → ActivityKind 映射**（节选，完整表见 §14.14）：
+
+| 原 EnvelopeType | ActivityKind | ActivityEventType |
+|----------------|-------------|------------------|
+| `spirit_team_assembled` | `team_stage` | `created`（stage=assembled） |
+| `spirit_team_completed` | `team_stage` | `completed`（stage=completed） |
+| `spirit_team_failed`/`interrupted` | `team_stage` | `failed`/`cancelled` |
+| `spirit_team_progress` | `team_stage` | `updated`（meta.progress） |
+| `spirit_plan_created` | `plan` | `created` |
+| `spirit_allocation_created` | `notice` | `created`（meta.allocation） |
+| `spirit_orchestration_started`/`checkpoint`/`interrupted` | `notice` | `updated`（meta.phase） |
+| `spirit_synthesis_completed` | `reply` | `completed`（meta.synthesis） |
+| `team_run_started`/`finished`/`failed` | `team_stage` | `created`/`completed`/`failed` |
+| `team_step_started`/`finished`/`summary` | `team_stage` | `updated` |
+| `member_message_start`/`delta`/`done` | `reply` | `created`/`streaming`/`completed` |
+| `orchestration_agent_status` | `team_stage` | `updated`（meta.member_status） |
+| `graph_node_start`/`end`/`error`/`custom` | `graph_stage` | `created`/`completed`/`failed`/`updated` |
+| `error` | 对应 kind | `failed`（如 action+failed / team_stage+failed） |
+| `text_delta`/`text_done` | `reply` | `streaming`/`completed` |
+| `tool_call`/`tool_result` | `action` | `created`/`completed` |
+| `butler_*`/`skill_*`/`borrow_*` | 删除 | 未使用 |
+
+### 4.2 事件载荷（已废弃 — 保留作历史参考）
+
+> **废弃说明（2026-06-27）**：以下载荷为旧 Envelope 格式，已由 `ActivityEvent` 替代。新代码请参考 §14.7（ActivityEvent 类型设计）。
+
+**spirit_team_completed**（旧格式，现由 `ActivityEvent(event=completed, kind=team_stage, stage=completed)` 替代）：
 ```go
 env.Metadata = map[string]any{
     "team_id":         teamID,
@@ -261,7 +285,7 @@ env.Metadata = map[string]any{
 }
 ```
 
-**spirit_team_progress**：
+**spirit_team_progress**（旧格式，现由 `ActivityEvent(event=updated, kind=team_stage, meta.changed_fields=progress)` 替代）：
 ```go
 env.Metadata = map[string]any{
     "team_id":         teamID,
@@ -273,17 +297,18 @@ env.Metadata = map[string]any{
 }
 ```
 
-### 4.3 复用现有事件
+### 4.3 复用现有事件（已废弃 — 已合并到 ActivityKind）
 
-| EnvelopeType | 来源 | 精灵模式用途 |
+> **废弃说明（2026-06-27）**：以下事件已全部合并到对应 ActivityKind，详见 §4.1 映射表。
+
+| 旧 EnvelopeType | 合并到 ActivityKind | 精灵模式用途 |
 |-------------|------|-------------|
-| `team_step_started` | Team Runner | 成员开始执行 → 更新成员状态 |
-| `team_step_finished` | Team Runner | 成员执行完成 |
-| `member_message_start/delta/done` | Team Runner | 成员消息流 → 任务执行面板 |
-| `session.status_changed` | SessionStatusPublisher | 团队 Session 状态 |
-| `orchestration_agent_status` | StatusProjector | Agent 节点实时状态 |
-| `team_run_started/finished/failed` | Team Runner | 团队 Run 生命周期 |
-| `tool_call` / `tool_result` | Agent Runtime | Agent 级工具调用 → 语境加载消息 |
+| `team_step_started`/`finished` | `team_stage`（`updated`） | 成员开始/完成执行 → 更新成员状态 |
+| `member_message_start/delta/done` | `reply`（`created`/`streaming`/`completed`） | 成员消息流 → ActivityStream |
+| `session.status_changed` | `session`（`updated`） | 团队 Session 状态 |
+| `orchestration_agent_status` | `team_stage`（`updated`，meta.member_status） | Agent 节点实时状态 |
+| `team_run_started/finished/failed` | `team_stage`（`created`/`completed`/`failed`） | 团队 Run 生命周期 |
+| `tool_call` / `tool_result` | `action`（`created`/`completed`） | Agent 级工具调用 → ActionBlock |
 
 ---
 
@@ -1917,110 +1942,149 @@ type SpiritContext struct {
 
 `ActivityProjector` 与 `EventProjector` 并行运行，共享同一个 mutex 确保顺序发射。Phase 1 双发射阶段两者同时工作，Phase 3 停发旧事件后 `EventProjector` 标记 Deprecated。
 
-### 14.3 Envelope 协议
+### 14.3 ActivityEvent 协议（2026-06-27 更新：替代旧 Envelope 协议）
 
-#### 14.3.1 新增 EnvelopeType
+> **架构变更（2026-06-27 更新）**：原 4 种 `EnvelopeType`（`activity_start`/`activity_delta`/`activity_done`/`activity_child_start`）已升级为 **7 种 `ActivityEventType`**（`created`/`streaming`/`updated`/`completed`/`failed`/`cancelled`/`child_created`）。Envelope 结构体已删除，`ActivityEvent` 是 EventBus 和 WS 传输的唯一格式。详见 Chat 重构方案 §3.2（已归档）。
+
+#### 14.3.1 ActivityEventType 定义（7 种业务语义事件）
 
 ```go
+// internal/event/activity_event.go
+type ActivityEventType string
+
 const (
-    EnvelopeTypeActivityStart     EnvelopeType = "activity_start"
-    EnvelopeTypeActivityDelta     EnvelopeType = "activity_delta"
-    EnvelopeTypeActivityDone      EnvelopeType = "activity_done"
-    EnvelopeTypeActivityChildStart EnvelopeType = "activity_child_start"
+    ActivityEventCreated      ActivityEventType = "created"       // Activity 创建
+    ActivityEventStreaming    ActivityEventType = "streaming"     // 流式追加（替代技术术语 "delta"）
+    ActivityEventUpdated      ActivityEventType = "updated"       // 状态变更（非流式）
+    ActivityEventCompleted    ActivityEventType = "completed"     // 正常完成
+    ActivityEventFailed       ActivityEventType = "failed"        // 失败（独立事件）
+    ActivityEventCancelled    ActivityEventType = "cancelled"     // 取消（用户主动停止）
+    ActivityEventChildCreated ActivityEventType = "child_created" // 子 Activity 创建
 )
-```
 
-#### 14.3.2 事件载荷
-
-**activity_start**：
-
-```go
-env.Metadata = map[string]any{
-    "activity_id":        activityID,
-    "kind":               kind,
-    "parent_activity_id": parentID,
-    "session_id":         sessionID,
-    "turn_id":            turnID,
-    "spirit_session_id":  spiritSessionID,
-    "team_id":            teamID,
-    "dag_node_id":        dagNodeID,
-    "agent_key":          agentKey,
-    "agent_name":         agentName,
-    "label":              label,
-    "tool_name":          toolName,
-    "tool_call_id":       toolCallID,
-    "tool_arguments":     toolArguments,
+// ActivityEvent 是 EventBus 和 WS 传输的唯一格式
+type ActivityEvent struct {
+    Event    ActivityEventType `json:"event"`
+    Activity Activity           `json:"activity"`
 }
 ```
 
-**activity_delta**：
+**streaming vs updated 边界**（必须遵守）：
+
+| 维度 | streaming | updated |
+|------|-----------|---------|
+| 变更类型 | 文本追加（content/reasoning/tool_arguments） | 非文本变更（status/stage/progress/成员列表） |
+| 频率 | 高频（每 token） | 低频（阶段变更） |
+| 前端行为 | 追加文本，光标闪烁 | 更新状态/进度，不追加文本 |
+| 批量合并 | 是（16ms 窗口） | 否 |
+| meta 字段 | `meta.delta_field` 标识追加字段 | `meta.changed_fields` 标识变更字段 |
+
+**child_created 语义**：`child_created` 是**父 Activity 的事件**，通知前端在父 Block 下新增子 Block。子 Activity 有自己完整的生命周期（独立发送 `created`/`streaming`/`completed`/...），父子解耦。
+
+#### 14.3.2 事件载荷（ActivityEvent 格式）
+
+**ActivityEvent(event=created)**：
 
 ```go
-env.Metadata = map[string]any{
-    "activity_id":      activityID,
-    "kind":             kind,
-    "reasoning_delta":  reasoningDelta,   // kind=thinking
-    "content_delta":    contentDelta,     // kind=reply
-    "status":           newStatus,        // kind=action
-    "tool_result":      toolResult,
-    "tool_duration_ms": durationMs,
-    "tool_error_code":  errorCode,        // kind=action
-    "notice_delta":     noticeDelta,      // kind=notice
+activity := Activity{
+    ID:               activityID,
+    Kind:             kind,               // 10 种 ActivityKind 之一
+    ParentActivityID: parentID,           // 树形嵌套
+    SessionID:        sessionID,
+    TurnID:           turnID,
+    SpiritSessionID:  spiritSessionID,
+    TeamID:           teamID,
+    DagNodeID:        dagNodeID,
+    AgentKey:         agentKey,
+    AgentName:        agentName,
+    Label:            label,
+    ToolName:         toolName,
+    ToolCategory:     toolCategory,       // 10 种 ToolCategory 之一
+    ToolCallID:       toolCallID,
+    ToolArguments:    toolArguments,
 }
+event := ActivityEvent{Event: ActivityEventCreated, Activity: activity}
 ```
 
-**activity_done**：
+**ActivityEvent(event=streaming)**（`meta.delta_field` 标识追加字段）：
 
 ```go
-env.Metadata = map[string]any{
-    "activity_id":      activityID,
-    "kind":             kind,
-    "status":           finalStatus,
-    "duration_ms":      durationMs,
-    "collapsed":        collapsed,
-    "reasoning":        fullReasoning,    // kind=thinking
-    "content":          fullContent,      // kind=reply
-    "tool_result":      fullToolResult,   // kind=action
-    "tool_duration_ms": totalDurationMs,
-    "tool_error_code":  errorCode,         // kind=action
+activity := Activity{
+    ID: activityID,
+    // 增量字段（按 delta_field 决定）：
+    Reasoning:  reasoningDelta,   // delta_field=reasoning, kind=thinking
+    Content:    contentDelta,     // delta_field=content, kind=reply
+    ToolArguments: toolArgsDelta, // delta_field=tool_arguments, kind=action
 }
+event := ActivityEvent{Event: ActivityEventStreaming, Activity: activity}
 ```
 
-**activity_child_start**：
+**ActivityEvent(event=completed)**：
 
 ```go
-env.Metadata = map[string]any{
-    "activity_id":        activityID,
-    "parent_activity_id": parentID,
-    "child_agent_key":    childAgentKey,
-    "child_agent_name":   childAgentName,
-    "child_session_id":   childSessionID,
-    "kind":               "delegate",
+activity := Activity{
+    ID:            activityID,
+    Status:        finalStatus,
+    DurationMs:    durationMs,
+    Collapsed:     collapsed,
+    Reasoning:     fullReasoning,    // kind=thinking
+    Content:       fullContent,      // kind=reply
+    ToolResult:    fullToolResult,   // kind=action
+    ToolDurationMs: totalDurationMs,
 }
+event := ActivityEvent{Event: ActivityEventCompleted, Activity: activity}
 ```
 
-#### 14.3.3 与现有 M59 事件的关系
+**ActivityEvent(event=failed)**（`meta.error_code` + `meta.error_message`）：
 
-| 现有 M59 事件 | Activity 事件 | 迁移策略 |
+```go
+activity := Activity{
+    ID: activityID,
+    // 错误信息：
+    // meta.error_code = errorCode
+    // meta.error_message = errorMessage
+}
+event := ActivityEvent{Event: ActivityEventFailed, Activity: activity}
+```
+
+**ActivityEvent(event=child_created)**（`meta.child_activity_id` 标识子 Activity）：
+
+```go
+activity := Activity{
+    ID:               activityID,       // 父 Activity ID
+    ParentActivityID: parentID,
+    // meta.child_activity_id = childActivityID
+    // meta.member_agent_key = childAgentKey（team_stage 场景）
+}
+event := ActivityEvent{Event: ActivityEventChildCreated, Activity: activity}
+```
+
+#### 14.3.3 与现有 M59 事件的关系（已废弃 — 已全部迁移到 ActivityEvent）
+
+> **废弃说明（2026-06-27）**：以下迁移策略为 Phase AF-1 双发射阶段的历史记录。Phase AF-3 完成后，所有旧事件已删除，仅保留 ActivityEvent。完整映射表见 §14.8。
+
+| 旧 M59 事件 | ActivityEvent | 迁移状态 |
 |-------------|-------------|---------|
-| `text_delta` / `text_done` | `activity_delta(kind=reply)` | 双发射并行 |
-| `text_delta(含 reasoning)` / `text_done(含 reasoning)` | `activity_delta(kind=thinking)` | 双发射并行；reasoning 内容在 EnvelopeContent.Reasoning 字段中 |
-| `tool_call` / `tool_result` | `activity_start(kind=action)` + `activity_done` | 双发射并行 |
-| `member_message_start/delta/done` | `activity_child_start` + `activity_delta` | 双发射并行 |
-| `spirit_team_assembled` | `activity_start(kind=delegate)` | 双发射并行 |
-| `spirit_plan_created` 等 | `activity_start(kind=notice)` | 双发射并行 |
-| `spirit_team_progress` | `activity_delta(kind=notice)` | 双发射并行 |
-| `butler_plan_created` | `activity_start(kind=notice)` | 双发射并行 |
-| `butler_plan_updated` | `activity_delta(kind=notice)` | 双发射并行 |
+| `text_delta` / `text_done` | `ActivityEvent(event=streaming/completed, kind=reply)` | ✅ 已迁移 |
+| `text_delta(含 reasoning)` | `ActivityEvent(event=streaming, kind=thinking, delta_field=reasoning)` | ✅ 已迁移 |
+| `tool_call` / `tool_result` | `ActivityEvent(event=created/completed, kind=action)` | ✅ 已迁移 |
+| `member_message_start/delta/done` | `ActivityEvent(event=child_created + created/streaming/completed, kind=reply)` | ✅ 已迁移 |
+| `spirit_team_assembled` | `ActivityEvent(event=created, kind=team_stage, stage=assembled)` | ✅ 已迁移 |
+| `spirit_plan_created` | `ActivityEvent(event=created, kind=plan)` | ✅ 已迁移 |
+| `spirit_team_progress` | `ActivityEvent(event=updated, kind=team_stage, changed_fields=progress)` | ✅ 已迁移 |
+| `butler_*` / `skill_*` | 删除（未使用） | ✅ 已删除 |
 
 #### 14.3.4 AS-EVT-01 可靠性分级
 
-| Activity 事件 | AS-EVT-01 级别 | 可靠性保证 | 说明 |
+| ActivityEvent | AS-EVT-01 级别 | 可靠性保证 | 说明 |
 |--------------|---------------|-----------|------|
-| `activity_start` | Important | BlockUpTo + 异步持久化 | Activity 创建需可靠到达 |
-| `activity_delta` | Informational | 尽力而为 | 流式增量，丢失可容忍 |
-| `activity_done` | Important | BlockUpTo + 异步持久化 | Activity 完成需可靠到达 |
-| `activity_child_start` | Important | BlockUpTo + 异步持久化 | 子代理委派需可靠到达 |
+| `created` | Important | 异步持久化，失败重试 + 同步推送 | Activity 创建需可靠到达 |
+| `streaming` | Informational | 异步持久化，失败丢弃 + 同步推送（可批量合并） | 流式增量，丢失可容忍 |
+| `updated` | Informational | 异步持久化，失败丢弃 + 同步推送 | 状态变更，丢失可由后续 updated 补偿 |
+| `completed` | Important | 异步持久化，失败重试 + 同步推送 | Activity 完成需可靠到达 |
+| `failed` | Important | 异步持久化，失败重试 + 同步推送 | 失败事件需可靠到达 |
+| `cancelled` | Important | 异步持久化，失败重试 + 同步推送 | 取消事件需可靠到达 |
+| `child_created` | Important | 异步持久化，失败重试 + 同步推送 | 子 Activity 创建需可靠到达 |
 
 ### 14.4 activities 表 Schema
 
@@ -2116,79 +2180,592 @@ function activityToTaskBoardNode(activity: Activity): TaskBoardNode {
 }
 ```
 
-#### 14.5.3 与 M59 组件集成
+#### 14.5.3 与 M59 组件集成（2026-06-27 更新：ActivityStream 替代）
+
+> **架构变更（2026-06-27 更新）**：原 `ConversationTurn.vue` / `UnifiedExecutionPanel.vue` 已删除，由 `ActivityStream.vue` 三模式统一渲染器替代。详见 §14.9（ActivityStream 统一渲染器设计）。
 
 | M59 组件（Activity-First 后） | 数据源变更 | 说明 |
 |---------|----------|------|
-| `ConversationTurn.vue`（原 TaskBoard.vue/TurnBlock.vue） | `useActivityTimeline.taskBoardNodes` | 直接消费 Activity 树 |
-| `ThinkingArea.vue` / `ThinkingBlock.vue`（原 ChatReasoningPeek.vue） | `Activity(kind=thinking)` | 流式态从 `activity_delta` 获取 |
-| `UnifiedExecutionPanel.vue` | 多 Store 拼装 → Activity 树过滤 | delegate/sub_task_board 过滤 |
-| `ChatExecutionCard.vue` / `ActionBlock.vue`（原 ToolCallTimeline.vue） | `Activity(kind=action)` | 直接消费 |
+| `ActivityStream.vue`（新增，替代 ConversationTurn + TaskExecutionPanel + MemberReadOnlyPanel） | `useActivityTimeline.sortedActivities` | 三模式统一渲染，按 `activity.kind` 分发到 10 个 Block 组件 |
+| `ThinkingBlock.vue`（原 ChatReasoningPeek.vue） | `Activity(kind=thinking)` | 流式态从 `ActivityEvent(event=streaming, delta_field=reasoning)` 获取 |
+| `ActionBlock.vue`（原 ToolCallTimeline.vue） | `Activity(kind=action)` | 直接消费；按 `tool_category` 分发到 10 个详情组件（见 §14.11） |
+| `ReplyBlock.vue` | `Activity(kind=reply)` | 流式态从 `ActivityEvent(event=streaming, delta_field=content)` 获取 |
+| `TeamStageBlock.vue`（新增） | `Activity(kind=team_stage)` | 团队阶段+成员折叠（见 §14.13） |
+| `GraphStageBlock.vue`（新增） | `Activity(kind=graph_stage)` | DAG 节点状态（见 §14.13） |
+| `SessionTreeSidebar.vue` + `SessionTreeNode.vue`（新增） | Session 树 RPC | 递归渲染 Spirit→Team→Agent 树（见 §14.12） |
 | `SpiritStatusBar.vue` | 多 computed 拼装 → Activity 聚合 | 简化 |
-| `TodoKanbanBoard.vue` | `useTodoBoard` → `Activity(kind=action, toolName=todo_write)` | 特殊处理 |
+| `TodoKanbanBoard.vue` | `useTodoBoard` → `Activity(kind=action, toolCategory=todo)` | 特殊处理 |
 
 #### 14.5.4 Store 集成
 
 | Store | 变更 | 说明 |
 |-------|------|------|
-| `useChatStore` | 新增 `activities` Map + Activity 事件处理 | Activity 数据入口 |
-| `useAgentBlocksStore` | 保留 Phase AF-1，Phase AF-3 废弃 | 双发射期并存 |
-| `useSpiritStore` | `spiritTeamAssembled` → `activity_start(kind=delegate)` | Phase AF-2 切换 |
-| `useTodoBoardStore` | `todo_write` 事件 → `Activity(kind=action, toolName=todo_write)` | Phase AF-2 切换 |
+| `useChatStore` | 新增 `activitiesBySession` Map + Activity 事件处理 | Activity 数据入口，按 session_id 隔离 |
+| `useAgentBlocksStore` | Phase AF-3 已废弃删除 | 双发射期已结束 |
+| `useSpiritStore` | `spiritTeamAssembled` → `ActivityEvent(event=created, kind=team_stage, stage=assembled)` | 已切换 |
+| `useTodoBoardStore` | `todo_write` 事件 → `Activity(kind=action, toolCategory=todo)` | 已切换 |
 
-### 14.6 13 层推理消除映射
+### 14.6 13 层推理消除映射（2026-06-27 更新：ActivityEvent 术语）
 
 | # | 原推理步骤 | Activity-First 后 | 消除方式 |
 |---|-----------|------------------|---------|
-| 1 | `reasoning_as_display` 推断 | `activity_done(kind=reply)` | 后端投影器判断 |
-| 2 | ReAct 标签解析 | `activity_start(kind=thinking, label=xxx)` | 后端解析标签 |
-| 3 | member ID 前缀约定 | `activity_start(agentKey=xxx)` | 直接携带 |
-| 4 | EnvelopeContent 无语义 | `activity_start(kind=xxx)` | 语义在 kind 中 |
-| 5 | snapshotStreamingMessage | `activity_done` 替代 | 不再需要 snapshot |
+| 1 | `reasoning_as_display` 推断 | `ActivityEvent(event=completed, kind=reply)` | 后端投影器判断 |
+| 2 | ReAct 标签解析 | `ActivityEvent(event=created, kind=thinking, label=xxx)` | 后端解析标签 |
+| 3 | member ID 前缀约定 | `ActivityEvent(event=created, agentKey=xxx)` | 直接携带 |
+| 4 | EnvelopeContent 无语义 | `ActivityEvent(event=created, kind=xxx)` | 语义在 kind 中 |
+| 5 | snapshotStreamingMessage | `ActivityEvent(event=completed)` 替代 | 不再需要 snapshot |
 | 6 | mergeSessionMessages 内容匹配 | `activity.id` 全局唯一 | ID 匹配替代内容匹配 |
 | 7 | classifyActivityKind | `activity.kind` 直接给出 | 后端分类 |
 | 8 | resolveAssistantPresentation | `activity.kind=reply` 直接给出 | 后端判断 |
 | 9 | isReasoningAsDisplay | 不再需要 | 后端在投影器中处理 |
 | 10 | reasoningMarkdown fallback | `activity.content` 或 `activity.reasoning` | 字段明确 |
-| 11 | useConversationTimeline 推理 | `useActivityTimeline` 直接消费 | 无推理 |
-| 12 | useAgentBlocks 构建 | `activityTree` 直接映射 | 无推理 |
+| 11 | useConversationTimeline 推理 | `useActivityTimeline` 直接消费（已替代） | 无推理 |
+| 12 | useAgentBlocks 构建 | `sortedActivities` 直接映射 | 无推理 |
 | 13 | computeAgentStatus | `activity.status` 直接给出 | 后端计算 |
 
-### 14.7 迁移策略
+### 14.7 迁移策略（2026-06-27 更新：三阶段全部完成）
 
-#### Phase AF-1：双发射（兼容期）
+> **实际状态**：Phase AF-1 / AF-2 / AF-3 全部完成。后端 ADR-03 Phase 5 Blocker A-G 全部完成（`contract/envelope.go` 已删、8 个 consumer 全部迁移到 `ActivityEventBus`/`MonitorBus`）；前端 Envelope 路径已彻底删除。详见 ADR-03「Blocker G 前端完成总结」。
+
+#### Phase AF-1：双发射（兼容期）— ✅ 已完成
 
 - 后端同时发射旧事件和新 Activity 事件
 - 前端仍消费旧事件，新事件仅记录日志
 - `ActivityProjector` 与 `EventProjector` 并行运行
 - 新增 `activities` 表和 Ent Schema
 
-#### Phase AF-2：前端切换
+#### Phase AF-2：前端切换 — ✅ 已完成
 
 - 前端新增 `useActivityTimeline` composable
 - Feature flag 控制切换
 - 逐步替换各组件数据源
 - 保留旧事件消费路径作为 fallback
 
-#### Phase AF-3：清理与优化
+#### Phase AF-3：清理与优化 — ✅ 已完成
 
 - 前端完全切换后停发旧事件
-- 清理 `useAgentBlocks` 推理逻辑
-- 清理 `useConversationTimeline` 推理逻辑
-- `EventProjector` 标记 Deprecated
+- 清理 `useAgentBlocks` 推理逻辑（已删除）
+- 清理 `useConversationTimeline` 推理逻辑（已删除，由 `useActivityTimeline` 替代）
+- `EventProjector` 标记 Deprecated（已删除）
+- 后端 `contract/envelope.go` 删除（Blocker G ✅，活类型提取到 `envelope_types.go`）
+- 前端 `realtime/envelope.ts`/`dispatcher.ts`/`data_channel.ts`/`event_replay.ts` + `features/chat/dispatcher.ts` 删除（任务 8 ✅）
+- `ActivityStream.vue` 作为三模式统一渲染器（替代 ChatMessageList + TaskExecutionPanel + MemberReadOnlyPanel）
 
-### 14.8 影响域
+### 14.8 影响域（2026-06-27 更新）
 
 | 包 | 变更类型 | 说明 |
 |----|----------|------|
-| `internal/agent/` | 新增 | `activity_projector.go`（含 `OnMemberMessageDelta`/`OnMemberMessageDone` AF-GAP-04）+ `perf_bench_test.go`（T6.2 性能基准） |
-| `internal/biz/` | 新增 | `ActivityRepo` 接口（Reader/Writer 拆分） |
+| `internal/agent/` | 新增 | `activity_projector.go`（含 `OnMemberMessageDelta`/`OnMemberMessageDone` AF-GAP-04）+ `tool_category.go`（ToolCategorizer 10 种类别） + `perf_bench_test.go`（T6.2 性能基准） |
+| `internal/biz/` | 新增 | `ActivityRepo` 接口（Reader/Writer 拆分）+ `ActivityKind`/`ActivityEventType` 枚举（10 种 kind + 7 种 event） |
 | `internal/data/` | 新增 | `activity_repo.go` + Ent Schema + DDL 迁移 + `activity_backfill_migrate.go`（T6.3 Pre-AF 数据回填） |
-| `internal/event/contract/` | 扩展 | 4 个新 EnvelopeType |
+| `internal/event/` | 扩展 | `ActivityEventBus`（biz.ActivityEvent）+ `MonitorEventBus`（contract.MonitorEvent）；legacy Envelope Bus / SessionBus / MonitorBus / `contract/envelope.go` 全部删除（Blocker F/G ✅） |
 | `internal/service/` | 修改 | 集成 ActivityProjector |
-| `web/src/features/chat/` | 新增 | `activityTypes.ts` + `useActivityTimeline.ts`（含 AF-GAP-05 重试降级） |
-| `web/src/features/chat/` | 修改 | `streamHandlers.ts`（AF-GAP-04 `applyMemberMetaToMessage` + T7.3d 移除 Legacy member_message handlers） |
+| `web/src/features/chat/` | 新增 | `activityTypes.ts` + `useActivityTimeline.ts`（含 AF-GAP-05 重试降级 + `ensureActivitiesLoaded` 缓存跳过） |
+| `web/src/features/chat/` | 修改 | `streamHandlers.ts` 已删除（占位机制移除）；`inboundSyncRouting.ts`/`inboundSyncEnvelope.ts` 已迁移到 ActivityEvent |
 | `web/src/features/chat/composables/` | 修改 | `useChatInboundSync.ts`（AF-GAP-02 当前 session 转发）+ `useChatWorkspace.ts`（envelope ID 去重） |
-| `web/src/components/` | 修改 | 各组件数据源切换 |
+| `web/src/features/session/` | 新增 | `types.ts`（SessionTreeNode 递归类型）+ `api.ts`（GetSessionTree RPC） |
+| `web/src/components/chat/` | 新增 | `ActivityStream.vue` + `SessionTreeSidebar.vue` + `SessionTreeNode.vue` + `TeamStageBlock.vue` + `GraphStageBlock.vue` + 10 个 ToolDetail 组件 |
+| `web/src/components/chat/` | 删除 | `ConversationTurn.vue` / `TaskExecutionPanel.vue` / `MemberReadOnlyPanel.vue` / `TeamPanel.vue` / `OrchestrationTimeline.vue` |
+| `web/src/realtime/` | 删除 | `envelope.ts` / `dispatcher.ts` / `data_channel.ts` / `event_replay.ts`（Blocker G 前端完成 ✅） |
 
 **不改动**：M59 展示组件的模板和样式；`internal/server` 直连 runtime；Team 编译/运行流程。
+
+---
+
+### 14.9 ActivityStream 统一渲染器设计（2026-06-27 新增）
+
+> **来源**：Chat 重构方案 §7.1-§7.2（已归档，设计内容已并入本文档）。
+> **定位**：spirit/team/member 三模式唯一渲染入口，替代旧 ChatMessageList + TaskExecutionPanel + MemberReadOnlyPanel 三套渲染管线。
+
+#### 14.9.1 渲染管线
+
+```
+WS ActivityEvent（created/streaming/updated/completed/failed/cancelled/child_created）
+  ↓
+useActivityTimeline（按 session_id 隔离 Map，见 §14.10）
+  ↓
+ActivityStream.vue（统一入口，替代 ChatMessageList + TaskExecutionPanel + MemberReadOnlyPanel）
+  ↓
+按 activity.kind 动态分发：
+  ├── task → UserMessageBubble（用户消息）
+  ├── thinking → ThinkingBlock
+  ├── action → ActionBlock（按 tool_category 细分，见 §14.11；failed 事件高亮错误）
+  ├── reply → ReplyBlock
+  ├── plan → PlanBlock
+  ├── confirm → ConfirmBlock
+  ├── notice → NoticeBlock
+  ├── session → SessionStageBlock（Session 生命周期）
+  ├── team_stage → TeamStageBlock（团队阶段+成员折叠，见 §14.13；failed/cancelled 事件显示状态）
+  └── graph_stage → GraphStageBlock（DAG 阶段，见 §14.13；failed 事件高亮错误节点）
+```
+
+**注意**：不保留 `error → ErrorBlock` 分支。错误通过对应 kind 的 `failed` 事件表达（如 `action+failed` 在 ActionBlock 内高亮错误，`team_stage+failed` 在 TeamStageBlock 内显示失败状态）。
+
+#### 14.9.2 ActivityStream 组件实现
+
+```vue
+<!-- web/src/components/chat/ActivityStream.vue -->
+<template>
+  <DynamicScroller :items="sortedActivities" :min-item-size="60">
+    <template #default="{ item: activity }">
+      <component
+        :is="resolveBlockComponent(activity.kind)"
+        :activity="activity"
+        @expand="onExpand"
+        @collapse="onCollapse"
+      />
+    </template>
+  </DynamicScroller>
+</template>
+
+<script setup lang="ts">
+import type { Component } from 'vue';
+import type { Activity, ActivityKind } from '../../features/chat/activityTypes';
+
+const props = defineProps<{
+  sessionId: string;
+  activities: Activity[];
+}>();
+
+function resolveBlockComponent(kind: ActivityKind): Component {
+  const map: Record<ActivityKind, Component> = {
+    task: UserMessageBubble,
+    thinking: ThinkingBlock,
+    action: ActionBlock,
+    reply: ReplyBlock,
+    plan: PlanBlock,
+    confirm: ConfirmBlock,
+    notice: NoticeBlock,
+    session: SessionStageBlock,
+    team_stage: TeamStageBlock,
+    graph_stage: GraphStageBlock,
+  };
+  return map[kind] ?? NoticeBlock; // 兜底
+}
+</script>
+```
+
+#### 14.9.3 动态渲染行为
+
+**思考（thinking）**：
+- `created` → 新增 ThinkingBlock（折叠状态，显示"思考中..."）
+- `streaming`（delta_field=reasoning）→ 流式追加文本，光标闪烁
+- `completed` → 停止光标，可展开查看完整推理
+- `failed` → 显示"思考失败"，展示错误信息
+- `cancelled` → 显示"已停止"
+
+**回复（reply）**：
+- `created` → 新增 ReplyBlock（流式渲染 markdown）
+- `streaming`（delta_field=content）→ 流式追加文本
+- `completed` → 完成 markdown 渲染
+- `failed` → 显示"回复失败"
+- `cancelled` → 显示"已停止"
+
+**计划（plan）**：
+- `created` → 新增 PlanBlock（显示计划标题）
+- `streaming`（delta_field=steps）→ 渲染计划步骤列表（checkbox 形式）
+- `updated`（changed_fields=step_status）→ 更新步骤状态（pending/completed/failed）
+- `completed` → 完成计划展示，可折叠
+
+**工具调用（action）**：详见 §14.11（ActionBlock tool_category 分发设计）。
+
+**团队阶段（team_stage）** / **Graph 阶段（graph_stage）**：详见 §14.13（TeamStageBlock / GraphStageBlock 设计）。
+
+---
+
+### 14.10 useActivityTimeline session 隔离 + 缓存优化（2026-06-27 新增）
+
+> **来源**：Chat 重构方案 §7.1.3 + §9.1.3（子 session Activity 加载）（已归档，设计内容已并入本文档）。
+
+#### 14.10.1 按 session_id 隔离
+
+```typescript
+// web/src/features/chat/composables/useActivityTimeline.ts
+const activitiesBySession = shallowRef<Map<string, Map<string, Activity>>>(new Map());
+
+function getSessionActivities(sessionId: string): Map<string, Activity> {
+    let map = activitiesBySession.value.get(sessionId);
+    if (!map) {
+        map = new Map();
+        activitiesBySession.value.set(sessionId, map);
+    }
+    return map;
+}
+
+// 切换 session 时无需 reset，自然隔离
+```
+
+#### 14.10.2 ensureActivitiesLoaded 缓存跳过（Phase E 实现）
+
+```typescript
+async function ensureActivitiesLoaded(sessionId: string): Promise<void> {
+  // 缓存命中（含空 Map）时跳过 API 调用
+  if (activitiesBySession.value.has(sessionId)) {
+    return;
+  }
+  try {
+    const activities = await listActivities(sessionId);
+    activitiesBySession.value.set(sessionId, new Map(activities.map(a => [a.id, a])));
+  } catch (err) {
+    // 失败时不写缓存，以便下次自动重试
+    console.warn('Failed to load activities, will retry on next access', err);
+  }
+}
+```
+
+**语义保证**：
+- 缓存命中（含空 Map）→ 跳过 API 调用
+- 失败 → 不写缓存，下次访问自动重试
+- WS replay → 重连后补齐缺失事件（替代旧 `RevisionTracker` + `requestSyncReplay` 机制，重连改用 `ListActivities` RPC）
+
+#### 14.10.3 bindSessionView 集成
+
+`bindSessionView` 改用 `ensureActivitiesLoaded` 替代 `loadActivitiesFromAPI`，成员切换瞬时响应（缓存命中时无 API 调用）。
+
+---
+
+### 14.11 ActionBlock tool_category 分发设计（2026-06-27 新增）
+
+> **来源**：Chat 重构方案 §8（已归档，设计内容已并入本文档）。
+
+#### 14.11.1 ToolCategory 枚举（10 种）
+
+```go
+// internal/biz/activity.go
+type ToolCategory string
+
+const (
+    ToolCategoryShell       ToolCategory = "shell"        // Shell 命令执行
+    ToolCategoryBrowser     ToolCategory = "browser"      // 浏览器操作
+    ToolCategoryFileRead    ToolCategory = "file_read"    // 文件读取
+    ToolCategoryFileWrite   ToolCategory = "file_write"   // 文件写入
+    ToolCategoryFileSearch  ToolCategory = "file_search"  // 文件查找
+    ToolCategoryWebSearch   ToolCategory = "web_search"   // 网络搜索
+    ToolCategoryMCP         ToolCategory = "mcp"          // MCP 工具
+    ToolCategoryCode        ToolCategory = "code"         // 代码执行
+    ToolCategoryTodo        ToolCategory = "todo"         // Todo 管理
+    ToolCategoryOther       ToolCategory = "other"        // 其他
+)
+```
+
+#### 14.11.2 ToolCategorizer 后端识别器
+
+```go
+// internal/agent/tool_category.go
+
+// ToolCategorizer 工具类型识别器（可注入，便于测试和扩展）
+type ToolCategorizer interface {
+    Categorize(toolName string) ToolCategory
+}
+
+// defaultToolCategorizer 默认实现：注册表查询 + 前缀匹配兜底
+type defaultToolCategorizer struct {
+    toolRegistry map[string]ToolCategory  // 由 ToolService 启动时填充
+}
+
+func (c *defaultToolCategorizer) Categorize(toolName string) ToolCategory {
+    // 1. 优先查注册表（准确）
+    if cat, ok := c.toolRegistry[toolName]; ok {
+        return cat
+    }
+    // 2. 前缀/名称匹配兜底（覆盖未注册工具）
+    switch {
+    case strings.HasPrefix(toolName, "shell") || strings.HasPrefix(toolName, "bash"):
+        return ToolCategoryShell
+    case strings.HasPrefix(toolName, "browser") || strings.HasPrefix(toolName, "playwright"):
+        return ToolCategoryBrowser
+    // ... 其余 8 类前缀匹配
+    default:
+        return ToolCategoryOther
+    }
+}
+```
+
+**注入方式**：`ActivityProjector` 通过构造函数注入 `ToolCategorizer`，便于测试时 mock。
+
+#### 14.11.3 前端 UI 表现
+
+| 工具类型 | 图标 | 布局 | 折叠时显示 | 展开时显示 |
+|---------|------|------|-----------|-----------|
+| shell | `$` | 终端样式 | 命令摘要 | 完整命令 + stdout/stderr |
+| browser | 🌐 | 网页卡片 | URL + 操作类型 | 截图 + DOM 操作详情 |
+| file_read | 📖 | 文件卡片 | 文件路径 | 文件内容片段 |
+| file_write | ✏️ | 文件卡片 | 文件路径 + 变更行数 | diff 视图 |
+| file_search | 🔍 | 搜索结果 | 搜索条件 + 命中数 | 结果列表 |
+| web_search | 🔎 | 搜索卡片 | 查询词 + 结果数 | 结果摘要列表 |
+| mcp | 🔌 | 通用卡片 | MCP 服务名 + 方法 | 参数 + 结果 |
+| code | 💻 | 代码块 | 语言 + 执行状态 | 代码 + 输出 |
+| todo | ✅ | 看板卡片 | 进度条 | 任务列表 |
+| other | 🔧 | 通用卡片 | 工具名 | 参数 + 结果 |
+
+#### 14.11.4 ActionBlock 组件实现
+
+```vue
+<!-- web/src/components/chat/ActionBlock.vue -->
+<template>
+  <div class="action-block" :class="`tool-${category}`">
+    <div class="action-header" @click="toggleExpand">
+      <ToolIcon :category="category" :name="activity.tool_name" />
+      <span class="action-title">{{ actionTitle }}</span>
+      <StatusBadge :status="activity.status" />
+      <DurationBadge v-if="activity.duration_ms" :ms="activity.duration_ms" />
+    </div>
+
+    <div v-if="expanded" class="action-detail">
+      <component :is="detailComponent" :activity="activity" />
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+const detailComponent = computed(() => {
+  const map: Record<string, Component> = {
+    shell: ShellToolDetail,
+    browser: BrowserToolDetail,
+    file_read: FileReadToolDetail,
+    file_write: FileWriteToolDetail,
+    file_search: FileSearchToolDetail,
+    web_search: WebSearchToolDetail,
+    mcp: McpToolDetail,
+    code: CodeToolDetail,
+    todo: TodoToolDetail,
+    other: GenericToolDetail,
+  };
+  return map[category.value] ?? GenericToolDetail;
+});
+</script>
+```
+
+---
+
+### 14.12 SessionTreeSidebar + SessionTreeNode 递归设计（2026-06-27 新增）
+
+> **来源**：Chat 重构方案 §10（已归档，设计内容已并入本文档）。
+> **实现状态**：Phase D 补全 Session 7 字段断层（proto `Session` 新增 `session_type`/`member_agent_key`/`member_role`/`execution_stage`/`completed_steps`/`total_steps`/`progress_pct`，编号 53-59），`SessionTreeNode.vue` UI 增强。
+
+#### 14.12.1 左侧栏 Session 树（支持任意深度）
+
+```
+┌─────────────────────────────────┐
+│ 💬 Spirit Sessions              │
+├─────────────────────────────────┤
+│ ▼ 帮我重构 chat 模块            │ ← Spirit Session（root，depth=0）
+│   ├─ 🔄 团队 1：后端重构        │ ← Team Session（depth=1）
+│   │   ├─ 👤 agent-go            │ ← Agent Session（depth=2，Team 成员）
+│   │   │   └─ 👤 sub-agent       │ ← Agent Session（depth=3，子 Agent）
+│   │   ├─ 👤 agent-ent           │ ← Agent Session（depth=2）
+│   │   └─ 👤 agent-test          │ ← Agent Session（depth=2）
+│   ├─ 👤 agent-direct-A          │ ← Agent Session（depth=1，Spirit 直接调度，无 Team）
+│   └─ ✅ 团队 2：前端重构        │ ← Team Session（depth=1）
+│       ├─ 👤 agent-vue           │ ← Agent Session（depth=2）
+│       └─ 👤 agent-style         │ ← Agent Session（depth=2）
+│                                 │
+│ ▶ 另一个 Spirit Session         │
+└─────────────────────────────────┘
+```
+
+**特点**：
+- 支持任意深度递归（受 `max_session_depth` 限制）
+- Team Session 和 Agent Session 都可作为 Spirit 的直接子节点
+- Agent Session 可嵌套（子 Agent 递归调用）
+
+#### 14.12.2 SessionTreeSidebar 组件
+
+```vue
+<!-- web/src/components/chat/SessionTreeSidebar.vue -->
+<template>
+  <div class="session-tree-sidebar">
+    <div class="spirit-sessions">
+      <SessionTreeNode
+        v-for="spiritNode in spiritTreeNodes"
+        :key="spiritNode.session.id"
+        :node="spiritNode"
+        :active-session-id="activeSessionId"
+        @select="onSelectSession"
+      />
+    </div>
+  </div>
+</template>
+```
+
+#### 14.12.3 SessionTreeNode 递归组件
+
+```vue
+<!-- web/src/components/chat/SessionTreeNode.vue -->
+<template>
+  <div class="session-tree-node" :class="`depth-${node.session.agent_depth}`">
+    <div class="node-header" :class="{ active: isActive }" @click="onSelect">
+      <SessionTypeIcon :type="node.session.session_type" :stage="node.session.execution_stage" />
+      <span class="node-title">{{ node.session.title }}</span>
+      <DepthBadge v-if="node.session.agent_depth > 0" :depth="node.session.agent_depth" />
+      <StageBadge v-if="node.session.execution_stage" :stage="node.session.execution_stage" />
+      <ProgressMini v-if="node.session.total_steps > 0" :completed="node.session.completed_steps" :total="node.session.total_steps" />
+    </div>
+
+    <!-- 递归渲染子节点（支持任意深度） -->
+    <div v-if="expanded && node.children.length > 0" class="node-children">
+      <SessionTreeNode
+        v-for="child in node.children"
+        :key="child.session.id"
+        :node="child"
+        :active-session-id="activeSessionId"
+        @select="onSelect"
+      />
+    </div>
+  </div>
+</template>
+```
+
+**实现状态（Phase D）**：`SessionTypeIcon`/`DepthBadge`/`StageBadge`/`ProgressMini` 内联为 computed 属性 + `q-badge` 元素（而非独立组件文件），避免过度拆分。
+
+#### 14.12.4 视觉规范
+
+| 元素 | 规则 |
+|------|------|
+| `session_type` 图标 | spirit→`auto_awesome` / team→`groups` / agent→`person` / standalone→`forum` |
+| `execution_stage` 徽章颜色 | planning/allocating→blue / executing→orange / completed→green / failed→red |
+| `agent_depth` 徽章 | `L{depth}`（depth > 0 时显示） |
+| 进度显示 | `{completed}/{total}`（total_steps > 0 时显示） |
+| i18n | `session.executionStage.*` 覆盖中英文 |
+
+#### 14.12.5 前端类型定义
+
+```typescript
+// web/src/features/session/types.ts
+interface SessionTreeNode {
+  session: Session;
+  children: SessionTreeNode[];  // 递归，支持任意深度
+  activities?: Activity[];      // 按需加载
+}
+```
+
+---
+
+### 14.13 TeamStageBlock / GraphStageBlock 设计（2026-06-27 新增）
+
+> **来源**：Chat 重构方案 §9（已归档，设计内容已并入本文档）。
+
+#### 14.13.1 TeamStageBlock 组件（team_stage kind）
+
+**事件响应行为**：
+
+| ActivityEvent | 行为 |
+|---------------|------|
+| `created`（stage=assembled） | 新增 TeamStageBlock，显示"团队已组建" + 成员头像列表 + 任务摘要 |
+| `updated`（changed_fields=stage, stage=executing） | 更新阶段为"执行中" + 进度条（completed_steps/total_steps）+ 停止/恢复按钮 |
+| `updated`（changed_fields=progress） | 更新进度条 |
+| `completed`（stage=completed） | 更新阶段为"已完成" + 最终结果摘要 + DQ 评分 |
+| `failed`（stage=failed） | 更新阶段为"失败" + 失败原因 |
+| `cancelled`（cancel_reason=xxx） | 更新阶段为"已取消" + 取消原因 |
+| `child_created`（child_activity_id=xxx, member_agent_key=yyy） | 在成员列表新增成员 Block（折叠状态） |
+
+**团队成员折叠展示**：
+
+```
+TeamStageBlock
+  ├── 团队头部（阶段/进度/控制按钮）
+  ├── 成员列表（可折叠）
+  │   ├── Member 1（点击展开）
+  │   │   └── 子 Activity 流（该成员的 thinking/action/reply）
+  │   ├── Member 2
+  │   └── Member 3
+  └── 团队结果摘要
+```
+
+**子 session Activity 懒加载**：点击成员展开时，通过 `ensureActivitiesLoaded(memberSessionId)` 懒加载该成员 session 的 Activity（见 §14.10.2 缓存跳过语义）。
+
+#### 14.13.2 GraphStageBlock 组件（graph_stage kind）
+
+**事件响应行为**：
+
+| ActivityEvent | 行为 |
+|---------------|------|
+| `created`（stage=planned） | 新增 GraphStageBlock，显示"Graph 已规划" + DAG 节点列表（依赖关系） |
+| `updated`（changed_fields=current_node） | 高亮当前执行节点 + 展示已完成/进行中/待执行节点状态 |
+| `completed`（stage=completed） | 所有节点标记完成 + 展示最终结果 |
+| `failed`（error_node=xxx） | 高亮错误节点 + 展示错误详情 |
+| `child_created`（child_activity_id=xxx） | 在 DAG 中新增子节点 |
+
+**DAG 渲染**：
+
+```vue
+<!-- web/src/components/chat/GraphStageBlock.vue -->
+<template>
+  <div class="graph-stage-block">
+    <div class="graph-header">
+      <GraphIcon />
+      <span>{{ stageTitle }}</span>
+      <ProgressIndicator :completed="completedNodes" :total="totalNodes" />
+    </div>
+
+    <div v-if="expanded" class="graph-detail">
+      <DagView
+        :nodes="dagNodes"
+        :current-node="currentNode"
+        :completed-nodes="completedNodeIds"
+      />
+    </div>
+  </div>
+</template>
+```
+
+#### 14.13.3 编排阶段进度条
+
+Spirit 视图顶部展示编排阶段进度条：
+
+```
+[规划] → [分配] → [执行] → [完成]
+  ✅       ✅       🔄       ⏳
+```
+
+通过 `notice` kind + `meta.phase` 的 Activity 事件驱动：
+
+```typescript
+const phases = ['planning', 'allocating', 'orchestrating', 'completed'];
+const currentPhaseIndex = computed(() => phases.indexOf(spiritStore.orchestrationPhase));
+```
+
+---
+
+### 14.14 原 EnvelopeType → ActivityKind 完整映射表（2026-06-27 新增）
+
+> **来源**：Chat 重构方案 §3.3（已归档，设计内容已并入本文档）。
+> **说明**：所有原 EnvelopeType 已彻底合并到 ActivityKind + ActivityEventType。Envelope 结构体已删除。
+
+| 原 EnvelopeType | 彻底合并后 | Activity kind | 事件类型 |
+|----------------|-----------|--------------|---------|
+| `activity_start`/`delta`/`done`/`child_start` | 保留语义，改名 | 按 kind | created/streaming/completed/child_created |
+| `session_created` | 合并 | `session` | `created` |
+| `session_status` | 合并 | `session` | `updated` |
+| `session_completed` | 合并 | `session` | `completed` |
+| `spirit_team_assembled` | 合并 | `team_stage` | `created`（stage=assembled） |
+| `spirit_team_completed` | 合并 | `team_stage` | `completed`（stage=completed） |
+| `spirit_team_failed`/`interrupted` | 合并 | `team_stage` | `failed`/`cancelled`（stage=failed/interrupted） |
+| `spirit_team_cancelled` | 合并 | `team_stage` | `cancelled` |
+| `spirit_team_progress` | 合并 | `team_stage` | `updated`（meta.progress） |
+| `spirit_teams_all_completed` | 合并 | `team_stage` | `completed`（stage=all_completed） |
+| `spirit_plan_created` | 合并 | `plan` | `created` |
+| `spirit_allocation_created` | 合并 | `notice` | `created`（meta.allocation） |
+| `spirit_orchestration_started`/`checkpoint`/`interrupted` | 合并 | `notice` | `updated`（meta.phase） |
+| `spirit_synthesis_completed` | 合并 | `reply` | `completed`（meta.synthesis） |
+| `team_run_started` | 合并 | `team_stage` | `created` |
+| `team_run_finished` | 合并 | `team_stage` | `completed` |
+| `team_run_failed` | 合并 | `team_stage` | `failed` |
+| `team_step_started`/`finished`/`summary` | 合并 | `team_stage` | `updated` |
+| `member_message_start`/`delta`/`done` | 合并 | `reply` | created/streaming/completed（agent_key=agent，session_type=agent） |
+| `orchestration_agent_status` | 合并 | `team_stage` | `updated`（meta.member_status） |
+| `graph_node_start` | 合并 | `graph_stage` | `created` |
+| `graph_node_end` | 合并 | `graph_stage` | `completed` |
+| `graph_node_error` | 合并 | `graph_stage` | `failed` |
+| `graph_node_custom` | 合并 | `graph_stage` | `updated` |
+| `graph_step`/`execution_done`/`replanned`/`topology_evolved` | 合并 | `graph_stage` | `updated` |
+| `checkpoint` | 合并 | `task` | `completed`（meta.checkpoint） |
+| `error` | 合并 | 对应 kind | `failed`（如 action+failed / team_stage+failed） |
+| `token_usage` | 合并 | `task` | `completed`（meta.token_usage） |
+| `run_completion` | 合并 | `task` | `completed` |
+| `user_feedback` | 合并 | `notice` | `created`（meta.feedback） |
+| `text_delta`/`text_done` | 删除 | `reply` | streaming/completed |
+| `tool_call`/`tool_result` | 删除 | `action` | created/completed |
+| `state_delta`/`transfer`/`context_usage`/`intent_pass` | 删除 | 合并到对应 Activity 的 `streaming`/`updated` |
+| `monitor/*`（log/flow_log/mcp_*/alert_*/monitor_*） | 移出 chat | 不影响 | — |
+| `butler_*`/`skill_*`/`borrow_*`/`organization_*`/`planning_phase_*` | 删除 | 未使用 | — |

@@ -275,10 +275,12 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 	return strings.TrimSpace(b.String())
 }
 
-// RuntimeCapabilityCue appends ADK-style runtime directives: sub-agent switches and effective tool policy.
-// Verbosity scales with system_prompt_mode (complete > task > minimized > none).
+// RuntimeCapabilityCue returns the combined static + dynamic runtime capability
+// cue. Verbosity scales with system_prompt_mode (complete > task > minimized > none).
 //
-// Deprecated: use StaticRuntimeCapabilityCue + DynamicRuntimeCapabilityCue instead.
+// Use this wrapper in test/preview contexts that need the combined output.
+// Production code injects Static and Dynamic separately per LLM call via
+// BeforeModel (see runtime_cue_inject.go).
 func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 	static := StaticRuntimeCapabilityCue(ctx, d, ag)
 	dynamic := DynamicRuntimeCapabilityCue(ctx, d, ag)

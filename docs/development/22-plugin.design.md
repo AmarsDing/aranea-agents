@@ -920,7 +920,9 @@ func (rt *Runtime) CostGuardConfigForAgent(agentID string) (CostGuardConfig, boo
 func (rt *Runtime) ConfirmationGuardConfigForAgent(agentID string) (ConfirmationGuardConfig, bool)
 
 // SetBus 注入事件总线并初始化 Hook 日志桥接
-func (rt *Runtime) SetBus(bus event.Bus)
+// ⚠️ ADR-03 Phase 5 后：legacy event.Bus (SessionBus) 已删除，此 API 已下线。
+// 日志桥接改为通过 loggateway.Logger + MonitorEventBus 发布监控事件。
+func (rt *Runtime) SetBus(bus event.Bus) // deprecated: 见 ADR-03
 
 // SetAgentKeyResolver 注入 agent_key → agent_id 解析函数
 func (rt *Runtime) SetAgentKeyResolver(fn AgentKeyResolver)
@@ -1166,7 +1168,7 @@ func (a *AuditLogPlugin) Register(r *trpcplugin.Registry) {
 
 **basePlugin 嵌入**（`internal/plugin/trpc/base_plugin.go`）：9 个内置插件共用 `name`/`stats`/`logger` 字段和 `record()` 方法，消除重复代码。
 
-**PluginSafeLogger**（`internal/plugin/trpc/safe_logger.go`）：统一使用 `event.SysLog*` 记录日志（符合红线 16），同时通过 `event.Bus` 发布到 monitor channel。不再直接写 `os.Stderr`。
+**PluginSafeLogger**（`internal/plugin/trpc/safe_logger.go`）：统一使用 `loggateway.Logger` 记录日志（符合红线 16），同时通过 `MonitorEventBus` 发布到 monitor channel。不再直接写 `os.Stderr`。（ADR-03 Phase 5 后：legacy `event.SysLog*`/`event.Bus` 已删除）
 
 ### 8.3 内置插件实现模板
 
@@ -1942,7 +1944,7 @@ type ModelRouterRule struct {
 2. 检查工具是否在 `excluded_tools` 中。
 3. 检查是否为高风险工具（需确认）。
 4. 通过 `CustomResult` 注入 `reflection_hint`，LLM 根据错误信息修正下一次调用。
-5. 通过 `event.Bus` 发布 `plugin.retry_reflect` 事件。
+5. 通过 `MonitorEventBus` 发布 `plugin.retry_reflect` 监控事件（ADR-03 Phase 5 后：legacy `event.Bus` 已删除）。
 
 ### 19.2 注册回调点
 

@@ -847,6 +847,5 @@ registryColActions<Row>();
 | 后端新增了 proto 字段但前端 api.ts 没更新 | 前端取不到新字段 |
 | 新增 Store 但没在 stores/index.ts 导出 | Quasar Pinia 安装不一致 |
 | 跨 Store 直接 import 导致循环依赖 | 运行时 undefined |
-| 新增 Envelope 类型但 dispatcher 没注册处理函数 | WS 消息被静默丢弃 |
 | 展示组件 import 了 Store | 违反红线 #1 |
 | Dialog 内直接调 API | 违反红线 #4 |

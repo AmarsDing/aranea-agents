@@ -118,7 +118,6 @@ export default {
     contextPromptUse: '当前上下文',
     contextUsageEmpty: '暂无用量数据',
     headerPromptPlaceholder: '向上滚动查看该轮提问',
-    sessionTotalTokens: '累计 {n} tokens',
     knowledgeBases: '知识库',
     feedbackPositive: '有帮助',
     feedbackNegative: '无帮助',

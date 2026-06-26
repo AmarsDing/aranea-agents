@@ -3,10 +3,6 @@ import type {
   Activity,
   ActivityStatus,
   ActivityTreeNode,
-  ActivityStartMeta,
-  ActivityDeltaMeta,
-  ActivityDoneMeta,
-  ActivityChildStartMeta,
 } from '../activityTypes';
 import type {
   StreamEvent,
@@ -156,142 +152,6 @@ export function useActivityTimeline() {
     rootActivityIdBySession.value = next;
   }
 
-  /**
-   * Locate which session an activity belongs to (by id).
-   * Used by legacy envelope handlers (handleActivityDelta / handleActivityDone)
-   * whose meta does not carry session_id — we look up the parent activity
-   * across all sessions and route the update accordingly.
-   */
-  function findSessionOfActivity(activityId: string): string | null {
-    for (const [sid, sm] of activitiesBySession.value.entries()) {
-      if (sm.has(activityId)) return sid;
-    }
-    return null;
-  }
-
-  // === WS Event Handlers (legacy envelope path) ===
-
-  function handleActivityStart(meta: ActivityStartMeta) {
-    const sessionId = meta.session_id;
-    if (!sessionId) return;
-    const activity: Activity = {
-      id: meta.activity_id,
-      kind: meta.kind,
-      status: meta.status,
-      sessionId: meta.session_id,
-      turnId: meta.turn_id,
-      parentActivityId: meta.parent_activity_id || null,
-      timestamp: meta.timestamp,
-      durationMs: meta.duration_ms || null,
-      content: meta.content,
-      reasoning: meta.reasoning,
-      toolName: meta.tool_name,
-      toolCallId: meta.tool_call_id,
-      toolArguments: meta.tool_arguments,
-      toolResult: meta.tool_result,
-      toolDurationMs: meta.tool_duration_ms,
-      toolErrorCode: meta.tool_error_code,
-      childBoardId: meta.child_board_id,
-      spiritSessionId: meta.spirit_session_id,
-      teamId: meta.team_id,
-      dagNodeId: meta.dag_node_id,
-      dependsOn: meta.depends_on,
-      agentKey: meta.agent_key,
-      agentName: meta.agent_name,
-      collapsed: meta.collapsed,
-      label: meta.label,
-      meta: meta.meta,
-      seq: meta._seq,
-    };
-    const map = getSessionActivities(sessionId);
-    map.set(activity.id, activity);
-    triggerRef(activitiesBySession);
-
-    // Track root activity
-    if (!activity.parentActivityId) {
-      setRootForSession(sessionId, activity.id);
-    }
-  }
-
-  function handleActivityDelta(meta: ActivityDeltaMeta) {
-    const sessionId = findSessionOfActivity(meta.activity_id);
-    if (!sessionId) return;
-    const map = getSessionActivities(sessionId);
-    const existing = map.get(meta.activity_id);
-    if (!existing) return;
-
-    // Create a new object to ensure reference change for reactivity
-    const updated: Activity = { ...existing };
-    if (meta.delta_field === 'reasoning') {
-      updated.reasoning = (existing.reasoning || '') + meta.delta_chunk;
-    } else if (meta.delta_field === 'content') {
-      updated.content = (existing.content || '') + meta.delta_chunk;
-    } else if (meta.delta_field === 'tool_arguments') {
-      updated.toolArguments = (existing.toolArguments || '') + meta.delta_chunk;
-    }
-    if (meta._seq != null) updated.seq = meta._seq;
-    map.set(meta.activity_id, updated);
-    triggerRef(activitiesBySession);
-  }
-
-  function handleActivityDone(meta: ActivityDoneMeta) {
-    const sessionId = findSessionOfActivity(meta.activity_id);
-    if (!sessionId) return;
-    const map = getSessionActivities(sessionId);
-    const existing = map.get(meta.activity_id);
-    if (!existing) return;
-
-    // Create a new object to ensure reference change for reactivity
-    const updated: Activity = {
-      ...existing,
-      status: meta.status as ActivityStatus,
-      durationMs: meta.duration_ms,
-      collapsed: meta.collapsed,
-    };
-    if (meta.content !== undefined) updated.content = meta.content;
-    if (meta.reasoning !== undefined) updated.reasoning = meta.reasoning;
-    if (meta.tool_result !== undefined) updated.toolResult = meta.tool_result;
-    if (meta.tool_duration_ms !== undefined) updated.toolDurationMs = meta.tool_duration_ms;
-    if (meta.tool_error_code !== undefined) updated.toolErrorCode = meta.tool_error_code;
-    if (meta.child_board_id !== undefined) updated.childBoardId = meta.child_board_id;
-    if (meta.label !== undefined) updated.label = meta.label;
-    if (meta._seq != null) updated.seq = meta._seq;
-    map.set(meta.activity_id, updated);
-    triggerRef(activitiesBySession);
-  }
-
-  function handleActivityChildStart(meta: ActivityChildStartMeta) {
-    // Child meta doesn't carry session_id — find the parent's session.
-    let sessionId = '';
-    if (meta.parent_activity_id) {
-      sessionId = findSessionOfActivity(meta.parent_activity_id) ?? '';
-    }
-    if (!sessionId) {
-      // Fall back to current session, or an orphan bucket if none selected.
-      sessionId = currentSessionId.value ?? '__orphan__';
-    }
-
-    const activity: Activity = {
-      id: meta.activity_id,
-      kind: meta.kind,
-      status: meta.status,
-      sessionId,
-      turnId: '',
-      parentActivityId: meta.parent_activity_id,
-      timestamp: new Date().toISOString(),
-      durationMs: null,
-      childBoardId: meta.child_board_id,
-      teamId: meta.team_id,
-      spiritSessionId: meta.spirit_session_id,
-      dagNodeId: meta.dag_node_id,
-      dependsOn: meta.depends_on,
-      collapsed: false,
-    };
-    const map = getSessionActivities(sessionId);
-    map.set(activity.id, activity);
-    triggerRef(activitiesBySession);
-  }
-
   // === Activity-First (AF) Event Handler ===
   //
   // handleActivityEvent consumes the new business-semantic ActivityEvent format
@@ -351,8 +211,7 @@ export function useActivityTimeline() {
     const map = getSessionActivities(sessionId);
 
     switch (ev.event) {
-      case 'created':
-      case 'child_created': {
+      case 'created': {
         // Full snapshot: create or replace the Activity in the map.
         map.set(snapshot.id, snapshot);
         triggerRef(activitiesBySession);
@@ -597,10 +456,6 @@ export function useActivityTimeline() {
     rootActivityId,
     loadError,
     currentSessionId: computed(() => currentSessionId.value),
-    handleActivityStart,
-    handleActivityDelta,
-    handleActivityDone,
-    handleActivityChildStart,
     handleActivityEvent,
     reset,
     clearAll,

@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { ActivityStartMeta } from '../../activityTypes';
 import type { Activity as AFActivity } from '../../../realtime/activityEvent';
 
 // Mock the listActivities import to avoid real API calls.
@@ -10,21 +9,6 @@ vi.mock('../../../session/api', () => ({
 
 import { listActivities } from '../../../session/api';
 import { useActivityTimeline } from '../useActivityTimeline';
-
-function makeStartMeta(
-  overrides: Partial<ActivityStartMeta> & Pick<ActivityStartMeta, 'activity_id' | 'kind'>,
-): ActivityStartMeta {
-  return {
-    status: 'running',
-    session_id: 'sess-1',
-    turn_id: 'turn-1',
-    parent_activity_id: null,
-    timestamp: '2026-06-13T00:00:00Z',
-    duration_ms: null,
-    collapsed: false,
-    ...overrides,
-  };
-}
 
 /** Builds an AF (Activity-First) Activity snapshot for handleActivityEvent tests. */
 function makeAFActivity(
@@ -83,15 +67,16 @@ describe('useActivityTimeline', () => {
     expect(tl.sortedActivities.value).toEqual([]);
   });
 
-  it('handleActivityStart adds an activity', () => {
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'act-1',
+  it('handleActivityEvent (created) adds an activity', () => {
+    tl.handleActivityEvent({
+      event: 'created',
+      activity: makeAFActivity({
+        id: 'act-1',
         kind: 'task',
         agent_key: 'agent-a',
         agent_name: 'Agent A',
       }),
-    );
+    });
 
     expect(tl.activities.value).toHaveLength(1);
     expect(tl.activities.value[0].id).toBe('act-1');
@@ -99,44 +84,34 @@ describe('useActivityTimeline', () => {
     expect(tl.rootActivityId.value).toBe('act-1');
   });
 
-  it('handleActivityStart tracks root activity (no parent)', () => {
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'root',
-        kind: 'task',
-        parent_activity_id: null,
-      }),
-    );
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'child',
-        kind: 'thinking',
-        parent_activity_id: 'root',
-      }),
-    );
+  it('handleActivityEvent (created) tracks root activity (no parent)', () => {
+    tl.handleActivityEvent({
+      event: 'created',
+      activity: makeAFActivity({ id: 'root', kind: 'task', parent_activity_id: '' }),
+    });
+    tl.handleActivityEvent({
+      event: 'created',
+      activity: makeAFActivity({ id: 'child', kind: 'thinking', parent_activity_id: 'root' }),
+    });
 
     expect(tl.rootActivityId.value).toBe('root');
   });
 
-  it('handleActivityDelta updates reasoning content', () => {
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'think-1',
-        kind: 'thinking',
-      }),
-    );
+  it('handleActivityEvent (streaming) updates reasoning content', () => {
+    tl.handleActivityEvent({
+      event: 'created',
+      activity: makeAFActivity({ id: 'think-1', kind: 'thinking' }),
+    });
 
-    tl.handleActivityDelta({
-      activity_id: 'think-1',
-      kind: 'thinking',
-      status: 'running',
+    tl.handleActivityEvent({
+      event: 'streaming',
+      activity: makeAFActivity({ id: 'think-1', kind: 'thinking' }),
       delta_field: 'reasoning',
       delta_chunk: 'Hello ',
     });
-    tl.handleActivityDelta({
-      activity_id: 'think-1',
-      kind: 'thinking',
-      status: 'running',
+    tl.handleActivityEvent({
+      event: 'streaming',
+      activity: makeAFActivity({ id: 'think-1', kind: 'thinking' }),
       delta_field: 'reasoning',
       delta_chunk: 'World',
     });
@@ -145,18 +120,15 @@ describe('useActivityTimeline', () => {
     expect(activity?.reasoning).toBe('Hello World');
   });
 
-  it('handleActivityDelta updates content field', () => {
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'reply-1',
-        kind: 'reply',
-      }),
-    );
+  it('handleActivityEvent (streaming) updates content field', () => {
+    tl.handleActivityEvent({
+      event: 'created',
+      activity: makeAFActivity({ id: 'reply-1', kind: 'reply' }),
+    });
 
-    tl.handleActivityDelta({
-      activity_id: 'reply-1',
-      kind: 'reply',
-      status: 'running',
+    tl.handleActivityEvent({
+      event: 'streaming',
+      activity: makeAFActivity({ id: 'reply-1', kind: 'reply' }),
       delta_field: 'content',
       delta_chunk: 'Hi',
     });
@@ -165,28 +137,27 @@ describe('useActivityTimeline', () => {
     expect(activity?.content).toBe('Hi');
   });
 
-  it('handleActivityDelta accumulates tool_arguments for action activities', () => {
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'action-1',
+  it('handleActivityEvent (streaming) accumulates tool_arguments for action activities', () => {
+    tl.handleActivityEvent({
+      event: 'created',
+      activity: makeAFActivity({
+        id: 'action-1',
         kind: 'action',
         tool_call_id: 'call-1',
         tool_name: 'read_file',
         tool_arguments: '{"path": "',
       }),
-    );
+    });
 
-    tl.handleActivityDelta({
-      activity_id: 'action-1',
-      kind: 'action',
-      status: 'tool_running',
+    tl.handleActivityEvent({
+      event: 'streaming',
+      activity: makeAFActivity({ id: 'action-1', kind: 'action', status: 'tool_running' }),
       delta_field: 'tool_arguments',
       delta_chunk: 'README.md',
     });
-    tl.handleActivityDelta({
-      activity_id: 'action-1',
-      kind: 'action',
-      status: 'tool_running',
+    tl.handleActivityEvent({
+      event: 'streaming',
+      activity: makeAFActivity({ id: 'action-1', kind: 'action', status: 'tool_running' }),
       delta_field: 'tool_arguments',
       delta_chunk: '"}',
     });
@@ -195,34 +166,23 @@ describe('useActivityTimeline', () => {
     expect(activity?.toolArguments).toBe('{"path": "README.md"}');
   });
 
-  it('handleActivityDelta ignores unknown activity_id', () => {
-    tl.handleActivityDelta({
-      activity_id: 'nonexistent',
-      kind: 'reply',
-      status: 'running',
-      delta_field: 'content',
-      delta_chunk: 'x',
+  it('handleActivityEvent (completed) updates status and fields', () => {
+    tl.handleActivityEvent({
+      event: 'created',
+      activity: makeAFActivity({ id: 'act-1', kind: 'thinking' }),
     });
 
-    expect(tl.activities.value).toHaveLength(0);
-  });
-
-  it('handleActivityDone updates status and fields', () => {
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'act-1',
+    tl.handleActivityEvent({
+      event: 'completed',
+      activity: makeAFActivity({
+        id: 'act-1',
         kind: 'thinking',
+        status: 'completed',
+        duration_ms: 1500,
+        collapsed: true,
+        content: 'full content',
+        reasoning: 'full reasoning',
       }),
-    );
-
-    tl.handleActivityDone({
-      activity_id: 'act-1',
-      kind: 'thinking',
-      status: 'completed',
-      duration_ms: 1500,
-      collapsed: true,
-      content: 'full content',
-      reasoning: 'full reasoning',
     });
 
     const activity = tl.activities.value.find((a) => a.id === 'act-1');
@@ -233,42 +193,33 @@ describe('useActivityTimeline', () => {
     expect(activity?.reasoning).toBe('full reasoning');
   });
 
-  it('handleActivityDone ignores unknown activity_id', () => {
-    tl.handleActivityDone({
-      activity_id: 'nonexistent',
-      kind: 'thinking',
-      status: 'completed',
-      duration_ms: 0,
-      collapsed: true,
+  it('handleActivityEvent (created) creates new object for reactivity on streaming', () => {
+    tl.handleActivityEvent({
+      event: 'created',
+      activity: makeAFActivity({ id: 'reply-1', kind: 'reply' }),
     });
 
-    expect(tl.activities.value).toHaveLength(0);
-  });
+    const before = tl.activities.value.find((a) => a.id === 'reply-1');
+    const beforeRef = before;
 
-  it('handleActivityChildStart adds child activity', () => {
-    tl.handleActivityChildStart({
-      activity_id: 'child-1',
-      kind: 'thinking',
-      status: 'running',
-      parent_activity_id: 'root',
-      child_board_id: null,
-      team_id: null,
-      spirit_session_id: null,
-      dag_node_id: null,
-      depends_on: null,
+    tl.handleActivityEvent({
+      event: 'streaming',
+      activity: makeAFActivity({ id: 'reply-1', kind: 'reply' }),
+      delta_field: 'content',
+      delta_chunk: 'updated',
     });
 
-    expect(tl.activities.value).toHaveLength(1);
-    expect(tl.activities.value[0].id).toBe('child-1');
+    const after = tl.activities.value.find((a) => a.id === 'reply-1');
+    // The object reference should be different (new object created for reactivity)
+    expect(after).not.toBe(beforeRef);
+    expect(after?.content).toBe('updated');
   });
 
   it('reset clears all activities', () => {
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'act-1',
-        kind: 'task',
-      }),
-    );
+    tl.handleActivityEvent({
+      event: 'created',
+      activity: makeAFActivity({ id: 'act-1', kind: 'task' }),
+    });
     expect(tl.activities.value).toHaveLength(1);
 
     tl.reset();
@@ -277,12 +228,10 @@ describe('useActivityTimeline', () => {
   });
 
   it('loadActivities replaces all activities for the given session', () => {
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'old',
-        kind: 'task',
-      }),
-    );
+    tl.handleActivityEvent({
+      event: 'created',
+      activity: makeAFActivity({ id: 'old', kind: 'task' }),
+    });
 
     // Phase 3: loadActivities scopes the replacement to a session.
     // Pass 'sess-1' explicitly so the new data lands in the current session
@@ -327,21 +276,15 @@ describe('useActivityTimeline', () => {
 
   it('Phase 3: isolates activities per session_id', () => {
     // Session A
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'a-1',
-        kind: 'task',
-        session_id: 'sess-a',
-      }),
-    );
+    tl.handleActivityEvent({
+      event: 'created',
+      activity: makeAFActivity({ id: 'a-1', kind: 'task', session_id: 'sess-a' }),
+    });
     // Session B
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'b-1',
-        kind: 'task',
-        session_id: 'sess-b',
-      }),
-    );
+    tl.handleActivityEvent({
+      event: 'created',
+      activity: makeAFActivity({ id: 'b-1', kind: 'task', session_id: 'sess-b' }),
+    });
 
     // sess-a view
     tl.setCurrentSession('sess-a');
@@ -359,27 +302,18 @@ describe('useActivityTimeline', () => {
   });
 
   it('activityTree builds parent-child relationships', () => {
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'root',
-        kind: 'task',
-        parent_activity_id: null,
-      }),
-    );
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'child-1',
-        kind: 'thinking',
-        parent_activity_id: 'root',
-      }),
-    );
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'child-2',
-        kind: 'reply',
-        parent_activity_id: 'root',
-      }),
-    );
+    tl.handleActivityEvent({
+      event: 'created',
+      activity: makeAFActivity({ id: 'root', kind: 'task', parent_activity_id: '' }),
+    });
+    tl.handleActivityEvent({
+      event: 'created',
+      activity: makeAFActivity({ id: 'child-1', kind: 'thinking', parent_activity_id: 'root' }),
+    });
+    tl.handleActivityEvent({
+      event: 'created',
+      activity: makeAFActivity({ id: 'child-2', kind: 'reply', parent_activity_id: 'root' }),
+    });
 
     const tree = tl.activityTree.value;
     expect(tree).toHaveLength(1); // one root
@@ -387,54 +321,6 @@ describe('useActivityTimeline', () => {
     expect(tree[0].children).toHaveLength(2);
     expect(tree[0].children[0].id).toBe('child-1');
     expect(tree[0].children[1].id).toBe('child-2');
-  });
-
-  it('delta creates new object for reactivity (not mutating existing)', () => {
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'reply-1',
-        kind: 'reply',
-      }),
-    );
-
-    const before = tl.activities.value.find((a) => a.id === 'reply-1');
-    const beforeRef = before;
-
-    tl.handleActivityDelta({
-      activity_id: 'reply-1',
-      kind: 'reply',
-      status: 'running',
-      delta_field: 'content',
-      delta_chunk: 'updated',
-    });
-
-    const after = tl.activities.value.find((a) => a.id === 'reply-1');
-    // The object reference should be different (new object created for reactivity)
-    expect(after).not.toBe(beforeRef);
-    expect(after?.content).toBe('updated');
-  });
-
-  it('done creates new object for reactivity (not mutating existing)', () => {
-    tl.handleActivityStart(
-      makeStartMeta({
-        activity_id: 'think-1',
-        kind: 'thinking',
-      }),
-    );
-
-    const before = tl.activities.value.find((a) => a.id === 'think-1');
-
-    tl.handleActivityDone({
-      activity_id: 'think-1',
-      kind: 'thinking',
-      status: 'completed',
-      duration_ms: 500,
-      collapsed: true,
-    });
-
-    const after = tl.activities.value.find((a) => a.id === 'think-1');
-    expect(after).not.toBe(before);
-    expect(after?.status).toBe('completed');
   });
 
   // --- AF-GAP-05: loadActivitiesFromAPI retry behavior ---

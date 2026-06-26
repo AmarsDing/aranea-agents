@@ -62,31 +62,42 @@ internal/service/chat_wire.go                        ← Wire 注入
 internal/service/chat_session_run_cancel.go          ← Session run 取消
 internal/service/turn_outcome.go                     ← ErrTurnMessageQueued / CHAT_TURN_BUSY
         ↓
-internal/agent/trpc_build.go         ← Agent 构建（BuildTRPCLLMAgent）
-internal/agent/trpc_build_router.go  ← Agent 构建路由
-internal/agent/trpc_runtime.go       ← Runner 构建（NewTRPCRunner + RunTRPCUserTurn）
-internal/agent/event_projector.go    ← trpc-agent-go event → EventBus Envelope
-internal/agent/activity_projector.go ← Activity 投影
-internal/agent/activity_publish.go   ← Activity 发布
-internal/agent/activity_persist.go   ← Activity 持久化
-internal/agent/activity_meta.go      ← ActivityKind 分类
-internal/agent/activity_meta_resolver.go ← ActivityMetaResolver 接口
-internal/agent/choice_stream.go      ← 流式 delta
-internal/agent/stream_consumer.go    ← turn 消费
-internal/agent/options.go            ← options_json 构建
-internal/agent/intent/               ← 意图识别与消息增强
+internal/agent/trpc_build.go              ← Agent 构建（BuildTRPCLLMAgent）
+internal/agent/trpc_build_router.go       ← Agent 构建路由
+internal/agent/trpc_runtime.go            ← Runner 构建（NewTRPCRunner + RunTRPCUserTurn）
+internal/agent/activity_projector.go      ← Activity 投影（唯一投影器：trpc event → ActivityEvent）
+internal/agent/activity_event_sequencer.go ← ActivityEvent 序列化（并行异步持久化 + WS 推送 + dead-letter）
+internal/agent/tool_category.go           ← 工具类型识别（ToolCategorizer：注册表 + 前缀兜底）
+internal/agent/activity_meta.go           ← ActivityKind 分类
+internal/agent/activity_meta_resolver.go  ← ActivityMetaResolver 接口
+internal/agent/choice_stream.go           ← 流式 delta
+internal/agent/stream_consumer.go         ← turn 消费
+internal/agent/options.go                 ← options_json 构建
+internal/agent/intent/                    ← 意图识别与消息增强
         ↓
-internal/team/runner.go              ← Team Runner（Coordinator / Swarm）
-internal/team/trpc_build.go          ← Team 构建（BuildTRPCTeam）
+internal/event/activity_event.go          ← ActivityEvent 类型定义（Event/Activity/Domain）
+internal/event/activityevent/bus.go       ← ActivityEventBus（传输 biz.ActivityEvent，chat+system 事件）
+internal/event/contract/monitor_event.go  ← MonitorEvent 类型 + MonitorBus 接口（log/flow_log/mcp/alert）
+internal/event/contract/envelope_types.go ← 活类型提取（EnvelopeError/EnvelopeTokenUsage + 5 个 ErrorCode 常量）
         ↓
-internal/runtime/deps.go             ← 运行时依赖注入 DTO（TurnDeps / Runtime）
-internal/runtime/run_registry.go     ← RunRegistry（active run / cancel / run status）
-internal/runtime/pending_queue.go    ← PendingMessageQueue FIFO
-internal/biz/chat_usecase.go         ← Follow-up Queue 编排（EnqueueUserMessage / Pending CRUD）
-internal/biz/session/usecase.go      ← Session Usecase（含标题自动生成）
-internal/biz/session/title.go        ← SessionTitleGenerator 接口
-internal/biz/session/                ← Session 子包（status / turns / state / timeline / summary 等）
+internal/team/runner.go                   ← Team Runner（Coordinator / Swarm）
+internal/team/trpc_build.go               ← Team 构建（BuildTRPCTeam）
+        ↓
+internal/runtime/deps.go                  ← 运行时依赖注入 DTO（TurnDeps / Runtime）
+internal/runtime/run_registry.go          ← RunRegistry（active run / cancel / run status）
+internal/runtime/pending_queue.go         ← PendingMessageQueue FIFO
+internal/biz/chat_usecase.go              ← Follow-up Queue 编排（EnqueueUserMessage / Pending CRUD）
+internal/biz/activity.go                  ← Activity 模型 + ActivityKind(10) + ActivityEventType(7) + ToolCategory(10)
+internal/biz/llm_context_builder.go       ← LLM 上下文构建（从 Activity 表，替代原 Message 查询）
+internal/biz/session/usecase.go           ← Session Usecase（含标题自动生成 + Session 树深度校验）
+internal/biz/session/title.go             ← SessionTitleGenerator 接口
+internal/biz/session/                     ← Session 子包（status / turns / state / timeline / summary 等）
 ```
+
+> **架构变更说明（ADR-02 + ADR-03）**：
+> - **删除**：`event_projector.go`（已废弃）、`activity_publish.go`（Legacy 工具卡片持久化）、`activity_persist.go`（`ChatMessageFromToolActivity` 转换）、`internal/event/contract/envelope.go`（活类型提取到 `envelope_types.go`）、`internal/event/buffer.go`（WS replay Buffer 死代码）、`internal/event/bus.go`（SessionBus 死代码）、`internal/biz/event_persist_handler.go`、`internal/biz/event_store.go`、`internal/event/wal.go`、`internal/data/message_repo.go`、`messages` 表（DROP）、`event_store` 表（DROP）
+> - **统一总线**：legacy 3 bus（SessionBus/MonitorBus/ActivityBus）→ 2 bus（ActivityEventBus + MonitorEventBus）；WSServer 3 pump → 2 pump
+> - **持久化策略**：WBPF → 并行异步（persist fire-and-forget + publish 同步 + dead-letter 环形缓冲 512 + API backfill）
 
 ---
 
@@ -99,11 +110,11 @@ internal/biz/session/                ← Session 子包（status / turns / state
       → ChatService.SendChatMessage() / EnqueueUserMessage()
         → ChatOrchestrator.nativeSendChatMessage() → runNativeAgentTurn()
           → session.owner_type == "team"?
-            → team.Runner.RunTurn() → BuildTRPCTeam → trpc Runner → EventBus Envelope
+            → team.Runner.RunTurn() → BuildTRPCTeam → trpc Runner → ActivityProjector → ActivityEventBus
           → session.owner_type == "agent"?
             → runSingleAgentViaTRPC()
               → BuildTRPCLLMAgentCached() → NewTRPCRunner() → RunTRPCUserTurn()
-              → EventProjector → EventBus → WS 下行 Envelope
+              → ActivityProjector → ActivityEventSequencer（并行：persist fire-and-forget + publish 同步）→ ActivityEventBus → WS 下行 ActivityEvent
 
 后台/非流式入口：
 POST /v1/chat/messages
@@ -413,7 +424,7 @@ service ChatService {
 GET /v1/ws?session_id=...  →  WSServer.handleWS()
 ```
 
-客户端可在 WS 上行发送 `user_message` / `enqueue_message` / `cancel` / `ping` / `subscribe` / `unsubscribe` / `enable_log`，服务端复用 `ChatService.SendChatMessage` 与 `ChatService.CancelRun`，下行统一为 Envelope。
+客户端可在 WS 上行发送 `user_message` / `enqueue_message` / `cancel` / `ping` / `subscribe` / `unsubscribe` / `enable_log`，服务端复用 `ChatService.SendChatMessage` 与 `ChatService.CancelRun`，下行统一为 `ActivityEvent`（chat + system 事件）与 `MonitorEvent`（监控事件）。
 
 ### 4.4 消息字段说明
 
@@ -462,53 +473,48 @@ GET /v1/ws?session_id=...  →  WSServer.handleWS()
 
 ### 5.2 下行消息类型
 
-| 下行 type | Channel | 说明 |
-|-----------|---------|------|
+> **架构变更（ADR-03）**：legacy Envelope `type` 已全部删除。下行统一为 `activity_event`（chat+system 事件）+ `monitor_event`（监控事件）。legacy `replay_start`/`replay_end`/`data_channel` 已删除，WS 重连改用 `ListActivities` RPC 补全（详见 §8.18）。
+
+| 下行 type | Bus | 说明 |
+|-----------|-----|------|
 | `connected` | system | WS 连接建立成功，携带 session_id 和连接元信息 |
 | `pong` | system | 心跳回复 |
-| `replay_start` | system | EventBuffer 回放开始标记 |
-| `replay_end` | system | EventBuffer 回放结束标记 |
 | `server_shutdown` | system | 服务端即将关闭通知 |
-| `text_delta` / `text_done` | chat/team | 模型增量文本与最终文本 |
-| `tool_call` / `tool_result` | chat/team | 工具调用与工具结果 |
-| `state_delta` | chat/team | Runner State 增量 |
-| `runner_completion` | chat/team | 一轮 Runner 完成，携带 usage |
-| `error` | chat/system | 错误信息；待执行失败时携带 `pending_id`（见 §5.6） |
-| `intent_pass` | chat/team | 意图识别结果 |
-| `transfer` | team | Team/Swarm 转交 |
-| `team_run_started` / `team_run_finished` / `team_run_failed` | team | Team run 生命周期 |
-| `member_message_start` / `member_delta` / `member_message_done` | team | 成员级实时消息；`EventProjector` 在 `MemberAgentKeys` 下投影，前端 `useChatWorkspace` 消费 |
-| `run_status` | chat/team | 运行生命周期；`metadata.hint=message_queued` 表示 Follow-up 入队成功 |
-| `log` | monitor | 运行日志，需客户端通过 `enable_log` 上行开启订阅 |
+| `activity_event` | ActivityEventBus | 7 种业务语义事件（见 §8.5），Domain=chat 持久化、Domain=system 仅推送 |
+| `monitor_event` | MonitorEventBus | 监控事件（log/flow_log/mcp.*/alert.notify/monitor.*），需客户端通过 `enable_log` 上行开启订阅 |
 
-### 5.3 下行 Envelope 结构
+> **删除的下行类型**：`replay_start`/`replay_end`（WS replay 路径已删除，改用 `ListActivities` RPC）、`data_channel`（握手逻辑已删除）、`text_delta`/`text_done`/`tool_call`/`tool_result`/`state_delta`/`runner_completion`/`error`/`intent_pass`/`transfer`/`team_run_*`/`member_*`/`run_status`（全部合并到 `activity_event`，由 `Activity.kind` + `event` + `status` + `meta` 表达）。
+
+### 5.3 下行 ActivityEvent 结构
 
 ```json
 {
-  "direction": "server_to_client",
-  "channel": "chat|team|monitor|graph|system",
-  "envelope": {
-    "id": "...",
-    "type": "text_delta",
-    "session_id": "...",
-    "content": {"text": "...", "reasoning": "...", "is_partial": true},
-    "tool_call": {"id": "...", "name": "...", "arguments_json": "...", "status": "...", "is_long_running": false},
-    "state_delta": {"operation": "...", "path": "...", "value_json": "..."},
-    "transfer": {"from_agent": "...", "to_agent": "..."},
-    "error": {"type": "...", "message": "...", "pending_id": "..."},
-    "usage": {"prompt_tokens": 0, "completion_tokens": 0},
-    "tag": "...",
-    "filter_key": "...",
-    "branch": "...",
-    "version": 0,
-    "extensions": {"skip_summarization": false},
-    "actions": {"skip_summarization": false},
-    "trace": {"agent_name": "...", "invocation_id": "...", "step_count": 0, "duration_ms": 0}
-  }
+  "event": "streaming",
+  "activity": {
+    "id": "act_xxx",
+    "kind": "team_stage",
+    "status": "running",
+    "session_id": "sess_team_xxx",
+    "spirit_session_id": "sess_spirit_xxx",
+    "team_id": "team_xxx",
+    "stage": "assembled",
+    "meta": { "members": [...], "task_summary": "..." },
+    "timestamp": "2026-06-25T10:00:00Z",
+    "seq": 12345
+  },
+  "domain": "chat"
 }
 ```
 
-> **字段说明**：`content`/`tool_call`/`state_delta`/`transfer`/`error`/`usage` 为载荷字段，按 `type` 选择性填充；`tag`/`filter_key`/`branch`/`version`/`extensions`/`actions`/`trace` 为元数据字段，所有类型均可能携带。
+> **字段说明**：
+> - `event`：7 种 ActivityEventType（`created`/`streaming`/`updated`/`completed`/`failed`/`cancelled`/`child_created`）
+> - `activity`：完整 Activity 快照（含 `kind`/`status`/`session_id`/`spirit_session_id`/`team_id`/`stage`/`tool_*`/`agent_*`/`meta` 等字段，详见 §8.5）
+> - `domain`：`chat`（持久化到 Activity 表，前端加入时间线渲染）/ `system`（仅推送 WS，不持久化，前端作为通知处理）
+
+> **MonitorEvent 结构**（独立通道，不走 ActivityEvent）：
+> ```json
+> { "id": "...", "type": "log|flow_log|mcp.*|alert.notify|monitor.*", "timestamp": "...", "level": "info", "message": "...", "session_id": "...", "source": "...", "metadata": {...} }
+> ```
 
 ---
 
@@ -807,8 +813,8 @@ GET /v1/ws?session_id=...
     → 上行 user_message / enqueue_message
       → ChatService.SendChatMessage() / EnqueueUserMessage()
         → ChatOrchestrator.nativeSendChatMessage() → runNativeAgentTurn()
-    → 下行 EventBus Envelope
-      → wsDownstream{direction, channel, envelope}
+    → 下行 ActivityEventBus ActivityEvent
+      → wsDownstream{direction, channel, activity_event?, monitor_event?}
 
 Channel 入口（飞书/Lark webhook 等）：
 POST /v1/channel/{channel_type}/webhook
@@ -822,38 +828,53 @@ Cron Scheduler
     → 同一 runNativeAgentTurn() 主链路
 ```
 
-### 8.5 WebSocket Envelope 事件协议
+### 8.5 WebSocket ActivityEvent 事件协议
 
-#### 8.5.1 Envelope 完整结构
+> **架构变更（ADR-02 + ADR-03）**：原 Envelope 通用信封已删除。WS 下行通道现为 `activity_event?` + `monitor_event?` 双类型协议（`wsDownstream.envelope?` 字段已删除）。所有 chat + system 业务事件统一通过 `ActivityEvent` 传输；monitor 事件（log/flow_log/mcp/alert）通过 `MonitorEvent` 传输。详见 ADR-03 D1/D2/D5。
+
+#### 8.5.1 ActivityEvent 完整结构
 
 ```go
-type Envelope struct {
-    ID         string           // 事件唯一 ID（单调递增，用于 EventBuffer 回放）
-    Type       string           // 事件类型
-    SessionID  string           // 目标 Session
-    Content    *EnvelopeContent // 文本/reasoning 载荷
-    ToolCall   *EnvelopeToolCall // 工具调用载荷
-    StateDelta *EnvelopeStateDelta // Runner State 增量
-    Transfer   *EnvelopeTransfer // Team 转交载荷
-    Error      *EnvelopeError   // 错误载荷
-    Usage      *EnvelopeUsage   // Token 用量
-    Tag        string           // 事件标签（用于客户端过滤）
-    FilterKey  string           // 过滤键（前缀匹配，用于 EventBus 订阅过滤）
-    Branch     string           // 分支标识（多分支对话）
-    Version    int64            // 事件版本号
-    Extensions *EnvelopeExtensions // 扩展信息
-    Actions    *EnvelopeActions // 动作标记
-    Trace      *EnvelopeTrace   // 追踪信息
-    Metadata   map[string]string // 通用元数据
+// internal/event/activity_event.go
+type ActivityEvent struct {
+    Event    ActivityEventType // 事件类型（7 种，见 8.5.2）
+    Activity Activity          // Activity 快照（唯一真相源）
+    Domain   ActivityDomain    // chat | system，决定持久化策略
 }
 
-type EnvelopeContent struct {
-    Text      string // 文本内容
-    Reasoning string // 推理/思维链内容
-    IsPartial bool   // 是否为增量片段
+type ActivityDomain string
+
+const (
+    ActivityDomainChat   ActivityDomain = "chat"   // 持久化到 Activity 表，前端加入时间线渲染
+    ActivityDomainSystem ActivityDomain = "system" // 仅推送 WS，不持久化（toast/notification）
+)
+
+// internal/biz/activity.go
+type Activity struct {
+    ID              string            // Activity 唯一 ID（稳定 upsert 键）
+    SessionID       string            // 目标 Session
+    TurnID          string            // 所属 turn
+    RunID           string            // 所属 run
+    ParentID        string            // 父 Activity ID（子 session 关联）
+    Kind            ActivityKind      // Activity 种类（10 种，见 8.5.3）
+    AuthorAgentKey  string            // Team 成员 Agent 标识（单 Agent 为空）
+    Title           string            // 卡片/气泡标题
+    Content         string            // 文本/reasoning/结果内容
+    Reasoning       string            // 思维链内容
+    ToolCall        *ToolCallSnapshot // 工具调用快照（仅 Kind=action）
+    ToolCategory    ToolCategory      // 工具类别（10 种，见 8.5.4，仅 Kind=action）
+    Status          ActivityStatus    // created|streaming|completed|failed|cancelled
+    PendingID       string            // 关联的待执行消息 ID（待执行失败时填充）
+    MemberAgentKey  string            // Team 成员 Agent 标识（与 AuthorAgentKey 在 team 路径冗余）
+    StartedAt       time.Time
+    CompletedAt     *time.Time
+    DurationMS      int64
+    Metadata        map[string]any    // 通用元数据（trace_id/usage/intent 等）
+    CreatedAt       time.Time
+    UpdatedAt       time.Time
 }
 
-type EnvelopeToolCall struct {
+type ToolCallSnapshot struct {
     ID            string // 工具调用 ID
     Name          string // 工具名称
     ArgumentsJSON string // 调用参数 JSON
@@ -862,69 +883,87 @@ type EnvelopeToolCall struct {
     DurationMS    int64  // 执行耗时
     IsLongRunning bool   // 是否为长时运行工具
 }
-
-type EnvelopeStateDelta struct {
-    Operation string // 操作类型
-    Path      string // State 路径
-    ValueJSON string // 值 JSON
-}
-
-type EnvelopeTransfer struct {
-    FromAgent string // 来源 Agent
-    ToAgent   string // 目标 Agent
-}
-
-type EnvelopeError struct {
-    Type      string // 错误类型
-    Code      string // 稳定错误码（与 TurnErrorCode / provider type 对齐）
-    Message   string // 错误消息
-    Hint      string // 用户可操作建议
-    PendingID string // 关联的待执行消息 ID（待执行失败时填充）
-}
-
-type EnvelopeUsage struct {
-    PromptTokens     int64 // 本轮 prompt（ReAct 多轮取 max）
-    CompletionTokens int64 // 本轮 completion（ReAct 多轮累加）
-    TotalTokens      int64 // 本轮合计
-    MaxTokens        int64 // 上下文窗口上限（Agent context_window）
-    TurnTotalTokens  int64 // 同 TotalTokens，显式语义字段
-}
-
-type EnvelopeExtensions struct {
-    SkipSummarization bool // 跳过摘要压缩标记
-}
-
-type EnvelopeActions struct {
-    SkipSummarization bool // 跳过摘要压缩动作
-}
-
-type EnvelopeTrace struct {
-    AgentName    string // Agent 名称
-    InvocationID string // 调用 ID
-    StepCount    int64  // 步骤计数
-    DurationMS   int64  // 持续时间
-}
 ```
 
-#### 8.5.2 事件类型与载荷映射
+#### 8.5.2 ActivityEventType（7 种）
 
-| Envelope type | Channel | 主要载荷字段 | 说明 |
-|------|------|------|------|
-| `text_delta` | chat/team | `content.text`, `content.reasoning`, `content.is_partial` | 模型增量文本 |
-| `text_done` | chat/team | `content.text`, `usage` | 模型最终文本 |
-| `tool_call` | chat/team | `tool_call.id/name/arguments_json/status/is_long_running` | 工具调用通知 |
-| `tool_result` | chat/team | `tool_call.result_json/status/duration_ms` | 工具结果 |
-| `state_delta` | chat/team | `state_delta.operation/path/value_json` | Runner State 增量 |
-| `runner_completion` | chat/team | `usage` | 一轮运行完成 |
-| `error` | chat/system | `error.type/code/message/hint/pending_id` | 错误信息；`pending_id` 在待执行消息失败时填充 |
-| `user_feedback` | chat | `metadata.message_id/rating/comment` | 用户对助手消息的 👍/👎 反馈 |
-| `intent_pass` | chat/team | `metadata` | 意图识别结果 |
-| `transfer` | team | `transfer.from_agent/to_agent` | Team/Swarm 转交 |
-| `member_message_start` | team | `author`, `content` | 成员消息开始；`EventProjector` 在 `MemberAgentKeys` 下稳定投影 |
-| `member_delta` | team | `author`, `content` | 成员消息增量 |
-| `member_message_done` | team | `author`, `content`, `usage` | 成员消息完成 |
+| 事件类型 | 触发时机 | 持久化 | 前端处理 |
+|---------|---------|--------|---------|
+| `created` | Activity 首次创建（task 创建/thinking 开始/action 开始） | chat=是 / system=否 | 时间线插入新条目 |
+| `streaming` | 文本/reasoning 增量片段到达 | chat=是（合并到 Activity.Content） / system=否 | 实时更新气泡内容 |
+| `updated` | Activity 字段更新（参数补全/元数据更新/状态扩展） | chat=是 / system=否 | 原地更新卡片 |
+| `completed` | Activity 完成（tool 成功/reply 结束/thinking 结束） | chat=是（设置 CompletedAt + DurationMS） / system=否 | 卡片态从「正在执行」→ 耗时 |
+| `failed` | Activity 失败（tool 失败/run 失败/turn 失败） | chat=是 / system=否 | 卡片红色边框 + 错误摘要 |
+| `cancelled` | Activity 被用户取消（StopGeneration） | chat=是 / system=否 | 卡片灰色 + 「已取消」 |
+| `child_created` | 子 Session 被创建（subagent spawn / team dispatch） | chat=是 / system=否 | Session 树侧栏追加节点 |
 
-> **pending_id 字段约定**：待执行消息执行失败时，`error.pending_id` 应填充关联的待执行消息 ID。当前 `processPendingQueue` 中统一使用 `env.Error.PendingID = entry.ID`，metadata 双写已移除。
+> **失败语义（ADR-02 D3）**：原 `ActivityKindError` 已删除。失败统一通过 `task.failed` 表达——任务 Activity 进入 `failed` 状态，错误摘要写入 `Content`，错误码写入 `Metadata.error_code`，`PendingID` 填充关联的待执行消息 ID。
+
+#### 8.5.3 ActivityKind（10 种，无 error kind）
+
+| Kind | 含义 | 前端组件 | 典型来源 |
+|------|------|---------|---------|
+| `task` | 用户消息/任务 | `UserMessageBubble` | WS `user_message` 上行后投影 |
+| `thinking` | LLM 推理过程 | `ThinkingBlock` | trpc-agent-go `reasoning_delta` |
+| `action` | 工具调用 | `ActionBlock`（按 `tool_category` 细分） | trpc-agent-go `tool_call` / `tool_result` |
+| `reply` | LLM 最终回复 | `ReplyBlock` | trpc-agent-go `text_delta` / `text_done` |
+| `plan` | Plan 模式计划 | `PlanBlock` | BuiltinPlanner 输出 |
+| `confirm` | 工具待确认 | `ConfirmBlock` | risk_level ≥ threshold 的 tool_call |
+| `notice` | 系统通知 | `NoticeBlock` | `await_user_reply` / 队列满 / 运行结束 |
+| `session` | 子 Session 创建 | `SessionStageBlock` | `subagent_spawn` / Team dispatch |
+| `team_stage` | Team 阶段 | `TeamStageBlock` | Coordinator/Swarm 阶段切换 |
+| `graph_stage` | Graph 阶段 | `GraphStageBlock` | Graph 节点开始/结束 |
+
+> **设计原则（ADR-02 D4）**：原 `ActivityKindError`、`ActivityKindMember` 等 legacy kind 已清理。失败通过状态机表达（`failed` 事件 + `Status=failed`），不引入独立 kind；Team 成员通过 `AuthorAgentKey` / `MemberAgentKey` 字段标识，不通过 kind 区分。
+
+#### 8.5.4 ToolCategory（10 种）
+
+> 详见 §12.4 工具类别设计。仅 `Kind=action` 的 Activity 携带 `ToolCategory` 字段。
+
+| Category | 匹配工具前缀 | ActionBlock 子组件 |
+|----------|-------------|-------------------|
+| `shell` | `exec_command`/`shell_*` | ShellActionBlock |
+| `browser` | `browser_*`/`playwright_*` | BrowserActionBlock |
+| `file_read` | `read_file`/`read_*` | FileReadActionBlock |
+| `file_write` | `save_file`/`write_*`/`edit_*` | FileWriteActionBlock |
+| `file_search` | `search_files`/`grep`/`find_*` | FileSearchActionBlock |
+| `web_search` | `web_search`/`knowledge_search` | WebSearchActionBlock |
+| `mcp` | `mcp_*` | McpActionBlock |
+| `code` | `code_*`/`execute_code` | CodeActionBlock |
+| `todo` | `todo_write`/`todo_read` | TodoActionBlock |
+| `other` | 兜底 | GenericActionBlock |
+
+#### 8.5.5 EnvelopeType → ActivityKind 映射（迁移参考）
+
+> 完整映射见 Chat 模块重构方案 §3.3（已归档）。
+
+| Legacy EnvelopeType | 新 ActivityKind | 新 ActivityEventType |
+|---------------------|----------------|---------------------|
+| `text_delta` | `reply` | `streaming` |
+| `text_done` | `reply` | `completed` |
+| `reasoning_delta` | `thinking` | `streaming` |
+| `tool_call` | `action` | `created` |
+| `tool_result` | `action` | `completed` / `failed` |
+| `error` | `task` | `failed`（含 `PendingID`） |
+| `runner_completion` | `task` | `completed` |
+| `member_message_start` | `reply`（带 `MemberAgentKey`） | `created` |
+| `member_delta` | `reply` | `streaming` |
+| `member_message_done` | `reply` | `completed` |
+| `intent_pass` | `notice` | `updated` |
+| `transfer` | `team_stage` | `updated` |
+
+#### 8.5.6 pending_id 字段约定
+
+待执行消息执行失败时，Activity 的 `PendingID` 字段应填充关联的待执行消息 ID。当前 `processPendingQueue` 中统一使用 `activity.PendingID = entry.ID`。原 Envelope 的 metadata 双写已移除——`PendingID` 是唯一来源。
+
+#### 8.5.7 Domain 字段语义（ADR-03 D1）
+
+| Domain | 持久化 | WS 推送 | 前端处理 |
+|--------|--------|---------|---------|
+| `chat` | ActivityEventSequencer 写入 `activities` 表 | ActivityEventBus → activityEventPump | 加入时间线渲染（ActivityStream） |
+| `system` | **跳过持久化**（`publishTask.persist=false`） | ActivityEventBus → activityEventPump | 作为通知处理（toast/notification，不进时间线） |
+
+**publisher 责任**：调用 `ActivityProjector.EmitSystemEvent` 时必须明确 Domain=system；常规 chat 工作单元使用 Domain=chat。错误声明会导致 system 事件被持久化（DB 膨胀）或 chat 事件被丢弃（前端缺失）。
 
 ### 8.6 runNativeAgentTurn 核心流程
 
@@ -961,13 +1000,13 @@ type EnvelopeTrace struct {
 9. 运行意图识别 intent.Run()
    - 成功时：MergeIntoUserOptionsJSON 合并到 options_json
    - 成功时：WrapUserMessage 嵌入 artifact 到用户消息
-   - EventBus Publish intent_pass Envelope（单 Agent 和 Team 均发送）
+   - ActivityEventBus Publish intent_pass ActivityEvent（单 Agent 和 Team 均发送）
 10. 构造 userMsg → AppendChatMessage
 11. RunTRPCUserTurn() → events channel（使用 RoundTripForSession 注入 llm_retry 回调，T1.2）
 12. 遍历事件流:
-    - EventProjector.ProjectAndPublish → EventBus Envelope
+    - ActivityProjector.ProjectAndPublish → ActivityEventBus ActivityEvent
     - Response.Choices → 累积 reply/reasoning
-    - ToolCalls → 投影为 tool_call / tool_result Envelope
+    - ToolCalls → 投影为 tool_call / tool_result ActivityEvent
     - Usage → 记录 promptTok/completionTok
     - ctx.Err() != nil 时退出循环（仅用户取消；无超时）
 13. 构造 assistantMsg
@@ -998,7 +1037,7 @@ type EnvelopeTrace struct {
    a. 加锁 admission 检查（HasActive → 重新入队并退出）
    b. context.WithCancel(loopCtx)（无超时；用户取消经 StoreCancelable 传播）
    c. 调用 runSingleAgentViaTRPC / teamsNative.RunTurn 执行
-   d. 执行失败时：发布 error Envelope（含 pending_id）
+   d. 执行失败时：发布 failed ActivityEvent（含 pending_id）
    e. defer 中检查 inPendingLoop(ctx) 标志，避免递归 defer 重复触发
 3. WS 前端收到 error 后显示通知
 ```
@@ -1149,56 +1188,270 @@ func (g *LLMSessionTitleGenerator) Generate(ctx, userMessage) (string, error) {
 }
 ```
 
-### 8.18 EventBuffer 设计
+### 8.18 统一总线架构（ActivityEventBus + MonitorEventBus）
+
+> **架构变更（ADR-03 D5）**：原 3 bus（SessionBus/MonitorBus/ActivityBus）→ 2 bus（ActivityEventBus + MonitorEventBus）。WSServer 从 3 pump 简化为 2 pump。`internal/event/buffer.go`（WS replay Buffer 死代码）、`internal/event/bus.go`（SessionBus 死代码）已删除。
 
 ```go
-type EventBuffer struct {
-    mu       sync.RWMutex
-    buffers  map[string]*ringBuffer  // sessionID → ring buffer
-    capacity int                     // 每个 buffer 容量，默认 200
+// internal/event/activityevent/bus.go
+type ActivityEventBus interface {
+    Publish(ctx context.Context, event biz.ActivityEvent)
+    Subscribe(opts ActivitySubscribeOptions) (<-chan biz.ActivityEvent, func())
+    DropCount() uint64
 }
 
-type ringBuffer struct {
-    events []*Envelope
-    head   int
-    tail   int
-    size   int
+type ActivitySubscribeOptions struct {
+    SessionID   string
+    MemberAgent string
+    Domain      ActivityDomain // chat | system | "" (both)
+}
+
+// internal/event/contract/monitor_event.go
+type MonitorBus interface {
+    Publish(ctx context.Context, event MonitorEvent)
+    Subscribe(opts MonitorSubscribeOptions) (<-chan MonitorEvent, func())
+    DropCount() uint64
+}
+
+type MonitorEvent struct {
+    ID        string
+    Type      MonitorEventType // log/flow_log/mcp.*/alert.notify/monitor.*
+    Timestamp time.Time
+    Level     string
+    Message   string
+    SessionID string
+    Source    string
+    Metadata  map[string]any
 }
 ```
 
-- **容量**：每个 Session ring buffer 容量 200 条事件
-- **写入**：`EventBus.Publish` 时同步写入对应 Session 的 ring buffer
-- **回放**：WS 重连时客户端携带 `last_event_id`，`EventBuffer.Replay()` 从该 ID 之后开始回放
-- **回放协议**：`replay_start` → 事件序列 → `replay_end`
-- **清理策略**：TTL 30min 自动过期 + 5min eviction ticker + `Close()` 优雅停止；`lastAcc` 追踪最后访问时间
-
-### 8.19 EventBus 订阅与背压
+**WSServer 双 pump 架构**：
 
 ```go
-type SubscribeOptions struct {
-    SessionID  string
-    TeamID     string
-    Channel    string
-    FilterKey  string
-    EventTypes []string
-    LevelFilter string
-}
-
-type Bus interface {
-    Publish(ctx context.Context, env *Envelope) error
-    Subscribe(opts SubscribeOptions) (<-chan *Envelope, UnsubscribeFunc)
+type WSServer struct {
+    monitorBus  contract.MonitorBus   // 监控事件
+    activityBus biz.ActivityEventBus   // 所有 chat + system 事件
+    // 删除 eventBus event.Bus（SessionBus 不再存在）
 }
 ```
 
-- **订阅选项**：SessionID / TeamID / Channel / FilterKey / EventTypes / LevelFilter
-- **FilterKey 匹配**：采用前缀匹配规则（`MatchFilterKey`），订阅者 FilterKey 为事件 FilterKey 的前缀时匹配
-- **背压策略**：当订阅者消费速度落后于生产速度时，EventBus 丢弃非关键事件
-- **关键事件（不丢弃）**：`tool_result`、`error`、`runner_completion`、`graph_node_end`、`team_run_finished`、`team_run_failed`
-- **全局监控**：WS 连接 `globalMode`（sessionId=`*`）可订阅所有 Session 的事件流
+- `monitorEventPump` goroutine：订阅 `MonitorBus`，转发 `monitor_event?` 到 WS 下行
+- `activityEventPump` goroutine：订阅 `ActivityEventBus`，转发 `activity_event?` 到 WS 下行
+- `wsDownstream` 协议字段：`activity_event?` + `monitor_event?`（`envelope?` 字段已删除）
 
-### 8.20 Channel/Cron 入口
+**背压策略**：
+- ActivityEventBus：订阅者消费落后时丢弃非关键事件（保留 `completed`/`failed`/`cancelled`/`child_created`）
+- MonitorBus：高频事件（100+/sec）独立 channel，不与业务事件竞争
 
-#### 8.20.1 Channel Ingress
+**全局监控**：WS 连接 `globalMode`（sessionId=`*`）可订阅所有 Session 的 ActivityEvent 流（MonitorEvent 仅在显式订阅时下发）。
+
+### 8.19 重连策略：ListActivities RPC（替代 EventBuffer 回放）
+
+> **架构变更（ADR-03 Phase 5 Blocker A）**：原 `EventBuffer` ring buffer（容量 200/TTL 30min）+ `replay_start`/`replay_end` 协议已删除。WS 重连不再走服务端 buffer 回放，改用 `ListActivities` RPC 拉取历史 Activity。
+
+**重连流程**：
+
+```
+1. WS 断线检测（心跳失败/写超时）
+2. 前端记录最后已渲染的 Activity.updated_at（或最大 ID）
+3. WS 重连成功 → connected 握手
+4. 前端并行调用：
+   a. GET /v1/sessions/{session_id}/activities?since={last_activity_updated_at}&limit=200
+      → ListActivities RPC 返回增量 Activity 列表
+   b. GET /v1/chat/run-status → 校准 RunStatus
+5. 前端按 updated_at 排序合并到 activitiesBySession Map（upsert by ID）
+6. 顶栏显示「正在同步历史 Activity…」→ 同步完成隐藏
+```
+
+**ListActivities RPC 契约**：
+
+```protobuf
+message ListActivitiesRequest {
+  string session_id = 1;
+  optional string since_updated_at = 2;  // ISO 8601，返回 updated_at > 此值的 Activity
+  optional int32 limit = 3;              // 默认 200，上限 500
+  optional string kind_filter = 4;       // 按 ActivityKind 过滤
+}
+
+message ListActivitiesResponse {
+  repeated Activity items = 1;
+  bool has_more = 2;
+  string next_page_token = 3;
+}
+```
+
+**优势**：
+- 服务端无状态（无需维护 ring buffer + TTL + eviction ticker）
+- 前端可按需分页拉取（避免一次性返回大量历史事件）
+- Activity 表是唯一真相源，重连后状态与持久化一致
+- 简化 WSServer（删除 replay 协议分支）
+
+### 8.20 并行异步持久化（ActivityEventSequencer）
+
+> **架构变更（ADR-02 D1）**：原 WBPF（Write-Before-Publish-Flush）持久化策略改为并行异步：persist fire-and-forget + publish 同步。`internal/event/activity_persist.go`（`ChatMessageFromToolActivity` 转换）已删除。
+
+**ActivityEventSequencer 核心流程**（`internal/agent/activity_event_sequencer.go`）：
+
+```go
+func (s *ActivityEventSequencer) Emit(ctx context.Context, ev biz.ActivityEvent) {
+    // 1. 持久化：fire-and-forget（非阻塞）
+    if ev.Domain == biz.ActivityDomainChat {
+        select {
+        case s.persistChan <- persistTask{event: ev}:
+        default:
+            // 缓冲区满 → 降级到 API backfill（前端重连时 ListActivities 补全）
+        }
+    }
+    // 2. 发布：同步（阻塞，确保 WS 实时性）
+    s.activityBus.Publish(ctx, ev)
+}
+```
+
+**单 worker 串行消费**：
+
+```go
+// 单 goroutine 消费 persistChan，确保同一 Activity 的 start→done 顺序
+func (s *ActivityEventSequencer) persistWorker() {
+    for task := range s.persistChan {
+        s.persistWithRetry(s.ctx, task.event)
+    }
+}
+```
+
+**关键设计**：
+- **FIFO 保证**：单 worker + buffered channel（默认 1024）确保同一 Session 的 Activity 按发射顺序持久化
+- **持久化与推送解耦**：publish 同步（前端实时性），persist 异步（DB 写入不阻塞 UI）
+- **Domain=system 跳过持久化**：`EmitSystemEvent` 传 `persist=false`，仅 publish 到 WS
+
+### 8.21 重试 + 死信（ADR-02 D2）
+
+**重试预算**：
+
+| 参数 | 值 |
+|------|-----|
+| 最大重试次数 | 5 |
+| 退避基数 | 100ms |
+| 退避策略 | 指数退避（100/200/400/800/1600ms） |
+| 总预算 | 3100ms |
+| 中断机制 | `select` on `done` channel（Close() 时立即退出，不阻塞） |
+
+```go
+func (s *ActivityEventSequencer) persistWithRetry(ctx context.Context, ev biz.ActivityEvent) {
+    backoff := 100 * time.Millisecond
+    for attempt := 0; attempt < 5; attempt++ {
+        err := s.activityRepo.Upsert(ctx, ev.Activity)
+        if err == nil {
+            return // 成功
+        }
+        select {
+        case <-ctx.Done():
+            return // 服务关闭
+        case <-s.done:
+            return // Close() 触发
+        case <-time.After(backoff):
+            backoff *= 2
+        }
+    }
+    // 5 次重试失败 → 推入死信缓冲
+    s.pushDeadLetter(ev)
+}
+
+func (s *ActivityEventSequencer) pushDeadLetter(ev biz.ActivityEvent) {
+    s.deadLetterMu.Lock()
+    defer s.deadLetterMu.Unlock()
+    // activityID 去重：同一 Activity 已在死信缓冲则跳过
+    if _, exists := s.deadLetterIDs[ev.Activity.ID]; exists {
+        return
+    }
+    s.deadLetterIDs[ev.Activity.ID] = struct{}{}
+    s.deadLetterBuffer = append(s.deadLetterBuffer, ev)
+    // FIFO 驱逐：超过 512 容量时移除最旧条目
+    if len(s.deadLetterBuffer) > 512 {
+        evicted := s.deadLetterBuffer[0]
+        delete(s.deadLetterIDs, evicted.Activity.ID)
+        s.deadLetterBuffer = s.deadLetterBuffer[1:]
+    }
+}
+```
+
+**死信环形缓冲**：
+
+| 参数 | 值 |
+|------|-----|
+| 容量 | 512 条 |
+| 驱逐策略 | FIFO（最旧条目优先驱逐） |
+| 去重 | activityID（同一 Activity 不重复入队） |
+| 暴露 | `/v1/admin/dead-letter/activities`（管理员排查） |
+
+**API backfill 兜底**：死信缓冲的 Activity 最终通过前端 `ListActivities` RPC 重连时补全——Activity 表是唯一真相源，即使持久化失败，前端重连后仍能从 DB 拉到最新状态（若 DB 写入最终成功）或通过 `updated_at` 检测到缺失（若 DB 写入彻底失败，前端显示「同步中」并降级）。
+
+### 8.22 OnError 语义（ADR-02 D3）
+
+> **架构变更（ADR-02 D3）**：原 `ActivityKindError` 已删除。失败统一通过 `task.failed` 表达。
+
+**根任务存在时**：
+
+```go
+func (p *ActivityProjector) OnError(ctx context.Context, runID string, err error) {
+    // 根任务 Activity 状态转换为 failed
+    p.sequencer.Emit(ctx, biz.ActivityEvent{
+        Event: biz.ActivityEventFailed,
+        Activity: biz.Activity{
+            ID:        rootActivityID,
+            SessionID: sessionID,
+            Kind:      biz.ActivityKindTask,
+            Status:    biz.ActivityStatusFailed,
+            Content:   err.Error(),
+            Metadata:  map[string]any{"error_code": classifyError(err)},
+            PendingID: pendingID, // 待执行消息失败时填充
+        },
+        Domain: biz.ActivityDomainChat,
+    })
+}
+```
+
+**根任务不存在时**（孤儿错误）：
+
+```go
+// 创建最小 failed Activity
+p.sequencer.Emit(ctx, biz.ActivityEvent{
+    Event: biz.ActivityEventFailed,
+    Activity: biz.Activity{
+        ID:        uuid.NewString(),
+        SessionID: sessionID,
+        Kind:      biz.ActivityKindTask,
+        Status:    biz.ActivityStatusFailed,
+        Content:   err.Error(),
+    },
+    Domain: biz.ActivityDomainChat,
+})
+```
+
+**关键约束**：
+- 终态保护：已 `completed`/`failed`/`cancelled` 的 Activity 不再接受状态转换
+- `PendingID` 唯一来源：待执行消息失败时 `activity.PendingID = entry.ID`，原 metadata 双写已移除
+
+### 8.23 Close() 三阶段关闭
+
+```go
+func (s *ActivityEventSequencer) Close() error {
+    // 阶段 1：关闭消费者（停止接收新 Activity）
+    close(s.persistChan)
+    // 阶段 2：worker 排空剩余任务（persistWithRetry 内 select on done 立即退出）
+    s.cancel()
+    // 阶段 3：等待 worker 退出
+    s.wg.Wait()
+    return nil
+}
+```
+
+**关键约束**：
+- `persistWithRetry` 使用 `select` on `done` channel（非 `time.Sleep`），确保 Close() 不阻塞
+- 死信缓冲在 Close() 时不刷新到 DB（依赖前端 ListActivities backfill）
+
+### 8.24 Channel/Cron 入口
+
+#### 8.24.1 Channel Ingress
 
 ```
 POST /v1/channel/{channel_type}/webhook
@@ -1213,7 +1466,7 @@ POST /v1/channel/{channel_type}/webhook
 - Channel webhook 为并发入口，多个 webhook 可能同时触发同一 Session 的对话
 - **并发保护**：`lockSession` per-session 互斥锁 + `runPlaceholder` 原子占位，确保 `RunNativeTurnUnary` 受 activeRuns/pendingQueue 保护
 
-#### 8.20.2 Cron Turn
+#### 8.24.2 Cron Turn
 
 ```
 Cron Scheduler
@@ -1224,7 +1477,7 @@ Cron Scheduler
 
 - Cron turn 与手动对话共用 `runNativeAgentTurn`，受相同的 activeRuns/pendingQueue 保护
 
-### 8.21 Team Run 持久化
+### 8.25 Team Run 持久化
 
 ```
 team_runs
@@ -1254,7 +1507,7 @@ team_run_steps
 - Team turn 中每个成员 Agent 执行步骤通过 `CreateTeamRunStep()` 写入 `team_run_steps` 表
 - Team 定义可配置 `intent_anchor_agent_id`（指定意图识别使用的成员 Agent）和 `TurnDeadlineDuration`（turn 超时时间）
 
-### 8.22 SessionTurn 持久化
+### 8.26 SessionTurn 持久化
 
 ```
 session_turns
@@ -1272,7 +1525,7 @@ session_turns
 - 单 Agent turn 完成后，`recordSessionTurn()` 写入 `session_turns` 表
 - Team turn 完成后，`recordTeamSessionTurn()` 写入 `session_turns` 表，与单 Agent 行为一致
 
-### 8.23 Agent Settings Variables 注入
+### 8.27 Agent Settings Variables 注入
 
 ```go
 func ParseVariablesJSON(variablesJSON string) (map[string]interface{}, error)
@@ -1283,7 +1536,7 @@ func MergeRuntimeState(state map[string]interface{}, variables map[string]interf
 - `runSingleAgentViaTRPC` 执行时通过 `ParseVariablesJSON` → `MergeRuntimeState` 将变量注入 Runner State
 - 变量可在 System Prompt 中通过占位符引用（如 `{{variable_name}}`）
 
-### 8.24 可观测性
+### 8.28 可观测性
 
 - Chat turn 耗时通过 `arametrics.ChatTurnDuration` Prometheus 指标记录
 - 意图识别超时为 45 秒
@@ -1360,7 +1613,7 @@ func (r *Runner) RunTurn(ctx, sess biz.Session, req *chatv1.SendChatMessageReque
     // 2. 构建 Team Root Agent（Coordinator 或 Swarm）
     // 3. 构建 Runner
     // 4. 执行
-    // 5. 投影事件流 → ChatMessage + EventBus Envelope
+    // 5. ActivityProjector 投影事件流 → ActivityEventBus ActivityEvent
 }
 ```
 
@@ -1412,22 +1665,8 @@ func provideChatServiceDeps(
 web/src/
 ├── services/index.ts              ← createChatService 导出
 ├── features/chat/
-│   ├── api.ts                     ← Chat API 调用封装（sendMessage/stop/listOptions/getPending/cancelPending/updatePending/getRunStatus/awaitUserReply/enqueue/listJobs/cancelJob/submitFeedback/confirmActivity）
-│   ├── types.ts                   ← TypeScript 类型定义
-│   ├── envelope.ts                ← WS Envelope 类型定义
-│   ├── dispatcher.ts              ← Envelope 分发器
-│   ├── conversationEventDispatcher.ts ← 对话事件分发器
-│   ├── eventFilter.ts             ← 事件过滤
-│   ├── useEventFilter.ts          ← 事件过滤 composable
-│   ├── useEnvelopeStream.ts       ← WS Envelope 底层消费
-│   ├── ws-transport.ts            ← WS 连接管理（WsTransport：连接/重连/心跳/断线回放；T1.8: 无限重连 + pendingQueue FIFO 保护 100 上限）
-│   ├── globalWsHub.ts             ← 全局 WS Hub
-│   ├── streamHandlers.ts          ← WS 事件处理器（withSessionFilter + onRunActivity + errorCodeHints）
-│   ├── streamEventTypes.ts        ← 流事件类型
-│   ├── streamContentPatch.ts      ← 流内容补丁
-│   ├── envelopeToolCall.ts        ← Envelope → ToolUseEvent v2 映射 + upsert
-│   ├── envelopeRunStatus.ts       ← Envelope → RunStatus 映射
-│   ├── sessionRunStatus.ts        ← Session RunStatus
+│   ├── api.ts                     ← Chat API 调用封装（sendMessage/stop/listOptions/getPending/cancelPending/updatePending/getRunStatus/awaitUserReply/enqueue/listJobs/cancelJob/submitFeedback/confirmActivity/listActivities）
+│   ├── types.ts                   ← TypeScript 类型定义（ActivityEvent/MonitorEvent/Activity/ActivityKind/ActivityEventType/ToolCategory 本地类型，已解耦 Envelope import）
 │   ├── activityPresentation.ts    ← activity_kind → icon/label/summary 前端 fallback
 │   ├── activityTypes.ts           ← Activity 类型
 │   ├── activityMessageAdapter.ts  ← Activity 消息适配器
@@ -1456,7 +1695,6 @@ web/src/
 │   ├── useChatBackgroundJobs.ts   ← Chat 后台任务
 │   ├── jobFormatters.ts           ← Job 格式化
 │   ├── inboundSyncRouting.ts      ← 入站同步路由
-│   ├── inboundSyncEnvelope.ts     ← 入站同步 Envelope
 │   ├── channelInboundSession.ts   ← Channel 入站 Session
 │   ├── channelInboundSessionRefresh.ts ← Channel 入站 Session 刷新
 │   ├── channelFocusLoad.ts        ← Channel 焦点加载
@@ -1474,7 +1712,7 @@ web/src/
 │   └── composables/
 │       ├── useChatWorkspace.ts    ← 对话工作区 composable（状态管理 + 交互逻辑；拆分后聚焦编排）
 │       ├── useChatSender.ts       ← 发送策略模式（Agent/Team 统一发送路径 + enqueue_message；T1.5: 移除超时失败标记；T1.7: HTTP fallback loadMessages 失败隔离）
-│       ├── useChatStreamManager.ts ← WS 事件流管理（单 Agent + Team 统一；T1.6: onActivityEnvelope 实时 AF 接入）
+│       ├── useChatStreamManager.ts ← WS 事件流管理（单 Agent + Team 统一；T1.6: onActivityEvent 实时 AF 接入）
 │       ├── useChatRunStatus.ts    ← RunStatus 轮询 + AwaitUserReply 回复提交
 │       ├── useFollowUpQueue.ts    ← Follow-up Queue 状态管理（pending 列表 + WS 刷新）
 │       ├── useAwaitReply.ts       ← AwaitUserReply 交互（提交回复 + 横幅状态）
@@ -1490,8 +1728,8 @@ web/src/
 │       ├── useChatSettingsDialog.ts ← Chat 设置弹框
 │       ├── useChatEventInspector.ts ← Chat 事件检查器
 │       ├── useChatMessageScroll.ts ← Chat 消息滚动
-│       ├── useConversationTimeline.ts ← 对话时间线
-│       ├── useActivityTimeline.ts ← Activity 时间线
+│       ├── useActivityTimeline.ts ← Activity 时间线（activitiesBySession Map + ensureActivitiesLoaded 缓存 + sortedActivities）
+│       ├── useSystemEventNotification.ts ← Domain=system 事件通知处理（toast/notification，不进时间线）
 │       ├── useCollapseState.ts    ← 折叠状态持久化（T8.4：toggle 持久化 / setCollapsed 不持久化）
 │       ├── useTodoBoard.ts        ← Todo 看板
 │       ├── useStatusPulse.ts      ← 状态脉冲
@@ -1508,9 +1746,11 @@ web/src/
 │   ├── ChatEntityGroup.vue        ← Agent/Team 分组
 │   ├── ChatEntityItem.vue         ← Agent/Team 条目
 │   ├── ChatSessionSidebar.vue     ← 右侧 Session 历史
+│   ├── SessionTreeSidebar.vue     ← Session 父子树侧栏（递归渲染 SessionTreeNode，展示 spirit/team/agent/standalone 层级）
+│   ├── SessionTreeNode.vue        ← Session 树节点（递归组件：session_type 图标 + depth badge + execution_stage + progress_pct）
 │   ├── ChatMessagePanel.vue       ← 中间对话内容 + 输入区域（Container: approved）
-│   ├── ChatMessageList.vue        ← 消息列表
-│   ├── ConversationTurn.vue       ← 一轮对话容器（User → ToolStrip → Assistant）
+│   ├── ChatMessageList.vue        ← 消息列表（直接渲染 ActivityStream，无 ConversationTurn 中间层）
+│   ├── ActivityStream.vue         ← Activity 统一渲染器（按 activity.kind 分发到对应 Block 组件）
 │   ├── ChatReasoningPeek.vue      ← Reasoning 折叠展示（live tail + 展开）
 │   ├── ChatReasoningDrawer.vue    ← Reasoning 抽屉
 │   ├── ChatExecutionCard.vue      ← 执行过程卡片（原 ChatToolCallCard；默认折叠 + v2 元数据）
@@ -1545,16 +1785,17 @@ web/src/
 │   ├── TransferBadge.vue          ← 转交徽章
 │   ├── UiConfigToggle.vue         ← UI 配置切换
 │   ├── CodeBlock.vue              ← 代码块
-│   ├── ThinkingBlock.vue          ← 思考块
-│   ├── ReplyBlock.vue             ← 回复块
-│   ├── PlanBlock.vue              ← 计划块
-│   ├── NoticeBlock.vue            ← 通知块
-│   ├── ConfirmBlock.vue           ← 确认块
-│   ├── ActionBlock.vue            ← 动作块
-│   ├── UserMessageBubble.vue      ← 用户消息气泡
-│   ├── ErrorBlock.vue             ← 错误块
+│   ├── UserMessageBubble.vue      ← 用户消息气泡（Kind=task）
+│   ├── ThinkingBlock.vue          ← 思考块（Kind=thinking）
+│   ├── ReplyBlock.vue             ← 回复块（Kind=reply）
+│   ├── PlanBlock.vue              ← 计划块（Kind=plan）
+│   ├── ConfirmBlock.vue           ← 确认块（Kind=confirm）
+│   ├── NoticeBlock.vue            ← 通知块（Kind=notice）
+│   ├── ActionBlock.vue            ← 动作块（Kind=action，按 tool_category 细分到子组件）
+│   ├── SessionStageBlock.vue      ← Session 阶段块（Kind=session，子 Session 创建）
+│   ├── TeamStageBlock.vue         ← Team 阶段块（Kind=team_stage，Coordinator/Swarm 阶段切换）
+│   ├── GraphStageBlock.vue        ← Graph 阶段块（Kind=graph_stage，Graph 节点开始/结束）
 │   ├── AgentWorkPanel.vue         ← Agent 工作面板
-│   ├── TeamPanel.vue              ← Team 面板
 │   ├── TeamProgressSection.vue    ← Team 进度区段
 │   ├── DelegateActivity.vue       ← 委托 Activity
 │   ├── DagSection.vue             ← DAG 区段
@@ -1575,20 +1816,41 @@ web/src/
 ├── stores/app.ts                  ← 全局状态（含 Agent/Session 选择）
 ```
 
-### 11.1.1 前端事件流架构
+### 11.1.1 前端事件流架构（Activity-First）
+
+> **架构变更（ADR-03 D6）**：原 EnvelopeDispatcher + streamHandlers + envelopeToolCall 三层分发已删除。前端零推理消费 ActivityEvent——后端投影为 Activity 语义单元，前端按 `activity.kind` 直接渲染对应 Block 组件。
 
 ```
-WsTransport（WS 连接管理：连接/重连/心跳/last_event_id 回放）
-  ↓ Envelope 流
-EnvelopeDispatcher（按 type 分发：text_delta/tool_call/error/state_delta/...）
-  ↓ 分流
+WsTransport（WS 连接管理：连接/重连/心跳/断线后通过 ListActivities RPC 拉取增量）
+  ↓ wsDownstream 双类型流
 useChatStreamManager（统一管理单 Agent + Team 事件流）
+  ├─ activity_event? → useActivityTimeline（activitiesBySession Map + sortedActivities + ensureActivitiesLoaded 缓存）
+  │   ↓ 按 activity.kind 分发
+  │   ActivityStream.vue（统一渲染器）
+  │     ├─ task         → UserMessageBubble
+  │     ├─ thinking     → ThinkingBlock
+  │     ├─ action       → ActionBlock（按 tool_category 细分子组件）
+  │     ├─ reply        → ReplyBlock
+  │     ├─ plan         → PlanBlock
+  │     ├─ confirm      → ConfirmBlock
+  │     ├─ notice       → NoticeBlock
+  │     ├─ session      → SessionStageBlock
+  │     ├─ team_stage   → TeamStageBlock
+  │     └─ graph_stage  → GraphStageBlock
+  └─ monitor_event? → useSystemEventNotification（toast/notification，不进时间线）
 useChatRunStatus（RunStatus 轮询 + isAwaiting + submitReply）
   ↓ 状态聚合
-useChatWorkspace（对话工作区：消息列表/pending/发送/停止/上下文比）
+useChatWorkspace（对话工作区：Activity 列表/pending/发送/停止/上下文比）
   ↓ 渲染
-ChatMessagePanel（消息气泡/工具事件/待执行列表/输入框）
+ChatMessagePanel（ActivityStream + 待执行列表 + 输入框）
 ```
+
+**关键设计**：
+- **零推理消费**：前端不再从 Envelope 字段推断渲染类型，直接按 `activity.kind` 路由到 Block 组件
+- **stable upsert**：`activitiesBySession` Map 以 `activity.id` 为键，同一 Activity 的 created→streaming→completed 事件原地更新，不产生重复卡片
+- **缓存优化**：`ensureActivitiesLoaded(sessionId)` 命中缓存时跳过 ListActivities RPC；失败时降级为空列表 + 重试
+- **Domain 分流**：`Domain=chat` 进入 ActivityStream 时间线；`Domain=system` 进入 useSystemEventNotification（toast/通知栏，不进时间线）
+- **重连恢复**：WS 断线重连后，前端记录最后 `updated_at`，调用 `ListActivities?since={updated_at}` 拉取增量 Activity 合并到 Map
 
 ### 11.2 页面布局
 
@@ -1793,38 +2055,384 @@ export async function confirmActivity(sessionId: string, activityId: string, app
 
 ---
 
+## 十二、Activity-First 架构设计（ADR-02 + ADR-03 综合）
+
+> **来源**：本节整合 Chat 模块重构方案 §2/§3/§4/§5/§7/§8/§9/§10、ADR-02 D1-D4、ADR-03 D1-D6 的设计内容（源文档已归档，设计要点已内联于此）。
+
+### 12.1 AF 架构总览
+
+**核心原则**：后端将运行时事件投影为 Activity 语义单元；前端零推理消费。
+
+```text
+trpc-agent-go Runner
+  → framework Event（text_delta/tool_call/tool_result/reasoning_delta/...）
+       │
+       ▼
+internal/agent/activity_projector.go（唯一投影器）
+  ├─ projectChatCompletionChunk → ActivityEvent（Kind=reply/thinking，Event=streaming/completed）
+  ├─ projectToolCall            → ActivityEvent（Kind=action，Event=created）
+  ├─ projectToolResult          → ActivityEvent（Kind=action，Event=completed/failed）
+  ├─ projectMemberMessage       → ActivityEvent（Kind=reply，带 MemberAgentKey）
+  ├─ projectSessionSpawn        → ActivityEvent（Kind=session，Event=child_created）
+  ├─ projectTeamStage           → ActivityEvent（Kind=team_stage）
+  ├─ projectGraphStage          → ActivityEvent（Kind=graph_stage）
+  └─ enrichActivityMeta()       ← kind/label/icon/summary/脱敏/tool_category
+       │
+       ▼
+internal/agent/activity_event_sequencer.go
+  ├─ persist：fire-and-forget（persistChan + 单 worker + retry + dead-letter）→ Activity 表
+  └─ publish：同步 → ActivityEventBus → WSServer.activityEventPump → WS 下行 activity_event?
+       │
+       ▼
+前端 useChatStreamManager → useActivityTimeline → ActivityStream.vue（按 kind 分发 Block）
+```
+
+**唯一真相源**：`activities` 表。`messages`/`event_store`/`event_wal` 表已 DROP。LLM 上下文构建从 `activities` 表查询（`internal/biz/llm_context_builder.go`），替代原 `messages` 表查询。
+
+### 12.2 Session 父子树数据模型
+
+> **来源**：Chat 模块重构方案 §4（已归档，设计内容已并入本文档）。
+
+#### 12.2.1 SessionType 枚举
+
+| SessionType | 含义 | 创建场景 |
+|-------------|------|---------|
+| `spirit` | Spirit 主会话 | 用户主动创建的顶层对话 |
+| `team` | Team 会话 | Team Run 启动 |
+| `agent` | 子 Agent 会话 | `subagent_spawn` / `transfer_to_agent` |
+| `standalone` | 独立会话 | 单 Agent 直接对话 |
+
+#### 12.2.2 Session 表新增字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `parent_session_id` | TEXT | 父 Session ID（顶层为空） |
+| `root_session_id` | TEXT | 根 Session ID（= 自身或顶层祖先） |
+| `agent_depth` | INTEGER | Agent 嵌套深度（顶层=0，每层 +1） |
+| `session_type` | TEXT | spirit/team/agent/standalone |
+| `member_agent_key` | TEXT | Team 成员 Agent 标识 |
+| `execution_stage` | TEXT | 执行阶段（planning/executing/reviewing/completed） |
+| `completed_steps` | INTEGER | 已完成步骤数 |
+| `total_steps` | INTEGER | 总步骤数 |
+| `progress_pct` | REAL | 进度百分比（0.0-100.0） |
+
+#### 12.2.3 深度控制
+
+```go
+func validateDepth(parent *Session, cfg DepthConfig) error {
+    depth := parent.AgentDepth + 1
+    if depth > cfg.SubagentsMaxGenerationDepth {
+        return ErrMaxGenerationDepthExceeded
+    }
+    if depth > cfg.MaxSessionDepth {
+        return ErrMaxSessionDepthExceeded
+    }
+    return nil
+}
+```
+
+- `subagents_max_generation_depth`：Agent 嵌套深度上限（默认 3）
+- `max_session_depth`：Session 树深度上限（默认 5）
+
+#### 12.2.4 GetSessionTree RPC
+
+```protobuf
+message GetSessionTreeRequest {
+  string root_session_id = 1;
+}
+
+message GetSessionTreeResponse {
+  SessionTreeNode root = 1;
+}
+
+message SessionTreeNode {
+  Session session = 1;
+  repeated SessionTreeNode children = 2;
+}
+```
+
+**实现**：单次查询 `WHERE root_session_id = ?` 获取所有节点，内存中构建树（任意深度）。无递归 SQL，无 N+1 查询。
+
+### 12.3 并行异步持久化（processTask 重设计）
+
+> **来源**：Chat 模块重构方案 §5 + ADR-02 D1（已归档，设计内容已并入本文档）。
+
+**原 WBPF 策略问题**：Write-Before-Publish-Flush 在 DB 写入慢时阻塞 UI 实时性；失败时回滚已推送的事件导致前端状态不一致。
+
+**新策略（并行异步）**：
+
+| 阶段 | 操作 | 阻塞性 |
+|------|------|--------|
+| 1. 投影 | ActivityProjector 将 framework event 转为 ActivityEvent | 同步（快） |
+| 2. 持久化 | ActivityEventSequencer.Emit → persistChan（fire-and-forget） | 非阻塞 |
+| 3. 发布 | ActivityEventSequencer.Emit → activityBus.Publish（同步） | 阻塞（确保实时性） |
+| 4. 重试 | persistWorker 单 goroutine 消费 persistChan，5 次指数退避 | 异步 |
+| 5. 死信 | 重试失败 → deadLetterBuffer（512 FIFO + activityID 去重） | 异步 |
+| 6. 兜底 | 前端重连时 ListActivities RPC backfill | 按需 |
+
+详见 §8.20（并行异步持久化）+ §8.21（重试+死信）+ §8.22（OnError 语义）+ §8.23（Close 三阶段）。
+
+### 12.4 工具类别设计（ToolCategorizer）
+
+> **来源**：Chat 模块重构方案 §8（已归档，设计内容已并入本文档）。
+
+#### 12.4.1 ToolCategorizer 实现
+
+```go
+// internal/agent/tool_category.go
+type ToolCategorizer struct {
+    registry map[string]ToolCategory // 精确匹配注册表
+    prefixes []prefixEntry           // 前缀兜底（按长度排序）
+}
+
+func (c *ToolCategorizer) Categorize(toolName string) ToolCategory {
+    // 1. 精确匹配
+    if cat, ok := c.registry[toolName]; ok {
+        return cat
+    }
+    // 2. 前缀兜底（最长匹配优先）
+    for _, entry := range c.prefixes {
+        if strings.HasPrefix(toolName, entry.prefix) {
+            return entry.category
+        }
+    }
+    return ToolCategoryOther
+}
+```
+
+#### 12.4.2 10 种 ToolCategory
+
+| Category | 精确匹配 | 前缀兜底 | ActionBlock 子组件 |
+|----------|---------|---------|-------------------|
+| `shell` | `exec_command` | `shell_` | ShellActionBlock |
+| `browser` | — | `browser_`/`playwright_` | BrowserActionBlock |
+| `file_read` | `read_file` | `read_` | FileReadActionBlock |
+| `file_write` | `save_file`/`write_file` | `write_`/`edit_` | FileWriteActionBlock |
+| `file_search` | `search_files`/`grep`/`find_files` | `find_` | FileSearchActionBlock |
+| `web_search` | `web_search`/`knowledge_search` | — | WebSearchActionBlock |
+| `mcp` | `mcp_call`/`mcp_list_tools` | `mcp_` | McpActionBlock |
+| `code` | `execute_code` | `code_` | CodeActionBlock |
+| `todo` | `todo_write`/`todo_read` | — | TodoActionBlock |
+| `other` | — | —（兜底） | GenericActionBlock |
+
+#### 12.4.3 ActionBlock 组件设计
+
+`ActionBlock.vue` 作为容器，按 `activity.tool_category` 动态渲染子组件：
+
+```vue
+<template>
+  <component :is="subComponent" :activity="activity" />
+</template>
+
+<script setup>
+const props = defineProps<{ activity: Activity }>()
+const subComponent = computed(() => {
+  switch (props.activity.tool_category) {
+    case 'shell': return ShellActionBlock
+    case 'browser': return BrowserActionBlock
+    case 'file_read': return FileReadActionBlock
+    // ... 10 种
+    default: return GenericActionBlock
+  }
+})
+</script>
+```
+
+**子组件差异化**：
+- `ShellActionBlock`：突出 stdout/stderr 分区 + 退出码
+- `BrowserActionBlock`：截图预览 + URL 链接
+- `FileReadActionBlock`：行号 + 语法高亮 + 行数摘要
+- `FileWriteActionBlock`：diff 视图 + 变更行数
+- `FileSearchActionBlock`：匹配结果列表 + 文件路径
+- `WebSearchActionBlock`：来源链接 + 摘要
+- `McpActionBlock`：server_key + tool 名
+- `CodeActionBlock`：执行结果 + 语言标识
+- `TodoActionBlock`：Todo 列表变更（增删改）
+- `GenericActionBlock`：通用 JSON 参数/结果展示
+
+### 12.5 ActivityStream 组件设计
+
+> **来源**：Chat 模块重构方案 §7（已归档，设计内容已并入本文档）。
+
+#### 12.5.1 组件职责
+
+`ActivityStream.vue` 是统一的 Activity 渲染器，按 `activity.kind` 分发到对应 Block 组件。**禁止**在 ActivityStream 之外的地方处理 Activity 渲染（已删除 ConversationTurn 中间层 + placeholder 机制）。
+
+#### 12.5.2 Props
+
+```typescript
+interface ActivityStreamProps {
+  sessionId: string
+  // activitiesBySession Map 由 useActivityTimeline 提供
+  // ActivityStream 直接消费排序后的 sortedActivities
+}
+```
+
+#### 12.5.3 分发逻辑
+
+```vue
+<template>
+  <div class="activity-stream">
+    <template v-for="activity in sortedActivities" :key="activity.id">
+      <component :is="blockComponent(activity.kind)" :activity="activity" />
+    </template>
+  </div>
+</template>
+
+<script setup>
+function blockComponent(kind: ActivityKind) {
+  switch (kind) {
+    case 'task': return UserMessageBubble
+    case 'thinking': return ThinkingBlock
+    case 'action': return ActionBlock
+    case 'reply': return ReplyBlock
+    case 'plan': return PlanBlock
+    case 'confirm': return ConfirmBlock
+    case 'notice': return NoticeBlock
+    case 'session': return SessionStageBlock
+    case 'team_stage': return TeamStageBlock
+    case 'graph_stage': return GraphStageBlock
+    default: return NoticeBlock // 兜底
+  }
+}
+</script>
+```
+
+#### 12.5.4 stable upsert 机制
+
+- `useActivityTimeline` 维护 `activitiesBySession: Map<string, Map<string, Activity>>`（外层 sessionId → 内层 activityId → Activity）
+- 收到 `ActivityEvent` 时，按 `activity.id` upsert 到内层 Map
+- `sortedActivities` computed 按 `created_at` 排序输出
+- 同一 Activity 的 `created`→`streaming`→`completed` 事件原地更新，不产生重复 DOM
+
+### 12.6 SessionTreeSidebar / SessionTreeNode 递归设计
+
+> **来源**：Chat 模块重构方案 §10（已归档，设计内容已并入本文档）。
+
+#### 12.6.1 SessionTreeSidebar
+
+```vue
+<template>
+  <div class="session-tree-sidebar">
+    <SessionTreeNode
+      v-for="node in tree.children"
+      :key="node.session.id"
+      :node="node"
+      :depth="0"
+      :selected-id="selectedSessionId"
+      @select="onSelect"
+    />
+  </div>
+</template>
+```
+
+- 数据来源：`GetSessionTree` RPC（root_session_id 为当前顶层 Session）
+- 折叠态：仅显示 root + 一级子节点
+- 展开态：递归渲染所有子节点
+
+#### 12.6.2 SessionTreeNode（递归组件）
+
+```vue
+<template>
+  <div class="session-tree-node" :style="{ paddingLeft: depth * 16 + 'px' }">
+    <div class="node-header" @click="$emit('select', node.session.id)">
+      <q-icon :name="sessionTypeIcon(node.session.session_type)" />
+      <span class="node-title">{{ node.session.title }}</span>
+      <q-badge v-if="node.session.agent_depth > 0" color="primary">
+        L{{ node.session.agent_depth }}
+      </q-badge>
+      <q-badge v-if="node.session.execution_stage" color="info">
+        {{ stageLabel(node.session.execution_stage) }}
+      </q-badge>
+      <q-circular-progress
+        v-if="node.session.total_steps > 0"
+        :value="node.session.progress_pct"
+        size="20px"
+      />
+    </div>
+    <SessionTreeNode
+      v-for="child in node.children"
+      :key="child.session.id"
+      :node="child"
+      :depth="depth + 1"
+      :selected-id="selectedId"
+      @select="$emit('select', $event)"
+    />
+  </div>
+</template>
+```
+
+#### 12.6.3 session_type 图标映射
+
+| SessionType | 图标 | 颜色 |
+|-------------|------|------|
+| `spirit` | `auto_awesome` | accent |
+| `team` | `groups` | primary |
+| `agent` | `smart_toy` | secondary |
+| `standalone` | `chat` | muted |
+
+### 12.7 子 Session Activity 懒加载缓存
+
+> **来源**：Chat 模块重构方案 §9.1.3（已归档，设计内容已并入本文档）。
+
+**问题**：Session 树展开时，每个子 Session 的 Activity 列表需独立加载，N 个子 Session 触发 N 次 ListActivities RPC。
+
+**优化（useActivityTimeline.ensureActivitiesLoaded）**：
+
+```typescript
+const loadedSessions = new Set<string>()
+
+async function ensureActivitiesLoaded(sessionId: string) {
+  if (loadedSessions.has(sessionId)) {
+    return // 缓存命中，跳过 RPC
+  }
+  try {
+    const activities = await api.listActivities(sessionId)
+    activitiesBySession.set(sessionId, new Map(activities.map(a => [a.id, a])))
+    loadedSessions.add(sessionId)
+  } catch (e) {
+    // 失败降级：空列表，不加入 loadedSessions，下次重试
+    console.warn('Failed to load activities for session', sessionId, e)
+  }
+}
+```
+
+**缓存失效**：Session 切换时不清空缓存（保留已加载的子 Session Activity，便于来回切换）；仅在显式刷新时清空 `loadedSessions`。
+
+---
+
 ## 子模块：Chat 执行过程卡片 — 技术设计
 
-> **版本**：2026-05-20
+> **版本**：2026-05-20（v2 元数据扩展设计；已被 §十二 Activity-First 架构设计取代）
 > **对应需求**：[1 chat-execution-trace.md](./1%20chat-execution-trace.md)
 > **遵循**：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md) · [AGENT_RUNTIME_BOUNDARY.md](../AGENT_RUNTIME_BOUNDARY.md) · [frontend-guide.md](../guides/frontend-guide.md) · `aranea-frontend-guide` SKILL §6
 > **关联**：[1 chat.design.md](./1%20chat.design.md) · [52-flow-logger.design.md](./52-flow-logger.design.md) · [23 tools.design.md](./23%20tools.design.md)
+>
+> **架构变更说明（ADR-02 + ADR-03）**：本子模块记录的 EnvelopeToolCall v2 扩展设计已实现并随后被 Activity-First 架构取代。`EnvelopeToolCall`、`event_projector.go`、`EventBus` Envelope 流已删除。当前实现见 §十二（AF 架构设计）+ §8.5（ActivityEvent 协议）+ §8.20-§8.23（持久化/重试/OnError/Close）。下方内容保留作为历史设计参考，**不再反映当前实现**。
 
 ---
 
 ## 1. 设计原则
 
-1. **复用 WS Envelope 主通道**：不新增 HTTP 轮询；实时与回放均走 `/v1/ws` + EventBuffer（与 [1 chat.design.md §8.5](#85-websocket-envelope-事件协议) 一致）。
-2. **框架边界不变**：`internal/biz` 不 import `pkg/trpc-agent-go`；投影在 `internal/agent/event_projector.go`，组装在 `internal/service/chat_orchestrator_turn*.go`。
-3. **与 Monitor 分流**：`flow_log` → Monitor；`tool_call` / `tool_result`（增强元数据）→ Chat。`TraceEmitter.ObserveFrameworkEvent` 继续写 Span 供 Usage / Traces，**不**把 FlowLog 正文塞进 Chat。
-4. **一张调用一张卡片**：以 `tool_call_id`（框架 ToolCall.ID）为 upsert 键；`tool_call` 创建 running 态，`tool_result` 合并完成态。
-5. **默认折叠、按需展开**：UI 层约束；协议层携带完整 `arguments_json` / `result_json`。
-6. **向后兼容**：在现有 `EnvelopeToolCall` 上**扩展 optional 字段**；旧客户端忽略新字段仍可显示名称 + 状态。
+1. **复用 WS 主通道**：不新增 HTTP 轮询；实时走 `/v1/ws` + ActivityEvent；回放走 `ListActivities` RPC（与 [1 chat.design.md §8.5](#85-websocket-activityevent-事件协议) 一致）。
+2. **框架边界不变**：`internal/biz` 不 import `pkg/trpc-agent-go`；投影在 `internal/agent/activity_projector.go`，组装在 `internal/service/chat_orchestrator_turn*.go`。
+3. **与 Monitor 分流**：`flow_log` → MonitorEvent/MonitorBus；`tool_call` / `tool_result`（增强元数据）→ ActivityEvent/ActivityEventBus。`TraceEmitter.ObserveFrameworkEvent` 继续写 Span 供 Usage / Traces，**不**把 FlowLog 正文塞进 Chat。
+4. **一张调用一张卡片**：以 `activity.id` 为 upsert 键；`tool_call` 创建 running 态（ActivityEvent=created），`tool_result` 合并完成态（ActivityEvent=completed/failed）。
+5. **默认折叠、按需展开**：UI 层约束；Activity 携带完整 `tool_call.arguments_json` / `tool_call.result_json`。
+6. **工具类别细分**：`Activity.tool_category`（10 种，见 §12.4）驱动 ActionBlock 子组件选择。
 
 ---
 
 ## 2. 现状与差距
 
-| 能力 | 现状 | 差距 |
+| 能力 | 现状（AF 架构后） | 历史（v2 设计前） |
 |------|------|------|
-| WS 事件 | `tool_call` / `tool_result` 已投影 | `tool_result` 缺少稳定 `id/name` 时 upsert 失败；无 `activity_kind` / 展示名 |
-| 前端 | `ChatExecutionCard.vue` + `upsertToolMessage` | 参数区 **默认展开**（`details open`）；Skill/MCP 无专用图标与摘要 |
-| 持久化 | `options_json.tool_event` 写入 Message | 无独立 `message_kind`；历史加载依赖 markdown 旁路 |
-| Skill / MCP | 走统一 ToolCall 名 | 需映射 `display_label`、`icon_key`、摘要行 |
-| Team | `author` 在 Envelope | 卡片未统一展示成员 |
-| Monitor | FlowLog 完整 | 与 Chat 用户视图需隔离（已违反时会 toast flow 错误） |
-
-本设计在**不新增 EnvelopeType** 的前提下，完成 v2 元数据扩展 + 前端卡片规范化（P0）；可选 P1 引入 `activity` 别名类型见 §5.3。
+| WS 事件 | `ActivityEvent`（Kind=action）投影 | `tool_call` / `tool_result` Envelope |
+| 前端 | `ActivityStream.vue` + `ActionBlock`（按 tool_category 细分） | `ChatExecutionCard.vue` + `upsertToolMessage` |
+| 持久化 | `activities` 表（唯一真相源） | `options_json.tool_event` 写入 Message |
+| Skill / MCP | `ToolCategory=mcp` + `McpActionBlock` | 走统一 ToolCall 名 |
+| Team | `Activity.member_agent_key` | `author` 在 Envelope |
+| Monitor | `MonitorEvent` 独立 bus | FlowLog 与 Chat 混杂 |
 
 ---
 
@@ -1835,38 +2443,43 @@ trpc-agent-go Runner
   → framework Event (ToolCall / ToolResponse)
        │
        ▼
-internal/agent/event_projector.go
-  ├─ projectChatCompletionChunk → tool_call Envelope (status=calling→running)
-  ├─ buildToolResultEnvelope    → tool_result Envelope (id/name/duration/status)
-  └─ enrichActivityMeta()       ← 新增：kind/label/icon/summary/脱敏
+internal/agent/activity_projector.go（唯一投影器）
+  ├─ projectToolCall    → ActivityEvent（Kind=action，Event=created，Status=streaming）
+  ├─ projectToolResult  → ActivityEvent（Kind=action，Event=completed/failed，含 duration/status）
+  └─ enrichActivityMeta() ← kind/label/icon/summary/脱敏/tool_category
        │
        ▼
-internal/event.EventBus → internal/server/ws.go → 前端 WS
+internal/agent/activity_event_sequencer.go
+  ├─ persist：fire-and-forget → activities 表
+  └─ publish：同步 → ActivityEventBus → WSServer.activityEventPump → 前端 WS activity_event?
        │
-       ├─ useChatWorkspace: upsertToolMessage(tool_call|tool_result)
-       └─ ChatMessagePanel: ChatExecutionCard (默认折叠)
+       ├─ useActivityTimeline: upsertActivity(activity)
+       └─ ActivityStream.vue → ActionBlock（按 tool_category 细分子组件）
 
 并行（不进入 Chat UI）：
-internal/event/trace_emitter.go → flow_log (monitor) + spans → usage.metadata_json
+internal/event/trace_emitter.go → MonitorEvent (monitor_bus) + spans → usage.metadata_json
 ```
 
 ```mermaid
 sequenceDiagram
   participant LLM as tRPC Agent
-  participant Proj as EventProjector
-  participant Bus as EventBus
+  participant Proj as ActivityProjector
+  participant Seq as ActivityEventSequencer
+  participant Bus as ActivityEventBus
   participant WS as WSServer
-  participant UI as ChatExecutionCard
+  participant UI as ActionBlock
 
   LLM->>Proj: ToolCall id=tc_1 name=skill_run
-  Proj->>Bus: tool_call running + activity meta
-  Bus->>WS: Envelope
-  WS->>UI: upsert card running
+  Proj->>Seq: ActivityEvent created (Kind=action, tool_category=mcp)
+  Seq->>Bus: publish (sync)
+  Bus->>WS: activity_event?
+  WS->>UI: upsert activity running
 
   LLM->>Proj: ToolResponse tool_id=tc_1
-  Proj->>Bus: tool_result success duration=1200ms
-  Bus->>WS: Envelope
-  WS->>UI: merge card success + 1.2s
+  Proj->>Seq: ActivityEvent completed (duration=1200ms)
+  Seq->>Bus: publish (sync)
+  Bus->>WS: activity_event?
+  WS->>UI: merge activity success + 1.2s
 ```
 
 ---

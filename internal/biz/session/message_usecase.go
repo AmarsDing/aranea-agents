@@ -8,35 +8,25 @@ import (
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	"github.com/google/wire"
 )
 
-// TECH-DEBT(chat-refactor): SessionMessageUsecase is a legacy Facade that survives
-// Phase 1c of the chat module refactor (see docs/reports/2026-06-25-analysis-chat-
-// module-refactor.md §11). The original plan called for merging its business logic
-// into the Activity usecase and deleting this file once the messages table was dropped.
+// SessionMessageUsecase is a permanent sub-usecase of SessionUsecase, following the
+// project's sub-usecase decomposition pattern (see usecase.go TECH-DEBT(COG) note —
+// SessionUsecase struct_fields=14/15, so further inlining would violate AS-COG-01).
 //
-// Current state:
-//   - messages table has been DROPPED (migration 20260902_drop_messages_subsystem.sql)
-//   - Read path is adapted via ActivityMessageReader (activity_message_adapter.go),
-//     which implements MessageReader on top of ActivityLister
-//   - BUT this struct still carries live business logic: title generation
-//     (maybeAutoTitleFromUserMessage, generateTitleAsync), SessionMetricsDelta
-//     accumulation in AppendChatTurn, parameter validation, and delegation to
-//     state/turn/participant sub-usecases
+// Responsibilities (sibling to compressionUsecase / timelineUsecase / metricsUsecase):
+//   - Message-shaped reads via ActivityMessageReader (Activity → ChatMessage adapter)
+//   - Message writes (currently NoopMessageWriter — ActivityProjector owns persistence)
+//   - Session title generation (snippet + async LLM generation)
+//   - SessionMetricsDelta accumulation on chat append
+//   - Revision counter management (BumpSessionRevision / GetSessionRevision)
+//   - Delegation to state/turn/participant sub-usecases (orthogonal concerns grouped
+//     here to keep SessionUsecase under the complexity budget)
 //
-// Migration plan (tracked as D1/D2 in the refactor todo):
-//   1. Move title generation, metrics accumulation, and validation into a new
-//      ActivityUsecase (or SessionUsecase methods that operate on Activity)
-//   2. Update wire bindings to remove SessionMessageProviderSet
-//   3. Delete this file
+// The messages table was DROPPED in Phase 1c (migration 20260902); this struct now
+// operates purely on Activity-backed data and exists as a legitimate Facade, not as
+// pending-deletion legacy code.
 //
-// New code MUST NOT add methods to this struct. Extend ActivityUsecase instead.
-//
-// SessionMessageUsecase handles session message CRUD, title generation, revision management,
-// and delegates to state/turn/participant sub-usecases.
-// Extracted from SessionUsecase to reduce God Object scope.
 // Stability:evolving
 type SessionMessageUsecase struct {
 	messageReader       MessageReader
@@ -327,9 +317,6 @@ func (uc *SessionMessageUsecase) generateTitleAsync(sessionID, content string) {
 		uc.lg.Warn("auto rename from generated title failed", loggateway.StepID("session.title"), loggateway.SessionID(sessionID), loggateway.Err(err))
 	}
 }
-
-// SessionMessageProviderSet provides Wire bindings for SessionMessageUsecase.
-var SessionMessageProviderSet = wire.NewSet(NewSessionMessageUsecase)
 
 // --- State delegation ---
 

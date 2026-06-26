@@ -125,7 +125,7 @@ flowchart TB
 | 文件 | Artifact(27) | 产物存储、版本、Runner 注入 | `internal/artifact/trpc`、`internal/data/artifactfs` |
 | 自动化 | Cron(21) | 定时触发 Agent / Team | `internal/cronrunner`、`internal/service/cron.go` |
 | 接入 | Channel(17) | 外部 IM 接入、Webhook、投递 | `internal/channel`、`internal/service/channel_ingress.go` |
-| 观测 | Message(51) / Event(34) | Envelope、EventBus、WS、多路复用、回放 | `internal/event`、`internal/server/ws.go` |
+| 观测 | Event(34) | ActivityEvent、MonitorEvent、ActivityEventBus、MonitorEventBus、WS 2 pump | `internal/event`、`internal/server/ws.go` |
 | 观测 | Monitor(18) / Telemetry(24) / Token(29) | Audit、Events、Logs、Usage、metrics、OTLP | `internal/metrics`、`internal/telemetry`、`internal/biz/usage.go` |
 | 互通 | A2A(26) | 对外 A2A、call_agent、远程互通 | `internal/a2a`、`api/kratos/a2a` |
 | 评测 | Evaluation(33) | EvalSet、Runner、LLM Judge、结果 | `internal/evaluation` |
@@ -135,6 +135,8 @@ flowchart TB
 
 ### 5.1 单 Agent 对话
 
+> **ADR-02 + ADR-03 后**：trpc `event.Event` 经 `ActivityProjector` 投影为 `biz.ActivityEvent`（Domain=chat），由 `ActivityEventSequencer` 并行异步持久化到 `activities` 表 + 同步 publish 到 `ActivityEventBus`；WS 通过 `activityEventPump` 推送 `activity_event?` 给前端。Envelope/EventBuffer/ChatMessage 已删除。
+
 ```mermaid
 sequenceDiagram
   participant U as User / WebSocket
@@ -142,9 +144,10 @@ sequenceDiagram
   participant CS as ChatService
   participant AG as internal/agent
   participant R as trpc Runner
-  participant EP as EventProjector
-  participant EB as EventBus
-  participant DB as Session / Usage / Memory
+  participant AP as ActivityProjector
+  participant AES as ActivityEventSequencer
+  participant AEB as ActivityEventBus
+  participant DB as activities / Usage / Memory
 
   U->>WS: user_message
   WS->>CS: SendChatMessage
@@ -154,11 +157,12 @@ sequenceDiagram
   CS->>AG: NewTRPCRunner(Session, Memory, Plugins)
   CS->>R: Run(userID, sessionID, message)
   R-->>CS: event.Event stream
-  CS->>EP: ConsumeEventStream
-  EP->>EB: Envelope(text/tool/state/usage/error)
-  EB-->>WS: subscribe(session_id)
-  WS-->>U: WS Envelope
-  CS->>DB: append ChatMessage / SessionTurn / Usage
+  CS->>AP: ConsumeEventStream
+  AP->>AES: ActivityEvent(Kind=task/thinking/action/reply)
+  AES->>DB: upsert Activity（fire-and-forget + retry + dead-letter）
+  AES->>AEB: publish ActivityEvent
+  AEB-->>WS: activityEventPump(session_id)
+  WS-->>U: WS activity_event?
 ```
 
 ### 5.2 Team 对话
@@ -173,8 +177,9 @@ flowchart LR
   Def --> Compile["CompileToGraphRuntimeConfig"]
   Compile --> GraphAgent["GraphAgent + trpc graph"]
   GraphAgent --> Bridge["TeamGraphTaskBridge / StatusProjector"]
-  Bridge --> Events["graph_node_* / member_* / team_* Envelope"]
-  Events --> Bus["EventBus + WS Envelope"]
+  Bridge --> AP["ActivityProjector（含 member_agent_key）"]
+  AP --> AE["ActivityEvent(Kind=graph_stage/team_stage/reply/action)"]
+  AE --> Bus["ActivityEventBus + WS activity_event?"]
   GraphAgent --> Runs["team_runs / team_run_steps / graph_executions"]
 ```
 
@@ -190,13 +195,14 @@ flowchart TB
   Graph --> Agent["graphagent.GraphAgent"]
   Agent --> Runtime["GraphRuntime Run / Resume / TimeTravel"]
   Runtime --> Bridge["Graph EventBridge"]
-  Bridge --> EB["EventBus"]
-  EB --> WS["/v1/ws graph channel"]
+  Bridge --> AP["ActivityProjector"]
+  AP --> AEB["ActivityEventBus"]
+  AEB --> WS["/v1/ws activity_event?"]
 ```
 
 ### 5.4 Channel 与 Cron 入口
 
-Channel 将外部 IM（飞书 WS/Webhook 等）标准化为入站事件，经 **路由** 选定 **Agent 或 Team**，通过 `channel_peer_session` 绑定 **Session**，再与 Web Chat 共用 `ChatService.RunNativeTurn*`。出站仅回发助手文本（或流式 PATCH）；实时 Envelope 仍走 EventBus，供 Web/Monitor 按 `session_id` 订阅。详见 [17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md)。
+Channel 将外部 IM（飞书 WS/Webhook 等）标准化为入站事件，经 **路由** 选定 **Agent 或 Team**，通过 `channel_peer_session` 绑定 **Session**，再与 Web Chat 共用 `ChatService.RunNativeTurn*`。出站仅回发助手文本（或流式 PATCH）；实时 ActivityEvent 走 ActivityEventBus，监控事件（log/flow_log）走 MonitorEventBus，供 Web/Monitor 按 `session_id` 订阅。详见 [17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md)。
 
 ```mermaid
 flowchart LR
@@ -210,11 +216,12 @@ flowchart LR
   CronTurn --> Native
   Native --> AgentR["单 Agent TRPC Turn"]
   Native --> TeamR["internal/team RunTurn"]
-  AgentR --> Msg["ChatMessage 落库"]
-  TeamR --> Msg
-  Msg --> Out["channel_delivery / StreamSender"]
+  AgentR --> Act["Activity upsert 落库"]
+  TeamR --> Act
+  Act --> Out["channel_delivery / StreamSender"]
   Out --> Feishu
-  Native --> EB["EventBus → /v1/ws"]
+  Native --> AEB["ActivityEventBus → /v1/ws activity_event?"]
+  Native --> MEB["MonitorEventBus → /v1/ws monitor_event?"]
 ```
 
 ## 六、工具挂载链
@@ -258,16 +265,20 @@ flowchart TB
 
 ## 八、WebSocket 与事件架构
 
+> **统一总线架构（ADR-03 Phase 5 已完成，2026-06-27）**：legacy Envelope Bus / SessionBus / MonitorBus 已全部删除。当前为 2 bus 架构：`ActivityEventBus`（传输 `biz.ActivityEvent`，承载 chat + system 事件）+ `MonitorEventBus`（传输 `contract.MonitorEvent`，承载监控事件）。详见 ADR-03。
+
 ```mermaid
 flowchart LR
-  TRPC["trpc event.Event"] --> Projector["EventProjector"]
-  Projector --> Env["event.Envelope"]
-  Env --> Bus["EventBus"]
-  Bus --> Buffer["EventBuffer replay"]
-  Bus --> Consumer["EventBusConsumer"]
-  Consumer --> Usage["Usage / StateDelta / Buffer"]
-  Bus --> WS["WSServer"]
-  WS --> Client["Chat / Team / Graph / Monitor"]
+  TRPC["trpc event.Event"] --> Projector["ActivityProjector / FlowTracker"]
+  Projector --> AE["biz.ActivityEvent (Domain=chat/system)"]
+  Projector --> ME["contract.MonitorEvent (log/flow_log/mcp/alert)"]
+  AE --> AEBus["ActivityEventBus"]
+  ME --> MEBus["MonitorEventBus"]
+  AEBus --> WS["WSServer (activityEventPump)"]
+  MEBus --> WS2["WSServer (monitorEventPump)"]
+  AEBus --> Consumer["Typed Consumers (callback/flow_log/usage_rollup/user_feedback)"]
+  WS --> Client["Chat / Team / Graph"]
+  WS2 --> Monitor["Monitor"]
 ```
 
 当前实时传输主通道是 `/v1/ws`。独立 Chat SSE `/v1/chat/messages/stream` 与独立 SSE 端口已经从主链路移除；文档中仍出现的 SSE 表述应改为“历史兼容概念”或“外部协议 SSE（如 A2A/MCP）”，不得写作当前 Chat/Team 主通道。
@@ -287,7 +298,7 @@ flowchart LR
 | AH-07 | Runner 生命周期 | Artifact/Ingestor 已挂；GetRunStatus 对齐 ManagedRunner | `setRunStatus` / `StopGeneration` 与 `ChatUsecase.SetRunStatus` 双路径；ManagedRunner Cancel 未统一写 registry 终态 |
 | AH-08 | 前端 store/API/mapper 三套风格并存 | UI 迭代易重复、测试不能覆盖真实 mapper | 统一 feature 模板、抽 `mappers.ts`、删除空转 store |
 | AH-09 | Knowledge / Evaluation / Artifact / A2A / **Gateway Webhook** 有 API 无管理页 | 模块闭环不完整 | 按模块补路由、页面和导航，或文档降级为 API-only（Gateway Webhook CRUD 当前 API-only） |
-| AH-10 | Monitor/Message/Team 旧 SSE 口径残留 | AI 可能实现错误传输链路 | 全部收敛到 WS/EventBus |
+| AH-10 | Monitor/Message/Team 旧 SSE 口径残留 + Envelope 通用信封残留 | AI 可能实现错误传输链路（误用 Envelope/EventBus/EventProjector/EventBuffer） | ✅ ADR-02 + ADR-03 已完成：legacy Envelope/SessionBus/MonitorBus 全部删除；统一为 `ActivityEvent`（chat+system）+ `MonitorEvent`（log/flow_log/mcp/alert）双类型；2 bus/2 pump 架构（`ActivityEventBus` + `MonitorEventBus`）；`EventProjector` → `ActivityProjector`；`EventBuffer` replay 由 `ListActivities` RPC 替代；`messages`/`event_store`/`event_wal` 表已 DROP；详见 ADR-03 |
 
 ## 十、AI 开发读取顺序
 

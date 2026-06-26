@@ -299,7 +299,6 @@
   "features/chat/composables/useChatStreamManager.ts": 4,
   "features/chat/composables/useChatWorkspace.ts": 11,
   "features/chat/composables/useContextualLoadingMessage.ts": 2,
-  "features/chat/composables/useConversationTimeline.ts": 1,
   "features/chat/composables/useFollowUpQueue.ts": 7,
   "features/chat/contextBreakdown.ts": 3,
   "features/chat/executionCardHelpers.ts": 3,

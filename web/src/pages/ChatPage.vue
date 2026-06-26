@@ -60,7 +60,6 @@
         :context-status="session.selectedSessionForUi?.context_status"
         :usage-snapshot="session.composerUsageSnapshot"
         :context-breakdown="session.contextBreakdown"
-        :session-total-tokens="session.selectedSessionForUi?.total_tokens ?? null"
         :knowledge-base-options="composer.knowledgeBaseOptions"
         :selected-knowledge-bases="composer.selectedKnowledgeBases"
         :is-dark="layout.isDark"
@@ -163,15 +162,7 @@
       @toggle="layout.rightOpen = !layout.rightOpen"
     />
 
-    <SessionTreeSidebar
-      v-if="spiritStore.activePanelMode === 'spirit'"
-      :tree-nodes="session.sessionTree.spiritTreeNodes"
-      :active-session-id="session.selectedSessionForUi?.id || ''"
-      :loading="session.sessionTree.spiritTreeNodes.length === 0 && Boolean(session.selectedSessionForUi?.id)"
-      @select="session.onSelectSession"
-    />
     <ChatSessionSidebar
-      v-else
       :open="layout.rightOpen"
       :sessions="session.displaySessions"
       :inbox-sessions="session.inboxSessions"
@@ -244,7 +235,6 @@ import ChatSideToggle from '../components/chat/ChatSideToggle.vue';
 import ChatSettingsDialog from '../components/chat/ChatSettingsDialog.vue';
 import ChatWorkspaceShell from '../components/chat/ChatWorkspaceShell.vue';
 import SessionTimelineDialog from '../components/chat/SessionTimelineDialog.vue';
-import SessionTreeSidebar from '../components/chat/SessionTreeSidebar.vue';
 import { computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatWorkspace } from '../features/chat/composables/useChatWorkspace';

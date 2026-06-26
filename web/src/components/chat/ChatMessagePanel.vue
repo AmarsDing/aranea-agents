@@ -35,8 +35,7 @@
       </template>
     </div>
 
-    <template>
-      <q-banner v-if="wsReplaying" dense rounded class="q-mx-md q-mt-sm app-info-banner">
+    <q-banner v-if="wsReplaying" dense rounded class="q-mx-md q-mt-sm app-info-banner">
         <template #avatar>
           <q-spinner-dots color="accent" size="20px" />
         </template>
@@ -212,7 +211,6 @@
             :context-ratio="contextRatio"
             :context-status="contextStatus"
             :usage-snapshot="usageSnapshot"
-            :session-total-tokens="sessionTotalTokens"
             :knowledge-base-options="knowledgeBaseOptions"
             :selected-knowledge-bases="selectedKnowledgeBases"
             :is-dark="isDark"
@@ -277,7 +275,6 @@
         @click-interrupted="emit('status-bar-click-interrupted')"
         @click-last-event="emit('status-bar-click-last-event')"
       />
-    </template>
   </q-card>
 </template>
 
@@ -341,7 +338,6 @@ const props = defineProps<{
   contextStatus?: string;
   usageSnapshot?: ComposerUsageSnapshot | null;
   contextBreakdown?: PromptBreakdown | null;
-  sessionTotalTokens?: number | null;
   knowledgeBaseOptions?: Option[];
   selectedKnowledgeBases?: string[];
   isDark: boolean;
@@ -366,7 +362,6 @@ const props = defineProps<{
   focusTurnId?: string;
   sessionArtifacts?: ArtifactMeta[];
   sessionArtifactsLoading?: boolean;
-  executionProgress?: readonly Envelope[];
   fileSupported?: boolean;
   fileAccept?: string;
   showBackgroundJobs?: boolean;

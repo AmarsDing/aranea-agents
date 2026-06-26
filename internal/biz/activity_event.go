@@ -44,12 +44,6 @@ const (
 	// Frontend behavior: mark as cancelled, show cancel reason.
 	// meta.cancel_reason identifies the cancel reason.
 	ActivityEventCancelled ActivityEventType = "cancelled"
-
-	// ActivityEventChildCreated indicates a child Activity was created.
-	// Business meaning: tool call produced a sub-task, team stage produced a member task.
-	// Frontend behavior: add a child Block under the parent Block (collapsed).
-	// parent_activity_id identifies the parent Activity.
-	ActivityEventChildCreated ActivityEventType = "child_created"
 )
 
 // ActivityDomain classifies the top-level domain an ActivityEvent belongs to.
@@ -80,8 +74,8 @@ const (
 // (the current state after the event). This replaces the legacy Envelope for
 // Activity-related events, providing a simpler, business-semantic contract.
 //
-// Reliability levels (AS-EVT-01):
-//   - Important: created/completed/failed/cancelled/child_created
+// Reliability levels (AS-EVT-01, see ADR-04 for rationale):
+//   - Important: created/completed/failed/cancelled
 //     → async persist with retry, sync publish
 //   - Informational: streaming/updated
 //     → async persist with drop-on-failure, sync publish (streaming may batch)

@@ -29,9 +29,9 @@
 | Session | 框架 session 与业务 session 边界需更清晰 | Session transcript 与业务索引分工定稿 |
 | Memory | 框架 MemoryService 与 Aranea L0-L4 双轨 | L0-L4 作为 MemoryService 的产品实现 |
 | Tool/MCP | ✅ ToolOverride/requires_confirmation/调用统计/TestTool/MCP 默认超时60s 已落地；MCP 认证/重连/Broker 默认发现仍待闭环 | 工具能力矩阵已通主路径；MCP 工程化待补 |
-| Event | ✅ `/v1/ws` + 31 EnvelopeType；Consumer 已拆 + P3 侧效订阅（Tool/Callback/MessageStore/FlowLog） | SSE 仅限 A2A/MCP |
+| Event | ✅ `/v1/ws` + ActivityKind（chat/system）+ MonitorEventType；Consumer 已拆 + P3 侧效订阅（Tool/Callback/MessageStore/FlowLog）；ADR-03 Phase 5 完成 Envelope Bus 删除 | SSE 仅限 A2A/MCP |
 | Plugin/Callback | 9 内置插件 + Chain+Hook+OnEvent ✅；治理类插件多为策略/记录层 | 产品化：UpdateScope、运行记录表、`model_router` 真改模型 |
-| Team/Graph | Team member_* WS + 前端分栏 ✅；Graph LLM/Tool 节点、ExecutionSummary 待补 | 编排输出统一 Envelope；Graph 节点类型补全 |
+| Team/Graph | Team member_* WS + 前端分栏 ✅；Graph LLM/Tool 节点、ExecutionSummary 待补 | 编排输出统一 ActivityEvent；Graph 节点类型补全 |
 | Evaluation/A2A | ✅ Phase 5：FrameworkBridge、扩展指标、LLM UserSim、趋势/A/B、Eval LLM 系统配置；A2A Invoke + 联邦 Gateway | 质量门禁产品化、A2A Phase 4 Cron/限流 |
 
 OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。吸收三件事：
@@ -50,7 +50,7 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 | 等级 | 模块 | 判断 | 问题 | 目标边界 |
 |------|------|------|------|----------|
 | 清晰 | `internal/biz` | 领域模型、Usecase、Repo 接口明确 | 少量领域与 provider inspect 概念交叉 | 只定义业务规则和端口 |
-| 清晰 | `internal/event` | Envelope、Bus、Buffer、TraceEmitter 职责单一 | — | Bus 只管发布订阅；副作用在 biz handler |
+| 清晰 | `internal/event` | ActivityEvent/MonitorEvent 双类型、ActivityEventBus/MonitorEventBus 双总线、TraceEmitter 职责单一 | — | ADR-03 后 2 bus/2 pump；Bus 只管发布订阅；持久化在 ActivityEventSequencer，副作用在 biz handler |
 | 清晰 | `internal/graph` | Graph runtime adapter 与 biz 端口较清楚 | Data 层 checkpoint 绑定框架 | adapter 管框架，data 管存储 |
 | 中等 | `internal/service` | 本应是 proto ↔ biz/runtime 桥 | `ChatUsecase` 已编排入队/排队/await；`PendingMessageQueue` 实现仍在 Service；`setRunStatus` 与 Webhook 触发留 Service | PendingQueue 下沉 runtime；终态通知可经 EventBus 解耦 |
 | 中等 | `internal/agent` | 构建 Agent / Runner 的正确位置 | ✅ `TRPCBuilderDeps` + `TRPC*Deps` 分组（`builder_deps.go`） | 巨型设置页拆分、列表 `last_run_status` |
@@ -71,7 +71,7 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 | `biz <-> provider` | 存在概念双向依赖 | 偏弱 | 模型 inspect 与模型目录边界不稳 | 抽 `internal/llminspect` 或 biz 端口 |
 | `data -> trpc runtime` | 存在 | 偏弱 | Data 层绑定 graph/session 框架类型 | provider 上移到 runtime/wire |
 | `agent/team/tools -> biz` | 构建运行时需要领域配置 | 可接受 | Builder 编译面较大 | 用 Catalog DTO 稳定依赖 |
-| `event -> consumers` | EventBusConsumer + EventBusSideConsumers | 良好 | 成员消息与 Runner 汇总语义需产品持续对齐 | 保持按 EnvelopeType 扩展 |
+| `event -> consumers` | EventBusConsumer + EventBusSideConsumers | 良好 | 成员消息与 Runner 汇总语义需产品持续对齐 | 保持按 ActivityKind 扩展（ADR-03 后 Envelope 已删除） |
 | `frontend pages -> features/stores` | 混合 | 偏弱 | 页面巨型化、store 空转 | 统一 page -> composable/store -> api |
 
 ### 3.3 模块功能完整度
@@ -79,7 +79,7 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 | 闭环等级 | 模块 | 已有能力 | 缺口 | 为什么影响组合 |
 |----------|------|----------|------|----------------|
 | 闭环较好 | Chat、Agent、Provider、Session、Cron、Graph 核心 | 可创建、运行、持久化、展示 | 运行控制、细粒度事件仍可增强 | 已能作为其他模块入口 |
-| 半闭环 | Team | RunTeamTest、CancelTeamRun、member_* WS、前端成员分栏 ✅ | 结构化汇总、跨 Team 编排可观测性 | 作为编排积木需统一 summary Envelope |
+| 半闭环 | Team | RunTeamTest、CancelTeamRun、member_agent_key WS ActivityEvent、前端成员分栏 ✅ | 结构化汇总、跨 Team 编排可观测性 | 作为编排积木需统一 summary ActivityEvent |
 | 闭环较好 | Tools/MCP/Skill | Override、confirmation、统计、TestTool、MCP 60s 超时、OAuth2、Broker 挂载 ✅ | 生产级重连策略、Broker 默认发现文档化 | MCP 稳定性与运维可观测 |
 | 半闭环 | Memory | RuntimeSet 端口统一；L4 prompt 注入；MemoryWorker；AutoMemory 图写入 ✅ | 冲突检测、级联更新、衰减算法 | 长期语义记忆治理 |
 | 半闭环 | Plugin/Callback | 9 内置 + Chain+Hook+OnEvent + Schema/Scope ✅ | 产品化配置、运行记录、Audit 查询体验 | 横切治理可配置化 |
@@ -105,7 +105,7 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 2. 运行时能力只通过 `pkg/trpc-agent-go` 公开 API 集成，不复制框架内部实现。
 3. `internal/service` 是桥，不是状态机仓库；复杂运行控制下沉到 RunnerManager / Usecase。
 4. `internal/biz` 不 import `trpc-agent-go`；`internal/server` 不 import Agent runtime。
-5. 实时主通道是 `/v1/ws` + Envelope；SSE 只可用于外部协议明确要求的 A2A/MCP 等。
+5. 实时主通道是 `/v1/ws` + ActivityEvent + MonitorEvent（ADR-03 后 2 bus/2 pump）；SSE 只可用于外部协议明确要求的 A2A/MCP 等。
 6. 前端新增域统一 `features/<domain>/{api,types,mappers,composables,ui}`，store 策略必须明确。
 7. 文档状态优先级：`0-system-diagram.md` + 本计划 + `execution-plan.md` > 模块 development > design > 历史需求正文。
 
@@ -237,13 +237,13 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 | CHAT-05 | Chat / WS 关键路径单测 | P2 | service 层部分覆盖 | `TestChat*` / envelope 投影回归 | [1-chat-development.md](./1-chat-development.md) |
 | CHAT-06 | 新 UI 文案 i18n | P3 | 工具卡片/Reasoning/回放横幅硬编码或缺 locale | `zh-CN` / `en` 键补全 | `web/src/locales/` |
 
-**近期已完成（不再列入待办）**：WS 主通道 ✅ · `run_status` Envelope ✅ · 工具结构化卡片 ✅ · Reasoning 折叠 ✅ · Team 成员分栏 ✅ · WS `replay_*` 提示 ✅ · Monitor/Team 全局 `session_id=*` ✅。
+**近期已完成（不再列入待办）**：WS 主通道 ✅ · `run_status` ActivityEvent ✅ · 工具结构化卡片 ✅ · Reasoning 折叠 ✅ · Team 成员分栏 ✅ · ListActivities RPC 重连 ✅ · Monitor/Team 全局 `session_id=*` ✅。
 
 ### 8.4 Team / Graph / Runner
 
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
-| TEAM-01 | Team 结构化汇总 Envelope | P1 | ✅ `team_summary` WS | — | [11-multi-agent-development.md](./11-multi-agent-development.md) |
+| TEAM-01 | Team 结构化汇总 ActivityEvent | P1 | ✅ `team_summary` WS | — | [11-multi-agent-development.md](./11-multi-agent-development.md) |
 | GRAPH-01 | Graph LLM / Tool 节点 | P1 | ✅ builder 接线 | — | [36-graph-development.md](./36-graph-development.md) |
 | GRAPH-02 | ExecutionSummary / 运行记录 UI | P2 | ✅ `graph_execution_done` metadata | 前端 Graph 运行记录页待补 | [36-graph-development.md](./36-graph-development.md) |
 | RUN-01 | 独立 `CancelRun` RPC（可选） | P3 | `StopGeneration` + WS `cancel` 已通 | 与 Chat proto 解耦的通用取消 RPC | [40-runner-development.md](./40-runner-development.md) |
@@ -322,7 +322,7 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 |----|----------|--------|------|------|----------|
 | FE-01 | `KnowledgePage` / `EvaluationPage` / `A2APage` 组件拆分 | P2 | ✅ 三页均 <300 行 | 弹窗/表格抽独立组件 | `page-to-components.mdc` |
 | FE-02 | feature mapper 单测 | P2 | A2A mapper 单测 ✅ | knowledge/evaluation mapper 回归 | 各 `features/*/mappers` |
-| FE-03 | 减少 `as any`（Chat/Team stream） | P3 | 部分 mapper 有 any | 严格 Envelope 类型 | `web/src/features/chat/` |
+| FE-03 | 减少 `as any`（Chat/Team stream） | P3 | 部分 mapper 有 any | 严格 ActivityEvent 类型 | `web/src/features/chat/` |
 
 ### 8.10 开发顺序总表（里程碑视角）
 
@@ -379,7 +379,7 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 
 1. **P1 — Channel 投递闭环**：Webhook 入站 + 出站 delivery + 至少一种平台适配器（EP-BIZ-08）。
 2. **P1 — Graph LLM/Tool 节点**：补节点类型与 ExecutionSummary，使 Graph 可作为编排积木。
-3. **P1 — Team 结构化汇总**：统一 summary Envelope，便于 Monitor 与下游自动化。
+3. **P1 — Team 结构化汇总**：统一 summary ActivityEvent，便于 Monitor 与下游自动化。
 4. **P2 — 前端治理**：Knowledge/Evaluation/A2A 页面 `page-to-components`；store 策略二选一；mapper 单测。
 5. **P2 — Memory 图治理**：L4 冲突检测、级联更新、衰减（AutoMemory 写入已有）。
 6. **P2 — Plugin 产品化**：UpdateScope、运行记录、`model_router` 真改模型。
@@ -394,7 +394,7 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 | 3 | `PR-Runner-Control` | ✅ 已完成 | EnqueueUserMessage / StopGeneration+WS cancel / RunStatus 对齐 |
 | 4 | `PR-Memory-Boundary` | ✅ 已完成 | Memory 端口统一；`runtime.MemorySet` + SessionAdminStore |
 | 5 | `PR-Boundary-Cleanup` | ✅ 已完成 | Data provider 上移、Provider 拆环、Skill Import service 化 |
-| 6 | `PR-Team-Observability` | ✅ 已完成 | RunTeamTest、CancelTeamRun、member_* WS Envelope |
+| 6 | `PR-Team-Observability` | ✅ 已完成 | RunTeamTest、CancelTeamRun、member_agent_key WS ActivityEvent |
 | 7 | `PR-Plugin-Callback` | ✅ 已完成 | 9 内置插件实现、Chain+Hook+OnEvent、种子+Schema+Scope 过滤 |
 | 8 | `PR-Tools-MCP-Core` | ✅ 已完成 | ToolOverride/confirmation/统计/TestTool/默认timeout |
 | 9 | `PR-Knowledge-Artifact-Pages` | ✅ 已完成 | KnowledgePage/ArtifactsPage/路由/侧栏；EvalPage/A2APage/HooksPage |
@@ -693,7 +693,7 @@ flowchart TD
 | **Datadog 看板** | M56 BLO-PRE-03 | 加面板即可 |
 | **BackgroundJob 抽象** | M56 BLO-5 | MEM-OPT-03 队列可考虑迁；MON-OPT-03 EvalWorker 可注册为 scheduled job |
 | **Function call schema** | MEM-OPT-05 | TG-Q-07（critic_loop）；MON 告警 enrichment |
-| **Bus 路由表** | MON-OPT-01 | 所有发 Envelope 的模块 |
+| **Bus 路由表** | MON-OPT-01 | 所有发 ActivityEvent/MonitorEvent 的模块 |
 | **PolicyVersion 常量** | MEM-OPT 衍生 | 所有 ActionLog 写入方 |
 
 **可并行 lanes**：

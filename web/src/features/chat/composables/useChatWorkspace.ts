@@ -120,8 +120,8 @@ export function useChatWorkspace() {
   const sessionTree = useSessionTree();
 
   // AF-GAP-02: Bounded dedup set for ActivityEvent IDs. Both the real-time
-  // stream path (streamHandlers → ctx.onActivityEvent) and the inbound-sync
-  // path (useChatInboundSync → deps.onActivityEvent) may forward the same
+  // WS stream path (ctx.onActivityEvent) and the inbound-sync path
+  // (useChatInboundSync → deps.onActivityEvent) may forward the same
   // ActivityEvent for the current session. Without dedup, handleActivityEvent
   // would process the same event twice, duplicating content in the timeline.
   // The set is bounded (LRU eviction) to prevent unbounded memory growth.
@@ -960,8 +960,8 @@ export function useChatWorkspace() {
       if (replace) clearChatMarkdownCache();
 
       // AF-FE-14 / §9.1.3: Load Activity data BEFORE messages so that the AF
-      // path (useConversationTimeline) has data available when
-      // conversationTurns is computed. `ensureActivitiesLoaded` skips the API
+      // path (useActivityTimeline) has data available when
+      // sortedActivities is computed. `ensureActivitiesLoaded` skips the API
       // call when the session is already cached (Phase 3 per-session
       // isolation) — WS replay reconciles missed events on reconnect. Use
       // `retryLoad` to force a full refresh after a load failure.
@@ -1107,7 +1107,6 @@ export function useChatWorkspace() {
     clearStallNotifyTimer();
     stopCompressPolling();
     document.removeEventListener('visibilitychange', onPageVisible);
-    sender.clearSendingTimeout();
     streamManager.disconnectAll();
   });
 

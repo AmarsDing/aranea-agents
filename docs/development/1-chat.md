@@ -1,8 +1,8 @@
 # Chat 对话模块 — 需求规格
 
-> 对话框是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话、WebSocket + EventBus 实时事件、上下文管理、用量记录、停止生成、人工等待回复与待执行队列。
+> 对话框是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话、WebSocket + ActivityEventBus 实时事件、上下文管理、用量记录、停止生成、人工等待回复与待执行队列。
 >
-> **2026-05-17 现状对齐**：当前代码已移除独立 SSE `/v1/chat/messages/stream` 路由，实时事件以 `/v1/ws` WebSocket Envelope 为主通道；HTTP `SendChatMessage` 保留为非流式/后台入口，并被 WS 上行、Channel、Cron 等复用。
+> **2026-05-17 现状对齐**：当前代码已移除独立 SSE `/v1/chat/messages/stream` 路由，实时事件以 `/v1/ws` WebSocket + ActivityEvent 为主通道（ADR-02 + ADR-03 完成后，Envelope 通用信封已删除，统一为 ActivityEvent + MonitorEvent 双类型协议）；HTTP `SendChatMessage` 保留为非流式/后台入口，并被 WS 上行、Channel、Cron 等复用。WS 重连改用 `ListActivities` RPC 拉取增量 Activity（替代原 EventBuffer 回放）。
 >
 > **文档边界**：本文档仅包含用户故事、功能需求清单、验收标准、非功能需求与用户视角的交互规格。代码分层、API 契约、WebSocket 协议、数据模型、实现细节见 [1-chat.design.md](./1-chat.design.md)；开发进度、技术债务、任务清单见 [1-chat.development.md](./1-chat.development.md)。
 
@@ -40,8 +40,29 @@
 - 作为用户，卡片根据**成功 / 失败 / 阻塞（需确认）** 显示不同颜色与图标，失败时我能看到错误摘要。
 - 作为用户，卡片**默认折叠**，不占用阅读空间；需要时点击展开查看参数 JSON、结果摘要或 stderr。
 - 作为 Team 用户，在 Team 会话中，卡片标明**执行成员 Agent**（author / agent_key）。
-- 作为用户，刷新页面或 WS 重连后，仍能从历史消息中恢复已完成的执行卡片。
+- 作为用户，刷新页面或 WS 重连后，仍能从历史 Activity 中恢复已完成的执行卡片。
 - 作为管理员，敏感参数（API Key、token）在卡片详情中**脱敏**，不泄露明文。
+
+### 1.5 Activity-First 统一渲染（ADR-02 + ADR-03）
+
+> **产品定位**：后端将运行时事件投影为 Activity 语义单元；前端零推理消费——按 `activity.kind` 直接渲染对应 Block 组件，无需从 Envelope 字段推断渲染类型。
+
+- 作为用户，无论与 Spirit / Team / Agent / 独立 Agent 对话，消息流都通过统一的 `ActivityStream` 渲染，体验一致。
+- 作为用户，我能看到 10 种 Activity 类型：用户消息（task）、推理过程（thinking）、工具调用（action）、最终回复（reply）、计划（plan）、待确认（confirm）、系统通知（notice）、子 Session 创建（session）、Team 阶段（team_stage）、Graph 阶段（graph_stage）。
+- 作为用户，工具调用卡片按**工具类别**（shell/browser/file_read/file_write/file_search/web_search/mcp/code/todo/other）展示差异化 UI，例如文件读卡片显示行号高亮，shell 卡片分 stdout/stderr 区。
+- 作为用户，当 Agent 调用 `subagent_spawn` 或 Team 分发任务时，我能看到「子 Session 创建」阶段块，并可点击进入子 Session 查看其独立 Activity 流。
+- 作为 Team 用户，我能看到 Coordinator/Swarm 阶段切换的 `team_stage` 块，了解当前 Team 执行阶段。
+- 作为 Graph 用户，我能看到 Graph 节点开始/结束的 `graph_stage` 块，了解 Graph 执行进度。
+- 作为用户，WS 断线重连后，前端通过 `ListActivities` RPC 拉取增量 Activity 恢复时间线，顶栏显示「正在同步历史 Activity…」。
+
+### 1.6 Session 父子树导航
+
+> **产品定位**：Spirit 主会话、Team 会话、子 Agent 会话形成父子树，用户可在树形侧栏中导航查看任意层级的 Activity 流。
+
+- 作为用户，我能在 Session 树侧栏看到当前根 Session 下的所有子 Session（递归层级），每个节点显示 Session 类型图标、深度 badge、执行阶段、进度百分比。
+- 作为用户，点击 Session 树节点可切换到该 Session 的 Activity 流，子 Session 的 Activity 独立加载（懒加载缓存，切换不丢失已加载内容）。
+- 作为用户，Session 树深度受 `subagents_max_generation_depth`（默认 3）和 `max_session_depth`（默认 5）限制，超出时收到明确错误提示而非静默失败。
+- 作为用户，我能在 Session 树中识别 Spirit 主会话（`auto_awesome` 图标）、Team 会话（`groups` 图标）、子 Agent 会话（`smart_toy` 图标）、独立会话（`chat` 图标）。
 
 ---
 
@@ -67,13 +88,13 @@
 - 待发送列表可见，支持取消（`POST /v1/chat/pending/cancel`）和编辑（`POST /v1/chat/pending/update`）。
 - 支持 `POST /v1/chat/enqueue` 显式入队。
 - 队列容量：每 session 最多 32 条 Pending，超出返回 `CHAT_QUEUE_FULL`。
-- 入队成功后通过 WS `run_status` Envelope（`hint=message_queued`）即时通知前端。
+- 入队成功后通过 WS ActivityEvent（Kind=notice，Domain=system）即时通知前端。
 - 待执行 turn 处理 600s 超时，可被 `StopGeneration` 取消。
 
 ### 2.4 RunStatus
 
 - `GET /v1/chat/run-status` 返回当前/最近一次 run 状态：`idle | pending | running | awaiting_user | completed | failed | cancelled | sync`。
-- 状态变更通过 WS `run_status` Envelope 实时推送。
+- 状态变更通过 WS ActivityEvent（Kind=notice/task，Domain=chat）实时推送。
 - 切换会话时前端通过 HTTP 校准一次状态。
 - 状态通过 `state_json` 持久化，服务重启后可恢复。
 
@@ -112,13 +133,40 @@
 - `GET /v1/chat/jobs` 列出后台任务（按 session/agent/status 过滤）。
 - `POST /v1/chat/jobs/{id}/cancel` 取消后台任务。
 
+### 2.11 Activity-First 统一渲染（ADR-02 + ADR-03）
+
+- 所有 chat + system 业务事件统一通过 `ActivityEvent` 在 `/v1/ws` 传输；monitor 事件（log/flow_log/mcp/alert）通过 `MonitorEvent` 传输。
+- `ActivityEvent` 携带 `Domain`（chat | system）：chat 域持久化到 `activities` 表并加入时间线渲染；system 域仅推送 WS 作为通知（toast/notification，不进时间线）。
+- 前端 `ActivityStream.vue` 作为统一渲染器，按 `activity.kind`（10 种：task/thinking/action/reply/plan/confirm/notice/session/team_stage/graph_stage）分发到对应 Block 组件。
+- 失败统一通过 `task.failed` 表达（ActivityKind 无 error kind），错误摘要写入 `activity.content`，错误码写入 `metadata.error_code`。
+- `GET /v1/sessions/{session_id}/activities` 支持按 `since_updated_at` 增量拉取，用于 WS 重连恢复时间线。
+
+### 2.12 Session 父子树
+
+- Session 表支持 `parent_session_id` / `root_session_id` / `agent_depth` / `session_type`（spirit/team/agent/standalone）/ `member_agent_key` / `execution_stage` / `completed_steps` / `total_steps` / `progress_pct` 字段。
+- `GET /v1/sessions/{root_session_id}/tree` 返回 Session 父子树（单次查询 + 内存构建，任意深度）。
+- 子 Session 创建受 `subagents_max_generation_depth`（默认 3）和 `max_session_depth`（默认 5）深度限制，超出返回明确错误。
+- 前端 `SessionTreeSidebar.vue` + `SessionTreeNode.vue`（递归）渲染 Session 树，节点显示类型图标、深度 badge、执行阶段、进度百分比。
+
+### 2.13 工具类别细分
+
+- `Kind=action` 的 Activity 携带 `tool_category` 字段（10 种：shell/browser/file_read/file_write/file_search/web_search/mcp/code/todo/other）。
+- 后端 `ToolCategorizer`（精确匹配注册表 + 前缀兜底）在投影时识别工具类别。
+- 前端 `ActionBlock.vue` 作为容器，按 `tool_category` 动态渲染差异化子组件（如 `ShellActionBlock` 突出 stdout/stderr 分区，`FileReadActionBlock` 显示行号高亮，`McpActionBlock` 显示 server_key + tool 名）。
+
+### 2.14 Team / Graph 阶段显示
+
+- Team 阶段切换通过 `Kind=team_stage` Activity 表达，前端 `TeamStageBlock.vue` 渲染 Coordinator/Swarm 阶段。
+- Graph 节点开始/结束通过 `Kind=graph_stage` Activity 表达，前端 `GraphStageBlock.vue` 渲染 Graph 执行进度。
+- 子 Session 创建通过 `Kind=session` Activity（Event=child_created）表达，前端 `SessionStageBlock.vue` 渲染并可点击进入子 Session。
+
 ---
 
 ## 三、非功能需求
 
 | 项 | 要求 |
 |----|------|
-| 实时性 | WS 到达后 200ms 内 UI 反映 running；完成态随 `tool_result` 即时更新 |
+| 实时性 | WS 到达后 200ms 内 UI 反映 running；完成态随 ActivityEvent=completed 即时更新 |
 | 性能 | 单轮 ≥50 张执行卡片时列表仍流畅（虚拟滚动或增量 DOM） |
 | 可访问性 | 卡片 header 为 `button` 或带 `aria-expanded`；状态不仅依赖颜色 |
 | 国际化 | 文案走 `vue-i18n`（`chat.activity.*`） |
@@ -126,7 +174,9 @@
 | 暗黑模式 | 聊天记录正文、代码块、工具结果、时间戳等文本必须保证对比度 |
 | 上下文进度颜色阈值 | `<0.6` 绿 / `0.6-0.8` 黄 / `>0.8` 红 |
 | WS 连接数 | 每个 session 最多 5 条连接（`maxSessionConns=5`） |
-| EventBuffer 容量 | 每个 Session ring buffer 容量 200 条事件，TTL 30min |
+| 持久化策略 | 并行异步：persist fire-and-forget（persistChan 容量 1024）+ publish 同步；重试 5 次指数退避（100/200/400/800/1600ms）；死信环形缓冲 512 条 FIFO + activityID 去重 |
+| 重连恢复 | WS 断线重连后通过 `ListActivities?since={updated_at}` 拉取增量 Activity；服务端无状态（无 EventBuffer） |
+| Activity 表 | 唯一真相源；`messages`/`event_store`/`event_wal` 表已 DROP |
 
 ---
 
@@ -178,36 +228,68 @@
 - Session 内可切换模型，后续发送使用当前选择的模型
 - 模型回复或工具执行中，发送按钮切换为停止图标，点击可暂停/停止
 - 运行中可连续发送（Enter 不阻塞），消息自动入队
-- 入队即时反馈：WS `message_queued` 触发待发送列表刷新
+- 入队即时反馈：WS ActivityEvent（Kind=notice，Domain=system）触发待发送列表刷新
 - 队列满/运行结束：Toast + 错误码（`CHAT_QUEUE_FULL` / `CHAT_RUN_ENDED`）
 - `awaiting_user` 时展示提交回复横幅
-- WS 重连回放时顶栏显示「正在同步历史事件…」
+- WS 重连后顶栏显示「正在同步历史 Activity…」，通过 `ListActivities` RPC 拉取增量
 
 ---
 
 ## 五、验收标准
 
+### 5.1 核心对话与执行可见性
+
 - [x] 无 `/v1/chat/messages/stream` 当前端点表述
 - [x] WS 控制消息在需求/设计文档中完整描述
 - [x] Team 停止/待执行与单 Agent 一致
 - [x] AwaitUserReply：后端 + Chat 页可提交回复
-- [x] `error.pending_id` 前端可消费
+- [x] `activity.pending_id` 前端可消费（原 `error.pending_id`）
 - [x] `session_turns` Agent + Team 均有记录
 - [x] Channel/Cron 不绕过 active run 互斥
-- [x] Team `member_*` 后端发射 + 前端增量展示
+- [x] Team `member_agent_key` 后端发射 + 前端增量展示
 - [x] 工具执行结构化卡片（参数/结果/耗时/`is_long_running`）
 - [x] Reasoning 折叠/展示符合产品规格
-- [x] RunStatus 与 WS `run_status` 一致（切换会话时 HTTP 校准）
-- [x] WS 重连回放时用户可见「同步中」状态
+- [x] RunStatus 与 WS ActivityEvent 一致（切换会话时 HTTP 校准）
+- [x] WS 重连后用户可见「同步中」状态
 - [x] 单 Agent 对话：调用任意已挂载工具时，Chat 中出现对应卡片；执行中显示「正在执行」，完成后显示耗时与成功/失败态
 - [x] Skill：`skill_load` / `skill_run` 显示 Skill 图标与 skill 名称摘要
 - [x] MCP：`mcp_call` 显示 server 与 tool 名摘要
 - [x] 卡片**默认折叠**；展开后可见参数与结果
-- [x] 同一工具调用不产生 duplicate 卡片（id 稳定 upsert）
-- [x] WS 断线重连 + `last_event_id` 回放后，卡片状态与线上一致
-- [x] 刷新会话历史：已完成轮次的卡片从 `messages` 只读还原（持久化命中）
+- [x] 同一工具调用不产生 duplicate 卡片（activity.id 稳定 upsert）
+- [x] WS 断线重连 + `ListActivities` 拉取增量后，卡片状态与线上一致
+- [x] 刷新会话历史：已完成轮次的卡片从 `activities` 表只读还原（持久化命中）
 - [x] Team 会话：卡片展示成员 Agent 标识（P1）
 - [x] 失败工具调用：卡片红色边框 + 错误摘要，助手正文仍可继续输出
+
+### 5.2 Activity-First 架构（ADR-02 + ADR-03）
+
+- [x] Envelope 通用信封已删除，WS 下行为 `activity_event?` + `monitor_event?` 双类型协议
+- [x] 10 种 ActivityKind 全覆盖：task/thinking/action/reply/plan/confirm/notice/session/team_stage/graph_stage
+- [x] 7 种 ActivityEventType 全覆盖：created/streaming/updated/completed/failed/cancelled/child_created
+- [x] `Domain=chat` 持久化到 `activities` 表；`Domain=system` 仅推送 WS 不持久化
+- [x] 失败统一通过 `task.failed` 表达（无 `ActivityKindError`）
+- [x] `ActivityStream.vue` 作为统一渲染器，按 `activity.kind` 分发到 10 种 Block 组件
+- [x] 并行异步持久化：persist fire-and-forget + publish 同步
+- [x] 重试预算：5 次指数退避（100/200/400/800/1600ms）+ `select` on done channel（Close 不阻塞）
+- [x] 死信环形缓冲：512 条 FIFO + activityID 去重
+- [x] `messages`/`event_store`/`event_wal` 表已 DROP，`activities` 表为唯一真相源
+
+### 5.3 Session 父子树
+
+- [x] Session 表含 9 个父子树字段（parent_session_id/root_session_id/agent_depth/session_type/member_agent_key/execution_stage/completed_steps/total_steps/progress_pct）
+- [x] `GetSessionTree` RPC 单次查询 + 内存构建树（任意深度）
+- [x] 深度受 `subagents_max_generation_depth`（默认 3）+ `max_session_depth`（默认 5）限制
+- [x] 前端 `SessionTreeSidebar.vue` + `SessionTreeNode.vue`（递归）渲染，节点显示类型图标/深度 badge/执行阶段/进度
+- [x] 子 Session Activity 懒加载缓存（`ensureActivitiesLoaded` 命中跳过 RPC）
+
+### 5.4 工具类别与 Team/Graph 阶段
+
+- [x] 10 种 ToolCategory：shell/browser/file_read/file_write/file_search/web_search/mcp/code/todo/other
+- [x] `ToolCategorizer` 精确匹配注册表 + 前缀兜底
+- [x] `ActionBlock.vue` 按 `tool_category` 动态渲染 10 种差异化子组件
+- [x] `team_stage` Activity 表达 Team 阶段切换，`TeamStageBlock.vue` 渲染
+- [x] `graph_stage` Activity 表达 Graph 节点进度，`GraphStageBlock.vue` 渲染
+- [x] `session` Activity（Event=child_created）表达子 Session 创建，`SessionStageBlock.vue` 渲染并可点击进入子 Session
 
 > 实现进度、技术债务与优化方向详见 [1-chat.development.md](./1-chat.development.md)。
 
@@ -339,13 +421,15 @@
 
 ## 6. 验收标准
 
+> **注**：本子模块的验收标准已被主文档 §5.1 取代（AF 架构后）。下方为历史验收记录。
+
 - [x] 单 Agent 对话：调用任意已挂载工具时，Chat 中出现对应卡片；执行中显示「正在执行」，完成后显示耗时与成功/失败态
 - [x] Skill：`skill_load` / `skill_run` 显示 Skill 图标与 skill 名称摘要
 - [x] MCP：`mcp_call` 显示 server 与 tool 名摘要
 - [x] 卡片**默认折叠**；展开后可见参数与结果
-- [x] 同一工具调用不产生 duplicate 卡片（id 稳定 upsert）
-- [x] WS 断线重连 + `last_event_id` 回放后，卡片状态与线上一致
-- [x] 刷新会话历史：已完成轮次的卡片从 `messages` 只读还原（持久化命中）
+- [x] 同一工具调用不产生 duplicate 卡片（activity.id 稳定 upsert）
+- [x] WS 断线重连 + `ListActivities` 拉取增量后，卡片状态与线上一致
+- [x] 刷新会话历史：已完成轮次的卡片从 `activities` 表只读还原（持久化命中）
 - [x] Team 会话：卡片展示成员 Agent 标识（P1）
 - [x] 失败工具调用：卡片红色边框 + 错误摘要，助手正文仍可继续输出
 
@@ -355,8 +439,8 @@
 
 | 文档 | 关系 |
 |------|------|
-| [1 chat.md](./1%20chat.md) | Chat 主需求、WS Envelope 总览 |
-| [1 chat.design.md](./1%20chat.design.md) | 现有 `tool_call` / `tool_result` 投影 |
+| [1 chat.md](./1%20chat.md) | Chat 主需求、WS ActivityEvent 总览 |
+| [1 chat.design.md](./1%20chat.design.md) | `ActivityStream` 投影 + `tool_category` 细分 |
 | [52-flow-logger.design.md](./52-flow-logger.design.md) | Span / trace_id 同源；Chat 不展示 flow_log |
 | [23 tools.md](./23%20tools.md) | 工具 catalog 与 risk_level |
 | [20 skill.md](./20%20skill.md) | Skill 运行时 |

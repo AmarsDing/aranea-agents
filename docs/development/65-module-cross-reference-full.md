@@ -286,23 +286,24 @@
 
 ### 1.12 事件系统 (`internal/event/`)
 
-**职责**：双总线（SessionBus + MonitorBus）发布/订阅，事件缓冲，Flow Log。
+**职责**：双总线（ActivityEventBus + MonitorEventBus）发布/订阅，Flow Log（ADR-03 Phase 5 后：legacy SessionBus/MonitorBus/Envelope 已删除）。
 
 | 维度 | 内容 |
 |------|------|
 | **上游依赖** | 无（基础设施层，不依赖业务模块） |
-| **下游影响** | **所有模块**：chat/channel/team/graph/monitor/memory/plugin 都依赖 EventBus |
-| **核心导出** | `Infra`（双总线）、`Bus` 接口、`Buffer`、`Envelope`、`EnvelopeType`（30+ 事件类型常量）、`FlowLog`、`SysLog*`/`SessionSysLog*`（⚠️ 已废弃，迁移至 `pkg/loggateway.Logger`） |
-| **共享类型** | `Envelope`（所有事件消费者共享）、`EnvelopeType`（事件类型枚举） |
+| **下游影响** | **所有模块**：chat/channel/team/graph/monitor/memory/plugin 都依赖 ActivityEventBus / MonitorEventBus |
+| **核心导出** | `Infra`（MonitorEventBus）、`ActivityEventBus`（biz 层）、`MonitorBus` 接口（contract 层）、`ActivityEvent`/`ActivityKind`、`MonitorEvent`/`MonitorEventType`、`FlowLog`、`loggateway.Logger`（替代 `SysLog*`） |
+| **共享类型** | `ActivityEvent`（chat/system 事件消费者共享）、`MonitorEvent`（监控事件消费者共享）、`EnvelopeError`/`EnvelopeTokenUsage`（活类型，见 `contract/envelope_types.go`） |
 | **事件生产** | 不生产业务事件（只提供基础设施） |
 | **事件消费** | 不消费业务事件（Bus 本身是传输层） |
-| **数据库** | FlowLogRepo（flow_log_events 表） |
+| **数据库** | FlowLogRepo（flow_log_events 表）、ActivityRepo（activities 表） |
 | **前端对应** | MonitorPage（Flow Log 展示）、ChatPage（WS 事件流） |
 
 **⚠️ 开发注意**：
-- 新增 `EnvelopeType` 常量时，必须同步更新前端 `realtime/envelope.ts` 的类型定义
-- 修改 `Envelope` 结构体时，影响所有事件消费者（chat/session/monitor/plugin）
+- 新增 `ActivityKind` 常量时，必须同步更新前端 `realtime/activityEvent.ts` 的类型定义
+- 修改 `ActivityEvent` 结构体时，影响所有事件消费者（chat/session/monitor/plugin）
 - 修改 Bus 投递策略时，需回归测试 WS 推送的实时性
+- 详见 ADR-03（统一总线架构，已归档）和 [34-event-system.development.md](./34-event-system.development.md)
 
 ---
 
@@ -324,8 +325,7 @@
 
 **⚠️ 开发注意**：
 - `FlowTracker` 是 `FlowLog` 的替代品（旧 `FlowLog` 为全局函数式 API，`FlowTracker` 为实例化 API）
-- `LogError` 会自动判断是否向 SessionBus 发布 `EnvelopeTypeError`（`shouldPublishFlowChatError` 白名单过滤 monitor-only 错误）
-- `flowStepsSkipChatError` 列表中的 stepID 不会作为 chat toast 展示
+- ADR-03 Phase 5 后：`FlowTracker.emit` 直接发布到 `MonitorEventBus`（`contract.MonitorEvent`），不再走 `Infra.Publish` 路由表；`LogError` 不再向 SessionBus 发布 `EnvelopeTypeError`（`shouldPublishFlowChatError`/`flowStepsSkipChatError` 死代码已删除）
 - 修改 `emit` 方法签名或 `FlowLogEntry` 结构时，需同步 MonitorPage 的 Flow Log 展示
 
 ---

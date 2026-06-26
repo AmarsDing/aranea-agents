@@ -258,7 +258,7 @@ func (o *ChatOrchestrator) persistTurnUserMessage(
 			AttachmentsCount: attN,
 		}
 		// AF-correlation: TurnID 必须等于 userMsg.ID，使前端通过 API 加载的
-		// user message 的 turn_id 非空，useConversationTimeline 才能将 Activity
+		// user message 的 turn_id 非空，useActivityTimeline 才能将 Activity
 		// 记录关联到此 UserTurn。缺失会导致 loadMessages 用服务器消息替换
 		// pending-user 占位消息后 turn_id 丢失，思考和回复 UI 不显示。
 		//

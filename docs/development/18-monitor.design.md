@@ -1152,6 +1152,8 @@ Monitor 已实现六大 Tab（Audit / Alerts / Events / Runs / Usage / Logs）�
 
 ## 1. MON-OPT-01：FlowLog 流彻底分离到 MonitorBus
 
+> **迁移完成说明（2026-06-27，ADR-03 Phase 5）**：本节描述的 DualBus/Envelope 路由方案是当时的设计方案。最终实现采用更彻底的方案——删除 legacy Envelope Bus，FlowLog 通过 `contract.MonitorEvent` 在 `MonitorEventBus` 上传输（不再走 Envelope）。`TraceEmitter`/`FlowTracker` 已迁移到 `MonitorEventBus`，`SelfHealObserver`/`TraceProjector` 也已从旧 envelope bus 迁移到 `MonitorEventBus`（修复了死订阅 bug）。下方设计方案保留作为历史记录，当前实际架构见 ADR-03（统一总线架构，已归档）和 [34-event-system.development.md](./34-event-system.development.md)。
+
 ### 1.1 现状与业务问题
 
 | 来源 | 目标 Bus | 是否合规 |

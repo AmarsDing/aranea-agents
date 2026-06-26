@@ -504,13 +504,16 @@ internal/data          ← Repo 实现
 
 **要求**：事件按业务关键性分级，不同级别有不同的可靠性保证。
 
+> **Activity 模型分级（当前实现，详见 ADR-04）**：Activity 事件模型采用 2 级分级，将原 Critical 并入 Important。理由：chat 应用非 checkpoint 恢复系统，进程崩溃丢数据风险可接受；async persist + dead-letter(512) + reconnect replay 已提供充分补偿。WBPF 会为 terminal 事件增加 DB I/O 延迟而无实质可靠性收益。
+
 | 级别 | 事件类型 | 可靠性保证 | 持久化 |
 |------|---------|-----------|--------|
-| Critical | ToolResult / Error / RunnerCompletion / Checkpoint | WBPF（先写后发）+ 重试 | SQLite WAL |
-| Important | StateDelta / TokenUsage / RunStatus / SessionStatusChanged / GraphNodeEnd / TeamRunFinished | BlockUpTo + 异步持久化 | SQLite EventStore |
-| Informational | TextDelta / FlowLog / Log / MemberDelta | 尽力而为 | 不持久化 |
+| Important | `created` / `completed` / `failed` / `cancelled`（含原 Critical：ToolResult / Error / RunnerCompletion） | async persist + 重试（5 次指数退避）+ dead-letter 缓冲 + sync publish | activities 表（SQLite WAL） |
+| Informational | `streaming` / `updated`（含原 TextDelta / FlowLog 等） | async persist（失败丢弃）+ sync publish（streaming 16ms 批合并） | activities 表（尽力而为） |
 
 **检测方式**：代码审查时校验新增事件类型的分级是否正确。
+
+**实现位置**：[activity_event_sequencer.go:311](../internal/agent/activity_event_sequencer.go#L311) `processTask` — async persist via `persistChan` + sync `eventBus.Publish`；失败经 `persistWithRetry` 重试后入 `deadLetter` 环形缓冲。
 
 ---
 
