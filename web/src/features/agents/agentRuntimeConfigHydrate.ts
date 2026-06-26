@@ -191,7 +191,7 @@ export function hydrateRuntimeFromSettings(
     skillRuntime: parseSkillRuntimeForm(settings.skill_runtime_json),
     code_executor_type: settings.code_executor_type || 'local',
     intent_pass: {
-      enabled: settings.intent_pass_enabled ?? false,
+      enabled: settings.intent_pass_enabled ?? true,
     },
     spirit: {
       ...config.spirit,

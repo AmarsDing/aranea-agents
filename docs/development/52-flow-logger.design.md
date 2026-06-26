@@ -1,6 +1,6 @@
 # FlowLogger 流程日志 — 技术设计
 
-> **版本**：2026-06-17 | **对应需求**：[52-flow-logger.md](./52-flow-logger.md)  
+> **版本**：2026-06-27 | **对应需求**：[52-flow-logger.md](./52-flow-logger.md)  
 > **开发计划**：[52-flow-logger.development.md](./52-flow-logger.development.md)  
 > **遵循**：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md) · [AGENT_RUNTIME_BOUNDARY.md](../AGENT_RUNTIME_BOUNDARY.md)  
 > **关联**：[18 monitor.design.md](./18%20monitor.design.md) · [24-telemetry-development.md](./24-telemetry-development.md)  
@@ -132,11 +132,19 @@ func TraceContextFromContext(ctx context.Context) (TraceContext, bool)
   "message": "模型已返回，开始处理输出流（3240ms）",
   "timing": { "duration_ms": 3240 },
   "error": null,
+  "span_id": "otel_root_span_id",
+  "parent_span_id": "",
   "extra": { "provider": "openai", "model": "gpt-4o" }
 }
 ```
 
-实现：`internal/event/flow_log.go`（含 `stepTitleRegistry` 中文 title、`normalizeStepID` v1→v2 别名、`severityForPhase` 推导）。
+**`span_id` / `parent_span_id`**（Phase 1 of Problem 4，2026-06-27）：
+- `span_id` = OTel turn-root span ID，由 `FlowTracker.SetOtelRefs(traceID, rootSpanID)` 注入；空表示未配置 OTel。
+- `parent_span_id` = turn-root 的上游 OTel parent span ID；当前阶段留空（reserved for future per-step linkage）。
+- 用途：将 FlowLog 与 OTel trace（Jaeger）通过共享 `span_id` 关联，实现"一次写入、多投影"的跨系统对齐（见需求 §2.3）。
+- 落库：通过 `toMetadata()` 写入 `payload_json`，无需独立 DB 列。
+
+实现：`internal/event/flow_log.go`（含 `stepTitleRegistry` 中文 title、`normalizeStepID` v1→v2 别名、`severityForPhase` 推导、`SpanID`/`ParentSpanID` 字段）。
 
 ### 3.3 severity 推导
 
@@ -408,6 +416,7 @@ internal/cronrunner/jobs/
 | `chat.first_byte_timeout` | error | critical | 模型响应过慢 | |
 | `chat.pending_dequeue` | start/done/error | info / ok / error | 处理排队消息 | |
 | `chat.usage_record` | error | error | 用量记录失败 | Token/Span 落库 |
+| `chat.turn.usage_source` | done | info | 用量来源追踪 | 仅当 UsageSource 为空或 estimated 时记录；诊断框架抑制 usage 的 TECH-DEBT |
 
 #### Team（`domain=team`）
 

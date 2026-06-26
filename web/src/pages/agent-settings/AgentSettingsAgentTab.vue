@@ -223,8 +223,8 @@
             <div>
               <div class="settings-subsection__title">意图 Pass</div>
               <p class="settings-subsection__hint">
-                开启后每轮用户消息进入主模型前先做轻量意图梳理（默认关闭，与后端一致）。全局可用
-                <code>ARANEA_INTENT_PASS=1</code> 强制开启。
+                开启后每轮用户消息进入主模型前先做轻量意图梳理（默认开启，与后端一致）。全局可用
+                <code>ARANEA_INTENT_PASS=0</code> 强制关闭。
               </p>
             </div>
             <q-toggle v-model="config.intent_pass.enabled" />

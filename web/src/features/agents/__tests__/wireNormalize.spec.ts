@@ -51,7 +51,7 @@ describe('normalizeRuntimeSettingsFromWire', () => {
     expect(settings?.self_evolve).toBe(true);
     expect(settings?.memory_enabled).toBe(true);
     expect(settings?.heartbeat_enabled).toBe(false);
-    expect(settings?.intent_pass_enabled).toBe(false);
+    expect(settings?.intent_pass_enabled).toBe(true);
     expect(settings?.tools_profile).toBe('coding');
   });
 });

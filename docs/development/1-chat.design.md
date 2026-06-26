@@ -1750,7 +1750,7 @@ web/src/
 │   ├── SessionTreeNode.vue        ← Session 树节点（递归组件：session_type 图标 + depth badge + execution_stage + progress_pct）
 │   ├── ChatMessagePanel.vue       ← 中间对话内容 + 输入区域（Container: approved）
 │   ├── ChatMessageList.vue        ← 消息列表（直接渲染 ActivityStream，无 ConversationTurn 中间层）
-│   ├── ActivityStream.vue         ← Activity 统一渲染器（按 activity.kind 分发到对应 Block 组件）
+│   ├── ActivityStream.vue         ← Activity 统一渲染器（递归组件：按 activity.kind 分发 Block；按 activityTree.children 嵌套缩进渲染子 Activity）
 │   ├── ChatReasoningPeek.vue      ← Reasoning 折叠展示（live tail + 展开）
 │   ├── ChatReasoningDrawer.vue    ← Reasoning 抽屉
 │   ├── ChatExecutionCard.vue      ← 执行过程卡片（原 ChatToolCallCard；默认折叠 + v2 元数据）
@@ -1826,17 +1826,18 @@ WsTransport（WS 连接管理：连接/重连/心跳/断线后通过 ListActivit
 useChatStreamManager（统一管理单 Agent + Team 事件流）
   ├─ activity_event? → useActivityTimeline（activitiesBySession Map + sortedActivities + ensureActivitiesLoaded 缓存）
   │   ↓ 按 activity.kind 分发
-  │   ActivityStream.vue（统一渲染器）
+  │   ActivityStream.vue（递归统一渲染器，prop: activityTree: ActivityTreeNode[]）
   │     ├─ task         → UserMessageBubble
   │     ├─ thinking     → ThinkingBlock
   │     ├─ action       → ActionBlock（按 tool_category 细分子组件）
   │     ├─ reply        → ReplyBlock
-  │     ├─ plan         → PlanBlock
+  │     ├─ plan         → PlanBlock（叶节点：不再渲染子 Activity）
   │     ├─ confirm      → ConfirmBlock
   │     ├─ notice       → NoticeBlock
-  │     ├─ session      → SessionStageBlock
-  │     ├─ team_stage   → TeamStageBlock
-  │     └─ graph_stage  → GraphStageBlock
+  │     ├─ session      → SessionStageBlock（可点击进入子 Session：emit enter-session）
+  │     ├─ team_stage   → TeamStageBlock（emit expand-member 带 teamId）
+  │     ├─ graph_stage  → GraphStageBlock
+  │     └─ ⤷ node.children 非空 → 递归渲染 <ActivityStream :activity-tree="children">（缩进 + 左边线）
   └─ monitor_event? → useSystemEventNotification（toast/notification，不进时间线）
 useChatRunStatus（RunStatus 轮询 + isAwaiting + submitReply）
   ↓ 状态聚合
@@ -1847,9 +1848,11 @@ ChatMessagePanel（ActivityStream + 待执行列表 + 输入框）
 
 **关键设计**：
 - **零推理消费**：前端不再从 Envelope 字段推断渲染类型，直接按 `activity.kind` 路由到 Block 组件
-- **stable upsert**：`activitiesBySession` Map 以 `activity.id` 为键，同一 Activity 的 created→streaming→completed 事件原地更新，不产生重复卡片
+- **递归嵌套渲染（Phase A）**：`ActivityStream` 为 `defineOptions({ name: 'ActivityStream' })` 递归组件；prop 为 `activityTree: ActivityTreeNode[]`；node.children 非空时递归渲染自身到 `.event-stream__children`（缩进 14px + 左边线 2px）。子 Activity 由树层级统一渲染，Block 组件不感知 children（如 `PlanBlock` 为叶节点）
+- **stable upsert + 乱序合并**：`activitiesBySession` Map 以 `activity.id` 为键；`created` 分支采用 merge（`{ ...snapshot, ...existing }`），保留 `streaming` 先到时累积的 content/reasoning，避免 WS 乱序丢数据
 - **缓存优化**：`ensureActivitiesLoaded(sessionId)` 命中缓存时跳过 ListActivities RPC；失败时降级为空列表 + 重试
 - **Domain 分流**：`Domain=chat` 进入 ActivityStream 时间线；`Domain=system` 进入 useSystemEventNotification（toast/通知栏，不进时间线）
+- **后端 ParentActivityID 完整性**：`ActivityProjector` 创建 plan/graph 等 child Activity 时必须设置 `ParentActivityID: p.rootActivityID`，保证前端按 `parentActivityId` 构建的树结构与设计意图一致
 - **重连恢复**：WS 断线重连后，前端记录最后 `updated_at`，调用 `ListActivities?since={updated_at}` 拉取增量 Activity 合并到 Map
 
 ### 11.2 页面布局

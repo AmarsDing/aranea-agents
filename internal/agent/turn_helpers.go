@@ -26,6 +26,13 @@ type EventStreamResult struct {
 	Reasoning     strings.Builder
 	PromptTok     int
 	CompletionTok int
+	// UsageSource indicates where PromptTok/CompletionTok came from:
+	//   ""                   — no usage data observed (stream errored before usage emission; TECH-DEBT)
+	//   "streaming"          — accumulated from streaming chat.completion events
+	//   "runner_completion"  — final usage from RunnerCompletion event (most accurate)
+	//   "estimated"          — filled by EstimateTokensIfMissing from text (rough estimate)
+	// Useful for diagnosing why tokens=0 or why prompt≈completion (estimation fallback).
+	UsageSource string
 	// prevRoundsCompletionTok tracks the sum of completion tokens from
 	// previous LLM rounds (when promptTok increased). CompletionTok is
 	// always prevRoundsCompletionTok + current round's max completion.

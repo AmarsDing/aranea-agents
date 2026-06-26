@@ -28,18 +28,18 @@ func DisplayMarkdownFromStream(result EventStreamResult) (string, bool) {
 	return reasoning, reasoning != ""
 }
 
-// EstimateTokensIfMissing fills token counts from text when the model omitted usage.
+// EstimateTokensIfMissing fills missing token counts from text using a symmetric
+// "fill missing" semantic: each side is estimated independently from its own text.
+// Caller must pass non-empty inputPreview for prompt estimation to work (chat path
+// historically passed "" which suppressed prompt estimation — fixed at call sites).
 func EstimateTokensIfMissing(promptTok, completionTok int, inputPreview, displayMarkdown string) (int, int) {
-	if promptTok > 0 && completionTok > 0 {
-		return promptTok, completionTok
-	}
-	if promptTok <= 0 && completionTok > 0 && strings.TrimSpace(inputPreview) != "" {
+	if promptTok <= 0 {
 		promptTok = RoughTokenEstimate(inputPreview)
 	}
-	if promptTok > 0 || completionTok > 0 || displayMarkdown == "" {
-		return promptTok, completionTok
+	if completionTok <= 0 {
+		completionTok = RoughTokenEstimate(displayMarkdown)
 	}
-	return RoughTokenEstimate(inputPreview + displayMarkdown), RoughTokenEstimate(displayMarkdown)
+	return promptTok, completionTok
 }
 
 // ConsumeWithFirstByteGuard runs the turn stream consumer with a first-byte deadline.

@@ -85,7 +85,15 @@ type FlowLogEntry struct {
 	Hint          string          `json:"hint,omitempty"`
 	Timing        *FlowTiming     `json:"timing,omitempty"`
 	Error         *FlowError      `json:"error,omitempty"`
-	Extra         map[string]any  `json:"extra,omitempty"`
+	// SpanID is the OTel span ID of the turn root, enabling cross-reference
+	// between FlowLog and OTel trace (Jaeger). Populated via SetOtelRefs.
+	// Empty when OTel tracing is not configured. Phase 1 of Problem 4.
+	SpanID string `json:"span_id,omitempty"`
+	// ParentSpanID is the OTel parent span ID of the turn root. Empty for
+	// turn-root spans (no upstream OTel parent). Reserved for future phases
+	// that may populate per-step parent linkage.
+	ParentSpanID string `json:"parent_span_id,omitempty"`
+	Extra        map[string]any `json:"extra,omitempty"`
 }
 
 // stepTitleRegistry maps step_id → default Chinese title for humans.
@@ -104,6 +112,7 @@ var stepTitleRegistry = map[string]string{
 	"chat.turn.empty_reply":                "未收到模型回复",
 	"chat.first_byte_timeout":              "模型响应过慢",
 	"chat.usage_record":                    "用量记录",
+	"chat.turn.usage_source":               "用量来源追踪",
 	"chat.pending_dequeue":                 "处理排队消息",
 	"knowledge.rerank.fallback":            "重排降级为向量排序",
 	"event_bus.usage.record":               "用量事件写入失败",
@@ -251,6 +260,12 @@ func (e FlowLogEntry) toMetadata() map[string]any {
 		"title":          e.Title,
 		"message":        e.Message,
 	}
+	if e.SpanID != "" {
+		m["span_id"] = e.SpanID
+	}
+	if e.ParentSpanID != "" {
+		m["parent_span_id"] = e.ParentSpanID
+	}
 	if e.Hint != "" {
 		m["hint"] = e.Hint
 	}
@@ -269,7 +284,7 @@ func (e FlowLogEntry) toMetadata() map[string]any {
 	return m
 }
 
-func newFlowLogEntry(tc TraceContext, stepID string, phase FlowPhase, sev FlowSeverity, title, message, hint string, timing *FlowTiming, flowErr *FlowError, extra map[string]any) FlowLogEntry {
+func newFlowLogEntry(tc TraceContext, rootSpanID, stepID string, phase FlowPhase, sev FlowSeverity, title, message, hint string, timing *FlowTiming, flowErr *FlowError, extra map[string]any) FlowLogEntry {
 	if title == "" {
 		title = stepTitle(stepID)
 	}
@@ -297,6 +312,7 @@ func newFlowLogEntry(tc TraceContext, stepID string, phase FlowPhase, sev FlowSe
 		Hint:     hint,
 		Timing:   timing,
 		Error:    flowErr,
+		SpanID:   rootSpanID,
 		Extra:    extra,
 	}
 }

@@ -46,3 +46,58 @@ func TestEstimateTokensIfMissing_skipsWhenUsagePresent(t *testing.T) {
 		t.Fatalf("in=%d out=%d", in, out)
 	}
 }
+
+// TestEstimateTokensIfMissing_estimatesPromptFromInput covers the chat-path bug:
+// when promptTok=0 but completionTok>0, prompt should be estimated from inputPreview
+// (not from output text).
+func TestEstimateTokensIfMissing_estimatesPromptFromInput(t *testing.T) {
+	in, out := EstimateTokensIfMissing(0, 5, "user input text", "reply")
+	if in != RoughTokenEstimate("user input text") {
+		t.Fatalf("prompt estimated wrong: in=%d want=%d", in, RoughTokenEstimate("user input text"))
+	}
+	if out != 5 {
+		t.Fatalf("completion should be preserved: out=%d want=5", out)
+	}
+}
+
+// TestEstimateTokensIfMissing_estimatesCompletionFromOutput covers the symmetric case:
+// when completionTok=0 but promptTok>0, completion should be estimated from displayMarkdown.
+func TestEstimateTokensIfMissing_estimatesCompletionFromOutput(t *testing.T) {
+	in, out := EstimateTokensIfMissing(7, 0, "input", "assistant reply text")
+	if in != 7 {
+		t.Fatalf("prompt should be preserved: in=%d want=7", in)
+	}
+	if out != RoughTokenEstimate("assistant reply text") {
+		t.Fatalf("completion estimated wrong: out=%d want=%d", out, RoughTokenEstimate("assistant reply text"))
+	}
+}
+
+// TestEstimateTokensIfMissing_estimatesBothWhenAbsent covers both missing:
+// prompt from input, completion from output — independently, not from combined text.
+func TestEstimateTokensIfMissing_estimatesBothWhenAbsent(t *testing.T) {
+	in, out := EstimateTokensIfMissing(0, 0, "user input", "assistant reply")
+	wantIn := RoughTokenEstimate("user input")
+	wantOut := RoughTokenEstimate("assistant reply")
+	if in != wantIn {
+		t.Fatalf("prompt estimated wrong: in=%d want=%d", in, wantIn)
+	}
+	if out != wantOut {
+		t.Fatalf("completion estimated wrong: out=%d want=%d", out, wantOut)
+	}
+	// Critical: prompt and completion must NOT be equal when input/output differ in size.
+	if in == out {
+		t.Fatal("prompt and completion should differ when input/output text sizes differ (regression: old 4-branch logic estimated both from output, making them equal)")
+	}
+}
+
+// TestEstimateTokensIfMissing_emptyInputReturnsZeroPrompt covers the empty-input case:
+// when inputPreview="" and promptTok=0, prompt stays 0 (no spurious estimation from output).
+func TestEstimateTokensIfMissing_emptyInputReturnsZeroPrompt(t *testing.T) {
+	in, out := EstimateTokensIfMissing(0, 0, "", "reply text")
+	if in != 0 {
+		t.Fatalf("empty input should yield prompt=0, got %d (regression: old logic estimated prompt from output text)", in)
+	}
+	if out != RoughTokenEstimate("reply text") {
+		t.Fatalf("completion estimated wrong: out=%d", out)
+	}
+}

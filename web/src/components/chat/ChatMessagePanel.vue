@@ -151,7 +151,7 @@
             :planner-kind="props.plannerKind"
             :reasoning-sidebar-open="props.reasoningSidebarOpen"
             :show-scroll-btn="showScrollBtn"
-            :activities="props.activities ?? []"
+            :activity-tree="props.activityTree ?? []"
             @messages-click="handleMessagesClick"
             @scroll="onMessagesScrollWrapped"
             @scroll-to-bottom="scrollToBottom"
@@ -377,9 +377,11 @@ const props = defineProps<{
   spiritEvolutionSuggestion?: EvolutionSuggestion | null;
   compressStatus?: CompressStatus;
   showToolCalls?: boolean;
-  /** Phase A: flat sorted Activity list (current session, includes task).
-   * Drives ActivityStream rendering inside ChatMessageList. */
-  activities?: import('../../features/chat/activityTypes').Activity[];
+  /** B-04 / Phase A: Activity tree (roots) for nested rendering. Each node
+   * carries its own children; ActivityStream recurses over them to render
+   * parent-child Activities with visual indentation. Replaces the previous
+   * flat `activities: Activity[]` prop. */
+  activityTree?: import('../../features/chat/activityTypes').ActivityTreeNode[];
 }>();
 
 const emit = defineEmits<{

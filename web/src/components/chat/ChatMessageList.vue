@@ -1,7 +1,7 @@
 <template>
   <div :key="sessionKey" class="chat-messages col column no-wrap" style="min-height: 0">
     <div
-      v-if="!messages.length"
+      v-if="!messages.length && !activityTree.length"
       ref="emptyScrollEl"
       class="col relative-position chat-messages__viewport"
       @click="$emit('messages-click', $event)"
@@ -41,7 +41,7 @@
       @click="$emit('messages-click', $event)"
     >
       <ActivityStream
-        :activities="props.activities"
+        :activity-tree="props.activityTree"
         @confirm="(id: string, approved: boolean) => $emit('confirm', id, approved)"
         @error-retry="(e: ErrorEvent) => $emit('error-retry', e)"
         @error-switch-model="(e: ErrorEvent) => $emit('error-switch-model', e)"
@@ -83,7 +83,7 @@ import ActivityStream from './ActivityStream.vue';
 import type { Message, PendingMessage } from '../../features/chat/types';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
-import type { Activity } from '../../features/chat/activityTypes';
+import type { ActivityTreeNode } from '../../features/chat/activityTypes';
 import type { ErrorEvent } from '../../features/chat/streamEventTypes';
 
 const props = defineProps<{
@@ -95,8 +95,11 @@ const props = defineProps<{
   plannerKind?: string;
   reasoningSidebarOpen?: boolean;
   showScrollBtn: boolean;
-  /** Phase A: flat sorted Activity list (current session, includes task). */
-  activities: Activity[];
+  /** B-04 / Phase A: Activity tree (roots) for nested rendering. Replaces the
+   * previous flat `activities: Activity[]` prop — each node carries its own
+   * children, and ActivityStream recurses over them to render parent-child
+   * Activities with visual indentation. */
+  activityTree: ActivityTreeNode[];
 }>();
 
 defineEmits<{
@@ -164,7 +167,7 @@ defineExpose({
   useVirtualScroll,
   scrollToTurnId,
   getScrollTarget: () => {
-    if (!props.messages.length) return emptyScrollEl.value;
+    if (!props.messages.length && !props.activityTree.length) return emptyScrollEl.value;
     return scrollViewportEl.value;
   },
 });

@@ -6,6 +6,8 @@ import (
 	v1 "aranea-agents/api/kratos/agent/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/service"
+
+	"google.golang.org/protobuf/proto"
 )
 
 func TestFromProtoRuntime_Nil(t *testing.T) {
@@ -86,7 +88,7 @@ func TestFromProtoRuntime_RoundTrip(t *testing.T) {
 		ToolsDenyJson:                     `[]`,
 		ToolsConcurrentAllowJson:          `["search"]`,
 		SkillRuntimeJson:                  `{"allow":["*"]}`,
-		IntentPassEnabled:                 true,
+		IntentPassEnabled:                 proto.Bool(true),
 		SkillLoadMode:                     "auto",
 		SelfEvolve:                        true,
 		SubagentsEnabled:                  true,
@@ -922,12 +924,41 @@ func TestFromProtoTools(t *testing.T) {
 func TestFromProtoSkills(t *testing.T) {
 	pb := &v1.AgentRuntimeSettings{
 		SkillRuntimeJson:  `{"allow":["*"]}`,
-		IntentPassEnabled: true,
+		IntentPassEnabled: proto.Bool(true),
 		SkillLoadMode:     "auto",
 	}
 	cfg := service.FromProtoSkills(pb)
 	if cfg.RuntimeJSON != `{"allow":["*"]}` || !cfg.IntentPassEnabled || cfg.LoadMode != "auto" {
 		t.Fatalf("skills mismatch: %+v", cfg)
+	}
+}
+
+// TestFromProtoSkills_AbsentDefaultsToTrue verifies P1-1: when intent_pass_enabled
+// is absent in the proto request, the service layer defaults to true (matching
+// DefaultAgentRuntimeSettings and the Ent schema default).
+func TestFromProtoSkills_AbsentDefaultsToTrue(t *testing.T) {
+	pb := &v1.AgentRuntimeSettings{
+		SkillRuntimeJson: `{"allow":["*"]}`,
+		SkillLoadMode:    "auto",
+		// IntentPassEnabled intentionally nil
+	}
+	cfg := service.FromProtoSkills(pb)
+	if !cfg.IntentPassEnabled {
+		t.Fatal("IntentPassEnabled should default to true when absent (P1-1)")
+	}
+}
+
+// TestFromProtoSkills_ExplicitFalseRespected verifies that an explicit false
+// from the API caller is preserved (e.g., user turning off intent pass).
+func TestFromProtoSkills_ExplicitFalseRespected(t *testing.T) {
+	pb := &v1.AgentRuntimeSettings{
+		SkillRuntimeJson:  `{"allow":["*"]}`,
+		IntentPassEnabled: proto.Bool(false),
+		SkillLoadMode:     "auto",
+	}
+	cfg := service.FromProtoSkills(pb)
+	if cfg.IntentPassEnabled {
+		t.Fatal("explicit IntentPassEnabled=false should be respected")
 	}
 }
 

@@ -163,7 +163,7 @@ export function normalizeRuntimeSettingsFromWire(raw: unknown): AgentRuntimeSett
       20,
     ),
     skill_runtime_json: pickStr(w, 'skillRuntimeJson', 'skill_runtime_json', '{}'),
-    intent_pass_enabled: pickBool(w, 'intentPassEnabled', 'intent_pass_enabled', false),
+    intent_pass_enabled: pickBool(w, 'intentPassEnabled', 'intent_pass_enabled', true),
     variables_json: pickStrOpt(w, 'variablesJson', 'variables_json'),
     model_instructions_json: pickStrOpt(w, 'modelInstructionsJson', 'model_instructions_json'),
     context_compaction_enabled: pickBoolOpt(w, 'contextCompactionEnabled', 'context_compaction_enabled'),

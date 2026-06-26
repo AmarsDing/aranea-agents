@@ -96,6 +96,10 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260825, Name: "activity_session_tree_columns", SQL: "sql/migrations/20260825_activity_session_tree_columns.sql"},
 	{Version: 20260901, Name: "drop_event_store_subsystem", SQL: "sql/migrations/20260901_drop_event_store_subsystem.sql"},
 	{Version: 20260902, Name: "drop_messages_subsystem", SQL: "sql/migrations/20260902_drop_messages_subsystem.sql"},
+	// 20260903 intent_pass_default_on: correct historical false default for non-A2A agents (P1-1).
+	// Ent schema default was false (bug); DDL migration 20260607 set column default 1 but Ent always
+	// wrote explicit false on create. A2A proxy agents keep false (set explicitly in biz layer).
+	{Version: 20260903, Name: "intent_pass_default_on", Func: ddlIntentPassDefaultOnMigration},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -473,6 +477,50 @@ func ddlHealRecordMetadataColumn(ctx context.Context, rawDB *sql.DB, _ *ent.Clie
 	}
 	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE heal_records ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'`); err != nil && !d.AlreadyExistsErr(err) {
 		return fmt.Errorf("add heal_records.metadata: %w", err)
+	}
+	return nil
+}
+
+// ddlIntentPassDefaultOnMigration corrects the historical false default of
+// intent_pass_enabled for non-A2A agents. A2A proxy agents (config_json contains
+// "a2a_proxy") keep false (set explicitly in biz.validateAgentUpdate when
+// IsA2AProxyAgent(agent) is true).
+// Idempotent: only updates rows where intent_pass_enabled = FALSE.
+func ddlIntentPassDefaultOnMigration(ctx context.Context, rawDB *sql.DB, _ *ent.Client, _ Dialect, lg loggateway.Logger) error {
+	if rawDB == nil {
+		return nil
+	}
+	tx, err := rawDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin intent_pass_default_on tx: %w", err)
+	}
+	defer tx.Rollback()
+	// Flip false → true for non-A2A agents. A2A proxy agents are identified by
+	// config_json containing "a2a_proxy" (agent_kind=a2a_proxy embedded by
+	// EmbedAgentKindInConfigJSON). Excluding them preserves their explicit false.
+	// Use TRUE/FALSE literals (not 1/0): Ent field.Bool maps to PostgreSQL boolean,
+	// which rejects "boolean = integer" with pq: operator does not exist (42883).
+	// SQLite 3.23+ also accepts TRUE/FALSE as aliases for 1/0, so this is portable.
+	res, err := tx.ExecContext(ctx, `
+		UPDATE agent_runtime_settings
+		SET intent_pass_enabled = TRUE
+		WHERE intent_pass_enabled = FALSE
+		  AND agent_id IN (
+		    SELECT id FROM agents
+		    WHERE config_json NOT LIKE '%a2a_proxy%'
+		      AND deleted_at = ''
+		  )
+	`)
+	if err != nil {
+		return fmt.Errorf("migrate intent_pass_enabled default on: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		lg.Info("intent_pass_default_on migration applied",
+			loggateway.StepID("data.migration.intent_pass_default_on"),
+			loggateway.Int("rows_updated", int(n)))
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit intent_pass_default_on migration: %w", err)
 	}
 	return nil
 }

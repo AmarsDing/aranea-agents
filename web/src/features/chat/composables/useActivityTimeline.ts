@@ -212,8 +212,22 @@ export function useActivityTimeline() {
 
     switch (ev.event) {
       case 'created': {
-        // Full snapshot: create or replace the Activity in the map.
-        map.set(snapshot.id, snapshot);
+        // B-08: Merge instead of overwrite. The `created` snapshot carries
+        // the initial structural state (kind, parentActivityId, sessionId,
+        // turnId, …). When the WS event stream is in order, the map has no
+        // prior entry and we just `set` it. But the sequencer is a single
+        // goroutine consuming from persistChan + sync publish — under load,
+        // a `streaming` envelope (which upserts the Activity with the
+        // accumulated content) can be observed before the `created` envelope.
+        //
+        // In that case, a naive `map.set(snapshot.id, snapshot)` would
+        // DISCARD the streaming-accumulated content/reasoning/toolArguments
+        // (replacing them with the empty initial state from `created`).
+        // The fix: take the `created` snapshot as the structural base, then
+        // overlay any pre-existing accumulated fields so streaming data
+        // survives the late-arriving `created`.
+        const existing = map.get(snapshot.id);
+        map.set(snapshot.id, existing ? { ...snapshot, ...existing } : snapshot);
         triggerRef(activitiesBySession);
         if (!snapshot.parentActivityId) {
           setRootForSession(sessionId, snapshot.id);

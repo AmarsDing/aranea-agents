@@ -178,25 +178,35 @@
 - `internal/agent/intent/parse_test.go`（`TestIntentPassFromAgent_NilSettings` 断言改为 true）
 - `internal/biz/agent_defaults.go`（`IntentPassEnabled` 默认 false → true）
 - `internal/biz/agent_types.go`（字段注释更新）
+- `api/kratos/agent/v1/agent.proto`（`intent_pass_enabled` 改为 `optional bool`，支持区分"未设置"与"显式 false"；Problem 6 修复）
+- `internal/service/agent.go`（`fromProtoSkills`：`pb.IntentPassEnabled == nil` 时默认 true；`toProtoRuntime` 用 `proto.Bool`）
+- `internal/service/service_agent_mapping_test.go`（新增 `TestFromProtoSkills_AbsentDefaultsToTrue` + `TestFromProtoSkills_ExplicitFalseRespected`）
+- `internal/data/ent/schema/agent_runtime_setting.go`（`intent_pass_enabled` Default(false) → Default(true)）
+- `internal/data/ddl_migration_registry.go`（新增 `20260903_intent_pass_default_on` 迁移：将非 A2A Agent 的历史 false 翻转为 true）
+- `web/src/features/agents/wireNormalize.ts`（`pickBool` 默认值 false → true）
+- `web/src/features/agents/agentRuntimeConfigHydrate.ts`（`?? false` → `?? true`）
+- `web/src/pages/agent-settings/AgentSettingsAgentTab.vue`（文案"默认关闭" → "默认开启"）
 - `docs/guides/prompt/assembly.md`、`docs/guides/prompt/README.md`（"默认 false" → "默认 true"）
 
 **实现细节**：
-- `IntentPassEnabled` 为 plain bool（非 `*bool`），无法区分"未设置"与"显式 false"
-- 采用双层默认 ON 策略：
+- 采用四层默认 ON 策略（Problem 6 修复后完整链路）：
   1. `IntentPassFromAgent`：`ag.Settings == nil` 时返回 `true`（无 settings = 默认 ON）
   2. `DefaultAgentRuntimeSettings()`：`IntentPassEnabled: true`（新 Agent 默认 ON）
-- 显式 `IntentPassEnabled=false` 仍被尊重（agent setting 可关闭）
-- A2A Proxy Agent 在 `agent_usecase.go:411` 显式覆盖为 `false`，不受默认值变更影响
-- 现有 DB 中已持久化 `false` 的 Agent 保持 OFF（不追溯变更）
+  3. Proto3 `optional bool intent_pass_enabled`：service 层 `pb.IntentPassEnabled == nil` 时默认 true（API 路径默认 ON）
+  4. Ent Schema `Default(true)` + DDL 迁移：新持久化数据默认 true，历史 false 翻转为 true（非 A2A）
+- 显式 `IntentPassEnabled=false` 仍被尊重（agent setting 可关闭，proto `optional` 区分"未设置"与"显式 false"）
+- A2A Proxy Agent 在 `agent_usecase.go:425` 显式覆盖为 `false`，不受默认值变更影响
+- DDL 迁移 `ddlIntentPassDefaultOnMigration` 通过 `config_json NOT LIKE '%a2a_proxy%'` 过滤 A2A Agent，保证 A2A 不被翻转
 
 **验收**：
 - ✅ 默认场景 Intent Pass 执行（`TestIntentPassFromAgent_DefaultOn` + `TestShouldRun` nil Settings 用例）
 - ✅ agent setting 可关闭（`TestPassEffective` `{"", false, false}` 用例 + `TestIntentPassFromAgent_DefaultOn` 显式 false 用例）
+- ✅ proto optional 区分未设置与显式 false（`TestFromProtoSkills_AbsentDefaultsToTrue` + `TestFromProtoSkills_ExplicitFalseRespected`）
 - ✅ `go build ./internal/agent/... ./internal/biz/...` 通过
 - ✅ `go vet ./internal/agent/intent/` 通过
-- ✅ 相关测试全部通过（intent 包 + biz 包默认值相关测试）
+- ✅ 相关测试全部通过（intent 包 + biz 包 + service 包默认值相关测试）
 
-**状态**：✅ 完成
+**状态**：✅ 完成（Problem 6 修复后链路完整）
 
 ### 4.2 P1-2：预规划门控
 

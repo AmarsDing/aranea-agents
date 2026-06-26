@@ -75,7 +75,7 @@
         :spirit-evolution-suggestion="spiritStore.lastEvolutionSuggestion"
         :compress-status="session.compressStatus"
         :show-tool-calls="uiConfig.showToolCalls"
-        :activities="session.activityTimeline.sortedActivities"
+        :activity-tree="session.activityTimeline.activityTree"
         :session-loading="session.sessionLoading"
         :session-revision="session.sessionRevision"
         :ws-connected="session.wsConnected"

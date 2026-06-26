@@ -54,10 +54,9 @@
       </template>
       <!-- Unified event stream rendering (replaces TaskBoard + ActivityTimeline) -->
       <ActivityStream
-        v-if="agentWork.activities.length"
-        :events="agentWork.activities"
-        :agent-color="agentWork.agentColor"
+        v-if="agentWork.activityTree?.length"
         :activity-tree="agentWork.activityTree"
+        :agent-color="agentWork.agentColor"
         @confirm="(id, approved) => $emit('confirm', id, approved)"
         @error-retry="(e) => $emit('error-retry', e)"
         @error-switch-model="(e) => $emit('error-switch-model', e)"
@@ -65,6 +64,8 @@
         @error-check-config="(e) => $emit('error-check-config', e)"
         @error-remove-attachment="(e) => $emit('error-remove-attachment', e)"
         @error-relogin="(e) => $emit('error-relogin', e)"
+        @expand-member="(p) => $emit('expand-member', p)"
+        @enter-session="(sid) => $emit('enter-session', sid)"
       />
     </div>
   </div>
@@ -95,6 +96,8 @@ defineEmits<{
   'error-check-config': [event: ErrorEvent];
   'error-remove-attachment': [event: ErrorEvent];
   'error-relogin': [event: ErrorEvent];
+  'expand-member': [payload: { agentKey: string; agentName?: string; teamId?: string }];
+  'enter-session': [sessionId: string];
 }>();
 
 const statusClass = computed(() => ({

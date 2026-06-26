@@ -48,7 +48,7 @@ function mountPanel(props: Record<string, unknown>): { container: HTMLElement; a
     providerOptions: [],
     sessionTitle: 'Test',
     isDark: false,
-    activities: [],
+    activityTree: [],
     ...props,
   });
   app.use(i18n);

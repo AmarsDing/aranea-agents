@@ -737,7 +737,27 @@ func (o *ChatOrchestrator) persistTurn(
 		return turnPersistResult{}, o.handleEmptyReply(*ctx, ag, admit, emitter, result, turnStart, turnStatus, turnErr, turnErrMsg, sessionID)
 	}
 
-	promptTok, completionTok := chatagent.EstimateTokensIfMissing(execResult.resultPromptTok, execResult.resultCompletionTok, "", displayMarkdown)
+	// Pass user content as inputPreview so prompt token estimation works when the
+	// model omits usage. Previously passed "" which suppressed estimation and caused
+	// the buggy fallback to estimate prompt from output (prompt≈completion tokens).
+	promptTok, completionTok := chatagent.EstimateTokensIfMissing(execResult.resultPromptTok, execResult.resultCompletionTok, strings.TrimSpace(execResult.userMsg.ContentMarkdown), displayMarkdown)
+
+	// usage_source observability: log when tokens came from estimation or were missing.
+	// Helps diagnose TECH-DEBT(usage-source): framework suppresses usage on stream error
+	// (pkg/trpc-agent-go/model/openai/openai.go:emitStreamingFinalResponse), leaving
+	// UsageSource="" and tokens=0 until EstimateTokensIfMissing fills them.
+	usageSource := execResult.result.UsageSource
+	if promptTok != execResult.resultPromptTok || completionTok != execResult.resultCompletionTok {
+		usageSource = "estimated"
+	}
+	if usageSource == "" || usageSource == "estimated" {
+		emitter.LogDone("chat.turn.usage_source",
+			"token 使用来源追踪",
+			event.P("usage_source", usageSource),
+			event.P("prompt_tok", promptTok),
+			event.P("completion_tok", completionTok),
+			event.P("has_error", execResult.result.HasError))
+	}
 
 	// Build and persist assistant message
 	assistantMsg, err := o.buildAndPersistAssistantMessage(*ctx, ag, admit, execResult, emitter, displayMarkdown, reasoningAsDisplay, promptTok, completionTok, turnStatus, turnErr, turnErrMsg)

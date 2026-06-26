@@ -196,11 +196,19 @@ func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {
 		if ev.Response != nil && ev.Response.Usage != nil {
 			c.result.PromptTok = ev.Response.Usage.PromptTokens
 			c.result.CompletionTok = ev.Response.Usage.CompletionTokens
+			c.result.UsageSource = "runner_completion"
 		}
 		return true
 	}
 
 	if ev.Response != nil && ev.Response.Error != nil {
+		// TECH-DEBT(usage-source): when the stream errors mid-flight, the framework
+		// (pkg/trpc-agent-go/model/openai/openai.go:emitStreamingFinalResponse) suppresses
+		// the final chat.completion event that carries the usage payload. This causes
+		// PromptTok/CompletionTok to remain at 0 even though tokens were consumed.
+		// Cannot fix here (red line #27 — framework source is read-only). The
+		// downstream EstimateTokensIfMissing fallback estimates from text; UsageSource
+		// remains "" to signal the missing usage for observability/diagnostics.
 		return true
 	}
 	if ev.Response == nil {
@@ -214,6 +222,11 @@ func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {
 		accumulateStreamUsage(&c.result, ev, c.projectMeta, usage.PromptTokens, usage.CompletionTokens)
 		if c.result.PromptTok > prevPrompt {
 			c.publishContextUsageStep()
+		}
+		// Streaming usage is interim; only mark as streaming if RunnerCompletion
+		// hasn't already set the authoritative source.
+		if c.result.UsageSource == "" {
+			c.result.UsageSource = "streaming"
 		}
 	}
 

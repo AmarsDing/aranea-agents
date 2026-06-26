@@ -11,6 +11,7 @@ import (
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
+	"google.golang.org/protobuf/proto"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -156,10 +157,16 @@ func fromProtoTools(pb *v1.AgentRuntimeSettings) biz.ToolsCfg {
 }
 
 func fromProtoSkills(pb *v1.AgentRuntimeSettings) biz.SkillsCfg {
+	// P1-1: intent_pass absent → default true (matches DefaultAgentRuntimeSettings and Ent schema default).
+	// Explicit true/false from caller is respected.
+	intentPass := true
+	if pb.IntentPassEnabled != nil {
+		intentPass = *pb.IntentPassEnabled
+	}
 	return biz.SkillsCfg{
 		RuntimeJSON:       pb.GetSkillRuntimeJson(),
 		LoadMode:          pb.GetSkillLoadMode(),
-		IntentPassEnabled: pb.GetIntentPassEnabled(),
+		IntentPassEnabled: intentPass,
 	}
 }
 
@@ -306,7 +313,7 @@ func toProtoRuntime(b *biz.AgentRuntimeSettings) *v1.AgentRuntimeSettings {
 		CreatedAt:                         b.CreatedAt,
 		UpdatedAt:                         b.UpdatedAt,
 		SkillRuntimeJson:                  skills.RuntimeJSON,
-		IntentPassEnabled:                 skills.IntentPassEnabled,
+		IntentPassEnabled:                 proto.Bool(skills.IntentPassEnabled),
 		ChannelId:                         id.ChannelID,
 		ChatId:                            id.ChatID,
 		Workspace:                         id.Workspace,

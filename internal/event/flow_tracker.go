@@ -20,6 +20,9 @@ type FlowTracker struct {
 	sc    *SpanCollector
 	ua    *UsageAggregator
 	lg    loggateway.Logger
+	// rootSpanID is the OTel turn-root span ID, populated via SetOtelRefs.
+	// Embedded into each FlowLogEntry.SpanID to align FlowLog with OTel trace.
+	rootSpanID string
 }
 
 // NewFlowTracker creates a FlowTracker with injected Infra (replaces bus parameter).
@@ -85,11 +88,17 @@ func (ft *FlowTracker) FinishRoot(status string) {
 	ft.sc.FinishRoot(status)
 }
 
-// SetOtelRefs stores OTel trace/span ids for usage metadata correlation.
+// SetOtelRefs stores OTel trace/span ids for usage metadata correlation
+// and FlowLog span_id alignment (Phase 1 of Problem 4: flow_id 碎片化).
+// The rootSpanID is embedded into each emitted FlowLogEntry.SpanID, enabling
+// cross-reference between FlowLog and OTel trace (Jaeger) via a shared
+// span_id. Callers: service/chat_orchestrator_turn.go:278,
+// team/runner_team_trpc_phases.go:103 — both pass bridge.RootSpanID().
 func (ft *FlowTracker) SetOtelRefs(traceID, rootSpanID string) {
 	if ft == nil {
 		return
 	}
+	ft.rootSpanID = rootSpanID
 	ft.ua.SetOtelRefs(traceID, rootSpanID)
 }
 
@@ -153,7 +162,7 @@ func (ft *FlowTracker) emit(stepID string, phase FlowPhase, explicitSev FlowSeve
 	if timing != nil {
 		projectTiming = &FlowTiming{DurationMS: timing.DurationMS}
 	}
-	entry := newFlowLogEntry(ft.tc, stepID, phase, explicitSev, titleOverride, message, "", projectTiming, flowErr, ex)
+	entry := newFlowLogEntry(ft.tc, ft.rootSpanID, stepID, phase, explicitSev, titleOverride, message, "", projectTiming, flowErr, ex)
 
 	if ft.lg != nil {
 		ft.lg.Info(entry.displayText(),

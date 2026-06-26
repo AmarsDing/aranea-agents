@@ -76,3 +76,60 @@ func TestTraceEmitterMetadataJSON(t *testing.T) {
 		t.Fatal("expected metadata with spans")
 	}
 }
+
+// TestFlowLogEntry_carriesSpanIDFromOtelRefs verifies Phase 1 of Problem 4:
+// after SetOtelRefs, each emitted FlowLog carries span_id == rootSpanID,
+// enabling cross-reference between FlowLog and OTel trace (Jaeger).
+func TestFlowLogEntry_carriesSpanIDFromOtelRefs(t *testing.T) {
+	tc := TraceContext{
+		TraceID:   "tr_test",
+		SessionID: "sess_1",
+		RunID:     "run_1",
+		Domain:    TraceDomainChat,
+	}
+	em := NewTraceEmitter(tc, nil)
+	monBus := &captureMonitorBus{}
+	em.FlowTracker.infra = &Infra{MonitorEventBus: monBus}
+	em.SetOtelRefs("tr_test", "otel_root_span_123")
+	em.LogDone("chat.llm.invoke", "model returned")
+	time.Sleep(50 * time.Millisecond)
+
+	monBus.mu.Lock()
+	defer monBus.mu.Unlock()
+	if len(monBus.evs) == 0 {
+		t.Fatal("expected flow_log monitor events")
+	}
+	for _, ev := range monBus.evs {
+		spanID, _ := ev.Metadata["span_id"].(string)
+		if spanID != "otel_root_span_123" {
+			t.Fatalf("expected span_id=otel_root_span_123, got %q (metadata: %+v)", spanID, ev.Metadata)
+		}
+	}
+}
+
+// TestFlowLogEntry_emptySpanIDWhenOtelRefsNotSet verifies graceful degradation:
+// without SetOtelRefs, FlowLog entries still emit with empty span_id (no crash).
+func TestFlowLogEntry_emptySpanIDWhenOtelRefsNotSet(t *testing.T) {
+	tc := TraceContext{
+		TraceID:   "tr_test",
+		SessionID: "sess_1",
+		RunID:     "run_1",
+		Domain:    TraceDomainChat,
+	}
+	em := NewTraceEmitter(tc, nil)
+	monBus := &captureMonitorBus{}
+	em.FlowTracker.infra = &Infra{MonitorEventBus: monBus}
+	em.LogDone("chat.llm.invoke", "model returned")
+	time.Sleep(50 * time.Millisecond)
+
+	monBus.mu.Lock()
+	defer monBus.mu.Unlock()
+	if len(monBus.evs) == 0 {
+		t.Fatal("expected flow_log monitor events")
+	}
+	for _, ev := range monBus.evs {
+		if spanID, _ := ev.Metadata["span_id"].(string); spanID != "" {
+			t.Fatalf("expected empty span_id when OtelRefs not set, got %q", spanID)
+		}
+	}
+}

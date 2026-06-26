@@ -109,7 +109,8 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		// JSON policy for narrow Skill toolset per agent: allowed_slugs, denied_slugs, allowed_tags, intent routing caps (see docs/需求/20 skill struct design.md 十三′).
 		field.String("skill_runtime_json").Default("{}"),
 		// Pre-main LLM pass to classify/refine user intent (extra latency/cost); persisted per agent; env ARANEA_INTENT_PASS can override.
-		field.Bool("intent_pass_enabled").Default(false),
+		// P1-1 default ON: aligns with DDL migration (sql/migrations/20260607_agent_runtime_patches.sql:8) and DefaultAgentRuntimeSettings.
+		field.Bool("intent_pass_enabled").Default(true),
 		field.String("channel_id").Default(""),
 		field.String("chat_id").Default(""),
 		field.String("workspace").Default(""),

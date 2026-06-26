@@ -36,10 +36,11 @@
       </div>
     </div>
 
-    <!-- Child events from PlanEvent.children (B-04: mapped from activityTree) -->
-    <div v-if="childEvents.length" class="plan-block__children">
-      <ActivityStream :events="childEvents" :agent-color="agentColor" />
-    </div>
+    <!-- B-04 / Phase A: Child activity rendering moved to ActivityStream's
+         recursive nested-rendering layer. PlanBlock is now a leaf block —
+         it renders only its header + steps; the executed sub-activities
+         (thinking/action/reply under this plan) are rendered by ActivityStream
+         in a nested indented container via `<ActivityStream :activity-tree="..." />`. -->
   </div>
 </template>
 
@@ -48,18 +49,12 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { PlanEvent } from '../../features/chat/streamEventTypes';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
-import ActivityStream from './ActivityStream.vue';
 
 const props = defineProps<{
   activity: PlanEvent;
-  agentColor?: string;
 }>();
 
 const { t } = useI18n();
-
-// B-04: Use PlanEvent.children (mapped from activityTree) instead of
-// receiving childActivities separately from ActivityStream.
-const childEvents = computed(() => props.activity.children ?? []);
 
 const statusClass = computed(() => ({
   'plan-block__status--planning': props.activity.status === 'planning',
@@ -196,12 +191,6 @@ const statusIcon = computed(() => {
     color: var(--color-text-tertiary)
     margin-left: 28px
     margin-top: 2px
-
-  &__children
-    margin-left: 12px
-    margin-top: 8px
-    padding-top: 4px
-    border-left: 2px solid var(--glass-border)
 
 @keyframes plan-pulse
   0%, 100%

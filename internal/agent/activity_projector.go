@@ -1080,8 +1080,14 @@ func (p *ActivityProjector) processGraphNodeStart(ctx context.Context, ev *trpce
 			SessionID: p.meta.SessionID,
 			TurnID:    p.meta.RequestID,
 			Timestamp: now,
-			Content:   "执行计划",
-			Meta:      map[string]any{"steps": []biz.ActivityPlanStep{}},
+			// B-07: Set ParentActivityID to the current turn's root task
+			// Activity so the plan nests under the task in the Activity tree
+			// (frontend ActivityStream recursive rendering). Without this,
+			// the plan becomes a sibling root of the task, breaking the
+			// parent-child visual hierarchy.
+			ParentActivityID: p.rootActivityID,
+			Content:          "执行计划",
+			Meta:             map[string]any{"steps": []biz.ActivityPlanStep{}},
 		}
 		p.activities[id] = planAct
 		p.planActivityID = id

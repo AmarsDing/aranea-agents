@@ -48,7 +48,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 - `web/src/features/chat/composables/useActivityTimeline.ts` — Activity 时间线（activitiesBySession Map + ensureActivitiesLoaded 缓存）
 - `web/src/features/chat/composables/useSystemEventNotification.ts` — Domain=system 事件通知处理
 - `web/src/features/chat/ws-transport.ts` — WS 客户端（心跳、重连、控制消息）
-- `web/src/components/chat/ActivityStream.vue` — Activity 统一渲染器（按 kind 分发 Block）
+- `web/src/components/chat/ActivityStream.vue` — Activity 统一渲染器（按 kind 分发 Block；Phase A 起为递归组件，消费 `activityTree: ActivityTreeNode[]`，按 `children` 嵌套渲染）
 - `web/src/components/chat/ActionBlock.vue` — 工具调用块（按 tool_category 细分子组件）
 - `web/src/components/chat/SessionTreeSidebar.vue` · `SessionTreeNode.vue` — Session 父子树侧栏（递归）
 
@@ -319,6 +319,26 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 - [x] 10 种 ToolCategory + `ToolCategorizer`（精确匹配 + 前缀兜底）
 - [x] `ActionBlock.vue` 按 `tool_category` 动态渲染 10 种差异化子组件
 - [x] `team_stage` / `graph_stage` / `session` Activity + 对应 Block 组件
+
+### 7.4 Activity 树嵌套渲染（Phase A）
+
+> 2026-06-27：完成「主聊天流嵌套渲染 + 统一渲染器对齐 + 父子场景 bug 修复」一轮 P1/P2 修复。设计依据：[1-chat.design.md §聊天消息分组](./1-chat.design.md) + [59-chat-ui-optimization.design.md](./59-chat-ui-optimization.design.md)。
+
+| ID | 类型 | 改动 | 状态 |
+|----|------|------|------|
+| B-04 | P1 架构 | `ActivityStream.vue` 改为递归组件（`defineOptions({ name: 'ActivityStream' })`），prop 从 `activities: Activity[]` 改为 `activityTree: ActivityTreeNode[]`；删除 L143 `activityToStreamEvent({ ...activity, children: [] })` 中 `children: []` 覆盖（根因：剥离 children 破坏树结构，递归渲染无法看到子节点）；`PlanBlock.vue` 不再渲染子 Activity（交给 ActivityStream 树层）；`ChatMessageList`/`ChatMessagePanel`/`ChatPage` props 改为 `activityTree`；新增 `B-04` 嵌套渲染单测 | ✅ |
+| B-05 | P1 bug | `TeamStageBlock.vue` `expand-member` emit 增补 `teamId`（来源 `activity.teamId`）；`ChatPage.onExpandMember` 接收 `teamId` 优先从 payload 取 team，缺失回退 `spiritStore.activeTeam` | ✅ |
+| B-06 | P1 bug | `SessionStageBlock.vue` 加 `enter-session` emit + `canEnter` 计算属性 + `@click="onEnter"` + `--clickable` 悬停样式 + 右侧 chevron 图标；`ChatPage.onEnterSession` 调用 `useActivityTimeline.setCurrentSession` + `ensureActivitiesLoaded` 进入子 Session | ✅ |
+| B-07 | P2 bug（后端） | `internal/agent/activity_projector.go` `processGraphNodeStart` 创建 plan Activity 时增加 `ParentActivityID: p.rootActivityID`（根因：原代码未设置导致 plan 成为 task 的兄弟根，破坏 Activity 树父子层级，前端递归渲染失效） | ✅ |
+| B-08 | P2 bug | `useActivityTimeline.ts` `case 'created'` 由 `map.set(snapshot.id, snapshot)` 改为 merge：`map.set(snapshot.id, existing ? { ...snapshot, ...existing } : snapshot)`（根因：WS 事件乱序时 `streaming` 可能先于 `created` 到达，覆盖会丢失已累积的 content/reasoning） | ✅ |
+| GAP-04/05 | P1 UX | `SessionTreeNode.vue` 图标映射：`agent`→`smart_toy`（机器人，agent 非人类用户）；`standalone`→`chat`（单对话，forum 暗含多人）；fallback 同步 | ✅ |
+
+**验证**：
+- 后端：`go build ./internal/agent/...` ✅；`go test ./internal/agent/... -run TestActivityProjector` ✅（0.362s，全通过）
+- 前端：`pnpm lint` 0 errors；`pnpm test` 540 tests pass（新增 1 个 B-04 嵌套渲染测试）；`pnpm build` ✅
+
+**未做（YAGNI）**：
+- B-09/GAP-03 depth 错误码 + i18n 文案：当前深度限制由后端 `subagents_max_generation_depth` / `max_session_depth` 已守门，前端仅依靠错误回退展示，无明确 UX 缺陷反馈。**待用户反馈具体场景再补**，避免为单一场景预抽 i18n key 与错误码层级（红线 #15 / CS-F9）。
 
 ---
 
