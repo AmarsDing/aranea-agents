@@ -24,6 +24,12 @@ import (
 // Invariant under test: every Activity created in an On* entry point has a
 // non-zero Seq, and the creation order matches the Seq order
 // (i.e. OnReasoningDelta -> thinking.Seq < OnTextDelta -> reply.Seq).
+//
+// Note: we use a sync barrier (thinkingDone) to enforce a deterministic
+// ordering — OnReasoningDelta completes before OnTextDelta starts. Without
+// the barrier, Go's goroutine scheduler does not guarantee that the first
+// goroutine in source order acquires p.mu first, making the seq-order
+// assertion flaky.
 func TestActivityProjector_SeqAllocatedInMainFlow(t *testing.T) {
 	p, _, repo := newTestProjector(t)
 	ctx := context.Background()
@@ -36,17 +42,20 @@ func TestActivityProjector_SeqAllocatedInMainFlow(t *testing.T) {
 	p.Configure(meta, nil)
 	p.OnTurnStart(ctx, meta)
 
-	// Trigger concurrent thinking + reply creation. The On* methods take
-	// p.mu internally, so the actual race surface is the activity creation
-	// order vs the seq allocation order.
+	// OnReasoningDelta runs first and signals thinkingDone. OnTextDelta waits
+	// on thinkingDone so the lock-acquisition order is deterministic.
 	var wg sync.WaitGroup
+	var thinkingDone sync.WaitGroup
+	thinkingDone.Add(1)
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		p.OnReasoningDelta(ctx, "author-1", "thinking content", true)
+		thinkingDone.Done()
 	}()
 	go func() {
 		defer wg.Done()
+		thinkingDone.Wait()
 		p.OnTextDelta(ctx, "author-1", "reply content")
 	}()
 	wg.Wait()
@@ -54,7 +63,7 @@ func TestActivityProjector_SeqAllocatedInMainFlow(t *testing.T) {
 	// Wait for async persist writes to land in the repo. The sequencer's
 	// persist worker writes after publish, so the bus is not enough — we
 	// poll the repo with a short timeout.
-	var thinkingSeq, replySeq int64
+	var taskSeq, thinkingSeq, replySeq int64
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		repo.mu.Lock()
@@ -65,21 +74,29 @@ func TestActivityProjector_SeqAllocatedInMainFlow(t *testing.T) {
 			if a.Kind == biz.ActivityKindThinking {
 				thinkingSeq = a.Seq
 			}
+			if a.Kind == biz.ActivityKindTask {
+				taskSeq = a.Seq
+			}
 		}
 		repo.mu.Unlock()
-		if thinkingSeq != 0 && replySeq != 0 {
+		if taskSeq != 0 && thinkingSeq != 0 && replySeq != 0 {
 			break
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
 
+	if taskSeq == 0 {
+		t.Errorf("task activity has Seq=0 (not pre-allocated)")
+	}
 	if thinkingSeq == 0 {
 		t.Errorf("thinking activity has Seq=0 (not pre-allocated)")
 	}
 	if replySeq == 0 {
 		t.Errorf("reply activity has Seq=0 (not pre-allocated)")
 	}
-	if thinkingSeq >= replySeq {
-		t.Errorf("expected thinking.Seq (%d) < reply.Seq (%d) — pre-allocation broken", thinkingSeq, replySeq)
+	// Strict monotonic ordering: OnTurnStart < OnReasoningDelta < OnTextDelta
+	if !(taskSeq < thinkingSeq && thinkingSeq < replySeq) {
+		t.Errorf("expected task.Seq (%d) < thinking.Seq (%d) < reply.Seq (%d) — pre-allocation broken",
+			taskSeq, thinkingSeq, replySeq)
 	}
 }
