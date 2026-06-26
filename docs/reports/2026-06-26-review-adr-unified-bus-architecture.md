@@ -376,7 +376,7 @@ Blocker F 完成后，`event.Bus` 接口和 `contract.Bus` 接口已无生产消
 
 **后续工作**（第二阶段已完成，详见下节）：
 1. ✅ 提取 `EnvelopeError`/`EnvelopeTokenUsage` 等活类型到 `contract/envelope_types.go`（第二阶段）
-2. ⏳ 迁移剩余 Envelope 投影代码到 ActivityEvent（前端清理，不在后端范围）
+2. ✅ 迁移剩余 Envelope 投影代码到 ActivityEvent（前端清理，详见下方「Blocker G 前端完成总结」）
 3. ✅ 删除 `contract/envelope.go` 剩余部分（第二阶段）
 
 **验证结果**：`go build ./...` ✅ | `go test ./internal/event/... ./internal/testutil/... -count=1` ✅ | `go vet ./...` ✅
@@ -422,6 +422,43 @@ Blocker F 完成后，`event.Bus` 接口和 `contract.Bus` 接口已无生产消
 **ErrorCodeToolTimeout 重导出说明**：`event.ErrorCodeToolTimeout` 无调用者，因此 `internal/event/envelope.go` 不重导出此常量；`internal/agent/activity_projector.go:1303` 直接使用 `contract.ErrorCodeToolTimeout`。
 
 **验证结果**：`go build ./...` ✅ | `go test ./... -count=1` ✅ | `go vet ./...` ✅
+
+### Blocker G 前端完成总结（2026-06-27）：删除前端 Envelope 路径
+
+后端 Blocker G 删除 `contract/envelope.go` 后，前端仍有一整套 Envelope 类型系统、dispatcher、replay 机制在流转。本次清理对应 [分析报告 §11 Phase 3 Task 8](./2026-06-25-analysis-chat-module-refactor.md)，彻底删除前端 Envelope 路径。
+
+**删除的死文件**（5 个）：
+
+| 文件 | 内容 | 说明 |
+|------|------|------|
+| `web/src/realtime/envelope.ts` | `Envelope`/`EnvelopeType`/`WsDownstream`/`WsUpstream` 等类型 | 后端已迁移到 ActivityEvent + MonitorEvent，类型不再需要 |
+| `web/src/realtime/dispatcher.ts` | `EnvelopeDispatcher`/`matchFilterKey`/`EnvelopeHandler`/`DispatcherFilter` | 后端 Blocker A 已删除 WS replay，dispatcher 无消费源 |
+| `web/src/realtime/data_channel.ts` | `data_channel` 握手逻辑 | replay 路径已删除，握手不再需要 |
+| `web/src/realtime/event_replay.ts` | `RevisionTracker`/`requestSyncReplay` | Blocker A 方案 A2 已改用 `ListActivities` RPC 替代 replay |
+| `web/src/features/chat/dispatcher.ts` | re-export barrel（指向已删除的 `realtime/dispatcher.ts`） | 0 引用方，spec 遗漏，tsc 验证发现 |
+
+**核心改造**：
+
+| 文件 | 改造 |
+|------|------|
+| `realtime/ws-transport.ts` | 内联 `WsDownstream`/`WsUpstream` 类型；删除 `onEnvelope`/`onReplayState` 回调、`hasConnectedBefore`/`revisionTracker` 状态、sync replay 块、`replay_start`/`replay_end`/`msg.envelope` 处理块 |
+| `realtime/useEnvelopeStream.ts` | 删除 dispatcher 实例、`onEnvelope`/`onReplayState` 回调、`onType`/`onChannel` 函数；保留 `createEnvelopeStream`/`useEnvelopeStream` 工厂 + `onActivityEvent`/`onMonitorEvent` 透传 |
+| `realtime/globalWsHub.ts` | 删除 `GlobalWsConsumer.onEnvelope` 字段 + `ensureHubTransport`/`acquireGlobalWsConsumer` 中的 onEnvelope 回调链 |
+| `stores/spirit/index.ts` | 内联 5 个 Spirit payload 类型（不再 import envelope） |
+| `features/chat/useEnvelopeStream.ts` | 删除 `useChatStream`/`useTeamStream`/`useMonitorStream` 工厂函数 + `onReplayState` 透传 |
+| `features/chat/composables/useChatStreamManager.ts` | 删除 `subscribeSessionStream` 函数（EnvelopeDispatcher 死路径） |
+| `features/chat/composables/useChatEventInspector.ts` | 删除 `LIVE_TYPES` 常量 + `subscribe` 字段 + `unsubLive` 清理 |
+| `features/chat/composables/useChatTraceAndArtifacts.ts` | 删除 `streamManager` 参数（subscribe 删除后闲置） |
+| `features/teams/*` (api.ts/stores/useTeamsPage/TeamsPage/TeamRunsDialog) | 删除 `onError`/`onReplayState`/`liveReplaying` 链路 |
+| 3 个 no-op 消费者 | 删除 `onEnvelope: () => {}` 占位 |
+
+**保留的活路径**：`createEnvelopeStream` / `useEnvelopeStream` / `onActivityEvent` / `onMonitorEvent` — 这些是 Activity-First 架构的前端入口，WS 传输层仍通过它们消费 `activity_event?`/`monitor_event?` 消息。
+
+**附带清理**：删除 `features/chat/useEnvelopeStream.ts` 中删除工厂函数后闲置的 `useEnvelopeStream` 本地 import；`useChatTraceAndArtifacts.ts` 中删除 subscribe 后闲置的 `streamManager` 参数。
+
+**验证结果**：`pnpm exec tsc --noEmit` 0 新增错误（11 预存在错误经 git stash 基线确认）| `pnpm lint` 0 errors（66→64 warnings，修复 2 个本任务引入的未使用导入）| `pnpm test` 85 文件 / 543 测试全过 | `pnpm build` 成功
+
+**Envelope 残留搜索**：`onEnvelope`/`onReplayState`/`EnvelopeDispatcher`/`RevisionTracker`/`requestSyncReplay` 全部 0 匹配；`realtime/(envelope|dispatcher|data_channel|event_replay)` import 全部 0 匹配。
 
 ## 关联文档
 

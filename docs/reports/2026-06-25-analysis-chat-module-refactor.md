@@ -1751,7 +1751,7 @@ interface SessionTreeNode {
 
 **目标**：所有模式使用 ActivityStream 统一渲染
 
-> **实际状态（2026-06-26 更新）**：任务 1-7 + 删除清单中的 `TaskExecutionPanel.vue`/`MemberReadOnlyPanel.vue` 已完成（Phase A + Phase B）。Phase D 补全 Session 7 字段断层（proto/service/前端类型/SessionTreeNode UI 增强），Phase E 实现 `ensureActivitiesLoaded` 缓存跳过优化（§9.1.3）。任务 8 及剩余删除项归因于 Envelope 删除的级联依赖，详见 [ADR-03](./2026-06-26-review-adr-unified-bus-architecture.md) Phase 5 路线图（Blocker A-G 全部完成）。
+> **实际状态（2026-06-27 更新）**：任务 1-8 全部完成（Phase A + Phase B + Phase D + Phase E + 前端 Envelope 移除）。Phase D 补全 Session 7 字段断层（proto/service/前端类型/SessionTreeNode UI 增强），Phase E 实现 `ensureActivitiesLoaded` 缓存跳过优化（§9.1.3）。任务 8 前端 Envelope 路径已彻底删除，详见 [ADR-03](./2026-06-26-review-adr-unified-bus-architecture.md)「Blocker G 前端完成总结」。
 
 **任务**：
 1. ✅ 实现 `ActivityStream.vue` 统一入口（Phase A）
@@ -1761,15 +1761,15 @@ interface SessionTreeNode {
 5. ✅ 实现各工具类型详情组件（ShellToolDetail/BrowserToolDetail/...）— `ActionBlock` 按 `tool_category` 动态分发到 10 个详情组件 + `ToolCategorizer` 后端分类器（10 类别前缀匹配 + 注册表覆盖），含单测覆盖（`tool_category_test.go` 29 子测试 + `ActionBlock.spec.ts` 30 测试）
 6. ✅ 实现 `SessionTreeSidebar` + `SessionTreeNode` 递归组件 + `useSessionTree` composable + `GetSessionTree` RPC 暴露（Phase B-1/B-2）。Phase D 补全 Session 7 字段断层：proto `Session` 新增 `session_type`/`member_agent_key`/`member_role`/`execution_stage`/`completed_steps`/`total_steps`/`progress_pct`（编号 53-59），`service.toProtoSession` 映射，前端 `types.ts`/`api.ts` 补全，`SessionTreeNode.vue` UI 增强（`session_type` 图标 / `L{depth}` 深度徽章 / `execution_stage` 阶段徽章带颜色映射 / `{completed}/{total}` 进度）。
 7. ✅ 团队成员折叠展示 + 子 session Activity 懒加载（Phase B-3/B-4：`TeamStageBlock` 成员行可点击 → `expand-member` 事件链 → `spiritStore.selectMember` → `useChatWorkspace` panelMode watcher 通过 `sessionTree.findMemberSessionId` 解析并 `bindSessionView`）。Phase E 实现 `ensureActivitiesLoaded` 缓存跳过（§9.1.3）：`useActivityTimeline` 新增 `ensureActivitiesLoaded(sessionId)`——缓存命中时跳过 API 调用，失败时不写缓存以便下次自动重试，WS replay 负责重连后补齐缺失事件；`bindSessionView` 改用它替代 `loadActivitiesFromAPI`，成员切换瞬时响应。
-8. 🟡 前端 WS 处理改为接收 `ActivityEvent`（替代 Envelope）— 后端 ADR-03 Phase 5 Blocker A-G 全部完成（`contract/envelope.go` 已删、`ProvideSessionBus` 已删、`RouteChannel` 已删、8 个 consumer 全部迁移到 `ActivityEventBus`/`MonitorBus`）；**前端部分未完成**：`web/src/realtime/envelope.ts` 仍存在，23 个前端文件、30 处引用待迁移到 `ActivityEvent` 类型
+8. ✅ 前端 WS 处理改为接收 `ActivityEvent`（替代 Envelope）— 后端 ADR-03 Phase 5 Blocker A-G 全部完成（`contract/envelope.go` 已删、`ProvideSessionBus` 已删、`RouteChannel` 已删、8 个 consumer 全部迁移到 `ActivityEventBus`/`MonitorBus`）；**前端部分已完成**：删除 `web/src/realtime/envelope.ts`/`dispatcher.ts`/`data_channel.ts`/`event_replay.ts` + `features/chat/dispatcher.ts` re-export barrel，内联 WS 类型到 `ws-transport.ts`，删除 `onEnvelope`/`onReplayState`/`EnvelopeDispatcher`/`RevisionTracker` 整条死路径，保留 `createEnvelopeStream`/`onActivityEvent`/`onMonitorEvent` 活路径
 
 **删除**：
 - ✅ `TeamPanel.vue`（死代码）
 - ✅ `OrchestrationTimeline.vue`（死代码）
 - ✅ `TaskExecutionPanel.vue` 的 ChatExecutionCard 路径（Phase B-5 删除整个组件文件）
 - ✅ `MemberReadOnlyPanel.vue`（Phase B-5 删除）
-- 🟡 `envelope.ts` 类型定义 — 后端 `contract/envelope.go` 已删（Blocker G ✅）；**前端** `web/src/realtime/envelope.ts` 仍存在，属任务 8 前端迁移范围
-- 🟡 `inboundSyncRouting.ts` Envelope 路由逻辑 — 前端文件仍存在，属任务 8 前端迁移范围
+- ✅ `envelope.ts` 类型定义 — 后端 `contract/envelope.go` 已删（Blocker G ✅）；前端 `web/src/realtime/envelope.ts` 已删（任务 8 前端完成）
+- ✅ `inboundSyncRouting.ts` Envelope 路由逻辑 — 已迁移到 ActivityEvent 路由（文件保留，内容全部基于 `ActivityEvent`）
 
 **验证**：
 - Spirit 视图显示完整 Activity 流（思考/计划/工具/团队/Graph）
@@ -1796,27 +1796,27 @@ interface SessionTreeNode {
 
 ### 12.2 架构验收
 
-> **实际状态评估（2026-06-27 更新）**：14 项验收中 **12 项达成 / 2 项部分达成 / 0 项未达成**。
-> Phase B 推进了"前端渲染管线"从部分达成 → 达成（ActivityStream 为三模式唯一渲染器）。后端 Envelope 删除的级联依赖已由 [ADR-03](./2026-06-26-review-adr-unified-bus-architecture.md) Phase 5 全部完成（Blocker A-G：B→C→D→A→E→F→G）。唯一剩余项是前端 Envelope → ActivityEvent 类型迁移（任务 8 前端部分）。
+> **实际状态评估（2026-06-27 更新）**：14 项验收中 **14 项达成 / 0 项部分达成 / 0 项未达成**。
+> Phase B 推进了"前端渲染管线"从部分达成 → 达成（ActivityStream 为三模式唯一渲染器）。后端 Envelope 删除的级联依赖已由 [ADR-03](./2026-06-26-review-adr-unified-bus-architecture.md) Phase 5 全部完成（Blocker A-G：B→C→D→A→E→F→G）。前端 Envelope 路径已在任务 8 中彻底删除（`realtime/envelope.ts`/`dispatcher.ts`/`data_channel.ts`/`event_replay.ts` + `features/chat/dispatcher.ts` 全部删除，详见 ADR-03「Blocker G 前端完成总结」）。
 
 | 指标 | 目标 | 实际状态 | 评估 |
 |------|------|---------|------|
 | 后端数据模型 | 1 套（Activity） | Activity 表是唯一真相源，messages 表已 DROP | ✅ 达成 |
 | 事件类型 | 7 种业务语义事件（created/streaming/updated/completed/failed/cancelled/child_created） | ActivityEventType 已定义 7 种 | ✅ 达成 |
 | ActivityKind | 10 种（task/thinking/action/reply/plan/confirm/notice/session/team_stage/graph_stage，无 error） | 10 种，无 ActivityKindError | ✅ 达成 |
-| Envelope 结构体 | 删除 | 后端 `contract/envelope.go` 已删（Blocker G ✅，活类型提取到 `envelope_types.go`）；前端 `realtime/envelope.ts` 仍存在 | 🟡 后端达成 / 前端未达成 |
+| Envelope 结构体 | 删除 | 后端 `contract/envelope.go` 已删（Blocker G ✅，活类型提取到 `envelope_types.go`）；前端 `realtime/envelope.ts` 已删（任务 8 ✅） | ✅ 达成 |
 | Message 表 | 删除 | DROP TABLE 已执行（迁移 20260902） | ✅ 达成 |
 | `role` 字段 | 不存在（用 kind 表达） | 不存在 | ✅ 达成 |
 | `error` kind | 不存在（用 `failed` 事件表达） | 不存在 | ✅ 达成 |
 | Channel 路由 | 删除 RouteChannel，统一 chat | `RouteChannel` 已随 `contract/envelope.go` 删除（Blocker G ✅） | ✅ 达成 |
 | EventBus 传输 | ActivityEvent | `ActivityEventBus`（biz.ActivityEvent）+ `MonitorEventBus`（contract.MonitorEvent），legacy Envelope Bus / SessionBus / MonitorBus 全部删除 | ✅ 达成 |
 | 死代码（后端） | 0 | `contract/envelope.go`/`buffer.go`/`reliability.go`/`bus.go` 等 10+ 文件已删（Blocker F/G ✅） | ✅ 达成 |
-| 死代码（前端） | 0 | `TeamPanel`/`OrchestrationTimeline`/`TaskExecutionPanel`/`MemberReadOnlyPanel` 已删；剩余 `envelope.ts` + `inboundSyncRouting.ts` 待任务 8 前端迁移 | 🟡 部分达成 |
+| 死代码（前端） | 0 | `TeamPanel`/`OrchestrationTimeline`/`TaskExecutionPanel`/`MemberReadOnlyPanel` 已删；`envelope.ts`/`dispatcher.ts`/`data_channel.ts`/`event_replay.ts`/`features/chat/dispatcher.ts` 已删（任务 8 ✅）；`inboundSyncRouting.ts`/`inboundSyncEnvelope.ts` 已迁移到 ActivityEvent | ✅ 达成 |
 | 前端渲染管线 | 1 套（ActivityStream） | ✅ Phase B 后 ActivityStream 为 spirit/team/member 三模式唯一渲染器（panelMode watcher 同步 currentSessionId + bindSessionView streamKind 覆盖） | ✅ 达成 |
 | Session 隔离 | 按 session_id 自然隔离，无手动 reset | 已实现 | ✅ 达成 |
 | 持久化与推送 | 并行异步，互不阻塞 | processTask fire-and-forget + publish 同步 | ✅ 达成 |
 
-**未达成项的后续推进计划**：后端 ADR-03 Phase 5 Blocker A-G 全部完成（`contract/envelope.go` 已删、`ProvideSessionBus` 已删、8 个 consumer 全部迁移到 `ActivityEventBus`/`MonitorBus`）。**唯一剩余项**是前端 Envelope → ActivityEvent 迁移（任务 8 前端部分）：23 个前端文件、30 处引用 `realtime/envelope`，需将前端 WS 处理从 `Envelope` 类型改为 `ActivityEvent` 类型，完成后可删除 `web/src/realtime/envelope.ts` 和 `web/src/features/chat/inboundSyncRouting.ts`。
+**全部达成**：后端 ADR-03 Phase 5 Blocker A-G 全部完成（`contract/envelope.go` 已删、`ProvideSessionBus` 已删、8 个 consumer 全部迁移到 `ActivityEventBus`/`MonitorBus`）；前端 Envelope 路径已彻底删除（任务 8 ✅）——`realtime/envelope.ts`/`dispatcher.ts`/`data_channel.ts`/`event_replay.ts`/`features/chat/dispatcher.ts` 全部删除，`onEnvelope`/`onReplayState`/`EnvelopeDispatcher`/`RevisionTracker` 整条死路径清除，`inboundSyncRouting.ts`/`inboundSyncEnvelope.ts` 已迁移到 ActivityEvent。详见 [ADR-03](./2026-06-26-review-adr-unified-bus-architecture.md)「Blocker G 前端完成总结」。
 
 ### 12.3 性能验收
 
