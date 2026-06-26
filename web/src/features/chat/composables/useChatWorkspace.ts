@@ -48,6 +48,7 @@ import { useReasoningSidebar } from './useReasoningSidebar';
 import { useContextualLoadingMessage } from './useContextualLoadingMessage';
 import { useStatusPulse } from './useStatusPulse';
 import { useActivityTimeline } from './useActivityTimeline';
+import { useSessionTree } from './useSessionTree';
 import { useSystemEventNotification } from './useSystemEventNotification';
 import type { ActivityEvent as AFActivityEvent } from '../../../realtime/activityEvent';
 
@@ -90,6 +91,9 @@ export function useChatWorkspace() {
 
   // AF-FE-02~04: Activity-First timeline composable
   const activityTimeline = useActivityTimeline();
+
+  // Phase B-2: per-spirit-session recursive tree cache for SessionTreeSidebar.
+  const sessionTree = useSessionTree();
 
   // AF-GAP-02: Bounded dedup set for ActivityEvent IDs. Both the real-time
   // stream path (streamHandlers → ctx.onActivityEvent) and the inbound-sync
@@ -993,6 +997,10 @@ export function useChatWorkspace() {
         activityTimeline.setCurrentSession(sid);
         sender.clearFailedPendingForSession(prevSid);
         void bindSessionView(sid, true);
+        // Phase B-2: preload session tree for sidebar.
+        void sessionTree.loadTreeFor(sid).catch(() => {
+          /* swallow; sidebar shows error state */
+        });
       }
     },
     { immediate: true },
@@ -1166,6 +1174,7 @@ export function useChatWorkspace() {
       onConfirmActivity,
       compressStatus,
       activityTimeline,
+      sessionTree,
     }),
     composer: reactive({
       inputText,
