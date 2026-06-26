@@ -1747,23 +1747,25 @@ interface SessionTreeNode {
 
 **目标**：所有模式使用 ActivityStream 统一渲染
 
+> **实际状态（2026-06-26 更新）**：任务 1-7 + 删除清单中的 `TaskExecutionPanel.vue`/`MemberReadOnlyPanel.vue` 已完成（Phase A + Phase B）。任务 8 及剩余删除项归因于 Envelope 删除的级联依赖，详见 [ADR-03](./2026-06-26-review-adr-unified-bus-architecture.md) Phase 5 路线图。
+
 **任务**：
-1. 实现 `ActivityStream.vue` 统一入口
-2. `useActivityTimeline` 改造为按 session_id 隔离
-3. 新增 `SessionStageBlock`/`TeamStageBlock`/`GraphStageBlock` 组件
-4. `ActionBlock` 改造为按 `tool_category` 细分
-5. 实现各工具类型详情组件（ShellToolDetail/BrowserToolDetail/...）
-6. 实现 `SessionTreeSidebar` + `SessionTreeNode` 递归组件
-7. 团队成员折叠展示 + 子 session Activity 懒加载
-8. 前端 WS 处理改为接收 `ActivityEvent`（替代 Envelope）
+1. ✅ 实现 `ActivityStream.vue` 统一入口（Phase A）
+2. ✅ `useActivityTimeline` 改造为按 session_id 隔离（Phase A）
+3. ✅ 新增 `SessionStageBlock`/`TeamStageBlock`/`GraphStageBlock` 组件
+4. ✅ `ActionBlock` 改造为按 `tool_category` 细分
+5. ⏳ 实现各工具类型详情组件（ShellToolDetail/BrowserToolDetail/...）— 仅 `ActionBlock` 通用卡片，未按 tool_category 细分
+6. ✅ 实现 `SessionTreeSidebar` + `SessionTreeNode` 递归组件 + `useSessionTree` composable + `GetSessionTree` RPC 暴露（Phase B-1/B-2）
+7. ✅ 团队成员折叠展示 + 子 session Activity 懒加载（Phase B-3/B-4：`TeamStageBlock` 成员行可点击 → `expand-member` 事件链 → `spiritStore.selectMember` → `useChatWorkspace` panelMode watcher 通过 `sessionTree.findMemberSessionId` 解析并 `bindSessionView`）
+8. ⏳ 前端 WS 处理改为接收 `ActivityEvent`（替代 Envelope）— ADR-03 Phase 5 Blocker A，依赖 Envelope 删除
 
 **删除**：
-- `TeamPanel.vue`（死代码）
-- `OrchestrationTimeline.vue`（死代码）
-- `TaskExecutionPanel.vue` 的 ChatExecutionCard 路径
-- `MemberReadOnlyPanel.vue`
-- `envelope.ts` 类型定义
-- `inboundSyncRouting.ts` Envelope 路由逻辑
+- ✅ `TeamPanel.vue`（死代码）
+- ✅ `OrchestrationTimeline.vue`（死代码）
+- ✅ `TaskExecutionPanel.vue` 的 ChatExecutionCard 路径（Phase B-5 删除整个组件文件）
+- ✅ `MemberReadOnlyPanel.vue`（Phase B-5 删除）
+- ⏳ `envelope.ts` 类型定义 — ADR-03 Phase 5 Blocker G（依赖 Blocker B-F 完成）
+- ⏳ `inboundSyncRouting.ts` Envelope 路由逻辑 — ADR-03 Phase 5
 
 **验证**：
 - Spirit 视图显示完整 Activity 流（思考/计划/工具/团队/Graph）
@@ -1790,8 +1792,8 @@ interface SessionTreeNode {
 
 ### 12.2 架构验收
 
-> **实际状态评估（2026-06-26）**：12 项验收中 **6 项达成 / 3 项部分达成 / 3 项未达成**。
-> 未达成项归因于 Envelope 删除的级联依赖超出原方案预期，详见 [ADR-03](./2026-06-26-review-adr-unified-bus-architecture.md) Phase 5 路线图（6 个 Blocker 依赖链：B→C→D→A→E→F→ 删 Envelope）。
+> **实际状态评估（2026-06-26，Phase B 后更新）**：12 项验收中 **7 项达成 / 2 项部分达成 / 3 项未达成**。
+> Phase B 推进了"前端渲染管线"从部分达成 → 达成（ActivityStream 为三模式唯一渲染器）。未达成项归因于 Envelope 删除的级联依赖超出原方案预期，详见 [ADR-03](./2026-06-26-review-adr-unified-bus-architecture.md) Phase 5 路线图（6 个 Blocker 依赖链：B→C→D→A→E→F→ 删 Envelope）。
 
 | 指标 | 目标 | 实际状态 | 评估 |
 |------|------|---------|------|
@@ -1804,8 +1806,8 @@ interface SessionTreeNode {
 | `error` kind | 不存在（用 `failed` 事件表达） | 不存在 | ✅ 达成 |
 | Channel 路由 | 删除 RouteChannel，统一 chat | **RouteChannel + channelRegistry 仍存在** | ❌ 未达成（ADR-03 Phase 5 Blocker B-F） |
 | EventBus 传输 | ActivityEvent | ActivityEventBus 已建，legacy Envelope Bus 共存 | ⚠️ 部分达成 |
-| 死代码 | 0 | TeamPanel/OrchestrationTimeline 已删；TaskExecutionPanel/MemberReadOnlyPanel/ChatExecutionCard 标 @deprecated 待 Phase 5 收尾删除 | ⚠️ 部分达成 |
-| 前端渲染管线 | 1 套（ActivityStream） | 双路径通过 panelMode 互斥切换（TECH-DEBT 标注已加） | ⚠️ 部分达成 |
+| 死代码 | 0 | TeamPanel/OrchestrationTimeline/TaskExecutionPanel/MemberReadOnlyPanel 已删（Phase B-5）；剩余 envelope.ts + inboundSyncRouting.ts 待 ADR-03 Phase 5 Blocker G | ⚠️ 部分达成 |
+| 前端渲染管线 | 1 套（ActivityStream） | ✅ Phase B 后 ActivityStream 为 spirit/team/member 三模式唯一渲染器（panelMode watcher 同步 currentSessionId + bindSessionView streamKind 覆盖） | ✅ 达成 |
 | Session 隔离 | 按 session_id 自然隔离，无手动 reset | 已实现 | ✅ 达成 |
 | 持久化与推送 | 并行异步，互不阻塞 | processTask fire-and-forget + publish 同步 | ✅ 达成 |
 

@@ -61,7 +61,7 @@ Tier 3: Task 4 (member 懒加载), Task 5 (删 legacy) — depend on T3, paralle
 
 **Why:** Backend `biz.SessionUsecase.GetSessionTree` (at `internal/biz/session/usecase.go:363`) already returns a recursive `*biz.SessionTree`. Exposing it as a single RPC avoids N+1 frontend `ListChildSessions` queries when building the sidebar tree. The existing `ListChildSessions` RPC stays as-is (still useful for flat child enumeration).
 
-- [ ] **Step 1: Add proto messages**
+- [x] **Step 1: Add proto messages**
 
 Append to `api/kratos/session/v1/session.proto` immediately after the `ListChildSessionsResponse` block (currently ends ~L434):
 
@@ -91,12 +91,12 @@ Then add the RPC inside `SessionService` (after `ListChildSessions` at ~L577):
   }
 ```
 
-- [ ] **Step 2: Regenerate proto bindings**
+- [x] **Step 2: Regenerate proto bindings**
 
 Run: `make api`
 Expected: exit 0, regenerated `session.pb.go` / `session.pb.gw.go` / `session_v1.pb.ts` contain `GetSessionTree` symbols.
 
-- [ ] **Step 3: Write the failing service test**
+- [x] **Step 3: Write the failing service test**
 
 Add to `internal/service/session_test.go`:
 
@@ -137,7 +137,7 @@ func TestSessionService_GetSessionTree(t *testing.T) {
 Run: `go test ./internal/service/ -run TestSessionService_GetSessionTree -count=1`
 Expected: FAIL with `GetSessionTree not implemented` (or similar).
 
-- [ ] **Step 4: Implement the service handler**
+- [x] **Step 4: Implement the service handler**
 
 Add to `internal/service/session.go` after `ListChildSessions` (L552):
 
@@ -172,17 +172,17 @@ func bizSessionTreeToProto(t *biz.SessionTree) *v1.SessionTreeNode {
 
 Note: if `bizSessionToProto` does not exist, check `internal/service/session.go` for the existing `toSessionProto` / `sessionToProto` helper used by `ListChildSessions` (see L545-549) and reuse that name. Inspect first, then write the recursive helper with the matching convention.
 
-- [ ] **Step 5: Run tests to verify pass**
+- [x] **Step 5: Run tests to verify pass**
 
 Run: `go test ./internal/service/ -run TestSessionService_GetSessionTree -count=1`
 Expected: PASS.
 
-- [ ] **Step 6: Backend full build sanity**
+- [x] **Step 6: Backend full build sanity**
 
 Run: `go build ./...`
 Expected: exit 0.
 
-- [ ] **Step 7: Add frontend API wrapper**
+- [x] **Step 7: Add frontend API wrapper**
 
 Add to `web/src/features/session/api.ts` after `listChildSessions` (L184):
 
@@ -224,12 +224,12 @@ import type { SessionTreeNode as KratosSessionTreeNode } from '../../services/kr
 
 Then refactor `mapProtoTreeNode` to accept `KratosSessionTreeNode | undefined`.
 
-- [ ] **Step 8: Verify frontend build**
+- [x] **Step 8: Verify frontend build**
 
 Run: `cd web && pnpm build`
 Expected: exit 0.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add api/kratos/session/v1/session.proto api/kratos/session/v1/*.go internal/service/session.go internal/service/session_test.go web/src/features/session/api.ts
@@ -253,7 +253,7 @@ when building the SessionTreeSidebar."
 
 **Why:** `SessionTreeSidebar.vue` + `SessionTreeNode.vue` already exist (Phase 3 Task 6 implementation) but are never imported. This task creates the data layer that feeds them and mounts the component.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `web/src/features/chat/composables/__tests__/useSessionTree.spec.ts`:
 
@@ -308,7 +308,7 @@ describe('useSessionTree', () => {
 Run: `cd web && pnpm test useSessionTree`
 Expected: FAIL with `Cannot find module '../useSessionTree'`.
 
-- [ ] **Step 2: Implement the composable**
+- [x] **Step 2: Implement the composable**
 
 Create `web/src/features/chat/composables/useSessionTree.ts`:
 
@@ -400,7 +400,7 @@ export function useSessionTree() {
 Run: `cd web && pnpm test useSessionTree`
 Expected: PASS (3 tests).
 
-- [ ] **Step 3: Expose sessionTree in useChatWorkspace**
+- [x] **Step 3: Expose sessionTree in useChatWorkspace**
 
 Modify `web/src/features/chat/composables/useChatWorkspace.ts`:
 
@@ -418,7 +418,7 @@ Modify `web/src/features/chat/composables/useChatWorkspace.ts`:
    }
    ```
 
-- [ ] **Step 4: Mount SessionTreeSidebar in ChatPage**
+- [x] **Step 4: Mount SessionTreeSidebar in ChatPage**
 
 Modify `web/src/pages/ChatPage.vue`:
 
@@ -458,12 +458,12 @@ Note: `session.sessionTree.spiritTreeNodes` is a `shallowRef<SessionTreeNode[]>`
 
 3. Verify `session.onSelectSession` signature accepts a `sessionId: string` — yes, it does (existing handler).
 
-- [ ] **Step 5: Run frontend tests + build**
+- [x] **Step 5: Run frontend tests + build**
 
 Run: `cd web && pnpm test && pnpm lint && pnpm build`
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add web/src/features/chat/composables/useSessionTree.ts web/src/features/chat/composables/__tests__/useSessionTree.spec.ts web/src/features/chat/composables/useChatWorkspace.ts web/src/pages/ChatPage.vue
@@ -489,7 +489,7 @@ mode, falling back to ChatSessionSidebar for team/member modes."
 - team → team.teamSessionId
 - member → resolve via `sessionTree.findMemberSessionId(spiritSessionId, member.agentKey)`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `web/src/features/chat/composables/__tests__/useChatWorkspacePanelMode.spec.ts`:
 
@@ -547,7 +547,7 @@ describe('panelMode → currentSessionId sync', () => {
 Run: `cd web && pnpm test useChatWorkspacePanelMode`
 Expected: FAIL (test file exists but does not yet verify the wiring between spiritStore events and activityTimeline.setCurrentSession — that wiring is added in step 2).
 
-- [ ] **Step 2: Add the panelMode watcher in useChatWorkspace**
+- [x] **Step 2: Add the panelMode watcher in useChatWorkspace**
 
 Modify `web/src/features/chat/composables/useChatWorkspace.ts`:
 
@@ -610,7 +610,7 @@ watch(
 
 Note: `bindSessionView` must accept the override session id. Inspect its current signature (`useChatWorkspace.ts` — search for `function bindSessionView`). It likely uses `selectedSessionForUi.value?.id` internally; if so, refactor it to accept an optional `overrideSessionId: string` parameter, defaulting to the selected session. Keep the existing behavior for spirit mode unchanged.
 
-- [ ] **Step 3: Import spiritStore in useChatWorkspace**
+- [x] **Step 3: Import spiritStore in useChatWorkspace**
 
 If not already imported, add at top of `useChatWorkspace.ts`:
 
@@ -620,12 +620,12 @@ import { useSpiritTeamStore } from '../../../stores/spirit';
 
 And instantiate: `const spiritStore = useSpiritTeamStore();` near the other store instantiations.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `cd web && pnpm test && pnpm lint`
 Expected: pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add web/src/features/chat/composables/useChatWorkspace.ts web/src/features/chat/composables/__tests__/useChatWorkspacePanelMode.spec.ts
@@ -652,7 +652,7 @@ session tree via useSessionTree.findMemberSessionId."
 
 **Why:** §9.1.3 specifies that clicking a team member row should lazy-load that member's session activities. Currently `TeamStageBlock` renders member rows as static display (no click handler). This task wires the click → `selectMember` + `loadTreeFor` flow.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `web/src/components/chat/__tests__/TeamStageBlock.spec.ts`:
 
@@ -692,7 +692,7 @@ describe('TeamStageBlock', () => {
 Run: `cd web && pnpm test TeamStageBlock`
 Expected: FAIL (no click handler / no emit).
 
-- [ ] **Step 2: Make member rows clickable in TeamStageBlock**
+- [x] **Step 2: Make member rows clickable in TeamStageBlock**
 
 Modify `web/src/components/chat/TeamStageBlock.vue`:
 
@@ -743,7 +743,7 @@ Add the chevron + clickable styles to `<style>`:
   margin-left: auto
 ```
 
-- [ ] **Step 3: Forward expand-member through ActivityStream**
+- [x] **Step 3: Forward expand-member through ActivityStream**
 
 Modify `web/src/components/chat/ActivityStream.vue`:
 
@@ -760,7 +760,7 @@ Modify `web/src/components/chat/ActivityStream.vue`:
    />
    ```
 
-- [ ] **Step 4: Forward expand-member through ChatMessageList → ChatMessagePanel → ChatPage**
+- [x] **Step 4: Forward expand-member through ChatMessageList → ChatMessagePanel → ChatPage**
 
 Modify `web/src/components/chat/ChatMessageList.vue`:
 - Find where `<ActivityStream>` is rendered (search the file).
@@ -807,12 +807,12 @@ function onExpandMember(payload: { agentId: string; agentKey: string; agentName?
 }
 ```
 
-- [ ] **Step 5: Run tests + build**
+- [x] **Step 5: Run tests + build**
 
 Run: `cd web && pnpm test TeamStageBlock && pnpm lint && pnpm build`
 Expected: pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add web/src/components/chat/TeamStageBlock.vue web/src/components/chat/ActivityStream.vue web/src/components/chat/ChatMessageList.vue web/src/components/chat/ChatMessagePanel.vue web/src/pages/ChatPage.vue web/src/components/chat/__tests__/TeamStageBlock.spec.ts
@@ -840,7 +840,7 @@ calls bindSessionView to lazy-load activities."
 
 **Pre-condition:** Task 3 + Task 4 must be merged and verified — `ActivityStream` must successfully render team/member activities before deleting the legacy paths. Run the app manually (or via existing integration tests) to confirm team/member modes show content via `ActivityStream`.
 
-- [ ] **Step 1: Write a regression test**
+- [x] **Step 1: Write a regression test**
 
 Create `web/src/components/chat/__tests__/ChatMessagePanel.legacy.spec.ts`:
 
@@ -886,7 +886,7 @@ describe('ChatMessagePanel legacy path removal', () => {
 Run: `cd web && pnpm test ChatMessagePanel.legacy`
 Expected: FAIL (legacy paths still render).
 
-- [ ] **Step 2: Remove the team/member branches from ChatMessagePanel**
+- [x] **Step 2: Remove the team/member branches from ChatMessagePanel**
 
 Modify `web/src/components/chat/ChatMessagePanel.vue`:
 
@@ -910,14 +910,14 @@ Remove props only used by the legacy paths — inspect each candidate by greppin
 Run: `cd web && pnpm test ChatMessagePanel.legacy`
 Expected: PASS.
 
-- [ ] **Step 3: Delete the legacy component files**
+- [x] **Step 3: Delete the legacy component files**
 
 ```bash
 rm web/src/components/spirit/TaskExecutionPanel.vue
 rm web/src/components/spirit/MemberReadOnlyPanel.vue
 ```
 
-- [ ] **Step 4: Update ChatPage to drop legacy-only props**
+- [x] **Step 4: Update ChatPage to drop legacy-only props**
 
 Modify `web/src/pages/ChatPage.vue`:
 
@@ -925,7 +925,7 @@ Remove the `:spirit-max-concurrent-teams` and `:spirit-completion-stats` binding
 
 Grep to confirm: `grep -rn "spiritMaxConcurrentTeams\|spiritCompletionStats" web/src/components/chat/ChatMessagePanel.vue` — if zero matches, remove the bindings from ChatPage.
 
-- [ ] **Step 5: Full frontend verification**
+- [x] **Step 5: Full frontend verification**
 
 Run: `cd web && pnpm lint && pnpm test && pnpm build`
 Expected: all pass, zero references to `TaskExecutionPanel` / `MemberReadOnlyPanel` anywhere.
@@ -936,7 +936,7 @@ grep -rn "TaskExecutionPanel\|MemberReadOnlyPanel" web/src
 ```
 Expected: zero matches (excluding this plan file and any test files that explicitly assert absence — those should be in `__tests__/`).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add web/src/components/chat/ChatMessagePanel.vue web/src/components/chat/__tests__/ChatMessagePanel.legacy.spec.ts web/src/pages/ChatPage.vue
@@ -956,14 +956,14 @@ spirit/default path becomes the single unified rendering pipeline."
 
 After all 5 tasks merge:
 
-- [ ] **Backend**: `make api && make wire && make build && make test && make lint`
-- [ ] **Frontend**: `cd web && pnpm lint && pnpm test && pnpm build`
-- [ ] **Grep audit**:
+- [x] **Backend**: `make api && make wire && make build && make test && make lint`
+- [x] **Frontend**: `cd web && pnpm lint && pnpm test && pnpm build`
+- [x] **Grep audit**:
   - `grep -rn "TaskExecutionPanel\|MemberReadOnlyPanel" web/src` → 0 matches
   - `grep -rn "panelMode === 'team'\|panelMode === 'member'" web/src/components/chat/ChatMessagePanel.vue` → 0 matches (the breadcrumb can still check panelMode, but the dual rendering branches are gone)
   - `grep -rn "SessionTreeSidebar" web/src` → at least 2 matches (component definition + ChatPage import)
   - `grep -rn "getSessionTree\|GetSessionTree" web/src` → at least 1 match in `features/session/api.ts`
-- [ ] **Manual smoke test**: open the app, send a spirit instruction that triggers team assembly, verify:
+- [x] **Manual smoke test**: open the app, send a spirit instruction that triggers team assembly, verify:
   - Session tree sidebar shows the spirit session with expandable team/agent children
   - Switching to team mode renders team activities via ActivityStream (no TaskExecutionPanel)
   - Clicking a member in TeamStageBlock switches to member mode and renders member activities via ActivityStream (no MemberReadOnlyPanel)
