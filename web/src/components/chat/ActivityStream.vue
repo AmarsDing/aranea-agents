@@ -1,9 +1,9 @@
 <template>
   <div class="event-stream">
-    <template v-for="(event, idx) in events" :key="event.id">
+    <template v-for="(item, idx) in renderItems" :key="item.activity.id">
       <!-- Phase transition indicator between thinking and reply -->
       <div
-        v-if="idx > 0 && event.kind === 'reply' && events[idx - 1].kind === 'thinking'"
+        v-if="idx > 0 && item.event?.kind === 'reply' && renderItems[idx - 1].event?.kind === 'thinking'"
         class="event-stream__transition"
       >
         <span class="event-stream__transition-line" />
@@ -11,10 +11,23 @@
         <span class="event-stream__transition-line" />
       </div>
 
-      <template v-if="event.kind === 'thinking'">
-        <template v-if="(event as ThinkingEvent).subSteps?.length">
+      <!-- task (non-failed) → UserMessageBubble -->
+      <UserMessageBubble
+        v-if="item.event === null"
+        :message="taskToMessage(item.activity)"
+        @confirm="(id, approved) => $emit('confirm', id, approved)"
+        @error-retry="(e) => $emit('error-retry', e)"
+        @error-switch-model="(e) => $emit('error-switch-model', e)"
+        @error-rephrase="(e) => $emit('error-rephrase', e)"
+        @error-check-config="(e) => $emit('error-check-config', e)"
+        @error-remove-attachment="(e) => $emit('error-remove-attachment', e)"
+        @error-relogin="(e) => $emit('error-relogin', e)"
+      />
+      <!-- All other activities (incl. task.failed → ErrorBlock): dispatch by StreamEvent kind -->
+      <template v-else-if="item.event.kind === 'thinking'">
+        <template v-if="(item.event as ThinkingEvent).subSteps?.length">
           <ThinkingBlock
-            v-for="step in (event as ThinkingEvent).subSteps"
+            v-for="step in (item.event as ThinkingEvent).subSteps"
             :key="step.id"
             :message-id="step.id"
             :reasoning="step.content"
@@ -25,18 +38,18 @@
         </template>
         <ThinkingBlock
           v-else
-          :message-id="event.id"
-          :reasoning="event.content"
-          :streaming="event.streaming"
-          :duration-ms="event.durationMs"
-          :default-collapsed="event.collapsed"
+          :message-id="item.event.id"
+          :reasoning="(item.event as ThinkingEvent).content"
+          :streaming="(item.event as ThinkingEvent).streaming"
+          :duration-ms="(item.event as ThinkingEvent).durationMs"
+          :default-collapsed="(item.event as ThinkingEvent).collapsed"
         />
       </template>
-      <ActionBlock v-else-if="event.kind === 'action'" :activity="event" :agent-color="agentColor" />
-      <ReplyBlock v-else-if="event.kind === 'reply'" :activity="event" />
+      <ActionBlock v-else-if="item.event.kind === 'action'" :activity="item.event as ActionEvent" :agent-color="agentColor" />
+      <ReplyBlock v-else-if="item.event.kind === 'reply'" :activity="item.event as ReplyEvent" />
       <ErrorBlock
-        v-else-if="event.kind === 'error'"
-        :event="event"
+        v-else-if="item.event.kind === 'error'"
+        :event="item.event as ErrorEvent"
         @retry="(e) => $emit('error-retry', e)"
         @switch-model="(e) => $emit('error-switch-model', e)"
         @rephrase="(e) => $emit('error-rephrase', e)"
@@ -44,25 +57,40 @@
         @remove-attachment="(e) => $emit('error-remove-attachment', e)"
         @relogin="(e) => $emit('error-relogin', e)"
       />
-      <PlanBlock v-else-if="event.kind === 'plan'" :activity="event" :agent-color="agentColor" />
+      <PlanBlock v-else-if="item.event.kind === 'plan'" :activity="item.event as PlanEvent" :agent-color="agentColor" />
       <ConfirmBlock
-        v-else-if="event.kind === 'confirm'"
-        :activity="event"
+        v-else-if="item.event.kind === 'confirm'"
+        :activity="item.event as ConfirmEvent"
         @confirm="(id, approved) => $emit('confirm', id, approved)"
       />
-      <NoticeBlock v-else-if="event.kind === 'notice'" :activity="event" />
+      <NoticeBlock v-else-if="item.event.kind === 'notice'" :activity="item.event as NoticeEvent" />
       <!-- Phase 3: Stage kinds for unified Team/Graph/Session rendering -->
-      <TeamStageBlock v-else-if="event.kind === 'team_stage'" :activity="event" />
-      <GraphStageBlock v-else-if="event.kind === 'graph_stage'" :activity="event" />
-      <SessionStageBlock v-else-if="event.kind === 'session'" :activity="event" />
+      <TeamStageBlock v-else-if="item.event.kind === 'team_stage'" :activity="item.event as TeamStageEvent" />
+      <GraphStageBlock v-else-if="item.event.kind === 'graph_stage'" :activity="item.event as GraphStageEvent" />
+      <SessionStageBlock v-else-if="item.event.kind === 'session'" :activity="item.event as SessionStageEvent" />
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { Activity as TimelineActivity } from '../../features/chat/activityTimelineTypes';
-import type { ErrorEvent, ThinkingEvent } from '../../features/chat/streamEventTypes';
+import type { Activity } from '../../features/chat/activityTypes';
+import type {
+  ActionEvent,
+  ConfirmEvent,
+  ErrorEvent,
+  GraphStageEvent,
+  NoticeEvent,
+  PlanEvent,
+  ReplyEvent,
+  SessionStageEvent,
+  StreamEvent,
+  TeamStageEvent,
+  ThinkingEvent,
+} from '../../features/chat/streamEventTypes';
+import type { Message } from '../../domain/types';
+import { activityToStreamEvent } from '../../features/chat/composables/useActivityTimeline';
 import ThinkingBlock from './ThinkingBlock.vue';
 import ActionBlock from './ActionBlock.vue';
 import ReplyBlock from './ReplyBlock.vue';
@@ -73,11 +101,10 @@ import NoticeBlock from './NoticeBlock.vue';
 import TeamStageBlock from './TeamStageBlock.vue';
 import GraphStageBlock from './GraphStageBlock.vue';
 import SessionStageBlock from './SessionStageBlock.vue';
+import UserMessageBubble from './UserMessageBubble.vue';
 
-const { t } = useI18n();
-
-defineProps<{
-  events: TimelineActivity[];
+const props = defineProps<{
+  activities: Activity[];
   agentColor?: string;
 }>();
 
@@ -90,6 +117,50 @@ defineEmits<{
   'error-remove-attachment': [event: ErrorEvent];
   'error-relogin': [event: ErrorEvent];
 }>();
+
+const { t } = useI18n();
+
+interface RenderItem {
+  activity: Activity;
+  /** StreamEvent for dispatch; null when task (non-failed) renders as UserMessageBubble. */
+  event: StreamEvent | null;
+}
+
+// Map flat Activity[] → { activity, event } pairs. Non-failed task activities
+// are flagged with event=null so they render as UserMessageBubble; everything
+// else (incl. task.failed → ErrorEvent) goes through the existing kind dispatch.
+const renderItems = computed<RenderItem[]>(() =>
+  props.activities.map((activity) => ({
+    activity,
+    event:
+      activity.kind === 'task' && activity.status !== 'failed'
+        ? null
+        : activityToStreamEvent({ ...activity, children: [] }),
+  })),
+);
+
+/** Adapt a task Activity into the Message shape expected by UserMessageBubble. */
+function taskToMessage(activity: Activity): Message {
+  return {
+    id: activity.id,
+    session_id: activity.sessionId || '',
+    parent_message_id: '',
+    turn_id: activity.turnId || '',
+    turn_number: 0,
+    seq_in_turn: 0,
+    role: 'user',
+    content_markdown: activity.content || '',
+    model_name: '',
+    token_in: 0,
+    token_out: 0,
+    latency_ms: 0,
+    status: activity.status === 'failed' ? 'failed' : 'ok',
+    attachments_count: 0,
+    options_json: '',
+    error_message: '',
+    created_at: activity.timestamp,
+  };
+}
 </script>
 
 <style lang="sass" scoped>
