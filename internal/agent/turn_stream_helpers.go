@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
@@ -48,7 +47,6 @@ func ConsumeWithFirstByteGuard(
 	parentCtx context.Context,
 	firstByteTimeout time.Duration,
 	events <-chan *trpcevent.Event,
-	bus event.Bus,
 	meta ProjectMeta,
 	opts *StreamConsumeOptions,
 	lg loggateway.Logger,
@@ -59,7 +57,7 @@ func ConsumeWithFirstByteGuard(
 	firstByteCtx, cancel := context.WithTimeout(parentCtx, firstByteTimeout)
 	defer cancel()
 	received := false
-	result := ConsumeEventStreamWithFirstByte(firstByteCtx, parentCtx, events, bus, meta, &received, opts, lg)
+	result := ConsumeEventStreamWithFirstByte(firstByteCtx, parentCtx, events, meta, &received, opts, lg)
 	if !received && parentCtx.Err() == nil {
 		return result, fmt.Errorf("%w after %s", ErrFirstByteTimeout, firstByteTimeout)
 	}

@@ -6,17 +6,14 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 )
 
 func TestTurnPreviewCoordinator_deferredAck(t *testing.T) {
-	bus := event.NewBus(nil)
 	updater := &mockPreviewUpdater{}
 	lt := biz.ParseChannelLongTaskConfig(`{"config":{"streaming_enabled":true,"ack_message":"收到，正在处理…","im_render_mode":"transcript"}}`)
 	cfg := `{"config":{"streaming_enabled":true,"im_render_mode":"transcript"}}`
 	coord := newTurnPreviewCoordinator(turnPreviewParams{
-		Bus:        bus,
 		Updater:    updater,
 		Platform:   "feishu",
 		Policy:     biz.ParseChannelIMRenderPolicy(cfg, lt),

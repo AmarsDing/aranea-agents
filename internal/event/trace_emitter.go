@@ -23,16 +23,8 @@ type TraceEmitter struct {
 }
 
 // NewTraceEmitter creates an emitter and opens the root chat.turn span.
-// The bus parameter is accepted for backward compatibility; it is wrapped into a minimal Infra.
-func NewTraceEmitter(bus Bus, tc TraceContext, lg loggateway.Logger) *TraceEmitter {
-	var infra *Infra
-	if bus != nil {
-		infra = &Infra{
-			SessionBus: bus,
-			MonitorBus: bus,
-		}
-	}
-	ft := NewFlowTracker(infra, tc, lg)
+func NewTraceEmitter(tc TraceContext, lg loggateway.Logger) *TraceEmitter {
+	ft := NewFlowTracker(nil, tc, lg)
 	return &TraceEmitter{FlowTracker: ft}
 }
 

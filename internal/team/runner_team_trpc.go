@@ -204,7 +204,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		}
 	}()
 
-	result, streamErr := agent.ConsumeWithFirstByteGuard(runCtx, agent.DefaultFirstByteTimeout, events, r.td.Pipeline.Bus, projectMeta, streamOpts, r.lg)
+	result, streamErr := agent.ConsumeWithFirstByteGuard(runCtx, agent.DefaultFirstByteTimeout, events, projectMeta, streamOpts, r.lg)
 	streamPromptTok = result.PromptTok
 	streamCompletionTok = result.CompletionTok
 	if streamErr != nil {

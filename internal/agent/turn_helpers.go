@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	sessiontrpc "aranea-agents/internal/session/trpc"
 	"aranea-agents/pkg/loggateway"
 
@@ -79,25 +78,22 @@ type StreamConsumeOptions struct {
 func ConsumeEventStream(
 	ctx context.Context,
 	events <-chan *trpcevent.Event,
-	eventBus event.Bus,
 	projectMeta ProjectMeta,
 	opts *StreamConsumeOptions,
 	lg loggateway.Logger,
 ) EventStreamResult {
-	return ConsumeEventStreamWithFirstByte(ctx, ctx, events, eventBus, projectMeta, nil, opts, lg)
+	return ConsumeEventStreamWithFirstByte(ctx, ctx, events, projectMeta, nil, opts, lg)
 }
 
 func ConsumeEventStreamWithFirstByte(
 	firstByteCtx context.Context,
 	turnCtx context.Context,
 	events <-chan *trpcevent.Event,
-	eventBus event.Bus,
 	projectMeta ProjectMeta,
 	firstByteReceived *bool,
 	opts *StreamConsumeOptions,
 	lg loggateway.Logger,
 ) EventStreamResult {
-	_ = eventBus // legacy parameter; context_usage now published via ActivityProjector.EmitSystemEvent
 	consumer := newTurnStreamConsumer(firstByteCtx, turnCtx, projectMeta, firstByteReceived, opts, lg)
 	return consumer.consume(events)
 }

@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -10,10 +9,8 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/preview"
-	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
 	"aranea-agents/pkg/loggateway"
-	"aranea-agents/pkg/safego"
 )
 
 const channelPreviewPatchInterval = 2 * time.Second
@@ -25,7 +22,6 @@ type streamPreviewMessageID interface {
 
 // TurnPreviewCoordinator projects EventBus envelopes to a single IM preview message.
 type TurnPreviewCoordinator struct {
-	bus       event.Bus
 	updater   streamPreviewUpdater
 	recipient string
 	platform  string
@@ -52,7 +48,6 @@ type TurnPreviewCoordinator struct {
 }
 
 type turnPreviewParams struct {
-	Bus        event.Bus
 	Updater    streamPreviewUpdater
 	Recipient  string
 	Platform   string
@@ -67,7 +62,6 @@ type turnPreviewParams struct {
 
 func newTurnPreviewCoordinator(p turnPreviewParams) *TurnPreviewCoordinator {
 	c := &TurnPreviewCoordinator{
-		bus:        p.Bus,
 		updater:    p.Updater,
 		recipient:  strings.TrimSpace(p.Recipient),
 		platform:   strings.TrimSpace(p.Platform),
@@ -88,12 +82,13 @@ func newTurnPreviewCoordinator(p turnPreviewParams) *TurnPreviewCoordinator {
 	return c
 }
 
-// Start subscribes to session envelopes and optionally sends the initial ACK on the preview message.
+// Start optionally sends the initial ACK on the preview message.
+// The legacy SessionBus subscription was removed in Blocker F Stage 1
+// (SessionBus has no publishers since Blocker D).
 func (c *TurnPreviewCoordinator) Start(ctx context.Context, sessionID string) context.CancelFunc {
 	if c == nil {
 		return func() {}
 	}
-	sessionID = strings.TrimSpace(sessionID)
 	if c.initialAck != "" {
 		c.transcript.SetSystem(c.initialAck)
 		if c.updater != nil {
@@ -102,71 +97,7 @@ func (c *TurnPreviewCoordinator) Start(ctx context.Context, sessionID string) co
 			}
 		}
 	}
-	if c.bus == nil || sessionID == "" {
-		return func() {}
-	}
-	ch, unsub := c.bus.Subscribe(event.SubscribeOptions{
-		SessionID:  sessionID,
-		BufferSize: 128,
-		DropPolicy: event.DropNewest,
-	})
-	procCtx, cancel := context.WithCancel(ctx)
-	safego.Go(procCtx, "channel.turn.preview", func() {
-		defer unsub()
-		var heartbeatC <-chan time.Time
-		var ticker *time.Ticker
-		if c.policy.HeartbeatEnabled && c.updater != nil {
-			quiet := c.policy.HeartbeatQuietSec
-			if quiet <= 0 {
-				quiet = 20
-			}
-			ticker = time.NewTicker(time.Duration(quiet) * time.Second)
-			defer ticker.Stop()
-			heartbeatC = ticker.C
-		}
-		for {
-			select {
-			case <-procCtx.Done():
-				return
-			case <-heartbeatC:
-				c.maybeHeartbeat(procCtx)
-			case env, ok := <-ch:
-				if !ok {
-					return
-				}
-				c.consume(procCtx, env)
-			}
-		}
-	})
-	return cancel
-}
-
-func (c *TurnPreviewCoordinator) maybeHeartbeat(ctx context.Context) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.updater == nil {
-		return
-	}
-	if c.transcript.HasInFlightTool() {
-		return
-	}
-	if time.Since(c.lastEvent) < time.Duration(c.policy.HeartbeatQuietSec)*time.Second {
-		return
-	}
-	heartbeat := biz.RenderChannelTemplate(c.policy.HeartbeatMessage, map[string]string{
-		"elapsed": fmt.Sprintf("%ds", int(time.Since(c.started).Seconds())),
-	})
-	if strings.TrimSpace(heartbeat) == "" {
-		return
-	}
-	rendered := preview.RenderPlainText(c.transcript, c.policy)
-	text := heartbeat
-	if strings.TrimSpace(rendered) != "" {
-		text = preview.FormatRenderedTranscriptForIM(c.platform, rendered) + "\n\n" + heartbeat
-	}
-	if err := c.patchLocked(ctx, text, false); err != nil {
-		c.lg.Warn("heartbeat patch failed", loggateway.Err(err))
-	}
+	return func() {}
 }
 
 func (c *TurnPreviewCoordinator) SetActiveRunID(runID string) {
@@ -176,47 +107,6 @@ func (c *TurnPreviewCoordinator) SetActiveRunID(runID string) {
 	c.mu.Lock()
 	c.activeRunID = strings.TrimSpace(runID)
 	c.mu.Unlock()
-}
-
-func (c *TurnPreviewCoordinator) envelopeMatchesRun(env event.Envelope) bool {
-	c.mu.Lock()
-	want := c.activeRunID
-	c.mu.Unlock()
-	if want == "" {
-		return true
-	}
-	if md := env.Metadata; md != nil {
-		if rid, ok := md["run_id"].(string); ok && strings.TrimSpace(rid) != "" {
-			return strings.TrimSpace(rid) == want
-		}
-	}
-	return true
-}
-
-func (c *TurnPreviewCoordinator) maybeBindRunID(env event.Envelope) {
-	if c == nil || env.Metadata == nil {
-		return
-	}
-	rid, _ := env.Metadata["run_id"].(string)
-	rid = strings.TrimSpace(rid)
-	if rid == "" {
-		return
-	}
-	c.mu.Lock()
-	if c.activeRunID == "" {
-		c.activeRunID = rid
-	}
-	c.mu.Unlock()
-}
-
-func (c *TurnPreviewCoordinator) consume(ctx context.Context, env event.Envelope) {
-	c.maybeBindRunID(env)
-	if !c.envelopeMatchesRun(env) {
-		return
-	}
-	// Phase 1c-5: TextDelta/TextDone/ToolCall/ToolResult/MemberMessage* envelope types
-	// were deleted (replaced by Activity-First). The IM channel preview rendering is now
-	// a no-op for chat content; it will be rebuilt on ActivityEventBus in Phase 3-4.
 }
 
 func (c *TurnPreviewCoordinator) patch(ctx context.Context, text string, force bool) error {
@@ -450,7 +340,6 @@ func (h *ChannelIngress) startTurnPreview(
 		initialAck = strings.TrimSpace(ltCfg.AckMessage)
 	}
 	coord := newTurnPreviewCoordinator(turnPreviewParams{
-		Bus:        h.eventBus,
 		Updater:    updater,
 		Recipient:  recipient,
 		Platform:   platform,
@@ -480,7 +369,6 @@ func (h *ChannelIngress) startTurnPreviewAccumulate(
 ) (*TurnPreviewCoordinator, context.CancelFunc) {
 	policy := biz.ParseChannelIMRenderPolicy(configJSON, ltCfg)
 	coord := newTurnPreviewCoordinator(turnPreviewParams{
-		Bus:      h.eventBus,
 		Platform: platform,
 		Policy:   policy,
 		LtCfg:    ltCfg,

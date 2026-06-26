@@ -26,7 +26,6 @@ import {
   isSessionCompressNoticeFromActivityEvent,
   sessionContextPatchFromActivityEvent,
 } from '../sessionContextPatch';
-import { createMessageBatchWriter } from '../messageStoreBatch';
 import { refreshAgentSessionsForChannel } from '../channelInboundSessionRefresh';
 import { isChannelInboundSession, resolveInboundAgentIdFromActivity } from '../channelInboundSession';
 import { noteChannelWsEnvelope } from '../channelWsCursor';
@@ -69,25 +68,8 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
   let hydrateTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingHydrateSessionId = '';
   const sealedTurnBySession = new Map<string, TurnStreamSeal>();
-  const inboundWriters = new Map<string, ReturnType<typeof createMessageBatchWriter>>();
   const hydrateInFlight = new Map<string, Promise<void>>();
   const focusInFlight = new Set<string>();
-
-  function inboundWriter(sessionId: string) {
-    let writer = inboundWriters.get(sessionId);
-    if (!writer) {
-      writer = createMessageBatchWriter(
-        () => deps.messageStore.getMessages(sessionId),
-        (rows) => deps.messageStore.setMessages(sessionId, rows),
-      );
-      inboundWriters.set(sessionId, writer);
-    }
-    return writer;
-  }
-
-  function flushInboundWriter(sessionId: string) {
-    inboundWriters.get(sessionId)?.flushSync();
-  }
 
   function unsealTurnStream(sessionId: string) {
     sealedTurnBySession.delete(sessionId);
@@ -176,7 +158,6 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       } else {
         deps.ensureChatStream(sessionId);
       }
-      flushInboundWriter(sessionId);
       try {
         const afterRevision = deps.messageStore.sessionRevisionBySession[sessionId] ?? 0;
         await deps.messageStore.loadMessages({
@@ -205,7 +186,6 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
 
   function scheduleChannelFocus(sessionId: string, agentId: string, skipMessageReload: boolean) {
     if (!deps.focusChannelSession || focusInFlight.has(sessionId)) return;
-    flushInboundWriter(sessionId);
     focusInFlight.add(sessionId);
     void Promise.resolve(deps.focusChannelSession(sessionId, agentId, { skipMessageReload }))
       .catch((err) => {
@@ -425,11 +405,9 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
   /** ActivityEvent variant of finalizeTurn — seals the turn stream and hydrates. */
   async function finalizeTurnActivity(sessionId: string, envRev: number) {
     const localRev = deps.messageStore.sessionRevisionBySession[sessionId] ?? 0;
-    flushInboundWriter(sessionId);
     sealedTurnBySession.set(sessionId, {
       revision: Math.max(envRev, localRev),
     });
-    flushInboundWriter(sessionId);
     await hydrateCurrentSession(sessionId, true, true);
   }
 

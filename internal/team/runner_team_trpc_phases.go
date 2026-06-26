@@ -95,25 +95,23 @@ func (r *Runner) setupTeamTracing(ctx context.Context, sess biz.Session, teamRow
 	ts.ctx = ctx
 	ts.bridge = bridge
 
-	if r.td.Pipeline.Bus != nil {
-		emitter := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
-			Ctx: ctx, Bus: r.td.Pipeline.Bus,
-			SessionID: sess.ID, RunID: run.ID, AgentKey: teamRow.ID,
-			Domain: event.TraceDomainTeam, LG: r.lg,
-		})
-		emitter.SetOtelRefs(bridge.TraceID(), bridge.RootSpanID())
-		ctx = event.WithTraceEmitter(ctx, emitter)
-		ts.ctx = ctx
-		ts.emitter = emitter
+	emitter := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+		Ctx: ctx,
+		SessionID: sess.ID, RunID: run.ID, AgentKey: teamRow.ID,
+		Domain: event.TraceDomainTeam, LG: r.lg,
+	})
+	emitter.SetOtelRefs(bridge.TraceID(), bridge.RootSpanID())
+	ctx = event.WithTraceEmitter(ctx, emitter)
+	ts.ctx = ctx
+	ts.emitter = emitter
 
-		if tid := strings.TrimSpace(bridge.TraceID()); tid != "" {
-			if uerr := r.runWriter.UpdateTeamRunTraceID(ctx, run.ID, tid); uerr != nil {
-				r.lg.Warn("trace_id 持久化失败", loggateway.StepID("team.run.trace_id"), loggateway.Err(uerr))
-			}
+	if tid := strings.TrimSpace(bridge.TraceID()); tid != "" {
+		if uerr := r.runWriter.UpdateTeamRunTraceID(ctx, run.ID, tid); uerr != nil {
+			r.lg.Warn("trace_id 持久化失败", loggateway.StepID("team.run.trace_id"), loggateway.Err(uerr))
 		}
-		emitter.LogStart("team.run.start", "开始团队协作",
-			event.P("team_id", teamRow.ID), event.P("mode", mode), event.P("members", memberCount))
 	}
+	emitter.LogStart("team.run.start", "开始团队协作",
+		event.P("team_id", teamRow.ID), event.P("mode", mode), event.P("members", memberCount))
 	return ts
 }
 

@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
@@ -63,7 +62,6 @@ func TestAccumulateStreamUsage_skipsTeamRootAuthor(t *testing.T) {
 }
 
 func TestConsumeEventStream_skipsToolResponseInReply(t *testing.T) {
-	bus := event.NewBus(nil)
 	events := make(chan *trpcevent.Event, 4)
 	go func() {
 		defer close(events)
@@ -73,14 +71,13 @@ func TestConsumeEventStream_skipsToolResponseInReply(t *testing.T) {
 		events <- runnerCompletionEvent()
 	}()
 
-	result := ConsumeEventStream(context.Background(), events, bus, ProjectMeta{SessionID: "s1"}, nil, loggateway.NewNoop())
+	result := ConsumeEventStream(context.Background(), events, ProjectMeta{SessionID: "s1"}, nil, loggateway.NewNoop())
 	if got := result.Reply.String(); got != "hello world" {
 		t.Fatalf("reply = %q, want %q", got, "hello world")
 	}
 }
 
 func TestConsumeEventStream_accumulatesDeltaReasoning(t *testing.T) {
-	bus := event.NewBus(nil)
 	events := make(chan *trpcevent.Event, 3)
 	go func() {
 		defer close(events)
@@ -89,7 +86,7 @@ func TestConsumeEventStream_accumulatesDeltaReasoning(t *testing.T) {
 		events <- runnerCompletionEvent()
 	}()
 
-	result := ConsumeEventStream(context.Background(), events, bus, ProjectMeta{SessionID: "s1"}, nil, loggateway.NewNoop())
+	result := ConsumeEventStream(context.Background(), events, ProjectMeta{SessionID: "s1"}, nil, loggateway.NewNoop())
 	if got := result.Reasoning.String(); got != "think-athink-b" {
 		t.Fatalf("reasoning = %q", got)
 	}

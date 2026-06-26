@@ -7,16 +7,14 @@ import (
 
 	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
-	"aranea-agents/internal/testutil"
 	"aranea-agents/pkg/apierror"
 )
 
 func TestPublishTurnFailure_usesEnvelopeErrorFromTurn(t *testing.T) {
-	bus := testutil.NewRecordingBus()
 	activityBus := &gateCaptureBus{}
 	evtPub := newChatTurnEventPublisher(nil, activityBus, nil)
 	orch := &ChatOrchestrator{
-		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{Bus: bus}}},
+		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{}}},
 		turnLC: &chatTurnLifecycleImpl{
 			sessionStateTransitor: noopSessionStateTransitor{},
 			turnRecorder:          noopTurnRecorder{},
@@ -52,11 +50,10 @@ func TestPublishTurnFailure_usesEnvelopeErrorFromTurn(t *testing.T) {
 }
 
 func TestPublishTurnFailure_pendingID(t *testing.T) {
-	bus := testutil.NewRecordingBus()
 	activityBus := &gateCaptureBus{}
 	evtPub := newChatTurnEventPublisher(nil, activityBus, nil)
 	orch := &ChatOrchestrator{
-		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{Bus: bus}}},
+		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{}}},
 		turnLC: &chatTurnLifecycleImpl{
 			sessionStateTransitor: noopSessionStateTransitor{},
 			turnRecorder:          noopTurnRecorder{},
@@ -111,12 +108,12 @@ func (r *recordingRunStatusTracker) PublishRunStatus(sessionID, runID, status, e
 	r.published = append(r.published, runStatusPublish{sessionID, runID, status, errMsg})
 }
 
-// newFailTurnTestOrch builds a ChatOrchestrator wired with a recording bus and
-// the given runStatusTracker, suitable for testing failTurn/markAndPublish.
-func newFailTurnTestOrch(bus *testutil.RecordingBus, activityBus *gateCaptureBus, rs runStatusTracker) *ChatOrchestrator {
+// newFailTurnTestOrch builds a ChatOrchestrator wired with the given
+// runStatusTracker, suitable for testing failTurn/markAndPublish.
+func newFailTurnTestOrch(activityBus *gateCaptureBus, rs runStatusTracker) *ChatOrchestrator {
 	evtPub := newChatTurnEventPublisher(nil, activityBus, nil)
 	return &ChatOrchestrator{
-		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{Bus: bus}}},
+		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{}}},
 		turnLC: &chatTurnLifecycleImpl{
 			sessionStateTransitor: noopSessionStateTransitor{},
 			turnRecorder:          noopTurnRecorder{},
@@ -132,10 +129,9 @@ func newFailTurnTestOrch(bus *testutil.RecordingBus, activityBus *gateCaptureBus
 }
 
 func TestFailTurn_cascadeAndReturn(t *testing.T) {
-	bus := testutil.NewRecordingBus()
 	activityBus := &gateCaptureBus{}
 	rs := &recordingRunStatusTracker{}
-	orch := newFailTurnTestOrch(bus, activityBus, rs)
+	orch := newFailTurnTestOrch(activityBus, rs)
 
 	turnStatus := "ok"
 	var turnErr error
@@ -187,10 +183,9 @@ func TestFailTurn_cascadeAndReturn(t *testing.T) {
 }
 
 func TestFailTurn_beforePublishCallback(t *testing.T) {
-	bus := testutil.NewRecordingBus()
 	activityBus := &gateCaptureBus{}
 	rs := &recordingRunStatusTracker{}
-	orch := newFailTurnTestOrch(bus, activityBus, rs)
+	orch := newFailTurnTestOrch(activityBus, rs)
 
 	var callbackCalled bool
 	var callbackRanBeforePublish bool
@@ -223,9 +218,8 @@ func TestFailTurn_beforePublishCallback(t *testing.T) {
 }
 
 func TestMarkAndPublish_setsStateAndPublishes(t *testing.T) {
-	bus := testutil.NewRecordingBus()
 	activityBus := &gateCaptureBus{}
-	orch := newFailTurnTestOrch(bus, activityBus, noopRunStatusTracker{})
+	orch := newFailTurnTestOrch(activityBus, noopRunStatusTracker{})
 
 	turnStatus := "ok"
 	var turnErr error

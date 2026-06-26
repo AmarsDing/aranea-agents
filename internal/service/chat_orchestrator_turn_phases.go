@@ -639,7 +639,7 @@ func (o *ChatOrchestrator) consumeTurnStream(
 	o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始消费事件流",
 		loggateway.StepID("chat.stream_consume_start"),
 		loggateway.Any("first_byte_timeout", firstByteTimeout.String()))
-	result, streamErr := chatagent.ConsumeWithFirstByteGuard(runCtx, firstByteTimeout, events, o.td().Pipeline.Bus, projectMeta, streamOpts, o.lg())
+	result, streamErr := chatagent.ConsumeWithFirstByteGuard(runCtx, firstByteTimeout, events, projectMeta, streamOpts, o.lg())
 	o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 事件流消费完成",
 		loggateway.StepID("chat.stream_consume_done"),
 		loggateway.Any("elapsed_ms", time.Since(llmStart).Milliseconds()),

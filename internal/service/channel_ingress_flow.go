@@ -24,11 +24,7 @@ func (h *ChannelIngress) logTurnFlow(ctx context.Context, sessionID, step, messa
 		}
 		return
 	}
-	var bus event.Bus
-	if h.eventBus != nil {
-		bus = h.eventBus
-	}
-	flow := event.NewFlowLogger(bus, sessionID, "", h.lg)
+	flow := event.NewFlowLogger(sessionID, "", h.lg)
 	if err != nil {
 		flow.LogError(step, message, append(pairs, event.P("error", err.Error()))...)
 		return

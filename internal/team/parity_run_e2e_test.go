@@ -126,7 +126,7 @@ func (parityStubAgents) ClearPositionByDepartment(context.Context, string) (int,
 	return 0, nil
 }
 
-func newParityTestRunner(repo *parityMemRepo, bus event.Bus) *Runner {
+func newParityTestRunner(repo *parityMemRepo) *Runner {
 	return &Runner{
 		teamReader: repo,
 		runReader:  repo,
@@ -135,7 +135,7 @@ func newParityTestRunner(repo *parityMemRepo, bus event.Bus) *Runner {
 		deadLetter: repo,
 		td: rt.TurnDeps{
 			ReadDeps: rt.TurnReadDeps{Agents: parityStubAgents{}},
-			Pipeline: rt.EventPipeline{Bus: bus},
+			Pipeline: rt.EventPipeline{},
 		},
 	}
 }
@@ -173,18 +173,14 @@ func parityAssistantMsg(sessionID, markdown string) biz.ChatMessage {
 }
 
 type parityPathOutcome struct {
-	steps     []biz.TeamRunStep
-	envelopes []event.Envelope
+	steps []biz.TeamRunStep
 }
 
 func runGraphPathHarness(t *testing.T, def Definition, outcomes []parityMemberOutcome) parityPathOutcome {
 	t.Helper()
 	repo := newParityMemRepo()
-	bus := event.NewBus(nil)
-	ch, unsub := bus.Subscribe(event.SubscribeOptions{BufferSize: 64})
-	defer unsub()
 
-	runner := newParityTestRunner(repo, bus)
+	runner := newParityTestRunner(repo)
 	run := parityRunBase(def.Mode)
 	run.GraphExecutionID = "graph-exec-parity"
 	repo.runs[run.ID] = run
@@ -205,9 +201,8 @@ func runGraphPathHarness(t *testing.T, def Definition, outcomes []parityMemberOu
 	}
 	runner.persistGraphMemberStepsFromResultTestOnly(context.Background(), finishIn, def)
 
-	envs := drainEnvelopes(ch)
 	steps, _ := repo.ListTeamRunSteps(context.Background(), run.ID)
-	return parityPathOutcome{steps: steps, envelopes: envs}
+	return parityPathOutcome{steps: steps}
 }
 
 func definitionJSONFromDef(def Definition) string {
@@ -216,21 +211,6 @@ func definitionJSONFromDef(def Definition) string {
 		return "{}"
 	}
 	return string(b)
-}
-
-func drainEnvelopes(ch <-chan event.Envelope) []event.Envelope {
-	var out []event.Envelope
-	for {
-		select {
-		case env, ok := <-ch:
-			if !ok {
-				return out
-			}
-			out = append(out, env)
-		default:
-			return out
-		}
-	}
 }
 
 func stepFingerprint(steps []biz.TeamRunStep) string {
@@ -275,8 +255,8 @@ func TestParityRunE2E_stubStreamAllModes(t *testing.T) {
 			}
 			graphFP := stepFingerprint(graph.steps)
 
-			t.Logf("mode=%s steps=%d fp=%s graph_envs=%d",
-				mode, len(graph.steps), graphFP, len(graph.envelopes))
+			t.Logf("mode=%s steps=%d fp=%s",
+				mode, len(graph.steps), graphFP)
 		})
 	}
 }

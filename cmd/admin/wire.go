@@ -111,7 +111,6 @@ func provideCronRunnerDeps(
 	session *biz.SessionUsecase,
 	teams biz.TeamReader,
 	agents biz.AgentRepository,
-	eventBus event.Bus,
 	activityBus biz.ActivityEventBus,
 	monitorBus contract.MonitorBus,
 	chat *service.ChatService,
@@ -122,7 +121,6 @@ func provideCronRunnerDeps(
 		Session:           session,
 		Teams:             teams,
 		Agents:            agents,
-		EventBus:          eventBus,
 		ActivityBus:       activityBus,
 		MonitorBus:        monitorBus,
 		Chat:              chat,
@@ -730,7 +728,6 @@ func provideRunnerConfig(
 	tools *biz.ToolUsecase,
 	agents biz.AgentRepository,
 	activityWriter biz.ActivityWriter,
-	eventBus event.Bus,
 	activityBus biz.ActivityEventBus,
 	orgUC *biz.OrganizationUsecase,
 	toolResultGate *biz.ToolResultGate,
@@ -809,7 +806,6 @@ func provideTeamTurnDeps(
 	sys biz.SystemSettingRepo,
 	persist rt.PersistenceSet,
 	compress biz.NativeTurnCompressor,
-	eventBus event.Bus,
 	activityBus biz.ActivityEventBus,
 	monitorEventBus contract.MonitorBus,
 	lg loggateway.Logger,
@@ -821,7 +817,7 @@ func provideTeamTurnDeps(
 	return rt.TurnDeps{
 		ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
 		Persist:   persist,
-		Pipeline:  rt.EventPipeline{Bus: eventBus, ActivityBus: activityBus, MonitorEventBus: monitorEventBus},
+		Pipeline:  rt.EventPipeline{ActivityBus: activityBus, MonitorEventBus: monitorEventBus},
 		LLMHTTP:   &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
 		Sessions:  sessions,
 		Compress:  compress,
@@ -865,7 +861,6 @@ func provideChatServiceDeps(
 	persist rt.PersistenceSet,
 	sessionRT *araneasession.Runtime,
 	compress biz.NativeTurnCompressor,
-	eventBus event.Bus,
 	activityBus biz.ActivityEventBus,
 	monitorEventBus contract.MonitorBus,
 	rtDeps service.RuntimeTooling,
@@ -911,7 +906,7 @@ func provideChatServiceDeps(
 			TurnDeps: rt.TurnDeps{
 				ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
 				Persist:   persist,
-				Pipeline:  rt.EventPipeline{Bus: eventBus, ActivityBus: activityBus, MonitorEventBus: monitorEventBus},
+				Pipeline:  rt.EventPipeline{ActivityBus: activityBus, MonitorEventBus: monitorEventBus},
 				LLMHTTP:   &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
 				Sessions:  sessions,
 				SessionRT: sessionRT,
@@ -1340,7 +1335,6 @@ func provideChannelIngress(
 	chat biz.ChannelTurnGateway,
 	graphs biz.GraphExecutor,
 	cron biz.CronTriggerGateway,
-	eventBus event.Bus,
 	activityBus biz.ActivityEventBus,
 	admission *biz.TurnAdmissionUsecase,
 	teamCompiler biz.TeamCompiler,
@@ -1350,7 +1344,7 @@ func provideChannelIngress(
 	debouncer := biz.NewIngressPeerDebouncer(biz.DefaultIngressDebounce, lg)
 	registry := biz.NewTurnPreviewRegistry()
 	gate := biz.NewChannelConcurrentGate()
-	return service.NewChannelIngress(channels, turnJobs, sessions, chat, graphs, cron, eventBus, activityBus, dedupe, debouncer, registry, gate, admission, teamCompiler, lg)
+	return service.NewChannelIngress(channels, turnJobs, sessions, chat, graphs, cron, activityBus, dedupe, debouncer, registry, gate, admission, teamCompiler, lg)
 }
 
 func provideChannelIngressAdmission(

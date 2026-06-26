@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -69,8 +68,7 @@ type Deps struct {
 	Session           *biz.SessionUsecase
 	Teams             biz.TeamReader
 	Agents            biz.AgentRepository
-	EventBus          event.Bus           // legacy envelope bus (Teams-domain events: TeamRunFinished)
-	ActivityBus       biz.ActivityEventBus // unified bus for chat/system Activity events (replaces EventBus for TeamRunFinished)
+	ActivityBus       biz.ActivityEventBus // unified bus for chat/system Activity events
 	MonitorBus        contract.MonitorBus // typed monitor bus (cron.dead_letter)
 	Chat              CronChatRunner
 	RegistrySyncAgent CronRegistrySyncAgent

@@ -44,20 +44,6 @@ export function useFollowUpQueue(
     }, 500);
   }
 
-  /** WS-driven refresh: called when a relevant envelope arrives.
-   *  Replaces the old 3-second polling loop with real-time push. */
-  function onRunStatusEnvelope(env: Envelope) {
-    if (messageQueuedFromEnvelope(env)) {
-      void refreshPendingMessages();
-    }
-    // Also refresh on run completion to clear stale pending items
-    const meta = env.metadata ?? {};
-    const rs = String(meta.status ?? '');
-    if (rs === 'completed' || rs === 'cancelled' || rs === 'failed') {
-      void refreshPendingMessages();
-    }
-  }
-
   /** Activity-First: WS-driven refresh from an ActivityEvent (stage=run_status). */
   function onRunStatusActivityEvent(ev: ActivityEvent) {
     if (messageQueuedFromActivityEvent(ev)) {

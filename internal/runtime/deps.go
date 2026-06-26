@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/provider"
 	araneasession "aranea-agents/internal/session"
@@ -50,29 +49,23 @@ type PersistenceSet struct {
 // EventPipeline wraps the event buses used for projecting runtime events
 // to WebSocket subscribers and internal consumers.
 //
-// TECH-DEBT(ADR-03 Phase 5 Blocker F): Bus is the legacy Envelope bus.
-// Phase 5 Blocker D removed the session-revision envelope publishers
+// Phase 5 Blocker F Stage 1 removed the legacy Envelope Bus field.
+// Blocker D removed the session-revision envelope publishers
 // (event.BumpAndPublishSessionRevision* / PublishSessionRevisionEnvelope /
-// NotifySessionRevisionSync). Remaining Bus users:
-//   - ConsumeWithFirstByteGuard (agent stream consumption)
-//   - Team observers (StartOrchestrationStatusProjector /
-//     TeamGraphRunCoordinator graph watch)
-//   - event.NewFlowLogger / NewTraceEmitterForRun (flow_log envelope routing)
-// Bus cannot be deleted until these consumers migrate to
-// ActivityEventBus/MonitorEventBus (blocked by event→biz circular
-// dependency). Tracked under ADR-03 Phase 5 Blocker F.
+// NotifySessionRevisionSync). Blocker F Stage 1 then removed the dead
+// parameter chain: NewTraceEmitter.bus, ConsumeWithFirstByteGuard.eventBus,
+// configureMCPObserve, and EventPipeline.Bus itself.
 //
-// Buffer (the legacy replay buffer) has been removed in Phase 5 Blocker E:
+// Buffer (the legacy replay buffer) was removed in Phase 5 Blocker E:
 // Blocker A deleted the WS replay path (event.Buffer.Replay is no longer
 // called); the buffer was write-only with no reader. All Append callsites
 // (FlowTracker.emit / EventBusConsumer.handleEnvelope) were dead writes.
 //
-// ActivityBus is the new bus transporting biz.ActivityEvent for chat
+// ActivityBus is the bus transporting biz.ActivityEvent for chat
 // lifecycle events (created/streaming/completed/failed/cancelled/child_created).
 // MonitorEventBus is the typed contract.MonitorBus carrying
 // contract.MonitorEvent for monitor-channel events (alerts, logs, etc.).
 type EventPipeline struct {
-	Bus             event.Bus // TECH-DEBT(ADR-03 Phase 5 Blocker D): see comment above
 	ActivityBus     biz.ActivityEventBus
 	MonitorEventBus contract.MonitorBus
 }

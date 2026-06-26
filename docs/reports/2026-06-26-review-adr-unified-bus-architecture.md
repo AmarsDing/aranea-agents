@@ -184,10 +184,10 @@ type WSServer struct {
 | **B: 4 个 side consumer** | `event_bus_side_consumers.go` 订阅 SessionBus 接收 Envelope | ✅ 已完成 | 4 个 side consumer 已迁移到 ActivityEventBus/MonitorBus 订阅；残留占位赋值已清理（B-DEBT-4） |
 | **C: DomainEvent bridge** | `domain_event_adapter.go` 将 biz domain event 包装为 Envelope | ✅ 已完成 | 已迁移到 ActivityEventBus + `ActivityDomainSystem`；`eventBusAdapter` 死代码已清理；`DomainEventPublisher`/`DomainEventSubscriber` 接口已删除 |
 | **D: vestigial bus 字段** | service/team struct 仍持有 `bus event.Bus` 字段 | ✅ 已完成 | 3 个死发布者全部删除：`EmitProgress`（ExecutionProgress envelope）、`FlowTracker.LogError` Error envelope publish、`PublishSessionRevisionEnvelope`（RunStatus envelope）。顺带删除 `Infra.Publish`/`publishToBuses` 死路由代码（无调用者）。保留 bump 半边（`BumpSessionRevision`）——前端通过 ListActivities/GetSession RPCs 读取 |
-| **E: EventPipeline.Bus/Buffer** | `EventPipeline` 保留 `Bus event.Bus` + `Buffer event.Buffer` | ✅ 已完成（Buffer） | `Buffer event.Buffer` 已删除（replay 源已不需要）。`Bus event.Bus` 字段保留待 F 完成 |
-| **F: Wire DI** | `cmd/admin/wire.go` 仍绑定 SessionBus | 🟡 部分完成 | 仅完成死参数清理（`provideTraceProjector`/`provideMonitorBus`）。主体 `ProvideSessionBus` 仍绑定，被 8 处 consumer 活跃使用（D 完成后已无 direct publisher）。需先完成 `EventBusConsumer` 整体迁移到 `ActivityEventBus`/`MonitorEventBus` |
+| **E: EventPipeline.Bus/Buffer** | `EventPipeline` 保留 `Bus event.Bus` + `Buffer event.Buffer` | ✅ 已完成 | `Buffer event.Buffer` 已删除（replay 源已不需要）。`Bus event.Bus` 字段已在 Blocker F Stage 1 中删除（死参数链清理） |
+| **F: Wire DI** | `cmd/admin/wire.go` 仍绑定 SessionBus | 🟡 Stage 1 完成 | **Stage 1（死参数链清理）已完成**：删除 `EventPipeline.Bus` 字段及 5 个 Wire provider 的 `eventBus` 死参数，删除 `configureMCPObserve` NO-OP stub，删除 `ChannelIngress.eventBus`/`TurnPreviewCoordinator.bus` 死字段及关联死方法。主体 `ProvideSessionBus` 仍绑定，被 8 处 consumer 活跃使用（D 完成后已无 direct publisher）。需先完成 `EventBusConsumer` 整体迁移到 `ActivityEventBus`/`MonitorEventBus` |
 
-**当前迁移顺序**：~~B → C → D → A → E → F~~ → 实际进度：B✅ → C✅ → A✅ → E(Buffer)✅ → D✅ → F(部分) → 删除 Envelope 文件
+**当前迁移顺序**：~~B → C → D → A → E → F~~ → 实际进度：B✅ → C✅ → A✅ → E✅ → D✅ → F(Stage 1 ✅) → 删除 Envelope 文件
 
 ### Blocker D 完成总结（2026-06-26）
 
@@ -204,6 +204,45 @@ Blocker D 的核心工作是删除 3 个发布到 SessionBus 的死发布者。S
 - `deco_session_sync_test.go`（整个测试验证已死的 envelope→web sync 路径）
 
 **保留的 bump 半边**：`SessionRevisionBumper` 接口 + `BumpSessionRevision` 函数递增 `sessions.session_revision`，前端通过 `ListActivities`/`GetSession` RPCs 读取，不依赖 envelope。
+
+### Blocker F Stage 1 完成总结（2026-06-26）：死参数链清理
+
+Blocker D 删除所有 SessionBus 发布者后，`EventPipeline.Bus` 字段及其下游参数链成为死参数。Stage 1 清理整条死参数链，不保留 deprecated 包装。
+
+**删除的死参数**：
+1. `EventPipeline.Bus` 字段（`internal/runtime/deps.go`）— SessionBus 已无发布者，字段无消费者
+2. `NewTraceEmitter(bus Bus, ...)` 的 `bus` 参数（`internal/event/trace_emitter.go`）— 内部改用 `NewFlowTracker(nil, tc, lg)`，`emit()` 对 nil infra 是安全的（line 166-168: `if ft.infra == nil { return }`）
+3. `NewFlowLogger(sessionID, agentKey, bus, lg)` 的 `bus` 参数（`internal/event/flow_context.go`）— 同上
+4. `TraceEmitterOpts.Bus` 字段（`internal/event/flow_context.go`）— `NewTraceEmitterForRun` 不再使用
+5. `ConsumeEventStream` / `ConsumeEventStreamWithFirstByte` 的 `eventBus` 参数（`internal/agent/turn_helpers.go`）
+6. `ConsumeWithFirstByteGuard` 的 `bus` 参数（`internal/agent/turn_stream_helpers.go`）
+7. `ChannelIngress.eventBus` 字段 + `NewChannelIngress` 的 `eventBus` 参数（`internal/service/channel_ingress.go`）
+8. `TurnPreviewCoordinator.bus` 字段 + `turnPreviewParams.Bus` 字段（`internal/service/channel_turn_preview.go`）
+9. `cronrunner.Deps.EventBus` 字段（`internal/cronrunner/runner.go`）
+
+**删除的 NO-OP stub**：
+- `configureMCPObserve`（`internal/service/chat.go`）— 函数体已空，无任何调用效果
+
+**删除的死方法（TurnPreviewCoordinator 级联）**：
+- `TurnPreviewCoordinator.Start()` 中的 SessionBus 订阅块（`c.bus.Subscribe(...)` → `consume` goroutine）
+- `maybeHeartbeat`、`envelopeMatchesRun`、`maybeBindRunID`、`consume` 方法（订阅删除后无调用者）
+- `Start()` 简化为：发完 initialAck 后立即返回空 cancel func
+
+**更新的 Wire provider 函数**（`cmd/admin/wire.go`，删除 `eventBus event.Bus` 参数）：
+- `provideCronRunnerDeps` — 删除 `eventBus` 参数 + `EventBus` 字段
+- `provideRunnerConfig` — 删除未使用的 `eventBus` 参数
+- `provideTeamTurnDeps` — 删除 `eventBus` 参数 + `Bus: eventBus` from `EventPipeline`
+- `provideChatServiceDeps` — 删除 `eventBus` 参数 + `Bus: eventBus` from `EventPipeline`
+- `provideChannelIngress` — 删除 `eventBus` 参数 + `eventBus` from `NewChannelIngress` 调用
+
+**保留的项目**（仍被 `SelfHealObserver` 等活跃使用，不在 Stage 1 范围）：
+- `ProvideSessionBus` Wire 绑定
+- `Infra.SessionBus` 字段
+- `monitorBusFromInfra` helper
+- `Infra.MonitorBus` 字段
+- `event` import in `wire.go`（`ProvideSessionBus`/`monitorBusFromInfra` 仍使用 `event.Bus`）
+
+**验证结果**：`go build ./...` ✅ | `make wire` ✅ | `go build ./cmd/admin` ✅ | `go test ./internal/event/... ./internal/agent/... ./internal/service/... ./internal/team/... ./internal/runtime/... -count=1` ✅ | `go vet ./...` ✅
 
 ### Blocker F 真实阻塞：`event→biz` 架构耦合 + 消费者迁移
 

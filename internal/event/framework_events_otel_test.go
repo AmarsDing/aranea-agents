@@ -3,7 +3,7 @@ package event
 import "testing"
 
 func TestSyncOtelSpanIDsRoot(t *testing.T) {
-	em := NewTraceEmitter(nil, TraceContext{TraceID: "t1", SessionID: "s1"}, nil)
+	em := NewTraceEmitter(TraceContext{TraceID: "t1", SessionID: "s1"}, nil)
 	em.SetOtelRefs("trace-1", "root-span-1")
 	em.SyncOtelSpanIDs(&otelStub{llm: "llm-span"})
 	spans := em.SpanCollector().Spans()

@@ -8,7 +8,6 @@ import (
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/outbound"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/apierror"
@@ -88,11 +87,6 @@ func (s *ChatService) Close() error {
 func ProvideChatOrchestrator(svc *ChatService) *ChatOrchestrator {
 	return svc.orch
 }
-
-// NOTE: MCP reconnect telemetry is now handled internally by the framework.
-// The Observer/ReconnectObserver callbacks were removed in the framework upgrade.
-// configureMCPObserve is kept as a placeholder for future re-integration.
-func configureMCPObserve(_ event.Bus, _ *biz.MCPServerUsecase) {}
 
 func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error) {
 	return s.orch.nativeSendChatMessage(ctx, req)

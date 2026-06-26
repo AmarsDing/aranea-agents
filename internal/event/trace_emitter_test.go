@@ -9,23 +9,6 @@ import (
 	"aranea-agents/internal/event/contract"
 )
 
-type captureBus struct {
-	mu   sync.Mutex
-	envs []Envelope
-}
-
-func (b *captureBus) Publish(_ context.Context, env Envelope) {
-	b.mu.Lock()
-	b.envs = append(b.envs, env)
-	b.mu.Unlock()
-}
-
-func (b *captureBus) Subscribe(_ SubscribeOptions) (<-chan Envelope, func()) {
-	return nil, func() {}
-}
-
-func (b *captureBus) DropCount() uint64 { return 0 }
-
 // captureMonitorBus captures MonitorEvents published to a contract.MonitorBus.
 // Used by tests that verify flow_log publication after B-DEBT-1 removed the
 // legacy Envelope fallback in FlowTracker.emit (flow_log now rides the typed
@@ -48,7 +31,6 @@ func (b *captureMonitorBus) Subscribe(_ contract.MonitorSubscribeOptions) (<-cha
 func (b *captureMonitorBus) DropCount() uint64 { return 0 }
 
 func TestTraceEmitterPublishesFlowLog(t *testing.T) {
-	bus := &captureBus{}
 	tc := TraceContext{
 		TraceID:   "tr_test",
 		SessionID: "sess_1",
@@ -56,12 +38,12 @@ func TestTraceEmitterPublishesFlowLog(t *testing.T) {
 		Domain:    TraceDomainChat,
 		AgentKey:  "a1",
 	}
-	em := NewTraceEmitter(bus, tc, nil)
+	em := NewTraceEmitter(tc, nil)
 	// B-DEBT-1: flow_log now publishes via the typed MonitorEventBus, not the
 	// legacy SessionBus Envelope fallback. Inject a captureMonitorBus so the
 	// test verifies the new path.
 	monBus := &captureMonitorBus{}
-	em.FlowTracker.infra.MonitorEventBus = monBus
+	em.FlowTracker.infra = &Infra{MonitorEventBus: monBus}
 	em.LogStart("chat.llm.invoke", "正在调用语言模型")
 	em.LogDone("chat.llm.invoke", "模型已返回")
 	time.Sleep(50 * time.Millisecond)
@@ -87,7 +69,7 @@ func TestTraceEmitterPublishesFlowLog(t *testing.T) {
 }
 
 func TestTraceEmitterMetadataJSON(t *testing.T) {
-	em := NewTraceEmitter(nil, TraceContext{TraceID: "tr_x", RunID: "r1"}, nil)
+	em := NewTraceEmitter(TraceContext{TraceID: "tr_x", RunID: "r1"}, nil)
 	em.FinishRoot("ok")
 	raw := em.MetadataJSON()
 	if raw == "" || raw == "{}" {

@@ -480,7 +480,6 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		}
 	}
 
-	configureMCPObserve(deps.Turn.TurnDeps.Pipeline.Bus, deps.Infra.MCPServers)
 	o.sweepStop = make(chan struct{})
 	safego.GoBackground("orch-map-sweep", o.sweepLoop)
 	return o

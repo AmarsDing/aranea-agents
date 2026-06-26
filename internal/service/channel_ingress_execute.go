@@ -164,7 +164,7 @@ func (h *ChannelIngress) processInboundUnaryWithOutcome(ctx context.Context, chR
 	policy := biz.ParseChannelIMRenderPolicy(chRow.ConfigJSON, ltCfg)
 	var previewCoord *TurnPreviewCoordinator
 	var stopPreview context.CancelFunc
-	if policy.Mode != biz.ChannelIMRenderModeReplyOnly && h.eventBus != nil && strings.TrimSpace(sessionID) != "" {
+	if policy.Mode != biz.ChannelIMRenderModeReplyOnly && strings.TrimSpace(sessionID) != "" {
 		previewCoord, stopPreview = h.startTurnPreviewAccumulate(ctx, sessionID, platform, chRow.ConfigJSON, ltCfg)
 		defer stopPreview()
 	}
