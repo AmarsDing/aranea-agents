@@ -65,7 +65,11 @@
       />
       <NoticeBlock v-else-if="item.event.kind === 'notice'" :activity="item.event as NoticeEvent" />
       <!-- Phase 3: Stage kinds for unified Team/Graph/Session rendering -->
-      <TeamStageBlock v-else-if="item.event.kind === 'team_stage'" :activity="item.event as TeamStageEvent" />
+      <TeamStageBlock
+        v-else-if="item.event.kind === 'team_stage'"
+        :activity="item.event as TeamStageEvent"
+        @expand-member="(p) => $emit('expand-member', p)"
+      />
       <GraphStageBlock v-else-if="item.event.kind === 'graph_stage'" :activity="item.event as GraphStageEvent" />
       <SessionStageBlock v-else-if="item.event.kind === 'session'" :activity="item.event as SessionStageEvent" />
     </template>
@@ -116,6 +120,7 @@ defineEmits<{
   'error-check-config': [event: ErrorEvent];
   'error-remove-attachment': [event: ErrorEvent];
   'error-relogin': [event: ErrorEvent];
+  'expand-member': [payload: { agentKey: string; agentName?: string }];
 }>();
 
 const { t } = useI18n();

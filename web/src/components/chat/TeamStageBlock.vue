@@ -33,8 +33,10 @@
       <div
         v-for="member in activity.members"
         :key="member.agentKey"
-        class="team-stage-block__member"
+        class="team-stage-block__member team-stage-block__member--clickable"
         :class="`team-stage-block__member--${member.status}`"
+        :title="t('chat.teamStage.expandMember', { name: member.agentName || member.agentKey })"
+        @click="onMemberClick(member)"
       >
         <span class="team-stage-block__member-dot" :class="`team-stage-block__member-dot--${member.status}`">
           <span v-if="member.status === 'running'" class="team-stage-block__pulse" />
@@ -43,6 +45,7 @@
         <span v-if="member.status === 'running'" class="team-stage-block__member-badge">
           {{ t('chat.teamStage.executing') }}
         </span>
+        <q-icon name="chevron_right" size="14px" class="team-stage-block__member-chevron" />
       </div>
     </div>
   </div>
@@ -58,7 +61,19 @@ const props = defineProps<{
   activity: TeamStageEvent;
 }>();
 
+const emit = defineEmits<{
+  'expand-member': [payload: { agentKey: string; agentName?: string }];
+}>();
+
 const { t } = useI18n();
+
+/** Phase B-4 / §9.1.3: clicking a member row emits expand-member so the
+ *  parent (ChatPage) can switch to member mode and lazy-load that member's
+ *  session activities. Payload is intentionally minimal — the member session
+ *  id is resolved later via the session tree (useChatWorkspace watcher). */
+function onMemberClick(member: { agentKey: string; agentName?: string }) {
+  emit('expand-member', { agentKey: member.agentKey, agentName: member.agentName });
+}
 
 const collapsed = ref(props.activity.status !== 'running');
 
@@ -206,6 +221,13 @@ const statusIcon = computed(() => {
     gap: 6px
     padding: 2px 0
 
+  &__member--clickable
+    cursor: pointer
+
+    &:hover
+      background: var(--glass-surface)
+      border-radius: 4px
+
   &__member-dot
     width: 8px
     height: 8px
@@ -231,6 +253,10 @@ const statusIcon = computed(() => {
   &__member-badge
     font-size: 11px
     color: var(--color-accent)
+
+  &__member-chevron
+    color: var(--color-text-tertiary)
+    margin-left: auto
 
   &__pulse
     position: absolute

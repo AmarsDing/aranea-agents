@@ -475,6 +475,7 @@ export default {
       completed: '团队已完成',
       failed: '团队执行失败',
       cancelled: '团队已取消',
+      expandMember: '展开 {name} 的会话',
     },
     graphStage: {
       label: 'Graph',

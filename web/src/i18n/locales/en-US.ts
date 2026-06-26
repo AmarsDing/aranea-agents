@@ -459,6 +459,7 @@ export default {
       completed: 'Team completed',
       failed: 'Team execution failed',
       cancelled: 'Team cancelled',
+      expandMember: 'Expand {name} session',
     },
     graphStage: {
       label: 'Graph',

@@ -153,6 +153,7 @@
         @status-bar-click-running="onStatusBarClickRunning"
         @status-bar-click-interrupted="onStatusBarClickInterrupted"
         @status-bar-click-last-event="onStatusBarClickLastEvent"
+        @expand-member="onExpandMember"
       />
       <input ref="fileRef" type="file" hidden multiple :accept="session.fileAccept" @change="composer.onFileChange" />
     </div>
@@ -344,6 +345,17 @@ function onSelectSpirit() {
       entity.selectAgent(fallback);
     }
   }
+}
+
+/** Phase B-4 / §9.1.3: Handle team-member click to expand that member's session.
+ *  Resolves agentKey → agentId via spiritStore.activeTeam.members, then
+ *  calls spiritStore.selectMember. The panelMode/activeMemberId watchers in
+ *  useChatWorkspace (Phase B-3) resolve the member session id from the
+ *  session tree and lazy-load activities. */
+function onExpandMember(payload: { agentKey: string; agentName?: string }) {
+  const member = spiritStore.activeTeam?.members.find((m) => m.agentKey === payload.agentKey);
+  if (!member) return;
+  spiritStore.selectMember(member.agentId);
 }
 
 function onNavigate(route: { name: string; params: Record<string, string> }) {

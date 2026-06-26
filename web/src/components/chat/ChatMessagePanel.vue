@@ -205,6 +205,7 @@
             @error-check-config="(e) => emit('error-check-config', e)"
             @error-remove-attachment="(e) => emit('error-remove-attachment', e)"
             @error-relogin="(e) => emit('error-relogin', e)"
+            @expand-member="(p) => emit('expand-member', p)"
           />
 
           <UnifiedExecutionPanel
@@ -477,6 +478,7 @@ const emit = defineEmits<{
   'error-check-config': [event: ErrorEvent];
   'error-remove-attachment': [event: ErrorEvent];
   'error-relogin': [event: ErrorEvent];
+  'expand-member': [payload: { agentKey: string; agentName?: string }];
 }>();
 
 const { t } = useI18n();
