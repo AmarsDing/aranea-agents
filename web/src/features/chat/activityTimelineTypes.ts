@@ -5,7 +5,7 @@
  * 每个用户 Turn 内的所有内容按时间顺序排列为活动时间线。
  *
  * 底层事件类型（StreamEvent 等）定义在 streamEventTypes.ts，
- * 本文件仅定义高层 UI 组合类型（ConversationTurn 等）。
+ * 本文件仅定义高层 UI 组合类型（AgentWorkProcess 等）。
  * 消费者应直接从 streamEventTypes.ts 导入事件类型。
  *
  * 设计文档：docs/reports/2026-06-12-proposal-chat-activity-timeline-redesign.md
@@ -15,16 +15,6 @@ import type { Message } from './types';
 import type { OrchestrationPlan, TeamStatusSummary, ProgressSection } from './agentTreeTypes';
 import type { StreamEvent } from './streamEventTypes';
 import type { ActivityTreeNode } from './activityTypes';
-
-// ── Conversation Turn ──
-
-/** 一个 Turn = 用户提问 + Agent 工作过程 */
-export interface ConversationTurn {
-  /** 使用后端 turn_id（权威 FK），不用前端推算 */
-  id: string;
-  userMessage: Message | null;
-  agentWork: AgentWorkProcess;
-}
 
 // ── Agent Work Process ──
 
