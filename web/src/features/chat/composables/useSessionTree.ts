@@ -43,7 +43,9 @@ export function useSessionTree() {
   }
 
   function walkForAgent(node: SessionTreeNode, agentKey: string): string | null {
-    if (node.session.agent_id === agentKey) return node.session.id;
+    // Match by member_agent_key (the agent key string, e.g. "agent-key-A"),
+    // NOT agent_id (which is a UUID). See internal/biz/spirit_team_usecase.go:265-275.
+    if (node.session.member_agent_key === agentKey) return node.session.id;
     for (const child of node.children) {
       const hit = walkForAgent(child, agentKey);
       if (hit) return hit;

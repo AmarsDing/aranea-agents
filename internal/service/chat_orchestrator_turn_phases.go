@@ -370,7 +370,7 @@ func (o *ChatOrchestrator) assembleTurnResult(
 	ag biz.Agent,
 	turnStart time.Time,
 ) (turnExecuteResult, error) {
-	if ctx.Err() != nil && !result.HasContent {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) && !result.HasContent {
 		emitter.LogCritical("chat.turn.timeout", "对话请求超时，推送超时提醒并继续等待", event.P("timeout", o.turnTimeout().String()), event.P("reason", "sync_cap"))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "timeout").Observe(time.Since(turnStart).Seconds())
 		// Push a timeout notification via WS instead of failing the turn.
@@ -719,8 +719,11 @@ func (o *ChatOrchestrator) persistTurn(
 	sessionID := strings.TrimSpace(execResult.userMsg.SessionID)
 	result := execResult.result
 
-	// Timeout degradation: has content but context expired
-	if (*ctx).Err() != nil && result.HasContent {
+	// Timeout degradation: has content but turn deadline actually exceeded.
+	// ctx.Err() != nil alone is insufficient — stream completion, HTTP request
+	// end, or framework cancel all set ctx.Err without a real timeout. Only
+	// DeadlineExceeded indicates the turn timeout actually fired.
+	if errors.Is((*ctx).Err(), context.DeadlineExceeded) && result.HasContent {
 		*turnStatus = "timeout_degraded"
 		emitter.LogWarn("chat.turn.timeout_with_reply", "对话超时但模型已输出，保存回复", "", event.P("timeout", o.turnTimeout().String()), event.P("reply_len", result.Reply.Len()))
 		bgCtx, bgCancel := context.WithTimeout(context.Background(), 30*time.Second)

@@ -620,8 +620,21 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
       } satisfies ConfirmEvent;
 
     case 'team_stage': {
-      // Phase 3: Team stage — members list lives in meta.members
-      const members = Array.isArray(node.meta?.members) ? (node.meta.members as TeamMemberStatus[]) : undefined;
+      // Backend stores members under meta.team_summary.members with snake_case keys
+      // (see internal/team/summary.go:69-73). Support meta.members (future) and
+      // meta.team_summary.members (current) with snake_case → camelCase mapping.
+      const summary = node.meta?.team_summary as Record<string, unknown> | undefined;
+      const rawMembers: Record<string, unknown>[] | undefined = Array.isArray(node.meta?.members)
+        ? (node.meta.members as Record<string, unknown>[])
+        : Array.isArray(summary?.members)
+          ? (summary!.members as Record<string, unknown>[])
+          : undefined;
+      const members = rawMembers?.map((m) => ({
+        agentKey: ((m.agent_key ?? m.agentKey) as string) ?? '',
+        agentName: ((m.agent_name ?? m.agentName) as string) ?? '',
+        status: ((m.status ?? 'pending') as TeamMemberStatus['status']),
+        session_id: m.session_id as string | undefined,
+      }));
       const taskSummary = typeof node.meta?.task_summary === 'string' ? node.meta.task_summary : undefined;
       return {
         kind: 'team_stage',

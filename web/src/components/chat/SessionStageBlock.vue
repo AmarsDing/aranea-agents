@@ -1,5 +1,9 @@
 <template>
-  <div class="session-stage-block" :class="`session-stage-block--${activity.status}`">
+  <div
+    class="session-stage-block"
+    :class="[`session-stage-block--${activity.status}`, { 'session-stage-block--clickable': canEnter }]"
+    @click="onEnter"
+  >
     <!-- Header -->
     <div class="session-stage-block__header">
       <span class="session-stage-block__icon">🗂</span>
@@ -9,6 +13,12 @@
       <span class="session-stage-block__status" :class="`session-stage-block__status--${activity.status}`">
         {{ statusIcon }}
       </span>
+      <q-icon
+        v-if="canEnter"
+        name="chevron_right"
+        size="14px"
+        class="session-stage-block__enter-chevron"
+      />
     </div>
 
     <!-- Duration -->
@@ -28,7 +38,20 @@ const props = defineProps<{
   activity: SessionStageEvent;
 }>();
 
+const emit = defineEmits<{
+  'enter-session': [sessionId: string];
+}>();
+
 const { t } = useI18n();
+
+/** A SessionStageBlock is clickable only when it carries a childSessionId we
+ * can navigate into. */
+const canEnter = computed(() => Boolean(props.activity.childSessionId));
+
+function onEnter() {
+  if (!canEnter.value) return;
+  emit('enter-session', props.activity.childSessionId as string);
+}
 
 const isTerminal = computed(
   () =>
@@ -85,6 +108,12 @@ const statusIcon = computed(() => {
   &--cancelled
     opacity: 0.7
 
+  &--clickable
+    cursor: pointer
+    &:hover
+      background: var(--glass-surface-hover)
+      border-color: var(--glass-border-hover, var(--glass-border))
+
   &__header
     display: flex
     align-items: center
@@ -122,6 +151,11 @@ const statusIcon = computed(() => {
       color: var(--color-danger)
     &--cancelled
       color: var(--color-text-tertiary)
+
+  &__enter-chevron
+    color: var(--color-text-tertiary)
+    flex-shrink: 0
+    transition: transform 0.15s ease
 
   &__duration
     font-size: 11px

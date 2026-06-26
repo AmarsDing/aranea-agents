@@ -62,17 +62,21 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  'expand-member': [payload: { agentKey: string; agentName?: string }];
+  'expand-member': [payload: { agentKey: string; agentName?: string; teamId?: string }];
 }>();
 
 const { t } = useI18n();
 
 /** Phase B-4 / §9.1.3: clicking a member row emits expand-member so the
  *  parent (ChatPage) can switch to member mode and lazy-load that member's
- *  session activities. Payload is intentionally minimal — the member session
- *  id is resolved later via the session tree (useChatWorkspace watcher). */
+ *  session activities. Payload carries teamId so ChatPage can keep the
+ *  active team context while navigating into the member sub-session. */
 function onMemberClick(member: { agentKey: string; agentName?: string }) {
-  emit('expand-member', { agentKey: member.agentKey, agentName: member.agentName });
+  emit('expand-member', {
+    agentKey: member.agentKey,
+    agentName: member.agentName,
+    teamId: props.activity.teamId,
+  });
 }
 
 const collapsed = ref(props.activity.status !== 'running');

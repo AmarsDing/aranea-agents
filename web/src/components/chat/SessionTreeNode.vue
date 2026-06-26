@@ -84,14 +84,16 @@ const sessionIcon = computed(() => {
     case 'team':
       return 'groups';
     case 'agent':
-      return 'person';
+      // smart_toy (robot) represents an AI agent; person is reserved for human users.
+      return 'smart_toy';
     case 'standalone':
-      return 'forum';
+      // chat (single conversation); forum implies multi-user discussion.
+      return 'chat';
     default:
       // Fallback for legacy sessions without session_type.
       if (s.team_id) return 'groups';
-      if (s.agent_id) return 'person';
-      return 'forum';
+      if (s.agent_id) return 'smart_toy';
+      return 'chat';
   }
 });
 

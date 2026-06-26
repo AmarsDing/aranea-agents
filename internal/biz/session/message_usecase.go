@@ -299,18 +299,25 @@ func (uc *SessionMessageUsecase) maybeAutoTitleFromUserMessage(ctx context.Conte
 			uc.lg.Warn("auto rename from snippet failed", loggateway.StepID("session.title"), loggateway.SessionID(sessionID), loggateway.Err(err))
 		}
 	}
-	safego.Go(appctx.Ctx(), "generate-title-async", func() {
-		uc.generateTitleAsync(sessionID, content)
+	appCtx := appctx.Ctx()
+	safego.Go(appCtx, "generate-title-async", func() {
+		uc.generateTitleAsync(appCtx, sessionID, content)
 	})
 	return nil
 }
 
-func (uc *SessionMessageUsecase) generateTitleAsync(sessionID, content string) {
-	bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+// generateTitleAsync derives a 15s timeout context from parentCtx (app-lifecycle),
+// so it cancels both on timeout and on application shutdown.
+func (uc *SessionMessageUsecase) generateTitleAsync(parentCtx context.Context, sessionID, content string) {
+	bgCtx, cancel := context.WithTimeout(parentCtx, 15*time.Second)
 	defer cancel()
 
 	title, err := uc.titleGenerator.Generate(bgCtx, content)
-	if err != nil || title == "" {
+	if err != nil {
+		uc.lg.Debug("title generation skipped", loggateway.StepID("session.title"), loggateway.SessionID(sessionID), loggateway.Err(err))
+		return
+	}
+	if title == "" {
 		return
 	}
 	if _, err := uc.sessionWriter.UpdateSessionTitle(bgCtx, sessionID, title); err != nil {

@@ -125,16 +125,15 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     if (!transport) {
       throw new Error('WebSocket transport unavailable');
     }
-    // Throw when WS is not OPEN: transport.send() would silently enqueue the
-    // message to businessQueue (never throwing), so the caller's catch block
-    // (HTTP fallback in useChatSender) would never fire. Combined with the
-    // Activity-First refactor removing the local user-message placeholder,
-    // a silently-queued user_message renders nothing on the UI. Throwing
-    // here routes to the existing HTTP command channel fallback, which has
-    // proper error handling and retry notifications.
-    if (!transport.connected) {
-      throw new Error('WebSocket not connected');
-    }
+    // Delegate to transport.send — it already handles non-OPEN state correctly
+    // by enqueuing to businessQueue (never dropped) and flushing on ws.onopen.
+    // This guarantees the backend WS subscription (setupEventSubscription runs
+    // after handshake) is ready before the user_message is delivered, so the
+    // subsequent ActivityEvents flow back through the same WS.
+    // Do NOT throw on !transport.connected — that would force HTTP fallback
+    // and create a subscription race (HTTP delivers immediately but the WS
+    // subscription isn't set up yet, so emitted events are missed → UI blank
+    // until page refresh).
     transport.send(upstream);
   }
 

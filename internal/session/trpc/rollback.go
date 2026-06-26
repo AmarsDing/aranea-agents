@@ -78,7 +78,11 @@ func (s *RunnerRollbackStore) RollbackToBoundary(ctx context.Context, sessionID,
 		s.lg.Warn("runner rollback session mismatch", loggateway.StepID("system.session.rollback_fail"), loggateway.Str("boundary_session", cur.SessionID), loggateway.Str("target_session", sid))
 		return apierror.BadRequest(apierror.DomainSession, fmt.Sprintf("runner rollback: boundary session %q does not match %q", cur.SessionID, sid))
 	}
-	now := time.Now().UTC().UnixNano()
+	// Pass time.Time directly — database/sql drivers serialize it correctly
+	// per dialect (pq → PostgreSQL TIMESTAMP, go-sqlite3 → TEXT/INTEGER).
+	// Using UnixNano() produces an int64 that PostgreSQL rejects with
+	// datetime_field_overflow (22008) on TIMESTAMP columns.
+	now := time.Now().UTC()
 	query := s.dialect.RenumberPlaceholders(
 		`UPDATE ` + trpcSessionEventsTable + ` SET deleted_at = ?, updated_at = ? WHERE app_name = ? AND user_id = ? AND session_id = ? AND id > ? AND deleted_at IS NULL`,
 	)

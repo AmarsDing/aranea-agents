@@ -151,6 +151,7 @@
         @status-bar-click-interrupted="onStatusBarClickInterrupted"
         @status-bar-click-last-event="onStatusBarClickLastEvent"
         @expand-member="onExpandMember"
+        @enter-session="onEnterSession"
       />
       <input ref="fileRef" type="file" hidden multiple :accept="session.fileAccept" @change="composer.onFileChange" />
     </div>
@@ -163,6 +164,7 @@
     />
 
     <ChatSessionSidebar
+      v-if="!showSessionTree"
       :open="layout.rightOpen"
       :sessions="session.displaySessions"
       :inbox-sessions="session.inboxSessions"
@@ -179,6 +181,13 @@
       @restore="session.onRestoreSession"
       @archive="session.onArchiveSession"
       @detail="session.onSessionDetail"
+    />
+    <SessionTreeSidebar
+      v-else
+      :tree-nodes="session.sessionTree.spiritTreeNodes"
+      :active-session-id="session.activityTimeline.currentSessionId ?? session.selectedSessionForUi?.id ?? ''"
+      :default-expanded="true"
+      @select="onSelectSessionTreeNode"
     />
 
     <template #dialogs>
@@ -235,6 +244,7 @@ import ChatSideToggle from '../components/chat/ChatSideToggle.vue';
 import ChatSettingsDialog from '../components/chat/ChatSettingsDialog.vue';
 import ChatWorkspaceShell from '../components/chat/ChatWorkspaceShell.vue';
 import SessionTimelineDialog from '../components/chat/SessionTimelineDialog.vue';
+import SessionTreeSidebar from '../components/chat/SessionTreeSidebar.vue';
 import { computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatWorkspace } from '../features/chat/composables/useChatWorkspace';
@@ -257,6 +267,17 @@ const activeMember = computed(() => {
   if (!team || !memberId) return null;
   return team.members.find((m) => m.agentId === memberId) ?? null;
 });
+
+/** Show SessionTreeSidebar when in spirit mode with an active team (sub-sessions exist). */
+const showSessionTree = computed(
+  () => spiritStore.activePanelMode === 'spirit' && Boolean(spiritStore.activeTeamId),
+);
+
+/** Navigate to a session tree node: switch Activity stream and lazy-load if needed. */
+function onSelectSessionTreeNode(sessionId: string) {
+  session.activityTimeline.setCurrentSession(sessionId);
+  void session.activityTimeline.ensureActivitiesLoaded(sessionId);
+}
 
 const spiritStatusBar = computed(() => {
   const teams = spiritStore.teams;
@@ -336,14 +357,30 @@ function onSelectSpirit() {
 }
 
 /** Phase B-4 / §9.1.3: Handle team-member click to expand that member's session.
- *  Resolves agentKey → agentId via spiritStore.activeTeam.members, then
- *  calls spiritStore.selectMember. The panelMode/activeMemberId watchers in
- *  useChatWorkspace (Phase B-3) resolve the member session id from the
- *  session tree and lazy-load activities. */
-function onExpandMember(payload: { agentKey: string; agentName?: string }) {
-  const member = spiritStore.activeTeam?.members.find((m) => m.agentKey === payload.agentKey);
+ *  Resolves agentKey → agentId via spiritStore.activeTeam.members (preferring
+ *  the team identified by payload.teamId when provided — useful when the user
+ *  is browsing a non-active team's stage), then calls spiritStore.selectMember.
+ *  The panelMode/activeMemberId watchers in useChatWorkspace (Phase B-3)
+ *  resolve the member session id from the session tree and lazy-load activities. */
+function onExpandMember(payload: { agentKey: string; agentName?: string; teamId?: string }) {
+  const team = payload.teamId
+    ? spiritStore.teams.find((t) => t.id === payload.teamId) ?? spiritStore.activeTeam
+    : spiritStore.activeTeam;
+  const member = team?.members.find((m) => m.agentKey === payload.agentKey);
   if (!member) return;
+  if (payload.teamId && spiritStore.activeTeamId !== payload.teamId) {
+    spiritStore.selectTeam(payload.teamId);
+  }
   spiritStore.selectMember(member.agentId);
+}
+
+/** Phase B-6 / §9.1.3: Handle SessionStageBlock click to navigate into the
+ *  child session it represents. Switches the Activity stream to the child
+ *  session and lazy-loads its activities (cache-aware — skips the API call
+ *  when the session is already cached). */
+function onEnterSession(sessionId: string) {
+  session.activityTimeline.setCurrentSession(sessionId);
+  void session.activityTimeline.ensureActivitiesLoaded(sessionId);
 }
 
 function onNavigate(route: { name: string; params: Record<string, string> }) {

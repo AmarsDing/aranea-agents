@@ -50,6 +50,7 @@
         @error-remove-attachment="(e: ErrorEvent) => $emit('error-remove-attachment', e)"
         @error-relogin="(e: ErrorEvent) => $emit('error-relogin', e)"
         @expand-member="(p) => $emit('expand-member', p)"
+        @enter-session="(sid) => $emit('enter-session', sid)"
       />
     </div>
     <ChatPendingQueue
@@ -120,7 +121,8 @@ defineEmits<{
   'error-check-config': [event: ErrorEvent];
   'error-remove-attachment': [event: ErrorEvent];
   'error-relogin': [event: ErrorEvent];
-  'expand-member': [payload: { agentKey: string; agentName?: string }];
+  'expand-member': [payload: { agentKey: string; agentName?: string; teamId?: string }];
+  'enter-session': [sessionId: string];
 }>();
 
 const { t } = useI18n();
