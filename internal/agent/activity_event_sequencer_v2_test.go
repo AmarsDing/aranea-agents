@@ -68,7 +68,12 @@ func TestSequencerV2_SinglePublishWorker_FIFO(t *testing.T) {
 // bus.
 //
 // Under v2 single-publish-worker architecture, ALL events flow through one
-// FIFO queue, so the seq order assigned at On* entry is preserved.
+// FIFO queue, so the order in which they are enqueued is preserved on the bus.
+//
+// To make the enqueue order deterministic, we serialize the counter.Add(1)
+// + seq.publish() pair under a mutex. This is the only way to assert a
+// strict seq ordering without Go scheduler non-determinism masking the
+// v2 design's FIFO guarantee.
 func TestSequencerV2_CrossActivityOrder_Concurrent(t *testing.T) {
 	t.Parallel()
 
@@ -79,6 +84,7 @@ func TestSequencerV2_CrossActivityOrder_Concurrent(t *testing.T) {
 
 	const N = 1000
 	var counter atomic.Int64
+	var publishMu sync.Mutex // serializes counter.Add(1) + publish
 	var wg sync.WaitGroup
 	wg.Add(N * 2)
 
@@ -86,6 +92,7 @@ func TestSequencerV2_CrossActivityOrder_Concurrent(t *testing.T) {
 	for i := 0; i < N; i++ {
 		go func() {
 			defer wg.Done()
+			publishMu.Lock()
 			seqNum := counter.Add(1)
 			a := biz.Activity{
 				ID:    "think-" + bizIDint(seqNum),
@@ -96,6 +103,7 @@ func TestSequencerV2_CrossActivityOrder_Concurrent(t *testing.T) {
 				event:    biz.ActivityEvent{Event: biz.ActivityEventCreated, Activity: a},
 				activity: a,
 			})
+			publishMu.Unlock()
 		}()
 	}
 
@@ -103,6 +111,7 @@ func TestSequencerV2_CrossActivityOrder_Concurrent(t *testing.T) {
 	for i := 0; i < N; i++ {
 		go func() {
 			defer wg.Done()
+			publishMu.Lock()
 			seqNum := counter.Add(1)
 			a := biz.Activity{
 				ID:    "reply-" + bizIDint(seqNum),
@@ -113,6 +122,7 @@ func TestSequencerV2_CrossActivityOrder_Concurrent(t *testing.T) {
 				event:    biz.ActivityEvent{Event: biz.ActivityEventCreated, Activity: a},
 				activity: a,
 			})
+			publishMu.Unlock()
 		}()
 	}
 
