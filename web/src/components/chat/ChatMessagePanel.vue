@@ -35,38 +35,7 @@
       </template>
     </div>
 
-    <!-- TECH-DEBT(ADR-03): Dual rendering path. The team/member branches below use
-         the deprecated TaskExecutionPanel/MemberReadOnlyPanel -> ChatExecutionCard
-         pipeline. The spirit/default branch uses the new ActivityStream pipeline.
-         Phase 5 of the chat refactor will unify these by extending ActivityStream
-         to cover team/member rendering, then delete the deprecated components.
-         See docs/reports/2026-06-25-analysis-chat-module-refactor.md §7. -->
-    <template v-if="panelMode === 'team' && spiritTeam">
-      <TaskExecutionPanel
-        :team="spiritTeam"
-        :messages="props.messages"
-        :max-parallel="spiritMaxConcurrentTeams"
-        :completion-stats="spiritCompletionStats"
-        :render-markdown="renderChatMarkdown"
-        @return-to-spirit="emit('return-to-spirit')"
-        @cancel-team="(teamId) => emit('cancel-team', teamId)"
-        @resume-team="(teamId) => emit('resume-team', teamId)"
-        @retry-team="(teamId) => emit('retry-team', teamId)"
-        @select-member="(memberId) => emit('select-member', memberId)"
-        @archive-team="(teamId) => emit('archive-team', teamId)"
-      />
-    </template>
-    <template v-else-if="panelMode === 'member' && spiritTeam && activeMember">
-      <MemberReadOnlyPanel
-        :member="activeMember"
-        :team="spiritTeam"
-        :messages="props.messages"
-        :render-markdown="renderChatMarkdown"
-        @return-to-team="emit('return-to-team')"
-        @return-to-spirit="emit('return-to-spirit')"
-      />
-    </template>
-    <template v-else>
+    <template>
       <q-banner v-if="wsReplaying" dense rounded class="q-mx-md q-mt-sm app-info-banner">
         <template #avatar>
           <q-spinner-dots color="accent" size="20px" />
@@ -326,9 +295,7 @@ import ChatReasoningDrawer from './ChatReasoningDrawer.vue';
 import UiConfigToggle from './UiConfigToggle.vue';
 import TodoKanbanBoard from './TodoKanbanBoard.vue';
 import ContextIndicator from '../sessions/ContextIndicator.vue';
-import TaskExecutionPanel from '../spirit/TaskExecutionPanel.vue';
 import UnifiedExecutionPanel from '../spirit/UnifiedExecutionPanel.vue';
-import MemberReadOnlyPanel from '../spirit/MemberReadOnlyPanel.vue';
 import SynthesisResultCard from '../spirit/SynthesisResultCard.vue';
 import SpiritStatusBar from '../spirit/SpiritStatusBar.vue';
 import type { RunStatusValue } from '../../features/chat/types';
@@ -346,7 +313,7 @@ import type { ComposerUsageSnapshot } from '../../features/chat/composerUsageMet
 import type { PromptBreakdown } from '../../features/chat/contextBreakdown';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { ChatAttachment } from './types';
-import type { SpiritTeam, SpiritMember, SynthesisOutput, CompletionStats } from '../../features/spirit/types';
+import type { SpiritTeam, SpiritMember, SynthesisOutput } from '../../features/spirit/types';
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import type { ContextualMessage } from '../../features/chat/composables/useContextualLoadingMessage';
 import { EXECUTION_COLLAPSE_CONTROL_KEY } from '../../features/chat/executionCardHelpers';
@@ -410,12 +377,8 @@ const props = defineProps<{
   spiritLoadingMessage?: ContextualMessage | null;
   /** Spirit status bar data. */
   spiritStatusBar?: SpiritStatusBarData | null;
-  /** Max concurrent teams from store (for TaskExecutionPanel). */
-  spiritMaxConcurrentTeams?: number;
   /** Evolution suggestion from DQ analysis (for SynthesisResultCard). */
   spiritEvolutionSuggestion?: EvolutionSuggestion | null;
-  /** Team completion breakdown from spirit_teams_all_completed event. */
-  spiritCompletionStats?: CompletionStats | null;
   compressStatus?: CompressStatus;
   showToolCalls?: boolean;
   /** Phase A: flat sorted Activity list (current session, includes task).
