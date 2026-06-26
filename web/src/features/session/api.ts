@@ -93,6 +93,13 @@ function kratosSessionToLegacy(s: KratosSession): Session {
     parent_session_id: s.parentSessionId ?? '',
     root_session_id: s.rootSessionId ?? '',
     agent_depth: s.agentDepth ?? 0,
+    session_type: s.sessionType ?? '',
+    member_agent_key: s.memberAgentKey ?? '',
+    member_role: s.memberRole ?? '',
+    execution_stage: s.executionStage ?? '',
+    completed_steps: s.completedSteps ?? 0,
+    total_steps: s.totalSteps ?? 0,
+    progress_pct: s.progressPct ?? 0,
   };
 }
 

@@ -519,6 +519,13 @@ export default {
       agent_awaiting_reply: 'Agent Awaiting Reply',
       manual_override: 'Manual Override',
     },
+    executionStage: {
+      planning: 'Planning',
+      allocating: 'Allocating',
+      executing: 'Executing',
+      completed: 'Completed',
+      failed: 'Failed',
+    },
   },
   plugins: {
     rulesAdd: 'Add rule',

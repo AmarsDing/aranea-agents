@@ -121,7 +121,7 @@ defineProps<{
   loading: boolean;
   error: string;
   liveConnected: boolean;
-  liveReplaying: boolean;
+  liveReplaying?: boolean;
   isDark: boolean;
 }>();
 

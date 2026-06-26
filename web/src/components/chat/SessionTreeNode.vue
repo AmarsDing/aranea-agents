@@ -15,6 +15,15 @@
       <span v-else class="node-toggle-placeholder" />
       <q-icon :name="sessionIcon" size="16px" class="node-icon" />
       <span class="node-title col ellipsis">{{ node.session.title || 'Untitled' }}</span>
+      <q-badge v-if="depth > 0" dense rounded color="grey-7" class="node-depth" :title="`Depth ${depth}`">
+        L{{ depth }}
+      </q-badge>
+      <q-badge v-if="stageLabel" dense rounded :color="stageColor" class="node-stage">
+        {{ stageLabel }}
+      </q-badge>
+      <span v-if="totalSteps > 0" class="node-progress" :title="`Progress ${completedSteps}/${totalSteps}`">
+        {{ completedSteps }}/{{ totalSteps }}
+      </span>
       <q-badge v-if="hasChildren" dense rounded class="node-count">
         {{ node.children.length }}
       </q-badge>
@@ -34,6 +43,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { SessionTreeNode } from '../../features/session/types';
 
 const props = defineProps<{
@@ -45,6 +55,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   select: [sessionId: string];
 }>();
+
+const { t } = useI18n();
 
 const expanded = ref(props.defaultExpanded ?? false);
 
@@ -60,6 +72,51 @@ watch(
 );
 
 const hasChildren = computed(() => props.node.children.length > 0);
+const depth = computed(() => props.node.session.agent_depth ?? 0);
+const completedSteps = computed(() => props.node.session.completed_steps ?? 0);
+const totalSteps = computed(() => props.node.session.total_steps ?? 0);
+
+const sessionIcon = computed(() => {
+  const s = props.node.session;
+  switch (s.session_type) {
+    case 'spirit':
+      return 'auto_awesome';
+    case 'team':
+      return 'groups';
+    case 'agent':
+      return 'person';
+    case 'standalone':
+      return 'forum';
+    default:
+      // Fallback for legacy sessions without session_type.
+      if (s.team_id) return 'groups';
+      if (s.agent_id) return 'person';
+      return 'forum';
+  }
+});
+
+const stageLabel = computed(() => {
+  const stage = props.node.session.execution_stage ?? '';
+  if (!stage || stage === 'idle') return '';
+  return t(`session.executionStage.${stage}`, stage);
+});
+
+const stageColor = computed(() => {
+  const stage = props.node.session.execution_stage ?? '';
+  switch (stage) {
+    case 'planning':
+    case 'allocating':
+      return 'blue';
+    case 'executing':
+      return 'orange';
+    case 'completed':
+      return 'green';
+    case 'failed':
+      return 'red';
+    default:
+      return 'grey';
+  }
+});
 
 function toggleExpand() {
   expanded.value = !expanded.value;
@@ -68,13 +125,6 @@ function toggleExpand() {
 function onSelect() {
   emit('select', props.node.session.id);
 }
-
-const sessionIcon = computed(() => {
-  const s = props.node.session;
-  if (s.team_id) return 'groups';
-  if (s.agent_id) return 'person';
-  return 'forum';
-});
 
 function containsSession(node: SessionTreeNode, sessionId: string): boolean {
   if (node.session.id === sessionId) return true;
@@ -111,6 +161,17 @@ function containsSession(node: SessionTreeNode, sessionId: string): boolean {
   .node-title
     font-size: 13px
     color: var(--color-text-primary)
+
+  .node-depth
+    font-size: 10px
+
+  .node-stage
+    font-size: 10px
+
+  .node-progress
+    font-size: 10px
+    color: var(--color-text-secondary)
+    flex-shrink: 0
 
   .node-count
     background: var(--glass-surface)

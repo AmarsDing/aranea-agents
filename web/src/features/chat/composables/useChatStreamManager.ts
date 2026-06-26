@@ -5,9 +5,8 @@ import { useRouter } from 'vue-router';
 import { useAuthStore } from '../../../stores/auth';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import { createChatStream, createTeamStream, type UseEnvelopeStreamReturn } from '../useEnvelopeStream';
-import type { EnvelopeType, WsUpstream } from '../../../realtime/envelope';
+import type { WsUpstream } from '../../../realtime/ws-transport';
 import type { ActivityEvent } from '../../../realtime/activityEvent';
-import type { InspectorEvent } from '../eventFilter';
 import { getChannelWsCursor } from '../channelWsCursor';
 
 export type StreamManagerDeps = {
@@ -71,9 +70,6 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         auth.sessionChecked = true;
         router.push({ name: 'login' });
       },
-      onReplayState: (replaying) => {
-        wsReplaying.value = replaying;
-      },
       onActivityEvent: deps.onActivityEvent,
     });
 
@@ -99,9 +95,6 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     deps.runtimeStore.setWsConnected(sessionId, false);
 
     teamStream = createTeamStream(sessionId, {
-      onReplayState: (replaying) => {
-        wsReplaying.value = replaying;
-      },
       onServerShutdown: () => {
         $q.notify({
           type: 'warning',
@@ -163,33 +156,10 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     teamStream?.cancel();
   }
 
-  /**
-   * Subscribe to raw envelope types on the session stream. Used by the event
-   * inspector, which consumes InspectorEvent (a minimal local type that
-   * captures only the fields the inspector UI accesses). The underlying WS
-   * stream still delivers Envelope objects, but they are structurally
-   * compatible with InspectorEvent and adapted here.
-   *
-   * Phase 5 Blocker A: the legacy server-side replay (event.Buffer →
-   * replayEvents → Envelope) has been removed. The inspector re-fetches
-   * historical Activities via ListActivities RPC on reconnect (handled by
-   * the caller via onReconnect).
-   */
-  function subscribeSessionStream(
-    sessionId: string,
-    ownerKind: 'agent' | 'team',
-    types: string[],
-    handler: (env: InspectorEvent) => void,
-  ): () => void {
-    const stream = ownerKind === 'team' ? ensureTeamStream(sessionId) : ensureChatStream(sessionId);
-    return stream.onType(types as EnvelopeType[], (env) => handler(env));
-  }
-
   return {
     wsReplaying,
     ensureChatStream,
     ensureTeamStream,
-    subscribeSessionStream,
     sendChatViaWs,
     disconnectChatStream,
     disconnectTeamStream,

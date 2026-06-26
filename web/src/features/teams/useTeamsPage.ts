@@ -78,7 +78,6 @@ export function useTeamsPage() {
   // ── Runs UI state ──
   const runsOpen = ref(false);
   const runEventsConnected = ref(false);
-  const runEventsReplaying = ref(false);
   let runEventsSource: ReturnType<typeof store.subscribeRunEvents> | null = null;
 
   // ── Test state ──
@@ -301,12 +300,6 @@ export function useTeamsPage() {
         runEventsConnected.value = true;
         applyRunEvent(event);
       },
-      () => {
-        runEventsConnected.value = false;
-      },
-      (replaying) => {
-        runEventsReplaying.value = replaying;
-      },
     );
   }
 
@@ -314,7 +307,6 @@ export function useTeamsPage() {
     runEventsSource?.close();
     runEventsSource = null;
     runEventsConnected.value = false;
-    runEventsReplaying.value = false;
   }
 
   function applyRunEvent(event: TeamRunEvent) {
@@ -407,7 +399,6 @@ export function useTeamsPage() {
     runsLoading,
     runsError,
     runEventsConnected,
-    runEventsReplaying,
     selectedTeam: computed(() => store.selectedTeam),
     runs,
     stepsByRun,

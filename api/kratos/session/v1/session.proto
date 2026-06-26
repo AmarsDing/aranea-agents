@@ -61,6 +61,19 @@ message Session {
   string parent_session_id = 50;
   string root_session_id = 51;
   int32 agent_depth = 52;
+  // Session tree hierarchy (Phase 2 additive).
+  // session_type: spirit (root) | team | agent (member or sub-agent) | standalone.
+  string session_type = 53;
+  // member_agent_key identifies the executing agent for agent-type sessions.
+  string member_agent_key = 54;
+  // member_role is the agent's role within a team (e.g. coordinator/worker).
+  string member_role = 55;
+  // execution_stage tracks the current stage:
+  // idle | planning | allocating | executing | completed | failed.
+  string execution_stage = 56;
+  int32 completed_steps = 57;
+  int32 total_steps = 58;
+  double progress_pct = 59;
 }
 
 message SessionTimelineSummary {

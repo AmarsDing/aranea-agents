@@ -603,7 +603,7 @@ export function useChatWorkspace() {
   const settingsDialog = useChatSettingsDialog(appStore, displayAgents, displayTeams);
   const { settingsOpen, settingsMode, settingsId, editName, onSaveSettings: saveSettingsDialog } = settingsDialog;
 
-  const traceAndArtifacts = useChatTraceDialog(toRef(sessionStore, 'entityKind'), displaySessions, streamManager);
+  const traceAndArtifacts = useChatTraceDialog(toRef(sessionStore, 'entityKind'), displaySessions);
   const {
     traceOpen,
     traceSessionId,
@@ -959,11 +959,13 @@ export function useChatWorkspace() {
     try {
       if (replace) clearChatMarkdownCache();
 
-      // AF-FE-14: Load Activity data BEFORE messages so that the AF path
-      // (useConversationTimeline) has data available when conversationTurns
-      // is computed. Activity events are consumed directly by the timeline;
-      // we no longer reconstruct synthetic message rows from Activity records.
-      await activityTimeline.loadActivitiesFromAPI(sessionId);
+      // AF-FE-14 / §9.1.3: Load Activity data BEFORE messages so that the AF
+      // path (useConversationTimeline) has data available when
+      // conversationTurns is computed. `ensureActivitiesLoaded` skips the API
+      // call when the session is already cached (Phase 3 per-session
+      // isolation) — WS replay reconciles missed events on reconnect. Use
+      // `retryLoad` to force a full refresh after a load failure.
+      await activityTimeline.ensureActivitiesLoaded(sessionId);
       // AF-GAP-05: When AF API fails after 5 retries, show a visible
       // "数据加载失败，请刷新" notice instead of silently falling back to
       // Legacy rendering. The user must refresh to recover — silent Legacy

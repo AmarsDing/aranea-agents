@@ -263,8 +263,6 @@ export function subscribeTeamRunEventsWs(
   sessionId: string,
   teamID: string,
   onEvent: (event: TeamRunEvent) => void,
-  onError?: (error: string) => void,
-  onReplayState?: (replaying: boolean) => void,
 ) {
   const effectiveSession =
     sessionId.trim() === '' || sessionId === TEAM_MONITOR_SESSION_ALIAS ? GLOBAL_WS_SESSION_ID : sessionId;
@@ -272,17 +270,12 @@ export function subscribeTeamRunEventsWs(
     sessionId: effectiveSession,
     channels: ['team', 'monitor', 'system'],
     autoConnect: false,
-    onReplayState: (replaying) => onReplayState?.(replaying),
     onActivityEvent: (ev) => {
       const mapped = teamRunEventFromActivityEvent(ev, teamID);
       if (mapped) {
         onEvent(mapped);
       }
     },
-  });
-
-  stream.onType('error', (env) => {
-    onError?.(env.error?.message ?? 'team ws error');
   });
 
   stream.connect();

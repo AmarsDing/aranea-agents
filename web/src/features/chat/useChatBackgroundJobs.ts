@@ -117,9 +117,6 @@ export function useChatBackgroundJobs(
     hubId = acquireGlobalWsConsumer({
       channels: ['chat'],
       logEnabled: false,
-      // Backend no longer sends envelopes; onEnvelope is required by the type
-      // but never fires. ActivityEvent is the live path.
-      onEnvelope: () => {},
       onActivityEvent: (ev) => {
         if (isBackgroundJobRefreshActivity(ev, sessionId.value)) {
           // WS event arrived → immediate load + reset backoff

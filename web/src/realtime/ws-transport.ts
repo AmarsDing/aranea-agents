@@ -9,10 +9,37 @@
  */
 
 import { buildWsUrl } from '../config/runtime';
-import type { Envelope, WsDownstream, WsUpstream } from './envelope';
 import type { ActivityEvent } from './activityEvent';
 import type { MonitorEvent } from './monitorEvent';
-import { RevisionTracker, requestSyncReplay } from './event_replay';
+
+/**
+ * WS downstream message shape. The single source of truth for what the
+ * backend sends over `/v1/ws`. Carries one of:
+ * - control messages (connected/pong/server_shutdown/replay_*)
+ * - business events (activity_event for chat/system, monitor_event for monitor)
+ *
+ * The legacy `envelope?` field has been removed (Phase 5 Blocker G frontend).
+ */
+export type WsDownstream = {
+  direction: 'server_to_client';
+  channel: string;
+  type?: string;
+  payload?: unknown;
+  activity_event?: ActivityEvent;
+  monitor_event?: MonitorEvent;
+};
+
+/**
+ * WS upstream message shape. Sent by the client over `/v1/ws` for
+ * user_message/cancel/subscribe/unsubscribe/ping/enable_log/sync_request.
+ */
+export type WsUpstream = {
+  direction: 'client_to_server';
+  channel: string;
+  type: string;
+  request_id?: string;
+  payload?: unknown;
+};
 import {
   WS_MAX_RECONNECT_DELAY_MS,
   WS_HEARTBEAT_INTERVAL_MS,
@@ -48,7 +75,6 @@ export type WsTransportOptions = {
   lastEventId?: string;
   token?: string;
   logEnabled?: boolean;
-  onEnvelope?: (env: Envelope) => void;
   /**
    * Activity-First (AF): called when a downstream message carries an
    * activity_event payload (business-semantic Activity lifecycle event).
@@ -66,8 +92,6 @@ export type WsTransportOptions = {
   onDisconnected?: () => void;
   onError?: (error: Event) => void;
   onServerShutdown?: (reason: string) => void;
-  /** Fired when EventBuffer replay starts/ends (reconnect with last_event_id). */
-  onReplayState?: (replaying: boolean, count?: number) => void;
   /**
    * P1 #2: 业务消息因队列满而被拒绝入队时触发。调用方应回退到 HTTP。
    * 仅对 business 优先级消息触发；control 消息满时静默丢弃最旧的。
@@ -96,17 +120,9 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let reconnectAttempts = 0;
   let shutdownReceived = false;
-  // T3.4: Track whether we've ever connected before, to detect reconnects.
-  // reconnectAttempts is reset to 0 in onopen, so we can't rely on it in the
-  // connected message handler (which arrives after onopen).
-  let hasConnectedBefore = false;
   // P1 #2: 分级队列。control 可丢弃，business 不丢弃。
   const controlQueue: WsUpstream[] = [];
   const businessQueue: WsUpstream[] = [];
-  // T3.4: Per-session revision tracker for sync_request replay after reconnect.
-  // Updated on every envelope carrying session_revision; used on reconnect to
-  // request replay of envelopes with revision > last known.
-  const revisionTracker = new RevisionTracker();
 
   function connect(): void {
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
@@ -137,34 +153,10 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
           const payload = msg.payload as Record<string, unknown>;
           _lastEventId = (payload.last_event_id as string) || _lastEventId;
           opts.onConnected?.({ sessionId: opts.sessionId, lastEventId: _lastEventId });
-          // T3.4: After reconnect, request revision-based sync replay.
-          // The server replays envelopes with session_revision > last known.
-          // This complements event-ID-based replay (via lastEventId in URL)
-          // by ensuring message-level consistency for envelopes persisted
-          // during the disconnection window.
-          if (hasConnectedBefore) {
-            const lastRevision = revisionTracker.get(opts.sessionId);
-            if (lastRevision > 0) {
-              requestSyncReplay(send, opts.sessionId, lastRevision);
-            }
-          }
-          hasConnectedBefore = true;
           return;
         }
 
         if (msg.type === 'pong') return;
-
-        if (msg.type === 'replay_start') {
-          const payload = msg.payload as Record<string, unknown> | undefined;
-          const count = typeof payload?.count === 'number' ? payload.count : undefined;
-          opts.onReplayState?.(true, count);
-          return;
-        }
-
-        if (msg.type === 'replay_end') {
-          opts.onReplayState?.(false);
-          return;
-        }
 
         if (msg.type === 'server_shutdown') {
           const payload = msg.payload as Record<string, unknown> | undefined;
@@ -172,15 +164,6 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
           shutdownReceived = true;
           opts.onServerShutdown?.(reason);
           return;
-        }
-
-        if (msg.envelope) {
-          _lastEventId = msg.envelope.id;
-          // T3.4: Track session_revision for sync_request replay.
-          if (msg.envelope.session_revision && msg.envelope.session_revision > 0) {
-            revisionTracker.update(opts.sessionId, msg.envelope.session_revision);
-          }
-          opts.onEnvelope?.(msg.envelope);
         }
 
         // Activity-First (AF): dispatch business-semantic ActivityEvent.

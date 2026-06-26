@@ -304,7 +304,7 @@ internal/biz                 → internal/event  (单向，父包，唯一硬依
 - ✅ 把 `internal/event/dedup.go` 整体移到 `internal/event/contract/dedup.go`（零依赖文件移动）
 - ✅ 在父 `event` 包保留 deprecated type alias（`EventDeduplicator = contract.EventDeduplicator`）+ 包装构造函数 + 重导出常量
 - ✅ 修改 `event_bus_consumer.go` 改用 `contract.NewEventDeduplicator(contract.DefaultDedupCapacity)`
-- ⏳ 后续：迁移 `EventBusConsumer` 整体到 `ActivityEventBus` 订阅（多 session 工作量，不在本次会话范围）
+- ✅ 后续：迁移 `EventBusConsumer` 整体到 `ActivityEventBus` 订阅（Blocker F 主体完成总结确认 8 个 consumer 全部已迁移，详见下节）
 
 **解耦后的影响**：`biz` 包对 `event` 父包的硬依赖消除，`EventBusConsumer` 可在后续 session 中迁移到 `ActivityEventBus`，迁移完成后即可删除 `ProvideSessionBus` 绑定（Blocker F 主体）和最终删除 `envelope.go`（Blocker G）。
 

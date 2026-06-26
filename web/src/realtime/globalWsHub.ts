@@ -9,7 +9,6 @@
 
 import { GLOBAL_WS_SESSION_ID } from '../config/runtime';
 import { createWsTransport, type WsTransport } from './ws-transport';
-import type { Envelope } from './envelope';
 import type { ActivityEvent } from './activityEvent';
 import type { MonitorEvent } from './monitorEvent';
 
@@ -17,7 +16,6 @@ export type GlobalWsConsumer = {
   id: string;
   channels: Set<string>;
   logEnabled: boolean;
-  onEnvelope: (env: Envelope) => void;
   /** Activity-First (AF): called when an activity_event message arrives. */
   onActivityEvent?: (ev: ActivityEvent) => void;
   /** Monitor channel: called when a monitor_event message arrives. */
@@ -61,13 +59,6 @@ function ensureHubTransport(): WsTransport {
   transport = createWsTransport({
     sessionId: GLOBAL_WS_SESSION_ID,
     logEnabled: false,
-    onEnvelope: (env) => {
-      for (const c of consumers.values()) {
-        if (env.channel && c.channels.has(env.channel)) {
-          c.onEnvelope(env);
-        }
-      }
-    },
     onActivityEvent: (ev) => {
       // Activity-First (AF): dispatch to all consumers that have opted in.
       for (const c of consumers.values()) {
@@ -118,7 +109,6 @@ export function acquireGlobalWsConsumer(
     id,
     channels,
     logEnabled: opts.logEnabled,
-    onEnvelope: opts.onEnvelope,
     onActivityEvent: opts.onActivityEvent,
     onMonitorEvent: opts.onMonitorEvent,
     onConnected: opts.onConnected,

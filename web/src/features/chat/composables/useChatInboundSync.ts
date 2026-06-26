@@ -415,10 +415,6 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     hubId = acquireGlobalWsConsumer({
       channels: ['chat'],
       logEnabled: false,
-      // AF: Legacy Envelope path removed. onEnvelope is required by
-      // GlobalWsConsumer but is now a no-op — all chat traffic arrives as
-      // ActivityEvent via onActivityEvent.
-      onEnvelope: () => {},
       onActivityEvent: deps.onActivityEvent ? (ev) => deps.onActivityEvent!(ev) : undefined,
     });
   });

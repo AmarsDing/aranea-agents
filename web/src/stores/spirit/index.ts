@@ -19,14 +19,55 @@ import type {
   CompletionStats,
 } from '../../features/spirit/types';
 import { isValidTeamStatus } from '../../features/spirit/types';
-import type {
-  SpiritPlanCreatedPayload,
-  SpiritAllocationCreatedPayload,
-  SpiritOrchestrationStartedPayload,
-  SpiritOrchestrationCheckpointPayload,
-  SpiritOrchestrationInterruptedPayload,
-} from '../../realtime/envelope';
 import type { ActivityEvent } from '../../realtime/activityEvent';
+
+// --- Spirit Orchestration Event Payloads (inlined from deleted envelope.ts) ---
+// These are type views over ActivityEvent.activity.meta for the spirit orchestration
+// channel. The backend publishes them as ActivityEvent with kind=spirit_*.
+type SpiritPlanCreatedPayload = {
+  plan_id: string;
+  spirit_session_id: string;
+  complexity_level: string;
+  complexity_score: number;
+  strategy: string;
+  strategy_reason: string;
+  topology_hint: string;
+  subtask_count: number;
+};
+
+type SpiritAllocationCreatedPayload = {
+  allocation_id: string;
+  task_plan_id: string;
+  spirit_session_id: string;
+  allocation_count: number;
+  status: string;
+};
+
+type SpiritOrchestrationStartedPayload = {
+  orchestration_id: string;
+  spirit_session_id: string;
+  strategy: string;
+  status: string;
+  task_plan_id: string;
+  allocation_id: string;
+  team_ids?: string[];
+  max_concurrent_teams?: number;
+};
+
+type SpiritOrchestrationCheckpointPayload = {
+  orchestration_id: string;
+  spirit_session_id: string;
+  checkpoint_id: string;
+  step: string;
+  status: string;
+};
+
+type SpiritOrchestrationInterruptedPayload = {
+  orchestration_id: string;
+  spirit_session_id: string;
+  status: string;
+};
+
 import { Notify } from 'quasar';
 
 /** Orchestration phase derived from WS events. */

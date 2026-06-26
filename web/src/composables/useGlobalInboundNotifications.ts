@@ -124,8 +124,6 @@ export function useGlobalInboundNotifications() {
     hubId = acquireGlobalWsConsumer({
       channels: ['chat'],
       logEnabled: false,
-      // AF: Legacy Envelope path removed — no-op.
-      onEnvelope: () => {},
       onActivityEvent: (ev) => {
         void handleActivityEvent(ev);
       },

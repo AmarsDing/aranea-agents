@@ -568,6 +568,20 @@ export function useActivityTimeline() {
     await loadActivitiesFromAPI(sessionId, turnId);
   }
 
+  /**
+   * §9.1.3 / Phase 3: Lazy-load activities for a session — skips the API
+   * call when the session is already cached (even an empty Map counts as
+   * loaded). WS replay reconciles missed events on reconnect. Use
+   * `loadActivitiesFromAPI` (or `retryLoad`) to force a full refresh.
+   *
+   * Failed loads do NOT populate the cache, so the next call retries
+   * automatically.
+   */
+  async function ensureActivitiesLoaded(sessionId: string, turnId?: string) {
+    if (activitiesBySession.value.has(sessionId)) return;
+    await loadActivitiesFromAPI(sessionId, turnId);
+  }
+
   // === Cleanup on unmount (only when inside a component instance) ===
 
   if (getCurrentInstance()) {
@@ -595,6 +609,7 @@ export function useActivityTimeline() {
     getSessionActivities,
     loadActivities,
     loadActivitiesFromAPI,
+    ensureActivitiesLoaded,
     retryLoad,
   };
 }

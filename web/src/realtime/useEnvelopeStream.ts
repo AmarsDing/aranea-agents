@@ -12,8 +12,6 @@
  */
 import { onUnmounted, ref, shallowRef } from 'vue';
 import { createWsTransport, type WsTransport } from './ws-transport';
-import { EnvelopeDispatcher } from './dispatcher';
-import type { Envelope, EnvelopeType } from './envelope';
 import type { ActivityEvent } from './activityEvent';
 import type { MonitorEvent } from './monitorEvent';
 import {
@@ -40,7 +38,6 @@ export type UseEnvelopeStreamOptions = {
   onConnected?: (info: { sessionId: string; lastEventId?: string }) => void;
   onDisconnected?: () => void;
   onServerShutdown?: (reason: string) => void;
-  onReplayState?: (replaying: boolean, count?: number) => void;
   /**
    * Activity-First (AF): called when a downstream message carries an
    * activity_event payload. If not provided, activity_event messages are
@@ -60,11 +57,8 @@ export type UseEnvelopeStreamReturn = {
   wsReplaying: ReturnType<typeof ref<boolean>>;
   lastEventId: ReturnType<typeof ref<string | undefined>>;
   transport: ReturnType<typeof shallowRef<WsTransport | null>>;
-  dispatcher: EnvelopeDispatcher;
   connect: () => void;
   disconnect: () => void;
-  onType: (type: EnvelopeType | EnvelopeType[], handler: (env: Envelope) => void) => () => void;
-  onChannel: (channel: string | string[], handler: (env: Envelope) => void) => () => void;
   subscribe: (channel: string) => void;
   unsubscribe: (channel: string) => void;
   enableLog: (enabled: boolean) => void;
@@ -77,7 +71,6 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
   const wsReplaying = ref(false);
   const lastEventId = ref<string | undefined>(opts.lastEventId);
   const transport = shallowRef<WsTransport | null>(null);
-  const dispatcher = new EnvelopeDispatcher();
 
   const channels = opts.channels ?? ['chat', 'system'];
   let globalHubId: string | null = null;
@@ -91,7 +84,6 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
       globalHubId = acquireGlobalWsConsumer({
         channels,
         logEnabled: opts.logEnabled ?? false,
-        onEnvelope: (env) => dispatcher.dispatch(env),
         onActivityEvent: opts.onActivityEvent,
         onMonitorEvent: opts.onMonitorEvent,
         onConnected: () => {
@@ -121,9 +113,6 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
       sessionId: opts.sessionId,
       lastEventId: lastEventId.value,
       logEnabled: opts.logEnabled,
-      onEnvelope: (env) => {
-        dispatcher.dispatch(env);
-      },
       onActivityEvent: opts.onActivityEvent ? (ev) => opts.onActivityEvent!(ev) : undefined,
       onMonitorEvent: opts.onMonitorEvent ? (event) => opts.onMonitorEvent!(event) : undefined,
       onConnected: (info) => {
@@ -146,10 +135,6 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
       onServerShutdown: (reason) => {
         opts.onServerShutdown?.(reason);
       },
-      onReplayState: (replaying, count) => {
-        wsReplaying.value = replaying;
-        opts.onReplayState?.(replaying, count);
-      },
     });
 
     transport.value = t;
@@ -161,21 +146,11 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
       releaseGlobalWsConsumer(globalHubId);
       globalHubId = null;
       connected.value = false;
-      dispatcher.clear();
       return;
     }
     transport.value?.disconnect();
     transport.value = null;
     connected.value = false;
-    dispatcher.clear();
-  }
-
-  function onType(type: EnvelopeType | EnvelopeType[], handler: (env: Envelope) => void): () => void {
-    return dispatcher.onType(type, handler);
-  }
-
-  function onChannel(channel: string | string[], handler: (env: Envelope) => void): () => void {
-    return dispatcher.onChannel(channel, handler);
   }
 
   function subscribe(channel: string): void {
@@ -215,11 +190,8 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
     wsReplaying,
     lastEventId,
     transport,
-    dispatcher,
     connect,
     disconnect,
-    onType,
-    onChannel,
     subscribe,
     unsubscribe,
     enableLog,

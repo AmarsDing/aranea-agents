@@ -524,6 +524,80 @@ describe('useActivityTimeline', () => {
     vi.useRealTimers();
   });
 
+  // --- §9.1.3: ensureActivitiesLoaded cache-skip behavior ---
+
+  it('ensureActivitiesLoaded skips API call when session is already cached', async () => {
+    vi.mocked(listActivities).mockResolvedValue([]);
+    // Prime the cache for sess-1 via loadActivities (no API call).
+    tl.loadActivities([], 'sess-1');
+    const callCountBefore = vi.mocked(listActivities).mock.calls.length;
+
+    await tl.ensureActivitiesLoaded('sess-1');
+
+    // No additional API call should have been made.
+    expect(vi.mocked(listActivities).mock.calls.length).toBe(callCountBefore);
+  });
+
+  it('ensureActivitiesLoaded loads from API when session is not cached', async () => {
+    vi.mocked(listActivities).mockResolvedValue([
+      {
+        id: 'act-lazy',
+        kind: 'task',
+        status: 'completed',
+        sessionId: 'sess-lazy',
+        turnId: 'turn-1',
+        parentActivityId: null,
+        timestamp: '2026-06-13T00:00:00Z',
+        durationMs: 0,
+        content: null,
+        reasoning: null,
+        toolName: null,
+        toolCallId: null,
+        toolArguments: null,
+        toolResult: null,
+        toolDurationMs: null,
+        toolErrorCode: null,
+        childBoardId: null,
+        spiritSessionId: null,
+        teamId: null,
+        dagNodeId: null,
+        dependsOn: null,
+        agentKey: null,
+        agentName: null,
+        collapsed: false,
+        label: null,
+      },
+    ]);
+
+    tl.setCurrentSession('sess-lazy');
+    await tl.ensureActivitiesLoaded('sess-lazy');
+
+    expect(listActivities).toHaveBeenCalledWith('sess-lazy', undefined);
+    expect(tl.activities.value).toHaveLength(1);
+    expect(tl.activities.value[0].id).toBe('act-lazy');
+  });
+
+  it('ensureActivitiesLoaded retries on next call after a failed load (cache not populated)', async () => {
+    vi.useFakeTimers();
+    tl.setCurrentSession('sess-fail');
+    // First call: all retries fail → cache NOT populated.
+    vi.mocked(listActivities).mockRejectedValue(new Error('down'));
+    let promise = tl.ensureActivitiesLoaded('sess-fail');
+    await vi.advanceTimersByTimeAsync(8000);
+    await promise;
+    expect(tl.loadError.value).toBeTruthy();
+    expect(vi.mocked(listActivities)).toHaveBeenCalledTimes(5);
+
+    // Second call: cache still absent → should retry the API.
+    vi.mocked(listActivities).mockResolvedValue([]);
+    vi.mocked(listActivities).mockClear();
+    promise = tl.ensureActivitiesLoaded('sess-fail');
+    await promise;
+    expect(listActivities).toHaveBeenCalledWith('sess-fail', undefined);
+    expect(tl.loadError.value).toBeNull();
+    vi.useRealTimers();
+  });
+
   describe('sortedActivities', () => {
     it('returns flat list including task, sorted by timestamp', () => {
       tl.setCurrentSession('s1');

@@ -146,7 +146,6 @@
       :loading="runsLoading"
       :error="runsError"
       :live-connected="runEventsConnected"
-      :live-replaying="runEventsReplaying"
       :is-dark="isDark"
       @refresh="loadRuns"
       @show-steps="loadRunSteps"
@@ -209,7 +208,6 @@ const {
   runsLoading,
   runsError,
   runEventsConnected,
-  runEventsReplaying,
   selectedTeam,
   runs,
   stepsByRun,

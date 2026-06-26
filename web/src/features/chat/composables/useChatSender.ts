@@ -10,7 +10,7 @@ import { useAppStore } from '../../../stores/app';
 import { checkBackendHealth, getServerHeartbeatState } from '../../heartbeat/useServerHeartbeat';
 import type { ChatAttachment, ChatEntityKind } from '../../../components/chat/types';
 import type { UseEnvelopeStreamReturn } from '../useEnvelopeStream';
-import type { WsUpstream } from '../../../realtime/envelope';
+import type { WsUpstream } from '../../../realtime/ws-transport';
 import { shouldBlockAttachmentsForModel } from '../modelCapabilities';
 // TECH-DEBT resolved: moved sendMessage to runtimeStore.send — chat optimization
 import { AWAIT_KIND_TOOL_CONFIRM } from '../awaitConstants';

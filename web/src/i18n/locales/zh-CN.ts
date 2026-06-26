@@ -535,6 +535,13 @@ export default {
       agent_awaiting_reply: 'Agent 等待回复',
       manual_override: '手动覆盖',
     },
+    executionStage: {
+      planning: '规划',
+      allocating: '分配',
+      executing: '执行',
+      completed: '完成',
+      failed: '失败',
+    },
   },
   plugins: {
     rulesAdd: '添加规则',

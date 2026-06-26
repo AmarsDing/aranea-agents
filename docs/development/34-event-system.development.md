@@ -1,8 +1,8 @@
 # Event 事件系统 — 开发计划
 
-> **版本**：2026-06-26 | **状态**：🟢 P1 + P2 + P3 + P5(T3.4) 已实现，P4 工具生命周期事件未实现；🔄 统一总线迁移 Phase 1-3 已完成（Phase 4-6 待实施）
+> **版本**：2026-06-27 | **状态**：🟢 P1 + P2 + P3 + P5(T3.4) 已实现，P4 工具生命周期事件未实现；✅ 统一总线迁移 Phase 5 Blocker A-G 全部完成（legacy Envelope Bus / SessionBus / MonitorBus 已删除）
 > **需求**：[34-event-system.md](./34-event-system.md) · **设计**：[34-event-system.design.md](./34-event-system.design.md)
-> **统一总线迁移**：[2026-06-25-unified-bus-architecture-design.md](../superpowers/specs/2026-06-25-unified-bus-architecture-design.md)
+> **统一总线迁移**：[2026-06-25-unified-bus-architecture-design.md](../superpowers/specs/2026-06-25-unified-bus-architecture-design.md) · **ADR-03**：[2026-06-26-review-adr-unified-bus-architecture.md](../reports/2026-06-26-review-adr-unified-bus-architecture.md)
 
 ---
 
@@ -10,54 +10,52 @@
 
 Event 事件系统：基于事件总线的发布/订阅机制，支持系统内部组件间的异步事件通信。
 
-> **统一总线架构（2026-06-26 迁移中）**：系统正在从双总线（Envelope + ActivityEvent）迁移到统一总线架构。
+> **统一总线架构（2026-06-27 迁移完成）**：系统已从双总线（Envelope + ActivityEvent）迁移到统一总线架构（ADR-03 Phase 5 Blocker A-G 全部完成）。
 > - **ActivityEventBus**（`biz.ActivityEventBus`）：传输 `ActivityEvent`，承载所有 chat + system 事件。`Domain=chat` 持久化到 Activity 表，`Domain=system` 仅推送 WS。
-> - **MonitorBus**（`contract.MonitorBus`）：传输 `MonitorEvent`，承载高频监控事件（log/flow_log/mcp/alert）。
-> - **Legacy Envelope Bus**（`event.Bus`）：仅保留给核心基础设施内部使用（framework_adapter、domain_event_adapter、replay buffer），Phase 5 删除。
+> - **MonitorEventBus**（`contract.MonitorBus`）：传输 `MonitorEvent`，承载高频监控事件（log/flow_log/mcp/alert）。
+> - ~~**Legacy Envelope Bus**（`event.Bus`）~~：已删除（Blocker F/G）。`contract/envelope.go` 已删，活类型 `EnvelopeError`/`EnvelopeTokenUsage` 提取到 `envelope_types.go`。`ProvideSessionBus`/`Infra.SessionBus` 已删，8 个 consumer 全部迁移到 `ActivityEventBus`/`MonitorEventBus`。
 >
-> 详见 [统一总线架构设计](../superpowers/specs/2026-06-25-unified-bus-architecture-design.md)。
+> 详见 [统一总线架构设计](../superpowers/specs/2026-06-25-unified-bus-architecture-design.md) 和 [ADR-03](../reports/2026-06-26-review-adr-unified-bus-architecture.md)。
 
 **代码锚点**：
 
 | 层 | 路径 | 职责 |
 |----|------|------|
-| contract | `internal/event/contract/envelope.go` | ⚠️ Legacy Envelope 结构 + EnvelopeType 枚举（Phase 5 删除） |
-| contract | `internal/event/contract/monitor_event.go` | ✅ 新增：MonitorEvent 类型 + MonitorEventType 枚举 + MonitorBus 接口 |
-| contract | `internal/event/contract/bus.go` | Bus 接口 + SubscribeOptions + DropPolicy + ChannelPriority |
-| contract | `internal/event/contract/reliability.go` | EventReliability 分级 + ClassifyEventReliability / IsCriticalWBPFType / RequiresBlockUpTo |
-| event | `internal/event/envelope.go` | contract 类型的向后兼容 type alias |
-| event | `internal/event/bus.go` + `bus_adapter.go` | NewBus + 框架 bus.Bus 适配（DropLogger） |
-| event | `internal/event/buffer.go` | 环形缓冲 + TTL 淘汰 + Replay |
-| event | `internal/event/infra.go` | Infra：SessionBus + MonitorBus（legacy envelope）+ ✅ MonitorEventBus（`contract.MonitorBus`）+ Publish（split 路由）+ InfraProviderSet |
-| event | `internal/event/monitor_bus.go` | ✅ 新增：MonitorBus 实现（基于 GenericBus，传输 `contract.MonitorEvent`） |
+| contract | ~~`internal/event/contract/envelope.go`~~ | 已删除（Blocker G）：Envelope struct + 60 EnvelopeType 常量 + helper。活类型提取到 `envelope_types.go` |
+| contract | `internal/event/contract/envelope_types.go` | ✅ Blocker G 提取：`EnvelopeError` + `EnvelopeTokenUsage` + 5 个 `ErrorCode*` 常量 |
+| contract | `internal/event/contract/monitor_event.go` | ✅ MonitorEvent 类型 + MonitorEventType 枚举 + MonitorBus 接口 |
+| contract | ~~`internal/event/contract/bus.go`~~ | 已删除（Blocker G）：Bus 接口 + SubscribeOptions + DropPolicy + ChannelPriority |
+| contract | ~~`internal/event/contract/reliability.go`~~ | 已删除（Blocker G）：EventReliability 分级（仅被自身测试调用） |
+| contract | `internal/event/contract/dedup.go` | ✅ EventDeduplicator 去重器（Blocker F 从 `internal/event/dedup.go` 迁移） |
+| event | `internal/event/envelope.go` | contract 活类型的 type alias（`EnvelopeError`/`EnvelopeTokenUsage`/`ErrorCode*`） |
+| event | ~~`internal/event/bus.go` + `bus_adapter.go`~~ | 已删除（Blocker G）：NewBus + 框架 bus.Bus 适配 |
+| event | ~~`internal/event/buffer.go`~~ | 已删除（Blocker G）：环形缓冲（Blocker A 后无读取者） |
+| event | `internal/event/infra.go` | Infra：仅 `MonitorEventBus`（`contract.MonitorBus`）+ InfraProviderSet。~~SessionBus/Publish~~ 已删（Blocker F） |
+| event | `internal/event/monitor_bus.go` | ✅ MonitorBus 实现（基于 GenericBus，传输 `contract.MonitorEvent`） |
 | event | `internal/event/activityevent/bus.go` | ✅ ActivityEventBus 实现（传输 `biz.ActivityEvent`） |
 | event | ~~`internal/event/wal.go` + `wal_storage.go`~~ | 已删除（Phase 1c-2：WAL/WBPF 子系统下线，Critical 事件不再有 crash-recovery 保证，订阅者需幂等） |
-| event | ~~`internal/event/event_reliability.go`~~ | 已删除（reliability 别名零调用，直接使用 `contract/reliability.go`） |
+| event | ~~`internal/event/framework_adapter.go`~~ | 已删除（Blocker G）：trpc Event → Envelope 投影（Envelope 删除后无调用者） |
 | event | `internal/event/flow_log.go` + `flow_tracker.go` + `trace_emitter.go` + `trace_context.go` + `flow_context.go` | Flow Log v2（替代 SlogBridge） |
-| event | `internal/event/framework_adapter.go` + `framework_events.go` | trpc Event → Envelope 投影 + tee 框架事件 |
 | event | `internal/event/span_collector.go` + `usage_aggregator.go` | Span 收集与 Usage 汇总 |
-| biz | `internal/biz/event_bus_consumer.go` | EventBusConsumer 编排（核心 4 handler） |
-| biz | `internal/biz/event_bus_buffer_handler.go` | 缓冲写入 handler |
-| biz | `internal/biz/event_bus_runner_handler.go` | RunnerCompletion handler |
-| biz | `internal/biz/event_bus_state_handler.go` | StateDelta handler |
+| biz | ~~`internal/biz/event_bus_consumer.go`~~ | 已删除（Blocker B）：旧 EventBusConsumer 拆分为 4 typed consumer |
+| biz | `internal/biz/event_bus_callback_consumer.go` | Webhook 回调 consumer（订阅 ActivityEventBus） |
+| biz | `internal/biz/event_bus_flow_log_consumer.go` | FlowLog 持久化 consumer（订阅 MonitorBus） |
+| biz | `internal/biz/event_bus_usage_rollup_consumer.go` | Usage 汇总 consumer（订阅 ActivityEventBus） |
+| biz | `internal/biz/event_bus_user_feedback_consumer.go` | 用户反馈 consumer（订阅 ActivityEventBus） |
 | biz | `internal/biz/event_persist_handler.go` | 异步持久化 handler |
-| biz | `internal/biz/event_bus_side_consumers.go` | EventBusSideConsumers 编排（旁路 6 typed consumer） |
+| biz | `internal/biz/event_bus_side_consumers.go` | EventBusSideConsumers 编排（旁路 typed consumer） |
 | biz | `internal/biz/event_bus_tool_call_consumer.go` | ToolCall 记录 consumer |
-| biz | `internal/biz/event_bus_callback_consumer.go` | Webhook 回调 consumer |
 | biz | `internal/biz/event_bus_message_store_consumer.go` | 消息存储 consumer |
-| biz | `internal/biz/event_bus_flow_log_consumer.go` | FlowLog 持久化 consumer |
-| biz | `internal/biz/event_bus_user_feedback_consumer.go` | 用户反馈 consumer |
-| biz | `internal/biz/event_bus_usage_rollup_consumer.go` | Usage 汇总 consumer |
 | biz | `internal/biz/event_store.go` | EventStoreUsecase（List / PurgeExpired / Exists） |
 | biz | `internal/biz/domain_event.go` + `domain_event_adapter.go` | DomainEvent 领域模型 + EventBus 适配 |
 | biz | `internal/biz/session/state.go` + `state_usecase.go` | SessionUsecase.ApplyStateDelta / GetSessionState / SaveSessionState |
 | data | `internal/data/session_state_repo.go` | Session State 持久化（json_set / json_remove） |
 | data | `internal/data/event_store_repo.go` + `ent/schema/event_store.go` | event_store 表 Repo + Schema |
-| server | `internal/server/ws.go` + `ws_*.go` | WebSocket 统一网关（`/v1/ws`）；✅ 统一总线：2 pump（monitorEventPump + activityEventPump），删除 envelope eventPump |
+| server | `internal/server/ws.go` + `ws_*.go` | WebSocket 统一网关（`/v1/ws`）；✅ 统一总线：2 pump（monitorEventPump + activityEventPump），envelope eventPump 已删 |
 | server | `internal/server/ws_sync_request.go` | T3.4 sync_request 上行处理 + revision-based 重放（EventStoreLister 窄接口） |
 | service | `internal/service/event.go` | 回放 API Service（`GET /v1/events`） |
 | proto | `api/kratos/event/v1/event.proto` | EventService.ListEvents Proto 契约 |
-| 前端 | `web/src/realtime/envelope.ts` + `ws-transport.ts` + `useEnvelopeStream.ts` | 前端 Envelope 类型 + WS 传输 + composable |
+| 前端 | `web/src/realtime/envelope.ts` + `ws-transport.ts` + `useEnvelopeStream.ts` | 🟡 前端 Envelope 类型 + WS 传输 + composable（待迁移到 ActivityEvent，任务 8） |
 | 前端 | `web/src/realtime/event_replay.ts` | T3.4 RevisionTracker + buildSyncRequest + requestSyncReplay |
 | 前端 | `web/src/components/monitor/RealtimeEvents.vue` | Monitor Events Tab |
 | 前端 | `web/src/components/chat/SessionTimelineDialog.vue` | Chat Trace + Envelope 双 Tab |
@@ -71,24 +69,24 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 
 | # | 能力 | 证据 |
 |---|------|------|
-| 1 | contract 子包（纯接口与值对象） | `internal/event/contract/` 三个文件 |
-| 2 | Envelope 60+ 类型（按 Channel 分组） | `contract/envelope.go` EnvelopeType 枚举 + RegisterChannelRoute |
-| 3 | 双 Bus 隔离（SessionBus / MonitorBus） | `internal/event/infra.go`（split 路由模式，MONITOR_BUS_ROUTING 已移除） |
+| 1 | contract 子包（纯接口与值对象） | `internal/event/contract/` 含 `envelope_types.go`/`monitor_event.go`/`dedup.go` |
+| 2 | ~~Envelope 60+ 类型（按 Channel 分组）~~ | 已删除（Blocker G）：EnvelopeType 枚举 + RegisterChannelRoute 随 `contract/envelope.go` 删除 |
+| 3 | 双 Bus 隔离（ActivityEventBus / MonitorEventBus） | `internal/event/infra.go`（legacy SessionBus/MonitorBus 已删，Blocker F） |
 | 4 | ~~EventWAL（WBPF for Critical events）~~ | 已删除（Phase 1c-2：订阅者需幂等，重放走 Activity 记录） |
-| 5 | 事件可靠性分级（AS-EVT-01） | `contract/reliability.go` ClassifyEventReliability |
-| 6 | EventBusConsumer 核心 4 handler | `event_bus_consumer.go` + buffer/runner/state/persist handler |
-| 7 | EventBusSideConsumers 旁路 6 typed consumer | `event_bus_side_consumers.go` + 6 个 consumer 文件 |
+| 5 | ~~事件可靠性分级（AS-EVT-01）~~ | 已删除（Blocker G）：`contract/reliability.go` 仅被自身测试调用 |
+| 6 | Typed Consumer 拆分（4 typed consumer） | `event_bus_callback_consumer.go`/`flow_log_consumer.go`/`usage_rollup_consumer.go`/`user_feedback_consumer.go`（Blocker B 从旧 `event_bus_consumer.go` 拆分） |
+| 7 | EventBusSideConsumers 旁路 typed consumer | `event_bus_side_consumers.go` + typed consumer 文件 |
 | 8 | DomainEvent 适配（biz 领域事件双向桥接） | `domain_event.go` + `domain_event_adapter.go` |
 | 9 | Session State Delta（ApplyStateDelta） | `session/state_usecase.go` + `data/session_state_repo.go` |
-| 10 | 事件缓冲与重放（Buffer + Replay） | `internal/event/buffer.go` |
-| 11 | WebSocket 传输（`/v1/ws`，6 Channel 路由） | `internal/server/ws.go` + `ws_*.go` |
-| 12 | 前端架构（WsTransport + useEnvelopeStream） | `web/src/realtime/ws-transport.ts` + `useEnvelopeStream.ts` |
+| 10 | ~~事件缓冲与重放（Buffer + Replay）~~ | 已删除（Blocker G）：`buffer.go` 环形缓冲在 Blocker A 后无读取者 |
+| 11 | WebSocket 传输（`/v1/ws`，2 pump） | `internal/server/ws.go` + `ws_*.go`（monitorEventPump + activityEventPump） |
+| 12 | 前端架构（WsTransport + useEnvelopeStream） | `web/src/realtime/ws-transport.ts` + `useEnvelopeStream.ts`（🟡 待迁移到 ActivityEvent） |
 | 13 | 事件持久化（event_store + 异步 persist + TTL） | `event_store_repo.go` + `event_persist_handler.go` + cron 清理 |
 | 14 | Chat 会话事件检视（Dialog 双 Tab） | `SessionTimelineDialog.vue` + Inspector 组件群 |
 | 15 | Flow Log v2（替代 SlogBridge） | `flow_log.go` + `flow_tracker.go` + `trace_emitter.go` |
 | 16 | Monitor 实时事件 UI | `web/src/components/monitor/RealtimeEvents.vue` |
 | 17 | 事件回放 API（`GET /v1/events`） | `internal/service/event.go` + `event.proto` |
-| 18 | 事件丢弃可观测（Prometheus） | `bus_adapter.go` DropLogger → `EventBusDropped` 指标 |
+| 18 | ~~事件丢弃可观测（Prometheus）~~ | 已删除（Blocker G）：`bus_adapter.go` DropLogger 随 `bus.go` 删除 |
 | 19 | Graph 事件桥接 | `internal/graph/trpc/event_bridge.go` |
 | 20 | T3.4 revision-based sync replay（sync_request 上行 + EventStore 重放） | `internal/server/ws_sync_request.go` + `web/src/realtime/event_replay.ts` |
 
@@ -96,18 +94,20 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 
 | # | 能力 | 缺口 | 对应需求 |
 |---|------|------|---------|
-| 1 | 工具生命周期事件与自动触发 | EnvelopeType 无 `ToolRegistered`/`ToolUpdated`/`ToolRemoved`；无自动触发链 | 需求 §1.10 |
+| 1 | 工具生命周期事件与自动触发 | ActivityEventKind 无 `ToolRegistered`/`ToolUpdated`/`ToolRemoved`；无自动触发链 | 需求 §1.10 |
 
 ### 2.3 状态总览
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| 后端 Event 核心 | ✅ | Bus / Envelope / WS / StateDelta / event_store / 双 Bus（WAL 已于 Phase 1c-2 移除） |
+| 后端 Event 核心 | ✅ | ActivityEventBus / MonitorEventBus / WS / StateDelta / event_store（legacy Envelope Bus 已删，Blocker F/G） |
 | Monitor 实时事件 UI | ✅ | `RealtimeEvents.vue` |
 | Chat 会话事件检视 | ✅ | `SessionTimelineDialog` 双 Tab + Inspector 组件群 |
 | Monitor EventTimeline 原型 | ✅ | 已删除（O1） |
 | T3.4 revision-based sync replay | ✅ | `ws_sync_request.go` + `event_replay.ts` + E2E 测试 |
-| 工具生命周期事件 | ❌ | EnvelopeType 无 ToolRegistered/ToolUpdated/ToolRemoved |
+| 统一总线迁移 | ✅ | ADR-03 Phase 5 Blocker A-G 全部完成 |
+| 工具生命周期事件 | ❌ | ActivityEventKind 无 ToolRegistered/ToolUpdated/ToolRemoved |
+| 前端 Envelope → ActivityEvent 迁移 | 🟡 | `web/src/realtime/envelope.ts` 仍存在，23 文件 30 处引用待迁移 |
 
 ---
 
@@ -134,10 +134,11 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 | O11 | ✅ | FilterKey 过滤 UI（EventFilterBar） |
 | O12 | ✅ | createEventService + event_test 集成测试 |
 | O13 | ✅ | contract 子包抽取（biz 仅 import contract，禁止 import 父 event） |
-| O14 | ✅ | 双 Bus 隔离（SessionBus / MonitorBus，`MONITOR_BUS_ROUTING`） |
-| O15 | ✅ | EventWAL 实现（WBPF for Critical events） |
+| O14 | ✅→🔄 | 双 Bus 隔离（~~SessionBus / MonitorBus~~ → ActivityEventBus / MonitorEventBus，`MONITOR_BUS_ROUTING` 已删；legacy Bus 已删 Blocker F/G） |
+| O15 | ✅→❌ | ~~EventWAL 实现（WBPF for Critical events）~~（Phase 1c-2 下线，订阅者需幂等） |
 | O16 | ✅ | Flow Log v2 替代 SlogBridge（`slog_bridge.go` 已删除） |
-| O17 | ✅ | EventBusSideConsumers 旁路 6 typed consumer 拆分 |
+| O17 | ✅ | EventBusSideConsumers 旁路 typed consumer 拆分 |
+| O18 | ✅ | 统一总线迁移 ADR-03 Phase 5 Blocker A-G（legacy Envelope Bus / SessionBus / MonitorBus 全部删除，8 consumer 迁移到 ActivityEventBus/MonitorEventBus） |
 
 ---
 
@@ -171,7 +172,7 @@ Envelope 元数据扩展（StateDelta / Extensions / FilterKey / Branch / Tag / 
 > 来源：BabyAGI Triggers 机制，竞品分析差距 #8。见需求 §1.10。
 
 **任务**：
-1. 增加 `ToolRegistered` / `ToolUpdated` / `ToolRemoved` 三种 EnvelopeType
+1. 增加 `ToolRegistered` / `ToolUpdated` / `ToolRemoved` 三种 ActivityEventKind
 2. `ToolRegistered` 事件触发 LLM 自动生成工具描述和 embedding
 3. `ToolUpdated` 事件触发 `BuildTRPCAgentCached` 缓存失效
 4. `ToolRemoved` 事件触发依赖该工具的 Agent 配置告警
@@ -206,12 +207,12 @@ Envelope 元数据扩展（StateDelta / Extensions / FilterKey / Branch / Tag / 
 | # | 任务 | Phase | 状态 |
 |---|------|-------|------|
 | 1 | Envelope 元数据扩展（StateDelta / Extensions / FilterKey / Branch / Tag / Actions） | 1 | ✅ |
-| 2 | Buffer 环形缓冲 + Replay | 1 | ✅ |
-| 3 | WebSocket 传输（`/v1/ws`，6 Channel 路由） | 1 | ✅ |
+| 2 | ~~Buffer 环形缓冲 + Replay~~ | 1 | ✅→🗑️（Blocker G 删除，Blocker A 后无读取者） |
+| 3 | WebSocket 传输（`/v1/ws`，2 pump） | 1 | ✅ |
 | 4 | StateDelta 应用（ApplyStateDelta） | 1 | ✅ |
 | 5 | contract 子包抽取 | 1 | ✅ |
-| 6 | 双 Bus 隔离（SessionBus / MonitorBus） | 1 | ✅ |
-| 7 | EventWAL（WBPF for Critical events） | 1 | ✅ |
+| 6 | 双 Bus 隔离（~~SessionBus / MonitorBus~~ → ActivityEventBus / MonitorEventBus） | 1 | ✅→🔄（Blocker F 迁移完成） |
+| 7 | ~~EventWAL（WBPF for Critical events）~~ | 1 | ✅→🗑️（Phase 1c-2 下线） |
 | 8 | P2 持久化 / API / TTL | 2 | ✅ |
 | 9 | 删除 Monitor EventTimeline 原型 | 3 | ✅ |
 | 10 | useEventFilter + eventFilter.ts | 3 | ✅ |
@@ -220,8 +221,8 @@ Envelope 元数据扩展（StateDelta / Extensions / FilterKey / Branch / Tag / 
 | 13 | SessionEventInspectorPanel + Dialog Tab | 3 | ✅ |
 | 14 | ChatMessagePanel 入口 | 3 | ✅ |
 | 15 | Flow Log v2 替代 SlogBridge | 3 | ✅ |
-| 16 | EventBusSideConsumers 旁路 6 typed consumer | 3 | ✅ |
-| 17 | ToolRegistered / ToolUpdated / ToolRemoved EnvelopeType | 4 | ❌ |
+| 16 | EventBusSideConsumers 旁路 typed consumer | 3 | ✅ |
+| 17 | ToolRegistered / ToolUpdated / ToolRemoved ActivityEventKind | 4 | ❌ |
 | 18 | ToolRegistered → 自动生成描述 + embedding | 4 | ❌ |
 | 19 | ToolUpdated → 缓存失效 | 4 | ❌ |
 | 20 | ToolRemoved → Agent 配置告警 | 4 | ❌ |
@@ -229,6 +230,14 @@ Envelope 元数据扩展（StateDelta / Extensions / FilterKey / Branch / Tag / 
 | 22 | T3.4 后端 sync_request 处理（ws_sync_request.go + EventStoreLister 窄接口） | 5 | ✅ |
 | 23 | T3.4 前端 RevisionTracker + requestSyncReplay（event_replay.ts + ws-transport.ts 集成） | 5 | ✅ |
 | 24 | T3.4 E2E 测试（ws_sync_e2e_test.go） | 5 | ✅ |
+| 25 | ADR-03 Blocker A：删除 WS replay Buffer 路径 | 5 | ✅ |
+| 26 | ADR-03 Blocker B：side consumer 迁移到 ActivityEventBus/MonitorBus | 5 | ✅ |
+| 27 | ADR-03 Blocker C：DomainEvent bridge 迁移 | 5 | ✅ |
+| 28 | ADR-03 Blocker D：删除 SessionBus 死发布者 | 5 | ✅ |
+| 29 | ADR-03 Blocker E：删除 Buffer 字段 + 死写入 | 5 | ✅ |
+| 30 | ADR-03 Blocker F：删除 ProvideSessionBus + Infra.SessionBus + 8 consumer 迁移 | 5 | ✅ |
+| 31 | ADR-03 Blocker G：提取活类型 + 删除 contract/envelope.go 死代码 | 5 | ✅ |
+| 32 | 前端 Envelope → ActivityEvent 类型迁移（23 文件 30 处引用） | 6 | 🟡 |
 
 ---
 

@@ -104,6 +104,13 @@ func toProtoSession(s biz.Session, metrics *biz.SessionMetrics) *v1.Session {
 		ParentSessionId:            s.ParentSessionID,
 		RootSessionId:              s.RootSessionID,
 		AgentDepth:                 int32(s.AgentDepth),
+		SessionType:                s.SessionType,
+		MemberAgentKey:             s.MemberAgentKey,
+		MemberRole:                 s.MemberRole,
+		ExecutionStage:             s.ExecutionStage,
+		CompletedSteps:             int32(s.CompletedSteps),
+		TotalSteps:                 int32(s.TotalSteps),
+		ProgressPct:                s.ProgressPct,
 	}
 	// 如果有 metrics 数据，用新表数据覆盖
 	if metrics != nil {

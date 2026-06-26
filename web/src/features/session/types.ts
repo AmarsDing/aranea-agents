@@ -55,6 +55,16 @@ export type Session = {
   parent_session_id?: string;
   root_session_id?: string;
   agent_depth?: number;
+  // Session tree hierarchy (Phase 2 additive).
+  // session_type: spirit (root) | team | agent (member or sub-agent) | standalone.
+  session_type?: string;
+  member_agent_key?: string;
+  member_role?: string;
+  // execution_stage: idle | planning | allocating | executing | completed | failed.
+  execution_stage?: string;
+  completed_steps?: number;
+  total_steps?: number;
+  progress_pct?: number;
 };
 
 // === Session Tree (Phase 3-6: recursive tree for sidebar) ===

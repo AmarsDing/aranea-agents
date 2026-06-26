@@ -179,10 +179,8 @@ export const useTeamsStore = defineStore('teams', () => {
     sessionId: string,
     teamID: string,
     onEvent: (event: TeamRunEvent) => void,
-    onError?: (error: string) => void,
-    onReplayState?: (replaying: boolean) => void,
   ) {
-    return subscribeTeamRunEventsWs(sessionId, teamID, onEvent, onError, onReplayState);
+    return subscribeTeamRunEventsWs(sessionId, teamID, onEvent);
   }
 
   return {

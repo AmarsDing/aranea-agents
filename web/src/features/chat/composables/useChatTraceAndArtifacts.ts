@@ -7,14 +7,10 @@ import { useSessionStore } from '../../../stores/session/index';
 import type { ArtifactMeta } from '../../artifact/types';
 import type { SessionTimeline } from '../../session/types';
 import type { ChatEntityKind } from '../../../components/chat/types';
-import type { useChatStreamManager } from './useChatStreamManager';
-
-type StreamManager = ReturnType<typeof useChatStreamManager>;
 
 export function useChatTraceDialog(
   selectedEntityKind: Ref<ChatEntityKind>,
   displaySessions: ComputedRef<Array<{ id: string; title?: string }>>,
-  streamManager: StreamManager,
 ) {
   const { t } = useI18n();
   const sessionStore = useSessionStore();
@@ -62,7 +58,6 @@ export function useChatTraceDialog(
 
   const traceStreamDeps = computed(() => ({
     ownerKind: traceSessionOwnerKind.value,
-    subscribe: streamManager.subscribeSessionStream,
     /**
      * Phase 5 Blocker A: register a callback fired when the WS transport
      * reconnects for the inspected session. Watches
