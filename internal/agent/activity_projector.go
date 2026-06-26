@@ -164,17 +164,16 @@ func (p *ActivityProjector) SetToolCategorizer(c ToolCategorizer) {
 	p.mu.Unlock()
 }
 
-// activitySeq returns the stable emission sequence for an activity. The first
-// call assigns a new monotonic sequence number and stores it on the activity;
-// subsequent calls return the stored value. This ensures an activity's timeline
-// position is determined by its creation order and survives persistence/refresh.
+// activitySeq returns the pre-allocated Seq for an Activity.
+// All Activity creation paths in On* methods MUST allocate Seq at the entry
+// point (under p.mu). This function asserts the invariant and returns the
+// pre-allocated value. Lazy allocation is no longer supported — see the
+// architecture decision in docs/superpowers/specs/2026-06-27-chat-ui-streaming-fix-design.md.
 func (p *ActivityProjector) activitySeq(a *biz.Activity) int64 {
-	if a.Seq != 0 {
-		return a.Seq
+	if a.Seq == 0 {
+		panic(fmt.Sprintf("activity %s (%s) has Seq=0 — seq must be pre-allocated in On* entry", a.ID, a.Kind))
 	}
-	seq := atomic.AddInt64(&p.seq, 1)
-	a.Seq = seq
-	return seq
+	return a.Seq
 }
 
 // transitionActivityStatus validates and applies a state transition on the
@@ -467,6 +466,7 @@ func (p *ActivityProjector) OnTurnStart(ctx context.Context, meta ProjectMeta) {
 		SessionID:       meta.SessionID,
 		TurnID:          meta.RequestID,
 		Timestamp:       now,
+		Seq:             atomic.AddInt64(&p.seq, 1),
 		AgentKey:        meta.AgentID,
 		AgentName:       meta.AgentDisplayName,
 		SpiritSessionID: spiritSessionID,
@@ -504,6 +504,7 @@ func (p *ActivityProjector) OnReasoningDelta(ctx context.Context, author string,
 			TurnID:           p.meta.RequestID,
 			ParentActivityID: p.rootActivityID,
 			Timestamp:        now,
+			Seq:              atomic.AddInt64(&p.seq, 1),
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
 			SpiritSessionID:  p.resolveSpiritSessionID(),
@@ -582,6 +583,7 @@ func (p *ActivityProjector) OnTextDelta(ctx context.Context, author string, chun
 			TurnID:           p.meta.RequestID,
 			ParentActivityID: p.rootActivityID,
 			Timestamp:        now,
+			Seq:              atomic.AddInt64(&p.seq, 1),
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
 			SpiritSessionID:  p.resolveSpiritSessionID(),
@@ -619,6 +621,7 @@ func (p *ActivityProjector) OnMemberMessageDelta(ctx context.Context, author str
 			TurnID:           p.meta.RequestID,
 			ParentActivityID: p.rootActivityID,
 			Timestamp:        now,
+			Seq:              atomic.AddInt64(&p.seq, 1),
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
 			SpiritSessionID:  p.resolveSpiritSessionID(),
@@ -660,6 +663,7 @@ func (p *ActivityProjector) OnMemberMessageDone(ctx context.Context, author stri
 			TurnID:           p.meta.RequestID,
 			ParentActivityID: p.rootActivityID,
 			Timestamp:        now,
+			Seq:              atomic.AddInt64(&p.seq, 1),
 			Content:          fullText,
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
@@ -712,6 +716,7 @@ func (p *ActivityProjector) OnTextDone(ctx context.Context, author string, fullT
 			TurnID:           p.meta.RequestID,
 			ParentActivityID: p.rootActivityID,
 			Timestamp:        now,
+			Seq:              atomic.AddInt64(&p.seq, 1),
 			Content:          fullText,
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
@@ -769,6 +774,7 @@ func (p *ActivityProjector) OnToolCall(ctx context.Context, toolCallID, toolName
 		TurnID:           p.meta.RequestID,
 		ParentActivityID: p.rootActivityID,
 		Timestamp:        startedAt,
+		Seq:              atomic.AddInt64(&p.seq, 1),
 		ToolName:         toolName,
 		ToolCallID:       toolCallID,
 		ToolArguments:    argsJSON,
@@ -900,6 +906,7 @@ func (p *ActivityProjector) OnError(ctx context.Context, errMsg string, errType 
 		SessionID:       p.meta.SessionID,
 		TurnID:          p.meta.RequestID,
 		Timestamp:       now,
+		Seq:             atomic.AddInt64(&p.seq, 1),
 		DurationMs:      0,
 		Content:         errMsg,
 		AgentKey:        p.meta.AgentID,
@@ -928,6 +935,7 @@ func (p *ActivityProjector) OnNotice(ctx context.Context, turnID, sessionID stri
 		TurnID:           turnID,
 		ParentActivityID: p.rootActivityID,
 		Timestamp:        now,
+		Seq:              atomic.AddInt64(&p.seq, 1),
 		Content:          content,
 		Meta:             map[string]any{"noticeType": noticeType},
 	}
@@ -980,6 +988,7 @@ func (p *ActivityProjector) OnConfirmRequest(ctx context.Context, turnID, sessio
 		TurnID:           turnID,
 		ParentActivityID: p.rootActivityID,
 		Timestamp:        now,
+		Seq:              atomic.AddInt64(&p.seq, 1),
 		Content:          params.Content,
 		Meta:             map[string]any{"toolName": params.ToolName, "toolArguments": params.ToolArguments},
 	}
@@ -1080,6 +1089,7 @@ func (p *ActivityProjector) processGraphNodeStart(ctx context.Context, ev *trpce
 			SessionID: p.meta.SessionID,
 			TurnID:    p.meta.RequestID,
 			Timestamp: now,
+			Seq:       atomic.AddInt64(&p.seq, 1),
 			// B-07: Set ParentActivityID to the current turn's root task
 			// Activity so the plan nests under the task in the Activity tree
 			// (frontend ActivityStream recursive rendering). Without this,
@@ -1185,6 +1195,7 @@ func (p *ActivityProjector) OnPlanStart(ctx context.Context, turnID, sessionID s
 		SessionID: sessionID,
 		TurnID:    turnID,
 		Timestamp: now,
+		Seq:       atomic.AddInt64(&p.seq, 1),
 		Content:   title,
 		Meta:      map[string]any{"steps": steps},
 	}
