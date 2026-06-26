@@ -280,12 +280,12 @@ func TestActivityProjector_BackpressurePropagation(t *testing.T) {
 	// Wait until consumer is blocked on bus.Publish.
 	<-slowBus.publishCalled
 
-	// Enqueue more deltas. These fill the channel buffer.
-	// Since the consumer is blocked, the buffer will fill up.
-	// After defaultChannelBufferSize (64) tasks, publish will block.
+	// Enqueue more deltas. These fill the publish queue buffer.
+	// Since the worker is blocked, the buffer will fill up.
+	// After defaultPublishBufferSize (256) tasks, publish will block.
 	deltasEnqueued := int32(0)
 	var wg sync.WaitGroup
-	for i := 0; i < defaultChannelBufferSize; i++ {
+	for i := 0; i < defaultPublishBufferSize; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

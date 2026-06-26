@@ -259,8 +259,8 @@ func TestActivityEventSequencer_Backpressure(t *testing.T) {
 	// Wait until the consumer has called bus.Publish (and is now blocked).
 	<-bus.publishCalled
 
-	// Consumer is blocked. Fill the channel buffer (defaultChannelBufferSize tasks).
-	for i := 0; i < defaultChannelBufferSize; i++ {
+	// Consumer is blocked. Fill the queue buffer (defaultPublishBufferSize tasks).
+	for i := 0; i < defaultPublishBufferSize; i++ {
 		_ = seq.publish(context.Background(), activityID, publishTask{
 			event: biz.ActivityEvent{Event: biz.ActivityEventStreaming, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
 		})
@@ -307,8 +307,8 @@ func TestActivityEventSequencer_ContextCancellation(t *testing.T) {
 	// Wait until consumer is blocked on bus.Publish
 	<-bus.publishCalled
 
-	// Fill the channel buffer
-	for i := 0; i < defaultChannelBufferSize; i++ {
+	// Fill the publish queue buffer
+	for i := 0; i < defaultPublishBufferSize; i++ {
 		_ = seq.publish(context.Background(), activityID, publishTask{
 			event: biz.ActivityEvent{Event: biz.ActivityEventStreaming, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
 		})
@@ -635,6 +635,7 @@ func TestPersistWithRetry_RetryThenSucceed(t *testing.T) {
 // keeps only the latest snapshot (S4 fix).
 func TestPushDeadLetter_Dedup(t *testing.T) {
 	seq := newActivityEventSequencer(newSyncCaptureBus(), loggateway.NewNoop())
+	defer seq.Close()
 
 	// Push an initial "running" snapshot.
 	seq.pushDeadLetter(biz.Activity{ID: "act-dedup", Status: biz.ActivityStatusRunning, Content: "old"})
@@ -658,6 +659,7 @@ func TestPushDeadLetter_Dedup(t *testing.T) {
 // oldest entry is evicted (FIFO).
 func TestPushDeadLetter_Eviction(t *testing.T) {
 	seq := newActivityEventSequencer(newSyncCaptureBus(), loggateway.NewNoop())
+	defer seq.Close()
 
 	// Fill the buffer to capacity with unique IDs.
 	for i := 0; i < deadLetterCapacity; i++ {
@@ -692,6 +694,7 @@ func TestPushDeadLetter_Eviction(t *testing.T) {
 // filter correctly scopes the returned snapshot.
 func TestListDeadLetterActivities_SessionFilter(t *testing.T) {
 	seq := newActivityEventSequencer(newSyncCaptureBus(), loggateway.NewNoop())
+	defer seq.Close()
 
 	seq.pushDeadLetter(biz.Activity{ID: "act-a", SessionID: "sess-1"})
 	seq.pushDeadLetter(biz.Activity{ID: "act-b", SessionID: "sess-2"})
@@ -773,7 +776,7 @@ func TestProcessTask_SyncFallback(t *testing.T) {
 
 	// processTask should detect the full channel and fall back to sync persist.
 	activity := biz.Activity{ID: "act-sync", Kind: biz.ActivityKindReply, SessionID: "sess-1"}
-	seq.processTask(activity.ID, publishTask{
+	seq.processTask(publishTask{
 		event:    biz.ActivityEvent{Event: biz.ActivityEventCompleted, Activity: activity},
 		persist:  true,
 		activity: activity,
