@@ -1,12 +1,9 @@
 package preview
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 )
-
-const cardResultExcerptRunes = 280
 
 type toolVisualStyle struct {
 	Emoji     string
@@ -70,50 +67,6 @@ func formatDurationMS(ms int64) string {
 		return fmt.Sprintf("%.1fs", sec)
 	}
 	return fmt.Sprintf("%.0fs", sec)
-}
-
-func excerptToolResult(resultJSON, status string, maxRunes int) string {
-	raw := strings.TrimSpace(resultJSON)
-	if raw == "" {
-		return ""
-	}
-	if maxRunes <= 0 {
-		maxRunes = cardResultExcerptRunes
-	}
-	if IsToolStatusError(status) {
-		if msg := extractJSONErrorMessage(raw); msg != "" {
-			return truncateRunes(msg, maxRunes)
-		}
-	}
-	compact := compactJSONOneLine(raw)
-	return truncateRunes(compact, maxRunes)
-}
-
-func extractJSONErrorMessage(raw string) string {
-	var obj map[string]any
-	if json.Unmarshal([]byte(raw), &obj) != nil {
-		return ""
-	}
-	for _, key := range []string{"error", "message", "msg", "detail"} {
-		if v, ok := obj[key]; ok {
-			if s := strings.TrimSpace(fmt.Sprint(v)); s != "" && s != "<nil>" {
-				return s
-			}
-		}
-	}
-	return ""
-}
-
-func compactJSONOneLine(raw string) string {
-	var v any
-	if json.Unmarshal([]byte(raw), &v) != nil {
-		return raw
-	}
-	b, err := json.Marshal(v)
-	if err != nil {
-		return raw
-	}
-	return string(b)
 }
 
 func escapeLarkMD(s string) string {

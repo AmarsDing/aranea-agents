@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 )
 
 // parityMemberOutcome is deterministic per-member execution data for run-level parity.
@@ -176,43 +175,4 @@ func TestParityRunSummary_AllModes(t *testing.T) {
 	}
 }
 
-// graphOnlyEnvelopeTypes are WS types emitted on Graph path (documented).
-var graphOnlyEnvelopeTypes = []event.EnvelopeType{
-	event.EnvelopeTypeGraphNodeStart,
-	event.EnvelopeTypeGraphNodeEnd,
-	event.EnvelopeTypeGraphNodeError,
-	event.EnvelopeTypeGraphExecutionDone,
-	event.EnvelopeTypeOrchestrationAgentStatus,
-}
 
-func TestParityRunEnvelopeDiff_documented(t *testing.T) {
-	graphSet := envelopeTypeSet(graphOnlyEnvelopeTypes)
-	shared := []event.EnvelopeType{
-		event.EnvelopeTypeTeamSummary,
-		event.EnvelopeTypeTeamRunFinished,
-	}
-	for _, typ := range shared {
-		if _, ok := graphSet[typ]; ok {
-			t.Fatalf("%q should not be graph-only", typ)
-		}
-	}
-}
-
-func envelopeTypeSet(types []event.EnvelopeType) map[event.EnvelopeType]struct{} {
-	out := make(map[event.EnvelopeType]struct{}, len(types))
-	for _, typ := range types {
-		out[typ] = struct{}{}
-	}
-	return out
-}
-
-func intersectEnvelopeSets(a, b map[event.EnvelopeType]struct{}) []event.EnvelopeType {
-	var out []event.EnvelopeType
-	for k := range a {
-		if _, ok := b[k]; ok {
-			out = append(out, k)
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	return out
-}

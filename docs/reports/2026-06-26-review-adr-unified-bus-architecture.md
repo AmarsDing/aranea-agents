@@ -1,6 +1,6 @@
 # ADR-03: 统一总线架构（删除 Envelope，统一到 ActivityEvent + MonitorEvent）
 
-## 状态：已接受（Phase 1-4 完成；Phase 5 中 A/B/C/D/E/F 已完成，G 部分完成——方案 C：删除 bus 死代码，保留 envelope.go 活类型）
+## 状态：已接受（Phase 1-4 完成；Phase 5 全部完成 A/B/C/D/E/F/G——方案 C：活类型已提取到 envelope_types.go，envelope.go 死代码及 buffer.go 已删除）
 
 ## 背景
 
@@ -132,7 +132,7 @@ type WSServer struct {
 
 - **Phase 5 复杂度超预期**：原 spec 估计"删文件"即可，实际识别出 6 个耦合 Blocker（WS replay、side consumer、DomainEvent bridge、vestigial 字段、EventPipeline、Wire DI），需多 session 级联迁移
 - **临时性 Envelope 残留**：Phase 5 完成前，后端仍有生产/测试文件引用 Envelope，前端仍有文件 import Envelope 类型（均为合法传输层）
-  - 截至 2026-06-26：Blocker A/B/C/D/E/F 已完成。Blocker G（删除 Envelope 文件）采用方案 C 部分完成：已删除 bus 相关死代码（`event.Bus`/`contract.Bus`/`busAdapter`/`RecordingBus`/`FromFrameworkEvent` + 关联测试），但 `contract/envelope.go` 因 `EnvelopeError`/`EnvelopeTokenUsage` 等活类型仍被生产代码使用而保留；后续需提取活类型到独立文件后再删除剩余部分
+  - 截至 2026-06-27：Blocker A/B/C/D/E/F/G 已完成。活类型 `EnvelopeError`/`EnvelopeTokenUsage` + 5 个活 ErrorCode 常量已提取到 `contract/envelope_types.go`；`contract/envelope.go`/`envelope_test.go`/`envelope_contract_test.go`/`reliability.go`/`reliability_test.go`/`internal/event/buffer.go`（WS replay Buffer 死代码）已删除；`internal/event/envelope.go` 重导出文件精简为 2 个 type alias + 4 个活 ErrorCode 常量；`internal/channel/preview/transcript.go` 和 `tool_display.go` 死方法已清理；`internal/team/parity_run_test.go`/`parity_run_e2e_test.go` 中的 envelope 死代码已清理。后端 Envelope 类型在生产代码中已彻底移除（前端仍有合法传输层 import，依赖前端后续清理）
 - **WS replay 路径迁移风险**：Blocker A 已通过方案 A2（删除 replay 改用 `ListActivities` RPC）解决，`wsDownstream.Envelope` 字段已删除
 - **Domain 字段语义负担**：publisher 必须正确声明 Domain，错误声明会导致 system 事件被持久化或 chat 事件被丢弃
 
@@ -186,9 +186,9 @@ type WSServer struct {
 | **D: vestigial bus 字段** | service/team struct 仍持有 `bus event.Bus` 字段 | ✅ 已完成 | 3 个死发布者全部删除：`EmitProgress`（ExecutionProgress envelope）、`FlowTracker.LogError` Error envelope publish、`PublishSessionRevisionEnvelope`（RunStatus envelope）。顺带删除 `Infra.Publish`/`publishToBuses` 死路由代码（无调用者）。保留 bump 半边（`BumpSessionRevision`）——前端通过 ListActivities/GetSession RPCs 读取 |
 | **E: EventPipeline.Bus/Buffer** | `EventPipeline` 保留 `Bus event.Bus` + `Buffer event.Buffer` | ✅ 已完成 | `Buffer event.Buffer` 已删除（replay 源已不需要）。`Bus event.Bus` 字段已在 Blocker F Stage 1 中删除（死参数链清理） |
 | **F: Wire DI** | `cmd/admin/wire.go` 仍绑定 SessionBus | ✅ 已完成 | **Stage 1（死参数链清理）**：删除 `EventPipeline.Bus` 字段及 5 个 Wire provider 的 `eventBus` 死参数，删除 `configureMCPObserve` NO-OP stub，删除 `ChannelIngress.eventBus`/`TurnPreviewCoordinator.bus` 死字段及关联死方法。**Stage 2（死订阅修复）**：`SelfHealObserver`/`TraceProjector` 从旧 envelope bus 迁移到 `MonitorEventBus`（修复死订阅 bug）；删除 `Infra.MonitorBus` 字段、`ProvideMonitorBus` 函数、`monitorBusFromInfra` helper。**Stage 3（SessionBus 删除）**：确认 `wire_gen.go` 中无 `ProvideSessionBus`/`SessionBus` 引用（所有消费者已在 Stage 1 移除），删除 `Infra.SessionBus` 字段、`ProvideSessionBus` 函数、从 `InfraProviderSet` 移除。`Infra` 只剩 `MonitorEventBus` + `lg` |
-| **G: 删除 Envelope 文件** | 删除 `contract/envelope.go` 及 bus 死代码 | 🟡 部分完成（方案 C） | 采用方案 C：删除 bus 相关死代码（`event.Bus`/`contract.Bus`/`busAdapter`/`RecordingBus`/`FromFrameworkEvent` + 7 个测试文件），保留 `contract/envelope.go` 中的活类型（`EnvelopeError`/`EnvelopeTokenUsage`/`Envelope` 等）。`memory_butler.Deps.EventBus` 死字段一并清理。后续：提取活类型到独立文件后删除 envelope.go 剩余部分 |
+| **G: 删除 Envelope 文件** | 删除 `contract/envelope.go` 及 bus 死代码 | ✅ 已完成（方案 C） | 采用方案 C：第一阶段删除 bus 死代码（`event.Bus`/`contract.Bus`/`busAdapter`/`RecordingBus`/`FromFrameworkEvent` + 7 个测试文件）；第二阶段提取活类型到 `contract/envelope_types.go`（`EnvelopeError`/`EnvelopeTokenUsage` + 5 个活 ErrorCode 常量），删除 `contract/envelope.go`/`envelope_test.go`/`envelope_contract_test.go`/`reliability.go`/`reliability_test.go`，删除 `internal/event/buffer.go`（WS replay Buffer 死代码），精简 `internal/event/envelope.go` 重导出，清理 `transcript.go`/`tool_display.go` 死方法，清理 `parity_run_test.go`/`parity_run_e2e_test.go` 中的 envelope 死代码 |
 
-**当前迁移顺序**：~~B → C → D → A → E → F~~ → 实际进度：B✅ → C✅ → A✅ → E✅ → D✅ → F✅ → G🟡（方案 C：bus 死代码已删，envelope.go 活类型保留）→ 删除 Envelope 文件
+**当前迁移顺序**：~~B → C → D → A → E → F~~ → 实际进度：B✅ → C✅ → A✅ → E✅ → D✅ → F✅ → G✅（方案 C：活类型已提取，envelope.go 死代码已删除）
 
 ### Blocker D 完成总结（2026-06-26）
 
@@ -337,9 +337,9 @@ internal/biz                 → internal/event  (单向，父包，唯一硬依
 
 **验证结果**：`make wire` ✅ | `go build ./...` ✅ | `go vet ./...` ✅ | `go test ./internal/server/... ./internal/event/... ./internal/testutil/... ./internal/biz/... ./internal/agent/... ./internal/service/... ./internal/team/... ./internal/runtime/... -count=1` ✅
 
-### Blocker G 完成总结（2026-06-26）：方案 C——删除 bus 死代码，保留 envelope.go 活类型
+### Blocker G 第一阶段完成总结（2026-06-26）：方案 C——删除 bus 死代码，保留 envelope.go 活类型
 
-Blocker F 完成后，`event.Bus` 接口和 `contract.Bus` 接口已无生产消费者（SessionBus/MonitorBus 均已删除）。但 `contract/envelope.go` 中有多个活类型（`EnvelopeError`/`EnvelopeTokenUsage` 等）仍被生产代码使用，不能删除整个文件。本任务执行方案 C：删除 bus 相关死代码，保留 envelope.go 中的活类型。
+Blocker F 完成后，`event.Bus` 接口和 `contract.Bus` 接口已无生产消费者（SessionBus/MonitorBus 均已删除）。但 `contract/envelope.go` 中有多个活类型（`EnvelopeError`/`EnvelopeTokenUsage` 等）仍被生产代码使用，不能删除整个文件。本任务执行方案 C 第一阶段：删除 bus 相关死代码，保留 envelope.go 中的活类型（活类型提取在第二阶段完成）。
 
 **删除的死代码文件**（10 个）：
 
@@ -374,12 +374,54 @@ Blocker F 完成后，`event.Bus` 接口和 `contract.Bus` 接口已无生产消
 | `EnvelopeSourceFromContext` 等 | `internal/event/source.go` | 独立文件，活跃使用 |
 | `internal/event/envelope.go` 中的类型别名 | `internal/event/envelope.go` | 重导出 contract 类型（含 `EnvelopeError`），被 `internal/service/envelope_error.go` 等通过 `event.EnvelopeError` 引用 |
 
-**后续工作**（不在本次会话范围）：
-1. 提取 `EnvelopeError`/`EnvelopeTokenUsage` 等活类型到独立文件
-2. 迁移剩余 Envelope 投影代码到 ActivityEvent
-3. 删除 `contract/envelope.go` 剩余部分
+**后续工作**（第二阶段已完成，详见下节）：
+1. ✅ 提取 `EnvelopeError`/`EnvelopeTokenUsage` 等活类型到 `contract/envelope_types.go`（第二阶段）
+2. ⏳ 迁移剩余 Envelope 投影代码到 ActivityEvent（前端清理，不在后端范围）
+3. ✅ 删除 `contract/envelope.go` 剩余部分（第二阶段）
 
 **验证结果**：`go build ./...` ✅ | `go test ./internal/event/... ./internal/testutil/... -count=1` ✅ | `go vet ./...` ✅
+
+### Blocker G 第二阶段完成总结（2026-06-27）：提取活类型 + 删除 envelope.go 死代码
+
+第一阶段删除 bus 层死代码后，`contract/envelope.go` 中仍有大量死代码（`Envelope` struct、~60 个 `EnvelopeType*` 常量、`EnvelopeContent`/`EnvelopeToolCall` 等 helper struct、`NewEnvelope`/`EnvelopeFromFrameworkEvent` 等函数、`RouteChannel` 类型、`ValidErrorCodes`/`ValidateErrorCode` 等），但其中 `EnvelopeError`/`EnvelopeTokenUsage` + 5 个 `ErrorCode*` 常量仍被生产代码使用。第二阶段提取活类型到独立文件后删除剩余死代码。
+
+**任务描述勘误**：原任务描述声称 `ErrorCodeTool*` 常量全部为死代码需删除，但代码级核查显示 5 个 `ErrorCode*` 常量全部活跃（`ErrorCodeToolTimeout`/`ErrorCodeToolError`/`ErrorCodeConfirmationRequired`/`ErrorCodeConfirmationDenied`/`ErrorCodeConfirmationTimeout`），分别被 `activity_projector.go`/`tool_invocation_recorder.go`/`tool_confirmation.go` 调用。按"不确定时停下来判断"原则保留全部活常量。原任务描述也未提及 `reliability.go` 依赖 `EnvelopeType`，核查后确认其为死代码（仅被自身测试调用），一并删除。
+
+**提取的活类型**（`internal/event/contract/envelope_types.go`，新建文件）：
+
+| 类型/常量 | 用途 | 调用位置 |
+|-----------|------|----------|
+| `EnvelopeError` struct | chat 事件投影错误载体 | `internal/service/envelope_error.go`、`internal/service/chat_event_publisher.go`（通过 `event.EnvelopeError` 别名） |
+| `EnvelopeTokenUsage` struct | usage 持久化数据载体 | `internal/biz/event_bus_usage_rollup_consumer.go`（直接使用 `contract.EnvelopeTokenUsage`） |
+| `ErrorCodeToolTimeout` const | 工具超时错误码 | `internal/agent/activity_projector.go:1303`（直接使用 `contract.ErrorCodeToolTimeout`） |
+| `ErrorCodeToolError` const | 工具失败错误码 | `internal/agent/tool_invocation_recorder.go`（通过 `event.ErrorCodeToolError`） |
+| `ErrorCodeConfirmationRequired` const | 工具确认必需错误码 | `internal/agent/tool_invocation_recorder.go`、`internal/agent/tool_confirmation.go`（通过 `event.*`） |
+| `ErrorCodeConfirmationDenied` const | 工具确认拒绝错误码 | `internal/agent/tool_confirmation.go`（通过 `event.*`） |
+| `ErrorCodeConfirmationTimeout` const | 工具确认超时错误码 | `internal/agent/tool_confirmation.go`（通过 `event.*`） |
+
+**删除的死代码文件**（6 个）：
+
+| 文件 | 内容 | 说明 |
+|------|------|------|
+| `internal/event/contract/envelope.go` | `Envelope` struct、~60 `EnvelopeType*` 常量、`EnvelopeContent`/`EnvelopeToolCall` 等 helper struct、`NewEnvelope`/`EnvelopeFromFrameworkEvent` 等函数、`RouteChannel` 类型、`ValidErrorCodes`/`ValidateErrorCode` | 活类型已提取到 `envelope_types.go`，剩余死代码 |
+| `internal/event/contract/envelope_test.go` | 测试 | 测试已删除的 envelope.go |
+| `internal/event/contract/envelope_contract_test.go` | 测试 | 测试已删除的 envelope.go |
+| `internal/event/contract/reliability.go` | `ReliabilityForType`/`ParseReliability`/`ReliabilityFromContext`（依赖 `EnvelopeType`） | 仅被自身测试调用，依赖已删除的 `EnvelopeType` |
+| `internal/event/contract/reliability_test.go` | 测试 | 测试死代码 |
+| `internal/event/buffer.go` | `Buffer` struct（WS replay 环形缓冲区，使用 `Envelope` 类型） | Blocker A 已删除 WS replay 路径，`Buffer` 仅被注释引用，无生产调用者 |
+
+**修改的文件**（4 个）：
+
+| 文件 | 修改内容 |
+|------|----------|
+| `internal/event/envelope.go` | 精简为仅 2 个 type alias（`EnvelopeError`/`EnvelopeTokenUsage`）+ 4 个活 ErrorCode 常量（`ErrorCodeToolError`/`ErrorCodeConfirmationRequired`/`ErrorCodeConfirmationDenied`/`ErrorCodeConfirmationTimeout`），删除 `Envelope`/`EnvelopeType*`/`NewEnvelope` 等死别名 |
+| `internal/channel/preview/transcript.go` | 删除 `Apply`/`appendText`/`setText`/`appendMember`/`setMember`/`breakTextSegment`/`breakReasoningSegment`/`breakSegmentID`/`segmentKindForTextID`/`toolMetaFromEnvelope`/`mergeToolMeta`/`HasInFlightTool` 等 12 个死方法（仅消费已删除的 Envelope 类型） |
+| `internal/channel/preview/tool_display.go` | 删除 `excerptToolResult`/`extractJSONErrorMessage`/`compactJSONOneLine` 3 个死函数（仅被已删除的 `toolMetaFromEnvelope` 调用） |
+| `internal/team/parity_run_test.go` + `parity_run_e2e_test.go` | 删除 `graphOnlyEnvelopeTypes`/`TestParityRunEnvelopeDiff_documented`/`envelopeTypeSet`/`intersectEnvelopeSets`/`envelopeTypeHash`/`envelopeTypeSetFromEnvs` 等 envelope 死代码 helper；保留 `TestParityRunSummary_AllModes`/`TestParityRunE2E_stubStreamAllModes`（独立于 envelope） |
+
+**ErrorCodeToolTimeout 重导出说明**：`event.ErrorCodeToolTimeout` 无调用者，因此 `internal/event/envelope.go` 不重导出此常量；`internal/agent/activity_projector.go:1303` 直接使用 `contract.ErrorCodeToolTimeout`。
+
+**验证结果**：`go build ./...` ✅ | `go test ./... -count=1` ✅ | `go vet ./...` ✅
 
 ## 关联文档
 

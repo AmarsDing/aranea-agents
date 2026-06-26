@@ -12,7 +12,6 @@ import (
 
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
 )
 
@@ -223,21 +222,6 @@ func stepFingerprint(steps []biz.TeamRunStep) string {
 	return hex.EncodeToString(h[:8])
 }
 
-func envelopeTypeHash(envs []event.Envelope, skip map[event.EnvelopeType]struct{}) string {
-	types := make([]string, 0, len(envs))
-	for _, e := range envs {
-		if skip != nil {
-			if _, ok := skip[e.Type]; ok {
-				continue
-			}
-		}
-		types = append(types, string(e.Type))
-	}
-	sort.Strings(types)
-	h := sha256.Sum256([]byte(strings.Join(types, ",")))
-	return hex.EncodeToString(h[:8])
-}
-
 // TestParityRunE2E_stubStreamAllModes exercises Graph step persistence with stub EventStreamResult.
 func TestParityRunE2E_stubStreamAllModes(t *testing.T) {
 	modes := []string{"sequential", "parallel", "coordinator", "critic_loop", "adaptive", "swarm"}
@@ -259,14 +243,4 @@ func TestParityRunE2E_stubStreamAllModes(t *testing.T) {
 				mode, len(graph.steps), graphFP)
 		})
 	}
-}
-
-func envelopeTypeSetFromEnvs(envs []event.Envelope, want map[event.EnvelopeType]struct{}) map[event.EnvelopeType]int {
-	out := make(map[event.EnvelopeType]int)
-	for _, e := range envs {
-		if _, ok := want[e.Type]; ok {
-			out[e.Type]++
-		}
-	}
-	return out
 }
