@@ -1476,12 +1476,10 @@ func (p *ActivityProjector) publishActivityDeltaWithPersist(ctx context.Context,
 // buildActivityEvent creates an ActivityEvent for an Activity lifecycle event.
 // The Activity snapshot is included directly — no metadata packing needed,
 // simplifying the frontend contract compared to the legacy Envelope format.
+//
+// Seq must be pre-allocated in the On* entry point (under p.mu). This function
+// no longer assigns Seq — it only reads the pre-allocated value via activitySeq.
 func (p *ActivityProjector) buildActivityEvent(a *biz.Activity, eventType biz.ActivityEventType) biz.ActivityEvent {
-	// Assign the global emission sequence on first event for this activity.
-	// This lets the frontend order events even when the per-activity sequencer
-	// publishes different activities concurrently.
-	p.activitySeq(a)
-
 	// Build a redacted copy for the event payload. The redaction limit
 	// (512 bytes) matches biz.redactActivityJSON and the frontend
 	// ACTIVITY_JSON_PREVIEW_LIMIT, ensuring consistency.
