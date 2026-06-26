@@ -38,7 +38,7 @@
 
     <!-- Child events from PlanEvent.children (B-04: mapped from activityTree) -->
     <div v-if="childEvents.length" class="plan-block__children">
-      <EventStream :events="childEvents" :agent-color="agentColor" />
+      <ActivityStream :events="childEvents" :agent-color="agentColor" />
     </div>
   </div>
 </template>
@@ -48,7 +48,7 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { PlanEvent } from '../../features/chat/streamEventTypes';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
-import EventStream from './EventStream.vue';
+import ActivityStream from './ActivityStream.vue';
 
 const props = defineProps<{
   activity: PlanEvent;
@@ -58,7 +58,7 @@ const props = defineProps<{
 const { t } = useI18n();
 
 // B-04: Use PlanEvent.children (mapped from activityTree) instead of
-// receiving childActivities separately from EventStream.
+// receiving childActivities separately from ActivityStream.
 const childEvents = computed(() => props.activity.children ?? []);
 
 const statusClass = computed(() => ({

@@ -97,7 +97,7 @@ func (r *Runner) setupTeamTracing(ctx context.Context, sess biz.Session, teamRow
 
 	if r.td.Pipeline.Bus != nil {
 		emitter := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
-			Ctx: ctx, Bus: r.td.Pipeline.Bus, Buffer: r.td.Pipeline.Buffer,
+			Ctx: ctx, Bus: r.td.Pipeline.Bus,
 			SessionID: sess.ID, RunID: run.ID, AgentKey: teamRow.ID,
 			Domain: event.TraceDomainTeam, LG: r.lg,
 		})

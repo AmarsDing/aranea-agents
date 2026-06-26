@@ -14,7 +14,7 @@
       </span>
     </div>
 
-    <!-- Branch: EventStream -->
+    <!-- Branch: ActivityStream -->
     <div class="agent-work-panel__body">
       <!-- Running indicator when no activities yet (waiting for LLM first byte) -->
       <div
@@ -53,7 +53,7 @@
         </div>
       </template>
       <!-- Unified event stream rendering (replaces TaskBoard + ActivityTimeline) -->
-      <EventStream
+      <ActivityStream
         v-if="agentWork.activities.length"
         :events="agentWork.activities"
         :agent-color="agentWork.agentColor"
@@ -78,7 +78,7 @@ import type { ProgressCategory, ProgressSection } from '../../features/chat/agen
 import { PROGRESS_GLYPHS, PROGRESS_STATUS_GLYPHS } from '../../features/chat/agentTreeTypes';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 import type { ErrorEvent } from '../../features/chat/streamEventTypes';
-import EventStream from './EventStream.vue';
+import ActivityStream from './ActivityStream.vue';
 import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
 
 const { t } = useI18n();

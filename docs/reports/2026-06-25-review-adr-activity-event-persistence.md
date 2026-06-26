@@ -46,7 +46,7 @@ processTask(activityID, task):
 新模型（[activity_projector.go:856-914](file:///f:/aranea-agents/internal/agent/activity_projector.go#L856-L914)）：
 - **存在 root task**：将 root task Activity 转换为 `status=failed`，错误信息存入 `Meta.error_message/error_type/error_code`。
 - **无 root task**：创建一个最小化的 failed task Activity 兜底。
-- **OnTurnEnd 终态保护**（[activity_projector.go:1349-1368](file:///f:/aranea-agents/internal/agent/activity_projector.go#L1349-L1368)）：若 root 已是终态（Failed/Cancelled/Interrupted），OnTurnEnd 不覆盖状态，仅附加 token usage。
+- **OnTurnEnd 终态保护**（[activity_projector.go:1349-1368](file:///f:/aranea-agents/internal/agent/activity_projector.go#L1349-L1368)）：若 root 已是终态（Completed/Failed/Cancelled/Interrupted/PartialFailure，由 `biz.IsActivityTerminal` 判定），OnTurnEnd 不覆盖状态，仅附加 token usage。
 
 这统一了「turn 失败」的表达：`task.failed` 即代表整 turn 失败，无需 parallel error kind。
 

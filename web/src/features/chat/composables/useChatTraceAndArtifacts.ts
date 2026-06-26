@@ -2,6 +2,7 @@ import { computed, ref, watch, type ComputedRef, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import { useArtifactStore } from '../../../stores/artifact';
+import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import { useSessionStore } from '../../../stores/session/index';
 import type { ArtifactMeta } from '../../artifact/types';
 import type { SessionTimeline } from '../../session/types';
@@ -17,6 +18,7 @@ export function useChatTraceDialog(
 ) {
   const { t } = useI18n();
   const sessionStore = useSessionStore();
+  const runtimeStore = useChatRuntimeStore();
   const traceOpen = ref(false);
   const traceSessionId = ref<string | null>(null);
   const traceSessionTitle = ref('');
@@ -61,6 +63,31 @@ export function useChatTraceDialog(
   const traceStreamDeps = computed(() => ({
     ownerKind: traceSessionOwnerKind.value,
     subscribe: streamManager.subscribeSessionStream,
+    /**
+     * Phase 5 Blocker A: register a callback fired when the WS transport
+     * reconnects for the inspected session. Watches
+     * runtimeStore.wsConnectedBySession for false → true transitions
+     * (after the initial registration) and invokes the handler so the
+     * inspector can re-fetch Activities via ListActivities RPC.
+     */
+    onReconnect: (handler: () => void): (() => void) => {
+      const sid = traceSessionId.value;
+      if (!sid) return () => {};
+      // Initialize prevConnected to true so the initial WS connection
+      // (if not yet established) does NOT trigger the handler — only
+      // actual reconnects (false → true after a disconnect) fire it.
+      let prevConnected = true;
+      const stop = watch(
+        () => runtimeStore.wsConnectedBySession[sid],
+        (next) => {
+          if (!prevConnected && next) {
+            handler();
+          }
+          prevConnected = !!next;
+        },
+      );
+      return stop;
+    },
   }));
 
   function openSessionEvents(selectedSessionId: string | undefined) {

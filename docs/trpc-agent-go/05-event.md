@@ -108,7 +108,6 @@
 | **EventBusSink（日志管线桥接）** | `pkg/logpipeline/eventbus_sink.go` | 框架无内置 | 将日志条目转为 Envelope 发布到 EventBus，含熔断器保护 |
 | **频道路由** | `internal/event/contract/envelope.go` | 框架无内置 | 框架无频道概念，项目按事件类型路由到 monitor/team/graph/knowledge/chat 频道 |
 | **SessionRevisionBumper** | `internal/event/session_revision.go` | 框架无内置 | Session 版本号递增 + 发布 run_status envelope |
-| **TurnObserver** | `internal/event/turn_observer.go` | 框架无内置 | chat channel envelope 发布的统一入口 |
 | **EventProjector/ActivityProjector** | 项目自建 | 框架无内置 | 事件投影到 Activity-First 视图 |
 
 ### 2.3 未使用的框架功能

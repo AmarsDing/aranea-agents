@@ -55,7 +55,7 @@ func (o *ChatOrchestrator) RunNativeAgentTurnWithOutcome(ctx context.Context, in
 		ctx = event.WithEnvelopeSource(ctx, ep)
 	}
 
-	flow := event.NewFlowLogger(o.td().Pipeline.Bus, o.td().Pipeline.Buffer, sessionID, "", o.lg())
+	flow := event.NewFlowLogger(o.td().Pipeline.Bus, sessionID, "", o.lg())
 	flow.LogStart("chat.receive", "收到用户消息", event.P("content_len", len(content)))
 
 	hasActive := o.runs.HasActive(sessionID)
@@ -271,7 +271,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	var turnErrMsg string
 	ctx, traceBridge, _ := startTurnSpan(ctx, "chat.turn", sessionID, ag.AgentKey, runID)
 	emitter := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
-		Ctx: ctx, Bus: o.td().Pipeline.Bus, Buffer: o.td().Pipeline.Buffer,
+		Ctx: ctx, Bus: o.td().Pipeline.Bus,
 		SessionID: sessionID, RunID: runID, AgentKey: ag.AgentKey, AgentID: ag.ID,
 		Domain: event.TraceDomainChat, LG: o.lg(),
 	})

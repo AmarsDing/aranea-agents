@@ -4,26 +4,19 @@ import (
 	"context"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 )
 
-// ProvideEnvelopeBuffer adapts *event.Buffer to biz.EnvelopeBuffer so biz
-// consumers don't import internal/event directly (Phase 3 decoupling).
-func ProvideEnvelopeBuffer(buf *event.Buffer) biz.EnvelopeBuffer {
-	if buf == nil {
-		return nil
-	}
-	return envelopeBufferAdapter{buf: buf}
-}
-
-type envelopeBufferAdapter struct {
-	buf *event.Buffer
-}
-
-func (a envelopeBufferAdapter) Append(env contract.Envelope) {
-	a.buf.Append(env)
+// ProvideEnvelopeBuffer returns the EnvelopeBuffer for biz consumers.
+//
+// Phase 5 Blocker E: the underlying *event.Buffer has been removed (the WS
+// replay path was deleted in Blocker A; the buffer was write-only with no
+// reader). Returns nil so existing EventBusConsumer wiring continues to
+// compile; the consumer's eventBufferHandler.Handle is a no-op when buffer
+// is nil. The biz.EnvelopeBuffer interface is retained to minimize the
+// change surface — it will be removed in a follow-up cleanup.
+func ProvideEnvelopeBuffer() biz.EnvelopeBuffer {
+	return nil
 }
 
 // ProvideSessionLogWriter adapts a loggateway.Logger to biz.SessionLogWriter

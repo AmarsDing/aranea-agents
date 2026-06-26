@@ -813,7 +813,6 @@ func provideTeamTurnDeps(
 	persist rt.PersistenceSet,
 	compress biz.NativeTurnCompressor,
 	eventBus event.Bus,
-	eventBuffer *event.Buffer,
 	activityBus biz.ActivityEventBus,
 	monitorEventBus contract.MonitorBus,
 	lg loggateway.Logger,
@@ -825,7 +824,7 @@ func provideTeamTurnDeps(
 	return rt.TurnDeps{
 		ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
 		Persist:   persist,
-		Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer, ActivityBus: activityBus, MonitorEventBus: monitorEventBus},
+		Pipeline:  rt.EventPipeline{Bus: eventBus, ActivityBus: activityBus, MonitorEventBus: monitorEventBus},
 		LLMHTTP:   &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
 		Sessions:  sessions,
 		Compress:  compress,
@@ -870,7 +869,6 @@ func provideChatServiceDeps(
 	sessionRT *araneasession.Runtime,
 	compress biz.NativeTurnCompressor,
 	eventBus event.Bus,
-	eventBuffer *event.Buffer,
 	activityBus biz.ActivityEventBus,
 	monitorEventBus contract.MonitorBus,
 	rtDeps service.RuntimeTooling,
@@ -916,7 +914,7 @@ func provideChatServiceDeps(
 			TurnDeps: rt.TurnDeps{
 				ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
 				Persist:   persist,
-				Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: eventBuffer, ActivityBus: activityBus, MonitorEventBus: monitorEventBus},
+				Pipeline:  rt.EventPipeline{Bus: eventBus, ActivityBus: activityBus, MonitorEventBus: monitorEventBus},
 				LLMHTTP:   &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
 				Sessions:  sessions,
 				SessionRT: sessionRT,
@@ -1343,7 +1341,6 @@ func provideChannelIngress(
 	turnJobs *biz.ChannelTurnJobUsecase,
 	sessions *biz.SessionUsecase,
 	chat biz.ChannelTurnGateway,
-	flowBuffer *event.Buffer,
 	graphs biz.GraphExecutor,
 	cron biz.CronTriggerGateway,
 	eventBus event.Bus,
@@ -1356,7 +1353,7 @@ func provideChannelIngress(
 	debouncer := biz.NewIngressPeerDebouncer(biz.DefaultIngressDebounce, lg)
 	registry := biz.NewTurnPreviewRegistry()
 	gate := biz.NewChannelConcurrentGate()
-	return service.NewChannelIngress(channels, turnJobs, sessions, chat, flowBuffer, graphs, cron, eventBus, activityBus, dedupe, debouncer, registry, gate, admission, teamCompiler, lg)
+	return service.NewChannelIngress(channels, turnJobs, sessions, chat, graphs, cron, eventBus, activityBus, dedupe, debouncer, registry, gate, admission, teamCompiler, lg)
 }
 
 func provideChannelIngressAdmission(
@@ -1604,13 +1601,23 @@ func provideMonitorAlertEvalWorker(uc *biz.MonitorUsecase) *monitor.AlertEvalWor
 	return uc.EvalWorker()
 }
 
+// provideTraceProjector wires the TraceProjector to the legacy envelope
+// MonitorBus only.
+//
+// ADR-03 Phase 5 Blocker F cleanup: the previous implementation also passed
+// infra.SessionBus, but TraceProjector subscribes exclusively to
+// EnvelopeTypeFlowLog (see monitor.NewTraceProjector -> SubscribeOptions),
+// and Infra.publishToBuses routes FlowLog/Log envelopes to MonitorBus ONLY
+// (never SessionBus). The sessionBus argument was therefore dead — it could
+// never receive any FlowLog event. Only monitorBus is retained.
+//
+// Tracked under ADR-03 Phase 5 Blocker F.
 func provideTraceProjector(traceRepo biz.MonitorTraceRepo, infra *event.Infra, lg loggateway.Logger) *monitor.TraceProjector {
-	var sessionBus, monitorBus event.Bus
+	var monitorBus event.Bus
 	if infra != nil {
-		sessionBus = infra.SessionBus
 		monitorBus = infra.MonitorBus
 	}
-	return monitor.NewTraceProjector(traceRepo, lg, sessionBus, monitorBus)
+	return monitor.NewTraceProjector(traceRepo, lg, monitorBus)
 }
 
 // provideMonitorBus removed: it conflicted with ProvideSessionBus (both bound

@@ -362,7 +362,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	runs := coalesceRunRegistry(deps.Turn.Runs)
 	pending := coalescePendingQueue(deps.Turn.PendingQueue)
 	sessionLocks := biz.NewSessionLockManager()
-	chatUC := NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Turn.Sessions, deps.Turn.Pipeline.Bus, deps.Turn.Pipeline.ActivityBus, deps.Infra.LG)
+	chatUC := NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Turn.Sessions, deps.Turn.Pipeline.ActivityBus, deps.Infra.LG)
 	// Wire provider/model resolution ports (BA4): biz-layer methods need
 	// access to RefineLLM config, LLM catalog, and session updates.
 	chatUC.SetRefineLLMLookup(deps.Turn.ReadDeps.Settings)

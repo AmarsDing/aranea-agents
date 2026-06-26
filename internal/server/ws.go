@@ -62,13 +62,12 @@ type ChatSender interface {
 //   - ws_codec.go        — protocol types (wsUpstream/wsDownstream)
 //   - ws_message_handler.go — upstream message dispatch and business logic
 //   - ws_io_pump.go      — read/write/event pump goroutines
-//   - ws_event.go        — event subscription, replay, and connected handshake
+//   - ws_event.go        — event subscription and connected handshake
 //   - ws_priority.go     — three-priority send queue with backpressure
 type WSServer struct {
 	store                 *connStore
 	monitorBus            contract.MonitorBus
 	activityBus           biz.ActivityEventBus
-	eventBuffer           *event.Buffer
 	canceller             RunCanceller
 	sender                ChatSender
 	turnExecutor          WSTurnExecutor
@@ -82,11 +81,14 @@ type WSServer struct {
 }
 
 // NewWSServer wires a single bus (tests / legacy).
-func NewWSServer(c *conf.Server, eventBus event.Bus, eventBuffer *event.Buffer, canceller RunCanceller, sender ChatSender) *WSServer {
+//
+// Phase 5 Blocker E: the legacy eventBuffer parameter has been removed
+// (the underlying *event.Buffer was deleted; the WS replay path was
+// deleted in Blocker A). New callers should prefer NewWSServerFromInfra.
+func NewWSServer(c *conf.Server, eventBus event.Bus, canceller RunCanceller, sender ChatSender) *WSServer {
 	return NewWSServerFromInfra(c, &event.Infra{
 		SessionBus: eventBus,
 		MonitorBus: eventBus,
-		Buffer:     eventBuffer,
 	}, canceller, sender, nil, nil, nil, nil)
 }
 
@@ -105,7 +107,6 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 		store:                 newConnStore(),
 		monitorBus:            monitor,
 		activityBus:           activityBus,
-		eventBuffer:           infra.Buffer,
 		canceller:             canceller,
 		sender:                sender,
 		turnExecutor:          turnExecutor,
@@ -231,13 +232,11 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 	safego.Go(connCtx, "ws-write-pump", func() { s.writePump(wc) })
 	safego.Go(connCtx, "ws-read-pump", func() { s.readPump(wc) })
 
-	if !probeMode && !globalMode && lastEventID != "" && s.eventBuffer != nil {
-		wc.replayDone = make(chan struct{})
-		safego.Go(connCtx, "ws-replay", func() {
-			defer close(wc.replayDone)
-			s.replayEvents(wc, sessionID, lastEventID)
-		})
-	}
+	// Phase 5 Blocker A: WS replay path has been removed. Clients needing
+	// historical events on reconnect should call the ListActivities RPC
+	// (GET /v1/sessions/{session_id}/activities). The lastEventID query
+	// parameter is still echoed back in the "connected" payload so clients
+	// can correlate, but no in-memory envelope replay is performed.
 
 	if !probeMode {
 		if monitorCh != nil {

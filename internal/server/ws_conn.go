@@ -17,19 +17,20 @@ type wsConn struct {
 	filterKey   string
 	unsubscribe func()
 	// send is the legacy/system channel (normal priority). eventPump now routes
-	// through queues; non-event callers (sendSystemDownstream, replay) still use send.
+	// through queues; non-event callers (sendSystemDownstream) still use send.
 	// MON-OPT-04: send is kept for backward compat; writePump drains queues first.
 	send       chan []byte
 	queues     *connQueues // MON-OPT-04 priority lanes
-	replayDone chan struct{}
 	logEnabled bool
 	globalMode bool
 	probeMode  bool
 	// connCtx is cancelled when this WebSocket connection closes. It governs
 	// connection-scoped goroutines (readPump/writePump/eventPump) and short-
-	// lived handlers (sync_request). Turn execution no longer derives from
-	// connCtx — turns use appctx.Ctx() and are cancelled via RunRegistry.Cancel
-	// (No-Timeout principle, 2026-06-18).
+	// lived handlers. Turn execution no longer derives from connCtx — turns use
+	// appctx.Ctx() and are cancelled via RunRegistry.Cancel (No-Timeout
+	// principle, 2026-06-18). Phase 5 Blocker A: the replayDone channel has
+	// been removed along with the WS replay path; clients fetch history via
+	// ListActivities RPC on reconnect.
 	connCtx    context.Context
 	connCancel context.CancelFunc
 	// stateMu protects channels, logEnabled, and filterKey from concurrent
@@ -89,19 +90,6 @@ func (wc *wsConn) wakeWriter() {
 	case wc.send <- nil:
 	default:
 	}
-}
-
-// firstSubscribedChannel returns the first subscribed channel name for replay messages.
-func (wc *wsConn) firstSubscribedChannel() string {
-	wc.stateMu.RLock()
-	defer wc.stateMu.RUnlock()
-	if wc.channels["chat"] {
-		return "chat"
-	}
-	for ch := range wc.channels {
-		return ch
-	}
-	return "system"
 }
 
 // hasChannel reports whether the connection is subscribed to the given channel.

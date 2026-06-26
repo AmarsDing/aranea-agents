@@ -14,24 +14,22 @@ import (
 // FlowTracker holds FlowContext + optional SpanCollector + optional UsageAggregator.
 // It keeps LogStart/LogDone/LogError etc. method signatures.
 type FlowTracker struct {
-	infra  *Infra
-	buffer *Buffer
-	tc     TraceContext
-	fc     *frameworktracing.FlowContext
-	sc     *SpanCollector
-	ua     *UsageAggregator
-	lg     loggateway.Logger
+	infra *Infra
+	tc    TraceContext
+	fc    *frameworktracing.FlowContext
+	sc    *SpanCollector
+	ua    *UsageAggregator
+	lg    loggateway.Logger
 }
 
 // NewFlowTracker creates a FlowTracker with injected Infra (replaces bus parameter).
-func NewFlowTracker(infra *Infra, buffer *Buffer, tc TraceContext, lg loggateway.Logger) *FlowTracker {
+func NewFlowTracker(infra *Infra, tc TraceContext, lg loggateway.Logger) *FlowTracker {
 	fc := frameworktracing.NewFlowContext()
 	uc := frameworktracing.NewUsageContext()
 	ft := &FlowTracker{
-		infra:  infra,
-		buffer: buffer,
-		tc:     tc,
-		fc:     fc,
+		infra: infra,
+		tc:    tc,
+		fc:    fc,
 	}
 	sc := NewSpanCollector(frameworktracing.NewSpanContext(), uc, tc)
 	ft.sc = sc
@@ -211,8 +209,5 @@ func (ft *FlowTracker) emit(stepID string, phase FlowPhase, explicitSev FlowSeve
 		IsPartial: false,
 	}
 	env.Metadata = entry.toMetadata()
-	if ft.buffer != nil {
-		ft.buffer.Append(env)
-	}
 	ft.infra.Publish(context.Background(), env)
 }

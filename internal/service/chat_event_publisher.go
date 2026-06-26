@@ -28,6 +28,12 @@ type turnEventPublisher interface {
 // error envelope. bus is retained for session-revision envelopes which are
 // blocked from migration by the event→biz circular dependency
 // (see session_revision.go).
+//
+// TECH-DEBT(ADR-03 Phase 5 Blocker D): bus field is NOT vestigial — it is
+// actively passed to event.BumpAndPublishSessionRevision* helpers which
+// publish session-revision Envelopes. Cannot delete until session-revision
+// migration to ActivityEventBus/MonitorEventBus is complete (blocked by
+// event→biz circular dependency).
 type chatTurnEventPublisher struct {
 	sessions    biz.SessionTurnManager
 	bus         event.Bus

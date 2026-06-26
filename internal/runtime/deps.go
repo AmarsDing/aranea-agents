@@ -50,15 +50,30 @@ type PersistenceSet struct {
 // EventPipeline wraps the event buses used for projecting runtime events
 // to WebSocket subscribers and internal consumers.
 //
-// Bus is the legacy Envelope bus, retained for monitor events (§6.3).
+// TECH-DEBT(ADR-03 Phase 5 Blocker D): Bus is the legacy Envelope bus and is
+// NOT vestigial — it is actively used by:
+//   - chatTurnEventPublisher (session-revision envelopes via
+//     event.BumpAndPublishSessionRevision*)
+//   - ConsumeWithFirstByteGuard (agent stream consumption)
+//   - Team observers (StartOrchestrationStatusProjector /
+//     StartTeamGraphTaskBridge / StartTeamGraphExecutionTracker)
+//   - event.NewFlowLogger / NewTraceEmitterForRun (flow_log envelope routing)
+// Bus cannot be deleted until session-revision and team-observer publishers
+// migrate to ActivityEventBus/MonitorEventBus (blocked by event→biz circular
+// dependency). Tracked under ADR-03 Phase 5 Blocker D.
+//
+// Buffer (the legacy replay buffer) has been removed in Phase 5 Blocker E:
+// Blocker A deleted the WS replay path (event.Buffer.Replay is no longer
+// called); the buffer was write-only with no reader. All Append callsites
+// (FlowTracker.emit / EventBusConsumer.handleEnvelope) were dead writes.
+//
 // ActivityBus is the new bus transporting biz.ActivityEvent for chat
 // lifecycle events (created/streaming/completed/failed/cancelled/child_created).
 // MonitorEventBus is the typed contract.MonitorBus carrying
 // contract.MonitorEvent for monitor-channel events (alerts, logs, etc.).
 type EventPipeline struct {
-	Bus            event.Bus
-	Buffer         *event.Buffer
-	ActivityBus    biz.ActivityEventBus
+	Bus             event.Bus // TECH-DEBT(ADR-03 Phase 5 Blocker D): see comment above
+	ActivityBus     biz.ActivityEventBus
 	MonitorEventBus contract.MonitorBus
 }
 

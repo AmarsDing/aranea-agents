@@ -4,23 +4,64 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/safego"
+
+	"github.com/google/uuid"
+)
+
+// Meta keys used to carry DomainEvent fields that have no direct counterpart
+// on the Activity struct. Storing them in Activity.Meta allows lossless
+// round-trip conversion between DomainEvent and ActivityEvent.
+const (
+	metaDomainEventType = "domain_event_type" // original DomainEvent.Type
+	metaAuthor          = "author"            // DomainEvent.Author
+	metaRequestID       = "request_id"
+	metaInvocationID    = "invocation_id"
+	metaRunID           = "run_id"
+	metaTraceID         = "trace_id"
+	metaRunKind         = "run_kind"
+	metaUsageEventID    = "usage_event_id"
+	metaTurnStartedAt   = "turn_started_at" // RFC3339Nano
+
+	// presence markers for optional structs (distinguish present-but-zero from absent)
+	metaHasContent    = "has_content"
+	metaHasStateDelta = "has_state_delta"
+	metaHasError      = "has_error"
+	metaHasUsage      = "has_usage"
+	metaHasToolCall   = "has_tool_call"
+	metaHasGraphNode  = "has_graph_node"
+
+	// scalar fields stored in Meta
+	metaIsPartial        = "is_partial"
+	metaStateDeltaOp     = "state_delta_op"
+	metaStateDeltaPath   = "state_delta_path"
+	metaStateDeltaValue  = "state_delta_value_json"
+	metaErrorType        = "error_type"
+	metaErrorMessage     = "error_message"
+	metaUsageTotalTokens = "usage_total_tokens"
+	metaToolCallStatus   = "tool_call_status"
+	metaGraphNodeID      = "graph_node_id"
+	metaGraphNodeError   = "graph_node_error"
 )
 
 type eventBusAdapter struct {
-	bus    contract.Bus
+	bus    ActivityEventBus
 	sysLog SystemLogWriter
 }
 
 var _ DomainEventPublisher = (*eventBusAdapter)(nil)
 var _ DomainEventSubscriber = (*eventBusAdapter)(nil)
 
-func NewDomainEventBus(bus contract.Bus) DomainEventPublisher {
+// NewDomainEventBus wraps an ActivityEventBus as a DomainEventPublisher.
+// DomainEvents are published as ActivityEvents with Domain=system (transient,
+// not persisted to the activities table). SubscribeDomainEvents only delivers
+// system-domain events back to callers, filtering out chat-domain events.
+func NewDomainEventBus(bus ActivityEventBus) DomainEventPublisher {
 	if bus == nil {
 		return nil
 	}
@@ -31,13 +72,26 @@ func (a *eventBusAdapter) SetSystemLog(sysLog SystemLogWriter) {
 	a.sysLog = sysLog
 }
 
+// PublishDomainEvent converts the DomainEvent into an ActivityEvent
+// (Domain=system) and broadcasts it on the underlying ActivityEventBus.
+// System-domain events are never persisted (the ActivityEventBus is a
+// fanout-only hub; persistence is the sequencer's responsibility).
 func (a *eventBusAdapter) PublishDomainEvent(de DomainEvent) {
-	env := domainEventToEnvelope(de)
-	a.bus.Publish(context.Background(), env)
+	ev := domainEventToActivityEvent(de)
+	a.bus.Publish(context.Background(), ev)
 }
 
+// SubscribeDomainEvents subscribes to the ActivityEventBus in global mode and
+// filters to only system-domain events. Chat-domain events are skipped so
+// legacy DomainEvent subscribers never receive chat-timeline Activities.
 func (a *eventBusAdapter) SubscribeDomainEvents() (<-chan DomainEvent, func()) {
-	ch, unsub := a.bus.Subscribe(contract.SubscribeOptions{BufferSize: 256})
+	ch, unsub := a.bus.Subscribe(ActivityEventSubscribeOptions{
+		BufferSize: 256,
+		GlobalMode: true,
+		Filter: func(ev ActivityEvent) bool {
+			return ev.Domain == ActivityDomainSystem
+		},
+	})
 	out := make(chan DomainEvent, 256)
 	done := make(chan struct{})
 	safego.Go(appctx.Ctx(), "domain-event-adapter", func() {
@@ -46,11 +100,11 @@ func (a *eventBusAdapter) SubscribeDomainEvents() (<-chan DomainEvent, func()) {
 			select {
 			case <-done:
 				return
-			case env, ok := <-ch:
+			case ev, ok := <-ch:
 				if !ok {
 					return
 				}
-				de := envelopeToDomainEvent(env)
+				de := activityEventToDomainEvent(ev)
 				if de != nil {
 					select {
 					case out <- *de:
@@ -73,166 +127,308 @@ func (a *eventBusAdapter) SubscribeDomainEvents() (<-chan DomainEvent, func()) {
 
 // --- field-level conversion helpers (eliminate duplicated mapping between directions) ---
 
-func copyContentToEnvelope(src *DomainContent, dst *contract.EnvelopeContent) {
-	dst.Text = src.Text
-	dst.Reasoning = src.Reasoning
-	dst.IsPartial = src.IsPartial
+func copyContentToActivity(src *DomainContent, act *Activity, meta map[string]any) {
+	act.Content = src.Text
+	act.Reasoning = src.Reasoning
+	meta[metaHasContent] = true
+	meta[metaIsPartial] = src.IsPartial
 }
 
-func copyContentFromEnvelope(src *contract.EnvelopeContent, dst *DomainContent) {
-	dst.Text = src.Text
-	dst.Reasoning = src.Reasoning
-	dst.IsPartial = src.IsPartial
+func copyContentFromActivity(act Activity, meta map[string]any) *DomainContent {
+	if !metaBool(meta, metaHasContent) {
+		return nil
+	}
+	return &DomainContent{
+		Text:      act.Content,
+		Reasoning: act.Reasoning,
+		IsPartial: metaBool(meta, metaIsPartial),
+	}
 }
 
-func copyStateDeltaToEnvelope(src *DomainStateDelta, dst *contract.EnvelopeStateDelta) {
-	dst.Operation = src.Operation
-	dst.Path = src.Path
-	dst.ValueJSON = src.ValueJSON
+func copyStateDeltaToActivity(src *DomainStateDelta, meta map[string]any) {
+	meta[metaHasStateDelta] = true
+	meta[metaStateDeltaOp] = src.Operation
+	meta[metaStateDeltaPath] = src.Path
+	meta[metaStateDeltaValue] = src.ValueJSON
 }
 
-func copyStateDeltaFromEnvelope(src *contract.EnvelopeStateDelta, dst *DomainStateDelta) {
-	dst.Operation = src.Operation
-	dst.Path = src.Path
-	dst.ValueJSON = src.ValueJSON
+func copyStateDeltaFromActivity(meta map[string]any) *DomainStateDelta {
+	if !metaBool(meta, metaHasStateDelta) {
+		return nil
+	}
+	return &DomainStateDelta{
+		Operation: metaString(meta, metaStateDeltaOp),
+		Path:      metaString(meta, metaStateDeltaPath),
+		ValueJSON: metaString(meta, metaStateDeltaValue),
+	}
 }
 
-func copyErrorToEnvelope(src *DomainError, dst *contract.EnvelopeError) {
-	dst.Type = src.Type
-	dst.Message = src.Message
+func copyErrorToActivity(src *DomainError, act *Activity, meta map[string]any) {
+	meta[metaHasError] = true
+	meta[metaErrorType] = src.Type
+	meta[metaErrorMessage] = src.Message
+	if src.Type != "" {
+		act.ToolErrorCode = src.Type
+	}
 }
 
-func copyErrorFromEnvelope(src *contract.EnvelopeError, dst *DomainError) {
-	dst.Type = src.Type
-	dst.Message = src.Message
+func copyErrorFromActivity(act Activity, meta map[string]any) *DomainError {
+	if !metaBool(meta, metaHasError) {
+		return nil
+	}
+	return &DomainError{
+		Type:    metaString(meta, metaErrorType),
+		Message: metaString(meta, metaErrorMessage),
+	}
 }
 
-func copyUsageToEnvelope(src *DomainUsage, dst *contract.EnvelopeUsage) {
-	dst.PromptTokens = src.PromptTokens
-	dst.CompletionTokens = src.CompletionTokens
-	dst.TotalTokens = src.TotalTokens
+func copyUsageToActivity(src *DomainUsage, act *Activity, meta map[string]any) {
+	act.PromptTokens = int64(src.PromptTokens)
+	act.CompletionTokens = int64(src.CompletionTokens)
+	meta[metaHasUsage] = true
+	meta[metaUsageTotalTokens] = src.TotalTokens
 }
 
-func copyUsageFromEnvelope(src *contract.EnvelopeUsage, dst *DomainUsage) {
-	dst.PromptTokens = src.PromptTokens
-	dst.CompletionTokens = src.CompletionTokens
-	dst.TotalTokens = src.TotalTokens
+func copyUsageFromActivity(act Activity, meta map[string]any) *DomainUsage {
+	if !metaBool(meta, metaHasUsage) {
+		return nil
+	}
+	return &DomainUsage{
+		PromptTokens:     int(act.PromptTokens),
+		CompletionTokens: int(act.CompletionTokens),
+		TotalTokens:      metaInt(meta, metaUsageTotalTokens),
+	}
 }
 
-func copyToolCallToEnvelope(src *DomainToolCall, dst *contract.EnvelopeToolCall) {
-	dst.ID = src.ID
-	dst.Name = src.Name
-	dst.ArgumentsJSON = src.ArgumentsJSON
-	dst.ResultJSON = src.ResultJSON
-	dst.Status = src.Status
-	dst.DurationMS = src.DurationMS
+func copyToolCallToActivity(src *DomainToolCall, act *Activity, meta map[string]any) {
+	act.ToolCallID = src.ID
+	act.ToolName = src.Name
+	act.ToolArguments = src.ArgumentsJSON
+	act.ToolResult = src.ResultJSON
+	act.ToolDurationMs = src.DurationMS
+	meta[metaHasToolCall] = true
+	meta[metaToolCallStatus] = src.Status
 }
 
-func copyToolCallFromEnvelope(src *contract.EnvelopeToolCall, dst *DomainToolCall) {
-	dst.ID = src.ID
-	dst.Name = src.Name
-	dst.ArgumentsJSON = src.ArgumentsJSON
-	dst.ResultJSON = src.ResultJSON
-	dst.Status = src.Status
-	dst.DurationMS = src.DurationMS
+func copyToolCallFromActivity(act Activity, meta map[string]any) *DomainToolCall {
+	if !metaBool(meta, metaHasToolCall) {
+		return nil
+	}
+	return &DomainToolCall{
+		ID:            act.ToolCallID,
+		Name:          act.ToolName,
+		ArgumentsJSON: act.ToolArguments,
+		ResultJSON:    act.ToolResult,
+		Status:        metaString(meta, metaToolCallStatus),
+		DurationMS:    act.ToolDurationMs,
+	}
+}
+
+func copyGraphNodeToActivity(src *DomainGraphNode, meta map[string]any) {
+	meta[metaHasGraphNode] = true
+	meta[metaGraphNodeID] = src.NodeID
+	meta[metaGraphNodeError] = src.Error
+}
+
+func copyGraphNodeFromActivity(meta map[string]any) *DomainGraphNode {
+	if !metaBool(meta, metaHasGraphNode) {
+		return nil
+	}
+	return &DomainGraphNode{
+		NodeID: metaString(meta, metaGraphNodeID),
+		Error:  metaString(meta, metaGraphNodeError),
+	}
 }
 
 // --- top-level conversion ---
 
-func domainEventToEnvelope(de DomainEvent) contract.Envelope {
-	env := contract.NewEnvelope(contract.EnvelopeType(de.Type), de.Author, de.SessionID)
-	env.TeamID = de.TeamID
+// domainEventToActivityEvent converts a biz.DomainEvent into a
+// biz.ActivityEvent with Domain=system. The original DomainEvent type and
+// correlation fields are preserved in Activity.Meta for round-trip fidelity.
+func domainEventToActivityEvent(de DomainEvent) ActivityEvent {
+	if de.ID == "" {
+		de.ID = uuid.NewString()
+	}
+	ts := de.Timestamp
+	if ts.IsZero() {
+		ts = time.Now()
+	}
+
+	kind, status := domainEventKindStatus(de.Type, de.Error != nil)
+	meta := make(map[string]any, 16)
+	act := Activity{
+		ID:         de.ID,
+		Kind:       kind,
+		Status:     status,
+		SessionID:  de.SessionID,
+		TeamID:     de.TeamID,
+		Timestamp:  ts,
+		DurationMs: de.DurationMS,
+		AgentKey:   de.AgentID,
+		AgentName:  de.AgentDisplayName,
+		Meta:       meta,
+	}
+
 	if de.Content != nil {
-		env.Content = &contract.EnvelopeContent{}
-		copyContentToEnvelope(de.Content, env.Content)
+		copyContentToActivity(de.Content, &act, meta)
 	}
 	if de.StateDelta != nil {
-		env.StateDelta = &contract.EnvelopeStateDelta{}
-		copyStateDeltaToEnvelope(de.StateDelta, env.StateDelta)
+		copyStateDeltaToActivity(de.StateDelta, meta)
 	}
 	if de.Error != nil {
-		env.Error = &contract.EnvelopeError{}
-		copyErrorToEnvelope(de.Error, env.Error)
+		copyErrorToActivity(de.Error, &act, meta)
 	}
 	if de.Usage != nil {
-		env.Usage = &contract.EnvelopeUsage{}
-		copyUsageToEnvelope(de.Usage, env.Usage)
+		copyUsageToActivity(de.Usage, &act, meta)
 	}
 	if de.ToolCall != nil {
-		env.ToolCall = &contract.EnvelopeToolCall{}
-		copyToolCallToEnvelope(de.ToolCall, env.ToolCall)
+		copyToolCallToActivity(de.ToolCall, &act, meta)
 	}
-	return env
+	if de.GraphNode != nil {
+		copyGraphNodeToActivity(de.GraphNode, meta)
+	}
+
+	storeActivityCorrelation(&de, meta)
+
+	return ActivityEvent{
+		Event:    ActivityEventCreated,
+		Activity: act,
+		Domain:   ActivityDomainSystem,
+	}
 }
 
-func envelopeToDomainEvent(env contract.Envelope) *DomainEvent {
+// activityEventToDomainEvent converts a system-domain ActivityEvent back into
+// a biz.DomainEvent. Returns nil for chat-domain events (they should not reach
+// DomainEvent subscribers).
+func activityEventToDomainEvent(ev ActivityEvent) *DomainEvent {
+	if ev.Domain != ActivityDomainSystem {
+		return nil
+	}
+	act := ev.Activity
+	meta := act.Meta
+	if meta == nil {
+		meta = map[string]any{}
+	}
+
+	ts := act.Timestamp
+	if ts.IsZero() {
+		ts = time.Now()
+	}
 	de := &DomainEvent{
-		ID:        env.ID,
-		Type:      DomainEventType(env.Type),
-		Author:    env.Author,
-		SessionID: env.SessionID,
-		TeamID:    env.TeamID,
+		ID:               act.ID,
+		Type:             DomainEventType(metaString(meta, metaDomainEventType)),
+		SessionID:        act.SessionID,
+		TeamID:           act.TeamID,
+		Timestamp:        ts,
+		DurationMS:       act.DurationMs,
+		AgentID:          act.AgentKey,
+		AgentDisplayName: act.AgentName,
 	}
-	if env.Timestamp != "" {
-		if t, err := time.Parse(time.RFC3339Nano, env.Timestamp); err == nil {
-			de.Timestamp = t
-		} else {
-			de.Timestamp = time.Now()
+
+	if de.Content = copyContentFromActivity(act, meta); de.Content == nil {
+		// fallback: reconstruct from non-empty Activity content fields
+		if act.Content != "" || act.Reasoning != "" {
+			de.Content = &DomainContent{
+				Text:      act.Content,
+				Reasoning: act.Reasoning,
+				IsPartial: metaBool(meta, metaIsPartial),
+			}
 		}
-	} else {
-		de.Timestamp = time.Now()
 	}
-	if env.Content != nil {
-		de.Content = &DomainContent{}
-		copyContentFromEnvelope(env.Content, de.Content)
-	}
-	if env.StateDelta != nil {
-		de.StateDelta = &DomainStateDelta{}
-		copyStateDeltaFromEnvelope(env.StateDelta, de.StateDelta)
-	}
-	if env.Error != nil {
-		de.Error = &DomainError{}
-		copyErrorFromEnvelope(env.Error, de.Error)
-	}
-	if env.Usage != nil {
-		de.Usage = &DomainUsage{}
-		copyUsageFromEnvelope(env.Usage, de.Usage)
-	}
-	if env.ToolCall != nil {
-		de.ToolCall = &DomainToolCall{}
-		copyToolCallFromEnvelope(env.ToolCall, de.ToolCall)
-	}
-	applyEnvelopeCorrelation(de, env)
+	de.StateDelta = copyStateDeltaFromActivity(meta)
+	de.Error = copyErrorFromActivity(act, meta)
+	de.Usage = copyUsageFromActivity(act, meta)
+	de.ToolCall = copyToolCallFromActivity(act, meta)
+	de.GraphNode = copyGraphNodeFromActivity(meta)
+
+	applyActivityCorrelation(de, meta)
 	return de
 }
 
-func applyEnvelopeCorrelation(de *DomainEvent, env contract.Envelope) {
-	de.RequestID = strings.TrimSpace(env.RequestID)
-	de.InvocationID = strings.TrimSpace(env.InvocationID)
-	if env.Metadata != nil {
-		if v := metaString(env.Metadata, "run_id"); v != "" {
-			de.RunID = v
-		}
-		if v := metaString(env.Metadata, "trace_id"); v != "" {
-			de.TraceID = v
-		}
-		if v := metaString(env.Metadata, "agent_id"); v != "" {
-			de.AgentID = v
-		}
-		if v := metaString(env.Metadata, "agent_display_name"); v != "" {
-			de.AgentDisplayName = v
-		}
-		if v := metaString(env.Metadata, "run_kind"); v != "" {
-			de.RunKind = v
-		}
-		if v := metaString(env.Metadata, "usage_event_id"); v != "" {
-			de.UsageEventID = v
+// applyActivityCorrelation copies correlation IDs from the meta map onto the
+// DomainEvent. RunID falls back to InvocationID when not explicitly set.
+func applyActivityCorrelation(de *DomainEvent, meta map[string]any) {
+	de.Author = metaString(meta, metaAuthor)
+	de.RequestID = strings.TrimSpace(metaString(meta, metaRequestID))
+	de.InvocationID = strings.TrimSpace(metaString(meta, metaInvocationID))
+	de.RunID = metaString(meta, metaRunID)
+	de.TraceID = metaString(meta, metaTraceID)
+	de.RunKind = metaString(meta, metaRunKind)
+	de.UsageEventID = metaString(meta, metaUsageEventID)
+	if v := metaString(meta, metaTurnStartedAt); v != "" {
+		if t, err := time.Parse(time.RFC3339Nano, v); err == nil {
+			de.TurnStartedAt = t
 		}
 	}
 	if de.RunID == "" {
 		de.RunID = de.InvocationID
 	}
 }
+
+// applyActivityCorrelation for the forward direction (DomainEvent → meta).
+func storeActivityCorrelation(de *DomainEvent, meta map[string]any) {
+	meta[metaDomainEventType] = string(de.Type)
+	meta[metaAuthor] = de.Author
+	if de.RequestID != "" {
+		meta[metaRequestID] = de.RequestID
+	}
+	if de.InvocationID != "" {
+		meta[metaInvocationID] = de.InvocationID
+	}
+	if de.RunID != "" {
+		meta[metaRunID] = de.RunID
+	}
+	if de.TraceID != "" {
+		meta[metaTraceID] = de.TraceID
+	}
+	if de.RunKind != "" {
+		meta[metaRunKind] = de.RunKind
+	}
+	if de.UsageEventID != "" {
+		meta[metaUsageEventID] = de.UsageEventID
+	}
+	if !de.TurnStartedAt.IsZero() {
+		meta[metaTurnStartedAt] = de.TurnStartedAt.Format(time.RFC3339Nano)
+	}
+}
+
+// domainEventKindStatus maps a DomainEventType (+ error presence) to the
+// appropriate ActivityKind and ActivityStatus.
+func domainEventKindStatus(t DomainEventType, hasError bool) (ActivityKind, ActivityStatus) {
+	switch t {
+	case DomainEventTextDelta:
+		return ActivityKindReply, ActivityStatusCompleted
+	case DomainEventToolCall:
+		if hasError {
+			return ActivityKindAction, ActivityStatusFailed
+		}
+		return ActivityKindAction, ActivityStatusRunning
+	case DomainEventToolResult:
+		if hasError {
+			return ActivityKindAction, ActivityStatusFailed
+		}
+		return ActivityKindAction, ActivityStatusCompleted
+	case DomainEventRunnerCompletion:
+		if hasError {
+			return ActivityKindTask, ActivityStatusFailed
+		}
+		return ActivityKindTask, ActivityStatusCompleted
+	case DomainEventError:
+		return ActivityKindNotice, ActivityStatusFailed
+	case DomainEventGraphNodeStart:
+		return ActivityKindGraphStage, ActivityStatusRunning
+	case DomainEventGraphNodeEnd:
+		return ActivityKindGraphStage, ActivityStatusCompleted
+	case DomainEventGraphNodeError:
+		return ActivityKindGraphStage, ActivityStatusFailed
+	case DomainEventGraphInterrupt:
+		return ActivityKindGraphStage, ActivityStatusInterrupted
+	default:
+		return ActivityKindNotice, ActivityStatusCompleted
+	}
+}
+
+// --- shared meta helpers (used by other biz files) ---
 
 func metaString(meta map[string]any, key string) string {
 	v, ok := meta[key]
@@ -261,5 +457,36 @@ func metaBool(meta map[string]any, key string) bool {
 		return strings.EqualFold(strings.TrimSpace(t), "true") || strings.TrimSpace(t) == "1"
 	default:
 		return false
+	}
+}
+
+// metaInt reads an integer value from a meta map. Handles int, int64, float64,
+// json.Number, and string representations.
+func metaInt(meta map[string]any, key string) int {
+	v, ok := meta[key]
+	if !ok || v == nil {
+		return 0
+	}
+	switch t := v.(type) {
+	case int:
+		return t
+	case int64:
+		return int(t)
+	case float64:
+		return int(t)
+	case json.Number:
+		n, err := t.Int64()
+		if err != nil {
+			return 0
+		}
+		return int(n)
+	case string:
+		n, err := strconv.Atoi(strings.TrimSpace(t))
+		if err != nil {
+			return 0
+		}
+		return n
+	default:
+		return 0
 	}
 }

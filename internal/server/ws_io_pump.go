@@ -88,7 +88,7 @@ func (s *WSServer) readPump(wc *wsConn) {
 	cfg := s.wsConfig()
 	defer func() {
 		// Cancel connection context to stop connection-scoped goroutines
-		// (monitorEventPump, activityEventPump, replay, sync_request). Turns are NOT cancelled here —
+		// (monitorEventPump, activityEventPump). Turns are NOT cancelled here —
 		// they use appctx.Ctx() and are cancelled via RunRegistry.Cancel.
 		s.removeConn(wc)
 		wc.close()
@@ -115,9 +115,6 @@ func (s *WSServer) readPump(wc *wsConn) {
 // connection's priority queues.
 func (s *WSServer) monitorEventPump(wc *wsConn, monitorCh <-chan contract.MonitorEvent) {
 	cfg := s.wsConfig()
-	if wc.replayDone != nil {
-		<-wc.replayDone
-	}
 	for ev := range monitorCh {
 		// Monitor events go to the "monitor" channel.
 		if !wc.hasChannel("monitor") {
@@ -157,9 +154,6 @@ func (s *WSServer) monitorEventPump(wc *wsConn, monitorCh <-chan contract.Monito
 // metadata-packing approach.
 func (s *WSServer) activityEventPump(wc *wsConn, activityCh <-chan biz.ActivityEvent) {
 	cfg := s.wsConfig()
-	if wc.replayDone != nil {
-		<-wc.replayDone
-	}
 	for ev := range activityCh {
 		// All ActivityEvents go to the "chat" channel (AF rendering pipeline).
 		if !wc.hasChannel("chat") {

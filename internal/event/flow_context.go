@@ -42,20 +42,19 @@ func FlowLoggerFromContext(ctx context.Context) *TraceEmitter {
 // NewFlowLogger creates a v2 TraceEmitter (name kept for call-site stability).
 //
 // Deprecated: Use loggateway.Logger + With() for structured logging.
-func NewFlowLogger(bus Bus, buffer *Buffer, sessionID, agentKey string, lg loggateway.Logger) *TraceEmitter {
+func NewFlowLogger(bus Bus, sessionID, agentKey string, lg loggateway.Logger) *TraceEmitter {
 	tc := NewTraceContext(context.Background(), TraceOpts{
 		SessionID: sessionID,
 		AgentKey:  agentKey,
 		Domain:    TraceDomainChat,
 	})
-	return NewTraceEmitter(bus, buffer, tc, lg)
+	return NewTraceEmitter(bus, tc, lg)
 }
 
 // TraceEmitterOpts configures a run-scoped TraceEmitter.
 type TraceEmitterOpts struct {
 	Ctx       context.Context
 	Bus       Bus
-	Buffer    *Buffer
 	SessionID string
 	RunID     string
 	AgentKey  string
@@ -77,5 +76,5 @@ func NewTraceEmitterForRun(opts TraceEmitterOpts) *TraceEmitter {
 		AgentKey:  opts.AgentKey,
 		AgentID:   opts.AgentID,
 	})
-	return NewTraceEmitter(opts.Bus, opts.Buffer, tc, opts.LG)
+	return NewTraceEmitter(opts.Bus, tc, opts.LG)
 }

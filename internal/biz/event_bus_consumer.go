@@ -2,6 +2,8 @@ package biz
 
 import (
 	"context"
+	"strings"
+	"time"
 
 	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/event"
@@ -78,5 +80,114 @@ func (c *EventBusConsumer) handleDomainEvent(ctx context.Context, de DomainEvent
 		c.runner.Handle(ctx, de)
 	case DomainEventStateDelta:
 		c.state.Handle(ctx, de)
+	}
+}
+
+// --- Legacy Envelope → DomainEvent conversion ---
+//
+// These functions are retained for EventBusConsumer which still subscribes to
+// the legacy contract.Bus (Envelope bus). They will be removed once
+// EventBusConsumer is migrated to ActivityEventBus (ADR-03 Blocker D/E/F).
+// The forward direction (DomainEvent → Envelope) has been fully removed;
+// the DomainEvent bridge now publishes ActivityEvents (Domain=system).
+
+func copyContentFromEnvelope(src *contract.EnvelopeContent, dst *DomainContent) {
+	dst.Text = src.Text
+	dst.Reasoning = src.Reasoning
+	dst.IsPartial = src.IsPartial
+}
+
+func copyStateDeltaFromEnvelope(src *contract.EnvelopeStateDelta, dst *DomainStateDelta) {
+	dst.Operation = src.Operation
+	dst.Path = src.Path
+	dst.ValueJSON = src.ValueJSON
+}
+
+func copyErrorFromEnvelope(src *contract.EnvelopeError, dst *DomainError) {
+	dst.Type = src.Type
+	dst.Message = src.Message
+}
+
+func copyUsageFromEnvelope(src *contract.EnvelopeUsage, dst *DomainUsage) {
+	dst.PromptTokens = src.PromptTokens
+	dst.CompletionTokens = src.CompletionTokens
+	dst.TotalTokens = src.TotalTokens
+}
+
+func copyToolCallFromEnvelope(src *contract.EnvelopeToolCall, dst *DomainToolCall) {
+	dst.ID = src.ID
+	dst.Name = src.Name
+	dst.ArgumentsJSON = src.ArgumentsJSON
+	dst.ResultJSON = src.ResultJSON
+	dst.Status = src.Status
+	dst.DurationMS = src.DurationMS
+}
+
+func envelopeToDomainEvent(env contract.Envelope) *DomainEvent {
+	de := &DomainEvent{
+		ID:        env.ID,
+		Type:      DomainEventType(env.Type),
+		Author:    env.Author,
+		SessionID: env.SessionID,
+		TeamID:    env.TeamID,
+	}
+	if env.Timestamp != "" {
+		if t, err := time.Parse(time.RFC3339Nano, env.Timestamp); err == nil {
+			de.Timestamp = t
+		} else {
+			de.Timestamp = time.Now()
+		}
+	} else {
+		de.Timestamp = time.Now()
+	}
+	if env.Content != nil {
+		de.Content = &DomainContent{}
+		copyContentFromEnvelope(env.Content, de.Content)
+	}
+	if env.StateDelta != nil {
+		de.StateDelta = &DomainStateDelta{}
+		copyStateDeltaFromEnvelope(env.StateDelta, de.StateDelta)
+	}
+	if env.Error != nil {
+		de.Error = &DomainError{}
+		copyErrorFromEnvelope(env.Error, de.Error)
+	}
+	if env.Usage != nil {
+		de.Usage = &DomainUsage{}
+		copyUsageFromEnvelope(env.Usage, de.Usage)
+	}
+	if env.ToolCall != nil {
+		de.ToolCall = &DomainToolCall{}
+		copyToolCallFromEnvelope(env.ToolCall, de.ToolCall)
+	}
+	applyEnvelopeCorrelation(de, env)
+	return de
+}
+
+func applyEnvelopeCorrelation(de *DomainEvent, env contract.Envelope) {
+	de.RequestID = strings.TrimSpace(env.RequestID)
+	de.InvocationID = strings.TrimSpace(env.InvocationID)
+	if env.Metadata != nil {
+		if v := metaString(env.Metadata, "run_id"); v != "" {
+			de.RunID = v
+		}
+		if v := metaString(env.Metadata, "trace_id"); v != "" {
+			de.TraceID = v
+		}
+		if v := metaString(env.Metadata, "agent_id"); v != "" {
+			de.AgentID = v
+		}
+		if v := metaString(env.Metadata, "agent_display_name"); v != "" {
+			de.AgentDisplayName = v
+		}
+		if v := metaString(env.Metadata, "run_kind"); v != "" {
+			de.RunKind = v
+		}
+		if v := metaString(env.Metadata, "usage_event_id"); v != "" {
+			de.UsageEventID = v
+		}
+	}
+	if de.RunID == "" {
+		de.RunID = de.InvocationID
 	}
 }

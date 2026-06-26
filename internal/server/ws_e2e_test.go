@@ -82,7 +82,7 @@ func TestWSE2E_UserMessageStream(t *testing.T) {
 	bus := event.NewBus(nil)
 	activityBus := activityevent.New(loggateway.NewNoop())
 	sender := &e2eChatSender{activityBus: activityBus, sessionID: sessionID}
-	srv := newTestWSServerWithActivity(bus, event.NewBuffer(), nil, sender, activityBus)
+	srv := newTestWSServerWithActivity(bus, nil, sender, activityBus)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/ws", srv.handleWS)
@@ -138,9 +138,6 @@ func TestWSE2E_UserMessageStream(t *testing.T) {
 func wsMessageType(msg wsDownstream) string {
 	if msg.ActivityEvent != nil {
 		return string(msg.ActivityEvent.Event)
-	}
-	if msg.Envelope != nil {
-		return string(msg.Envelope.Type)
 	}
 	return msg.Type
 }

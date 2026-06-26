@@ -131,7 +131,8 @@ type WSServer struct {
 ### 负面
 
 - **Phase 5 复杂度超预期**：原 spec 估计"删文件"即可，实际识别出 6 个耦合 Blocker（WS replay、side consumer、DomainEvent bridge、vestigial 字段、EventPipeline、Wire DI），需多 session 级联迁移
-- **临时性 Envelope 残留**：Phase 5 完成前，后端 54 生产 + 20 测试文件仍引用 Envelope，前端 7 文件仍 import Envelope 类型（均为合法传输层）
+- **临时性 Envelope 残留**：Phase 5 完成前，后端 14 生产 + 6 测试文件仍引用 Envelope，前端 7 文件仍 import Envelope 类型（均为合法传输层）
+  - 更新于 Phase 5 Blocker A-F + Tier 5 完成后（原 54 生产 + 20 测试降至 14 + 6）；实际残留主要源于 `event→biz` 循环依赖阻塞 `EventBusConsumer` 整体迁移，`event_bus_consumer.go` 的 Envelope 转换函数仍被活跃使用，详见下方「Phase 5 剩余路线图」
 - **WS replay 路径迁移风险**：Blocker A 需将 `event.Buffer` replay 迁移到 Activity replay，或删除 replay 改用 `ListActivities` RPC，可能影响 reconnect 体验
 - **Domain 字段语义负担**：publisher 必须正确声明 Domain，错误声明会导致 system 事件被持久化或 chat 事件被丢弃
 

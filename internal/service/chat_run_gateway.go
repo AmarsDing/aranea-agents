@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/runtime"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -128,7 +127,6 @@ func NewChatRunStatusPersister(sessions biz.SessionStatePort, lg loggateway.Logg
 }
 
 type chatEventPublisher struct {
-	bus         event.Bus
 	activityBus biz.ActivityEventBus
 }
 
@@ -140,8 +138,8 @@ func (pub *chatEventPublisher) PublishMessageQueued(sessionID string) {
 	publishMessageQueuedToBus(pub.activityBus, sessionID)
 }
 
-func NewChatEventPublisher(bus event.Bus, activityBus biz.ActivityEventBus) biz.ChatEventPublisher {
-	return &chatEventPublisher{bus: bus, activityBus: activityBus}
+func NewChatEventPublisher(activityBus biz.ActivityEventBus) biz.ChatEventPublisher {
+	return &chatEventPublisher{activityBus: activityBus}
 }
 
 // NewChatUsecaseFromDeps wires the shared run registry, pending queue, and session
@@ -151,7 +149,6 @@ func NewChatUsecaseFromDeps(
 	pending *runtime.PendingMessageQueue,
 	locks *biz.SessionLockManager,
 	sessions biz.SessionStatePort,
-	bus event.Bus,
 	activityBus biz.ActivityEventBus,
 	lg loggateway.Logger,
 ) *biz.ChatUsecase {
@@ -160,7 +157,7 @@ func NewChatUsecaseFromDeps(
 		locks,
 		NewPendingQueueAdapter(pending),
 		NewChatRunStatusPersister(sessions, lg),
-		NewChatEventPublisher(bus, activityBus),
+		NewChatEventPublisher(activityBus),
 		lg,
 	)
 	uc.StartBackgroundGoroutines()

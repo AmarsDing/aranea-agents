@@ -2,7 +2,7 @@
   @deprecated Phase 3 of the Activity-First refactor (see
   docs/reports/2026-06-25-review-adr-activity-event-persistence.md §遗留项).
   This panel still serves member mode until the AF pipeline covers team/member
-  rendering. New features should build on EventStream.vue + AgentWorkPanel.vue
+  rendering. New features should build on ActivityStream.vue + AgentWorkPanel.vue
   using Activity events. Do not extend this component.
 -->
 <template>

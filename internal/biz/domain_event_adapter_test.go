@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event/contract"
 )
 
 func TestMetaString(t *testing.T) {
@@ -63,91 +62,220 @@ func TestMetaBool(t *testing.T) {
 	}
 }
 
-func TestCopyContentToEnvelope(t *testing.T) {
+func TestMetaInt(t *testing.T) {
+	cases := []struct {
+		name string
+		meta map[string]any
+		key  string
+		want int
+	}{
+		{"missing key", map[string]any{"a": 1}, "b", 0},
+		{"nil meta", nil, "a", 0},
+		{"int value", map[string]any{"k": 42}, "k", 42},
+		{"int64 value", map[string]any{"k": int64(42)}, "k", 42},
+		{"float64 value", map[string]any{"k": float64(42)}, "k", 42},
+		{"json number", map[string]any{"k": json.Number("42")}, "k", 42},
+		{"string value", map[string]any{"k": "42"}, "k", 42},
+		{"invalid string", map[string]any{"k": "abc"}, "k", 0},
+		{"nil value", map[string]any{"k": nil}, "k", 0},
+		{"zero int", map[string]any{"k": 0}, "k", 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := biz.MetaInt(tc.meta, tc.key)
+			if got != tc.want {
+				t.Fatalf("MetaInt(%v, %q) = %d, want %d", tc.meta, tc.key, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCopyContentToActivity(t *testing.T) {
 	src := &biz.DomainContent{Text: "hello", Reasoning: "thinking", IsPartial: true}
-	dst := &contract.EnvelopeContent{}
-	biz.CopyContentToEnvelope(src, dst)
-	if dst.Text != "hello" {
-		t.Fatalf("Text = %q, want hello", dst.Text)
+	act := &biz.Activity{}
+	meta := map[string]any{}
+	biz.CopyContentToActivity(src, act, meta)
+	if act.Content != "hello" {
+		t.Fatalf("Content = %q, want hello", act.Content)
 	}
-	if dst.Reasoning != "thinking" {
-		t.Fatalf("Reasoning = %q, want thinking", dst.Reasoning)
+	if act.Reasoning != "thinking" {
+		t.Fatalf("Reasoning = %q, want thinking", act.Reasoning)
 	}
-	if !dst.IsPartial {
-		t.Fatalf("IsPartial should be true")
+	if !biz.MetaBool(meta, "has_content") {
+		t.Fatalf("has_content should be true")
 	}
-}
-
-func TestCopyContentFromEnvelope(t *testing.T) {
-	src := &contract.EnvelopeContent{Text: "world", Reasoning: "thought", IsPartial: false}
-	dst := &biz.DomainContent{}
-	biz.CopyContentFromEnvelope(src, dst)
-	if dst.Text != "world" {
-		t.Fatalf("Text = %q, want world", dst.Text)
-	}
-	if dst.Reasoning != "thought" {
-		t.Fatalf("Reasoning = %q, want thought", dst.Reasoning)
-	}
-	if dst.IsPartial {
-		t.Fatalf("IsPartial should be false")
+	if !biz.MetaBool(meta, "is_partial") {
+		t.Fatalf("is_partial should be true")
 	}
 }
 
-func TestCopyStateDeltaToEnvelope(t *testing.T) {
+func TestCopyContentFromActivity(t *testing.T) {
+	t.Run("present", func(t *testing.T) {
+		act := biz.Activity{Content: "world", Reasoning: "thought"}
+		meta := map[string]any{"has_content": true, "is_partial": false}
+		dc := biz.CopyContentFromActivity(act, meta)
+		if dc == nil {
+			t.Fatalf("expected non-nil DomainContent")
+		}
+		if dc.Text != "world" {
+			t.Fatalf("Text = %q, want world", dc.Text)
+		}
+		if dc.Reasoning != "thought" {
+			t.Fatalf("Reasoning = %q, want thought", dc.Reasoning)
+		}
+		if dc.IsPartial {
+			t.Fatalf("IsPartial should be false")
+		}
+	})
+	t.Run("absent", func(t *testing.T) {
+		act := biz.Activity{Content: "x"}
+		meta := map[string]any{}
+		dc := biz.CopyContentFromActivity(act, meta)
+		if dc != nil {
+			t.Fatalf("expected nil for absent content")
+		}
+	})
+}
+
+func TestCopyStateDeltaToActivity(t *testing.T) {
 	src := &biz.DomainStateDelta{Operation: "set", Path: "a.b", ValueJSON: `{"x":1}`}
-	dst := &contract.EnvelopeStateDelta{}
-	biz.CopyStateDeltaToEnvelope(src, dst)
-	if dst.Operation != "set" || dst.Path != "a.b" || dst.ValueJSON != `{"x":1}` {
-		t.Fatalf("unexpected dst: %+v", dst)
+	meta := map[string]any{}
+	biz.CopyStateDeltaToActivity(src, meta)
+	if !biz.MetaBool(meta, "has_state_delta") {
+		t.Fatalf("has_state_delta should be true")
+	}
+	if biz.MetaString(meta, "state_delta_op") != "set" {
+		t.Fatalf("op mismatch")
+	}
+	if biz.MetaString(meta, "state_delta_path") != "a.b" {
+		t.Fatalf("path mismatch")
+	}
+	if biz.MetaString(meta, "state_delta_value_json") != `{"x":1}` {
+		t.Fatalf("value mismatch")
 	}
 }
 
-func TestCopyStateDeltaFromEnvelope(t *testing.T) {
-	src := &contract.EnvelopeStateDelta{Operation: "delete", Path: "c.d", ValueJSON: "null"}
-	dst := &biz.DomainStateDelta{}
-	biz.CopyStateDeltaFromEnvelope(src, dst)
-	if dst.Operation != "delete" || dst.Path != "c.d" {
-		t.Fatalf("unexpected dst: %+v", dst)
-	}
+func TestCopyStateDeltaFromActivity(t *testing.T) {
+	t.Run("present", func(t *testing.T) {
+		meta := map[string]any{
+			"has_state_delta":        true,
+			"state_delta_op":         "delete",
+			"state_delta_path":       "c.d",
+			"state_delta_value_json": "null",
+		}
+		ds := biz.CopyStateDeltaFromActivity(meta)
+		if ds == nil {
+			t.Fatalf("expected non-nil DomainStateDelta")
+		}
+		if ds.Operation != "delete" || ds.Path != "c.d" || ds.ValueJSON != "null" {
+			t.Fatalf("unexpected: %+v", ds)
+		}
+	})
+	t.Run("absent", func(t *testing.T) {
+		ds := biz.CopyStateDeltaFromActivity(map[string]any{})
+		if ds != nil {
+			t.Fatalf("expected nil")
+		}
+	})
 }
 
-func TestCopyErrorToEnvelope(t *testing.T) {
-	src := &biz.DomainError{Type: "runtime", Message: "boom"}
-	dst := &contract.EnvelopeError{}
-	biz.CopyErrorToEnvelope(src, dst)
-	if dst.Type != "runtime" || dst.Message != "boom" {
-		t.Fatalf("unexpected dst: %+v", dst)
-	}
+func TestCopyErrorToActivity(t *testing.T) {
+	t.Run("with type", func(t *testing.T) {
+		src := &biz.DomainError{Type: "runtime", Message: "boom"}
+		act := &biz.Activity{}
+		meta := map[string]any{}
+		biz.CopyErrorToActivity(src, act, meta)
+		if act.ToolErrorCode != "runtime" {
+			t.Fatalf("ToolErrorCode = %q, want runtime", act.ToolErrorCode)
+		}
+		if !biz.MetaBool(meta, "has_error") {
+			t.Fatalf("has_error should be true")
+		}
+		if biz.MetaString(meta, "error_type") != "runtime" {
+			t.Fatalf("error_type mismatch")
+		}
+		if biz.MetaString(meta, "error_message") != "boom" {
+			t.Fatalf("error_message mismatch")
+		}
+	})
+	t.Run("empty type", func(t *testing.T) {
+		src := &biz.DomainError{Type: "", Message: "oops"}
+		act := &biz.Activity{}
+		meta := map[string]any{}
+		biz.CopyErrorToActivity(src, act, meta)
+		if act.ToolErrorCode != "" {
+			t.Fatalf("ToolErrorCode should be empty for empty type")
+		}
+		if !biz.MetaBool(meta, "has_error") {
+			t.Fatalf("has_error should still be true")
+		}
+	})
 }
 
-func TestCopyErrorFromEnvelope(t *testing.T) {
-	src := &contract.EnvelopeError{Type: "timeout", Message: "timed out"}
-	dst := &biz.DomainError{}
-	biz.CopyErrorFromEnvelope(src, dst)
-	if dst.Type != "timeout" || dst.Message != "timed out" {
-		t.Fatalf("unexpected dst: %+v", dst)
-	}
+func TestCopyErrorFromActivity(t *testing.T) {
+	t.Run("present", func(t *testing.T) {
+		act := biz.Activity{}
+		meta := map[string]any{
+			"has_error":     true,
+			"error_type":    "timeout",
+			"error_message": "timed out",
+		}
+		de := biz.CopyErrorFromActivity(act, meta)
+		if de == nil {
+			t.Fatalf("expected non-nil DomainError")
+		}
+		if de.Type != "timeout" || de.Message != "timed out" {
+			t.Fatalf("unexpected: %+v", de)
+		}
+	})
+	t.Run("absent", func(t *testing.T) {
+		de := biz.CopyErrorFromActivity(biz.Activity{}, map[string]any{})
+		if de != nil {
+			t.Fatalf("expected nil")
+		}
+	})
 }
 
-func TestCopyUsageToEnvelope(t *testing.T) {
+func TestCopyUsageToActivity(t *testing.T) {
 	src := &biz.DomainUsage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150}
-	dst := &contract.EnvelopeUsage{}
-	biz.CopyUsageToEnvelope(src, dst)
-	if dst.PromptTokens != 100 || dst.CompletionTokens != 50 || dst.TotalTokens != 150 {
-		t.Fatalf("unexpected dst: %+v", dst)
+	act := &biz.Activity{}
+	meta := map[string]any{}
+	biz.CopyUsageToActivity(src, act, meta)
+	if act.PromptTokens != 100 {
+		t.Fatalf("PromptTokens = %d, want 100", act.PromptTokens)
+	}
+	if act.CompletionTokens != 50 {
+		t.Fatalf("CompletionTokens = %d, want 50", act.CompletionTokens)
+	}
+	if !biz.MetaBool(meta, "has_usage") {
+		t.Fatalf("has_usage should be true")
+	}
+	if biz.MetaInt(meta, "usage_total_tokens") != 150 {
+		t.Fatalf("total_tokens mismatch")
 	}
 }
 
-func TestCopyUsageFromEnvelope(t *testing.T) {
-	src := &contract.EnvelopeUsage{PromptTokens: 200, CompletionTokens: 80, TotalTokens: 280}
-	dst := &biz.DomainUsage{}
-	biz.CopyUsageFromEnvelope(src, dst)
-	if dst.PromptTokens != 200 || dst.CompletionTokens != 80 || dst.TotalTokens != 280 {
-		t.Fatalf("unexpected dst: %+v", dst)
-	}
+func TestCopyUsageFromActivity(t *testing.T) {
+	t.Run("present", func(t *testing.T) {
+		act := biz.Activity{PromptTokens: 200, CompletionTokens: 80}
+		meta := map[string]any{"has_usage": true, "usage_total_tokens": 280}
+		du := biz.CopyUsageFromActivity(act, meta)
+		if du == nil {
+			t.Fatalf("expected non-nil DomainUsage")
+		}
+		if du.PromptTokens != 200 || du.CompletionTokens != 80 || du.TotalTokens != 280 {
+			t.Fatalf("unexpected: %+v", du)
+		}
+	})
+	t.Run("absent", func(t *testing.T) {
+		du := biz.CopyUsageFromActivity(biz.Activity{}, map[string]any{})
+		if du != nil {
+			t.Fatalf("expected nil")
+		}
+	})
 }
 
-func TestCopyToolCallToEnvelope(t *testing.T) {
+func TestCopyToolCallToActivity(t *testing.T) {
 	src := &biz.DomainToolCall{
 		ID:            "tc-1",
 		Name:          "search",
@@ -156,48 +284,158 @@ func TestCopyToolCallToEnvelope(t *testing.T) {
 		Status:        "completed",
 		DurationMS:    150,
 	}
-	dst := &contract.EnvelopeToolCall{}
-	biz.CopyToolCallToEnvelope(src, dst)
-	if dst.ID != "tc-1" || dst.Name != "search" || dst.Status != "completed" || dst.DurationMS != 150 {
-		t.Fatalf("unexpected dst: %+v", dst)
+	act := &biz.Activity{}
+	meta := map[string]any{}
+	biz.CopyToolCallToActivity(src, act, meta)
+	if act.ToolCallID != "tc-1" {
+		t.Fatalf("ToolCallID = %q, want tc-1", act.ToolCallID)
+	}
+	if act.ToolName != "search" {
+		t.Fatalf("ToolName = %q, want search", act.ToolName)
+	}
+	if act.ToolArguments != `{"q":"test"}` {
+		t.Fatalf("ToolArguments mismatch")
+	}
+	if act.ToolResult != `{"found":true}` {
+		t.Fatalf("ToolResult mismatch")
+	}
+	if act.ToolDurationMs != 150 {
+		t.Fatalf("ToolDurationMs = %d, want 150", act.ToolDurationMs)
+	}
+	if !biz.MetaBool(meta, "has_tool_call") {
+		t.Fatalf("has_tool_call should be true")
+	}
+	if biz.MetaString(meta, "tool_call_status") != "completed" {
+		t.Fatalf("tool_call_status mismatch")
 	}
 }
 
-func TestCopyToolCallFromEnvelope(t *testing.T) {
-	src := &contract.EnvelopeToolCall{
-		ID:            "tc-2",
-		Name:          "execute",
-		ArgumentsJSON: `{"cmd":"ls"}`,
-		ResultJSON:    `{"exit":0}`,
-		Status:        "running",
-		DurationMS:    50,
+func TestCopyToolCallFromActivity(t *testing.T) {
+	t.Run("present", func(t *testing.T) {
+		act := biz.Activity{
+			ToolCallID:     "tc-2",
+			ToolName:       "execute",
+			ToolArguments:  `{"cmd":"ls"}`,
+			ToolResult:     `{"exit":0}`,
+			ToolDurationMs: 50,
+		}
+		meta := map[string]any{"has_tool_call": true, "tool_call_status": "running"}
+		dt := biz.CopyToolCallFromActivity(act, meta)
+		if dt == nil {
+			t.Fatalf("expected non-nil DomainToolCall")
+		}
+		if dt.ID != "tc-2" || dt.Name != "execute" || dt.Status != "running" || dt.DurationMS != 50 {
+			t.Fatalf("unexpected: %+v", dt)
+		}
+	})
+	t.Run("absent", func(t *testing.T) {
+		dt := biz.CopyToolCallFromActivity(biz.Activity{}, map[string]any{})
+		if dt != nil {
+			t.Fatalf("expected nil")
+		}
+	})
+}
+
+func TestCopyGraphNodeToActivity(t *testing.T) {
+	src := &biz.DomainGraphNode{NodeID: "node-1", Error: "fail"}
+	meta := map[string]any{}
+	biz.CopyGraphNodeToActivity(src, meta)
+	if !biz.MetaBool(meta, "has_graph_node") {
+		t.Fatalf("has_graph_node should be true")
 	}
-	dst := &biz.DomainToolCall{}
-	biz.CopyToolCallFromEnvelope(src, dst)
-	if dst.ID != "tc-2" || dst.Name != "execute" || dst.Status != "running" || dst.DurationMS != 50 {
-		t.Fatalf("unexpected dst: %+v", dst)
+	if biz.MetaString(meta, "graph_node_id") != "node-1" {
+		t.Fatalf("graph_node_id mismatch")
+	}
+	if biz.MetaString(meta, "graph_node_error") != "fail" {
+		t.Fatalf("graph_node_error mismatch")
 	}
 }
 
-func TestDomainEventToEnvelope(t *testing.T) {
+func TestCopyGraphNodeFromActivity(t *testing.T) {
+	t.Run("present", func(t *testing.T) {
+		meta := map[string]any{
+			"has_graph_node":   true,
+			"graph_node_id":    "node-2",
+			"graph_node_error": "crash",
+		}
+		gn := biz.CopyGraphNodeFromActivity(meta)
+		if gn == nil {
+			t.Fatalf("expected non-nil DomainGraphNode")
+		}
+		if gn.NodeID != "node-2" || gn.Error != "crash" {
+			t.Fatalf("unexpected: %+v", gn)
+		}
+	})
+	t.Run("absent", func(t *testing.T) {
+		gn := biz.CopyGraphNodeFromActivity(map[string]any{})
+		if gn != nil {
+			t.Fatalf("expected nil")
+		}
+	})
+}
+
+func TestDomainEventKindStatus(t *testing.T) {
+	cases := []struct {
+		eventType  biz.DomainEventType
+		hasError   bool
+		wantKind   biz.ActivityKind
+		wantStatus biz.ActivityStatus
+	}{
+		{biz.DomainEventTextDelta, false, biz.ActivityKindReply, biz.ActivityStatusCompleted},
+		{biz.DomainEventToolCall, false, biz.ActivityKindAction, biz.ActivityStatusRunning},
+		{biz.DomainEventToolCall, true, biz.ActivityKindAction, biz.ActivityStatusFailed},
+		{biz.DomainEventToolResult, false, biz.ActivityKindAction, biz.ActivityStatusCompleted},
+		{biz.DomainEventToolResult, true, biz.ActivityKindAction, biz.ActivityStatusFailed},
+		{biz.DomainEventRunnerCompletion, false, biz.ActivityKindTask, biz.ActivityStatusCompleted},
+		{biz.DomainEventRunnerCompletion, true, biz.ActivityKindTask, biz.ActivityStatusFailed},
+		{biz.DomainEventError, false, biz.ActivityKindNotice, biz.ActivityStatusFailed},
+		{biz.DomainEventGraphNodeStart, false, biz.ActivityKindGraphStage, biz.ActivityStatusRunning},
+		{biz.DomainEventGraphNodeEnd, false, biz.ActivityKindGraphStage, biz.ActivityStatusCompleted},
+		{biz.DomainEventGraphNodeError, false, biz.ActivityKindGraphStage, biz.ActivityStatusFailed},
+		{biz.DomainEventGraphInterrupt, false, biz.ActivityKindGraphStage, biz.ActivityStatusInterrupted},
+		{biz.DomainEventStateDelta, false, biz.ActivityKindNotice, biz.ActivityStatusCompleted},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.eventType), func(t *testing.T) {
+			kind, status := biz.DomainEventKindStatus(tc.eventType, tc.hasError)
+			if kind != tc.wantKind {
+				t.Fatalf("kind = %q, want %q", kind, tc.wantKind)
+			}
+			if status != tc.wantStatus {
+				t.Fatalf("status = %q, want %q", status, tc.wantStatus)
+			}
+		})
+	}
+}
+
+func TestDomainEventToActivityEvent(t *testing.T) {
 	t.Run("minimal event", func(t *testing.T) {
 		de := biz.DomainEvent{
 			Type:      biz.DomainEventTextDelta,
 			Author:    "agent-1",
 			SessionID: "sess-1",
 		}
-		env := biz.DomainEventToEnvelope(de)
-		if env.Type != contract.EnvelopeType(biz.DomainEventTextDelta) {
-			t.Fatalf("Type = %q, want text_delta", env.Type)
+		ev := biz.DomainEventToActivityEvent(de)
+		if ev.Domain != biz.ActivityDomainSystem {
+			t.Fatalf("Domain = %q, want system", ev.Domain)
 		}
-		if env.Author != "agent-1" {
-			t.Fatalf("Author = %q, want agent-1", env.Author)
+		if ev.Event != biz.ActivityEventCreated {
+			t.Fatalf("Event = %q, want created", ev.Event)
 		}
-		if env.SessionID != "sess-1" {
-			t.Fatalf("SessionID = %q, want sess-1", env.SessionID)
+		if ev.Activity.Kind != biz.ActivityKindReply {
+			t.Fatalf("Kind = %q, want reply", ev.Activity.Kind)
 		}
-		if env.ID == "" {
+		if ev.Activity.SessionID != "sess-1" {
+			t.Fatalf("SessionID = %q, want sess-1", ev.Activity.SessionID)
+		}
+		if ev.Activity.ID == "" {
 			t.Fatalf("ID should not be empty")
+		}
+		if biz.MetaString(ev.Activity.Meta, "domain_event_type") != "text_delta" {
+			t.Fatalf("domain_event_type meta mismatch")
+		}
+		if biz.MetaString(ev.Activity.Meta, "author") != "agent-1" {
+			t.Fatalf("author meta mismatch")
 		}
 	})
 
@@ -213,34 +451,72 @@ func TestDomainEventToEnvelope(t *testing.T) {
 			ToolCall:   &biz.DomainToolCall{ID: "tc-1", Name: "search", Status: "completed", DurationMS: 100},
 			StateDelta: &biz.DomainStateDelta{Operation: "set", Path: "x.y", ValueJSON: "1"},
 		}
-		env := biz.DomainEventToEnvelope(de)
-		if env.TeamID != "team-1" {
-			t.Fatalf("TeamID = %q, want team-1", env.TeamID)
+		ev := biz.DomainEventToActivityEvent(de)
+		if ev.Activity.TeamID != "team-1" {
+			t.Fatalf("TeamID = %q, want team-1", ev.Activity.TeamID)
 		}
-		if env.Content == nil || env.Content.Text != "done" {
-			t.Fatalf("Content not copied correctly")
+		if ev.Activity.Kind != biz.ActivityKindTask {
+			t.Fatalf("Kind = %q, want task", ev.Activity.Kind)
 		}
-		if env.Error == nil || env.Error.Message != "oops" {
-			t.Fatalf("Error not copied correctly")
+		if ev.Activity.Status != biz.ActivityStatusFailed {
+			t.Fatalf("Status = %q, want failed (has error)", ev.Activity.Status)
 		}
-		if env.Usage == nil || env.Usage.TotalTokens != 30 {
-			t.Fatalf("Usage not copied correctly")
+		if ev.Activity.Content != "done" {
+			t.Fatalf("Content = %q, want done", ev.Activity.Content)
 		}
-		if env.ToolCall == nil || env.ToolCall.Name != "search" {
-			t.Fatalf("ToolCall not copied correctly")
+		if ev.Activity.Reasoning != "thought" {
+			t.Fatalf("Reasoning = %q, want thought", ev.Activity.Reasoning)
 		}
-		if env.StateDelta == nil || env.StateDelta.Path != "x.y" {
-			t.Fatalf("StateDelta not copied correctly")
+		if ev.Activity.ToolErrorCode != "runtime" {
+			t.Fatalf("ToolErrorCode = %q, want runtime", ev.Activity.ToolErrorCode)
+		}
+		if ev.Activity.PromptTokens != 10 || ev.Activity.CompletionTokens != 20 {
+			t.Fatalf("Usage tokens mismatch")
+		}
+		if biz.MetaInt(ev.Activity.Meta, "usage_total_tokens") != 30 {
+			t.Fatalf("total_tokens mismatch")
+		}
+		if ev.Activity.ToolCallID != "tc-1" || ev.Activity.ToolName != "search" {
+			t.Fatalf("ToolCall fields mismatch")
 		}
 	})
 }
 
-func TestEnvelopeToDomainEvent(t *testing.T) {
-	t.Run("minimal envelope", func(t *testing.T) {
-		env := contract.NewEnvelope(contract.EnvelopeType(biz.DomainEventTextDelta), "agent-1", "sess-1")
-		de := biz.EnvelopeToDomainEvent(env)
+func TestActivityEventToDomainEvent(t *testing.T) {
+	t.Run("chat domain returns nil", func(t *testing.T) {
+		ev := biz.ActivityEvent{
+			Domain: biz.ActivityDomainChat,
+			Activity: biz.Activity{
+				ID:        "a-1",
+				SessionID: "s-1",
+			},
+		}
+		de := biz.ActivityEventToDomainEvent(ev)
+		if de != nil {
+			t.Fatalf("expected nil for chat-domain event")
+		}
+	})
+
+	t.Run("system domain converts", func(t *testing.T) {
+		ev := biz.ActivityEvent{
+			Event:  biz.ActivityEventCreated,
+			Domain: biz.ActivityDomainSystem,
+			Activity: biz.Activity{
+				ID:        "act-1",
+				SessionID: "sess-1",
+				Timestamp: time.Date(2024, 6, 15, 10, 30, 0, 0, time.UTC),
+				Meta: map[string]any{
+					"domain_event_type": "text_delta",
+					"author":            "agent-1",
+				},
+			},
+		}
+		de := biz.ActivityEventToDomainEvent(ev)
 		if de == nil {
 			t.Fatalf("expected non-nil DomainEvent")
+		}
+		if de.Type != biz.DomainEventTextDelta {
+			t.Fatalf("Type = %q, want text_delta", de.Type)
 		}
 		if de.Author != "agent-1" {
 			t.Fatalf("Author = %q, want agent-1", de.Author)
@@ -248,73 +524,116 @@ func TestEnvelopeToDomainEvent(t *testing.T) {
 		if de.SessionID != "sess-1" {
 			t.Fatalf("SessionID = %q, want sess-1", de.SessionID)
 		}
-		if de.Timestamp.IsZero() {
-			t.Fatalf("Timestamp should not be zero")
+		if de.ID != "act-1" {
+			t.Fatalf("ID = %q, want act-1", de.ID)
+		}
+		if de.Timestamp.Year() != 2024 {
+			t.Fatalf("Timestamp year = %d, want 2024", de.Timestamp.Year())
 		}
 	})
 
-	t.Run("envelope with content", func(t *testing.T) {
-		env := contract.NewEnvelope(contract.EnvelopeType(biz.DomainEventTextDelta), "agent-1", "sess-1")
-		env.Content = &contract.EnvelopeContent{Text: "hello", Reasoning: "think", IsPartial: true}
-		de := biz.EnvelopeToDomainEvent(env)
-		if de.Content == nil || de.Content.Text != "hello" {
-			t.Fatalf("Content not copied correctly")
+	t.Run("with content via meta marker", func(t *testing.T) {
+		ev := biz.ActivityEvent{
+			Domain: biz.ActivityDomainSystem,
+			Activity: biz.Activity{
+				Content:   "hello",
+				Reasoning: "think",
+				Meta: map[string]any{
+					"has_content": true,
+					"is_partial":  true,
+				},
+			},
+		}
+		de := biz.ActivityEventToDomainEvent(ev)
+		if de.Content == nil {
+			t.Fatalf("Content should not be nil")
+		}
+		if de.Content.Text != "hello" {
+			t.Fatalf("Content.Text = %q, want hello", de.Content.Text)
+		}
+		if !de.Content.IsPartial {
+			t.Fatalf("IsPartial should be true")
 		}
 	})
 
-	t.Run("envelope with error", func(t *testing.T) {
-		env := contract.NewEnvelope(contract.EnvelopeTypeError, "agent-1", "sess-1")
-		env.Error = &contract.EnvelopeError{Type: "timeout", Message: "timed out"}
-		de := biz.EnvelopeToDomainEvent(env)
-		if de.Error == nil || de.Error.Type != "timeout" {
-			t.Fatalf("Error not copied correctly")
+	t.Run("nil meta handled", func(t *testing.T) {
+		ev := biz.ActivityEvent{
+			Domain: biz.ActivityDomainSystem,
+			Activity: biz.Activity{
+				ID:   "a-nil",
+				Meta: nil,
+			},
 		}
-	})
-
-	t.Run("envelope with usage", func(t *testing.T) {
-		env := contract.NewEnvelope(contract.EnvelopeType(biz.DomainEventRunnerCompletion), "agent-1", "sess-1")
-		env.Usage = &contract.EnvelopeUsage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150}
-		de := biz.EnvelopeToDomainEvent(env)
-		if de.Usage == nil || de.Usage.TotalTokens != 150 {
-			t.Fatalf("Usage not copied correctly")
+		de := biz.ActivityEventToDomainEvent(ev)
+		if de == nil {
+			t.Fatalf("expected non-nil even with nil meta")
 		}
-	})
-
-	t.Run("envelope with tool call", func(t *testing.T) {
-		env := contract.NewEnvelope(contract.EnvelopeType(biz.DomainEventToolCall), "agent-1", "sess-1")
-		env.ToolCall = &contract.EnvelopeToolCall{ID: "tc-1", Name: "search", Status: "completed", DurationMS: 200}
-		de := biz.EnvelopeToDomainEvent(env)
-		if de.ToolCall == nil || de.ToolCall.Name != "search" {
-			t.Fatalf("ToolCall not copied correctly")
-		}
-	})
-
-	t.Run("envelope with state delta", func(t *testing.T) {
-		env := contract.NewEnvelope(contract.EnvelopeTypeStateDelta, "agent-1", "sess-1")
-		env.StateDelta = &contract.EnvelopeStateDelta{Operation: "set", Path: "a.b", ValueJSON: `"v"`}
-		de := biz.EnvelopeToDomainEvent(env)
-		if de.StateDelta == nil || de.StateDelta.Operation != "set" {
-			t.Fatalf("StateDelta not copied correctly")
+		if de.ID != "a-nil" {
+			t.Fatalf("ID = %q, want a-nil", de.ID)
 		}
 	})
 }
 
-func TestApplyEnvelopeCorrelation(t *testing.T) {
-	t.Run("metadata extraction", func(t *testing.T) {
+func TestStoreActivityCorrelation(t *testing.T) {
+	de := &biz.DomainEvent{
+		Type:          biz.DomainEventToolCall,
+		Author:        "bot",
+		RequestID:     "req-1",
+		InvocationID:  "inv-1",
+		RunID:         "run-1",
+		TraceID:       "trace-1",
+		RunKind:       "chat",
+		UsageEventID:  "ue-1",
+		TurnStartedAt: time.Date(2024, 6, 15, 10, 0, 0, 0, time.UTC),
+	}
+	meta := map[string]any{}
+	biz.StoreActivityCorrelation(de, meta)
+	if biz.MetaString(meta, "domain_event_type") != "tool_call" {
+		t.Fatalf("domain_event_type mismatch")
+	}
+	if biz.MetaString(meta, "author") != "bot" {
+		t.Fatalf("author mismatch")
+	}
+	if biz.MetaString(meta, "request_id") != "req-1" {
+		t.Fatalf("request_id mismatch")
+	}
+	if biz.MetaString(meta, "invocation_id") != "inv-1" {
+		t.Fatalf("invocation_id mismatch")
+	}
+	if biz.MetaString(meta, "run_id") != "run-1" {
+		t.Fatalf("run_id mismatch")
+	}
+	if biz.MetaString(meta, "trace_id") != "trace-1" {
+		t.Fatalf("trace_id mismatch")
+	}
+	if biz.MetaString(meta, "run_kind") != "chat" {
+		t.Fatalf("run_kind mismatch")
+	}
+	if biz.MetaString(meta, "usage_event_id") != "ue-1" {
+		t.Fatalf("usage_event_id mismatch")
+	}
+	if ts := biz.MetaString(meta, "turn_started_at"); ts == "" {
+		t.Fatalf("turn_started_at should be set")
+	}
+}
+
+func TestApplyActivityCorrelation(t *testing.T) {
+	t.Run("full correlation extraction", func(t *testing.T) {
 		de := &biz.DomainEvent{}
-		env := contract.Envelope{
-			RequestID:    "req-1",
-			InvocationID: "inv-1",
-			Metadata: map[string]any{
-				"run_id":             "run-1",
-				"trace_id":           "trace-1",
-				"agent_id":           "agent-1",
-				"agent_display_name": "TestAgent",
-				"run_kind":           "chat",
-				"usage_event_id":     "ue-1",
-			},
+		meta := map[string]any{
+			"author":          "bot",
+			"request_id":      "req-1",
+			"invocation_id":   "inv-1",
+			"run_id":          "run-1",
+			"trace_id":        "trace-1",
+			"run_kind":        "chat",
+			"usage_event_id":  "ue-1",
+			"turn_started_at": time.Date(2024, 6, 15, 10, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),
 		}
-		biz.ApplyEnvelopeCorrelation(de, env)
+		biz.ApplyActivityCorrelation(de, meta)
+		if de.Author != "bot" {
+			t.Fatalf("Author = %q, want bot", de.Author)
+		}
 		if de.RequestID != "req-1" {
 			t.Fatalf("RequestID = %q, want req-1", de.RequestID)
 		}
@@ -327,71 +646,88 @@ func TestApplyEnvelopeCorrelation(t *testing.T) {
 		if de.TraceID != "trace-1" {
 			t.Fatalf("TraceID = %q, want trace-1", de.TraceID)
 		}
-		if de.AgentID != "agent-1" {
-			t.Fatalf("AgentID = %q, want agent-1", de.AgentID)
-		}
-		if de.AgentDisplayName != "TestAgent" {
-			t.Fatalf("AgentDisplayName = %q, want TestAgent", de.AgentDisplayName)
-		}
 		if de.RunKind != "chat" {
 			t.Fatalf("RunKind = %q, want chat", de.RunKind)
 		}
 		if de.UsageEventID != "ue-1" {
 			t.Fatalf("UsageEventID = %q, want ue-1", de.UsageEventID)
 		}
+		if de.TurnStartedAt.Year() != 2024 {
+			t.Fatalf("TurnStartedAt year = %d, want 2024", de.TurnStartedAt.Year())
+		}
 	})
 
 	t.Run("RunID falls back to InvocationID", func(t *testing.T) {
 		de := &biz.DomainEvent{}
-		env := contract.Envelope{
-			InvocationID: "inv-fallback",
-			Metadata:     map[string]any{},
+		meta := map[string]any{
+			"invocation_id": "inv-fallback",
 		}
-		biz.ApplyEnvelopeCorrelation(de, env)
+		biz.ApplyActivityCorrelation(de, meta)
 		if de.RunID != "inv-fallback" {
 			t.Fatalf("RunID = %q, want inv-fallback", de.RunID)
 		}
 	})
 
-	t.Run("nil metadata", func(t *testing.T) {
+	t.Run("nil meta", func(t *testing.T) {
 		de := &biz.DomainEvent{}
-		env := contract.Envelope{
-			InvocationID: "inv-1",
-		}
-		biz.ApplyEnvelopeCorrelation(de, env)
-		if de.RunID != "inv-1" {
-			t.Fatalf("RunID should fall back to InvocationID, got %q", de.RunID)
+		biz.ApplyActivityCorrelation(de, nil)
+		// should not panic; RunID stays empty since no InvocationID either
+		if de.RunID != "" {
+			t.Fatalf("RunID should be empty, got %q", de.RunID)
 		}
 	})
 
 	t.Run("whitespace RequestID trimmed", func(t *testing.T) {
 		de := &biz.DomainEvent{}
-		env := contract.Envelope{
-			RequestID: "  req-1  ",
+		meta := map[string]any{
+			"request_id": "  req-1  ",
 		}
-		biz.ApplyEnvelopeCorrelation(de, env)
+		biz.ApplyActivityCorrelation(de, meta)
 		if de.RequestID != "req-1" {
 			t.Fatalf("RequestID = %q, want req-1", de.RequestID)
 		}
 	})
 }
 
-func TestDomainEventToEnvelopeRoundTrip(t *testing.T) {
+func TestDomainEventActivityRoundTrip(t *testing.T) {
 	original := biz.DomainEvent{
-		Type:       biz.DomainEventToolCall,
-		Author:     "agent-r",
-		SessionID:  "sess-r",
-		TeamID:     "team-r",
-		Content:    &biz.DomainContent{Text: "response", Reasoning: "logic", IsPartial: false},
-		Error:      &biz.DomainError{Type: "test_err", Message: "test msg"},
-		Usage:      &biz.DomainUsage{PromptTokens: 5, CompletionTokens: 10, TotalTokens: 15},
-		ToolCall:   &biz.DomainToolCall{ID: "tc-r", Name: "tool-r", ArgumentsJSON: `{}`, ResultJSON: `{}`, Status: "done", DurationMS: 42},
-		StateDelta: &biz.DomainStateDelta{Operation: "push", Path: "stack", ValueJSON: `"val"`},
+		ID:               "de-rt-1",
+		Type:             biz.DomainEventToolResult,
+		Author:           "agent-r",
+		SessionID:        "sess-r",
+		TeamID:           "team-r",
+		Timestamp:        time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC),
+		RequestID:        "req-rt",
+		InvocationID:     "inv-rt",
+		RunID:            "run-rt",
+		TraceID:          "trace-rt",
+		AgentID:          "agent-rt",
+		AgentDisplayName: "TestAgent",
+		RunKind:          "chat",
+		UsageEventID:     "ue-rt",
+		DurationMS:       99,
+		Content:          &biz.DomainContent{Text: "response", Reasoning: "logic", IsPartial: false},
+		Error:            &biz.DomainError{Type: "test_err", Message: "test msg"},
+		Usage:            &biz.DomainUsage{PromptTokens: 5, CompletionTokens: 10, TotalTokens: 15},
+		ToolCall:         &biz.DomainToolCall{ID: "tc-r", Name: "tool-r", ArgumentsJSON: `{}`, ResultJSON: `{}`, Status: "done", DurationMS: 42},
+		StateDelta:       &biz.DomainStateDelta{Operation: "push", Path: "stack", ValueJSON: `"val"`},
+		GraphNode:        &biz.DomainGraphNode{NodeID: "node-r", Error: "node-err"},
 	}
 
-	env := biz.DomainEventToEnvelope(original)
-	recovered := biz.EnvelopeToDomainEvent(env)
+	ev := biz.DomainEventToActivityEvent(original)
+	if ev.Domain != biz.ActivityDomainSystem {
+		t.Fatalf("Domain = %q, want system", ev.Domain)
+	}
 
+	recovered := biz.ActivityEventToDomainEvent(ev)
+	if recovered == nil {
+		t.Fatalf("expected non-nil recovered DomainEvent")
+	}
+
+	// Core fields
+	if recovered.ID != original.ID {
+		t.Fatalf("ID = %q, want %q", recovered.ID, original.ID)
+	}
 	if recovered.Type != original.Type {
 		t.Fatalf("Type = %q, want %q", recovered.Type, original.Type)
 	}
@@ -404,49 +740,98 @@ func TestDomainEventToEnvelopeRoundTrip(t *testing.T) {
 	if recovered.TeamID != original.TeamID {
 		t.Fatalf("TeamID = %q, want %q", recovered.TeamID, original.TeamID)
 	}
+	if !recovered.Timestamp.Equal(original.Timestamp) {
+		t.Fatalf("Timestamp = %v, want %v", recovered.Timestamp, original.Timestamp)
+	}
+
+	// Correlation
+	if recovered.RequestID != original.RequestID {
+		t.Fatalf("RequestID = %q, want %q", recovered.RequestID, original.RequestID)
+	}
+	if recovered.InvocationID != original.InvocationID {
+		t.Fatalf("InvocationID = %q, want %q", recovered.InvocationID, original.InvocationID)
+	}
+	if recovered.RunID != original.RunID {
+		t.Fatalf("RunID = %q, want %q", recovered.RunID, original.RunID)
+	}
+	if recovered.TraceID != original.TraceID {
+		t.Fatalf("TraceID = %q, want %q", recovered.TraceID, original.TraceID)
+	}
+	if recovered.AgentID != original.AgentID {
+		t.Fatalf("AgentID = %q, want %q", recovered.AgentID, original.AgentID)
+	}
+	if recovered.AgentDisplayName != original.AgentDisplayName {
+		t.Fatalf("AgentDisplayName = %q, want %q", recovered.AgentDisplayName, original.AgentDisplayName)
+	}
+	if recovered.RunKind != original.RunKind {
+		t.Fatalf("RunKind = %q, want %q", recovered.RunKind, original.RunKind)
+	}
+	if recovered.UsageEventID != original.UsageEventID {
+		t.Fatalf("UsageEventID = %q, want %q", recovered.UsageEventID, original.UsageEventID)
+	}
+	if recovered.DurationMS != original.DurationMS {
+		t.Fatalf("DurationMS = %d, want %d", recovered.DurationMS, original.DurationMS)
+	}
+
+	// Optional structs
 	if recovered.Content == nil || recovered.Content.Text != "response" {
-		t.Fatalf("Content round-trip failed")
+		t.Fatalf("Content round-trip failed: %+v", recovered.Content)
+	}
+	if recovered.Content.Reasoning != "logic" {
+		t.Fatalf("Content.Reasoning round-trip failed")
+	}
+	if recovered.Content.IsPartial {
+		t.Fatalf("Content.IsPartial should be false")
 	}
 	if recovered.Error == nil || recovered.Error.Type != "test_err" {
-		t.Fatalf("Error round-trip failed")
+		t.Fatalf("Error round-trip failed: %+v", recovered.Error)
+	}
+	if recovered.Error.Message != "test msg" {
+		t.Fatalf("Error.Message round-trip failed")
 	}
 	if recovered.Usage == nil || recovered.Usage.TotalTokens != 15 {
-		t.Fatalf("Usage round-trip failed")
+		t.Fatalf("Usage round-trip failed: %+v", recovered.Usage)
+	}
+	if recovered.Usage.PromptTokens != 5 || recovered.Usage.CompletionTokens != 10 {
+		t.Fatalf("Usage tokens round-trip failed")
 	}
 	if recovered.ToolCall == nil || recovered.ToolCall.Name != "tool-r" {
-		t.Fatalf("ToolCall round-trip failed")
+		t.Fatalf("ToolCall round-trip failed: %+v", recovered.ToolCall)
+	}
+	if recovered.ToolCall.Status != "done" {
+		t.Fatalf("ToolCall.Status round-trip failed")
 	}
 	if recovered.StateDelta == nil || recovered.StateDelta.Operation != "push" {
-		t.Fatalf("StateDelta round-trip failed")
+		t.Fatalf("StateDelta round-trip failed: %+v", recovered.StateDelta)
+	}
+	if recovered.GraphNode == nil || recovered.GraphNode.NodeID != "node-r" {
+		t.Fatalf("GraphNode round-trip failed: %+v", recovered.GraphNode)
+	}
+	if recovered.GraphNode.Error != "node-err" {
+		t.Fatalf("GraphNode.Error round-trip failed")
 	}
 }
 
-func TestEnvelopeToDomainEventTimestamp(t *testing.T) {
-	t.Run("valid timestamp", func(t *testing.T) {
-		ts := time.Date(2024, 6, 15, 10, 30, 0, 0, time.UTC).Format(time.RFC3339Nano)
-		env := contract.NewEnvelope(contract.EnvelopeType(biz.DomainEventTextDelta), "a", "s")
-		env.Timestamp = ts
-		de := biz.EnvelopeToDomainEvent(env)
-		if de.Timestamp.Year() != 2024 {
-			t.Fatalf("Timestamp year = %d, want 2024", de.Timestamp.Year())
+func TestDomainEventToActivityEventTimestamp(t *testing.T) {
+	t.Run("zero timestamp uses now", func(t *testing.T) {
+		de := biz.DomainEvent{
+			Type: biz.DomainEventTextDelta,
+		}
+		ev := biz.DomainEventToActivityEvent(de)
+		if ev.Activity.Timestamp.IsZero() {
+			t.Fatalf("Timestamp should be set to now for zero input")
 		}
 	})
 
-	t.Run("invalid timestamp uses now", func(t *testing.T) {
-		env := contract.NewEnvelope(contract.EnvelopeType(biz.DomainEventTextDelta), "a", "s")
-		env.Timestamp = "not-a-timestamp"
-		de := biz.EnvelopeToDomainEvent(env)
-		if de.Timestamp.IsZero() {
-			t.Fatalf("Timestamp should be set to now for invalid input")
+	t.Run("explicit timestamp preserved", func(t *testing.T) {
+		ts := time.Date(2024, 6, 15, 10, 30, 0, 0, time.UTC)
+		de := biz.DomainEvent{
+			Type:      biz.DomainEventTextDelta,
+			Timestamp: ts,
 		}
-	})
-
-	t.Run("empty timestamp uses now", func(t *testing.T) {
-		env := contract.NewEnvelope(contract.EnvelopeType(biz.DomainEventTextDelta), "a", "s")
-		env.Timestamp = ""
-		de := biz.EnvelopeToDomainEvent(env)
-		if de.Timestamp.IsZero() {
-			t.Fatalf("Timestamp should be set to now for empty input")
+		ev := biz.DomainEventToActivityEvent(de)
+		if !ev.Activity.Timestamp.Equal(ts) {
+			t.Fatalf("Timestamp = %v, want %v", ev.Activity.Timestamp, ts)
 		}
 	})
 }

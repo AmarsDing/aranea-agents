@@ -1,12 +1,10 @@
-import { onBeforeUnmount, ref, shallowRef, watch, type Ref } from 'vue';
+import { onBeforeUnmount, ref, watch, type Ref } from 'vue';
 import { listActivities } from '../../session/api';
 import type { Activity } from '../activityTypes';
-import type { Envelope, EnvelopeType } from '../envelope';
-import { createEnvelopeStream, type UseEnvelopeStreamReturn } from '../useEnvelopeStream';
 import { useEventFilter } from './useEventFilter';
 import type { InspectorEvent } from '../eventFilter';
 
-const LIVE_TYPES: EnvelopeType[] = [
+const LIVE_TYPES: string[] = [
   'text_delta',
   'text_done',
   'tool_call',
@@ -44,24 +42,33 @@ export type ChatEventInspectorStreamDeps = {
   subscribe?: (
     sessionId: string,
     ownerKind: 'agent' | 'team',
-    types: EnvelopeType[],
-    handler: (env: Envelope) => void,
+    types: string[],
+    handler: (env: InspectorEvent) => void,
   ) => () => void;
+  /**
+   * Phase 5 Blocker A: register a callback fired when the WS transport
+   * reconnects for the inspected session. The inspector uses this to
+   * re-fetch historical Activities via ListActivities RPC, replacing the
+   * legacy server-side replay (event.Buffer → replayEvents → Envelope).
+   * Returns an unsubscribe function.
+   */
+  onReconnect?: (handler: () => void) => () => void;
 };
 
 /**
  * useChatEventInspector provides a unified view of historical Activities and
- * live Envelopes for the session event inspector dialog.
+ * live events for the session event inspector dialog.
  *
- * Phase 1c-2: history is now sourced from Activity records via the
- * ListActivities RPC. Live events continue to flow through the WS envelope
- * stream. The two collections are exposed separately so the UI can render
- * Activity-derived history (with kind/status/tool fields) distinct from
- * raw real-time envelopes.
+ * Phase 5 Blocker A: the legacy WS replay path (event.Buffer → replayEvents →
+ * wsDownstream.Envelope) has been removed. Historical data is sourced from
+ * Activity records via the ListActivities RPC. On WS reconnect, the inspector
+ * re-fetches Activities via onReconnect (provided by the caller) instead of
+ * relying on server-side replay.
  *
  * AF: Live events are stored as InspectorEvent (a minimal local type that
- * captures only the fields the inspector UI accesses). Full Envelope objects
- * from the WS stream are structurally compatible and assigned directly.
+ * captures only the fields the inspector UI accesses). The underlying WS
+ * stream still delivers Envelope objects, but they are structurally
+ * compatible with InspectorEvent and adapted at the subscribe boundary.
  */
 export function useChatEventInspector(
   sessionId: Ref<string | null | undefined>,
@@ -77,9 +84,8 @@ export function useChatEventInspector(
 
   const { filters, filteredEvents, branchTree, resetFilters } = useEventFilter(events);
 
-  const stream = shallowRef<UseEnvelopeStreamReturn | null>(null);
   let unsubLive: (() => void) | null = null;
-  let ownsStream = false;
+  let unsubReconnect: (() => void) | null = null;
 
   function upsertEvent(env: InspectorEvent): void {
     const idx = events.value.findIndex((e) => e.id === env.id);
@@ -113,29 +119,20 @@ export function useChatEventInspector(
         if (paused.value) return;
         upsertEvent(env);
       });
-      return;
     }
-    ownsStream = true;
-    const s = createEnvelopeStream({
-      sessionId: id,
-      channels: ['chat', 'team', 'graph', 'system'],
-      autoConnect: true,
-    });
-    unsubLive = s.onType(LIVE_TYPES, (env) => {
-      if (paused.value) return;
-      upsertEvent(env);
-    });
-    stream.value = s;
+    // Phase 5 Blocker A: on WS reconnect, re-fetch Activities via ListActivities
+    // RPC to backfill any events missed during the disconnection window.
+    unsubReconnect =
+      streamDeps?.onReconnect?.(() => {
+        void loadHistory(id);
+      }) ?? null;
   }
 
   function disconnectStream(): void {
     unsubLive?.();
     unsubLive = null;
-    if (ownsStream) {
-      stream.value?.disconnect();
-      stream.value = null;
-      ownsStream = false;
-    }
+    unsubReconnect?.();
+    unsubReconnect = null;
   }
 
   watch(

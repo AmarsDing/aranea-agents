@@ -5,8 +5,9 @@ import { useRouter } from 'vue-router';
 import { useAuthStore } from '../../../stores/auth';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import { createChatStream, createTeamStream, type UseEnvelopeStreamReturn } from '../useEnvelopeStream';
-import type { Envelope, EnvelopeType, WsUpstream } from '../envelope';
+import type { EnvelopeType, WsUpstream } from '../envelope';
 import type { ActivityEvent } from '../../../realtime/activityEvent';
+import type { InspectorEvent } from '../eventFilter';
 import { getChannelWsCursor } from '../channelWsCursor';
 
 export type StreamManagerDeps = {
@@ -164,18 +165,24 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
 
   /**
    * Subscribe to raw envelope types on the session stream. Used by the event
-   * inspector (GET /v1/events API), which still returns envelopes. This is
-   * the ONE exception to the ActivityEvent-only rule — the inspector API has
-   * not been migrated to ActivityEvent yet.
+   * inspector, which consumes InspectorEvent (a minimal local type that
+   * captures only the fields the inspector UI accesses). The underlying WS
+   * stream still delivers Envelope objects, but they are structurally
+   * compatible with InspectorEvent and adapted here.
+   *
+   * Phase 5 Blocker A: the legacy server-side replay (event.Buffer →
+   * replayEvents → Envelope) has been removed. The inspector re-fetches
+   * historical Activities via ListActivities RPC on reconnect (handled by
+   * the caller via onReconnect).
    */
   function subscribeSessionStream(
     sessionId: string,
     ownerKind: 'agent' | 'team',
-    types: EnvelopeType[],
-    handler: (env: Envelope) => void,
+    types: string[],
+    handler: (env: InspectorEvent) => void,
   ): () => void {
     const stream = ownerKind === 'team' ? ensureTeamStream(sessionId) : ensureChatStream(sessionId);
-    return stream.onType(types, handler);
+    return stream.onType(types as EnvelopeType[], (env) => handler(env));
   }
 
   return {

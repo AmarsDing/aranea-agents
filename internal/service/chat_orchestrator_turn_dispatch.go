@@ -256,7 +256,7 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 
 			pendingContent := entry.Content
 			pendingEntryID := entry.ID
-			pendingEmitter := event.NewFlowLogger(o.td().Pipeline.Bus, o.td().Pipeline.Buffer, sessionID, ag.AgentKey, o.lg())
+			pendingEmitter := event.NewFlowLogger(o.td().Pipeline.Bus, sessionID, ag.AgentKey, o.lg())
 			pendingEmitter.LogStart("chat.pending_dequeue", "排队消息开始处理",
 				event.P("entry_id", pendingEntryID),
 				event.P("content_len", len(pendingContent)),

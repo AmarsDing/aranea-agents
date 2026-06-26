@@ -17,16 +17,26 @@ import (
 // idempotent. Cross-process WS reconnect replay now relies on Activity
 // records fetched via the ListActivities RPC (see service.SessionService).
 //
+// Phase 5 Blocker E: the Buffer field has been removed. Blocker A deleted the
+// WS replay path (Buffer.Replay is no longer called); the buffer was
+// write-only with no reader. All Append callsites were dead writes and have
+// been cleaned up (FlowTracker.emit / EventBusConsumer.handleEnvelope).
+//
 // Dual-bus unification (2026-06-25): MonitorEventBus is the new typed bus
 // carrying contract.MonitorEvent. The legacy MonitorBus (envelope-based)
 // is retained temporarily for migration; it will be removed in Phase 5
 // once all monitor publishers have switched to MonitorEventBus.
 type Infra struct {
-	SessionBus       Bus                  // legacy envelope bus (chat/session events)
-	MonitorBus       Bus                  // legacy envelope bus (monitor events — being migrated)
-	MonitorEventBus  contract.MonitorBus  // NEW: typed monitor event bus (replacement for MonitorBus)
-	Buffer           *Buffer
-	lg               loggateway.Logger
+	// SessionBus — TECH-DEBT(ADR-03 Phase 5 Blocker F): legacy envelope bus
+	// (chat/session events). Still actively published to by
+	// TraceEmitter.EmitProgress and Infra.publishToBuses, and bound as the
+	// default event.Bus via ProvideSessionBus (consumed by EventBusConsumer
+	// and 7+ other callers). See ProvideSessionBus doc for the full caller
+	// list and migration blocker.
+	SessionBus      Bus
+	MonitorBus      Bus                 // legacy envelope bus (monitor events — being migrated)
+	MonitorEventBus contract.MonitorBus  // NEW: typed monitor event bus (replacement for MonitorBus)
+	lg              loggateway.Logger
 }
 
 // NewInfra wires dual buses for dependency injection.
@@ -35,12 +45,28 @@ func NewInfra(lg loggateway.Logger) *Infra {
 		SessionBus:      NewBus(lg),
 		MonitorBus:      NewBus(lg),
 		MonitorEventBus: NewMonitorBus(lg),
-		Buffer:          NewBuffer(),
 		lg:              lg,
 	}
 }
 
 // ProvideSessionBus exposes the interactive/session bus for wire.
+//
+// TECH-DEBT(ADR-03 Phase 5 Blocker F): ProvideSessionBus is the default
+// event.Bus Wire binding and is still actively consumed by 8+ callers via
+// the generated `contractBus` local in cmd/admin/wire_gen.go:
+//   - biz.NewEventBusConsumer (subscribes to SessionBus for Critical envelope
+//     dedup / eventBuffer / domain-event routing — see event_bus_consumer.go)
+//   - service.NewGraphOrchestrationProjector
+//   - provideChatServiceDeps / provideRunnerConfig / provideTeamTurnDeps
+//   - team.ProvideTeamGraphRunCoordinator
+//   - provideCronRunnerDeps / provideChannelIngress
+// Additionally, infra.SessionBus is published to directly by:
+//   - TraceEmitter.EmitProgress (ExecutionProgress envelopes, see trace_emitter.go)
+//   - Infra.publishToBuses (AlertNotify + default routing, see below)
+// ProvideSessionBus cannot be removed until all of the above migrate to
+// ActivityEventBus/MonitorEventBus. Tracked under ADR-03 Phase 5 Blocker F.
+// Note: provideTraceProjector's sessionBus argument was a dead binding and
+// has been removed (Blocker F cleanup); see cmd/admin/wire.go.
 func ProvideSessionBus(infra *Infra) Bus {
 	if infra == nil {
 		return NewBus(nil)
@@ -66,14 +92,6 @@ func ProvideMonitorEventBus(infra *Infra) contract.MonitorBus {
 		return NewMonitorBus(nil)
 	}
 	return infra.MonitorEventBus
-}
-
-// ProvideBuffer exposes the session replay buffer for wire.
-func ProvideBuffer(infra *Infra) *Buffer {
-	if infra == nil {
-		return NewBuffer()
-	}
-	return infra.Buffer
 }
 
 // Publish routes an envelope to the correct bus(es) based on its type.
@@ -124,5 +142,4 @@ var InfraProviderSet = wire.NewSet(
 	NewInfra,
 	ProvideSessionBus,
 	ProvideMonitorEventBus,
-	ProvideBuffer,
 )

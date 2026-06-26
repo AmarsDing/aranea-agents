@@ -33,7 +33,7 @@ func TestTraceEmitterPublishesFlowLog(t *testing.T) {
 		Domain:    TraceDomainChat,
 		AgentKey:  "a1",
 	}
-	em := NewTraceEmitter(bus, nil, tc, nil)
+	em := NewTraceEmitter(bus, tc, nil)
 	em.LogStart("chat.llm.invoke", "正在调用语言模型")
 	em.LogDone("chat.llm.invoke", "模型已返回")
 	time.Sleep(50 * time.Millisecond)
@@ -60,7 +60,7 @@ func TestTraceEmitterPublishesFlowLog(t *testing.T) {
 
 func TestTraceEmitterSkipsChatErrorForMonitorOnlySteps(t *testing.T) {
 	bus := &captureBus{}
-	em := NewTraceEmitter(bus, nil, TraceContext{SessionID: "sess_1"}, nil)
+	em := NewTraceEmitter(bus, TraceContext{SessionID: "sess_1"}, nil)
 	em.LogError("chat.usage_record", "用量落库失败")
 	time.Sleep(50 * time.Millisecond)
 
@@ -74,7 +74,7 @@ func TestTraceEmitterSkipsChatErrorForMonitorOnlySteps(t *testing.T) {
 }
 
 func TestTraceEmitterMetadataJSON(t *testing.T) {
-	em := NewTraceEmitter(nil, nil, TraceContext{TraceID: "tr_x", RunID: "r1"}, nil)
+	em := NewTraceEmitter(nil, TraceContext{TraceID: "tr_x", RunID: "r1"}, nil)
 	em.FinishRoot("ok")
 	raw := em.MetadataJSON()
 	if raw == "" || raw == "{}" {
@@ -90,7 +90,7 @@ func TestTraceEmitterMetadataJSON(t *testing.T) {
 func TestEmitProgress_StartDoneCapturesDuration(t *testing.T) {
 	bus := &captureBus{}
 	tc := TraceContext{SessionID: "sess_1", RunID: "run_1"}
-	em := NewTraceEmitter(bus, nil, tc, nil)
+	em := NewTraceEmitter(bus, tc, nil)
 	ctx := context.Background()
 
 	em.EmitProgress(ctx, "chat.llm.invoke", "start", "正在调用语言模型", "orchestration",
@@ -143,7 +143,7 @@ func TestEmitProgress_StartDoneCapturesDuration(t *testing.T) {
 // occur before/during the step).
 func TestEmitProgress_ErrorPhase(t *testing.T) {
 	bus := &captureBus{}
-	em := NewTraceEmitter(bus, nil, TraceContext{SessionID: "sess_1"}, nil)
+	em := NewTraceEmitter(bus, TraceContext{SessionID: "sess_1"}, nil)
 	em.EmitProgress(context.Background(), "chat.llm.invoke", "error", "语言模型调用失败", "orchestration",
 		P("error", "timeout"))
 
@@ -176,7 +176,7 @@ func TestEmitProgress_NilEmitterSafe(t *testing.T) {
 // the emitter was constructed without infra (e.g. legacy test fixtures).
 func TestEmitProgress_NilInfraSafe(t *testing.T) {
 	bus := &captureBus{}
-	em := NewTraceEmitter(bus, nil, TraceContext{SessionID: "sess_1"}, nil)
+	em := NewTraceEmitter(bus, TraceContext{SessionID: "sess_1"}, nil)
 	em.infra = nil // simulate legacy construction
 	em.EmitProgress(context.Background(), "chat.llm.invoke", "start", "msg", "orchestration")
 
@@ -201,7 +201,7 @@ func TestEmitProgress_NilInfraSafe(t *testing.T) {
 func TestEmitProgress_OrchestratorCallsitePattern(t *testing.T) {
 	t.Run("start: typical chat.llm.invoke entry", func(t *testing.T) {
 		bus := &captureBus{}
-		em := NewTraceEmitter(bus, nil, TraceContext{SessionID: "sess_1", RunID: "r1"}, nil)
+		em := NewTraceEmitter(bus, TraceContext{SessionID: "sess_1", RunID: "r1"}, nil)
 		em.EmitProgress(context.Background(), "chat.llm.invoke", "start", "正在调用语言模型", "orchestration",
 			P("run_id", "r1"), P("provider", "openai"), P("model", "gpt-4"))
 
@@ -233,7 +233,7 @@ func TestEmitProgress_OrchestratorCallsitePattern(t *testing.T) {
 
 	t.Run("done: completion must carry duration_ms and override message", func(t *testing.T) {
 		bus := &captureBus{}
-		em := NewTraceEmitter(bus, nil, TraceContext{SessionID: "sess_1", RunID: "r1"}, nil)
+		em := NewTraceEmitter(bus, TraceContext{SessionID: "sess_1", RunID: "r1"}, nil)
 		// Real orchestrator pattern: emit start first to record timing, then done.
 		em.EmitProgress(context.Background(), "chat.llm.invoke", "start", "正在调用语言模型", "orchestration",
 			P("run_id", "r1"), P("provider", "openai"), P("model", "gpt-4"))
@@ -274,7 +274,7 @@ func TestEmitProgress_OrchestratorCallsitePattern(t *testing.T) {
 
 	t.Run("error: failure path with error message", func(t *testing.T) {
 		bus := &captureBus{}
-		em := NewTraceEmitter(bus, nil, TraceContext{SessionID: "sess_1", RunID: "r1"}, nil)
+		em := NewTraceEmitter(bus, TraceContext{SessionID: "sess_1", RunID: "r1"}, nil)
 		em.EmitProgress(context.Background(), "chat.llm.invoke", "error", "语言模型调用失败", "orchestration",
 			P("run_id", "r1"), P("error", "timeout"))
 
@@ -307,7 +307,7 @@ func TestStepIDChatLLMInvoke_Constant(t *testing.T) {
 
 	// Round-trip: emit and re-read using the constant
 	bus := &captureBus{}
-	em := NewTraceEmitter(bus, nil, TraceContext{SessionID: "sess_1"}, nil)
+	em := NewTraceEmitter(bus, TraceContext{SessionID: "sess_1"}, nil)
 	em.EmitProgress(context.Background(), StepIDChatLLMInvoke, "start", "m", "orchestration")
 
 	bus.mu.Lock()
