@@ -1754,7 +1754,7 @@ interface SessionTreeNode {
 2. ✅ `useActivityTimeline` 改造为按 session_id 隔离（Phase A）
 3. ✅ 新增 `SessionStageBlock`/`TeamStageBlock`/`GraphStageBlock` 组件
 4. ✅ `ActionBlock` 改造为按 `tool_category` 细分
-5. ⏳ 实现各工具类型详情组件（ShellToolDetail/BrowserToolDetail/...）— 仅 `ActionBlock` 通用卡片，未按 tool_category 细分
+5. ✅ 实现各工具类型详情组件（ShellToolDetail/BrowserToolDetail/...）— `ActionBlock` 按 `tool_category` 动态分发到 10 个详情组件 + `ToolCategorizer` 后端分类器（10 类别前缀匹配 + 注册表覆盖），含单测覆盖（`tool_category_test.go` 29 子测试 + `ActionBlock.spec.ts` 30 测试）
 6. ✅ 实现 `SessionTreeSidebar` + `SessionTreeNode` 递归组件 + `useSessionTree` composable + `GetSessionTree` RPC 暴露（Phase B-1/B-2）
 7. ✅ 团队成员折叠展示 + 子 session Activity 懒加载（Phase B-3/B-4：`TeamStageBlock` 成员行可点击 → `expand-member` 事件链 → `spiritStore.selectMember` → `useChatWorkspace` panelMode watcher 通过 `sessionTree.findMemberSessionId` 解析并 `bindSessionView`）
 8. ⏳ 前端 WS 处理改为接收 `ActivityEvent`（替代 Envelope）— ADR-03 Phase 5 Blocker A，依赖 Envelope 删除
