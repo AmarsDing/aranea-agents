@@ -8,12 +8,10 @@ import (
 )
 
 // observerSetup configures and starts all runtime observers for a team turn:
-// orchestration status projector, graph task bridge, execution tracker,
-// and graph step watcher. Returns stop functions for each observer.
+// orchestration status projector and graph step watcher.
+// Returns stop functions for each observer.
 type observerSetup struct {
 	stopObsProjector   context.CancelFunc
-	stopTaskBridge     context.CancelFunc
-	stopExecTracker    context.CancelFunc
 	stopGraphStepWatch context.CancelFunc
 	activityFlusher    *ActivityStepFlusher
 }
@@ -30,7 +28,7 @@ func (r *Runner) startObservers(
 	compiledTeam *biz.CompiledTeam,
 ) observerSetup {
 	var setup observerSetup
-	if r.td.Pipeline.Bus == nil {
+	if r.td.Pipeline.ActivityBus == nil {
 		return setup
 	}
 
@@ -55,7 +53,7 @@ func (r *Runner) startObservers(
 	if def.FailurePolicy != nil {
 		failureOnError = def.FailurePolicy.OnError
 	}
-	setup.stopObsProjector = StartOrchestrationStatusProjector(ctx, r.td.Pipeline.Bus, OrchestrationProjectorConfig{
+	setup.stopObsProjector = StartOrchestrationStatusProjector(ctx, OrchestrationProjectorConfig{
 		RunID:            run.ID,
 		TeamID:           teamRow.ID,
 		SessionID:        sess.ID,
@@ -65,23 +63,7 @@ func (r *Runner) startObservers(
 		FailureOnError:   failureOnError,
 		ActivityBus:      r.td.Pipeline.ActivityBus,
 	})
-	if r.cfg.TeamGraphTasks != nil && graphExecID != "" {
-		taskNodes := TaskNodesFromBuildConfig(compiledTeam.GraphBuildConfig)
-		if len(taskNodes) > 0 {
-			setup.stopTaskBridge = StartTeamGraphTaskBridge(ctx, r.td.Pipeline.Bus, TeamGraphTaskBridgeConfig{
-				SessionID:        sess.ID,
-				GraphExecutionID: graphExecID,
-				Nodes:            taskNodes,
-				Creator:          r.cfg.TeamGraphTasks,
-			}, r.lg)
-		}
-	}
 	if r.mediator != nil && graphExecID != "" {
-		setup.stopExecTracker = StartTeamGraphExecutionTracker(ctx, r.td.Pipeline.Bus, TeamGraphExecutionTrackerConfig{
-			SessionID:        sess.ID,
-			GraphExecutionID: graphExecID,
-			Registry:         r.mediator,
-		}, r.lg)
 		setup.stopGraphStepWatch = r.mediator.StartGraphStepWatch(ctx, graphExecID)
 	}
 	return setup
@@ -91,12 +73,6 @@ func (r *Runner) startObservers(
 func (s observerSetup) stopAll() {
 	if s.stopGraphStepWatch != nil {
 		s.stopGraphStepWatch()
-	}
-	if s.stopExecTracker != nil {
-		s.stopExecTracker()
-	}
-	if s.stopTaskBridge != nil {
-		s.stopTaskBridge()
 	}
 	if s.stopObsProjector != nil {
 		s.stopObsProjector()

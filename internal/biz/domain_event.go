@@ -79,11 +79,3 @@ type DomainGraphNode struct {
 	NodeID string
 	Error  string
 }
-
-type DomainEventPublisher interface {
-	PublishDomainEvent(event DomainEvent)
-}
-
-type DomainEventSubscriber interface {
-	SubscribeDomainEvents() (<-chan DomainEvent, func())
-}

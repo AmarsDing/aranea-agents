@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router';
 import { useAuthStore } from '../../../stores/auth';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import { createChatStream, createTeamStream, type UseEnvelopeStreamReturn } from '../useEnvelopeStream';
-import type { EnvelopeType, WsUpstream } from '../envelope';
+import type { EnvelopeType, WsUpstream } from '../../../realtime/envelope';
 import type { ActivityEvent } from '../../../realtime/activityEvent';
 import type { InspectorEvent } from '../eventFilter';
 import { getChannelWsCursor } from '../channelWsCursor';

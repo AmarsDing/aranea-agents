@@ -256,16 +256,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return userMsg, biz.ChatMessage{}, err
 	}
-	event.BumpAndPublishSessionRevision(
-		ctx,
-		r.td.Sessions,
-		r.td.Pipeline.Bus,
-		sess.ID,
-		run.ID,
-		userMsg.ID,
-		event.EnvelopeSourceFromContext(ctx),
-		r.lg,
-	)
+	event.BumpSessionRevision(ctx, r.td.Sessions, sess.ID, r.lg)
 
 	// Phase 10: Handle HITL defer, finalize run, and patch context usage
 	if graphExecID != "" && r.mediator != nil {

@@ -433,6 +433,21 @@ message ListChildSessionsResponse {
   repeated Session sessions = 1;
 }
 
+// GetSessionTree messages (Phase B-1): recursive session tree for sidebar.
+
+message SessionTreeNode {
+  Session session = 1;
+  repeated SessionTreeNode children = 2;
+}
+
+message GetSessionTreeRequest {
+  string spirit_session_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetSessionTreeResponse {
+  SessionTreeNode root = 1;
+}
+
 // AF-BE-17: Activity-First — List activities for a session/turn
 message Activity {
   string id = 1;
@@ -574,6 +589,10 @@ service SessionService {
   // ListChildSessions returns child sessions of a parent session (session tree model).
   rpc ListChildSessions(ListChildSessionsRequest) returns (ListChildSessionsResponse) {
     option (google.api.http) = {get: "/v1/sessions/{parent_session_id}/children"};
+  }
+  // GetSessionTree returns the complete recursive session tree rooted at a spirit session.
+  rpc GetSessionTree(GetSessionTreeRequest) returns (GetSessionTreeResponse) {
+    option (google.api.http) = {get: "/v1/sessions/{spirit_session_id}/tree"};
   }
   // ListActivities returns activities for a session turn (Activity-First architecture).
   rpc ListActivities(ListActivitiesRequest) returns (ListActivitiesResponse) {

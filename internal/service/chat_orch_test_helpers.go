@@ -123,12 +123,7 @@ func (noopTurnRecorder) RecordSessionTurn(context.Context, SessionTurnRecordPara
 type noopTurnEventPublisher struct{}
 
 func (noopTurnEventPublisher) PublishTurnFailure(string, string, string, error, string) {}
-func (noopTurnEventPublisher) BumpSessionRevisionAndPublish(context.Context, string, string, string) {
-}
-func (noopTurnEventPublisher) BumpSessionRevisionSyncAndPublish(context.Context, string, string, string) {
-}
-func (noopTurnEventPublisher) NotifySessionRevisionSync(context.Context, string, string, string) {
-}
+func (noopTurnEventPublisher) BumpSessionRevision(context.Context, string)              {}
 
 // newNoopChatRunManager creates a chatRunManager with all no-op sub-managers.
 func newNoopChatRunManager() chatRunManager {

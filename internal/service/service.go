@@ -107,7 +107,6 @@ var ProviderSet = wire.NewSet(
 	ProvideTeamMediatorPort,
 	ProvideTeamGraphCoordPort,
 	// Phase 3 decoupling adapters: biz interfaces → event/webresearch implementations
-	ProvideEnvelopeBuffer,
 	ProvideSessionLogWriter,
 	ProvideSystemLogWriter,
 	ProvideWebResearchTester,

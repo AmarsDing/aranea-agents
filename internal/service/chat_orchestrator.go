@@ -372,7 +372,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	// Build individual sub-managers first.
 	stateMgr := sessionStateTransitor(deps.Infra.TurnLifecycle)
 	metrics := turnRecorder(newChatTurnMetrics(deps.Turn.Sessions, deps.Usage.Usage, deps.Infra.LG))
-	evtPub := turnEventPublisher(newChatTurnEventPublisher(deps.Turn.Sessions, deps.Turn.Pipeline.Bus, deps.Turn.Pipeline.ActivityBus, deps.Infra.LG))
+	evtPub := turnEventPublisher(newChatTurnEventPublisher(deps.Turn.Sessions, deps.Turn.Pipeline.ActivityBus, deps.Infra.LG))
 	rStatus := runStatusTracker(newChatRunStatusTracker(runs, deps.Turn.Sessions, deps.Turn.Pipeline.ActivityBus, deps.Infra.LG))
 	pendQ := pendingQueueManager(newChatPendingQueueManager(chatUC))
 	awaitCoord := awaitCoordinator(newChatAwaitCoordinator(chatAwaitCoordinatorDeps{

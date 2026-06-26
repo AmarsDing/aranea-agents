@@ -32,7 +32,6 @@ func newApp(
 	gs *grpc.Server,
 	hs *http.Server,
 	wsSrv *server.WSServer,
-	consumer *biz.EventBusConsumer,
 	sideConsumers *biz.EventBusSideConsumers,
 	eventInfra *event.Infra,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
@@ -89,15 +88,15 @@ func newApp(
 							return
 						}
 						lg.Info("post-readiness: data ready, starting dependent services", loggateway.StepID("startup.gate"))
-						startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, lg)
+						startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, lg)
 					})
 				} else {
 					// No readiness gate (unlikely), start immediately.
-					startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, lg)
+					startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, lg)
 				}
 			} else {
 				// No data layer (unlikely), start immediately.
-				startReadinessDependentServices(consumerCtx, guard, orchCache, consumer, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, lg)
+				startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, lg)
 			}
 			return nil
 		}),
@@ -144,7 +143,6 @@ func startReadinessDependentServices(
 	ctx context.Context,
 	guard *service.SessionStatusGuard,
 	orchCache *biz.OrchestrationCache,
-	consumer *biz.EventBusConsumer,
 	sideConsumers *biz.EventBusSideConsumers,
 	sessions *biz.SessionUsecase,
 	eventInfra *event.Infra,
@@ -158,7 +156,6 @@ func startReadinessDependentServices(
 	if orchCache != nil {
 		orchCache.InitFromRepo(ctx)
 	}
-	consumer.Start(ctx)
 	if sideConsumers != nil {
 		sideConsumers.Start(ctx)
 	}

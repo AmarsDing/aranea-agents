@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/activityevent"
 	"aranea-agents/pkg/loggateway"
 )
@@ -130,19 +129,6 @@ func TestShouldCreateTeamGraphTaskNode_onlyHumanNodes(t *testing.T) {
 	}
 }
 
-func TestTaskNodesFromBuildConfig_skipsAgentNodes(t *testing.T) {
-	cfg := biz.GraphBuildConfig{
-		Nodes: []biz.NodeDef{
-			{ID: "a1", Type: "agent"},
-			{ID: "r1", Type: "review"},
-		},
-	}
-	nodes := TaskNodesFromBuildConfig(cfg)
-	if len(nodes) != 1 || nodes["r1"].Type != "review" {
-		t.Fatalf("nodes=%v", nodes)
-	}
-}
-
 type coordGraphBackend struct {
 	repo *memGraphRunRepoCoord
 	uc   *biz.GraphUsecase
@@ -203,8 +189,7 @@ func newCoordTestBackend() *coordGraphBackend {
 func TestTeamGraphRunCoordinator_DeferTeamRunSuccessIfHITL(t *testing.T) {
 	backend := newCoordTestBackend()
 	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", Status: biz.TeamRunStatusRunning}}}
-	bus := event.NewBus(nil)
-	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, bus, nil, nil, nil, loggateway.NewNoop())
+	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, nil, nil, nil, loggateway.NewNoop())
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	if err := coord.RegisterTeamGraphExecution(context.Background(), "exec-1", "sess-1", "team-1", "run-1", ct); err != nil {
 		t.Fatal(err)
@@ -225,9 +210,8 @@ func TestTeamGraphRunCoordinator_DeferTeamRunSuccessIfHITL(t *testing.T) {
 func TestTeamGraphRunCoordinator_finalizeTeamRun(t *testing.T) {
 	backend := newCoordTestBackend()
 	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusWaitingHuman}}}
-	bus := event.NewBus(nil)
 	actBus := activityevent.New(loggateway.NewNoop())
-	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, bus, actBus, nil, nil, loggateway.NewNoop())
+	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, actBus, nil, nil, loggateway.NewNoop())
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	ctx := context.Background()
 
@@ -269,9 +253,8 @@ func TestTeamGraphRunCoordinator_finalizeTeamRun(t *testing.T) {
 func TestTeamGraphRunCoordinator_persistSession(t *testing.T) {
 	backend := newCoordTestBackend()
 	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", Status: biz.TeamRunStatusRunning}}}
-	bus := event.NewBus(nil)
 	sessRepo := newMemSessionRepo()
-	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, bus, nil, sessRepo, nil, loggateway.NewNoop())
+	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, nil, sessRepo, nil, loggateway.NewNoop())
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	ctx := context.Background()
 
@@ -293,9 +276,8 @@ func TestTeamGraphRunCoordinator_persistSession(t *testing.T) {
 func TestTeamGraphRunCoordinator_evictDeletesFromDB(t *testing.T) {
 	backend := newCoordTestBackend()
 	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusWaitingHuman}}}
-	bus := event.NewBus(nil)
 	sessRepo := newMemSessionRepo()
-	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, bus, nil, sessRepo, nil, loggateway.NewNoop())
+	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, nil, sessRepo, nil, loggateway.NewNoop())
 	ctx := context.Background()
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 
@@ -316,7 +298,6 @@ func TestTeamGraphRunCoordinator_RecoverSessions(t *testing.T) {
 	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRun{
 		"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusWaitingHuman, DefinitionSnapshotJSON: `{"members":[{"agent_id":"a1","name":"Agent1"}],"mode":"pipeline"}`},
 	}}
-	bus := event.NewBus(nil)
 	sessRepo := newMemSessionRepo()
 	sessRepo.SaveSession(context.Background(), biz.TeamGraphSession{
 		ExecID:         "exec-1",
@@ -334,7 +315,7 @@ func TestTeamGraphRunCoordinator_RecoverSessions(t *testing.T) {
 		Status:    biz.TeamRunStatusRunning,
 	})
 
-	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, bus, nil, sessRepo, nil, loggateway.NewNoop())
+	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, nil, sessRepo, nil, loggateway.NewNoop())
 	coord.RecoverSessions(context.Background())
 
 	sess := coord.session("exec-1")
@@ -353,9 +334,8 @@ func TestTeamGraphRunCoordinator_RecoverSessions(t *testing.T) {
 func TestTeamGraphRunCoordinator_MarkInterruptUpdatesDB(t *testing.T) {
 	backend := newCoordTestBackend()
 	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", Status: biz.TeamRunStatusRunning}}}
-	bus := event.NewBus(nil)
 	sessRepo := newMemSessionRepo()
-	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, bus, nil, sessRepo, nil, loggateway.NewNoop())
+	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, nil, sessRepo, nil, loggateway.NewNoop())
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	ctx := context.Background()
 
@@ -377,9 +357,8 @@ func TestTeamGraphRunCoordinator_MarkInterruptUpdatesDB(t *testing.T) {
 func TestTeamGraphRunCoordinator_CleanupStaleDeletesFromDB(t *testing.T) {
 	backend := newCoordTestBackend()
 	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusRunning}}}
-	bus := event.NewBus(nil)
 	sessRepo := newMemSessionRepo()
-	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, bus, nil, sessRepo, nil, loggateway.NewNoop())
+	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, nil, sessRepo, nil, loggateway.NewNoop())
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	ctx := context.Background()
 
@@ -459,9 +438,8 @@ func TestShouldResumeTeamGraph(t *testing.T) {
 func TestTeamGraphRunCoordinator_HandleTaskCompleted_ResumeFail(t *testing.T) {
 	backend := newCoordTestBackend()
 	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusWaitingHuman}}}
-	bus := event.NewBus(nil)
 	sessRepo := newMemSessionRepo()
-	coord := NewTeamGraphRunCoordinator(&failingResumeBackend{inner: backend}, repo, repo, repo, bus, nil, sessRepo, nil, loggateway.NewNoop())
+	coord := NewTeamGraphRunCoordinator(&failingResumeBackend{inner: backend}, repo, repo, repo, nil, sessRepo, nil, loggateway.NewNoop())
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	ctx := context.Background()
 
@@ -491,9 +469,8 @@ func TestTeamGraphRunCoordinator_HandleTaskCompleted_ResumeFail(t *testing.T) {
 func TestTeamGraphRunCoordinator_HandleTaskCompleted_ResumeSuccess(t *testing.T) {
 	backend := newCoordTestBackend()
 	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusWaitingHuman}}}
-	bus := event.NewBus(nil)
 	sessRepo := newMemSessionRepo()
-	coord := NewTeamGraphRunCoordinator(&succeedingResumeBackend{inner: backend}, repo, repo, repo, bus, nil, sessRepo, nil, loggateway.NewNoop())
+	coord := NewTeamGraphRunCoordinator(&succeedingResumeBackend{inner: backend}, repo, repo, repo, nil, sessRepo, nil, loggateway.NewNoop())
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	ctx := context.Background()
 
@@ -520,9 +497,8 @@ func TestTeamGraphRunCoordinator_HandleTaskCompleted_ResumeSuccess(t *testing.T)
 func TestTeamGraphRunCoordinator_RegisterExecutionIdempotent(t *testing.T) {
 	backend := newCoordTestBackend()
 	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", Status: biz.TeamRunStatusRunning}}}
-	bus := event.NewBus(nil)
 	sessRepo := newMemSessionRepo()
-	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, bus, nil, sessRepo, nil, loggateway.NewNoop())
+	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, nil, sessRepo, nil, loggateway.NewNoop())
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	ctx := context.Background()
 
@@ -551,8 +527,7 @@ func TestTeamGraphRunCoordinator_RegisterExecutionIdempotent(t *testing.T) {
 func TestTeamGraphRunCoordinator_DeferTeamRunSuccessIfHITL_NoInterrupt(t *testing.T) {
 	backend := newCoordTestBackend()
 	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", Status: biz.TeamRunStatusRunning}}}
-	bus := event.NewBus(nil)
-	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, bus, nil, nil, nil, loggateway.NewNoop())
+	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, nil, nil, nil, loggateway.NewNoop())
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	ctx := context.Background()
 
@@ -572,9 +547,8 @@ func TestTeamGraphRunCoordinator_DeferTeamRunSuccessIfHITL_NoInterrupt(t *testin
 func TestTeamGraphRunCoordinator_CleanupStale_LeavesActiveSessions(t *testing.T) {
 	backend := newCoordTestBackend()
 	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusRunning}}}
-	bus := event.NewBus(nil)
 	sessRepo := newMemSessionRepo()
-	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, bus, nil, sessRepo, nil, loggateway.NewNoop())
+	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, nil, sessRepo, nil, loggateway.NewNoop())
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	ctx := context.Background()
 

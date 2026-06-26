@@ -81,6 +81,14 @@ type activityEventSequencer struct {
 	done               chan struct{}
 	deltaBatchInterval time.Duration
 
+	// Retry parameters for persistWithRetry. Defaults are set in
+	// newActivityEventSequencer from the package constants; tests may
+	// override them for fast execution. Follows the same pattern as
+	// deltaBatchInterval.
+	persistMaxRetries       int
+	persistInitialBackoffMs int
+	persistBackoffFactor    int
+
 	// persistChan feeds the single persist worker goroutine. Using one
 	// shared worker (instead of per-task goroutines) guarantees that
 	// UpsertActivity calls for the same activity execute in FIFO order,
@@ -121,11 +129,14 @@ func newActivityEventSequencer(eventBus biz.ActivityEventBus, lg loggateway.Logg
 		lg = loggateway.NewNoop()
 	}
 	return &activityEventSequencer{
-		channels:           make(map[string]chan publishTask),
-		eventBus:           eventBus,
-		lg:                 lg,
-		done:               make(chan struct{}),
-		deltaBatchInterval: defaultDeltaBatchInterval,
+		channels:                make(map[string]chan publishTask),
+		eventBus:                eventBus,
+		lg:                      lg,
+		done:                    make(chan struct{}),
+		deltaBatchInterval:      defaultDeltaBatchInterval,
+		persistMaxRetries:       persistMaxRetries,
+		persistInitialBackoffMs: persistInitialBackoffMs,
+		persistBackoffFactor:    persistBackoffFactor,
 	}
 }
 
@@ -323,18 +334,25 @@ func (s *activityEventSequencer) processTask(activityID string, task publishTask
 // failure, the activity is pushed into the dead-letter buffer so the WS
 // reconnect replay path can compensate via ListDeadLetterActivities.
 //
+// The backoff is interruptible by the sequencer's done signal: when Close()
+// is in progress, in-flight retries are aborted and the activity is pushed
+// to dead-letter immediately. This prevents Close() from blocking for the
+// full retry budget (up to 3100ms per item) when the DB is unavailable
+// during shutdown. Under normal shutdown (DB available), the first attempt
+// succeeds before any backoff is reached, so this has no effect.
+//
 // The syncFallback flag is used for log attribution to distinguish between
 // the persist worker path and the synchronous fallback path.
 func (s *activityEventSequencer) persistWithRetry(activityID string, a biz.Activity, syncFallback bool) {
-	backoff := persistInitialBackoffMs
+	backoff := s.persistInitialBackoffMs
 	path := "worker"
 	if syncFallback {
 		path = "sync_fallback"
 	}
-	for attempt := 0; attempt <= persistMaxRetries; attempt++ {
+	for attempt := 0; attempt <= s.persistMaxRetries; attempt++ {
 		if _, err := s.activityRepo.UpsertActivity(context.Background(), a); err == nil {
 			return
-		} else if attempt == persistMaxRetries {
+		} else if attempt == s.persistMaxRetries {
 			s.lg.Warn("activity persist failed after retries; pushed to dead-letter buffer",
 				loggateway.StepID("agent.activity_sequencer.persist"),
 				loggateway.Str("activity_id", activityID),
@@ -346,19 +364,41 @@ func (s *activityEventSequencer) persistWithRetry(activityID string, a biz.Activ
 			s.pushDeadLetter(a)
 			return
 		}
-		// Exponential backoff between attempts. Uses time.Sleep instead of
-		// select-on-context because this runs in a background goroutine
-		// with no request context to honor.
-		time.Sleep(time.Duration(backoff) * time.Millisecond)
-		backoff *= persistBackoffFactor
+		// Interruptible exponential backoff. During Close(), s.done is
+		// closed; we abort the retry and push to dead-letter so shutdown
+		// is not blocked by backoff sleeps when the DB is unavailable.
+		select {
+		case <-s.done:
+			s.lg.Warn("activity persist aborted during shutdown; pushed to dead-letter buffer",
+				loggateway.StepID("agent.activity_sequencer.persist"),
+				loggateway.Str("activity_id", activityID),
+				loggateway.Str("path", path),
+				loggateway.Int("attempt", attempt+1))
+			s.pushDeadLetter(a)
+			return
+		case <-time.After(time.Duration(backoff) * time.Millisecond):
+		}
+		backoff *= s.persistBackoffFactor
 	}
 }
 
 // pushDeadLetter appends a failed-persist activity to the dead-letter ring
 // buffer. When the buffer is full, the oldest entry is evicted (FIFO eviction).
+//
+// Deduplication: if an entry with the same activity ID already exists, it is
+// replaced in-place with the latest snapshot. This prevents the buffer from
+// accumulating stale intermediate states for the same activity (e.g. a failed
+// "start" persist followed by a failed "done" persist), which would force the
+// WS reconnect merge path to disambiguate. The scan is O(n) with n ≤ 512.
 func (s *activityEventSequencer) pushDeadLetter(a biz.Activity) {
 	s.deadLetterMu.Lock()
 	defer s.deadLetterMu.Unlock()
+	for i := range s.deadLetter {
+		if s.deadLetter[i].ID == a.ID {
+			s.deadLetter[i] = a
+			return
+		}
+	}
 	if len(s.deadLetter) >= deadLetterCapacity {
 		// Evict oldest (slice header reuse avoids GC pressure).
 		s.deadLetter = append(s.deadLetter[:0], s.deadLetter[1:]...)

@@ -199,14 +199,10 @@ func (o *ChatOrchestrator) runIntentPass(
 	emitter *event.TraceEmitter,
 ) ([]trpcagent.RunOption, *intent.Artifact) {
 	emitter.LogStart("chat.intent.pass", "意图识别开始", event.P("provider", prov), event.P("model", mod), event.P("content_len", len(content)))
-	emitter.EmitProgress(ctx, event.StepIDChatIntentPass, "start", "正在理解意图", "orchestration",
-		event.P("run_id", ""), event.P("content_len", len(content)))
 	intRes := intent.RunForAgent(ctx, ag, o.td().ReadDeps.LLM, o.td().LLMHTTP, prov, mod, content, o.lg())
 	var intentRunOpts []trpcagent.RunOption
 	if intRes.Artifact != nil {
 		emitter.LogDone("chat.intent.pass", "意图识别完成", event.P("outcome", intRes.Outcome), event.P("intent_kind", intRes.Artifact.IntentKind), event.P("refined_goal_len", len(intRes.Artifact.RefinedGoal)), event.P("duration_ms", intRes.Duration.Milliseconds()))
-		emitter.EmitProgress(ctx, event.StepIDChatIntentPass, "done", "意图识别完成", "orchestration",
-			event.P("outcome", intRes.Outcome), event.P("duration_ms", intRes.Duration.Milliseconds()))
 		intentRunOpts = append(intentRunOpts, intent.RunOptionInject(intRes.Artifact))
 	} else {
 		emitter.LogSkip("chat.intent.pass", "意图识别跳过", event.P("outcome", intRes.Outcome), event.P("duration_ms", intRes.Duration.Milliseconds()))
@@ -243,7 +239,6 @@ func (o *ChatOrchestrator) persistTurnUserMessage(
 ) (biz.ChatMessage, bool, error) {
 	sessionID := strings.TrimSpace(input.SessionID)
 	content := strings.TrimSpace(input.Content)
-	runID := admit.runID
 	durableCtx := admit.durableCtx
 
 	now := chatagent.RFC3339Now()
@@ -251,7 +246,6 @@ func (o *ChatOrchestrator) persistTurnUserMessage(
 	userMsgPersisted := false
 	if durableCtx.active {
 		userMsg = durableCtx.buildUserMessage(sessionID, userOpts, attN, emitter)
-		o.notifySessionRevisionSync(ctx, sessionID, runID, userMsg.ID)
 	} else {
 		userMsg = biz.ChatMessage{
 			ID:               uuid.NewString(),
@@ -274,7 +268,7 @@ func (o *ChatOrchestrator) persistTurnUserMessage(
 		userMsgPersisted = true
 		emitter.LogDone("chat.user_msg_persist", "用户消息已委托给 ActivityProjector")
 		if !input.EntryConfig.AllowStream {
-			o.bumpSessionRevisionSyncAndPublish(ctx, sessionID, runID, userMsg.ID)
+			o.bumpSessionRevision(ctx, sessionID)
 		}
 	}
 	return userMsg, userMsgPersisted, nil
@@ -423,8 +417,6 @@ func (o *ChatOrchestrator) invokeLLMCall(
 	})
 
 	emitter.LogStart("chat.llm.invoke", "正在调用语言模型")
-	emitter.EmitProgress(runCtx, event.StepIDChatLLMInvoke, "start", "正在调用语言模型", "orchestration",
-		event.P("run_id", runID), event.P("provider", prov), event.P("model", mod))
 	o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始构建 userMessage + 调用 LLM",
 		loggateway.StepID("chat.llm_invoke_start"),
 		loggateway.Any("provider", prov), loggateway.Any("model", mod), loggateway.Any("run_id", runID))
@@ -459,8 +451,6 @@ func (o *ChatOrchestrator) invokeLLMCall(
 		loggateway.Any("has_error", err != nil))
 	if err != nil {
 		emitter.LogError("chat.llm.invoke", "语言模型调用失败", event.P("error", err.Error()))
-		emitter.EmitProgress(runCtx, event.StepIDChatLLMInvoke, "error", "语言模型调用失败", "orchestration",
-			event.P("run_id", runID), event.P("error", err.Error()))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "error").Observe(time.Since(turnStart).Seconds())
 		if serr := o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", err.Error()); serr != nil {
 			o.lg().Warn("set run status failed on llm error",
@@ -474,8 +464,6 @@ func (o *ChatOrchestrator) invokeLLMCall(
 		return nil, te
 	}
 	emitter.LogDone("chat.llm.invoke", "模型已返回，开始处理输出流")
-	emitter.EmitProgress(runCtx, event.StepIDChatLLMInvoke, "done", "语言模型已返回", "orchestration",
-		event.P("run_id", runID))
 	return events, nil
 }
 
@@ -914,7 +902,7 @@ func (o *ChatOrchestrator) postProcessTurn(
 			loggateway.Err(serr))
 	}
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, "")
-	o.bumpSessionRevisionAndPublish(ctx, sessionID, runID, execResult.userMsg.ID)
+	o.bumpSessionRevision(ctx, sessionID)
 	o.notifyNativeTurnHooks(ctx, sessionID, ag, content, persistResult.assistantMsg.ContentMarkdown)
 	emitter.LogDone("chat.turn.execute", "对话轮次执行完成",
 		event.P("run_id", runID),
@@ -952,10 +940,6 @@ func (o *ChatOrchestrator) buildTurnRunner(
 	prov := admit.provider
 	mod := admit.model
 
-	// Emit BUILD phase progress so the frontend knows the backend is working.
-	emitter.EmitProgress(ctx, event.StepIDChatAgentBuild, "start", "正在构建Agent依赖", "orchestration",
-		event.P("run_id", runID), event.P("agent_id", ag.ID))
-
 	depsStart := time.Now()
 	deps, err := o.agentBuild.BuildTRPCDeps(ctx, AgentBuildParams{
 		Session: sess, Agent: ag, RunID: runID,
@@ -978,8 +962,6 @@ func (o *ChatOrchestrator) buildTurnRunner(
 		loggateway.StepID("chat.build_agent"),
 		loggateway.Any("elapsed_ms", time.Since(agentStart).Milliseconds()))
 	emitter.LogDone("chat.agent.build", "Agent实例已构建", event.P("provider", prov), event.P("model", mod))
-	emitter.EmitProgress(ctx, event.StepIDChatAgentBuild, "done", "Agent构建完成", "orchestration",
-		event.P("run_id", runID), event.P("agent_id", ag.ID))
 
 	var plugins []trpcplugin.Plugin
 	if o.rt().PluginManager != nil {

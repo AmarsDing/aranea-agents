@@ -67,18 +67,6 @@ func (ft *FlowTracker) LogWarn(stepID, title, message string, extra ...Pair) {
 func (ft *FlowTracker) LogError(stepID, message string, extra ...Pair) {
 	timing := ft.fc.TakeTiming(stepID)
 	ft.emit(stepID, FlowPhaseError, FlowSeverityError, message, "", timing, extra)
-	if ft.shouldPublishFlowChatError(stepID) {
-		// AS-EVT-01: Error is a Critical event — must go through Infra.Publish
-		// to ensure routing. Subscribers must be idempotent (Phase 1c-2: WAL removed).
-		if ft.infra != nil {
-			errEnv := NewEnvelope(EnvelopeTypeError, "flow", ft.tc.SessionID)
-			errEnv.Error = &EnvelopeError{
-				Type:    "flow_" + stepID,
-				Message: message,
-			}
-			ft.infra.Publish(context.Background(), errEnv)
-		}
-	}
 }
 
 func (ft *FlowTracker) LogCritical(stepID, message string, extra ...Pair) {
@@ -145,18 +133,6 @@ func (ft *FlowTracker) MetadataJSON() string {
 	return ft.sc.MetadataJSON()
 }
 
-// flowStepsSkipChatError lists monitor-only flow errors that must not surface as chat toasts.
-var flowStepsSkipChatError = map[string]struct{}{
-	"chat.usage_record":       {},
-	"system.agent.tool_build": {},
-}
-
-// shouldPublishFlowChatError checks if a flow error should surface as a chat toast.
-func (ft *FlowTracker) shouldPublishFlowChatError(stepID string) bool {
-	_, skip := flowStepsSkipChatError[stepID]
-	return !skip
-}
-
 func (ft *FlowTracker) emit(stepID string, phase FlowPhase, explicitSev FlowSeverity, message, titleOverride string, timing *frameworktracing.FlowTiming, extra []Pair) {
 	if ft == nil {
 		return
@@ -190,24 +166,11 @@ func (ft *FlowTracker) emit(stepID string, phase FlowPhase, explicitSev FlowSeve
 	if ft.infra == nil {
 		return
 	}
-	// Dual-bus migration: prefer the typed MonitorEventBus; fall back to the
-	// legacy envelope bus when MonitorEventBus is not wired (e.g. partial Infra
-	// constructed by NewTraceEmitter from chat-domain callers). The Chat domain
-	// agent will wire MonitorEventBus into EventPipeline in a follow-up.
 	if ft.infra.MonitorEventBus != nil {
 		ev := contract.NewMonitorEvent(contract.MonitorEventTypeFlowLog, "flow")
 		ev.SessionID = ft.tc.SessionID
 		ev.Message = entry.displayText()
 		ev.Metadata = entry.toMetadata()
 		ft.infra.MonitorEventBus.Publish(context.Background(), ev)
-		return
 	}
-	env := NewEnvelope(EnvelopeTypeFlowLog, "flow", ft.tc.SessionID)
-	env.Channel = "monitor"
-	env.Content = &EnvelopeContent{
-		Text:      entry.displayText(),
-		IsPartial: false,
-	}
-	env.Metadata = entry.toMetadata()
-	ft.infra.Publish(context.Background(), env)
 }

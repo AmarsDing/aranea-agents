@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -115,7 +116,7 @@ func (h *ChannelIngress) dispatchAsyncInbound(
 }
 
 func (h *ChannelIngress) watchAsyncGraphCompletion(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform, sessionID, execID string) {
-	if h == nil || h.eventBus == nil {
+	if h == nil || h.activityBus == nil {
 		return
 	}
 	jobID := channelTurnJobIDFromContext(ctx)
@@ -127,7 +128,7 @@ func (h *ChannelIngress) watchAsyncGraphCompletion(ctx context.Context, chRow bi
 	watchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), asyncWatchTimeout)
 	safego.Go(context.WithoutCancel(ctx), "channel.async.graph.watch", func() {
 		defer cancel()
-		ch, unsub := h.eventBus.Subscribe(event.SubscribeOptions{
+		ch, unsub := h.activityBus.Subscribe(biz.ActivityEventSubscribeOptions{
 			SessionID:  sessionID,
 			BufferSize: 32,
 		})
@@ -137,35 +138,39 @@ func (h *ChannelIngress) watchAsyncGraphCompletion(ctx context.Context, chRow bi
 			case <-watchCtx.Done():
 				h.finishAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, execID, "graph", watchCtx.Err())
 				return
-			case env, ok := <-ch:
+			case aev, ok := <-ch:
 				if !ok {
-					// EventBus closed the subscription channel (e.g., session deleted).
-					// Must transition the TurnJob to a terminal state to prevent
-					// it from being stuck in async_queued forever.
-					h.failAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, execID, "graph", errors.New("event bus subscription closed"))
+					h.failAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, execID, "graph", errors.New("activity bus subscription closed"))
 					return
 				}
-				if env.Type == event.EnvelopeTypeGraphNodeError {
-					h.failAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, execID, "graph", graphNodeErrorMessage(env))
-					return
-				}
-				if env.Type != event.EnvelopeTypeGraphExecutionDone {
+				if aev.Activity.Kind != biz.ActivityKindGraphStage {
 					continue
 				}
-				metaID, _ := env.Metadata["execution_id"].(string)
-				if strings.TrimSpace(metaID) != "" && metaID != execID {
+				metaID := metaStringFromActivity(aev, "execution_id")
+				if metaID != "" && metaID != execID {
 					continue
 				}
-				if failed, errMsg := graphExecutionSummaryFailed(env, h.lg); failed {
-					h.failAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, execID, "graph", errors.New(errMsg))
+				switch aev.Activity.Stage {
+				case "node_error":
+					if aev.Event == biz.ActivityEventFailed {
+						h.failAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, execID, "graph", graphNodeErrorMessageFromActivity(aev))
+						return
+					}
+				case "execution_done":
+					if aev.Event != biz.ActivityEventCompleted {
+						continue
+					}
+					if failed, errMsg := graphExecutionSummaryFailedFromActivity(aev, h.lg); failed {
+						h.failAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, execID, "graph", errors.New(errMsg))
+						return
+					}
+					summary := channelAsyncGraphDoneSummary
+					if content := strings.TrimSpace(aev.Activity.Content); content != "" {
+						summary = content
+					}
+					h.completeAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, summary)
 					return
 				}
-				summary := channelAsyncGraphDoneSummary
-				if env.Content != nil && strings.TrimSpace(env.Content.Text) != "" {
-					summary = strings.TrimSpace(env.Content.Text)
-				}
-				h.completeAsyncTargetWatch(asyncWatchPersistCtx(ctx), chCopy, evCopy, platform, jobID, summary)
-				return
 			}
 		}
 	})
@@ -305,18 +310,32 @@ func (h *ChannelIngress) finishAsyncTargetWatch(ctx context.Context, chRow biz.C
 	)
 }
 
-func graphNodeErrorMessage(env event.Envelope) error {
-	if env.Content != nil && strings.TrimSpace(env.Content.Text) != "" {
-		return errors.New(strings.TrimSpace(env.Content.Text))
+func metaStringFromActivity(aev biz.ActivityEvent, key string) string {
+	if aev.Activity.Meta == nil {
+		return ""
 	}
-	if msg, _ := env.Metadata["error"].(string); strings.TrimSpace(msg) != "" {
-		return errors.New(strings.TrimSpace(msg))
+	v, ok := aev.Activity.Meta[key]
+	if !ok || v == nil {
+		return ""
+	}
+	if s, ok := v.(string); ok {
+		return strings.TrimSpace(s)
+	}
+	return strings.TrimSpace(fmt.Sprintf("%v", v))
+}
+
+func graphNodeErrorMessageFromActivity(aev biz.ActivityEvent) error {
+	if content := strings.TrimSpace(aev.Activity.Content); content != "" {
+		return errors.New(content)
+	}
+	if msg := metaStringFromActivity(aev, "error"); msg != "" {
+		return errors.New(msg)
 	}
 	return errors.New("graph node error")
 }
 
-func graphExecutionSummaryFailed(env event.Envelope, lg loggateway.Logger) (bool, string) {
-	raw, ok := env.Metadata["execution_summary"]
+func graphExecutionSummaryFailedFromActivity(aev biz.ActivityEvent, lg loggateway.Logger) (bool, string) {
+	raw, ok := aev.Activity.Meta["execution_summary"]
 	if !ok || raw == nil {
 		return false, ""
 	}

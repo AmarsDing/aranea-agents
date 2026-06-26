@@ -14,7 +14,7 @@ import (
 func TestPublishTurnFailure_usesEnvelopeErrorFromTurn(t *testing.T) {
 	bus := testutil.NewRecordingBus()
 	activityBus := &gateCaptureBus{}
-	evtPub := newChatTurnEventPublisher(nil, bus, activityBus, nil)
+	evtPub := newChatTurnEventPublisher(nil, activityBus, nil)
 	orch := &ChatOrchestrator{
 		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{Bus: bus}}},
 		turnLC: &chatTurnLifecycleImpl{
@@ -54,7 +54,7 @@ func TestPublishTurnFailure_usesEnvelopeErrorFromTurn(t *testing.T) {
 func TestPublishTurnFailure_pendingID(t *testing.T) {
 	bus := testutil.NewRecordingBus()
 	activityBus := &gateCaptureBus{}
-	evtPub := newChatTurnEventPublisher(nil, bus, activityBus, nil)
+	evtPub := newChatTurnEventPublisher(nil, activityBus, nil)
 	orch := &ChatOrchestrator{
 		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{Bus: bus}}},
 		turnLC: &chatTurnLifecycleImpl{
@@ -114,7 +114,7 @@ func (r *recordingRunStatusTracker) PublishRunStatus(sessionID, runID, status, e
 // newFailTurnTestOrch builds a ChatOrchestrator wired with a recording bus and
 // the given runStatusTracker, suitable for testing failTurn/markAndPublish.
 func newFailTurnTestOrch(bus *testutil.RecordingBus, activityBus *gateCaptureBus, rs runStatusTracker) *ChatOrchestrator {
-	evtPub := newChatTurnEventPublisher(nil, bus, activityBus, nil)
+	evtPub := newChatTurnEventPublisher(nil, activityBus, nil)
 	return &ChatOrchestrator{
 		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{Bus: bus}}},
 		turnLC: &chatTurnLifecycleImpl{

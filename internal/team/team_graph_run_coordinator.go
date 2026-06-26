@@ -10,7 +10,6 @@ import (
 
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/telemetry/turntrace"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -65,7 +64,6 @@ type TeamGraphRunCoordinator struct {
 	teamRunReader   biz.TeamRunReader
 	teamRunWriter   biz.TeamRunWriter
 	runTransitioner biz.TeamRunStatusTransitioner
-	bus             event.Bus
 	activityBus     biz.ActivityEventBus
 	finisher        *TeamRunMediator
 	sessionRepo     biz.TeamGraphSessionRepo
@@ -101,7 +99,7 @@ const (
 	graphWatchStepsAndFinalize
 )
 
-func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teamRunReader biz.TeamRunReader, teamRunWriter biz.TeamRunWriter, runTransitioner biz.TeamRunStatusTransitioner, bus event.Bus, activityBus biz.ActivityEventBus, sessionRepo biz.TeamGraphSessionRepo, agentKeyFn func(agentID string) string, lg loggateway.Logger) *TeamGraphRunCoordinator {
+func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teamRunReader biz.TeamRunReader, teamRunWriter biz.TeamRunWriter, runTransitioner biz.TeamRunStatusTransitioner, activityBus biz.ActivityEventBus, sessionRepo biz.TeamGraphSessionRepo, agentKeyFn func(agentID string) string, lg loggateway.Logger) *TeamGraphRunCoordinator {
 	if agentKeyFn == nil {
 		agentKeyFn = func(agentID string) string { return strings.TrimSpace(agentID) }
 	}
@@ -110,7 +108,6 @@ func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teamRunReader 
 		teamRunReader:   teamRunReader,
 		teamRunWriter:   teamRunWriter,
 		runTransitioner: runTransitioner,
-		bus:             bus,
 		activityBus:     activityBus,
 		sessionRepo:     sessionRepo,
 		agentKeyFn:      agentKeyFn,
@@ -344,7 +341,7 @@ func (c *TeamGraphRunCoordinator) StartGraphStepWatch(ctx context.Context, execI
 }
 
 func (c *TeamGraphRunCoordinator) startGraphWatch(ctx context.Context, sess *teamGraphRunSession, mode graphWatchMode) context.CancelFunc {
-	if c == nil || c.bus == nil || sess == nil {
+	if c == nil || c.activityBus == nil || sess == nil {
 		return func() {}
 	}
 	c.stopWatch(sess.execID)
@@ -358,10 +355,9 @@ func (c *TeamGraphRunCoordinator) startGraphWatch(ctx context.Context, sess *tea
 
 	safego.Go(watchCtx, "team.graph.run.watch", func() {
 		defer cancel()
-		ch, unsub := c.bus.Subscribe(event.SubscribeOptions{
+		ch, unsub := c.activityBus.Subscribe(biz.ActivityEventSubscribeOptions{
 			SessionID:  sess.sessionID,
 			BufferSize: 32,
-			DropPolicy: event.DropNewest,
 		})
 		defer unsub()
 		watchTimeout := c.cfg.WatchTimeout
@@ -395,11 +391,11 @@ func (c *TeamGraphRunCoordinator) startGraphWatch(ctx context.Context, sess *tea
 					c.finalizeTeamRun(watchCtx, sess, true, fmt.Sprintf("graph resume watch timed out after %s", watchTimeout))
 				}
 				return
-			case env, ok := <-ch:
+			case aev, ok := <-ch:
 				if !ok {
 					return
 				}
-				if done, failed, errMsg := c.handleGraphWatchEnvelope(watchCtx, sess, env, mode); done {
+				if done, failed, errMsg := c.handleGraphWatchActivity(watchCtx, sess, aev, mode); done {
 					c.finalizeTeamRun(watchCtx, sess, failed, errMsg)
 					return
 				}
@@ -427,16 +423,21 @@ func shouldResumeTeamGraph(exec *biz.GraphExecution, nodeID string) bool {
 	return strings.HasPrefix(exec.GraphID, "team:") && exec.GetInterruptNode() == nodeID
 }
 
-func (c *TeamGraphRunCoordinator) handleGraphWatchEnvelope(ctx context.Context, sess *teamGraphRunSession, env event.Envelope, mode graphWatchMode) (done, failed bool, errMsg string) {
-	if execID := trackerMetaString(env.Metadata, "execution_id"); execID != "" && execID != sess.execID {
+func (c *TeamGraphRunCoordinator) handleGraphWatchActivity(ctx context.Context, sess *teamGraphRunSession, aev biz.ActivityEvent, mode graphWatchMode) (done, failed bool, errMsg string) {
+	if aev.Activity.Kind != biz.ActivityKindGraphStage {
+		return false, false, ""
+	}
+	execID := metaString(aev.Activity.Meta, "execution_id")
+	if execID != "" && execID != sess.execID {
 		return false, false, ""
 	}
 	stepCtx := sess.stepContext()
+	isNodeEnd := aev.Activity.Stage == "node_end"
+	isStepFinished := aev.Activity.Kind == biz.ActivityKindTeamStage && aev.Event == biz.ActivityEventCompleted
 	if sess.obsStore != nil {
-		changed := sess.obsStore.ApplyEnvelope(env, sess.obsReg)
+		changed := sess.obsStore.ApplyActivityEvent(aev, sess.obsReg)
 		for _, st := range changed {
-			switch env.Type {
-			case event.EnvelopeTypeGraphNodeEnd, event.EnvelopeTypeTeamStepFinished:
+			if isNodeEnd || isStepFinished {
 				if biz.IsTerminalAgentNodeStatus(st.Status) && c.finisher != nil && stepCtx != nil {
 					skipped := st.Status == biz.AgentNodeStatusSkipped
 					errText := st.ErrorMessage
@@ -448,26 +449,29 @@ func (c *TeamGraphRunCoordinator) handleGraphWatchEnvelope(ctx context.Context, 
 			}
 		}
 	}
-	if env.Type == event.EnvelopeTypeTeamStepFinished && stepCtx != nil {
-		if nodeID := resumeStepNodeID(env.Metadata, sess.obsReg); nodeID != "" {
+	if isStepFinished && stepCtx != nil {
+		if nodeID := resumeStepNodeID(aev.Activity.Meta, sess.obsReg); nodeID != "" {
 			stepCtx.MarkPersisted(nodeID)
 		}
 	}
 	if mode == graphWatchStepsOnly {
 		return false, false, ""
 	}
-	switch env.Type {
-	case event.EnvelopeTypeGraphNodeError:
-		if resumeMetaBool(env.Metadata, "retrying") {
+	switch aev.Activity.Stage {
+	case "node_error":
+		if aev.Event != biz.ActivityEventFailed {
 			return false, false, ""
 		}
-		msg := trackerMetaString(env.Metadata, "error")
-		if env.Error != nil && msg == "" {
-			msg = env.Error.Message
+		if resumeMetaBool(aev.Activity.Meta, "retrying") {
+			return false, false, ""
+		}
+		msg := metaString(aev.Activity.Meta, "error")
+		if strings.TrimSpace(aev.Activity.Content) != "" && msg == "" {
+			msg = strings.TrimSpace(aev.Activity.Content)
 		}
 		return true, true, msg
-	case event.EnvelopeTypeGraphExecutionDone:
-		if trackerMetaString(env.Metadata, "execution_id") != sess.execID {
+	case "execution_done":
+		if aev.Event != biz.ActivityEventCompleted {
 			return false, false, ""
 		}
 		return true, false, ""
@@ -503,6 +507,22 @@ func resumeMetaBool(meta map[string]any, key string) bool {
 	}
 	b, ok := v.(bool)
 	return ok && b
+}
+
+func metaString(meta map[string]any, key string) string {
+	if meta == nil {
+		return ""
+	}
+	v, ok := meta[key]
+	if !ok || v == nil {
+		return ""
+	}
+	switch t := v.(type) {
+	case string:
+		return strings.TrimSpace(t)
+	default:
+		return strings.TrimSpace(fmt.Sprintf("%v", t))
+	}
 }
 
 func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *teamGraphRunSession, failed bool, errMsg string) {

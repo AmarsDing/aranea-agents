@@ -12,6 +12,28 @@ import (
 	"github.com/google/wire"
 )
 
+// TECH-DEBT(chat-refactor): SessionMessageUsecase is a legacy Facade that survives
+// Phase 1c of the chat module refactor (see docs/reports/2026-06-25-analysis-chat-
+// module-refactor.md §11). The original plan called for merging its business logic
+// into the Activity usecase and deleting this file once the messages table was dropped.
+//
+// Current state:
+//   - messages table has been DROPPED (migration 20260902_drop_messages_subsystem.sql)
+//   - Read path is adapted via ActivityMessageReader (activity_message_adapter.go),
+//     which implements MessageReader on top of ActivityLister
+//   - BUT this struct still carries live business logic: title generation
+//     (maybeAutoTitleFromUserMessage, generateTitleAsync), SessionMetricsDelta
+//     accumulation in AppendChatTurn, parameter validation, and delegation to
+//     state/turn/participant sub-usecases
+//
+// Migration plan (tracked as D1/D2 in the refactor todo):
+//   1. Move title generation, metrics accumulation, and validation into a new
+//      ActivityUsecase (or SessionUsecase methods that operate on Activity)
+//   2. Update wire bindings to remove SessionMessageProviderSet
+//   3. Delete this file
+//
+// New code MUST NOT add methods to this struct. Extend ActivityUsecase instead.
+//
 // SessionMessageUsecase handles session message CRUD, title generation, revision management,
 // and delegates to state/turn/participant sub-usecases.
 // Extracted from SessionUsecase to reduce God Object scope.

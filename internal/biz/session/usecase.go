@@ -772,6 +772,16 @@ func (uc *SessionUsecase) ListChildSessions(ctx context.Context, parentSessionID
 	return uc.sessionTreeReader.ListByParentSessionID(ctx, parentSessionID)
 }
 
+// GetSessionTree returns the complete recursive session tree rooted at a spirit
+// session (Phase B-1). Delegates to SessionTreeReader.GetSessionTree.
+func (uc *SessionUsecase) GetSessionTree(ctx context.Context, spiritSessionID string) (*SessionTree, error) {
+	spiritSessionID = strings.TrimSpace(spiritSessionID)
+	if spiritSessionID == "" {
+		return nil, validationErr("spirit_session_id is required")
+	}
+	return uc.sessionTreeReader.GetSessionTree(ctx, spiritSessionID)
+}
+
 func (uc *SessionUsecase) GetRootSession(ctx context.Context, sessionID string) (Session, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {

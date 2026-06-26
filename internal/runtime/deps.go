@@ -50,17 +50,17 @@ type PersistenceSet struct {
 // EventPipeline wraps the event buses used for projecting runtime events
 // to WebSocket subscribers and internal consumers.
 //
-// TECH-DEBT(ADR-03 Phase 5 Blocker D): Bus is the legacy Envelope bus and is
-// NOT vestigial — it is actively used by:
-//   - chatTurnEventPublisher (session-revision envelopes via
-//     event.BumpAndPublishSessionRevision*)
+// TECH-DEBT(ADR-03 Phase 5 Blocker F): Bus is the legacy Envelope bus.
+// Phase 5 Blocker D removed the session-revision envelope publishers
+// (event.BumpAndPublishSessionRevision* / PublishSessionRevisionEnvelope /
+// NotifySessionRevisionSync). Remaining Bus users:
 //   - ConsumeWithFirstByteGuard (agent stream consumption)
 //   - Team observers (StartOrchestrationStatusProjector /
-//     StartTeamGraphTaskBridge / StartTeamGraphExecutionTracker)
+//     TeamGraphRunCoordinator graph watch)
 //   - event.NewFlowLogger / NewTraceEmitterForRun (flow_log envelope routing)
-// Bus cannot be deleted until session-revision and team-observer publishers
-// migrate to ActivityEventBus/MonitorEventBus (blocked by event→biz circular
-// dependency). Tracked under ADR-03 Phase 5 Blocker D.
+// Bus cannot be deleted until these consumers migrate to
+// ActivityEventBus/MonitorEventBus (blocked by event→biz circular
+// dependency). Tracked under ADR-03 Phase 5 Blocker F.
 //
 // Buffer (the legacy replay buffer) has been removed in Phase 5 Blocker E:
 // Blocker A deleted the WS replay path (event.Buffer.Replay is no longer

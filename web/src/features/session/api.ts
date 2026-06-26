@@ -5,6 +5,7 @@ import type {
   SessionTimeline as KratosSessionTimeline,
   SessionTimelineItem as KratosTimelineItem,
   SessionTimelineSummary as KratosTimelineSummary,
+  SessionTreeNode as KratosSessionTreeNode,
   SessionTurn as KratosSessionTurn,
 } from '../../services/kratos/session/v1/index';
 import { asRecord, pickStr } from '../../shared/wireJson';
@@ -181,6 +182,28 @@ export async function getSession(id: string): Promise<Session> {
 export async function listChildSessions(parentSessionId: string): Promise<Session[]> {
   const data = await sessionApi.ListChildSessions({ parentSessionId });
   return (data.sessions ?? []).map(kratosSessionToLegacy);
+}
+
+/**
+ * GetSessionTree returns the complete recursive session tree rooted at a spirit
+ * session (Phase B-1). Used by SessionTreeSidebar to render the full session
+ * hierarchy in one query.
+ * Backend: GET /v1/sessions/{spirit_session_id}/tree
+ */
+export async function getSessionTree(spiritSessionId: string): Promise<SessionTreeNode> {
+  const data = await sessionApi.GetSessionTree({ spiritSessionId });
+  return mapProtoTreeNode(data.root);
+}
+
+function mapProtoTreeNode(node: KratosSessionTreeNode | undefined | null): SessionTreeNode {
+  if (!node || !node.session) {
+    return { session: kratosSessionToLegacy({} as KratosSession), children: [] };
+  }
+  const children = (node.children ?? []).map((c) => mapProtoTreeNode(c));
+  return {
+    session: kratosSessionToLegacy(node.session),
+    children,
+  };
 }
 
 export async function getSessionTimeline(

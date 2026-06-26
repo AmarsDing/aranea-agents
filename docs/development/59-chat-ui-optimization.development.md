@@ -1497,7 +1497,7 @@ cd web && pnpm lint && pnpm test && pnpm build
 |------|------|
 | `internal/biz/activity.go` | 删除 `ActivityKindSubTaskBoard`/`ActivityKindError`/`ActivityKindDelegate` 常量 |
 | `internal/agent/activity_projector.go` | `OnError` 重构为 root task.failed；删除 `OnDelegate`；`OnTurnEnd` 终态保护；`ListDeadLetterActivities` 暴露 |
-| `internal/agent/activity_event_sequencer.go` | 重试预算 350ms→3100ms；dead-letter 环形缓冲（cap=512）+ `pushDeadLetter`/`ListDeadLetterActivities` |
+| `internal/agent/activity_event_sequencer.go` | 重试预算 350ms→3100ms；dead-letter 环形缓冲（cap=512, 按 activityID 去重）+ `pushDeadLetter`/`ListDeadLetterActivities`；退避可中断（Close 期间 DB 不可用时立即转入 dead-letter，不阻塞 shutdown） |
 | `web/src/features/chat/activityTypes.ts` | 移除 `'sub_task_board' \| 'error' \| 'delegate'` 类型 |
 | `web/src/features/chat/composables/useActivityTimeline.ts` | `task.failed` → `ErrorEvent` 转换；移除 `case 'error'` |
 | `web/src/features/chat/composables/useConversationTimeline.ts` | `hasError` 兼容新错误模型 + legacy cast |
@@ -1564,4 +1564,29 @@ cd web && pnpm lint && pnpm test && pnpm build
 | `web/src/features/chat/inboundSyncRouting.ts` | 修改 | @deprecated JSDoc |
 | `docs/reports/2026-06-25-review-adr-activity-event-persistence.md` | 新增 | ADR-02 |
 | `docs/development/59-chat-ui-optimization.development.md` | 修改 | 新增 §12 Phase AF-3 |
+
+### 12.6 审查优化（2026-06-26 新增）
+
+> **触发**：ADR-02 实施后的代码审查，识别 5 项建议（S1-S5）
+> **设计原则**：从根源解决问题，避免过度设计与打补丁式修改；YAGNI（不实现未请求的功能）
+> **验证**：`go test -race -count=1 ./internal/agent/... ./internal/biz/...` 全量通过（agent 主包 35.9s + biz 6.3s）
+
+#### 审查建议与处置
+
+| 编号 | 建议 | 处置 | 说明 |
+|------|------|------|------|
+| S1 | Sequencer 测试覆盖不足 | ✅ 实施 | 新增 7 个测试：重试耗尽→死信、重试成功、死信去重、容量驱逐、会话过滤、Close 中断退避、同步回退 |
+| S2 | D3 OnError/OnTurnEnd 测试缺失 | ✅ 实施 | 新增 4 个测试：OnError 根任务存在/不存在、OnTurnEnd 终态保护、正常完成 |
+| S3 | 退避睡眠阻塞 Close | ✅ 实施 | `time.Sleep` 替换为 `select` on `s.done`；Close 期间 DB 不可用时立即转入 dead-letter，避免 shutdown 被退避睡眠阻塞（正常 shutdown 首次即成功，不受影响） |
+| S4 | Dead-letter 累积同活动过期中间态 | ✅ 实施 | `pushDeadLetter` 按 activityID 去重，保留最新快照，避免 WS 重连合并路径做歧义消解 |
+| S5 | Pending→Failed 状态机缺口 | ⏭️ 跳过（误报） | `OnTurnStart` 直接创建 Running 状态根任务，Pending→Failed 不可达（YAGNI） |
+
+#### 改动文件
+
+| 文件 | 变更类型 | 说明 |
+|------|---------|------|
+| `internal/agent/activity_event_sequencer.go` | 修改 | S3: 退避可中断（`select` on `s.done`）；S4: 死信按 activityID 去重；可配置重试参数（测试用，默认值不变） |
+| `internal/agent/activity_event_sequencer_test.go` | 修改 | S1: 新增 7 个 sequencer 测试（含 `failingActivityWriter`/`flakyActivityWriter`/`fastRetryConfig` 辅助） |
+| `internal/agent/activity_projector_chat_display_test.go` | 修改 | S2: 新增 4 个 D3 projector 测试 + `findRootTask` 辅助 |
+| `docs/reports/2026-06-25-review-adr-activity-event-persistence.md` | 修改 | 同步 S3/S4 行引用与描述 |
 

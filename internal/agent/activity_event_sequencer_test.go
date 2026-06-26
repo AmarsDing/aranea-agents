@@ -3,7 +3,9 @@ package agent
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -480,4 +482,318 @@ func TestActivityEventSequencer_DeltaBatchingFlushOnNonDelta(t *testing.T) {
 	if envs[1].Event != biz.ActivityEventCompleted {
 		t.Errorf("second event type=%q want completed", envs[1].Event)
 	}
+}
+
+// --- D2: persist retry + dead-letter compensation tests ---
+
+// failingActivityWriter is a biz.ActivityWriter whose UpsertActivity always
+// returns an error. Used to exercise the retry → dead-letter path.
+type failingActivityWriter struct {
+	attempts int32 // atomic; total UpsertActivity calls
+}
+
+func (m *failingActivityWriter) CreateActivity(_ context.Context, a biz.Activity) (biz.Activity, error) {
+	atomic.AddInt32(&m.attempts, 1)
+	return biz.Activity{}, errors.New("simulated DB failure")
+}
+func (m *failingActivityWriter) UpdateActivity(_ context.Context, a biz.Activity) (biz.Activity, error) {
+	atomic.AddInt32(&m.attempts, 1)
+	return biz.Activity{}, errors.New("simulated DB failure")
+}
+func (m *failingActivityWriter) UpsertActivity(_ context.Context, a biz.Activity) (biz.Activity, error) {
+	atomic.AddInt32(&m.attempts, 1)
+	return biz.Activity{}, errors.New("simulated DB failure")
+}
+
+// flakyActivityWriter fails the first failUntil UpsertActivity attempts, then
+// succeeds. Used to verify retry-then-succeed behavior.
+type flakyActivityWriter struct {
+	mu         sync.Mutex
+	failUntil  int
+	attempts   int
+	activities map[string]biz.Activity
+}
+
+func newFlakyActivityWriter(failUntil int) *flakyActivityWriter {
+	return &flakyActivityWriter{failUntil: failUntil, activities: make(map[string]biz.Activity)}
+}
+
+func (m *flakyActivityWriter) CreateActivity(ctx context.Context, a biz.Activity) (biz.Activity, error) {
+	return m.UpsertActivity(ctx, a)
+}
+func (m *flakyActivityWriter) UpdateActivity(ctx context.Context, a biz.Activity) (biz.Activity, error) {
+	return m.UpsertActivity(ctx, a)
+}
+func (m *flakyActivityWriter) UpsertActivity(_ context.Context, a biz.Activity) (biz.Activity, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.attempts++
+	if m.attempts <= m.failUntil {
+		return biz.Activity{}, errors.New("simulated transient failure")
+	}
+	m.activities[a.ID] = a
+	return a, nil
+}
+
+// fastRetryConfig overrides the sequencer's retry parameters for fast test
+// execution (1ms backoff instead of 100ms).
+func fastRetryConfig(seq *activityEventSequencer) {
+	seq.persistMaxRetries = 2
+	seq.persistInitialBackoffMs = 1
+	seq.persistBackoffFactor = 2
+}
+
+// TestPersistWithRetry_ExhaustionToDeadLetter verifies that when all retries
+// are exhausted, the activity lands in the dead-letter buffer.
+func TestPersistWithRetry_ExhaustionToDeadLetter(t *testing.T) {
+	bus := newSyncCaptureBus()
+	repo := &failingActivityWriter{}
+	seq := newActivityEventSequencer(bus, loggateway.NewNoop())
+	fastRetryConfig(seq)
+	seq.SetActivityRepo(repo)
+
+	activity := biz.Activity{ID: "act-dl-1", Kind: biz.ActivityKindReply, Status: biz.ActivityStatusCompleted, SessionID: "sess-1"}
+	if err := seq.publish(context.Background(), activity.ID, publishTask{
+		event:    biz.ActivityEvent{Event: biz.ActivityEventCompleted, Activity: activity},
+		persist:  true,
+		activity: activity,
+	}); err != nil {
+		t.Fatalf("publish failed: %v", err)
+	}
+	bus.waitForPublished(t, 1)
+
+	// Wait for dead-letter (retries are fast: 1ms+2ms = 3ms total backoff).
+	deadline := time.After(2 * time.Second)
+	for {
+		if len(seq.ListDeadLetterActivities("sess-1")) > 0 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("timed out waiting for dead-letter entry")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+
+	dl := seq.ListDeadLetterActivities("sess-1")
+	if len(dl) != 1 {
+		t.Fatalf("dead-letter count=%d want 1", len(dl))
+	}
+	if dl[0].ID != activity.ID {
+		t.Errorf("dead-letter activity ID=%q want %q", dl[0].ID, activity.ID)
+	}
+	// maxRetries=2 means 3 total attempts (0,1,2).
+	if got := atomic.LoadInt32(&repo.attempts); got != 3 {
+		t.Errorf("UpsertActivity attempts=%d want 3", got)
+	}
+	seq.Close()
+}
+
+// TestPersistWithRetry_RetryThenSucceed verifies that transient failures are
+// retried and the activity is persisted once the repo recovers.
+func TestPersistWithRetry_RetryThenSucceed(t *testing.T) {
+	bus := newSyncCaptureBus()
+	repo := newFlakyActivityWriter(2) // fail first 2 attempts, succeed on 3rd
+	seq := newActivityEventSequencer(bus, loggateway.NewNoop())
+	fastRetryConfig(seq)
+	seq.SetActivityRepo(repo)
+
+	activity := biz.Activity{ID: "act-retry-ok", Kind: biz.ActivityKindReply, SessionID: "sess-1"}
+	if err := seq.publish(context.Background(), activity.ID, publishTask{
+		event:    biz.ActivityEvent{Event: biz.ActivityEventCompleted, Activity: activity},
+		persist:  true,
+		activity: activity,
+	}); err != nil {
+		t.Fatalf("publish failed: %v", err)
+	}
+	bus.waitForPublished(t, 1)
+
+	// Wait for persistence to complete.
+	deadline := time.After(2 * time.Second)
+	for {
+		repo.mu.Lock()
+		_, ok := repo.activities[activity.ID]
+		repo.mu.Unlock()
+		if ok {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("timed out waiting for activity persistence")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+
+	// Activity must NOT be in dead-letter (persist succeeded).
+	if dl := seq.ListDeadLetterActivities("sess-1"); len(dl) != 0 {
+		t.Errorf("dead-letter count=%d want 0 (persist should have succeeded)", len(dl))
+	}
+	seq.Close()
+}
+
+// TestPushDeadLetter_Dedup verifies that pushing the same activity ID twice
+// keeps only the latest snapshot (S4 fix).
+func TestPushDeadLetter_Dedup(t *testing.T) {
+	seq := newActivityEventSequencer(newSyncCaptureBus(), loggateway.NewNoop())
+
+	// Push an initial "running" snapshot.
+	seq.pushDeadLetter(biz.Activity{ID: "act-dedup", Status: biz.ActivityStatusRunning, Content: "old"})
+
+	// Push a newer "failed" snapshot for the same ID.
+	seq.pushDeadLetter(biz.Activity{ID: "act-dedup", Status: biz.ActivityStatusFailed, Content: "new"})
+
+	dl := seq.ListDeadLetterActivities("")
+	if len(dl) != 1 {
+		t.Fatalf("dead-letter count=%d want 1 (dedup by activity ID)", len(dl))
+	}
+	if dl[0].Status != biz.ActivityStatusFailed {
+		t.Errorf("dead-letter status=%q want %q (latest snapshot)", dl[0].Status, biz.ActivityStatusFailed)
+	}
+	if dl[0].Content != "new" {
+		t.Errorf("dead-letter content=%q want %q (latest snapshot)", dl[0].Content, "new")
+	}
+}
+
+// TestPushDeadLetter_Eviction verifies that when the ring buffer is full, the
+// oldest entry is evicted (FIFO).
+func TestPushDeadLetter_Eviction(t *testing.T) {
+	seq := newActivityEventSequencer(newSyncCaptureBus(), loggateway.NewNoop())
+
+	// Fill the buffer to capacity with unique IDs.
+	for i := 0; i < deadLetterCapacity; i++ {
+		seq.pushDeadLetter(biz.Activity{ID: "act-evict-" + strconv.Itoa(i), SessionID: "sess-1"})
+	}
+	// Push one more — should evict the oldest (act-evict-0).
+	seq.pushDeadLetter(biz.Activity{ID: "act-evict-new", SessionID: "sess-1"})
+
+	dl := seq.ListDeadLetterActivities("sess-1")
+	if len(dl) != deadLetterCapacity {
+		t.Fatalf("dead-letter count=%d want %d (capacity)", len(dl), deadLetterCapacity)
+	}
+	// The oldest entry (act-evict-0) must have been evicted.
+	for _, a := range dl {
+		if a.ID == "act-evict-0" {
+			t.Errorf("act-evict-0 should have been evicted (FIFO)")
+		}
+	}
+	// The new entry must be present.
+	found := false
+	for _, a := range dl {
+		if a.ID == "act-evict-new" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("act-evict-new not found in dead-letter buffer")
+	}
+}
+
+// TestListDeadLetterActivities_SessionFilter verifies that the sessionID
+// filter correctly scopes the returned snapshot.
+func TestListDeadLetterActivities_SessionFilter(t *testing.T) {
+	seq := newActivityEventSequencer(newSyncCaptureBus(), loggateway.NewNoop())
+
+	seq.pushDeadLetter(biz.Activity{ID: "act-a", SessionID: "sess-1"})
+	seq.pushDeadLetter(biz.Activity{ID: "act-b", SessionID: "sess-2"})
+	seq.pushDeadLetter(biz.Activity{ID: "act-c", SessionID: "sess-1"})
+
+	// Filter by sess-1.
+	dl := seq.ListDeadLetterActivities("sess-1")
+	if len(dl) != 2 {
+		t.Fatalf("sess-1 dead-letter count=%d want 2", len(dl))
+	}
+	for _, a := range dl {
+		if a.SessionID != "sess-1" {
+			t.Errorf("dead-letter sessionID=%q want sess-1", a.SessionID)
+		}
+	}
+
+	// Empty sessionID returns all.
+	if got := seq.ListDeadLetterActivities(""); len(got) != 3 {
+		t.Errorf("empty-filter dead-letter count=%d want 3", len(got))
+	}
+}
+
+// TestPersistWithRetry_CloseInterruptsBackoff verifies that Close() does not
+// block on retry backoff when the DB is unavailable (S3 fix). Without the
+// fix, Close would wait for the full backoff budget (500ms+ per item).
+func TestPersistWithRetry_CloseInterruptsBackoff(t *testing.T) {
+	bus := newSyncCaptureBus()
+	repo := &failingActivityWriter{}
+	seq := newActivityEventSequencer(bus, loggateway.NewNoop())
+	seq.SetActivityRepo(repo)
+	// Long backoff so that without the fix, Close would block for 500ms+.
+	seq.persistMaxRetries = 5
+	seq.persistInitialBackoffMs = 500
+	seq.persistBackoffFactor = 2
+
+	activity := biz.Activity{ID: "act-close", Kind: biz.ActivityKindReply, SessionID: "sess-1"}
+	if err := seq.publish(context.Background(), activity.ID, publishTask{
+		event:    biz.ActivityEvent{Event: biz.ActivityEventCompleted, Activity: activity},
+		persist:  true,
+		activity: activity,
+	}); err != nil {
+		t.Fatalf("publish failed: %v", err)
+	}
+	bus.waitForPublished(t, 1)
+	// Give the persist worker time to fail its first attempt and enter the
+	// 500ms backoff sleep.
+	time.Sleep(50 * time.Millisecond)
+
+	// Close must complete quickly — the backoff must be interrupted by done.
+	start := time.Now()
+	seq.Close()
+	elapsed := time.Since(start)
+
+	// Without the fix, Close blocks for ≥500ms (first backoff). With the fix,
+	// done is closed and the backoff is aborted immediately.
+	if elapsed > 200*time.Millisecond {
+		t.Errorf("Close took %v; expected <200ms (backoff should be interrupted by done)", elapsed)
+	}
+
+	// The activity should be in dead-letter (aborted during shutdown).
+	if dl := seq.ListDeadLetterActivities("sess-1"); len(dl) != 1 {
+		t.Errorf("dead-letter count=%d want 1 (aborted persist should land in dead-letter)", len(dl))
+	}
+}
+
+// TestProcessTask_SyncFallback verifies that when persistChan is full, the
+// consumer falls back to synchronous persist (processTask → persistWithRetry
+// with syncFallback=true) rather than dropping the item.
+func TestProcessTask_SyncFallback(t *testing.T) {
+	bus := newSyncCaptureBus()
+	repo := &failingActivityWriter{}
+	seq := newActivityEventSequencer(bus, loggateway.NewNoop())
+	fastRetryConfig(seq)
+	// Manually wire up a full persistChan without starting the worker, so
+	// processTask's non-blocking send hits the default (sync fallback) path.
+	seq.activityRepo = repo
+	seq.persistChan = make(chan persistItem, 1)
+	seq.persistChan <- persistItem{activityID: "blocker", activity: biz.Activity{ID: "blocker"}}
+
+	// processTask should detect the full channel and fall back to sync persist.
+	activity := biz.Activity{ID: "act-sync", Kind: biz.ActivityKindReply, SessionID: "sess-1"}
+	seq.processTask(activity.ID, publishTask{
+		event:    biz.ActivityEvent{Event: biz.ActivityEventCompleted, Activity: activity},
+		persist:  true,
+		activity: activity,
+	})
+
+	// The sync fallback called persistWithRetry(syncFallback=true), which
+	// exhausted retries and pushed to dead-letter.
+	dl := seq.ListDeadLetterActivities("sess-1")
+	found := false
+	for _, a := range dl {
+		if a.ID == activity.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("act-sync not found in dead-letter; sync fallback may not have been triggered")
+	}
+	// The event must still have been published (fire-and-forget).
+	if got := len(bus.published); got != 1 {
+		t.Errorf("published count=%d want 1 (publish must still happen on sync fallback)", got)
+	}
+	seq.Close()
 }

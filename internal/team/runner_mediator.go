@@ -19,7 +19,8 @@ var (
 // breaking the direct dependency on *TeamGraphRunCoordinator.
 // Stability:evolving
 type TeamGraphCoordAccess interface {
-	TeamGraphExecutionRegistry
+	RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, teamID, teamRunID string, ct *biz.CompiledTeam) error
+	MarkTeamGraphInterrupt(ctx context.Context, execID, nodeID, lineageID string) error
 	DeferTeamRunSuccessIfHITL(ctx context.Context, graphExecID string, run *biz.TeamRun) (bool, error)
 	StartGraphStepWatch(ctx context.Context, execID string) context.CancelFunc
 }

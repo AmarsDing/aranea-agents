@@ -406,6 +406,147 @@ func TestProcessEvent_finalChunkTextWithoutPriorDelta_createsReply(t *testing.T)
 	}
 }
 
+// --- D3: OnError semantics + OnTurnEnd terminal state protection ---
+
+// findRootTask returns the persisted root task Activity (kind=task) from the
+// mock repo, or nil if none exists.
+func findRootTask(repo *mockActivityWriter) *biz.Activity {
+	for _, a := range repo.activities {
+		if a.Kind == biz.ActivityKindTask {
+			return &a
+		}
+	}
+	return nil
+}
+
+// TestOnError_RootTaskExists_TransitionsToFailed verifies that when OnError
+// fires after OnTurnStart, the root task Activity transitions to status=failed
+// and the error classification is stored in Meta (D3 Case 1).
+func TestOnError_RootTaskExists_TransitionsToFailed(t *testing.T) {
+	p, _, repo := newTestProjector(t)
+	meta := ProjectMeta{SessionID: "sess-1", RequestID: "turn-1", AgentID: "agent-1", AgentDisplayName: "Agent"}
+	p.Configure(meta, nil)
+	ctx := context.Background()
+
+	p.OnTurnStart(ctx, meta)
+	p.OnError(ctx, "model rate limited", "RateLimitError", "429")
+	p.Close()
+
+	root := findRootTask(repo)
+	if root == nil {
+		t.Fatal("no root task activity persisted")
+	}
+	if root.Status != biz.ActivityStatusFailed {
+		t.Errorf("root status=%q want %q", root.Status, biz.ActivityStatusFailed)
+	}
+	if root.Meta["error_message"] != "model rate limited" {
+		t.Errorf("error_message=%v want %q", root.Meta["error_message"], "model rate limited")
+	}
+	if root.Meta["error_type"] != "RateLimitError" {
+		t.Errorf("error_type=%v want %q", root.Meta["error_type"], "RateLimitError")
+	}
+	if root.Meta["error_code"] != "429" {
+		t.Errorf("error_code=%v want %q", root.Meta["error_code"], "429")
+	}
+	// Note: DurationMs is computed via the same now.Sub(a.Timestamp).Milliseconds()
+	// pattern used at 12 other call sites (OnTurnEnd/OnToolEnd/OnNotice/...). It is
+	// not asserted here because unit tests execute in <1ms, causing the integer
+	// truncation to 0 — making a >0 assertion flaky without artificial sleeps.
+}
+
+// TestOnError_NoRootTask_CreatesMinimalFailedTask verifies that when OnError
+// fires without a prior OnTurnStart, a minimal failed task Activity is created
+// so the error is still surfaced to the frontend (D3 Case 2).
+func TestOnError_NoRootTask_CreatesMinimalFailedTask(t *testing.T) {
+	p, _, repo := newTestProjector(t)
+	p.Configure(ProjectMeta{SessionID: "sess-1", RequestID: "turn-1", AgentID: "agent-1", AgentDisplayName: "Agent"}, nil)
+	ctx := context.Background()
+
+	// OnError without OnTurnStart — no root task exists.
+	p.OnError(ctx, "init failure", "", "")
+	p.Close()
+
+	root := findRootTask(repo)
+	if root == nil {
+		t.Fatal("no minimal failed task created")
+	}
+	if root.Status != biz.ActivityStatusFailed {
+		t.Errorf("root status=%q want %q", root.Status, biz.ActivityStatusFailed)
+	}
+	if root.Kind != biz.ActivityKindTask {
+		t.Errorf("root kind=%q want %q", root.Kind, biz.ActivityKindTask)
+	}
+	if root.Content != "init failure" {
+		t.Errorf("root content=%q want %q", root.Content, "init failure")
+	}
+	if root.Meta["error_message"] != "init failure" {
+		t.Errorf("error_message=%v want %q", root.Meta["error_message"], "init failure")
+	}
+	// errType and errCode are empty — Meta should not contain empty keys.
+	if _, ok := root.Meta["error_type"]; ok {
+		t.Errorf("error_type should be absent when empty")
+	}
+}
+
+// TestOnTurnEnd_TerminalStateProtection verifies that OnTurnEnd does NOT
+// overwrite a Failed root task with Completed (D3 terminal guard). Token
+// usage is still attached even for terminal states.
+func TestOnTurnEnd_TerminalStateProtection(t *testing.T) {
+	p, _, repo := newTestProjector(t)
+	meta := ProjectMeta{SessionID: "sess-1", RequestID: "turn-1", AgentID: "agent-1"}
+	p.Configure(meta, nil)
+	ctx := context.Background()
+
+	p.OnTurnStart(ctx, meta)
+	p.OnError(ctx, "turn failed", "InternalError", "500")
+
+	// OnTurnEnd must not overwrite the Failed status.
+	p.OnTurnEnd(ctx, &ActivityUsage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150})
+	p.Close()
+
+	root := findRootTask(repo)
+	if root == nil {
+		t.Fatal("no root task activity persisted")
+	}
+	if root.Status != biz.ActivityStatusFailed {
+		t.Errorf("root status=%q want %q (terminal state must not be overwritten by OnTurnEnd)",
+			root.Status, biz.ActivityStatusFailed)
+	}
+	// Token usage should still be attached (OnTurnEnd attaches usage even for
+	// terminal states, via ActivityEventUpdated).
+	if root.PromptTokens != 100 {
+		t.Errorf("PromptTokens=%d want 100 (usage should be attached to terminal state)", root.PromptTokens)
+	}
+	if root.CompletionTokens != 50 {
+		t.Errorf("CompletionTokens=%d want 50", root.CompletionTokens)
+	}
+}
+
+// TestOnTurnEnd_NormalCompletion_TransitionsToCompleted verifies that without
+// a prior error, OnTurnEnd transitions the root to Completed (the non-terminal
+// happy path, ensuring the terminal guard doesn't block normal completion).
+func TestOnTurnEnd_NormalCompletion_TransitionsToCompleted(t *testing.T) {
+	p, _, repo := newTestProjector(t)
+	meta := ProjectMeta{SessionID: "sess-1", RequestID: "turn-1", AgentID: "agent-1"}
+	p.Configure(meta, nil)
+	ctx := context.Background()
+
+	p.OnTurnStart(ctx, meta)
+	p.OnTurnEnd(ctx, &ActivityUsage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30})
+	p.Close()
+
+	root := findRootTask(repo)
+	if root == nil {
+		t.Fatal("no root task activity persisted")
+	}
+	if root.Status != biz.ActivityStatusCompleted {
+		t.Errorf("root status=%q want %q (normal completion)", root.Status, biz.ActivityStatusCompleted)
+	}
+	if root.PromptTokens != 10 {
+		t.Errorf("PromptTokens=%d want 10", root.PromptTokens)
+	}
+}
+
 func timeNow() time.Time {
 	return time.Now().UTC()
 }

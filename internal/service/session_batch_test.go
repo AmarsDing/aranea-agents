@@ -16,6 +16,7 @@ import (
 type batchSessionRepo struct {
 	sessions map[string]biz.Session
 	messages []biz.ChatMessage
+	tree     *biz.SessionTree
 }
 
 // ListBySession implements sessstatus.ActivityLister for batchSessionRepo.
@@ -283,7 +284,7 @@ func (m *batchSessionRepo) ListActiveAgentUserKeys(_ context.Context, _ int) ([]
 	return nil, nil
 }
 func (m *batchSessionRepo) GetSessionTree(_ context.Context, _ string) (*biz.SessionTree, error) {
-	return nil, nil
+	return m.tree, nil
 }
 func (m *batchSessionRepo) ListChildSessions(_ context.Context, _ string) ([]biz.Session, error) {
 	return nil, nil

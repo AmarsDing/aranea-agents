@@ -1,4 +1,4 @@
-package event
+package contract
 
 import (
 	"fmt"

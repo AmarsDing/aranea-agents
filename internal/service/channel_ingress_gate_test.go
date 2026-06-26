@@ -8,7 +8,6 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
-	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -45,18 +44,21 @@ func TestProcessInboundHTTPResultQQDispatchACKOnError(t *testing.T) {
 	}
 }
 
-func TestGraphExecutionSummaryFailed(t *testing.T) {
-	failed, msg := graphExecutionSummaryFailed(eventEnvelopeWithSummary(map[string]any{
-		"nodes": []any{
-			map[string]any{"status": "success"},
-			map[string]any{"status": "error", "error": "node boom"},
+func TestGraphExecutionSummaryFailedFromActivity(t *testing.T) {
+	aev := biz.ActivityEvent{
+		Activity: biz.Activity{
+			Meta: map[string]any{
+				"execution_summary": map[string]any{
+					"nodes": []any{
+						map[string]any{"status": "success"},
+						map[string]any{"status": "error", "error": "node boom"},
+					},
+				},
+			},
 		},
-	}), loggateway.NewNoop())
+	}
+	failed, msg := graphExecutionSummaryFailedFromActivity(aev, loggateway.NewNoop())
 	if !failed || msg != "node boom" {
 		t.Fatalf("failed=%v msg=%q", failed, msg)
 	}
-}
-
-func eventEnvelopeWithSummary(summary map[string]any) event.Envelope {
-	return event.Envelope{Metadata: map[string]any{"execution_summary": summary}}
 }

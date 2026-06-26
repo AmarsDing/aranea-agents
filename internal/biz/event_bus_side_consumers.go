@@ -44,8 +44,6 @@ func NewEventBusSideConsumers(
 	if activityBus == nil && monitorEventBus == nil {
 		return nil
 	}
-	_ = sessions // retained for Phase 1c-3 cleanup; messageStoreConsumer was removed in Phase 1c-5
-	_ = tools    // toolCallConsumer was removed in Phase 1c-5 (ToolResult envelope type deleted)
 	return &EventBusSideConsumers{
 		callback:        newCallbackConsumer(activityBus, webhooks, logger),
 		flowLog:         newFlowLogPersistConsumer(flowLogs, logger, monitorEventBus),

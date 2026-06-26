@@ -26,7 +26,6 @@ type KnowledgeFacade struct {
 
 type RunnerConfig struct {
 	GraphLoader       GraphBuildConfigLoader
-	TeamGraphTasks    TeamGraphTaskCreator
 	AwaitHookProvider func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc
 	Knowledge         *KnowledgeFacade
 	KnowledgeUsecase  *biz.KnowledgeUsecase

@@ -3,8 +3,6 @@ package biz
 import (
 	"strings"
 	"sync"
-
-	"aranea-agents/internal/event/contract"
 )
 
 // activityJSONPreviewLimit is the maximum byte length of ArgumentsJSON / ResultJSON
@@ -167,56 +165,50 @@ func NewOrchestrationStatusStore(reg OrchestrationRegistry) *OrchestrationStatus
 	return &OrchestrationStatusStore{Nodes: nodes}
 }
 
-func (s *OrchestrationStatusStore) ApplyEnvelope(env contract.Envelope, reg OrchestrationRegistry) []*AgentNodeState {
+func (s *OrchestrationStatusStore) ApplyActivityEvent(aev ActivityEvent, reg OrchestrationRegistry) []*AgentNodeState {
 	if s == nil {
 		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var changed []*AgentNodeState
-	switch env.Type {
-	case contract.EnvelopeTypeTeamStepStarted:
-		if st := s.applyToResolved(env, reg, AgentNodeStatusRunning, WorkPhaseDoing); st != nil {
-			changed = append(changed, st)
+	meta := aev.Activity.Meta
+	author := strings.TrimSpace(aev.Activity.AgentKey)
+	switch aev.Activity.Kind {
+	case ActivityKindGraphStage:
+		switch aev.Activity.Stage {
+		case "node_start":
+			if st := s.applyGraphNode(meta, author, reg, AgentNodeStatusRunning, WorkPhaseDoing); st != nil {
+				changed = append(changed, st)
+			}
+		case "node_end":
+			status := AgentNodeStatusSuccess
+			if metaBool(meta, "skipped") {
+				status = AgentNodeStatusSkipped
+			}
+			if st := s.applyGraphNode(meta, author, reg, status, WorkPhaseDelivered); st != nil {
+				changed = append(changed, st)
+			}
+		case "node_error":
+			if st := s.applyGraphNodeError(meta, author, reg, aev.Activity.Content); st != nil {
+				changed = append(changed, st)
+			}
 		}
-	case contract.EnvelopeTypeTeamStepFinished:
-		if st := s.applyStepFinished(env, reg); st != nil {
-			changed = append(changed, st)
+	case ActivityKindSession:
+		if aev.Activity.Stage == "checkpoint" {
+			if st := s.applyToResolved(meta, author, reg, AgentNodeStatusWaitingInput, WorkPhaseDoing); st != nil {
+				changed = append(changed, st)
+			}
 		}
-	case contract.EnvelopeTypeGraphNodeStart:
-		if st := s.applyGraphNode(env, reg, AgentNodeStatusRunning, WorkPhaseDoing); st != nil {
-			changed = append(changed, st)
-		}
-	case contract.EnvelopeTypeGraphNodeEnd:
-		skipped := metaBool(env.Metadata, "skipped")
-		status := AgentNodeStatusSuccess
-		if skipped {
-			status = AgentNodeStatusSkipped
-		}
-		if st := s.applyGraphNode(env, reg, status, WorkPhaseDelivered); st != nil {
-			changed = append(changed, st)
-		}
-	case contract.EnvelopeTypeGraphNodeError:
-		if st := s.applyGraphNodeError(env, reg); st != nil {
-			changed = append(changed, st)
-		}
-	case contract.EnvelopeTypeCheckpoint:
-		if st := s.applyToResolved(env, reg, AgentNodeStatusWaitingInput, WorkPhaseDoing); st != nil {
-			changed = append(changed, st)
-		}
-	case contract.EnvelopeTypeGraphTaskStatus:
-		if st := s.applyGraphTaskStatus(env, reg); st != nil {
-			changed = append(changed, st)
-		}
-	case contract.EnvelopeTypeRunStatus:
-		if isRunCancelled(env) {
-			for _, st := range s.Nodes {
-				if isTerminalStatus(st.Status) {
-					continue
-				}
-				if s.setStatus(st, AgentNodeStatusCancelled) {
-					changed = append(changed, cloneNodeState(st))
-				}
+	case ActivityKindTeamStage:
+		switch {
+		case aev.Event == ActivityEventCreated && aev.Activity.Stage == "executing":
+			if st := s.applyToResolved(meta, author, reg, AgentNodeStatusRunning, WorkPhaseDoing); st != nil {
+				changed = append(changed, st)
+			}
+		case aev.Event == ActivityEventCompleted && aev.Activity.Stage == "completed":
+			if st := s.applyStepFinished(meta, author, reg); st != nil {
+				changed = append(changed, st)
 			}
 		}
 	}
@@ -238,12 +230,13 @@ func (s *OrchestrationStatusStore) GetNode(nodeID string) (*AgentNodeState, bool
 }
 
 func (s *OrchestrationStatusStore) applyToResolved(
-	env contract.Envelope,
+	meta map[string]any,
+	author string,
 	reg OrchestrationRegistry,
 	status AgentNodeStatus,
 	phase WorkPhase,
 ) *AgentNodeState {
-	st := s.resolveState(env, reg)
+	st := s.resolveState(meta, author, reg)
 	if st == nil {
 		return nil
 	}
@@ -254,13 +247,13 @@ func (s *OrchestrationStatusStore) applyToResolved(
 	return cloneNodeState(st)
 }
 
-func (s *OrchestrationStatusStore) applyStepFinished(env contract.Envelope, reg OrchestrationRegistry) *AgentNodeState {
-	st := s.resolveState(env, reg)
+func (s *OrchestrationStatusStore) applyStepFinished(meta map[string]any, author string, reg OrchestrationRegistry) *AgentNodeState {
+	st := s.resolveState(meta, author, reg)
 	if st == nil {
 		return nil
 	}
 	status := AgentNodeStatusSuccess
-	if meta := env.Metadata; meta != nil {
+	if meta != nil {
 		if step, ok := meta["step"].(map[string]any); ok {
 			if preview, ok := step["output_preview"].(string); ok && strings.TrimSpace(preview) != "" {
 				st.OutputPreview = strings.TrimSpace(preview)
@@ -289,14 +282,15 @@ func (s *OrchestrationStatusStore) applyStepFinished(env contract.Envelope, reg 
 }
 
 func (s *OrchestrationStatusStore) applyGraphNode(
-	env contract.Envelope,
+	meta map[string]any,
+	author string,
 	reg OrchestrationRegistry,
 	status AgentNodeStatus,
 	phase WorkPhase,
 ) *AgentNodeState {
-	nodeID := metaString(env.Metadata, "node_id")
+	nodeID := metaString(meta, "node_id")
 	if nodeID == "" {
-		return s.applyToResolved(env, reg, status, phase)
+		return s.applyToResolved(meta, author, reg, status, phase)
 	}
 	st := s.nodeByID(nodeID)
 	if st == nil {
@@ -323,12 +317,12 @@ func (s *OrchestrationStatusStore) applyGraphNode(
 	return cloneNodeState(st)
 }
 
-func (s *OrchestrationStatusStore) applyGraphNodeError(env contract.Envelope, reg OrchestrationRegistry) *AgentNodeState {
+func (s *OrchestrationStatusStore) applyGraphNodeError(meta map[string]any, author string, reg OrchestrationRegistry, errorMsg string) *AgentNodeState {
 	status := AgentNodeStatusFailed
-	if metaBool(env.Metadata, "retrying") {
+	if metaBool(meta, "retrying") {
 		status = AgentNodeStatusRetrying
 	}
-	st := s.applyGraphNode(env, reg, status, WorkPhaseDoing)
+	st := s.applyGraphNode(meta, author, reg, status, WorkPhaseDoing)
 	if st == nil {
 		return nil
 	}
@@ -336,91 +330,25 @@ func (s *OrchestrationStatusStore) applyGraphNodeError(env contract.Envelope, re
 	if stored == nil {
 		return st
 	}
-	if env.Error != nil {
-		stored.ErrorMessage = strings.TrimSpace(env.Error.Message)
+	if strings.TrimSpace(errorMsg) != "" {
+		stored.ErrorMessage = strings.TrimSpace(errorMsg)
 	}
 	return cloneNodeState(stored)
 }
 
-func (s *OrchestrationStatusStore) applyGraphTaskStatus(env contract.Envelope, reg OrchestrationRegistry) *AgentNodeState {
-	taskStatus := strings.ToLower(strings.TrimSpace(metaString(env.Metadata, "task_status")))
-	nodeID := metaString(env.Metadata, "node_id")
-	if nodeID == "" {
-		return nil
-	}
-	var status AgentNodeStatus
-	switch taskStatus {
-	case "review_required":
-		status = AgentNodeStatusWaitingReview
-	case "blocked":
-		status = AgentNodeStatusBlocked
-	case "pending_assignment":
-		status = AgentNodeStatusWaitingAssign
-	case "pending":
-		status = AgentNodeStatusQueued
-	case "claimed":
-		status = AgentNodeStatusRunning
-	case "complete":
-		status = AgentNodeStatusSuccess
-	case "failed", "crashed":
-		status = AgentNodeStatusFailed
-	case "timed_out":
-		status = AgentNodeStatusTimedOut
-	case "cancelled":
-		status = AgentNodeStatusCancelled
-	default:
-		return nil
-	}
-	phase := WorkPhaseDoing
-	switch status {
-	case AgentNodeStatusSuccess:
-		phase = WorkPhaseDelivered
-	case AgentNodeStatusQueued, AgentNodeStatusWaitingAssign, AgentNodeStatusWaitingReview, AgentNodeStatusBlocked:
-		phase = WorkPhaseReceived
-	case AgentNodeStatusFailed, AgentNodeStatusTimedOut, AgentNodeStatusCancelled:
-		phase = WorkPhaseDelivered
-	}
-	st := s.applyGraphNode(env, reg, status, phase)
-	if st == nil {
-		return nil
-	}
-	stored := s.Nodes[nodeID]
-	if stored == nil {
-		return st
-	}
-	if metaBool(env.Metadata, "review_rejected") {
-		stored.Phase = WorkPhaseDoing
-		if comment := metaString(env.Metadata, "review_comment"); comment != "" {
-			stored.ErrorMessage = comment
-		}
-	}
-	if summary := metaString(env.Metadata, "summary"); summary != "" {
-		stored.OutputPreview = summary
-	}
-	return cloneNodeState(stored)
-}
-
-func (s *OrchestrationStatusStore) resolveState(env contract.Envelope, reg OrchestrationRegistry) *AgentNodeState {
-	if nodeID := metaString(env.Metadata, "node_id"); nodeID != "" {
+func (s *OrchestrationStatusStore) resolveState(meta map[string]any, author string, reg OrchestrationRegistry) *AgentNodeState {
+	if nodeID := metaString(meta, "node_id"); nodeID != "" {
 		return s.nodeByID(nodeID)
 	}
-	if env.ToolCall != nil {
-		if st := s.resolveByAgentKey(reg, env.ToolCall.AgentKey); st != nil {
-			return st
-		}
-		if st := s.resolveByAgentID(reg, env.ToolCall.AgentID); st != nil {
-			return st
-		}
-	}
-	if st := s.resolveByAgentKey(reg, env.Author); st != nil {
+	if st := s.resolveByAgentKey(reg, author); st != nil {
 		return st
 	}
-	if agentKey := metaString(env.Metadata, "agent_key"); agentKey != "" {
+	if agentKey := metaString(meta, "agent_key"); agentKey != "" {
 		if st := s.resolveByAgentKey(reg, agentKey); st != nil {
 			return st
 		}
 	}
-	if agentID := metaString(env.Metadata, "agent_id"); agentID != "" {
+	if agentID := metaString(meta, "agent_id"); agentID != "" {
 		return s.resolveByAgentID(reg, agentID)
 	}
 	return nil
@@ -516,14 +444,6 @@ func AggregateDisplayStatus(status AgentNodeStatus) DisplayStatus {
 	default:
 		return DisplayStatusWaiting
 	}
-}
-
-func isRunCancelled(env contract.Envelope) bool {
-	if env.Metadata == nil {
-		return false
-	}
-	status := strings.ToLower(metaString(env.Metadata, "status"))
-	return status == "cancelled" || status == "canceled"
 }
 
 func cloneNodeState(st *AgentNodeState) *AgentNodeState {

@@ -1699,6 +1699,15 @@ interface SessionTreeNode {
 
 ### Phase 1c：删除旧体系
 
+> **工作量修正（2026-06-26）**：原方案估计"删文件 + 数据迁移"即可，实际"删除 Envelope"牵涉 **6 个级联 Blocker**（WS replay 路径、4 个 side consumer、DomainEvent bridge、vestigial bus 字段、EventPipeline Bus/Buffer、Wire DI SessionBus 绑定），需多 session 推进。
+> 详见 [ADR-03](./2026-06-26-review-adr-unified-bus-architecture.md) §"Phase 5 剩余路线图"。
+> Blocker 依赖链：B（side consumer，独立）→ C（DomainEvent bridge，独立）→ D（vestigial 字段，依赖 B/C）→ A（WS replay，依赖前端改造）→ E（EventPipeline，依赖 A）→ F（Wire DI，依赖 E）→ 删除 envelope.go。
+>
+> **当前完成度**：
+> - ✅ 已删：event_projector.go / activity_publish.go / activity_persist.go / event_persist_handler.go / event_store.go / wal.go / event_store schema / message schema / message_repo.go / messages 表（DROP TABLE 已执行）
+> - ❌ 未删：envelope.go（含 67 个 EnvelopeType + RouteChannel）、message_usecase.go（仍承载完整业务逻辑，TECH-DEBT 标注已加）
+> - ⚠️ 部分删：activity schema 的 role/tool_icon 已删（优于原方案），child_board_id 保留
+
 **目标**：确认 Phase 1a/1b 稳定后，删除 Envelope 和 Message。
 
 **任务**：
@@ -1781,21 +1790,26 @@ interface SessionTreeNode {
 
 ### 12.2 架构验收
 
-| 指标 | 目标 |
-|------|------|
-| 后端数据模型 | 1 套（Activity） |
-| 事件类型 | 7 种业务语义事件（created/streaming/updated/completed/failed/cancelled/child_created） |
-| ActivityKind | 10 种（task/thinking/action/reply/plan/confirm/notice/session/team_stage/graph_stage，无 error） |
-| Envelope 结构体 | 删除 |
-| Message 表 | 删除 |
-| `role` 字段 | 不存在（用 kind 表达） |
-| `error` kind | 不存在（用 `failed` 事件表达） |
-| Channel 路由 | 删除 RouteChannel，统一 chat |
-| EventBus 传输 | ActivityEvent |
-| 死代码 | 0 |
-| 前端渲染管线 | 1 套（ActivityStream） |
-| Session 隔离 | 按 session_id 自然隔离，无手动 reset |
-| 持久化与推送 | 并行异步，互不阻塞 |
+> **实际状态评估（2026-06-26）**：12 项验收中 **6 项达成 / 3 项部分达成 / 3 项未达成**。
+> 未达成项归因于 Envelope 删除的级联依赖超出原方案预期，详见 [ADR-03](./2026-06-26-review-adr-unified-bus-architecture.md) Phase 5 路线图（6 个 Blocker 依赖链：B→C→D→A→E→F→ 删 Envelope）。
+
+| 指标 | 目标 | 实际状态 | 评估 |
+|------|------|---------|------|
+| 后端数据模型 | 1 套（Activity） | Activity 表是唯一真相源，messages 表已 DROP | ✅ 达成 |
+| 事件类型 | 7 种业务语义事件（created/streaming/updated/completed/failed/cancelled/child_created） | ActivityEventType 已定义 7 种 | ✅ 达成 |
+| ActivityKind | 10 种（task/thinking/action/reply/plan/confirm/notice/session/team_stage/graph_stage，无 error） | 10 种，无 ActivityKindError | ✅ 达成 |
+| Envelope 结构体 | 删除 | **仍存在**（含 67 个 EnvelopeType 常量， TECH-DEBT 标注已加） | ❌ 未达成（ADR-03 Phase 5 Blocker B-F） |
+| Message 表 | 删除 | DROP TABLE 已执行（迁移 20260902） | ✅ 达成 |
+| `role` 字段 | 不存在（用 kind 表达） | 不存在 | ✅ 达成 |
+| `error` kind | 不存在（用 `failed` 事件表达） | 不存在 | ✅ 达成 |
+| Channel 路由 | 删除 RouteChannel，统一 chat | **RouteChannel + channelRegistry 仍存在** | ❌ 未达成（ADR-03 Phase 5 Blocker B-F） |
+| EventBus 传输 | ActivityEvent | ActivityEventBus 已建，legacy Envelope Bus 共存 | ⚠️ 部分达成 |
+| 死代码 | 0 | TeamPanel/OrchestrationTimeline 已删；TaskExecutionPanel/MemberReadOnlyPanel/ChatExecutionCard 标 @deprecated 待 Phase 5 收尾删除 | ⚠️ 部分达成 |
+| 前端渲染管线 | 1 套（ActivityStream） | 双路径通过 panelMode 互斥切换（TECH-DEBT 标注已加） | ⚠️ 部分达成 |
+| Session 隔离 | 按 session_id 自然隔离，无手动 reset | 已实现 | ✅ 达成 |
+| 持久化与推送 | 并行异步，互不阻塞 | processTask fire-and-forget + publish 同步 | ✅ 达成 |
+
+**未达成项的后续推进计划**：见 ADR-03 §"Phase 5 剩余路线图"。Blocker B（side consumer）和 Blocker C（DomainEvent bridge）可独立并行推进；Blocker D 依赖 B/C；Blocker A（WS replay）依赖前端改造；Blocker E 依赖 A；Blocker F 依赖 E。最终删除 envelope.go 需在所有 Blocker 完成后。
 
 ### 12.3 性能验收
 

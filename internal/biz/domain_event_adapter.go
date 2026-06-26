@@ -1,15 +1,11 @@
 package biz
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
-
-	"aranea-agents/pkg/appctx"
-	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
 )
@@ -48,82 +44,6 @@ const (
 	metaGraphNodeID      = "graph_node_id"
 	metaGraphNodeError   = "graph_node_error"
 )
-
-type eventBusAdapter struct {
-	bus    ActivityEventBus
-	sysLog SystemLogWriter
-}
-
-var _ DomainEventPublisher = (*eventBusAdapter)(nil)
-var _ DomainEventSubscriber = (*eventBusAdapter)(nil)
-
-// NewDomainEventBus wraps an ActivityEventBus as a DomainEventPublisher.
-// DomainEvents are published as ActivityEvents with Domain=system (transient,
-// not persisted to the activities table). SubscribeDomainEvents only delivers
-// system-domain events back to callers, filtering out chat-domain events.
-func NewDomainEventBus(bus ActivityEventBus) DomainEventPublisher {
-	if bus == nil {
-		return nil
-	}
-	return &eventBusAdapter{bus: bus}
-}
-
-func (a *eventBusAdapter) SetSystemLog(sysLog SystemLogWriter) {
-	a.sysLog = sysLog
-}
-
-// PublishDomainEvent converts the DomainEvent into an ActivityEvent
-// (Domain=system) and broadcasts it on the underlying ActivityEventBus.
-// System-domain events are never persisted (the ActivityEventBus is a
-// fanout-only hub; persistence is the sequencer's responsibility).
-func (a *eventBusAdapter) PublishDomainEvent(de DomainEvent) {
-	ev := domainEventToActivityEvent(de)
-	a.bus.Publish(context.Background(), ev)
-}
-
-// SubscribeDomainEvents subscribes to the ActivityEventBus in global mode and
-// filters to only system-domain events. Chat-domain events are skipped so
-// legacy DomainEvent subscribers never receive chat-timeline Activities.
-func (a *eventBusAdapter) SubscribeDomainEvents() (<-chan DomainEvent, func()) {
-	ch, unsub := a.bus.Subscribe(ActivityEventSubscribeOptions{
-		BufferSize: 256,
-		GlobalMode: true,
-		Filter: func(ev ActivityEvent) bool {
-			return ev.Domain == ActivityDomainSystem
-		},
-	})
-	out := make(chan DomainEvent, 256)
-	done := make(chan struct{})
-	safego.Go(appctx.Ctx(), "domain-event-adapter", func() {
-		defer close(out)
-		for {
-			select {
-			case <-done:
-				return
-			case ev, ok := <-ch:
-				if !ok {
-					return
-				}
-				de := activityEventToDomainEvent(ev)
-				if de != nil {
-					select {
-					case out <- *de:
-					default:
-						if a.sysLog != nil {
-							a.sysLog.LogWarn("domain_event.adapter.drop", "DomainEvent 输出缓冲满，丢弃事件",
-								LogPair{Key: "type", Value: string(de.Type)}, LogPair{Key: "session_id", Value: de.SessionID})
-						}
-					}
-				}
-			}
-		}
-	})
-	cancel := func() {
-		unsub()
-		close(done)
-	}
-	return out, cancel
-}
 
 // --- field-level conversion helpers (eliminate duplicated mapping between directions) ---
 

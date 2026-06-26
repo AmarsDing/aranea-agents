@@ -14,9 +14,7 @@ import (
 // turnEventPublisher is the interface for turn-related event publishing.
 type turnEventPublisher interface {
 	PublishTurnFailure(sessionID, runID, source string, err error, pendingID string)
-	BumpSessionRevisionAndPublish(ctx context.Context, sessionID, runID, turnID string)
-	BumpSessionRevisionSyncAndPublish(ctx context.Context, sessionID, runID, turnID string)
-	NotifySessionRevisionSync(ctx context.Context, sessionID, runID, turnID string)
+	BumpSessionRevision(ctx context.Context, sessionID string)
 }
 
 // chatTurnEventPublisher implements turnEventPublisher.
@@ -25,24 +23,17 @@ type turnEventPublisher interface {
 // the orchestrator's core turn logic.
 //
 // activityBus carries ActivityEvents (Kind=task/error) replacing the legacy
-// error envelope. bus is retained for session-revision envelopes which are
-// blocked from migration by the event→biz circular dependency
-// (see session_revision.go).
-//
-// TECH-DEBT(ADR-03 Phase 5 Blocker D): bus field is NOT vestigial — it is
-// actively passed to event.BumpAndPublishSessionRevision* helpers which
-// publish session-revision Envelopes. Cannot delete until session-revision
-// migration to ActivityEventBus/MonitorEventBus is complete (blocked by
-// event→biz circular dependency).
+// error envelope. Session revision bumps go directly to the SessionRevisionBumper
+// (DB increment) — the legacy Envelope publish path was removed in ADR-03
+// Phase 5 Blocker D (SessionBus had no live subscriber).
 type chatTurnEventPublisher struct {
 	sessions    biz.SessionTurnManager
-	bus         event.Bus
 	activityBus biz.ActivityEventBus
 	lg          loggateway.Logger
 }
 
-func newChatTurnEventPublisher(sessions biz.SessionTurnManager, bus event.Bus, activityBus biz.ActivityEventBus, lg loggateway.Logger) *chatTurnEventPublisher {
-	return &chatTurnEventPublisher{sessions: sessions, bus: bus, activityBus: activityBus, lg: lg}
+func newChatTurnEventPublisher(sessions biz.SessionTurnManager, activityBus biz.ActivityEventBus, lg loggateway.Logger) *chatTurnEventPublisher {
+	return &chatTurnEventPublisher{sessions: sessions, activityBus: activityBus, lg: lg}
 }
 
 // Compile-time interface check.
@@ -103,52 +94,11 @@ func (p *chatTurnEventPublisher) PublishTurnFailure(sessionID, runID, source str
 	})
 }
 
-// BumpSessionRevisionAndPublish bumps revision after turn completion (status=completed).
-func (p *chatTurnEventPublisher) BumpSessionRevisionAndPublish(ctx context.Context, sessionID, runID, turnID string) {
-	if p == nil || p.sessions == nil || p.bus == nil {
+// BumpSessionRevision bumps the session revision counter after a turn or
+// message persist.
+func (p *chatTurnEventPublisher) BumpSessionRevision(ctx context.Context, sessionID string) {
+	if p == nil || p.sessions == nil {
 		return
 	}
-	event.BumpAndPublishSessionRevision(
-		ctx,
-		p.sessions,
-		p.bus,
-		sessionID,
-		runID,
-		turnID,
-		event.EnvelopeSourceFromContext(ctx),
-		p.lg,
-	)
-}
-
-// BumpSessionRevisionSyncAndPublish bumps revision after user message persist (status=sync).
-func (p *chatTurnEventPublisher) BumpSessionRevisionSyncAndPublish(ctx context.Context, sessionID, runID, turnID string) {
-	if p == nil || p.sessions == nil || p.bus == nil {
-		return
-	}
-	event.BumpAndPublishSessionRevisionSync(
-		ctx,
-		p.sessions,
-		p.bus,
-		sessionID,
-		runID,
-		turnID,
-		event.EnvelopeSourceFromContext(ctx),
-		p.lg,
-	)
-}
-
-// NotifySessionRevisionSync notifies Web of the current revision without incrementing (durable resume).
-func (p *chatTurnEventPublisher) NotifySessionRevisionSync(ctx context.Context, sessionID, runID, turnID string) {
-	if p == nil || p.sessions == nil || p.bus == nil {
-		return
-	}
-	event.NotifySessionRevisionSync(
-		ctx,
-		p.sessions,
-		p.bus,
-		sessionID,
-		runID,
-		turnID,
-		event.EnvelopeSourceFromContext(ctx),
-	)
+	event.BumpSessionRevision(ctx, p.sessions, sessionID, p.lg)
 }

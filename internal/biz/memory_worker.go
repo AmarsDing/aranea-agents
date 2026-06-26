@@ -1,7 +1,6 @@
 package biz
 
 import (
-	"aranea-agents/internal/event/contract"
 	"context"
 	"strings"
 	"time"
@@ -58,12 +57,6 @@ func (a SessionLogWriterFunc) LogSessionError(ctx context.Context, sessionID, st
 type LogPair struct {
 	Key   string
 	Value any
-}
-
-// EnvelopeBuffer abstracts the in-process replay buffer so biz does not
-// depend on internal/event.Buffer directly.
-type EnvelopeBuffer interface {
-	Append(env contract.Envelope)
 }
 
 // SystemLogWriter abstracts system-domain (non-session-scoped) log writing

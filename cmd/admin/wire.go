@@ -771,9 +771,6 @@ func provideRunnerConfig(
 			cfg.GraphRoot = builder
 		}
 	}
-	if tasks != nil {
-		cfg.TeamGraphTasks = team.NewTaskUsecaseGraphTaskCreator(tasks)
-	}
 	return cfg
 }
 

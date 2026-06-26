@@ -1,6 +1,6 @@
 # ADR-03: 统一总线架构（删除 Envelope，统一到 ActivityEvent + MonitorEvent）
 
-## 状态：已接受（Phase 1-4 完成，Phase 5 进行中）
+## 状态：已接受（Phase 1-4 完成；Phase 5 中 A/B/C/E 已完成，D 解耦中，F 部分完成）
 
 ## 背景
 
@@ -131,9 +131,9 @@ type WSServer struct {
 ### 负面
 
 - **Phase 5 复杂度超预期**：原 spec 估计"删文件"即可，实际识别出 6 个耦合 Blocker（WS replay、side consumer、DomainEvent bridge、vestigial 字段、EventPipeline、Wire DI），需多 session 级联迁移
-- **临时性 Envelope 残留**：Phase 5 完成前，后端 14 生产 + 6 测试文件仍引用 Envelope，前端 7 文件仍 import Envelope 类型（均为合法传输层）
-  - 更新于 Phase 5 Blocker A-F + Tier 5 完成后（原 54 生产 + 20 测试降至 14 + 6）；实际残留主要源于 `event→biz` 循环依赖阻塞 `EventBusConsumer` 整体迁移，`event_bus_consumer.go` 的 Envelope 转换函数仍被活跃使用，详见下方「Phase 5 剩余路线图」
-- **WS replay 路径迁移风险**：Blocker A 需将 `event.Buffer` replay 迁移到 Activity replay，或删除 replay 改用 `ListActivities` RPC，可能影响 reconnect 体验
+- **临时性 Envelope 残留**：Phase 5 完成前，后端仍有生产/测试文件引用 Envelope，前端仍有文件 import Envelope 类型（均为合法传输层）
+  - 截至 2026-06-26：Blocker A/B/C/E 已完成，D 因 `event→biz` 架构耦合阻塞（非编译期 cycle，详见下方「Phase 5 实际状态评估」），F 仅完成死参数清理。残留主要源于 `EventBusConsumer` 仍订阅 `contract.Bus`（Envelope 总线），其 Envelope→DomainEvent 转换函数仍被活跃使用
+- **WS replay 路径迁移风险**：Blocker A 已通过方案 A2（删除 replay 改用 `ListActivities` RPC）解决，`wsDownstream.Envelope` 字段已删除
 - **Domain 字段语义负担**：publisher 必须正确声明 Domain，错误声明会导致 system 事件被持久化或 chat 事件被丢弃
 
 ### 风险缓解
@@ -174,16 +174,55 @@ type WSServer struct {
 
 ## Phase 5 剩余路线图（6 Blocker 依赖链）
 
-| Blocker | 描述 | 依赖 | 建议方案 |
-|---------|------|------|---------|
-| **A: WS Replay 路径** | `event.Buffer` → `replayEvents` → `wsDownstream.Envelope` | 前端 `useChatEventInspector` 仍消费 replay envelope | 迁移到 Activity replay 或删除 replay 改用 `ListActivities` RPC |
-| **B: 4 个 side consumer** | `event_bus_side_consumers.go` 订阅 SessionBus 接收 Envelope | 无 | 迁移到 ActivityEventBus/MonitorBus 订阅 |
-| **C: DomainEvent bridge** | `domain_event_adapter.go` 将 biz domain event 包装为 Envelope | 无 | 改为包装 ActivityEvent (Domain=system) |
-| **D: vestigial bus 字段** | service/team struct 仍持有 `bus event.Bus` 字段（dead field） | B/C 完成 | 删除字段，确认无 publisher 调用 |
-| **E: EventPipeline.Bus/Buffer** | `EventPipeline` 保留 `Bus event.Bus` + `Buffer event.Buffer` | A 完成 | 删除字段，Buffer 是 replay 源 |
-| **F: Wire DI** | `cmd/admin/wire.go` 仍绑定 SessionBus | E 完成 | 删除 SessionBus 绑定 |
+### Phase 5 实际状态评估（2026-06-26）
 
-**迁移顺序**：B → C → D → A → E → F → 删除 Envelope 文件
+经代码级核查，各 Blocker 的真实完成状态如下：
+
+| Blocker | 描述 | 状态 | 实际阻塞原因 |
+|---------|------|------|-------------|
+| **A: WS Replay 路径** | `event.Buffer` → `replayEvents` → `wsDownstream.Envelope` | ✅ 已完成 | 采用方案 A2（删除 replay 改用 `ListActivities` RPC），`wsDownstream.Envelope` 字段已删除 |
+| **B: 4 个 side consumer** | `event_bus_side_consumers.go` 订阅 SessionBus 接收 Envelope | ✅ 已完成 | 4 个 side consumer 已迁移到 ActivityEventBus/MonitorBus 订阅；残留占位赋值已清理（B-DEBT-4） |
+| **C: DomainEvent bridge** | `domain_event_adapter.go` 将 biz domain event 包装为 Envelope | ✅ 已完成 | 已迁移到 ActivityEventBus + `ActivityDomainSystem`；`eventBusAdapter` 死代码已清理；`DomainEventPublisher`/`DomainEventSubscriber` 接口已删除 |
+| **D: vestigial bus 字段** | service/team struct 仍持有 `bus event.Bus` 字段 | ✅ 已完成 | 3 个死发布者全部删除：`EmitProgress`（ExecutionProgress envelope）、`FlowTracker.LogError` Error envelope publish、`PublishSessionRevisionEnvelope`（RunStatus envelope）。顺带删除 `Infra.Publish`/`publishToBuses` 死路由代码（无调用者）。保留 bump 半边（`BumpSessionRevision`）——前端通过 ListActivities/GetSession RPCs 读取 |
+| **E: EventPipeline.Bus/Buffer** | `EventPipeline` 保留 `Bus event.Bus` + `Buffer event.Buffer` | ✅ 已完成（Buffer） | `Buffer event.Buffer` 已删除（replay 源已不需要）。`Bus event.Bus` 字段保留待 F 完成 |
+| **F: Wire DI** | `cmd/admin/wire.go` 仍绑定 SessionBus | 🟡 部分完成 | 仅完成死参数清理（`provideTraceProjector`/`provideMonitorBus`）。主体 `ProvideSessionBus` 仍绑定，被 8 处 consumer 活跃使用（D 完成后已无 direct publisher）。需先完成 `EventBusConsumer` 整体迁移到 `ActivityEventBus`/`MonitorEventBus` |
+
+**当前迁移顺序**：~~B → C → D → A → E → F~~ → 实际进度：B✅ → C✅ → A✅ → E(Buffer)✅ → D✅ → F(部分) → 删除 Envelope 文件
+
+### Blocker D 完成总结（2026-06-26）
+
+Blocker D 的核心工作是删除 3 个发布到 SessionBus 的死发布者。SessionBus 是僵尸总线——唯一生产订阅者 `TurnPreviewCoordinator.consume` 在 Phase 1c-5 已变为 NO-OP（IM channel preview rendering 改为 no-op for chat content）。因此所有发布到 SessionBus 的 envelope 都是死发布者。
+
+**删除的死发布者**：
+1. `TraceEmitter.EmitProgress`（ExecutionProgress envelope）— 删除方法 + `step_id.go` 整文件 + 14 处调用点 + 5 个死测试
+2. `FlowTracker.LogError` 中的 Error envelope publish 块 — 简化 LogError + 删除死代码 `flowStepsSkipChatError`/`shouldPublishFlowChatError`
+3. `PublishSessionRevisionEnvelope`（RunStatus envelope）— 重写 `session_revision.go`，保留 `SessionRevisionBumper` 接口 + `BumpSessionRevision` 函数（bump 半边有效），删除 publish 半边 + 所有调用点更新
+
+**顺带删除的死代码**：
+- `Infra.Publish` / `publishToBuses` 路由方法（删除 3 个死发布者后无调用者）
+- `session_revision_publish.go`（`ChatService.bumpSessionRevisionAndPublish` 无调用者）
+- `deco_session_sync_test.go`（整个测试验证已死的 envelope→web sync 路径）
+
+**保留的 bump 半边**：`SessionRevisionBumper` 接口 + `BumpSessionRevision` 函数递增 `sessions.session_revision`，前端通过 `ListActivities`/`GetSession` RPCs 读取，不依赖 envelope。
+
+### Blocker F 真实阻塞：`event→biz` 架构耦合 + 消费者迁移
+
+Blocker D 完成后，SessionBus 已无任何发布者。剩余的 8 处 consumer 订阅一条不再接收事件的 bus，本质上是死订阅。真实阻塞是 `event→biz` 架构耦合（非编译期 cycle）：
+
+```
+internal/event/activityevent → internal/biz   (单向，类型定义依赖)
+internal/biz                 → internal/event  (单向，父包，唯一硬依赖)
+```
+
+**唯一硬依赖点**：`internal/biz/event_bus_consumer.go:40` 调用 `event.NewEventDeduplicator(event.DefaultDedupCapacity)`
+
+**解耦方案 A（已执行第一步）**：
+- ✅ 把 `internal/event/dedup.go` 整体移到 `internal/event/contract/dedup.go`（零依赖文件移动）
+- ✅ 在父 `event` 包保留 deprecated type alias（`EventDeduplicator = contract.EventDeduplicator`）+ 包装构造函数 + 重导出常量
+- ✅ 修改 `event_bus_consumer.go` 改用 `contract.NewEventDeduplicator(contract.DefaultDedupCapacity)`
+- ⏳ 后续：迁移 `EventBusConsumer` 整体到 `ActivityEventBus` 订阅（多 session 工作量，不在本次会话范围）
+
+**解耦后的影响**：`biz` 包对 `event` 父包的硬依赖消除，`EventBusConsumer` 可在后续 session 中迁移到 `ActivityEventBus`，迁移完成后即可删除 `ProvideSessionBus` 绑定（Blocker F 主体）和最终删除 `envelope.go`（Blocker G）。
 
 ## 关联文档
 

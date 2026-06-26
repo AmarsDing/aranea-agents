@@ -20,7 +20,7 @@ AF 引入后，Activity 事件流是前端渲染的唯一来源，WBPF 的阻塞
 
 ### D1：Activity 事件采用并行异步持久化（替代 WBPF）
 
-Activity 事件流不再使用 WBPF，改为 **并行异步** 模式（见 [activity_event_sequencer.go:300-316](file:///f:/aranea-agents/internal/agent/activity_event_sequencer.go#L300-L316)）：
+Activity 事件流不再使用 WBPF，改为 **并行异步** 模式（见 [activity_event_sequencer.go:311-327](file:///f:/aranea-agents/internal/agent/activity_event_sequencer.go#L311-L327)）：
 
 ```
 processTask(activityID, task):
@@ -35,8 +35,8 @@ processTask(activityID, task):
 
 ### D2：持久化失败补偿三重保障
 
-1. **重试预算**（[activity_event_sequencer.go:38-39](file:///f:/aranea-agents/internal/agent/activity_event_sequencer.go#L38-L39)）：`persistMaxRetries=5`，`persistInitialBackoffMs=100`，指数退避（100/200/400/800/1600ms），总预算 3100ms。对齐 postgres `busy_timeout=30000ms` 的 1/10，避免占用写连接过久。
-2. **Dead-Letter 环形缓冲**（[activity_event_sequencer.go:357-367](file:///f:/aranea-agents/internal/agent/activity_event_sequencer.go#L357-L367)）：重试耗尽后，失败的 Activity 进入 `deadLetter` 环形缓冲（容量 512，FIFO 淘汰）。通过 `ListDeadLetterActivities(sessionID)` 暴露给 WS 重连补偿路径。
+1. **重试预算**（[activity_event_sequencer.go:37-41](file:///f:/aranea-agents/internal/agent/activity_event_sequencer.go#L37-L41)）：`persistMaxRetries=5`，`persistInitialBackoffMs=100`，`persistBackoffFactor=2`，指数退避（100/200/400/800/1600ms），总预算 3100ms。对齐 postgres `busy_timeout=30000ms` 的 1/10，避免占用写连接过久。退避可通过 `s.done` 中断（[activity_event_sequencer.go:367-380](file:///f:/aranea-agents/internal/agent/activity_event_sequencer.go#L367-L380)）：Close() 期间 DB 不可用时立即放弃重试并转入 dead-letter，避免 shutdown 被退避睡眠阻塞（正常 shutdown 首次即成功，不受影响）。
+2. **Dead-Letter 环形缓冲**（[activity_event_sequencer.go:393-407](file:///f:/aranea-agents/internal/agent/activity_event_sequencer.go#L393-L407)）：重试耗尽后，失败的 Activity 进入 `deadLetter` 环形缓冲（容量 512，FIFO 淘汰）。同一 activityID 的多次失败按最新快照去重（[activity_event_sequencer.go:396-401](file:///f:/aranea-agents/internal/agent/activity_event_sequencer.go#L396-L401)），避免缓冲累积同一活动的过期中间态、迫使 WS 重连合并路径做歧义消解。通过 `ListDeadLetterActivities(sessionID)` 暴露给 WS 重连补偿路径。
 3. **API Backfill**：前端在 WS 重连或显式 reload 时，通过 `listActivities(sessionId)` API 拉取最新持久化状态，作为最终一致兜底。
 
 ### D3：OnError 语义重构（删除 ActivityKindError）

@@ -421,36 +421,15 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			if traceID, ok := biz.SpiritTraceIDFromContext(ctx); ok {
 				planInput.TraceID = traceID
 			}
-			// Emit chat-visible progress so the frontend can show
-			// "正在创建任务规划" during the potentially multi-second Plan()
-			// call. Without this, the user sees a black screen between
-			// Intent Pass and the LLM invoke.
-			emitter.EmitProgress(ctx, event.StepIDChatPrePlanningGate, "start", "正在创建任务规划", "orchestration",
-				event.P("complexity_level", string(gateDecision.Level)),
-				event.P("complexity_score", gateDecision.Score))
 			if plan, planErr := planner.Plan(ctx, planInput); planErr != nil {
-				emitter.LogWarn("chat.pre_planning_gate.hard", "硬门控规划失败，回退到软门控", "",
-					event.P("error", planErr.Error()))
-				// Emit "done" (not "error") because the hard-gate failure is
-				// non-fatal: the turn falls back to the soft gate. Using
-				// "error" would surface a failure card for a recoverable
-				// degradation.
-				emitter.EmitProgress(ctx, event.StepIDChatPrePlanningGate, "done", "任务规划已跳过", "orchestration",
-					event.P("skipped_reason", "plan_error"))
-			} else if plan != nil {
-				emitter.LogDone("chat.pre_planning_gate.hard", "硬门控规划已创建",
-					event.P("plan_id", plan.ID),
-					event.P("strategy", string(plan.Strategy)),
-					event.P("subtask_count", len(plan.SubTasks)))
-				emitter.EmitProgress(ctx, event.StepIDChatPrePlanningGate, "done", "任务规划已创建", "orchestration",
-					event.P("plan_id", plan.ID),
-					event.P("strategy", string(plan.Strategy)),
-					event.P("subtask_count", len(plan.SubTasks)))
-			} else {
-				// plan == nil with no error: planner returned empty. Treat
-				// as a completed-but-no-op step so the frontend card closes.
-				emitter.EmitProgress(ctx, event.StepIDChatPrePlanningGate, "done", "任务规划已完成", "orchestration")
-			}
+			emitter.LogWarn("chat.pre_planning_gate.hard", "硬门控规划失败，回退到软门控", "",
+				event.P("error", planErr.Error()))
+		} else if plan != nil {
+			emitter.LogDone("chat.pre_planning_gate.hard", "硬门控规划已创建",
+				event.P("plan_id", plan.ID),
+				event.P("strategy", string(plan.Strategy)),
+				event.P("subtask_count", len(plan.SubTasks)))
+		}
 		}
 
 		intentRunOpts = append(intentRunOpts, forcedPlanningRunOption(gateDecision))
@@ -577,28 +556,14 @@ func (o *ChatOrchestrator) runProactiveRecall(ctx context.Context, sess biz.Sess
 		UserStatement:     strutil.TruncateRunes(content, 200),
 		MentionedEntities: extractMentionedEntities(content),
 	}
-	// Emit chat-visible progress so the frontend can show "正在检索相关记忆"
-	// during this phase. Only emitted when the recaller is actually wired
-	// (the early returns above for disabled policy / nil recaller stay silent
-	// to avoid showing a card for a no-op).
-	emitter.EmitProgress(ctx, event.StepIDChatProactiveRecall, "start", "正在检索相关记忆", "orchestration",
-		event.P("agent_id", agentID))
 	hits, err := proactiveRecaller.ProactiveRecall(ctx, agentID, userID, convCtx)
 	if err != nil {
 		o.lg().Warn("proactive recall failed, continuing without proactive hits",
 			loggateway.StepID("chat.proactive_recall"),
 			loggateway.SessionID(sess.ID),
 			loggateway.Err(err))
-		// Emit "done" (not "error") because proactive recall is non-fatal:
-		// the turn continues without proactive hits. Using "error" would
-		// surface a failure card for a recoverable degradation.
-		emitter.EmitProgress(ctx, event.StepIDChatProactiveRecall, "done", "记忆检索已跳过", "orchestration",
-			event.P("hit_count", 0),
-			event.P("skipped_reason", "recall_error"))
 		return nil
 	}
-	emitter.EmitProgress(ctx, event.StepIDChatProactiveRecall, "done", "记忆检索完成", "orchestration",
-		event.P("hit_count", len(hits)))
 	if len(hits) > 0 {
 		emitter.LogDone("chat.proactive_recall", "主动召回完成",
 			event.P("hit_count", len(hits)),

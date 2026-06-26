@@ -94,19 +94,9 @@ func (o *ChatOrchestrator) checkTeamMemberQuotas(ctx context.Context, teamID str
 	return o.admission().EnforceTeamMemberQuotas(ctx, teamID)
 }
 
-// bumpSessionRevisionAndPublish bumps revision after turn completion (status=completed).
-func (o *ChatOrchestrator) bumpSessionRevisionAndPublish(ctx context.Context, sessionID, runID, turnID string) {
-	o.eventPublisher().BumpSessionRevisionAndPublish(ctx, sessionID, runID, turnID)
-}
-
-// bumpSessionRevisionSyncAndPublish bumps revision after user message persist (status=sync).
-func (o *ChatOrchestrator) bumpSessionRevisionSyncAndPublish(ctx context.Context, sessionID, runID, turnID string) {
-	o.eventPublisher().BumpSessionRevisionSyncAndPublish(ctx, sessionID, runID, turnID)
-}
-
-// notifySessionRevisionSync notifies Web of the current revision without incrementing (durable resume).
-func (o *ChatOrchestrator) notifySessionRevisionSync(ctx context.Context, sessionID, runID, turnID string) {
-	o.eventPublisher().NotifySessionRevisionSync(ctx, sessionID, runID, turnID)
+// bumpSessionRevision bumps the session revision counter.
+func (o *ChatOrchestrator) bumpSessionRevision(ctx context.Context, sessionID string) {
+	o.eventPublisher().BumpSessionRevision(ctx, sessionID)
 }
 
 // buildUserMessage constructs a trpcmodel.Message from content and attachment IDs.

@@ -1,5 +1,19 @@
 // Package contract defines the pure interfaces and value objects for the event system.
 // Biz layer should only import this package, never the parent event package (which contains implementations).
+//
+// TECH-DEBT(ADR-03): This file is scheduled for deletion in Phase 5 of the unified bus
+// architecture refactor. The Envelope struct, EnvelopeType constants, and RouteChannel
+// function are retained only because the legacy Bus (event.Bus) still actively publishes
+// Envelopes for non-chat domains (graph state delta, run status, monitor, etc.).
+//
+// Phase 5 Blocker dependency chain (see docs/reports/2026-06-26-review-adr-unified-bus-architecture.md):
+//   B (side consumers) → C (DomainEvent bridge) → D (vestigial bus fields)
+//     → A (WS replay path) → E (EventPipeline.Bus/Buffer) → F (Wire DI SessionBus)
+//     → DELETE envelope.go
+//
+// New code MUST NOT publish Envelopes. Use biz.ActivityEvent (Domain=chat|system) for
+// chat/system events, or MonitorEvent for monitor events. Existing Envelope publishers
+// will be migrated incrementally per the ADR-03 roadmap.
 package contract
 
 import (

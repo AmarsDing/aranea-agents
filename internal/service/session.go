@@ -550,6 +550,53 @@ func (s *SessionService) ListChildSessions(ctx context.Context, req *v1.ListChil
 	return &v1.ListChildSessionsResponse{Sessions: out}, nil
 }
 
+// GetSessionTree returns the complete recursive session tree rooted at a spirit
+// session (Phase B-1). Replaces N+1 ListChildSessions recursion with one query
+// when building the SessionTreeSidebar.
+func (s *SessionService) GetSessionTree(ctx context.Context, req *v1.GetSessionTreeRequest) (*v1.GetSessionTreeResponse, error) {
+	if s == nil || s.uc == nil {
+		return nil, apierror.Internal("SESSION", "session service not configured")
+	}
+	spiritSessionID := strings.TrimSpace(req.GetSpiritSessionId())
+	if spiritSessionID == "" {
+		return nil, apierror.BadRequest("SESSION", "spirit_session_id is required")
+	}
+	tree, err := s.uc.GetSessionTree(ctx, spiritSessionID)
+	if err != nil {
+		return nil, mapSessionErr(err)
+	}
+	return &v1.GetSessionTreeResponse{Root: bizSessionTreeToProto(tree)}, nil
+}
+
+// bizSessionTreeToProto converts a *biz.SessionTree into a *v1.SessionTreeNode
+// by wrapping the root session and recursing over its children (Phase B-1).
+// Returns nil when the tree is nil so the response root is unset.
+func bizSessionTreeToProto(t *biz.SessionTree) *v1.SessionTreeNode {
+	if t == nil {
+		return nil
+	}
+	return &v1.SessionTreeNode{
+		Session:  toProtoSession(t.Root, nil),
+		Children: bizSessionTreeNodesToProto(t.Children),
+	}
+}
+
+// bizSessionTreeNodesToProto recursively converts biz session tree nodes to
+// proto nodes. Nil entries are skipped to keep the output slice clean.
+func bizSessionTreeNodesToProto(nodes []*biz.SessionTreeNode) []*v1.SessionTreeNode {
+	out := make([]*v1.SessionTreeNode, 0, len(nodes))
+	for _, n := range nodes {
+		if n == nil {
+			continue
+		}
+		out = append(out, &v1.SessionTreeNode{
+			Session:  toProtoSession(n.Session, nil),
+			Children: bizSessionTreeNodesToProto(n.Children),
+		})
+	}
+	return out
+}
+
 // ListActivities returns activities for a session/turn (AF-BE-17).
 func (s *SessionService) ListActivities(ctx context.Context, req *v1.ListActivitiesRequest) (*v1.ListActivitiesResponse, error) {
 	if s == nil || s.activityReader == nil {

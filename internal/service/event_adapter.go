@@ -7,18 +7,6 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-// ProvideEnvelopeBuffer returns the EnvelopeBuffer for biz consumers.
-//
-// Phase 5 Blocker E: the underlying *event.Buffer has been removed (the WS
-// replay path was deleted in Blocker A; the buffer was write-only with no
-// reader). Returns nil so existing EventBusConsumer wiring continues to
-// compile; the consumer's eventBufferHandler.Handle is a no-op when buffer
-// is nil. The biz.EnvelopeBuffer interface is retained to minimize the
-// change surface — it will be removed in a follow-up cleanup.
-func ProvideEnvelopeBuffer() biz.EnvelopeBuffer {
-	return nil
-}
-
 // ProvideSessionLogWriter adapts a loggateway.Logger to biz.SessionLogWriter
 // so biz consumers don't depend on loggateway directly for session-scoped logs.
 func ProvideSessionLogWriter(lg loggateway.Logger) biz.SessionLogWriter {

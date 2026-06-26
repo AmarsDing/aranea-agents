@@ -21,7 +21,6 @@ type AgentIDExistenceChecker interface {
 }
 
 var ProviderSet = wire.NewSet(
-	NewEventBusConsumer,
 	NewFlowLogUsecase,
 	NewTurnMemoryWorker,
 	NewAdminUsecase,

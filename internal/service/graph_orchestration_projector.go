@@ -6,13 +6,11 @@ import (
 	"sync"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/team"
 )
 
 // GraphOrchestrationProjector starts run-scoped status projectors for graph executions.
 type GraphOrchestrationProjector struct {
-	bus         event.Bus
 	activityBus biz.ActivityEventBus
 	mu          sync.Mutex
 	// execID -> cancel
@@ -21,9 +19,8 @@ type GraphOrchestrationProjector struct {
 
 var _ biz.GraphExecutionObserver = (*GraphOrchestrationProjector)(nil)
 
-func NewGraphOrchestrationProjector(bus event.Bus, activityBus biz.ActivityEventBus) *GraphOrchestrationProjector {
+func NewGraphOrchestrationProjector(activityBus biz.ActivityEventBus) *GraphOrchestrationProjector {
 	return &GraphOrchestrationProjector{
-		bus:         bus,
 		activityBus: activityBus,
 		stops:       make(map[string]context.CancelFunc),
 	}
@@ -31,7 +28,7 @@ func NewGraphOrchestrationProjector(bus event.Bus, activityBus biz.ActivityEvent
 
 // Start begins projecting orchestration status for a graph execution.
 func (p *GraphOrchestrationProjector) Start(ctx context.Context, sessionID, execID, graphID string, def *biz.GraphDefinition) {
-	if p == nil || p.bus == nil || def == nil {
+	if p == nil || p.activityBus == nil || def == nil {
 		return
 	}
 	sessionID = strings.TrimSpace(sessionID)
@@ -40,12 +37,13 @@ func (p *GraphOrchestrationProjector) Start(ctx context.Context, sessionID, exec
 		return
 	}
 	reg := biz.BuildOrchestrationRegistryFromGraph(def)
-	stop := team.StartOrchestrationStatusProjector(ctx, p.bus, team.OrchestrationProjectorConfig{
-		RunID:     execID,
-		TeamID:    strings.TrimSpace(graphID),
-		SessionID: sessionID,
-		Registry:  reg,
-		Channel:   "graph",
+	stop := team.StartOrchestrationStatusProjector(ctx, team.OrchestrationProjectorConfig{
+		RunID:       execID,
+		TeamID:      strings.TrimSpace(graphID),
+		SessionID:   sessionID,
+		Registry:    reg,
+		Channel:     "graph",
+		ActivityBus: p.activityBus,
 	})
 	p.mu.Lock()
 	if prev, ok := p.stops[execID]; ok {
