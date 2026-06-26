@@ -78,8 +78,8 @@ func (p *TraceProjector) MarkStartedForTest() {
 	p.started.Store(true)
 }
 
-func (a *FlowFileAppender) OnEnvelopeExposed(env contract.Envelope) {
-	a.onEnvelope(env)
+func (a *FlowFileAppender) OnMonitorEventExposed(ev contract.MonitorEvent) {
+	a.onMonitorEvent(ev)
 }
 
 func (a *FlowFileAppender) CompressOldFilesExposed() int {

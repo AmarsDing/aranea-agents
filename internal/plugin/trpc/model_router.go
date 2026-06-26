@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -33,11 +33,11 @@ type ModelRouterPlugin struct {
 
 var _ trpcplugin.Plugin = (*ModelRouterPlugin)(nil)
 
-func NewModelRouterPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, lg loggateway.Logger) *ModelRouterPlugin {
+func NewModelRouterPlugin(p biz.Plugin, stats StatsRecorder, monitorBus contract.MonitorBus, lg loggateway.Logger) *ModelRouterPlugin {
 	var cfg ModelRouterConfig
 	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
 	compileModelRouterRules(cfg.Rules, lg)
-	return &ModelRouterPlugin{base: newBasePlugin(p.Key, stats, bus, lg), cfg: cfg}
+	return &ModelRouterPlugin{base: newBasePlugin(p.Key, stats, monitorBus, lg), cfg: cfg}
 }
 
 func (m *ModelRouterPlugin) Name() string { return m.base.Name() }

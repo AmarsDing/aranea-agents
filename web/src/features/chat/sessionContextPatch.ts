@@ -1,6 +1,17 @@
-import type { Envelope, EnvelopeUsage } from '../../realtime/envelope';
+import type { ActivityEvent } from '../../realtime/activityEvent';
 import type { Session } from '../session/types';
 import { contextRatioFromPrompt, contextStatusFromRatio } from '../session/contextMetrics';
+
+/** Token-usage payload derived from an ActivityEvent's meta fields. */
+export type ActivityUsage = {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  max_tokens?: number;
+  /** Max prompt tokens in the turn — context window fill (ReAct uses peak prompt). */
+  context_prompt_tokens?: number;
+  turn_total_tokens?: number;
+};
 
 export type SessionContextPatch = Partial<
   Pick<
@@ -25,14 +36,14 @@ export type SessionContextPatch = Partial<
 };
 
 /** Prompt tokens used for context-window fill (max in turn), distinct from billing aggregates. */
-export function contextPromptTokensFromUsage(usage: EnvelopeUsage | undefined): number {
+export function contextPromptTokensFromUsage(usage: ActivityUsage | undefined): number {
   if (!usage) return 0;
   const explicit = usage.context_prompt_tokens ?? 0;
   if (explicit > 0) return explicit;
   return usage.prompt_tokens ?? 0;
 }
 
-export function contextRatioFromUsage(usage: EnvelopeUsage | undefined): number | null {
+export function contextRatioFromUsage(usage: ActivityUsage | undefined): number | null {
   const prompt = contextPromptTokensFromUsage(usage);
   const window = usage?.max_tokens ?? 0;
   return contextRatioFromPrompt(prompt, window);
@@ -40,14 +51,8 @@ export function contextRatioFromUsage(usage: EnvelopeUsage | undefined): number 
 
 export { contextStatusFromRatio } from '../session/contextMetrics';
 
-export function isSessionCompressNotice(env: Envelope): boolean {
-  if (env.type !== 'text_done') return false;
-  const md = env.metadata as Record<string, unknown> | undefined;
-  return md?.kind === 'system.session.compress';
-}
-
 /** Mid-turn ReAct sub-step: update context bar only (no session total_tokens increment). */
-export function sessionContextPatchFromStepUsage(usage: EnvelopeUsage | undefined): SessionContextPatch | null {
+export function sessionContextPatchFromStepUsage(usage: ActivityUsage | undefined): SessionContextPatch | null {
   const ratio = contextRatioFromUsage(usage);
   if (ratio == null || !usage) return null;
 
@@ -66,7 +71,7 @@ export function sessionContextPatchFromStepUsage(usage: EnvelopeUsage | undefine
 }
 
 export function sessionContextPatchFromUsage(
-  usage: EnvelopeUsage | undefined,
+  usage: ActivityUsage | undefined,
   prev?: Pick<Session, 'total_tokens' | 'max_context_used_ratio' | 'input_tokens' | 'output_tokens'>,
 ): SessionContextPatch | null {
   const ratio = contextRatioFromUsage(usage);
@@ -169,18 +174,88 @@ export function reconcilePatchFromServer(
   };
 }
 
-export function sessionContextPatchFromEnvelope(
-  env: Envelope,
+// ── ActivityEvent-based functions ──────────────────────────────────────
+// The backend projects context_usage / runner_completion / text_done
+// (compress notice) as ActivityEvent with the corresponding
+// `activity.stage` value. Token-usage fields are carried on `activity.meta`
+// (with `prompt_tokens` / `completion_tokens` also available as direct
+// Activity fields for the root task activity).
+
+function numField(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * Build an {@link ActivityUsage}-shaped object from an ActivityEvent so the
+ * existing pure usage-derivation functions can be reused without duplication.
+ *
+ * Field mapping (activity):
+ *   prompt_tokens         → activity.prompt_tokens (fallback: meta.prompt_tokens)
+ *   completion_tokens     → activity.completion_tokens (fallback: meta.completion_tokens)
+ *   total_tokens          → activity.meta.total_tokens
+ *   max_tokens            → activity.meta.max_tokens
+ *   context_prompt_tokens → activity.meta.context_prompt_tokens
+ *   turn_total_tokens     → activity.meta.turn_total_tokens
+ *
+ * Returns undefined when no usage fields are present.
+ */
+function usageFromActivityEvent(ev: ActivityEvent): ActivityUsage | undefined {
+  const act = ev.activity;
+  const meta = act.meta ?? {};
+  const prompt = numField(act.prompt_tokens) || numField(meta.prompt_tokens);
+  const completion = numField(act.completion_tokens) || numField(meta.completion_tokens);
+  const total = numField(meta.total_tokens);
+  const maxTokens = numField(meta.max_tokens);
+  // No usage payload at all — return undefined so callers can short-circuit.
+  if (prompt === 0 && completion === 0 && total === 0 && maxTokens === 0) return undefined;
+  const usage: ActivityUsage = {
+    prompt_tokens: prompt,
+    completion_tokens: completion,
+    total_tokens: total,
+  };
+  if (maxTokens > 0) usage.max_tokens = maxTokens;
+  if (typeof meta.context_prompt_tokens === 'number' && meta.context_prompt_tokens > 0) {
+    usage.context_prompt_tokens = meta.context_prompt_tokens;
+  }
+  if (typeof meta.turn_total_tokens === 'number' && meta.turn_total_tokens > 0) {
+    usage.turn_total_tokens = meta.turn_total_tokens;
+  }
+  return usage;
+}
+
+/** Detect a session-compress notice ActivityEvent (text_done + meta.kind). */
+export function isSessionCompressNoticeFromActivityEvent(ev: ActivityEvent): boolean {
+  if (ev.activity.stage !== 'text_done') return false;
+  return ev.activity.meta?.kind === 'system.session.compress';
+}
+
+/**
+ * Derive a {@link SessionContextPatch} from an ActivityEvent.
+ *
+ * Field mapping (envelope → activity):
+ *   env.type === 'context_usage'      → ev.activity.stage === 'context_usage'
+ *   env.type === 'runner_completion'  → ev.activity.stage === 'runner_completion'
+ *   env.type === 'text_done' (compress) → ev.activity.stage === 'text_done' &&
+ *     ev.activity.meta.kind === 'system.session.compress'
+ *   env.usage.*                       → activity.{prompt_tokens,completion_tokens} +
+ *     activity.meta.{total_tokens,max_tokens,context_prompt_tokens,turn_total_tokens}
+ *   env.metadata (compress)           → ev.activity.meta
+ */
+export function sessionContextPatchFromActivityEvent(
+  ev: ActivityEvent,
   prev?: Pick<Session, 'total_tokens' | 'max_context_used_ratio' | 'input_tokens' | 'output_tokens'>,
 ): SessionContextPatch | null {
-  if (env.type === 'context_usage' && env.usage) {
-    return sessionContextPatchFromStepUsage(env.usage);
+  const stage = ev.activity.stage;
+  if (stage === 'context_usage') {
+    const usage = usageFromActivityEvent(ev);
+    return sessionContextPatchFromStepUsage(usage);
   }
-  if (env.type === 'runner_completion' && env.usage) {
-    return sessionContextPatchFromUsage(env.usage, prev);
+  if (stage === 'runner_completion') {
+    const usage = usageFromActivityEvent(ev);
+    return sessionContextPatchFromUsage(usage, prev);
   }
-  if (isSessionCompressNotice(env)) {
-    return sessionContextPatchFromCompressMeta(env.metadata as Record<string, unknown> | undefined);
+  if (isSessionCompressNoticeFromActivityEvent(ev)) {
+    return sessionContextPatchFromCompressMeta(ev.activity.meta as Record<string, unknown> | undefined);
   }
   return null;
 }

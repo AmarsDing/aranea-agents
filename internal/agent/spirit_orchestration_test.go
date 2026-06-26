@@ -152,7 +152,7 @@ func TestCheckpointRestore_RebuildsGraphAgentState(t *testing.T) {
 		checkpointSaver: ckptSaver,
 		orchCache:       nil,
 		perfRepo:        nil,
-		bus:             nil,
+		activityBus:     nil,
 		lg:              lg,
 	}
 

@@ -1,5 +1,4 @@
 import { computed, ref } from 'vue';
-import type { Envelope } from '../../../realtime/envelope';
 import { useGraphStream } from './useGraphStream';
 import type { GraphStepSnapshot, Task } from '../types';
 import { buildExecNodeStatesFromGraphNodes, seedGraphNodeStatesFromSteps } from './graphExecutionProjection';
@@ -43,32 +42,42 @@ export function useGraphExecutionStream(
     }
   }
 
-  function applyStepEvent(env: Envelope, status: string) {
-    if (String(env.metadata?.execution_id ?? executionId) !== executionId) return;
-    const event = stepEventFromEnvelopeMetadata(env.metadata as Record<string, unknown>, status);
+  function applyStepEvent(meta: Record<string, unknown>, status: string) {
+    if (String(meta?.execution_id ?? executionId) !== executionId) return;
+    const event = stepEventFromEnvelopeMetadata(meta, status);
     if (!event) return;
     liveSteps.value = upsertStepFromStreamEvent(liveSteps.value, event);
   }
 
-  stream.onType('graph_node_start', (env) => {
-    applyStepEvent(env, 'running');
-  });
-  stream.onType('graph_node_end', (env) => {
-    applyStepEvent(env, 'completed');
-  });
-  stream.onType('graph_node_error', (env) => {
-    applyStepEvent(env, 'failed');
-  });
-
-  stream.onType('graph_task_status', (env: Envelope) => {
-    if (String(env.metadata?.execution_id ?? '') !== executionId) return;
-    const taskId = String(env.metadata?.task_id ?? '');
-    if (!taskId) return;
-    const nodeId = String(env.metadata?.node_id ?? '');
-    const next = new Map(tasks.value);
-    const existing = next.get(taskId) ?? emptyTask(taskId, executionId, nodeId);
-    next.set(taskId, applyTaskStatusMetadata(existing, env.metadata ?? {}));
-    tasks.value = next;
+  // ActivityEvent migration: graph lifecycle events now arrive as ActivityEvent
+  // payloads (kind=graph_stage) instead of envelopes. The step and task
+  // projections consume the activity.meta field, which carries the same
+  // keys as the legacy envelope metadata (node_id, step_number, execution_id, etc.).
+  stream.onActivityEvent((ev) => {
+    if (ev.activity.kind !== 'graph_stage') return;
+    const meta = (ev.activity.meta ?? {}) as Record<string, unknown>;
+    switch (ev.activity.stage) {
+      case 'node_start':
+        applyStepEvent(meta, 'running');
+        break;
+      case 'node_end':
+        applyStepEvent(meta, 'completed');
+        break;
+      case 'node_error':
+        applyStepEvent(meta, 'failed');
+        break;
+      case 'task_status': {
+        if (String(meta?.execution_id ?? '') !== executionId) return;
+        const taskId = String(meta?.task_id ?? '');
+        if (!taskId) return;
+        const nodeId = String(meta?.node_id ?? '');
+        const next = new Map(tasks.value);
+        const existing = next.get(taskId) ?? emptyTask(taskId, executionId, nodeId);
+        next.set(taskId, applyTaskStatusMetadata(existing, meta));
+        tasks.value = next;
+        break;
+      }
+    }
   });
 
   const execNodeStates = computed(() => buildExecNodeStatesFromGraphNodes(stream.execution.value.nodes));

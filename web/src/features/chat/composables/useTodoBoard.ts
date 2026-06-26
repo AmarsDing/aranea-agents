@@ -2,7 +2,7 @@ import { computed } from 'vue';
 import type { ComputedRef } from 'vue';
 import type { Message } from '../../../domain/types';
 import type { TodoItem, TodoBoardState } from '../agentTreeTypes';
-import { toolEventFromMessage } from '../envelopeToolCall';
+import { toolEventFromMessage } from '../activityToolCall';
 
 /** Simple hash from string to stable hex id (8 chars). */
 function contentHash(s: string): string {

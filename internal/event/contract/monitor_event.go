@@ -149,4 +149,9 @@ type MonitorSubscribeOptions struct {
 	SessionID  string
 	BufferSize int  // subscriber channel buffer size
 	GlobalMode bool // true = receive all events (ignores SessionID filter)
+	// Filter is an optional predicate applied at the bus level. When set, only
+	// events for which Filter returns true are delivered. This prevents
+	// non-matching events from filling the subscriber queue. When nil, the
+	// session-scoped filter derived from SessionID/GlobalMode is used.
+	Filter func(MonitorEvent) bool
 }

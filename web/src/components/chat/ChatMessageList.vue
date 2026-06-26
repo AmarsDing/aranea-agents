@@ -90,7 +90,6 @@ import { useConversationTimeline } from '../../features/chat/composables/useConv
 import type { Message, PendingMessage } from '../../features/chat/types';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
-import type { Envelope } from '../../realtime/envelope';
 import type { Activity as TimelineActivity } from '../../features/chat/activityTimelineTypes';
 import type { ErrorEvent } from '../../features/chat/streamEventTypes';
 
@@ -106,7 +105,6 @@ const props = defineProps<{
   plannerKind?: string;
   reasoningSidebarOpen?: boolean;
   showScrollBtn: boolean;
-  progressEnvelopes?: readonly Envelope[];
   /** AF-FE-06: Activity-First timeline activities (from useActivityTimeline) */
   activityTimelineActivities?: readonly TimelineActivity[];
   /** AF-FE-06: Agent key from Activity data */
@@ -160,7 +158,6 @@ const { conversationTurns } = useConversationTimeline({
   messages: computed(() => props.messages),
   isTeamSession: props.isTeamSession,
   plannerKind: computed(() => props.plannerKind ?? ''),
-  progressEnvelopes: computed(() => props.progressEnvelopes ?? []),
   activityTimelineActivities: computed(() => props.activityTimelineActivities ?? []),
   activityAgentKey: computed(() => props.activityAgentKey ?? ''),
   activityTaskContent: computed(() => props.activityTaskContent ?? null),

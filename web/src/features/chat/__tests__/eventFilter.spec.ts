@@ -1,13 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { Envelope } from '../envelope';
+import type { InspectorEvent } from '../eventFilter';
 import { buildBranchTree, filterEnvelopes, defaultEventFilterState } from '../eventFilter';
 
-function env(partial: Partial<Envelope> & Pick<Envelope, 'id' | 'type'>): Envelope {
+function env(partial: Partial<InspectorEvent> & Pick<InspectorEvent, 'id' | 'type'>): InspectorEvent {
   return {
     author: 'agent',
-    session_id: 's1',
     timestamp: '2026-01-01T00:00:00Z',
-    version: 1,
     ...partial,
   };
 }
@@ -15,8 +13,8 @@ function env(partial: Partial<Envelope> & Pick<Envelope, 'id' | 'type'>): Envelo
 describe('filterEnvelopes', () => {
   it('filters by type and keyword', () => {
     const events = [
-      env({ id: '1', type: 'tool_call', tool_call: { id: 't1', name: 'search', arguments_json: '{}', status: 'ok' } }),
-      env({ id: '2', type: 'text_delta', content: { text: 'hello', is_partial: true } }),
+      env({ id: '1', type: 'tool_call', tool_call: { name: 'search', status: 'ok' } }),
+      env({ id: '2', type: 'text_delta', content: { text: 'hello' } }),
     ];
     const filters = { ...defaultEventFilterState(), typeFilter: 'tool_call' };
     expect(filterEnvelopes(events, filters)).toHaveLength(1);

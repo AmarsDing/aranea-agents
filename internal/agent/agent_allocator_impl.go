@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -26,7 +25,7 @@ type agentAllocatorImpl struct {
 	capBuilder     *AgentCapabilityBuilder
 	catalog        *biz.LlmProviderModelUsecase
 	httpClient     *http.Client
-	bus            contract.Bus
+	bus            biz.ActivityEventBus
 	lg             loggateway.Logger
 	embedder       knowledge.Embedder
 	agentFactory   biz.AgentFactory
@@ -43,7 +42,7 @@ func NewAgentAllocator(
 	capBuilder *AgentCapabilityBuilder,
 	catalog *biz.LlmProviderModelUsecase,
 	httpClient *http.Client,
-	bus contract.Bus,
+	bus biz.ActivityEventBus,
 	lg loggateway.Logger,
 	embedder knowledge.Embedder,
 	agentFactory biz.AgentFactory,
@@ -1082,13 +1081,25 @@ func (impl *agentAllocatorImpl) publishAllocationCreated(ctx context.Context, pl
 	}
 	spiritSessionID := plan.SpiritSessionID
 
-	env := contract.NewEnvelope(contract.EnvelopeTypeSpiritAllocationCreated, "agent-allocator", spiritSessionID)
-	env.Metadata = map[string]any{
-		"allocation_id":     plan.ID,
-		"task_plan_id":      plan.TaskPlanID,
-		"spirit_session_id": spiritSessionID,
-		"allocation_count":  len(plan.Allocations),
-		"status":            string(plan.Status),
+	ev := biz.ActivityEvent{
+		Event: biz.ActivityEventCreated,
+		Activity: biz.Activity{
+			ID:              uuid.NewString(),
+			Kind:            biz.ActivityKindNotice,
+			Status:          biz.ActivityStatusCompleted,
+			Stage:           "created",
+			Timestamp:       time.Now().UTC(),
+			SpiritSessionID: spiritSessionID,
+			AgentKey:        "agent-allocator",
+			Meta: map[string]any{
+				"allocation_id":     plan.ID,
+				"task_plan_id":      plan.TaskPlanID,
+				"spirit_session_id": spiritSessionID,
+				"allocation_count":  len(plan.Allocations),
+				"status":            string(plan.Status),
+			},
+		},
+		Domain: biz.ActivityDomainChat,
 	}
-	impl.bus.Publish(ctx, env)
+	impl.bus.Publish(ctx, ev)
 }

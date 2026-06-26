@@ -2,17 +2,25 @@ package biz
 
 import (
 	"context"
+	"time"
 
 	"aranea-agents/internal/event/contract"
 )
 
+// usageRollupConsumer rolls up token usage statistics from ActivityEvents.
+//
+// Phase 5 Blocker B: migrated from legacy Envelope-based SessionBus to
+// ActivityEventBus. The token_usage publisher (biz.PublishTokenUsageEnvelope)
+// emits ActivityEvent{Stage:"token_usage", Meta:{"token_usage":<EnvelopeTokenUsage>}}.
+// This consumer filters at the bus level by Stage=="token_usage" and extracts
+// the EnvelopeTokenUsage from Meta.
 type usageRollupConsumer struct {
-	bus    contract.Bus
+	bus    ActivityEventBus
 	usage  *UsageUsecase
 	logger SessionLogWriter
 }
 
-func newUsageRollupConsumer(bus contract.Bus, usage *UsageUsecase, logger SessionLogWriter) *usageRollupConsumer {
+func newUsageRollupConsumer(bus ActivityEventBus, usage *UsageUsecase, logger SessionLogWriter) *usageRollupConsumer {
 	if usage == nil || bus == nil {
 		return nil
 	}
@@ -23,20 +31,30 @@ func (c *usageRollupConsumer) Start(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	runTypedConsumerWithOpts(ctx, "event-bus-usage-rollup", c.bus, contract.SubscribeOptions{
-		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeTokenUsage},
+	runActivityConsumerWithOpts(ctx, "event-bus-usage-rollup", c.bus, ActivityEventSubscribeOptions{
 		BufferSize: 256,
-		Reliable:   true,
-	}, c.handle, OfferOption{FallbackSync: true, FallbackFn: c.handle}, c.logger)
+		GlobalMode: true,
+		Filter: func(ev ActivityEvent) bool {
+			return ev.Activity.Stage == "token_usage"
+		},
+	}, c.handle, offerOption[ActivityEvent]{FallbackSync: true, FallbackFn: c.handle}, c.logger)
 }
 
-func (c *usageRollupConsumer) handle(ctx context.Context, env contract.Envelope) {
-	if c == nil || c.usage == nil || env.TokenUsage == nil {
+func (c *usageRollupConsumer) handle(ctx context.Context, ev ActivityEvent) {
+	if c == nil || c.usage == nil {
 		return
 	}
-	e := tokenUsageFromEnvelope(env.TokenUsage)
+	tu, ok := ev.Activity.Meta["token_usage"]
+	if !ok || tu == nil {
+		return
+	}
+	envTU, ok := tu.(contract.EnvelopeTokenUsage)
+	if !ok {
+		return
+	}
+	e := tokenUsageFromEnvelope(&envTU)
 	if err := c.usage.RollupDailyHourly(ctx, e); err != nil && c.logger != nil {
-		c.logger.LogSessionWarn(ctx, env.SessionID, "usage.rollup_failed", "用量汇总写入失败",
+		c.logger.LogSessionWarn(ctx, ev.Activity.SessionID, "usage.rollup_failed", "用量汇总写入失败",
 			LogPair{Key: "error", Value: err})
 	}
 }
@@ -159,12 +177,25 @@ func TokenUsageEventToEnvelope(e TokenUsageEvent) contract.EnvelopeTokenUsage {
 	}
 }
 
-func PublishTokenUsageEnvelope(ctx context.Context, bus contract.Bus, e TokenUsageEvent) {
+func PublishTokenUsageEnvelope(ctx context.Context, bus ActivityEventBus, e TokenUsageEvent) {
 	if bus == nil {
 		return
 	}
 	tu := TokenUsageEventToEnvelope(e)
-	env := contract.NewEnvelope(contract.EnvelopeTypeTokenUsage, "usage", e.SessionID)
-	env.TokenUsage = &tu
-	bus.Publish(ctx, env)
+	ev := ActivityEvent{
+		Event: ActivityEventUpdated,
+		Activity: Activity{
+			ID:        e.ID,
+			Kind:      ActivityKindNotice,
+			Status:    ActivityStatusCompleted,
+			SessionID: e.SessionID,
+			TeamID:    e.TeamID,
+			AgentKey:  e.AgentKey,
+			Timestamp: time.Now().UTC(),
+			Stage:     "token_usage",
+			Meta:      map[string]any{"token_usage": tu},
+		},
+		Domain: ActivityDomainSystem,
+	}
+	bus.Publish(ctx, ev)
 }

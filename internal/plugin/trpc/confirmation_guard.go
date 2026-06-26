@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
@@ -19,11 +19,11 @@ type ConfirmationGuardPlugin struct {
 
 var _ trpcplugin.Plugin = (*ConfirmationGuardPlugin)(nil)
 
-func NewConfirmationGuardPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, lg loggateway.Logger) *ConfirmationGuardPlugin {
+func NewConfirmationGuardPlugin(p biz.Plugin, stats StatsRecorder, monitorBus contract.MonitorBus, lg loggateway.Logger) *ConfirmationGuardPlugin {
 	var cfg ConfirmationGuardConfig
 	cfg.DefaultAction = "reject"
 	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
-	return &ConfirmationGuardPlugin{base: newBasePlugin(p.Key, stats, bus, lg), cfg: cfg}
+	return &ConfirmationGuardPlugin{base: newBasePlugin(p.Key, stats, monitorBus, lg), cfg: cfg}
 }
 
 func (c *ConfirmationGuardPlugin) Name() string { return c.base.Name() }

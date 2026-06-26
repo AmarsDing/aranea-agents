@@ -10,7 +10,7 @@ import {
 } from '../../features/session/api';
 import type { Message } from '../../features/chat/types';
 import { mergeIncrementalSessionMessages, mergeSessionMessages } from '../../features/chat/mergeSessionMessages';
-import { clearToolEventCache } from '../../features/chat/envelopeToolCall';
+import { clearToolEventCache } from '../../features/chat/activityToolCall';
 import { onSessionMutation } from '../sessionSync';
 
 export const useChatMessageStore = defineStore('chatMessage', () => {

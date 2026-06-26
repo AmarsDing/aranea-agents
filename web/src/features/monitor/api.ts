@@ -19,9 +19,10 @@ import type {
 
 export type { CodeExecutorCapability } from './types';
 import { useEnvelopeStream } from '../../realtime/useEnvelopeStream';
-import type { Envelope } from '../../realtime/envelope';
-import { flowSeverityToLevel, monitorLogLineFromFlowEnvelope } from './flow';
-import { TEAM_RUNTIME_ENVELOPE_TYPES, teamRunEventFromEnvelope } from '../teams/teamRunEventFromEnvelope';
+import { createMonitorStream } from '../../realtime/useMonitorStream';
+import type { MonitorEvent } from '../../realtime/monitorEvent';
+import { flowSeverityToLevel, monitorLogLineFromFlowEvent } from './flow';
+import { teamRunEventFromActivityEvent } from '../teams/teamRunEventFromActivityEvent';
 
 const monitor = createMonitorService();
 
@@ -187,40 +188,44 @@ function resolveMonitorSessionId(sessionId?: string): string {
 export function subscribeMonitorLogsWs(
   sessionId: string,
   onLine: (line: MonitorLogLine) => void,
-  onError?: (error: string) => void,
+  /** @deprecated Error events no longer arrive via the monitor channel; reserved for API compat. */
+  _onError?: (error: string) => void,
   onConnected?: () => void,
 ): MonitorWsSub {
-  const stream = useEnvelopeStream({
+  const stream = createMonitorStream({
     sessionId: resolveMonitorSessionId(sessionId),
     channels: ['monitor', 'system'],
     autoConnect: false,
     logEnabled: false,
     onConnected: () => onConnected?.(),
-  });
-
-  stream.onType('flow_log', (env: Envelope) => {
-    const line = monitorLogLineFromFlowEnvelope(env);
-    if (line) onLine(line);
-  });
-
-  stream.onType('log', (env: Envelope) => {
-    if (env.metadata?.flow_step || env.metadata?.schema_version === 'flow_log/v1') {
-      return;
-    }
-    const level = (env.metadata?.level as MonitorLogLine['level']) ?? 'INFO';
-    onLine({
-      id: env.id,
-      time: env.timestamp,
-      level,
-      message: env.content?.text ?? '',
-      source: env.author ?? 'monitor',
-      created_at: env.timestamp,
-      kind: 'process',
-    });
-  });
-
-  stream.onType('error', (env: Envelope) => {
-    onError?.(env.error?.message ?? 'monitor ws error');
+    onMonitorEvent: (ev: MonitorEvent) => {
+      switch (ev.type) {
+        case 'flow_log': {
+          const line = monitorLogLineFromFlowEvent(ev);
+          if (line) onLine(line);
+          return;
+        }
+        case 'log': {
+          if (ev.metadata?.flow_step || ev.metadata?.schema_version === 'flow_log/v1') {
+            return;
+          }
+          const metaLevel = ev.metadata?.level as MonitorLogLine['level'] | undefined;
+          const level = (ev.level as MonitorLogLine['level'] | undefined) ?? metaLevel ?? 'INFO';
+          onLine({
+            id: ev.id,
+            time: ev.timestamp,
+            level,
+            message: ev.message ?? '',
+            source: ev.source ?? 'monitor',
+            created_at: ev.timestamp,
+            kind: 'process',
+          });
+          return;
+        }
+        default:
+          return;
+      }
+    },
   });
 
   stream.connect();
@@ -250,20 +255,12 @@ export function subscribeMonitorRuntimeEventsWs(
     logEnabled: false,
     onConnected: () => onConnected?.(),
     onDisconnected: () => onDisconnected?.(),
-  });
-
-  const dispatch = (env: Envelope) => {
-    const mapped = teamRunEventFromEnvelope(env);
-    if (mapped) {
-      onEvent(mapped);
-    }
-  };
-
-  stream.onType(TEAM_RUNTIME_ENVELOPE_TYPES, dispatch);
-  stream.onType('log', dispatch);
-
-  stream.onType('error', (env: Envelope) => {
-    onError?.(env.error?.message ?? 'monitor ws error');
+    onActivityEvent: (ev) => {
+      const mapped = teamRunEventFromActivityEvent(ev);
+      if (mapped) {
+        onEvent(mapped);
+      }
+    },
   });
 
   stream.connect();

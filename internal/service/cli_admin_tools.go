@@ -154,7 +154,7 @@ func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
 		allocator := o.team().AgentAllocator
 		orchestrator := o.team().TaskOrchestrator
 		if planner != nil && allocator != nil && orchestrator != nil {
-			out = append(out, tools.NewPlanAndExecuteTool(planner, allocator, orchestrator, o.spiritAssembler(), sessionModelLookup{sessions: o.td().Sessions}, o.td().Pipeline.Bus, o.lg()))
+			out = append(out, tools.NewPlanAndExecuteTool(planner, allocator, orchestrator, o.spiritAssembler(), sessionModelLookup{sessions: o.td().Sessions}, o.td().Pipeline.ActivityBus, o.lg()))
 			out = append(out, tools.NewCheckOrchestrationProgressTool(orchestrator, o.lg()))
 			out = append(out, tools.NewCancelOrchestrationTool(orchestrator, o.lg()))
 		}

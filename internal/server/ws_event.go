@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 )
 
 // sendConnected sends the initial "connected" downstream message to a new connection.
@@ -82,30 +82,19 @@ func (s *WSServer) replayEvents(wc *wsConn, sessionID, lastEventID string) {
 	}
 }
 
-// setupEventSubscription subscribes the connection to the event bus, monitor bus,
-// and activity event bus. Returns the event, monitor, and activity event channels,
+// setupEventSubscription subscribes the connection to the monitor bus and
+// activity event bus. Returns the monitor and activity event channels,
 // and sets wc.unsubscribe.
-func (s *WSServer) setupEventSubscription(wc *wsConn, globalMode bool) (<-chan event.Envelope, <-chan event.Envelope, <-chan biz.ActivityEvent) {
-	var eventCh <-chan event.Envelope
-	var monitorCh <-chan event.Envelope
+func (s *WSServer) setupEventSubscription(wc *wsConn, globalMode bool) (<-chan contract.MonitorEvent, <-chan biz.ActivityEvent) {
+	var monitorCh <-chan contract.MonitorEvent
 	var activityCh <-chan biz.ActivityEvent
 
-	subOpts := event.SubscribeOptions{
-		BufferSize: 256,
-		Reliable:   !globalMode,
-	}
-	if !globalMode {
-		subOpts.SessionID = wc.sessionID
-	}
-	ch, unsub := s.eventBus.Subscribe(subOpts)
-	eventCh = ch
-	unsubSession := unsub
-	unsubAll := func() { unsubSession() }
+	unsubAll := func() {}
 
-	if s.monitorBus != nil && s.monitorBus != s.eventBus {
-		monOpts := event.SubscribeOptions{
+	if s.monitorBus != nil {
+		monOpts := contract.MonitorSubscribeOptions{
 			BufferSize: 128,
-			DropPolicy: event.DropNewest,
+			GlobalMode: globalMode,
 		}
 		if !globalMode {
 			monOpts.SessionID = wc.sessionID
@@ -139,5 +128,5 @@ func (s *WSServer) setupEventSubscription(wc *wsConn, globalMode bool) (<-chan e
 
 	wc.unsubscribe = unsubAll
 
-	return eventCh, monitorCh, activityCh
+	return monitorCh, activityCh
 }

@@ -28,6 +28,7 @@ type ChannelIngress struct {
 	graphs         biz.GraphExecutor
 	cron           biz.CronTriggerGateway
 	eventBus       event.Bus
+	activityBus    biz.ActivityEventBus
 	http           *http.Client
 	deduplicator   biz.IngressDeduplicator
 	peerDebouncer  biz.PeerDebouncer
@@ -54,6 +55,7 @@ func NewChannelIngress(
 	graphs biz.GraphExecutor,
 	cron biz.CronTriggerGateway,
 	eventBus event.Bus,
+	activityBus biz.ActivityEventBus,
 	deduplicator biz.IngressDeduplicator,
 	peerDebouncer biz.PeerDebouncer,
 	previewManager biz.TurnPreviewManager,
@@ -71,6 +73,7 @@ func NewChannelIngress(
 		graphs:         graphs,
 		cron:           cron,
 		eventBus:       eventBus,
+		activityBus:    activityBus,
 		lg:             lg,
 		http:           lark.DefaultHTTPClient(),
 		deduplicator:   deduplicator,

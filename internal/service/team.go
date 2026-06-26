@@ -8,7 +8,6 @@ import (
 
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/team"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -25,7 +24,7 @@ type TeamService struct {
 	sessions     *biz.SessionUsecase
 	teamRunner   biz.TeamTurnRunnerPort
 	runs         biz.RunRegistryPort
-	eventBus     event.Bus
+	eventBus     biz.ActivityEventBus
 	lg           loggateway.Logger
 	synthesis    *SpiritSynthesisService
 	activityRepo biz.ActivityRepo
@@ -38,7 +37,7 @@ func NewTeamService(
 	sessions *biz.SessionUsecase,
 	teamRunner biz.TeamTurnRunnerPort,
 	runs biz.RunRegistryPort,
-	eventBus event.Bus,
+	eventBus biz.ActivityEventBus,
 	lg loggateway.Logger,
 	synthesis *SpiritSynthesisService,
 	activityRepo biz.ActivityRepo,

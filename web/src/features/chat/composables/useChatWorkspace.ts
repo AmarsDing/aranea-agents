@@ -11,9 +11,8 @@ import { useChatMessageStore } from '../../../stores/chat/messageStore';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import { useChatConversationStore } from '../../../stores/chat/conversationStore';
 import { useSpiritTeamStore } from '../../../stores/spirit';
-import { cancelRunningToolMessages } from '../envelopeToolCall';
-import { runStatusFromEnvelope } from '../envelopeRunStatus';
-import type { Envelope } from '../envelope';
+import { cancelRunningToolMessages } from '../activityToolCall';
+import { runStatusFromActivityEvent } from '../activityRunStatus';
 import { confirmActivity } from '../api';
 import { useChatRunStatus } from './useChatRunStatus';
 import { useChatStreamManager } from './useChatStreamManager';
@@ -49,7 +48,7 @@ import { useReasoningSidebar } from './useReasoningSidebar';
 import { useContextualLoadingMessage } from './useContextualLoadingMessage';
 import { useStatusPulse } from './useStatusPulse';
 import { useActivityTimeline } from './useActivityTimeline';
-import type { ActivityStartMeta, ActivityDeltaMeta, ActivityDoneMeta, ActivityChildStartMeta } from '../activityTypes';
+import { useSystemEventNotification } from './useSystemEventNotification';
 import type { ActivityEvent as AFActivityEvent } from '../../../realtime/activityEvent';
 
 export function useChatWorkspace() {
@@ -92,49 +91,34 @@ export function useChatWorkspace() {
   // AF-FE-02~04: Activity-First timeline composable
   const activityTimeline = useActivityTimeline();
 
-  // AF-GAP-02: Bounded dedup set for activity envelope IDs. Both the real-time
-  // stream path (streamHandlers → ctx.onActivityEnvelope) and the inbound-sync
-  // path (useChatInboundSync → deps.onActivityEnvelope) may forward the same
-  // activity envelope for the current session. Without dedup, handleActivityDelta
-  // would append the same chunk twice, duplicating content in the timeline.
+  // AF-GAP-02: Bounded dedup set for ActivityEvent IDs. Both the real-time
+  // stream path (streamHandlers → ctx.onActivityEvent) and the inbound-sync
+  // path (useChatInboundSync → deps.onActivityEvent) may forward the same
+  // ActivityEvent for the current session. Without dedup, handleActivityEvent
+  // would process the same event twice, duplicating content in the timeline.
   // The set is bounded (LRU eviction) to prevent unbounded memory growth.
   const ACTIVITY_DEDUP_LIMIT = 512;
   const activityDedupIds = new Set<string>();
   const activityDedupRing: string[] = [];
 
-  // T1.6: Shared activity envelope handler — used by both the real-time
-  // stream path (useChatStreamManager → bindStreamHandlers) and the
-  // inbound-sync polling path (useChatInboundSync). Routing activity events
-  // directly from the stream gives immediate UI updates without waiting
-  // for the polling cycle.
-  const handleActivityEnvelope = (env: Envelope) => {
-    // AF-GAP-02: Skip if this envelope was already processed by the other path.
-    if (env.id) {
-      if (activityDedupIds.has(env.id)) return;
-      activityDedupIds.add(env.id);
-      activityDedupRing.push(env.id);
-      if (activityDedupRing.length > ACTIVITY_DEDUP_LIMIT) {
-        const evicted = activityDedupRing.shift();
-        if (evicted) activityDedupIds.delete(evicted);
-      }
-    }
-    const md = env.metadata as Record<string, unknown> | undefined;
-    if (!md) return;
-    switch (env.type) {
-      case 'activity_start':
-        activityTimeline.handleActivityStart(md as unknown as ActivityStartMeta);
-        break;
-      case 'activity_delta':
-        activityTimeline.handleActivityDelta(md as unknown as ActivityDeltaMeta);
-        break;
-      case 'activity_done':
-        activityTimeline.handleActivityDone(md as unknown as ActivityDoneMeta);
-        break;
-      case 'activity_child_start':
-        activityTimeline.handleActivityChildStart(md as unknown as ActivityChildStartMeta);
-        break;
-    }
-  };
+  // Forward reference to handleInboundActivityEvent from useChatInboundSync.
+  // Set after useChatInboundSync returns (below). Used by
+  // useSystemEventNotification to route system/control ActivityEvents
+  // (run_status, error, team_*, graph_*, spirit_*) directly to the
+  // ActivityEvent-based inbound pipeline — no Envelope conversion.
+  let inboundActivityEventHandler: ((ev: AFActivityEvent) => void | Promise<void>) | null = null;
+
+  // Phase 3 / ADR-03 D6: useSystemEventNotification handles Domain=system
+  // ActivityEvents by routing them to the inbound-sync pipeline. Event
+  // classification prefers `ev.domain`; falls back to kind/event heuristics
+  // for older backends that don't set the domain field. Chat-rendering
+  // events (task streaming/created/completed, thinking, action, reply,
+  // confirm) bypass this handler and go straight to the Activity timeline.
+  const systemEventNotification = useSystemEventNotification({
+    applyRunStatusFromActivityEvent: (ev) => applyRunStatusFromActivityEvent(ev),
+    getInboundActivityEventHandler: () => inboundActivityEventHandler,
+    activityTimeline,
+  });
 
   // Activity-First (AF): Handler for the new business-semantic ActivityEvent
   // format (event + full Activity snapshot). This replaces the legacy
@@ -153,11 +137,34 @@ export function useChatWorkspace() {
         if (evicted) activityDedupIds.delete(evicted);
       }
     }
+
+    // Phase 3 / ADR-03 D6: route system/control ActivityEvents through
+    // useSystemEventNotification (run_status, error, team_*, graph_*,
+    // spirit_*, …). Returns true if the event was handled as a system
+    // event; false means it's a chat-rendering event (handled below).
+    if (systemEventNotification.handleSystemEvent(ev)) {
+      return;
+    }
+
+    // Chat-rendering events: route to the Activity timeline.
+    // - task streaming/created/completed: main reply/thinking stream
+    // - thinking/action/reply/confirm: auxiliary chat-rendering kinds
     activityTimeline.handleActivityEvent(ev);
+    // OBS-02: Trigger contextual loading message for tool events (kind=action).
+    if (ev.activity.kind === 'action') {
+      contextualLoading.onSpiritActivityEvent(ev);
+    }
   };
 
   const runStatusCtrl = useChatRunStatus({ applyAwaitRunStatus });
-  const { runStatus, runMeta, applyFromEnvelope, onSessionSwitch, refreshRunStatus, forceSetRunStatus } = runStatusCtrl;
+  const {
+    runStatus,
+    runMeta,
+    applyFromActivityEvent,
+    onSessionSwitch,
+    refreshRunStatus,
+    forceSetRunStatus,
+  } = runStatusCtrl;
 
   const providerOpts = useChatProviderOptions(appStore);
   const {
@@ -287,34 +294,11 @@ export function useChatWorkspace() {
     useChatAttachments(sessionIdForArtifacts);
 
   const streamManager = useChatStreamManager({
-    sessionStore,
-    messageStore,
     runtimeStore,
-    displayTeams,
-    resolveAgentId: () => appStore.selectedAgent?.id,
-    markSendingDone: () => sender.markSendingDone(),
-    clearSendingTimeout: () => sender.clearSendingTimeout(),
-    onRunAccepted: () => sender.onRunAccepted(),
-    onRunStatus: (env) => applyRunStatusFromEnvelope(env),
-    touchRunActivity: () => sender.touchRunActivity(),
-    onFirstByteArrived: () => sender.onFirstByteArrived(),
-    refreshRunStatus: refreshRunStatusForUi,
-    onCompressNotice: (_sid: string, prevRatio: number, newRatio: number) => {
-      const prevPct = Math.round(prevRatio * 100);
-      const newPct = Math.round(newRatio * 100);
-      $q.notify({
-        type: 'info',
-        message: t('chat.contextCompressed', `上下文已自动压缩 (${prevPct}% → ${newPct}%)`),
-        classes: 'chat-compress-banner',
-        timeout: 4000,
-      });
-    },
-    // T1.6: Real-time AF — route activity envelopes from the stream directly
-    // to useActivityTimeline for immediate UI updates.
-    onActivityEnvelope: handleActivityEnvelope,
     // Activity-First (AF): route new business-semantic ActivityEvent messages
     // from the WS transport to useActivityTimeline.
     onActivityEvent: handleActivityEvent,
+    refreshRunStatus: refreshRunStatusForUi,
   });
 
   const contextualLoading = useContextualLoadingMessage(streamManager.wsReplaying);
@@ -468,7 +452,7 @@ export function useChatWorkspace() {
     t,
   });
 
-  useChatInboundSync({
+  const inboundSync = useChatInboundSync({
     appStore,
     sessionStore,
     messageStore,
@@ -476,10 +460,8 @@ export function useChatWorkspace() {
     selectedAgentId,
     selectedSessionId,
     wsReplaying: streamManager.wsReplaying,
-    onSpiritEnvelope: contextualLoading.onSpiritEnvelope,
-    // T1.6: Reuse the shared handler so both real-time stream and
-    // inbound-sync paths route to the same useActivityTimeline instance.
-    onActivityEnvelope: handleActivityEnvelope,
+    // AF: Spirit/team orchestration events now consume ActivityEvent directly.
+    onSpiritActivityEvent: contextualLoading.onSpiritActivityEvent,
     // AF: Route new ActivityEvent messages from the global hub to the same
     // useActivityTimeline instance. Dedup is handled inside handleActivityEvent.
     onActivityEvent: handleActivityEvent,
@@ -512,6 +494,11 @@ export function useChatWorkspace() {
     ensureTeamStream: streamManager.ensureTeamStream,
     loadTeamSessions: (teamId: string) => entityNav.loadTeamSessions(teamId),
   });
+
+  // AF: Capture handleInboundActivityEvent from useChatInboundSync so
+  // handleActivityEvent can route system/control ActivityEvents directly
+  // to the ActivityEvent-based inbound pipeline (no Envelope conversion).
+  inboundActivityEventHandler = inboundSync.handleInboundActivityEvent;
 
   const pendingMsgRef = { fn: undefined as (() => Promise<void>) | undefined };
 
@@ -548,10 +535,17 @@ export function useChatWorkspace() {
 
   watch(sender.sending, (val) => followUp.watchSending(val));
 
-  function applyRunStatusFromEnvelope(env: Envelope) {
-    followUp.onRunStatusEnvelope(env);
-    applyFromEnvelope(env);
-    const rs = runStatusFromEnvelope(env);
+  /**
+   * Activity-First: Apply run status from an ActivityEvent (stage=run_status).
+   * Consumes ActivityEvent directly, updating the follow-up queue, runStatus
+   * ref, and cancelling tool messages on terminal statuses. Called from
+   * handleActivityEvent for run_status events that arrive via the
+   * ActivityEvent path.
+   */
+  function applyRunStatusFromActivityEvent(ev: AFActivityEvent) {
+    followUp.onRunStatusActivityEvent(ev);
+    applyFromActivityEvent(ev);
+    const rs = runStatusFromActivityEvent(ev);
     if (rs?.status === 'cancelled' || rs?.status === 'failed') {
       const sid = selectedSessionForUi.value?.id;
       if (sid) {
@@ -976,6 +970,10 @@ export function useChatWorkspace() {
         sessionDrafts.set(prevSid, inputText.value);
       }
       if (!sid) {
+        // Phase 3: activities are isolated per session; just clear the
+        // current pointer. Data for each session remains cached and resumes
+        // instantly when the user switches back.
+        activityTimeline.setCurrentSession(null);
         onSessionSwitch(undefined);
         isAwaitingUser.value = false;
         awaitingRunId.value = '';
@@ -990,7 +988,9 @@ export function useChatWorkspace() {
       stopCompressPolling();
       startCompressPolling();
       if (sid !== prevSid) {
-        activityTimeline.reset();
+        // Phase 3: switch the active session pointer (no reset). bindSessionView
+        // below will load activities for this session if not yet cached.
+        activityTimeline.setCurrentSession(sid);
         sender.clearFailedPendingForSession(prevSid);
         void bindSessionView(sid, true);
       }
@@ -1119,7 +1119,6 @@ export function useChatWorkspace() {
         return sid ? runtimeStore.isWsConnected(sid) : false;
       }),
       wsReplaying: streamManager.wsReplaying,
-      executionProgress: streamManager.executionProgress,
       spiritLoadingMessage: contextualLoading.loadingMessage,
       spiritPulseStates: statusPulse.pulseStates,
       spiritOnTeamStatusChanged: statusPulse.onTeamStatusChanged,

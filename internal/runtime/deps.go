@@ -15,6 +15,8 @@ import (
 	araneasession "aranea-agents/internal/session"
 	"aranea-agents/pkg/loggateway"
 
+	"github.com/google/uuid"
+
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
@@ -83,31 +85,42 @@ func (d TurnDeps) RoundTrip() *provider.RoundTrip {
 }
 
 // RoundTripForSession returns a provider.RoundTrip with an OnRetry callback
-// that publishes llm_retry events to the event bus. sessionID is captured in
-// the callback so events carry the correct session for frontend routing.
-// If the event bus is nil, the callback is not set (retry still works, just
-// no event is published).
+// that publishes llm_retry events as system-domain ActivityEvents on the
+// ActivityBus. sessionID is captured in the callback so events carry the
+// correct session for frontend routing. If the ActivityBus is nil, the
+// callback is not set (retry still works, just no event is published).
 func (d TurnDeps) RoundTripForSession(sessionID string) *provider.RoundTrip {
 	rt := d.RoundTrip()
-	if d.Pipeline.Bus == nil {
+	if d.Pipeline.ActivityBus == nil {
 		return rt
 	}
-	bus := d.Pipeline.Bus
+	bus := d.Pipeline.ActivityBus
 	lg := d.Logger()
 	rt.OnRetry = func(req *http.Request, attempt, maxRetries int, err error, delay time.Duration) {
-		env := contract.NewEnvelope(contract.EnvelopeTypeLLMRetry, "provider", sessionID)
 		maxLabel := "∞"
 		if maxRetries > 0 {
 			maxLabel = fmt.Sprintf("%d", maxRetries)
 		}
-		env.Content = &contract.EnvelopeContent{
-			Text: fmt.Sprintf("LLM 调用失败，正在重试（第 %d 次，上限 %s），%v 后重试", attempt, maxLabel, delay),
-		}
-		env.Metadata = map[string]any{
+		meta := map[string]any{
 			"attempt":     attempt,
 			"max_retries": maxRetries,
 			"delay_ms":    delay.Milliseconds(),
 			"error":       err.Error(),
+			"message":     fmt.Sprintf("LLM 调用失败，正在重试（第 %d 次，上限 %s），%v 后重试", attempt, maxLabel, delay),
+		}
+		ev := biz.ActivityEvent{
+			Event: biz.ActivityEventCreated,
+			Activity: biz.Activity{
+				ID:        uuid.NewString(),
+				Kind:      biz.ActivityKindNotice,
+				Status:    biz.ActivityStatusCompleted,
+				Timestamp: time.Now().UTC(),
+				SessionID: sessionID,
+				AgentKey:  "provider",
+				Stage:     "llm_retry",
+				Meta:      meta,
+			},
+			Domain: biz.ActivityDomainSystem,
 		}
 		// Use the request context if available (carries cancel signal);
 		// fall back to background so the event is still published when the
@@ -116,7 +129,7 @@ func (d TurnDeps) RoundTripForSession(sessionID string) *provider.RoundTrip {
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		bus.Publish(ctx, env)
+		bus.Publish(ctx, ev)
 		if lg != nil {
 			lg.Warn("LLM 重试事件已发布",
 				loggateway.StepID("provider.llm_retry"),

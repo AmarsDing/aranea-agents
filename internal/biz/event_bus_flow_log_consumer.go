@@ -10,82 +10,62 @@ import (
 	"aranea-agents/internal/event/contract"
 )
 
-// flowLogPersistConsumer writes flow_log envelopes to flow_log_events.
+// flowLogPersistConsumer writes flow_log MonitorEvents to flow_log_events.
+//
+// Phase 5 Blocker B: migrated from legacy Envelope-based MonitorBus to
+// typed contract.MonitorBus. The flow_log publisher (event.FlowTracker.emit)
+// publishes MonitorEvent{Type:MonitorEventTypeFlowLog, Metadata:<flow fields>}.
+// This consumer filters at the bus level by Type==flow_log and extracts the
+// same fields from Metadata. The Message field replaces the legacy
+// Envelope.Content.Text fallback.
 type flowLogPersistConsumer struct {
-	buses    []contract.Bus
+	bus      contract.MonitorBus
 	flowLogs *FlowLogUsecase
 	logger   SessionLogWriter
 }
 
-func newFlowLogPersistConsumer(flowLogs *FlowLogUsecase, logger SessionLogWriter, buses ...contract.Bus) *flowLogPersistConsumer {
-	if flowLogs == nil {
+func newFlowLogPersistConsumer(flowLogs *FlowLogUsecase, logger SessionLogWriter, bus contract.MonitorBus) *flowLogPersistConsumer {
+	if flowLogs == nil || bus == nil {
 		return nil
 	}
-	seen := make([]contract.Bus, 0, len(buses))
-	for _, bus := range buses {
-		if bus == nil {
-			continue
-		}
-		dup := false
-		for _, existing := range seen {
-			if existing == bus {
-				dup = true
-				break
-			}
-		}
-		if !dup {
-			seen = append(seen, bus)
-		}
-	}
-	if len(seen) == 0 {
-		return nil
-	}
-	return &flowLogPersistConsumer{buses: seen, flowLogs: flowLogs, logger: logger}
+	return &flowLogPersistConsumer{bus: bus, flowLogs: flowLogs, logger: logger}
 }
 
 func (c *flowLogPersistConsumer) Start(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	opts := contract.SubscribeOptions{
-		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeFlowLog},
+	opts := contract.MonitorSubscribeOptions{
 		BufferSize: 512,
-		Reliable:   true,
+		GlobalMode: true,
+		Filter: func(ev contract.MonitorEvent) bool {
+			return ev.Type == contract.MonitorEventTypeFlowLog
+		},
 	}
-	offerOpts := OfferOption{FallbackSync: true, FallbackFn: c.handle}
-	for i, bus := range c.buses {
-		name := "event-bus-flow-log"
-		if len(c.buses) > 1 {
-			name = fmt.Sprintf("event-bus-flow-log-%d", i)
-		}
-		runTypedConsumerWithOpts(ctx, name, bus, opts, c.handle, offerOpts, c.logger)
-	}
+	offerOpts := offerOption[contract.MonitorEvent]{FallbackSync: true, FallbackFn: c.handle}
+	runMonitorConsumerWithOpts(ctx, "event-bus-flow-log", c.bus, opts, c.handle, offerOpts, c.logger)
 }
 
-func (c *flowLogPersistConsumer) handle(ctx context.Context, env contract.Envelope) {
-	if c == nil || c.flowLogs == nil || env.Metadata == nil {
+func (c *flowLogPersistConsumer) handle(ctx context.Context, ev contract.MonitorEvent) {
+	if c == nil || c.flowLogs == nil || ev.Metadata == nil {
 		return
 	}
-	m := env.Metadata
+	m := ev.Metadata
 	flowID := metaStringFromFlowLog(m, "flow_id")
 	if flowID == "" {
-		flowID = env.ID
+		flowID = ev.ID
 	}
-	createdAt := time.Now().UTC()
-	if ts := strings.TrimSpace(env.Timestamp); ts != "" {
-		if t, err := time.Parse(time.RFC3339Nano, ts); err == nil {
-			createdAt = t.UTC()
-		} else if t, err := time.Parse(time.RFC3339, ts); err == nil {
-			createdAt = t.UTC()
-		}
+	createdAt := ev.Timestamp
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
 	}
 	payload, _ := json.Marshal(m)
 	rec := FlowLogRecord{
 		ID:          flowID,
 		TraceID:     metaStringFromFlowLog(m, "trace_id"),
-		SessionID:   coalesceNonEmpty(metaStringFromFlowLog(m, "session_id"), env.SessionID),
+		SessionID:   coalesceNonEmpty(metaStringFromFlowLog(m, "session_id"), ev.SessionID),
 		RunID:       metaStringFromFlowLog(m, "run_id"),
-		TeamID:      strings.TrimSpace(env.TeamID),
+		TeamID:      metaStringFromFlowLog(m, "team_id"),
 		Domain:      metaStringFromFlowLog(m, "domain"),
 		AgentKey:    metaStringFromFlowLog(m, "agent_key"),
 		StepID:      metaStringFromFlowLog(m, "step_id"),
@@ -94,10 +74,10 @@ func (c *flowLogPersistConsumer) handle(ctx context.Context, env contract.Envelo
 		Title:       metaStringFromFlowLog(m, "title"),
 		Message:     metaStringFromFlowLog(m, "message"),
 		PayloadJSON: string(payload),
-		CreatedAt:   createdAt,
+		CreatedAt:   createdAt.UTC(),
 	}
-	if rec.Message == "" && env.Content != nil {
-		rec.Message = strings.TrimSpace(env.Content.Text)
+	if rec.Message == "" {
+		rec.Message = strings.TrimSpace(ev.Message)
 	}
 	if err := c.flowLogs.Save(ctx, rec); err != nil {
 		if c.logger != nil {

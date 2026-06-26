@@ -212,6 +212,15 @@ export interface ActivityEvent {
    * Empty for non-streaming events.
    */
   delta_chunk?: string;
+  /**
+   * Activity domain — classifies whether this event belongs to the chat
+   * rendering pipeline ('chat') or the system/control pipeline ('system').
+   * The backend uses this to route events on the chat channel: chat-domain
+   * events drive the Activity timeline, system-domain events drive legacy
+   * envelope handlers (run_status, error, team_*, graph_*, spirit_*).
+   * Optional for backward compatibility with older backends that don't set it.
+   */
+  domain?: 'chat' | 'system';
 }
 
 // --- WS downstream message ---

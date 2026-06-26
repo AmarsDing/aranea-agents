@@ -87,6 +87,7 @@ import (
 
 func provideEventBusSideConsumers(
 	infra *event.Infra,
+	activityBus biz.ActivityEventBus,
 	tools *biz.ToolUsecase,
 	webhooks *biz.WebhookDispatcher,
 	sessions *biz.SessionUsecase,
@@ -98,12 +99,11 @@ func provideEventBusSideConsumers(
 	usage *biz.UsageUsecase,
 	logger biz.SessionLogWriter,
 ) *biz.EventBusSideConsumers {
-	var sessionBus, monitorBus event.Bus
+	var monitorEventBus contract.MonitorBus
 	if infra != nil {
-		sessionBus = infra.SessionBus
-		monitorBus = infra.MonitorBus
+		monitorEventBus = infra.MonitorEventBus
 	}
-	return biz.NewEventBusSideConsumers(sessionBus, monitorBus, tools, webhooks, sessions, flowLogs, monitor, memWorker, traceProj, fileAppender, usage, logger)
+	return biz.NewEventBusSideConsumers(activityBus, monitorEventBus, tools, webhooks, sessions, flowLogs, monitor, memWorker, traceProj, fileAppender, usage, logger)
 }
 
 func provideCronRunnerDeps(
@@ -575,13 +575,13 @@ func provideTurnLifecycleUsecase(sessions *biz.SessionUsecase, lg loggateway.Log
 	})
 }
 
-func provideUsageUsecase(repo biz.UsageRepo, mon *biz.MonitorUsecase, teamUC *biz.TeamUsecase, sessions *biz.SessionUsecase, bus contract.Bus, lg loggateway.Logger) *biz.UsageUsecase {
+func provideUsageUsecase(repo biz.UsageRepo, mon *biz.MonitorUsecase, teamUC *biz.TeamUsecase, sessions *biz.SessionUsecase, activityBus biz.ActivityEventBus, lg loggateway.Logger) *biz.UsageUsecase {
 	uc := biz.NewUsageUsecase(repo, lg)
 	uc.SetAlertNotifier(service.NewMonitorBudgetAlertNotifier(mon))
 	uc.SetTeamReader(teamUC)
 	uc.SetSessionMetricsAccumulator(&sessionMetricsAdapter{sessions: sessions})
 	uc.SetCompletionUsageLinker(&completionLinkerAdapter{mon: mon})
-	uc.SetUsageEnvelopePublisher(&envelopePublisherAdapter{bus: bus})
+	uc.SetUsageEnvelopePublisher(&envelopePublisherAdapter{activityBus: activityBus})
 	return uc
 }
 
@@ -617,13 +617,13 @@ func (a *completionLinkerAdapter) LinkRunnerCompletionUsage(ctx context.Context,
 	return biz.LinkRunnerCompletionUsage(ctx, a.mon, sessionID, runID, usageEventID, traceID)
 }
 
-// envelopePublisherAdapter adapts contract.Bus to the usage.UsageEnvelopePublisher interface.
+// envelopePublisherAdapter adapts biz.ActivityEventBus to the usage.UsageEnvelopePublisher interface.
 type envelopePublisherAdapter struct {
-	bus contract.Bus
+	activityBus biz.ActivityEventBus
 }
 
 func (a *envelopePublisherAdapter) PublishTokenUsageEnvelope(ctx context.Context, e bizusage.TokenUsageEvent) {
-	biz.PublishTokenUsageEnvelope(ctx, a.bus, e)
+	biz.PublishTokenUsageEnvelope(ctx, a.activityBus, e)
 }
 
 func provideSystemSettingUsecase(repo biz.SystemSettingRepo, quota biz.UsageQuotaRepo, tester biz.WebResearchTester, tp biz.SystemSettingTxProvider) *biz.SystemSettingUsecase {
@@ -1347,6 +1347,7 @@ func provideChannelIngress(
 	graphs biz.GraphExecutor,
 	cron biz.CronTriggerGateway,
 	eventBus event.Bus,
+	activityBus biz.ActivityEventBus,
 	admission *biz.TurnAdmissionUsecase,
 	teamCompiler biz.TeamCompiler,
 	lg loggateway.Logger,
@@ -1355,7 +1356,7 @@ func provideChannelIngress(
 	debouncer := biz.NewIngressPeerDebouncer(biz.DefaultIngressDebounce, lg)
 	registry := biz.NewTurnPreviewRegistry()
 	gate := biz.NewChannelConcurrentGate()
-	return service.NewChannelIngress(channels, turnJobs, sessions, chat, flowBuffer, graphs, cron, eventBus, dedupe, debouncer, registry, gate, admission, teamCompiler, lg)
+	return service.NewChannelIngress(channels, turnJobs, sessions, chat, flowBuffer, graphs, cron, eventBus, activityBus, dedupe, debouncer, registry, gate, admission, teamCompiler, lg)
 }
 
 func provideChannelIngressAdmission(
@@ -1828,8 +1829,9 @@ func provideA2AGatewayHealthRunner(deps a2ahealth.Deps, lg loggateway.Logger) *a
 	return a2ahealth.NewRunner(deps, lg)
 }
 
-func providePluginRuntime(stats plugintrpc.StatsRecorder, usage biz.PluginCostGuardUsageRepo, tools *biz.ToolUsecase, deliveries biz.HookDeliveryRepo, lg loggateway.Logger) *plugintrpc.Runtime {
+func providePluginRuntime(stats plugintrpc.StatsRecorder, usage biz.PluginCostGuardUsageRepo, tools *biz.ToolUsecase, deliveries biz.HookDeliveryRepo, monitorBus contract.MonitorBus, lg loggateway.Logger) *plugintrpc.Runtime {
 	rt := plugintrpc.NewRuntime(stats, lg)
+	rt.SetMonitorBus(monitorBus)
 	if usage != nil {
 		rt.SetCostGuardUsageRepo(usage)
 	}
@@ -2076,9 +2078,9 @@ func provideA2AService(
 	return service.NewA2AService(uc, chat, agents, reg, store, limiter, lg)
 }
 
-func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, bus contract.Bus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase) biz.TaskPlannerPort {
+func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, activityBus biz.ActivityEventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase) biz.TaskPlannerPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
-	return chatagent.NewTaskPlanner(repo, catalog, httpClient, bus, orchCache, lg, sysUC)
+	return chatagent.NewTaskPlanner(repo, catalog, httpClient, activityBus, orchCache, lg, sysUC)
 }
 
 func provideAgentAllocator(
@@ -2086,7 +2088,7 @@ func provideAgentAllocator(
 	agentReader biz.AgentReader,
 	perfRepo biz.AgentPerformanceRepository,
 	catalog *biz.LlmProviderModelUsecase,
-	bus contract.Bus,
+	activityBus biz.ActivityEventBus,
 	embedder knowledge.Embedder,
 	agentFactory biz.AgentFactory,
 	lg loggateway.Logger,
@@ -2094,7 +2096,7 @@ func provideAgentAllocator(
 ) biz.AgentAllocatorPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
 	capBuilder := chatagent.NewAgentCapabilityBuilder(agentReader, lg)
-	return chatagent.NewAgentAllocator(repo, agentReader, perfRepo, capBuilder, catalog, httpClient, bus, lg, embedder, agentFactory, sysUC)
+	return chatagent.NewAgentAllocator(repo, agentReader, perfRepo, capBuilder, catalog, httpClient, activityBus, lg, embedder, agentFactory, sysUC)
 }
 
 // provideAgentFactory constructs the AgentFactory (P1-4). The LLM model is
@@ -2155,7 +2157,6 @@ func provideTaskOrchestrator(
 	orchCache *biz.OrchestrationCache,
 	perfRepo biz.AgentPerformanceRepository,
 	evolutionSugg biz.EvolutionSuggestionRepo,
-	bus contract.Bus,
 	activityBus biz.ActivityEventBus,
 	nl2graph graph.NL2GraphConverter,
 	lg loggateway.Logger,
@@ -2176,7 +2177,7 @@ func provideTaskOrchestrator(
 		},
 	}
 	compiler := chatagent.NewDAGToGraphCompiler(lg)
-	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, compiler, repo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionSugg, bus, activityBus, nl2graph, lg)
+	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, compiler, repo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionSugg, activityBus, nl2graph, lg)
 }
 
 func provideDeptLeadManager(

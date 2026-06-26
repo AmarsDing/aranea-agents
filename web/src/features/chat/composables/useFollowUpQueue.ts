@@ -1,8 +1,8 @@
 import { onUnmounted, ref, type Ref } from 'vue';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import type { PendingMessage } from '../types';
-import { messageQueuedFromEnvelope } from '../envelopeRunStatus';
-import type { Envelope } from '../envelope';
+import { messageQueuedFromActivityEvent } from '../activityRunStatus';
+import type { ActivityEvent } from '../../../realtime/activityEvent';
 
 export function useFollowUpQueue(
   sessionId: Ref<string | undefined>,
@@ -53,6 +53,17 @@ export function useFollowUpQueue(
     // Also refresh on run completion to clear stale pending items
     const meta = env.metadata ?? {};
     const rs = String(meta.status ?? '');
+    if (rs === 'completed' || rs === 'cancelled' || rs === 'failed') {
+      void refreshPendingMessages();
+    }
+  }
+
+  /** Activity-First: WS-driven refresh from an ActivityEvent (stage=run_status). */
+  function onRunStatusActivityEvent(ev: ActivityEvent) {
+    if (messageQueuedFromActivityEvent(ev)) {
+      void refreshPendingMessages();
+    }
+    const rs = String(ev.activity.meta?.status ?? '');
     if (rs === 'completed' || rs === 'cancelled' || rs === 'failed') {
       void refreshPendingMessages();
     }
@@ -125,7 +136,7 @@ export function useFollowUpQueue(
   return {
     pendingMessages,
     refreshPendingMessages,
-    onRunStatusEnvelope,
+    onRunStatusActivityEvent,
     onCancelPending,
     onInterruptPending,
     onUpdatePending,

@@ -4,8 +4,6 @@ import (
 	"context"
 	"testing"
 	"time"
-
-	"aranea-agents/internal/event/contract"
 )
 
 type feedbackMonitorRepo struct {
@@ -104,16 +102,23 @@ func TestUserFeedbackConsumer_handle(t *testing.T) {
 	feedback := &testFeedbackEnqueuer{}
 	worker := NewTurnMemoryWorker(feedback, noopSessionLogWriter{})
 
-	bus := contract.Bus(nil) // consumer only stores the bus; handle is called directly
+	// bus is nil because handle is called directly without going through Start.
+	var bus ActivityEventBus
 	c := &userFeedbackConsumer{bus: bus, monitor: uc, memWorker: worker}
-	c.handle(context.Background(), contract.Envelope{
-		Type:      contract.EnvelopeTypeUserFeedback,
-		SessionID: "sess-1",
-		Metadata: map[string]any{
-			"message_id": "msg-9",
-			"rating":     "positive",
-			"comment":    "helpful",
+	c.handle(context.Background(), ActivityEvent{
+		Event: ActivityEventCreated,
+		Activity: Activity{
+			ID:        "evt-1",
+			Kind:      ActivityKindNotice,
+			SessionID: "sess-1",
+			Meta: map[string]any{
+				"notice_type": "user_feedback",
+				"message_id":  "msg-9",
+				"rating":      "positive",
+				"comment":     "helpful",
+			},
 		},
+		Domain: ActivityDomainChat,
 	})
 	if len(repo.events) != 1 {
 		t.Fatalf("expected monitor event, got %d", len(repo.events))

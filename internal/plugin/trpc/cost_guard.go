@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -28,10 +28,10 @@ type CostGuardPlugin struct {
 
 var _ trpcplugin.Plugin = (*CostGuardPlugin)(nil)
 
-func NewCostGuardPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime, lg loggateway.Logger) *CostGuardPlugin {
+func NewCostGuardPlugin(p biz.Plugin, stats StatsRecorder, monitorBus contract.MonitorBus, rt *Runtime, lg loggateway.Logger) *CostGuardPlugin {
 	var cfg CostGuardConfig
 	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
-	return &CostGuardPlugin{base: newBasePlugin(p.Key, stats, bus, lg), cfg: cfg, rt: rt}
+	return &CostGuardPlugin{base: newBasePlugin(p.Key, stats, monitorBus, lg), cfg: cfg, rt: rt}
 }
 
 func (c *CostGuardPlugin) Name() string { return c.base.Name() }

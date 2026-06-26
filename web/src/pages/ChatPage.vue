@@ -71,7 +71,6 @@
         :await-kind="composer.awaitKind"
         :await-tool-key="composer.awaitToolKey"
         :ws-replaying="session.wsReplaying"
-        :execution-progress="session.executionProgress"
         :spirit-loading-message="session.spiritLoadingMessage"
         :spirit-status-bar="spiritStatusBar"
         :spirit-max-concurrent-teams="spiritStore.maxConcurrentTeams ?? undefined"

@@ -1,25 +1,36 @@
 # Event 事件系统 — 开发计划
 
-> **版本**：2026-06-19 | **状态**：🟢 P1 + P2 + P3 + P5(T3.4) 已实现，P4 工具生命周期事件未实现
+> **版本**：2026-06-26 | **状态**：🟢 P1 + P2 + P3 + P5(T3.4) 已实现，P4 工具生命周期事件未实现；🔄 统一总线迁移 Phase 1-3 已完成（Phase 4-6 待实施）
 > **需求**：[34-event-system.md](./34-event-system.md) · **设计**：[34-event-system.design.md](./34-event-system.design.md)
+> **统一总线迁移**：[2026-06-25-unified-bus-architecture-design.md](../superpowers/specs/2026-06-25-unified-bus-architecture-design.md)
 
 ---
 
 ## 1. 模块定位
 
-Event 事件系统：基于事件总线的发布/订阅机制，支持系统内部组件间的异步事件通信。核心组件为 `event.Bus`（发布/订阅 + 背压策略）+ `event.Envelope`（统一事件信封）+ `event.Buffer`（环形缓冲 + 断连重放），通过 WebSocket 统一传输至前端。
+Event 事件系统：基于事件总线的发布/订阅机制，支持系统内部组件间的异步事件通信。
+
+> **统一总线架构（2026-06-26 迁移中）**：系统正在从双总线（Envelope + ActivityEvent）迁移到统一总线架构。
+> - **ActivityEventBus**（`biz.ActivityEventBus`）：传输 `ActivityEvent`，承载所有 chat + system 事件。`Domain=chat` 持久化到 Activity 表，`Domain=system` 仅推送 WS。
+> - **MonitorBus**（`contract.MonitorBus`）：传输 `MonitorEvent`，承载高频监控事件（log/flow_log/mcp/alert）。
+> - **Legacy Envelope Bus**（`event.Bus`）：仅保留给核心基础设施内部使用（framework_adapter、domain_event_adapter、replay buffer），Phase 5 删除。
+>
+> 详见 [统一总线架构设计](../superpowers/specs/2026-06-25-unified-bus-architecture-design.md)。
 
 **代码锚点**：
 
 | 层 | 路径 | 职责 |
 |----|------|------|
-| contract | `internal/event/contract/envelope.go` | Envelope 结构 + EnvelopeType 枚举（60+ 类型）+ Clone / MatchFilterKey / ContainsTag / RouteChannel / RegisterChannelRoute |
+| contract | `internal/event/contract/envelope.go` | ⚠️ Legacy Envelope 结构 + EnvelopeType 枚举（Phase 5 删除） |
+| contract | `internal/event/contract/monitor_event.go` | ✅ 新增：MonitorEvent 类型 + MonitorEventType 枚举 + MonitorBus 接口 |
 | contract | `internal/event/contract/bus.go` | Bus 接口 + SubscribeOptions + DropPolicy + ChannelPriority |
 | contract | `internal/event/contract/reliability.go` | EventReliability 分级 + ClassifyEventReliability / IsCriticalWBPFType / RequiresBlockUpTo |
 | event | `internal/event/envelope.go` | contract 类型的向后兼容 type alias |
 | event | `internal/event/bus.go` + `bus_adapter.go` | NewBus + 框架 bus.Bus 适配（DropLogger） |
 | event | `internal/event/buffer.go` | 环形缓冲 + TTL 淘汰 + Replay |
-| event | `internal/event/infra.go` | Infra 双 Bus（SessionBus / MonitorBus）+ Publish（split 路由）+ InfraProviderSet |
+| event | `internal/event/infra.go` | Infra：SessionBus + MonitorBus（legacy envelope）+ ✅ MonitorEventBus（`contract.MonitorBus`）+ Publish（split 路由）+ InfraProviderSet |
+| event | `internal/event/monitor_bus.go` | ✅ 新增：MonitorBus 实现（基于 GenericBus，传输 `contract.MonitorEvent`） |
+| event | `internal/event/activityevent/bus.go` | ✅ ActivityEventBus 实现（传输 `biz.ActivityEvent`） |
 | event | ~~`internal/event/wal.go` + `wal_storage.go`~~ | 已删除（Phase 1c-2：WAL/WBPF 子系统下线，Critical 事件不再有 crash-recovery 保证，订阅者需幂等） |
 | event | ~~`internal/event/event_reliability.go`~~ | 已删除（reliability 别名零调用，直接使用 `contract/reliability.go`） |
 | event | `internal/event/flow_log.go` + `flow_tracker.go` + `trace_emitter.go` + `trace_context.go` + `flow_context.go` | Flow Log v2（替代 SlogBridge） |
@@ -42,7 +53,7 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 | biz | `internal/biz/session/state.go` + `state_usecase.go` | SessionUsecase.ApplyStateDelta / GetSessionState / SaveSessionState |
 | data | `internal/data/session_state_repo.go` | Session State 持久化（json_set / json_remove） |
 | data | `internal/data/event_store_repo.go` + `ent/schema/event_store.go` | event_store 表 Repo + Schema |
-| server | `internal/server/ws.go` + `ws_*.go` | WebSocket 统一网关（`/v1/ws`） |
+| server | `internal/server/ws.go` + `ws_*.go` | WebSocket 统一网关（`/v1/ws`）；✅ 统一总线：2 pump（monitorEventPump + activityEventPump），删除 envelope eventPump |
 | server | `internal/server/ws_sync_request.go` | T3.4 sync_request 上行处理 + revision-based 重放（EventStoreLister 窄接口） |
 | service | `internal/service/event.go` | 回放 API Service（`GET /v1/events`） |
 | proto | `api/kratos/event/v1/event.proto` | EventService.ListEvents Proto 契约 |

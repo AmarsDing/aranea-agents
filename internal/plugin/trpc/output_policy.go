@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -30,13 +30,13 @@ type OutputPolicyPlugin struct {
 
 var _ trpcplugin.Plugin = (*OutputPolicyPlugin)(nil)
 
-func NewOutputPolicyPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, lg loggateway.Logger) *OutputPolicyPlugin {
+func NewOutputPolicyPlugin(p biz.Plugin, stats StatsRecorder, monitorBus contract.MonitorBus, lg loggateway.Logger) *OutputPolicyPlugin {
 	var cfg outputPolicyConfig
 	cfg.DangerousCommandCheck = true
 	cfg.BlockOnViolation = true
 	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
 	return &OutputPolicyPlugin{
-		base: newBasePlugin(p.Key, stats, bus, lg),
+		base: newBasePlugin(p.Key, stats, monitorBus, lg),
 		cfg:  cfg,
 	}
 }

@@ -3,18 +3,23 @@ package biz
 import (
 	"context"
 	"strings"
-
-	"aranea-agents/internal/event/contract"
 )
 
-// callbackConsumer dispatches outbound webhooks on terminal run_status envelopes.
+// callbackConsumer dispatches outbound webhooks on terminal run_status
+// ActivityEvents.
+//
+// Phase 5 Blocker B: migrated from legacy Envelope-based SessionBus to
+// ActivityEventBus. The run_status publisher (service.PublishRunStatusFull)
+// emits ActivityEvent{Stage:"run_status", Meta:{"status","run_id","error_message"}}.
+// This consumer filters at the bus level by Stage=="run_status" and extracts
+// the same fields from Activity.Meta.
 type callbackConsumer struct {
-	bus      contract.Bus
+	bus      ActivityEventBus
 	webhooks *WebhookDispatcher
 	logger   SessionLogWriter
 }
 
-func newCallbackConsumer(bus contract.Bus, webhooks *WebhookDispatcher, logger SessionLogWriter) *callbackConsumer {
+func newCallbackConsumer(bus ActivityEventBus, webhooks *WebhookDispatcher, logger SessionLogWriter) *callbackConsumer {
 	if webhooks == nil {
 		return nil
 	}
@@ -34,18 +39,24 @@ func (c *callbackConsumer) Start(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	runTypedConsumerWithOpts(ctx, "event-bus-callback", c.bus, contract.SubscribeOptions{
-		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeRunStatus},
+	runActivityConsumerWithOpts(ctx, "event-bus-callback", c.bus, ActivityEventSubscribeOptions{
 		BufferSize: 128,
-		Reliable:   true,
-	}, c.handle, OfferOption{FallbackSync: true, FallbackFn: c.handle}, c.logger)
+		GlobalMode: true,
+		Filter: func(ev ActivityEvent) bool {
+			return ev.Activity.Stage == "run_status"
+		},
+	}, c.handle, offerOption[ActivityEvent]{FallbackSync: true, FallbackFn: c.handle}, c.logger)
 }
 
-func (c *callbackConsumer) handle(ctx context.Context, env contract.Envelope) {
-	if c == nil || c.webhooks == nil || env.Metadata == nil {
+func (c *callbackConsumer) handle(ctx context.Context, ev ActivityEvent) {
+	if c == nil || c.webhooks == nil {
 		return
 	}
-	status, _ := env.Metadata["status"].(string)
+	meta := ev.Activity.Meta
+	if meta == nil {
+		return
+	}
+	status, _ := meta["status"].(string)
 	status = strings.TrimSpace(status)
 	if status == "" {
 		return
@@ -53,8 +64,8 @@ func (c *callbackConsumer) handle(ctx context.Context, env contract.Envelope) {
 	if _, ok := terminalRunStatuses()[strings.ToLower(status)]; !ok {
 		return
 	}
-	runID, _ := env.Metadata["run_id"].(string)
-	errMsg, _ := env.Metadata["error_message"].(string)
+	runID, _ := meta["run_id"].(string)
+	errMsg, _ := meta["error_message"].(string)
 	eventType := RunStatusToWebhookEvent(status)
 	if eventType == "" {
 		return
@@ -63,5 +74,5 @@ func (c *callbackConsumer) handle(ctx context.Context, env contract.Envelope) {
 	if msg := strings.TrimSpace(errMsg); msg != "" {
 		data["error_message"] = msg
 	}
-	c.webhooks.Dispatch(ctx, eventType, runID, env.SessionID, status, data)
+	c.webhooks.Dispatch(ctx, eventType, runID, ev.Activity.SessionID, status, data)
 }

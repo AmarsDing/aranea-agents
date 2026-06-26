@@ -1,4 +1,3 @@
-import type { Envelope } from '../realtime/envelope';
 import type { Message, RunStatusValue } from './types';
 
 export type ConversationSource = 'web' | 'ws' | 'channel' | 'cron' | 'a2a' | 'durable';
@@ -59,7 +58,6 @@ export type ConversationTimelineItem = {
   kind: 'message' | 'event';
   turnId?: string;
   message?: Message;
-  envelope?: Envelope;
 };
 
 export function runStatusToTurnStatus(status: RunStatusValue | string): ConversationTurnStatus | undefined {

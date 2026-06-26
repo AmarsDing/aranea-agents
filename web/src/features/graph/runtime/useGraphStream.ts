@@ -1,10 +1,17 @@
 /**
- * Graph-specific envelope stream composable.
+ * Graph-specific activity event stream composable.
  * Lifted from features/chat/useEnvelopeStream.ts to eliminate cross-feature dependency.
  * Chat re-exports this for backward compatibility.
+ *
+ * Migrated from envelope-based `onChannel('graph', ...)` to ActivityEvent-based
+ * `onActivityEvent` callback. The backend now publishes graph lifecycle events
+ * (node_start/end/error, step, execution_done, checkpoint) as ActivityEvent
+ * payloads on the chat channel with `activity.kind = 'graph_stage'` (or
+ * `'session'` for checkpoint interrupts).
  */
 import { ref } from 'vue';
 import { useEnvelopeStream } from '../../../realtime/useEnvelopeStream';
+import type { ActivityEvent } from '../../../realtime/activityEvent';
 import type {
   GraphExecutionState,
   GraphStreamExecutionSummary,
@@ -47,10 +54,7 @@ function parseInterruptPrompt(value: unknown): string {
 }
 
 export function useGraphStream(sessionId: string, graphId: string, execId: string) {
-  const stream = useEnvelopeStream({
-    sessionId,
-    channels: ['chat', 'graph', 'system'],
-  });
+  const activityListeners: Array<(ev: ActivityEvent) => void> = [];
 
   const execution = ref<GraphExecutionState>({
     executionId: execId,
@@ -64,23 +68,35 @@ export function useGraphStream(sessionId: string, graphId: string, execId: strin
 
   const filterKey = `graph/${graphId}/${execId}`;
 
-  stream.onChannel('graph', (env) => {
-    if (env.filter_key && !env.filter_key.startsWith(filterKey)) {
-      return;
+  function matchesFilter(ev: ActivityEvent): boolean {
+    const metaFilterKey = ev.activity.meta?.filter_key;
+    if (typeof metaFilterKey === 'string' && metaFilterKey !== '' && !metaFilterKey.startsWith(filterKey)) {
+      return false;
     }
+    return true;
+  }
 
-    switch (env.type) {
-      case 'graph_node_start': {
-        const nodeId = env.metadata?.node_id as string;
-        const nodeType = env.metadata?.node_type as string;
-        const stepNumber = env.metadata?.step_number as number;
+  function notifyListeners(ev: ActivityEvent) {
+    for (const listener of activityListeners) {
+      listener(ev);
+    }
+  }
+
+  function handleGraphStageEvent(ev: ActivityEvent) {
+    if (!matchesFilter(ev)) return;
+    const meta = (ev.activity.meta ?? {}) as Record<string, unknown>;
+    switch (ev.activity.stage) {
+      case 'node_start': {
+        const nodeId = String(meta.node_id ?? '');
+        const nodeTypeRaw = typeof meta.node_type === 'string' ? meta.node_type : '';
+        const stepNumber = Number(meta.step_number ?? 0);
         if (nodeId) {
           const existing = execution.value.nodes.get(nodeId);
           execution.value.nodes.set(nodeId, {
             nodeId,
-            nodeType: nodeType ?? existing?.nodeType ?? 'function',
+            nodeType: nodeTypeRaw || existing?.nodeType || 'function',
             status: 'running',
-            startTime: env.metadata?.start_time as string,
+            startTime: typeof meta.start_time === 'string' ? meta.start_time : undefined,
             stepNumber,
           });
           execution.value.currentNode = nodeId;
@@ -88,85 +104,117 @@ export function useGraphStream(sessionId: string, graphId: string, execId: strin
         }
         break;
       }
-      case 'graph_node_end': {
-        const nodeId = env.metadata?.node_id as string;
+      case 'node_end': {
+        const nodeId = String(meta.node_id ?? '');
         if (nodeId) {
           const existing = execution.value.nodes.get(nodeId);
           execution.value.nodes.set(nodeId, {
             nodeId,
-            nodeType: (env.metadata?.node_type as string) ?? existing?.nodeType ?? 'function',
+            nodeType: typeof meta.node_type === 'string' ? meta.node_type : (existing?.nodeType ?? 'function'),
             status: 'completed',
             startTime: existing?.startTime,
-            endTime: env.metadata?.end_time as string,
-            durationNs: env.metadata?.duration_ns as number,
-            stepNumber: env.metadata?.step_number as number,
+            endTime: typeof meta.end_time === 'string' ? meta.end_time : undefined,
+            durationNs: typeof meta.duration_ns === 'number' ? meta.duration_ns : undefined,
+            stepNumber: Number(meta.step_number ?? 0),
           });
         }
         break;
       }
-      case 'graph_node_error': {
-        const nodeId = env.metadata?.node_id as string;
+      case 'node_error': {
+        const nodeId = String(meta.node_id ?? '');
         if (nodeId) {
           const existing = execution.value.nodes.get(nodeId);
           execution.value.nodes.set(nodeId, {
             nodeId,
-            nodeType: (env.metadata?.node_type as string) ?? existing?.nodeType ?? 'function',
+            nodeType: typeof meta.node_type === 'string' ? meta.node_type : (existing?.nodeType ?? 'function'),
             status: 'error',
-            error: env.metadata?.error as string,
-            stepNumber: env.metadata?.step_number as number,
+            error: typeof meta.error === 'string' ? meta.error : undefined,
+            stepNumber: Number(meta.step_number ?? 0),
           });
           execution.value.status = 'failed';
         }
         break;
       }
-      case 'graph_step': {
-        const stepNumber = env.metadata?.step_number as number;
-        if (stepNumber !== undefined) {
+      case 'step': {
+        const stepNumber = Number(meta.step_number ?? 0);
+        if (Number.isFinite(stepNumber) && stepNumber > 0) {
           execution.value.totalSteps = stepNumber;
         }
-        if (env.metadata?.duration_ns) {
-          execution.value.durationNs = env.metadata.duration_ns as number;
+        if (typeof meta.duration_ns === 'number') {
+          execution.value.durationNs = meta.duration_ns;
         }
         break;
       }
-      case 'graph_execution_done': {
+      case 'execution_done': {
         execution.value.status = 'completed';
-        execution.value.totalSteps = env.metadata?.total_steps as number;
-        if (env.metadata?.duration_ns) {
-          execution.value.durationNs = env.metadata.duration_ns as number;
+        const totalSteps = Number(meta.total_steps ?? 0);
+        if (Number.isFinite(totalSteps)) {
+          execution.value.totalSteps = totalSteps;
         }
-        executionSummary.value = parseGraphStreamSummary(env.metadata?.execution_summary);
-        break;
-      }
-      case 'checkpoint': {
-        if (env.metadata?.interrupt_key) {
-          execution.value.status = 'waiting_human';
-          const nodeId = env.metadata?.node_id as string;
-          if (nodeId) {
-            const existing = execution.value.nodes.get(nodeId);
-            execution.value.nodes.set(nodeId, {
-              nodeId,
-              nodeType: (env.metadata?.node_type as string) ?? existing?.nodeType ?? 'function',
-              status: 'interrupted',
-              stepNumber: env.metadata?.step_number as number,
-            });
-          }
-          interrupt.value = {
-            nodeId: String(env.metadata?.node_id ?? ''),
-            interruptKey: String(env.metadata?.interrupt_key ?? ''),
-            prompt: parseInterruptPrompt(env.metadata?.interrupt_value),
-            checkpointId: String(env.metadata?.checkpoint_id ?? ''),
-            lineageId: String(env.metadata?.lineage_id ?? ''),
-            interruptValue: env.metadata?.interrupt_value,
-          };
+        if (typeof meta.duration_ns === 'number') {
+          execution.value.durationNs = meta.duration_ns;
         }
+        executionSummary.value = parseGraphStreamSummary(meta.execution_summary);
         break;
       }
     }
+    notifyListeners(ev);
+  }
+
+  function handleCheckpointEvent(ev: ActivityEvent) {
+    if (!matchesFilter(ev)) return;
+    const meta = (ev.activity.meta ?? {}) as Record<string, unknown>;
+    if (!meta.interrupt_key) {
+      return;
+    }
+    execution.value.status = 'waiting_human';
+    const nodeId = String(meta.node_id ?? '');
+    if (nodeId) {
+      const existing = execution.value.nodes.get(nodeId);
+      execution.value.nodes.set(nodeId, {
+        nodeId,
+        nodeType: typeof meta.node_type === 'string' ? meta.node_type : (existing?.nodeType ?? 'function'),
+        status: 'interrupted',
+        stepNumber: Number(meta.step_number ?? 0),
+      });
+    }
+    interrupt.value = {
+      nodeId: String(meta.node_id ?? ''),
+      interruptKey: String(meta.interrupt_key ?? ''),
+      prompt: parseInterruptPrompt(meta.interrupt_value),
+      checkpointId: String(meta.checkpoint_id ?? ''),
+      lineageId: String(meta.lineage_id ?? ''),
+      interruptValue: meta.interrupt_value,
+    };
+    notifyListeners(ev);
+  }
+
+  function handleActivityEvent(ev: ActivityEvent) {
+    const kind = ev.activity.kind;
+    if (kind === 'graph_stage') {
+      handleGraphStageEvent(ev);
+    } else if (kind === 'session' && ev.activity.stage === 'checkpoint') {
+      handleCheckpointEvent(ev);
+    }
+  }
+
+  const stream = useEnvelopeStream({
+    sessionId,
+    channels: ['chat', 'graph', 'system'],
+    onActivityEvent: handleActivityEvent,
   });
 
   function clearInterrupt() {
     interrupt.value = null;
+  }
+
+  /**
+   * Register a listener for ActivityEvents that match this graph stream's
+   * filters (graph_stage events and checkpoint session events). The listener
+   * is invoked after internal state has been updated.
+   */
+  function onActivityEvent(listener: (ev: ActivityEvent) => void): void {
+    activityListeners.push(listener);
   }
 
   return {
@@ -175,5 +223,6 @@ export function useGraphStream(sessionId: string, graphId: string, execId: strin
     executionSummary,
     interrupt,
     clearInterrupt,
+    onActivityEvent,
   };
 }

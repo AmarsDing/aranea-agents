@@ -105,7 +105,7 @@ func StartOrchestrationStatusProjector(ctx context.Context, bus event.Bus, cfg O
 					}
 					changed := store.ApplyEnvelope(env, cfg.Registry)
 					for _, st := range changed {
-						publishOrchestrationStatus(procCtx, bus, cfg, channel, st)
+						publishOrchestrationStatus(procCtx, cfg.ActivityBus, cfg, channel, st)
 					}
 				}
 			}
@@ -135,7 +135,7 @@ func StartOrchestrationStatusProjector(ctx context.Context, bus event.Bus, cfg O
 					}
 					changed := store.ApplyEnvelope(env, cfg.Registry)
 					for _, st := range changed {
-						publishOrchestrationStatus(procCtx, bus, cfg, channel, st)
+						publishOrchestrationStatus(procCtx, cfg.ActivityBus, cfg, channel, st)
 					}
 				}
 			}

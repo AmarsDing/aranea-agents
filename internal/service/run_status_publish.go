@@ -3,15 +3,17 @@ package service
 import (
 	"context"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/chatactivity"
-	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
+
+	"github.com/google/uuid"
 )
 
-// PublishRunStatus emits a run_status envelope for WS subscribers.
-func PublishRunStatus(bus event.Bus, sessionID, runID, status, errMsg string) {
+// PublishRunStatus emits a run_status ActivityEvent for WS subscribers.
+func PublishRunStatus(bus biz.ActivityEventBus, sessionID, runID, status, errMsg string) {
 	PublishRunStatusMeta(bus, sessionID, runID, status, errMsg, nil)
 }
 
@@ -19,17 +21,15 @@ func PublishRunStatus(bus event.Bus, sessionID, runID, status, errMsg string) {
 type AwaitStatusMeta = biz.ChatAwaitMeta
 
 // PublishRunStatusMeta emits run_status with optional await metadata.
-func PublishRunStatusMeta(bus event.Bus, sessionID, runID, status, errMsg string, await *AwaitStatusMeta) {
+func PublishRunStatusMeta(bus biz.ActivityEventBus, sessionID, runID, status, errMsg string, await *AwaitStatusMeta) {
 	PublishRunStatusFull(bus, sessionID, runID, status, errMsg, await, "", "")
 }
 
 // PublishRunStatusFull emits run_status with optional session_run_id and turn_id (CC-R-04).
-func PublishRunStatusFull(bus event.Bus, sessionID, runID, status, errMsg string, await *AwaitStatusMeta, sessionRunID, turnID string) {
+func PublishRunStatusFull(bus biz.ActivityEventBus, sessionID, runID, status, errMsg string, await *AwaitStatusMeta, sessionRunID, turnID string) {
 	if bus == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
-	env := event.NewEnvelope(event.EnvelopeTypeRunStatus, "run-service", sessionID)
-	env.Channel = event.RouteChannel(env)
 	meta := map[string]any{
 		"run_id":        runID,
 		"status":        status,
@@ -52,29 +52,69 @@ func PublishRunStatusFull(bus event.Bus, sessionID, runID, status, errMsg string
 			meta["await_tool_call_id"] = k
 		}
 	}
-	env.Metadata = meta
-	bus.Publish(context.Background(), env)
+	ev := biz.ActivityEvent{
+		Event: biz.ActivityEventUpdated,
+		Activity: biz.Activity{
+			ID:        uuid.NewString(),
+			Kind:      biz.ActivityKindSession,
+			Status:    mapRunStatusToActivityStatus(status),
+			Timestamp: time.Now().UTC(),
+			SessionID: sessionID,
+			AgentKey:  "run-service",
+			Stage:     "run_status",
+			Meta:      meta,
+		},
+		Domain: biz.ActivityDomainChat,
+	}
+	bus.Publish(context.Background(), ev)
+}
+
+// mapRunStatusToActivityStatus maps a raw run-status string to the closest
+// ActivityStatus. Unknown/non-terminal values default to Running.
+func mapRunStatusToActivityStatus(status string) biz.ActivityStatus {
+	switch status {
+	case "running", "streaming", "awaiting_user":
+		return biz.ActivityStatusRunning
+	case "completed", "succeeded":
+		return biz.ActivityStatusCompleted
+	case "failed", "error":
+		return biz.ActivityStatusFailed
+	case "cancelled", "canceled":
+		return biz.ActivityStatusCancelled
+	default:
+		return biz.ActivityStatusRunning
+	}
 }
 
 // PublishBackgroundJobRefresh notifies Web clients to reload background job panels (DECO-12 · M55-JOB-01).
-func PublishBackgroundJobRefresh(bus event.Bus, sessionID, jobID, status string) {
+func PublishBackgroundJobRefresh(bus biz.ActivityEventBus, sessionID, jobID, status string) {
 	if bus == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
-	env := event.NewEnvelope(event.EnvelopeTypeRunStatus, "background-job", sessionID)
-	env.Channel = event.RouteChannel(env)
-	env.Source = "channel"
-	env.Metadata = map[string]any{
-		"background_job_refresh": true,
-		"job_id":                 strings.TrimSpace(jobID),
-		"job_status":             strings.TrimSpace(status),
-		"status":                 "background_job",
+	ev := biz.ActivityEvent{
+		Event: biz.ActivityEventUpdated,
+		Activity: biz.Activity{
+			ID:        uuid.NewString(),
+			Kind:      biz.ActivityKindNotice,
+			Status:    biz.ActivityStatusRunning,
+			Timestamp: time.Now().UTC(),
+			SessionID: sessionID,
+			AgentKey:  "background-job",
+			Stage:     "background_job_refresh",
+			Meta: map[string]any{
+				"background_job_refresh": true,
+				"job_id":                 strings.TrimSpace(jobID),
+				"job_status":             strings.TrimSpace(status),
+				"status":                 "background_job",
+			},
+		},
+		Domain: biz.ActivityDomainSystem,
 	}
-	bus.Publish(context.Background(), env)
+	bus.Publish(context.Background(), ev)
 }
 
 // CancelSessionRunSideEffects publishes cancelled run_status and marks running activity cards cancelled.
-func CancelSessionRunSideEffects(ctx context.Context, bus event.Bus, reader biz.ActivityReader, writer biz.ActivityWriter, sessionID, runID string, lg loggateway.Logger) {
+func CancelSessionRunSideEffects(ctx context.Context, bus biz.ActivityEventBus, reader biz.ActivityReader, writer biz.ActivityWriter, sessionID, runID string, lg loggateway.Logger) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return
@@ -89,64 +129,86 @@ func CancelSessionRunSideEffects(ctx context.Context, bus event.Bus, reader biz.
 	}
 }
 
-// PublishSessionStatusChanged emits a session.status_changed envelope for WS subscribers.
-func PublishSessionStatusChanged(bus event.Bus, sessionID, status, statusReason, statusChangedAt string) {
+// PublishSessionStatusChanged emits a session.status_changed ActivityEvent for WS subscribers.
+func PublishSessionStatusChanged(bus biz.ActivityEventBus, sessionID, status, statusReason, statusChangedAt string) {
 	if bus == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
-	env := event.NewEnvelope(event.EnvelopeTypeSessionStatusChanged, "session-service", sessionID)
-	env.Channel = event.RouteChannel(env)
-	env.Metadata = map[string]any{
-		"session_id":        sessionID,
-		"status":            status,
-		"status_reason":     statusReason,
-		"status_changed_at": statusChangedAt,
+	ev := biz.ActivityEvent{
+		Event: biz.ActivityEventUpdated,
+		Activity: biz.Activity{
+			ID:        uuid.NewString(),
+			Kind:      biz.ActivityKindSession,
+			Status:    mapRunStatusToActivityStatus(status),
+			Timestamp: time.Now().UTC(),
+			SessionID: sessionID,
+			AgentKey:  "session-service",
+			Stage:     "session_status_changed",
+			Meta: map[string]any{
+				"session_id":        sessionID,
+				"status":            status,
+				"status_reason":     statusReason,
+				"status_changed_at": statusChangedAt,
+			},
+		},
+		Domain: biz.ActivityDomainChat,
 	}
-	bus.Publish(context.Background(), env)
+	bus.Publish(context.Background(), ev)
 }
 
 type sessionStatusPublisher struct {
-	bus event.Bus
+	bus biz.ActivityEventBus
 }
 
 func (p *sessionStatusPublisher) PublishSessionStatusChanged(sessionID, status, statusReason, statusChangedAt string) {
 	PublishSessionStatusChanged(p.bus, sessionID, status, statusReason, statusChangedAt)
 }
 
-// metricsUpdatedPublisher publishes metrics_updated events via EventBus.
+// metricsUpdatedPublisher publishes metrics_updated events via ActivityEventBus.
 type metricsUpdatedPublisher struct {
-	bus event.Bus
+	bus biz.ActivityEventBus
 }
 
 func (p *metricsUpdatedPublisher) PublishMetricsUpdated(sessionID string) {
 	PublishMetricsUpdated(p.bus, sessionID)
 }
 
-// PublishMetricsUpdated emits a metrics_updated envelope for WS subscribers.
-func PublishMetricsUpdated(bus event.Bus, sessionID string) {
+// PublishMetricsUpdated emits a metrics_updated ActivityEvent for WS subscribers.
+func PublishMetricsUpdated(bus biz.ActivityEventBus, sessionID string) {
 	if bus == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
-	env := event.NewEnvelope(event.EnvelopeTypeMetricsUpdated, "session-metrics", sessionID)
-	env.Channel = event.RouteChannel(env)
-	env.Metadata = map[string]any{
-		"session_id": sessionID,
+	ev := biz.ActivityEvent{
+		Event: biz.ActivityEventUpdated,
+		Activity: biz.Activity{
+			ID:        uuid.NewString(),
+			Kind:      biz.ActivityKindSession,
+			Status:    biz.ActivityStatusCompleted,
+			Timestamp: time.Now().UTC(),
+			SessionID: sessionID,
+			AgentKey:  "session-metrics",
+			Stage:     "metrics_updated",
+			Meta: map[string]any{
+				"session_id": sessionID,
+			},
+		},
+		Domain: biz.ActivityDomainSystem,
 	}
-	bus.Publish(context.Background(), env)
+	bus.Publish(context.Background(), ev)
 }
 
-// ProvideSessionStatusPublisher creates a SessionStatusPublisher backed by EventBus.
-func ProvideSessionStatusPublisher(infra *event.Infra) biz.SessionStatusPublisher {
-	if infra == nil {
+// ProvideSessionStatusPublisher creates a SessionStatusPublisher backed by ActivityEventBus.
+func ProvideSessionStatusPublisher(bus biz.ActivityEventBus) biz.SessionStatusPublisher {
+	if bus == nil {
 		return nil
 	}
-	return &sessionStatusPublisher{bus: infra.SessionBus}
+	return &sessionStatusPublisher{bus: bus}
 }
 
-// ProvideMetricsUpdatedPublisher creates a MetricsUpdatedPublisher backed by EventBus.
-func ProvideMetricsUpdatedPublisher(infra *event.Infra) biz.MetricsUpdatedPublisher {
-	if infra == nil {
+// ProvideMetricsUpdatedPublisher creates a MetricsUpdatedPublisher backed by ActivityEventBus.
+func ProvideMetricsUpdatedPublisher(bus biz.ActivityEventBus) biz.MetricsUpdatedPublisher {
+	if bus == nil {
 		return nil
 	}
-	return &metricsUpdatedPublisher{bus: infra.SessionBus}
+	return &metricsUpdatedPublisher{bus: bus}
 }

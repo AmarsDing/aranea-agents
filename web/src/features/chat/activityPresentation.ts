@@ -60,7 +60,7 @@ export function resolveActivityIcon(event: ToolUseEvent): string {
   const byName = nameIcons[event.tool_name];
   if (byName) return byName;
   // AF: activity_kind is always provided by the backend ActivityProjector
-  // (envelopeToolCall.ts). Default to 'tool' for safety.
+  // (activityToolCall.ts). Default to 'tool' for safety.
   const kind = (event.activity_kind || 'tool') as ActivityKind;
   return kindIcons[kind] || 'build';
 }

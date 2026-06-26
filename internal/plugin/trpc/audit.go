@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -32,7 +32,7 @@ type AuditLogPlugin struct {
 
 var _ trpcplugin.Plugin = (*AuditLogPlugin)(nil)
 
-func NewAuditLogPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, lg loggateway.Logger) *AuditLogPlugin {
+func NewAuditLogPlugin(p biz.Plugin, stats StatsRecorder, monitorBus contract.MonitorBus, lg loggateway.Logger) *AuditLogPlugin {
 	var cfg auditConfig
 	cfg.LogModelRequest = true
 	cfg.LogModelResponse = true
@@ -44,7 +44,7 @@ func NewAuditLogPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, lg logg
 		cfg.MaxContentLength = 500
 	}
 	return &AuditLogPlugin{
-		base: newBasePlugin(p.Key, stats, bus, lg),
+		base: newBasePlugin(p.Key, stats, monitorBus, lg),
 		cfg:  cfg,
 	}
 }

@@ -23,6 +23,7 @@ import (
 
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 )
 
 // wsPriority classifies an EnvelopeType into a send-queue priority.
@@ -35,6 +36,7 @@ const (
 )
 
 // wsEnvelopePriority returns the send-queue priority for an envelope type.
+// Kept for replay path (Phase 5 will remove the buffer and this function).
 func wsEnvelopePriority(t event.EnvelopeType) wsPriority {
 	switch t {
 	case event.EnvelopeTypeAlertNotify,
@@ -42,6 +44,20 @@ func wsEnvelopePriority(t event.EnvelopeType) wsPriority {
 		return wsPriorityHigh
 	case event.EnvelopeTypeFlowLog,
 		event.EnvelopeTypeLog:
+		return wsPriorityLow
+	default:
+		return wsPriorityNormal
+	}
+}
+
+// wsMonitorEventPriority returns the send-queue priority for a monitor event type.
+func wsMonitorEventPriority(t contract.MonitorEventType) wsPriority {
+	switch t {
+	case contract.MonitorEventTypeAlertNotify,
+		contract.MonitorEventTypeMCPHealthAlert:
+		return wsPriorityHigh
+	case contract.MonitorEventTypeFlowLog,
+		contract.MonitorEventTypeLog:
 		return wsPriorityLow
 	default:
 		return wsPriorityNormal

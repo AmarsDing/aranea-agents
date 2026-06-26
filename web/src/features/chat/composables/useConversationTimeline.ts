@@ -13,14 +13,12 @@
 
 import { computed, type ComputedRef } from 'vue';
 import type { Message } from '../types';
-import type { Envelope } from '../../../realtime/envelope';
 import type { ConversationTurn, AgentWorkProcess, Activity } from '../activityTimelineTypes';
 import type { ReplyEvent } from '../streamEventTypes';
 import type { ActivityTreeNode } from '../activityTypes';
-import type { AgentBlock, ProgressSection } from '../agentTreeTypes';
+import type { AgentBlock } from '../agentTreeTypes';
 import { agentColorFromKey, ROOT_AGENT_KEY } from '../agentTreeTypes';
 import { activityToStreamEvent } from './useActivityTimeline';
-import { mergeProgressEvents } from '../executionProgress';
 import { useAppStore } from '../../../stores/app';
 
 // ── UserTurn (internal) ──
@@ -41,22 +39,6 @@ function resolveAgentIconFromStore(agentKey: string): string {
   } catch {
     return '';
   }
-}
-
-/** Build sorted ProgressSection[] from execution_progress envelopes, clamping startedAt to turn start. */
-function buildProgressSections(
-  progressByStep: Map<string, ProgressSection>,
-  userMessage: Message | undefined,
-): ProgressSection[] {
-  if (progressByStep.size === 0) return [];
-  const turnStartTs = userMessage?.created_at ? new Date(userMessage.created_at).getTime() : Date.now();
-  const sections: ProgressSection[] = [];
-  for (const section of progressByStep.values()) {
-    // Clamp startedAt to turn start to avoid progress events appearing before the turn
-    sections.push({ ...section, startedAt: Math.max(turnStartTs, section.startedAt) });
-  }
-  sections.sort((a, b) => a.startedAt - b.startedAt);
-  return sections;
 }
 
 /** 按 role=user 边界划分消息为 UserTurn[]（turn 边界辅助函数，AF 唯一路径下使用） */
@@ -89,7 +71,6 @@ export function useConversationTimeline(deps: {
   messages: ComputedRef<Message[]>;
   isTeamSession?: boolean;
   plannerKind?: ComputedRef<string>;
-  progressEnvelopes?: ComputedRef<readonly Envelope[]>;
   activityTimelineActivities?: ComputedRef<readonly Activity[]>;
   activityAgentKey?: ComputedRef<string>;
   activityTaskContent?: ComputedRef<string | null>;
@@ -107,11 +88,6 @@ export function useConversationTimeline(deps: {
       turnCache.clear();
       return [];
     }
-
-    // Merge execution_progress envelopes into ProgressSection map
-    const progressByStep = deps.progressEnvelopes?.value
-      ? mergeProgressEvents(deps.progressEnvelopes.value)
-      : new Map<string, ProgressSection>();
 
     const plannerKind = deps.plannerKind?.value ?? '';
 
@@ -141,7 +117,6 @@ export function useConversationTimeline(deps: {
         agentKey,
         taskContent,
         activityTreeSig,
-        progressByStep,
         plannerKind,
       });
 
@@ -156,7 +131,6 @@ export function useConversationTimeline(deps: {
         agentKey,
         taskContent,
         activityTree,
-        progressByStep,
       });
       turnCache.set(cacheKey, { signature, turn: built });
       result.push(built);
@@ -201,7 +175,6 @@ function buildTurnSignature(
     agentKey: string;
     taskContent: string | null;
     activityTreeSig: string;
-    progressByStep: Map<string, ProgressSection>;
     plannerKind: string;
   },
 ): string {
@@ -230,7 +203,6 @@ function buildTurnSignature(
   parts.push(`ak=${opts.agentKey}`);
   parts.push(`tc=${opts.taskContent ?? ''}`);
   parts.push(`pl=${opts.plannerKind}`);
-  parts.push(`ps=${opts.progressByStep.size}`);
   parts.push(`at=${opts.activityTreeSig}`);
   return parts.join('|');
 }
@@ -256,7 +228,6 @@ function buildSingleTurnFromActivities(
     agentKey: string;
     taskContent: string | null;
     activityTree: ActivityTreeNode[];
-    progressByStep: Map<string, ProgressSection>;
   },
 ): ConversationTurn {
   const userMessage = turn.userMessage || turn.messages.find((m) => m.role === 'user');
@@ -313,8 +284,6 @@ function buildSingleTurnFromActivities(
   const endTs = lastMsg?.created_at ? new Date(lastMsg.created_at).getTime() : 0;
   const durationMs = startTs && endTs ? Math.max(0, endTs - startTs) : null;
 
-  const progressSections = buildProgressSections(opts.progressByStep, userMessage);
-
   const agentWork: AgentWorkProcess = {
     agentKey,
     agentName,
@@ -329,7 +298,7 @@ function buildSingleTurnFromActivities(
     hasPartialFailure: isPartialFailure,
     plan: null,
     teamStatus: null,
-    progressSections,
+    progressSections: [],
     startedAt: userMessage?.created_at || firstAssistant?.created_at || '',
     finishedAt: status !== 'running' ? lastMsg?.created_at || '' : null,
   };

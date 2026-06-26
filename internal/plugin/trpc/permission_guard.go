@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -27,11 +27,11 @@ type PermissionGuardPlugin struct {
 
 var _ trpcplugin.Plugin = (*PermissionGuardPlugin)(nil)
 
-func NewPermissionGuardPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, resolveAgent AgentKeyResolver, lg loggateway.Logger) *PermissionGuardPlugin {
+func NewPermissionGuardPlugin(p biz.Plugin, stats StatsRecorder, monitorBus contract.MonitorBus, resolveAgent AgentKeyResolver, lg loggateway.Logger) *PermissionGuardPlugin {
 	var cfg permissionGuardConfig
 	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
 	return &PermissionGuardPlugin{
-		base: newBasePlugin(p.Key, stats, bus, lg), cfg: cfg,
+		base: newBasePlugin(p.Key, stats, monitorBus, lg), cfg: cfg,
 		resolveAgent: resolveAgent,
 	}
 }

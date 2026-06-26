@@ -8,16 +8,28 @@ import (
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/activityevent"
 	"aranea-agents/pkg/loggateway"
 )
 
 func newTestWSServer(bus event.Bus, buf *event.Buffer, canceller RunCanceller, sender ChatSender) *WSServer {
 	return NewWSServerFromInfra(
 		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
-		&event.Infra{SessionBus: bus, MonitorBus: bus, Buffer: buf},
+		&event.Infra{SessionBus: bus, MonitorBus: bus, MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop()), Buffer: buf},
 		canceller, sender, nil, nil, loggateway.NewNoop(), nil,
+	)
+}
+
+// newTestWSServerWithActivity wires a server with a real ActivityEventBus so
+// tests can subscribe to biz.ActivityEvent published by the WS handler.
+func newTestWSServerWithActivity(bus event.Bus, buf *event.Buffer, canceller RunCanceller, sender ChatSender, activityBus biz.ActivityEventBus) *WSServer {
+	return NewWSServerFromInfra(
+		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
+		&event.Infra{SessionBus: bus, MonitorBus: bus, MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop()), Buffer: buf},
+		canceller, sender, nil, nil, loggateway.NewNoop(), activityBus,
 	)
 }
 
@@ -204,13 +216,14 @@ func (s stubTurnExecutor) ExecuteTurn(_ context.Context, _ WSTurnInput) error {
 
 func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
 	bus := event.NewBus(nil)
-	srv := newTestWSServer(bus, event.NewBuffer(), nil, stubChatSender{sendErr: context.Canceled})
+	activityBus := activityevent.New(loggateway.NewNoop())
+	srv := newTestWSServerWithActivity(bus, event.NewBuffer(), nil, stubChatSender{sendErr: context.Canceled}, activityBus)
 	wc := &wsConn{
 		sessionID: "sess-user",
 		channels:  map[string]bool{"chat": true, "system": true},
 		send:      make(chan []byte, 2),
 	}
-	ch, unsub := bus.Subscribe(event.SubscribeOptions{SessionID: "sess-user", BufferSize: 4})
+	ch, unsub := activityBus.Subscribe(biz.ActivityEventSubscribeOptions{SessionID: "sess-user", BufferSize: 4})
 	defer unsub()
 
 	raw, _ := json.Marshal(wsUpstream{
@@ -227,34 +240,35 @@ func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
 	deadline := time.After(2 * time.Second)
 	for {
 		select {
-		case env := <-ch:
-			if env.Type != event.EnvelopeTypeError {
+		case ev := <-ch:
+			if ev.Event != biz.ActivityEventFailed {
 				continue
 			}
-			if env.RequestID != "pending-user-abc" {
-				t.Fatalf("request_id = %q, want pending-user-abc", env.RequestID)
+			if got, _ := ev.Activity.Meta["request_id"].(string); got != "pending-user-abc" {
+				t.Fatalf("request_id = %q, want pending-user-abc", got)
 			}
-			if env.Error == nil || env.Error.Type != "send_failed" {
-				t.Fatalf("unexpected error envelope: %+v", env.Error)
+			if got, _ := ev.Activity.Meta["error_type"].(string); got != "send_failed" {
+				t.Fatalf("error_type = %q, want send_failed", got)
 			}
 			return
 		case <-deadline:
-			t.Fatal("timeout waiting for send_failed envelope")
+			t.Fatal("timeout waiting for ActivityEventFailed")
 		}
 	}
 }
 
 func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
 	bus := event.NewBus(nil)
+	activityBus := activityevent.New(loggateway.NewNoop())
 	srv := NewWSServerFromInfra(
 		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
-		&event.Infra{SessionBus: bus, MonitorBus: bus, Buffer: event.NewBuffer()},
+		&event.Infra{SessionBus: bus, MonitorBus: bus, MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop()), Buffer: event.NewBuffer()},
 		nil,
 		stubChatSender{},
 		stubTurnExecutor{err: errors.New("provider raw error")},
 		nil,
 		loggateway.NewNoop(),
-		nil,
+		activityBus,
 	)
 	wc := &wsConn{
 		sessionID: "sess-turn",
@@ -262,7 +276,7 @@ func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
 		send:      make(chan []byte, 2),
 		connCtx:   context.Background(),
 	}
-	ch, unsub := bus.Subscribe(event.SubscribeOptions{SessionID: "sess-turn", BufferSize: 4})
+	ch, unsub := activityBus.Subscribe(biz.ActivityEventSubscribeOptions{SessionID: "sess-turn", BufferSize: 4})
 	defer unsub()
 
 	raw, _ := json.Marshal(wsUpstream{
@@ -277,24 +291,21 @@ func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
 	srv.handleUpstream(wc, raw)
 
 	select {
-	case env := <-ch:
-		if env.Type != event.EnvelopeTypeError {
-			t.Fatalf("expected error envelope, got type=%s", env.Type)
+	case ev := <-ch:
+		if ev.Event != biz.ActivityEventFailed {
+			t.Fatalf("expected ActivityEventFailed, got event=%s", ev.Event)
 		}
-		if env.SessionID != "sess-turn" {
-			t.Fatalf("expected sessionID=sess-turn, got %s", env.SessionID)
+		if ev.Activity.SessionID != "sess-turn" {
+			t.Fatalf("expected sessionID=sess-turn, got %s", ev.Activity.SessionID)
 		}
-		if env.RequestID != "pending-user-abc" {
-			t.Fatalf("expected requestID=pending-user-abc, got %s", env.RequestID)
+		if got, _ := ev.Activity.Meta["request_id"].(string); got != "pending-user-abc" {
+			t.Fatalf("expected requestID=pending-user-abc, got %s", got)
 		}
-		if env.Error == nil {
-			t.Fatal("expected error detail in envelope")
-		}
-		if env.Error.Type != "send_failed" {
-			t.Fatalf("expected error.type=send_failed, got %s", env.Error.Type)
+		if got, _ := ev.Activity.Meta["error_type"].(string); got != "send_failed" {
+			t.Fatalf("expected error_type=send_failed, got %s", got)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("timeout waiting for error envelope from turn gateway failure")
+		t.Fatal("timeout waiting for ActivityEventFailed from turn gateway failure")
 	}
 }
 

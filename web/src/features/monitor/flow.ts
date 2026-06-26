@@ -1,4 +1,4 @@
-import type { Envelope } from '../../realtime/envelope';
+import type { MonitorEvent } from '../../realtime/monitorEvent';
 import type { MonitorLogLine, MonitorTrace } from './types';
 import { parseJSON } from './utils';
 
@@ -22,30 +22,30 @@ export function flowSeverityToLevel(severity: string): MonitorLogLine['level'] {
   }
 }
 
-/** Map WS flow_log envelope → Monitor log line for LogStream. */
-export function monitorLogLineFromFlowEnvelope(env: Envelope): MonitorLogLine | null {
-  const m = env.metadata ?? {};
+/** Map WS flow_log MonitorEvent → Monitor log line for LogStream. */
+export function monitorLogLineFromFlowEvent(ev: MonitorEvent): MonitorLogLine | null {
+  const m = ev.metadata ?? {};
   const severity = str(m.severity || 'info') as FlowSeverity;
   const title = str(m.title);
   const message = str(m.message);
   const stepId = str(m.step_id);
   const phase = str(m.flow_phase);
-  const display = env.content?.text?.trim() || [title, message].filter(Boolean).join(' — ') || `${stepId}.${phase}`;
+  const display = (ev.message ?? '').trim() || [title, message].filter(Boolean).join(' — ') || `${stepId}.${phase}`;
 
   return {
-    id: str(m.flow_id || env.id),
-    time: env.timestamp,
+    id: str(m.flow_id || ev.id),
+    time: ev.timestamp,
     level: flowSeverityToLevel(severity),
     message: display,
-    source: str(m.agent_key || env.author || 'flow'),
-    created_at: env.timestamp,
+    source: str(m.agent_key || ev.source || 'flow'),
+    created_at: ev.timestamp,
     kind: 'flow',
     severity,
     title,
     step_id: stepId,
     trace_id: str(m.trace_id),
     run_id: str(m.run_id),
-    session_id: str(m.session_id),
+    session_id: str(m.session_id || ev.session_id),
     hint: str(m.hint),
   };
 }

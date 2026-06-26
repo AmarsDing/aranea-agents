@@ -19,7 +19,6 @@ import type {
   CompletionStats,
 } from '../../features/spirit/types';
 import { isValidTeamStatus } from '../../features/spirit/types';
-import type { Envelope } from '../../realtime/envelope';
 import type {
   SpiritPlanCreatedPayload,
   SpiritAllocationCreatedPayload,
@@ -27,6 +26,7 @@ import type {
   SpiritOrchestrationCheckpointPayload,
   SpiritOrchestrationInterruptedPayload,
 } from '../../realtime/envelope';
+import type { ActivityEvent } from '../../realtime/activityEvent';
 import { Notify } from 'quasar';
 
 /** Orchestration phase derived from WS events. */
@@ -334,14 +334,52 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     }
   }
 
-  function handleSpiritEnvelope(env: Envelope) {
-    const md = (env.metadata ?? {}) as Record<string, unknown>;
-    const teamId = String(md.team_id ?? '');
+  /**
+   * Activity-First: Handle a Spirit/Team ActivityEvent.
+   *
+   * Maps kind+stage to the equivalent handler. Field mapping:
+   *   env.metadata   → ev.activity.meta
+   *   env.session_id → ev.activity.session_id
+   *   env.type       → ev.activity.kind + ev.activity.stage
+   */
+  function handleSpiritActivityEvent(ev: ActivityEvent) {
+    const act = ev.activity;
+    const md = (act.meta ?? {}) as Record<string, unknown>;
+    const teamId = String(md.team_id ?? act.team_id ?? '');
+    const kind = act.kind;
+    const stage = act.stage;
 
-    switch (env.type) {
-      case 'spirit_team_assembled':
-        handleTeamAssembled(teamId, md, env);
+    // Map kind+stage to the legacy envelope type
+    let envType = '';
+    if (kind === 'team_stage') {
+      if (stage === 'assembled') envType = 'spirit_team_assembled';
+      else if (stage === 'progress') envType = 'spirit_team_progress';
+      else if (stage === 'interrupted') envType = 'spirit_team_interrupted';
+      else if (stage === 'cancelled') envType = 'spirit_team_cancelled';
+      else if (stage === 'completed' || stage === 'finished') envType = 'spirit_team_completed';
+      else if (stage === 'failed') envType = 'spirit_team_failed';
+      else if (stage === 'orchestration_started') envType = 'spirit_orchestration_started';
+      else if (stage === 'orchestration_checkpoint') envType = 'spirit_orchestration_checkpoint';
+      else if (stage === 'orchestration_interrupted') envType = 'spirit_orchestration_interrupted';
+      else if (stage === 'all_completed' || stage === 'summary') envType = 'spirit_teams_all_completed';
+    } else if (kind === 'session') {
+      if (stage === 'plan_created') envType = 'spirit_plan_created';
+      else if (stage === 'allocation_created') envType = 'spirit_allocation_created';
+      else if (stage === 'orchestration_started') envType = 'spirit_orchestration_started';
+      else if (stage === 'orchestration_checkpoint') envType = 'spirit_orchestration_checkpoint';
+      else if (stage === 'orchestration_interrupted') envType = 'spirit_orchestration_interrupted';
+      else if (stage === 'synthesis_completed') envType = 'spirit_synthesis_completed';
+      else if (stage === 'orchestration_completed') envType = 'butler.orchestration.completed';
+      else if (stage === 'orchestration_failed') envType = 'butler.orchestration.failed';
+    } else if (kind === 'plan') {
+      envType = 'spirit_plan_created';
+    }
+
+    switch (envType) {
+      case 'spirit_team_assembled': {
+        handleTeamAssembled(teamId, md, act.session_id ?? '');
         break;
+      }
       case 'spirit_team_completed':
         handleTeamCompleted(teamId, md);
         break;
@@ -360,9 +398,10 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
       case 'spirit_teams_all_completed':
         handleAllTeamsCompleted(md);
         break;
-      case 'spirit_synthesis_completed':
-        handleSynthesisCompleted(env);
+      case 'spirit_synthesis_completed': {
+        handleSynthesisCompleted(md);
         break;
+      }
       case 'spirit_plan_created':
         planCreated.value = md as unknown as SpiritPlanCreatedPayload;
         orchestrationPhase.value = 'planning';
@@ -386,7 +425,6 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
         break;
       case 'butler.orchestration.failed':
         if (teamId) {
-          // Only set failed if team is not already in a terminal state
           const existing = teams.value.find((t) => t.id === teamId);
           if (existing && !['completed', 'failed', 'cancelled'].includes(existing.status)) {
             updateTeamStatus(teamId, 'failed');
@@ -396,9 +434,9 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     }
   }
 
-  // --- Spirit envelope handlers (split from handleSpiritEnvelope) ---
+  // --- Spirit handlers ---
 
-  function handleTeamAssembled(teamId: string, md: Record<string, unknown>, env: Envelope) {
+  function handleTeamAssembled(teamId: string, md: Record<string, unknown>, sessionId: string) {
     synthesisCompleted.value = false;
     synthesisResult.value = null;
     allTeamsCompleted.value = false;
@@ -414,7 +452,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
         totalSteps: Number(md.total_steps ?? 1),
         progressPct: 0,
         durationMs: Number(md.duration_ms ?? 0),
-        spiritSessionId: env.session_id ?? '',
+        spiritSessionId: sessionId,
         teamSessionId: String(md.session_id ?? ''),
         members: [],
         sharedAgentIds: [],
@@ -531,10 +569,10 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     }
   }
 
-  function handleSynthesisCompleted(env: Envelope) {
+  function handleSynthesisCompleted(md: Record<string, unknown>) {
     synthesisCompleted.value = true;
-    const rawResults = Array.isArray(env.metadata?.team_results)
-      ? (env.metadata.team_results as Array<{
+    const rawResults = Array.isArray(md.team_results)
+      ? (md.team_results as Array<{
           team_id: string;
           team_name: string;
           task_name: string;
@@ -544,10 +582,10 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
         }>)
       : [];
     synthesisResult.value = {
-      strategy: isValidStrategy(String(env.metadata?.strategy ?? 'template'))
-        ? (String(env.metadata?.strategy ?? 'template') as SynthesisOutput['strategy'])
+      strategy: isValidStrategy(String(md.strategy ?? 'template'))
+        ? (String(md.strategy ?? 'template') as SynthesisOutput['strategy'])
         : 'template',
-      content: String(env.metadata?.content ?? ''),
+      content: String(md.content ?? ''),
       teamResults: rawResults.map((r) => ({
         teamId: String(r.team_id ?? ''),
         teamName: String(r.team_name ?? ''),
@@ -616,6 +654,6 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     updateTeamProgress,
     updateTeamStatus,
     addTeam,
-    handleSpiritEnvelope,
+    handleSpiritActivityEvent,
   };
 });

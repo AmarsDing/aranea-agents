@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event/contract"
 	araneagraph "aranea-agents/internal/graph"
 	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/telemetry/turntrace"
@@ -38,7 +37,6 @@ type TaskOrchestratorImpl struct {
 	orchCache       *biz.OrchestrationCache
 	perfRepo        biz.AgentPerformanceRepository
 	evolutionSugg   biz.EvolutionSuggestionRepo
-	bus             contract.Bus
 	activityBus     biz.ActivityEventBus
 	nl2graph        araneagraph.NL2GraphConverter
 	lg              loggateway.Logger
@@ -61,7 +59,6 @@ func NewTaskOrchestratorImpl(
 	orchCache *biz.OrchestrationCache,
 	perfRepo biz.AgentPerformanceRepository,
 	evolutionSugg biz.EvolutionSuggestionRepo,
-	bus contract.Bus,
 	activityBus biz.ActivityEventBus,
 	nl2graph araneagraph.NL2GraphConverter,
 	lg loggateway.Logger,
@@ -79,7 +76,6 @@ func NewTaskOrchestratorImpl(
 		orchCache:       orchCache,
 		perfRepo:        perfRepo,
 		evolutionSugg:   evolutionSugg,
-		bus:             bus,
 		activityBus:     activityBus,
 		nl2graph:        nl2graph,
 		lg:              lg,
@@ -1347,15 +1343,12 @@ func marshalSynthesisOutput(output *biz.SynthesisOutput) (string, error) {
 }
 
 // publishOrchestrationStarted publishes the spirit_orchestration_started event.
-// For dual consumption (REQ-SO-04), also publishes spirit_team_assembled (old equivalent).
 func (o *TaskOrchestratorImpl) publishOrchestrationStarted(ctx context.Context, handle *biz.OrchestrationHandle, taskPlan *biz.TaskPlan) {
-	if o.bus == nil || handle == nil {
+	if o.activityBus == nil || handle == nil {
 		return
 	}
 	spiritSessionID := handle.SpiritSessionID
 
-	// New event: spirit_orchestration_started
-	env := contract.NewEnvelope(contract.EnvelopeTypeSpiritOrchestrationStarted, "task-orchestrator", spiritSessionID)
 	meta := map[string]any{
 		"orchestration_id":  handle.ID,
 		"spirit_session_id": spiritSessionID,
@@ -1372,89 +1365,83 @@ func (o *TaskOrchestratorImpl) publishOrchestrationStarted(ctx context.Context, 
 	if pCfg.MaxConcurrentTeams > 0 {
 		meta["max_concurrent_teams"] = pCfg.MaxConcurrentTeams
 	}
-	env.Metadata = meta
-	o.bus.Publish(ctx, env)
-
-	// Dual consumption: also publish spirit_team_assembled (old equivalent).
-	// For multi-team orchestrations, publish one event per team so the frontend
-	// Spirit Store creates a team entry for each.
-	for _, tid := range handle.TeamIDs {
-		dualEnv := contract.NewEnvelope(contract.EnvelopeTypeSpiritTeamAssembled, "task-orchestrator", spiritSessionID)
-		dualEnv.TeamID = tid
-		dualEnv.Metadata = map[string]any{
-			"team_id":           tid,
-			"spirit_session_id": spiritSessionID,
-			"mode":              string(handle.Strategy),
-			"task_summary":      biz.TruncateRunes(taskPlan.UserMessage, 200),
-		}
-		o.bus.Publish(ctx, dualEnv)
+	ev := biz.ActivityEvent{
+		Event: biz.ActivityEventCreated,
+		Activity: biz.Activity{
+			ID:              uuid.NewString(),
+			Kind:            biz.ActivityKindSession,
+			Status:          biz.ActivityStatusRunning,
+			Timestamp:       time.Now().UTC(),
+			SpiritSessionID: spiritSessionID,
+			AgentKey:        "task-orchestrator",
+			Stage:           "orchestration_started",
+			Meta:            meta,
+		},
+		Domain: biz.ActivityDomainChat,
 	}
+	o.activityBus.Publish(ctx, ev)
 }
 
 // publishOrchestrationCheckpoint publishes the spirit_orchestration_checkpoint event.
-// For dual consumption (REQ-SO-04), also publishes spirit_team_progress (old equivalent).
 func (o *TaskOrchestratorImpl) publishOrchestrationCheckpoint(ctx context.Context, handle *biz.OrchestrationHandle, stepName string) {
-	if o.bus == nil || handle == nil {
+	if o.activityBus == nil || handle == nil {
 		return
 	}
 	spiritSessionID := handle.SpiritSessionID
 
-	// New event: spirit_orchestration_checkpoint
-	env := contract.NewEnvelope(contract.EnvelopeTypeSpiritOrchestrationCheckpoint, "task-orchestrator", spiritSessionID)
-	env.Metadata = map[string]any{
-		"orchestration_id":  handle.ID,
-		"spirit_session_id": spiritSessionID,
-		"checkpoint_id":     handle.CheckpointID,
-		"step":              stepName,
-		"status":            string(handle.Status),
+	status := biz.ActivityStatusRunning
+	if handle.Status == biz.OrchestrationStatusCompleted {
+		status = biz.ActivityStatusCompleted
 	}
-	o.bus.Publish(ctx, env)
-
-	// Dual consumption: also publish spirit_team_progress (old equivalent).
-	if len(handle.TeamIDs) > 0 {
-		progressPct := 50.0
-		if handle.Status == biz.OrchestrationStatusCompleted {
-			progressPct = 100
-		}
-		dualEnv := contract.NewEnvelope(contract.EnvelopeTypeSpiritTeamProgress, "task-orchestrator", spiritSessionID)
-		dualEnv.TeamID = handle.TeamIDs[0]
-		dualEnv.Metadata = map[string]any{
-			"team_id":      handle.TeamIDs[0],
-			"status":       string(handle.Status),
-			"progress_pct": progressPct,
-		}
-		o.bus.Publish(ctx, dualEnv)
+	ev := biz.ActivityEvent{
+		Event: biz.ActivityEventUpdated,
+		Activity: biz.Activity{
+			ID:              uuid.NewString(),
+			Kind:            biz.ActivityKindSession,
+			Status:          status,
+			Timestamp:       time.Now().UTC(),
+			SpiritSessionID: spiritSessionID,
+			AgentKey:        "task-orchestrator",
+			Stage:           "orchestration_checkpoint",
+			Meta: map[string]any{
+				"orchestration_id":  handle.ID,
+				"spirit_session_id": spiritSessionID,
+				"checkpoint_id":     handle.CheckpointID,
+				"step":              stepName,
+				"status":            string(handle.Status),
+			},
+		},
+		Domain: biz.ActivityDomainChat,
 	}
+	o.activityBus.Publish(ctx, ev)
 }
 
 // publishOrchestrationInterrupted publishes the spirit_orchestration_interrupted event.
-// For dual consumption (REQ-SO-04), also publishes spirit_team_failed (old equivalent).
 func (o *TaskOrchestratorImpl) publishOrchestrationInterrupted(ctx context.Context, handle *biz.OrchestrationHandle) {
-	if o.bus == nil || handle == nil {
+	if o.activityBus == nil || handle == nil {
 		return
 	}
 	spiritSessionID := handle.SpiritSessionID
 
-	// New event: spirit_orchestration_interrupted
-	env := contract.NewEnvelope(contract.EnvelopeTypeSpiritOrchestrationInterrupted, "task-orchestrator", spiritSessionID)
-	env.Metadata = map[string]any{
-		"orchestration_id":  handle.ID,
-		"spirit_session_id": spiritSessionID,
-		"status":            string(handle.Status),
+	ev := biz.ActivityEvent{
+		Event: biz.ActivityEventFailed,
+		Activity: biz.Activity{
+			ID:              uuid.NewString(),
+			Kind:            biz.ActivityKindSession,
+			Status:          biz.ActivityStatusFailed,
+			Timestamp:       time.Now().UTC(),
+			SpiritSessionID: spiritSessionID,
+			AgentKey:        "task-orchestrator",
+			Stage:           "orchestration_interrupted",
+			Meta: map[string]any{
+				"orchestration_id":  handle.ID,
+				"spirit_session_id": spiritSessionID,
+				"status":            string(handle.Status),
+			},
+		},
+		Domain: biz.ActivityDomainChat,
 	}
-	o.bus.Publish(ctx, env)
-
-	// Dual consumption: also publish spirit_team_failed (old equivalent).
-	if len(handle.TeamIDs) > 0 {
-		dualEnv := contract.NewEnvelope(contract.EnvelopeTypeSpiritTeamFailed, "task-orchestrator", spiritSessionID)
-		dualEnv.TeamID = handle.TeamIDs[0]
-		dualEnv.Metadata = map[string]any{
-			"team_id": handle.TeamIDs[0],
-			"status":  string(handle.Status),
-			"error":   "orchestration interrupted",
-		}
-		o.bus.Publish(ctx, dualEnv)
-	}
+	o.activityBus.Publish(ctx, ev)
 }
 
 // sortByPerformance reorders agent keys by their historical performance for the

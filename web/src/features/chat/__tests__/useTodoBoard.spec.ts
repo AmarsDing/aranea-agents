@@ -1,7 +1,7 @@
 import { computed } from 'vue';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useTodoBoard } from '../composables/useTodoBoard';
-import { clearToolEventCache } from '../envelopeToolCall';
+import { clearToolEventCache } from '../activityToolCall';
 import type { Message } from '../../../domain/types';
 import type { ToolUseEvent } from '../types';
 

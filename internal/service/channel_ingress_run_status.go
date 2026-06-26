@@ -18,7 +18,7 @@ func (h *ChannelIngress) publishChannelTurnRunStatus(ctx context.Context, sessio
 		h.chat.SetRunStatus(ctx, sessionID, runID, status, errMsg)
 		return
 	}
-	if h.eventBus != nil {
-		PublishRunStatus(h.eventBus, sessionID, runID, status, errMsg)
+	if h.activityBus != nil {
+		PublishRunStatus(h.activityBus, sessionID, runID, status, errMsg)
 	}
 }

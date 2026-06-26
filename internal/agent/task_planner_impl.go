@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
@@ -26,7 +25,7 @@ type taskPlannerImpl struct {
 	repo           biz.TaskPlanRepository
 	catalog        *biz.LlmProviderModelUsecase
 	httpClient     *http.Client
-	bus            contract.Bus
+	bus            biz.ActivityEventBus
 	orchCache      *biz.OrchestrationCache
 	lg             loggateway.Logger
 	plannerSetting PlannerModelLookup
@@ -35,7 +34,7 @@ type taskPlannerImpl struct {
 var _ biz.TaskPlannerPort = (*taskPlannerImpl)(nil)
 
 // NewTaskPlanner creates a new TaskPlanner implementation.
-func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, bus contract.Bus, orchCache *biz.OrchestrationCache, lg loggateway.Logger, plannerSetting PlannerModelLookup) biz.TaskPlannerPort {
+func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, bus biz.ActivityEventBus, orchCache *biz.OrchestrationCache, lg loggateway.Logger, plannerSetting PlannerModelLookup) biz.TaskPlannerPort {
 	return &taskPlannerImpl{
 		repo:           repo,
 		catalog:        catalog,
@@ -947,16 +946,28 @@ func (impl *taskPlannerImpl) publishPlanCreated(ctx context.Context, plan *biz.T
 	spiritSessionID := plan.SpiritSessionID
 
 	// spirit_plan_created: the canonical event for plan creation.
-	env := contract.NewEnvelope(contract.EnvelopeTypeSpiritPlanCreated, "task-planner", spiritSessionID)
-	env.Metadata = map[string]any{
-		"plan_id":           plan.ID,
-		"spirit_session_id": spiritSessionID,
-		"complexity_level":  string(plan.ComplexityLevel),
-		"complexity_score":  plan.ComplexityScore,
-		"strategy":          string(plan.Strategy),
-		"strategy_reason":   plan.StrategyReason,
-		"topology_hint":     string(plan.TopologyHint),
-		"subtask_count":     len(plan.SubTasks),
+	ev := biz.ActivityEvent{
+		Event: biz.ActivityEventCreated,
+		Activity: biz.Activity{
+			ID:              uuid.NewString(),
+			Kind:            biz.ActivityKindPlan,
+			Status:          biz.ActivityStatusPending,
+			Stage:           "created",
+			Timestamp:       time.Now().UTC(),
+			SpiritSessionID: spiritSessionID,
+			AgentKey:        "task-planner",
+			Meta: map[string]any{
+				"plan_id":           plan.ID,
+				"spirit_session_id": spiritSessionID,
+				"complexity_level":  string(plan.ComplexityLevel),
+				"complexity_score":  plan.ComplexityScore,
+				"strategy":          string(plan.Strategy),
+				"strategy_reason":   plan.StrategyReason,
+				"topology_hint":     string(plan.TopologyHint),
+				"subtask_count":     len(plan.SubTasks),
+			},
+		},
+		Domain: biz.ActivityDomainChat,
 	}
-	impl.bus.Publish(ctx, env)
+	impl.bus.Publish(ctx, ev)
 }

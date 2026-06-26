@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -70,14 +69,14 @@ type runStatusTracker interface {
 type chatRunStatusTracker struct {
 	runs       *rt.RunRegistry
 	sessions   biz.SessionStatePort
-	bus        event.Bus
+	bus        biz.ActivityEventBus
 	bindings   *TypedSyncMap[string, sessionRunTurnBinding]
 	awaitCache *TypedSyncMap[string, biz.ChatAwaitMeta]
 	sm         *biz.RunStateMachine
 	lg         loggateway.Logger
 }
 
-func newChatRunStatusTracker(runs *rt.RunRegistry, sessions biz.SessionStatePort, bus event.Bus, lg loggateway.Logger) *chatRunStatusTracker {
+func newChatRunStatusTracker(runs *rt.RunRegistry, sessions biz.SessionStatePort, bus biz.ActivityEventBus, lg loggateway.Logger) *chatRunStatusTracker {
 	return &chatRunStatusTracker{
 		runs:       runs,
 		sessions:   sessions,

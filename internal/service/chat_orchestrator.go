@@ -5,7 +5,7 @@ import (
 	"time"
 
 	chatagent "aranea-agents/internal/agent"
-	localexec "aranea-agents/internal/agent/codeexecution"
+	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/chatactivity"
@@ -373,7 +373,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	stateMgr := sessionStateTransitor(deps.Infra.TurnLifecycle)
 	metrics := turnRecorder(newChatTurnMetrics(deps.Turn.Sessions, deps.Usage.Usage, deps.Infra.LG))
 	evtPub := turnEventPublisher(newChatTurnEventPublisher(deps.Turn.Sessions, deps.Turn.Pipeline.Bus, deps.Turn.Pipeline.ActivityBus, deps.Infra.LG))
-	rStatus := runStatusTracker(newChatRunStatusTracker(runs, deps.Turn.Sessions, deps.Turn.Pipeline.Bus, deps.Infra.LG))
+	rStatus := runStatusTracker(newChatRunStatusTracker(runs, deps.Turn.Sessions, deps.Turn.Pipeline.ActivityBus, deps.Infra.LG))
 	pendQ := pendingQueueManager(newChatPendingQueueManager(chatUC))
 	awaitCoord := awaitCoordinator(newChatAwaitCoordinator(chatAwaitCoordinatorDeps{
 		ChatUC:       chatUC,

@@ -289,7 +289,15 @@ interface WsDownstream {
 
 ## 3. 实施计划
 
-### Phase 1：后端核心结构扩展（非破坏性）
+> **进度总览**（截至 2026-06-26）：
+> - ✅ Phase 1：后端核心结构扩展
+> - ✅ Phase 2：后端 Publisher 迁移（80+ 站点全部完成，go build + go test 通过）
+> - ✅ Phase 3：WSServer 简化（3 pump → 2 pump）
+> - ✅ Phase 4：前端统一（Envelope import 46→7，全部为合法传输层/事件检查器）
+> - 🟡 Phase 5：删除后端 Legacy 代码（识别出 6 个耦合 Blocker，多 session 工程，已制定依赖链）
+> - 🟡 Phase 6：全量验证 + 文档同步 + ADR-03（验证已通过，文档同步中）
+
+### Phase 1：后端核心结构扩展（非破坏性） ✅
 
 **目标**：新增 Domain 字段 + MonitorEvent 类型，不破坏现有功能。
 
@@ -304,9 +312,11 @@ interface WsDownstream {
 
 **验证**：`go build ./...` + `go test ./internal/biz/... ./internal/agent/... ./internal/event/...`
 
-### Phase 2：后端 Publisher 迁移（逐个域）
+### Phase 2：后端 Publisher 迁移（逐个域） ✅
 
 **目标**：将 80+ publisher 从 `bus.Publish(ctx, envelope)` 迁移到 `activityBus.Publish` 或 `monitorBus.Publish`。
+
+> **完成状态**：所有外部 publisher 已迁移。残留 `event.NewEnvelope` 调用仅存在于 `internal/event/` 核心基础设施（`framework_adapter.go`、`domain_event_adapter.go`、`envelope.go` 类型别名）和测试文件中，将在 Phase 5 删除。
 
 **迁移顺序**（按域，每域独立验证）：
 
@@ -322,9 +332,17 @@ interface WsDownstream {
 
 **每步验证**：`go build ./...` + `go test ./internal/...`
 
-### Phase 3：WSServer 简化 + Wire 重配置
+### Phase 3：WSServer 简化 + Wire 重配置 ✅
 
 **目标**：WSServer 从 3 bus 简化为 2 bus，删除 SessionBus。
+
+> **完成状态**：WSServer 已从 3 bus/3 pump 简化为 2 bus/2 pump。
+> - 删除 `eventBus event.Bus` 字段和 `eventPump` goroutine
+> - `monitorBus` 从 `event.Bus` 改为 `contract.MonitorBus`，新增 `monitorEventPump`
+> - `wsDownstream` 新增 `MonitorEvent *contract.MonitorEvent` 字段（`Envelope` 字段保留供 replay 使用，Phase 5 删除）
+> - `setupEventSubscription` 返回 `(<-chan contract.MonitorEvent, <-chan biz.ActivityEvent)`
+> - `EventPipeline.MonitorEventBus` 已在 Phase 2.A 中添加，无需额外 Wire 变更
+> - `go build ./...` + `go test ./internal/server/...` 全部通过
 
 | 步骤 | 文件 | 改动 |
 |------|------|------|
@@ -337,9 +355,20 @@ interface WsDownstream {
 
 **验证**：`make wire && go build ./cmd/admin` + `go test ./internal/server/...`
 
-### Phase 4：前端统一
+### Phase 4：前端统一 ✅
 
 **目标**：删除所有 envelope 前端文件，统一到 ActivityEvent + MonitorEvent。
+
+> **完成状态**（截至 2026-06-26）：
+> - **Envelope import 数量：46 → 7**（全部为合法残留）
+> - 残留 7 文件分类：
+>   - 传输层 5 个：`ws-transport.ts`、`useEnvelopeStream.ts`、`globalWsHub.ts`、`dispatcher.ts`、`data_channel.ts`（WS 协议仍承载 `envelope?` 用于 replay，Phase 5 Blocker A 解决后才能移除）
+>   - 事件检查器 2 个：`useChatEventInspector.ts`、`useChatStreamManager.ts`（消费 replay envelopes）
+> - **关键发现**：`useEnvelopeStream.ts` 是**活动传输层工厂**（非 legacy），不应删除，仅在 Phase 5 后重命名
+> - **关键发现**：chat stream 的 `onEnvelope` 回调是 no-op（`() => {}`），replay envelopes 被接收但忽略，仅事件检查器消费
+> - **本地类型解耦模式**：定义本地类型 `ExecutionProgressMetadata`、`ActivityUsage`、`InspectorEvent` 切断 Envelope import 依赖
+> - 删除/修改文件：`envelopeToolCall.ts`(删除)、`activityToolCall.ts`(清理 envelope 函数)、`executionProgress.ts`(本地类型)、`sessionContextPatch.ts`(本地类型 + 删除 legacy 函数)、`useConversationTimeline.ts`(清理 dead code)、`ChatMessageList.vue`(清理 unused import)、5 个测试文件
+> - 验证：`pnpm lint`(0 errors) + `pnpm test`(516 tests passed) + `pnpm build`(success)
 
 | 步骤 | 文件 | 改动 |
 |------|------|------|
@@ -361,29 +390,58 @@ interface WsDownstream {
 
 **验证**：`pnpm lint && pnpm test && pnpm build`
 
-### Phase 5：删除后端 Legacy 代码
+### Phase 5：删除后端 Legacy 代码 🟡（识别 6 个耦合 Blocker）
 
 **目标**：删除 Envelope struct + EnvelopeType + RouteChannel + channelRegistry。
 
+> **完成状态**（截至 2026-06-26）：本 session 调研发现 Phase 5 远比 spec 预期的"删文件"复杂——存在 **6 个耦合 Blocker** 必须按依赖链级联迁移，否则删 Envelope 会破坏编译/运行时。
+>
+> **6 Blocker 依赖链**：
+>
+> | Blocker | 描述 | 依赖 |
+> |---------|------|------|
+> | **A: WS Replay 路径** | `event.Buffer` → `replayEvents` → `wsDownstream.Envelope`，前端 reconnect 后靠此回放历史事件 | 前端 `useChatEventInspector` 仍消费 replay envelope；解决方案：迁移到 Activity replay 或删除 replay 改用 `ListActivities` RPC |
+> | **B: 4 个 side consumer** | `event_bus_side_consumers.go` 中 4 个消费者订阅 SessionBus 接收 Envelope | 需迁移到 ActivityEventBus/MonitorBus 订阅 |
+> | **C: DomainEvent bridge** | `domain_event_adapter.go` 将 biz domain event 包装为 Envelope | 需改为包装 ActivityEvent (Domain=system) |
+> | **D: vestigial bus 字段** | 多个 service/team struct 仍持有 `bus event.Bus` 字段（dead field） | 删除字段前需确认无 publisher 调用 |
+> | **E: EventPipeline.Bus/Buffer** | `EventPipeline` 仍保留 `Bus event.Bus` + `Buffer event.Buffer` 字段 | Buffer 是 Blocker A 的 replay 源；Bus 是 Buffer 的 owner |
+> | **F: Wire DI** | `cmd/admin/wire.go` 仍绑定 SessionBus | 需在 A-E 全部解决后清理 |
+>
+> **建议迁移顺序**：B（独立）→ C（独立）→ D（依赖 B/C 完成）→ A（依赖前端 ListActivities 改造）→ E（依赖 A 完成）→ F（依赖 E 完成）→ 删除 Envelope 文件
+>
+> **当前 Envelope 残留**：54 生产 + 20 测试文件，其中 ~13 文件活跃 publish Envelope（基础设施 + spirit/service publisher）
+
 | 步骤 | 文件 | 改动 |
 |------|------|------|
-| 5.1 | `internal/event/contract/envelope.go` | **删除整个文件** |
+| 5.1 | `internal/event/contract/envelope.go` | **删除整个文件**（依赖 Blocker A-F 全部解决） |
 | 5.2 | `internal/event/envelope.go` | **删除整个文件** |
 | 5.3 | `internal/event/bus.go` | 删除 `Bus` type alias + `NewBus`（改为 `NewMonitorBus`） |
 | 5.4 | 所有 `import "internal/event/contract"` 引用 Envelope | 清理 |
-| 5.5 | `internal/biz/event_bus_side_consumers.go` | 迁移到 ActivityEventBus/MonitorBus 订阅 |
+| 5.5 | `internal/biz/event_bus_side_consumers.go` | 迁移到 ActivityEventBus/MonitorBus 订阅（Blocker B） |
+| 5.6 | `internal/event/domain_event_adapter.go` | DomainEvent bridge 改为 ActivityEvent 包装（Blocker C） |
+| 5.7 | service/team struct 的 `bus event.Bus` 字段 | 删除 vestigial 字段（Blocker D） |
+| 5.8 | `internal/runtime/deps.go` EventPipeline | 删除 `Bus` + `Buffer` 字段（Blocker E） |
+| 5.9 | `internal/server/ws_event.go` replayEvents | 迁移到 Activity replay 或删除（Blocker A） |
+| 5.10 | `cmd/admin/wire.go` | 删除 SessionBus 绑定（Blocker F） |
+| 5.11 | `web/src/realtime/ws-transport.ts` 等 7 文件 | 删除 envelope import + 字段（依赖 Blocker A） |
 
-**验证**：`go build ./... && go test ./...`
+**验证**：`go build ./... && go test ./...` + `cd web && pnpm lint && pnpm test && pnpm build`
 
-### Phase 6：全量验证 + 文档同步
+### Phase 6：全量验证 + 文档同步 🟡（验证通过，文档同步中）
 
-| 步骤 | 验证 |
-|------|------|
-| 6.1 | `make api && make wire && make build && make test && make lint` |
-| 6.2 | `cd web && pnpm lint && pnpm test && pnpm build` |
-| 6.3 | 更新 `docs/development/34-event-system.*` 三件套 |
-| 6.4 | 更新 `docs/development/59-chat-ui-optimization.development.md` |
-| 6.5 | 编写 ADR-03: 统一总线架构决策 |
+> **完成状态**（截至 2026-06-26）：
+> - **后端验证**：`go build ./...` ✅ + `go test ./...` ✅（biz/agent/event/service/team/graph/cronrunner/skill/plugin/runtime/server 全通过）
+> - **前端验证**：`pnpm lint` ✅（0 errors）+ `pnpm test` ✅（516 tests passed）+ `pnpm build` ✅
+> - **文档同步**：本 spec 进度更新完成（Phase 4 → ✅，Phase 5 加入 6-Blocker 分析）
+> - **待办**：ADR-03 编写 + `34-event-system.development.md` 状态更新
+
+| 步骤 | 验证 | 状态 |
+|------|------|------|
+| 6.1 | `go build ./... && go test ./...` | ✅ |
+| 6.2 | `cd web && pnpm lint && pnpm test && pnpm build` | ✅ |
+| 6.3 | 更新本 spec 进度（Phase 4/5/6 状态） | ✅ |
+| 6.4 | 编写 ADR-03: 统一总线架构决策 + Phase 5 路线图 | ✅ |
+| 6.5 | 更新 `docs/development/34-event-system.development.md`（Phase 5 完成后再更新） | ⏳ |
 
 ---
 
@@ -402,15 +460,15 @@ interface WsDownstream {
 
 ## 5. 验收标准
 
-- [ ] 后端 `go build ./...` 通过，零 `bus.Publish(ctx, envelope)` 残留
-- [ ] 后端 `go test ./...` 通过
-- [ ] 前端 `pnpm build` 通过，零 `envelope` import 残留
-- [ ] 前端 `pnpm test` 通过
-- [ ] `grep -r "Envelope" internal/` 仅剩 proto 生成代码（如有）
-- [ ] `grep -r "envelope" web/src/` 零结果
-- [ ] WSServer 仅 2 个 pump goroutine
-- [ ] EventPipeline 仅 ActivityBus + MonitorBus，无 Bus event.Bus
-- [ ] ADR-03 文档完整
+- [x] 后端 `go build ./...` 通过，零外部 `bus.Publish(ctx, envelope)` 残留（核心基础设施除外）
+- [x] 后端 `go test ./...` 通过（biz/agent/event/service/team/graph/cronrunner/skill/plugin/runtime/server）
+- [x] 前端 `pnpm build` 通过，Envelope import 从 46 降至 7（残留均为合法传输层/事件检查器）
+- [x] 前端 `pnpm test` 通过（516 tests passed）
+- [ ] `grep -r "Envelope" internal/` 仅剩 proto 生成代码（如有）— 当前残留 54 生产 + 20 测试文件（Phase 5 删除）
+- [ ] `grep -r "envelope" web/src/` 仅剩 7 个合法传输层/事件检查器文件（依赖 Phase 5 Blocker A 解决）
+- [x] WSServer 仅 2 个 pump goroutine（monitorEventPump + activityEventPump）
+- [x] EventPipeline 含 ActivityBus + MonitorEventBus（SessionBus 保留供 replay，Phase 5 删除）
+- [x] ADR-03 文档完整（[2026-06-26-review-adr-unified-bus-architecture.md](../../reports/2026-06-26-review-adr-unified-bus-architecture.md)）
 
 ---
 
@@ -418,5 +476,6 @@ interface WsDownstream {
 
 - 重构主文档：[2026-06-25-analysis-chat-module-refactor.md](../../reports/2026-06-25-analysis-chat-module-refactor.md)
 - ADR-02 持久化策略：[2026-06-25-review-adr-activity-event-persistence.md](../../reports/2026-06-25-review-adr-activity-event-persistence.md)
+- ADR-03 统一总线架构：[2026-06-26-review-adr-unified-bus-architecture.md](../../reports/2026-06-26-review-adr-unified-bus-architecture.md)
 - 事件系统设计：[34-event-system.design.md](../../development/34-event-system.design.md)
 - Chat UI 开发计划：[59-chat-ui-optimization.development.md](../../development/59-chat-ui-optimization.development.md)

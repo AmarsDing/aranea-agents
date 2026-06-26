@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
@@ -30,7 +30,7 @@ type Runtime struct {
 	stats          StatsRecorder
 	notifier       *HookNotifier
 	retryWorker    *HookDeliveryRetryWorker
-	bus            event.Bus
+	monitorBus     contract.MonitorBus
 	budgets        *CostGuardBudgetRegistry
 	resolveAgent   AgentKeyResolver
 	catalogConfirm CatalogConfirmChecker
@@ -133,20 +133,16 @@ func (rt *Runtime) CostGuardBudgetTracker() *CostGuardBudgetTracker {
 	return rt.budgets.TrackerForScope("global")
 }
 
-func (rt *Runtime) SetBus(bus event.Bus) {
+func (rt *Runtime) SetMonitorBus(monitorBus contract.MonitorBus) {
 	rt.mu.Lock()
-	rt.bus = bus
+	rt.monitorBus = monitorBus
 	rt.mu.Unlock()
-	// SetBus is retained for backward compatibility; the typed MonitorBus is
-	// injected separately via InitHookLogger from the wiring layer. Passing
-	// nil here preserves the legacy fallback path when SetBus is invoked
-	// directly (currently dead code in production).
-	InitHookLogger(bus, nil, rt.lg)
+	InitHookLogger(monitorBus, rt.lg)
 }
 
 func (rt *Runtime) Apply(_ context.Context, plugins []biz.Plugin) {
 	rt.mu.RLock()
-	bus := rt.bus
+	monitorBus := rt.monitorBus
 	stats := rt.stats
 	rt.mu.RUnlock()
 	built := make([]runtimeEntry, 0, len(plugins))
@@ -154,7 +150,7 @@ func (rt *Runtime) Apply(_ context.Context, plugins []biz.Plugin) {
 		if !p.Enabled {
 			continue
 		}
-		ap := adapt(p, stats, bus, rt, rt.lg)
+		ap := adapt(p, stats, monitorBus, rt, rt.lg)
 		if ap == nil {
 			continue
 		}

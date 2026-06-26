@@ -1,9 +1,9 @@
 /**
- * executionProgress — pure functions to merge `execution_progress` envelopes
+ * executionProgress — pure functions to merge `execution_progress` ActivityEvents
  * into the `ProgressSection` shape consumed by the execution progress timeline.
  *
- * The backend emits an envelope per step transition (start → done/error).
- * Multiple envelopes for the same `step_id` are merged into a single
+ * The backend emits an ActivityEvent per step transition (start → done/error).
+ * Multiple events for the same `step_id` are merged into a single
  * `ProgressSection` whose status reflects the latest phase.
  *
  * Auto-timeout: a step still in `running` past the per-category threshold
@@ -16,8 +16,20 @@
  *
  * @see docs/reports/2026-06-10-proposal-execution-progress-inline.md
  */
-import type { Envelope, EnvelopeExecutionProgressMetadata } from '../../realtime/envelope';
+import type { ActivityEvent } from '../../realtime/activityEvent';
 import type { ProgressCategory, ProgressSection } from './agentTreeTypes';
+
+/** Metadata carried by an execution_progress ActivityEvent (on `activity.meta`). */
+export type ExecutionProgressMetadata = {
+  step_id: string;
+  phase: 'start' | 'done' | 'error';
+  message: string;
+  category: 'orchestration' | 'team' | 'tool' | 'thinking';
+  duration_ms?: number;
+  agent_key?: string;
+  tool_name?: string;
+  error?: string;
+};
 
 export type ProgressStatus = ProgressSection['status'];
 
@@ -38,7 +50,8 @@ export const AUTO_TIMEOUT_MS: Readonly<Record<ProgressCategory, number>> = Objec
 
 /**
  * Sentinel for "no auto-timeout" — pass `null` for a category in the
- * `timeouts` argument of `mergeProgressEvents` to disable auto-timeout.
+ * `timeouts` argument of `mergeProgressEventsFromActivity` to disable
+ * auto-timeout.
  */
 export const NO_AUTO_TIMEOUT = null;
 
@@ -49,14 +62,31 @@ const KNOWN_CATEGORIES: ReadonlySet<ProgressCategory> = new Set<ProgressCategory
   'thinking',
 ]);
 
+function stringField(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+}
+
+// ── ActivityEvent-based functions ──────────────────────────────────────
+// The backend projects execution_progress as ActivityEvent with
+// `activity.stage = 'execution_progress'` and the metadata fields
+// (step_id / phase / message / category / duration_ms / agent_key /
+// tool_name / error) carried on `activity.meta`.
+
 /**
- * Read and validate the execution_progress metadata from an envelope.
- * Returns null if the envelope is not an execution_progress or metadata is
- * missing required fields.
+ * Read and validate execution_progress metadata from an ActivityEvent.
+ *
+ * Field mapping (envelope.metadata → activity.meta):
+ *   step_id, phase, message, category, duration_ms, agent_key, tool_name, error
+ *
+ * Returns null if the event is not an execution_progress activity or
+ * metadata is missing required fields.
  */
-export function readExecutionProgressMetadata(env: Envelope): EnvelopeExecutionProgressMetadata | null {
-  if (env.type !== 'execution_progress') return null;
-  const meta = env.metadata;
+export function readExecutionProgressMetadataFromActivity(
+  ev: ActivityEvent,
+): ExecutionProgressMetadata | null {
+  if (ev.activity.stage !== 'execution_progress') return null;
+  const meta = ev.activity.meta;
   if (!meta || typeof meta !== 'object') return null;
 
   const stepId = stringField(meta.step_id);
@@ -70,7 +100,7 @@ export function readExecutionProgressMetadata(env: Envelope): EnvelopeExecutionP
     ? (categoryRaw as ProgressCategory)
     : 'orchestration';
 
-  const out: EnvelopeExecutionProgressMetadata = {
+  const out: ExecutionProgressMetadata = {
     step_id: stepId,
     phase,
     message,
@@ -84,25 +114,25 @@ export function readExecutionProgressMetadata(env: Envelope): EnvelopeExecutionP
 }
 
 /**
- * Merge an ordered list of execution_progress envelopes into a map of
- * `step_id → ProgressSection`. The last envelope for a given step_id wins,
- * and the start envelope's timestamp is used as `startedAt`.
+ * Merge an ordered list of execution_progress ActivityEvents into a map of
+ * `step_id → ProgressSection`. The last event for a given step_id wins, and
+ * the start event's timestamp is used as `startedAt`.
  *
- * @param envelopes - the stream of progress envelopes in arrival order
+ * @param events - the stream of progress ActivityEvents in arrival order
  * @param now       - injected clock; defaults to Date.now (testability)
  * @param timeouts  - optional per-category override of AUTO_TIMEOUT_MS.
  *                    Pass `null` to disable auto-timeout for a category.
  */
-export function mergeProgressEvents(
-  envelopes: readonly Envelope[],
+export function mergeProgressEventsFromActivity(
+  events: readonly ActivityEvent[],
   now: () => number = () => Date.now(),
   timeouts: Readonly<Record<ProgressCategory, number | null>> = AUTO_TIMEOUT_MS,
 ): Map<string, ProgressSection> {
   const byStep = new Map<string, ProgressSection>();
-  for (const env of envelopes) {
-    const meta = readExecutionProgressMetadata(env);
+  for (const ev of events) {
+    const meta = readExecutionProgressMetadataFromActivity(ev);
     if (!meta) continue;
-    const startedAt = Date.parse(env.timestamp);
+    const startedAt = Date.parse(ev.activity.timestamp);
     const existing = byStep.get(meta.step_id);
     if (meta.phase === 'start') {
       byStep.set(meta.step_id, {
@@ -146,10 +176,7 @@ export function mergeProgressEvents(
   }
   // Auto-timeout: any still-running step past its per-category threshold flips
   // to "timeout" so the UI can show a "(等待中)" hint. A `null` value for a
-  // category disables auto-timeout for that category. (We don't fall back to
-  // AUTO_TIMEOUT_MS when the override is null — null is a deliberate
-  // "disable" signal. The Record type requires all 4 keys to be present so
-  // the access is total.)
+  // category disables auto-timeout for that category.
   const nowMs = now();
   for (const node of byStep.values()) {
     if (node.status !== 'running') continue;
@@ -160,9 +187,4 @@ export function mergeProgressEvents(
     }
   }
   return byStep;
-}
-
-function stringField(value: unknown): string {
-  if (typeof value !== 'string') return '';
-  return value.trim();
 }

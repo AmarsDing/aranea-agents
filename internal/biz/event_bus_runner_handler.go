@@ -2,7 +2,6 @@ package biz
 
 import (
 	"aranea-agents/internal/biz/monitor"
-	"aranea-agents/internal/event/contract"
 	"context"
 	"os"
 	"strings"
@@ -13,13 +12,13 @@ import (
 
 // runnerCompletionHandler processes runner.completion domain events (monitor, usage, memory worker).
 type runnerCompletionHandler struct {
-	sessions  *SessionUsecase
-	usage     *UsageUsecase
-	monitor   *MonitorUsecase
-	memWorker *TurnMemoryWorker
-	traceProj *monitor.TraceProjector
-	bus       contract.Bus
-	logger    SessionLogWriter
+	sessions    *SessionUsecase
+	usage       *UsageUsecase
+	monitor     *MonitorUsecase
+	memWorker   *TurnMemoryWorker
+	traceProj   *monitor.TraceProjector
+	activityBus ActivityEventBus
+	logger      SessionLogWriter
 }
 
 func newRunnerCompletionHandler(
@@ -28,17 +27,17 @@ func newRunnerCompletionHandler(
 	monitorUC *MonitorUsecase,
 	memWorker *TurnMemoryWorker,
 	traceProj *monitor.TraceProjector,
-	bus contract.Bus,
+	activityBus ActivityEventBus,
 	logger SessionLogWriter,
 ) *runnerCompletionHandler {
 	return &runnerCompletionHandler{
-		sessions:  sessions,
-		usage:     usage,
-		monitor:   monitorUC,
-		memWorker: memWorker,
-		traceProj: traceProj,
-		bus:       bus,
-		logger:    logger,
+		sessions:    sessions,
+		usage:       usage,
+		monitor:     monitorUC,
+		memWorker:   memWorker,
+		traceProj:   traceProj,
+		activityBus: activityBus,
+		logger:      logger,
 	}
 }
 
@@ -106,7 +105,7 @@ func (h *runnerCompletionHandler) Handle(ctx context.Context, de DomainEvent) {
 		h.logError(context.Background(), de.SessionID, "event_bus.usage.record", "用量事件写入失败", LogPair{Key: "error", Value: err})
 		return
 	}
-	PublishTokenUsageEnvelope(ctx, h.bus, ev)
+	PublishTokenUsageEnvelope(ctx, h.activityBus, ev)
 }
 
 func (h *runnerCompletionHandler) logError(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair) {

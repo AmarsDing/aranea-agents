@@ -20,6 +20,7 @@ type EventBusConsumer struct {
 
 func NewEventBusConsumer(
 	eventBus contract.Bus,
+	activityBus ActivityEventBus,
 	eventBuffer EnvelopeBuffer,
 	sessions *SessionUsecase,
 	runnerSync RunnerSnapshotSync,
@@ -32,7 +33,7 @@ func NewEventBusConsumer(
 	return &EventBusConsumer{
 		eventBus: eventBus,
 		buffer:   newEventBufferHandler(eventBuffer),
-		runner:   newRunnerCompletionHandler(sessions, usage, monitorUC, memWorker, traceProj, eventBus, logger),
+		runner:   newRunnerCompletionHandler(sessions, usage, monitorUC, memWorker, traceProj, activityBus, logger),
 		state:    newStateDeltaHandler(sessions, runnerSync, logger),
 		dedup:    event.NewEventDeduplicator(event.DefaultDedupCapacity),
 		logger:   logger,

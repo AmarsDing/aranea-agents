@@ -7,6 +7,52 @@ vi.mock('../api', () => ({
 }));
 
 import { getRunStatus } from '../api';
+import type { ActivityEvent } from '../../../realtime/activityEvent';
+import type { Activity } from '../../../realtime/activityEvent';
+
+function makeActivity(overrides: Partial<Activity> = {}): Activity {
+  return {
+    id: 'act-1',
+    kind: 'task',
+    status: 'running',
+    session_id: 'sess-1',
+    turn_id: 'turn-1',
+    parent_activity_id: '',
+    timestamp: '2026-06-10T10:00:00.000Z',
+    duration_ms: 0,
+    seq: 1,
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    content: '',
+    reasoning: '',
+    tool_name: '',
+    tool_category: 'other',
+    tool_call_id: '',
+    tool_arguments: '',
+    tool_result: '',
+    tool_duration_ms: 0,
+    tool_error_code: '',
+    stage: 'run_status',
+    child_board_id: '',
+    spirit_session_id: '',
+    team_id: '',
+    dag_node_id: '',
+    depends_on: [],
+    agent_key: '',
+    agent_name: '',
+    collapsed: false,
+    label: '',
+    meta: {},
+    ...overrides,
+  };
+}
+
+function activityEvent(meta: Record<string, unknown>, overrides: Partial<Activity> = {}): ActivityEvent {
+  return {
+    event: 'updated',
+    activity: makeActivity({ meta, ...overrides }),
+  };
+}
 
 describe('useChatRunStatus', () => {
   beforeEach(() => {
@@ -19,7 +65,7 @@ describe('useChatRunStatus', () => {
     vi.useRealTimers();
   });
 
-  it('prefers WS envelope over delayed HTTP hydrate', async () => {
+  it('prefers WS ActivityEvent over delayed HTTP hydrate', async () => {
     vi.mocked(getRunStatus).mockResolvedValue({
       status: 'running',
       runId: 'http-run',
@@ -28,20 +74,12 @@ describe('useChatRunStatus', () => {
     });
 
     const applyAwaitRunStatus = vi.fn();
-    const { runStatus, applyFromEnvelope, onSessionSwitch } = useChatRunStatus({
+    const { runStatus, applyFromActivityEvent, onSessionSwitch } = useChatRunStatus({
       applyAwaitRunStatus,
     });
 
     onSessionSwitch('sess-1');
-    applyFromEnvelope({
-      id: 'e1',
-      type: 'run_status',
-      author: 'test',
-      session_id: 'sess-1',
-      timestamp: '',
-      version: 1,
-      metadata: { status: 'completed', run_id: 'ws-run' },
-    });
+    applyFromActivityEvent(activityEvent({ status: 'completed', run_id: 'ws-run' }));
 
     expect(runStatus.value).toBe('completed');
     vi.advanceTimersByTime(500);

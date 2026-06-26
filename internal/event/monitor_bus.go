@@ -52,7 +52,9 @@ func (b *monitorBus) Subscribe(opts contract.MonitorSubscribeOptions) (<-chan co
 	genericOpts := GenericSubscribeOptions[contract.MonitorEvent]{
 		BufferSize: opts.BufferSize,
 	}
-	if !opts.GlobalMode && opts.SessionID != "" {
+	if opts.Filter != nil {
+		genericOpts.Filter = opts.Filter
+	} else if !opts.GlobalMode && opts.SessionID != "" {
 		sessionID := opts.SessionID
 		genericOpts.Filter = func(ev contract.MonitorEvent) bool {
 			// Events with empty SessionID are always delivered (global alerts).

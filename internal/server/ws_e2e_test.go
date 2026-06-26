@@ -10,31 +10,62 @@ import (
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/activityevent"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/gorilla/websocket"
 )
 
-// e2eChatSender simulates ChatService: publishes run_status + text_delta on turn start.
+// e2eChatSender simulates ChatService: publishes created/streaming/completed
+// ActivityEvents on turn start (AF pipeline).
 type e2eChatSender struct {
-	bus       event.Bus
-	sessionID string
+	activityBus *activityevent.Bus
+	sessionID   string
 }
 
 func (s *e2eChatSender) SendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error) {
 	runID := "run-e2e-1"
-	running := event.NewEnvelope(event.EnvelopeTypeRunStatus, "e2e", s.sessionID)
-	running.Metadata = map[string]any{"status": "running", "run_id": runID}
-	s.bus.Publish(ctx, running)
+	// Created: turn started (replaces legacy run_status running envelope).
+	s.activityBus.Publish(ctx, biz.ActivityEvent{
+		Event: biz.ActivityEventCreated,
+		Activity: biz.Activity{
+			ID:        "act-e2e-1",
+			Kind:      biz.ActivityKindTask,
+			Status:    biz.ActivityStatusRunning,
+			SessionID: s.sessionID,
+			Meta:      map[string]any{"status": "running", "run_id": runID},
+		},
+		Domain: biz.ActivityDomainChat,
+	})
 
-	delta := event.NewEnvelope(event.EnvelopeTypeExecutionProgress, "e2e-agent", s.sessionID)
-	delta.InvocationID = runID
-	delta.Content = &event.EnvelopeContent{Text: "Hello", IsPartial: true}
-	s.bus.Publish(ctx, delta)
+	// Streaming: text append (replaces legacy execution_progress envelope).
+	s.activityBus.Publish(ctx, biz.ActivityEvent{
+		Event:      biz.ActivityEventStreaming,
+		DeltaField: "content",
+		DeltaChunk: "Hello",
+		Activity: biz.Activity{
+			ID:        "act-e2e-1",
+			Kind:      biz.ActivityKindReply,
+			SessionID: s.sessionID,
+			Content:   "Hello",
+		},
+		Domain: biz.ActivityDomainChat,
+	})
 
-	done := event.NewEnvelope(event.EnvelopeTypeRunStatus, "e2e", s.sessionID)
-	done.Metadata = map[string]any{"status": "completed", "run_id": runID}
-	s.bus.Publish(ctx, done)
+	// Completed: turn done (replaces legacy run_status completed envelope).
+	s.activityBus.Publish(ctx, biz.ActivityEvent{
+		Event: biz.ActivityEventCompleted,
+		Activity: biz.Activity{
+			ID:        "act-e2e-1",
+			Kind:      biz.ActivityKindTask,
+			Status:    biz.ActivityStatusCompleted,
+			SessionID: s.sessionID,
+			Meta:      map[string]any{"status": "completed", "run_id": runID},
+		},
+		Domain: biz.ActivityDomainChat,
+	})
 	return &chatv1.SendChatMessageResponse{}, nil
 }
 
@@ -42,15 +73,16 @@ func (s *e2eChatSender) EnqueueUserMessage(context.Context, *chatv1.EnqueueUserM
 	return &chatv1.EnqueueUserMessageResponse{Accepted: true}, nil
 }
 
-// TestWSE2E_UserMessageStream is a skeleton E2E: WS connect → user_message → streamed envelopes.
+// TestWSE2E_UserMessageStream is a skeleton E2E: WS connect → user_message → streamed ActivityEvents.
 func TestWSE2E_UserMessageStream(t *testing.T) {
 	t.Setenv("KRATOS_HTTP_AUTH_DISABLED", "true")
 	t.Setenv("DEPLOY_ENV", "dev")
 
 	const sessionID = "sess-e2e"
 	bus := event.NewBus(nil)
-	sender := &e2eChatSender{bus: bus, sessionID: sessionID}
-	srv := newTestWSServer(bus, event.NewBuffer(), nil, sender)
+	activityBus := activityevent.New(loggateway.NewNoop())
+	sender := &e2eChatSender{activityBus: activityBus, sessionID: sessionID}
+	srv := newTestWSServerWithActivity(bus, event.NewBuffer(), nil, sender, activityBus)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/ws", srv.handleWS)
@@ -92,18 +124,21 @@ func TestWSE2E_UserMessageStream(t *testing.T) {
 		}
 		typ := wsMessageType(msg)
 		switch typ {
-		case "run_status":
-			seen["run_status"] = true
-		case "execution_progress":
-			seen["execution_progress"] = true
+		case string(biz.ActivityEventCreated):
+			seen["created"] = true
+		case string(biz.ActivityEventStreaming):
+			seen["streaming"] = true
 		}
 	}
-	if !seen["run_status"] || !seen["execution_progress"] {
-		t.Fatalf("expected run_status and execution_progress, seen=%v", seen)
+	if !seen["created"] || !seen["streaming"] {
+		t.Fatalf("expected created and streaming events, seen=%v", seen)
 	}
 }
 
 func wsMessageType(msg wsDownstream) string {
+	if msg.ActivityEvent != nil {
+		return string(msg.ActivityEvent.Event)
+	}
 	if msg.Envelope != nil {
 		return string(msg.Envelope.Type)
 	}

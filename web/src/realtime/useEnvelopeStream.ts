@@ -15,6 +15,7 @@ import { createWsTransport, type WsTransport } from './ws-transport';
 import { EnvelopeDispatcher } from './dispatcher';
 import type { Envelope, EnvelopeType } from './envelope';
 import type { ActivityEvent } from './activityEvent';
+import type { MonitorEvent } from './monitorEvent';
 import {
   acquireGlobalWsConsumer,
   globalWsConsumerEnableLog,
@@ -46,6 +47,12 @@ export type UseEnvelopeStreamOptions = {
    * silently ignored by the transport.
    */
   onActivityEvent?: (ev: ActivityEvent) => void;
+  /**
+   * Monitor channel: called when a downstream message carries a
+   * monitor_event payload (log, flow_log, mcp, alert). If not provided,
+   * monitor_event messages are silently ignored by the transport.
+   */
+  onMonitorEvent?: (event: MonitorEvent) => void;
 };
 
 export type UseEnvelopeStreamReturn = {
@@ -85,6 +92,8 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
         channels,
         logEnabled: opts.logEnabled ?? false,
         onEnvelope: (env) => dispatcher.dispatch(env),
+        onActivityEvent: opts.onActivityEvent,
+        onMonitorEvent: opts.onMonitorEvent,
         onConnected: () => {
           connected.value = true;
           opts.onConnected?.({ sessionId: opts.sessionId, lastEventId: lastEventId.value });
@@ -116,6 +125,7 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
         dispatcher.dispatch(env);
       },
       onActivityEvent: opts.onActivityEvent ? (ev) => opts.onActivityEvent!(ev) : undefined,
+      onMonitorEvent: opts.onMonitorEvent ? (event) => opts.onMonitorEvent!(event) : undefined,
       onConnected: (info) => {
         connected.value = true;
         lastEventId.value = info.lastEventId;

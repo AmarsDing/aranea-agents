@@ -8,7 +8,7 @@ Aranea-Agents 的 Chat 模块重构（详见 `docs/reports/2026-06-25-analysis-c
 
 AF 之前，Critical 级事件（Error/Checkpoint/RunnerCompletion）使用 **WBPF（Write-Before-Publish-Fanout）** 模式（见 `internal/event/contract/reliability.go`）：事件必须先持久化到 WAL，成功后才向 Bus 发布。该模式保证「持久化成功 ↔ 推送成功」的强一致，但带来两个问题：
 
-1. **DB I/O 阻塞 WS 推送**：用户感知延迟。SQLite 单写连接（`MaxOpenConns=1`）下，持久化可能耗时数十至数百毫秒，期间前端无法收到实时事件。
+1. **DB I/O 阻塞 WS 推送**：用户感知延迟。postgres 单写连接（`MaxOpenConns=1`）下，持久化可能耗时数十至数百毫秒，期间前端无法收到实时事件。
 2. **持久化失败导致推送被跳过**：前端丢失实时事件，只能依赖 API reload 补全，体验降级。
 
 AF 引入后，Activity 事件流是前端渲染的唯一来源，WBPF 的阻塞问题被放大：
@@ -35,7 +35,7 @@ processTask(activityID, task):
 
 ### D2：持久化失败补偿三重保障
 
-1. **重试预算**（[activity_event_sequencer.go:38-39](file:///f:/aranea-agents/internal/agent/activity_event_sequencer.go#L38-L39)）：`persistMaxRetries=5`，`persistInitialBackoffMs=100`，指数退避（100/200/400/800/1600ms），总预算 3100ms。对齐 SQLite `busy_timeout=30000ms` 的 1/10，避免占用写连接过久。
+1. **重试预算**（[activity_event_sequencer.go:38-39](file:///f:/aranea-agents/internal/agent/activity_event_sequencer.go#L38-L39)）：`persistMaxRetries=5`，`persistInitialBackoffMs=100`，指数退避（100/200/400/800/1600ms），总预算 3100ms。对齐 postgres `busy_timeout=30000ms` 的 1/10，避免占用写连接过久。
 2. **Dead-Letter 环形缓冲**（[activity_event_sequencer.go:357-367](file:///f:/aranea-agents/internal/agent/activity_event_sequencer.go#L357-L367)）：重试耗尽后，失败的 Activity 进入 `deadLetter` 环形缓冲（容量 512，FIFO 淘汰）。通过 `ListDeadLetterActivities(sessionID)` 暴露给 WS 重连补偿路径。
 3. **API Backfill**：前端在 WS 重连或显式 reload 时，通过 `listActivities(sessionId)` API 拉取最新持久化状态，作为最终一致兜底。
 

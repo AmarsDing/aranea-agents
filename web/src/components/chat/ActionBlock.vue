@@ -11,39 +11,30 @@
         <span class="act-activity__status" :class="statusClass">{{ statusIcon }}</span>
         <span v-if="activity.tool.durationMs != null" class="act-activity__duration">{{ formattedDuration }}</span>
       </div>
-      <div v-if="expanded" class="act-activity__detail">
-        <div v-if="formattedResult" class="act-activity__result-summary">
-          <div class="act-activity__detail-label">{{ t('chat.toolResultSummary') }}</div>
-          <!-- eslint-disable-next-line vue/no-v-html -- sanitized markdown HTML -->
-          <div class="act-activity__markdown chat-message-prose" v-html="renderedResultSummary" />
-        </div>
-        <div v-if="activity.tool.arguments" class="act-activity__args">
-          <div class="act-activity__detail-label">{{ t('chat.toolArgs') }}</div>
-          <pre class="act-activity__code">{{ activity.tool.arguments }}</pre>
-        </div>
-        <div v-if="activity.tool.result" class="act-activity__result">
-          <div class="act-activity__detail-label">{{ t('chat.toolRawResult') }}</div>
-          <pre class="act-activity__code">{{ activity.tool.result }}</pre>
-        </div>
-        <div v-if="activity.tool.error" class="act-activity__error">
-          <div class="act-activity__detail-label">{{ t('chat.toolError') }}</div>
-          <pre class="act-activity__code">{{ activity.tool.error }}</pre>
-        </div>
-      </div>
+      <!-- Phase 3: dispatch to per-category detail component (§8.4 of analysis doc) -->
+      <component :is="detailComponent" v-if="expanded" :activity="activity" class="act-activity__detail" />
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, watch, type Component } from 'vue';
 import type { ActionEvent } from '../../features/chat/streamEventTypes';
 import type { ToolUseEvent } from '../../features/chat/types';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 import { isTodoWriteTool } from '../../features/chat/activityPresentation';
-import { formatToolResultSummary } from '../../features/chat/toolEventMarkdown';
-import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
 import { useCollapseState } from '../../features/chat/composables/useCollapseState';
 import TodoInlineList from './TodoInlineList.vue';
+import ShellToolDetail from './tools/ShellToolDetail.vue';
+import BrowserToolDetail from './tools/BrowserToolDetail.vue';
+import FileReadToolDetail from './tools/FileReadToolDetail.vue';
+import FileWriteToolDetail from './tools/FileWriteToolDetail.vue';
+import FileSearchToolDetail from './tools/FileSearchToolDetail.vue';
+import WebSearchToolDetail from './tools/WebSearchToolDetail.vue';
+import McpToolDetail from './tools/McpToolDetail.vue';
+import CodeToolDetail from './tools/CodeToolDetail.vue';
+import TodoToolDetail from './tools/TodoToolDetail.vue';
+import GenericToolDetail from './tools/GenericToolDetail.vue';
 
 /** T8.4: Tool result/arguments longer than this threshold auto-collapse. */
 const RESULT_COLLAPSE_THRESHOLD = 500;
@@ -54,6 +45,38 @@ const props = defineProps<{
 }>();
 
 const isTodo = computed(() => isTodoWriteTool(props.activity.tool.toolName));
+
+/**
+ * Phase 3: select a detail component by tool_category (AF).
+ * Falls back to GenericToolDetail when category is missing or unknown.
+ * todo_write is intercepted earlier by `isTodo` -> TodoInlineList, but
+ * TodoToolDetail is mapped for completeness/consistency.
+ */
+const detailComponent = computed<Component>(() => {
+  const cat = props.activity.tool.toolCategory ?? 'other';
+  switch (cat) {
+    case 'shell':
+      return ShellToolDetail;
+    case 'browser':
+      return BrowserToolDetail;
+    case 'file_read':
+      return FileReadToolDetail;
+    case 'file_write':
+      return FileWriteToolDetail;
+    case 'file_search':
+      return FileSearchToolDetail;
+    case 'web_search':
+      return WebSearchToolDetail;
+    case 'mcp':
+      return McpToolDetail;
+    case 'code':
+      return CodeToolDetail;
+    case 'todo':
+      return TodoToolDetail;
+    default:
+      return GenericToolDetail;
+  }
+});
 
 /**
  * Tool icon based on tool_category (AF).
@@ -91,19 +114,6 @@ const parsedToolArgs = computed<Record<string, unknown> | undefined>(
 
 const parsedToolResult = computed<Record<string, unknown> | undefined>(
   () => tryParseJson(props.activity.tool.result) as Record<string, unknown> | undefined,
-);
-
-/** Format a readable result summary for the expanded tool card. */
-const formattedResult = computed(() => {
-  const event: Pick<ToolUseEvent, 'tool_name' | 'result'> = {
-    tool_name: props.activity.tool.toolName,
-    result: parsedToolResult.value,
-  };
-  return formatToolResultSummary(event);
-});
-
-const renderedResultSummary = computed(() =>
-  renderChatMarkdownForMessage(props.activity.id, formattedResult.value, false),
 );
 
 /**
@@ -356,34 +366,4 @@ const formattedDuration = computed(() => formatDuration(props.activity.tool.dura
   &__detail
     margin-left: 20px
     margin-bottom: 4px
-
-  &__detail-label
-    font-size: 11px
-    color: var(--color-text-secondary)
-    margin-bottom: 2px
-
-  &__code
-    font-size: 12px
-    background: var(--glass-surface)
-    border: 1px solid var(--glass-border)
-    border-radius: 6px
-    padding: 6px 8px
-    overflow-x: auto
-    max-height: 200px
-    overflow-y: auto
-    margin: 0
-
-  &__error
-    .act-activity__code
-      border-color: var(--color-danger)
-
-  &__result-summary
-    margin-bottom: 8px
-
-  &__markdown
-    font-size: 13px
-    margin-left: 20px
-    :deep(pre)
-      max-height: 240px
-      overflow-y: auto
 </style>

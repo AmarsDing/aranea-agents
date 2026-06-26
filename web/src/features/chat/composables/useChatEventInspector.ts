@@ -4,6 +4,7 @@ import type { Activity } from '../activityTypes';
 import type { Envelope, EnvelopeType } from '../envelope';
 import { createEnvelopeStream, type UseEnvelopeStreamReturn } from '../useEnvelopeStream';
 import { useEventFilter } from './useEventFilter';
+import type { InspectorEvent } from '../eventFilter';
 
 const LIVE_TYPES: EnvelopeType[] = [
   'text_delta',
@@ -57,13 +58,17 @@ export type ChatEventInspectorStreamDeps = {
  * stream. The two collections are exposed separately so the UI can render
  * Activity-derived history (with kind/status/tool fields) distinct from
  * raw real-time envelopes.
+ *
+ * AF: Live events are stored as InspectorEvent (a minimal local type that
+ * captures only the fields the inspector UI accesses). Full Envelope objects
+ * from the WS stream are structurally compatible and assigned directly.
  */
 export function useChatEventInspector(
   sessionId: Ref<string | null | undefined>,
   active: Ref<boolean>,
   streamDeps?: ChatEventInspectorStreamDeps,
 ) {
-  const events = ref<Envelope[]>([]);
+  const events = ref<InspectorEvent[]>([]);
   const activities = ref<Activity[]>([]);
   const paused = ref(false);
   const loading = ref(false);
@@ -76,7 +81,7 @@ export function useChatEventInspector(
   let unsubLive: (() => void) | null = null;
   let ownsStream = false;
 
-  function upsertEvent(env: Envelope): void {
+  function upsertEvent(env: InspectorEvent): void {
     const idx = events.value.findIndex((e) => e.id === env.id);
     if (idx >= 0) {
       const next = [...events.value];

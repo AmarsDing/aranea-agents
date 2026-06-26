@@ -3,19 +3,24 @@ package biz
 import (
 	"context"
 	"strings"
-
-	"aranea-agents/internal/event/contract"
 )
 
-// userFeedbackConsumer records message feedback to monitor and enqueues preference memory extraction.
+// userFeedbackConsumer records message feedback to monitor and enqueues
+// preference memory extraction.
+//
+// Phase 5 Blocker B: migrated from legacy Envelope-based SessionBus to
+// ActivityEventBus. The user_feedback publisher (service.SubmitMessageFeedback)
+// emits ActivityEvent{Kind:ActivityKindNotice, Meta:{"notice_type":"user_feedback",
+// "message_id","rating","comment"}}. This consumer filters at the bus level
+// by Kind==notice and Meta["notice_type"]=="user_feedback".
 type userFeedbackConsumer struct {
-	bus       contract.Bus
+	bus       ActivityEventBus
 	monitor   *MonitorUsecase
 	memWorker *TurnMemoryWorker
 	logger    SessionLogWriter
 }
 
-func newUserFeedbackConsumer(bus contract.Bus, monitor *MonitorUsecase, memWorker *TurnMemoryWorker, logger SessionLogWriter) *userFeedbackConsumer {
+func newUserFeedbackConsumer(bus ActivityEventBus, monitor *MonitorUsecase, memWorker *TurnMemoryWorker, logger SessionLogWriter) *userFeedbackConsumer {
 	if bus == nil {
 		return nil
 	}
@@ -26,21 +31,24 @@ func (c *userFeedbackConsumer) Start(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	runTypedConsumerWithOpts(ctx, "event-bus-user-feedback", c.bus, contract.SubscribeOptions{
-		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeUserFeedback},
+	runActivityConsumerWithOpts(ctx, "event-bus-user-feedback", c.bus, ActivityEventSubscribeOptions{
 		BufferSize: 64,
-		Reliable:   true,
-	}, c.handle, OfferOption{FallbackSync: true, FallbackFn: c.handle}, c.logger)
+		GlobalMode: true,
+		Filter: func(ev ActivityEvent) bool {
+			return ev.Activity.Kind == ActivityKindNotice &&
+				metaString(ev.Activity.Meta, "notice_type") == "user_feedback"
+		},
+	}, c.handle, offerOption[ActivityEvent]{FallbackSync: true, FallbackFn: c.handle}, c.logger)
 }
 
-func (c *userFeedbackConsumer) handle(ctx context.Context, env contract.Envelope) {
+func (c *userFeedbackConsumer) handle(ctx context.Context, ev ActivityEvent) {
 	if c == nil {
 		return
 	}
-	sessionID := strings.TrimSpace(env.SessionID)
-	messageID := metaString(env.Metadata, "message_id")
-	rating := metaString(env.Metadata, "rating")
-	comment := metaString(env.Metadata, "comment")
+	sessionID := strings.TrimSpace(ev.Activity.SessionID)
+	messageID := metaString(ev.Activity.Meta, "message_id")
+	rating := metaString(ev.Activity.Meta, "rating")
+	comment := metaString(ev.Activity.Meta, "comment")
 	if sessionID == "" || messageID == "" || rating == "" {
 		return
 	}

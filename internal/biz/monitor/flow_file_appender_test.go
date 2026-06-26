@@ -47,30 +47,30 @@ func TestNewFlowFileAppender_StartCancelledContext(t *testing.T) {
 	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	a.Start(ctx)
+	a.Start(ctx, nil)
 	time.Sleep(50 * time.Millisecond)
 }
 
 func TestNewFlowFileAppender_StartNilAppender(t *testing.T) {
 	var a *monitor.FlowFileAppender
-	a.Start(context.Background())
+	a.Start(context.Background(), nil)
 }
 
-func TestFlowFileAppender_OnEnvelope_FlowLog(t *testing.T) {
+func TestFlowFileAppender_OnMonitorEvent_FlowLog(t *testing.T) {
 	dir := t.TempDir()
 	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
-	env := contract.Envelope{
+	ev := contract.MonitorEvent{
 		ID:        "env-1",
-		Type:      contract.EnvelopeTypeFlowLog,
+		Type:      contract.MonitorEventTypeFlowLog,
 		SessionID: "sess-1",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Channel:   "chat",
+		Timestamp: time.Now().UTC(),
+		Source:    "chat",
 		Metadata:  map[string]any{"key1": "value1"},
-		Content:   &contract.EnvelopeContent{Text: "hello"},
+		Message:   "hello",
 	}
-	a.OnEnvelopeExposed(env)
+	a.OnMonitorEventExposed(ev)
 	a.SyncOpenFilesExposed()
 
 	pattern := filepath.Join(dir, "flow-*.jsonl")
@@ -106,20 +106,22 @@ func TestFlowFileAppender_OnEnvelope_FlowLog(t *testing.T) {
 	}
 }
 
-func TestFlowFileAppender_OnEnvelope_SystemLog(t *testing.T) {
+func TestFlowFileAppender_OnMonitorEvent_SystemLog(t *testing.T) {
 	dir := t.TempDir()
 	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
-	env := contract.Envelope{
+	// Source="flow" routes to systemFile (preserves legacy Channel="monitor" behavior;
+	// FlowTracker emits with Source="flow").
+	ev := contract.MonitorEvent{
 		ID:        "env-sys",
-		Type:      contract.EnvelopeTypeFlowLog,
+		Type:      contract.MonitorEventTypeFlowLog,
 		SessionID: "sess-2",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Channel:   "monitor",
+		Timestamp: time.Now().UTC(),
+		Source:    "flow",
 		Metadata:  map[string]any{},
 	}
-	a.OnEnvelopeExposed(env)
+	a.OnMonitorEventExposed(ev)
 	a.SyncOpenFilesExposed()
 
 	pattern := filepath.Join(dir, "system-*.jsonl")
@@ -132,19 +134,19 @@ func TestFlowFileAppender_OnEnvelope_SystemLog(t *testing.T) {
 	}
 }
 
-func TestFlowFileAppender_OnEnvelope_AlertNotify(t *testing.T) {
+func TestFlowFileAppender_OnMonitorEvent_AlertNotify(t *testing.T) {
 	dir := t.TempDir()
 	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
-	env := contract.Envelope{
+	ev := contract.MonitorEvent{
 		ID:        "env-alert",
-		Type:      contract.EnvelopeTypeAlertNotify,
+		Type:      contract.MonitorEventTypeAlertNotify,
 		SessionID: "sess-3",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Timestamp: time.Now().UTC(),
 		Metadata:  map[string]any{"alert_key": "test"},
 	}
-	a.OnEnvelopeExposed(env)
+	a.OnMonitorEventExposed(ev)
 	a.SyncOpenFilesExposed()
 
 	pattern := filepath.Join(dir, "alert-*.jsonl")
@@ -157,19 +159,19 @@ func TestFlowFileAppender_OnEnvelope_AlertNotify(t *testing.T) {
 	}
 }
 
-func TestFlowFileAppender_OnEnvelope_MCPHealthAlert(t *testing.T) {
+func TestFlowFileAppender_OnMonitorEvent_MCPHealthAlert(t *testing.T) {
 	dir := t.TempDir()
 	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
-	env := contract.Envelope{
+	ev := contract.MonitorEvent{
 		ID:        "env-mcp",
-		Type:      contract.EnvelopeTypeMCPHealthAlert,
+		Type:      contract.MonitorEventTypeMCPHealthAlert,
 		SessionID: "sess-4",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Timestamp: time.Now().UTC(),
 		Metadata:  map[string]any{},
 	}
-	a.OnEnvelopeExposed(env)
+	a.OnMonitorEventExposed(ev)
 	a.SyncOpenFilesExposed()
 
 	pattern := filepath.Join(dir, "alert-*.jsonl")
@@ -182,19 +184,19 @@ func TestFlowFileAppender_OnEnvelope_MCPHealthAlert(t *testing.T) {
 	}
 }
 
-func TestFlowFileAppender_OnEnvelope_NilMetadata(t *testing.T) {
+func TestFlowFileAppender_OnMonitorEvent_NilMetadata(t *testing.T) {
 	dir := t.TempDir()
 	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
-	env := contract.Envelope{
+	ev := contract.MonitorEvent{
 		ID:        "env-nil",
-		Type:      contract.EnvelopeTypeFlowLog,
+		Type:      contract.MonitorEventTypeFlowLog,
 		SessionID: "sess-6",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Timestamp: time.Now().UTC(),
 		Metadata:  nil,
 	}
-	a.OnEnvelopeExposed(env)
+	a.OnMonitorEventExposed(ev)
 	a.SyncOpenFilesExposed()
 
 	entries, err := os.ReadDir(dir)
@@ -206,29 +208,29 @@ func TestFlowFileAppender_OnEnvelope_NilMetadata(t *testing.T) {
 	}
 }
 
-func TestFlowFileAppender_OnEnvelope_NilAppender(t *testing.T) {
+func TestFlowFileAppender_OnMonitorEvent_NilAppender(t *testing.T) {
 	var a *monitor.FlowFileAppender
-	env := contract.Envelope{
+	ev := contract.MonitorEvent{
 		ID:       "env-nil-appender",
-		Type:     contract.EnvelopeTypeFlowLog,
+		Type:     contract.MonitorEventTypeFlowLog,
 		Metadata: map[string]any{},
 	}
-	a.OnEnvelopeExposed(env)
+	a.OnMonitorEventExposed(ev)
 }
 
-func TestFlowFileAppender_OnEnvelope_UnknownType(t *testing.T) {
+func TestFlowFileAppender_OnMonitorEvent_UnknownType(t *testing.T) {
 	dir := t.TempDir()
 	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
-	env := contract.Envelope{
+	ev := contract.MonitorEvent{
 		ID:        "env-unknown",
-		Type:      contract.EnvelopeTypeStateDelta,
+		Type:      contract.MonitorEventType("unknown_type"),
 		SessionID: "sess-7",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Timestamp: time.Now().UTC(),
 		Metadata:  map[string]any{},
 	}
-	a.OnEnvelopeExposed(env)
+	a.OnMonitorEventExposed(ev)
 	a.SyncOpenFilesExposed()
 
 	entries, err := os.ReadDir(dir)
@@ -236,22 +238,23 @@ func TestFlowFileAppender_OnEnvelope_UnknownType(t *testing.T) {
 		t.Fatalf("readdir error: %v", err)
 	}
 	if len(entries) != 0 {
-		t.Errorf("expected no files for unknown envelope type, got %d", len(entries))
+		t.Errorf("expected no files for unknown monitor event type, got %d", len(entries))
 	}
 }
 
-func TestFlowFileAppender_OnEnvelope_RoutesToCorrectFiles(t *testing.T) {
+func TestFlowFileAppender_OnMonitorEvent_RoutesToCorrectFiles(t *testing.T) {
 	dir := t.TempDir()
 	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
-	envs := []contract.Envelope{
-		{ID: "f1", Type: contract.EnvelopeTypeFlowLog, SessionID: "s1", Timestamp: time.Now().UTC().Format(time.RFC3339), Channel: "chat", Metadata: map[string]any{}},
-		{ID: "s1", Type: contract.EnvelopeTypeFlowLog, SessionID: "s2", Timestamp: time.Now().UTC().Format(time.RFC3339), Channel: "monitor", Metadata: map[string]any{}},
-		{ID: "a1", Type: contract.EnvelopeTypeAlertNotify, SessionID: "s3", Timestamp: time.Now().UTC().Format(time.RFC3339), Metadata: map[string]any{}},
+	now := time.Now().UTC()
+	evs := []contract.MonitorEvent{
+		{ID: "f1", Type: contract.MonitorEventTypeFlowLog, SessionID: "s1", Timestamp: now, Source: "chat", Metadata: map[string]any{}},
+		{ID: "s1", Type: contract.MonitorEventTypeFlowLog, SessionID: "s2", Timestamp: now, Source: "flow", Metadata: map[string]any{}},
+		{ID: "a1", Type: contract.MonitorEventTypeAlertNotify, SessionID: "s3", Timestamp: now, Metadata: map[string]any{}},
 	}
-	for _, env := range envs {
-		a.OnEnvelopeExposed(env)
+	for _, ev := range evs {
+		a.OnMonitorEventExposed(ev)
 	}
 	a.SyncOpenFilesExposed()
 
@@ -569,14 +572,14 @@ func TestFlowFileAppender_SyncOpenFiles(t *testing.T) {
 	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
-	env := contract.Envelope{
+	ev := contract.MonitorEvent{
 		ID:        "env-sync",
-		Type:      contract.EnvelopeTypeFlowLog,
+		Type:      contract.MonitorEventTypeFlowLog,
 		SessionID: "sess-sync",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Timestamp: time.Now().UTC(),
 		Metadata:  map[string]any{},
 	}
-	a.OnEnvelopeExposed(env)
+	a.OnMonitorEventExposed(ev)
 
 	a.SyncOpenFilesExposed()
 }
@@ -595,14 +598,14 @@ func TestFlowFileAppender_Maintenance(t *testing.T) {
 	a.SetRetentionDays(1)
 	defer a.CloseAllFiles()
 
-	env := contract.Envelope{
+	ev := contract.MonitorEvent{
 		ID:        "env-maint",
-		Type:      contract.EnvelopeTypeFlowLog,
+		Type:      contract.MonitorEventTypeFlowLog,
 		SessionID: "sess-maint",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Timestamp: time.Now().UTC(),
 		Metadata:  map[string]any{},
 	}
-	a.OnEnvelopeExposed(env)
+	a.OnMonitorEventExposed(ev)
 
 	tmpPath := filepath.Join(dir, "stale.jsonl.gz.tmp")
 	if err := os.WriteFile(tmpPath, []byte("tmp"), 0644); err != nil {
@@ -616,21 +619,22 @@ func TestFlowFileAppender_Maintenance(t *testing.T) {
 	}
 }
 
-func TestFlowFileAppender_MultipleEnvelopes(t *testing.T) {
+func TestFlowFileAppender_MultipleMonitorEvents(t *testing.T) {
 	dir := t.TempDir()
 	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
+	now := time.Now().UTC()
 	for i := 0; i < 5; i++ {
-		env := contract.Envelope{
+		ev := contract.MonitorEvent{
 			ID:        "env-multi-" + string(rune('0'+i)),
-			Type:      contract.EnvelopeTypeFlowLog,
+			Type:      contract.MonitorEventTypeFlowLog,
 			SessionID: "sess-multi",
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
-			Channel:   "chat",
+			Timestamp: now,
+			Source:    "chat",
 			Metadata:  map[string]any{"index": i},
 		}
-		a.OnEnvelopeExposed(env)
+		a.OnMonitorEventExposed(ev)
 	}
 	a.SyncOpenFilesExposed()
 
@@ -654,22 +658,28 @@ func TestFlowFileAppender_MultipleEnvelopes(t *testing.T) {
 	}
 }
 
-func TestFlowFileAppender_OnEnvelope_ContentFields(t *testing.T) {
+func TestFlowFileAppender_OnMonitorEvent_ContentFields(t *testing.T) {
 	dir := t.TempDir()
 	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
-	ts := "2025-06-15T10:30:00Z"
-	env := contract.Envelope{
+	// Use a fixed timestamp to make _ts assertion deterministic. The new
+	// MonitorEvent carries time.Time; the appender formats it as RFC3339Nano.
+	ts, err := time.Parse(time.RFC3339, "2025-06-15T10:30:00Z")
+	if err != nil {
+		t.Fatalf("parse ts error: %v", err)
+	}
+	wantTS := ts.UTC().Format(time.RFC3339Nano)
+	ev := contract.MonitorEvent{
 		ID:        "env-content",
-		Type:      contract.EnvelopeTypeFlowLog,
+		Type:      contract.MonitorEventTypeFlowLog,
 		SessionID: "sess-content",
 		Timestamp: ts,
-		Channel:   "chat",
+		Source:    "chat",
 		Metadata:  map[string]any{"custom_field": 42, "nested": "val"},
-		Content:   &contract.EnvelopeContent{Text: "test content"},
+		Message:   "test content",
 	}
-	a.OnEnvelopeExposed(env)
+	a.OnMonitorEventExposed(ev)
 	a.SyncOpenFilesExposed()
 
 	pattern := filepath.Join(dir, "flow-*.jsonl")
@@ -691,8 +701,8 @@ func TestFlowFileAppender_OnEnvelope_ContentFields(t *testing.T) {
 		t.Fatalf("json unmarshal error: %v", err)
 	}
 
-	if row["_ts"] != ts {
-		t.Errorf("_ts = %v, want %q", row["_ts"], ts)
+	if row["_ts"] != wantTS {
+		t.Errorf("_ts = %v, want %q", row["_ts"], wantTS)
 	}
 	if row["_id"] != "env-content" {
 		t.Errorf("_id = %v, want env-content", row["_id"])
@@ -708,21 +718,23 @@ func TestFlowFileAppender_OnEnvelope_ContentFields(t *testing.T) {
 	}
 }
 
-func TestFlowFileAppender_OnEnvelope_NilContent(t *testing.T) {
+func TestFlowFileAppender_OnMonitorEvent_EmptyMessage(t *testing.T) {
 	dir := t.TempDir()
 	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
-	env := contract.Envelope{
+	// When Message is empty, the appender omits the _text field (mirrors the
+	// legacy nil-Content behavior).
+	ev := contract.MonitorEvent{
 		ID:        "env-no-content",
-		Type:      contract.EnvelopeTypeFlowLog,
+		Type:      contract.MonitorEventTypeFlowLog,
 		SessionID: "sess-no-content",
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Channel:   "chat",
+		Timestamp: time.Now().UTC(),
+		Source:    "chat",
 		Metadata:  map[string]any{},
-		Content:   nil,
+		Message:   "",
 	}
-	a.OnEnvelopeExposed(env)
+	a.OnMonitorEventExposed(ev)
 	a.SyncOpenFilesExposed()
 
 	pattern := filepath.Join(dir, "flow-*.jsonl")
@@ -745,6 +757,6 @@ func TestFlowFileAppender_OnEnvelope_NilContent(t *testing.T) {
 	}
 
 	if _, ok := row["_text"]; ok {
-		t.Error("_text should not be present when Content is nil")
+		t.Error("_text should not be present when Message is empty")
 	}
 }

@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/gorilla/websocket"
@@ -62,7 +62,7 @@ func (s *WSServer) writePump(wc *wsConn) {
 
 		select {
 		case _, ok := <-wc.send:
-			// wc.send closed = eventPump signalled a high-queue timeout → close.
+			// wc.send closed = a pump (monitor/activity) signalled a high-queue timeout → close.
 			if !ok {
 				wc.conn.SetWriteDeadline(time.Now().Add(cfg.WriteWait))
 				wc.conn.WriteMessage(websocket.CloseMessage, []byte{})
@@ -88,7 +88,7 @@ func (s *WSServer) readPump(wc *wsConn) {
 	cfg := s.wsConfig()
 	defer func() {
 		// Cancel connection context to stop connection-scoped goroutines
-		// (eventPump, replay, sync_request). Turns are NOT cancelled here —
+		// (monitorEventPump, activityEventPump, replay, sync_request). Turns are NOT cancelled here —
 		// they use appctx.Ctx() and are cancelled via RunRegistry.Cancel.
 		s.removeConn(wc)
 		wc.close()
@@ -111,47 +111,39 @@ func (s *WSServer) readPump(wc *wsConn) {
 	}
 }
 
-// eventPump forwards events from the event bus channel to the connection's priority queues.
-func (s *WSServer) eventPump(wc *wsConn, eventCh <-chan event.Envelope) {
+// monitorEventPump forwards MonitorEvents from the MonitorBus channel to the
+// connection's priority queues.
+func (s *WSServer) monitorEventPump(wc *wsConn, monitorCh <-chan contract.MonitorEvent) {
 	cfg := s.wsConfig()
 	if wc.replayDone != nil {
 		<-wc.replayDone
 	}
-	for env := range eventCh {
-		if env.Type == event.EnvelopeTypeError {
-			s.lg.With(loggateway.SessionID(wc.sessionID)).Info("eventPump received error envelope",
-				loggateway.StepID("ws.eventPump_error"),
-				loggateway.Any("channel", env.Channel),
-				loggateway.Any("envelope_id", env.ID),
-				loggateway.Any("hasChannel", wc.hasChannel(env.Channel)))
-		}
-		if !wc.hasChannel(env.Channel) {
+	for ev := range monitorCh {
+		// Monitor events go to the "monitor" channel.
+		if !wc.hasChannel("monitor") {
 			continue
 		}
-		if env.Type == event.EnvelopeTypeLog && !wc.isLogEnabled() {
-			continue
-		}
-		// flow_log is always delivered on monitor channel (no enable_log gate).
-		if fk := wc.getFilterKey(); fk != "" && !event.MatchFilterKey(fk, env.FilterKey) {
+		if ev.Type == contract.MonitorEventTypeLog && !wc.isLogEnabled() {
 			continue
 		}
 		msg := wsDownstream{
-			Direction: "server_to_client",
-			Channel:   env.Channel,
-			Envelope:  &env,
+			Direction:    "server_to_client",
+			Channel:      "monitor",
+			MonitorEvent: &ev,
 		}
 		data, err := json.Marshal(msg)
 		if err != nil {
-			s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket 下行消息序列化失败，跳过",
-				loggateway.StepID("ws.marshal_fail"), loggateway.Err(err), loggateway.Any("envelope_type", env.Type))
+			s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket MonitorEvent 序列化失败，跳过",
+				loggateway.StepID("ws.marshal_fail_monitor"),
+				loggateway.Err(err),
+				loggateway.Any("event_type", ev.Type))
 			continue
 		}
-		// MON-OPT-04: route to priority queue; close connection on high-queue timeout.
-		prio := wsEnvelopePriority(env.Type)
+		prio := wsMonitorEventPriority(ev.Type)
 		if ok := wc.queues.enqueue(cfg, prio, data); !ok {
 			s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket 高优先级队列超时，关闭连接",
-				loggateway.StepID("ws.high_queue_timeout"), loggateway.Any("type", env.Type))
-			wc.closeSend() // signal writePump to exit (safe: sync.Once protects)
+				loggateway.StepID("ws.high_queue_timeout"), loggateway.Any("type", ev.Type))
+			wc.closeSend()
 			return
 		}
 		wc.wakeWriter()

@@ -32,6 +32,10 @@ describe('useActivityTimeline', () => {
     vi.mocked(listActivities).mockReset();
     vi.mocked(listActivities).mockResolvedValue([]);
     tl = useActivityTimeline();
+    // Phase 3: activities are isolated per session. Set the current session
+    // so the public computed properties (activities / activityTree / etc.)
+    // reflect events for the default session used by tests.
+    tl.setCurrentSession('sess-1');
   });
 
   it('starts with empty activities', () => {
@@ -233,7 +237,7 @@ describe('useActivityTimeline', () => {
     expect(tl.rootActivityId.value).toBeNull();
   });
 
-  it('loadActivities replaces all activities', () => {
+  it('loadActivities replaces all activities for the given session', () => {
     tl.handleActivityStart(
       makeStartMeta({
         activity_id: 'old',
@@ -241,39 +245,78 @@ describe('useActivityTimeline', () => {
       }),
     );
 
-    tl.loadActivities([
-      {
-        id: 'new-1',
-        kind: 'task',
-        status: 'completed',
-        sessionId: 's1',
-        turnId: 't1',
-        parentActivityId: null,
-        timestamp: '2026-06-13T00:00:00Z',
-        durationMs: 100,
-        content: null,
-        reasoning: null,
-        toolName: null,
-        toolCallId: null,
-        toolArguments: null,
-        toolResult: null,
-        toolDurationMs: null,
-        toolErrorCode: null,
-        childBoardId: null,
-        spiritSessionId: null,
-        teamId: null,
-        dagNodeId: null,
-        dependsOn: null,
-        agentKey: null,
-        agentName: null,
-        collapsed: false,
-        label: null,
-      },
-    ]);
+    // Phase 3: loadActivities scopes the replacement to a session.
+    // Pass 'sess-1' explicitly so the new data lands in the current session
+    // (matching the test's beforeEach setCurrentSession('sess-1')).
+    tl.loadActivities(
+      [
+        {
+          id: 'new-1',
+          kind: 'task',
+          status: 'completed',
+          sessionId: 'sess-1',
+          turnId: 't1',
+          parentActivityId: null,
+          timestamp: '2026-06-13T00:00:00Z',
+          durationMs: 100,
+          content: null,
+          reasoning: null,
+          toolName: null,
+          toolCallId: null,
+          toolArguments: null,
+          toolResult: null,
+          toolDurationMs: null,
+          toolErrorCode: null,
+          childBoardId: null,
+          spiritSessionId: null,
+          teamId: null,
+          dagNodeId: null,
+          dependsOn: null,
+          agentKey: null,
+          agentName: null,
+          collapsed: false,
+          label: null,
+        },
+      ],
+      'sess-1',
+    );
 
     expect(tl.activities.value).toHaveLength(1);
     expect(tl.activities.value[0].id).toBe('new-1');
     expect(tl.rootActivityId.value).toBe('new-1');
+  });
+
+  it('Phase 3: isolates activities per session_id', () => {
+    // Session A
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'a-1',
+        kind: 'task',
+        session_id: 'sess-a',
+      }),
+    );
+    // Session B
+    tl.handleActivityStart(
+      makeStartMeta({
+        activity_id: 'b-1',
+        kind: 'task',
+        session_id: 'sess-b',
+      }),
+    );
+
+    // sess-a view
+    tl.setCurrentSession('sess-a');
+    expect(tl.activities.value.map((a) => a.id)).toEqual(['a-1']);
+    expect(tl.rootActivityId.value).toBe('a-1');
+
+    // sess-b view
+    tl.setCurrentSession('sess-b');
+    expect(tl.activities.value.map((a) => a.id)).toEqual(['b-1']);
+    expect(tl.rootActivityId.value).toBe('b-1');
+
+    // Switching back to sess-a keeps its data (no reset needed)
+    tl.setCurrentSession('sess-a');
+    expect(tl.activities.value.map((a) => a.id)).toEqual(['a-1']);
   });
 
   it('activityTree builds parent-child relationships', () => {

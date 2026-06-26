@@ -1,6 +1,5 @@
 import { onMounted, onUnmounted, type Ref } from 'vue';
 import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from '../globalWsHub';
-import type { Envelope } from '../envelope';
 import type { ActivityEvent } from '../../../realtime/activityEvent';
 import type { UseEnvelopeStreamReturn } from '../useEnvelopeStream';
 import type { useAppStore } from '../../../stores/app';
@@ -8,31 +7,30 @@ import type { useChatSessionStore } from '../../../stores/chat/sessionStore';
 import type { useChatMessageStore } from '../../../stores/chat/messageStore';
 import { useChatConversationStore } from '../../../stores/chat/conversationStore';
 import { useChatStreamingSnapshots } from '../../../stores/chatStreamingSnapshots';
-import { runStatusFromEnvelope } from '../envelopeRunStatus';
+import { runStatusFromActivityEvent } from '../activityRunStatus';
 import { SESSION_RUN_STATUS } from '../sessionRunStatus';
 import {
-  envelopeSessionRevision,
-  envelopeSource,
-  isSessionRevisionSyncEnvelope,
-  isTurnCompleteEnvelope,
-  shouldSkipHydrate,
+  activitySessionRevision,
+  activitySource,
+  isSessionRevisionSyncActivity,
+  isTurnCompleteActivity,
+  shouldSkipHydrateActivity,
 } from '../inboundSyncEnvelope';
 import {
-  shouldGlobalHubFinalizeTurn,
-  shouldGlobalHubHandleStream,
   shouldScheduleChannelFocus,
   shouldSkipMessageReloadOnChannelFocus,
-  isStreamEnvelopeType,
+  shouldGlobalHubFinalizeTurnActivity,
   type ChannelFocusOptions,
 } from '../inboundSyncRouting';
-import { isSessionCompressNotice, sessionContextPatchFromEnvelope } from '../sessionContextPatch';
+import {
+  isSessionCompressNoticeFromActivityEvent,
+  sessionContextPatchFromActivityEvent,
+} from '../sessionContextPatch';
 import { createMessageBatchWriter } from '../messageStoreBatch';
-import { patchStreamingEnvelope } from '../streamHandlers';
-import { upsertToolMessage } from '../envelopeToolCall';
 import { refreshAgentSessionsForChannel } from '../channelInboundSessionRefresh';
-import { isChannelInboundSession, resolveInboundAgentId } from '../channelInboundSession';
+import { isChannelInboundSession, resolveInboundAgentIdFromActivity } from '../channelInboundSession';
 import { noteChannelWsEnvelope } from '../channelWsCursor';
-import { projectConversationEnvelope } from '../conversationEventDispatcher';
+import { projectConversationActivityEvent } from '../conversationEventDispatcher';
 import { emitSessionMutation } from '../../../stores/sessionSync';
 import { useSpiritTeamStore } from '../../../stores/spirit';
 import { CHAT_HYDRATE_DEBOUNCE_MS } from '../../constants/timeouts';
@@ -45,8 +43,7 @@ export type ChatInboundSyncDeps = {
   selectedAgentId: Ref<string | undefined>;
   selectedSessionId: Ref<string | undefined>;
   wsReplaying?: Ref<boolean>;
-  onSpiritEnvelope?: (envelope: Envelope) => void;
-  onActivityEnvelope?: (envelope: Envelope) => void;
+  onSpiritActivityEvent?: (ev: ActivityEvent) => void;
   /** Activity-First (AF): route new ActivityEvent messages to the timeline. */
   onActivityEvent?: (ev: ActivityEvent) => void;
   isChatRoute?: () => boolean;
@@ -60,10 +57,6 @@ export type ChatInboundSyncDeps = {
 };
 
 type TurnStreamSeal = { revision: number };
-
-function inboundStreamRowId(sessionId: string): string {
-  return `ws-stream-${sessionId}`;
-}
 
 /**
  * Global WS consumer for channel/cron inbound. Session-scoped WS (ensureChatStream) handles
@@ -96,28 +89,15 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     inboundWriters.get(sessionId)?.flushSync();
   }
 
-  function sealTurnStream(sessionId: string, env: Envelope, envRev: number) {
-    const localRev = deps.messageStore.sessionRevisionBySession[sessionId] ?? 0;
-    flushInboundWriter(sessionId);
-    sealedTurnBySession.set(sessionId, {
-      revision: Math.max(envRev, localRev),
-    });
-  }
-
   function unsealTurnStream(sessionId: string) {
     sealedTurnBySession.delete(sessionId);
   }
 
-  function isStaleStreamEnvelope(sessionId: string, env: Envelope): boolean {
-    if (!sealedTurnBySession.has(sessionId)) return false;
-    return env.type === 'text_delta' || env.type === 'text_done';
-  }
-
-  function agentIdFromEnvelope(env: Envelope): string {
-    const md = env.metadata as Record<string, unknown> | undefined;
-    const fromMeta = typeof md?.agent_id === 'string' ? md.agent_id.trim() : '';
+  function agentIdFromActivity(ev: ActivityEvent): string {
+    const meta = ev.activity.meta ?? {};
+    const fromMeta = typeof meta.agent_id === 'string' ? meta.agent_id.trim() : '';
     if (fromMeta) return fromMeta;
-    const sid = (env.session_id ?? '').trim();
+    const sid = (ev.activity.session_id ?? '').trim();
     if (!sid) return '';
     const sess =
       deps.sessionStore.sessions.find((s) => s.id === sid) ??
@@ -125,21 +105,21 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     return sess?.agent_id?.trim() ?? '';
   }
 
-  function teamIdFromEnvelope(env: Envelope): string {
-    if (env.team_id?.trim()) return env.team_id.trim();
-    const sid = (env.session_id ?? '').trim();
+  function teamIdFromActivity(ev: ActivityEvent): string {
+    if (ev.activity.team_id?.trim()) return ev.activity.team_id.trim();
+    const sid = (ev.activity.session_id ?? '').trim();
     if (!sid) return '';
     const sess = deps.sessionStore.sessions.find((s) => s.id === sid);
     return sess?.team_id?.trim() ?? '';
   }
 
-  function matchesSelectedEntity(env: Envelope): boolean {
+  function matchesSelectedEntityActivity(ev: ActivityEvent): boolean {
     if (deps.sessionStore.entityKind === 'team') {
       const tid = deps.sessionStore.selectedTeamId?.trim();
-      return !!tid && teamIdFromEnvelope(env) === tid;
+      return !!tid && teamIdFromActivity(ev) === tid;
     }
     const aid = deps.selectedAgentId.value?.trim();
-    return !!aid && agentIdFromEnvelope(env) === aid;
+    return !!aid && agentIdFromActivity(ev) === aid;
   }
 
   function isViewingSession(sessionId: string, agentId: string): boolean {
@@ -148,11 +128,19 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     return !agentId || selectedAgent === agentId.trim();
   }
 
+  /** Resolve the agent_id for a session by looking it up in the session store. */
+  function agentIdFromSessionLookup(sessionId: string): string {
+    const sess =
+      deps.sessionStore.sessions.find((s) => s.id === sessionId) ??
+      (deps.sessionStore.selectedSession?.id === sessionId ? deps.sessionStore.selectedSession : null);
+    return sess?.agent_id?.trim() ?? '';
+  }
+
   async function refreshSessionsAfterTurn(sessionId: string) {
     if (deps.sessionStore.entityKind === 'agent') {
       const aid = deps.selectedAgentId.value?.trim();
       if (aid) await deps.sessionStore.loadAgentSessions(aid, { refreshOnly: true });
-      const sessAgent = agentIdFromEnvelope({ session_id: sessionId } as Envelope);
+      const sessAgent = agentIdFromSessionLookup(sessionId);
       if (sessAgent && sessAgent !== aid) {
         await deps.sessionStore.loadAgentSessions(sessAgent, { refreshOnly: true });
       }
@@ -215,13 +203,6 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     }
   }
 
-  async function finalizeTurn(sessionId: string, env: Envelope, envRev: number) {
-    sealTurnStream(sessionId, env, envRev);
-    flushInboundWriter(sessionId);
-    // Always load persisted messages on turn complete — ephemeral ws-stream rows are not durable.
-    await hydrateCurrentSession(sessionId, true, true);
-  }
-
   function scheduleChannelFocus(sessionId: string, agentId: string, skipMessageReload: boolean) {
     if (!deps.focusChannelSession || focusInFlight.has(sessionId)) return;
     flushInboundWriter(sessionId);
@@ -235,73 +216,76 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       });
   }
 
-  function patchChannelStreamEnvelope(sessionId: string, env: Envelope, channelInbound: boolean): boolean {
-    if (!shouldGlobalHubHandleStream(channelInbound, deps.sessionStore.entityKind, env)) {
-      return false;
-    }
-    const streamId = inboundStreamRowId(sessionId);
-    const writer = inboundWriter(sessionId);
-    if (env.type === 'text_delta' && (env.content?.text || env.content?.reasoning)) {
-      if (isStaleStreamEnvelope(sessionId, env)) return true;
-      streamingSnapshots.put(sessionId, {
-        reasoning: env.content?.reasoning,
-        partialText: env.content?.text,
-      });
-      writer.batchPatch((msgs) => patchStreamingEnvelope(msgs, sessionId, streamId, env, false));
-      return true;
-    }
-    if (env.type === 'text_done') {
-      if (isStaleStreamEnvelope(sessionId, env)) return true;
-      streamingSnapshots.put(sessionId, {
-        reasoning: env.content?.reasoning,
-        partialText: env.content?.text,
-        replace: true,
-      });
-      writer.batchPatch((msgs) => patchStreamingEnvelope(msgs, sessionId, streamId, env, true));
-      return true;
-    }
-    if (env.type === 'tool_call' && env.tool_call) {
-      writer.batchPatch((msgs) => upsertToolMessage(msgs, sessionId, env, 'before'));
-      return true;
-    }
-    if (env.type === 'tool_result' && env.tool_call) {
-      writer.batchPatch((msgs) => upsertToolMessage(msgs, sessionId, env, 'after'));
-      return true;
+  /**
+   * Detect whether an ActivityEvent is a Spirit/Team/Butler orchestration
+   * event that should be routed to the spirit store. These events have
+   * kind ∈ {team_stage, session, plan} and specific stage values.
+   */
+  function isSpiritActivityEvent(ev: ActivityEvent): boolean {
+    const { kind, stage } = ev.activity;
+    if (kind === 'team_stage') return true;
+    if (kind === 'plan') return true;
+    if (kind === 'session') {
+      return (
+        stage === 'plan_created' ||
+        stage === 'allocation_created' ||
+        stage === 'orchestration_started' ||
+        stage === 'orchestration_checkpoint' ||
+        stage === 'orchestration_interrupted' ||
+        stage === 'orchestration_completed' ||
+        stage === 'orchestration_failed' ||
+        stage === 'synthesis_completed'
+      );
     }
     return false;
   }
 
-  async function handleInboundEnvelope(env: Envelope) {
-    const sessionId = (env.session_id ?? '').trim();
+  /**
+   * Activity-First: Handle an inbound ActivityEvent from the global WS hub.
+   *
+   * Consumes ActivityEvent directly, eliminating the ActivityEvent → Envelope
+   * bridge conversion. Chat-rendering events (task streaming, action,
+   * thinking, reply) are NOT processed here — they are routed to
+   * useActivityTimeline by useChatWorkspace.handleActivityEvent. This handler
+   * processes system/control events: run_status, error,
+   * session.status_changed, metrics_updated, context_usage, runner_completion,
+   * spirit/team orchestration, and channel inbound routing.
+   */
+  async function handleInboundActivityEvent(ev: ActivityEvent) {
+    const sessionId = (ev.activity.session_id ?? '').trim();
     if (!sessionId) return;
-    const projection = projectConversationEnvelope(env, {
+
+    const projection = projectConversationActivityEvent(ev, {
       currentSessionId: deps.selectedSessionId.value,
     });
     if (projection) {
       conversationStore.applyProjection(projection);
     }
 
-    if (env.id) {
-      noteChannelWsEnvelope(sessionId, env.id);
+    if (ev.activity.id) {
+      noteChannelWsEnvelope(sessionId, ev.activity.id);
     }
 
-    if (isSessionCompressNotice(env)) {
+    // Session compress notice (text_done + meta.kind=system.session.compress)
+    if (isSessionCompressNoticeFromActivityEvent(ev)) {
       const prev = deps.sessionStore.findSessionById(sessionId);
-      const patch = sessionContextPatchFromEnvelope(env, prev);
+      const patch = sessionContextPatchFromActivityEvent(ev, prev);
       if (patch) {
         deps.sessionStore.patchSessionMetricsLocal(sessionId, patch);
       }
     }
 
-    if (env.type === 'context_usage' && env.usage) {
-      const patch = sessionContextPatchFromEnvelope(env);
+    // Context usage (stage=context_usage)
+    if (ev.activity.stage === 'context_usage') {
+      const patch = sessionContextPatchFromActivityEvent(ev);
       if (patch) {
         deps.sessionStore.patchSessionMetricsLocal(sessionId, patch);
       }
     }
 
-    if (env.type === 'session.status_changed' && env.metadata) {
-      const md = env.metadata as Record<string, unknown>;
+    // Session status changed (stage=session_status_changed)
+    if (ev.activity.stage === 'session_status_changed' && ev.activity.meta) {
+      const md = ev.activity.meta;
       const status = typeof md.status === 'string' ? md.status : '';
       const statusReason = typeof md.status_reason === 'string' ? md.status_reason : '';
       const statusChangedAt = typeof md.status_changed_at === 'string' ? md.status_changed_at : '';
@@ -310,55 +294,54 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       }
     }
 
-    if (env.type === 'metrics_updated') {
+    // Metrics updated (stage=metrics_updated)
+    if (ev.activity.stage === 'metrics_updated') {
       deps.sessionStore.fetchAndReconcileSession(sessionId);
     }
 
-    if (env.type.startsWith('spirit_')) {
-      deps.spiritStore.handleSpiritEnvelope(env);
-      deps.onSpiritEnvelope?.(env);
+    // Spirit/team/butler orchestration events
+    if (isSpiritActivityEvent(ev)) {
+      deps.spiritStore.handleSpiritActivityEvent(ev);
+      deps.onSpiritActivityEvent?.(ev);
     }
 
     // P1: Register default handlers for previously-unhandled event types
-    if (env.type === 'mcp.session.reconnect' || env.type === 'mcp.health.alert') {
-      console.info(`[envelope] ${env.type} received`, { sessionId, requestId: env.request_id });
+    if (ev.activity.stage === 'mcp.session.reconnect' || ev.activity.stage === 'mcp.health.alert') {
+      console.info(`[activity] ${ev.activity.stage} received`, { sessionId, agentKey: ev.activity.agent_key });
     }
-    if (env.type === 'user_feedback') {
-      console.info('[envelope] user_feedback received', { sessionId, author: env.author });
+    if (ev.activity.stage === 'user_feedback') {
+      console.info('[activity] user_feedback received', { sessionId, author: ev.activity.agent_key });
     }
-    if (env.type === 'alert.notify') {
-      console.warn('[envelope] alert.notify received', { sessionId, metadata: env.metadata });
+    if (ev.activity.stage === 'alert.notify') {
+      console.warn('[activity] alert.notify received', { sessionId, meta: ev.activity.meta });
     }
-    if (env.type.startsWith('butler.orchestration.')) {
-      deps.spiritStore.handleSpiritEnvelope(env);
-      deps.onSpiritEnvelope?.(env);
+    if (ev.activity.stage === 'skill.health_changed' || ev.activity.stage === 'skill.evolution_proposed') {
+      console.info(`[activity] ${ev.activity.stage} received`, { sessionId, meta: ev.activity.meta });
     }
-    if (env.type === 'skill.health_changed' || env.type === 'skill.evolution_proposed') {
-      console.info(`[envelope] ${env.type} received`, { sessionId, metadata: env.metadata });
-    }
-    if (env.type === 'token_usage' && env.token_usage) {
-      console.info('[envelope] token_usage received', {
+    if (ev.activity.stage === 'token_usage') {
+      const meta = ev.activity.meta ?? {};
+      console.info('[activity] token_usage received', {
         sessionId,
-        model: env.token_usage.model_display_name,
-        totalTokens: env.token_usage.total_tokens,
+        model: meta.model_display_name,
+        totalTokens: meta.total_tokens,
       });
     }
-    if (env.type === 'monitor.auto_healed' || env.type === 'monitor.self_check_completed') {
-      console.info(`[envelope] ${env.type} received`, { sessionId, metadata: env.metadata });
+    if (ev.activity.stage === 'monitor.auto_healed' || ev.activity.stage === 'monitor.self_check_completed') {
+      console.info(`[activity] ${ev.activity.stage} received`, { sessionId, meta: ev.activity.meta });
     }
 
-    const envRev = projection?.revision || envelopeSessionRevision(env);
+    const envRev = projection?.revision || activitySessionRevision(ev);
     const localRev = deps.messageStore.sessionRevisionBySession[sessionId] ?? 0;
-    const inboundSource = projection?.source ?? envelopeSource(env);
+    const inboundSource = projection?.source ?? activitySource(ev);
     const channelInbound =
       inboundSource === 'channel' || (await isChannelInboundSession(sessionId, inboundSource, deps.sessionStore));
 
     let channelAgentId = '';
     let channelRunStatus = '';
     if (channelInbound) {
-      channelAgentId = await resolveInboundAgentId(sessionId, env, deps.sessionStore);
+      channelAgentId = await resolveInboundAgentIdFromActivity(sessionId, ev, deps.sessionStore);
       const shouldRefreshSessions =
-        env.type === 'run_status' || isSessionRevisionSyncEnvelope(env) || isTurnCompleteEnvelope(env);
+        ev.activity.stage === 'run_status' || isSessionRevisionSyncActivity(ev) || isTurnCompleteActivity(ev);
       if (channelAgentId && shouldRefreshSessions) {
         void refreshAgentSessionsForChannel(deps.sessionStore, channelAgentId, {
           entityKind: deps.sessionStore.entityKind,
@@ -366,7 +349,7 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
         });
       }
 
-      channelRunStatus = env.type === 'run_status' ? (runStatusFromEnvelope(env)?.status ?? '') : '';
+      channelRunStatus = ev.activity.stage === 'run_status' ? (runStatusFromActivityEvent(ev)?.status ?? '') : '';
       if (channelRunStatus === SESSION_RUN_STATUS.RUNNING) {
         unsealTurnStream(sessionId);
       }
@@ -374,32 +357,16 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
 
     const isCurrent = deps.selectedSessionId.value === sessionId;
 
-    // AF-GAP-02: Route Activity events to useActivityTimeline handler for
-    // ALL sessions (including current). The handleActivityEnvelope in
-    // useChatWorkspace deduplicates by envelope ID, so forwarding from both
-    // the session WS streamHandlers and the global hub inbound sync is safe —
-    // the first path to arrive processes the event, the second is a no-op.
-    // This ensures activity events are not lost during WS reconnection gaps
-    // or when the session WS stream is not yet established.
-    if (env.type.startsWith('activity_')) {
-      deps.onActivityEnvelope?.(env);
-    }
+    const entityMatch = matchesSelectedEntityActivity(ev);
+    const turnComplete = isTurnCompleteActivity(ev);
 
-    const entityMatch = matchesSelectedEntity(env);
-    const turnComplete = isTurnCompleteEnvelope(env);
-    const ownsEnvelope = isCurrent || entityMatch || (channelInbound && (isStreamEnvelopeType(env) || turnComplete));
-
-    if (ownsEnvelope && patchChannelStreamEnvelope(sessionId, env, channelInbound)) {
-      // OBS-02: Route tool_call/tool_result to contextual loading message handler
-      // before returning, so agent-level loading messages are displayed.
-      if (env.type === 'tool_call' || env.type === 'tool_result') {
-        deps.onSpiritEnvelope?.(env);
-      }
-      return;
-    }
+    // NOTE: Stream patching (text_delta/text_done/tool_call/tool_result) is
+    // intentionally omitted — chat-rendering ActivityEvents are routed directly
+    // to useActivityTimeline by useChatWorkspace.handleActivityEvent. The
+    // inbound sync pipeline only handles system/control events.
 
     if (channelInbound && channelAgentId) {
-      const focusTrigger = channelRunStatus === SESSION_RUN_STATUS.RUNNING || isSessionRevisionSyncEnvelope(env);
+      const focusTrigger = channelRunStatus === SESSION_RUN_STATUS.RUNNING || isSessionRevisionSyncActivity(ev);
       if (
         shouldScheduleChannelFocus({
           channelInbound,
@@ -415,8 +382,8 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       }
     }
 
-    if (isCurrent && env.type === 'run_status') {
-      const rs = runStatusFromEnvelope(env);
+    if (isCurrent && ev.activity.stage === 'run_status') {
+      const rs = runStatusFromActivityEvent(ev);
       if (rs?.status === SESSION_RUN_STATUS.RUNNING) {
         unsealTurnStream(sessionId);
         if (deps.sessionStore.entityKind === 'team') {
@@ -427,10 +394,10 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       }
     }
 
-    if (!ownsEnvelope) return;
+    if (!entityMatch && !isCurrent && !(channelInbound && turnComplete)) return;
 
-    if (isCurrent && isSessionRevisionSyncEnvelope(env)) {
-      if (shouldSkipHydrate(env)) {
+    if (isCurrent && isSessionRevisionSyncActivity(ev)) {
+      if (shouldSkipHydrateActivity(ev)) {
         if (envRev > localRev) {
           deps.messageStore.sessionRevisionBySession[sessionId] = envRev;
         }
@@ -448,21 +415,32 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       await refreshSessionsAfterTurn(sessionId);
     }
 
-    if (shouldGlobalHubFinalizeTurn(channelInbound, isCurrent, turnComplete)) {
-      await finalizeTurn(sessionId, env, envRev);
+    if (shouldGlobalHubFinalizeTurnActivity(channelInbound, isCurrent, turnComplete)) {
+      await finalizeTurnActivity(sessionId, envRev);
     }
 
     deps.onTurnComplete?.(sessionId);
+  }
+
+  /** ActivityEvent variant of finalizeTurn — seals the turn stream and hydrates. */
+  async function finalizeTurnActivity(sessionId: string, envRev: number) {
+    const localRev = deps.messageStore.sessionRevisionBySession[sessionId] ?? 0;
+    flushInboundWriter(sessionId);
+    sealedTurnBySession.set(sessionId, {
+      revision: Math.max(envRev, localRev),
+    });
+    flushInboundWriter(sessionId);
+    await hydrateCurrentSession(sessionId, true, true);
   }
 
   onMounted(() => {
     hubId = acquireGlobalWsConsumer({
       channels: ['chat'],
       logEnabled: false,
-      onEnvelope: (env) => {
-        if (env.channel !== 'chat') return;
-        void handleInboundEnvelope(env);
-      },
+      // AF: Legacy Envelope path removed. onEnvelope is required by
+      // GlobalWsConsumer but is now a no-op — all chat traffic arrives as
+      // ActivityEvent via onActivityEvent.
+      onEnvelope: () => {},
       onActivityEvent: deps.onActivityEvent ? (ev) => deps.onActivityEvent!(ev) : undefined,
     });
   });
@@ -474,4 +452,16 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       hubId = null;
     }
   });
+
+  return {
+    /**
+     * Activity-First: Handle an inbound ActivityEvent from the global WS hub.
+     * Replaces the ActivityEvent → Envelope bridge conversion. Processes
+     * system/control events (run_status, error, session.status_changed,
+     * metrics_updated, spirit/team orchestration, channel inbound routing).
+     * Chat-rendering events are routed to useActivityTimeline by
+     * useChatWorkspace.handleActivityEvent, NOT here.
+     */
+    handleInboundActivityEvent,
+  };
 }

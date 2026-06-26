@@ -2,22 +2,24 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
-	"aranea-agents/internal/event"
 	loggateway "aranea-agents/pkg/loggateway"
+
+	"github.com/google/uuid"
 )
 
 type SessionStatusGuard struct {
 	uc           *biz.SessionUsecase
 	teamUC       *biz.TeamUsecase
 	orchestrator biz.TaskOrchestratorPort
-	bus          event.Bus
+	bus          biz.ActivityEventBus
 	lg           loggateway.Logger
 }
 
-func NewSessionStatusGuard(uc *biz.SessionUsecase, teamUC *biz.TeamUsecase, orchestrator biz.TaskOrchestratorPort, bus event.Bus, lg loggateway.Logger) *SessionStatusGuard {
+func NewSessionStatusGuard(uc *biz.SessionUsecase, teamUC *biz.TeamUsecase, orchestrator biz.TaskOrchestratorPort, bus biz.ActivityEventBus, lg loggateway.Logger) *SessionStatusGuard {
 	return &SessionStatusGuard{uc: uc, teamUC: teamUC, orchestrator: orchestrator, bus: bus, lg: lg}
 }
 
@@ -69,15 +71,27 @@ func (g *SessionStatusGuard) recoverOrphanedRunningTeams(ctx context.Context) er
 	// Publish spirit_team_interrupted events for each recovered team
 	if g.bus != nil {
 		for _, team := range recovered {
-			env := event.NewEnvelope(event.EnvelopeTypeSpiritTeamInterrupted, "session-status-guard", team.SpiritSessionID)
-			env.TeamID = team.ID
-			env.Metadata = map[string]any{
-				"team_id":          team.ID,
-				"team_name":        team.DisplayName,
-				"status":           biz.TeamStatusInterrupted,
-				"interrupt_reason": team.InterruptReason,
+			ev := biz.ActivityEvent{
+				Event: biz.ActivityEventFailed,
+				Activity: biz.Activity{
+					ID:              uuid.NewString(),
+					Kind:            biz.ActivityKindTeamStage,
+					Status:          biz.ActivityStatusInterrupted,
+					Stage:           "interrupted",
+					Timestamp:       time.Now().UTC(),
+					SpiritSessionID: team.SpiritSessionID,
+					TeamID:          team.ID,
+					AgentKey:        "session-status-guard",
+					Meta: map[string]any{
+						"team_id":          team.ID,
+						"team_name":        team.DisplayName,
+						"status":           biz.TeamStatusInterrupted,
+						"interrupt_reason": team.InterruptReason,
+					},
+				},
+				Domain: biz.ActivityDomainChat,
 			}
-			g.bus.Publish(ctx, env)
+			g.bus.Publish(ctx, ev)
 		}
 	}
 	g.lg.Info("session status guard: orphaned teams recovered", loggateway.Int("count", len(teams)))

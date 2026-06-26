@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -35,7 +35,7 @@ type SensitiveDataMaskPlugin struct {
 
 var _ trpcplugin.Plugin = (*SensitiveDataMaskPlugin)(nil)
 
-func NewSensitiveDataMaskPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, lg loggateway.Logger) *SensitiveDataMaskPlugin {
+func NewSensitiveDataMaskPlugin(p biz.Plugin, stats StatsRecorder, monitorBus contract.MonitorBus, lg loggateway.Logger) *SensitiveDataMaskPlugin {
 	var cfg sensitiveMaskConfig
 	cfg.MaskEmail = true
 	cfg.MaskPhone = true
@@ -58,7 +58,7 @@ func NewSensitiveDataMaskPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus
 		}
 		compiled = append(compiled, compiledCustomPattern{Pattern: pat, Replacement: repl, RE: re})
 	}
-	return &SensitiveDataMaskPlugin{base: newBasePlugin(p.Key, stats, bus, lg), cfg: cfg, compiled: compiled}
+	return &SensitiveDataMaskPlugin{base: newBasePlugin(p.Key, stats, monitorBus, lg), cfg: cfg, compiled: compiled}
 }
 
 func (s *SensitiveDataMaskPlugin) Name() string { return s.base.Name() }

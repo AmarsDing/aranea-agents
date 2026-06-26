@@ -3,14 +3,15 @@ import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import { useRouter } from 'vue-router';
 import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from '../features/chat/globalWsHub';
-import type { Envelope } from '../features/chat/envelope';
-import { runStatusFromEnvelope } from '../features/chat/envelopeRunStatus';
+import type { ActivityEvent } from '../realtime/activityEvent';
+import { runStatusFromActivityEvent } from '../features/chat/activityRunStatus';
+import { activitySource, isTurnCompleteActivity } from '../features/chat/inboundSyncEnvelope';
 import { parseChannelSessionMeta } from '../features/chat/channelSessionMeta';
 import type { Session } from '../features/session/types';
 import {
   isChannelInboundSession,
   resolveInboundSession,
-  shouldChannelInboundCompleteToast,
+  shouldChannelInboundCompleteToastActivity,
 } from '../features/chat/channelInboundSession';
 import { useInboundNotificationStore } from '../stores/inboundNotifications';
 import { useAppStore } from '../stores/app';
@@ -18,20 +19,6 @@ import { useChatSessionStore } from '../stores/chat/sessionStore';
 import { refreshAgentSessionsForChannel } from '../features/chat/channelInboundSessionRefresh';
 
 const TOAST_DEDUPE_MS = 4000;
-
-function envelopeSource(env: Envelope): string {
-  const direct = (env.source ?? '').trim();
-  if (direct) return direct;
-  const md = env.metadata as Record<string, unknown> | undefined;
-  return typeof md?.source === 'string' ? md.source.trim() : '';
-}
-
-function isTurnCompleteEnvelope(env: Envelope): boolean {
-  if (env.type === 'runner_completion') return true;
-  if (env.type !== 'run_status') return false;
-  const status = runStatusFromEnvelope(env)?.status;
-  return status === 'completed' || status === 'failed' || status === 'cancelled';
-}
 
 /**
  * App-wide channel inbound bell + toast. Mounted from MainLayout so notifications
@@ -80,12 +67,11 @@ export function useGlobalInboundNotifications() {
     });
   }
 
-  async function handleEnvelope(env: Envelope) {
-    if (env.channel !== 'chat') return;
-    const sessionId = (env.session_id ?? '').trim();
+  async function handleActivityEvent(ev: ActivityEvent) {
+    const sessionId = (ev.activity.session_id ?? '').trim();
     if (!sessionId) return;
 
-    const source = envelopeSource(env);
+    const source = activitySource(ev);
     if (!(await isChannelInbound(sessionId, source))) return;
 
     const sess = await resolveSession(sessionId);
@@ -99,18 +85,18 @@ export function useGlobalInboundNotifications() {
 
     const title = sess?.title?.trim() || parseChannelSessionMeta(sess?.metadata_json)?.channel_key || 'Channel';
 
-    if (env.type === 'run_status') {
-      const rs = runStatusFromEnvelope(env);
+    if (ev.activity.stage === 'run_status') {
+      const rs = runStatusFromActivityEvent(ev);
       if (rs?.status === 'running') {
         pushNotification(sessionId, agentId, 'running', title);
       }
     }
 
-    if (!isTurnCompleteEnvelope(env)) return;
+    if (!isTurnCompleteActivity(ev)) return;
 
     pushNotification(sessionId, agentId, 'completed', title);
 
-    const wantsToast = shouldChannelInboundCompleteToast(env);
+    const wantsToast = shouldChannelInboundCompleteToastActivity(ev);
     const now = Date.now();
     const lastToast = toastDedupeBySession.get(sessionId) ?? 0;
     const dedupeOk = now - lastToast >= TOAST_DEDUPE_MS;
@@ -138,8 +124,10 @@ export function useGlobalInboundNotifications() {
     hubId = acquireGlobalWsConsumer({
       channels: ['chat'],
       logEnabled: false,
-      onEnvelope: (env) => {
-        void handleEnvelope(env);
+      // AF: Legacy Envelope path removed — no-op.
+      onEnvelope: () => {},
+      onActivityEvent: (ev) => {
+        void handleActivityEvent(ev);
       },
     });
   });

@@ -284,6 +284,57 @@ export default {
     tool: {
       stuckTimeout: 'Tool execution timed out without result',
     },
+    toolDetail: {
+      // Common labels (shared across detail components)
+      error: 'Error',
+      args: 'Arguments',
+      result: 'Result',
+      // Shell
+      command: 'Command',
+      workingDirectory: 'Working Directory',
+      exitCode: 'Exit Code',
+      // Browser
+      action: 'Action',
+      pageTitle: 'Page Title',
+      screenshot: 'Screenshot',
+      domOperations: 'DOM Operations',
+      // File operations
+      filePath: 'File Path',
+      lineRange: 'Line Range',
+      contentSnippet: 'Content Snippet',
+      encoding: 'Encoding',
+      changedLines: 'Changed Lines',
+      diff: 'Diff',
+      writtenContent: 'Written Content',
+      // Search
+      searchPattern: 'Search Pattern',
+      path: 'Path',
+      hitCount: 'Hit Count',
+      resultList: 'Result List',
+      // Web search
+      query: 'Query',
+      resultCount: 'Result Count',
+      resultSummary: 'Result Summary',
+      // MCP
+      mcpServer: 'MCP Server',
+      method: 'Method',
+      // Code
+      language: 'Language',
+      executionStatus: 'Execution Status',
+      code: 'Code',
+      output: 'Output',
+      // Execution status labels
+      statusRunning: 'Running',
+      statusSuccess: 'Success',
+      statusFailed: 'Failed',
+      statusBlocked: 'Blocked',
+      statusCancelled: 'Cancelled',
+      // Todo
+      progress: 'Progress',
+      taskList: 'Task List',
+      // Generic
+      toolName: 'Tool Name',
+    },
     spiritLabel: 'Spirit',
     connectionDisconnected: 'Disconnected',
     syncComplete: 'Synced',

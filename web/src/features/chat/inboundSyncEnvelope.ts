@@ -1,34 +1,71 @@
-import type { Envelope } from './envelope';
-import { resolveEnvelopeRevision, resolveEnvelopeSource } from '../../realtime/envelope';
-import { runStatusFromEnvelope } from './envelopeRunStatus';
+import type { ActivityEvent } from '../../realtime/activityEvent';
+import { runStatusFromActivityEvent } from './activityRunStatus';
 import { SESSION_RUN_STATUS } from './sessionRunStatus';
 
-export function envelopeSessionRevision(env: Envelope): number {
-  return resolveEnvelopeRevision(env);
+// ── ActivityEvent-based helpers ────────────────────────────────────────
+// The backend sends ALL chat/system events as ActivityEvent on the WS
+// chat channel.
+
+/**
+ * Read session revision from an ActivityEvent.
+ *
+ * Field mapping (envelope → activity):
+ *   env.session_revision                → ev.activity.meta.session_revision
+ *   env.metadata.session_revision       → ev.activity.meta.session_revision
+ *   env.metadata.revision               → ev.activity.meta.revision (fallback)
+ */
+export function activitySessionRevision(ev: ActivityEvent): number {
+  const meta = ev.activity.meta ?? {};
+  if (typeof meta.session_revision === 'number' && meta.session_revision > 0) {
+    return meta.session_revision;
+  }
+  if (typeof meta.revision === 'number' && meta.revision > 0) {
+    return meta.revision;
+  }
+  return 0;
 }
 
-export function envelopeSource(env: Envelope): string {
-  return resolveEnvelopeSource(env);
+/**
+ * Resolve the inbound source (channel / cron / a2a / durable / ws / web) from
+ * an ActivityEvent.
+ *
+ * Field mapping (envelope → activity):
+ *   env.source                          → ev.activity.meta.source
+ *   env.metadata.source                 → ev.activity.meta.source
+ */
+export function activitySource(ev: ActivityEvent): string {
+  const meta = ev.activity.meta ?? {};
+  const direct = typeof meta.source === 'string' ? meta.source.trim() : '';
+  return direct;
 }
 
 /** M55 session_revision sync — incremental hydrate only, not turn complete. */
-export function isSessionRevisionSyncEnvelope(env: Envelope): boolean {
-  if (env.type !== 'run_status') return false;
-  return runStatusFromEnvelope(env)?.status === SESSION_RUN_STATUS.SYNC;
+export function isSessionRevisionSyncActivity(ev: ActivityEvent): boolean {
+  if (ev.activity.stage !== 'run_status') return false;
+  return runStatusFromActivityEvent(ev)?.status === SESSION_RUN_STATUS.SYNC;
 }
 
-/** Check skip_hydrate metadata flag — backend sets this on WS-originated sync events
+/** Check skip_hydrate meta flag — backend sets this on WS-originated sync events
  *  to prevent redundant full hydrate that causes duplicate messages. */
-export function shouldSkipHydrate(env: Envelope): boolean {
-  const md = env.metadata as Record<string, unknown> | undefined;
-  return md?.skip_hydrate === true;
+export function shouldSkipHydrateActivity(ev: ActivityEvent): boolean {
+  return ev.activity.meta?.skip_hydrate === true;
 }
 
-export function isTurnCompleteEnvelope(env: Envelope): boolean {
-  if (env.type === 'runner_completion') return true;
-  if (env.type === 'error') return true;
-  if (env.type !== 'run_status') return false;
-  const status = runStatusFromEnvelope(env)?.status;
+/**
+ * Detect a turn-complete ActivityEvent.
+ *
+ * Mapping (envelope → activity):
+ *   env.type === 'runner_completion'    → ev.activity.stage === 'runner_completion'
+ *                                         OR (ev.event === 'completed' && kind === 'task')
+ *   env.type === 'error'                → ev.event === 'failed'
+ *   env.type === 'run_status'           → ev.activity.stage === 'run_status' &&
+ *     status completed/failed/cancelled (excluding 'sync')
+ */
+export function isTurnCompleteActivity(ev: ActivityEvent): boolean {
+  if (ev.activity.stage === 'runner_completion') return true;
+  if (ev.event === 'failed') return true;
+  if (ev.activity.stage !== 'run_status') return false;
+  const status = runStatusFromActivityEvent(ev)?.status;
   if (status === SESSION_RUN_STATUS.SYNC) return false;
   return (
     status === SESSION_RUN_STATUS.COMPLETED ||

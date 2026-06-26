@@ -1,24 +1,23 @@
 import { describe, it, expect } from 'vitest';
-import type { Envelope } from '../../../realtime/envelope';
+import type { MonitorEvent } from '../../../realtime/monitorEvent';
 import {
   buildFlowDiagnosticJsonl,
   flowLogExportEntryFromLine,
   flowLogMatchesTrace,
-  monitorLogLineFromFlowEnvelope,
+  monitorLogLineFromFlowEvent,
   traceCorrelationFromTraceRow,
 } from '../flow';
 import type { MonitorLogLine, MonitorTrace } from '../types';
 
-describe('monitorLogLineFromFlowEnvelope', () => {
-  it('maps flow_log metadata to MonitorLogLine', () => {
-    const env: Envelope = {
+describe('monitorLogLineFromFlowEvent', () => {
+  it('maps flow_log MonitorEvent to MonitorLogLine', () => {
+    const ev: MonitorEvent = {
       id: 'env-1',
       type: 'flow_log',
       timestamp: '2026-05-20T12:00:00.000Z',
       session_id: 'sess-1',
-      author: 'flow',
-      channel: 'monitor',
-      version: 1,
+      source: 'flow',
+      message: '调用语言模型 — 模型已返回（120ms）',
       metadata: {
         schema_version: 'flow_log/v1',
         flow_id: 'fl_abc',
@@ -30,9 +29,8 @@ describe('monitorLogLineFromFlowEnvelope', () => {
         title: '调用语言模型',
         message: '模型已返回（120ms）',
       },
-      content: { text: '调用语言模型 — 模型已返回（120ms）', is_partial: false },
     };
-    const line = monitorLogLineFromFlowEnvelope(env);
+    const line = monitorLogLineFromFlowEvent(ev);
     expect(line).not.toBeNull();
     expect(line?.kind).toBe('flow');
     expect(line?.severity).toBe('ok');

@@ -34,11 +34,18 @@ func (b *Bus) Publish(ctx context.Context, ev biz.ActivityEvent) {
 
 // Subscribe registers a subscriber that receives ActivityEvents matching
 // the given options.
+//
+// When opts.Filter is set, it is applied directly. Otherwise, when GlobalMode
+// is false and SessionID is set, a session-scoped filter is derived. In
+// GlobalMode (or when SessionID is empty and no Filter is set), all events
+// are delivered.
 func (b *Bus) Subscribe(opts biz.ActivityEventSubscribeOptions) (<-chan biz.ActivityEvent, func()) {
 	genericOpts := event.GenericSubscribeOptions[biz.ActivityEvent]{
 		BufferSize: opts.BufferSize,
 	}
-	if !opts.GlobalMode && opts.SessionID != "" {
+	if opts.Filter != nil {
+		genericOpts.Filter = opts.Filter
+	} else if !opts.GlobalMode && opts.SessionID != "" {
 		sessionID := opts.SessionID
 		genericOpts.Filter = func(ev biz.ActivityEvent) bool {
 			return ev.Activity.SessionID == sessionID

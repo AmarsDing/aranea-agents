@@ -15,6 +15,7 @@
  */
 
 import type { ActivityEvent } from './activityEvent';
+import type { MonitorEvent } from './monitorEvent';
 
 export type EnvelopeType =
   | 'text_delta'
@@ -270,6 +271,12 @@ export type WsDownstream = {
   channel: string;
   type?: string;
   payload?: unknown;
+  /**
+   * Legacy envelope — kept for replay from the in-memory buffer only.
+   * The backend no longer sends envelopes for chat/system events;
+   * those are now sent as activity_event. This field will be removed
+   * in Phase 5 once all replay paths are migrated.
+   */
   envelope?: Envelope;
   /**
    * Activity-First (AF) downstream: carries a business-semantic ActivityEvent
@@ -278,6 +285,12 @@ export type WsDownstream = {
    * child_start envelopes for chat events.
    */
   activity_event?: ActivityEvent;
+  /**
+   * Monitor downstream: carries a monitor-channel event (log, flow_log,
+   * mcp, alert). When present, the transport dispatches it via onMonitorEvent.
+   * This replaces the legacy envelope-based dispatch for monitor events.
+   */
+  monitor_event?: MonitorEvent;
 };
 
 export type WsUpstream = {

@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -65,8 +66,7 @@ type ChatSender interface {
 //   - ws_priority.go     — three-priority send queue with backpressure
 type WSServer struct {
 	store                 *connStore
-	eventBus              event.Bus
-	monitorBus            event.Bus
+	monitorBus            contract.MonitorBus
 	activityBus           biz.ActivityEventBus
 	eventBuffer           *event.Buffer
 	canceller             RunCanceller
@@ -90,8 +90,8 @@ func NewWSServer(c *conf.Server, eventBus event.Bus, eventBuffer *event.Buffer, 
 	}, canceller, sender, nil, nil, nil, nil)
 }
 
-// NewWSServerFromInfra uses session bus for chat envelopes and monitor bus for flow_log (P0).
-// activityBus transports biz.ActivityEvent for the AF (Activity-First) chat rendering pipeline.
+// NewWSServerFromInfra uses monitor bus for monitor events and activity bus
+// for chat/system events (AF pipeline).
 func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnExecutor WSTurnExecutor, runtimeConf *conf.Runtime, lg loggateway.Logger, activityBus biz.ActivityEventBus) *WSServer {
 	if c == nil || c.GetWs() == nil || !c.GetWs().GetEnable() {
 		return nil
@@ -99,14 +99,10 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 	if infra == nil {
 		infra = event.NewInfra(lg)
 	}
-	monitor := infra.MonitorBus
-	if monitor == nil {
-		monitor = infra.SessionBus
-	}
+	monitor := infra.MonitorEventBus
 	wsCfg := runtimeConf.WSConfig()
 	return &WSServer{
 		store:                 newConnStore(),
-		eventBus:              infra.SessionBus,
 		monitorBus:            monitor,
 		activityBus:           activityBus,
 		eventBuffer:           infra.Buffer,
@@ -217,11 +213,10 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 	wc := s.newWSConn(conn, sessionID, userID, globalMode, probeMode, r)
 
 	// Event subscription
-	var eventCh <-chan event.Envelope
-	var monitorCh <-chan event.Envelope
+	var monitorCh <-chan contract.MonitorEvent
 	var activityCh <-chan biz.ActivityEvent
 	if !probeMode {
-		eventCh, monitorCh, activityCh = s.setupEventSubscription(wc, globalMode)
+		monitorCh, activityCh = s.setupEventSubscription(wc, globalMode)
 	}
 
 	// Register connection
@@ -245,9 +240,8 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !probeMode {
-		safego.Go(connCtx, "ws-event-pump", func() { s.eventPump(wc, eventCh) })
 		if monitorCh != nil {
-			safego.Go(connCtx, "ws-monitor-pump", func() { s.eventPump(wc, monitorCh) })
+			safego.Go(connCtx, "ws-monitor-pump", func() { s.monitorEventPump(wc, monitorCh) })
 		}
 		if activityCh != nil {
 			safego.Go(connCtx, "ws-activity-pump", func() { s.activityEventPump(wc, activityCh) })

@@ -3,7 +3,7 @@ package plugintrpc
 import (
 	"context"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -14,11 +14,11 @@ type basePlugin struct {
 	lg     loggateway.Logger
 }
 
-func newBasePlugin(name string, stats StatsRecorder, bus event.Bus, lg loggateway.Logger) basePlugin {
+func newBasePlugin(name string, stats StatsRecorder, monitorBus contract.MonitorBus, lg loggateway.Logger) basePlugin {
 	return basePlugin{
 		name:   name,
 		stats:  stats,
-		logger: NewPluginSafeLogger(name, bus, lg),
+		logger: NewPluginSafeLogger(name, monitorBus, lg),
 		lg:     lg,
 	}
 }

@@ -5,13 +5,14 @@ import (
 	"testing"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event/activityevent"
 	rt "aranea-agents/internal/runtime"
 )
 
 func TestStopGeneration_PublishesCancelledRunStatus(t *testing.T) {
-	bus := event.NewBus(nil)
-	ch, unsub := bus.Subscribe(event.SubscribeOptions{BufferSize: 8})
+	bus := activityevent.New(nil)
+	ch, unsub := bus.Subscribe(biz.ActivityEventSubscribeOptions{BufferSize: 8, GlobalMode: true})
 	defer unsub()
 
 	reg := rt.NewRunRegistry()
@@ -23,7 +24,7 @@ func TestStopGeneration_PublishesCancelledRunStatus(t *testing.T) {
 	svc := &ChatService{
 		orch: &ChatOrchestrator{
 			runs: reg,
-			core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{Bus: bus}}},
+			core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{ActivityBus: bus}}},
 			runMgr: &chatRunManagerImpl{
 				runStatusTracker:    rStatus,
 				pendingQueueManager: noopPendingQueueManager{},
@@ -43,14 +44,14 @@ func TestStopGeneration_PublishesCancelledRunStatus(t *testing.T) {
 	}
 
 	select {
-	case env := <-ch:
-		if env.Type != event.EnvelopeTypeRunStatus {
-			t.Fatalf("type=%s", env.Type)
+	case ev := <-ch:
+		if ev.Activity.Stage != "run_status" {
+			t.Fatalf("stage=%s", ev.Activity.Stage)
 		}
-		if env.Metadata["status"] != "cancelled" {
-			t.Fatalf("status=%v", env.Metadata["status"])
+		if ev.Activity.Meta["status"] != "cancelled" {
+			t.Fatalf("status=%v", ev.Activity.Meta["status"])
 		}
 	default:
-		t.Fatal("expected run_status envelope")
+		t.Fatal("expected run_status activity event")
 	}
 }

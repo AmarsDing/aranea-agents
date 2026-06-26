@@ -1,4 +1,39 @@
-import type { Envelope } from './envelope';
+/**
+ * Minimal event shape consumed by the session event inspector.
+ *
+ * The inspector displays raw real-time events from the WS envelope stream
+ * (the GET /v1/events API also returns this format). This local type
+ * decouples the inspector from the global Envelope type, capturing only
+ * the fields the inspector actually accesses. Full Envelope objects are
+ * structurally compatible and can be assigned directly without conversion.
+ */
+export type InspectorEvent = {
+  id: string;
+  type: string;
+  author: string;
+  timestamp: string;
+  channel?: string;
+  branch?: string;
+  filter_key?: string;
+  tag?: string;
+  invocation_id?: string;
+  parent_invocation_id?: string;
+  content?: { text: string };
+  tool_call?: {
+    name: string;
+    status: string;
+    is_long_running?: boolean;
+  };
+  state_delta?: {
+    operation: string;
+    path: string;
+    value_json: string;
+  };
+  transfer?: {
+    from_agent: string;
+    to_agent: string;
+  };
+};
 
 export type EventFilterState = {
   typeFilter: string;
@@ -39,7 +74,7 @@ function matchFilterKeyPrefix(subscriberKey: string, eventKey: string): boolean 
   return sk.startsWith(ek) || ek.startsWith(sk);
 }
 
-export function filterEnvelopes(events: Envelope[], filters: EventFilterState): Envelope[] {
+export function filterEnvelopes(events: InspectorEvent[], filters: EventFilterState): InspectorEvent[] {
   const kw = filters.keyword.trim().toLowerCase();
   return events.filter((env) => {
     if (filters.typeFilter !== 'all' && env.type !== filters.typeFilter) return false;
@@ -62,7 +97,7 @@ export function filterEnvelopes(events: Envelope[], filters: EventFilterState): 
   });
 }
 
-export function buildBranchTree(events: Envelope[]): BranchNode[] {
+export function buildBranchTree(events: InspectorEvent[]): BranchNode[] {
   const nodes = new Map<string, BranchNode>();
   const roots: BranchNode[] = [];
   const childOf = new Map<string, string>();

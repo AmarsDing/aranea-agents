@@ -1,7 +1,7 @@
 import { getSession } from '../session/api';
 import type { Session } from '../session/types';
-import type { Envelope } from './envelope';
-import { envelopeSource } from './inboundSyncEnvelope';
+import type { ActivityEvent } from '../../realtime/activityEvent';
+import { activitySource } from './inboundSyncEnvelope';
 import { parseChannelSessionMeta, isChannelSession } from './channelSessionMeta';
 
 const SESSION_CACHE_MAX = 64;
@@ -46,23 +46,23 @@ export async function isChannelInboundSession(
   return parseChannelSessionMeta(sess.metadata_json) !== null || isChannelSession(sess.metadata_json, sess.title);
 }
 
-export async function resolveInboundAgentId(
+export async function resolveInboundAgentIdFromActivity(
   sessionId: string,
-  env: Envelope,
+  ev: ActivityEvent,
   chatStore: SessionLookup,
 ): Promise<string> {
-  const md = env.metadata as Record<string, unknown> | undefined;
-  const fromMeta = typeof md?.agent_id === 'string' ? md.agent_id.trim() : '';
+  const meta = ev.activity.meta ?? {};
+  const fromMeta = typeof meta.agent_id === 'string' ? meta.agent_id.trim() : '';
   if (fromMeta) return fromMeta;
   const sess = await resolveInboundSession(sessionId, chatStore);
   return sess?.agent_id?.trim() ?? '';
 }
 
 /** Toast on channel turn complete; dedupe runner_completion vs revision completed. */
-export function shouldChannelInboundCompleteToast(env: Envelope): boolean {
-  if (env.type === 'runner_completion') return true;
-  if (env.type !== 'run_status') return false;
-  const status = String((env.metadata as Record<string, unknown> | undefined)?.status ?? '');
+export function shouldChannelInboundCompleteToastActivity(ev: ActivityEvent): boolean {
+  if (ev.activity.stage === 'runner_completion') return true;
+  if (ev.activity.stage !== 'run_status') return false;
+  const status = String(ev.activity.meta?.status ?? '');
   if (status === 'failed' || status === 'cancelled') return true;
-  return status === 'completed' && envelopeSource(env) === 'channel';
+  return status === 'completed' && activitySource(ev) === 'channel';
 }

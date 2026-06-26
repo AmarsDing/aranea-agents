@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -25,10 +25,10 @@ type retryReflectConfig struct {
 }
 
 type RetryAndReflectPlugin struct {
-	base basePlugin
-	cfg  retryReflectConfig
-	bus  event.Bus
-	rt   *Runtime
+	base       basePlugin
+	cfg        retryReflectConfig
+	monitorBus contract.MonitorBus
+	rt         *Runtime
 
 	mu        sync.Mutex
 	retries   map[string]int
@@ -40,7 +40,7 @@ const globalRetryPurgeInterval = 1 * time.Hour
 var _ trpcplugin.Plugin = (*RetryAndReflectPlugin)(nil)
 var _ trpcplugin.Closer = (*RetryAndReflectPlugin)(nil)
 
-func NewRetryAndReflectPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime, lg loggateway.Logger) *RetryAndReflectPlugin {
+func NewRetryAndReflectPlugin(p biz.Plugin, stats StatsRecorder, monitorBus contract.MonitorBus, rt *Runtime, lg loggateway.Logger) *RetryAndReflectPlugin {
 	var cfg retryReflectConfig
 	cfg.MaxRetries = 3
 	cfg.TrackingScope = "invocation"
@@ -50,11 +50,11 @@ func NewRetryAndReflectPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, 
 		cfg.MaxRetries = 3
 	}
 	return &RetryAndReflectPlugin{
-		base:    newBasePlugin(p.Key, stats, bus, lg),
-		cfg:     cfg,
-		bus:     bus,
-		rt:      rt,
-		retries: make(map[string]int),
+		base:       newBasePlugin(p.Key, stats, monitorBus, lg),
+		cfg:        cfg,
+		monitorBus: monitorBus,
+		rt:         rt,
+		retries:    make(map[string]int),
 	}
 }
 
@@ -146,13 +146,14 @@ func buildReflectHint(tool, errMsg string, attempt, max int) string {
 }
 
 func (r *RetryAndReflectPlugin) publishReflectEvent(ctx context.Context, args *trpctool.AfterToolArgs, hint string, attempt int) {
-	if r.bus == nil || args == nil {
+	if r.monitorBus == nil || args == nil {
 		return
 	}
 	sessionID, agentKey := sessionAgentKey(ctx, nil)
-	env := event.NewEnvelope("plugin.retry_reflect", r.base.name, sessionID)
-	env.Channel = event.RouteChannel(env)
-	env.Metadata = map[string]any{
+	ev := contract.NewMonitorEvent(contract.MonitorEventTypeLog, r.base.name)
+	ev.SessionID = sessionID
+	ev.Message = "plugin retry reflect"
+	ev.Metadata = map[string]any{
 		"tool":            args.ToolName,
 		"agent_key":       agentKey,
 		"reflection_hint": hint,
@@ -160,7 +161,7 @@ func (r *RetryAndReflectPlugin) publishReflectEvent(ctx context.Context, args *t
 		"max_retries":     r.cfg.MaxRetries,
 		"error":           args.Error.Error(),
 	}
-	r.bus.Publish(ctx, env)
+	r.monitorBus.Publish(ctx, ev)
 }
 
 func retryKey(ctx context.Context, tool, scope string) string {

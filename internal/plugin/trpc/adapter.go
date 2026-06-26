@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
@@ -17,23 +17,23 @@ type adaptedPlugin struct {
 	confirmationGuard *ConfirmationGuardConfig
 }
 
-func builtin(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime, lg loggateway.Logger) trpcplugin.Plugin {
+func builtin(p biz.Plugin, stats StatsRecorder, monitorBus contract.MonitorBus, rt *Runtime, lg loggateway.Logger) trpcplugin.Plugin {
 	key := strings.ToLower(strings.TrimSpace(p.Key))
 	switch key {
 	case "audit_log":
-		return NewAuditLogPlugin(p, stats, bus, lg)
+		return NewAuditLogPlugin(p, stats, monitorBus, lg)
 	case "skill_usage_tracker":
-		return NewSkillUsageTrackerPlugin(p, stats, bus, lg)
+		return NewSkillUsageTrackerPlugin(p, stats, monitorBus, lg)
 	case "retry_and_reflect":
-		return NewRetryAndReflectPlugin(p, stats, bus, rt, lg)
+		return NewRetryAndReflectPlugin(p, stats, monitorBus, rt, lg)
 	case "sensitive_data_mask":
-		return NewSensitiveDataMaskPlugin(p, stats, bus, lg)
+		return NewSensitiveDataMaskPlugin(p, stats, monitorBus, lg)
 	case "confirmation_guard":
-		return NewConfirmationGuardPlugin(p, stats, bus, lg)
+		return NewConfirmationGuardPlugin(p, stats, monitorBus, lg)
 	case "cost_guard":
-		return NewCostGuardPlugin(p, stats, bus, rt, lg)
+		return NewCostGuardPlugin(p, stats, monitorBus, rt, lg)
 	case "model_router":
-		return NewModelRouterPlugin(p, stats, bus, lg)
+		return NewModelRouterPlugin(p, stats, monitorBus, lg)
 	case "permission_guard":
 		var resolve AgentKeyResolver
 		if rt != nil {
@@ -41,20 +41,20 @@ func builtin(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime, lg l
 			resolve = rt.resolveAgent
 			rt.mu.RUnlock()
 		}
-		return NewPermissionGuardPlugin(p, stats, bus, resolve, lg)
+		return NewPermissionGuardPlugin(p, stats, monitorBus, resolve, lg)
 	case "output_policy":
-		return NewOutputPolicyPlugin(p, stats, bus, lg)
+		return NewOutputPolicyPlugin(p, stats, monitorBus, lg)
 	default:
 		return nil
 	}
 }
 
-func adapt(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime, lg loggateway.Logger) *adaptedPlugin {
+func adapt(p biz.Plugin, stats StatsRecorder, monitorBus contract.MonitorBus, rt *Runtime, lg loggateway.Logger) *adaptedPlugin {
 	if !p.Enabled {
 		return nil
 	}
 	ValidatePluginCallbackPoints(p)
-	tp := builtin(p, stats, bus, rt, lg)
+	tp := builtin(p, stats, monitorBus, rt, lg)
 	if tp == nil {
 		return nil
 	}

@@ -1,8 +1,11 @@
 import { ref, type Ref } from 'vue';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import type { RunStatus, RunStatusValue } from '../types';
-import type { Envelope } from '../envelope';
-import { runStatusFromEnvelope, messageQueuedFromEnvelope } from '../envelopeRunStatus';
+import type { ActivityEvent } from '../../../realtime/activityEvent';
+import {
+  runStatusFromActivityEvent,
+  messageQueuedFromActivityEvent,
+} from '../activityRunStatus';
 
 const HYDRATE_DELAY_MS = 400;
 
@@ -37,9 +40,10 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
     runMeta.value = null;
   }
 
-  function applyFromEnvelope(env: Envelope) {
-    if (messageQueuedFromEnvelope(env)) return;
-    const rs = runStatusFromEnvelope(env);
+  /** Activity-First: apply run status from an ActivityEvent (stage=run_status). */
+  function applyFromActivityEvent(ev: ActivityEvent) {
+    if (messageQueuedFromActivityEvent(ev)) return;
+    const rs = runStatusFromActivityEvent(ev);
     if (!rs) return;
     wsAuthoritative = true;
     clearHydrateTimer();
@@ -113,7 +117,7 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
   return {
     runStatus,
     runMeta,
-    applyFromEnvelope,
+    applyFromActivityEvent,
     onSessionSwitch,
     refreshRunStatus,
     forceSetRunStatus,

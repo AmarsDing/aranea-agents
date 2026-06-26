@@ -3,19 +3,21 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/tools"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+
+	"github.com/google/uuid"
 )
 
 var _ tools.SpiritSynthesisPort = (*SpiritSynthesisService)(nil)
 
-// synthesisEventPublisher adapts event.Bus to biz.SynthesisEventPublisher.
+// synthesisEventPublisher adapts biz.ActivityEventBus to biz.SynthesisEventPublisher.
 type synthesisEventPublisher struct {
-	bus event.Bus
+	bus biz.ActivityEventBus
 }
 
 func (p *synthesisEventPublisher) PublishSynthesisCompleted(ctx context.Context, spiritSessionID string, output *biz.SynthesisOutput) {
@@ -41,15 +43,27 @@ func (p *synthesisEventPublisher) PublishSynthesisCompleted(ctx context.Context,
 			KeyFindings: r.KeyFindings,
 		})
 	}
-	env := event.NewEnvelope(event.EnvelopeTypeSpiritSynthesisCompleted, "spirit-synthesis", spiritSessionID)
-	env.Metadata = map[string]interface{}{
-		"spirit_session_id": spiritSessionID,
-		"strategy":          string(output.Strategy),
-		"team_count":        len(output.TeamResults),
-		"content":           output.Content,
-		"team_results":      richResults,
+	ev := biz.ActivityEvent{
+		Event: biz.ActivityEventCompleted,
+		Activity: biz.Activity{
+			ID:              uuid.NewString(),
+			Kind:            biz.ActivityKindSession,
+			Status:          biz.ActivityStatusCompleted,
+			Timestamp:       time.Now().UTC(),
+			SpiritSessionID: spiritSessionID,
+			AgentKey:        "spirit-synthesis",
+			Stage:           "synthesis_completed",
+			Meta: map[string]any{
+				"spirit_session_id": spiritSessionID,
+				"strategy":          string(output.Strategy),
+				"team_count":        len(output.TeamResults),
+				"content":           output.Content,
+				"team_results":      richResults,
+			},
+		},
+		Domain: biz.ActivityDomainChat,
 	}
-	p.bus.Publish(ctx, env)
+	p.bus.Publish(ctx, ev)
 }
 
 // SpiritSynthesisService is a thin transport adapter that delegates all business
@@ -62,10 +76,10 @@ type SpiritSynthesisService struct {
 func NewSpiritSynthesisService(
 	spiritUC *biz.SpiritTeamUsecase,
 	engine *biz.SynthesisEngine,
-	eventBus event.Bus,
+	activityBus biz.ActivityEventBus,
 	lg loggateway.Logger,
 ) *SpiritSynthesisService {
-	pub := &synthesisEventPublisher{bus: eventBus}
+	pub := &synthesisEventPublisher{bus: activityBus}
 	uc := biz.NewSynthesisUsecase(spiritUC, engine, pub, lg)
 	return &SpiritSynthesisService{uc: uc, lg: lg}
 }

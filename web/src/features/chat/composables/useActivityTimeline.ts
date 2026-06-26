@@ -30,32 +30,89 @@ import { listActivities } from '../../session/api';
 
 /**
  * useActivityTimeline manages Activity state for the Activity-First architecture.
- * It consumes WS activity events (activity_start/delta/done/child_start) and
- * provides computed properties for rendering TaskBoard and other components.
  *
- * This composable replaces the legacy inference-based approach with zero-inference
- * Activity consumption from the backend.
+ * Phase 3 refactor: activities are isolated per session_id. Each session owns
+ * its own Map<activityId, Activity>, and `currentSessionId` drives the public
+ * computed properties (activities / activityTree / streamEvents / rootActivityId
+ * / loadError). Switching sessions no longer requires `reset()` — the data
+ * for each session is preserved and naturally isolated.
+ *
+ * This composable consumes WS activity events (activity_start/delta/done/
+ * child_start) and the new ActivityEvent format (handleActivityEvent).
  */
 export function useActivityTimeline() {
-  const activities = shallowRef<Map<string, Activity>>(new Map());
-  const rootActivityId = shallowRef<string | null>(null);
-  const loadError = shallowRef<string | null>(null);
+  // === Per-session storage ===
+  //
+  // sessionId → (activityId → Activity)
+  const activitiesBySession = shallowRef<Map<string, Map<string, Activity>>>(new Map());
+  // sessionId → rootActivityId
+  const rootActivityIdBySession = shallowRef<Map<string, string>>(new Map());
+  // sessionId → loadError
+  const loadErrorBySession = shallowRef<Map<string, string | null>>(new Map());
+  // Current session: drives the public computed properties
+  const currentSessionId = shallowRef<string | null>(null);
 
-  // === Activity tree computed from flat list ===
+  /**
+   * Get (or lazily create) the Activity Map for the given session.
+   * The Map is stored in `activitiesBySession`; mutation triggers a
+   * `triggerRef` so dependent computed properties re-evaluate.
+   */
+  function getSessionActivities(sessionId: string): Map<string, Activity> {
+    let map = activitiesBySession.value.get(sessionId);
+    if (!map) {
+      map = new Map();
+      activitiesBySession.value.set(sessionId, map);
+      triggerRef(activitiesBySession);
+    }
+    return map;
+  }
+
+  /** Set the current session that drives the public computed properties. */
+  function setCurrentSession(sessionId: string | null) {
+    currentSessionId.value = sessionId;
+  }
+
+  // === Public computed properties (driven by currentSessionId) ===
+
+  const activities = computed<Activity[]>(() => {
+    const sid = currentSessionId.value;
+    if (!sid) return [];
+    const map = activitiesBySession.value.get(sid);
+    return map ? Array.from(map.values()) : [];
+  });
+
+  const rootActivityId = computed<string | null>(() => {
+    const sid = currentSessionId.value;
+    if (!sid) return null;
+    return rootActivityIdBySession.value.get(sid) ?? null;
+  });
+
+  const loadError = computed<string | null>(() => {
+    const sid = currentSessionId.value;
+    if (!sid) return null;
+    return loadErrorBySession.value.get(sid) ?? null;
+  });
+
+  // === Activity tree computed from flat list (current session only) ===
 
   const activityTree = computed<ActivityTreeNode[]>(() => {
-    const map = new Map<string, ActivityTreeNode>();
+    const sid = currentSessionId.value;
+    if (!sid) return [];
+    const map = activitiesBySession.value.get(sid);
+    if (!map) return [];
+
+    const treeMap = new Map<string, ActivityTreeNode>();
     const roots: ActivityTreeNode[] = [];
 
     // Build tree nodes
-    for (const activity of activities.value.values()) {
-      map.set(activity.id, { ...activity, children: [] });
+    for (const activity of map.values()) {
+      treeMap.set(activity.id, { ...activity, children: [] });
     }
 
     // Link children to parents
-    for (const node of map.values()) {
-      if (node.parentActivityId && map.has(node.parentActivityId)) {
-        map.get(node.parentActivityId)!.children.push(node);
+    for (const node of treeMap.values()) {
+      if (node.parentActivityId && treeMap.has(node.parentActivityId)) {
+        treeMap.get(node.parentActivityId)!.children.push(node);
       } else if (!node.parentActivityId) {
         roots.push(node);
       }
@@ -87,9 +144,32 @@ export function useActivityTimeline() {
       .map(activityToStreamEvent);
   });
 
-  // === WS Event Handlers ===
+  // === Internal helpers for per-session root tracking ===
+
+  function setRootForSession(sessionId: string, activityId: string) {
+    const next = new Map(rootActivityIdBySession.value);
+    next.set(sessionId, activityId);
+    rootActivityIdBySession.value = next;
+  }
+
+  /**
+   * Locate which session an activity belongs to (by id).
+   * Used by legacy envelope handlers (handleActivityDelta / handleActivityDone)
+   * whose meta does not carry session_id — we look up the parent activity
+   * across all sessions and route the update accordingly.
+   */
+  function findSessionOfActivity(activityId: string): string | null {
+    for (const [sid, sm] of activitiesBySession.value.entries()) {
+      if (sm.has(activityId)) return sid;
+    }
+    return null;
+  }
+
+  // === WS Event Handlers (legacy envelope path) ===
 
   function handleActivityStart(meta: ActivityStartMeta) {
+    const sessionId = meta.session_id;
+    if (!sessionId) return;
     const activity: Activity = {
       id: meta.activity_id,
       kind: meta.kind,
@@ -119,17 +199,21 @@ export function useActivityTimeline() {
       meta: meta.meta,
       seq: meta._seq,
     };
-    activities.value.set(activity.id, activity);
-    triggerRef(activities);
+    const map = getSessionActivities(sessionId);
+    map.set(activity.id, activity);
+    triggerRef(activitiesBySession);
 
     // Track root activity
     if (!activity.parentActivityId) {
-      rootActivityId.value = activity.id;
+      setRootForSession(sessionId, activity.id);
     }
   }
 
   function handleActivityDelta(meta: ActivityDeltaMeta) {
-    const existing = activities.value.get(meta.activity_id);
+    const sessionId = findSessionOfActivity(meta.activity_id);
+    if (!sessionId) return;
+    const map = getSessionActivities(sessionId);
+    const existing = map.get(meta.activity_id);
     if (!existing) return;
 
     // Create a new object to ensure reference change for reactivity
@@ -142,12 +226,15 @@ export function useActivityTimeline() {
       updated.toolArguments = (existing.toolArguments || '') + meta.delta_chunk;
     }
     if (meta._seq != null) updated.seq = meta._seq;
-    activities.value.set(meta.activity_id, updated);
-    triggerRef(activities);
+    map.set(meta.activity_id, updated);
+    triggerRef(activitiesBySession);
   }
 
   function handleActivityDone(meta: ActivityDoneMeta) {
-    const existing = activities.value.get(meta.activity_id);
+    const sessionId = findSessionOfActivity(meta.activity_id);
+    if (!sessionId) return;
+    const map = getSessionActivities(sessionId);
+    const existing = map.get(meta.activity_id);
     if (!existing) return;
 
     // Create a new object to ensure reference change for reactivity
@@ -165,16 +252,26 @@ export function useActivityTimeline() {
     if (meta.child_board_id !== undefined) updated.childBoardId = meta.child_board_id;
     if (meta.label !== undefined) updated.label = meta.label;
     if (meta._seq != null) updated.seq = meta._seq;
-    activities.value.set(meta.activity_id, updated);
-    triggerRef(activities);
+    map.set(meta.activity_id, updated);
+    triggerRef(activitiesBySession);
   }
 
   function handleActivityChildStart(meta: ActivityChildStartMeta) {
+    // Child meta doesn't carry session_id — find the parent's session.
+    let sessionId = '';
+    if (meta.parent_activity_id) {
+      sessionId = findSessionOfActivity(meta.parent_activity_id) ?? '';
+    }
+    if (!sessionId) {
+      // Fall back to current session, or an orphan bucket if none selected.
+      sessionId = currentSessionId.value ?? '__orphan__';
+    }
+
     const activity: Activity = {
       id: meta.activity_id,
       kind: meta.kind,
       status: meta.status,
-      sessionId: '',
+      sessionId,
       turnId: '',
       parentActivityId: meta.parent_activity_id,
       timestamp: new Date().toISOString(),
@@ -186,8 +283,9 @@ export function useActivityTimeline() {
       dependsOn: meta.depends_on,
       collapsed: false,
     };
-    activities.value.set(activity.id, activity);
-    triggerRef(activities);
+    const map = getSessionActivities(sessionId);
+    map.set(activity.id, activity);
+    triggerRef(activitiesBySession);
   }
 
   // === Activity-First (AF) Event Handler ===
@@ -237,15 +335,25 @@ export function useActivityTimeline() {
 
   function handleActivityEvent(ev: AFActivityEvent) {
     const snapshot = afActivityToInternal(ev.activity);
+    const sessionId =
+      snapshot.sessionId || currentSessionId.value || '';
+    if (!sessionId) {
+      console.warn(
+        '[useActivityTimeline] handleActivityEvent: missing sessionId, event dropped',
+        ev,
+      );
+      return;
+    }
+    const map = getSessionActivities(sessionId);
 
     switch (ev.event) {
       case 'created':
       case 'child_created': {
         // Full snapshot: create or replace the Activity in the map.
-        activities.value.set(snapshot.id, snapshot);
-        triggerRef(activities);
+        map.set(snapshot.id, snapshot);
+        triggerRef(activitiesBySession);
         if (!snapshot.parentActivityId) {
-          rootActivityId.value = snapshot.id;
+          setRootForSession(sessionId, snapshot.id);
         }
         break;
       }
@@ -253,11 +361,11 @@ export function useActivityTimeline() {
         // Streaming append: the Activity snapshot carries the accumulated
         // state, and delta_field/delta_chunk carry the incremental text.
         // We apply the delta to the existing Activity (or create if missing).
-        const existing = activities.value.get(snapshot.id);
+        const existing = map.get(snapshot.id);
         if (!existing) {
           // Activity not yet in map (race or missed created event):
           // use the full snapshot as the base.
-          activities.value.set(snapshot.id, snapshot);
+          map.set(snapshot.id, snapshot);
         } else if (ev.delta_field && ev.delta_chunk) {
           const updated: Activity = { ...existing };
           if (ev.delta_field === 'reasoning') {
@@ -268,13 +376,13 @@ export function useActivityTimeline() {
             updated.toolArguments = (existing.toolArguments || '') + ev.delta_chunk;
           }
           if (snapshot.seq != null) updated.seq = snapshot.seq;
-          activities.value.set(snapshot.id, updated);
+          map.set(snapshot.id, updated);
         } else {
           // No delta info: use the full snapshot (backend may send
           // accumulated content in the snapshot).
-          activities.value.set(snapshot.id, { ...existing, ...snapshot });
+          map.set(snapshot.id, { ...existing, ...snapshot });
         }
-        triggerRef(activities);
+        triggerRef(activitiesBySession);
         break;
       }
       case 'updated':
@@ -283,24 +391,52 @@ export function useActivityTimeline() {
       case 'cancelled': {
         // Terminal or state-change event: merge the full snapshot into
         // the existing Activity (or create if missing).
-        const existing = activities.value.get(snapshot.id);
+        const existing = map.get(snapshot.id);
         if (existing) {
-          activities.value.set(snapshot.id, { ...existing, ...snapshot });
+          map.set(snapshot.id, { ...existing, ...snapshot });
         } else {
-          activities.value.set(snapshot.id, snapshot);
+          map.set(snapshot.id, snapshot);
         }
-        triggerRef(activities);
+        triggerRef(activitiesBySession);
         break;
       }
     }
   }
 
-  // === Reset (called on turn start) ===
+  // === Reset / cleanup ===
 
+  /**
+   * Clear the current session's activities.
+   *保留用于 unmount cleanup 与历史 reset() 调用方；
+   * Phase 3 后切换 session 不再调用 reset（自然隔离）。
+   */
   function reset() {
-    activities.value.clear();
-    triggerRef(activities);
-    rootActivityId.value = null;
+    const sid = currentSessionId.value;
+    if (!sid) return;
+    clearSession(sid);
+  }
+
+  /** Clear activities for a specific session. */
+  function clearSession(sessionId: string) {
+    const nextActivities = new Map(activitiesBySession.value);
+    nextActivities.delete(sessionId);
+    activitiesBySession.value = nextActivities;
+
+    const nextRoots = new Map(rootActivityIdBySession.value);
+    nextRoots.delete(sessionId);
+    rootActivityIdBySession.value = nextRoots;
+
+    const nextErrors = new Map(loadErrorBySession.value);
+    nextErrors.delete(sessionId);
+    loadErrorBySession.value = nextErrors;
+  }
+
+  /** Clear all sessions (called on workspace unmount). */
+  function clearAll() {
+    activitiesBySession.value = new Map();
+    rootActivityIdBySession.value = new Map();
+    loadErrorBySession.value = new Map();
+    currentSessionId.value = null;
   }
 
   // === Load activities from API (for history recovery) ===
@@ -330,12 +466,22 @@ export function useActivityTimeline() {
     return null;
   }
 
-  function loadActivities(activityList: Activity[]) {
+  /**
+   * Atomically replace the Activity list for a session.
+   * `sessionId` is optional — when omitted it is derived from the first
+   * activity's sessionId, or falls back to currentSessionId.
+   */
+  function loadActivities(activityList: Activity[], sessionId?: string) {
+    const sid =
+      sessionId ||
+      activityList[0]?.sessionId ||
+      currentSessionId.value;
+    if (!sid) return;
+
     // Atomic replacement: build a complete new Map before assigning to the
-    // shallowRef. This avoids the intermediate empty-map state that causes
+    // session slot. This avoids the intermediate empty-map state that causes
     // a flash when the old Map is cleared and the new data hasn't been
-    // written yet. shallowRef detects the reference change and triggers
-    // reactivity exactly once — no manual triggerRef needed.
+    // written yet.
     const newMap = new Map<string, Activity>();
     let newRootId: string | null = null;
     let fallbackSeq = 1;
@@ -356,14 +502,26 @@ export function useActivityTimeline() {
         newRootId = a.id;
       }
     }
-    activities.value = newMap;
-    rootActivityId.value = newRootId;
+
+    const nextActivities = new Map(activitiesBySession.value);
+    nextActivities.set(sid, newMap);
+    activitiesBySession.value = nextActivities;
+
+    if (newRootId) {
+      setRootForSession(sid, newRootId);
+    } else {
+      // No root found — clear any stale root for this session.
+      const nextRoots = new Map(rootActivityIdBySession.value);
+      nextRoots.delete(sid);
+      rootActivityIdBySession.value = nextRoots;
+    }
   }
 
   // AF-FE-14 / AF-GAP-05: Load activities from backend API for history recovery.
   // Retries up to 5 times with exponential backoff (500ms, 1s, 2s, 4s) on failure.
-  // On final failure, sets loadError so the UI can show a "数据加载失败，请刷新"
-  // degradation notice instead of silently falling back to Legacy rendering.
+  // On final failure, sets loadError for the session so the UI can show a
+  // "数据加载失败，请刷新" degradation notice instead of silently falling
+  // back to Legacy rendering.
   async function loadActivitiesFromAPI(sessionId: string, turnId?: string) {
     const maxAttempts = 5;
     const baseDelay = 500;
@@ -372,8 +530,8 @@ export function useActivityTimeline() {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         const activityList = await listActivities(sessionId, turnId);
-        loadActivities(activityList);
-        loadError.value = null;
+        loadActivities(activityList, sessionId);
+        setSessionLoadError(sessionId, null);
         return;
       } catch (err) {
         lastErr = err;
@@ -385,13 +543,24 @@ export function useActivityTimeline() {
     }
 
     const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
-    loadError.value = msg;
-    console.warn('[activity] failed to load activities from API after', maxAttempts, 'attempts:', msg);
+    setSessionLoadError(sessionId, msg);
+    console.warn(
+      '[activity] failed to load activities from API after',
+      maxAttempts,
+      'attempts:',
+      msg,
+    );
   }
 
-  /** Retry loading activities after a previous failure */
+  function setSessionLoadError(sessionId: string, msg: string | null) {
+    const next = new Map(loadErrorBySession.value);
+    next.set(sessionId, msg);
+    loadErrorBySession.value = next;
+  }
+
+  /** Retry loading activities for a session after a previous failure. */
   async function retryLoad(sessionId: string, turnId?: string) {
-    loadError.value = null;
+    setSessionLoadError(sessionId, null);
     await loadActivitiesFromAPI(sessionId, turnId);
   }
 
@@ -399,22 +568,27 @@ export function useActivityTimeline() {
 
   if (getCurrentInstance()) {
     onUnmounted(() => {
-      reset();
+      clearAll();
     });
   }
 
   return {
-    activities: computed(() => Array.from(activities.value.values())),
+    activities,
     activityTree,
     streamEvents,
     rootActivityId,
-    loadError: computed(() => loadError.value),
+    loadError,
+    currentSessionId: computed(() => currentSessionId.value),
     handleActivityStart,
     handleActivityDelta,
     handleActivityDone,
     handleActivityChildStart,
     handleActivityEvent,
     reset,
+    clearAll,
+    clearSession,
+    setCurrentSession,
+    getSessionActivities,
     loadActivities,
     loadActivitiesFromAPI,
     retryLoad,

@@ -279,6 +279,57 @@ export default {
     tool: {
       stuckTimeout: '工具执行超时，未返回结果',
     },
+    toolDetail: {
+      // Common labels (shared across detail components)
+      error: '错误',
+      args: '参数',
+      result: '结果',
+      // Shell
+      command: '命令',
+      workingDirectory: '工作目录',
+      exitCode: '退出码',
+      // Browser
+      action: '操作',
+      pageTitle: '页面标题',
+      screenshot: '截图',
+      domOperations: 'DOM 操作',
+      // File operations
+      filePath: '文件路径',
+      lineRange: '行范围',
+      contentSnippet: '文件内容片段',
+      encoding: '编码',
+      changedLines: '变更行数',
+      diff: '差异',
+      writtenContent: '写入内容',
+      // Search
+      searchPattern: '搜索条件',
+      path: '路径',
+      hitCount: '命中数',
+      resultList: '结果列表',
+      // Web search
+      query: '查询词',
+      resultCount: '结果数',
+      resultSummary: '结果摘要',
+      // MCP
+      mcpServer: 'MCP 服务',
+      method: '方法',
+      // Code
+      language: '语言',
+      executionStatus: '执行状态',
+      code: '代码',
+      output: '输出',
+      // Execution status labels
+      statusRunning: '运行中',
+      statusSuccess: '成功',
+      statusFailed: '失败',
+      statusBlocked: '阻塞',
+      statusCancelled: '已取消',
+      // Todo
+      progress: '进度',
+      taskList: '任务列表',
+      // Generic
+      toolName: '工具名',
+    },
     spiritLabel: '精灵',
     connectionDisconnected: '连接已断开',
     syncComplete: '同步完成',

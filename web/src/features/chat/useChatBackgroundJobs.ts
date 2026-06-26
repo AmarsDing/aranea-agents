@@ -2,15 +2,15 @@ import { onMounted, onUnmounted, ref, watch, type Ref } from 'vue';
 import { listChatBackgroundJobs } from './api';
 import type { ChatBackgroundJobRow } from './types';
 import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from './globalWsHub';
-import type { Envelope } from './envelope';
+import type { ActivityEvent } from '../../realtime/activityEvent';
 
 // Backoff steps: 5s → 10s → 15s → 30s (max)
 const BACKOFF_STEPS = [5_000, 10_000, 15_000, 30_000];
 
-function isBackgroundJobRefreshEnvelope(env: Envelope, sessionId?: string): boolean {
-  const md = env.metadata as Record<string, unknown> | undefined;
-  if (!md?.background_job_refresh) return false;
-  const sid = (env.session_id ?? '').trim();
+function isBackgroundJobRefreshActivity(ev: ActivityEvent, sessionId?: string): boolean {
+  const meta = ev.activity.meta ?? {};
+  if (!meta.background_job_refresh && ev.activity.stage !== 'background_job_refresh') return false;
+  const sid = (ev.activity.session_id ?? '').trim();
   if (sessionId && sid && sid !== sessionId.trim()) return false;
   return true;
 }
@@ -117,9 +117,11 @@ export function useChatBackgroundJobs(
     hubId = acquireGlobalWsConsumer({
       channels: ['chat'],
       logEnabled: false,
-      onEnvelope: (env) => {
-        if (env.channel !== 'chat') return;
-        if (isBackgroundJobRefreshEnvelope(env, sessionId.value)) {
+      // Backend no longer sends envelopes; onEnvelope is required by the type
+      // but never fires. ActivityEvent is the live path.
+      onEnvelope: () => {},
+      onActivityEvent: (ev) => {
+        if (isBackgroundJobRefreshActivity(ev, sessionId.value)) {
           // WS event arrived → immediate load + reset backoff
           cancelPoll();
           void load().then(() => resetBackoffAndStartPoll());

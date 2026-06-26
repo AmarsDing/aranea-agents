@@ -11,6 +11,7 @@
 import { buildWsUrl } from '../config/runtime';
 import type { Envelope, WsDownstream, WsUpstream } from './envelope';
 import type { ActivityEvent } from './activityEvent';
+import type { MonitorEvent } from './monitorEvent';
 import { RevisionTracker, requestSyncReplay } from './event_replay';
 import {
   WS_MAX_RECONNECT_DELAY_MS,
@@ -55,6 +56,12 @@ export type WsTransportOptions = {
    * for chat events.
    */
   onActivityEvent?: (ev: ActivityEvent) => void;
+  /**
+   * Monitor channel: called when a downstream message carries a
+   * monitor_event payload (log, flow_log, mcp, alert). This replaces
+   * the legacy envelope-based dispatch for monitor events.
+   */
+  onMonitorEvent?: (event: MonitorEvent) => void;
   onConnected?: (info: { sessionId: string; lastEventId?: string }) => void;
   onDisconnected?: () => void;
   onError?: (error: Event) => void;
@@ -182,6 +189,13 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
         // Activity snapshot, eliminating the need for metadata packing.
         if (msg.activity_event) {
           opts.onActivityEvent?.(msg.activity_event);
+        }
+
+        // Monitor channel: dispatch monitor events (log, flow_log, mcp,
+        // alert). This replaces the legacy envelope-based dispatch for
+        // monitor events on the "monitor" channel.
+        if (msg.monitor_event) {
+          opts.onMonitorEvent?.(msg.monitor_event);
         }
       } catch {
         // ignore parse errors

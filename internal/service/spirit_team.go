@@ -211,8 +211,8 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 	}
 
 	if s.bus != nil {
-		primaryEvent := biz.ActivityEventCreated
-		primaryStatus := biz.ActivityStatusCreated
+		primaryEvent := biz.ActivityEventFailed
+		primaryStatus := biz.ActivityStatusFailed
 		primaryStage := "failed"
 		switch status {
 		case biz.TeamStatusCompleted:
@@ -600,12 +600,21 @@ func (a *SpiritTeamAssembler) SuggestTopology(ctx context.Context, taskDescripti
 		)
 		// Emit cache hit event
 		if a.bus != nil {
-			env := event.NewEnvelope(event.EnvelopeTypeOrchestrationCacheHit, "spirit-team-assembler", "")
-			env.Metadata = map[string]any{
-				"task_pattern": biz.ExtractTaskPattern(taskDescription),
-				"topology":     string(topology),
-			}
-			a.bus.Publish(ctx, env)
+			a.bus.Publish(ctx, biz.ActivityEvent{
+				Event: biz.ActivityEventCreated,
+				Activity: biz.Activity{
+					ID:              uuid.NewString(),
+					Kind:            biz.ActivityKindNotice,
+					Status:          biz.ActivityStatusCompleted,
+					Timestamp:       time.Now().UTC(),
+					AgentKey:        "spirit-team-assembler",
+					Meta: map[string]any{
+						"task_pattern": biz.ExtractTaskPattern(taskDescription),
+						"topology":     string(topology),
+					},
+				},
+				Domain: biz.ActivityDomainChat,
+			})
 		}
 	}
 	return string(topology), found
@@ -615,19 +624,30 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 	if a.bus == nil {
 		return
 	}
-	env := event.NewEnvelope(event.EnvelopeTypeSpiritTeamAssembled, "spirit-team-assembler", spiritSessionID)
-	env.TeamID = team.ID
-	env.Metadata = map[string]any{
-		"team_id":         team.ID,
-		"team_name":       team.DisplayName,
-		"session_id":      teamSession.ID,
-		"mode":            mode,
-		"task_summary":    biz.TruncateRunes(taskDesc, 200),
-		"dag_node_id":     team.DagNodeID,
-		"depends_on":      team.DependsOn,
-		"topology_reason": topologyReason,
-		"duration_ms":     0,
-		"total_steps":     1,
-	}
-	a.bus.Publish(ctx, env)
+	a.bus.Publish(ctx, biz.ActivityEvent{
+		Event: biz.ActivityEventCreated,
+		Activity: biz.Activity{
+			ID:              uuid.NewString(),
+			Kind:            biz.ActivityKindTeamStage,
+			Status:          biz.ActivityStatusPending,
+			Stage:           "assembled",
+			Timestamp:       time.Now().UTC(),
+			SpiritSessionID: spiritSessionID,
+			TeamID:          team.ID,
+			AgentKey:        "spirit-team-assembler",
+			Meta: map[string]any{
+				"team_id":         team.ID,
+				"team_name":       team.DisplayName,
+				"session_id":      teamSession.ID,
+				"mode":            mode,
+				"task_summary":    biz.TruncateRunes(taskDesc, 200),
+				"dag_node_id":     team.DagNodeID,
+				"depends_on":      team.DependsOn,
+				"topology_reason": topologyReason,
+				"duration_ms":     0,
+				"total_steps":     1,
+			},
+		},
+		Domain: biz.ActivityDomainChat,
+	})
 }

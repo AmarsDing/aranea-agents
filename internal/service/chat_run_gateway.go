@@ -133,7 +133,7 @@ type chatEventPublisher struct {
 }
 
 func (pub *chatEventPublisher) PublishRunStatus(sessionID, runID, status, errMsg string) {
-	PublishRunStatus(pub.bus, sessionID, runID, status, errMsg)
+	PublishRunStatus(pub.activityBus, sessionID, runID, status, errMsg)
 }
 
 func (pub *chatEventPublisher) PublishMessageQueued(sessionID string) {

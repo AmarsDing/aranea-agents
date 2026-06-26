@@ -51,7 +51,6 @@
 </template>
 
 <script setup lang="ts">
-import type { EnvelopeType } from '../../features/chat/envelope';
 import type { EventFilterState } from '../../features/chat/eventFilter';
 
 const props = defineProps<{
@@ -75,7 +74,7 @@ const typeOptions = [
       'error',
       'team_run_started',
       'team_run_finished',
-    ] as EnvelopeType[]
+    ] as string[]
   ).map((t) => ({ label: t, value: t })),
 ];
 

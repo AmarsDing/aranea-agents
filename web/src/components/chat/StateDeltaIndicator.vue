@@ -8,10 +8,9 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { EnvelopeStateDelta } from '../../features/chat/envelope';
 
 const props = defineProps<{
-  delta: EnvelopeStateDelta;
+  delta: { operation: string; path: string; value_json: string };
 }>();
 
 const previewValue = computed(() => {

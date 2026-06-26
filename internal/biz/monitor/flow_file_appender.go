@@ -76,7 +76,13 @@ func NewFlowFileAppender(dir string, lg loggateway.Logger) *FlowFileAppender {
 	}
 }
 
-func (a *FlowFileAppender) Start(ctx context.Context, buses ...contract.Bus) {
+// Start subscribes the appender to a MonitorBus and launches the maintenance loop.
+//
+// Phase 5 Blocker B: migrated from legacy Envelope-based contract.Bus to
+// typed contract.MonitorBus. The filter at the bus level accepts only the
+// monitor event types this appender knows how to route (flow_log/log/alert.notify/
+// mcp.health.alert), preventing non-matching events from filling the queue.
+func (a *FlowFileAppender) Start(ctx context.Context, bus contract.MonitorBus) {
 	if a == nil {
 		return
 	}
@@ -84,36 +90,33 @@ func (a *FlowFileAppender) Start(ctx context.Context, buses ...contract.Bus) {
 		a.lg.Warn("FlowFileAppender: mkdir failed", loggateway.StepID("monitor.flow_file.mkdir_fail"), loggateway.Str("dir", a.dir), loggateway.Err(err))
 		return
 	}
-	opts := contract.SubscribeOptions{
-		EventTypes: []contract.EnvelopeType{
-			contract.EnvelopeTypeFlowLog,
-			contract.EnvelopeTypeLog,
-			contract.EnvelopeTypeAlertNotify,
-			contract.EnvelopeTypeMCPHealthAlert,
-		},
-		BufferSize: 1024,
-		DropPolicy: contract.DropNewest,
-	}
-	for i, bus := range buses {
-		if bus == nil {
-			continue
-		}
-		name := "flow-file-appender"
-		if len(buses) > 1 {
-			name = fmt.Sprintf("flow-file-appender-%d", i)
+	if bus != nil {
+		opts := contract.MonitorSubscribeOptions{
+			BufferSize: 1024,
+			GlobalMode: true,
+			Filter: func(ev contract.MonitorEvent) bool {
+				switch ev.Type {
+				case contract.MonitorEventTypeFlowLog,
+					contract.MonitorEventTypeLog,
+					contract.MonitorEventTypeAlertNotify,
+					contract.MonitorEventTypeMCPHealthAlert:
+					return true
+				}
+				return false
+			},
 		}
 		ch, unsub := bus.Subscribe(opts)
-		safego.Go(ctx, name, func() {
+		safego.Go(ctx, "flow-file-appender", func() {
 			defer unsub()
 			for {
 				select {
 				case <-ctx.Done():
 					return
-				case env, ok := <-ch:
+				case ev, ok := <-ch:
 					if !ok {
 						return
 					}
-					a.onEnvelope(env)
+					a.onMonitorEvent(ev)
 				}
 			}
 		})
@@ -271,39 +274,53 @@ func (a *FlowFileAppender) purgeTmpFiles() {
 	}
 }
 
-func (a *FlowFileAppender) onEnvelope(env contract.Envelope) {
-	if a == nil || env.Metadata == nil {
+// onMonitorEvent routes a MonitorEvent to the appropriate file and writes it.
+//
+// Phase 5 Blocker B: migrated from legacy Envelope. The MonitorEvent.Type
+// replaces EnvelopeType; the Message field replaces Envelope.Content.Text;
+// the Timestamp (time.Time) replaces the legacy string timestamp; the Source
+// field replaces the legacy Channel field for FlowLog routing.
+//
+// FlowLog routing (preserves legacy behavior):
+//   - Source=="flow" → systemFile (FlowTracker emits with Source="flow",
+//     equivalent to legacy Channel="monitor" which routed to systemFile)
+//   - Other Source → flowFile (preserves legacy Channel=anything-else behavior)
+func (a *FlowFileAppender) onMonitorEvent(ev contract.MonitorEvent) {
+	if a == nil || ev.Metadata == nil {
 		return
 	}
 
-	row := make(map[string]any, len(env.Metadata)+4)
-	for k, v := range env.Metadata {
+	row := make(map[string]any, len(ev.Metadata)+4)
+	for k, v := range ev.Metadata {
 		row[k] = v
 	}
-	row["_ts"] = env.Timestamp
-	row["_id"] = env.ID
-	row["_session_id"] = env.SessionID
-	if env.Content != nil {
-		row["_text"] = env.Content.Text
+	row["_ts"] = ev.Timestamp.UTC().Format(time.RFC3339Nano)
+	row["_id"] = ev.ID
+	row["_session_id"] = ev.SessionID
+	if ev.Message != "" {
+		row["_text"] = ev.Message
 	}
 
 	a.mu.Lock()
-	target := a.routeFileLocked(env)
+	target := a.routeFileLocked(ev)
 	if target != nil {
 		a.writeRowLocked(target, row)
 	}
 	a.mu.Unlock()
 }
 
-func (a *FlowFileAppender) routeFileLocked(env contract.Envelope) *rotatingFile {
-	switch env.Type {
-	case contract.EnvelopeTypeAlertNotify, contract.EnvelopeTypeMCPHealthAlert:
+func (a *FlowFileAppender) routeFileLocked(ev contract.MonitorEvent) *rotatingFile {
+	switch ev.Type {
+	case contract.MonitorEventTypeAlertNotify, contract.MonitorEventTypeMCPHealthAlert:
 		return a.ensureFile(&a.alertFile, "alert")
-	case contract.EnvelopeTypeLog:
+	case contract.MonitorEventTypeLog:
 		return a.ensureFile(&a.logFile, "log")
-	case contract.EnvelopeTypeFlowLog:
-		ch := strings.TrimSpace(env.Channel)
-		if ch == "monitor" {
+	case contract.MonitorEventTypeFlowLog:
+		// Legacy FlowTracker set Channel="monitor" → systemFile. The typed
+		// MonitorEvent has no Channel field; Source="flow" is the equivalent
+		// marker emitted by FlowTracker, so we route Source="flow" to systemFile
+		// to preserve production behavior.
+		if strings.TrimSpace(ev.Source) == "flow" {
 			return a.ensureFile(&a.systemFile, "system")
 		}
 		return a.ensureFile(&a.flowFile, "flow")

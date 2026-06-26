@@ -7,7 +7,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/activityevent"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -140,8 +140,8 @@ func (t *testRunRegistry) GetStatus(sessionID string) (biz.RunStatusEntry, bool)
 }
 
 func TestCancelTeamRun_PublishesCancelledRunStatus(t *testing.T) {
-	bus := event.NewBus(nil)
-	ch, unsub := bus.Subscribe(event.SubscribeOptions{BufferSize: 4})
+	bus := activityevent.New(nil)
+	ch, unsub := bus.Subscribe(biz.ActivityEventSubscribeOptions{BufferSize: 4, GlobalMode: true})
 	defer unsub()
 
 	reg := &testRunRegistry{
@@ -165,17 +165,17 @@ func TestCancelTeamRun_PublishesCancelledRunStatus(t *testing.T) {
 	}
 
 	select {
-	case env := <-ch:
-		if env.Type != event.EnvelopeTypeRunStatus {
-			t.Fatalf("type=%s", env.Type)
+	case ev := <-ch:
+		if ev.Activity.Stage != "run_status" {
+			t.Fatalf("stage=%s", ev.Activity.Stage)
 		}
-		if env.SessionID != "sess-team-1" {
-			t.Fatalf("session=%q", env.SessionID)
+		if ev.Activity.SessionID != "sess-team-1" {
+			t.Fatalf("session=%q", ev.Activity.SessionID)
 		}
-		if env.Metadata["status"] != biz.TeamRunStatusCancelled {
-			t.Fatalf("status=%v", env.Metadata["status"])
+		if ev.Activity.Meta["status"] != biz.TeamRunStatusCancelled {
+			t.Fatalf("status=%v", ev.Activity.Meta["status"])
 		}
 	default:
-		t.Fatal("expected run_status envelope")
+		t.Fatal("expected run_status activity event")
 	}
 }
