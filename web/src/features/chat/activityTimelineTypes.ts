@@ -11,7 +11,6 @@
  * 设计文档：docs/reports/2026-06-12-proposal-chat-activity-timeline-redesign.md
  */
 
-import type { Message } from './types';
 import type { OrchestrationPlan, TeamStatusSummary, ProgressSection } from './agentTreeTypes';
 import type { StreamEvent } from './streamEventTypes';
 import type { ActivityTreeNode } from './activityTypes';
