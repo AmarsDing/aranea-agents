@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { renderChatMarkdownForMessage } from '../chatMessageMarkdown';
+import { describe, expect, it, beforeEach } from 'vitest';
+import { renderChatMarkdownForMessage, clearChatMarkdownCache } from '../chatMessageMarkdown';
 
 describe('chatMessageMarkdown fence rule', () => {
   it('renders code block with language tag', () => {
@@ -51,5 +51,38 @@ describe('chatMessageMarkdown fence rule', () => {
     const md = '```python\n' + lines + '\n```';
     const html = renderChatMarkdownForMessage('test-msg-7', md);
     expect(html).toContain('code-block__collapsed-hint');
+  });
+});
+
+describe('renderChatMarkdownForMessage - streaming MD formatting', () => {
+  beforeEach(() => clearChatMarkdownCache());
+
+  it('renders markdown in streaming mode (code blocks formatted)', () => {
+    const content = '```python\nprint("hello")\n```';
+    const html = renderChatMarkdownForMessage('msg-1', content, true);
+    expect(html).toContain('class="code-block');
+    expect(html).toContain('print');
+  });
+
+  it('renders markdown in streaming mode (lists formatted)', () => {
+    const content = '- item 1\n- item 2\n- item 3';
+    const html = renderChatMarkdownForMessage('msg-2', content, true);
+    expect(html).toMatch(/<ul[^>]*>/);
+    expect(html).toContain('<li>item 1</li>');
+  });
+
+  it('renders markdown in streaming mode (links formatted)', () => {
+    const content = 'See [docs](https://example.com) for more';
+    const html = renderChatMarkdownForMessage('msg-3', content, true);
+    expect(html).toContain('<a href="https://example.com"');
+  });
+
+  it('streaming and non-streaming produce same MD output for same content', () => {
+    const content = '**bold** and `code` and [link](https://x.com)';
+    const streaming = renderChatMarkdownForMessage('msg-4', content, true);
+    clearChatMarkdownCache();
+    const nonStreaming = renderChatMarkdownForMessage('msg-4', content, false);
+    // 核心断言：流式和非流式结果一致（streaming 参数不影响 MD 解析）
+    expect(streaming).toBe(nonStreaming);
   });
 });
