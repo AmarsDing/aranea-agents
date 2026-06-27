@@ -186,6 +186,32 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 8 | 附件 / RunStatus 持久化 | ✅ |
 | 9 | M55 ConversationTurn + Channel 同步 | ✅ | Phase A–D ✅；UX 收口 CC-C-UX-* ✅ |
 | 10 | **ADR-02 + ADR-03 Activity-First 架构迁移** | ✅ | Envelope 删除 + 统一总线 + 并行异步持久化 + Session 父子树 + 工具类别 |
+| P-N | **流式渲染与活动排序修复** | ✅ | 统一 MD 渲染路径 + seq On* 入口预分配 + sequencer v2 单 publish worker（ADR-06） |
+
+### P-N 流式渲染与活动排序修复（2026-06-27）
+
+> **ADR-06**：单 publish worker 重设计（详见 [ADR-06](../reports/2026-06-27-review-adr-activity-event-sequencer-redesign.md)）
+> **Plan**：[docs/superpowers/plans/2026-06-27-chat-ui-streaming-fix.md](../superpowers/plans/2026-06-27-chat-ui-streaming-fix.md)
+
+#### 任务清单
+- [x] T-N.1 删除 `renderStreamingChatMarkdown` 简化路径（Plan Task 1-3）
+- [x] T-N.2 seq 在 `OnXxx` 入口主流程分配（Plan Tasks 4-6）
+- [x] T-N.3 重写 sequencer 为单 publish worker（Plan Tasks 7-11）
+- [x] T-N.4 端到端验证（Plan Task 12 — 用户人工验证）
+
+#### 改动文件清单
+- `web/src/features/chat/chatMessageMarkdown.ts`（统一 MD 渲染路径）
+- `web/src/features/chat/__tests__/chatMessageMarkdown.spec.ts`（流式 MD 测试，新）
+- `internal/agent/activity_projector.go`（seq 在 On* 入口预分配）
+- `internal/agent/activity_event_sequencer.go`（单 publish worker 重写）
+- `internal/agent/activity_projector_seq_test.go`（seq 预分配不变量测试，新）
+- `internal/agent/activity_event_sequencer_v2_test.go`（v2 sequencer 测试，新）
+- `internal/agent/activity_cross_order_e2e_test.go`（跨 activity 顺序 E2E 测试，新）
+- `internal/agent/activity_event_sequencer_bench_test.go`（v2 sequencer 吞吐量基准，新）
+- `docs/superpowers/specs/2026-06-27-chat-ui-streaming-fix-design.md`（设计文档，新）
+- `docs/superpowers/plans/2026-06-27-chat-ui-streaming-fix.md`（实施计划，新）
+- `docs/reports/2026-06-27-review-adr-activity-event-sequencer-redesign.md`（ADR-06，新）
+- `docs/notes/2026-06-27-known-test-flakes.md`（已知测试 flake 记录，新）
 
 ### 5.1 Phase 10 ADR-02 + ADR-03 迁移任务块
 
