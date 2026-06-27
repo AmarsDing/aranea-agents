@@ -1323,6 +1323,28 @@ func (s *ActivityEventSequencer) persistWorker() {
 - **持久化与推送解耦**：publish 同步（前端实时性），persist 异步（DB 写入不阻塞 UI）
 - **Domain=system 跳过持久化**：`EmitSystemEvent` 传 `persist=false`，仅 publish 到 WS
 
+#### 8.20.1 Activity publish 顺序保证（2026-06-27 更新，ADR-06）
+
+> **架构变更（ADR-06）**：v1 per-activity channel + 多 consumer goroutine 架构改为**单 publish worker + 全局 FIFO 队列**。根因：v1 跨 activity publish 顺序由 goroutine 调度决定，导致 reply 偶尔跑到 thinking 前面（seq 错位）。
+
+`internal/agent/activity_event_sequencer.go` v2 关键不变量：
+
+- **`Activity.Seq` 在 `OnXxx` 入口处（`p.mu` 内）立即分配**：`a.Seq = atomic.AddInt64(&p.seq, 1)`（见 `internal/agent/activity_projector.go:469` 等 12 处入口），删除 `activitySeq` 的 lazy 分配
+- **单 publish worker goroutine 串行调用** `eventBus.Publish` → WS subscriber FIFO → 前端按到达顺序处理
+- **全局 `publishQueue`（buffer 256）** 替代 per-activity `channels map[string]chan publishTask`
+- **保留 persist worker**：DB I/O 仍独立 goroutine，避免阻塞 publish
+- **保留 16ms 批合并**（`defaultDeltaBatchInterval = 16 * time.Millisecond`）在 publish worker 内做
+- **保留 dead-letter**：persist 失败入 ring buffer 512
+
+**顺序保证**：
+- `seq 顺序 = projector 业务顺序 = publish 顺序 = UI 顺序`
+- 单 activity 内部 FIFO：On* 入口在 `p.mu` 下串行 + publishQueue FIFO → 同 activity 事件按入队顺序处理
+- 跨 activity 顺序：单 worker 串行 publish → bus subscriber FIFO → 前端按到达顺序处理
+
+**I/O offload 保留**：publish/persist 仍异步，OnTextDelta 不阻塞（B-04 防御保留）。前端事件频率被 16ms 批合并封顶到 ≤60fps。
+
+历史决策：v1 架构用 per-activity channel + 多 consumer goroutine，引入了跨 activity 顺序的 goroutine 调度竞争（reply 偶尔跑到 thinking 前面）。v2 取消 per-activity channel，改为单 worker，根治该问题。
+
 ### 8.21 重试 + 死信（ADR-02 D2）
 
 **重试预算**：
@@ -1854,6 +1876,19 @@ ChatMessagePanel（ActivityStream + 待执行列表 + 输入框）
 - **Domain 分流**：`Domain=chat` 进入 ActivityStream 时间线；`Domain=system` 进入 useSystemEventNotification（toast/通知栏，不进时间线）
 - **后端 ParentActivityID 完整性**：`ActivityProjector` 创建 plan/graph 等 child Activity 时必须设置 `ParentActivityID: p.rootActivityID`，保证前端按 `parentActivityId` 构建的树结构与设计意图一致
 - **重连恢复**：WS 断线重连后，前端记录最后 `updated_at`，调用 `ListActivities?since={updated_at}` 拉取增量 Activity 合并到 Map
+
+#### 11.1.2 MD 渲染策略（2026-06-27 更新，ADR-06）
+
+> **架构变更（ADR-06）**：流式与完成态统一走完整 markdown-it + DOMPurify 解析路径，删除 `renderStreamingChatMarkdown` 简化（escape-only）路径。
+
+前端 `web/src/features/chat/chatMessageMarkdown.ts:renderChatMarkdownForMessage` 统一走 markdown-it + DOMPurify 完整解析路径，**不再区分流式与完成态**。`streaming` 参数保留仅为 API 兼容。
+
+**性能验证**：
+- 后端 16ms 批合并（`internal/agent/activity_event_sequencer.go:defaultDeltaBatchInterval = 16 * time.Millisecond`）将前端事件频率封顶到 ≤60fps
+- markdown-it 解析 0.5-2ms/call，远低于帧预算
+- markdownCache（400 条 LRU）进一步降低重复解析开销
+
+**历史决策**：早期版本有 `renderStreamingChatMarkdown` 简化路径（escape-only），因"每 token 跑 markdown-it"性能假设已不成立（16ms 批合并 + LRU 缓存已能稳定支撑实时渲染）而被移除（2026-06-27，ADR-06）。
 
 ### 11.2 页面布局
 
