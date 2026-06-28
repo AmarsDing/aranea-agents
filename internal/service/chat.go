@@ -24,12 +24,24 @@ type ChatService struct {
 
 	orch         *ChatOrchestrator
 	turnPipeline *TurnPipeline
-	lg           loggateway.Logger
+	// sessions is the concrete *biz.SessionUsecase wired via TurnDeps.Sessions
+	// (typed as biz.SessionTurnManager interface). Used by RetrySession to look
+	// up the last user message before re-enqueuing. Nil when the wired
+	// Sessions implementation is not *biz.SessionUsecase (test stubs).
+	sessions *biz.SessionUsecase
+	lg       loggateway.Logger
 }
 
 func NewChatService(deps ChatOrchestratorDeps) *ChatService {
 	orch := NewChatOrchestrator(deps)
 	svc := &ChatService{orch: orch, lg: deps.Infra.LG}
+	// Extract the concrete *biz.SessionUsecase for RetrySession. In production
+	// this is always satisfied (Wire binds *biz.SessionUsecase). Test stubs
+	// may use other implementations; in that case sessions stays nil and
+	// RetrySession degrades to an Internal error.
+	if su, ok := deps.Turn.Sessions.(*biz.SessionUsecase); ok {
+		svc.sessions = su
+	}
 	if deps.Turn.Sessions != nil {
 		svc.turnPipeline = &TurnPipeline{
 			Service:  NewPersistentTurnService(deps.Turn.Sessions),
@@ -115,6 +127,54 @@ func (s *ChatService) StopGeneration(ctx context.Context, req *chatv1.StopGenera
 	}
 	stopped := s.orch.CancelRun(ctx, sessionID)
 	return &chatv1.StopGenerationResponse{Stopped: stopped}, nil
+}
+
+// retryRecentMessagesLimit bounds the look-back window when searching for the
+// latest user message in a session. User messages interleave with assistant
+// replies, so a small window suffices; 50 is a safety bound against runaway
+// scans on long sessions.
+const retryRecentMessagesLimit = 50
+
+// RetrySession re-triggers the last failed/interrupted turn for a session by
+// finding the most recent user message and re-enqueuing it. Used by AgentCard
+// retry button to recover a stuck/failed sub-agent run.
+//
+// Lookup flow: ListMessagesRecent → reverse-iterate to last Role=="user" →
+// EnqueueUserMessage. Returns retried=true on success; returns an error
+// (BAD_REQUEST / INTERNAL / NOT_FOUND / CONFLICT) on validation or lookup
+// failures.
+func (s *ChatService) RetrySession(ctx context.Context, req *chatv1.RetrySessionRequest) (*chatv1.RetrySessionResponse, error) {
+	sessionID := strings.TrimSpace(req.GetSessionId())
+	if sessionID == "" {
+		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
+	}
+	if s.sessions == nil {
+		return nil, apierror.Internal(apierror.DomainChat, "session usecase unavailable for retry")
+	}
+	msgs, err := s.sessions.ListMessagesRecent(ctx, sessionID, retryRecentMessagesLimit)
+	if err != nil {
+		return nil, apierror.Internal(apierror.DomainChat, "load recent messages failed").WithCause(err)
+	}
+	var lastUserContent string
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == "user" {
+			lastUserContent = msgs[i].ContentMarkdown
+			break
+		}
+	}
+	if strings.TrimSpace(lastUserContent) == "" {
+		return nil, apierror.NotFound(apierror.DomainChat, "no user message to retry in session %s", sessionID)
+	}
+	accepted, _, _, rejectReason, err := s.orch.EnqueueUserMessage(sessionID, lastUserContent)
+	if err != nil {
+		// EnqueueUserMessage returns framework-level errors; wrap as Internal
+		// to keep apierror consistency (BL2). The original cause is preserved.
+		return nil, apierror.Internal(apierror.DomainChat, "enqueue retry failed").WithCause(err)
+	}
+	if !accepted {
+		return nil, apierror.Conflict(apierror.DomainChat, "retry rejected: %s", rejectReason)
+	}
+	return &chatv1.RetrySessionResponse{Retried: true}, nil
 }
 
 // CancelRun stops the active run for a session (WS cancel and HTTP stop share this path).

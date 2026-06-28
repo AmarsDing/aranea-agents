@@ -51,8 +51,10 @@
         @error-relogin="(e: ErrorEvent) => $emit('error-relogin', e)"
         @expand-member="(p) => $emit('expand-member', p)"
         @enter-session="(sid) => $emit('enter-session', sid)"
-        @resume-team="(teamId: string) => $emit('resume-team', teamId)"
         @cancel-team="(teamId: string) => $emit('cancel-team', teamId)"
+        @retry-team="(teamId: string) => $emit('retry-team', teamId)"
+        @cancel-agent="(sessionId: string) => $emit('cancel-agent', sessionId)"
+        @retry-agent="(sessionId: string) => $emit('retry-agent', sessionId)"
       />
     </div>
     <ChatPendingQueue
@@ -128,8 +130,10 @@ defineEmits<{
   'error-relogin': [event: ErrorEvent];
   'expand-member': [payload: { agentKey: string; agentName?: string; teamId?: string }];
   'enter-session': [sessionId: string];
-  'resume-team': [teamId: string];
   'cancel-team': [teamId: string];
+  'retry-team': [teamId: string];
+  'cancel-agent': [sessionId: string];
+  'retry-agent': [sessionId: string];
 }>();
 
 const { t } = useI18n();

@@ -742,21 +742,32 @@ Team 团队历史显示是 Chat UI 的核心子模块，负责在精灵对话中
 
 #### Phase T3: 交互能力（P1）
 
-**目标**：实现 team/agent 的交互能力（暂停/恢复/重试/补充信息）
+**目标**：实现 team/agent 的取消/重试交互能力（用户决策：只实现 cancel + retry，不实现 pause/resume/inject）
+
+**业务语义**：
+- **取消**：执行中发现卡死或任务不符合预期，主动终止（终态，不可恢复）
+- **重试**：执行中出现卡死/中断/工具失败，重新恢复任务（保留原 plan）
 
 | 任务 | 文件 | 状态 |
 |------|------|------|
-| T3.1 新增 inject/pause/resume/retry API | `web/src/features/chat/api.ts` + 后端 RPC | ⏳ |
-| T3.2 TeamCard 尾部对话框交互 | `web/src/components/chat/TeamCard.vue` | ⏳ |
-| T3.3 AgentCard 尾部对话框交互 | `web/src/components/chat/AgentCard.vue` | ⏳ |
-| T3.4 暂停/恢复按钮交互 | `web/src/components/chat/TeamCard.vue` + `AgentCard.vue` | ⏳ |
-| T3.5 重试按钮交互 | `web/src/components/chat/TeamCard.vue` | ⏳ |
+| T3.1 后端新增 RetrySession RPC（cancel 复用现有 StopGeneration） | `api/kratos/chat/v1/chat.proto` + `internal/service/chat.go` + `internal/biz/` | ⏳ |
+| T3.2 前端 spirit/api.ts 新增 cancelAgentSession/retryAgentSession 封装 | `web/src/features/spirit/api.ts` | ⏳ |
+| T3.3 TeamCard.vue 移除 inject 框，按钮改为 cancel+retry | `web/src/components/chat/TeamCard.vue` | ✅ |
+| T3.4 AgentCard.vue 移除 inject 框，按钮改为 cancel+retry（emit childSessionId） | `web/src/components/chat/AgentCard.vue` | ✅ |
+| T3.5 ActivityStream/ChatMessageList/ChatMessagePanel/ChatPage 接线 | 多文件 | ⏳ |
+
+**API 现状**：
+- Team: cancel ✅（`cancelSpiritTeam`）+ retry ✅（`retrySpiritTeam`）— 已有，直接复用
+- Agent cancel: ✅ 复用现有 `POST /v1/chat/stop`（StopGeneration RPC，body: session_id=childSessionId）
+- Agent retry: ❌ 需新增 `POST /v1/chat/sessions/{session_id}/retry`（RetrySession RPC）
 
 **验收标准**：
-- [ ] 用户可在 team-card 尾部补充信息并发送
-- [ ] 用户可在 agent-card 尾部补充信息并发送
-- [ ] 暂停/恢复按钮正常工作
-- [ ] 重试按钮正常工作
+- [ ] Team running 状态显示"取消"按钮，点击触发 cancelSpiritTeam
+- [ ] Team failed/interrupted 状态显示"重试"按钮，点击触发 retrySpiritTeam
+- [ ] Agent running 状态显示"取消"按钮，点击触发 agent cancel API
+- [ ] Agent failed/interrupted 状态显示"重试"按钮，点击触发 agent retry API
+- [ ] completed/cancelled 状态隐藏按钮
+- [ ] 移除 inject 输入框（team-card + agent-card）
 
 #### Phase T4: PlanBlock 折叠与状态更新（P1）
 
@@ -835,7 +846,7 @@ Team 团队历史显示是 Chat UI 的核心子模块，负责在精灵对话中
 | `web/src/components/chat/TeamStageBlock.vue` | 删除 | 被 TeamCard.vue 完全替代 |
 | `web/src/components/chat/PlanBlock.vue` | 修改 | 增加折叠/展开交互、初始渲染自动折叠摘要 |
 | `web/src/features/chat/composables/useActivityTimeline.ts` | 修改 | 移除 seq 排序，改用 timestamp + parentActivityId |
-| `web/src/features/chat/api.ts` | 修改 | 新增 inject/pause/resume/retry API |
+| `web/src/features/spirit/api.ts` | 修改 | 新增 cancelAgentSession（复用 StopGeneration）/ retryAgentSession（新增 RetrySession RPC）封装 |
 | `web/src/stores/spirit/index.ts` | 修改 | 适配新设计（如有需要） |
 
 ### C.6 已知技术债务

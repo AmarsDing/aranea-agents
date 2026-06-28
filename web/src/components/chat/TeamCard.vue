@@ -46,33 +46,26 @@
         </div>
       </div>
 
-      <!-- Footer (20%) — inject box + pause/resume buttons -->
+      <!-- Footer (20%) — cancel/retry buttons (B.4.1/B.5.2: cancel + retry only) -->
       <div class="team-card__footer">
-        <div class="team-card__inject" :class="{ 'team-card__inject--expanded': injectExpanded }">
-          <input
-            v-model="injectText"
-            class="team-card__inject-input"
-            :placeholder="t('chat.teamStage.supplementPlaceholder')"
-            @focus="injectExpanded = true"
-            @keyup.enter="onInjectSend"
-          />
-          <button
-            v-if="injectExpanded && injectText.trim()"
-            class="team-card__inject-send"
-            @click="onInjectSend"
-          >
-            {{ t('chat.teamStage.send') }}
-          </button>
-        </div>
         <div class="team-card__actions">
           <button
             v-if="activity.status === 'running'"
-            class="team-card__action team-card__action--pause"
+            class="team-card__action team-card__action--cancel"
             @click.stop="$emit('cancel-team', activity.teamId || '')"
           >
-            {{ t('chat.teamStage.pause') }}
+            <q-icon name="close" size="12px" class="q-mr-xs" />
+            {{ t('chat.teamStage.cancel') }}
           </button>
-          <!-- resume button reserved for Phase T3 (interrupted status) -->
+          <button
+            v-else-if="activity.status === 'failed'"
+            class="team-card__action team-card__action--retry"
+            @click.stop="$emit('retry-team', activity.teamId || '')"
+          >
+            <q-icon name="refresh" size="12px" class="q-mr-xs" />
+            {{ t('chat.teamStage.retry') }}
+          </button>
+          <!-- completed/cancelled: hide buttons -->
         </div>
       </div>
     </div>
@@ -97,9 +90,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'expand-member': [payload: { agentKey: string; agentName?: string; teamId?: string }];
-  'resume-team': [teamId: string];
   'cancel-team': [teamId: string];
-  inject: [payload: { teamId: string; message: string }];
+  'retry-team': [teamId: string];
 }>();
 
 const { t } = useI18n();
@@ -107,8 +99,6 @@ const { t } = useI18n();
 // === Collapse state (B.4.5: running default expanded, terminal default collapsed) ===
 // User intent priority: once toggled, status changes do not override.
 const expanded = ref(props.activity.status === 'running');
-const injectExpanded = ref(false);
-const injectText = ref('');
 
 function toggleExpand() {
   expanded.value = !expanded.value;
@@ -163,9 +153,9 @@ const durationText = computed(() => {
 });
 
 // Status display: map TeamStageEvent.status → localized text + color bucket.
-// Note: 'interrupted' is not in TeamStageEvent.status today (mapped to 'failed'
-// by mapActivityStatusToStageStatus in useActivityTimeline). Phase T3 may extend
-// the type to surface interrupted for the resume button.
+// Note: 'interrupted' ActivityStatus is mapped to 'failed' by
+// mapActivityStatusToStageStatus, so failed status covers both failed and
+// interrupted cases — retry button shows for both (B.4.1/B.5.2).
 const statusText = computed(() => {
   switch (props.activity.status) {
     case 'running':
@@ -206,13 +196,6 @@ function onMemberClick(member: { agentKey: string; agentName?: string }) {
     agentName: member.agentName,
     teamId: props.activity.teamId,
   });
-}
-
-function onInjectSend() {
-  const msg = injectText.value.trim();
-  if (!msg || !props.activity.teamId) return;
-  emit('inject', { teamId: props.activity.teamId, message: msg });
-  injectText.value = '';
 }
 </script>
 
@@ -402,67 +385,37 @@ function onInjectSend() {
     gap: 6px
     padding-left: 8px
     border-left: 1px solid var(--glass-border)
-
-  &__inject
-    display: flex
-    align-items: center
-    gap: 4px
-    transition: all 0.15s ease
-
-    &--expanded
-      .team-card__inject-input
-        flex: 1
-
-  &__inject-input
-    flex: 0 1 100%
-    min-width: 0
-    padding: 3px 6px
-    border-radius: 4px
-    border: 1px solid var(--glass-border)
-    background: var(--glass-elevated, var(--glass-surface))
-    color: var(--color-text-primary)
-    font-size: 11px
-    transition: all 0.15s ease
-
-    &:focus
-      border-color: var(--color-accent)
-      outline: none
-      flex: 1
-
-  &__inject-send
-    flex-shrink: 0
-    padding: 3px 8px
-    border-radius: 4px
-    border: none
-    background: var(--color-accent)
-    color: var(--color-on-accent, white)
-    font-size: 11px
-    cursor: pointer
-    transition: opacity 0.12s ease
-
-    &:hover
-      opacity: 0.85
+    justify-content: center
 
   &__actions
     display: flex
+    flex-direction: column
     gap: 4px
-    justify-content: flex-end
+    align-items: stretch
 
   &__action
     border: none
     border-radius: 4px
-    padding: 2px 8px
+    padding: 4px 8px
     font-size: 11px
     cursor: pointer
     transition: opacity 0.12s ease
+    display: inline-flex
+    align-items: center
+    justify-content: center
 
     &:hover
       opacity: 0.85
 
-    &--pause
-      background: color-mix(in srgb, var(--color-warning) 20%, transparent)
-      color: var(--color-warning)
-      border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent)
+    &--cancel
+      background: color-mix(in srgb, var(--color-danger) 15%, transparent)
+      color: var(--color-danger)
+      border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent)
+
+    &--retry
+      background: color-mix(in srgb, var(--color-accent) 15%, transparent)
+      color: var(--color-accent)
+      border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)
 
   // === Expanded detail ===
   &__detail

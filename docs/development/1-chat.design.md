@@ -3236,9 +3236,9 @@ ActivityEventSequencer (单 publish worker)
 │ │   头部 20%    │        中部 60%              │     尾部 20%        │  │
 │ ├─────────────┼──────────────────────────────┼────────────────────┤  │
 │ │  团队名称    │  ┌────────────────────────┐ │  ┌──────────────┐  │  │
-│ │  任务名称    │  │ 成员头像+名称 (1/3)     │ │  │ [对话框...]   │  │  │
-│ │  创建时间    │  │ [G1][G2][G3]           │ │  │      [发送]   │  │  │
-│ │             │  └────────────────────────┘ │  │ [⏸停止/▶恢复] │  │  │
+│ │  任务名称    │  │ 成员头像+名称 (1/3)     │ │  │  [✕ 取消]     │  │  │
+│ │  创建时间    │  │ [G1][G2][G3]           │ │  │  [↻ 重试]     │  │  │
+│ │             │  └────────────────────────┘ │  │              │  │  │
 │ │             │  ┌────────────────────────┐ │  │              │  │  │
 │ │             │  │ 进度条│状态│耗时 (2/3)  │ │  │              │  │  │
 │ │             │  │ [███░]│运行中│2m30s    │ │  │              │  │  │
@@ -3260,25 +3260,24 @@ ActivityEventSequencer (单 publish worker)
 
 **头部（20%）**：上中下三部分（1:1:1）—— 团队名称 / 任务名称 / 创建时间
 **中部（60%）**：上下两部分（1:2）—— 成员头像+名称 / 进度条:状态:耗时（3:1:1）
-**尾部（20%）**：对话框（收缩状态，点击横向展开，显示发送按钮）+ 停止/恢复按钮
+**尾部（20%）**：取消按钮 + 重试按钮
 
-**尾部对话框交互**：
-- 默认：收缩状态，显示"💬 补充信息..."提示文字
-- 点击：横向展开，显示完整输入框 + 发送按钮
-- 发送后：清空输入框，保持展开状态
-- 触发 `POST /v1/teams/{id}/inject` 携带 `{message: "..."}`
+**取消/重试按钮**：
+- running 状态：显示"✕ 取消"，触发 `POST /v1/teams/{id}/cancel`（终止执行，team 进入 cancelled 终态）
+- failed 状态：显示"↻ 重试"，触发 `POST /v1/teams/{id}/retry`（重新启动 team，保留原 plan）
+- interrupted 状态：显示"↻ 重试"，触发 `POST /v1/teams/{id}/retry`（卡死/中断后恢复任务）
+- completed/cancelled 状态：隐藏按钮
 
-**停止/恢复按钮**：
-- running 状态：显示"⏸ 停止"，触发 `POST /v1/teams/{id}/pause`
-- interrupted 状态：显示"▶ 恢复"，触发 `POST /v1/teams/{id}/resume`
-- completed/failed 状态：隐藏
+**业务语义说明**：
+- **取消**：用户在执行过程中发现卡死或任务不符合预期，主动终止当前执行，重新输入指令纠正方向。取消后 team 进入 cancelled 终态，不可恢复。
+- **重试**：任务执行中出现卡死、中断、工具执行失败等异常情况，用户通过点击重试按钮重新恢复任务执行。重试保留原 plan，重新启动 team。
 
 **展开/折叠**（详见 B.4.5 统一规则）：
 - 点击 team-card 头部或中部区域 → 展开/折叠成员列表
 - 初始渲染时：running 状态默认展开，终态（completed/failed/cancelled）默认折叠
 - 状态变化不改变用户已设置的展开/折叠状态（用户意图优先）
 
-#### B.4.2 agent-card 布局（简化版，含补充输入框）
+#### B.4.2 agent-card 布局（简化版）
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -3286,8 +3285,8 @@ ActivityEventSequencer (单 publish worker)
 │ ┌──────────────────────────────────────┬────────────────────────────┐ │
 │ │  头部 80%                             │  尾部 20%                   │ │
 │ ├──────────────────────────────────────┼────────────────────────────┤ │
-│ │  [avatar] Agent 名称  [status badge] │  [⏸停止/▶恢复]              │ │
-│ │  创建时间 10:30:00                    │  [💬 补充信息...] [发送]     │ │
+│ │  [avatar] Agent 名称  [status badge] │  [✕ 取消]                   │ │
+│ │  创建时间 10:30:00                    │  [↻ 重试]                   │ │
 │ └──────────────────────────────────────┴────────────────────────────┘ │
 │                                                                       │
 │ ── 展开后 ────────────────────────────────────────────────────────── │
@@ -3300,8 +3299,13 @@ ActivityEventSequencer (单 publish worker)
 **与 team-card 的区别**：
 - 无团队信息（团队名称、成员列表）
 - 无进度条（单个 agent，直接显示状态）
-- **保留用户补充输入框**（与 team-card 一致交互）
-- 触发 `POST /v1/agents/{id}/inject` 携带 `{message: "..."}`
+- 尾部仅显示取消/重试按钮（与 team-card 一致交互）
+
+**取消/重试按钮**（与 team-card 语义一致）：
+- running 状态：显示"✕ 取消"，触发 `cancel-agent` emit（payload: `childSessionId`）→ 前端调用 `POST /v1/chat/stop`（复用现有 StopGeneration RPC）
+- failed 状态：显示"↻ 重试"，触发 `retry-agent` emit（payload: `childSessionId`）→ 前端调用 `POST /v1/chat/sessions/{session_id}/retry`（新增 RetrySession RPC）
+- interrupted 状态：显示"↻ 重试"，触发 `retry-agent` emit（同 failed，mapActivityStatusToStageStatus 将 interrupted 映射为 failed）
+- completed/cancelled 状态：隐藏按钮
 
 #### B.4.3 任务计划面板（PlanBlock）
 
@@ -3456,11 +3460,23 @@ ActivityEventSequencer (单 publish worker)
 }
 ```
 
-#### B.5.2 暂停/恢复/重试
+#### B.5.2 取消/重试
 
-**暂停**：`POST /v1/teams/{id}/pause` → Team 状态 → interrupted → 按钮变"▶ 恢复"
-**恢复**：`POST /v1/teams/{id}/resume` → Team 状态 → running → 按钮变"⏸ 暂停"
+**取消**：`POST /v1/teams/{id}/cancel` → Team 状态 → cancelled（终态，不可恢复）
+- 适用场景：执行过程中发现卡死或任务不符合预期，用户主动终止，重新输入指令纠正方向
+- 前端封装：`cancelSpiritTeam(teamId)`（已有，内部解析 runId）
+
 **重试**：`POST /v1/teams/{id}/retry`（failed/interrupted 状态可用）→ 重新启动 team，保留原 plan
+- 适用场景：任务执行中出现卡死、中断、工具执行失败等异常情况，用户通过重试恢复任务
+- 前端封装：`retrySpiritTeam(teamId)`（已有）
+
+**Agent 控制**：
+- 取消：`POST /v1/chat/stop`（body: `{session_id: childSessionId}`）→ 停止 agent 子 session 的运行（终态 cancelled/interrupted）
+  - 前端封装：`cancelAgentSession(childSessionId)` — 复用现有 StopGeneration RPC
+- 重试：`POST /v1/chat/sessions/{session_id}/retry`（failed/interrupted 状态可用）→ 重新触发 agent 子 session 的上一轮执行
+  - 前端封装：`retryAgentSession(childSessionId)` — 新增 RetrySession RPC
+- 业务语义与 team 一致
+- **实现依据**：AgentCard 持有 `childSessionId`（唯一标识子 agent 运行的 session），直接用作 cancel/retry 的目标。避免通过 agentKey + spirit_session_id 查找 session 的歧义（同一 agentKey 可在多 team 中运行）
 
 ### B.6 WS 协议流
 

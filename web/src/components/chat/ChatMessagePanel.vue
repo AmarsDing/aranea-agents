@@ -175,8 +175,10 @@
             @error-relogin="(e) => emit('error-relogin', e)"
             @expand-member="(p) => emit('expand-member', p)"
             @enter-session="(sid) => emit('enter-session', sid)"
-            @resume-team="(teamId) => emit('resume-team', teamId)"
             @cancel-team="(teamId) => emit('cancel-team', teamId)"
+            @retry-team="(teamId) => emit('retry-team', teamId)"
+            @cancel-agent="(sessionId) => emit('cancel-agent', sessionId)"
+            @retry-agent="(sessionId) => emit('retry-agent', sessionId)"
           />
 
           <SynthesisResultCard
@@ -410,8 +412,9 @@ const emit = defineEmits<{
   'return-to-spirit': [];
   'return-to-team': [];
   'cancel-team': [teamId: string];
-  'resume-team': [teamId: string];
   'retry-team': [teamId: string];
+  'cancel-agent': [sessionId: string];
+  'retry-agent': [sessionId: string];
   'select-member': [memberId: string];
   'archive-team': [teamId: string];
   'select-spirit-team': [teamId: string];

@@ -19,33 +19,26 @@
         />
       </div>
 
-      <!-- Footer (20%) — pause/resume button + inject box -->
+      <!-- Footer (20%) — cancel/retry buttons (B.4.2/B.5.2: cancel + retry only) -->
       <div class="agent-card__footer">
         <div class="agent-card__actions">
           <button
             v-if="activity.status === 'running'"
-            class="agent-card__action agent-card__action--pause"
-            @click.stop="$emit('cancel-agent', activity.agentKey || '')"
+            class="agent-card__action agent-card__action--cancel"
+            @click.stop="$emit('cancel-agent', activity.childSessionId || '')"
           >
-            {{ t('chat.sessionStage.pause') }}
+            <q-icon name="close" size="12px" class="q-mr-xs" />
+            {{ t('chat.sessionStage.cancel') }}
           </button>
-          <!-- resume button reserved for Phase T3 (interrupted status) -->
-        </div>
-        <div class="agent-card__inject" :class="{ 'agent-card__inject--expanded': injectExpanded }">
-          <input
-            v-model="injectText"
-            class="agent-card__inject-input"
-            :placeholder="t('chat.sessionStage.supplementPlaceholder')"
-            @focus="injectExpanded = true"
-            @keyup.enter="onInjectSend"
-          />
           <button
-            v-if="injectExpanded && injectText.trim()"
-            class="agent-card__inject-send"
-            @click="onInjectSend"
+            v-else-if="activity.status === 'failed'"
+            class="agent-card__action agent-card__action--retry"
+            @click.stop="$emit('retry-agent', activity.childSessionId || '')"
           >
-            {{ t('chat.sessionStage.send') }}
+            <q-icon name="refresh" size="12px" class="q-mr-xs" />
+            {{ t('chat.sessionStage.retry') }}
           </button>
+          <!-- completed/cancelled: hide buttons -->
         </div>
       </div>
     </div>
@@ -69,17 +62,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'enter-session': [sessionId: string];
-  'cancel-agent': [agentKey: string];
-  'resume-agent': [agentKey: string];
-  inject: [payload: { agentKey: string; message: string }];
+  'cancel-agent': [sessionId: string];
+  'retry-agent': [sessionId: string];
 }>();
 
 const { t } = useI18n();
 
 // === Collapse state (B.4.5: running default expanded, terminal default collapsed) ===
 const expanded = ref(props.activity.status === 'running');
-const injectExpanded = ref(false);
-const injectText = ref('');
 
 function toggleExpand() {
   expanded.value = !expanded.value;
@@ -108,9 +98,9 @@ const createdTimeText = computed(() => {
 });
 
 // Status display: map SessionStageEvent.status → localized text + color bucket.
-// Note: 'interrupted' is not in SessionStageEvent.status today (mapped to 'failed'
-// by mapActivityStatusToStageStatus). Phase T3 may extend the type to surface
-// interrupted for the resume button.
+// Note: 'interrupted' ActivityStatus is mapped to 'failed' by
+// mapActivityStatusToStageStatus, so failed status covers both failed and
+// interrupted cases — retry button shows for both (B.4.2/B.5.2).
 const statusText = computed(() => {
   const who = props.activity.agentName || t('chat.sessionStage.member');
   switch (props.activity.status) {
@@ -147,12 +137,6 @@ function onEnter() {
   emit('enter-session', props.activity.childSessionId as string);
 }
 
-function onInjectSend() {
-  const msg = injectText.value.trim();
-  if (!msg || !props.activity.agentKey) return;
-  emit('inject', { agentKey: props.activity.agentKey, message: msg });
-  injectText.value = '';
-}
 </script>
 
 <style lang="sass" scoped>
@@ -265,64 +249,33 @@ function onInjectSend() {
 
   &__actions
     display: flex
+    flex-direction: column
     gap: 4px
-    justify-content: flex-end
+    align-items: stretch
 
   &__action
     border: none
     border-radius: 4px
-    padding: 2px 8px
+    padding: 4px 8px
     font-size: 11px
     cursor: pointer
     transition: opacity 0.12s ease
-
-    &:hover
-      opacity: 0.85
-
-    &--pause
-      background: color-mix(in srgb, var(--color-warning) 20%, transparent)
-      color: var(--color-warning)
-      border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent)
-
-  &__inject
-    display: flex
+    display: inline-flex
     align-items: center
-    gap: 4px
-    transition: all 0.15s ease
-
-    &--expanded
-      .agent-card__inject-input
-        flex: 1
-
-  &__inject-input
-    flex: 0 1 100%
-    min-width: 0
-    padding: 3px 6px
-    border-radius: 4px
-    border: 1px solid var(--glass-border)
-    background: var(--glass-elevated, var(--glass-surface))
-    color: var(--color-text-primary)
-    font-size: 11px
-    transition: all 0.15s ease
-
-    &:focus
-      border-color: var(--color-accent)
-      outline: none
-      flex: 1
-
-  &__inject-send
-    flex-shrink: 0
-    padding: 3px 8px
-    border-radius: 4px
-    border: none
-    background: var(--color-accent)
-    color: var(--color-on-accent, white)
-    font-size: 11px
-    cursor: pointer
-    transition: opacity 0.12s ease
+    justify-content: center
 
     &:hover
       opacity: 0.85
+
+    &--cancel
+      background: color-mix(in srgb, var(--color-danger) 15%, transparent)
+      color: var(--color-danger)
+      border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent)
+
+    &--retry
+      background: color-mix(in srgb, var(--color-accent) 15%, transparent)
+      color: var(--color-accent)
+      border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)
 
   // === Expanded detail ===
   &__detail

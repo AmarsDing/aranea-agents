@@ -213,5 +213,15 @@ export function createSpiritService() {
     retryTeam(teamId: string) {
       return kratosApi.post(`/v1/teams/${encodeURIComponent(teamId)}/retry`);
     },
+    // Agent cancel/retry — reuses chat RPCs (B.5.2 childSessionId scheme).
+    // stopGeneration cancels an in-flight sub-agent run (StopGeneration RPC).
+    stopGeneration(sessionId: string) {
+      return kratosApi.post('/v1/chat/stop', { session_id: sessionId });
+    },
+    // retrySession re-triggers the last failed/interrupted turn for a session
+    // by re-enqueuing the latest user message (RetrySession RPC).
+    retrySession(sessionId: string) {
+      return kratosApi.post(`/v1/chat/sessions/${encodeURIComponent(sessionId)}/retry`);
+    },
   };
 }

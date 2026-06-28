@@ -139,7 +139,6 @@
         @error-remove-attachment="errorBlock.onErrorRemoveAttachment"
         @error-relogin="onErrorRelogin"
         @cancel-team="spiritStore.cancelTeam"
-        @resume-team="spiritStore.resumeTeam"
         @retry-team="spiritStore.retryTeam"
         @archive-team="spiritStore.archiveTeam"
         @select-member="spiritStore.selectMember"
@@ -151,6 +150,8 @@
         @status-bar-click-last-event="onStatusBarClickLastEvent"
         @expand-member="onExpandMember"
         @enter-session="onEnterSession"
+        @cancel-agent="onCancelAgent"
+        @retry-agent="onRetryAgent"
       />
       <input ref="fileRef" type="file" hidden multiple :accept="session.fileAccept" @change="composer.onFileChange" />
     </div>
@@ -246,10 +247,12 @@ import SessionTimelineDialog from '../components/chat/SessionTimelineDialog.vue'
 import SessionTreeSidebar from '../components/chat/SessionTreeSidebar.vue';
 import { computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import { Notify } from 'quasar';
 import { useChatWorkspace } from '../features/chat/composables/useChatWorkspace';
 import { useSpiritTeamStore } from '../stores/spirit';
 import { useUiConfigStore } from '../stores/uiConfig';
 import { DEFAULT_MAX_PARALLEL_TEAMS } from '../features/spirit/observabilityConstants';
+import { cancelAgentSession, retryAgentSession } from '../features/spirit/api';
 import type { Agent } from '../features/agents/types';
 
 const SPIRIT_AGENT_KEY = '__spirit__';
@@ -380,6 +383,29 @@ function onExpandMember(payload: { agentKey: string; agentName?: string; teamId?
 function onEnterSession(sessionId: string) {
   session.activityTimeline.setCurrentSession(sessionId);
   void session.activityTimeline.ensureActivitiesLoaded(sessionId);
+}
+
+/** Phase T3 / §B.5.2: Cancel an in-flight sub-agent run by childSessionId.
+ *  Reuses the existing StopGeneration RPC; the activity stream is updated
+ *  via WS run_status=cancelled events. */
+async function onCancelAgent(sessionId: string) {
+  if (!sessionId) return;
+  try {
+    await cancelAgentSession(sessionId);
+  } catch {
+    Notify.create({ type: 'warning', message: layout.t('chat.sessionStage.cancelFailed'), position: 'top' });
+  }
+}
+
+/** Phase T3 / §B.5.2: Retry a failed/interrupted sub-agent run by
+ *  re-enqueuing the last user message in the child session. */
+async function onRetryAgent(sessionId: string) {
+  if (!sessionId) return;
+  try {
+    await retryAgentSession(sessionId);
+  } catch {
+    Notify.create({ type: 'warning', message: layout.t('chat.sessionStage.retryFailed'), position: 'top' });
+  }
 }
 
 function onNavigate(route: { name: string; params: Record<string, string> }) {

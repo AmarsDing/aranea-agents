@@ -82,6 +82,14 @@ message StopGenerationResponse {
   bool stopped = 1;
 }
 
+message RetrySessionRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message RetrySessionResponse {
+  bool retried = 1;
+}
+
 message GetPendingMessagesRequest {
   string session_id = 1 [(google.api.field_behavior) = REQUIRED];
 }
@@ -245,6 +253,15 @@ service ChatService {
   rpc StopGeneration(StopGenerationRequest) returns (StopGenerationResponse) {
     option (google.api.http) = {
       post: "/v1/chat/stop"
+      body: "*"
+    };
+  }
+  // RetrySession re-triggers the last failed/interrupted turn for a session.
+  // Used by AgentCard retry button to recover a stuck/failed sub-agent run.
+  // Finds the last user message in the session and re-enqueues it.
+  rpc RetrySession(RetrySessionRequest) returns (RetrySessionResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/sessions/{session_id}/retry"
       body: "*"
     };
   }

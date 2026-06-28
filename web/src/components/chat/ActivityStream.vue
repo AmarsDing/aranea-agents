@@ -74,9 +74,8 @@
         v-else-if="item.event.kind === 'team_stage'"
         :activity="item.event as TeamStageEvent"
         @expand-member="(p) => $emit('expand-member', p)"
-        @resume-team="(teamId: string) => $emit('resume-team', teamId)"
         @cancel-team="(teamId: string) => $emit('cancel-team', teamId)"
-        @inject="(p) => $emit('inject-team', p)"
+        @retry-team="(teamId: string) => $emit('retry-team', teamId)"
       >
         <template v-if="item.activity.children?.length">
           <ActivityStream
@@ -91,12 +90,10 @@
             @error-relogin="(e: ErrorEvent) => $emit('error-relogin', e)"
             @expand-member="(p) => $emit('expand-member', p)"
             @enter-session="(sid) => $emit('enter-session', sid)"
-            @resume-team="(teamId: string) => $emit('resume-team', teamId)"
             @cancel-team="(teamId: string) => $emit('cancel-team', teamId)"
-            @inject-team="(p) => $emit('inject-team', p)"
-            @inject-agent="(p) => $emit('inject-agent', p)"
-            @cancel-agent="(agentKey: string) => $emit('cancel-agent', agentKey)"
-            @resume-agent="(agentKey: string) => $emit('resume-agent', agentKey)"
+            @retry-team="(teamId: string) => $emit('retry-team', teamId)"
+            @cancel-agent="(sessionId: string) => $emit('cancel-agent', sessionId)"
+            @retry-agent="(sessionId: string) => $emit('retry-agent', sessionId)"
           />
         </template>
       </TeamCard>
@@ -105,9 +102,8 @@
         v-else-if="item.event.kind === 'session'"
         :activity="item.event as SessionStageEvent"
         @enter-session="(sid) => $emit('enter-session', sid)"
-        @cancel-agent="(agentKey: string) => $emit('cancel-agent', agentKey)"
-        @resume-agent="(agentKey: string) => $emit('resume-agent', agentKey)"
-        @inject="(p) => $emit('inject-agent', p)"
+        @cancel-agent="(sessionId: string) => $emit('cancel-agent', sessionId)"
+        @retry-agent="(sessionId: string) => $emit('retry-agent', sessionId)"
       >
         <template v-if="item.activity.children?.length">
           <ActivityStream
@@ -122,12 +118,10 @@
             @error-relogin="(e: ErrorEvent) => $emit('error-relogin', e)"
             @expand-member="(p) => $emit('expand-member', p)"
             @enter-session="(sid) => $emit('enter-session', sid)"
-            @resume-team="(teamId: string) => $emit('resume-team', teamId)"
             @cancel-team="(teamId: string) => $emit('cancel-team', teamId)"
-            @inject-team="(p) => $emit('inject-team', p)"
-            @inject-agent="(p) => $emit('inject-agent', p)"
-            @cancel-agent="(agentKey: string) => $emit('cancel-agent', agentKey)"
-            @resume-agent="(agentKey: string) => $emit('resume-agent', agentKey)"
+            @retry-team="(teamId: string) => $emit('retry-team', teamId)"
+            @cancel-agent="(sessionId: string) => $emit('cancel-agent', sessionId)"
+            @retry-agent="(sessionId: string) => $emit('retry-agent', sessionId)"
           />
         </template>
       </AgentCard>
@@ -158,12 +152,10 @@
           @error-relogin="(e: ErrorEvent) => $emit('error-relogin', e)"
           @expand-member="(p) => $emit('expand-member', p)"
           @enter-session="(sid) => $emit('enter-session', sid)"
-          @resume-team="(teamId: string) => $emit('resume-team', teamId)"
           @cancel-team="(teamId: string) => $emit('cancel-team', teamId)"
-          @inject-team="(p) => $emit('inject-team', p)"
-          @inject-agent="(p) => $emit('inject-agent', p)"
-          @cancel-agent="(agentKey: string) => $emit('cancel-agent', agentKey)"
-          @resume-agent="(agentKey: string) => $emit('resume-agent', agentKey)"
+          @retry-team="(teamId: string) => $emit('retry-team', teamId)"
+          @cancel-agent="(sessionId: string) => $emit('cancel-agent', sessionId)"
+          @retry-agent="(sessionId: string) => $emit('retry-agent', sessionId)"
         />
       </div>
     </template>
@@ -225,13 +217,10 @@ defineEmits<{
   'error-relogin': [event: ErrorEvent];
   'expand-member': [payload: { agentKey: string; agentName?: string; teamId?: string }];
   'enter-session': [sessionId: string];
-  'resume-team': [teamId: string];
   'cancel-team': [teamId: string];
-  // B.4.1/B.4.2 new interactions (Phase T3 wires API calls in ChatPage/composable)
-  'inject-team': [payload: { teamId: string; message: string }];
-  'inject-agent': [payload: { agentKey: string; message: string }];
-  'cancel-agent': [agentKey: string];
-  'resume-agent': [agentKey: string];
+  'retry-team': [teamId: string];
+  'cancel-agent': [sessionId: string];
+  'retry-agent': [sessionId: string];
 }>();
 
 const { t } = useI18n();

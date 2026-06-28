@@ -5,6 +5,12 @@
       <span class="plan-block__icon">📋</span>
       <span class="plan-block__label">{{ t('chat.plan.label') }}</span>
       <span v-if="activity.steps?.length" class="plan-block__count">{{ activity.steps.length }}</span>
+      <!-- B.4.3/T4.3: Progress summary shown when collapsed (initial auto-collapse
+           happens only when all steps are completed; user manual collapse also
+           shows the summary). Running state shows live count instead. -->
+      <span v-if="showProgressSummary" class="plan-block__summary">
+        {{ progressSummaryText }}
+      </span>
       <span class="plan-block__status" :class="statusClass">{{ statusIcon }}</span>
       <span
         v-if="activity.steps?.length && !isRunning"
@@ -70,7 +76,23 @@ const { t } = useI18n();
 
 const isRunning = computed(() => props.activity.status === 'planning' || props.activity.status === 'executing');
 
-const collapsed = ref(!isRunning.value);
+// B.4.3/T4.3: Derived progress metrics — single-source state derivation from
+// activity.steps (no independent state machine, per design doc §B.4.3).
+const steps = computed(() => props.activity.steps ?? []);
+const totalSteps = computed(() => steps.value.length);
+const completedSteps = computed(
+  () => steps.value.filter((s) => s.status === 'completed').length,
+);
+const allStepsCompleted = computed(
+  () => totalSteps.value > 0 && completedSteps.value === totalSteps.value,
+);
+
+// T4.3: Initial render collapses the panel only when all steps are already
+// completed (terminal success). Failed/partial_failure plans stay expanded
+// so users can see what went wrong. Once mounted, `collapsed` is only driven
+// by user toggles — runtime transitions to all-completed do NOT auto-collapse
+// (user intent priority, §B.4.5).
+const collapsed = ref(allStepsCompleted.value);
 
 function toggleCollapse() {
   if (isRunning.value) return;
@@ -81,6 +103,24 @@ const showSteps = computed(() => {
   if (!props.activity.steps?.length) return false;
   if (isRunning.value) return true;
   return !collapsed.value;
+});
+
+// B.4.3/T4.3: Show progress summary when collapsed (initial auto-collapse or
+// user manual collapse) OR when running (live progress indicator).
+const showProgressSummary = computed(() => {
+  if (!totalSteps.value) return false;
+  if (isRunning.value) return true;
+  return collapsed.value;
+});
+
+const progressSummaryText = computed(() => {
+  if (allStepsCompleted.value) {
+    return t('chat.plan.allCompleted');
+  }
+  return t('chat.plan.progressSummary', {
+    completed: completedSteps.value,
+    total: totalSteps.value,
+  });
 });
 
 const statusClass = computed(() => ({
@@ -158,6 +198,12 @@ function stepStatusText(status: PlanStep['status']): string {
     border-radius: 8px
     font-size: 10px
     color: var(--color-accent)
+
+  &__summary
+    font-size: 11px
+    color: var(--color-text-tertiary)
+    font-variant-numeric: tabular-nums
+    flex-shrink: 0
 
   &__status
     font-size: 12px

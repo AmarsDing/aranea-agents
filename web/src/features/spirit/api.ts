@@ -55,6 +55,19 @@ export async function retrySpiritTeam(teamId: string): Promise<void> {
   await spiritService.retryTeam(teamId);
 }
 
+// cancelAgentSession cancels the active run for a sub-agent session.
+// Reuses the existing StopGeneration RPC (POST /v1/chat/stop) with the
+// childSessionId as the target (B.5.2 childSessionId scheme).
+export async function cancelAgentSession(sessionId: string): Promise<void> {
+  await spiritService.stopGeneration(sessionId);
+}
+
+// retryAgentSession re-triggers the last failed/interrupted turn for a sub-agent
+// session by re-enqueuing the latest user message (RetrySession RPC).
+export async function retryAgentSession(sessionId: string): Promise<void> {
+  await spiritService.retrySession(sessionId);
+}
+
 function mapSpiritTeam(raw: Record<string, unknown>): SpiritTeam {
   return {
     id: String(raw.id ?? ''),
