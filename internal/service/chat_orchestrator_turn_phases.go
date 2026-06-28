@@ -516,9 +516,13 @@ func (o *ChatOrchestrator) buildTurnRunOptions(
 	})
 	if input.EntryConfig.AllowStream {
 		runOpts = append(runOpts, trpcagent.WithStream(true))
-		// Enable message-level stream filtering so only message events are
-		// forwarded, reducing unnecessary event traffic.
-		runOpts = append(runOpts, trpcagent.WithStreamMode(trpcagent.StreamModeMessages))
+		// NOTE: StreamModeMessages filter is intentionally NOT enabled here.
+		// That filter only forwards ChatCompletion/Chunk events and silently
+		// drops tool.response events, which prevents ActivityProjector from
+		// calling OnToolResult — every tool then ends up failed via the
+		// OnStuckTools timeout fallback path. With AF-3 (ActivityProjector
+		// directly consumes trpc events), we need tool.response events to
+		// reach the stream consumer so tool results are projected correctly.
 	}
 	runOpts = append(runOpts, intentRunOpts...)
 	// Install per-run tool permission policy: blocks protected tools

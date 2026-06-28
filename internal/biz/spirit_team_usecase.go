@@ -185,7 +185,16 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 		mode = TeamModeCoordinator
 	}
 
-	defJSON := buildSpiritTeamDefinitionJSON(mode, params.AgentKeys, u.lg, params.ParallelConfigJSON)
+	// Resolve agentKeys → agent IDs. The team definition JSON's member.agent_id
+	// field must hold the real agent ID (e.g. "agent___spirit__" or UUID), not
+	// the agentKey (e.g. "__spirit__"), because validateTeamMembersExist uses
+	// AgentExistsByID to verify each member.
+	agentIDs, resolveErr := u.resolveAgentIDs(ctx, params.AgentKeys)
+	if resolveErr != nil {
+		return SpiritTeamResult{}, apierror.Wrap(resolveErr, apierror.CodeInternal, "SPIRIT")
+	}
+
+	defJSON := buildSpiritTeamDefinitionJSON(mode, agentIDs, u.lg, params.ParallelConfigJSON)
 
 	// Check session tree depth limit before creating team (P1-4: extracted
 	// to session.ValidateDepth for reuse across all child-session creators).
@@ -757,6 +766,41 @@ const (
 	// MaxKeyFindingsCount is the maximum number of key findings extracted.
 	MaxKeyFindingsCount = 5
 )
+
+// resolveAgentIDs maps agentKeys (e.g. "__spirit__") to agent IDs (e.g.
+// "agent___spirit__" or UUID). Uses SpiritAgentResolver.List to fetch all
+// active agents once and builds a lookup map.
+func (u *SpiritTeamUsecase) resolveAgentIDs(ctx context.Context, agentKeys []string) ([]string, error) {
+	if len(agentKeys) == 0 {
+		return nil, nil
+	}
+	result, err := u.agentUC.List(ctx, AgentListQuery{
+		Status: "active",
+		Limit:  200,
+	})
+	if err != nil {
+		return nil, err
+	}
+	keyToID := make(map[string]string, len(result.Items))
+	for _, a := range result.Items {
+		keyToID[a.AgentKey] = a.ID
+	}
+	ids := make([]string, 0, len(agentKeys))
+	for _, key := range agentKeys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		id, ok := keyToID[key]
+		if !ok {
+			// Fallback: try "agent_" + key for built-in agents following the
+			// conventional ID scheme. This avoids a DB round-trip per key.
+			id = "agent_" + key
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
 
 func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggateway.Logger, parallelCfgJSON ...string) string {
 	type member struct {

@@ -1,6 +1,9 @@
 import type { ActivityKind, ToolUseEvent } from './types';
 
-const builtinLabels: Record<string, string> = {
+/** Curated friendly display labels for known tool_name values.
+ * Exported so the chat activity mapper (useActivityTimeline) can reuse the
+ * same label table when resolving ActionEvent.toolLabel fallbacks. */
+export const builtinLabels: Record<string, string> = {
   read_file: '读取文件',
   save_file: '保存文件',
   file_read_file: '读取文件',

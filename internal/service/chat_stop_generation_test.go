@@ -11,7 +11,7 @@ import (
 )
 
 func TestStopGeneration_PublishesCancelledRunStatus(t *testing.T) {
-	bus := activityevent.New(nil)
+	bus := activityevent.New(nil, nil)
 	ch, unsub := bus.Subscribe(biz.ActivityEventSubscribeOptions{BufferSize: 8, GlobalMode: true})
 	defer unsub()
 

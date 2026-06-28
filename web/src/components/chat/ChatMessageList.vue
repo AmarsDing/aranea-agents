@@ -51,6 +51,8 @@
         @error-relogin="(e: ErrorEvent) => $emit('error-relogin', e)"
         @expand-member="(p) => $emit('expand-member', p)"
         @enter-session="(sid) => $emit('enter-session', sid)"
+        @resume-team="(teamId: string) => $emit('resume-team', teamId)"
+        @cancel-team="(teamId: string) => $emit('cancel-team', teamId)"
       />
     </div>
     <ChatPendingQueue
@@ -126,6 +128,8 @@ defineEmits<{
   'error-relogin': [event: ErrorEvent];
   'expand-member': [payload: { agentKey: string; agentName?: string; teamId?: string }];
   'enter-session': [sessionId: string];
+  'resume-team': [teamId: string];
+  'cancel-team': [teamId: string];
 }>();
 
 const { t } = useI18n();

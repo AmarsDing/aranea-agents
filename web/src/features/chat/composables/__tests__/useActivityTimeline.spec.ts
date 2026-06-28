@@ -8,12 +8,10 @@ vi.mock('../../../session/api', () => ({
 }));
 
 import { listActivities } from '../../../session/api';
-import { useActivityTimeline } from '../useActivityTimeline';
+import { useActivityTimeline, activityToStreamEvent } from '../useActivityTimeline';
 
 /** Builds an AF (Activity-First) Activity snapshot for handleActivityEvent tests. */
-function makeAFActivity(
-  overrides: Partial<AFActivity> & Pick<AFActivity, 'id' | 'kind'>,
-): AFActivity {
+function makeAFActivity(overrides: Partial<AFActivity> & Pick<AFActivity, 'id' | 'kind'>): AFActivity {
   return {
     status: 'running',
     session_id: 'sess-1',
@@ -164,6 +162,119 @@ describe('useActivityTimeline', () => {
 
     const activity = tl.activities.value.find((a) => a.id === 'action-1');
     expect(activity?.toolArguments).toBe('{"path": "README.md"}');
+  });
+
+  // Chat UI #2 (root cause in useActivityTimeline): when the backend sends
+  // a `streaming` envelope that ALSO carries a status change (e.g. a final
+  // `tool_result` chunk arrives in the same envelope that flips the activity
+  // to `completed`), the streaming branch must apply the status from the
+  // snapshot — not only the accumulated delta. Otherwise the UI is stuck on
+  // the previous status until the next `completed` envelope (which may be
+  // dropped / coalesced on the wire), and the user has to refresh the page
+  // to see the latest tool status. This is the upstream cause of the
+  // "tool status never updates" Chat UI bug.
+  it('handleActivityEvent (streaming) applies status from the snapshot', () => {
+    tl.handleActivityEvent({
+      event: 'created',
+      activity: makeAFActivity({
+        id: 'act-1',
+        kind: 'action',
+        status: 'tool_running',
+        tool_name: 'shell',
+      }),
+    });
+
+    // Backend emits a streaming envelope carrying the final tool_result
+    // chunk AND a status flip to `completed` in the same snapshot.
+    tl.handleActivityEvent({
+      event: 'streaming',
+      activity: makeAFActivity({
+        id: 'act-1',
+        kind: 'action',
+        status: 'completed',
+        tool_result: 'file1\nfile2',
+      }),
+      delta_field: 'tool_result',
+      delta_chunk: 'file1\nfile2',
+    });
+
+    const activity = tl.activities.value.find((a) => a.id === 'act-1');
+    expect(activity?.status).toBe('completed');
+    // And the accumulated toolResult from the delta branch must still apply.
+    expect(activity?.toolResult).toBe('file1\nfile2');
+  });
+
+  // Chat UI fix: when backend reports tool_duration_ms=0 (tool not timed),
+  // the ActionBlock must fall back to the activity-level duration_ms.
+  // Previously `??` kept 0 (only null/undefined fall through), producing
+  // empty duration text in the UI for every tool call.
+  it('action duration falls back to activity duration when tool_duration_ms=0', () => {
+    tl.handleActivityEvent({
+      event: 'created',
+      activity: makeAFActivity({
+        id: 'act-dur',
+        kind: 'action',
+        status: 'tool_running',
+        tool_name: 'shell',
+        tool_duration_ms: 0,
+        duration_ms: 1200,
+      }),
+    });
+    tl.handleActivityEvent({
+      event: 'completed',
+      activity: makeAFActivity({
+        id: 'act-dur',
+        kind: 'action',
+        status: 'completed',
+        tool_name: 'shell',
+        tool_duration_ms: 0,
+        duration_ms: 1200,
+      }),
+    });
+
+    const action = tl.activityTree.value
+      .flatMap((n) => [n, ...(n.children || [])])
+      .find((n) => n.id === 'act-dur');
+    expect(action).toBeDefined();
+    expect(action?.kind).toBe('action');
+    // Convert to ActionEvent (what ActionBlock receives) and verify the
+    // duration falls back to activity.durationMs when tool_duration_ms=0.
+    const event = action ? activityToStreamEvent(action) : null;
+    expect(event?.kind).toBe('action');
+    if (event?.kind === 'action') {
+      expect(event.tool.durationMs).toBe(1200);
+    }
+  });
+
+  // Chat UI fix: when backend label is empty, toolLabel should fall back to
+  // a friendly name derived from tool_category, not the raw tool_name.
+  it('action toolLabel falls back to category-friendly name when label empty', () => {
+    tl.handleActivityEvent({
+      event: 'created',
+      activity: makeAFActivity({
+        id: 'act-label',
+        kind: 'action',
+        status: 'tool_running',
+        tool_name: 'file_read_file',
+        tool_category: 'file_read',
+        label: '',
+      }),
+    });
+
+    const action = tl.activityTree.value
+      .flatMap((n) => [n, ...(n.children || [])])
+      .find((n) => n.id === 'act-label');
+    expect(action).toBeDefined();
+    expect(action?.kind).toBe('action');
+    // Convert to ActionEvent (what ActionBlock receives) and verify the
+    // toolLabel falls back to a friendly category-derived name.
+    const event = action ? activityToStreamEvent(action) : null;
+    expect(event?.kind).toBe('action');
+    if (event?.kind === 'action') {
+      // Should be a friendly label, not the raw "file_read_file"
+      expect(event.tool.toolLabel).not.toBe('file_read_file');
+      expect(event.tool.toolLabel.length).toBeGreaterThan(0);
+    }
   });
 
   it('handleActivityEvent (completed) updates status and fields', () => {

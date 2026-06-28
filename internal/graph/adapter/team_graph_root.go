@@ -23,7 +23,11 @@ func (f *trpcGraphBuilderFactory) BuildTeamGraphRoot(ctx context.Context, cfg bi
 	if f == nil {
 		return nil, apierror.Internal(apierror.DomainGraph, "graph builder factory is nil")
 	}
-	g, subAgents, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, cfg, f.registry, &f.resolvers, f.lg)
+	// Use the NodeAgents variant so team-graph agent nodes can be resolved
+	// by node ID via FindSubAgent (see runtime_adapter.go buildRuntime for
+	// the detailed rationale). Without this, agent node execution fails
+	// with "parent agent not found in state for agent node X".
+	g, subAgents, nodeAgents, err := graphtrpc.BuildStateGraphWithRegistryAndNodeAgents(ctx, cfg, f.registry, &f.resolvers, f.lg)
 	if err != nil {
 		return nil, err
 	}
@@ -31,5 +35,5 @@ func (f *trpcGraphBuilderFactory) BuildTeamGraphRoot(ctx context.Context, cfg bi
 	if name == "" {
 		name = "team-graph"
 	}
-	return f.createAgent(name, g, cfg.EnableCheckpoint, cfg.ExecutionEngine, subAgents)
+	return f.createAgent(name, g, cfg.EnableCheckpoint, cfg.ExecutionEngine, subAgents, nodeAgents)
 }

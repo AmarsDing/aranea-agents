@@ -13,6 +13,9 @@ import (
 // removed — its UpsertChatActivityMessage path was a no-op backed by
 // NoopMessageWriter. Activity persistence is owned exclusively by the
 // ActivityProjector.
+//
+// The legacy `seqAlloc` parameter has been removed (GlobalSeqAllocator
+// removed — ordering is now governed by Timestamp ASC per design doc §B.3.3).
 func NewChatStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepository, activityWriter biz.ActivityWriter, activityBus biz.ActivityEventBus, lg loggateway.Logger) *chatagent.StreamConsumeOptions {
 	return chatactivity.NewStreamConsumeOptions(tools, agents, activityWriter, activityBus, lg)
 }

@@ -173,10 +173,15 @@ func (s *WSServer) activityEventPump(wc *wsConn, activityCh <-chan biz.ActivityE
 				loggateway.Any("activity_kind", ev.Activity.Kind))
 			continue
 		}
-		// Streaming events use normal priority; lifecycle events (created/completed/failed)
+		// Streaming events use normal priority; lifecycle events (created/completed/failed/updated)
 		// use high priority so the frontend receives them even under load.
+		// Chat UI fix (problem B): ActivityEventUpdated was previously demoted
+		// to normal priority, which delayed the is_final marker carried by
+		// markFinalReply's Updated event. Under load the frontend rendered
+		// "中间回复" and never received the correction. Promote Updated to
+		// high priority so is_final arrives promptly.
 		prio := wsPriorityNormal
-		if ev.Event != biz.ActivityEventStreaming && ev.Event != biz.ActivityEventUpdated {
+		if ev.Event != biz.ActivityEventStreaming {
 			prio = wsPriorityHigh
 		}
 		if ok := wc.queues.enqueue(cfg, prio, data); !ok {

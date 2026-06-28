@@ -7,7 +7,7 @@ import (
 )
 
 func TestGraphRunStepContext_dedup(t *testing.T) {
-	ctx := buildGraphRunStepContext(`{"mode":"sequential","members":[{"agent_id":"a1","sort_order":1}]}`, "hello", "run-1", "team-1", "sess-1", loggateway.NewNoop())
+	ctx := buildGraphRunStepContext(`{"mode":"sequential","members":[{"agent_id":"a1","sort_order":1}]}`, "hello", "run-1", "team-1", "sess-1", "sess-1", loggateway.NewNoop())
 	if ctx == nil {
 		t.Fatal("nil context")
 	}

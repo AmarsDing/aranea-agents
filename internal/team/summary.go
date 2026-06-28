@@ -59,13 +59,14 @@ func TeamSummaryActivityEvent(run biz.TeamRun, steps []biz.TeamRunStep) biz.Acti
 	return biz.ActivityEvent{
 		Event: biz.ActivityEventCompleted,
 		Activity: biz.Activity{
-			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindTeamStage,
-			Status:    biz.ActivityStatusCompleted,
-			SessionID: strings.TrimSpace(run.SessionID),
-			TeamID:    run.TeamID,
-			Timestamp: time.Now().UTC(),
-			Stage:     "completed",
+			ID:              uuid.NewString(),
+			Kind:            biz.ActivityKindTeamStage,
+			Status:          biz.ActivityStatusCompleted,
+			SessionID:       strings.TrimSpace(run.SessionID),
+			SpiritSessionID: run.SpiritSessionID,
+			TeamID:          run.TeamID,
+			Timestamp:       time.Now().UTC(),
+			Stage:           "completed",
 			Meta: map[string]any{
 				"run_id":       run.ID,
 				"run":          run,

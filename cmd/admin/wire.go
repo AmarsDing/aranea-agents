@@ -750,7 +750,8 @@ func provideRunnerConfig(
 		Runs:             runs,
 		StreamOptsFactory: &chatactivity.StreamOptsFactoryAdapter{
 			Tools: tools, Agents: agents,
-			ActivityWriter: activityWriter, ActivityBus: activityBus, Logger: lg,
+			ActivityWriter: activityWriter, ActivityBus: activityBus,
+			Logger: lg,
 		},
 		AgentHelper:     &chatagent.TeamAgentHelperAdapter{},
 		OrganizationUC:  orgUC,

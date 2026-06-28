@@ -274,12 +274,13 @@ func (r *RuntimeReplannerImpl) publishReplanEvent(
 	ev := biz.ActivityEvent{
 		Event: biz.ActivityEventUpdated,
 		Activity: biz.Activity{
-			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindGraphStage,
-			Status:    biz.ActivityStatusRunning,
-			SessionID: exec.SessionID,
-			Timestamp: time.Now().UTC(),
-			Stage:     "replanned",
+			ID:              uuid.NewString(),
+			Kind:            biz.ActivityKindGraphStage,
+			Status:          biz.ActivityStatusRunning,
+			SessionID:       exec.SessionID,
+			SpiritSessionID: exec.SpiritSessionID,
+			Timestamp:       time.Now().UTC(),
+			Stage:           "replanned",
 			Meta: map[string]any{
 				"execution_id":   exec.ID,
 				"graph_id":       exec.GraphID,

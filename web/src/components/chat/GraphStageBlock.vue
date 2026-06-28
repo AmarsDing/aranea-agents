@@ -1,20 +1,19 @@
 <template>
   <div class="graph-stage-block" :class="`graph-stage-block--${activity.status}`">
-    <!-- Header -->
+    <!-- Header (collapsible after terminal state) -->
     <div class="graph-stage-block__header" @click="toggleCollapse">
-      <span class="graph-stage-block__icon">🔬</span>
-      <span class="graph-stage-block__label">{{ t('chat.graphStage.label') }}</span>
-      <span class="graph-stage-block__title">{{ displayTitle }}</span>
+      <span class="graph-stage-block__icon">🔀</span>
+      <span class="graph-stage-block__label">{{ t('chat.graphStage.dependsLabel') }}</span>
       <span v-if="progressText" class="graph-stage-block__progress">{{ progressText }}</span>
-      <span class="graph-stage-block__status" :class="`graph-stage-block__status--${activity.status}`">
-        {{ statusIcon }}
-      </span>
       <span
-        v-if="activity.nodes?.length && activity.status !== 'running'"
+        v-if="activity.nodes?.length && effectiveStatus !== 'running'"
         class="graph-stage-block__chevron"
         :class="{ 'graph-stage-block__chevron--expanded': !collapsed }"
       >
-        ▸
+        ▾
+      </span>
+      <span class="graph-stage-block__status" :class="`graph-stage-block__status--${effectiveStatus}`">
+        {{ statusIcon }}
       </span>
     </div>
 
@@ -23,22 +22,31 @@
       {{ formatDuration(activity.durationMs) }}
     </div>
 
-    <!-- DAG node list (linearized; full DagView is a future enhancement) -->
-    <div v-if="showNodes" class="graph-stage-block__nodes">
-      <div
-        v-for="node in activity.nodes"
-        :key="node.nodeId"
-        class="graph-stage-block__node"
-        :class="`graph-stage-block__node--${node.status}`"
-      >
-        <span class="graph-stage-block__node-dot" :class="`graph-stage-block__node-dot--${node.status}`">
-          <span v-if="node.status === 'running'" class="graph-stage-block__pulse" />
-        </span>
-        <span class="graph-stage-block__node-label">{{ node.label || node.nodeId }}</span>
-        <span v-if="node.dependsOn?.length" class="graph-stage-block__node-dep">
-          {{ t('chat.graphStage.dependsOn') }} {{ node.dependsOn.join(', ') }}
-        </span>
-      </div>
+    <!-- DAG flow diagram (layered by kahnTopoLayers, aligned with m59 v7 design) -->
+    <div v-if="showDag" class="graph-stage-block__dag">
+      <template v-for="(layer, layerIdx) in dagLayers" :key="`layer-${layerIdx}`">
+        <div v-if="layerIdx > 0" class="graph-stage-block__layer-sep">↓</div>
+        <div class="graph-stage-block__layer">
+          <span
+            v-for="node in layer"
+            :key="node.nodeId"
+            class="graph-stage-block__node"
+            :class="`graph-stage-block__node--${node.status}`"
+            :title="nodeTitle(node)"
+          >
+            <span class="graph-stage-block__node-icon">{{ nodeStatusIcon(node.status) }}</span>
+            <span class="graph-stage-block__node-label">{{ node.label || node.nodeId }}</span>
+            <span v-if="node.dependsOn?.length" class="graph-stage-block__node-deps">
+              ← {{ node.dependsOn.join(', ') }}
+            </span>
+          </span>
+        </div>
+      </template>
+    </div>
+
+    <!-- Empty hint when no nodes are present -->
+    <div v-else-if="showDag === false && !activity.nodes?.length" class="graph-stage-block__empty">
+      {{ t('chat.graphStage.noNodes') }}
     </div>
   </div>
 </template>
@@ -46,8 +54,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { GraphStageEvent } from '../../features/chat/streamEventTypes';
+import type { GraphStageEvent, GraphNodeStatus } from '../../features/chat/streamEventTypes';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
+import { kahnTopoLayers } from '../../features/spirit/lib/dagTopoSort';
 
 const props = defineProps<{
   activity: GraphStageEvent;
@@ -58,32 +67,18 @@ const { t } = useI18n();
 const collapsed = ref(props.activity.status !== 'running');
 
 function toggleCollapse() {
-  if (props.activity.status === 'running') return;
+  if (effectiveStatus.value === 'running') return;
   collapsed.value = !collapsed.value;
 }
 
+const effectiveStatus = computed(() => props.activity.status);
+
 const isTerminal = computed(
   () =>
-    props.activity.status === 'completed' ||
-    props.activity.status === 'failed' ||
-    props.activity.status === 'cancelled',
+    effectiveStatus.value === 'completed' ||
+    effectiveStatus.value === 'failed' ||
+    effectiveStatus.value === 'cancelled',
 );
-
-const displayTitle = computed(() => {
-  if (props.activity.title) return props.activity.title;
-  switch (props.activity.status) {
-    case 'running':
-      return t('chat.graphStage.executing');
-    case 'completed':
-      return t('chat.graphStage.completed');
-    case 'failed':
-      return t('chat.graphStage.failed');
-    case 'cancelled':
-      return t('chat.graphStage.cancelled');
-    default:
-      return '';
-  }
-});
 
 const progressText = computed(() => {
   const nodes = props.activity.nodes;
@@ -94,14 +89,36 @@ const progressText = computed(() => {
   return `${completed}/${nodes.length}`;
 });
 
-const showNodes = computed(() => {
+const showDag = computed(() => {
   if (!props.activity.nodes?.length) return false;
-  if (props.activity.status === 'running') return true;
+  if (effectiveStatus.value === 'running') return true;
   return !collapsed.value;
 });
 
+/** Group nodes into layered rows using Kahn topological sort.
+ *  Each layer becomes a horizontal row; arrows between layers are
+ *  represented by the `↓` separator. Aligned with the m59 v7 prototype
+ *  which renders DAG as a wrap-flex row with `→` arrows — for richer
+ *  dependency graphs we layer them vertically by depth. */
+const dagLayers = computed<GraphNodeStatus[][]>(() => {
+  const nodes = props.activity.nodes;
+  if (!nodes?.length) return [];
+
+  const depths = kahnTopoLayers(
+    nodes.map((n) => ({ id: n.nodeId, dependsOn: n.dependsOn ?? [] })),
+  );
+
+  const maxDepth = Math.max(0, ...Array.from(depths.values()));
+  const layers: GraphNodeStatus[][] = Array.from({ length: maxDepth + 1 }, () => []);
+  for (const node of nodes) {
+    const depth = depths.get(node.nodeId) ?? 0;
+    layers[depth].push(node);
+  }
+  return layers.filter((l) => l.length > 0);
+});
+
 const statusIcon = computed(() => {
-  switch (props.activity.status) {
+  switch (effectiveStatus.value) {
     case 'running':
       return '⏳';
     case 'completed':
@@ -111,9 +128,31 @@ const statusIcon = computed(() => {
     case 'cancelled':
       return '⊘';
     default:
-      return '🔬';
+      return '🔀';
   }
 });
+
+function nodeStatusIcon(status: GraphNodeStatus['status']): string {
+  switch (status) {
+    case 'running':
+      return '⚡';
+    case 'completed':
+      return '✓';
+    case 'failed':
+      return '✗';
+    case 'skipped':
+      return '⊘';
+    case 'pending':
+    default:
+      return '⏳';
+  }
+}
+
+function nodeTitle(node: GraphNodeStatus): string {
+  const parts = [node.label || node.nodeId, node.status];
+  if (node.dependsOn?.length) parts.push(`depends: ${node.dependsOn.join(', ')}`);
+  return parts.join(' · ');
+}
 </script>
 
 <style lang="sass" scoped>
@@ -137,24 +176,23 @@ const statusIcon = computed(() => {
     cursor: default
 
   &__icon
-    font-size: 14px
+    font-size: 13px
     flex-shrink: 0
 
   &__label
-    font-size: 13px
+    font-size: 12px
     font-weight: 500
     color: var(--color-text-secondary)
-
-  &__title
-    font-size: 13px
-    color: var(--color-text-primary)
-    font-weight: 500
     flex: 1
 
   &__progress
     font-size: 11px
     color: var(--color-text-tertiary)
     font-variant-numeric: tabular-nums
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent)
+    padding: 0 5px
+    border-radius: 8px
+    color: var(--color-accent)
 
   &__status
     font-size: 12px
@@ -173,7 +211,7 @@ const statusIcon = computed(() => {
     color: var(--color-text-tertiary)
     transition: transform 0.15s ease
     &--expanded
-      transform: rotate(90deg)
+      transform: rotate(180deg)
 
   &__duration
     font-size: 11px
@@ -181,60 +219,71 @@ const statusIcon = computed(() => {
     margin-top: 2px
     margin-left: 22px
 
-  &__nodes
+  &__dag
+    margin-top: 8px
+    padding-left: 22px
     display: flex
     flex-direction: column
-    gap: 4px
-    margin-top: 6px
-    padding-left: 22px
+    align-items: flex-start
+    gap: 2px
 
-  &__node
+  &__layer
     display: flex
     align-items: center
     gap: 6px
-    padding: 2px 0
+    flex-wrap: wrap
 
-  &__node-dot
-    width: 8px
-    height: 8px
-    border-radius: 50%
-    flex-shrink: 0
-    position: relative
+  &__layer-sep
+    font-size: 12px
+    color: var(--color-text-tertiary)
+    line-height: 1
+    align-self: center
+    margin: 1px 0 1px 22px
+
+  &__node
+    display: inline-flex
+    align-items: center
+    gap: 3px
+    padding: 3px 8px
+    border-radius: 4px
+    font-size: 11px
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent)
+    color: var(--color-text-secondary)
+    transition: all 0.15s ease
 
     &--pending
-      border: 1.5px solid var(--color-text-tertiary)
-      background: transparent
+      background: color-mix(in srgb, var(--color-text-tertiary) 10%, transparent)
+      color: var(--color-text-tertiary)
     &--running
-      background: var(--color-accent)
+      background: color-mix(in srgb, var(--color-accent) 18%, transparent)
+      color: var(--color-accent)
+      font-weight: 500
     &--completed
-      background: var(--color-success)
+      opacity: 0.6
+      text-decoration: line-through
     &--failed
-      background: var(--color-danger)
+      background: color-mix(in srgb, var(--color-danger) 15%, transparent)
+      color: var(--color-danger)
     &--skipped
-      background: var(--color-text-tertiary)
-      opacity: 0.5
+      opacity: 0.4
+      text-decoration: line-through
+
+  &__node-icon
+    font-size: 10px
+    flex-shrink: 0
 
   &__node-label
-    font-size: 12px
-    color: var(--color-text-primary)
-    flex: 1
+    font-size: 11px
 
-  &__node-dep
+  &__node-deps
+    font-size: 9px
+    color: var(--color-text-tertiary)
+    margin-left: 2px
+
+  &__empty
     font-size: 11px
     color: var(--color-text-tertiary)
-
-  &__pulse
-    position: absolute
-    inset: -3px
-    border-radius: 50%
-    border: 1.5px solid var(--color-accent)
-    animation: graph-pulse 1.5s ease-in-out infinite
-
-@keyframes graph-pulse
-  0%, 100%
-    opacity: 1
-    transform: scale(1)
-  50%
-    opacity: 0.3
-    transform: scale(1.4)
+    margin-top: 6px
+    padding-left: 22px
+    font-style: italic
 </style>

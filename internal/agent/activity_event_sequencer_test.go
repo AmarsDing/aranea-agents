@@ -236,7 +236,8 @@ func TestActivityEventSequencer_PublishAfterCloseReturnsError(t *testing.T) {
 // TestActivityEventSequencer_Backpressure verifies that when the channel is
 // full, publish blocks (backpressure). This is the mechanism that propagates
 // backpressure to the LLM: channel full → OnTextDelta blocks → stream_consumer
-// blocks → LLM pauses.
+// blocks → LLM pauses. When the sequencer is closed during backpressure, the
+// blocked publish unblocks and returns errSequencerClosed.
 func TestActivityEventSequencer_Backpressure(t *testing.T) {
 	// Create a sequencer with a bus that blocks publishing.
 	// publishCalled signals when the consumer has entered Publish (blocked).
@@ -246,7 +247,6 @@ func TestActivityEventSequencer_Backpressure(t *testing.T) {
 		publishCh:     make(chan struct{}),
 	}
 	seq := newActivityEventSequencer(bus, loggateway.NewNoop())
-	defer seq.Close()
 
 	activityID := "act-backpressure"
 
@@ -266,69 +266,67 @@ func TestActivityEventSequencer_Backpressure(t *testing.T) {
 		})
 	}
 
-	// Buffer is now full. This publish should block until ctx timeout.
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
+	// Buffer is now full. This publish should block (backpressure).
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- seq.publish(context.Background(), activityID, publishTask{
+			event: biz.ActivityEvent{Event: biz.ActivityEventCompleted, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
+		})
+	}()
 
-	err := seq.publish(ctx, activityID, publishTask{
-		event: biz.ActivityEvent{Event: biz.ActivityEventCompleted, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
-	})
-
-	// Should return context.DeadlineExceeded (blocked until timeout)
-	if err == nil {
-		t.Errorf("expected timeout error due to backpressure, got nil")
+	// Verify publish is blocked (not immediate)
+	select {
+	case err := <-errCh:
+		t.Errorf("publish should block due to backpressure; got immediate result: %v", err)
+	case <-time.After(50 * time.Millisecond):
+		// Expected: publish is blocked
 	}
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Errorf("expected context.DeadlineExceeded, got %v", err)
-	}
 
-	// Unblock the consumer so Close can proceed
+	// Unblock the consumer — publish worker drains the queue, freeing space
+	// for the blocked publish.
 	close(bus.publishCh)
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Errorf("publish should succeed after backpressure release; got err: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("publish did not complete after backpressure release")
+	}
+
+	seq.Close()
 }
 
-// TestActivityEventSequencer_ContextCancellation verifies that publish
-// returns ctx.Err() when the context is cancelled.
-func TestActivityEventSequencer_ContextCancellation(t *testing.T) {
-	bus := &blockingBus{
-		publishCalled: make(chan struct{}, 1),
-		publishCh:     make(chan struct{}),
-	}
+// TestActivityEventSequencer_PublishIgnoresCtxCancel verifies that publish
+// does NOT abort on caller context cancellation. Activity publish+persist is
+// an async operation that must complete even when the caller's context is
+// canceled (e.g. turnCtx canceled during stream draining). Previously, Go's
+// select randomly chose between publishQueue send and ctx.Done(), dropping
+// ~50% of action activities during the drain phase.
+func TestActivityEventSequencer_PublishIgnoresCtxCancel(t *testing.T) {
+	bus := newSyncCaptureBus()
 	seq := newActivityEventSequencer(bus, loggateway.NewNoop())
 	defer seq.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	activityID := "act-cancel"
+	cancel() // Cancel immediately
 
-	// First publish creates channel and starts consumer (which blocks on bus.Publish)
-	_ = seq.publish(context.Background(), activityID, publishTask{
-		event: biz.ActivityEvent{Event: biz.ActivityEventStreaming, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
-	})
-
-	// Wait until consumer is blocked on bus.Publish
-	<-bus.publishCalled
-
-	// Fill the publish queue buffer
-	for i := 0; i < defaultPublishBufferSize; i++ {
-		_ = seq.publish(context.Background(), activityID, publishTask{
-			event: biz.ActivityEvent{Event: biz.ActivityEventStreaming, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
-		})
-	}
-
-	// Cancel context before publishing
-	cancel()
+	// publishQueue has 256-item buffer; with an empty queue, the send should
+	// succeed immediately despite ctx being canceled.
+	activityID := "act-cancel-test"
 	err := seq.publish(ctx, activityID, publishTask{
-		event: biz.ActivityEvent{Event: biz.ActivityEventCompleted, Activity: biz.Activity{AgentKey: "agent-1", SessionID: "sess-1"}},
+		event:    biz.ActivityEvent{Event: biz.ActivityEventCompleted, Activity: biz.Activity{ID: activityID, AgentKey: "agent-1", SessionID: "sess-1", Kind: biz.ActivityKindAction}},
+		persist:  true,
+		activity: biz.Activity{ID: activityID, AgentKey: "agent-1", SessionID: "sess-1", Kind: biz.ActivityKindAction},
 	})
 
-	if err == nil {
-		t.Errorf("expected error when context cancelled, got nil")
-	}
-	if !errors.Is(err, context.Canceled) {
-		t.Errorf("expected context.Canceled, got %v", err)
+	if err != nil {
+		t.Errorf("publish should succeed despite canceled ctx (queue has space); got err: %v", err)
 	}
 
-	// Unblock the consumer so Close can proceed
-	close(bus.publishCh)
+	// Verify the event was actually published
+	bus.waitForPublished(t, 1)
 }
 
 // blockingBus is a biz.ActivityEventBus that blocks on Publish until publishCh is closed.
@@ -717,20 +715,23 @@ func TestListDeadLetterActivities_SessionFilter(t *testing.T) {
 	}
 }
 
-// TestPersistWithRetry_CloseInterruptsBackoff verifies that Close() does not
-// block on retry backoff when the DB is unavailable (S3 fix). Without the
-// fix, Close would wait for the full backoff budget (500ms+ per item).
-func TestPersistWithRetry_CloseInterruptsBackoff(t *testing.T) {
+// TestPersistWithRetry_CloseWaitsForPersist verifies that Close() waits for
+// in-flight persist retries to complete (rather than aborting them to
+// dead-letter). Previously, Close() aborted retries via s.done, causing
+// action activities (which have multiple upserts) to be lost from the DB
+// when finalize() called Close() during turn completion — tools disappeared
+// after page refresh because the API loads from DB while WS delivers live.
+func TestPersistWithRetry_CloseWaitsForPersist(t *testing.T) {
 	bus := newSyncCaptureBus()
 	repo := &failingActivityWriter{}
 	seq := newActivityEventSequencer(bus, loggateway.NewNoop())
 	seq.SetActivityRepo(repo)
-	// Long backoff so that without the fix, Close would block for 500ms+.
-	seq.persistMaxRetries = 5
-	seq.persistInitialBackoffMs = 500
+	// Short backoff so Close waits a reasonable amount (not 500ms+).
+	seq.persistMaxRetries = 2
+	seq.persistInitialBackoffMs = 20
 	seq.persistBackoffFactor = 2
 
-	activity := biz.Activity{ID: "act-close", Kind: biz.ActivityKindReply, SessionID: "sess-1"}
+	activity := biz.Activity{ID: "act-close", Kind: biz.ActivityKindAction, SessionID: "sess-1"}
 	if err := seq.publish(context.Background(), activity.ID, publishTask{
 		event:    biz.ActivityEvent{Event: biz.ActivityEventCompleted, Activity: activity},
 		persist:  true,
@@ -739,24 +740,14 @@ func TestPersistWithRetry_CloseInterruptsBackoff(t *testing.T) {
 		t.Fatalf("publish failed: %v", err)
 	}
 	bus.waitForPublished(t, 1)
-	// Give the persist worker time to fail its first attempt and enter the
-	// 500ms backoff sleep.
-	time.Sleep(50 * time.Millisecond)
 
-	// Close must complete quickly — the backoff must be interrupted by done.
-	start := time.Now()
+	// Close must wait for the persist worker to finish all retries.
 	seq.Close()
-	elapsed := time.Since(start)
 
-	// Without the fix, Close blocks for ≥500ms (first backoff). With the fix,
-	// done is closed and the backoff is aborted immediately.
-	if elapsed > 200*time.Millisecond {
-		t.Errorf("Close took %v; expected <200ms (backoff should be interrupted by done)", elapsed)
-	}
-
-	// The activity should be in dead-letter (aborted during shutdown).
+	// After Close, the activity must be in dead-letter (all retries exhausted,
+	// NOT aborted by s.done).
 	if dl := seq.ListDeadLetterActivities("sess-1"); len(dl) != 1 {
-		t.Errorf("dead-letter count=%d want 1 (aborted persist should land in dead-letter)", len(dl))
+		t.Errorf("dead-letter count=%d want 1 (persist should exhaust retries, not abort on Close)", len(dl))
 	}
 }
 

@@ -1,9 +1,5 @@
 import { shallowRef, computed, triggerRef, onUnmounted, getCurrentInstance } from 'vue';
-import type {
-  Activity,
-  ActivityStatus,
-  ActivityTreeNode,
-} from '../activityTypes';
+import type { Activity, ActivityStatus, ActivityTreeNode } from '../activityTypes';
 import type {
   StreamEvent,
   ThinkingEvent,
@@ -23,6 +19,8 @@ import type {
 } from '../streamEventTypes';
 import type { ActivityEvent as AFActivityEvent, Activity as AFActivity } from '../../../realtime/activityEvent';
 import { listActivities } from '../../session/api';
+import { builtinLabels } from '../activityPresentation';
+import { i18n } from '../../../i18n';
 
 /**
  * useActivityTimeline manages Activity state for the Activity-First architecture.
@@ -115,11 +113,85 @@ export function useActivityTimeline() {
     const map = activitiesBySession.value.get(sid);
     if (!map) return [];
 
+    // === Deduplicate team_stage activities by teamId ===
+    // Backend publishes a NEW team_stage activity for each lifecycle event
+    // (assembled/running/completed) instead of UPDATING the same activity.
+    // Without dedup the UI shows 4-5 cards per team — most without members.
+    // Merge into ONE representative per team:
+    //   - base = activity carrying members (usually the "assembled" event)
+    //     so the member list is preserved and the UI id stays stable
+    //   - status = most advanced across all events (completed > running > pending)
+    //   - durationMs = max
+    //   - seq = max (latest, so sort order reflects the team's latest event)
+    const STATUS_PRIORITY: Record<string, number> = {
+      pending: 1,
+      running: 2,
+      tool_running: 2,
+      tool_blocked: 2,
+      interrupted: 2,
+      partial_failure: 4,
+      cancelled: 3,
+      failed: 3,
+      completed: 5,
+    };
+    const teamStageByTeam = new Map<string, Activity[]>();
+    const dedupMap = new Map<string, Activity>();
+    for (const activity of map.values()) {
+      if (activity.kind === 'team_stage' && activity.teamId) {
+        const arr = teamStageByTeam.get(activity.teamId) ?? [];
+        arr.push(activity);
+        teamStageByTeam.set(activity.teamId, arr);
+      } else {
+        dedupMap.set(activity.id, activity);
+      }
+    }
+    for (const arr of teamStageByTeam.values()) {
+      if (arr.length === 1) {
+        dedupMap.set(arr[0].id, arr[0]);
+        continue;
+      }
+      const hasMembers = (a: Activity): boolean => {
+        const m = a.meta?.members;
+        return Array.isArray(m) && m.length > 0;
+      };
+      const base = arr.find(hasMembers) ?? arr[0];
+      const bestStatus = arr.reduce((best, a) => {
+        const pa = STATUS_PRIORITY[a.status] ?? 0;
+        const pb = STATUS_PRIORITY[best] ?? 0;
+        return pa > pb ? a.status : best;
+      }, arr[0].status);
+      const maxDuration = arr.reduce((max, a) => Math.max(max, a.durationMs ?? 0), 0);
+      // Find the latest activity by Timestamp (design doc B.3.3: sort by Timestamp ASC,
+      // no global Seq). Used to pick the most recent meta overlay.
+      const latestWithMeta = arr.slice().sort((a, b) => {
+        const ta = new Date(a.timestamp).getTime();
+        const tb = new Date(b.timestamp).getTime();
+        return tb - ta;
+      })[0];
+      const mergedMeta = { ...base.meta };
+      // Overlay duration/status info from the latest activity that carries it
+      // (base.meta may have duration_ms=0 from the "assembled" event).
+      if (latestWithMeta?.meta) {
+        for (const [k, v] of Object.entries(latestWithMeta.meta)) {
+          if (k === 'members') continue; // keep base members
+          if (v !== null && v !== undefined && v !== '' && !(typeof v === 'number' && v === 0)) {
+            mergedMeta[k] = v;
+          }
+        }
+      }
+      dedupMap.set(base.id, {
+        ...base,
+        status: bestStatus as Activity['status'],
+        durationMs: maxDuration || base.durationMs,
+        meta: mergedMeta,
+      });
+    }
+
     const treeMap = new Map<string, ActivityTreeNode>();
     const roots: ActivityTreeNode[] = [];
 
-    // Build tree nodes
-    for (const activity of map.values()) {
+    // Build tree nodes from deduplicated map
+    for (const activity of dedupMap.values()) {
       treeMap.set(activity.id, { ...activity, children: [] });
     }
 
@@ -132,9 +204,10 @@ export function useActivityTimeline() {
       }
     }
 
-    // Sort tree by timestamp, then by backend-assigned global seq, to ensure
-    // correct order even when the per-activity sequencer publishes different
-    // activities concurrently (e.g. thinking done vs reply start).
+    // Sort tree by Timestamp ASC (design doc B.3.3). The backend guarantees
+    // Timestamp monotonicity via the trpc-agent-go Runner's single-goroutine
+    // runEventLoop + Channel FIFO, so pure Timestamp ordering is correct and
+    // stable — no global Seq or special rules needed.
     const sortTree = (nodes: ActivityTreeNode[]) => {
       nodes.sort(compareActivities);
       for (const node of nodes) sortTree(node.children);
@@ -170,6 +243,10 @@ export function useActivityTimeline() {
       turnId: a.turn_id,
       parentActivityId: a.parent_activity_id || null,
       timestamp: a.timestamp,
+      // duration_ms=0 is treated as "not set" (|| null) because the backend
+      // uses int64 without omitempty; a real zero-duration tool is impossible
+      // in practice. Problem D is fixed on the backend side (problem A fix
+      // restores OnToolResult execution so duration gets computed).
       durationMs: a.duration_ms || null,
       seq: a.seq,
       content: a.content || null,
@@ -179,6 +256,7 @@ export function useActivityTimeline() {
       toolCallId: a.tool_call_id || null,
       toolArguments: a.tool_arguments || null,
       toolResult: a.tool_result || null,
+      // Same || null semantic as durationMs above (0 = not set).
       toolDurationMs: a.tool_duration_ms || null,
       toolErrorCode: a.tool_error_code || null,
       childBoardId: a.child_board_id || null,
@@ -199,13 +277,9 @@ export function useActivityTimeline() {
 
   function handleActivityEvent(ev: AFActivityEvent) {
     const snapshot = afActivityToInternal(ev.activity);
-    const sessionId =
-      snapshot.sessionId || currentSessionId.value || '';
+    const sessionId = snapshot.sessionId || currentSessionId.value || '';
     if (!sessionId) {
-      console.warn(
-        '[useActivityTimeline] handleActivityEvent: missing sessionId, event dropped',
-        ev,
-      );
+      console.warn('[useActivityTimeline] handleActivityEvent: missing sessionId, event dropped', ev);
       return;
     }
     const map = getSessionActivities(sessionId);
@@ -251,8 +325,19 @@ export function useActivityTimeline() {
             updated.content = (existing.content || '') + ev.delta_chunk;
           } else if (ev.delta_field === 'tool_arguments') {
             updated.toolArguments = (existing.toolArguments || '') + ev.delta_chunk;
+          } else if (ev.delta_field === 'tool_result') {
+            // Tool output may stream in (large file_read / shell stdout / etc.);
+            // accumulate it the same way as reasoning/content.
+            updated.toolResult = (existing.toolResult || '') + ev.delta_chunk;
           }
           if (snapshot.seq != null) updated.seq = snapshot.seq;
+          // Chat UI #2: a streaming envelope may ALSO carry a status change
+          // (e.g. the final tool_result chunk arriving alongside
+          // `status: completed`). Mirror the snapshot status so the UI
+          // updates without waiting for a follow-up `completed` envelope,
+          // which can be dropped or coalesced on the wire — leaving the
+          // tool card stuck on the previous status until a page refresh.
+          if (snapshot.status) updated.status = snapshot.status;
           map.set(snapshot.id, updated);
         } else {
           // No delta info: use the full snapshot (backend may send
@@ -349,10 +434,7 @@ export function useActivityTimeline() {
    * activity's sessionId, or falls back to currentSessionId.
    */
   function loadActivities(activityList: Activity[], sessionId?: string) {
-    const sid =
-      sessionId ||
-      activityList[0]?.sessionId ||
-      currentSessionId.value;
+    const sid = sessionId || activityList[0]?.sessionId || currentSessionId.value;
     if (!sid) return;
 
     // Atomic replacement: build a complete new Map before assigning to the
@@ -421,12 +503,7 @@ export function useActivityTimeline() {
 
     const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
     setSessionLoadError(sessionId, msg);
-    console.warn(
-      '[activity] failed to load activities from API after',
-      maxAttempts,
-      'attempts:',
-      msg,
-    );
+    console.warn('[activity] failed to load activities from API after', maxAttempts, 'attempts:', msg);
   }
 
   function setSessionLoadError(sessionId: string, msg: string | null) {
@@ -484,6 +561,58 @@ export function useActivityTimeline() {
 }
 
 // === Mapping Functions ===
+
+/**
+ * Friendly fallback labels for tool_category when neither `label` nor
+ * `builtinLabels[toolName]` produces a user-facing name. Keeps the raw
+ * tool_name (e.g. "file_read_file") out of the chat UI.
+ *
+ * i18n: labels are resolved via the global i18n instance so the chat UI
+ * respects the user's locale (zh-CN / en-US). Keys live under `chat.tool`.
+ */
+const categoryI18nKeys: Record<string, string> = {
+  shell: 'chat.tool.categoryShell',
+  browser: 'chat.tool.categoryBrowser',
+  file_read: 'chat.tool.categoryFileRead',
+  file_write: 'chat.tool.categoryFileWrite',
+  file_search: 'chat.tool.categoryFileSearch',
+  web_search: 'chat.tool.categoryWebSearch',
+  mcp: 'chat.tool.categoryMcp',
+  code: 'chat.tool.categoryCode',
+  todo: 'chat.tool.categoryTodo',
+  other: 'chat.tool.categoryOther',
+};
+
+/**
+ * Resolves a user-facing tool label with a multi-layer fallback chain:
+ *   1. activity.label (backend-provided display label)
+ *   2. builtinLabels[toolName] (curated friendly names per tool_name)
+ *   3. categoryI18nKeys[toolCategory] → i18n.t (per-category fallback)
+ *   4. raw toolName (last resort)
+ *
+ * Chat UI fix: previously the chain was `label || toolName`, which leaked
+ * internal identifiers like "file_read_file" into the header.
+ */
+function resolveFriendlyToolLabel(
+  label: string | null | undefined,
+  toolName: string | null | undefined,
+  toolCategory: string | null | undefined,
+): string {
+  const trimmedLabel = typeof label === 'string' ? label.trim() : '';
+  if (trimmedLabel) return trimmedLabel;
+
+  const name = typeof toolName === 'string' ? toolName : '';
+  if (name && builtinLabels[name]) return builtinLabels[name];
+
+  const category = typeof toolCategory === 'string' ? toolCategory : '';
+  const i18nKey = category ? categoryI18nKeys[category] : '';
+  if (i18nKey) {
+    const translated = i18n.global.t(i18nKey);
+    if (translated && translated !== i18nKey) return translated;
+  }
+
+  return name || '';
+}
 
 /**
  * Maps ActivityStatus to ToolActivity status.
@@ -554,7 +683,22 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
         errorCode: node.toolErrorCode || (node.meta?.error_code as string | undefined) || undefined,
       } satisfies ErrorEvent;
 
-    case 'thinking':
+    case 'thinking': {
+      // P2-A: thinking-as-display renders as a reply. The backend keeps
+      // kind=thinking for audit but sets meta.as_display=true and populates
+      // Content with the display text. Map to ReplyEvent so ReplyBlock
+      // renders it as a normal reply instead of a collapsed thinking block.
+      if (node.meta?.as_display === true) {
+        return {
+          kind: 'reply',
+          id: node.id,
+          content: node.content || node.reasoning || '',
+          isFinal: node.meta?.is_final === true,
+          streaming: node.status === 'running',
+          variant: 'default',
+          durationMs: node.durationMs,
+        } satisfies ReplyEvent;
+      }
       return {
         kind: 'thinking',
         id: node.id,
@@ -564,12 +708,17 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
         streaming: node.status === 'running',
         durationMs: node.durationMs,
       } satisfies ThinkingEvent;
+    }
 
     case 'action': {
       const toolStatus = mapActivityStatusToToolStatus(node.status);
       const tool: ToolActivity = {
         toolName: node.toolName || '',
-        toolLabel: node.label || node.toolName || '',
+        // Chat UI fix: fall back through label → builtin friendly name →
+        // category-friendly name → raw toolName. Previously jumped straight
+        // to the raw tool_name (e.g. "file_read_file"), which leaked the
+        // internal identifier into the UI.
+        toolLabel: resolveFriendlyToolLabel(node.label, node.toolName, node.toolCategory),
         toolCategory: node.toolCategory || undefined,
         status: toolStatus,
         durationMs: node.toolDurationMs ?? node.durationMs,
@@ -589,7 +738,12 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
         kind: 'reply',
         id: node.id,
         content: node.content || '',
-        isFinal: node.status === 'completed' || node.status === 'failed',
+        // P1-A: read is_final from backend meta mark instead of inferring
+        // from status. The previous status-based inference (completed ||
+        // failed) marked EVERY terminal reply as final, causing ReplyBlock
+        // to label all replies as "最终回复". Now only the turn's last reply
+        // (marked by ActivityProjector.OnTurnEnd) is final.
+        isFinal: node.meta?.is_final === true,
         streaming: node.status === 'running',
         variant: 'default',
         durationMs: node.durationMs,
@@ -650,10 +804,19 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
       const members = rawMembers?.map((m) => ({
         agentKey: ((m.agent_key ?? m.agentKey) as string) ?? '',
         agentName: ((m.agent_name ?? m.agentName) as string) ?? '',
-        status: ((m.status ?? 'pending') as TeamMemberStatus['status']),
+        status: (m.status ?? 'pending') as TeamMemberStatus['status'],
         session_id: m.session_id as string | undefined,
       }));
       const taskSummary = typeof node.meta?.task_summary === 'string' ? node.meta.task_summary : undefined;
+      // B.4.1 team-card: pass timestamp for header creation time display.
+      const teamTimestamp = node.timestamp || undefined;
+      // B.4.1 team-card: progress percentage from meta.progress_pct (0-100).
+      const progressPct =
+        typeof node.meta?.progress_pct === 'number'
+          ? (node.meta.progress_pct as number)
+          : typeof node.meta?.progressPct === 'number'
+            ? (node.meta.progressPct as number)
+            : undefined;
       return {
         kind: 'team_stage',
         id: node.id,
@@ -663,6 +826,8 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
         members,
         taskSummary,
         durationMs: node.durationMs,
+        timestamp: teamTimestamp,
+        progressPct,
       } satisfies TeamStageEvent;
     }
 
@@ -683,6 +848,8 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
     case 'session': {
       // Phase 3: Child session stage — child_session_id lives in meta
       const childSessionId = typeof node.meta?.child_session_id === 'string' ? node.meta.child_session_id : undefined;
+      // B.4.2 agent-card: pass timestamp for header creation time display.
+      const sessionTimestamp = node.timestamp || undefined;
       return {
         kind: 'session',
         id: node.id,
@@ -694,6 +861,7 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
         teamId: node.teamId || undefined,
         spiritSessionId: node.spiritSessionId || undefined,
         durationMs: node.durationMs,
+        timestamp: sessionTimestamp,
       } satisfies SessionStageEvent;
     }
 
@@ -736,26 +904,39 @@ function mapActivityStatusToStageStatus(status: ActivityStatus): 'running' | 'co
   }
 }
 
-/** Stable activity comparator: backend seq ASC, then timestamp ASC.
+/** Stable activity comparator: pure Timestamp ASC (design doc B.3.3).
  *
- * `_seq` is the projector's global emission counter, so it is the most
- * reliable ordering signal. Timestamp strings are compared numerically as a
- * fallback because RFC3339Nano strings with variable fractional-digit lengths
- * do not sort lexicographically (e.g. `.100` vs `.99`).
+ * The backend guarantees Timestamp monotonicity via the trpc-agent-go Runner's
+ * single-goroutine `runEventLoop` + Channel FIFO + event.EmitEvent setting
+ * Timestamp at emit time. Therefore Timestamp alone is sufficient for correct
+ * ordering — no global Seq or special "task-first / final-reply-last" rules
+ * are needed:
+ *   - task (user message) has the smallest Timestamp in a turn (naturally first)
+ *   - final reply (is_final=true, from runner.completion) has the largest
+ *     Timestamp (naturally last)
+ *
+ * Introducing "must-sort-first / must-sort-last" special rules is patch-style
+ * design that breaks ordering consistency — the natural event order is
+ * authoritative (design doc B.3.3).
+ *
+ * RFC3339Nano strings with variable fractional-digit lengths do not sort
+ * lexicographically (e.g. `.100` vs `.99`), so Timestamp is compared
+ * numerically via Date.parse, with a stable id-based tiebreaker for the
+ * extremely rare equal-Timestamp case (single publish worker makes this
+ * near-impossible, but stability is required for sort determinism).
  *
  * Accepts the base `Activity` type so it can sort both flat lists
  * (sortedActivities) and tree nodes (ActivityTreeNode[] — TreeNode extends
- * Activity). */
+ * Activity).
+ */
 function compareActivities(a: Activity, b: Activity): number {
-  const sa = a.seq ?? 0;
-  const sb = b.seq ?? 0;
-  if (sa !== sb) return sa - sb;
-
   const ta = new Date(a.timestamp).getTime();
   const tb = new Date(b.timestamp).getTime();
   if (!Number.isNaN(ta) && !Number.isNaN(tb) && ta !== tb) {
     return ta - tb;
   }
-
-  return a.timestamp.localeCompare(b.timestamp);
+  // Fallback: lexical timestamp comparison (covers NaN cases) then id for stability.
+  const tsCmp = a.timestamp.localeCompare(b.timestamp);
+  if (tsCmp !== 0) return tsCmp;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }

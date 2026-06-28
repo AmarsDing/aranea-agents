@@ -20,6 +20,7 @@
       {
         'thinking-block--streaming': streaming,
         'thinking-block--collapsed': collapsed,
+        'thinking-block--inline-short': inlineNoCollapse,
         'thinking-block--dark': isDark,
       },
     ]"
@@ -29,35 +30,53 @@
     @click="onClick"
     @keydown.escape="onEscape"
   >
-    <!-- ===== card variant ===== -->
-    <!-- Streaming + collapsed: status indicator only -->
+    <!-- ===== Streaming + collapsed: status indicator (existing behavior) ===== -->
     <div
       v-if="streaming && collapsed"
       class="thinking-block__streaming-indicator thinking-block__streaming-indicator--card"
       @click.stop="onClick"
     >
       <q-icon name="psychology_alt" size="14px" color="accent" />
-      <span class="thinking-block__streaming-text">{{ t('chat.thinking.summary', '思考') }}</span>
+      <span class="thinking-block__streaming-text">{{ displayLabel }}</span>
       <span class="thinking-block__pulse" aria-hidden="true" />
       <span v-if="durationMs != null" class="thinking-block__duration">{{ formattedDuration }}</span>
       <span class="thinking-block__toggle">{{ collapsed ? '▶' : '▼' }}</span>
     </div>
 
-    <!-- Label row (not streaming or expanded) -->
+    <!-- ===== US-24/§6.8.3: Completed inline-no-collapse (reasoning < 30 chars) ===== -->
+    <span
+      v-else-if="inlineNoCollapse"
+      class="thinking-block__inline-short"
+      :title="t('chat.reasoningTitle')"
+    >
+      <span class="thinking-block__icon-emoji" aria-hidden="true">🧠</span>
+      <span class="thinking-block__inline-text">{{ reasoning }}</span>
+    </span>
+
+    <!-- ===== US-24/§6.8.3: Completed collapsed (single-line inline span) ===== -->
+    <span
+      v-else-if="collapsed"
+      class="thinking-block__collapsed"
+      :class="{ 'thinking-block__collapsed--dark': isDark }"
+      :title="collapsedHint"
+      role="region"
+      :aria-label="t('chat.reasoningTitle')"
+    >
+      <span class="thinking-block__icon-emoji" aria-hidden="true">🧠</span>
+      <span class="thinking-block__collapsed-text">{{ summary }}</span>
+      <span class="thinking-block__collapsed-toggle" aria-hidden="true">▶</span>
+    </span>
+
+    <!-- ===== Expanded (streaming live or user-clicked): label row + body ===== -->
     <template v-else>
       <div class="thinking-block__label">
-        <q-icon name="psychology_alt" size="14px" color="accent" class="thinking-block__label-icon" />
-        <span class="thinking-block__label-text">{{ t('chat.thinking.summary', '思考') }}</span>
+        <span class="thinking-block__icon-emoji" aria-hidden="true">🧠</span>
+        <span class="thinking-block__label-text">{{ displayLabel }}</span>
         <span v-if="streaming" class="thinking-block__pulse" aria-hidden="true" />
         <span v-if="durationMs != null" class="thinking-block__duration">{{ formattedDuration }}</span>
-        <span class="thinking-block__toggle">{{ collapsed ? '▶' : '▼' }}</span>
+        <span class="thinking-block__toggle" @click.stop="onClick">▼</span>
       </div>
-
-      <!-- Collapsed: preview text -->
-      <div v-if="collapsed" class="thinking-block__preview">{{ previewText }}</div>
-
-      <!-- Expanded content -->
-      <div v-else class="thinking-block__collapse-wrapper">
+      <div class="thinking-block__collapse-wrapper">
         <div class="thinking-block__collapse-inner">
           <div class="thinking-block__body" :class="{ 'thinking-block__body--streaming': streaming }">
             <!-- eslint-disable-next-line vue/no-v-html -- sanitized markdown HTML -->
@@ -93,6 +112,9 @@ const props = withDefaults(
     isDark?: boolean;
     /** 默认折叠状态：true=收起，false=展开。流式和结束后均默认折叠 */
     defaultCollapsed?: boolean;
+    /** 思考块标签（"规划"/"推理"/"重规划"/"进度"等）。
+     * 后端 Activity.label 透传；为空时回退到 i18n 默认"思考"。 */
+    label?: string;
   }>(),
   {
     streaming: false,
@@ -100,10 +122,25 @@ const props = withDefaults(
     durationMs: null,
     isDark: false,
     defaultCollapsed: true,
+    label: '',
   },
 );
 
 const { t } = useI18n();
+
+/**
+ * Resolves the display label: prefer the explicit `label` prop (set by
+ * backend via Activity.label to distinguish "规划"/"推理"/"重规划"/"进度"),
+ * fall back to the i18n-default "思考" key when not provided.
+ *
+ * Chat UI fix: previously the component hardcoded `t('chat.thinking.summary', '思考')`
+ * everywhere, ignoring the label field that useActivityTimeline already
+ * passes through from backend Activity data.
+ */
+const displayLabel = computed(() => {
+  const trimmed = typeof props.label === 'string' ? props.label.trim() : '';
+  return trimmed || t('chat.thinking.summary', '思考');
+});
 
 // --- Collapse state (T8.4: persisted to sessionStorage) ---
 
@@ -122,13 +159,42 @@ const viewportRef = ref<HTMLElement | null>(null);
 /** Whether user has scrolled up away from the bottom. */
 const userScrolledUp = ref(false);
 
+/**
+ * P2-B: Tracks whether the user has manually toggled the collapse state
+ * during the current streaming session. When the user expands/collapses
+ * manually, streaming-end must NOT force-collapse (which would override
+ * their intent). Only auto-collapse on streaming-end if the user never
+ * toggled — preserving the "collapse to keep timeline compact" default.
+ */
+const userToggled = ref(false);
+
 // --- Plain text extraction ---
 
-/** Preview text for card collapsed state. */
-const previewText = computed(() => {
-  const content = props.reasoning || '';
-  const firstLine = content.split('\n').find((l) => l.trim() !== '') || '';
-  return firstLine.length > 80 ? firstLine.slice(0, 80) + '…' : firstLine;
+/**
+ * US-24/§6.8.3: Summary text for collapsed state.
+ * First sentence (split by 。.!?！？\n), truncated at 60 chars + ….
+ * Used by single-line inline collapsed span.
+ */
+const summary = computed(() => {
+  const text = props.reasoning || '';
+  const firstSentence = text.split(/[。.!?！？\n]/)[0] || '';
+  return firstSentence.length > 60 ? firstSentence.slice(0, 60) + '…' : firstSentence;
+});
+
+/**
+ * US-24/§6.8.3 exception: reasoning < 30 chars renders inline without
+ * collapse toggle (information density too low, collapse would distract).
+ * Only applies to completed (non-streaming) state.
+ */
+const inlineNoCollapse = computed(() => !props.streaming && (props.reasoning || '').length < 30);
+
+/** Hover hint for collapsed state: includes label + duration if present. */
+const collapsedHint = computed(() => {
+  const parts: string[] = [];
+  if (props.label) parts.push(props.label);
+  if (props.durationMs != null) parts.push(formatDuration(props.durationMs));
+  parts.push(t('chat.thinking.clickToExpand'));
+  return parts.join(' · ');
 });
 
 const formattedDuration = computed(() => (props.durationMs != null ? formatDuration(props.durationMs) : ''));
@@ -159,24 +225,42 @@ watch(
 );
 
 // When streaming starts, expand so users can follow the reasoning live.
-// When streaming ends, collapse to keep the timeline compact.
+// When streaming ends, only auto-collapse if the user hasn't manually toggled
+// during this streaming session — respecting their expand/collapse intent
+// (P2-B: the previous behavior force-collapsed on streaming-end, overriding
+// a user who expanded to read along).
 watch(
   () => props.streaming,
   (live) => {
     if (live) {
       userScrolledUp.value = false;
+      userToggled.value = false;
       setCollapsed(false);
       void nextTick(scrollToBottom);
-    } else {
-      // streaming 结束时折叠
-      setCollapsed(true);
+    } else if (!userToggled.value) {
+      // US-24/§6.8.3: < 30 chars → inline no-collapse (don't auto-collapse)
+      if (inlineNoCollapse.value) {
+        setCollapsed(false);
+      } else {
+        // streaming 结束时折叠（仅当用户未手动操作时）
+        setCollapsed(props.defaultCollapsed);
+      }
     }
   },
 );
 
+// US-24/§6.8.3: when reasoning shrinks below 30 chars (e.g., trimmed) or
+// streaming ends with short content, force-expand to trigger inline render.
+watch(inlineNoCollapse, (val) => {
+  if (val && !userToggled.value) setCollapsed(false);
+});
+
 // --- Interaction ---
 
 function onClick() {
+  // US-24/§6.8.3: inline-short (< 30 chars) is non-interactive — no toggle.
+  if (inlineNoCollapse.value) return;
+  userToggled.value = true;
   toggle();
 
   // After expanding, scroll to bottom if streaming
@@ -187,6 +271,7 @@ function onClick() {
 }
 
 function onEscape() {
+  userToggled.value = true;
   setCollapsed(true);
 }
 </script>
@@ -280,6 +365,12 @@ $border-accent: color-mix(in srgb, var(--color-accent) 40%, transparent)
 .thinking-block--card
   margin-bottom: 4px
 
+// US-24/§6.8.3: collapsed and inline-short states render inline (single-line span)
+.thinking-block--card.thinking-block--collapsed,
+.thinking-block--card.thinking-block--inline-short
+  display: inline
+  margin-bottom: 0
+
 .thinking-block--card .thinking-block__label
   display: flex
   align-items: center
@@ -305,20 +396,53 @@ $border-accent: color-mix(in srgb, var(--color-accent) 40%, transparent)
   margin-left: auto
   color: var(--color-text-tertiary)
   font-size: 10px
+  cursor: pointer
 
-.thinking-block--card .thinking-block__preview
-  font-size: $font-size-card
+// ===== US-24/§6.8.3: Inline collapsed span (🧠 + summary + ▶) =====
+.thinking-block__icon-emoji
+  font-size: 14px
+  line-height: inherit
+  vertical-align: -1px
+  margin-right: 4px
+
+.thinking-block__collapsed
+  display: inline
+  cursor: pointer
+  color: var(--color-text-secondary)
+  font-size: var(--q-font-size, 14px)
+  line-height: var(--q-line-height, 1.5)
+  background: transparent
+  padding: 2px 0
+  user-select: none
+  transition: color 0.15s ease
+
+  &:hover
+    color: var(--color-text-primary)
+
+.thinking-block__collapsed-text
   color: var(--color-text-tertiary)
-  overflow: hidden
-  text-overflow: ellipsis
-  white-space: nowrap
-  max-width: 100%
-  padding-left: 20px
+
+.thinking-block__collapsed-toggle
+  margin-left: 4px
+  color: var(--color-text-tertiary)
+  font-size: 10px
+
+// ===== US-24/§6.8.3: Inline short (reasoning < 30 chars, no toggle) =====
+.thinking-block__inline-short
+  display: inline
+  color: var(--color-text-secondary)
+  font-size: var(--q-font-size, 14px)
+  line-height: var(--q-line-height, 1.5)
+  background: transparent
+  padding: 2px 0
+
+  .thinking-block__inline-text
+    color: var(--color-text-tertiary)
 
 .thinking-block--card .thinking-block__body
   padding: 8px 12px
   margin-left: 20px
-  background: $bg-subtle
+  background: transparent  // US-24/§6.8.3: expanded completed state has transparent bg
   border-left: 2px solid var(--glass-border)
   border-radius: 0 8px 8px 0
   font-size: $font-size-card
@@ -329,6 +453,7 @@ $border-accent: color-mix(in srgb, var(--color-accent) 40%, transparent)
   transition: border-color 0.3s ease
 
 .thinking-block--card .thinking-block__body--streaming
+  background: $bg-subtle  // streaming keeps subtle bg per §6.8.1
   border-left-color: $border-accent
 
 // ===== Keyframes =====

@@ -46,7 +46,7 @@ func TestRegisterTeamGraphExecution_andInterrupt(t *testing.T) {
 		EntryPoint: "review-1", FinishPoint: "review-1",
 	}
 	ct := NewCompiledTeam(cfg, nil, nil, nil)
-	if err := uc.RegisterTeamGraphExecution(context.Background(), "exec-1", "sess-1", "team-1", "run-1", ct); err != nil {
+	if err := uc.RegisterTeamGraphExecution(context.Background(), "exec-1", "sess-1", "sess-1", "team-1", "run-1", ct); err != nil {
 		t.Fatal(err)
 	}
 	gotCt, err := uc.buildConfigForExecution(context.Background(), &GraphExecution{ID: "exec-1", GraphID: "team:team-1:run-1"})

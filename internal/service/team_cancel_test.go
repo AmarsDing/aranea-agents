@@ -140,7 +140,7 @@ func (t *testRunRegistry) GetStatus(sessionID string) (biz.RunStatusEntry, bool)
 }
 
 func TestCancelTeamRun_PublishesCancelledRunStatus(t *testing.T) {
-	bus := activityevent.New(nil)
+	bus := activityevent.New(nil, nil)
 	ch, unsub := bus.Subscribe(biz.ActivityEventSubscribeOptions{BufferSize: 4, GlobalMode: true})
 	defer unsub()
 

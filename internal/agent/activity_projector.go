@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -34,6 +33,11 @@ const (
 const (
 	stuckToolResultI18nKey  = "chat.tool.stuckTimeout"
 	stuckToolResultFallback = "工具执行未返回结果，已自动标记为失败。如需重试请重新发送指令"
+	// thinkingLabelDefault is the default Label for thinking activities.
+	// The frontend ThinkingBlock renders this instead of the generic "思考"
+	// fallback. When trpc-agent-go starts carrying a reasoning-type field,
+	// this can be derived from the event payload instead.
+	thinkingLabelDefault = "推理"
 )
 
 // graphNodeMetadata mirrors trpc-agent-go/graph.NodeExecutionMetadata
@@ -98,12 +102,6 @@ type ActivityProjector struct {
 	// and B-05 (async start races with sync delta).
 	sequencer *activityEventSequencer
 
-	// seq is a monotonically increasing counter assigned to every emitted
-	// event. It lets the frontend reconstruct the exact backend emission
-	// order even when the per-activity sequencer publishes events for different
-	// activities concurrently (e.g. thinking done vs reply start).
-	seq int64
-
 	// Turn-scoped state (reset per turn)
 	rootActivityID string
 	activities     map[string]*biz.Activity // id -> activity
@@ -138,6 +136,14 @@ type ActivityProjector struct {
 }
 
 // NewActivityProjector creates a new ActivityProjector.
+//
+// Activity ordering is governed solely by Timestamp ASC (see design doc
+// §B.3.3); the legacy GlobalSeqAllocator has been removed. The Activity.Seq
+// field is preserved in the schema for backward compatibility but is no
+// longer assigned by the projector — all newly created activities keep
+// Seq=0. Direct-publish events (team_stage/graph_stage/session/plan) are
+// detected by the ActivityEventBus via the ActivityEvent.SequencerHandled
+// flag (false = direct-publish) instead of Seq==0.
 func NewActivityProjector(eventBus biz.ActivityEventBus, activityRepo biz.ActivityWriter, lg loggateway.Logger) *ActivityProjector {
 	if lg == nil {
 		lg = loggateway.NewNoop()
@@ -162,18 +168,6 @@ func (p *ActivityProjector) SetToolCategorizer(c ToolCategorizer) {
 	p.mu.Lock()
 	p.toolCategorizer = c
 	p.mu.Unlock()
-}
-
-// activitySeq returns the pre-allocated Seq for an Activity.
-// All Activity creation paths in On* methods MUST allocate Seq at the entry
-// point (under p.mu). This function asserts the invariant and returns the
-// pre-allocated value. Lazy allocation is no longer supported — see the
-// architecture decision in docs/superpowers/specs/2026-06-27-chat-ui-streaming-fix-design.md.
-func (p *ActivityProjector) activitySeq(a *biz.Activity) int64 {
-	if a.Seq == 0 {
-		panic(fmt.Sprintf("activity %s (%s) has Seq=0 — seq must be pre-allocated in On* entry", a.ID, a.Kind))
-	}
-	return a.Seq
 }
 
 // transitionActivityStatus validates and applies a state transition on the
@@ -278,7 +272,14 @@ func (p *ActivityProjector) ProcessEvent(ctx context.Context, ev *trpcevent.Even
 
 	// RunnerCompletion is handled by OnTurnEnd (called separately from finalize).
 	// Error events are forwarded to OnError.
-	if ev.Response != nil && ev.Response.Error != nil {
+	//
+	// Chat UI fix (problem A): ToolResponse events carrying Response.Error
+	// must NOT be routed to OnError — they represent failed tool executions
+	// whose status should be resolved by processToolResponse → OnToolResult.
+	// Previously all error-bearing events were short-circuited here, so
+	// OnToolResult was never invoked and every tool ended up failed via
+	// the OnStuckTools fallback path.
+	if ev.Response != nil && ev.Response.Error != nil && ev.Response.Object != trpcmodel.ObjectTypeToolResponse {
 		errType := ev.Response.Error.Type
 		if errType == "" {
 			errType = "run_error"
@@ -466,7 +467,6 @@ func (p *ActivityProjector) OnTurnStart(ctx context.Context, meta ProjectMeta) {
 		SessionID:       meta.SessionID,
 		TurnID:          meta.RequestID,
 		Timestamp:       now,
-		Seq:             atomic.AddInt64(&p.seq, 1),
 		AgentKey:        meta.AgentID,
 		AgentName:       meta.AgentDisplayName,
 		SpiritSessionID: spiritSessionID,
@@ -504,11 +504,15 @@ func (p *ActivityProjector) OnReasoningDelta(ctx context.Context, author string,
 			TurnID:           p.meta.RequestID,
 			ParentActivityID: p.rootActivityID,
 			Timestamp:        now,
-			Seq:              atomic.AddInt64(&p.seq, 1),
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
 			SpiritSessionID:  p.resolveSpiritSessionID(),
 			TeamID:           p.meta.TeamID,
+			// Chat UI fix (problem C): set a default label so the frontend
+			// ThinkingBlock shows "推理" instead of the generic "思考" fallback.
+			// trpc-agent-go events don't carry a reasoning-type field today;
+			// when they do, this can be derived from the event payload.
+			Label: thinkingLabelDefault,
 		}
 		p.activities[id] = a
 		p.kindAuthorMap[kindKey(biz.ActivityKindThinking, author)] = id
@@ -522,8 +526,16 @@ func (p *ActivityProjector) OnReasoningDelta(ctx context.Context, author string,
 	p.publishActivityDelta(ctx, a, "reasoning", chunk)
 }
 
-// OnReasoningDone finalizes a thinking activity. If reasoning_as_display is true,
-// the activity is upgraded to reply kind.
+// OnReasoningDone finalizes a thinking activity.
+//
+// When reasoningAsDisplay is true, the reasoning content is surfaced as
+// displayable text (Content populated, meta.as_display=true) so the frontend
+// can render it as a reply-like block. The Kind stays as thinking — this
+// preserves the semantic distinction from a real reply activity and prevents
+// OnTurnEnd's "last reply is final" marking from mistaking a reasoning-as-display
+// for the turn's final answer. Flipping Kind to reply (the previous behavior)
+// destroyed the audit trail and conflated intermediate reasoning with the
+// final reply.
 func (p *ActivityProjector) OnReasoningDone(ctx context.Context, author string, fullReasoning string, reasoningAsDisplay bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -534,33 +546,37 @@ func (p *ActivityProjector) OnReasoningDone(ctx context.Context, author string, 
 	}
 	a := p.activities[activityID]
 
-	// If reasoning_as_display, upgrade to reply
 	if reasoningAsDisplay {
-		// Update kindAuthorMap: remove old thinking key, add reply key
-		delete(p.kindAuthorMap, kindKey(biz.ActivityKindThinking, author))
-		p.kindAuthorMap[kindKey(biz.ActivityKindReply, author)] = activityID
-		a.Kind = biz.ActivityKindReply
-		if fullReasoning != "" {
-			a.Content = fullReasoning
-			a.Reasoning = ""
-		} else {
-			a.Content = a.Reasoning
-			a.Reasoning = ""
+		// Surface reasoning as displayable content WITHOUT flipping Kind.
+		// meta.as_display tells the frontend to render this as a reply-like
+		// block; Content holds the display text for the ReplyEvent mapping.
+		displayText := fullReasoning
+		if displayText == "" {
+			displayText = a.Reasoning
 		}
+		a.Content = displayText
+		if a.Meta == nil {
+			a.Meta = make(map[string]any)
+		}
+		a.Meta["as_display"] = true
+		// Reasoning is kept for audit — do not clear.
 	} else {
 		if fullReasoning != "" {
 			a.Reasoning = fullReasoning
 		}
-		// Remove completed thinking from lookup so the next ReAct round
-		// creates a new thinking Activity instead of appending to this one.
-		// This mirrors OnToolResult's delete(p.toolCalls, toolCallID) pattern.
-		delete(p.kindAuthorMap, kindKey(biz.ActivityKindThinking, author))
 	}
+
+	// Remove completed thinking from lookup so the next ReAct round
+	// creates a new thinking Activity instead of appending to this one.
+	// This mirrors OnToolResult's delete(p.toolCalls, toolCallID) pattern.
+	delete(p.kindAuthorMap, kindKey(biz.ActivityKindThinking, author))
 
 	p.transitionActivityStatus(a, biz.ActivityStatusCompleted)
 	now := time.Now().UTC()
 	a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
-	a.Collapsed = true
+	// as_display thinking renders as a reply-like block: expanded by default.
+	// Normal thinking: collapsed to keep the timeline compact.
+	a.Collapsed = !reasoningAsDisplay
 
 	p.publishAndPersist(ctx, a, biz.ActivityEventCompleted)
 }
@@ -583,7 +599,6 @@ func (p *ActivityProjector) OnTextDelta(ctx context.Context, author string, chun
 			TurnID:           p.meta.RequestID,
 			ParentActivityID: p.rootActivityID,
 			Timestamp:        now,
-			Seq:              atomic.AddInt64(&p.seq, 1),
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
 			SpiritSessionID:  p.resolveSpiritSessionID(),
@@ -621,7 +636,6 @@ func (p *ActivityProjector) OnMemberMessageDelta(ctx context.Context, author str
 			TurnID:           p.meta.RequestID,
 			ParentActivityID: p.rootActivityID,
 			Timestamp:        now,
-			Seq:              atomic.AddInt64(&p.seq, 1),
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
 			SpiritSessionID:  p.resolveSpiritSessionID(),
@@ -663,7 +677,6 @@ func (p *ActivityProjector) OnMemberMessageDone(ctx context.Context, author stri
 			TurnID:           p.meta.RequestID,
 			ParentActivityID: p.rootActivityID,
 			Timestamp:        now,
-			Seq:              atomic.AddInt64(&p.seq, 1),
 			Content:          fullText,
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
@@ -716,7 +729,6 @@ func (p *ActivityProjector) OnTextDone(ctx context.Context, author string, fullT
 			TurnID:           p.meta.RequestID,
 			ParentActivityID: p.rootActivityID,
 			Timestamp:        now,
-			Seq:              atomic.AddInt64(&p.seq, 1),
 			Content:          fullText,
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
@@ -774,7 +786,6 @@ func (p *ActivityProjector) OnToolCall(ctx context.Context, toolCallID, toolName
 		TurnID:           p.meta.RequestID,
 		ParentActivityID: p.rootActivityID,
 		Timestamp:        startedAt,
-		Seq:              atomic.AddInt64(&p.seq, 1),
 		ToolName:         toolName,
 		ToolCallID:       toolCallID,
 		ToolArguments:    argsJSON,
@@ -788,9 +799,19 @@ func (p *ActivityProjector) OnToolCall(ctx context.Context, toolCallID, toolName
 		a.ToolCategory = p.toolCategorizer.Categorize(toolName)
 	}
 
-	// Resolve display label
+	// Resolve display label: catalog → builtin → empty.
+	// Chat UI fix (problem E): previously only the catalog resolver was
+	// consulted, so tools absent from the TeamToolLookup catalog (e.g.
+	// claudecode_Bash, file_list_file) ended up with an empty Label and
+	// the frontend fell back to the raw tool_name. Add a builtin fallback
+	// using ResolveDisplayLabel so known tools always get a friendly name.
 	if p.metaResolver != nil {
 		if label := p.metaResolver.ResolveDisplayLabel(ctx, toolName); label != "" {
+			a.Label = label
+		}
+	}
+	if a.Label == "" {
+		if label := ResolveDisplayLabel(toolName); label != "" && label != toolName {
 			a.Label = label
 		}
 	}
@@ -906,7 +927,6 @@ func (p *ActivityProjector) OnError(ctx context.Context, errMsg string, errType 
 		SessionID:       p.meta.SessionID,
 		TurnID:          p.meta.RequestID,
 		Timestamp:       now,
-		Seq:             atomic.AddInt64(&p.seq, 1),
 		DurationMs:      0,
 		Content:         errMsg,
 		AgentKey:        p.meta.AgentID,
@@ -935,7 +955,6 @@ func (p *ActivityProjector) OnNotice(ctx context.Context, turnID, sessionID stri
 		TurnID:           turnID,
 		ParentActivityID: p.rootActivityID,
 		Timestamp:        now,
-		Seq:              atomic.AddInt64(&p.seq, 1),
 		Content:          content,
 		Meta:             map[string]any{"noticeType": noticeType},
 	}
@@ -988,7 +1007,6 @@ func (p *ActivityProjector) OnConfirmRequest(ctx context.Context, turnID, sessio
 		TurnID:           turnID,
 		ParentActivityID: p.rootActivityID,
 		Timestamp:        now,
-		Seq:              atomic.AddInt64(&p.seq, 1),
 		Content:          params.Content,
 		Meta:             map[string]any{"toolName": params.ToolName, "toolArguments": params.ToolArguments},
 	}
@@ -1089,7 +1107,6 @@ func (p *ActivityProjector) processGraphNodeStart(ctx context.Context, ev *trpce
 			SessionID: p.meta.SessionID,
 			TurnID:    p.meta.RequestID,
 			Timestamp: now,
-			Seq:       atomic.AddInt64(&p.seq, 1),
 			// B-07: Set ParentActivityID to the current turn's root task
 			// Activity so the plan nests under the task in the Activity tree
 			// (frontend ActivityStream recursive rendering). Without this,
@@ -1195,7 +1212,6 @@ func (p *ActivityProjector) OnPlanStart(ctx context.Context, turnID, sessionID s
 		SessionID: sessionID,
 		TurnID:    turnID,
 		Timestamp: now,
-		Seq:       atomic.AddInt64(&p.seq, 1),
 		Content:   title,
 		Meta:      map[string]any{"steps": steps},
 	}
@@ -1328,10 +1344,85 @@ func (p *ActivityProjector) OnStuckTools(ctx context.Context) {
 	}
 }
 
+// markFinalReply marks the turn's final reply activity with meta.is_final=true.
+//
+// The "final reply" is the user-facing final answer of the turn — the last
+// reply activity by Seq. In a ReAct loop the model may emit multiple reply
+// activities (intermediate outputs before the final answer); only the last
+// one is the final answer. If the turn has no real reply but has a
+// thinking-as-display activity (kind=thinking, meta.as_display=true), that
+// activity is treated as the final reply (the model surfaced reasoning as
+// the reply).
+//
+// Called from OnTurnEnd with p.mu held. For already-terminal replies (e.g.
+// completed via OnTextDone before OnTurnEnd), an ActivityEventUpdated is
+// published to propagate the is_final mark to the frontend. For still-running
+// replies, the mark is set on the activity so the subsequent terminal event
+// (published by the finalization loop) carries it.
+func (p *ActivityProjector) markFinalReply(ctx context.Context) {
+	var finalActivity *biz.Activity
+	for _, a := range p.activities {
+		isReply := a.Kind == biz.ActivityKindReply
+		isDisplayThinking := a.Kind == biz.ActivityKindThinking && a.Meta != nil && a.Meta["as_display"] == true
+		if !isReply && !isDisplayThinking {
+			continue
+		}
+		// Ordering follows Timestamp ASC (design doc §B.3.3); the legacy
+		// Seq-based comparison was removed together with GlobalSeqAllocator.
+		if finalActivity == nil || a.Timestamp.After(finalActivity.Timestamp) {
+			finalActivity = a
+		}
+	}
+	if finalActivity == nil {
+		return
+	}
+	if finalActivity.Meta == nil {
+		finalActivity.Meta = make(map[string]any)
+	}
+	finalActivity.Meta["is_final"] = true
+	// If the activity is already terminal (completed via OnTextDone or
+	// OnReasoningDone before OnTurnEnd), the finalization loop won't publish
+	// a new terminal event for it — publish an Updated event to propagate
+	// the is_final mark. Running activities will carry the mark in their
+	// terminal event published by the finalization loop below.
+	if biz.IsActivityTerminal(finalActivity.Status) {
+		p.publishAndPersist(ctx, finalActivity, biz.ActivityEventUpdated)
+	}
+}
+
 // OnTurnEnd finalizes the root task Activity with optional token usage.
-func (p *ActivityProjector) OnTurnEnd(ctx context.Context, usage *ActivityUsage) {
+// The canceled parameter indicates whether the turn was cancelled (context
+// cancellation or first-byte timeout). When true, running activities are
+// transitioned to Cancelled instead of Completed, so the frontend can
+// display the correct terminal state (⊘ cancelled, not ✓ completed).
+//
+// OnStuckTools must be called before OnTurnEnd to ensure tools that never
+// received a result are marked as Failed rather than being force-completed
+// as Completed by this method.
+//
+// P1-A: This method also marks the turn's final reply (or thinking-as-display)
+// with meta.is_final=true so the frontend can distinguish the user-facing
+// final answer from intermediate replies in a ReAct loop. Without this mark,
+// the frontend's previous status-based inference (isFinal = status=='completed')
+// labeled EVERY terminal reply as final.
+func (p *ActivityProjector) OnTurnEnd(ctx context.Context, usage *ActivityUsage, canceled bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	// Determine the terminal status for running activities based on whether
+	// the turn was cancelled. OnStuckTools (called before OnTurnEnd) already
+	// marked stuck tools as Failed; this loop only catches activities that
+	// are still running for any other reason.
+	terminalStatus := biz.ActivityStatusCompleted
+	if canceled {
+		terminalStatus = biz.ActivityStatusCancelled
+	}
+
+	// P1-A: Mark the last reply (or thinking-as-display) as is_final BEFORE
+	// finalizing running activities, so the terminal event carries the mark.
+	// Already-terminal replies (e.g. completed via OnTextDone) get an
+	// ActivityEventUpdated to propagate the mark to the frontend.
+	p.markFinalReply(ctx)
 
 	// Finalize any still-running child activities so the UI does not leave
 	// streaming indicators (reply/thinking/action) dangling when the turn ends.
@@ -1340,17 +1431,25 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, usage *ActivityUsage)
 		switch a.Kind {
 		case biz.ActivityKindReply, biz.ActivityKindThinking:
 			if a.Status == biz.ActivityStatusRunning {
-				p.transitionActivityStatus(a, biz.ActivityStatusCompleted)
+				p.transitionActivityStatus(a, terminalStatus)
 				a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
 				a.Collapsed = a.Kind == biz.ActivityKindThinking
-				p.publishAndPersist(ctx, a, biz.ActivityEventCompleted)
+				eventType := biz.ActivityEventCompleted
+				if canceled {
+					eventType = biz.ActivityEventCancelled
+				}
+				p.publishAndPersist(ctx, a, eventType)
 			}
 		case biz.ActivityKindAction:
 			if a.Status == biz.ActivityStatusToolRunning {
-				p.transitionActivityStatus(a, biz.ActivityStatusCompleted)
+				p.transitionActivityStatus(a, terminalStatus)
 				a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
 				a.Collapsed = true
-				p.publishAndPersist(ctx, a, biz.ActivityEventCompleted)
+				eventType := biz.ActivityEventCompleted
+				if canceled {
+					eventType = biz.ActivityEventCancelled
+				}
+				p.publishAndPersist(ctx, a, eventType)
 			}
 		}
 	}
@@ -1384,7 +1483,7 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, usage *ActivityUsage)
 		return
 	}
 
-	p.transitionActivityStatus(a, biz.ActivityStatusCompleted)
+	p.transitionActivityStatus(a, terminalStatus)
 	a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
 
 	// Store token usage in the root task Activity record.
@@ -1407,7 +1506,11 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, usage *ActivityUsage)
 			"total_tokens":      usage.TotalTokens,
 		}
 	}
-	ev := p.buildActivityEvent(a, biz.ActivityEventCompleted)
+	rootEventType := biz.ActivityEventCompleted
+	if canceled {
+		rootEventType = biz.ActivityEventCancelled
+	}
+	ev := p.buildActivityEvent(a, rootEventType)
 	p.publishEvent(ctx, ev, a)
 }
 
@@ -1477,8 +1580,11 @@ func (p *ActivityProjector) publishActivityDeltaWithPersist(ctx context.Context,
 // The Activity snapshot is included directly — no metadata packing needed,
 // simplifying the frontend contract compared to the legacy Envelope format.
 //
-// Seq must be pre-allocated in the On* entry point (under p.mu). This function
-// no longer assigns Seq — it only reads the pre-allocated value via activitySeq.
+// Note: Activity.Seq is no longer assigned by the projector (the legacy
+// GlobalSeqAllocator was removed). Ordering is governed solely by Timestamp
+// ASC — see design doc §B.3.3. The SequencerHandled flag on the returned
+// event is left as zero (false); the activityEventSequencer's processTask
+// sets it to true before publishing to the bus.
 func (p *ActivityProjector) buildActivityEvent(a *biz.Activity, eventType biz.ActivityEventType) biz.ActivityEvent {
 	// Build a redacted copy for the event payload. The redaction limit
 	// (512 bytes) matches biz.redactActivityJSON and the frontend

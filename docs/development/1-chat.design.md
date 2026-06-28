@@ -2866,3 +2866,689 @@ stateDiagram-v2
 | 执行中文案 | 英文 status 原样 | i18n「正在执行」 |
 
 本设计 **不修改** `pkg/trpc-agent-go`；所有增强均在 Aranea 投影层与前端完成，符合 [AGENT_RUNTIME_BOUNDARY.md](../AGENT_RUNTIME_BOUNDARY.md)。
+
+---
+
+## 子模块：Team 团队历史显示设计
+
+> **状态**：2026-06-28 新增 | **修正**：本节修正主文档中关于 Team 显示和排序的设计
+> **需求**：详见 [1-chat.md §子模块：Team 团队历史显示需求](./1-chat.md)
+
+### B.1 核心架构原则：Agent 统一性
+
+**所有 agent 本质相同**：
+- 精灵（父节点）和子 agent（包裹在 team 外衣下）都是 agent
+- 会话输出内容和展现形式相同（thinking + action + reply）
+- 后端交互逻辑相同（ActivityProjector 路径）
+- 区别仅在于父子关系（`parentActivityId`）和深度（`agent_depth`）
+
+**推论**：
+- ActivityStream 递归渲染是正确方向
+- Team 在 UI 上不作为独立层级，而是子 agent 的分组容器
+- 父子关系通过 `parentActivityId` + `SpiritSessionID` 表达
+
+### B.2 UI 层级（修正后）
+
+```
+Spirit (agent, depth=0)
+├── thinking / action / reply（精灵自己的会话）
+├── plan（任务计划面板，固定位置，支持折叠）
+├── graph_stage（流程图，独立显示）
+│
+├── team-card（团队容器，depth=1）
+│   ├── team 标签（头部+中部+尾部）
+│   └── 团队成员（子 agent, depth=1）
+│       ├── member 头部（avatar + name + status）
+│       └── 展开后：
+│           ├── thinking（折叠）
+│           ├── action（折叠）
+│           └── reply（展开）
+│
+└── agent-card（精灵直接调用子 agent，depth=1）
+    ├── agent 标签（简化版：agent 名称 + 状态 + 时间）
+    └── 展开后：
+        ├── thinking（折叠）
+        ├── action（折叠）
+        └── reply（展开）
+```
+
+#### B.2.1 三种对话模式的渲染规则
+
+UI 层级在不同对话场景下需呈现不同结构：
+
+**模式 A — 简单对话**（用户问、Spirit 直接答）：
+
+```
+Turn N
+└── UserMessageBubble
+└── ThinkingBlock（可折叠，可能为空，空则不展示）
+└── ActionBlock（可折叠，调用工具，可空）
+└── ReplyBlock（最终回复）
+```
+
+- 不显示 plan、graph_stage、team-card、agent-card
+- 适用于：闲聊、简单问答、单步工具调用（如读一个文件后直接回答）
+
+**模式 B — 子 agent 委派**（Spirit 调用 subagent_spawn）：
+
+```
+Turn N
+└── UserMessageBubble
+└── ThinkingBlock
+└── PlanBlock（任务计划，含子 agent 任务项）
+└── agent-card × N（多个子 agent 并行）
+    ├── ThinkingBlock
+    ├── ActionBlock
+    └── ReplyBlock（成员回复）
+└── ReplyBlock（Spirit 汇总回复）
+```
+
+- 不显示 team-card、graph_stage
+- 适用于：Spirit 拆解任务后直接委派给若干子 agent（无 Team 编排）
+
+**模式 C — Team 编排**（Spirit 组建 Team 协作）：
+
+```
+Turn N
+└── UserMessageBubble
+└── ThinkingBlock
+└── PlanBlock（任务计划，含 Team 任务项）
+└── GraphStageBlock（DAG 依赖图，team=1 时可省略）
+└── team-card × N
+    └── 成员列表（每个成员的 thinking/action/reply）
+└── ReplyBlock（Spirit 最终汇总）
+```
+
+- 完整呈现 UI 层级
+- 适用于：复杂任务，需 Team DAG 协作
+
+**模式判定**：前端不预判模式，按收到的 Activity 事件动态渲染——收到什么 kind 就渲染什么 Block，未收到就不展示对应组件。即模式 A/B/C 由事件流自然形成，不需要前端分支判断。
+
+#### B.2.2 Turn 之间的 UI 分隔规则
+
+**Turn 边界**：一个 Turn 由用户发出 `task.created`（用户消息）开始，到 Spirit 发出最终回复 `reply.completed`（`is_final=true`）结束。
+
+**视觉分隔**：
+
+- Turn 之间使用细分隔线（`1px solid var(--q-color-grey-3)`）分隔，上下各 16px 间距
+- 分隔线不显示文字标签（保持视觉简洁）
+- Turn 内的组件之间使用 8px 间距（无分隔线）
+
+**滚动锚点**：
+
+- 新 Turn 开始时，自动滚动到 UserMessageBubble 顶部（用户能立即看到自己的消息）
+- 进行中的 Turn（如 streaming）保持滚动跟随最新内容
+- 已完成的 Turn 不自动滚动（用户可手动向上浏览历史）
+
+**历史加载时**：
+
+- 加载多个 Turn 时，按 TurnID ASC 排序（与时间顺序一致）
+- 每个 Turn 内按 B.3.3 排序规则组织
+- 已完成 Turn 内的所有组件默认折叠（thinking/action 折叠、reply 展开），用户可展开查看详情
+
+### B.3 数据模型
+
+#### B.3.1 Activity 模型（核心字段）
+
+```go
+type Activity struct {
+    ID                string    // 唯一标识
+    SessionID         string    // 当前 session
+    SpiritSessionID   string    // 根 spirit session（跨 session 聚合）
+    ParentActivityID  string    // 父 activity（构建树）
+    TurnID            string    // 所属 turn
+    Kind              string    // activity 类型
+    Status            string    // activity 状态
+    Timestamp         time.Time // 事件产生时间（纳秒精度，用于排序）
+    
+    // 业务字段
+    AgentKey          string    // 当前 agent 标识
+    TeamID            string    // 所属 team ID（可空）
+    Stage             string    // 阶段标识（team_stage/graph_stage 用）
+    
+    // 工具字段（kind=action）
+    ToolName          string
+    ToolCallID        string
+    ToolArguments     json.RawMessage
+    ToolResult        json.RawMessage
+    
+    // 内容字段
+    Content           string    // 文本内容
+    Meta              map[string]any  // 元数据（is_final, members, progress 等）
+}
+```
+
+**关键约束**：
+- **不使用全局 Seq**——用 `Timestamp` 排序（纳秒精度，单 publish worker 保证单调递增）
+- **所有 direct-publish 事件必须填 `SpiritSessionID`**（修复 Team/Graph 事件当前未填的问题）
+
+**与 trpc-agent-go Event 的关系**：
+
+Activity 是 trpc-agent-go `*event.Event` 的投影结果（通过 [ActivityProjector](../../internal/agent/activity_projector.go) 转换）。trpc Event 通过 `Response.Choices[].Message/Delta` 的不同字段统一承载三阶段内容：
+
+| 阶段 | trpc Event 字段 | trpc Object 类型 | 投影到 Activity |
+|------|----------------|------------------|----------------|
+| thinking | `Message.ReasoningContent` | `chat.completion.chunk` | `Kind=thinking`, `Content=ReasoningContent` |
+| action（调用） | `Message.ToolCalls` / `ToolID` / `ToolName` | `chat.completion.chunk` | `Kind=action`, `ToolName/ToolCallID/ToolArguments` |
+| action（结果） | `Message.Content`（role=tool） | `tool.response` | `Kind=action`, `ToolResult=Content` |
+| reply | `Message.Content` | `chat.completion` / `chunk` | `Kind=reply`, `Content=Content` |
+| Runner 结束 | `Object=runner.completion` | `runner.completion` | `reply.Status=completed` + `Meta.is_final=true` |
+
+> **设计依据**：trpc-agent-go 不为思考/act/回复分别定义独立事件类型，而是统一在 `Event` 结构中通过字段区分。Activity 沿用同样的设计哲学——单一结构 + Kind 区分，避免类型爆炸。
+
+#### B.3.2 ActivityKind 枚举（10 种）
+
+| Kind | 用途 | 持久化 | UI 组件 | trpc Event Object 来源 |
+|------|------|--------|---------|----------------------|
+| `task` | 用户消息/turn 容器 | ✅ | UserMessageBubble | 业务层封装（非 trpc 投影） |
+| `thinking` | 推理过程 | ✅ | ThinkingBlock（可折叠） | `chat.completion.chunk`（`Delta.ReasoningContent`） |
+| `action` | 工具调用 | ✅ | ActionBlock（可折叠） | `chat.completion.chunk`（`Delta.ToolCalls`）+ `tool.response`（结果） |
+| `reply` | 回复内容 | ✅ | ReplyBlock（始终展开） | `chat.completion` / `chat.completion.chunk`（`Message.Content`） |
+| `plan` | 任务计划面板 | ✅ | PlanBlock（固定位置，支持折叠） | direct-publish（业务层发出） |
+| `graph_stage` | Graph 流程图 | ✅ | GraphStageBlock | direct-publish（业务层发出） |
+| `team_stage` | Team 阶段 | ✅ | TeamCard | direct-publish（业务层发出） |
+| `session` | 子 session 创建 | ✅ | AgentCard（subagent_spawn） | `agent.transfer` / direct-publish |
+| `notice` | 系统通知 | ✅ | NoticeBlock | `error` / direct-publish |
+| `confirm` | 待确认 | ✅ | ConfirmBlock | 工具阻塞（`awaiting_user`） |
+
+**事件来源分类**：
+- **trpc 投影事件**（thinking/action/reply）：由 LLM 推理产生，经 Runner → ActivityProjector → Activity
+- **direct-publish 事件**（plan/graph_stage/team_stage）：由业务层（Spirit/Team/Graph 编排器）直接发出
+- **业务层封装事件**（task）：用户消息进入时由 ChatOrchestrator 封装
+
+**移除**：
+- ~~`sub_task_board`~~（Phase 3 已移除，改用 `parentActivityId` 递归）
+- ~~`error`~~（统一通过 `task.failed` 表达）
+- ~~`end`~~（统一通过 `team_stage.completed` / `reply.completed` 表达）
+- ~~全局 `Seq` 字段~~（用 `Timestamp` 排序）
+
+**trpc 终止信号分层**（投影规则）：
+
+| trpc 终止信号 | 含义 | 投影到 Activity |
+|--------------|------|----------------|
+| `Response.IsFinalResponse()` | 单条 LLM 响应结束（如一段 thinking 完成） | `Activity.Status=completed`（单条） |
+| `Event.IsRunnerCompletion()` | 整个 Runner 结束（turn 终止） | `reply.Status=completed` + `Meta.is_final=true`（turn 终态） |
+
+> **设计依据**：trpc-agent-go 分层终止信号——单条响应结束 vs 整个 Runner 结束。Activity 投影保留这一分层，单条 thinking/action 完成只更新自身 Status，Runner 结束才标记 turn 终态。
+
+#### B.3.3 排序规则（修正）
+
+**核心原则**：用现有 `Timestamp` 字段排序，不增加任何新字段，不引入任何特殊规则。
+
+**排序逻辑**（前端 + 后端一致）：
+
+```
+1. 按 TurnID 分组（每个 turn 独立）
+2. 在 turn 内，按 ParentActivityID 构建树
+3. 同一父节点下的子节点，纯粹按 Timestamp ASC 排序
+```
+
+**不引入特殊规则的理由**：
+- task（用户消息）本身就是 turn 内最早产生的事件，Timestamp 自然最小，无需特殊规则即可排第一
+- reply（最终回复）的产生时机由后端控制（在所有子任务完成后才发送），Timestamp 自然最大，无需特殊规则即可排最后
+- 引入"必排第一/必排最后"的特殊规则属于补丁式设计，会破坏排序的一致性，应回归事件的自然顺序
+
+**后端保证（基于 trpc-agent-go 框架机制）**：
+
+| 保证项 | trpc-agent-go 机制 | 对应代码位置 |
+|-------|------------------|-------------|
+| 事件产生顺序由 LLM 推理逻辑决定 | LLM 推理时先输出 `ReasoningContent`（thinking），再输出 `ToolCalls`（action），工具执行后输出 `Content`（reply） | `pkg/trpc-agent-go/model/request.go` Message 结构 |
+| 同一 session 内事件串行处理 | Runner 启动**单 goroutine `runEventLoop`** 顺序消费 `agentEventCh`，依次 emit 到 `processedEventCh` | `pkg/trpc-agent-go/runner/runner.go:1022-1048` |
+| Timestamp 单调递增 | 单 goroutine 串行 emit + Channel FIFO，Timestamp 在事件产生时设置（不是发送时） | `pkg/trpc-agent-go/runner/runner.go:1186` `event.EmitEvent` |
+| 终止事件必为最后一条 | `emitRunnerCompletion` 在 `runEventLoop` 末尾发出 `runner.completion` | `pkg/trpc-agent-go/runner/runner.go:2317-2439` |
+| 持久化保留 Timestamp | ActivityProjector 投影时直接复用 trpc Event 的 Timestamp | `internal/agent/activity_projector.go` |
+| 最终回复 Timestamp 是 turn 内最大值 | trpc Runner 在所有子任务完成后才发送 `runner.completion`，投影为 `reply.completed` + `is_final=true` | `internal/agent/activity_projector.go` |
+
+> **设计依据**：trpc-agent-go 的事件机制天然支撑 Timestamp 排序——单 goroutine 串行化 + Channel FIFO + 事件产生时设置 Timestamp，三层保证确保同一 session 内 Timestamp 严格单调递增。Aranea 项目无需在 Activity 层引入额外排序字段或特殊规则。
+
+**DB 查询**：
+
+```sql
+-- 替代原来的 ORDER BY seq ASC, timestamp ASC
+SELECT * FROM activities 
+WHERE spirit_session_id = ? 
+ORDER BY turn_id ASC, parent_activity_id ASC, timestamp ASC;
+```
+
+**前端处理（对齐 trpc-agent-go demo 的 ID-based upsert 模式）**：
+- WS 推送：按 Timestamp 排序插入到 ActivityTree（不依赖到达顺序）
+- 历史加载：按 (TurnID, ParentActivityID, Timestamp) 排序
+- 同一 Activity 的流式更新（如 thinking 流式分片）通过 `activity.id` upsert 累积内容，参考 trpc demo `useAguiChat.ts` 的 `upsertMessage(id, ...)` 模式
+
+**为什么不需要全局 Seq**：
+- 同一 session 内的事件是顺序产生的（trpc Runner 单 goroutine `runEventLoop` 保证）
+- 不同 session 的事件通过 ParentActivityID 分到不同子树，互不干扰
+- Timestamp 纳秒精度足够区分同一 session 内的事件
+- 跨 session 聚合时，通过树形结构组织，不需要全局排序
+- trpc-agent-go demo 本身不使用全局 Seq，而是依赖事件产生顺序 + ID-based upsert，Aranea 与框架保持一致
+
+#### B.3.4 Session 树模型
+
+```
+Spirit Session (root, AgentDepth=0)
+├── Team Session A (AgentDepth=1)
+│   ├── SubAgent Session A.1 (AgentDepth=2)
+│   └── SubAgent Session A.2 (AgentDepth=2)
+└── Agent Session B (AgentDepth=1, subagent_spawn)
+```
+
+**字段**：
+- `parent_session_id`：父 session ID
+- `root_session_id`：根 spirit session ID
+- `agent_depth`：当前深度
+- `session_type`：spirit / team / agent / standalone
+- `member_agent_key`：成员 agent 标识
+
+**MaxDepth 配置**：
+- 字段位置：`AgentRuntimeSetting.MaxSessionDepth`（agent 配置 → 协作能力 → 最大生成深度）
+- 读取方式：从 agent 配置读取，每个 agent 可独立配置
+- 默认值：2（Spirit → Team → Member）
+- 超出限制：返回明确错误，不静默失败
+
+#### B.3.5 Activity 投影规则（trpc Event → Activity 映射）
+
+**投影器位置**：`internal/agent/activity_projector.go`（唯一投影器）
+
+**投影原则**：
+1. **字段复用**：Activity 直接复用 trpc Event 的 `ID` / `Timestamp` / `AgentKey`，不重新生成
+2. **Kind 派生**：根据 trpc Event 的 `Object` 类型 + 字段内容派生 ActivityKind
+3. **状态映射**：trpc Event 的流式状态（streaming/completed）映射到 Activity.Status
+4. **累积更新**：同一 Activity 的流式分片通过 `activity.id` upsert 累积内容
+
+**完整映射表**：
+
+| trpc Event | 触发条件 | Activity Kind | Activity Status | 字段映射 |
+|------------|---------|--------------|----------------|---------|
+| `chat.completion.chunk`（流式） | `Delta.ReasoningContent != ""` | `thinking` | `streaming` → `completed` | `Content += Delta.ReasoningContent` |
+| `chat.completion.chunk`（流式） | `Delta.ToolCalls != nil` | `action` | `streaming` → `completed` | `ToolCalls = Delta.ToolCalls` |
+| `chat.completion.chunk`（流式） | `Delta.Content != ""`（role=assistant） | `reply` | `streaming` → `completed` | `Content += Delta.Content` |
+| `chat.completion`（非流式） | `Message.ReasoningContent != ""` | `thinking` | `completed` | `Content = Message.ReasoningContent` |
+| `chat.completion`（非流式） | `Message.ToolCalls != nil` | `action` | `completed` | `ToolCalls = Message.ToolCalls` |
+| `chat.completion`（非流式） | `Message.Content != ""`（role=assistant） | `reply` | `completed` | `Content = Message.Content` |
+| `tool.response` | 工具执行结果返回 | `action` | `completed` | `ToolResult = Message.Content`（role=tool） |
+| `runner.completion` | Runner 结束 | `reply` | `completed` | `Meta.is_final = true` |
+| `error` | 错误发生 | `task` | `failed` | `Meta.error_code = ...`（错误码） |
+| `agent.transfer` | Agent 转移（subagent_spawn） | `session` | `created` | `Meta.child_session_id = ...` |
+
+**direct-publish 事件**（不经 trpc 投影，由业务层直接发出）：
+
+| 事件来源 | Activity Kind | 触发场景 |
+|---------|--------------|---------|
+| Spirit 编排器 | `plan` | 任务拆解完成，生成任务计划 |
+| Spirit 编排器 | `graph_stage` | Team DAG 分配完成 |
+| Spirit 编排器 | `team_stage` | Team 组建完成 |
+| Team 编排器 | `team_stage` | Team 阶段切换（assembled/executing/completed/failed） |
+| Graph 编排器 | `graph_stage` | Graph 节点状态更新 |
+| ChatOrchestrator | `task` | 用户消息进入 |
+| ChatOrchestrator | `notice` | 系统通知（队列满/运行结束等） |
+| 工具阻塞 | `confirm` | `awaiting_user` 工具触发 |
+
+**投影流程**：
+
+```
+[trpc LLM/Flow 产生 Event]
+   │
+   ▼
+Runner.runEventLoop (单 goroutine 串行消费)
+   │
+   ▼
+event.EmitEvent → processedEventCh
+   │
+   ▼
+ActivityProjector.OnEvent(trpcEvent)
+   │  ├─ 按 Object 类型 + 字段内容派生 Kind
+   │  ├─ 复用 trpc Event 的 ID/Timestamp
+   │  ├─ 流式分片 → 同 ID upsert 累积
+   │  └─ 终止事件 → Status=completed + is_final=true
+   │
+   ▼
+ActivityEvent (biz 层模型)
+   │
+   ▼
+ActivityEventSequencer (单 publish worker)
+   │  ├─ 异步持久化到 activities 表
+   │  └─ 同步推送到 WS
+   │
+   ▼
+前端 ActivityStream.vue 按 Kind 渲染
+```
+
+**与 trpc demo 投影的差异**：
+
+| 维度 | trpc demo | Aranea 项目 |
+|------|----------|------------|
+| 投影器 | `translator.Translate` (单流依次输出 AG-UI SSE) | `ActivityProjector` (投影为 Activity 持久化 + WS 推送) |
+| 协议 | AG-UI SSE 协议（`REASONING_*` / `TEXT_MESSAGE_*` / `TOOL_CALL_*`） | Activity 协议（`Kind=thinking/reply/action`） |
+| 持久化 | 无（demo 不持久化） | 持久化到 `activities` 表（异步 UpsertActivity） |
+| 历史恢复 | `MESSAGES_SNAPSHOT` 全量快照 | `ListActivities?since={timestamp}` 增量拉取 |
+| 前端渲染 | `useAguiChat.ts` ID-based upsert | `useActivityTimeline.ts` ActivityTree + ID-based upsert |
+
+> **设计依据**：trpc-agent-go demo 的 Translator 是无状态单流转换器，不持久化。Aranea 项目在 Translator 之上增加 ActivityProjector 层，将 trpc Event 投影为可持久化的 Activity 模型，同时保留 trpc 原始的事件顺序与 ID-based upsert 模式。
+
+### B.4 UI 组件设计
+
+#### B.4.1 team-card 布局
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ team-card 长条                                                        │
+│ ┌─────────────┬──────────────────────────────┬────────────────────┐  │
+│ │   头部 20%    │        中部 60%              │     尾部 20%        │  │
+│ ├─────────────┼──────────────────────────────┼────────────────────┤  │
+│ │  团队名称    │  ┌────────────────────────┐ │  ┌──────────────┐  │  │
+│ │  任务名称    │  │ 成员头像+名称 (1/3)     │ │  │ [对话框...]   │  │  │
+│ │  创建时间    │  │ [G1][G2][G3]           │ │  │      [发送]   │  │  │
+│ │             │  └────────────────────────┘ │  │ [⏸停止/▶恢复] │  │  │
+│ │             │  ┌────────────────────────┐ │  │              │  │  │
+│ │             │  │ 进度条│状态│耗时 (2/3)  │ │  │              │  │  │
+│ │             │  │ [███░]│运行中│2m30s    │ │  │              │  │  │
+│ │             │  │  3:1:1 比例            │ │  │              │  │  │
+│ │             │  └────────────────────────┘ │  │              │  │  │
+│ └─────────────┴──────────────────────────────┴────────────────────┘  │
+│                                                                       │
+│ ── 展开后 ────────────────────────────────────────────────────────── │
+│ ┌─────────────────────────────────────────────────────────────────┐ │
+│ │ [G1] 成员1（avatar + name + status）                            │ │
+│ │   ├─ 🧠 thinking（折叠）                                       │ │
+│ │   ├─ ⚡ action: file_read（折叠）                              │ │
+│ │   └─ 💬 reply（展开）                                          │ │
+│ │ [G2] 成员2（avatar + name + status）                          │ │
+│ │   └─ ...                                                       │ │
+│ └────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+**头部（20%）**：上中下三部分（1:1:1）—— 团队名称 / 任务名称 / 创建时间
+**中部（60%）**：上下两部分（1:2）—— 成员头像+名称 / 进度条:状态:耗时（3:1:1）
+**尾部（20%）**：对话框（收缩状态，点击横向展开，显示发送按钮）+ 停止/恢复按钮
+
+**尾部对话框交互**：
+- 默认：收缩状态，显示"💬 补充信息..."提示文字
+- 点击：横向展开，显示完整输入框 + 发送按钮
+- 发送后：清空输入框，保持展开状态
+- 触发 `POST /v1/teams/{id}/inject` 携带 `{message: "..."}`
+
+**停止/恢复按钮**：
+- running 状态：显示"⏸ 停止"，触发 `POST /v1/teams/{id}/pause`
+- interrupted 状态：显示"▶ 恢复"，触发 `POST /v1/teams/{id}/resume`
+- completed/failed 状态：隐藏
+
+**展开/折叠**（详见 B.4.5 统一规则）：
+- 点击 team-card 头部或中部区域 → 展开/折叠成员列表
+- 初始渲染时：running 状态默认展开，终态（completed/failed/cancelled）默认折叠
+- 状态变化不改变用户已设置的展开/折叠状态（用户意图优先）
+
+#### B.4.2 agent-card 布局（简化版，含补充输入框）
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ agent-card 简化版                                                     │
+│ ┌──────────────────────────────────────┬────────────────────────────┐ │
+│ │  头部 80%                             │  尾部 20%                   │ │
+│ ├──────────────────────────────────────┼────────────────────────────┤ │
+│ │  [avatar] Agent 名称  [status badge] │  [⏸停止/▶恢复]              │ │
+│ │  创建时间 10:30:00                    │  [💬 补充信息...] [发送]     │ │
+│ └──────────────────────────────────────┴────────────────────────────┘ │
+│                                                                       │
+│ ── 展开后 ────────────────────────────────────────────────────────── │
+│ ├─ 🧠 thinking（折叠）                                              │
+│ ├─ ⚡ action: tool_name（折叠）                                      │
+│ └─ 💬 reply（展开）                                                  │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+**与 team-card 的区别**：
+- 无团队信息（团队名称、成员列表）
+- 无进度条（单个 agent，直接显示状态）
+- **保留用户补充输入框**（与 team-card 一致交互）
+- 触发 `POST /v1/agents/{id}/inject` 携带 `{message: "..."}`
+
+#### B.4.3 任务计划面板（PlanBlock）
+
+**作用**：
+1. 为 agent 执行提供清晰的任务执行指导（在 session 记忆中保持任务方向）
+2. 为用户提供进度可观测性
+
+**作用范围**：每个 turn 独立一个任务计划面板
+
+**固定语义**：
+- 同一 turn 内，只产生一个任务计划面板
+- 后续 plan 更新事件在原面板更新，不产生新面板
+- 通过 `plan.id` 或 `parentActivityId` 关联到原面板
+
+**折叠行为**：
+- 支持折叠（用户可手动折叠/展开）
+- 默认展开（任务进行中）
+- 任务全部完成后，**初始渲染**自动折叠为摘要（显示"✅ N 项任务已完成"）；若用户在任务进行中或自动折叠后已手动展开，则保持展开（用户意图优先，详见 B.4.5）
+- 折叠状态下，显示进度摘要（X/N 已完成）
+- 展开后显示完整任务列表 + 状态 + 依赖关系
+
+**状态更新机制（状态跟随执行者）**：
+- 每个 plan item 对应一个 team 或 agent（即"执行者"）
+- **Plan item 状态 = 对应 team/agent 的状态**（不引入独立状态机，避免双重状态同步问题）
+- team_stage / agent 执行状态变化时，直接同步到对应 plan item
+- WS 推送 `team_stage.updated` 事件携带 `team_id` + `status`
+- 前端按 `team_id` 匹配 plan item，更新其状态显示
+
+**Plan item 状态值**（与对应 team/agent 一致）：
+
+| Plan item 状态 | 对应 team/agent 状态 | 视觉 |
+|---------------|---------------------|------|
+| pending | team/agent 未启动 | 灰色圆点 |
+| running | team/agent 执行中 | 蓝色 pulse |
+| completed | team/agent 已完成 | 绿色 ✓ |
+| failed | team/agent 失败 | 红色 ✗ |
+| interrupted | team/agent 中断 | 黄色 ⏸ |
+| cancelled | team/agent 取消 | 灰色 ⊘ |
+
+> **不引入独立状态机**：Plan item 状态完全跟随对应 team/agent 的状态转换，由 team/agent 的状态机决定。引入独立状态机会导致 plan item 状态与实际 team/agent 状态不一致的同步问题。
+
+**计划变更处理**：
+- 直接更新 plan 内容（替换原面板的 items 列表）
+- 不引入 diff 标记（不显示"➕ 新增"/"⊘ 已移除"/"✏️ 已变更"）
+- 理由：plan 变更通常发生在拆解任务过程中，diff 标记增加 UI 复杂度而无实质价值；用户关心的是当前最新的 plan，而非变更历史
+
+#### B.4.4 Graph 流程图（GraphStageBlock）
+
+**位置**：在 plan 之后、team-card 之前独立显示
+
+**时机**：Spirit 完成 team 分配后，发送 `graph_stage.created` 事件时创建
+
+**与 team-card 的关系**：
+- Graph 是 team 之间的 DAG 依赖关系可视化（哪些 team 是上游、哪些是下游、哪些可并行）
+- Graph 节点对应 team，**节点状态 = 对应 team 的状态**（不引入独立节点状态表，避免双重状态同步）
+- Graph 节点点击展开 = 跳转到对应 team-card（不在此处展开成员列表，成员列表在 team-card 中）
+- 当 team 数量为 1（无 DAG 依赖）时，可不展示 Graph，直接显示 team-card
+
+**节点状态跟随 team 状态**：
+
+| 节点状态 | 对应 team 状态 | 视觉 | WS 事件来源 |
+|---------|--------------|------|-----------|
+| pending | team 未启动 | 灰色 | `graph_stage.created`（初始） |
+| running | team 执行中 | 蓝色 + pulse | `team_stage.updated` (stage=running) |
+| completed | team 已完成 | 绿色 ✓ | `team_stage.completed` |
+| failed | team 失败 | 红色 ✗ | `team_stage.failed` |
+| interrupted | team 中断 | 黄色 ⏸ | `team_stage.updated` (stage=interrupted) |
+
+> **不引入节点独立状态机**：Graph 节点状态完全跟随对应 team 的状态转换。引入独立节点状态表会与 team-card 状态形成双重来源，造成同步问题。WS 事件统一以 `team_stage.*` 为准，Graph 节点状态从 team 状态派生。
+
+#### B.4.4.1 多 team-card / agent-card 之间的排序
+
+**场景**：当 Spirit 在一个 turn 内分派多个 team（如 Team DAG 上下游）或多个 agent（并行 subagent_spawn）时，UI 上会出现多个 team-card / agent-card。
+
+**排序规则**：遵循 B.3.3 总原则——按 `Timestamp ASC` 排序。
+
+**理由**：
+- team-card / agent-card 的创建由 Spirit 发出 `team_stage.created` / `session.created`（subagent_spawn）事件
+- 这些事件的产生顺序反映了 Spirit 的分派顺序（如先上游 Team，后下游 Team）
+- 按 Timestamp ASC 排序天然呈现"先创建的在上"，符合用户对分派过程的认知
+- 不引入"按活跃度排序"等特殊规则（活跃度排序是补丁式设计，且 running 状态的 card 在创建时就是 running，按 Timestamp 排序已能保证 running card 优先可见）
+
+**特殊情形处理**：
+- 同一 Timestamp（极少出现，单 publish worker 保证单调）→ 按 `team_id` / `agent_key` 字典序稳定排序
+- 用户可手动折叠/展开任意 card，不影响排序
+
+**与 Graph 节点的对应关系**：
+- Graph 中节点的拓扑顺序（左→右、上→下）反映 DAG 依赖
+- team-card 列表的顺序按 Timestamp（创建顺序）
+- 二者表达不同维度：Graph 表达依赖关系，team-card 列表表达产生顺序，不强制一致
+
+#### B.4.5 折叠规则（统一整理）
+
+**核心原则**：折叠是 UI 优化手段（减少视觉占用），不改变数据结构或排序。
+
+**默认展开/折叠规则**：
+
+| 组件 | 默认状态 | 终态自动折叠 | 说明 |
+|------|---------|--------------|------|
+| PlanBlock | 展开 | ✅（全部完成后） | 任务进行中需可见 |
+| GraphStageBlock | 展开 | ❌（保留） | 流程图始终可见 |
+| team-card（进行中） | 展开 | — | running 状态默认展开，便于观察进度 |
+| team-card（终态） | 折叠 | — | completed/failed/cancelled 默认折叠 |
+| agent-card（进行中） | 展开 | — | 同 team-card |
+| agent-card（终态） | 折叠 | — | 同 team-card |
+| thinking | 折叠 | ✅ | 推理过程默认折叠，减少噪音 |
+| action | 折叠 | ✅ | 工具调用结果默认折叠 |
+| reply | 展开 | ❌ | 回复内容始终展开 |
+| UserMessageBubble | 展开 | ❌ | 用户消息始终可见 |
+
+**手动折叠/折叠交互**：
+- 用户点击组件 header → 切换折叠/展开状态
+- 用户手动展开后，状态切换不应被自动折叠覆盖（即用户意图优先）
+- 刷新页面或 WS 重连后，恢复默认状态（不持久化用户的折叠偏好，避免状态管理复杂度）
+
+**子组件展开规则**：
+- team-card 展开后，其下属的成员列表中每个成员的 thinking/action 默认折叠、reply 默认展开
+- agent-card 同理
+- 即"折叠规则按组件类型递归应用"，不因父组件展开状态而改变
+
+**例外**：
+- PlanBlock 的"自动折叠为摘要"行为仅发生在**初始渲染时**所有 plan item 已完成的情况；运行中变为全部完成不触发自动折叠（保持用户当前展开/折叠状态）
+- 用户手动展开/折叠后，状态由用户掌控，不被状态变化自动覆盖
+
+### B.5 Team 任务栏交互设计
+
+#### B.5.1 进度计算（简单实现）
+
+**维度**：子任务完成数 X/N
+
+**计算方式**：
+- total = team 成员总数
+- completed = 已完成成员数（status=completed）
+- progress = completed / total * 100%
+
+**后端字段**（team_stage.updated 事件携带）：
+```json
+{
+  "kind": "team_stage",
+  "stage": "executing",
+  "meta": {
+    "team_id": "team_xxx",
+    "members": [
+      {"agent_key": "g1", "status": "completed"},
+      {"agent_key": "g2", "status": "running"},
+      {"agent_key": "g3", "status": "pending"}
+    ],
+    "completed_count": 1,
+    "total_count": 3,
+    "progress_pct": 33
+  }
+}
+```
+
+#### B.5.2 暂停/恢复/重试
+
+**暂停**：`POST /v1/teams/{id}/pause` → Team 状态 → interrupted → 按钮变"▶ 恢复"
+**恢复**：`POST /v1/teams/{id}/resume` → Team 状态 → running → 按钮变"⏸ 暂停"
+**重试**：`POST /v1/teams/{id}/retry`（failed/interrupted 状态可用）→ 重新启动 team，保留原 plan
+
+### B.6 WS 协议流
+
+#### B.6.1 事件类型矩阵
+
+| 阶段 | WS 事件 | Activity Kind | 事件来源 | 持久化 | UI 更新 |
+|------|---------|--------------|---------|--------|---------|
+| 用户消息 | `task.created` | task | 业务层封装 | ✅ | UserMessageBubble |
+| Spirit 思考 | `thinking.streaming/done` | thinking | trpc 投影（`chat.completion.chunk` `Delta.ReasoningContent`） | ✅ | ThinkingBlock |
+| Spirit 工具调用 | `action.streaming/done` | action | trpc 投影（`chat.completion.chunk` `Delta.ToolCalls` + `tool.response`） | ✅ | ActionBlock |
+| Spirit 回复 | `reply.streaming/done` | reply | trpc 投影（`chat.completion.chunk` `Delta.Content`） | ✅ | ReplyBlock |
+| 任务计划 | `plan.created/updated` | plan | direct-publish（Spirit 编排器） | ✅ | PlanBlock（固定面板，更新状态） |
+| 计划变更 | `plan.updated` | plan | direct-publish（Spirit 编排器） | ✅ | 原面板更新（不产生新面板） |
+| Graph 创建 | `graph_stage.created` | graph_stage | direct-publish（Spirit/Graph 编排器） | ✅ | GraphStageBlock |
+| Graph 节点 | `graph_stage.updated` | graph_stage | direct-publish（Graph 编排器） | ✅ | 流程图节点状态更新 |
+| Team 组建 | `team_stage.created` (stage=assembled) | team_stage | direct-publish（Spirit 编排器） | ✅ | TeamCard 出现 |
+| Team 进度 | `team_stage.updated` | team_stage | direct-publish（Team 编排器） | ✅ | 进度条/状态更新 |
+| 成员执行 | `thinking/action/reply` (member) | thinking/action/reply | trpc 投影（成员 agent 的 LLM 事件） | ✅ | 树形展开后显示 |
+| Team 完成 | `team_stage.completed` | team_stage | direct-publish（Team 编排器） | ✅ | TeamCard 标记完成 |
+| 子 agent 创建 | `session.created` (subagent_spawn) | session | trpc 投影（`agent.transfer`）/ direct-publish | ✅ | AgentCard 出现 |
+| Runner 结束 | `reply.completed` (is_final=true) | reply | trpc 投影（`runner.completion`） | ✅ | ReplyBlock（Timestamp 自然落最后，详见 B.3.3） |
+
+> **事件来源说明**：详见 B.3.5 Activity 投影规则。trpc 投影事件由 LLM 推理产生（thinking/action/reply），direct-publish 事件由业务层编排器发出（plan/graph_stage/team_stage）。两类事件都通过 ActivityEventSequencer 单 publish worker 串行化，确保 Timestamp 单调递增。
+
+#### B.6.2 direct-publish 事件持久化
+
+**路径**：
+- Spirit 生成的事件 → Bus.Publish → 异步 UpsertActivity
+- Team/Graph 生成的事件 → Bus.Publish → 异步 UpsertActivity（必须填 SpiritSessionID）
+
+**Bus 层规范化**（保留现有逻辑）：
+- `SessionID` 为空时，用 `SpiritSessionID` 兜底
+- chat 域事件异步持久化（无重试，无 dead-letter）
+
+### B.7 历史加载设计
+
+#### B.7.1 加载策略
+
+**只加载 spirit 根 session 事件，子 session 事件按需懒加载**
+
+**流程**：
+1. 用户进入 spirit session
+2. 调用 `ListBySession(spiritSessionID)` 加载 spirit 根 session 的所有 activity
+3. 按 `parentActivityId` 构建 ActivityTree
+4. 按 ActivityStream 渲染规则恢复 UI
+5. 已完成 team 默认折叠，进行中 team 默认展开
+
+#### B.7.2 子 session 懒加载
+
+**触发**：
+- 用户点击 team-card 展开成员列表
+- 或用户点击 agent-card 展开子 agent 会话
+
+**流程**：
+1. 前端检测到 team-card / agent-card 展开
+2. 检查该 team/agent 的子 session activity 是否已加载
+3. 未加载 → 调用 `ListBySession(teamSessionID)` 或 `ListBySession(agentSessionID)`
+4. 加载完成后，合并到 ActivityTree
+5. 渲染成员/子 agent 的 thinking/action/reply
+
+#### B.7.3 后端修复要求
+
+**direct-publish 事件必须填 `SpiritSessionID`**：
+
+| 事件来源 | 当前状态 | 修复要求 |
+|---------|---------|---------|
+| Spirit (spirit_team.go) 生成 | SessionID 空 → Bus 兜底规范化 | ✅ 已正确 |
+| **Team (runner_helpers.go) 生成** | **SessionID=team session ID, SpiritSessionID 空** | ❌ 必须修复 |
+| **Graph (event_bridge.go) 生成** | **SessionID=graph session ID, SpiritSessionID 空** | ❌ 必须修复 |
+| Projector agent 事件 | SessionID=worker session, SpiritSessionID 填充 | ✅ 已正确 |
+
+**修复方式**：
+- Team 事件生成时，从 `run.SpiritSessionID` 回填 `SpiritSessionID`
+- Graph 事件生成时，从 `graph.SpiritSessionID` 回填 `SpiritSessionID`
+
+### B.8 异常处理设计
+
+#### B.8.1 Team 失败
+- **触发**：Team 执行过程中发生错误，WS 推送 `team_stage.failed` 携带 `error_message`
+- **UI 表现**：Team 任务栏状态 → ❌ 失败（红色）；显示错误信息（可展开查看详情）；显示"🔄 重试"按钮
+- **处理策略**：手动重试（不自动重试，避免无限循环）；由用户决定重试/跳过/取消
+
+#### B.8.2 Member 失败
+- **触发**：成员执行过程中发生错误，WS 推送 `action.failed` 或 `reply.failed`
+- **UI 表现**：成员子任务面板标记失败节点
+- **处理策略**：Team 自治决策（跳过该成员/重新分配/标记 team 失败）；不自动重试 member
+
+#### B.8.3 卡住场景（先记录，不实现）
+- **卡住定义**（待实现）：Team 超过 N 秒（默认 120s）无任何 WS 事件；或 Member 超过 M 秒（默认 60s）无 thinking/action/reply
+- **主要卡在工具执行上**
+- **本期处理**：仅记录场景，不做具体实现；后续迭代再设计心跳检测 + 卡住告警

@@ -90,23 +90,29 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 
 // publishPlanningPhase publishes a planning timeline event as an ActivityEvent
 // (Kind=plan, Domain=chat). Replaces the legacy EnvelopeTypePlanningPhase* publish.
-func (g *PrePlanningGate) publishPlanningPhase(ctx context.Context, eventType biz.ActivityEventType, status biz.ActivityStatus, phase, message, sessionID string, durationMs float64) {
+// In the Spirit direct-run scenario the caller passes input.SpiritSessionID,
+// which equals the current SessionID (Spirit session is the root). Both
+// SessionID and SpiritSessionID are set to the same value for cross-session
+// aggregation. Bus layer normalizes empty SpiritSessionID by falling back
+// to SessionID (design doc B.6.2).
+func (g *PrePlanningGate) publishPlanningPhase(ctx context.Context, eventType biz.ActivityEventType, status biz.ActivityStatus, phase, message, spiritSessionID string, durationMs float64) {
 	if g.activityBus == nil {
 		return
 	}
 	g.activityBus.Publish(ctx, biz.ActivityEvent{
 		Event: eventType,
 		Activity: biz.Activity{
-			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindPlan,
-			Status:    status,
-			SessionID: sessionID,
-			Timestamp: time.Now().UTC(),
+			ID:              uuid.NewString(),
+			Kind:            biz.ActivityKindPlan,
+			Status:          status,
+			SessionID:       spiritSessionID,
+			SpiritSessionID: spiritSessionID,
+			Timestamp:       time.Now().UTC(),
 			Meta: map[string]any{
 				"phase":       phase,
 				"message":     message,
 				"duration_ms": durationMs,
-				"session_id":  sessionID,
+				"session_id":  spiritSessionID,
 				"source":      "pre-planning-gate",
 			},
 		},

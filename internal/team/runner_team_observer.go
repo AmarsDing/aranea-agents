@@ -57,6 +57,7 @@ func (r *Runner) startObservers(
 		RunID:            run.ID,
 		TeamID:           teamRow.ID,
 		SessionID:        sess.ID,
+		SpiritSessionID:  deriveSpiritSessionID(sess),
 		Registry:         obsReg,
 		GraphExecutionID: graphExecID,
 		ActivityFlusher:  setup.activityFlusher,

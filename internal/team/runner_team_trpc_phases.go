@@ -68,6 +68,7 @@ func (r *Runner) createInitialTeamRun(ctx context.Context, sess biz.Session, tea
 		StartedAt:              agent.RFC3339Now(),
 		CreatedAt:              agent.RFC3339Now(),
 		UpdatedAt:              agent.RFC3339Now(),
+		SpiritSessionID:        deriveSpiritSessionID(sess),
 	}
 	return r.runWriter.CreateTeamRun(ctx, run)
 }
@@ -96,7 +97,7 @@ func (r *Runner) setupTeamTracing(ctx context.Context, sess biz.Session, teamRow
 	ts.bridge = bridge
 
 	emitter := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
-		Ctx: ctx,
+		Ctx:       ctx,
 		SessionID: sess.ID, RunID: run.ID, AgentKey: teamRow.ID,
 		Domain: event.TraceDomainTeam, LG: r.lg,
 	})
@@ -115,6 +116,17 @@ func (r *Runner) setupTeamTracing(ctx context.Context, sess biz.Session, teamRow
 	return ts
 }
 
+// deriveSpiritSessionID returns the spirit session ID for cross-session aggregation.
+// For a team session created by SpiritTeamAssembler, RootSessionID points to the
+// spirit session that initiated the tree. Fallback to ParentSessionID for legacy
+// data without RootSessionID set. Returns empty string when neither is set.
+func deriveSpiritSessionID(sess biz.Session) string {
+	if sess.RootSessionID != "" {
+		return sess.RootSessionID
+	}
+	return sess.ParentSessionID
+}
+
 // publishTeamRunStartedEvent publishes the TeamRunStarted ActivityEvent if a bus is configured.
 func (r *Runner) publishTeamRunStartedEvent(ctx context.Context, sess biz.Session, teamRow biz.Team, run biz.TeamRun) {
 	if r.td.Pipeline.ActivityBus == nil {
@@ -124,14 +136,15 @@ func (r *Runner) publishTeamRunStartedEvent(ctx context.Context, sess biz.Sessio
 	ev := biz.ActivityEvent{
 		Event: biz.ActivityEventCreated,
 		Activity: biz.Activity{
-			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindTeamStage,
-			Status:    biz.ActivityStatusRunning,
-			SessionID: sess.ID,
-			TeamID:    teamRow.ID,
-			Timestamp: time.Now().UTC(),
-			Stage:     "assembled",
-			Meta:      map[string]any{"run_id": run.ID, "run": cp},
+			ID:              uuid.NewString(),
+			Kind:            biz.ActivityKindTeamStage,
+			Status:          biz.ActivityStatusRunning,
+			SessionID:       sess.ID,
+			SpiritSessionID: deriveSpiritSessionID(sess),
+			TeamID:          teamRow.ID,
+			Timestamp:       time.Now().UTC(),
+			Stage:           "assembled",
+			Meta:            map[string]any{"run_id": run.ID, "run": cp},
 		},
 		Domain: biz.ActivityDomainChat,
 	}
@@ -249,11 +262,7 @@ func (r *Runner) buildTeamProjectMeta(ctx context.Context, sess biz.Session, run
 	// session created by SpiritTeamAssembler with ParentSessionID/RootSessionID
 	// pointing to the spirit session. SpiritSessionID for a team session equals
 	// its RootSessionID (the spirit session that initiated the tree).
-	spiritSessionID := sess.RootSessionID
-	if spiritSessionID == "" {
-		// Fallback: if RootSessionID not set (legacy data), use ParentSessionID
-		spiritSessionID = sess.ParentSessionID
-	}
+	spiritSessionID := deriveSpiritSessionID(sess)
 	return agent.ProjectMeta{
 		SessionID:        sess.ID,
 		RequestID:        run.ID,

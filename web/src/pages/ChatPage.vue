@@ -47,7 +47,6 @@
         :model-provider="composer.modelProvider"
         :panel-mode="spiritStore.activePanelMode"
         :spirit-team="spiritStore.activeTeam"
-        :spirit-teams="spiritStore.sortedTeams"
         :active-member="activeMember"
         :synthesis-result="spiritStore.synthesisResult"
         :messages="session.displayMessages"
@@ -374,7 +373,7 @@ function onExpandMember(payload: { agentKey: string; agentName?: string; teamId?
   spiritStore.selectMember(member.agentId);
 }
 
-/** Phase B-6 / §9.1.3: Handle SessionStageBlock click to navigate into the
+/** Phase B-6 / §9.1.3: Handle AgentCard click to navigate into the
  *  child session it represents. Switches the Activity stream to the child
  *  session and lazy-loads its activities (cache-aware — skips the API call
  *  when the session is already cached). */

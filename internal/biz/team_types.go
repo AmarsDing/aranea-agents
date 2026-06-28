@@ -188,6 +188,13 @@ type TeamRun struct {
 	FinishedAt             string `json:"finished_at"`
 	CreatedAt              string `json:"created_at"`
 	UpdatedAt              string `json:"updated_at"`
+
+	// SpiritSessionID is the root spirit session ID for cross-session activity
+	// aggregation (chat domain). Non-persistent runtime metadata — set by the
+	// team runner when creating/loading a TeamRun before publishing ActivityEvents.
+	// The Bus layer normalizes empty SpiritSessionID by falling back to SessionID
+	// (design doc B.6.2), so missing values degrade gracefully rather than fail.
+	SpiritSessionID string `json:"-"`
 }
 
 type TeamRunStep struct {

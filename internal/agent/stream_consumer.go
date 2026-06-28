@@ -25,6 +25,10 @@ type turnStreamConsumer struct {
 	received          bool
 	lg                loggateway.Logger
 	consumeStart      time.Time
+	// canceled tracks whether the turn was cancelled (context cancellation
+	// or first-byte timeout). Set in consume(), read in finalize() to
+	// propagate the correct terminal status to OnTurnEnd.
+	canceled bool
 }
 
 func newTurnStreamConsumer(
@@ -55,11 +59,10 @@ func newTurnStreamConsumer(
 func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) EventStreamResult {
 	c.consumeStart = time.Now()
 	evIdx := 0
-	canceled := false
 	for ev := range events {
 		evIdx++
-		if !canceled && c.turnCtx.Err() != nil {
-			canceled = true
+		if !c.canceled && c.turnCtx.Err() != nil {
+			c.canceled = true
 			c.lg.With(loggateway.StepID("stream.consume_exit")).Info("stream consume: turnCtx canceled, draining critical events",
 				loggateway.Any("ev_count", evIdx))
 			// Do NOT return immediately — continue draining to ensure
@@ -97,7 +100,7 @@ func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) EventStream
 			// Do NOT return immediately — drain critical events (ToolResult, RunnerCompletion,
 			// StateDelta) just like the turnCtx cancel path, to prevent resource leaks and
 			// ensure the frontend receives terminal signals.
-			canceled = true
+			c.canceled = true
 		}
 		if !c.handleEvent(ev) {
 			c.finalize()
@@ -105,7 +108,7 @@ func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) EventStream
 		}
 		// After first-byte timeout or context cancellation, stop once we see
 		// RunnerCompletion (the terminal event) to avoid draining indefinitely.
-		if canceled && ev.IsRunnerCompletion() {
+		if c.canceled && ev.IsRunnerCompletion() {
 			c.lg.With(loggateway.StepID("stream.consume_exit")).Info("stream consume: drained to RunnerCompletion",
 				loggateway.Any("ev_count", evIdx),
 				loggateway.Any("reason", func() string {
@@ -286,8 +289,13 @@ func (c *turnStreamConsumer) finalize() {
 		CompletionTokens: c.result.CompletionTok,
 		TotalTokens:      c.result.PromptTok + c.result.CompletionTok,
 	}
-	c.opts.ActivityProjector.OnTurnEnd(c.turnCtx, usage)
+	// OnStuckTools MUST run before OnTurnEnd: OnStuckTools marks tools that
+	// never received a result as Failed, while OnTurnEnd force-completes any
+	// remaining ToolRunning activities. If OnTurnEnd runs first, it
+	// force-completes stuck tools as Completed (false success), making
+	// OnStuckTools a no-op since it only targets ToolRunning activities.
 	c.opts.ActivityProjector.OnStuckTools(c.turnCtx)
+	c.opts.ActivityProjector.OnTurnEnd(c.turnCtx, usage, c.canceled)
 	c.opts.ActivityProjector.Close()
 
 	if mtc := c.opts.ActivityProjector.MemberToolCalls(); len(mtc) > 0 {

@@ -36,6 +36,12 @@ type PlanInput struct {
 	TraceID         string
 	IntentArtifact  *IntentArtifact // from intent pass, converted to biz type
 	HistoryDQScore  float64         // from OrchestrationCache, 0 if no history
+	// Mode is the explicit execution mode from plan_and_execute tool input.
+	// Values: "" / "auto" (system decides via complexity), "direct", "single",
+	// "single_agent", "parallel", "dag", "coordinator".
+	// When set to a team-forming mode (parallel/dag/coordinator), it overrides
+	// complexity-based strategy selection and forces subtask decomposition.
+	Mode string
 }
 
 // PlanAdjustments allows Spirit LLM to adjust the plan

@@ -65,6 +65,11 @@ type PersistenceSet struct {
 // lifecycle events (created/streaming/completed/failed/cancelled/child_created).
 // MonitorEventBus is the typed contract.MonitorBus carrying
 // contract.MonitorEvent for monitor-channel events (alerts, logs, etc.).
+//
+// Activity ordering is governed solely by Timestamp ASC (design doc §B.3.3);
+// the legacy SeqAllocator field has been removed. Direct-publish events
+// (team_stage/graph_stage/session/plan) are detected via the
+// ActivityEvent.SequencerHandled flag on the bus.
 type EventPipeline struct {
 	ActivityBus     biz.ActivityEventBus
 	MonitorEventBus contract.MonitorBus

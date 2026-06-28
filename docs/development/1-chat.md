@@ -445,3 +445,135 @@
 | [23 tools.md](./23%20tools.md) | 工具 catalog 与 risk_level |
 | [20 skill.md](./20%20skill.md) | Skill 运行时 |
 | `aranea-frontend-guide` SKILL §6 | 玻璃卡片视觉 token |
+
+---
+
+## 子模块：Team 团队历史显示需求
+
+> **状态**：2026-06-28 新增 | **修正**：本节修正/替代主文档 §1.5 Activity-First 中关于 Team 显示的部分
+> **设计**：详见 [1-chat.design.md §子模块：Team 团队历史显示设计](./1-chat.design.md)
+> **开发计划**：详见 [1-chat.development.md §子模块：Team 团队历史显示开发计划](./1-chat.development.md)
+
+### A.1 核心修正点
+
+| 维度 | 原需求 | 修正后 |
+|------|--------|--------|
+| Team 排序 | 按活跃度排序 | 按 graph 流程图顺序（后端 WS 指令创建顺序） |
+| 任务面板 | 团队卡片列表 | 三层结构：plan → graph → team/agent 任务栏 |
+| 面板产生 | 每次 team 组建产生新面板 | 任务计划面板固定位置，不重复产生，通过 WS 更新状态 |
+| MaxDepth | 硬编码 = 2 | 由 `AgentRuntimeSetting.MaxSessionDepth` 配置 |
+| 排序字段 | 全局 Seq 递增 | 用现有 Timestamp 字段，移除全局 Seq |
+
+### A.2 Agent 统一性原则
+
+**所有 agent 本质相同**：
+- 精灵（父节点）和子 agent（包裹在 team 外衣下）都是 agent
+- 会话输出内容和展现形式相同（thinking + action + reply）
+- 后端交互逻辑相同（ActivityProjector 路径）
+- 区别仅在于父子关系（`parentActivityId`）和深度（`agent_depth`）
+
+### A.3 用户故事
+
+#### A.3.1 简单对话模式
+- 作为用户，当我发送简单问题时，精灵直接 thinking + reply，不组建团队
+- 作为用户，我能看到精灵的推理过程（thinking，可折叠）和最终回复（reply）
+
+#### A.3.2 Team 模式（team-card）
+- 作为用户，当我发送复杂任务时，精灵评估并拆解任务，显示**任务计划面板**（plan，固定位置，不重复产生）
+- 作为用户，我能看到任务计划面板中的任务拆解列表和依赖关系
+- 作为用户，当计划变更时，原面板更新新计划（不产生新面板）
+- 作为用户，计划面板完成后可折叠为摘要（显示"✅ N 项任务已完成"）
+- 作为用户，我能看到 **Graph 流程图**（graph_stage，在 plan 之后、team 之前独立显示）
+- 作为用户，我能看到 **Team 任务栏**（team-card），显示团队名称、任务名称、创建时间、成员头像、进度条、状态、耗时
+- 作为用户，我能在 team-card 尾部点击对话框补充信息（点击横向展开，显示发送按钮）
+- 作为用户，我能点击暂停/恢复按钮控制 team 执行
+- 作为用户，我能点击 team-card 展开查看成员列表
+- 作为用户，展开后能看到每个成员的 thinking/action/reply 序列
+- 作为用户，team 失败时能看到错误信息和重试按钮
+
+#### A.3.3 子 Agent 模式（agent-card）
+- 作为用户，当精灵直接调用子 agent（subagent_spawn）时，我能看到 **agent-card**（简化版）
+- 作为用户，agent-card 显示 agent 名称、状态、时间，以及暂停/恢复按钮
+- 作为用户，我能在 agent-card 尾部点击对话框补充信息（与 team-card 一致交互）
+- 作为用户，我能点击 agent-card 展开查看该 agent 的 thinking/action/reply 序列
+
+#### A.3.4 历史恢复
+- 作为用户，刷新页面后，能从数据库完全复原历史对话内容
+- 作为用户，历史加载时只加载 spirit 根 session 事件，子 session 事件按需懒加载
+- 作为用户，点击 team-card/agent-card 展开时，懒加载子 session 事件
+- 作为用户，已完成的 team 默认折叠，进行中的 team 默认展开
+
+### A.4 功能需求
+
+#### A.4.1 任务计划面板（PlanBlock）
+- **作用**：第一，为 agent 执行提供任务执行指导（在 session 记忆中保持任务方向）；第二，为用户提供进度可观测性
+- **作用范围**：每个 turn 独立一个任务计划面板
+- **固定语义**：同一 turn 内只产生一个面板，后续 plan 更新事件在原面板更新
+- **折叠行为**：支持折叠；进行中默认展开；**初始渲染时**若所有 plan item 已完成则自动折叠为摘要（X/N）；运行中变为全部完成不触发自动折叠（用户意图优先）；可手动切换
+- **状态更新**：由执行者发出（team_stage/agent 执行状态变化时更新对应 plan item 状态）
+- **计划变更**：直接更新 plan 内容（替换原面板的 items 列表），不引入 diff 标记（不显示"➕新增/⊘已移除/✏️已变更"）。理由：plan 变更通常发生在拆解任务过程中，diff 标记增加 UI 复杂度而无实质价值；用户关心的是当前最新的 plan，而非变更历史
+
+#### A.4.2 Graph 流程图（GraphStageBlock）
+- **位置**：在 plan 之后、team 之前独立显示
+- **时机**：Spirit 完成 team 分配后创建
+- **节点状态**：pending（灰色）/ running（蓝色+pulse）/ completed（绿色✓）/ failed（红色✗）/ interrupted（黄色⏸）。状态值与 Plan item 状态值、team 状态值保持一致，详见 [设计 B.4.4](./1-chat.design.md#b44-graph-流程图graphstageblock)
+
+#### A.4.3 Team 任务栏（TeamCard）
+- **布局**：长条卡片，头部2:中部6:尾部2
+- **头部**（20%）：上中下三部分（1:1:1）—— 团队名称 / 任务名称 / 创建时间
+- **中部**（60%）：上下两部分（1:2）—— 成员头像+名称 / 进度条:状态:耗时（3:1:1）
+- **尾部**（20%）：对话框（收缩状态，点击横向展开，显示发送按钮）+ 停止/恢复按钮
+- **进度计算**：子任务完成数 X/N（completed/total * 100%）
+- **暂停/恢复**：running 显示"⏸ 停止"；interrupted 显示"▶ 恢复"；终态隐藏
+- **重试**：failed/interrupted 状态显示"🔄 重试"按钮
+- **用户补充信息**：输入框 + 发送按钮，触发 `POST /v1/teams/{id}/inject`
+- **展开/折叠**：running 默认展开；终态默认折叠；可手动切换
+
+#### A.4.4 Agent 卡片（AgentCard）
+- **布局**：简化版，头部80% + 尾部20%
+- **头部**：avatar + agent 名称 + status badge + 创建时间
+- **尾部**：暂停/恢复按钮 + 对话框（与 team-card 一致交互）
+- **展开后**：thinking（折叠）/ action（折叠）/ reply（展开）
+- **无团队信息、无进度条**（单个 agent，直接显示状态）
+
+#### A.4.5 折叠规则
+| 节点类型 | 折叠行为 |
+|---------|---------|
+| thinking | 默认折叠（不区分进行中/完成，减少噪音） |
+| action | 默认折叠（不区分进行中/完成，减少噪音） |
+| task | 始终展开 |
+| reply | 始终展开 |
+| team-card | running 默认展开，终态默认折叠，可手动切换 |
+| agent-card | 同 team-card |
+| plan | 支持折叠：进行中默认展开，初始渲染时若全部完成则自动折叠为摘要 |
+| graph_stage | 始终展开 |
+
+> 详见 [设计 B.4.5 折叠规则](./1-chat.design.md#b45-折叠规则统一整理)。统一规则：用户手动展开/折叠后状态由用户掌控，不被状态变化自动覆盖（用户意图优先）。
+
+#### A.4.6 异常处理
+- **Team 失败**：手动重试（不自动重试，避免无限循环）；显示错误信息和重试按钮
+- **Member 失败**：Team 自治决策（跳过/重新分配/标记 team 失败）；不自动重试 member
+- **卡住场景**：先记录不实现（主要卡在工具执行上）；后续迭代设计心跳检测 + 卡住告警
+
+#### A.4.7 历史加载 
+- **策略**：只加载 spirit 根 session 事件，子 session 事件按需懒加载
+- **流程**：进入 spirit session → ListBySession(spiritSessionID) → 按 parentActivityId 构建 ActivityTree → 渲染
+- **懒加载触发**：点击 team-card/agent-card 展开时，检查子 session activity 是否已加载，未加载则调用 ListBySession(teamSessionID/agentSessionID)
+- **后端修复**：direct-publish 事件（Team/Graph）必须填 SpiritSessionID（当前未填，需修复）
+
+### A.5 验收标准
+
+- [ ] 简单对话：精灵直接 thinking + reply，无 plan/graph/team
+- [ ] Team 模式：plan → graph → team-card 顺序显示
+- [ ] 任务计划面板：固定位置，不重复产生，支持折叠
+- [ ] team-card 布局：头部2:中部6:尾部2，符合设计
+- [ ] team-card 尾部：对话框横向展开 + 发送按钮 + 暂停/恢复按钮
+- [ ] team-card 展开：显示成员列表，成员展开显示 thinking/action/reply
+- [ ] agent-card：简化版布局，含补充输入框
+- [ ] plan 状态更新：由 team_stage 事件驱动
+- [ ] 进度计算：X/N 简单实现
+- [ ] Team 失败：手动重试
+- [ ] 历史加载：只加载 spirit 根 session，子 session 懒加载
+- [ ] direct-publish 事件：SpiritSessionID 已填充
+- [ ] 排序：用 Timestamp，无全局 Seq
+- [ ] MaxDepth：从 AgentRuntimeSetting.MaxSessionDepth 读取

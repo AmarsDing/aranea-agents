@@ -51,7 +51,7 @@ func (Activity) Fields() []ent.Field {
 		// === Tool fields (kind=action) ===
 		field.String("tool_name").MaxLen(128).Default(""),
 		field.String("tool_category").MaxLen(32).Default("").Comment("ToolCategory: shell/browser/file_read/file_write/file_search/web_search/mcp/code/todo/other"),
-		field.String("tool_call_id").MaxLen(128).Default(""),
+		field.String("tool_call_id").MaxLen(512).Default("").Comment("LLM tool call ID (some providers exceed 128 chars)"),
 		field.Text("tool_arguments").Default("").Sensitive().Comment("JSON tool arguments, sensitive"),
 		field.Text("tool_result").Default("").Sensitive().Comment("JSON tool result, sensitive"),
 		field.Int64("tool_duration_ms").Default(0),

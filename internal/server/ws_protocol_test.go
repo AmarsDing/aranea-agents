@@ -207,7 +207,7 @@ func (s stubTurnExecutor) ExecuteTurn(_ context.Context, _ WSTurnInput) error {
 }
 
 func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
-	activityBus := activityevent.New(loggateway.NewNoop())
+	activityBus := activityevent.New(nil, loggateway.NewNoop())
 	srv := newTestWSServerWithActivity(nil, stubChatSender{sendErr: context.Canceled}, activityBus)
 	wc := &wsConn{
 		sessionID: "sess-user",
@@ -249,7 +249,7 @@ func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
 }
 
 func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
-	activityBus := activityevent.New(loggateway.NewNoop())
+	activityBus := activityevent.New(nil, loggateway.NewNoop())
 	srv := NewWSServerFromInfra(
 		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
 		&event.Infra{MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop())},

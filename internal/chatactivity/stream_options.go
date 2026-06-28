@@ -104,6 +104,10 @@ func (r *catalogActivityMetaResolver) ResolveAgentID(ctx context.Context, agentK
 // has been removed. Activity persistence is owned exclusively by the
 // ActivityProjector via its internal sequencer (see activity_event_sequencer.go).
 // The Sessions parameter has been removed from the signature accordingly.
+//
+// Activity ordering is governed solely by Timestamp ASC (design doc §B.3.3);
+// the legacy seqAlloc parameter has been removed. Direct-publish events
+// are detected via ActivityEvent.SequencerHandled on the bus.
 func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepository, activityWriter biz.ActivityWriter, activityBus biz.ActivityEventBus, lg loggateway.Logger) *chatagent.StreamConsumeOptions {
 	var resolver chatagent.ActivityMetaResolver
 	if tools != nil || agents != nil {

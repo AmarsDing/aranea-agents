@@ -114,6 +114,14 @@ func BuildStateGraphWithRegistry(ctx context.Context, cfg GraphBuildConfig, reg 
 }
 
 func BuildStateGraphWithRegistryAndLogger(ctx context.Context, cfg GraphBuildConfig, reg *Registry, deps *GraphNodeResolverSet, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, error) {
+	g, agents, _, err := BuildStateGraphWithRegistryAndNodeAgents(ctx, cfg, reg, deps, lg)
+	return g, agents, err
+}
+
+// BuildStateGraphWithRegistryAndNodeAgents is like BuildStateGraphWithRegistryAndLogger
+// but also returns a map of node ID → resolved agent for agent nodes. This map
+// is needed by GraphAgent.FindSubAgent when node IDs differ from agent Info().Name.
+func BuildStateGraphWithRegistryAndNodeAgents(ctx context.Context, cfg GraphBuildConfig, reg *Registry, deps *GraphNodeResolverSet, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, map[string]trpcagent.Agent, error) {
 	// Defensive shallow copy: duplicate slices so caller's data is not mutated.
 	local := cfg
 	local.Nodes = append([]biz.NodeDef(nil), cfg.Nodes...)
@@ -128,17 +136,25 @@ func BuildStateGraphWithRegistryAndLogger(ctx context.Context, cfg GraphBuildCon
 		var err error
 		rbc, err = reg.ResolveBuildConfig(local)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 	} else {
 		rbc = resolvedBuildConfigFromCfg(local)
 	}
-	return buildFromResolved(ctx, rbc, deps, lg, 0)
+	return buildFromResolvedWithNodeAgents(ctx, rbc, deps, lg, 0)
 }
 
 func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *GraphNodeResolverSet, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, error) {
 	rbc := resolvedBuildConfigFromCfg(cfg)
-	return buildFromResolved(ctx, rbc, deps, lg, 0)
+	g, agents, _, err := buildFromResolvedWithNodeAgents(ctx, rbc, deps, lg, 0)
+	return g, agents, err
+}
+
+// BuildStateGraphWithNodeAgents is like BuildStateGraphWithAgents but also
+// returns a map of node ID → resolved agent for agent nodes.
+func BuildStateGraphWithNodeAgents(ctx context.Context, cfg GraphBuildConfig, deps *GraphNodeResolverSet, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, map[string]trpcagent.Agent, error) {
+	rbc := resolvedBuildConfigFromCfg(cfg)
+	return buildFromResolvedWithNodeAgents(ctx, rbc, deps, lg, 0)
 }
 
 // resolvedBuildConfigFromCfg wraps biz-layer defs into trpc-layer defs without resolving
@@ -163,22 +179,29 @@ func resolvedBuildConfigFromCfg(cfg GraphBuildConfig) *resolvedBuildConfig {
 // BuildFromResolved builds a graph from a pre-resolved config.
 // This is the public entry point for callers that construct resolvedBuildConfig directly.
 func BuildFromResolved(ctx context.Context, rbc *resolvedBuildConfig, deps *GraphNodeResolverSet, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, error) {
-	return buildFromResolved(ctx, rbc, deps, lg, 0)
+	g, agents, _, err := buildFromResolvedWithNodeAgents(ctx, rbc, deps, lg, 0)
+	return g, agents, err
 }
 
-func buildFromResolved(ctx context.Context, rbc *resolvedBuildConfig, deps *GraphNodeResolverSet, lg loggateway.Logger, depth int) (*trpcgraph.Graph, []trpcagent.Agent, error) {
+// buildFromResolvedWithNodeAgents is the core builder. It returns a map of
+// node ID → resolved agent for agent nodes (including subgraph agent nodes).
+// The map is populated by capturing extras[0] from wireNode (the primary
+// resolved agent) and by recursively merging subgraph nodeAgents. This map
+// is required by GraphAgent.FindSubAgent when node IDs differ from agent
+// Info().Name (see GraphAgent.nodeAgents field doc for details).
+func buildFromResolvedWithNodeAgents(ctx context.Context, rbc *resolvedBuildConfig, deps *GraphNodeResolverSet, lg loggateway.Logger, depth int) (*trpcgraph.Graph, []trpcagent.Agent, map[string]trpcagent.Agent, error) {
 	if depth >= maxSubgraphDepth {
-		return nil, nil, apierror.BadRequest(apierror.DomainGraph, fmt.Sprintf("graph: subgraph nesting depth exceeds limit (%d)", maxSubgraphDepth))
+		return nil, nil, nil, apierror.BadRequest(apierror.DomainGraph, fmt.Sprintf("graph: subgraph nesting depth exceeds limit (%d)", maxSubgraphDepth))
 	}
 	cfg := rbc.cfg
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
 	if len(cfg.Nodes) == 0 && len(cfg.Subgraphs) == 0 {
-		return nil, nil, apierror.BadRequest(apierror.DomainGraph, "graph: at least one node required")
+		return nil, nil, nil, apierror.BadRequest(apierror.DomainGraph, "graph: at least one node required")
 	}
 	if cfg.EntryPoint == "" {
-		return nil, nil, apierror.BadRequest(apierror.DomainGraph, "graph: entry point required")
+		return nil, nil, nil, apierror.BadRequest(apierror.DomainGraph, "graph: entry point required")
 	}
 
 	lg.Info("graph.BuildStateGraph started",
@@ -190,6 +213,7 @@ func buildFromResolved(ctx context.Context, rbc *resolvedBuildConfig, deps *Grap
 	)
 
 	var allAgents []trpcagent.Agent
+	nodeAgents := make(map[string]trpcagent.Agent)
 
 	schema := trpcgraph.NewStateSchema()
 	for _, sf := range cfg.StateFields {
@@ -213,23 +237,32 @@ func buildFromResolved(ctx context.Context, rbc *resolvedBuildConfig, deps *Grap
 	for _, n := range rbc.nodes {
 		extras, err := wireNode(ctx, sg, n, deps, lg)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
+		}
+		// For agent nodes, wireNode returns extras[0] = primary resolved
+		// agent. Record it under the node ID so FindSubAgent(nodeID) works
+		// even when the agent's Info().Name is the agent_key (not node ID).
+		if len(extras) > 0 && extras[0] != nil {
+			nodeAgents[n.ID] = extras[0]
 		}
 		allAgents = append(allAgents, extras...)
 	}
 
 	for _, sub := range rbc.subs {
 		subRbc := rbc.subRbcs[sub.ID]
-		subGraph, subAgents, err := buildFromResolved(ctx, subRbc, deps, lg, depth+1)
+		subGraph, subAgents, subNodeAgents, err := buildFromResolvedWithNodeAgents(ctx, subRbc, deps, lg, depth+1)
 		if err != nil {
-			return nil, nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph: subgraph %q build failed: %v", sub.ID, err))
+			return nil, nil, nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph: subgraph %q build failed: %v", sub.ID, err))
 		}
-		subAgent, err := NewGraphAgent(sub.ID, subGraph, subRbc.cfg.EnableCheckpoint, subAgents...)
+		subAgent, err := NewGraphAgentWithNodeAgents(sub.ID, subGraph, subRbc.cfg.EnableCheckpoint, subNodeAgents, subAgents...)
 		if err != nil {
-			return nil, nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph: subgraph %q agent failed: %v", sub.ID, err))
+			return nil, nil, nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph: subgraph %q agent failed: %v", sub.ID, err))
 		}
 		allAgents = append(allAgents, subAgent)
 		allAgents = append(allAgents, subAgents...)
+		// Subgraph agent nodes are addressed by their sub.ID at the parent
+		// level, so register the wrapper (not the inner agents) under sub.ID.
+		nodeAgents[sub.ID] = subAgent
 		opts := []trpcgraph.Option{}
 		if sub.InputMapper != nil {
 			opts = append(opts, trpcgraph.WithSubgraphInputMapper(sub.InputMapper))
@@ -272,13 +305,13 @@ func buildFromResolved(ctx context.Context, rbc *resolvedBuildConfig, deps *Grap
 			loggateway.StepID("graph.build.compile_fail"),
 			loggateway.Err(err),
 		)
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	lg.Info("graph.BuildStateGraph completed",
 		loggateway.StepID("graph.build.complete"),
 		loggateway.Str("entry_point", cfg.EntryPoint),
 	)
-	return compiled, allAgents, nil
+	return compiled, allAgents, nodeAgents, nil
 }
 
 type GraphAgent struct {
@@ -287,6 +320,13 @@ type GraphAgent struct {
 	name      string
 	saver     trpcgraph.CheckpointSaver
 	subAgents []trpcagent.Agent
+	// nodeAgents maps graph node IDs (e.g. "member-1") to their resolved
+	// trpcagent.Agent instances. The framework's targetAgentFromState looks up
+	// sub-agents by the node ID passed to AddAgentNode, but the resolved agent's
+	// Info().Name is the catalog agent_key (e.g. "key-a1"). Without this map,
+	// FindSubAgent(nodeID) would fail because Info().Name != nodeID.
+	// Populated by buildFromResolvedWithNodeAgents via wireNode.
+	nodeAgents map[string]trpcagent.Agent
 }
 
 var _ trpcagent.Agent = (*GraphAgent)(nil)
@@ -366,6 +406,26 @@ func NewGraphAgentWithEngine(name string, g *trpcgraph.Graph, enableCheckpoint b
 	}, nil
 }
 
+// NewGraphAgentWithNodeAgents creates a GraphAgent with a node-ID-to-agent
+// mapping for FindSubAgent lookups. This is required when graph agent nodes
+// have IDs that differ from their resolved agent's Info().Name (e.g. node ID
+// "member-1" vs agent_key "key-a1").
+func NewGraphAgentWithNodeAgents(name string, g *trpcgraph.Graph, enableCheckpoint bool, nodeAgents map[string]trpcagent.Agent, subAgents ...trpcagent.Agent) (*GraphAgent, error) {
+	a, err := NewGraphAgent(name, g, enableCheckpoint, subAgents...)
+	if err != nil {
+		return nil, err
+	}
+	a.nodeAgents = nodeAgents
+	return a, nil
+}
+
+// SetNodeAgents sets the node-ID-to-agent mapping after construction.
+// Used by callers that create GraphAgent via NewGraphAgentWithSaver or
+// NewGraphAgentWithEngine (which don't have a nodeAgents variant).
+func (a *GraphAgent) SetNodeAgents(m map[string]trpcagent.Agent) {
+	a.nodeAgents = m
+}
+
 func (a *GraphAgent) Run(ctx context.Context, inv *trpcagent.Invocation) (<-chan *trpcevent.Event, error) {
 	// Merge RuntimeState into the initial state so that runtime-injected
 	// values (e.g. NodeCallbacks via StateKeyNodeCallbacks) are visible to
@@ -378,6 +438,12 @@ func (a *GraphAgent) Run(ctx context.Context, inv *trpcagent.Invocation) (<-chan
 			initialState[k] = v
 		}
 	}
+	// Inject StateKeyParentAgent so the framework's targetAgentFromState can
+	// find this GraphAgent when resolving agent nodes. Without this, agent node
+	// execution fails with "parent agent not found in state for agent node X".
+	// This mirrors the framework's graphagent.createInitialState (line 499):
+	//   initialState[graph.StateKeyParentAgent] = ga
+	initialState[trpcgraph.StateKeyParentAgent] = a
 	return a.executor.Execute(ctx, initialState, inv)
 }
 
@@ -400,6 +466,17 @@ func (a *GraphAgent) SubAgents() []trpcagent.Agent {
 }
 
 func (a *GraphAgent) FindSubAgent(name string) trpcagent.Agent {
+	// Primary lookup: by node ID. The framework's targetAgentFromState calls
+	// FindSubAgent with the node ID (e.g. "member-1"), but the resolved agent's
+	// Info().Name is the agent_key (e.g. "key-a1"). The nodeAgents map bridges
+	// this mismatch.
+	if a.nodeAgents != nil {
+		if sub, ok := a.nodeAgents[name]; ok && sub != nil {
+			return sub
+		}
+	}
+	// Fallback: by Info().Name. This handles subgraph agents (whose Info().Name
+	// matches the node ID) and any manually-registered sub-agents.
 	for _, sub := range a.subAgents {
 		if sub == nil {
 			continue

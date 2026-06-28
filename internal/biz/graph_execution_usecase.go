@@ -178,7 +178,7 @@ func (uc *GraphExecutionUsecase) ensureCheckpointRuntime(ctx context.Context, ex
 	if err != nil {
 		return err
 	}
-	rt, err := uc.factory.BuildRuntime(ctx, ct.GraphBuildConfig, exec.SessionID, exec.GraphID, exec.ID, exec.LineageID)
+	rt, err := uc.factory.BuildRuntime(ctx, ct.GraphBuildConfig, exec.SessionID, exec.SpiritSessionID, exec.GraphID, exec.ID, exec.LineageID)
 	if err != nil {
 		return err
 	}
@@ -198,6 +198,7 @@ func (uc *GraphExecutionUsecase) ExecuteGraph(ctx context.Context, graphID, sess
 	def, err := uc.defProvider.GetGraph(ctx, graphID)
 	if err != nil {
 		failedExec := NewGraphExecution(context.Background(), execID, graphID, sessionID, string(GraphExecFailed))
+		failedExec.SpiritSessionID = sessionID
 		failedExec.ErrorMessage = err.Error()
 		uc.notifyExecComplete(failedExec)
 		return nil, err
@@ -205,15 +206,17 @@ func (uc *GraphExecutionUsecase) ExecuteGraph(ctx context.Context, graphID, sess
 
 	cfg := FinalizeGraphFailurePolicy(defToBuildConfig(def), nil, nil)
 
-	runtime, eventCh, err := uc.factory.BuildAndRun(ctx, cfg, sessionID, graphID, execID, initialState)
+	runtime, eventCh, err := uc.factory.BuildAndRun(ctx, cfg, sessionID, sessionID, graphID, execID, initialState)
 	if err != nil {
 		failedExec := NewGraphExecution(context.Background(), execID, graphID, sessionID, string(GraphExecFailed))
+		failedExec.SpiritSessionID = sessionID
 		failedExec.ErrorMessage = err.Error()
 		uc.notifyExecComplete(failedExec)
 		return nil, err
 	}
 
 	exec := NewGraphExecution(context.WithoutCancel(ctx), execID, graphID, sessionID, string(GraphExecRunning))
+	exec.SpiritSessionID = sessionID
 	exec.runtime = runtime
 	exec.LineageID = runtime.GetLineageID()
 
@@ -253,15 +256,17 @@ func (uc *GraphExecutionUsecase) ExecuteGraphBuildConfig(ctx context.Context, gr
 		graphID = "compiled-graph"
 	}
 
-	runtime, eventCh, err := uc.factory.BuildAndRun(ctx, cfg, sessionID, graphID, execID, initialState)
+	runtime, eventCh, err := uc.factory.BuildAndRun(ctx, cfg, sessionID, sessionID, graphID, execID, initialState)
 	if err != nil {
 		failedExec := NewGraphExecution(context.Background(), execID, graphID, sessionID, string(GraphExecFailed))
+		failedExec.SpiritSessionID = sessionID
 		failedExec.ErrorMessage = err.Error()
 		uc.notifyExecComplete(failedExec)
 		return nil, err
 	}
 
 	exec := NewGraphExecution(context.WithoutCancel(ctx), execID, graphID, sessionID, string(GraphExecRunning))
+	exec.SpiritSessionID = sessionID
 	exec.runtime = runtime
 	exec.LineageID = runtime.GetLineageID()
 
@@ -367,7 +372,7 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 		return nil, err
 	}
 
-	runtime, eventCh, err := uc.factory.BuildAndResume(ctx, ct.GraphBuildConfig, exec.SessionID, exec.GraphID, executionID, lineageID, resumeValue)
+	runtime, eventCh, err := uc.factory.BuildAndResume(ctx, ct.GraphBuildConfig, exec.SessionID, exec.SpiritSessionID, exec.GraphID, executionID, lineageID, resumeValue)
 	if err != nil {
 		// Roll back status on failure (running → waiting_human via interrupt semantics).
 		exec.execMu.Lock()
@@ -408,7 +413,7 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 
 // RegisterTeamGraphExecution indexes a team GraphAgent run for task/resume coordination (M53 Phase 7).
 // Build config is kept in-memory; graph_id uses the team: prefix (not a persisted graph asset).
-func (uc *GraphExecutionUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, teamID, teamRunID string, ct *CompiledTeam) error {
+func (uc *GraphExecutionUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID string, ct *CompiledTeam) error {
 	if uc == nil {
 		return nil
 	}
@@ -425,6 +430,7 @@ func (uc *GraphExecutionUsecase) RegisterTeamGraphExecution(ctx context.Context,
 		graphID = graphID + ":" + strings.TrimSpace(teamRunID)
 	}
 	exec := NewGraphExecution(context.Background(), execID, graphID, strings.TrimSpace(sessionID), string(GraphExecRunning))
+	exec.SpiritSessionID = strings.TrimSpace(spiritSessionID)
 
 	if uc.runRepo != nil {
 		if err := uc.runRepo.SaveRun(ctx, exec); err != nil {

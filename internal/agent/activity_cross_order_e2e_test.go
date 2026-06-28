@@ -86,7 +86,7 @@ func TestActivityProjector_CrossOrderE2E(t *testing.T) {
 	}()
 
 	wg.Wait()
-	proj.OnTurnEnd(ctx, &ActivityUsage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150})
+	proj.OnTurnEnd(ctx, &ActivityUsage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150}, false)
 	proj.Close()
 
 	received := eventBus.received()

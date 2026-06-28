@@ -141,7 +141,7 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			var steps []biztypes.OrchestrationStepRecord
 
 			// Phase 1: Plan
-			taskPlan, planStep, err := executePlanPhase(ctx, taskPrompt, spiritSessionID, deps)
+			taskPlan, planStep, err := executePlanPhase(ctx, taskPrompt, spiritSessionID, input.Mode, deps)
 			steps = append(steps, planStep)
 			if err != nil {
 				publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "plan", err.Error())
@@ -206,7 +206,7 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 }
 
 // executePlanPhase runs Phase 1 of plan_and_execute: task planning.
-func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID string, deps planAndExecuteDeps) (plan *biz.TaskPlan, step biztypes.OrchestrationStepRecord, err error) {
+func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID, mode string, deps planAndExecuteDeps) (plan *biz.TaskPlan, step biztypes.OrchestrationStepRecord, err error) {
 	// Start plan phase span (P3-2): Trace propagation across Spirit→Team→Graph.
 	bridge := turntrace.FromContext(ctx)
 	if bridge != nil {
@@ -225,6 +225,7 @@ func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID string, d
 	planInput := biz.PlanInput{
 		UserMessage:     taskPrompt,
 		SpiritSessionID: spiritSessionID,
+		Mode:            mode,
 	}
 	taskPlan, planErr := deps.planner.Plan(ctx, planInput)
 	if planErr != nil {

@@ -17,6 +17,7 @@ type OrchestrationProjectorConfig struct {
 	RunID            string
 	TeamID           string
 	SessionID        string
+	SpiritSessionID  string
 	Registry         biz.OrchestrationRegistry
 	Channel          string // "team" or "graph"; defaults to team
 	GraphExecutionID string
@@ -145,15 +146,16 @@ func publishOrchestrationStatus(ctx context.Context, bus biz.ActivityEventBus, c
 	ev := biz.ActivityEvent{
 		Event: biz.ActivityEventUpdated,
 		Activity: biz.Activity{
-			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindNotice,
-			Status:    agentNodeStatusToActivityStatus(status),
-			SessionID: cfg.SessionID,
-			TeamID:    cfg.TeamID,
-			AgentKey:  st.AgentKey,
-			Timestamp: time.Now().UTC(),
-			Stage:     "orchestration_status",
-			Meta:      meta,
+			ID:              uuid.NewString(),
+			Kind:            biz.ActivityKindNotice,
+			Status:          agentNodeStatusToActivityStatus(status),
+			SessionID:       cfg.SessionID,
+			SpiritSessionID: cfg.SpiritSessionID,
+			TeamID:          cfg.TeamID,
+			AgentKey:        st.AgentKey,
+			Timestamp:       time.Now().UTC(),
+			Stage:           "orchestration_status",
+			Meta:            meta,
 		},
 		Domain: biz.ActivityDomainChat,
 	}

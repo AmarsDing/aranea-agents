@@ -209,7 +209,7 @@ var toolProfiles = map[string][]string{
 	"minimal":      {},
 	"safe":         {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
 	"system_admin": {"group:cli_admin", "web_fetch", "datetime"},
-	"spirit":       {"plan_and_execute", "check_progress", "cancel_orchestration", "synthesize_results", "build_orchestration_graph", "memory_search", "group:subagent", "datetime"},
+	"spirit":       {"plan_and_execute", "check_progress", "cancel_orchestration", "synthesize_results", "build_orchestration_graph", "memory_search", "group:subagent", "shell_exec", "datetime"},
 }
 
 func canonicalToolProfile(profile string) string {

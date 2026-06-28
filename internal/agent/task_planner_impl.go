@@ -117,6 +117,23 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		return saved, nil
 	}
 
+	// Fallback: detect team-formation intent from the user message when mode is
+	// auto/empty. The DECISION.md prompt instructs the Spirit LLM to pass explicit
+	// mode=coordinator/parallel when the user asks for teams, but LLMs don't
+	// always comply. This ensures teams are created when the user clearly requests
+	// them, regardless of LLM cooperation.
+	if m := strings.ToLower(strings.TrimSpace(input.Mode)); m == "" || m == "auto" {
+		if detected := detectTeamIntent(input.UserMessage); detected != "" {
+			impl.lg.Info("检测到用户消息中的团队组建意图，自动升级模式",
+				loggateway.StepID(biz.SpiritStepPlannerAssess),
+				loggateway.Str("trace_id", traceID),
+				loggateway.Str("detected_mode", detected),
+				loggateway.Str("original_mode", input.Mode),
+			)
+			input.Mode = detected
+		}
+	}
+
 	// Step 1: Assess complexity (six dimensions)
 	dimensions := impl.assessComplexity(input)
 	complexityScore := dimensions.Semantic*0.25 +
@@ -136,6 +153,23 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		complexityLevel = biz.ComplexitySimple
 	}
 
+	// Honor explicit user/LLM mode: team-forming modes (parallel/dag/coordinator)
+	// must trigger decomposition even when the complexity score is low, otherwise
+	// the team would never be assembled. This is the root-cause fix for the
+	// "user asks for teams but StrategyDirect short-circuits" bug.
+	explicitMode := strings.ToLower(strings.TrimSpace(input.Mode))
+	modeIsExplicit := explicitMode != "" && explicitMode != "auto"
+	effectiveLevel := complexityLevel
+	if modeIsExplicit && shouldForceComplex(input.Mode) && complexityLevel != biz.ComplexityComplex {
+		effectiveLevel = biz.ComplexityComplex
+		impl.lg.Info("用户显式指定编排模式，强制升级复杂度以触发任务分解",
+			loggateway.StepID(biz.SpiritStepPlannerAssess),
+			loggateway.Str("trace_id", traceID),
+			loggateway.Str("mode", input.Mode),
+			loggateway.Str("original_level", string(complexityLevel)),
+		)
+	}
+
 	impl.lg.Info("复杂度评估完成",
 		loggateway.StepID(biz.SpiritStepPlannerAssess),
 		loggateway.Str("trace_id", traceID),
@@ -153,11 +187,11 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		loggateway.Str("topology_hint", string(topologyHint)),
 	)
 
-	// Step 3: Decompose task (only for complex)
+	// Step 3: Decompose task (only for complex, or when explicit team-forming mode forces it)
 	var subTasks []biz.SubTask
 	var dag *biz.PlanTaskDAG
 	var decomposeReason string
-	if complexityLevel == biz.ComplexityComplex {
+	if effectiveLevel == biz.ComplexityComplex {
 		var err error
 		subTasks, dag, err = impl.decomposeTask(ctx, input.UserMessage, input.IntentArtifact)
 		if err != nil {
@@ -171,8 +205,10 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			decomposeReason = "decompose_failed"
 		} else if len(subTasks) > 0 {
 			decomposeReason = fmt.Sprintf("分解为 %d 个子任务", len(subTasks))
-			// Refine strategy based on DAG structure
-			if dag != nil {
+			// Refine strategy based on DAG structure ONLY when Mode is auto/empty.
+			// When the user explicitly specified a mode, honor it without refinement
+			// so an explicit "coordinator" isn't overridden to "parallel" by DAG shape.
+			if !modeIsExplicit && dag != nil {
 				if len(dag.RootIDs) == len(dag.Nodes) {
 					// All independent
 					if len(subTasks) >= minSubTasksForParallel {
@@ -261,6 +297,13 @@ func (impl *taskPlannerImpl) ListPlans(ctx context.Context, spiritSessionID stri
 // It reuses the six-dimension assessComplexity logic but skips memory cache,
 // LLM decomposition, and DB persistence — making it safe to call before the
 // Spirit LLM runs. Used by PrePlanningGate to force planning for Moderate/Complex.
+//
+// Team-intent override: when the user message contains explicit team-formation
+// keywords (parallel/coordinator), the level is upgraded to at least Moderate.
+// This breaks the chicken-and-egg problem where detectTeamIntent was only
+// called inside Plan(), but Plan() is only invoked when ForcePlanning=true
+// (which QuickAssess controls). Without this override, team-formation requests
+// rated "simple" never trigger planning, and no teams are created.
 func (impl *taskPlannerImpl) QuickAssess(_ context.Context, input biz.PlanInput) (biz.ComplexityLevel, float64, error) {
 	dimensions := impl.assessComplexity(input)
 	score := dimensions.Semantic*0.25 +
@@ -278,6 +321,20 @@ func (impl *taskPlannerImpl) QuickAssess(_ context.Context, input biz.PlanInput)
 		level = biz.ComplexityModerate
 	default:
 		level = biz.ComplexitySimple
+	}
+
+	// Team-intent override: force at least Moderate so the pre-planning gate
+	// triggers ForcePlanning=true and the hard gate calls Plan().
+	if detected := detectTeamIntent(input.UserMessage); detected != "" && level == biz.ComplexitySimple {
+		level = biz.ComplexityModerate
+		if score < 0.3 {
+			score = 0.3
+		}
+		impl.lg.Info("QuickAssess 检测到团队组建意图，升级复杂度以触发规划",
+			loggateway.StepID(biz.SpiritStepPlannerAssess),
+			loggateway.Str("detected_mode", detected),
+			loggateway.Float64("complexity_score", score),
+		)
 	}
 
 	impl.lg.Debug("QuickAssess 完成",
@@ -540,7 +597,26 @@ func assessContext(userMessage string, artifact *biz.IntentArtifact) float64 {
 }
 
 // determineStrategy selects the orchestration strategy based on complexity.
+// When input.Mode is an explicit team-forming or direct mode (not "" / "auto"),
+// it overrides the complexity-based selection so the user's intent is honored.
 func (impl *taskPlannerImpl) determineStrategy(level biz.ComplexityLevel, score float64, input biz.PlanInput) (biz.OrchestrationStrategy, string, biz.TopologyType) {
+	// Explicit Mode override: user (or Spirit LLM) requested a specific strategy.
+	if mode := strings.ToLower(strings.TrimSpace(input.Mode)); mode != "" && mode != "auto" {
+		switch mode {
+		case "direct":
+			return biz.StrategyDirect, "用户指定 direct 模式", biz.TopologyDirect
+		case "single", "single_agent":
+			return biz.StrategySingleAgent, "用户指定 single 模式", biz.TopologyCoordinator
+		case "parallel":
+			return biz.StrategyParallel, "用户指定 parallel 模式", biz.TopologyParallel
+		case "dag":
+			return biz.StrategyDAG, "用户指定 dag 模式", biz.TopologyHybrid
+		case "coordinator":
+			return biz.StrategyCoordinator, "用户指定 coordinator 模式", biz.TopologyCoordinator
+		}
+	}
+
+	// Default: complexity-based selection
 	switch level {
 	case biz.ComplexitySimple:
 		return biz.StrategyDirect, "简单任务，Spirit 直接回答", biz.TopologyDirect
@@ -555,6 +631,46 @@ func (impl *taskPlannerImpl) determineStrategy(level biz.ComplexityLevel, score 
 	default:
 		return biz.StrategyDirect, "未知复杂度，默认直接回答", biz.TopologyDirect
 	}
+}
+
+// shouldForceComplex returns true when the explicit mode requires subtask
+// decomposition so the allocator has subtasks to assign agents to.
+// Team-forming modes (parallel/dag/coordinator) need decomposition regardless
+// of the complexity score; otherwise a "simple" score would skip decomposition
+// and the team would never be assembled.
+func shouldForceComplex(mode string) bool {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "parallel", "dag", "coordinator":
+		return true
+	}
+	return false
+}
+
+// detectTeamIntent scans the user message for explicit team-formation keywords
+// and returns the recommended mode ("parallel" or "coordinator"). Returns "" if
+// no team intent is detected.
+//
+// This is a backend-side fallback for when the Spirit LLM passes mode=auto
+// despite the user explicitly asking for teams. The DECISION.md prompt instructs
+// the LLM to pass explicit mode, but LLMs don't always comply — this ensures
+// teams are created when the user clearly requests them.
+func detectTeamIntent(message string) string {
+	lower := strings.ToLower(message)
+	// Parallel keywords take precedence (parallel is a specific form of team work)
+	parallelKeywords := []string{"并行", "同时执行", "并行处理", "parallel", "同时工作", "concurrently"}
+	for _, kw := range parallelKeywords {
+		if strings.Contains(lower, kw) {
+			return "parallel"
+		}
+	}
+	// Team formation keywords (without parallel — coordinator mode)
+	teamKeywords := []string{"组建团队", "组建队", "团队a", "团队b", "多个团队", "组建team", "form a team", "build a team", "团队协作"}
+	for _, kw := range teamKeywords {
+		if strings.Contains(lower, kw) {
+			return "coordinator"
+		}
+	}
+	return ""
 }
 
 // decomposeTask uses LLM to decompose a complex task into subtasks (T1.6).
@@ -945,6 +1061,19 @@ func (impl *taskPlannerImpl) publishPlanCreated(ctx context.Context, plan *biz.T
 	}
 	spiritSessionID := plan.SpiritSessionID
 
+	// Map plan.SubTasks → []ActivityPlanStep so the frontend PlanBlock can render
+	// the task decomposition list (design m59-chat-ui-v7.html "任务拆解" section).
+	// Without this, the PlanBlock only shows an empty header.
+	steps := make([]biz.ActivityPlanStep, 0, len(plan.SubTasks))
+	for _, st := range plan.SubTasks {
+		steps = append(steps, biz.ActivityPlanStep{
+			ID:        st.ID,
+			Label:     st.Name,
+			Status:    biz.ActivityStatusPending,
+			DependsOn: st.DependsOn,
+		})
+	}
+
 	// spirit_plan_created: the canonical event for plan creation.
 	ev := biz.ActivityEvent{
 		Event: biz.ActivityEventCreated,
@@ -965,6 +1094,7 @@ func (impl *taskPlannerImpl) publishPlanCreated(ctx context.Context, plan *biz.T
 				"strategy_reason":   plan.StrategyReason,
 				"topology_hint":     string(plan.TopologyHint),
 				"subtask_count":     len(plan.SubTasks),
+				"steps":             steps,
 			},
 		},
 		Domain: biz.ActivityDomainChat,

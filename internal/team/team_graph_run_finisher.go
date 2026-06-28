@@ -34,6 +34,7 @@ func (r *Runner) PersistGraphRunStep(ctx context.Context, stepCtx *GraphRunStepC
 		r.lg.Warn("team run lookup failed", loggateway.StepID("team.graph.step.persist"), loggateway.Str("run_id", stepCtx.TeamRunID), loggateway.Str("node_id", nodeID), loggateway.Err(err))
 		return
 	}
+	run.SpiritSessionID = stepCtx.SpiritSessionID
 	status := biz.TeamMemberStepStatusOK
 	if skipped {
 		status = biz.TeamMemberStepStatusSkipped
@@ -63,6 +64,7 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 	if err != nil {
 		return
 	}
+	run.SpiritSessionID = stepCtx.SpiritSessionID
 	if run.Status != biz.TeamRunStatusWaitingHuman && run.Status != biz.TeamRunStatusRunning {
 		return
 	}
@@ -105,14 +107,15 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 		ev := biz.ActivityEvent{
 			Event: biz.ActivityEventCompleted,
 			Activity: biz.Activity{
-				ID:        uuid.NewString(),
-				Kind:      biz.ActivityKindTeamStage,
-				Status:    biz.ActivityStatusCompleted,
-				SessionID: stepCtx.SessionID,
-				TeamID:    stepCtx.TeamID,
-				Timestamp: time.Now().UTC(),
-				Stage:     "completed",
-				Meta:      map[string]any{"run_id": run.ID, "run": cp},
+				ID:              uuid.NewString(),
+				Kind:            biz.ActivityKindTeamStage,
+				Status:          biz.ActivityStatusCompleted,
+				SessionID:       stepCtx.SessionID,
+				SpiritSessionID: stepCtx.SpiritSessionID,
+				TeamID:          stepCtx.TeamID,
+				Timestamp:       time.Now().UTC(),
+				Stage:           "completed",
+				Meta:            map[string]any{"run_id": run.ID, "run": cp},
 			},
 			Domain: biz.ActivityDomainChat,
 		}

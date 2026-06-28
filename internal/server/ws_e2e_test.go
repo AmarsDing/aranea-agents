@@ -78,7 +78,7 @@ func TestWSE2E_UserMessageStream(t *testing.T) {
 	t.Setenv("DEPLOY_ENV", "dev")
 
 	const sessionID = "sess-e2e"
-	activityBus := activityevent.New(loggateway.NewNoop())
+	activityBus := activityevent.New(nil, loggateway.NewNoop())
 	sender := &e2eChatSender{activityBus: activityBus, sessionID: sessionID}
 	srv := newTestWSServerWithActivity(nil, sender, activityBus)
 

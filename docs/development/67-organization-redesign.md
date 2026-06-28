@@ -2,7 +2,7 @@
 
 > **版本**：2026-06-07
 > **读者**：产品、全栈开发、运维
-> **关联**：[11 multi-agent.md](./11-multi-agent.md) · [36 graph-workflow.md](./36-graph-workflow.md) · [53 team-graph-orchestration.md](./53-team-graph-orchestration.md) · [59 chat-ui-optimization.md](./59-chat-ui-optimization.md)
+> **关联**：[11 multi-agent.md](./11-multi-agent.md) · [36 graph-workflow.md](./36-graph-workflow.md) · [53 team-graph-orchestration.md](./53-team-graph-orchestration.md) · [1 chat.md](./1-chat.md)
 > **技术设计**：[67 organization-redesign.design.md](./67-organization-redesign.design.md)
 > **开发计划**：[67 organization-redesign.development.md](./67-organization-redesign.development.md)
 > **方案报告**：[2026-06-07-proposal-organization-redesign.md](../reports/2026-06-07-proposal-organization-redesign.md)

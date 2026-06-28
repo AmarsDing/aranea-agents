@@ -289,28 +289,27 @@ func TestActivityProjector_BackpressurePropagation(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			// Use a short timeout to avoid hanging the test.
-			dctx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
-			defer cancel()
-			if err := p.sequencer.publish(dctx, "agent-1", publishTask{
+			// publish blocks under backpressure (no ctx timeout — activity
+			// events must not be dropped due to caller context cancellation).
+			if err := p.sequencer.publish(context.Background(), "agent-1", publishTask{
 				event: biz.ActivityEvent{Event: biz.ActivityEventStreaming, Activity: biz.Activity{ID: "agent-1", SessionID: "sess-1"}},
 			}); err == nil {
 				atomic.AddInt32(&deltasEnqueued, 1)
 			}
 		}()
 	}
-	wg.Wait()
 
-	// Unblock the consumer so Close can flush all events.
+	// Unblock the consumer so the publish worker drains the queue.
+	// This unblocks all goroutines waiting on publish.
 	close(slowBus.publishCh)
+	wg.Wait()
 
 	// Close flushes all queued events in FIFO order. If Close succeeds
 	// without deadlock, the sequencer maintained ordering under backpressure.
 	p.Close()
 
-	// At least some deltas should have been enqueued (the channel buffer
-	// was filled while the consumer was blocked).
-	if atomic.LoadInt32(&deltasEnqueued) == 0 {
-		t.Error("expected at least some deltas to be enqueued during backpressure")
+	// All deltas should have been enqueued (backpressure released before Wait).
+	if atomic.LoadInt32(&deltasEnqueued) != defaultPublishBufferSize {
+		t.Errorf("expected %d deltas enqueued, got %d", defaultPublishBufferSize, atomic.LoadInt32(&deltasEnqueued))
 	}
 }

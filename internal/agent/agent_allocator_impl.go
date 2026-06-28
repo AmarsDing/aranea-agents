@@ -682,7 +682,26 @@ func (impl *agentAllocatorImpl) llmColdStart(ctx context.Context, subTask biz.Su
 	}
 
 	// Parse the agent_key from the response
-	return parseAllocatorColdStartResponse(text), nil
+	agentKey := parseAllocatorColdStartResponse(text)
+	// TEMP-DEBUG: validate LLM-returned agent_key exists in capabilities to prevent hallucination
+	if agentKey != "" {
+		found := false
+		for _, cap := range capabilities {
+			if cap.AgentKey == agentKey {
+				found = true
+				break
+			}
+		}
+		if !found {
+			impl.lg.Warn("LLM cold-start returned unknown agent_key, falling back",
+				loggateway.StepID(biz.SpiritStepAllocatorMatch),
+				loggateway.Str("trace_id", traceID),
+				loggateway.Str("returned_key", agentKey),
+			)
+			return "", nil
+		}
+	}
+	return agentKey, nil
 }
 
 // matchWholePlan handles allocation for plans without subtasks (simple/moderate).
@@ -832,7 +851,26 @@ func (impl *agentAllocatorImpl) llmColdStartForPlan(ctx context.Context, taskPla
 		return "", apierror.Internal(apierror.DomainSpirit, "LLM call failed").WithCause(err)
 	}
 
-	return parseAllocatorColdStartResponse(text), nil
+	agentKey := parseAllocatorColdStartResponse(text)
+	// TEMP-DEBUG: validate LLM-returned agent_key exists in capabilities to prevent hallucination
+	if agentKey != "" {
+		found := false
+		for _, cap := range capabilities {
+			if cap.AgentKey == agentKey {
+				found = true
+				break
+			}
+		}
+		if !found {
+			impl.lg.Warn("LLM cold-start (plan) returned unknown agent_key, falling back",
+				loggateway.StepID(biz.SpiritStepAllocatorMatch),
+				loggateway.Str("trace_id", traceID),
+				loggateway.Str("returned_key", agentKey),
+			)
+			return "", nil
+		}
+	}
+	return agentKey, nil
 }
 
 // tryAgentFactoryForSubTask calls AgentFactory to dynamically create an Agent

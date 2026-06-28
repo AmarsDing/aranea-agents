@@ -1,15 +1,26 @@
 <template>
-  <div class="plan-block">
-    <!-- Header -->
-    <div class="plan-block__header">
+  <div class="plan-block" :class="`plan-block--${activity.status}`">
+    <!-- Header (aligned with m59 v7 panel-section-header) -->
+    <div class="plan-block__header" @click="toggleCollapse">
       <span class="plan-block__icon">📋</span>
-      <span class="plan-block__label">{{ t('chat.plan.label', '执行计划') }}</span>
-      <span v-if="activity.title" class="plan-block__title">{{ activity.title }}</span>
+      <span class="plan-block__label">{{ t('chat.plan.label') }}</span>
+      <span v-if="activity.steps?.length" class="plan-block__count">{{ activity.steps.length }}</span>
       <span class="plan-block__status" :class="statusClass">{{ statusIcon }}</span>
+      <span
+        v-if="activity.steps?.length && !isRunning"
+        class="plan-block__chevron"
+        :class="{ 'plan-block__chevron--expanded': !collapsed }"
+      >
+        ▾
+      </span>
     </div>
 
-    <!-- Steps list -->
-    <div v-if="activity.steps?.length" class="plan-block__steps">
+    <div v-if="activity.title && !isRunning" class="plan-block__subtitle">
+      {{ activity.title }}
+    </div>
+
+    <!-- Steps list (aligned with m59 v7 task-row design) -->
+    <div v-if="showSteps" class="plan-block__steps">
       <div
         v-for="(step, idx) in activity.steps"
         :key="step.id"
@@ -17,12 +28,13 @@
         :class="`plan-block__step--${step.status}`"
       >
         <div class="plan-block__step-row">
-          <span class="plan-block__step-dot" :class="`plan-block__step-dot--${step.status}`">
+          <span class="plan-block__step-num">{{ idx + 1 }}</span>
+          <span class="plan-block__step-name">{{ step.label }}</span>
+          <span v-if="step.agentName" class="plan-block__step-team">{{ step.agentName }}</span>
+          <span class="plan-block__step-status" :class="`plan-block__step-status--${step.status}`">
             <span v-if="step.status === 'running'" class="plan-block__pulse" />
+            {{ stepStatusText(step.status) }}
           </span>
-          <span class="plan-block__step-index">{{ idx + 1 }}</span>
-          <span class="plan-block__step-task">{{ step.label }}</span>
-          <span v-if="step.agentName" class="plan-block__step-agent">{{ step.agentName }}</span>
           <span
             v-if="step.durationMs != null && (step.status === 'completed' || step.status === 'partial_failure')"
             class="plan-block__step-duration"
@@ -31,7 +43,7 @@
           </span>
         </div>
         <div v-if="step.dependsOn?.length" class="plan-block__step-dep">
-          {{ t('chat.plan.dependsOn', '等待步骤') }} {{ step.dependsOn.join(', ') }}
+          {{ t('chat.plan.dependsOn') }} {{ step.dependsOn.join(', ') }}
         </div>
       </div>
     </div>
@@ -45,9 +57,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { PlanEvent } from '../../features/chat/streamEventTypes';
+import type { PlanEvent, PlanStep } from '../../features/chat/streamEventTypes';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 
 const props = defineProps<{
@@ -55,6 +67,21 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+
+const isRunning = computed(() => props.activity.status === 'planning' || props.activity.status === 'executing');
+
+const collapsed = ref(!isRunning.value);
+
+function toggleCollapse() {
+  if (isRunning.value) return;
+  collapsed.value = !collapsed.value;
+}
+
+const showSteps = computed(() => {
+  if (!props.activity.steps?.length) return false;
+  if (isRunning.value) return true;
+  return !collapsed.value;
+});
 
 const statusClass = computed(() => ({
   'plan-block__status--planning': props.activity.status === 'planning',
@@ -77,6 +104,23 @@ const statusIcon = computed(() => {
       return '📋';
   }
 });
+
+function stepStatusText(status: PlanStep['status']): string {
+  switch (status) {
+    case 'pending':
+      return t('chat.plan.stepPending');
+    case 'running':
+      return t('chat.plan.stepRunning');
+    case 'completed':
+      return t('chat.plan.stepDone');
+    case 'failed':
+      return t('chat.plan.stepFailed');
+    case 'partial_failure':
+      return t('chat.plan.stepPartial');
+    default:
+      return '';
+  }
+}
 </script>
 
 <style lang="sass" scoped>
@@ -86,117 +130,144 @@ const statusIcon = computed(() => {
   background: var(--glass-surface)
   border: 1px solid var(--glass-border)
 
+  &--planning, &--executing
+    border-color: color-mix(in srgb, var(--color-accent) 40%, var(--glass-border))
+  &--failed
+    border-color: color-mix(in srgb, var(--color-danger) 40%, var(--glass-border))
+
   &__header
     display: flex
     align-items: center
     gap: 6px
-    margin-bottom: 8px
+    cursor: default
+    padding-bottom: 8px
 
   &__icon
-    font-size: 14px
+    font-size: 13px
     flex-shrink: 0
 
   &__label
-    font-size: 13px
+    font-size: 12px
     font-weight: 500
     color: var(--color-text-secondary)
+    flex: 1
 
-  &__title
-    font-size: 13px
-    color: var(--color-text-primary)
-    font-weight: 500
+  &__count
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent)
+    padding: 0 5px
+    border-radius: 8px
+    font-size: 10px
+    color: var(--color-accent)
 
   &__status
     font-size: 12px
-    margin-left: auto
-    &--planning
-      color: var(--color-accent)
-    &--executing
+    flex-shrink: 0
+    &--planning, &--executing
       color: var(--color-accent)
     &--completed
       color: var(--color-success)
     &--failed
       color: var(--color-danger)
 
+  &__chevron
+    font-size: 10px
+    color: var(--color-text-tertiary)
+    transition: transform 0.15s ease
+    &--expanded
+      transform: rotate(180deg)
+
+  &__subtitle
+    font-size: 11px
+    color: var(--color-text-tertiary)
+    margin-top: -4px
+    margin-bottom: 6px
+    padding-left: 22px
+
   &__steps
     display: flex
     flex-direction: column
-    gap: 4px
+    gap: 3px
 
   &__step
-    padding: 4px 0 4px 4px
+    padding: 4px 0
 
   &__step-row
     display: flex
     align-items: center
-    gap: 6px
+    gap: 8px
+    padding: 6px 10px
+    background: var(--color-bg, var(--glass-surface))
+    border: 1px solid var(--glass-border, var(--color-border))
+    border-radius: 6px
+    font-size: 12px
 
-  &__step-dot
-    width: 8px
-    height: 8px
+  &__step-num
+    width: 18px
+    height: 18px
     border-radius: 50%
-    flex-shrink: 0
-    display: inline-flex
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent)
+    color: var(--color-accent)
+    display: flex
     align-items: center
     justify-content: center
-    position: relative
+    font-size: 9px
+    font-weight: 600
+    flex-shrink: 0
+
+  &__step-name
+    flex: 1
+    color: var(--color-text-primary)
+    font-size: 12px
+
+  &__step-team
+    font-size: 10px
+    color: var(--color-text-tertiary)
+    background: var(--glass-elevated, var(--glass-surface))
+    padding: 1px 6px
+    border-radius: 3px
+    flex-shrink: 0
+
+  &__step-status
+    font-size: 10px
+    color: var(--color-text-tertiary)
+    display: inline-flex
+    align-items: center
+    gap: 3px
+    flex-shrink: 0
 
     &--pending
-      border: 1.5px solid var(--color-text-tertiary)
-      background: transparent
-
+      color: var(--color-text-tertiary)
     &--running
-      background: var(--color-accent)
-
+      color: var(--color-accent)
     &--completed
-      background: var(--color-success)
-
+      color: var(--color-success)
     &--failed
-      background: var(--color-danger)
-
+      color: var(--color-danger)
     &--partial_failure
-      background: var(--color-warning)
-
-  &__pulse
-    position: absolute
-    inset: -3px
-    border-radius: 50%
-    border: 1.5px solid var(--color-accent)
-    animation: plan-pulse 1.5s ease-in-out infinite
-
-  &__step-index
-    font-size: 11px
-    color: var(--color-text-tertiary)
-    min-width: 14px
-    text-align: right
-    flex-shrink: 0
-
-  &__step-task
-    font-size: 13px
-    color: var(--color-text-primary)
-    flex: 1
-
-  &__step-agent
-    font-size: 11px
-    color: var(--color-text-tertiary)
-    flex-shrink: 0
+      color: var(--color-warning)
 
   &__step-duration
-    font-size: 11px
-    color: var(--color-text-secondary)
+    font-size: 10px
+    color: var(--color-text-tertiary)
     flex-shrink: 0
+    font-variant-numeric: tabular-nums
 
   &__step-dep
-    font-size: 11px
+    font-size: 10px
     color: var(--color-text-tertiary)
-    margin-left: 28px
+    margin-left: 36px
     margin-top: 2px
+
+  &__pulse
+    width: 5px
+    height: 5px
+    border-radius: 50%
+    background: var(--color-accent)
+    animation: plan-pulse 1.5s ease-in-out infinite
 
 @keyframes plan-pulse
   0%, 100%
     opacity: 1
-    transform: scale(1)
   50%
     opacity: 0.3
-    transform: scale(1.4)
 </style>

@@ -182,6 +182,19 @@ export function useChatWorkspace() {
     if (ev.activity.kind === 'action') {
       contextualLoading.onSpiritActivityEvent(ev);
     }
+    // Bugfix P1#4 (robust fallback): when the backend completes a turn but
+    // the terminal run_status event is missing/late/coalesced, the watch on
+    // runStatus alone cannot reset sending. Treat task completed/failed/
+    // cancelled as a definitive turn-end signal and reset sending here.
+    // Without this, the composer stays stuck on "停止生成" after the reply
+    // is fully rendered.
+    if (
+      ev.activity.kind === 'task' &&
+      (ev.event === 'completed' || ev.event === 'failed' || ev.event === 'cancelled') &&
+      sender.sending.value
+    ) {
+      sender.markSendingDone();
+    }
   };
 
   const runStatusCtrl = useChatRunStatus({ applyAwaitRunStatus });
@@ -672,6 +685,16 @@ export function useChatWorkspace() {
     if (newVal === 'idle' && oldVal !== 'idle') {
       jobsRefreshNonce.value += 1;
     }
+    // Bugfix P1#4: WS send success path doesn't call markSendingDone() —
+    // sending.value stays true after the run ends. Reset sending whenever
+    // runStatus reaches a terminal state (idle/completed/failed/cancelled).
+    // awaiting_user is NOT terminal — the user still needs to reply.
+    if (
+      sender.sending.value &&
+      (newVal === 'idle' || newVal === 'completed' || newVal === 'failed' || newVal === 'cancelled')
+    ) {
+      sender.markSendingDone();
+    }
   });
 
   // ── Long-running stall detection ──
@@ -1022,6 +1045,11 @@ export function useChatWorkspace() {
         // below will load activities for this session if not yet cached.
         activityTimeline.setCurrentSession(sid);
         sender.clearFailedPendingForSession(prevSid);
+        // Bugfix P1#5: previous run's sending state must not leak into the
+        // newly-selected session. onSessionSwitch only resets runStatus via
+        // HTTP hydrate (delayed); sending.value is left untouched, leaving
+        // the composer stuck in "stop" mode for the new session.
+        sender.markSendingDone();
         void bindSessionView(sid, true);
         // Phase B-2: preload session tree for sidebar.
         void sessionTree.loadTreeFor(sid).catch(() => {

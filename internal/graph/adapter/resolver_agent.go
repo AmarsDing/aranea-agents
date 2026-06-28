@@ -2,13 +2,13 @@ package adapter
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/shared"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -89,7 +89,7 @@ func (r *CatalogAgentResolver) resolveBizAgent(ctx context.Context, agentRef str
 	if r.Deps.AgentUC != nil {
 		if ag, err := r.Deps.AgentUC.Get(ctx, ref); err == nil {
 			return ag, nil
-		} else if !errors.Is(err, sql.ErrNoRows) {
+		} else if !errors.Is(err, shared.ErrNotFound) {
 			return biz.Agent{}, err
 		}
 	}
@@ -99,7 +99,7 @@ func (r *CatalogAgentResolver) resolveBizAgent(ctx context.Context, agentRef str
 				return r.Deps.AgentUC.Get(ctx, ag.ID)
 			}
 			return ag, nil
-		} else if !errors.Is(err, sql.ErrNoRows) {
+		} else if !errors.Is(err, shared.ErrNotFound) {
 			return biz.Agent{}, err
 		}
 		if ag, err := r.Deps.Agents.GetAgentByID(ctx, ref); err == nil {
@@ -107,7 +107,7 @@ func (r *CatalogAgentResolver) resolveBizAgent(ctx context.Context, agentRef str
 				return r.Deps.AgentUC.Get(ctx, ag.ID)
 			}
 			return ag, nil
-		} else if !errors.Is(err, sql.ErrNoRows) {
+		} else if !errors.Is(err, shared.ErrNotFound) {
 			return biz.Agent{}, err
 		}
 	}

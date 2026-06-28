@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event/contract"
 
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -305,7 +306,7 @@ func TestOnTurnEnd_finalizesChildActivities(t *testing.T) {
 	p.OnReasoningDelta(ctx, "agent-1", "reasoning content", true)
 	p.OnToolCall(ctx, "call_123", "read_file", `{"path":"/tmp/x"}`, "agent-1", timeNow())
 
-	p.OnTurnEnd(ctx, nil)
+	p.OnTurnEnd(ctx, nil, false)
 	p.Close()
 
 	checkCompleted := func(kind biz.ActivityKind, name string) {
@@ -501,7 +502,7 @@ func TestOnTurnEnd_TerminalStateProtection(t *testing.T) {
 	p.OnError(ctx, "turn failed", "InternalError", "500")
 
 	// OnTurnEnd must not overwrite the Failed status.
-	p.OnTurnEnd(ctx, &ActivityUsage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150})
+	p.OnTurnEnd(ctx, &ActivityUsage{PromptTokens: 100, CompletionTokens: 50, TotalTokens: 150}, false)
 	p.Close()
 
 	root := findRootTask(repo)
@@ -532,7 +533,7 @@ func TestOnTurnEnd_NormalCompletion_TransitionsToCompleted(t *testing.T) {
 	ctx := context.Background()
 
 	p.OnTurnStart(ctx, meta)
-	p.OnTurnEnd(ctx, &ActivityUsage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30})
+	p.OnTurnEnd(ctx, &ActivityUsage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30}, false)
 	p.Close()
 
 	root := findRootTask(repo)
@@ -549,4 +550,414 @@ func TestOnTurnEnd_NormalCompletion_TransitionsToCompleted(t *testing.T) {
 
 func timeNow() time.Time {
 	return time.Now().UTC()
+}
+
+// --- P0-A: OnStuckTools execution order ---
+
+// TestOnStuckTools_BeforeOnTurnEnd_StuckToolGetsFailed verifies that when
+// OnStuckTools runs BEFORE OnTurnEnd (the corrected execution order in
+// stream_consumer.finalize()), a tool that never received its result is
+// marked as Failed — NOT force-completed as Completed by OnTurnEnd.
+//
+// Before the P0-A fix, finalize() called OnTurnEnd first, which force-completed
+// all ToolRunning activities to Completed, making the subsequent OnStuckTools
+// call a no-op (dead code) since it only targets ToolRunning activities.
+func TestOnStuckTools_BeforeOnTurnEnd_StuckToolGetsFailed(t *testing.T) {
+	p, bus, repo := newTestProjector(t)
+	meta := ProjectMeta{SessionID: "sess-1", RequestID: "turn-1", AgentID: "agent-1"}
+	p.Configure(meta, nil)
+	ctx := context.Background()
+
+	p.OnTurnStart(ctx, meta)
+	// Tool call without a matching OnToolResult → stuck.
+	p.OnToolCall(ctx, "call_stuck", "read_file", `{"path":"/tmp/x"}`, "agent-1", timeNow())
+
+	// Reproduce the corrected finalize() order: OnStuckTools THEN OnTurnEnd.
+	p.OnStuckTools(ctx)
+	p.OnTurnEnd(ctx, nil, false)
+	p.Close()
+
+	// Find the stuck tool action activity.
+	var stuck *biz.Activity
+	for _, a := range repo.activities {
+		if a.Kind == biz.ActivityKindAction && a.ToolName == "read_file" {
+			stuck = &a
+			break
+		}
+	}
+	if stuck == nil {
+		t.Fatal("no stuck action activity persisted")
+	}
+	if stuck.Status != biz.ActivityStatusFailed {
+		t.Errorf("stuck tool status=%q want %q (OnStuckTools must mark as Failed, not Completed)",
+			stuck.Status, biz.ActivityStatusFailed)
+	}
+	if stuck.ToolErrorCode != contract.ErrorCodeToolTimeout {
+		t.Errorf("stuck tool error code=%q want %q", stuck.ToolErrorCode, contract.ErrorCodeToolTimeout)
+	}
+
+	// The done event for the stuck tool must carry Failed status (via
+	// ActivityEventCompleted with status=failed, since action activities use
+	// ActivityEventCompleted for both success and failure terminal states).
+	var stuckDoneEv *biz.ActivityEvent
+	for i := len(bus.published) - 1; i >= 0; i-- {
+		ev := bus.published[i]
+		if ev.Event == biz.ActivityEventCompleted && ev.Activity.Kind == biz.ActivityKindAction {
+			stuckDoneEv = &bus.published[i]
+			break
+		}
+	}
+	if stuckDoneEv == nil {
+		t.Fatal("no done event for stuck tool")
+	}
+	if stuckDoneEv.Activity.Status != biz.ActivityStatusFailed {
+		t.Errorf("stuck tool done event status=%q want %q",
+			stuckDoneEv.Activity.Status, biz.ActivityStatusFailed)
+	}
+}
+
+// --- P0-B: OnTurnEnd cancellation semantics ---
+
+// TestOnTurnEnd_Cancelled_ActivitiesGetCancelledStatus verifies that when
+// OnTurnEnd is called with canceled=true, still-running child activities
+// (reply/thinking) and the root task transition to Cancelled (not Completed),
+// and ActivityEventCancelled events are published.
+//
+// Before the P0-B fix, OnTurnEnd always used ActivityStatusCompleted
+// regardless of cancellation, causing cancelled turns to display as
+// "✓ completed" instead of "⊘ cancelled" in the frontend.
+//
+// Note: OnStuckTools runs before OnTurnEnd and marks stuck tools as Failed.
+// OnTurnEnd(canceled=true) must NOT overwrite that Failed status — stuck tools
+// stay Failed (a timeout failure is more informative than "cancelled").
+func TestOnTurnEnd_Cancelled_ActivitiesGetCancelledStatus(t *testing.T) {
+	p, bus, repo := newTestProjector(t)
+	meta := ProjectMeta{SessionID: "sess-1", RequestID: "turn-1", AgentID: "agent-1"}
+	p.Configure(meta, nil)
+	ctx := context.Background()
+
+	p.OnTurnStart(ctx, meta)
+	// reply + thinking still running (no OnTextDone/OnReasoningDone).
+	p.OnTextDelta(ctx, "agent-1", "partial reply")
+	p.OnReasoningDelta(ctx, "agent-1", "partial reasoning", true)
+	// Stuck tool (no result) — OnStuckTools will mark it Failed.
+	p.OnToolCall(ctx, "call_stuck", "read_file", `{"path":"/tmp/x"}`, "agent-1", timeNow())
+
+	// Reproduce finalize() order: OnStuckTools THEN OnTurnEnd(canceled=true).
+	p.OnStuckTools(ctx)
+	p.OnTurnEnd(ctx, nil, true)
+	p.Close()
+
+	// reply activity → Cancelled.
+	var reply *biz.Activity
+	for _, a := range repo.activities {
+		if a.Kind == biz.ActivityKindReply {
+			reply = &a
+			break
+		}
+	}
+	if reply == nil {
+		t.Fatal("no reply activity persisted")
+	}
+	if reply.Status != biz.ActivityStatusCancelled {
+		t.Errorf("reply status=%q want %q (canceled turn must produce Cancelled, not Completed)",
+			reply.Status, biz.ActivityStatusCancelled)
+	}
+
+	// thinking activity → Cancelled.
+	var thinking *biz.Activity
+	for _, a := range repo.activities {
+		if a.Kind == biz.ActivityKindThinking {
+			thinking = &a
+			break
+		}
+	}
+	if thinking == nil {
+		t.Fatal("no thinking activity persisted")
+	}
+	if thinking.Status != biz.ActivityStatusCancelled {
+		t.Errorf("thinking status=%q want %q", thinking.Status, biz.ActivityStatusCancelled)
+	}
+
+	// Stuck tool → Failed (from OnStuckTools, NOT overwritten to Cancelled).
+	var stuck *biz.Activity
+	for _, a := range repo.activities {
+		if a.Kind == biz.ActivityKindAction {
+			stuck = &a
+			break
+		}
+	}
+	if stuck == nil {
+		t.Fatal("no action activity persisted")
+	}
+	if stuck.Status != biz.ActivityStatusFailed {
+		t.Errorf("stuck tool status=%q want %q (OnStuckTools Failed must be preserved, not overwritten to Cancelled)",
+			stuck.Status, biz.ActivityStatusFailed)
+	}
+
+	// Root task → Cancelled.
+	root := findRootTask(repo)
+	if root == nil {
+		t.Fatal("no root task activity persisted")
+	}
+	if root.Status != biz.ActivityStatusCancelled {
+		t.Errorf("root task status=%q want %q", root.Status, biz.ActivityStatusCancelled)
+	}
+
+	// Verify ActivityEventCancelled events were published for reply/thinking/root.
+	cancelledKinds := make(map[biz.ActivityKind]int)
+	for _, ev := range bus.published {
+		if ev.Event == biz.ActivityEventCancelled {
+			cancelledKinds[ev.Activity.Kind]++
+		}
+	}
+	if cancelledKinds[biz.ActivityKindReply] != 1 {
+		t.Errorf("reply ActivityEventCancelled count=%d want 1", cancelledKinds[biz.ActivityKindReply])
+	}
+	if cancelledKinds[biz.ActivityKindThinking] != 1 {
+		t.Errorf("thinking ActivityEventCancelled count=%d want 1", cancelledKinds[biz.ActivityKindThinking])
+	}
+	if cancelledKinds[biz.ActivityKindTask] != 1 {
+		t.Errorf("root task ActivityEventCancelled count=%d want 1", cancelledKinds[biz.ActivityKindTask])
+	}
+}
+
+// TestOnTurnEnd_NotCancelled_ActivitiesGetCompletedStatus is the complementary
+// happy-path test ensuring canceled=false still produces Completed (the P0-B
+// fix must not regress normal completion).
+func TestOnTurnEnd_NotCancelled_ActivitiesGetCompletedStatus(t *testing.T) {
+	p, bus, repo := newTestProjector(t)
+	meta := ProjectMeta{SessionID: "sess-1", RequestID: "turn-1", AgentID: "agent-1"}
+	p.Configure(meta, nil)
+	ctx := context.Background()
+
+	p.OnTurnStart(ctx, meta)
+	p.OnTextDelta(ctx, "agent-1", "reply content")
+
+	p.OnTurnEnd(ctx, nil, false)
+	p.Close()
+
+	root := findRootTask(repo)
+	if root == nil {
+		t.Fatal("no root task activity persisted")
+	}
+	if root.Status != biz.ActivityStatusCompleted {
+		t.Errorf("root status=%q want %q (normal completion, canceled=false)",
+			root.Status, biz.ActivityStatusCompleted)
+	}
+
+	// No ActivityEventCancelled should be published on normal completion.
+	for _, ev := range bus.published {
+		if ev.Event == biz.ActivityEventCancelled {
+			t.Errorf("unexpected ActivityEventCancelled for kind=%q on normal completion",
+				ev.Activity.Kind)
+		}
+	}
+}
+
+// --- P1-A: is_final semantic ---
+
+// TestOnTurnEnd_MarksLastReplyAsIsFinal verifies that OnTurnEnd marks only the
+// LAST reply activity (by Seq) with meta.is_final=true. In a ReAct loop the
+// model may emit multiple replies; only the last one is the user-facing final
+// answer. Earlier replies must NOT carry is_final.
+//
+// Before the P1-A fix, the frontend inferred isFinal from status=='completed',
+// which marked EVERY terminal reply as final — causing ReplyBlock to label
+// every reply as "最终回复" (final reply) instead of "中间回复" (intermediate).
+func TestOnTurnEnd_MarksLastReplyAsIsFinal(t *testing.T) {
+	p, bus, repo := newTestProjector(t)
+	meta := ProjectMeta{SessionID: "sess-1", RequestID: "turn-1", AgentID: "agent-1"}
+	p.Configure(meta, nil)
+	ctx := context.Background()
+
+	p.OnTurnStart(ctx, meta)
+	// Reply 1 (intermediate): delta + done → completed before OnTurnEnd.
+	p.OnTextDelta(ctx, "agent-1", "intermediate")
+	p.OnTextDone(ctx, "agent-1", "intermediate")
+	// Reply 2 (final): delta + done → completed before OnTurnEnd.
+	p.OnTextDelta(ctx, "agent-1", "final answer")
+	p.OnTextDone(ctx, "agent-1", "final answer")
+
+	p.OnTurnEnd(ctx, nil, false)
+	p.Close()
+
+	// Collect all reply activities sorted by Seq.
+	var replies []biz.Activity
+	for _, a := range repo.activities {
+		if a.Kind == biz.ActivityKindReply {
+			replies = append(replies, a)
+		}
+	}
+	if len(replies) != 2 {
+		t.Fatalf("want 2 reply activities, got %d", len(replies))
+	}
+	// Sort by Seq ascending.
+	for i := 1; i < len(replies); i++ {
+		if replies[i].Seq < replies[i-1].Seq {
+			replies[i], replies[i-1] = replies[i-1], replies[i]
+		}
+	}
+	// First reply (lower Seq): NOT final.
+	if replies[0].Meta["is_final"] == true {
+		t.Errorf("first reply (Seq=%d) must NOT be marked is_final; want false/absent, got true",
+			replies[0].Seq)
+	}
+	// Last reply (higher Seq): is_final=true.
+	if replies[1].Meta["is_final"] != true {
+		t.Errorf("last reply (Seq=%d) must be marked is_final=true; got %v",
+			replies[1].Seq, replies[1].Meta["is_final"])
+	}
+
+	// Verify an ActivityEventUpdated was published for the final reply (since
+	// it was already terminal when OnTurnEnd ran, the mark propagates via Updated).
+	var updatedFinal *biz.ActivityEvent
+	for i := range bus.published {
+		ev := bus.published[i]
+		if ev.Event == biz.ActivityEventUpdated && ev.Activity.Kind == biz.ActivityKindReply {
+			if ev.Activity.Meta["is_final"] == true {
+				updatedFinal = &bus.published[i]
+				break
+			}
+		}
+	}
+	if updatedFinal == nil {
+		t.Error("no ActivityEventUpdated with is_final=true published for the final reply")
+	}
+}
+
+// TestOnTurnEnd_MarksRunningReplyAsIsFinalInTerminalEvent verifies that when
+// the final reply is still running (no OnTextDone) at turn end, the is_final
+// mark is carried in the terminal ActivityEventCompleted event (not a separate
+// Updated event), avoiding an extra round-trip.
+func TestOnTurnEnd_MarksRunningReplyAsIsFinalInTerminalEvent(t *testing.T) {
+	p, bus, repo := newTestProjector(t)
+	meta := ProjectMeta{SessionID: "sess-1", RequestID: "turn-1", AgentID: "agent-1"}
+	p.Configure(meta, nil)
+	ctx := context.Background()
+
+	p.OnTurnStart(ctx, meta)
+	// Reply still running (no OnTextDone).
+	p.OnTextDelta(ctx, "agent-1", "partial final")
+
+	p.OnTurnEnd(ctx, nil, false)
+	p.Close()
+
+	var reply *biz.Activity
+	for _, a := range repo.activities {
+		if a.Kind == biz.ActivityKindReply {
+			reply = &a
+			break
+		}
+	}
+	if reply == nil {
+		t.Fatal("no reply activity persisted")
+	}
+	if reply.Meta["is_final"] != true {
+		t.Errorf("running reply must be marked is_final=true at turn end; got %v",
+			reply.Meta["is_final"])
+	}
+
+	// The terminal ActivityEventCompleted for this reply must carry is_final.
+	var terminalEv *biz.ActivityEvent
+	for i := range bus.published {
+		ev := bus.published[i]
+		if ev.Event == biz.ActivityEventCompleted && ev.Activity.Kind == biz.ActivityKindReply {
+			terminalEv = &bus.published[i]
+			break
+		}
+	}
+	if terminalEv == nil {
+		t.Fatal("no ActivityEventCompleted for reply")
+	}
+	if terminalEv.Activity.Meta["is_final"] != true {
+		t.Errorf("terminal event must carry is_final=true; got %v",
+			terminalEv.Activity.Meta["is_final"])
+	}
+}
+
+// --- P2-A: reasoning_as_display kind preservation ---
+
+// TestOnReasoningDone_AsDisplay_KeepsThinkingKind verifies that when
+// reasoningAsDisplay=true, the activity keeps Kind=thinking (not flipped to
+// reply), sets meta.as_display=true, populates Content with the reasoning
+// text, and renders expanded (Collapsed=false).
+//
+// Before the P2-A fix, OnReasoningDone flipped Kind to reply, destroying the
+// semantic distinction between intermediate reasoning and the final reply,
+// and conflating thinking-as-display with real replies in OnTurnEnd's
+// is_final marking logic.
+func TestOnReasoningDone_AsDisplay_KeepsThinkingKind(t *testing.T) {
+	p, _, repo := newTestProjector(t)
+	p.Configure(ProjectMeta{SessionID: "sess-1", RequestID: "turn-1", AgentID: "agent-1"}, nil)
+	ctx := context.Background()
+
+	p.OnReasoningDelta(ctx, "agent-1", "step 1", true)
+	p.OnReasoningDone(ctx, "agent-1", "full reasoning text", true)
+	p.Close()
+
+	var thinking *biz.Activity
+	for _, a := range repo.activities {
+		if a.Kind == biz.ActivityKindThinking {
+			thinking = &a
+			break
+		}
+	}
+	if thinking == nil {
+		t.Fatal("no thinking activity persisted")
+	}
+	// Kind must stay thinking (NOT flipped to reply).
+	if thinking.Kind != biz.ActivityKindThinking {
+		t.Errorf("kind=%q want %q (as_display must NOT flip kind to reply)",
+			thinking.Kind, biz.ActivityKindThinking)
+	}
+	// meta.as_display must be true.
+	if thinking.Meta["as_display"] != true {
+		t.Errorf("meta.as_display=%v want true", thinking.Meta["as_display"])
+	}
+	// Content must hold the display text.
+	if thinking.Content != "full reasoning text" {
+		t.Errorf("content=%q want %q", thinking.Content, "full reasoning text")
+	}
+	// Reasoning is kept for audit (not cleared).
+	if thinking.Reasoning == "" {
+		t.Error("reasoning must be kept for audit; got empty")
+	}
+	// Collapsed must be false (reply-like: expanded by default).
+	if thinking.Collapsed {
+		t.Error("as_display thinking must be expanded (Collapsed=false); got true")
+	}
+}
+
+// TestOnTurnEnd_AsDisplayThinking_MarkedAsIsFinal verifies that when the turn
+// has no real reply but has a thinking-as-display activity, OnTurnEnd marks
+// that activity as is_final (the reasoning IS the final answer in this case).
+func TestOnTurnEnd_AsDisplayThinking_MarkedAsIsFinal(t *testing.T) {
+	p, _, repo := newTestProjector(t)
+	meta := ProjectMeta{SessionID: "sess-1", RequestID: "turn-1", AgentID: "agent-1"}
+	p.Configure(meta, nil)
+	ctx := context.Background()
+
+	p.OnTurnStart(ctx, meta)
+	// No OnTextDelta/OnTextDone — the model's reasoning is the reply.
+	p.OnReasoningDelta(ctx, "agent-1", "reasoning as reply", true)
+	p.OnReasoningDone(ctx, "agent-1", "reasoning as reply", true)
+
+	p.OnTurnEnd(ctx, nil, false)
+	p.Close()
+
+	var displayThinking *biz.Activity
+	for _, a := range repo.activities {
+		if a.Kind == biz.ActivityKindThinking && a.Meta["as_display"] == true {
+			displayThinking = &a
+			break
+		}
+	}
+	if displayThinking == nil {
+		t.Fatal("no as_display thinking activity persisted")
+	}
+	if displayThinking.Meta["is_final"] != true {
+		t.Errorf("as_display thinking must be marked is_final when no real reply exists; got %v",
+			displayThinking.Meta["is_final"])
+	}
 }

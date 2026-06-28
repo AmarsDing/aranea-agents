@@ -179,6 +179,10 @@ export interface TeamStageEvent extends StreamEventBase {
   taskSummary?: string;
   /** 持续时间（毫秒） */
   durationMs?: number | null;
+  /** 创建时间（ISO 8601，用于 TeamCard 头部显示） */
+  timestamp?: string;
+  /** 进度百分比（0-100，从 meta.progress_pct 派生） */
+  progressPct?: number;
 }
 
 /** Graph DAG 节点状态 */
@@ -223,6 +227,8 @@ export interface SessionStageEvent extends StreamEventBase {
   spiritSessionId?: string;
   /** 持续时间（毫秒） */
   durationMs?: number | null;
+  /** 创建时间（ISO 8601，用于 AgentCard 头部显示） */
+  timestamp?: string;
 }
 
 // ── Stream Event Union ──

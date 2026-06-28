@@ -100,6 +100,23 @@ type ActivityEvent struct {
 	// System-domain events skip the activities persistence layer entirely
 	// and are only delivered to live WS subscribers.
 	Domain ActivityDomain `json:"domain,omitempty"`
+
+	// SequencerHandled marks whether this event has already been processed
+	// by the ActivityProjector's activityEventSequencer (which persists the
+	// activity via its own persist worker before publishing).
+	//
+	// The Bus uses this flag to distinguish:
+	//   - SequencerHandled=true  → projector-emitted event, already persisted
+	//     by the sequencer; the Bus skips persistence to avoid double-write
+	//     and to avoid overwriting the original (non-redacted) data with the
+	//     redacted snapshot that the Bus sees.
+	//   - SequencerHandled=false → direct-publish event (plan/graph_stage/
+	//     team_stage/session emitted by business orchestrators), NOT yet
+	//     persisted; the Bus persists it via async UpsertActivity and
+	//     normalizes SessionID from SpiritSessionID.
+	//
+	// This field is transport-internal and excluded from JSON serialization.
+	SequencerHandled bool `json:"-"`
 }
 
 // ActivityEventBus is the in-process event fanout hub for Activity lifecycle

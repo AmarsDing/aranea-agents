@@ -34,7 +34,7 @@ func (r *activityRepo) ListBySessionTurn(ctx context.Context, sessionID, turnID 
 			activity.SessionIDEQ(sessionID),
 			activity.TurnIDEQ(turnID),
 		).
-		Order(ent.Asc(activity.FieldSeq), ent.Asc(activity.FieldTimestamp)).
+		Order(ent.Asc(activity.FieldTurnID), ent.Asc(activity.FieldParentActivityID), ent.Asc(activity.FieldTimestamp)).
 		All(ctx)
 	if err != nil {
 		return nil, entErrToBizErr(err, "ACTIVITY")
@@ -48,7 +48,7 @@ func (r *activityRepo) ListBySession(ctx context.Context, sessionID string) ([]b
 	}
 	rows, err := r.data.RW().Read(ctx).Activity.Query().
 		Where(activity.SessionIDEQ(sessionID)).
-		Order(ent.Asc(activity.FieldSeq), ent.Asc(activity.FieldTimestamp)).
+		Order(ent.Asc(activity.FieldTurnID), ent.Asc(activity.FieldParentActivityID), ent.Asc(activity.FieldTimestamp)).
 		All(ctx)
 	if err != nil {
 		return nil, entErrToBizErr(err, "ACTIVITY")
@@ -75,7 +75,7 @@ func (r *activityRepo) ListBySpiritSession(ctx context.Context, spiritSessionID 
 	}
 	rows, err := r.data.RW().Read(ctx).Activity.Query().
 		Where(activity.SpiritSessionIDEQ(spiritSessionID)).
-		Order(ent.Asc(activity.FieldSeq), ent.Asc(activity.FieldTimestamp)).
+		Order(ent.Asc(activity.FieldTurnID), ent.Asc(activity.FieldParentActivityID), ent.Asc(activity.FieldTimestamp)).
 		All(ctx)
 	if err != nil {
 		return nil, entErrToBizErr(err, "ACTIVITY")
@@ -93,7 +93,7 @@ func (r *activityRepo) ListByTeam(ctx context.Context, teamID string) ([]biz.Act
 	}
 	rows, err := r.data.RW().Read(ctx).Activity.Query().
 		Where(activity.TeamIDEQ(teamID)).
-		Order(ent.Asc(activity.FieldSeq), ent.Asc(activity.FieldTimestamp)).
+		Order(ent.Asc(activity.FieldTurnID), ent.Asc(activity.FieldParentActivityID), ent.Asc(activity.FieldTimestamp)).
 		All(ctx)
 	if err != nil {
 		return nil, entErrToBizErr(err, "ACTIVITY")
@@ -128,7 +128,7 @@ func (r *activityRepo) ListByParentSession(ctx context.Context, parentSessionID 
 	// Step 2: query activities for those sessions
 	rows, err := r.data.RW().Read(ctx).Activity.Query().
 		Where(activity.SessionIDIn(childIDs...)).
-		Order(ent.Asc(activity.FieldSeq), ent.Asc(activity.FieldTimestamp)).
+		Order(ent.Asc(activity.FieldTurnID), ent.Asc(activity.FieldParentActivityID), ent.Asc(activity.FieldTimestamp)).
 		All(ctx)
 	if err != nil {
 		return nil, entErrToBizErr(err, "ACTIVITY")
@@ -170,6 +170,9 @@ func (r *activityRepo) CreateActivity(ctx context.Context, a biz.Activity) (biz.
 		SetAgentName(a.AgentName).
 		SetCollapsed(a.Collapsed).
 		SetLabel(a.Label)
+	if len(a.Meta) > 0 {
+		builder.SetMeta(a.Meta)
+	}
 	if len(a.DependsOn) > 0 {
 		builder.SetDependsOn(a.DependsOn)
 	}
@@ -204,6 +207,9 @@ func (r *activityRepo) UpdateActivity(ctx context.Context, a biz.Activity) (biz.
 		SetChildBoardID(a.ChildBoardID).
 		SetCollapsed(a.Collapsed).
 		SetLabel(a.Label)
+	if len(a.Meta) > 0 {
+		builder.SetMeta(a.Meta)
+	}
 	if len(a.DependsOn) > 0 {
 		builder.SetDependsOn(a.DependsOn)
 	}
@@ -257,6 +263,9 @@ func (r *activityRepo) UpsertActivity(ctx context.Context, a biz.Activity) (biz.
 		SetAgentName(a.AgentName).
 		SetCollapsed(a.Collapsed).
 		SetLabel(a.Label)
+	if len(a.Meta) > 0 {
+		b.SetMeta(a.Meta)
+	}
 	if len(a.DependsOn) > 0 {
 		b.SetDependsOn(a.DependsOn)
 	}
@@ -311,6 +320,7 @@ func entActivityToBiz(row *ent.Activity) biz.Activity {
 		AgentName:        row.AgentName,
 		Collapsed:        row.Collapsed,
 		Label:            row.Label,
+		Meta:             row.Meta,
 	}
 }
 

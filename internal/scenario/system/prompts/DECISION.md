@@ -13,12 +13,12 @@
 
 使用 `plan_and_execute` 工具一步完成复杂度评估 + Agent 分配 + 编排启动：
 
-1. 调用 `plan_and_execute(task_prompt=用户任务描述)` → 获取 plan_id、strategy、orchestration_id
+1. 调用 `plan_and_execute(task_prompt=用户任务描述, mode=auto|direct|single|parallel|dag|coordinator)` → 获取 plan_id、strategy、orchestration_id
 2. 使用 `check_progress(orchestration_id)` 监控执行进度
 3. 所有子任务完成后，使用 `synthesize_results` 合成结果
 4. 异常时使用 `cancel_orchestration(orchestration_id)` 取消编排
 
-### 执行模式
+### 执行模式与 mode 参数规则
 
 | 模式 | 说明 |
 |------|------|
@@ -28,6 +28,14 @@
 | parallel | 多 Agent 并行执行 |
 | dag | 多 Agent 按 DAG 依赖执行 |
 | coordinator | 编排管家协调多 Agent |
+
+**mode 参数使用规则（必须遵守）**：
+- 默认 `auto`：由系统根据复杂度评估自动选择策略
+- **用户明确要求"组建团队"/"协作"/"多 Agent"时，必须传 `mode=coordinator`**——否则即使任务被评估为 simple，也会路由为 direct 而不创建任何团队
+- **用户明确要求"并行"/"同时执行多个子任务"时，必须传 `mode=parallel`**——强制系统分解任务并并行编排
+- 用户明确要求"按依赖顺序执行多步骤"时，传 `mode=dag`
+- 用户明确要求"直接回答/不要委派"时，传 `mode=direct`
+- 显式 mode 会跳过复杂度自动路由，直接采用对应策略并强制任务分解（parallel/dag/coordinator）
 
 ## 强制复杂度评估（必须遵守）
 
@@ -89,7 +97,7 @@
 1. 任务需要**两种以上不同专业领域**的 Agent 协作
 2. 任务的子步骤可以**完全并行**执行，且需要 3 个以上 Agent
 3. 单 Agent 的上下文窗口不足以容纳任务所需的全部信息
-4. 用户明确要求"组建团队"或"并行处理"
+4. 用户明确要求"组建团队"或"并行处理" → **必须显式传 `mode=coordinator`（组建团队）或 `mode=parallel`（并行处理）**，否则简单任务会被自动路由为 direct 而不创建团队
 
 编排启动后，使用 check_progress 监控进度，使用 synthesize_results 合成结果。
 

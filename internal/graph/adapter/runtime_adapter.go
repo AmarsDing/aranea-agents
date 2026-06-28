@@ -21,15 +21,16 @@ import (
 )
 
 type trpcGraphRuntime struct {
-	agent       *graphtrpc.GraphAgent
-	graph       *trpcgraph.Graph
-	lineageID   string
-	activityBus biz.ActivityEventBus
-	sessionID   string
-	graphID     string
-	execID      string
-	lg          loggateway.Logger
-	bridge      *graphtrpc.EventBridge
+	agent           *graphtrpc.GraphAgent
+	graph           *trpcgraph.Graph
+	lineageID       string
+	activityBus     biz.ActivityEventBus
+	sessionID       string
+	spiritSessionID string
+	graphID         string
+	execID          string
+	lg              loggateway.Logger
+	bridge          *graphtrpc.EventBridge
 
 	// callbacks holds the NodeCallbacks (replanner OnNodeError + evolver
 	// AfterNode) injected via StateKeyNodeCallbacks in the runtime state.
@@ -325,21 +326,26 @@ func NewGraphBuilderFactory(
 	}
 }
 
-func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, graphID, execID, lineageID string) (*trpcGraphRuntime, error) {
-	g, subAgents, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, cfg, f.registry, &f.resolvers, f.lg)
+func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, spiritSessionID, graphID, execID, lineageID string) (*trpcGraphRuntime, error) {
+	// Use the NodeAgents variant so the GraphAgent can resolve FindSubAgent
+	// calls by node ID (e.g. "member-1") rather than by agent Info().Name
+	// (e.g. "key-a1"). Without this, agent node execution fails with
+	// "parent agent not found in state for agent node X" once the parent
+	// agent is injected, because FindSubAgent(nodeID) returns nil.
+	g, subAgents, nodeAgents, err := graphtrpc.BuildStateGraphWithRegistryAndNodeAgents(ctx, cfg, f.registry, &f.resolvers, f.lg)
 	if err != nil {
 		return nil, err
 	}
 	name := cfg.EntryPoint
-	graphAgent, err := f.createAgent(name, g, cfg.EnableCheckpoint, cfg.ExecutionEngine, subAgents)
+	graphAgent, err := f.createAgent(name, g, cfg.EnableCheckpoint, cfg.ExecutionEngine, subAgents, nodeAgents)
 	if err != nil {
 		return nil, err
 	}
 	return &trpcGraphRuntime{
 		agent: graphAgent, graph: g, lineageID: lineageID, activityBus: f.activityBus,
-		sessionID: sessionID, graphID: graphID, execID: execID, lg: f.lg,
-		bridge:    graphtrpc.NewEventBridge(f.activityBus, sessionID, graphID, execID, f.lg),
-		callbacks: f.buildNodeCallbacks(sessionID, graphID, execID),
+		sessionID: sessionID, spiritSessionID: spiritSessionID, graphID: graphID, execID: execID, lg: f.lg,
+		bridge:    graphtrpc.NewEventBridge(f.activityBus, sessionID, spiritSessionID, graphID, execID, f.lg),
+		callbacks: f.buildNodeCallbacks(sessionID, spiritSessionID, graphID, execID),
 	}, nil
 }
 
@@ -356,7 +362,7 @@ func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.Grap
 // execution continues (degrade gracefully).
 // Returns nil when neither replanner nor evolver is configured, so the runtime
 // skips injecting StateKeyNodeCallbacks into the state.
-func (f *trpcGraphBuilderFactory) buildNodeCallbacks(sessionID, graphID, execID string) *trpcgraph.NodeCallbacks {
+func (f *trpcGraphBuilderFactory) buildNodeCallbacks(sessionID, spiritSessionID, graphID, execID string) *trpcgraph.NodeCallbacks {
 	if f.replanner == nil && f.evolver == nil {
 		return nil
 	}
@@ -370,6 +376,7 @@ func (f *trpcGraphBuilderFactory) buildNodeCallbacks(sessionID, graphID, execID 
 				return
 			}
 			exec := biz.NewGraphExecution(ctx, execID, graphID, sessionID, "")
+			exec.SpiritSessionID = spiritSessionID
 			action, replanErr := replanner.OnNodeFailure(ctx, exec, cbCtx.NodeID, err)
 			if replanErr != nil {
 				lg.Warn("runtime replanner: OnNodeFailure failed, execution continues without replan",
@@ -432,6 +439,7 @@ func (f *trpcGraphBuilderFactory) buildNodeCallbacks(sessionID, graphID, execID 
 				return nil, nil
 			}
 			exec := biz.NewGraphExecution(ctx, execID, graphID, sessionID, "")
+			exec.SpiritSessionID = spiritSessionID
 			edge, evolveErr := evolver.OnExecutionInsight(ctx, exec, insight)
 			if evolveErr != nil {
 				// B4 requirement: on failure, only Warn log, don't block execution.
@@ -464,12 +472,12 @@ func (f *trpcGraphBuilderFactory) buildNodeCallbacks(sessionID, graphID, execID 
 	return cb
 }
 
-func (f *trpcGraphBuilderFactory) BuildRuntime(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, graphID, execID, lineageID string) (biz.GraphRuntime, error) {
-	return f.buildRuntime(ctx, cfg, sessionID, graphID, execID, lineageID)
+func (f *trpcGraphBuilderFactory) BuildRuntime(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, spiritSessionID, graphID, execID, lineageID string) (biz.GraphRuntime, error) {
+	return f.buildRuntime(ctx, cfg, sessionID, spiritSessionID, graphID, execID, lineageID)
 }
 
-func (f *trpcGraphBuilderFactory) BuildAndRun(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, graphID, execID string, initialState map[string]any) (biz.GraphRuntime, <-chan biz.GraphRuntimeEvent, error) {
-	runtime, err := f.buildRuntime(ctx, cfg, sessionID, graphID, execID, "")
+func (f *trpcGraphBuilderFactory) BuildAndRun(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, spiritSessionID, graphID, execID string, initialState map[string]any) (biz.GraphRuntime, <-chan biz.GraphRuntimeEvent, error) {
+	runtime, err := f.buildRuntime(ctx, cfg, sessionID, spiritSessionID, graphID, execID, "")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -480,8 +488,8 @@ func (f *trpcGraphBuilderFactory) BuildAndRun(ctx context.Context, cfg biz.Graph
 	return runtime, eventCh, nil
 }
 
-func (f *trpcGraphBuilderFactory) BuildAndResume(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, graphID, execID, lineageID string, resumeValue map[string]any) (biz.GraphRuntime, <-chan biz.GraphRuntimeEvent, error) {
-	runtime, err := f.buildRuntime(ctx, cfg, sessionID, graphID, execID, lineageID)
+func (f *trpcGraphBuilderFactory) BuildAndResume(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, spiritSessionID, graphID, execID, lineageID string, resumeValue map[string]any) (biz.GraphRuntime, <-chan biz.GraphRuntimeEvent, error) {
+	runtime, err := f.buildRuntime(ctx, cfg, sessionID, spiritSessionID, graphID, execID, lineageID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -580,18 +588,31 @@ func (f *trpcGraphBuilderFactory) FindNodeDef(cfg biz.GraphBuildConfig, taskMeta
 	return nil
 }
 
-func (f *trpcGraphBuilderFactory) createAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool, ee biz.ExecutionEngineType, subAgents []trpcagent.Agent) (*graphtrpc.GraphAgent, error) {
+func (f *trpcGraphBuilderFactory) createAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool, ee biz.ExecutionEngineType, subAgents []trpcagent.Agent, nodeAgents map[string]trpcagent.Agent) (*graphtrpc.GraphAgent, error) {
 	// P1-8: Force-enable CheckpointSaver for all graph runs when a saver is
 	// available, regardless of the per-graph EnableCheckpoint flag. This
 	// guarantees that every Run can be recovered by RecoveryWorker after a
 	// process restart. The EnableCheckpoint flag is now only a hint for
 	// graph definitions that explicitly opt out (saver == nil).
+	var (
+		agent *graphtrpc.GraphAgent
+		err   error
+	)
 	if f.saver != nil {
-		return graphtrpc.NewGraphAgentWithSaver(name, g, f.saver, ee, subAgents...)
+		agent, err = graphtrpc.NewGraphAgentWithSaver(name, g, f.saver, ee, subAgents...)
 	} else if ee != "" && ee != biz.EngineBSP {
-		return graphtrpc.NewGraphAgentWithEngine(name, g, enableCheckpoint, ee, subAgents...)
+		agent, err = graphtrpc.NewGraphAgentWithEngine(name, g, enableCheckpoint, ee, subAgents...)
+	} else {
+		agent, err = graphtrpc.NewGraphAgent(name, g, enableCheckpoint, subAgents...)
 	}
-	return graphtrpc.NewGraphAgent(name, g, enableCheckpoint, subAgents...)
+	if err != nil {
+		return nil, err
+	}
+	// SetNodeAgents is required for all three construction paths because
+	// NewGraphAgentWithSaver / NewGraphAgentWithEngine / NewGraphAgent all
+	// pre-date the nodeAgents field and don't accept it as a parameter.
+	agent.SetNodeAgents(nodeAgents)
+	return agent, nil
 }
 
 // ---------------------------------------------------------------------------

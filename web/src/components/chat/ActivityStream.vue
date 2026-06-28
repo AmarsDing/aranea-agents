@@ -34,6 +34,7 @@
             :streaming="step.streaming"
             :duration-ms="step.durationMs"
             :default-collapsed="step.collapsed"
+            :label="step.label"
           />
         </template>
         <ThinkingBlock
@@ -43,6 +44,7 @@
           :streaming="(item.event as ThinkingEvent).streaming"
           :duration-ms="(item.event as ThinkingEvent).durationMs"
           :default-collapsed="(item.event as ThinkingEvent).collapsed"
+          :label="(item.event as ThinkingEvent).label"
         />
       </template>
       <ActionBlock v-else-if="item.event.kind === 'action'" :activity="item.event as ActionEvent" :agent-color="agentColor" />
@@ -65,17 +67,70 @@
       />
       <NoticeBlock v-else-if="item.event.kind === 'notice'" :activity="item.event as NoticeEvent" />
       <!-- Phase 3: Stage kinds for unified Team/Graph/Session rendering -->
-      <TeamStageBlock
+      <GraphStageBlock v-else-if="item.event.kind === 'graph_stage'" :activity="item.event as GraphStageEvent" />
+      <!-- B.4.1 team-card: replaces TeamStageBlock. Children rendered via slot
+           so TeamCard's `expanded` state controls their visibility (B.4.5 fold rule). -->
+      <TeamCard
         v-else-if="item.event.kind === 'team_stage'"
         :activity="item.event as TeamStageEvent"
         @expand-member="(p) => $emit('expand-member', p)"
-      />
-      <GraphStageBlock v-else-if="item.event.kind === 'graph_stage'" :activity="item.event as GraphStageEvent" />
-      <SessionStageBlock
+        @resume-team="(teamId: string) => $emit('resume-team', teamId)"
+        @cancel-team="(teamId: string) => $emit('cancel-team', teamId)"
+        @inject="(p) => $emit('inject-team', p)"
+      >
+        <template v-if="item.activity.children?.length">
+          <ActivityStream
+            :activity-tree="item.activity.children"
+            :agent-color="agentColor"
+            @confirm="(id: string, approved: boolean) => $emit('confirm', id, approved)"
+            @error-retry="(e: ErrorEvent) => $emit('error-retry', e)"
+            @error-switch-model="(e: ErrorEvent) => $emit('error-switch-model', e)"
+            @error-rephrase="(e: ErrorEvent) => $emit('error-rephrase', e)"
+            @error-check-config="(e: ErrorEvent) => $emit('error-check-config', e)"
+            @error-remove-attachment="(e: ErrorEvent) => $emit('error-remove-attachment', e)"
+            @error-relogin="(e: ErrorEvent) => $emit('error-relogin', e)"
+            @expand-member="(p) => $emit('expand-member', p)"
+            @enter-session="(sid) => $emit('enter-session', sid)"
+            @resume-team="(teamId: string) => $emit('resume-team', teamId)"
+            @cancel-team="(teamId: string) => $emit('cancel-team', teamId)"
+            @inject-team="(p) => $emit('inject-team', p)"
+            @inject-agent="(p) => $emit('inject-agent', p)"
+            @cancel-agent="(agentKey: string) => $emit('cancel-agent', agentKey)"
+            @resume-agent="(agentKey: string) => $emit('resume-agent', agentKey)"
+          />
+        </template>
+      </TeamCard>
+      <!-- B.4.2 agent-card: replaces SessionStageBlock. Children rendered via slot. -->
+      <AgentCard
         v-else-if="item.event.kind === 'session'"
         :activity="item.event as SessionStageEvent"
         @enter-session="(sid) => $emit('enter-session', sid)"
-      />
+        @cancel-agent="(agentKey: string) => $emit('cancel-agent', agentKey)"
+        @resume-agent="(agentKey: string) => $emit('resume-agent', agentKey)"
+        @inject="(p) => $emit('inject-agent', p)"
+      >
+        <template v-if="item.activity.children?.length">
+          <ActivityStream
+            :activity-tree="item.activity.children"
+            :agent-color="agentColor"
+            @confirm="(id: string, approved: boolean) => $emit('confirm', id, approved)"
+            @error-retry="(e: ErrorEvent) => $emit('error-retry', e)"
+            @error-switch-model="(e: ErrorEvent) => $emit('error-switch-model', e)"
+            @error-rephrase="(e: ErrorEvent) => $emit('error-rephrase', e)"
+            @error-check-config="(e: ErrorEvent) => $emit('error-check-config', e)"
+            @error-remove-attachment="(e: ErrorEvent) => $emit('error-remove-attachment', e)"
+            @error-relogin="(e: ErrorEvent) => $emit('error-relogin', e)"
+            @expand-member="(p) => $emit('expand-member', p)"
+            @enter-session="(sid) => $emit('enter-session', sid)"
+            @resume-team="(teamId: string) => $emit('resume-team', teamId)"
+            @cancel-team="(teamId: string) => $emit('cancel-team', teamId)"
+            @inject-team="(p) => $emit('inject-team', p)"
+            @inject-agent="(p) => $emit('inject-agent', p)"
+            @cancel-agent="(agentKey: string) => $emit('cancel-agent', agentKey)"
+            @resume-agent="(agentKey: string) => $emit('resume-agent', agentKey)"
+          />
+        </template>
+      </AgentCard>
 
       <!-- B-04 / Phase A: Recursive nested rendering for activities with children.
            Renders child activities (sub-thinking, sub-action, sub-reply, etc.)
@@ -84,8 +139,13 @@
            stripped children via `activityToStreamEvent({ ...activity, children: [] })`.
            For failed tasks (which expand to two render items: msg + err), only
            render children on the 'msg' item so the order becomes
-           UserMessageBubble → Children → ErrorBlock and children are not duplicated. -->
-      <div v-if="item.activity.children?.length && item.keySuffix !== 'err'" class="event-stream__children">
+           UserMessageBubble → Children → ErrorBlock and children are not duplicated.
+           Note: team_stage / session render their children via TeamCard/AgentCard
+           slots (above), so they are skipped here to avoid duplication. -->
+      <div
+        v-if="item.activity.children?.length && item.keySuffix !== 'err' && item.activity.kind !== 'team_stage' && item.activity.kind !== 'session'"
+        class="event-stream__children"
+      >
         <ActivityStream
           :activity-tree="item.activity.children"
           :agent-color="agentColor"
@@ -98,6 +158,12 @@
           @error-relogin="(e: ErrorEvent) => $emit('error-relogin', e)"
           @expand-member="(p) => $emit('expand-member', p)"
           @enter-session="(sid) => $emit('enter-session', sid)"
+          @resume-team="(teamId: string) => $emit('resume-team', teamId)"
+          @cancel-team="(teamId: string) => $emit('cancel-team', teamId)"
+          @inject-team="(p) => $emit('inject-team', p)"
+          @inject-agent="(p) => $emit('inject-agent', p)"
+          @cancel-agent="(agentKey: string) => $emit('cancel-agent', agentKey)"
+          @resume-agent="(agentKey: string) => $emit('resume-agent', agentKey)"
         />
       </div>
     </template>
@@ -130,9 +196,9 @@ import ErrorBlock from './ErrorBlock.vue';
 import PlanBlock from './PlanBlock.vue';
 import ConfirmBlock from './ConfirmBlock.vue';
 import NoticeBlock from './NoticeBlock.vue';
-import TeamStageBlock from './TeamStageBlock.vue';
 import GraphStageBlock from './GraphStageBlock.vue';
-import SessionStageBlock from './SessionStageBlock.vue';
+import TeamCard from './TeamCard.vue';
+import AgentCard from './AgentCard.vue';
 import UserMessageBubble from './UserMessageBubble.vue';
 
 // B-04 / Phase A: ActivityStream is now recursive. The component name is
@@ -159,6 +225,13 @@ defineEmits<{
   'error-relogin': [event: ErrorEvent];
   'expand-member': [payload: { agentKey: string; agentName?: string; teamId?: string }];
   'enter-session': [sessionId: string];
+  'resume-team': [teamId: string];
+  'cancel-team': [teamId: string];
+  // B.4.1/B.4.2 new interactions (Phase T3 wires API calls in ChatPage/composable)
+  'inject-team': [payload: { teamId: string; message: string }];
+  'inject-agent': [payload: { agentKey: string; message: string }];
+  'cancel-agent': [agentKey: string];
+  'resume-agent': [agentKey: string];
 }>();
 
 const { t } = useI18n();

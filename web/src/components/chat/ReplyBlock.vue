@@ -1,5 +1,5 @@
 <template>
-  <div class="reply-block">
+  <div class="reply-block" :class="{ 'reply-block--streaming': activity.streaming }">
     <!-- Card variant -->
     <div class="reply-block__label">
       <span class="reply-block__icon">💬</span>
@@ -63,4 +63,18 @@ const renderedContent = computed(() =>
 // 夜间助手气泡切换为标准玻璃 token（§6.14 要求夜 --glass-surface）
 body.body--dark .reply-block__content
   background: var(--glass-surface)
+
+// Chat UI fix: streaming state — pulsing left border to signal "agent is
+// still typing". Pairs with the existing pulse-dot + cursor-blink inside.
+.reply-block--streaming
+  .reply-block__content
+    border-left: 2px solid var(--color-accent)
+    box-shadow: -1px 0 0 var(--color-accent)
+    animation: reply-streaming-pulse 1.6s ease-in-out infinite
+
+@keyframes reply-streaming-pulse
+  0%, 100%
+    border-left-color: var(--color-accent)
+  50%
+    border-left-color: color-mix(in srgb, var(--color-accent) 40%, transparent)
 </style>

@@ -197,6 +197,15 @@ func (r *TeamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 	if t.Status == "" {
 		t.Status = biz.TeamStatusPending
 	}
+	// Kind and Source are required enum fields. Ent's Default() only applies
+	// when the field is not set at all; an explicit SetKind("") fails validation.
+	// Apply defaults here so callers (e.g. AssembleTeam) don't need to set them.
+	if t.Kind == "" {
+		t.Kind = "user"
+	}
+	if t.Source == "" {
+		t.Source = "user"
+	}
 	_, err := r.data.RW().Write(ctx).Team.Create().
 		SetID(t.ID).
 		SetTeamKey(t.TeamKey).

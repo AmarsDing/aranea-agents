@@ -69,7 +69,7 @@ func openAICompatToTRPCMessages(msgs []OpenAICompatMessage) []trpcmodel.Message 
 }
 
 func CallOpenAICompatChat(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, modelName string, messages []OpenAICompatMessage) (text string, reasoning string, promptTok, completionTok int, err error) {
-	m, err := trpcCompatModel(cfg, hc)
+	m, err := trpcCompatModel(cfg, hc, modelName)
 	if err != nil {
 		return "", "", 0, 0, err
 	}
@@ -97,7 +97,7 @@ func CallOpenAICompatChat(ctx context.Context, hc *http.Client, cfg ProviderAPIC
 }
 
 func CallOpenAICompatChatStream(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, modelName string, messages []OpenAICompatMessage, onDelta func(piece string) error) (fullText string, reasoningText string, promptTok, completionTok int, err error) {
-	m, err := trpcCompatModel(cfg, hc)
+	m, err := trpcCompatModel(cfg, hc, modelName)
 	if err != nil {
 		return "", "", 0, 0, err
 	}
@@ -149,7 +149,7 @@ func CallOpenAICompatChatStream(ctx context.Context, hc *http.Client, cfg Provid
 	return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, nil
 }
 
-func trpcCompatModel(cfg ProviderAPIConfig, hc *http.Client) (trpcmodel.Model, error) {
+func trpcCompatModel(cfg ProviderAPIConfig, hc *http.Client, modelName string) (trpcmodel.Model, error) {
 	providerName := provider.MapProviderType(cfg.ProviderType)
 	opts := []trpcprovider.Option{}
 	if apiKey := strings.TrimSpace(cfg.APIKey); apiKey != "" {
@@ -161,7 +161,7 @@ func trpcCompatModel(cfg ProviderAPIConfig, hc *http.Client) (trpcmodel.Model, e
 	if hc != nil && hc.Transport != nil {
 		opts = append(opts, trpcprovider.WithHTTPClientTransport(hc.Transport))
 	}
-	return trpcprovider.Model(providerName, "", opts...)
+	return trpcprovider.Model(providerName, modelName, opts...)
 }
 
 func extractFromTRPCResponse(resp *trpcmodel.Response, _ string) (text string, reasoning string, promptTok, completionTok int, err error) {
@@ -197,7 +197,7 @@ type OpenAICompatToolCallResult struct {
 }
 
 func CallOpenAICompatChatWithTools(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, modelName string, messages []OpenAICompatMessage, tools []map[string]any) (text string, toolCalls []OpenAICompatToolCallResult, promptTok, completionTok int, err error) {
-	m, err := trpcCompatModel(cfg, hc)
+	m, err := trpcCompatModel(cfg, hc, modelName)
 	if err != nil {
 		return "", nil, 0, 0, err
 	}

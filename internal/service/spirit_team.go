@@ -490,7 +490,7 @@ func (a *SpiritTeamAssembler) AssembleTeam(ctx context.Context, params biz.Spiri
 		return biz.Team{}, biz.Session{}, err
 	}
 
-	a.publishSpiritTeamAssembled(ctx, spiritSessionID, result.Team, result.Session, params.Mode, params.TaskDescription, params.TopologyReason)
+	a.publishSpiritTeamAssembled(ctx, spiritSessionID, result.Team, result.Session, params.Mode, params.TaskDescription, params.TopologyReason, params.AgentKeys)
 
 	if params.AutoStart && a.teamStarter != nil && result.Team.Status == biz.TeamStatusPending && strings.TrimSpace(params.TaskDescription) != "" {
 		sessionID := result.Session.ID
@@ -620,9 +620,22 @@ func (a *SpiritTeamAssembler) SuggestTopology(ctx context.Context, taskDescripti
 	return string(topology), found
 }
 
-func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, spiritSessionID string, team biz.Team, teamSession biz.Session, mode, taskDesc, topologyReason string) {
+func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, spiritSessionID string, team biz.Team, teamSession biz.Session, mode, taskDesc, topologyReason string, agentKeys []string) {
 	if a.bus == nil {
 		return
+	}
+	// Build members array so the frontend TeamStageBlock can render the member list
+	// (design m59-chat-ui-v7.html "团队进度" section). Without this, the block only
+	// shows an empty header. agent_name is set to agent_key here as the assembler
+	// does not have access to the agent store; the run-completion summary event
+	// (TeamSummaryActivityEvent) will later provide richer member data.
+	members := make([]map[string]any, 0, len(agentKeys))
+	for _, key := range agentKeys {
+		members = append(members, map[string]any{
+			"agent_key":  key,
+			"agent_name": key,
+			"status":     biz.ActivityStatusPending,
+		})
 	}
 	a.bus.Publish(ctx, biz.ActivityEvent{
 		Event: biz.ActivityEventCreated,
@@ -646,6 +659,7 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 				"topology_reason": topologyReason,
 				"duration_ms":     0,
 				"total_steps":     1,
+				"members":         members,
 			},
 		},
 		Domain: biz.ActivityDomainChat,

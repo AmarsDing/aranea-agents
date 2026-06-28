@@ -13,7 +13,7 @@ func (r *Runner) persistGraphMemberStepsFromResultTestOnly(ctx context.Context, 
 	if r == nil || in.GraphExecID == "" {
 		return
 	}
-	stepCtx := buildGraphRunStepContext(in.DefinitionJSON, in.Content, in.Run.ID, in.TeamID, in.Run.SessionID, loggateway.NewNoop())
+	stepCtx := buildGraphRunStepContext(in.DefinitionJSON, in.Content, in.Run.ID, in.TeamID, in.Run.SessionID, in.Run.SessionID, loggateway.NewNoop())
 	if stepCtx == nil {
 		return
 	}

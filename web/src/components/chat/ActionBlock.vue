@@ -244,9 +244,14 @@ const contentLength = computed(() => {
   return result.length + args.length;
 });
 
-// T8.4: Persisted collapse state (remembered across re-renders/refreshes).
-// Tool cards default expanded so users can see execution results immediately.
-const { collapsed, toggle, setCollapsed } = useCollapseState(`action:${props.activity.id}`, false);
+// Chat UI #1: Persisted collapse state (remembered across re-renders/refreshes).
+// Tool cards default COLLAPSED so the chat transcript stays scannable —
+// the compact header (icon + label + status + duration) is enough to convey
+// "a tool ran", and the full detail (tool name, args, result) is revealed
+// on demand. Users who want to peek into a specific tool click the header.
+// If content grows beyond the threshold while the user has expanded the
+// card, auto-collapse re-engages to keep long outputs out of the way.
+const { collapsed, toggle, setCollapsed } = useCollapseState(`action:${props.activity.id}`, true);
 
 // If content grows beyond threshold after initial render (e.g., streaming result),
 // auto-collapse unless the user has explicitly expanded.
@@ -299,6 +304,10 @@ const statusClass = computed(() => ({
   'act-activity__status--success': props.activity.tool.status === 'success',
   'act-activity__status--failed': props.activity.tool.status === 'failed',
   'act-activity__status--blocked': props.activity.tool.status === 'blocked',
+  // Chat UI fix: 'cancelled' previously had an icon (⊘) but no CSS modifier,
+  // so cancelled tools rendered with no status color — inconsistent with
+  // the design spec which requires a muted/cancelled visual state.
+  'act-activity__status--cancelled': props.activity.tool.status === 'cancelled',
 }));
 
 const statusIcon = computed(() => {
@@ -358,6 +367,10 @@ const formattedDuration = computed(() => formatDuration(props.activity.tool.dura
       color: var(--color-accent)
     &--blocked
       color: var(--color-warning)
+    // Chat UI fix: cancelled tools use the muted text color to signal
+    // "aborted/no longer active" without raising visual alarm.
+    &--cancelled
+      color: var(--color-text-secondary)
 
   &__duration
     font-size: 11px

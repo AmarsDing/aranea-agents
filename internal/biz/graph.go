@@ -146,24 +146,25 @@ type GraphDefinition struct {
 }
 
 type GraphExecution struct {
-	ID            string
-	GraphID       string
-	SessionID     string
-	Status        string
-	CurrentNode   string
-	LineageID     string
-	ErrorMessage  string
-	CurrentState  map[string]any
-	Steps         []GraphStepSnapshot
-	InterruptNode string
-	interrupted   bool
-	interruptMu   sync.RWMutex
-	runtime       GraphRuntime
-	StartedAt     time.Time
-	FinishedAt    *time.Time
-	execMu        sync.RWMutex    // protects Status, CurrentNode, LineageID, ErrorMessage, Steps, runtime, FinishedAt
-	evicted       bool            // set by GC before removing from map; not persisted
-	ctx           context.Context // detached context preserving trace info for background DB writes
+	ID              string
+	GraphID         string
+	SessionID       string
+	SpiritSessionID string // cross-session aggregation key (root spirit session); equals SessionID for direct spirit runs
+	Status          string
+	CurrentNode     string
+	LineageID       string
+	ErrorMessage    string
+	CurrentState    map[string]any
+	Steps           []GraphStepSnapshot
+	InterruptNode   string
+	interrupted     bool
+	interruptMu     sync.RWMutex
+	runtime         GraphRuntime
+	StartedAt       time.Time
+	FinishedAt      *time.Time
+	execMu          sync.RWMutex    // protects Status, CurrentNode, LineageID, ErrorMessage, Steps, runtime, FinishedAt
+	evicted         bool            // set by GC before removing from map; not persisted
+	ctx             context.Context // detached context preserving trace info for background DB writes
 }
 
 // NewGraphExecution creates a GraphExecution with mandatory ctx initialization.
@@ -542,8 +543,8 @@ func (uc *GraphUsecase) ResumeExecution(ctx context.Context, executionID string,
 	return uc.execUC.ResumeExecution(ctx, executionID, resumeValue)
 }
 
-func (uc *GraphUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, teamID, teamRunID string, ct *CompiledTeam) error {
-	return uc.execUC.RegisterTeamGraphExecution(ctx, execID, sessionID, teamID, teamRunID, ct)
+func (uc *GraphUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, spiritSessionID, teamID, teamRunID string, ct *CompiledTeam) error {
+	return uc.execUC.RegisterTeamGraphExecution(ctx, execID, sessionID, spiritSessionID, teamID, teamRunID, ct)
 }
 
 func (uc *GraphUsecase) MarkTeamGraphInterrupt(ctx context.Context, execID, nodeID, lineageID string) error {

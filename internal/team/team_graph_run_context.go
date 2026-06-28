@@ -9,13 +9,14 @@ import (
 // GraphRunStepContext is the public DTO for graph run step persistence (ARCH-01).
 // Keeps the finisher decoupled from coordinator session internals.
 type GraphRunStepContext struct {
-	TeamRunID     string
-	TeamID        string
-	SessionID     string
-	InputPreview  string
-	memberByNode  map[string]MemberDef
-	stepSortIndex map[string]int
-	dedup         *graphStepDedup
+	TeamRunID       string
+	TeamID          string
+	SessionID       string
+	SpiritSessionID string
+	InputPreview    string
+	memberByNode    map[string]MemberDef
+	stepSortIndex   map[string]int
+	dedup           *graphStepDedup
 }
 
 type graphStepDedup struct {
@@ -57,26 +58,28 @@ func (s *teamGraphRunSession) stepContext() *GraphRunStepContext {
 		s.stepDedup = newGraphStepDedup()
 	}
 	return &GraphRunStepContext{
-		TeamRunID:     s.teamRunID,
-		TeamID:        s.teamID,
-		SessionID:     s.sessionID,
-		InputPreview:  s.inputPreview,
-		memberByNode:  s.memberByNode,
-		stepSortIndex: s.stepSortIndex,
-		dedup:         s.stepDedup,
+		TeamRunID:       s.teamRunID,
+		TeamID:          s.teamID,
+		SessionID:       s.sessionID,
+		SpiritSessionID: s.spiritSessionID,
+		InputPreview:    s.inputPreview,
+		memberByNode:    s.memberByNode,
+		stepSortIndex:   s.stepSortIndex,
+		dedup:           s.stepDedup,
 	}
 }
 
-func buildGraphRunStepContext(defJSON, inputPreview, teamRunID, teamID, sessionID string, lg loggateway.Logger) *GraphRunStepContext {
+func buildGraphRunStepContext(defJSON, inputPreview, teamRunID, teamID, sessionID, spiritSessionID string, lg loggateway.Logger) *GraphRunStepContext {
 	_, memberByNode, stepSortIndex := buildResumeSessionContext(defJSON, inputPreview, nil, lg)
 	return &GraphRunStepContext{
-		TeamRunID:     teamRunID,
-		TeamID:        teamID,
-		SessionID:     sessionID,
-		InputPreview:  inputPreview,
-		memberByNode:  memberByNode,
-		stepSortIndex: stepSortIndex,
-		dedup:         newGraphStepDedup(),
+		TeamRunID:       teamRunID,
+		TeamID:          teamID,
+		SessionID:       sessionID,
+		SpiritSessionID: spiritSessionID,
+		InputPreview:    inputPreview,
+		memberByNode:    memberByNode,
+		stepSortIndex:   stepSortIndex,
+		dedup:           newGraphStepDedup(),
 	}
 }
 

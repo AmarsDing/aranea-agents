@@ -146,9 +146,9 @@ type GraphRuntime interface {
 // GraphRunnerFactory builds graph runtimes for execution.
 // Stability:evolving
 type GraphRunnerFactory interface {
-	BuildAndRun(ctx context.Context, cfg GraphBuildConfig, sessionID, graphID, execID string, initialState map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)
-	BuildAndResume(ctx context.Context, cfg GraphBuildConfig, sessionID, graphID, execID, lineageID string, resumeValue map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)
-	BuildRuntime(ctx context.Context, cfg GraphBuildConfig, sessionID, graphID, execID, lineageID string) (GraphRuntime, error)
+	BuildAndRun(ctx context.Context, cfg GraphBuildConfig, sessionID, spiritSessionID, graphID, execID string, initialState map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)
+	BuildAndResume(ctx context.Context, cfg GraphBuildConfig, sessionID, spiritSessionID, graphID, execID, lineageID string, resumeValue map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)
+	BuildRuntime(ctx context.Context, cfg GraphBuildConfig, sessionID, spiritSessionID, graphID, execID, lineageID string) (GraphRuntime, error)
 }
 
 // GraphVisualizer renders graph topology for display.

@@ -491,6 +491,9 @@ message Activity {
   int64 prompt_tokens = 26;
   int64 completion_tokens = 27;
   int64 seq = 28;
+  // AF-BE-17: kind-specific metadata (is_final, member_id, as_display, etc.)
+  // JSON-serialized map<string, any>. Empty string when no metadata is set.
+  string meta_json = 29;
 }
 
 message ListActivitiesRequest {

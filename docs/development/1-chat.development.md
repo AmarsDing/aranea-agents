@@ -348,7 +348,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 ### 7.4 Activity 树嵌套渲染（Phase A）
 
-> 2026-06-27：完成「主聊天流嵌套渲染 + 统一渲染器对齐 + 父子场景 bug 修复」一轮 P1/P2 修复。设计依据：[1-chat.design.md §聊天消息分组](./1-chat.design.md) + [59-chat-ui-optimization.design.md](./59-chat-ui-optimization.design.md)。
+> 2026-06-27：完成「主聊天流嵌套渲染 + 统一渲染器对齐 + 父子场景 bug 修复」一轮 P1/P2 修复。设计依据：[1-chat.design.md §聊天消息分组](./1-chat.design.md) + [1-chat.design.md §子模块：Team 团队历史显示设计](./1-chat.design.md)。
 
 | ID | 类型 | 改动 | 状态 |
 |----|------|------|------|
@@ -624,3 +624,240 @@ cd web && npx quasar build
 | M56 BLO-5 | BLO-5 | Unified BackgroundJob | 需求草案 |
 | 架构 | TurnExecutor | Agent/Team 公共骨架提取 | 未启动 |
 | 架构 | listChatOptions | runtimeStore 中 listChatOptions 语义归属 | 记录备忘 |
+
+---
+
+## 子模块：Team 团队历史显示开发计划
+
+> **状态**：2026-06-28 新增 | **需求**：详见 [1-chat.md §子模块：Team 团队历史显示需求](./1-chat.md) | **设计**：详见 [1-chat.design.md §子模块：Team 团队历史显示设计](./1-chat.design.md)
+
+### C.1 模块定位
+
+Team 团队历史显示是 Chat UI 的核心子模块，负责在精灵对话中展示任务计划、Graph 流程图、Team 任务栏和子 Agent 卡片，并支持历史恢复。
+
+**核心原则**：Agent 统一性——所有 agent（精灵+子agent）本质相同，UI 展示和后端逻辑统一，team 只是组合外衣。
+
+### C.2 代码锚点
+
+#### 后端
+
+| 文件 | 职责 | 状态 |
+|------|------|------|
+| `internal/biz/activity_seq.go` | GlobalSeqAllocator（全局 Seq 分配） | ❌ 待移除 |
+| `internal/agent/activity_event_sequencer.go` | ActivityEvent 序列化（单 publish worker） | ✅ 保留 |
+| `internal/service/spirit_team.go` | Spirit 生成事件（SpiritSessionID 已填） | ✅ 已正确 |
+| `internal/service/pre_planning_gate.go` | Spirit 生成 plan 事件（SpiritSessionID = SessionID） | ✅ 已修复 |
+| `internal/team/runner_team_trpc_phases.go` | Team 阶段事件生成（含 deriveSpiritSessionID 辅助函数、createInitialTeamRun 设置字段） | ✅ 已修复 |
+| `internal/team/team_graph_run_coordinator.go` | Team Graph 协调器（team_stage 事件） | ✅ 已修复 |
+| `internal/team/team_graph_run_finisher.go` | Team Graph 完成事件（含 run.SpiritSessionID 回填） | ✅ 已修复 |
+| `internal/team/runner_team_turn.go` | Team turn 事件 | ✅ 已修复 |
+| `internal/team/runner_helpers.go` | publishTeamRunFailedActivity/publishTeamStepActivity 读取 run.SpiritSessionID | ✅ 已修复 |
+| `internal/team/summary.go` | TeamSummaryActivityEvent 读取 run.SpiritSessionID | ✅ 已修复 |
+| `internal/team/status_projector.go` | OrchestrationProjectorConfig 新增 SpiritSessionID 字段 | ✅ 已修复 |
+| `internal/team/runner_team_observer.go` | startObservers 设置 SpiritSessionID | ✅ 已修复 |
+| `internal/team/team_graph_run_context.go` | GraphRunStepContext 新增 SpiritSessionID 字段 | ✅ 已修复 |
+| `internal/team/runner_mediator.go` | TeamGraphCoordAccess 接口签名扩展 | ✅ 已修复 |
+| `internal/team/runner_team_compiler.go` | RegisterTeamGraphExecution 调用方传入 spiritSessionID | ✅ 已修复 |
+| `internal/biz/team_types.go` | TeamRun 新增 SpiritSessionID 字段（`json:"-"`） | ✅ 已修复 |
+| `internal/biz/graph_runtime.go` | GraphRunnerFactory 接口签名扩展 | ✅ 已修复 |
+| `internal/biz/graph_execution_usecase.go` | RegisterTeamGraphExecution/ExecuteGraph 等设置 exec.SpiritSessionID | ✅ 已修复 |
+| `internal/biz/graph.go` | GraphUsecase.RegisterTeamGraphExecution 委托方法签名扩展 | ✅ 已修复 |
+| `internal/graph/trpc/event_bridge.go` | Graph 事件桥接（graph_stage 事件，EventBridge 新增 spiritSessionID 字段） | ✅ 已修复 |
+| `internal/graph/runtime_replanner.go` | Graph 重规划事件 | ✅ 已修复 |
+| `internal/graph/topology_evolution.go` | 拓扑演化事件（publishTopologyEvolvedEvent） | ✅ 已修复 |
+| `internal/graph/adapter/runtime_adapter.go` | trpcGraphRuntime 新增 spiritSessionID 字段，签名扩展 | ✅ 已修复 |
+| `internal/event/activityevent/bus.go` | ActivityEvent Bus（SessionID 兜底规范化） | ✅ 保留 |
+| `internal/data/ent/schema/agent_runtime_setting.go` | AgentRuntimeSetting（含 MaxSessionDepth） | ✅ 已存在 |
+| `internal/data/ent/schema/activity.go` | Activity Schema（含 seq 字段） | ⚠️ 保留字段，停止赋值 |
+| `internal/data/activity_repo.go` | Activity Repo（查询排序） | ❌ 待修改排序逻辑 |
+| `internal/service/session.go` | ListBySession RPC（历史加载入口） | ✅ 保留 |
+
+#### 前端
+
+| 文件 | 职责 | 状态 |
+|------|------|------|
+| `web/src/components/chat/ActivityStream.vue` | Activity 统一渲染器 | ⚠️ 需增加 TeamCard/AgentCard 分支 |
+| `web/src/components/chat/TeamStageBlock.vue` | 现有 team_stage 渲染 | ❌ 待替换为 TeamCard.vue |
+| `web/src/components/chat/AgentCard.vue` | AgentCard 组件（subagent_spawn 用） | ❌ 待新增 |
+| `web/src/components/chat/TeamCard.vue` | TeamCard 组件 | ❌ 待新增 |
+| `web/src/components/chat/PlanBlock.vue` | PlanBlock 组件 | ⚠️ 需增加折叠/初始渲染摘要 |
+| `web/src/features/chat/composables/useActivityTimeline.ts` | Activity 时间线 + compareActivities | ⚠️ 需移除 seq 排序逻辑 |
+| `web/src/stores/spirit/index.ts` | Spirit Store（含 spiritTeam 状态） | ⚠️ 需适配新设计 |
+| `web/src/features/chat/api.ts` | API 调用 | ⚠️ 需新增 inject/pause/resume/retry API |
+
+### C.3 现状评估
+
+| 项 | 状态 | 证据 |
+|----|------|------|
+| Activity-First 架构 | ✅ | ActivityStream.vue 递归渲染，按 kind 分发 |
+| 单 publish worker | ✅ | activity_event_sequencer.go 保证顺序 |
+| GlobalSeqAllocator | ❌ 过度设计 | 需移除，用 Timestamp 排序 |
+| Team/Graph 事件 SpiritSessionID | ✅ 已修复 | T1.2/T1.3/T1.3.1 完成，包含 helper/summary/projector/topology_evolution/pre_planning_gate 站点 |
+| TeamCard 组件 | ❌ 不存在 | 需新增 |
+| AgentCard 组件 | ❌ 不存在 | 需新增 |
+| PlanBlock 折叠 | ❌ 未实现 | 需新增 |
+| 子 session 懒加载 | ⚠️ 部分 | useActivityTimeline 有 ensureActivitiesLoaded，需适配 |
+| MaxSessionDepth 配置 | ✅ 已存在 | AgentRuntimeSetting.MaxSessionDepth |
+
+### C.4 Phase 划分
+
+#### Phase T1: 后端修复（P0）
+
+**目标**：修复跨 session 聚合盲区，移除过度设计的全局 Seq
+
+| 任务 | 文件 | 状态 |
+|------|------|------|
+| T1.1 移除 GlobalSeqAllocator | `internal/biz/activity_seq.go` + 引用处 | ⏳ |
+| T1.2 修复 Team 事件 SpiritSessionID 填充 | `internal/team/runner_team_trpc_phases.go`、`internal/team/team_graph_run_coordinator.go`、`internal/team/team_graph_run_finisher.go`、`internal/team/runner_team_turn.go`、`internal/team/runner_helpers.go`、`internal/team/summary.go`、`internal/team/status_projector.go`、`internal/team/runner_team_observer.go`、`internal/biz/team_types.go` | ✅ |
+| T1.3 修复 Graph 事件 SpiritSessionID 填充 | `internal/graph/trpc/event_bridge.go`、`internal/graph/runtime_replanner.go`、`internal/graph/topology_evolution.go`、`internal/graph/adapter/runtime_adapter.go`、`internal/biz/graph_runtime.go`、`internal/biz/graph_execution_usecase.go`、`internal/biz/graph.go`、`internal/team/runner_mediator.go`、`internal/team/runner_team_compiler.go`、`internal/team/team_graph_run_context.go` | ✅ |
+| T1.3.1 Spirit 生成 plan 事件 SpiritSessionID 填充（Spirit 直接运行场景，SpiritSessionID = SessionID） | `internal/service/pre_planning_gate.go` | ✅ |
+| T1.4 Activity Schema seq 字段保留但停止赋值（不删除字段，避免数据迁移风险；新事件 seq=0） | `internal/data/ent/schema/activity.go` | ⏳ |
+| T1.5 查询排序改为 ORDER BY turn_id, parent_activity_id, timestamp | `internal/data/activity_repo.go` | ⏳ |
+
+**验收标准**：
+- [ ] GlobalSeqAllocator 已移除，编译通过
+- [x] Team 事件 SpiritSessionID 已填充（T1.2 完成，包含 helper/summary/projector 站点）
+- [x] Graph 事件 SpiritSessionID 已填充（T1.3 完成，包含 topology_evolution/pre_planning_gate 站点）
+- [ ] 历史加载按 Timestamp 排序正确
+
+#### Phase T2: 前端 TeamCard/AgentCard 组件（P0）
+
+**目标**：实现 team-card 和 agent-card 组件
+
+| 任务 | 文件 | 状态 |
+|------|------|------|
+| T2.1 新增 TeamCard.vue 组件 | `web/src/components/chat/TeamCard.vue` | ⏳ |
+| T2.2 新增 AgentCard.vue 组件 | `web/src/components/chat/AgentCard.vue` | ⏳ |
+| T2.3 ActivityStream 增加 team_stage → TeamCard 分支 | `web/src/components/chat/ActivityStream.vue` | ⏳ |
+| T2.4 ActivityStream 增加 session → AgentCard 分支 | `web/src/components/chat/ActivityStream.vue` | ⏳ |
+| T2.5 移除 compareActivities 中的 seq 排序逻辑 | `web/src/features/chat/composables/useActivityTimeline.ts` | ⏳ |
+| T2.6 实现排序改为 Timestamp + parentActivityId | `web/src/features/chat/composables/useActivityTimeline.ts` | ⏳ |
+
+**验收标准**：
+- [ ] TeamCard 按 布局设计渲染（头部2:中部6:尾部2）
+- [ ] AgentCard 简化版渲染（含补充输入框）
+- [ ] team-card 展开/折叠正常
+- [ ] agent-card 展开/折叠正常
+- [ ] 排序按 Timestamp 正确
+
+#### Phase T3: 交互能力（P1）
+
+**目标**：实现 team/agent 的交互能力（暂停/恢复/重试/补充信息）
+
+| 任务 | 文件 | 状态 |
+|------|------|------|
+| T3.1 新增 inject/pause/resume/retry API | `web/src/features/chat/api.ts` + 后端 RPC | ⏳ |
+| T3.2 TeamCard 尾部对话框交互 | `web/src/components/chat/TeamCard.vue` | ⏳ |
+| T3.3 AgentCard 尾部对话框交互 | `web/src/components/chat/AgentCard.vue` | ⏳ |
+| T3.4 暂停/恢复按钮交互 | `web/src/components/chat/TeamCard.vue` + `AgentCard.vue` | ⏳ |
+| T3.5 重试按钮交互 | `web/src/components/chat/TeamCard.vue` | ⏳ |
+
+**验收标准**：
+- [ ] 用户可在 team-card 尾部补充信息并发送
+- [ ] 用户可在 agent-card 尾部补充信息并发送
+- [ ] 暂停/恢复按钮正常工作
+- [ ] 重试按钮正常工作
+
+#### Phase T4: PlanBlock 折叠与状态更新（P1）
+
+**目标**：实现任务计划面板的折叠和状态更新
+
+| 任务 | 文件 | 状态 |
+|------|------|------|
+| T4.1 PlanBlock 折叠/展开交互 | `web/src/components/chat/PlanBlock.vue` | ⏳ |
+| T4.2 plan 状态由 team_stage 事件驱动更新 | `web/src/features/chat/composables/useActivityTimeline.ts` | ⏳ |
+| T4.3 初始渲染时若所有 plan item 已完成则自动折叠为摘要（X/N）；运行中变为全部完成不触发自动折叠（用户意图优先） | `web/src/components/chat/PlanBlock.vue` | ⏳ |
+| T4.4 计划变更直接更新 plan 内容（替换 items 列表），不引入 diff 标记 | `web/src/components/chat/PlanBlock.vue` | ⏳ |
+
+**验收标准**：
+- [ ] plan 面板支持折叠/展开
+- [ ] 初始渲染时若全部完成则自动折叠为摘要（X/N）
+- [ ] 运行中变为全部完成不触发自动折叠（用户意图优先）
+- [ ] plan 状态由 team_stage 事件驱动更新
+- [ ] 计划变更直接更新 plan 内容（无 diff 标记）
+
+#### Phase T5: 历史加载懒加载（P1）
+
+**目标**：实现只加载 spirit 根 session，子 session 懒加载
+
+| 任务 | 文件 | 状态 |
+|------|------|------|
+| T5.1 历史加载只加载 spirit 根 session | `web/src/features/chat/composables/useActivityTimeline.ts` | ⏳ |
+| T5.2 team-card 展开时懒加载子 session | `web/src/components/chat/TeamCard.vue` | ⏳ |
+| T5.3 agent-card 展开时懒加载子 session | `web/src/components/chat/AgentCard.vue` | ⏳ |
+| T5.4 已加载子 session 缓存 | `web/src/features/chat/composables/useActivityTimeline.ts` | ⏳ |
+
+**验收标准**：
+- [ ] 历史加载只加载 spirit 根 session
+- [ ] team-card 展开时懒加载子 session
+- [ ] agent-card 展开时懒加载子 session
+- [ ] 已加载子 session 缓存，不重复加载
+
+### C.5 改动文件清单
+
+#### 后端
+
+| 文件 | 改动类型 | 说明 |
+|------|---------|------|
+| `internal/biz/activity_seq.go` | 删除 | 移除 GlobalSeqAllocator |
+| `internal/agent/activity_projector.go` | 修改 | 移除 GlobalSeqAllocator 引用，不再为事件分配 seq |
+| `internal/event/activityevent/bus.go` | 修改 | 移除 GlobalSeqAllocator 引用，direct-publish 事件不再分配 seq |
+| `internal/team/runner_team_trpc_phases.go` | 修改 | Team 事件填充 SpiritSessionID（含 deriveSpiritSessionID 辅助函数、createInitialTeamRun 设置字段） |
+| `internal/team/team_graph_run_coordinator.go` | 修改 | Team Graph 协调器事件填充 SpiritSessionID |
+| `internal/team/team_graph_run_finisher.go` | 修改 | Team Graph 完成事件填充 SpiritSessionID（含 GetTeamRunByID 后回填 run.SpiritSessionID） |
+| `internal/team/runner_team_turn.go` | 修改 | Team turn 事件填充 SpiritSessionID |
+| `internal/team/runner_helpers.go` | 修改 | publishTeamRunFailedActivity/publishTeamStepActivity 读取 run.SpiritSessionID |
+| `internal/team/summary.go` | 修改 | TeamSummaryActivityEvent 读取 run.SpiritSessionID |
+| `internal/team/status_projector.go` | 修改 | OrchestrationProjectorConfig 新增 SpiritSessionID 字段，publishOrchestrationStatus 读取 cfg.SpiritSessionID |
+| `internal/team/runner_team_observer.go` | 修改 | startObservers 设置 SpiritSessionID: deriveSpiritSessionID(sess) |
+| `internal/team/team_graph_run_context.go` | 修改 | GraphRunStepContext 新增 SpiritSessionID 字段，buildGraphRunStepContext 签名扩展 |
+| `internal/team/runner_mediator.go` | 修改 | TeamGraphCoordAccess 接口和 RegisterTeamGraphExecution 方法签名扩展 |
+| `internal/team/runner_team_compiler.go` | 修改 | RegisterTeamGraphExecution 调用方传入 deriveSpiritSessionID(sess) |
+| `internal/biz/team_types.go` | 修改 | TeamRun 新增 SpiritSessionID 字段（`json:"-"` 非持久化运行时元数据） |
+| `internal/biz/graph_runtime.go` | 修改 | GraphRunnerFactory 接口三个方法签名扩展（添加 spiritSessionID 参数） |
+| `internal/biz/graph_execution_usecase.go` | 修改 | RegisterTeamGraphExecution/ExecuteGraph/ExecuteGraphBuildConfig/ensureCheckpointRuntime/ResumeExecution 设置 exec.SpiritSessionID |
+| `internal/biz/graph.go` | 修改 | GraphUsecase.RegisterTeamGraphExecution 委托方法签名扩展 |
+| `internal/graph/trpc/event_bridge.go` | 修改 | EventBridge 新增 spiritSessionID 字段，convertEvent 填充 SpiritSessionID |
+| `internal/graph/runtime_replanner.go` | 修改 | publishReplanEvent 填充 SpiritSessionID: exec.SpiritSessionID |
+| `internal/graph/topology_evolution.go` | 修改 | publishTopologyEvolvedEvent 填充 SpiritSessionID: exec.SpiritSessionID |
+| `internal/graph/adapter/runtime_adapter.go` | 修改 | trpcGraphRuntime 新增 spiritSessionID 字段，buildRuntime/buildNodeCallbacks/BuildRuntime/BuildAndRun/BuildAndResume 签名扩展 |
+| `internal/service/pre_planning_gate.go` | 修改 | publishPlanningPhase 填充 SpiritSessionID: sessionID（Spirit 直接运行场景） |
+| `internal/data/activity_repo.go` | 修改 | 查询排序改为 ORDER BY turn_id, parent_activity_id, timestamp |
+| `internal/data/ent/schema/activity.go` | 不修改 | seq 字段保留（停止赋值，不删除字段） |
+
+#### 前端
+
+| 文件 | 改动类型 | 说明 |
+|------|---------|------|
+| `web/src/components/chat/TeamCard.vue` | 新增 | team-card 组件（替换 TeamStageBlock.vue） |
+| `web/src/components/chat/AgentCard.vue` | 新增 | agent-card 组件 |
+| `web/src/components/chat/ActivityStream.vue` | 修改 | team_stage 分支指向 TeamCard；session 分支指向 AgentCard |
+| `web/src/components/chat/TeamStageBlock.vue` | 删除 | 被 TeamCard.vue 完全替代 |
+| `web/src/components/chat/PlanBlock.vue` | 修改 | 增加折叠/展开交互、初始渲染自动折叠摘要 |
+| `web/src/features/chat/composables/useActivityTimeline.ts` | 修改 | 移除 seq 排序，改用 timestamp + parentActivityId |
+| `web/src/features/chat/api.ts` | 修改 | 新增 inject/pause/resume/retry API |
+| `web/src/stores/spirit/index.ts` | 修改 | 适配新设计（如有需要） |
+
+### C.6 已知技术债务
+
+| 编号 | 问题 | 严重度 | 处理方式 |
+|------|------|--------|---------|
+| TD-T1 | 卡住检测未实现 | 中 | 先记录场景，后续迭代设计心跳检测 |
+| TD-T2 | 历史 sub_task_board Activity 数据 | 低 | 提供 legacy 兼容渲染或迁移 |
+| TD-T3 | ~~59-chat-ui-optimization.md 引用失效~~（已解决） | 低 | ✅ 旧文档已删除，内容合并到 1-chat 三件套子模块 |
+
+### C.7 验收标准（整体）
+
+- [ ] 简单对话模式：精灵直接 thinking + reply，无 plan/graph/team
+- [ ] Team 模式：plan → graph → team-card 顺序显示
+- [ ] agent-card：简化版布局，含补充输入框
+- [ ] team-card 布局：头部2:中部6:尾部2，符合设计
+- [ ] team-card 尾部：对话框横向展开 + 发送按钮 + 暂停/恢复按钮
+- [ ] team-card 展开：显示成员列表，成员展开显示 thinking/action/reply
+- [ ] plan 面板：固定位置，支持折叠，状态由 team_stage 事件驱动
+- [ ] 进度计算：X/N 简单实现
+- [ ] Team 失败：手动重试
+- [ ] 历史加载：只加载 spirit 根 session，子 session 懒加载
+- [x] direct-publish 事件：SpiritSessionID 已填充（T1.2/T1.3/T1.3.1 完成）
+- [ ] 排序：用 Timestamp，无全局 Seq
+- [ ] MaxDepth：从 AgentRuntimeSetting.MaxSessionDepth 读取

@@ -615,6 +615,21 @@ function safeJsonParseArray(json: string): string[] | undefined {
   }
 }
 
+// AF-FE-14: parse meta_json (e.g. is_final / member_id / as_display) into an
+// object so the frontend can use the same shape as WS ActivityEvent payloads.
+function safeJsonParseMeta(json: string): Record<string, unknown> | undefined {
+  if (!json) return undefined;
+  try {
+    const parsed = JSON.parse(json);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : undefined;
+  } catch {
+    console.warn('[api] failed to parse metaJson:', json);
+    return undefined;
+  }
+}
+
 export async function listActivities(
   sessionId: string,
   turnId?: string,
@@ -650,5 +665,6 @@ export async function listActivities(
     collapsed: a.collapsed ?? false,
     label: a.label || undefined,
     seq: a.seq ?? undefined,
+    meta: a.metaJson ? safeJsonParseMeta(a.metaJson) : undefined,
   }));
 }

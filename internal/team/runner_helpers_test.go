@@ -35,7 +35,7 @@ func (r *stepBusRunWriter) UpdateTeamRunSummaryJSON(_ context.Context, _, _ stri
 }
 
 func TestPersistStep_EmitsStartedAndFinished(t *testing.T) {
-	bus := activityevent.New(loggateway.NewNoop())
+	bus := activityevent.New(nil, loggateway.NewNoop())
 	ch, unsub := bus.Subscribe(biz.ActivityEventSubscribeOptions{BufferSize: 8, GlobalMode: true})
 	defer unsub()
 

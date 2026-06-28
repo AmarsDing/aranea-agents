@@ -167,15 +167,16 @@ func (r *Runner) prepareUserTurnOptions(
 		ev := biz.ActivityEvent{
 			Event: biz.ActivityEventCreated,
 			Activity: biz.Activity{
-				ID:        uuid.NewString(),
-				Kind:      biz.ActivityKindNotice,
-				Status:    biz.ActivityStatusCompleted,
-				SessionID: sess.ID,
-				TeamID:    teamRow.ID,
-				AgentKey:  ar.agent.ID,
-				Timestamp: time.Now().UTC(),
-				Stage:     "intent_pass",
-				Meta:      intent.BuildIntentPassPayload(intRes, meta),
+				ID:              uuid.NewString(),
+				Kind:            biz.ActivityKindNotice,
+				Status:          biz.ActivityStatusCompleted,
+				SessionID:       sess.ID,
+				SpiritSessionID: deriveSpiritSessionID(sess),
+				TeamID:          teamRow.ID,
+				AgentKey:        ar.agent.ID,
+				Timestamp:       time.Now().UTC(),
+				Stage:           "intent_pass",
+				Meta:            intent.BuildIntentPassPayload(intRes, meta),
 			},
 			Domain: biz.ActivityDomainChat,
 		}
@@ -193,6 +194,7 @@ func (r *Runner) prepareUserTurnOptions(
 // Returns the updated TeamRun value (no pointer side-effects on the caller).
 func (r *Runner) finalizeTeamRun(
 	ctx context.Context,
+	sess biz.Session,
 	run biz.TeamRun,
 	teamRow biz.Team,
 	ar anchorResolution,
@@ -233,14 +235,15 @@ func (r *Runner) finalizeTeamRun(
 		ev := biz.ActivityEvent{
 			Event: biz.ActivityEventCompleted,
 			Activity: biz.Activity{
-				ID:        uuid.NewString(),
-				Kind:      biz.ActivityKindTeamStage,
-				Status:    biz.ActivityStatusCompleted,
-				SessionID: run.SessionID,
-				TeamID:    teamRow.ID,
-				Timestamp: time.Now().UTC(),
-				Stage:     "completed",
-				Meta:      map[string]any{"run_id": run.ID, "run": cp},
+				ID:              uuid.NewString(),
+				Kind:            biz.ActivityKindTeamStage,
+				Status:          biz.ActivityStatusCompleted,
+				SessionID:       run.SessionID,
+				SpiritSessionID: deriveSpiritSessionID(sess),
+				TeamID:          teamRow.ID,
+				Timestamp:       time.Now().UTC(),
+				Stage:           "completed",
+				Meta:            map[string]any{"run_id": run.ID, "run": cp},
 			},
 			Domain: biz.ActivityDomainChat,
 		}

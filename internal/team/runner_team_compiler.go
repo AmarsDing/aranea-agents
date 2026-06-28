@@ -69,7 +69,8 @@ func (r *Runner) compileTeamRuntime(
 		return
 	}
 	if r.mediator != nil {
-		if regErr := r.mediator.RegisterTeamGraphExecution(ctx, graphExecID, sess.ID, teamRow.ID, runID, compiledTeam); regErr != nil {
+		spiritSessionID := deriveSpiritSessionID(sess)
+		if regErr := r.mediator.RegisterTeamGraphExecution(ctx, graphExecID, sess.ID, spiritSessionID, teamRow.ID, runID, compiledTeam); regErr != nil {
 			r.lg.Warn("graph execution 注册失败", loggateway.StepID("team.graph_runtime.register"), loggateway.Err(regErr))
 		}
 	}

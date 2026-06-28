@@ -117,7 +117,7 @@ func toProtoSpiritTeamView(t *biz.Team, run *biz.TeamRun) *v1.SpiritTeamView {
 	view := &v1.SpiritTeamView{
 		Id:              t.ID,
 		TeamName:        t.DisplayName,
-		TaskSummary:     t.TaskDescription,
+		TaskSummary:     biz.TruncateRunes(t.TaskDescription, 200),
 		Status:          t.Status,
 		Mode:            t.Topology,
 		SpiritSessionId: t.SpiritSessionID,

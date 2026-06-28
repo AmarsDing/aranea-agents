@@ -16,22 +16,24 @@ import (
 )
 
 type EventBridge struct {
-	activityBus biz.ActivityEventBus
-	sessionID   string
-	graphID     string
-	execID      string
-	summary     *ExecutionSummaryTracker
-	lg          loggateway.Logger
+	activityBus     biz.ActivityEventBus
+	sessionID       string
+	spiritSessionID string
+	graphID         string
+	execID          string
+	summary         *ExecutionSummaryTracker
+	lg              loggateway.Logger
 }
 
-func NewEventBridge(activityBus biz.ActivityEventBus, sessionID, graphID, execID string, lg loggateway.Logger) *EventBridge {
+func NewEventBridge(activityBus biz.ActivityEventBus, sessionID, spiritSessionID, graphID, execID string, lg loggateway.Logger) *EventBridge {
 	return &EventBridge{
-		activityBus: activityBus,
-		sessionID:   sessionID,
-		graphID:     graphID,
-		execID:      execID,
-		summary:     NewExecutionSummaryTracker(execID, graphID),
-		lg:          lg,
+		activityBus:     activityBus,
+		sessionID:       sessionID,
+		spiritSessionID: spiritSessionID,
+		graphID:         graphID,
+		execID:          execID,
+		summary:         NewExecutionSummaryTracker(execID, graphID),
+		lg:              lg,
 	}
 }
 
@@ -74,12 +76,13 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *biz.ActivityEvent {
 	ev := biz.ActivityEvent{
 		Event: eventType,
 		Activity: biz.Activity{
-			ID:        uuid.NewString(),
-			Kind:      kind,
-			Status:    status,
-			SessionID: b.sessionID,
-			Timestamp: now,
-			Stage:     stage,
+			ID:              uuid.NewString(),
+			Kind:            kind,
+			Status:          status,
+			SessionID:       b.sessionID,
+			SpiritSessionID: b.spiritSessionID,
+			Timestamp:       now,
+			Stage:           stage,
 			Meta: map[string]any{
 				"execution_id": b.execID,
 				"graph_id":     b.graphID,

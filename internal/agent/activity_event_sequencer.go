@@ -144,11 +144,19 @@ func (s *activityEventSequencer) publish(ctx context.Context, activityID string,
 	}
 	s.mu.Unlock()
 
+	// Do NOT select on ctx.Done(): activity publish+persist is an async
+	// operation that must complete even when the caller's context is canceled
+	// (e.g. turnCtx canceled during stream draining). Previously, when
+	// turnCtx was canceled, Go's select randomly chose between the publishQueue
+	// send and ctx.Done(), dropping ~50% of action activities (ToolResult/
+	// completed events) during the drain phase — causing tools to disappear
+	// after page refresh because they were never persisted to the DB.
+	//
+	// The publishQueue has a 256-item buffer; if it ever fills up, blocking
+	// here applies natural backpressure rather than silently dropping events.
 	select {
 	case s.publishQueue <- task:
 		return nil
-	case <-ctx.Done():
-		return ctx.Err()
 	case <-s.done:
 		return errSequencerClosed
 	}
@@ -285,6 +293,13 @@ func (s *activityEventSequencer) canMergeDeltas(a, b publishTask) bool {
 // processTask persists the activity (fire-and-forget) and publishes the
 // ActivityEvent synchronously. Called from the single publish worker —
 // serializes all eventBus.Publish calls.
+//
+// Before publishing, the event is marked SequencerHandled=true so the
+// ActivityEventBus knows it has already been persisted by this sequencer
+// (via the persist worker above) and skips its own direct-publish handling
+// (SessionID normalization + async UpsertActivity). This prevents
+// double-persist and avoids the bus overwriting the original (non-redacted)
+// activity data with the redacted snapshot that the bus receives.
 func (s *activityEventSequencer) processTask(task publishTask) {
 	if task.persist && s.activityRepo != nil {
 		item := persistItem{activityID: task.activity.ID, activity: task.activity}
@@ -297,11 +312,20 @@ func (s *activityEventSequencer) processTask(task publishTask) {
 		}
 	}
 	if s.eventBus != nil {
+		task.event.SequencerHandled = true
 		s.eventBus.Publish(context.Background(), task.event)
 	}
 }
 
 // persistWithRetry calls UpsertActivity with exponential backoff retry.
+//
+// Note: This function deliberately does NOT abort on s.done (Close). The
+// persist worker is drained by Close() via persistWg.Wait(), which blocks
+// until all queued items are persisted. Aborting on s.done caused action
+// activities (which have multiple upserts: created → streaming delta →
+// completed) to be pushed to the dead-letter buffer instead of the DB when
+// Close() was called during finalize() — resulting in tools disappearing
+// after page refresh (API loads from DB, WS delivers live).
 func (s *activityEventSequencer) persistWithRetry(activityID string, a biz.Activity, syncFallback bool) {
 	backoff := s.persistInitialBackoffMs
 	path := "worker"
@@ -323,17 +347,7 @@ func (s *activityEventSequencer) persistWithRetry(activityID string, a biz.Activ
 			s.pushDeadLetter(a)
 			return
 		}
-		select {
-		case <-s.done:
-			s.lg.Warn("activity persist aborted during shutdown; pushed to dead-letter buffer",
-				loggateway.StepID("agent.activity_sequencer.persist"),
-				loggateway.Str("activity_id", activityID),
-				loggateway.Str("path", path),
-				loggateway.Int("attempt", attempt+1))
-			s.pushDeadLetter(a)
-			return
-		case <-time.After(time.Duration(backoff) * time.Millisecond):
-		}
+		time.Sleep(time.Duration(backoff) * time.Millisecond)
 		backoff *= s.persistBackoffFactor
 	}
 }

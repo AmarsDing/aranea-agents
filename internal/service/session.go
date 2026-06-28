@@ -639,6 +639,16 @@ func toProtoActivity(a biz.Activity) *v1.Activity {
 		dependsOn = []string{}
 	}
 	dependsOnJSON, _ := json.Marshal(dependsOn)
+	// AF-BE-17: serialize Meta so the frontend can read is_final / member_id /
+	// as_display via the ListActivities RPC. Previously Meta was dropped here,
+	// causing historical replies loaded via API to lose their is_final flag
+	// and render as "intermediate" replies in the chat UI.
+	var metaJSON string
+	if len(a.Meta) > 0 {
+		if b, err := json.Marshal(a.Meta); err == nil {
+			metaJSON = string(b)
+		}
+	}
 	return &v1.Activity{
 		Id:               a.ID,
 		Kind:             string(a.Kind),
@@ -668,5 +678,6 @@ func toProtoActivity(a biz.Activity) *v1.Activity {
 		Label:            a.Label,
 		PromptTokens:     a.PromptTokens,
 		CompletionTokens: a.CompletionTokens,
+		MetaJson:         metaJSON,
 	}
 }

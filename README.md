@@ -765,6 +765,10 @@ go run -tags pgvector ./cmd/admin -conf ./configs/config.yaml
 $env:KRATOS_AUTH_SECRET = "your-random-secret-at-least-32-chars"
 go run -tags pgvector ./cmd/admin -conf ./configs/config.yaml
 
+- 用户名 ： admin
+- 密码 ： changeme
+- 邮箱 ： admin@aranea.local
+
 # Linux / macOS:
 # DEPLOY_ENV=dev KRATOS_HTTP_AUTH_DISABLED=1 go run ./cmd/admin -conf ./configs/config.yaml
 ```
