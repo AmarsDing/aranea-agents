@@ -238,7 +238,7 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *biz.ActivityEvent {
 //   - graph_node_error      → Kind=graph_stage, Stage="node_error",   Status=failed,     Event=failed
 //   - graph_node_custom     → Kind=graph_stage, Stage="node_custom",  Status=running,    Event=updated
 //   - graph_step            → Kind=graph_stage, Stage="step",         Status=running,    Event=updated
-//   - checkpoint            → Kind=session,     Stage="checkpoint",   Status=running,    Event=created
+//   - checkpoint            → Kind=notice,      Stage="checkpoint",   Status=running,    Event=created
 //   - state_delta           → Kind=notice,      Stage="",             Status=running,    Event=streaming, DeltaField="state"
 //   - graph_execution_done  → Kind=graph_stage, Stage="execution_done",Status=completed, Event=completed
 func (b *EventBridge) mapType(e *trpcevent.Event) (stage string, kind biz.ActivityKind, status biz.ActivityStatus, eventType biz.ActivityEventType, deltaField string) {
@@ -254,9 +254,9 @@ func (b *EventBridge) mapType(e *trpcevent.Event) (stage string, kind biz.Activi
 	case trpcgraph.ObjectTypeGraphPregelStep:
 		return "step", biz.ActivityKindGraphStage, biz.ActivityStatusRunning, biz.ActivityEventUpdated, ""
 	case trpcgraph.ObjectTypeGraphCheckpointInterrupt:
-		return "checkpoint", biz.ActivityKindSession, biz.ActivityStatusRunning, biz.ActivityEventCreated, ""
+		return "checkpoint", biz.ActivityKindNotice, biz.ActivityStatusRunning, biz.ActivityEventCreated, ""
 	case trpcgraph.ObjectTypeGraphCheckpointCreated:
-		return "checkpoint", biz.ActivityKindSession, biz.ActivityStatusRunning, biz.ActivityEventCreated, ""
+		return "checkpoint", biz.ActivityKindNotice, biz.ActivityStatusRunning, biz.ActivityEventCreated, ""
 	case trpcgraph.ObjectTypeGraphStateUpdate:
 		return "", biz.ActivityKindNotice, biz.ActivityStatusRunning, biz.ActivityEventStreaming, "state"
 	case trpcgraph.ObjectTypeGraphExecution:

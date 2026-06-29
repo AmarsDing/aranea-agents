@@ -35,6 +35,33 @@ export async function resumeSpiritTeam(teamId: string): Promise<void> {
   }
 }
 
+// pauseSpiritTeam transitions a running team run to paused state (B.5.3).
+// Resolves the active run_id from the team's run list before calling pause.
+// MVP: cancels the in-flight member step + marks the run as paused.
+export async function pauseSpiritTeam(teamId: string): Promise<void> {
+  const runId = await resolveActiveRunId(teamId);
+  if (runId) {
+    await spiritService.pauseTeamRun(runId);
+  }
+}
+
+// unpauseSpiritTeam transitions a paused team run back to running (B.5.3).
+// Distinct from resumeSpiritTeam (HITL graph recovery via /resume).
+// MVP: flips the status marker; user must inject a message to resume execution.
+export async function unpauseSpiritTeam(teamId: string): Promise<void> {
+  const runId = await resolveActiveRunId(teamId);
+  if (runId) {
+    await spiritService.unpauseTeamRun(runId);
+  }
+}
+
+// injectSpiritTeam injects a user message into the team's active/paused run
+// pending queue (B.5.3). The message is processed at the next step boundary.
+// Takes teamId directly (no run_id resolution needed).
+export async function injectSpiritTeam(teamId: string, message: string): Promise<void> {
+  await spiritService.injectTeamMessage(teamId, message);
+}
+
 // resolveActiveRunId fetches the latest run for a team and returns its ID.
 // Returns null if no runs exist, allowing the caller to skip the RPC gracefully.
 async function resolveActiveRunId(teamId: string): Promise<string | null> {
@@ -66,6 +93,18 @@ export async function cancelAgentSession(sessionId: string): Promise<void> {
 // session by re-enqueuing the latest user message (RetrySession RPC).
 export async function retryAgentSession(sessionId: string): Promise<void> {
   await spiritService.retrySession(sessionId);
+}
+
+// pauseAgentSession transitions a running sub-agent session to paused state
+// (B.5.3). Used by AgentCard pause button. MVP cancels the in-flight turn.
+export async function pauseAgentSession(sessionId: string): Promise<void> {
+  await spiritService.pauseSession(sessionId);
+}
+
+// resumeAgentSession transitions a paused sub-agent session back to running
+// (B.5.3). Used by AgentCard resume button. MVP flips the status marker.
+export async function resumeAgentSession(sessionId: string): Promise<void> {
+  await spiritService.resumeSession(sessionId);
 }
 
 function mapSpiritTeam(raw: Record<string, unknown>): SpiritTeam {

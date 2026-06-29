@@ -13,6 +13,12 @@ import (
 
 type cancelTeamRunRepo struct {
 	runs map[string]biz.TeamRun
+	// teamRunsByTeamID configures ListTeamRuns results per team_id.
+	// Inject tests populate this; cancel/pause/unpause tests leave it nil.
+	teamRunsByTeamID map[string][]biz.TeamRun
+	// teamByID configures GetTeamByID. Inject tests use this to satisfy the
+	// "team exists" check; default (zero value) returns ErrNotFound.
+	teamByID map[string]biz.Team
 }
 
 // TeamReader stubs
@@ -20,7 +26,10 @@ func (r *cancelTeamRunRepo) ListTeams(_ context.Context) ([]biz.Team, error) { r
 func (r *cancelTeamRunRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
-func (r *cancelTeamRunRepo) GetTeamByID(_ context.Context, _ string) (biz.Team, error) {
+func (r *cancelTeamRunRepo) GetTeamByID(_ context.Context, id string) (biz.Team, error) {
+	if t, ok := r.teamByID[id]; ok {
+		return t, nil
+	}
 	return biz.Team{}, biz.ErrNotFound
 }
 func (r *cancelTeamRunRepo) GetTeamByKey(_ context.Context, _ string) (biz.Team, error) {
@@ -49,7 +58,10 @@ func (r *cancelTeamRunRepo) BatchArchiveTeams(_ context.Context, _ []string) (in
 }
 
 // TeamRunReader
-func (r *cancelTeamRunRepo) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRun, error) {
+func (r *cancelTeamRunRepo) ListTeamRuns(_ context.Context, teamID string, _ int) ([]biz.TeamRun, error) {
+	if runs, ok := r.teamRunsByTeamID[teamID]; ok {
+		return runs, nil
+	}
 	return nil, nil
 }
 func (r *cancelTeamRunRepo) ListTeamRunsByTeamIDs(_ context.Context, _ []string, _ int) (map[string][]biz.TeamRun, error) {
@@ -123,6 +135,12 @@ func (r *cancelTeamRunRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (
 type testRunRegistry struct {
 	statuses  map[string]biz.RunStatusEntry
 	cancelled map[string]bool
+	// enqueued records every EnqueueUserMessage call as {sessionID, message}.
+	// Tests assert on this slice to verify InjectTeamMessage routing.
+	enqueued []struct{ sessionID, message string }
+	// enqueueAccept controls the bool returned by EnqueueUserMessage.
+	// Defaults to true so InjectTeamMessage tests see accepted=true.
+	enqueuedAccept bool
 }
 
 func (t *testRunRegistry) Cancel(sessionID, _ string) (bool, string) {
@@ -137,6 +155,17 @@ func (t *testRunRegistry) Cancel(sessionID, _ string) (bool, string) {
 func (t *testRunRegistry) GetStatus(sessionID string) (biz.RunStatusEntry, bool) {
 	entry, ok := t.statuses[sessionID]
 	return entry, ok
+}
+
+func (t *testRunRegistry) EnqueueUserMessage(sessionID, message string) (bool, error) {
+	t.enqueued = append(t.enqueued, struct{ sessionID, message string }{sessionID, message})
+	// Default to true when caller hasn't set enqueuedAccept (zero value is false,
+	// so callers wanting true must set it; mirrors production semantics where
+	// an active runner accepts the message).
+	if t.enqueuedAccept {
+		return true, nil
+	}
+	return false, nil
 }
 
 func TestCancelTeamRun_PublishesCancelledRunStatus(t *testing.T) {

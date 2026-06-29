@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Activity as AFActivity } from '../../../realtime/activityEvent';
+import type { Activity as AFActivity } from '../../../../realtime/activityEvent';
 
 // Mock the listActivities import to avoid real API calls.
 // Individual tests can override the mock implementation via vi.mocked(listActivities).
@@ -304,7 +304,11 @@ describe('useActivityTimeline', () => {
     expect(activity?.reasoning).toBe('full reasoning');
   });
 
-  it('handleActivityEvent (created) creates new object for reactivity on streaming', () => {
+  it('handleActivityEvent (streaming) updates content field in-place for reactivity', () => {
+    // 性能优化（方案 B 细粒度响应式）：streaming 事件直接修改原 reactive
+    // 对象的字段，不创建新对象。Vue 自动触发读取该字段的组件重渲染。
+    // 测试验证：streaming 事件后 content 字段更新，对象引用保持不变
+    // （细粒度响应式，不触发 activityTree 全量重算）。
     tl.handleActivityEvent({
       event: 'created',
       activity: makeAFActivity({ id: 'reply-1', kind: 'reply' }),
@@ -321,8 +325,9 @@ describe('useActivityTimeline', () => {
     });
 
     const after = tl.activities.value.find((a) => a.id === 'reply-1');
-    // The object reference should be different (new object created for reactivity)
-    expect(after).not.toBe(beforeRef);
+    // 对象引用保持不变（细粒度响应式，直接修改原对象）
+    expect(after).toBe(beforeRef);
+    // content 字段已更新
     expect(after?.content).toBe('updated');
   });
 

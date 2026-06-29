@@ -9,6 +9,7 @@
 //	Pending --> Running : start
 //	Running --> ToolRunning : tool_start
 //	Running --> ToolBlocked : tool_block
+//	Running --> Paused : pause
 //	Running --> Completed : done
 //	Running --> Failed : fail
 //	Running --> Cancelled : cancel
@@ -22,6 +23,10 @@
 //	ToolBlocked --> Completed : done
 //	ToolBlocked --> Failed : fail
 //	ToolBlocked --> Cancelled : cancel
+//	Paused --> Running : unpause
+//	Paused --> Completed : done
+//	Paused --> Failed : fail
+//	Paused --> Cancelled : cancel
 //	Completed --> [*]
 //	Failed --> [*]
 //	Cancelled --> [*]
@@ -54,19 +59,22 @@ const (
 	ActivityTransitionCancel      ActivityTransitionEvent = "cancel"
 	ActivityTransitionInterrupt   ActivityTransitionEvent = "interrupt"
 	ActivityTransitionPartial     ActivityTransitionEvent = "partial"
+	ActivityTransitionPause       ActivityTransitionEvent = "pause"
+	ActivityTransitionUnpause     ActivityTransitionEvent = "unpause"
 )
 
 // ── Transition rules ─────────────────────────────────────────────────────────
 
 // activityTransitionRules defines the legal state transitions for an Activity.
 // Terminal states (Completed/Failed/Cancelled/Interrupted/PartialFailure) have
-// no outgoing transitions.
+// no outgoing transitions. Paused is non-terminal (resumable).
 var activityTransitionRules = []shared.TransitionRule[ActivityStatus, ActivityTransitionEvent]{
 	// Pending → *
 	{From: ActivityStatusPending, Event: ActivityTransitionStart, To: ActivityStatusRunning},
 	// Running → *
 	{From: ActivityStatusRunning, Event: ActivityTransitionToolStart, To: ActivityStatusToolRunning},
 	{From: ActivityStatusRunning, Event: ActivityTransitionToolBlock, To: ActivityStatusToolBlocked},
+	{From: ActivityStatusRunning, Event: ActivityTransitionPause, To: ActivityStatusPaused},
 	{From: ActivityStatusRunning, Event: ActivityTransitionDone, To: ActivityStatusCompleted},
 	{From: ActivityStatusRunning, Event: ActivityTransitionFail, To: ActivityStatusFailed},
 	{From: ActivityStatusRunning, Event: ActivityTransitionCancel, To: ActivityStatusCancelled},
@@ -82,6 +90,11 @@ var activityTransitionRules = []shared.TransitionRule[ActivityStatus, ActivityTr
 	{From: ActivityStatusToolBlocked, Event: ActivityTransitionDone, To: ActivityStatusCompleted},
 	{From: ActivityStatusToolBlocked, Event: ActivityTransitionFail, To: ActivityStatusFailed},
 	{From: ActivityStatusToolBlocked, Event: ActivityTransitionCancel, To: ActivityStatusCancelled},
+	// Paused → * (resumable; non-terminal)
+	{From: ActivityStatusPaused, Event: ActivityTransitionUnpause, To: ActivityStatusRunning},
+	{From: ActivityStatusPaused, Event: ActivityTransitionDone, To: ActivityStatusCompleted},
+	{From: ActivityStatusPaused, Event: ActivityTransitionFail, To: ActivityStatusFailed},
+	{From: ActivityStatusPaused, Event: ActivityTransitionCancel, To: ActivityStatusCancelled},
 }
 
 // ── ActivityStateMachine ─────────────────────────────────────────────────────

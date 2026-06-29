@@ -28,6 +28,24 @@ const (
 	graphMetadataKeyNode        = "_node_metadata"
 )
 
+// silentToolNames lists tools whose tool calls should NOT be projected as
+// action Activities. These are typically orchestration polling tools (e.g.
+// check_progress) that Spirit calls repeatedly to monitor progress; showing
+// every poll as a tool card floods the UI without adding value.
+//
+// Add a tool name here when it is an internal monitoring/control tool that
+// users don't need to see in the activity stream.
+var silentToolNames = map[string]struct{}{
+	"check_progress": {},
+}
+
+// isSilentTool returns true if the tool should not be projected as an
+// action Activity in the chat UI.
+func isSilentTool(toolName string) bool {
+	_, ok := silentToolNames[toolName]
+	return ok
+}
+
 // Stuck tool result i18n/fallback constants used by OnStuckTools to mark
 // in-flight tool cards as failed when the turn ends without tool_result.
 const (
@@ -87,12 +105,51 @@ func nodeTypeLabel(nodeType string) string {
 	}
 }
 
+// projectorState groups per-turn mutable maps and counters to keep
+// ActivityProjector within AS-COG-01 field-count limits.
+type projectorState struct {
+	// rootActivityID is the current turn's root task activity.
+	rootActivityID string
+
+	// activities holds all activities created during the current turn.
+	activities map[string]*biz.Activity // id -> activity
+
+	// toolCalls maps tool_call_id -> action activity for streaming merge and
+	// result correlation.
+	toolCalls map[string]*biz.Activity
+
+	// kindAuthorMap provides O(1) lookup from "kind:author" -> activity ID.
+	kindAuthorMap map[string]string
+
+	// reasoningBuf accumulates reasoning deltas per author before flushing.
+	reasoningBuf map[string]*strings.Builder
+
+	// planActivityID is the current turn's plan activity ID (graph node events).
+	planActivityID string
+
+	// planStepIndex is a monotonic counter for plan steps within this turn.
+	planStepIndex int
+
+	// memberToolCalls tracks per-member tool call counts observed during the
+	// turn. Used by stream_consumer in AF mode to populate
+	// EventStreamResult.MemberToolCalls for team run step persistence.
+	memberToolCalls map[string]int
+
+	// resetDone prevents Reset() from clearing state initialized before stream
+	// consumption started.
+	resetDone bool
+
+	// turnStarted prevents duplicate root task activities when OnTurnStart is
+	// called both early and in newTurnStreamConsumer.
+	turnStarted bool
+}
+
 // ActivityProjector projects runtime events into Activity semantic units
 // and publishes them via WS, eliminating frontend inference.
 type ActivityProjector struct {
 	mu           sync.Mutex
 	eventBus     biz.ActivityEventBus
-	activityRepo biz.ActivityWriter
+	activityRepo biz.ActivityUpserter
 	metaResolver ActivityMetaResolver
 	lg           loggateway.Logger
 
@@ -102,37 +159,28 @@ type ActivityProjector struct {
 	// and B-05 (async start races with sync delta).
 	sequencer *activityEventSequencer
 
-	// Turn-scoped state (reset per turn)
-	rootActivityID string
-	activities     map[string]*biz.Activity // id -> activity
-	toolCalls      map[string]*biz.Activity // tool_call_id -> action activity
-	kindAuthorMap  map[string]string        // "kind:author" -> activity ID (O(1) lookup)
-	reasoningBuf   map[string]*strings.Builder
-	meta           ProjectMeta
-	planActivityID string // current turn's plan activity ID (graph node events)
-	planStepIndex  int    // monotonic counter for plan steps within this turn
+	// meta holds the ProjectMeta for the current turn.
+	meta ProjectMeta
 
-	// memberToolCalls tracks per-member tool call counts for team run step
-	// persistence. Populated directly from OnToolCall so stream_consumer no
-	// longer needs EventProjector output to compute MemberToolCalls.
-	memberToolCalls map[string]int
+	// state groups turn-scoped maps/counters.
+	state projectorState
 
 	// toolCategorizer classifies tool names into functional categories for
-	// frontend rendering. Defaults to noop (returns ToolCategoryOther) when
-	// not configured; set via SetToolCategorizer.
+	// frontend rendering. Injected via the constructor.
 	toolCategorizer ToolCategorizer
 
-	// resetDone prevents Reset() from clearing state that was initialized
-	// before stream consumption started. When the projector is pre-created
-	// (e.g. in invokeTurnLLMAndStream for early emission access), Reset()
-	// is called once to initialize maps; subsequent Reset() calls from
-	// newTurnStreamConsumer become no-ops to avoid clearing activities
-	// emitted by hooks/plugins during the LLM call.
-	resetDone bool
-
-	// turnStarted prevents duplicate root task activities when OnTurnStart
-	// is called both early (pre-creation path) and in newTurnStreamConsumer.
-	turnStarted bool
+	// currentEventTS is the timestamp of the trpc event currently being
+	// processed by ProcessEvent. It is set before dispatching to On* callbacks
+	// so that OnReasoningDelta/OnTextDelta can use ev.Timestamp instead of
+	// time.Now() (design §B.3.3/B.3.5). Falls back to time.Now() when zero
+	// (e.g. direct On* calls in tests that bypass ProcessEvent).
+	//
+	// Concurrency: ProcessEvent → processChatCompletionChunk → On* is a
+	// synchronous chain in a single goroutine, so the write happens-before
+	// the read. No lock needed for the write in ProcessEvent; reads under
+	// p.mu in On* methods are safe because they occur after the write in
+	// the same goroutine.
+	currentEventTS time.Time
 }
 
 // NewActivityProjector creates a new ActivityProjector.
@@ -144,15 +192,18 @@ type ActivityProjector struct {
 // Seq=0. Direct-publish events (team_stage/graph_stage/session/plan) are
 // detected by the ActivityEventBus via the ActivityEvent.SequencerHandled
 // flag (false = direct-publish) instead of Seq==0.
-func NewActivityProjector(eventBus biz.ActivityEventBus, activityRepo biz.ActivityWriter, lg loggateway.Logger) *ActivityProjector {
+func NewActivityProjector(eventBus biz.ActivityEventBus, activityRepo biz.ActivityUpserter, lg loggateway.Logger, toolCategorizer ToolCategorizer) *ActivityProjector {
 	if lg == nil {
 		lg = loggateway.NewNoop()
+	}
+	if toolCategorizer == nil {
+		toolCategorizer = NewNoopToolCategorizer()
 	}
 	p := &ActivityProjector{
 		eventBus:        eventBus,
 		activityRepo:    activityRepo,
 		lg:              lg,
-		toolCategorizer: NewNoopToolCategorizer(),
+		toolCategorizer: toolCategorizer,
 	}
 	p.sequencer = newActivityEventSequencer(eventBus, lg)
 	p.sequencer.SetActivityRepo(activityRepo)
@@ -247,19 +298,19 @@ func (p *ActivityProjector) resolveSpiritSessionID() string {
 func (p *ActivityProjector) Reset() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.resetDone {
+	if p.state.resetDone {
 		return
 	}
-	p.rootActivityID = ""
-	p.activities = make(map[string]*biz.Activity)
-	p.toolCalls = make(map[string]*biz.Activity)
-	p.kindAuthorMap = make(map[string]string)
-	p.reasoningBuf = make(map[string]*strings.Builder)
-	p.planActivityID = ""
-	p.planStepIndex = 0
-	p.memberToolCalls = make(map[string]int)
-	p.resetDone = true
-	p.turnStarted = false
+	p.state.rootActivityID = ""
+	p.state.activities = make(map[string]*biz.Activity)
+	p.state.toolCalls = make(map[string]*biz.Activity)
+	p.state.kindAuthorMap = make(map[string]string)
+	p.state.reasoningBuf = make(map[string]*strings.Builder)
+	p.state.planActivityID = ""
+	p.state.planStepIndex = 0
+	p.state.memberToolCalls = make(map[string]int)
+	p.state.resetDone = true
+	p.state.turnStarted = false
 }
 
 // ProcessEvent dispatches a trpc-agent-go event to the appropriate On* callback.
@@ -291,6 +342,15 @@ func (p *ActivityProjector) ProcessEvent(ctx context.Context, ev *trpcevent.Even
 	if ev.Response == nil {
 		return
 	}
+
+	// P-01 fix: cache the event timestamp so On* callbacks (notably
+	// OnReasoningDelta/OnTextDelta) can use ev.Timestamp instead of time.Now(),
+	// aligning with design §B.3.3 (Timestamp ASC ordering) and §B.3.5
+	// (trpc Event → Activity mapping). Without this, streaming delta
+	// activities got timestamps from time.Now() at projection time, which
+	// diverges from the event's actual emission time and breaks ordering
+	// guarantees when events arrive in bursts.
+	p.currentEventTS = ev.Timestamp
 
 	objType := ev.Response.Object
 	switch objType {
@@ -422,7 +482,7 @@ func (p *ActivityProjector) processToolResponse(ctx context.Context, ev *trpceve
 	// Calculate duration from cached tool call
 	var durationMs int64
 	p.mu.Lock()
-	if a, ok := p.toolCalls[toolID]; ok {
+	if a, ok := p.state.toolCalls[toolID]; ok {
 		if !a.Timestamp.IsZero() {
 			finishedAt := time.Now().UTC()
 			if !ev.Timestamp.IsZero() {
@@ -442,13 +502,17 @@ func (p *ActivityProjector) processToolResponse(ctx context.Context, ev *trpceve
 // OnTurnStart creates the root task Activity for a new turn.
 // When called multiple times (e.g. pre-creation path + newTurnStreamConsumer),
 // only the first call creates the root activity; subsequent calls are no-ops.
-func (p *ActivityProjector) OnTurnStart(ctx context.Context, meta ProjectMeta) {
+//
+// Returns the context with the root task activity ID stored, so downstream
+// business orchestrators (spirit_team, team runner) can use it as the
+// ParentActivityID for direct-publish events (team_stage, graph_stage, session).
+func (p *ActivityProjector) OnTurnStart(ctx context.Context, meta ProjectMeta) context.Context {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.turnStarted {
-		return
+	if p.state.turnStarted {
+		return ctx
 	}
-	p.turnStarted = true
+	p.state.turnStarted = true
 	p.meta = meta
 
 	// Resolve spirit session ID: use explicit SpiritSessionID when set (sub-session),
@@ -473,10 +537,12 @@ func (p *ActivityProjector) OnTurnStart(ctx context.Context, meta ProjectMeta) {
 		TeamID:          meta.TeamID,
 		Content:         meta.TaskContent,
 	}
-	p.rootActivityID = id
-	p.activities[id] = a
+	p.state.rootActivityID = id
+	p.state.activities[id] = a
 
 	p.publishAndPersist(ctx, a, biz.ActivityEventCreated)
+
+	return ContextWithRootTaskActivityID(ctx, id)
 }
 
 // OnReasoningDelta handles a reasoning content chunk during streaming.
@@ -485,24 +551,31 @@ func (p *ActivityProjector) OnReasoningDelta(ctx context.Context, author string,
 	defer p.mu.Unlock()
 
 	key := author
-	if p.reasoningBuf[key] == nil {
-		p.reasoningBuf[key] = &strings.Builder{}
+	if p.state.reasoningBuf[key] == nil {
+		p.state.reasoningBuf[key] = &strings.Builder{}
 	}
-	p.reasoningBuf[key].WriteString(chunk)
+	p.state.reasoningBuf[key].WriteString(chunk)
 
 	// Find or create the thinking activity for this author
 	activityID := p.findActivityByKindAuthor(biz.ActivityKindThinking, author)
 	if activityID == "" {
 		// Create new thinking activity
 		id := uuid.NewString()
-		now := time.Now().UTC()
+		// P-01 fix: prefer the trpc event's timestamp (set in ProcessEvent)
+		// over time.Now() to honor design §B.3.3/B.3.5 (event-natural
+		// ordering). Falls back to time.Now() for direct On* calls in
+		// tests that bypass ProcessEvent.
+		now := p.currentEventTS
+		if now.IsZero() {
+			now = time.Now().UTC()
+		}
 		a := &biz.Activity{
 			ID:               id,
 			Kind:             biz.ActivityKindThinking,
 			Status:           biz.ActivityStatusRunning,
 			SessionID:        p.meta.SessionID,
 			TurnID:           p.meta.RequestID,
-			ParentActivityID: p.rootActivityID,
+			ParentActivityID: p.state.rootActivityID,
 			Timestamp:        now,
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
@@ -514,14 +587,14 @@ func (p *ActivityProjector) OnReasoningDelta(ctx context.Context, author string,
 			// when they do, this can be derived from the event payload.
 			Label: thinkingLabelDefault,
 		}
-		p.activities[id] = a
-		p.kindAuthorMap[kindKey(biz.ActivityKindThinking, author)] = id
+		p.state.activities[id] = a
+		p.state.kindAuthorMap[kindKey(biz.ActivityKindThinking, author)] = id
 		p.publishAndPersist(ctx, a, biz.ActivityEventCreated)
 		activityID = id
 	}
 
 	// Emit delta
-	a := p.activities[activityID]
+	a := p.state.activities[activityID]
 	a.Reasoning += chunk
 	p.publishActivityDelta(ctx, a, "reasoning", chunk)
 }
@@ -544,7 +617,7 @@ func (p *ActivityProjector) OnReasoningDone(ctx context.Context, author string, 
 	if activityID == "" {
 		return
 	}
-	a := p.activities[activityID]
+	a := p.state.activities[activityID]
 
 	if reasoningAsDisplay {
 		// Surface reasoning as displayable content WITHOUT flipping Kind.
@@ -568,8 +641,8 @@ func (p *ActivityProjector) OnReasoningDone(ctx context.Context, author string, 
 
 	// Remove completed thinking from lookup so the next ReAct round
 	// creates a new thinking Activity instead of appending to this one.
-	// This mirrors OnToolResult's delete(p.toolCalls, toolCallID) pattern.
-	delete(p.kindAuthorMap, kindKey(biz.ActivityKindThinking, author))
+	// This mirrors OnToolResult's delete(p.state.toolCalls, toolCallID) pattern.
+	delete(p.state.kindAuthorMap, kindKey(biz.ActivityKindThinking, author))
 
 	p.transitionActivityStatus(a, biz.ActivityStatusCompleted)
 	now := time.Now().UTC()
@@ -590,27 +663,34 @@ func (p *ActivityProjector) OnTextDelta(ctx context.Context, author string, chun
 	activityID := p.findActivityByKindAuthor(biz.ActivityKindReply, author)
 	if activityID == "" {
 		id := uuid.NewString()
-		now := time.Now().UTC()
+		// P-01 fix: prefer the trpc event's timestamp (set in ProcessEvent)
+		// over time.Now() to honor design §B.3.3/B.3.5 (event-natural
+		// ordering). Falls back to time.Now() for direct On* calls in
+		// tests that bypass ProcessEvent.
+		now := p.currentEventTS
+		if now.IsZero() {
+			now = time.Now().UTC()
+		}
 		a := &biz.Activity{
 			ID:               id,
 			Kind:             biz.ActivityKindReply,
 			Status:           biz.ActivityStatusRunning,
 			SessionID:        p.meta.SessionID,
 			TurnID:           p.meta.RequestID,
-			ParentActivityID: p.rootActivityID,
+			ParentActivityID: p.state.rootActivityID,
 			Timestamp:        now,
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
 			SpiritSessionID:  p.resolveSpiritSessionID(),
 			TeamID:           p.meta.TeamID,
 		}
-		p.activities[id] = a
-		p.kindAuthorMap[kindKey(biz.ActivityKindReply, author)] = id
+		p.state.activities[id] = a
+		p.state.kindAuthorMap[kindKey(biz.ActivityKindReply, author)] = id
 		p.publishAndPersist(ctx, a, biz.ActivityEventCreated)
 		activityID = id
 	}
 
-	a := p.activities[activityID]
+	a := p.state.activities[activityID]
 	a.Content += chunk
 	p.publishActivityDelta(ctx, a, "content", chunk)
 }
@@ -634,7 +714,7 @@ func (p *ActivityProjector) OnMemberMessageDelta(ctx context.Context, author str
 			Status:           biz.ActivityStatusRunning,
 			SessionID:        p.meta.SessionID,
 			TurnID:           p.meta.RequestID,
-			ParentActivityID: p.rootActivityID,
+			ParentActivityID: p.state.rootActivityID,
 			Timestamp:        now,
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
@@ -642,13 +722,13 @@ func (p *ActivityProjector) OnMemberMessageDelta(ctx context.Context, author str
 			TeamID:           p.meta.TeamID,
 			Meta:             map[string]any{"member_id": author},
 		}
-		p.activities[id] = a
-		p.kindAuthorMap[kindKey(biz.ActivityKindReply, author)] = id
+		p.state.activities[id] = a
+		p.state.kindAuthorMap[kindKey(biz.ActivityKindReply, author)] = id
 		p.publishAndPersist(ctx, a, biz.ActivityEventCreated)
 		activityID = id
 	}
 
-	a := p.activities[activityID]
+	a := p.state.activities[activityID]
 	a.Content += chunk
 	p.publishActivityDelta(ctx, a, "content", chunk)
 }
@@ -675,7 +755,7 @@ func (p *ActivityProjector) OnMemberMessageDone(ctx context.Context, author stri
 			Status:           biz.ActivityStatusRunning,
 			SessionID:        p.meta.SessionID,
 			TurnID:           p.meta.RequestID,
-			ParentActivityID: p.rootActivityID,
+			ParentActivityID: p.state.rootActivityID,
 			Timestamp:        now,
 			Content:          fullText,
 			AgentKey:         author,
@@ -684,11 +764,11 @@ func (p *ActivityProjector) OnMemberMessageDone(ctx context.Context, author stri
 			TeamID:           p.meta.TeamID,
 			Meta:             map[string]any{"member_id": author},
 		}
-		p.activities[id] = a
-		p.kindAuthorMap[kindKey(biz.ActivityKindReply, author)] = id
+		p.state.activities[id] = a
+		p.state.kindAuthorMap[kindKey(biz.ActivityKindReply, author)] = id
 		p.publishAndPersist(ctx, a, biz.ActivityEventCreated)
 	} else {
-		a = p.activities[activityID]
+		a = p.state.activities[activityID]
 		if fullText != "" {
 			a.Content = fullText
 		}
@@ -700,7 +780,7 @@ func (p *ActivityProjector) OnMemberMessageDone(ctx context.Context, author stri
 
 	// Remove completed reply from lookup so the next member message
 	// creates a new reply Activity.
-	delete(p.kindAuthorMap, kindKey(biz.ActivityKindReply, author))
+	delete(p.state.kindAuthorMap, kindKey(biz.ActivityKindReply, author))
 
 	p.publishAndPersist(ctx, a, biz.ActivityEventCompleted)
 }
@@ -727,7 +807,7 @@ func (p *ActivityProjector) OnTextDone(ctx context.Context, author string, fullT
 			Status:           biz.ActivityStatusRunning,
 			SessionID:        p.meta.SessionID,
 			TurnID:           p.meta.RequestID,
-			ParentActivityID: p.rootActivityID,
+			ParentActivityID: p.state.rootActivityID,
 			Timestamp:        now,
 			Content:          fullText,
 			AgentKey:         author,
@@ -735,11 +815,11 @@ func (p *ActivityProjector) OnTextDone(ctx context.Context, author string, fullT
 			SpiritSessionID:  p.resolveSpiritSessionID(),
 			TeamID:           p.meta.TeamID,
 		}
-		p.activities[id] = a
-		p.kindAuthorMap[kindKey(biz.ActivityKindReply, author)] = id
+		p.state.activities[id] = a
+		p.state.kindAuthorMap[kindKey(biz.ActivityKindReply, author)] = id
 		p.publishAndPersist(ctx, a, biz.ActivityEventCreated)
 	} else {
-		a = p.activities[activityID]
+		a = p.state.activities[activityID]
 		if fullText != "" {
 			a.Content = fullText
 		}
@@ -751,7 +831,7 @@ func (p *ActivityProjector) OnTextDone(ctx context.Context, author string, fullT
 
 	// Remove completed reply from lookup so the next ReAct round
 	// creates a new reply Activity instead of appending to this one.
-	delete(p.kindAuthorMap, kindKey(biz.ActivityKindReply, author))
+	delete(p.state.kindAuthorMap, kindKey(biz.ActivityKindReply, author))
 
 	p.publishAndPersist(ctx, a, biz.ActivityEventCompleted)
 }
@@ -760,11 +840,20 @@ func (p *ActivityProjector) OnTextDone(ctx context.Context, author string, fullT
 // Streaming tool calls may arrive as multiple deltas for the same tool_call_id;
 // those deltas are merged into a single Activity.
 func (p *ActivityProjector) OnToolCall(ctx context.Context, toolCallID, toolName, argsJSON, author string, startedAt time.Time) {
+	// Skip projection for silent tools (e.g. check_progress polling).
+	// These tools are called repeatedly for orchestration monitoring and
+	// would flood the UI with noise if projected as action Activities.
+	// OnToolResult also returns early because the tool_call_id was never
+	// registered in p.state.toolCalls.
+	if isSilentTool(toolName) {
+		return
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	// Merge streaming deltas for the same tool call.
-	if existing, ok := p.toolCalls[toolCallID]; ok {
+	if existing, ok := p.state.toolCalls[toolCallID]; ok {
 		if toolName != "" {
 			existing.ToolName = toolName
 		}
@@ -784,7 +873,7 @@ func (p *ActivityProjector) OnToolCall(ctx context.Context, toolCallID, toolName
 		Status:           biz.ActivityStatusToolRunning,
 		SessionID:        p.meta.SessionID,
 		TurnID:           p.meta.RequestID,
-		ParentActivityID: p.rootActivityID,
+		ParentActivityID: p.state.rootActivityID,
 		Timestamp:        startedAt,
 		ToolName:         toolName,
 		ToolCallID:       toolCallID,
@@ -816,17 +905,17 @@ func (p *ActivityProjector) OnToolCall(ctx context.Context, toolCallID, toolName
 		}
 	}
 
-	p.activities[id] = a
-	p.toolCalls[toolCallID] = a
+	p.state.activities[id] = a
+	p.state.toolCalls[toolCallID] = a
 
 	// Track per-member tool call counts for team run step persistence.
 	// stream_consumer reads this in AF mode instead of deriving it from
 	// EventProjector envelopes.
 	if isTeamMemberAuthor(author, p.meta) {
-		if p.memberToolCalls == nil {
-			p.memberToolCalls = make(map[string]int)
+		if p.state.memberToolCalls == nil {
+			p.state.memberToolCalls = make(map[string]int)
 		}
-		p.memberToolCalls[author]++
+		p.state.memberToolCalls[author]++
 	}
 
 	p.publishAndPersist(ctx, a, biz.ActivityEventCreated)
@@ -837,7 +926,7 @@ func (p *ActivityProjector) OnToolResult(ctx context.Context, toolCallID, result
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	a, ok := p.toolCalls[toolCallID]
+	a, ok := p.state.toolCalls[toolCallID]
 	if !ok {
 		return
 	}
@@ -860,7 +949,7 @@ func (p *ActivityProjector) OnToolResult(ctx context.Context, toolCallID, result
 	a.Collapsed = true
 
 	p.publishAndPersist(ctx, a, biz.ActivityEventCompleted)
-	delete(p.toolCalls, toolCallID)
+	delete(p.state.toolCalls, toolCallID)
 }
 
 // ActivityUsage carries token consumption data for a completed turn.
@@ -898,8 +987,8 @@ func (p *ActivityProjector) OnError(ctx context.Context, errMsg string, errType 
 	}
 
 	// Case 1: root task Activity exists — transition it to failed.
-	if p.rootActivityID != "" {
-		a, ok := p.activities[p.rootActivityID]
+	if p.state.rootActivityID != "" {
+		a, ok := p.state.activities[p.state.rootActivityID]
 		if ok {
 			p.transitionActivityStatus(a, biz.ActivityStatusFailed)
 			a.DurationMs = now.Sub(a.Timestamp).Milliseconds()
@@ -935,8 +1024,8 @@ func (p *ActivityProjector) OnError(ctx context.Context, errMsg string, errType 
 		TeamID:          p.meta.TeamID,
 		Meta:            meta,
 	}
-	p.rootActivityID = id
-	p.activities[id] = a
+	p.state.rootActivityID = id
+	p.state.activities[id] = a
 	p.publishAndPersist(ctx, a, biz.ActivityEventCreated)
 }
 
@@ -953,12 +1042,12 @@ func (p *ActivityProjector) OnNotice(ctx context.Context, turnID, sessionID stri
 		Status:           biz.ActivityStatusPending,
 		SessionID:        sessionID,
 		TurnID:           turnID,
-		ParentActivityID: p.rootActivityID,
+		ParentActivityID: p.state.rootActivityID,
 		Timestamp:        now,
 		Content:          content,
 		Meta:             map[string]any{"noticeType": noticeType},
 	}
-	p.activities[id] = activity
+	p.state.activities[id] = activity
 
 	// Notice is immediately completed (pending → completed in the same call).
 	// The sequencer guarantees start → done ordering per-activity, so we can
@@ -1005,12 +1094,12 @@ func (p *ActivityProjector) OnConfirmRequest(ctx context.Context, turnID, sessio
 		Status:           biz.ActivityStatusToolBlocked,
 		SessionID:        sessionID,
 		TurnID:           turnID,
-		ParentActivityID: p.rootActivityID,
+		ParentActivityID: p.state.rootActivityID,
 		Timestamp:        now,
 		Content:          params.Content,
 		Meta:             map[string]any{"toolName": params.ToolName, "toolArguments": params.ToolArguments},
 	}
-	p.activities[id] = activity
+	p.state.activities[id] = activity
 	p.publishAndPersist(ctx, activity, biz.ActivityEventCreated)
 
 	return activity, nil
@@ -1021,7 +1110,7 @@ func (p *ActivityProjector) OnConfirmResult(ctx context.Context, activityID stri
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	activity, ok := p.activities[activityID]
+	activity, ok := p.state.activities[activityID]
 	if !ok {
 		return nil, apierror.NotFound("activity", "activity not found: %s", activityID)
 	}
@@ -1096,8 +1185,23 @@ func (p *ActivityProjector) processGraphNodeStart(ctx context.Context, ev *trpce
 		return
 	}
 
-	// Lazily create plan Activity on first node arrival (inline to avoid deadlock)
-	if p.planActivityID == "" {
+	// Lazily create plan Activity on first node arrival (inline to avoid deadlock).
+	// B.4.3 dedup: if OnPlanStart already created a plan for this turn (e.g.
+	// via pre-planning gate or explicit planner call), reuse that ID instead
+	// of creating a duplicate. This prevents multiple PlanBlock panels from
+	// rendering for the same turn ("UI 提前占位" + multi-panel issue).
+	if p.state.planActivityID == "" {
+		// Search for an existing plan activity for this turn/session.
+		for _, existing := range p.state.activities {
+			if existing.Kind == biz.ActivityKindPlan &&
+				existing.TurnID == p.meta.RequestID &&
+				existing.SessionID == p.meta.SessionID {
+				p.state.planActivityID = existing.ID
+				break
+			}
+		}
+	}
+	if p.state.planActivityID == "" {
 		id := uuid.NewString()
 		now := time.Now().UTC()
 		planAct := &biz.Activity{
@@ -1112,17 +1216,17 @@ func (p *ActivityProjector) processGraphNodeStart(ctx context.Context, ev *trpce
 			// (frontend ActivityStream recursive rendering). Without this,
 			// the plan becomes a sibling root of the task, breaking the
 			// parent-child visual hierarchy.
-			ParentActivityID: p.rootActivityID,
+			ParentActivityID: p.state.rootActivityID,
 			Content:          "执行计划",
 			Meta:             map[string]any{"steps": []biz.ActivityPlanStep{}},
 		}
-		p.activities[id] = planAct
-		p.planActivityID = id
+		p.state.activities[id] = planAct
+		p.state.planActivityID = id
 		p.publishAndPersist(ctx, planAct, biz.ActivityEventCreated)
 	}
 
 	// Append a new step to the plan
-	planAct, ok := p.activities[p.planActivityID]
+	planAct, ok := p.state.activities[p.state.planActivityID]
 	if !ok {
 		return
 	}
@@ -1131,7 +1235,7 @@ func (p *ActivityProjector) processGraphNodeStart(ctx context.Context, ev *trpce
 	if steps == nil {
 		steps = []biz.ActivityPlanStep{}
 	}
-	p.planStepIndex++
+	p.state.planStepIndex++
 	step := biz.ActivityPlanStep{
 		ID:     meta.NodeID,
 		Label:  planStepLabel(meta),
@@ -1148,7 +1252,7 @@ func (p *ActivityProjector) processGraphNodeComplete(ctx context.Context, ev *tr
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.planActivityID == "" || ev.StateDelta == nil {
+	if p.state.planActivityID == "" || ev.StateDelta == nil {
 		return
 	}
 	nodeRaw, ok := ev.StateDelta[graphMetadataKeyNode]
@@ -1163,7 +1267,7 @@ func (p *ActivityProjector) processGraphNodeComplete(ctx context.Context, ev *tr
 		return
 	}
 
-	planAct, ok := p.activities[p.planActivityID]
+	planAct, ok := p.state.activities[p.state.planActivityID]
 	if !ok {
 		return
 	}
@@ -1203,8 +1307,30 @@ func (p *ActivityProjector) OnPlanStart(ctx context.Context, turnID, sessionID s
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	id := uuid.NewString()
+	// B.4.3 固定语义：同一 turn 内只产生一个任务计划面板。后续 plan 更新事件
+	// 在原面板更新，不产生新面板。此处按 turnID 复用已存在的 plan Activity，
+	// 避免"UI 提前占位"——多次调用（pre-planning、replanning、node-arrival
+	// 惰性创建）会复用同一 ID，前端 upsert 视为同一面板更新。
 	now := time.Now().UTC()
+
+	// 1) 复用 OnPlanStart 已创建的 plan（按 turnID）
+	for _, existing := range p.state.activities {
+		if existing.Kind == biz.ActivityKindPlan && existing.TurnID == turnID && existing.SessionID == sessionID {
+			existing.Content = title
+			existing.Status = biz.ActivityStatusRunning
+			existing.Meta = map[string]any{"steps": steps}
+			existing.Timestamp = now
+			p.publishAndPersist(ctx, existing, biz.ActivityEventStreaming)
+			// Sync planActivityID so processGraphNodeComplete can find it
+			// (lazy creation path may also produce a plan activity for the
+			// same turn — unify to this one).
+			p.state.planActivityID = existing.ID
+			return existing, nil
+		}
+	}
+
+	// 2) No existing plan for this turn — create new
+	id := uuid.NewString()
 	activity := &biz.Activity{
 		ID:        id,
 		Kind:      biz.ActivityKindPlan,
@@ -1215,7 +1341,8 @@ func (p *ActivityProjector) OnPlanStart(ctx context.Context, turnID, sessionID s
 		Content:   title,
 		Meta:      map[string]any{"steps": steps},
 	}
-	p.activities[id] = activity
+	p.state.activities[id] = activity
+	p.state.planActivityID = id
 	p.publishAndPersist(ctx, activity, biz.ActivityEventCreated)
 
 	return activity, nil
@@ -1226,7 +1353,7 @@ func (p *ActivityProjector) OnPlanStepUpdate(ctx context.Context, activityID str
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	activity, ok := p.activities[activityID]
+	activity, ok := p.state.activities[activityID]
 	if !ok {
 		return nil, apierror.NotFound("activity", "activity not found: %s", activityID)
 	}
@@ -1294,11 +1421,11 @@ func (p *ActivityProjector) OnPlanStepUpdate(ctx context.Context, activityID str
 func (p *ActivityProjector) MemberToolCalls() map[string]int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if len(p.memberToolCalls) == 0 {
+	if len(p.state.memberToolCalls) == 0 {
 		return nil
 	}
-	out := make(map[string]int, len(p.memberToolCalls))
-	for k, v := range p.memberToolCalls {
+	out := make(map[string]int, len(p.state.memberToolCalls))
+	for k, v := range p.state.memberToolCalls {
 		out[k] = v
 	}
 	return out
@@ -1312,7 +1439,7 @@ func (p *ActivityProjector) OnStuckTools(ctx context.Context) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	for toolCallID, a := range p.toolCalls {
+	for toolCallID, a := range p.state.toolCalls {
 		// Skip activities that already received a terminal status; only
 		// tool_running activities are stuck.
 		if a.Status != biz.ActivityStatusToolRunning {
@@ -1340,7 +1467,7 @@ func (p *ActivityProjector) OnStuckTools(ctx context.Context) {
 		a.Collapsed = true
 
 		p.publishAndPersist(ctx, a, biz.ActivityEventCompleted)
-		delete(p.toolCalls, toolCallID)
+		delete(p.state.toolCalls, toolCallID)
 	}
 }
 
@@ -1361,7 +1488,7 @@ func (p *ActivityProjector) OnStuckTools(ctx context.Context) {
 // (published by the finalization loop) carries it.
 func (p *ActivityProjector) markFinalReply(ctx context.Context) {
 	var finalActivity *biz.Activity
-	for _, a := range p.activities {
+	for _, a := range p.state.activities {
 		isReply := a.Kind == biz.ActivityKindReply
 		isDisplayThinking := a.Kind == biz.ActivityKindThinking && a.Meta != nil && a.Meta["as_display"] == true
 		if !isReply && !isDisplayThinking {
@@ -1374,6 +1501,21 @@ func (p *ActivityProjector) markFinalReply(ctx context.Context) {
 		}
 	}
 	if finalActivity == nil {
+		// P-03 fix: previously this silently returned, so a turn ending
+		// without any reply/thinking-as-display activity (e.g. tool-only
+		// turns, error turns, or OnTextDone marking the reply as terminal
+		// via a different kind) would leave is_final unset forever. The
+		// frontend then falls back to status-based inference, which is
+		// wrong for ReAct loops with multiple replies. Log a warning so
+		// operators can detect the missing-mark scenario and trace which
+		// turn shape triggered it.
+		p.lg.Warn("ActivityProjector: markFinalReply found no reply/thinking-as-display activity; is_final not set",
+			loggateway.StepID("agent.activity_projector.markFinalReply"),
+			loggateway.Str("root_activity_id", p.state.rootActivityID),
+			loggateway.Str("session_id", p.meta.SessionID),
+			loggateway.Str("request_id", p.meta.RequestID),
+			loggateway.Int("activities_count", len(p.state.activities)),
+		)
 		return
 	}
 	if finalActivity.Meta == nil {
@@ -1427,7 +1569,7 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, usage *ActivityUsage,
 	// Finalize any still-running child activities so the UI does not leave
 	// streaming indicators (reply/thinking/action) dangling when the turn ends.
 	now := time.Now().UTC()
-	for _, a := range p.activities {
+	for _, a := range p.state.activities {
 		switch a.Kind {
 		case biz.ActivityKindReply, biz.ActivityKindThinking:
 			if a.Status == biz.ActivityStatusRunning {
@@ -1454,10 +1596,10 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, usage *ActivityUsage,
 		}
 	}
 
-	if p.rootActivityID == "" {
+	if p.state.rootActivityID == "" {
 		return
 	}
-	a, ok := p.activities[p.rootActivityID]
+	a, ok := p.state.activities[p.state.rootActivityID]
 	if !ok {
 		return
 	}
@@ -1606,7 +1748,7 @@ func (p *ActivityProjector) buildActivityEvent(a *biz.Activity, eventType biz.Ac
 
 // findActivityByKindAuthor finds an activity by kind and agent key (O(1) via kindAuthorMap).
 func (p *ActivityProjector) findActivityByKindAuthor(kind biz.ActivityKind, author string) string {
-	return p.kindAuthorMap[kindKey(kind, author)]
+	return p.state.kindAuthorMap[kindKey(kind, author)]
 }
 
 // kindKey builds the composite key for kindAuthorMap.

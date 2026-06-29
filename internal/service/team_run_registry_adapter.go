@@ -36,3 +36,7 @@ func (a *runRegistryAdapter) GetStatus(sessionID string) (biz.RunStatusEntry, bo
 		UpdatedAt: entry.UpdatedAt,
 	}, true
 }
+
+func (a *runRegistryAdapter) EnqueueUserMessage(sessionID, content string) (bool, error) {
+	return a.inner.EnqueueUserMessage(sessionID, content)
+}

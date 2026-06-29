@@ -6,7 +6,11 @@ import {
   resumeSpiritTeam,
   archiveSpiritTeam,
   retrySpiritTeam,
+  pauseSpiritTeam,
+  unpauseSpiritTeam,
+  injectSpiritTeam,
 } from '../../features/spirit/api';
+import { i18n } from '../../i18n';
 import type {
   SpiritTeam,
   SpiritPanelMode,
@@ -211,7 +215,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
         // Remove teams that no longer exist on the server
         teams.value = teams.value.filter((t) => apiIds.has(t.id));
       } catch {
-        Notify.create({ type: 'negative', message: '加载团队列表失败', position: 'top' });
+        Notify.create({ type: 'negative', message: i18n.global.t('chat.teamStage.loadFailed'), position: 'top' });
       } finally {
         loading.value = false;
         _loadPromise = null;
@@ -294,7 +298,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
         returnToSpirit();
       }
     } catch {
-      Notify.create({ type: 'warning', message: '取消团队请求可能未生效，请刷新确认', position: 'top' });
+      Notify.create({ type: 'warning', message: i18n.global.t('chat.teamStage.cancelFailed'), position: 'top' });
     }
   }
 
@@ -303,7 +307,42 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
       await resumeSpiritTeam(teamId);
       updateTeamStatus(teamId, 'running');
     } catch {
-      Notify.create({ type: 'warning', message: '恢复团队请求可能未生效，请刷新确认', position: 'top' });
+      Notify.create({ type: 'warning', message: i18n.global.t('chat.teamStage.resumeFailed'), position: 'top' });
+    }
+  }
+
+  // pauseTeam transitions a running team run to paused state (B.5.3).
+  // MVP: cancels in-flight member step + marks run as paused.
+  async function pauseTeam(teamId: string) {
+    try {
+      await pauseSpiritTeam(teamId);
+      updateTeamStatus(teamId, 'paused');
+    } catch {
+      Notify.create({ type: 'warning', message: i18n.global.t('chat.teamStage.pauseFailed'), position: 'top' });
+    }
+  }
+
+  // unpauseTeam transitions a paused team run back to running (B.5.3).
+  // MVP: flips status marker; user must inject message to resume execution.
+  async function unpauseTeam(teamId: string) {
+    try {
+      await unpauseSpiritTeam(teamId);
+      updateTeamStatus(teamId, 'running');
+    } catch {
+      Notify.create({ type: 'warning', message: i18n.global.t('chat.teamStage.unpauseFailed'), position: 'top' });
+    }
+  }
+
+  // injectTeam injects a user message into the team's active/paused run
+  // pending queue (B.5.3). Returns true on success.
+  async function injectTeam(teamId: string, message: string): Promise<boolean> {
+    try {
+      await injectSpiritTeam(teamId, message);
+      Notify.create({ type: 'positive', message: i18n.global.t('chat.teamStage.injectSent'), position: 'top' });
+      return true;
+    } catch {
+      Notify.create({ type: 'warning', message: i18n.global.t('chat.teamStage.injectFailed'), position: 'top' });
+      return false;
     }
   }
 
@@ -313,7 +352,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
       // Remove archived team from the list
       teams.value = teams.value.filter((t) => t.id !== teamId);
     } catch {
-      Notify.create({ type: 'warning', message: '归档团队请求可能未生效，请刷新确认', position: 'top' });
+      Notify.create({ type: 'warning', message: i18n.global.t('chat.teamStage.archiveFailed'), position: 'top' });
     }
   }
 
@@ -322,7 +361,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
       await retrySpiritTeam(teamId);
       updateTeamStatus(teamId, 'pending');
     } catch {
-      Notify.create({ type: 'warning', message: '重试团队请求可能未生效，请刷新确认', position: 'top' });
+      Notify.create({ type: 'warning', message: i18n.global.t('chat.teamStage.retryFailed'), position: 'top' });
     }
   }
 
@@ -690,6 +729,9 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     toggleTeamExpand,
     cancelTeam,
     resumeTeam,
+    pauseTeam,
+    unpauseTeam,
+    injectTeam,
     archiveTeam,
     retryTeam,
     updateTeamProgress,

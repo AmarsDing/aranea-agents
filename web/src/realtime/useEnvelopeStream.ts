@@ -10,7 +10,7 @@
  * (realtime/activityEvent.ts + useActivityTimeline). This envelope stream
  * is retained for non-chat features until they migrate. See ADR-02 §遗留项.
  */
-import { onUnmounted, ref, shallowRef } from 'vue';
+import { onUnmounted, ref, shallowRef, type Ref } from 'vue';
 import { createWsTransport, type WsTransport } from './ws-transport';
 import type { ActivityEvent } from './activityEvent';
 import type { MonitorEvent } from './monitorEvent';
@@ -53,10 +53,10 @@ export type UseEnvelopeStreamOptions = {
 };
 
 export type UseEnvelopeStreamReturn = {
-  connected: ReturnType<typeof ref<boolean>>;
-  wsReplaying: ReturnType<typeof ref<boolean>>;
-  lastEventId: ReturnType<typeof ref<string | undefined>>;
-  transport: ReturnType<typeof shallowRef<WsTransport | null>>;
+  connected: Ref<boolean>;
+  wsReplaying: Ref<boolean>;
+  lastEventId: Ref<string | undefined>;
+  transport: Ref<WsTransport | null>;
   connect: () => void;
   disconnect: () => void;
   subscribe: (channel: string) => void;

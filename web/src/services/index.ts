@@ -207,6 +207,21 @@ export function createSpiritService() {
     resumeTeamRun(teamRunId: string) {
       return kratosApi.post(`/v1/team-runs/${encodeURIComponent(teamRunId)}/resume`);
     },
+    // pauseTeamRun transitions a running team run to paused state (B.5.3).
+    // MVP: cancels in-flight member step + marks run as paused.
+    pauseTeamRun(teamRunId: string) {
+      return kratosApi.post(`/v1/team-runs/${encodeURIComponent(teamRunId)}/pause`);
+    },
+    // unpauseTeamRun transitions a paused team run back to running (B.5.3).
+    // MVP: flips status marker; user must inject message to resume execution.
+    unpauseTeamRun(teamRunId: string) {
+      return kratosApi.post(`/v1/team-runs/${encodeURIComponent(teamRunId)}/unpause`);
+    },
+    // injectTeamMessage enqueues a user message to the team's active/paused
+    // run, processed at the next step boundary (B.5.3).
+    injectTeamMessage(teamId: string, message: string) {
+      return kratosApi.post(`/v1/teams/${encodeURIComponent(teamId)}/inject`, { message });
+    },
     archiveTeam(teamId: string) {
       return kratosApi.post(`/v1/teams/${encodeURIComponent(teamId)}/archive`);
     },
@@ -222,6 +237,16 @@ export function createSpiritService() {
     // by re-enqueuing the latest user message (RetrySession RPC).
     retrySession(sessionId: string) {
       return kratosApi.post(`/v1/chat/sessions/${encodeURIComponent(sessionId)}/retry`);
+    },
+    // pauseSession transitions a running chat session to paused state (B.5.3).
+    // Used by AgentCard pause button; MVP cancels in-flight turn.
+    pauseSession(sessionId: string) {
+      return kratosApi.post(`/v1/chat/sessions/${encodeURIComponent(sessionId)}/pause`);
+    },
+    // resumeSession transitions a paused chat session back to running (B.5.3).
+    // Used by AgentCard resume button; MVP flips status marker.
+    resumeSession(sessionId: string) {
+      return kratosApi.post(`/v1/chat/sessions/${encodeURIComponent(sessionId)}/resume`);
     },
   };
 }

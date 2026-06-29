@@ -34,116 +34,9 @@ import (
 // llmInvokeSlowLogThreshold is the threshold for logging slow LLM invocations.
 const llmInvokeSlowLogThreshold = 60 * time.Second
 
-// turnAdmissionResult holds the outputs of the ADMISSION phase.
-// Stability:internal
-type turnAdmissionResult struct {
-	runID      string
-	dialogMode string
-	provider   string
-	model      string
-	durableCtx durableResumeTurnCtx
-}
-
-// turnExecuteResult holds the outputs of the EXECUTE phase.
-// Stability:internal
-type turnExecuteResult struct {
-	userMsg             biz.ChatMessage
-	userMsgPersisted    bool
-	result              chatagent.EventStreamResult
-	resultPromptTok     int
-	resultCompletionTok int
-	sessionRunID        string
-	turnArtCollector    *artifactbiz.TurnCollector
-}
-
-// turnPersistResult holds the outputs of the PERSIST phase.
-// Stability:internal
-type turnPersistResult struct {
-	assistantMsg  biz.ChatMessage
-	promptTok     int
-	completionTok int
-}
-
 // ────────────────────────────────────────────────────────────
-// ADMISSION phase
+// EXECUTE phase helpers (called by turnPipeline.executeTurn)
 // ────────────────────────────────────────────────────────────
-
-// admitTurn validates the turn request and generates run metadata.
-// Stability:internal
-func (o *ChatOrchestrator) admitTurn(
-	ctx context.Context,
-	sess biz.Session,
-	input biz.TurnInput,
-	ag biz.Agent,
-	dialogMode, prov, mod string,
-) (turnAdmissionResult, error) {
-	sessionID := strings.TrimSpace(input.SessionID)
-	if ak := strings.TrimSpace(input.AgentKey); ak != "" && !strings.EqualFold(ak, ag.AgentKey) {
-		te := TurnError(TurnErrAgentForbidden, "")
-		o.publishTurnFailure(sessionID, "", "chat-service", te, "")
-		return turnAdmissionResult{}, te
-	}
-
-	runID := uuid.NewString()
-	durableCtx := durableResumeTurnCtxFrom(ctx, runID, dialogMode, prov, mod)
-	runID = durableCtx.runID
-	dialogMode = durableCtx.dialogMode
-	prov = durableCtx.provider
-	mod = durableCtx.model
-	if durableCtx.active {
-		if comp, ok := o.td().Compress.(biz.DurableTurnCompressor); ok {
-			if err := comp.BeforeDurableTurn(ctx, sessionID, ag); err != nil {
-				o.lg().Warn("BeforeDurableTurn failed", loggateway.StepID("chat.turn.before_durable"), loggateway.Err(err))
-			}
-		}
-	}
-	return turnAdmissionResult{
-		runID:      runID,
-		dialogMode: dialogMode,
-		provider:   prov,
-		model:      mod,
-		durableCtx: durableCtx,
-	}, nil
-}
-
-// ────────────────────────────────────────────────────────────
-// EXECUTE phase (orchestrator + sub-methods)
-// ────────────────────────────────────────────────────────────
-
-// executeTurn orchestrates the EXECUTE phase: user options, intent pass,
-// user message persistence, LLM invocation, and stream consumption.
-// Stability:internal
-func (o *ChatOrchestrator) executeTurn(
-	ctx context.Context,
-	sess biz.Session,
-	input biz.TurnInput,
-	ag biz.Agent,
-	admit turnAdmissionResult,
-	emitter *event.TraceEmitter,
-	traceBridge *turntrace.Bridge,
-	deps chatagent.TRPCBuilderDeps,
-	runner trpcrunner.Runner,
-	attachmentRefs []artifactbiz.Ref,
-	intentRunOpts []trpcagent.RunOption,
-	turnStart time.Time,
-) (turnExecuteResult, error) {
-	// Step 1: Build user options (with attachments, no intent pass — it ran in parallel with BUILD)
-	userOpts, err := o.prepareTurnUserOptions(ctx, input, ag, admit, emitter, attachmentRefs, sess)
-	if err != nil {
-		return turnExecuteResult{}, err
-	}
-	attN := len(attachmentRefs)
-
-	// Step 2: Persist user message
-	userMsg, userMsgPersisted, err := o.persistTurnUserMessage(ctx, input, ag, admit, emitter, userOpts, attN)
-	if err != nil {
-		return turnExecuteResult{}, err
-	}
-
-	// Step 3: Session run lifecycle + run options + LLM call + stream
-	return o.invokeTurnLLMAndStream(ctx, sess, input, ag, admit, emitter, traceBridge, deps, runner,
-		userMsg, userMsgPersisted, userOpts, intentRunOpts, turnStart)
-}
 
 // prepareTurnUserOptions builds user options with attachment merge.
 // Intent Pass has been moved to run in parallel with BUILD (see runSingleAgentViaTRPC).
@@ -313,8 +206,9 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 	// notice/confirm Activities via biz.ActivityEmitterFromContext during the
 	// LLM call. The same projector is reused in consumeTurnStream to avoid
 	// races between early emissions and Reset() in newTurnStreamConsumer.
-	if o.activityWriter() != nil && o.td().Pipeline.ActivityBus != nil {
-		ap := chatagent.NewActivityProjector(o.td().Pipeline.ActivityBus, o.activityWriter(), o.lg())
+	if o.activityUpserter() != nil && o.td().Pipeline.ActivityBus != nil {
+		categorizer := chatagent.NewToolCategorizerFromCatalog(ctx, o.td().ReadDeps.Tools)
+		ap := chatagent.NewActivityProjector(o.td().Pipeline.ActivityBus, o.activityUpserter(), o.lg(), categorizer)
 		ap.Reset() // initialize maps; subsequent Reset() in newTurnStreamConsumer is a no-op
 		earlyMeta := chatagent.ProjectMeta{
 			SessionID:        sessionID,
@@ -328,7 +222,7 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 			Source:           event.EnvelopeSourceFromContext(runCtx),
 			TaskContent:      content,
 		}
-		ap.OnTurnStart(runCtx, earlyMeta)
+		runCtx = ap.OnTurnStart(runCtx, earlyMeta)
 		runCtx = biz.WithActivityEmitter(runCtx, ap)
 	}
 
@@ -630,7 +524,7 @@ func (o *ChatOrchestrator) consumeTurnStream(
 		TaskContent: userContent,
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
-	streamOpts := NewChatStreamConsumeOptions(o.td().ReadDeps.ToolUC, o.td().ReadDeps.Agents, o.activityWriter(), o.td().Pipeline.ActivityBus, o.lg())
+	streamOpts := NewChatStreamConsumeOptions(o.td().ReadDeps.ToolUC, o.td().ReadDeps.Tools, o.td().ReadDeps.Agents, o.activityUpserter(), o.td().Pipeline.ActivityBus, o.lg())
 	// N-21/N-03: Reuse the ActivityProjector injected in invokeTurnLLMAndStream
 	// so that emissions from plugins/hooks (which fire during invokeLLMCall)
 	// are visible to the stream consumer. This avoids a race where Reset() in
@@ -703,81 +597,8 @@ func (o *ChatOrchestrator) handleStreamError(
 }
 
 // ────────────────────────────────────────────────────────────
-// PERSIST phase
+// PERSIST phase helpers (called by turnPipeline.persistTurn)
 // ────────────────────────────────────────────────────────────
-
-// persistTurn handles timeout degradation, empty reply detection, and message persistence.
-// Stability:internal
-func (o *ChatOrchestrator) persistTurn(
-	ctx *context.Context,
-	sess biz.Session,
-	ag biz.Agent,
-	admit turnAdmissionResult,
-	execResult turnExecuteResult,
-	emitter *event.TraceEmitter,
-	turnStart time.Time,
-	turnStatus *string,
-	turnErr *error,
-	turnErrMsg *string,
-) (turnPersistResult, error) {
-	sessionID := strings.TrimSpace(execResult.userMsg.SessionID)
-	result := execResult.result
-
-	// Timeout degradation: has content but turn deadline actually exceeded.
-	// ctx.Err() != nil alone is insufficient — stream completion, HTTP request
-	// end, or framework cancel all set ctx.Err without a real timeout. Only
-	// DeadlineExceeded indicates the turn timeout actually fired.
-	if errors.Is((*ctx).Err(), context.DeadlineExceeded) && result.HasContent {
-		*turnStatus = "timeout_degraded"
-		emitter.LogWarn("chat.turn.timeout_with_reply", "对话超时但模型已输出，保存回复", "", event.P("timeout", o.turnTimeout().String()), event.P("reply_len", result.Reply.Len()))
-		bgCtx, bgCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer bgCancel()
-		*ctx = bgCtx
-	}
-
-	// Empty reply detection
-	displayMarkdown, reasoningAsDisplay := chatagent.DisplayMarkdownFromStream(result)
-	if displayMarkdown == "" {
-		return turnPersistResult{}, o.handleEmptyReply(*ctx, ag, admit, emitter, result, turnStart, turnStatus, turnErr, turnErrMsg, sessionID)
-	}
-
-	// Pass user content as inputPreview so prompt token estimation works when the
-	// model omits usage. Previously passed "" which suppressed estimation and caused
-	// the buggy fallback to estimate prompt from output (prompt≈completion tokens).
-	promptTok, completionTok := chatagent.EstimateTokensIfMissing(execResult.resultPromptTok, execResult.resultCompletionTok, strings.TrimSpace(execResult.userMsg.ContentMarkdown), displayMarkdown)
-
-	// usage_source observability: log when tokens came from estimation or were missing.
-	// Helps diagnose TECH-DEBT(usage-source): framework suppresses usage on stream error
-	// (pkg/trpc-agent-go/model/openai/openai.go:emitStreamingFinalResponse), leaving
-	// UsageSource="" and tokens=0 until EstimateTokensIfMissing fills them.
-	usageSource := execResult.result.UsageSource
-	if promptTok != execResult.resultPromptTok || completionTok != execResult.resultCompletionTok {
-		usageSource = "estimated"
-	}
-	if usageSource == "" || usageSource == "estimated" {
-		emitter.LogDone("chat.turn.usage_source",
-			"token 使用来源追踪",
-			event.P("usage_source", usageSource),
-			event.P("prompt_tok", promptTok),
-			event.P("completion_tok", completionTok),
-			event.P("has_error", execResult.result.HasError))
-	}
-
-	// Build and persist assistant message
-	assistantMsg, err := o.buildAndPersistAssistantMessage(*ctx, ag, admit, execResult, emitter, displayMarkdown, reasoningAsDisplay, promptTok, completionTok, turnStatus, turnErr, turnErrMsg)
-	if err != nil {
-		return turnPersistResult{}, err
-	}
-
-	emitter.LogDone("chat.assistant_msg_persist", "助手消息已持久化", event.P("reply_len", len(displayMarkdown)))
-	o.patchSessionContextUsage(*ctx, sessionID, sess, ag, admit.provider, admit.model, promptTok, completionTok)
-
-	return turnPersistResult{
-		assistantMsg:  assistantMsg,
-		promptTok:     promptTok,
-		completionTok: completionTok,
-	}, nil
-}
 
 // handleEmptyReply records an empty reply error and returns it.
 // Stability:internal

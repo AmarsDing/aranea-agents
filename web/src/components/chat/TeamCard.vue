@@ -1,5 +1,5 @@
 <template>
-  <div class="team-card" :class="`team-card--${activity.status}`">
+  <div class="team-card" :class="[`team-card--${activity.status}`, { 'team-card--expanded': expanded }]">
     <div class="team-card__row">
       <!-- Header (20%) — vertical 1:1:1: team name / task name / created time -->
       <div class="team-card__header" @click="toggleExpand">
@@ -19,14 +19,16 @@
             :key="member.agentKey"
             class="team-card__member"
             :class="`team-card__member--${member.status}`"
-            :title="t('chat.teamStage.expandMember', { name: member.agentName || member.agentKey })"
+            :title="t('chat.teamStage.expandMember', { name: memberDisplayName(member) })"
             @click.stop="onMemberClick(member)"
           >
             <span class="team-card__member-avatar">{{ memberInitial(member) }}</span>
-            <span class="team-card__member-name">{{ member.agentName || member.agentKey }}</span>
+            <span class="team-card__member-name">{{ memberDisplayName(member) }}</span>
             <span v-if="member.status === 'running'" class="team-card__member-dot team-card__member-dot--running" />
             <span v-else-if="member.status === 'completed'" class="team-card__member-mark">✓</span>
-            <span v-else-if="member.status === 'failed'" class="team-card__member-mark team-card__member-mark--fail">✗</span>
+            <span v-else-if="member.status === 'failed'" class="team-card__member-mark team-card__member-mark--fail"
+              >✗</span
+            >
           </span>
         </div>
         <div v-else class="team-card__members team-card__members--empty">
@@ -46,11 +48,27 @@
         </div>
       </div>
 
-      <!-- Footer (20%) — cancel/retry buttons (B.4.1/B.5.2: cancel + retry only) -->
+      <!-- Footer (20%) — pause/resume + cancel/retry buttons (B.4.1/B.5.3) -->
       <div class="team-card__footer">
         <div class="team-card__actions">
           <button
-            v-if="activity.status === 'running'"
+            v-if="showPauseButton"
+            class="team-card__action team-card__action--pause"
+            @click.stop="$emit('pause-team', activity.teamId || '')"
+          >
+            <q-icon name="pause" size="12px" class="q-mr-xs" />
+            {{ t('chat.teamStage.pause') }}
+          </button>
+          <button
+            v-else-if="showResumeButton"
+            class="team-card__action team-card__action--resume"
+            @click.stop="$emit('unpause-team', activity.teamId || '')"
+          >
+            <q-icon name="play_arrow" size="12px" class="q-mr-xs" />
+            {{ t('chat.teamStage.resume') }}
+          </button>
+          <button
+            v-if="showCancelButton"
             class="team-card__action team-card__action--cancel"
             @click.stop="$emit('cancel-team', activity.teamId || '')"
           >
@@ -70,6 +88,24 @@
       </div>
     </div>
 
+    <!-- Inject dialog (B.5.3) — visible only when running or paused -->
+    <div v-if="showInjectDialog" class="team-card__inject">
+      <input
+        v-model="injectMessage"
+        type="text"
+        class="team-card__inject-input"
+        :placeholder="t('chat.teamStage.injectPlaceholder')"
+        @keyup.enter="onInject"
+      />
+      <button
+        class="team-card__inject-send"
+        :disabled="!injectMessage.trim()"
+        @click.stop="onInject"
+      >
+        <q-icon name="send" size="12px" />
+      </button>
+    </div>
+
     <!-- Expanded detail (children rendered by recursive ActivityStream via slot) -->
     <div v-if="expanded" class="team-card__detail">
       <slot />
@@ -81,31 +117,121 @@
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { TeamStageEvent, TeamMemberStatus } from '../../features/chat/streamEventTypes';
+import type { RunStatusValue } from '../../features/chat/types';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 import { nameInitial } from '../../features/spirit/spiritUi';
 
 const props = defineProps<{
   activity: TeamStageEvent;
+  /** P1#1: agent key → display name lookup. */
+  agentMap?: Map<string, { displayName: string; agentKey: string }>;
+  /** P1#3: parent run status to gate cancel button visibility. */
+  runStatus?: RunStatusValue;
 }>();
 
 const emit = defineEmits<{
   'expand-member': [payload: { agentKey: string; agentName?: string; teamId?: string }];
   'cancel-team': [teamId: string];
   'retry-team': [teamId: string];
+  // B.5.3: pause/unpause/inject events for team run lifecycle control.
+  'pause-team': [teamId: string];
+  'unpause-team': [teamId: string];
+  'inject-team': [payload: { teamId: string; message: string }];
+  // T5.2 / §B.7.2: Fired when the team-card expands so the parent can
+  // lazy-load each member's worker session activities. Payload is the list
+  // of member session_ids (worker sessions) — already cached sessions are
+  // skipped by `ensureActivitiesLoaded` (T5.4).
+  expand: [sessionIds: string[]];
 }>();
 
 const { t } = useI18n();
 
-// === Collapse state (B.4.5: running default expanded, terminal default collapsed) ===
-// User intent priority: once toggled, status changes do not override.
-const expanded = ref(props.activity.status === 'running');
+// === Collapse state (B.4.5: team-card 始终默认折叠，含 running 与终态) ===
+// 设计依据：多个 team 同时展示时默认折叠（高度 100px）让用户聚焦于当前关注的 team；
+// 用户点击 header 可展开查看完整进度与成员。用户手动展开/折叠后状态由用户掌控，
+// 不被状态变化自动覆盖（用户意图优先）。
+const expanded = ref(false);
+
+// === Inject dialog state (B.5.3) ===
+const injectMessage = ref('');
 
 function toggleExpand() {
   expanded.value = !expanded.value;
+  // T5.2: On expand, request lazy-load of member worker sessions.
+  if (expanded.value) {
+    const sessionIds = (props.activity.members ?? [])
+      .map((m) => m.session_id)
+      .filter((id): id is string => Boolean(id));
+    if (sessionIds.length > 0) {
+      emit('expand', sessionIds);
+    }
+  }
+}
+
+function onInject() {
+  const message = injectMessage.value.trim();
+  if (!message || !props.activity.teamId) return;
+  emit('inject-team', { teamId: props.activity.teamId, message });
+  injectMessage.value = '';
 }
 
 // === Derived display values (all from props, no store dependency — red line #1) ===
 const hasMembers = computed(() => Boolean(props.activity.members?.length));
+
+// B.5.3: pause button visible when running and parent run allows cancel.
+const showPauseButton = computed(
+  () =>
+    props.activity.status === 'running' &&
+    props.runStatus === 'running' &&
+    Boolean(props.activity.teamId),
+);
+
+// B.5.3: resume button visible when paused (regardless of parent run status,
+// since paused is a self-contained state).
+const showResumeButton = computed(
+  () => props.activity.status === 'paused' && Boolean(props.activity.teamId),
+);
+
+// B.5.3: cancel button visible when running or paused (user can cancel from
+// either state). Failed state shows retry instead.
+const showCancelButton = computed(
+  () =>
+    (props.activity.status === 'running' || props.activity.status === 'paused') &&
+    Boolean(props.activity.teamId),
+);
+
+// B.5.3: inject dialog visible when running or paused.
+const showInjectDialog = computed(
+  () =>
+    (props.activity.status === 'running' || props.activity.status === 'paused') &&
+    Boolean(props.activity.teamId),
+);
+
+function memberDisplayName(member: TeamMemberStatus): string {
+  if (member.agentName) return member.agentName;
+  const fromStore = props.agentMap?.get(member.agentKey)?.displayName;
+  if (fromStore) return fromStore;
+  return readableAgentKey(member.agentKey);
+}
+
+function readableAgentKey(key: string): string {
+  return key
+    .replace(/^agent___?/, '')
+    .replace(/_/g, ' ')
+    .trim();
+}
+
+function memberInitial(member: TeamMemberStatus): string {
+  return nameInitial(memberDisplayName(member));
+}
+
+function onMemberClick(member: TeamMemberStatus) {
+  emit('expand-member', {
+    agentKey: member.agentKey,
+    agentName: memberDisplayName(member),
+    teamId: props.activity.teamId,
+  });
+}
 
 const displayTeamName = computed(() => {
   if (props.activity.title) return props.activity.title;
@@ -160,6 +286,8 @@ const statusText = computed(() => {
   switch (props.activity.status) {
     case 'running':
       return t('chat.teamStage.executing');
+    case 'paused':
+      return t('chat.teamStage.paused');
     case 'completed':
       return t('chat.teamStage.completed');
     case 'failed':
@@ -175,6 +303,8 @@ const statusColor = computed(() => {
   switch (props.activity.status) {
     case 'running':
       return 'blue';
+    case 'paused':
+      return 'orange';
     case 'completed':
       return 'green';
     case 'failed':
@@ -185,18 +315,6 @@ const statusColor = computed(() => {
       return 'grey';
   }
 });
-
-function memberInitial(member: TeamMemberStatus): string {
-  return nameInitial(member.agentName || member.agentKey);
-}
-
-function onMemberClick(member: { agentKey: string; agentName?: string }) {
-  emit('expand-member', {
-    agentKey: member.agentKey,
-    agentName: member.agentName,
-    teamId: props.activity.teamId,
-  });
-}
 </script>
 
 <style lang="sass" scoped>
@@ -206,9 +324,16 @@ function onMemberClick(member: { agentKey: string; agentName?: string }) {
   border: 1px solid var(--glass-border)
   padding: 8px 10px
   transition: border-color 0.15s ease
+  // 用户指令：团队面板高度 100px，默认折叠。折叠态限制 100px 高度并隐藏溢出，
+  // 展开态（expanded）解除高度限制以显示完整成员列表与子活动。
+  &:not(.team-card--expanded)
+    max-height: 100px
+    overflow: hidden
 
   &--running
     border-color: color-mix(in srgb, var(--color-accent) 40%, var(--glass-border))
+  &--paused
+    border-color: color-mix(in srgb, var(--color-warning, #f39c12) 40%, var(--glass-border))
   &--failed
     border-color: color-mix(in srgb, var(--color-danger) 40%, var(--glass-border))
   &--cancelled
@@ -355,6 +480,8 @@ function onMemberClick(member: { agentKey: string; agentName?: string }) {
 
     &--blue
       color: var(--color-accent)
+    &--orange
+      color: var(--color-warning, #f39c12)
     &--green
       color: var(--color-success)
     &--red
@@ -416,6 +543,63 @@ function onMemberClick(member: { agentKey: string; agentName?: string }) {
       background: color-mix(in srgb, var(--color-accent) 15%, transparent)
       color: var(--color-accent)
       border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)
+
+    &--pause
+      background: color-mix(in srgb, var(--color-warning, #f39c12) 15%, transparent)
+      color: var(--color-warning, #f39c12)
+      border: 1px solid color-mix(in srgb, var(--color-warning, #f39c12) 40%, transparent)
+
+    &--resume
+      background: color-mix(in srgb, var(--color-accent) 15%, transparent)
+      color: var(--color-accent)
+      border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)
+
+  // === Inject dialog (B.5.3) ===
+  &__inject
+    display: flex
+    gap: 6px
+    align-items: center
+    margin-top: 6px
+    padding: 4px 0
+    border-top: 1px dashed var(--glass-border)
+
+  &__inject-input
+    flex: 1
+    min-width: 0
+    background: var(--glass-surface)
+    border: 1px solid var(--glass-border)
+    border-radius: 4px
+    padding: 4px 8px
+    font-size: 11px
+    color: var(--color-text-primary)
+    outline: none
+    transition: border-color 0.12s ease
+
+    &:focus
+      border-color: var(--color-accent)
+
+    &::placeholder
+      color: var(--color-text-tertiary)
+
+  &__inject-send
+    flex-shrink: 0
+    border: none
+    border-radius: 4px
+    padding: 4px 8px
+    background: var(--color-accent)
+    color: white
+    cursor: pointer
+    transition: opacity 0.12s ease
+    display: inline-flex
+    align-items: center
+    justify-content: center
+
+    &:hover:not(:disabled)
+      opacity: 0.85
+
+    &:disabled
+      opacity: 0.4
+      cursor: not-allowed
 
   // === Expanded detail ===
   &__detail

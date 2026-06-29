@@ -57,6 +57,7 @@ const (
 	ActivityStatusPartialFailure ActivityStatus = "partial_failure"
 	ActivityStatusCancelled      ActivityStatus = "cancelled"
 	ActivityStatusInterrupted    ActivityStatus = "interrupted"
+	ActivityStatusPaused         ActivityStatus = "paused"
 )
 
 // Activity is the domain model for a projected semantic unit.
@@ -77,6 +78,7 @@ type Activity struct {
 	Timestamp        time.Time      `json:"timestamp"`
 	DurationMs       int64          `json:"duration_ms"`
 	Seq              int64          `json:"seq"` // Global emission sequence for stable frontend ordering
+	Version          int64          `json:"version"` // Monotonic version for ordered upserts of the same activity
 
 	// Token usage (kind=task, root Activity only)
 	PromptTokens     int64 `json:"prompt_tokens"`
@@ -129,13 +131,18 @@ type ActivityPlanStep struct {
 	DependsOn []string       `json:"dependsOn,omitempty"`
 }
 
-// ActivityReader provides read access to Activity records.
+// ActivityReader provides single-session read access to Activity records.
 // Stability:evolving
 type ActivityReader interface {
 	ListBySessionTurn(ctx context.Context, sessionID, turnID string) ([]Activity, error)
 	ListBySession(ctx context.Context, sessionID string) ([]Activity, error)
 	GetActivity(ctx context.Context, id string) (Activity, error)
+}
 
+// ActivityTreeReader provides cross-session read access to Activity records
+// (spirit session tree, team scope, parent-child session tree).
+// Stability:evolving
+type ActivityTreeReader interface {
 	// ListBySpiritSession returns all activities under a spirit session tree
 	// (across team/agent sub-sessions). Uses spirit_session_id index.
 	ListBySpiritSession(ctx context.Context, spiritSessionID string) ([]Activity, error)
@@ -148,11 +155,16 @@ type ActivityReader interface {
 	ListByParentSession(ctx context.Context, parentSessionID string) ([]Activity, error)
 }
 
-// ActivityWriter provides write access to Activity records.
+// ActivityWriter provides create/update access to Activity records.
 // Stability:evolving
 type ActivityWriter interface {
 	CreateActivity(ctx context.Context, a Activity) (Activity, error)
 	UpdateActivity(ctx context.Context, a Activity) (Activity, error)
+}
+
+// ActivityUpserter provides idempotent upsert access to Activity records.
+// Stability:evolving
+type ActivityUpserter interface {
 	UpsertActivity(ctx context.Context, a Activity) (Activity, error)
 }
 
@@ -160,7 +172,9 @@ type ActivityWriter interface {
 // Stability:evolving
 type ActivityRepo interface {
 	ActivityReader
+	ActivityTreeReader
 	ActivityWriter
+	ActivityUpserter
 }
 
 // ActivityConfirmParams holds parameters for creating a confirm Activity.

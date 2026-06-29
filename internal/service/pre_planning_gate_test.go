@@ -127,8 +127,10 @@ func TestPrePlanningGate_Evaluate(t *testing.T) {
 				if published[1].Event != biz.ActivityEventCompleted {
 					t.Errorf("last event = %s, want %s", published[1].Event, biz.ActivityEventCompleted)
 				}
-				if published[0].Activity.Kind != biz.ActivityKindPlan {
-					t.Errorf("first activity kind = %s, want %s", published[0].Activity.Kind, biz.ActivityKindPlan)
+				// B.4.3: pre-planning assess phase renders as NoticeBlock (Kind=notice),
+				// not PlanBlock (Kind=plan), to avoid "UI 提前占位" before real plan arrives.
+				if published[0].Activity.Kind != biz.ActivityKindNotice {
+					t.Errorf("first activity kind = %s, want %s", published[0].Activity.Kind, biz.ActivityKindNotice)
 				}
 			}
 		})

@@ -51,7 +51,8 @@ func newTurnStreamConsumer(
 	if opts != nil && opts.ActivityProjector != nil {
 		opts.ActivityProjector.Configure(projectMeta, opts.MetaResolver)
 		opts.ActivityProjector.Reset()
-		opts.ActivityProjector.OnTurnStart(turnCtx, projectMeta)
+		turnCtx = opts.ActivityProjector.OnTurnStart(turnCtx, projectMeta)
+		c.turnCtx = turnCtx
 	}
 	return c
 }
@@ -63,10 +64,10 @@ func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) EventStream
 		evIdx++
 		if !c.canceled && c.turnCtx.Err() != nil {
 			c.canceled = true
-			c.lg.With(loggateway.StepID("stream.consume_exit")).Info("stream consume: turnCtx canceled, draining critical events",
+			c.lg.With(loggateway.StepID("stream.consume_exit")).Info("stream consume: turnCtx canceled, draining important events",
 				loggateway.Any("ev_count", evIdx))
 			// Do NOT return immediately — continue draining to ensure
-			// Critical events (ToolResult, RunnerCompletion, StateDelta)
+			// Important events (ToolResult, Error, RunnerCompletion)
 			// are projected and published before exiting.
 		}
 		if ev == nil {
@@ -95,10 +96,10 @@ func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) EventStream
 			loggateway.Any("author", ev.Author))
 		c.markFirstByte(ev)
 		if c.firstByteCtx.Err() != nil && !c.received {
-			c.lg.With(loggateway.StepID("stream.first_byte_timeout")).Info("stream consume: firstByte timeout, draining critical events",
+			c.lg.With(loggateway.StepID("stream.first_byte_timeout")).Info("stream consume: firstByte timeout, draining important events",
 				loggateway.Any("ev_count", evIdx))
-			// Do NOT return immediately — drain critical events (ToolResult, RunnerCompletion,
-			// StateDelta) just like the turnCtx cancel path, to prevent resource leaks and
+			// Do NOT return immediately — drain Important events (ToolResult, Error, RunnerCompletion)
+			// just like the turnCtx cancel path, to prevent resource leaks and
 			// ensure the frontend receives terminal signals.
 			c.canceled = true
 		}

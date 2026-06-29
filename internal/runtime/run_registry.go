@@ -85,6 +85,7 @@ type RunRegistry struct {
 	pendingCancels cancelMap
 	runStatuses    statusMap
 	lg             loggateway.Logger
+	cancelMu       sync.Mutex // serializes Cancel/Finish to prevent double-close races
 }
 
 func NewRunRegistry() *RunRegistry {
@@ -160,6 +161,8 @@ func (r *RunRegistry) Finish(sessionID string) {
 	if r == nil {
 		return
 	}
+	r.cancelMu.Lock()
+	defer r.cancelMu.Unlock()
 	r.activeRuns.Delete(sessionID)
 	r.runStatuses.delete(sessionID)
 	r.pendingCancels.delete(sessionID)
@@ -183,31 +186,58 @@ func (r *RunRegistry) Cancel(sessionID, reason string) (bool, string) {
 	if r == nil {
 		return false, ""
 	}
+	r.cancelMu.Lock()
+	defer r.cancelMu.Unlock()
+
+	// Drain pending cancel func (if any) before touching the active run.
 	if cancelFn, ok := r.pendingCancels.loadAndDelete(sessionID); ok {
 		cancelFn()
 	}
+
+	// Load the run; if already gone (finished or cancelled by a concurrent
+	// Cancel), there is nothing to do.
 	run, ok := r.activeRuns.Load(sessionID)
 	if !ok {
 		return false, ""
 	}
+
+	// Path 1: context.CancelFunc present (chat/team turns). Invoke once and
+	// delete the entry so subsequent Cancel calls are no-ops.
 	if run.cancel != nil {
 		run.cancel()
 		r.SetStatus(sessionID, run.runID, biz.SessionRunPhaseCancelled, "")
+		// Double-check the active run is still the one we cancelled; a
+		// concurrent Finish or a new StoreRunner may have replaced it.
 		if current, ok := r.activeRuns.Load(sessionID); ok && current.runID == run.runID {
 			r.activeRuns.Delete(sessionID)
 		}
 		return true, run.runID
 	}
+
+	// Path 2: placeholder or no runner — nothing to cancel.
 	if run.placeholder || run.runner == nil {
 		return false, ""
 	}
+
+	// Path 3: ManagedRunner.Cancel — idempotent within the registry because we
+	// delete the entry immediately after a successful cancel.
 	if mr, ok := run.runner.(trpcrunner.ManagedRunner); ok && mr.Cancel(sessionID) {
+		r.SetStatus(sessionID, run.runID, biz.SessionRunPhaseCancelled, "")
+		// Double-check the run is still the same before deleting.
+		if current, ok := r.activeRuns.Load(sessionID); ok && current.runID == run.runID {
+			r.activeRuns.Delete(sessionID)
+		}
 		return true, run.runID
+	}
+
+	// Path 4: fallback to Close. Delete first so concurrent callers see the
+	// run is gone and skip Close.
+	if current, ok := r.activeRuns.Load(sessionID); ok && current.runID == run.runID {
+		r.activeRuns.Delete(sessionID)
 	}
 	if err := run.runner.Close(); err != nil && r.lg != nil {
 		r.lg.Warn("runner close error during cancel", loggateway.SessionID(sessionID), loggateway.Err(err))
 	}
-	r.activeRuns.Delete(sessionID)
 	return true, run.runID
 }
 

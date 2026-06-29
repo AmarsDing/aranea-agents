@@ -651,7 +651,7 @@ Team 团队历史显示是 Chat UI 的核心子模块，负责在精灵对话中
 | `internal/team/team_graph_run_coordinator.go` | Team Graph 协调器（team_stage 事件） | ✅ 已修复 |
 | `internal/team/team_graph_run_finisher.go` | Team Graph 完成事件（含 run.SpiritSessionID 回填） | ✅ 已修复 |
 | `internal/team/runner_team_turn.go` | Team turn 事件 | ✅ 已修复 |
-| `internal/team/runner_helpers.go` | publishTeamRunFailedActivity/publishTeamStepActivity 读取 run.SpiritSessionID | ✅ 已修复 |
+| `internal/team/runner_helpers.go` | publishTeamRunFailedActivity（team_stage/failed）+ publishTeamStepActivity（session/executing|completed，携带 AgentName + meta.child_session_id，Phase T6.3+T6.4 修复） | ✅ 已修复 |
 | `internal/team/summary.go` | TeamSummaryActivityEvent 读取 run.SpiritSessionID | ✅ 已修复 |
 | `internal/team/status_projector.go` | OrchestrationProjectorConfig 新增 SpiritSessionID 字段 | ✅ 已修复 |
 | `internal/team/runner_team_observer.go` | startObservers 设置 SpiritSessionID | ✅ 已修复 |
@@ -676,12 +676,13 @@ Team 团队历史显示是 Chat UI 的核心子模块，负责在精灵对话中
 
 | 文件 | 职责 | 状态 |
 |------|------|------|
-| `web/src/components/chat/ActivityStream.vue` | Activity 统一渲染器 | ⚠️ 需增加 TeamCard/AgentCard 分支 |
-| `web/src/components/chat/TeamStageBlock.vue` | 现有 team_stage 渲染 | ❌ 待替换为 TeamCard.vue |
-| `web/src/components/chat/AgentCard.vue` | AgentCard 组件（subagent_spawn 用） | ❌ 待新增 |
-| `web/src/components/chat/TeamCard.vue` | TeamCard 组件 | ❌ 待新增 |
+| `web/src/components/chat/ActivityStream.vue` | Activity 统一渲染器（含 silent tool 过滤、空 thinking 过滤） | ✅ 已修复（P0/P1） |
+| `web/src/components/chat/TeamStageBlock.vue` | 现有 team_stage 渲染 | ⚠️ 待替换为 TeamCard.vue |
+| `web/src/components/chat/AgentCard.vue` | AgentCard 组件（系统 agentKey 显示系统状态、按钮可见性控制） | ✅ 已修复（P0） |
+| `web/src/components/chat/TeamCard.vue` | TeamCard 组件（成员名 display_name 查询、按钮可见性控制） | ✅ 已修复（P0） |
 | `web/src/components/chat/PlanBlock.vue` | PlanBlock 组件 | ⚠️ 需增加折叠/初始渲染摘要 |
-| `web/src/features/chat/composables/useActivityTimeline.ts` | Activity 时间线 + compareActivities | ⚠️ 需移除 seq 排序逻辑 |
+| `web/src/features/chat/composables/useActivityTimeline.ts` | Activity 时间线 + compareActivities（kind 优先级排序） | ✅ 已修复（P1） |
+| `web/src/features/chat/composables/useChatMessageScroll.ts` | 自动滚动（rAF 节流 + final reply 触发） | ✅ 已修复（P1） |
 | `web/src/stores/spirit/index.ts` | Spirit Store（含 spiritTeam 状态） | ⚠️ 需适配新设计 |
 | `web/src/features/chat/api.ts` | API 调用 | ⚠️ 需新增 inject/pause/resume/retry API |
 
@@ -690,14 +691,21 @@ Team 团队历史显示是 Chat UI 的核心子模块，负责在精灵对话中
 | 项 | 状态 | 证据 |
 |----|------|------|
 | Activity-First 架构 | ✅ | ActivityStream.vue 递归渲染，按 kind 分发 |
-| 单 publish worker | ✅ | activity_event_sequencer.go 保证顺序 |
+| 单 publish worker | ✅ | activity_event_sequencer.go 保证顺序 + 单调 Version |
 | GlobalSeqAllocator | ❌ 过度设计 | 需移除，用 Timestamp 排序 |
 | Team/Graph 事件 SpiritSessionID | ✅ 已修复 | T1.2/T1.3/T1.3.1 完成，包含 helper/summary/projector/topology_evolution/pre_planning_gate 站点 |
-| TeamCard 组件 | ❌ 不存在 | 需新增 |
-| AgentCard 组件 | ❌ 不存在 | 需新增 |
+| TeamCard 组件 | ✅ 已修复 | 成员名 display_name 查询、按钮可见性控制（P0） |
+| AgentCard 组件 | ✅ 已修复 | 系统 agentKey 显示系统状态、按钮可见性控制（P0） |
 | PlanBlock 折叠 | ❌ 未实现 | 需新增 |
 | 子 session 懒加载 | ⚠️ 部分 | useActivityTimeline 有 ensureActivitiesLoaded，需适配 |
 | MaxSessionDepth 配置 | ✅ 已存在 | AgentRuntimeSetting.MaxSessionDepth |
+| ToolCategorizer 注入 | ✅ 已修复 | 生产路径注入 NewToolCategorizerFromCatalog（P0） |
+| RunRegistry.Cancel 竞态 | ✅ 已修复 | cancelMu 串行化 + double-check active run（P0） |
+| 系统 status 事件 kind | ✅ 已修复 | run_status_publish/run_heartbeat 改为 ActivityKindNotice（P0）；orchestration_started/checkpoint/interrupted、teams_all_completed、synthesis_completed、message_queued、await_resumed、graph checkpoint 事件从 ActivityKindSession 改为 ActivityKindNotice（P0-5） |
+| AgentCard isSystemAgentKey | ✅ 已修复 | 移除 agent___ 前缀误判（agent___ 是团队成员正常前缀，非系统 agent）（P0-7） |
+| TeamCard/AgentCard 取消按钮 | ✅ 已修复 | 增加 childSessionId/teamId 存在性检查，避免无目标取消（P0-8） |
+| 自动滚动 | ✅ 已修复 | useChatMessageScroll rAF 节流 + final reply 触发（P1） |
+| TeamRun 显式状态机 | ✅ 已新增 | team_run_state_machine.go（AS-FSM-01，P2） |
 
 ### C.4 Phase 划分
 
@@ -707,18 +715,18 @@ Team 团队历史显示是 Chat UI 的核心子模块，负责在精灵对话中
 
 | 任务 | 文件 | 状态 |
 |------|------|------|
-| T1.1 移除 GlobalSeqAllocator | `internal/biz/activity_seq.go` + 引用处 | ⏳ |
+| T1.1 移除 GlobalSeqAllocator | `internal/biz/activity_seq.go` + 引用处 | ✅ |
 | T1.2 修复 Team 事件 SpiritSessionID 填充 | `internal/team/runner_team_trpc_phases.go`、`internal/team/team_graph_run_coordinator.go`、`internal/team/team_graph_run_finisher.go`、`internal/team/runner_team_turn.go`、`internal/team/runner_helpers.go`、`internal/team/summary.go`、`internal/team/status_projector.go`、`internal/team/runner_team_observer.go`、`internal/biz/team_types.go` | ✅ |
 | T1.3 修复 Graph 事件 SpiritSessionID 填充 | `internal/graph/trpc/event_bridge.go`、`internal/graph/runtime_replanner.go`、`internal/graph/topology_evolution.go`、`internal/graph/adapter/runtime_adapter.go`、`internal/biz/graph_runtime.go`、`internal/biz/graph_execution_usecase.go`、`internal/biz/graph.go`、`internal/team/runner_mediator.go`、`internal/team/runner_team_compiler.go`、`internal/team/team_graph_run_context.go` | ✅ |
 | T1.3.1 Spirit 生成 plan 事件 SpiritSessionID 填充（Spirit 直接运行场景，SpiritSessionID = SessionID） | `internal/service/pre_planning_gate.go` | ✅ |
-| T1.4 Activity Schema seq 字段保留但停止赋值（不删除字段，避免数据迁移风险；新事件 seq=0） | `internal/data/ent/schema/activity.go` | ⏳ |
-| T1.5 查询排序改为 ORDER BY turn_id, parent_activity_id, timestamp | `internal/data/activity_repo.go` | ⏳ |
+| T1.4 Activity Schema seq 字段保留但停止赋值（不删除字段，避免数据迁移风险；新事件 seq=0） | `internal/data/ent/schema/activity.go` | ✅ |
+| T1.5 查询排序改为 ORDER BY turn_id, parent_activity_id, timestamp | `internal/data/activity_repo.go` | ✅ |
 
 **验收标准**：
-- [ ] GlobalSeqAllocator 已移除，编译通过
+- [x] GlobalSeqAllocator 已移除，编译通过（`internal/biz/activity_seq.go` 已删除，`go build ./...` 通过）
 - [x] Team 事件 SpiritSessionID 已填充（T1.2 完成，包含 helper/summary/projector 站点）
 - [x] Graph 事件 SpiritSessionID 已填充（T1.3 完成，包含 topology_evolution/pre_planning_gate 站点）
-- [ ] 历史加载按 Timestamp 排序正确
+- [x] 历史加载按 Timestamp 排序正确（`activity_repo.go` 5 处查询均使用 `Order(turnID, parentActivityID, timestamp)`）
 
 #### Phase T2: 前端 TeamCard/AgentCard 组件（P0）
 
@@ -726,19 +734,19 @@ Team 团队历史显示是 Chat UI 的核心子模块，负责在精灵对话中
 
 | 任务 | 文件 | 状态 |
 |------|------|------|
-| T2.1 新增 TeamCard.vue 组件 | `web/src/components/chat/TeamCard.vue` | ⏳ |
-| T2.2 新增 AgentCard.vue 组件 | `web/src/components/chat/AgentCard.vue` | ⏳ |
-| T2.3 ActivityStream 增加 team_stage → TeamCard 分支 | `web/src/components/chat/ActivityStream.vue` | ⏳ |
-| T2.4 ActivityStream 增加 session → AgentCard 分支 | `web/src/components/chat/ActivityStream.vue` | ⏳ |
-| T2.5 移除 compareActivities 中的 seq 排序逻辑 | `web/src/features/chat/composables/useActivityTimeline.ts` | ⏳ |
-| T2.6 实现排序改为 Timestamp + parentActivityId | `web/src/features/chat/composables/useActivityTimeline.ts` | ⏳ |
+| T2.1 新增 TeamCard.vue 组件 | `web/src/components/chat/TeamCard.vue` | ✅ |
+| T2.2 新增 AgentCard.vue 组件 | `web/src/components/chat/AgentCard.vue` | ✅ |
+| T2.3 ActivityStream 增加 team_stage → TeamCard 分支 | `web/src/components/chat/ActivityStream.vue` | ✅ |
+| T2.4 ActivityStream 增加 session → AgentCard 分支 | `web/src/components/chat/ActivityStream.vue` | ✅ |
+| T2.5 移除 compareActivities 中的 seq 排序逻辑 | `web/src/features/chat/composables/useActivityTimeline.ts` | ✅ |
+| T2.6 实现排序改为 Timestamp + parentActivityId | `web/src/features/chat/composables/useActivityTimeline.ts` | ✅ |
 
 **验收标准**：
-- [ ] TeamCard 按 布局设计渲染（头部2:中部6:尾部2）
-- [ ] AgentCard 简化版渲染（含补充输入框）
-- [ ] team-card 展开/折叠正常
-- [ ] agent-card 展开/折叠正常
-- [ ] 排序按 Timestamp 正确
+- [x] TeamCard 按 布局设计渲染（头部2:中部6:尾部2）
+- [x] AgentCard 简化版渲染（含补充输入框）
+- [x] team-card 展开/折叠正常（T5.2 新增 `expand` emit）
+- [x] agent-card 展开/折叠正常（T5.3 新增 `expand` emit）
+- [x] 排序按 Timestamp 正确（`compareActivities` 使用 `timestamp` 排序，`parentActivityId` 用于树构建）
 
 #### Phase T3: 交互能力（P1）
 
@@ -750,24 +758,27 @@ Team 团队历史显示是 Chat UI 的核心子模块，负责在精灵对话中
 
 | 任务 | 文件 | 状态 |
 |------|------|------|
-| T3.1 后端新增 RetrySession RPC（cancel 复用现有 StopGeneration） | `api/kratos/chat/v1/chat.proto` + `internal/service/chat.go` + `internal/biz/` | ⏳ |
-| T3.2 前端 spirit/api.ts 新增 cancelAgentSession/retryAgentSession 封装 | `web/src/features/spirit/api.ts` | ⏳ |
+| T3.1 后端新增 RetrySession RPC（cancel 复用现有 StopGeneration） | `api/kratos/chat/v1/chat.proto` + `internal/service/chat.go` + `internal/biz/` | ✅ |
+| T3.2 前端 spirit/api.ts 新增 cancelAgentSession/retryAgentSession 封装 | `web/src/features/spirit/api.ts` | ✅ |
 | T3.3 TeamCard.vue 移除 inject 框，按钮改为 cancel+retry | `web/src/components/chat/TeamCard.vue` | ✅ |
 | T3.4 AgentCard.vue 移除 inject 框，按钮改为 cancel+retry（emit childSessionId） | `web/src/components/chat/AgentCard.vue` | ✅ |
-| T3.5 ActivityStream/ChatMessageList/ChatMessagePanel/ChatPage 接线 | 多文件 | ⏳ |
+| T3.5 ActivityStream/ChatMessageList/ChatMessagePanel/ChatPage 接线 | 多文件 | ✅ |
 
 **API 现状**：
 - Team: cancel ✅（`cancelSpiritTeam`）+ retry ✅（`retrySpiritTeam`）— 已有，直接复用
 - Agent cancel: ✅ 复用现有 `POST /v1/chat/stop`（StopGeneration RPC，body: session_id=childSessionId）
-- Agent retry: ❌ 需新增 `POST /v1/chat/sessions/{session_id}/retry`（RetrySession RPC）
+- Agent retry: ✅ 已新增 `POST /v1/chat/sessions/{session_id}/retry`（RetrySession RPC，[chat.go:146](../../../internal/service/chat.go#L146)）
 
 **验收标准**：
-- [ ] Team running 状态显示"取消"按钮，点击触发 cancelSpiritTeam
-- [ ] Team failed/interrupted 状态显示"重试"按钮，点击触发 retrySpiritTeam
-- [ ] Agent running 状态显示"取消"按钮，点击触发 agent cancel API
-- [ ] Agent failed/interrupted 状态显示"重试"按钮，点击触发 agent retry API
-- [ ] completed/cancelled 状态隐藏按钮
-- [ ] 移除 inject 输入框（team-card + agent-card）
+- [x] Team running 状态显示"取消"按钮，点击触发 cancelSpiritTeam
+- [x] Team failed/interrupted 状态显示"重试"按钮，点击触发 retrySpiritTeam
+- [x] Agent running 状态显示"取消"按钮，点击触发 agent cancel API
+- [x] Agent failed/interrupted 状态显示"重试"按钮，点击触发 agent retry API
+- [x] completed/cancelled 状态隐藏按钮
+- [x] 移除 inject 输入框（team-card + agent-card）
+
+**已知后端缺口**（不在 T3 范围，记录备忘）：
+- ~~AgentCard 的 `enter-session`/`cancel-agent`/`retry-agent` 依赖 `childSessionId`，但后端尚未发射 `child_session_id` meta（B.7.3 后端修复范围之外的影响，需后端补全 AgentCard 子 session 创建逻辑后才能生效）~~ ✅ 已于 Phase T6 修复（`publishTeamStepActivity` 改发 `Kind=Session` 携带 `meta.child_session_id = run.SessionID`，cancel/retry 复用共享 team session）
 
 #### Phase T4: PlanBlock 折叠与状态更新（P1）
 
@@ -775,17 +786,17 @@ Team 团队历史显示是 Chat UI 的核心子模块，负责在精灵对话中
 
 | 任务 | 文件 | 状态 |
 |------|------|------|
-| T4.1 PlanBlock 折叠/展开交互 | `web/src/components/chat/PlanBlock.vue` | ⏳ |
-| T4.2 plan 状态由 team_stage 事件驱动更新 | `web/src/features/chat/composables/useActivityTimeline.ts` | ⏳ |
-| T4.3 初始渲染时若所有 plan item 已完成则自动折叠为摘要（X/N）；运行中变为全部完成不触发自动折叠（用户意图优先） | `web/src/components/chat/PlanBlock.vue` | ⏳ |
-| T4.4 计划变更直接更新 plan 内容（替换 items 列表），不引入 diff 标记 | `web/src/components/chat/PlanBlock.vue` | ⏳ |
+| T4.1 PlanBlock 折叠/展开交互 | `web/src/components/chat/PlanBlock.vue` | ✅ |
+| T4.2 plan 状态由 team_stage 事件驱动更新 | `web/src/features/chat/composables/useActivityTimeline.ts` | ✅ |
+| T4.3 初始渲染时若所有 plan item 已完成则自动折叠为摘要（X/N）；运行中变为全部完成不触发自动折叠（用户意图优先） | `web/src/components/chat/PlanBlock.vue` | ✅ |
+| T4.4 计划变更直接更新 plan 内容（替换 items 列表），不引入 diff 标记 | `web/src/components/chat/PlanBlock.vue` | ✅ |
 
 **验收标准**：
-- [ ] plan 面板支持折叠/展开
-- [ ] 初始渲染时若全部完成则自动折叠为摘要（X/N）
-- [ ] 运行中变为全部完成不触发自动折叠（用户意图优先）
-- [ ] plan 状态由 team_stage 事件驱动更新
-- [ ] 计划变更直接更新 plan 内容（无 diff 标记）
+- [x] plan 面板支持折叠/展开
+- [x] 初始渲染时若全部完成则自动折叠为摘要（X/N）
+- [x] 运行中变为全部完成不触发自动折叠（用户意图优先）
+- [x] plan 状态由 team_stage 事件驱动更新
+- [x] 计划变更直接更新 plan 内容（无 diff 标记）
 
 #### Phase T5: 历史加载懒加载（P1）
 
@@ -793,16 +804,63 @@ Team 团队历史显示是 Chat UI 的核心子模块，负责在精灵对话中
 
 | 任务 | 文件 | 状态 |
 |------|------|------|
-| T5.1 历史加载只加载 spirit 根 session | `web/src/features/chat/composables/useActivityTimeline.ts` | ⏳ |
-| T5.2 team-card 展开时懒加载子 session | `web/src/components/chat/TeamCard.vue` | ⏳ |
-| T5.3 agent-card 展开时懒加载子 session | `web/src/components/chat/AgentCard.vue` | ⏳ |
-| T5.4 已加载子 session 缓存 | `web/src/features/chat/composables/useActivityTimeline.ts` | ⏳ |
+| T5.1 历史加载只加载 spirit 根 session | `web/src/features/chat/composables/useActivityTimeline.ts` | ✅ |
+| T5.2 team-card 展开时懒加载子 session | `web/src/components/chat/TeamCard.vue` | ✅ |
+| T5.3 agent-card 展开时懒加载子 session | `web/src/components/chat/AgentCard.vue` | ✅ |
+| T5.4 已加载子 session 缓存 | `web/src/features/chat/composables/useActivityTimeline.ts` | ✅ |
 
 **验收标准**：
-- [ ] 历史加载只加载 spirit 根 session
-- [ ] team-card 展开时懒加载子 session
-- [ ] agent-card 展开时懒加载子 session
-- [ ] 已加载子 session 缓存，不重复加载
+- [x] 历史加载只加载 spirit 根 session
+- [x] team-card 展开时懒加载子 session
+- [x] agent-card 展开时懒加载子 session
+- [x] 已加载子 session 缓存，不重复加载
+
+**实施说明**：
+- T5.1：`loadActivitiesFromAPI` 仅加载指定 session 的 activities（backend `ListBySession` RPC 按 `session_id` 索引查询，只返回该 session 直接持久化的 activities，不含子 session）。Caller (`ChatPage.onEnterSession` / 初始 session 加载) 只对 spirit 根 session 调用一次。
+- T5.2：`TeamCard.vue` 新增 `expand: [sessionIds: string[]]` emit，在 `toggleExpand` 从 false→true 时 emit 成员 `session_id` 列表。事件经 `ActivityStream → ChatMessageList → ChatMessagePanel → ChatPage.onExpandChildren` 透传到 `useActivityTimeline.ensureActivitiesLoaded`。
+- T5.3：`AgentCard.vue` 对称新增 `expand: [sessionIds: string[]]` emit，在 `toggleExpand` 从 false→true 且 `childSessionId` 存在时 emit `[childSessionId]`。透传路径同 T5.2。
+- T5.4：`ensureActivitiesLoaded` 已有缓存（`if (activitiesBySession.value.has(sessionId)) return;`），重复展开同一 team/agent card 不会触发重复 API 调用。失败不写缓存，下次调用自动重试。
+
+#### Phase T6: Chat UX 8 项问题修复（P0）
+
+**目标**：修复 2026-06-29 用户反馈的 8 项 Chat UI 体验问题（指令滞后/成员名丑/AgentCard 失效/取消无效/进度淹没/顺序错乱/输出卡顿/文档同步）。
+
+| 任务 | 文件 | 状态 |
+|------|------|------|
+| T6.1 notice 不再独立渲染，附加到 task meta（方案 B） | `web/src/components/chat/ActivityStream.vue`、`web/src/features/chat/composables/useActivityTimeline.ts` | ✅ |
+| T6.2 TeamCard 成员名解析：SpiritTeamAssembler 注入 AgentReader，批量查询 DisplayName | `internal/service/spirit_team.go`、`cmd/admin/wire_gen.go` | ✅ |
+| T6.3 AgentCard 显示成员名 + cancel/retry 生效：publishTeamStepActivity 改发 Kind=Session 携带 child_session_id（选项 B：复用 session 事件 + 共享 team session） | `internal/team/runner_helpers.go`、`internal/biz/orchestration_status.go` | ✅ |
+| T6.4 cancel 按钮无效修复（同 T6.3，共享 team session） | 同 T6.3 | ✅ |
+| T6.5 check_progress 标记 silent tool，不再生成 action Activity（方案 A） | `internal/agent/activity_projector.go` | ✅ |
+| T6.6 思考/act/回复顺序：DECISION.md 强制中间回复规则 + AfterTool→BeforeModel 状态注入提示（方案 A+B 组合） | `internal/scenario/system/prompts/DECISION.md`、`internal/agent/reply_reminder_inject.go`、`internal/agent/callback_chain.go` | ✅ |
+| T6.7 输出越来越卡：按 activityId 细粒度响应式重构（方案 B） | `web/src/features/chat/composables/useActivityTimeline.ts` | ✅ |
+| T6.8 文档同步（本节） | `docs/development/1-chat.development.md`、`docs/development/1-chat.design.md` | ✅ |
+
+**验收标准**：
+- [x] 指令 notice 不再独立占位，附加到对应 task 的 meta
+- [x] TeamCard 成员名显示 DisplayName（如"深度研究员"），未解析时回退 agent_key
+- [x] AgentCard 显示成员 DisplayName，不再显示"成员"占位
+- [x] AgentCard cancel 按钮可取消整个 team run（共享 team session 语义）
+- [x] AgentCard retry 按钮可重新入队最近用户消息
+- [x] check_progress 工具调用不污染 Activity 流
+- [x] Agent 执行工具后立即给出中间回复，指明下一步
+- [x] 流式输出不再随消息数线性卡顿
+- [x] 文档与代码同步
+
+**实施说明**：
+- T6.1：`useActivityTimeline.ts` 中 notice 事件不再独立插入 timeline；`ActivityStream.vue` 的 `renderItems` computed 过滤无 `parentActivityId` 的 notice，匹配到时间戳最近的后续 task activity 并附加到其 `meta.notices`。Orphan notice（无匹配 task）回退为独立项以防丢失。
+- T6.2：`SpiritTeamAssembler` 结构体新增 `agentReader biz.AgentReader` 字段，构造函数注入；`publishSpiritTeamAssembled` 循环调用 `GetAgentByAgentKey` 解析 DisplayName，失败回退 agent_key（`shared.ErrNotFound` 静默，其他错误记 warn 日志）。`make wire` 自动重新生成 `wire_gen.go` 注入 `agentRepository`。
+- T6.3+T6.4：`publishTeamStepActivity` 签名新增 `agentName string` 参数；`Kind` 从 `ActivityKindTeamStage` 改为 `ActivityKindSession`；`Meta` 新增 `child_session_id = run.SessionID`。`persistStep` 调用处传入 `step.AgentName`/`saved.AgentName`。`OrchestrationStatusStore.ApplyActivityEvent` 扩展 `ActivityKindSession` 分支处理 `Stage=executing/completed`（保留原 `checkpoint` 分支），确保 orchestration status projection 不被破坏。
+- T6.5：`ActivityProjector` 维护 `silentToolNames` 集合（含 `check_progress`），`OnToolCall` 对 silent 工具早返回不创建 action Activity。
+- T6.6：`DECISION.md` 新增"中间回复规则"章节，强制 agent 执行工具后立即给出回复（指明下一步 + 提高可观测性）；`reply_reminder_inject.go` 实现 AfterTool→BeforeModel 状态注入：AfterTool hook 写 invocation state，BeforeModel hook 读 state 并注入 system message 提醒 agent 给出中间回复。
+- T6.7：`useActivityTimeline.ts` 中 Activity 对象用 `reactive()` 包裹（替代 `ref([])` + `triggerRef`），streaming 事件直接修改 reactive 对象字段，Vue 自动按 `activityId` 细粒度触发更新，避免全量 re-render。
+- T6.8：本节同步更新开发计划文档；设计文档补充 per-member step 改用 `Kind=Session` 的事件映射说明。
+
+**回归测试**：
+- `internal/service/spirit_team_assembler_test.go::TestPublishSpiritTeamAssembled_UsesDisplayName` — 守卫 DisplayName 解析 + 未知 key 回退
+- `internal/team/runner_helpers_test.go::TestPersistStep_EmitsStartedAndFinished` — 更新断言：`Kind=Session`、`AgentName`、`meta.child_session_id`
+- `internal/agent/activity_projector_test.go` — silent tool 行为守卫
+- `internal/biz/orchestration_status_test.go` — 验证 Kind=Session 的 executing/completed 分支不破坏 status projection
 
 ### C.5 改动文件清单
 
@@ -817,7 +875,7 @@ Team 团队历史显示是 Chat UI 的核心子模块，负责在精灵对话中
 | `internal/team/team_graph_run_coordinator.go` | 修改 | Team Graph 协调器事件填充 SpiritSessionID |
 | `internal/team/team_graph_run_finisher.go` | 修改 | Team Graph 完成事件填充 SpiritSessionID（含 GetTeamRunByID 后回填 run.SpiritSessionID） |
 | `internal/team/runner_team_turn.go` | 修改 | Team turn 事件填充 SpiritSessionID |
-| `internal/team/runner_helpers.go` | 修改 | publishTeamRunFailedActivity/publishTeamStepActivity 读取 run.SpiritSessionID |
+| `internal/team/runner_helpers.go` | 修改 | publishTeamRunFailedActivity（team_stage/failed）读取 run.SpiritSessionID；publishTeamStepActivity 改发 Kind=Session 携带 AgentName + meta.child_session_id（Phase T6.3+T6.4） |
 | `internal/team/summary.go` | 修改 | TeamSummaryActivityEvent 读取 run.SpiritSessionID |
 | `internal/team/status_projector.go` | 修改 | OrchestrationProjectorConfig 新增 SpiritSessionID 字段，publishOrchestrationStatus 读取 cfg.SpiritSessionID |
 | `internal/team/runner_team_observer.go` | 修改 | startObservers 设置 SpiritSessionID: deriveSpiritSessionID(sess) |
@@ -835,6 +893,17 @@ Team 团队历史显示是 Chat UI 的核心子模块，负责在精灵对话中
 | `internal/service/pre_planning_gate.go` | 修改 | publishPlanningPhase 填充 SpiritSessionID: sessionID（Spirit 直接运行场景） |
 | `internal/data/activity_repo.go` | 修改 | 查询排序改为 ORDER BY turn_id, parent_activity_id, timestamp |
 | `internal/data/ent/schema/activity.go` | 不修改 | seq 字段保留（停止赋值，不删除字段） |
+| `internal/service/spirit_team.go` | 修改 | Phase T6.2：SpiritTeamAssembler 注入 `biz.AgentReader`，`publishSpiritTeamAssembled` 批量解析 DisplayName |
+| `internal/service/spirit_team_assembler_test.go` | 新增 | Phase T6.2：回归守卫，验证 DisplayName 解析 + 未知 key 回退 |
+| `internal/team/runner_helpers.go` | 修改 | Phase T6.3+T6.4：`publishTeamStepActivity` 改发 `Kind=Session` 携带 `AgentName` + `meta.child_session_id`；`persistStep` 调用处传入 `step.AgentName`/`saved.AgentName` |
+| `internal/team/runner_helpers_test.go` | 修改 | Phase T6.3+T6.4：更新断言为 `Kind=Session`，新增 `AgentName`/`child_session_id` 校验 |
+| `internal/biz/orchestration_status.go` | 修改 | Phase T6.3+T6.4：`ApplyActivityEvent` 扩展 `ActivityKindSession` 分支处理 `Stage=executing/completed`（保留原 `checkpoint` 分支），避免破坏 orchestration status projection |
+| `internal/agent/activity_projector.go` | 修改 | Phase T6.5：维护 `silentToolNames` 集合（含 `check_progress`），`OnToolCall` 早返回不创建 action Activity |
+| `internal/agent/activity_projector_test.go` | 新增/修改 | Phase T6.5：silent tool 行为守卫 |
+| `internal/agent/reply_reminder_inject.go` | 新增 | Phase T6.6：AfterTool→BeforeModel 状态注入，提醒 agent 给出中间回复 |
+| `internal/agent/callback_chain.go` | 修改 | Phase T6.6：注册 reply_reminder hook |
+| `internal/scenario/system/prompts/DECISION.md` | 修改 | Phase T6.6：新增"中间回复规则"章节，强制 agent 执行工具后立即给出回复 |
+| `cmd/admin/wire_gen.go` | 重新生成 | Phase T6.2：`make wire` 自动注入 `agentRepository` 到 `NewSpiritTeamAssembler` |
 
 #### 前端
 
@@ -845,9 +914,10 @@ Team 团队历史显示是 Chat UI 的核心子模块，负责在精灵对话中
 | `web/src/components/chat/ActivityStream.vue` | 修改 | team_stage 分支指向 TeamCard；session 分支指向 AgentCard |
 | `web/src/components/chat/TeamStageBlock.vue` | 删除 | 被 TeamCard.vue 完全替代 |
 | `web/src/components/chat/PlanBlock.vue` | 修改 | 增加折叠/展开交互、初始渲染自动折叠摘要 |
-| `web/src/features/chat/composables/useActivityTimeline.ts` | 修改 | 移除 seq 排序，改用 timestamp + parentActivityId |
+| `web/src/features/chat/composables/useActivityTimeline.ts` | 修改 | 移除 seq 排序，改用 timestamp + parentActivityId；Phase T6.1：notice 不再独立插入 timeline；Phase T6.7：Activity 用 `reactive()` 包裹，streaming 事件直接修改字段（按 activityId 细粒度响应式） |
 | `web/src/features/spirit/api.ts` | 修改 | 新增 cancelAgentSession（复用 StopGeneration）/ retryAgentSession（新增 RetrySession RPC）封装 |
 | `web/src/stores/spirit/index.ts` | 修改 | 适配新设计（如有需要） |
+| `web/src/components/chat/ActivityStream.vue` | 修改 | Phase T6.1：`renderItems` computed 过滤无 `parentActivityId` 的 notice，匹配到时间戳最近的后续 task activity 并附加到其 `meta.notices` |
 
 ### C.6 已知技术债务
 
@@ -863,7 +933,7 @@ Team 团队历史显示是 Chat UI 的核心子模块，负责在精灵对话中
 - [ ] Team 模式：plan → graph → team-card 顺序显示
 - [ ] agent-card：简化版布局，含补充输入框
 - [ ] team-card 布局：头部2:中部6:尾部2，符合设计
-- [ ] team-card 尾部：对话框横向展开 + 发送按钮 + 暂停/恢复按钮
+- [x] team-card 尾部：取消按钮 + 重试按钮（T3 用户决策：只实现 cancel + retry，不实现 pause/resume/inject）
 - [ ] team-card 展开：显示成员列表，成员展开显示 thinking/action/reply
 - [ ] plan 面板：固定位置，支持折叠，状态由 team_stage 事件驱动
 - [ ] 进度计算：X/N 简单实现

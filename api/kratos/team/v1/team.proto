@@ -585,6 +585,42 @@ message RetryTeamResponse {
   string status = 2;
 }
 
+// PauseTeamRunRequest pauses a running team run.
+// The team transitions to 'paused' state after the current member step completes.
+message PauseTeamRunRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message PauseTeamRunResponse {
+  string run_id = 1;
+  string status = 2;
+}
+
+// UnpauseTeamRunRequest resumes a paused team run.
+// The team transitions back to 'running' state and continues execution.
+// Note: this is distinct from ResumeTeamRunExecution which is used for HITL graph recovery.
+message UnpauseTeamRunRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UnpauseTeamRunResponse {
+  string run_id = 1;
+  string status = 2;
+}
+
+// InjectTeamMessageRequest injects a user message into a team run's pending queue.
+// The message is processed at the next step boundary during execution.
+message InjectTeamMessageRequest {
+  string team_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string message = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message InjectTeamMessageResponse {
+  bool accepted = 1;
+  bool queued = 2;
+  string pending_id = 3;
+}
+
 service TeamService {
   rpc ListTeams(ListTeamsRequest) returns (ListTeamsResponse) {
     option (google.api.http) = {get: "/v1/teams"};
@@ -695,6 +731,30 @@ service TeamService {
   rpc RetryTeam(RetryTeamRequest) returns (RetryTeamResponse) {
     option (google.api.http) = {
       post: "/v1/teams/{team_id}/retry"
+      body: "*"
+    };
+  }
+  // PauseTeamRun pauses a running team run (running → paused).
+  // User-initiated pause; the current member step completes before pausing.
+  rpc PauseTeamRun(PauseTeamRunRequest) returns (PauseTeamRunResponse) {
+    option (google.api.http) = {
+      post: "/v1/team-runs/{id}/pause"
+      body: "*"
+    };
+  }
+  // UnpauseTeamRun resumes a paused team run (paused → running).
+  // User-initiated resume; distinct from ResumeTeamRunExecution (HITL graph recovery).
+  rpc UnpauseTeamRun(UnpauseTeamRunRequest) returns (UnpauseTeamRunResponse) {
+    option (google.api.http) = {
+      post: "/v1/team-runs/{id}/unpause"
+      body: "*"
+    };
+  }
+  // InjectTeamMessage injects a user message into a team run's pending queue.
+  // The message is processed at the next step boundary during execution.
+  rpc InjectTeamMessage(InjectTeamMessageRequest) returns (InjectTeamMessageResponse) {
+    option (google.api.http) = {
+      post: "/v1/teams/{team_id}/inject"
       body: "*"
     };
   }

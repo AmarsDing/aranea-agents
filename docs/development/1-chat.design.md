@@ -3177,7 +3177,8 @@ Spirit Session (root, AgentDepth=0)
 | Spirit 编排器 | `plan` | 任务拆解完成，生成任务计划 |
 | Spirit 编排器 | `graph_stage` | Team DAG 分配完成 |
 | Spirit 编排器 | `team_stage` | Team 组建完成 |
-| Team 编排器 | `team_stage` | Team 阶段切换（assembled/executing/completed/failed） |
+| Team 编排器 | `team_stage` | Team 阶段切换（assembled/completed/failed） |
+| Team 编排器 | `session` | Per-member step 生命周期（executing/completed）；携带 `AgentName` + `meta.child_session_id = run.SessionID`，前端 AgentCard 据此渲染成员名并支持 cancel/retry（共享 team session 语义，Phase T6.3+T6.4） |
 | Graph 编排器 | `graph_stage` | Graph 节点状态更新 |
 | ChatOrchestrator | `task` | 用户消息进入 |
 | ChatOrchestrator | `notice` | 系统通知（队列满/运行结束等） |
@@ -3260,21 +3261,27 @@ ActivityEventSequencer (单 publish worker)
 
 **头部（20%）**：上中下三部分（1:1:1）—— 团队名称 / 任务名称 / 创建时间
 **中部（60%）**：上下两部分（1:2）—— 成员头像+名称 / 进度条:状态:耗时（3:1:1）
-**尾部（20%）**：取消按钮 + 重试按钮
+**尾部（20%）**：暂停/恢复按钮 + 取消/重试按钮 + 对话框（横向展开+发送按钮）
 
-**取消/重试按钮**：
-- running 状态：显示"✕ 取消"，触发 `POST /v1/teams/{id}/cancel`（终止执行，team 进入 cancelled 终态）
-- failed 状态：显示"↻ 重试"，触发 `POST /v1/teams/{id}/retry`（重新启动 team，保留原 plan）
-- interrupted 状态：显示"↻ 重试"，触发 `POST /v1/teams/{id}/retry`（卡死/中断后恢复任务）
-- completed/cancelled 状态：隐藏按钮
+**尾部按钮按状态切换**（详见 §B.5.3 状态机）：
+
+| 状态 | 暂停/恢复 | 取消/重试 | 对话框 |
+|------|----------|---------|--------|
+| running | [⏸ 暂停]（触发 `POST /v1/team-runs/{id}/pause`） | [✕ 取消]（触发 `POST /v1/team-runs/{id}/cancel`） | ✅ 可用，触发 `POST /v1/teams/{id}/inject` |
+| paused | [▶ 恢复]（触发 `POST /v1/team-runs/{id}/unpause`） | [✕ 取消]（同上） | ✅ 可用（输入到 paused team，等 unpause 后注入） |
+| failed/interrupted | 隐藏 | [↻ 重试]（触发 `POST /v1/teams/{id}/retry`，保留原 plan） | ❌ 隐藏 |
+| completed/cancelled | 隐藏 | 隐藏 | ❌ 隐藏 |
 
 **业务语义说明**：
+- **暂停**：用户主动暂停 running 中的 team 执行，team 进入 `paused` 状态（区别于 `awaiting_user` HITL 等待）。当前正在执行的成员 agent 完成当前 step 后停止，不消耗新 step。
+- **恢复（unpause）**：从 `paused` 状态恢复执行，team 转回 `running`，继续执行剩余 step。注意：区别于 `ResumeTeamRunExecution`（用于 HITL graph 中断恢复，路径 `/v1/team-runs/{run_id}/resume`），用户主动暂停恢复使用 `/v1/team-runs/{id}/unpause`。
 - **取消**：用户在执行过程中发现卡死或任务不符合预期，主动终止当前执行，重新输入指令纠正方向。取消后 team 进入 cancelled 终态，不可恢复。
 - **重试**：任务执行中出现卡死、中断、工具执行失败等异常情况，用户通过点击重试按钮重新恢复任务执行。重试保留原 plan，重新启动 team。
+- **注入**：用户在执行过程中向 team 补充信息（如修正任务方向、补充文件路径），消息会进入 team run 的待处理队列，在下个 step 边界注入到执行流。
 
 **展开/折叠**（详见 B.4.5 统一规则）：
 - 点击 team-card 头部或中部区域 → 展开/折叠成员列表
-- 初始渲染时：running 状态默认展开，终态（completed/failed/cancelled）默认折叠
+- 初始渲染时：始终默认折叠（含 running 与终态）
 - 状态变化不改变用户已设置的展开/折叠状态（用户意图优先）
 
 #### B.4.2 agent-card 布局（简化版）
@@ -3299,13 +3306,16 @@ ActivityEventSequencer (单 publish worker)
 **与 team-card 的区别**：
 - 无团队信息（团队名称、成员列表）
 - 无进度条（单个 agent，直接显示状态）
-- 尾部仅显示取消/重试按钮（与 team-card 一致交互）
+- 尾部交互与 team-card 完全一致（暂停/恢复 + 取消/重试 + 对话框）
 
-**取消/重试按钮**（与 team-card 语义一致）：
-- running 状态：显示"✕ 取消"，触发 `cancel-agent` emit（payload: `childSessionId`）→ 前端调用 `POST /v1/chat/stop`（复用现有 StopGeneration RPC）
-- failed 状态：显示"↻ 重试"，触发 `retry-agent` emit（payload: `childSessionId`）→ 前端调用 `POST /v1/chat/sessions/{session_id}/retry`（新增 RetrySession RPC）
-- interrupted 状态：显示"↻ 重试"，触发 `retry-agent` emit（同 failed，mapActivityStatusToStageStatus 将 interrupted 映射为 failed）
-- completed/cancelled 状态：隐藏按钮
+**尾部按钮按状态切换**（详见 §B.5.3 状态机）：
+
+| 状态 | 暂停/恢复 | 取消/重试 | 对话框 |
+|------|----------|---------|--------|
+| running | [⏸ 暂停]（触发 `POST /v1/chat/sessions/{id}/pause`） | [✕ 取消]（触发 `POST /v1/chat/stop`） | ✅ 可用，触发 `POST /v1/chat/enqueue`（childSessionId） |
+| paused | [▶ 恢复]（触发 `POST /v1/chat/sessions/{id}/resume`） | [✕ 取消]（同上） | ✅ 可用 |
+| failed/interrupted | 隐藏 | [↻ 重试]（触发 `POST /v1/chat/sessions/{id}/retry`） | ❌ 隐藏 |
+| completed/cancelled | 隐藏 | 隐藏 | ❌ 隐藏 |
 
 #### B.4.3 任务计划面板（PlanBlock）
 
@@ -3407,10 +3417,10 @@ ActivityEventSequencer (单 publish worker)
 |------|---------|--------------|------|
 | PlanBlock | 展开 | ✅（全部完成后） | 任务进行中需可见 |
 | GraphStageBlock | 展开 | ❌（保留） | 流程图始终可见 |
-| team-card（进行中） | 展开 | — | running 状态默认展开，便于观察进度 |
-| team-card（终态） | 折叠 | — | completed/failed/cancelled 默认折叠 |
-| agent-card（进行中） | 展开 | — | 同 team-card |
-| agent-card（终态） | 折叠 | — | 同 team-card |
+| team-card（进行中） | 折叠 | — | 用户指令覆盖：默认折叠（100px 高度限制），多个 team 同时展示时聚焦当前关注的 team；用户手动展开后状态变化不覆盖用户意图 |
+| team-card（终态） | 折叠 | — | 同上，默认折叠 |
+| agent-card（进行中） | 折叠 | — | 同 team-card |
+| agent-card（终态） | 折叠 | — | 同上，默认折叠 |
 | thinking | 折叠 | ✅ | 推理过程默认折叠，减少噪音 |
 | action | 折叠 | ✅ | 工具调用结果默认折叠 |
 | reply | 展开 | ❌ | 回复内容始终展开 |
@@ -3478,6 +3488,213 @@ ActivityEventSequencer (单 publish worker)
 - 业务语义与 team 一致
 - **实现依据**：AgentCard 持有 `childSessionId`（唯一标识子 agent 运行的 session），直接用作 cancel/retry 的目标。避免通过 agentKey + spirit_session_id 查找 session 的歧义（同一 agentKey 可在多 team 中运行）
 
+#### B.5.3 暂停/恢复/注入（Pause/Resume/Inject）
+
+> **状态**：2026-06-29 新增 | **目的**：补全 team-card / agent-card 尾部的"暂停/恢复 + 对话框注入"功能
+
+##### B.5.3.1 概念区分
+
+| 操作 | 语义 | 状态变化 | 是否可逆 |
+|------|------|---------|---------|
+| Cancel（取消） | 终止执行，丢弃当前 step 进度 | running/paused → cancelled | ❌ 不可恢复（终态） |
+| Pause（暂停） | 主动暂停 running，等当前 step 完成后停止消耗新 step | running → paused | ✅ 可恢复 |
+| Resume（恢复） | 从 paused 恢复执行 | paused → running | — |
+| Inject（注入） | 向 running/paused 的 team/agent 补充用户消息 | 不改变状态 | — |
+
+**与 `awaiting_user` 的区别**：
+- `awaiting_user` 是 HITL 场景下 run 主动等待用户回复（如工具确认、人工回复 prompt），由 run 内部触发
+- `paused` 是用户主动暂停 run 执行，由用户外部触发
+- 两者互斥：`awaiting_user` 状态下不能 pause，`paused` 状态下 run 不会主动 await
+
+##### B.5.3.2 状态机扩展
+
+**RunStatus 新增 `paused`**：
+
+```go
+// internal/runtime/run_state_machine.go
+const (
+    RunStatusIdle         = "idle"
+    RunStatusPending      = "pending"
+    RunStatusRunning      = "running"
+    RunStatusAwaitingUser = "awaiting_user"
+    RunStatusPaused       = "paused"   // 新增
+    RunStatusCompleted    = "completed"
+    RunStatusFailed       = "failed"
+    RunStatusCancelled    = "cancelled"
+)
+```
+
+**RunStatusEvent 新增 `pause`**（`resume` 已有）：
+
+```go
+const (
+    RunEventStart     RunStatusEvent = "start"
+    RunEventRun       RunStatusEvent = "run"
+    RunEventAwaitUser RunStatusEvent = "await_user"
+    RunEventPause     RunStatusEvent = "pause"  // 新增
+    RunEventComplete  RunStatusEvent = "complete"
+    RunEventFail      RunStatusEvent = "fail"
+    RunEventCancel    RunStatusEvent = "cancel"
+    RunEventReset     RunStatusEvent = "reset"
+    RunEventResume    RunStatusEvent = "resume"
+)
+```
+
+**转换表新增**：
+
+| from | event | to |
+|------|-------|-----|
+| running | pause | paused |
+| paused | resume | running |
+| paused | cancel | cancelled |
+| paused | fail | failed |
+
+##### B.5.3.3 ActivityStatus 新增 `paused`
+
+```typescript
+// web/src/features/chat/activityTypes.ts
+export type ActivityStatus =
+  | 'pending'
+  | 'running'
+  | 'tool_running'
+  | 'tool_blocked'
+  | 'completed'
+  | 'failed'
+  | 'partial_failure'
+  | 'cancelled'
+  | 'interrupted'
+  | 'paused';  // 新增
+```
+
+##### B.5.3.4 API 设计
+
+**Team**：
+
+| 操作 | HTTP 端点 | RPC | 说明 |
+|------|----------|-----|------|
+| 暂停 | `POST /v1/team-runs/{id}/pause` | `PauseTeamRun`（新） | 转换 team run 状态 running → paused；当前正在执行的成员 agent 完成当前 step 后停止 |
+| 恢复 | `POST /v1/team-runs/{id}/unpause` | `UnpauseTeamRun`（新） | 转换 team run 状态 paused → running；继续执行剩余 step（区别于 `ResumeTeamRunExecution` 用于 HITL graph 中断恢复，路径 `/v1/team-runs/{run_id}/resume`） |
+| 注入 | `POST /v1/teams/{id}/inject` | `InjectTeamMessage`（新） | 向 team run 注入用户消息，进入待处理队列，在下个 step 边界注入到执行流 |
+
+**Agent（chat session）**：
+
+| 操作 | HTTP 端点 | RPC | 说明 |
+|------|----------|-----|------|
+| 暂停 | `POST /v1/chat/sessions/{id}/pause` | `PauseSession`（新） | 转换 session run 状态 running → paused |
+| 恢复 | `POST /v1/chat/sessions/{id}/resume` | `ResumeSession`（新） | 转换 session run 状态 paused → running |
+| 注入 | `POST /v1/chat/enqueue` | `EnqueueUserMessage`（已有） | 复用现有 RPC，body 携带 `session_id: childSessionId` |
+
+##### B.5.3.5 后端实现要点
+
+**TeamService 新增方法**：
+
+```go
+// internal/service/team_pause.go（新文件）
+func (s *TeamService) PauseTeamRun(ctx context.Context, req *v1.PauseTeamRunRequest) (*v1.PauseTeamRunReply, error) {
+    // 1. 解析 team run id → session id
+    // 2. 调用 RunRegistry.Pause(sessionID)（新方法）
+    //    - 检查当前 run 状态 == running
+    //    - 设置 cancel ctx 的暂停标志（通过新 pausedCtx）
+    //    - 当前 step 完成后停止
+    // 3. 转换 RunStatus: running → paused（状态机校验）
+    // 4. 发布 team_stage.updated 事件，status=paused
+}
+
+func (s *TeamService) UnpauseTeamRun(ctx context.Context, req *v1.UnpauseTeamRunRequest) (*v1.UnpauseTeamRunReply, error) {
+    // 1. 解析 team run id → session id
+    // 2. 转换 RunStatus: paused → running
+    // 3. 重新触发 team runner 继续执行剩余 step
+    // 4. 发布 team_stage.updated 事件，status=running
+}
+
+func (s *TeamService) InjectTeamMessage(ctx context.Context, req *v1.InjectTeamMessageRequest) (*v1.InjectTeamMessageReply, error) {
+    // 1. 解析 team id → team session id
+    // 2. 调用 ChatService.EnqueueUserMessage（复用）
+    //    - 入队到 team session 的 pending queue
+    // 3. 返回 enqueue 结果
+}
+```
+
+**ChatService 新增方法**：
+
+```go
+// internal/service/chat_pause.go（新文件）
+func (s *ChatService) PauseSession(ctx context.Context, req *v1.PauseSessionRequest) (*v1.PauseSessionReply, error)
+func (s *ChatService) ResumeSession(ctx context.Context, req *v1.ResumeSessionRequest) (*v1.ResumeSessionReply, error)
+```
+
+**RunRegistry 新增方法**：
+
+```go
+// internal/runtime/run_registry.go
+func (r *RunRegistry) Pause(sessionID string) error
+func (r *RunRegistry) Resume(sessionID string) error
+```
+
+##### B.5.3.6 前端实现要点
+
+**spiritService（services/index.ts）新增**：
+
+```typescript
+pauseTeamRun: (teamRunId: string) => kratosApi.post(`/v1/team-runs/${teamRunId}/pause`),
+unpauseTeamRun: (teamRunId: string) => kratosApi.post(`/v1/team-runs/${teamRunId}/unpause`),
+injectTeamMessage: (teamId: string, message: string) =>
+  kratosApi.post(`/v1/teams/${teamId}/inject`, { message }),
+pauseSession: (sessionId: string) => kratosApi.post(`/v1/chat/sessions/${sessionId}/pause`),
+resumeSession: (sessionId: string) => kratosApi.post(`/v1/chat/sessions/${sessionId}/resume`),
+```
+
+**spirit/api.ts 新增封装**：
+
+```typescript
+export async function pauseSpiritTeam(teamId: string): Promise<void> {
+  const runId = await resolveActiveRunId(teamId);
+  return spiritService.pauseTeamRun(runId);
+}
+export async function unpauseSpiritTeam(teamId: string): Promise<void> {
+  const runId = await resolveActiveRunId(teamId);
+  return spiritService.unpauseTeamRun(runId);
+}
+export async function injectSpiritTeam(teamId: string, message: string): Promise<void> {
+  return spiritService.injectTeamMessage(teamId, message);
+}
+export async function pauseAgentSession(childSessionId: string): Promise<void> {
+  return spiritService.pauseSession(childSessionId);
+}
+export async function resumeAgentSession(childSessionId: string): Promise<void> {
+  return spiritService.resumeSession(childSessionId);
+}
+// injectAgentSession 复用现有 enqueueUserMessage(childSessionId, message)
+```
+
+**spiritStore 新增 action**：
+
+```typescript
+// stores/spirit/index.ts
+async function pauseTeam(teamId: string) { ... }
+async function unpauseTeam(teamId: string) { ... }
+async function injectTeam(teamId: string, message: string) { ... }
+async function pauseAgent(sessionId: string) { ... }
+async function resumeAgent(sessionId: string) { ... }
+async function injectAgent(sessionId: string, message: string) { ... }
+```
+
+##### B.5.3.7 验收标准
+
+- [ ] proto 新增 PauseTeamRun/UnpauseTeamRun/InjectTeamMessage/PauseSession/ResumeSession 5 个 RPC
+- [ ] RunStateMachine 新增 paused 状态 + pause 事件 + 4 个转换
+- [ ] ActivityStatus 新增 paused 值（前端 + 后端）
+- [ ] TeamService.PauseTeamRun/UnpauseTeamRun/InjectTeamMessage 实现
+- [ ] ChatService.PauseSession/ResumeSession 实现
+- [ ] RunRegistry.Pause/Resume 方法实现
+- [ ] spiritService + spirit/api.ts + spiritStore 全链路封装
+- [ ] TeamCard.vue 尾部 UI 完整：暂停/恢复 + 取消/重试 + 对话框
+- [ ] AgentCard.vue 尾部 UI 完整：同 team-card
+- [ ] 状态切换：running ↔ paused ↔ running；paused → cancelled/failed
+- [ ] 注入消息：running/paused 状态可用；终态禁用
+- [ ] 单测覆盖：状态机转换、Pause/Resume/Inject service 方法
+- [ ] vitest 覆盖：UI 状态切换、对话框交互
+
 ### B.6 WS 协议流
 
 #### B.6.1 事件类型矩阵
@@ -3522,7 +3739,7 @@ ActivityEventSequencer (单 publish worker)
 2. 调用 `ListBySession(spiritSessionID)` 加载 spirit 根 session 的所有 activity
 3. 按 `parentActivityId` 构建 ActivityTree
 4. 按 ActivityStream 渲染规则恢复 UI
-5. 已完成 team 默认折叠，进行中 team 默认展开
+5. team-card 默认折叠（与 B.4.5 一致）：running 与终态均默认折叠，用户手动展开后状态由用户掌控
 
 #### B.7.2 子 session 懒加载
 

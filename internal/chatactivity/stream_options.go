@@ -108,7 +108,7 @@ func (r *catalogActivityMetaResolver) ResolveAgentID(ctx context.Context, agentK
 // Activity ordering is governed solely by Timestamp ASC (design doc §B.3.3);
 // the legacy seqAlloc parameter has been removed. Direct-publish events
 // are detected via ActivityEvent.SequencerHandled on the bus.
-func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepository, activityWriter biz.ActivityWriter, activityBus biz.ActivityEventBus, lg loggateway.Logger) *chatagent.StreamConsumeOptions {
+func NewStreamConsumeOptions(tools biz.TeamToolLookup, toolRegistry biz.ToolRegistryReader, agents biz.AgentRepository, activityWriter biz.ActivityUpserter, activityBus biz.ActivityEventBus, lg loggateway.Logger) *chatagent.StreamConsumeOptions {
 	var resolver chatagent.ActivityMetaResolver
 	if tools != nil || agents != nil {
 		resolver = newCatalogActivityMetaResolver(tools, agents)
@@ -125,7 +125,8 @@ func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepositor
 		if lg == nil {
 			lg = loggateway.NewNoop()
 		}
-		opts.ActivityProjector = chatagent.NewActivityProjector(activityBus, activityWriter, lg)
+		categorizer := chatagent.NewToolCategorizerFromCatalog(context.Background(), toolRegistry)
+		opts.ActivityProjector = chatagent.NewActivityProjector(activityBus, activityWriter, lg, categorizer)
 		opts.ActivityBus = activityBus
 	}
 	return opts
@@ -136,13 +137,14 @@ func NewStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepositor
 // Inject this into the team Runner via SetStreamOptsFactory to eliminate
 // the team→chatactivity direct import.
 type StreamOptsFactoryAdapter struct {
-	Tools          biz.TeamToolLookup
-	Agents         biz.AgentRepository
-	ActivityWriter biz.ActivityWriter
-	ActivityBus    biz.ActivityEventBus
-	Logger         loggateway.Logger
+	Tools            biz.TeamToolLookup
+	ToolRegistry     biz.ToolRegistryReader
+	Agents           biz.AgentRepository
+	ActivityUpserter biz.ActivityUpserter
+	ActivityBus      biz.ActivityEventBus
+	Logger           loggateway.Logger
 }
 
 func (a *StreamOptsFactoryAdapter) NewStreamConsumeOptions() *chatagent.StreamConsumeOptions {
-	return NewStreamConsumeOptions(a.Tools, a.Agents, a.ActivityWriter, a.ActivityBus, a.Logger)
+	return NewStreamConsumeOptions(a.Tools, a.ToolRegistry, a.Agents, a.ActivityUpserter, a.ActivityBus, a.Logger)
 }

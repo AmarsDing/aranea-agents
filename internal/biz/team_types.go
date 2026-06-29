@@ -31,25 +31,8 @@ func IsTeamStatusActive(status string) bool {
 	return status == TeamStatusPending || status == TeamStatusRunning || status == TeamStatusInterrupted
 }
 
-const (
-	TeamRunStatusPending      = "pending"
-	TeamRunStatusRunning      = "running"
-	TeamRunStatusSuccess      = "success"
-	TeamRunStatusFailed       = "failed"
-	TeamRunStatusCancelled    = "cancelled"
-	TeamRunStatusWaitingHuman = "waiting_human"
-)
-
-var teamRunTerminalStatuses = map[string]bool{
-	TeamRunStatusSuccess:   true,
-	TeamRunStatusFailed:    true,
-	TeamRunStatusCancelled: true,
-}
-
-func IsTeamRunTerminalStatus(status string) bool {
-	return teamRunTerminalStatuses[status]
-}
-
+// TeamRun status constants and terminal-status helpers are defined in
+// team_run_state_machine.go alongside the transition table (AS-FSM-01).
 const OrchestrationControlToolName = "orchestration_control"
 
 // CriticLoopCondFuncRef is kept as an alias for backward compatibility.

@@ -19,11 +19,27 @@
         />
       </div>
 
-      <!-- Footer (20%) — cancel/retry buttons (B.4.2/B.5.2: cancel + retry only) -->
+      <!-- Footer (20%) — pause/resume + cancel/retry buttons (B.4.2/B.5.3) -->
       <div class="agent-card__footer">
         <div class="agent-card__actions">
           <button
-            v-if="activity.status === 'running'"
+            v-if="showPauseButton"
+            class="agent-card__action agent-card__action--pause"
+            @click.stop="$emit('pause-agent', activity.childSessionId || '')"
+          >
+            <q-icon name="pause" size="12px" class="q-mr-xs" />
+            {{ t('chat.sessionStage.pause') }}
+          </button>
+          <button
+            v-else-if="showResumeButton"
+            class="agent-card__action agent-card__action--resume"
+            @click.stop="$emit('resume-agent', activity.childSessionId || '')"
+          >
+            <q-icon name="play_arrow" size="12px" class="q-mr-xs" />
+            {{ t('chat.sessionStage.resume') }}
+          </button>
+          <button
+            v-if="showCancelButton"
             class="agent-card__action agent-card__action--cancel"
             @click.stop="$emit('cancel-agent', activity.childSessionId || '')"
           >
@@ -43,6 +59,24 @@
       </div>
     </div>
 
+    <!-- Inject dialog (B.5.3) — visible only when running or paused -->
+    <div v-if="showInjectDialog" class="agent-card__inject">
+      <input
+        v-model="injectMessage"
+        type="text"
+        class="agent-card__inject-input"
+        :placeholder="t('chat.sessionStage.injectPlaceholder')"
+        @keyup.enter="onInject"
+      />
+      <button
+        class="agent-card__inject-send"
+        :disabled="!injectMessage.trim()"
+        @click.stop="onInject"
+      >
+        <q-icon name="send" size="12px" />
+      </button>
+    </div>
+
     <!-- Expanded detail (children rendered by recursive ActivityStream) -->
     <div v-if="expanded" class="agent-card__detail">
       <slot />
@@ -54,34 +88,121 @@
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { SessionStageEvent } from '../../features/chat/streamEventTypes';
+import type { RunStatusValue } from '../../features/chat/types';
 import { nameInitial } from '../../features/spirit/spiritUi';
 
 const props = defineProps<{
   activity: SessionStageEvent;
+  /** P1#2: agent key → display name lookup. */
+  agentMap?: Map<string, { displayName: string; agentKey: string }>;
+  /** P1#3: parent run status to gate cancel button visibility. */
+  runStatus?: RunStatusValue;
 }>();
 
 const emit = defineEmits<{
   'enter-session': [sessionId: string];
   'cancel-agent': [sessionId: string];
   'retry-agent': [sessionId: string];
+  // B.5.3: pause/resume/inject events for sub-agent session lifecycle control.
+  'pause-agent': [sessionId: string];
+  'resume-agent': [sessionId: string];
+  'inject-agent': [payload: { sessionId: string; message: string }];
+  // T5.3 / §B.7.2: Fired when the agent-card expands so the parent can
+  // lazy-load the agent's child session activities. Payload is a single-element
+  // list containing childSessionId (when present) — already-cached sessions are
+  // skipped by `ensureActivitiesLoaded` (T5.4). Mirrors TeamCard's `expand` emit.
+  expand: [sessionIds: string[]];
 }>();
 
 const { t } = useI18n();
 
-// === Collapse state (B.4.5: running default expanded, terminal default collapsed) ===
-const expanded = ref(props.activity.status === 'running');
+// === Collapse state (B.4.5: agent-card 始终默认折叠，与 team-card 一致) ===
+const expanded = ref(false);
+
+// === Inject dialog state (B.5.3) ===
+const injectMessage = ref('');
 
 function toggleExpand() {
   expanded.value = !expanded.value;
+  // T5.3: On expand, request lazy-load of the agent's child session.
+  if (expanded.value && props.activity.childSessionId) {
+    emit('expand', [props.activity.childSessionId]);
+  }
+}
+
+function onInject() {
+  const message = injectMessage.value.trim();
+  if (!message || !props.activity.childSessionId) return;
+  emit('inject-agent', { sessionId: props.activity.childSessionId, message });
+  injectMessage.value = '';
 }
 
 // === Derived display values (all from props, no store dependency — red line #1) ===
 const canEnter = computed(() => Boolean(props.activity.childSessionId));
 
+const isSystemAgent = computed(() => isSystemAgentKey(props.activity.agentKey));
+
+// B.5.3: pause button visible when running and parent run allows cancel.
+// System agents (run-service/session-service status notices) never get pause.
+const showPauseButton = computed(
+  () =>
+    !isSystemAgent.value &&
+    props.activity.status === 'running' &&
+    props.runStatus === 'running' &&
+    Boolean(props.activity.childSessionId),
+);
+
+// B.5.3: resume button visible when paused (regardless of parent run status,
+// since paused is a self-contained state).
+const showResumeButton = computed(
+  () =>
+    !isSystemAgent.value &&
+    props.activity.status === 'paused' &&
+    Boolean(props.activity.childSessionId),
+);
+
+// B.5.3: cancel button visible when running or paused (user can cancel from
+// either state). Failed state shows retry instead.
+const showCancelButton = computed(
+  () =>
+    !isSystemAgent.value &&
+    (props.activity.status === 'running' || props.activity.status === 'paused') &&
+    Boolean(props.activity.childSessionId),
+);
+
+// B.5.3: inject dialog visible when running or paused.
+const showInjectDialog = computed(
+  () =>
+    !isSystemAgent.value &&
+    (props.activity.status === 'running' || props.activity.status === 'paused') &&
+    Boolean(props.activity.childSessionId),
+);
+
+function isSystemAgentKey(key: string | undefined): boolean {
+  if (!key) return false;
+  return key === '__spirit__' || key.startsWith('__');
+}
+
+function readableAgentKey(key: string | undefined): string {
+  if (!key) return '';
+  return key
+    .replace(/^agent___?/, '')
+    .replace(/_/g, ' ')
+    .trim();
+}
+
 const displayAgentName = computed(() => {
+  // P1#2: system agents use the backend-provided agentName; never show raw key.
+  if (isSystemAgent.value) {
+    return props.activity.agentName || t('chat.sessionStage.systemStatus');
+  }
   if (props.activity.agentName) return props.activity.agentName;
+  const fromStore = props.agentMap?.get(props.activity.agentKey || '')?.displayName;
+  if (fromStore) return fromStore;
+  const readable = readableAgentKey(props.activity.agentKey);
+  if (readable) return readable;
   if (props.activity.title) return props.activity.title;
-  return t('chat.sessionStage.member');
+  return t('chat.sessionStage.systemStatus');
 });
 
 const agentInitial = computed(() => nameInitial(displayAgentName.value));
@@ -102,10 +223,12 @@ const createdTimeText = computed(() => {
 // mapActivityStatusToStageStatus, so failed status covers both failed and
 // interrupted cases — retry button shows for both (B.4.2/B.5.2).
 const statusText = computed(() => {
-  const who = props.activity.agentName || t('chat.sessionStage.member');
+  const who = displayAgentName.value || t('chat.sessionStage.systemStatus');
   switch (props.activity.status) {
     case 'running':
       return t('chat.sessionStage.executing', { name: who });
+    case 'paused':
+      return t('chat.sessionStage.paused', { name: who });
     case 'completed':
       return t('chat.sessionStage.completed', { name: who });
     case 'failed':
@@ -121,6 +244,8 @@ const statusColor = computed(() => {
   switch (props.activity.status) {
     case 'running':
       return 'blue';
+    case 'paused':
+      return 'orange';
     case 'completed':
       return 'green';
     case 'failed':
@@ -136,7 +261,6 @@ function onEnter() {
   if (!canEnter.value) return;
   emit('enter-session', props.activity.childSessionId as string);
 }
-
 </script>
 
 <style lang="sass" scoped>
@@ -149,6 +273,8 @@ function onEnter() {
 
   &--running
     border-color: color-mix(in srgb, var(--color-accent) 40%, var(--glass-border))
+  &--paused
+    border-color: color-mix(in srgb, var(--color-warning, #f39c12) 40%, var(--glass-border))
   &--failed
     border-color: color-mix(in srgb, var(--color-danger) 40%, var(--glass-border))
   &--cancelled
@@ -205,6 +331,9 @@ function onEnter() {
     &--blue
       background: color-mix(in srgb, var(--color-accent) 15%, transparent)
       color: var(--color-accent)
+    &--orange
+      background: color-mix(in srgb, var(--color-warning, #f39c12) 12%, transparent)
+      color: var(--color-warning, #f39c12)
     &--green
       background: color-mix(in srgb, var(--color-success) 12%, transparent)
       color: var(--color-success)
@@ -276,6 +405,63 @@ function onEnter() {
       background: color-mix(in srgb, var(--color-accent) 15%, transparent)
       color: var(--color-accent)
       border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)
+
+    &--pause
+      background: color-mix(in srgb, var(--color-warning, #f39c12) 15%, transparent)
+      color: var(--color-warning, #f39c12)
+      border: 1px solid color-mix(in srgb, var(--color-warning, #f39c12) 40%, transparent)
+
+    &--resume
+      background: color-mix(in srgb, var(--color-accent) 15%, transparent)
+      color: var(--color-accent)
+      border: 1px solid color-mix(in srgb, var(--color-accent) 40%, transparent)
+
+  // === Inject dialog (B.5.3) ===
+  &__inject
+    display: flex
+    gap: 6px
+    align-items: center
+    margin-top: 6px
+    padding: 4px 0
+    border-top: 1px dashed var(--glass-border)
+
+  &__inject-input
+    flex: 1
+    min-width: 0
+    background: var(--glass-surface)
+    border: 1px solid var(--glass-border)
+    border-radius: 4px
+    padding: 4px 8px
+    font-size: 11px
+    color: var(--color-text-primary)
+    outline: none
+    transition: border-color 0.12s ease
+
+    &:focus
+      border-color: var(--color-accent)
+
+    &::placeholder
+      color: var(--color-text-tertiary)
+
+  &__inject-send
+    flex-shrink: 0
+    border: none
+    border-radius: 4px
+    padding: 4px 8px
+    background: var(--color-accent)
+    color: white
+    cursor: pointer
+    transition: opacity 0.12s ease
+    display: inline-flex
+    align-items: center
+    justify-content: center
+
+    &:hover:not(:disabled)
+      opacity: 0.85
+
+    &:disabled
+      opacity: 0.4
+      cursor: not-allowed
 
   // === Expanded detail ===
   &__detail

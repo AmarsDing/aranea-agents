@@ -284,7 +284,7 @@ func clearAwaitingRunStateFromSession(sessions biz.SessionStatePort, ctx context
 }
 
 // publishMessageQueuedToBus publishes a message_queued ActivityEvent
-// (Kind=session, Domain=chat). Replaces the legacy EnvelopeTypeRunStatus publish.
+// (Kind=notice, Domain=chat). Replaces the legacy EnvelopeTypeRunStatus publish.
 func publishMessageQueuedToBus(activityBus biz.ActivityEventBus, sessionID string) {
 	if activityBus == nil || strings.TrimSpace(sessionID) == "" {
 		return
@@ -293,14 +293,18 @@ func publishMessageQueuedToBus(activityBus biz.ActivityEventBus, sessionID strin
 		Event: biz.ActivityEventUpdated,
 		Activity: biz.Activity{
 			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindSession,
+			Kind:      biz.ActivityKindNotice,
 			Status:    biz.ActivityStatusPending,
 			SessionID: sessionID,
 			Timestamp: time.Now().UTC(),
+			AgentKey:  "chat-service",
+			AgentName: "对话服务",
+			Content:   "消息已加入队列",
 			Meta: map[string]any{
-				"status": "queued",
-				"hint":   "message_queued",
-				"source": "chat-service",
+				"status":      "queued",
+				"hint":        "message_queued",
+				"source":      "chat-service",
+				"notice_type": "info",
 			},
 		},
 		Domain: biz.ActivityDomainChat,

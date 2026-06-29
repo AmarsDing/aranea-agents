@@ -5,7 +5,7 @@
  * 在未配置 Postgres 的环境下，接口会返回明确错误，前端应做 "服务不可用" 降级提示。
  */
 import { createKnowledgeService } from '../../services';
-import { asRecord, pickBool, pickI32, pickNum, pickStr } from '../../shared/wireJson';
+import { asRecord, pickBool, pickI32, pickI64, pickNum, pickStr } from '../../shared/wireJson';
 import type {
   CreateCollectionInput,
   IngestDocumentInput,

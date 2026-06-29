@@ -16,6 +16,6 @@ import (
 //
 // The legacy `seqAlloc` parameter has been removed (GlobalSeqAllocator
 // removed — ordering is now governed by Timestamp ASC per design doc §B.3.3).
-func NewChatStreamConsumeOptions(tools biz.TeamToolLookup, agents biz.AgentRepository, activityWriter biz.ActivityWriter, activityBus biz.ActivityEventBus, lg loggateway.Logger) *chatagent.StreamConsumeOptions {
-	return chatactivity.NewStreamConsumeOptions(tools, agents, activityWriter, activityBus, lg)
+func NewChatStreamConsumeOptions(tools biz.TeamToolLookup, toolRegistry biz.ToolRegistryReader, agents biz.AgentRepository, activityUpserter biz.ActivityUpserter, activityBus biz.ActivityEventBus, lg loggateway.Logger) *chatagent.StreamConsumeOptions {
+	return chatactivity.NewStreamConsumeOptions(tools, toolRegistry, agents, activityUpserter, activityBus, lg)
 }

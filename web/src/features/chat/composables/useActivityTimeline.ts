@@ -1,4 +1,4 @@
-import { shallowRef, computed, triggerRef, onUnmounted, getCurrentInstance } from 'vue';
+import { shallowRef, computed, triggerRef, reactive, onUnmounted, getCurrentInstance } from 'vue';
 import type { Activity, ActivityStatus, ActivityTreeNode } from '../activityTypes';
 import type {
   StreamEvent,
@@ -123,6 +123,12 @@ export function useActivityTimeline() {
     //   - status = most advanced across all events (completed > running > pending)
     //   - durationMs = max
     //   - seq = max (latest, so sort order reflects the team's latest event)
+    //
+    // === Deduplicate plan activities by turnId (defensive) ===
+    // 后端已通过 OnPlanStart dedup by turnID 保证同一 turn 只有一个 plan Activity，
+    // 但历史数据或边界情况（如 OnPlanStart 与 lazy creation 同时触发）可能产生
+    // 多个 plan。这里做防御性合并：保留最早创建的（Timestamp 最小）作为 base，
+    // 因为它决定了 plan 在时间线中的位置；叠加最新 plan 的 steps/content。
     const STATUS_PRIORITY: Record<string, number> = {
       pending: 1,
       running: 2,
@@ -135,15 +141,41 @@ export function useActivityTimeline() {
       completed: 5,
     };
     const teamStageByTeam = new Map<string, Activity[]>();
+    const planByTurn = new Map<string, Activity[]>();
     const dedupMap = new Map<string, Activity>();
     for (const activity of map.values()) {
       if (activity.kind === 'team_stage' && activity.teamId) {
         const arr = teamStageByTeam.get(activity.teamId) ?? [];
         arr.push(activity);
         teamStageByTeam.set(activity.teamId, arr);
+      } else if (activity.kind === 'plan' && activity.turnId) {
+        const arr = planByTurn.get(activity.turnId) ?? [];
+        arr.push(activity);
+        planByTurn.set(activity.turnId, arr);
       } else {
         dedupMap.set(activity.id, activity);
       }
+    }
+    // Plan dedup: base = earliest Timestamp (stable position), overlay latest steps.
+    for (const arr of planByTurn.values()) {
+      if (arr.length === 1) {
+        dedupMap.set(arr[0].id, arr[0]);
+        continue;
+      }
+      const sorted = arr.slice().sort((a, b) => {
+        const ta = new Date(a.timestamp).getTime();
+        const tb = new Date(b.timestamp).getTime();
+        return ta - tb;
+      });
+      const base = sorted[0];
+      const latest = sorted[sorted.length - 1];
+      dedupMap.set(base.id, {
+        ...base,
+        content: latest.content || base.content,
+        label: latest.label || base.label,
+        meta: latest.meta || base.meta,
+        status: latest.status,
+      });
     }
     for (const arr of teamStageByTeam.values()) {
       if (arr.length === 1) {
@@ -190,9 +222,22 @@ export function useActivityTimeline() {
     const treeMap = new Map<string, ActivityTreeNode>();
     const roots: ActivityTreeNode[] = [];
 
-    // Build tree nodes from deduplicated map
+    // 性能优化（方案 B 细粒度响应式）：node 直接引用原 reactive Activity 对象，
+    // 不 spread 复制。这样 renderItems computed 读取 node.content 时，建立对
+    // 原 reactive 对象 content 字段的细粒度依赖。streaming 事件修改原对象
+    // content，只触发 renderItems 重算（O(n)），不触发 activityTree 重算
+    // （O(n log n) dedup + sort）。
+    //
+    // 注意：
+    // 1. dedup 后的 merged Activity（team_stage/plan）不是原 reactive 对象，
+    //    但这些类型没有 streaming 事件，不影响细粒度响应式优化。
+    // 2. node.children = [] 会修改原 reactive 对象，但只在 activityTree 重算
+    //    时执行（结构变化时），streaming 事件不触发 activityTree 重算，因此
+    //    不会频繁修改 children 字段。
     for (const activity of dedupMap.values()) {
-      treeMap.set(activity.id, { ...activity, children: [] });
+      const node = activity as ActivityTreeNode;
+      node.children = [];
+      treeMap.set(activity.id, node);
     }
 
     // Link children to parents
@@ -300,8 +345,23 @@ export function useActivityTimeline() {
         // The fix: take the `created` snapshot as the structural base, then
         // overlay any pre-existing accumulated fields so streaming data
         // survives the late-arriving `created`.
+        //
+        // Timestamp 保留：`created` 事件携带的 Timestamp 是 Activity 的创建时间
+        // （设计 B.3.3：Timestamp 在事件产生时设置）。即使 `created` 晚于
+        // `streaming` 到达，也必须使用 `created` 的 Timestamp，因为创建时间
+        // 是排序的唯一依据——晚到的 `streaming` Timestamp 会更大，若保留它
+        // 会导致 Activity 在时间线中后移，破坏事件自然顺序。
+        //
+        // 性能优化（方案 B 细粒度响应式）：Activity 用 reactive 包裹，
+        // 让 Vue 自动追踪字段依赖。created 是结构变化事件，需要 triggerRef
+        // 触发 activityTree 重算。
         const existing = map.get(snapshot.id);
-        map.set(snapshot.id, existing ? { ...snapshot, ...existing } : snapshot);
+        if (existing) {
+          // 已有 reactive 对象：用 Object.assign 合并，保留 streaming 期间累积的内容字段
+          Object.assign(existing, { ...snapshot, ...existing, timestamp: snapshot.timestamp });
+        } else {
+          map.set(snapshot.id, reactive({ ...snapshot }));
+        }
         triggerRef(activitiesBySession);
         if (!snapshot.parentActivityId) {
           setRootForSession(sessionId, snapshot.id);
@@ -312,39 +372,54 @@ export function useActivityTimeline() {
         // Streaming append: the Activity snapshot carries the accumulated
         // state, and delta_field/delta_chunk carry the incremental text.
         // We apply the delta to the existing Activity (or create if missing).
+        //
+        // 性能优化（方案 B 细粒度响应式）：streaming 事件直接修改 reactive
+        // 对象的内容字段（content/reasoning/toolArguments/toolResult），
+        // **不调用 triggerRef**。Vue 自动触发读取该字段的组件重渲染
+        // （如 ReplyBlock 读取 content）。activityTree computed 只依赖结构
+        // 字段（kind/teamId/turnId/parentActivityId/status/timestamp），
+        // 不依赖内容字段，因此不会全量重算。
+        // 这解决了"最后输出越来越卡"的问题：511 activities × 60 triggers/sec
+        // 的全量重算降到 0 次（streaming 时不触发 activityTree）。
         const existing = map.get(snapshot.id);
         if (!existing) {
           // Activity not yet in map (race or missed created event):
-          // use the full snapshot as the base.
-          map.set(snapshot.id, snapshot);
+          // use the full snapshot as the base. 这是结构变化，需要 triggerRef。
+          map.set(snapshot.id, reactive({ ...snapshot }));
+          triggerRef(activitiesBySession);
         } else if (ev.delta_field && ev.delta_chunk) {
-          const updated: Activity = { ...existing };
+          // 直接修改 reactive 对象字段，不创建新对象，不 triggerRef
           if (ev.delta_field === 'reasoning') {
-            updated.reasoning = (existing.reasoning || '') + ev.delta_chunk;
+            existing.reasoning = (existing.reasoning || '') + ev.delta_chunk;
           } else if (ev.delta_field === 'content') {
-            updated.content = (existing.content || '') + ev.delta_chunk;
+            existing.content = (existing.content || '') + ev.delta_chunk;
           } else if (ev.delta_field === 'tool_arguments') {
-            updated.toolArguments = (existing.toolArguments || '') + ev.delta_chunk;
+            existing.toolArguments = (existing.toolArguments || '') + ev.delta_chunk;
           } else if (ev.delta_field === 'tool_result') {
             // Tool output may stream in (large file_read / shell stdout / etc.);
             // accumulate it the same way as reasoning/content.
-            updated.toolResult = (existing.toolResult || '') + ev.delta_chunk;
+            existing.toolResult = (existing.toolResult || '') + ev.delta_chunk;
           }
-          if (snapshot.seq != null) updated.seq = snapshot.seq;
+          if (snapshot.seq != null) existing.seq = snapshot.seq;
           // Chat UI #2: a streaming envelope may ALSO carry a status change
           // (e.g. the final tool_result chunk arriving alongside
           // `status: completed`). Mirror the snapshot status so the UI
           // updates without waiting for a follow-up `completed` envelope,
           // which can be dropped or coalesced on the wire — leaving the
           // tool card stuck on the previous status until a page refresh.
-          if (snapshot.status) updated.status = snapshot.status;
-          map.set(snapshot.id, updated);
+          // 注意：status 变化会触发 activityTree 重算（因为 activityTree 依赖
+          // status 做 dedup）。这是 acceptable 的，因为 streaming 期间 status
+          // 变化不频繁（通常只在最后一个 chunk 时变化）。
+          if (snapshot.status) existing.status = snapshot.status;
+          // Timestamp 保留：streaming 事件不更新 Timestamp，保持 created 时的时间，
+          // 避免 thinking/action/reply 在流式过程中位置跳动（设计 B.3.3）。
+          // 不 triggerRef：内容字段变化由 reactive 自动触发对应组件重渲染
         } else {
           // No delta info: use the full snapshot (backend may send
-          // accumulated content in the snapshot).
-          map.set(snapshot.id, { ...existing, ...snapshot });
+          // accumulated content in the snapshot). 保留 existing.timestamp。
+          Object.assign(existing, { ...snapshot, timestamp: existing.timestamp });
+          // 不 triggerRef：内容字段变化由 reactive 自动触发对应组件重渲染
         }
-        triggerRef(activitiesBySession);
         break;
       }
       case 'updated':
@@ -353,11 +428,23 @@ export function useActivityTimeline() {
       case 'cancelled': {
         // Terminal or state-change event: merge the full snapshot into
         // the existing Activity (or create if missing).
+        //
+        // Timestamp 保留（关键修复）：`updated`/`completed` 事件携带的 Timestamp
+        // 是事件发出时间，而非 Activity 创建时间。若用新 Timestamp 覆盖，
+        // graph_stage / team_stage 等多次更新的 Activity 会在时间线中不断后移，
+        // 导致 plan → graph → team 的设计顺序错乱为 team → graph（或更糟）。
+        // 保留 existing.timestamp 确保 Activity 始终位于其创建时的位置，
+        // 这与设计 B.3.3「按 Timestamp ASC 排序」的初衷一致——排序依据是
+        // 创建时间，而非最后更新时间。
+        //
+        // 性能优化（方案 B 细粒度响应式）：直接修改 reactive 对象字段。
+        // 这些事件可能改变结构字段（如 status），需要 triggerRef 触发
+        // activityTree 重算（dedup 逻辑依赖 status）。
         const existing = map.get(snapshot.id);
         if (existing) {
-          map.set(snapshot.id, { ...existing, ...snapshot });
+          Object.assign(existing, { ...snapshot, timestamp: existing.timestamp });
         } else {
-          map.set(snapshot.id, snapshot);
+          map.set(snapshot.id, reactive({ ...snapshot }));
         }
         triggerRef(activitiesBySession);
         break;
@@ -456,7 +543,12 @@ export function useActivityTimeline() {
         ...normalized,
         seq: normalized.seq ?? fallbackSeq++,
       };
-      newMap.set(a.id, withSeq);
+      // 性能优化（方案 B 细粒度响应式）：用 reactive 包裹 Activity，
+      // 让 Vue 自动追踪字段依赖。streaming 事件直接修改 reactive 对象的
+      // content/reasoning 字段，只触发读取这些字段的组件重渲染，不触发
+      // activityTree computed 全量重算（因为 activityTree 只依赖结构字段
+      // kind/teamId/turnId/parentActivityId/status/timestamp）。
+      newMap.set(a.id, reactive(withSeq));
       if (!a.parentActivityId) {
         newRootId = a.id;
       }
@@ -481,6 +573,15 @@ export function useActivityTimeline() {
   // On final failure, sets loadError for the session so the UI can show a
   // "数据加载失败，请刷新" degradation notice instead of silently falling
   // back to Legacy rendering.
+  //
+  // T5.1 / §B.7.1: This loader is called once per spirit session on entry
+  // (driven by `setCurrentSession` + `ensureActivitiesLoaded` at the page
+  // level). Sub-session activities are NOT pre-loaded here — they are
+  // lazy-loaded via `ensureActivitiesLoaded` when team-card / agent-card
+  // expands (T5.2/T5.3, see ChatPage.onExpandChildren). The backend
+  // `ListActivities` RPC uses `ListBySession(sessionID)` which only returns
+  // activities whose `session_id` matches — i.e. spirit-direct activities
+  // for a spirit session, NOT nested team/agent sub-session activities.
   async function loadActivitiesFromAPI(sessionId: string, turnId?: string) {
     const maxAttempts = 5;
     const baseDelay = 500;
@@ -526,6 +627,13 @@ export function useActivityTimeline() {
    *
    * Failed loads do NOT populate the cache, so the next call retries
    * automatically.
+   *
+   * T5.4 / §B.7.2: Cache guarantee for sub-session lazy-load. When a
+   * team-card or agent-card expands repeatedly (toggle on/off/on), this
+   * guard ensures we only hit the API once per session — subsequent
+   * expands resolve immediately from the in-memory Map. The cache key is
+   * `sessionId`; turn-scoped sub-loads pass `turnId` but the cache check
+   * does not differentiate by turn (a session is either loaded or not).
    */
   async function ensureActivitiesLoaded(sessionId: string, turnId?: string) {
     if (activitiesBySession.value.has(sessionId)) return;
@@ -771,7 +879,9 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
     }
 
     case 'notice': {
-      const noticeType = (node.meta?.noticeType as NoticeEvent['type']) ?? 'info';
+      // Support both camelCase (OnNotice) and snake_case (PrePlanningGate /
+      // plan-confirm / feedback) meta keys — backend is inconsistent.
+      const noticeType = (node.meta?.noticeType ?? node.meta?.notice_type) as NoticeEvent['type'] ?? 'info';
       return {
         kind: 'notice',
         id: node.id,
@@ -817,11 +927,20 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
           : typeof node.meta?.progressPct === 'number'
             ? (node.meta.progressPct as number)
             : undefined;
+      // B.4.1 team-card: title resolution priority — Label > Content > meta.team_name.
+      // Backend team_stage events typically don't set Label/Content (only Meta),
+      // so meta.team_name (set by publishSpiritTeamAssembled + cancel path) is the
+      // primary source for the team display name. Without this fallback, the inline
+      // TeamCard's displayTeamName degrades to generic status text ("assembling").
+      const teamNameFromMeta =
+        (typeof node.meta?.team_name === 'string' && node.meta.team_name) ||
+        (typeof node.meta?.teamName === 'string' && node.meta.teamName) ||
+        '';
       return {
         kind: 'team_stage',
         id: node.id,
         status: mapActivityStatusToStageStatus(node.status),
-        title: node.label || node.content || '',
+        title: node.label || node.content || teamNameFromMeta,
         teamId: node.teamId || undefined,
         members,
         taskSummary,
@@ -884,13 +1003,17 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
  * (the stage reached a terminal state; member/node-level failures are
  * visible in their respective lists).
  */
-function mapActivityStatusToStageStatus(status: ActivityStatus): 'running' | 'completed' | 'failed' | 'cancelled' {
+function mapActivityStatusToStageStatus(
+  status: ActivityStatus,
+): 'running' | 'paused' | 'completed' | 'failed' | 'cancelled' {
   switch (status) {
     case 'pending':
     case 'running':
     case 'tool_running':
     case 'tool_blocked':
       return 'running';
+    case 'paused':
+      return 'paused';
     case 'completed':
     case 'partial_failure':
       return 'completed';
@@ -904,7 +1027,7 @@ function mapActivityStatusToStageStatus(status: ActivityStatus): 'running' | 'co
   }
 }
 
-/** Stable activity comparator: pure Timestamp ASC (design doc B.3.3).
+/** Stable activity comparator: Timestamp ASC, then kind priority, then id.
  *
  * The backend guarantees Timestamp monotonicity via the trpc-agent-go Runner's
  * single-goroutine `runEventLoop` + Channel FIFO + event.EmitEvent setting
@@ -921,22 +1044,38 @@ function mapActivityStatusToStageStatus(status: ActivityStatus): 'running' | 'co
  *
  * RFC3339Nano strings with variable fractional-digit lengths do not sort
  * lexicographically (e.g. `.100` vs `.99`), so Timestamp is compared
- * numerically via Date.parse, with a stable id-based tiebreaker for the
- * extremely rare equal-Timestamp case (single publish worker makes this
- * near-impossible, but stability is required for sort determinism).
+ * numerically via Date.parse. When two events share the same millisecond,
+ * a kind priority tiebreaker keeps intermediate outputs in the natural
+ * thinking → action → reply order (P1#5). An id-based tiebreaker is the
+ * final guard for full determinism.
  *
  * Accepts the base `Activity` type so it can sort both flat lists
  * (sortedActivities) and tree nodes (ActivityTreeNode[] — TreeNode extends
  * Activity).
  */
+const ACTIVITY_KIND_PRIORITY: Record<ActivityKind, number> = {
+  task: 0,
+  thinking: 1,
+  action: 2,
+  reply: 3,
+  plan: 4,
+  notice: 5,
+  confirm: 6,
+  team_stage: 7,
+  graph_stage: 8,
+  session: 9,
+};
+
 function compareActivities(a: Activity, b: Activity): number {
   const ta = new Date(a.timestamp).getTime();
   const tb = new Date(b.timestamp).getTime();
   if (!Number.isNaN(ta) && !Number.isNaN(tb) && ta !== tb) {
     return ta - tb;
   }
-  // Fallback: lexical timestamp comparison (covers NaN cases) then id for stability.
+  // Fallback: lexical timestamp comparison (covers NaN cases) then kind priority.
   const tsCmp = a.timestamp.localeCompare(b.timestamp);
   if (tsCmp !== 0) return tsCmp;
+  const priorityDiff = ACTIVITY_KIND_PRIORITY[a.kind] - ACTIVITY_KIND_PRIORITY[b.kind];
+  if (priorityDiff !== 0) return priorityDiff;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }

@@ -39,7 +39,8 @@ export type ActivityStatus =
   | 'failed'
   | 'partial_failure'
   | 'cancelled'
-  | 'interrupted';
+  | 'interrupted'
+  | 'paused';
 
 // === Activity Domain Model ===
 

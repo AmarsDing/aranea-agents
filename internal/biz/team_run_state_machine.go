@@ -1,131 +1,136 @@
-// Package biz — TeamRun State Machine (AS-FSM-01)
-//
-// # TeamRun State Diagram
-//
-// ```mermaid
-// stateDiagram-v2
-//
-//	[*] --> Pending
-//	Pending --> Running : start
-//	Pending --> Cancelled : cancel
-//	Running --> WaitingHuman : await_human
-//	Running --> Success : succeed
-//	Running --> Failed : fail
-//	Running --> Cancelled : cancel
-//	WaitingHuman --> Running : resume
-//	WaitingHuman --> Success : succeed
-//	WaitingHuman --> Failed : fail
-//	WaitingHuman --> Cancelled : cancel
-//	Success --> [*]
-//	Failed --> [*]
-//	Cancelled --> [*]
-//
-// ```
 package biz
 
-import (
-	"aranea-agents/internal/biz/shared"
-)
+import "fmt"
 
-// ── TeamRun State & Event types ──────────────────────────────────────────────
-
-// TeamRunState enumerates all legal states of a TeamRun entity.
-// String values match the raw strings currently used throughout the codebase.
-// Stability:stable
-type TeamRunState string
-
+// TeamRun status constants for the TeamRun lifecycle state machine.
+// These are intentionally kept as string constants for JSON/DB compatibility.
+// Stability:internal
 const (
-	TeamRunStatePending      TeamRunState = "pending"
-	TeamRunStateRunning      TeamRunState = "running"
-	TeamRunStateSuccess      TeamRunState = "success"
-	TeamRunStateFailed       TeamRunState = "failed"
-	TeamRunStateCancelled    TeamRunState = "cancelled"
-	TeamRunStateWaitingHuman TeamRunState = "waiting_human"
+	TeamRunStatusPending      = "pending"
+	TeamRunStatusRunning      = "running"
+	TeamRunStatusSuccess      = "success"
+	TeamRunStatusFailed       = "failed"
+	TeamRunStatusCancelled    = "cancelled"
+	TeamRunStatusWaitingHuman = "waiting_human"
+	TeamRunStatusPaused       = "paused"
 )
 
-// TeamRunEvent enumerates all events that can trigger a TeamRun state transition.
-// Stability:stable
+// TeamRunEvent represents an event that can trigger a TeamRun status transition.
+// Stability:internal
 type TeamRunEvent string
 
 const (
-	TeamRunEventStart      TeamRunEvent = "start"
-	TeamRunEventSucceed    TeamRunEvent = "succeed"
-	TeamRunEventFail       TeamRunEvent = "fail"
-	TeamRunEventCancel     TeamRunEvent = "cancel"
-	TeamRunEventAwaitHuman TeamRunEvent = "await_human"
-	TeamRunEventResume     TeamRunEvent = "resume"
+	TeamRunEventStart     TeamRunEvent = "start"
+	TeamRunEventComplete  TeamRunEvent = "complete"
+	TeamRunEventFail      TeamRunEvent = "fail"
+	TeamRunEventCancel    TeamRunEvent = "cancel"
+	TeamRunEventWaitHuman TeamRunEvent = "wait_human"
+	TeamRunEventResume    TeamRunEvent = "resume"
+	TeamRunEventPause     TeamRunEvent = "pause"
+	TeamRunEventUnpause   TeamRunEvent = "unpause"
 )
 
-// ── Transition rules ─────────────────────────────────────────────────────────
-
-// teamRunTransitionRules defines the legal state transitions for a TeamRun.
-// Terminal states (success, failed, cancelled) have no outgoing transitions.
-var teamRunTransitionRules = []shared.TransitionRule[TeamRunState, TeamRunEvent]{
-	{From: TeamRunStatePending, Event: TeamRunEventStart, To: TeamRunStateRunning},
-	{From: TeamRunStatePending, Event: TeamRunEventCancel, To: TeamRunStateCancelled},
-	{From: TeamRunStateRunning, Event: TeamRunEventAwaitHuman, To: TeamRunStateWaitingHuman},
-	{From: TeamRunStateRunning, Event: TeamRunEventSucceed, To: TeamRunStateSuccess},
-	{From: TeamRunStateRunning, Event: TeamRunEventFail, To: TeamRunStateFailed},
-	{From: TeamRunStateRunning, Event: TeamRunEventCancel, To: TeamRunStateCancelled},
-	{From: TeamRunStateWaitingHuman, Event: TeamRunEventResume, To: TeamRunStateRunning},
-	{From: TeamRunStateWaitingHuman, Event: TeamRunEventSucceed, To: TeamRunStateSuccess},
-	{From: TeamRunStateWaitingHuman, Event: TeamRunEventFail, To: TeamRunStateFailed},
-	{From: TeamRunStateWaitingHuman, Event: TeamRunEventCancel, To: TeamRunStateCancelled},
+// teamRunTransitions defines the legal TeamRun status transitions.
+// Each (from, event) maps to exactly one target status.
+// Stability:internal
+var teamRunTransitions = map[string]map[TeamRunEvent]string{
+	TeamRunStatusPending: {
+		TeamRunEventStart:  TeamRunStatusRunning,
+		TeamRunEventCancel: TeamRunStatusCancelled,
+	},
+	TeamRunStatusRunning: {
+		TeamRunEventWaitHuman: TeamRunStatusWaitingHuman,
+		TeamRunEventPause:      TeamRunStatusPaused,
+		TeamRunEventComplete:  TeamRunStatusSuccess,
+		TeamRunEventFail:      TeamRunStatusFailed,
+		TeamRunEventCancel:    TeamRunStatusCancelled,
+	},
+	TeamRunStatusWaitingHuman: {
+		TeamRunEventResume:   TeamRunStatusRunning,
+		TeamRunEventComplete: TeamRunStatusSuccess,
+		TeamRunEventFail:     TeamRunStatusFailed,
+		TeamRunEventCancel:   TeamRunStatusCancelled,
+	},
+	TeamRunStatusPaused: {
+		TeamRunEventUnpause:  TeamRunStatusRunning,
+		TeamRunEventComplete: TeamRunStatusSuccess,
+		TeamRunEventFail:     TeamRunStatusFailed,
+		TeamRunEventCancel:   TeamRunStatusCancelled,
+	},
+	TeamRunStatusSuccess:   {},
+	TeamRunStatusFailed:    {},
+	TeamRunStatusCancelled: {},
 }
 
-// ── TeamRunStateMachine ──────────────────────────────────────────────────────
-
-// TeamRunStateMachine wraps the generic state machine with TeamRun-specific types.
-// It is safe for concurrent use after construction.
-// Stability:stable
-type TeamRunStateMachine struct {
-	inner *shared.GenericStateMachine[TeamRunState, TeamRunEvent]
+// teamRunTerminalStatuses lists statuses that cannot be left without creating a new run.
+var teamRunTerminalStatuses = map[string]bool{
+	TeamRunStatusSuccess:   true,
+	TeamRunStatusFailed:    true,
+	TeamRunStatusCancelled: true,
 }
 
-// NewTeamRunStateMachine creates a TeamRunStateMachine with the standard transition rules.
+// IsTeamRunTerminalStatus reports whether the given TeamRun status is terminal.
+func IsTeamRunTerminalStatus(status string) bool {
+	return teamRunTerminalStatuses[status]
+}
+
+// TeamRunState is a typed alias for TeamRun status used by the state machine.
+// Stability:internal
+type TeamRunState string
+
+// NewTeamRunStateMachine returns a TeamRunStateMachine ready for transition checks.
+// Stability:internal
 func NewTeamRunStateMachine() *TeamRunStateMachine {
-	return &TeamRunStateMachine{
-		inner: shared.NewGenericStateMachine[TeamRunState, TeamRunEvent](teamRunTransitionRules),
+	return &TeamRunStateMachine{}
+}
+
+// TeamRunStateMachine validates TeamRun status transitions.
+// Stability:internal
+type TeamRunStateMachine struct{}
+
+// CanTransition reports whether transitioning from "from" to "to" is legal.
+func (m *TeamRunStateMachine) CanTransition(from, to TeamRunState) bool {
+	for _, target := range teamRunTransitions[string(from)] {
+		if target == string(to) {
+			return true
+		}
 	}
+	return false
 }
 
-// Transition validates and executes a state transition.
-// Returns the new state on success, or an error for illegal transitions.
-func (sm *TeamRunStateMachine) Transition(from TeamRunState, event TeamRunEvent) (TeamRunState, error) {
-	return sm.inner.Transition(from, event)
-}
-
-// CanTransition reports whether a direct transition from→to is legal.
-func (sm *TeamRunStateMachine) CanTransition(from, to TeamRunState) bool {
-	return sm.inner.CanTransition(from, to)
-}
-
-// ValidTargets returns all states reachable from the given state, sorted
-// lexicographically.
-func (sm *TeamRunStateMachine) ValidTargets(from TeamRunState) []TeamRunState {
-	return sm.inner.ValidTargets(from)
-}
-
-// ── Helper functions ─────────────────────────────────────────────────────────
-
-// ParseTeamRunState converts a raw string to a TeamRunState constant.
-// Unrecognised strings are returned as-is (they will fail transition validation).
-func ParseTeamRunState(s string) TeamRunState {
-	switch TeamRunState(s) {
-	case TeamRunStatePending, TeamRunStateRunning, TeamRunStateSuccess,
-		TeamRunStateFailed, TeamRunStateCancelled, TeamRunStateWaitingHuman:
-		return TeamRunState(s)
-	default:
-		return TeamRunState(s)
+// TransitionTeamRunStatus returns the target status for a (from, event) pair.
+// It returns an error if the transition is not defined.
+// Stability:internal
+func TransitionTeamRunStatus(from string, event TeamRunEvent) (string, error) {
+	if from == "" {
+		from = TeamRunStatusPending
 	}
+	events, ok := teamRunTransitions[from]
+	if !ok {
+		return "", fmt.Errorf("unknown team run status %q", from)
+	}
+	to, ok := events[event]
+	if !ok {
+		return "", fmt.Errorf("invalid team run transition from %q on event %q", from, event)
+	}
+	return to, nil
 }
 
-// IsTeamRunTerminal returns true for terminal states that have no outgoing transitions.
-func IsTeamRunTerminal(state TeamRunState) bool {
-	switch state {
-	case TeamRunStateSuccess, TeamRunStateFailed, TeamRunStateCancelled:
-		return true
-	default:
-		return false
+// ValidateTeamRunStatusTransition returns nil if the transition is legal.
+// It is a convenience wrapper for callers that already know the target status.
+// Stability:internal
+func ValidateTeamRunStatusTransition(from, to string) error {
+	if from == "" {
+		from = TeamRunStatusPending
 	}
+	events, ok := teamRunTransitions[from]
+	if !ok {
+		return fmt.Errorf("unknown team run status %q", from)
+	}
+	for _, target := range events {
+		if target == to {
+			return nil
+		}
+	}
+	return fmt.Errorf("invalid team run transition from %q to %q", from, to)
 }

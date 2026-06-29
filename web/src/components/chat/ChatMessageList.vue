@@ -42,6 +42,8 @@
     >
       <ActivityStream
         :activity-tree="props.activityTree"
+        :agent-map="props.agentMap"
+        :run-status="props.runStatus"
         @confirm="(id: string, approved: boolean) => $emit('confirm', id, approved)"
         @error-retry="(e: ErrorEvent) => $emit('error-retry', e)"
         @error-switch-model="(e: ErrorEvent) => $emit('error-switch-model', e)"
@@ -53,8 +55,15 @@
         @enter-session="(sid) => $emit('enter-session', sid)"
         @cancel-team="(teamId: string) => $emit('cancel-team', teamId)"
         @retry-team="(teamId: string) => $emit('retry-team', teamId)"
+        @pause-team="(teamId: string) => $emit('pause-team', teamId)"
+        @unpause-team="(teamId: string) => $emit('unpause-team', teamId)"
+        @inject-team="(p: { teamId: string; message: string }) => $emit('inject-team', p)"
         @cancel-agent="(sessionId: string) => $emit('cancel-agent', sessionId)"
         @retry-agent="(sessionId: string) => $emit('retry-agent', sessionId)"
+        @pause-agent="(sessionId: string) => $emit('pause-agent', sessionId)"
+        @resume-agent="(sessionId: string) => $emit('resume-agent', sessionId)"
+        @inject-agent="(p: { sessionId: string; message: string }) => $emit('inject-agent', p)"
+        @expand="(ids: string[]) => $emit('expand', ids)"
       />
     </div>
     <ChatPendingQueue
@@ -104,6 +113,10 @@ const props = defineProps<{
    * children, and ActivityStream recurses over them to render parent-child
    * Activities with visual indentation. */
   activityTree: ActivityTreeNode[];
+  /** P1#1/2: agent key → display name lookup for TeamCard/AgentCard. */
+  agentMap?: Map<string, { displayName: string; agentKey: string }>;
+  /** P1#3: parent run status to gate cancel button visibility. */
+  runStatus?: import('../../features/chat/types').RunStatusValue;
 }>();
 
 defineEmits<{
@@ -132,8 +145,17 @@ defineEmits<{
   'enter-session': [sessionId: string];
   'cancel-team': [teamId: string];
   'retry-team': [teamId: string];
+  'pause-team': [teamId: string];
+  'unpause-team': [teamId: string];
+  'inject-team': [payload: { teamId: string; message: string }];
   'cancel-agent': [sessionId: string];
   'retry-agent': [sessionId: string];
+  'pause-agent': [sessionId: string];
+  'resume-agent': [sessionId: string];
+  'inject-agent': [payload: { sessionId: string; message: string }];
+  // T5.2/T5.3 / §B.7.2: Forward team-card / agent-card expand events upstream
+  // so ChatPage can lazy-load member/child session activities.
+  expand: [sessionIds: string[]];
 }>();
 
 const { t } = useI18n();

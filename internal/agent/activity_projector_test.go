@@ -114,10 +114,70 @@ func (m *mockActivityWriter) UpsertActivity(_ context.Context, a biz.Activity) (
 func newTestProjector(t testing.TB) (*ActivityProjector, *syncCaptureBus, *mockActivityWriter) {
 	bus := newSyncCaptureBus()
 	repo := newMockActivityWriter()
-	p := NewActivityProjector(bus, repo, loggateway.NewNoop())
+	p := NewActivityProjector(bus, repo, loggateway.NewNoop(), NewNoopToolCategorizer())
 	p.Reset() // initialize internal maps
 	t.Cleanup(func() { p.Close() })
 	return p, bus, repo
+}
+
+// --- Silent tools ---
+
+// TestOnToolCall_silentToolNotProjected verifies that tools listed in
+// silentToolNames (e.g. check_progress) do NOT create action Activities.
+// This prevents orchestration polling tools from flooding the chat UI.
+func TestOnToolCall_silentToolNotProjected(t *testing.T) {
+	p, bus, repo := newTestProjector(t)
+	p.Configure(ProjectMeta{SessionID: "sess-1", RequestID: "turn-1", AgentID: "agent-1"}, nil)
+	ctx := context.Background()
+
+	// check_progress is a silent tool — should NOT create an action Activity.
+	p.OnToolCall(ctx, "call-silent-1", "check_progress", `{"orchestration_id":"o1"}`, "agent-1", timeNow())
+	// OnToolResult should also be a no-op (tool_call_id not registered).
+	p.OnToolResult(ctx, "call-silent-1", `{"status":"running"}`, "success", "", 10)
+
+	p.Close()
+
+	// No action Activity should have been persisted.
+	for _, a := range repo.activities {
+		if a.Kind == biz.ActivityKindAction {
+			t.Errorf("silent tool created action activity: id=%s tool=%s", a.ID, a.ToolName)
+		}
+	}
+	// No event should have been published for the silent tool.
+	bus.mu.Lock()
+	published := make([]biz.ActivityEvent, len(bus.published))
+	copy(published, bus.published)
+	bus.mu.Unlock()
+	for _, ev := range published {
+		if ev.Activity.Kind == biz.ActivityKindAction {
+			t.Errorf("silent tool published event: tool=%s", ev.Activity.ToolName)
+		}
+	}
+}
+
+// TestOnToolCall_nonSilentToolProjected verifies that non-silent tools are
+// still projected normally (regression guard for the silent-tool skip).
+func TestOnToolCall_nonSilentToolProjected(t *testing.T) {
+	p, _, repo := newTestProjector(t)
+	p.Configure(ProjectMeta{SessionID: "sess-1", RequestID: "turn-1", AgentID: "agent-1"}, nil)
+	ctx := context.Background()
+
+	p.OnToolCall(ctx, "call-1", "read_file", `{"path":"/tmp/x"}`, "agent-1", timeNow())
+	p.Close()
+
+	var action *biz.Activity
+	for _, a := range repo.activities {
+		if a.Kind == biz.ActivityKindAction {
+			action = &a
+			break
+		}
+	}
+	if action == nil {
+		t.Fatal("non-silent tool did not create action activity")
+	}
+	if action.ToolName != "read_file" {
+		t.Errorf("toolName=%q want %q", action.ToolName, "read_file")
+	}
 }
 
 // --- OnNotice ---
@@ -217,7 +277,7 @@ func TestOnConfirmResult_badRequestWhenKindNotConfirm(t *testing.T) {
 
 	// Create a notice activity (not confirm) in the projector's internal map
 	p.mu.Lock()
-	p.activities["act-notice"] = &biz.Activity{
+	p.state.activities["act-notice"] = &biz.Activity{
 		ID:     "act-notice",
 		Kind:   biz.ActivityKindNotice,
 		Status: biz.ActivityStatusCompleted,
@@ -358,7 +418,7 @@ func TestOnPlanStepUpdate_badRequestWhenKindNotPlan(t *testing.T) {
 
 	// Insert a non-plan activity
 	p.mu.Lock()
-	p.activities["act-notice"] = &biz.Activity{
+	p.state.activities["act-notice"] = &biz.Activity{
 		ID:     "act-notice",
 		Kind:   biz.ActivityKindNotice,
 		Status: biz.ActivityStatusCompleted,
@@ -383,7 +443,7 @@ func TestOnPlanStepUpdate_badRequestWhenStepsMetaInvalid(t *testing.T) {
 
 	// Insert a plan activity with invalid steps metadata
 	p.mu.Lock()
-	p.activities["act-plan"] = &biz.Activity{
+	p.state.activities["act-plan"] = &biz.Activity{
 		ID:     "act-plan",
 		Kind:   biz.ActivityKindPlan,
 		Status: biz.ActivityStatusPending,
@@ -628,9 +688,10 @@ func TestOnMemberMessageDone_finalizesReplyActivity(t *testing.T) {
 	}
 }
 
-// TestOnMemberMessageDone_noopWhenNoActivity verifies that Done without a
-// prior Delta does not publish anything (defensive guard).
-func TestOnMemberMessageDone_noopWhenNoActivity(t *testing.T) {
+// TestOnMemberMessageDone_createsReplyWhenNoActivity verifies that Done
+// without a prior Delta still creates a reply activity from the final text
+// so the UI can render member replies that arrive in a single chunk.
+func TestOnMemberMessageDone_createsReplyWhenNoActivity(t *testing.T) {
 	p, bus, _ := newTestProjector(t)
 	p.Configure(ProjectMeta{
 		SessionID:       "sess-team",
@@ -641,9 +702,15 @@ func TestOnMemberMessageDone_noopWhenNoActivity(t *testing.T) {
 
 	p.OnMemberMessageDone(context.Background(), "worker-a", "orphan text")
 
-	// No events should be published
-	if envs := bus.waitForPublished(t, 0); len(envs) != 0 {
-		t.Errorf("expected 0 events, got %d", len(envs))
+	envs := bus.waitForPublished(t, 1)
+	if envs[0].Event != biz.ActivityEventCreated {
+		t.Errorf("event type=%q want %q", envs[0].Event, biz.ActivityEventCreated)
+	}
+	if envs[0].Activity.Kind != biz.ActivityKindReply {
+		t.Errorf("activity kind=%q want %q", envs[0].Activity.Kind, biz.ActivityKindReply)
+	}
+	if envs[0].Activity.Content != "orphan text" {
+		t.Errorf("activity content=%q want %q", envs[0].Activity.Content, "orphan text")
 	}
 }
 
@@ -808,7 +875,7 @@ func TestProcessEvent_reasoningBeforeTextInSameChunk(t *testing.T) {
 	// not deterministic; verify the in-memory creation order instead.
 	p.mu.Lock()
 	var thinkingCreated, replyCreated time.Time
-	for _, a := range p.activities {
+	for _, a := range p.state.activities {
 		if a.Kind == biz.ActivityKindThinking && thinkingCreated.IsZero() {
 			thinkingCreated = a.Timestamp
 		}

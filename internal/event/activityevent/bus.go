@@ -41,19 +41,19 @@ import (
 //     (plan/graph_stage/team_stage/session), needs normalization + persistence
 type Bus struct {
 	inner *event.GenericBus[biz.ActivityEvent]
-	repo  biz.ActivityWriter
+	repo  biz.ActivityUpserter
 	lg    loggateway.Logger
 }
 
 // New creates a new ActivityEventBus.
 //
-// repo is the ActivityWriter used to persist direct-publish events so
+// repo is the ActivityUpserter used to persist direct-publish events so
 // they survive page refresh. May be nil — in that case direct-publish
 // events are not persisted by the bus (callers that need persistence
 // must persist themselves).
 //
 // lg is the logger. May be nil — a noop logger is used.
-func New(repo biz.ActivityWriter, lg loggateway.Logger) *Bus {
+func New(repo biz.ActivityUpserter, lg loggateway.Logger) *Bus {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}

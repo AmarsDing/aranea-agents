@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ActivityEvent, Activity, ActivityEventType } from '../../realtime/activityEvent';
+import type { ActivityEvent, Activity, ActivityEventType } from '../../../realtime/activityEvent';
 import {
   activityMessageId,
   activityToToolEvent,

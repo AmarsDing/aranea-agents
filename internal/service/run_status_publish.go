@@ -52,16 +52,20 @@ func PublishRunStatusFull(bus biz.ActivityEventBus, sessionID, runID, status, er
 			meta["await_tool_call_id"] = k
 		}
 	}
+	noticeType, statusLabel := runStatusNoticeTypeAndLabel(status)
+	meta["notice_type"] = noticeType
 	ev := biz.ActivityEvent{
 		Event: biz.ActivityEventUpdated,
 		Activity: biz.Activity{
 			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindSession,
+			Kind:      biz.ActivityKindNotice,
 			Status:    mapRunStatusToActivityStatus(status),
 			Timestamp: time.Now().UTC(),
 			SessionID: sessionID,
 			AgentKey:  "run-service",
+			AgentName: "运行状态",
 			Stage:     "run_status",
+			Content:   "运行状态：" + statusLabel,
 			Meta:      meta,
 		},
 		Domain: biz.ActivityDomainChat,
@@ -75,6 +79,8 @@ func mapRunStatusToActivityStatus(status string) biz.ActivityStatus {
 	switch status {
 	case "running", "streaming", "awaiting_user":
 		return biz.ActivityStatusRunning
+	case "paused":
+		return biz.ActivityStatusPaused
 	case "completed", "succeeded":
 		return biz.ActivityStatusCompleted
 	case "failed", "error":
@@ -83,6 +89,31 @@ func mapRunStatusToActivityStatus(status string) biz.ActivityStatus {
 		return biz.ActivityStatusCancelled
 	default:
 		return biz.ActivityStatusRunning
+	}
+}
+
+// runStatusNoticeTypeAndLabel maps a raw run-status string to a frontend
+// notice type (info/success/warning) and a human-readable Chinese label.
+// Used for run_status and session_status_changed notice events so the chat
+// UI renders them as NoticeBlock instead of empty AgentCards.
+func runStatusNoticeTypeAndLabel(status string) (noticeType, label string) {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "running":
+		return "info", "运行中"
+	case "streaming":
+		return "info", "流式输出中"
+	case "awaiting_user":
+		return "info", "等待用户输入"
+	case "paused":
+		return "info", "已暂停"
+	case "completed", "succeeded":
+		return "success", "已完成"
+	case "failed", "error":
+		return "warning", "失败"
+	case "cancelled", "canceled":
+		return "warning", "已取消"
+	default:
+		return "info", status
 	}
 }
 
@@ -134,21 +165,25 @@ func PublishSessionStatusChanged(bus biz.ActivityEventBus, sessionID, status, st
 	if bus == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
+	noticeType, statusLabel := runStatusNoticeTypeAndLabel(status)
 	ev := biz.ActivityEvent{
 		Event: biz.ActivityEventUpdated,
 		Activity: biz.Activity{
 			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindSession,
+			Kind:      biz.ActivityKindNotice,
 			Status:    mapRunStatusToActivityStatus(status),
 			Timestamp: time.Now().UTC(),
 			SessionID: sessionID,
 			AgentKey:  "session-service",
+			AgentName: "会话状态",
 			Stage:     "session_status_changed",
+			Content:   "会话状态：" + statusLabel,
 			Meta: map[string]any{
 				"session_id":        sessionID,
 				"status":            status,
 				"status_reason":     statusReason,
 				"status_changed_at": statusChangedAt,
+				"notice_type":       noticeType,
 			},
 		},
 		Domain: biz.ActivityDomainChat,
@@ -182,11 +217,12 @@ func PublishMetricsUpdated(bus biz.ActivityEventBus, sessionID string) {
 		Event: biz.ActivityEventUpdated,
 		Activity: biz.Activity{
 			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindSession,
+			Kind:      biz.ActivityKindNotice,
 			Status:    biz.ActivityStatusCompleted,
 			Timestamp: time.Now().UTC(),
 			SessionID: sessionID,
 			AgentKey:  "session-metrics",
+			AgentName: "会话指标",
 			Stage:     "metrics_updated",
 			Meta: map[string]any{
 				"session_id": sessionID,

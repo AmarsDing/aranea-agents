@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"testing"
 	"time"
 
@@ -301,7 +302,7 @@ func TestOnTurnEnd_finalizesChildActivities(t *testing.T) {
 	p.Configure(ProjectMeta{SessionID: "sess-1", RequestID: "turn-1", AgentID: "agent-1"}, nil)
 	ctx := context.Background()
 
-	p.OnTurnStart(ctx, ProjectMeta{SessionID: "sess-1", RequestID: "turn-1", AgentID: "agent-1"})
+	_ = p.OnTurnStart(ctx, ProjectMeta{SessionID: "sess-1", RequestID: "turn-1", AgentID: "agent-1"})
 	p.OnTextDelta(ctx, "agent-1", "reply content")
 	p.OnReasoningDelta(ctx, "agent-1", "reasoning content", true)
 	p.OnToolCall(ctx, "call_123", "read_file", `{"path":"/tmp/x"}`, "agent-1", timeNow())
@@ -429,7 +430,7 @@ func TestOnError_RootTaskExists_TransitionsToFailed(t *testing.T) {
 	p.Configure(meta, nil)
 	ctx := context.Background()
 
-	p.OnTurnStart(ctx, meta)
+	_ = p.OnTurnStart(ctx, meta)
 	p.OnError(ctx, "model rate limited", "RateLimitError", "429")
 	p.Close()
 
@@ -498,7 +499,7 @@ func TestOnTurnEnd_TerminalStateProtection(t *testing.T) {
 	p.Configure(meta, nil)
 	ctx := context.Background()
 
-	p.OnTurnStart(ctx, meta)
+	_ = p.OnTurnStart(ctx, meta)
 	p.OnError(ctx, "turn failed", "InternalError", "500")
 
 	// OnTurnEnd must not overwrite the Failed status.
@@ -532,7 +533,7 @@ func TestOnTurnEnd_NormalCompletion_TransitionsToCompleted(t *testing.T) {
 	p.Configure(meta, nil)
 	ctx := context.Background()
 
-	p.OnTurnStart(ctx, meta)
+	_ = p.OnTurnStart(ctx, meta)
 	p.OnTurnEnd(ctx, &ActivityUsage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30}, false)
 	p.Close()
 
@@ -568,7 +569,7 @@ func TestOnStuckTools_BeforeOnTurnEnd_StuckToolGetsFailed(t *testing.T) {
 	p.Configure(meta, nil)
 	ctx := context.Background()
 
-	p.OnTurnStart(ctx, meta)
+	_ = p.OnTurnStart(ctx, meta)
 	// Tool call without a matching OnToolResult → stuck.
 	p.OnToolCall(ctx, "call_stuck", "read_file", `{"path":"/tmp/x"}`, "agent-1", timeNow())
 
@@ -636,7 +637,7 @@ func TestOnTurnEnd_Cancelled_ActivitiesGetCancelledStatus(t *testing.T) {
 	p.Configure(meta, nil)
 	ctx := context.Background()
 
-	p.OnTurnStart(ctx, meta)
+	_ = p.OnTurnStart(ctx, meta)
 	// reply + thinking still running (no OnTextDone/OnReasoningDone).
 	p.OnTextDelta(ctx, "agent-1", "partial reply")
 	p.OnReasoningDelta(ctx, "agent-1", "partial reasoning", true)
@@ -731,7 +732,7 @@ func TestOnTurnEnd_NotCancelled_ActivitiesGetCompletedStatus(t *testing.T) {
 	p.Configure(meta, nil)
 	ctx := context.Background()
 
-	p.OnTurnStart(ctx, meta)
+	_ = p.OnTurnStart(ctx, meta)
 	p.OnTextDelta(ctx, "agent-1", "reply content")
 
 	p.OnTurnEnd(ctx, nil, false)
@@ -758,31 +759,42 @@ func TestOnTurnEnd_NotCancelled_ActivitiesGetCompletedStatus(t *testing.T) {
 // --- P1-A: is_final semantic ---
 
 // TestOnTurnEnd_MarksLastReplyAsIsFinal verifies that OnTurnEnd marks only the
-// LAST reply activity (by Seq) with meta.is_final=true. In a ReAct loop the
+// LAST reply activity (by Timestamp) with meta.is_final=true. In a ReAct loop the
 // model may emit multiple replies; only the last one is the user-facing final
 // answer. Earlier replies must NOT carry is_final.
 //
 // Before the P1-A fix, the frontend inferred isFinal from status=='completed',
 // which marked EVERY terminal reply as final — causing ReplyBlock to label
 // every reply as "最终回复" (final reply) instead of "中间回复" (intermediate).
+//
+// Note: Activity ordering follows Timestamp ASC (design §B.3.3); the legacy
+// Seq-based comparison was removed together with GlobalSeqAllocator, so this
+// test sorts by Timestamp instead of Seq.
 func TestOnTurnEnd_MarksLastReplyAsIsFinal(t *testing.T) {
 	p, bus, repo := newTestProjector(t)
 	meta := ProjectMeta{SessionID: "sess-1", RequestID: "turn-1", AgentID: "agent-1"}
 	p.Configure(meta, nil)
 	ctx := context.Background()
 
-	p.OnTurnStart(ctx, meta)
+	_ = p.OnTurnStart(ctx, meta)
 	// Reply 1 (intermediate): delta + done → completed before OnTurnEnd.
+	// Set currentEventTS to simulate ProcessEvent's behavior (production path
+	// uses ev.Timestamp; without it, OnTextDelta falls back to time.Now(),
+	// which on Windows has ~15ms resolution and may return identical values
+	// for rapid calls, making Timestamp-based sorting non-deterministic).
+	baseTime := time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC)
+	p.currentEventTS = baseTime
 	p.OnTextDelta(ctx, "agent-1", "intermediate")
 	p.OnTextDone(ctx, "agent-1", "intermediate")
 	// Reply 2 (final): delta + done → completed before OnTurnEnd.
+	p.currentEventTS = baseTime.Add(1 * time.Second)
 	p.OnTextDelta(ctx, "agent-1", "final answer")
 	p.OnTextDone(ctx, "agent-1", "final answer")
 
 	p.OnTurnEnd(ctx, nil, false)
 	p.Close()
 
-	// Collect all reply activities sorted by Seq.
+	// Collect all reply activities sorted by Timestamp ASC.
 	var replies []biz.Activity
 	for _, a := range repo.activities {
 		if a.Kind == biz.ActivityKindReply {
@@ -792,21 +804,19 @@ func TestOnTurnEnd_MarksLastReplyAsIsFinal(t *testing.T) {
 	if len(replies) != 2 {
 		t.Fatalf("want 2 reply activities, got %d", len(replies))
 	}
-	// Sort by Seq ascending.
-	for i := 1; i < len(replies); i++ {
-		if replies[i].Seq < replies[i-1].Seq {
-			replies[i], replies[i-1] = replies[i-1], replies[i]
-		}
-	}
-	// First reply (lower Seq): NOT final.
+	// Sort by Timestamp ASC (design §B.3.3). replies[0]=earliest, replies[1]=latest.
+	sort.Slice(replies, func(i, j int) bool {
+		return replies[i].Timestamp.Before(replies[j].Timestamp)
+	})
+	// First reply (earliest Timestamp, intermediate): NOT final.
 	if replies[0].Meta["is_final"] == true {
-		t.Errorf("first reply (Seq=%d) must NOT be marked is_final; want false/absent, got true",
-			replies[0].Seq)
+		t.Errorf("first reply (Timestamp=%s) must NOT be marked is_final; want false/absent, got true",
+			replies[0].Timestamp.Format(time.RFC3339Nano))
 	}
-	// Last reply (higher Seq): is_final=true.
+	// Last reply (latest Timestamp, final answer): is_final=true.
 	if replies[1].Meta["is_final"] != true {
-		t.Errorf("last reply (Seq=%d) must be marked is_final=true; got %v",
-			replies[1].Seq, replies[1].Meta["is_final"])
+		t.Errorf("last reply (Timestamp=%s) must be marked is_final=true; got %v",
+			replies[1].Timestamp.Format(time.RFC3339Nano), replies[1].Meta["is_final"])
 	}
 
 	// Verify an ActivityEventUpdated was published for the final reply (since
@@ -836,7 +846,7 @@ func TestOnTurnEnd_MarksRunningReplyAsIsFinalInTerminalEvent(t *testing.T) {
 	p.Configure(meta, nil)
 	ctx := context.Background()
 
-	p.OnTurnStart(ctx, meta)
+	_ = p.OnTurnStart(ctx, meta)
 	// Reply still running (no OnTextDone).
 	p.OnTextDelta(ctx, "agent-1", "partial final")
 
@@ -938,7 +948,7 @@ func TestOnTurnEnd_AsDisplayThinking_MarkedAsIsFinal(t *testing.T) {
 	p.Configure(meta, nil)
 	ctx := context.Background()
 
-	p.OnTurnStart(ctx, meta)
+	_ = p.OnTurnStart(ctx, meta)
 	// No OnTextDelta/OnTextDone — the model's reasoning is the reply.
 	p.OnReasoningDelta(ctx, "agent-1", "reasoning as reply", true)
 	p.OnReasoningDone(ctx, "agent-1", "reasoning as reply", true)

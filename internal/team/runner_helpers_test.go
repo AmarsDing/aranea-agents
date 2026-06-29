@@ -60,15 +60,28 @@ func TestPersistStep_EmitsStartedAndFinished(t *testing.T) {
 		t.Fatalf("tool_call_count=%d", repo.steps[0].ToolCallCount)
 	}
 	var started, finished bool
+	var startedChildSessionID, startedAgentName string
 	for i := 0; i < 2; i++ {
 		select {
 		case ev := <-ch:
-			if ev.Activity.Kind != biz.ActivityKindTeamStage {
+			// Problem 3+4: persistStep now emits Kind=Session (not TeamStage)
+			// so the frontend AgentCard renders member cards and cancel/retry
+			// can target the shared team session via meta.child_session_id.
+			if ev.Activity.Kind != biz.ActivityKindSession {
 				continue
+			}
+			if ev.Activity.AgentName != "Worker A" {
+				t.Fatalf("agent_name=%q want %q", ev.Activity.AgentName, "Worker A")
+			}
+			csid, _ := ev.Activity.Meta["child_session_id"].(string)
+			if csid != "sess-1" {
+				t.Fatalf("child_session_id=%q want %q", csid, "sess-1")
 			}
 			switch ev.Event {
 			case biz.ActivityEventCreated:
 				started = true
+				startedChildSessionID = csid
+				startedAgentName = ev.Activity.AgentName
 			case biz.ActivityEventCompleted:
 				finished = true
 			}
@@ -77,5 +90,11 @@ func TestPersistStep_EmitsStartedAndFinished(t *testing.T) {
 	}
 	if !started || !finished {
 		t.Fatalf("started=%v finished=%v", started, finished)
+	}
+	if startedChildSessionID != "sess-1" {
+		t.Fatalf("started child_session_id=%q", startedChildSessionID)
+	}
+	if startedAgentName != "Worker A" {
+		t.Fatalf("started agent_name=%q", startedAgentName)
 	}
 }

@@ -117,7 +117,7 @@ func (a *chatAwaitCoordinator) EndResume(sessionID string) {
 	a.resumeInFlight.Delete(sessionID)
 }
 
-// PublishAwaitResumed publishes an await_resumed ActivityEvent (Kind=session,
+// PublishAwaitResumed publishes an await_resumed ActivityEvent (Kind=notice,
 // Domain=chat). Replaces the legacy EnvelopeTypeRunStatus publish.
 func (a *chatAwaitCoordinator) PublishAwaitResumed(sessionID, runID string) {
 	if a.activityBus == nil || strings.TrimSpace(sessionID) == "" {
@@ -127,15 +127,19 @@ func (a *chatAwaitCoordinator) PublishAwaitResumed(sessionID, runID string) {
 		Event: biz.ActivityEventUpdated,
 		Activity: biz.Activity{
 			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindSession,
+			Kind:      biz.ActivityKindNotice,
 			Status:    biz.ActivityStatusRunning,
 			SessionID: sessionID,
 			Timestamp: time.Now().UTC(),
+			AgentKey:  "chat-service",
+			AgentName: "对话服务",
+			Content:   "已恢复运行",
 			Meta: map[string]any{
 				"run_id":        runID,
 				"status":        "running",
 				"await_resumed": true,
 				"source":        "chat-service",
+				"notice_type":   "info",
 			},
 		},
 		Domain: biz.ActivityDomainChat,

@@ -2,10 +2,13 @@ package service
 
 import (
 	"context"
+	stderrors "errors"
 	"strings"
 	"time"
 
+	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/shared"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/tools"
 	"aranea-agents/pkg/apierror"
@@ -61,13 +64,23 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 	spiritSessionID := strings.TrimSpace(sess.ParentSessionID)
 	teamID := strings.TrimSpace(sess.TeamID)
 
+	// Fetch the team so we can include team_name in team_stage events. Without
+	// team_name, the frontend TeamCard's displayTeamName degrades to generic
+	// status text ("assembling"). The fetch is cheap (single DB row by ID).
+	var team biz.Team
 	if teamID != "" {
-		if _, updateErr := s.team.TeamUC.TransitionStatus(ctx, teamID, biz.TeamStatusRunning); updateErr != nil {
+		var updateErr error
+		team, updateErr = s.team.TeamUC.TransitionStatus(ctx, teamID, biz.TeamStatusRunning)
+		if updateErr != nil {
 			s.lg.Warn("更新团队状态为 running 失败",
 				loggateway.StepID("spirit.team.running_err"),
 				loggateway.Str("team_id", teamID),
 				loggateway.Err(updateErr),
 			)
+			// Fallback: try plain Get so we still have DisplayName for events.
+			if t, getErr := s.team.TeamUC.Get(ctx, teamID); getErr == nil {
+				team = t
+			}
 		}
 	}
 
@@ -75,16 +88,18 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 		ev := biz.ActivityEvent{
 			Event: biz.ActivityEventUpdated,
 			Activity: biz.Activity{
-				ID:               uuid.NewString(),
+				ID:               TeamStageActivityID(teamID),
 				Kind:             biz.ActivityKindTeamStage,
 				Status:           biz.ActivityStatusRunning,
 				Stage:            "progress",
 				Timestamp:        time.Now().UTC(),
+				ParentActivityID: agent.RootTaskActivityIDFromCtx(ctx),
 				SpiritSessionID:  spiritSessionID,
 				TeamID:           teamID,
 				AgentKey:         "team-starter",
 				Meta: map[string]any{
 					"team_id":      teamID,
+					"team_name":    team.DisplayName,
 					"status":       biz.TeamStatusRunning,
 					"progress_pct": 0,
 				},
@@ -242,15 +257,16 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		ev := biz.ActivityEvent{
 			Event: primaryEvent,
 			Activity: biz.Activity{
-				ID:              uuid.NewString(),
-				Kind:            biz.ActivityKindTeamStage,
-				Status:          primaryStatus,
-				Stage:           primaryStage,
-				Timestamp:       time.Now().UTC(),
-				SpiritSessionID: spiritSessionID,
-				TeamID:          teamID,
-				AgentKey:        "spirit-lifecycle",
-				Meta:            meta,
+				ID:               TeamStageActivityID(teamID),
+				Kind:             biz.ActivityKindTeamStage,
+				Status:           primaryStatus,
+				Stage:            primaryStage,
+				Timestamp:        time.Now().UTC(),
+				ParentActivityID: agent.RootTaskActivityIDFromCtx(ctx),
+				SpiritSessionID:  spiritSessionID,
+				TeamID:           teamID,
+				AgentKey:         "spirit-lifecycle",
+				Meta:             meta,
 			},
 			Domain: biz.ActivityDomainChat,
 		}
@@ -263,16 +279,18 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		progressEv := biz.ActivityEvent{
 			Event: biz.ActivityEventUpdated,
 			Activity: biz.Activity{
-				ID:              uuid.NewString(),
-				Kind:            biz.ActivityKindTeamStage,
-				Status:          biz.ActivityStatusRunning,
-				Stage:           "progress",
-				Timestamp:       time.Now().UTC(),
-				SpiritSessionID: spiritSessionID,
-				TeamID:          teamID,
-				AgentKey:        "spirit-lifecycle",
+				ID:               TeamStageActivityID(teamID),
+				Kind:             biz.ActivityKindTeamStage,
+				Status:           biz.ActivityStatusRunning,
+				Stage:            "progress",
+				Timestamp:        time.Now().UTC(),
+				ParentActivityID: agent.RootTaskActivityIDFromCtx(ctx),
+				SpiritSessionID:  spiritSessionID,
+				TeamID:           teamID,
+				AgentKey:         "spirit-lifecycle",
 				Meta: map[string]any{
 					"team_id":      teamID,
+					"team_name":    team.DisplayName,
 					"status":       status,
 					"progress_pct": progressPct,
 					"duration_ms":  durationMs,
@@ -281,6 +299,18 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 			Domain: biz.ActivityDomainChat,
 		}
 		s.bus.Publish(ctx, progressEv)
+
+		// B.4.4: After team status change, republish the graph_stage DAG
+		// snapshot so node statuses stay in sync with team statuses.
+		if allTeams, listErr := s.team.TeamUC.ListBySpiritSessionID(ctx, spiritSessionID); listErr == nil {
+			publishGraphStageSnapshot(ctx, s.bus, s.lg, spiritSessionID, allTeams)
+		} else {
+			s.lg.Warn("graph_stage 快照刷新失败：列出团队失败",
+				loggateway.StepID("spirit.graph_stage.list_fail"),
+				loggateway.Str("spirit_session_id", spiritSessionID),
+				loggateway.Err(listErr),
+			)
+		}
 	}
 
 	s.checkAllTeamsCompleted(ctx, spiritSessionID)
@@ -317,14 +347,15 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 					ev := biz.ActivityEvent{
 						Event: biz.ActivityEventFailed,
 						Activity: biz.Activity{
-							ID:              uuid.NewString(),
-							Kind:            biz.ActivityKindTeamStage,
-							Status:          biz.ActivityStatusFailed,
-							Stage:           "failed",
-							Timestamp:       time.Now().UTC(),
-							SpiritSessionID: spiritSessionID,
-							TeamID:          action.TeamID,
-							AgentKey:        "spirit-scheduler",
+							ID:               TeamStageActivityID(action.TeamID),
+							Kind:             biz.ActivityKindTeamStage,
+							Status:           biz.ActivityStatusFailed,
+							Stage:            "failed",
+							Timestamp:        time.Now().UTC(),
+							ParentActivityID: agent.RootTaskActivityIDFromCtx(ctx),
+							SpiritSessionID:  spiritSessionID,
+							TeamID:           action.TeamID,
+							AgentKey:         "spirit-scheduler",
 							Meta: map[string]any{
 								"team_id":   action.TeamID,
 								"team_name": action.TeamName,
@@ -355,14 +386,15 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 				ev := biz.ActivityEvent{
 					Event: biz.ActivityEventUpdated,
 					Activity: biz.Activity{
-						ID:              uuid.NewString(),
-						Kind:            biz.ActivityKindTeamStage,
-						Status:          biz.ActivityStatusRunning,
-						Stage:           "progress",
-						Timestamp:       time.Now().UTC(),
-						SpiritSessionID: spiritSessionID,
-						TeamID:          action.TeamID,
-						AgentKey:        "spirit-scheduler",
+						ID:               TeamStageActivityID(action.TeamID),
+						Kind:             biz.ActivityKindTeamStage,
+						Status:           biz.ActivityStatusRunning,
+						Stage:            "progress",
+						Timestamp:        time.Now().UTC(),
+						ParentActivityID: agent.RootTaskActivityIDFromCtx(ctx),
+						SpiritSessionID:  spiritSessionID,
+						TeamID:           action.TeamID,
+						AgentKey:         "spirit-scheduler",
 						Meta: map[string]any{
 							"team_id":   action.TeamID,
 							"team_name": action.TeamName,
@@ -417,11 +449,14 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 			Event: biz.ActivityEventCompleted,
 			Activity: biz.Activity{
 				ID:              uuid.NewString(),
-				Kind:            biz.ActivityKindSession,
+				Kind:            biz.ActivityKindNotice,
 				Status:          biz.ActivityStatusCompleted,
 				Timestamp:       time.Now().UTC(),
 				SpiritSessionID: spiritSessionID,
 				AgentKey:        "team-starter",
+				AgentName:       "团队编排",
+				Stage:           "teams_all_completed",
+				Content:         "所有团队已完成",
 				Meta: map[string]any{
 					"event_type":        "spirit_teams_all_completed",
 					"spirit_session_id": spiritSessionID,
@@ -431,6 +466,7 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 					"failed_teams":      result.FailedTeams,
 					"total_token_in":    result.TotalTokenIn,
 					"total_token_out":   result.TotalTokenOut,
+					"notice_type":       "success",
 				},
 			},
 			Domain: biz.ActivityDomainChat,
@@ -451,6 +487,7 @@ type SpiritTeamAssembler struct {
 	orchCache   *biz.OrchestrationCache
 	bus         biz.ActivityEventBus
 	teamStarter biz.TeamStarterPort
+	agentReader biz.AgentReader
 	lg          loggateway.Logger
 }
 
@@ -459,6 +496,7 @@ func NewSpiritTeamAssembler(
 	orchCache *biz.OrchestrationCache,
 	bus biz.ActivityEventBus,
 	teamStarter biz.TeamStarterPort,
+	agentReader biz.AgentReader,
 	lg loggateway.Logger,
 ) *SpiritTeamAssembler {
 	return &SpiritTeamAssembler{
@@ -466,6 +504,7 @@ func NewSpiritTeamAssembler(
 		orchCache:   orchCache,
 		bus:         bus,
 		teamStarter: teamStarter,
+		agentReader: agentReader,
 		lg:          lg,
 	}
 }
@@ -560,14 +599,15 @@ func (a *SpiritTeamAssembler) CancelTeam(ctx context.Context, teamID string) err
 		ev := biz.ActivityEvent{
 			Event: biz.ActivityEventCancelled,
 			Activity: biz.Activity{
-				ID:              uuid.NewString(),
-				Kind:            biz.ActivityKindTeamStage,
-				Status:          biz.ActivityStatusCancelled,
-				Stage:           "cancelled",
-				Timestamp:       time.Now().UTC(),
-				SpiritSessionID: spiritSessionID,
-				TeamID:          teamID,
-				AgentKey:        "spirit-cancel",
+				ID:               TeamStageActivityID(teamID),
+				Kind:             biz.ActivityKindTeamStage,
+				Status:           biz.ActivityStatusCancelled,
+				Stage:            "cancelled",
+				Timestamp:        time.Now().UTC(),
+				ParentActivityID: agent.RootTaskActivityIDFromCtx(ctx),
+				SpiritSessionID:  spiritSessionID,
+				TeamID:           teamID,
+				AgentKey:         "spirit-cancel",
 				Meta: map[string]any{
 					"team_id":   teamID,
 					"team_name": team.DisplayName,
@@ -624,30 +664,60 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 	if a.bus == nil {
 		return
 	}
-	// Build members array so the frontend TeamStageBlock can render the member list
-	// (design m59-chat-ui-v7.html "团队进度" section). Without this, the block only
-	// shows an empty header. agent_name is set to agent_key here as the assembler
-	// does not have access to the agent store; the run-completion summary event
-	// (TeamSummaryActivityEvent) will later provide richer member data.
+	// B.4.4: Publish graph_stage snapshot BEFORE team_stage so the graph appears
+	// between plan and team-card in the timeline (pure Timestamp ASC sort, design
+	// B.3.3). The graph_stage Activity uses a deterministic ID per spirit session,
+	// so the first publish establishes the creation Timestamp (which the frontend
+	// preserves across subsequent updates — see useActivityTimeline timestamp
+	// retention). Publishing graph before team_stage ensures:
+	//   plan (T_plan) → graph_stage (T_graph) → team_stage (T_team)
+	// If published after team_stage, the order would be plan → team → graph,
+	// violating B.4.4's positional requirement.
+	//
+	// The team is already committed to the DB (AssembleTeam runs in a tx that
+	// has committed before this method is called), so ListAllTeams will include
+	// the new team as a pending node in the DAG snapshot.
+	a.publishSpiritGraphStageSnapshot(ctx, spiritSessionID)
+
+	// Build members array so the frontend TeamCard can render the member list.
+	// Problem 2 fix: previously agent_name was set to agent_key (showing raw
+	// kebab-case keys like "deep-researcher" in the UI). Now we batch-resolve
+	// each agent_key to DisplayName via AgentReader. Lookup failures fall back
+	// to the agent_key so we never block team assembly on a stale key — the
+	// richer TeamSummaryActivityEvent emitted at run completion will still
+	// carry authoritative member data.
 	members := make([]map[string]any, 0, len(agentKeys))
 	for _, key := range agentKeys {
+		displayName := key
+		if a.agentReader != nil {
+			if ag, lookupErr := a.agentReader.GetAgentByAgentKey(ctx, key); lookupErr == nil && ag.DisplayName != "" {
+				displayName = ag.DisplayName
+			} else if lookupErr != nil && !stderrors.Is(lookupErr, shared.ErrNotFound) {
+				a.lg.Warn("team member name lookup failed, falling back to agent_key",
+					loggateway.StepID("spirit.team.member_lookup_fail"),
+					loggateway.Str("agent_key", key),
+					loggateway.Err(lookupErr),
+				)
+			}
+		}
 		members = append(members, map[string]any{
 			"agent_key":  key,
-			"agent_name": key,
+			"agent_name": displayName,
 			"status":     biz.ActivityStatusPending,
 		})
 	}
 	a.bus.Publish(ctx, biz.ActivityEvent{
 		Event: biz.ActivityEventCreated,
 		Activity: biz.Activity{
-			ID:              uuid.NewString(),
-			Kind:            biz.ActivityKindTeamStage,
-			Status:          biz.ActivityStatusPending,
-			Stage:           "assembled",
-			Timestamp:       time.Now().UTC(),
-			SpiritSessionID: spiritSessionID,
-			TeamID:          team.ID,
-			AgentKey:        "spirit-team-assembler",
+			ID:               TeamStageActivityID(team.ID),
+			Kind:             biz.ActivityKindTeamStage,
+			Status:           biz.ActivityStatusPending,
+			Stage:            "assembled",
+			Timestamp:        time.Now().UTC(),
+			ParentActivityID: agent.RootTaskActivityIDFromCtx(ctx),
+			SpiritSessionID:  spiritSessionID,
+			TeamID:           team.ID,
+			AgentKey:         "spirit-team-assembler",
 			Meta: map[string]any{
 				"team_id":         team.ID,
 				"team_name":       team.DisplayName,
@@ -660,6 +730,151 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 				"duration_ms":     0,
 				"total_steps":     1,
 				"members":         members,
+			},
+		},
+		Domain: biz.ActivityDomainChat,
+	})
+}
+
+// graphStageNamespace is a fixed UUID used as the namespace for deterministic
+// graph_stage Activity IDs (uuid.NewSHA1). Keeping it module-level ensures the
+// same spiritSessionID always maps to the same graph_stage Activity ID across
+// process restarts.
+var graphStageNamespace = uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.graph_stage.v1"))
+
+// teamStageNamespace is a fixed UUID used as the namespace for deterministic
+// team_stage Activity IDs. Using deterministic IDs allows the team runner to
+// compute the same team_stage activity ID and use it as ParentActivityID for
+// member session events, without needing to query the database.
+var teamStageNamespace = uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.team_stage.v1"))
+
+// TeamStageActivityID returns the deterministic team_stage Activity ID for a
+// given team ID. Exported so the team runner can reference it.
+func TeamStageActivityID(teamID string) string {
+	return uuid.NewSHA1(teamStageNamespace, []byte(teamID)).String()
+}
+
+// publishSpiritGraphStageSnapshot publishes a graph_stage Activity carrying
+// the current DAG snapshot (meta.nodes) for a spirit session. The Activity ID
+// is derived deterministically from spiritSessionID via uuid.NewSHA1 so every
+// call for the same session updates the same GraphStageBlock on the frontend
+// (no dedup logic needed — the upsert keyed by Activity.ID naturally merges).
+//
+// Design B.4.4 (方案A: backend aggregates DAG snapshot):
+//   - Each node corresponds to one team (nodeId = team.ID, label = team.DisplayName)
+//   - Node status is derived from team status (no independent node state machine)
+//   - dependsOn mirrors team.DependsOn for DAG edges
+//   - When team count == 1 (no DAG), frontend may hide Graph per design — still
+//     publish so the data is available
+//
+// Called from publishSpiritTeamAssembled (after team creation) and
+// HandleTeamTurnResult (after team status change) to keep the snapshot fresh.
+func (a *SpiritTeamAssembler) publishSpiritGraphStageSnapshot(ctx context.Context, spiritSessionID string) {
+	if a.bus == nil || spiritSessionID == "" || a.spiritUC == nil {
+		return
+	}
+	teams, err := a.spiritUC.ListAllTeams(ctx, spiritSessionID)
+	if err != nil {
+		a.lg.Warn("graph_stage 快照构建失败：列出团队失败",
+			loggateway.StepID("spirit.graph_stage.list_fail"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Err(err),
+		)
+		return
+	}
+	publishGraphStageSnapshot(ctx, a.bus, a.lg, spiritSessionID, teams)
+}
+
+// publishGraphStageSnapshot is the free-function core of
+// publishSpiritGraphStageSnapshot. It accepts an already-fetched team list so
+// callers that have direct access to TeamUsecase (e.g. TeamStarter) can reuse
+// the logic without depending on SpiritTeamUsecase. See
+// publishSpiritGraphStageSnapshot for the full design rationale.
+func publishGraphStageSnapshot(ctx context.Context, bus biz.ActivityEventBus, lg loggateway.Logger, spiritSessionID string, teams []biz.Team) {
+	if bus == nil || spiritSessionID == "" || len(teams) == 0 {
+		return
+	}
+	nodes := make([]map[string]any, 0, len(teams))
+	for _, t := range teams {
+		nodeStatus := "pending"
+		switch t.Status {
+		case biz.TeamStatusRunning:
+			nodeStatus = "running"
+		case biz.TeamStatusCompleted:
+			nodeStatus = "completed"
+		case biz.TeamStatusFailed:
+			nodeStatus = "failed"
+		case biz.TeamStatusCancelled:
+			nodeStatus = "skipped"
+		case biz.TeamStatusInterrupted:
+			nodeStatus = "failed"
+		}
+		node := map[string]any{
+			"nodeId":  t.ID,
+			"label":   t.DisplayName,
+			"status":  nodeStatus,
+			"team_id": t.ID,
+		}
+		if len(t.DependsOn) > 0 {
+			node["dependsOn"] = t.DependsOn
+		}
+		nodes = append(nodes, node)
+	}
+	// Aggregate status: running if any team running; completed if all terminal;
+	// failed if any failed; else pending.
+	aggregateStatus := biz.ActivityStatusCompleted
+	anyRunning := false
+	anyFailed := false
+	allTerminal := true
+	for _, t := range teams {
+		switch t.Status {
+		case biz.TeamStatusRunning, biz.TeamStatusPending:
+			allTerminal = false
+			if t.Status == biz.TeamStatusRunning {
+				anyRunning = true
+			}
+		case biz.TeamStatusFailed, biz.TeamStatusInterrupted:
+			anyFailed = true
+		}
+	}
+	switch {
+	case anyRunning:
+		aggregateStatus = biz.ActivityStatusRunning
+	case anyFailed:
+		aggregateStatus = biz.ActivityStatusFailed
+	case allTerminal:
+		aggregateStatus = biz.ActivityStatusCompleted
+	default:
+		aggregateStatus = biz.ActivityStatusRunning
+	}
+	eventType := biz.ActivityEventUpdated
+	if aggregateStatus == biz.ActivityStatusCompleted {
+		eventType = biz.ActivityEventCompleted
+	} else if aggregateStatus == biz.ActivityStatusFailed {
+		eventType = biz.ActivityEventFailed
+	}
+	// Deterministic Activity ID: same spiritSessionID → same ID across calls
+	// → frontend upsert updates the existing GraphStageBlock instead of creating
+	// a new one each snapshot.
+	activityID := uuid.NewSHA1(graphStageNamespace, []byte(spiritSessionID)).String()
+	bus.Publish(ctx, biz.ActivityEvent{
+		Event: eventType,
+		Activity: biz.Activity{
+			ID:               activityID,
+			Kind:             biz.ActivityKindGraphStage,
+			Status:           aggregateStatus,
+			Stage:            "team_dag_snapshot",
+			Timestamp:        time.Now().UTC(),
+			ParentActivityID: agent.RootTaskActivityIDFromCtx(ctx),
+			SpiritSessionID:  spiritSessionID,
+			SessionID:        spiritSessionID,
+			AgentKey:         "spirit-graph-snapshot",
+			Content:         "团队 DAG 执行进度",
+			Meta: map[string]any{
+				"nodes":             nodes,
+				"spirit_session_id": spiritSessionID,
+				"source":            "spirit-team-assembler",
+				"team_count":        len(teams),
 			},
 		},
 		Domain: biz.ActivityDomainChat,

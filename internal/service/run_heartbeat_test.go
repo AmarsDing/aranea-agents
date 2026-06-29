@@ -65,8 +65,8 @@ func TestRunHeartbeatEmitter_Start_PublishesPeriodically(t *testing.T) {
 	}
 
 	ev := published[0]
-	if ev.Activity.Kind != biz.ActivityKindSession {
-		t.Errorf("kind = %s, want %s", ev.Activity.Kind, biz.ActivityKindSession)
+	if ev.Activity.Kind != biz.ActivityKindNotice {
+		t.Errorf("kind = %s, want %s", ev.Activity.Kind, biz.ActivityKindNotice)
 	}
 	if ev.Activity.SessionID != "sess-1" {
 		t.Errorf("session_id = %s, want sess-1", ev.Activity.SessionID)

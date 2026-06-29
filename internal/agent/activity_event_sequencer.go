@@ -58,7 +58,7 @@ var errSequencerClosed = errors.New("activity event sequencer closed")
 //   - Separate persist worker: DB I/O parallelism (unchanged from v1)
 type activityEventSequencer struct {
 	eventBus     biz.ActivityEventBus
-	activityRepo biz.ActivityWriter
+	activityRepo biz.ActivityUpserter
 	lg           loggateway.Logger
 
 	// publishQueue: single shared FIFO queue feeding the publish worker.
@@ -90,6 +90,11 @@ type activityEventSequencer struct {
 	// deadLetter ring buffer
 	deadLetterMu sync.Mutex
 	deadLetter   []biz.Activity
+
+	// activityVersion tracks the next monotonic version for each activity ID.
+	// Updated and read only by the single publish worker, guarded by s.mu for
+	// races against Close()/publish() visibility.
+	activityVersion map[string]int64
 }
 
 // persistItem is a single activity to persist
@@ -123,6 +128,7 @@ func newActivityEventSequencer(eventBus biz.ActivityEventBus, lg loggateway.Logg
 		persistInitialBackoffMs: persistInitialBackoffMs,
 		persistBackoffFactor:    persistBackoffFactor,
 		publishQueue:            make(chan publishTask, defaultPublishBufferSize),
+		activityVersion:         make(map[string]int64),
 	}
 }
 
@@ -280,6 +286,12 @@ func (s *activityEventSequencer) runPublishWorker() {
 
 // canMergeDeltas reports whether two consecutive streaming events can be
 // coalesced into a single event.
+//
+// 关键约束（P-02 修复）：必须检查 Activity.ID 相同。16ms 批窗口内可能到达
+// 来自不同 Activity 的同字段流式事件（如多 member 并发 reply，DeltaField 都是
+// "content"）。若不检查 ID，mergeDelta 会把 member2 的 DeltaChunk 追加到
+// member1 的事件中，而 member1 的 Activity 快照保持不变 → 前端把 member2 的
+// 文本渲染到 member1 的 ReplyBlock，member2 的 Activity 永远收不到自己的 chunk。
 func (s *activityEventSequencer) canMergeDeltas(a, b publishTask) bool {
 	if a.event.Event != biz.ActivityEventStreaming || b.event.Event != biz.ActivityEventStreaming {
 		return false
@@ -287,7 +299,9 @@ func (s *activityEventSequencer) canMergeDeltas(a, b publishTask) bool {
 	if a.event.DeltaField == "" || b.event.DeltaField == "" || a.event.DeltaField != b.event.DeltaField {
 		return false
 	}
-	return true
+	// P-02: 只有同一 Activity 的流式分片才能合并。跨 Activity 合并会导致
+	// 文本串台（member2 的内容被追加到 member1 的事件中）。
+	return a.event.Activity.ID == b.event.Activity.ID
 }
 
 // processTask persists the activity (fire-and-forget) and publishes the
@@ -300,7 +314,20 @@ func (s *activityEventSequencer) canMergeDeltas(a, b publishTask) bool {
 // (SessionID normalization + async UpsertActivity). This prevents
 // double-persist and avoids the bus overwriting the original (non-redacted)
 // activity data with the redacted snapshot that the bus receives.
+//
+// A monotonic version is assigned to each activity update so that the async
+// persist worker can use version-guarded upserts: stale updates (lower version)
+// are rejected by the repository, ensuring the DB reflects the same order as
+// the publish worker. The version is stamped on both the persisted copy and
+// the published event so their ordering is consistent.
 func (s *activityEventSequencer) processTask(task publishTask) {
+	s.mu.Lock()
+	s.activityVersion[task.activity.ID]++
+	version := s.activityVersion[task.activity.ID]
+	s.mu.Unlock()
+	task.activity.Version = version
+	task.event.Activity.Version = version
+
 	if task.persist && s.activityRepo != nil {
 		item := persistItem{activityID: task.activity.ID, activity: task.activity}
 		select {
@@ -391,7 +418,7 @@ func (s *activityEventSequencer) ListDeadLetterActivities(sessionID string) []bi
 //
 // Once set, processTask will fire-and-forget persist activities via a single
 // worker goroutine, preserving FIFO order without blocking WS publish.
-func (s *activityEventSequencer) SetActivityRepo(repo biz.ActivityWriter) {
+func (s *activityEventSequencer) SetActivityRepo(repo biz.ActivityUpserter) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.activityRepo = repo

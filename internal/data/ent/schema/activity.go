@@ -38,7 +38,7 @@ func (Activity) Fields() []ent.Field {
 		// === Timing ===
 		field.String("timestamp").Default("").Comment("ISO8601 start timestamp"),
 		field.Int64("duration_ms").Default(0).Comment("Duration in ms, filled on completion"),
-		field.Int64("seq").Default(0).Comment("Global emission sequence for stable frontend ordering"),
+		field.Int64("seq").Default(0).Comment("Retained for backward compat (Phase T1.4); no longer assigned — new events keep seq=0. Activity ordering is driven by (turn_id, parent_activity_id, timestamp) ASC."),
 
 		// === Token usage (kind=task, root Activity only) ===
 		field.Int64("prompt_tokens").Default(0).Comment("LLM prompt tokens for this turn (root task only)"),
@@ -76,6 +76,9 @@ func (Activity) Fields() []ent.Field {
 		// === Display hints ===
 		field.Bool("collapsed").Default(false).Comment("Backend suggestion, frontend may override"),
 		field.String("label").MaxLen(128).Default("").Comment("Custom label e.g. '规划'/'推理'/'重规划'"),
+
+		// === Version for ordered upserts ===
+		field.Int64("version").Default(0).Comment("Monotonic version for ordered upserts of the same activity"),
 
 		// === Kind-specific metadata ===
 		field.JSON("meta", map[string]any{}).Optional().Comment("Kind-specific metadata (noticeType, toolName, steps, etc.)"),

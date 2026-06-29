@@ -90,6 +90,26 @@ message RetrySessionResponse {
   bool retried = 1;
 }
 
+// PauseSessionRequest pauses a running chat session (running → paused).
+// User-initiated pause for an agent card; the current step completes before pausing.
+message PauseSessionRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message PauseSessionResponse {
+  bool paused = 1;
+}
+
+// ResumeSessionRequest resumes a paused chat session (paused → running).
+// User-initiated resume; used by AgentCard resume button.
+message ResumeSessionRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ResumeSessionResponse {
+  bool resumed = 1;
+}
+
 message GetPendingMessagesRequest {
   string session_id = 1 [(google.api.field_behavior) = REQUIRED];
 }
@@ -262,6 +282,22 @@ service ChatService {
   rpc RetrySession(RetrySessionRequest) returns (RetrySessionResponse) {
     option (google.api.http) = {
       post: "/v1/chat/sessions/{session_id}/retry"
+      body: "*"
+    };
+  }
+  // PauseSession pauses a running chat session (running → paused).
+  // Used by AgentCard pause button; the current step completes before pausing.
+  rpc PauseSession(PauseSessionRequest) returns (PauseSessionResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/sessions/{session_id}/pause"
+      body: "*"
+    };
+  }
+  // ResumeSession resumes a paused chat session (paused → running).
+  // Used by AgentCard resume button.
+  rpc ResumeSession(ResumeSessionRequest) returns (ResumeSessionResponse) {
+    option (google.api.http) = {
+      post: "/v1/chat/sessions/{session_id}/resume"
       body: "*"
     };
   }

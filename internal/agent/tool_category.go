@@ -1,9 +1,11 @@
 package agent
 
 import (
+	"context"
 	"strings"
 
 	"aranea-agents/internal/biz"
+	biztool "aranea-agents/internal/biz/tool"
 )
 
 // ToolCategorizer classifies a tool by its functional category.
@@ -83,4 +85,58 @@ func NewNoopToolCategorizer() ToolCategorizer {
 
 func (noopToolCategorizer) Categorize(string) biz.ToolCategory {
 	return biz.ToolCategoryOther
+}
+
+// toolCatalogLister is the minimal subset of biz/tool.ToolRegistryReader needed
+// to build a category registry. Accepting a narrow interface keeps the agent
+// package decoupled from the full usecase surface.
+type toolCatalogLister interface {
+	SearchTools(ctx context.Context, q biztool.ToolListQuery) (biztool.ToolListResult, error)
+}
+
+// NewToolCategorizerFromCatalog builds a ToolCategorizer backed by the tool
+// catalog's category metadata. Unknown/empty categories are omitted so the
+// prefix fallback in defaultToolCategorizer still applies.
+func NewToolCategorizerFromCatalog(ctx context.Context, catalog toolCatalogLister) ToolCategorizer {
+	if catalog == nil {
+		return NewToolCategorizer(nil)
+	}
+	res, err := catalog.SearchTools(ctx, biztool.ToolListQuery{Limit: 10000})
+	if err != nil {
+		return NewToolCategorizer(nil)
+	}
+	registry := make(map[string]biz.ToolCategory, len(res.Items))
+	for _, t := range res.Items {
+		if cat, ok := mapCatalogCategory(t.Category); ok {
+			registry[t.Key] = cat
+		}
+	}
+	return NewToolCategorizer(registry)
+}
+
+// mapCatalogCategory maps a catalog category string to a frontend ToolCategory.
+// It returns false when the category is unknown so callers can fall back to
+// prefix/name-based classification.
+func mapCatalogCategory(cat string) (biz.ToolCategory, bool) {
+	switch strings.ToLower(strings.TrimSpace(cat)) {
+	case "shell", "bash", "terminal":
+		return biz.ToolCategoryShell, true
+	case "browser", "playwright", "web":
+		return biz.ToolCategoryBrowser, true
+	case "file_read", "read", "file read":
+		return biz.ToolCategoryFileRead, true
+	case "file_write", "write", "edit", "file write", "edit_file":
+		return biz.ToolCategoryFileWrite, true
+	case "file_search", "search", "file search", "find", "grep":
+		return biz.ToolCategoryFileSearch, true
+	case "web_search", "web search":
+		return biz.ToolCategoryWebSearch, true
+	case "mcp":
+		return biz.ToolCategoryMCP, true
+	case "code", "coding", "execute", "python":
+		return biz.ToolCategoryCode, true
+	case "todo":
+		return biz.ToolCategoryTodo, true
+	}
+	return "", false
 }

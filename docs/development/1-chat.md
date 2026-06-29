@@ -522,19 +522,36 @@
 - **布局**：长条卡片，头部2:中部6:尾部2
 - **头部**（20%）：上中下三部分（1:1:1）—— 团队名称 / 任务名称 / 创建时间
 - **中部**（60%）：上下两部分（1:2）—— 成员头像+名称 / 进度条:状态:耗时（3:1:1）
-- **尾部**（20%）：对话框（收缩状态，点击横向展开，显示发送按钮）+ 停止/恢复按钮
+- **尾部**（20%）：垂直堆叠——对话框（始终可见，输入框 + 发送按钮）+ 操作按钮（暂停/恢复/取消/重试，按状态切换）
 - **进度计算**：子任务完成数 X/N（completed/total * 100%）
-- **暂停/恢复**：running 显示"⏸ 停止"；interrupted 显示"▶ 恢复"；终态隐藏
-- **重试**：failed/interrupted 状态显示"🔄 重试"按钮
-- **用户补充信息**：输入框 + 发送按钮，触发 `POST /v1/teams/{id}/inject`
-- **展开/折叠**：running 默认展开；终态默认折叠；可手动切换
+- **状态映射**（B.5.3）：
+  - `running` → 蓝色"执行中"，显示「⏸ 暂停」+「✕ 取消」按钮 + 注入对话框
+  - `paused` → 橙色"已暂停"，显示「▶ 恢复」+「✕ 取消」按钮 + 注入对话框
+  - `completed` → 绿色"团队已完成"，隐藏所有操作按钮
+  - `failed` → 红色"团队执行失败"，显示「🔄 重试」按钮
+  - `cancelled` → 灰色"团队已取消"，隐藏所有操作按钮
+- **暂停/恢复**（B.5.3）：调用 `POST /v1/team-runs/{id}/pause` / `POST /v1/team-runs/{id}/unpause`
+- **取消/重试**：调用 `POST /v1/team-runs/{id}/cancel` / `POST /v1/teams/{id}/retry`
+- **用户补充信息**：输入框 + 发送按钮，触发 `POST /v1/teams/{id}/inject`；仅在 running/paused 状态可见
+- **展开/折叠**：始终默认折叠（含 running）；用户手动展开后状态由用户掌控，不被状态变化自动覆盖（详见 §A.4.5）
 
 #### A.4.4 Agent 卡片（AgentCard）
 - **布局**：简化版，头部80% + 尾部20%
 - **头部**：avatar + agent 名称 + status badge + 创建时间
-- **尾部**：暂停/恢复按钮 + 对话框（与 team-card 一致交互）
+- **尾部**：垂直堆叠——对话框（始终可见，输入框 + 发送按钮）+ 操作按钮（暂停/恢复/取消/重试，按状态切换）
+- **状态映射**（B.5.3）：
+  - `running` → 蓝色"{name} 执行中"，显示「⏸ 暂停」+「✕ 取消」按钮 + 注入对话框
+  - `paused` → 橙色"{name} 已暂停"，显示「▶ 恢复」+「✕ 取消」按钮 + 注入对话框
+  - `completed` → 绿色"{name} 已完成"，隐藏所有操作按钮
+  - `failed` → 红色"{name} 执行失败"，显示「🔄 重试」按钮
+  - `cancelled` → 灰色"{name} 已取消"，隐藏所有操作按钮
+- **暂停/恢复**（B.5.3）：调用 `POST /v1/chat/sessions/{id}/pause` / `POST /v1/chat/sessions/{id}/resume`
+- **取消/重试**：调用 `POST /v1/chat/stop`（复用 StopGeneration）/ `POST /v1/chat/sessions/{id}/retry`
+- **用户补充信息**：输入框 + 发送按钮，触发 `POST /v1/chat/sessions/{id}/enqueue`；仅在 running/paused 状态可见
+- **系统 agent 排除**：`__spirit__` 及 `__` 前缀的系统 agent（run-service/session-service 状态通知）不显示任何操作按钮和注入对话框
 - **展开后**：thinking（折叠）/ action（折叠）/ reply（展开）
 - **无团队信息、无进度条**（单个 agent，直接显示状态）
+- **展开/折叠**：始终默认折叠（含 running）；与 team-card 一致（详见 §A.4.5）
 
 #### A.4.5 折叠规则
 | 节点类型 | 折叠行为 |
@@ -543,7 +560,7 @@
 | action | 默认折叠（不区分进行中/完成，减少噪音） |
 | task | 始终展开 |
 | reply | 始终展开 |
-| team-card | running 默认展开，终态默认折叠，可手动切换 |
+| team-card | 始终默认折叠（含 running），用户手动展开后状态由用户掌控 |
 | agent-card | 同 team-card |
 | plan | 支持折叠：进行中默认展开，初始渲染时若全部完成则自动折叠为摘要 |
 | graph_stage | 始终展开 |
@@ -567,9 +584,11 @@
 - [ ] Team 模式：plan → graph → team-card 顺序显示
 - [ ] 任务计划面板：固定位置，不重复产生，支持折叠
 - [ ] team-card 布局：头部2:中部6:尾部2，符合设计
-- [ ] team-card 尾部：对话框横向展开 + 发送按钮 + 暂停/恢复按钮
+- [ ] team-card 尾部：对话框（始终可见）+ 暂停/恢复/取消/重试按钮（按状态切换）+ 状态映射（running/paused/completed/failed/cancelled）
 - [ ] team-card 展开：显示成员列表，成员展开显示 thinking/action/reply
-- [ ] agent-card：简化版布局，含补充输入框
+- [ ] agent-card：简化版布局（头部80%+尾部20%），含对话框 + 暂停/恢复/取消/重试按钮（与 team-card 一致交互）
+- [ ] agent-card 系统 agent 排除：`__spirit__` 及 `__` 前缀 agent 不显示操作按钮
+- [ ] 暂停/恢复 API：team-run 走 `/v1/team-runs/{id}/pause` 与 `/unpause`；agent session 走 `/v1/chat/sessions/{id}/pause` 与 `/resume`
 - [ ] plan 状态更新：由 team_stage 事件驱动
 - [ ] 进度计算：X/N 简单实现
 - [ ] Team 失败：手动重试

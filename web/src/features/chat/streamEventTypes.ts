@@ -168,7 +168,7 @@ export interface TeamMemberStatus {
 export interface TeamStageEvent extends StreamEventBase {
   kind: 'team_stage';
   /** 阶段状态 */
-  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  status: 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
   /** 阶段描述（如"团队已组建"、"团队执行完成"） */
   title: string;
   /** 团队 ID */
@@ -197,7 +197,7 @@ export interface GraphNodeStatus {
 export interface GraphStageEvent extends StreamEventBase {
   kind: 'graph_stage';
   /** 阶段状态 */
-  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  status: 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
   /** 阶段描述 */
   title: string;
   /** DAG 节点 ID */
@@ -212,7 +212,7 @@ export interface GraphStageEvent extends StreamEventBase {
 export interface SessionStageEvent extends StreamEventBase {
   kind: 'session';
   /** 阶段状态 */
-  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  status: 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
   /** 会话描述（如"成员 A 正在执行"） */
   title: string;
   /** 子会话 ID */

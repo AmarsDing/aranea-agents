@@ -18,12 +18,15 @@ import type {
   SessionListResult,
   SessionParticipant,
   SessionRunRecord,
+} from './types';
+import type {
   SessionSearchQuery,
   SessionStatus,
   SessionStatusReason,
   SessionTimeline,
   SessionTimelineItem,
   SessionTimelineSummary,
+  SessionTreeNode,
   SessionTurn,
   CompactSessionResult,
   MessageSearchResult,

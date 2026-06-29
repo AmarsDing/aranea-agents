@@ -31,8 +31,9 @@ describe('ThinkingBlock label', () => {
   it('renders custom label when label prop is provided', () => {
     const c = mountThinking({
       messageId: 'think-1',
-      reasoning: 'some reasoning',
+      reasoning: 'This is a sufficiently long reasoning content to avoid inline-short mode.',
       streaming: false,
+      defaultCollapsed: false,
       label: '规划',
     });
     const labelText = c.querySelector('.thinking-block__label-text')?.textContent;
@@ -42,8 +43,9 @@ describe('ThinkingBlock label', () => {
   it('renders custom label "推理" when provided', () => {
     const c = mountThinking({
       messageId: 'think-2',
-      reasoning: 'inferring',
+      reasoning: 'Another sufficiently long reasoning content to render the expanded label row.',
       streaming: false,
+      defaultCollapsed: false,
       label: '推理',
     });
     const labelText = c.querySelector('.thinking-block__label-text')?.textContent;
@@ -53,8 +55,9 @@ describe('ThinkingBlock label', () => {
   it('falls back to default "思考" when label prop is empty/undefined', () => {
     const c = mountThinking({
       messageId: 'think-3',
-      reasoning: 'thinking default',
+      reasoning: 'Long enough reasoning content so the component renders in expanded mode and shows the default label.',
       streaming: false,
+      defaultCollapsed: false,
       // label intentionally omitted
     });
     const labelText = c.querySelector('.thinking-block__label-text')?.textContent;

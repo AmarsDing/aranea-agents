@@ -68,6 +68,10 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	if hook := newPromptSnapshotBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
 	}
+	// Problem 6: inject a reply reminder after each tool call so the LLM
+	// outputs a brief "已完成 + 下一步" reply before calling the next tool.
+	// BeforeModel hook reads state set by the AfterTool hook.
+	entries = append(entries, newReplyReminderBeforeHook())
 	if hook := newL0SnapshotAfterModelHook(deps); hook != nil {
 		entries = append(entries, hook)
 	}
@@ -91,6 +95,9 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		// Capture skill_load/skill_run slug into invocation state BEFORE the
 		// tool recorder reads it (recorder runs at priority 50).
 		entries = append(entries, newSkillLoadCaptureAfterHook())
+		// Problem 6: set reply-reminder state after each tool call so the
+		// BeforeModel hook can inject a reminder system message.
+		entries = append(entries, newReplyReminderAfterHook())
 		entries = append(entries, callbacks.NewToolRecorderCallback(50, func(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
 			recordToolInvocationAfter(ctx, args, ag, deps)
 			return &trpctool.AfterToolResult{}, nil

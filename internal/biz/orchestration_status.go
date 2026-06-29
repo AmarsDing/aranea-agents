@@ -195,8 +195,25 @@ func (s *OrchestrationStatusStore) ApplyActivityEvent(aev ActivityEvent, reg Orc
 			}
 		}
 	case ActivityKindSession:
+		// Graph checkpoint (HITL interrupt) — graph events set meta.node_id
+		// and leave AgentKey empty.
 		if aev.Activity.Stage == "checkpoint" {
 			if st := s.applyToResolved(meta, author, reg, AgentNodeStatusWaitingInput, WorkPhaseDoing); st != nil {
+				changed = append(changed, st)
+			}
+		}
+		// Per-member session lifecycle (Problem 3+4: publishTeamStepActivity now
+		// emits Kind=Session with Stage=executing/completed so the frontend
+		// AgentCard can render member cards). Branch mirrors the legacy
+		// ActivityKindTeamStage handling so orchestration status projection
+		// keeps working.
+		switch {
+		case aev.Event == ActivityEventCreated && aev.Activity.Stage == "executing":
+			if st := s.applyToResolved(meta, author, reg, AgentNodeStatusRunning, WorkPhaseDoing); st != nil {
+				changed = append(changed, st)
+			}
+		case aev.Event == ActivityEventCompleted && aev.Activity.Stage == "completed":
+			if st := s.applyStepFinished(meta, author, reg); st != nil {
 				changed = append(changed, st)
 			}
 		}

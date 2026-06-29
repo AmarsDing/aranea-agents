@@ -1,7 +1,16 @@
 package agent
 
 import (
+	"context"
+	"sync"
 	"testing"
+	"time"
+
+	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
+
+	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
 func TestDisplayMarkdownFromStream_prefersReply(t *testing.T) {
@@ -100,4 +109,74 @@ func TestEstimateTokensIfMissing_emptyInputReturnsZeroPrompt(t *testing.T) {
 	if out != RoughTokenEstimate("reply text") {
 		t.Fatalf("completion estimated wrong: out=%d", out)
 	}
+}
+
+// captureActivityBus is a thread-safe ActivityEventBus that records published events.
+type captureActivityBus struct {
+	mu        sync.Mutex
+	published []biz.ActivityEvent
+}
+
+func (b *captureActivityBus) Publish(_ context.Context, ev biz.ActivityEvent) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.published = append(b.published, ev)
+}
+
+func (b *captureActivityBus) Subscribe(_ biz.ActivityEventSubscribeOptions) (<-chan biz.ActivityEvent, func()) {
+	return nil, func() {}
+}
+
+func (b *captureActivityBus) DropCount() uint64 { return 0 }
+
+func (b *captureActivityBus) events() []biz.ActivityEvent {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([]biz.ActivityEvent, len(b.published))
+	copy(out, b.published)
+	return out
+}
+
+// TestConsumeWithFirstByteGuard_NoHardFailure verifies that the first-byte timeout
+// no longer returns ErrFirstByteTimeout. Instead it emits a patient notice and
+// keeps consuming the stream, so a slow model can still produce a reply.
+func TestConsumeWithFirstByteGuard_NoHardFailure(t *testing.T) {
+	bus := &captureActivityBus{}
+	ap := NewActivityProjector(bus, nil, loggateway.NewNoop(), nil)
+	opts := &StreamConsumeOptions{ActivityProjector: ap}
+
+	events := make(chan *trpcevent.Event)
+	go func() {
+		// Model responds after the 30 ms first-byte deadline.
+		time.Sleep(60 * time.Millisecond)
+		events <- &trpcevent.Event{
+			Response: &trpcmodel.Response{
+				Object: trpcmodel.ObjectTypeChatCompletionChunk,
+				Choices: []trpcmodel.Choice{
+					{Delta: trpcmodel.Message{Content: "hello"}},
+				},
+			},
+		}
+		close(events)
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	result, err := ConsumeWithFirstByteGuard(ctx, 30*time.Millisecond, events, ProjectMeta{
+		SessionID: "sess-1",
+		RequestID: "req-1",
+		AgentID:   "agent-1",
+	}, opts, loggateway.NewNoop())
+
+	if err != nil {
+		t.Fatalf("expected no hard error on first-byte timeout, got %v", err)
+	}
+	if got := result.Reply.String(); got != "hello" {
+		t.Errorf("reply = %q, want hello", got)
+	}
+
+	// TODO: the patient first-byte timeout notice is not yet emitted by the
+	// stream consumer; this test currently only verifies the no-hard-failure
+	// contract and reply capture.
 }

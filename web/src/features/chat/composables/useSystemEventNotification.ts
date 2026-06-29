@@ -46,12 +46,18 @@ export function useSystemEventNotification(deps: UseSystemEventNotificationDeps)
    */
   function isSystemEvent(ev: AFActivityEvent): boolean {
     if (ev.domain === 'system') return true;
-    if (ev.domain === 'chat') return false;
+    if (ev.domain === 'chat') {
+      // Notice events are system notifications (run_status, session_status_changed,
+      // pre_planning_gate, user_feedback, …) even when Domain=chat. They need to be
+      // routed through the inbound-sync pipeline for state updates (e.g. session
+      // status mutation) and then rendered as NoticeBlock in the Activity timeline.
+      if (ev.activity.kind === 'notice') return true;
+      return false;
+    }
     // Legacy fallback: kind + event heuristic.
     const { kind } = ev.activity;
     const isChatRendering =
-      (kind === 'task' &&
-        (ev.event === 'streaming' || ev.event === 'created' || ev.event === 'completed')) ||
+      (kind === 'task' && (ev.event === 'streaming' || ev.event === 'created' || ev.event === 'completed')) ||
       kind === 'thinking' ||
       kind === 'action' ||
       kind === 'reply' ||
@@ -84,6 +90,16 @@ export function useSystemEventNotification(deps: UseSystemEventNotificationDeps)
     } else {
       // Fallback: no inbound handler bound yet — pass to the timeline so
       // nothing is dropped before useChatInboundSync wires up.
+      deps.activityTimeline.handleActivityEvent(ev);
+    }
+
+    // Notice events (run_status, session_status_changed, pre_planning_gate, …)
+    // are system notifications that should ALSO render as NoticeBlock in the
+    // Activity timeline when they carry a user-facing message. Passing them here
+    // ensures chat-domain notices are visible while still receiving inbound-sync
+    // state updates above. Empty notices (e.g. background_job_refresh) stay off
+    // the timeline and are handled purely by inbound-sync / store side effects.
+    if (ev.activity.kind === 'notice' && (ev.activity.content || '').trim()) {
       deps.activityTimeline.handleActivityEvent(ev);
     }
     return true;

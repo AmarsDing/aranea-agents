@@ -42,9 +42,18 @@ func (r *Runner) publishTeamRunFailedActivity(ctx context.Context, run biz.TeamR
 	r.td.Pipeline.ActivityBus.Publish(ctx, ev)
 }
 
-// publishTeamStepActivity publishes a team_step ActivityEvent (started/finished)
-// to the ActivityEventBus. status and stage identify the lifecycle phase.
-func (r *Runner) publishTeamStepActivity(ctx context.Context, run biz.TeamRun, teamID, agentKey string, eventType biz.ActivityEventType, status biz.ActivityStatus, stage string, step any) {
+// publishTeamStepActivity publishes a per-member session ActivityEvent
+// (started/finished) to the ActivityEventBus. status and stage identify the
+// lifecycle phase.
+//
+// Problem 3+4 fix: previously this published Kind=TeamStage, which the frontend
+// rendered as a TeamCard (not an AgentCard), and never set child_session_id, so
+// the AgentCard cancel/retry buttons received an empty sessionId and no-op'd.
+// Now we publish Kind=Session with AgentName and meta.child_session_id so the
+// frontend AgentCard renders the member's display name and can target the
+// shared team session for cancel/retry (Option B: reuse session event + shared
+// team session).
+func (r *Runner) publishTeamStepActivity(ctx context.Context, run biz.TeamRun, teamID, agentKey, agentName string, eventType biz.ActivityEventType, status biz.ActivityStatus, stage string, step any) {
 	if r.td.Pipeline.ActivityBus == nil {
 		return
 	}
@@ -52,17 +61,19 @@ func (r *Runner) publishTeamStepActivity(ctx context.Context, run biz.TeamRun, t
 		Event: eventType,
 		Activity: biz.Activity{
 			ID:              uuid.NewString(),
-			Kind:            biz.ActivityKindTeamStage,
+			Kind:            biz.ActivityKindSession,
 			Status:          status,
 			SessionID:       run.SessionID,
 			SpiritSessionID: run.SpiritSessionID,
 			TeamID:          teamID,
 			AgentKey:        agentKey,
+			AgentName:       agentName,
 			Timestamp:       time.Now().UTC(),
 			Stage:           stage,
 			Meta: map[string]any{
-				"run_id": run.ID,
-				"step":   step,
+				"run_id":           run.ID,
+				"step":             step,
+				"child_session_id": run.SessionID,
 			},
 		},
 		Domain: biz.ActivityDomainChat,
@@ -218,7 +229,7 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string
 		started := step
 		// TECH-DEBT(FSM): TeamRunStep has no state machine, direct assignment for initialization
 		started.Status = biz.TeamRunStatusRunning
-		r.publishTeamStepActivity(ctx, run, teamID, ag.AgentKey, biz.ActivityEventCreated, biz.ActivityStatusRunning, "executing", started)
+		r.publishTeamStepActivity(ctx, run, teamID, ag.AgentKey, step.AgentName, biz.ActivityEventCreated, biz.ActivityStatusRunning, "executing", started)
 	}
 	saved, err := r.runWriter.CreateTeamRunStep(ctx, step)
 	if err != nil {
@@ -226,6 +237,6 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string
 	}
 	r.recordMemberUsage(ctx, run, teamID, ag, asst, prov, mod, dialogMode, saved.ID)
 	if r.td.Pipeline.ActivityBus != nil {
-		r.publishTeamStepActivity(ctx, run, teamID, ag.AgentKey, biz.ActivityEventCompleted, biz.ActivityStatusCompleted, "completed", saved)
+		r.publishTeamStepActivity(ctx, run, teamID, ag.AgentKey, saved.AgentName, biz.ActivityEventCompleted, biz.ActivityStatusCompleted, "completed", saved)
 	}
 }

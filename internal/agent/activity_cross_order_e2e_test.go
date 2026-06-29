@@ -17,21 +17,24 @@ import (
 // barriers: phase N+1 only starts after phase N finishes. Without barriers,
 // Go's goroutine scheduler does not guarantee that the first On* call in
 // source order acquires the projector's lock first, so the cross-activity
-// seq ordering assertion is flaky (mirroring the pattern documented in
-// TestActivityProjector_SeqAllocatedInMainFlow).
+// publish-order assertion is flaky.
+//
+// Note: Activity ordering follows Timestamp ASC (design §B.3.3); the legacy
+// Seq-based comparison was removed together with GlobalSeqAllocator, so this
+// test asserts on publish order (slice index) instead of Seq.
 func TestActivityProjector_CrossOrderE2E(t *testing.T) {
 	t.Parallel()
 
 	eventBus := &recordingEventBus{}
 	repo := &fakeActivityRepo{}
-	proj := NewActivityProjector(eventBus, repo, nil)
+	proj := NewActivityProjector(eventBus, repo, nil, NewNoopToolCategorizer())
 	proj.Configure(ProjectMeta{
 		SessionID: "sess-e2e",
 		RequestID: "turn-e2e",
 		AgentID:   "agent-1",
 	}, nil)
 	proj.Reset()
-	proj.OnTurnStart(context.Background(), ProjectMeta{
+	_ = proj.OnTurnStart(context.Background(), ProjectMeta{
 		SessionID: "sess-e2e",
 		RequestID: "turn-e2e",
 		AgentID:   "agent-1",
@@ -94,42 +97,30 @@ func TestActivityProjector_CrossOrderE2E(t *testing.T) {
 		t.Fatalf("expected ≥4 events, got %d", len(received))
 	}
 
-	seqToKind := make(map[int64]biz.ActivityKind)
-	for _, a := range received {
-		seqToKind[a.Seq] = a.Kind
+	// Assert cross-activity publish order: thinking events must appear before
+	// reply events in the publish slice (design §B.3.3 — Timestamp ASC, and
+	// the publish worker is single-goroutine FIFO).
+	// Slice index = publish order = business order (barriers enforce phases).
+	lastThinkingIdx := -1
+	firstReplyIdx := -1
+	for i, a := range received {
+		if a.Kind == biz.ActivityKindThinking && i > lastThinkingIdx {
+			lastThinkingIdx = i
+		}
+		if a.Kind == biz.ActivityKindReply && firstReplyIdx == -1 {
+			firstReplyIdx = i
+		}
 	}
 
-	var thinkingSeqs, replySeqs []int64
-	for seq, kind := range seqToKind {
-		if kind == biz.ActivityKindThinking {
-			thinkingSeqs = append(thinkingSeqs, seq)
-		}
-		if kind == biz.ActivityKindReply {
-			replySeqs = append(replySeqs, seq)
-		}
-	}
-
-	if len(thinkingSeqs) == 0 {
+	if lastThinkingIdx == -1 {
 		t.Fatal("no thinking activity in received events")
 	}
-	if len(replySeqs) == 0 {
+	if firstReplyIdx == -1 {
 		t.Fatal("no reply activity in received events")
 	}
 
-	maxThinkingSeq := thinkingSeqs[0]
-	for _, s := range thinkingSeqs {
-		if s > maxThinkingSeq {
-			maxThinkingSeq = s
-		}
-	}
-	minReplySeq := replySeqs[0]
-	for _, s := range replySeqs {
-		if s < minReplySeq {
-			minReplySeq = s
-		}
-	}
-
-	if minReplySeq <= maxThinkingSeq {
-		t.Errorf("reply (min seq=%d) appeared before thinking (max seq=%d) — cross-activity order broken", minReplySeq, maxThinkingSeq)
+	if firstReplyIdx <= lastThinkingIdx {
+		t.Errorf("reply (first idx=%d) appeared before or at thinking (last idx=%d) — cross-activity order broken",
+			firstReplyIdx, lastThinkingIdx)
 	}
 }

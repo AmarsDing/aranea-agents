@@ -128,7 +128,7 @@ func TestActivityProjector_B04_DeltaDoesNotBlockMutex(t *testing.T) {
 		publishCh:     make(chan struct{}),
 	}
 	repo := newMockActivityWriter()
-	p := NewActivityProjector(slowBus, repo, loggateway.NewNoop())
+	p := NewActivityProjector(slowBus, repo, loggateway.NewNoop(), NewNoopToolCategorizer())
 	p.Reset()
 	t.Cleanup(func() {
 		close(slowBus.publishCh)
@@ -268,7 +268,7 @@ func TestActivityProjector_BackpressurePropagation(t *testing.T) {
 		publishCh:     make(chan struct{}),
 	}
 	repo := newMockActivityWriter()
-	p := NewActivityProjector(slowBus, repo, loggateway.NewNoop())
+	p := NewActivityProjector(slowBus, repo, loggateway.NewNoop(), NewNoopToolCategorizer())
 	p.Reset()
 
 	ctx := context.Background()

@@ -64,7 +64,9 @@ const props = defineProps<{
 
 const { t } = useI18n();
 
-const collapsed = ref(props.activity.status !== 'running');
+// B.4.5: graph_stage 始终展开（不自动折叠）。终态切换时也不折叠，
+// 以保持 DAG 可见性 — 终态自动折叠 ❌ 违反设计。
+const collapsed = ref(false);
 
 function toggleCollapse() {
   if (effectiveStatus.value === 'running') return;

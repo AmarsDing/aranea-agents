@@ -175,7 +175,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	streamOpts := r.newStreamConsumeOptions()
 	if streamOpts != nil && streamOpts.ActivityProjector != nil {
 		streamOpts.ActivityProjector.Reset()
-		streamOpts.ActivityProjector.OnTurnStart(runCtx, projectMeta)
+		runCtx = streamOpts.ActivityProjector.OnTurnStart(runCtx, projectMeta)
 		runCtx = biz.WithActivityEmitter(runCtx, streamOpts.ActivityProjector)
 	}
 

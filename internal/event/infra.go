@@ -10,7 +10,7 @@ import (
 // Infra holds the typed monitor event bus.
 //
 // Phase 1c-2: WAL and CrossProcessStore fields have been removed along with
-// the deletion of the event_store subsystem. Critical events no longer have
+// the deletion of the event_store subsystem. Important events no longer have
 // WBPF (Write-Before-Publish-Fanout) protection; subscribers must be
 // idempotent. Cross-process WS reconnect replay now relies on Activity
 // records fetched via the ListActivities RPC (see service.SessionService).

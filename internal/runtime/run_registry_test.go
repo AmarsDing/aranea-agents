@@ -16,9 +16,11 @@ import (
 )
 
 type registryRunner struct {
-	cancelled bool
-	closed    bool
-	cancelOK  bool
+	cancelled  bool
+	closed     bool
+	cancelOK   bool
+	cancelCalls int64
+	closeCalls  int64
 }
 
 func (r *registryRunner) Run(context.Context, string, string, trpcmodel.Message, ...trpcagent.RunOption) (<-chan *trpcevent.Event, error) {
@@ -26,11 +28,13 @@ func (r *registryRunner) Run(context.Context, string, string, trpcmodel.Message,
 }
 
 func (r *registryRunner) Close() error {
+	atomic.AddInt64(&r.closeCalls, 1)
 	r.closed = true
 	return nil
 }
 
 func (r *registryRunner) Cancel(string) bool {
+	atomic.AddInt64(&r.cancelCalls, 1)
 	r.cancelled = true
 	return r.cancelOK
 }
@@ -273,5 +277,93 @@ func TestStoreRunnerAndStoreCancelable_MixedConcurrent(t *testing.T) {
 	}
 	if got := atomic.LoadInt64(&cancelCalled); got != 1 {
 		t.Fatalf("cancel called %d times, want 1", got)
+	}
+}
+
+// TestRunRegistryCancel_DoubleCancelOnlyOnce verifies that concurrent Cancel
+// calls on the same session are idempotent: the runner is cancelled exactly
+// once and the active run is removed without double-close.
+func TestRunRegistryCancel_DoubleCancelOnlyOnce(t *testing.T) {
+	reg := NewRunRegistry()
+	runner := &registryRunner{cancelOK: true}
+	reg.StoreRunner("session-1", "run-1", runner)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			reg.Cancel("session-1", "")
+		}()
+	}
+	wg.Wait()
+
+	if !runner.cancelled {
+		t.Fatalf("runner was not cancelled")
+	}
+	if runner.closed {
+		t.Fatalf("runner was closed after successful managed cancel")
+	}
+	if got := atomic.LoadInt64(&runner.cancelCalls); got != 1 {
+		t.Fatalf("Cancel() called %d times, want 1", got)
+	}
+	if reg.HasActive("session-1") {
+		t.Fatalf("run remains active after cancel")
+	}
+	status, ok := reg.GetStatus("session-1")
+	if !ok || status.Status != biz.SessionRunPhaseCancelled || status.RunID != "run-1" {
+		t.Fatalf("GetStatus() = (%+v, %v), want cancelled run-1", status, ok)
+	}
+}
+
+// TestRunRegistryCancel_RaceWithFinish verifies that Cancel racing with Finish
+// does not panic or double-close the runner.
+func TestRunRegistryCancel_RaceWithFinish(t *testing.T) {
+	reg := NewRunRegistry()
+	runner := &registryRunner{}
+	reg.StoreRunner("session-1", "run-1", runner)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		reg.Finish("session-1")
+	}()
+	go func() {
+		defer wg.Done()
+		reg.Cancel("session-1", "")
+	}()
+	wg.Wait()
+
+	if got := atomic.LoadInt64(&runner.closeCalls); got > 1 {
+		t.Fatalf("runner.Close() called %d times, want at most 1", got)
+	}
+}
+
+// TestRunRegistryCancel_DoubleCheckActive verifies that a cancel that loses the
+// race with natural run completion does not delete a newer run for the same session.
+func TestRunRegistryCancel_DoubleCheckActive(t *testing.T) {
+	reg := NewRunRegistry()
+	runner1 := &registryRunner{}
+	reg.StoreRunner("session-1", "run-1", runner1)
+
+	stopped, runID := reg.Cancel("session-1", "")
+	if !stopped || runID != "run-1" {
+		t.Fatalf("Cancel() = (%v, %q), want (true, run-1)", stopped, runID)
+	}
+
+	// A new run starts for the same session before the second Cancel arrives.
+	runner2 := &registryRunner{cancelOK: true}
+	reg.StoreRunner("session-1", "run-2", runner2)
+
+	stopped, runID = reg.Cancel("session-1", "")
+	if !stopped || runID != "run-2" {
+		t.Fatalf("second Cancel() = (%v, %q), want (true, run-2)", stopped, runID)
+	}
+	if got := atomic.LoadInt64(&runner1.closeCalls); got != 1 {
+		t.Fatalf("first runner.Close() = %d, want 1", got)
+	}
+	if got := atomic.LoadInt64(&runner2.cancelCalls); got != 1 {
+		t.Fatalf("second runner.Cancel() = %d, want 1", got)
 	}
 }

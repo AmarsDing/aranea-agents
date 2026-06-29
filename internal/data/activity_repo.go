@@ -10,8 +10,6 @@ import (
 	"aranea-agents/internal/data/ent/activity"
 	"aranea-agents/internal/data/ent/session"
 	"aranea-agents/pkg/loggateway"
-
-	"entgo.io/ent/dialect/sql"
 )
 
 type activityRepo struct {
@@ -20,6 +18,10 @@ type activityRepo struct {
 }
 
 var _ biz.ActivityRepo = (*activityRepo)(nil)
+var _ biz.ActivityReader = (*activityRepo)(nil)
+var _ biz.ActivityTreeReader = (*activityRepo)(nil)
+var _ biz.ActivityWriter = (*activityRepo)(nil)
+var _ biz.ActivityUpserter = (*activityRepo)(nil)
 
 func NewActivityRepo(d *Data, lg loggateway.Logger) biz.ActivityRepo {
 	return &activityRepo{data: d, lg: lg.With(loggateway.Domain("ACTIVITY"))}
@@ -150,6 +152,7 @@ func (r *activityRepo) CreateActivity(ctx context.Context, a biz.Activity) (biz.
 		SetTimestamp(a.Timestamp.UTC().Format(time.RFC3339Nano)).
 		SetDurationMs(a.DurationMs).
 		SetSeq(a.Seq).
+		SetVersion(a.Version).
 		SetPromptTokens(a.PromptTokens).
 		SetCompletionTokens(a.CompletionTokens).
 		SetContent(a.Content).
@@ -192,6 +195,7 @@ func (r *activityRepo) UpdateActivity(ctx context.Context, a biz.Activity) (biz.
 		SetStatus(string(a.Status)).
 		SetDurationMs(a.DurationMs).
 		SetSeq(a.Seq).
+		SetVersion(a.Version).
 		SetPromptTokens(a.PromptTokens).
 		SetCompletionTokens(a.CompletionTokens).
 		SetContent(a.Content).
@@ -224,15 +228,57 @@ func (r *activityRepo) UpsertActivity(ctx context.Context, a biz.Activity) (biz.
 	if r == nil || r.data == nil {
 		return biz.Activity{}, fmt.Errorf("activity repo: database not configured")
 	}
-	// Atomic upsert via ON CONFLICT (id) DO UPDATE. Avoids the "Create → ConstraintError
-	// → fallback Update" race that previously produced noise-level
-	// `agent.activity_sequencer.persist` warn logs on every ActivityDone (same
-	// activity_id is re-inserted to mark the activity complete). Ent's
-	// ResolveWithNewValues() updates only the columns actually SET in this call,
-	// preserving immutable fields (id, kind, session_id, turn_id, parent_activity_id,
-	// timestamp, agent_key, agent_name, child_board_id, spirit_session_id, team_id,
-	// dag_node_id) from the initial insert.
+	// Version-guarded upsert: stale updates (incoming version <= stored version)
+	// are ignored so that out-of-order persistence cannot overwrite newer state.
+	// This protects the single persist worker's FIFO assumption when retries or
+	// cross-path writes occur.
 	now := a.Timestamp.UTC().Format(time.RFC3339Nano)
+
+	// 1) Try to update an existing row only when the stored version is older.
+	if err := r.data.RW().Write(ctx).Activity.UpdateOneID(a.ID).
+		Where(activity.VersionLT(a.Version)).
+		SetKind(string(a.Kind)).
+		SetStatus(string(a.Status)).
+		SetSessionID(a.SessionID).
+		SetTurnID(a.TurnID).
+		SetParentActivityID(a.ParentActivityID).
+		SetTimestamp(now).
+		SetDurationMs(a.DurationMs).
+		SetSeq(a.Seq).
+		SetVersion(a.Version).
+		SetPromptTokens(a.PromptTokens).
+		SetCompletionTokens(a.CompletionTokens).
+		SetContent(a.Content).
+		SetReasoning(a.Reasoning).
+		SetToolName(a.ToolName).
+		SetToolCategory(string(a.ToolCategory)).
+		SetToolCallID(a.ToolCallID).
+		SetToolArguments(a.ToolArguments).
+		SetToolResult(a.ToolResult).
+		SetToolDurationMs(a.ToolDurationMs).
+		SetToolErrorCode(a.ToolErrorCode).
+		SetStage(a.Stage).
+		SetChildBoardID(a.ChildBoardID).
+		SetSpiritSessionID(a.SpiritSessionID).
+		SetTeamID(a.TeamID).
+		SetDagNodeID(a.DagNodeID).
+		SetAgentKey(a.AgentKey).
+		SetAgentName(a.AgentName).
+		SetCollapsed(a.Collapsed).
+		SetLabel(a.Label).
+		SetMeta(a.Meta).
+		SetDependsOn(a.DependsOn).
+		Exec(ctx); err == nil {
+		row, err := r.data.RW().Read(ctx).Activity.Get(ctx, a.ID)
+		if err != nil {
+			return biz.Activity{}, entErrToBizErr(err, "ACTIVITY")
+		}
+		return entActivityToBiz(row), nil
+	}
+
+	// 2) No row was updated: either the row does not exist or it has a newer/equal
+	// version. Attempt an insert; a conflict here means a newer row is already
+	// stored, so return the current DB state without overwriting it.
 	b := r.data.RW().Write(ctx).Activity.Create().
 		SetID(a.ID).
 		SetKind(string(a.Kind)).
@@ -243,6 +289,7 @@ func (r *activityRepo) UpsertActivity(ctx context.Context, a biz.Activity) (biz.
 		SetTimestamp(now).
 		SetDurationMs(a.DurationMs).
 		SetSeq(a.Seq).
+		SetVersion(a.Version).
 		SetPromptTokens(a.PromptTokens).
 		SetCompletionTokens(a.CompletionTokens).
 		SetContent(a.Content).
@@ -269,14 +316,15 @@ func (r *activityRepo) UpsertActivity(ctx context.Context, a biz.Activity) (biz.
 	if len(a.DependsOn) > 0 {
 		b.SetDependsOn(a.DependsOn)
 	}
-	if err := b.OnConflict(
-		sql.ConflictColumns(activity.FieldID),
-		sql.ResolveWithNewValues(),
-	).Exec(ctx); err != nil {
-		return biz.Activity{}, entErrToBizErr(err, "ACTIVITY")
-	}
-	row, err := r.data.RW().Read(ctx).Activity.Get(ctx, a.ID)
+	row, err := b.Save(ctx)
 	if err != nil {
+		if ent.IsConstraintError(err) {
+			existing, getErr := r.data.RW().Read(ctx).Activity.Get(ctx, a.ID)
+			if getErr != nil {
+				return biz.Activity{}, entErrToBizErr(getErr, "ACTIVITY")
+			}
+			return entActivityToBiz(existing), nil
+		}
 		return biz.Activity{}, entErrToBizErr(err, "ACTIVITY")
 	}
 	return entActivityToBiz(row), nil
@@ -299,6 +347,7 @@ func entActivityToBiz(row *ent.Activity) biz.Activity {
 		Timestamp:        ts,
 		DurationMs:       row.DurationMs,
 		Seq:              row.Seq,
+		Version:          row.Version,
 		PromptTokens:     row.PromptTokens,
 		CompletionTokens: row.CompletionTokens,
 		Content:          row.Content,

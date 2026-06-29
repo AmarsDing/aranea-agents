@@ -77,7 +77,7 @@ func (e *RunHeartbeatEmitter) Start(ctx context.Context, runID, sessionID string
 }
 
 // publishHeartbeat publishes a single heartbeat as an ActivityEvent
-// (Kind=session, Domain=system). When progress is non-nil its fields are
+// (Kind=notice, Domain=system). When progress is non-nil its fields are
 // included in the metadata; otherwise only run_id is sent to prove the run
 // is alive. Replaces the legacy EnvelopeTypeRunHeartbeat publish.
 func (e *RunHeartbeatEmitter) publishHeartbeat(ctx context.Context, runID, sessionID string, progress func() RunProgress) {
@@ -100,9 +100,11 @@ func (e *RunHeartbeatEmitter) publishHeartbeat(ctx context.Context, runID, sessi
 		Event: biz.ActivityEventUpdated,
 		Activity: biz.Activity{
 			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindSession,
+			Kind:      biz.ActivityKindNotice,
 			Status:    biz.ActivityStatusRunning,
 			SessionID: sessionID,
+			AgentKey:  "run-heartbeat",
+			AgentName: "运行心跳",
 			Timestamp: time.Now().UTC(),
 			Meta:      meta,
 		},

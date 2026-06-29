@@ -114,6 +114,12 @@ type RunRegistryPort interface {
 
 	// GetStatus returns the current status entry for the given session.
 	GetStatus(sessionID string) (RunStatusEntry, bool)
+
+	// EnqueueUserMessage enqueues a user message into the active run's pending
+	// queue. Returns (accepted=false, err=nil) if no active run exists or the
+	// runner does not support queued messages.
+	// Stability:evolving
+	EnqueueUserMessage(sessionID, content string) (bool, error)
 }
 
 // RunStatusEntry is the biz-level representation of a runtime run status.

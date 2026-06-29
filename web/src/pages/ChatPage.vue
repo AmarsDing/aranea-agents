@@ -91,6 +91,7 @@
         :reasoning-sidebar-open="session.reasoningSidebarOpen"
         :reasoning-sidebar-active="session.reasoningSidebarActive"
         :pending-messages="composer.pendingMessages"
+        :agent-map="agentMap"
         :run-status="composer.runStatus"
         :run-agent-name="composer.runMeta?.agentName"
         :run-started-at="composer.runMeta?.startedAt"
@@ -140,6 +141,9 @@
         @error-relogin="onErrorRelogin"
         @cancel-team="spiritStore.cancelTeam"
         @retry-team="spiritStore.retryTeam"
+        @pause-team="spiritStore.pauseTeam"
+        @unpause-team="spiritStore.unpauseTeam"
+        @inject-team="(p: { teamId: string; message: string }) => spiritStore.injectTeam(p.teamId, p.message)"
         @archive-team="spiritStore.archiveTeam"
         @select-member="spiritStore.selectMember"
         @select-spirit-team="spiritStore.selectTeam($event)"
@@ -152,6 +156,10 @@
         @enter-session="onEnterSession"
         @cancel-agent="onCancelAgent"
         @retry-agent="onRetryAgent"
+        @pause-agent="onPauseAgent"
+        @resume-agent="onResumeAgent"
+        @inject-agent="onInjectAgent"
+        @expand="onExpandChildren"
       />
       <input ref="fileRef" type="file" hidden multiple :accept="session.fileAccept" @change="composer.onFileChange" />
     </div>
@@ -252,7 +260,8 @@ import { useChatWorkspace } from '../features/chat/composables/useChatWorkspace'
 import { useSpiritTeamStore } from '../stores/spirit';
 import { useUiConfigStore } from '../stores/uiConfig';
 import { DEFAULT_MAX_PARALLEL_TEAMS } from '../features/spirit/observabilityConstants';
-import { cancelAgentSession, retryAgentSession } from '../features/spirit/api';
+import { cancelAgentSession, pauseAgentSession, resumeAgentSession, retryAgentSession } from '../features/spirit/api';
+import { enqueueMessage } from '../features/chat/api';
 import type { Agent } from '../features/agents/types';
 
 const SPIRIT_AGENT_KEY = '__spirit__';
@@ -310,6 +319,19 @@ const spiritStatusBar = computed(() => {
     checkpointStep: spiritStore.lastCheckpoint?.step ?? null,
     dqScore: spiritStore.lastDqScore?.overall ?? null,
   };
+});
+
+const agentMap = computed(() => {
+  const map = new Map<string, { displayName: string; agentKey: string }>();
+  for (const agent of entity.store.agents) {
+    if (agent?.agent_key) {
+      map.set(agent.agent_key, {
+        displayName: agent.display_name || agent.agent_key,
+        agentKey: agent.agent_key,
+      });
+    }
+  }
+  return map;
 });
 
 const pulseTeamColors = computed(() => {
@@ -385,6 +407,18 @@ function onEnterSession(sessionId: string) {
   void session.activityTimeline.ensureActivitiesLoaded(sessionId);
 }
 
+/** T5.2/T5.3 / §B.7.2: Lazy-load member/child session activities when a
+ *  team-card or agent-card expands. Cache-aware — `ensureActivitiesLoaded`
+ *  skips sessions that are already cached (T5.4). Unlike `onEnterSession`,
+ *  this does NOT switch the current driving session — expanded children
+ *  render inline within the parent stream. */
+function onExpandChildren(sessionIds: string[]) {
+  for (const sid of sessionIds) {
+    if (!sid) continue;
+    void session.activityTimeline.ensureActivitiesLoaded(sid);
+  }
+}
+
 /** Phase T3 / §B.5.2: Cancel an in-flight sub-agent run by childSessionId.
  *  Reuses the existing StopGeneration RPC; the activity stream is updated
  *  via WS run_status=cancelled events. */
@@ -405,6 +439,40 @@ async function onRetryAgent(sessionId: string) {
     await retryAgentSession(sessionId);
   } catch {
     Notify.create({ type: 'warning', message: layout.t('chat.sessionStage.retryFailed'), position: 'top' });
+  }
+}
+
+/** §B.5.3: Pause an in-flight sub-agent run by childSessionId.
+ *  MVP cancels the active turn and marks the session as paused. */
+async function onPauseAgent(sessionId: string) {
+  if (!sessionId) return;
+  try {
+    await pauseAgentSession(sessionId);
+  } catch {
+    Notify.create({ type: 'warning', message: layout.t('chat.sessionStage.pauseFailed'), position: 'top' });
+  }
+}
+
+/** §B.5.3: Resume a paused sub-agent session.
+ *  MVP flips the status marker; user injects a new message to resume execution. */
+async function onResumeAgent(sessionId: string) {
+  if (!sessionId) return;
+  try {
+    await resumeAgentSession(sessionId);
+  } catch {
+    Notify.create({ type: 'warning', message: layout.t('chat.sessionStage.resumeFailed'), position: 'top' });
+  }
+}
+
+/** §B.5.3: Inject a user message into the sub-agent session's pending queue.
+ *  Reuses the existing enqueueMessage RPC (HTTP EnqueueUserMessage). */
+async function onInjectAgent(payload: { sessionId: string; message: string }) {
+  if (!payload.sessionId || !payload.message.trim()) return;
+  try {
+    await enqueueMessage(payload.sessionId, payload.message);
+    Notify.create({ type: 'positive', message: layout.t('chat.sessionStage.injectSent'), position: 'top' });
+  } catch {
+    Notify.create({ type: 'warning', message: layout.t('chat.sessionStage.injectFailed'), position: 'top' });
   }
 }
 

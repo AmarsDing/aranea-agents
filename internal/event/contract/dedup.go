@@ -5,7 +5,7 @@ import (
 )
 
 // DefaultDedupCapacity is the default capacity for EventDeduplicator.
-// Critical events (ToolResult/Error/RunnerCompletion/Checkpoint) are rare
+// Important events (ToolResult/Error/RunnerCompletion) are rare
 // relative to Informational events; 4096 entries comfortably cover the WAL
 // recovery window where duplicates may arrive.
 const DefaultDedupCapacity = 4096
@@ -15,8 +15,8 @@ const DefaultDedupCapacity = 4096
 // Originally introduced to handle WAL recovery replays (AS-EVT-01 post-publish
 // failure scenario); with WAL/event_store removed in Phase 1c-2 the replay
 // path no longer exists. Retained as a defensive measure against accidental
-// double-publish by upstream producers — subscribers of Critical event types
-// (Error/Checkpoint) use IsDuplicate to skip the second delivery.
+// double-publish by upstream producers — subscribers of Important event types
+// (Error) use IsDuplicate to skip the second delivery.
 //
 // The deduplicator uses a bounded ring buffer with O(1) lookup via a companion
 // map. When capacity is reached, the oldest entries are evicted (FIFO).

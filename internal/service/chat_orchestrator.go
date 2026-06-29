@@ -118,13 +118,14 @@ type ChatChannelDeps struct {
 // admission gate, admission usecase, and turn timeout. Consolidating these into a
 // single struct reduces ChatOrchestrator's field count (AS-COG-01).
 type chatTurnCoreDeps struct {
-	TD             rt.TurnDeps
-	RT             RuntimeTooling
-	AdmitGate      *turn.AdmissionGate
-	Admission      *biz.TurnAdmissionUsecase
-	TurnTimeout    time.Duration
-	ActivityWriter biz.ActivityWriter // AF phase: Activity persistence for ActivityProjector
-	ActivityReader biz.ActivityReader // AF phase: Activity lookup for Confirm API
+	TD              rt.TurnDeps
+	RT              RuntimeTooling
+	AdmitGate       *turn.AdmissionGate
+	Admission       *biz.TurnAdmissionUsecase
+	TurnTimeout     time.Duration
+	ActivityWriter  biz.ActivityWriter  // AF phase: Activity persistence for direct create/update
+	ActivityUpserter biz.ActivityUpserter // AF phase: Activity persistence for ActivityProjector
+	ActivityReader  biz.ActivityReader  // AF phase: Activity lookup for Confirm API
 }
 
 // chatTurnLifecycle combines session state transition, turn metrics recording,
@@ -208,6 +209,7 @@ func (o *ChatOrchestrator) admitGate() *turn.AdmissionGate       { return o.core
 func (o *ChatOrchestrator) admission() *biz.TurnAdmissionUsecase { return o.core.Admission }
 func (o *ChatOrchestrator) turnTimeout() time.Duration           { return o.core.TurnTimeout }
 func (o *ChatOrchestrator) activityWriter() biz.ActivityWriter   { return o.core.ActivityWriter }
+func (o *ChatOrchestrator) activityUpserter() biz.ActivityUpserter { return o.core.ActivityUpserter }
 func (o *ChatOrchestrator) activityReader() biz.ActivityReader   { return o.core.ActivityReader }
 
 func (o *ChatOrchestrator) team() TeamOrchestrationDeps   { return o.teamExecDeps.Team }
@@ -279,8 +281,9 @@ type ChatTurnDeps struct {
 	RT             RuntimeTooling
 	TurnTimeout    time.Duration
 	Admission      *biz.TurnAdmissionUsecase
-	ActivityWriter biz.ActivityWriter // AF phase: Activity persistence for ActivityProjector
-	ActivityReader biz.ActivityReader // AF phase: Activity lookup for Confirm API
+	ActivityWriter biz.ActivityWriter  // AF phase: Activity persistence for direct create/update
+	ActivityUpserter biz.ActivityUpserter // AF phase: Activity persistence for ActivityProjector
+	ActivityReader biz.ActivityReader  // AF phase: Activity lookup for Confirm API
 }
 
 // ChatUsageDeps groups usage tracking, monitoring, artifact, and analytics dependencies.
@@ -409,12 +412,13 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 
 	o := &ChatOrchestrator{
 		core: chatTurnCoreDeps{
-			TD:             deps.Turn.TurnDeps,
-			RT:             deps.Turn.RT,
-			Admission:      deps.Turn.Admission,
-			TurnTimeout:    turnTimeout,
-			ActivityWriter: deps.Turn.ActivityWriter,
-			ActivityReader: deps.Turn.ActivityReader,
+			TD:               deps.Turn.TurnDeps,
+			RT:               deps.Turn.RT,
+			Admission:        deps.Turn.Admission,
+			TurnTimeout:      turnTimeout,
+			ActivityWriter:   deps.Turn.ActivityWriter,
+			ActivityUpserter: deps.Turn.ActivityUpserter,
+			ActivityReader:   deps.Turn.ActivityReader,
 		},
 		channelDeps:  deps.Channel,
 		usageDeps:    deps.Usage,

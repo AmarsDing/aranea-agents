@@ -158,26 +158,46 @@ func isValidStrategy(s string) bool {
 	return false
 }
 
-// publishPlanEvent publishes a plan_confirmed or plan_rejected event envelope
-// so the frontend can refresh UI state. Failures are logged but not returned,
-// since event delivery is best-effort for informational events (AS-EVT-01).
+// publishPlanEvent publishes a plan_confirmed or plan_rejected event as a
+// Kind=notice ActivityEvent (NOT Kind=plan). The plan confirmation is an
+// informational signal, not a new task plan. Emitting it as Kind=plan created
+// a spurious second PlanBlock on the timeline (B.4.3 dedup-by-turnID would
+// also catch this, but routing to NoticeBlock is semantically correct).
+// Failures are logged but not returned, since event delivery is best-effort
+// for informational events (AS-EVT-01).
 func (s *ChatService) publishPlanEvent(ctx context.Context, sessionID, planID, decision, reason string) {
 	bus := s.orch.td().Pipeline.ActivityBus
 	if bus == nil {
 		return
 	}
+	noticeType := "success"
+	if decision == "rejected" {
+		noticeType = "warning"
+	}
+	message := "计划已确认"
+	if decision == "rejected" {
+		message = "计划已拒绝"
+	}
+	if reason != "" {
+		message = message + ": " + reason
+	}
 	bus.Publish(ctx, biz.ActivityEvent{
 		Event: biz.ActivityEventCreated,
 		Activity: biz.Activity{
-			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindPlan,
-			SessionID: sessionID,
-			Timestamp: time.Now().UTC(),
+			ID:              uuid.NewString(),
+			Kind:            biz.ActivityKindNotice,
+			Status:          biz.ActivityStatusCompleted,
+			SessionID:       sessionID,
+			SpiritSessionID: sessionID,
+			Timestamp:       time.Now().UTC(),
+			Content:         message,
 			Meta: map[string]any{
-				"plan_id":  planID,
-				"decision": decision,
-				"reason":   reason,
-				"status":   decision,
+				"plan_id":      planID,
+				"decision":     decision,
+				"reason":       reason,
+				"status":       decision,
+				"notice_type":  noticeType,
+				"source":       "plan-confirm",
 			},
 		},
 		Domain: biz.ActivityDomainChat,

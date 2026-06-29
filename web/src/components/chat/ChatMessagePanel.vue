@@ -36,240 +36,249 @@
     </div>
 
     <q-banner v-if="wsReplaying" dense rounded class="q-mx-md q-mt-sm app-info-banner">
-        <template #avatar>
-          <q-spinner-dots color="accent" size="20px" />
-        </template>
-        {{ t('chat.wsReplaying', '正在同步历史事件…') }}
-      </q-banner>
-      <q-banner v-else-if="sessionLoading" dense rounded class="q-mx-md q-mt-sm app-info-banner">
-        <template #avatar>
-          <q-spinner-dots color="accent" size="20px" />
-        </template>
-        {{ t('chat.sessionLoading', '正在加载会话…') }}
-      </q-banner>
-      <q-card-section class="chat-message-header q-px-md q-py-sm">
-        <div class="chat-message-header__grid">
-          <ChatHeaderUsagePanel
-            class="chat-message-header__usage"
-            :context-ratio="contextRatio"
-            :context-status="contextStatus"
-            :usage-snapshot="usageSnapshot"
-            :breakdown="contextBreakdown"
-            :is-dark="isDark"
-            :session-id="sessionId"
-            @compact="onCompactSession"
-          />
-          <ChatHeaderPromptBar
-            class="chat-message-header__prompt"
-            :full-text="headerUserPrompt"
-            :prompt-key="promptKey"
-            :session-title="sessionTitle"
-            :has-messages="props.messages.length > 0"
-          />
-          <div class="chat-message-header__actions row items-center justify-end no-wrap">
-            <template v-if="wsConnected === false">
-              <q-icon name="wifi_off" size="18px" color="warning" class="q-mr-xs">
-                <q-tooltip>{{ t('chat.connectionDisconnected') }}</q-tooltip>
-              </q-icon>
-            </template>
-            <template v-else-if="wsConnected === true">
-              <span class="ws-connected-dot q-mr-xs">
-                <q-tooltip v-if="sessionRevision">{{ t('chat.syncComplete') }} · rev {{ sessionRevision }}</q-tooltip>
-                <q-tooltip v-else>{{ t('chat.connected') }}</q-tooltip>
-              </span>
-            </template>
-            <ChatRunnerStatus
-              v-if="
-                runStatus &&
-                runStatus !== 'idle' &&
-                runStatus !== 'completed' &&
-                runStatus !== 'cancelled' &&
-                runStatus !== 'failed'
-              "
-              class="chat-message-header__runner q-mr-xs"
-              :status="runStatus"
-              :agent-name="runAgentName"
-              :started-at="runStartedAt"
-              :event-count="runEventCount"
-              @cancel="emit('stop')"
-            />
-            <q-btn flat round dense icon="bolt" :aria-label="t('chat.sessionEvents')" @click="emit('open-events')">
-              <q-tooltip>{{ t('chat.sessionEvents') }}</q-tooltip>
-            </q-btn>
-            <q-btn
-              v-if="reasoningSidebarActive"
-              flat
-              round
-              dense
-              :icon="reasoningSidebarOpen ? 'psychology' : 'psychology_alt'"
-              :color="reasoningSidebarOpen ? 'accent' : undefined"
-              :aria-label="t('chat.thinkingPanel')"
-              @click="emit('toggle-reasoning-sidebar')"
-            >
-              <q-tooltip>{{ t('chat.thinkingPanel') }}</q-tooltip>
-            </q-btn>
-          </div>
-        </div>
-      </q-card-section>
-      <ChatTeamMemberStrip v-if="isTeamSession" :members="teamMemberLanes" />
-      <div
-        v-if="spiritLoadingMessage && (!panelMode || panelMode === 'spirit')"
-        class="contextual-loading-bar q-mx-md q-mt-sm"
-        :style="{ borderLeftColor: spiritLoadingMessage.color }"
-      >
-        <div class="row items-center no-wrap q-gutter-xs">
-          <q-icon :name="spiritLoadingMessage.icon" :color="spiritLoadingMessage.color" size="16px" />
-          <span class="text-caption">{{ spiritLoadingMessage.text }}</span>
-        </div>
-      </div>
-      <div v-if="!panelMode || panelMode === 'spirit'" class="row items-center justify-end q-px-md q-py-xs">
-        <UiConfigToggle class="q-mr-sm" :show-tool-calls="showToolCalls ?? true" @toggle="emit('toggle-tool-calls')" />
-        <q-btn
-          flat
-          dense
-          no-caps
-          :icon="expandAllActive ? 'unfold_less' : 'unfold_more'"
-          :label="expandAllActive ? t('chat.collapseAll', '折叠全部') : t('chat.expandAll', '展开全部')"
-          class="text-caption"
-          :style="{ color: 'var(--color-text-tertiary)' }"
-          @click="expandAllActive ? handleCollapseAll() : handleExpandAll()"
-        />
-      </div>
-      <div class="col row no-wrap chat-messages-area" style="min-height: 0">
-        <div class="col column no-wrap chat-messages-main" style="min-height: 0">
-          <TodoKanbanBoard
-            v-if="(showToolCalls ?? true) && (!panelMode || panelMode === 'spirit')"
-            :board-state="todoBoardState"
-          />
-          <ChatMessageList
-            ref="messageListRef"
-            :session-key="sessionKey"
-            :messages="props.messages"
-            :pending-messages="props.pendingMessages ?? []"
-            :is-dark="props.isDark"
-            :is-team-session="props.isTeamSession"
-            :planner-kind="props.plannerKind"
-            :reasoning-sidebar-open="props.reasoningSidebarOpen"
-            :show-scroll-btn="showScrollBtn"
-            :activity-tree="props.activityTree ?? []"
-            @messages-click="handleMessagesClick"
-            @scroll="onMessagesScrollWrapped"
-            @scroll-to-bottom="scrollToBottom"
-            @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
-            @feedback="(p) => emit('feedback', p)"
-            @regenerate="(msg) => emit('regenerate', msg)"
-            @retry="(id) => emit('retry', id)"
-            @dismiss-failed="(id) => emit('dismiss-failed', id)"
-            @attachment-deleted="(id) => emit('attachment-deleted', id)"
-            @download-artifact="(meta) => emit('download-artifact', meta)"
-            @pin-reasoning-message="(id) => emit('pin-reasoning-message', id)"
-            @cancel-pending="(id) => emit('cancel-pending', id)"
-            @interrupt-pending="(id) => emit('interrupt-pending', id)"
-            @update-pending="(id, content) => emit('update-pending', id, content)"
-            @confirm="(id, approved) => emit('confirm-activity', id, approved)"
-            @error-retry="(e) => emit('error-retry', e)"
-            @error-switch-model="(e) => emit('error-switch-model', e)"
-            @error-rephrase="(e) => emit('error-rephrase', e)"
-            @error-check-config="(e) => emit('error-check-config', e)"
-            @error-remove-attachment="(e) => emit('error-remove-attachment', e)"
-            @error-relogin="(e) => emit('error-relogin', e)"
-            @expand-member="(p) => emit('expand-member', p)"
-            @enter-session="(sid) => emit('enter-session', sid)"
-            @cancel-team="(teamId) => emit('cancel-team', teamId)"
-            @retry-team="(teamId) => emit('retry-team', teamId)"
-            @cancel-agent="(sessionId) => emit('cancel-agent', sessionId)"
-            @retry-agent="(sessionId) => emit('retry-agent', sessionId)"
-          />
-
-          <SynthesisResultCard
-            v-if="synthesisResult && (!panelMode || panelMode === 'spirit')"
-            :result="synthesisResult"
-            :rendered-content="renderChatMarkdown(synthesisResult.content)"
-            :evolution-suggestion="spiritEvolutionSuggestion"
-            class="q-mx-md q-mb-sm"
-          />
-
-          <ContextIndicator
-            v-if="compressStatus && compressStatus !== 'normal' && (!panelMode || panelMode === 'spirit')"
-            :status="compressStatus"
-            class="q-mx-md q-mb-sm"
-          />
-
-          <ChatComposer
-            v-if="!panelMode || panelMode === 'spirit'"
-            :model-value="modelValue"
-            :attachments="attachments"
-            :dialog-mode="dialogMode"
-            :model-provider="modelProvider"
-            :mode-options="modeOptions"
-            :provider-options="providerOptions"
-            :context-ratio="contextRatio"
-            :context-status="contextStatus"
-            :usage-snapshot="usageSnapshot"
-            :knowledge-base-options="knowledgeBaseOptions"
-            :selected-knowledge-bases="selectedKnowledgeBases"
-            :is-dark="isDark"
-            :sending="sending"
-            :input-disabled="inputDisabled"
-            :is-runner-active="isRunnerActive"
-            :is-awaiting-user="isAwaitingUser"
-            :await-kind="awaitKind"
-            :await-tool-key="awaitToolKey"
-            :show-enqueue="showEnqueue"
-            :session-id="sessionId"
-            :session-artifacts="sessionArtifacts"
-            :session-artifacts-loading="sessionArtifactsLoading"
-            :file-supported="fileSupported"
-            :file-accept="fileAccept"
-            :show-background-jobs="showBackgroundJobs"
-            :agent-id="agentId"
-            :jobs-refresh-nonce="jobsRefreshNonce"
-            @update:model-value="emit('update:modelValue', $event)"
-            @update:dialog-mode="emit('update:dialogMode', $event)"
-            @update:model-provider="emit('update:modelProvider', $event)"
-            @update:selected-knowledge-bases="emit('update:selectedKnowledgeBases', $event)"
-            @remove-attachment="emit('remove-attachment', $event)"
-            @pick-file="emit('pick-file')"
-            @voice="emit('voice')"
-            @send="emit('send')"
-            @stop="emit('stop')"
-            @enqueue-message="emit('enqueue-message', $event)"
-            @submit-await-reply="emit('submit-await-reply')"
-            @submit-tool-confirm="emit('submit-tool-confirm', $event)"
-            @open-artifact="emit('open-artifact', $event)"
-            @attachment-deleted="emit('attachment-deleted', $event)"
-            @download-artifact="emit('download-artifact', $event)"
-            @paste-file="emit('paste-file', $event)"
-            @focus-turn="emit('focus-turn', $event)"
-            @navigate="emit('navigate', $event)"
-            @cancel-job="emit('cancel-job', $event)"
-            @paste-unsupported="emit('paste-unsupported')"
-            @new-session="emit('new-session')"
-          />
-        </div>
-        <ChatReasoningDrawer
-          :open="Boolean(reasoningSidebarOpen)"
-          :active-reasoning="reasoningSidebarActive ?? null"
+      <template #avatar>
+        <q-spinner-dots color="accent" size="20px" />
+      </template>
+      {{ t('chat.wsReplaying', '正在同步历史事件…') }}
+    </q-banner>
+    <q-banner v-else-if="sessionLoading" dense rounded class="q-mx-md q-mt-sm app-info-banner">
+      <template #avatar>
+        <q-spinner-dots color="accent" size="20px" />
+      </template>
+      {{ t('chat.sessionLoading', '正在加载会话…') }}
+    </q-banner>
+    <q-card-section class="chat-message-header q-px-md q-py-sm">
+      <div class="chat-message-header__grid">
+        <ChatHeaderUsagePanel
+          class="chat-message-header__usage"
+          :context-ratio="contextRatio"
+          :context-status="contextStatus"
+          :usage-snapshot="usageSnapshot"
+          :breakdown="contextBreakdown"
           :is-dark="isDark"
-          @close="emit('close-reasoning-sidebar')"
+          :session-id="sessionId"
+          @compact="onCompactSession"
+        />
+        <ChatHeaderPromptBar
+          class="chat-message-header__prompt"
+          :full-text="headerUserPrompt"
+          :prompt-key="promptKey"
+          :session-title="sessionTitle"
+          :has-messages="props.messages.length > 0"
+        />
+        <div class="chat-message-header__actions row items-center justify-end no-wrap">
+          <template v-if="wsConnected === false">
+            <q-icon name="wifi_off" size="18px" color="warning" class="q-mr-xs">
+              <q-tooltip>{{ t('chat.connectionDisconnected') }}</q-tooltip>
+            </q-icon>
+          </template>
+          <template v-else-if="wsConnected === true">
+            <span class="ws-connected-dot q-mr-xs">
+              <q-tooltip v-if="sessionRevision">{{ t('chat.syncComplete') }} · rev {{ sessionRevision }}</q-tooltip>
+              <q-tooltip v-else>{{ t('chat.connected') }}</q-tooltip>
+            </span>
+          </template>
+          <ChatRunnerStatus
+            v-if="
+              runStatus &&
+              runStatus !== 'idle' &&
+              runStatus !== 'completed' &&
+              runStatus !== 'cancelled' &&
+              runStatus !== 'failed'
+            "
+            class="chat-message-header__runner q-mr-xs"
+            :status="runStatus"
+            :agent-name="runAgentName"
+            :started-at="runStartedAt"
+            :event-count="runEventCount"
+            @cancel="emit('stop')"
+          />
+          <q-btn flat round dense icon="bolt" :aria-label="t('chat.sessionEvents')" @click="emit('open-events')">
+            <q-tooltip>{{ t('chat.sessionEvents') }}</q-tooltip>
+          </q-btn>
+          <q-btn
+            v-if="reasoningSidebarActive"
+            flat
+            round
+            dense
+            :icon="reasoningSidebarOpen ? 'psychology' : 'psychology_alt'"
+            :color="reasoningSidebarOpen ? 'accent' : undefined"
+            :aria-label="t('chat.thinkingPanel')"
+            @click="emit('toggle-reasoning-sidebar')"
+          >
+            <q-tooltip>{{ t('chat.thinkingPanel') }}</q-tooltip>
+          </q-btn>
+        </div>
+      </div>
+    </q-card-section>
+    <ChatTeamMemberStrip v-if="isTeamSession" :members="teamMemberLanes" />
+    <div
+      v-if="spiritLoadingMessage && (!panelMode || panelMode === 'spirit')"
+      class="contextual-loading-bar q-mx-md q-mt-sm"
+      :style="{ borderLeftColor: spiritLoadingMessage.color }"
+    >
+      <div class="row items-center no-wrap q-gutter-xs">
+        <q-icon :name="spiritLoadingMessage.icon" :color="spiritLoadingMessage.color" size="16px" />
+        <span class="text-caption">{{ spiritLoadingMessage.text }}</span>
+      </div>
+    </div>
+    <div v-if="!panelMode || panelMode === 'spirit'" class="row items-center justify-end q-px-md q-py-xs">
+      <UiConfigToggle class="q-mr-sm" :show-tool-calls="showToolCalls ?? true" @toggle="emit('toggle-tool-calls')" />
+      <q-btn
+        flat
+        dense
+        no-caps
+        :icon="expandAllActive ? 'unfold_less' : 'unfold_more'"
+        :label="expandAllActive ? t('chat.collapseAll', '折叠全部') : t('chat.expandAll', '展开全部')"
+        class="text-caption"
+        :style="{ color: 'var(--color-text-tertiary)' }"
+        @click="expandAllActive ? handleCollapseAll() : handleExpandAll()"
+      />
+    </div>
+    <div class="col row no-wrap chat-messages-area" style="min-height: 0">
+      <div class="col column no-wrap chat-messages-main" style="min-height: 0">
+        <TodoKanbanBoard
+          v-if="(showToolCalls ?? true) && (!panelMode || panelMode === 'spirit')"
+          :board-state="todoBoardState"
+        />
+        <ChatMessageList
+          ref="messageListRef"
+          :session-key="sessionKey"
+          :messages="props.messages"
+          :pending-messages="props.pendingMessages ?? []"
+          :is-dark="props.isDark"
+          :is-team-session="props.isTeamSession"
+          :planner-kind="props.plannerKind"
+          :reasoning-sidebar-open="props.reasoningSidebarOpen"
+          :show-scroll-btn="showScrollBtn"
+          :activity-tree="props.activityTree ?? []"
+          :agent-map="props.agentMap"
+          :run-status="props.runStatus"
+          @messages-click="handleMessagesClick"
+          @scroll="onMessagesScrollWrapped"
+          @scroll-to-bottom="scrollToBottom"
+          @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
+          @feedback="(p) => emit('feedback', p)"
+          @regenerate="(msg) => emit('regenerate', msg)"
+          @retry="(id) => emit('retry', id)"
+          @dismiss-failed="(id) => emit('dismiss-failed', id)"
+          @attachment-deleted="(id) => emit('attachment-deleted', id)"
+          @download-artifact="(meta) => emit('download-artifact', meta)"
+          @pin-reasoning-message="(id) => emit('pin-reasoning-message', id)"
+          @cancel-pending="(id) => emit('cancel-pending', id)"
+          @interrupt-pending="(id) => emit('interrupt-pending', id)"
+          @update-pending="(id, content) => emit('update-pending', id, content)"
+          @confirm="(id, approved) => emit('confirm-activity', id, approved)"
+          @error-retry="(e) => emit('error-retry', e)"
+          @error-switch-model="(e) => emit('error-switch-model', e)"
+          @error-rephrase="(e) => emit('error-rephrase', e)"
+          @error-check-config="(e) => emit('error-check-config', e)"
+          @error-remove-attachment="(e) => emit('error-remove-attachment', e)"
+          @error-relogin="(e) => emit('error-relogin', e)"
+          @expand-member="(p) => emit('expand-member', p)"
+          @enter-session="(sid) => emit('enter-session', sid)"
+          @cancel-team="(teamId) => emit('cancel-team', teamId)"
+          @retry-team="(teamId) => emit('retry-team', teamId)"
+          @pause-team="(teamId) => emit('pause-team', teamId)"
+          @unpause-team="(teamId) => emit('unpause-team', teamId)"
+          @inject-team="(p: { teamId: string; message: string }) => emit('inject-team', p)"
+          @cancel-agent="(sessionId) => emit('cancel-agent', sessionId)"
+          @retry-agent="(sessionId) => emit('retry-agent', sessionId)"
+          @pause-agent="(sessionId) => emit('pause-agent', sessionId)"
+          @resume-agent="(sessionId) => emit('resume-agent', sessionId)"
+          @inject-agent="(p: { sessionId: string; message: string }) => emit('inject-agent', p)"
+          @expand="(ids: string[]) => emit('expand', ids)"
+        />
+
+        <SynthesisResultCard
+          v-if="synthesisResult && (!panelMode || panelMode === 'spirit')"
+          :result="synthesisResult"
+          :rendered-content="renderChatMarkdown(synthesisResult.content)"
+          :evolution-suggestion="spiritEvolutionSuggestion"
+          class="q-mx-md q-mb-sm"
+        />
+
+        <ContextIndicator
+          v-if="compressStatus && compressStatus !== 'normal' && (!panelMode || panelMode === 'spirit')"
+          :status="compressStatus"
+          class="q-mx-md q-mb-sm"
+        />
+
+        <ChatComposer
+          v-if="!panelMode || panelMode === 'spirit'"
+          :model-value="modelValue"
+          :attachments="attachments"
+          :dialog-mode="dialogMode"
+          :model-provider="modelProvider"
+          :mode-options="modeOptions"
+          :provider-options="providerOptions"
+          :context-ratio="contextRatio"
+          :context-status="contextStatus"
+          :usage-snapshot="usageSnapshot"
+          :knowledge-base-options="knowledgeBaseOptions"
+          :selected-knowledge-bases="selectedKnowledgeBases"
+          :is-dark="isDark"
+          :sending="sending"
+          :input-disabled="inputDisabled"
+          :is-runner-active="isRunnerActive"
+          :is-awaiting-user="isAwaitingUser"
+          :await-kind="awaitKind"
+          :await-tool-key="awaitToolKey"
+          :show-enqueue="showEnqueue"
+          :session-id="sessionId"
+          :session-artifacts="sessionArtifacts"
+          :session-artifacts-loading="sessionArtifactsLoading"
+          :file-supported="fileSupported"
+          :file-accept="fileAccept"
+          :show-background-jobs="showBackgroundJobs"
+          :agent-id="agentId"
+          :jobs-refresh-nonce="jobsRefreshNonce"
+          @update:model-value="emit('update:modelValue', $event)"
+          @update:dialog-mode="emit('update:dialogMode', $event)"
+          @update:model-provider="emit('update:modelProvider', $event)"
+          @update:selected-knowledge-bases="emit('update:selectedKnowledgeBases', $event)"
+          @remove-attachment="emit('remove-attachment', $event)"
+          @pick-file="emit('pick-file')"
+          @voice="emit('voice')"
+          @send="emit('send')"
+          @stop="emit('stop')"
+          @enqueue-message="emit('enqueue-message', $event)"
+          @submit-await-reply="emit('submit-await-reply')"
+          @submit-tool-confirm="emit('submit-tool-confirm', $event)"
+          @open-artifact="emit('open-artifact', $event)"
+          @attachment-deleted="emit('attachment-deleted', $event)"
+          @download-artifact="emit('download-artifact', $event)"
+          @paste-file="emit('paste-file', $event)"
+          @focus-turn="emit('focus-turn', $event)"
+          @navigate="emit('navigate', $event)"
+          @cancel-job="emit('cancel-job', $event)"
+          @paste-unsupported="emit('paste-unsupported')"
+          @new-session="emit('new-session')"
         />
       </div>
-      <SpiritStatusBar
-        v-if="spiritStatusBar && (!panelMode || panelMode === 'spirit')"
-        :running-team-count="spiritStatusBar.runningTeamCount"
-        :interrupted-team-count="spiritStatusBar.interruptedTeamCount"
-        :quota-used="spiritStatusBar.quotaUsed"
-        :quota-max="spiritStatusBar.quotaMax"
-        :token-usage="spiritStatusBar.tokenUsage"
-        :last-event="spiritStatusBar.lastEvent"
-        :complexity-level="spiritStatusBar.complexityLevel"
-        :complexity-reason="spiritStatusBar.complexityReason"
-        :checkpoint-step="spiritStatusBar.checkpointStep"
-        :dq-score="spiritStatusBar.dqScore"
-        @click-running="emit('status-bar-click-running')"
-        @click-interrupted="emit('status-bar-click-interrupted')"
-        @click-last-event="emit('status-bar-click-last-event')"
+      <ChatReasoningDrawer
+        :open="Boolean(reasoningSidebarOpen)"
+        :active-reasoning="reasoningSidebarActive ?? null"
+        :is-dark="isDark"
+        @close="emit('close-reasoning-sidebar')"
       />
+    </div>
+    <SpiritStatusBar
+      v-if="spiritStatusBar && (!panelMode || panelMode === 'spirit')"
+      :running-team-count="spiritStatusBar.runningTeamCount"
+      :interrupted-team-count="spiritStatusBar.interruptedTeamCount"
+      :quota-used="spiritStatusBar.quotaUsed"
+      :quota-max="spiritStatusBar.quotaMax"
+      :token-usage="spiritStatusBar.tokenUsage"
+      :last-event="spiritStatusBar.lastEvent"
+      :complexity-level="spiritStatusBar.complexityLevel"
+      :complexity-reason="spiritStatusBar.complexityReason"
+      :checkpoint-step="spiritStatusBar.checkpointStep"
+      :dq-score="spiritStatusBar.dqScore"
+      @click-running="emit('status-bar-click-running')"
+      @click-interrupted="emit('status-bar-click-interrupted')"
+      @click-last-event="emit('status-bar-click-last-event')"
+    />
   </q-card>
 </template>
 
@@ -292,7 +301,7 @@ import SpiritStatusBar from '../spirit/SpiritStatusBar.vue';
 import type { RunStatusValue } from '../../features/chat/types';
 import { TOOL_DISPLAY_KEY } from '../../features/chat/types';
 import type { CompressStatus } from '../../features/session/types';
-import type { EvolutionSuggestion, SpiritStatusBarData } from '../../features/chat/types';
+import type { EvolutionSuggestion, SpiritStatusBarData } from '../../features/spirit/types';
 
 import { useTodoBoard } from '../../features/chat/composables/useTodoBoard';
 import { useChatMessageScroll, useChatCodeCopy } from '../../features/chat/composables/useChatMessageScroll';
@@ -343,6 +352,8 @@ const props = defineProps<{
   isTeamSession?: boolean;
   plannerKind?: string;
   pendingMessages?: { id: string; content: string; status: string; created_at: string }[];
+  /** P1#1/2: agent key → display name lookup for TeamCard/AgentCard. */
+  agentMap?: Map<string, { displayName: string; agentKey: string }>;
   runStatus?: RunStatusValue;
   runAgentName?: string;
   runStartedAt?: string;
@@ -413,8 +424,14 @@ const emit = defineEmits<{
   'return-to-team': [];
   'cancel-team': [teamId: string];
   'retry-team': [teamId: string];
+  'pause-team': [teamId: string];
+  'unpause-team': [teamId: string];
+  'inject-team': [payload: { teamId: string; message: string }];
   'cancel-agent': [sessionId: string];
   'retry-agent': [sessionId: string];
+  'pause-agent': [sessionId: string];
+  'resume-agent': [sessionId: string];
+  'inject-agent': [payload: { sessionId: string; message: string }];
   'select-member': [memberId: string];
   'archive-team': [teamId: string];
   'select-spirit-team': [teamId: string];
@@ -432,6 +449,9 @@ const emit = defineEmits<{
   'error-relogin': [event: ErrorEvent];
   'expand-member': [payload: { agentKey: string; agentName?: string; teamId?: string }];
   'enter-session': [sessionId: string];
+  // T5.2/T5.3 / §B.7.2: Forward team-card / agent-card expand events upstream
+  // so ChatPage can lazy-load member/child session activities.
+  expand: [sessionIds: string[]];
 }>();
 
 const { t } = useI18n();
@@ -501,10 +521,13 @@ const messagesScrollEl = computed(() => messageListRef.value?.getScrollTarget() 
 const sessionKey = computed(() => props.sessionId?.trim() || props.sessionTitle);
 const sessionTitleRef = computed(() => props.sessionTitle);
 
+const activityTreeRef = computed(() => props.activityTree ?? []);
+
 const { showScrollBtn, onMessagesScroll, scrollToBottom, scrollToTurnId } = useChatMessageScroll({
   sessionKey,
   messages: messagesRef,
   messagesScrollEl,
+  activityTree: activityTreeRef,
 });
 
 const { headerUserPrompt, promptKey, refreshActivePrompt, resetToLatestOrSession } = useChatScrollTitle({

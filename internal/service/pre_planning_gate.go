@@ -88,8 +88,17 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 	return decision, nil
 }
 
-// publishPlanningPhase publishes a planning timeline event as an ActivityEvent
-// (Kind=plan, Domain=chat). Replaces the legacy EnvelopeTypePlanningPhase* publish.
+// publishPlanningPhase publishes a complexity-assessment timeline event as an
+// ActivityEvent (Kind=notice, Domain=chat).
+//
+// Design rationale (B.4.3): the pre-planning gate's "assess" phase is a
+// complexity assessment, NOT task decomposition. The PlanBlock component
+// is reserved for actual task plans (Kind=plan with steps). Emitting an
+// assess event as Kind=plan created a spurious PlanBlock that appeared
+// before the real plan ("UI 提前占位" issue) and competed with the real
+// plan for visual space. Routing to Kind=notice renders it as a NoticeBlock
+// banner instead, leaving the plan slot exclusively for actual plans.
+//
 // In the Spirit direct-run scenario the caller passes input.SpiritSessionID,
 // which equals the current SessionID (Spirit session is the root). Both
 // SessionID and SpiritSessionID are set to the same value for cross-session
@@ -99,21 +108,31 @@ func (g *PrePlanningGate) publishPlanningPhase(ctx context.Context, eventType bi
 	if g.activityBus == nil {
 		return
 	}
+	// Map assess status → notice type for NoticeBlock rendering.
+	noticeType := "info"
+	switch status {
+	case biz.ActivityStatusFailed:
+		noticeType = "warning"
+	case biz.ActivityStatusCompleted:
+		noticeType = "success"
+	}
 	g.activityBus.Publish(ctx, biz.ActivityEvent{
 		Event: eventType,
 		Activity: biz.Activity{
 			ID:              uuid.NewString(),
-			Kind:            biz.ActivityKindPlan,
+			Kind:            biz.ActivityKindNotice,
 			Status:          status,
 			SessionID:       spiritSessionID,
 			SpiritSessionID: spiritSessionID,
 			Timestamp:       time.Now().UTC(),
+			Content:         message,
 			Meta: map[string]any{
 				"phase":       phase,
 				"message":     message,
 				"duration_ms": durationMs,
 				"session_id":  spiritSessionID,
 				"source":      "pre-planning-gate",
+				"notice_type": noticeType,
 			},
 		},
 		Domain: biz.ActivityDomainChat,

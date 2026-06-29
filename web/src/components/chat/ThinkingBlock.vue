@@ -44,11 +44,7 @@
     </div>
 
     <!-- ===== US-24/§6.8.3: Completed inline-no-collapse (reasoning < 30 chars) ===== -->
-    <span
-      v-else-if="inlineNoCollapse"
-      class="thinking-block__inline-short"
-      :title="t('chat.reasoningTitle')"
-    >
+    <span v-else-if="inlineNoCollapse" class="thinking-block__inline-short" :title="t('chat.reasoningTitle')">
       <span class="thinking-block__icon-emoji" aria-hidden="true">🧠</span>
       <span class="thinking-block__inline-text">{{ reasoning }}</span>
     </span>
