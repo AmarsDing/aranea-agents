@@ -234,6 +234,37 @@ func (r *activityRepo) UpsertActivity(ctx context.Context, a biz.Activity) (biz.
 	// cross-path writes occur.
 	now := a.Timestamp.UTC().Format(time.RFC3339Nano)
 
+	// Meta merge: direct-publish events (team_stage/graph_stage) carry partial
+	// meta (e.g. "assembled" has members, "progress" has progress_pct). Read
+	// the existing row to merge meta so later updates don't clear earlier fields.
+	// Also preserve DependsOn — the assembled event sets it in Meta but
+	// progress/completed events don't carry it, so the update path must not
+	// overwrite the stored value with nil.
+	existing, getErr := r.data.RW().Read(ctx).Activity.Get(ctx, a.ID)
+	mergedMeta := a.Meta
+	mergedDependsOn := a.DependsOn
+	if getErr == nil {
+		// Meta: merge incoming with existing, or preserve existing when incoming is empty.
+		if len(a.Meta) > 0 && len(existing.Meta) > 0 {
+			mergedMeta = make(map[string]any, len(existing.Meta)+len(a.Meta))
+			for k, v := range existing.Meta {
+				mergedMeta[k] = v
+			}
+			for k, v := range a.Meta {
+				mergedMeta[k] = v
+			}
+		} else if len(a.Meta) == 0 && len(existing.Meta) > 0 {
+			// Preserve existing meta when incoming has none. Progress/completed
+			// events don't carry members, so SetMeta(nil/empty) would clear the
+			// members list and other fields set by the assembled event.
+			mergedMeta = existing.Meta
+		}
+		// DependsOn: preserve existing when incoming has none.
+		if len(a.DependsOn) == 0 && len(existing.DependsOn) > 0 {
+			mergedDependsOn = existing.DependsOn
+		}
+	}
+
 	// 1) Try to update an existing row only when the stored version is older.
 	if err := r.data.RW().Write(ctx).Activity.UpdateOneID(a.ID).
 		Where(activity.VersionLT(a.Version)).
@@ -266,8 +297,8 @@ func (r *activityRepo) UpsertActivity(ctx context.Context, a biz.Activity) (biz.
 		SetAgentName(a.AgentName).
 		SetCollapsed(a.Collapsed).
 		SetLabel(a.Label).
-		SetMeta(a.Meta).
-		SetDependsOn(a.DependsOn).
+		SetMeta(mergedMeta).
+		SetDependsOn(mergedDependsOn).
 		Exec(ctx); err == nil {
 		row, err := r.data.RW().Read(ctx).Activity.Get(ctx, a.ID)
 		if err != nil {

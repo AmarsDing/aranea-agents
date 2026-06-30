@@ -14,7 +14,6 @@ import (
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -282,7 +281,7 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 					ev := biz.ActivityEvent{
 						Event: biz.ActivityEventFailed,
 						Activity: biz.Activity{
-							ID:              uuid.NewString(),
+							ID:              agent.TeamStageActivityID(sess.teamID),
 							Kind:            biz.ActivityKindTeamStage,
 							Status:          biz.ActivityStatusFailed,
 							SessionID:       sess.sessionID,
@@ -436,10 +435,14 @@ func (c *TeamGraphRunCoordinator) handleGraphWatchActivity(ctx context.Context, 
 	}
 	stepCtx := sess.stepContext()
 	isNodeEnd := aev.Activity.Stage == "node_end"
+	isNodeStart := aev.Activity.Stage == "node_start"
 	isStepFinished := aev.Activity.Kind == biz.ActivityKindTeamStage && aev.Event == biz.ActivityEventCompleted
 	if sess.obsStore != nil {
 		changed := sess.obsStore.ApplyActivityEvent(aev, sess.obsReg)
 		for _, st := range changed {
+			if isNodeStart && c.finisher != nil && stepCtx != nil {
+				c.finisher.PublishTeamStepStarted(ctx, stepCtx, st.NodeID)
+			}
 			if isNodeEnd || isStepFinished {
 				if biz.IsTerminalAgentNodeStatus(st.Status) && c.finisher != nil && stepCtx != nil {
 					skipped := st.Status == biz.AgentNodeStatusSkipped
@@ -623,7 +626,7 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 		ev := biz.ActivityEvent{
 			Event: eventType,
 			Activity: biz.Activity{
-				ID:              uuid.NewString(),
+				ID:              agent.TeamStageActivityID(sess.teamID),
 				Kind:            biz.ActivityKindTeamStage,
 				Status:          status,
 				SessionID:       sess.sessionID,

@@ -21,17 +21,21 @@ func (r *Runner) publishTeamRunFailedActivity(ctx context.Context, run biz.TeamR
 	if r.td.Pipeline.ActivityBus == nil {
 		return
 	}
+	// SessionID = spirit session ID (not run.SessionID which is the team
+	// session ID) so the frontend WS filter and listActivities API return
+	// this team_stage "failed" event. Matches publishSpiritTeamAssembled.
 	ev := biz.ActivityEvent{
 		Event: biz.ActivityEventFailed,
 		Activity: biz.Activity{
-			ID:              uuid.NewString(),
-			Kind:            biz.ActivityKindTeamStage,
-			Status:          biz.ActivityStatusFailed,
-			SessionID:       strings.TrimSpace(run.SessionID),
-			SpiritSessionID: run.SpiritSessionID,
-			TeamID:          run.TeamID,
-			Timestamp:       time.Now().UTC(),
-			Stage:           "failed",
+			ID:               agent.TeamStageActivityID(run.TeamID),
+			Kind:             biz.ActivityKindTeamStage,
+			Status:           biz.ActivityStatusFailed,
+			SessionID:        run.SpiritSessionID,
+			SpiritSessionID:  run.SpiritSessionID,
+			TeamID:           run.TeamID,
+			Timestamp:        time.Now().UTC(),
+			Stage:            "failed",
+			ParentActivityID: agent.RootTaskActivityIDFromCtx(ctx),
 			Meta: map[string]any{
 				"run_id":        run.ID,
 				"error_message": msg,
@@ -46,34 +50,53 @@ func (r *Runner) publishTeamRunFailedActivity(ctx context.Context, run biz.TeamR
 // (started/finished) to the ActivityEventBus. status and stage identify the
 // lifecycle phase.
 //
-// Problem 3+4 fix: previously this published Kind=TeamStage, which the frontend
-// rendered as a TeamCard (not an AgentCard), and never set child_session_id, so
-// the AgentCard cancel/retry buttons received an empty sessionId and no-op'd.
-// Now we publish Kind=Session with AgentName and meta.child_session_id so the
-// frontend AgentCard renders the member's display name and can target the
-// shared team session for cancel/retry (Option B: reuse session event + shared
-// team session).
+// The session event is published with SessionID = SpiritSessionID so it appears
+// in the spirit session's activity tree (as a child of team_stage via
+// ParentActivityID). The child_session_id in meta points to the member's
+// individual agent session (resolved via SessionChildLookup) so the frontend
+// can lazy-load member execution processes (thinking/action/reply).
 func (r *Runner) publishTeamStepActivity(ctx context.Context, run biz.TeamRun, teamID, agentKey, agentName string, eventType biz.ActivityEventType, status biz.ActivityStatus, stage string, step any) {
 	if r.td.Pipeline.ActivityBus == nil {
 		return
 	}
+	// Resolve the member's individual agent session ID for child_session_id.
+	// The frontend uses this to lazy-load member execution processes.
+	// Fall back to run.SessionID (team session) when lookup is unavailable.
+	childSessionID := run.SessionID
+	if r.cfg.SessionChildLookup != nil {
+		if sid, err := r.cfg.SessionChildLookup.LookupChildSessionID(ctx, run.SessionID, agentKey); err == nil && sid != "" {
+			childSessionID = sid
+		} else if err != nil {
+			r.lg.Warn("publishTeamStepActivity: failed to lookup child session, falling back to team session",
+				loggateway.StepID("team.run.step_activity"),
+				loggateway.Str("team_session_id", run.SessionID),
+				loggateway.Str("agent_key", agentKey),
+				loggateway.Err(err),
+			)
+		}
+	}
+	// Use deterministic session activity ID so the child session's
+	// ActivityProjector can compute the same ID and use it as
+	// ParentActivityID for member thinking/action/reply activities.
+	sessionActivityID := agent.SessionActivityID(teamID, agentKey)
 	ev := biz.ActivityEvent{
 		Event: eventType,
 		Activity: biz.Activity{
-			ID:              uuid.NewString(),
-			Kind:            biz.ActivityKindSession,
-			Status:          status,
-			SessionID:       run.SessionID,
-			SpiritSessionID: run.SpiritSessionID,
-			TeamID:          teamID,
-			AgentKey:        agentKey,
-			AgentName:       agentName,
-			Timestamp:       time.Now().UTC(),
-			Stage:           stage,
+			ID:               sessionActivityID,
+			Kind:             biz.ActivityKindSession,
+			Status:           status,
+			SessionID:        run.SpiritSessionID,
+			SpiritSessionID:  run.SpiritSessionID,
+			TeamID:           teamID,
+			AgentKey:         agentKey,
+			AgentName:        agentName,
+			Timestamp:        time.Now().UTC(),
+			Stage:            stage,
+			ParentActivityID: agent.TeamStageActivityID(teamID),
 			Meta: map[string]any{
 				"run_id":           run.ID,
 				"step":             step,
-				"child_session_id": run.SessionID,
+				"child_session_id": childSessionID,
 			},
 		},
 		Domain: biz.ActivityDomainChat,
@@ -156,6 +179,11 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 		// Preserve error/duration data from the original run before the transition.
 		updatedRun.ErrorMessage = msg
 		updatedRun.DurationMS = int(time.Since(t0).Milliseconds())
+		// Preserve transient SpiritSessionID: team_runs table has no
+		// spirit_session_id column, so TransitionRunStatus's entTeamRunToBiz
+		// returns it empty. publishTeamRunFailedActivity below relies on it
+		// to attribute the failed event to the spirit session.
+		updatedRun.SpiritSessionID = run.SpiritSessionID
 		if err := r.runWriter.UpdateTeamRun(ctx, updatedRun); err != nil {
 			r.lg.Warn("UpdateTeamRun failed in finishRunErr", loggateway.StepID("team.run.err_update_fail"), loggateway.Str("team_run_id", run.ID), loggateway.Err(err))
 		}
@@ -224,12 +252,6 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string
 		FinishedAt:    asst.CreatedAt,
 		CreatedAt:     agent.RFC3339Now(),
 		ToolCallCount: toolCallCount,
-	}
-	if r.td.Pipeline.ActivityBus != nil {
-		started := step
-		// TECH-DEBT(FSM): TeamRunStep has no state machine, direct assignment for initialization
-		started.Status = biz.TeamRunStatusRunning
-		r.publishTeamStepActivity(ctx, run, teamID, ag.AgentKey, step.AgentName, biz.ActivityEventCreated, biz.ActivityStatusRunning, "executing", started)
 	}
 	saved, err := r.runWriter.CreateTeamRunStep(ctx, step)
 	if err != nil {

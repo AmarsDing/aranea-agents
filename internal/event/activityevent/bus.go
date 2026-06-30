@@ -8,6 +8,7 @@ package activityevent
 
 import (
 	"context"
+	"sync/atomic"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
@@ -40,9 +41,10 @@ import (
 //   - SequencerHandled=false → direct-publish from business orchestrators
 //     (plan/graph_stage/team_stage/session), needs normalization + persistence
 type Bus struct {
-	inner *event.GenericBus[biz.ActivityEvent]
-	repo  biz.ActivityUpserter
-	lg    loggateway.Logger
+	inner      *event.GenericBus[biz.ActivityEvent]
+	repo       biz.ActivityUpserter
+	lg         loggateway.Logger
+	versionSeq atomic.Int64 // monotonic version counter for direct-publish events
 }
 
 // New creates a new ActivityEventBus.
@@ -82,6 +84,13 @@ func (b *Bus) Publish(ctx context.Context, ev biz.ActivityEvent) {
 		// delivered via the global WS hub fallback.
 		if ev.Activity.SessionID == "" && ev.Activity.SpiritSessionID != "" {
 			ev.Activity.SessionID = ev.Activity.SpiritSessionID
+		}
+		// Set a monotonic version for direct-publish events so UpsertActivity's
+		// version-guard (VersionLT) allows the update. Without this, Version=0
+		// prevents all updates — the first insert succeeds but subsequent
+		// status changes (running→completed/failed) are silently dropped.
+		if ev.Activity.Version == 0 {
+			ev.Activity.Version = b.versionSeq.Add(1)
 		}
 		// Persist chat-domain direct-publish events so they survive page
 		// refresh. System-domain events are transient (WS-only) and must

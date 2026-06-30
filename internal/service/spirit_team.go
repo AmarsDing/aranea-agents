@@ -4,12 +4,13 @@ import (
 	"context"
 	stderrors "errors"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/biz/shared"
 	sessstatus "aranea-agents/internal/biz/session"
+	"aranea-agents/internal/biz/shared"
 	"aranea-agents/internal/tools"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -24,17 +25,56 @@ var (
 	_ tools.SpiritTeamControllerPort = (*SpiritTeamAssembler)(nil)
 	_ biz.TeamStarterPort            = (*TeamStarter)(nil)
 	_ biz.TimeoutHandler             = (*TeamStarter)(nil)
+	_ biz.AllTeamsCompletedNotifier  = (*TeamStarter)(nil)
 )
 
 type TeamStarter struct {
-	sessions *biz.SessionUsecase
-	team     TeamOrchestrationDeps
-	bus      biz.ActivityEventBus
-	lg       loggateway.Logger
+	sessions       *biz.SessionUsecase
+	team           TeamOrchestrationDeps
+	bus            biz.ActivityEventBus
+	activityReader biz.ActivityReader
+	lg             loggateway.Logger
+	// turnGateway is used to inject a synthetic message into the Spirit
+	// session when all teams complete, triggering the LLM to continue
+	// with synthesis. This replaces the LLM-polling pattern (check_progress
+	// tool) with a system-push pattern.
+	turnGateway biz.TurnGateway
+	// synthesisSvc is used to synthesize team results when all teams
+	// complete. The synthesis output is injected as the content of the
+	// turn message sent via turnGateway.
+	synthesisSvc *SpiritSynthesisService
+	// synthesisTriggered guards against concurrent duplicate synthesis
+	// triggers. checkAllTeamsCompleted is called from both
+	// HandleTeamTurnResult (goroutine) and NotifyAllTeamsCompleted
+	// (background poller goroutine). CompareAndSwap ensures only one
+	// synthesis message is injected per spirit session lifecycle.
+	synthesisTriggered atomic.Bool
 }
 
-func NewTeamStarter(sessions *biz.SessionUsecase, team TeamOrchestrationDeps, bus biz.ActivityEventBus, lg loggateway.Logger) *TeamStarter {
-	return &TeamStarter{sessions: sessions, team: team, bus: bus, lg: lg}
+func NewTeamStarter(
+	sessions *biz.SessionUsecase,
+	team TeamOrchestrationDeps,
+	bus biz.ActivityEventBus,
+	activityReader biz.ActivityReader,
+	lg loggateway.Logger,
+	synthesisSvc *SpiritSynthesisService,
+) *TeamStarter {
+	return &TeamStarter{
+		sessions:       sessions,
+		team:           team,
+		bus:            bus,
+		activityReader: activityReader,
+		lg:             lg,
+		synthesisSvc:   synthesisSvc,
+	}
+}
+
+// SetTurnGateway injects the turn gateway after construction to break the
+// Wire cycle: ChatService → TeamStarterPort → TurnGateway → ChatService.
+// turnGateway is used in checkAllTeamsCompleted for the system-push pattern
+// (synthesize results → inject message into Spirit session).
+func (s *TeamStarter) SetTurnGateway(gw biz.TurnGateway) {
+	s.turnGateway = gw
 }
 
 func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, content string) error {
@@ -85,23 +125,32 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 	}
 
 	if s.bus != nil && teamID != "" && spiritSessionID != "" {
+		// Derive DependsOn from the team fetched above. The assembled event
+		// (published by publishSpiritTeamAssembled) carries the full member
+		// list and DependsOn, but the progress event is a separate publish.
+		// Without DependsOn here, the WS event to the frontend doesn't carry
+		// it, and the version-guarded UpsertActivity may clear the stored
+		// DependsOn if the async persist races with the assembled event.
+		dependsOn := team.DependsOn
 		ev := biz.ActivityEvent{
 			Event: biz.ActivityEventUpdated,
 			Activity: biz.Activity{
-				ID:               TeamStageActivityID(teamID),
+				ID:               agent.TeamStageActivityID(teamID),
 				Kind:             biz.ActivityKindTeamStage,
 				Status:           biz.ActivityStatusRunning,
 				Stage:            "progress",
 				Timestamp:        time.Now().UTC(),
-				ParentActivityID: agent.RootTaskActivityIDFromCtx(ctx),
+				ParentActivityID: agent.GraphStageActivityID(spiritSessionID),
 				SpiritSessionID:  spiritSessionID,
 				TeamID:           teamID,
 				AgentKey:         "team-starter",
+				DependsOn:        dependsOn,
 				Meta: map[string]any{
 					"team_id":      teamID,
 					"team_name":    team.DisplayName,
 					"status":       biz.TeamStatusRunning,
 					"progress_pct": 0,
+					"depends_on":   dependsOn,
 				},
 			},
 			Domain: biz.ActivityDomainChat,
@@ -140,7 +189,7 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 			loggateway.Err(err),
 		)
 		if spiritSessionID != "" && teamID != "" {
-			s.HandleTeamTurnResult(ctx, spiritSessionID, teamID, biz.TeamStatusFailed, err.Error())
+			s.HandleTeamTurnResult(ctx, spiritSessionID, teamID, biz.TeamStatusFailed, err.Error(), "")
 		}
 		return err
 	}
@@ -153,12 +202,12 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 		)
 	}
 	if spiritSessionID != "" && teamID != "" {
-		s.HandleTeamTurnResult(ctx, spiritSessionID, teamID, biz.TeamStatusCompleted, "")
+		s.HandleTeamTurnResult(ctx, spiritSessionID, teamID, biz.TeamStatusCompleted, "", "")
 	}
 	return nil
 }
 
-func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID, teamID, status, errMsg string) {
+func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID, teamID, status, errMsg string, chatSessionID string) {
 	if s.team.TeamUC == nil {
 		return
 	}
@@ -243,6 +292,10 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 			primaryStatus = biz.ActivityStatusFailed
 			primaryStage = "failed"
 		}
+		// Carry DependsOn from the team so the frontend can render DAG
+		// edges and the database preserves the dependency graph across
+		// status updates (assembled → progress → completed/failed/cancelled).
+		dependsOn := team.DependsOn
 		meta := map[string]any{
 			"team_id":         teamID,
 			"team_name":       team.DisplayName,
@@ -250,6 +303,7 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 			"duration_ms":     durationMs,
 			"total_token_in":  tokenIn,
 			"total_token_out": tokenOut,
+			"depends_on":      dependsOn,
 		}
 		if errMsg != "" {
 			meta["error"] = errMsg
@@ -257,48 +311,54 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		ev := biz.ActivityEvent{
 			Event: primaryEvent,
 			Activity: biz.Activity{
-				ID:               TeamStageActivityID(teamID),
+				ID:               agent.TeamStageActivityID(teamID),
 				Kind:             biz.ActivityKindTeamStage,
 				Status:           primaryStatus,
 				Stage:            primaryStage,
 				Timestamp:        time.Now().UTC(),
-				ParentActivityID: agent.RootTaskActivityIDFromCtx(ctx),
+				ParentActivityID: agent.GraphStageActivityID(spiritSessionID),
 				SpiritSessionID:  spiritSessionID,
 				TeamID:           teamID,
 				AgentKey:         "spirit-lifecycle",
+				DependsOn:        dependsOn,
 				Meta:             meta,
 			},
 			Domain: biz.ActivityDomainChat,
 		}
 		s.bus.Publish(ctx, ev)
 
-		progressPct := 100.0
-		if status == biz.TeamStatusFailed || status == biz.TeamStatusCancelled {
-			progressPct = 0
-		}
-		progressEv := biz.ActivityEvent{
-			Event: biz.ActivityEventUpdated,
-			Activity: biz.Activity{
-				ID:               TeamStageActivityID(teamID),
-				Kind:             biz.ActivityKindTeamStage,
-				Status:           biz.ActivityStatusRunning,
-				Stage:            "progress",
-				Timestamp:        time.Now().UTC(),
-				ParentActivityID: agent.RootTaskActivityIDFromCtx(ctx),
-				SpiritSessionID:  spiritSessionID,
-				TeamID:           teamID,
-				AgentKey:         "spirit-lifecycle",
-				Meta: map[string]any{
-					"team_id":      teamID,
-					"team_name":    team.DisplayName,
-					"status":       status,
-					"progress_pct": progressPct,
-					"duration_ms":  durationMs,
+		// BUGFIX: the progress event (Status=Running) was published AFTER the
+		// primary terminal event, causing the version-guarded UpsertActivity to
+		// overwrite the terminal status (completed/failed/cancelled) with
+		// "Running". Skip the progress event for terminal statuses — the primary
+		// event already carries the correct status, and the frontend dedup logic
+		// merges meta from all events of the same team.
+		if status == biz.TeamStatusRunning {
+			progressEv := biz.ActivityEvent{
+				Event: biz.ActivityEventUpdated,
+				Activity: biz.Activity{
+					ID:               agent.TeamStageActivityID(teamID),
+					Kind:             biz.ActivityKindTeamStage,
+					Status:           biz.ActivityStatusRunning,
+					Stage:            "progress",
+					Timestamp:        time.Now().UTC(),
+					ParentActivityID: agent.GraphStageActivityID(spiritSessionID),
+					SpiritSessionID:  spiritSessionID,
+					TeamID:           teamID,
+					AgentKey:         "spirit-lifecycle",
+					DependsOn:        dependsOn,
+					Meta: map[string]any{
+						"team_id":      teamID,
+						"team_name":    team.DisplayName,
+						"status":       status,
+						"progress_pct": 0,
+						"depends_on":   dependsOn,
+					},
 				},
-			},
-			Domain: biz.ActivityDomainChat,
+				Domain: biz.ActivityDomainChat,
+			}
+			s.bus.Publish(ctx, progressEv)
 		}
-		s.bus.Publish(ctx, progressEv)
 
 		// B.4.4: After team status change, republish the graph_stage DAG
 		// snapshot so node statuses stay in sync with team statuses.
@@ -311,6 +371,12 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 				loggateway.Err(listErr),
 			)
 		}
+
+		// Issue 1 fix: Update the plan activity's step status when a team
+		// completes. The plan activity (kind=plan) has steps keyed by
+		// dag_node_id. When a team completes, the corresponding step should
+		// be updated so the frontend PlanBlock reflects the current status.
+		s.updatePlanStepForTeam(ctx, spiritSessionID, team, status, chatSessionID)
 	}
 
 	s.checkAllTeamsCompleted(ctx, spiritSessionID)
@@ -324,6 +390,177 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 
 func (s *TeamStarter) recordTeamCompletion(ctx context.Context, team biz.Team, durationMs int64) {
 	s.team.SpiritUC.RecordTeamCompletion(ctx, team, durationMs)
+}
+
+// updatePlanStepForTeam updates the plan activity's step status when a team
+// completes. The plan activity (kind=plan) has steps keyed by dag_node_id,
+// which matches the team's DagNodeID. This keeps the frontend PlanBlock in
+// sync with team execution progress.
+func (s *TeamStarter) updatePlanStepForTeam(ctx context.Context, spiritSessionID string, team biz.Team, status string, chatSessionID string) {
+	if s.activityReader == nil || team.DagNodeID == "" {
+		return
+	}
+	activities, err := s.activityReader.ListBySession(ctx, spiritSessionID)
+	if err != nil {
+		s.lg.Warn("plan step update: failed to list activities for spirit session",
+			loggateway.StepID("spirit.plan_step.list_err"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Err(err),
+		)
+		return
+	}
+	var planActivity *biz.Activity
+	for i := range activities {
+		if activities[i].Kind == biz.ActivityKindPlan {
+			planActivity = &activities[i]
+			break
+		}
+	}
+	if planActivity == nil {
+		return // no plan activity yet (e.g., pre-planning phase)
+	}
+	stepsRaw, ok := planActivity.Meta["steps"]
+	if !ok {
+		return
+	}
+	steps, ok := stepsRaw.([]any)
+	if !ok {
+		return
+	}
+
+	// Map team status to activity status
+	stepStatus := biz.ActivityStatusCompleted
+	if status == biz.TeamStatusFailed || status == biz.TeamStatusCancelled {
+		stepStatus = biz.ActivityStatusFailed
+	}
+
+	found := false
+	newSteps := make([]map[string]any, 0, len(steps))
+	for _, s := range steps {
+		stepMap, ok := s.(map[string]any)
+		if !ok {
+			newSteps = append(newSteps, nil)
+			continue
+		}
+		if id, _ := stepMap["id"].(string); id == team.DagNodeID {
+			stepMap["status"] = string(stepStatus)
+			found = true
+		}
+		newSteps = append(newSteps, stepMap)
+	}
+	if !found {
+		return // step not found for this team
+	}
+
+	// Auto-complete synthesis steps (steps without a team mapping) whose
+	// dependencies are all completed. The Spirit's synthesis step (e.g.,
+	// "汇总报告") has no team — it represents the Spirit's final reply.
+	// updatePlanStepForTeam only fires for team completions, so without
+	// this auto-completion the synthesis step stays "pending" forever and
+	// the plan never reaches the "all done" state required for auto-collapse
+	// (design B.4.3: "任务全部完成后，初始渲染自动折叠为摘要").
+	autoCompleteSynthesisSteps(newSteps)
+
+	planActivity.Meta["steps"] = newSteps
+
+	// Check if all steps are done
+	allDone := true
+	for _, s := range newSteps {
+		if s == nil {
+			continue
+		}
+		st, _ := s["status"].(string)
+		if st != string(biz.ActivityStatusCompleted) && st != string(biz.ActivityStatusFailed) {
+			allDone = false
+			break
+		}
+	}
+	if allDone {
+		planActivity.Status = biz.ActivityStatusCompleted
+	} else {
+		planActivity.Status = biz.ActivityStatusRunning
+	}
+
+	// Publish the updated plan activity through the bus so the frontend
+	// receives the update via WebSocket.
+	// Use chatSessionID as the SessionID so the frontend's WebSocket filter
+	// (which subscribes by chat session ID) receives the update. Falls back
+	// to the plan's stored SessionID when chatSessionID is empty.
+	publishSessionID := chatSessionID
+	if publishSessionID == "" {
+		publishSessionID = planActivity.SessionID
+	}
+	if s.bus != nil {
+		s.bus.Publish(ctx, biz.ActivityEvent{
+			Event: biz.ActivityEventUpdated,
+			Activity: biz.Activity{
+				ID:               planActivity.ID,
+				Kind:             biz.ActivityKindPlan,
+				Status:           planActivity.Status,
+				SessionID:        publishSessionID,
+				TurnID:           planActivity.TurnID,
+				ParentActivityID: planActivity.ParentActivityID,
+				Timestamp:        time.Now().UTC(),
+				Content:          planActivity.Content,
+				Meta:             planActivity.Meta,
+			},
+			Domain: biz.ActivityDomainChat,
+		})
+	}
+}
+
+// autoCompleteSynthesisSteps marks pending steps as completed when all their
+// dependencies are completed. This handles synthesis steps (e.g., "汇总报告")
+// that have no team mapping — they represent the Spirit's final reply and
+// should be auto-completed once their dependencies (team steps) are done.
+//
+// Only steps with a "dependsOn" list are considered, and only when every
+// listed dependency is in completed/failed status. Steps without "dependsOn"
+// are left untouched (they're expected to be team steps managed by
+// updatePlanStepForTeam's main loop).
+func autoCompleteSynthesisSteps(steps []map[string]any) {
+	// Build a quick lookup of step id → status for dependency checks.
+	statusByID := make(map[string]string, len(steps))
+	for _, s := range steps {
+		if s == nil {
+			continue
+		}
+		id, _ := s["id"].(string)
+		st, _ := s["status"].(string)
+		if id != "" {
+			statusByID[id] = st
+		}
+	}
+	isDone := func(st string) bool {
+		return st == string(biz.ActivityStatusCompleted) || st == string(biz.ActivityStatusFailed)
+	}
+	for _, s := range steps {
+		if s == nil {
+			continue
+		}
+		st, _ := s["status"].(string)
+		if st != string(biz.ActivityStatusPending) {
+			continue
+		}
+		deps, ok := s["dependsOn"].([]any)
+		if !ok || len(deps) == 0 {
+			continue
+		}
+		allDepsDone := true
+		for _, dep := range deps {
+			depID, _ := dep.(string)
+			if depID == "" {
+				continue
+			}
+			if !isDone(statusByID[depID]) {
+				allDepsDone = false
+				break
+			}
+		}
+		if allDepsDone {
+			s["status"] = string(biz.ActivityStatusCompleted)
+		}
+	}
 }
 
 func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionID string, completedTeam biz.Team) {
@@ -347,7 +584,7 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 					ev := biz.ActivityEvent{
 						Event: biz.ActivityEventFailed,
 						Activity: biz.Activity{
-							ID:               TeamStageActivityID(action.TeamID),
+							ID:               agent.TeamStageActivityID(action.TeamID),
 							Kind:             biz.ActivityKindTeamStage,
 							Status:           biz.ActivityStatusFailed,
 							Stage:            "failed",
@@ -386,7 +623,7 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 				ev := biz.ActivityEvent{
 					Event: biz.ActivityEventUpdated,
 					Activity: biz.Activity{
-						ID:               TeamStageActivityID(action.TeamID),
+						ID:               agent.TeamStageActivityID(action.TeamID),
 						Kind:             biz.ActivityKindTeamStage,
 						Status:           biz.ActivityStatusRunning,
 						Stage:            "progress",
@@ -444,6 +681,44 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 	if !result.AllDone {
 		return
 	}
+
+	// System-push pattern: when all teams complete, synthesize results and
+	// inject a message into the Spirit session to trigger the LLM to continue.
+	// This replaces the LLM-polling pattern (check_progress tool) with a
+	// system-initiated continuation, eliminating unnecessary tool calls and
+	// token consumption.
+	//
+	// CAS guard: checkAllTeamsCompleted is called from both
+	// HandleTeamTurnResult (goroutine) and NotifyAllTeamsCompleted (background
+	// poller goroutine). CompareAndSwap ensures only one synthesis message is
+	// injected per spirit session lifecycle.
+	if s.synthesisSvc != nil && s.turnGateway != nil {
+		if s.synthesisTriggered.CompareAndSwap(false, true) {
+			synthesisMsg := s.buildSynthesisMessage(ctx, spiritSessionID)
+			if synthesisMsg != "" {
+				if _, err := s.turnGateway.ExecuteTurn(ctx, biz.TurnInput{
+					SessionID: spiritSessionID,
+					Content:   synthesisMsg,
+				}); err != nil {
+					s.lg.Warn("all teams completed: failed to trigger Spirit synthesis turn",
+						loggateway.StepID("spirit.synthesis_turn_err"),
+						loggateway.Str("spirit_session_id", spiritSessionID),
+						loggateway.Err(err),
+					)
+				} else {
+					s.lg.Info("all teams completed: triggered Spirit synthesis turn",
+						loggateway.StepID("spirit.synthesis_turn_triggered"),
+						loggateway.Str("spirit_session_id", spiritSessionID),
+						loggateway.Int("total_teams", result.TotalTeams),
+						loggateway.Int("completed_teams", result.CompletedTeams),
+						loggateway.Int("failed_teams", result.FailedTeams),
+					)
+				}
+			}
+		}
+	}
+
+	// Publish the completion event for frontend awareness (non-blocking).
 	if s.bus != nil {
 		ev := biz.ActivityEvent{
 			Event: biz.ActivityEventCompleted,
@@ -475,37 +750,71 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 	}
 }
 
+// buildSynthesisMessage synthesizes team results and formats them as a message
+// for the Spirit session. Returns empty string if synthesis fails or produces
+// no content.
+func (s *TeamStarter) buildSynthesisMessage(ctx context.Context, spiritSessionID string) string {
+	output, err := s.synthesisSvc.SynthesizeResults(ctx, spiritSessionID, "")
+	if err != nil {
+		s.lg.Warn("all teams completed: synthesis failed",
+			loggateway.StepID("spirit.synthesis_fail"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Err(err),
+		)
+		return ""
+	}
+	if output == nil || output.Content == "" {
+		s.lg.Warn("all teams completed: synthesis returned empty content",
+			loggateway.StepID("spirit.synthesis_empty"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+		)
+		return ""
+	}
+	return "所有团队已完成任务。以下是综合结果：\n\n" + output.Content + "\n\n请基于以上结果给出最终总结和分析。"
+}
+
 // HandleTeamTimeout implements biz.TimeoutHandler. Called when a team times out
 // to trigger dependency scheduling, event publishing, and AllDone checks — the
 // same lifecycle as HandleTeamTurnResult for a failed team.
 func (s *TeamStarter) HandleTeamTimeout(ctx context.Context, spiritSessionID, teamID string) {
-	s.HandleTeamTurnResult(ctx, spiritSessionID, teamID, biz.TeamStatusFailed, "team execution timed out")
+	s.HandleTeamTurnResult(ctx, spiritSessionID, teamID, biz.TeamStatusFailed, "team execution timed out", "")
+}
+
+// NotifyAllTeamsCompleted implements biz.AllTeamsCompletedNotifier. Called by the
+// background poller when all teams for a spirit session have reached terminal
+// state. This is the "active notification" path from the backend polling
+// mechanism, supplementing the event-driven path in HandleTeamTurnResult.
+func (s *TeamStarter) NotifyAllTeamsCompleted(ctx context.Context, spiritSessionID string) {
+	s.checkAllTeamsCompleted(ctx, spiritSessionID)
 }
 
 type SpiritTeamAssembler struct {
-	spiritUC    *biz.SpiritTeamUsecase
-	orchCache   *biz.OrchestrationCache
-	bus         biz.ActivityEventBus
-	teamStarter biz.TeamStarterPort
-	agentReader biz.AgentReader
-	lg          loggateway.Logger
+	spiritUC     *biz.SpiritTeamUsecase
+	orchCache    *biz.OrchestrationCache
+	bus          biz.ActivityEventBus
+	activityRepo biz.ActivityUpserter
+	teamStarter  biz.TeamStarterPort
+	agentReader  biz.AgentReader
+	lg           loggateway.Logger
 }
 
 func NewSpiritTeamAssembler(
 	spiritUC *biz.SpiritTeamUsecase,
 	orchCache *biz.OrchestrationCache,
 	bus biz.ActivityEventBus,
+	activityRepo biz.ActivityUpserter,
 	teamStarter biz.TeamStarterPort,
 	agentReader biz.AgentReader,
 	lg loggateway.Logger,
 ) *SpiritTeamAssembler {
 	return &SpiritTeamAssembler{
-		spiritUC:    spiritUC,
-		orchCache:   orchCache,
-		bus:         bus,
-		teamStarter: teamStarter,
-		agentReader: agentReader,
-		lg:          lg,
+		spiritUC:     spiritUC,
+		orchCache:    orchCache,
+		bus:          bus,
+		activityRepo: activityRepo,
+		teamStarter:  teamStarter,
+		agentReader:  agentReader,
+		lg:           lg,
 	}
 }
 
@@ -529,7 +838,7 @@ func (a *SpiritTeamAssembler) AssembleTeam(ctx context.Context, params biz.Spiri
 		return biz.Team{}, biz.Session{}, err
 	}
 
-	a.publishSpiritTeamAssembled(ctx, spiritSessionID, result.Team, result.Session, params.Mode, params.TaskDescription, params.TopologyReason, params.AgentKeys)
+	a.publishSpiritTeamAssembled(ctx, spiritSessionID, result.Team, result.Session, params.Mode, params.TaskDescription, params.TopologyReason, params.AgentKeys, result.MemberSessions)
 
 	if params.AutoStart && a.teamStarter != nil && result.Team.Status == biz.TeamStatusPending && strings.TrimSpace(params.TaskDescription) != "" {
 		sessionID := result.Session.ID
@@ -599,7 +908,7 @@ func (a *SpiritTeamAssembler) CancelTeam(ctx context.Context, teamID string) err
 		ev := biz.ActivityEvent{
 			Event: biz.ActivityEventCancelled,
 			Activity: biz.Activity{
-				ID:               TeamStageActivityID(teamID),
+				ID:               agent.TeamStageActivityID(teamID),
 				Kind:             biz.ActivityKindTeamStage,
 				Status:           biz.ActivityStatusCancelled,
 				Stage:            "cancelled",
@@ -619,7 +928,7 @@ func (a *SpiritTeamAssembler) CancelTeam(ctx context.Context, teamID string) err
 		a.bus.Publish(ctx, ev)
 	}
 	if a.teamStarter != nil && spiritSessionID != "" {
-		a.teamStarter.HandleTeamTurnResult(ctx, spiritSessionID, teamID, biz.TeamStatusCancelled, "")
+		a.teamStarter.HandleTeamTurnResult(ctx, spiritSessionID, teamID, biz.TeamStatusCancelled, "", "")
 	}
 	return nil
 }
@@ -643,11 +952,11 @@ func (a *SpiritTeamAssembler) SuggestTopology(ctx context.Context, taskDescripti
 			a.bus.Publish(ctx, biz.ActivityEvent{
 				Event: biz.ActivityEventCreated,
 				Activity: biz.Activity{
-					ID:              uuid.NewString(),
-					Kind:            biz.ActivityKindNotice,
-					Status:          biz.ActivityStatusCompleted,
-					Timestamp:       time.Now().UTC(),
-					AgentKey:        "spirit-team-assembler",
+					ID:        uuid.NewString(),
+					Kind:      biz.ActivityKindNotice,
+					Status:    biz.ActivityStatusCompleted,
+					Timestamp: time.Now().UTC(),
+					AgentKey:  "spirit-team-assembler",
 					Meta: map[string]any{
 						"task_pattern": biz.ExtractTaskPattern(taskDescription),
 						"topology":     string(topology),
@@ -660,7 +969,7 @@ func (a *SpiritTeamAssembler) SuggestTopology(ctx context.Context, taskDescripti
 	return string(topology), found
 }
 
-func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, spiritSessionID string, team biz.Team, teamSession biz.Session, mode, taskDesc, topologyReason string, agentKeys []string) {
+func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, spiritSessionID string, team biz.Team, teamSession biz.Session, mode, taskDesc, topologyReason string, agentKeys []string, memberSessions map[string]string) {
 	if a.bus == nil {
 		return
 	}
@@ -700,24 +1009,94 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 				)
 			}
 		}
+		// Use the member's individual agent session ID for frontend lazy-loading.
+		// Fall back to teamSession.ID if the agent session wasn't created (e.g. depth limit).
+		sessionID := teamSession.ID
+		if sid, ok := memberSessions[key]; ok && sid != "" {
+			sessionID = sid
+		}
 		members = append(members, map[string]any{
 			"agent_key":  key,
 			"agent_name": displayName,
 			"status":     biz.ActivityStatusPending,
+			"session_id": sessionID,
 		})
 	}
-	a.bus.Publish(ctx, biz.ActivityEvent{
-		Event: biz.ActivityEventCreated,
-		Activity: biz.Activity{
-			ID:               TeamStageActivityID(team.ID),
+	// Persist synchronously to prevent a race with the progress event
+	// (StartTeamTurn publishes a "progress" event with Status=Running but no
+	// members/depends_on). The Bus's async persistence goroutine for the
+	// assembled event may execute after the progress event's goroutine, causing
+	// the version-guarded update to be rejected and members/depends_on to be
+	// lost. Synchronous persistence guarantees the assembled event is always
+	// stored first, so the progress event's UpsertActivity can merge its partial
+	// Meta with the existing members/depends_on.
+	//
+	// Issue 3 fix: If sync persistence fails, fall back to Bus async persist
+	// (SequencerHandled=false). Previously the Bus event always had
+	// SequencerHandled=true, meaning a sync failure = permanent data loss.
+	// Now the Bus provides a fallback path.
+	persistedSync := false
+	if a.activityRepo != nil {
+		activity := biz.Activity{
+			ID:               agent.TeamStageActivityID(team.ID),
 			Kind:             biz.ActivityKindTeamStage,
 			Status:           biz.ActivityStatusPending,
 			Stage:            "assembled",
 			Timestamp:        time.Now().UTC(),
-			ParentActivityID: agent.RootTaskActivityIDFromCtx(ctx),
+			ParentActivityID: agent.GraphStageActivityID(spiritSessionID),
 			SpiritSessionID:  spiritSessionID,
+			SessionID:        spiritSessionID,
 			TeamID:           team.ID,
 			AgentKey:         "spirit-team-assembler",
+			DependsOn:        team.DependsOn,
+			Meta: map[string]any{
+				"team_id":         team.ID,
+				"team_name":       team.DisplayName,
+				"session_id":      teamSession.ID,
+				"mode":            mode,
+				"task_summary":    biz.TruncateRunes(taskDesc, 200),
+				"dag_node_id":     team.DagNodeID,
+				"depends_on":      team.DependsOn,
+				"topology_reason": topologyReason,
+				"duration_ms":     0,
+				"total_steps":     1,
+				"members":         members,
+			},
+		}
+		if _, err := a.activityRepo.UpsertActivity(ctx, activity); err != nil {
+			a.lg.Warn("spirit team assembled: synchronous persist failed, falling back to Bus async",
+				loggateway.StepID("spirit.team.assembled_persist"),
+				loggateway.Str("team_id", team.ID),
+				loggateway.Err(err),
+			)
+		} else {
+			persistedSync = true
+		}
+	}
+
+	// Issue 1 fix: Set SequencerHandled=true when sync persist succeeded so the
+	// Bus skips async persist. Without this flag, bus.Publish triggers an async
+	// UpsertActivity that can race with StartTeamTurn's progress event: the async
+	// persist may execute AFTER the progress event and overwrite the Running
+	// status back to Pending, because both use the bus's monotonic versionSeq and
+	// the assembled event gets a higher version number.
+	// Issue 3 fix: If sync persist failed, set SequencerHandled=false so the Bus
+	// also tries to persist (fallback path).
+	a.bus.Publish(ctx, biz.ActivityEvent{
+		Event:            biz.ActivityEventCreated,
+		SequencerHandled: persistedSync, // skip Bus persist only if sync succeeded
+		Activity: biz.Activity{
+			ID:               agent.TeamStageActivityID(team.ID),
+			Kind:             biz.ActivityKindTeamStage,
+			Status:           biz.ActivityStatusPending,
+			Stage:            "assembled",
+			Timestamp:        time.Now().UTC(),
+			ParentActivityID: agent.GraphStageActivityID(spiritSessionID),
+			SpiritSessionID:  spiritSessionID,
+			SessionID:        spiritSessionID,
+			TeamID:           team.ID,
+			AgentKey:         "spirit-team-assembler",
+			DependsOn:        team.DependsOn,
 			Meta: map[string]any{
 				"team_id":         team.ID,
 				"team_name":       team.DisplayName,
@@ -736,27 +1115,9 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 	})
 }
 
-// graphStageNamespace is a fixed UUID used as the namespace for deterministic
-// graph_stage Activity IDs (uuid.NewSHA1). Keeping it module-level ensures the
-// same spiritSessionID always maps to the same graph_stage Activity ID across
-// process restarts.
-var graphStageNamespace = uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.graph_stage.v1"))
-
-// teamStageNamespace is a fixed UUID used as the namespace for deterministic
-// team_stage Activity IDs. Using deterministic IDs allows the team runner to
-// compute the same team_stage activity ID and use it as ParentActivityID for
-// member session events, without needing to query the database.
-var teamStageNamespace = uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.team_stage.v1"))
-
-// TeamStageActivityID returns the deterministic team_stage Activity ID for a
-// given team ID. Exported so the team runner can reference it.
-func TeamStageActivityID(teamID string) string {
-	return uuid.NewSHA1(teamStageNamespace, []byte(teamID)).String()
-}
-
 // publishSpiritGraphStageSnapshot publishes a graph_stage Activity carrying
 // the current DAG snapshot (meta.nodes) for a spirit session. The Activity ID
-// is derived deterministically from spiritSessionID via uuid.NewSHA1 so every
+// is derived deterministically from spiritSessionID via agent.GraphStageActivityID so every
 // call for the same session updates the same GraphStageBlock on the frontend
 // (no dedup logic needed — the upsert keyed by Activity.ID naturally merges).
 //
@@ -856,7 +1217,7 @@ func publishGraphStageSnapshot(ctx context.Context, bus biz.ActivityEventBus, lg
 	// Deterministic Activity ID: same spiritSessionID → same ID across calls
 	// → frontend upsert updates the existing GraphStageBlock instead of creating
 	// a new one each snapshot.
-	activityID := uuid.NewSHA1(graphStageNamespace, []byte(spiritSessionID)).String()
+	activityID := agent.GraphStageActivityID(spiritSessionID)
 	bus.Publish(ctx, biz.ActivityEvent{
 		Event: eventType,
 		Activity: biz.Activity{
@@ -869,7 +1230,7 @@ func publishGraphStageSnapshot(ctx context.Context, bus biz.ActivityEventBus, lg
 			SpiritSessionID:  spiritSessionID,
 			SessionID:        spiritSessionID,
 			AgentKey:         "spirit-graph-snapshot",
-			Content:         "团队 DAG 执行进度",
+			Content:          "团队 DAG 执行进度",
 			Meta: map[string]any{
 				"nodes":             nodes,
 				"spirit_session_id": spiritSessionID,

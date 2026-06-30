@@ -43,6 +43,11 @@ export function useActivityTimeline() {
   const rootActivityIdBySession = shallowRef<Map<string, string>>(new Map());
   // sessionId → loadError
   const loadErrorBySession = shallowRef<Map<string, string | null>>(new Map());
+  // Set of sessionIds that have been fully loaded from the API.
+  // Tracks API-loaded sessions separately from WS-populated sessions
+  // so ensureActivitiesLoaded doesn't skip API loading when a WS event
+  // has already created an empty/single-entry Map for the session.
+  const apiLoadedSessions = new Set<string>();
   // Current session: drives the public computed properties
   const currentSessionId = shallowRef<string | null>(null);
 
@@ -105,13 +110,49 @@ export function useActivityTimeline() {
     return Array.from(map.values()).sort(compareActivities);
   });
 
-  // === Activity tree computed from flat list (current session only) ===
+  // === Activity tree computed from flat list (cross-session) ===
+  //
+  // Team member activities (thinking/action/reply) live in sub-sessions
+  // (different session IDs), not in the spirit session. To build a correct
+  // tree where member activities are nested under their parent session
+  // activities, we must collect activities from ALL sessions whose
+  // spiritSessionId matches the current session.
+  //
+  // When currentSessionId is a sub-session (non-spirit), no other session
+  // will have spiritSessionId matching it, so we fall back to the current
+  // session's own activities — preserving the original behavior.
 
   const activityTree = computed<ActivityTreeNode[]>(() => {
     const sid = currentSessionId.value;
     if (!sid) return [];
-    const map = activitiesBySession.value.get(sid);
-    if (!map) return [];
+
+    // Collect activities from the current session AND all sub-sessions
+    // whose spiritSessionId matches the current session.
+    const allActivities: Activity[] = [];
+    for (const [sessionId, sessionMap] of activitiesBySession.value) {
+      if (sessionId === sid) {
+        for (const a of sessionMap.values()) allActivities.push(a);
+      } else {
+        // Check if this is a sub-session of the current spirit session.
+        // Backend may leave spiritSessionId empty on some activities (notices,
+        // lazy-created plans); checking only the first activity would filter
+        // out the whole sub-session when its first activity lacks the field.
+        // Defensive approach: include the sub-session if ANY activity's
+        // spiritSessionId matches `sid`.
+        let isSubSession = false;
+        for (const a of sessionMap.values()) {
+          if (a.spiritSessionId === sid) {
+            isSubSession = true;
+            break;
+          }
+        }
+        if (isSubSession) {
+          for (const a of sessionMap.values()) allActivities.push(a);
+        }
+      }
+    }
+
+    if (allActivities.length === 0) return [];
 
     // === Deduplicate team_stage activities by teamId ===
     // Backend publishes a NEW team_stage activity for each lifecycle event
@@ -143,7 +184,7 @@ export function useActivityTimeline() {
     const teamStageByTeam = new Map<string, Activity[]>();
     const planByTurn = new Map<string, Activity[]>();
     const dedupMap = new Map<string, Activity>();
-    for (const activity of map.values()) {
+    for (const activity of allActivities) {
       if (activity.kind === 'team_stage' && activity.teamId) {
         const arr = teamStageByTeam.get(activity.teamId) ?? [];
         arr.push(activity);
@@ -157,6 +198,9 @@ export function useActivityTimeline() {
       }
     }
     // Plan dedup: base = earliest Timestamp (stable position), overlay latest steps.
+    // Prefer the plan with more steps (from publishPlanCreated) over the lazy
+    // plan from processGraphNodeStart (which starts with empty steps). This
+    // ensures the frontend PlanBlock shows the correct task decomposition.
     for (const arr of planByTurn.values()) {
       if (arr.length === 1) {
         dedupMap.set(arr[0].id, arr[0]);
@@ -169,11 +213,17 @@ export function useActivityTimeline() {
       });
       const base = sorted[0];
       const latest = sorted[sorted.length - 1];
+      // Prefer the plan with more steps (canonical plan from publishPlanCreated
+      // has the correct subtask decomposition; lazy plan from processGraphNodeStart
+      // starts with empty steps).
+      const baseSteps = Array.isArray(base.meta?.steps) ? base.meta.steps.length : 0;
+      const latestSteps = Array.isArray(latest.meta?.steps) ? latest.meta.steps.length : 0;
+      const bestMeta = latestSteps > baseSteps ? latest.meta : base.meta;
       dedupMap.set(base.id, {
         ...base,
         content: latest.content || base.content,
         label: latest.label || base.label,
-        meta: latest.meta || base.meta,
+        meta: bestMeta || base.meta,
         status: latest.status,
       });
     }
@@ -240,11 +290,54 @@ export function useActivityTimeline() {
       treeMap.set(activity.id, node);
     }
 
+    // === Build session activity lookup by (childSessionId, agentKey) ===
+    // Team runner uses ONE shared team session for all member agent
+    // execution. The ActivityProjector is configured ONCE with the anchor
+    // agent's SessionActivityID as ParentActivityID, so ALL member
+    // thinking/action/reply activities get the SAME parentActivityId
+    // (the anchor's session activity ID). Without re-parenting, only the
+    // anchor AgentCard shows activities; the other 2+ AgentCards render
+    // empty.
+    //
+    // Fix: each member's activities carry a correct `agent_key` field.
+    // Build a lookup of (childSessionId, agentKey) → sessionActivityNode,
+    // then re-parent activities to the session activity whose agentKey
+    // matches the activity's agent_key.
+    const sessionActivityByKey = new Map<string, ActivityTreeNode>();
+    for (const node of treeMap.values()) {
+      if (node.kind === 'session' && node.meta?.child_session_id && node.agentKey) {
+        const key = `${node.meta.child_session_id as string}|${node.agentKey}`;
+        sessionActivityByKey.set(key, node);
+      }
+    }
+
     // Link children to parents
     for (const node of treeMap.values()) {
       if (node.parentActivityId && treeMap.has(node.parentActivityId)) {
-        treeMap.get(node.parentActivityId)!.children.push(node);
-      } else if (!node.parentActivityId) {
+        const declaredParent = treeMap.get(node.parentActivityId)!;
+        // Re-parenting: if the declared parent is a session activity
+        // (AgentCard) but the activity's agent_key doesn't match the
+        // parent's agentKey, find the correct sibling session activity
+        // with matching agentKey under the same childSessionId.
+        if (
+          declaredParent.kind === 'session' &&
+          declaredParent.meta?.child_session_id &&
+          node.agentKey &&
+          declaredParent.agentKey !== node.agentKey
+        ) {
+          const key = `${declaredParent.meta.child_session_id as string}|${node.agentKey}`;
+          const correctParent = sessionActivityByKey.get(key);
+          if (correctParent && correctParent.id !== node.parentActivityId) {
+            correctParent.children.push(node);
+            continue;
+          }
+        }
+        declaredParent.children.push(node);
+      } else {
+        // No parentActivityId OR parent not found in tree: treat as root.
+        // Without this, nodes whose parentActivityId doesn't match any
+        // entry (e.g. due to backend ID mismatch) are silently dropped,
+        // making all child activities invisible.
         roots.push(node);
       }
     }
@@ -440,9 +533,25 @@ export function useActivityTimeline() {
         // 性能优化（方案 B 细粒度响应式）：直接修改 reactive 对象字段。
         // 这些事件可能改变结构字段（如 status），需要 triggerRef 触发
         // activityTree 重算（dedup 逻辑依赖 status）。
+        //
+        // Issue 2 fix: merge meta instead of overwriting. Direct-publish
+        // events (team_stage/graph_stage) carry partial meta — "assembled"
+        // has members, "progress" has progress_pct, "completed" has
+        // duration_ms. Object.assign overrides all meta keys, so a
+        // progress event (no members) arriving after the assembled event
+        // would clear the members list. Deep merge preserves existing keys
+        // while overlaying incoming ones.
         const existing = map.get(snapshot.id);
         if (existing) {
-          Object.assign(existing, { ...snapshot, timestamp: existing.timestamp });
+          const mergedMeta =
+            existing.meta && snapshot.meta
+              ? { ...existing.meta, ...snapshot.meta }
+              : snapshot.meta ?? existing.meta;
+          Object.assign(existing, {
+            ...snapshot,
+            timestamp: existing.timestamp,
+            meta: mergedMeta,
+          });
         } else {
           map.set(snapshot.id, reactive({ ...snapshot }));
         }
@@ -478,6 +587,8 @@ export function useActivityTimeline() {
     const nextErrors = new Map(loadErrorBySession.value);
     nextErrors.delete(sessionId);
     loadErrorBySession.value = nextErrors;
+
+    apiLoadedSessions.delete(sessionId);
   }
 
   /** Clear all sessions (called on workspace unmount). */
@@ -486,6 +597,7 @@ export function useActivityTimeline() {
     rootActivityIdBySession.value = new Map();
     loadErrorBySession.value = new Map();
     currentSessionId.value = null;
+    apiLoadedSessions.clear();
   }
 
   // === Load activities from API (for history recovery) ===
@@ -557,6 +669,12 @@ export function useActivityTimeline() {
     const nextActivities = new Map(activitiesBySession.value);
     nextActivities.set(sid, newMap);
     activitiesBySession.value = nextActivities;
+
+    // Mark session as API-loaded so ensureActivitiesLoaded doesn't
+    // re-fetch it. WS events may have created an empty/single-entry
+    // Map for this session, but the API load is the authoritative
+    // source for historical activities.
+    apiLoadedSessions.add(sid);
 
     if (newRootId) {
       setRootForSession(sid, newRootId);
@@ -636,7 +754,13 @@ export function useActivityTimeline() {
    * does not differentiate by turn (a session is either loaded or not).
    */
   async function ensureActivitiesLoaded(sessionId: string, turnId?: string) {
-    if (activitiesBySession.value.has(sessionId)) return;
+    // Use apiLoadedSessions instead of activitiesBySession.has() because
+    // WS events may have already created an empty or single-entry Map for
+    // this session via getSessionActivities() → handleActivityEvent(),
+    // causing the old check to skip API loading. The API is the
+    // authoritative source for historical activities that WS events
+    // cannot deliver (e.g., activities created before page load).
+    if (apiLoadedSessions.has(sessionId)) return;
     await loadActivitiesFromAPI(sessionId, turnId);
   }
 
@@ -743,6 +867,44 @@ export function mapActivityStatusToToolStatus(status: ActivityStatus): ToolActiv
     default:
       return 'running';
   }
+}
+
+/**
+ * cleanTeamDisplayName strips markdown syntax from a team display name or
+ * task summary.
+ *
+ * Backend sets team.DisplayName to the truncated task description, which for
+ * the spirit's primary team is a markdown document (`## 任务概述\n...`). Showing
+ * raw markdown in the team-card header breaks the layout and looks broken.
+ *
+ * Strategy:
+ *   1. Remove entire markdown header lines (`#`, `##`, `###`...), code fence
+ *      lines, and list marker prefixes. We REMOVE header lines entirely (rather
+ *      than just stripping `#`) because the header text like "任务概述" is a
+ *      section title, not the actual content — keeping it would hide the real
+ *      task description below.
+ *   2. Split by newlines and pick the first non-empty meaningful line.
+ *   3. Truncate to a reasonable length for the header (≤60 chars).
+ *
+ * For clean team names like "代码分析 (Code Analysis)" this is a no-op.
+ */
+function cleanTeamDisplayName(raw: string | null | undefined): string {
+  if (!raw) return '';
+  // Remove entire markdown header lines, code fence lines, and strip list markers.
+  const cleaned = raw
+    .replace(/^#{1,6}\s+.*$/gm, '') // entire header lines: # Title, ## Title...
+    .replace(/^```[^\n]*$/gm, '') // code fence open/close lines
+    .replace(/^[-*+]\s+/gm, '') // unordered list markers
+    .replace(/^\d+\.\s+/gm, '') // ordered list markers
+    .replace(/\*\*([^*]+)\*\*/g, '$1') // bold
+    .replace(/\*([^*]+)\*/g, '$1') // italic
+    .replace(/`([^`]+)`/g, '$1'); // inline code
+  // Pick the first non-empty line.
+  const lines = cleaned.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const first = lines[0] || '';
+  // Truncate to 60 chars with ellipsis if needed.
+  if (first.length <= 60) return first;
+  return first.slice(0, 57) + '...';
 }
 
 /**
@@ -902,21 +1064,88 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
       } satisfies ConfirmEvent;
 
     case 'team_stage': {
-      // Backend stores members under meta.team_summary.members with snake_case keys
-      // (see internal/team/summary.go:69-73). Support meta.members (future) and
-      // meta.team_summary.members (current) with snake_case → camelCase mapping.
+      // Backend stores members under two keys:
+      //   - meta.members (from publishSpiritTeamAssembled): correct session_id
+      //     per member, but status is always 'pending' (set at assembly time
+      //     before members execute — see spirit_team.go:1021).
+      //   - meta.team_summary.members (from TeamSummaryActivityEvent, fired at
+      //     run completion): authoritative member statuses (completed/failed)
+      //     from TeamRunStep.Status, but session_id is the TEAM session id
+      //     (run.SessionID — see biz/team_summary.go:24), NOT the individual
+      //     member session id. Using team_summary's session_id would break
+      //     frontend lazy-load of member execution processes.
+      //
+      // Merge strategy: base = meta.members (correct session_ids), then
+      // overlay status from team_summary.members (matched by agent_key).
+      // Without this merge, members always show 'pending' even after the
+      // team completes — a regression of the AgentCard status fix.
       const summary = node.meta?.team_summary as Record<string, unknown> | undefined;
-      const rawMembers: Record<string, unknown>[] | undefined = Array.isArray(node.meta?.members)
-        ? (node.meta.members as Record<string, unknown>[])
-        : Array.isArray(summary?.members)
-          ? (summary!.members as Record<string, unknown>[])
-          : undefined;
-      const members = rawMembers?.map((m) => ({
-        agentKey: ((m.agent_key ?? m.agentKey) as string) ?? '',
-        agentName: ((m.agent_name ?? m.agentName) as string) ?? '',
-        status: (m.status ?? 'pending') as TeamMemberStatus['status'],
-        session_id: m.session_id as string | undefined,
-      }));
+      const baseMembers = Array.isArray(node.meta?.members)
+        ? (node.meta!.members as Record<string, unknown>[])
+        : undefined;
+      const summaryMembers = Array.isArray(summary?.members)
+        ? (summary!.members as Record<string, unknown>[])
+        : undefined;
+      // Build agent_key → status map from team_summary for authoritative statuses.
+      const statusByKey = new Map<string, string>();
+      if (summaryMembers) {
+        for (const m of summaryMembers) {
+          const key = ((m.agent_key ?? m.agentKey) as string) ?? '';
+          if (key) statusByKey.set(key, (m.status as string) ?? '');
+        }
+      }
+      // Fallback: if baseMembers is missing (assembled event lost) but
+      // summaryMembers exists, use summaryMembers directly. session_id will
+      // be the team session id (less accurate) but members will render.
+      const effectiveMembers = baseMembers ?? summaryMembers;
+      // Map backend TeamRunStep.Status ("ok"/"error"/"skipped") to frontend
+      // TeamMemberStatus.status ("completed"/"failed"/"completed"). The
+      // assembled event uses "pending"; team_summary uses step status which
+      // is "ok"/"error"/"skipped". Without this mapping, members render with
+      // class team-card__member--ok (no CSS rule) instead of --completed.
+      const mapMemberStatus = (raw: unknown): TeamMemberStatus['status'] => {
+        const s = (raw as string) ?? 'pending';
+        switch (s) {
+          case 'ok':
+          case 'skipped':
+            return 'completed';
+          case 'error':
+            return 'failed';
+          case 'pending':
+          case 'running':
+          case 'completed':
+          case 'failed':
+            return s;
+          default:
+            return 'pending';
+        }
+      };
+      const members = effectiveMembers?.map((m) => {
+        const agentKey = ((m.agent_key ?? m.agentKey) as string) ?? '';
+        // Prefer team_summary's authoritative status (completed/failed) when
+        // available; fall back to meta.members' status (pending/running).
+        const summaryStatus = statusByKey.get(agentKey);
+        let status = mapMemberStatus(summaryStatus || m.status || 'pending');
+        // Members that were started (session created at team assembly) but
+        // never executed in the graph have no TeamRunStep, so they're absent
+        // from team_summary.members and their status stays "pending" from the
+        // assembled event. When the team reaches a terminal status, these
+        // pending members should inherit it — finalizePendingSessionActivities
+        // already publishes "completed" session events for them on the
+        // backend, so this aligns the team-card member display.
+        if (status === 'pending') {
+          const teamStatus = mapActivityStatusToStageStatus(node.status);
+          if (teamStatus === 'completed' || teamStatus === 'failed' || teamStatus === 'cancelled') {
+            status = teamStatus === 'cancelled' ? 'failed' : teamStatus;
+          }
+        }
+        return {
+          agentKey,
+          agentName: ((m.agent_name ?? m.agentName) as string) ?? '',
+          status,
+          session_id: m.session_id as string | undefined,
+        };
+      });
       const taskSummary = typeof node.meta?.task_summary === 'string' ? node.meta.task_summary : undefined;
       // B.4.1 team-card: pass timestamp for header creation time display.
       const teamTimestamp = node.timestamp || undefined;
@@ -932,18 +1161,27 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
       // so meta.team_name (set by publishSpiritTeamAssembled + cancel path) is the
       // primary source for the team display name. Without this fallback, the inline
       // TeamCard's displayTeamName degrades to generic status text ("assembling").
+      //
+      // Issue fix: spirit creates the primary team with the full task description
+      // (markdown with `## 任务概述` headers) as DisplayName. Showing raw markdown
+      // in the team-card header is ugly and breaks the layout. Strip markdown
+      // headers/syntax and keep only the first meaningful line.
       const teamNameFromMeta =
         (typeof node.meta?.team_name === 'string' && node.meta.team_name) ||
         (typeof node.meta?.teamName === 'string' && node.meta.teamName) ||
         '';
+      const rawTeamTitle = node.label || node.content || teamNameFromMeta;
+      // Also clean the task summary — backend may store the full markdown task
+      // description in meta.task_summary. Strip markdown for cleaner display.
+      const cleanedTaskSummary = taskSummary ? cleanTeamDisplayName(taskSummary) : taskSummary;
       return {
         kind: 'team_stage',
         id: node.id,
         status: mapActivityStatusToStageStatus(node.status),
-        title: node.label || node.content || teamNameFromMeta,
+        title: cleanTeamDisplayName(rawTeamTitle),
         teamId: node.teamId || undefined,
         members,
-        taskSummary,
+        taskSummary: cleanedTaskSummary,
         durationMs: node.durationMs,
         timestamp: teamTimestamp,
         progressPct,
@@ -1061,12 +1299,33 @@ const ACTIVITY_KIND_PRIORITY: Record<ActivityKind, number> = {
   plan: 4,
   notice: 5,
   confirm: 6,
-  team_stage: 7,
-  graph_stage: 8,
+  // Issue 3 fix: graph_stage (DAG visualization) must appear before team_stage
+  // (team cards) in the timeline. The DAG provides the dependency overview and
+  // should be rendered between the plan and the team execution panels.
+  graph_stage: 7,
+  team_stage: 8,
   session: 9,
 };
 
 function compareActivities(a: Activity, b: Activity): number {
+  // Issue 3 fix: plan is a logical prerequisite for team execution. When the
+  // spirit assembles teams before generating a plan, the plan's timestamp is
+  // larger than the team_stage/graph_stage timestamps — causing the plan to
+  // appear at the bottom. Override timestamp ordering to keep plan before
+  // team_stage and graph_stage when they share the same parent.
+  if (a.kind === 'plan' && (b.kind === 'team_stage' || b.kind === 'graph_stage')) return -1;
+  if (b.kind === 'plan' && (a.kind === 'team_stage' || a.kind === 'graph_stage')) return 1;
+
+  // Issue 4 fix: reply must come after graph_stage and team_stage. During
+  // execution, reply is created after team completion, so its timestamp is
+  // naturally larger. But when loaded from DB, timestamps may be equal (same
+  // second), and the kind priority (reply=3 < graph_stage=7/team_stage=8)
+  // would incorrectly place reply before graph/team stages. This override
+  // ensures the execution order (dependencies → team panel → reply) is
+  // preserved regardless of timestamp precision.
+  if (a.kind === 'reply' && (b.kind === 'graph_stage' || b.kind === 'team_stage')) return 1;
+  if (b.kind === 'reply' && (a.kind === 'graph_stage' || a.kind === 'team_stage')) return -1;
+
   const ta = new Date(a.timestamp).getTime();
   const tb = new Date(b.timestamp).getTime();
   if (!Number.isNaN(ta) && !Number.isNaN(tb) && ta !== tb) {

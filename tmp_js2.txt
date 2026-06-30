@@ -1,0 +1,1 @@
+(function(){const agents=document.querySelectorAll(".agent-card");const teams=document.querySelectorAll(".team-card");return JSON.stringify({agentCount:agents.length,teamCount:teams.length});})();

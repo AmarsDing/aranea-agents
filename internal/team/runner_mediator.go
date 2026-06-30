@@ -33,8 +33,9 @@ type TeamRunMediator struct {
 	lg    loggateway.Logger
 
 	// Finisher functions - set by Runner after construction via SetFinisherFunctions.
-	persistGraphRunStepFn  func(ctx context.Context, stepCtx *GraphRunStepContext, nodeID, outputPreview, errMsg string, skipped bool, toolCallCount int)
-	finalizeGraphTeamRunFn func(ctx context.Context, stepCtx *GraphRunStepContext, failed bool, errMsg string)
+	persistGraphRunStepFn    func(ctx context.Context, stepCtx *GraphRunStepContext, nodeID, outputPreview, errMsg string, skipped bool, toolCallCount int)
+	finalizeGraphTeamRunFn   func(ctx context.Context, stepCtx *GraphRunStepContext, failed bool, errMsg string)
+	publishTeamStepStartedFn func(ctx context.Context, stepCtx *GraphRunStepContext, nodeID string)
 }
 
 // NewTeamRunMediator creates a mediator with no wiring; call SetCoordinator/SetFinisherFunctions after construction.
@@ -53,9 +54,11 @@ func (m *TeamRunMediator) SetCoordinator(c TeamGraphCoordAccess) {
 func (m *TeamRunMediator) SetFinisherFunctions(
 	persistStep func(ctx context.Context, stepCtx *GraphRunStepContext, nodeID, outputPreview, errMsg string, skipped bool, toolCallCount int),
 	finalizeRun func(ctx context.Context, stepCtx *GraphRunStepContext, failed bool, errMsg string),
+	publishStepStarted func(ctx context.Context, stepCtx *GraphRunStepContext, nodeID string),
 ) {
 	m.persistGraphRunStepFn = persistStep
 	m.finalizeGraphTeamRunFn = finalizeRun
+	m.publishTeamStepStartedFn = publishStepStarted
 }
 
 // --- TeamGraphCoordAccess delegation ---
@@ -116,6 +119,15 @@ func (m *TeamRunMediator) FinalizeGraphTeamRun(ctx context.Context, stepCtx *Gra
 		return
 	}
 	m.finalizeGraphTeamRunFn(ctx, stepCtx, failed, errMsg)
+}
+
+func (m *TeamRunMediator) PublishTeamStepStarted(ctx context.Context, stepCtx *GraphRunStepContext, nodeID string) {
+	if m.publishTeamStepStartedFn == nil {
+		m.lg.Warn("mediator finisher not set, skipping PublishTeamStepStarted",
+			loggateway.Str("node_id", nodeID))
+		return
+	}
+	m.publishTeamStepStartedFn(ctx, stepCtx, nodeID)
 }
 
 // Compile-time interface assertions.

@@ -281,12 +281,19 @@ func (o *TaskOrchestratorImpl) orchestrateTeam(ctx context.Context, taskPlan *bi
 		teamIDs = parallelTeamIDs
 	} else {
 		// Coordinator strategy (or single allocation): single team with all agents.
+		// Set DagNodeID to the first allocation's SubTaskID so updatePlanStepForTeam
+		// can match and update the corresponding plan step when the team completes.
+		dagNodeID := ""
+		if len(allocPlan.Allocations) > 0 {
+			dagNodeID = allocPlan.Allocations[0].SubTaskID
+		}
 		params := biz.SpiritTeamParams{
 			SpiritSessionID: taskPlan.SpiritSessionID,
 			TaskDescription: taskPlan.UserMessage,
 			AgentKeys:       agentKeys,
 			Mode:            mode,
 			AutoStart:       true,
+			DagNodeID:       dagNodeID,
 		}
 
 		team, _, err := o.assembler.AssembleTeam(ctx, params)
@@ -355,6 +362,7 @@ func (o *TaskOrchestratorImpl) orchestrateParallelTeams(ctx context.Context, tas
 				AgentKeys:       []string{key},
 				Mode:            "parallel",
 				AutoStart:       true,
+				DagNodeID:       al.SubTaskID,
 			}
 
 			team, _, err := o.assembler.AssembleTeam(gctx, params)
@@ -420,95 +428,143 @@ type parallelTeamResult struct {
 	err       error
 }
 
-// orchestrateDAG handles the DAG → Graph compilation path.
+// orchestrateDAG handles the DAG → multi-team path.
+//
+// In the three-mode system (direct/parallel/dag), dag mode creates N teams —
+// one per allocation/subtask — where each team has ≥2 members collaborating.
+// This mirrors orchestrateParallelTeams (concurrent assembly, fault-tolerant)
+// but each team carries multiple agents (lead + TeamMemberKeys from the
+// allocator) instead of a single agent.
+//
+// Inter-team dependencies from taskPlan.TaskDAG are passed via
+// SpiritTeamParams.DependsOn so the runtime can sequence teams when needed.
+// When TaskDAG is nil (no pre-defined template), the function falls back to
+// orchestrateWithoutTemplate for NL2Graph conversion.
 func (o *TaskOrchestratorImpl) orchestrateDAG(ctx context.Context, taskPlan *biz.TaskPlan, allocPlan *biz.AllocationPlan, handle *biz.OrchestrationHandle) error {
-	o.lg.Info("TaskOrchestrator: DAG path",
+	o.lg.Info("TaskOrchestrator: DAG path (multi-team)",
 		loggateway.StepID(biz.SpiritStepOrchestratorGraphBuild),
 		loggateway.Str("orchestration_id", handle.ID),
+		loggateway.Int("allocations", len(allocPlan.Allocations)),
 	)
 
-	// Collect agent keys from allocations for the team.
-	agentKeys := make([]string, 0, len(allocPlan.Allocations))
+	// Collect all agent keys for the handle (for status tracking).
+	allAgentKeys := make([]string, 0, len(allocPlan.Allocations)*2)
 	for _, alloc := range allocPlan.Allocations {
-		key := strings.TrimSpace(alloc.AssignedKey)
-		if key != "" {
-			agentKeys = append(agentKeys, key)
+		if k := strings.TrimSpace(alloc.AssignedKey); k != "" {
+			allAgentKeys = append(allAgentKeys, k)
 		}
+		allAgentKeys = append(allAgentKeys, alloc.TeamMemberKeys...)
 	}
-
-	if len(agentKeys) == 0 {
+	if len(allAgentKeys) == 0 {
 		return apierror.BadRequest(apierror.DomainSpirit, "no agent keys in allocation plan for DAG strategy")
 	}
 
-	// No pre-defined graph template: try NL2Graph conversion. On failure
-	// (converter not wired or conversion error), fall back to the existing
-	// sequential pipeline (parallel team mode).
-	if taskPlan.TaskDAG == nil {
-		return o.orchestrateWithoutTemplate(ctx, taskPlan, allocPlan, handle, agentKeys)
+	// No subtasks and no DAG template: fall back to NL2Graph or sequential
+	// pipeline (legacy single-team path). This preserves backward compatibility
+	// for plans that reach dag strategy without decomposition (rare).
+	if len(allocPlan.Allocations) == 0 || (taskPlan.TaskDAG == nil && len(allocPlan.Allocations) <= 1) {
+		return o.orchestrateWithoutTemplate(ctx, taskPlan, allocPlan, handle, allAgentKeys)
 	}
 
-	// Compile DAG + AllocationPlan → Definition JSON.
-	defJSON, err := o.compiler.Compile(taskPlan.TaskDAG, allocPlan)
-	if err != nil {
-		return apierror.Internal(apierror.DomainSpirit, "compile DAG to graph").WithCause(err)
-	}
-
-	o.lg.Info("TaskOrchestrator: DAG compiled to definition JSON",
-		loggateway.StepID(biz.SpiritStepOrchestratorGraphBuild),
-		loggateway.Str("orchestration_id", handle.ID),
-	)
-
-	// Determine mode from the compiled definition.
-	// The compiler already chose "coordinator" or "parallel" based on DAG structure.
-	mode := "coordinator"
-	hasDeps := false
-	for _, node := range taskPlan.TaskDAG.Nodes {
-		if len(node.DependsOn) > 0 {
-			hasDeps = true
-			break
+	// Build subtask → dependsOn lookup from the DAG (if available).
+	dependsMap := make(map[string][]string)
+	if taskPlan.TaskDAG != nil {
+		for _, node := range taskPlan.TaskDAG.Nodes {
+			if len(node.DependsOn) > 0 {
+				dependsMap[node.ID] = node.DependsOn
+			}
 		}
 	}
-	if !hasDeps && len(taskPlan.TaskDAG.Nodes) > 1 {
-		mode = "parallel"
+
+	// Create 1 team per allocation concurrently (following the
+	// orchestrateParallelTeams pattern). Each team gets the lead agent
+	// (AssignedKey) plus any TeamMemberKeys as its members.
+	allocs := allocPlan.Allocations
+	results := make([]parallelTeamResult, len(allocs))
+	g, gctx := errgroup.WithContext(ctx)
+	for i, alloc := range allocs {
+		idx, al := i, alloc
+		g.Go(func() error {
+			lead := strings.TrimSpace(al.AssignedKey)
+			if lead == "" {
+				return nil // skip allocations without a lead agent
+			}
+
+			// Build the team's agent list: lead + additional members.
+			agentKeys := []string{lead}
+			agentKeys = append(agentKeys, al.TeamMemberKeys...)
+
+			taskDesc := al.SubTaskName
+			if taskDesc == "" {
+				taskDesc = al.SubTaskID
+			}
+			if taskDesc == "" {
+				taskDesc = taskPlan.UserMessage
+			}
+
+			params := biz.SpiritTeamParams{
+				SpiritSessionID: taskPlan.SpiritSessionID,
+				TaskDescription: taskDesc,
+				AgentKeys:       agentKeys,
+				Mode:            "coordinator", // multi-member team collaboration
+				AutoStart:       true,
+				DagNodeID:       al.SubTaskID,
+				DependsOn:       dependsMap[al.SubTaskID],
+			}
+
+			team, _, err := o.assembler.AssembleTeam(gctx, params)
+			if err != nil {
+				o.lg.Warn("TaskOrchestrator: DAG team assembly failed",
+					loggateway.StepID(biz.SpiritStepOrchestratorExecute),
+					loggateway.Str("orchestration_id", handle.ID),
+					loggateway.Str("sub_task_id", al.SubTaskID),
+					loggateway.Str("lead", lead),
+					loggateway.Err(err),
+				)
+				results[idx] = parallelTeamResult{err: err}
+				return nil // don't cancel sibling teams
+			}
+
+			o.lg.Info("TaskOrchestrator: DAG team assembled",
+				loggateway.StepID(biz.SpiritStepOrchestratorExecute),
+				loggateway.Str("orchestration_id", handle.ID),
+				loggateway.Str("team_id", team.ID),
+				loggateway.Str("sub_task_id", al.SubTaskID),
+				loggateway.Int("member_count", len(agentKeys)),
+			)
+			results[idx] = parallelTeamResult{
+				teamID:    team.ID,
+				subtaskID: al.SubTaskID,
+				agentKey:  lead,
+			}
+			return nil
+		})
+	}
+	_ = g.Wait()
+
+	// Collect successfully assembled team IDs. If ALL teams failed, return error.
+	var teamIDs []string
+	var failedCount int
+	for _, r := range results {
+		if r.teamID != "" {
+			teamIDs = append(teamIDs, r.teamID)
+		} else if r.err != nil {
+			failedCount++
+		}
+	}
+	if len(teamIDs) == 0 {
+		return apierror.Internal(apierror.DomainSpirit, "all DAG team assemblies failed (%d teams)", failedCount)
 	}
 
-	// Assemble the team with the compiled definition JSON.
-	params := biz.SpiritTeamParams{
-		SpiritSessionID: taskPlan.SpiritSessionID,
-		TaskDescription: taskPlan.UserMessage,
-		AgentKeys:       agentKeys,
-		Mode:            mode,
-		AutoStart:       true,
-	}
-
-	team, _, err := o.assembler.AssembleTeam(ctx, params)
-	if err != nil {
-		return apierror.Internal(apierror.DomainSpirit, "assemble DAG team").WithCause(err)
-	}
-
-	// Update the team's DefinitionJSON with the DAG-compiled version.
-	// The assembler created the team with buildSpiritTeamDefinitionJSON,
-	// but the DAG-compiled version has the correct dependency structure.
-	if err := o.spiritUC.UpdateTeamDefinitionJSON(ctx, team.ID, defJSON); err != nil {
-		o.lg.Warn("TaskOrchestrator: failed to update team DefinitionJSON with DAG-compiled version",
-			loggateway.StepID(biz.SpiritStepOrchestratorGraphBuild),
-			loggateway.Str("orchestration_id", handle.ID),
-			loggateway.Str("team_id", team.ID),
-			loggateway.Err(err),
-		)
-		// Non-fatal: the team was already created with a valid definition,
-		// just without the DAG-compiled structure. Log and continue.
-	}
-	handle.TeamIDs = []string{team.ID}
-	handle.AgentKeys = agentKeys
-	handle.GraphExecutionID = team.ID // Team ID serves as the graph execution ID.
+	handle.TeamIDs = teamIDs
+	handle.AgentKeys = allAgentKeys
 	o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusRunning)
 
-	o.lg.Info("TaskOrchestrator: DAG team assembled",
+	o.lg.Info("TaskOrchestrator: DAG multi-team assembly complete",
 		loggateway.StepID(biz.SpiritStepOrchestratorExecute),
 		loggateway.Str("orchestration_id", handle.ID),
-		loggateway.Str("team_id", team.ID),
-		loggateway.Str("definition_json_len", fmt.Sprintf("%d", len(defJSON))),
+		loggateway.Int("team_count", len(teamIDs)),
+		loggateway.Int("failed_count", failedCount),
 	)
 	return nil
 }

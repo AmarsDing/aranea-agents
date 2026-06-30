@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/strutil"
 
 	"github.com/google/uuid"
 )
@@ -55,6 +56,47 @@ func (r *Runner) PersistGraphRunStep(ctx context.Context, stepCtx *GraphRunStepC
 	stepCtx.MarkPersisted(nodeID)
 }
 
+// PublishTeamStepStarted publishes a session ActivityEvent (kind=session,
+// status=running, stage=executing) when a graph node starts executing. This
+// ensures the frontend AgentCard appears in "running" state before the member's
+// thinking/action/reply activities arrive, solving the children chain breakage
+// caused by the previous behavior where the session activity was only published
+// after the member finished (in PersistGraphRunStep).
+func (r *Runner) PublishTeamStepStarted(ctx context.Context, stepCtx *GraphRunStepContext, nodeID string) {
+	if r == nil || stepCtx == nil || strings.TrimSpace(nodeID) == "" {
+		return
+	}
+	m, ok := stepCtx.MemberDefForNode(nodeID)
+	if !ok {
+		return
+	}
+	ag, err := r.lookupAgent(ctx, m.AgentID)
+	if err != nil {
+		r.lg.Warn("catalog agent lookup failed in PublishTeamStepStarted",
+			loggateway.StepID("team.graph.step.started"),
+			loggateway.Str("run_id", stepCtx.TeamRunID),
+			loggateway.Str("node_id", nodeID),
+			loggateway.Str("agent_id", m.AgentID),
+			loggateway.Err(err))
+		return
+	}
+	run, err := r.runReader.GetTeamRunByID(ctx, stepCtx.TeamRunID)
+	if err != nil {
+		r.lg.Warn("team run lookup failed in PublishTeamStepStarted",
+			loggateway.StepID("team.graph.step.started"),
+			loggateway.Str("run_id", stepCtx.TeamRunID),
+			loggateway.Str("node_id", nodeID),
+			loggateway.Err(err))
+		return
+	}
+	run.SpiritSessionID = stepCtx.SpiritSessionID
+	agentName := strutil.FirstNonEmpty(ag.DisplayName, ag.AgentKey)
+	// Publish the "created" session event so the frontend renders the AgentCard
+	// before member thinking/action/reply activities arrive.
+	r.publishTeamStepActivity(ctx, run, stepCtx.TeamID, ag.AgentKey, agentName,
+		biz.ActivityEventCreated, biz.ActivityStatusRunning, "executing", nil)
+}
+
 // FinalizeGraphTeamRun closes a deferred team run and publishes team_summary.
 func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStepContext, failed bool, errMsg string) {
 	if r == nil || stepCtx == nil || r.runReader == nil {
@@ -98,6 +140,9 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 	if strings.TrimSpace(run.OutputPreview) != "" {
 		updatedRun.OutputPreview = run.OutputPreview
 	}
+	// Preserve transient SpiritSessionID (team_runs has no such column;
+	// publishTeamRunSummary → TeamSummaryActivityEvent relies on it).
+	updatedRun.SpiritSessionID = run.SpiritSessionID
 	if err := r.runWriter.UpdateTeamRun(ctx, updatedRun); err != nil {
 		r.lg.Warn("UpdateTeamRun failed in FinalizeGraphTeamRun", loggateway.StepID("team.graph.finisher_update_fail"), loggateway.Str("team_run_id", updatedRun.ID), loggateway.Err(err))
 	}
@@ -107,7 +152,7 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 		ev := biz.ActivityEvent{
 			Event: biz.ActivityEventCompleted,
 			Activity: biz.Activity{
-				ID:              uuid.NewString(),
+				ID:              agent.TeamStageActivityID(stepCtx.TeamID),
 				Kind:            biz.ActivityKindTeamStage,
 				Status:          biz.ActivityStatusCompleted,
 				SessionID:       stepCtx.SessionID,
@@ -120,7 +165,61 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 			Domain: biz.ActivityDomainChat,
 		}
 		r.td.Pipeline.ActivityBus.Publish(ctx, ev)
+		// Finalize session activities for members that were started (session
+		// "created" event published at team start) but never executed in the
+		// graph. Without this, their AgentCards stay in "running" forever even
+		// after the team is marked completed. Only members whose step was
+		// persisted (via PersistGraphRunStep) get a "completed" event during
+		// normal flow; this loop covers the rest.
+		r.finalizePendingSessionActivities(ctx, run, stepCtx.TeamID, steps)
 		r.publishTeamRunSummary(ctx, run)
+	}
+}
+
+// finalizePendingSessionActivities publishes "completed" session events for
+// team members that were started but never had their step persisted.
+//
+// At team start (runner_team_trpc.go), session "created" events are published
+// for ALL enabled members, putting their AgentCards in "running" status. During
+// graph execution, only members whose graph node reaches a terminal state get
+// a "completed" event (via persistStep → publishTeamStepActivity). Members
+// whose nodes are never reached (e.g., synthesizer finished early, or member
+// has no graph node) stay "running" indefinitely.
+//
+// This function enumerates all enabled members from the team definition
+// snapshot, compares against persisted steps, and publishes a "completed"
+// event for the gap. Uses AgentKey for dedup since multiple member entries
+// can share the same agent (e.g., programmer as both synthesizer and worker).
+func (r *Runner) finalizePendingSessionActivities(ctx context.Context, run biz.TeamRun, teamID string, persistedSteps []biz.TeamRunStep) {
+	if r == nil || r.td.Pipeline.ActivityBus == nil {
+		return
+	}
+	persistedAgentKeys := make(map[string]struct{}, len(persistedSteps))
+	for _, s := range persistedSteps {
+		if s.AgentKey == "" {
+			continue
+		}
+		persistedAgentKeys[s.AgentKey] = struct{}{}
+	}
+	def, derr := ParseDefinition(run.DefinitionSnapshotJSON)
+	if derr != nil {
+		r.lg.Warn("finalizePendingSessionActivities: parse definition failed",
+			loggateway.StepID("team.graph.finalize_sessions"),
+			loggateway.Str("team_run_id", run.ID),
+			loggateway.Err(derr))
+		return
+	}
+	for _, m := range EnabledMembers(def) {
+		ag, lookupErr := r.lookupAgent(ctx, m.AgentID)
+		if lookupErr != nil {
+			continue
+		}
+		if _, ok := persistedAgentKeys[ag.AgentKey]; ok {
+			continue
+		}
+		agentName := strutil.FirstNonEmpty(ag.DisplayName, ag.AgentKey, m.Name)
+		r.publishTeamStepActivity(ctx, run, teamID, ag.AgentKey, agentName,
+			biz.ActivityEventCompleted, biz.ActivityStatusCompleted, "completed", nil)
 	}
 }
 
@@ -192,6 +291,13 @@ func (r *Runner) ensureGraphRunStepsFallback(
 	steps, err := r.runReader.ListTeamRunSteps(ctx, run.ID)
 	if err != nil || len(steps) > 0 {
 		return
+	}
+	// Publish the "created" session event for the fallback case since no
+	// node_start graph event was published (PublishTeamStepStarted was not called).
+	if r.td.Pipeline.ActivityBus != nil {
+		agentName := strutil.FirstNonEmpty(anchorAg.DisplayName, anchorAg.AgentKey)
+		r.publishTeamStepActivity(ctx, run, teamID, anchorAg.AgentKey, agentName,
+			biz.ActivityEventCreated, biz.ActivityStatusRunning, "executing", nil)
 	}
 	stepMsg := assistantMsg
 	stepMsg.TokenIn, stepMsg.TokenOut = promptTok, completionTok

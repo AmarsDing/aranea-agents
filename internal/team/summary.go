@@ -1,12 +1,10 @@
 package team
 
 import (
-	"strings"
 	"time"
 
+	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
-
-	"github.com/google/uuid"
 )
 
 // BuildTeamRunSummary aggregates run-level and per-member stats for Monitor / automation.
@@ -31,6 +29,7 @@ func SummaryMapFromData(data biz.TeamRunSummaryData) map[string]any {
 			"cost_micro_usd":  m.CostMicroUSD,
 			"tool_call_count": m.ToolCallCount,
 			"output_preview":  m.OutputPreview,
+			"session_id":      m.SessionID,
 		})
 	}
 	return map[string]any{
@@ -56,16 +55,19 @@ func SummaryMapFromData(data biz.TeamRunSummaryData) map[string]any {
 // during the dual-bus unification (Teams domain → ActivityEventBus).
 func TeamSummaryActivityEvent(run biz.TeamRun, steps []biz.TeamRunStep) biz.ActivityEvent {
 	summary := BuildTeamRunSummary(run, steps)
+	// SessionID = spirit session ID (not run.SessionID which is the team
+	// session ID) so the frontend WS filter and listActivities API return
+	// this team_stage summary event. Matches publishSpiritTeamAssembled.
 	return biz.ActivityEvent{
 		Event: biz.ActivityEventCompleted,
 		Activity: biz.Activity{
-			ID:              uuid.NewString(),
+			ID:              agent.TeamStageActivityID(run.TeamID),
 			Kind:            biz.ActivityKindTeamStage,
 			Status:          biz.ActivityStatusCompleted,
-			SessionID:       strings.TrimSpace(run.SessionID),
+			SessionID:       run.SpiritSessionID,
 			SpiritSessionID: run.SpiritSessionID,
 			TeamID:          run.TeamID,
-			Timestamp:       time.Now().UTC(),
+			Timestamp:        time.Now().UTC(),
 			Stage:           "completed",
 			Meta: map[string]any{
 				"run_id":       run.ID,

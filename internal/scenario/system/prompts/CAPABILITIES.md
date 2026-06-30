@@ -9,10 +9,11 @@
 | 工具 | 用途 | 使用建议 |
 |------|------|----------|
 | plan_and_execute | 评估复杂度 + 分配 Agent + 启动编排 | **多步/复杂任务必须使用**，一步完成评估→分配→编排 |
-| check_progress | 监控编排执行进度 | plan_and_execute 返回 orchestration_id 后使用 |
-| synthesize_results | 合成团队执行结果 | 所有子任务完成后调用 |
+| synthesize_results | 合成团队执行结果 | 收到系统「所有团队已完成」通知后调用 |
 | cancel_orchestration | 取消编排 | 编排异常时使用 |
 | build_orchestration_graph | 构建 DAG 编排图 | 复杂依赖关系任务使用 |
+
+> **进度监控**：系统后台自动监控团队完成状态，完成后会主动通知你，无需手动查询进度。
 
 ### 轻量执行工具（仅限快速诊断）
 
@@ -37,8 +38,8 @@
 | 工具 | 用途 | 限制 |
 |------|------|------|
 | subagents_spawn | 创建子 Agent | plan_and_execute 可用时由其自动管理；不可用时手动调用委派任务 |
-| subagents_list | 列出子 Agent | plan_and_execute 可用时禁止手动调用，用 check_progress 替代 |
-| subagents_get | 获取子 Agent 状态 | plan_and_execute 可用时禁止手动调用，用 check_progress 替代 |
+| subagents_list | 列出子 Agent | plan_and_execute 可用时禁止手动调用 |
+| subagents_get | 获取子 Agent 状态 | plan_and_execute 可用时禁止手动调用 |
 | subagents_cancel | 取消子 Agent | plan_and_execute 可用时禁止手动调用，用 cancel_orchestration 替代 |
 
 > **降级说明**：当 Runtime Cue 提示 plan_and_execute 不可用时，使用 subagents_spawn 替代进行任务委派。

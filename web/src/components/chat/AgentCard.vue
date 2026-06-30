@@ -2,6 +2,12 @@
   <div class="agent-card" :class="`agent-card--${activity.status}`">
     <div class="agent-card__row">
       <!-- Header (80%) — avatar + name + status badge + created time -->
+      <!-- B.4.2: header click toggles inline expansion (tree display).
+           The chevron_right "enter session" icon was removed because it
+           triggered setCurrentSession (page jump), violating the team mode
+           tree-display requirement. Inline expansion via header click is the
+           sole interaction — users wanting the full session view can use the
+           left sidebar session list. -->
       <div class="agent-card__header" @click="toggleExpand">
         <span class="agent-card__avatar">{{ agentInitial }}</span>
         <span class="agent-card__name" :title="displayAgentName">{{ displayAgentName }}</span>
@@ -11,15 +17,20 @@
         </span>
         <span v-if="createdTimeText" class="agent-card__time">{{ createdTimeText }}</span>
         <q-icon
-          v-if="canEnter"
+          v-if="expanded"
+          name="expand_more"
+          size="14px"
+          class="agent-card__expand-icon"
+        />
+        <q-icon
+          v-else
           name="chevron_right"
           size="14px"
-          class="agent-card__enter-chevron"
-          @click.stop="onEnter"
+          class="agent-card__expand-icon"
         />
       </div>
 
-      <!-- Footer (20%) — pause/resume + cancel/retry buttons (B.4.2/B.5.3) -->
+      <!-- Footer (20%) — pause/resume + cancel/retry buttons + inject dialog (B.4.2/B.5.3) -->
       <div class="agent-card__footer">
         <div class="agent-card__actions">
           <button
@@ -56,25 +67,25 @@
           </button>
           <!-- completed/cancelled: hide buttons -->
         </div>
-      </div>
-    </div>
 
-    <!-- Inject dialog (B.5.3) — visible only when running or paused -->
-    <div v-if="showInjectDialog" class="agent-card__inject">
-      <input
-        v-model="injectMessage"
-        type="text"
-        class="agent-card__inject-input"
-        :placeholder="t('chat.sessionStage.injectPlaceholder')"
-        @keyup.enter="onInject"
-      />
-      <button
-        class="agent-card__inject-send"
-        :disabled="!injectMessage.trim()"
-        @click.stop="onInject"
-      >
-        <q-icon name="send" size="12px" />
-      </button>
+        <!-- Inject dialog (B.5.3) — inside footer, visible only when running or paused -->
+        <div v-if="showInjectDialog" class="agent-card__inject">
+          <input
+            v-model="injectMessage"
+            type="text"
+            class="agent-card__inject-input"
+            :placeholder="t('chat.sessionStage.injectPlaceholder')"
+            @keyup.enter="onInject"
+          />
+          <button
+            class="agent-card__inject-send"
+            :disabled="!injectMessage.trim()"
+            @click.stop="onInject"
+          >
+            <q-icon name="send" size="12px" />
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Expanded detail (children rendered by recursive ActivityStream) -->
@@ -100,7 +111,6 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  'enter-session': [sessionId: string];
   'cancel-agent': [sessionId: string];
   'retry-agent': [sessionId: string];
   // B.5.3: pause/resume/inject events for sub-agent session lifecycle control.
@@ -138,8 +148,6 @@ function onInject() {
 }
 
 // === Derived display values (all from props, no store dependency — red line #1) ===
-const canEnter = computed(() => Boolean(props.activity.childSessionId));
-
 const isSystemAgent = computed(() => isSystemAgentKey(props.activity.agentKey));
 
 // B.5.3: pause button visible when running and parent run allows cancel.
@@ -178,9 +186,15 @@ const showInjectDialog = computed(
     Boolean(props.activity.childSessionId),
 );
 
+// System agent keys are infrastructure agents (orchestrator/memory/skills/admin)
+// that don't have their own worker sessions and shouldn't show pause/cancel/inject.
+// Note: department-lead agents (`__dept_lead_*__`) are REAL team members seeded
+// by the system but acting as regular agents — they MUST keep their buttons.
+const SYSTEM_AGENT_KEYS = new Set(['__spirit__', '__memory__', '__skills__', '__system_admin__']);
+
 function isSystemAgentKey(key: string | undefined): boolean {
   if (!key) return false;
-  return key === '__spirit__' || key.startsWith('__');
+  return SYSTEM_AGENT_KEYS.has(key);
 }
 
 function readableAgentKey(key: string | undefined): string {
@@ -256,11 +270,6 @@ const statusColor = computed(() => {
       return 'grey';
   }
 });
-
-function onEnter() {
-  if (!canEnter.value) return;
-  emit('enter-session', props.activity.childSessionId as string);
-}
 </script>
 
 <style lang="sass" scoped>
@@ -350,14 +359,10 @@ function onEnter() {
     font-variant-numeric: tabular-nums
     flex-shrink: 0
 
-  &__enter-chevron
+  &__expand-icon
     color: var(--color-text-tertiary)
     flex-shrink: 0
     transition: transform 0.15s ease
-    cursor: pointer
-
-    &:hover
-      color: var(--color-accent)
 
   &__pulse
     width: 6px
@@ -372,15 +377,17 @@ function onEnter() {
     min-width: 0
     display: flex
     flex-direction: column
-    gap: 4px
+    gap: 6px
     padding-left: 8px
     border-left: 1px solid var(--glass-border)
+    justify-content: flex-start
 
   &__actions
     display: flex
     flex-direction: column
     gap: 4px
     align-items: stretch
+    width: 100%
 
   &__action
     border: none
@@ -421,8 +428,8 @@ function onEnter() {
     display: flex
     gap: 6px
     align-items: center
-    margin-top: 6px
-    padding: 4px 0
+    width: 100%
+    padding-top: 4px
     border-top: 1px dashed var(--glass-border)
 
   &__inject-input

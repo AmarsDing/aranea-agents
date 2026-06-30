@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
@@ -74,6 +75,10 @@ func newApp(
 			// SpiritTeamUsecase → TimeoutHandler → TeamStarter → SpiritTeamController → SpiritTeamUsecase
 			if spiritUC != nil && teamStarter != nil {
 				spiritUC.SetTimeoutHandler(teamStarter)
+				// Inject completion notifier for the background polling mechanism.
+				// When the poller detects all teams done, it notifies the service
+				// layer to publish the spirit_teams_all_completed event.
+				spiritUC.SetAllTeamsCompletedNotifier(teamStarter)
 			}
 
 			// Start readiness-dependent initialization in background.
@@ -88,15 +93,15 @@ func newApp(
 							return
 						}
 						lg.Info("post-readiness: data ready, starting dependent services", loggateway.StepID("startup.gate"))
-						startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, lg)
+						startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, lg)
 					})
 				} else {
 					// No readiness gate (unlikely), start immediately.
-					startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, lg)
+					startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, lg)
 				}
 			} else {
 				// No data layer (unlikely), start immediately.
-				startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, lg)
+				startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, lg)
 			}
 			return nil
 		}),
@@ -116,6 +121,10 @@ func newApp(
 				if err := chatSvc.Close(); err != nil {
 					lg.Warn("chat service close failed", loggateway.StepID("shutdown.chat"), loggateway.Err(err))
 				}
+			}
+			// Stop the background team completion poller and cancel all timeout timers.
+			if spiritUC != nil {
+				spiritUC.Stop()
 			}
 			// Close process-level resources (build cache, etc.) in LIFO order
 			// after the chat service has stopped accepting requests (A3).
@@ -148,6 +157,7 @@ func startReadinessDependentServices(
 	eventInfra *event.Infra,
 	pipeline logpipeline.Pipeline,
 	loggingSinks []*conf.LoggingSink,
+	spiritUC *biz.SpiritTeamUsecase,
 	lg loggateway.Logger,
 ) {
 	if err := guard.OnStartup(ctx); err != nil {
@@ -185,4 +195,12 @@ func startReadinessDependentServices(
 		}
 	}
 	lg.Info("event infra bound for monitor flow logs", loggateway.StepID("startup.event_infra"))
+
+	// Start background team completion polling (30s interval).
+	// This supplements the event-driven path (HandleTeamTurnResult) with a
+	// moderate-frequency backup to catch cases where completion events are
+	// missed. Purely backend logic — no frontend-visible activity events.
+	if spiritUC != nil {
+		spiritUC.StartBackgroundPolling(ctx, 30*time.Second)
+	}
 }

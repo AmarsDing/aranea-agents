@@ -240,6 +240,7 @@ type TeamRunMemberSummaryData struct {
 	CostMicroUSD  int64
 	ToolCallCount int
 	OutputPreview string
+	SessionID     string // 成员所在的子会话 ID，用于前端 lazy-load 成员执行过程
 }
 
 type TeamGraphSession struct {

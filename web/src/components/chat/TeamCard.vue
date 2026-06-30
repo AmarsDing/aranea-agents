@@ -48,7 +48,7 @@
         </div>
       </div>
 
-      <!-- Footer (20%) — pause/resume + cancel/retry buttons (B.4.1/B.5.3) -->
+      <!-- Footer (20%) — pause/resume + cancel/retry buttons + inject dialog (B.4.1/B.5.3) -->
       <div class="team-card__footer">
         <div class="team-card__actions">
           <button
@@ -85,25 +85,25 @@
           </button>
           <!-- completed/cancelled: hide buttons -->
         </div>
-      </div>
-    </div>
 
-    <!-- Inject dialog (B.5.3) — visible only when running or paused -->
-    <div v-if="showInjectDialog" class="team-card__inject">
-      <input
-        v-model="injectMessage"
-        type="text"
-        class="team-card__inject-input"
-        :placeholder="t('chat.teamStage.injectPlaceholder')"
-        @keyup.enter="onInject"
-      />
-      <button
-        class="team-card__inject-send"
-        :disabled="!injectMessage.trim()"
-        @click.stop="onInject"
-      >
-        <q-icon name="send" size="12px" />
-      </button>
+        <!-- Inject dialog (B.5.3) — inside footer, visible only when running or paused -->
+        <div v-if="showInjectDialog" class="team-card__inject">
+          <input
+            v-model="injectMessage"
+            type="text"
+            class="team-card__inject-input"
+            :placeholder="t('chat.teamStage.injectPlaceholder')"
+            @keyup.enter="onInject"
+          />
+          <button
+            class="team-card__inject-send"
+            :disabled="!injectMessage.trim()"
+            @click.stop="onInject"
+          >
+            <q-icon name="send" size="12px" />
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Expanded detail (children rendered by recursive ActivityStream via slot) -->
@@ -226,11 +226,15 @@ function memberInitial(member: TeamMemberStatus): string {
 }
 
 function onMemberClick(member: TeamMemberStatus) {
-  emit('expand-member', {
-    agentKey: member.agentKey,
-    agentName: memberDisplayName(member),
-    teamId: props.activity.teamId,
-  });
+  // Issue 1 fix: emit 'expand' to lazy-load member session activities,
+  // then expand the team card to show them inline. Previously emitted
+  // 'expand-member' which triggered ChatPage.onExpandMember →
+  // spiritStore.selectMember → page navigation.
+  const memberSessionId = member.session_id;
+  if (memberSessionId) {
+    emit('expand', [memberSessionId]);
+  }
+  expanded.value = true;
 }
 
 const displayTeamName = computed(() => {
@@ -324,11 +328,9 @@ const statusColor = computed(() => {
   border: 1px solid var(--glass-border)
   padding: 8px 10px
   transition: border-color 0.15s ease
-  // 用户指令：团队面板高度 100px，默认折叠。折叠态限制 100px 高度并隐藏溢出，
-  // 展开态（expanded）解除高度限制以显示完整成员列表与子活动。
-  &:not(.team-card--expanded)
-    max-height: 100px
-    overflow: hidden
+  // B.4.1: 默认折叠时仍要完整展示头部/中部/尾部（含操作按钮与注入对话框），
+  // 因此不限制高度；展开态显示成员子活动。
+  overflow: visible
 
   &--running
     border-color: color-mix(in srgb, var(--color-accent) 40%, var(--glass-border))
@@ -512,13 +514,14 @@ const statusColor = computed(() => {
     gap: 6px
     padding-left: 8px
     border-left: 1px solid var(--glass-border)
-    justify-content: center
+    justify-content: flex-start
 
   &__actions
     display: flex
     flex-direction: column
     gap: 4px
     align-items: stretch
+    width: 100%
 
   &__action
     border: none
@@ -559,8 +562,8 @@ const statusColor = computed(() => {
     display: flex
     gap: 6px
     align-items: center
-    margin-top: 6px
-    padding: 4px 0
+    width: 100%
+    padding-top: 4px
     border-top: 1px dashed var(--glass-border)
 
   &__inject-input

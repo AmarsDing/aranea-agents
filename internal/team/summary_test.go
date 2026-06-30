@@ -41,7 +41,10 @@ func TestSummaryMapFromDataMatchesBuildTeamRunSummary(t *testing.T) {
 }
 
 func TestTeamSummaryActivityEvent(t *testing.T) {
-	run := biz.TeamRun{ID: "r1", TeamID: "t1", SessionID: "s1", Status: biz.TeamRunStatusSuccess}
+	// SessionID must be the spirit session ID (not run.SessionID which is the
+	// team session ID) so the frontend WS filter and listActivities API return
+	// this team_stage summary event. See publishSpiritTeamAssembled canonical setup.
+	run := biz.TeamRun{ID: "r1", TeamID: "t1", SessionID: "s1", SpiritSessionID: "spirit-1", Status: biz.TeamRunStatusSuccess}
 	ev := TeamSummaryActivityEvent(run, nil)
 	if ev.Event != biz.ActivityEventCompleted {
 		t.Fatalf("event=%s want=%s", ev.Event, biz.ActivityEventCompleted)
@@ -58,8 +61,11 @@ func TestTeamSummaryActivityEvent(t *testing.T) {
 	if ev.Domain != biz.ActivityDomainChat {
 		t.Fatalf("domain=%s want=%s", ev.Domain, biz.ActivityDomainChat)
 	}
-	if ev.Activity.SessionID != "s1" {
-		t.Fatalf("session_id=%s want=s1", ev.Activity.SessionID)
+	if ev.Activity.SessionID != "spirit-1" {
+		t.Fatalf("session_id=%s want=spirit-1", ev.Activity.SessionID)
+	}
+	if ev.Activity.SpiritSessionID != "spirit-1" {
+		t.Fatalf("spirit_session_id=%s want=spirit-1", ev.Activity.SpiritSessionID)
 	}
 	if ev.Activity.TeamID != "t1" {
 		t.Fatalf("team_id=%s want=t1", ev.Activity.TeamID)

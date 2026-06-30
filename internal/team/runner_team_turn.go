@@ -217,6 +217,9 @@ func (r *Runner) finalizeTeamRun(
 		updatedRun.TokenOut = completionTok
 		updatedRun.DurationMS = int(time.Since(t0).Milliseconds())
 		updatedRun.OutputPreview = preview(assistantMsg.ContentMarkdown, 512)
+		// Preserve transient SpiritSessionID (team_runs has no such column;
+		// publishTeamRunSummary → TeamSummaryActivityEvent relies on it).
+		updatedRun.SpiritSessionID = run.SpiritSessionID
 		if err := r.runWriter.UpdateTeamRun(ctx, updatedRun); err != nil {
 			r.lg.Warn("UpdateTeamRun failed in finalizeTeamRun",
 				loggateway.StepID("team.run.finish_update_fail"),
@@ -232,14 +235,18 @@ func (r *Runner) finalizeTeamRun(
 	}
 	if r.td.Pipeline.ActivityBus != nil {
 		cp := run
+		// SessionID = spirit session ID (not run.SessionID which is the team
+		// session ID) so the frontend WS filter and listActivities API return
+		// this team_stage "completed" event. Matches publishSpiritTeamAssembled.
+		spiritSID := deriveSpiritSessionID(sess)
 		ev := biz.ActivityEvent{
 			Event: biz.ActivityEventCompleted,
 			Activity: biz.Activity{
-				ID:              uuid.NewString(),
+				ID:              agent.TeamStageActivityID(teamRow.ID),
 				Kind:            biz.ActivityKindTeamStage,
 				Status:          biz.ActivityStatusCompleted,
-				SessionID:       run.SessionID,
-				SpiritSessionID: deriveSpiritSessionID(sess),
+				SessionID:       spiritSID,
+				SpiritSessionID: spiritSID,
 				TeamID:          teamRow.ID,
 				Timestamp:       time.Now().UTC(),
 				Stage:           "completed",

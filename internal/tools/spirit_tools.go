@@ -26,7 +26,7 @@ import (
 // PlanAndExecuteInput is the input for the plan_and_execute tool.
 type PlanAndExecuteInput struct {
 	TaskPrompt string `json:"task_prompt" jsonschema:"description=The task to plan and execute"`
-	Mode       string `json:"mode,omitempty" jsonschema:"description=Execution mode: auto (system decides), direct (answer directly, no team), single (one agent), parallel (agents run concurrently), dag (dependency graph with verification gates), coordinator (lead agent delegates). Default: auto"`
+	Mode       string `json:"mode,omitempty" jsonschema:"description=Execution mode: direct (Spirit answers directly, no delegation), parallel (N independent single-agent subtasks run concurrently, 1 agent per subtask, NO multi-member teams), dag (N teams with dependency graph, each team has >=2 members collaborating). Must be explicitly set; auto/single/coordinator are deprecated. Default: direct"`
 }
 
 // SubTaskSummary is a summary of a subtask in the plan.

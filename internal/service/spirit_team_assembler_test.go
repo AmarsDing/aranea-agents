@@ -88,6 +88,10 @@ func TestPublishSpiritTeamAssembled_UsesDisplayName(t *testing.T) {
 		"研究话题",
 		"manual",
 		[]string{"deep-researcher", "code-writer", "unknown-agent"},
+		map[string]string{
+			"deep-researcher": "agent-sess-deep-researcher",
+			"code-writer":     "agent-sess-code-writer",
+		},
 	)
 
 	events := bus.snapshot()

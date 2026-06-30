@@ -21,6 +21,7 @@ func BuildTeamRunSummaryData(run TeamRun, steps []TeamRunStep) TeamRunSummaryDat
 			CostMicroUSD:  s.CostMicroUSD,
 			ToolCallCount: s.ToolCallCount,
 			OutputPreview: previewRunSummaryText(s.OutputPreview, 256),
+			SessionID:     run.SessionID,
 		})
 	}
 	return TeamRunSummaryData{

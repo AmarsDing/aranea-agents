@@ -516,6 +516,141 @@ GET /v1/ws?session_id=...  →  WSServer.handleWS()
 > { "id": "...", "type": "log|flow_log|mcp.*|alert.notify|monitor.*", "timestamp": "...", "level": "info", "message": "...", "session_id": "...", "source": "...", "metadata": {...} }
 > ```
 
+### 5.4 WebSocket 通信协议设计（2026-06-30 新增）
+
+> **设计目标**：将发送消息、取消运行、订阅事件全部收敛到一条 WebSocket 连接上，替代 SSE + REST 混合架构。所有消息（请求/响应/事件）通过统一的 `{ type, seq, data, timestamp }` 信封传输。
+
+#### 5.4.1 通用信封
+
+```typescript
+interface WsMessage {
+  type: string;              // 消息类型
+  seq: number;               // 消息序号（用于重连续传）
+  data: any;                 // 载荷
+  timestamp: number;         // 服务端时间戳
+}
+```
+
+#### 5.4.2 Client → Server 消息
+
+| type | 说明 | data 字段 |
+|------|------|----------|
+| `send` | 发送用户消息，触发对话 | `{ sessionId, message, parentActivityId?, mode, config? }` |
+| `cancel` | 取消当前运行 | `{ runId }` |
+| `ping` | 心跳探测 | `{}` |
+| `subscribe` | 重连后订阅续传 | `{ runId, lastSeq }` |
+
+**send 消息详细结构**：
+
+```typescript
+interface SendMessage {
+  type: 'send';
+  seq: number;
+  data: {
+    sessionId: string;
+    message: string;
+    parentActivityId?: string;
+    mode: 'simple' | 'sub_agent' | 'team';
+    config?: {
+      subAgents?: { count: number; agentKeys: string[] };
+      teams?: { count: number; teamKeys: string[]; graphDefinitionId?: string };
+    };
+  };
+}
+```
+
+#### 5.4.3 Server → Client 消息
+
+| type | 说明 | data 字段 |
+|------|------|----------|
+| `ack` | 确认收到 send，返回 runId | `{ runId, rootActivityId }` |
+| `created` | 创建 Activity | `{ runId, activity, afterId? }` |
+| `delta` | 流式文本增量 | `{ runId, activityId, delta, kind }` |
+| `updated` | 更新 Activity 非流式字段 | `{ runId, activityId, patch }` |
+| `status` | 状态变更 | `{ runId, activityId, status }` |
+| `completed` | Activity 完成 | `{ runId, activityId, kind, summary? }` |
+| `run_finished` | 运行结束 | `{ runId, status, error? }` |
+| `error` | 错误 | `{ runId?, code, message, retryable }` |
+| `pong` | 心跳响应 | `{}` |
+
+#### 5.4.4 完整交互时序
+
+```
+Client                              Server
+  │                                    │
+  │── connect ────────────────────────│  ws 握手
+  │                                    │
+  │── { type: "send", ... } ──────────│  发送消息
+  │<── { type: "ack", runId, rootId }─│  确认收到
+  │                                    │
+  │<── { type: "created", thinking }──│  创建 thinking activity
+  │<── { type: "delta", "我需要..." }──│  流式 thinking 文本
+  │<── { type: "status", completed }──│  thinking 完成
+  │                                    │
+  │<── { type: "created", action }────│  创建 action activity
+  │<── { type: "updated", ... }───────│  工具执行结果
+  │<── { type: "status", completed }──│  action 完成
+  │                                    │
+  │<── { type: "created", reply }─────│  创建 reply activity
+  │<── { type: "delta", "根据..." }───│  流式 reply 文本
+  │<── { type: "status", completed }──│  reply 完成
+  │                                    │
+  │<── ... 重复 thinking→action→reply  │
+  │                                    │
+  │<── { type: "created", conclusion }│  创建 conclusion
+  │<── { type: "delta", "最终..." }───│  流式 conclusion 文本
+  │<── { type: "completed", ... }─────│  conclusion 完成
+  │<── { type: "run_finished" }───────│  运行结束
+  │                                    │
+  │── { type: "ping" } ───────────────│  心跳
+  │<── { type: "pong" } ──────────────│
+```
+
+#### 5.4.5 取消流程
+
+```
+  │── { type: "send", ... } ──────────│
+  │<── { type: "ack", runId } ────────│
+  │<── { type: "created", ... } ──────│
+  │<── { type: "delta", ... } ────────│
+  │                                    │
+  │── { type: "cancel", { runId } } ──│  用户取消
+  │<── { type: "status", cancelled }──│  当前 activity 标记取消
+  │<── { type: "run_finished", cancelled }│
+```
+
+#### 5.4.6 断线重连
+
+```
+  │── { type: "send", ... } ──────────│
+  │<── { type: "ack", runId } ────────│
+  │<── ... seq=1-50 的 events ────────│
+  │                                    │
+  │──── X 断开连接 X ─────────────────│
+  │                                    │
+  │── connect ────────────────────────│  重新连接
+  │── { type: "subscribe", runId, lastSeq: 50 }│
+  │<── { type: "created", seq=51 } ───│  从 seq 51 开始续传
+  │<── { type: "delta",   seq=52 } ───│
+  │<── ... ───────────────────────────│
+```
+
+#### 5.4.7 SSE vs WebSocket 对比
+
+| 维度 | SSE | WebSocket |
+|------|-----|-----------|
+| 方向 | 单向（server → client） | 双向 |
+| 协议 | HTTP/1.1 或 HTTP/2 | ws:// 独立协议 |
+| 发送消息 | 需要额外 REST API | 同一连接 |
+| 取消运行 | 需要额外 REST API | 同一连接 |
+| 断线重连 | 浏览器原生 `EventSource` | 需手动实现 |
+| 续传 | 有 `Last-Event-ID` 机制 | 需自定义 seq 方案 |
+| 二进制 | 不支持 | 支持 |
+| 代理/防火墙 | HTTP 友好 | 部分代理需配置 |
+| 实现复杂度 | 低 | 中 |
+
+> **当前实现**：当前使用 `/v1/ws` 下行 `activity_event` + `monitor_event` 双类型协议，上行 `user_message` / `cancel` / `enqueue_message` 控制消息。本节描述的 `{ type, seq, data }` 统一信封协议为未来演进方向，当前 `activity_event` 协议与 `created`/`delta`/`updated`/`status`/`completed` 语义等价，可通过逐步迁移实现平滑过渡。
+
 ---
 
 ## 六、Biz 层
@@ -2914,53 +3049,101 @@ Spirit (agent, depth=0)
 
 #### B.2.1 三种对话模式的渲染规则
 
-UI 层级在不同对话场景下需呈现不同结构：
+> **需求**：详见 [1-chat.md §1.7 三种对话模式](./1-chat.md#17-三种对话模式)。本节为设计层面的组件映射与渲染规则。
 
-**模式 A — 简单对话**（用户问、Spirit 直接答）：
+UI 层级在不同对话场景下需呈现不同结构。三种模式共享同一套 Activity 数据模型，通过 `parentActivityId` 构建树，前端 `ActivityStream.vue` 递归渲染。
 
-```
-Turn N
-└── UserMessageBubble
-└── ThinkingBlock（可折叠，可能为空，空则不展示）
-└── ActionBlock（可折叠，调用工具，可空）
-└── ReplyBlock（最终回复）
-```
-
-- 不显示 plan、graph_stage、team-card、agent-card
-- 适用于：闲聊、简单问答、单步工具调用（如读一个文件后直接回答）
-
-**模式 B — 子 agent 委派**（Spirit 调用 subagent_spawn）：
+**模式 A — 简单对话（Simple）**（用户问、Spirit 直接答）：
 
 ```
 Turn N
-└── UserMessageBubble
-└── ThinkingBlock
-└── PlanBlock（任务计划，含子 agent 任务项）
-└── agent-card × N（多个子 agent 并行）
-    ├── ThinkingBlock
-    ├── ActionBlock
-    └── ReplyBlock（成员回复）
-└── ReplyBlock（Spirit 汇总回复）
+├── UserMessageBubble    ← Kind=task
+├── ThinkingBlock        ← Kind=thinking（可折叠，空则不展示）
+├── ActionBlock          ← Kind=action（可折叠，调用工具，可空）
+├── ReplyBlock           ← Kind=reply（中间回复）
+├── ThinkingBlock        ← 继续推理
+├── ActionBlock          ← 进一步工具调用
+├── ReplyBlock           ← 中间回复
+└── ReplyBlock           ← Kind=reply，Meta.is_final=true（最终结论）
 ```
 
-- 不显示 team-card、graph_stage
-- 适用于：Spirit 拆解任务后直接委派给若干子 agent（无 Team 编排）
+- 不显示 plan、graph_stage、team_stage、session
+- 树深度：1 层（所有 Activity 平铺在 root 下）
+- thinking → action → reply 交替循环
 
-**模式 C — Team 编排**（Spirit 组建 Team 协作）：
+**模式 B — 子 Agent 委派（Sub-Agent）**（Spirit 调用 subagent_spawn）：
 
 ```
 Turn N
-└── UserMessageBubble
-└── ThinkingBlock
-└── PlanBlock（任务计划，含 Team 任务项）
-└── GraphStageBlock（DAG 依赖图，team=1 时可省略）
-└── team-card × N
-    └── 成员列表（每个成员的 thinking/action/reply）
-└── ReplyBlock（Spirit 最终汇总）
+├── UserMessageBubble    ← Kind=task
+├── ThinkingBlock        ← Spirit 分析任务
+├── ActionBlock          ← 调用分析工具
+├── ReplyBlock           ← "我将拆解为以下步骤..."
+├── PlanBlock            ← Kind=plan（任务计划面板，容器）
+│   ├── task             ← "步骤1：收集数据"    [assignedTo: agent-1]
+│   ├── task             ← "步骤2：分析数据"    [assignedTo: agent-2]
+│   └── task             ← "步骤3：生成报告"    [assignedTo: agent-3]
+├── AgentCard            ← Kind=session（子 Agent 1，容器）
+│   ├── ThinkingBlock
+│   ├── ActionBlock
+│   └── ReplyBlock
+├── AgentCard            ← Kind=session（子 Agent 2，容器）
+│   ├── ThinkingBlock
+│   ├── ActionBlock
+│   └── ReplyBlock
+├── AgentCard            ← Kind=session（子 Agent 3，容器）
+│   ├── ThinkingBlock
+│   └── ReplyBlock
+├── ThinkingBlock        ← Spirit 收集结果
+├── ActionBlock          ← 调用 merge 工具
+├── ReplyBlock           ← 整合结果
+└── ReplyBlock           ← Kind=reply，Meta.is_final=true（最终结论）
+```
+
+- 不显示 graph_stage、team_stage
+- 树深度：2 层（root → session）
+- PlanBlock 之下 fork 出 n 个 AgentCard（session）
+
+**模式 C — Team 编排（Team）**（Spirit 组建 Team 协作）：
+
+```
+Turn N
+├── UserMessageBubble    ← Kind=task
+├── ThinkingBlock        ← Spirit 分析复杂任务
+├── ActionBlock          ← 调用 orchestrate 工具
+├── ReplyBlock           ← "我将编排 2 个团队协作..."
+├── PlanBlock            ← Kind=plan（任务计划面板，容器）
+│   ├── task             ← "阶段1：数据预处理"  [assignedTo: team-a]
+│   └── task             ← "阶段2：模型训练"    [assignedTo: team-b]
+├── GraphStageBlock      ← Kind=graph_stage（阶段1：数据预处理，容器）
+│   └── TeamCard         ← Kind=team_stage（Team A，容器）
+│       ├── ThinkingBlock（Team A 思考）
+│       ├── ActionBlock（分发任务）
+│       ├── AgentCard    ← 成员 1（Kind=session）
+│       │   ├── ThinkingBlock
+│       │   ├── ActionBlock
+│       │   └── ReplyBlock
+│       ├── AgentCard    ← 成员 2（Kind=session）
+│       │   ├── ThinkingBlock
+│       │   ├── ActionBlock
+│       │   └── ReplyBlock
+│       └── ReplyBlock   ← Team A 产出
+├── GraphStageBlock      ← Kind=graph_stage（阶段2：模型训练，容器）
+│   └── TeamCard         ← Kind=team_stage（Team B，容器）
+│       ├── ThinkingBlock
+│       ├── AgentCard    ← 成员 3
+│       ├── AgentCard    ← 成员 4
+│       ├── AgentCard    ← 成员 5
+│       └── ReplyBlock   ← Team B 产出
+├── ThinkingBlock        ← Spirit 收集所有 Team 结果
+├── ActionBlock          ← 调用 synthesize 工具
+├── ReplyBlock           ← 汇总结果
+└── ReplyBlock           ← Kind=reply，Meta.is_final=true（最终结论）
 ```
 
 - 完整呈现 UI 层级
-- 适用于：复杂任务，需 Team DAG 协作
+- 树深度：3 层（root → graph_stage → team_stage → session）
+- 比模式 B 多一层 graph_stage → team_stage 容器
 
 **模式判定**：前端不预判模式，按收到的 Activity 事件动态渲染——收到什么 kind 就渲染什么 Block，未收到就不展示对应组件。即模式 A/B/C 由事件流自然形成，不需要前端分支判断。
 

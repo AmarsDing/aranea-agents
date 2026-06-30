@@ -291,6 +291,19 @@ func (p *ActivityProjector) resolveSpiritSessionID() string {
 	return p.meta.SessionID
 }
 
+// resolveParentActivityID returns the parent activity ID for child activities
+// (thinking/action/reply). When ProjectMeta.ParentActivityID is set (team
+// member sub-session scenario), it is used so that member activities nest
+// under the session activity in the spirit session's tree. Otherwise falls
+// back to the current turn's root task ID.
+// Caller must hold p.mu.
+func (p *ActivityProjector) resolveParentActivityID() string {
+	if p.meta.ParentActivityID != "" {
+		return p.meta.ParentActivityID
+	}
+	return p.state.rootActivityID
+}
+
 // Reset clears turn-scoped state. Called at the start of each turn.
 // When the projector is pre-created (resetDone=true), Reset() becomes a
 // no-op to preserve activities emitted by hooks/plugins before stream
@@ -575,7 +588,7 @@ func (p *ActivityProjector) OnReasoningDelta(ctx context.Context, author string,
 			Status:           biz.ActivityStatusRunning,
 			SessionID:        p.meta.SessionID,
 			TurnID:           p.meta.RequestID,
-			ParentActivityID: p.state.rootActivityID,
+			ParentActivityID: p.resolveParentActivityID(),
 			Timestamp:        now,
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
@@ -677,7 +690,7 @@ func (p *ActivityProjector) OnTextDelta(ctx context.Context, author string, chun
 			Status:           biz.ActivityStatusRunning,
 			SessionID:        p.meta.SessionID,
 			TurnID:           p.meta.RequestID,
-			ParentActivityID: p.state.rootActivityID,
+			ParentActivityID: p.resolveParentActivityID(),
 			Timestamp:        now,
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
@@ -714,7 +727,7 @@ func (p *ActivityProjector) OnMemberMessageDelta(ctx context.Context, author str
 			Status:           biz.ActivityStatusRunning,
 			SessionID:        p.meta.SessionID,
 			TurnID:           p.meta.RequestID,
-			ParentActivityID: p.state.rootActivityID,
+			ParentActivityID: p.resolveParentActivityID(),
 			Timestamp:        now,
 			AgentKey:         author,
 			AgentName:        p.resolveAgentName(ctx, author),
@@ -755,7 +768,7 @@ func (p *ActivityProjector) OnMemberMessageDone(ctx context.Context, author stri
 			Status:           biz.ActivityStatusRunning,
 			SessionID:        p.meta.SessionID,
 			TurnID:           p.meta.RequestID,
-			ParentActivityID: p.state.rootActivityID,
+			ParentActivityID: p.resolveParentActivityID(),
 			Timestamp:        now,
 			Content:          fullText,
 			AgentKey:         author,
@@ -807,7 +820,7 @@ func (p *ActivityProjector) OnTextDone(ctx context.Context, author string, fullT
 			Status:           biz.ActivityStatusRunning,
 			SessionID:        p.meta.SessionID,
 			TurnID:           p.meta.RequestID,
-			ParentActivityID: p.state.rootActivityID,
+			ParentActivityID: p.resolveParentActivityID(),
 			Timestamp:        now,
 			Content:          fullText,
 			AgentKey:         author,
@@ -873,7 +886,7 @@ func (p *ActivityProjector) OnToolCall(ctx context.Context, toolCallID, toolName
 		Status:           biz.ActivityStatusToolRunning,
 		SessionID:        p.meta.SessionID,
 		TurnID:           p.meta.RequestID,
-		ParentActivityID: p.state.rootActivityID,
+		ParentActivityID: p.resolveParentActivityID(),
 		Timestamp:        startedAt,
 		ToolName:         toolName,
 		ToolCallID:       toolCallID,
@@ -1010,19 +1023,20 @@ func (p *ActivityProjector) OnError(ctx context.Context, errMsg string, errType 
 	// so the error is still surfaced to the frontend.
 	id := uuid.NewString()
 	a := &biz.Activity{
-		ID:              id,
-		Kind:            biz.ActivityKindTask,
-		Status:          biz.ActivityStatusFailed,
-		SessionID:       p.meta.SessionID,
-		TurnID:          p.meta.RequestID,
-		Timestamp:       now,
-		DurationMs:      0,
-		Content:         errMsg,
-		AgentKey:        p.meta.AgentID,
-		AgentName:       p.meta.AgentDisplayName,
-		SpiritSessionID: p.meta.SpiritSessionID,
-		TeamID:          p.meta.TeamID,
-		Meta:            meta,
+		ID:               id,
+		Kind:             biz.ActivityKindTask,
+		Status:           biz.ActivityStatusFailed,
+		SessionID:        p.meta.SessionID,
+		TurnID:           p.meta.RequestID,
+		ParentActivityID: p.resolveParentActivityID(),
+		Timestamp:        now,
+		DurationMs:       0,
+		Content:          errMsg,
+		AgentKey:         p.meta.AgentID,
+		AgentName:        p.meta.AgentDisplayName,
+		SpiritSessionID:  p.resolveSpiritSessionID(),
+		TeamID:           p.meta.TeamID,
+		Meta:             meta,
 	}
 	p.state.rootActivityID = id
 	p.state.activities[id] = a
@@ -1042,9 +1056,10 @@ func (p *ActivityProjector) OnNotice(ctx context.Context, turnID, sessionID stri
 		Status:           biz.ActivityStatusPending,
 		SessionID:        sessionID,
 		TurnID:           turnID,
-		ParentActivityID: p.state.rootActivityID,
+		ParentActivityID: p.resolveParentActivityID(),
 		Timestamp:        now,
 		Content:          content,
+		SpiritSessionID:  p.resolveSpiritSessionID(),
 		Meta:             map[string]any{"noticeType": noticeType},
 	}
 	p.state.activities[id] = activity
@@ -1094,9 +1109,10 @@ func (p *ActivityProjector) OnConfirmRequest(ctx context.Context, turnID, sessio
 		Status:           biz.ActivityStatusToolBlocked,
 		SessionID:        sessionID,
 		TurnID:           turnID,
-		ParentActivityID: p.state.rootActivityID,
+		ParentActivityID: p.resolveParentActivityID(),
 		Timestamp:        now,
 		Content:          params.Content,
+		SpiritSessionID:  p.resolveSpiritSessionID(),
 		Meta:             map[string]any{"toolName": params.ToolName, "toolArguments": params.ToolArguments},
 	}
 	p.state.activities[id] = activity
@@ -1216,7 +1232,8 @@ func (p *ActivityProjector) processGraphNodeStart(ctx context.Context, ev *trpce
 			// (frontend ActivityStream recursive rendering). Without this,
 			// the plan becomes a sibling root of the task, breaking the
 			// parent-child visual hierarchy.
-			ParentActivityID: p.state.rootActivityID,
+			ParentActivityID: p.resolveParentActivityID(),
+			SpiritSessionID:  p.resolveSpiritSessionID(),
 			Content:          "执行计划",
 			Meta:             map[string]any{"steps": []biz.ActivityPlanStep{}},
 		}
@@ -1340,6 +1357,14 @@ func (p *ActivityProjector) OnPlanStart(ctx context.Context, turnID, sessionID s
 		Timestamp: now,
 		Content:   title,
 		Meta:      map[string]any{"steps": steps},
+		// Issue 3 fix: Set ParentActivityID to the current turn's root task
+		// so the plan nests under the task in the Activity tree (same as the
+		// lazy-creation path in processGraphNodeStart). Without this, the plan
+		// becomes a root-level activity, and the compareActivities sort
+		// override (plan before team_stage) doesn't apply because they are at
+		// different tree levels.
+		ParentActivityID: p.resolveParentActivityID(),
+		SpiritSessionID:  p.resolveSpiritSessionID(),
 	}
 	p.state.activities[id] = activity
 	p.state.planActivityID = id

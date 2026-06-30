@@ -92,6 +92,7 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 	}
 
 	// Match each subtask
+	isDAG := taskPlan.Strategy == biz.StrategyDAG
 	var allocations []biz.TaskAllocation
 	for _, subTask := range taskPlan.SubTasks {
 		allocation, err := impl.matchSubTask(ctx, subTask, capabilities, traceID)
@@ -109,6 +110,23 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 			}
 			// AgentFactory unavailable/failed → fallback to first available agent
 			allocation = impl.fallbackAllocation(subTask, capabilities)
+		}
+		// For dag mode: each subtask becomes a multi-member team (≥2 members).
+		// The primary agent (AssignedKey) is the team lead; selectAdditionalMembers
+		// picks additional agents from the capability pool to fill out the team.
+		if isDAG && allocation.AssignedKey != "" {
+			additional := impl.selectAdditionalMembers(allocation.AssignedKey, capabilities, 1)
+			if len(additional) > 0 {
+				allocation.TeamMemberKeys = additional
+				allocation.AssignedType = "team"
+				impl.lg.Info("DAG 模式：为子任务分配多成员团队",
+					loggateway.StepID(biz.SpiritStepAllocatorMatch),
+					loggateway.Str("trace_id", traceID),
+					loggateway.Str("sub_task_id", subTask.ID),
+					loggateway.Str("lead", allocation.AssignedKey),
+					loggateway.Str("members", strings.Join(additional, ",")),
+				)
+			}
 		}
 		allocations = append(allocations, allocation)
 	}
@@ -289,6 +307,29 @@ func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.Su
 	}
 
 	return biz.TaskAllocation{}, apierror.NotFound(apierror.DomainSpirit, "no agent found for subtask %s", subTask.ID)
+}
+
+// selectAdditionalMembers picks `count` additional agent keys from the
+// capability pool, excluding the primary key. Used for dag mode where each
+// team must have ≥2 members. The selection is capability-agnostic — it just
+// picks the first available agents that aren't the primary. This is
+// intentionally simple; smarter matching (e.g., complementary capabilities)
+// can be added later.
+func (impl *agentAllocatorImpl) selectAdditionalMembers(primaryKey string, capabilities []biz.AgentCapability, count int) []string {
+	if count <= 0 || len(capabilities) <= 1 {
+		return nil
+	}
+	result := make([]string, 0, count)
+	for _, cap := range capabilities {
+		if cap.AgentKey == "" || cap.AgentKey == primaryKey {
+			continue
+		}
+		result = append(result, cap.AgentKey)
+		if len(result) >= count {
+			break
+		}
+	}
+	return result
 }
 
 // exactMatch performs Layer 1 matching: overlap between required_capabilities and agent Roles.

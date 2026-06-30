@@ -75,9 +75,11 @@
       <!-- Phase 3: Stage kinds for unified Team/Graph/Session rendering -->
       <GraphStageBlock v-else-if="item.event.kind === 'graph_stage'" :activity="item.event as GraphStageEvent" />
       <!-- B.4.1 team-card: replaces TeamStageBlock. Children rendered via slot
-           so TeamCard's `expanded` state controls their visibility (B.4.5 fold rule). -->
+           so TeamCard's `expanded` state controls their visibility (B.4.5 fold rule).
+           Single-member team_stage (parallel mode) renders as AgentCard instead —
+           see "single-member team → AgentCard" branch below. -->
       <TeamCard
-        v-else-if="item.event.kind === 'team_stage'"
+        v-else-if="item.event.kind === 'team_stage' && ((item.event as TeamStageEvent).members?.length ?? 0) > 1"
         :activity="item.event as TeamStageEvent"
         :agent-map="props.agentMap"
         :run-status="props.runStatus"
@@ -118,6 +120,51 @@
           />
         </template>
       </TeamCard>
+      <!-- Single-member team_stage (parallel mode) → render as AgentCard.
+           Converts TeamStageEvent → SessionStageEvent using members[0] info,
+           and flattens session child's children to avoid double-layer AgentCard. -->
+      <AgentCard
+        v-else-if="item.event.kind === 'team_stage'"
+        :activity="teamStageToSessionStage(item.event as TeamStageEvent)"
+        :agent-map="props.agentMap"
+        :run-status="props.runStatus"
+        @enter-session="(sid) => $emit('enter-session', sid)"
+        @cancel-agent="(sessionId: string) => $emit('cancel-agent', sessionId)"
+        @retry-agent="(sessionId: string) => $emit('retry-agent', sessionId)"
+        @pause-agent="(sessionId: string) => $emit('pause-agent', sessionId)"
+        @resume-agent="(sessionId: string) => $emit('resume-agent', sessionId)"
+        @inject-agent="(p: { sessionId: string; message: string }) => $emit('inject-agent', p)"
+        @expand="(ids: string[]) => $emit('expand', ids)"
+      >
+        <template v-if="flattenSingleMemberTeamChildren(item.activity).length">
+          <ActivityStream
+            :activity-tree="flattenSingleMemberTeamChildren(item.activity)"
+            :agent-color="agentColor"
+            :agent-map="props.agentMap"
+            :run-status="props.runStatus"
+            @confirm="(id: string, approved: boolean) => $emit('confirm', id, approved)"
+            @error-retry="(e: ErrorEvent) => $emit('error-retry', e)"
+            @error-switch-model="(e: ErrorEvent) => $emit('error-switch-model', e)"
+            @error-rephrase="(e: ErrorEvent) => $emit('error-rephrase', e)"
+            @error-check-config="(e: ErrorEvent) => $emit('error-check-config', e)"
+            @error-remove-attachment="(e: ErrorEvent) => $emit('error-remove-attachment', e)"
+            @error-relogin="(e: ErrorEvent) => $emit('error-relogin', e)"
+            @expand-member="(p) => $emit('expand-member', p)"
+            @enter-session="(sid) => $emit('enter-session', sid)"
+            @cancel-team="(teamId: string) => $emit('cancel-team', teamId)"
+            @retry-team="(teamId: string) => $emit('retry-team', teamId)"
+            @pause-team="(teamId: string) => $emit('pause-team', teamId)"
+            @unpause-team="(teamId: string) => $emit('unpause-team', teamId)"
+            @inject-team="(p: { teamId: string; message: string }) => $emit('inject-team', p)"
+            @cancel-agent="(sessionId: string) => $emit('cancel-agent', sessionId)"
+            @retry-agent="(sessionId: string) => $emit('retry-agent', sessionId)"
+            @pause-agent="(sessionId: string) => $emit('pause-agent', sessionId)"
+            @resume-agent="(sessionId: string) => $emit('resume-agent', sessionId)"
+            @inject-agent="(p: { sessionId: string; message: string }) => $emit('inject-agent', p)"
+            @expand="(ids: string[]) => $emit('expand', ids)"
+          />
+        </template>
+      </AgentCard>
       <!-- B.4.2 agent-card: replaces SessionStageBlock. Children rendered via slot. -->
       <AgentCard
         v-else-if="item.event.kind === 'session'"
@@ -182,7 +229,7 @@
         class="event-stream__children"
       >
         <ActivityStream
-          :activity-tree="item.activity.children"
+          :activity-tree="filterChildrenForRender(item.activity)"
           :agent-color="agentColor"
           :agent-map="props.agentMap"
           :run-status="props.runStatus"
@@ -327,27 +374,48 @@ const renderItems = computed<RenderItem[]>(() => {
   const otherRoots: ActivityTreeNode[] = [];
   for (const activity of props.activityTree) {
     if (activity.kind === 'notice' && !activity.parentActivityId) {
+      // Issue 4 fix: filter context_usage and empty notices from orphanNotices
+      // before matching. These are system-level events that should never
+      // surface in the chat UI. Previously the filter was only applied to
+      // otherRoots, but these notices have no parentActivityId and are
+      // classified as orphanNotices — bypassing the filter entirely.
+      if (activity.content === 'context_usage') continue;
+      if (!(activity.content || '').trim()) continue;
+      // Filter out system status notices that are meaningless to the user:
+      // run-status ("运行状态：xxx"), session-status ("会话状态：xxx"),
+      // orchestration checkpoints ("编排检查点：xxx"), and pre-planning
+      // gate notices ("开始复杂度评估", "简单任务，直接回答").
+      // These are internal system events with no parentActivityId, so they
+      // cannot be correctly positioned in the timeline — they would all
+      // cluster at the end as unmatched notices.
+      if (isSystemNotice(activity)) continue;
       orphanNotices.push(activity);
     } else {
       otherRoots.push(activity);
     }
   }
 
-  // Match each orphan notice to the nearest subsequent task (same session,
-  // timestamp >= notice timestamp). This attaches pre-planning / intent-pass
-  // notices to the task they were assessing.
+  // Match each orphan notice to the nearest task by absolute time difference.
+  // Previous logic used "taskTime >= noticeTime" (nearest subsequent task), but
+  // notices are always created AFTER the task (e.g., pre-planning gate runs after
+  // the user message is received), so noticeTime > taskTime always, and the
+  // condition never matched. This caused all notices to fall into unmatchedNotices
+  // and render at the end of the conversation.
+  // Issue 4 fix: match by absolute time difference (nearest task, regardless of
+  // whether it precedes or follows the notice).
   const noticesByTaskId = new Map<string, ActivityTreeNode[]>();
   const unmatchedNotices: ActivityTreeNode[] = [];
   for (const notice of orphanNotices) {
     const noticeTime = new Date(notice.timestamp).getTime();
     let nearestTask: ActivityTreeNode | null = null;
-    let nearestTaskTime = Infinity;
+    let minDiff = Infinity;
     for (const a of otherRoots) {
       if (a.kind !== 'task') continue;
       const taskTime = new Date(a.timestamp).getTime();
-      if (taskTime >= noticeTime && taskTime < nearestTaskTime) {
+      const diff = Math.abs(taskTime - noticeTime);
+      if (diff < minDiff) {
         nearestTask = a;
-        nearestTaskTime = taskTime;
+        minDiff = diff;
       }
     }
     if (nearestTask) {
@@ -355,8 +423,6 @@ const renderItems = computed<RenderItem[]>(() => {
       arr.push(notice);
       noticesByTaskId.set(nearestTask.id, arr);
     } else {
-      // No subsequent task found (e.g. notice arrived but task not yet
-      // created). Render at the end as fallback to avoid losing the info.
       unmatchedNotices.push(notice);
     }
   }
@@ -398,6 +464,26 @@ const renderItems = computed<RenderItem[]>(() => {
   return items;
 });
 
+/** Filter plan activities out of task children.
+ *
+ *  The spirit creates multiple exploratory plans during its reasoning process
+ *  (nested under task activities). These plans are internal decompositions
+ *  that don't correspond 1:1 to teams/agents and are never updated when teams
+ *  complete — showing them confuses users with stale "1/4 completed" states.
+ *
+ *  Per design B.4.3: "每个 plan item 对应一个 team 或 agent". Only the root-level
+ *  graph plan (created by the graph runner) satisfies this requirement and
+ *  should be rendered. Plans nested under tasks are the spirit's exploratory
+ *  reasoning and are filtered out here.
+ */
+function filterChildrenForRender(activity: ActivityTreeNode): ActivityTreeNode[] {
+  if (!activity.children?.length) return [];
+  if (activity.kind === 'task') {
+    return activity.children.filter((c) => c.kind !== 'plan');
+  }
+  return activity.children;
+}
+
 /** Determine whether a thinking activity should be rendered.
  *  Streaming thinkings are always shown (they may receive content soon).
  *  Terminal thinkings are only shown if they have non-empty content/reasoning. */
@@ -414,6 +500,31 @@ function hasVisibleThinkingContent(activity: ActivityTreeNode): boolean {
 /** True for internal tools that should not surface in the chat UI. */
 function isSilentTool(activity: ActivityTreeNode): boolean {
   return activity.toolName === 'check_progress' || activity.toolName === 'progress_check';
+}
+
+/** True for system status notices that should not appear in the chat UI.
+ *  These are internal events (run status, session status, orchestration
+ *  checkpoints, pre-planning gate) that have no parentActivityId and cannot
+ *  be correctly positioned in the timeline. */
+function isSystemNotice(activity: ActivityTreeNode): boolean {
+  const content = activity.content || '';
+  // Run status: "运行状态：运行中", "运行状态：已完成", etc.
+  if (content.startsWith('运行状态：')) return true;
+  // Session status: "会话状态：运行中", etc.
+  if (content.startsWith('会话状态：')) return true;
+  // Orchestration checkpoints: "编排检查点：orchestrate_setup", etc.
+  if (content.startsWith('编排检查点：')) return true;
+  // Orchestration started: "任务编排已启动"
+  if (content === '任务编排已启动') return true;
+  // Pre-planning gate: "开始复杂度评估", "简单任务，直接回答"
+  if (content === '开始复杂度评估' || content === '简单任务，直接回答') return true;
+  // Team orchestration lifecycle summaries are surfaced by team_stage/graph_stage
+  // status and the final reply, not by standalone notices.
+  if (content === '所有团队已完成') return true;
+  if (content === '系统后台会自动监控进度，完成后我会主动通知您并汇总结果，请稍候') return true;
+  // System agent keys
+  if (activity.agentKey === 'run-service' || activity.agentKey === 'session-service') return true;
+  return false;
 }
 
 /** Adapt a task Activity into the Message shape expected by UserMessageBubble. */
@@ -437,6 +548,47 @@ function taskToMessage(activity: Activity): Message {
     error_message: '',
     created_at: activity.timestamp,
   };
+}
+
+/** Convert a single-member TeamStageEvent into a SessionStageEvent so it can
+ *  be rendered by AgentCard. Parallel mode produces 1-member "teams" that are
+ *  semantically independent single agents — rendering them as AgentCards gives
+ *  users a cleaner per-agent view (no team wrapper for a solo agent). */
+function teamStageToSessionStage(teamEvent: TeamStageEvent): SessionStageEvent {
+  const member = teamEvent.members?.[0];
+  return {
+    id: teamEvent.id,
+    kind: 'session',
+    status: teamEvent.status,
+    title: teamEvent.title,
+    teamId: teamEvent.teamId,
+    agentKey: member?.agentKey,
+    agentName: member?.agentName,
+    childSessionId: member?.session_id,
+    timestamp: teamEvent.timestamp,
+    durationMs: teamEvent.durationMs ?? null,
+  };
+}
+
+/** Flatten children of a single-member team_stage for AgentCard rendering.
+ *  team_stage.children typically contains one session node (the solo member),
+ *  which would itself render as an AgentCard — causing a double-layer card.
+ *  We promote the session node's children (thinking/action/reply/etc.) to be
+ *  direct children of the AgentCard, and skip the session node itself.
+ *  Non-session children are preserved as-is. */
+function flattenSingleMemberTeamChildren(activity: ActivityTreeNode): ActivityTreeNode[] {
+  if (!activity.children?.length) return [];
+  const result: ActivityTreeNode[] = [];
+  for (const child of activity.children) {
+    if (child.kind === 'session') {
+      if (child.children?.length) {
+        result.push(...child.children);
+      }
+    } else {
+      result.push(child);
+    }
+  }
+  return result;
 }
 </script>
 

@@ -15,6 +15,7 @@ import (
 	sessctx "aranea-agents/internal/session"
 	"aranea-agents/internal/tools/skillruntime"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/strutil"
 
 	"github.com/google/uuid"
 
@@ -46,7 +47,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 			teamEmitter.FinishRoot(turnStatus)
 		}()
 	}
-	r.publishTeamRunStartedEvent(ctx, sess, teamRow, run)
+	r.publishTeamRunStartedEvent(ctx, sess, teamRow, run, def)
 
 	t0 := time.Now()
 	biz.DefaultTurnCompletionBridge().RegisterTurnStart(sess.ID, run.ID, t0)
@@ -179,6 +180,32 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		runCtx = biz.WithActivityEmitter(runCtx, streamOpts.ActivityProjector)
 	}
 
+	// Publish session activities for ALL members at the start of execution,
+	// regardless of graph/non-graph mode. Without these, the frontend
+	// AgentCard has no parent node to render, and member thinking/action/reply
+	// activities become orphaned at the root level.
+	//
+	// In graph mode, PublishTeamStepStarted may also fire later for each node
+	// start — the deterministic activity ID (SessionActivityID) ensures the
+	// frontend deduplicates and treats subsequent publishes as status updates
+	// rather than new AgentCards. Members that never execute stay in "running"
+	// until FinalizeGraphTeamRun or timeout transitions them.
+	if r.td.Pipeline.ActivityBus != nil {
+		for _, m := range ti.members {
+			ag, lookupErr := r.lookupAgent(ctx, m.AgentID)
+			if lookupErr != nil {
+				r.lg.Warn("session activity publish: agent lookup failed",
+					loggateway.StepID("team.run.session_publish"),
+					loggateway.Str("agent_id", m.AgentID),
+					loggateway.Err(lookupErr))
+				continue
+			}
+			agentName := strutil.FirstNonEmpty(ag.DisplayName, ag.AgentKey)
+			r.publishTeamStepActivity(ctx, run, teamRow.ID, ag.AgentKey, agentName,
+				biz.ActivityEventCreated, biz.ActivityStatusRunning, "executing", nil)
+		}
+	}
+
 	userTurnMsg, err := agent.BuildUserMessageFromArtifacts(runCtx, r.td.Persist.ArtifactUC, sess.ID, ti.content, input.Options.AttachmentIDs)
 	if err != nil {
 		logTeamRunError(teamEmitter, "team.run.attachments", err.Error(), mode)
@@ -288,6 +315,19 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		AnchorAg:       ar.agent,
 	}
 	r.finalizeGraphRunStepsFallback(ctx, finishIn)
+
+	// Publish completed session activities for non-graph mode.
+	if graphExecID == "" && r.td.Pipeline.ActivityBus != nil {
+		for _, m := range ti.members {
+			ag, lookupErr := r.lookupAgent(ctx, m.AgentID)
+			if lookupErr != nil {
+				continue
+			}
+			agentName := strutil.FirstNonEmpty(ag.DisplayName, ag.AgentKey)
+			r.publishTeamStepActivity(ctx, run, teamRow.ID, ag.AgentKey, agentName,
+				biz.ActivityEventCompleted, biz.ActivityStatusCompleted, "completed", nil)
+		}
+	}
 
 	run = r.finalizeTeamRun(ctx, sess, run, teamRow, ar, assistantMsg, promptTok, completionTok, ti.dialogMode, graphExecID, t0, teamEmitter)
 

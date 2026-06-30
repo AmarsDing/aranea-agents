@@ -416,6 +416,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			planInput := biz.PlanInput{
 				UserMessage:     content,
 				SpiritSessionID: sessionID,
+				ChatSessionID:   sessionID, // plan activity must appear in chat session timeline
 				IntentArtifact:  gateDecision.IntentArtifact,
 			}
 			if traceID, ok := biz.SpiritTraceIDFromContext(ctx); ok {

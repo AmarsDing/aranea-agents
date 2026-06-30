@@ -9,7 +9,15 @@ import (
 // ProvideChatService constructs ChatService with a noop AfterTurn hook (real hook attached by ProvideEvaluationRunner).
 func ProvideChatService(deps ChatOrchestratorDeps) *ChatService {
 	deps.Turn.AfterTurn = biz.NoopNativeTurnAfter{}
-	return NewChatService(deps)
+	cs := NewChatService(deps)
+	// Backfill turnGateway into TeamStarter to break the Wire cycle:
+	// ChatService → TeamStarterPort → TurnGateway → ChatService.
+	// TeamStarter needs TurnGateway for the system-push pattern
+	// (checkAllTeamsCompleted → SynthesizeResults → ExecuteTurn).
+	if setter, ok := deps.Team.TeamStarter.(interface{ SetTurnGateway(biz.TurnGateway) }); ok {
+		setter.SetTurnGateway(cs)
+	}
+	return cs
 }
 
 // ProvideEvaluationRunner builds the evaluation runner and attaches the AfterTurn hook to chat.

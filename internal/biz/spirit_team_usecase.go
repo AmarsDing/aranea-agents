@@ -19,7 +19,7 @@ import (
 
 type TeamStarterPort interface {
 	StartTeamTurn(ctx context.Context, sessionID string, content string) error
-	HandleTeamTurnResult(ctx context.Context, spiritSessionID, teamID, status, errMsg string)
+	HandleTeamTurnResult(ctx context.Context, spiritSessionID, teamID, status, errMsg string, chatSessionID string)
 }
 
 // SpiritTeamAssembler provides the team CRUD operations needed by SpiritTeamUsecase.
@@ -71,6 +71,15 @@ type TimeoutHandler interface {
 	HandleTeamTimeout(ctx context.Context, spiritSessionID, teamID string)
 }
 
+// AllTeamsCompletedNotifier is called by the background poller when all teams
+// for a spirit session have reached a terminal state. This provides the
+// "active notification" path for team completion, supplementing the
+// event-driven path (HandleTeamTurnResult → checkAllTeamsCompleted).
+// Implemented by the service layer to publish events and trigger synthesis.
+type AllTeamsCompletedNotifier interface {
+	NotifyAllTeamsCompleted(ctx context.Context, spiritSessionID string)
+}
+
 type SpiritTeamParams struct {
 	SpiritSessionID         string
 	TaskDescription         string
@@ -88,8 +97,9 @@ type SpiritTeamParams struct {
 }
 
 type SpiritTeamResult struct {
-	Team    Team
-	Session Session
+	Team           Team
+	Session        Session
+	MemberSessions map[string]string // agentKey → sessionID, for frontend lazy-loading member execution process
 }
 
 // SpiritTransactor executes a function within a single database transaction.
@@ -149,6 +159,14 @@ type SpiritTeamUsecase struct {
 	// timeoutTimers tracks pending timeout callbacks so they can be cancelled
 	// when a team completes normally before the timeout fires.
 	timeoutTimers sync.Map // map[string]*time.Timer
+
+	// completionNotifier is called by the background poller when all teams
+	// for a spirit session are done. Set via SetAllTeamsCompletedNotifier.
+	completionNotifier AllTeamsCompletedNotifier
+
+	// pollCtx and pollCancel manage the background polling goroutine lifecycle.
+	pollCtx    context.Context
+	pollCancel context.CancelFunc
 }
 
 func NewSpiritTeamUsecase(teamUC SpiritTeamAssembler, sessionUC SpiritSessionAccessor, agentUC SpiritAgentResolver, lg loggateway.Logger, opts ...SpiritTeamUsecaseOption) *SpiritTeamUsecase {
@@ -168,6 +186,81 @@ func (u *SpiritTeamUsecase) SetTimeoutHandler(h TimeoutHandler) {
 	u.timeoutOnce.Do(func() {
 		u.timeoutHandler = h
 	})
+}
+
+// SetAllTeamsCompletedNotifier injects the service-layer completion notifier.
+// Called by the background poller when all teams for a spirit session reach
+// terminal state. This is the "active notification" path.
+func (u *SpiritTeamUsecase) SetAllTeamsCompletedNotifier(n AllTeamsCompletedNotifier) {
+	u.completionNotifier = n
+}
+
+// StartBackgroundPolling starts a background goroutine that periodically
+// checks all active spirit sessions for team completion. This supplements
+// the event-driven path (HandleTeamTurnResult) with a moderate-frequency
+// backup to catch cases where completion events are missed.
+//
+// Default interval: 30 seconds. This is backend logic and does not generate
+// frontend-visible activity events.
+func (u *SpiritTeamUsecase) StartBackgroundPolling(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	u.pollCtx, u.pollCancel = context.WithCancel(ctx)
+	safego.Go(u.pollCtx, "spirit-team-completion-poller", func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-u.pollCtx.Done():
+				return
+			case <-ticker.C:
+				u.pollTeamCompletions(u.pollCtx)
+			}
+		}
+	})
+	u.lg.Info("spirit team completion poller started",
+		loggateway.StepID("spirit.poller.started"),
+		loggateway.Str("interval", interval.String()),
+	)
+}
+
+// pollTeamCompletions scans all running sessions and checks if all their
+// teams have reached terminal state. When all done, it notifies the service
+// layer via completionNotifier.
+//
+// This is a moderate-frequency backup for the event-driven path
+// (HandleTeamTurnResult → checkAllTeamsCompleted). The polling itself does
+// not generate frontend-visible activity events.
+func (u *SpiritTeamUsecase) pollTeamCompletions(ctx context.Context) {
+	sessions, err := u.sessionUC.Search(ctx, SessionSearchQuery{
+		Status: string(session.SessionStatusRunning),
+		Limit:  100,
+	})
+	if err != nil {
+		u.lg.Warn("spirit poller: failed to search running sessions",
+			loggateway.StepID("spirit.poller.search_err"),
+			loggateway.Err(err),
+		)
+		return
+	}
+	for _, sess := range sessions.Items {
+		if sess.ID == "" {
+			continue
+		}
+		result := u.CheckAllTeamsCompleted(ctx, sess.ID)
+		if !result.AllDone {
+			continue
+		}
+		u.lg.Info("spirit poller: all teams completed for session",
+			loggateway.StepID("spirit.poller.all_done"),
+			loggateway.Str("spirit_session_id", sess.ID),
+			loggateway.Int("total_teams", result.TotalTeams),
+		)
+		if u.completionNotifier != nil {
+			u.completionNotifier.NotifyAllTeamsCompleted(ctx, sess.ID)
+		}
+	}
 }
 
 // Domain: Assembly — team creation and composition.
@@ -267,12 +360,13 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 				loggateway.Int("agent_depth", agentDepth),
 				loggateway.Int("spirit_max_depth", cfg.MaxSessionDepth))
 		} else {
+			memberSessions := make(map[string]string, len(params.AgentKeys))
 			for _, agentKey := range params.AgentKeys {
 				agentKey = strings.TrimSpace(agentKey)
 				if agentKey == "" {
 					continue
 				}
-				if _, aerr := u.sessionUC.Create(txCtx, Session{
+				agentSession, aerr := u.sessionUC.Create(txCtx, Session{
 					OwnerType:       "agent",
 					SessionType:     string(SessionTypeAgent),
 					TeamID:          team.ID,
@@ -281,7 +375,8 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 					AgentDepth:      agentDepth,
 					MemberAgentKey:  agentKey,
 					Title:           TruncateRunes(taskDesc, MaxTeamTitleLen),
-				}); aerr != nil {
+				})
+				if aerr != nil {
 					u.lg.Warn("创建成员 agent session 失败",
 						loggateway.StepID("spirit.assemble.agent_session"),
 						loggateway.Str("team_id", team.ID),
@@ -289,11 +384,16 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 						loggateway.Err(aerr))
 					// Continue rather than fail: team can still run without
 					// per-member sessions; activities will fall back to team session.
+				} else {
+					memberSessions[agentKey] = agentSession.ID
 				}
 			}
+			result = SpiritTeamResult{Team: team, Session: teamSession, MemberSessions: memberSessions}
 		}
 
-		result = SpiritTeamResult{Team: team, Session: teamSession}
+		if result.MemberSessions == nil {
+			result = SpiritTeamResult{Team: team, Session: teamSession}
+		}
 		return nil
 	})
 	if err != nil {
@@ -602,9 +702,14 @@ func (u *SpiritTeamUsecase) CancelTimeoutTimer(teamID string) {
 	}
 }
 
-// Stop cancels all pending timeout timers. Call during application shutdown
-// to prevent timeout callbacks from firing after the server has stopped.
+// Stop cancels all pending timeout timers and the background polling goroutine.
+// Call during application shutdown to prevent callbacks from firing after the
+// server has stopped.
 func (u *SpiritTeamUsecase) Stop() {
+	// Cancel background polling goroutine.
+	if u.pollCancel != nil {
+		u.pollCancel()
+	}
 	u.timeoutTimers.Range(func(key, value any) bool {
 		u.timeoutTimers.Delete(key)
 		if t, ok := value.(*time.Timer); ok {

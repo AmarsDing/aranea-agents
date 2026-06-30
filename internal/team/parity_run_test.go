@@ -174,5 +174,3 @@ func TestParityRunSummary_AllModes(t *testing.T) {
 		})
 	}
 }
-
-

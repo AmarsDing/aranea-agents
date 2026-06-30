@@ -187,6 +187,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 9 | M55 ConversationTurn + Channel 同步 | ✅ | Phase A–D ✅；UX 收口 CC-C-UX-* ✅ |
 | 10 | **ADR-02 + ADR-03 Activity-First 架构迁移** | ✅ | Envelope 删除 + 统一总线 + 并行异步持久化 + Session 父子树 + 工具类别 |
 | P-N | **流式渲染与活动排序修复** | ✅ | 统一 MD 渲染路径 + seq On* 入口预分配 + sequencer v2 单 publish worker（ADR-06） |
+| 11 | **三种模式数据模型 + WS 协议设计文档** | ✅ | 需求文档 §1.7 + 设计文档 §5.4 + B.2.1（Phase T7） |
 
 ### P-N 流式渲染与活动排序修复（2026-06-27）
 
@@ -303,6 +304,11 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 43 | 子 Session Activity 懒加载缓存（ensureActivitiesLoaded） | P1 | ✅ |
 | 44 | 前端 Envelope import 清理（5 文件删除） | P0 | ✅ |
 | 45 | 后端 Envelope 死代码清理（transcript/tool_display/parity_run_test） | P0 | ✅ |
+| 46 | **T7.1** 需求文档新增 §1.7 三种对话模式（Activity 树结构 + 对比表 + 统一数据模型） | P1 | ✅ |
+| 47 | **T7.2** 设计文档新增 §5.4 WebSocket 通信协议设计 | P1 | ✅ |
+| 48 | **T7.3** 设计文档 B.2.1 三种模式渲染规则更新 | P1 | ✅ |
+| 49 | **T7.4** 需求文档子模块 A.3 用户故事更新 | P1 | ✅ |
+| 50 | **T7.5** 开发计划文档新增 T7 | P1 | ✅ |
 
 ---
 
@@ -861,6 +867,25 @@ Team 团队历史显示是 Chat UI 的核心子模块，负责在精灵对话中
 - `internal/team/runner_helpers_test.go::TestPersistStep_EmitsStartedAndFinished` — 更新断言：`Kind=Session`、`AgentName`、`meta.child_session_id`
 - `internal/agent/activity_projector_test.go` — silent tool 行为守卫
 - `internal/biz/orchestration_status_test.go` — 验证 Kind=Session 的 executing/completed 分支不破坏 status projection
+
+#### Phase T7: 三种模式数据模型 + WS 协议设计文档（P1）
+
+**目标**：文档化三种对话模式的 Activity 树结构、统一数据模型和 WebSocket 通信协议设计（需求文档 + 设计文档）。
+
+| 任务 | 文件 | 状态 |
+|------|------|------|
+| T7.1 需求文档新增 §1.7 三种对话模式（Activity 树结构 + 对比表 + 统一数据模型） | `docs/development/1-chat.md` | ✅ |
+| T7.2 设计文档新增 §5.4 WebSocket 通信协议设计（通用信封 + Client/Server 消息 + 交互时序 + 断线重连 + SSE vs WS 对比） | `docs/development/1-chat.design.md` | ✅ |
+| T7.3 设计文档 B.2.1 三种模式渲染规则更新（细化树结构 + 组件映射 + Kind 标注） | `docs/development/1-chat.design.md` | ✅ |
+| T7.4 需求文档子模块 A.3 用户故事更新（引用 §1.7 + 补充三种模式详细描述） | `docs/development/1-chat.md` | ✅ |
+| T7.5 开发计划文档新增 T7（本文档） | `docs/development/1-chat.development.md` | ✅ |
+
+**验收标准**：
+- [x] 需求文档 §1.7 含三种模式完整 Activity 树结构、对比表、统一数据模型
+- [x] 设计文档 §5.4 含 WS 通用信封、Client/Server 消息定义、完整交互时序、取消流程、断线重连流程、SSE vs WS 对比
+- [x] 设计文档 B.2.1 含三种模式详细树结构 + Kind 标注 + 组件映射
+- [x] 需求文档子模块 A.3 引用 §1.7，补充模式 A/B/C 用户故事
+- [x] 文档三件套内容边界合规（需求文档无代码分层/API 细节，设计文档无用户故事/开发进度）
 
 ### C.5 改动文件清单
 

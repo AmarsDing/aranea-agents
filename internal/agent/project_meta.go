@@ -37,6 +37,17 @@ type ProjectMeta struct {
 	ParentSessionID string
 	// RootSessionID is the root session ID of the tree (== SpiritSessionID for spirit-initiated trees).
 	RootSessionID string
+
+	// ParentActivityID is the activity ID that child activities (thinking/action/reply)
+	// should use as their ParentActivityID instead of the turn's root task ID.
+	// When set (non-empty), the ActivityProjector uses this value for all child
+	// activities created during the turn. This enables team member activities to
+	// be nested under the session activity (kind=session) in the spirit session's
+	// activity tree, rather than under the child session's own root task.
+	//
+	// Set by the team runner to SessionActivityID(teamID, agentKey) so that
+	// member thinking/action/reply are children of the session activity.
+	ParentActivityID string
 }
 
 // isTeamMemberAuthor reports whether the given author string identifies a

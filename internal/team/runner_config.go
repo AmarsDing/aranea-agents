@@ -24,6 +24,14 @@ type KnowledgeFacade struct {
 	Evaluator          *knowledge.RetrievalEvaluator
 }
 
+// SessionChildLookup resolves member agent session IDs for team members.
+// Used by the team runner to set child_session_id in session activities
+// so the frontend can lazy-load member execution processes (thinking/action/reply).
+// When nil, child_session_id falls back to the team session ID.
+type SessionChildLookup interface {
+	LookupChildSessionID(ctx context.Context, parentSessionID, memberAgentKey string) (string, error)
+}
+
 type RunnerConfig struct {
 	GraphLoader       GraphBuildConfigLoader
 	AwaitHookProvider func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc
@@ -47,4 +55,7 @@ type RunnerConfig struct {
 	SubAgentService *subagenttool.Service
 	KanbanBridge    kanbanpkg.Bridge
 	A2AEnabled      bool
+	// SessionChildLookup resolves member agent session IDs for child_session_id
+	// in session activities. Optional; when nil, falls back to team session ID.
+	SessionChildLookup SessionChildLookup
 }

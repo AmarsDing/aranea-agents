@@ -64,6 +64,171 @@
 - 作为用户，Session 树深度受 `subagents_max_generation_depth`（默认 3）和 `max_session_depth`（默认 5）限制，超出时收到明确错误提示而非静默失败。
 - 作为用户，我能在 Session 树中识别 Spirit 主会话（`auto_awesome` 图标）、Team 会话（`groups` 图标）、子 Agent 会话（`smart_toy` 图标）、独立会话（`chat` 图标）。
 
+### 1.7 三种对话模式
+
+> **产品定位**：系统支持三种对话模式，由 Spirit 根据任务复杂度自动选择。三种模式共享同一套 Activity 数据模型，区别仅在于 Activity 树的形状（嵌套深度和容器节点类型）。前端**不预判模式**，按收到的 Activity 事件动态渲染——收到什么 `kind` 就渲染什么 Block，模式由事件流自然形成。
+
+#### 1.7.1 模式 A：简单对话（Simple）
+
+Spirit 直接思考→执行→回复，无任务拆解、无子 Agent/Team 委派。
+
+**Activity 树结构**：
+
+```
+Root (agent_card, session-level)
+├── thinking     ← Spirit 推理过程
+├── action       ← 工具调用（如 search、read_file）
+├── reply        ← 中间回复
+├── thinking     ← 继续推理
+├── action       ← 进一步工具调用
+├── reply        ← 中间回复
+├── thinking     ← 总结推理
+└── conclusion   ← 最终结论（Kind=reply，Meta.is_final=true）
+```
+
+**特点**：
+- 纯线性结构，所有 Activity 平铺在 root 下
+- thinking → action → reply 交替循环，最后以 conclusion 收尾
+- 无 plan、graph_stage、team_stage、session 等容器节点
+- 树深度：1 层
+
+#### 1.7.2 模式 B：子 Agent 委派（Sub-Agent）
+
+Spirit 拆解任务后直接委派给若干子 Agent 并行执行，收集结果后汇总。
+
+**Activity 树结构**：
+
+```
+Root (agent_card, session-level)
+├── thinking     ← Spirit 分析任务，决定拆解
+├── action       ← 调用分析工具
+├── reply        ← "我将拆解为以下步骤..."
+├── plan         ← 任务计划面板（容器）
+│   ├── task     ← "步骤1：收集数据"        [assignedTo: agent-1]
+│   ├── task     ← "步骤2：分析数据"        [assignedTo: agent-2]
+│   └── task     ← "步骤3：生成报告"        [assignedTo: agent-3]
+├── session      ← 子 Agent 1（容器）       [Kind=session, agentKey=agent-1]
+│   ├── thinking
+│   ├── action
+│   ├── reply
+│   └── reply (is_final)  ← 子 Agent 产出
+├── session      ← 子 Agent 2（容器）       [Kind=session, agentKey=agent-2]
+│   ├── thinking
+│   ├── action
+│   ├── reply
+│   ├── thinking
+│   ├── action
+│   └── reply (is_final)
+├── session      ← 子 Agent 3（容器）       [Kind=session, agentKey=agent-3]
+│   ├── thinking
+│   ├── reply
+│   └── reply (is_final)
+├── thinking     ← Spirit 收集所有子 Agent 结果，整合分析
+├── action       ← 调用 merge 工具
+├── reply        ← 整合结果
+└── conclusion   ← 最终结论（Kind=reply，Meta.is_final=true）
+```
+
+**特点**：
+- 父 Agent 先 think→act→reply，产出 `plan`（任务计划面板）
+- plan 之下 fork 出 n 个 `session`（子 Agent），子 Agent 之间可并行执行
+- 每个子 Agent 内部有独立的 think→act→reply 循环
+- 子 Agent 完成后，父 Agent 收集结果做最后的 think→act→reply→conclusion
+- 树深度：2 层（root → session）
+
+#### 1.7.3 模式 C：Team 编排（Team）
+
+Spirit 组建 Team 协作，通过 Graph 编排多个 Team 的阶段执行，每个 Team 内部包含多个成员 Agent。
+
+**Activity 树结构**：
+
+```
+Root (agent_card, session-level)
+├── thinking     ← Spirit 分析复杂任务，决定组建 Team
+├── action       ← 调用 orchestrate 工具
+├── reply        ← "我将编排 2 个团队协作..."
+├── plan         ← 任务计划面板（容器）
+│   ├── task     ← "阶段1：数据预处理"      [assignedTo: team-a]
+│   └── task     ← "阶段2：模型训练"        [assignedTo: team-b]
+├── graph_stage  ← Graph 编排阶段（容器）   [stageName: "数据预处理"]
+│   └── team_stage ← Team A（容器）         [teamKey: team-a]
+│       ├── thinking       ← Team A 的思考
+│       ├── action         ← 分发任务
+│       ├── session        ← 成员 1（子 Agent）
+│       │   ├── thinking
+│       │   ├── action
+│       │   └── reply
+│       ├── session        ← 成员 2（子 Agent）
+│       │   ├── thinking
+│       │   ├── action
+│       │   ├── reply
+│       │   └── reply (is_final)
+│       ├── thinking       ← Team A 收集成员结果
+│       └── reply (is_final) ← Team A 产出
+├── graph_stage  ← Graph 编排阶段（容器）   [stageName: "模型训练"]
+│   └── team_stage ← Team B（容器）         [teamKey: team-b]
+│       ├── thinking
+│       ├── session        ← 成员 3
+│       │   ├── thinking
+│       │   ├── action
+│       │   └── reply
+│       ├── session        ← 成员 4
+│       │   ├── thinking
+│       │   ├── reply
+│       │   └── reply (is_final)
+│       ├── session        ← 成员 5
+│       │   ├── thinking
+│       │   ├── action
+│       │   ├── reply
+│       │   └── reply (is_final)
+│       └── reply (is_final) ← Team B 产出
+├── thinking     ← Spirit 收集所有 Team 结果，汇总分析
+├── action       ← 调用 synthesize 工具
+├── reply        ← 汇总结果
+└── conclusion   ← 最终结论（Kind=reply，Meta.is_final=true）
+```
+
+**特点**：
+- 比 Sub-Agent 模式多一层 `graph_stage` → `team_stage` → `session` 的三层嵌套
+- `graph_stage` 是 Graph 编排的阶段容器，每个 stage 包含一个或多个 team
+- 每个 `team_stage` 内部包含多个 `session`（成员 Agent），每个成员有自己的 think→act→reply 循环
+- Team 自身也有 thinking 和 reply，表示团队级别的决策和产出
+- 所有 team 完成后，父 Agent 收集结果并做最终 conclusion
+- 树深度：3 层（root → graph_stage → team_stage → session）
+
+#### 1.7.4 三种模式对比
+
+| 维度 | Simple | Sub-Agent | Team |
+|------|--------|-----------|------|
+| 树深度 | 1 层 | 2 层（session 嵌套） | 3 层（graph_stage → team_stage → session） |
+| 容器节点 | 无 | session（AgentCard） | graph_stage + team_stage（TeamCard） + session（AgentCard） |
+| 并行度 | 串行 | 子 Agent 并行 | Team 间串行/并行，Team 内成员并行 |
+| plan | 无 | 有 | 有 |
+| 中间收集 | 无 | 父 Agent 收集 | 父 Agent 收集 + Team 级收集 |
+| 典型节点数 | 6-10 | 20-50 | 50-200+ |
+
+#### 1.7.5 核心设计原则
+
+**一切皆 Activity**：三种模式共享同一套 Activity 数据模型，通过 `parentActivityId` 自然表达嵌套关系，前端只需一套渲染组件。
+
+**统一数据模型**：
+
+```typescript
+// 所有 Activity 共享同一结构
+interface Activity {
+  id: string;              // 唯一标识
+  parentId: string | null;  // null = 根节点，非 null = 嵌套子节点
+  kind: ActivityKind;       // thinking | action | reply | plan | task | graph_stage | team_stage | session | notice | confirm
+  status: ActivityStatus;   // pending | running | completed | failed | cancelled
+  content: string;          // 文本内容
+  meta: Record<string, any>; // 扩展元数据（is_final, members, progress, agent_key 等）
+  createdAt: number;        // 时间戳
+  updatedAt: number;
+}
+```
+
+**前端零推理**：`ActivityStream.vue` 递归渲染，按 `activity.kind` 分发 Block 组件，按 `parentId` 构建树结构。模式 A/B/C 由事件流自然形成，不需要前端分支判断。
+
 ---
 
 ## 二、功能需求清单
@@ -474,11 +639,14 @@
 
 ### A.3 用户故事
 
-#### A.3.1 简单对话模式
-- 作为用户，当我发送简单问题时，精灵直接 thinking + reply，不组建团队
-- 作为用户，我能看到精灵的推理过程（thinking，可折叠）和最终回复（reply）
+> **设计**：三种模式的完整 Activity 树结构、对比表和统一数据模型，详见 [§1.7 三种对话模式](#17-三种对话模式)。本节为 Team 团队历史显示子模块的独立用户故事，与 §1.7 形成互补。
 
-#### A.3.2 Team 模式（team-card）
+#### A.3.1 简单对话模式（模式 A）
+- 作为用户，当我发送简单问题时，精灵直接 thinking + action + reply 循环，不组建团队
+- 作为用户，我能看到精灵的推理过程（thinking，可折叠）、工具调用（action，可折叠）和最终回复（reply）
+- 作为用户，最终结论以 `is_final=true` 标记，前端渲染为 conclusion 样式（视觉突出）
+
+#### A.3.2 Team 模式（模式 C：team-card）
 - 作为用户，当我发送复杂任务时，精灵评估并拆解任务，显示**任务计划面板**（plan，固定位置，不重复产生）
 - 作为用户，我能看到任务计划面板中的任务拆解列表和依赖关系
 - 作为用户，当计划变更时，原面板更新新计划（不产生新面板）
@@ -490,15 +658,17 @@
 - 作为用户，我能点击 team-card 展开查看成员列表
 - 作为用户，展开后能看到每个成员的 thinking/action/reply 序列
 - 作为用户，team 失败时能看到错误信息和重试按钮
+- 作为用户，所有 team 完成后，Spirit 收集结果并做最终 conclusion（`is_final=true`）
 
-#### A.3.3 子 Agent 模式（agent-card）
+#### A.3.3 子 Agent 模式（模式 B：agent-card）
 - 作为用户，当精灵直接调用子 agent（subagent_spawn）时，我能看到 **agent-card**（简化版）
 - 作为用户，agent-card 显示 agent 名称、状态、时间，以及暂停/恢复按钮
 - 作为用户，我能在 agent-card 尾部点击对话框补充信息（与 team-card 一致交互）
 - 作为用户，我能点击 agent-card 展开查看该 agent 的 thinking/action/reply 序列
+- 作为用户，子 Agent 完成后，Spirit 收集结果并做最终 conclusion（`is_final=true`）
 
 #### A.3.4 历史恢复
-- 作为用户，刷新页面后，能从数据库完全复原历史对话内容
+- 作为用户，刷新页面后，能从数据库完全复原历史对话内容（三种模式均支持）
 - 作为用户，历史加载时只加载 spirit 根 session 事件，子 session 事件按需懒加载
 - 作为用户，点击 team-card/agent-card 展开时，懒加载子 session 事件
 - 作为用户，已完成的 team 默认折叠，进行中的 team 默认展开

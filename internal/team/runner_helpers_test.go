@@ -6,8 +6,8 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event/activityevent"
-	"aranea-agents/pkg/loggateway"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/pkg/loggateway"
 )
 
 type stepBusRunWriter struct {
@@ -34,7 +34,7 @@ func (r *stepBusRunWriter) UpdateTeamRunSummaryJSON(_ context.Context, _, _ stri
 	return nil
 }
 
-func TestPersistStep_EmitsStartedAndFinished(t *testing.T) {
+func TestPersistStep_EmitsFinished(t *testing.T) {
 	bus := activityevent.New(nil, loggateway.NewNoop())
 	ch, unsub := bus.Subscribe(biz.ActivityEventSubscribeOptions{BufferSize: 8, GlobalMode: true})
 	defer unsub()
@@ -59,42 +59,30 @@ func TestPersistStep_EmitsStartedAndFinished(t *testing.T) {
 	if repo.steps[0].ToolCallCount != 2 {
 		t.Fatalf("tool_call_count=%d", repo.steps[0].ToolCallCount)
 	}
-	var started, finished bool
-	var startedChildSessionID, startedAgentName string
-	for i := 0; i < 2; i++ {
-		select {
-		case ev := <-ch:
-			// Problem 3+4: persistStep now emits Kind=Session (not TeamStage)
-			// so the frontend AgentCard renders member cards and cancel/retry
-			// can target the shared team session via meta.child_session_id.
-			if ev.Activity.Kind != biz.ActivityKindSession {
-				continue
-			}
-			if ev.Activity.AgentName != "Worker A" {
-				t.Fatalf("agent_name=%q want %q", ev.Activity.AgentName, "Worker A")
-			}
-			csid, _ := ev.Activity.Meta["child_session_id"].(string)
-			if csid != "sess-1" {
-				t.Fatalf("child_session_id=%q want %q", csid, "sess-1")
-			}
-			switch ev.Event {
-			case biz.ActivityEventCreated:
-				started = true
-				startedChildSessionID = csid
-				startedAgentName = ev.Activity.AgentName
-			case biz.ActivityEventCompleted:
-				finished = true
-			}
-		default:
+	// persistStep now only emits "completed" (finished) event.
+	// The "created" (started) event is emitted by PublishTeamStepStarted
+	// at node_start time, or by ensureGraphRunStepsFallback for the
+	// fallback path.
+	var finished bool
+	select {
+	case ev := <-ch:
+		if ev.Activity.Kind != biz.ActivityKindSession {
+			t.Fatalf("kind=%q want session", ev.Activity.Kind)
 		}
+		if ev.Activity.AgentName != "Worker A" {
+			t.Fatalf("agent_name=%q want %q", ev.Activity.AgentName, "Worker A")
+		}
+		csid, _ := ev.Activity.Meta["child_session_id"].(string)
+		if csid != "sess-1" {
+			t.Fatalf("child_session_id=%q want %q", csid, "sess-1")
+		}
+		if ev.Event != biz.ActivityEventCompleted {
+			t.Fatalf("event=%q want completed", ev.Event)
+		}
+		finished = true
+	default:
 	}
-	if !started || !finished {
-		t.Fatalf("started=%v finished=%v", started, finished)
-	}
-	if startedChildSessionID != "sess-1" {
-		t.Fatalf("started child_session_id=%q", startedChildSessionID)
-	}
-	if startedAgentName != "Worker A" {
-		t.Fatalf("started agent_name=%q", startedAgentName)
+	if !finished {
+		t.Fatal("expected completed event, got none")
 	}
 }

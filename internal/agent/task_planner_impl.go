@@ -16,10 +16,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// minSubTasksForParallel is the minimum number of subtasks to consider
-// parallel or coordinator strategies instead of single-agent execution.
-const minSubTasksForParallel = 3
-
 // taskPlannerImpl implements biz.TaskPlannerPort.
 type taskPlannerImpl struct {
 	repo           biz.TaskPlanRepository
@@ -70,16 +66,20 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			loggateway.Str("topology", memoryHit.TopologyUsed),
 		)
 
-		// Reuse historical topology as strategy hint
-		strategy := biz.StrategyCoordinator
+		// Reuse historical topology as strategy hint. Legacy topologies
+		// (coordinator/sequential) are mapped to the closest new-mode strategy:
+		// coordinator → dag (multi-member team), sequential → dag (ordered
+		// execution). This preserves backward compatibility with cache entries
+		// written before the three-mode refactor (direct/parallel/dag).
 		topologyHint := biz.TopologyType(memoryHit.TopologyUsed)
+		strategy := biz.StrategyDirect
 		switch topologyHint {
 		case biz.TopologyDirect:
 			strategy = biz.StrategyDirect
 		case biz.TopologyParallel:
 			strategy = biz.StrategyParallel
-		case biz.TopologyCoordinator:
-			strategy = biz.StrategyCoordinator
+		case biz.TopologyCoordinator, biz.TopologySequential, biz.TopologyHybrid:
+			strategy = biz.StrategyDAG
 		}
 
 		// Build a lightweight plan from memory hit
@@ -113,15 +113,15 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			)
 			return nil, apierror.Internal(apierror.DomainSpirit, "persist plan").WithCause(err)
 		}
-		impl.publishPlanCreated(ctx, saved)
+		impl.publishPlanCreated(ctx, saved, input.ChatSessionID)
 		return saved, nil
 	}
 
 	// Fallback: detect team-formation intent from the user message when mode is
-	// auto/empty. The DECISION.md prompt instructs the Spirit LLM to pass explicit
-	// mode=coordinator/parallel when the user asks for teams, but LLMs don't
-	// always comply. This ensures teams are created when the user clearly requests
-	// them, regardless of LLM cooperation.
+	// empty/auto. The DECISION.md prompt instructs the Spirit LLM to pass an
+	// explicit mode (direct/parallel/dag), but LLMs don't always comply. This
+	// ensures teams are created when the user clearly requests them, regardless
+	// of LLM cooperation.
 	if m := strings.ToLower(strings.TrimSpace(input.Mode)); m == "" || m == "auto" {
 		if detected := detectTeamIntent(input.UserMessage); detected != "" {
 			impl.lg.Info("检测到用户消息中的团队组建意图，自动升级模式",
@@ -195,36 +195,22 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		var err error
 		subTasks, dag, err = impl.decomposeTask(ctx, input.UserMessage, input.IntentArtifact)
 		if err != nil {
-			impl.lg.Warn("任务分解失败，降级为 coordinator 策略",
+			impl.lg.Warn("任务分解失败，降级为 direct 策略",
 				loggateway.StepID(biz.SpiritStepPlannerDecompose),
 				loggateway.Str("trace_id", traceID),
 				loggateway.Err(err),
 			)
-			strategy = biz.StrategyCoordinator
-			strategyReason = "任务分解失败，降级为 coordinator"
+			strategy = biz.StrategyDirect
+			strategyReason = "任务分解失败，降级为 direct"
 			decomposeReason = "decompose_failed"
 		} else if len(subTasks) > 0 {
 			decomposeReason = fmt.Sprintf("分解为 %d 个子任务", len(subTasks))
-			// Refine strategy based on DAG structure ONLY when Mode is auto/empty.
-			// When the user explicitly specified a mode, honor it without refinement
-			// so an explicit "coordinator" isn't overridden to "parallel" by DAG shape.
-			if !modeIsExplicit && dag != nil {
-				if len(dag.RootIDs) == len(dag.Nodes) {
-					// All independent
-					if len(subTasks) >= minSubTasksForParallel {
-						strategy = biz.StrategyParallel
-						strategyReason = fmt.Sprintf("基于 DAG 分析: %d 个独立子任务，选择并行策略", len(subTasks))
-					}
-				} else if hasDependencies(dag) {
-					strategy = biz.StrategyDAG
-					strategyReason = fmt.Sprintf("基于 DAG 分析: %d 个子任务存在依赖关系，选择 DAG 策略", len(subTasks))
-				}
-				// Only fall back to coordinator when DAG has no clear structure
-				if strategy != biz.StrategyParallel && strategy != biz.StrategyDAG && len(subTasks) >= minSubTasksForParallel {
-					strategy = biz.StrategyCoordinator
-					strategyReason = fmt.Sprintf("基于 DAG 分析: %d 个子任务需要协调，选择 coordinator 策略", len(subTasks))
-				}
-			}
+			// Strategy is determined solely by the explicit mode (or detected
+			// team intent). We no longer auto-refine based on DAG shape — the
+			// LLM is the decision authority. When mode is empty (no explicit
+			// request and no detected intent), strategy stays "direct" even if
+			// decomposition produced subtasks; the subtasks are logged for
+			// analysis but not executed by the orchestrator.
 		}
 	}
 
@@ -274,7 +260,7 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 	}
 
 	// Publish spirit_plan_created event.
-	impl.publishPlanCreated(ctx, saved)
+	impl.publishPlanCreated(ctx, saved, input.ChatSessionID)
 
 	return saved, nil
 }
@@ -596,78 +582,89 @@ func assessContext(userMessage string, artifact *biz.IntentArtifact) float64 {
 	return score
 }
 
-// determineStrategy selects the orchestration strategy based on complexity.
-// When input.Mode is an explicit team-forming or direct mode (not "" / "auto"),
-// it overrides the complexity-based selection so the user's intent is honored.
-func (impl *taskPlannerImpl) determineStrategy(level biz.ComplexityLevel, score float64, input biz.PlanInput) (biz.OrchestrationStrategy, string, biz.TopologyType) {
-	// Explicit Mode override: user (or Spirit LLM) requested a specific strategy.
-	if mode := strings.ToLower(strings.TrimSpace(input.Mode)); mode != "" && mode != "auto" {
-		switch mode {
-		case "direct":
-			return biz.StrategyDirect, "用户指定 direct 模式", biz.TopologyDirect
-		case "single", "single_agent":
-			return biz.StrategySingleAgent, "用户指定 single 模式", biz.TopologyCoordinator
-		case "parallel":
-			return biz.StrategyParallel, "用户指定 parallel 模式", biz.TopologyParallel
-		case "dag":
-			return biz.StrategyDAG, "用户指定 dag 模式", biz.TopologyHybrid
-		case "coordinator":
-			return biz.StrategyCoordinator, "用户指定 coordinator 模式", biz.TopologyCoordinator
-		}
+// determineStrategy selects the orchestration strategy based on the explicit
+// mode passed by the Spirit LLM. The three valid modes are: direct, parallel,
+// dag (see DECISION.md). Empty/auto mode defaults to direct.
+//
+// The complexity level/score are still computed for logging and metrics, but
+// no longer drive strategy selection — the LLM is the sole decision authority.
+func (impl *taskPlannerImpl) determineStrategy(_ biz.ComplexityLevel, _ float64, input biz.PlanInput) (biz.OrchestrationStrategy, string, biz.TopologyType) {
+	mode := strings.ToLower(strings.TrimSpace(input.Mode))
+	switch mode {
+	case "direct":
+		return biz.StrategyDirect, "用户指定 direct 模式", biz.TopologyDirect
+	case "parallel":
+		return biz.StrategyParallel, "用户指定 parallel 模式", biz.TopologyParallel
+	case "dag":
+		return biz.StrategyDAG, "用户指定 dag 模式", biz.TopologyHybrid
 	}
-
-	// Default: complexity-based selection
-	switch level {
-	case biz.ComplexitySimple:
-		return biz.StrategyDirect, "简单任务，Spirit 直接回答", biz.TopologyDirect
-	case biz.ComplexityModerate:
-		return biz.StrategySingleAgent, "中等复杂度，使用 Agent-as-Tool", biz.TopologyCoordinator
-	case biz.ComplexityComplex:
-		// Check memory hit for historical topology
-		if input.HistoryDQScore > 0.7 {
-			return biz.StrategyCoordinator, "基于历史编排缓存推荐策略", biz.TopologyCoordinator
-		}
-		return biz.StrategyCoordinator, "复杂任务，默认使用 coordinator 策略", biz.TopologyCoordinator
-	default:
-		return biz.StrategyDirect, "未知复杂度，默认直接回答", biz.TopologyDirect
-	}
+	// Empty / auto / unknown mode: default to direct. The LLM is instructed
+	// (DECISION.md) to always pass an explicit mode; reaching this branch means
+	// the LLM did not comply — direct is the safest fallback.
+	return biz.StrategyDirect, "未指定 mode，默认 direct 模式", biz.TopologyDirect
 }
 
 // shouldForceComplex returns true when the explicit mode requires subtask
 // decomposition so the allocator has subtasks to assign agents to.
-// Team-forming modes (parallel/dag/coordinator) need decomposition regardless
-// of the complexity score; otherwise a "simple" score would skip decomposition
-// and the team would never be assembled.
+// Team-forming modes (parallel/dag) need decomposition regardless of the
+// complexity score; otherwise a "simple" score would skip decomposition and
+// the team would never be assembled.
 func shouldForceComplex(mode string) bool {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "parallel", "dag", "coordinator":
+	case "parallel", "dag":
 		return true
 	}
 	return false
 }
 
 // detectTeamIntent scans the user message for explicit team-formation keywords
-// and returns the recommended mode ("parallel" or "coordinator"). Returns "" if
-// no team intent is detected.
+// and returns the recommended mode ("parallel" or "dag"). Returns "" if no
+// team intent is detected.
 //
-// This is a backend-side fallback for when the Spirit LLM passes mode=auto
-// despite the user explicitly asking for teams. The DECISION.md prompt instructs
-// the LLM to pass explicit mode, but LLMs don't always comply — this ensures
-// teams are created when the user clearly requests them.
+// This is a backend-side fallback for when the Spirit LLM passes mode="" or
+// "auto" despite the user explicitly asking for teams. The DECISION.md prompt
+// instructs the LLM to pass explicit mode, but LLMs don't always comply —
+// this ensures teams are created when the user clearly requests them.
+//
+// Mode selection rationale (aligned with DECISION.md three-mode system):
+//   - "分派N个团队"/"组建团队"/"团队协作" (team formation keywords) → dag:
+//     user expects one or more multi-member teams (≥2 members each).
+//   - "并行"/"同时执行" (parallel keywords) → parallel: each subtask gets 1
+//     agent, no multi-member teams formed. Use when subtasks are independent.
+//   - Team keywords take precedence over parallel keywords: if the user
+//     mentions "团队" they want dag (multi-member collaboration), not parallel.
 func detectTeamIntent(message string) string {
 	lower := strings.ToLower(message)
-	// Parallel keywords take precedence (parallel is a specific form of team work)
+	// Team formation keywords: user wants one or more multi-member teams.
+	// Includes quantity-based patterns ("分派两个团队") and generic team
+	// keywords ("组建团队", "团队协作"). All route to `dag` mode so each team
+	// can have ≥2 members (parallel would create 1-member teams, violating
+	// the "team ≥2 members" rule in DECISION.md).
+	teamKeywords := []string{
+		// Quantity-based team requests (highest precedence)
+		"两个team", "2个team", "两支team", "2支team",
+		"两个团队", "2个团队", "两支团队", "2支团队",
+		"三个team", "3个team", "三支team", "3支team",
+		"三个团队", "3个团队", "三支团队", "3支团队",
+		"多个团队", "多个team", "多支团队", "多支team",
+		"分派两个", "分派2个", "分派三个", "分派3个",
+		"分派团队", "分派team",
+		// Generic team formation keywords
+		"组建团队", "组建队", "组建team", "form a team", "build a team",
+		"团队协作", "团队a", "团队b", "团队c",
+	}
+	for _, kw := range teamKeywords {
+		if strings.Contains(lower, kw) {
+			return "dag"
+		}
+	}
+	// Parallel keywords: user wants concurrent independent subtasks. parallel
+	// mode creates 1 agent per subtask (no multi-member teams), which is the
+	// correct semantic for "并行处理多个独立子任务".
 	parallelKeywords := []string{"并行", "同时执行", "并行处理", "parallel", "同时工作", "concurrently"}
 	for _, kw := range parallelKeywords {
 		if strings.Contains(lower, kw) {
 			return "parallel"
-		}
-	}
-	// Team formation keywords (without parallel — coordinator mode)
-	teamKeywords := []string{"组建团队", "组建队", "团队a", "团队b", "多个团队", "组建team", "form a team", "build a team", "团队协作"}
-	for _, kw := range teamKeywords {
-		if strings.Contains(lower, kw) {
-			return "coordinator"
 		}
 	}
 	return ""
@@ -925,19 +922,6 @@ func buildDAGFromSubTasks(tasks []biz.SubTask) *biz.PlanTaskDAG {
 	return dag
 }
 
-// hasDependencies checks if the DAG has any dependency edges.
-func hasDependencies(dag *biz.PlanTaskDAG) bool {
-	if dag == nil {
-		return false
-	}
-	for _, node := range dag.Nodes {
-		if len(node.DependsOn) > 0 {
-			return true
-		}
-	}
-	return false
-}
-
 // mergeSubTasks merges specified subtasks into one.
 func mergeSubTasks(tasks []biz.SubTask, ids []string) []biz.SubTask {
 	if len(ids) < 2 {
@@ -1055,11 +1039,22 @@ func stripDecompositionFences(s string) string {
 // The spirit_team_assembled event is NOT published here — it is only published by
 // SpiritTeamAssembler when a real team is actually created, preventing ghost team
 // entries in the frontend with fake plan IDs.
-func (impl *taskPlannerImpl) publishPlanCreated(ctx context.Context, plan *biz.TaskPlan) {
+func (impl *taskPlannerImpl) publishPlanCreated(ctx context.Context, plan *biz.TaskPlan, chatSessionID string) {
 	if impl.bus == nil || plan == nil {
 		return
 	}
 	spiritSessionID := plan.SpiritSessionID
+
+	// Use chatSessionID as the primary SessionID so the plan activity appears
+	// in the chat session timeline. The frontend WebSocket subscription filters
+	// by chat session ID, so plan status updates (from updatePlanStepForTeam)
+	// must also use this SessionID to reach the frontend in real time.
+	// Falls back to spiritSessionID when chatSessionID is empty (pre-existing
+	// behavior for paths that don't have the chat session ID).
+	sessionID := chatSessionID
+	if sessionID == "" {
+		sessionID = spiritSessionID
+	}
 
 	// Map plan.SubTasks → []ActivityPlanStep so the frontend PlanBlock can render
 	// the task decomposition list (design m59-chat-ui-v7.html "任务拆解" section).
@@ -1074,17 +1069,26 @@ func (impl *taskPlannerImpl) publishPlanCreated(ctx context.Context, plan *biz.T
 		})
 	}
 
+	// Resolve the root task activity ID from context so the plan nests under
+	// the task in the Activity tree (frontend ActivityStream recursive rendering).
+	// Without ParentActivityID, the plan becomes a root-level sibling of the task,
+	// causing it to render below all task children (team_stage/graph_stage) instead
+	// of between the task and its children.
+	rootTaskID := RootTaskActivityIDFromCtx(ctx)
+
 	// spirit_plan_created: the canonical event for plan creation.
 	ev := biz.ActivityEvent{
 		Event: biz.ActivityEventCreated,
 		Activity: biz.Activity{
-			ID:              uuid.NewString(),
-			Kind:            biz.ActivityKindPlan,
-			Status:          biz.ActivityStatusPending,
-			Stage:           "created",
-			Timestamp:       time.Now().UTC(),
-			SpiritSessionID: spiritSessionID,
-			AgentKey:        "task-planner",
+			ID:               uuid.NewString(),
+			Kind:             biz.ActivityKindPlan,
+			Status:           biz.ActivityStatusPending,
+			Stage:            "created",
+			Timestamp:        time.Now().UTC(),
+			SpiritSessionID:  spiritSessionID,
+			SessionID:        sessionID,
+			ParentActivityID: rootTaskID,
+			AgentKey:         "task-planner",
 			Meta: map[string]any{
 				"plan_id":           plan.ID,
 				"spirit_session_id": spiritSessionID,

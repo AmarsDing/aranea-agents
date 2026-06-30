@@ -68,7 +68,7 @@ func (a *teamMediatorAdapter) SetFinisher(finisher biz.TeamGraphRunFinisherPort)
 	}
 	// The finisher port is backed by *teamRunnerWireAdapter; extract the inner Runner.
 	if ra, ok := finisher.(*teamRunnerWireAdapter); ok {
-		a.inner.SetFinisherFunctions(ra.inner.PersistGraphRunStep, ra.inner.FinalizeGraphTeamRun)
+		a.inner.SetFinisherFunctions(ra.inner.PersistGraphRunStep, ra.inner.FinalizeGraphTeamRun, ra.inner.PublishTeamStepStarted)
 	}
 }
 

@@ -77,8 +77,12 @@ var registryBackedToolKeys = map[string]struct{}{
 // but bypass the Registry factory path, so they are not in registryBackedToolKeys.
 // Available only to Spirit Agent (or agents with explicit ToolsAllowJSON grant).
 var spiritOrchestrationToolKeys = map[string]struct{}{
-	"plan_and_execute": {}, "check_progress": {}, "cancel_orchestration": {},
+	"plan_and_execute": {}, "cancel_orchestration": {},
 	"synthesize_results": {}, "build_orchestration_graph": {},
+	// check_progress removed: the system-push pattern (checkAllTeamsCompleted
+	// → SynthesizeResults → ExecuteTurn) replaces LLM polling. The Spirit
+	// LLM receives an injected synthesis message when teams complete, so
+	// it no longer needs to poll.
 }
 
 // sessionBoundToolKeys need a live agent/session to execute even when globally enabled.

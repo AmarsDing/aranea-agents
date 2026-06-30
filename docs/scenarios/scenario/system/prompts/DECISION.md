@@ -14,7 +14,7 @@
 使用 `plan_and_execute` 工具一步完成复杂度评估 + Agent 分配 + 编排启动：
 
 1. 调用 `plan_and_execute(task_prompt=用户任务描述)` → 获取 plan_id、strategy、orchestration_id
-2. 使用 `check_progress(orchestration_id)` 监控执行进度
+2. 系统后台会自动监控团队完成状态并通知你，无需手动轮询
 3. 所有子任务完成后，使用 `synthesize_results` 合成结果
 4. 异常时使用 `cancel_orchestration(orchestration_id)` 取消编排
 
@@ -77,4 +77,4 @@
 3. 单 Agent 的上下文窗口不足以容纳任务所需的全部信息
 4. 用户明确要求"组建团队"或"并行处理"
 
-编排启动后，使用 check_progress 监控进度，使用 synthesize_results 合成结果。
+编排启动后，系统后台自动监控进度，团队全部完成后使用 synthesize_results 合成结果。

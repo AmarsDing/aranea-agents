@@ -70,7 +70,16 @@ func (r *Runner) createInitialTeamRun(ctx context.Context, sess biz.Session, tea
 		UpdatedAt:              agent.RFC3339Now(),
 		SpiritSessionID:        deriveSpiritSessionID(sess),
 	}
-	return r.runWriter.CreateTeamRun(ctx, run)
+	saved, err := r.runWriter.CreateTeamRun(ctx, run)
+	if err != nil {
+		return biz.TeamRun{}, err
+	}
+	// Restore transient SpiritSessionID: team_runs table has no spirit_session_id
+	// column, so entTeamRunToBiz returns it empty. Callers (publishTeamStepActivity,
+	// publishTeamRunFailedActivity) rely on this field to attribute session/team_stage
+	// activities to the spirit session for correct WS delivery and frontend rendering.
+	saved.SpiritSessionID = run.SpiritSessionID
+	return saved, nil
 }
 
 // teamTracingSetup holds tracing/emitter artifacts returned by setupTeamTracing.
@@ -128,23 +137,43 @@ func deriveSpiritSessionID(sess biz.Session) string {
 }
 
 // publishTeamRunStartedEvent publishes the TeamRunStarted ActivityEvent if a bus is configured.
-func (r *Runner) publishTeamRunStartedEvent(ctx context.Context, sess biz.Session, teamRow biz.Team, run biz.TeamRun) {
+// NOTE: This event does NOT include member info in meta. The member list with correct
+// individual session IDs is already published by publishSpiritTeamAssembled (which sync-persists
+// before this event is published). Including team_summary.members here would overwrite the
+// correct session IDs with the team session ID (sess.ID), causing the frontend to fail to
+// lazy-load member execution processes.
+func (r *Runner) publishTeamRunStartedEvent(ctx context.Context, sess biz.Session, teamRow biz.Team, run biz.TeamRun, def Definition) {
 	if r.td.Pipeline.ActivityBus == nil {
 		return
 	}
 	cp := run
+	spiritSID := deriveSpiritSessionID(sess)
+
+	meta := map[string]any{
+		"run_id":    run.ID,
+		"run":       cp,
+		"team_name": teamRow.DisplayName,
+	}
+
+	// SessionID must be the spirit session ID (not sess.ID which is the team
+	// session ID) so the frontend's WebSocket filter (ev.Activity.SessionID ==
+	// spiritSessionID) and listActivities(spiritSessionID) API both return this
+	// team_stage activity. This matches publishSpiritTeamAssembled's canonical
+	// setup (SessionID: spiritSessionID). Without this, team_stage progress/
+	// completed/failed events are filtered out and never reach the frontend.
 	ev := biz.ActivityEvent{
 		Event: biz.ActivityEventCreated,
 		Activity: biz.Activity{
-			ID:              uuid.NewString(),
-			Kind:            biz.ActivityKindTeamStage,
-			Status:          biz.ActivityStatusRunning,
-			SessionID:       sess.ID,
-			SpiritSessionID: deriveSpiritSessionID(sess),
-			TeamID:          teamRow.ID,
-			Timestamp:       time.Now().UTC(),
-			Stage:           "assembled",
-			Meta:            map[string]any{"run_id": run.ID, "run": cp},
+			ID:               agent.TeamStageActivityID(teamRow.ID),
+			Kind:             biz.ActivityKindTeamStage,
+			Status:           biz.ActivityStatusRunning,
+			SessionID:        spiritSID,
+			SpiritSessionID:  spiritSID,
+			TeamID:           teamRow.ID,
+			ParentActivityID: agent.GraphStageActivityID(spiritSID),
+			Timestamp:        time.Now().UTC(),
+			Stage:            "assembled",
+			Meta:             meta,
 		},
 		Domain: biz.ActivityDomainChat,
 	}
@@ -280,6 +309,12 @@ func (r *Runner) buildTeamProjectMeta(ctx context.Context, sess biz.Session, run
 		SpiritSessionID: spiritSessionID,
 		ParentSessionID: sess.ParentSessionID,
 		RootSessionID:   sess.RootSessionID,
+		// ParentActivityID: set to the deterministic session activity ID so that
+		// the orchestrator's thinking/action/reply activities are nested under
+		// the session activity (kind=session) in the spirit session's tree.
+		// Uses the same deterministic ID as publishTeamStepActivity, ensuring
+		// the frontend can link child activities to the correct parent.
+		ParentActivityID: agent.SessionActivityID(teamRow.ID, ar.agent.AgentKey),
 	}
 }
 

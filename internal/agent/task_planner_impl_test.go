@@ -158,16 +158,14 @@ func TestTaskPlanner_QuickAssess_TeamIntentForcesPlanning(t *testing.T) {
 }
 
 // TestDetermineStrategy_ModeOverride verifies that an explicit Mode in PlanInput
-// overrides the complexity-based strategy selection. This is the root-cause fix
-// for "user asks for teams but StrategyDirect short-circuits and no team is created".
+// selects the correct strategy. In the three-mode system (direct/parallel/dag),
+// the LLM is the sole decision authority — complexity no longer drives selection.
 //
 // Mode values (from PlanAndExecuteInput.Mode jsonschema):
-//   - auto (default): system decides via complexity assessment
-//   - direct: answer directly, no team
-//   - single: one agent (Agent-as-Tool)
-//   - parallel: agents run concurrently
-//   - dag: dependency graph with verification gates
-//   - coordinator: lead agent delegates
+//   - direct: Spirit answers directly, no delegation
+//   - parallel: N independent single-agent subtasks, 1 agent per subtask
+//   - dag: N teams, each team has ≥2 members collaborating
+//   - empty/auto/unknown: defaults to direct (LLM did not comply with DECISION.md)
 func TestDetermineStrategy_ModeOverride(t *testing.T) {
 	impl := &taskPlannerImpl{lg: loggateway.NewNoop()}
 
@@ -177,18 +175,21 @@ func TestDetermineStrategy_ModeOverride(t *testing.T) {
 		level        biz.ComplexityLevel
 		wantStrategy biz.OrchestrationStrategy
 	}{
-		// Fallback: empty/auto mode uses complexity-based selection (existing behavior)
-		{"empty mode falls back to complexity", "", biz.ComplexitySimple, biz.StrategyDirect},
-		{"auto mode falls back to complexity", "auto", biz.ComplexitySimple, biz.StrategyDirect},
-		{"auto mode complex falls back to coordinator", "auto", biz.ComplexityComplex, biz.StrategyCoordinator},
+		// Empty/auto/unknown mode: defaults to direct (LLM is the decision authority)
+		{"empty mode defaults to direct", "", biz.ComplexitySimple, biz.StrategyDirect},
+		{"auto mode defaults to direct", "auto", biz.ComplexitySimple, biz.StrategyDirect},
+		{"auto mode complex defaults to direct", "auto", biz.ComplexityComplex, biz.StrategyDirect},
+		{"unknown mode defaults to direct", "unknown_mode", biz.ComplexityComplex, biz.StrategyDirect},
 
-		// Explicit mode overrides complexity
+		// Explicit mode selects strategy regardless of complexity
 		{"direct mode overrides complex", "direct", biz.ComplexityComplex, biz.StrategyDirect},
-		{"single mode overrides complex", "single", biz.ComplexityComplex, biz.StrategySingleAgent},
-		{"single_agent mode", "single_agent", biz.ComplexitySimple, biz.StrategySingleAgent},
 		{"parallel mode overrides simple", "parallel", biz.ComplexitySimple, biz.StrategyParallel},
 		{"dag mode overrides simple", "dag", biz.ComplexitySimple, biz.StrategyDAG},
-		{"coordinator mode overrides simple", "coordinator", biz.ComplexitySimple, biz.StrategyCoordinator},
+
+		// Deprecated modes (single/coordinator) now default to direct
+		{"single mode defaults to direct", "single", biz.ComplexityComplex, biz.StrategyDirect},
+		{"single_agent mode defaults to direct", "single_agent", biz.ComplexitySimple, biz.StrategyDirect},
+		{"coordinator mode defaults to direct", "coordinator", biz.ComplexitySimple, biz.StrategyDirect},
 
 		// Case-insensitive + whitespace-tolerant
 		{"mode case insensitive", "PARALLEL", biz.ComplexitySimple, biz.StrategyParallel},
@@ -207,9 +208,9 @@ func TestDetermineStrategy_ModeOverride(t *testing.T) {
 	}
 }
 
-// TestShouldForceComplex verifies that team-forming modes (parallel/dag/coordinator)
+// TestShouldForceComplex verifies that team-forming modes (parallel/dag)
 // trigger forced complexity upgrade so decomposition runs and produces subtasks
-// for the allocator. Non-team modes (auto/direct/single) do not force upgrade.
+// for the allocator. Non-team modes (empty/auto/direct) do not force upgrade.
 func TestShouldForceComplex(t *testing.T) {
 	tests := []struct {
 		mode string
@@ -218,13 +219,12 @@ func TestShouldForceComplex(t *testing.T) {
 		{"", false},
 		{"auto", false},
 		{"direct", false},
-		{"single", false},
-		{"single_agent", false},
 		{"parallel", true},
 		{"dag", true},
-		{"coordinator", true},
 		{"PARALLEL", true},
 		{" parallel ", true},
+		{"single", false},      // deprecated, no longer forces complex
+		{"coordinator", false}, // deprecated, no longer forces complex
 		{"unknown_mode", false},
 	}
 	for _, tt := range tests {
@@ -236,26 +236,37 @@ func TestShouldForceComplex(t *testing.T) {
 }
 
 // TestDetectTeamIntent verifies the backend-side fallback that detects explicit
-// team-formation intent from the user message when the Spirit LLM passes mode=auto.
-// This ensures teams are created even when the LLM doesn't follow the DECISION.md
-// instruction to pass explicit mode=coordinator/parallel.
+// team-formation intent from the user message when the Spirit LLM passes empty/auto
+// mode. This ensures teams are created even when the LLM doesn't follow the
+// DECISION.md instruction to pass explicit mode=parallel/dag.
+//
+// Mode selection (aligned with DECISION.md three-mode system):
+//   - team formation keywords ("分派N个团队", "组建团队", "团队协作") → dag:
+//     user expects one or more multi-member teams (≥2 members each).
+//   - parallel keywords ("并行", "同时执行") → parallel: independent concurrent
+//     subtasks, 1 agent per subtask (no multi-member teams).
+//   - Team keywords take precedence over parallel keywords.
 func TestDetectTeamIntent(t *testing.T) {
 	tests := []struct {
 		name    string
 		message string
 		want    string
 	}{
-		// Parallel intent (checked first — "并行" takes precedence)
+		// DAG intent (team formation keywords — checked first, takes precedence)
+		// "分派N个团队"/"组建团队" implies multi-member teams → dag
+		{"two teams Chinese", "分派两个团队分别负责代码分析和数据分析", "dag"},
+		{"two teams English mix", "分派两个team进行，一个负责代码分析，一个负责模拟数据分析", "dag"},
+		{"multiple teams", "需要多个团队协作完成", "dag"},
+		{"parallel with team formation", "组建两个团队并行工作：团队A写诗，团队B写诗", "dag"},
+		{"team formation Chinese", "请组建团队完成这个项目", "dag"},
+		{"team A and team B", "团队A负责前端，团队B负责后端", "dag"},
+		{"build a team English", "form a team to handle this", "dag"},
+		{"team collaboration", "团队协作完成这个任务", "dag"},
+
+		// Parallel intent (parallel keywords without team formation keywords)
 		{"parallel keyword Chinese", "请并行处理这三个任务", "parallel"},
-		{"parallel with team formation", "组建两个团队并行工作：团队A写诗，团队B写诗", "parallel"},
 		{"parallel English", "please run these concurrently", "parallel"},
 		{"parallel processing keyword", "并行处理多个子任务", "parallel"},
-
-		// Coordinator intent (team keywords without parallel)
-		{"team formation Chinese", "请组建团队完成这个项目", "coordinator"},
-		{"team A and team B", "团队A负责前端，团队B负责后端", "coordinator"},
-		{"multiple teams", "需要多个团队协作完成", "coordinator"},
-		{"build a team English", "form a team to handle this", "coordinator"},
 
 		// No team intent
 		{"simple greeting", "你好", ""},

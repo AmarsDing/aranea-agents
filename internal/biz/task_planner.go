@@ -33,9 +33,15 @@ type IntentArtifact struct {
 type PlanInput struct {
 	UserMessage     string
 	SpiritSessionID string
-	TraceID         string
-	IntentArtifact  *IntentArtifact // from intent pass, converted to biz type
-	HistoryDQScore  float64         // from OrchestrationCache, 0 if no history
+	// ChatSessionID is the chat (parent) session ID used when publishing plan
+	// activities. The plan must appear in the chat session timeline so the
+	// frontend can receive real-time status updates via WebSocket (the WS
+	// subscription filters by chat session ID). Falls back to SpiritSessionID
+	// when empty (pre-existing behavior).
+	ChatSessionID  string
+	TraceID        string
+	IntentArtifact *IntentArtifact // from intent pass, converted to biz type
+	HistoryDQScore float64         // from OrchestrationCache, 0 if no history
 	// Mode is the explicit execution mode from plan_and_execute tool input.
 	// Values: "" / "auto" (system decides via complexity), "direct", "single",
 	// "single_agent", "parallel", "dag", "coordinator".

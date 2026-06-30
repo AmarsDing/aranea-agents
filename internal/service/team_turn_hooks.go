@@ -88,7 +88,7 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		if sess.ParentSessionID != "" && strings.TrimSpace(sess.TeamID) != "" {
-			o.teamStarter().HandleTeamTurnResult(ctx, sess.ParentSessionID, strings.TrimSpace(sess.TeamID), "failed", err.Error())
+			o.teamStarter().HandleTeamTurnResult(ctx, sess.ParentSessionID, strings.TrimSpace(sess.TeamID), "failed", err.Error(), "")
 		}
 		return userMsg, assistantMsg, err
 	}
@@ -102,7 +102,7 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 	}
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, "")
 	if sess.ParentSessionID != "" && strings.TrimSpace(sess.TeamID) != "" {
-		o.teamStarter().HandleTeamTurnResult(ctx, sess.ParentSessionID, strings.TrimSpace(sess.TeamID), "completed", "")
+		o.teamStarter().HandleTeamTurnResult(ctx, sess.ParentSessionID, strings.TrimSpace(sess.TeamID), "completed", "", "")
 	}
 	o.recordTeamSessionTurn(ctx, sessionID, strings.TrimSpace(sess.TeamID),
 		userMsg.ID, assistantMsg.ID, "", "",

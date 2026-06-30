@@ -274,12 +274,12 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 					o.publishTurnFailure(sessionID, "", "pending-queue", err, pendingEntryID)
 					o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 					if spiritSessionID != "" && teamID != "" {
-						o.teamStarter().HandleTeamTurnResult(bgCtx, spiritSessionID, teamID, "failed", err.Error())
+						o.teamStarter().HandleTeamTurnResult(bgCtx, spiritSessionID, teamID, "failed", err.Error(), sessionID)
 					}
 				} else {
 					o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusCompleted, "")
 					if spiritSessionID != "" && teamID != "" {
-						o.teamStarter().HandleTeamTurnResult(bgCtx, spiritSessionID, teamID, "completed", "")
+						o.teamStarter().HandleTeamTurnResult(bgCtx, spiritSessionID, teamID, "completed", "", sessionID)
 					}
 				}
 			} else {

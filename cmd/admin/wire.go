@@ -736,6 +736,7 @@ func provideRunnerConfig(
 	subAgentSvc *subagenttool.Service,
 	kanbanBridge kanbanpkg.Bridge,
 	a2aUC *biz.A2AUsecase,
+	sessions *biz.SessionUsecase,
 	lg loggateway.Logger,
 ) team.RunnerConfig {
 	cfg := team.RunnerConfig{
@@ -761,6 +762,10 @@ func provideRunnerConfig(
 		SubAgentService: subAgentSvc,
 		KanbanBridge:    kanbanBridge,
 		A2AEnabled:      a2aUC != nil,
+		// SessionChildLookup resolves member agent session IDs for child_session_id
+		// in session activities. Uses SessionUsecase.ListChildSessions to look up
+		// child sessions by parent (team) session ID and match by MemberAgentKey.
+		SessionChildLookup: &sessionChildLookupAdapter{sessions: sessions},
 	}
 	if graphs != nil {
 		cfg.GraphLoader = graphadapter.NewLinkedGraphBuildConfigLoader(graphs)
@@ -771,6 +776,25 @@ func provideRunnerConfig(
 		}
 	}
 	return cfg
+}
+
+// sessionChildLookupAdapter adapts SessionUsecase to team.SessionChildLookup.
+// Uses ListChildSessions to find the child session with the matching MemberAgentKey.
+type sessionChildLookupAdapter struct {
+	sessions *biz.SessionUsecase
+}
+
+func (a *sessionChildLookupAdapter) LookupChildSessionID(ctx context.Context, parentSessionID, memberAgentKey string) (string, error) {
+	children, err := a.sessions.ListChildSessions(ctx, parentSessionID)
+	if err != nil {
+		return "", err
+	}
+	for _, child := range children {
+		if child.MemberAgentKey == memberAgentKey {
+			return child.ID, nil
+		}
+	}
+	return "", nil // not found is not an error — caller falls back to team session ID
 }
 
 // provideTurnReadDeps builds the shared TurnReadDeps used by both Chat and Team.
