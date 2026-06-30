@@ -296,6 +296,15 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		// edges and the database preserves the dependency graph across
 		// status updates (assembled → progress → completed/failed/cancelled).
 		dependsOn := team.DependsOn
+		// progress_pct: 100 when completed, 0 otherwise. Without this, the
+		// terminal event meta lacks progress_pct and the frontend TeamCard
+		// shows 0% even after the team finishes. The assembled event sets
+		// progress_pct=0; the dedup logic in useActivityTimeline.ts skips
+		// 0 values when merging meta, so a non-zero value here overrides.
+		progressPct := 0
+		if status == biz.TeamStatusCompleted {
+			progressPct = 100
+		}
 		meta := map[string]any{
 			"team_id":         teamID,
 			"team_name":       team.DisplayName,
@@ -304,6 +313,7 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 			"total_token_in":  tokenIn,
 			"total_token_out": tokenOut,
 			"depends_on":      dependsOn,
+			"progress_pct":    progressPct,
 		}
 		if errMsg != "" {
 			meta["error"] = errMsg

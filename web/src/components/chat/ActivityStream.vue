@@ -452,6 +452,15 @@ const renderItems = computed<RenderItem[]>(() => {
       if (activity.kind === 'action' && isSilentTool(activity)) {
         continue;
       }
+      // Filter out root-level plans (parentActivityId empty). These are
+      // duplicates created by the pre-planning gate in the synthesis turn
+      // (backend bug: rootTaskID not yet injected into ctx when
+      // planner.Plan runs in chat_orchestrator_turn.go:425). The real
+      // task plan is nested under the task activity and rendered via
+      // filterChildrenForRender.
+      if (activity.kind === 'plan' && !activity.parentActivityId) {
+        continue;
+      }
       items.push({ activity, event: activityToStreamEvent(activity), keySuffix: '' });
     }
   }
@@ -464,23 +473,19 @@ const renderItems = computed<RenderItem[]>(() => {
   return items;
 });
 
-/** Filter plan activities out of task children.
+/** Return the children of an activity for rendering.
  *
- *  The spirit creates multiple exploratory plans during its reasoning process
- *  (nested under task activities). These plans are internal decompositions
- *  that don't correspond 1:1 to teams/agents and are never updated when teams
- *  complete — showing them confuses users with stale "1/4 completed" states.
+ *  Plans nested under task activities ARE rendered — they are the Spirit's
+ *  task plan (created via plan_and_execute tool) and are kept in sync with
+ *  team execution by `updatePlanStepForTeam` (spirit_team.go). The plan
+ *  appears between the intermediate reply and graph_stage per design §1.7.3.
  *
- *  Per design B.4.3: "每个 plan item 对应一个 team 或 agent". Only the root-level
- *  graph plan (created by the graph runner) satisfies this requirement and
- *  should be rendered. Plans nested under tasks are the spirit's exploratory
- *  reasoning and are filtered out here.
+ *  Root-level plans (parentActivityId empty) are filtered out in `renderItems`
+ *  because they are duplicates created by the pre-planning gate in the
+ *  synthesis turn (backend bug: rootTaskID not yet injected into ctx).
  */
 function filterChildrenForRender(activity: ActivityTreeNode): ActivityTreeNode[] {
   if (!activity.children?.length) return [];
-  if (activity.kind === 'task') {
-    return activity.children.filter((c) => c.kind !== 'plan');
-  }
   return activity.children;
 }
 

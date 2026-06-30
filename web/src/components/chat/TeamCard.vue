@@ -266,13 +266,18 @@ const createdTimeText = computed(() => {
 
 // Progress: prefer explicit progressPct from meta, else derive from members (B.5.1).
 const progressPct = computed(() => {
+  // Status-based override: a completed team is always 100%, even if
+  // meta.progress_pct is stale (e.g. assembled event set 0 and the terminal
+  // event's progress_pct=100 was lost in dedup). This must be checked BEFORE
+  // the meta.progress_pct branch below, otherwise completed teams show 0%.
+  if (props.activity.status === 'completed') return 100;
+  if (props.activity.status === 'failed' || props.activity.status === 'cancelled') return 0;
   if (typeof props.activity.progressPct === 'number') return props.activity.progressPct;
   const members = props.activity.members;
   if (members?.length) {
     const done = members.filter((m) => m.status === 'completed' || m.status === 'failed').length;
     return Math.round((done / members.length) * 100);
   }
-  if (props.activity.status === 'completed') return 100;
   return 0;
 });
 
@@ -330,6 +335,14 @@ const statusColor = computed(() => {
   transition: border-color 0.15s ease
   // B.4.1: 默认折叠时仍要完整展示头部/中部/尾部（含操作按钮与注入对话框），
   // 因此不限制高度；展开态显示成员子活动。
+  // 必须使用 flex column 否则展开后的 team-card__detail 会溢出父容器高度，
+  // 导致后续兄弟 team-card 与其内容重叠。
+  // height: auto 覆盖全局 TeamsPage grid 的 230px 固定高度（_entity-pages.sass
+  // 的 .team-card 选择器与 chat TeamCard 类名冲突）。
+  display: flex
+  flex-direction: column
+  height: auto
+  min-height: fit-content
   overflow: visible
 
   &--running

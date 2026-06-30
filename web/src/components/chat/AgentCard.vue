@@ -279,6 +279,13 @@ const statusColor = computed(() => {
   border: 1px solid var(--glass-border)
   padding: 6px 10px
   transition: border-color 0.15s ease
+  // Use flex column so the expanded agent-card__detail contributes to the
+  // card's total height; otherwise the detail overflows and subsequent
+  // siblings overlap it.
+  display: flex
+  flex-direction: column
+  height: auto
+  min-height: fit-content
 
   &--running
     border-color: color-mix(in srgb, var(--color-accent) 40%, var(--glass-border))

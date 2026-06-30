@@ -352,6 +352,34 @@ export function useActivityTimeline() {
     };
     sortTree(roots);
 
+    // Defensive fix: session activities (AgentCards) for synthesizers/anchors
+    // that orchestrate the team graph never get a persisted team_run_step, so
+    // finalizePendingSessionActivities on the backend should publish
+    // "completed" for them. In practice this doesn't always persist (race or
+    // early-return), leaving AgentCards stuck in "running" after the team
+    // completes. Walk the tree and for each team_stage in terminal status,
+    // inherit the terminal status for child session activities still running.
+    const inheritTeamTerminalStatus = (nodes: ActivityTreeNode[]) => {
+      for (const node of nodes) {
+        if (node.kind === 'team_stage') {
+          const teamTerminalStatus = mapActivityStatusToStageStatus(node.status);
+          if (
+            teamTerminalStatus === 'completed' ||
+            teamTerminalStatus === 'failed' ||
+            teamTerminalStatus === 'cancelled'
+          ) {
+            for (const child of node.children ?? []) {
+              if (child.kind === 'session' && child.status === 'running') {
+                child.status = teamTerminalStatus === 'cancelled' ? 'failed' : teamTerminalStatus;
+              }
+            }
+          }
+        }
+        inheritTeamTerminalStatus(node.children ?? []);
+      }
+    };
+    inheritTeamTerminalStatus(roots);
+
     return roots;
   });
 
@@ -1307,6 +1335,10 @@ const ACTIVITY_KIND_PRIORITY: Record<ActivityKind, number> = {
   session: 9,
 };
 
+function isFinalReply(a: Activity): boolean {
+  return a.kind === 'reply' && a.meta?.is_final === true;
+}
+
 function compareActivities(a: Activity, b: Activity): number {
   // Issue 3 fix: plan is a logical prerequisite for team execution. When the
   // spirit assembles teams before generating a plan, the plan's timestamp is
@@ -1316,15 +1348,19 @@ function compareActivities(a: Activity, b: Activity): number {
   if (a.kind === 'plan' && (b.kind === 'team_stage' || b.kind === 'graph_stage')) return -1;
   if (b.kind === 'plan' && (a.kind === 'team_stage' || a.kind === 'graph_stage')) return 1;
 
-  // Issue 4 fix: reply must come after graph_stage and team_stage. During
-  // execution, reply is created after team completion, so its timestamp is
-  // naturally larger. But when loaded from DB, timestamps may be equal (same
-  // second), and the kind priority (reply=3 < graph_stage=7/team_stage=8)
-  // would incorrectly place reply before graph/team stages. This override
-  // ensures the execution order (dependencies → team panel → reply) is
-  // preserved regardless of timestamp precision.
-  if (a.kind === 'reply' && (b.kind === 'graph_stage' || b.kind === 'team_stage')) return 1;
-  if (b.kind === 'reply' && (a.kind === 'graph_stage' || a.kind === 'team_stage')) return -1;
+  // Final reply (is_final=true) must render at the end of the activity stream
+  // (design §1.7.3 conclusion node). The graph_stage timestamp is updated when
+  // teams complete (updatedAt), which can be later than the final reply's
+  // createdAt — so a pure timestamp sort would place the conclusion before the
+  // graph_stage. Push is_final replies after graph_stage/team_stage to keep
+  // them at the bottom. Non-final (intermediate) replies use natural timestamp
+  // ordering so they appear in their correct position before plan/graph_stage.
+  if (isFinalReply(a) && (b.kind === 'graph_stage' || b.kind === 'team_stage')) return 1;
+  if (isFinalReply(b) && (a.kind === 'graph_stage' || a.kind === 'team_stage')) return -1;
+
+  // Final reply must also come after non-final replies and after plan.
+  if (isFinalReply(a) && !isFinalReply(b)) return 1;
+  if (isFinalReply(b) && !isFinalReply(a)) return -1;
 
   const ta = new Date(a.timestamp).getTime();
   const tb = new Date(b.timestamp).getTime();
