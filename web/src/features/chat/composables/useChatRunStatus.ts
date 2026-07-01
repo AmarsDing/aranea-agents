@@ -2,10 +2,7 @@ import { ref, type Ref } from 'vue';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import type { RunStatus, RunStatusValue } from '../types';
 import type { ActivityEvent } from '../../../realtime/activityEvent';
-import {
-  runStatusFromActivityEvent,
-  messageQueuedFromActivityEvent,
-} from '../activityRunStatus';
+import { runStatusFromActivityEvent, messageQueuedFromActivityEvent } from '../activityRunStatus';
 
 const HYDRATE_DELAY_MS = 400;
 

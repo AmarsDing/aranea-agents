@@ -44,6 +44,7 @@
         :activity-tree="props.activityTree"
         :agent-map="props.agentMap"
         :run-status="props.runStatus"
+        :auto-expand-for="autoExpandFor"
         @confirm="(id: string, approved: boolean) => $emit('confirm', id, approved)"
         @error-retry="(e: ErrorEvent) => $emit('error-retry', e)"
         @error-switch-model="(e: ErrorEvent) => $emit('error-switch-model', e)"
@@ -89,15 +90,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ChatPendingQueue from './ChatPendingQueue.vue';
 import ActivityStream from './ActivityStream.vue';
+import { useScrollToActivity } from '../../features/chat/composables/useScrollToActivity';
 import type { Message, PendingMessage } from '../../features/chat/types';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { ActivityTreeNode } from '../../features/chat/activityTypes';
 import type { ErrorEvent } from '../../features/chat/streamEventTypes';
+
+const AUTO_EXPAND_HOLD_MS = 3000;
 
 const props = defineProps<{
   sessionKey: string;
@@ -170,6 +174,42 @@ const emptyScrollEl = ref<HTMLElement | null>(null);
 // Phase A: native scroll container replacing DynamicScroller.
 const scrollViewportEl = ref<HTMLElement | null>(null);
 
+// T8.6: 点击左侧 Agent 卡片 → 滚动并高亮中间面板对应的 AgentCard。
+// useScrollToActivity 为模块级 ref 单例，ChatEntitySidebar 调用 locate() 触发此处 watch。
+const { locateCommand } = useScrollToActivity();
+const autoExpandFor = ref<string>('');
+let autoExpandTimer: ReturnType<typeof window.setTimeout> | null = null;
+
+watch(locateCommand, async (cmd) => {
+  if (!cmd || !scrollViewportEl.value) return;
+  // 触发父级 TeamCard / AgentCard 自动展开，确保目标节点可见
+  autoExpandFor.value = cmd.agentKey || cmd.teamId || '';
+  if (autoExpandTimer) window.clearTimeout(autoExpandTimer);
+  autoExpandTimer = window.setTimeout(() => {
+    autoExpandFor.value = '';
+  }, AUTO_EXPAND_HOLD_MS);
+  // 等待数据更新（如展开新会话）渲染到 DOM
+  await nextTick();
+  let el = scrollViewportEl.value.querySelector(`[data-agent-key="${cssEscape(cmd.agentKey)}"]`) as HTMLElement | null;
+  // 多成员团队渲染为 TeamCard，按 teamId 二次定位
+  if (!el && cmd.teamId) {
+    el = scrollViewportEl.value.querySelector(`[data-team-id="${cssEscape(cmd.teamId)}"]`) as HTMLElement | null;
+  }
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.add('activity-locate-highlight');
+  window.setTimeout(() => el.classList.remove('activity-locate-highlight'), 3000);
+});
+
+/** 转义 agentKey 中可能的 CSS 选择器特殊字符（如点、冒号），避免 querySelector 解析失败。 */
+function cssEscape(value: string): string {
+  // 简单转义：用 CSS.escape（现代浏览器支持），否则回退到双引号包裹
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+    return CSS.escape(value);
+  }
+  return value.replace(/["\\]/g, '\\$&');
+}
+
 /**
  * Phase A: Virtual scrolling removed (DynamicScroller gone).
  * `useVirtualScroll` is kept as `false` for ChatMessagePanel /
@@ -202,3 +242,18 @@ defineExpose({
   },
 });
 </script>
+
+<style lang="sass">
+/* T8.6: 点击左侧 Agent 卡片定位高亮 — 全局样式（非 scoped），
+   因为类通过 classList.add 加到子组件 AgentCard/TeamCard 根元素上，
+   scoped 样式无法穿透。按 B.9.3 设计使用黄色闪烁 3 次后由 JS 移除。 */
+@keyframes activity-locate-flash
+  0%, 100%
+    box-shadow: 0 0 0 0 rgba(233, 162, 59, 0)
+  50%
+    box-shadow: 0 0 0 3px rgba(233, 162, 59, 0.5)
+
+.activity-locate-highlight
+  animation: activity-locate-flash 1s ease-in-out 3
+  border-radius: 6px
+</style>

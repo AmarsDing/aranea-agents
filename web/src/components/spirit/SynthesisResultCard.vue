@@ -167,6 +167,11 @@ const dqColor = computed(() => dqScoreColor(props.evolutionSuggestion?.dqScore))
   max-height: 300px
   overflow-y: auto
 
+  :deep(img)
+    max-width: 100%
+    height: auto
+    border-radius: 6px
+
 .synthesis-result-card__teams
   padding-top: var(--space-2)
   border-top: 1px solid color-mix(in srgb, var(--glass-border) 50%, transparent)
@@ -190,18 +195,16 @@ const dqColor = computed(() => dqScoreColor(props.evolutionSuggestion?.dqScore))
 
 .synthesis-result-card__team-summary
   font-size: 11px
-  white-space: nowrap
-  overflow: hidden
-  text-overflow: ellipsis
-  padding: 1px 0
+  white-space: pre-line
+  padding: 2px 0
+  line-height: 1.5
 
 .synthesis-result-card__team-findings
   font-size: 11px
   color: var(--color-text-tertiary)
-  padding: 1px 0
+  padding: 2px 0
   white-space: pre-line
-  max-height: 60px
-  overflow-y: auto
+  line-height: 1.5
 
 .synthesis-result-card__meta
   text-align: right

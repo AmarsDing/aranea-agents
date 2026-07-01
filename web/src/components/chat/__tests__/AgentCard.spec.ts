@@ -14,9 +14,7 @@ vi.mock('../../../features/session/api', () => ({
 import AgentCard from '../AgentCard.vue';
 
 /** Build a minimal SessionStageEvent with sensible defaults. */
-function makeSessionEvent(
-  overrides: Partial<SessionStageEvent> & Pick<SessionStageEvent, 'id'>,
-): SessionStageEvent {
+function makeSessionEvent(overrides: Partial<SessionStageEvent> & Pick<SessionStageEvent, 'id'>): SessionStageEvent {
   return {
     id: overrides.id,
     kind: 'session',
@@ -39,10 +37,7 @@ interface MountOptions {
 }
 
 /** Mount AgentCard with the given activity prop, returning the DOM container. */
-function mountAgentCard(
-  activity: SessionStageEvent,
-  opts: MountOptions = {},
-): { container: HTMLElement; app: VueApp } {
+function mountAgentCard(activity: SessionStageEvent, opts: MountOptions = {}): { container: HTMLElement; app: VueApp } {
   const i18n = createI18n({
     legacy: false,
     locale: 'zh-CN',
@@ -70,7 +65,10 @@ type CapturedEvent =
   | { name: 'inject-agent'; args: [{ sessionId: string; message: string }] };
 
 /** Mount AgentCard and capture all emits via onXxx prop listeners. */
-function captureEmit(activity: SessionStageEvent, opts: MountOptions = {}): {
+function captureEmit(
+  activity: SessionStageEvent,
+  opts: MountOptions = {},
+): {
   events: CapturedEvent[];
   pauseBtn: HTMLElement | null;
   resumeBtn: HTMLElement | null;
@@ -100,10 +98,7 @@ afterEach(() => {
 
 describe('AgentCard', () => {
   it('running + parent running: shows pause + cancel buttons + inject dialog', () => {
-    const { container } = mountAgentCard(
-      makeSessionEvent({ id: 'a1', status: 'running' }),
-      { runStatus: 'running' },
-    );
+    const { container } = mountAgentCard(makeSessionEvent({ id: 'a1', status: 'running' }), { runStatus: 'running' });
     // Pause button visible
     expect(container.querySelector('.agent-card__action--pause')).toBeTruthy();
     // Cancel button visible
@@ -115,10 +110,7 @@ describe('AgentCard', () => {
   });
 
   it('paused: shows resume + cancel buttons + inject dialog', () => {
-    const { container } = mountAgentCard(
-      makeSessionEvent({ id: 'a2', status: 'paused' }),
-      { runStatus: 'running' },
-    );
+    const { container } = mountAgentCard(makeSessionEvent({ id: 'a2', status: 'paused' }), { runStatus: 'running' });
     // Resume button visible
     expect(container.querySelector('.agent-card__action--resume')).toBeTruthy();
     // Cancel button visible
@@ -132,9 +124,7 @@ describe('AgentCard', () => {
   });
 
   it('failed: shows retry button only (no inject dialog)', () => {
-    const { container } = mountAgentCard(
-      makeSessionEvent({ id: 'a3', status: 'failed' }),
-    );
+    const { container } = mountAgentCard(makeSessionEvent({ id: 'a3', status: 'failed' }));
     expect(container.querySelector('.agent-card__action--retry')).toBeTruthy();
     // Pause/resume/cancel all hidden
     expect(container.querySelector('.agent-card__action--pause')).toBeNull();
@@ -145,9 +135,7 @@ describe('AgentCard', () => {
   });
 
   it('completed: hides all action buttons and inject dialog', () => {
-    const { container } = mountAgentCard(
-      makeSessionEvent({ id: 'a4', status: 'completed' }),
-    );
+    const { container } = mountAgentCard(makeSessionEvent({ id: 'a4', status: 'completed' }));
     expect(container.querySelector('.agent-card__action--pause')).toBeNull();
     expect(container.querySelector('.agent-card__action--resume')).toBeNull();
     expect(container.querySelector('.agent-card__action--cancel')).toBeNull();
@@ -156,9 +144,7 @@ describe('AgentCard', () => {
   });
 
   it('cancelled: hides all action buttons', () => {
-    const { container } = mountAgentCard(
-      makeSessionEvent({ id: 'a5', status: 'cancelled' }),
-    );
+    const { container } = mountAgentCard(makeSessionEvent({ id: 'a5', status: 'cancelled' }));
     expect(container.querySelector('.agent-card__action--pause')).toBeNull();
     expect(container.querySelector('.agent-card__action--resume')).toBeNull();
     expect(container.querySelector('.agent-card__action--cancel')).toBeNull();

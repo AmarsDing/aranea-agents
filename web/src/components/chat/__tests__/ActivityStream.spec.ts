@@ -12,9 +12,7 @@ vi.mock('../../../features/session/api', () => ({
 import ActivityStream from '../ActivityStream.vue';
 
 /** Build a minimal valid Activity with sensible defaults. */
-function makeActivity(
-  overrides: Partial<Activity> & Pick<Activity, 'id' | 'kind'>,
-): Activity {
+function makeActivity(overrides: Partial<Activity> & Pick<Activity, 'id' | 'kind'>): Activity {
   return {
     status: 'completed',
     sessionId: 's1',
@@ -123,17 +121,10 @@ describe('ActivityStream', () => {
   it('B-04: renders nested children in an indented container', () => {
     // Parent plan with two child activities (thinking + reply).
     const activityTree: ActivityTreeNode[] = [
-      asTreeNode(
-        makeActivity({ id: 'p1', kind: 'plan', content: 'plan' }),
-        [
-          asTreeNode(
-            makeActivity({ id: 'th1', kind: 'thinking', parentActivityId: 'p1', content: 'child thinking' }),
-          ),
-          asTreeNode(
-            makeActivity({ id: 'r1', kind: 'reply', parentActivityId: 'p1', content: 'child reply' }),
-          ),
-        ],
-      ),
+      asTreeNode(makeActivity({ id: 'p1', kind: 'plan', content: 'plan', parentActivityId: 'task-1' }), [
+        asTreeNode(makeActivity({ id: 'th1', kind: 'thinking', parentActivityId: 'p1', content: 'child thinking' })),
+        asTreeNode(makeActivity({ id: 'r1', kind: 'reply', parentActivityId: 'p1', content: 'child reply' })),
+      ]),
     ];
     const { container } = mountActivityStream(activityTree);
     // The plan block itself should render.

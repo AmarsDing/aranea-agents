@@ -175,11 +175,7 @@ export const useTeamsStore = defineStore('teams', () => {
 
   // ── WS events ──
 
-  function subscribeRunEvents(
-    sessionId: string,
-    teamID: string,
-    onEvent: (event: TeamRunEvent) => void,
-  ) {
+  function subscribeRunEvents(sessionId: string, teamID: string, onEvent: (event: TeamRunEvent) => void) {
     return subscribeTeamRunEventsWs(sessionId, teamID, onEvent);
   }
 

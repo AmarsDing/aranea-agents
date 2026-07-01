@@ -1,0 +1,177 @@
+<h2>最终设计确认：左侧 Agent 卡片列表 + 阻塞状态定义</h2>
+<p class="subtitle">已整合全部 7 点反馈。请确认以下设计是否符合预期。</p>
+
+<div class="split" style="grid-template-columns:340px 1fr;gap:8px">
+  <!-- 左侧面板 mockup (330px) -->
+  <div class="mockup">
+    <div class="mockup-header">左侧面板（280→330px，+50px）</div>
+    <div class="mockup-body" style="padding:8px;font-size:11px;font-family:monospace;background:#1a1a2e;min-height:400px">
+      <!-- 精灵 -->
+      <div style="display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid #333;margin-bottom:6px">
+        <span style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#E9A23B,#ff6b35);display:inline-flex;align-items:center;justify-content:center;font-size:12px">精</span>
+        <div>
+          <div style="color:#E9A23B;font-weight:bold">精灵助手</div>
+          <div style="color:#888;font-size:10px">编排中 · 5个Agent</div>
+        </div>
+      </div>
+
+      <!-- Agent 1: 执行中（转圈动画） -->
+      <div style="background:rgba(0,229,255,0.08);border-left:3px solid #00E5FF;border-radius:6px;padding:8px;margin-bottom:5px;cursor:pointer" onclick="alert('定位到中间面板的会话位置')">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:24px;height:24px;border-radius:50%;background:#4CAF7C;display:inline-flex;align-items:center;justify-content:center;font-size:10px;overflow:hidden;flex-shrink:0">码</span>
+          <div style="flex:1;min-width:0">
+            <div style="color:#fff;font-weight:600">研发助手 <span style="color:#888;font-size:9px">programmer</span></div>
+            <div style="color:#666;font-size:9px">组件架构梳理团队</div>
+          </div>
+          <span style="display:inline-block;width:14px;height:14px;border:2px solid #00E5FF;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0"></span>
+        </div>
+        <div style="display:flex;gap:4px;margin-top:5px">
+          <button style="background:rgba(255,165,0,0.15);border:1px solid rgba(255,165,0,0.5);color:#E9A23B;border-radius:3px;padding:1px 6px;font-size:9px;cursor:pointer">⏸ 暂停</button>
+          <button style="background:rgba(244,67,54,0.15);border:1px solid rgba(244,67,54,0.5);color:#f88;border-radius:3px;padding:1px 6px;font-size:9px;cursor:pointer">✕ 取消</button>
+        </div>
+      </div>
+
+      <!-- Agent 2: 阻塞（黄色，无单独定位按钮，点击卡片定位） -->
+      <div style="background:rgba(233,162,59,0.12);border-left:3px solid #E9A23B;border-radius:6px;padding:8px;margin-bottom:5px;cursor:pointer;box-shadow:0 0 6px rgba(233,162,59,0.3)" onclick="alert('定位到中间面板的会话位置')">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:24px;height:24px;border-radius:50%;background:#666;display:inline-flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0">部</span>
+          <div style="flex:1;min-width:0">
+            <div style="color:#fff;font-weight:600">数据主管</div>
+            <div style="color:#666;font-size:9px">模拟数据分析团队</div>
+          </div>
+          <span style="color:#E9A23B;font-size:14px;flex-shrink:0">⚠</span>
+        </div>
+        <div style="color:#E9A23B;font-size:10px;margin-top:3px">工具阻塞 · 等待 read_file 返回</div>
+        <div style="display:flex;gap:4px;margin-top:5px">
+          <button style="background:rgba(0,229,255,0.15);border:1px solid rgba(0,229,255,0.5);color:#00E5FF;border-radius:3px;padding:1px 6px;font-size:9px;cursor:pointer">▶ 恢复</button>
+          <button style="background:rgba(244,67,54,0.15);border:1px solid rgba(244,67,54,0.5);color:#f88;border-radius:3px;padding:1px 6px;font-size:9px;cursor:pointer">✕ 取消</button>
+        </div>
+      </div>
+
+      <!-- Agent 3: 已完成（绿色，不折叠，按创建顺序） -->
+      <div style="background:rgba(76,175,127,0.06);border-left:3px solid #4CAF7C;border-radius:6px;padding:8px;margin-bottom:5px;cursor:pointer;opacity:0.7" onclick="alert('定位到中间面板的会话位置')">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:24px;height:24px;border-radius:50%;background:#4CAF7C;display:inline-flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0">部</span>
+          <div style="flex:1;min-width:0">
+            <div style="color:#aaa;font-weight:600">架构主管</div>
+            <div style="color:#666;font-size:9px">代码分析团队</div>
+          </div>
+          <span style="color:#4CAF7C;font-size:14px;flex-shrink:0">✓</span>
+        </div>
+        <div style="color:#666;font-size:10px;margin-top:3px">已完成 · 13.3s</div>
+      </div>
+
+      <!-- Agent 4: 执行中 -->
+      <div style="background:rgba(0,229,255,0.08);border-left:3px solid #00E5FF;border-radius:6px;padding:8px;margin-bottom:5px;cursor:pointer" onclick="alert('定位到中间面板的会话位置')">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:24px;height:24px;border-radius:50%;background:#4CAF7C;display:inline-flex;align-items:center;justify-content:center;font-size:10px;overflow:hidden;flex-shrink:0">写</span>
+          <div style="flex:1;min-width:0">
+            <div style="color:#fff;font-weight:600">写作助手 <span style="color:#888;font-size:9px">writer</span></div>
+            <div style="color:#666;font-size:9px">报告编写团队</div>
+          </div>
+          <span style="display:inline-block;width:14px;height:14px;border:2px solid #00E5FF;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0"></span>
+        </div>
+        <div style="display:flex;gap:4px;margin-top:5px">
+          <button style="background:rgba(255,165,0,0.15);border:1px solid rgba(255,165,0,0.5);color:#E9A23B;border-radius:3px;padding:1px 6px;font-size:9px;cursor:pointer">⏸ 暂停</button>
+          <button style="background:rgba(244,67,54,0.15);border:1px solid rgba(244,67,54,0.5);color:#f88;border-radius:3px;padding:1px 6px;font-size:9px;cursor:pointer">✕ 取消</button>
+        </div>
+      </div>
+
+      <!-- Agent 5: 空闲 -->
+      <div style="background:rgba(255,255,255,0.03);border-left:3px solid #444;border-radius:6px;padding:8px;margin-bottom:5px;cursor:pointer" onclick="alert('定位到中间面板的会话位置')">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:24px;height:24px;border-radius:50%;background:#555;display:inline-flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0">研</span>
+          <div style="flex:1;min-width:0">
+            <div style="color:#888;font-weight:600">研究员</div>
+            <div style="color:#555;font-size:9px">待分配</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 中间活动流 -->
+  <div class="mockup">
+    <div class="mockup-header">中间活动流（点击左侧 Agent 后定位高亮）</div>
+    <div class="mockup-body" style="padding:10px;font-size:11px;font-family:monospace;background:#1a1a2e;min-height:400px">
+      <div style="color:#00E5FF;margin-bottom:6px">⚡ 3D风场项目分析</div>
+      <div style="margin-left:14px;border-left:2px solid #333;padding-left:10px">
+        <div style="color:#4CAF7C">◆ 代码分析团队 ✓</div>
+        <div style="margin-left:14px;border-left:2px solid #333;padding-left:10px;color:#888">
+          <div>🧠 架构主管 ✓</div>
+        </div>
+        <div style="color:#E9A23B;margin-top:4px">◆ 模拟数据分析 ●</div>
+        <div style="margin-left:14px;border-left:2px solid #E9A23B;padding-left:10px">
+          <div style="background:rgba(233,162,59,0.2);border-radius:4px;padding:4px 6px;animation:highlight 1s ease-in-out 3;border:1px solid #E9A23B">
+            <div>🧠 数据主管 <span style="color:#E9A23B">⚠ 工具阻塞</span></div>
+            <div style="margin-left:14px;border-left:2px solid #E9A23B;padding-left:10px;color:#888">
+              <div>🔧 read_file <span style="color:#E9A23B">等待返回</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:center;color:#E9A23B;font-size:10px;margin-top:8px;animation:pulse 1.5s infinite">
+        ↑ 已自动滚动定位 ↑
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 阻塞状态定义 -->
+<div class="section" style="margin-top:16px">
+  <h3>阻塞（Blocked）状态精确定义</h3>
+  <p class="subtitle">基于后端状态机分析，非纯时间推断。4 种阻塞类型，前端基于现有 Activity 事件 + Session/Run 状态即可准确判定。</p>
+  <table style="width:100%;font-size:12px;border-collapse:collapse">
+    <thead>
+      <tr style="border-bottom:2px solid #444">
+        <th style="text-align:left;padding:6px">阻塞类型</th>
+        <th style="text-align:left;padding:6px">判定条件（状态组合）</th>
+        <th style="text-align:left;padding:6px">UI 表现</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #333">
+        <td style="padding:6px"><b style="color:#E9A23B">工具阻塞</b></td>
+        <td style="padding:6px">Activity(kind=action, status=tool_running) + 无 ToolResult 事件</td>
+        <td style="padding:6px">黄色 ⚠ + "工具阻塞 · 等待 {tool_name} 返回"</td>
+      </tr>
+      <tr style="border-bottom:1px solid #333">
+        <td style="padding:6px"><b style="color:#E9A23B">LLM 阻塞</b></td>
+        <td style="padding:6px">Activity(kind=thinking/reply, status=running) + 无 streaming 事件 + 心跳活着</td>
+        <td style="padding:6px">黄色 ⚠ + "LLM 阻塞 · 等待模型响应"</td>
+      </tr>
+      <tr style="border-bottom:1px solid #333">
+        <td style="padding:6px"><b style="color:#E9A23B">确认阻塞</b></td>
+        <td style="padding:6px">Session(status=awaiting_confirmation) + Activity(kind=confirm, status=tool_blocked)</td>
+        <td style="padding:6px">黄色 ⚠ + "等待用户确认"</td>
+      </tr>
+      <tr style="border-bottom:1px solid #333">
+        <td style="padding:6px"><b style="color:#E9A23B">HITL 阻塞</b></td>
+        <td style="padding:6px">TeamRun(status=waiting_human) + Activity(kind=confirm, status=tool_blocked)</td>
+        <td style="padding:6px">黄色 ⚠ + "等待人工介入"</td>
+      </tr>
+    </tbody>
+  </table>
+  <div style="margin-top:8px;padding:8px;background:rgba(76,175,127,0.1);border-left:3px solid #4CAF7C;border-radius:4px">
+    <b style="color:#4CAF7C">关键发现</b>：图依赖死锁在当前架构下不存在（Fatal 错误终止图，Recoverable 错误转换为替换结果，节点不会卡在 waiting 状态）。
+  </div>
+</div>
+
+<div class="section" style="margin-top:12px">
+  <h4>已确认的 7 点反馈</h4>
+  <ul style="font-size:12px;line-height:1.8">
+    <li>✅ Agent 卡片显示所属团队名</li>
+    <li>✅ 阻塞基于状态机精确定义（4 种类型，非时间推断）</li>
+    <li>✅ 已完成 Agent 绿色显示在列表中（不折叠）</li>
+    <li>✅ 面板 280→330px（+50px）</li>
+    <li>✅ 点击卡片即定位（无单独定位按钮）</li>
+    <li>✅ 执行中转圈动画（CSS spinner）</li>
+    <li>✅ 所有 Agent 在一个列表，按创建顺序，不分组折叠</li>
+  </ul>
+</div>
+
+<style>
+@keyframes spin { to { transform: rotate(360deg) } }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+@keyframes highlight { 0%,100%{background:rgba(233,162,59,0.2)} 50%{background:rgba(233,162,59,0.5)} }
+</style>

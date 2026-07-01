@@ -220,11 +220,7 @@ export function activityToToolEvent(ev: ActivityEvent, phase: 'before' | 'after'
 }
 
 /** Upsert a tool activity row derived from an ActivityEvent into the message list. */
-export function upsertToolMessageFromActivity(
-  messages: Message[],
-  sessionId: string,
-  ev: ActivityEvent,
-): Message[] {
+export function upsertToolMessageFromActivity(messages: Message[], sessionId: string, ev: ActivityEvent): Message[] {
   const phase = phaseFromActivityEvent(ev.event);
   const event = activityToToolEvent(ev, phase);
   if (!event) return messages;

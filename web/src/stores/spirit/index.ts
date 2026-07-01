@@ -88,9 +88,46 @@ function isValidStrategy(s: string): boolean {
  * Only fills in fields that WS events don't carry (members, tokenIn, etc.).
  * Never overwrites WS-updated fields (status, progressPct) which are more real-time.
  */
+function parseMembers(md: Record<string, unknown>): SpiritMember[] {
+  const raw = md.members;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((m) => {
+    const item = (m ?? {}) as Record<string, unknown>;
+    return {
+      agentId: String(item.agent_id ?? item.agentId ?? ''),
+      agentKey: String(item.agent_key ?? item.agentKey ?? ''),
+      displayName: String(item.display_name ?? item.agent_name ?? item.displayName ?? ''),
+      role: String(item.role ?? ''),
+      status: String(item.status ?? ''),
+      avatarUrl: String(item.avatar_url ?? item.avatarUrl ?? ''),
+    };
+  });
+}
+
 function mergeTeamFields(existing: SpiritTeam, incoming: SpiritTeam) {
-  if (incoming.members.length > 0 && existing.members.length === 0) {
-    existing.members = incoming.members;
+  // Merge members by agent_key: preserve real-time status from WS, but fill
+  // in static profile fields (avatar_url, display_name, role) from the API.
+  if (incoming.members.length > 0) {
+    if (existing.members.length === 0) {
+      existing.members = incoming.members;
+    } else {
+      for (const inMember of incoming.members) {
+        const existingMember = existing.members.find((m) => m.agentKey === inMember.agentKey);
+        if (!existingMember) {
+          existing.members.push(inMember);
+        } else {
+          if (!existingMember.avatarUrl && inMember.avatarUrl) {
+            existingMember.avatarUrl = inMember.avatarUrl;
+          }
+          if (!existingMember.displayName && inMember.displayName) {
+            existingMember.displayName = inMember.displayName;
+          }
+          if (!existingMember.role && inMember.role) {
+            existingMember.role = inMember.role;
+          }
+        }
+      }
+    }
   }
   if (incoming.memberAvatars.length > 0 && existing.memberAvatars.length === 0) {
     existing.memberAvatars = incoming.memberAvatars;
@@ -109,6 +146,9 @@ function mergeTeamFields(existing: SpiritTeam, incoming: SpiritTeam) {
   }
   if (incoming.interruptReason && !existing.interruptReason) {
     existing.interruptReason = incoming.interruptReason;
+  }
+  if (incoming.createdAt && !existing.createdAt) {
+    existing.createdAt = incoming.createdAt;
   }
 }
 
@@ -170,16 +210,8 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
   );
 
   const sortedTeams = computed(() => {
-    const statusOrder: Record<string, number> = {
-      running: 0,
-      pending: 1,
-      interrupted: 2,
-      completed: 3,
-      failed: 4,
-      cancelled: 5,
-      archived: 6,
-    };
-    return [...teams.value].sort((a, b) => (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99));
+    // B.9.1: Agent cards are ordered by team creation time, not by status.
+    return [...teams.value].sort((a, b) => a.createdAt - b.createdAt);
   });
 
   /**
@@ -457,7 +489,8 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
 
     switch (envType) {
       case 'spirit_team_assembled': {
-        handleTeamAssembled(teamId, md, act.session_id ?? '', String(act.status ?? ''));
+        const ts = act.timestamp ? new Date(act.timestamp).getTime() : Date.now();
+        handleTeamAssembled(teamId, md, act.session_id ?? '', String(act.status ?? ''), ts);
         break;
       }
       case 'spirit_team_completed':
@@ -521,6 +554,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     md: Record<string, unknown>,
     sessionId: string,
     activityStatus: string,
+    timestampMs: number,
   ) {
     synthesisCompleted.value = false;
     synthesisResult.value = null;
@@ -528,9 +562,8 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     if (!teamId) return;
 
     const incomingStatus = String(md.status ?? activityStatus ?? '');
-    const initialStatus: SpiritTeamStatus = isValidTeamStatus(incomingStatus)
-      ? incomingStatus
-      : 'pending';
+    const initialStatus: SpiritTeamStatus = isValidTeamStatus(incomingStatus) ? incomingStatus : 'pending';
+    const members = parseMembers(md);
 
     const existing = teams.value.find((t) => t.id === teamId);
     if (existing) {
@@ -547,6 +580,12 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
       if (md.dag_node_id) existing.dagNodeId = String(md.dag_node_id);
       if (Array.isArray(md.depends_on)) existing.dependsOn = md.depends_on.map(String);
       if (md.topology_reason) existing.topologyReason = String(md.topology_reason);
+      if (members.length > 0 && existing.members.length === 0) {
+        existing.members = members;
+      }
+      if (!existing.createdAt && timestampMs > 0) {
+        existing.createdAt = timestampMs;
+      }
       if (initialStatus !== 'pending' || existing.status === 'pending') {
         updateTeamStatus(teamId, initialStatus);
       }
@@ -564,8 +603,9 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
         durationMs: Number(md.duration_ms ?? 0),
         spiritSessionId: sessionId,
         teamSessionId: String(md.session_id ?? ''),
-        members: [],
+        members,
         sharedAgentIds: [],
+        createdAt: timestampMs > 0 ? timestampMs : Date.now(),
         dagNodeId: String(md.dag_node_id ?? ''),
         graphExecutionId: '',
         interruptReason: '',

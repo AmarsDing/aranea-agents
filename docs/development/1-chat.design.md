@@ -3964,7 +3964,108 @@ async function injectAgent(sessionId: string, message: string) { ... }
 - **UI 表现**：成员子任务面板标记失败节点
 - **处理策略**：Team 自治决策（跳过该成员/重新分配/标记 team 失败）；不自动重试 member
 
-#### B.8.3 卡住场景（先记录，不实现）
-- **卡住定义**（待实现）：Team 超过 N 秒（默认 120s）无任何 WS 事件；或 Member 超过 M 秒（默认 60s）无 thinking/action/reply
-- **主要卡在工具执行上**
-- **本期处理**：仅记录场景，不做具体实现；后续迭代再设计心跳检测 + 卡住告警
+#### B.8.3 阻塞（Blocked）状态精确定义
+
+> **设计原则**：基于后端状态机准确判定，非纯时间推断。前端基于现有 Activity 事件 + Session/Run 状态即可判定 4 种阻塞类型。
+
+**阻塞类型与判定条件**：
+
+| 类型 | 判定条件（状态组合） | UI 表现 |
+|------|---------------------|---------|
+| 工具阻塞 | `Activity(kind=action, status=tool_running)` + 无 ToolResult 事件 | 黄色 ⚠ + "工具阻塞 · 等待 {tool_name} 返回" |
+| LLM 阻塞 | `Activity(kind=thinking/reply, status=running)` + `meta.streaming === false` | 黄色 ⚠ + "LLM 阻塞 · 等待模型响应" |
+| 确认阻塞 | `Session(status=awaiting_confirmation)` + `Activity(kind=confirm, status=tool_blocked)` | 黄色 ⚠ + "等待用户确认" |
+| HITL 阻塞 | `TeamRun(status=waiting_human)` + `Activity(kind=confirm, status=tool_blocked)` | 黄色 ⚠ + "等待人工介入" |
+
+**关键发现**：图依赖死锁在当前架构下不存在（Fatal 错误终止图，Recoverable 错误转换为替换结果，节点不会卡在 waiting 状态）。
+
+**前端判定逻辑**（`useBlockedStatus` composable）：
+- 输入：`ActivityTreeNode[]`（当前 session 的活动树）+ `Session.status` + `TeamRun.status`
+- 输出：`{ blocked: boolean, type: BlockedType, message: string, activityId: string, agentKey: string \| null }`
+- 判定规则：
+  1. 遍历活动树，优先匹配工具阻塞与确认阻塞（确定性更高），再匹配 LLM 阻塞；
+  2. LLM 阻塞必须满足 `meta.streaming === false`，避免正常流式生成被误判为阻塞；
+  3. 子活动未携带 `agentKey` 时，从父节点继承 `agentKey`，确保左侧 Agent 卡片能精确高亮到对应成员。
+
+**后端兜底机制**（已实现，无需改动）：
+- `OnStuckTools`（`activity_projector.go:1463-1497`）：turn 结束时标记所有 `ToolRunning` 为 `Failed`
+- `OnTurnEnd`（`activity_projector.go:1575-1640`）：强制完成所有 `Running` 活动
+- LLM 超时（`timeout_policy.go`）：30-120min 按 TaskType 动态超时
+
+---
+
+### B.9 UI 树形重构设计（2026-07-01 新增）
+
+> **目标**：消除"盒中盒中盒"的深框嵌套感，改用树形缩进 + 连接线表达层级；左侧面板改为精灵下方 Agent 卡片列表。
+
+#### B.9.1 左侧面板：Agent 卡片列表
+
+**布局变更**：
+- 面板宽度：`280px → 330px`（+50px）
+- CSS 变量：`--chat-side-left-width` 在 `_css-vars-light.sass` 和 `_css-vars-dark.sass` 中更新
+
+**结构**：
+```
+ChatEntitySidebar（330px）
+├── SpiritEntry（精灵入口，顶部固定）
+└── Agent 卡片列表（所有 Agent 按创建顺序排列，不分组折叠）
+    ├── AgentCard-Left（执行中：青色左边框 + CSS 转圈动画 + 暂停/取消按钮）
+    ├── AgentCard-Left（阻塞：黄色左边框 + 黄色发光 + ⚠ + 恢复/取消按钮）
+    ├── AgentCard-Left（已完成：绿色标签 + ✓ + 透明度降低）
+    └── AgentCard-Left（空闲/待开始：灰色低调）
+```
+
+**每张卡片包含**：
+- Agent 头像（`ResolvedAvatarImg` 或 Material icon；优先使用成员 `avatarUrl`，后端未下发时从用户 `Agent[]` 库按 `agentKey` 补充）
+- Agent 显示名称（不展示 `agentKey`、`__memory__` 等原始标识）
+- 所属团队名
+- 状态动画：执行中=CSS spinner，阻塞=黄色脉冲，已完成=绿色标签
+- 生命周期按钮：执行中显示暂停/取消，阻塞显示恢复/取消
+- 常驻设置按钮（⚙），点击按 `agentKey` 查找 `agentId` 后打开 Agent 设置弹窗
+- 点击卡片 → 中间面板滚动到该 Agent 活动 + 高亮闪烁；多成员团队场景下父级 `TeamCard` 也会自动展开
+
+**数据来源**：
+- 从 `spiritTeams` 的 `members` 中提取所有 Agent
+- 按 `created_at` 排序，不分组、不折叠
+- 已完成 Agent 也显示在列表中（绿色标签 + 透明度降低）
+- 头像兜底：当 `SpiritMember.avatarUrl` 为空时，通过 `props.agents` 查找同 `agentKey` 的 `Agent.icon`
+
+#### B.9.2 中间活动流：树形缩进 + 连接线
+
+**去除深框嵌套**：
+- `GraphStageBlock`：移除 `border + background + border-radius`，改为纯文字标题 + 左侧连接线
+- `TeamCard`：移除 `border + background + border-radius`，改为行式布局 + 左侧连接线
+- `AgentCard`：移除 `border + background + border-radius`，改为行式布局 + 左侧连接线
+
+**统一缩进规则**：
+- 所有层级使用 `.event-stream__children` 模式：`margin-left: 14px + padding-left: 8px + border-left: 2px solid var(--glass-border)`
+- 状态颜色通过左侧连接线颜色表达：running=青色，completed=绿色，failed=红色，blocked=黄色
+
+**行式布局**：
+- 每个层级节点为一行（非卡片），hover 高亮
+- 点击行可展开/折叠子节点
+- 子节点通过左侧连接线表达从属关系
+
+**状态动画**：
+- 执行中：CSS `spin` 动画（0.8s linear infinite）
+- 阻塞：CSS `stuck-pulse` 动画（2s infinite，box-shadow 黄色发光）
+- 已完成：绿色标签 `✓`
+- 高亮定位：`highlight` 动画（1s ease-in-out 3 次，黄色背景闪烁）
+
+#### B.9.3 点击 Agent 卡片定位交互
+
+**流程**：
+1. 用户点击左侧 Agent 卡片
+2. `AgentSidebarCard` 通过 `useScrollToActivity().locate(agentKey, teamSessionId, teamId)` 发布定位命令
+3. `ChatMessageList` 监听模块级 `locateCommand`，设置 `autoExpandFor = agentKey` 触发父级卡片展开
+4. 等待 `nextTick()` 后，通过 `data-agent-key` 或 `data-team-id` 属性查找目标 DOM 元素
+5. 中间面板自动滚动到该节点（`scrollIntoView({ behavior: 'smooth', block: 'center' })`）
+6. 为目标节点添加 `.activity-locate-highlight` 类，触发黄色高亮闪烁 3 次（`box-shadow` 脉冲动画，持续 3 秒）
+7. 3 秒后清除 `autoExpandFor` 与高亮 class
+
+**实现**：
+- 使用模块级 ref 单例 `useScrollToActivity.ts` 共享定位命令（替代 EventBus / provide-inject，减少跨组件耦合）
+- `ChatEntitySidebar` 点击卡片时调用 `locate()`，`ChatMessageList` 中 `watch(locateCommand)` 消费
+- `ActivityStream.vue` 将 `autoExpandFor` prop 透传给 `TeamCard` / `AgentCard`，组件内部 `watch(autoExpand)` 调用 `toggleExpand()` 自动展开
+- **多成员 TeamCard 展开**：`TeamCard` 的 `autoExpand` 条件判断 `autoExpandFor` 是否等于 `teamId` 或任意成员的 `agentKey`，确保点击左侧任意成员都能展开父级团队卡片
+- 目标 DOM 元素通过 Vue attribute fallthrough 的 `:data-agent-key` / `:data-team-id` 属性定位，并对 agentKey 做 `CSS.escape` 转义避免选择器解析失败

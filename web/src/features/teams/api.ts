@@ -259,11 +259,7 @@ export async function resumeTeamRunExecution(
  * on the WS chat channel; this subscriber converts them directly to
  * {@link TeamRunEvent} without going through the envelope bridge.
  */
-export function subscribeTeamRunEventsWs(
-  sessionId: string,
-  teamID: string,
-  onEvent: (event: TeamRunEvent) => void,
-) {
+export function subscribeTeamRunEventsWs(sessionId: string, teamID: string, onEvent: (event: TeamRunEvent) => void) {
   const effectiveSession =
     sessionId.trim() === '' || sessionId === TEAM_MONITOR_SESSION_ALIAS ? GLOBAL_WS_SESSION_ID : sessionId;
   const stream = createEnvelopeStream({

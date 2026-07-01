@@ -160,11 +160,18 @@ export interface NoticeEvent extends StreamEventBase {
 export interface TeamMemberStatus {
   agentKey: string;
   agentName: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'blocked';
   session_id?: string;
   /** Agent 配置的头像/图标（URL 或 catalog key），空时前端回退到姓名首字母。 */
   avatarUrl?: string;
+  /** 阻塞类型（仅 status=blocked 时有值） */
+  blockedType?: BlockedType;
+  /** 阻塞描述（仅 status=blocked 时有值） */
+  blockedMessage?: string;
 }
+
+/** 阻塞类型 — 基于后端状态机精确定义（非时间推断） */
+export type BlockedType = 'tool' | 'llm' | 'confirm' | 'hitl';
 
 /** 团队阶段事件 — 团队组建/执行/完成 */
 export interface TeamStageEvent extends StreamEventBase {

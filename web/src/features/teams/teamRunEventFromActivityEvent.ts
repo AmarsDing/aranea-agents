@@ -85,10 +85,8 @@ export function isTeamRuntimeActivityEvent(ev: ActivityEvent): boolean {
   // notice (intent_pass / transfer) and session (runner_completion) are also
   // team-runtime related; the full mapper decides the canonical event type.
   return (
-    (ev.activity.kind === 'notice' &&
-      (ev.activity.stage === 'intent_pass' || ev.activity.stage === 'transfer')) ||
-    (ev.activity.kind === 'session' &&
-      (ev.activity.stage === 'runner_completion' || ev.event === 'completed'))
+    (ev.activity.kind === 'notice' && (ev.activity.stage === 'intent_pass' || ev.activity.stage === 'transfer')) ||
+    (ev.activity.kind === 'session' && (ev.activity.stage === 'runner_completion' || ev.event === 'completed'))
   );
 }
 
@@ -102,10 +100,7 @@ export function isTeamRuntimeActivityEvent(ev: ActivityEvent): boolean {
  * `transfer` notices and `runner_completion` session events are also mapped
  * here so existing TeamRunEvent consumers keep working.
  */
-export function teamRunEventFromActivityEvent(
-  ev: ActivityEvent,
-  defaultTeamID = '',
-): TeamRunEvent | null {
+export function teamRunEventFromActivityEvent(ev: ActivityEvent, defaultTeamID = ''): TeamRunEvent | null {
   const activity = ev.activity;
   const meta = (activity.meta ?? {}) as Record<string, unknown>;
   const teamId = activity.team_id ?? defaultTeamID;
@@ -173,10 +168,7 @@ export function teamRunEventFromActivityEvent(
     }
     if (stage === 'transfer') {
       const transfer = meta.transfer;
-      const transferObj =
-        transfer && typeof transfer === 'object'
-          ? (transfer as Record<string, unknown>)
-          : {};
+      const transferObj = transfer && typeof transfer === 'object' ? (transfer as Record<string, unknown>) : {};
       return {
         type: 'transfer',
         team_id: teamId,

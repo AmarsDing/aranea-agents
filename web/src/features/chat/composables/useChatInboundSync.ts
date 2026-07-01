@@ -22,10 +22,7 @@ import {
   shouldGlobalHubFinalizeTurnActivity,
   type ChannelFocusOptions,
 } from '../inboundSyncRouting';
-import {
-  isSessionCompressNoticeFromActivityEvent,
-  sessionContextPatchFromActivityEvent,
-} from '../sessionContextPatch';
+import { isSessionCompressNoticeFromActivityEvent, sessionContextPatchFromActivityEvent } from '../sessionContextPatch';
 import { refreshAgentSessionsForChannel } from '../channelInboundSessionRefresh';
 import { isChannelInboundSession, resolveInboundAgentIdFromActivity } from '../channelInboundSession';
 import { noteChannelWsEnvelope } from '../channelWsCursor';

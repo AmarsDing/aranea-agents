@@ -127,6 +127,7 @@ function mapSpiritTeam(raw: Record<string, unknown>): SpiritTeam {
     sharedAgentIds: Array.isArray(raw.shared_agent_ids ?? raw.sharedAgentIds)
       ? ((raw.shared_agent_ids ?? raw.sharedAgentIds) as unknown[]).map(String)
       : [],
+    createdAt: Number(raw.created_at ?? raw.createdAt ?? 0) || Date.now(),
     dagNodeId: String(raw.dag_node_id ?? raw.dagNodeId ?? ''),
     graphExecutionId: String(raw.graph_execution_id ?? raw.graphExecutionId ?? '') || undefined,
     dependsOn: Array.isArray(raw.depends_on ?? raw.dependsOn)

@@ -1183,9 +1183,6 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
       };
       const members = effectiveMembers?.map((m) => {
         const agentKey = ((m.agent_key ?? m.agentKey) as string) ?? '';
-        if (agentKey === 'programmer' || agentKey === 'writer') {
-          console.warn('[avatar-debug] mapping member', agentKey, 'raw avatar_url=', m.avatar_url, 'avatarUrl=', m.avatarUrl, 'node.id=', node.id, 'effectiveMembers source=', baseMembers ? 'baseMembers' : summaryMembers ? 'summaryMembers' : 'none');
-        }
         // Prefer team_summary's authoritative status (completed/failed) when
         // available; fall back to meta.members' status (pending/running).
         const summaryStatus = statusByKey.get(agentKey);

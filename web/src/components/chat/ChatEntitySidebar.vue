@@ -29,154 +29,37 @@
             @settings="spiritAgentId && $emit('spirit-settings', spiritAgentId)"
           />
 
-          <!-- Agent Section (hidden in spiritMode per D4) -->
-          <template v-if="!spiritMode">
-            <ChatSectionHeader
-              icon="smart_toy"
-              :label="t('chat.groupAgents')"
-              :count="filteredAgents.length"
-              :collapsed="collapse.sectionCollapsed.agents"
-              class="q-pt-md"
-              @update:collapsed="collapse.toggleSection('agents')"
-            />
-            <template v-if="!collapse.sectionCollapsed.agents">
-              <ChatEntityGroup
-                v-for="group in agentGroups"
-                :key="group.key"
-                :items="group.items"
-                :label="group.label"
-                :icon="group.icon"
-                :collapsed="collapse.groupCollapsed[group.key] ?? false"
-                :active-id="selectedAgentId"
-                :pinned-id="group.pinnedId"
-                @update:collapsed="collapse.toggleGroup(group.key)"
-                @select="onSelectAgent"
-                @settings="$emit('agent-settings', $event)"
-                @delete="$emit('agent-delete', $event)"
-                @reorder="(ids) => $emit('agent-reorder', { groupKey: group.key, ids })"
-              />
-              <div v-if="filteredAgents.length === 0" class="chat-side-hint text-caption text-cream-muted">
-                {{ t('chat.sidebar.noAgents') }}
-              </div>
-            </template>
-          </template>
-
-          <!-- Active Teams Section -->
-          <ChatSectionHeader
-            icon="groups"
-            :label="t('chat.groupActiveTeams')"
-            :count="activeTeamList.length"
-            :collapsed="collapse.sectionCollapsed.activeTeams"
-            class="q-pt-md"
-            @update:collapsed="collapse.toggleSection('activeTeams')"
-          />
-          <template v-if="!collapse.sectionCollapsed.activeTeams">
+          <!-- B.9.1: Agent activity card list (below Spirit entry, no grouping/folding, ordered by creation time). -->
+          <div class="agent-card-list">
             <!-- Orchestration phase progress (shown before teams arrive) -->
             <div v-if="showOrchestrationProgress && phaseDisplay" class="spirit-phase-hint q-px-sm q-py-xs">
               <q-icon :name="phaseDisplay.icon" size="16px" :style="{ color: phaseDisplay.color }" class="q-mr-xs" />
               <span class="text-caption">{{ phaseDisplay.label }}</span>
               <q-spinner-dots size="14px" :color="phaseDisplay.color" class="q-ml-xs" />
             </div>
+            <AgentSidebarCard
+              v-for="card in allAgentCards"
+              :key="`${card.teamId}-${card.member.agentKey}`"
+              :member="card.member"
+              :team-name="card.teamName"
+              :team-session-id="card.teamSessionId"
+              :team-status="card.teamStatus"
+              :team-id="card.teamId"
+              :agents="props.agents"
+              :blocked-info="getBlockedInfoForAgent(card.member.agentKey)"
+              @locate="onLocateAgent"
+              @pause="$emit('pause-agent', $event)"
+              @resume="$emit('resume-agent', $event)"
+              @cancel="$emit('cancel-agent', $event)"
+              @settings="onAgentSettings"
+            />
             <div
-              v-for="team in activeTeamList"
-              :key="team.id"
-              :class="{ 'team-card-wrapper--pulse': pulseTeamColors?.has(team.id) }"
-              :style="
-                pulseTeamColors?.has(team.id)
-                  ? {
-                      '--pulse-color': pulseTeamColors!.get(team.id)!.color,
-                      '--pulse-duration': `${pulseTeamColors!.get(team.id)!.durationMs}ms`,
-                    }
-                  : undefined
-              "
-            >
-              <TeamTaskCard
-                :team="team"
-                :expanded="expandedTeamIds.has(team.id)"
-                :active="selectedTeamId === team.id"
-                @click="$emit('select-spirit-team', team.id)"
-                @toggle-expand="$emit('toggle-team-expand', team.id)"
-              />
-            </div>
-            <div
-              v-if="activeTeamList.length === 0 && !showOrchestrationProgress"
+              v-if="allAgentCards.length === 0 && !showOrchestrationProgress"
               class="chat-side-hint text-caption text-cream-muted"
             >
               {{ t('chat.sidebar.noActiveTeams') }}
             </div>
-          </template>
-
-          <!-- Completed Teams Section -->
-          <ChatSectionHeader
-            icon="check_circle"
-            :label="t('chat.groupCompletedTeams')"
-            :count="completedTeamList.length"
-            :collapsed="collapse.sectionCollapsed.completedTeams"
-            class="q-pt-md"
-            @update:collapsed="collapse.toggleSection('completedTeams')"
-          />
-          <template v-if="!collapse.sectionCollapsed.completedTeams">
-            <div
-              v-for="team in completedTeamList"
-              :key="team.id"
-              :class="{ 'team-card-wrapper--pulse': pulseTeamColors?.has(team.id) }"
-              :style="
-                pulseTeamColors?.has(team.id)
-                  ? {
-                      '--pulse-color': pulseTeamColors!.get(team.id)!.color,
-                      '--pulse-duration': `${pulseTeamColors!.get(team.id)!.durationMs}ms`,
-                    }
-                  : undefined
-              "
-            >
-              <TeamTaskCard
-                :team="team"
-                :expanded="expandedTeamIds.has(team.id)"
-                :active="selectedTeamId === team.id"
-                @click="$emit('select-spirit-team', team.id)"
-                @toggle-expand="$emit('toggle-team-expand', team.id)"
-              />
-            </div>
-            <div v-if="completedTeamList.length === 0" class="chat-side-hint text-caption text-cream-muted">
-              {{ t('chat.sidebar.noCompletedTeams') }}
-            </div>
-          </template>
-
-          <!-- Interrupted Teams Section -->
-          <ChatSectionHeader
-            icon="pause_circle"
-            :label="t('chat.groupInterruptedTeams')"
-            :count="interruptedTeamList.length"
-            :collapsed="collapse.sectionCollapsed.interruptedTeams"
-            class="q-pt-md"
-            @update:collapsed="collapse.toggleSection('interruptedTeams')"
-          />
-          <template v-if="!collapse.sectionCollapsed.interruptedTeams">
-            <div
-              v-for="team in interruptedTeamList"
-              :key="team.id"
-              :class="{ 'team-card-wrapper--pulse': pulseTeamColors?.has(team.id) }"
-              :style="
-                pulseTeamColors?.has(team.id)
-                  ? {
-                      '--pulse-color': pulseTeamColors!.get(team.id)!.color,
-                      '--pulse-duration': `${pulseTeamColors!.get(team.id)!.durationMs}ms`,
-                    }
-                  : undefined
-              "
-            >
-              <TeamTaskCard
-                :team="team"
-                :expanded="expandedTeamIds.has(team.id)"
-                :active="selectedTeamId === team.id"
-                @click="$emit('select-spirit-team', team.id)"
-                @toggle-expand="$emit('toggle-team-expand', team.id)"
-              />
-            </div>
-            <div v-if="interruptedTeamList.length === 0" class="chat-side-hint text-caption text-cream-muted">
-              {{ t('chat.sidebar.noInterruptedTeams') }}
-            </div>
-          </template>
+          </div>
         </div>
       </q-scroll-area>
     </aside>
@@ -186,53 +69,36 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import ChatSectionHeader from './ChatSectionHeader.vue';
-import ChatEntityGroup from './ChatEntityGroup.vue';
-import type { EntityItem } from './ChatEntityGroup.vue';
 import SpiritEntry from '../spirit/SpiritEntry.vue';
-import TeamTaskCard from '../spirit/TeamTaskCard.vue';
-import type { SpiritTeam } from '../../features/spirit/types';
+import AgentSidebarCard from './AgentSidebarCard.vue';
+import type { SpiritTeam, SpiritMember, SpiritTeamStatus } from '../../features/spirit/types';
 import type { Agent } from '../../features/agents/types';
+import type { BlockedResult } from '../../features/chat/composables/useBlockedStatus';
+import { EMPTY_BLOCKED } from '../../features/chat/composables/useBlockedStatus';
 import { useChatEntityCollapse } from '../../features/chat/composables/useChatEntityCollapse';
-import { loadGroupOrder } from '../../features/chat/composables/chatWorkspaceUtils';
-
-type AgentGroup = {
-  key: string;
-  label: string;
-  icon: string;
-  items: EntityItem[];
-  pinnedId?: string;
-};
 
 const props = defineProps<{
   open: boolean;
   search: string;
   agents: Agent[];
   spiritTeams: SpiritTeam[];
-  expandedTeamIds: Set<string>;
   selectedKind: string;
-  selectedAgentId?: string | null;
-  selectedTeamId?: string | null;
-  defaultAgentId?: string | null;
   isDark: boolean;
-  /** Map of teamId → pulse config for active pulse animations. */
-  pulseTeamColors?: Map<string, { color: string; durationMs: number }>;
-  /** D4: When true, hide Agent groups and only show Spirit entry + teams. */
-  spiritMode?: boolean;
   /** Current orchestration phase for sidebar progress display. */
   orchestrationPhase?: string;
+  /** 当前活动树的阻塞检测结果，用于精确高亮左侧 Agent 卡片 */
+  blockedStatus?: BlockedResult;
 }>();
 
 const emit = defineEmits<{
   'update:search': [value: string];
   'select-spirit': [];
-  'select-agent': [agent: Agent];
-  'agent-settings': [id: string];
-  'agent-delete': [id: string];
-  'agent-reorder': [payload: { groupKey: string; ids: string[] }];
-  'select-spirit-team': [teamId: string];
-  'toggle-team-expand': [teamId: string];
   'spirit-settings': [id: string];
+  'agent-settings': [id: string];
+  'locate-agent': [payload: { agentKey: string; teamSessionId: string; teamId: string }];
+  'pause-agent': [agentKey: string];
+  'resume-agent': [agentKey: string];
+  'cancel-agent': [agentKey: string];
 }>();
 
 const { t } = useI18n();
@@ -260,66 +126,6 @@ watch(
   },
 );
 
-// --- Agent filtering ---
-const filteredAgents = computed(() => {
-  const q = props.search.trim().toLowerCase();
-  if (!q) return props.agents;
-  return props.agents.filter(
-    (a) =>
-      a.display_name.toLowerCase().includes(q) ||
-      a.agent_key.toLowerCase().includes(q) ||
-      a.agent_description?.toLowerCase().includes(q),
-  );
-});
-
-// --- Agent grouping ---
-const agentGroups = computed((): AgentGroup[] => {
-  // Filter out system_builtin agents and the __spirit__ virtual agent
-  const agents = filteredAgents.value.filter((a) => a.kind !== 'system_builtin' && a.agent_key !== '__spirit__');
-  if (agents.length === 0) return [];
-
-  const defaultId = props.defaultAgentId;
-
-  // Group 1: Default agents (is_default=true)
-  const defaultAgents = agents.filter((a) => a.is_default);
-  // Group 2: Custom agents (non-default, user-created)
-  const customAgents = agents.filter((a) => !a.is_default);
-
-  const groups: AgentGroup[] = [];
-
-  if (defaultAgents.length > 0) {
-    const items = toEntityItems(loadGroupOrder(defaultAgents, 'system', defaultId));
-    groups.push({
-      key: 'default',
-      label: t('chat.sidebar.defaultAgent'),
-      icon: 'verified',
-      items,
-      pinnedId: defaultId && defaultAgents.some((a) => a.id === defaultId) ? defaultId : undefined,
-    });
-  }
-
-  if (customAgents.length > 0) {
-    const items = toEntityItems(loadGroupOrder(customAgents, 'custom'));
-    groups.push({
-      key: 'custom',
-      label: t('chat.sidebar.customAgent'),
-      icon: 'person',
-      items,
-    });
-  }
-
-  return groups;
-});
-
-function toEntityItems(agents: Agent[]): EntityItem[] {
-  return agents.map((a) => ({
-    id: a.id,
-    display_name: a.display_name,
-    status: a.status,
-    is_default: a.is_default,
-  }));
-}
-
 // --- Orchestration phase display ---
 const PHASE_DISPLAY: Record<string, { icon: string; label: string; color: string }> = {
   planning: { icon: 'search', label: '正在规划任务…', color: 'var(--color-accent)' },
@@ -329,9 +135,7 @@ const PHASE_DISPLAY: Record<string, { icon: string; label: string; color: string
 
 const showOrchestrationProgress = computed(() => {
   const phase = props.orchestrationPhase;
-  return (
-    phase && phase !== 'idle' && phase !== 'completed' && phase !== 'interrupted' && props.spiritTeams.length === 0
-  );
+  return phase && phase !== 'idle' && phase !== 'completed' && phase !== 'interrupted';
 });
 
 const phaseDisplay = computed(() => {
@@ -339,48 +143,59 @@ const phaseDisplay = computed(() => {
   return phase ? PHASE_DISPLAY[phase] : null;
 });
 
-// --- Team lists (F-12: search filters team name + taskSummary) ---
-const activeTeamList = computed(() => {
+// --- Agent 活动卡片列表：从所有 spiritTeams 中提取成员，按创建顺序排列 ---
+type AgentCardData = {
+  teamId: string;
+  teamName: string;
+  teamSessionId: string;
+  teamStatus: SpiritTeamStatus;
+  member: SpiritMember;
+};
+
+const allAgentCards = computed<AgentCardData[]>(() => {
   const q = props.search.trim().toLowerCase();
-  return props.spiritTeams
-    .filter(
-      (t) =>
-        t.status !== 'completed' &&
-        t.status !== 'failed' &&
-        t.status !== 'cancelled' &&
-        t.status !== 'archived' &&
-        t.status !== 'interrupted',
-    )
-    .filter((t) => {
-      if (!q) return true;
-      return t.teamName.toLowerCase().includes(q) || t.taskSummary.toLowerCase().includes(q);
-    });
-});
-const completedTeamList = computed(() => {
-  const q = props.search.trim().toLowerCase();
-  return props.spiritTeams
-    .filter((t) => t.status === 'completed' || t.status === 'archived')
-    .filter((t) => {
-      if (!q) return true;
-      return t.teamName.toLowerCase().includes(q) || t.taskSummary.toLowerCase().includes(q);
-    });
-});
-const interruptedTeamList = computed(() => {
-  const q = props.search.trim().toLowerCase();
-  return props.spiritTeams
-    .filter((t) => t.status === 'interrupted' || t.status === 'failed' || t.status === 'cancelled')
-    .filter((t) => {
-      if (!q) return true;
-      return t.teamName.toLowerCase().includes(q) || t.taskSummary.toLowerCase().includes(q);
-    });
+  const cards: AgentCardData[] = [];
+  // B.9.1: 按团队创建时间排序，确保 Agent 卡片按创建顺序展示
+  const sortedTeams = [...props.spiritTeams].sort((a, b) => a.createdAt - b.createdAt);
+  for (const team of sortedTeams) {
+    // 搜索过滤
+    if (q && !team.teamName.toLowerCase().includes(q) && !team.taskSummary.toLowerCase().includes(q)) {
+      // 仍然搜索成员名
+      const hasMatchingMember = team.members.some(
+        (m) => m.displayName.toLowerCase().includes(q) || m.agentKey.toLowerCase().includes(q),
+      );
+      if (!hasMatchingMember) continue;
+    }
+    for (const member of team.members) {
+      cards.push({
+        teamId: team.id,
+        teamName: team.teamName,
+        teamSessionId: team.teamSessionId,
+        teamStatus: team.status,
+        member,
+      });
+    }
+  }
+  return cards;
 });
 
-// --- Agent selection ---
-function onSelectAgent(item: EntityItem) {
-  const agent = props.agents.find((a) => a.id === item.id);
-  if (agent) {
-    emit('select-agent', agent);
+function onLocateAgent(payload: { agentKey: string; teamSessionId: string; teamId: string }) {
+  emit('locate-agent', payload);
+}
+
+/** 左侧 Agent 卡片设置按钮：按 agentKey 查找 Agent 配置，转发 agentId 给外层打开设置弹窗 */
+function onAgentSettings(agentKey: string) {
+  const agent = props.agents.find((a) => a.agent_key === agentKey);
+  if (agent?.id) {
+    emit('agent-settings', agent.id);
   }
+}
+
+/** 根据当前活动树的阻塞检测结果，判断指定 agentKey 是否处于阻塞态 */
+function getBlockedInfoForAgent(agentKey: string): BlockedResult {
+  const blocked = props.blockedStatus;
+  if (!blocked?.blocked) return EMPTY_BLOCKED;
+  return blocked.agentKey === agentKey ? blocked : EMPTY_BLOCKED;
 }
 </script>
 

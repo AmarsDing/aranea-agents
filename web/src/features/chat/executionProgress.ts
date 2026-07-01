@@ -82,9 +82,7 @@ function stringField(value: unknown): string {
  * Returns null if the event is not an execution_progress activity or
  * metadata is missing required fields.
  */
-export function readExecutionProgressMetadataFromActivity(
-  ev: ActivityEvent,
-): ExecutionProgressMetadata | null {
+export function readExecutionProgressMetadataFromActivity(ev: ActivityEvent): ExecutionProgressMetadata | null {
   if (ev.activity.stage !== 'execution_progress') return null;
   const meta = ev.activity.meta;
   if (!meta || typeof meta !== 'object') return null;

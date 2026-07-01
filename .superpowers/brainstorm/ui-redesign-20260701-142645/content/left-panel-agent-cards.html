@@ -1,0 +1,142 @@
+<h2>左侧面板：精灵下方 Agent 卡片列表</h2>
+<p class="subtitle">根据你的描述确认细节：精灵在顶部，下方直接展示 Agent 卡片（头像+名称+进行中动画+暂停/恢复按钮），点击定位到会话。面板加宽。请确认以下设计是否符合预期。</p>
+
+<div class="split">
+  <!-- 左侧面板 mockup -->
+  <div class="mockup">
+    <div class="mockup-header">左侧面板（加宽至 340px）</div>
+    <div class="mockup-body" style="padding:10px;font-size:12px;font-family:monospace;background:#1a1a2e">
+      <!-- 精灵 -->
+      <div style="display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid #333;margin-bottom:8px">
+        <span style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#E9A23B,#ff6b35);display:inline-flex;align-items:center;justify-content:center;font-size:12px">精</span>
+        <div>
+          <div style="color:#E9A23B;font-weight:bold">精灵助手</div>
+          <div style="color:#888;font-size:10px">编排中 · 3个团队 · 5个Agent</div>
+        </div>
+      </div>
+
+      <!-- Agent Card 1: 执行中 -->
+      <div style="background:rgba(0,229,255,0.08);border-left:3px solid #00E5FF;border-radius:6px;padding:8px;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:24px;height:24px;border-radius:50%;background:#4CAF7C;display:inline-flex;align-items:center;justify-content:center;font-size:10px;overflow:hidden">码</span>
+          <div style="flex:1">
+            <div style="color:#fff;font-weight:600">研发助手 <span style="color:#888;font-size:10px">programmer</span></div>
+            <div style="color:#00E5FF;font-size:10px;animation:pulse 1.5s infinite">● 执行中 · 组件架构梳理</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:4px;margin-top:6px">
+          <button style="background:rgba(255,165,0,0.2);border:1px solid #E9A23B;color:#E9A23B;border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer">⏸ 暂停</button>
+          <button style="background:rgba(244,67,54,0.2);border:1px solid #f44;border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;color:#f88">✕ 取消</button>
+        </div>
+      </div>
+
+      <!-- Agent Card 2: 卡住 -->
+      <div style="background:rgba(233,162,59,0.12);border-left:3px solid #E9A23B;border-radius:6px;padding:8px;margin-bottom:6px;animation:stuck-pulse 2s infinite">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:24px;height:24px;border-radius:50%;background:#666;display:inline-flex;align-items:center;justify-content:center;font-size:10px">部</span>
+          <div style="flex:1">
+            <div style="color:#fff;font-weight:600">数据主管</div>
+            <div style="color:#E9A23B;font-size:10px">⚠ 卡住 · 60s无更新</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:4px;margin-top:6px">
+          <button style="background:rgba(0,229,255,0.2);border:1px solid #00E5FF;color:#00E5FF;border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer">▶ 恢复</button>
+          <button style="background:rgba(244,67,54,0.2);border:1px solid #f44;border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;color:#f88">✕ 取消</button>
+          <button style="background:rgba(233,162,59,0.2);border:1px solid #E9A23B;color:#E9A23B;border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer">📍 定位</button>
+        </div>
+      </div>
+
+      <!-- Agent Card 3: 空闲 -->
+      <div style="background:rgba(255,255,255,0.03);border-left:3px solid #444;border-radius:6px;padding:8px;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:24px;height:24px;border-radius:50%;background:#4CAF7C;display:inline-flex;align-items:center;justify-content:center;font-size:10px">写</span>
+          <div style="flex:1">
+            <div style="color:#aaa;font-weight:600">写作助手</div>
+            <div style="color:#666;font-size:10px">✓ 空闲</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Agent Card 4: 待开始 -->
+      <div style="background:rgba(255,255,255,0.02);border-left:3px solid #333;border-radius:6px;padding:8px;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:24px;height:24px;border-radius:50%;background:#555;display:inline-flex;align-items:center;justify-content:center;font-size:10px">部</span>
+          <div style="flex:1">
+            <div style="color:#888;font-weight:600">架构主管</div>
+            <div style="color:#666;font-size:10px">⏳ 待开始</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 折叠区 -->
+      <div style="color:#555;font-size:11px;padding:4px 8px;border-top:1px solid #333;margin-top:4px">
+        ▸ 已完成 (3)
+      </div>
+    </div>
+  </div>
+
+  <!-- 中间活动流 mockup（点击 agent 后定位高亮） -->
+  <div class="mockup">
+    <div class="mockup-header">中间活动流（点击左侧 Agent 后定位高亮）</div>
+    <div class="mockup-body" style="padding:10px;font-size:12px;font-family:monospace;background:#1a1a2e">
+      <div style="color:#00E5FF;margin-bottom:6px">⚡ 3D风场项目分析</div>
+      <div style="margin-left:14px;border-left:2px solid #333;padding-left:10px">
+        <div style="color:#4CAF7C">◆ 代码分析团队 ✓ 13.3s</div>
+        <div style="margin-left:14px;border-left:2px solid #333;padding-left:10px;color:#888">
+          <div>🧠 架构主管 ✓</div>
+          <div style="margin-left:14px;border-left:2px solid #333;padding-left:10px">
+            <div>💭 思考...</div>
+            <div>🔧 read_file</div>
+            <div>💬 回复: 架构分析完成</div>
+          </div>
+        </div>
+        <div style="color:#E9A23B;margin-top:4px">◆ 模拟数据分析 <span style="color:#00E5FF">●</span></div>
+        <div style="margin-left:14px;border-left:2px solid #E9A23B;padding-left:10px">
+          <!-- 高亮的 agent 节点 -->
+          <div style="background:rgba(233,162,59,0.2);border-radius:4px;padding:4px 6px;animation:highlight 1s ease-in-out 3;border:1px solid #E9A23B">
+            <div>🧠 数据主管 <span style="color:#E9A23B">⚠ 卡住</span></div>
+            <div style="margin-left:14px;border-left:2px solid #E9A23B;padding-left:10px;color:#888">
+              <div>🔧 read_file <span style="color:#E9A23B">⚠ 60s无更新</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:center;color:#E9A23B;font-size:11px;margin-top:8px;animation:pulse 1.5s infinite">
+        ↑ 已自动滚动到卡住的会话 ↑
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:16px">
+  <h3>设计要点确认</h3>
+  <div class="pros-cons">
+    <div class="pros">
+      <h4>已包含</h4>
+      <ul>
+        <li>精灵顶部固定，下方 Agent 卡片列表</li>
+        <li>每张卡片：头像 + 名称 + agentKey + 状态动画</li>
+        <li>执行中：青色脉冲动画 + 暂停/取消按钮</li>
+        <li>卡住：黄色脉冲 + 恢复/取消/定位按钮</li>
+        <li>空闲/待开始：灰色低调</li>
+        <li>点击 Agent → 中间面板滚动到该 Agent 活动 + 黄色高亮闪烁 3 次</li>
+        <li>面板从 280px 加宽到 340px</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>待确认</h4>
+      <ul>
+        <li>Agent 卡片是否需要显示所属团队名？（如"研发助手 · 组件架构梳理团队"）</li>
+        <li>卡住检测：前端基于"最后事件 >60s"推断（无需后端改动），还是需要后端心跳？</li>
+        <li>已完成的 Agent 是否也显示在列表中（灰色折叠），还是完全隐藏？</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+@keyframes stuck-pulse { 0%,100%{box-shadow:0 0 0 rgba(233,162,59,0)} 50%{box-shadow:0 0 8px rgba(233,162,59,0.4)} }
+@keyframes highlight { 0%,100%{background:rgba(233,162,59,0.2)} 50%{background:rgba(233,162,59,0.5)} }
+.split { display:grid;grid-template-columns:1fr 1fr;gap:12px }
+</style>

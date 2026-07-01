@@ -83,6 +83,12 @@
         :activity="item.event as TeamStageEvent"
         :agent-map="props.agentMap"
         :run-status="props.runStatus"
+        :auto-expand="
+          props.autoExpandFor === (item.event as TeamStageEvent).teamId ||
+          (item.event as TeamStageEvent).members?.some((m) => m.agentKey === props.autoExpandFor) === true
+        "
+        :data-team-id="(item.event as TeamStageEvent).teamId || ''"
+        :data-agent-key="(item.event as TeamStageEvent).members?.[0]?.agentKey || ''"
         @expand-member="(p) => $emit('expand-member', p)"
         @cancel-team="(teamId: string) => $emit('cancel-team', teamId)"
         @retry-team="(teamId: string) => $emit('retry-team', teamId)"
@@ -97,6 +103,7 @@
             :agent-color="agentColor"
             :agent-map="props.agentMap"
             :run-status="props.runStatus"
+            :auto-expand-for="props.autoExpandFor"
             @confirm="(id: string, approved: boolean) => $emit('confirm', id, approved)"
             @error-retry="(e: ErrorEvent) => $emit('error-retry', e)"
             @error-switch-model="(e: ErrorEvent) => $emit('error-switch-model', e)"
@@ -128,6 +135,13 @@
         :activity="teamStageToSessionStage(item.event as TeamStageEvent)"
         :agent-map="props.agentMap"
         :run-status="props.runStatus"
+        :blocked-info="getBlockedInfo(flattenSingleMemberTeamChildren(item.activity))"
+        :auto-expand="
+          props.autoExpandFor === (item.event as TeamStageEvent).teamId ||
+          props.autoExpandFor === (item.event as TeamStageEvent).members?.[0]?.agentKey
+        "
+        :data-team-id="(item.event as TeamStageEvent).teamId || ''"
+        :data-agent-key="(item.event as TeamStageEvent).members?.[0]?.agentKey || ''"
         @enter-session="(sid) => $emit('enter-session', sid)"
         @cancel-agent="(sessionId: string) => $emit('cancel-agent', sessionId)"
         @retry-agent="(sessionId: string) => $emit('retry-agent', sessionId)"
@@ -142,6 +156,7 @@
             :agent-color="agentColor"
             :agent-map="props.agentMap"
             :run-status="props.runStatus"
+            :auto-expand-for="props.autoExpandFor"
             @confirm="(id: string, approved: boolean) => $emit('confirm', id, approved)"
             @error-retry="(e: ErrorEvent) => $emit('error-retry', e)"
             @error-switch-model="(e: ErrorEvent) => $emit('error-switch-model', e)"
@@ -171,6 +186,9 @@
         :activity="item.event as SessionStageEvent"
         :agent-map="props.agentMap"
         :run-status="props.runStatus"
+        :blocked-info="getBlockedInfo(item.activity.children)"
+        :auto-expand="props.autoExpandFor === item.activity.agentKey"
+        :data-agent-key="item.activity.agentKey || ''"
         @enter-session="(sid) => $emit('enter-session', sid)"
         @cancel-agent="(sessionId: string) => $emit('cancel-agent', sessionId)"
         @retry-agent="(sessionId: string) => $emit('retry-agent', sessionId)"
@@ -185,6 +203,7 @@
             :agent-color="agentColor"
             :agent-map="props.agentMap"
             :run-status="props.runStatus"
+            :auto-expand-for="props.autoExpandFor"
             @confirm="(id: string, approved: boolean) => $emit('confirm', id, approved)"
             @error-retry="(e: ErrorEvent) => $emit('error-retry', e)"
             @error-switch-model="(e: ErrorEvent) => $emit('error-switch-model', e)"
@@ -233,6 +252,7 @@
           :agent-color="agentColor"
           :agent-map="props.agentMap"
           :run-status="props.runStatus"
+          :auto-expand-for="props.autoExpandFor"
           @confirm="(id: string, approved: boolean) => $emit('confirm', id, approved)"
           @error-retry="(e: ErrorEvent) => $emit('error-retry', e)"
           @error-switch-model="(e: ErrorEvent) => $emit('error-switch-model', e)"
@@ -278,6 +298,7 @@ import type {
 } from '../../features/chat/streamEventTypes';
 import type { Message } from '../../domain/types';
 import { activityToStreamEvent } from '../../features/chat/composables/useActivityTimeline';
+import { findBlockedInTree, EMPTY_BLOCKED } from '../../features/chat/composables/useBlockedStatus';
 import ThinkingBlock from './ThinkingBlock.vue';
 import ActionBlock from './ActionBlock.vue';
 import ReplyBlock from './ReplyBlock.vue';
@@ -306,6 +327,8 @@ const props = defineProps<{
   agentMap?: Map<string, { displayName: string; agentKey: string }>;
   /** P1#3: parent run status to gate cancel button visibility. */
   runStatus?: import('../../features/chat/types').RunStatusValue;
+  /** T8.6: 点击左侧 Agent 卡片定位时，自动展开目标 Agent/Team 卡片 */
+  autoExpandFor?: string;
 }>();
 
 defineEmits<{
@@ -489,6 +512,16 @@ const renderItems = computed<RenderItem[]>(() => {
  *  task; they should not appear inside the TeamCard/AgentCard panel, which
  *  only displays the member's thinking/action/reply activities per §A.5.
  */
+/**
+ * T8.8: 检测一个活动节点的子树是否存在阻塞（tool/confirm/llm）。
+ * 用于 AgentCard 的 blocked-info prop，驱动黄色左边框 + ⚠ 阻塞标签。
+ * 注意：仅检测子活动，不含节点本身（session 节点本身不会阻塞）。
+ */
+function getBlockedInfo(children: ActivityTreeNode[] | undefined) {
+  if (!children?.length) return EMPTY_BLOCKED;
+  return findBlockedInTree(children);
+}
+
 function filterChildrenForRender(activity: ActivityTreeNode): ActivityTreeNode[] {
   if (!activity.children?.length) return [];
   const keepStageOnly = activity.kind === 'graph_stage';
@@ -502,7 +535,18 @@ function filterChildrenForRender(activity: ActivityTreeNode): ActivityTreeNode[]
     // containers, and any execution activities. These together form the
     // complete Team mode structure defined in §1.7.3.
     if (keepPlan) {
-      return ['plan', 'graph_stage', 'team_stage', 'session', 'thinking', 'action', 'reply', 'notice', 'confirm', 'error'].includes(child.kind);
+      return [
+        'plan',
+        'graph_stage',
+        'team_stage',
+        'session',
+        'thinking',
+        'action',
+        'reply',
+        'notice',
+        'confirm',
+        'error',
+      ].includes(child.kind);
     }
     // Inside team_stage/session (TeamCard/AgentCard) only render the agent's
     // execution activities, not its own sub-plan / graph_stage / sub-team_stage.

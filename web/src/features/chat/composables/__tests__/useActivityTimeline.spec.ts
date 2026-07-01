@@ -232,9 +232,7 @@ describe('useActivityTimeline', () => {
       }),
     });
 
-    const action = tl.activityTree.value
-      .flatMap((n) => [n, ...(n.children || [])])
-      .find((n) => n.id === 'act-dur');
+    const action = tl.activityTree.value.flatMap((n) => [n, ...(n.children || [])]).find((n) => n.id === 'act-dur');
     expect(action).toBeDefined();
     expect(action?.kind).toBe('action');
     // Convert to ActionEvent (what ActionBlock receives) and verify the
@@ -261,9 +259,7 @@ describe('useActivityTimeline', () => {
       }),
     });
 
-    const action = tl.activityTree.value
-      .flatMap((n) => [n, ...(n.children || [])])
-      .find((n) => n.id === 'act-label');
+    const action = tl.activityTree.value.flatMap((n) => [n, ...(n.children || [])]).find((n) => n.id === 'act-label');
     expect(action).toBeDefined();
     expect(action?.kind).toBe('action');
     // Convert to ActionEvent (what ActionBlock receives) and verify the

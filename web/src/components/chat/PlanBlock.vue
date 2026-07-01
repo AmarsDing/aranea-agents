@@ -80,12 +80,8 @@ const isRunning = computed(() => props.activity.status === 'planning' || props.a
 // activity.steps (no independent state machine, per design doc §B.4.3).
 const steps = computed(() => props.activity.steps ?? []);
 const totalSteps = computed(() => steps.value.length);
-const completedSteps = computed(
-  () => steps.value.filter((s) => s.status === 'completed').length,
-);
-const allStepsCompleted = computed(
-  () => totalSteps.value > 0 && completedSteps.value === totalSteps.value,
-);
+const completedSteps = computed(() => steps.value.filter((s) => s.status === 'completed').length);
+const allStepsCompleted = computed(() => totalSteps.value > 0 && completedSteps.value === totalSteps.value);
 
 // T4.3: Initial render collapses the panel only when all steps are already
 // completed (terminal success). Failed/partial_failure plans stay expanded
@@ -165,15 +161,17 @@ function stepStatusText(status: PlanStep['status']): string {
 
 <style lang="sass" scoped>
 .plan-block
-  padding: 8px 10px
-  border-radius: 8px
-  background: var(--glass-surface)
-  border: 1px solid var(--glass-border)
+  // T8.5: 树形重构 — 去除 border+background+border-radius，改用左侧连接线
+  border-left: 3px solid var(--glass-border)
+  padding: 6px 10px 6px 8px
+  transition: border-left-color 0.15s ease
 
   &--planning, &--executing
-    border-color: color-mix(in srgb, var(--color-accent) 40%, var(--glass-border))
+    border-left-color: var(--color-accent)
+  &--completed
+    border-left-color: var(--color-success)
   &--failed
-    border-color: color-mix(in srgb, var(--color-danger) 40%, var(--glass-border))
+    border-left-color: var(--color-danger)
 
   &__header
     display: flex
@@ -230,22 +228,28 @@ function stepStatusText(status: PlanStep['status']): string {
     padding-left: 22px
 
   &__steps
+    // T8.5: 计划步骤作为 plan 节点的子行，用左侧连接线表达层级
+    margin-left: 14px
+    padding-left: 8px
+    border-left: 2px solid var(--glass-border)
     display: flex
     flex-direction: column
-    gap: 3px
+    gap: 2px
 
   &__step
-    padding: 4px 0
+    padding: 2px 0
 
   &__step-row
     display: flex
     align-items: center
     gap: 8px
-    padding: 6px 10px
-    background: var(--color-bg, var(--glass-surface))
-    border: 1px solid var(--glass-border, var(--color-border))
-    border-radius: 6px
+    padding: 4px 6px
+    border-radius: 4px
     font-size: 12px
+    transition: background 0.12s ease
+
+    &:hover
+      background: var(--glass-surface-hover)
 
   &__step-num
     width: 18px
@@ -268,9 +272,6 @@ function stepStatusText(status: PlanStep['status']): string {
   &__step-team
     font-size: 10px
     color: var(--color-text-tertiary)
-    background: var(--glass-elevated, var(--glass-surface))
-    padding: 1px 6px
-    border-radius: 3px
     flex-shrink: 0
 
   &__step-status

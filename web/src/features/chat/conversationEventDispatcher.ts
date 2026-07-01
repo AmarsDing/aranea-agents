@@ -137,10 +137,7 @@ export function turnStatusFromActivity(ev: ActivityEvent): ConversationTurnStatu
   if (ev.activity.stage === 'runner_completion') return 'completed';
   if (ev.event === 'failed') return 'failed';
   const meta = ev.activity.meta ?? {};
-  const raw =
-    stringValue(meta.status) ||
-    stringValue(meta.phase) ||
-    stringValue(meta.run_status);
+  const raw = stringValue(meta.status) || stringValue(meta.phase) || stringValue(meta.run_status);
   return raw ? runStatusToTurnStatus(raw) : undefined;
 }
 

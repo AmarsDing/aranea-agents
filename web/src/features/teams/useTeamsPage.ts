@@ -293,14 +293,10 @@ export function useTeamsPage() {
 
   function openRunEvents(teamID: string) {
     closeRunEvents();
-    runEventsSource = store.subscribeRunEvents(
-      GLOBAL_WS_SESSION_ID,
-      teamID,
-      (event) => {
-        runEventsConnected.value = true;
-        applyRunEvent(event);
-      },
-    );
+    runEventsSource = store.subscribeRunEvents(GLOBAL_WS_SESSION_ID, teamID, (event) => {
+      runEventsConnected.value = true;
+      applyRunEvent(event);
+    });
   }
 
   function closeRunEvents() {

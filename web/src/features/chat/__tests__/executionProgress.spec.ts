@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  mergeProgressEventsFromActivity,
-  readExecutionProgressMetadataFromActivity,
-} from '../executionProgress';
+import { mergeProgressEventsFromActivity, readExecutionProgressMetadataFromActivity } from '../executionProgress';
 import type { ActivityEvent, Activity } from '../../../realtime/activityEvent';
 
 function makeActivity(overrides: Partial<Activity> = {}): Activity {
@@ -56,9 +53,7 @@ describe('readExecutionProgressMetadataFromActivity', () => {
   });
 
   it('returns null when meta is missing required fields', () => {
-    expect(
-      readExecutionProgressMetadataFromActivity(activityEvent({ phase: 'start', message: 'x' })),
-    ).toBeNull();
+    expect(readExecutionProgressMetadataFromActivity(activityEvent({ phase: 'start', message: 'x' }))).toBeNull();
   });
 
   it('returns parsed metadata with optional fields', () => {

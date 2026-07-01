@@ -1,25 +1,29 @@
 import { describe, it, expect } from 'vitest';
 import { ref } from 'vue';
 import { useContextualLoadingMessage } from '../useContextualLoadingMessage';
-import type { ActivityEvent, Activity, ActivityKind, ActivityStatus, ActivityEventType } from '../../../../realtime/activityEvent';
+import type {
+  ActivityEvent,
+  Activity,
+  ActivityKind,
+  ActivityStatus,
+  ActivityEventType,
+} from '../../../../realtime/activityEvent';
 
 /**
  * Build a minimal ActivityEvent for testing. Only the fields accessed by
  * useContextualLoadingMessage need to be set; the rest are defaulted.
  */
-function makeActivityEvent(
-  overrides: {
-    event?: ActivityEventType;
-    kind?: ActivityKind;
-    stage?: string;
-    agent_name?: string;
-    agent_key?: string;
-    label?: string;
-    tool_name?: string;
-    tool_duration_ms?: number;
-    meta?: Record<string, unknown>;
-  },
-): ActivityEvent {
+function makeActivityEvent(overrides: {
+  event?: ActivityEventType;
+  kind?: ActivityKind;
+  stage?: string;
+  agent_name?: string;
+  agent_key?: string;
+  label?: string;
+  tool_name?: string;
+  tool_duration_ms?: number;
+  meta?: Record<string, unknown>;
+}): ActivityEvent {
   const activity: Activity = {
     id: 'a-1',
     kind: overrides.kind ?? 'task',

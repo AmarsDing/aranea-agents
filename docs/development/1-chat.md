@@ -349,18 +349,20 @@ interface Activity {
 
 ### 4.1 左侧 Agent/Team 列表（ChatEntitySidebar）
 
-1. 宽度 120px，高度 100%；Agent 和 Team 分组显示
-2. Agent 按分类树（PlatformResourceTreeNode）分组显示
-3. Team 按分组显示
-4. 默认 Agent 显示在 Agent 组最上方，不可拖拽调序
-5. 默认 Team 显示在 Team 组最上方，不可拖拽调序
-6. 顶部搜索框：按名称搜索 Agent 和 Team，带输入提示和过滤
-7. 条目：左侧显示工作状态指示灯（bolt/task_alt）和名称，右侧设置和删除按钮
-8. 设置按钮：弹框显示 Agent/Team 设置界面（ChatSettingsDialog）
-9. 删除按钮：弹出确认对话框（ChatDeleteDialog），工作中不可删除，删除需填写名称
-10. 选中时背景高亮，右侧显示 Session 历史，中间显示最近 Session 内容
-11. 首次进入默认选中默认 Agent
-12. 列表右侧中间折叠按钮，带动画
+> **2026-07-01 更新**：T8 树形重构后，左侧改为精灵下方 Agent 卡片列表，不再按分组折叠展示。
+
+1. 宽度 330px，高度 100%；顶部固定显示 Spirit 精灵入口
+2. Spirit 入口下方展示所有 Agent 卡片，按成员创建顺序（`created_at`）排列
+3. 不再按 Agent/Team 分组折叠，所有成员平铺展示
+4. 每张 Agent 卡片包含：
+   - Agent 头像（优先使用 Agent 设置中的头像/图标；后端未下发时从用户 Agent 库按 `agentKey` 补充）
+   - Agent 显示名称（不显示 `agentKey` / `__memory__` 等原始标识）
+   - 所属团队名称
+   - 状态指示：执行中（青色转圈动画）、阻塞（黄色脉冲 + ⚠）、已完成（绿色 ✓ 标签）、失败（红色 ✗ 标签）、待开始（灰色低调）
+   - 常驻设置按钮（⚙），点击打开对应 Agent 设置弹窗
+   - 操作按钮：执行中显示暂停/取消，阻塞显示恢复/取消
+5. 点击 Agent 卡片 → 中间面板自动滚动到该 Agent 对应的活动节点，并触发黄色高亮闪烁 3 次；若目标位于多成员 TeamCard 内，父级 TeamCard 自动展开
+6. 卡片间距、字号、头像尺寸按 330px 侧边栏宽度调优，避免拥挤
 
 ### 4.2 右侧 Session 历史栏（ChatSessionSidebar）
 

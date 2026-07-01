@@ -61,14 +61,12 @@ describe('shouldChannelInboundCompleteToastActivity', () => {
   });
 
   it('does not toast on generic run_status completed without channel source', () => {
-    expect(
-      shouldChannelInboundCompleteToastActivity(activityEvent({ status: SESSION_RUN_STATUS.COMPLETED })),
-    ).toBe(false);
+    expect(shouldChannelInboundCompleteToastActivity(activityEvent({ status: SESSION_RUN_STATUS.COMPLETED }))).toBe(
+      false,
+    );
   });
 
   it('toasts on failed/cancelled channel turns', () => {
-    expect(
-      shouldChannelInboundCompleteToastActivity(activityEvent({ status: SESSION_RUN_STATUS.FAILED })),
-    ).toBe(true);
+    expect(shouldChannelInboundCompleteToastActivity(activityEvent({ status: SESSION_RUN_STATUS.FAILED }))).toBe(true);
   });
 });

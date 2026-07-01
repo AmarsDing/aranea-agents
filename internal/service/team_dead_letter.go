@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	v1 "aranea-agents/api/kratos/team/v1"
+	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 
 	"aranea-agents/pkg/apierror"
@@ -104,7 +105,21 @@ func (s *TeamService) ListSpiritTeams(ctx context.Context, req *v1.ListSpiritTea
 		if runs := runsByTeam[teams[i].ID]; len(runs) > 0 {
 			run = &runs[0]
 		}
-		out = append(out, toProtoSpiritTeamView(&teams[i], run))
+		view := toProtoSpiritTeamView(&teams[i], run)
+		if s.activityRepo != nil {
+			if act, err := s.activityRepo.GetActivity(ctx, agent.TeamStageActivityID(teams[i].ID)); err == nil {
+				view.Members = membersFromTeamStageActivity(act.Meta)
+				if len(view.Members) > 0 {
+					view.MemberAvatars = make([]string, 0, len(view.Members))
+					for _, m := range view.Members {
+						if m.AvatarUrl != "" {
+							view.MemberAvatars = append(view.MemberAvatars, m.AvatarUrl)
+						}
+					}
+				}
+			}
+		}
+		out = append(out, view)
 	}
 	return &v1.ListSpiritTeamsResponse{Teams: out}, nil
 }
@@ -133,6 +148,41 @@ func toProtoSpiritTeamView(t *biz.Team, run *biz.TeamRun) *v1.SpiritTeamView {
 		view.GraphExecutionId = run.GraphExecutionID
 	}
 	return view
+}
+
+// membersFromTeamStageActivity extracts the member list stored in a
+// team_stage activity's meta (written by publishSpiritTeamAssembled). This
+// provides the authoritative agent keys, display names, avatars and session
+// IDs for the frontend sidebar without duplicating the assembly logic.
+func membersFromTeamStageActivity(meta map[string]any) []*v1.SpiritMemberView {
+	if meta == nil {
+		return nil
+	}
+	raw, ok := meta["members"].([]any)
+	if !ok || len(raw) == 0 {
+		return nil
+	}
+	out := make([]*v1.SpiritMemberView, 0, len(raw))
+	for _, item := range raw {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		out = append(out, &v1.SpiritMemberView{
+			AgentKey:    stringField(m, "agent_key"),
+			DisplayName: stringField(m, "agent_name"),
+			AvatarUrl:   stringField(m, "avatar_url"),
+			Status:      stringField(m, "status"),
+		})
+	}
+	return out
+}
+
+func stringField(m map[string]any, key string) string {
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
 }
 
 // SynthesizeResults merges results from multiple teams (B-4).

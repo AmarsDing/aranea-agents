@@ -106,9 +106,7 @@ const dagLayers = computed<GraphNodeStatus[][]>(() => {
   const nodes = props.activity.nodes;
   if (!nodes?.length) return [];
 
-  const depths = kahnTopoLayers(
-    nodes.map((n) => ({ id: n.nodeId, dependsOn: n.dependsOn ?? [] })),
-  );
+  const depths = kahnTopoLayers(nodes.map((n) => ({ id: n.nodeId, dependsOn: n.dependsOn ?? [] })));
 
   const maxDepth = Math.max(0, ...Array.from(depths.values()));
   const layers: GraphNodeStatus[][] = Array.from({ length: maxDepth + 1 }, () => []);
@@ -159,15 +157,16 @@ function nodeTitle(node: GraphNodeStatus): string {
 
 <style lang="sass" scoped>
 .graph-stage-block
-  padding: 8px 10px
-  border-radius: 8px
-  background: var(--glass-surface)
-  border: 1px solid var(--glass-border)
+  // T8.5: 树形重构 — 去除 border+background+border-radius，改用左侧连接线
+  padding: 4px 10px 4px 8px
+  border-left: 3px solid var(--glass-border)
 
   &--running
-    border-color: color-mix(in srgb, var(--color-accent) 40%, var(--glass-border))
+    border-left-color: #00E5FF
+  &--completed
+    border-left-color: #4CAF7C
   &--failed
-    border-color: color-mix(in srgb, var(--color-danger) 40%, var(--glass-border))
+    border-left-color: var(--color-danger)
   &--cancelled
     opacity: 0.7
 
@@ -242,31 +241,34 @@ function nodeTitle(node: GraphNodeStatus): string {
     align-self: center
     margin: 1px 0 1px 22px
 
+  // T8.5 / P2: DAG 节点去盒子化 — 移除 background/border-radius/padding，
+  // 改为纯文字行 + 左侧 2px 状态色条，与活动流树形风格一致。
   &__node
     display: inline-flex
     align-items: center
-    gap: 3px
-    padding: 3px 8px
-    border-radius: 4px
+    gap: 4px
+    padding-left: 6px
+    border-left: 2px solid var(--glass-border)
     font-size: 11px
-    background: color-mix(in srgb, var(--color-accent) 10%, transparent)
     color: var(--color-text-secondary)
     transition: all 0.15s ease
 
     &--pending
-      background: color-mix(in srgb, var(--color-text-tertiary) 10%, transparent)
+      border-left-color: var(--color-text-tertiary)
       color: var(--color-text-tertiary)
     &--running
-      background: color-mix(in srgb, var(--color-accent) 18%, transparent)
+      border-left-color: var(--color-accent)
       color: var(--color-accent)
       font-weight: 500
     &--completed
+      border-left-color: var(--color-success)
       opacity: 0.6
       text-decoration: line-through
     &--failed
-      background: color-mix(in srgb, var(--color-danger) 15%, transparent)
+      border-left-color: var(--color-danger)
       color: var(--color-danger)
     &--skipped
+      border-left-color: var(--color-text-tertiary)
       opacity: 0.4
       text-decoration: line-through
 

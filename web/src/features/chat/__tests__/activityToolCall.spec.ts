@@ -45,10 +45,7 @@ function makeActivity(overrides: Partial<Activity> = {}): Activity {
   };
 }
 
-function makeActivityEvent(
-  event: ActivityEventType,
-  activityOverrides: Partial<Activity> = {},
-): ActivityEvent {
+function makeActivityEvent(event: ActivityEventType, activityOverrides: Partial<Activity> = {}): ActivityEvent {
   return { event, activity: makeActivity(activityOverrides) };
 }
 
@@ -63,7 +60,12 @@ describe('activityToolCall', () => {
       agent_name: 'Agent A',
       label: '运行 Skill',
       timestamp: '2026-05-20T10:00:00Z',
-      meta: { activity_kind: 'skill', icon_key: 'play_circle', summary: 'planning', started_at: '2026-05-20T10:00:00Z' },
+      meta: {
+        activity_kind: 'skill',
+        icon_key: 'play_circle',
+        summary: 'planning',
+        started_at: '2026-05-20T10:00:00Z',
+      },
     });
     const event = activityToToolEvent(ev, 'before');
     expect(event?.status).toBe('running');

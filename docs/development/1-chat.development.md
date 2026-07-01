@@ -309,6 +309,39 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 48 | **T7.3** 设计文档 B.2.1 三种模式渲染规则更新 | P1 | ✅ |
 | 49 | **T7.4** 需求文档子模块 A.3 用户故事更新 | P1 | ✅ |
 | 50 | **T7.5** 开发计划文档新增 T7 | P1 | ✅ |
+| 51 | **T8.1** 左侧面板宽度 280→330px（`_css-vars-light.sass` + `_css-vars-dark.sass`） | P1 | ✅ |
+| 52 | **T8.2** 左侧面板改为精灵下方 Agent 卡片列表（不分组折叠，按创建顺序） | P1 | ✅ |
+| 53 | **T8.3** Agent 卡片：头像+名称+agentKey+团队名+状态动画+暂停/恢复按钮 | P1 | ✅ |
+| 54 | **T8.4** 阻塞状态检测 composable（`useBlockedStatus`，4 种阻塞类型） | P1 | ✅ |
+| 55 | **T8.5** 中间活动流去除深框嵌套（GraphStageBlock/TeamCard/AgentCard 改树形缩进+连接线） | P1 | ✅ |
+| 56 | **T8.6** 点击 Agent 卡片定位到中间面板会话+高亮闪烁 | P1 | ✅ |
+| 57 | **T8.7** 执行中转圈动画 + 已完成绿色标签 + 阻塞黄色高亮 | P1 | ✅ |
+| 58 | **T8.8** 设计文档同步 B.8.3 阻塞定义 + B.9 树形重构设计 | P1 | ✅ |
+
+### T8 UI 树形重构（2026-07-01 新增）
+
+> **目标**：消除深框嵌套感，改用树形缩进+连接线；左侧面板改为 Agent 卡片列表；阻塞状态精确定义。
+
+#### 改动文件清单
+
+| 文件 | 改动 |
+|------|------|
+| `web/src/css/theme/_css-vars-light.sass` | `--chat-side-left-width: 280px → 330px` |
+| `web/src/css/theme/_css-vars-dark.sass` | `--chat-side-left-width: 280px → 330px` |
+| `web/src/css/app-global.sass` | `chat-message-prose img` 限制 `max-width: 100%`，防止大图撑破布局 |
+| `web/src/components/chat/ChatEntitySidebar.vue` | 新增 Agent 卡片列表区域（精灵下方），移除原分组折叠逻辑；转发 agents 与 settings 事件 |
+| `web/src/components/chat/AgentSidebarCard.vue` | 新建：左侧面板 Agent 卡片组件；隐藏 `agentKey`；从 Agent 库补充头像；常驻设置按钮；优化间距字号 |
+| `web/src/features/chat/composables/useBlockedStatus.ts` | 新建：阻塞状态检测 composable；LLM 阻塞判定需 `meta.streaming === false`；支持 agentKey 继承 |
+| `web/src/components/chat/GraphStageBlock.vue` | 移除 border+background，改树形行式布局 |
+| `web/src/components/chat/TeamCard.vue` | 移除 border+background，改树形行式布局；新增 `autoExpand` prop 支持外部触发展开 |
+| `web/src/components/chat/AgentCard.vue` | 移除 border+background，改树形行式布局；新增 `autoExpand` prop 支持外部触发展开 |
+| `web/src/components/chat/ActivityStream.vue` | 透传 `autoExpandFor` prop 到 TeamCard/AgentCard；TeamCard `autoExpand` 支持任意成员 agentKey 匹配；递归子流同步透传 |
+| `web/src/components/chat/ChatMessageList.vue` | 监听 `useScrollToActivity` 定位命令；自动展开父级卡片；`data-agent-key`/`data-team-id` 定位；黄色高亮动画 |
+| `web/src/features/chat/composables/useScrollToActivity.ts` | 新建：模块级 ref 单例，跨组件传递定位命令 |
+| `web/src/components/spirit/SynthesisResultCard.vue` | `team-summary` / `team-findings` 改为完整换行显示；`renderedContent` 内图片限制最大宽度 |
+| `web/src/i18n/locales/zh-CN.ts` / `en-US.ts` | 新增 `chat.agentSidebar.settings` 等文案 |
+| `web/src/features/chat/streamEventTypes.ts` | `TeamMemberStatus` 新增 `blocked` 状态 |
+| `web/src/features/chat/composables/useActivityTimeline.ts` | members 映射逻辑新增 blocked 状态 |
 
 ---
 
@@ -371,6 +404,25 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 
 **未做（YAGNI）**：
 - B-09/GAP-03 depth 错误码 + i18n 文案：当前深度限制由后端 `subagents_max_generation_depth` / `max_session_depth` 已守门，前端仅依靠错误回退展示，无明确 UX 缺陷反馈。**待用户反馈具体场景再补**，避免为单一场景预抽 i18n key 与错误码层级（红线 #15 / CS-F9）。
+
+### 7.5 T8 UI 树形重构验收（2026-07-01 新增）
+
+- [x] 左侧面板宽度 330px，Spirit 入口下方平铺 Agent 卡片，按创建顺序排列，不分组折叠
+- [x] Agent 卡片展示头像、显示名称（隐藏 `agentKey` / `__memory__` 等原始标识）、团队名、状态动画与操作
+- [x] Agent 头像优先使用后端 `avatarUrl`，缺失时从用户 Agent 库按 `agentKey` 补充
+- [x] Agent 卡片常驻设置按钮（⚙），点击可打开对应 Agent 设置弹窗
+- [x] 中间活动流移除深框嵌套，`GraphStageBlock`/`TeamCard`/`AgentCard` 改用树形缩进 + 左侧连接线
+- [x] 执行中显示青色转圈动画，阻塞显示黄色脉冲 + ⚠ 标签，已完成显示绿色 ✓ 标签
+- [x] 阻塞状态基于后端状态机判定，LLM 阻塞需满足 `meta.streaming === false`，避免正常流式被误判
+- [x] 子活动未携带 `agentKey` 时继承父节点 `agentKey`，左侧 Agent 卡片可精确高亮
+- [x] 点击左侧 Agent 卡片 → 中间面板自动滚动并黄色高亮闪烁 3 次
+- [x] 点击定位时若父级卡片折叠，自动展开 `TeamCard`/`AgentCard` 确保目标可见；多成员团队下任意成员均可触发父级 `TeamCard` 展开
+- [x] 定位使用模块级 ref 单例 `useScrollToActivity`，通过 `data-agent-key`/`data-team-id` 查找 DOM 并做 `CSS.escape` 转义
+- [x] `SynthesisResultCard` 团队总结与关键发现完整换行显示，不截断；`chat-message-prose` 与卡片内容区图片限制最大宽度，防止撑破布局
+
+**验证**：
+- 前端：`pnpm lint` 通过（0 errors，剩余 17 warnings 为历史技术债：测试文件 one-component-per-file、未使用变量 upsertEvent）；`pnpm test` 570 passed；`pnpm build` ✅
+- 运行截图验证：左侧 Agent 卡片列表、树形缩进+连接线、阻塞黄色高亮、点击定位高亮均符合 B 方案设计
 
 ---
 

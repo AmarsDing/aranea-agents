@@ -80,6 +80,8 @@ export type SpiritTeam = {
   teamSessionId: string;
   members: SpiritMember[];
   sharedAgentIds: string[];
+  /** Creation timestamp (ms) used for sidebar ordering (B.9.1). */
+  createdAt: number;
   dagNodeId?: string;
   graphExecutionId?: string;
   dependsOn?: string[];

@@ -19,6 +19,7 @@
       :pulse-team-colors="pulseTeamColors"
       :spirit-mode="spiritStore.activePanelMode === 'spirit'"
       :orchestration-phase="spiritStore.orchestrationPhase"
+      :blocked-status="blockedStatus"
       @update:search="layout.search = $event"
       @select-spirit="onSelectSpirit()"
       @select-agent="entity.selectAgent($event)"
@@ -28,6 +29,10 @@
       @select-spirit-team="spiritStore.selectTeam($event)"
       @toggle-team-expand="spiritStore.toggleTeamExpand($event)"
       @spirit-settings="(id) => entity.openSettings('agent', id)"
+      @locate-agent="onSidebarLocateAgent"
+      @pause-agent="onSidebarPauseAgent"
+      @resume-agent="onSidebarResumeAgent"
+      @cancel-agent="onSidebarCancelAgent"
     />
 
     <ChatSideToggle
@@ -257,6 +262,8 @@ import { computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { Notify } from 'quasar';
 import { useChatWorkspace } from '../features/chat/composables/useChatWorkspace';
+import { useScrollToActivity } from '../features/chat/composables/useScrollToActivity';
+import { useBlockedStatus } from '../features/chat/composables/useBlockedStatus';
 import { useSpiritTeamStore } from '../stores/spirit';
 import { useUiConfigStore } from '../stores/uiConfig';
 import { DEFAULT_MAX_PARALLEL_TEAMS } from '../features/spirit/observabilityConstants';
@@ -268,7 +275,9 @@ const SPIRIT_AGENT_KEY = '__spirit__';
 
 const { coreReady, fileRef, layout, entity, session, composer, dialogs, errorBlock } = useChatWorkspace();
 const spiritStore = useSpiritTeamStore();
+const { locate } = useScrollToActivity();
 const uiConfig = useUiConfigStore();
+const blockedStatus = useBlockedStatus(session.activityTimeline.activityTree);
 const router = useRouter();
 // T5.5: Mobile (<1024px) responsive logic removed — app targets desktop only.
 
@@ -280,9 +289,7 @@ const activeMember = computed(() => {
 });
 
 /** Show SessionTreeSidebar when in spirit mode with an active team (sub-sessions exist). */
-const showSessionTree = computed(
-  () => spiritStore.activePanelMode === 'spirit' && Boolean(spiritStore.activeTeamId),
-);
+const showSessionTree = computed(() => spiritStore.activePanelMode === 'spirit' && Boolean(spiritStore.activeTeamId));
 
 /** Navigate to a session tree node: switch Activity stream and lazy-load if needed. */
 function onSelectSessionTreeNode(sessionId: string) {
@@ -380,6 +387,36 @@ function onSelectSpirit() {
   }
 }
 
+/**>/** T8.6: 点击左侧 Agent 卡片定位到中间面板会话 */
+function onSidebarLocateAgent(payload: { agentKey: string; teamSessionId: string; teamId: string }) {
+  locate(payload.agentKey, payload.teamSessionId, payload.teamId);
+}
+
+/** T8.3: 左侧 Agent 卡片暂停/恢复/取消（基于 agentKey 解析 agentId） */
+function onSidebarPauseAgent(agentKey: string) {
+  const team = spiritStore.teams.find((t) => t.members.some((m) => m.agentKey === agentKey));
+  const member = team?.members.find((m) => m.agentKey === agentKey);
+  if (member?.agentId) {
+    pauseAgentSession(member.agentId).catch(() => {});
+  }
+}
+
+function onSidebarResumeAgent(agentKey: string) {
+  const team = spiritStore.teams.find((t) => t.members.some((m) => m.agentKey === agentKey));
+  const member = team?.members.find((m) => m.agentKey === agentKey);
+  if (member?.agentId) {
+    resumeAgentSession(member.agentId).catch(() => {});
+  }
+}
+
+function onSidebarCancelAgent(agentKey: string) {
+  const team = spiritStore.teams.find((t) => t.members.some((m) => m.agentKey === agentKey));
+  const member = team?.members.find((m) => m.agentKey === agentKey);
+  if (member?.agentId) {
+    cancelAgentSession(member.agentId).catch(() => {});
+  }
+}
+
 /** Phase B-4 / §9.1.3: Handle team-member click to expand that member's session.
  *  Resolves agentKey → agentId via spiritStore.activeTeam.members (preferring
  *  the team identified by payload.teamId when provided — useful when the user
@@ -388,7 +425,7 @@ function onSelectSpirit() {
  *  resolve the member session id from the session tree and lazy-load activities. */
 function onExpandMember(payload: { agentKey: string; agentName?: string; teamId?: string }) {
   const team = payload.teamId
-    ? spiritStore.teams.find((t) => t.id === payload.teamId) ?? spiritStore.activeTeam
+    ? (spiritStore.teams.find((t) => t.id === payload.teamId) ?? spiritStore.activeTeam)
     : spiritStore.activeTeam;
   const member = team?.members.find((m) => m.agentKey === payload.agentKey);
   if (!member) return;

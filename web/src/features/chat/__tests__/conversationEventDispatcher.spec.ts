@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ActivityEvent, Activity } from '../../../realtime/activityEvent';
-import {
-  conversationSourceFromActivity,
-  projectConversationActivityEvent,
-} from '../conversationEventDispatcher';
+import { conversationSourceFromActivity, projectConversationActivityEvent } from '../conversationEventDispatcher';
 
 function makeActivity(overrides: Partial<Activity> = {}): Activity {
   return {
@@ -87,10 +84,9 @@ describe('conversationEventDispatcher — ActivityEvent', () => {
   });
 
   it('routes non-current session events to inbox', () => {
-    const projected = projectConversationActivityEvent(
-      activityEvent({}, { session_id: 'sess-2' }),
-      { currentSessionId: 'sess-1' },
-    );
+    const projected = projectConversationActivityEvent(activityEvent({}, { session_id: 'sess-2' }), {
+      currentSessionId: 'sess-1',
+    });
     expect(projected?.scope).toBe('inbox');
   });
 

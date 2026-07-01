@@ -198,14 +198,8 @@ export function useChatWorkspace() {
   };
 
   const runStatusCtrl = useChatRunStatus({ applyAwaitRunStatus });
-  const {
-    runStatus,
-    runMeta,
-    applyFromActivityEvent,
-    onSessionSwitch,
-    refreshRunStatus,
-    forceSetRunStatus,
-  } = runStatusCtrl;
+  const { runStatus, runMeta, applyFromActivityEvent, onSessionSwitch, refreshRunStatus, forceSetRunStatus } =
+    runStatusCtrl;
 
   const providerOpts = useChatProviderOptions(appStore);
   const {
