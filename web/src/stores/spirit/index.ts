@@ -457,7 +457,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
 
     switch (envType) {
       case 'spirit_team_assembled': {
-        handleTeamAssembled(teamId, md, act.session_id ?? '');
+        handleTeamAssembled(teamId, md, act.session_id ?? '', String(act.status ?? ''));
         break;
       }
       case 'spirit_team_completed':
@@ -516,16 +516,46 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
 
   // --- Spirit handlers ---
 
-  function handleTeamAssembled(teamId: string, md: Record<string, unknown>, sessionId: string) {
+  function handleTeamAssembled(
+    teamId: string,
+    md: Record<string, unknown>,
+    sessionId: string,
+    activityStatus: string,
+  ) {
     synthesisCompleted.value = false;
     synthesisResult.value = null;
     allTeamsCompleted.value = false;
-    if (teamId) {
+    if (!teamId) return;
+
+    const incomingStatus = String(md.status ?? activityStatus ?? '');
+    const initialStatus: SpiritTeamStatus = isValidTeamStatus(incomingStatus)
+      ? incomingStatus
+      : 'pending';
+
+    const existing = teams.value.find((t) => t.id === teamId);
+    if (existing) {
+      // Merge identifying/structural fields from the assembled event without
+      // overwriting real-time WS-updated fields (status, progressPct). This
+      // prevents a later "assembled" event (e.g. publishTeamRunStartedEvent
+      // with Stage=assembled, Status=running) from clobbering a running
+      // status, and also prevents the initial pending assembled event from
+      // overwriting status set by a progress event.
+      if (md.team_name) existing.teamName = String(md.team_name);
+      if (md.task_summary) existing.taskSummary = String(md.task_summary);
+      if (md.mode) existing.mode = String(md.mode || 'coordinator') as SpiritTeamMode;
+      if (md.session_id) existing.teamSessionId = String(md.session_id);
+      if (md.dag_node_id) existing.dagNodeId = String(md.dag_node_id);
+      if (Array.isArray(md.depends_on)) existing.dependsOn = md.depends_on.map(String);
+      if (md.topology_reason) existing.topologyReason = String(md.topology_reason);
+      if (initialStatus !== 'pending' || existing.status === 'pending') {
+        updateTeamStatus(teamId, initialStatus);
+      }
+    } else {
       addTeam({
         id: teamId,
         teamName: String(md.team_name ?? ''),
         taskSummary: String(md.task_summary ?? ''),
-        status: 'pending',
+        status: initialStatus,
         mode: String(md.mode || 'coordinator') as SpiritTeamMode,
         memberAvatars: [],
         completedSteps: 0,

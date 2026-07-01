@@ -278,26 +278,26 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 					}
 				}
 				if c.activityBus != nil {
-					ev := biz.ActivityEvent{
-						Event: biz.ActivityEventFailed,
-						Activity: biz.Activity{
-							ID:              agent.TeamStageActivityID(sess.teamID),
-							Kind:            biz.ActivityKindTeamStage,
-							Status:          biz.ActivityStatusFailed,
-							SessionID:       sess.sessionID,
-							SpiritSessionID: sess.spiritSessionID,
-							TeamID:          sess.teamID,
-							Timestamp:       time.Now().UTC(),
-							Stage:           "failed",
-							Meta: map[string]any{
-								"run_id":        run.ID,
-								"error_message": err.Error(),
-							},
+				ev := biz.ActivityEvent{
+					Event: biz.ActivityEventFailed,
+					Activity: biz.Activity{
+						ID:               agent.TeamStageActivityID(sess.teamID),
+						Kind:             biz.ActivityKindTeamStage,
+						Status:           biz.ActivityStatusFailed,
+						SessionID:        sess.sessionID,
+						SpiritSessionID:  sess.spiritSessionID,
+						TeamID:           sess.teamID,
+						Timestamp:        time.Now().UTC(),
+						Stage:            "failed",
+						ParentActivityID: agent.GraphStageActivityID(sess.spiritSessionID),
+						Meta: map[string]any{
+							"run_id":        run.ID,
+							"error_message": err.Error(),
 						},
-						Domain: biz.ActivityDomainChat,
-					}
-					c.activityBus.Publish(ctx, ev)
+					},
+					Domain: biz.ActivityDomainChat,
 				}
+				c.activityBus.Publish(ctx, ev)
 			}
 		}
 		c.evictSession(sess.execID)

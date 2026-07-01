@@ -189,10 +189,15 @@ export function useActivityTimeline() {
         const arr = teamStageByTeam.get(activity.teamId) ?? [];
         arr.push(activity);
         teamStageByTeam.set(activity.teamId, arr);
-      } else if (activity.kind === 'plan' && activity.turnId) {
-        const arr = planByTurn.get(activity.turnId) ?? [];
+      } else if (activity.kind === 'plan') {
+        // Backend may emit multiple plan activities for the same turn. When
+        // turnId is empty (common for spirit team turns), fall back to the
+        // session id so the lazy plan (created at graph start) and the
+        // canonical plan (published at plan creation) are still merged.
+        const planKey = activity.turnId || activity.sessionId || activity.spiritSessionId || '__default__';
+        const arr = planByTurn.get(planKey) ?? [];
         arr.push(activity);
-        planByTurn.set(activity.turnId, arr);
+        planByTurn.set(planKey, arr);
       } else {
         dedupMap.set(activity.id, activity);
       }
@@ -304,10 +309,15 @@ export function useActivityTimeline() {
     // then re-parent activities to the session activity whose agentKey
     // matches the activity's agent_key.
     const sessionActivityByKey = new Map<string, ActivityTreeNode>();
+    // childSessionId → session activity (AgentCard). Used to attach orphan
+    // task activities that belong to sub-sessions so they don't leak into the
+    // main chat stream as extra user-message bubbles.
+    const sessionActivityByChildSessionId = new Map<string, ActivityTreeNode>();
     for (const node of treeMap.values()) {
       if (node.kind === 'session' && node.meta?.child_session_id && node.agentKey) {
         const key = `${node.meta.child_session_id as string}|${node.agentKey}`;
         sessionActivityByKey.set(key, node);
+        sessionActivityByChildSessionId.set(node.meta.child_session_id as string, node);
       }
     }
 
@@ -338,6 +348,22 @@ export function useActivityTimeline() {
         // Without this, nodes whose parentActivityId doesn't match any
         // entry (e.g. due to backend ID mismatch) are silently dropped,
         // making all child activities invisible.
+        //
+        // Exception: task activities created by OnTurnStart in sub-sessions
+        // (team member / sub-agent runs) have no parent and would otherwise
+        // render as fake user messages in the main stream. Attach them to
+        // their owning session activity (AgentCard) instead; they are then
+        // filtered out by filterChildrenForRender.
+        if (
+          node.kind === 'task' &&
+          node.sessionId &&
+          node.sessionId !== sid &&
+          sessionActivityByChildSessionId.has(node.sessionId)
+        ) {
+          const sessionNode = sessionActivityByChildSessionId.get(node.sessionId)!;
+          sessionNode.children.push(node);
+          continue;
+        }
         roots.push(node);
       }
     }
@@ -352,33 +378,33 @@ export function useActivityTimeline() {
     };
     sortTree(roots);
 
-    // Defensive fix: session activities (AgentCards) for synthesizers/anchors
-    // that orchestrate the team graph never get a persisted team_run_step, so
-    // finalizePendingSessionActivities on the backend should publish
-    // "completed" for them. In practice this doesn't always persist (race or
-    // early-return), leaving AgentCards stuck in "running" after the team
-    // completes. Walk the tree and for each team_stage in terminal status,
-    // inherit the terminal status for child session activities still running.
-    const inheritTeamTerminalStatus = (nodes: ActivityTreeNode[]) => {
+    // Defensive fix: backend race/early-return may leave descendant activities
+    // stuck in "running" after their parent reaches a terminal status. Walk the
+    // tree and propagate terminal status from any terminal node down to its
+    // running descendants. This covers:
+    //   - team_stage completed → child session activities completed
+    //   - session completed → child plan/thinking/action/reply activities completed
+    //   - plan completed → child plan steps completed
+    // Cancelled is coerced to failed for descendants to match the existing
+    // AgentCard/TeamCard semantics (cancelled is a terminal user action).
+    const terminalStatuses = new Set(['completed', 'failed', 'cancelled']);
+    const propagateTerminalStatus = (nodes: ActivityTreeNode[], inheritedStatus?: string) => {
       for (const node of nodes) {
-        if (node.kind === 'team_stage') {
-          const teamTerminalStatus = mapActivityStatusToStageStatus(node.status);
-          if (
-            teamTerminalStatus === 'completed' ||
-            teamTerminalStatus === 'failed' ||
-            teamTerminalStatus === 'cancelled'
-          ) {
-            for (const child of node.children ?? []) {
-              if (child.kind === 'session' && child.status === 'running') {
-                child.status = teamTerminalStatus === 'cancelled' ? 'failed' : teamTerminalStatus;
-              }
-            }
-          }
+        const nodeTerminalStatus = terminalStatuses.has(mapActivityStatusToStageStatus(node.status))
+          ? mapActivityStatusToStageStatus(node.status)
+          : undefined;
+        const effectiveStatus = nodeTerminalStatus || inheritedStatus;
+
+        if (effectiveStatus && node.status === 'running') {
+          node.status = effectiveStatus === 'cancelled' ? 'failed' : effectiveStatus;
         }
-        inheritTeamTerminalStatus(node.children ?? []);
+
+        if (node.children?.length) {
+          propagateTerminalStatus(node.children, effectiveStatus);
+        }
       }
     };
-    inheritTeamTerminalStatus(roots);
+    propagateTerminalStatus(roots);
 
     return roots;
   });

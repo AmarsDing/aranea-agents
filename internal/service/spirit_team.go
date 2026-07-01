@@ -4,7 +4,7 @@ import (
 	"context"
 	stderrors "errors"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"time"
 
 	"aranea-agents/internal/agent"
@@ -44,11 +44,12 @@ type TeamStarter struct {
 	// turn message sent via turnGateway.
 	synthesisSvc *SpiritSynthesisService
 	// synthesisTriggered guards against concurrent duplicate synthesis
-	// triggers. checkAllTeamsCompleted is called from both
-	// HandleTeamTurnResult (goroutine) and NotifyAllTeamsCompleted
-	// (background poller goroutine). CompareAndSwap ensures only one
-	// synthesis message is injected per spirit session lifecycle.
-	synthesisTriggered atomic.Bool
+	// triggers per spirit session. checkAllTeamsCompleted is called from
+	// both HandleTeamTurnResult (goroutine) and NotifyAllTeamsCompleted
+	// (background poller goroutine). LoadOrStore ensures only one synthesis
+	// message is injected per spirit session lifecycle.
+	// Keyed by spiritSessionID so concurrent spirit sessions don't interfere.
+	synthesisTriggered sync.Map
 }
 
 func NewTeamStarter(
@@ -419,23 +420,41 @@ func (s *TeamStarter) updatePlanStepForTeam(ctx context.Context, spiritSessionID
 		)
 		return
 	}
+	// A spirit session may contain multiple plan activities (the task plan
+	// created by plan_and_execute plus a root-level plan from the synthesis
+	// turn's pre-planning gate). Find the plan whose steps contain this team's
+	// DagNodeID rather than blindly using the first plan.
 	var planActivity *biz.Activity
+	var steps []any
 	for i := range activities {
-		if activities[i].Kind == biz.ActivityKindPlan {
-			planActivity = &activities[i]
+		if activities[i].Kind != biz.ActivityKindPlan {
+			continue
+		}
+		stepsRaw, ok := activities[i].Meta["steps"]
+		if !ok {
+			continue
+		}
+		candidateSteps, ok := stepsRaw.([]any)
+		if !ok {
+			continue
+		}
+		for _, s := range candidateSteps {
+			stepMap, ok := s.(map[string]any)
+			if !ok {
+				continue
+			}
+			if id, _ := stepMap["id"].(string); id == team.DagNodeID {
+				planActivity = &activities[i]
+				steps = candidateSteps
+				break
+			}
+		}
+		if planActivity != nil {
 			break
 		}
 	}
 	if planActivity == nil {
-		return // no plan activity yet (e.g., pre-planning phase)
-	}
-	stepsRaw, ok := planActivity.Meta["steps"]
-	if !ok {
-		return
-	}
-	steps, ok := stepsRaw.([]any)
-	if !ok {
-		return
+		return // no plan activity contains a step for this team
 	}
 
 	// Map team status to activity status
@@ -444,7 +463,6 @@ func (s *TeamStarter) updatePlanStepForTeam(ctx context.Context, spiritSessionID
 		stepStatus = biz.ActivityStatusFailed
 	}
 
-	found := false
 	newSteps := make([]map[string]any, 0, len(steps))
 	for _, s := range steps {
 		stepMap, ok := s.(map[string]any)
@@ -454,12 +472,8 @@ func (s *TeamStarter) updatePlanStepForTeam(ctx context.Context, spiritSessionID
 		}
 		if id, _ := stepMap["id"].(string); id == team.DagNodeID {
 			stepMap["status"] = string(stepStatus)
-			found = true
 		}
 		newSteps = append(newSteps, stepMap)
-	}
-	if !found {
-		return // step not found for this team
 	}
 
 	// Auto-complete synthesis steps (steps without a team mapping) whose
@@ -700,10 +714,13 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 	//
 	// CAS guard: checkAllTeamsCompleted is called from both
 	// HandleTeamTurnResult (goroutine) and NotifyAllTeamsCompleted (background
-	// poller goroutine). CompareAndSwap ensures only one synthesis message is
-	// injected per spirit session lifecycle.
+	// poller goroutine). LoadOrStore keyed by spiritSessionID ensures only one
+	// synthesis message is injected per spirit session lifecycle, without
+	// blocking concurrent spirit sessions (singleton CAS would poison across
+	// sessions — first session's success would permanently disable synthesis
+	// for all subsequent sessions).
 	if s.synthesisSvc != nil && s.turnGateway != nil {
-		if s.synthesisTriggered.CompareAndSwap(false, true) {
+		if _, alreadyTriggered := s.synthesisTriggered.LoadOrStore(spiritSessionID, true); !alreadyTriggered {
 			synthesisMsg := s.buildSynthesisMessage(ctx, spiritSessionID)
 			if synthesisMsg != "" {
 				if _, err := s.turnGateway.ExecuteTurn(ctx, biz.TurnInput{

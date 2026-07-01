@@ -1,14 +1,11 @@
 <template>
   <div class="agent-card" :class="`agent-card--${activity.status}`">
     <div class="agent-card__row">
-      <!-- Header (80%) — avatar + name + status badge + created time -->
-      <!-- B.4.2: header click toggles inline expansion (tree display).
-           The chevron_right "enter session" icon was removed because it
-           triggered setCurrentSession (page jump), violating the team mode
-           tree-display requirement. Inline expansion via header click is the
-           sole interaction — users wanting the full session view can use the
-           left sidebar session list. -->
-      <div class="agent-card__header" @click="toggleExpand">
+      <!-- Header — avatar + name + status badge + created time.
+           B.4.2: the entire header is clickable for inline expansion; no
+           standalone expand icon is rendered (design shows only avatar/name/
+           badge/time in the header row). -->
+      <div class="agent-card__header" :class="{ 'agent-card__header--full': !showFooter }" @click="toggleExpand">
         <span class="agent-card__avatar">{{ agentInitial }}</span>
         <span class="agent-card__name" :title="displayAgentName">{{ displayAgentName }}</span>
         <span class="agent-card__status-badge" :class="`agent-card__status-badge--${statusColor}`">
@@ -16,22 +13,12 @@
           {{ statusText }}
         </span>
         <span v-if="createdTimeText" class="agent-card__time">{{ createdTimeText }}</span>
-        <q-icon
-          v-if="expanded"
-          name="expand_more"
-          size="14px"
-          class="agent-card__expand-icon"
-        />
-        <q-icon
-          v-else
-          name="chevron_right"
-          size="14px"
-          class="agent-card__expand-icon"
-        />
       </div>
 
-      <!-- Footer (20%) — pause/resume + cancel/retry buttons + inject dialog (B.4.2/B.5.3) -->
-      <div class="agent-card__footer">
+      <!-- Footer (20%) — pause/resume + cancel/retry buttons + inject dialog (B.4.2/B.5.3).
+           Hidden for states that have no actionable controls (completed/cancelled),
+           so an empty column with a border does not sit at the card end. -->
+      <div v-if="showFooter" class="agent-card__footer">
         <div class="agent-card__actions">
           <button
             v-if="showPauseButton"
@@ -89,7 +76,9 @@
     </div>
 
     <!-- Expanded detail (children rendered by recursive ActivityStream) -->
-    <div v-if="expanded" class="agent-card__detail">
+    <!-- @click.stop keeps nested interactive children from bubbling up to the
+         parent stage card's own toggle handler. -->
+    <div v-if="expanded" class="agent-card__detail" @click.stop>
       <slot />
     </div>
   </div>
@@ -183,6 +172,19 @@ const showInjectDialog = computed(
   () =>
     !isSystemAgent.value &&
     (props.activity.status === 'running' || props.activity.status === 'paused') &&
+    Boolean(props.activity.childSessionId),
+);
+
+// Footer is only rendered when there is at least one actionable control.
+// completed/cancelled agents have no pause/resume/cancel/retry/inject UI,
+// so the empty footer column (with its left border) is hidden to avoid an
+// orphaned visual control at the card end.
+const showFooter = computed(
+  () =>
+    !isSystemAgent.value &&
+    (props.activity.status === 'running' ||
+      props.activity.status === 'paused' ||
+      props.activity.status === 'failed') &&
     Boolean(props.activity.childSessionId),
 );
 
@@ -302,7 +304,7 @@ const statusColor = computed(() => {
     gap: 10px
     align-items: stretch
 
-  // === Header (80%) ===
+  // === Header (80% when footer present, 100% when footer hidden) ===
   &__header
     flex: 0 0 calc(80% - 10px)
     min-width: 0
@@ -310,6 +312,9 @@ const statusColor = computed(() => {
     align-items: center
     gap: 8px
     cursor: pointer
+
+    &--full
+      flex: 1
 
   &__avatar
     width: 24px
@@ -365,11 +370,6 @@ const statusColor = computed(() => {
     color: var(--color-text-tertiary)
     font-variant-numeric: tabular-nums
     flex-shrink: 0
-
-  &__expand-icon
-    color: var(--color-text-tertiary)
-    flex-shrink: 0
-    transition: transform 0.15s ease
 
   &__pulse
     width: 6px
@@ -485,6 +485,11 @@ const statusColor = computed(() => {
     display: flex
     flex-direction: column
     gap: 4px
+    // Limit the expanded agent panel height so long execution traces scroll
+    // internally instead of pushing the entire chat stream downward.
+    max-height: 480px
+    overflow-y: auto
+    overflow-x: hidden
 
 @keyframes agent-card-pulse
   0%, 100%

@@ -483,10 +483,34 @@ const renderItems = computed<RenderItem[]>(() => {
  *  Root-level plans (parentActivityId empty) are filtered out in `renderItems`
  *  because they are duplicates created by the pre-planning gate in the
  *  synthesis turn (backend bug: rootTaskID not yet injected into ctx).
+ *
+ *  Plans nested under team_stage/session activities are NOT rendered. These
+ *  are sub-plans created by the individual team/agent while executing its own
+ *  task; they should not appear inside the TeamCard/AgentCard panel, which
+ *  only displays the member's thinking/action/reply activities per §A.5.
  */
 function filterChildrenForRender(activity: ActivityTreeNode): ActivityTreeNode[] {
   if (!activity.children?.length) return [];
-  return activity.children;
+  const keepStageOnly = activity.kind === 'graph_stage';
+  const keepPlan = activity.kind === 'task';
+  return activity.children.filter((child) => {
+    // Inside a graph_stage only team_stage children are meaningful UI containers.
+    if (keepStageOnly) {
+      return child.kind === 'team_stage';
+    }
+    // Inside a task keep the official Spirit plan, the graph/team stage
+    // containers, and any execution activities. These together form the
+    // complete Team mode structure defined in §1.7.3.
+    if (keepPlan) {
+      return ['plan', 'graph_stage', 'team_stage', 'session', 'thinking', 'action', 'reply', 'notice', 'confirm', 'error'].includes(child.kind);
+    }
+    // Inside team_stage/session (TeamCard/AgentCard) only render the agent's
+    // execution activities, not its own sub-plan / graph_stage / sub-team_stage.
+    if (activity.kind === 'team_stage' || activity.kind === 'session') {
+      return ['thinking', 'action', 'reply', 'notice', 'confirm', 'error'].includes(child.kind);
+    }
+    return true;
+  });
 }
 
 /** Determine whether a thinking activity should be rendered.

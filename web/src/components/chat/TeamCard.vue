@@ -10,8 +10,8 @@
         <div v-if="createdTimeText" class="team-card__time">{{ createdTimeText }}</div>
       </div>
 
-      <!-- Body (60%) — vertical 1:2: members row / progress row (3:1:1) -->
-      <div class="team-card__body" @click="toggleExpand">
+      <!-- Body (60% when footer present, flex-fill when footer hidden) — vertical 1:2: members row / progress row (3:1:1) -->
+      <div class="team-card__body" :class="{ 'team-card__body--wide': !showFooter }" @click="toggleExpand">
         <!-- Members row: avatars + names -->
         <div v-if="hasMembers" class="team-card__members">
           <span
@@ -48,8 +48,10 @@
         </div>
       </div>
 
-      <!-- Footer (20%) — pause/resume + cancel/retry buttons + inject dialog (B.4.1/B.5.3) -->
-      <div class="team-card__footer">
+      <!-- Footer (20%) — pause/resume + cancel/retry buttons + inject dialog (B.4.1/B.5.3).
+           Hidden for states that have no actionable controls (completed/cancelled),
+           so an empty column with a border does not sit at the card end. -->
+      <div v-if="showFooter" class="team-card__footer">
         <div class="team-card__actions">
           <button
             v-if="showPauseButton"
@@ -107,7 +109,10 @@
     </div>
 
     <!-- Expanded detail (children rendered by recursive ActivityStream via slot) -->
-    <div v-if="expanded" class="team-card__detail">
+    <!-- @click.stop prevents clicks inside member agent-cards from bubbling up
+         to team-card__body and collapsing the team while the user is interacting
+         with an agent's activities. -->
+    <div v-if="expanded" class="team-card__detail" @click.stop>
       <slot />
     </div>
   </div>
@@ -204,6 +209,18 @@ const showCancelButton = computed(
 const showInjectDialog = computed(
   () =>
     (props.activity.status === 'running' || props.activity.status === 'paused') &&
+    Boolean(props.activity.teamId),
+);
+
+// Footer is only rendered when there is at least one actionable control.
+// completed/cancelled teams have no pause/resume/cancel/retry/inject UI,
+// so the empty footer column (with its left border) is hidden to avoid an
+// orphaned visual control at the card end.
+const showFooter = computed(
+  () =>
+    (props.activity.status === 'running' ||
+      props.activity.status === 'paused' ||
+      props.activity.status === 'failed') &&
     Boolean(props.activity.teamId),
 );
 
@@ -391,7 +408,7 @@ const statusColor = computed(() => {
     color: var(--color-text-tertiary)
     font-variant-numeric: tabular-nums
 
-  // === Body (60%) ===
+  // === Body (60% when footer present, flex-fill when footer hidden) ===
   &__body
     flex: 0 0 calc(60% - 20px)
     min-width: 0
@@ -399,6 +416,9 @@ const statusColor = computed(() => {
     flex-direction: column
     gap: 6px
     cursor: pointer
+
+    &--wide
+      flex: 1
 
   &__members
     flex: 1
@@ -624,6 +644,12 @@ const statusColor = computed(() => {
     border-top: 1px dashed var(--glass-border)
     display: flex
     flex-direction: column
+    // Cap the expanded panel height so many member agent-cards do not push
+    // the rest of the stream too far. Each agent-card already scrolls its own
+    // detail internally; the team panel itself scrolls when members exceed it.
+    max-height: 720px
+    overflow-y: auto
+    overflow-x: hidden
     gap: 4px
 
 @keyframes team-card-pulse

@@ -35,7 +35,7 @@ func (r *Runner) publishTeamRunFailedActivity(ctx context.Context, run biz.TeamR
 			TeamID:           run.TeamID,
 			Timestamp:        time.Now().UTC(),
 			Stage:            "failed",
-			ParentActivityID: agent.RootTaskActivityIDFromCtx(ctx),
+			ParentActivityID: agent.GraphStageActivityID(run.SpiritSessionID),
 			Meta: map[string]any{
 				"run_id":        run.ID,
 				"error_message": msg,

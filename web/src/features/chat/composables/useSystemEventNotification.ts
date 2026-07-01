@@ -52,6 +52,11 @@ export function useSystemEventNotification(deps: UseSystemEventNotificationDeps)
       // routed through the inbound-sync pipeline for state updates (e.g. session
       // status mutation) and then rendered as NoticeBlock in the Activity timeline.
       if (ev.activity.kind === 'notice') return true;
+      // Team/graph/plan/session orchestration events are published with Domain=chat
+      // so they render as Activity timeline cards, but they also drive the spirit
+      // store (team status, progress, plan state). Route them through the inbound
+      // pipeline AND keep them on the timeline.
+      if (isOrchestrationActivityEvent(ev)) return true;
       return false;
     }
     // Legacy fallback: kind + event heuristic.
@@ -63,6 +68,30 @@ export function useSystemEventNotification(deps: UseSystemEventNotificationDeps)
       kind === 'reply' ||
       kind === 'confirm';
     return !isChatRendering;
+  }
+
+  /**
+   * Team/graph/plan/session orchestration events need both inbound-sync state
+   * updates (spirit store) and Activity timeline rendering.
+   */
+  function isOrchestrationActivityEvent(ev: AFActivityEvent): boolean {
+    const { kind, stage } = ev.activity;
+    if (kind === 'team_stage') return true;
+    if (kind === 'graph_stage') return true;
+    if (kind === 'plan') return true;
+    if (kind === 'session') {
+      return (
+        stage === 'plan_created' ||
+        stage === 'allocation_created' ||
+        stage === 'orchestration_started' ||
+        stage === 'orchestration_checkpoint' ||
+        stage === 'orchestration_interrupted' ||
+        stage === 'orchestration_completed' ||
+        stage === 'orchestration_failed' ||
+        stage === 'synthesis_completed'
+      );
+    }
+    return false;
   }
 
   /**
@@ -100,6 +129,14 @@ export function useSystemEventNotification(deps: UseSystemEventNotificationDeps)
     // state updates above. Empty notices (e.g. background_job_refresh) stay off
     // the timeline and are handled purely by inbound-sync / store side effects.
     if (ev.activity.kind === 'notice' && (ev.activity.content || '').trim()) {
+      deps.activityTimeline.handleActivityEvent(ev);
+    }
+
+    // Orchestration events (team_stage/graph_stage/plan/session) are published
+    // with Domain=chat because they render as Activity timeline cards. They
+    // were already routed to inbound-sync above for spirit-store updates, so
+    // also feed them to the timeline to keep team/graph/plan cards visible.
+    if (isOrchestrationActivityEvent(ev)) {
       deps.activityTimeline.handleActivityEvent(ev);
     }
     return true;
