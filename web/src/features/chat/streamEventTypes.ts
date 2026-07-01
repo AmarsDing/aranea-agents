@@ -162,6 +162,8 @@ export interface TeamMemberStatus {
   agentName: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   session_id?: string;
+  /** Agent 配置的头像/图标（URL 或 catalog key），空时前端回退到姓名首字母。 */
+  avatarUrl?: string;
 }
 
 /** 团队阶段事件 — 团队组建/执行/完成 */

@@ -29,11 +29,12 @@ var (
 )
 
 type TeamStarter struct {
-	sessions       *biz.SessionUsecase
-	team           TeamOrchestrationDeps
-	bus            biz.ActivityEventBus
-	activityReader biz.ActivityReader
-	lg             loggateway.Logger
+	sessions         *biz.SessionUsecase
+	team             TeamOrchestrationDeps
+	bus              biz.ActivityEventBus
+	activityReader   biz.ActivityReader
+	activityUpserter biz.ActivityUpserter
+	lg               loggateway.Logger
 	// turnGateway is used to inject a synthetic message into the Spirit
 	// session when all teams complete, triggering the LLM to continue
 	// with synthesis. This replaces the LLM-polling pattern (check_progress
@@ -57,16 +58,18 @@ func NewTeamStarter(
 	team TeamOrchestrationDeps,
 	bus biz.ActivityEventBus,
 	activityReader biz.ActivityReader,
+	activityUpserter biz.ActivityUpserter,
 	lg loggateway.Logger,
 	synthesisSvc *SpiritSynthesisService,
 ) *TeamStarter {
 	return &TeamStarter{
-		sessions:       sessions,
-		team:           team,
-		bus:            bus,
-		activityReader: activityReader,
-		lg:             lg,
-		synthesisSvc:   synthesisSvc,
+		sessions:         sessions,
+		team:             team,
+		bus:              bus,
+		activityReader:   activityReader,
+		activityUpserter: activityUpserter,
+		lg:               lg,
+		synthesisSvc:     synthesisSvc,
 	}
 }
 
@@ -514,21 +517,40 @@ func (s *TeamStarter) updatePlanStepForTeam(ctx context.Context, spiritSessionID
 	if publishSessionID == "" {
 		publishSessionID = planActivity.SessionID
 	}
+	// Persist synchronously to prevent data loss on async persist failure
+	// and to ensure subsequent updatePlanStepForTeam calls read the latest
+	// steps (avoids stale read when multiple teams complete concurrently).
+	// SequencerHandled=true tells the Bus to skip its async persist since
+	// we already persisted here.
+	persistedSync := false
+	updatedActivity := biz.Activity{
+		ID:               planActivity.ID,
+		Kind:             biz.ActivityKindPlan,
+		Status:           planActivity.Status,
+		SessionID:        publishSessionID,
+		TurnID:           planActivity.TurnID,
+		ParentActivityID: planActivity.ParentActivityID,
+		Timestamp:        time.Now().UTC(),
+		Content:          planActivity.Content,
+		Meta:             planActivity.Meta,
+	}
+	if s.activityUpserter != nil {
+		if _, err := s.activityUpserter.UpsertActivity(ctx, updatedActivity); err != nil {
+			s.lg.Warn("plan step update: synchronous persist failed, falling back to Bus async",
+				loggateway.StepID("spirit.plan_step.persist"),
+				loggateway.Str("plan_activity_id", planActivity.ID),
+				loggateway.Err(err),
+			)
+		} else {
+			persistedSync = true
+		}
+	}
 	if s.bus != nil {
 		s.bus.Publish(ctx, biz.ActivityEvent{
-			Event: biz.ActivityEventUpdated,
-			Activity: biz.Activity{
-				ID:               planActivity.ID,
-				Kind:             biz.ActivityKindPlan,
-				Status:           planActivity.Status,
-				SessionID:        publishSessionID,
-				TurnID:           planActivity.TurnID,
-				ParentActivityID: planActivity.ParentActivityID,
-				Timestamp:        time.Now().UTC(),
-				Content:          planActivity.Content,
-				Meta:             planActivity.Meta,
-			},
-			Domain: biz.ActivityDomainChat,
+			Event:            biz.ActivityEventUpdated,
+			SequencerHandled: persistedSync,
+			Activity:         updatedActivity,
+			Domain:           biz.ActivityDomainChat,
 		})
 	}
 }
@@ -1025,9 +1047,15 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 	members := make([]map[string]any, 0, len(agentKeys))
 	for _, key := range agentKeys {
 		displayName := key
+		avatarURL := ""
 		if a.agentReader != nil {
-			if ag, lookupErr := a.agentReader.GetAgentByAgentKey(ctx, key); lookupErr == nil && ag.DisplayName != "" {
-				displayName = ag.DisplayName
+			if ag, lookupErr := a.agentReader.GetAgentByAgentKey(ctx, key); lookupErr == nil {
+				if ag.DisplayName != "" {
+					displayName = ag.DisplayName
+				}
+				// Integrate agent config (avatar/icon) so the frontend can render
+				// the member's configured avatar instead of a generic initial.
+				avatarURL = ag.Icon
 			} else if lookupErr != nil && !stderrors.Is(lookupErr, shared.ErrNotFound) {
 				a.lg.Warn("team member name lookup failed, falling back to agent_key",
 					loggateway.StepID("spirit.team.member_lookup_fail"),
@@ -1045,6 +1073,7 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 		members = append(members, map[string]any{
 			"agent_key":  key,
 			"agent_name": displayName,
+			"avatar_url": avatarURL,
 			"status":     biz.ActivityStatusPending,
 			"session_id": sessionID,
 		})

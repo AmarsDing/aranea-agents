@@ -22,7 +22,19 @@
             :title="t('chat.teamStage.expandMember', { name: memberDisplayName(member) })"
             @click.stop="onMemberClick(member)"
           >
-            <span class="team-card__member-avatar">{{ memberInitial(member) }}</span>
+            <span class="team-card__member-avatar">
+              <ResolvedAvatarImg
+                v-if="member.avatarUrl && shouldRenderAgentAvatarImage(member.avatarUrl)"
+                :icon="member.avatarUrl"
+                :alt="memberDisplayName(member)"
+              />
+              <q-icon
+                v-else-if="member.avatarUrl && quasarAvatarIconForAgentField(member.avatarUrl)"
+                :name="quasarAvatarIconForAgentField(member.avatarUrl)"
+                size="14px"
+              />
+              <template v-else>{{ memberInitial(member) }}</template>
+            </span>
             <span class="team-card__member-name">{{ memberDisplayName(member) }}</span>
             <span v-if="member.status === 'running'" class="team-card__member-dot team-card__member-dot--running" />
             <span v-else-if="member.status === 'completed'" class="team-card__member-mark">✓</span>
@@ -97,11 +109,7 @@
             :placeholder="t('chat.teamStage.injectPlaceholder')"
             @keyup.enter="onInject"
           />
-          <button
-            class="team-card__inject-send"
-            :disabled="!injectMessage.trim()"
-            @click.stop="onInject"
-          >
+          <button class="team-card__inject-send" :disabled="!injectMessage.trim()" @click.stop="onInject">
             <q-icon name="send" size="12px" />
           </button>
         </div>
@@ -125,6 +133,11 @@ import type { TeamStageEvent, TeamMemberStatus } from '../../features/chat/strea
 import type { RunStatusValue } from '../../features/chat/types';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 import { nameInitial } from '../../features/spirit/spiritUi';
+import {
+  shouldRenderAgentAvatarImage,
+  quasarAvatarIconForAgentField,
+} from '../../features/avatar/iconModel';
+import ResolvedAvatarImg from '../avatar/ResolvedAvatarImg.vue';
 
 const props = defineProps<{
   activity: TeamStageEvent;
@@ -185,31 +198,22 @@ const hasMembers = computed(() => Boolean(props.activity.members?.length));
 
 // B.5.3: pause button visible when running and parent run allows cancel.
 const showPauseButton = computed(
-  () =>
-    props.activity.status === 'running' &&
-    props.runStatus === 'running' &&
-    Boolean(props.activity.teamId),
+  () => props.activity.status === 'running' && props.runStatus === 'running' && Boolean(props.activity.teamId),
 );
 
 // B.5.3: resume button visible when paused (regardless of parent run status,
 // since paused is a self-contained state).
-const showResumeButton = computed(
-  () => props.activity.status === 'paused' && Boolean(props.activity.teamId),
-);
+const showResumeButton = computed(() => props.activity.status === 'paused' && Boolean(props.activity.teamId));
 
 // B.5.3: cancel button visible when running or paused (user can cancel from
 // either state). Failed state shows retry instead.
 const showCancelButton = computed(
-  () =>
-    (props.activity.status === 'running' || props.activity.status === 'paused') &&
-    Boolean(props.activity.teamId),
+  () => (props.activity.status === 'running' || props.activity.status === 'paused') && Boolean(props.activity.teamId),
 );
 
 // B.5.3: inject dialog visible when running or paused.
 const showInjectDialog = computed(
-  () =>
-    (props.activity.status === 'running' || props.activity.status === 'paused') &&
-    Boolean(props.activity.teamId),
+  () => (props.activity.status === 'running' || props.activity.status === 'paused') && Boolean(props.activity.teamId),
 );
 
 // Footer is only rendered when there is at least one actionable control.
@@ -218,9 +222,7 @@ const showInjectDialog = computed(
 // orphaned visual control at the card end.
 const showFooter = computed(
   () =>
-    (props.activity.status === 'running' ||
-      props.activity.status === 'paused' ||
-      props.activity.status === 'failed') &&
+    (props.activity.status === 'running' || props.activity.status === 'paused' || props.activity.status === 'failed') &&
     Boolean(props.activity.teamId),
 );
 
@@ -457,6 +459,7 @@ const statusColor = computed(() => {
     font-weight: 600
     color: var(--color-text-secondary)
     flex-shrink: 0
+    overflow: hidden
 
   &__member-name
     font-size: 11px

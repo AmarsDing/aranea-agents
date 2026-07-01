@@ -598,12 +598,16 @@ export function useActivityTimeline() {
         const existing = map.get(snapshot.id);
         if (existing) {
           const mergedMeta =
-            existing.meta && snapshot.meta
-              ? { ...existing.meta, ...snapshot.meta }
-              : snapshot.meta ?? existing.meta;
+            existing.meta && snapshot.meta ? { ...existing.meta, ...snapshot.meta } : (snapshot.meta ?? existing.meta);
           Object.assign(existing, {
             ...snapshot,
             timestamp: existing.timestamp,
+            // Preserve parentActivityId: it is a structural field set by the
+            // "created" event. Terminal/update events may omit it or carry a
+            // wrong value (e.g. empty string from some backend code paths),
+            // which would break the activity tree nesting. Keep the existing
+            // value to maintain the correct parent-child relationship.
+            parentActivityId: existing.parentActivityId,
             meta: mergedMeta,
           });
         } else {
@@ -954,7 +958,10 @@ function cleanTeamDisplayName(raw: string | null | undefined): string {
     .replace(/\*([^*]+)\*/g, '$1') // italic
     .replace(/`([^`]+)`/g, '$1'); // inline code
   // Pick the first non-empty line.
-  const lines = cleaned.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lines = cleaned
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
   const first = lines[0] || '';
   // Truncate to 60 chars with ellipsis if needed.
   if (first.length <= 60) return first;
@@ -1097,7 +1104,7 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
     case 'notice': {
       // Support both camelCase (OnNotice) and snake_case (PrePlanningGate /
       // plan-confirm / feedback) meta keys — backend is inconsistent.
-      const noticeType = (node.meta?.noticeType ?? node.meta?.notice_type) as NoticeEvent['type'] ?? 'info';
+      const noticeType = ((node.meta?.noticeType ?? node.meta?.notice_type) as NoticeEvent['type']) ?? 'info';
       return {
         kind: 'notice',
         id: node.id,
@@ -1176,6 +1183,9 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
       };
       const members = effectiveMembers?.map((m) => {
         const agentKey = ((m.agent_key ?? m.agentKey) as string) ?? '';
+        if (agentKey === 'programmer' || agentKey === 'writer') {
+          console.warn('[avatar-debug] mapping member', agentKey, 'raw avatar_url=', m.avatar_url, 'avatarUrl=', m.avatarUrl, 'node.id=', node.id, 'effectiveMembers source=', baseMembers ? 'baseMembers' : summaryMembers ? 'summaryMembers' : 'none');
+        }
         // Prefer team_summary's authoritative status (completed/failed) when
         // available; fall back to meta.members' status (pending/running).
         const summaryStatus = statusByKey.get(agentKey);
@@ -1198,6 +1208,7 @@ export function activityToStreamEvent(node: ActivityTreeNode): StreamEvent {
           agentName: ((m.agent_name ?? m.agentName) as string) ?? '',
           status,
           session_id: m.session_id as string | undefined,
+          avatarUrl: ((m.avatar_url ?? m.avatarUrl) as string) || undefined,
         };
       });
       const taskSummary = typeof node.meta?.task_summary === 'string' ? node.meta.task_summary : undefined;
