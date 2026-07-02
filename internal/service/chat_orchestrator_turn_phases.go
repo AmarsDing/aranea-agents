@@ -520,8 +520,9 @@ func (o *ChatOrchestrator) consumeTurnStream(
 		InvocationID: runID, RunID: runID,
 		TraceID: emitter.TraceID(), AgentID: ag.ID,
 		AgentDisplayName: ag.DisplayName, ContextWindow: contextWin,
-		Source:      event.EnvelopeSourceFromContext(runCtx),
-		TaskContent: userContent,
+		Source:           event.EnvelopeSourceFromContext(runCtx),
+		TaskContent:      userContent,
+		SpiritSessionID:  sessionID,
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
 	streamOpts := NewChatStreamConsumeOptions(o.td().ReadDeps.ToolUC, o.td().ReadDeps.Tools, o.td().ReadDeps.Agents, o.activityUpserter(), o.td().Pipeline.ActivityBus, o.infraDeps.V2Projector, o.lg())

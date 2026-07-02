@@ -201,6 +201,7 @@ func (p *ActivityProjector) OnToolCall(ctx context.Context, meta ProjectMeta, to
 		step.ToolName = toolName
 		step.ToolArgs = args
 		step.Status = biz.StepStatusToolRunning
+		step.Version++
 	}
 	p.mu.Unlock()
 	if ok {
@@ -243,6 +244,7 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, meta ProjectMeta) {
 	if ok {
 		turn.CompletedAt = &now
 		turn.Status = biz.TurnStatusCompleted
+		turn.Version++
 		delete(p.activeTurn, meta.TurnID)
 	}
 	p.mu.Unlock()
@@ -287,6 +289,7 @@ func (p *ActivityProjector) completeStep(ctx context.Context, stepID, content st
 	}
 	step.Status = biz.StepStatusCompleted
 	step.CompletedAt = &now
+	step.Version++
 	delete(p.activeStep, stepID)
 	p.mu.Unlock()
 	p.seq.Publish(ctx, biz.NewStepCompletedEvent(*step))
@@ -307,6 +310,7 @@ func (p *ActivityProjector) failStep(ctx context.Context, stepID string, err err
 	}
 	step.Status = biz.StepStatusFailed
 	step.CompletedAt = &now
+	step.Version++
 	if err != nil {
 		step.ToolErrorCode = err.Error()
 	}
