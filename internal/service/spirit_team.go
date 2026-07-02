@@ -51,6 +51,13 @@ type TeamStarter struct {
 	// message is injected per spirit session lifecycle.
 	// Keyed by spiritSessionID so concurrent spirit sessions don't interfere.
 	synthesisTriggered sync.Map
+
+	// planExecutor is the v2 forward DAG scheduler that replaces the
+	// reverse-sync updatePlanStepForTeam method. Injected via SetPlanExecutor
+	// (post-construction) to avoid a Wire cycle: PlanExecutor's TeamOrchestrator
+	// dependency is satisfied by SpiritTeamAssembler, which itself depends on
+	// TeamStarter. May be nil in v1-only deployments.
+	planExecutor *PlanExecutor
 }
 
 func NewTeamStarter(
@@ -79,6 +86,15 @@ func NewTeamStarter(
 // (synthesize results → inject message into Spirit session).
 func (s *TeamStarter) SetTurnGateway(gw biz.TurnGateway) {
 	s.turnGateway = gw
+}
+
+// SetPlanExecutor injects the v2 forward DAG scheduler after construction.
+// This breaks a Wire cycle: PlanExecutor → TeamOrchestrator → SpiritTeamAssembler
+// → TeamStarter. May be nil in v1-only deployments (the reverse-sync
+// updatePlanStepForTeam method has been removed; v1 plan steps are no longer
+// auto-updated by team completion — the v2 PlanExecutor handles this when wired).
+func (s *TeamStarter) SetPlanExecutor(pe *PlanExecutor) {
+	s.planExecutor = pe
 }
 
 func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, content string) error {
@@ -386,11 +402,6 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 			)
 		}
 
-		// Issue 1 fix: Update the plan activity's step status when a team
-		// completes. The plan activity (kind=plan) has steps keyed by
-		// dag_node_id. When a team completes, the corresponding step should
-		// be updated so the frontend PlanBlock reflects the current status.
-		s.updatePlanStepForTeam(ctx, spiritSessionID, team, status, chatSessionID)
 	}
 
 	s.checkAllTeamsCompleted(ctx, spiritSessionID)
@@ -404,209 +415,6 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 
 func (s *TeamStarter) recordTeamCompletion(ctx context.Context, team biz.Team, durationMs int64) {
 	s.team.SpiritUC.RecordTeamCompletion(ctx, team, durationMs)
-}
-
-// updatePlanStepForTeam updates the plan activity's step status when a team
-// completes. The plan activity (kind=plan) has steps keyed by dag_node_id,
-// which matches the team's DagNodeID. This keeps the frontend PlanBlock in
-// sync with team execution progress.
-func (s *TeamStarter) updatePlanStepForTeam(ctx context.Context, spiritSessionID string, team biz.Team, status string, chatSessionID string) {
-	if s.activityReader == nil || team.DagNodeID == "" {
-		return
-	}
-	activities, err := s.activityReader.ListBySession(ctx, spiritSessionID)
-	if err != nil {
-		s.lg.Warn("plan step update: failed to list activities for spirit session",
-			loggateway.StepID("spirit.plan_step.list_err"),
-			loggateway.Str("spirit_session_id", spiritSessionID),
-			loggateway.Err(err),
-		)
-		return
-	}
-	// A spirit session may contain multiple plan activities (the task plan
-	// created by plan_and_execute plus a root-level plan from the synthesis
-	// turn's pre-planning gate). Find the plan whose steps contain this team's
-	// DagNodeID rather than blindly using the first plan.
-	var planActivity *biz.Activity
-	var steps []any
-	for i := range activities {
-		if activities[i].Kind != biz.ActivityKindPlan {
-			continue
-		}
-		stepsRaw, ok := activities[i].Meta["steps"]
-		if !ok {
-			continue
-		}
-		candidateSteps, ok := stepsRaw.([]any)
-		if !ok {
-			continue
-		}
-		for _, s := range candidateSteps {
-			stepMap, ok := s.(map[string]any)
-			if !ok {
-				continue
-			}
-			if id, _ := stepMap["id"].(string); id == team.DagNodeID {
-				planActivity = &activities[i]
-				steps = candidateSteps
-				break
-			}
-		}
-		if planActivity != nil {
-			break
-		}
-	}
-	if planActivity == nil {
-		return // no plan activity contains a step for this team
-	}
-
-	// Map team status to activity status
-	stepStatus := biz.ActivityStatusCompleted
-	if status == biz.TeamStatusFailed || status == biz.TeamStatusCancelled {
-		stepStatus = biz.ActivityStatusFailed
-	}
-
-	newSteps := make([]map[string]any, 0, len(steps))
-	for _, s := range steps {
-		stepMap, ok := s.(map[string]any)
-		if !ok {
-			newSteps = append(newSteps, nil)
-			continue
-		}
-		if id, _ := stepMap["id"].(string); id == team.DagNodeID {
-			stepMap["status"] = string(stepStatus)
-		}
-		newSteps = append(newSteps, stepMap)
-	}
-
-	// Auto-complete synthesis steps (steps without a team mapping) whose
-	// dependencies are all completed. The Spirit's synthesis step (e.g.,
-	// "汇总报告") has no team — it represents the Spirit's final reply.
-	// updatePlanStepForTeam only fires for team completions, so without
-	// this auto-completion the synthesis step stays "pending" forever and
-	// the plan never reaches the "all done" state required for auto-collapse
-	// (design B.4.3: "任务全部完成后，初始渲染自动折叠为摘要").
-	autoCompleteSynthesisSteps(newSteps)
-
-	planActivity.Meta["steps"] = newSteps
-
-	// Check if all steps are done
-	allDone := true
-	for _, s := range newSteps {
-		if s == nil {
-			continue
-		}
-		st, _ := s["status"].(string)
-		if st != string(biz.ActivityStatusCompleted) && st != string(biz.ActivityStatusFailed) {
-			allDone = false
-			break
-		}
-	}
-	if allDone {
-		planActivity.Status = biz.ActivityStatusCompleted
-	} else {
-		planActivity.Status = biz.ActivityStatusRunning
-	}
-
-	// Publish the updated plan activity through the bus so the frontend
-	// receives the update via WebSocket.
-	// Use chatSessionID as the SessionID so the frontend's WebSocket filter
-	// (which subscribes by chat session ID) receives the update. Falls back
-	// to the plan's stored SessionID when chatSessionID is empty.
-	publishSessionID := chatSessionID
-	if publishSessionID == "" {
-		publishSessionID = planActivity.SessionID
-	}
-	// Persist synchronously to prevent data loss on async persist failure
-	// and to ensure subsequent updatePlanStepForTeam calls read the latest
-	// steps (avoids stale read when multiple teams complete concurrently).
-	// SequencerHandled=true tells the Bus to skip its async persist since
-	// we already persisted here.
-	persistedSync := false
-	updatedActivity := biz.Activity{
-		ID:               planActivity.ID,
-		Kind:             biz.ActivityKindPlan,
-		Status:           planActivity.Status,
-		SessionID:        publishSessionID,
-		TurnID:           planActivity.TurnID,
-		ParentActivityID: planActivity.ParentActivityID,
-		Timestamp:        time.Now().UTC(),
-		Content:          planActivity.Content,
-		Meta:             planActivity.Meta,
-	}
-	if s.activityUpserter != nil {
-		if _, err := s.activityUpserter.UpsertActivity(ctx, updatedActivity); err != nil {
-			s.lg.Warn("plan step update: synchronous persist failed, falling back to Bus async",
-				loggateway.StepID("spirit.plan_step.persist"),
-				loggateway.Str("plan_activity_id", planActivity.ID),
-				loggateway.Err(err),
-			)
-		} else {
-			persistedSync = true
-		}
-	}
-	if s.bus != nil {
-		s.bus.Publish(ctx, biz.ActivityEvent{
-			Event:            biz.ActivityEventUpdated,
-			SequencerHandled: persistedSync,
-			Activity:         updatedActivity,
-			Domain:           biz.ActivityDomainChat,
-		})
-	}
-}
-
-// autoCompleteSynthesisSteps marks pending steps as completed when all their
-// dependencies are completed. This handles synthesis steps (e.g., "汇总报告")
-// that have no team mapping — they represent the Spirit's final reply and
-// should be auto-completed once their dependencies (team steps) are done.
-//
-// Only steps with a "dependsOn" list are considered, and only when every
-// listed dependency is in completed/failed status. Steps without "dependsOn"
-// are left untouched (they're expected to be team steps managed by
-// updatePlanStepForTeam's main loop).
-func autoCompleteSynthesisSteps(steps []map[string]any) {
-	// Build a quick lookup of step id → status for dependency checks.
-	statusByID := make(map[string]string, len(steps))
-	for _, s := range steps {
-		if s == nil {
-			continue
-		}
-		id, _ := s["id"].(string)
-		st, _ := s["status"].(string)
-		if id != "" {
-			statusByID[id] = st
-		}
-	}
-	isDone := func(st string) bool {
-		return st == string(biz.ActivityStatusCompleted) || st == string(biz.ActivityStatusFailed)
-	}
-	for _, s := range steps {
-		if s == nil {
-			continue
-		}
-		st, _ := s["status"].(string)
-		if st != string(biz.ActivityStatusPending) {
-			continue
-		}
-		deps, ok := s["dependsOn"].([]any)
-		if !ok || len(deps) == 0 {
-			continue
-		}
-		allDepsDone := true
-		for _, dep := range deps {
-			depID, _ := dep.(string)
-			if depID == "" {
-				continue
-			}
-			if !isDone(statusByID[depID]) {
-				allDepsDone = false
-				break
-			}
-		}
-		if allDepsDone {
-			s["status"] = string(biz.ActivityStatusCompleted)
-		}
-	}
 }
 
 func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionID string, completedTeam biz.Team) {
