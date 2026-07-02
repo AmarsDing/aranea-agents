@@ -881,4 +881,3 @@ func TestUnpin(t *testing.T) {
 // ActivityMessageReader (backed by testRepo.ListBySession) and writes via
 // NoopMessageWriter. testRepo now satisfies MessageReader/Writer interfaces
 // purely through mockSessionRepo embedding (all returning zero values).
-

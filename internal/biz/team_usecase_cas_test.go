@@ -86,8 +86,10 @@ func (r *casTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, id, newStatus,
 }
 
 // TeamRunWriter stubs (not used in CAS tests but required by interface)
-func (r *casTeamRepo) CreateTeamRun(_ context.Context, run TeamRunRecord) (TeamRunRecord, error) { return run, nil }
-func (r *casTeamRepo) UpdateTeamRun(_ context.Context, _ TeamRunRecord) error                   { return nil }
+func (r *casTeamRepo) CreateTeamRun(_ context.Context, run TeamRunRecord) (TeamRunRecord, error) {
+	return run, nil
+}
+func (r *casTeamRepo) UpdateTeamRun(_ context.Context, _ TeamRunRecord) error             { return nil }
 func (r *casTeamRepo) UpdateTeamRunGraphExecutionID(_ context.Context, _, _ string) error { return nil }
 func (r *casTeamRepo) UpdateTeamRunTraceID(_ context.Context, _, _ string) error          { return nil }
 func (r *casTeamRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error      { return nil }

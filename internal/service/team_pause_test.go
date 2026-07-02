@@ -182,7 +182,7 @@ func TestInjectTeamMessage_RoutesToActiveRunSession(t *testing.T) {
 	defer unsub()
 
 	resp, err := svc.InjectTeamMessage(context.Background(), &v1.InjectTeamMessageRequest{
-		TeamId: "team-A",
+		TeamId:  "team-A",
 		Message: "please prioritize the second analysis",
 	})
 	if err != nil {
@@ -218,7 +218,7 @@ func TestInjectTeamMessage_PrefersPausedRunWhenNoRunning(t *testing.T) {
 	defer unsub()
 
 	resp, err := svc.InjectTeamMessage(context.Background(), &v1.InjectTeamMessageRequest{
-		TeamId: "team-B",
+		TeamId:  "team-B",
 		Message: "resume with revised scope",
 	})
 	if err != nil {
@@ -246,7 +246,7 @@ func TestInjectTeamMessage_NoActiveRunRejected(t *testing.T) {
 	defer unsub()
 
 	_, err := svc.InjectTeamMessage(context.Background(), &v1.InjectTeamMessageRequest{
-		TeamId: "team-C",
+		TeamId:  "team-C",
 		Message: "do something",
 	})
 	if err == nil {
@@ -270,7 +270,7 @@ func TestInjectTeamMessage_EmptyMessageRejected(t *testing.T) {
 	defer unsub()
 
 	_, err := svc.InjectTeamMessage(context.Background(), &v1.InjectTeamMessageRequest{
-		TeamId: "team-D",
+		TeamId:  "team-D",
 		Message: "   ",
 	})
 	if err == nil {

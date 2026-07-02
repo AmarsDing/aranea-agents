@@ -16,9 +16,9 @@ import (
 )
 
 type registryRunner struct {
-	cancelled  bool
-	closed     bool
-	cancelOK   bool
+	cancelled   bool
+	closed      bool
+	cancelOK    bool
 	cancelCalls int64
 	closeCalls  int64
 }

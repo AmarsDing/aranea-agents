@@ -107,13 +107,13 @@ func entSessionToBiz(e *ent.Session) biz.Session {
 		AgentDepth:                 e.AgentDepth,
 
 		// Phase 2: Session tree hierarchy
-		SessionType:     e.SessionType,
-		MemberAgentKey:  e.MemberAgentKey,
-		MemberRole:      e.MemberRole,
-		ExecutionStage:  e.ExecutionStage,
-		CompletedSteps:  e.CompletedSteps,
-		TotalSteps:      e.TotalSteps,
-		ProgressPct:     e.ProgressPct,
+		SessionType:    e.SessionType,
+		MemberAgentKey: e.MemberAgentKey,
+		MemberRole:     e.MemberRole,
+		ExecutionStage: e.ExecutionStage,
+		CompletedSteps: e.CompletedSteps,
+		TotalSteps:     e.TotalSteps,
+		ProgressPct:    e.ProgressPct,
 	}
 }
 

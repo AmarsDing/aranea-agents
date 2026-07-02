@@ -38,11 +38,11 @@ type EventBus interface {
 //     StepID + DeltaField within the 16ms batch window are merged.
 //  3. Persist worker: 5x exponential backoff retries + 512-cap dead-letter.
 type Sequencer struct {
-	repoSet      RepoSet
-	bus          EventBus
-	lg           loggateway.Logger
-	seqAssigner  SeqAssigner  // shared with Projector (v2-local defaultSeqAssigner; breaks agent→v2 cycle)
-	compatAdapter *CompatAdapter      // nil = no v1 forwarding (Phase 1 兼容层)
+	repoSet       RepoSet
+	bus           EventBus
+	lg            loggateway.Logger
+	seqAssigner   SeqAssigner    // shared with Projector (v2-local defaultSeqAssigner; breaks agent→v2 cycle)
+	compatAdapter *CompatAdapter // nil = no v1 forwarding (Phase 1 兼容层)
 
 	publishQueue chan publishTask
 	persistChan  chan persistItem
@@ -70,23 +70,25 @@ type persistItem struct {
 }
 
 type config struct {
-	publishBuffer       int
-	persistBuffer       int
-	deltaBatchInterval  time.Duration
-	persistMaxRetries   int
-	persistBackoff      time.Duration
-	deadLetterCapacity  int
+	publishBuffer      int
+	persistBuffer      int
+	deltaBatchInterval time.Duration
+	persistMaxRetries  int
+	persistBackoff     time.Duration
+	deadLetterCapacity int
 }
 
 // Option configures a Sequencer.
 type Option func(*config)
 
-func WithPublishBuffer(n int) Option                { return func(c *config) { c.publishBuffer = n } }
-func WithPersistBuffer(n int) Option                { return func(c *config) { c.persistBuffer = n } }
-func WithDeltaBatchInterval(d time.Duration) Option { return func(c *config) { c.deltaBatchInterval = d } }
-func WithPersistMaxRetries(n int) Option            { return func(c *config) { c.persistMaxRetries = n } }
-func WithPersistBackoff(d time.Duration) Option     { return func(c *config) { c.persistBackoff = d } }
-func WithDeadLetterCapacity(n int) Option           { return func(c *config) { c.deadLetterCapacity = n } }
+func WithPublishBuffer(n int) Option { return func(c *config) { c.publishBuffer = n } }
+func WithPersistBuffer(n int) Option { return func(c *config) { c.persistBuffer = n } }
+func WithDeltaBatchInterval(d time.Duration) Option {
+	return func(c *config) { c.deltaBatchInterval = d }
+}
+func WithPersistMaxRetries(n int) Option        { return func(c *config) { c.persistMaxRetries = n } }
+func WithPersistBackoff(d time.Duration) Option { return func(c *config) { c.persistBackoff = d } }
+func WithDeadLetterCapacity(n int) Option       { return func(c *config) { c.deadLetterCapacity = n } }
 
 // NewSequencer constructs a Sequencer and starts its publish + persist workers.
 // compat is an optional CompatAdapter for v1 forwarding (pass nil to disable).
@@ -108,7 +110,7 @@ func NewSequencer(rs RepoSet, bus EventBus, lg loggateway.Logger, compat *Compat
 		bus:                bus,
 		lg:                 lg.With(loggateway.Domain("sequencer_v2")),
 		seqAssigner:        NewDefaultSeqAssigner(),
-		compatAdapter:     compat,
+		compatAdapter:      compat,
 		publishQueue:       make(chan publishTask, cfg.publishBuffer),
 		persistChan:        make(chan persistItem, cfg.persistBuffer),
 		deadLetter:         newDeadLetterRing(cfg.deadLetterCapacity),

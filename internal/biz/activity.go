@@ -77,7 +77,7 @@ type Activity struct {
 	ParentActivityID string         `json:"parent_activity_id,omitempty"`
 	Timestamp        time.Time      `json:"timestamp"`
 	DurationMs       int64          `json:"duration_ms"`
-	Seq              int64          `json:"seq"` // Global emission sequence for stable frontend ordering
+	Seq              int64          `json:"seq"`     // Global emission sequence for stable frontend ordering
 	Version          int64          `json:"version"` // Monotonic version for ordered upserts of the same activity
 
 	// Token usage (kind=task, root Activity only)

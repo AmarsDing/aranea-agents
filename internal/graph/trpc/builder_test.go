@@ -144,7 +144,7 @@ func TestGraphAgent_AgentNode_ParentAgentInjection(t *testing.T) {
 func TestGraphAgent_FindSubAgent_ByNodeID(t *testing.T) {
 	fakeAgent := &okSubAgent{name: "key-a1"}
 	ga := &GraphAgent{
-		name: "test",
+		name:      "test",
 		subAgents: []trpcagent.Agent{fakeAgent},
 		nodeAgents: map[string]trpcagent.Agent{
 			"member-1": fakeAgent,

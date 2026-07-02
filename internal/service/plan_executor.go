@@ -74,10 +74,10 @@ type dagRun struct {
 	pe    *PlanExecutor
 	board biz.PlanBoard
 
-	mu        sync.Mutex
-	stepsByID map[string]*biz.PlanStep
+	mu         sync.Mutex
+	stepsByID  map[string]*biz.PlanStep
 	dependents map[string][]string // stepID → stepIDs that depend on it
-	wg        sync.WaitGroup
+	wg         sync.WaitGroup
 }
 
 func newDagRun(pe *PlanExecutor, board biz.PlanBoard) *dagRun {

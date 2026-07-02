@@ -58,8 +58,8 @@ type SessionTreeNode struct {
 // is allowed to spawn children up to that relative depth below itself.
 // A value of 0 disables agent-level sub-session creation entirely.
 type DepthValidationConfig struct {
-	SpiritMaxDepth          int // absolute max tree depth (spirit ParallelConfig)
-	AgentMaxRelativeDepth   int // relative max sub-agent depth (AgentRuntimeSettings)
+	SpiritMaxDepth        int // absolute max tree depth (spirit ParallelConfig)
+	AgentMaxRelativeDepth int // relative max sub-agent depth (AgentRuntimeSettings)
 }
 
 // ValidateDepth checks whether a child session can be created at childDepth

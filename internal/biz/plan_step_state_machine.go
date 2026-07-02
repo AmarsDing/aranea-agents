@@ -15,9 +15,9 @@ var planStepTransitions = map[PlanStepStatus][]PlanStepStatus{
 		PlanStepStatusSkipped,
 		PlanStepStatusPartialFailure,
 	},
-	PlanStepStatusCompleted: {},                       // terminal
+	PlanStepStatusCompleted:      {},                      // terminal
 	PlanStepStatusFailed:         {PlanStepStatusRunning}, // 允许重试
-	PlanStepStatusSkipped:        {},                       // terminal
+	PlanStepStatusSkipped:        {},                      // terminal
 	PlanStepStatusPartialFailure: {PlanStepStatusRunning}, // 允许重试
 }
 

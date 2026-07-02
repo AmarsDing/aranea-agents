@@ -1823,9 +1823,9 @@ func (p *ActivityProjector) EmitSystemEvent(ctx context.Context, kind biz.Activi
 		Meta:      meta,
 	}
 	ev := biz.ActivityEvent{
-		Event:     biz.ActivityEventCreated,
-		Activity:  activity,
-		Domain:    biz.ActivityDomainSystem,
+		Event:    biz.ActivityEventCreated,
+		Activity: activity,
+		Domain:   biz.ActivityDomainSystem,
 	}
 	if err := p.sequencer.publish(ctx, activity.ID, publishTask{
 		event:    ev,

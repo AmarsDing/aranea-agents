@@ -16,8 +16,8 @@ type PlanStep struct {
 	AutoSynthesis     bool // 是否为汇总报告 step（无 team 映射，依赖完成自动触发）
 	StartedAt         time.Time
 	CompletedAt       *time.Time
-	Seq               int64 // 在 plan 内的序号
-	Version           int64 // 乐观并发版本号（spec §3.3.5 VersionLT）
+	Seq               int64       // 在 plan 内的序号
+	Version           int64       // 乐观并发版本号（spec §3.3.5 VersionLT）
 	Result            *StepResult // 完成时携带
 	Error             *StepError  // 失败时携带
 }

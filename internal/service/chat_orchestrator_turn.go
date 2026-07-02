@@ -271,7 +271,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	var turnErrMsg string
 	ctx, traceBridge, _ := startTurnSpan(ctx, "chat.turn", sessionID, ag.AgentKey, runID)
 	emitter := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
-		Ctx: ctx,
+		Ctx:       ctx,
 		SessionID: sessionID, RunID: runID, AgentKey: ag.AgentKey, AgentID: ag.ID,
 		Domain: event.TraceDomainChat, LG: o.lg(),
 	})
@@ -423,14 +423,14 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 				planInput.TraceID = traceID
 			}
 			if plan, planErr := planner.Plan(ctx, planInput); planErr != nil {
-			emitter.LogWarn("chat.pre_planning_gate.hard", "硬门控规划失败，回退到软门控", "",
-				event.P("error", planErr.Error()))
-		} else if plan != nil {
-			emitter.LogDone("chat.pre_planning_gate.hard", "硬门控规划已创建",
-				event.P("plan_id", plan.ID),
-				event.P("strategy", string(plan.Strategy)),
-				event.P("subtask_count", len(plan.SubTasks)))
-		}
+				emitter.LogWarn("chat.pre_planning_gate.hard", "硬门控规划失败，回退到软门控", "",
+					event.P("error", planErr.Error()))
+			} else if plan != nil {
+				emitter.LogDone("chat.pre_planning_gate.hard", "硬门控规划已创建",
+					event.P("plan_id", plan.ID),
+					event.P("strategy", string(plan.Strategy)),
+					event.P("subtask_count", len(plan.SubTasks)))
+			}
 		}
 
 		intentRunOpts = append(intentRunOpts, forcedPlanningRunOption(gateDecision))

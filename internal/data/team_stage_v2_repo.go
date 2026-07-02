@@ -193,8 +193,8 @@ func entTeamStageV2ToBiz(row *ent.TeamStageV2) biz.TeamStage {
 		Strategy:    row.Strategy,
 		StartedAt:   row.StartedAt,
 		CompletedAt: completedAt,
-		Seq:        row.Seq,
-		Version:    row.Version,
+		Seq:         row.Seq,
+		Version:     row.Version,
 	}
 }
 

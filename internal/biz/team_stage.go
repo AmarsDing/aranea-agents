@@ -10,7 +10,7 @@ type TeamStage struct {
 	TurnID      string // 触发 team 的 turn
 	SessionID   string // spirit_session_id
 	TeamID      string
-	DagNodeID   string // 对应 plan_step.id（如有）
+	DagNodeID   string   // 对应 plan_step.id（如有）
 	DependsOn   []string // 其他 team_stage.id（DAG 依赖）
 	Status      TeamStageStatus
 	Stage       TeamStageStage
@@ -27,9 +27,9 @@ type TeamStageStatus string
 const (
 	TeamStageStatusPending      TeamStageStatus = "pending"
 	TeamStageStatusRunning      TeamStageStatus = "running"
-	TeamStageStatusCompleted   TeamStageStatus = "completed"
-	TeamStageStatusFailed      TeamStageStatus = "failed"
-	TeamStageStatusCancelled   TeamStageStatus = "cancelled"
+	TeamStageStatusCompleted    TeamStageStatus = "completed"
+	TeamStageStatusFailed       TeamStageStatus = "failed"
+	TeamStageStatusCancelled    TeamStageStatus = "cancelled"
 	TeamStageStatusWaitingHuman TeamStageStatus = "waiting_human" // HITL
 )
 

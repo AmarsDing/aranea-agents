@@ -37,12 +37,12 @@ func TestStreamConsumer_V2DualPath(t *testing.T) {
 		V2Projector: v2Proj,
 	}
 	meta := ProjectMeta{
-		SessionID:        "sess-1",
+		SessionID:       "sess-1",
 		SpiritSessionID: "sess-1",
-		RequestID:        "task-1",
-		InvocationID:     "turn-1",
-		AgentID:          "agent-1",
-		TaskContent:       "hello",
+		RequestID:       "task-1",
+		InvocationID:    "turn-1",
+		AgentID:         "agent-1",
+		TaskContent:     "hello",
 	}
 
 	_ = ConsumeEventStream(ctx, events, meta, opts, loggateway.NewNoop())

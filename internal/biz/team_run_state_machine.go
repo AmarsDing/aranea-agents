@@ -40,7 +40,7 @@ var teamRunTransitions = map[string]map[TeamRunEvent]string{
 	},
 	TeamRunStatusRunning: {
 		TeamRunEventWaitHuman: TeamRunStatusWaitingHuman,
-		TeamRunEventPause:      TeamRunStatusPaused,
+		TeamRunEventPause:     TeamRunStatusPaused,
 		TeamRunEventComplete:  TeamRunStatusSuccess,
 		TeamRunEventFail:      TeamRunStatusFailed,
 		TeamRunEventCancel:    TeamRunStatusCancelled,

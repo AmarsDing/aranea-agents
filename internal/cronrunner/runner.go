@@ -69,7 +69,7 @@ type Deps struct {
 	Teams             biz.TeamReader
 	Agents            biz.AgentRepository
 	ActivityBus       biz.ActivityEventBus // unified bus for chat/system Activity events
-	MonitorBus        contract.MonitorBus // typed monitor bus (cron.dead_letter)
+	MonitorBus        contract.MonitorBus  // typed monitor bus (cron.dead_letter)
 	Chat              CronChatRunner
 	RegistrySyncAgent CronRegistrySyncAgent
 }

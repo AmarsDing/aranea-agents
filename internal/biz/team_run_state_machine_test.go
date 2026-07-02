@@ -15,9 +15,9 @@ func TestTeamRunStateMachine_ValidTransitions(t *testing.T) {
 	sm := newTeamRunSM(t)
 
 	cases := []struct {
-		from  TeamRunState
-		to    TeamRunState
-		want  bool
+		from TeamRunState
+		to   TeamRunState
+		want bool
 	}{
 		{TeamRunState(TeamRunStatusPending), TeamRunState(TeamRunStatusRunning), true},
 		{TeamRunState(TeamRunStatusPending), TeamRunState(TeamRunStatusCancelled), true},

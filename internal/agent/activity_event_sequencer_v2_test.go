@@ -95,9 +95,9 @@ func TestSequencerV2_CrossActivityOrder_Concurrent(t *testing.T) {
 			publishMu.Lock()
 			seqNum := counter.Add(1)
 			a := biz.Activity{
-				ID:    "think-" + bizIDint(seqNum),
-				Kind:  biz.ActivityKindThinking,
-				Seq:   seqNum,
+				ID:   "think-" + bizIDint(seqNum),
+				Kind: biz.ActivityKindThinking,
+				Seq:  seqNum,
 			}
 			_ = seq.publish(context.Background(), a.ID, publishTask{
 				event:    biz.ActivityEvent{Event: biz.ActivityEventCreated, Activity: a},
@@ -114,9 +114,9 @@ func TestSequencerV2_CrossActivityOrder_Concurrent(t *testing.T) {
 			publishMu.Lock()
 			seqNum := counter.Add(1)
 			a := biz.Activity{
-				ID:    "reply-" + bizIDint(seqNum),
-				Kind:  biz.ActivityKindReply,
-				Seq:   seqNum,
+				ID:   "reply-" + bizIDint(seqNum),
+				Kind: biz.ActivityKindReply,
+				Seq:  seqNum,
 			}
 			_ = seq.publish(context.Background(), a.ID, publishTask{
 				event:    biz.ActivityEvent{Event: biz.ActivityEventCreated, Activity: a},
@@ -150,7 +150,7 @@ func TestSequencerV2_CrossActivityOrder_Concurrent(t *testing.T) {
 
 // recordingEventBus captures all published events in arrival order.
 type recordingEventBus struct {
-	mu       sync.Mutex
+	mu        sync.Mutex
 	received_ []biz.Activity
 }
 

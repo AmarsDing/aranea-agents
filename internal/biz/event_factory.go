@@ -327,32 +327,32 @@ func NewPlanStepUpdatedEvent(ps PlanStep, spiritSessionID string) *PlanStepUpdat
 // Returns the ID of the primary entity carried by the event.
 // Used by the Sequencer's dead-letter ring for entity-ID-based deduplication.
 
-func (e *TaskCreatedEvent) EntityID() string    { return e.Task.ID }
-func (e *TaskUpdatedEvent) EntityID() string    { return e.Task.ID }
-func (e *TaskCompletedEvent) EntityID() string  { return e.Task.ID }
-func (e *TaskFailedEvent) EntityID() string     { return e.Task.ID }
+func (e *TaskCreatedEvent) EntityID() string   { return e.Task.ID }
+func (e *TaskUpdatedEvent) EntityID() string   { return e.Task.ID }
+func (e *TaskCompletedEvent) EntityID() string { return e.Task.ID }
+func (e *TaskFailedEvent) EntityID() string    { return e.Task.ID }
 
-func (e *TurnStartedEvent) EntityID() string    { return e.TurnID }
-func (e *TurnCompletedEvent) EntityID() string  { return e.TurnID }
-func (e *TurnFailedEvent) EntityID() string     { return e.TurnID }
+func (e *TurnStartedEvent) EntityID() string   { return e.TurnID }
+func (e *TurnCompletedEvent) EntityID() string { return e.TurnID }
+func (e *TurnFailedEvent) EntityID() string    { return e.TurnID }
 
-func (e *StepCreatedEvent) EntityID() string     { return e.Step.ID }
-func (e *StepStreamingEvent) EntityID() string  { return e.StepID }
-func (e *StepUpdatedEvent) EntityID() string     { return e.Step.ID }
-func (e *StepCompletedEvent) EntityID() string  { return e.Step.ID }
-func (e *StepFailedEvent) EntityID() string     { return e.Step.ID }
+func (e *StepCreatedEvent) EntityID() string   { return e.Step.ID }
+func (e *StepStreamingEvent) EntityID() string { return e.StepID }
+func (e *StepUpdatedEvent) EntityID() string   { return e.Step.ID }
+func (e *StepCompletedEvent) EntityID() string { return e.Step.ID }
+func (e *StepFailedEvent) EntityID() string    { return e.Step.ID }
 
 func (e *TeamStageCreatedEvent) EntityID() string   { return e.TeamStage.ID }
 func (e *TeamStageUpdatedEvent) EntityID() string   { return e.TeamStage.ID }
 func (e *TeamStageCompletedEvent) EntityID() string { return e.TeamStage.ID }
-func (e *TeamStageFailedEvent) EntityID() string     { return e.TeamStage.ID }
+func (e *TeamStageFailedEvent) EntityID() string    { return e.TeamStage.ID }
 
 func (e *TeamRunStartedEvent) EntityID() string   { return e.TeamRun.ID }
 func (e *TeamRunCompletedEvent) EntityID() string { return e.TeamRun.ID }
 func (e *TeamRunFailedEvent) EntityID() string    { return e.TeamRun.ID }
 
 func (e *MemberSessionCreatedEvent) EntityID() string { return e.MemberSession.ID }
-func (e *MemberSessionUpdatedEvent) EntityID() string  { return e.MemberSession.ID }
+func (e *MemberSessionUpdatedEvent) EntityID() string { return e.MemberSession.ID }
 
 func (e *PlanBoardCreatedEvent) EntityID() string { return e.PlanBoard.ID }
 func (e *PlanBoardUpdatedEvent) EntityID() string { return e.PlanBoard.ID }

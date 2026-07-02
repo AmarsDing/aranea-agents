@@ -19,7 +19,7 @@ func TestMemberSessionV2Repo_CreateAndGet(t *testing.T) {
 		ID: "ms-1", TeamRunID: "tr-1", TeamStageID: "ts-1", TaskID: "t-1",
 		SessionID: "s-member-1", SpiritSessionID: "s-1",
 		AgentKey: "agent-1", AgentName: "Agent One", AvatarURL: "http://avatar/1.png",
-		Status: biz.MemberSessionStatusRunning,
+		Status:    biz.MemberSessionStatusRunning,
 		StartedAt: now, Seq: 1, Version: 1,
 	})
 	if err != nil {

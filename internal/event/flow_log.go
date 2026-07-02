@@ -92,7 +92,7 @@ type FlowLogEntry struct {
 	// ParentSpanID is the OTel parent span ID of the turn root. Empty for
 	// turn-root spans (no upstream OTel parent). Reserved for future phases
 	// that may populate per-step parent linkage.
-	ParentSpanID string `json:"parent_span_id,omitempty"`
+	ParentSpanID string         `json:"parent_span_id,omitempty"`
 	Extra        map[string]any `json:"extra,omitempty"`
 }
 

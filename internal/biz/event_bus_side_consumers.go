@@ -16,12 +16,12 @@ import (
 // events). Each consumer subscribes to exactly one bus and filters at the
 // bus level to avoid queue pressure from non-matching events.
 type EventBusSideConsumers struct {
-	callback       *callbackConsumer
-	flowLog        *flowLogPersistConsumer
-	userFeedback   *userFeedbackConsumer
-	usageRollup    *usageRollupConsumer
-	webhooks       *WebhookDispatcher
-	traceProj      *monitor.TraceProjector
+	callback        *callbackConsumer
+	flowLog         *flowLogPersistConsumer
+	userFeedback    *userFeedbackConsumer
+	usageRollup     *usageRollupConsumer
+	webhooks        *WebhookDispatcher
+	traceProj       *monitor.TraceProjector
 	fileAppender    *monitor.FlowFileAppender
 	monitorEventBus contract.MonitorBus
 	logger          SessionLogWriter
@@ -50,10 +50,10 @@ func NewEventBusSideConsumers(
 		userFeedback:    newUserFeedbackConsumer(activityBus, monitorUC, memWorker, logger),
 		usageRollup:     newUsageRollupConsumer(activityBus, usage, logger),
 		webhooks:        webhooks,
-		traceProj:      traceProj,
+		traceProj:       traceProj,
 		fileAppender:    fileAppender,
 		monitorEventBus: monitorEventBus,
-		logger:         logger,
+		logger:          logger,
 	}
 }
 

@@ -136,14 +136,14 @@ func TestCompatAdapter_StepCreatedToActivityEvent(t *testing.T) {
 	adapter := NewCompatAdapter(v1)
 
 	adapter.PublishV1(context.Background(), biz.NewStepCreatedEvent(biz.Step{
-		ID:             "step-1",
-		TurnID:         "turn-1",
-		TaskID:         "task-1",
+		ID:              "step-1",
+		TurnID:          "turn-1",
+		TaskID:          "task-1",
 		SpiritSessionID: "sess-1",
-		Kind:           biz.StepKindReply,
-		AuthorAgentKey: "agent-key-1",
-		Status:         biz.StepStatusRunning,
-		Version:        1,
+		Kind:            biz.StepKindReply,
+		AuthorAgentKey:  "agent-key-1",
+		Status:          biz.StepStatusRunning,
+		Version:         1,
 	}))
 
 	v1.mu.Lock()

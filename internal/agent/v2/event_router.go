@@ -1,6 +1,7 @@
 // Package v2 implements the Phase 1 sequencer and projector for the
 // LLM activity ordering redesign. See:
-//   docs/superpowers/plans/2026-07-02-llm-activity-ordering-phase1.md
+//
+//	docs/superpowers/plans/2026-07-02-llm-activity-ordering-phase1.md
 package v2
 
 import (

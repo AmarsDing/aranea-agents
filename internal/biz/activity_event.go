@@ -85,7 +85,7 @@ const (
 //   - ActivityDomainSystem → never persist (WS-only broadcast)
 type ActivityEvent struct {
 	Event    ActivityEventType `json:"event"`
-	Activity Activity           `json:"activity"`
+	Activity Activity          `json:"activity"`
 
 	// DeltaField identifies the append field for streaming events
 	// (content/reasoning/tool_arguments). Empty for non-streaming events.

@@ -42,8 +42,8 @@ var runTransitions = map[string]map[RunStatusEvent]string{
 		RunEventStart: RunStatusPending,
 	},
 	RunStatusPending: {
-		RunEventRun: RunStatusRunning,
-		RunEventFail: RunStatusFailed,
+		RunEventRun:    RunStatusRunning,
+		RunEventFail:   RunStatusFailed,
 		RunEventCancel: RunStatusCancelled,
 	},
 	RunStatusRunning: {
@@ -60,9 +60,9 @@ var runTransitions = map[string]map[RunStatusEvent]string{
 		RunEventCancel:   RunStatusCancelled,
 	},
 	RunStatusPaused: {
-		RunEventResume:  RunStatusRunning,
-		RunEventCancel:  RunStatusCancelled,
-		RunEventFail:    RunStatusFailed,
+		RunEventResume:   RunStatusRunning,
+		RunEventCancel:   RunStatusCancelled,
+		RunEventFail:     RunStatusFailed,
 		RunEventComplete: RunStatusCompleted,
 	},
 	RunStatusCompleted: {
@@ -140,4 +140,3 @@ func RunStatusFromPhase(phase string) string {
 		return phase
 	}
 }
-

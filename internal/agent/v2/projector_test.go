@@ -13,8 +13,8 @@ import (
 // capturingSequencer implements SequencerPublisher and records every Publish call
 // in order. Safe for concurrent use.
 type capturingSequencer struct {
-	mu      sync.Mutex
-	events  []biz.Event
+	mu     sync.Mutex
+	events []biz.Event
 }
 
 func (c *capturingSequencer) Publish(_ context.Context, e biz.Event) {

@@ -15,7 +15,7 @@ import (
 // event so tests can assert on the payload. It is not safe for concurrent
 // subscribers — only Publish is exercised by publishSpiritTeamAssembled.
 type capturingBus struct {
-	mu       sync.Mutex
+	mu        sync.Mutex
 	published []biz.ActivityEvent
 }
 

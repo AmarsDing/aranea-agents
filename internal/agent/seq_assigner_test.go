@@ -77,8 +77,8 @@ func TestSeqAssigner_RestoreFromDB(t *testing.T) {
 
 func TestSeqAssigner_RestoreFromDB_DoesNotLower(t *testing.T) {
 	sa := NewSeqAssigner()
-	sa.NextSeq("session-x") // seq=1
-	sa.NextSeq("session-x") // seq=2
+	sa.NextSeq("session-x")          // seq=1
+	sa.NextSeq("session-x")          // seq=2
 	sa.RestoreFromDB("session-x", 1) // should not lower to 1
 	got := sa.NextSeq("session-x")
 	if got != 3 {

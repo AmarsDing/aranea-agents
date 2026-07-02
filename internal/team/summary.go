@@ -67,7 +67,7 @@ func TeamSummaryActivityEvent(run biz.TeamRunRecord, steps []biz.TeamRunStep) bi
 			SessionID:       run.SpiritSessionID,
 			SpiritSessionID: run.SpiritSessionID,
 			TeamID:          run.TeamID,
-			Timestamp:        time.Now().UTC(),
+			Timestamp:       time.Now().UTC(),
 			Stage:           "completed",
 			Meta: map[string]any{
 				"run_id":       run.ID,

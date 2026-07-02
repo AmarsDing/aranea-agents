@@ -39,9 +39,9 @@ func ProvideCompressReadDepsAdapter(
 		msgReader = bizsession.NewActivityMessageReader(emptyActivityLister{})
 	}
 	return &compressReadDepsAdapter{
-		SessionReader:  sessions,
-		MessageReader:  msgReader,
-		SummaryReader:  sessions,
+		SessionReader: sessions,
+		MessageReader: msgReader,
+		SummaryReader: sessions,
 	}
 }
 
@@ -86,7 +86,7 @@ func (emptyActivityLister) ListBySession(ctx context.Context, sessionID string) 
 
 // Compile-time interface checks.
 var (
-	_ CompressReadDeps           = (*compressReadDepsAdapter)(nil)
-	_ CompressWriteDeps          = (*compressWriteDepsAdapter)(nil)
-	_ bizsession.ActivityLister  = emptyActivityLister{}
+	_ CompressReadDeps          = (*compressReadDepsAdapter)(nil)
+	_ CompressWriteDeps         = (*compressWriteDepsAdapter)(nil)
+	_ bizsession.ActivityLister = emptyActivityLister{}
 )

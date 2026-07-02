@@ -19,7 +19,7 @@ func TestTeamRunV2Repo_CreateAndGet(t *testing.T) {
 		ID: "tr-1", TeamStageID: "ts-1", TaskID: "t-1",
 		SessionID: "s-1", SpiritSessionID: "s-1",
 		DagNodeID: "node-1", DependsOn: []string{"tr-0"},
-		Status: biz.TeamRunV2StatusRunning,
+		Status:    biz.TeamRunV2StatusRunning,
 		StartedAt: now, Seq: 1, Version: 1,
 	})
 	if err != nil {
@@ -50,7 +50,7 @@ func TestTeamRunV2Repo_Upsert_VersionGuard_WithCompletedAt(t *testing.T) {
 	_, err := repo.UpsertTeamRun(ctx, biz.TeamRun{
 		ID: "tr-2", TeamStageID: "ts-1", TaskID: "t-1",
 		SessionID: "s-1", SpiritSessionID: "s-1",
-		Status: biz.TeamRunV2StatusRunning,
+		Status:    biz.TeamRunV2StatusRunning,
 		StartedAt: now, Seq: 2, Version: 1,
 	})
 	if err != nil {
@@ -100,7 +100,7 @@ func TestTeamRunV2Repo_ListByStage_SeqOrder(t *testing.T) {
 		_, err := repo.CreateTeamRun(ctx, biz.TeamRun{
 			ID: "ord-" + string(rune('a'+i)), TeamStageID: "ts-x", TaskID: "t-1",
 			SessionID: "s-1", SpiritSessionID: "s-1",
-			Status: biz.TeamRunV2StatusRunning,
+			Status:    biz.TeamRunV2StatusRunning,
 			StartedAt: now, Seq: seq, Version: 1,
 		})
 		if err != nil {

@@ -155,8 +155,8 @@ type StreamOptsFactoryAdapter struct {
 	ActivityBus      biz.ActivityEventBus
 	// V2Projector is the singleton v2 projector. When non-nil, every chat
 	// turn triggers the v2 dual-path (additive to v1). Wired via Wire DI.
-	V2Projector      *v2.ActivityProjector
-	Logger           loggateway.Logger
+	V2Projector *v2.ActivityProjector
+	Logger      loggateway.Logger
 }
 
 func (a *StreamOptsFactoryAdapter) NewStreamConsumeOptions() *chatagent.StreamConsumeOptions {
