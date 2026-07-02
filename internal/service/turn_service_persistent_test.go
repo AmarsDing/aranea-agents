@@ -74,26 +74,26 @@ func TestTurnFromSessionTurn(t *testing.T) {
 	cases := []struct {
 		name string
 		row  biz.SessionTurn
-		base biz.Turn
-		want biz.Turn
+		base biz.CanonicalTurn
+		want biz.CanonicalTurn
 	}{
 		{
 			name: "row_overrides_base_fields",
 			row:  biz.SessionTurn{ID: "r1", SessionID: "s1", RunID: "run-1", AgentID: "a1", TeamID: "t1", Status: "completed"},
-			base: biz.Turn{ID: "old", SessionID: "old", AgentID: "old"},
-			want: biz.Turn{ID: "r1", SessionID: "s1", RunID: "run-1", AgentID: "a1", TeamID: "t1", Status: biz.CanonicalTurnStatus("completed")},
+			base: biz.CanonicalTurn{ID: "old", SessionID: "old", AgentID: "old"},
+			want: biz.CanonicalTurn{ID: "r1", SessionID: "s1", RunID: "run-1", AgentID: "a1", TeamID: "t1", Status: biz.CanonicalTurnStatus("completed")},
 		},
 		{
 			name: "empty_status_keeps_base",
 			row:  biz.SessionTurn{ID: "r2", SessionID: "s2", Status: ""},
-			base: biz.Turn{Status: biz.CanonicalTurnStatusQueued},
-			want: biz.Turn{ID: "r2", SessionID: "s2", Status: biz.CanonicalTurnStatusQueued},
+			base: biz.CanonicalTurn{Status: biz.CanonicalTurnStatusQueued},
+			want: biz.CanonicalTurn{ID: "r2", SessionID: "s2", Status: biz.CanonicalTurnStatusQueued},
 		},
 		{
 			name: "non_empty_status_overrides",
 			row:  biz.SessionTurn{ID: "r3", Status: "failed"},
-			base: biz.Turn{Status: biz.CanonicalTurnStatusQueued},
-			want: biz.Turn{ID: "r3", Status: biz.CanonicalTurnStatus("failed")},
+			base: biz.CanonicalTurn{Status: biz.CanonicalTurnStatusQueued},
+			want: biz.CanonicalTurn{ID: "r3", Status: biz.CanonicalTurnStatus("failed")},
 		},
 	}
 	for _, tc := range cases {

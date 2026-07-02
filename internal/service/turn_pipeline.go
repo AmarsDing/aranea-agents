@@ -15,14 +15,14 @@ type TurnIngress interface {
 
 // TurnService owns turn admission and persistent lifecycle state.
 type TurnService interface {
-	AdmitTurn(ctx context.Context, intent biz.TurnIntent) (biz.Turn, error)
-	CompleteTurn(ctx context.Context, turn biz.Turn, result biz.TurnResult) (biz.Turn, error)
-	FailTurn(ctx context.Context, turn biz.Turn, err error) (biz.Turn, error)
+	AdmitTurn(ctx context.Context, intent biz.TurnIntent) (biz.CanonicalTurn, error)
+	CompleteTurn(ctx context.Context, turn biz.CanonicalTurn, result biz.TurnResult) (biz.CanonicalTurn, error)
+	FailTurn(ctx context.Context, turn biz.CanonicalTurn, err error) (biz.CanonicalTurn, error)
 }
 
 // TurnExecutor runs an admitted turn against the selected runtime.
 type TurnExecutor interface {
-	ExecuteTurn(ctx context.Context, turn biz.Turn, input biz.TurnInput) (biz.TurnResult, error)
+	ExecuteTurn(ctx context.Context, turn biz.CanonicalTurn, input biz.TurnInput) (biz.TurnResult, error)
 }
 
 // TurnProjector projects canonical turn events into chat WS, channel outbound, monitor, and session views.
@@ -40,7 +40,7 @@ type TurnPipeline struct {
 }
 
 // Run executes the canonical pipeline without knowing whether the request came from Web, WS, or Channel.
-func (p TurnPipeline) Run(ctx context.Context, intent biz.TurnIntent) (biz.Turn, biz.TurnResult, error) {
+func (p TurnPipeline) Run(ctx context.Context, intent biz.TurnIntent) (biz.CanonicalTurn, biz.TurnResult, error) {
 	intent = intent.Canonicalize()
 	lg := p.Lg
 	start := time.Now()
@@ -51,7 +51,7 @@ func (p TurnPipeline) Run(ctx context.Context, intent biz.TurnIntent) (biz.Turn,
 			lg.With(loggateway.SessionID(intent.SessionID)).Info("TurnPipeline.Run: AdmitTurn 失败",
 				loggateway.StepID("pipeline.admit_fail"), loggateway.Any("elapsed_ms", time.Since(start).Milliseconds()), loggateway.Err(err))
 		}
-		return biz.Turn{}, biz.TurnResult{}, err
+		return biz.CanonicalTurn{}, biz.TurnResult{}, err
 	}
 	if lg != nil {
 		lg.With(loggateway.SessionID(intent.SessionID)).Info("TurnPipeline.Run: AdmitTurn 完成",

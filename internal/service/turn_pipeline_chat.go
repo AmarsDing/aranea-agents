@@ -32,7 +32,7 @@ type chatTurnExecutor struct {
 	orch *ChatOrchestrator
 }
 
-func (e chatTurnExecutor) ExecuteTurn(ctx context.Context, turn biz.Turn, input biz.TurnInput) (biz.TurnResult, error) {
+func (e chatTurnExecutor) ExecuteTurn(ctx context.Context, turn biz.CanonicalTurn, input biz.TurnInput) (biz.TurnResult, error) {
 	if e.orch == nil {
 		return biz.TurnResult{Outcome: biz.TurnOutcomeFailed}, errChatOrchestratorNil
 	}

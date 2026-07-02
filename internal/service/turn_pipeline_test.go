@@ -11,11 +11,11 @@ import (
 )
 
 type testTurnService struct {
-	turn biz.Turn
+	turn biz.CanonicalTurn
 }
 
-func (s *testTurnService) AdmitTurn(_ context.Context, intent biz.TurnIntent) (biz.Turn, error) {
-	s.turn = biz.Turn{
+func (s *testTurnService) AdmitTurn(_ context.Context, intent biz.TurnIntent) (biz.CanonicalTurn, error) {
+	s.turn = biz.CanonicalTurn{
 		ID:         "turn-1",
 		SessionID:  intent.SessionID,
 		Source:     intent.Source,
@@ -25,13 +25,13 @@ func (s *testTurnService) AdmitTurn(_ context.Context, intent biz.TurnIntent) (b
 	return s.turn, nil
 }
 
-func (s *testTurnService) CompleteTurn(_ context.Context, turn biz.Turn, result biz.TurnResult) (biz.Turn, error) {
+func (s *testTurnService) CompleteTurn(_ context.Context, turn biz.CanonicalTurn, result biz.TurnResult) (biz.CanonicalTurn, error) {
 	turn.Status = biz.CanonicalTurnStatusFromOutcome(result.Outcome)
 	s.turn = turn
 	return turn, nil
 }
 
-func (s *testTurnService) FailTurn(_ context.Context, turn biz.Turn, _ error) (biz.Turn, error) {
+func (s *testTurnService) FailTurn(_ context.Context, turn biz.CanonicalTurn, _ error) (biz.CanonicalTurn, error) {
 	turn.Status = biz.CanonicalTurnStatusFailed
 	s.turn = turn
 	return turn, nil
@@ -41,7 +41,7 @@ type testTurnExecutor struct {
 	err error
 }
 
-func (e testTurnExecutor) ExecuteTurn(_ context.Context, _ biz.Turn, _ biz.TurnInput) (biz.TurnResult, error) {
+func (e testTurnExecutor) ExecuteTurn(_ context.Context, _ biz.CanonicalTurn, _ biz.TurnInput) (biz.TurnResult, error) {
 	if e.err != nil {
 		return biz.TurnResult{Outcome: biz.TurnOutcomeFailed}, e.err
 	}

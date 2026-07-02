@@ -117,8 +117,8 @@ func (i TurnIntent) TurnInput() TurnInput {
 	}
 }
 
-// Turn is the aggregate root tying messages, runtime run state, jobs, and delivery together.
-type Turn struct {
+// CanonicalTurn is the aggregate root tying messages, runtime run state, jobs, and delivery together.
+type CanonicalTurn struct {
 	ID              string
 	SessionID       string
 	RunID           string

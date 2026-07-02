@@ -99,7 +99,7 @@ func newStubTurnExecutor(result biz.TurnResult) *stubTurnExecutor {
 	return &stubTurnExecutor{result: result}
 }
 
-func (e *stubTurnExecutor) ExecuteTurn(_ context.Context, _ biz.Turn, _ biz.TurnInput) (biz.TurnResult, error) {
+func (e *stubTurnExecutor) ExecuteTurn(_ context.Context, _ biz.CanonicalTurn, _ biz.TurnInput) (biz.TurnResult, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.executed = true

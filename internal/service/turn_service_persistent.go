@@ -26,13 +26,13 @@ func NewPersistentTurnService(sessions biz.SessionTurnWriterPort) *PersistentTur
 	return &PersistentTurnService{Sessions: sessions}
 }
 
-func (s *PersistentTurnService) AdmitTurn(ctx context.Context, intent biz.TurnIntent) (biz.Turn, error) {
+func (s *PersistentTurnService) AdmitTurn(ctx context.Context, intent biz.TurnIntent) (biz.CanonicalTurn, error) {
 	if s == nil || s.Sessions == nil {
-		return biz.Turn{}, errors.New("turn service: sessions is nil")
+		return biz.CanonicalTurn{}, errors.New("turn service: sessions is nil")
 	}
 	intent = intent.Canonicalize()
 	now := s.now()
-	turn := biz.Turn{
+	turn := biz.CanonicalTurn{
 		ID:              uuid.NewString(),
 		SessionID:       intent.SessionID,
 		Source:          intent.Source,
@@ -63,14 +63,14 @@ func (s *PersistentTurnService) AdmitTurn(ctx context.Context, intent biz.TurnIn
 		UpdatedAt:    now.Format(time.RFC3339),
 	})
 	if err != nil {
-		return biz.Turn{}, err
+		return biz.CanonicalTurn{}, err
 	}
 	return turnFromSessionTurn(row, turn), nil
 }
 
-func (s *PersistentTurnService) CompleteTurn(ctx context.Context, turn biz.Turn, result biz.TurnResult) (biz.Turn, error) {
+func (s *PersistentTurnService) CompleteTurn(ctx context.Context, turn biz.CanonicalTurn, result biz.TurnResult) (biz.CanonicalTurn, error) {
 	if s == nil || s.Sessions == nil {
-		return biz.Turn{}, errors.New("turn service: sessions is nil")
+		return biz.CanonicalTurn{}, errors.New("turn service: sessions is nil")
 	}
 	status := biz.CanonicalTurnStatusFromOutcome(result.Outcome)
 	if status == "" {
@@ -89,9 +89,9 @@ func (s *PersistentTurnService) CompleteTurn(ctx context.Context, turn biz.Turn,
 	return turnFromSessionTurn(row, turn), nil
 }
 
-func (s *PersistentTurnService) FailTurn(ctx context.Context, turn biz.Turn, err error) (biz.Turn, error) {
+func (s *PersistentTurnService) FailTurn(ctx context.Context, turn biz.CanonicalTurn, err error) (biz.CanonicalTurn, error) {
 	if s == nil || s.Sessions == nil {
-		return biz.Turn{}, errors.New("turn service: sessions is nil")
+		return biz.CanonicalTurn{}, errors.New("turn service: sessions is nil")
 	}
 	now := s.now().Format(time.RFC3339)
 	errMsg := ""
@@ -118,7 +118,7 @@ func (s *PersistentTurnService) now() time.Time {
 	return time.Now().UTC()
 }
 
-func turnFromSessionTurn(row biz.SessionTurn, base biz.Turn) biz.Turn {
+func turnFromSessionTurn(row biz.SessionTurn, base biz.CanonicalTurn) biz.CanonicalTurn {
 	base.ID = row.ID
 	base.SessionID = row.SessionID
 	base.RunID = row.RunID
