@@ -17,7 +17,7 @@ import (
 // recordMemberUsage writes model_token_usage_events for a team member step when tokens were consumed.
 func (r *Runner) recordMemberUsage(
 	ctx context.Context,
-	run biz.TeamRun,
+	run biz.TeamRunRecord,
 	teamID string,
 	ag biz.Agent,
 	asst biz.ChatMessage,
@@ -100,7 +100,7 @@ func (r *Runner) recordMemberUsage(
 // recordTeamRunUsage writes one aggregated team turn row (workflow-level tokens).
 func (r *Runner) recordTeamRunUsage(
 	ctx context.Context,
-	run biz.TeamRun,
+	run biz.TeamRunRecord,
 	teamID string,
 	anchor biz.Agent,
 	promptTok, completionTok int,
