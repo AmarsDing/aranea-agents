@@ -6,6 +6,7 @@ import (
 
 	chatagent "aranea-agents/internal/agent"
 	localexec "aranea-agents/internal/agent/codeexecutor"
+	"aranea-agents/internal/agent/v2"
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/chatactivity"
@@ -332,6 +333,10 @@ type ChatInfraDeps struct {
 	// and converts it to framework RunOptions applied per turn. When nil,
 	// no profile overrides are applied (graceful degradation).
 	ProfileResolver *chatagent.ProfileResolver
+	// V2Projector is the singleton v2 ActivityProjector. When non-nil,
+	// every chat turn triggers the v2 dual-path (Projector v2 → Sequencer
+	// → RepoSet + EventBus) alongside v1. Wired via Wire DI; nil = v1-only.
+	V2Projector *v2.ActivityProjector
 }
 
 // ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.

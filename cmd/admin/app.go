@@ -47,6 +47,7 @@ func newApp(
 	spiritUC *biz.SpiritTeamUsecase,
 	teamStarter *service.TeamStarter,
 	lifecycleMgr *lifecycle.LifecycleManager,
+	wsV2Sub *server.WSV2Subscriber,
 ) *kratos.App {
 	// EP-OBS-03: WSServer implements transport.Server (Start/Stop); register it so
 	// kratos.App orchestrates its lifecycle and Stop triggers broadcastShutdown.
@@ -120,6 +121,12 @@ func newApp(
 			if chatSvc != nil {
 				if err := chatSvc.Close(); err != nil {
 					lg.Warn("chat service close failed", loggateway.StepID("shutdown.chat"), loggateway.Err(err))
+				}
+			}
+			// Stop the v2 WS subscriber goroutine before the process exits.
+			if wsV2Sub != nil {
+				if err := wsV2Sub.Close(); err != nil {
+					lg.Warn("ws v2 subscriber close failed", loggateway.StepID("shutdown.ws_v2_sub"), loggateway.Err(err))
 				}
 			}
 			// Stop the background team completion poller and cancel all timeout timers.

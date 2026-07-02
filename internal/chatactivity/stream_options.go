@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	chatagent "aranea-agents/internal/agent"
+	"aranea-agents/internal/agent/v2"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 )
@@ -108,7 +109,13 @@ func (r *catalogActivityMetaResolver) ResolveAgentID(ctx context.Context, agentK
 // Activity ordering is governed solely by Timestamp ASC (design doc §B.3.3);
 // the legacy seqAlloc parameter has been removed. Direct-publish events
 // are detected via ActivityEvent.SequencerHandled on the bus.
-func NewStreamConsumeOptions(tools biz.TeamToolLookup, toolRegistry biz.ToolRegistryReader, agents biz.AgentRepository, activityWriter biz.ActivityUpserter, activityBus biz.ActivityEventBus, lg loggateway.Logger) *chatagent.StreamConsumeOptions {
+//
+// v2 phase: when v2Projector is non-nil, it is also wired into the options
+// to enable the v2 dual-path (Projector v2 → Sequencer → RepoSet + EventBus).
+// The v1 path runs unchanged; v2 events flow alongside (additive). The v2
+// projector is a singleton shared across turns (per-turn state is reset in
+// OnTurnStart).
+func NewStreamConsumeOptions(tools biz.TeamToolLookup, toolRegistry biz.ToolRegistryReader, agents biz.AgentRepository, activityWriter biz.ActivityUpserter, activityBus biz.ActivityEventBus, v2Projector *v2.ActivityProjector, lg loggateway.Logger) *chatagent.StreamConsumeOptions {
 	var resolver chatagent.ActivityMetaResolver
 	if tools != nil || agents != nil {
 		resolver = newCatalogActivityMetaResolver(tools, agents)
@@ -129,6 +136,10 @@ func NewStreamConsumeOptions(tools biz.TeamToolLookup, toolRegistry biz.ToolRegi
 		opts.ActivityProjector = chatagent.NewActivityProjector(activityBus, activityWriter, lg, categorizer)
 		opts.ActivityBus = activityBus
 	}
+	// v2 phase: inject the singleton v2 projector. When non-nil, the
+	// stream_consumer enables the v2 dual-path (see stream_consumer.go).
+	// A nil projector leaves the v1 path unchanged (v1-only mode).
+	opts.V2Projector = v2Projector
 	return opts
 }
 
@@ -142,9 +153,12 @@ type StreamOptsFactoryAdapter struct {
 	Agents           biz.AgentRepository
 	ActivityUpserter biz.ActivityUpserter
 	ActivityBus      biz.ActivityEventBus
+	// V2Projector is the singleton v2 projector. When non-nil, every chat
+	// turn triggers the v2 dual-path (additive to v1). Wired via Wire DI.
+	V2Projector      *v2.ActivityProjector
 	Logger           loggateway.Logger
 }
 
 func (a *StreamOptsFactoryAdapter) NewStreamConsumeOptions() *chatagent.StreamConsumeOptions {
-	return NewStreamConsumeOptions(a.Tools, a.ToolRegistry, a.Agents, a.ActivityUpserter, a.ActivityBus, a.Logger)
+	return NewStreamConsumeOptions(a.Tools, a.ToolRegistry, a.Agents, a.ActivityUpserter, a.ActivityBus, a.V2Projector, a.Logger)
 }

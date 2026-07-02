@@ -7,7 +7,11 @@ import (
 )
 
 // ProvideChatService constructs ChatService with a noop AfterTurn hook (real hook attached by ProvideEvaluationRunner).
-func ProvideChatService(deps ChatOrchestratorDeps) *ChatService {
+// planExec is the v2 forward DAG scheduler (may be nil in v1-only deployments).
+// When non-nil, it is injected into TeamStarter via SetPlanExecutor to break
+// the Wire cycle: PlanExecutor → TeamOrchestrator → SpiritTeamAssembler
+// → TeamStarter → ... → ChatService.
+func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor) *ChatService {
 	deps.Turn.AfterTurn = biz.NoopNativeTurnAfter{}
 	cs := NewChatService(deps)
 	// Backfill turnGateway into TeamStarter to break the Wire cycle:
@@ -16,6 +20,13 @@ func ProvideChatService(deps ChatOrchestratorDeps) *ChatService {
 	// (checkAllTeamsCompleted → SynthesizeResults → ExecuteTurn).
 	if setter, ok := deps.Team.TeamStarter.(interface{ SetTurnGateway(biz.TurnGateway) }); ok {
 		setter.SetTurnGateway(cs)
+	}
+	// Inject the v2 PlanExecutor into TeamStarter. May be nil (v1-only mode);
+	// the setter nil-checks internally and the field is never read in v1 paths.
+	if planExec != nil {
+		if setter, ok := deps.Team.TeamStarter.(interface{ SetPlanExecutor(*PlanExecutor) }); ok {
+			setter.SetPlanExecutor(planExec)
+		}
 	}
 	return cs
 }

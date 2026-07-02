@@ -21,6 +21,7 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/agent/intent"
+	"aranea-agents/internal/agent/v2"
 	"aranea-agents/internal/artifact"
 	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
@@ -737,6 +738,7 @@ func provideRunnerConfig(
 	kanbanBridge kanbanpkg.Bridge,
 	a2aUC *biz.A2AUsecase,
 	sessions *biz.SessionUsecase,
+	v2Projector *v2.ActivityProjector,
 	lg loggateway.Logger,
 ) team.RunnerConfig {
 	cfg := team.RunnerConfig{
@@ -753,7 +755,8 @@ func provideRunnerConfig(
 		StreamOptsFactory: &chatactivity.StreamOptsFactoryAdapter{
 			Tools: tools, Agents: agents,
 			ActivityUpserter: activityUpserter, ActivityBus: activityBus,
-			Logger: lg,
+			V2Projector: v2Projector,
+			Logger:      lg,
 		},
 		AgentHelper:     &chatagent.TeamAgentHelperAdapter{},
 		OrganizationUC:  orgUC,
@@ -916,6 +919,7 @@ func provideChatServiceDeps(
 	heartbeatEmitter *service.RunHeartbeatEmitter,
 	deadLetterQueue *lifecycle.DeadLetterQueue,
 	profileResolver *chatagent.ProfileResolver,
+	v2Projector *v2.ActivityProjector,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	// Backfill TaskOrchestrator into teamDeps to break the Wire cycle:
@@ -984,6 +988,7 @@ func provideChatServiceDeps(
 			HeartbeatEmitter: heartbeatEmitter,
 			DeadLetterQueue:  deadLetterQueue,
 			ProfileResolver:  profileResolver,
+			V2Projector:      v2Projector,
 		},
 	}
 }
@@ -1936,6 +1941,9 @@ type wireOut struct {
 	PatternMiningUsecase        *monitor.PatternMiningUsecase
 	PatternMiningJob            *jobs.PatternMiningJob
 	PathBExtractor              *biz.PathBExtractor
+	// WSV2Subscriber forwards v2 Events to WS clients. Owned by wireOut so
+	// its lifecycle (Close) is managed alongside the kratos.App shutdown.
+	WSV2Subscriber *server.WSV2Subscriber
 }
 
 func provideWireOut(
@@ -1989,6 +1997,7 @@ func provideWireOut(
 	patternMiningUsecase *monitor.PatternMiningUsecase,
 	patternMiningJob *jobs.PatternMiningJob,
 	pathBExtractor *biz.PathBExtractor,
+	wsV2Sub *server.WSV2Subscriber,
 ) wireOut {
 	return wireOut{
 		App: app, Data: dataData, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -2024,7 +2033,78 @@ func provideWireOut(
 		PatternMiningUsecase:      patternMiningUsecase,
 		PatternMiningJob:          patternMiningJob,
 		PathBExtractor:            pathBExtractor,
+		WSV2Subscriber:            wsV2Sub,
 	}
+}
+
+// ────────────────────────────────────────────────────────────
+// v2 event pipeline providers (Phase 1 收尾)
+//
+// Wiring chain: trpc event → stream_consumer → v2.Projector →
+// v2.Sequencer → RepoSet (persist) + V2Bus → WSV2Subscriber → WS client.
+//
+// CompatAdapter is constructed but NOT passed to NewSequencer (nil) to
+// avoid v1 event duplication (v1 ActivityProjector + v2 CompatAdapter
+// would both emit v1 ActivityEvents). Enabling it is a Phase 2 decision.
+// ────────────────────────────────────────────────────────────
+
+// provideV2EventBus constructs the in-process fan-out bus for v2 Events.
+func provideV2EventBus() *event.V2Bus {
+	return event.NewV2Bus()
+}
+
+// provideV2RepoSet composes 8 v2 repo interfaces into a single RepoSet
+// via v2.NewRepoSetAdapter.
+func provideV2RepoSet(
+	task biz.TaskV2Repo,
+	turn biz.TurnV2Repo,
+	step biz.StepV2Repo,
+	teamStage biz.TeamStageV2Repo,
+	teamRun biz.TeamRunV2Repo,
+	memberSession biz.MemberSessionV2Repo,
+	planBoard biz.PlanBoardV2Repo,
+	planStep biz.PlanStepV2Repo,
+) v2.RepoSet {
+	return v2.NewRepoSetAdapter(task, turn, step, teamStage, teamRun, memberSession, planBoard, planStep)
+}
+
+// provideV2Sequencer constructs the v2 Sequencer. compat is passed as nil
+// (Phase 1 decision: avoid v1 event duplication).
+func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, lg loggateway.Logger) *v2.Sequencer {
+	return v2.NewSequencer(rs, bus, lg, nil)
+}
+
+// provideV2Projector constructs the singleton v2 ActivityProjector.
+// Safe as a singleton: per-turn state is reset in OnTurnStart.
+func provideV2Projector(seq *v2.Sequencer, lg loggateway.Logger) *v2.ActivityProjector {
+	return v2.NewActivityProjector(seq, seq.SeqAssigner(), lg)
+}
+
+// provideWSV2Subscriber constructs the WS subscriber for v2 Events.
+// Subscribe is called synchronously in the constructor to avoid missing
+// events between construction and goroutine startup.
+func provideWSV2Subscriber(bus *event.V2Bus, wsSrv *server.WSServer, lg loggateway.Logger) *server.WSV2Subscriber {
+	return server.NewWSV2Subscriber(bus, wsSrv, lg)
+}
+
+// providePlanExecutor constructs the v2 forward DAG scheduler. Uses the
+// stub TeamOrchestrator in Phase 1 (actual team orchestration deferred to
+// Phase 2). The PlanExecutor is injected into TeamStarter via SetPlanExecutor
+// (called in ProvideChatService).
+func providePlanExecutor(
+	planStep biz.PlanStepV2Repo,
+	teamStage biz.TeamStageV2Repo,
+	planBoard biz.PlanBoardV2Repo,
+	orch service.TeamOrchestrator,
+	seq *v2.Sequencer,
+	lg loggateway.Logger,
+) *service.PlanExecutor {
+	return service.NewPlanExecutorFromV2Repos(planStep, teamStage, planBoard, orch, seq, lg)
+}
+
+// provideTeamOrchestratorStub returns the Phase 1 no-op TeamOrchestrator.
+func provideTeamOrchestratorStub() service.TeamOrchestrator {
+	return service.NewStubTeamOrchestrator()
 }
 
 func provideA2APublicBaseInput(c *conf.Server) a2apkg.PublicBaseURLInput {
@@ -2332,6 +2412,14 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideRuntimeTooling,
 		provideTeamOrchestrationDeps,
 		provideRunnerConfig,
+		// v2 event pipeline providers (Phase 1 收尾)
+		provideV2EventBus,
+		provideV2RepoSet,
+		provideV2Sequencer,
+		provideV2Projector,
+		provideWSV2Subscriber,
+		provideTeamOrchestratorStub,
+		providePlanExecutor,
 		provideTeamTurnDeps,
 		provideChannelTurnJobDeps,
 		provideChannelNotifierDeps,
