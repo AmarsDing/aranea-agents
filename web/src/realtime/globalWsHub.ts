@@ -11,6 +11,7 @@ import { GLOBAL_WS_SESSION_ID } from '../config/runtime';
 import { createWsTransport, type WsTransport } from './ws-transport';
 import type { ActivityEvent } from './activityEvent';
 import type { MonitorEvent } from './monitorEvent';
+import type { V2WsEnvelope } from '../features/chat/v2Types';
 
 export type GlobalWsConsumer = {
   id: string;
@@ -20,6 +21,8 @@ export type GlobalWsConsumer = {
   onActivityEvent?: (ev: ActivityEvent) => void;
   /** Monitor channel: called when a monitor_event message arrives. */
   onMonitorEvent?: (event: MonitorEvent) => void;
+  /** v2 chat events: called when a v2_event envelope arrives. */
+  onV2Event?: (envelope: V2WsEnvelope) => void;
   onConnected?: () => void;
   onDisconnected?: () => void;
   onServerShutdown?: (reason: string) => void;
@@ -71,6 +74,12 @@ function ensureHubTransport(): WsTransport {
         c.onMonitorEvent?.(event);
       }
     },
+    onV2Event: (envelope) => {
+      // v2 chat events: dispatch to all consumers that have opted in.
+      for (const c of consumers.values()) {
+        c.onV2Event?.(envelope);
+      }
+    },
     onConnected: () => {
       syncHubSubscriptions();
       for (const c of consumers.values()) {
@@ -111,6 +120,7 @@ export function acquireGlobalWsConsumer(
     logEnabled: opts.logEnabled,
     onActivityEvent: opts.onActivityEvent,
     onMonitorEvent: opts.onMonitorEvent,
+    onV2Event: opts.onV2Event,
     onConnected: opts.onConnected,
     onDisconnected: opts.onDisconnected,
     onServerShutdown: opts.onServerShutdown,

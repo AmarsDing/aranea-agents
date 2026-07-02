@@ -11,6 +11,7 @@
 import { buildWsUrl } from '../config/runtime';
 import type { ActivityEvent } from './activityEvent';
 import type { MonitorEvent } from './monitorEvent';
+import type { V2WsEnvelope } from '../features/chat/v2Types';
 
 /**
  * WS downstream message shape. The single source of truth for what the
@@ -76,6 +77,17 @@ export type WsTransportOptions = {
   token?: string;
   logEnabled?: boolean;
   /**
+   * Optional explicit WS URL. When omitted, the URL is built from
+   * sessionId/lastEventId/token/logEnabled via buildWsUrl.
+   */
+  url?: string;
+  /**
+   * Optional factory used to construct the underlying WebSocket. Primarily
+   * intended for tests to inject a mock socket. When omitted, the standard
+   * `new WebSocket(url)` constructor is used.
+   */
+  socketFactory?: (url: string) => WebSocket;
+  /**
    * Activity-First (AF): called when a downstream message carries an
    * activity_event payload (business-semantic Activity lifecycle event).
    * This replaces the legacy activity_start/delta/done/child_start envelopes
@@ -88,6 +100,11 @@ export type WsTransportOptions = {
    * the legacy envelope-based dispatch for monitor events.
    */
   onMonitorEvent?: (event: MonitorEvent) => void;
+  /**
+   * v2 chat events: dispatched when a downstream message carries a v2_event
+   * envelope (type="v2_event"). The payload is the raw envelope object.
+   */
+  onV2Event?: (envelope: V2WsEnvelope) => void;
   onConnected?: (info: { sessionId: string; lastEventId?: string }) => void;
   onDisconnected?: () => void;
   onError?: (error: Event) => void;
@@ -129,13 +146,13 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
       return;
     }
 
-    const url = buildWsUrl({
+    const url = opts.url ?? buildWsUrl({
       sessionId: opts.sessionId,
       lastEventId: _lastEventId,
       token: opts.token,
       logEnabled: opts.logEnabled,
     });
-    ws = new WebSocket(url);
+    ws = opts.socketFactory ? opts.socketFactory(url) : new WebSocket(url);
 
     ws.onopen = () => {
       _connected = true;
@@ -146,7 +163,18 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
 
     ws.onmessage = (ev: MessageEvent) => {
       try {
-        const msg = JSON.parse(ev.data) as WsDownstream;
+        const raw = JSON.parse(ev.data) as Record<string, unknown>;
+
+        // v2 chat events: envelope { type: "v2_event", kind, payload }.
+        // The v2 envelope has NO `direction` field, so it must be dispatched
+        // BEFORE the legacy `server_to_client` direction check below —
+        // otherwise v2 events would be silently dropped.
+        if (raw.type === 'v2_event') {
+          opts.onV2Event?.(raw as unknown as V2WsEnvelope);
+          return;
+        }
+
+        const msg = raw as WsDownstream;
         if (msg.direction !== 'server_to_client') return;
 
         if (msg.type === 'connected' && msg.payload) {
