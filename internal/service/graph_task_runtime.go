@@ -72,7 +72,7 @@ func (r *GraphTaskRuntime) Stop() {
 	r.dispatch.Stop()
 }
 
-func (r *GraphTaskRuntime) PublishTaskStatus(ctx context.Context, task *biz.GraphTask, extra map[string]any) {
+func (r *GraphTaskRuntime) PublishGraphTaskStatus(ctx context.Context, task *biz.GraphTask, extra map[string]any) {
 	if r == nil || task == nil {
 		return
 	}
@@ -144,7 +144,7 @@ func (r *GraphTaskRuntime) OnGraphNodeStart(ctx context.Context, exec *biz.Graph
 }
 
 func (r *GraphTaskRuntime) OnTaskCompleted(ctx context.Context, task *biz.GraphTask) error {
-	if r == nil || r.graphUC == nil || task == nil || task.Status != biz.TaskStatusComplete {
+	if r == nil || r.graphUC == nil || task == nil || task.Status != biz.GraphTaskStatusComplete {
 		return nil
 	}
 	resumeValue := team.BuildTaskResumeValue(task)

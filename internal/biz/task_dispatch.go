@@ -27,7 +27,7 @@ func (uc *TaskUsecase) allParentTasksComplete(ctx context.Context, childTaskID s
 		return false, err
 	}
 	for _, pt := range parentTasks {
-		if pt.Status != TaskStatusComplete {
+		if pt.Status != GraphTaskStatusComplete {
 			return false, nil
 		}
 	}
@@ -92,7 +92,7 @@ func (uc *TaskUsecase) BatchResolveReadiness(ctx context.Context, tasks []*Graph
 			}
 			completeParents := make(map[string]bool)
 			for _, pt := range parentTasks {
-				if pt.Status == TaskStatusComplete {
+				if pt.Status == GraphTaskStatusComplete {
 					completeParents[pt.TaskID] = true
 				}
 			}
@@ -153,9 +153,9 @@ func (uc *TaskUsecase) ResolveDispatchAssignee(ctx context.Context, task *GraphT
 	return strings.TrimSpace(node.AgentName)
 }
 
-func (uc *TaskUsecase) publishTaskStatus(ctx context.Context, task *GraphTask, extra map[string]any) {
+func (uc *TaskUsecase) publishGraphTaskStatus(ctx context.Context, task *GraphTask, extra map[string]any) {
 	if uc == nil || uc.statusPublisher == nil || task == nil {
 		return
 	}
-	uc.statusPublisher.PublishTaskStatus(ctx, task, extra)
+	uc.statusPublisher.PublishGraphTaskStatus(ctx, task, extra)
 }

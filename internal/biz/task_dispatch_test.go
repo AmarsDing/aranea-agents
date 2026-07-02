@@ -20,10 +20,10 @@ func (s *stubTaskRepo) GetTask(_ context.Context, taskID string) (*GraphTask, er
 func (s *stubTaskRepo) GetActiveTaskByExecutionNode(context.Context, string, string) (*GraphTask, error) {
 	return nil, errTaskNotFound("")
 }
-func (s *stubTaskRepo) ListTasksByExecution(context.Context, string, TaskStatus, int, string) ([]*GraphTask, string, error) {
+func (s *stubTaskRepo) ListTasksByExecution(context.Context, string, GraphTaskStatus, int, string) ([]*GraphTask, string, error) {
 	return nil, "", nil
 }
-func (s *stubTaskRepo) ListTasksByStatuses(context.Context, []TaskStatus, int) ([]*GraphTask, error) {
+func (s *stubTaskRepo) ListTasksByStatuses(context.Context, []GraphTaskStatus, int) ([]*GraphTask, error) {
 	return nil, nil
 }
 func (s *stubTaskRepo) GetTasksByIDs(_ context.Context, ids []string) ([]*GraphTask, error) {
@@ -36,7 +36,7 @@ func (s *stubTaskRepo) GetTasksByIDs(_ context.Context, ids []string) ([]*GraphT
 	return result, nil
 }
 func (s *stubTaskRepo) UpdateTask(context.Context, *GraphTask) error { return nil }
-func (s *stubTaskRepo) BatchUpdateTaskStatus(context.Context, []string, TaskStatus) error {
+func (s *stubTaskRepo) BatchUpdateGraphTaskStatus(context.Context, []string, GraphTaskStatus) error {
 	return nil
 }
 func (s *stubTaskRepo) SaveTaskComment(context.Context, *TaskComment) error { return nil }
@@ -86,9 +86,9 @@ func (e *taskNotFoundErr) Error() string { return "task not found: " + e.id }
 
 func TestAllParentTasksComplete(t *testing.T) {
 	repo := &stubTaskRepo{tasks: map[string]*GraphTask{
-		"parent-done": {TaskID: "parent-done", Status: TaskStatusComplete},
-		"parent-open": {TaskID: "parent-open", Status: TaskStatusPending},
-		"child":       {TaskID: "child", Status: TaskStatusPending},
+		"parent-done": {TaskID: "parent-done", Status: GraphTaskStatusComplete},
+		"parent-open": {TaskID: "parent-open", Status: GraphTaskStatusPending},
+		"child":       {TaskID: "child", Status: GraphTaskStatusPending},
 	}}
 	links := &stubTaskLinkRepo{parents: map[string][]*TaskLink{
 		"child": {
@@ -118,8 +118,8 @@ func TestAllParentTasksComplete(t *testing.T) {
 
 func TestIsTaskReadyForDispatch(t *testing.T) {
 	repo := &stubTaskRepo{tasks: map[string]*GraphTask{
-		"parent": {TaskID: "parent", Status: TaskStatusPending},
-		"child":  {TaskID: "child", Status: TaskStatusPending},
+		"parent": {TaskID: "parent", Status: GraphTaskStatusPending},
+		"child":  {TaskID: "child", Status: GraphTaskStatusPending},
 	}}
 	links := &stubTaskLinkRepo{parents: map[string][]*TaskLink{
 		"child": {{ParentTaskID: "parent", ChildTaskID: "child"}},

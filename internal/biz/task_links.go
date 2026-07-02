@@ -76,7 +76,7 @@ func (uc *TaskUsecase) promoteReadyChildren(ctx context.Context, parentTask *Gra
 	}
 	for _, link := range links {
 		child, err := uc.reader.GetTask(ctx, link.ChildTaskID)
-		if err != nil || child.Status != TaskStatusPending {
+		if err != nil || child.Status != GraphTaskStatusPending {
 			continue
 		}
 		ready, err := uc.allParentTasksComplete(ctx, child.TaskID)
@@ -84,6 +84,6 @@ func (uc *TaskUsecase) promoteReadyChildren(ctx context.Context, parentTask *Gra
 			continue
 		}
 		uc.recordTaskEvent(ctx, child.TaskID, "task_ready", child.NodeID, fmt.Sprintf("promoted after parent %s complete", parentTask.TaskID))
-		uc.publishTaskStatus(ctx, child, map[string]any{"promoted": true})
+		uc.publishGraphTaskStatus(ctx, child, map[string]any{"promoted": true})
 	}
 }

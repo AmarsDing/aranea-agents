@@ -423,7 +423,7 @@ func TestToProtoTask(t *testing.T) {
 	completedAt := now.Add(2 * time.Hour)
 	task := &biz.GraphTask{
 		TaskID: "task1", NodeID: "n1", ExecutionID: "exec1",
-		Assignee: "agent1", Status: biz.TaskStatusComplete,
+		Assignee: "agent1", Status: biz.GraphTaskStatusComplete,
 		Context: "ctx", Input: "in", Output: "out",
 		Summary: "done", Metadata: "meta",
 		RequiredRole: "admin", AssignmentMode: "auto",
@@ -451,7 +451,7 @@ func TestToProtoTask_NilTimes(t *testing.T) {
 	now := time.Now()
 	task := &biz.GraphTask{
 		TaskID: "task2", NodeID: "n1",
-		Status:    biz.TaskStatusPending,
+		Status:    biz.GraphTaskStatusPending,
 		CreatedAt: now,
 	}
 	got := service.ToProtoTask(task)
@@ -466,20 +466,20 @@ func TestToProtoTask_NilTimes(t *testing.T) {
 func TestBizTaskStatusToProto(t *testing.T) {
 	tests := []struct {
 		name   string
-		status biz.TaskStatus
+		status biz.GraphTaskStatus
 		want   graphv1.TaskStatus
 	}{
-		{"pending", biz.TaskStatusPending, graphv1.TaskStatus_TASK_PENDING},
-		{"claimed", biz.TaskStatusClaimed, graphv1.TaskStatus_TASK_CLAIMED},
-		{"complete", biz.TaskStatusComplete, graphv1.TaskStatus_TASK_COMPLETE},
-		{"blocked", biz.TaskStatusBlocked, graphv1.TaskStatus_TASK_BLOCKED},
-		{"review_required", biz.TaskStatusReviewRequired, graphv1.TaskStatus_TASK_REVIEW_REQUIRED},
-		{"failed", biz.TaskStatusFailed, graphv1.TaskStatus_TASK_FAILED},
-		{"timed_out", biz.TaskStatusTimedOut, graphv1.TaskStatus_TASK_TIMED_OUT},
-		{"cancelled", biz.TaskStatusCancelled, graphv1.TaskStatus_TASK_CANCELLED},
-		{"crashed", biz.TaskStatusCrashed, graphv1.TaskStatus_TASK_CRASHED},
-		{"pending_assignment", biz.TaskStatusPendingAssignment, graphv1.TaskStatus_TASK_PENDING_ASSIGNMENT},
-		{"unknown", biz.TaskStatus("unknown"), graphv1.TaskStatus_TASK_PENDING},
+		{"pending", biz.GraphTaskStatusPending, graphv1.TaskStatus_TASK_PENDING},
+		{"claimed", biz.GraphTaskStatusClaimed, graphv1.TaskStatus_TASK_CLAIMED},
+		{"complete", biz.GraphTaskStatusComplete, graphv1.TaskStatus_TASK_COMPLETE},
+		{"blocked", biz.GraphTaskStatusBlocked, graphv1.TaskStatus_TASK_BLOCKED},
+		{"review_required", biz.GraphTaskStatusReviewRequired, graphv1.TaskStatus_TASK_REVIEW_REQUIRED},
+		{"failed", biz.GraphTaskStatusFailed, graphv1.TaskStatus_TASK_FAILED},
+		{"timed_out", biz.GraphTaskStatusTimedOut, graphv1.TaskStatus_TASK_TIMED_OUT},
+		{"cancelled", biz.GraphTaskStatusCancelled, graphv1.TaskStatus_TASK_CANCELLED},
+		{"crashed", biz.GraphTaskStatusCrashed, graphv1.TaskStatus_TASK_CRASHED},
+		{"pending_assignment", biz.GraphTaskStatusPendingAssignment, graphv1.TaskStatus_TASK_PENDING_ASSIGNMENT},
+		{"unknown", biz.GraphTaskStatus("unknown"), graphv1.TaskStatus_TASK_PENDING},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

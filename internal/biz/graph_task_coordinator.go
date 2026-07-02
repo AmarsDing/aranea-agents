@@ -2,14 +2,14 @@ package biz
 
 import "context"
 
-// TaskStatusPublisher emits task lifecycle updates to realtime observers (WS / orchestration).
-type TaskStatusPublisher interface {
-	PublishTaskStatus(ctx context.Context, task *GraphTask, extra map[string]any)
+// GraphTaskStatusPublisher emits task lifecycle updates to realtime observers (WS / orchestration).
+type GraphTaskStatusPublisher interface {
+	PublishGraphTaskStatus(ctx context.Context, task *GraphTask, extra map[string]any)
 }
 
 // GraphTaskCoordinator hooks graph runtime events to the task board (M54).
 type GraphTaskCoordinator interface {
-	TaskStatusPublisher
+	GraphTaskStatusPublisher
 	OnGraphNodeStart(ctx context.Context, exec *GraphExecution, node *NodeDef, meta NodeTaskMeta, inputPreview string) error
 	OnTaskCompleted(ctx context.Context, task *GraphTask) error
 }

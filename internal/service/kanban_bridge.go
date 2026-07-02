@@ -34,7 +34,7 @@ func (b *KanbanToolBridge) Show(ctx context.Context, taskID string) (map[string]
 }
 
 func (b *KanbanToolBridge) List(ctx context.Context, executionID, status string, limit int) ([]map[string]any, error) {
-	items, _, err := b.tasks.ListTasks(ctx, executionID, biz.TaskStatus(status), limit, "")
+	items, _, err := b.tasks.ListTasks(ctx, executionID, biz.GraphTaskStatus(status), limit, "")
 	if err != nil {
 		return nil, err
 	}

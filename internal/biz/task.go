@@ -11,19 +11,19 @@ import (
 	"github.com/google/uuid"
 )
 
-type TaskStatus string
+type GraphTaskStatus string
 
 const (
-	TaskStatusPending           TaskStatus = "pending"
-	TaskStatusClaimed           TaskStatus = "claimed"
-	TaskStatusComplete          TaskStatus = "complete"
-	TaskStatusBlocked           TaskStatus = "blocked"
-	TaskStatusReviewRequired    TaskStatus = "review_required"
-	TaskStatusFailed            TaskStatus = "failed"
-	TaskStatusTimedOut          TaskStatus = "timed_out"
-	TaskStatusCancelled         TaskStatus = "cancelled"
-	TaskStatusCrashed           TaskStatus = "crashed"
-	TaskStatusPendingAssignment TaskStatus = "pending_assignment"
+	GraphTaskStatusPending           GraphTaskStatus = "pending"
+	GraphTaskStatusClaimed           GraphTaskStatus = "claimed"
+	GraphTaskStatusComplete          GraphTaskStatus = "complete"
+	GraphTaskStatusBlocked           GraphTaskStatus = "blocked"
+	GraphTaskStatusReviewRequired    GraphTaskStatus = "review_required"
+	GraphTaskStatusFailed            GraphTaskStatus = "failed"
+	GraphTaskStatusTimedOut          GraphTaskStatus = "timed_out"
+	GraphTaskStatusCancelled         GraphTaskStatus = "cancelled"
+	GraphTaskStatusCrashed           GraphTaskStatus = "crashed"
+	GraphTaskStatusPendingAssignment GraphTaskStatus = "pending_assignment"
 )
 
 type GraphTask struct {
@@ -31,7 +31,7 @@ type GraphTask struct {
 	NodeID             string
 	ExecutionID        string
 	Assignee           string
-	Status             TaskStatus
+	Status             GraphTaskStatus
 	Context            string
 	Input              string
 	Output             string
@@ -85,14 +85,14 @@ type TaskReader interface {
 	GetTask(ctx context.Context, taskID string) (*GraphTask, error)
 	GetTasksByIDs(ctx context.Context, taskIDs []string) ([]*GraphTask, error)
 	GetActiveTaskByExecutionNode(ctx context.Context, executionID, nodeID string) (*GraphTask, error)
-	ListTasksByExecution(ctx context.Context, executionID string, status TaskStatus, pageSize int, pageToken string) ([]*GraphTask, string, error)
-	ListTasksByStatuses(ctx context.Context, statuses []TaskStatus, limit int) ([]*GraphTask, error)
+	ListTasksByExecution(ctx context.Context, executionID string, status GraphTaskStatus, pageSize int, pageToken string) ([]*GraphTask, string, error)
+	ListTasksByStatuses(ctx context.Context, statuses []GraphTaskStatus, limit int) ([]*GraphTask, error)
 }
 
 type TaskWriter interface {
 	SaveTask(ctx context.Context, task *GraphTask) error
 	UpdateTask(ctx context.Context, task *GraphTask) error
-	BatchUpdateTaskStatus(ctx context.Context, taskIDs []string, status TaskStatus) error
+	BatchUpdateGraphTaskStatus(ctx context.Context, taskIDs []string, status GraphTaskStatus) error
 }
 
 type TaskCommentStore interface {
@@ -144,7 +144,7 @@ type TaskUsecase struct {
 	graph             TaskGraphResolver
 	roleChecker       AgentRoleChecker
 	agentLister       AgentListerByRole
-	statusPublisher   TaskStatusPublisher
+	statusPublisher   GraphTaskStatusPublisher
 	completionHandler TaskCompletionHandler
 	mu                sync.RWMutex
 	heartbeats        map[string]time.Time
@@ -173,7 +173,7 @@ func (uc *TaskUsecase) SetLinkRepo(repo TaskLinkRepo) {
 	uc.linkRepo = repo
 }
 
-func (uc *TaskUsecase) SetStatusPublisher(p TaskStatusPublisher) {
+func (uc *TaskUsecase) SetStatusPublisher(p GraphTaskStatusPublisher) {
 	uc.statusPublisher = p
 }
 
@@ -185,8 +185,8 @@ func (uc *TaskUsecase) afterTaskMutation(ctx context.Context, task *GraphTask, e
 	if task == nil {
 		return
 	}
-	uc.publishTaskStatus(ctx, task, extra)
-	if task.Status != TaskStatusComplete {
+	uc.publishGraphTaskStatus(ctx, task, extra)
+	if task.Status != GraphTaskStatusComplete {
 		return
 	}
 	uc.promoteReadyChildren(ctx, task)
@@ -220,7 +220,7 @@ func (uc *TaskUsecase) CreateTask(ctx context.Context, p CreateTaskParams) (*Gra
 		TaskID:             uuid.New().String(),
 		NodeID:             p.NodeID,
 		ExecutionID:        p.ExecutionID,
-		Status:             TaskStatusPending,
+		Status:             GraphTaskStatusPending,
 		Input:              p.Input,
 		Context:            p.Context,
 		RequiredRole:       p.RequiredRole,
@@ -232,7 +232,7 @@ func (uc *TaskUsecase) CreateTask(ctx context.Context, p CreateTaskParams) (*Gra
 	if p.AssignmentMode == "dynamic" && p.RequiredRole != "" {
 		agents, err := uc.agentLister(ctx, p.RequiredRole)
 		if err != nil || len(agents) == 0 {
-			task.Status = TaskStatusPendingAssignment
+			task.Status = GraphTaskStatusPendingAssignment
 		}
 	}
 
@@ -249,12 +249,12 @@ func (uc *TaskUsecase) GetTask(ctx context.Context, taskID string) (*GraphTask, 
 	return uc.reader.GetTask(ctx, taskID)
 }
 
-func (uc *TaskUsecase) ListTasks(ctx context.Context, executionID string, status TaskStatus, pageSize int, pageToken string) ([]*GraphTask, string, error) {
+func (uc *TaskUsecase) ListTasks(ctx context.Context, executionID string, status GraphTaskStatus, pageSize int, pageToken string) ([]*GraphTask, string, error) {
 	return uc.reader.ListTasksByExecution(ctx, executionID, status, pageSize, pageToken)
 }
 
 func (uc *TaskUsecase) ListPendingTasks(ctx context.Context, limit int) ([]*GraphTask, error) {
-	return uc.reader.ListTasksByStatuses(ctx, []TaskStatus{TaskStatusPending, TaskStatusPendingAssignment}, limit)
+	return uc.reader.ListTasksByStatuses(ctx, []GraphTaskStatus{GraphTaskStatusPending, GraphTaskStatusPendingAssignment}, limit)
 }
 
 func (uc *TaskUsecase) SaveTaskRun(ctx context.Context, run *TaskRun) error {
@@ -272,7 +272,7 @@ func (uc *TaskUsecase) ClaimTask(ctx context.Context, taskID string, agentKey st
 	if err != nil {
 		return nil, err
 	}
-	if task.Status != TaskStatusPending && task.Status != TaskStatusPendingAssignment {
+	if task.Status != GraphTaskStatusPending && task.Status != GraphTaskStatusPendingAssignment {
 		return nil, apierror.BadRequest("TASK", "task %s cannot be claimed in status %s", taskID, task.Status)
 	}
 	if task.AssignmentMode == "dynamic" && task.RequiredRole != "" {
@@ -282,7 +282,7 @@ func (uc *TaskUsecase) ClaimTask(ctx context.Context, taskID string, agentKey st
 	}
 	now := time.Now()
 	task.Assignee = agentKey
-	task.Status = TaskStatusClaimed
+	task.Status = GraphTaskStatusClaimed
 	task.ClaimedAt = &now
 	if err := uc.writer.UpdateTask(ctx, task); err != nil {
 		return nil, err
@@ -301,7 +301,7 @@ func (uc *TaskUsecase) SubmitTaskResult(ctx context.Context, taskID string, outp
 	if err != nil {
 		return nil, err
 	}
-	if task.Status != TaskStatusClaimed && task.Status != TaskStatusReviewRequired {
+	if task.Status != GraphTaskStatusClaimed && task.Status != GraphTaskStatusReviewRequired {
 		return nil, apierror.BadRequest("TASK", "task %s cannot submit result in status %s", taskID, task.Status)
 	}
 	now := time.Now()
@@ -312,9 +312,9 @@ func (uc *TaskUsecase) SubmitTaskResult(ctx context.Context, taskID string, outp
 
 	nodeDef := uc.findNodeDef(ctx, task)
 	if nodeDef != nil && nodeDef.ReviewerAgent != "" {
-		task.Status = TaskStatusReviewRequired
+		task.Status = GraphTaskStatusReviewRequired
 	} else {
-		task.Status = TaskStatusComplete
+		task.Status = GraphTaskStatusComplete
 	}
 	if err := uc.writer.UpdateTask(ctx, task); err != nil {
 		return nil, err
@@ -329,7 +329,7 @@ func (uc *TaskUsecase) Heartbeat(ctx context.Context, taskID string, agentKey st
 	if err != nil {
 		return false, 0, err
 	}
-	if task.Status != TaskStatusClaimed {
+	if task.Status != GraphTaskStatusClaimed {
 		return false, 0, apierror.BadRequest("TASK", "task %s not in claimed status", taskID)
 	}
 	if task.Assignee != agentKey {
@@ -355,10 +355,10 @@ func (uc *TaskUsecase) ReportBlocked(ctx context.Context, taskID string, reason 
 	if err != nil {
 		return nil, err
 	}
-	if task.Status != TaskStatusClaimed {
+	if task.Status != GraphTaskStatusClaimed {
 		return nil, apierror.BadRequest("TASK", "task %s cannot be blocked in status %s", taskID, task.Status)
 	}
-	task.Status = TaskStatusBlocked
+	task.Status = GraphTaskStatusBlocked
 	task.Metadata = metadata
 	if err := uc.writer.UpdateTask(ctx, task); err != nil {
 		return nil, err
@@ -373,10 +373,10 @@ func (uc *TaskUsecase) UnblockTask(ctx context.Context, taskID string, comment s
 	if err != nil {
 		return nil, err
 	}
-	if task.Status != TaskStatusBlocked {
+	if task.Status != GraphTaskStatusBlocked {
 		return nil, apierror.BadRequest("TASK", "task %s is not blocked", taskID)
 	}
-	task.Status = TaskStatusPending
+	task.Status = GraphTaskStatusPending
 	task.Assignee = ""
 	task.ClaimedAt = nil
 	if err := uc.writer.UpdateTask(ctx, task); err != nil {
@@ -409,7 +409,7 @@ func (uc *TaskUsecase) CreateTaskWithParents(ctx context.Context, p CreateTaskPa
 		linked = true
 	}
 	if linked {
-		uc.publishTaskStatus(ctx, task, map[string]any{"parents_linked": true})
+		uc.publishGraphTaskStatus(ctx, task, map[string]any{"parents_linked": true})
 	}
 	return task, nil
 }
@@ -450,13 +450,13 @@ func (uc *TaskUsecase) ReviewTask(ctx context.Context, taskID string, reviewerAg
 	if err != nil {
 		return nil, err
 	}
-	if task.Status != TaskStatusReviewRequired {
+	if task.Status != GraphTaskStatusReviewRequired {
 		return nil, apierror.BadRequest("TASK", "task %s is not in review_required status", taskID)
 	}
 	if approved {
-		task.Status = TaskStatusComplete
+		task.Status = GraphTaskStatusComplete
 	} else {
-		task.Status = TaskStatusClaimed
+		task.Status = GraphTaskStatusClaimed
 	}
 	if err := uc.writer.UpdateTask(ctx, task); err != nil {
 		return nil, err
@@ -516,9 +516,9 @@ func (uc *TaskUsecase) CheckTimeouts(ctx context.Context) error {
 	var timedOutIDs []string
 	var timedOutTasks []*GraphTask
 	for _, task := range tasks {
-		if task.Status == TaskStatusClaimed {
+		if task.Status == GraphTaskStatusClaimed {
 			timedOutIDs = append(timedOutIDs, task.TaskID)
-			task.Status = TaskStatusTimedOut
+			task.Status = GraphTaskStatusTimedOut
 			timedOutTasks = append(timedOutTasks, task)
 		}
 	}
@@ -528,7 +528,7 @@ func (uc *TaskUsecase) CheckTimeouts(ctx context.Context) error {
 			loggateway.Int("expired_count", len(expiredIDs)))
 		return nil
 	}
-	if err := uc.writer.BatchUpdateTaskStatus(ctx, timedOutIDs, TaskStatusTimedOut); err != nil {
+	if err := uc.writer.BatchUpdateGraphTaskStatus(ctx, timedOutIDs, GraphTaskStatusTimedOut); err != nil {
 		uc.lg.Error("batch timeout update failed",
 			loggateway.StepID("task.batch_timeout_fail"),
 			loggateway.Int("count", len(timedOutIDs)), loggateway.Err(err))
@@ -539,7 +539,7 @@ func (uc *TaskUsecase) CheckTimeouts(ctx context.Context) error {
 		loggateway.Int("timed_out_count", len(timedOutIDs)))
 	for _, task := range timedOutTasks {
 		uc.recordTaskEvent(ctx, task.TaskID, "task_timed_out", task.NodeID, "task timed out")
-		uc.publishTaskStatus(ctx, task, nil)
+		uc.publishGraphTaskStatus(ctx, task, nil)
 	}
 	return nil
 }
@@ -561,7 +561,7 @@ func (uc *TaskUsecase) ReleaseClaim(ctx context.Context, taskID string) {
 	if err != nil {
 		return
 	}
-	task.Status = TaskStatusPending
+	task.Status = GraphTaskStatusPending
 	task.Assignee = ""
 	task.ClaimedAt = nil
 	if err := uc.writer.UpdateTask(ctx, task); err != nil {
@@ -570,7 +570,7 @@ func (uc *TaskUsecase) ReleaseClaim(ctx context.Context, taskID string) {
 			loggateway.Str("task_id", taskID), loggateway.Err(err))
 	}
 	uc.recordTaskEvent(ctx, taskID, "task_claim_released", task.NodeID, "claim released after dispatch failure")
-	uc.publishTaskStatus(ctx, task, nil)
+	uc.publishGraphTaskStatus(ctx, task, nil)
 }
 
 func (uc *TaskUsecase) recordTaskEvent(ctx context.Context, taskID string, eventType string, sourceNode string, description string) {

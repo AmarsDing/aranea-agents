@@ -15,20 +15,20 @@ import (
 func TestBizTaskStatusToProto(t *testing.T) {
 	tests := []struct {
 		name   string
-		status biz.TaskStatus
+		status biz.GraphTaskStatus
 		want   graphv1.TaskStatus
 	}{
-		{"pending", biz.TaskStatusPending, graphv1.TaskStatus_TASK_PENDING},
-		{"claimed", biz.TaskStatusClaimed, graphv1.TaskStatus_TASK_CLAIMED},
-		{"complete", biz.TaskStatusComplete, graphv1.TaskStatus_TASK_COMPLETE},
-		{"blocked", biz.TaskStatusBlocked, graphv1.TaskStatus_TASK_BLOCKED},
-		{"review_required", biz.TaskStatusReviewRequired, graphv1.TaskStatus_TASK_REVIEW_REQUIRED},
-		{"failed", biz.TaskStatusFailed, graphv1.TaskStatus_TASK_FAILED},
-		{"timed_out", biz.TaskStatusTimedOut, graphv1.TaskStatus_TASK_TIMED_OUT},
-		{"cancelled", biz.TaskStatusCancelled, graphv1.TaskStatus_TASK_CANCELLED},
-		{"crashed", biz.TaskStatusCrashed, graphv1.TaskStatus_TASK_CRASHED},
-		{"pending_assignment", biz.TaskStatusPendingAssignment, graphv1.TaskStatus_TASK_PENDING_ASSIGNMENT},
-		{"unknown", biz.TaskStatus("unknown"), graphv1.TaskStatus_TASK_PENDING},
+		{"pending", biz.GraphTaskStatusPending, graphv1.TaskStatus_TASK_PENDING},
+		{"claimed", biz.GraphTaskStatusClaimed, graphv1.TaskStatus_TASK_CLAIMED},
+		{"complete", biz.GraphTaskStatusComplete, graphv1.TaskStatus_TASK_COMPLETE},
+		{"blocked", biz.GraphTaskStatusBlocked, graphv1.TaskStatus_TASK_BLOCKED},
+		{"review_required", biz.GraphTaskStatusReviewRequired, graphv1.TaskStatus_TASK_REVIEW_REQUIRED},
+		{"failed", biz.GraphTaskStatusFailed, graphv1.TaskStatus_TASK_FAILED},
+		{"timed_out", biz.GraphTaskStatusTimedOut, graphv1.TaskStatus_TASK_TIMED_OUT},
+		{"cancelled", biz.GraphTaskStatusCancelled, graphv1.TaskStatus_TASK_CANCELLED},
+		{"crashed", biz.GraphTaskStatusCrashed, graphv1.TaskStatus_TASK_CRASHED},
+		{"pending_assignment", biz.GraphTaskStatusPendingAssignment, graphv1.TaskStatus_TASK_PENDING_ASSIGNMENT},
+		{"unknown", biz.GraphTaskStatus("unknown"), graphv1.TaskStatus_TASK_PENDING},
 	}
 
 	for _, tt := range tests {
@@ -503,7 +503,7 @@ func TestToProtoTask(t *testing.T) {
 		NodeID:         "node-1",
 		ExecutionID:    "exec-1",
 		Assignee:       "user-1",
-		Status:         biz.TaskStatusComplete,
+		Status:         biz.GraphTaskStatusComplete,
 		Context:        "do something",
 		Input:          "input data",
 		Output:         "output data",
@@ -547,7 +547,7 @@ func TestToProtoTask_NilTimestamps(t *testing.T) {
 	task := &biz.GraphTask{
 		TaskID:    "task-2",
 		NodeID:    "n1",
-		Status:    biz.TaskStatusPending,
+		Status:    biz.GraphTaskStatusPending,
 		CreatedAt: time.Now(),
 	}
 

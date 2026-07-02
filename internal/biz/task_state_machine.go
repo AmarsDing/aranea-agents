@@ -55,19 +55,19 @@ const (
 
 // taskTransitionRules defines the legal state transitions for a Task.
 // Terminal states (complete, failed, cancelled, crashed) have no outgoing transitions.
-var taskTransitionRules = []shared.TransitionRule[TaskStatus, TaskTransitionEvent]{
-	{From: TaskStatusPending, Event: TaskEventClaim, To: TaskStatusClaimed},
-	{From: TaskStatusPending, Event: TaskEventAssignDynamic, To: TaskStatusPendingAssignment},
-	{From: TaskStatusPendingAssignment, Event: TaskEventReassign, To: TaskStatusPending},
-	{From: TaskStatusPendingAssignment, Event: TaskEventClaim, To: TaskStatusClaimed},
-	{From: TaskStatusClaimed, Event: TaskEventComplete, To: TaskStatusComplete},
-	{From: TaskStatusClaimed, Event: TaskEventCompleteNeedReview, To: TaskStatusReviewRequired},
-	{From: TaskStatusClaimed, Event: TaskEventBlock, To: TaskStatusBlocked},
-	{From: TaskStatusClaimed, Event: TaskEventTimeout, To: TaskStatusTimedOut},
-	{From: TaskStatusBlocked, Event: TaskEventUnblock, To: TaskStatusPending},
-	{From: TaskStatusReviewRequired, Event: TaskEventApprove, To: TaskStatusComplete},
-	{From: TaskStatusReviewRequired, Event: TaskEventReject, To: TaskStatusClaimed},
-	{From: TaskStatusTimedOut, Event: TaskEventRetry, To: TaskStatusPending},
+var taskTransitionRules = []shared.TransitionRule[GraphTaskStatus, TaskTransitionEvent]{
+	{From: GraphTaskStatusPending, Event: TaskEventClaim, To: GraphTaskStatusClaimed},
+	{From: GraphTaskStatusPending, Event: TaskEventAssignDynamic, To: GraphTaskStatusPendingAssignment},
+	{From: GraphTaskStatusPendingAssignment, Event: TaskEventReassign, To: GraphTaskStatusPending},
+	{From: GraphTaskStatusPendingAssignment, Event: TaskEventClaim, To: GraphTaskStatusClaimed},
+	{From: GraphTaskStatusClaimed, Event: TaskEventComplete, To: GraphTaskStatusComplete},
+	{From: GraphTaskStatusClaimed, Event: TaskEventCompleteNeedReview, To: GraphTaskStatusReviewRequired},
+	{From: GraphTaskStatusClaimed, Event: TaskEventBlock, To: GraphTaskStatusBlocked},
+	{From: GraphTaskStatusClaimed, Event: TaskEventTimeout, To: GraphTaskStatusTimedOut},
+	{From: GraphTaskStatusBlocked, Event: TaskEventUnblock, To: GraphTaskStatusPending},
+	{From: GraphTaskStatusReviewRequired, Event: TaskEventApprove, To: GraphTaskStatusComplete},
+	{From: GraphTaskStatusReviewRequired, Event: TaskEventReject, To: GraphTaskStatusClaimed},
+	{From: GraphTaskStatusTimedOut, Event: TaskEventRetry, To: GraphTaskStatusPending},
 }
 
 // ── TaskStateMachine ─────────────────────────────────────────────────────────
@@ -76,39 +76,39 @@ var taskTransitionRules = []shared.TransitionRule[TaskStatus, TaskTransitionEven
 // It is safe for concurrent use after construction.
 // Stability:evolving
 type TaskStateMachine struct {
-	inner *shared.GenericStateMachine[TaskStatus, TaskTransitionEvent]
+	inner *shared.GenericStateMachine[GraphTaskStatus, TaskTransitionEvent]
 }
 
 // NewTaskStateMachine creates a TaskStateMachine with the standard transition rules.
 func NewTaskStateMachine() *TaskStateMachine {
 	return &TaskStateMachine{
-		inner: shared.NewGenericStateMachine[TaskStatus, TaskTransitionEvent](taskTransitionRules),
+		inner: shared.NewGenericStateMachine[GraphTaskStatus, TaskTransitionEvent](taskTransitionRules),
 	}
 }
 
 // Transition validates and executes a state transition.
 // Returns the new state on success, or an error for illegal transitions.
-func (sm *TaskStateMachine) Transition(from TaskStatus, event TaskTransitionEvent) (TaskStatus, error) {
+func (sm *TaskStateMachine) Transition(from GraphTaskStatus, event TaskTransitionEvent) (GraphTaskStatus, error) {
 	return sm.inner.Transition(from, event)
 }
 
 // CanTransition reports whether a direct transition from→to is legal.
-func (sm *TaskStateMachine) CanTransition(from, to TaskStatus) bool {
+func (sm *TaskStateMachine) CanTransition(from, to GraphTaskStatus) bool {
 	return sm.inner.CanTransition(from, to)
 }
 
 // ValidTargets returns all states reachable from the given state, sorted
 // lexicographically.
-func (sm *TaskStateMachine) ValidTargets(from TaskStatus) []TaskStatus {
+func (sm *TaskStateMachine) ValidTargets(from GraphTaskStatus) []GraphTaskStatus {
 	return sm.inner.ValidTargets(from)
 }
 
 // ── Helper functions ─────────────────────────────────────────────────────────
 
 // IsTaskTerminal returns true for terminal states that have no outgoing transitions.
-func IsTaskTerminal(state TaskStatus) bool {
+func IsTaskTerminal(state GraphTaskStatus) bool {
 	switch state {
-	case TaskStatusComplete, TaskStatusFailed, TaskStatusCancelled, TaskStatusCrashed:
+	case GraphTaskStatusComplete, GraphTaskStatusFailed, GraphTaskStatusCancelled, GraphTaskStatusCrashed:
 		return true
 	default:
 		return false
@@ -122,11 +122,11 @@ var taskStateMachine = NewTaskStateMachine()
 // TaskTransition is a convenience function that validates and executes a Task
 // state transition using the package-level state machine.
 // Returns the new state on success, or an error for illegal transitions.
-func TaskTransition(from TaskStatus, event TaskTransitionEvent) (TaskStatus, error) {
+func TaskTransition(from GraphTaskStatus, event TaskTransitionEvent) (GraphTaskStatus, error) {
 	return taskStateMachine.Transition(from, event)
 }
 
 // CanTaskTransition reports whether a direct transition from→to is legal.
-func CanTaskTransition(from, to TaskStatus) bool {
+func CanTaskTransition(from, to GraphTaskStatus) bool {
 	return taskStateMachine.CanTransition(from, to)
 }

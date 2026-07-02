@@ -10,29 +10,29 @@ import (
 func TestTaskStateMachine_LegalTransitions(t *testing.T) {
 	tests := []struct {
 		name      string
-		from      TaskStatus
+		from      GraphTaskStatus
 		event     TaskTransitionEvent
-		wantTo    TaskStatus
+		wantTo    GraphTaskStatus
 		wantError bool
 	}{
 		// Pending transitions
-		{"Pending→Claimed", TaskStatusPending, TaskEventClaim, TaskStatusClaimed, false},
-		{"Pending→PendingAssignment", TaskStatusPending, TaskEventAssignDynamic, TaskStatusPendingAssignment, false},
+		{"Pending→Claimed", GraphTaskStatusPending, TaskEventClaim, GraphTaskStatusClaimed, false},
+		{"Pending→PendingAssignment", GraphTaskStatusPending, TaskEventAssignDynamic, GraphTaskStatusPendingAssignment, false},
 		// PendingAssignment transitions
-		{"PendingAssignment→Pending", TaskStatusPendingAssignment, TaskEventReassign, TaskStatusPending, false},
-		{"PendingAssignment→Claimed", TaskStatusPendingAssignment, TaskEventClaim, TaskStatusClaimed, false},
+		{"PendingAssignment→Pending", GraphTaskStatusPendingAssignment, TaskEventReassign, GraphTaskStatusPending, false},
+		{"PendingAssignment→Claimed", GraphTaskStatusPendingAssignment, TaskEventClaim, GraphTaskStatusClaimed, false},
 		// Claimed transitions
-		{"Claimed→Complete", TaskStatusClaimed, TaskEventComplete, TaskStatusComplete, false},
-		{"Claimed→ReviewRequired", TaskStatusClaimed, TaskEventCompleteNeedReview, TaskStatusReviewRequired, false},
-		{"Claimed→Blocked", TaskStatusClaimed, TaskEventBlock, TaskStatusBlocked, false},
-		{"Claimed→TimedOut", TaskStatusClaimed, TaskEventTimeout, TaskStatusTimedOut, false},
+		{"Claimed→Complete", GraphTaskStatusClaimed, TaskEventComplete, GraphTaskStatusComplete, false},
+		{"Claimed→ReviewRequired", GraphTaskStatusClaimed, TaskEventCompleteNeedReview, GraphTaskStatusReviewRequired, false},
+		{"Claimed→Blocked", GraphTaskStatusClaimed, TaskEventBlock, GraphTaskStatusBlocked, false},
+		{"Claimed→TimedOut", GraphTaskStatusClaimed, TaskEventTimeout, GraphTaskStatusTimedOut, false},
 		// Blocked transitions
-		{"Blocked→Pending", TaskStatusBlocked, TaskEventUnblock, TaskStatusPending, false},
+		{"Blocked→Pending", GraphTaskStatusBlocked, TaskEventUnblock, GraphTaskStatusPending, false},
 		// ReviewRequired transitions
-		{"ReviewRequired→Complete", TaskStatusReviewRequired, TaskEventApprove, TaskStatusComplete, false},
-		{"ReviewRequired→Claimed", TaskStatusReviewRequired, TaskEventReject, TaskStatusClaimed, false},
+		{"ReviewRequired→Complete", GraphTaskStatusReviewRequired, TaskEventApprove, GraphTaskStatusComplete, false},
+		{"ReviewRequired→Claimed", GraphTaskStatusReviewRequired, TaskEventReject, GraphTaskStatusClaimed, false},
 		// TimedOut transitions
-		{"TimedOut→Pending", TaskStatusTimedOut, TaskEventRetry, TaskStatusPending, false},
+		{"TimedOut→Pending", GraphTaskStatusTimedOut, TaskEventRetry, GraphTaskStatusPending, false},
 	}
 
 	for _, tt := range tests {
@@ -58,22 +58,22 @@ func TestTaskStateMachine_LegalTransitions(t *testing.T) {
 func TestTaskStateMachine_IllegalTransitions(t *testing.T) {
 	tests := []struct {
 		name  string
-		from  TaskStatus
+		from  GraphTaskStatus
 		event TaskTransitionEvent
 	}{
 		// Terminal states have no outgoing transitions
-		{"Complete→Claimed", TaskStatusComplete, TaskEventClaim},
-		{"Failed→Pending", TaskStatusFailed, TaskEventRetry},
-		{"Cancelled→Pending", TaskStatusCancelled, TaskEventRetry},
-		{"Crashed→Pending", TaskStatusCrashed, TaskEventRetry},
+		{"Complete→Claimed", GraphTaskStatusComplete, TaskEventClaim},
+		{"Failed→Pending", GraphTaskStatusFailed, TaskEventRetry},
+		{"Cancelled→Pending", GraphTaskStatusCancelled, TaskEventRetry},
+		{"Crashed→Pending", GraphTaskStatusCrashed, TaskEventRetry},
 		// Invalid transitions
-		{"Pending→Complete (no direct path)", TaskStatusPending, TaskEventComplete},
-		{"Blocked→Claimed (must unblock first)", TaskStatusBlocked, TaskEventClaim},
-		{"ReviewRequired→Blocked (invalid)", TaskStatusReviewRequired, TaskEventBlock},
-		{"TimedOut→Claimed (must retry first)", TaskStatusTimedOut, TaskEventClaim},
+		{"Pending→Complete (no direct path)", GraphTaskStatusPending, TaskEventComplete},
+		{"Blocked→Claimed (must unblock first)", GraphTaskStatusBlocked, TaskEventClaim},
+		{"ReviewRequired→Blocked (invalid)", GraphTaskStatusReviewRequired, TaskEventBlock},
+		{"TimedOut→Claimed (must retry first)", GraphTaskStatusTimedOut, TaskEventClaim},
 		// Unknown event for state
-		{"Pending→Approve (invalid for state)", TaskStatusPending, TaskEventApprove},
-		{"Claimed→Retry (invalid for state)", TaskStatusClaimed, TaskEventRetry},
+		{"Pending→Approve (invalid for state)", GraphTaskStatusPending, TaskEventApprove},
+		{"Claimed→Retry (invalid for state)", GraphTaskStatusClaimed, TaskEventRetry},
 	}
 
 	for _, tt := range tests {
@@ -93,22 +93,22 @@ func TestTaskStateMachine_IllegalTransitions(t *testing.T) {
 func TestTaskStateMachine_CanTransition(t *testing.T) {
 	sm := NewTaskStateMachine()
 	tests := []struct {
-		from, to TaskStatus
+		from, to GraphTaskStatus
 		want     bool
 	}{
-		{TaskStatusPending, TaskStatusClaimed, true},
-		{TaskStatusClaimed, TaskStatusComplete, true},
-		{TaskStatusClaimed, TaskStatusBlocked, true},
-		{TaskStatusBlocked, TaskStatusPending, true},
-		{TaskStatusReviewRequired, TaskStatusComplete, true},
-		{TaskStatusTimedOut, TaskStatusPending, true},
+		{GraphTaskStatusPending, GraphTaskStatusClaimed, true},
+		{GraphTaskStatusClaimed, GraphTaskStatusComplete, true},
+		{GraphTaskStatusClaimed, GraphTaskStatusBlocked, true},
+		{GraphTaskStatusBlocked, GraphTaskStatusPending, true},
+		{GraphTaskStatusReviewRequired, GraphTaskStatusComplete, true},
+		{GraphTaskStatusTimedOut, GraphTaskStatusPending, true},
 		// Invalid direct transitions
-		{TaskStatusPending, TaskStatusComplete, false},
-		{TaskStatusComplete, TaskStatusPending, false},
-		{TaskStatusBlocked, TaskStatusClaimed, false},
-		{TaskStatusFailed, TaskStatusPending, false},
-		{TaskStatusCancelled, TaskStatusPending, false},
-		{TaskStatusCrashed, TaskStatusPending, false},
+		{GraphTaskStatusPending, GraphTaskStatusComplete, false},
+		{GraphTaskStatusComplete, GraphTaskStatusPending, false},
+		{GraphTaskStatusBlocked, GraphTaskStatusClaimed, false},
+		{GraphTaskStatusFailed, GraphTaskStatusPending, false},
+		{GraphTaskStatusCancelled, GraphTaskStatusPending, false},
+		{GraphTaskStatusCrashed, GraphTaskStatusPending, false},
 	}
 
 	for _, tt := range tests {
@@ -124,20 +124,20 @@ func TestTaskStateMachine_CanTransition(t *testing.T) {
 func TestTaskStateMachine_ValidTargets(t *testing.T) {
 	sm := NewTaskStateMachine()
 	tests := []struct {
-		from        TaskStatus
+		from        GraphTaskStatus
 		wantCount   int
-		mustContain []TaskStatus
+		mustContain []GraphTaskStatus
 	}{
-		{TaskStatusPending, 2, []TaskStatus{TaskStatusClaimed, TaskStatusPendingAssignment}},
-		{TaskStatusClaimed, 4, []TaskStatus{TaskStatusComplete, TaskStatusReviewRequired, TaskStatusBlocked, TaskStatusTimedOut}},
-		{TaskStatusBlocked, 1, []TaskStatus{TaskStatusPending}},
-		{TaskStatusReviewRequired, 2, []TaskStatus{TaskStatusComplete, TaskStatusClaimed}},
-		{TaskStatusTimedOut, 1, []TaskStatus{TaskStatusPending}},
+		{GraphTaskStatusPending, 2, []GraphTaskStatus{GraphTaskStatusClaimed, GraphTaskStatusPendingAssignment}},
+		{GraphTaskStatusClaimed, 4, []GraphTaskStatus{GraphTaskStatusComplete, GraphTaskStatusReviewRequired, GraphTaskStatusBlocked, GraphTaskStatusTimedOut}},
+		{GraphTaskStatusBlocked, 1, []GraphTaskStatus{GraphTaskStatusPending}},
+		{GraphTaskStatusReviewRequired, 2, []GraphTaskStatus{GraphTaskStatusComplete, GraphTaskStatusClaimed}},
+		{GraphTaskStatusTimedOut, 1, []GraphTaskStatus{GraphTaskStatusPending}},
 		// Terminal states have no valid targets
-		{TaskStatusComplete, 0, nil},
-		{TaskStatusFailed, 0, nil},
-		{TaskStatusCancelled, 0, nil},
-		{TaskStatusCrashed, 0, nil},
+		{GraphTaskStatusComplete, 0, nil},
+		{GraphTaskStatusFailed, 0, nil},
+		{GraphTaskStatusCancelled, 0, nil},
+		{GraphTaskStatusCrashed, 0, nil},
 	}
 
 	for _, tt := range tests {
@@ -164,19 +164,19 @@ func TestTaskStateMachine_ValidTargets(t *testing.T) {
 
 func TestIsTaskTerminal(t *testing.T) {
 	tests := []struct {
-		state TaskStatus
+		state GraphTaskStatus
 		want  bool
 	}{
-		{TaskStatusComplete, true},
-		{TaskStatusFailed, true},
-		{TaskStatusCancelled, true},
-		{TaskStatusCrashed, true},
-		{TaskStatusPending, false},
-		{TaskStatusClaimed, false},
-		{TaskStatusBlocked, false},
-		{TaskStatusReviewRequired, false},
-		{TaskStatusTimedOut, false},
-		{TaskStatusPendingAssignment, false},
+		{GraphTaskStatusComplete, true},
+		{GraphTaskStatusFailed, true},
+		{GraphTaskStatusCancelled, true},
+		{GraphTaskStatusCrashed, true},
+		{GraphTaskStatusPending, false},
+		{GraphTaskStatusClaimed, false},
+		{GraphTaskStatusBlocked, false},
+		{GraphTaskStatusReviewRequired, false},
+		{GraphTaskStatusTimedOut, false},
+		{GraphTaskStatusPendingAssignment, false},
 	}
 
 	for _, tt := range tests {

@@ -371,27 +371,27 @@ func toProtoTask(task *biz.GraphTask) *graphv1.Task {
 	return pb
 }
 
-func bizTaskStatusToProto(status biz.TaskStatus) graphv1.TaskStatus {
+func bizTaskStatusToProto(status biz.GraphTaskStatus) graphv1.TaskStatus {
 	switch status {
-	case biz.TaskStatusPending:
+	case biz.GraphTaskStatusPending:
 		return graphv1.TaskStatus_TASK_PENDING
-	case biz.TaskStatusClaimed:
+	case biz.GraphTaskStatusClaimed:
 		return graphv1.TaskStatus_TASK_CLAIMED
-	case biz.TaskStatusComplete:
+	case biz.GraphTaskStatusComplete:
 		return graphv1.TaskStatus_TASK_COMPLETE
-	case biz.TaskStatusBlocked:
+	case biz.GraphTaskStatusBlocked:
 		return graphv1.TaskStatus_TASK_BLOCKED
-	case biz.TaskStatusReviewRequired:
+	case biz.GraphTaskStatusReviewRequired:
 		return graphv1.TaskStatus_TASK_REVIEW_REQUIRED
-	case biz.TaskStatusFailed:
+	case biz.GraphTaskStatusFailed:
 		return graphv1.TaskStatus_TASK_FAILED
-	case biz.TaskStatusTimedOut:
+	case biz.GraphTaskStatusTimedOut:
 		return graphv1.TaskStatus_TASK_TIMED_OUT
-	case biz.TaskStatusCancelled:
+	case biz.GraphTaskStatusCancelled:
 		return graphv1.TaskStatus_TASK_CANCELLED
-	case biz.TaskStatusCrashed:
+	case biz.GraphTaskStatusCrashed:
 		return graphv1.TaskStatus_TASK_CRASHED
-	case biz.TaskStatusPendingAssignment:
+	case biz.GraphTaskStatusPendingAssignment:
 		return graphv1.TaskStatus_TASK_PENDING_ASSIGNMENT
 	default:
 		return graphv1.TaskStatus_TASK_PENDING
@@ -401,29 +401,29 @@ func bizTaskStatusToProto(status biz.TaskStatus) graphv1.TaskStatus {
 // protoTaskStatusToBiz converts a proto TaskStatus enum to the biz TaskStatus string.
 // Returns TaskStatusPending for unknown/default values; callers that want no filter
 // should leave status_filter unset (arrives as 0 → TASK_PENDING).
-func protoTaskStatusToBiz(s graphv1.TaskStatus) biz.TaskStatus {
+func protoTaskStatusToBiz(s graphv1.TaskStatus) biz.GraphTaskStatus {
 	switch s {
 	case graphv1.TaskStatus_TASK_PENDING:
-		return biz.TaskStatusPending
+		return biz.GraphTaskStatusPending
 	case graphv1.TaskStatus_TASK_CLAIMED:
-		return biz.TaskStatusClaimed
+		return biz.GraphTaskStatusClaimed
 	case graphv1.TaskStatus_TASK_COMPLETE:
-		return biz.TaskStatusComplete
+		return biz.GraphTaskStatusComplete
 	case graphv1.TaskStatus_TASK_BLOCKED:
-		return biz.TaskStatusBlocked
+		return biz.GraphTaskStatusBlocked
 	case graphv1.TaskStatus_TASK_REVIEW_REQUIRED:
-		return biz.TaskStatusReviewRequired
+		return biz.GraphTaskStatusReviewRequired
 	case graphv1.TaskStatus_TASK_FAILED:
-		return biz.TaskStatusFailed
+		return biz.GraphTaskStatusFailed
 	case graphv1.TaskStatus_TASK_TIMED_OUT:
-		return biz.TaskStatusTimedOut
+		return biz.GraphTaskStatusTimedOut
 	case graphv1.TaskStatus_TASK_CANCELLED:
-		return biz.TaskStatusCancelled
+		return biz.GraphTaskStatusCancelled
 	case graphv1.TaskStatus_TASK_CRASHED:
-		return biz.TaskStatusCrashed
+		return biz.GraphTaskStatusCrashed
 	case graphv1.TaskStatus_TASK_PENDING_ASSIGNMENT:
-		return biz.TaskStatusPendingAssignment
+		return biz.GraphTaskStatusPendingAssignment
 	default:
-		return biz.TaskStatusPending
+		return biz.GraphTaskStatusPending
 	}
 }
