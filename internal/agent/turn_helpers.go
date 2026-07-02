@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"aranea-agents/internal/agent/v2"
 	"aranea-agents/internal/biz"
 	sessiontrpc "aranea-agents/internal/session/trpc"
 	"aranea-agents/pkg/loggateway"
@@ -77,9 +78,10 @@ func NewRunnerDepsFromRuntimeWithLogger(trpcSession trpcsession.Service, memory 
 }
 
 type StreamConsumeOptions struct {
-	MetaResolver      ActivityMetaResolver
-	ActivityProjector *ActivityProjector // AF phase: projects runtime events into Activity semantic units
-	ActivityBus       biz.ActivityEventBus // AF phase: bus for direct ActivityEvent publishing (context_usage etc.)
+	MetaResolver       ActivityMetaResolver
+	ActivityProjector  *ActivityProjector   // AF phase: projects runtime events into Activity semantic units (v1 path)
+	V2Projector        *v2.ActivityProjector // v2 phase: projects runtime events into v2 events (nil = v1-only mode)
+	ActivityBus        biz.ActivityEventBus  // AF phase: bus for direct ActivityEvent publishing (context_usage etc.)
 }
 
 func ConsumeEventStream(

@@ -6,7 +6,6 @@ import (
 	"sync"
 	"testing"
 
-	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 )
@@ -36,11 +35,11 @@ func (c *capturingSequencer) drain() []biz.Event {
 }
 
 // newTestProjector builds a projector wired to a capturing sequencer and the
-// real agent.SeqAssigner (deterministic 1,2,3... per spirit session).
+// v2-local defaultSeqAssigner (deterministic 1,2,3... per spirit session).
 func newTestProjector(t *testing.T) (*ActivityProjector, *capturingSequencer) {
 	t.Helper()
 	cap := &capturingSequencer{}
-	p := NewActivityProjector(cap, agent.NewSeqAssigner(), loggateway.NewNoop())
+	p := NewActivityProjector(cap, NewDefaultSeqAssigner(), loggateway.NewNoop())
 	return p, cap
 }
 

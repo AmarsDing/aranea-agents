@@ -4,12 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
+
+	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
 // SequencerPublisher is the publish sink for v2 events.
@@ -44,6 +48,19 @@ type ActivityProjector struct {
 	activeTurn  map[string]*biz.Turn // turnID → turn (for OnTurnEnd)
 	activeTask  map[string]*biz.Task // taskID → task (root only, for OnTurnEnd)
 	stepCounter atomic.Int64
+
+	// === Per-turn ProcessEvent state ===
+	// meta is the ProjectMeta for the current turn, set by OnTurnStart.
+	meta ProjectMeta
+	// thinkingStepID is the stepID of the current thinking step (lazily
+	// created on the first reasoning delta, finalized on OnReasoningDone).
+	thinkingStepID string
+	// replyStepID is the stepID of the current reply step (lazily created
+	// on the first text delta, finalized on OnTextDone).
+	replyStepID string
+	// toolCallSteps maps model tool_call_id → v2 stepID, for correlating
+	// tool response events back to the action step created by OnToolCall.
+	toolCallSteps map[string]string
 }
 
 // NewActivityProjector constructs an ActivityProjector.
@@ -54,19 +71,31 @@ func NewActivityProjector(seq SequencerPublisher, seqAsg SeqAssigner, lg loggate
 		lg = loggateway.NewNoop()
 	}
 	return &ActivityProjector{
-		seq:        seq,
-		seqAsg:     seqAsg,
-		lg:         lg.With(loggateway.Domain("projector_v2")),
-		activeStep: make(map[string]*biz.Step),
-		activeTurn: make(map[string]*biz.Turn),
-		activeTask: make(map[string]*biz.Task),
+		seq:           seq,
+		seqAsg:        seqAsg,
+		lg:            lg.With(loggateway.Domain("projector_v2")),
+		activeStep:    make(map[string]*biz.Step),
+		activeTurn:    make(map[string]*biz.Turn),
+		activeTask:    make(map[string]*biz.Task),
+		toolCallSteps: make(map[string]string),
 	}
 }
 
 // OnTurnStart emits task.created (root turns only) followed by turn.started.
 // A "root turn" is one with an empty TeamStageID (i.e. the spirit-level turn,
 // not a team member sub-turn). Root turns own the Task entity lifecycle.
+//
+// OnTurnStart also stores the ProjectMeta for ProcessEvent and resets per-turn
+// ProcessEvent state (thinkingStepID, replyStepID, toolCallSteps).
 func (p *ActivityProjector) OnTurnStart(ctx context.Context, meta ProjectMeta) {
+	// Store meta + reset per-turn ProcessEvent state regardless of seq,
+	// so that a projector with a nil sequencer (compile-check) still accepts
+	// the configuration without panicking on a nil-map write below.
+	p.meta = meta
+	p.thinkingStepID = ""
+	p.replyStepID = ""
+	p.toolCallSteps = make(map[string]string)
+
 	if p.seq == nil {
 		return
 	}
@@ -284,4 +313,221 @@ func (p *ActivityProjector) failStep(ctx context.Context, stepID string, err err
 	delete(p.activeStep, stepID)
 	p.mu.Unlock()
 	p.seq.Publish(ctx, biz.NewStepFailedEvent(*step))
+}
+
+// === ProcessEvent: trpc event → v2 callback dispatch ===
+
+// ProcessEvent dispatches a trpc runtime event to the appropriate v2 callbacks.
+// It is the v2 equivalent of v1 ActivityProjector.ProcessEvent.
+//
+// The projector must have OnTurnStart called (to set ProjectMeta) before
+// ProcessEvent is invoked. ProcessEvent owns the BeginStep lifecycle for
+// thinking/reply steps: it lazily creates them on the first delta and
+// finalizes them on the Done (non-partial) chunk.
+//
+// Error handling: error-bearing events that are NOT tool responses are logged
+// but do not trigger a v2 callback (v2 baseline has no OnError). Tool response
+// errors are routed through OnToolResult's err path so the action step is
+// marked failed.
+func (p *ActivityProjector) ProcessEvent(ctx context.Context, ev *trpcevent.Event) {
+	if ev == nil || p.seq == nil || p.meta.TaskID == "" {
+		return
+	}
+	if ev.Response == nil {
+		return
+	}
+
+	// Tool responses carrying errors are handled by processToolResponse
+	// (failStep path), not short-circuited here. Other error events are logged
+	// but have no v2 callback in the baseline.
+	if ev.Response.Error != nil && ev.Response.Object != trpcmodel.ObjectTypeToolResponse {
+		p.lg.Warn("projector_v2: error event (no v2 OnError callback)",
+			loggateway.Str("type", ev.Response.Error.Type),
+			loggateway.Str("msg", ev.Response.Error.Message))
+		return
+	}
+
+	switch ev.Response.Object {
+	case trpcmodel.ObjectTypeChatCompletionChunk:
+		p.processChatChunk(ctx, ev)
+	case trpcmodel.ObjectTypeChatCompletion:
+		p.processChatCompletion(ctx, ev)
+	case trpcmodel.ObjectTypeToolResponse:
+		p.processToolResponse(ctx, ev)
+	}
+}
+
+// processChatChunk handles streaming chat completion chunks.
+// Partial chunks emit deltas; non-partial (final) chunks finalize the step.
+func (p *ActivityProjector) processChatChunk(ctx context.Context, ev *trpcevent.Event) {
+	for _, choice := range ev.Response.Choices {
+		// Tool calls (from both Message and Delta)
+		allToolCalls := append(choice.Message.ToolCalls, choice.Delta.ToolCalls...)
+		for _, tc := range allToolCalls {
+			p.handleToolCall(ctx, tc.ID, tc.Function.Name, json.RawMessage(tc.Function.Arguments))
+		}
+
+		// Text and reasoning content
+		text, reasoning := choiceStreamContent(choice, ev.Response.IsPartial)
+		if ev.Response.IsPartial {
+			if reasoning != "" {
+				p.handleReasoningDelta(ctx, reasoning)
+			}
+			if text != "" {
+				p.handleTextDelta(ctx, text)
+			}
+		} else {
+			// Final chunk: finalize the step even if content is empty.
+			p.handleReasoningDone(ctx, reasoning)
+			p.handleTextDone(ctx, text)
+		}
+	}
+}
+
+// processChatCompletion handles non-streaming chat completion events.
+func (p *ActivityProjector) processChatCompletion(ctx context.Context, ev *trpcevent.Event) {
+	for _, choice := range ev.Response.Choices {
+		msg := choice.Message
+
+		for _, tc := range msg.ToolCalls {
+			p.handleToolCall(ctx, tc.ID, tc.Function.Name, json.RawMessage(tc.Function.Arguments))
+		}
+
+		text := strings.TrimSpace(msg.Content)
+		reasoning := strings.TrimSpace(msg.ReasoningContent)
+		p.handleReasoningDone(ctx, reasoning)
+		p.handleTextDone(ctx, text)
+	}
+}
+
+// processToolResponse handles tool result events.
+func (p *ActivityProjector) processToolResponse(ctx context.Context, ev *trpcevent.Event) {
+	if len(ev.Response.Choices) == 0 {
+		return
+	}
+	msg := ev.Response.Choices[0].Message
+	toolID := strings.TrimSpace(msg.ToolID)
+	if toolID == "" {
+		return
+	}
+
+	p.mu.Lock()
+	stepID, ok := p.toolCallSteps[toolID]
+	delete(p.toolCallSteps, toolID)
+	p.mu.Unlock()
+	if !ok {
+		// Tool result without a prior OnToolCall — nothing to complete.
+		return
+	}
+
+	resultJSON := json.RawMessage(msg.Content)
+	if ev.Response.Error != nil {
+		p.OnToolResult(ctx, stepID, resultJSON, &toolResponseError{msg: ev.Response.Error.Message, code: ev.Response.Error.Type})
+		return
+	}
+	p.OnToolResult(ctx, stepID, resultJSON, nil)
+}
+
+// toolResponseError wraps a trpc ResponseError as a Go error so it can be
+// passed to OnToolResult's err parameter. failStep records err.Error() as
+// ToolErrorCode.
+type toolResponseError struct {
+	msg  string
+	code string
+}
+
+func (e *toolResponseError) Error() string {
+	if e.code != "" {
+		return e.code + ": " + e.msg
+	}
+	return e.msg
+}
+
+// handleToolCall records the tool_call_id → stepID mapping and delegates to OnToolCall.
+func (p *ActivityProjector) handleToolCall(ctx context.Context, toolCallID, toolName string, args json.RawMessage) {
+	stepID := p.OnToolCall(ctx, p.meta, toolName, args)
+	if toolCallID != "" && stepID != "" {
+		p.mu.Lock()
+		p.toolCallSteps[toolCallID] = stepID
+		p.mu.Unlock()
+	}
+}
+
+// handleReasoningDelta lazily creates a thinking step on the first delta,
+// then emits the streaming delta.
+func (p *ActivityProjector) handleReasoningDelta(ctx context.Context, delta string) {
+	if p.thinkingStepID == "" {
+		p.thinkingStepID = p.BeginStep(p.meta, biz.StepKindThinking)
+	}
+	p.OnReasoningDelta(ctx, p.thinkingStepID, delta, "")
+}
+
+// handleTextDelta lazily creates a reply step on the first delta,
+// then emits the streaming delta.
+func (p *ActivityProjector) handleTextDelta(ctx context.Context, delta string) {
+	if p.replyStepID == "" {
+		p.replyStepID = p.BeginStep(p.meta, biz.StepKindReply)
+	}
+	p.OnTextDelta(ctx, p.replyStepID, delta, "")
+}
+
+// handleReasoningDone finalizes the thinking step. If no thinking step was
+// created (no prior delta) and the content is empty, this is a no-op.
+func (p *ActivityProjector) handleReasoningDone(ctx context.Context, finalContent string) {
+	if p.thinkingStepID == "" {
+		// No thinking step was started. If there's reasoning content, create
+		// and immediately complete a step for it; otherwise skip.
+		if strings.TrimSpace(finalContent) == "" {
+			return
+		}
+		p.thinkingStepID = p.BeginStep(p.meta, biz.StepKindThinking)
+	}
+	p.OnReasoningDone(ctx, p.thinkingStepID, finalContent)
+	p.thinkingStepID = ""
+}
+
+// handleTextDone finalizes the reply step. If no reply step was created and
+// the content is empty, this is a no-op.
+func (p *ActivityProjector) handleTextDone(ctx context.Context, finalContent string) {
+	if p.replyStepID == "" {
+		if strings.TrimSpace(finalContent) == "" {
+			return
+		}
+		p.replyStepID = p.BeginStep(p.meta, biz.StepKindReply)
+	}
+	// isFinal=true for the root turn's reply so the frontend can mark it.
+	p.OnTextDone(ctx, p.replyStepID, finalContent, true)
+	p.replyStepID = ""
+}
+
+// choiceStreamContent extracts text and reasoning from a streaming choice.
+// Mirrors internal/agent.ChoiceStreamContent but is duplicated here to avoid
+// importing internal/agent (which would re-introduce the circular dependency).
+func choiceStreamContent(choice trpcmodel.Choice, partial bool) (text, reasoning string) {
+	msg := choice.Message
+	delta := choice.Delta
+	if partial {
+		text = delta.Content
+		reasoning = delta.ReasoningContent
+		if text == "" {
+			text = strings.TrimSpace(msg.Content)
+		}
+		if reasoning == "" {
+			reasoning = strings.TrimSpace(msg.ReasoningContent)
+		}
+		return text, reasoning
+	}
+	text = firstNonEmpty(msg.Content, delta.Content)
+	reasoning = firstNonEmpty(msg.ReasoningContent, delta.ReasoningContent)
+	return text, reasoning
+}
+
+// firstNonEmpty returns the first non-empty string after trimming.
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if s := strings.TrimSpace(v); s != "" {
+			return s
+		}
+	}
+	return ""
 }

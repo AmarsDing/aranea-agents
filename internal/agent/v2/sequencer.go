@@ -7,7 +7,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 )
@@ -42,7 +41,7 @@ type Sequencer struct {
 	repoSet      RepoSet
 	bus          EventBus
 	lg           loggateway.Logger
-	seqAssigner  *agent.SeqAssigner  // shared with Projector (Deviation 3: lives in package agent)
+	seqAssigner  SeqAssigner  // shared with Projector (v2-local defaultSeqAssigner; breaks agent→v2 cycle)
 	compatAdapter *CompatAdapter      // nil = no v1 forwarding (Phase 1 兼容层)
 
 	publishQueue chan publishTask
@@ -108,7 +107,7 @@ func NewSequencer(rs RepoSet, bus EventBus, lg loggateway.Logger, compat *Compat
 		repoSet:            rs,
 		bus:                bus,
 		lg:                 lg.With(loggateway.Domain("sequencer_v2")),
-		seqAssigner:        agent.NewSeqAssigner(),
+		seqAssigner:        NewDefaultSeqAssigner(),
 		compatAdapter:     compat,
 		publishQueue:       make(chan publishTask, cfg.publishBuffer),
 		persistChan:        make(chan persistItem, cfg.persistBuffer),
@@ -127,7 +126,7 @@ func NewSequencer(rs RepoSet, bus EventBus, lg loggateway.Logger, compat *Compat
 
 // SeqAssigner exposes the shared SeqAssigner so Projector can pre-allocate Seq
 // for turn-level events before publishing.
-func (s *Sequencer) SeqAssigner() *agent.SeqAssigner { return s.seqAssigner }
+func (s *Sequencer) SeqAssigner() SeqAssigner { return s.seqAssigner }
 
 // Publish enqueues an event for FIFO processing.
 // Safe for concurrent use.

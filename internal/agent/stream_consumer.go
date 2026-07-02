@@ -3,8 +3,10 @@ package agent
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"time"
 
+	"aranea-agents/internal/agent/v2"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/provider"
@@ -29,6 +31,14 @@ type turnStreamConsumer struct {
 	// or first-byte timeout). Set in consume(), read in finalize() to
 	// propagate the correct terminal status to OnTurnEnd.
 	canceled bool
+
+	// === v2 dual-path ===
+	// v2Projector, when non-nil, receives the same trpc events as v1's
+	// ActivityProjector and translates them into v2 events. This enables
+	// side-by-side comparison of v1 and v2 output during the migration.
+	// v2Enabled is set by SetV2Projector; both v1 and v2 paths run when true.
+	v2Projector *v2.ActivityProjector
+	v2Enabled   atomic.Bool
 }
 
 func newTurnStreamConsumer(
@@ -54,7 +64,44 @@ func newTurnStreamConsumer(
 		turnCtx = opts.ActivityProjector.OnTurnStart(turnCtx, projectMeta)
 		c.turnCtx = turnCtx
 	}
+	// v2 dual-path: wire the v2 projector from opts and start the v2 turn.
+	// When V2Projector is nil, v2Enabled stays false and the v1 path runs
+	// unchanged (additive — no behavioral change for existing callers).
+	if opts != nil && opts.V2Projector != nil {
+		c.SetV2Projector(opts.V2Projector)
+		v2Meta := v2ProjectMetaFromV1(projectMeta)
+		c.v2Projector.OnTurnStart(turnCtx, v2Meta)
+	}
 	return c
+}
+
+// SetV2Projector wires the v2 projector and enables the v2 dual-path.
+// When called with a non-nil projector, every trpc event is additionally
+// dispatched to the v2 projector alongside the v1 path.
+func (c *turnStreamConsumer) SetV2Projector(p *v2.ActivityProjector) {
+	c.v2Projector = p
+	c.v2Enabled.Store(p != nil)
+}
+
+// v2ProjectMetaFromV1 converts a v1 ProjectMeta to a v2 ProjectMeta.
+// The v2 ProjectMeta is a subset of v1's fields (the v2 model has fewer
+// session-tree fields; the rest are derived at the team/graph layer).
+func v2ProjectMetaFromV1(m ProjectMeta) v2.ProjectMeta {
+	return v2.ProjectMeta{
+		SessionID:       m.SessionID,
+		SpiritSessionID: m.SpiritSessionID,
+		TaskID:          m.RequestID,
+		TurnID:          m.InvocationID,
+		ParentTurnID:    m.ParentInvocationID,
+		TeamStageID:     m.TeamID, // team member turns are identified by non-empty TeamID
+		TeamRunID:       "",
+		TeamID:          m.TeamID,
+		MemberSessionID: m.ParentSessionID,
+		AgentKey:        m.AgentID,
+		AgentName:       m.AgentDisplayName,
+		MemberAgentKeys: m.MemberAgentKeys,
+		TaskContent:     m.TaskContent,
+	}
 }
 
 func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) EventStreamResult {
@@ -249,6 +296,12 @@ func (c *turnStreamConsumer) projectAndTrackTools(ev *trpcevent.Event) {
 	if c.opts != nil && c.opts.ActivityProjector != nil {
 		c.opts.ActivityProjector.ProcessEvent(c.turnCtx, ev)
 	}
+	// v2 dual-path: additionally dispatch the event to the v2 projector.
+	// This runs alongside v1 (not instead of) so both paths can be compared.
+	// The v2 projector's ProcessEvent is nil-safe and no-ops when seq is nil.
+	if c.v2Enabled.Load() && c.v2Projector != nil {
+		c.v2Projector.ProcessEvent(c.turnCtx, ev)
+	}
 }
 
 func (c *turnStreamConsumer) publishContextUsageStep() {
@@ -282,25 +335,30 @@ func (c *turnStreamConsumer) finalize() {
 	// AF phase: finalize root task Activity with token usage and copy per-member
 	// tool call counts to the result. ActivityProjector owns stuck-tool handling
 	// and persistence via its sequencer.
-	if c.opts == nil || c.opts.ActivityProjector == nil {
-		return
-	}
-	usage := &ActivityUsage{
-		PromptTokens:     c.result.PromptTok,
-		CompletionTokens: c.result.CompletionTok,
-		TotalTokens:      c.result.PromptTok + c.result.CompletionTok,
-	}
-	// OnStuckTools MUST run before OnTurnEnd: OnStuckTools marks tools that
-	// never received a result as Failed, while OnTurnEnd force-completes any
-	// remaining ToolRunning activities. If OnTurnEnd runs first, it
-	// force-completes stuck tools as Completed (false success), making
-	// OnStuckTools a no-op since it only targets ToolRunning activities.
-	c.opts.ActivityProjector.OnStuckTools(c.turnCtx)
-	c.opts.ActivityProjector.OnTurnEnd(c.turnCtx, usage, c.canceled)
-	c.opts.ActivityProjector.Close()
+	if c.opts != nil && c.opts.ActivityProjector != nil {
+		usage := &ActivityUsage{
+			PromptTokens:     c.result.PromptTok,
+			CompletionTokens: c.result.CompletionTok,
+			TotalTokens:      c.result.PromptTok + c.result.CompletionTok,
+		}
+		// OnStuckTools MUST run before OnTurnEnd: OnStuckTools marks tools that
+		// never received a result as Failed, while OnTurnEnd force-completes any
+		// remaining ToolRunning activities. If OnTurnEnd runs first, it
+		// force-completes stuck tools as Completed (false success), making
+		// OnStuckTools a no-op since it only targets ToolRunning activities.
+		c.opts.ActivityProjector.OnStuckTools(c.turnCtx)
+		c.opts.ActivityProjector.OnTurnEnd(c.turnCtx, usage, c.canceled)
+		c.opts.ActivityProjector.Close()
 
-	if mtc := c.opts.ActivityProjector.MemberToolCalls(); len(mtc) > 0 {
-		c.result.MemberToolCalls = mtc
+		if mtc := c.opts.ActivityProjector.MemberToolCalls(); len(mtc) > 0 {
+			c.result.MemberToolCalls = mtc
+		}
+	}
+	// v2 dual-path: finalize the v2 turn (emits turn.completed + task.completed).
+	// Runs independently of v1 so the v2 path works even when v1 is not wired.
+	if c.v2Enabled.Load() && c.v2Projector != nil {
+		v2Meta := v2ProjectMetaFromV1(c.projectMeta)
+		c.v2Projector.OnTurnEnd(c.turnCtx, v2Meta)
 	}
 }
 
