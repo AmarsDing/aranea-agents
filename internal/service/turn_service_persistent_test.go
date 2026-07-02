@@ -49,7 +49,7 @@ func TestPersistentTurnServiceLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if turn.Status != biz.TurnStatusQueued || store.created.Status != string(biz.TurnStatusQueued) {
+	if turn.Status != biz.CanonicalTurnStatusQueued || store.created.Status != string(biz.CanonicalTurnStatusQueued) {
 		t.Fatalf("unexpected admitted turn: %+v row=%+v", turn, store.created)
 	}
 
@@ -57,7 +57,7 @@ func TestPersistentTurnServiceLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if completed.Status != biz.TurnStatusCompleted || store.updated.Status == nil || *store.updated.Status != string(biz.TurnStatusCompleted) {
+	if completed.Status != biz.CanonicalTurnStatusCompleted || store.updated.Status == nil || *store.updated.Status != string(biz.CanonicalTurnStatusCompleted) {
 		t.Fatalf("unexpected completed turn: %+v update=%+v", completed, store.updated)
 	}
 
@@ -65,7 +65,7 @@ func TestPersistentTurnServiceLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failed.Status != biz.TurnStatusFailed || store.updated.ErrorMessage == nil || *store.updated.ErrorMessage != "boom" {
+	if failed.Status != biz.CanonicalTurnStatusFailed || store.updated.ErrorMessage == nil || *store.updated.ErrorMessage != "boom" {
 		t.Fatalf("unexpected failed turn: %+v update=%+v", failed, store.updated)
 	}
 }
@@ -81,19 +81,19 @@ func TestTurnFromSessionTurn(t *testing.T) {
 			name: "row_overrides_base_fields",
 			row:  biz.SessionTurn{ID: "r1", SessionID: "s1", RunID: "run-1", AgentID: "a1", TeamID: "t1", Status: "completed"},
 			base: biz.Turn{ID: "old", SessionID: "old", AgentID: "old"},
-			want: biz.Turn{ID: "r1", SessionID: "s1", RunID: "run-1", AgentID: "a1", TeamID: "t1", Status: biz.TurnStatus("completed")},
+			want: biz.Turn{ID: "r1", SessionID: "s1", RunID: "run-1", AgentID: "a1", TeamID: "t1", Status: biz.CanonicalTurnStatus("completed")},
 		},
 		{
 			name: "empty_status_keeps_base",
 			row:  biz.SessionTurn{ID: "r2", SessionID: "s2", Status: ""},
-			base: biz.Turn{Status: biz.TurnStatusQueued},
-			want: biz.Turn{ID: "r2", SessionID: "s2", Status: biz.TurnStatusQueued},
+			base: biz.Turn{Status: biz.CanonicalTurnStatusQueued},
+			want: biz.Turn{ID: "r2", SessionID: "s2", Status: biz.CanonicalTurnStatusQueued},
 		},
 		{
 			name: "non_empty_status_overrides",
 			row:  biz.SessionTurn{ID: "r3", Status: "failed"},
-			base: biz.Turn{Status: biz.TurnStatusQueued},
-			want: biz.Turn{ID: "r3", Status: biz.TurnStatus("failed")},
+			base: biz.Turn{Status: biz.CanonicalTurnStatusQueued},
+			want: biz.Turn{ID: "r3", Status: biz.CanonicalTurnStatus("failed")},
 		},
 	}
 	for _, tc := range cases {

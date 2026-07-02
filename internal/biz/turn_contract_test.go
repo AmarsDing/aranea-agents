@@ -6,23 +6,23 @@ import (
 	"aranea-agents/internal/biz"
 )
 
-func TestTurnStatusFromOutcome(t *testing.T) {
+func TestCanonicalTurnStatusFromOutcome(t *testing.T) {
 	cases := []struct {
 		name    string
 		outcome biz.TurnOutcome
-		want    biz.TurnStatus
+		want    biz.CanonicalTurnStatus
 	}{
-		{"completed", biz.TurnOutcomeCompleted, biz.TurnStatusCompleted},
-		{"queued", biz.TurnOutcomeQueued, biz.TurnStatusQueued},
-		{"rejected", biz.TurnOutcomeRejected, biz.TurnStatusRejected},
-		{"failed", biz.TurnOutcomeFailed, biz.TurnStatusFailed},
+		{"completed", biz.TurnOutcomeCompleted, biz.CanonicalTurnStatusCompleted},
+		{"queued", biz.TurnOutcomeQueued, biz.CanonicalTurnStatusQueued},
+		{"rejected", biz.TurnOutcomeRejected, biz.CanonicalTurnStatusRejected},
+		{"failed", biz.TurnOutcomeFailed, biz.CanonicalTurnStatusFailed},
 		{"unknown", biz.TurnOutcome("unknown"), ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := biz.TurnStatusFromOutcome(tc.outcome)
+			got := biz.CanonicalTurnStatusFromOutcome(tc.outcome)
 			if got != tc.want {
-				t.Fatalf("TurnStatusFromOutcome(%q) = %q, want %q", tc.outcome, got, tc.want)
+				t.Fatalf("CanonicalTurnStatusFromOutcome(%q) = %q, want %q", tc.outcome, got, tc.want)
 			}
 		})
 	}

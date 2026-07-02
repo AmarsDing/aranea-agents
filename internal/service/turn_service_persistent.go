@@ -39,7 +39,7 @@ func (s *PersistentTurnService) AdmitTurn(ctx context.Context, intent biz.TurnIn
 		TargetType:      intent.TargetType,
 		AgentID:         intent.AgentID,
 		TeamID:          intent.TeamID,
-		Status:          biz.TurnStatusQueued,
+		Status:          biz.CanonicalTurnStatusQueued,
 		DeliveryTargets: intent.DeliveryTargets,
 		CreatedAt:       now,
 		UpdatedAt:       now,
@@ -72,9 +72,9 @@ func (s *PersistentTurnService) CompleteTurn(ctx context.Context, turn biz.Turn,
 	if s == nil || s.Sessions == nil {
 		return biz.Turn{}, errors.New("turn service: sessions is nil")
 	}
-	status := biz.TurnStatusFromOutcome(result.Outcome)
+	status := biz.CanonicalTurnStatusFromOutcome(result.Outcome)
 	if status == "" {
-		status = biz.TurnStatusCompleted
+		status = biz.CanonicalTurnStatusCompleted
 	}
 	now := s.now().Format(time.RFC3339)
 	row, err := s.Sessions.UpdateTurn(ctx, turn.ID, biz.SessionTurnUpdateFields{
@@ -99,14 +99,14 @@ func (s *PersistentTurnService) FailTurn(ctx context.Context, turn biz.Turn, err
 		errMsg = err.Error()
 	}
 	row, updateErr := s.Sessions.UpdateTurn(ctx, turn.ID, biz.SessionTurnUpdateFields{
-		Status:       ptrString(string(biz.TurnStatusFailed)),
+		Status:       ptrString(string(biz.CanonicalTurnStatusFailed)),
 		EndedAt:      ptrString(now),
 		ErrorMessage: ptrString(errMsg),
 	})
 	if updateErr != nil {
 		return turn, updateErr
 	}
-	turn.Status = biz.TurnStatusFailed
+	turn.Status = biz.CanonicalTurnStatusFailed
 	turn.UpdatedAt = s.now()
 	return turnFromSessionTurn(row, turn), nil
 }
@@ -125,7 +125,7 @@ func turnFromSessionTurn(row biz.SessionTurn, base biz.Turn) biz.Turn {
 	base.AgentID = row.AgentID
 	base.TeamID = row.TeamID
 	if row.Status != "" {
-		base.Status = biz.TurnStatus(row.Status)
+		base.Status = biz.CanonicalTurnStatus(row.Status)
 	}
 	return base
 }

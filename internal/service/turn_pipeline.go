@@ -84,7 +84,7 @@ func (p TurnPipeline) Run(ctx context.Context, intent biz.TurnIntent) (biz.Turn,
 			SessionID:  turn.SessionID,
 			Type:       biz.TurnEventFailed,
 			Source:     turn.Source,
-			Status:     biz.TurnStatusFailed,
+			Status:     biz.CanonicalTurnStatusFailed,
 			OccurredAt: p.now(),
 			Metadata:   map[string]string{"error": execErr.Error()},
 		})
@@ -97,7 +97,7 @@ func (p TurnPipeline) Run(ctx context.Context, intent biz.TurnIntent) (biz.Turn,
 			SessionID:  turn.SessionID,
 			Type:       biz.TurnEventQueued,
 			Source:     turn.Source,
-			Status:     biz.TurnStatusQueued,
+			Status:     biz.CanonicalTurnStatusQueued,
 			OccurredAt: p.now(),
 		})
 		return turn, result, nil
@@ -113,7 +113,7 @@ func (p TurnPipeline) Run(ctx context.Context, intent biz.TurnIntent) (biz.Turn,
 			SessionID:  turn.SessionID,
 			Type:       biz.TurnEventFailed,
 			Source:     turn.Source,
-			Status:     biz.TurnStatusFailed,
+			Status:     biz.CanonicalTurnStatusFailed,
 			OccurredAt: p.now(),
 		})
 		return turn, result, nil
@@ -129,7 +129,7 @@ func (p TurnPipeline) Run(ctx context.Context, intent biz.TurnIntent) (biz.Turn,
 		SessionID:  turn.SessionID,
 		Type:       biz.TurnEventCompleted,
 		Source:     turn.Source,
-		Status:     biz.TurnStatusFromOutcome(result.Outcome),
+		Status:     biz.CanonicalTurnStatusFromOutcome(result.Outcome),
 		OccurredAt: p.now(),
 	})
 	return turn, result, nil

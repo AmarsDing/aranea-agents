@@ -338,23 +338,23 @@ func TestChatTurnIntegration_TurnIntentCanonicalize(t *testing.T) {
 	})
 }
 
-// TestChatTurnIntegration_TurnStatusMapping verifies the mapping from
-// TurnOutcome to canonical TurnStatus.
-func TestChatTurnIntegration_TurnStatusMapping(t *testing.T) {
+// TestChatTurnIntegration_CanonicalTurnStatusMapping verifies the mapping from
+// TurnOutcome to canonical CanonicalTurnStatus.
+func TestChatTurnIntegration_CanonicalTurnStatusMapping(t *testing.T) {
 	cases := []struct {
 		outcome    biz.TurnOutcome
-		wantStatus biz.TurnStatus
+		wantStatus biz.CanonicalTurnStatus
 	}{
-		{biz.TurnOutcomeCompleted, biz.TurnStatusCompleted},
-		{biz.TurnOutcomeQueued, biz.TurnStatusQueued},
-		{biz.TurnOutcomeRejected, biz.TurnStatusRejected},
-		{biz.TurnOutcomeFailed, biz.TurnStatusFailed},
+		{biz.TurnOutcomeCompleted, biz.CanonicalTurnStatusCompleted},
+		{biz.TurnOutcomeQueued, biz.CanonicalTurnStatusQueued},
+		{biz.TurnOutcomeRejected, biz.CanonicalTurnStatusRejected},
+		{biz.TurnOutcomeFailed, biz.CanonicalTurnStatusFailed},
 	}
 	for _, tc := range cases {
 		t.Run(string(tc.outcome), func(t *testing.T) {
-			got := biz.TurnStatusFromOutcome(tc.outcome)
+			got := biz.CanonicalTurnStatusFromOutcome(tc.outcome)
 			if got != tc.wantStatus {
-				t.Errorf("TurnStatusFromOutcome(%q) = %q, want %q", tc.outcome, got, tc.wantStatus)
+				t.Errorf("CanonicalTurnStatusFromOutcome(%q) = %q, want %q", tc.outcome, got, tc.wantStatus)
 			}
 		})
 	}
@@ -388,7 +388,7 @@ func TestChatTurnIntegration_PersistentTurnService(t *testing.T) {
 		if turn.SessionID != "session-pts-001" {
 			t.Errorf("expected session_id=session-pts-001, got %q", turn.SessionID)
 		}
-		if turn.Status != biz.TurnStatusQueued {
+		if turn.Status != biz.CanonicalTurnStatusQueued {
 			t.Errorf("expected status=queued, got %q", turn.Status)
 		}
 		if turn.Source != biz.TurnSourceWeb {
@@ -426,7 +426,7 @@ func TestChatTurnIntegration_PersistentTurnService(t *testing.T) {
 			t.Fatalf("CompleteTurn failed: %v", err)
 		}
 
-		if completed.Status != biz.TurnStatusCompleted {
+		if completed.Status != biz.CanonicalTurnStatusCompleted {
 			t.Errorf("expected status=completed, got %q", completed.Status)
 		}
 
@@ -434,7 +434,7 @@ func TestChatTurnIntegration_PersistentTurnService(t *testing.T) {
 		store.mu.Lock()
 		stored := store.turns[turn.ID]
 		store.mu.Unlock()
-		if stored.Status != string(biz.TurnStatusCompleted) {
+		if stored.Status != string(biz.CanonicalTurnStatusCompleted) {
 			t.Errorf("expected stored status=completed, got %q", stored.Status)
 		}
 	})
@@ -458,7 +458,7 @@ func TestChatTurnIntegration_PersistentTurnService(t *testing.T) {
 			t.Fatalf("FailTurn failed: %v", err)
 		}
 
-		if failed.Status != biz.TurnStatusFailed {
+		if failed.Status != biz.CanonicalTurnStatusFailed {
 			t.Errorf("expected status=failed, got %q", failed.Status)
 		}
 
@@ -466,7 +466,7 @@ func TestChatTurnIntegration_PersistentTurnService(t *testing.T) {
 		store.mu.Lock()
 		stored := store.turns[turn.ID]
 		store.mu.Unlock()
-		if stored.Status != string(biz.TurnStatusFailed) {
+		if stored.Status != string(biz.CanonicalTurnStatusFailed) {
 			t.Errorf("expected stored status=failed, got %q", stored.Status)
 		}
 		if stored.ErrorMessage != "provider timeout" {

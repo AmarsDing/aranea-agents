@@ -25,18 +25,18 @@ const (
 	ConversationTargetTeam  ConversationTargetType = "team"
 )
 
-// TurnStatus is the canonical lifecycle visible to Chat, Channel, Session, Run, and Job projections.
-type TurnStatus string
+// CanonicalTurnStatus is the canonical lifecycle visible to Chat, Channel, Session, Run, and Job projections.
+type CanonicalTurnStatus string
 
 const (
-	TurnStatusQueued       TurnStatus = "queued"
-	TurnStatusRunning      TurnStatus = "running"
-	TurnStatusAwaitingUser TurnStatus = "awaiting_user"
-	TurnStatusBackground   TurnStatus = "background"
-	TurnStatusCompleted    TurnStatus = "completed"
-	TurnStatusFailed       TurnStatus = "failed"
-	TurnStatusRejected     TurnStatus = "rejected"
-	TurnStatusCancelled    TurnStatus = "cancelled"
+	CanonicalTurnStatusQueued       CanonicalTurnStatus = "queued"
+	CanonicalTurnStatusRunning      CanonicalTurnStatus = "running"
+	CanonicalTurnStatusAwaitingUser CanonicalTurnStatus = "awaiting_user"
+	CanonicalTurnStatusBackground   CanonicalTurnStatus = "background"
+	CanonicalTurnStatusCompleted    CanonicalTurnStatus = "completed"
+	CanonicalTurnStatusFailed       CanonicalTurnStatus = "failed"
+	CanonicalTurnStatusRejected     CanonicalTurnStatus = "rejected"
+	CanonicalTurnStatusCancelled    CanonicalTurnStatus = "cancelled"
 )
 
 // DeliveryStatus tracks whether an assistant answer has been delivered to a target surface.
@@ -127,7 +127,7 @@ type Turn struct {
 	TargetType      ConversationTargetType
 	AgentID         string
 	TeamID          string
-	Status          TurnStatus
+	Status          CanonicalTurnStatus
 	SessionRevision int64
 	DeliveryTargets []DeliveryTarget
 	CreatedAt       time.Time
@@ -156,24 +156,24 @@ type TurnEvent struct {
 	SessionID       string
 	Type            TurnEventType
 	Source          TurnSource
-	Status          TurnStatus
+	Status          CanonicalTurnStatus
 	SessionRevision int64
 	Delivery        *DeliveryTarget
 	OccurredAt      time.Time
 	Metadata        map[string]string
 }
 
-// TurnStatusFromOutcome maps the unified turn outcome into the canonical lifecycle.
-func TurnStatusFromOutcome(outcome TurnOutcome) TurnStatus {
+// CanonicalTurnStatusFromOutcome maps the unified turn outcome into the canonical lifecycle.
+func CanonicalTurnStatusFromOutcome(outcome TurnOutcome) CanonicalTurnStatus {
 	switch outcome {
 	case TurnOutcomeCompleted:
-		return TurnStatusCompleted
+		return CanonicalTurnStatusCompleted
 	case TurnOutcomeQueued:
-		return TurnStatusQueued
+		return CanonicalTurnStatusQueued
 	case TurnOutcomeRejected:
-		return TurnStatusRejected
+		return CanonicalTurnStatusRejected
 	case TurnOutcomeFailed:
-		return TurnStatusFailed
+		return CanonicalTurnStatusFailed
 	default:
 		return ""
 	}

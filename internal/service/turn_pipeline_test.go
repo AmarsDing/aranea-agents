@@ -20,19 +20,19 @@ func (s *testTurnService) AdmitTurn(_ context.Context, intent biz.TurnIntent) (b
 		SessionID:  intent.SessionID,
 		Source:     intent.Source,
 		TargetType: intent.TargetType,
-		Status:     biz.TurnStatusRunning,
+		Status:     biz.CanonicalTurnStatusRunning,
 	}
 	return s.turn, nil
 }
 
 func (s *testTurnService) CompleteTurn(_ context.Context, turn biz.Turn, result biz.TurnResult) (biz.Turn, error) {
-	turn.Status = biz.TurnStatusFromOutcome(result.Outcome)
+	turn.Status = biz.CanonicalTurnStatusFromOutcome(result.Outcome)
 	s.turn = turn
 	return turn, nil
 }
 
 func (s *testTurnService) FailTurn(_ context.Context, turn biz.Turn, _ error) (biz.Turn, error) {
-	turn.Status = biz.TurnStatusFailed
+	turn.Status = biz.CanonicalTurnStatusFailed
 	s.turn = turn
 	return turn, nil
 }
@@ -77,7 +77,7 @@ func TestTurnPipelineRunProjectsCompletion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
-	if turn.Status != biz.TurnStatusCompleted {
+	if turn.Status != biz.CanonicalTurnStatusCompleted {
 		t.Fatalf("turn.Status = %q, want completed", turn.Status)
 	}
 	if result.Outcome != biz.TurnOutcomeCompleted {
@@ -107,7 +107,7 @@ func TestTurnPipelineRunProjectsFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("Run error = nil, want executor error")
 	}
-	if turn.Status != biz.TurnStatusFailed {
+	if turn.Status != biz.CanonicalTurnStatusFailed {
 		t.Fatalf("turn.Status = %q, want failed", turn.Status)
 	}
 	if got := projector.events[len(projector.events)-1]; got.Type != biz.TurnEventFailed {
