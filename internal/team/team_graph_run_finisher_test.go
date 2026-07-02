@@ -7,7 +7,7 @@ import (
 )
 
 func TestEnrichTeamRunMetricsFromSteps(t *testing.T) {
-	run := biz.TeamRun{ID: "run-1"}
+	run := biz.TeamRunRecord{ID: "run-1"}
 	steps := []biz.TeamRunStep{
 		{TokenIn: 10, TokenOut: 20, OutputPreview: "first"},
 		{TokenIn: 5, TokenOut: 8, OutputPreview: "final answer"},
@@ -22,7 +22,7 @@ func TestEnrichTeamRunMetricsFromSteps(t *testing.T) {
 }
 
 func TestEnrichTeamRunMetricsFromSteps_preservesExistingPreview(t *testing.T) {
-	run := biz.TeamRun{OutputPreview: "keep me"}
+	run := biz.TeamRunRecord{OutputPreview: "keep me"}
 	enrichTeamRunMetricsFromSteps(&run, []biz.TeamRunStep{{OutputPreview: "new"}})
 	if run.OutputPreview != "keep me" {
 		t.Fatalf("preview=%q", run.OutputPreview)

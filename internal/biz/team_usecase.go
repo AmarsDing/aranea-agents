@@ -34,17 +34,17 @@ type TeamWriter interface {
 
 // Stability:stable
 type TeamRunReader interface {
-	ListTeamRuns(ctx context.Context, teamID string, limit int) ([]TeamRun, error)
-	ListTeamRunsByTeamIDs(ctx context.Context, teamIDs []string, limit int) (map[string][]TeamRun, error)
+	ListTeamRuns(ctx context.Context, teamID string, limit int) ([]TeamRunRecord, error)
+	ListTeamRunsByTeamIDs(ctx context.Context, teamIDs []string, limit int) (map[string][]TeamRunRecord, error)
 	HasActiveTeamRun(ctx context.Context, teamID string) (bool, error)
-	GetTeamRunByID(ctx context.Context, id string) (TeamRun, error)
+	GetTeamRunByID(ctx context.Context, id string) (TeamRunRecord, error)
 	ListTeamRunSteps(ctx context.Context, runID string) ([]TeamRunStep, error)
 }
 
 // Stability:stable
 type TeamRunWriter interface {
-	CreateTeamRun(ctx context.Context, r TeamRun) (TeamRun, error)
-	UpdateTeamRun(ctx context.Context, r TeamRun) error
+	CreateTeamRun(ctx context.Context, r TeamRunRecord) (TeamRunRecord, error)
+	UpdateTeamRun(ctx context.Context, r TeamRunRecord) error
 	UpdateTeamRunGraphExecutionID(ctx context.Context, runID, graphExecutionID string) error
 	UpdateTeamRunTraceID(ctx context.Context, runID, traceID string) error
 	UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJSON string) error
@@ -640,26 +640,26 @@ func (u *TeamUsecase) Duplicate(ctx context.Context, id string) (Team, error) {
 	return u.Create(ctx, dup)
 }
 
-func (u *TeamUsecase) ListRuns(ctx context.Context, teamID string, limit int) ([]TeamRun, error) {
+func (u *TeamUsecase) ListRuns(ctx context.Context, teamID string, limit int) ([]TeamRunRecord, error) {
 	return u.runReader.ListTeamRuns(ctx, teamID, limit)
 }
 
-func (u *TeamUsecase) ListRunsByTeamIDs(ctx context.Context, teamIDs []string, limit int) (map[string][]TeamRun, error) {
+func (u *TeamUsecase) ListRunsByTeamIDs(ctx context.Context, teamIDs []string, limit int) (map[string][]TeamRunRecord, error) {
 	if len(teamIDs) == 0 {
 		return nil, nil
 	}
 	return u.runReader.ListTeamRunsByTeamIDs(ctx, teamIDs, limit)
 }
 
-func (u *TeamUsecase) GetRun(ctx context.Context, id string) (TeamRun, error) {
+func (u *TeamUsecase) GetRun(ctx context.Context, id string) (TeamRunRecord, error) {
 	id, err := requireNonEmpty(id, "TEAM", "id")
 	if err != nil {
-		return TeamRun{}, err
+		return TeamRunRecord{}, err
 	}
 	return u.runReader.GetTeamRunByID(ctx, id)
 }
 
-func (u *TeamUsecase) UpdateRun(ctx context.Context, r TeamRun) error {
+func (u *TeamUsecase) UpdateRun(ctx context.Context, r TeamRunRecord) error {
 	if strings.TrimSpace(r.ID) == "" {
 		return apierror.BadRequest("TEAM", "run id is required")
 	}
@@ -683,7 +683,7 @@ func (u *TeamUsecase) UpdateRun(ctx context.Context, r TeamRun) error {
 // CancelRun cancels a team run if it is in running or pending status.
 // Returns the updated run or an error if the run cannot be cancelled.
 // Uses TeamRunStateMachine to validate the transition.
-func (u *TeamUsecase) CancelRun(ctx context.Context, runID string) (TeamRun, error) {
+func (u *TeamUsecase) CancelRun(ctx context.Context, runID string) (TeamRunRecord, error) {
 	return u.TransitionRunStatus(ctx, runID, TeamRunStatusCancelled)
 }
 
@@ -695,27 +695,27 @@ func (u *TeamUsecase) CancelRun(ctx context.Context, runID string) (TeamRun, err
 // CAS (Compare-And-Swap) is used to prevent TOCTOU race conditions: the
 // status is only updated if the current DB status still matches what we
 // read. If a concurrent modification occurred, Conflict is returned.
-func (u *TeamUsecase) TransitionRunStatus(ctx context.Context, runID string, newStatus string) (TeamRun, error) {
+func (u *TeamUsecase) TransitionRunStatus(ctx context.Context, runID string, newStatus string) (TeamRunRecord, error) {
 	runID, err := requireNonEmpty(runID, "TEAM", "run_id")
 	if err != nil {
-		return TeamRun{}, err
+		return TeamRunRecord{}, err
 	}
 	r, err := u.runReader.GetTeamRunByID(ctx, runID)
 	if err != nil {
-		return TeamRun{}, err
+		return TeamRunRecord{}, err
 	}
 	sm := NewTeamRunStateMachine()
 	if !sm.CanTransition(TeamRunState(r.Status), TeamRunState(newStatus)) {
-		return TeamRun{}, apierror.BadRequest("TEAM", "invalid team run status transition: %s → %s", r.Status, newStatus)
+		return TeamRunRecord{}, apierror.BadRequest("TEAM", "invalid team run status transition: %s → %s", r.Status, newStatus)
 	}
 	// CAS: only update if current status hasn't changed (prevents TOCTOU race).
 	// UpdateTeamRunWhereStatus also sets finished_at for terminal statuses.
 	updated, err := u.runWriter.UpdateTeamRunWhereStatus(ctx, runID, newStatus, r.Status)
 	if err != nil {
-		return TeamRun{}, err
+		return TeamRunRecord{}, err
 	}
 	if !updated {
-		return TeamRun{}, apierror.Conflict("TEAM", "team run status changed concurrently; please retry")
+		return TeamRunRecord{}, apierror.Conflict("TEAM", "team run status changed concurrently; please retry")
 	}
 	return u.runReader.GetTeamRunByID(ctx, runID)
 }

@@ -7,7 +7,7 @@ import (
 )
 
 func TestBuildTeamRunSummary(t *testing.T) {
-	run := biz.TeamRun{
+	run := biz.TeamRunRecord{
 		ID: "run-1", TeamID: "team-1", SessionID: "sess-1",
 		Mode: "sequential", Status: biz.TeamRunStatusSuccess,
 		TokenIn: 10, TokenOut: 20, DurationMS: 100,
@@ -32,7 +32,7 @@ func TestBuildTeamRunSummary(t *testing.T) {
 }
 
 func TestSummaryMapFromDataMatchesBuildTeamRunSummary(t *testing.T) {
-	run := biz.TeamRun{ID: "run-1", TeamID: "t1", SessionID: "s1", Status: biz.TeamRunStatusSuccess}
+	run := biz.TeamRunRecord{ID: "run-1", TeamID: "t1", SessionID: "s1", Status: biz.TeamRunStatusSuccess}
 	steps := []biz.TeamRunStep{{AgentKey: "a1", ToolCallCount: 1}}
 	data := biz.BuildTeamRunSummaryData(run, steps)
 	if got := SummaryMapFromData(data); got["run_id"] != BuildTeamRunSummary(run, steps)["run_id"] {
@@ -44,7 +44,7 @@ func TestTeamSummaryActivityEvent(t *testing.T) {
 	// SessionID must be the spirit session ID (not run.SessionID which is the
 	// team session ID) so the frontend WS filter and listActivities API return
 	// this team_stage summary event. See publishSpiritTeamAssembled canonical setup.
-	run := biz.TeamRun{ID: "r1", TeamID: "t1", SessionID: "s1", SpiritSessionID: "spirit-1", Status: biz.TeamRunStatusSuccess}
+	run := biz.TeamRunRecord{ID: "r1", TeamID: "t1", SessionID: "s1", SpiritSessionID: "spirit-1", Status: biz.TeamRunStatusSuccess}
 	ev := TeamSummaryActivityEvent(run, nil)
 	if ev.Event != biz.ActivityEventCompleted {
 		t.Fatalf("event=%s want=%s", ev.Event, biz.ActivityEventCompleted)

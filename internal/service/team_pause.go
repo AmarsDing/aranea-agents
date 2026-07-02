@@ -148,7 +148,7 @@ func (s *TeamService) InjectTeamMessage(ctx context.Context, req *v1.InjectTeamM
 	if err != nil {
 		return nil, mapTeamErr(err)
 	}
-	var target *biz.TeamRun
+	var target *biz.TeamRunRecord
 	for i := range runs {
 		r := &runs[i]
 		if r.Status != biz.TeamRunStatusRunning && r.Status != biz.TeamRunStatusPaused {

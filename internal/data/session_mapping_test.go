@@ -163,7 +163,7 @@ func TestEntTeamToBizFieldCoverage(t *testing.T) {
 func TestEntTeamRunToBizFieldCoverage(t *testing.T) {
 	assertFieldCoverage(t,
 		structFields(reflect.TypeOf(ent.TeamRun{})),
-		structFields(reflect.TypeOf(biz.TeamRun{})),
+		structFields(reflect.TypeOf(biz.TeamRunRecord{})),
 		map[string]string{
 			"CostMicroUsd": "CostMicroUSD",
 			"DurationMs":   "DurationMS",

@@ -50,8 +50,8 @@ func parityMemberOutcomes(def Definition) []parityMemberOutcome {
 	return out
 }
 
-func parityRunBase(mode string) biz.TeamRun {
-	return biz.TeamRun{
+func parityRunBase(mode string) biz.TeamRunRecord {
+	return biz.TeamRunRecord{
 		ID:        "run-parity-" + mode,
 		TeamID:    "team-parity",
 		SessionID: "sess-parity",
@@ -61,7 +61,7 @@ func parityRunBase(mode string) biz.TeamRun {
 }
 
 // buildGraphEventSteps simulates Graph path: one step per executed graph member node.
-func buildGraphEventSteps(run biz.TeamRun, teamID string, def Definition, outcomes []parityMemberOutcome) []biz.TeamRunStep {
+func buildGraphEventSteps(run biz.TeamRunRecord, teamID string, def Definition, outcomes []parityMemberOutcome) []biz.TeamRunStep {
 	steps := make([]biz.TeamRunStep, 0, len(outcomes))
 	for i, o := range outcomes {
 		nodeID := fmt.Sprintf("member-%d", o.SortOrder)

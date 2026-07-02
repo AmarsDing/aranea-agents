@@ -23,7 +23,7 @@ func (r *Runner) startObservers(
 	sess biz.Session,
 	teamRow biz.Team,
 	def Definition,
-	run biz.TeamRun,
+	run biz.TeamRunRecord,
 	graphExecID string,
 	compiledTeam *biz.CompiledTeam,
 ) observerSetup {

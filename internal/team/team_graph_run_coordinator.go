@@ -200,7 +200,7 @@ func (c *TeamGraphRunCoordinator) MarkTeamGraphInterrupt(ctx context.Context, ex
 }
 
 // DeferTeamRunSuccessIfHITL keeps the team run open when graph execution paused for human task.
-func (c *TeamGraphRunCoordinator) DeferTeamRunSuccessIfHITL(ctx context.Context, graphExecID string, run *biz.TeamRun) (bool, error) {
+func (c *TeamGraphRunCoordinator) DeferTeamRunSuccessIfHITL(ctx context.Context, graphExecID string, run *biz.TeamRunRecord) (bool, error) {
 	if c == nil || c.graphs == nil || run == nil {
 		return false, nil
 	}

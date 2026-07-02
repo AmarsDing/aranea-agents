@@ -12,10 +12,10 @@ import (
 )
 
 type cancelTeamRunRepo struct {
-	runs map[string]biz.TeamRun
+	runs map[string]biz.TeamRunRecord
 	// teamRunsByTeamID configures ListTeamRuns results per team_id.
 	// Inject tests populate this; cancel/pause/unpause tests leave it nil.
-	teamRunsByTeamID map[string][]biz.TeamRun
+	teamRunsByTeamID map[string][]biz.TeamRunRecord
 	// teamByID configures GetTeamByID. Inject tests use this to satisfy the
 	// "team exists" check; default (zero value) returns ErrNotFound.
 	teamByID map[string]biz.Team
@@ -58,19 +58,19 @@ func (r *cancelTeamRunRepo) BatchArchiveTeams(_ context.Context, _ []string) (in
 }
 
 // TeamRunReader
-func (r *cancelTeamRunRepo) ListTeamRuns(_ context.Context, teamID string, _ int) ([]biz.TeamRun, error) {
+func (r *cancelTeamRunRepo) ListTeamRuns(_ context.Context, teamID string, _ int) ([]biz.TeamRunRecord, error) {
 	if runs, ok := r.teamRunsByTeamID[teamID]; ok {
 		return runs, nil
 	}
 	return nil, nil
 }
-func (r *cancelTeamRunRepo) ListTeamRunsByTeamIDs(_ context.Context, _ []string, _ int) (map[string][]biz.TeamRun, error) {
+func (r *cancelTeamRunRepo) ListTeamRunsByTeamIDs(_ context.Context, _ []string, _ int) (map[string][]biz.TeamRunRecord, error) {
 	return nil, nil
 }
-func (r *cancelTeamRunRepo) GetTeamRunByID(_ context.Context, id string) (biz.TeamRun, error) {
+func (r *cancelTeamRunRepo) GetTeamRunByID(_ context.Context, id string) (biz.TeamRunRecord, error) {
 	run, ok := r.runs[id]
 	if !ok {
-		return biz.TeamRun{}, fmt.Errorf("not found")
+		return biz.TeamRunRecord{}, fmt.Errorf("not found")
 	}
 	return run, nil
 }
@@ -82,10 +82,10 @@ func (r *cancelTeamRunRepo) HasActiveTeamRun(_ context.Context, _ string) (bool,
 }
 
 // TeamRunWriter stubs
-func (r *cancelTeamRunRepo) CreateTeamRun(_ context.Context, run biz.TeamRun) (biz.TeamRun, error) {
+func (r *cancelTeamRunRepo) CreateTeamRun(_ context.Context, run biz.TeamRunRecord) (biz.TeamRunRecord, error) {
 	return run, nil
 }
-func (r *cancelTeamRunRepo) UpdateTeamRun(_ context.Context, run biz.TeamRun) error {
+func (r *cancelTeamRunRepo) UpdateTeamRun(_ context.Context, run biz.TeamRunRecord) error {
 	r.runs[run.ID] = run
 	return nil
 }
@@ -180,7 +180,7 @@ func TestCancelTeamRun_PublishesCancelledRunStatus(t *testing.T) {
 		cancelled: map[string]bool{},
 	}
 
-	repo := &cancelTeamRunRepo{runs: map[string]biz.TeamRun{
+	repo := &cancelTeamRunRepo{runs: map[string]biz.TeamRunRecord{
 		"tr-1": {ID: "tr-1", SessionID: "sess-team-1", Status: biz.TeamRunStatusRunning},
 	}}
 	svc := NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()}), nil, nil, nil, nil, reg, bus, loggateway.NewNoop(), nil, nil)

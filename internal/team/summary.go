@@ -8,7 +8,7 @@ import (
 )
 
 // BuildTeamRunSummary aggregates run-level and per-member stats for Monitor / automation.
-func BuildTeamRunSummary(run biz.TeamRun, steps []biz.TeamRunStep) map[string]any {
+func BuildTeamRunSummary(run biz.TeamRunRecord, steps []biz.TeamRunStep) map[string]any {
 	return SummaryMapFromData(biz.BuildTeamRunSummaryData(run, steps))
 }
 
@@ -53,7 +53,7 @@ func SummaryMapFromData(data biz.TeamRunSummaryData) map[string]any {
 // TeamSummaryActivityEvent emits a structured team_summary as a biz.ActivityEvent
 // for WS team/monitor consumers. Replaces the legacy TeamSummaryEnvelope helper
 // during the dual-bus unification (Teams domain → ActivityEventBus).
-func TeamSummaryActivityEvent(run biz.TeamRun, steps []biz.TeamRunStep) biz.ActivityEvent {
+func TeamSummaryActivityEvent(run biz.TeamRunRecord, steps []biz.TeamRunStep) biz.ActivityEvent {
 	summary := BuildTeamRunSummary(run, steps)
 	// SessionID = spirit session ID (not run.SessionID which is the team
 	// session ID) so the frontend WS filter and listActivities API return

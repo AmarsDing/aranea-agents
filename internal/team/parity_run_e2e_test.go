@@ -18,11 +18,11 @@ import (
 // parityMemRepo captures team_run_steps and supports minimal team narrow interfaces for E2E harness.
 type parityMemRepo struct {
 	steps []biz.TeamRunStep
-	runs  map[string]biz.TeamRun
+	runs  map[string]biz.TeamRunRecord
 }
 
 func newParityMemRepo() *parityMemRepo {
-	return &parityMemRepo{runs: map[string]biz.TeamRun{}}
+	return &parityMemRepo{runs: map[string]biz.TeamRunRecord{}}
 }
 
 func (m *parityMemRepo) ListTeams(context.Context) ([]biz.Team, error) { return nil, nil }
@@ -39,20 +39,20 @@ func (m *parityMemRepo) UpdateTeam(context.Context, biz.Team) (biz.Team, error) 
 	return biz.Team{}, nil
 }
 func (m *parityMemRepo) DeleteTeam(context.Context, string) error { return nil }
-func (m *parityMemRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
+func (m *parityMemRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRunRecord, error) {
 	return nil, nil
 }
-func (m *parityMemRepo) ListTeamRunsByTeamIDs(context.Context, []string, int) (map[string][]biz.TeamRun, error) {
+func (m *parityMemRepo) ListTeamRunsByTeamIDs(context.Context, []string, int) (map[string][]biz.TeamRunRecord, error) {
 	return nil, nil
 }
 func (m *parityMemRepo) HasActiveTeamRun(context.Context, string) (bool, error) {
 	return false, nil
 }
-func (m *parityMemRepo) GetTeamRunByID(_ context.Context, id string) (biz.TeamRun, error) {
+func (m *parityMemRepo) GetTeamRunByID(_ context.Context, id string) (biz.TeamRunRecord, error) {
 	if r, ok := m.runs[id]; ok {
 		return r, nil
 	}
-	return biz.TeamRun{}, biz.ErrNotFound
+	return biz.TeamRunRecord{}, biz.ErrNotFound
 }
 func (m *parityMemRepo) ListTeamRunSteps(_ context.Context, runID string) ([]biz.TeamRunStep, error) {
 	out := make([]biz.TeamRunStep, 0)
@@ -64,11 +64,11 @@ func (m *parityMemRepo) ListTeamRunSteps(_ context.Context, runID string) ([]biz
 	sort.Slice(out, func(i, j int) bool { return out[i].SortOrder < out[j].SortOrder })
 	return out, nil
 }
-func (m *parityMemRepo) CreateTeamRun(_ context.Context, r biz.TeamRun) (biz.TeamRun, error) {
+func (m *parityMemRepo) CreateTeamRun(_ context.Context, r biz.TeamRunRecord) (biz.TeamRunRecord, error) {
 	m.runs[r.ID] = r
 	return r, nil
 }
-func (m *parityMemRepo) UpdateTeamRun(_ context.Context, r biz.TeamRun) error {
+func (m *parityMemRepo) UpdateTeamRun(_ context.Context, r biz.TeamRunRecord) error {
 	m.runs[r.ID] = r
 	return nil
 }

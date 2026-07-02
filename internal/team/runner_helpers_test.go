@@ -19,10 +19,10 @@ func (r *stepBusRunWriter) CreateTeamRunStep(_ context.Context, step biz.TeamRun
 	return step, nil
 }
 
-func (r *stepBusRunWriter) CreateTeamRun(_ context.Context, run biz.TeamRun) (biz.TeamRun, error) {
+func (r *stepBusRunWriter) CreateTeamRun(_ context.Context, run biz.TeamRunRecord) (biz.TeamRunRecord, error) {
 	return run, nil
 }
-func (r *stepBusRunWriter) UpdateTeamRun(_ context.Context, _ biz.TeamRun) error { return nil }
+func (r *stepBusRunWriter) UpdateTeamRun(_ context.Context, _ biz.TeamRunRecord) error { return nil }
 func (r *stepBusRunWriter) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
 	return true, nil
 }
@@ -45,7 +45,7 @@ func TestPersistStep_EmitsFinished(t *testing.T) {
 			Pipeline: rt.EventPipeline{ActivityBus: bus},
 		},
 	}
-	run := biz.TeamRun{ID: "run-1", SessionID: "sess-1"}
+	run := biz.TeamRunRecord{ID: "run-1", SessionID: "sess-1"}
 	ag := biz.Agent{ID: "a1", AgentKey: "worker-a", DisplayName: "Worker A"}
 	m := MemberDef{Role: "worker"}
 	asst := biz.ChatMessage{Role: "assistant", ContentMarkdown: "done", Status: biz.TeamMemberStepStatusOK, CreatedAt: "2026-01-01T00:00:00Z"}

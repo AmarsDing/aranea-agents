@@ -37,7 +37,7 @@ func (r *Runner) resolveAnchorAndAttachments(
 	sess biz.Session,
 	input biz.TurnInput,
 	provOpt, modOpt string,
-	run *biz.TeamRun,
+	run *biz.TeamRunRecord,
 	t0 time.Time,
 ) (ar anchorResolution, turnStatus string, err error) {
 	turnStatus = biz.TeamMemberStepStatusOK
@@ -114,7 +114,7 @@ func (r *Runner) prepareUserTurnOptions(
 	ar anchorResolution,
 	content string,
 	sess biz.Session,
-	run *biz.TeamRun,
+	run *biz.TeamRunRecord,
 	teamRow biz.Team,
 	dialogMode string,
 	t0 time.Time,
@@ -195,7 +195,7 @@ func (r *Runner) prepareUserTurnOptions(
 func (r *Runner) finalizeTeamRun(
 	ctx context.Context,
 	sess biz.Session,
-	run biz.TeamRun,
+	run biz.TeamRunRecord,
 	teamRow biz.Team,
 	ar anchorResolution,
 	assistantMsg biz.ChatMessage,
@@ -204,7 +204,7 @@ func (r *Runner) finalizeTeamRun(
 	graphExecID string,
 	t0 time.Time,
 	teamEmitter *event.TraceEmitter,
-) biz.TeamRun {
+) biz.TeamRunRecord {
 	// Transition status through the state machine for consistent validation & timestamps.
 	updatedRun, transitionErr := r.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusSuccess)
 	if transitionErr != nil {

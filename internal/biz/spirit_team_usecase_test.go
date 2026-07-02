@@ -88,25 +88,25 @@ func (m *memSpiritTeamRepo) GetTeamByKey(_ context.Context, _ string) (Team, err
 func (m *memSpiritTeamRepo) ListTeamsByDepartmentID(_ context.Context, _ string) ([]Team, error) {
 	return nil, nil
 }
-func (m *memSpiritTeamRepo) ListTeamRuns(_ context.Context, _ string, _ int) ([]TeamRun, error) {
+func (m *memSpiritTeamRepo) ListTeamRuns(_ context.Context, _ string, _ int) ([]TeamRunRecord, error) {
 	return nil, nil
 }
-func (m *memSpiritTeamRepo) ListTeamRunsByTeamIDs(_ context.Context, _ []string, _ int) (map[string][]TeamRun, error) {
+func (m *memSpiritTeamRepo) ListTeamRunsByTeamIDs(_ context.Context, _ []string, _ int) (map[string][]TeamRunRecord, error) {
 	return nil, nil
 }
 func (m *memSpiritTeamRepo) HasActiveTeamRun(_ context.Context, _ string) (bool, error) {
 	return false, nil
 }
-func (m *memSpiritTeamRepo) GetTeamRunByID(_ context.Context, id string) (TeamRun, error) {
-	return TeamRun{}, fmt.Errorf("team run not found: %s", id)
+func (m *memSpiritTeamRepo) GetTeamRunByID(_ context.Context, id string) (TeamRunRecord, error) {
+	return TeamRunRecord{}, fmt.Errorf("team run not found: %s", id)
 }
 func (m *memSpiritTeamRepo) ListTeamRunSteps(_ context.Context, _ string) ([]TeamRunStep, error) {
 	return nil, nil
 }
-func (m *memSpiritTeamRepo) CreateTeamRun(_ context.Context, r TeamRun) (TeamRun, error) {
+func (m *memSpiritTeamRepo) CreateTeamRun(_ context.Context, r TeamRunRecord) (TeamRunRecord, error) {
 	return r, nil
 }
-func (m *memSpiritTeamRepo) UpdateTeamRun(_ context.Context, _ TeamRun) error { return nil }
+func (m *memSpiritTeamRepo) UpdateTeamRun(_ context.Context, _ TeamRunRecord) error { return nil }
 func (m *memSpiritTeamRepo) UpdateTeamRunSummaryJSON(_ context.Context, _, _ string) error {
 	return nil
 }

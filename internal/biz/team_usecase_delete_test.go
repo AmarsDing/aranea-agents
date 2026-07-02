@@ -51,17 +51,17 @@ func (s *stubTeamWriter) UpdateTeamWhereStatus(_ context.Context, _, _, _ string
 
 type stubTeamRunReader struct{}
 
-func (s *stubTeamRunReader) ListTeamRuns(context.Context, string, int) ([]TeamRun, error) {
+func (s *stubTeamRunReader) ListTeamRuns(context.Context, string, int) ([]TeamRunRecord, error) {
 	return nil, nil
 }
-func (s *stubTeamRunReader) ListTeamRunsByTeamIDs(context.Context, []string, int) (map[string][]TeamRun, error) {
+func (s *stubTeamRunReader) ListTeamRunsByTeamIDs(context.Context, []string, int) (map[string][]TeamRunRecord, error) {
 	return nil, nil
 }
 func (s *stubTeamRunReader) HasActiveTeamRun(context.Context, string) (bool, error) {
 	return false, nil
 }
-func (s *stubTeamRunReader) GetTeamRunByID(context.Context, string) (TeamRun, error) {
-	return TeamRun{}, nil
+func (s *stubTeamRunReader) GetTeamRunByID(context.Context, string) (TeamRunRecord, error) {
+	return TeamRunRecord{}, nil
 }
 func (s *stubTeamRunReader) ListTeamRunSteps(context.Context, string) ([]TeamRunStep, error) {
 	return nil, nil
@@ -69,10 +69,10 @@ func (s *stubTeamRunReader) ListTeamRunSteps(context.Context, string) ([]TeamRun
 
 type stubTeamRunWriter struct{}
 
-func (s *stubTeamRunWriter) CreateTeamRun(context.Context, TeamRun) (TeamRun, error) {
-	return TeamRun{}, nil
+func (s *stubTeamRunWriter) CreateTeamRun(context.Context, TeamRunRecord) (TeamRunRecord, error) {
+	return TeamRunRecord{}, nil
 }
-func (s *stubTeamRunWriter) UpdateTeamRun(context.Context, TeamRun) error { return nil }
+func (s *stubTeamRunWriter) UpdateTeamRun(context.Context, TeamRunRecord) error { return nil }
 func (s *stubTeamRunWriter) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
 	return true, nil
 }

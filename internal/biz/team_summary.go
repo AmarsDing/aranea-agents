@@ -3,7 +3,7 @@ package biz
 import "strings"
 
 // BuildTeamRunSummaryData aggregates run-level and per-member stats from a run and its steps.
-func BuildTeamRunSummaryData(run TeamRun, steps []TeamRunStep) TeamRunSummaryData {
+func BuildTeamRunSummaryData(run TeamRunRecord, steps []TeamRunStep) TeamRunSummaryData {
 	members := make([]TeamRunMemberSummaryData, 0, len(steps))
 	totalToolCalls := 0
 	for _, s := range steps {

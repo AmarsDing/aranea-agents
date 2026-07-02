@@ -55,8 +55,8 @@ func (r *Runner) validateTeamTurnInput(input biz.TurnInput, sess biz.Session, de
 }
 
 // createInitialTeamRun builds and persists the initial TeamRun record.
-func (r *Runner) createInitialTeamRun(ctx context.Context, sess biz.Session, teamRow biz.Team, def Definition, mode, content string) (biz.TeamRun, error) {
-	run := biz.TeamRun{
+func (r *Runner) createInitialTeamRun(ctx context.Context, sess biz.Session, teamRow biz.Team, def Definition, mode, content string) (biz.TeamRunRecord, error) {
+	run := biz.TeamRunRecord{
 		ID:                     uuid.NewString(),
 		TeamID:                 teamRow.ID,
 		SessionID:              sess.ID,
@@ -72,7 +72,7 @@ func (r *Runner) createInitialTeamRun(ctx context.Context, sess biz.Session, tea
 	}
 	saved, err := r.runWriter.CreateTeamRun(ctx, run)
 	if err != nil {
-		return biz.TeamRun{}, err
+		return biz.TeamRunRecord{}, err
 	}
 	// Restore transient SpiritSessionID: team_runs table has no spirit_session_id
 	// column, so entTeamRunToBiz returns it empty. Callers (publishTeamStepActivity,
@@ -92,7 +92,7 @@ type teamTracingSetup struct {
 
 // setupTeamTracing initializes turntrace span and event trace emitter.
 // The caller is responsible for deferring bridge.Finish(err) and emitter.FinishRoot(turnStatus).
-func (r *Runner) setupTeamTracing(ctx context.Context, sess biz.Session, teamRow biz.Team, run biz.TeamRun, mode string, memberCount int) teamTracingSetup {
+func (r *Runner) setupTeamTracing(ctx context.Context, sess biz.Session, teamRow biz.Team, run biz.TeamRunRecord, mode string, memberCount int) teamTracingSetup {
 	ts := teamTracingSetup{turnStatus: biz.TeamMemberStepStatusOK}
 	ctx, bridge, _ := turntrace.Start(ctx, turntrace.Config{
 		Domain:    turntrace.DomainTeam,
@@ -142,7 +142,7 @@ func deriveSpiritSessionID(sess biz.Session) string {
 // before this event is published). Including team_summary.members here would overwrite the
 // correct session IDs with the team session ID (sess.ID), causing the frontend to fail to
 // lazy-load member execution processes.
-func (r *Runner) publishTeamRunStartedEvent(ctx context.Context, sess biz.Session, teamRow biz.Team, run biz.TeamRun, def Definition) {
+func (r *Runner) publishTeamRunStartedEvent(ctx context.Context, sess biz.Session, teamRow biz.Team, run biz.TeamRunRecord, def Definition) {
 	if r.td.Pipeline.ActivityBus == nil {
 		return
 	}
@@ -181,7 +181,7 @@ func (r *Runner) publishTeamRunStartedEvent(ctx context.Context, sess biz.Sessio
 }
 
 // buildTeamBuilderDeps assembles the TRPCBuilderDeps from runner configuration and anchor resolution.
-func (r *Runner) buildTeamBuilderDeps(ctx context.Context, sess biz.Session, run biz.TeamRun, ar anchorResolution, dialogMode string) agent.TRPCBuilderDeps {
+func (r *Runner) buildTeamBuilderDeps(ctx context.Context, sess biz.Session, run biz.TeamRunRecord, ar anchorResolution, dialogMode string) agent.TRPCBuilderDeps {
 	deps := agent.TRPCBuilderDeps{
 		TRPCModelCatalogDeps: agent.TRPCModelCatalogDeps{
 			ModelCatalog: r.td.ReadDeps.LLM,
@@ -280,7 +280,7 @@ func (r *Runner) buildTeamRunContext(ctx context.Context, def Definition, builde
 }
 
 // buildTeamProjectMeta assembles the ProjectMeta for stream consumption.
-func (r *Runner) buildTeamProjectMeta(ctx context.Context, sess biz.Session, run biz.TeamRun, teamRow biz.Team, ar anchorResolution, memberKeys []string, content, traceID string) agent.ProjectMeta {
+func (r *Runner) buildTeamProjectMeta(ctx context.Context, sess biz.Session, run biz.TeamRunRecord, teamRow biz.Team, ar anchorResolution, memberKeys []string, content, traceID string) agent.ProjectMeta {
 	memberKeySet := make(map[string]struct{}, len(memberKeys))
 	for _, k := range memberKeys {
 		memberKeySet[k] = struct{}{}
@@ -401,7 +401,7 @@ func validateAssistantOutput(result agent.EventStreamResult) error {
 
 // finishTeamRunWithError is a helper that sets turnStatus to error, calls finishRunErr,
 // and optionally rolls back the runner session. Returns the error for convenient use in error paths.
-func (r *Runner) finishTeamRunWithError(ctx context.Context, run *biz.TeamRun, t0 time.Time, errMsg string, turnStatus *string, rollbackFn func()) {
+func (r *Runner) finishTeamRunWithError(ctx context.Context, run *biz.TeamRunRecord, t0 time.Time, errMsg string, turnStatus *string, rollbackFn func()) {
 	*turnStatus = biz.TeamMemberStepStatusError
 	r.finishRunErr(ctx, run, t0, errMsg)
 	if rollbackFn != nil {

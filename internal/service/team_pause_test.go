@@ -33,7 +33,7 @@ func newPauseTestService(t *testing.T, repo *cancelTeamRunRepo, reg *testRunRegi
 }
 
 func TestPauseTeamRun_RunningToPaused(t *testing.T) {
-	repo := &cancelTeamRunRepo{runs: map[string]biz.TeamRun{
+	repo := &cancelTeamRunRepo{runs: map[string]biz.TeamRunRecord{
 		"tr-1": {ID: "tr-1", SessionID: "sess-team-1", Status: biz.TeamRunStatusRunning},
 	}}
 	reg := &testRunRegistry{
@@ -79,7 +79,7 @@ func TestPauseTeamRun_RunningToPaused(t *testing.T) {
 }
 
 func TestPauseTeamRun_NotRunningRejected(t *testing.T) {
-	repo := &cancelTeamRunRepo{runs: map[string]biz.TeamRun{
+	repo := &cancelTeamRunRepo{runs: map[string]biz.TeamRunRecord{
 		"tr-2": {ID: "tr-2", SessionID: "sess-team-2", Status: biz.TeamRunStatusSuccess},
 	}}
 	reg := &testRunRegistry{}
@@ -116,7 +116,7 @@ func TestPauseTeamRun_EmptyIDRejected(t *testing.T) {
 }
 
 func TestUnpauseTeamRun_PausedToRunning(t *testing.T) {
-	repo := &cancelTeamRunRepo{runs: map[string]biz.TeamRun{
+	repo := &cancelTeamRunRepo{runs: map[string]biz.TeamRunRecord{
 		"tr-3": {ID: "tr-3", SessionID: "sess-team-3", Status: biz.TeamRunStatusPaused},
 	}}
 	reg := &testRunRegistry{}
@@ -146,7 +146,7 @@ func TestUnpauseTeamRun_PausedToRunning(t *testing.T) {
 }
 
 func TestUnpauseTeamRun_NotPausedRejected(t *testing.T) {
-	repo := &cancelTeamRunRepo{runs: map[string]biz.TeamRun{
+	repo := &cancelTeamRunRepo{runs: map[string]biz.TeamRunRecord{
 		"tr-4": {ID: "tr-4", SessionID: "sess-team-4", Status: biz.TeamRunStatusRunning},
 	}}
 	reg := &testRunRegistry{}
@@ -168,7 +168,7 @@ func TestInjectTeamMessage_RoutesToActiveRunSession(t *testing.T) {
 		teamByID: map[string]biz.Team{
 			"team-A": {ID: "team-A"},
 		},
-		teamRunsByTeamID: map[string][]biz.TeamRun{
+		teamRunsByTeamID: map[string][]biz.TeamRunRecord{
 			"team-A": {
 				// Older completed run — should be skipped.
 				{ID: "run-old", SessionID: "sess-old", Status: biz.TeamRunStatusSuccess, CreatedAt: "2026-01-01T00:00:00Z"},
@@ -205,7 +205,7 @@ func TestInjectTeamMessage_RoutesToActiveRunSession(t *testing.T) {
 func TestInjectTeamMessage_PrefersPausedRunWhenNoRunning(t *testing.T) {
 	repo := &cancelTeamRunRepo{
 		teamByID: map[string]biz.Team{"team-B": {ID: "team-B"}},
-		teamRunsByTeamID: map[string][]biz.TeamRun{
+		teamRunsByTeamID: map[string][]biz.TeamRunRecord{
 			"team-B": {
 				{ID: "run-paused", SessionID: "sess-paused", Status: biz.TeamRunStatusPaused, CreatedAt: "2026-06-01T00:00:00Z"},
 				// Newer but terminal — should be skipped.
@@ -235,7 +235,7 @@ func TestInjectTeamMessage_PrefersPausedRunWhenNoRunning(t *testing.T) {
 func TestInjectTeamMessage_NoActiveRunRejected(t *testing.T) {
 	repo := &cancelTeamRunRepo{
 		teamByID: map[string]biz.Team{"team-C": {ID: "team-C"}},
-		teamRunsByTeamID: map[string][]biz.TeamRun{
+		teamRunsByTeamID: map[string][]biz.TeamRunRecord{
 			"team-C": {
 				{ID: "run-done", SessionID: "sess-done", Status: biz.TeamRunStatusSuccess, CreatedAt: "2026-01-01T00:00:00Z"},
 			},

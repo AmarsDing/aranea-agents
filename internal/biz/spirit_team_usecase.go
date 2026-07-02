@@ -32,7 +32,7 @@ type SpiritTeamAssembler interface {
 	TransitionStatus(ctx context.Context, id string, newStatus string) (Team, error)
 	ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]Team, error)
 	BatchArchiveTeams(ctx context.Context, ids []string) (int, error)
-	ListRuns(ctx context.Context, teamID string, limit int) ([]TeamRun, error)
+	ListRuns(ctx context.Context, teamID string, limit int) ([]TeamRunRecord, error)
 }
 
 // SpiritSessionAccessor provides the session operations needed by SpiritTeamUsecase.

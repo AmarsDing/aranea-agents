@@ -8,7 +8,7 @@ import (
 )
 
 func TestRunSummaryMapProtoParity(t *testing.T) {
-	run := biz.TeamRun{
+	run := biz.TeamRunRecord{
 		ID: "run-1", TeamID: "team-1", SessionID: "sess-1",
 		Mode: "sequential", Status: biz.TeamRunStatusSuccess,
 		TokenIn: 10, TokenOut: 20, DurationMS: 100, CostMicroUSD: 42,

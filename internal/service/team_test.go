@@ -71,25 +71,25 @@ func (m *memTeamRepo) DeleteTeam(_ context.Context, id string) error {
 }
 func (m *memTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
 
-func (m *memTeamRepo) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRun, error) {
+func (m *memTeamRepo) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRunRecord, error) {
 	return nil, nil
 }
-func (m *memTeamRepo) ListTeamRunsByTeamIDs(_ context.Context, _ []string, _ int) (map[string][]biz.TeamRun, error) {
+func (m *memTeamRepo) ListTeamRunsByTeamIDs(_ context.Context, _ []string, _ int) (map[string][]biz.TeamRunRecord, error) {
 	return nil, nil
 }
 func (m *memTeamRepo) HasActiveTeamRun(_ context.Context, _ string) (bool, error) {
 	return false, nil
 }
-func (m *memTeamRepo) GetTeamRunByID(_ context.Context, id string) (biz.TeamRun, error) {
-	return biz.TeamRun{}, fmt.Errorf("team run not found: %s", id)
+func (m *memTeamRepo) GetTeamRunByID(_ context.Context, id string) (biz.TeamRunRecord, error) {
+	return biz.TeamRunRecord{}, fmt.Errorf("team run not found: %s", id)
 }
 func (m *memTeamRepo) ListTeamRunSteps(_ context.Context, _ string) ([]biz.TeamRunStep, error) {
 	return nil, nil
 }
-func (m *memTeamRepo) CreateTeamRun(_ context.Context, r biz.TeamRun) (biz.TeamRun, error) {
+func (m *memTeamRepo) CreateTeamRun(_ context.Context, r biz.TeamRunRecord) (biz.TeamRunRecord, error) {
 	return r, nil
 }
-func (m *memTeamRepo) UpdateTeamRun(_ context.Context, _ biz.TeamRun) error { return nil }
+func (m *memTeamRepo) UpdateTeamRun(_ context.Context, _ biz.TeamRunRecord) error { return nil }
 func (m *memTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
 	return true, nil
 }

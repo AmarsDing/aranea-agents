@@ -190,7 +190,7 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 // snapshot, compares against persisted steps, and publishes a "completed"
 // event for the gap. Uses AgentKey for dedup since multiple member entries
 // can share the same agent (e.g., programmer as both synthesizer and worker).
-func (r *Runner) finalizePendingSessionActivities(ctx context.Context, run biz.TeamRun, teamID string, persistedSteps []biz.TeamRunStep) {
+func (r *Runner) finalizePendingSessionActivities(ctx context.Context, run biz.TeamRunRecord, teamID string, persistedSteps []biz.TeamRunStep) {
 	if r == nil || r.td.Pipeline.ActivityBus == nil {
 		return
 	}
@@ -250,7 +250,7 @@ func buildResumeSessionContext(defJSON, inputPreview string, agentKeyFn func(age
 	return reg, memberByNode, stepSortIndex
 }
 
-func enrichTeamRunMetricsFromSteps(run *biz.TeamRun, steps []biz.TeamRunStep) {
+func enrichTeamRunMetricsFromSteps(run *biz.TeamRunRecord, steps []biz.TeamRunStep) {
 	if run == nil {
 		return
 	}
@@ -277,7 +277,7 @@ func enrichTeamRunMetricsFromSteps(run *biz.TeamRun, steps []biz.TeamRunStep) {
 // ensureGraphRunStepsFallback persists a single anchor step when graph events produced no team_run_steps.
 func (r *Runner) ensureGraphRunStepsFallback(
 	ctx context.Context,
-	run biz.TeamRun,
+	run biz.TeamRunRecord,
 	teamID string,
 	anchor MemberDef,
 	anchorAg biz.Agent,

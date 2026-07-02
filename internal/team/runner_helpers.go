@@ -17,7 +17,7 @@ import (
 
 // publishTeamRunFailedActivity publishes a team_run_failed ActivityEvent to the
 // ActivityEventBus. Replaces the legacy EnvelopeTypeTeamRunFailed publish.
-func (r *Runner) publishTeamRunFailedActivity(ctx context.Context, run biz.TeamRun, msg string) {
+func (r *Runner) publishTeamRunFailedActivity(ctx context.Context, run biz.TeamRunRecord, msg string) {
 	if r.td.Pipeline.ActivityBus == nil {
 		return
 	}
@@ -55,7 +55,7 @@ func (r *Runner) publishTeamRunFailedActivity(ctx context.Context, run biz.TeamR
 // ParentActivityID). The child_session_id in meta points to the member's
 // individual agent session (resolved via SessionChildLookup) so the frontend
 // can lazy-load member execution processes (thinking/action/reply).
-func (r *Runner) publishTeamStepActivity(ctx context.Context, run biz.TeamRun, teamID, agentKey, agentName string, eventType biz.ActivityEventType, status biz.ActivityStatus, stage string, step any) {
+func (r *Runner) publishTeamStepActivity(ctx context.Context, run biz.TeamRunRecord, teamID, agentKey, agentName string, eventType biz.ActivityEventType, status biz.ActivityStatus, stage string, step any) {
 	if r.td.Pipeline.ActivityBus == nil {
 		return
 	}
@@ -163,7 +163,7 @@ func mergeTeamUserTurnMetaJSON(userOpts string, displayContent, sendText string,
 	return string(out), nil
 }
 
-func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Time, msg string) {
+func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRunRecord, t0 time.Time, msg string) {
 	if run == nil {
 		return
 	}
@@ -212,7 +212,7 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 	r.lg.With(loggateway.SessionID(strings.TrimSpace(run.SessionID))).Warn(msg, loggateway.StepID("team.run.finish"), loggateway.Str("team_id", run.TeamID), loggateway.Str("run_id", run.ID))
 }
 
-func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRun) {
+func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRunRecord) {
 	if r == nil || r.td.Pipeline.ActivityBus == nil || r.runReader == nil {
 		return
 	}
@@ -230,7 +230,7 @@ func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRun) {
 	r.td.Pipeline.ActivityBus.Publish(ctx, TeamSummaryActivityEvent(run, steps))
 }
 
-func (r *Runner) persistStep(ctx context.Context, run biz.TeamRun, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage, prov, mod, dialogMode string, toolCallCount int) {
+func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage, prov, mod, dialogMode string, toolCallCount int) {
 	step := biz.TeamRunStep{
 		ID:            uuid.NewString(),
 		RunID:         run.ID,

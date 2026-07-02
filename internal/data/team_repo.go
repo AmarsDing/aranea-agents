@@ -71,11 +71,11 @@ func entTeamToBiz(e *ent.Team, lg loggateway.Logger) biz.Team {
 	}
 }
 
-func entTeamRunToBiz(e *ent.TeamRun) biz.TeamRun {
+func entTeamRunToBiz(e *ent.TeamRun) biz.TeamRunRecord {
 	if e == nil {
-		return biz.TeamRun{}
+		return biz.TeamRunRecord{}
 	}
-	return biz.TeamRun{
+	return biz.TeamRunRecord{
 		ID:                     e.ID,
 		TeamID:                 e.TeamID,
 		SessionID:              e.SessionID,
@@ -380,7 +380,7 @@ func (r *TeamRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionID st
 	return out, nil
 }
 
-func (r *TeamRepo) ListTeamRuns(ctx context.Context, teamID string, limit int) ([]biz.TeamRun, error) {
+func (r *TeamRepo) ListTeamRuns(ctx context.Context, teamID string, limit int) ([]biz.TeamRunRecord, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
@@ -392,14 +392,14 @@ func (r *TeamRepo) ListTeamRuns(ctx context.Context, teamID string, limit int) (
 	if err != nil {
 		return nil, entErrToBizErr(err, "TEAM")
 	}
-	out := make([]biz.TeamRun, 0, len(rows))
+	out := make([]biz.TeamRunRecord, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, entTeamRunToBiz(row))
 	}
 	return out, nil
 }
 
-func (r *TeamRepo) ListTeamRunsByTeamIDs(ctx context.Context, teamIDs []string, limit int) (map[string][]biz.TeamRun, error) {
+func (r *TeamRepo) ListTeamRunsByTeamIDs(ctx context.Context, teamIDs []string, limit int) (map[string][]biz.TeamRunRecord, error) {
 	if len(teamIDs) == 0 {
 		return nil, nil
 	}
@@ -411,7 +411,7 @@ func (r *TeamRepo) ListTeamRunsByTeamIDs(ctx context.Context, teamIDs []string, 
 	if err != nil {
 		return nil, entErrToBizErr(err, "TEAM")
 	}
-	result := make(map[string][]biz.TeamRun, len(teamIDs))
+	result := make(map[string][]biz.TeamRunRecord, len(teamIDs))
 	for _, row := range rows {
 		bizRun := entTeamRunToBiz(row)
 		result[bizRun.TeamID] = append(result[bizRun.TeamID], bizRun)
@@ -436,13 +436,13 @@ func (r *TeamRepo) HasActiveTeamRun(ctx context.Context, teamID string) (bool, e
 	return count > 0, nil
 }
 
-func (r *TeamRepo) GetTeamRunByID(ctx context.Context, id string) (biz.TeamRun, error) {
+func (r *TeamRepo) GetTeamRunByID(ctx context.Context, id string) (biz.TeamRunRecord, error) {
 	row, err := r.data.RW().Read(ctx).TeamRun.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return biz.TeamRun{}, apierror.NotFound(apierror.DomainTeam, "not found")
+			return biz.TeamRunRecord{}, apierror.NotFound(apierror.DomainTeam, "not found")
 		}
-		return biz.TeamRun{}, entErrToBizErr(err, "TEAM")
+		return biz.TeamRunRecord{}, entErrToBizErr(err, "TEAM")
 	}
 	return entTeamRunToBiz(row), nil
 }
@@ -462,9 +462,9 @@ func (r *TeamRepo) ListTeamRunSteps(ctx context.Context, runID string) ([]biz.Te
 	return out, nil
 }
 
-func (r *TeamRepo) CreateTeamRun(ctx context.Context, run biz.TeamRun) (biz.TeamRun, error) {
+func (r *TeamRepo) CreateTeamRun(ctx context.Context, run biz.TeamRunRecord) (biz.TeamRunRecord, error) {
 	if strings.TrimSpace(run.ID) == "" || strings.TrimSpace(run.TeamID) == "" {
-		return biz.TeamRun{}, apierror.BadRequest("TEAM_RUN", "team run id and team_id are required")
+		return biz.TeamRunRecord{}, apierror.BadRequest("TEAM_RUN", "team run id and team_id are required")
 	}
 	now := nowRFC3339()
 	if run.CreatedAt == "" {
@@ -506,16 +506,16 @@ func (r *TeamRepo) CreateTeamRun(ctx context.Context, run biz.TeamRun) (biz.Team
 		SetUpdatedAt(run.UpdatedAt).
 		Save(ctx)
 	if err != nil {
-		return biz.TeamRun{}, entErrToBizErr(err, "TEAM")
+		return biz.TeamRunRecord{}, entErrToBizErr(err, "TEAM")
 	}
 	row, err := r.data.RW().Read(ctx).TeamRun.Get(ctx, run.ID)
 	if err != nil {
-		return biz.TeamRun{}, entErrToBizErr(err, "TEAM")
+		return biz.TeamRunRecord{}, entErrToBizErr(err, "TEAM")
 	}
 	return entTeamRunToBiz(row), nil
 }
 
-func (r *TeamRepo) UpdateTeamRun(ctx context.Context, run biz.TeamRun) error {
+func (r *TeamRepo) UpdateTeamRun(ctx context.Context, run biz.TeamRunRecord) error {
 	if strings.TrimSpace(run.ID) == "" {
 		return apierror.BadRequest("TEAM_RUN", "team run id is required")
 	}

@@ -71,7 +71,7 @@ func BuildOrchestrationRegistryFromDefinition(definitionJSON string, steps []Tea
 }
 
 // BuildTeamRunObservatory assembles node states from run metadata and persisted steps.
-func BuildTeamRunObservatory(run TeamRun, steps []TeamRunStep, definitionJSON string) TeamRunObservatory {
+func BuildTeamRunObservatory(run TeamRunRecord, steps []TeamRunStep, definitionJSON string) TeamRunObservatory {
 	reg := BuildOrchestrationRegistryFromDefinition(definitionJSON, steps)
 	store := NewOrchestrationStatusStore(reg)
 
@@ -204,7 +204,7 @@ func parseOrchestrationMembers(definitionJSON string) ([]orchestrationMember, er
 }
 
 // HasActiveTeamRun reports whether the team has a running or pending run.
-func HasActiveTeamRun(runs []TeamRun) bool {
+func HasActiveTeamRun(runs []TeamRunRecord) bool {
 	for _, r := range runs {
 		switch strings.ToLower(strings.TrimSpace(r.Status)) {
 		case "running", "pending":

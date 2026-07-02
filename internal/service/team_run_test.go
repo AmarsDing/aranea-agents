@@ -11,7 +11,7 @@ import (
 )
 
 type summaryTeamRepo struct {
-	runs  map[string]biz.TeamRun
+	runs  map[string]biz.TeamRunRecord
 	steps map[string][]biz.TeamRunStep
 }
 
@@ -48,20 +48,20 @@ func (r *summaryTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int,
 }
 
 // TeamRunReader
-func (r *summaryTeamRepo) GetTeamRunByID(_ context.Context, id string) (biz.TeamRun, error) {
+func (r *summaryTeamRepo) GetTeamRunByID(_ context.Context, id string) (biz.TeamRunRecord, error) {
 	run, ok := r.runs[id]
 	if !ok {
-		return biz.TeamRun{}, fmt.Errorf("not found")
+		return biz.TeamRunRecord{}, fmt.Errorf("not found")
 	}
 	return run, nil
 }
 func (r *summaryTeamRepo) ListTeamRunSteps(_ context.Context, runID string) ([]biz.TeamRunStep, error) {
 	return r.steps[runID], nil
 }
-func (r *summaryTeamRepo) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRun, error) {
+func (r *summaryTeamRepo) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRunRecord, error) {
 	return nil, nil
 }
-func (r *summaryTeamRepo) ListTeamRunsByTeamIDs(_ context.Context, _ []string, _ int) (map[string][]biz.TeamRun, error) {
+func (r *summaryTeamRepo) ListTeamRunsByTeamIDs(_ context.Context, _ []string, _ int) (map[string][]biz.TeamRunRecord, error) {
 	return nil, nil
 }
 func (r *summaryTeamRepo) HasActiveTeamRun(_ context.Context, _ string) (bool, error) {
@@ -69,10 +69,10 @@ func (r *summaryTeamRepo) HasActiveTeamRun(_ context.Context, _ string) (bool, e
 }
 
 // TeamRunWriter stubs
-func (r *summaryTeamRepo) CreateTeamRun(_ context.Context, run biz.TeamRun) (biz.TeamRun, error) {
+func (r *summaryTeamRepo) CreateTeamRun(_ context.Context, run biz.TeamRunRecord) (biz.TeamRunRecord, error) {
 	return run, nil
 }
-func (r *summaryTeamRepo) UpdateTeamRun(_ context.Context, _ biz.TeamRun) error { return nil }
+func (r *summaryTeamRepo) UpdateTeamRun(_ context.Context, _ biz.TeamRunRecord) error { return nil }
 func (r *summaryTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
 	return true, nil
 }
@@ -106,7 +106,7 @@ func (r *summaryTeamRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (bi
 
 func TestGetTeamRunSummary_AggregatesSteps(t *testing.T) {
 	repo := &summaryTeamRepo{
-		runs: map[string]biz.TeamRun{
+		runs: map[string]biz.TeamRunRecord{
 			"run-1": {ID: "run-1", TeamID: "t1", SessionID: "s1", Mode: "sequential", Status: biz.TeamRunStatusSuccess, TokenIn: 5, TokenOut: 10},
 		},
 		steps: map[string][]biz.TeamRunStep{
@@ -131,7 +131,7 @@ func TestGetTeamRunSummary_AggregatesSteps(t *testing.T) {
 }
 
 func TestRunTeamTest_RequiresRuntime(t *testing.T) {
-	repo := &summaryTeamRepo{runs: map[string]biz.TeamRun{}}
+	repo := &summaryTeamRepo{runs: map[string]biz.TeamRunRecord{}}
 	svc := NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()}), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil)
 	_, err := svc.RunTeamTest(context.Background(), &v1.RunTeamTestRequest{Id: "t1"})
 	if err == nil {

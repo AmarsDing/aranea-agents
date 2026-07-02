@@ -9,7 +9,7 @@ import (
 )
 
 func TestBuildTeamRunSummaryData(t *testing.T) {
-	run := TeamRun{
+	run := TeamRunRecord{
 		ID: "run-1", TeamID: "team-1", SessionID: "sess-1",
 		Mode: "sequential", Status: TeamRunStatusSuccess,
 		TokenIn: 10, TokenOut: 20, DurationMS: 100,
@@ -28,7 +28,7 @@ func TestBuildTeamRunSummaryData(t *testing.T) {
 
 func TestTeamUsecase_GetRunSummary(t *testing.T) {
 	repo := &runSummaryRepo{
-		runs: map[string]TeamRun{
+		runs: map[string]TeamRunRecord{
 			"run-1": {ID: "run-1", TeamID: "t1", SessionID: "s1", Mode: "sequential", Status: TeamRunStatusSuccess},
 		},
 		steps: map[string][]TeamRunStep{
@@ -46,7 +46,7 @@ func TestTeamUsecase_GetRunSummary(t *testing.T) {
 }
 
 type runSummaryRepo struct {
-	runs  map[string]TeamRun
+	runs  map[string]TeamRunRecord
 	steps map[string][]TeamRunStep
 }
 
@@ -78,20 +78,20 @@ func (r *runSummaryRepo) UpdateTeamWhereStatus(_ context.Context, _, _, _ string
 }
 
 // TeamRunReader
-func (r *runSummaryRepo) GetTeamRunByID(_ context.Context, id string) (TeamRun, error) {
+func (r *runSummaryRepo) GetTeamRunByID(_ context.Context, id string) (TeamRunRecord, error) {
 	run, ok := r.runs[id]
 	if !ok {
-		return TeamRun{}, fmt.Errorf("not found")
+		return TeamRunRecord{}, fmt.Errorf("not found")
 	}
 	return run, nil
 }
 func (r *runSummaryRepo) ListTeamRunSteps(_ context.Context, runID string) ([]TeamRunStep, error) {
 	return r.steps[runID], nil
 }
-func (r *runSummaryRepo) ListTeamRuns(_ context.Context, _ string, _ int) ([]TeamRun, error) {
+func (r *runSummaryRepo) ListTeamRuns(_ context.Context, _ string, _ int) ([]TeamRunRecord, error) {
 	return nil, nil
 }
-func (r *runSummaryRepo) ListTeamRunsByTeamIDs(_ context.Context, _ []string, _ int) (map[string][]TeamRun, error) {
+func (r *runSummaryRepo) ListTeamRunsByTeamIDs(_ context.Context, _ []string, _ int) (map[string][]TeamRunRecord, error) {
 	return nil, nil
 }
 func (r *runSummaryRepo) HasActiveTeamRun(_ context.Context, _ string) (bool, error) {
@@ -99,10 +99,10 @@ func (r *runSummaryRepo) HasActiveTeamRun(_ context.Context, _ string) (bool, er
 }
 
 // TeamRunWriter stubs
-func (r *runSummaryRepo) CreateTeamRun(_ context.Context, run TeamRun) (TeamRun, error) {
+func (r *runSummaryRepo) CreateTeamRun(_ context.Context, run TeamRunRecord) (TeamRunRecord, error) {
 	return run, nil
 }
-func (r *runSummaryRepo) UpdateTeamRun(_ context.Context, _ TeamRun) error { return nil }
+func (r *runSummaryRepo) UpdateTeamRun(_ context.Context, _ TeamRunRecord) error { return nil }
 func (r *runSummaryRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
 	return true, nil
 }

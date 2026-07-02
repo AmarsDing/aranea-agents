@@ -101,7 +101,7 @@ func (s *TeamService) ListSpiritTeams(ctx context.Context, req *v1.ListSpiritTea
 	}
 	out := make([]*v1.SpiritTeamView, 0, len(teams))
 	for i := range teams {
-		var run *biz.TeamRun
+		var run *biz.TeamRunRecord
 		if runs := runsByTeam[teams[i].ID]; len(runs) > 0 {
 			run = &runs[0]
 		}
@@ -128,7 +128,7 @@ func (s *TeamService) ListSpiritTeams(ctx context.Context, req *v1.ListSpiritTea
 // SpiritTeamView proto. Fields not available on biz.Team or TeamRun (members,
 // member_avatars, completed_steps, total_steps, shared_agent_ids,
 // topology_reason) are left as zero values.
-func toProtoSpiritTeamView(t *biz.Team, run *biz.TeamRun) *v1.SpiritTeamView {
+func toProtoSpiritTeamView(t *biz.Team, run *biz.TeamRunRecord) *v1.SpiritTeamView {
 	view := &v1.SpiritTeamView{
 		Id:              t.ID,
 		TeamName:        t.DisplayName,

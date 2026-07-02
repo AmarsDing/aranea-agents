@@ -149,7 +149,7 @@ type Team struct {
 	DeletedAt          string
 }
 
-type TeamRun struct {
+type TeamRunRecord struct {
 	ID                     string `json:"id"`
 	TeamID                 string `json:"team_id"`
 	SessionID              string `json:"session_id"`
@@ -174,7 +174,7 @@ type TeamRun struct {
 
 	// SpiritSessionID is the root spirit session ID for cross-session activity
 	// aggregation (chat domain). Non-persistent runtime metadata — set by the
-	// team runner when creating/loading a TeamRun before publishing ActivityEvents.
+	// team runner when creating/loading a TeamRunRecord before publishing ActivityEvents.
 	// The Bus layer normalizes empty SpiritSessionID by falling back to SessionID
 	// (design doc B.6.2), so missing values degrade gracefully rather than fail.
 	SpiritSessionID string `json:"-"`

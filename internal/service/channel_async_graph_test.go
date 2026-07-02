@@ -26,25 +26,25 @@ func (s stubTeamRepo) CreateTeam(context.Context, biz.Team) (biz.Team, error)   
 func (s stubTeamRepo) UpdateTeam(context.Context, biz.Team) (biz.Team, error)       { return biz.Team{}, nil }
 func (s stubTeamRepo) DeleteTeam(context.Context, string) error                     { return nil }
 func (s stubTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) { return 0, nil }
-func (s stubTeamRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
+func (s stubTeamRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRunRecord, error) {
 	return nil, nil
 }
-func (s stubTeamRepo) ListTeamRunsByTeamIDs(context.Context, []string, int) (map[string][]biz.TeamRun, error) {
+func (s stubTeamRepo) ListTeamRunsByTeamIDs(context.Context, []string, int) (map[string][]biz.TeamRunRecord, error) {
 	return nil, nil
 }
 func (s stubTeamRepo) HasActiveTeamRun(context.Context, string) (bool, error) {
 	return false, nil
 }
-func (s stubTeamRepo) GetTeamRunByID(context.Context, string) (biz.TeamRun, error) {
-	return biz.TeamRun{}, nil
+func (s stubTeamRepo) GetTeamRunByID(context.Context, string) (biz.TeamRunRecord, error) {
+	return biz.TeamRunRecord{}, nil
 }
 func (s stubTeamRepo) ListTeamRunSteps(context.Context, string) ([]biz.TeamRunStep, error) {
 	return nil, nil
 }
-func (s stubTeamRepo) CreateTeamRun(context.Context, biz.TeamRun) (biz.TeamRun, error) {
-	return biz.TeamRun{}, nil
+func (s stubTeamRepo) CreateTeamRun(context.Context, biz.TeamRunRecord) (biz.TeamRunRecord, error) {
+	return biz.TeamRunRecord{}, nil
 }
-func (s stubTeamRepo) UpdateTeamRun(context.Context, biz.TeamRun) error { return nil }
+func (s stubTeamRepo) UpdateTeamRun(context.Context, biz.TeamRunRecord) error { return nil }
 func (s stubTeamRepo) UpdateTeamRunGraphExecutionID(context.Context, string, string) error {
 	return nil
 }

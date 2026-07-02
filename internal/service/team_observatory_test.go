@@ -12,9 +12,9 @@ import (
 
 type observatoryTeamRepo struct {
 	team  biz.Team
-	run   biz.TeamRun
+	run   biz.TeamRunRecord
 	steps []biz.TeamRunStep
-	runs  []biz.TeamRun
+	runs  []biz.TeamRunRecord
 }
 
 func (r *observatoryTeamRepo) ListTeams(context.Context) ([]biz.Team, error) { return nil, nil }
@@ -40,23 +40,23 @@ func (r *observatoryTeamRepo) DeleteTeam(context.Context, string) error { return
 func (r *observatoryTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) {
 	return 0, nil
 }
-func (r *observatoryTeamRepo) ListTeamRuns(_ context.Context, teamID string, _ int) ([]biz.TeamRun, error) {
+func (r *observatoryTeamRepo) ListTeamRuns(_ context.Context, teamID string, _ int) ([]biz.TeamRunRecord, error) {
 	if teamID == r.team.ID {
 		return r.runs, nil
 	}
 	return nil, nil
 }
-func (r *observatoryTeamRepo) ListTeamRunsByTeamIDs(_ context.Context, _ []string, _ int) (map[string][]biz.TeamRun, error) {
+func (r *observatoryTeamRepo) ListTeamRunsByTeamIDs(_ context.Context, _ []string, _ int) (map[string][]biz.TeamRunRecord, error) {
 	return nil, nil
 }
 func (r *observatoryTeamRepo) HasActiveTeamRun(context.Context, string) (bool, error) {
 	return false, nil
 }
-func (r *observatoryTeamRepo) GetTeamRunByID(_ context.Context, id string) (biz.TeamRun, error) {
+func (r *observatoryTeamRepo) GetTeamRunByID(_ context.Context, id string) (biz.TeamRunRecord, error) {
 	if id == r.run.ID {
 		return r.run, nil
 	}
-	return biz.TeamRun{}, fmt.Errorf("run not found")
+	return biz.TeamRunRecord{}, fmt.Errorf("run not found")
 }
 func (r *observatoryTeamRepo) ListTeamRunSteps(_ context.Context, runID string) ([]biz.TeamRunStep, error) {
 	if runID == r.run.ID {
@@ -64,10 +64,10 @@ func (r *observatoryTeamRepo) ListTeamRunSteps(_ context.Context, runID string) 
 	}
 	return nil, nil
 }
-func (r *observatoryTeamRepo) CreateTeamRun(context.Context, biz.TeamRun) (biz.TeamRun, error) {
-	return biz.TeamRun{}, nil
+func (r *observatoryTeamRepo) CreateTeamRun(context.Context, biz.TeamRunRecord) (biz.TeamRunRecord, error) {
+	return biz.TeamRunRecord{}, nil
 }
-func (r *observatoryTeamRepo) UpdateTeamRun(context.Context, biz.TeamRun) error { return nil }
+func (r *observatoryTeamRepo) UpdateTeamRun(context.Context, biz.TeamRunRecord) error { return nil }
 func (r *observatoryTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
 	return true, nil
 }
@@ -115,7 +115,7 @@ func TestGetTeamRunObservatory(t *testing.T) {
 			ID:             "t1",
 			DefinitionJSON: `{"members":[{"agent_id":"a1","sort_order":1,"name":"A"}]}`,
 		},
-		run: biz.TeamRun{ID: "run-1", TeamID: "t1", SessionID: "s1", Status: biz.TeamRunStatusSuccess, Mode: "sequential"},
+		run: biz.TeamRunRecord{ID: "run-1", TeamID: "t1", SessionID: "s1", Status: biz.TeamRunStatusSuccess, Mode: "sequential"},
 		steps: []biz.TeamRunStep{
 			{AgentID: "a1", AgentKey: "k1", AgentName: "A", SortOrder: 1, Status: biz.TeamMemberStepStatusOK, OutputPreview: "done"},
 		},

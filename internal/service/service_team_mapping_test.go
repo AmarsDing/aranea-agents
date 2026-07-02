@@ -81,12 +81,12 @@ func TestToProtoTeam(t *testing.T) {
 func TestToProtoTeamRun(t *testing.T) {
 	tests := []struct {
 		name  string
-		input biz.TeamRun
+		input biz.TeamRunRecord
 		check func(t *testing.T, got *v1.TeamRun)
 	}{
 		{
 			name: "full fields",
-			input: biz.TeamRun{
+			input: biz.TeamRunRecord{
 				ID:                     "run-1",
 				TeamID:                 "team-1",
 				SessionID:              "sess-1",
@@ -129,7 +129,7 @@ func TestToProtoTeamRun(t *testing.T) {
 		},
 		{
 			name:  "zero value",
-			input: biz.TeamRun{},
+			input: biz.TeamRunRecord{},
 			check: func(t *testing.T, got *v1.TeamRun) {
 				if got.Id != "" {
 					t.Errorf("Id = %q, want empty", got.Id)

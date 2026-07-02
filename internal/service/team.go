@@ -80,7 +80,7 @@ func toProtoTeam(t biz.Team) *v1.Team {
 	}
 }
 
-func toProtoTeamRun(r biz.TeamRun) *v1.TeamRun {
+func toProtoTeamRun(r biz.TeamRunRecord) *v1.TeamRun {
 	return &v1.TeamRun{
 		Id:                     r.ID,
 		TeamId:                 r.TeamID,
@@ -384,7 +384,7 @@ func (s *TeamService) RunTeamTest(ctx context.Context, req *v1.RunTeamTestReques
 		return nil, err
 	}
 
-	var run biz.TeamRun
+	var run biz.TeamRunRecord
 	runs, listErr := s.uc.ListRuns(ctx, teamID, 10)
 	if listErr == nil {
 		for _, candidate := range runs {
@@ -397,7 +397,7 @@ func (s *TeamService) RunTeamTest(ctx context.Context, req *v1.RunTeamTestReques
 	if run.ID == "" {
 		// No persisted run found for this test session; synthesize a
 		// lightweight response so the caller still gets a reply.
-		run = biz.TeamRun{TeamID: teamID, SessionID: sess.ID, Status: biz.TeamRunStatusSuccess}
+		run = biz.TeamRunRecord{TeamID: teamID, SessionID: sess.ID, Status: biz.TeamRunStatusSuccess}
 	}
 
 	return &v1.RunTeamTestResponse{

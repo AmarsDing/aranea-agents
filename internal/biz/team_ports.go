@@ -138,13 +138,13 @@ type RunStatusEntry struct {
 // Wire binding in internal/service.
 type TeamRunObserver interface {
 	// OnTeamRunStarted is called when a team run begins.
-	OnTeamRunStarted(ctx context.Context, run TeamRun)
+	OnTeamRunStarted(ctx context.Context, run TeamRunRecord)
 
 	// OnTeamRunStepFinished is called when a single step completes.
 	OnTeamRunStepFinished(ctx context.Context, step TeamRunStep)
 
 	// OnTeamRunFinished is called when a team run completes (success or failure).
-	OnTeamRunFinished(ctx context.Context, run TeamRun)
+	OnTeamRunFinished(ctx context.Context, run TeamRunRecord)
 }
 
 // ---------------------------------------------------------------------------
@@ -197,5 +197,5 @@ type TeamProjectRuntimeEvent interface {
 type TeamRunStatusTransitioner interface {
 	// TransitionRunStatus validates and applies a team run status transition.
 	// Returns the updated TeamRun or an error if the transition is invalid.
-	TransitionRunStatus(ctx context.Context, runID string, newStatus string) (TeamRun, error)
+	TransitionRunStatus(ctx context.Context, runID string, newStatus string) (TeamRunRecord, error)
 }

@@ -9,7 +9,7 @@ import (
 
 // TeamRunFinishInput captures post-stream persistence inputs shared by Native and Graph paths.
 type TeamRunFinishInput struct {
-	Run            biz.TeamRun
+	Run            biz.TeamRunRecord
 	TeamID         string
 	DefinitionJSON string
 	Content        string

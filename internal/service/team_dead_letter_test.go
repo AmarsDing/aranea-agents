@@ -33,25 +33,25 @@ func (r *deadLetterTeamRepo) DeleteTeam(context.Context, string) error { return 
 func (r *deadLetterTeamRepo) BatchArchiveTeams(_ context.Context, _ []string) (int, error) {
 	return 0, nil
 }
-func (r *deadLetterTeamRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
+func (r *deadLetterTeamRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRunRecord, error) {
 	return nil, nil
 }
-func (r *deadLetterTeamRepo) ListTeamRunsByTeamIDs(context.Context, []string, int) (map[string][]biz.TeamRun, error) {
+func (r *deadLetterTeamRepo) ListTeamRunsByTeamIDs(context.Context, []string, int) (map[string][]biz.TeamRunRecord, error) {
 	return nil, nil
 }
 func (r *deadLetterTeamRepo) HasActiveTeamRun(context.Context, string) (bool, error) {
 	return false, nil
 }
-func (r *deadLetterTeamRepo) GetTeamRunByID(context.Context, string) (biz.TeamRun, error) {
-	return biz.TeamRun{}, biz.ErrNotFound
+func (r *deadLetterTeamRepo) GetTeamRunByID(context.Context, string) (biz.TeamRunRecord, error) {
+	return biz.TeamRunRecord{}, biz.ErrNotFound
 }
 func (r *deadLetterTeamRepo) ListTeamRunSteps(context.Context, string) ([]biz.TeamRunStep, error) {
 	return nil, nil
 }
-func (r *deadLetterTeamRepo) CreateTeamRun(context.Context, biz.TeamRun) (biz.TeamRun, error) {
-	return biz.TeamRun{}, nil
+func (r *deadLetterTeamRepo) CreateTeamRun(context.Context, biz.TeamRunRecord) (biz.TeamRunRecord, error) {
+	return biz.TeamRunRecord{}, nil
 }
-func (r *deadLetterTeamRepo) UpdateTeamRun(context.Context, biz.TeamRun) error { return nil }
+func (r *deadLetterTeamRepo) UpdateTeamRun(context.Context, biz.TeamRunRecord) error { return nil }
 func (r *deadLetterTeamRepo) UpdateTeamRunWhereStatus(_ context.Context, _, _, _ string) (bool, error) {
 	return true, nil
 }
