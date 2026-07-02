@@ -586,3 +586,33 @@ func (uc *TaskUsecase) recordTaskEvent(ctx context.Context, taskID string, event
 		uc.lg.Warn("SaveTaskEvent failed", loggateway.StepID("task.event_save"), loggateway.Err(err))
 	}
 }
+
+// === v2 Activity Ordering entities (Phase 1) ===
+// The following types belong to the new LLM Activity Ordering model (spec §3.2.2),
+// replacing the monolithic Activity struct. They are intentionally kept in task.go
+// because the v1 GraphTask types above already occupy this file; the v2 Task
+// entity uses the now-freed clean name (TaskStatus was renamed to GraphTaskStatus
+// in v1 to free up this name).
+
+// Task 是用户一次输入对应的根活动（v2 模型）。
+// 替代旧 Activity 模型中 kind=task 的 root activity。
+type Task struct {
+	ID          string
+	SessionID   string // = spirit_session_id
+	UserMessage string
+	Status      TaskStatus
+	Seq         int64 // 在 session 内的序号
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	CompletedAt *time.Time
+}
+
+type TaskStatus string
+
+const (
+	TaskStatusPending   TaskStatus = "pending"
+	TaskStatusRunning   TaskStatus = "running"
+	TaskStatusCompleted TaskStatus = "completed"
+	TaskStatusFailed    TaskStatus = "failed"
+	TaskStatusCancelled TaskStatus = "cancelled"
+)
