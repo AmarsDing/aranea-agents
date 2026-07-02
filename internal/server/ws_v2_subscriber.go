@@ -115,7 +115,7 @@ func (s *WSV2Subscriber) Close() error {
 // pushed via the existing activityEventPump in ws_io_pump.go).
 type wsEnvelope struct {
 	Type    string `json:"type"`    // "v2_event" or "v1_activity_event"
-	Kind    string `json:"kind"`   // EventKind value (e.g. "task.created")
+	Kind    string `json:"kind"`    // EventKind value (e.g. "task.created")
 	Payload any    `json:"payload"` // the Event or ActivityEvent
 }
 
