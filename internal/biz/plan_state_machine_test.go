@@ -10,18 +10,18 @@ import (
 func TestPlanStateMachine_LegalTransitions(t *testing.T) {
 	tests := []struct {
 		name      string
-		from      PlanStatus
+		from      LegacyPlanStatus
 		event     PlanEvent
-		wantTo    PlanStatus
+		wantTo    LegacyPlanStatus
 		wantError bool
 	}{
-		{"Draft→Approved", PlanStatusDraft, PlanEventApprove, PlanStatusApproved, false},
-		{"Approved→Confirmed", PlanStatusApproved, PlanEventConfirm, PlanStatusConfirmed, false},
-		{"Approved→Executing", PlanStatusApproved, PlanEventStart, PlanStatusExecuting, false},
-		{"Confirmed→Executing", PlanStatusConfirmed, PlanEventStart, PlanStatusExecuting, false},
-		{"Executing→Completed", PlanStatusExecuting, PlanEventComplete, PlanStatusCompleted, false},
-		{"Executing→Failed", PlanStatusExecuting, PlanEventFail, PlanStatusFailed, false},
-		{"Failed→Draft", PlanStatusFailed, PlanEventRetry, PlanStatusDraft, false},
+		{"Draft→Approved", LegacyPlanStatusDraft, PlanEventApprove, LegacyPlanStatusApproved, false},
+		{"Approved→Confirmed", LegacyPlanStatusApproved, PlanEventConfirm, LegacyPlanStatusConfirmed, false},
+		{"Approved→Executing", LegacyPlanStatusApproved, PlanEventStart, LegacyPlanStatusExecuting, false},
+		{"Confirmed→Executing", LegacyPlanStatusConfirmed, PlanEventStart, LegacyPlanStatusExecuting, false},
+		{"Executing→Completed", LegacyPlanStatusExecuting, PlanEventComplete, LegacyPlanStatusCompleted, false},
+		{"Executing→Failed", LegacyPlanStatusExecuting, PlanEventFail, LegacyPlanStatusFailed, false},
+		{"Failed→Draft", LegacyPlanStatusFailed, PlanEventRetry, LegacyPlanStatusDraft, false},
 	}
 
 	for _, tt := range tests {
@@ -47,20 +47,20 @@ func TestPlanStateMachine_LegalTransitions(t *testing.T) {
 func TestPlanStateMachine_IllegalTransitions(t *testing.T) {
 	tests := []struct {
 		name  string
-		from  PlanStatus
+		from  LegacyPlanStatus
 		event PlanEvent
 	}{
 		// Terminal state has no outgoing transitions
-		{"Completed→Draft", PlanStatusCompleted, PlanEventRetry},
+		{"Completed→Draft", LegacyPlanStatusCompleted, PlanEventRetry},
 		// Invalid transitions
-		{"Draft→Executing (must approve first)", PlanStatusDraft, PlanEventStart},
-		{"Draft→Completed (no direct path)", PlanStatusDraft, PlanEventComplete},
-		{"Approved→Completed (must execute first)", PlanStatusApproved, PlanEventComplete},
-		{"Confirmed→Completed (must execute first)", PlanStatusConfirmed, PlanEventComplete},
-		{"Failed→Executing (must retry to draft first)", PlanStatusFailed, PlanEventStart},
+		{"Draft→Executing (must approve first)", LegacyPlanStatusDraft, PlanEventStart},
+		{"Draft→Completed (no direct path)", LegacyPlanStatusDraft, PlanEventComplete},
+		{"Approved→Completed (must execute first)", LegacyPlanStatusApproved, PlanEventComplete},
+		{"Confirmed→Completed (must execute first)", LegacyPlanStatusConfirmed, PlanEventComplete},
+		{"Failed→Executing (must retry to draft first)", LegacyPlanStatusFailed, PlanEventStart},
 		// Unknown event for state
-		{"Executing→Approve (invalid for state)", PlanStatusExecuting, PlanEventApprove},
-		{"Completed→Fail (terminal)", PlanStatusCompleted, PlanEventFail},
+		{"Executing→Approve (invalid for state)", LegacyPlanStatusExecuting, PlanEventApprove},
+		{"Completed→Fail (terminal)", LegacyPlanStatusCompleted, PlanEventFail},
 	}
 
 	for _, tt := range tests {
@@ -80,22 +80,22 @@ func TestPlanStateMachine_IllegalTransitions(t *testing.T) {
 func TestPlanStateMachine_CanTransition(t *testing.T) {
 	sm := NewPlanStateMachine()
 	tests := []struct {
-		from, to PlanStatus
+		from, to LegacyPlanStatus
 		want     bool
 	}{
-		{PlanStatusDraft, PlanStatusApproved, true},
-		{PlanStatusApproved, PlanStatusConfirmed, true},
-		{PlanStatusApproved, PlanStatusExecuting, true},
-		{PlanStatusConfirmed, PlanStatusExecuting, true},
-		{PlanStatusExecuting, PlanStatusCompleted, true},
-		{PlanStatusExecuting, PlanStatusFailed, true},
-		{PlanStatusFailed, PlanStatusDraft, true},
+		{LegacyPlanStatusDraft, LegacyPlanStatusApproved, true},
+		{LegacyPlanStatusApproved, LegacyPlanStatusConfirmed, true},
+		{LegacyPlanStatusApproved, LegacyPlanStatusExecuting, true},
+		{LegacyPlanStatusConfirmed, LegacyPlanStatusExecuting, true},
+		{LegacyPlanStatusExecuting, LegacyPlanStatusCompleted, true},
+		{LegacyPlanStatusExecuting, LegacyPlanStatusFailed, true},
+		{LegacyPlanStatusFailed, LegacyPlanStatusDraft, true},
 		// Invalid direct transitions
-		{PlanStatusDraft, PlanStatusExecuting, false},
-		{PlanStatusDraft, PlanStatusCompleted, false},
-		{PlanStatusCompleted, PlanStatusDraft, false},
-		{PlanStatusCompleted, PlanStatusFailed, false},
-		{PlanStatusFailed, PlanStatusExecuting, false},
+		{LegacyPlanStatusDraft, LegacyPlanStatusExecuting, false},
+		{LegacyPlanStatusDraft, LegacyPlanStatusCompleted, false},
+		{LegacyPlanStatusCompleted, LegacyPlanStatusDraft, false},
+		{LegacyPlanStatusCompleted, LegacyPlanStatusFailed, false},
+		{LegacyPlanStatusFailed, LegacyPlanStatusExecuting, false},
 	}
 
 	for _, tt := range tests {
@@ -111,17 +111,17 @@ func TestPlanStateMachine_CanTransition(t *testing.T) {
 func TestPlanStateMachine_ValidTargets(t *testing.T) {
 	sm := NewPlanStateMachine()
 	tests := []struct {
-		from        PlanStatus
+		from        LegacyPlanStatus
 		wantCount   int
-		mustContain []PlanStatus
+		mustContain []LegacyPlanStatus
 	}{
-		{PlanStatusDraft, 1, []PlanStatus{PlanStatusApproved}},
-		{PlanStatusApproved, 2, []PlanStatus{PlanStatusConfirmed, PlanStatusExecuting}},
-		{PlanStatusConfirmed, 1, []PlanStatus{PlanStatusExecuting}},
-		{PlanStatusExecuting, 2, []PlanStatus{PlanStatusCompleted, PlanStatusFailed}},
-		{PlanStatusFailed, 1, []PlanStatus{PlanStatusDraft}},
+		{LegacyPlanStatusDraft, 1, []LegacyPlanStatus{LegacyPlanStatusApproved}},
+		{LegacyPlanStatusApproved, 2, []LegacyPlanStatus{LegacyPlanStatusConfirmed, LegacyPlanStatusExecuting}},
+		{LegacyPlanStatusConfirmed, 1, []LegacyPlanStatus{LegacyPlanStatusExecuting}},
+		{LegacyPlanStatusExecuting, 2, []LegacyPlanStatus{LegacyPlanStatusCompleted, LegacyPlanStatusFailed}},
+		{LegacyPlanStatusFailed, 1, []LegacyPlanStatus{LegacyPlanStatusDraft}},
 		// Terminal state has no valid targets
-		{PlanStatusCompleted, 0, nil},
+		{LegacyPlanStatusCompleted, 0, nil},
 	}
 
 	for _, tt := range tests {
@@ -148,15 +148,15 @@ func TestPlanStateMachine_ValidTargets(t *testing.T) {
 
 func TestIsPlanTerminal(t *testing.T) {
 	tests := []struct {
-		state PlanStatus
+		state LegacyPlanStatus
 		want  bool
 	}{
-		{PlanStatusCompleted, true},
-		{PlanStatusDraft, false},
-		{PlanStatusApproved, false},
-		{PlanStatusConfirmed, false},
-		{PlanStatusExecuting, false},
-		{PlanStatusFailed, false},
+		{LegacyPlanStatusCompleted, true},
+		{LegacyPlanStatusDraft, false},
+		{LegacyPlanStatusApproved, false},
+		{LegacyPlanStatusConfirmed, false},
+		{LegacyPlanStatusExecuting, false},
+		{LegacyPlanStatusFailed, false},
 	}
 
 	for _, tt := range tests {

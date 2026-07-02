@@ -53,7 +53,7 @@ func (r *planRepo) Get(ctx context.Context, id string) (*biz.Plan, error) {
 	if err := row.Scan(&p.ID, &p.SessionID, &p.AgentKey, &p.Goal, &stepsJSON, &status, &p.SurfaceID, &p.GraphID, &createdAt, &updatedAt); err != nil {
 		return nil, entErrToBizErr(err, "PLAN")
 	}
-	p.Status = biz.PlanStatus(status)
+	p.Status = biz.LegacyPlanStatus(status)
 	if err := json.Unmarshal([]byte(stepsJSON), &p.Steps); err != nil {
 		r.data.lg.Warn("unmarshal plan steps failed", loggateway.StepID("data.plan"), loggateway.Err(err))
 		return nil, entErrToBizErr(err, "PLAN")
@@ -101,7 +101,7 @@ func (r *planRepo) ListBySession(ctx context.Context, sessionID string) ([]*biz.
 		if err := rows.Scan(&p.ID, &p.SessionID, &p.AgentKey, &p.Goal, &stepsJSON, &status, &p.SurfaceID, &p.GraphID, &createdAt, &updatedAt); err != nil {
 			return nil, entErrToBizErr(err, "PLAN")
 		}
-		p.Status = biz.PlanStatus(status)
+		p.Status = biz.LegacyPlanStatus(status)
 		if err := json.Unmarshal([]byte(stepsJSON), &p.Steps); err != nil {
 			r.data.lg.Warn("unmarshal plan steps failed", loggateway.StepID("data.plan"), loggateway.Err(err))
 			return nil, entErrToBizErr(err, "PLAN")

@@ -7,15 +7,15 @@ import (
 	"aranea-agents/pkg/apierror"
 )
 
-type PlanStatus string
+type LegacyPlanStatus string
 
 const (
-	PlanStatusDraft     PlanStatus = "draft"
-	PlanStatusApproved  PlanStatus = "approved"
-	PlanStatusConfirmed PlanStatus = "confirmed"
-	PlanStatusExecuting PlanStatus = "executing"
-	PlanStatusCompleted PlanStatus = "completed"
-	PlanStatusFailed    PlanStatus = "failed"
+	LegacyPlanStatusDraft     LegacyPlanStatus = "draft"
+	LegacyPlanStatusApproved  LegacyPlanStatus = "approved"
+	LegacyPlanStatusConfirmed LegacyPlanStatus = "confirmed"
+	LegacyPlanStatusExecuting LegacyPlanStatus = "executing"
+	LegacyPlanStatusCompleted LegacyPlanStatus = "completed"
+	LegacyPlanStatusFailed    LegacyPlanStatus = "failed"
 )
 
 type Plan struct {
@@ -24,7 +24,7 @@ type Plan struct {
 	AgentKey  string
 	Goal      string
 	Steps     []PlanStep
-	Status    PlanStatus
+	Status    LegacyPlanStatus
 	SurfaceID string
 	GraphID   string
 	CreatedAt time.Time
@@ -62,7 +62,7 @@ func (uc *PlanUsecase) CreatePlan(ctx context.Context, plan *Plan) (*Plan, error
 	if len(plan.Steps) == 0 {
 		return nil, apierror.BadRequest("PLAN", "at least one step is required")
 	}
-	plan.Status = PlanStatusDraft
+	plan.Status = LegacyPlanStatusDraft
 	plan.CreatedAt = time.Now()
 	plan.UpdatedAt = time.Now()
 	return uc.repo.Create(ctx, plan)
@@ -85,10 +85,10 @@ func (uc *PlanUsecase) ApprovePlan(ctx context.Context, id string) (*Plan, error
 		return nil, err
 	}
 	// S-01 fix: use state machine instead of hardcoded status check
-	if !CanPlanTransition(plan.Status, PlanStatusApproved) {
+	if !CanPlanTransition(plan.Status, LegacyPlanStatusApproved) {
 		return nil, apierror.BadRequest("PLAN", "plan cannot transition from %s to approved", string(plan.Status))
 	}
-	plan.Status = PlanStatusApproved
+	plan.Status = LegacyPlanStatusApproved
 	plan.UpdatedAt = time.Now()
 	return uc.repo.Update(ctx, plan)
 }
@@ -98,10 +98,10 @@ func (uc *PlanUsecase) MarkExecuting(ctx context.Context, id string) (*Plan, err
 	if err != nil {
 		return nil, err
 	}
-	if !CanPlanTransition(plan.Status, PlanStatusExecuting) {
+	if !CanPlanTransition(plan.Status, LegacyPlanStatusExecuting) {
 		return nil, apierror.BadRequest("PLAN", "plan cannot transition from %s to executing", string(plan.Status))
 	}
-	plan.Status = PlanStatusExecuting
+	plan.Status = LegacyPlanStatusExecuting
 	plan.UpdatedAt = time.Now()
 	return uc.repo.Update(ctx, plan)
 }
@@ -111,10 +111,10 @@ func (uc *PlanUsecase) MarkCompleted(ctx context.Context, id string) (*Plan, err
 	if err != nil {
 		return nil, err
 	}
-	if !CanPlanTransition(plan.Status, PlanStatusCompleted) {
+	if !CanPlanTransition(plan.Status, LegacyPlanStatusCompleted) {
 		return nil, apierror.BadRequest("PLAN", "plan cannot transition from %s to completed", string(plan.Status))
 	}
-	plan.Status = PlanStatusCompleted
+	plan.Status = LegacyPlanStatusCompleted
 	plan.UpdatedAt = time.Now()
 	return uc.repo.Update(ctx, plan)
 }
@@ -124,10 +124,10 @@ func (uc *PlanUsecase) MarkFailed(ctx context.Context, id string) (*Plan, error)
 	if err != nil {
 		return nil, err
 	}
-	if !CanPlanTransition(plan.Status, PlanStatusFailed) {
+	if !CanPlanTransition(plan.Status, LegacyPlanStatusFailed) {
 		return nil, apierror.BadRequest("PLAN", "plan cannot transition from %s to failed", string(plan.Status))
 	}
-	plan.Status = PlanStatusFailed
+	plan.Status = LegacyPlanStatusFailed
 	plan.UpdatedAt = time.Now()
 	return uc.repo.Update(ctx, plan)
 }

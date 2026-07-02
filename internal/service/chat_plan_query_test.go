@@ -18,7 +18,7 @@ func TestToTaskPlanSummary(t *testing.T) {
 		ComplexityLevel: biz.ComplexityComplex,
 		ComplexityScore: 0.85,
 		Strategy:        biz.StrategyDAG,
-		Status:          biz.PlanStatusConfirmed,
+		Status:          biz.LegacyPlanStatusConfirmed,
 		SubTasks:        []biz.SubTask{{ID: "st-1"}, {ID: "st-2"}, {ID: "st-3"}},
 		CreatedAt:       now,
 		UpdatedAt:       now,
@@ -124,7 +124,7 @@ func TestToTaskPlanDetail(t *testing.T) {
 			TopologyUsed:  "linear",
 			AgentKeysUsed: []string{"agent-a", "agent-b"},
 		},
-		Status:    biz.PlanStatusExecuting,
+		Status:    biz.LegacyPlanStatusExecuting,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -216,7 +216,7 @@ func TestToTaskPlanDetail_NilOptionals(t *testing.T) {
 		ID:              "plan-003",
 		SpiritSessionID: "sess-003",
 		Strategy:        biz.StrategyDirect,
-		Status:          biz.PlanStatusDraft,
+		Status:          biz.LegacyPlanStatusDraft,
 		CreatedAt:       time.Now(),
 		UpdatedAt:       time.Now(),
 	}
@@ -296,19 +296,19 @@ func TestToProtoPlanTaskDAG_NilDAG(t *testing.T) {
 	}
 }
 
-// TestToTaskPlanSummary_StatusMapping verifies all PlanStatus values map correctly.
+// TestToTaskPlanSummary_StatusMapping verifies all LegacyPlanStatus values map correctly.
 func TestToTaskPlanSummary_StatusMapping(t *testing.T) {
 	tests := []struct {
 		name   string
-		status biz.PlanStatus
+		status biz.LegacyPlanStatus
 		want   string
 	}{
-		{"draft", biz.PlanStatusDraft, "draft"},
-		{"approved", biz.PlanStatusApproved, "approved"},
-		{"confirmed", biz.PlanStatusConfirmed, "confirmed"},
-		{"executing", biz.PlanStatusExecuting, "executing"},
-		{"completed", biz.PlanStatusCompleted, "completed"},
-		{"failed", biz.PlanStatusFailed, "failed"},
+		{"draft", biz.LegacyPlanStatusDraft, "draft"},
+		{"approved", biz.LegacyPlanStatusApproved, "approved"},
+		{"confirmed", biz.LegacyPlanStatusConfirmed, "confirmed"},
+		{"executing", biz.LegacyPlanStatusExecuting, "executing"},
+		{"completed", biz.LegacyPlanStatusCompleted, "completed"},
+		{"failed", biz.LegacyPlanStatusFailed, "failed"},
 	}
 
 	for _, tt := range tests {

@@ -101,7 +101,7 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			StrategyReason:  "基于历史编排缓存推荐策略",
 			TopologyHint:    topologyHint,
 			MemoryHit:       memoryHit,
-			Status:          biz.PlanStatusDraft,
+			Status:          biz.LegacyPlanStatusDraft,
 		}
 
 		saved, err := impl.repo.Create(ctx, plan)
@@ -240,7 +240,7 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		StrategyReason:     strategyReason,
 		TopologyHint:       topologyHint,
 		MemoryHit:          nil, // Memory hit is handled in Step 0; normal path has no cache hit
-		Status:             biz.PlanStatusDraft,
+		Status:             biz.LegacyPlanStatusDraft,
 	}
 
 	impl.lg.Info("持久化 TaskPlan",
@@ -337,7 +337,7 @@ func (impl *taskPlannerImpl) ConfirmPlan(ctx context.Context, planID string, adj
 	if err != nil {
 		return nil, err
 	}
-	if plan.Status != biz.PlanStatusDraft {
+	if plan.Status != biz.LegacyPlanStatusDraft {
 		return nil, apierror.BadRequest(apierror.DomainSpirit, "plan is not in draft status")
 	}
 
@@ -373,7 +373,7 @@ func (impl *taskPlannerImpl) ConfirmPlan(ctx context.Context, planID string, adj
 		plan.TaskDAG = buildDAGFromSubTasks(plan.SubTasks)
 	}
 
-	plan.Status = biz.PlanStatusConfirmed
+	plan.Status = biz.LegacyPlanStatusConfirmed
 
 	impl.lg.Info("TaskPlan 确认",
 		loggateway.StepID(biz.SpiritStepPlannerConfirm),

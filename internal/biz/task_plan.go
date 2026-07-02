@@ -51,8 +51,8 @@ type TaskPlan struct {
 	// Memory hit
 	MemoryHit *MemoryHit `json:"memory_hit"`
 
-	// Status (reuses PlanStatus from plan.go)
-	Status PlanStatus `json:"status"`
+	// Status (reuses LegacyPlanStatus from plan.go)
+	Status LegacyPlanStatus `json:"status"`
 
 	// Timestamps
 	CreatedAt time.Time `json:"created_at"`
