@@ -33,6 +33,9 @@ func (MemberSessionV2) Fields() []ent.Field {
 		field.String("status").MaxLen(32).Default("pending"),
 		field.Int64("seq").Default(0),
 		field.Int64("version").Default(0),
+		field.Time("started_at").Default(timeNow).Comment("when member session started"),
+		field.Time("finished_at").Optional().Nillable().Comment("when member session finished (null if not finished)"),
+		field.String("error").Default("").Comment("error message if failed (empty if no error)"),
 	}
 }
 

@@ -33,6 +33,7 @@ func (TeamRunV2) Fields() []ent.Field {
 		field.Time("completed_at").Optional().Nillable(),
 		field.Int64("seq").Default(0),
 		field.Int64("version").Default(0),
+		field.String("error").Default("").Comment("error message if failed (empty if no error)"),
 	}
 }
 

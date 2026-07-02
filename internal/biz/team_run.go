@@ -16,6 +16,8 @@ type TeamRun struct {
 	StartedAt       time.Time
 	CompletedAt     *time.Time
 	Seq             int64
+	Version         int64  // 乐观并发版本号（spec §3.3.5 VersionLT）
+	Error           string // 失败时的错误信息（空字符串表示无错误）
 }
 
 // TeamRunV2Status 是 v2 TeamRun 的状态类型。

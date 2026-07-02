@@ -19,6 +19,7 @@ type TeamStage struct {
 	StartedAt   time.Time
 	CompletedAt *time.Time
 	Seq         int64 // 在 task 内的序号
+	Version     int64 // 乐观并发版本号（spec §3.3.5 VersionLT）
 }
 
 type TeamStageStatus string

@@ -15,6 +15,7 @@ type PlanBoard struct {
 	StartedAt   time.Time
 	CompletedAt *time.Time
 	Seq         int64
+	Version     int64 // 乐观并发版本号（spec §3.3.5 VersionLT）
 }
 
 type PlanStrategy string

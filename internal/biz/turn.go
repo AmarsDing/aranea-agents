@@ -14,6 +14,7 @@ type Turn struct {
 	TeamID          string // 所属 team（spirit turn 为空）
 	TeamStageID     string // 所属 team_stage（member turn 时填）
 	Seq             int64  // 在 task 内的全局序号（后端分配，单调递增）
+	Version         int64  // 乐观并发版本号（spec §3.3.5 VersionLT）
 	Status          TurnStatus
 	StartedAt       time.Time
 	CompletedAt     *time.Time

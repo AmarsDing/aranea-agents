@@ -602,6 +602,7 @@ type Task struct {
 	UserMessage string
 	Status      TaskStatus
 	Seq         int64 // 在 session 内的序号
+	Version     int64 // 乐观并发版本号（spec §3.3.5 VersionLT）
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	CompletedAt *time.Time

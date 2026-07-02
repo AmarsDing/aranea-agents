@@ -26,6 +26,7 @@ func (TaskV2) Fields() []ent.Field {
 		field.Text("user_message").Default(""),
 		field.String("status").MaxLen(32).Default("pending"),
 		field.Int64("seq").Default(0).Comment("Sequence within session, monotonic"),
+		field.Int64("version").Default(0).Comment("Monotonic version for optimistic concurrency (VersionLT)"),
 		field.Time("created_at").Default(timeNow),
 		field.Time("updated_at").Default(timeNow),
 		field.Time("completed_at").Optional().Nillable(),

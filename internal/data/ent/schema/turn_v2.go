@@ -30,6 +30,7 @@ func (TurnV2) Fields() []ent.Field {
 		field.String("team_id").MaxLen(128).Default("").Comment("empty for spirit turn"),
 		field.String("team_stage_id").MaxLen(64).Default("").Comment("set when member turn"),
 		field.Int64("seq").Default(0).Comment("global seq within task, monotonic"),
+		field.Int64("version").Default(0).Comment("Monotonic version for optimistic concurrency (VersionLT)"),
 		field.String("status").MaxLen(32).Default("running"),
 		field.Time("started_at").Default(timeNow),
 		field.Time("completed_at").Optional().Nillable(),
