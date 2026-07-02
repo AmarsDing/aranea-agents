@@ -90,8 +90,8 @@ func (r *taskRepo) GetActiveTaskByExecutionNode(ctx context.Context, executionID
 			graphtask.ExecutionIDEQ(executionID),
 			graphtask.NodeIDEQ(nodeID),
 			graphtask.StatusNotIn(
-				string(biz.TaskStatusComplete),
-				string(biz.TaskStatusCancelled),
+				string(biz.GraphTaskStatusComplete),
+				string(biz.GraphTaskStatusCancelled),
 			),
 		).
 		Order(ent.Desc(graphtask.FieldCreatedAt)).
@@ -105,7 +105,7 @@ func (r *taskRepo) GetActiveTaskByExecutionNode(ctx context.Context, executionID
 	return entTaskToBiz(row), nil
 }
 
-func (r *taskRepo) ListTasksByStatuses(ctx context.Context, statuses []biz.TaskStatus, limit int) ([]*biz.GraphTask, error) {
+func (r *taskRepo) ListTasksByStatuses(ctx context.Context, statuses []biz.GraphTaskStatus, limit int) ([]*biz.GraphTask, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -131,7 +131,7 @@ func (r *taskRepo) ListTasksByStatuses(ctx context.Context, statuses []biz.TaskS
 	return result, nil
 }
 
-func (r *taskRepo) ListTasksByExecution(ctx context.Context, executionID string, status biz.TaskStatus, pageSize int, pageToken string) ([]*biz.GraphTask, string, error) {
+func (r *taskRepo) ListTasksByExecution(ctx context.Context, executionID string, status biz.GraphTaskStatus, pageSize int, pageToken string) ([]*biz.GraphTask, string, error) {
 	client := r.data.RW().Read(ctx)
 	query := client.GraphTask.Query().
 		Where(graphtask.ExecutionIDEQ(executionID)).
@@ -186,7 +186,7 @@ func (r *taskRepo) UpdateTask(ctx context.Context, task *biz.GraphTask) error {
 	return nil
 }
 
-func (r *taskRepo) BatchUpdateTaskStatus(ctx context.Context, taskIDs []string, status biz.TaskStatus) error {
+func (r *taskRepo) BatchUpdateGraphTaskStatus(ctx context.Context, taskIDs []string, status biz.GraphTaskStatus) error {
 	if len(taskIDs) == 0 {
 		return nil
 	}
@@ -391,7 +391,7 @@ func entTaskToBiz(row *ent.GraphTask) *biz.GraphTask {
 		NodeID:             row.NodeID,
 		ExecutionID:        row.ExecutionID,
 		Assignee:           row.Assignee,
-		Status:             biz.TaskStatus(row.Status),
+		Status:             biz.GraphTaskStatus(row.Status),
 		Context:            row.Context,
 		Input:              row.Input,
 		Output:             row.Output,
