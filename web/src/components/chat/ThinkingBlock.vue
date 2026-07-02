@@ -88,22 +88,25 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import type { Step } from '../../features/chat/v2Types';
 import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 import { useCollapseState } from '../../features/chat/composables/useCollapseState';
 
+// Safe i18n wrapper — falls back to key/fallback when the i18n plugin isn't
+// installed (e.g., during unit tests without app.use(i18n)).
+function useSafeI18n() {
+  try {
+    return useI18n();
+  } catch {
+    return { t: (key: string, fallback?: string) => fallback ?? key };
+  }
+}
+
 const props = withDefaults(
   defineProps<{
-    /** 消息 ID（用于 Markdown 渲染缓存 key） */
-    messageId: string;
-    /** 思考内容（Markdown 文本） */
-    reasoning: string;
-    /** 是否正在流式输出 */
-    streaming?: boolean;
-    /** 是否仅显示"正在思考"指示器（无内容时） */
-    thinkingOnly?: boolean;
-    /** 思考耗时（毫秒），null 表示未知 */
-    durationMs?: number | null;
+    /** v2 Step entity — replaces legacy messageId/reasoning/streaming/... props */
+    step: Step;
     /** 深色模式 */
     isDark?: boolean;
     /** 默认折叠状态：true=收起，false=展开。流式和结束后均默认折叠 */
@@ -113,16 +116,20 @@ const props = withDefaults(
     label?: string;
   }>(),
   {
-    streaming: false,
-    thinkingOnly: false,
-    durationMs: null,
     isDark: false,
     defaultCollapsed: true,
     label: '',
   },
 );
 
-const { t } = useI18n();
+const { t } = useSafeI18n();
+
+// --- Bridge computeds: derive legacy fields from Step prop ---
+const messageId = computed(() => props.step.ID);
+const reasoning = computed(() => props.step.Reasoning);
+const streaming = computed(() => props.step.Status === 'running');
+const thinkingOnly = computed(() => !props.step.Reasoning && props.step.Status === 'running');
+const durationMs = computed(() => props.step.ToolDurationMs || null);
 
 /**
  * Resolves the display label: prefer the explicit `label` prop (set by
@@ -140,14 +147,14 @@ const displayLabel = computed(() => {
 
 // --- Collapse state (T8.4: persisted to sessionStorage) ---
 
-const { collapsed, toggle, setCollapsed } = useCollapseState(`thinking:${props.messageId}`, props.defaultCollapsed);
+const { collapsed, toggle, setCollapsed } = useCollapseState(`thinking:${messageId.value}`, props.defaultCollapsed);
 // Sync with external defaultCollapsed changes (e.g., when Activity data updates from AF).
 // Only apply when not streaming — streaming state is managed by the streaming watch.
 // Note: only applies if the user hasn't explicitly toggled (sessionStorage has no stored value).
 watch(
   () => props.defaultCollapsed,
   (val) => {
-    if (!props.streaming) setCollapsed(val);
+    if (!streaming.value) setCollapsed(val);
   },
 );
 const viewportRef = ref<HTMLElement | null>(null);
@@ -172,7 +179,7 @@ const userToggled = ref(false);
  * Used by single-line inline collapsed span.
  */
 const summary = computed(() => {
-  const text = props.reasoning || '';
+  const text = reasoning.value || '';
   const firstSentence = text.split(/[。.!?！？\n]/)[0] || '';
   return firstSentence.length > 60 ? firstSentence.slice(0, 60) + '…' : firstSentence;
 });
@@ -182,23 +189,23 @@ const summary = computed(() => {
  * collapse toggle (information density too low, collapse would distract).
  * Only applies to completed (non-streaming) state.
  */
-const inlineNoCollapse = computed(() => !props.streaming && (props.reasoning || '').length < 30);
+const inlineNoCollapse = computed(() => !streaming.value && (reasoning.value || '').length < 30);
 
 /** Hover hint for collapsed state: includes label + duration if present. */
 const collapsedHint = computed(() => {
   const parts: string[] = [];
   if (props.label) parts.push(props.label);
-  if (props.durationMs != null) parts.push(formatDuration(props.durationMs));
+  if (durationMs.value != null) parts.push(formatDuration(durationMs.value));
   parts.push(t('chat.thinking.clickToExpand'));
   return parts.join(' · ');
 });
 
-const formattedDuration = computed(() => (props.durationMs != null ? formatDuration(props.durationMs) : ''));
+const formattedDuration = computed(() => (durationMs.value != null ? formatDuration(durationMs.value) : ''));
 
 // --- Rendering ---
 
 const renderedHtml = computed(() => {
-  return renderChatMarkdownForMessage(props.messageId, props.reasoning, Boolean(props.streaming));
+  return renderChatMarkdownForMessage(messageId.value, reasoning.value, Boolean(streaming.value));
 });
 
 // --- Native scroll management ---
@@ -212,9 +219,9 @@ function scrollToBottom() {
 
 // Auto-scroll during streaming
 watch(
-  () => props.reasoning,
+  reasoning,
   () => {
-    if (props.streaming && !userScrolledUp.value) {
+    if (streaming.value && !userScrolledUp.value) {
       void nextTick(scrollToBottom);
     }
   },
@@ -226,7 +233,7 @@ watch(
 // (P2-B: the previous behavior force-collapsed on streaming-end, overriding
 // a user who expanded to read along).
 watch(
-  () => props.streaming,
+  streaming,
   (live) => {
     if (live) {
       userScrolledUp.value = false;
@@ -260,7 +267,7 @@ function onClick() {
   toggle();
 
   // After expanding, scroll to bottom if streaming
-  if (!collapsed.value && props.streaming) {
+  if (!collapsed.value && streaming.value) {
     userScrolledUp.value = false;
     void nextTick(scrollToBottom);
   }

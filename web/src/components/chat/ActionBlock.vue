@@ -20,6 +20,7 @@
 <script setup lang="ts">
 import { computed, watch, type Component } from 'vue';
 import type { ActionEvent } from '../../features/chat/streamEventTypes';
+import type { Step } from '../../features/chat/v2Types';
 import type { ToolUseEvent } from '../../features/chat/types';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 import { isTodoWriteTool } from '../../features/chat/activityPresentation';
@@ -40,11 +41,44 @@ import GenericToolDetail from './tools/GenericToolDetail.vue';
 const RESULT_COLLAPSE_THRESHOLD = 500;
 
 const props = defineProps<{
-  activity: ActionEvent;
+  step: Step;
   agentColor?: string;
 }>();
 
-const isTodo = computed(() => isTodoWriteTool(props.activity.tool.toolName));
+// --- Bridge computed: derive ActionEvent shape from Step prop ---
+function mapStepStatusToToolStatus(status: Step['Status']): ActionEvent['tool']['status'] {
+  switch (status) {
+    case 'running':
+    case 'tool_running':
+    case 'pending':
+      return 'running';
+    case 'tool_blocked':
+      return 'blocked';
+    case 'completed':
+      return 'success';
+    case 'failed':
+      return 'failed';
+    case 'cancelled':
+      return 'cancelled';
+  }
+}
+
+const activity = computed<ActionEvent>(() => ({
+  id: props.step.ID,
+  kind: 'action',
+  tool: {
+    toolName: props.step.ToolName,
+    toolLabel: props.step.ToolName,
+    toolCategory: undefined,
+    status: mapStepStatusToToolStatus(props.step.Status),
+    durationMs: props.step.ToolDurationMs || null,
+    arguments: props.step.ToolArgs != null ? JSON.stringify(props.step.ToolArgs) : null,
+    result: props.step.ToolResult != null ? JSON.stringify(props.step.ToolResult) : null,
+    error: props.step.ToolErrorCode || null,
+  },
+}));
+
+const isTodo = computed(() => isTodoWriteTool(activity.value.tool.toolName));
 
 /**
  * Phase 3: select a detail component by tool_category (AF).
@@ -53,7 +87,7 @@ const isTodo = computed(() => isTodoWriteTool(props.activity.tool.toolName));
  * TodoToolDetail is mapped for completeness/consistency.
  */
 const detailComponent = computed<Component>(() => {
-  const cat = props.activity.tool.toolCategory ?? 'other';
+  const cat = activity.value.tool.toolCategory ?? 'other';
   switch (cat) {
     case 'shell':
       return ShellToolDetail;
@@ -83,7 +117,7 @@ const detailComponent = computed<Component>(() => {
  * Falls back to a generic wrench when category is unknown.
  */
 const toolIcon = computed(() => {
-  const cat = props.activity.tool.toolCategory;
+  const cat = activity.value.tool.toolCategory;
   if (!cat || cat === 'other') return '🔧';
   const iconMap: Record<string, string> = {
     shell: '$',
@@ -109,11 +143,11 @@ function tryParseJson(s: string | null): unknown {
 }
 
 const parsedToolArgs = computed<Record<string, unknown> | undefined>(
-  () => tryParseJson(props.activity.tool.arguments) as Record<string, unknown> | undefined,
+  () => tryParseJson(activity.value.tool.arguments) as Record<string, unknown> | undefined,
 );
 
 const parsedToolResult = computed<Record<string, unknown> | undefined>(
-  () => tryParseJson(props.activity.tool.result) as Record<string, unknown> | undefined,
+  () => tryParseJson(activity.value.tool.result) as Record<string, unknown> | undefined,
 );
 
 /**
@@ -126,10 +160,10 @@ const parsedToolResult = computed<Record<string, unknown> | undefined>(
  * matching for legacy events without tool_category.
  */
 const headerHint = computed(() => {
-  const name = props.activity.tool.toolName;
+  const name = activity.value.tool.toolName;
   const args = parsedToolArgs.value;
   const result = parsedToolResult.value;
-  const cat = props.activity.tool.toolCategory;
+  const cat = activity.value.tool.toolCategory;
 
   // AF path: use tool_category to pick hint strategy.
   if (cat) {
@@ -239,8 +273,8 @@ function hintByCategory(
 
 /** T8.4: Compute total content length to decide auto-collapse. */
 const contentLength = computed(() => {
-  const result = props.activity.tool.result ?? '';
-  const args = props.activity.tool.arguments ?? '';
+  const result = activity.value.tool.result ?? '';
+  const args = activity.value.tool.arguments ?? '';
   return result.length + args.length;
 });
 
@@ -251,7 +285,7 @@ const contentLength = computed(() => {
 // on demand. Users who want to peek into a specific tool click the header.
 // If content grows beyond the threshold while the user has expanded the
 // card, auto-collapse re-engages to keep long outputs out of the way.
-const { collapsed, toggle, setCollapsed } = useCollapseState(`action:${props.activity.id}`, true);
+const { collapsed, toggle, setCollapsed } = useCollapseState(`action:${activity.value.id}`, true);
 
 // If content grows beyond threshold after initial render (e.g., streaming result),
 // auto-collapse unless the user has explicitly expanded.
@@ -263,7 +297,7 @@ watch(contentLength, (len, prevLen) => {
 
 /** Adapt ToolActivity (AF type) to ToolUseEvent for TodoInlineList consumption. */
 const todoEvent = computed<ToolUseEvent>(() => {
-  const t = props.activity.tool;
+  const t = activity.value.tool;
   let parsedArgs: unknown;
   try {
     parsedArgs = t.arguments ? JSON.parse(t.arguments) : undefined;
@@ -277,7 +311,7 @@ const todoEvent = computed<ToolUseEvent>(() => {
     parsedResult = t.result;
   }
   return {
-    id: props.activity.id,
+    id: activity.value.id,
     phase: t.status === 'running' ? 'before' : 'after',
     status: t.status,
     agent_id: '',
@@ -300,18 +334,18 @@ function toggleExpand() {
 }
 
 const statusClass = computed(() => ({
-  'act-activity__status--running': props.activity.tool.status === 'running',
-  'act-activity__status--success': props.activity.tool.status === 'success',
-  'act-activity__status--failed': props.activity.tool.status === 'failed',
-  'act-activity__status--blocked': props.activity.tool.status === 'blocked',
+  'act-activity__status--running': activity.value.tool.status === 'running',
+  'act-activity__status--success': activity.value.tool.status === 'success',
+  'act-activity__status--failed': activity.value.tool.status === 'failed',
+  'act-activity__status--blocked': activity.value.tool.status === 'blocked',
   // Chat UI fix: 'cancelled' previously had an icon (⊘) but no CSS modifier,
   // so cancelled tools rendered with no status color — inconsistent with
   // the design spec which requires a muted/cancelled visual state.
-  'act-activity__status--cancelled': props.activity.tool.status === 'cancelled',
+  'act-activity__status--cancelled': activity.value.tool.status === 'cancelled',
 }));
 
 const statusIcon = computed(() => {
-  switch (props.activity.tool.status) {
+  switch (activity.value.tool.status) {
     case 'running':
       return '⏳';
     case 'success':
@@ -327,7 +361,7 @@ const statusIcon = computed(() => {
   }
 });
 
-const formattedDuration = computed(() => formatDuration(props.activity.tool.durationMs));
+const formattedDuration = computed(() => formatDuration(activity.value.tool.durationMs));
 </script>
 
 <style lang="sass" scoped>

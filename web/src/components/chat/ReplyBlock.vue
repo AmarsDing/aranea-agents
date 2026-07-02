@@ -1,15 +1,16 @@
 <template>
-  <div class="reply-block" :class="{ 'reply-block--streaming': activity.streaming }">
+  <div class="reply-block" :class="{ 'reply-block--streaming': streaming }">
     <!-- Card variant -->
     <div class="reply-block__label">
       <span class="reply-block__icon">💬</span>
       <span class="reply-block__label-text">{{ label }}</span>
-      <span v-if="activity.streaming" class="pulse-dot"></span>
+      <span v-if="isFinal" class="reply-block__final-label">最终回复</span>
+      <span v-if="streaming" class="pulse-dot"></span>
     </div>
     <div class="reply-block__content">
       <!-- eslint-disable-next-line vue/no-v-html -- sanitized markdown HTML -->
       <div class="reply-block__markdown chat-message-prose" v-html="renderedContent"></div>
-      <span v-if="activity.streaming" class="cursor-blink"></span>
+      <span v-if="streaming" class="cursor-blink"></span>
     </div>
   </div>
 </template>
@@ -17,21 +18,35 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { ReplyEvent } from '../../features/chat/streamEventTypes';
+import type { Step } from '../../features/chat/v2Types';
 import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
 
-const { t } = useI18n();
+// Safe i18n wrapper — falls back to key/fallback when the i18n plugin isn't
+// installed (e.g., during unit tests without app.use(i18n)).
+function useSafeI18n() {
+  try {
+    return useI18n();
+  } catch {
+    return { t: (key: string, fallback?: string) => fallback ?? key };
+  }
+}
 
-const props = defineProps<{
-  activity: ReplyEvent;
-}>();
+const props = defineProps<{ step: Step }>();
+
+// --- Bridge computeds: derive legacy fields from Step prop ---
+const content = computed(() => props.step.Content);
+const streaming = computed(() => props.step.Status === 'running');
+const isFinal = computed(() => props.step.IsFinal);
+const messageId = computed(() => props.step.ID);
+
+const { t } = useSafeI18n();
 
 const label = computed(() =>
-  props.activity.isFinal ? t('chat.agentBlock.finalReply') : t('chat.agentBlock.intermediateReply'),
+  isFinal.value ? t('chat.agentBlock.finalReply') : t('chat.agentBlock.intermediateReply'),
 );
 
 const renderedContent = computed(() =>
-  renderChatMarkdownForMessage(props.activity.id, props.activity.content, props.activity.streaming),
+  renderChatMarkdownForMessage(messageId.value, content.value, streaming.value),
 );
 </script>
 
