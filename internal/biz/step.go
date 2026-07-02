@@ -14,8 +14,9 @@ type Step struct {
 	SessionID       string
 	SpiritSessionID string
 	Kind            StepKind
-	Seq             int64 // turn 内的序号（1, 2, 3...）
-	Version         int64 // 乐观并发版本号（spec §3.3.5 VersionLT）
+	AuthorAgentKey  string // 发起该 step 的 agent key（spec §3.2）
+	Seq             int64  // turn 内的序号（1, 2, 3...）
+	Version         int64  // 乐观并发版本号（spec §3.3.5 VersionLT）
 	Content         string
 	Reasoning       string
 	ToolName        string

@@ -81,6 +81,7 @@ func (r *stepV2Repo) CreateStep(ctx context.Context, s biz.Step) (biz.Step, erro
 		SetSessionID(s.SessionID).
 		SetSpiritSessionID(s.SpiritSessionID).
 		SetKind(string(s.Kind)).
+		SetAuthorAgentKey(s.AuthorAgentKey).
 		SetSeq(s.Seq).
 		SetContent(s.Content).
 		SetReasoning(s.Reasoning).
@@ -141,6 +142,7 @@ func (r *stepV2Repo) UpsertStep(ctx context.Context, s biz.Step) (biz.Step, erro
 		SetSessionID(s.SessionID).
 		SetSpiritSessionID(s.SpiritSessionID).
 		SetKind(string(s.Kind)).
+		SetAuthorAgentKey(s.AuthorAgentKey).
 		SetSeq(s.Seq).
 		SetContent(s.Content).
 		SetReasoning(s.Reasoning).
@@ -170,6 +172,7 @@ func (r *stepV2Repo) UpsertStep(ctx context.Context, s biz.Step) (biz.Step, erro
 		SetSessionID(s.SessionID).
 		SetSpiritSessionID(s.SpiritSessionID).
 		SetKind(string(s.Kind)).
+		SetAuthorAgentKey(s.AuthorAgentKey).
 		SetSeq(s.Seq).
 		SetContent(s.Content).
 		SetReasoning(s.Reasoning).
@@ -215,6 +218,7 @@ func entStepV2ToBiz(row *ent.StepV2) biz.Step {
 		SessionID:       row.SessionID,
 		SpiritSessionID: row.SpiritSessionID,
 		Kind:            biz.StepKind(row.Kind),
+		AuthorAgentKey:  row.AuthorAgentKey,
 		Seq:             row.Seq,
 		Content:         row.Content,
 		Reasoning:       row.Reasoning,

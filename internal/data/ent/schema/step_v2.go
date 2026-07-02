@@ -27,6 +27,7 @@ func (StepV2) Fields() []ent.Field {
 		field.String("session_id").MaxLen(128),
 		field.String("spirit_session_id").MaxLen(128),
 		field.String("kind").MaxLen(32).Comment("thinking/action/reply/notice/confirm/error"),
+		field.String("author_agent_key").MaxLen(128).Default("").Comment("agent key that authored this step"),
 		field.Int64("seq").Default(0).Comment("seq within turn"),
 		field.Text("content").Default(""),
 		field.Text("reasoning").Default(""),
