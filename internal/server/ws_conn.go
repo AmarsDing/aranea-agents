@@ -233,3 +233,14 @@ func (cs *connStore) forEachConn(fn func(wc *wsConn)) {
 		}
 	}
 }
+
+// forEachConnForSession iterates over connections subscribed to a specific
+// session ID. Used by WSV2Subscriber to broadcast v2 events to the matching
+// session's WS clients.
+func (cs *connStore) forEachConnForSession(sessionID string, fn func(wc *wsConn)) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	for _, wc := range cs.conns[sessionID] {
+		fn(wc)
+	}
+}
