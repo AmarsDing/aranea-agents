@@ -23,7 +23,7 @@ type Plan struct {
 	SessionID string
 	AgentKey  string
 	Goal      string
-	Steps     []PlanStep
+	Steps     []LegacyPlanStep
 	Status    LegacyPlanStatus
 	SurfaceID string
 	GraphID   string
@@ -31,7 +31,7 @@ type Plan struct {
 	UpdatedAt time.Time
 }
 
-type PlanStep struct {
+type LegacyPlanStep struct {
 	ID          string
 	Name        string
 	Description string
