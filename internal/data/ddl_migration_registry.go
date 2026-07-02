@@ -100,6 +100,11 @@ var ddlMigrations = []ddlMigration{
 	// Ent schema default was false (bug); DDL migration 20260607 set column default 1 but Ent always
 	// wrote explicit false on create. A2A proxy agents keep false (set explicitly in biz layer).
 	{Version: 20260903, Name: "intent_pass_default_on", Func: ddlIntentPassDefaultOnMigration},
+	// 20261001 v2_indexes: supplementary single-column indexes for v2 entity tables
+	// (LLM Activity Ordering Phase 1). Ent Schema.Create() already creates table columns,
+	// primary keys, and composite indexes declared in Indexes(); this migration adds
+	// single-column indexes for common query patterns not covered by leftmost-prefix rule.
+	{Version: 20261001, Name: "v2_indexes", SQL: "sql/migrations/20261001_v2_indexes.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

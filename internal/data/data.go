@@ -147,6 +147,17 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(biz.ActivityTreeReader), new(biz.ActivityRepo)),
 	wire.Bind(new(biz.ActivityWriter), new(biz.ActivityRepo)),
 	wire.Bind(new(biz.ActivityUpserter), new(biz.ActivityRepo)),
+	// V2 repos for LLM Activity Ordering redesign (Phase 1).
+	// Each New* returns the biz interface directly, so no wire.Bind needed.
+	NewSessionV2Repo,
+	NewTaskV2Repo,
+	NewTurnV2Repo,
+	NewStepV2Repo,
+	NewTeamStageV2Repo,
+	NewTeamRunV2Repo,
+	NewMemberSessionV2Repo,
+	NewPlanBoardV2Repo,
+	NewPlanStepV2Repo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
