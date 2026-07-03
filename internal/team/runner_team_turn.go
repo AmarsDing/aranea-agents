@@ -244,7 +244,7 @@ func (r *Runner) finalizeTeamRun(
 		ev := biz.ActivityEvent{
 			Event: biz.ActivityEventCompleted,
 			Activity: biz.Activity{
-				ID:              agent.TeamStageActivityID(teamRow.ID),
+				ID:              string(agent.NewTeamStageActivityID(teamRow.ID)),
 				Kind:            biz.ActivityKindTeamStage,
 				Status:          biz.ActivityStatusCompleted,
 				SessionID:       spiritSID,

@@ -160,7 +160,7 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 		// (v2 TeamStage has no Meta field).
 		dependsOn := team.DependsOn
 		ts := biz.TeamStage{
-			ID:        agent.TeamStageActivityID(teamID),
+			ID:        string(agent.NewTeamStageActivityID(teamID)),
 			TeamID:    teamID,
 			SessionID: spiritSessionID,
 			Status:    biz.TeamStageStatusRunning,
@@ -306,7 +306,7 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		// status updates (assembled → progress → completed/failed/cancelled).
 		dependsOn := team.DependsOn
 		ts := biz.TeamStage{
-			ID:        agent.TeamStageActivityID(teamID),
+			ID:        string(agent.NewTeamStageActivityID(teamID)),
 			TeamID:    teamID,
 			SessionID: spiritSessionID,
 			Status:    primaryStatus,
@@ -337,7 +337,7 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		// merges meta from all events of the same team.
 		if status == biz.TeamStatusRunning {
 			progressTs := biz.TeamStage{
-				ID:        agent.TeamStageActivityID(teamID),
+				ID:        string(agent.NewTeamStageActivityID(teamID)),
 				TeamID:    teamID,
 				SessionID: spiritSessionID,
 				Status:    biz.TeamStageStatusRunning,
@@ -398,7 +398,7 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 					// Phase 3b-D Task 10: migrated to v2 NewTeamStageFailedEvent.
 					// DATA LOSS: team_name/error from v1 Meta are dropped.
 					ts := biz.TeamStage{
-						ID:        agent.TeamStageActivityID(action.TeamID),
+						ID:        string(agent.NewTeamStageActivityID(action.TeamID)),
 						TeamID:    action.TeamID,
 						SessionID: spiritSessionID,
 						Status:    biz.TeamStageStatusFailed,
@@ -428,7 +428,7 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 				// DATA LOSS: team_name from v1 Meta is dropped (v2 TeamStage
 				// has no Meta field). team_id/status are preserved as typed fields.
 				ts := biz.TeamStage{
-					ID:        agent.TeamStageActivityID(action.TeamID),
+					ID:        string(agent.NewTeamStageActivityID(action.TeamID)),
 					TeamID:    action.TeamID,
 					SessionID: spiritSessionID,
 					Status:    biz.TeamStageStatusRunning,
@@ -703,7 +703,7 @@ func (a *SpiritTeamAssembler) CancelTeam(ctx context.Context, teamID string) err
 		// closest semantic match (same as HandleTeamTurnResult cancelled case).
 		// DATA LOSS: team_name from v1 Meta is dropped (v2 TeamStage has no Meta).
 		ts := biz.TeamStage{
-			ID:        agent.TeamStageActivityID(teamID),
+			ID:        string(agent.NewTeamStageActivityID(teamID)),
 			TeamID:    teamID,
 			SessionID: spiritSessionID,
 			Status:    biz.TeamStageStatusCancelled,
@@ -833,12 +833,12 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 	persistedSync := false
 	if a.activityRepo != nil {
 		activity := biz.Activity{
-			ID:               agent.TeamStageActivityID(team.ID),
+			ID:               string(agent.NewTeamStageActivityID(team.ID)),
 			Kind:             biz.ActivityKindTeamStage,
 			Status:           biz.ActivityStatusPending,
 			Stage:            "assembled",
 			Timestamp:        time.Now().UTC(),
-			ParentActivityID: agent.GraphStageActivityID(spiritSessionID),
+			ParentActivityID: string(agent.NewGraphStageActivityID(spiritSessionID)),
 			SpiritSessionID:  spiritSessionID,
 			SessionID:        spiritSessionID,
 			TeamID:           team.ID,
@@ -882,7 +882,7 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 	// members from v1 Meta are dropped. The members data is still persisted
 	// synchronously via the v1 Activity above (activityRepo.UpsertActivity).
 	ts := biz.TeamStage{
-		ID:        agent.TeamStageActivityID(team.ID),
+		ID:        string(agent.NewTeamStageActivityID(team.ID)),
 		TeamID:    team.ID,
 		SessionID: spiritSessionID,
 		Status:    biz.TeamStageStatusPending,
@@ -1004,7 +1004,7 @@ func publishGraphStageSnapshot(ctx context.Context, bus biz.ActivityEventBus, lg
 	// Deterministic Activity ID: same spiritSessionID → same ID across calls
 	// → frontend upsert updates the existing GraphStageBlock instead of creating
 	// a new one each snapshot.
-	activityID := agent.GraphStageActivityID(spiritSessionID)
+	activityID := string(agent.NewGraphStageActivityID(spiritSessionID))
 	bus.Publish(ctx, biz.ActivityEvent{
 		Event: eventType,
 		Activity: biz.Activity{
@@ -1013,7 +1013,7 @@ func publishGraphStageSnapshot(ctx context.Context, bus biz.ActivityEventBus, lg
 			Status:           aggregateStatus,
 			Stage:            "team_dag_snapshot",
 			Timestamp:        time.Now().UTC(),
-			ParentActivityID: agent.RootTaskActivityIDFromCtx(ctx),
+			ParentActivityID: string(agent.RootTaskActivityIDFromCtx(ctx)),
 			SpiritSessionID:  spiritSessionID,
 			SessionID:        spiritSessionID,
 			AgentKey:         "spirit-graph-snapshot",

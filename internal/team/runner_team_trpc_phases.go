@@ -164,13 +164,13 @@ func (r *Runner) publishTeamRunStartedEvent(ctx context.Context, sess biz.Sessio
 	ev := biz.ActivityEvent{
 		Event: biz.ActivityEventCreated,
 		Activity: biz.Activity{
-			ID:               agent.TeamStageActivityID(teamRow.ID),
+			ID:               string(agent.NewTeamStageActivityID(teamRow.ID)),
 			Kind:             biz.ActivityKindTeamStage,
 			Status:           biz.ActivityStatusRunning,
 			SessionID:        spiritSID,
 			SpiritSessionID:  spiritSID,
 			TeamID:           teamRow.ID,
-			ParentActivityID: agent.GraphStageActivityID(spiritSID),
+			ParentActivityID: string(agent.NewGraphStageActivityID(spiritSID)),
 			Timestamp:        time.Now().UTC(),
 			Stage:            "assembled",
 			Meta:             meta,
@@ -317,7 +317,7 @@ func (r *Runner) buildTeamProjectMeta(ctx context.Context, sess biz.Session, run
 		// the session activity (kind=session) in the spirit session's tree.
 		// Uses the same deterministic ID as publishTeamStepActivity, ensuring
 		// the frontend can link child activities to the correct parent.
-		ParentActivityID: agent.SessionActivityID(teamRow.ID, ar.agent.AgentKey),
+		ParentActivityID: string(agent.NewSessionActivityID(teamRow.ID, ar.agent.AgentKey)),
 	}
 }
 

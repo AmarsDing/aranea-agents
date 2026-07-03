@@ -61,7 +61,7 @@ func TeamSummaryActivityEvent(run biz.TeamRunRecord, steps []biz.TeamRunStep) bi
 	return biz.ActivityEvent{
 		Event: biz.ActivityEventCompleted,
 		Activity: biz.Activity{
-			ID:              agent.TeamStageActivityID(run.TeamID),
+			ID:              string(agent.NewTeamStageActivityID(run.TeamID)),
 			Kind:            biz.ActivityKindTeamStage,
 			Status:          biz.ActivityStatusCompleted,
 			SessionID:       run.SpiritSessionID,

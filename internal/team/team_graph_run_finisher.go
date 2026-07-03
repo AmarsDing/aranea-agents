@@ -152,7 +152,7 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 		ev := biz.ActivityEvent{
 			Event: biz.ActivityEventCompleted,
 			Activity: biz.Activity{
-				ID:              agent.TeamStageActivityID(stepCtx.TeamID),
+				ID:              string(agent.NewTeamStageActivityID(stepCtx.TeamID)),
 				Kind:            biz.ActivityKindTeamStage,
 				Status:          biz.ActivityStatusCompleted,
 				SessionID:       stepCtx.SessionID,

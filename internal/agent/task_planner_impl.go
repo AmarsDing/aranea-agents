@@ -1074,7 +1074,7 @@ func (impl *taskPlannerImpl) publishPlanCreated(ctx context.Context, plan *biz.T
 	// Without ParentActivityID, the plan becomes a root-level sibling of the task,
 	// causing it to render below all task children (team_stage/graph_stage) instead
 	// of between the task and its children.
-	rootTaskID := RootTaskActivityIDFromCtx(ctx)
+	rootTaskID := string(RootTaskActivityIDFromCtx(ctx))
 
 	// spirit_plan_created: the canonical event for plan creation.
 	ev := biz.ActivityEvent{

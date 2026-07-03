@@ -28,7 +28,7 @@ func (r *Runner) publishTeamRunFailedActivity(ctx context.Context, run biz.TeamR
 	ev := biz.ActivityEvent{
 		Event: biz.ActivityEventFailed,
 		Activity: biz.Activity{
-			ID:               agent.TeamStageActivityID(run.TeamID),
+			ID:               string(agent.NewTeamStageActivityID(run.TeamID)),
 			Kind:             biz.ActivityKindTeamStage,
 			Status:           biz.ActivityStatusFailed,
 			SessionID:        run.SpiritSessionID,
@@ -36,7 +36,7 @@ func (r *Runner) publishTeamRunFailedActivity(ctx context.Context, run biz.TeamR
 			TeamID:           run.TeamID,
 			Timestamp:        time.Now().UTC(),
 			Stage:            "failed",
-			ParentActivityID: agent.GraphStageActivityID(run.SpiritSessionID),
+			ParentActivityID: string(agent.NewGraphStageActivityID(run.SpiritSessionID)),
 			Meta: map[string]any{
 				"run_id":        run.ID,
 				"error_message": msg,
@@ -82,7 +82,7 @@ func (r *Runner) publishTeamStepActivity(ctx context.Context, run biz.TeamRunRec
 	// Use deterministic session activity ID so the child session's
 	// ActivityProjector can compute the same ID and use it as
 	// ParentActivityID for member thinking/action/reply activities.
-	sessionActivityID := agent.SessionActivityID(teamID, agentKey)
+	sessionActivityID := string(agent.NewSessionActivityID(teamID, agentKey))
 	ev := biz.ActivityEvent{
 		Event: eventType,
 		Activity: biz.Activity{
@@ -96,7 +96,7 @@ func (r *Runner) publishTeamStepActivity(ctx context.Context, run biz.TeamRunRec
 			AgentName:        agentName,
 			Timestamp:        time.Now().UTC(),
 			Stage:            stage,
-			ParentActivityID: agent.TeamStageActivityID(teamID),
+			ParentActivityID: string(agent.NewTeamStageActivityID(teamID)),
 			Meta: map[string]any{
 				"run_id":           run.ID,
 				"step":             step,

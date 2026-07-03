@@ -113,7 +113,7 @@ func (s *TeamService) ListSpiritTeams(ctx context.Context, req *v1.ListSpiritTea
 		// (v1-only deployments) or when no v2 TeamStage record exists yet
 		// (spirit teams are still published via v1 ActivityEventBus; v2
 		// publish migration is Tier 3).
-		stageID := agent.TeamStageActivityID(teams[i].ID)
+		stageID := string(agent.NewTeamStageActivityID(teams[i].ID))
 		var members []*v1.SpiritMemberView
 		if s.teamStageReader != nil {
 			if ts, err := s.teamStageReader.GetTeamStage(ctx, stageID); err == nil {
