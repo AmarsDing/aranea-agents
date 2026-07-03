@@ -18,16 +18,17 @@ import (
 type TeamService struct {
 	v1.UnimplementedTeamServiceServer
 
-	uc           *biz.TeamUsecase
-	graphUC      *biz.GraphUsecase
-	agents       *biz.AgentUsecase
-	sessions     *biz.SessionUsecase
-	teamRunner   biz.TeamTurnRunnerPort
-	runs         biz.RunRegistryPort
-	eventBus     biz.ActivityEventBus
-	lg           loggateway.Logger
-	synthesis    *SpiritSynthesisService
-	activityRepo biz.ActivityRepo
+	uc              *biz.TeamUsecase
+	graphUC         *biz.GraphUsecase
+	agents          *biz.AgentUsecase
+	sessions        *biz.SessionUsecase
+	teamRunner      biz.TeamTurnRunnerPort
+	runs            biz.RunRegistryPort
+	eventBus        biz.ActivityEventBus
+	lg              loggateway.Logger
+	synthesis       *SpiritSynthesisService
+	activityRepo    biz.ActivityRepo
+	teamStageReader biz.TeamStageV2Reader // Phase 3b-D Task 6: v2 reader for ListSpiritTeams members
 }
 
 func NewTeamService(
@@ -41,11 +42,14 @@ func NewTeamService(
 	lg loggateway.Logger,
 	synthesis *SpiritSynthesisService,
 	activityRepo biz.ActivityRepo,
+	teamStageReader biz.TeamStageV2Reader,
 ) *TeamService {
 	return &TeamService{
 		uc: uc, graphUC: graphUC, agents: agents, sessions: sessions,
 		teamRunner: teamRunner, runs: runs, eventBus: eventBus, lg: lg,
-		synthesis: synthesis, activityRepo: activityRepo,
+		synthesis:        synthesis,
+		activityRepo:     activityRepo,
+		teamStageReader:  teamStageReader,
 	}
 }
 

@@ -106,22 +106,55 @@ func (s *TeamService) ListSpiritTeams(ctx context.Context, req *v1.ListSpiritTea
 			run = &runs[0]
 		}
 		view := toProtoSpiritTeamView(&teams[i], run)
-		if s.activityRepo != nil {
-			if act, err := s.activityRepo.GetActivity(ctx, agent.TeamStageActivityID(teams[i].ID)); err == nil {
-				view.Members = membersFromTeamStageActivity(act.Meta)
-				if len(view.Members) > 0 {
-					view.MemberAvatars = make([]string, 0, len(view.Members))
-					for _, m := range view.Members {
-						if m.AvatarUrl != "" {
-							view.MemberAvatars = append(view.MemberAvatars, m.AvatarUrl)
-						}
-					}
+		// Phase 3b-D Task 6: load team members via v2 TeamStageV2Reader when
+		// available. The v2 TeamStage.Members field is typed ([]MemberInfo),
+		// eliminating the need to extract from v1 Activity.Meta.
+		// Falls back to v1 activityRepo.GetActivity when the v2 reader is nil
+		// (v1-only deployments) or when no v2 TeamStage record exists yet
+		// (spirit teams are still published via v1 ActivityEventBus; v2
+		// publish migration is Tier 3).
+		stageID := agent.TeamStageActivityID(teams[i].ID)
+		var members []*v1.SpiritMemberView
+		if s.teamStageReader != nil {
+			if ts, err := s.teamStageReader.GetTeamStage(ctx, stageID); err == nil {
+				members = memberInfosToSpiritViews(ts.Members)
+			}
+		}
+		if members == nil && s.activityRepo != nil {
+			if act, err := s.activityRepo.GetActivity(ctx, stageID); err == nil {
+				members = membersFromTeamStageActivity(act.Meta)
+			}
+		}
+		if len(members) > 0 {
+			view.Members = members
+			view.MemberAvatars = make([]string, 0, len(members))
+			for _, m := range members {
+				if m.AvatarUrl != "" {
+					view.MemberAvatars = append(view.MemberAvatars, m.AvatarUrl)
 				}
 			}
 		}
 		out = append(out, view)
 	}
 	return &v1.ListSpiritTeamsResponse{Teams: out}, nil
+}
+
+// memberInfosToSpiritViews converts typed v2 TeamStage.Members ([]biz.MemberInfo)
+// to the proto SpiritMemberView shape used by the frontend sidebar.
+func memberInfosToSpiritViews(in []biz.MemberInfo) []*v1.SpiritMemberView {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]*v1.SpiritMemberView, 0, len(in))
+	for _, m := range in {
+		out = append(out, &v1.SpiritMemberView{
+			AgentKey:    m.AgentKey,
+			DisplayName: m.AgentName,
+			AvatarUrl:   m.AvatarURL,
+			Status:      m.Status,
+		})
+	}
+	return out
 }
 
 // toProtoSpiritTeamView converts a biz.Team and optional latest TeamRun to

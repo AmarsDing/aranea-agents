@@ -2417,6 +2417,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		wire.Bind(new(biz.TaskV2Reader), new(biz.TaskV2Repo)),
 		wire.Bind(new(biz.TurnV2Reader), new(biz.TurnV2Repo)),
 		wire.Bind(new(biz.StepV2Reader), new(biz.StepV2Repo)),
+		wire.Bind(new(biz.TeamStageV2Reader), new(biz.TeamStageV2Repo)),
 		provideV2Sequencer,
 		provideV2Projector,
 		provideWSV2Subscriber,

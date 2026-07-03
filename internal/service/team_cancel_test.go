@@ -183,7 +183,7 @@ func TestCancelTeamRun_PublishesCancelledRunStatus(t *testing.T) {
 	repo := &cancelTeamRunRepo{runs: map[string]biz.TeamRunRecord{
 		"tr-1": {ID: "tr-1", SessionID: "sess-team-1", Status: biz.TeamRunStatusRunning},
 	}}
-	svc := NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()}), nil, nil, nil, nil, reg, bus, loggateway.NewNoop(), nil, nil)
+	svc := NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()}), nil, nil, nil, nil, reg, bus, loggateway.NewNoop(), nil, nil, nil)
 
 	resp, err := svc.CancelTeamRun(context.Background(), &v1.CancelTeamRunRequest{Id: "tr-1"})
 	if err != nil {

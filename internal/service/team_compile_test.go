@@ -100,7 +100,7 @@ func TestCompileTeamGraph_sequential(t *testing.T) {
 		ID:             "t1",
 		DefinitionJSON: `{"version":1,"mode":"sequential","members":[{"agent_id":"a1","role":"worker","sort_order":1,"enabled":true},{"agent_id":"a2","role":"worker","sort_order":2,"enabled":true}]}`,
 	}}
-	svc := NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()}), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil)
+	svc := NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()}), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil)
 	resp, err := svc.CompileTeamGraph(context.Background(), &v1.CompileTeamGraphRequest{TeamId: "t1"})
 	if err != nil {
 		t.Fatal(err)
