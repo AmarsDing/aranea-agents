@@ -2,30 +2,31 @@
   <div class="tool-detail">
     <div class="tool-detail__row">
       <span class="tool-detail__label-inline">{{ t('chat.toolDetail.toolName') }}</span>
-      <code class="tool-detail__inline">{{ activity.tool.toolName }}</code>
+      <code class="tool-detail__inline">{{ step.ToolName }}</code>
     </div>
-    <div v-if="activity.tool.arguments" class="tool-detail__row">
+    <div v-if="step.ToolArgs != null" class="tool-detail__row">
       <div class="tool-detail__label">{{ t('chat.toolDetail.args') }}</div>
-      <pre class="tool-detail__code">{{ activity.tool.arguments }}</pre>
+      <pre class="tool-detail__code">{{ formatToolData(step.ToolArgs) }}</pre>
     </div>
-    <div v-if="activity.tool.result" class="tool-detail__row">
+    <div v-if="step.ToolResult != null" class="tool-detail__row">
       <div class="tool-detail__label">{{ t('chat.toolDetail.result') }}</div>
-      <pre class="tool-detail__code">{{ activity.tool.result }}</pre>
+      <pre class="tool-detail__code">{{ formatToolData(step.ToolResult) }}</pre>
     </div>
-    <div v-if="activity.tool.error" class="tool-detail__row tool-detail__row--error">
+    <div v-if="step.ToolErrorCode" class="tool-detail__row tool-detail__row--error">
       <div class="tool-detail__label">{{ t('chat.toolDetail.error') }}</div>
-      <pre class="tool-detail__code">{{ activity.tool.error }}</pre>
+      <pre class="tool-detail__code">{{ step.ToolErrorCode }}</pre>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import type { ActionEvent } from '../../../features/chat/streamEventTypes';
+import type { Step } from '../../../features/chat/v2Types';
+import { formatToolData } from './toolDetailShared';
 
 const { t } = useI18n();
 
-defineProps<{ activity: ActionEvent }>();
+defineProps<{ step: Step }>();
 </script>
 
 <style lang="sass" scoped>

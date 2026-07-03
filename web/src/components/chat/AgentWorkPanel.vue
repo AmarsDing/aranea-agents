@@ -61,12 +61,27 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { AgentWorkProcess } from '../../features/chat/activityTimelineTypes';
 import type { ProgressCategory, ProgressSection } from '../../features/chat/agentTreeTypes';
 import { PROGRESS_GLYPHS, PROGRESS_STATUS_GLYPHS } from '../../features/chat/agentTreeTypes';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
-import type { ErrorEvent } from '../../features/chat/streamEventTypes';
+import type { Step } from '../../features/chat/v2Types';
 import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
+
+/**
+ * Minimal AgentWorkProcess shape inlined from activityTimelineTypes.ts.
+ * Only the fields consumed by this component's template are declared.
+ * The full interface was removed when activityTimelineTypes.ts was deleted.
+ */
+interface AgentWorkProcess {
+  agentKey: string;
+  agentName: string;
+  agentIcon: string;
+  agentColor: string;
+  status: 'running' | 'completed' | 'failed';
+  durationMs: number | null;
+  activities: unknown[];
+  progressSections: ProgressSection[];
+}
 
 const { t } = useI18n();
 
@@ -76,12 +91,12 @@ const props = defineProps<{
 
 defineEmits<{
   confirm: [activityId: string, approved: boolean];
-  'error-retry': [event: ErrorEvent];
-  'error-switch-model': [event: ErrorEvent];
-  'error-rephrase': [event: ErrorEvent];
-  'error-check-config': [event: ErrorEvent];
-  'error-remove-attachment': [event: ErrorEvent];
-  'error-relogin': [event: ErrorEvent];
+  'error-retry': [step: Step];
+  'error-switch-model': [step: Step];
+  'error-rephrase': [step: Step];
+  'error-check-config': [step: Step];
+  'error-remove-attachment': [step: Step];
+  'error-relogin': [step: Step];
   'expand-member': [payload: { agentKey: string; agentName?: string; teamId?: string }];
   'enter-session': [sessionId: string];
 }>();

@@ -1,9 +1,9 @@
 /**
  * Shared helpers for tool-detail components (web/src/components/chat/tools/).
  *
- * Tool detail components receive an ActionEvent with `tool.arguments` /
- * `tool.result` as JSON strings. These helpers parse the JSON safely and
- * provide small typed accessors used across the detail components.
+ * Tool detail components receive a v2 `Step` whose `ToolArgs` / `ToolResult`
+ * are already-parsed JSON values (`unknown | null`). These helpers provide
+ * small typed accessors and a formatter for display.
  */
 
 /** Safely parse a JSON string. Returns undefined on null/empty/parse failure. */
@@ -13,6 +13,20 @@ export function tryParseJson(s: string | null | undefined): unknown {
     return JSON.parse(s);
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * Format a parsed tool argument/result value for display as a JSON string.
+ * Returns empty string for null/undefined; passes strings through unchanged.
+ */
+export function formatToolData(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  try {
+    return JSON.stringify(v, null, 2);
+  } catch {
+    return String(v);
   }
 }
 

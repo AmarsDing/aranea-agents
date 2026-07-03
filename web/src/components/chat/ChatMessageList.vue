@@ -73,7 +73,7 @@ import { useScrollToActivity } from '../../features/chat/composables/useScrollTo
 import type { Message, PendingMessage } from '../../features/chat/types';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
-import type { ErrorEvent } from '../../features/chat/streamEventTypes';
+import type { Step } from '../../features/chat/v2Types';
 
 const AUTO_EXPAND_HOLD_MS = 3000;
 
@@ -110,12 +110,12 @@ defineEmits<{
   'interrupt-pending': [pendingId: string];
   'update-pending': [pendingId: string, content: string];
   confirm: [activityId: string, approved: boolean];
-  'error-retry': [event: ErrorEvent];
-  'error-switch-model': [event: ErrorEvent];
-  'error-rephrase': [event: ErrorEvent];
-  'error-check-config': [event: ErrorEvent];
-  'error-remove-attachment': [event: ErrorEvent];
-  'error-relogin': [event: ErrorEvent];
+  'error-retry': [step: Step];
+  'error-switch-model': [step: Step];
+  'error-rephrase': [step: Step];
+  'error-check-config': [step: Step];
+  'error-remove-attachment': [step: Step];
+  'error-relogin': [step: Step];
   'expand-member': [payload: { agentKey: string; agentName?: string; teamId?: string }];
   'enter-session': [sessionId: string];
   'cancel-team': [teamId: string];

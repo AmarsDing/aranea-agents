@@ -1,19 +1,18 @@
 <template>
   <!-- tool_blocked: expanded confirmation UI -->
-  <div v-if="activity.status === 'tool_blocked'" class="confirm-block confirm-block--blocked">
+  <div v-if="step.Status === 'tool_blocked'" class="confirm-block confirm-block--blocked">
     <div class="confirm-block__header">
       <span class="confirm-block__icon">⚠️</span>
       <span class="confirm-block__label">{{ t('chat.confirm.label', '需要确认') }}</span>
-      <span v-if="countdownText" class="confirm-block__countdown">{{ countdownText }}</span>
     </div>
-    <div class="confirm-block__content">{{ activity.content }}</div>
+    <div class="confirm-block__content">{{ step.Content }}</div>
     <div class="confirm-block__tool-name">
       <span class="confirm-block__tool-label">{{ t('chat.confirm.tool', '工具') }}</span>
-      <span class="confirm-block__tool-value">{{ activity.toolName }}</span>
+      <span class="confirm-block__tool-value">{{ step.ToolName }}</span>
     </div>
-    <div v-if="activity.toolArguments" class="confirm-block__args">
+    <div v-if="toolArgumentsJson" class="confirm-block__args">
       <div class="confirm-block__detail-label">{{ t('chat.confirm.arguments', '参数') }}</div>
-      <pre class="confirm-block__code">{{ formatArguments(activity.toolArguments) }}</pre>
+      <pre class="confirm-block__code">{{ toolArgumentsJson }}</pre>
     </div>
     <div class="confirm-block__actions">
       <button class="confirm-block__btn confirm-block__btn--approve" :disabled="confirming" @click="onApprove">
@@ -26,27 +25,27 @@
   </div>
 
   <!-- completed: collapsed approved -->
-  <div v-else-if="activity.status === 'completed'" class="confirm-block confirm-block--approved">
+  <div v-else-if="step.Status === 'completed'" class="confirm-block confirm-block--approved">
     <span class="confirm-block__icon">✓</span>
     <span class="confirm-block__summary">{{ t('chat.confirm.approved', '已批准') }}</span>
-    <span class="confirm-block__tool-inline">· {{ activity.toolName }}</span>
+    <span class="confirm-block__tool-inline">· {{ step.ToolName }}</span>
   </div>
 
   <!-- cancelled: collapsed rejected -->
-  <div v-else-if="activity.status === 'cancelled'" class="confirm-block confirm-block--rejected">
+  <div v-else-if="step.Status === 'cancelled'" class="confirm-block confirm-block--rejected">
     <span class="confirm-block__icon">✗</span>
     <span class="confirm-block__summary">{{ t('chat.confirm.rejected', '已拒绝') }}</span>
-    <span class="confirm-block__tool-inline">· {{ activity.toolName }}</span>
+    <span class="confirm-block__tool-inline">· {{ step.ToolName }}</span>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { ConfirmEvent } from '../../features/chat/streamEventTypes';
+import type { Step } from '../../features/chat/v2Types';
 
 const props = defineProps<{
-  activity: ConfirmEvent;
+  step: Step;
 }>();
 
 const emit = defineEmits<{
@@ -60,9 +59,9 @@ const confirming = ref(false);
 const CONFIRM_TIMEOUT_MS = 15_000;
 let confirmTimer: ReturnType<typeof setTimeout> | null = null;
 
-// Reset confirming when activity status changes (WebSocket will update status)
+// Reset confirming when step status changes (WebSocket will update status)
 watch(
-  () => props.activity.status,
+  () => props.step.Status,
   () => {
     confirming.value = false;
     if (confirmTimer) {
@@ -72,42 +71,16 @@ watch(
   },
 );
 
-// --- Countdown timer ---
-const now = ref(Date.now());
-let timer: ReturnType<typeof setInterval> | null = null;
-
-onMounted(() => {
-  if (props.activity.autoApproveAt) {
-    timer = setInterval(() => {
-      now.value = Date.now();
-    }, 1000);
-  }
-});
-
-onUnmounted(() => {
-  if (timer) clearInterval(timer);
-});
-
-const countdownText = computed(() => {
-  if (!props.activity.autoApproveAt) return '';
-  const target = new Date(props.activity.autoApproveAt).getTime();
-  const diff = target - now.value;
-  if (diff <= 0) return t('chat.confirm.autoApproving', '即将自动批准');
-  const sec = Math.ceil(diff / 1000);
-  if (sec < 60) return `${sec}s`;
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${m}m ${s}s`;
-});
-
 // --- Helpers ---
-function formatArguments(raw: string): string {
+const toolArgumentsJson = computed(() => {
+  if (props.step.ToolArgs == null) return '';
+  if (typeof props.step.ToolArgs === 'string') return props.step.ToolArgs;
   try {
-    return JSON.stringify(JSON.parse(raw), null, 2);
+    return JSON.stringify(props.step.ToolArgs, null, 2);
   } catch {
-    return raw;
+    return String(props.step.ToolArgs);
   }
-}
+});
 
 function onApprove() {
   if (confirming.value) return;
@@ -115,7 +88,7 @@ function onApprove() {
   confirmTimer = setTimeout(() => {
     confirming.value = false;
   }, CONFIRM_TIMEOUT_MS);
-  emit('confirm', props.activity.id, true);
+  emit('confirm', props.step.ID, true);
 }
 
 function onReject() {
@@ -124,7 +97,7 @@ function onReject() {
   confirmTimer = setTimeout(() => {
     confirming.value = false;
   }, CONFIRM_TIMEOUT_MS);
-  emit('confirm', props.activity.id, false);
+  emit('confirm', props.step.ID, false);
 }
 </script>
 

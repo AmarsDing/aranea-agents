@@ -1,10 +1,10 @@
 <template>
-  <div class="error-block" :class="`error-block--${event.type}`">
+  <div class="error-block error-block--degradation">
     <div class="error-block__content">
       <span class="error-block__icon">⚠️</span>
-      <span class="error-block__message">{{ event.message }}</span>
+      <span class="error-block__message">{{ step.Content }}</span>
       <span v-if="hintLabel" class="error-block__hint">（{{ hintLabel }}）</span>
-      <span v-if="event.errorCode" class="error-block__code">{{ event.errorCode }}</span>
+      <span v-if="step.ToolErrorCode" class="error-block__code">{{ step.ToolErrorCode }}</span>
     </div>
     <div v-if="action !== 'none'" class="error-block__actions">
       <q-btn
@@ -68,32 +68,32 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { ErrorEvent } from '../../features/chat/streamEventTypes';
+import type { Step } from '../../features/chat/v2Types';
 import { getErrorAction, getActionHintLabelKey, type ErrorAction } from '../../features/chat/errorCodeHints';
 
 const { t } = useI18n();
 
 const props = defineProps<{
-  event: ErrorEvent;
+  step: Step;
 }>();
 
 const emit = defineEmits<{
   /** User clicked "retry" — re-send the failed user message. */
-  retry: [event: ErrorEvent];
+  retry: [step: Step];
   /** User clicked "switch model" — open model picker / settings. */
-  'switch-model': [event: ErrorEvent];
+  'switch-model': [step: Step];
   /** User clicked "rephrase" — focus composer for editing. */
-  rephrase: [event: ErrorEvent];
+  rephrase: [step: Step];
   /** User clicked "check config" — navigate to agent settings. */
-  'check-config': [event: ErrorEvent];
+  'check-config': [step: Step];
   /** User clicked "remove attachment" — drop the offending attachment. */
-  'remove-attachment': [event: ErrorEvent];
+  'remove-attachment': [step: Step];
   /** User clicked "relogin" — redirect to login page. */
-  relogin: [event: ErrorEvent];
+  relogin: [step: Step];
 }>();
 
 /** Resolved action for the current error code (falls back to `none`). */
-const action = computed<ErrorAction>(() => getErrorAction(props.event.errorCode));
+const action = computed<ErrorAction>(() => getErrorAction(props.step.ToolErrorCode || undefined));
 
 /** Inline hint label shown next to the message (e.g. "建议切换模型"). */
 const hintLabel = computed(() => {
@@ -103,22 +103,22 @@ const hintLabel = computed(() => {
 });
 
 function onRetry() {
-  emit('retry', props.event);
+  emit('retry', props.step);
 }
 function onSwitchModel() {
-  emit('switch-model', props.event);
+  emit('switch-model', props.step);
 }
 function onRephrase() {
-  emit('rephrase', props.event);
+  emit('rephrase', props.step);
 }
 function onCheckConfig() {
-  emit('check-config', props.event);
+  emit('check-config', props.step);
 }
 function onRemoveAttachment() {
-  emit('remove-attachment', props.event);
+  emit('remove-attachment', props.step);
 }
 function onRelogin() {
-  emit('relogin', props.event);
+  emit('relogin', props.step);
 }
 </script>
 

@@ -6,36 +6,28 @@
     <template v-else>
       <div class="act-activity__header" @click="toggleExpand">
         <span class="act-activity__icon">{{ toolIcon }}</span>
-        <span class="act-activity__tool-label">{{ activity.tool.toolLabel }}</span>
+        <span class="act-activity__tool-label">{{ step.ToolName }}</span>
         <span v-if="headerHint" class="act-activity__hint" :title="headerHint">{{ headerHint }}</span>
         <span class="act-activity__status" :class="statusClass">{{ statusIcon }}</span>
-        <span v-if="activity.tool.durationMs != null" class="act-activity__duration">{{ formattedDuration }}</span>
+        <span v-if="step.ToolDurationMs > 0" class="act-activity__duration">{{ formattedDuration }}</span>
       </div>
-      <!-- Phase 3: dispatch to per-category detail component (§8.4 of analysis doc) -->
-      <component :is="detailComponent" v-if="expanded" :activity="activity" class="act-activity__detail" />
+      <!-- v2 Step has no toolCategory field; per-category dispatch removed.
+           GenericToolDetail handles all tool kinds generically. -->
+      <GenericToolDetail v-if="expanded" :step="step" class="act-activity__detail" />
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, watch, type Component } from 'vue';
-import type { ActionEvent } from '../../features/chat/streamEventTypes';
+import { computed, watch } from 'vue';
 import type { Step } from '../../features/chat/v2Types';
 import type { ToolUseEvent } from '../../features/chat/types';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 import { isTodoWriteTool } from '../../features/chat/activityPresentation';
 import { useCollapseState } from '../../features/chat/composables/useCollapseState';
 import TodoInlineList from './TodoInlineList.vue';
-import ShellToolDetail from './tools/ShellToolDetail.vue';
-import BrowserToolDetail from './tools/BrowserToolDetail.vue';
-import FileReadToolDetail from './tools/FileReadToolDetail.vue';
-import FileWriteToolDetail from './tools/FileWriteToolDetail.vue';
-import FileSearchToolDetail from './tools/FileSearchToolDetail.vue';
-import WebSearchToolDetail from './tools/WebSearchToolDetail.vue';
-import McpToolDetail from './tools/McpToolDetail.vue';
-import CodeToolDetail from './tools/CodeToolDetail.vue';
-import TodoToolDetail from './tools/TodoToolDetail.vue';
 import GenericToolDetail from './tools/GenericToolDetail.vue';
+import { asRecord } from './tools/toolDetailShared';
 
 /** T8.4: Tool result/arguments longer than this threshold auto-collapse. */
 const RESULT_COLLAPSE_THRESHOLD = 500;
@@ -45,133 +37,26 @@ const props = defineProps<{
   agentColor?: string;
 }>();
 
-// --- Bridge computed: derive ActionEvent shape from Step prop ---
-function mapStepStatusToToolStatus(status: Step['Status']): ActionEvent['tool']['status'] {
-  switch (status) {
-    case 'running':
-    case 'tool_running':
-    case 'pending':
-      return 'running';
-    case 'tool_blocked':
-      return 'blocked';
-    case 'completed':
-      return 'success';
-    case 'failed':
-      return 'failed';
-    case 'cancelled':
-      return 'cancelled';
-  }
-}
+const isTodo = computed(() => isTodoWriteTool(props.step.ToolName));
 
-const activity = computed<ActionEvent>(() => ({
-  id: props.step.ID,
-  kind: 'action',
-  tool: {
-    toolName: props.step.ToolName,
-    toolLabel: props.step.ToolName,
-    toolCategory: undefined,
-    status: mapStepStatusToToolStatus(props.step.Status),
-    durationMs: props.step.ToolDurationMs || null,
-    arguments: props.step.ToolArgs != null ? JSON.stringify(props.step.ToolArgs) : null,
-    result: props.step.ToolResult != null ? JSON.stringify(props.step.ToolResult) : null,
-    error: props.step.ToolErrorCode || null,
-  },
-}));
+// v2 Step has no toolCategory field → icon is always the generic wrench.
+const toolIcon = '🔧';
 
-const isTodo = computed(() => isTodoWriteTool(activity.value.tool.toolName));
-
-/**
- * Phase 3: select a detail component by tool_category (AF).
- * Falls back to GenericToolDetail when category is missing or unknown.
- * todo_write is intercepted earlier by `isTodo` -> TodoInlineList, but
- * TodoToolDetail is mapped for completeness/consistency.
- */
-const detailComponent = computed<Component>(() => {
-  const cat = activity.value.tool.toolCategory ?? 'other';
-  switch (cat) {
-    case 'shell':
-      return ShellToolDetail;
-    case 'browser':
-      return BrowserToolDetail;
-    case 'file_read':
-      return FileReadToolDetail;
-    case 'file_write':
-      return FileWriteToolDetail;
-    case 'file_search':
-      return FileSearchToolDetail;
-    case 'web_search':
-      return WebSearchToolDetail;
-    case 'mcp':
-      return McpToolDetail;
-    case 'code':
-      return CodeToolDetail;
-    case 'todo':
-      return TodoToolDetail;
-    default:
-      return GenericToolDetail;
-  }
-});
-
-/**
- * Tool icon based on tool_category (AF).
- * Falls back to a generic wrench when category is unknown.
- */
-const toolIcon = computed(() => {
-  const cat = activity.value.tool.toolCategory;
-  if (!cat || cat === 'other') return '🔧';
-  const iconMap: Record<string, string> = {
-    shell: '$',
-    browser: '🌐',
-    file_read: '📖',
-    file_write: '✏️',
-    file_search: '🔍',
-    web_search: '🔎',
-    mcp: '🔌',
-    code: '💻',
-    todo: '✅',
-  };
-  return iconMap[cat] ?? '🔧';
-});
-
-function tryParseJson(s: string | null): unknown {
-  if (!s) return undefined;
-  try {
-    return JSON.parse(s);
-  } catch {
-    return undefined;
-  }
-}
-
-const parsedToolArgs = computed<Record<string, unknown> | undefined>(
-  () => tryParseJson(activity.value.tool.arguments) as Record<string, unknown> | undefined,
-);
-
-const parsedToolResult = computed<Record<string, unknown> | undefined>(
-  () => tryParseJson(activity.value.tool.result) as Record<string, unknown> | undefined,
-);
+const parsedToolArgs = computed(() => asRecord(props.step.ToolArgs));
+const parsedToolResult = computed(() => asRecord(props.step.ToolResult));
 
 /**
  * Compact execution-result hint shown in the tool header.
  * For read_file this is the file path; for exec_command the command; etc.
  * It surfaces the "what happened" instead of a generic tool label.
  *
- * AF: When tool_category is available, use it to pick the hint strategy
- * directly (no need to match tool_name strings). Falls back to name-based
- * matching for legacy events without tool_category.
+ * v2 Step has no toolCategory, so hint selection is name-based only.
  */
 const headerHint = computed(() => {
-  const name = activity.value.tool.toolName;
+  const name = props.step.ToolName;
   const args = parsedToolArgs.value;
   const result = parsedToolResult.value;
-  const cat = activity.value.tool.toolCategory;
 
-  // AF path: use tool_category to pick hint strategy.
-  if (cat) {
-    const hint = hintByCategory(cat, name, args, result);
-    if (hint) return hint;
-  }
-
-  // Legacy fallback: name-based matching (for events without tool_category).
   const fileOps = new Set([
     'read_file',
     'file_read_file',
@@ -232,49 +117,10 @@ const headerHint = computed(() => {
   return '';
 });
 
-/** Extract a compact hint from tool arguments/result based on tool_category. */
-function hintByCategory(
-  cat: string,
-  name: string,
-  args: Record<string, unknown> | undefined,
-  result: Record<string, unknown> | undefined,
-): string {
-  const truncate = (s: string, max = 80) => (s.length > max ? `${s.slice(0, max)}…` : s);
-  switch (cat) {
-    case 'shell':
-      if (typeof args?.command === 'string' && args.command) return truncate(args.command);
-      if (typeof args?.cmd === 'string' && args.cmd) return truncate(args.cmd);
-      break;
-    case 'browser':
-      if (typeof args?.url === 'string' && args.url) return truncate(args.url, 60);
-      if (typeof args?.action === 'string' && args.action) return truncate(args.action, 60);
-      break;
-    case 'file_read':
-    case 'file_write':
-    case 'file_search':
-      if (typeof args?.path === 'string' && args.path) return truncate(args.path, 60);
-      if (typeof args?.file_path === 'string' && args.file_path) return truncate(args.file_path, 60);
-      if (typeof args?.pattern === 'string' && args.pattern) return truncate(args.pattern, 60);
-      if (typeof result?.path === 'string' && result.path) return truncate(result.path, 60);
-      break;
-    case 'web_search':
-      if (typeof args?.query === 'string' && args.query) return truncate(args.query);
-      break;
-    case 'mcp':
-      if (typeof args?.method === 'string' && args.method) return truncate(args.method, 60);
-      if (typeof args?.server === 'string' && args.server) return truncate(args.server, 60);
-      break;
-    case 'code':
-      if (typeof args?.language === 'string' && args.language) return truncate(args.language, 30);
-      break;
-  }
-  return '';
-}
-
 /** T8.4: Compute total content length to decide auto-collapse. */
 const contentLength = computed(() => {
-  const result = activity.value.tool.result ?? '';
-  const args = activity.value.tool.arguments ?? '';
+  const result = props.step.ToolResult != null ? JSON.stringify(props.step.ToolResult) : '';
+  const args = props.step.ToolArgs != null ? JSON.stringify(props.step.ToolArgs) : '';
   return result.length + args.length;
 });
 
@@ -285,7 +131,7 @@ const contentLength = computed(() => {
 // on demand. Users who want to peek into a specific tool click the header.
 // If content grows beyond the threshold while the user has expanded the
 // card, auto-collapse re-engages to keep long outputs out of the way.
-const { collapsed, toggle, setCollapsed } = useCollapseState(`action:${activity.value.id}`, true);
+const { collapsed, toggle, setCollapsed } = useCollapseState(`action:${props.step.ID}`, true);
 
 // If content grows beyond threshold after initial render (e.g., streaming result),
 // auto-collapse unless the user has explicitly expanded.
@@ -295,35 +141,42 @@ watch(contentLength, (len, prevLen) => {
   }
 });
 
-/** Adapt ToolActivity (AF type) to ToolUseEvent for TodoInlineList consumption. */
+/** Map v2 StepStatus to ToolUseEvent status (consumed by TodoInlineList). */
+function mapStepStatusToToolUseStatus(status: Step['Status']): ToolUseEvent['status'] {
+  switch (status) {
+    case 'running':
+    case 'tool_running':
+    case 'pending':
+      return 'running';
+    case 'tool_blocked':
+      return 'blocked';
+    case 'completed':
+      return 'success';
+    case 'failed':
+      return 'failed';
+    case 'cancelled':
+      return 'cancelled';
+  }
+}
+
+/** Adapt v2 Step to ToolUseEvent for TodoInlineList consumption. */
 const todoEvent = computed<ToolUseEvent>(() => {
-  const t = activity.value.tool;
-  let parsedArgs: unknown;
-  try {
-    parsedArgs = t.arguments ? JSON.parse(t.arguments) : undefined;
-  } catch {
-    parsedArgs = t.arguments;
-  }
-  let parsedResult: unknown;
-  try {
-    parsedResult = t.result ? JSON.parse(t.result) : undefined;
-  } catch {
-    parsedResult = t.result;
-  }
+  const s = props.step;
+  const status = mapStepStatusToToolUseStatus(s.Status);
   return {
-    id: activity.value.id,
-    phase: t.status === 'running' ? 'before' : 'after',
-    status: t.status,
+    id: s.ID,
+    phase: status === 'running' ? 'before' : 'after',
+    status,
     agent_id: '',
     agent_key: '',
     agent_name: '',
-    tool_name: t.toolName,
-    tool_label: t.toolLabel,
-    arguments: parsedArgs,
-    result: parsedResult,
-    error: t.error ?? undefined,
+    tool_name: s.ToolName,
+    tool_label: s.ToolName,
+    arguments: s.ToolArgs ?? undefined,
+    result: s.ToolResult ?? undefined,
+    error: s.ToolErrorCode || undefined,
     occurred_at: '',
-    duration_ms: t.durationMs ?? undefined,
+    duration_ms: s.ToolDurationMs || undefined,
   };
 });
 
@@ -333,26 +186,31 @@ function toggleExpand() {
   toggle();
 }
 
-const statusClass = computed(() => ({
-  'act-activity__status--running': activity.value.tool.status === 'running',
-  'act-activity__status--success': activity.value.tool.status === 'success',
-  'act-activity__status--failed': activity.value.tool.status === 'failed',
-  'act-activity__status--blocked': activity.value.tool.status === 'blocked',
-  // Chat UI fix: 'cancelled' previously had an icon (⊘) but no CSS modifier,
-  // so cancelled tools rendered with no status color — inconsistent with
-  // the design spec which requires a muted/cancelled visual state.
-  'act-activity__status--cancelled': activity.value.tool.status === 'cancelled',
-}));
+const statusClass = computed(() => {
+  const s = props.step.Status;
+  return {
+    'act-activity__status--running': s === 'running' || s === 'tool_running' || s === 'pending',
+    'act-activity__status--success': s === 'completed',
+    'act-activity__status--failed': s === 'failed',
+    'act-activity__status--blocked': s === 'tool_blocked',
+    // Chat UI fix: 'cancelled' previously had an icon (⊘) but no CSS modifier,
+    // so cancelled tools rendered with no status color — inconsistent with
+    // the design spec which requires a muted/cancelled visual state.
+    'act-activity__status--cancelled': s === 'cancelled',
+  };
+});
 
 const statusIcon = computed(() => {
-  switch (activity.value.tool.status) {
+  switch (props.step.Status) {
     case 'running':
+    case 'tool_running':
+    case 'pending':
       return '⏳';
-    case 'success':
+    case 'completed':
       return '✓';
     case 'failed':
       return '✗';
-    case 'blocked':
+    case 'tool_blocked':
       return '🔒';
     case 'cancelled':
       return '⊘';
@@ -361,7 +219,7 @@ const statusIcon = computed(() => {
   }
 });
 
-const formattedDuration = computed(() => formatDuration(activity.value.tool.durationMs));
+const formattedDuration = computed(() => formatDuration(props.step.ToolDurationMs));
 </script>
 
 <style lang="sass" scoped>

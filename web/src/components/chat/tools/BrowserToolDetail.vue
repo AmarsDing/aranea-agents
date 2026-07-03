@@ -21,13 +21,13 @@
       <div class="tool-detail__label">{{ t('chat.toolDetail.domOperations') }}</div>
       <pre class="tool-detail__code">{{ domSummary }}</pre>
     </div>
-    <div v-if="activity.tool.arguments" class="tool-detail__row">
+    <div v-if="step.ToolArgs != null" class="tool-detail__row">
       <div class="tool-detail__label">{{ t('chat.toolDetail.args') }}</div>
-      <pre class="tool-detail__code">{{ activity.tool.arguments }}</pre>
+      <pre class="tool-detail__code">{{ formatToolData(step.ToolArgs) }}</pre>
     </div>
-    <div v-if="activity.tool.error" class="tool-detail__row tool-detail__row--error">
+    <div v-if="step.ToolErrorCode" class="tool-detail__row tool-detail__row--error">
       <div class="tool-detail__label">{{ t('chat.toolDetail.error') }}</div>
-      <pre class="tool-detail__code">{{ activity.tool.error }}</pre>
+      <pre class="tool-detail__code">{{ step.ToolErrorCode }}</pre>
     </div>
   </div>
 </template>
@@ -35,15 +35,15 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { ActionEvent } from '../../../features/chat/streamEventTypes';
-import { tryParseJson, asRecord, asString } from './toolDetailShared';
+import type { Step } from '../../../features/chat/v2Types';
+import { formatToolData, asRecord, asString } from './toolDetailShared';
 
 const { t } = useI18n();
 
-const props = defineProps<{ activity: ActionEvent }>();
+const props = defineProps<{ step: Step }>();
 
-const parsedArgs = computed(() => asRecord(tryParseJson(props.activity.tool.arguments)));
-const parsedResult = computed(() => asRecord(tryParseJson(props.activity.tool.result)));
+const parsedArgs = computed(() => asRecord(props.step.ToolArgs));
+const parsedResult = computed(() => asRecord(props.step.ToolResult));
 
 const url = computed(() => asString(parsedArgs.value?.url) ?? asString(parsedResult.value?.url) ?? '');
 const action = computed(() => asString(parsedArgs.value?.action) ?? asString(parsedArgs.value?.operation) ?? '');

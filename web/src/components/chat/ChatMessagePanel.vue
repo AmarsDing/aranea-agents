@@ -316,7 +316,7 @@ import type { SpiritTeam, SpiritMember, SynthesisOutput } from '../../features/s
 import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import type { ContextualMessage } from '../../features/chat/composables/useContextualLoadingMessage';
 import { EXECUTION_COLLAPSE_CONTROL_KEY } from '../../features/chat/executionCardHelpers';
-import type { ErrorEvent } from '../../features/chat/streamEventTypes';
+import type { Step } from '../../features/chat/v2Types';
 
 type Option = { label: string; value: string; caption?: string };
 
@@ -436,12 +436,12 @@ const emit = defineEmits<{
   'status-bar-click-last-event': [];
   'toggle-tool-calls': [];
   'confirm-activity': [activityId: string, approved: boolean];
-  'error-retry': [event: ErrorEvent];
-  'error-switch-model': [event: ErrorEvent];
-  'error-rephrase': [event: ErrorEvent];
-  'error-check-config': [event: ErrorEvent];
-  'error-remove-attachment': [event: ErrorEvent];
-  'error-relogin': [event: ErrorEvent];
+  'error-retry': [step: Step];
+  'error-switch-model': [step: Step];
+  'error-rephrase': [step: Step];
+  'error-check-config': [step: Step];
+  'error-remove-attachment': [step: Step];
+  'error-relogin': [step: Step];
   'expand-member': [payload: { agentKey: string; agentName?: string; teamId?: string }];
   'enter-session': [sessionId: string];
   // T5.2/T5.3 / §B.7.2: Forward team-card / agent-card expand events upstream

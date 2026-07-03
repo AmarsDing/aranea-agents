@@ -54,15 +54,45 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { GraphStageEvent, GraphNodeStatus } from '../../features/chat/streamEventTypes';
+import type { Step } from '../../features/chat/v2Types';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
 import { kahnTopoLayers } from '../../features/spirit/lib/dagTopoSort';
 
+/**
+ * Graph node status — inlined from streamEventTypes.ts (deleted in v2 migration).
+ * v2 Step has no graph-specific fields; this interface preserves the v1 shape
+ * for the DAG rendering logic below.
+ */
+interface GraphNodeStatus {
+  nodeId: string;
+  label: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+  dependsOn?: string[];
+}
+
+/** Adapter shape: maps v2 Step fields to the v1 GraphStageEvent fields this component consumes. */
+interface GraphStageLike {
+  status: string;
+  nodes?: GraphNodeStatus[];
+  durationMs?: number | null;
+}
+
 const props = defineProps<{
-  activity: GraphStageEvent;
+  /** v2 Step prop. Graph-specific fields (nodes, dagNodeId) are absent on Step;
+   *  they are cast via `as any` to preserve v1 DAG rendering behavior. */
+  step: Step;
 }>();
 
 const { t } = useI18n();
+
+// v2 Step has no `nodes` / `dagNodeId` fields; cast preserves v1 graph_stage shape.
+// `status` is mapped from v2 Step.Status (PascalCase) to the v1 `status` field.
+// `durationMs` is mapped from v2 Step.ToolDurationMs.
+const activity = computed<GraphStageLike>(() => ({
+  status: props.step.Status,
+  nodes: (props.step as unknown as { nodes?: GraphNodeStatus[] }).nodes,
+  durationMs: props.step.ToolDurationMs || null,
+}));
 
 // B.4.5: graph_stage 始终展开（不自动折叠）。终态切换时也不折叠，
 // 以保持 DAG 可见性 — 终态自动折叠 ❌ 违反设计。
@@ -73,7 +103,7 @@ function toggleCollapse() {
   collapsed.value = !collapsed.value;
 }
 
-const effectiveStatus = computed(() => props.activity.status);
+const effectiveStatus = computed(() => activity.value.status);
 
 const isTerminal = computed(
   () =>
@@ -83,7 +113,7 @@ const isTerminal = computed(
 );
 
 const progressText = computed(() => {
-  const nodes = props.activity.nodes;
+  const nodes = activity.value.nodes;
   if (!nodes?.length) return '';
   const completed = nodes.filter(
     (n) => n.status === 'completed' || n.status === 'failed' || n.status === 'skipped',
@@ -92,7 +122,7 @@ const progressText = computed(() => {
 });
 
 const showDag = computed(() => {
-  if (!props.activity.nodes?.length) return false;
+  if (!activity.value.nodes?.length) return false;
   if (effectiveStatus.value === 'running') return true;
   return !collapsed.value;
 });
@@ -103,7 +133,7 @@ const showDag = computed(() => {
  *  which renders DAG as a wrap-flex row with `→` arrows — for richer
  *  dependency graphs we layer them vertically by depth. */
 const dagLayers = computed<GraphNodeStatus[][]>(() => {
-  const nodes = props.activity.nodes;
+  const nodes = activity.value.nodes;
   if (!nodes?.length) return [];
 
   const depths = kahnTopoLayers(nodes.map((n) => ({ id: n.nodeId, dependsOn: n.dependsOn ?? [] })));

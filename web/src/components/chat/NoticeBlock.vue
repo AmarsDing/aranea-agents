@@ -1,20 +1,23 @@
 <template>
-  <div class="notice-block" :class="`notice-block--${activity.type}`">
+  <div class="notice-block" :class="`notice-block--${noticeType}`">
     <span class="notice-block__icon">{{ iconForType }}</span>
-    <span class="notice-block__message">{{ activity.message }}</span>
+    <span class="notice-block__message">{{ step.Content }}</span>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { NoticeEvent } from '../../features/chat/streamEventTypes';
+import type { Step } from '../../features/chat/v2Types';
 
 const props = defineProps<{
-  activity: NoticeEvent;
+  step: Step;
 }>();
 
+// v2 Step has no notice severity field; default to 'info'.
+const noticeType = computed<'info' | 'warning' | 'success'>(() => 'info');
+
 const iconForType = computed(() => {
-  switch (props.activity.type) {
+  switch (noticeType.value) {
     case 'warning':
       return '⚠️';
     case 'success':

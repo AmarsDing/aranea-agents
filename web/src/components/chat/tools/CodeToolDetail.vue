@@ -6,7 +6,7 @@
     </div>
     <div class="tool-detail__row">
       <span class="tool-detail__label-inline">{{ t('chat.toolDetail.executionStatus') }}</span>
-      <span class="tool-detail__text" :class="`tool-detail__text--${executionStatus}`">{{ executionStatusLabel }}</span>
+      <span class="tool-detail__text" :class="`tool-detail__text--executionStatus`">{{ executionStatusLabel }}</span>
     </div>
     <div v-if="code" class="tool-detail__row">
       <div class="tool-detail__label">{{ t('chat.toolDetail.code') }}</div>
@@ -20,9 +20,9 @@
       <div class="tool-detail__label">stderr</div>
       <pre class="tool-detail__code">{{ stderr }}</pre>
     </div>
-    <div v-if="activity.tool.error" class="tool-detail__row tool-detail__row--error">
+    <div v-if="step.ToolErrorCode" class="tool-detail__row tool-detail__row--error">
       <div class="tool-detail__label">{{ t('chat.toolDetail.error') }}</div>
-      <pre class="tool-detail__code">{{ activity.tool.error }}</pre>
+      <pre class="tool-detail__code">{{ step.ToolErrorCode }}</pre>
     </div>
   </div>
 </template>
@@ -30,15 +30,15 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { ActionEvent } from '../../../features/chat/streamEventTypes';
-import { tryParseJson, asRecord, asString } from './toolDetailShared';
+import type { Step } from '../../../features/chat/v2Types';
+import { asRecord, asString } from './toolDetailShared';
 
 const { t } = useI18n();
 
-const props = defineProps<{ activity: ActionEvent }>();
+const props = defineProps<{ step: Step }>();
 
-const parsedArgs = computed(() => asRecord(tryParseJson(props.activity.tool.arguments)));
-const parsedResult = computed(() => asRecord(tryParseJson(props.activity.tool.result)));
+const parsedArgs = computed(() => asRecord(props.step.ToolArgs));
+const parsedResult = computed(() => asRecord(props.step.ToolResult));
 
 const language = computed(
   () =>
@@ -51,21 +51,23 @@ const code = computed(() => asString(parsedArgs.value?.code) ?? asString(parsedA
 const output = computed(() => asString(parsedResult.value?.stdout) ?? asString(parsedResult.value?.output) ?? '');
 const stderr = computed(() => asString(parsedResult.value?.stderr) ?? '');
 
-const executionStatus = computed(() => props.activity.tool.status);
+/** Map v2 StepStatus to the v1 tool-status label used for display. */
 const executionStatusLabel = computed(() => {
-  switch (executionStatus.value) {
+  switch (props.step.Status) {
     case 'running':
+    case 'tool_running':
+    case 'pending':
       return t('chat.toolDetail.statusRunning');
-    case 'success':
+    case 'completed':
       return t('chat.toolDetail.statusSuccess');
     case 'failed':
       return t('chat.toolDetail.statusFailed');
-    case 'blocked':
+    case 'tool_blocked':
       return t('chat.toolDetail.statusBlocked');
     case 'cancelled':
       return t('chat.toolDetail.statusCancelled');
     default:
-      return executionStatus.value;
+      return props.step.Status;
   }
 });
 </script>

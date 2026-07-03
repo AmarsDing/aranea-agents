@@ -5,9 +5,9 @@
       <ThinkingBlock v-if="step.Kind === 'thinking'" :step="step" />
       <ActionBlock v-else-if="step.Kind === 'action'" :step="step" />
       <ReplyBlock v-else-if="step.Kind === 'reply'" :step="step" />
-      <NoticeBlock v-else-if="step.Kind === 'notice'" :activity="step as any" />
-      <ConfirmBlock v-else-if="step.Kind === 'confirm'" :activity="step as any" />
-      <ErrorBlock v-else-if="step.Kind === 'error'" :event="step as any" />
+      <NoticeBlock v-else-if="step.Kind === 'notice'" :step="step" />
+      <ConfirmBlock v-else-if="step.Kind === 'confirm'" :step="step" />
+      <ErrorBlock v-else-if="step.Kind === 'error'" :step="step" />
     </template>
   </div>
 </template>
