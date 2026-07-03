@@ -119,6 +119,7 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	skillv1.RegisterSkillServiceHTTPServer(srv, s.Skill)
 	toolv1.RegisterToolServiceHTTPServer(srv, s.Tool)
 	sessionv1.RegisterSessionServiceHTTPServer(srv, s.Session)
+	sessionv1.RegisterSessionV2ServiceHTTPServer(srv, s.SessionV2)
 	channelv1.RegisterChannelServiceHTTPServer(srv, s.Channel)
 	usagev1.RegisterUsageServiceHTTPServer(srv, s.Usage)
 	monitorv1.RegisterMonitorServiceHTTPServer(srv, s.Monitor)

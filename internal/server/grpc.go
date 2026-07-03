@@ -84,6 +84,7 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 	skillv1.RegisterSkillServiceServer(srv, s.Skill)
 	toolv1.RegisterToolServiceServer(srv, s.Tool)
 	sessionv1.RegisterSessionServiceServer(srv, s.Session)
+	sessionv1.RegisterSessionV2ServiceServer(srv, s.SessionV2)
 	channelv1.RegisterChannelServiceServer(srv, s.Channel)
 	usagev1.RegisterUsageServiceServer(srv, s.Usage)
 	monitorv1.RegisterMonitorServiceServer(srv, s.Monitor)

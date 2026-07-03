@@ -55,6 +55,7 @@ var ProviderSet = wire.NewSet(
 	ProvideSkillResolveRootFn,
 	storage.NewSkillFilesystem,
 	NewSessionService,
+	NewSessionV2Service,
 	NewSessionProjectionAdapter,
 	wire.Bind(new(biz.SessionProjection), new(*SessionProjectionAdapter)),
 	NewToolService,

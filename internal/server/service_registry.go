@@ -21,6 +21,7 @@ type ServiceRegistry struct {
 	Skill              *service.SkillService
 	Tool               *service.ToolService
 	Session            *service.SessionService
+	SessionV2          *service.SessionV2Service
 	Channel            *service.ChannelService
 	Usage              *service.UsageService
 	Monitor            *service.MonitorService
@@ -69,6 +70,7 @@ func NewServiceRegistry(
 	skillSvc *service.SkillService,
 	toolSvc *service.ToolService,
 	sessionSvc *service.SessionService,
+	sessionV2Svc *service.SessionV2Service,
 	channelSvc *service.ChannelService,
 	usageSvc *service.UsageService,
 	monitorSvc *service.MonitorService,
@@ -112,6 +114,7 @@ func NewServiceRegistry(
 		Skill:              skillSvc,
 		Tool:               toolSvc,
 		Session:            sessionSvc,
+		SessionV2:          sessionV2Svc,
 		Channel:            channelSvc,
 		Usage:              usageSvc,
 		Monitor:            monitorSvc,

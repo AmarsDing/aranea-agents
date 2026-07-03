@@ -615,3 +615,108 @@ service SessionService {
     option (google.api.http) = {get: "/v1/sessions/{session_id}/activities"};
   }
 }
+
+// SessionV2Service exposes v2 entity read RPCs (Task/Turn/Step) backed by the
+// v2 repo tables (tasks_v2/turns_v2/steps_v2). Replaces v1 ListActivities.
+service SessionV2Service {
+  // ListTasks lists tasks for a session.
+  rpc ListTasks(ListTasksV2Request) returns (ListTasksV2Response) {
+    option (google.api.http) = {get: "/v2/sessions/{session_id}/tasks"};
+  }
+  // ListTurns lists turns for a task.
+  rpc ListTurns(ListTurnsV2Request) returns (ListTurnsV2Response) {
+    option (google.api.http) = {get: "/v2/tasks/{task_id}/turns"};
+  }
+  // ListSteps lists steps for a turn, task, or session.
+  rpc ListSteps(ListStepsV2Request) returns (ListStepsV2Response) {
+    option (google.api.http) = {get: "/v2/sessions/{session_id}/steps"};
+  }
+  // GetStep returns a single step by ID (replaces v1 GetActivity for confirm).
+  rpc GetStep(GetStepV2Request) returns (GetStepV2Response) {}
+}
+
+message ListTasksV2Request {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+message ListTasksV2Response {
+  repeated TaskV2 tasks = 1;
+}
+
+message ListTurnsV2Request {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+message ListTurnsV2Response {
+  repeated TurnV2 turns = 1;
+}
+
+message ListStepsV2Request {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string turn_id = 2;
+  string task_id = 3;
+}
+message ListStepsV2Response {
+  repeated StepV2 steps = 1;
+}
+
+message GetStepV2Request {
+  string step_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+message GetStepV2Response {
+  StepV2 step = 1;
+}
+
+// TaskV2 mirrors biz.Task (SessionID = spirit_session_id per biz comment).
+message TaskV2 {
+  string id = 1;
+  string session_id = 2;
+  string user_message = 3;
+  string status = 4;
+  int64 seq = 5;
+  int64 version = 6;
+  string created_at = 7;
+  string updated_at = 8;
+  string completed_at = 9;
+}
+
+// TurnV2 mirrors biz.Turn.
+message TurnV2 {
+  string id = 1;
+  string task_id = 2;
+  string session_id = 3;
+  string spirit_session_id = 4;
+  string parent_turn_id = 5;
+  string agent_key = 6;
+  string team_id = 7;
+  string team_stage_id = 8;
+  int64 seq = 9;
+  int64 version = 10;
+  string status = 11;
+  string started_at = 12;
+  string completed_at = 13;
+}
+
+// StepV2 mirrors biz.Step. ToolArgs/ToolResult are bytes (json.RawMessage).
+message StepV2 {
+  string id = 1;
+  string turn_id = 2;
+  string task_id = 3;
+  string session_id = 4;
+  string spirit_session_id = 5;
+  string kind = 6;
+  string author_agent_key = 7;
+  int64 seq = 8;
+  int64 version = 9;
+  string content = 10;
+  string reasoning = 11;
+  string tool_name = 12;
+  string tool_call_id = 13;
+  bytes tool_args = 14;
+  bytes tool_result = 15;
+  int64 tool_duration_ms = 16;
+  string tool_error_code = 17;
+  string notice_type = 18;
+  string status = 19;
+  bool is_final = 20;
+  string started_at = 21;
+  string completed_at = 22;
+}

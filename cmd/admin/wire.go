@@ -2410,6 +2410,11 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		// v2 event pipeline providers (Phase 1 收尾)
 		provideV2EventBus,
 		provideV2RepoSet,
+		// v2 reader bindings: SessionV2Service consumes the narrow Reader
+		// interfaces; the data layer provides the composite Repo interfaces.
+		wire.Bind(new(biz.TaskV2Reader), new(biz.TaskV2Repo)),
+		wire.Bind(new(biz.TurnV2Reader), new(biz.TurnV2Repo)),
+		wire.Bind(new(biz.StepV2Reader), new(biz.StepV2Repo)),
 		provideV2Sequencer,
 		provideV2Projector,
 		provideWSV2Subscriber,
