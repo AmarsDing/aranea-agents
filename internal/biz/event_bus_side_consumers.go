@@ -48,8 +48,8 @@ func NewEventBusSideConsumers(
 	return &EventBusSideConsumers{
 		callback:        newCallbackConsumer(eventBus, webhooks, logger),
 		flowLog:         newFlowLogPersistConsumer(flowLogs, logger, monitorEventBus),
-		userFeedback:    newUserFeedbackConsumer(activityBus, monitorUC, memWorker, logger),
-		usageRollup:     newUsageRollupConsumer(activityBus, usage, logger),
+		userFeedback:    newUserFeedbackConsumer(eventBus, monitorUC, memWorker, logger),
+		usageRollup:     newUsageRollupConsumer(eventBus, usage, logger),
 		webhooks:        webhooks,
 		traceProj:       traceProj,
 		fileAppender:    fileAppender,
@@ -118,6 +118,51 @@ func runActivityConsumerWithOpts(ctx context.Context, name string, bus ActivityE
 					return
 				}
 				worker.OfferWithOptions(ctx, ev, offerOpts)
+			}
+		}
+	})
+}
+
+// runActivityBridgeConsumerWithOpts subscribes to v2 EventBus, extracts the v1
+// ActivityEvent from ActivityBridgeEvent payloads, applies a filter, and
+// dispatches matching events to fn via an async worker with bounded queue.
+//
+// Phase 3b-D: replaces runActivityConsumerWithOpts for consumers that need
+// v1 ActivityEvent shape (filter on Kind/Stage/Meta) but receive events from
+// the v2 EventBus. Non-bridge events are skipped.
+func runActivityBridgeConsumerWithOpts(
+	ctx context.Context,
+	name string,
+	bus EventBus,
+	filter func(ActivityEvent) bool,
+	fn func(context.Context, ActivityEvent),
+	offerOpts offerOption[ActivityEvent],
+	logger SessionLogWriter,
+) {
+	if bus == nil || fn == nil {
+		return
+	}
+	worker := newAsyncEventWorker(name, sideConsumerQueueSize(), 0, logger, activityLogFields)
+	worker.Start(ctx, fn)
+	ch, unsub := bus.Subscribe(EventSubscribeOptions{})
+	safego.Go(ctx, name, func() {
+		defer unsub()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case e, ok := <-ch:
+				if !ok {
+					return
+				}
+				bridge, ok := e.(*ActivityBridgeEvent)
+				if !ok {
+					continue
+				}
+				if filter != nil && !filter(bridge.Event) {
+					continue
+				}
+				worker.OfferWithOptions(ctx, bridge.Event, offerOpts)
 			}
 		}
 	})

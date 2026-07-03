@@ -9,18 +9,19 @@ import (
 
 // usageRollupConsumer rolls up token usage statistics from ActivityEvents.
 //
-// Phase 5 Blocker B: migrated from legacy Envelope-based SessionBus to
-// ActivityEventBus. The token_usage publisher (biz.PublishTokenUsageEnvelope)
-// emits ActivityEvent{Stage:"token_usage", Meta:{"token_usage":<EnvelopeTokenUsage>}}.
-// This consumer filters at the bus level by Stage=="token_usage" and extracts
-// the EnvelopeTokenUsage from Meta.
+// Phase 3b-D: migrated from v1 ActivityEventBus to v2 EventBus. The
+// token_usage publisher (biz.PublishTokenUsageEnvelope) emits
+// ActivityEvent{Stage:"token_usage", Meta:{"token_usage":<EnvelopeTokenUsage>}}
+// wrapped in ActivityBridgeEvent on the v2 EventBus. This consumer extracts
+// the v1 ActivityEvent from the bridge, filters by Stage=="token_usage", and
+// extracts the EnvelopeTokenUsage from Meta.
 type usageRollupConsumer struct {
-	bus    ActivityEventBus
+	bus    EventBus
 	usage  *UsageUsecase
 	logger SessionLogWriter
 }
 
-func newUsageRollupConsumer(bus ActivityEventBus, usage *UsageUsecase, logger SessionLogWriter) *usageRollupConsumer {
+func newUsageRollupConsumer(bus EventBus, usage *UsageUsecase, logger SessionLogWriter) *usageRollupConsumer {
 	if usage == nil || bus == nil {
 		return nil
 	}
@@ -31,13 +32,14 @@ func (c *usageRollupConsumer) Start(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	runActivityConsumerWithOpts(ctx, "event-bus-usage-rollup", c.bus, ActivityEventSubscribeOptions{
-		BufferSize: 256,
-		GlobalMode: true,
-		Filter: func(ev ActivityEvent) bool {
+	runActivityBridgeConsumerWithOpts(ctx, "event-bus-usage-rollup", c.bus,
+		func(ev ActivityEvent) bool {
 			return ev.Activity.Stage == "token_usage"
 		},
-	}, c.handle, offerOption[ActivityEvent]{FallbackSync: true, FallbackFn: c.handle}, c.logger)
+		c.handle,
+		offerOption[ActivityEvent]{FallbackSync: true, FallbackFn: c.handle},
+		c.logger,
+	)
 }
 
 func (c *usageRollupConsumer) handle(ctx context.Context, ev ActivityEvent) {

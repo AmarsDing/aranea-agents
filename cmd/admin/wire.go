@@ -575,13 +575,13 @@ func provideTurnLifecycleUsecase(sessions *biz.SessionUsecase, lg loggateway.Log
 	})
 }
 
-func provideUsageUsecase(repo biz.UsageRepo, mon *biz.MonitorUsecase, teamUC *biz.TeamUsecase, sessions *biz.SessionUsecase, activityBus biz.ActivityEventBus, lg loggateway.Logger) *biz.UsageUsecase {
+func provideUsageUsecase(repo biz.UsageRepo, mon *biz.MonitorUsecase, teamUC *biz.TeamUsecase, sessions *biz.SessionUsecase, eventBus biz.EventBus, lg loggateway.Logger) *biz.UsageUsecase {
 	uc := biz.NewUsageUsecase(repo, lg)
 	uc.SetAlertNotifier(service.NewMonitorBudgetAlertNotifier(mon))
 	uc.SetTeamReader(teamUC)
 	uc.SetSessionMetricsAccumulator(&sessionMetricsAdapter{sessions: sessions})
 	uc.SetCompletionUsageLinker(&completionLinkerAdapter{mon: mon})
-	uc.SetUsageEnvelopePublisher(&envelopePublisherAdapter{activityBus: activityBus})
+	uc.SetUsageEnvelopePublisher(&envelopePublisherAdapter{eventBus: eventBus})
 	return uc
 }
 
@@ -617,13 +617,13 @@ func (a *completionLinkerAdapter) LinkRunnerCompletionUsage(ctx context.Context,
 	return biz.LinkRunnerCompletionUsage(ctx, a.mon, sessionID, runID, usageEventID, traceID)
 }
 
-// envelopePublisherAdapter adapts biz.ActivityEventBus to the usage.UsageEnvelopePublisher interface.
+// envelopePublisherAdapter adapts biz.EventBus to the usage.UsageEnvelopePublisher interface.
 type envelopePublisherAdapter struct {
-	activityBus biz.ActivityEventBus
+	eventBus biz.EventBus
 }
 
 func (a *envelopePublisherAdapter) PublishTokenUsageEnvelope(ctx context.Context, e bizusage.TokenUsageEvent) {
-	biz.PublishTokenUsageEnvelope(ctx, a.activityBus, e)
+	biz.PublishTokenUsageEnvelope(ctx, a.eventBus, e)
 }
 
 func provideSystemSettingUsecase(repo biz.SystemSettingRepo, quota biz.UsageQuotaRepo, tester biz.WebResearchTester, tp biz.SystemSettingTxProvider) *biz.SystemSettingUsecase {

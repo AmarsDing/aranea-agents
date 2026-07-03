@@ -103,7 +103,7 @@ func TestUserFeedbackConsumer_handle(t *testing.T) {
 	worker := NewTurnMemoryWorker(feedback, noopSessionLogWriter{})
 
 	// bus is nil because handle is called directly without going through Start.
-	var bus ActivityEventBus
+	var bus EventBus
 	c := &userFeedbackConsumer{bus: bus, monitor: uc, memWorker: worker}
 	c.handle(context.Background(), ActivityEvent{
 		Event: ActivityEventCreated,

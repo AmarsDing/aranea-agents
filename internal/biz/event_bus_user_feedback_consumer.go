@@ -8,19 +8,20 @@ import (
 // userFeedbackConsumer records message feedback to monitor and enqueues
 // preference memory extraction.
 //
-// Phase 5 Blocker B: migrated from legacy Envelope-based SessionBus to
-// ActivityEventBus. The user_feedback publisher (service.SubmitMessageFeedback)
-// emits ActivityEvent{Kind:ActivityKindNotice, Meta:{"notice_type":"user_feedback",
-// "message_id","rating","comment"}}. This consumer filters at the bus level
-// by Kind==notice and Meta["notice_type"]=="user_feedback".
+// Phase 3b-D: migrated from v1 ActivityEventBus to v2 EventBus. The
+// user_feedback publisher (service.SubmitMessageFeedback) emits
+// ActivityEvent{Kind:ActivityKindNotice, Meta:{"notice_type":"user_feedback",
+// "message_id","rating","comment"}} wrapped in ActivityBridgeEvent on the v2
+// EventBus. This consumer extracts the v1 ActivityEvent from the bridge,
+// filters by Kind==notice and Meta["notice_type"]=="user_feedback".
 type userFeedbackConsumer struct {
-	bus       ActivityEventBus
+	bus       EventBus
 	monitor   *MonitorUsecase
 	memWorker *TurnMemoryWorker
 	logger    SessionLogWriter
 }
 
-func newUserFeedbackConsumer(bus ActivityEventBus, monitor *MonitorUsecase, memWorker *TurnMemoryWorker, logger SessionLogWriter) *userFeedbackConsumer {
+func newUserFeedbackConsumer(bus EventBus, monitor *MonitorUsecase, memWorker *TurnMemoryWorker, logger SessionLogWriter) *userFeedbackConsumer {
 	if bus == nil {
 		return nil
 	}
@@ -31,14 +32,15 @@ func (c *userFeedbackConsumer) Start(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	runActivityConsumerWithOpts(ctx, "event-bus-user-feedback", c.bus, ActivityEventSubscribeOptions{
-		BufferSize: 64,
-		GlobalMode: true,
-		Filter: func(ev ActivityEvent) bool {
+	runActivityBridgeConsumerWithOpts(ctx, "event-bus-user-feedback", c.bus,
+		func(ev ActivityEvent) bool {
 			return ev.Activity.Kind == ActivityKindNotice &&
 				metaString(ev.Activity.Meta, "notice_type") == "user_feedback"
 		},
-	}, c.handle, offerOption[ActivityEvent]{FallbackSync: true, FallbackFn: c.handle}, c.logger)
+		c.handle,
+		offerOption[ActivityEvent]{FallbackSync: true, FallbackFn: c.handle},
+		c.logger,
+	)
 }
 
 func (c *userFeedbackConsumer) handle(ctx context.Context, ev ActivityEvent) {
