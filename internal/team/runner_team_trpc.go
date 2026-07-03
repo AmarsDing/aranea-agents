@@ -163,21 +163,24 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		teamEmitter.LogStart("team.run.execute", "执行团队任务", event.P("mode", mode))
 	}
 
-	// Phase 6.5: Build project metadata and pre-create ActivityProjector.
-	// N-21/N-03: The projector is pre-created and injected into runCtx so that
-	// plugins (cost_guard, model_router) and hooks (tool_confirmation) can emit
-	// notice/confirm Activities via biz.ActivityEmitterFromContext during the
-	// LLM call. The same projector is reused in ConsumeWithFirstByteGuard.
+	// Phase 6.5: Build project metadata and pre-configure the v2 ActivityProjector.
+	// N-21/N-03: The v2 projector is pre-configured and injected into runCtx so
+	// that plugins (cost_guard, model_router) and hooks (tool_confirmation) can
+	// emit notice/confirm events via biz.ActivityEmitterFromContext during the
+	// LLM call. Reset clears stale state; Configure sets meta without emitting
+	// events. OnTurnStart (called later by the stream consumer) will emit
+	// task.created + turn.started.
 	traceID := ""
 	if teamEmitter != nil {
 		traceID = teamEmitter.TraceID()
 	}
 	projectMeta := r.buildTeamProjectMeta(ctx, sess, run, teamRow, ar, memberKeys, ti.content, traceID)
 	streamOpts := r.newStreamConsumeOptions()
-	if streamOpts != nil && streamOpts.ActivityProjector != nil {
-		streamOpts.ActivityProjector.Reset()
-		runCtx = streamOpts.ActivityProjector.OnTurnStart(runCtx, projectMeta)
-		runCtx = biz.WithActivityEmitter(runCtx, streamOpts.ActivityProjector)
+	if streamOpts != nil && streamOpts.V2Projector != nil {
+		v2Meta := agent.V2ProjectMetaFromV1(projectMeta)
+		streamOpts.V2Projector.Reset()
+		streamOpts.V2Projector.Configure(v2Meta)
+		runCtx = biz.WithActivityEmitter(runCtx, streamOpts.V2Projector)
 	}
 
 	// Publish session activities for ALL members at the start of execution,
