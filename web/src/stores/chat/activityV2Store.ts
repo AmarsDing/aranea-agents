@@ -2,9 +2,16 @@
 import { ref, computed } from 'vue';
 import { defineStore } from 'pinia';
 import type {
-  Task, Turn, Step, TeamStage, TeamRun, MemberSession,
-  PlanBoard, PlanStep,
+  Task,
+  Turn,
+  Step,
+  TeamStage,
+  TeamRun,
+  MemberSession,
+  PlanBoard,
+  PlanStep,
 } from '../../features/chat/v2Types';
+import { listTasksV2, listTurnsV2, listStepsV2 } from '../../features/session/v2Api';
 
 /**
  * useChatActivityStore holds all v2 chat entities in flat Maps keyed by ID.
@@ -188,14 +195,53 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     planSteps.value.clear();
   }
 
+  // === History fetch (page refresh / WS reconnect) ===
+
+  /**
+   * fetchSessionHistory loads the full v2 entity tree for a session:
+   * all tasks + all steps for the session (parallel), then turns per-task
+   * (parallel). Per-task turn fetch failures are swallowed so partial
+   * history can still render. Top-level task/step failures propagate.
+   */
+  async function fetchSessionHistory(sessionId: string): Promise<void> {
+    const [tasksList, stepsList] = await Promise.all([listTasksV2(sessionId), listStepsV2(sessionId)]);
+    for (const t of tasksList) upsertTask(t);
+    for (const s of stepsList) upsertStep(s);
+
+    // Fetch turns per-task in parallel; isolated failures yield empty arrays.
+    const turnLists = await Promise.all(tasksList.map((t) => listTurnsV2(t.ID).catch(() => [] as Turn[])));
+    for (const turns of turnLists) {
+      for (const turn of turns) upsertTurn(turn);
+    }
+  }
+
   return {
-    tasks, turns, steps, teamStages, teamRuns, memberSessions, planBoards, planSteps,
-    upsertTask, upsertTurn, upsertStep, upsertTeamStage, upsertTeamRun,
-    upsertMemberSession, upsertPlanBoard, upsertPlanStep,
+    tasks,
+    turns,
+    steps,
+    teamStages,
+    teamRuns,
+    memberSessions,
+    planBoards,
+    planSteps,
+    upsertTask,
+    upsertTurn,
+    upsertStep,
+    upsertTeamStage,
+    upsertTeamRun,
+    upsertMemberSession,
+    upsertPlanBoard,
+    upsertPlanStep,
     appendStepDelta,
-    getSessionTasks, getTaskTurns, getTurnSteps,
-    getTaskTeamStages, getTaskPlanBoards,
-    getTeamStageTeamRuns, getTeamRunMemberSessions,
-    clearSession, clearAll,
+    getSessionTasks,
+    getTaskTurns,
+    getTurnSteps,
+    getTaskTeamStages,
+    getTaskPlanBoards,
+    getTeamStageTeamRuns,
+    getTeamRunMemberSessions,
+    clearSession,
+    clearAll,
+    fetchSessionHistory,
   };
 });

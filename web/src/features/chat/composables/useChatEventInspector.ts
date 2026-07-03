@@ -1,5 +1,5 @@
 import { onBeforeUnmount, ref, watch, type Ref } from 'vue';
-import { listActivities } from '../../session/api';
+import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
 import type { Activity } from '../activityTypes';
 import { useEventFilter } from './useEventFilter';
 import type { InspectorEvent } from '../eventFilter';
@@ -11,9 +11,9 @@ export type ChatEventInspectorStreamDeps = {
   /**
    * Phase 5 Blocker A: register a callback fired when the WS transport
    * reconnects for the inspected session. The inspector uses this to
-   * re-fetch historical Activities via ListActivities RPC, replacing the
-   * legacy server-side replay (event.Buffer → replayEvents → Envelope).
-   * Returns an unsubscribe function.
+   * re-fetch historical entities via the v2 store (fetchSessionHistory),
+   * replacing the legacy server-side replay (event.Buffer → replayEvents →
+   * Envelope). Returns an unsubscribe function.
    */
   onReconnect?: (handler: () => void) => () => void;
 };
@@ -22,11 +22,12 @@ export type ChatEventInspectorStreamDeps = {
  * useChatEventInspector provides a unified view of historical Activities and
  * live events for the session event inspector dialog.
  *
- * Phase 5 Blocker A: the legacy WS replay path (event.Buffer → replayEvents →
- * wsDownstream.Envelope) has been removed. Historical data is sourced from
- * Activity records via the ListActivities RPC. On WS reconnect, the inspector
- * re-fetches Activities via onReconnect (provided by the caller) instead of
- * relying on server-side replay.
+ * Phase 3b-D: the historical data source has been migrated from the v1
+ * ListActivities RPC to the v2 entity read API (Tasks/Turns/Steps). The v2
+ * entities are loaded into the shared `useChatActivityStore` via
+ * `fetchSessionHistory`. The legacy `activities` ref is retained as an empty
+ * array for backward compatibility with the existing inspector panel UI;
+ * it will be removed together with the v1 Activity types in Task 15.
  *
  * AF: Live events are stored as InspectorEvent (a minimal local type that
  * captures only the fields the inspector UI accesses). The underlying WS
@@ -64,8 +65,11 @@ export function useChatEventInspector(
     loading.value = true;
     error.value = '';
     try {
-      const items = await listActivities(id);
-      activities.value = items;
+      // v2 history fetch populates the shared activity store (tasks/turns/steps
+      // Maps). The legacy `activities` ref stays empty until Task 15 replaces
+      // the inspector panel with a v2-backed view.
+      const store = useChatActivityStore();
+      await store.fetchSessionHistory(id);
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to load activities';
     } finally {
@@ -75,8 +79,9 @@ export function useChatEventInspector(
 
   function connectStream(id: string): void {
     disconnectStream();
-    // Phase 5 Blocker A: on WS reconnect, re-fetch Activities via ListActivities
-    // RPC to backfill any events missed during the disconnection window.
+    // Phase 5 Blocker A: on WS reconnect, re-fetch v2 history via the shared
+    // activity store to backfill any events missed during the disconnection
+    // window.
     unsubReconnect =
       streamDeps?.onReconnect?.(() => {
         void loadHistory(id);
