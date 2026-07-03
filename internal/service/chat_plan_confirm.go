@@ -57,7 +57,7 @@ func (s *ChatService) ConfirmPlan(ctx context.Context, req *chatv1.ConfirmPlanRe
 	if plan.SpiritSessionID != sessionID {
 		return nil, apierror.BadRequest(apierror.DomainChat, "plan does not belong to session %s", sessionID)
 	}
-	if plan.Status != biz.LegacyPlanStatusDraft {
+	if plan.Status != biz.TaskPlanStatusDraft {
 		return nil, apierror.BadRequest(apierror.DomainChat, "plan is not in draft status (current: %s)", plan.Status)
 	}
 

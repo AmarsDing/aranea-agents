@@ -35,7 +35,7 @@ func (r *taskPlanRepo) Create(ctx context.Context, plan *biz.TaskPlan) (*biz.Tas
 	}
 	plan.UpdatedAt = now
 	if plan.Status == "" {
-		plan.Status = biz.LegacyPlanStatusDraft
+		plan.Status = biz.TaskPlanStatusDraft
 	}
 
 	dimensionsJSON, err := json.Marshal(plan.Dimensions)
@@ -239,7 +239,7 @@ func scanTaskPlanFromRows(rows *sql.Rows) (*biz.TaskPlan, error) {
 	plan.ComplexityLevel = biz.ComplexityLevel(complexityLevel)
 	plan.Strategy = biz.OrchestrationStrategy(strategy)
 	plan.TopologyHint = biz.TopologyType(topologyHint)
-	plan.Status = biz.LegacyPlanStatus(status)
+	plan.Status = biz.TaskPlanStatus(status)
 	plan.CreatedAt = parseTimeRFC3339(createdAtStr)
 	plan.UpdatedAt = parseTimeRFC3339(updatedAtStr)
 

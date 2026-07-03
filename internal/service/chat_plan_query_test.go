@@ -18,7 +18,7 @@ func TestToTaskPlanSummary(t *testing.T) {
 		ComplexityLevel: biz.ComplexityComplex,
 		ComplexityScore: 0.85,
 		Strategy:        biz.StrategyDAG,
-		Status:          biz.LegacyPlanStatusConfirmed,
+		Status:          biz.TaskPlanStatusConfirmed,
 		SubTasks:        []biz.SubTask{{ID: "st-1"}, {ID: "st-2"}, {ID: "st-3"}},
 		CreatedAt:       now,
 		UpdatedAt:       now,
@@ -124,7 +124,7 @@ func TestToTaskPlanDetail(t *testing.T) {
 			TopologyUsed:  "linear",
 			AgentKeysUsed: []string{"agent-a", "agent-b"},
 		},
-		Status:    biz.LegacyPlanStatusExecuting,
+		Status:    biz.TaskPlanStatusExecuting,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -216,7 +216,7 @@ func TestToTaskPlanDetail_NilOptionals(t *testing.T) {
 		ID:              "plan-003",
 		SpiritSessionID: "sess-003",
 		Strategy:        biz.StrategyDirect,
-		Status:          biz.LegacyPlanStatusDraft,
+		Status:          biz.TaskPlanStatusDraft,
 		CreatedAt:       time.Now(),
 		UpdatedAt:       time.Now(),
 	}
@@ -296,19 +296,19 @@ func TestToProtoPlanTaskDAG_NilDAG(t *testing.T) {
 	}
 }
 
-// TestToTaskPlanSummary_StatusMapping verifies all LegacyPlanStatus values map correctly.
+// TestToTaskPlanSummary_StatusMapping verifies all TaskPlanStatus values map correctly.
 func TestToTaskPlanSummary_StatusMapping(t *testing.T) {
 	tests := []struct {
 		name   string
-		status biz.LegacyPlanStatus
+		status biz.TaskPlanStatus
 		want   string
 	}{
-		{"draft", biz.LegacyPlanStatusDraft, "draft"},
-		{"approved", biz.LegacyPlanStatusApproved, "approved"},
-		{"confirmed", biz.LegacyPlanStatusConfirmed, "confirmed"},
-		{"executing", biz.LegacyPlanStatusExecuting, "executing"},
-		{"completed", biz.LegacyPlanStatusCompleted, "completed"},
-		{"failed", biz.LegacyPlanStatusFailed, "failed"},
+		{"draft", biz.TaskPlanStatusDraft, "draft"},
+		{"approved", biz.TaskPlanStatusApproved, "approved"},
+		{"confirmed", biz.TaskPlanStatusConfirmed, "confirmed"},
+		{"executing", biz.TaskPlanStatusExecuting, "executing"},
+		{"completed", biz.TaskPlanStatusCompleted, "completed"},
+		{"failed", biz.TaskPlanStatusFailed, "failed"},
 	}
 
 	for _, tt := range tests {

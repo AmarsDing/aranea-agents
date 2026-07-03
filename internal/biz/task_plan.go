@@ -25,6 +25,20 @@ const (
 	StrategyCoordinator OrchestrationStrategy = "coordinator"  // Team(ModeCoordinator)
 )
 
+// TaskPlanStatus represents the lifecycle state of a TaskPlan.
+// (Migrated from plan.go's LegacyPlanStatus — the values are unchanged
+// to preserve DB compatibility with the task_plans.status column.)
+type TaskPlanStatus string
+
+const (
+	TaskPlanStatusDraft     TaskPlanStatus = "draft"
+	TaskPlanStatusApproved  TaskPlanStatus = "approved"
+	TaskPlanStatusConfirmed TaskPlanStatus = "confirmed"
+	TaskPlanStatusExecuting TaskPlanStatus = "executing"
+	TaskPlanStatusCompleted TaskPlanStatus = "completed"
+	TaskPlanStatusFailed    TaskPlanStatus = "failed"
+)
+
 // TaskPlan is the output of the TaskPlanner
 type TaskPlan struct {
 	ID                 string `json:"id"`
@@ -51,8 +65,8 @@ type TaskPlan struct {
 	// Memory hit
 	MemoryHit *MemoryHit `json:"memory_hit"`
 
-	// Status (reuses LegacyPlanStatus from plan.go)
-	Status LegacyPlanStatus `json:"status"`
+	// Status is the lifecycle state of the plan.
+	Status TaskPlanStatus `json:"status"`
 
 	// Timestamps
 	CreatedAt time.Time `json:"created_at"`
