@@ -126,7 +126,8 @@ type chatTurnCoreDeps struct {
 	TurnTimeout      time.Duration
 	ActivityWriter   biz.ActivityWriter   // AF phase: Activity persistence for direct create/update
 	ActivityUpserter biz.ActivityUpserter // AF phase: Activity persistence for ActivityProjector
-	ActivityReader   biz.ActivityReader   // AF phase: Activity lookup for Confirm API
+	ActivityReader   biz.ActivityReader   // AF phase: Activity lookup for Confirm API (legacy v1; retained until Task 15)
+	StepReader       biz.StepV2Reader     // Phase 3b-D Task 5: v2 step reader for ConfirmActivity
 }
 
 // chatTurnLifecycle combines session state transition, turn metrics recording,
@@ -212,6 +213,7 @@ func (o *ChatOrchestrator) turnTimeout() time.Duration             { return o.co
 func (o *ChatOrchestrator) activityWriter() biz.ActivityWriter     { return o.core.ActivityWriter }
 func (o *ChatOrchestrator) activityUpserter() biz.ActivityUpserter { return o.core.ActivityUpserter }
 func (o *ChatOrchestrator) activityReader() biz.ActivityReader     { return o.core.ActivityReader }
+func (o *ChatOrchestrator) stepReader() biz.StepV2Reader           { return o.core.StepReader }
 
 func (o *ChatOrchestrator) team() TeamOrchestrationDeps   { return o.teamExecDeps.Team }
 func (o *ChatOrchestrator) chJobs() ChannelTurnJobDeps    { return o.channelDeps.ChJobs }
@@ -284,7 +286,8 @@ type ChatTurnDeps struct {
 	Admission        *biz.TurnAdmissionUsecase
 	ActivityWriter   biz.ActivityWriter   // AF phase: Activity persistence for direct create/update
 	ActivityUpserter biz.ActivityUpserter // AF phase: Activity persistence for ActivityProjector
-	ActivityReader   biz.ActivityReader   // AF phase: Activity lookup for Confirm API
+	ActivityReader   biz.ActivityReader   // AF phase: Activity lookup for Confirm API (legacy v1; retained until Task 15)
+	StepReader       biz.StepV2Reader     // Phase 3b-D Task 5: v2 step reader for ConfirmActivity
 }
 
 // ChatUsageDeps groups usage tracking, monitoring, artifact, and analytics dependencies.
@@ -424,6 +427,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 			ActivityWriter:   deps.Turn.ActivityWriter,
 			ActivityUpserter: deps.Turn.ActivityUpserter,
 			ActivityReader:   deps.Turn.ActivityReader,
+			StepReader:       deps.Turn.StepReader,
 		},
 		channelDeps:  deps.Channel,
 		usageDeps:    deps.Usage,

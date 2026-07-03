@@ -914,6 +914,7 @@ func provideChatServiceDeps(
 	activityWriter biz.ActivityWriter,
 	activityUpserter biz.ActivityUpserter,
 	activityReader biz.ActivityReader,
+	stepReader biz.StepV2Reader,
 	heartbeatEmitter *service.RunHeartbeatEmitter,
 	deadLetterQueue *lifecycle.DeadLetterQueue,
 	profileResolver *chatagent.ProfileResolver,
@@ -952,6 +953,7 @@ func provideChatServiceDeps(
 			ActivityWriter:   activityWriter,
 			ActivityUpserter: activityUpserter,
 			ActivityReader:   activityReader,
+			StepReader:       stepReader,
 		},
 		Usage: service.ChatUsageDeps{
 			Usage:        usage,

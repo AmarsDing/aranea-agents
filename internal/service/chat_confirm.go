@@ -26,15 +26,28 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 		return nil, apierror.BadRequest(apierror.DomainChat, "session_id and activity_id are required")
 	}
 
-	reader := s.orch.activityReader()
-	if reader == nil {
-		return nil, apierror.Internal(apierror.DomainChat, "activity reader unavailable")
-	}
-
-	// Load activity from DB
-	activity, err := reader.GetActivity(ctx, activityID)
-	if err != nil {
-		return nil, err
+	// Phase 3b-D Task 5: load via v2 StepV2Reader (reads from steps_v2 table)
+	// and convert back to v1 Activity shape. The legacy activityReader is
+	// retained for fallback; if StepReader is nil (v1-only deployments) we
+	// fall back to the v1 reader so existing tests/CLI continue to work.
+	stepReader := s.orch.stepReader()
+	var activity biz.Activity
+	if stepReader != nil {
+		step, err := stepReader.GetStep(ctx, activityID)
+		if err != nil {
+			return nil, err
+		}
+		activity = biz.StepToActivity(step)
+	} else {
+		reader := s.orch.activityReader()
+		if reader == nil {
+			return nil, apierror.Internal(apierror.DomainChat, "activity reader unavailable")
+		}
+		var err error
+		activity, err = reader.GetActivity(ctx, activityID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Validate kind
