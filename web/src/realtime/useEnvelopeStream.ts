@@ -14,6 +14,7 @@ import { onUnmounted, ref, shallowRef, type Ref } from 'vue';
 import { createWsTransport, type WsTransport } from './ws-transport';
 import type { ActivityEvent } from './activityEvent';
 import type { MonitorEvent } from './monitorEvent';
+import type { V2WsEnvelope } from '../features/chat/v2Types';
 import {
   acquireGlobalWsConsumer,
   globalWsConsumerEnableLog,
@@ -50,6 +51,11 @@ export type UseEnvelopeStreamOptions = {
    * monitor_event messages are silently ignored by the transport.
    */
   onMonitorEvent?: (event: MonitorEvent) => void;
+  /**
+   * v2 chat events: called when a downstream message carries a v2_event
+   * envelope. If not provided, v2_event messages are silently ignored.
+   */
+  onV2Event?: (envelope: V2WsEnvelope) => void;
 };
 
 export type UseEnvelopeStreamReturn = {
@@ -86,6 +92,7 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
         logEnabled: opts.logEnabled ?? false,
         onActivityEvent: opts.onActivityEvent,
         onMonitorEvent: opts.onMonitorEvent,
+        onV2Event: opts.onV2Event,
         onConnected: () => {
           connected.value = true;
           opts.onConnected?.({ sessionId: opts.sessionId, lastEventId: lastEventId.value });
@@ -115,6 +122,7 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
       logEnabled: opts.logEnabled,
       onActivityEvent: opts.onActivityEvent ? (ev) => opts.onActivityEvent!(ev) : undefined,
       onMonitorEvent: opts.onMonitorEvent ? (event) => opts.onMonitorEvent!(event) : undefined,
+      onV2Event: opts.onV2Event ? (env) => opts.onV2Event!(env) : undefined,
       onConnected: (info) => {
         connected.value = true;
         lastEventId.value = info.lastEventId;

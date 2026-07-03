@@ -151,7 +151,7 @@
           :planner-kind="props.plannerKind"
           :reasoning-sidebar-open="props.reasoningSidebarOpen"
           :show-scroll-btn="showScrollBtn"
-          :activity-tree="props.activityTree ?? []"
+          :session-id="props.sessionId"
           :agent-map="props.agentMap"
           :run-status="props.runStatus"
           @messages-click="handleMessagesClick"
@@ -378,11 +378,6 @@ const props = defineProps<{
   spiritEvolutionSuggestion?: EvolutionSuggestion | null;
   compressStatus?: CompressStatus;
   showToolCalls?: boolean;
-  /** B-04 / Phase A: Activity tree (roots) for nested rendering. Each node
-   * carries its own children; ActivityStream recurses over them to render
-   * parent-child Activities with visual indentation. Replaces the previous
-   * flat `activities: Activity[]` prop. */
-  activityTree?: import('../../features/chat/activityTypes').ActivityTreeNode[];
 }>();
 
 const emit = defineEmits<{
@@ -521,13 +516,10 @@ const messagesScrollEl = computed(() => messageListRef.value?.getScrollTarget() 
 const sessionKey = computed(() => props.sessionId?.trim() || props.sessionTitle);
 const sessionTitleRef = computed(() => props.sessionTitle);
 
-const activityTreeRef = computed(() => props.activityTree ?? []);
-
 const { showScrollBtn, onMessagesScroll, scrollToBottom, scrollToTurnId } = useChatMessageScroll({
   sessionKey,
   messages: messagesRef,
   messagesScrollEl,
-  activityTree: activityTreeRef,
 });
 
 const { headerUserPrompt, promptKey, refreshActivePrompt, resetToLatestOrSession } = useChatScrollTitle({

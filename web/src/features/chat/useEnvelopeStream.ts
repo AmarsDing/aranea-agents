@@ -28,6 +28,7 @@ export type {
 import { createEnvelopeStream } from '../../realtime/useEnvelopeStream';
 import type { UseEnvelopeStreamReturn } from '../../realtime/useEnvelopeStream';
 import type { ActivityEvent } from '../../realtime/activityEvent';
+import type { V2WsEnvelope } from './v2Types';
 
 export type ChatStreamFactoryOpts = {
   lastEventId?: string;
@@ -39,6 +40,8 @@ export type ChatStreamFactoryOpts = {
    * Replaces the legacy activity_start/delta/done/child_start envelopes.
    */
   onActivityEvent?: (ev: ActivityEvent) => void;
+  /** v2 chat events: called when a v2_event WS envelope arrives. */
+  onV2Event?: (envelope: V2WsEnvelope) => void;
 };
 
 /** Chat session WS stream; use in `setup()` via {@link useChatStream} or imperatively via this factory. */
@@ -52,6 +55,7 @@ export function createChatStream(sessionId: string, streamOpts?: ChatStreamFacto
     onDisconnected: () => streamOpts?.onDisconnected?.(),
     onServerShutdown: streamOpts?.onServerShutdown,
     onActivityEvent: streamOpts?.onActivityEvent,
+    onV2Event: streamOpts?.onV2Event,
   });
 }
 
@@ -61,6 +65,7 @@ export function createTeamStream(
     onConnected?: () => void;
     onServerShutdown?: (reason: string) => void;
     onActivityEvent?: (ev: ActivityEvent) => void;
+    onV2Event?: (envelope: V2WsEnvelope) => void;
   },
 ): UseEnvelopeStreamReturn {
   return createEnvelopeStream({
@@ -70,6 +75,7 @@ export function createTeamStream(
     onConnected: () => streamOpts?.onConnected?.(),
     onServerShutdown: streamOpts?.onServerShutdown,
     onActivityEvent: streamOpts?.onActivityEvent,
+    onV2Event: streamOpts?.onV2Event,
   });
 }
 

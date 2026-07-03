@@ -7,6 +7,7 @@ import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import { createChatStream, createTeamStream, type UseEnvelopeStreamReturn } from '../useEnvelopeStream';
 import type { WsUpstream } from '../../../realtime/ws-transport';
 import type { ActivityEvent } from '../../../realtime/activityEvent';
+import type { V2WsEnvelope } from '../v2Types';
 import { getChannelWsCursor } from '../channelWsCursor';
 
 export type StreamManagerDeps = {
@@ -17,6 +18,8 @@ export type StreamManagerDeps = {
    * receives a business-semantic ActivityEvent with a full Activity snapshot.
    */
   onActivityEvent?: (ev: ActivityEvent) => void;
+  /** v2 chat events: dispatched when a v2_event WS envelope arrives. */
+  onV2Event?: (envelope: V2WsEnvelope) => void;
   refreshRunStatus: (sessionId?: string) => Promise<void>;
 };
 
@@ -71,6 +74,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         router.push({ name: 'login' });
       },
       onActivityEvent: deps.onActivityEvent,
+      onV2Event: deps.onV2Event,
     });
 
     chatStream.connect();
@@ -112,6 +116,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         void deps.refreshRunStatus(sessionId);
       },
       onActivityEvent: deps.onActivityEvent,
+      onV2Event: deps.onV2Event,
     });
 
     teamStream.connect();

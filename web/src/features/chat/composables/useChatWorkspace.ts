@@ -49,6 +49,9 @@ import { useReasoningSidebar } from './useReasoningSidebar';
 import { useContextualLoadingMessage } from './useContextualLoadingMessage';
 import { useStatusPulse } from './useStatusPulse';
 import { useActivityTimeline } from './useActivityTimeline';
+import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
+import { useChatEventRouter } from './useChatEventRouter';
+import type { V2WsEnvelope } from '../v2Types';
 import { useSessionTree } from './useSessionTree';
 import { useSystemEventNotification } from './useSystemEventNotification';
 import type { ActivityEvent as AFActivityEvent } from '../../../realtime/activityEvent';
@@ -115,6 +118,16 @@ export function useChatWorkspace() {
 
   // AF-FE-02~04: Activity-First timeline composable
   const activityTimeline = useActivityTimeline();
+
+  // Phase 2 v2: Activity store + event router for the new v2 event pipeline.
+  // Runs alongside v1 activityTimeline — Task 13 will remove the v1 path.
+  const activityStore = useChatActivityStore();
+  const eventRouter = useChatEventRouter(activityStore);
+
+  // v2 WS event handler — dispatched by the stream manager's onV2Event callback.
+  const handleV2Event = (envelope: V2WsEnvelope) => {
+    eventRouter.dispatch(envelope);
+  };
 
   // Phase B-2: per-spirit-session recursive tree cache for SessionTreeSidebar.
   const sessionTree = useSessionTree();
@@ -333,6 +346,7 @@ export function useChatWorkspace() {
     // Activity-First (AF): route new business-semantic ActivityEvent messages
     // from the WS transport to useActivityTimeline.
     onActivityEvent: handleActivityEvent,
+    onV2Event: handleV2Event,
     refreshRunStatus: refreshRunStatusForUi,
   });
 
@@ -1276,6 +1290,8 @@ export function useChatWorkspace() {
       onConfirmActivity,
       compressStatus,
       activityTimeline,
+      activityStore,
+      v2Tasks: computed(() => activityStore.getSessionTasks(selectedSessionForUi.value?.id ?? '')),
       sessionTree,
     }),
     composer: reactive({

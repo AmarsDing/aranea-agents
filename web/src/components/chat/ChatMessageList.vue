@@ -1,7 +1,7 @@
 <template>
   <div :key="sessionKey" class="chat-messages col column no-wrap" style="min-height: 0">
     <div
-      v-if="!messages.length && !activityTree.length"
+      v-if="!messages.length"
       ref="emptyScrollEl"
       class="col relative-position chat-messages__viewport"
       @click="$emit('messages-click', $event)"
@@ -40,32 +40,7 @@
       @scroll.passive="$emit('scroll', $event)"
       @click="$emit('messages-click', $event)"
     >
-      <ActivityStream
-        :activity-tree="props.activityTree"
-        :agent-map="props.agentMap"
-        :run-status="props.runStatus"
-        :auto-expand-for="autoExpandFor"
-        @confirm="(id: string, approved: boolean) => $emit('confirm', id, approved)"
-        @error-retry="(e: ErrorEvent) => $emit('error-retry', e)"
-        @error-switch-model="(e: ErrorEvent) => $emit('error-switch-model', e)"
-        @error-rephrase="(e: ErrorEvent) => $emit('error-rephrase', e)"
-        @error-check-config="(e: ErrorEvent) => $emit('error-check-config', e)"
-        @error-remove-attachment="(e: ErrorEvent) => $emit('error-remove-attachment', e)"
-        @error-relogin="(e: ErrorEvent) => $emit('error-relogin', e)"
-        @expand-member="(p) => $emit('expand-member', p)"
-        @enter-session="(sid) => $emit('enter-session', sid)"
-        @cancel-team="(teamId: string) => $emit('cancel-team', teamId)"
-        @retry-team="(teamId: string) => $emit('retry-team', teamId)"
-        @pause-team="(teamId: string) => $emit('pause-team', teamId)"
-        @unpause-team="(teamId: string) => $emit('unpause-team', teamId)"
-        @inject-team="(p: { teamId: string; message: string }) => $emit('inject-team', p)"
-        @cancel-agent="(sessionId: string) => $emit('cancel-agent', sessionId)"
-        @retry-agent="(sessionId: string) => $emit('retry-agent', sessionId)"
-        @pause-agent="(sessionId: string) => $emit('pause-agent', sessionId)"
-        @resume-agent="(sessionId: string) => $emit('resume-agent', sessionId)"
-        @inject-agent="(p: { sessionId: string; message: string }) => $emit('inject-agent', p)"
-        @expand="(ids: string[]) => $emit('expand', ids)"
-      />
+      <SessionPanelV2 :session-id="sessionId ?? ''" />
     </div>
     <ChatPendingQueue
       :messages="pendingMessages"
@@ -93,12 +68,11 @@
 import { ref, watch, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ChatPendingQueue from './ChatPendingQueue.vue';
-import ActivityStream from './ActivityStream.vue';
+import SessionPanelV2 from './v2/SessionPanel.vue';
 import { useScrollToActivity } from '../../features/chat/composables/useScrollToActivity';
 import type { Message, PendingMessage } from '../../features/chat/types';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
-import type { ActivityTreeNode } from '../../features/chat/activityTypes';
 import type { ErrorEvent } from '../../features/chat/streamEventTypes';
 
 const AUTO_EXPAND_HOLD_MS = 3000;
@@ -112,11 +86,8 @@ const props = defineProps<{
   plannerKind?: string;
   reasoningSidebarOpen?: boolean;
   showScrollBtn: boolean;
-  /** B-04 / Phase A: Activity tree (roots) for nested rendering. Replaces the
-   * previous flat `activities: Activity[]` prop — each node carries its own
-   * children, and ActivityStream recurses over them to render parent-child
-   * Activities with visual indentation. */
-  activityTree: ActivityTreeNode[];
+  /** v2: active session id for SessionPanelV2 (renders the v2 task tree). */
+  sessionId?: string;
   /** P1#1/2: agent key → display name lookup for TeamCard/AgentCard. */
   agentMap?: Map<string, { displayName: string; agentKey: string }>;
   /** P1#3: parent run status to gate cancel button visibility. */
@@ -237,7 +208,7 @@ defineExpose({
   useVirtualScroll,
   scrollToTurnId,
   getScrollTarget: () => {
-    if (!props.messages.length && !props.activityTree.length) return emptyScrollEl.value;
+    if (!props.messages.length) return emptyScrollEl.value;
     return scrollViewportEl.value;
   },
 });

@@ -79,7 +79,6 @@
         :spirit-evolution-suggestion="spiritStore.lastEvolutionSuggestion"
         :compress-status="session.compressStatus"
         :show-tool-calls="uiConfig.showToolCalls"
-        :activity-tree="session.activityTimeline.activityTree"
         :session-loading="session.sessionLoading"
         :session-revision="session.sessionRevision"
         :ws-connected="session.wsConnected"
@@ -277,7 +276,7 @@ const { coreReady, fileRef, layout, entity, session, composer, dialogs, errorBlo
 const spiritStore = useSpiritTeamStore();
 const { locate } = useScrollToActivity();
 const uiConfig = useUiConfigStore();
-const blockedStatus = useBlockedStatus(session.activityTimeline.activityTree);
+const blockedStatus = useBlockedStatus(session.v2Tasks);
 const router = useRouter();
 // T5.5: Mobile (<1024px) responsive logic removed — app targets desktop only.
 
