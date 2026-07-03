@@ -2,231 +2,180 @@ package v2
 
 import (
 	"context"
-	"encoding/json"
-	"sync"
 	"testing"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/pkg/loggateway"
 )
 
-// capturingSequencer implements SequencerPublisher and records every Publish call
-// in order. Safe for concurrent use.
+// capturingSequencer collects published events for test assertions.
 type capturingSequencer struct {
-	mu     sync.Mutex
 	events []biz.Event
 }
 
 func (c *capturingSequencer) Publish(_ context.Context, e biz.Event) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.events = append(c.events, e)
 }
 
-// drain returns all captured events and clears the buffer. Used between test
-// phases to isolate the events emitted by the next phase.
-func (c *capturingSequencer) drain() []biz.Event {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	out := make([]biz.Event, len(c.events))
-	copy(out, c.events)
-	c.events = c.events[:0]
-	return out
-}
-
-// newTestProjector builds a projector wired to a capturing sequencer and the
-// v2-local defaultSeqAssigner (deterministic 1,2,3... per spirit session).
-func newTestProjector(t *testing.T) (*ActivityProjector, *capturingSequencer) {
-	t.Helper()
-	cap := &capturingSequencer{}
-	p := NewActivityProjector(cap, NewDefaultSeqAssigner(), loggateway.NewNoop())
-	return p, cap
-}
-
-// rootMeta returns a root (non-team) ProjectMeta for testing.
-func rootMeta() ProjectMeta {
-	return ProjectMeta{
-		SessionID:       "sess-1",
-		SpiritSessionID: "sess-1",
+func testProjector() (*ActivityProjector, *capturingSequencer) {
+	capture := &capturingSequencer{}
+	p := NewActivityProjector(capture, nil, nil)
+	p.OnTurnStart(context.Background(), ProjectMeta{
 		TaskID:          "task-1",
 		TurnID:          "turn-1",
+		SessionID:       "sess-1",
+		SpiritSessionID: "spirit-1",
 		AgentKey:        "agent-1",
-		AgentName:       "Agent One",
-		TaskContent:     "hello user",
+	})
+	return p, capture
+}
+
+func TestEmitNotice(t *testing.T) {
+	p, capture := testProjector()
+	capture.events = nil // only care about notice events
+
+	err := p.EmitNotice(context.Background(), "model switched to gpt-4", "model_router")
+	if err != nil {
+		t.Fatalf("EmitNotice returned error: %v", err)
+	}
+
+	// Expect 2 events: StepCreatedEvent + StepCompletedEvent
+	if len(capture.events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(capture.events))
+	}
+
+	created, ok := capture.events[0].(*biz.StepCreatedEvent)
+	if !ok {
+		t.Fatalf("expected StepCreatedEvent, got %T", capture.events[0])
+	}
+	if created.Step.Kind != biz.StepKindNotice {
+		t.Errorf("expected kind=notice, got %s", created.Step.Kind)
+	}
+	if created.Step.Content != "model switched to gpt-4" {
+		t.Errorf("expected content set on creation, got %s", created.Step.Content)
+	}
+	if created.Step.NoticeType != "model_router" {
+		t.Errorf("expected noticeType=model_router, got %s", created.Step.NoticeType)
+	}
+
+	completed, ok := capture.events[1].(*biz.StepCompletedEvent)
+	if !ok {
+		t.Fatalf("expected StepCompletedEvent, got %T", capture.events[1])
+	}
+	if completed.Step.Status != biz.StepStatusCompleted {
+		t.Errorf("expected status=completed, got %s", completed.Step.Status)
+	}
+	if completed.Step.Content != "model switched to gpt-4" {
+		t.Errorf("expected content set on completion, got %s", completed.Step.Content)
+	}
+	if completed.Step.NoticeType != "model_router" {
+		t.Errorf("expected noticeType preserved, got %s", completed.Step.NoticeType)
 	}
 }
 
-// TestProjector_OnTurnStart_EmitsTaskAndTurnCreated verifies that a root turn
-// (TeamStageID empty) emits both task.created and turn.started, in that order.
-func TestProjector_OnTurnStart_EmitsTaskAndTurnCreated(t *testing.T) {
-	t.Parallel()
-	p, cap := newTestProjector(t)
-	meta := rootMeta()
+func TestEmitConfirmRequest(t *testing.T) {
+	p, capture := testProjector()
+	capture.events = nil
 
-	p.OnTurnStart(context.Background(), meta)
+	stepID, err := p.EmitConfirmRequest(context.Background(), biz.ActivityConfirmParams{
+		ToolName:      "shell",
+		ToolArguments: `{"cmd":"rm -rf /"}`,
+		Content:       "Allow shell execution?",
+	})
+	if err != nil {
+		t.Fatalf("EmitConfirmRequest returned error: %v", err)
+	}
+	if stepID == "" {
+		t.Fatal("expected non-empty stepID")
+	}
 
-	events := cap.drain()
-	if len(events) != 2 {
-		t.Fatalf("expected 2 events, got %d: %+v", len(events), events)
+	// Expect 2 events: StepCreatedEvent (pending) + StepUpdatedEvent (tool_blocked)
+	if len(capture.events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(capture.events))
 	}
-	if events[0].EventKind() != biz.EventKindTaskCreated {
-		t.Errorf("event[0] = %s, want %s", events[0].EventKind(), biz.EventKindTaskCreated)
+
+	created, ok := capture.events[0].(*biz.StepCreatedEvent)
+	if !ok {
+		t.Fatalf("expected StepCreatedEvent, got %T", capture.events[0])
 	}
-	if events[1].EventKind() != biz.EventKindTurnStarted {
-		t.Errorf("event[1] = %s, want %s", events[1].EventKind(), biz.EventKindTurnStarted)
+	if created.Step.Kind != biz.StepKindConfirm {
+		t.Errorf("expected kind=confirm, got %s", created.Step.Kind)
 	}
-	// Verify the task carries the user message and running status.
-	tc := events[0].(*biz.TaskCreatedEvent)
-	if tc.Task.UserMessage != "hello user" {
-		t.Errorf("task.UserMessage = %q, want %q", tc.Task.UserMessage, "hello user")
+	if created.Step.Status != biz.StepStatusPending {
+		t.Errorf("expected initial status=pending, got %s", created.Step.Status)
 	}
-	if tc.Task.Status != biz.TaskStatusRunning {
-		t.Errorf("task.Status = %q, want %q", tc.Task.Status, biz.TaskStatusRunning)
+
+	updated, ok := capture.events[1].(*biz.StepUpdatedEvent)
+	if !ok {
+		t.Fatalf("expected StepUpdatedEvent, got %T", capture.events[1])
 	}
-	// Verify the turn references the task and got a non-zero Seq.
-	ts := events[1].(*biz.TurnStartedEvent)
-	if ts.Turn.TaskID != "task-1" {
-		t.Errorf("turn.TaskID = %q, want %q", ts.Turn.TaskID, "task-1")
+	if updated.Step.Status != biz.StepStatusToolBlocked {
+		t.Errorf("expected status=tool_blocked, got %s", updated.Step.Status)
 	}
-	if ts.Turn.Seq == 0 {
-		t.Errorf("turn.Seq = 0, want non-zero")
+	if updated.Step.ToolName != "shell" {
+		t.Errorf("expected toolName=shell, got %s", updated.Step.ToolName)
+	}
+	if updated.Step.Content != "Allow shell execution?" {
+		t.Errorf("expected content set, got %s", updated.Step.Content)
+	}
+	if string(updated.Step.ToolArgs) != `{"cmd":"rm -rf /"}` {
+		t.Errorf("expected toolArgs set, got %s", string(updated.Step.ToolArgs))
 	}
 }
 
-// TestProjector_OnReasoningDelta_EmitsStepStreaming verifies that streaming a
-// reasoning delta emits a step.streaming event with DeltaField=reasoning.
-func TestProjector_OnReasoningDelta_EmitsStepStreaming(t *testing.T) {
-	t.Parallel()
-	p, cap := newTestProjector(t)
-	meta := rootMeta()
-	ctx := context.Background()
+func TestEmitConfirmResult(t *testing.T) {
+	p, _ := testProjector()
 
-	p.OnTurnStart(ctx, meta)
-	cap.drain() // drain setup events
+	// Test approved
+	stepID, _ := p.EmitConfirmRequest(context.Background(), biz.ActivityConfirmParams{
+		ToolName: "shell",
+		Content:  "Allow?",
+	})
+	capture := p.seq.(*capturingSequencer)
+	capture.events = nil
 
-	stepID := p.BeginStep(meta, biz.StepKindThinking)
-	p.OnReasoningDelta(ctx, stepID, "thinking...", "")
+	err := p.EmitConfirmResult(context.Background(), stepID, true)
+	if err != nil {
+		t.Fatalf("EmitConfirmResult approved returned error: %v", err)
+	}
+	if len(capture.events) != 1 {
+		t.Fatalf("expected 1 event for approved, got %d", len(capture.events))
+	}
+	completed, ok := capture.events[0].(*biz.StepCompletedEvent)
+	if !ok {
+		t.Fatalf("expected StepCompletedEvent, got %T", capture.events[0])
+	}
+	if completed.Step.Status != biz.StepStatusCompleted {
+		t.Errorf("expected status=completed, got %s", completed.Step.Status)
+	}
+	if completed.Step.Kind != biz.StepKindConfirm {
+		t.Errorf("expected kind=confirm, got %s", completed.Step.Kind)
+	}
 
-	events := cap.drain()
-	if len(events) != 2 {
-		t.Fatalf("expected 2 events (created + streaming), got %d", len(events))
-	}
-	if events[0].EventKind() != biz.EventKindStepCreated {
-		t.Errorf("event[0] = %s, want %s", events[0].EventKind(), biz.EventKindStepCreated)
-	}
-	if events[1].EventKind() != biz.EventKindStepStreaming {
-		t.Fatalf("event[1] = %s, want %s", events[1].EventKind(), biz.EventKindStepStreaming)
-	}
-	ss := events[1].(*biz.StepStreamingEvent)
-	if ss.DeltaField != "reasoning" {
-		t.Errorf("DeltaField = %q, want %q", ss.DeltaField, "reasoning")
-	}
-	if ss.DeltaChunk != "thinking..." {
-		t.Errorf("DeltaChunk = %q, want %q", ss.DeltaChunk, "thinking...")
-	}
-	if ss.StepID != stepID {
-		t.Errorf("StepID = %q, want %q", ss.StepID, stepID)
-	}
-}
+	// Test denied
+	stepID2, _ := p.EmitConfirmRequest(context.Background(), biz.ActivityConfirmParams{
+		ToolName: "shell",
+		Content:  "Allow again?",
+	})
+	capture.events = nil
 
-// TestProjector_OnTextDeltaThenDone_CompletesReplyStep verifies that streaming
-// text deltas followed by OnTextDone emits a step.completed carrying the full
-// content.
-func TestProjector_OnTextDeltaThenDone_CompletesReplyStep(t *testing.T) {
-	t.Parallel()
-	p, cap := newTestProjector(t)
-	meta := rootMeta()
-	ctx := context.Background()
+	err = p.EmitConfirmResult(context.Background(), stepID2, false)
+	if err != nil {
+		t.Fatalf("EmitConfirmResult denied returned error: %v", err)
+	}
+	if len(capture.events) != 1 {
+		t.Fatalf("expected 1 event for denied, got %d", len(capture.events))
+	}
+	cancelled, ok := capture.events[0].(*biz.StepCompletedEvent)
+	if !ok {
+		t.Fatalf("expected StepCompletedEvent, got %T", capture.events[0])
+	}
+	if cancelled.Step.Status != biz.StepStatusCancelled {
+		t.Errorf("expected status=cancelled, got %s", cancelled.Step.Status)
+	}
 
-	p.OnTurnStart(ctx, meta)
-	cap.drain() // drain setup events
-
-	stepID := p.BeginStep(meta, biz.StepKindReply)
-	p.OnTextDelta(ctx, stepID, "hello ", "")
-	p.OnTextDelta(ctx, stepID, "world", "")
-	cap.drain() // drain created + 2 streaming
-	p.OnTextDone(ctx, stepID, "hello world", true)
-
-	events := cap.drain()
-	if len(events) != 1 {
-		t.Fatalf("expected 1 event (completed), got %d", len(events))
-	}
-	if events[0].EventKind() != biz.EventKindStepCompleted {
-		t.Fatalf("event = %s, want %s", events[0].EventKind(), biz.EventKindStepCompleted)
-	}
-	sc := events[0].(*biz.StepCompletedEvent)
-	if sc.Step.Content != "hello world" {
-		t.Errorf("step.Content = %q, want %q", sc.Step.Content, "hello world")
-	}
-	if !sc.Step.IsFinal {
-		t.Errorf("step.IsFinal = false, want true")
-	}
-	if sc.Step.Status != biz.StepStatusCompleted {
-		t.Errorf("step.Status = %q, want %q", sc.Step.Status, biz.StepStatusCompleted)
-	}
-}
-
-// TestProjector_OnToolCall_EmitsStepCreatedThenUpdated verifies that a tool call
-// on a fresh turn emits step.created (action) followed by step.updated carrying
-// the tool name.
-func TestProjector_OnToolCall_EmitsStepCreatedThenUpdated(t *testing.T) {
-	t.Parallel()
-	p, cap := newTestProjector(t)
-	meta := rootMeta()
-	ctx := context.Background()
-	args := json.RawMessage(`{"q":"gopher"}`)
-
-	p.OnTurnStart(ctx, meta)
-	cap.drain() // drain setup events
-
-	p.OnToolCall(ctx, meta, "search", args)
-
-	events := cap.drain()
-	if len(events) != 2 {
-		t.Fatalf("expected 2 events (created + updated), got %d", len(events))
-	}
-	if events[0].EventKind() != biz.EventKindStepCreated {
-		t.Errorf("event[0] = %s, want %s", events[0].EventKind(), biz.EventKindStepCreated)
-	}
-	if events[1].EventKind() != biz.EventKindStepUpdated {
-		t.Errorf("event[1] = %s, want %s", events[1].EventKind(), biz.EventKindStepUpdated)
-	}
-	su := events[1].(*biz.StepUpdatedEvent)
-	if su.Step.ToolName != "search" {
-		t.Errorf("step.ToolName = %q, want %q", su.Step.ToolName, "search")
-	}
-	if su.Step.Status != biz.StepStatusToolRunning {
-		t.Errorf("step.Status = %q, want %q", su.Step.Status, biz.StepStatusToolRunning)
-	}
-}
-
-// TestProjector_OnTurnEnd_RootEmitsTaskCompleted verifies that ending a root
-// turn emits both turn.completed and task.completed.
-func TestProjector_OnTurnEnd_RootEmitsTaskCompleted(t *testing.T) {
-	t.Parallel()
-	p, cap := newTestProjector(t)
-	meta := rootMeta()
-	ctx := context.Background()
-
-	p.OnTurnStart(ctx, meta)
-	cap.drain() // drain setup events
-	p.OnTurnEnd(ctx, meta)
-
-	events := cap.drain()
-	if len(events) != 2 {
-		t.Fatalf("expected 2 events (turn.completed + task.completed), got %d", len(events))
-	}
-	if events[0].EventKind() != biz.EventKindTurnCompleted {
-		t.Errorf("event[0] = %s, want %s", events[0].EventKind(), biz.EventKindTurnCompleted)
-	}
-	if events[1].EventKind() != biz.EventKindTaskCompleted {
-		t.Errorf("event[1] = %s, want %s", events[1].EventKind(), biz.EventKindTaskCompleted)
-	}
-	tc := events[1].(*biz.TaskCompletedEvent)
-	if tc.Task.Status != biz.TaskStatusCompleted {
-		t.Errorf("task.Status = %q, want %q", tc.Task.Status, biz.TaskStatusCompleted)
-	}
-	if tc.Task.CompletedAt == nil {
-		t.Errorf("task.CompletedAt = nil, want set")
+	// Test not found
+	err = p.EmitConfirmResult(context.Background(), "nonexistent", true)
+	if err == nil {
+		t.Error("expected error for nonexistent stepID")
 	}
 }

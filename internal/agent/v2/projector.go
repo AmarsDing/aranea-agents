@@ -3,6 +3,7 @@ package v2
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -116,6 +117,115 @@ func (p *ActivityProjector) OnTurnStart(ctx context.Context, meta ProjectMeta) {
 	p.mu.Unlock()
 	p.seq.Publish(ctx, biz.NewTurnStartedEvent(turn))
 }
+
+// Configure sets the ProjectMeta for the current turn WITHOUT emitting events.
+// Used by chat_orchestrator to pre-configure the projector before LLM invocation
+// so that plugins/hooks can emit notice/confirm events during the call.
+// OnTurnStart (called later by the stream consumer) will emit task.created and
+// turn.started events and reset per-turn streaming state.
+func (p *ActivityProjector) Configure(meta ProjectMeta) {
+	p.meta = meta
+}
+
+// Reset clears per-turn state. Called when the projector is reused across turns
+// or for explicit cleanup. OnTurnStart also resets streaming state, so Reset is
+// mainly for clearing the active entity maps between turns.
+func (p *ActivityProjector) Reset() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.activeStep = make(map[string]*biz.Step)
+	p.activeTurn = make(map[string]*biz.Turn)
+	p.activeTask = make(map[string]*biz.Task)
+	p.thinkingStepID = ""
+	p.replyStepID = ""
+	p.toolCallSteps = make(map[string]string)
+}
+
+// === ActivityEmitter interface (biz.ActivityEmitter) ===
+//
+// These methods allow plugins/hooks (cost_guard, model_router, tool_confirmation)
+// to emit notice/confirm events via the projector without importing the agent
+// package. The projector is injected into the context via biz.WithActivityEmitter.
+
+// EmitNotice creates a notice step and immediately completes it. The step
+// carries NoticeType metadata for frontend rendering. Implements biz.ActivityEmitter.
+func (p *ActivityProjector) EmitNotice(ctx context.Context, content, noticeType string) error {
+	if p == nil || p.seq == nil || p.meta.TaskID == "" {
+		return nil
+	}
+	// Inline step creation (instead of BeginStep) so NoticeType is set before
+	// the StepCreatedEvent is published — the frontend needs it for rendering.
+	n := p.stepCounter.Add(1)
+	stepID := p.meta.TurnID + "-s" + strconv.Itoa(int(n))
+	step := p.meta.newStep(stepID, biz.StepKindNotice, 0)
+	step.NoticeType = noticeType
+	step.Content = content
+	p.mu.Lock()
+	p.activeStep[stepID] = &step
+	p.mu.Unlock()
+	p.seq.Publish(ctx, biz.NewStepCreatedEvent(step))
+	p.completeStep(ctx, stepID, "", nil)
+	return nil
+}
+
+// EmitConfirmRequest creates a confirm step with status=tool_blocked and
+// returns the step ID for later result correlation via EmitConfirmResult.
+// The step stays in tool_blocked until the user responds. Implements
+// biz.ActivityEmitter.
+func (p *ActivityProjector) EmitConfirmRequest(ctx context.Context, params biz.ActivityConfirmParams) (string, error) {
+	if p == nil || p.seq == nil || p.meta.TaskID == "" {
+		return "", nil
+	}
+	stepID := p.BeginStep(p.meta, biz.StepKindConfirm)
+	p.mu.Lock()
+	step, ok := p.activeStep[stepID]
+	if ok {
+		step.ToolName = params.ToolName
+		step.ToolArgs = json.RawMessage(params.ToolArguments)
+		step.Content = params.Content
+		step.Status = biz.StepStatusToolBlocked
+		step.Version++
+	}
+	p.mu.Unlock()
+	if ok {
+		p.seq.Publish(ctx, biz.NewStepUpdatedEvent(*step))
+	}
+	return stepID, nil
+}
+
+// EmitConfirmResult updates a confirm step with the user's response:
+// approved → completed, denied → cancelled. Returns an error if the step ID
+// is not found or is not a confirm step. Implements biz.ActivityEmitter.
+func (p *ActivityProjector) EmitConfirmResult(ctx context.Context, stepID string, approved bool) error {
+	if p == nil || p.seq == nil {
+		return nil
+	}
+	now := time.Now()
+	p.mu.Lock()
+	step, ok := p.activeStep[stepID]
+	if !ok {
+		p.mu.Unlock()
+		return fmt.Errorf("confirm step not found: %s", stepID)
+	}
+	if step.Kind != biz.StepKindConfirm {
+		p.mu.Unlock()
+		return fmt.Errorf("expected confirm kind, got %s", step.Kind)
+	}
+	if approved {
+		step.Status = biz.StepStatusCompleted
+	} else {
+		step.Status = biz.StepStatusCancelled
+	}
+	step.CompletedAt = &now
+	step.Version++
+	delete(p.activeStep, stepID)
+	p.mu.Unlock()
+	p.seq.Publish(ctx, biz.NewStepCompletedEvent(*step))
+	return nil
+}
+
+// compile-time interface check
+var _ biz.ActivityEmitter = (*ActivityProjector)(nil)
 
 // BeginStep creates a new step of the given kind, stores it in the active map,
 // emits step.created, and returns the step ID.
