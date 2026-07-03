@@ -98,23 +98,12 @@ func (r *catalogActivityMetaResolver) ResolveAgentID(ctx context.Context, agentK
 	return id
 }
 
-// NewStreamConsumeOptions wires catalog lookup and the ActivityProjector for a chat turn.
+// NewStreamConsumeOptions wires catalog lookup and the v2 projector for a chat turn.
 //
-// Phase 1c: the legacy sessionActivityPersister (which routed through
-// SessionTurnExtrasPort.UpsertChatActivityMessage backed by NoopMessageWriter)
-// has been removed. Activity persistence is owned exclusively by the
-// ActivityProjector via its internal sequencer (see activity_event_sequencer.go).
-// The Sessions parameter has been removed from the signature accordingly.
-//
-// Activity ordering is governed solely by Timestamp ASC (design doc §B.3.3);
-// the legacy seqAlloc parameter has been removed. Direct-publish events
-// are detected via ActivityEvent.SequencerHandled on the bus.
-//
-// v2 phase: when v2Projector is non-nil, it is also wired into the options
-// to enable the v2 dual-path (Projector v2 → Sequencer → RepoSet + EventBus).
-// The v1 path runs unchanged; v2 events flow alongside (additive). The v2
-// projector is a singleton shared across turns (per-turn state is reset in
-// OnTurnStart).
+// v2 phase: the v2 projector is the sole projection path. The v1
+// ActivityProjector has been removed. When v2Projector is nil (test
+// scenarios), events are not projected. The v2 projector is a singleton
+// shared across turns (per-turn state is reset in OnTurnStart).
 func NewStreamConsumeOptions(tools biz.TeamToolLookup, toolRegistry biz.ToolRegistryReader, agents biz.AgentRepository, activityWriter biz.ActivityUpserter, activityBus biz.ActivityEventBus, v2Projector *v2.ActivityProjector, lg loggateway.Logger) *chatagent.StreamConsumeOptions {
 	var resolver chatagent.ActivityMetaResolver
 	if tools != nil || agents != nil {
@@ -123,22 +112,9 @@ func NewStreamConsumeOptions(tools biz.TeamToolLookup, toolRegistry biz.ToolRegi
 	opts := &chatagent.StreamConsumeOptions{
 		MetaResolver: resolver,
 	}
-	// AF phase: create ActivityProjector for dual-emission.
-	// When ActivityProjector is active, stream_consumer.go uses hasAF
-	// (opts.ActivityProjector != nil) to skip WS publishing of
-	// EventProjector envelopes. The frontend AF path consumes Activity
-	// events exclusively.
-	if activityWriter != nil && activityBus != nil {
-		if lg == nil {
-			lg = loggateway.NewNoop()
-		}
-		categorizer := chatagent.NewToolCategorizerFromCatalog(context.Background(), toolRegistry)
-		opts.ActivityProjector = chatagent.NewActivityProjector(activityBus, activityWriter, lg, categorizer)
+	if activityBus != nil {
 		opts.ActivityBus = activityBus
 	}
-	// v2 phase: inject the singleton v2 projector. When non-nil, the
-	// stream_consumer enables the v2 dual-path (see stream_consumer.go).
-	// A nil projector leaves the v1 path unchanged (v1-only mode).
 	opts.V2Projector = v2Projector
 	return opts
 }

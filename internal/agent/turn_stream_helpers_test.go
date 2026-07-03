@@ -141,9 +141,7 @@ func (b *captureActivityBus) events() []biz.ActivityEvent {
 // no longer returns ErrFirstByteTimeout. Instead it emits a patient notice and
 // keeps consuming the stream, so a slow model can still produce a reply.
 func TestConsumeWithFirstByteGuard_NoHardFailure(t *testing.T) {
-	bus := &captureActivityBus{}
-	ap := NewActivityProjector(bus, nil, loggateway.NewNoop(), nil)
-	opts := &StreamConsumeOptions{ActivityProjector: ap}
+	opts := &StreamConsumeOptions{}
 
 	events := make(chan *trpcevent.Event)
 	go func() {
