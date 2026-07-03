@@ -50,7 +50,7 @@ import { useContextualLoadingMessage } from './useContextualLoadingMessage';
 import { useStatusPulse } from './useStatusPulse';
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
 import { useChatEventRouter } from './useChatEventRouter';
-import type { V2WsEnvelope } from '../v2Types';
+import type { V2WsEnvelope, SystemNoticeEventPayload } from '../v2Types';
 import { useSessionTree } from './useSessionTree';
 import { useSystemEventNotification } from './useSystemEventNotification';
 import type { ActivityEvent as AFActivityEvent } from '../../../realtime/activityEvent';
@@ -121,6 +121,21 @@ export function useChatWorkspace() {
 
   // v2 WS event handler — dispatched by the stream manager's onV2Event callback.
   const handleV2Event = (envelope: V2WsEnvelope) => {
+    // Phase 3b-D Task 12: intercept v2 system-domain events for side-effect
+    // routing. Entity events (task/turn/step/team_stage/etc.) go to the v2
+    // event router → activityV2Store. System events need side-effect routing
+    // (metrics refresh, spirit store updates) that the store cannot provide.
+    if (envelope.kind === 'system.notice') {
+      handleV2SystemNotice(envelope.payload as SystemNoticeEventPayload);
+      return;
+    }
+    if (envelope.kind === 'system.heartbeat' || envelope.kind === 'system.run_status') {
+      // Acknowledged but no side-effect routing needed yet.
+      // system.run_status is not currently published by the backend (PublishRunStatus
+      // still uses v1 ActivityEventBus — Task 10 deferred its migration).
+      // system.heartbeat carries progress metadata for a future heartbeat display.
+      return;
+    }
     eventRouter.dispatch(envelope);
   };
 
@@ -595,6 +610,86 @@ export function useChatWorkspace() {
         messageStore.setMessages(sid, cancelRunningToolMessages(messageStore.getMessages(sid)));
       }
     }
+  }
+
+  /**
+   * Phase 3b-D Task 12: Route v2 system.notice events to side-effects.
+   *
+   * Backend migrated system-domain notices (orchestration_started, metrics_updated,
+   * knowledge_ingest, etc.) from v1 ActivityEventBus to v2 EventBus. These arrive
+   * as v2_event envelopes but need the same side-effects as v1 (spirit store
+   * updates, session refresh). We adapt the v2 payload to a minimal v1
+   * ActivityEvent and route through inboundActivityEventHandler, which dispatches
+   * to spiritStore and sessionStore based on kind/stage.
+   *
+   * v1 system events (run_status, session_status_changed, graph_stage) still
+   * arrive via the v1 activity_event path and are handled by
+   * useSystemEventNotification — those are NOT touched here.
+   */
+  function handleV2SystemNotice(payload: SystemNoticeEventPayload) {
+    const sid = selectedSessionForUi.value?.id;
+    if (!sid) return;
+    const afEv = v2NoticeToAFEvent(payload, sid);
+    inboundActivityEventHandler?.(afEv);
+  }
+
+  /**
+   * Build a minimal v1 ActivityEvent from a v2 SystemNoticeEventPayload so it
+   * can be consumed by the existing inbound-sync pipeline (which checks
+   * `activity.kind` and `activity.stage` to dispatch side-effects).
+   *
+   * kind='session' is required for orchestration notices so isSpiritActivityEvent
+   * matches them (it checks kind==='session' for orchestration_* stages).
+   * kind='notice' is used for all other notice types (metrics_updated, etc.).
+   */
+  function v2NoticeToAFEvent(payload: SystemNoticeEventPayload, sessionId: string): AFActivityEvent {
+    const orchestrationStages = new Set([
+      'orchestration_started',
+      'orchestration_checkpoint',
+      'orchestration_interrupted',
+      'orchestration_completed',
+      'orchestration_failed',
+      'synthesis_completed',
+      'plan_created',
+      'allocation_created',
+    ]);
+    const isOrchestration = orchestrationStages.has(payload.NoticeType);
+    return {
+      event: 'created',
+      activity: {
+        id: `v2-sys-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        kind: isOrchestration ? 'session' : 'notice',
+        status: 'running',
+        session_id: sessionId,
+        turn_id: '',
+        parent_activity_id: '',
+        timestamp: new Date().toISOString(),
+        duration_ms: 0,
+        seq: 0,
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        content: payload.Message ?? '',
+        reasoning: '',
+        tool_name: '',
+        tool_category: 'other',
+        tool_call_id: '',
+        tool_arguments: '',
+        tool_result: '',
+        tool_duration_ms: 0,
+        tool_error_code: '',
+        stage: payload.NoticeType,
+        child_board_id: '',
+        spirit_session_id: sessionId,
+        team_id: '',
+        dag_node_id: '',
+        depends_on: [],
+        agent_key: '',
+        agent_name: '',
+        collapsed: false,
+        label: '',
+        meta: { ...(payload.Meta ?? {}), notice_type: payload.NoticeType, message: payload.Message },
+      },
+    };
   }
 
   const { loadAgentOrder, loadTeamOrder, onEndAgent, onEndTeam, onGroupReorder } = useChatSidebarOrder(

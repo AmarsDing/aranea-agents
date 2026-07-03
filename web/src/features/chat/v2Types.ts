@@ -220,7 +220,14 @@ export type EventKind =
   | 'plan_step.completed'
   | 'plan_step.failed'
   | 'plan_step.skipped'
-  | 'plan_step.updated';
+  | 'plan_step.updated'
+  // Phase 3b-D Task 12: system-domain events (no entity table).
+  // Backend structs: biz.RunStatusEvent / HeartbeatEvent / SystemNoticeEvent.
+  // Note: sessionID is unexported on the backend → NOT in JSON payload;
+  // routing to the correct WS client is done server-side via SpiritSessionID().
+  | 'system.run_status'
+  | 'system.heartbeat'
+  | 'system.notice';
 
 // === Event payload shapes (what's inside envelope.payload) ===
 // Note: backend event structs have NO json tags, so exported fields
@@ -265,6 +272,24 @@ export interface PlanStepSkippedPayload {
   Reason: string;
 }
 
+// Phase 3b-D Task 12: system-domain event payloads.
+// Backend structs: biz.RunStatusEvent / HeartbeatEvent / SystemNoticeEvent.
+// Only exported (PascalCase) fields are serialized; sessionID is unexported.
+export interface RunStatusEventPayload {
+  RunID: string;
+  Status: string;
+  Meta: Record<string, unknown> | null;
+}
+export interface HeartbeatEventPayload {
+  Message: string;
+  Meta: Record<string, unknown> | null;
+}
+export interface SystemNoticeEventPayload {
+  NoticeType: string;
+  Message: string;
+  Meta: Record<string, unknown> | null;
+}
+
 // Discriminated union of all v2 events
 export type V2Event =
   | TaskEventPayload
@@ -277,7 +302,10 @@ export type V2Event =
   | MemberSessionEventPayload
   | PlanBoardEventPayload
   | PlanStepEventPayload
-  | PlanStepSkippedPayload;
+  | PlanStepSkippedPayload
+  | RunStatusEventPayload
+  | HeartbeatEventPayload
+  | SystemNoticeEventPayload;
 
 // === WS envelope ===
 

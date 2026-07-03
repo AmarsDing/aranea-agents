@@ -87,6 +87,16 @@ export function useChatEventRouter(store: Store) {
         if (p.PlanStep) store.upsertPlanStep(p.PlanStep as never);
         break;
 
+      // Phase 3b-D Task 12: system-domain events are intercepted in
+      // useChatWorkspace.handleV2Event (side-effect routing via
+      // inboundActivityEventHandler) and never reach this router. The cases
+      // are listed here for exhaustiveness and to prevent future regressions
+      // if the intercept is removed without re-adding handling.
+      case 'system.run_status':
+      case 'system.heartbeat':
+      case 'system.notice':
+        break;
+
       default:
         // Unknown event kind — silently ignore (forward compatibility)
         break;
