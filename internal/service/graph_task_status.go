@@ -11,6 +11,13 @@ import (
 )
 
 // PublishGraphTaskStatus emits orchestration-facing task status for graph Kanban projection.
+//
+// TODO(Phase3b-D Task 10): this publishes a Kind=GraphStage event via the v1
+// ActivityEventBus. graph_stage has NO v2 EventKind equivalent. The
+// GraphOrchestrationProjector struct is defined outside this file's assigned
+// scope, so a v2 EventBus field cannot be added here. This publish stays on v1
+// ActivityEventBus until (1) a v2 EventKindGraphStage* is introduced AND (2) the
+// GraphOrchestrationProjector struct is updated with a v2 bus field.
 func (p *GraphOrchestrationProjector) PublishGraphTaskStatus(ctx context.Context, sessionID, execID, graphID string, task *biz.GraphTask, extra map[string]any) {
 	if p == nil || p.activityBus == nil || task == nil {
 		return

@@ -119,6 +119,11 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 	// Publish ActivityEvent (completed/cancelled) via ActivityEventBus so the
 	// frontend's unified rendering pipeline receives the lifecycle transition.
 	// This replaces the legacy EnvelopeTypeActivityDone envelope.
+	//
+	// TODO(Phase3b-D Task 10): migrate to v2 EventBus. The ChatService struct
+	// (which owns `orch`) is defined outside this file's assigned scope, so the
+	// v2 EventBus field cannot be added here. This publish stays on v1
+	// ActivityEventBus until the ChatService struct is updated with a v2 bus.
 	if bus := s.orch.td().Pipeline.ActivityBus; bus != nil {
 		eventType := biz.ActivityEventCompleted
 		if !req.GetApproved() {

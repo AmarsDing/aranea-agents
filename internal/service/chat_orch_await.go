@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"strings"
-	"time"
 
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
@@ -61,12 +60,15 @@ type awaitCoordinator interface {
 //
 // Part of the TECH-DEBT(BL8) resolution: extracting await/resume coordination
 // from ChatOrchestrator to reduce cognitive complexity (AS-COG-01).
+//
+// Phase 3b-D Task 10: migrated from v1 ActivityEventBus to v2 EventBus.
+// PublishAwaitResumed now emits biz.NewStepCreatedEvent (Kind=StepKindNotice).
 type chatAwaitCoordinator struct {
 	chatUC         *biz.ChatUsecase
 	runStatus      runStatusTracker
 	sessionState   sessionStateTransitor
 	sessionRT      func() *araneasession.Runtime // lazy accessor
-	activityBus    biz.ActivityEventBus
+	eventBus       biz.EventBus
 	resumeInFlight *TypedSyncMap[string, struct{}]
 	lg             loggateway.Logger
 }
@@ -79,19 +81,19 @@ type chatAwaitCoordinatorDeps struct {
 	RunStatus    runStatusTracker
 	SessionState sessionStateTransitor
 	SessionRT    func() *araneasession.Runtime
-	ActivityBus  biz.ActivityEventBus
+	EventBus     biz.EventBus
 	Logger       loggateway.Logger
 }
 
 func newChatAwaitCoordinator(d chatAwaitCoordinatorDeps) *chatAwaitCoordinator {
 	return &chatAwaitCoordinator{
 		chatUC:         d.ChatUC,
-		runStatus:      d.RunStatus,
-		sessionState:   d.SessionState,
-		sessionRT:      d.SessionRT,
-		activityBus:    d.ActivityBus,
+		runStatus:     d.RunStatus,
+		sessionState:  d.SessionState,
+		sessionRT:     d.SessionRT,
+		eventBus:      d.EventBus,
 		resumeInFlight: NewTypedSyncMap[string, struct{}](orchMapMaxIdle),
-		lg:             d.Logger,
+		lg:            d.Logger,
 	}
 }
 
@@ -117,33 +119,30 @@ func (a *chatAwaitCoordinator) EndResume(sessionID string) {
 	a.resumeInFlight.Delete(sessionID)
 }
 
-// PublishAwaitResumed publishes an await_resumed ActivityEvent (Kind=notice,
-// Domain=chat). Replaces the legacy EnvelopeTypeRunStatus publish.
+// PublishAwaitResumed publishes an await_resumed v2 StepCreatedEvent
+// (Kind=StepKindNotice). Replaces the legacy v1 ActivityEvent (Kind=notice)
+// and the legacy EnvelopeTypeRunStatus publish.
+//
+// Phase 3b-D Task 10: the original v1 event carried run_id/status/await_resumed/
+// source in Activity.Meta. The v2 Step entity has no Meta field, so these
+// details are dropped. runID was already published via PublishRunStatus
+// (run_status_publish.go, owned by Task 9) before this call, so the run
+// status is independently delivered to WS clients.
 func (a *chatAwaitCoordinator) PublishAwaitResumed(sessionID, runID string) {
-	if a.activityBus == nil || strings.TrimSpace(sessionID) == "" {
+	if a.eventBus == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
-	a.activityBus.Publish(context.Background(), biz.ActivityEvent{
-		Event: biz.ActivityEventUpdated,
-		Activity: biz.Activity{
-			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindNotice,
-			Status:    biz.ActivityStatusRunning,
-			SessionID: sessionID,
-			Timestamp: time.Now().UTC(),
-			AgentKey:  "chat-service",
-			AgentName: "对话服务",
-			Content:   "已恢复运行",
-			Meta: map[string]any{
-				"run_id":        runID,
-				"status":        "running",
-				"await_resumed": true,
-				"source":        "chat-service",
-				"notice_type":   "info",
-			},
-		},
-		Domain: biz.ActivityDomainChat,
-	})
+	step := biz.Step{
+		ID:              uuid.NewString(),
+		SessionID:       sessionID,
+		SpiritSessionID: sessionID,
+		Kind:            biz.StepKindNotice,
+		NoticeType:      "info",
+		Content:         "已恢复运行",
+		Status:          biz.StepStatusRunning,
+		AuthorAgentKey:  "chat-service",
+	}
+	a.eventBus.Publish(context.Background(), biz.NewStepCreatedEvent(step))
 }
 
 // SessionAwaitingUser checks if a session is in awaiting_user state.

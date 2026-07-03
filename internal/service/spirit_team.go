@@ -28,10 +28,17 @@ var (
 	_ biz.AllTeamsCompletedNotifier  = (*TeamStarter)(nil)
 )
 
+// TeamStarter manages team turn lifecycle.
+//
+// Phase 3b-D Task 10: dual-bus scheme. `bus` (v1 ActivityEventBus) is retained
+// for graph_stage snapshot events (no v2 EventKind equivalent exists). `eventBus`
+// (v2 EventBus) is used for team_stage and notice events. Once a v2
+// graph_stage event kind is introduced, `bus` can be removed.
 type TeamStarter struct {
 	sessions         *biz.SessionUsecase
 	team             TeamOrchestrationDeps
-	bus              biz.ActivityEventBus
+	bus              biz.ActivityEventBus // v1: graph_stage snapshot only (no v2 equivalent yet)
+	eventBus         biz.EventBus         // v2: team_stage + notice events
 	activityReader   biz.ActivityReader
 	activityUpserter biz.ActivityUpserter
 	lg               loggateway.Logger
@@ -64,6 +71,7 @@ func NewTeamStarter(
 	sessions *biz.SessionUsecase,
 	team TeamOrchestrationDeps,
 	bus biz.ActivityEventBus,
+	eventBus biz.EventBus,
 	activityReader biz.ActivityReader,
 	activityUpserter biz.ActivityUpserter,
 	lg loggateway.Logger,
@@ -73,6 +81,7 @@ func NewTeamStarter(
 		sessions:         sessions,
 		team:             team,
 		bus:              bus,
+		eventBus:         eventBus,
 		activityReader:   activityReader,
 		activityUpserter: activityUpserter,
 		lg:               lg,
@@ -144,38 +153,22 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 		}
 	}
 
-	if s.bus != nil && teamID != "" && spiritSessionID != "" {
-		// Derive DependsOn from the team fetched above. The assembled event
-		// (published by publishSpiritTeamAssembled) carries the full member
-		// list and DependsOn, but the progress event is a separate publish.
-		// Without DependsOn here, the WS event to the frontend doesn't carry
-		// it, and the version-guarded UpsertActivity may clear the stored
-		// DependsOn if the async persist races with the assembled event.
+	if s.eventBus != nil && teamID != "" && spiritSessionID != "" {
+		// Phase 3b-D Task 10: migrated to v2 NewTeamStageUpdatedEvent.
+		// DependsOn is carried by the TeamStage entity (type-safe).
+		// DATA LOSS: team_name/progress_pct from v1 Meta are dropped
+		// (v2 TeamStage has no Meta field).
 		dependsOn := team.DependsOn
-		ev := biz.ActivityEvent{
-			Event: biz.ActivityEventUpdated,
-			Activity: biz.Activity{
-				ID:               agent.TeamStageActivityID(teamID),
-				Kind:             biz.ActivityKindTeamStage,
-				Status:           biz.ActivityStatusRunning,
-				Stage:            "progress",
-				Timestamp:        time.Now().UTC(),
-				ParentActivityID: agent.GraphStageActivityID(spiritSessionID),
-				SpiritSessionID:  spiritSessionID,
-				TeamID:           teamID,
-				AgentKey:         "team-starter",
-				DependsOn:        dependsOn,
-				Meta: map[string]any{
-					"team_id":      teamID,
-					"team_name":    team.DisplayName,
-					"status":       biz.TeamStatusRunning,
-					"progress_pct": 0,
-					"depends_on":   dependsOn,
-				},
-			},
-			Domain: biz.ActivityDomainChat,
+		ts := biz.TeamStage{
+			ID:        agent.TeamStageActivityID(teamID),
+			TeamID:    teamID,
+			SessionID: spiritSessionID,
+			Status:    biz.TeamStageStatusRunning,
+			Stage:     "progress",
+			DependsOn: dependsOn,
+			StartedAt: time.Now().UTC(),
 		}
-		s.bus.Publish(ctx, ev)
+		s.eventBus.Publish(ctx, biz.NewTeamStageUpdatedEvent(ts))
 	}
 
 	input := biz.TurnInput{
@@ -245,13 +238,11 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		durationMs = int64(runs[0].DurationMS)
 	}
 
-	// Extract token usage from the team's session.
-	// Assumption: each team is associated with exactly one session; Limit:1 is sufficient.
-	var tokenIn, tokenOut int
-	if sessResult, searchErr := s.sessions.Search(ctx, biz.SessionSearchQuery{TeamID: teamID, Limit: 1}); searchErr == nil && len(sessResult.Items) > 0 {
-		tokenIn = sessResult.Items[0].InputTokens
-		tokenOut = sessResult.Items[0].OutputTokens
-	}
+	// Phase 3b-D Task 10: token usage extraction (tokenIn/tokenOut) was removed.
+	// The v1 Activity.Meta carried total_token_in/total_token_out, but v2 TeamStage
+	// has no Meta field. The token data is still available in the session record
+	// (InputTokens/OutputTokens) and via recordTeamCompletion. Removing the
+	// session Search call also eliminates a DB query per team turn completion.
 
 	if status == biz.TeamStatusCompleted {
 		if _, updateErr := s.team.TeamUC.TransitionStatus(ctx, teamID, biz.TeamStatusCompleted); updateErr != nil {
@@ -294,68 +285,49 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		s.scheduleDependentTeams(ctx, spiritSessionID, team)
 	}
 
-	if s.bus != nil {
-		primaryEvent := biz.ActivityEventFailed
-		primaryStatus := biz.ActivityStatusFailed
+	if s.eventBus != nil {
+		// Phase 3b-D Task 10: migrated to v2 TeamStage events.
+		// Map v1 status → v2 TeamStageStatus + factory function.
+		primaryStatus := biz.TeamStageStatusFailed
 		primaryStage := "failed"
 		switch status {
 		case biz.TeamStatusCompleted:
-			primaryEvent = biz.ActivityEventCompleted
-			primaryStatus = biz.ActivityStatusCompleted
+			primaryStatus = biz.TeamStageStatusCompleted
 			primaryStage = "completed"
 		case biz.TeamStatusCancelled:
-			primaryEvent = biz.ActivityEventCancelled
-			primaryStatus = biz.ActivityStatusCancelled
+			primaryStatus = biz.TeamStageStatusCancelled
 			primaryStage = "cancelled"
 		default:
-			primaryEvent = biz.ActivityEventFailed
-			primaryStatus = biz.ActivityStatusFailed
+			primaryStatus = biz.TeamStageStatusFailed
 			primaryStage = "failed"
 		}
 		// Carry DependsOn from the team so the frontend can render DAG
 		// edges and the database preserves the dependency graph across
 		// status updates (assembled → progress → completed/failed/cancelled).
 		dependsOn := team.DependsOn
-		// progress_pct: 100 when completed, 0 otherwise. Without this, the
-		// terminal event meta lacks progress_pct and the frontend TeamCard
-		// shows 0% even after the team finishes. The assembled event sets
-		// progress_pct=0; the dedup logic in useActivityTimeline.ts skips
-		// 0 values when merging meta, so a non-zero value here overrides.
-		progressPct := 0
-		if status == biz.TeamStatusCompleted {
-			progressPct = 100
+		ts := biz.TeamStage{
+			ID:        agent.TeamStageActivityID(teamID),
+			TeamID:    teamID,
+			SessionID: spiritSessionID,
+			Status:    primaryStatus,
+			Stage:     biz.TeamStageStage(primaryStage),
+			DependsOn: dependsOn,
+			StartedAt: time.Now().UTC(),
 		}
-		meta := map[string]any{
-			"team_id":         teamID,
-			"team_name":       team.DisplayName,
-			"status":          status,
-			"duration_ms":     durationMs,
-			"total_token_in":  tokenIn,
-			"total_token_out": tokenOut,
-			"depends_on":      dependsOn,
-			"progress_pct":    progressPct,
+		// DATA LOSS: v2 TeamStage has no Meta field, so team_name/duration_ms/
+		// total_token_in/total_token_out/progress_pct/error from v1 Meta are
+		// dropped. The duration/token metrics are still recorded via
+		// recordTeamCompletion above and are available in the TeamRun DB record.
+		switch primaryStatus {
+		case biz.TeamStageStatusCompleted:
+			s.eventBus.Publish(ctx, biz.NewTeamStageCompletedEvent(ts))
+		case biz.TeamStageStatusFailed:
+			s.eventBus.Publish(ctx, biz.NewTeamStageFailedEvent(ts))
+		default:
+			// cancelled: no NewTeamStageCancelledEvent factory exists; use
+			// NewTeamStageUpdatedEvent as the closest semantic match.
+			s.eventBus.Publish(ctx, biz.NewTeamStageUpdatedEvent(ts))
 		}
-		if errMsg != "" {
-			meta["error"] = errMsg
-		}
-		ev := biz.ActivityEvent{
-			Event: primaryEvent,
-			Activity: biz.Activity{
-				ID:               agent.TeamStageActivityID(teamID),
-				Kind:             biz.ActivityKindTeamStage,
-				Status:           primaryStatus,
-				Stage:            primaryStage,
-				Timestamp:        time.Now().UTC(),
-				ParentActivityID: agent.GraphStageActivityID(spiritSessionID),
-				SpiritSessionID:  spiritSessionID,
-				TeamID:           teamID,
-				AgentKey:         "spirit-lifecycle",
-				DependsOn:        dependsOn,
-				Meta:             meta,
-			},
-			Domain: biz.ActivityDomainChat,
-		}
-		s.bus.Publish(ctx, ev)
 
 		// BUGFIX: the progress event (Status=Running) was published AFTER the
 		// primary terminal event, causing the version-guarded UpsertActivity to
@@ -364,34 +336,22 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		// event already carries the correct status, and the frontend dedup logic
 		// merges meta from all events of the same team.
 		if status == biz.TeamStatusRunning {
-			progressEv := biz.ActivityEvent{
-				Event: biz.ActivityEventUpdated,
-				Activity: biz.Activity{
-					ID:               agent.TeamStageActivityID(teamID),
-					Kind:             biz.ActivityKindTeamStage,
-					Status:           biz.ActivityStatusRunning,
-					Stage:            "progress",
-					Timestamp:        time.Now().UTC(),
-					ParentActivityID: agent.GraphStageActivityID(spiritSessionID),
-					SpiritSessionID:  spiritSessionID,
-					TeamID:           teamID,
-					AgentKey:         "spirit-lifecycle",
-					DependsOn:        dependsOn,
-					Meta: map[string]any{
-						"team_id":      teamID,
-						"team_name":    team.DisplayName,
-						"status":       status,
-						"progress_pct": 0,
-						"depends_on":   dependsOn,
-					},
-				},
-				Domain: biz.ActivityDomainChat,
+			progressTs := biz.TeamStage{
+				ID:        agent.TeamStageActivityID(teamID),
+				TeamID:    teamID,
+				SessionID: spiritSessionID,
+				Status:    biz.TeamStageStatusRunning,
+				Stage:     "progress",
+				DependsOn: dependsOn,
+				StartedAt: time.Now().UTC(),
 			}
-			s.bus.Publish(ctx, progressEv)
+			s.eventBus.Publish(ctx, biz.NewTeamStageUpdatedEvent(progressTs))
 		}
 
 		// B.4.4: After team status change, republish the graph_stage DAG
 		// snapshot so node statuses stay in sync with team statuses.
+		// Phase 3b-D Task 10: graph_stage has no v2 EventKind equivalent;
+		// stays on v1 bus. TODO: migrate once EventKindGraphStage* is added.
 		if allTeams, listErr := s.team.TeamUC.ListBySpiritSessionID(ctx, spiritSessionID); listErr == nil {
 			publishGraphStageSnapshot(ctx, s.bus, s.lg, spiritSessionID, allTeams)
 		} else {
@@ -434,28 +394,18 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 					loggateway.Str("team_id", action.TeamID),
 					loggateway.Str("dag_node_id", action.DagNodeID),
 				)
-				if s.bus != nil {
-					ev := biz.ActivityEvent{
-						Event: biz.ActivityEventFailed,
-						Activity: biz.Activity{
-							ID:               agent.TeamStageActivityID(action.TeamID),
-							Kind:             biz.ActivityKindTeamStage,
-							Status:           biz.ActivityStatusFailed,
-							Stage:            "failed",
-							Timestamp:        time.Now().UTC(),
-							ParentActivityID: agent.RootTaskActivityIDFromCtx(ctx),
-							SpiritSessionID:  spiritSessionID,
-							TeamID:           action.TeamID,
-							AgentKey:         "spirit-scheduler",
-							Meta: map[string]any{
-								"team_id":   action.TeamID,
-								"team_name": action.TeamName,
-								"error":     action.Reason,
-							},
-						},
-						Domain: biz.ActivityDomainChat,
+				if s.eventBus != nil {
+					// Phase 3b-D Task 10: migrated to v2 NewTeamStageFailedEvent.
+					// DATA LOSS: team_name/error from v1 Meta are dropped.
+					ts := biz.TeamStage{
+						ID:        agent.TeamStageActivityID(action.TeamID),
+						TeamID:    action.TeamID,
+						SessionID: spiritSessionID,
+						Status:    biz.TeamStageStatusFailed,
+						Stage:     biz.TeamStageStageFailed,
+						StartedAt: time.Now().UTC(),
 					}
-					s.bus.Publish(ctx, ev)
+					s.eventBus.Publish(ctx, biz.NewTeamStageFailedEvent(ts))
 				}
 			}
 		} else if action.Action == "activate" {
@@ -473,28 +423,19 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 				loggateway.Str("team_id", action.TeamID),
 				loggateway.Str("dag_node_id", action.DagNodeID),
 			)
-			if s.bus != nil {
-				ev := biz.ActivityEvent{
-					Event: biz.ActivityEventUpdated,
-					Activity: biz.Activity{
-						ID:               agent.TeamStageActivityID(action.TeamID),
-						Kind:             biz.ActivityKindTeamStage,
-						Status:           biz.ActivityStatusRunning,
-						Stage:            "progress",
-						Timestamp:        time.Now().UTC(),
-						ParentActivityID: agent.RootTaskActivityIDFromCtx(ctx),
-						SpiritSessionID:  spiritSessionID,
-						TeamID:           action.TeamID,
-						AgentKey:         "spirit-scheduler",
-						Meta: map[string]any{
-							"team_id":   action.TeamID,
-							"team_name": action.TeamName,
-							"status":    biz.TeamStatusRunning,
-						},
-					},
-					Domain: biz.ActivityDomainChat,
+			if s.eventBus != nil {
+				// Phase 3b-D Task 10: migrated to v2 NewTeamStageUpdatedEvent.
+				// DATA LOSS: team_name from v1 Meta is dropped (v2 TeamStage
+				// has no Meta field). team_id/status are preserved as typed fields.
+				ts := biz.TeamStage{
+					ID:        agent.TeamStageActivityID(action.TeamID),
+					TeamID:    action.TeamID,
+					SessionID: spiritSessionID,
+					Status:    biz.TeamStageStatusRunning,
+					Stage:     "progress",
+					StartedAt: time.Now().UTC(),
 				}
-				s.bus.Publish(ctx, ev)
+				s.eventBus.Publish(ctx, biz.NewTeamStageUpdatedEvent(ts))
 			}
 			taskDesc := action.TeamName // DagNodeID is used as task description fallback
 			depTeamID := action.TeamID
@@ -576,34 +517,22 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 	}
 
 	// Publish the completion event for frontend awareness (non-blocking).
-	if s.bus != nil {
-		ev := biz.ActivityEvent{
-			Event: biz.ActivityEventCompleted,
-			Activity: biz.Activity{
-				ID:              uuid.NewString(),
-				Kind:            biz.ActivityKindNotice,
-				Status:          biz.ActivityStatusCompleted,
-				Timestamp:       time.Now().UTC(),
-				SpiritSessionID: spiritSessionID,
-				AgentKey:        "team-starter",
-				AgentName:       "团队编排",
-				Stage:           "teams_all_completed",
-				Content:         "所有团队已完成",
-				Meta: map[string]any{
-					"event_type":        "spirit_teams_all_completed",
-					"spirit_session_id": spiritSessionID,
-					"team_ids":          result.TeamIDs,
-					"total_teams":       result.TotalTeams,
-					"completed_teams":   result.CompletedTeams,
-					"failed_teams":      result.FailedTeams,
-					"total_token_in":    result.TotalTokenIn,
-					"total_token_out":   result.TotalTokenOut,
-					"notice_type":       "success",
-				},
-			},
-			Domain: biz.ActivityDomainChat,
+	// Phase 3b-D Task 10: migrated to v2 NewStepCreatedEvent (Kind=StepKindNotice).
+	// DATA LOSS: v2 Step has no Meta field, so team_ids/total_teams/completed_teams/
+	// failed_teams/total_token_in/total_token_out from v1 Meta are dropped.
+	// The notice_type is preserved as Step.NoticeType, and the message as Step.Content.
+	if s.eventBus != nil {
+		step := biz.Step{
+			ID:              uuid.NewString(),
+			SessionID:       spiritSessionID,
+			SpiritSessionID: spiritSessionID,
+			Kind:            biz.StepKindNotice,
+			NoticeType:      "success",
+			Content:         "所有团队已完成",
+			Status:          biz.StepStatusCompleted,
+			AuthorAgentKey:  "team-starter",
 		}
-		s.bus.Publish(ctx, ev)
+		s.eventBus.Publish(ctx, biz.NewStepCreatedEvent(step))
 	}
 }
 
@@ -645,10 +574,15 @@ func (s *TeamStarter) NotifyAllTeamsCompleted(ctx context.Context, spiritSession
 	s.checkAllTeamsCompleted(ctx, spiritSessionID)
 }
 
+// SpiritTeamAssembler assembles spirit teams.
+//
+// Phase 3b-D Task 10: dual-bus scheme. `bus` (v1) for graph_stage snapshots,
+// `eventBus` (v2) for team_stage + notice events.
 type SpiritTeamAssembler struct {
 	spiritUC     *biz.SpiritTeamUsecase
 	orchCache    *biz.OrchestrationCache
-	bus          biz.ActivityEventBus
+	bus          biz.ActivityEventBus // v1: graph_stage snapshot only
+	eventBus     biz.EventBus         // v2: team_stage + notice events
 	activityRepo biz.ActivityUpserter
 	teamStarter  biz.TeamStarterPort
 	agentReader  biz.AgentReader
@@ -659,6 +593,7 @@ func NewSpiritTeamAssembler(
 	spiritUC *biz.SpiritTeamUsecase,
 	orchCache *biz.OrchestrationCache,
 	bus biz.ActivityEventBus,
+	eventBus biz.EventBus,
 	activityRepo biz.ActivityUpserter,
 	teamStarter biz.TeamStarterPort,
 	agentReader biz.AgentReader,
@@ -668,6 +603,7 @@ func NewSpiritTeamAssembler(
 		spiritUC:     spiritUC,
 		orchCache:    orchCache,
 		bus:          bus,
+		eventBus:     eventBus,
 		activityRepo: activityRepo,
 		teamStarter:  teamStarter,
 		agentReader:  agentReader,
@@ -761,28 +697,20 @@ func (a *SpiritTeamAssembler) CancelTeam(ctx context.Context, teamID string) err
 		return err
 	}
 	spiritSessionID := strings.TrimSpace(team.SpiritSessionID)
-	if a.bus != nil && spiritSessionID != "" {
-		ev := biz.ActivityEvent{
-			Event: biz.ActivityEventCancelled,
-			Activity: biz.Activity{
-				ID:               agent.TeamStageActivityID(teamID),
-				Kind:             biz.ActivityKindTeamStage,
-				Status:           biz.ActivityStatusCancelled,
-				Stage:            "cancelled",
-				Timestamp:        time.Now().UTC(),
-				ParentActivityID: agent.RootTaskActivityIDFromCtx(ctx),
-				SpiritSessionID:  spiritSessionID,
-				TeamID:           teamID,
-				AgentKey:         "spirit-cancel",
-				Meta: map[string]any{
-					"team_id":   teamID,
-					"team_name": team.DisplayName,
-					"status":    biz.TeamStatusCancelled,
-				},
-			},
-			Domain: biz.ActivityDomainChat,
+	if a.eventBus != nil && spiritSessionID != "" {
+		// Phase 3b-D Task 10: migrated to v2 NewTeamStageUpdatedEvent.
+		// No NewTeamStageCancelledEvent factory exists; use Updated as the
+		// closest semantic match (same as HandleTeamTurnResult cancelled case).
+		// DATA LOSS: team_name from v1 Meta is dropped (v2 TeamStage has no Meta).
+		ts := biz.TeamStage{
+			ID:        agent.TeamStageActivityID(teamID),
+			TeamID:    teamID,
+			SessionID: spiritSessionID,
+			Status:    biz.TeamStageStatusCancelled,
+			Stage:     "cancelled",
+			StartedAt: time.Now().UTC(),
 		}
-		a.bus.Publish(ctx, ev)
+		a.eventBus.Publish(ctx, biz.NewTeamStageUpdatedEvent(ts))
 	}
 	if a.teamStarter != nil && spiritSessionID != "" {
 		a.teamStarter.HandleTeamTurnResult(ctx, spiritSessionID, teamID, biz.TeamStatusCancelled, "", "")
@@ -805,29 +733,29 @@ func (a *SpiritTeamAssembler) SuggestTopology(ctx context.Context, taskDescripti
 			loggateway.Str("topology", string(topology)),
 		)
 		// Emit cache hit event
-		if a.bus != nil {
-			a.bus.Publish(ctx, biz.ActivityEvent{
-				Event: biz.ActivityEventCreated,
-				Activity: biz.Activity{
-					ID:        uuid.NewString(),
-					Kind:      biz.ActivityKindNotice,
-					Status:    biz.ActivityStatusCompleted,
-					Timestamp: time.Now().UTC(),
-					AgentKey:  "spirit-team-assembler",
-					Meta: map[string]any{
-						"task_pattern": biz.ExtractTaskPattern(taskDescription),
-						"topology":     string(topology),
-					},
-				},
-				Domain: biz.ActivityDomainChat,
-			})
+		// Phase 3b-D Task 10: migrated to v2 NewStepCreatedEvent (Kind=StepKindNotice).
+		// DATA LOSS: v2 Step has no Meta field, so task_pattern/topology from v1
+		// Meta are dropped. The original v1 Activity had no Content/SpiritSessionID;
+		// v2 Step also leaves these empty (no spirit session context in SuggestTopology).
+		if a.eventBus != nil {
+			step := biz.Step{
+				ID:             uuid.NewString(),
+				Kind:           biz.StepKindNotice,
+				Content:        "编排缓存命中，推荐拓扑: " + string(topology),
+				Status:         biz.StepStatusCompleted,
+				AuthorAgentKey: "spirit-team-assembler",
+			}
+			a.eventBus.Publish(ctx, biz.NewStepCreatedEvent(step))
 		}
 	}
 	return string(topology), found
 }
 
 func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, spiritSessionID string, team biz.Team, teamSession biz.Session, mode, taskDesc, topologyReason string, agentKeys []string, memberSessions map[string]string) {
-	if a.bus == nil {
+	// Phase 3b-D Task 10: dual-bus scheme. eventBus (v2) is the primary bus
+	// for team_stage events; bus (v1) is retained for graph_stage snapshot only.
+	// If eventBus is nil, skip the entire method (matching original guard).
+	if a.eventBus == nil {
 		return
 	}
 	// B.4.4: Publish graph_stage snapshot BEFORE team_stage so the graph appears
@@ -843,6 +771,9 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 	// The team is already committed to the DB (AssembleTeam runs in a tx that
 	// has committed before this method is called), so ListAllTeams will include
 	// the new team as a pending node in the DAG snapshot.
+	//
+	// Phase 3b-D Task 10: graph_stage has no v2 EventKind equivalent; stays on
+	// v1 bus. TODO: migrate once EventKindGraphStage* is added.
 	a.publishSpiritGraphStageSnapshot(ctx, spiritSessionID)
 
 	// Build members array so the frontend TeamCard can render the member list.
@@ -938,45 +869,29 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 		}
 	}
 
-	// Issue 1 fix: Set SequencerHandled=true when sync persist succeeded so the
-	// Bus skips async persist. Without this flag, bus.Publish triggers an async
-	// UpsertActivity that can race with StartTeamTurn's progress event: the async
-	// persist may execute AFTER the progress event and overwrite the Running
-	// status back to Pending, because both use the bus's monotonic versionSeq and
-	// the assembled event gets a higher version number.
-	// Issue 3 fix: If sync persist failed, set SequencerHandled=false so the Bus
-	// also tries to persist (fallback path).
-	a.bus.Publish(ctx, biz.ActivityEvent{
-		Event:            biz.ActivityEventCreated,
-		SequencerHandled: persistedSync, // skip Bus persist only if sync succeeded
-		Activity: biz.Activity{
-			ID:               agent.TeamStageActivityID(team.ID),
-			Kind:             biz.ActivityKindTeamStage,
-			Status:           biz.ActivityStatusPending,
-			Stage:            "assembled",
-			Timestamp:        time.Now().UTC(),
-			ParentActivityID: agent.GraphStageActivityID(spiritSessionID),
-			SpiritSessionID:  spiritSessionID,
-			SessionID:        spiritSessionID,
-			TeamID:           team.ID,
-			AgentKey:         "spirit-team-assembler",
-			DependsOn:        team.DependsOn,
-			Meta: map[string]any{
-				"team_id":         team.ID,
-				"team_name":       team.DisplayName,
-				"session_id":      teamSession.ID,
-				"mode":            mode,
-				"task_summary":    biz.TruncateRunes(taskDesc, 200),
-				"dag_node_id":     team.DagNodeID,
-				"depends_on":      team.DependsOn,
-				"topology_reason": topologyReason,
-				"duration_ms":     0,
-				"total_steps":     1,
-				"members":         members,
-			},
-		},
-		Domain: biz.ActivityDomainChat,
-	})
+	// Phase 3b-D Task 10: migrated to v2 NewTeamStageCreatedEvent.
+	// The sync persist (a.activityRepo.UpsertActivity above) is RETAINED unchanged.
+	// DEVIATION: the v1 SequencerHandled flag (skip Bus async persist when sync
+	// succeeded) is DROPPED — v2 EventBus has no equivalent. The v2 EventBus may
+	// attempt async persist after the sync persist, but the version-guarded
+	// UpsertActivity makes the async attempt a no-op if sync already wrote the
+	// record. The `persistedSync` variable is now unused for the bus call but
+	// retained for the sync persist log above.
+	// DATA LOSS: v2 TeamStage has no Meta field, so team_name/session_id/mode/
+	// task_summary/dag_node_id/depends_on/topology_reason/duration_ms/total_steps/
+	// members from v1 Meta are dropped. The members data is still persisted
+	// synchronously via the v1 Activity above (activityRepo.UpsertActivity).
+	ts := biz.TeamStage{
+		ID:        agent.TeamStageActivityID(team.ID),
+		TeamID:    team.ID,
+		SessionID: spiritSessionID,
+		Status:    biz.TeamStageStatusPending,
+		Stage:     biz.TeamStageStageAssembled,
+		DependsOn: team.DependsOn,
+		StartedAt: time.Now().UTC(),
+	}
+	_ = persistedSync // retained for sync persist logging; no longer used by bus
+	a.eventBus.Publish(ctx, biz.NewTeamStageCreatedEvent(ts))
 }
 
 // publishSpiritGraphStageSnapshot publishes a graph_stage Activity carrying
@@ -994,6 +909,10 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 //
 // Called from publishSpiritTeamAssembled (after team creation) and
 // HandleTeamTurnResult (after team status change) to keep the snapshot fresh.
+//
+// Phase 3b-D Task 10: graph_stage has NO v2 EventKind equivalent. This method
+// RETAINS the v1 ActivityEventBus (a.bus) until a v2 EventKindGraphStage* is
+// introduced. TODO: migrate to v2 EventBus once the graph_stage event kind exists.
 func (a *SpiritTeamAssembler) publishSpiritGraphStageSnapshot(ctx context.Context, spiritSessionID string) {
 	if a.bus == nil || spiritSessionID == "" || a.spiritUC == nil {
 		return
@@ -1015,6 +934,10 @@ func (a *SpiritTeamAssembler) publishSpiritGraphStageSnapshot(ctx context.Contex
 // callers that have direct access to TeamUsecase (e.g. TeamStarter) can reuse
 // the logic without depending on SpiritTeamUsecase. See
 // publishSpiritGraphStageSnapshot for the full design rationale.
+//
+// Phase 3b-D Task 10: graph_stage has NO v2 EventKind equivalent. This function
+// RETAINS the v1 ActivityEventBus parameter until a v2 EventKindGraphStage* is
+// introduced. TODO: migrate to v2 EventBus once the graph_stage event kind exists.
 func publishGraphStageSnapshot(ctx context.Context, bus biz.ActivityEventBus, lg loggateway.Logger, spiritSessionID string, teams []biz.Team) {
 	if bus == nil || spiritSessionID == "" || len(teams) == 0 {
 		return

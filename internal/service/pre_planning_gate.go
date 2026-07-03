@@ -3,13 +3,18 @@ package service
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
 )
+
+// NOTE(Phase3b-D Task 10): PrePlanningGate migrated from v1 ActivityEventBus
+// to v2 EventBus. publishPlanningPhase now emits biz.NewStepCreatedEvent
+// (Kind=StepKindNotice). DATA LOSS: v2 Step has no Meta field, so phase/
+// duration_ms/session_id/source carried in v1 Activity.Meta are dropped.
+// The message content is preserved as Step.Content.
 
 // GateDecision is the result of the pre-planning gate evaluation (P1-2).
 // When ForcePlanning is true, the caller must route the turn through the
@@ -28,18 +33,20 @@ type GateDecision struct {
 // The gate runs a pure-computation QuickAssess (no LLM, no DB) so it adds
 // negligible latency (<1ms) to the turn. Planning timeline events are
 // published so the frontend can render the assessment phase.
+//
+// Phase 3b-D Task 10: migrated from v1 ActivityEventBus to v2 EventBus.
 type PrePlanningGate struct {
-	planner     biz.TaskPlannerPort
-	activityBus biz.ActivityEventBus
-	lg          loggateway.Logger
+	planner  biz.TaskPlannerPort
+	eventBus biz.EventBus
+	lg       loggateway.Logger
 }
 
 // NewPrePlanningGate constructs a PrePlanningGate.
-func NewPrePlanningGate(planner biz.TaskPlannerPort, activityBus biz.ActivityEventBus, lg loggateway.Logger) *PrePlanningGate {
+func NewPrePlanningGate(planner biz.TaskPlannerPort, eventBus biz.EventBus, lg loggateway.Logger) *PrePlanningGate {
 	return &PrePlanningGate{
-		planner:     planner,
-		activityBus: activityBus,
-		lg:          lg.With(loggateway.Domain("pre-planning-gate")),
+		planner:  planner,
+		eventBus: eventBus,
+		lg:       lg.With(loggateway.Domain("pre-planning-gate")),
 	}
 }
 
@@ -47,8 +54,7 @@ func NewPrePlanningGate(planner biz.TaskPlannerPort, activityBus biz.ActivityEve
 // The intent artifact from the intent pass (if available) is passed through
 // to the planner for a more accurate assessment.
 func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (GateDecision, error) {
-	start := time.Now()
-	g.publishPlanningPhase(ctx, biz.ActivityEventCreated, biz.ActivityStatusRunning, "assess", "开始复杂度评估", input.SpiritSessionID, 0)
+	g.publishPlanningPhase(ctx, biz.ActivityStatusRunning, "开始复杂度评估", input.SpiritSessionID)
 
 	level, score, err := g.planner.QuickAssess(ctx, input)
 	if err != nil {
@@ -57,7 +63,7 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 			loggateway.Str("spirit_session_id", input.SpiritSessionID),
 			loggateway.Err(err),
 		)
-		g.publishPlanningPhase(ctx, biz.ActivityEventFailed, biz.ActivityStatusFailed, "assess", "复杂度评估失败", input.SpiritSessionID, time.Since(start).Seconds()*1000)
+		g.publishPlanningPhase(ctx, biz.ActivityStatusFailed, "复杂度评估失败", input.SpiritSessionID)
 		return GateDecision{}, err
 	}
 
@@ -83,13 +89,13 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 		loggateway.Bool("force_planning", forcePlanning),
 	)
 
-	g.publishPlanningPhase(ctx, biz.ActivityEventCompleted, biz.ActivityStatusCompleted, "assess", reason, input.SpiritSessionID, time.Since(start).Seconds()*1000)
+	g.publishPlanningPhase(ctx, biz.ActivityStatusCompleted, reason, input.SpiritSessionID)
 
 	return decision, nil
 }
 
-// publishPlanningPhase publishes a complexity-assessment timeline event as an
-// ActivityEvent (Kind=notice, Domain=chat).
+// publishPlanningPhase publishes a complexity-assessment timeline event as a
+// v2 StepCreatedEvent (Kind=StepKindNotice).
 //
 // Design rationale (B.4.3): the pre-planning gate's "assess" phase is a
 // complexity assessment, NOT task decomposition. The PlanBlock component
@@ -99,42 +105,35 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 // plan for visual space. Routing to Kind=notice renders it as a NoticeBlock
 // banner instead, leaving the plan slot exclusively for actual plans.
 //
-// In the Spirit direct-run scenario the caller passes input.SpiritSessionID,
-// which equals the current SessionID (Spirit session is the root). Both
-// SessionID and SpiritSessionID are set to the same value for cross-session
-// aggregation. Bus layer normalizes empty SpiritSessionID by falling back
-// to SessionID (design doc B.6.2).
-func (g *PrePlanningGate) publishPlanningPhase(ctx context.Context, eventType biz.ActivityEventType, status biz.ActivityStatus, phase, message, spiritSessionID string, durationMs float64) {
-	if g.activityBus == nil {
+// Phase 3b-D Task 10: migrated from v1 ActivityEvent to v2 StepCreatedEvent.
+// The original v1 Meta (phase/duration_ms/session_id/source) is dropped
+// because v2 Step has no Meta field. The message is preserved as Step.Content,
+// and the status is mapped to StepStatus. noticeType is preserved as
+// Step.NoticeType for NoticeBlock rendering.
+func (g *PrePlanningGate) publishPlanningPhase(ctx context.Context, status biz.ActivityStatus, message, spiritSessionID string) {
+	if g.eventBus == nil {
 		return
 	}
 	// Map assess status → notice type for NoticeBlock rendering.
 	noticeType := "info"
+	stepStatus := biz.StepStatusRunning
 	switch status {
 	case biz.ActivityStatusFailed:
 		noticeType = "warning"
+		stepStatus = biz.StepStatusFailed
 	case biz.ActivityStatusCompleted:
 		noticeType = "success"
+		stepStatus = biz.StepStatusCompleted
 	}
-	g.activityBus.Publish(ctx, biz.ActivityEvent{
-		Event: eventType,
-		Activity: biz.Activity{
-			ID:              uuid.NewString(),
-			Kind:            biz.ActivityKindNotice,
-			Status:          status,
-			SessionID:       spiritSessionID,
-			SpiritSessionID: spiritSessionID,
-			Timestamp:       time.Now().UTC(),
-			Content:         message,
-			Meta: map[string]any{
-				"phase":       phase,
-				"message":     message,
-				"duration_ms": durationMs,
-				"session_id":  spiritSessionID,
-				"source":      "pre-planning-gate",
-				"notice_type": noticeType,
-			},
-		},
-		Domain: biz.ActivityDomainChat,
-	})
+	step := biz.Step{
+		ID:              uuid.NewString(),
+		SessionID:       spiritSessionID,
+		SpiritSessionID: spiritSessionID,
+		Kind:            biz.StepKindNotice,
+		NoticeType:      noticeType,
+		Content:         message,
+		Status:          stepStatus,
+		AuthorAgentKey:  "pre-planning-gate",
+	}
+	g.eventBus.Publish(ctx, biz.NewStepCreatedEvent(step))
 }

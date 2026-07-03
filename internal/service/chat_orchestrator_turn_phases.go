@@ -102,6 +102,11 @@ func (o *ChatOrchestrator) runIntentPass(
 	}
 	meta := intent.RunMeta{AgentID: ag.ID, SessionID: sessionID}
 	intentPayload := intent.BuildIntentPassPayload(intRes, meta)
+	// TODO(Phase3b-D Task 10): migrate to v2 EventBus (NewStepCreatedEvent
+	// with Kind=StepKindNotice). The ChatOrchestrator struct is defined in
+	// chat_orchestrator.go (outside this file's assigned scope), so the v2
+	// EventBus field cannot be added here. This publish stays on v1
+	// ActivityEventBus until the ChatOrchestrator struct is updated with a v2 bus.
 	if bus := o.td().Pipeline.ActivityBus; bus != nil {
 		bus.Publish(ctx, biz.ActivityEvent{
 			Event: biz.ActivityEventCreated,
@@ -526,6 +531,11 @@ func (o *ChatOrchestrator) consumeTurnStream(
 		SpiritSessionID:  sessionID,
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
+	// TODO(Phase3b-D Task 10): the first arg (ActivityBus) is the v1 bus passed
+	// to NewChatStreamConsumeOptions for stream consumer event routing. The
+	// ChatOrchestrator struct (chat_orchestrator.go) is outside this file's
+	// assigned scope, so a v2 EventBus field cannot be added here. This stays
+	// on v1 ActivityEventBus until the ChatOrchestrator struct is updated.
 	streamOpts := NewChatStreamConsumeOptions(o.td().Pipeline.ActivityBus, o.infraDeps.V2Projector)
 	// N-21/N-03: The v2 projector was pre-configured in invokeTurnLLMAndStream
 	// (Reset + Configure + WithActivityEmitter). It is passed via

@@ -165,6 +165,11 @@ func isValidStrategy(s string) bool {
 // also catch this, but routing to NoticeBlock is semantically correct).
 // Failures are logged but not returned, since event delivery is best-effort
 // for informational events (AS-EVT-01).
+//
+// TODO(Phase3b-D Task 10): migrate to v2 EventBus (NewStepCreatedEvent with
+// Kind=StepKindNotice). The ChatService struct is defined outside this file's
+// assigned scope, so the v2 EventBus field cannot be added here. This publish
+// stays on v1 ActivityEventBus until the ChatService struct is updated.
 func (s *ChatService) publishPlanEvent(ctx context.Context, sessionID, planID, decision, reason string) {
 	bus := s.orch.td().Pipeline.ActivityBus
 	if bus == nil {

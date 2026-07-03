@@ -126,8 +126,16 @@ func NewChatRunStatusPersister(sessions biz.SessionStatePort, lg loggateway.Logg
 	return &chatRunStatusPersister{sessions: sessions, lg: lg}
 }
 
+// chatEventPublisher implements biz.ChatEventPublisher using dual buses.
+//
+// Phase 3b-D Task 10: PublishMessageQueued migrated to v2 EventBus
+// (biz.NewStepCreatedEvent, Kind=StepKindNotice). PublishRunStatus still
+// delegates to the v1 free function PublishRunStatus in run_status_publish.go
+// (owned by Task 9); once Task 9 migrates that function, activityBus can be
+// removed.
 type chatEventPublisher struct {
-	activityBus biz.ActivityEventBus
+	activityBus biz.ActivityEventBus // v1: for PublishRunStatus delegation (Task 9 owns the free function)
+	eventBus    biz.EventBus         // v2: for PublishMessageQueued
 }
 
 func (pub *chatEventPublisher) PublishRunStatus(sessionID, runID, status, errMsg string) {
@@ -135,21 +143,26 @@ func (pub *chatEventPublisher) PublishRunStatus(sessionID, runID, status, errMsg
 }
 
 func (pub *chatEventPublisher) PublishMessageQueued(sessionID string) {
-	publishMessageQueuedToBus(pub.activityBus, sessionID)
+	publishMessageQueuedToBus(pub.eventBus, sessionID)
 }
 
-func NewChatEventPublisher(activityBus biz.ActivityEventBus) biz.ChatEventPublisher {
-	return &chatEventPublisher{activityBus: activityBus}
+func NewChatEventPublisher(activityBus biz.ActivityEventBus, eventBus biz.EventBus) biz.ChatEventPublisher {
+	return &chatEventPublisher{activityBus: activityBus, eventBus: eventBus}
 }
 
 // NewChatUsecaseFromDeps wires the shared run registry, pending queue, and session
 // lock into a single Biz orchestration entrypoint for ChatService.
+//
+// Phase 3b-D Task 10: added eventBus param for v2 EventBus (PublishMessageQueued).
+// activityBus remains for PublishRunStatus delegation until Task 9 migrates
+// the free function.
 func NewChatUsecaseFromDeps(
 	runs *runtime.RunRegistry,
 	pending *runtime.PendingMessageQueue,
 	locks *biz.SessionLockManager,
 	sessions biz.SessionStatePort,
 	activityBus biz.ActivityEventBus,
+	eventBus biz.EventBus,
 	lg loggateway.Logger,
 ) *biz.ChatUsecase {
 	uc := biz.NewChatUsecase(
@@ -157,7 +170,7 @@ func NewChatUsecaseFromDeps(
 		locks,
 		NewPendingQueueAdapter(pending),
 		NewChatRunStatusPersister(sessions, lg),
-		NewChatEventPublisher(activityBus),
+		NewChatEventPublisher(activityBus, eventBus),
 		lg,
 	)
 	uc.StartBackgroundGoroutines()
@@ -283,30 +296,27 @@ func clearAwaitingRunStateFromSession(sessions biz.SessionStatePort, ctx context
 	})
 }
 
-// publishMessageQueuedToBus publishes a message_queued ActivityEvent
-// (Kind=notice, Domain=chat). Replaces the legacy EnvelopeTypeRunStatus publish.
-func publishMessageQueuedToBus(activityBus biz.ActivityEventBus, sessionID string) {
-	if activityBus == nil || strings.TrimSpace(sessionID) == "" {
+// publishMessageQueuedToBus publishes a message_queued v2 StepCreatedEvent
+// (Kind=StepKindNotice). Replaces the legacy v1 ActivityEvent (Kind=notice)
+// and the legacy EnvelopeTypeRunStatus publish.
+//
+// Phase 3b-D Task 10: migrated from v1 ActivityEventBus to v2 EventBus.
+// DATA LOSS: v2 Step has no Meta field, so status/hint/source carried in
+// v1 Activity.Meta are dropped. The message content is preserved as
+// Step.Content, and NoticeType="info" is preserved for NoticeBlock rendering.
+func publishMessageQueuedToBus(eventBus biz.EventBus, sessionID string) {
+	if eventBus == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
-	activityBus.Publish(context.Background(), biz.ActivityEvent{
-		Event: biz.ActivityEventUpdated,
-		Activity: biz.Activity{
-			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindNotice,
-			Status:    biz.ActivityStatusPending,
-			SessionID: sessionID,
-			Timestamp: time.Now().UTC(),
-			AgentKey:  "chat-service",
-			AgentName: "对话服务",
-			Content:   "消息已加入队列",
-			Meta: map[string]any{
-				"status":      "queued",
-				"hint":        "message_queued",
-				"source":      "chat-service",
-				"notice_type": "info",
-			},
-		},
-		Domain: biz.ActivityDomainChat,
-	})
+	step := biz.Step{
+		ID:              uuid.NewString(),
+		SessionID:       sessionID,
+		SpiritSessionID: sessionID,
+		Kind:            biz.StepKindNotice,
+		NoticeType:      "info",
+		Content:         "消息已加入队列",
+		Status:          biz.StepStatusPending,
+		AuthorAgentKey:  "chat-service",
+	}
+	eventBus.Publish(context.Background(), biz.NewStepCreatedEvent(step))
 }

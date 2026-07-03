@@ -58,6 +58,10 @@ func (o *ChatOrchestrator) nativeSendChatMessage(ctx context.Context, req *chatv
 		out.AgentMessage = st
 	}
 	if tid := strings.TrimSpace(req.GetTeamId()); tid != "" {
+		// TODO(Phase3b-D Task 10): migrate to v2 EventBus (NewTeamStageCompletedEvent).
+		// The ChatOrchestrator struct is defined in chat_orchestrator.go (outside
+		// this file's assigned scope), so the v2 EventBus field cannot be added
+		// here. This publish stays on v1 ActivityEventBus until the struct is updated.
 		if o.td().Pipeline.ActivityBus != nil {
 			ev := biz.ActivityEvent{
 				Event: biz.ActivityEventCompleted,
@@ -115,6 +119,10 @@ func (o *ChatOrchestrator) submitChatMessageAsync(_ context.Context, req *chatv1
 				return
 			}
 			lg.Warn("SubmitChatMessage: turn execution failed", loggateway.Err(err))
+			// TODO(Phase3b-D Task 10): migrate to v2 EventBus (NewTaskFailedEvent).
+			// The ChatOrchestrator struct is defined in chat_orchestrator.go (outside
+			// this file's assigned scope), so the v2 EventBus field cannot be added
+			// here. This publish stays on v1 ActivityEventBus until the struct is updated.
 			if bus := o.td().Pipeline.ActivityBus; bus != nil {
 				bus.Publish(context.Background(), biz.ActivityEvent{
 					Event: biz.ActivityEventFailed,
