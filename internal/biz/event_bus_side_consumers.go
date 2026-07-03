@@ -28,7 +28,6 @@ type EventBusSideConsumers struct {
 }
 
 func NewEventBusSideConsumers(
-	activityBus ActivityEventBus,
 	eventBus EventBus,
 	monitorEventBus contract.MonitorBus,
 	tools *ToolUsecase,
@@ -42,7 +41,7 @@ func NewEventBusSideConsumers(
 	usage *UsageUsecase,
 	logger SessionLogWriter,
 ) *EventBusSideConsumers {
-	if activityBus == nil && eventBus == nil && monitorEventBus == nil {
+	if eventBus == nil && monitorEventBus == nil {
 		return nil
 	}
 	return &EventBusSideConsumers{
@@ -92,35 +91,6 @@ func activityLogFields(ev ActivityEvent) (sessionID, typeName, eventID string) {
 // queue-full warning logging.
 func monitorLogFields(ev contract.MonitorEvent) (sessionID, typeName, eventID string) {
 	return ev.SessionID, string(ev.Type), ev.ID
-}
-
-// runActivityConsumer subscribes to ActivityEventBus and dispatches matching
-// events to fn via an async worker with bounded queue.
-func runActivityConsumer(ctx context.Context, name string, bus ActivityEventBus, opts ActivityEventSubscribeOptions, fn func(context.Context, ActivityEvent), logger SessionLogWriter) {
-	runActivityConsumerWithOpts(ctx, name, bus, opts, fn, offerOption[ActivityEvent]{}, logger)
-}
-
-func runActivityConsumerWithOpts(ctx context.Context, name string, bus ActivityEventBus, opts ActivityEventSubscribeOptions, fn func(context.Context, ActivityEvent), offerOpts offerOption[ActivityEvent], logger SessionLogWriter) {
-	if bus == nil || fn == nil {
-		return
-	}
-	worker := newAsyncEventWorker(name, sideConsumerQueueSize(), 0, logger, activityLogFields)
-	worker.Start(ctx, fn)
-	ch, unsub := bus.Subscribe(opts)
-	safego.Go(ctx, name, func() {
-		defer unsub()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case ev, ok := <-ch:
-				if !ok {
-					return
-				}
-				worker.OfferWithOptions(ctx, ev, offerOpts)
-			}
-		}
-	})
 }
 
 // runActivityBridgeConsumerWithOpts subscribes to v2 EventBus, extracts the v1

@@ -18,17 +18,7 @@ func newTestWSServer(canceller RunCanceller, sender ChatSender) *WSServer {
 	return NewWSServerFromInfra(
 		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
 		&event.Infra{MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop())},
-		canceller, sender, nil, nil, loggateway.NewNoop(), nil, nil,
-	)
-}
-
-// newTestWSServerWithActivity wires a server with a real ActivityEventBus so
-// tests can subscribe to biz.ActivityEvent published by the WS handler.
-func newTestWSServerWithActivity(canceller RunCanceller, sender ChatSender, activityBus biz.ActivityEventBus) *WSServer {
-	return NewWSServerFromInfra(
-		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
-		&event.Infra{MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop())},
-		canceller, sender, nil, nil, loggateway.NewNoop(), activityBus, nil,
+		canceller, sender, nil, nil, loggateway.NewNoop(), nil,
 	)
 }
 
@@ -216,7 +206,6 @@ func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
 		nil,
 		nil,
 		loggateway.NewNoop(),
-		nil,
 		v2Bus,
 	)
 	wc := &wsConn{
@@ -276,7 +265,6 @@ func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
 		stubTurnExecutor{err: errors.New("provider raw error")},
 		nil,
 		loggateway.NewNoop(),
-		nil,
 		v2Bus,
 	)
 	wc := &wsConn{

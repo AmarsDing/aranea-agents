@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"time"
 
-	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
@@ -88,7 +87,7 @@ func (s *WSServer) readPump(wc *wsConn) {
 	cfg := s.wsConfig()
 	defer func() {
 		// Cancel connection context to stop connection-scoped goroutines
-		// (monitorEventPump, activityEventPump). Turns are NOT cancelled here —
+		// (monitorEventPump). Turns are NOT cancelled here —
 		// they use appctx.Ctx() and are cancelled via RunRegistry.Cancel.
 		s.removeConn(wc)
 		wc.close()
@@ -140,54 +139,6 @@ func (s *WSServer) monitorEventPump(wc *wsConn, monitorCh <-chan contract.Monito
 		if ok := wc.queues.enqueue(cfg, prio, data); !ok {
 			s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket 高优先级队列超时，关闭连接",
 				loggateway.StepID("ws.high_queue_timeout"), loggateway.Any("type", ev.Type))
-			wc.closeSend()
-			return
-		}
-		wc.wakeWriter()
-	}
-}
-
-// activityEventPump forwards ActivityEvents from the ActivityEventBus channel
-// to the connection's priority queues. This is the AF (Activity-First) path:
-// chat lifecycle events (created/streaming/completed/failed/cancelled/child_created)
-// are delivered as structured ActivityEvent JSON, replacing the legacy Envelope
-// metadata-packing approach.
-func (s *WSServer) activityEventPump(wc *wsConn, activityCh <-chan biz.ActivityEvent) {
-	cfg := s.wsConfig()
-	for ev := range activityCh {
-		// All ActivityEvents go to the "chat" channel (AF rendering pipeline).
-		if !wc.hasChannel("chat") {
-			continue
-		}
-		msg := wsDownstream{
-			Direction:     "server_to_client",
-			Channel:       "chat",
-			ActivityEvent: &ev,
-		}
-		data, err := json.Marshal(msg)
-		if err != nil {
-			s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket ActivityEvent 序列化失败，跳过",
-				loggateway.StepID("ws.marshal_fail_activity"),
-				loggateway.Err(err),
-				loggateway.Any("event_type", ev.Event),
-				loggateway.Any("activity_kind", ev.Activity.Kind))
-			continue
-		}
-		// Streaming events use normal priority; lifecycle events (created/completed/failed/updated)
-		// use high priority so the frontend receives them even under load.
-		// Chat UI fix (problem B): ActivityEventUpdated was previously demoted
-		// to normal priority, which delayed the is_final marker carried by
-		// markFinalReply's Updated event. Under load the frontend rendered
-		// "中间回复" and never received the correction. Promote Updated to
-		// high priority so is_final arrives promptly.
-		prio := wsPriorityNormal
-		if ev.Event != biz.ActivityEventStreaming {
-			prio = wsPriorityHigh
-		}
-		if ok := wc.queues.enqueue(cfg, prio, data); !ok {
-			s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket ActivityEvent 队列超时，关闭连接",
-				loggateway.StepID("ws.activity_queue_timeout"),
-				loggateway.Any("event_type", ev.Event))
 			wc.closeSend()
 			return
 		}

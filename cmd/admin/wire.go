@@ -88,7 +88,6 @@ import (
 
 func provideEventBusSideConsumers(
 	infra *event.Infra,
-	activityBus biz.ActivityEventBus,
 	eventBus biz.EventBus,
 	tools *biz.ToolUsecase,
 	webhooks *biz.WebhookDispatcher,
@@ -105,7 +104,7 @@ func provideEventBusSideConsumers(
 	if infra != nil {
 		monitorEventBus = infra.MonitorEventBus
 	}
-	return biz.NewEventBusSideConsumers(activityBus, eventBus, monitorEventBus, tools, webhooks, sessions, flowLogs, monitor, memWorker, traceProj, fileAppender, usage, logger)
+	return biz.NewEventBusSideConsumers(eventBus, monitorEventBus, tools, webhooks, sessions, flowLogs, monitor, memWorker, traceProj, fileAppender, usage, logger)
 }
 
 func provideCronRunnerDeps(
@@ -731,7 +730,6 @@ func provideRunnerConfig(
 	agents biz.AgentRepository,
 	activityWriter biz.ActivityWriter,
 	activityUpserter biz.ActivityUpserter,
-	activityBus biz.ActivityEventBus,
 	orgUC *biz.OrganizationUsecase,
 	toolResultGate *biz.ToolResultGate,
 	outboundRouter *outbound.Router,
@@ -754,7 +752,6 @@ func provideRunnerConfig(
 		KnowledgeUsecase: knowledgeUC,
 		Runs:             runs,
 		StreamOptsFactory: &chatactivity.StreamOptsFactoryAdapter{
-			ActivityBus: activityBus,
 			V2Projector: v2Projector,
 		},
 		AgentHelper:     &chatagent.TeamAgentHelperAdapter{},

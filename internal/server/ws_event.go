@@ -3,7 +3,6 @@ package server
 import (
 	"time"
 
-	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event/contract"
 )
 
@@ -25,16 +24,16 @@ func (s *WSServer) sendConnected(wc *wsConn, sessionID, lastEventID string) {
 }
 
 // setupEventSubscription subscribes the connection to the monitor bus and
-// activity event bus. Returns the monitor and activity event channels,
-// and sets wc.unsubscribe.
+// sets wc.unsubscribe. The v1 ActivityEventBus subscription was removed in
+// Phase 3b-D Tier 4 — chat events now flow exclusively via the v2 EventBus
+// (WSV2Subscriber → BroadcastToSession → conn priority queue).
 //
 // Phase 5 Blocker A: WS replay path has been removed. Clients needing
 // historical events should call the ListActivities RPC
 // (GET /v1/sessions/{session_id}/activities) to fetch Activity records
 // on reconnect. The server no longer replays buffered envelopes.
-func (s *WSServer) setupEventSubscription(wc *wsConn, globalMode bool) (<-chan contract.MonitorEvent, <-chan biz.ActivityEvent) {
+func (s *WSServer) setupEventSubscription(wc *wsConn, globalMode bool) <-chan contract.MonitorEvent {
 	var monitorCh <-chan contract.MonitorEvent
-	var activityCh <-chan biz.ActivityEvent
 
 	unsubAll := func() {}
 
@@ -55,25 +54,7 @@ func (s *WSServer) setupEventSubscription(wc *wsConn, globalMode bool) (<-chan c
 		}
 	}
 
-	// Subscribe to ActivityEventBus for AF (Activity-First) chat rendering.
-	if s.activityBus != nil {
-		actOpts := biz.ActivityEventSubscribeOptions{
-			BufferSize: 256,
-			GlobalMode: globalMode,
-		}
-		if !globalMode {
-			actOpts.SessionID = wc.sessionID
-		}
-		aCh, aUnsub := s.activityBus.Subscribe(actOpts)
-		activityCh = aCh
-		prev := unsubAll
-		unsubAll = func() {
-			prev()
-			aUnsub()
-		}
-	}
-
 	wc.unsubscribe = unsubAll
 
-	return monitorCh, activityCh
+	return monitorCh
 }

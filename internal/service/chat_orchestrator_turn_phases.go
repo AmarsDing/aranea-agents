@@ -527,12 +527,7 @@ func (o *ChatOrchestrator) consumeTurnStream(
 		SpiritSessionID:  sessionID,
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
-	// TODO(Phase3b-D Task 10): the first arg (ActivityBus) is the v1 bus passed
-	// to NewChatStreamConsumeOptions for stream consumer event routing. The
-	// ChatOrchestrator struct (chat_orchestrator.go) is outside this file's
-	// assigned scope, so a v2 EventBus field cannot be added here. This stays
-	// on v1 ActivityEventBus until the ChatOrchestrator struct is updated.
-	streamOpts := NewChatStreamConsumeOptions(o.td().Pipeline.ActivityBus, o.infraDeps.V2Projector)
+	streamOpts := NewChatStreamConsumeOptions(o.infraDeps.V2Projector)
 	// N-21/N-03: The v2 projector was pre-configured in invokeTurnLLMAndStream
 	// (Reset + Configure + WithActivityEmitter). It is passed via
 	// streamOpts.V2Projector; no type assertion needed. The stream consumer's

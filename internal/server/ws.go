@@ -67,12 +67,9 @@ type ChatSender interface {
 type WSServer struct {
 	store                 *connStore
 	monitorBus            contract.MonitorBus
-	activityBus           biz.ActivityEventBus
 	// eventBus is the v2 typed EventBus (Phase 3b-D). Used by publishWSErrorActivity
 	// to emit ActivityBridgeEvent payloads (wrapping v1 ActivityEvent) for the
-	// chat error activity. The legacy activityBus field is retained for the
-	// v1 Subscribe path in ws_event.go (the WS broadcast pump) until Tier 4
-	// removes the v1 WS path entirely.
+	// chat error activity. The v2 WSV2Subscriber fans these out to WS clients.
 	eventBus              biz.EventBus
 	canceller             RunCanceller
 	sender                ChatSender
@@ -86,9 +83,9 @@ type WSServer struct {
 	lg                    loggateway.Logger
 }
 
-// NewWSServerFromInfra uses monitor bus for monitor events and activity bus
-// for chat/system events (AF pipeline).
-func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnExecutor WSTurnExecutor, runtimeConf *conf.Runtime, lg loggateway.Logger, activityBus biz.ActivityEventBus, eventBus biz.EventBus) *WSServer {
+// NewWSServerFromInfra uses monitor bus for monitor events and the v2 EventBus
+// for chat/system events (AF pipeline via WSV2Subscriber).
+func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnExecutor WSTurnExecutor, runtimeConf *conf.Runtime, lg loggateway.Logger, eventBus biz.EventBus) *WSServer {
 	if c == nil || c.GetWs() == nil || !c.GetWs().GetEnable() {
 		return nil
 	}
@@ -100,7 +97,6 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 	return &WSServer{
 		store:                 newConnStore(),
 		monitorBus:            monitor,
-		activityBus:           activityBus,
 		eventBus:              eventBus,
 		canceller:             canceller,
 		sender:                sender,
@@ -210,9 +206,8 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	// Event subscription
 	var monitorCh <-chan contract.MonitorEvent
-	var activityCh <-chan biz.ActivityEvent
 	if !probeMode {
-		monitorCh, activityCh = s.setupEventSubscription(wc, globalMode)
+		monitorCh = s.setupEventSubscription(wc, globalMode)
 	}
 
 	// Register connection
@@ -236,9 +231,6 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 	if !probeMode {
 		if monitorCh != nil {
 			safego.Go(connCtx, "ws-monitor-pump", func() { s.monitorEventPump(wc, monitorCh) })
-		}
-		if activityCh != nil {
-			safego.Go(connCtx, "ws-activity-pump", func() { s.activityEventPump(wc, activityCh) })
 		}
 	}
 }

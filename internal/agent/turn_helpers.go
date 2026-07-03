@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"aranea-agents/internal/agent/v2"
-	"aranea-agents/internal/biz"
 	sessiontrpc "aranea-agents/internal/session/trpc"
 	"aranea-agents/pkg/loggateway"
 
@@ -79,7 +78,6 @@ func NewRunnerDepsFromRuntimeWithLogger(trpcSession trpcsession.Service, memory 
 
 type StreamConsumeOptions struct {
 	V2Projector *v2.ActivityProjector // v2 phase: projects runtime events into v2 events (Step/Task/Turn)
-	ActivityBus biz.ActivityEventBus  // bus for direct ActivityEvent publishing (context_usage etc.)
 }
 
 func ConsumeEventStream(
