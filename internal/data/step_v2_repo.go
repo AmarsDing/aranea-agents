@@ -69,6 +69,22 @@ func (r *stepV2Repo) ListStepsByTask(ctx context.Context, taskID string) ([]biz.
 	return entStepsV2ToBiz(rows), nil
 }
 
+// ListStepsBySession returns all steps for the given session, ordered by started_at asc.
+// Use started_at (not seq) because steps span multiple turns/tasks within a session.
+func (r *stepV2Repo) ListStepsBySession(ctx context.Context, sessionID string) ([]biz.Step, error) {
+	if r == nil || r.data == nil {
+		return nil, fmt.Errorf("step v2 repo: database not configured")
+	}
+	rows, err := r.data.RW().Read(ctx).StepV2.Query().
+		Where(stepv2.SpiritSessionID(sessionID)).
+		Order(ent.Asc(stepv2.FieldStartedAt)).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "STEP_V2")
+	}
+	return entStepsV2ToBiz(rows), nil
+}
+
 // CreateStep inserts a new Step with the caller's claimed Version.
 func (r *stepV2Repo) CreateStep(ctx context.Context, s biz.Step) (biz.Step, error) {
 	if r == nil || r.data == nil {

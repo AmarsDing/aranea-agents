@@ -68,6 +68,7 @@ type StepV2Reader interface {
 	GetStep(ctx context.Context, id string) (Step, error)
 	ListStepsByTurn(ctx context.Context, turnID string) ([]Step, error)
 	ListStepsByTask(ctx context.Context, taskID string) ([]Step, error)
+	ListStepsBySession(ctx context.Context, sessionID string) ([]Step, error) // replaces v1 ListBySession
 }
 
 type StepV2Writer interface {
