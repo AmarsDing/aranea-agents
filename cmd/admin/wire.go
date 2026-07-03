@@ -2043,9 +2043,7 @@ func provideWireOut(
 // Wiring chain: trpc event → stream_consumer → v2.Projector →
 // v2.Sequencer → RepoSet (persist) + V2Bus → WSV2Subscriber → WS client.
 //
-// CompatAdapter is constructed but NOT passed to NewSequencer (nil) to
-// avoid v1 event duplication (v1 ActivityProjector + v2 CompatAdapter
-// would both emit v1 ActivityEvents). Enabling it is a Phase 2 decision.
+// Phase 2 complete: v1 CompatAdapter removed (frontend now consumes v2 events directly).
 // ────────────────────────────────────────────────────────────
 
 // provideV2EventBus constructs the in-process fan-out bus for v2 Events.
@@ -2068,10 +2066,9 @@ func provideV2RepoSet(
 	return v2.NewRepoSetAdapter(task, turn, step, teamStage, teamRun, memberSession, planBoard, planStep)
 }
 
-// provideV2Sequencer constructs the v2 Sequencer. compat is passed as nil
-// (Phase 1 decision: avoid v1 event duplication).
+// provideV2Sequencer constructs the v2 Sequencer.
 func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, lg loggateway.Logger) *v2.Sequencer {
-	return v2.NewSequencer(rs, bus, lg, nil)
+	return v2.NewSequencer(rs, bus, lg)
 }
 
 // provideV2Projector constructs the singleton v2 ActivityProjector.

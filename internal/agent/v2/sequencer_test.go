@@ -92,7 +92,7 @@ func newTestSequencer(t *testing.T) (*Sequencer, *fakeRepoSet, *fakeBus) {
 	t.Helper()
 	rs := &fakeRepoSet{}
 	bus := &fakeBus{}
-	s := NewSequencer(rs, bus, loggateway.NewNoop(), nil, // nil compat = no v1 forwarding
+	s := NewSequencer(rs, bus, loggateway.NewNoop(),
 		WithPublishBuffer(16),
 		WithPersistBuffer(16),
 		WithDeltaBatchInterval(time.Millisecond*4),
@@ -212,7 +212,7 @@ func TestSequencer_DeadLetterOnPersistFailure(t *testing.T) {
 	t.Parallel()
 	rs := &failingRepoSet{fail: true}
 	bus := &fakeBus{}
-	s := NewSequencer(rs, bus, loggateway.NewNoop(), nil,
+	s := NewSequencer(rs, bus, loggateway.NewNoop(),
 		WithPublishBuffer(16),
 		WithPersistBuffer(16),
 		WithDeltaBatchInterval(time.Millisecond*4),

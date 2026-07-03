@@ -38,11 +38,10 @@ type EventBus interface {
 //     StepID + DeltaField within the 16ms batch window are merged.
 //  3. Persist worker: 5x exponential backoff retries + 512-cap dead-letter.
 type Sequencer struct {
-	repoSet       RepoSet
-	bus           EventBus
-	lg            loggateway.Logger
-	seqAssigner   SeqAssigner    // shared with Projector (v2-local defaultSeqAssigner; breaks agent→v2 cycle)
-	compatAdapter *CompatAdapter // nil = no v1 forwarding (Phase 1 兼容层)
+	repoSet     RepoSet
+	bus         EventBus
+	lg          loggateway.Logger
+	seqAssigner SeqAssigner // shared with Projector (v2-local defaultSeqAssigner; breaks agent→v2 cycle)
 
 	publishQueue chan publishTask
 	persistChan  chan persistItem
@@ -91,8 +90,7 @@ func WithPersistBackoff(d time.Duration) Option { return func(c *config) { c.per
 func WithDeadLetterCapacity(n int) Option       { return func(c *config) { c.deadLetterCapacity = n } }
 
 // NewSequencer constructs a Sequencer and starts its publish + persist workers.
-// compat is an optional CompatAdapter for v1 forwarding (pass nil to disable).
-func NewSequencer(rs RepoSet, bus EventBus, lg loggateway.Logger, compat *CompatAdapter, opts ...Option) *Sequencer {
+func NewSequencer(rs RepoSet, bus EventBus, lg loggateway.Logger, opts ...Option) *Sequencer {
 	cfg := config{
 		publishBuffer:      defaultPublishBufferSize,
 		persistBuffer:      defaultPersistBufferSize,
@@ -110,7 +108,6 @@ func NewSequencer(rs RepoSet, bus EventBus, lg loggateway.Logger, compat *Compat
 		bus:                bus,
 		lg:                 lg.With(loggateway.Domain("sequencer_v2")),
 		seqAssigner:        NewDefaultSeqAssigner(),
-		compatAdapter:      compat,
 		publishQueue:       make(chan publishTask, cfg.publishBuffer),
 		persistChan:        make(chan persistItem, cfg.persistBuffer),
 		deadLetter:         newDeadLetterRing(cfg.deadLetterCapacity),
@@ -251,18 +248,13 @@ func canMergeStreaming(a, b *biz.StepStreamingEvent) bool {
 }
 
 // flushStreaming publishes the merged streaming event to bus only (no persist).
-// Also forwards to v1 CompatAdapter if configured (Phase 1 兼容层).
 func (s *Sequencer) flushStreaming(ev *biz.StepStreamingEvent) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	s.bus.Publish(ctx, ev)
-	if s.compatAdapter != nil {
-		s.compatAdapter.PublishV1(ctx, ev)
-	}
 }
 
 // processTask handles a non-mergeable event: persist (async) + bus publish (sync).
-// Also forwards to v1 CompatAdapter if configured (Phase 1 兼容层).
 func (s *Sequencer) processTask(task publishTask) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -279,10 +271,6 @@ func (s *Sequencer) processTask(task publishTask) {
 	}
 	// 2. Sync bus publish.
 	s.bus.Publish(ctx, task.event)
-	// 3. v1 forwarding (only if adapter is configured).
-	if s.compatAdapter != nil {
-		s.compatAdapter.PublishV1(ctx, task.event)
-	}
 }
 
 // persistLoop consumes persistChan with retry + dead-letter.

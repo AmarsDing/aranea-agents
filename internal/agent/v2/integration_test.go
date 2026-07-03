@@ -44,23 +44,19 @@ func (r *recordingBus) Events() []biz.Event {
 
 // TestEndToEnd_V2Pipeline verifies the complete v2 pipeline:
 //
-//	Projector → Sequencer → RepoSet (fake) + EventBus (recording) + CompatAdapter → v1 ActivityEvent
+//	Projector → Sequencer → RepoSet (fake) + EventBus (recording)
 //
 // Scenario: a single spirit turn with thinking → reply, then task.completed.
 // Verifies that:
 //  1. All v2 entities are persisted to the fake RepoSet (tasks/turns/steps).
-//  2. The CompatAdapter translates v2 events to v1 ActivityEvents, with
-//     task.created as the first v1 event (kind=task).
 func TestEndToEnd_V2Pipeline(t *testing.T) {
 	t.Parallel()
 
 	// Wire up all components.
 	rs := &fakeRepoSet{}
 	v2Bus := &recordingBus{}
-	v1Bus := &fakeV1Bus{}
-	compat := NewCompatAdapter(v1Bus)
 
-	seq := NewSequencer(rs, NewEventBusAdapter(v2Bus), loggateway.NewNoop(), compat,
+	seq := NewSequencer(rs, NewEventBusAdapter(v2Bus), loggateway.NewNoop(),
 		WithPublishBuffer(64),
 		WithPersistBuffer(64),
 		WithDeltaBatchInterval(time.Millisecond*2),
@@ -107,23 +103,6 @@ func TestEndToEnd_V2Pipeline(t *testing.T) {
 		t.Errorf("expected >=4 step upserts (thinking+reply, created+completed each), got %d", len(rs.steps))
 	}
 	rs.mu.Unlock()
-
-	// Verify v1 compat got translated events.
-	v1Bus.mu.Lock()
-	defer v1Bus.mu.Unlock()
-	if len(v1Bus.pub) == 0 {
-		t.Fatalf("expected v1 events from compat adapter, got 0")
-	}
-	// The first v1 event should be task.created (kind=task), since
-	// OnTurnStart emits task.created before turn.started, and turn.started
-	// has no v1 mapping (dropped by the compat adapter).
-	first := v1Bus.pub[0]
-	if first.Activity.Kind != biz.ActivityKindTask {
-		t.Errorf("expected first v1 event kind=task, got %s", first.Activity.Kind)
-	}
-	if first.Event != biz.ActivityEventCreated {
-		t.Errorf("expected first v1 event type=created, got %s", first.Event)
-	}
 }
 
 // TestEndToEnd_FIFOOrdering verifies that turn.started is published to the
@@ -143,9 +122,8 @@ func TestEndToEnd_FIFOOrdering(t *testing.T) {
 
 	rs := &fakeRepoSet{}
 	v2Bus := &recordingBus{}
-	compat := NewCompatAdapter(&fakeV1Bus{})
 
-	seq := NewSequencer(rs, NewEventBusAdapter(v2Bus), loggateway.NewNoop(), compat,
+	seq := NewSequencer(rs, NewEventBusAdapter(v2Bus), loggateway.NewNoop(),
 		WithPublishBuffer(64),
 		WithPersistBuffer(64),
 		WithDeltaBatchInterval(time.Millisecond*2),
