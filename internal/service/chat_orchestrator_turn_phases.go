@@ -201,15 +201,14 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 	}
 	runCtx := o.prepareRunContext(ctx, input, ag, deps)
 
-	// N-21/N-03: Pre-create ActivityProjector and inject into runCtx so that
-	// plugins (cost_guard, model_router) and hooks (tool_confirmation) can emit
-	// notice/confirm Activities via biz.ActivityEmitterFromContext during the
-	// LLM call. The same projector is reused in consumeTurnStream to avoid
-	// races between early emissions and Reset() in newTurnStreamConsumer.
-	if o.activityUpserter() != nil && o.td().Pipeline.ActivityBus != nil {
-		categorizer := chatagent.NewToolCategorizerFromCatalog(ctx, o.td().ReadDeps.Tools)
-		ap := chatagent.NewActivityProjector(o.td().Pipeline.ActivityBus, o.activityUpserter(), o.lg(), categorizer)
-		ap.Reset() // initialize maps; subsequent Reset() in newTurnStreamConsumer is a no-op
+	// N-21/N-03: Pre-configure the v2 ActivityProjector and inject it into
+	// runCtx so that plugins (cost_guard, model_router) and hooks
+	// (tool_confirmation) can emit notice/confirm events via
+	// biz.ActivityEmitterFromContext during the LLM call. Reset clears stale
+	// state from a previous turn; Configure sets the meta without emitting
+	// events. OnTurnStart (called later by the stream consumer) will emit
+	// task.created + turn.started.
+	if o.infraDeps.V2Projector != nil {
 		earlyMeta := chatagent.ProjectMeta{
 			SessionID:        sessionID,
 			RequestID:        userMsg.ID,
@@ -222,8 +221,10 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 			Source:           event.EnvelopeSourceFromContext(runCtx),
 			TaskContent:      content,
 		}
-		runCtx = ap.OnTurnStart(runCtx, earlyMeta)
-		runCtx = biz.WithActivityEmitter(runCtx, ap)
+		v2Meta := chatagent.V2ProjectMetaFromV1(earlyMeta)
+		o.infraDeps.V2Projector.Reset()
+		o.infraDeps.V2Projector.Configure(v2Meta)
+		runCtx = biz.WithActivityEmitter(runCtx, o.infraDeps.V2Projector)
 	}
 
 	// LLM invocation
@@ -526,15 +527,11 @@ func (o *ChatOrchestrator) consumeTurnStream(
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
 	streamOpts := NewChatStreamConsumeOptions(o.td().ReadDeps.ToolUC, o.td().ReadDeps.Tools, o.td().ReadDeps.Agents, o.activityUpserter(), o.td().Pipeline.ActivityBus, o.infraDeps.V2Projector, o.lg())
-	// N-21/N-03: Reuse the ActivityProjector injected in invokeTurnLLMAndStream
-	// so that emissions from plugins/hooks (which fire during invokeLLMCall)
-	// are visible to the stream consumer. This avoids a race where Reset() in
-	// newTurnStreamConsumer would clear activities emitted before consumption started.
-	if emitter := biz.ActivityEmitterFromContext(runCtx); emitter != nil {
-		if p, ok := emitter.(*chatagent.ActivityProjector); ok {
-			streamOpts.ActivityProjector = p
-		}
-	}
+	// N-21/N-03: The v2 projector was pre-configured in invokeTurnLLMAndStream
+	// (Reset + Configure + WithActivityEmitter). It is passed via
+	// streamOpts.V2Projector; no type assertion needed. The stream consumer's
+	// OnTurnStart will emit task.created + turn.started, preserving any early
+	// notice/confirm steps emitted by plugins during the LLM call.
 	o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始消费事件流",
 		loggateway.StepID("chat.stream_consume_start"),
 		loggateway.Any("first_byte_timeout", firstByteTimeout.String()))

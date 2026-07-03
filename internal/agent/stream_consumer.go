@@ -69,7 +69,7 @@ func newTurnStreamConsumer(
 	// unchanged (additive — no behavioral change for existing callers).
 	if opts != nil && opts.V2Projector != nil {
 		c.SetV2Projector(opts.V2Projector)
-		v2Meta := v2ProjectMetaFromV1(projectMeta)
+		v2Meta := V2ProjectMetaFromV1(projectMeta)
 		c.v2Projector.OnTurnStart(turnCtx, v2Meta)
 	}
 	return c
@@ -83,10 +83,12 @@ func (c *turnStreamConsumer) SetV2Projector(p *v2.ActivityProjector) {
 	c.v2Enabled.Store(p != nil)
 }
 
-// v2ProjectMetaFromV1 converts a v1 ProjectMeta to a v2 ProjectMeta.
+// V2ProjectMetaFromV1 converts a v1 ProjectMeta to a v2 ProjectMeta.
 // The v2 ProjectMeta is a subset of v1's fields (the v2 model has fewer
 // session-tree fields; the rest are derived at the team/graph layer).
-func v2ProjectMetaFromV1(m ProjectMeta) v2.ProjectMeta {
+// Exported so chat_orchestrator and team runner can construct v2 meta
+// without duplicating the field mapping.
+func V2ProjectMetaFromV1(m ProjectMeta) v2.ProjectMeta {
 	return v2.ProjectMeta{
 		SessionID:       m.SessionID,
 		SpiritSessionID: m.SpiritSessionID,
@@ -357,7 +359,7 @@ func (c *turnStreamConsumer) finalize() {
 	// v2 dual-path: finalize the v2 turn (emits turn.completed + task.completed).
 	// Runs independently of v1 so the v2 path works even when v1 is not wired.
 	if c.v2Enabled.Load() && c.v2Projector != nil {
-		v2Meta := v2ProjectMetaFromV1(c.projectMeta)
+		v2Meta := V2ProjectMetaFromV1(c.projectMeta)
 		c.v2Projector.OnTurnEnd(c.turnCtx, v2Meta)
 	}
 }
