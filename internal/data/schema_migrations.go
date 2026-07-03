@@ -17,8 +17,6 @@ const (
 	migrationNameTurnIndexToTurnID           = "turn_index_to_turn_id"
 	MigrationSessionStatusIdle               = 20260531
 	migrationNameSessionStatusIdle           = "session_status_active_to_idle"
-	MigrationActivityBackfill                = 20260801
-	migrationNameActivityBackfill            = "activity_backfill_pre_af"
 	MigrationSessionTurnNumberBackfill       = 20260802
 	migrationNameSessionTurnNumberBackfill   = "session_turn_number_backfill"
 	MigrationSessionTurnNumberRebackfill     = 20260803
