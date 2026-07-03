@@ -50,7 +50,7 @@ import { useContextualLoadingMessage } from './useContextualLoadingMessage';
 import { useStatusPulse } from './useStatusPulse';
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
 import { useChatEventRouter } from './useChatEventRouter';
-import type { V2WsEnvelope, SystemNoticeEventPayload } from '../v2Types';
+import type { V2WsEnvelope, SystemNoticeEventPayload, RunStatusEventPayload } from '../v2Types';
 import { useSessionTree } from './useSessionTree';
 import { useSystemEventNotification } from './useSystemEventNotification';
 import type { ActivityEvent as AFActivityEvent } from '../../../realtime/activityEvent';
@@ -124,15 +124,22 @@ export function useChatWorkspace() {
     // Phase 3b-D Task 12: intercept v2 system-domain events for side-effect
     // routing. Entity events (task/turn/step/team_stage/etc.) go to the v2
     // event router → activityV2Store. System events need side-effect routing
-    // (metrics refresh, spirit store updates) that the store cannot provide.
+    // (metrics refresh, spirit store updates, run-status application) that the
+    // store cannot provide.
     if (envelope.kind === 'system.notice') {
       handleV2SystemNotice(envelope.payload as SystemNoticeEventPayload);
       return;
     }
-    if (envelope.kind === 'system.heartbeat' || envelope.kind === 'system.run_status') {
+    if (envelope.kind === 'system.run_status') {
+      // Phase 3b-D: backend PublishRunStatus/PublishRunStatusFull migrated to v2
+      // (commit d5a52ea7e). Route to applyRunStatusFromActivityEvent (follow-up
+      // queue, runStatus ref, tool-message cancellation) and inboundActivityEventHandler
+      // (session refresh, channel focus, stream unseal).
+      handleV2RunStatus(envelope.payload as RunStatusEventPayload);
+      return;
+    }
+    if (envelope.kind === 'system.heartbeat') {
       // Acknowledged but no side-effect routing needed yet.
-      // system.run_status is not currently published by the backend (PublishRunStatus
-      // still uses v1 ActivityEventBus — Task 10 deferred its migration).
       // system.heartbeat carries progress metadata for a future heartbeat display.
       return;
     }
@@ -688,6 +695,82 @@ export function useChatWorkspace() {
         collapsed: false,
         label: '',
         meta: { ...(payload.Meta ?? {}), notice_type: payload.NoticeType, message: payload.Message },
+      },
+    };
+  }
+
+  /**
+   * Phase 3b-D: Route v2 system.run_status events to side-effects.
+   *
+   * Backend PublishRunStatus/PublishRunStatusFull (commit d5a52ea7e) emit
+   * biz.NewRunStatusEvent on the v2 EventBus. These arrive as v2_event
+   * envelopes but need the same side-effects as v1 stage=run_status events:
+   *   - applyRunStatusFromActivityEvent: follow-up queue, runStatus ref,
+   *     tool-message cancellation on terminal statuses.
+   *   - inboundActivityEventHandler: session refresh, channel focus, stream
+   *     unseal on RUNNING status.
+   *
+   * v1 run_status events still arrive via the v1 activity_event path and are
+   * handled by useSystemEventNotification — those continue to work.
+   */
+  function handleV2RunStatus(payload: RunStatusEventPayload) {
+    const sid = selectedSessionForUi.value?.id;
+    if (!sid) return;
+    const afEv = v2RunStatusToAFEvent(payload, sid);
+    applyRunStatusFromActivityEvent(afEv);
+    inboundActivityEventHandler?.(afEv);
+  }
+
+  /**
+   * Build a minimal v1 ActivityEvent from a v2 RunStatusEventPayload so it
+   * can be consumed by runStatusFromActivityEvent (which requires
+   * `activity.stage === 'run_status'` and reads status/run_id/error_message/
+   * await_kind/await_tool_key/await_tool_call_id from `activity.meta`).
+   *
+   * Backend PublishRunStatusFull populates Meta with all await fields plus
+   * run_id/status/error_message/session_run_id/turn_id/notice_type. Top-level
+   * RunID/Status fields are merged as fallback in case Meta is partial.
+   */
+  function v2RunStatusToAFEvent(payload: RunStatusEventPayload, sessionId: string): AFActivityEvent {
+    const meta = {
+      ...(payload.Meta ?? {}),
+      run_id: payload.RunID,
+      status: payload.Status,
+    };
+    return {
+      event: 'created',
+      activity: {
+        id: `v2-rs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        kind: 'session',
+        status: 'running',
+        session_id: sessionId,
+        turn_id: '',
+        parent_activity_id: '',
+        timestamp: new Date().toISOString(),
+        duration_ms: 0,
+        seq: 0,
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        content: '',
+        reasoning: '',
+        tool_name: '',
+        tool_category: 'other',
+        tool_call_id: '',
+        tool_arguments: '',
+        tool_result: '',
+        tool_duration_ms: 0,
+        tool_error_code: '',
+        stage: 'run_status',
+        child_board_id: '',
+        spirit_session_id: sessionId,
+        team_id: '',
+        dag_node_id: '',
+        depends_on: [],
+        agent_key: '',
+        agent_name: '',
+        collapsed: false,
+        label: '',
+        meta,
       },
     };
   }
