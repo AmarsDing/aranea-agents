@@ -35,7 +35,9 @@ func (f *fakePlanner) ConfirmPlan(_ context.Context, _ string, _ biz.PlanAdjustm
 	return nil, nil
 }
 
-// gateCaptureBus captures published ActivityEvents for assertion.
+// gateCaptureBus captures published v1 ActivityEvents for assertion.
+// Used by tests that still call v1-only publishers (PublishRunStatus / PublishSessionStatusChanged).
+// v2-migrated tests use captureEventBus instead.
 type gateCaptureBus struct {
 	mu        sync.Mutex
 	published []biz.ActivityEvent
@@ -92,7 +94,7 @@ func TestPrePlanningGate_Evaluate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			bus := &gateCaptureBus{}
+			bus := &captureEventBus{}
 			gate := NewPrePlanningGate(
 				&fakePlanner{quickLevel: tt.level, quickScore: tt.score},
 				bus,
@@ -115,22 +117,33 @@ func TestPrePlanningGate_Evaluate(t *testing.T) {
 			if decision.Score != tt.score {
 				t.Errorf("Score = %.4f, want %.4f", decision.Score, tt.score)
 			}
-			if len(bus.events()) != tt.wantEventCount {
-				t.Errorf("published events = %d, want %d", len(bus.events()), tt.wantEventCount)
+			published := bus.snapshot()
+			if len(published) != tt.wantEventCount {
+				t.Errorf("published events = %d, want %d", len(published), tt.wantEventCount)
 			}
-			// Verify start (created) + done (completed) events
-			published := bus.events()
+			// Verify start (running) + done (completed) events as v2 StepCreatedEvents.
 			if len(published) >= 2 {
-				if published[0].Event != biz.ActivityEventCreated {
-					t.Errorf("first event = %s, want %s", published[0].Event, biz.ActivityEventCreated)
+				startEv, ok := published[0].(*biz.StepCreatedEvent)
+				if !ok {
+					t.Fatalf("first event type = %T, want *biz.StepCreatedEvent", published[0])
 				}
-				if published[1].Event != biz.ActivityEventCompleted {
-					t.Errorf("last event = %s, want %s", published[1].Event, biz.ActivityEventCompleted)
+				if startEv.EventKind() != biz.EventKindStepCreated {
+					t.Errorf("first event kind = %s, want %s", startEv.EventKind(), biz.EventKindStepCreated)
+				}
+				if startEv.Step.Status != biz.StepStatusRunning {
+					t.Errorf("first step status = %s, want %s", startEv.Step.Status, biz.StepStatusRunning)
+				}
+				doneEv, ok := published[1].(*biz.StepCreatedEvent)
+				if !ok {
+					t.Fatalf("last event type = %T, want *biz.StepCreatedEvent", published[1])
+				}
+				if doneEv.Step.Status != biz.StepStatusCompleted {
+					t.Errorf("last step status = %s, want %s", doneEv.Step.Status, biz.StepStatusCompleted)
 				}
 				// B.4.3: pre-planning assess phase renders as NoticeBlock (Kind=notice),
 				// not PlanBlock (Kind=plan), to avoid "UI 提前占位" before real plan arrives.
-				if published[0].Activity.Kind != biz.ActivityKindNotice {
-					t.Errorf("first activity kind = %s, want %s", published[0].Activity.Kind, biz.ActivityKindNotice)
+				if startEv.Step.Kind != biz.StepKindNotice {
+					t.Errorf("first step kind = %s, want %s", startEv.Step.Kind, biz.StepKindNotice)
 				}
 			}
 		})
@@ -138,7 +151,7 @@ func TestPrePlanningGate_Evaluate(t *testing.T) {
 }
 
 func TestPrePlanningGate_Evaluate_PropagatesQuickAssessError(t *testing.T) {
-	bus := &gateCaptureBus{}
+	bus := &captureEventBus{}
 	gate := NewPrePlanningGate(
 		&fakePlanner{quickErr: errors.New("assess failed")},
 		bus,

@@ -373,7 +373,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	runs := coalesceRunRegistry(deps.Turn.Runs)
 	pending := coalescePendingQueue(deps.Turn.PendingQueue)
 	sessionLocks := biz.NewSessionLockManager()
-	chatUC := NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Turn.Sessions, deps.Turn.Pipeline.ActivityBus, deps.Infra.LG)
+	chatUC := NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Turn.Sessions, deps.Turn.Pipeline.ActivityBus, deps.Turn.Pipeline.EventBus, deps.Infra.LG)
 	// Wire provider/model resolution ports (BA4): biz-layer methods need
 	// access to RefineLLM config, LLM catalog, and session updates.
 	chatUC.SetRefineLLMLookup(deps.Turn.ReadDeps.Settings)
@@ -383,7 +383,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	// Build individual sub-managers first.
 	stateMgr := sessionStateTransitor(deps.Infra.TurnLifecycle)
 	metrics := turnRecorder(newChatTurnMetrics(deps.Turn.Sessions, deps.Usage.Usage, deps.Infra.LG))
-	evtPub := turnEventPublisher(newChatTurnEventPublisher(deps.Turn.Sessions, deps.Turn.Pipeline.ActivityBus, deps.Infra.LG))
+	evtPub := turnEventPublisher(newChatTurnEventPublisher(deps.Turn.Sessions, deps.Turn.Pipeline.EventBus, deps.Infra.LG))
 	rStatus := runStatusTracker(newChatRunStatusTracker(runs, deps.Turn.Sessions, deps.Turn.Pipeline.ActivityBus, deps.Infra.LG))
 	pendQ := pendingQueueManager(newChatPendingQueueManager(chatUC))
 	awaitCoord := awaitCoordinator(newChatAwaitCoordinator(chatAwaitCoordinatorDeps{
@@ -399,7 +399,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 			}
 			return araneasession.NewRuntime(deps.Turn.Persist.Session, deps.Infra.LG)
 		},
-		ActivityBus: deps.Turn.Pipeline.ActivityBus,
+		EventBus:     deps.Turn.Pipeline.EventBus,
 		Logger:      deps.Infra.LG,
 	}))
 	sessRunLC := sessionRunLifecycle(newChatSessionRunLifecycle(chatSessionRunLifecycleDeps{

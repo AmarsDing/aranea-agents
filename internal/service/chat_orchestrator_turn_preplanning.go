@@ -45,7 +45,7 @@ func (o *ChatOrchestrator) runPrePlanningGate(
 		return GateDecision{}, nil
 	}
 
-	bus := o.td().Pipeline.ActivityBus
+	bus := o.td().Pipeline.EventBus
 	gate := NewPrePlanningGate(planner, bus, o.lg())
 
 	planInput := biz.PlanInput{

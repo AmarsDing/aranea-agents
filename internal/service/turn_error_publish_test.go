@@ -11,7 +11,7 @@ import (
 )
 
 func TestPublishTurnFailure_usesEnvelopeErrorFromTurn(t *testing.T) {
-	activityBus := &gateCaptureBus{}
+	activityBus := &captureEventBus{}
 	evtPub := newChatTurnEventPublisher(nil, activityBus, nil)
 	orch := &ChatOrchestrator{
 		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{}}},
@@ -24,33 +24,27 @@ func TestPublishTurnFailure_usesEnvelopeErrorFromTurn(t *testing.T) {
 	te := TurnError(TurnErrLLMCallFailed, "connection reset")
 	orch.publishTurnFailure("sess-1", "run-1", "chat-service", te, "")
 
-	events := activityBus.events()
+	events := activityBus.snapshot()
 	if len(events) != 1 {
-		t.Fatalf("expected 1 ActivityEvent, got %d", len(events))
+		t.Fatalf("expected 1 Event, got %d", len(events))
 	}
-	ev := events[0]
-	if ev.Event != biz.ActivityEventFailed {
-		t.Fatalf("expected event %s, got %s", biz.ActivityEventFailed, ev.Event)
+	ev, ok := events[0].(*biz.TaskFailedEvent)
+	if !ok {
+		t.Fatalf("expected *biz.TaskFailedEvent, got %T", events[0])
 	}
-	if ev.Activity.Kind != biz.ActivityKindTask {
-		t.Fatalf("expected kind %s, got %s", biz.ActivityKindTask, ev.Activity.Kind)
+	if ev.EventKind() != biz.EventKindTaskFailed {
+		t.Fatalf("expected event kind %s, got %s", biz.EventKindTaskFailed, ev.EventKind())
 	}
-	if ev.Activity.Status != biz.ActivityStatusFailed {
-		t.Fatalf("expected status %s, got %s", biz.ActivityStatusFailed, ev.Activity.Status)
+	if ev.Task.Status != biz.TaskStatusFailed {
+		t.Fatalf("expected task status %s, got %s", biz.TaskStatusFailed, ev.Task.Status)
 	}
-	if ev.Activity.Meta["error_code"] != string(TurnErrLLMCallFailed) {
-		t.Fatalf("unexpected error_code: %v", ev.Activity.Meta["error_code"])
-	}
-	if ev.Activity.Meta["run_id"] != "run-1" {
-		t.Fatalf("expected run_id run-1, got %v", ev.Activity.Meta["run_id"])
-	}
-	if ev.Activity.Meta["error_hint"] == "" {
-		t.Fatal("expected non-empty hint for LLM_CALL_FAILED")
+	if ev.Task.SessionID != "sess-1" {
+		t.Fatalf("expected session id sess-1, got %s", ev.Task.SessionID)
 	}
 }
 
 func TestPublishTurnFailure_pendingID(t *testing.T) {
-	activityBus := &gateCaptureBus{}
+	activityBus := &captureEventBus{}
 	evtPub := newChatTurnEventPublisher(nil, activityBus, nil)
 	orch := &ChatOrchestrator{
 		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{}}},
@@ -60,11 +54,17 @@ func TestPublishTurnFailure_pendingID(t *testing.T) {
 			turnEventPublisher:    evtPub,
 		},
 	}
+	// Phase 3b-D: v2 Task entity has no Meta field, so pending_id is no longer
+	// propagated. This test now verifies that a non-empty pendingID does not
+	// break the publish path and still emits exactly one TaskFailedEvent.
 	orch.publishTurnFailure("sess-1", "", "pending-queue", TurnError(TurnErrTurnTimeout, "5m"), "pend-1")
 
-	events := activityBus.events()
-	if len(events) != 1 || events[0].Activity.Meta["pending_id"] != "pend-1" {
-		t.Fatalf("expected pending_id pend-1, got %+v", events)
+	events := activityBus.snapshot()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 Event, got %d", len(events))
+	}
+	if _, ok := events[0].(*biz.TaskFailedEvent); !ok {
+		t.Fatalf("expected *biz.TaskFailedEvent, got %T", events[0])
 	}
 }
 
@@ -110,7 +110,7 @@ func (r *recordingRunStatusTracker) PublishRunStatus(sessionID, runID, status, e
 
 // newFailTurnTestOrch builds a ChatOrchestrator wired with the given
 // runStatusTracker, suitable for testing failTurn/markAndPublish.
-func newFailTurnTestOrch(activityBus *gateCaptureBus, rs runStatusTracker) *ChatOrchestrator {
+func newFailTurnTestOrch(activityBus *captureEventBus, rs runStatusTracker) *ChatOrchestrator {
 	evtPub := newChatTurnEventPublisher(nil, activityBus, nil)
 	return &ChatOrchestrator{
 		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{}}},
@@ -129,7 +129,7 @@ func newFailTurnTestOrch(activityBus *gateCaptureBus, rs runStatusTracker) *Chat
 }
 
 func TestFailTurn_cascadeAndReturn(t *testing.T) {
-	activityBus := &gateCaptureBus{}
+	activityBus := &captureEventBus{}
 	rs := &recordingRunStatusTracker{}
 	orch := newFailTurnTestOrch(activityBus, rs)
 
@@ -172,18 +172,22 @@ func TestFailTurn_cascadeAndReturn(t *testing.T) {
 		t.Errorf("PublishRunStatus = %+v", p)
 	}
 
-	// publishTurnFailure emitted a failed ActivityEvent.
-	events := activityBus.events()
+	// publishTurnFailure emitted a failed TaskFailedEvent.
+	events := activityBus.snapshot()
 	if len(events) != 1 {
-		t.Fatalf("expected 1 ActivityEvent, got %d", len(events))
+		t.Fatalf("expected 1 Event, got %d", len(events))
 	}
-	if events[0].Activity.Meta["run_id"] != "run-1" {
-		t.Errorf("expected run_id run-1, got %v", events[0].Activity.Meta["run_id"])
+	ev, ok := events[0].(*biz.TaskFailedEvent)
+	if !ok {
+		t.Fatalf("expected *biz.TaskFailedEvent, got %T", events[0])
+	}
+	if ev.Task.SessionID != "sess-1" {
+		t.Errorf("expected session id sess-1, got %s", ev.Task.SessionID)
 	}
 }
 
 func TestFailTurn_beforePublishCallback(t *testing.T) {
-	activityBus := &gateCaptureBus{}
+	activityBus := &captureEventBus{}
 	rs := &recordingRunStatusTracker{}
 	orch := newFailTurnTestOrch(activityBus, rs)
 
@@ -218,7 +222,7 @@ func TestFailTurn_beforePublishCallback(t *testing.T) {
 }
 
 func TestMarkAndPublish_setsStateAndPublishes(t *testing.T) {
-	activityBus := &gateCaptureBus{}
+	activityBus := &captureEventBus{}
 	orch := newFailTurnTestOrch(activityBus, noopRunStatusTracker{})
 
 	turnStatus := "ok"
@@ -239,12 +243,16 @@ func TestMarkAndPublish_setsStateAndPublishes(t *testing.T) {
 		t.Errorf("turnErrMsg = %q, want %q", turnErrMsg, testErr.Error())
 	}
 
-	// publishTurnFailure emitted a failed ActivityEvent.
-	events := activityBus.events()
+	// publishTurnFailure emitted a failed TaskFailedEvent.
+	events := activityBus.snapshot()
 	if len(events) != 1 {
-		t.Fatalf("expected 1 ActivityEvent, got %d", len(events))
+		t.Fatalf("expected 1 Event, got %d", len(events))
 	}
-	if events[0].Activity.Meta["run_id"] != "run-1" {
-		t.Errorf("expected run_id run-1, got %v", events[0].Activity.Meta["run_id"])
+	ev, ok := events[0].(*biz.TaskFailedEvent)
+	if !ok {
+		t.Fatalf("expected *biz.TaskFailedEvent, got %T", events[0])
+	}
+	if ev.Task.SessionID != "sess-1" {
+		t.Errorf("expected session id sess-1, got %s", ev.Task.SessionID)
 	}
 }

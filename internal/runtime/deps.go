@@ -72,6 +72,7 @@ type PersistenceSet struct {
 // ActivityEvent.SequencerHandled flag on the bus.
 type EventPipeline struct {
 	ActivityBus     biz.ActivityEventBus
+	EventBus        biz.EventBus // Phase 3b-D: v2 EventBus for typed Events (replaces ActivityBus for new code)
 	MonitorEventBus contract.MonitorBus
 }
 
