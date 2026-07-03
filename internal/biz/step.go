@@ -25,6 +25,7 @@ type Step struct {
 	ToolResult      json.RawMessage
 	ToolDurationMs  int64
 	ToolErrorCode   string
+	NoticeType      string // kind=notice: notification type (e.g. "model_router", "cost_guard")
 	Status          StepStatus
 	IsFinal         bool // reply 是否为最终回复
 	StartedAt       time.Time

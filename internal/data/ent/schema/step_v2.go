@@ -37,6 +37,7 @@ func (StepV2) Fields() []ent.Field {
 		field.Text("tool_result").Default("").Sensitive(),
 		field.Int64("tool_duration_ms").Default(0),
 		field.String("tool_error_code").MaxLen(64).Default(""),
+		field.String("notice_type").MaxLen(64).Default("").Comment("kind=notice: notification type (e.g. model_router, cost_guard)"),
 		field.String("status").MaxLen(32).Default("pending"),
 		field.Bool("is_final").Default(false).Comment("reply: is this the final reply"),
 		field.Time("started_at").Default(timeNow),

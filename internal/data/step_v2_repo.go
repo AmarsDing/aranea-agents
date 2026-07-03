@@ -91,6 +91,7 @@ func (r *stepV2Repo) CreateStep(ctx context.Context, s biz.Step) (biz.Step, erro
 		SetToolResult(string(s.ToolResult)).
 		SetToolDurationMs(s.ToolDurationMs).
 		SetToolErrorCode(s.ToolErrorCode).
+		SetNoticeType(s.NoticeType).
 		SetStatus(string(s.Status)).
 		SetIsFinal(s.IsFinal).
 		SetStartedAt(s.StartedAt).
@@ -117,6 +118,7 @@ func (r *stepV2Repo) UpdateStep(ctx context.Context, s biz.Step) (biz.Step, erro
 		SetToolResult(string(s.ToolResult)).
 		SetToolDurationMs(s.ToolDurationMs).
 		SetToolErrorCode(s.ToolErrorCode).
+		SetNoticeType(s.NoticeType).
 		SetStatus(string(s.Status)).
 		SetIsFinal(s.IsFinal).
 		SetVersion(s.Version)
@@ -152,6 +154,7 @@ func (r *stepV2Repo) UpsertStep(ctx context.Context, s biz.Step) (biz.Step, erro
 		SetToolResult(string(s.ToolResult)).
 		SetToolDurationMs(s.ToolDurationMs).
 		SetToolErrorCode(s.ToolErrorCode).
+		SetNoticeType(s.NoticeType).
 		SetStatus(string(s.Status)).
 		SetIsFinal(s.IsFinal).
 		SetVersion(s.Version)
@@ -182,6 +185,7 @@ func (r *stepV2Repo) UpsertStep(ctx context.Context, s biz.Step) (biz.Step, erro
 		SetToolResult(string(s.ToolResult)).
 		SetToolDurationMs(s.ToolDurationMs).
 		SetToolErrorCode(s.ToolErrorCode).
+		SetNoticeType(s.NoticeType).
 		SetStatus(string(s.Status)).
 		SetIsFinal(s.IsFinal).
 		SetStartedAt(s.StartedAt).
@@ -228,6 +232,7 @@ func entStepV2ToBiz(row *ent.StepV2) biz.Step {
 		ToolResult:      json.RawMessage(row.ToolResult),
 		ToolDurationMs:  row.ToolDurationMs,
 		ToolErrorCode:   row.ToolErrorCode,
+		NoticeType:      row.NoticeType,
 		Status:          biz.StepStatus(row.Status),
 		IsFinal:         row.IsFinal,
 		StartedAt:       row.StartedAt,
