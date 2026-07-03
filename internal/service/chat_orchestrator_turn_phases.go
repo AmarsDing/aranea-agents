@@ -526,7 +526,7 @@ func (o *ChatOrchestrator) consumeTurnStream(
 		SpiritSessionID:  sessionID,
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
-	streamOpts := NewChatStreamConsumeOptions(o.td().ReadDeps.ToolUC, o.td().ReadDeps.Tools, o.td().ReadDeps.Agents, o.activityUpserter(), o.td().Pipeline.ActivityBus, o.infraDeps.V2Projector, o.lg())
+	streamOpts := NewChatStreamConsumeOptions(o.td().Pipeline.ActivityBus, o.infraDeps.V2Projector)
 	// N-21/N-03: The v2 projector was pre-configured in invokeTurnLLMAndStream
 	// (Reset + Configure + WithActivityEmitter). It is passed via
 	// streamOpts.V2Projector; no type assertion needed. The stream consumer's

@@ -78,9 +78,8 @@ func NewRunnerDepsFromRuntimeWithLogger(trpcSession trpcsession.Service, memory 
 }
 
 type StreamConsumeOptions struct {
-	MetaResolver ActivityMetaResolver
-	V2Projector  *v2.ActivityProjector // v2 phase: projects runtime events into v2 events (Step/Task/Turn)
-	ActivityBus  biz.ActivityEventBus  // bus for direct ActivityEvent publishing (context_usage etc.)
+	V2Projector *v2.ActivityProjector // v2 phase: projects runtime events into v2 events (Step/Task/Turn)
+	ActivityBus biz.ActivityEventBus  // bus for direct ActivityEvent publishing (context_usage etc.)
 }
 
 func ConsumeEventStream(

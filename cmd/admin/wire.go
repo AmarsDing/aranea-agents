@@ -753,10 +753,8 @@ func provideRunnerConfig(
 		KnowledgeUsecase: knowledgeUC,
 		Runs:             runs,
 		StreamOptsFactory: &chatactivity.StreamOptsFactoryAdapter{
-			Tools: tools, Agents: agents,
-			ActivityUpserter: activityUpserter, ActivityBus: activityBus,
-			V2Projector: v2Projector,
-			Logger:      lg,
+			ActivityBus:  activityBus,
+			V2Projector:  v2Projector,
 		},
 		AgentHelper:     &chatagent.TeamAgentHelperAdapter{},
 		OrganizationUC:  orgUC,
