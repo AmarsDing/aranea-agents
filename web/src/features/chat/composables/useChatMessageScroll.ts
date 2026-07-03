@@ -1,6 +1,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type ComputedRef, type Ref } from 'vue';
 import type { Message } from '../types';
-import type { ActivityTreeNode } from '../activityTypes';
+import type { Task } from '../v2Types';
 
 const SCROLL_BOTTOM_THRESHOLD = 80;
 
@@ -8,10 +8,10 @@ export type ChatMessageScrollOpts = {
   sessionKey: Ref<string> | ComputedRef<string>;
   messages: Ref<Message[]>;
   messagesScrollEl: Ref<HTMLElement | null>;
-  /** B-04 / Activity-First: activity tree driving ActivityStream rendering.
-   *  Watching its length ensures new activities (thinking/action/reply/notice)
-   *  trigger auto-scroll just like new messages. */
-  activityTree?: Ref<ActivityTreeNode[]> | ComputedRef<ActivityTreeNode[]>;
+  /** B-04 / Activity-First: tasks driving v2 SessionPanel rendering.
+   *  Watching its length ensures new tasks trigger auto-scroll just like
+   *  new messages. */
+  tasks?: Ref<Task[]> | ComputedRef<Task[]>;
 };
 
 export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
@@ -111,12 +111,12 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
     },
   );
 
-  // B-04 / Activity-First: auto-scroll when the activity tree grows.
-  // New activities (thinking/action/reply/notice) render in ActivityStream,
-  // but messages.length may stay unchanged, so the messages watcher above
-  // would not trigger. This watcher closes the gap.
+  // B-04 / Activity-First: auto-scroll when the tasks array grows.
+  // New tasks render in v2 SessionPanel, but messages.length may stay
+  // unchanged, so the messages watcher above would not trigger. This
+  // watcher closes the gap.
   watch(
-    () => opts.activityTree?.value.length ?? 0,
+    () => opts.tasks?.value.length ?? 0,
     (len, prev) => {
       if (len === 0) return;
       if (prev === 0) {
@@ -129,16 +129,16 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
     },
   );
 
-  // P1#4: auto-scroll when a new final reply is marked. The activity tree
-  // length may not change (a streaming reply transitions to terminal), so the
-  // length watcher alone misses it. We watch a signature of the latest final
-  // reply and throttle the scroll with requestAnimationFrame.
+  // P1#4: auto-scroll when a task transitions to a terminal status. The tasks
+  // array length may not change (a running task transitions to completed), so
+  // the length watcher alone misses it. We watch a signature of the latest
+  // terminal task and throttle the scroll with requestAnimationFrame.
   const lastFinalReplySignature = computed(() => {
-    const tree = opts.activityTree?.value ?? [];
-    for (let i = tree.length - 1; i >= 0; i--) {
-      const node = tree[i];
-      if (node.kind === 'reply' && node.meta?.is_final === true) {
-        return `${node.id}:${node.timestamp}`;
+    const tasks = opts.tasks?.value ?? [];
+    for (let i = tasks.length - 1; i >= 0; i--) {
+      const t = tasks[i];
+      if (t.Status === 'completed' || t.Status === 'failed' || t.Status === 'cancelled') {
+        return `${t.ID}:${t.Status}:${t.CompletedAt ?? ''}`;
       }
     }
     return '';
