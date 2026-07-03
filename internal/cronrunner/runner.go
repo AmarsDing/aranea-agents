@@ -21,7 +21,6 @@ import (
 	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
 
-	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -68,8 +67,8 @@ type Deps struct {
 	Session           *biz.SessionUsecase
 	Teams             biz.TeamReader
 	Agents            biz.AgentRepository
-	ActivityBus       biz.ActivityEventBus // unified bus for chat/system Activity events
-	MonitorBus        contract.MonitorBus  // typed monitor bus (cron.dead_letter)
+	EventBus          biz.EventBus        // v2 unified bus for chat/system events
+	MonitorBus        contract.MonitorBus // typed monitor bus (cron.dead_letter)
 	Chat              CronChatRunner
 	RegistrySyncAgent CronRegistrySyncAgent
 }
@@ -407,24 +406,19 @@ func cronChatPOSTRoot() string {
 }
 
 func (r *Runner) publishTeamCronMaybe(ctx context.Context, teamID string) {
-	if r.deps.ActivityBus == nil {
+	if r.deps.EventBus == nil {
 		return
 	}
-	ev := biz.ActivityEvent{
-		Event: biz.ActivityEventCompleted,
-		Activity: biz.Activity{
-			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindTeamStage,
-			Status:    biz.ActivityStatusCompleted,
-			Timestamp: time.Now().UTC(),
-			TeamID:    teamID,
-			AgentKey:  "cron",
-			Stage:     "finished",
-			Meta:      map[string]any{"hint": true, "stage": "finished"},
-		},
-		Domain: biz.ActivityDomainChat,
+	// Cron "team finished" hint: published as a v2 SystemNoticeEvent so the
+	// frontend WS subscribers receive it. The v1 kind=team_stage/status=completed
+	// hint is flattened into noticeType + meta (no real TeamStage entity exists).
+	meta := map[string]any{
+		"hint":      true,
+		"stage":     "finished",
+		"team_id":   teamID,
+		"agent_key": "cron",
 	}
-	r.deps.ActivityBus.Publish(ctx, ev)
+	r.deps.EventBus.Publish(ctx, biz.NewSystemNoticeEvent("", "cron_team_finished", "cron team finished", meta))
 }
 
 func (r *Runner) postChat(ctx context.Context, in sendMessagePayload) (cronDispatchResult, error) {

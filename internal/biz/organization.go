@@ -4,7 +4,6 @@ import (
 	"context"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -99,13 +98,13 @@ type OrganizationUsecase struct {
 	teamLister  DeptTeamLister
 	teamWriter  TeamWriter
 	agentClear  DeptAgentPositionClearer
-	activityBus ActivityEventBus
+	eventBus    EventBus
 	lg          loggateway.Logger
 	posPrompt   *PositionPromptUsecase
 }
 
-func NewOrganizationUsecase(repo OrganizationRepo, deptLeadMgr *DeptLeadManager, teamLister DeptTeamLister, teamWriter TeamWriter, agentClear DeptAgentPositionClearer, posPrompt *PositionPromptUsecase, activityBus ActivityEventBus, lg loggateway.Logger) *OrganizationUsecase {
-	return &OrganizationUsecase{repo: repo, deptLeadMgr: deptLeadMgr, teamLister: teamLister, teamWriter: teamWriter, agentClear: agentClear, activityBus: activityBus, lg: lg, posPrompt: posPrompt}
+func NewOrganizationUsecase(repo OrganizationRepo, deptLeadMgr *DeptLeadManager, teamLister DeptTeamLister, teamWriter TeamWriter, agentClear DeptAgentPositionClearer, posPrompt *PositionPromptUsecase, eventBus EventBus, lg loggateway.Logger) *OrganizationUsecase {
+	return &OrganizationUsecase{repo: repo, deptLeadMgr: deptLeadMgr, teamLister: teamLister, teamWriter: teamWriter, agentClear: agentClear, eventBus: eventBus, lg: lg, posPrompt: posPrompt}
 }
 
 func (u *OrganizationUsecase) List(ctx context.Context) ([]OrganizationNode, error) {
@@ -469,32 +468,21 @@ func ErrOrgBadRequest(msg string) error {
 	return apierror.BadRequest("ORG", msg)
 }
 
-// publishOrgEvent publishes an organization CRUD event as a system-domain
-// ActivityEvent (NOT persisted, WS-only broadcast).
+// publishOrgEvent publishes an organization CRUD event as a v2 SystemNoticeEvent
+// (replaces the legacy system-domain ActivityEvent; NOT persisted, WS-only broadcast).
 // Uses context.Background() intentionally: event publishing is fire-and-forget
 // and should not be cancelled when the originating request context expires.
 func (u *OrganizationUsecase) publishOrgEvent(eventType, content string, node OrganizationNode) {
-	if u.activityBus == nil {
+	if u.eventBus == nil {
 		return
 	}
-	ev := ActivityEvent{
-		Event: ActivityEventCreated,
-		Activity: Activity{
-			ID:        uuid.NewString(),
-			Kind:      ActivityKindNotice,
-			Status:    ActivityStatusCompleted,
-			Timestamp: time.Now().UTC(),
-			Content:   content,
-			Meta: map[string]any{
-				"event_type": eventType,
-				"org_id":     node.ID,
-				"org_key":    node.Key,
-				"org_name":   node.Name,
-				"level":      node.Level,
-				"status":     node.Status,
-			},
-		},
-		Domain: ActivityDomainSystem,
+	meta := map[string]any{
+		"event_type": eventType,
+		"org_id":     node.ID,
+		"org_key":    node.Key,
+		"org_name":   node.Name,
+		"level":      node.Level,
+		"status":     node.Status,
 	}
-	u.activityBus.Publish(context.Background(), ev)
+	u.eventBus.Publish(context.Background(), NewSystemNoticeEvent("", eventType, content, meta))
 }

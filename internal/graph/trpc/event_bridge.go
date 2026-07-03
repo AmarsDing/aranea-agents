@@ -45,6 +45,12 @@ func (b *EventBridge) Consume(ctx context.Context, eventCh <-chan *trpcevent.Eve
 	for e := range eventCh {
 		ev := b.ConvertEvent(e)
 		if ev != nil && b.activityBus != nil {
+			// TODO(phase3b-d): migrate to v2 EventBus. graph_stage events have no
+			// direct v2 equivalent (would need SystemNoticeEvent with flattened meta).
+			// Blocked by team_graph_run_coordinator.go's v1 Subscribe + handleGraphWatchActivity,
+			// which deeply inspects v1 ActivityEvent fields (Kind/Stage/Meta/Event) to drive
+			// the graph watch state machine. Migrating this publish alone would break the
+			// graph watch flow. Requires coordinated migration of event_bridge + coordinator.
 			b.activityBus.Publish(ctx, *ev)
 		} else if ev == nil {
 			b.lg.Warn("unhandled event dropped",

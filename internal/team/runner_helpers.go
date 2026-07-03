@@ -43,6 +43,9 @@ func (r *Runner) publishTeamRunFailedActivity(ctx context.Context, run biz.TeamR
 		},
 		Domain: biz.ActivityDomainChat,
 	}
+	// TODO(phase3b-d): migrate to v2 EventBus (biz.NewTeamStageFailedEvent).
+	// Blocked: r.td.Pipeline.ActivityBus field type is defined in
+	// status_projector.go (not in this task's scope).
 	r.td.Pipeline.ActivityBus.Publish(ctx, ev)
 }
 
@@ -101,6 +104,8 @@ func (r *Runner) publishTeamStepActivity(ctx context.Context, run biz.TeamRunRec
 		},
 		Domain: biz.ActivityDomainChat,
 	}
+	// TODO(phase3b-d): migrate to v2 EventBus. Blocked: r.td.Pipeline.ActivityBus
+	// field type is defined in status_projector.go (not in this task's scope).
 	r.td.Pipeline.ActivityBus.Publish(ctx, ev)
 }
 
@@ -227,6 +232,9 @@ func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRunRecor
 			r.lg.Warn("UpdateTeamRunSummaryJSON failed", loggateway.StepID("team.run.summary_update_fail"), loggateway.Str("team_run_id", run.ID), loggateway.Err(uerr))
 		}
 	}
+	// TODO(phase3b-d): migrate to v2 EventBus. The TeamSummaryActivityEvent carries
+	// a team_summary meta blob with no direct v2 equivalent. Blocked by
+	// r.td.Pipeline.ActivityBus field type (defined in status_projector.go).
 	r.td.Pipeline.ActivityBus.Publish(ctx, TeamSummaryActivityEvent(run, steps))
 }
 

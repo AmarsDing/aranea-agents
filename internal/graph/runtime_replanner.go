@@ -271,6 +271,11 @@ func (r *RuntimeReplannerImpl) publishReplanEvent(
 	if r.activityBus == nil {
 		return
 	}
+	// TODO(phase3b-d): migrate to v2 EventBus. graph_stage events have no direct
+	// v2 equivalent. Blocked by team_graph_run_coordinator.go's v1 Subscribe +
+	// handleGraphWatchActivity, which inspects v1 ActivityEvent fields and would
+	// stop receiving replanned events if this publish moves to v2 EventBus.
+	// Requires coordinated migration with the coordinator's subscribe path.
 	ev := biz.ActivityEvent{
 		Event: biz.ActivityEventUpdated,
 		Activity: biz.Activity{

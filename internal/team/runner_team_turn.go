@@ -180,6 +180,8 @@ func (r *Runner) prepareUserTurnOptions(
 			},
 			Domain: biz.ActivityDomainChat,
 		}
+		// TODO(phase3b-d): migrate to v2 EventBus. Blocked: r.td.Pipeline.ActivityBus
+		// field type is defined in status_projector.go (not in this task's scope).
 		r.td.Pipeline.ActivityBus.Publish(ctx, ev)
 	}
 	opts = userTurnOptions{
@@ -254,6 +256,8 @@ func (r *Runner) finalizeTeamRun(
 			},
 			Domain: biz.ActivityDomainChat,
 		}
+		// TODO(phase3b-d): migrate to v2 EventBus. Blocked: r.td.Pipeline.ActivityBus
+		// field type is defined in status_projector.go (not in this task's scope).
 		r.td.Pipeline.ActivityBus.Publish(ctx, ev)
 		r.publishTeamRunSummary(ctx, run)
 	}

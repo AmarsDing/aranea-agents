@@ -103,28 +103,26 @@ func (r *fakeTemplateRepo) ListAgentTemplates(_ context.Context) ([]biz.AgentTem
 	return r.templates, nil
 }
 
-// factoryCaptureBus captures published ActivityEvents for assertions.
+// factoryCaptureBus captures published v2 Events for assertions.
 type factoryCaptureBus struct {
 	mu        sync.Mutex
-	published []biz.ActivityEvent
+	published []biz.Event
 }
 
-func (b *factoryCaptureBus) Publish(_ context.Context, ev biz.ActivityEvent) {
+func (b *factoryCaptureBus) Publish(_ context.Context, ev biz.Event) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.published = append(b.published, ev)
 }
 
-func (b *factoryCaptureBus) Subscribe(_ biz.ActivityEventSubscribeOptions) (<-chan biz.ActivityEvent, func()) {
+func (b *factoryCaptureBus) Subscribe(_ biz.EventSubscribeOptions) (<-chan biz.Event, func()) {
 	return nil, func() {}
 }
 
-func (b *factoryCaptureBus) DropCount() uint64 { return 0 }
-
-func (b *factoryCaptureBus) getPublished() []biz.ActivityEvent {
+func (b *factoryCaptureBus) getPublished() []biz.Event {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	out := make([]biz.ActivityEvent, len(b.published))
+	out := make([]biz.Event, len(b.published))
 	copy(out, b.published)
 	return out
 }
@@ -148,7 +146,7 @@ func newTestAgentFactory(model trpcmodel.Model, store *fakeFactoryAgentStore, te
 		agentWriter:  store,
 		agentReader:  store,
 		templateRepo: &fakeTemplateRepo{templates: templates},
-		activityBus:  bus,
+		eventBus:     bus,
 		lg:           loggateway.NewNoop().With(loggateway.Domain("agent_factory")),
 	}
 }
@@ -200,17 +198,21 @@ func TestAgentFactory_EnsureAgent_CreateNew(t *testing.T) {
 		t.Fatalf("published=%d want 1", len(published))
 	}
 	ev := published[0]
-	if ev.Activity.Meta["event_type"] != "agent_created" {
-		t.Errorf("event_type=%v want %q", ev.Activity.Meta["event_type"], "agent_created")
+	if ev.EventKind() != biz.EventKindSystemNotice {
+		t.Errorf("EventKind=%q want %q", ev.EventKind(), biz.EventKindSystemNotice)
 	}
-	if ev.Activity.Meta["agent_key"] != agentKey {
-		t.Errorf("metadata agent_key=%v want %q", ev.Activity.Meta["agent_key"], agentKey)
+	notice, ok := ev.(*biz.SystemNoticeEvent)
+	if !ok {
+		t.Fatalf("expected *biz.SystemNoticeEvent, got %T", ev)
 	}
-	if ev.Activity.Meta["source"] != "system" {
-		t.Errorf("metadata source=%v want %q", ev.Activity.Meta["source"], "system")
+	if notice.Meta["event_type"] != "agent_created" {
+		t.Errorf("event_type=%v want %q", notice.Meta["event_type"], "agent_created")
 	}
-	if ev.Domain != biz.ActivityDomainSystem {
-		t.Errorf("domain=%q want %q", ev.Domain, biz.ActivityDomainSystem)
+	if notice.Meta["agent_key"] != agentKey {
+		t.Errorf("metadata agent_key=%v want %q", notice.Meta["agent_key"], agentKey)
+	}
+	if notice.Meta["source"] != "system" {
+		t.Errorf("metadata source=%v want %q", notice.Meta["source"], "system")
 	}
 }
 

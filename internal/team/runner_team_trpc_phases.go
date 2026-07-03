@@ -177,6 +177,9 @@ func (r *Runner) publishTeamRunStartedEvent(ctx context.Context, sess biz.Sessio
 		},
 		Domain: biz.ActivityDomainChat,
 	}
+	// TODO(phase3b-d): migrate to v2 EventBus (biz.NewTeamStageCreatedEvent).
+	// Blocked: r.td.Pipeline.ActivityBus field type is defined in
+	// status_projector.go (not in this task's scope).
 	r.td.Pipeline.ActivityBus.Publish(ctx, ev)
 }
 

@@ -250,6 +250,9 @@ func convertTrpcEvent(e *trpcevent.Event, bridge *graphtrpc.EventBridge, lg logg
 	if bridge != nil {
 		ev := bridge.ConvertEvent(e)
 		if ev != nil && bridge.ActivityBus() != nil {
+			// TODO(phase3b-d): migrate to v2 EventBus. Blocked by team_graph_run_coordinator.go's
+			// v1 Subscribe (consumes graph_stage events from EventBridge via the same bus).
+			// Migrating this publish alone would break the graph watch state machine.
 			bridge.ActivityBus().Publish(context.Background(), *ev)
 		}
 	}

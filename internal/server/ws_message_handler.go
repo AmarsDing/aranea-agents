@@ -250,6 +250,13 @@ func buildChatOptions(opts map[string]any) *chatv1.SendMessageOptions {
 // publishWSErrorActivity publishes a failed ActivityEvent (Kind=task,
 // Status=failed, Domain=chat) for WebSocket error scenarios.
 // Replaces the legacy EnvelopeTypeError publish.
+//
+// TODO(phase3b-d): migrate to v2 EventBus (biz.NewTaskFailedEvent).
+// Blocked because WSServer.activityBus field type is defined in ws.go (not in
+// this task's scope) and is shared with ws_event.go's v1 Subscribe. Migrating
+// this publish alone would break the WS broadcast path. The WSServer struct
+// must gain a v2 EventBus field (or the field type must change) before this
+// publish can be migrated.
 func (s *WSServer) publishWSErrorActivity(sessionID, requestID, errorType, message string) {
 	if s.activityBus == nil {
 		return

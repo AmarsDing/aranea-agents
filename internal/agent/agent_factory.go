@@ -17,8 +17,6 @@ import (
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
-
-	"github.com/google/uuid"
 )
 
 const (
@@ -44,7 +42,7 @@ type AgentFactoryImpl struct {
 	agentWriter  biz.AgentWriter
 	agentReader  biz.AgentReader
 	templateRepo biz.AgentTemplateRepo
-	activityBus  biz.ActivityEventBus
+	eventBus     biz.EventBus
 	lg           loggateway.Logger
 }
 
@@ -58,7 +56,7 @@ func NewAgentFactoryImpl(
 	agentWriter biz.AgentWriter,
 	agentReader biz.AgentReader,
 	templateRepo biz.AgentTemplateRepo,
-	activityBus biz.ActivityEventBus,
+	eventBus biz.EventBus,
 	lg loggateway.Logger,
 ) biz.AgentFactory {
 	if lg == nil {
@@ -69,7 +67,7 @@ func NewAgentFactoryImpl(
 		agentWriter:  agentWriter,
 		agentReader:  agentReader,
 		templateRepo: templateRepo,
-		activityBus:  activityBus,
+		eventBus:     eventBus,
 		lg:           lg.With(loggateway.Domain("agent_factory")),
 	}
 }
@@ -258,31 +256,20 @@ func (f *AgentFactoryImpl) buildDynamicAgentKey(profile biz.TaskProfile) string 
 	return "factory-" + sum
 }
 
-// publishAgentCreated publishes the agent_created event as a system-domain
-// ActivityEvent (NOT persisted, WS-only broadcast).
+// publishAgentCreated publishes the agent_created event as a v2 SystemNoticeEvent
+// (replaces the legacy system-domain ActivityEvent; NOT persisted, WS-only broadcast).
 func (f *AgentFactoryImpl) publishAgentCreated(ctx context.Context, agent biz.Agent, trigger string) {
-	if f.activityBus == nil {
+	if f.eventBus == nil {
 		return
 	}
-	ev := biz.ActivityEvent{
-		Event: biz.ActivityEventCreated,
-		Activity: biz.Activity{
-			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindNotice,
-			Status:    biz.ActivityStatusCompleted,
-			Timestamp: time.Now().UTC(),
-			Content:   "Agent dynamically created by AgentFactory",
-			Meta: map[string]any{
-				"event_type":   "agent_created",
-				"agent_key":    agent.AgentKey,
-				"display_name": agent.DisplayName,
-				"source":       agent.Source,
-				"trigger":      trigger,
-			},
-		},
-		Domain: biz.ActivityDomainSystem,
+	meta := map[string]any{
+		"event_type":   "agent_created",
+		"agent_key":    agent.AgentKey,
+		"display_name": agent.DisplayName,
+		"source":       agent.Source,
+		"trigger":      trigger,
 	}
-	f.activityBus.Publish(ctx, ev)
+	f.eventBus.Publish(ctx, biz.NewSystemNoticeEvent("", "agent_created", "Agent dynamically created by AgentFactory", meta))
 }
 
 // buildAgentFactoryPrompt builds the user prompt for LLM generation.

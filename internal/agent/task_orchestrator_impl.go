@@ -25,21 +25,21 @@ var _ biz.TaskOrchestratorPort = (*TaskOrchestratorImpl)(nil)
 
 // TaskOrchestratorImpl implements biz.TaskOrchestratorPort.
 type TaskOrchestratorImpl struct {
-	spiritUC        *biz.SpiritTeamUsecase
-	assembler       tools.SpiritTeamAssemblerPort
-	controller      tools.SpiritTeamControllerPort
-	compiler        *DAGToGraphCompiler
-	repo            biz.OrchestrationRepository
-	matcher         biz.AgentMatcherPort
-	deps            TRPCBuilderDeps
-	synthesis       tools.SpiritSynthesisPort
-	checkpointSaver graph.CheckpointSaver
-	orchCache       *biz.OrchestrationCache
-	perfRepo        biz.AgentPerformanceRepository
-	evolutionSugg   biz.EvolutionSuggestionRepo
-	activityBus     biz.ActivityEventBus
-	nl2graph        araneagraph.NL2GraphConverter
-	lg              loggateway.Logger
+	spiritUC         *biz.SpiritTeamUsecase
+	assembler        tools.SpiritTeamAssemblerPort
+	controller       tools.SpiritTeamControllerPort
+	compiler         *DAGToGraphCompiler
+	repo             biz.OrchestrationRepository
+	matcher          biz.AgentMatcherPort
+	deps             TRPCBuilderDeps
+	synthesis        tools.SpiritSynthesisPort
+	checkpointSaver  graph.CheckpointSaver
+	orchCache        *biz.OrchestrationCache
+	perfRepo         biz.AgentPerformanceRepository
+	evolutionSugg    biz.EvolutionSuggestionRepo
+	eventBus         biz.EventBus
+	nl2graph         araneagraph.NL2GraphConverter
+	lg               loggateway.Logger
 }
 
 // NewTaskOrchestratorImpl creates a new TaskOrchestratorImpl.
@@ -59,26 +59,26 @@ func NewTaskOrchestratorImpl(
 	orchCache *biz.OrchestrationCache,
 	perfRepo biz.AgentPerformanceRepository,
 	evolutionSugg biz.EvolutionSuggestionRepo,
-	activityBus biz.ActivityEventBus,
+	eventBus biz.EventBus,
 	nl2graph araneagraph.NL2GraphConverter,
 	lg loggateway.Logger,
 ) *TaskOrchestratorImpl {
 	return &TaskOrchestratorImpl{
-		spiritUC:        spiritUC,
-		assembler:       assembler,
-		controller:      controller,
-		compiler:        compiler,
-		repo:            repo,
-		matcher:         matcher,
-		deps:            deps,
-		synthesis:       synthesis,
-		checkpointSaver: checkpointSaver,
-		orchCache:       orchCache,
-		perfRepo:        perfRepo,
-		evolutionSugg:   evolutionSugg,
-		activityBus:     activityBus,
-		nl2graph:        nl2graph,
-		lg:              lg,
+		spiritUC:         spiritUC,
+		assembler:        assembler,
+		controller:       controller,
+		compiler:         compiler,
+		repo:             repo,
+		matcher:          matcher,
+		deps:             deps,
+		synthesis:        synthesis,
+		checkpointSaver:  checkpointSaver,
+		orchCache:        orchCache,
+		perfRepo:         perfRepo,
+		evolutionSugg:    evolutionSugg,
+		eventBus:         eventBus,
+		nl2graph:         nl2graph,
+		lg:               lg,
 	}
 }
 
@@ -1154,30 +1154,18 @@ func (o *TaskOrchestratorImpl) maybeCreateEvolutionSuggestion(ctx context.Contex
 		)
 		return
 	}
-	// Emit orchestration evolution suggested event as a system-domain
-	// ActivityEvent (NOT persisted, WS-only broadcast).
-	if o.activityBus != nil {
-		ev := biz.ActivityEvent{
-			Event: biz.ActivityEventCreated,
-			Activity: biz.Activity{
-				ID:              uuid.NewString(),
-				Kind:            biz.ActivityKindNotice,
-				Status:          biz.ActivityStatusCompleted,
-				Timestamp:       time.Now().UTC(),
-				Content:         content,
-				SpiritSessionID: handle.SpiritSessionID,
-				Meta: map[string]any{
-					"event_type":        "orchestration.evolution_suggested",
-					"orchestration_id":  handle.ID,
-					"spirit_session_id": handle.SpiritSessionID,
-					"dq_score":          dqScore,
-					"topology":          string(topology),
-					"suggestion_id":     sugg.ID,
-				},
-			},
-			Domain: biz.ActivityDomainSystem,
+	// Emit orchestration evolution suggested event as a v2 SystemNoticeEvent
+	// (replaces the legacy system-domain ActivityEvent; NOT persisted, WS-only broadcast).
+	if o.eventBus != nil {
+		meta := map[string]any{
+			"event_type":        "orchestration.evolution_suggested",
+			"orchestration_id":  handle.ID,
+			"spirit_session_id": handle.SpiritSessionID,
+			"dq_score":          dqScore,
+			"topology":          string(topology),
+			"suggestion_id":     sugg.ID,
 		}
-		o.activityBus.Publish(ctx, ev)
+		o.eventBus.Publish(ctx, biz.NewSystemNoticeEvent(handle.SpiritSessionID, "orchestration.evolution_suggested", content, meta))
 	}
 }
 
@@ -1398,9 +1386,9 @@ func marshalSynthesisOutput(output *biz.SynthesisOutput) (string, error) {
 	return string(b), nil
 }
 
-// publishOrchestrationStarted publishes the spirit_orchestration_started event.
+// publishOrchestrationStarted publishes the spirit_orchestration_started event as a v2 SystemNoticeEvent.
 func (o *TaskOrchestratorImpl) publishOrchestrationStarted(ctx context.Context, handle *biz.OrchestrationHandle, taskPlan *biz.TaskPlan) {
-	if o.activityBus == nil || handle == nil {
+	if o.eventBus == nil || handle == nil {
 		return
 	}
 	spiritSessionID := handle.SpiritSessionID
@@ -1422,28 +1410,12 @@ func (o *TaskOrchestratorImpl) publishOrchestrationStarted(ctx context.Context, 
 		meta["max_concurrent_teams"] = pCfg.MaxConcurrentTeams
 	}
 	meta["notice_type"] = "info"
-	ev := biz.ActivityEvent{
-		Event: biz.ActivityEventCreated,
-		Activity: biz.Activity{
-			ID:              uuid.NewString(),
-			Kind:            biz.ActivityKindNotice,
-			Status:          biz.ActivityStatusRunning,
-			Timestamp:       time.Now().UTC(),
-			SpiritSessionID: spiritSessionID,
-			AgentKey:        "task-orchestrator",
-			AgentName:       "任务编排",
-			Stage:           "orchestration_started",
-			Content:         "任务编排已启动",
-			Meta:            meta,
-		},
-		Domain: biz.ActivityDomainChat,
-	}
-	o.activityBus.Publish(ctx, ev)
+	o.eventBus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "orchestration_started", "任务编排已启动", meta))
 }
 
-// publishOrchestrationCheckpoint publishes the spirit_orchestration_checkpoint event.
+// publishOrchestrationCheckpoint publishes the spirit_orchestration_checkpoint event as a v2 SystemNoticeEvent.
 func (o *TaskOrchestratorImpl) publishOrchestrationCheckpoint(ctx context.Context, handle *biz.OrchestrationHandle, stepName string) {
-	if o.activityBus == nil || handle == nil {
+	if o.eventBus == nil || handle == nil {
 		return
 	}
 	spiritSessionID := handle.SpiritSessionID
@@ -1452,61 +1424,32 @@ func (o *TaskOrchestratorImpl) publishOrchestrationCheckpoint(ctx context.Contex
 	if handle.Status == biz.OrchestrationStatusCompleted {
 		status = biz.ActivityStatusCompleted
 	}
-	ev := biz.ActivityEvent{
-		Event: biz.ActivityEventUpdated,
-		Activity: biz.Activity{
-			ID:              uuid.NewString(),
-			Kind:            biz.ActivityKindNotice,
-			Status:          status,
-			Timestamp:       time.Now().UTC(),
-			SpiritSessionID: spiritSessionID,
-			AgentKey:        "task-orchestrator",
-			AgentName:       "任务编排",
-			Stage:           "orchestration_checkpoint",
-			Content:         "编排检查点：" + stepName,
-			Meta: map[string]any{
-				"orchestration_id":  handle.ID,
-				"spirit_session_id": spiritSessionID,
-				"checkpoint_id":     handle.CheckpointID,
-				"step":              stepName,
-				"status":            string(handle.Status),
-				"notice_type":       "info",
-			},
-		},
-		Domain: biz.ActivityDomainChat,
+	meta := map[string]any{
+		"orchestration_id":  handle.ID,
+		"spirit_session_id": spiritSessionID,
+		"checkpoint_id":     handle.CheckpointID,
+		"step":              stepName,
+		"status":            string(handle.Status),
+		"notice_type":       "info",
+		"activity_status":   string(status),
 	}
-	o.activityBus.Publish(ctx, ev)
+	o.eventBus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "orchestration_checkpoint", "编排检查点："+stepName, meta))
 }
 
-// publishOrchestrationInterrupted publishes the spirit_orchestration_interrupted event.
+// publishOrchestrationInterrupted publishes the spirit_orchestration_interrupted event as a v2 SystemNoticeEvent.
 func (o *TaskOrchestratorImpl) publishOrchestrationInterrupted(ctx context.Context, handle *biz.OrchestrationHandle) {
-	if o.activityBus == nil || handle == nil {
+	if o.eventBus == nil || handle == nil {
 		return
 	}
 	spiritSessionID := handle.SpiritSessionID
 
-	ev := biz.ActivityEvent{
-		Event: biz.ActivityEventFailed,
-		Activity: biz.Activity{
-			ID:              uuid.NewString(),
-			Kind:            biz.ActivityKindNotice,
-			Status:          biz.ActivityStatusFailed,
-			Timestamp:       time.Now().UTC(),
-			SpiritSessionID: spiritSessionID,
-			AgentKey:        "task-orchestrator",
-			AgentName:       "任务编排",
-			Stage:           "orchestration_interrupted",
-			Content:         "任务编排已中断",
-			Meta: map[string]any{
-				"orchestration_id":  handle.ID,
-				"spirit_session_id": spiritSessionID,
-				"status":            string(handle.Status),
-				"notice_type":       "warning",
-			},
-		},
-		Domain: biz.ActivityDomainChat,
+	meta := map[string]any{
+		"orchestration_id":  handle.ID,
+		"spirit_session_id": spiritSessionID,
+		"status":            string(handle.Status),
+		"notice_type":       "warning",
 	}
-	o.activityBus.Publish(ctx, ev)
+	o.eventBus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "orchestration_interrupted", "任务编排已中断", meta))
 }
 
 // sortByPerformance reorders agent keys by their historical performance for the

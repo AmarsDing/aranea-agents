@@ -63,6 +63,14 @@ type TeamGraphRunCoordinator struct {
 	teamRunReader   biz.TeamRunReader
 	teamRunWriter   biz.TeamRunWriter
 	runTransitioner biz.TeamRunStatusTransitioner
+	// TODO(phase3b-d): migrate to v2 EventBus. This field is v1 ActivityEventBus
+	// because: (1) the coordinator's handleGraphWatchActivity deeply inspects v1
+	// ActivityEvent fields (Kind/Stage/Meta/Event) to drive the graph watch state
+	// machine; (2) it also Subscribes to the bus for graph_stage events from
+	// event_bridge.go/topology_evolution.go/runtime_replanner.go. Migrating this
+	// field alone would break both the subscribe path and the graph watch flow.
+	// Requires a coordinated migration of: coordinator subscribe+handler, the 3
+	// graph publishers, and the v2 EventBus adapter/wiring.
 	activityBus     biz.ActivityEventBus
 	finisher        *TeamRunMediator
 	sessionRepo     biz.TeamGraphSessionRepo

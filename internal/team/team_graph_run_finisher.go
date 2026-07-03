@@ -164,6 +164,10 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 			},
 			Domain: biz.ActivityDomainChat,
 		}
+		// TODO(phase3b-d): migrate to v2 EventBus (biz.NewTeamStageCompletedEvent).
+		// Blocked: r.td.Pipeline.ActivityBus field type is defined in
+		// status_projector.go (not in this task's scope). Changing it cascades to
+		// usage_record.go (PublishTokenUsageEnvelope) and runner_team_observer.go.
 		r.td.Pipeline.ActivityBus.Publish(ctx, ev)
 		// Finalize session activities for members that were started (session
 		// "created" event published at team start) but never executed in the
