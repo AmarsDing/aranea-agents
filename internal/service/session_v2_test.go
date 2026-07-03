@@ -6,6 +6,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 )
 
 // TestSessionV2Service_ListSteps verifies ListSteps delegates to the v2
@@ -79,4 +80,75 @@ func (s *stubStepV2Reader) GetStep(_ context.Context, id string) (biz.Step, erro
 		}
 	}
 	return biz.Step{}, biz.ErrNotFound
+}
+
+// TestSessionService_ListActivities_DelegatesToV2 verifies that after the
+// Phase 3b-D Task 4 migration, SessionService.ListActivities delegates to
+// SessionV2Service.ListSteps and converts v2 StepV2 → v1 Activity.
+func TestSessionService_ListActivities_DelegatesToV2(t *testing.T) {
+	v2Svc := &SessionV2Service{
+		stepReader: &stubStepV2Reader{
+			steps: []biz.Step{
+				{
+					ID:        "step-1",
+					SessionID: "sess1",
+					TurnID:    "turn1",
+					Kind:      biz.StepKindReply,
+					Content:   "hello world",
+					IsFinal:   true,
+					NoticeType: "model_router",
+					AuthorAgentKey: "agent-1",
+				},
+			},
+		},
+	}
+	svc := &SessionService{sessionV2: v2Svc}
+
+	resp, err := svc.ListActivities(context.Background(), &v1.ListActivitiesRequest{SessionId: "sess1"})
+	if err != nil {
+		t.Fatalf("ListActivities: %v", err)
+	}
+	if len(resp.GetItems()) != 1 {
+		t.Fatalf("expected 1 activity, got %d", len(resp.GetItems()))
+	}
+	act := resp.GetItems()[0]
+	if act.Id != "step-1" || act.Kind != string(biz.StepKindReply) || act.Content != "hello world" {
+		t.Fatalf("activity field mapping mismatch: %+v", act)
+	}
+	if act.SessionId != "sess1" || act.TurnId != "turn1" {
+		t.Fatalf("session/turn mapping mismatch: %+v", act)
+	}
+	if act.AgentKey != "agent-1" {
+		t.Fatalf("agent_key mapping mismatch: %q", act.AgentKey)
+	}
+	// MetaJson should contain is_final + notice_type + agent_key.
+	if act.MetaJson == "" {
+		t.Fatal("expected non-empty meta_json with is_final/notice_type/agent_key")
+	}
+}
+
+// TestSessionService_ListActivities_RequiresSessionID verifies that empty
+// session_id is rejected with BadRequest (Phase 3b-D Task 4 validation).
+func TestSessionService_ListActivities_RequiresSessionID(t *testing.T) {
+	svc := &SessionService{sessionV2: &SessionV2Service{}}
+	_, err := svc.ListActivities(context.Background(), &v1.ListActivitiesRequest{SessionId: ""})
+	if err == nil {
+		t.Fatal("expected error for empty session_id, got nil")
+	}
+	if !apierror.IsCode(err, apierror.CodeBadRequest) {
+		t.Fatalf("expected BadRequest, got %v", err)
+	}
+}
+
+// TestSessionService_ListActivities_NotConfigured verifies that a nil
+// sessionV2 returns an Internal error (defensive guard for misconfigured Wire).
+func TestSessionService_ListActivities_NotConfigured(t *testing.T) {
+	svc := &SessionService{}
+	_, err := svc.ListActivities(context.Background(), &v1.ListActivitiesRequest{SessionId: "sess1"})
+	if err == nil {
+		t.Fatal("expected error for unconfigured service, got nil")
+	}
+	if !apierror.IsCode(err, apierror.CodeInternal) {
+		t.Fatalf("expected Internal, got %v", err)
+	}
 }

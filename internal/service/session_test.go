@@ -32,7 +32,7 @@ func TestSessionService_GetSessionTree(t *testing.T) {
 		tree:     tree,
 	}
 	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
-	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	resp, err := svc.GetSessionTree(context.Background(), &v1.GetSessionTreeRequest{SpiritSessionId: "spirit-1"})
 	if err != nil {
@@ -61,7 +61,7 @@ func TestSessionService_GetSessionTree(t *testing.T) {
 func TestSessionService_GetSessionTree_validation(t *testing.T) {
 	repo := &batchSessionRepo{sessions: map[string]biz.Session{}}
 	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
-	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := service.NewSessionService(uc, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	_, err := svc.GetSessionTree(context.Background(), &v1.GetSessionTreeRequest{SpiritSessionId: ""})
 	if err == nil {

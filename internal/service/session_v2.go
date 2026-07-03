@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -169,4 +170,82 @@ func formatTimePtr(t *time.Time) string {
 		return ""
 	}
 	return t.Format(time.RFC3339)
+}
+
+// stepV2ToActivityV1 converts a v2 StepV2 proto back to the v1 Activity proto
+// shape. This is used by SessionService.ListActivities (Task 4 of Phase 3b-D)
+// to keep the v1 ListActivitiesResponse backward compatible while reads are
+// migrated to the v2 steps_v2 table. The frontend will switch to the v2
+// endpoint directly, after which this adapter can be removed (Phase 3b-E).
+//
+// Field mapping notes:
+//   - v2 StepV2 has no ParentActivityId/ChildBoardId/TeamId/DagNodeId/
+//     DependsOn/AgentName/Label/Collapsed/PromptTokens/CompletionTokens;
+//     these v1-only fields are left as zero values.
+//   - MetaJson: populated with kind-specific metadata that v1 carried in
+//     Activity.Meta (is_final, notice_type, author_agent_key).
+//   - DurationMs: computed from StartedAt + CompletedAt when both are present
+//     (v2 StepV2 stores them as RFC3339 strings).
+func stepV2ToActivityV1(s *v1.StepV2) *v1.Activity {
+	if s == nil {
+		return nil
+	}
+	meta := make(map[string]any, 3)
+	if s.IsFinal {
+		meta["is_final"] = true
+	}
+	if s.NoticeType != "" {
+		meta["notice_type"] = s.NoticeType
+	}
+	if s.AuthorAgentKey != "" {
+		meta["agent_key"] = s.AuthorAgentKey
+	}
+	metaJSON := ""
+	if len(meta) > 0 {
+		if b, err := json.Marshal(meta); err == nil {
+			metaJSON = string(b)
+		}
+	}
+	return &v1.Activity{
+		Id:              s.GetId(),
+		Kind:            s.GetKind(),
+		Status:          s.GetStatus(),
+		SessionId:       s.GetSessionId(),
+		TurnId:          s.GetTurnId(),
+		Timestamp:       s.GetStartedAt(),
+		DurationMs:      computeStepDurationMs(s.GetStartedAt(), s.GetCompletedAt()),
+		Seq:             s.GetSeq(),
+		Content:         s.GetContent(),
+		Reasoning:       s.GetReasoning(),
+		ToolName:        s.GetToolName(),
+		ToolCallId:      s.GetToolCallId(),
+		ToolArguments:   string(s.GetToolArgs()),
+		ToolResult:      string(s.GetToolResult()),
+		ToolDurationMs:  s.GetToolDurationMs(),
+		ToolErrorCode:   s.GetToolErrorCode(),
+		SpiritSessionId: s.GetSpiritSessionId(),
+		AgentKey:        s.GetAuthorAgentKey(),
+		MetaJson:        metaJSON,
+	}
+}
+
+// computeStepDurationMs returns the duration in milliseconds between startedAt
+// and completedAt (RFC3339 strings). Returns 0 if either value is empty or
+// cannot be parsed.
+func computeStepDurationMs(startedAt, completedAt string) int64 {
+	if startedAt == "" || completedAt == "" {
+		return 0
+	}
+	start, err := time.Parse(time.RFC3339, startedAt)
+	if err != nil {
+		return 0
+	}
+	end, err := time.Parse(time.RFC3339, completedAt)
+	if err != nil {
+		return 0
+	}
+	if end.Before(start) {
+		return 0
+	}
+	return end.Sub(start).Milliseconds()
 }

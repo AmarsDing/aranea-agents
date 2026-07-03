@@ -27,7 +27,11 @@ type SessionService struct {
 	compressStatus biz.CompressStatusReader
 	metricsCache   biz.SessionMetricsReader
 	activityReader biz.ActivityReader
-	lg             loggateway.Logger
+	// sessionV2 is the v2 reader service; ListActivities delegates to it for
+	// reading from the steps_v2 table (Task 4 of Phase 3b-D). The legacy
+	// activityReader is retained until Task 15 deletes the v1 path.
+	sessionV2 *SessionV2Service
+	lg        loggateway.Logger
 }
 
 func NewSessionService(
@@ -38,6 +42,7 @@ func NewSessionService(
 	compressStatus biz.CompressStatusReader,
 	metricsCache biz.SessionMetricsReader,
 	activityReader biz.ActivityReader,
+	sessionV2 *SessionV2Service,
 	lg loggateway.Logger,
 ) *SessionService {
 	return &SessionService{
@@ -48,6 +53,7 @@ func NewSessionService(
 		compressStatus: compressStatus,
 		metricsCache:   metricsCache,
 		activityReader: activityReader,
+		sessionV2:      sessionV2,
 		lg:             lg,
 	}
 }
@@ -605,8 +611,14 @@ func bizSessionTreeNodesToProto(nodes []*biz.SessionTreeNode) []*v1.SessionTreeN
 }
 
 // ListActivities returns activities for a session/turn (AF-BE-17).
+//
+// Phase 3b-D Task 4: delegates to the v2 SessionV2Service.ListSteps which
+// reads from the steps_v2 table. The v2 steps are converted back to v1
+// Activity proto shape for API backward compatibility — the frontend (Task 3)
+// will switch to the v2 endpoint directly, after which this adapter can be
+// removed (Phase 3b-E roadmap).
 func (s *SessionService) ListActivities(ctx context.Context, req *v1.ListActivitiesRequest) (*v1.ListActivitiesResponse, error) {
-	if s == nil || s.activityReader == nil {
+	if s == nil || s.sessionV2 == nil {
 		return nil, apierror.Internal("SESSION", "session service not configured")
 	}
 	sessionID := strings.TrimSpace(req.GetSessionId())
@@ -614,21 +626,17 @@ func (s *SessionService) ListActivities(ctx context.Context, req *v1.ListActivit
 		return nil, apierror.BadRequest("SESSION", "session_id is required")
 	}
 
-	var activities []biz.Activity
-	var err error
-	turnID := strings.TrimSpace(req.GetTurnId())
-	if turnID != "" {
-		activities, err = s.activityReader.ListBySessionTurn(ctx, sessionID, turnID)
-	} else {
-		activities, err = s.activityReader.ListBySession(ctx, sessionID)
-	}
+	resp, err := s.sessionV2.ListSteps(ctx, &v1.ListStepsV2Request{
+		SessionId: sessionID,
+		TurnId:   strings.TrimSpace(req.GetTurnId()),
+	})
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}
 
-	out := make([]*v1.Activity, 0, len(activities))
-	for i := range activities {
-		out = append(out, toProtoActivity(activities[i]))
+	out := make([]*v1.Activity, 0, len(resp.GetSteps()))
+	for _, st := range resp.GetSteps() {
+		out = append(out, stepV2ToActivityV1(st))
 	}
 	return &v1.ListActivitiesResponse{Items: out}, nil
 }
