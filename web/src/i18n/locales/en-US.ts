@@ -426,6 +426,16 @@ export default {
       finalReply: 'Reply',
       intermediateReply: 'Intermediate reply',
     },
+    v2: {
+      finalReplyBadge: 'Final reply',
+      statusRunning: 'Running',
+      statusCompleted: 'Completed',
+      statusFailed: 'Failed',
+      planBoardTitle: 'Plan',
+      resultLabel: 'Result',
+      errorLabel: 'Error',
+      taskProcessing: 'Processing…',
+    },
     agentTool: {
       longRunningTitle: 'Tool still running, LLM has not received final result',
       error: 'Error',

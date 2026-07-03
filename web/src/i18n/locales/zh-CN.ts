@@ -442,6 +442,16 @@ export default {
       finalReply: '回复',
       intermediateReply: '中间回复',
     },
+    v2: {
+      finalReplyBadge: '最终回复',
+      statusRunning: '执行中',
+      statusCompleted: '完成',
+      statusFailed: '失败',
+      planBoardTitle: '执行计划',
+      resultLabel: '结果',
+      errorLabel: '错误',
+      taskProcessing: '处理中…',
+    },
     agentTool: {
       longRunningTitle: '工具仍在执行，LLM 尚未收到最终结果',
       error: '错误',

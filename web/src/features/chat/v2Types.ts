@@ -66,6 +66,7 @@ export interface Step {
   ToolResult: unknown | null;
   ToolDurationMs: number;
   ToolErrorCode: string;
+  NoticeType?: string;   // kind=notice: notification type (e.g. "model_router", "cost_guard")
   Status: StepStatus;
   IsFinal: boolean;
   StartedAt: string;
