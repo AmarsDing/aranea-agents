@@ -10,44 +10,41 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-// heartbeatCaptureBus is a thread-safe ActivityEventBus that captures published events.
-// Unlike gateCaptureBus, it uses a mutex because heartbeats are published
-// from a goroutine.
-type heartbeatCaptureBus struct {
-	mu        sync.Mutex
-	published []biz.ActivityEvent
+// captureEventBus is a thread-safe v2 EventBus that captures published events.
+// Used by tests that need to assert on v2 Events (HeartbeatEvent, RunStatusEvent, etc.).
+type captureEventBus struct {
+	mu     sync.Mutex
+	events []biz.Event
 }
 
-func (b *heartbeatCaptureBus) Publish(_ context.Context, ev biz.ActivityEvent) {
+func (b *captureEventBus) Publish(_ context.Context, e biz.Event) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.published = append(b.published, ev)
+	b.events = append(b.events, e)
 }
 
-func (b *heartbeatCaptureBus) Subscribe(_ biz.ActivityEventSubscribeOptions) (<-chan biz.ActivityEvent, func()) {
+func (b *captureEventBus) Subscribe(_ biz.EventSubscribeOptions) (<-chan biz.Event, func()) {
 	return nil, func() {}
 }
 
-func (b *heartbeatCaptureBus) DropCount() uint64 { return 0 }
-
-func (b *heartbeatCaptureBus) snapshot() []biz.ActivityEvent {
+func (b *captureEventBus) snapshot() []biz.Event {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	out := make([]biz.ActivityEvent, len(b.published))
-	copy(out, b.published)
+	out := make([]biz.Event, len(b.events))
+	copy(out, b.events)
 	return out
 }
 
-func (b *heartbeatCaptureBus) count() int {
+func (b *captureEventBus) count() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return len(b.published)
+	return len(b.events)
 }
 
 // TestRunHeartbeatEmitter_Start_PublishesPeriodically verifies that the
 // emitter publishes heartbeat events at each tick with correct metadata.
 func TestRunHeartbeatEmitter_Start_PublishesPeriodically(t *testing.T) {
-	bus := &heartbeatCaptureBus{}
+	bus := &captureEventBus{}
 	e := NewRunHeartbeatEmitter(20*time.Millisecond, bus, loggateway.NewNoop())
 
 	progress := func() RunProgress {
@@ -64,37 +61,37 @@ func TestRunHeartbeatEmitter_Start_PublishesPeriodically(t *testing.T) {
 		t.Fatalf("expected at least 2 heartbeats, got %d", len(published))
 	}
 
-	ev := published[0]
-	if ev.Activity.Kind != biz.ActivityKindNotice {
-		t.Errorf("kind = %s, want %s", ev.Activity.Kind, biz.ActivityKindNotice)
+	ev, ok := published[0].(*biz.HeartbeatEvent)
+	if !ok {
+		t.Fatalf("expected *HeartbeatEvent, got %T", published[0])
 	}
-	if ev.Activity.SessionID != "sess-1" {
-		t.Errorf("session_id = %s, want sess-1", ev.Activity.SessionID)
+	if ev.EventKind() != biz.EventKindSystemHeartbeat {
+		t.Errorf("kind = %s, want %s", ev.EventKind(), biz.EventKindSystemHeartbeat)
 	}
-	if ev.Activity.Meta["run_id"] != "run-1" {
-		t.Errorf("run_id = %v, want run-1", ev.Activity.Meta["run_id"])
+	if ev.SpiritSessionID() != "sess-1" {
+		t.Errorf("session_id = %s, want sess-1", ev.SpiritSessionID())
 	}
-	if ev.Activity.Meta["progress_percent"] != 0.5 {
-		t.Errorf("progress_percent = %v, want 0.5", ev.Activity.Meta["progress_percent"])
+	if ev.Meta["run_id"] != "run-1" {
+		t.Errorf("run_id = %v, want run-1", ev.Meta["run_id"])
 	}
-	if ev.Activity.Meta["current_step"] != "step1" {
-		t.Errorf("current_step = %v, want step1", ev.Activity.Meta["current_step"])
+	if ev.Meta["progress_percent"] != 0.5 {
+		t.Errorf("progress_percent = %v, want 0.5", ev.Meta["progress_percent"])
 	}
-	if ev.Activity.Meta["total_steps"] != 10 {
-		t.Errorf("total_steps = %v, want 10", ev.Activity.Meta["total_steps"])
+	if ev.Meta["current_step"] != "step1" {
+		t.Errorf("current_step = %v, want step1", ev.Meta["current_step"])
 	}
-	if ev.Activity.Meta["eta"] != "5s" {
-		t.Errorf("eta = %v, want 5s", ev.Activity.Meta["eta"])
+	if ev.Meta["total_steps"] != 10 {
+		t.Errorf("total_steps = %v, want 10", ev.Meta["total_steps"])
 	}
-	if ev.Domain != biz.ActivityDomainSystem {
-		t.Errorf("domain = %s, want %s", ev.Domain, biz.ActivityDomainSystem)
+	if ev.Meta["eta"] != "5s" {
+		t.Errorf("eta = %v, want 5s", ev.Meta["eta"])
 	}
 }
 
 // TestRunHeartbeatEmitter_Start_StopCancels verifies that calling the stop
 // function stops the ticker and no further events are published.
 func TestRunHeartbeatEmitter_Start_StopCancels(t *testing.T) {
-	bus := &heartbeatCaptureBus{}
+	bus := &captureEventBus{}
 	e := NewRunHeartbeatEmitter(20*time.Millisecond, bus, loggateway.NewNoop())
 
 	stop := e.Start(context.Background(), "run-1", "sess-1", nil)
@@ -114,7 +111,7 @@ func TestRunHeartbeatEmitter_Start_StopCancels(t *testing.T) {
 // TestRunHeartbeatEmitter_Start_NilProgress verifies that a nil progress
 // function does not panic and publishes a heartbeat with only run_id.
 func TestRunHeartbeatEmitter_Start_NilProgress(t *testing.T) {
-	bus := &heartbeatCaptureBus{}
+	bus := &captureEventBus{}
 	e := NewRunHeartbeatEmitter(20*time.Millisecond, bus, loggateway.NewNoop())
 
 	stop := e.Start(context.Background(), "run-1", "sess-1", nil)
@@ -126,14 +123,17 @@ func TestRunHeartbeatEmitter_Start_NilProgress(t *testing.T) {
 	if len(published) == 0 {
 		t.Fatal("expected at least 1 heartbeat")
 	}
-	ev := published[0]
-	if ev.Activity.Meta["run_id"] != "run-1" {
-		t.Errorf("run_id = %v, want run-1", ev.Activity.Meta["run_id"])
+	ev, ok := published[0].(*biz.HeartbeatEvent)
+	if !ok {
+		t.Fatalf("expected *HeartbeatEvent, got %T", published[0])
 	}
-	if _, ok := ev.Activity.Meta["progress_percent"]; ok {
+	if ev.Meta["run_id"] != "run-1" {
+		t.Errorf("run_id = %v, want run-1", ev.Meta["run_id"])
+	}
+	if _, ok := ev.Meta["progress_percent"]; ok {
 		t.Error("progress_percent should be absent for nil progress")
 	}
-	if _, ok := ev.Activity.Meta["current_step"]; ok {
+	if _, ok := ev.Meta["current_step"]; ok {
 		t.Error("current_step should be absent for nil progress")
 	}
 }
@@ -141,12 +141,12 @@ func TestRunHeartbeatEmitter_Start_NilProgress(t *testing.T) {
 // TestRunHeartbeatEmitter_Start_DefaultInterval verifies that interval <= 0
 // falls back to the default 10s interval.
 func TestRunHeartbeatEmitter_Start_DefaultInterval(t *testing.T) {
-	e := NewRunHeartbeatEmitter(0, &heartbeatCaptureBus{}, nil)
+	e := NewRunHeartbeatEmitter(0, &captureEventBus{}, nil)
 	if e.interval != defaultHeartbeatInterval {
 		t.Errorf("interval = %v, want %v", e.interval, defaultHeartbeatInterval)
 	}
 
-	e2 := NewRunHeartbeatEmitter(-1, &heartbeatCaptureBus{}, nil)
+	e2 := NewRunHeartbeatEmitter(-1, &captureEventBus{}, nil)
 	if e2.interval != defaultHeartbeatInterval {
 		t.Errorf("interval = %v, want %v", e2.interval, defaultHeartbeatInterval)
 	}
@@ -155,7 +155,7 @@ func TestRunHeartbeatEmitter_Start_DefaultInterval(t *testing.T) {
 // TestRunHeartbeatEmitter_Start_ContextCancel verifies that cancelling the
 // context causes the goroutine to exit and no further events are published.
 func TestRunHeartbeatEmitter_Start_ContextCancel(t *testing.T) {
-	bus := &heartbeatCaptureBus{}
+	bus := &captureEventBus{}
 	e := NewRunHeartbeatEmitter(20*time.Millisecond, bus, loggateway.NewNoop())
 
 	ctx, cancel := context.WithCancel(context.Background())

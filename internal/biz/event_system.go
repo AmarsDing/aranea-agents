@@ -42,12 +42,18 @@ func (e *RunStatusEvent) SetOccurredAt(t time.Time) { e.occurredAt = t }
 type HeartbeatEvent struct {
 	sessionID  string
 	Message    string
+	Meta       map[string]any
 	occurredAt time.Time
 }
 
 // NewHeartbeatEvent constructs a HeartbeatEvent.
 func NewHeartbeatEvent(sessionID, message string, ts time.Time) *HeartbeatEvent {
 	return &HeartbeatEvent{sessionID: sessionID, Message: message, occurredAt: ts}
+}
+
+// NewHeartbeatEventWithMeta constructs a HeartbeatEvent with progress metadata.
+func NewHeartbeatEventWithMeta(sessionID, message string, ts time.Time, meta map[string]any) *HeartbeatEvent {
+	return &HeartbeatEvent{sessionID: sessionID, Message: message, Meta: meta, occurredAt: ts}
 }
 
 func (e *HeartbeatEvent) EventKind() EventKind      { return EventKindSystemHeartbeat }

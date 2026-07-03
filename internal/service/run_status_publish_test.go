@@ -42,20 +42,27 @@ func TestPublishSessionStatusChanged_UsesNoticeKind(t *testing.T) {
 	}
 }
 
-// TestPublishMetricsUpdated_UsesNoticeKind verifies that system metrics events
-// are rendered as notice Activities instead of session Activities.
-func TestPublishMetricsUpdated_UsesNoticeKind(t *testing.T) {
-	bus := &gateCaptureBus{}
+// TestPublishMetricsUpdated_UsesSystemNotice verifies that system metrics events
+// are published as v2 SystemNoticeEvent with the metrics_updated notice type.
+func TestPublishMetricsUpdated_UsesSystemNotice(t *testing.T) {
+	bus := &captureEventBus{}
 	PublishMetricsUpdated(bus, "sess-1")
 
-	events := bus.events()
+	events := bus.snapshot()
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
 	}
-	if events[0].Activity.Kind != biz.ActivityKindNotice {
-		t.Errorf("kind = %s, want %s", events[0].Activity.Kind, biz.ActivityKindNotice)
+	ev, ok := events[0].(*biz.SystemNoticeEvent)
+	if !ok {
+		t.Fatalf("expected *SystemNoticeEvent, got %T", events[0])
 	}
-	if events[0].Activity.AgentKey != "session-metrics" {
-		t.Errorf("agent_key = %s, want session-metrics", events[0].Activity.AgentKey)
+	if ev.EventKind() != biz.EventKindSystemNotice {
+		t.Errorf("kind = %s, want %s", ev.EventKind(), biz.EventKindSystemNotice)
+	}
+	if ev.NoticeType != "metrics_updated" {
+		t.Errorf("notice_type = %s, want metrics_updated", ev.NoticeType)
+	}
+	if ev.SpiritSessionID() != "sess-1" {
+		t.Errorf("session_id = %s, want sess-1", ev.SpiritSessionID())
 	}
 }

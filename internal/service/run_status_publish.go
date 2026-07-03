@@ -199,38 +199,25 @@ func (p *sessionStatusPublisher) PublishSessionStatusChanged(sessionID, status, 
 	PublishSessionStatusChanged(p.bus, sessionID, status, statusReason, statusChangedAt)
 }
 
-// metricsUpdatedPublisher publishes metrics_updated events via ActivityEventBus.
+// metricsUpdatedPublisher publishes metrics_updated events via the v2 EventBus.
 type metricsUpdatedPublisher struct {
-	bus biz.ActivityEventBus
+	bus biz.EventBus
 }
 
 func (p *metricsUpdatedPublisher) PublishMetricsUpdated(sessionID string) {
 	PublishMetricsUpdated(p.bus, sessionID)
 }
 
-// PublishMetricsUpdated emits a metrics_updated ActivityEvent for WS subscribers.
-func PublishMetricsUpdated(bus biz.ActivityEventBus, sessionID string) {
+// PublishMetricsUpdated emits a metrics_updated v2 SystemNoticeEvent for WS subscribers.
+func PublishMetricsUpdated(bus biz.EventBus, sessionID string) {
 	if bus == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
-	ev := biz.ActivityEvent{
-		Event: biz.ActivityEventUpdated,
-		Activity: biz.Activity{
-			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindNotice,
-			Status:    biz.ActivityStatusCompleted,
-			Timestamp: time.Now().UTC(),
-			SessionID: sessionID,
-			AgentKey:  "session-metrics",
-			AgentName: "会话指标",
-			Stage:     "metrics_updated",
-			Meta: map[string]any{
-				"session_id": sessionID,
-			},
-		},
-		Domain: biz.ActivityDomainSystem,
+	meta := map[string]any{
+		"session_id": sessionID,
+		"stage":      "metrics_updated",
 	}
-	bus.Publish(context.Background(), ev)
+	bus.Publish(context.Background(), biz.NewSystemNoticeEvent(sessionID, "metrics_updated", "会话指标", meta))
 }
 
 // ProvideSessionStatusPublisher creates a SessionStatusPublisher backed by ActivityEventBus.
@@ -241,8 +228,8 @@ func ProvideSessionStatusPublisher(bus biz.ActivityEventBus) biz.SessionStatusPu
 	return &sessionStatusPublisher{bus: bus}
 }
 
-// ProvideMetricsUpdatedPublisher creates a MetricsUpdatedPublisher backed by ActivityEventBus.
-func ProvideMetricsUpdatedPublisher(bus biz.ActivityEventBus) biz.MetricsUpdatedPublisher {
+// ProvideMetricsUpdatedPublisher creates a MetricsUpdatedPublisher backed by the v2 EventBus.
+func ProvideMetricsUpdatedPublisher(bus biz.EventBus) biz.MetricsUpdatedPublisher {
 	if bus == nil {
 		return nil
 	}

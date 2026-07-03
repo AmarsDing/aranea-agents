@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"net/http"
 	"strings"
-	"time"
 
 	v1 "aranea-agents/api/kratos/knowledge/v1"
 	"aranea-agents/internal/biz"
@@ -15,7 +14,6 @@ import (
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
-	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -65,12 +63,12 @@ type KnowledgeService struct {
 	embedder      knowledge.Embedder
 	embedderAdmin knowledge.EmbedderAdmin
 	search        KnowledgeSearchDeps
-	activityBus   biz.ActivityEventBus
+	eventBus      biz.EventBus
 	systemSetting biz.SystemSettingRepo
 	lg            loggateway.Logger
 }
 
-func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, searchDeps KnowledgeSearchDeps, activityBus biz.ActivityEventBus, systemSetting biz.SystemSettingRepo, lg loggateway.Logger) *KnowledgeService {
+func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, searchDeps KnowledgeSearchDeps, eventBus biz.EventBus, systemSetting biz.SystemSettingRepo, lg loggateway.Logger) *KnowledgeService {
 	var admin knowledge.EmbedderAdmin
 	if a, ok := embedder.(knowledge.EmbedderAdmin); ok {
 		admin = a
@@ -80,7 +78,7 @@ func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, 
 		embedder:      embedder,
 		embedderAdmin: admin,
 		search:        searchDeps,
-		activityBus:   activityBus,
+		eventBus:      eventBus,
 		systemSetting: systemSetting,
 		lg:            lg,
 	}
@@ -402,31 +400,21 @@ func (s *KnowledgeService) embedderConfigProto() *v1.EmbedderConfig {
 }
 
 // publishKnowledgeIngest publishes a knowledge ingest lifecycle event as a
-// system-domain ActivityEvent (NOT persisted, WS-only broadcast).
+// v2 SystemNoticeEvent (NOT persisted, WS-only broadcast).
 func (s *KnowledgeService) publishKnowledgeIngest(collectionID, docID, status, errMsg string, chunkCount int) {
-	if s.activityBus == nil {
+	if s.eventBus == nil {
 		return
 	}
-	ev := biz.ActivityEvent{
-		Event: biz.ActivityEventCreated,
-		Activity: biz.Activity{
-			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindNotice,
-			Status:    biz.ActivityStatusCompleted,
-			Timestamp: time.Now().UTC(),
-			Content:   "Knowledge document ingest: " + status,
-			Meta: map[string]any{
-				"event_type":    "knowledge_ingest",
-				"collection_id": collectionID,
-				"document_id":   docID,
-				"status":        status,
-				"error_message": errMsg,
-				"chunk_count":   chunkCount,
-			},
-		},
-		Domain: biz.ActivityDomainSystem,
+	meta := map[string]any{
+		"event_type":    "knowledge_ingest",
+		"collection_id": collectionID,
+		"document_id":   docID,
+		"status":        status,
+		"error_message": errMsg,
+		"chunk_count":   chunkCount,
 	}
-	s.activityBus.Publish(context.Background(), ev)
+	msg := "Knowledge document ingest: " + status
+	s.eventBus.Publish(context.Background(), biz.NewSystemNoticeEvent("", "knowledge_ingest", msg, meta))
 }
 
 // --- proto conversion helpers ---

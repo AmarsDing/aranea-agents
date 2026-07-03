@@ -7,8 +7,6 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	"github.com/google/uuid"
 )
 
 // defaultHeartbeatInterval is the default emit interval when interval <= 0.
@@ -22,21 +20,21 @@ type RunProgress struct {
 	ETA         string
 }
 
-// RunHeartbeatEmitter periodically publishes EnvelopeTypeRunHeartbeat events
-// so the frontend can detect stale runs within 30s (P1-7).
+// RunHeartbeatEmitter periodically publishes run_heartbeat events via the v2
+// EventBus so the frontend can detect stale runs within 30s (P1-7).
 //
 // Classified as Informational (AS-EVT-01): loss only degrades progress
 // visibility, does not corrupt state.
 type RunHeartbeatEmitter struct {
-	interval    time.Duration
-	activityBus biz.ActivityEventBus
-	lg          loggateway.Logger
+	interval time.Duration
+	eventBus biz.EventBus
+	lg       loggateway.Logger
 }
 
 // NewRunHeartbeatEmitter constructs a RunHeartbeatEmitter.
 // When interval <= 0 the default 10s interval is used.
 // When lg == nil a no-op logger is used.
-func NewRunHeartbeatEmitter(interval time.Duration, activityBus biz.ActivityEventBus, lg loggateway.Logger) *RunHeartbeatEmitter {
+func NewRunHeartbeatEmitter(interval time.Duration, eventBus biz.EventBus, lg loggateway.Logger) *RunHeartbeatEmitter {
 	if interval <= 0 {
 		interval = defaultHeartbeatInterval
 	}
@@ -44,9 +42,9 @@ func NewRunHeartbeatEmitter(interval time.Duration, activityBus biz.ActivityEven
 		lg = loggateway.NewNoop()
 	}
 	return &RunHeartbeatEmitter{
-		interval:    interval,
-		activityBus: activityBus,
-		lg:          lg.With(loggateway.Domain("run-heartbeat")),
+		interval: interval,
+		eventBus: eventBus,
+		lg:       lg.With(loggateway.Domain("run-heartbeat")),
 	}
 }
 
@@ -76,12 +74,11 @@ func (e *RunHeartbeatEmitter) Start(ctx context.Context, runID, sessionID string
 	return cancel
 }
 
-// publishHeartbeat publishes a single heartbeat as an ActivityEvent
-// (Kind=notice, Domain=system). When progress is non-nil its fields are
-// included in the metadata; otherwise only run_id is sent to prove the run
-// is alive. Replaces the legacy EnvelopeTypeRunHeartbeat publish.
+// publishHeartbeat publishes a single heartbeat as a v2 HeartbeatEvent.
+// When progress is non-nil its fields are included in the metadata; otherwise
+// only run_id is sent to prove the run is alive.
 func (e *RunHeartbeatEmitter) publishHeartbeat(ctx context.Context, runID, sessionID string, progress func() RunProgress) {
-	if e.activityBus == nil {
+	if e.eventBus == nil {
 		return
 	}
 
@@ -96,18 +93,5 @@ func (e *RunHeartbeatEmitter) publishHeartbeat(ctx context.Context, runID, sessi
 		meta["total_steps"] = p.TotalSteps
 		meta["eta"] = p.ETA
 	}
-	e.activityBus.Publish(ctx, biz.ActivityEvent{
-		Event: biz.ActivityEventUpdated,
-		Activity: biz.Activity{
-			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindNotice,
-			Status:    biz.ActivityStatusRunning,
-			SessionID: sessionID,
-			AgentKey:  "run-heartbeat",
-			AgentName: "运行心跳",
-			Timestamp: time.Now().UTC(),
-			Meta:      meta,
-		},
-		Domain: biz.ActivityDomainSystem,
-	})
+	e.eventBus.Publish(ctx, biz.NewHeartbeatEventWithMeta(sessionID, "运行心跳", time.Now(), meta))
 }
