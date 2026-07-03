@@ -28,7 +28,7 @@ func (r *Runner) startObservers(
 	compiledTeam *biz.CompiledTeam,
 ) observerSetup {
 	var setup observerSetup
-	if r.td.Pipeline.ActivityBus == nil {
+	if r.td.Pipeline.EventBus == nil {
 		return setup
 	}
 
@@ -62,7 +62,7 @@ func (r *Runner) startObservers(
 		GraphExecutionID: graphExecID,
 		ActivityFlusher:  setup.activityFlusher,
 		FailureOnError:   failureOnError,
-		ActivityBus:      r.td.Pipeline.ActivityBus,
+		EventBus:         r.td.Pipeline.EventBus,
 	})
 	if r.mediator != nil && graphExecID != "" {
 		setup.stopGraphStepWatch = r.mediator.StartGraphStepWatch(ctx, graphExecID)

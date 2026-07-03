@@ -1135,8 +1135,8 @@ func provideNL2GraphConverter(lg loggateway.Logger) graph.NL2GraphConverter {
 // recovery. P1 fix (2026-06-18): previously this component was implemented but
 // never wired into production (orphan component). It is now available for
 // Graph executors to call OnNodeFailure on node errors.
-func provideRuntimeReplanner(activityBus biz.ActivityEventBus, lg loggateway.Logger) graph.RuntimeReplanner {
-	return graph.NewRuntimeReplanner(activityBus, lg)
+func provideRuntimeReplanner(eventBus biz.EventBus, lg loggateway.Logger) graph.RuntimeReplanner {
+	return graph.NewRuntimeReplanner(eventBus, lg)
 }
 
 // provideTopologyEvolver builds the TopologyEvolver for dynamic graph topology
@@ -1147,7 +1147,7 @@ func provideRuntimeReplanner(activityBus biz.ActivityEventBus, lg loggateway.Log
 // (B4) and is called when execution insights suggest a new transfer edge.
 func provideTopologyEvolver(
 	catalog *biz.LlmProviderModelUsecase,
-	activityBus biz.ActivityEventBus,
+	eventBus biz.EventBus,
 	lg loggateway.Logger,
 ) graph.TopologyEvolver {
 	var llm trpcmodel.Model
@@ -1164,7 +1164,7 @@ func provideTopologyEvolver(
 				loggateway.Err(err))
 		}
 	}
-	return graph.NewTopologyEvolver(llm, activityBus, lg)
+	return graph.NewTopologyEvolver(llm, eventBus, lg)
 }
 
 func provideGraphBuildDeps(

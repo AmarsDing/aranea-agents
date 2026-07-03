@@ -68,6 +68,12 @@ type WSServer struct {
 	store                 *connStore
 	monitorBus            contract.MonitorBus
 	activityBus           biz.ActivityEventBus
+	// eventBus is the v2 typed EventBus (Phase 3b-D). Used by publishWSErrorActivity
+	// to emit ActivityBridgeEvent payloads (wrapping v1 ActivityEvent) for the
+	// chat error activity. The legacy activityBus field is retained for the
+	// v1 Subscribe path in ws_event.go (the WS broadcast pump) until Tier 4
+	// removes the v1 WS path entirely.
+	eventBus              biz.EventBus
 	canceller             RunCanceller
 	sender                ChatSender
 	turnExecutor          WSTurnExecutor
@@ -82,7 +88,7 @@ type WSServer struct {
 
 // NewWSServerFromInfra uses monitor bus for monitor events and activity bus
 // for chat/system events (AF pipeline).
-func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnExecutor WSTurnExecutor, runtimeConf *conf.Runtime, lg loggateway.Logger, activityBus biz.ActivityEventBus) *WSServer {
+func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnExecutor WSTurnExecutor, runtimeConf *conf.Runtime, lg loggateway.Logger, activityBus biz.ActivityEventBus, eventBus biz.EventBus) *WSServer {
 	if c == nil || c.GetWs() == nil || !c.GetWs().GetEnable() {
 		return nil
 	}
@@ -95,6 +101,7 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 		store:                 newConnStore(),
 		monitorBus:            monitor,
 		activityBus:           activityBus,
+		eventBus:              eventBus,
 		canceller:             canceller,
 		sender:                sender,
 		turnExecutor:          turnExecutor,

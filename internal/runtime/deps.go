@@ -100,15 +100,16 @@ func (d TurnDeps) RoundTrip() *provider.RoundTrip {
 
 // RoundTripForSession returns a provider.RoundTrip with an OnRetry callback
 // that publishes llm_retry events as system-domain ActivityEvents on the
-// ActivityBus. sessionID is captured in the callback so events carry the
-// correct session for frontend routing. If the ActivityBus is nil, the
-// callback is not set (retry still works, just no event is published).
+// EventBus (wrapped via ActivityBridgeEvent). sessionID is captured in the
+// callback so events carry the correct session for frontend routing. If the
+// EventBus is nil, the callback is not set (retry still works, just no event
+// is published).
 func (d TurnDeps) RoundTripForSession(sessionID string) *provider.RoundTrip {
 	rt := d.RoundTrip()
-	if d.Pipeline.ActivityBus == nil {
+	if d.Pipeline.EventBus == nil {
 		return rt
 	}
-	bus := d.Pipeline.ActivityBus
+	bus := d.Pipeline.EventBus
 	lg := d.Logger()
 	rt.OnRetry = func(req *http.Request, attempt, maxRetries int, err error, delay time.Duration) {
 		maxLabel := "∞"
@@ -143,7 +144,7 @@ func (d TurnDeps) RoundTripForSession(sessionID string) *provider.RoundTrip {
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		bus.Publish(ctx, ev)
+		bus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
 		if lg != nil {
 			lg.Warn("LLM 重试事件已发布",
 				loggateway.StepID("provider.llm_retry"),

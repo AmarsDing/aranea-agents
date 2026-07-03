@@ -18,10 +18,10 @@ func newTestTopologyEvolver(llm trpcmodel.Model, bus *recordingReplanBus) *Topol
 		bus = &recordingReplanBus{}
 	}
 	return &TopologyEvolverImpl{
-		llm:         llm,
-		activityBus: bus,
-		lg:          loggateway.NewNoop().With(loggateway.Domain("topology_evolver")),
-		addedEdges:  make(map[string]map[string]bool),
+		llm:        llm,
+		eventBus:   bus,
+		lg:         loggateway.NewNoop().With(loggateway.Domain("topology_evolver")),
+		addedEdges: make(map[string]map[string]bool),
 	}
 }
 

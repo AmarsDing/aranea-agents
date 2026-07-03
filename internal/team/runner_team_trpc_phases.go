@@ -143,7 +143,7 @@ func deriveSpiritSessionID(sess biz.Session) string {
 // correct session IDs with the team session ID (sess.ID), causing the frontend to fail to
 // lazy-load member execution processes.
 func (r *Runner) publishTeamRunStartedEvent(ctx context.Context, sess biz.Session, teamRow biz.Team, run biz.TeamRunRecord, def Definition) {
-	if r.td.Pipeline.ActivityBus == nil {
+	if r.td.Pipeline.EventBus == nil {
 		return
 	}
 	cp := run
@@ -177,10 +177,10 @@ func (r *Runner) publishTeamRunStartedEvent(ctx context.Context, sess biz.Sessio
 		},
 		Domain: biz.ActivityDomainChat,
 	}
-	// TODO(phase3b-d): migrate to v2 EventBus (biz.NewTeamStageCreatedEvent).
-	// Blocked: r.td.Pipeline.ActivityBus field type is defined in
-	// status_projector.go (not in this task's scope).
-	r.td.Pipeline.ActivityBus.Publish(ctx, ev)
+	// Phase 3b-D: bridge to v2 EventBus. ActivityBridgeEvent preserves all
+	// v1 fields (Meta.run_id, ParentActivityID, Stage="assembled") so the
+	// frontend team_stage lifecycle renders correctly under the graph_stage parent.
+	r.td.Pipeline.EventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
 }
 
 // buildTeamBuilderDeps assembles the TRPCBuilderDeps from runner configuration and anchor resolution.

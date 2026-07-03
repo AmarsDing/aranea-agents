@@ -15,11 +15,11 @@ type SessionStatusGuard struct {
 	uc           *biz.SessionUsecase
 	teamUC       *biz.TeamUsecase
 	orchestrator biz.TaskOrchestratorPort
-	bus          biz.ActivityEventBus
+	bus          biz.EventBus // Phase 3b-D: v2 EventBus (originally biz.ActivityEventBus)
 	lg           loggateway.Logger
 }
 
-func NewSessionStatusGuard(uc *biz.SessionUsecase, teamUC *biz.TeamUsecase, orchestrator biz.TaskOrchestratorPort, bus biz.ActivityEventBus, lg loggateway.Logger) *SessionStatusGuard {
+func NewSessionStatusGuard(uc *biz.SessionUsecase, teamUC *biz.TeamUsecase, orchestrator biz.TaskOrchestratorPort, bus biz.EventBus, lg loggateway.Logger) *SessionStatusGuard {
 	return &SessionStatusGuard{uc: uc, teamUC: teamUC, orchestrator: orchestrator, bus: bus, lg: lg}
 }
 
@@ -91,7 +91,9 @@ func (g *SessionStatusGuard) recoverOrphanedRunningTeams(ctx context.Context) er
 				},
 				Domain: biz.ActivityDomainChat,
 			}
-			g.bus.Publish(ctx, ev)
+			// Phase 3b-D: bridge to v2 EventBus. ActivityBridgeEvent preserves
+			// the v1 TeamStage Interrupted activity (Meta carries recovery info).
+			g.bus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
 		}
 	}
 	g.lg.Info("session status guard: orphaned teams recovered", loggateway.Int("count", len(teams)))

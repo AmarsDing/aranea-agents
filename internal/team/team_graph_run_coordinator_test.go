@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event/activityevent"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -210,8 +210,8 @@ func TestTeamGraphRunCoordinator_DeferTeamRunSuccessIfHITL(t *testing.T) {
 func TestTeamGraphRunCoordinator_finalizeTeamRun(t *testing.T) {
 	backend := newCoordTestBackend()
 	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRunRecord{"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusWaitingHuman}}}
-	actBus := activityevent.New(nil, loggateway.NewNoop())
-	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, actBus, nil, nil, loggateway.NewNoop())
+	v2Bus := event.NewV2Bus()
+	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, v2Bus, nil, nil, loggateway.NewNoop())
 	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
 	ctx := context.Background()
 
@@ -219,16 +219,18 @@ func TestTeamGraphRunCoordinator_finalizeTeamRun(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	outCh, unsub := actBus.Subscribe(biz.ActivityEventSubscribeOptions{
-		SessionID:  "sess-1",
-		BufferSize: 4,
-	})
+	outCh, unsub := v2Bus.Subscribe(biz.EventSubscribeOptions{})
 	defer unsub()
 
 	coord.finalizeTeamRun(ctx, coord.session("exec-1"), false, "")
 
 	select {
-	case ev := <-outCh:
+	case e := <-outCh:
+		bridge, ok := e.(*biz.ActivityBridgeEvent)
+		if !ok {
+			t.Fatalf("expected *ActivityBridgeEvent, got %T", e)
+		}
+		ev := bridge.Event
 		if ev.Event != biz.ActivityEventCompleted {
 			t.Fatalf("event=%s want=%s", ev.Event, biz.ActivityEventCompleted)
 		}

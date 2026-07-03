@@ -157,7 +157,7 @@ func (r *Runner) prepareUserTurnOptions(
 			return
 		}
 	}
-	if shouldRunIntent && r.td.Pipeline.ActivityBus != nil {
+	if shouldRunIntent && r.td.Pipeline.EventBus != nil {
 		meta := intent.RunMeta{
 			AgentID:   ar.agent.ID,
 			SessionID: sess.ID,
@@ -180,9 +180,9 @@ func (r *Runner) prepareUserTurnOptions(
 			},
 			Domain: biz.ActivityDomainChat,
 		}
-		// TODO(phase3b-d): migrate to v2 EventBus. Blocked: r.td.Pipeline.ActivityBus
-		// field type is defined in status_projector.go (not in this task's scope).
-		r.td.Pipeline.ActivityBus.Publish(ctx, ev)
+		// Phase 3b-D: bridge to v2 EventBus. ActivityBridgeEvent preserves the
+		// v1 intent_pass Notice activity (Meta carries intent pass payload).
+		r.td.Pipeline.EventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
 	}
 	opts = userTurnOptions{
 		userOpts:      userOpts,
@@ -235,7 +235,7 @@ func (r *Runner) finalizeTeamRun(
 	if teamEmitter != nil {
 		teamEmitter.LogDone("team.run.finish", "团队任务结束", event.P("status", run.Status))
 	}
-	if r.td.Pipeline.ActivityBus != nil {
+	if r.td.Pipeline.EventBus != nil {
 		cp := run
 		// SessionID = spirit session ID (not run.SessionID which is the team
 		// session ID) so the frontend WS filter and listActivities API return
@@ -256,9 +256,9 @@ func (r *Runner) finalizeTeamRun(
 			},
 			Domain: biz.ActivityDomainChat,
 		}
-		// TODO(phase3b-d): migrate to v2 EventBus. Blocked: r.td.Pipeline.ActivityBus
-		// field type is defined in status_projector.go (not in this task's scope).
-		r.td.Pipeline.ActivityBus.Publish(ctx, ev)
+		// Phase 3b-D: bridge to v2 EventBus. ActivityBridgeEvent preserves the
+		// v1 TeamStage Completed activity (Meta.run_id, Meta.run snapshot).
+		r.td.Pipeline.EventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
 		r.publishTeamRunSummary(ctx, run)
 	}
 	return run

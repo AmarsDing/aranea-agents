@@ -63,15 +63,12 @@ type TeamGraphRunCoordinator struct {
 	teamRunReader   biz.TeamRunReader
 	teamRunWriter   biz.TeamRunWriter
 	runTransitioner biz.TeamRunStatusTransitioner
-	// TODO(phase3b-d): migrate to v2 EventBus. This field is v1 ActivityEventBus
-	// because: (1) the coordinator's handleGraphWatchActivity deeply inspects v1
-	// ActivityEvent fields (Kind/Stage/Meta/Event) to drive the graph watch state
-	// machine; (2) it also Subscribes to the bus for graph_stage events from
-	// event_bridge.go/topology_evolution.go/runtime_replanner.go. Migrating this
-	// field alone would break both the subscribe path and the graph watch flow.
-	// Requires a coordinated migration of: coordinator subscribe+handler, the 3
-	// graph publishers, and the v2 EventBus adapter/wiring.
-	activityBus     biz.ActivityEventBus
+	// Phase 3b-D: was biz.ActivityEventBus, migrated to v2 EventBus. The
+	// coordinator subscribes via v2 EventBus.Subscribe and extracts the v1
+	// ActivityEvent from each ActivityBridgeEvent for handleGraphWatchActivity
+	// (which deeply inspects v1 Kind/Stage/Meta/Event/Content to drive the
+	// graph watch state machine). All publish sites also use NewActivityBridgeEvent.
+	eventBus        biz.EventBus
 	finisher        *TeamRunMediator
 	sessionRepo     biz.TeamGraphSessionRepo
 	cfg             CoordinatorConfig
@@ -107,7 +104,7 @@ const (
 	graphWatchStepsAndFinalize
 )
 
-func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teamRunReader biz.TeamRunReader, teamRunWriter biz.TeamRunWriter, runTransitioner biz.TeamRunStatusTransitioner, activityBus biz.ActivityEventBus, sessionRepo biz.TeamGraphSessionRepo, agentKeyFn func(agentID string) string, lg loggateway.Logger) *TeamGraphRunCoordinator {
+func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teamRunReader biz.TeamRunReader, teamRunWriter biz.TeamRunWriter, runTransitioner biz.TeamRunStatusTransitioner, eventBus biz.EventBus, sessionRepo biz.TeamGraphSessionRepo, agentKeyFn func(agentID string) string, lg loggateway.Logger) *TeamGraphRunCoordinator {
 	if agentKeyFn == nil {
 		agentKeyFn = func(agentID string) string { return strings.TrimSpace(agentID) }
 	}
@@ -116,7 +113,7 @@ func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teamRunReader 
 		teamRunReader:   teamRunReader,
 		teamRunWriter:   teamRunWriter,
 		runTransitioner: runTransitioner,
-		activityBus:     activityBus,
+		eventBus:        eventBus,
 		sessionRepo:     sessionRepo,
 		agentKeyFn:      agentKeyFn,
 		sessions:        make(map[string]*teamGraphRunSession),
@@ -285,7 +282,7 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 						}
 					}
 				}
-				if c.activityBus != nil {
+				if c.eventBus != nil {
 					ev := biz.ActivityEvent{
 						Event: biz.ActivityEventFailed,
 						Activity: biz.Activity{
@@ -305,7 +302,8 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 						},
 						Domain: biz.ActivityDomainChat,
 					}
-					c.activityBus.Publish(ctx, ev)
+					// Phase 3b-D: bridge to v2 EventBus.
+					c.eventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
 				}
 			}
 		}
@@ -352,7 +350,7 @@ func (c *TeamGraphRunCoordinator) StartGraphStepWatch(ctx context.Context, execI
 }
 
 func (c *TeamGraphRunCoordinator) startGraphWatch(ctx context.Context, sess *teamGraphRunSession, mode graphWatchMode) context.CancelFunc {
-	if c == nil || c.activityBus == nil || sess == nil {
+	if c == nil || c.eventBus == nil || sess == nil {
 		return func() {}
 	}
 	c.stopWatch(sess.execID)
@@ -366,10 +364,17 @@ func (c *TeamGraphRunCoordinator) startGraphWatch(ctx context.Context, sess *tea
 
 	safego.Go(watchCtx, "team.graph.run.watch", func() {
 		defer cancel()
-		ch, unsub := c.activityBus.Subscribe(biz.ActivityEventSubscribeOptions{
-			SessionID:  sess.sessionID,
-			BufferSize: 32,
-		})
+		// Phase 3b-D: subscribe via v2 EventBus. Each event is an
+		// *ActivityBridgeEvent wrapping a v1 ActivityEvent; we extract the
+		// inner v1 ActivityEvent and feed it to handleGraphWatchActivity
+		// unchanged (it deeply inspects Kind/Stage/Meta/Event/Content).
+		opts := biz.EventSubscribeOptions{
+			SpiritSessionID: sess.spiritSessionID,
+		}
+		if opts.SpiritSessionID == "" {
+			opts.SpiritSessionID = sess.sessionID
+		}
+		ch, unsub := c.eventBus.Subscribe(opts)
 		defer unsub()
 		watchTimeout := c.cfg.WatchTimeout
 		if watchTimeout <= 0 {
@@ -402,10 +407,17 @@ func (c *TeamGraphRunCoordinator) startGraphWatch(ctx context.Context, sess *tea
 					c.finalizeTeamRun(watchCtx, sess, true, fmt.Sprintf("graph resume watch timed out after %s", watchTimeout))
 				}
 				return
-			case aev, ok := <-ch:
+			case e, ok := <-ch:
 				if !ok {
 					return
 				}
+				// Extract v1 ActivityEvent from bridge events. Non-bridge
+				// events (Task/Turn/Step/etc.) are ignored by this watcher.
+				bridge, ok := e.(*biz.ActivityBridgeEvent)
+				if !ok {
+					continue
+				}
+				aev := bridge.Event
 				if done, failed, errMsg := c.handleGraphWatchActivity(watchCtx, sess, aev, mode); done {
 					c.finalizeTeamRun(watchCtx, sess, failed, errMsg)
 					return
@@ -619,7 +631,7 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 		}
 	}
 	run = updatedRun
-	if c.activityBus != nil {
+	if c.eventBus != nil {
 		var eventType biz.ActivityEventType
 		var status biz.ActivityStatus
 		var stage string
@@ -648,7 +660,8 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 			},
 			Domain: biz.ActivityDomainChat,
 		}
-		c.activityBus.Publish(ctx, ev)
+		// Phase 3b-D: bridge to v2 EventBus.
+		c.eventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
 	}
 	c.evictSession(sess.execID)
 }

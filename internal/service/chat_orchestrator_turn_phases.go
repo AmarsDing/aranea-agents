@@ -102,13 +102,9 @@ func (o *ChatOrchestrator) runIntentPass(
 	}
 	meta := intent.RunMeta{AgentID: ag.ID, SessionID: sessionID}
 	intentPayload := intent.BuildIntentPassPayload(intRes, meta)
-	// TODO(Phase3b-D Task 10): migrate to v2 EventBus (NewStepCreatedEvent
-	// with Kind=StepKindNotice). The ChatOrchestrator struct is defined in
-	// chat_orchestrator.go (outside this file's assigned scope), so the v2
-	// EventBus field cannot be added here. This publish stays on v1
-	// ActivityEventBus until the ChatOrchestrator struct is updated with a v2 bus.
-	if bus := o.td().Pipeline.ActivityBus; bus != nil {
-		bus.Publish(ctx, biz.ActivityEvent{
+	// Phase 3b-D: migrated to v2 EventBus via ActivityBridgeEvent.
+	if bus := o.td().Pipeline.EventBus; bus != nil {
+		bus.Publish(ctx, biz.NewActivityBridgeEvent(biz.ActivityEvent{
 			Event: biz.ActivityEventCreated,
 			Activity: biz.Activity{
 				ID:        uuid.NewString(),
@@ -119,7 +115,7 @@ func (o *ChatOrchestrator) runIntentPass(
 				Meta:      intentPayload,
 			},
 			Domain: biz.ActivityDomainChat,
-		})
+		}))
 	}
 	return intentRunOpts, intRes.Artifact
 }

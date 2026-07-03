@@ -11,7 +11,6 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
-	"aranea-agents/internal/event/activityevent"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -19,7 +18,7 @@ func newTestWSServer(canceller RunCanceller, sender ChatSender) *WSServer {
 	return NewWSServerFromInfra(
 		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
 		&event.Infra{MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop())},
-		canceller, sender, nil, nil, loggateway.NewNoop(), nil,
+		canceller, sender, nil, nil, loggateway.NewNoop(), nil, nil,
 	)
 }
 
@@ -29,7 +28,7 @@ func newTestWSServerWithActivity(canceller RunCanceller, sender ChatSender, acti
 	return NewWSServerFromInfra(
 		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
 		&event.Infra{MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop())},
-		canceller, sender, nil, nil, loggateway.NewNoop(), activityBus,
+		canceller, sender, nil, nil, loggateway.NewNoop(), activityBus, nil,
 	)
 }
 
@@ -207,14 +206,25 @@ func (s stubTurnExecutor) ExecuteTurn(_ context.Context, _ WSTurnInput) error {
 }
 
 func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
-	activityBus := activityevent.New(nil, loggateway.NewNoop())
-	srv := newTestWSServerWithActivity(nil, stubChatSender{sendErr: context.Canceled}, activityBus)
+	// Phase 3b-D: publishWSErrorActivity now uses v2 EventBus + bridge.
+	v2Bus := event.NewV2Bus()
+	srv := NewWSServerFromInfra(
+		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
+		&event.Infra{MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop())},
+		nil,
+		stubChatSender{sendErr: context.Canceled},
+		nil,
+		nil,
+		loggateway.NewNoop(),
+		nil,
+		v2Bus,
+	)
 	wc := &wsConn{
 		sessionID: "sess-user",
 		channels:  map[string]bool{"chat": true, "system": true},
 		send:      make(chan []byte, 2),
 	}
-	ch, unsub := activityBus.Subscribe(biz.ActivityEventSubscribeOptions{SessionID: "sess-user", BufferSize: 4})
+	ch, unsub := v2Bus.Subscribe(biz.EventSubscribeOptions{})
 	defer unsub()
 
 	raw, _ := json.Marshal(wsUpstream{
@@ -231,7 +241,12 @@ func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
 	deadline := time.After(2 * time.Second)
 	for {
 		select {
-		case ev := <-ch:
+		case e := <-ch:
+			bridge, ok := e.(*biz.ActivityBridgeEvent)
+			if !ok {
+				continue
+			}
+			ev := bridge.Event
 			if ev.Event != biz.ActivityEventFailed {
 				continue
 			}
@@ -243,13 +258,16 @@ func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
 			}
 			return
 		case <-deadline:
-			t.Fatal("timeout waiting for ActivityEventFailed")
+			t.Fatal("timeout waiting for ActivityBridgeEvent (Failed)")
 		}
 	}
 }
 
 func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
-	activityBus := activityevent.New(nil, loggateway.NewNoop())
+	// Phase 3b-D: publishWSErrorActivity now publishes ActivityBridgeEvent on
+	// v2 EventBus. Subscribe to v2 EventBus and extract the v1 ActivityEvent
+	// from the bridge to assert on the original payload (Kind/Status/Meta).
+	v2Bus := event.NewV2Bus()
 	srv := NewWSServerFromInfra(
 		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
 		&event.Infra{MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop())},
@@ -258,7 +276,8 @@ func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
 		stubTurnExecutor{err: errors.New("provider raw error")},
 		nil,
 		loggateway.NewNoop(),
-		activityBus,
+		nil,
+		v2Bus,
 	)
 	wc := &wsConn{
 		sessionID: "sess-turn",
@@ -266,7 +285,7 @@ func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
 		send:      make(chan []byte, 2),
 		connCtx:   context.Background(),
 	}
-	ch, unsub := activityBus.Subscribe(biz.ActivityEventSubscribeOptions{SessionID: "sess-turn", BufferSize: 4})
+	ch, unsub := v2Bus.Subscribe(biz.EventSubscribeOptions{})
 	defer unsub()
 
 	raw, _ := json.Marshal(wsUpstream{
@@ -281,7 +300,12 @@ func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
 	srv.handleUpstream(wc, raw)
 
 	select {
-	case ev := <-ch:
+	case e := <-ch:
+		bridge, ok := e.(*biz.ActivityBridgeEvent)
+		if !ok {
+			t.Fatalf("expected *ActivityBridgeEvent, got %T", e)
+		}
+		ev := bridge.Event
 		if ev.Event != biz.ActivityEventFailed {
 			t.Fatalf("expected ActivityEventFailed, got event=%s", ev.Event)
 		}
@@ -295,7 +319,7 @@ func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
 			t.Fatalf("expected error_type=send_failed, got %s", got)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("timeout waiting for ActivityEventFailed from turn gateway failure")
+		t.Fatal("timeout waiting for ActivityBridgeEvent from turn gateway failure")
 	}
 }
 

@@ -97,6 +97,13 @@ export function useChatEventRouter(store: Store) {
       case 'system.notice':
         break;
 
+      // Phase 3b-D: activity.bridge wraps a v1 ActivityEvent and is intercepted
+      // in useChatWorkspace.handleV2Event (routed to handleActivityEvent for
+      // dedup + system-event routing + sender reset). Listed here for
+      // exhaustiveness; never reaches this router.
+      case 'activity.bridge':
+        break;
+
       default:
         // Unknown event kind — silently ignore (forward compatibility)
         break;

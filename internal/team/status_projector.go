@@ -24,10 +24,14 @@ type OrchestrationProjectorConfig struct {
 	ActivityFlusher  *ActivityStepFlusher
 	FailureOnError   string // await_review | halt (FP-03)
 
-	// ActivityBus receives team_step and graph_stage ActivityEvents for
-	// orchestration status projection. Outgoing orchestration_agent_status
-	// events are also published to this bus.
-	ActivityBus biz.ActivityEventBus
+	// EventBus receives ActivityBridgeEvent payloads (wrapping v1 ActivityEvent)
+	// for orchestration status projection. Outgoing orchestration_agent_status
+	// events are also published to this bus as ActivityBridgeEvent.
+	//
+	// Phase 3b-D: was biz.ActivityEventBus, migrated to v2 biz.EventBus. The
+	// projector extracts the v1 ActivityEvent from each ActivityBridgeEvent and
+	// feeds it to OrchestrationStatusStore.ApplyActivityEvent unchanged.
+	EventBus biz.EventBus
 }
 
 // BuildOrchestrationRegistry maps team members to graph node IDs (member-{sort_order}).
@@ -62,11 +66,12 @@ func BuildOrchestrationRegistry(def Definition, agentKey func(agentID string) st
 	return biz.NewOrchestrationRegistry(entries)
 }
 
-// StartOrchestrationStatusProjector subscribes to ActivityBus for team_step and
-// graph_stage events, projects them onto orchestration node states, and publishes
-// orchestration_agent_status events back to ActivityBus.
+// StartOrchestrationStatusProjector subscribes to the v2 EventBus for
+// ActivityBridgeEvent payloads (wrapping v1 ActivityEvent), projects them onto
+// orchestration node states, and publishes orchestration_agent_status events
+// back to the bus (also as ActivityBridgeEvent).
 func StartOrchestrationStatusProjector(ctx context.Context, cfg OrchestrationProjectorConfig) context.CancelFunc {
-	if cfg.ActivityBus == nil || strings.TrimSpace(cfg.SessionID) == "" {
+	if cfg.EventBus == nil || strings.TrimSpace(cfg.SessionID) == "" {
 		return func() {}
 	}
 	channel := strings.TrimSpace(cfg.Channel)
@@ -76,26 +81,40 @@ func StartOrchestrationStatusProjector(ctx context.Context, cfg OrchestrationPro
 	store := biz.NewOrchestrationStatusStore(cfg.Registry)
 	procCtx, cancel := context.WithCancel(ctx)
 
-	ach, aunsub := cfg.ActivityBus.Subscribe(biz.ActivityEventSubscribeOptions{
-		SessionID:  cfg.SessionID,
-		BufferSize: 128,
-	})
+	// Subscribe to v2 EventBus filtered by spirit session ID. The projector
+	// receives ALL event kinds; non-ActivityBridgeEvent events are ignored
+	// (the type assertion below skips them).
+	opts := biz.EventSubscribeOptions{
+		SpiritSessionID: cfg.SpiritSessionID,
+	}
+	if opts.SpiritSessionID == "" {
+		opts.SpiritSessionID = cfg.SessionID
+	}
+	ch, aunsub := cfg.EventBus.Subscribe(opts)
 	safego.Go(procCtx, "orchestration.status.projector", func() {
 		defer aunsub()
 		for {
 			select {
 			case <-procCtx.Done():
 				return
-			case aev, ok := <-ach:
+			case e, ok := <-ch:
 				if !ok {
 					return
 				}
+				// Extract v1 ActivityEvent from bridge events. Non-bridge events
+				// (Task/Turn/Step/etc.) are not consumed by this projector.
+				bridge, ok := e.(*biz.ActivityBridgeEvent)
+				if !ok {
+					continue
+				}
+				aev := bridge.Event
 				if aev.Activity.Kind == biz.ActivityKindNotice && aev.Activity.Stage == "orchestration_status" {
+					// Skip our own publishes to prevent feedback loops.
 					continue
 				}
 				changed := store.ApplyActivityEvent(aev, cfg.Registry)
 				for _, st := range changed {
-					publishOrchestrationStatus(procCtx, cfg.ActivityBus, cfg, channel, st)
+					publishOrchestrationStatus(procCtx, cfg.EventBus, cfg, channel, st)
 				}
 			}
 		}
@@ -104,7 +123,7 @@ func StartOrchestrationStatusProjector(ctx context.Context, cfg OrchestrationPro
 	return cancel
 }
 
-func publishOrchestrationStatus(ctx context.Context, bus biz.ActivityEventBus, cfg OrchestrationProjectorConfig, channel string, st *biz.AgentNodeState) {
+func publishOrchestrationStatus(ctx context.Context, bus biz.EventBus, cfg OrchestrationProjectorConfig, channel string, st *biz.AgentNodeState) {
 	if st == nil || bus == nil {
 		return
 	}
@@ -159,7 +178,9 @@ func publishOrchestrationStatus(ctx context.Context, bus biz.ActivityEventBus, c
 		},
 		Domain: biz.ActivityDomainChat,
 	}
-	bus.Publish(ctx, ev)
+	// Phase 3b-D: bridge to v2 EventBus. The orchestration_status Notice
+	// activity is consumed by the frontend AgentCard and Kanban UIs.
+	bus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
 }
 
 // agentNodeStatusToActivityStatus maps an AgentNodeStatus to the closest

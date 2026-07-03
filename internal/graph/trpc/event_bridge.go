@@ -16,7 +16,7 @@ import (
 )
 
 type EventBridge struct {
-	activityBus     biz.ActivityEventBus
+	eventBus        biz.EventBus
 	sessionID       string
 	spiritSessionID string
 	graphID         string
@@ -25,9 +25,9 @@ type EventBridge struct {
 	lg              loggateway.Logger
 }
 
-func NewEventBridge(activityBus biz.ActivityEventBus, sessionID, spiritSessionID, graphID, execID string, lg loggateway.Logger) *EventBridge {
+func NewEventBridge(eventBus biz.EventBus, sessionID, spiritSessionID, graphID, execID string, lg loggateway.Logger) *EventBridge {
 	return &EventBridge{
-		activityBus:     activityBus,
+		eventBus:        eventBus,
 		sessionID:       sessionID,
 		spiritSessionID: spiritSessionID,
 		graphID:         graphID,
@@ -37,21 +37,21 @@ func NewEventBridge(activityBus biz.ActivityEventBus, sessionID, spiritSessionID
 	}
 }
 
-func (b *EventBridge) ActivityBus() biz.ActivityEventBus {
-	return b.activityBus
+func (b *EventBridge) EventBus() biz.EventBus {
+	return b.eventBus
 }
 
 func (b *EventBridge) Consume(ctx context.Context, eventCh <-chan *trpcevent.Event) {
 	for e := range eventCh {
 		ev := b.ConvertEvent(e)
-		if ev != nil && b.activityBus != nil {
-			// TODO(phase3b-d): migrate to v2 EventBus. graph_stage events have no
-			// direct v2 equivalent (would need SystemNoticeEvent with flattened meta).
-			// Blocked by team_graph_run_coordinator.go's v1 Subscribe + handleGraphWatchActivity,
-			// which deeply inspects v1 ActivityEvent fields (Kind/Stage/Meta/Event) to drive
-			// the graph watch state machine. Migrating this publish alone would break the
-			// graph watch flow. Requires coordinated migration of event_bridge + coordinator.
-			b.activityBus.Publish(ctx, *ev)
+		if ev != nil && b.eventBus != nil {
+			// Phase 3b-D: bridge to v2 EventBus. graph_stage events have no
+			// direct v2 typed equivalent; ActivityBridgeEvent preserves the
+			// full v1 ActivityEvent payload (Kind/Stage/Meta/Content) so the
+			// frontend Kanban UI and team_graph_run_coordinator's v2 Subscribe
+			// (which extracts the v1 ActivityEvent via type assertion) both
+			// continue to work unchanged.
+			b.eventBus.Publish(ctx, biz.NewActivityBridgeEvent(*ev))
 		} else if ev == nil {
 			b.lg.Warn("unhandled event dropped",
 				loggateway.StepID("graph.event_bridge"),

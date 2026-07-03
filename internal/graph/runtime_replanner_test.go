@@ -15,24 +15,28 @@ import (
 
 // --- Fakes ---
 
-// recordingReplanBus is a biz.ActivityEventBus that records published events.
+// recordingReplanBus is a biz.EventBus that records published events.
+// It extracts the wrapped v1 ActivityEvent from ActivityBridgeEvent payloads
+// so tests can assert on the original ActivityEvent shape.
 type recordingReplanBus struct {
 	mu        sync.Mutex
 	published []biz.ActivityEvent
 }
 
-func (b *recordingReplanBus) Publish(_ context.Context, ev biz.ActivityEvent) {
+func (b *recordingReplanBus) Publish(_ context.Context, e biz.Event) {
+	bridge, ok := e.(*biz.ActivityBridgeEvent)
+	if !ok {
+		return
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.published = append(b.published, ev)
+	b.published = append(b.published, bridge.Event)
 }
 
-func (b *recordingReplanBus) Subscribe(_ biz.ActivityEventSubscribeOptions) (<-chan biz.ActivityEvent, func()) {
-	ch := make(chan biz.ActivityEvent)
+func (b *recordingReplanBus) Subscribe(_ biz.EventSubscribeOptions) (<-chan biz.Event, func()) {
+	ch := make(chan biz.Event)
 	return ch, func() { close(ch) }
 }
-
-func (b *recordingReplanBus) DropCount() uint64 { return 0 }
 
 func (b *recordingReplanBus) events() []biz.ActivityEvent {
 	b.mu.Lock()
@@ -49,7 +53,7 @@ func newTestReplanner(bus *recordingReplanBus) *RuntimeReplannerImpl {
 		bus = &recordingReplanBus{}
 	}
 	return &RuntimeReplannerImpl{
-		activityBus:  bus,
+		eventBus:     bus,
 		lg:           loggateway.NewNoop().With(loggateway.Domain("runtime_replanner")),
 		attemptCount: lifecycle.NewManagedMap[string, int](0),
 	}

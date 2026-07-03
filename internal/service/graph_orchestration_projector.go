@@ -11,24 +11,24 @@ import (
 
 // GraphOrchestrationProjector starts run-scoped status projectors for graph executions.
 type GraphOrchestrationProjector struct {
-	activityBus biz.ActivityEventBus
-	mu          sync.Mutex
+	eventBus biz.EventBus // Phase 3b-D: was biz.ActivityEventBus, migrated to v2 EventBus
+	mu       sync.Mutex
 	// execID -> cancel
 	stops map[string]context.CancelFunc
 }
 
 var _ biz.GraphExecutionObserver = (*GraphOrchestrationProjector)(nil)
 
-func NewGraphOrchestrationProjector(activityBus biz.ActivityEventBus) *GraphOrchestrationProjector {
+func NewGraphOrchestrationProjector(eventBus biz.EventBus) *GraphOrchestrationProjector {
 	return &GraphOrchestrationProjector{
-		activityBus: activityBus,
-		stops:       make(map[string]context.CancelFunc),
+		eventBus: eventBus,
+		stops:    make(map[string]context.CancelFunc),
 	}
 }
 
 // Start begins projecting orchestration status for a graph execution.
 func (p *GraphOrchestrationProjector) Start(ctx context.Context, sessionID, execID, graphID string, def *biz.GraphDefinition) {
-	if p == nil || p.activityBus == nil || def == nil {
+	if p == nil || p.eventBus == nil || def == nil {
 		return
 	}
 	sessionID = strings.TrimSpace(sessionID)
@@ -38,12 +38,12 @@ func (p *GraphOrchestrationProjector) Start(ctx context.Context, sessionID, exec
 	}
 	reg := biz.BuildOrchestrationRegistryFromGraph(def)
 	stop := team.StartOrchestrationStatusProjector(ctx, team.OrchestrationProjectorConfig{
-		RunID:       execID,
-		TeamID:      strings.TrimSpace(graphID),
-		SessionID:   sessionID,
-		Registry:    reg,
-		Channel:     "graph",
-		ActivityBus: p.activityBus,
+		RunID:     execID,
+		TeamID:    strings.TrimSpace(graphID),
+		SessionID: sessionID,
+		Registry:  reg,
+		Channel:   "graph",
+		EventBus:  p.eventBus,
 	})
 	p.mu.Lock()
 	if prev, ok := p.stops[execID]; ok {

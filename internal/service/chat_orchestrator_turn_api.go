@@ -58,11 +58,10 @@ func (o *ChatOrchestrator) nativeSendChatMessage(ctx context.Context, req *chatv
 		out.AgentMessage = st
 	}
 	if tid := strings.TrimSpace(req.GetTeamId()); tid != "" {
-		// TODO(Phase3b-D Task 10): migrate to v2 EventBus (NewTeamStageCompletedEvent).
-		// The ChatOrchestrator struct is defined in chat_orchestrator.go (outside
-		// this file's assigned scope), so the v2 EventBus field cannot be added
-		// here. This publish stays on v1 ActivityEventBus until the struct is updated.
-		if o.td().Pipeline.ActivityBus != nil {
+		// Phase 3b-D: bridge to v2 EventBus. ActivityBridgeEvent preserves the
+		// v1 TeamStage Completed hint activity so the frontend team panel can
+		// close cleanly when SendChatMessage is invoked synchronously (no WS run).
+		if o.td().Pipeline.EventBus != nil {
 			ev := biz.ActivityEvent{
 				Event: biz.ActivityEventCompleted,
 				Activity: biz.Activity{
@@ -76,7 +75,7 @@ func (o *ChatOrchestrator) nativeSendChatMessage(ctx context.Context, req *chatv
 				},
 				Domain: biz.ActivityDomainChat,
 			}
-			o.td().Pipeline.ActivityBus.Publish(ctx, ev)
+			o.td().Pipeline.EventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
 		}
 	}
 	return out, nil
@@ -119,12 +118,11 @@ func (o *ChatOrchestrator) submitChatMessageAsync(_ context.Context, req *chatv1
 				return
 			}
 			lg.Warn("SubmitChatMessage: turn execution failed", loggateway.Err(err))
-			// TODO(Phase3b-D Task 10): migrate to v2 EventBus (NewTaskFailedEvent).
-			// The ChatOrchestrator struct is defined in chat_orchestrator.go (outside
-			// this file's assigned scope), so the v2 EventBus field cannot be added
-			// here. This publish stays on v1 ActivityEventBus until the struct is updated.
-			if bus := o.td().Pipeline.ActivityBus; bus != nil {
-				bus.Publish(context.Background(), biz.ActivityEvent{
+			// Phase 3b-D: bridge to v2 EventBus. ActivityBridgeEvent preserves
+			// the v1 Task Failed activity (Content carries error message,
+			// Meta.error_type for frontend error categorization).
+			if bus := o.td().Pipeline.EventBus; bus != nil {
+				bus.Publish(context.Background(), biz.NewActivityBridgeEvent(biz.ActivityEvent{
 					Event: biz.ActivityEventFailed,
 					Activity: biz.Activity{
 						ID:        uuid.NewString(),
@@ -138,7 +136,7 @@ func (o *ChatOrchestrator) submitChatMessageAsync(_ context.Context, req *chatv1
 						},
 					},
 					Domain: biz.ActivityDomainChat,
-				})
+				}))
 			}
 		}
 	})

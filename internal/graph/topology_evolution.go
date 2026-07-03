@@ -46,9 +46,9 @@ type TopologyEvolver interface {
 // TopologyEvolverImpl implements TopologyEvolver using LLM-based edge decisions.
 // It tracks edges added per execution ID to prevent duplicates.
 type TopologyEvolverImpl struct {
-	llm         trpcmodel.Model
-	activityBus biz.ActivityEventBus
-	lg          loggateway.Logger
+	llm       trpcmodel.Model
+	eventBus  biz.EventBus
+	lg        loggateway.Logger
 
 	mu         sync.Mutex
 	addedEdges map[string]map[string]bool // execID -> "from->to" -> added
@@ -61,18 +61,18 @@ type TopologyEvolverImpl struct {
 var _ TopologyEvolver = (*TopologyEvolverImpl)(nil)
 
 // NewTopologyEvolver creates a TopologyEvolverImpl with the given LLM,
-// activity event bus, and logger. The bus publishes graph_stage ActivityEvents
+// v2 event bus, and logger. The bus publishes graph_stage ActivityBridgeEvents
 // (Stage="topology_evolved") so topology changes are observable on the
 // frontend timeline. nil logger is replaced with a noop (red line #26).
-func NewTopologyEvolver(llm trpcmodel.Model, activityBus biz.ActivityEventBus, lg loggateway.Logger) *TopologyEvolverImpl {
+func NewTopologyEvolver(llm trpcmodel.Model, eventBus biz.EventBus, lg loggateway.Logger) *TopologyEvolverImpl {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
 	return &TopologyEvolverImpl{
-		llm:         llm,
-		activityBus: activityBus,
-		lg:          lg.With(loggateway.Domain("topology_evolver")),
-		addedEdges:  make(map[string]map[string]bool),
+		llm:        llm,
+		eventBus:   eventBus,
+		lg:         lg.With(loggateway.Domain("topology_evolver")),
+		addedEdges: make(map[string]map[string]bool),
 	}
 }
 
@@ -230,7 +230,7 @@ func (e *TopologyEvolverImpl) markEdgeAdded(execID, edgeKey string) {
 	e.addedEdges[execID][edgeKey] = true
 }
 
-// publishTopologyEvolvedEvent publishes a graph_stage ActivityEvent
+// publishTopologyEvolvedEvent publishes a graph_stage ActivityBridgeEvent
 // (Stage="topology_evolved") so the frontend timeline can render the topology
 // change. Classified as Important (AS-EVT-01): loss causes topology drift but
 // execution continues.
@@ -240,14 +240,11 @@ func (e *TopologyEvolverImpl) publishTopologyEvolvedEvent(
 	edge biz.EdgeDef,
 	insight ExecutionInsight,
 ) {
-	if e.activityBus == nil {
+	if e.eventBus == nil {
 		return
 	}
-	// TODO(phase3b-d): migrate to v2 EventBus. graph_stage events have no direct
-	// v2 equivalent. Blocked by team_graph_run_coordinator.go's v1 Subscribe +
-	// handleGraphWatchActivity, which inspects v1 ActivityEvent fields and would
-	// stop receiving topology_evolved events if this publish moves to v2 EventBus.
-	// Requires coordinated migration with the coordinator's subscribe path.
+	// Phase 3b-D: bridge to v2 EventBus. graph_stage has no typed v2 EventKind;
+	// ActivityBridgeEvent preserves the v1 payload for the frontend timeline.
 	ev := biz.ActivityEvent{
 		Event: biz.ActivityEventUpdated,
 		Activity: biz.Activity{
@@ -264,14 +261,14 @@ func (e *TopologyEvolverImpl) publishTopologyEvolvedEvent(
 				"from_node":    edge.From,
 				"to_node":      edge.To,
 				"edge_kind":    edge.Kind,
-				"reason":       insight.Reason,
+				"reason":        insight.Reason,
 				"evidence":     insight.Evidence,
 				"author":       "topology-evolver",
 			},
 		},
 		Domain: biz.ActivityDomainChat,
 	}
-	e.activityBus.Publish(ctx, ev)
+	e.eventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
 }
 
 // buildTopologyEvolutionPrompt builds the user prompt for the LLM edge decision.

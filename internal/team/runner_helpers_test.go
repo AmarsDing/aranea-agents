@@ -5,9 +5,8 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event/activityevent"
+	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
-	"aranea-agents/pkg/loggateway"
 )
 
 type stepBusRunWriter struct {
@@ -35,14 +34,14 @@ func (r *stepBusRunWriter) UpdateTeamRunSummaryJSON(_ context.Context, _, _ stri
 }
 
 func TestPersistStep_EmitsFinished(t *testing.T) {
-	bus := activityevent.New(nil, loggateway.NewNoop())
-	ch, unsub := bus.Subscribe(biz.ActivityEventSubscribeOptions{BufferSize: 8, GlobalMode: true})
+	v2Bus := event.NewV2Bus()
+	ch, unsub := v2Bus.Subscribe(biz.EventSubscribeOptions{})
 	defer unsub()
 
 	runner := &Runner{
 		runWriter: &stepBusRunWriter{},
 		td: rt.TurnDeps{
-			Pipeline: rt.EventPipeline{ActivityBus: bus},
+			Pipeline: rt.EventPipeline{EventBus: v2Bus},
 		},
 	}
 	run := biz.TeamRunRecord{ID: "run-1", SessionID: "sess-1"}
@@ -65,7 +64,12 @@ func TestPersistStep_EmitsFinished(t *testing.T) {
 	// fallback path.
 	var finished bool
 	select {
-	case ev := <-ch:
+	case e := <-ch:
+		bridge, ok := e.(*biz.ActivityBridgeEvent)
+		if !ok {
+			t.Fatalf("expected *ActivityBridgeEvent, got %T", e)
+		}
+		ev := bridge.Event
 		if ev.Activity.Kind != biz.ActivityKindSession {
 			t.Fatalf("kind=%q want session", ev.Activity.Kind)
 		}

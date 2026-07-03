@@ -94,7 +94,7 @@ func (r *Runner) recordMemberUsage(
 			TotalCostMicroUsd: ev.TotalCostMicroUSD,
 		})
 	}
-	biz.PublishTokenUsageEnvelope(ctx, r.td.Pipeline.ActivityBus, ev)
+	biz.PublishTokenUsageEnvelope(ctx, r.td.Pipeline.EventBus, ev)
 }
 
 // recordTeamRunUsage writes one aggregated team turn row (workflow-level tokens).
@@ -161,5 +161,5 @@ func (r *Runner) recordTeamRunUsage(
 			TotalCostMicroUsd: ev.TotalCostMicroUSD,
 		})
 	}
-	biz.PublishTokenUsageEnvelope(ctx, r.td.Pipeline.ActivityBus, ev)
+	biz.PublishTokenUsageEnvelope(ctx, r.td.Pipeline.EventBus, ev)
 }

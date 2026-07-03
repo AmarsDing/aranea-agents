@@ -12,14 +12,12 @@ import (
 
 // PublishGraphTaskStatus emits orchestration-facing task status for graph Kanban projection.
 //
-// TODO(Phase3b-D Task 10): this publishes a Kind=GraphStage event via the v1
-// ActivityEventBus. graph_stage has NO v2 EventKind equivalent. The
-// GraphOrchestrationProjector struct is defined outside this file's assigned
-// scope, so a v2 EventBus field cannot be added here. This publish stays on v1
-// ActivityEventBus until (1) a v2 EventKindGraphStage* is introduced AND (2) the
-// GraphOrchestrationProjector struct is updated with a v2 bus field.
+// Phase 3b-D: migrated from v1 ActivityEventBus to v2 EventBus via
+// ActivityBridgeEvent. The v1 ActivityEvent payload is preserved verbatim
+// (Meta carries graph task status fields) so the frontend Kanban UI and
+// webhook consumers continue to work without changes.
 func (p *GraphOrchestrationProjector) PublishGraphTaskStatus(ctx context.Context, sessionID, execID, graphID string, task *biz.GraphTask, extra map[string]any) {
-	if p == nil || p.activityBus == nil || task == nil {
+	if p == nil || p.eventBus == nil || task == nil {
 		return
 	}
 	sessionID = strings.TrimSpace(sessionID)
@@ -57,5 +55,7 @@ func (p *GraphOrchestrationProjector) PublishGraphTaskStatus(ctx context.Context
 		},
 		Domain: biz.ActivityDomainChat,
 	}
-	p.activityBus.Publish(ctx, ev)
+	// Phase 3b-D: bridge to v2 EventBus. graph_stage has no typed v2 EventKind;
+	// ActivityBridgeEvent preserves the v1 payload for the frontend Kanban UI.
+	p.eventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
 }

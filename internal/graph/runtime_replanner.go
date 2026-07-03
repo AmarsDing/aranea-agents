@@ -69,8 +69,8 @@ type RuntimeReplanner interface {
 // analysis. It tracks replan attempts per execution ID to enforce the
 // maxReplanAttempts limit.
 type RuntimeReplannerImpl struct {
-	activityBus biz.ActivityEventBus
-	lg          loggateway.Logger
+	eventBus biz.EventBus
+	lg       loggateway.Logger
 
 	// attemptCount tracks per-execution replan attempts. ttl=0 means no
 	// automatic TTL cleanup; callers must invoke ReleaseExecution(execID)
@@ -80,15 +80,16 @@ type RuntimeReplannerImpl struct {
 
 var _ RuntimeReplanner = (*RuntimeReplannerImpl)(nil)
 
-// NewRuntimeReplanner creates a RuntimeReplannerImpl with the given activity
-// event bus and logger. The bus is used to publish graph_stage ActivityEvents
-// (Stage="replanned") so the replan is observable on the frontend timeline.
-func NewRuntimeReplanner(activityBus biz.ActivityEventBus, lg loggateway.Logger) *RuntimeReplannerImpl {
+// NewRuntimeReplanner creates a RuntimeReplannerImpl with the given v2
+// event bus and logger. The bus is used to publish graph_stage
+// ActivityBridgeEvents (Stage="replanned") so the replan is observable on
+// the frontend timeline.
+func NewRuntimeReplanner(eventBus biz.EventBus, lg loggateway.Logger) *RuntimeReplannerImpl {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
 	return &RuntimeReplannerImpl{
-		activityBus:  activityBus,
+		eventBus:     eventBus,
 		lg:           lg.With(loggateway.Domain("runtime_replanner")),
 		attemptCount: lifecycle.NewManagedMap[string, int](0),
 	}
@@ -258,7 +259,7 @@ func (r *RuntimeReplannerImpl) buildRebuildSubgraphAction(
 	}
 }
 
-// publishReplanEvent publishes a graph_stage ActivityEvent (Stage="replanned")
+// publishReplanEvent publishes a graph_stage ActivityBridgeEvent (Stage="replanned")
 // so the frontend timeline can render the replan decision. Classified as
 // Important (AS-EVT-01): loss causes topology drift but execution continues.
 func (r *RuntimeReplannerImpl) publishReplanEvent(
@@ -268,14 +269,11 @@ func (r *RuntimeReplannerImpl) publishReplanEvent(
 	action *ReplanAction,
 	analysis FailureAnalysis,
 ) {
-	if r.activityBus == nil {
+	if r.eventBus == nil {
 		return
 	}
-	// TODO(phase3b-d): migrate to v2 EventBus. graph_stage events have no direct
-	// v2 equivalent. Blocked by team_graph_run_coordinator.go's v1 Subscribe +
-	// handleGraphWatchActivity, which inspects v1 ActivityEvent fields and would
-	// stop receiving replanned events if this publish moves to v2 EventBus.
-	// Requires coordinated migration with the coordinator's subscribe path.
+	// Phase 3b-D: bridge to v2 EventBus. graph_stage has no typed v2 EventKind;
+	// ActivityBridgeEvent preserves the v1 payload for the frontend timeline.
 	ev := biz.ActivityEvent{
 		Event: biz.ActivityEventUpdated,
 		Activity: biz.Activity{
@@ -300,7 +298,7 @@ func (r *RuntimeReplannerImpl) publishReplanEvent(
 		},
 		Domain: biz.ActivityDomainChat,
 	}
-	r.activityBus.Publish(ctx, ev)
+	r.eventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
 }
 
 // analyzeFailure inspects the error message using keyword rules and returns

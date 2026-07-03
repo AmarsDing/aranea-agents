@@ -177,7 +177,9 @@ func TokenUsageEventToEnvelope(e TokenUsageEvent) contract.EnvelopeTokenUsage {
 	}
 }
 
-func PublishTokenUsageEnvelope(ctx context.Context, bus ActivityEventBus, e TokenUsageEvent) {
+// PublishTokenUsageEnvelope publishes a token_usage ActivityEvent on the v2
+// EventBus via ActivityBridgeEvent. Phase 3b-D: migrated from v1 ActivityEventBus.
+func PublishTokenUsageEnvelope(ctx context.Context, bus EventBus, e TokenUsageEvent) {
 	if bus == nil {
 		return
 	}
@@ -197,5 +199,5 @@ func PublishTokenUsageEnvelope(ctx context.Context, bus ActivityEventBus, e Toke
 		},
 		Domain: ActivityDomainSystem,
 	}
-	bus.Publish(ctx, ev)
+	bus.Publish(ctx, NewActivityBridgeEvent(ev))
 }

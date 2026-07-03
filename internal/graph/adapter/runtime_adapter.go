@@ -24,7 +24,7 @@ type trpcGraphRuntime struct {
 	agent           *graphtrpc.GraphAgent
 	graph           *trpcgraph.Graph
 	lineageID       string
-	activityBus     biz.ActivityEventBus
+	eventBus        biz.EventBus
 	sessionID       string
 	spiritSessionID string
 	graphID         string
@@ -249,11 +249,11 @@ func (r *trpcGraphRuntime) GetLineageID() string {
 func convertTrpcEvent(e *trpcevent.Event, bridge *graphtrpc.EventBridge, lg loggateway.Logger) biz.GraphRuntimeEvent {
 	if bridge != nil {
 		ev := bridge.ConvertEvent(e)
-		if ev != nil && bridge.ActivityBus() != nil {
-			// TODO(phase3b-d): migrate to v2 EventBus. Blocked by team_graph_run_coordinator.go's
-			// v1 Subscribe (consumes graph_stage events from EventBridge via the same bus).
-			// Migrating this publish alone would break the graph watch state machine.
-			bridge.ActivityBus().Publish(context.Background(), *ev)
+		if ev != nil && bridge.EventBus() != nil {
+			// Phase 3b-D: bridge to v2 EventBus. ActivityBridgeEvent preserves
+			// the v1 ActivityEvent payload (Kind/Stage/Meta) for the frontend
+			// timeline and team_graph_run_coordinator's v2 Subscribe.
+			bridge.EventBus().Publish(context.Background(), biz.NewActivityBridgeEvent(*ev))
 		}
 	}
 
@@ -291,7 +291,7 @@ func convertTrpcEvent(e *trpcevent.Event, bridge *graphtrpc.EventBridge, lg logg
 type trpcGraphBuilderFactory struct {
 	registry     *graphtrpc.Registry
 	saver        trpcgraph.CheckpointSaver
-	activityBus  biz.ActivityEventBus
+	eventBus     biz.EventBus
 	agentChecker biz.AgentExistenceCheckerFunc
 	resolvers    graphtrpc.GraphNodeResolverSet
 	lg           loggateway.Logger
@@ -309,7 +309,7 @@ var _ biz.GraphBuilderFactory = (*trpcGraphBuilderFactory)(nil)
 func NewGraphBuilderFactory(
 	registry *graphtrpc.Registry,
 	saver trpcgraph.CheckpointSaver,
-	activityBus biz.ActivityEventBus,
+	eventBus biz.EventBus,
 	agentChecker biz.AgentExistenceCheckerFunc,
 	resolvers graphtrpc.GraphNodeResolverSet,
 	replanner graph.RuntimeReplanner,
@@ -320,7 +320,7 @@ func NewGraphBuilderFactory(
 	return &trpcGraphBuilderFactory{
 		registry:     registry,
 		saver:        saver,
-		activityBus:  activityBus,
+		eventBus:     eventBus,
 		agentChecker: agentChecker,
 		resolvers:    resolvers,
 		lg:           lg,
@@ -345,9 +345,9 @@ func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.Grap
 		return nil, err
 	}
 	return &trpcGraphRuntime{
-		agent: graphAgent, graph: g, lineageID: lineageID, activityBus: f.activityBus,
+		agent: graphAgent, graph: g, lineageID: lineageID, eventBus: f.eventBus,
 		sessionID: sessionID, spiritSessionID: spiritSessionID, graphID: graphID, execID: execID, lg: f.lg,
-		bridge:    graphtrpc.NewEventBridge(f.activityBus, sessionID, spiritSessionID, graphID, execID, f.lg),
+		bridge:    graphtrpc.NewEventBridge(f.eventBus, sessionID, spiritSessionID, graphID, execID, f.lg),
 		callbacks: f.buildNodeCallbacks(sessionID, spiritSessionID, graphID, execID),
 	}, nil
 }

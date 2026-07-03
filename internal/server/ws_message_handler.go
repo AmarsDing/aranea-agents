@@ -247,21 +247,16 @@ func buildChatOptions(opts map[string]any) *chatv1.SendMessageOptions {
 	return result
 }
 
-// publishWSErrorActivity publishes a failed ActivityEvent (Kind=task,
-// Status=failed, Domain=chat) for WebSocket error scenarios.
-// Replaces the legacy EnvelopeTypeError publish.
+// publishWSErrorActivity publishes a failed ActivityBridgeEvent (wrapping a
+// v1 ActivityEvent with Kind=task, Status=failed, Domain=chat) for WebSocket
+// error scenarios. Replaces the legacy EnvelopeTypeError publish.
 //
-// TODO(phase3b-d): migrate to v2 EventBus (biz.NewTaskFailedEvent).
-// Blocker: WSServer.activityBus field type is biz.ActivityEventBus (v1) and is
-// shared with ws_event.go's v1 Subscribe path (the WS broadcast pump). To migrate
-// this publish site alone, WSServer must gain a separate v2 EventBus field
-// (or the v1 Subscribe path in ws_event.go must be removed first, which is
-// Tier 4 work). Additionally, the test TestWSUpstreamTurnGatewayErrorPublishes
-// Envelope asserts on v1 ActivityEvent.Meta (request_id/error_type) which is
-// lost in v2 TaskFailedEvent (DATA LOSS — same as chat_event_publisher.go).
-// Deferring until Tier 4 cleanup of v1 WS path.
+// Phase 3b-D: migrated from v1 ActivityEventBus.Publish to v2 EventBus.Publish
+// via biz.NewActivityBridgeEvent. The v1 ActivityEvent payload (Meta with
+// request_id/error_type, Content=message) is preserved verbatim by the bridge
+// so the chat error rendering and existing test assertions continue to work.
 func (s *WSServer) publishWSErrorActivity(sessionID, requestID, errorType, message string) {
-	if s.activityBus == nil {
+	if s.eventBus == nil {
 		return
 	}
 	meta := map[string]any{
@@ -271,7 +266,7 @@ func (s *WSServer) publishWSErrorActivity(sessionID, requestID, errorType, messa
 	if requestID != "" {
 		meta["request_id"] = requestID
 	}
-	s.activityBus.Publish(context.Background(), biz.ActivityEvent{
+	ev := biz.ActivityEvent{
 		Event: biz.ActivityEventFailed,
 		Activity: biz.Activity{
 			ID:        uuid.NewString(),
@@ -283,7 +278,8 @@ func (s *WSServer) publishWSErrorActivity(sessionID, requestID, errorType, messa
 			Meta:      meta,
 		},
 		Domain: biz.ActivityDomainChat,
-	})
+	}
+	s.eventBus.Publish(context.Background(), biz.NewActivityBridgeEvent(ev))
 }
 
 // buildWSTurnOptions builds a WSTurnOptions from WS payload options.

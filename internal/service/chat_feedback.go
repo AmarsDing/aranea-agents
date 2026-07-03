@@ -29,12 +29,9 @@ func (s *ChatService) SubmitMessageFeedback(ctx context.Context, req *chatv1.Sub
 	if err := s.orch.td().Sessions.UpdateMessageFeedback(ctx, sessionID, messageID, rating, comment); err != nil {
 		return nil, err
 	}
-	// TODO(Phase3b-D Task 10): migrate to v2 EventBus. The ChatService struct
-	// (which owns `orch`) is defined outside this file's assigned scope, so the
-	// v2 EventBus field cannot be added here. This publish stays on v1
-	// ActivityEventBus until the ChatService struct is updated with a v2 bus.
-	if bus := s.orch.td().Pipeline.ActivityBus; bus != nil {
-		bus.Publish(ctx, biz.ActivityEvent{
+	// Phase 3b-D: migrated to v2 EventBus via ActivityBridgeEvent.
+	if bus := s.orch.td().Pipeline.EventBus; bus != nil {
+		bus.Publish(ctx, biz.NewActivityBridgeEvent(biz.ActivityEvent{
 			Event: biz.ActivityEventCreated,
 			Activity: biz.Activity{
 				ID:        uuid.NewString(),
@@ -49,7 +46,7 @@ func (s *ChatService) SubmitMessageFeedback(ctx context.Context, req *chatv1.Sub
 				},
 			},
 			Domain: biz.ActivityDomainChat,
-		})
+		}))
 	}
 	return &chatv1.SubmitMessageFeedbackResponse{Accepted: true}, nil
 }

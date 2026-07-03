@@ -50,7 +50,12 @@ import { useContextualLoadingMessage } from './useContextualLoadingMessage';
 import { useStatusPulse } from './useStatusPulse';
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
 import { useChatEventRouter } from './useChatEventRouter';
-import type { V2WsEnvelope, SystemNoticeEventPayload, RunStatusEventPayload } from '../v2Types';
+import type {
+  V2WsEnvelope,
+  SystemNoticeEventPayload,
+  RunStatusEventPayload,
+  ActivityBridgeEventPayload,
+} from '../v2Types';
 import { useSessionTree } from './useSessionTree';
 import { useSystemEventNotification } from './useSystemEventNotification';
 import type { ActivityEvent as AFActivityEvent } from '../../../realtime/activityEvent';
@@ -141,6 +146,15 @@ export function useChatWorkspace() {
     if (envelope.kind === 'system.heartbeat') {
       // Acknowledged but no side-effect routing needed yet.
       // system.heartbeat carries progress metadata for a future heartbeat display.
+      return;
+    }
+    if (envelope.kind === 'activity.bridge') {
+      // Phase 3b-D: bridge wraps a v1 ActivityEvent. Route through the
+      // existing v1 AF handler to reuse dedup + system-event routing
+      // (useSystemEventNotification) + contextual loading + sender reset.
+      // The wrapped Event retains all snake_case JSON tags from
+      // biz.ActivityEvent, so it maps directly to AFActivityEvent.
+      handleActivityEvent((envelope.payload as ActivityBridgeEventPayload).Event);
       return;
     }
     eventRouter.dispatch(envelope);
