@@ -70,6 +70,14 @@ const (
 	EventKindPlanStepFailed    EventKind = "plan_step.failed"
 	EventKindPlanStepSkipped   EventKind = "plan_step.skipped"
 	EventKindPlanStepUpdated   EventKind = "plan_step.updated"
+
+	// GraphStage 事件（2026-07-04 补齐：原设计遗漏，迁移 v1 ActivityKindGraphStage）
+	EventKindGraphStageCreated     EventKind = "graph_stage.created"
+	EventKindGraphStageUpdated     EventKind = "graph_stage.updated"
+	EventKindGraphStageCompleted   EventKind = "graph_stage.completed"
+	EventKindGraphStageFailed      EventKind = "graph_stage.failed"
+	EventKindGraphStageInterrupted EventKind = "graph_stage.interrupted"
+	EventKindGraphNodeUpdated      EventKind = "graph_node.updated"
 )
 
 // === Task 事件 ===
@@ -459,6 +467,90 @@ func (e *PlanStepUpdatedEvent) SpiritSessionID() string   { return e.spiritSessi
 func (e *PlanStepUpdatedEvent) TaskID() string            { return e.taskID }
 func (e *PlanStepUpdatedEvent) OccurredAt() time.Time     { return e.occurredAt }
 func (e *PlanStepUpdatedEvent) SetOccurredAt(t time.Time) { e.occurredAt = t }
+
+// === GraphStage 事件（2026-07-04 补齐）===
+// 替代 v1 ActivityKindGraphStage（通过 activity.bridge 桥接到 v2）。
+// 与 PlanBoard 一对一关联：PlanBoard 创建时同步创建 GraphStage，状态由 PlanExecutor 同步。
+
+type GraphStageCreatedEvent struct {
+	taskID          string
+	spiritSessionID string
+	GraphStage      GraphStage
+	occurredAt      time.Time
+}
+
+func (e *GraphStageCreatedEvent) EventKind() EventKind      { return EventKindGraphStageCreated }
+func (e *GraphStageCreatedEvent) SpiritSessionID() string   { return e.spiritSessionID }
+func (e *GraphStageCreatedEvent) TaskID() string            { return e.taskID }
+func (e *GraphStageCreatedEvent) OccurredAt() time.Time     { return e.occurredAt }
+func (e *GraphStageCreatedEvent) SetOccurredAt(t time.Time) { e.occurredAt = t }
+
+type GraphStageUpdatedEvent struct {
+	taskID          string
+	spiritSessionID string
+	GraphStage      GraphStage
+	occurredAt      time.Time
+}
+
+func (e *GraphStageUpdatedEvent) EventKind() EventKind      { return EventKindGraphStageUpdated }
+func (e *GraphStageUpdatedEvent) SpiritSessionID() string   { return e.spiritSessionID }
+func (e *GraphStageUpdatedEvent) TaskID() string            { return e.taskID }
+func (e *GraphStageUpdatedEvent) OccurredAt() time.Time     { return e.occurredAt }
+func (e *GraphStageUpdatedEvent) SetOccurredAt(t time.Time) { e.occurredAt = t }
+
+type GraphStageCompletedEvent struct {
+	taskID          string
+	spiritSessionID string
+	GraphStage      GraphStage
+	occurredAt      time.Time
+}
+
+func (e *GraphStageCompletedEvent) EventKind() EventKind      { return EventKindGraphStageCompleted }
+func (e *GraphStageCompletedEvent) SpiritSessionID() string   { return e.spiritSessionID }
+func (e *GraphStageCompletedEvent) TaskID() string            { return e.taskID }
+func (e *GraphStageCompletedEvent) OccurredAt() time.Time     { return e.occurredAt }
+func (e *GraphStageCompletedEvent) SetOccurredAt(t time.Time) { e.occurredAt = t }
+
+type GraphStageFailedEvent struct {
+	taskID          string
+	spiritSessionID string
+	GraphStage      GraphStage
+	occurredAt      time.Time
+}
+
+func (e *GraphStageFailedEvent) EventKind() EventKind      { return EventKindGraphStageFailed }
+func (e *GraphStageFailedEvent) SpiritSessionID() string   { return e.spiritSessionID }
+func (e *GraphStageFailedEvent) TaskID() string            { return e.taskID }
+func (e *GraphStageFailedEvent) OccurredAt() time.Time     { return e.occurredAt }
+func (e *GraphStageFailedEvent) SetOccurredAt(t time.Time) { e.occurredAt = t }
+
+type GraphStageInterruptedEvent struct {
+	taskID          string
+	spiritSessionID string
+	GraphStage      GraphStage
+	occurredAt      time.Time
+}
+
+func (e *GraphStageInterruptedEvent) EventKind() EventKind      { return EventKindGraphStageInterrupted }
+func (e *GraphStageInterruptedEvent) SpiritSessionID() string   { return e.spiritSessionID }
+func (e *GraphStageInterruptedEvent) TaskID() string            { return e.taskID }
+func (e *GraphStageInterruptedEvent) OccurredAt() time.Time     { return e.occurredAt }
+func (e *GraphStageInterruptedEvent) SetOccurredAt(t time.Time) { e.occurredAt = t }
+
+// GraphNodeUpdatedEvent 携带单个 GraphNode 的状态更新。
+// PlanExecutor 在 dispatchStep 时为对应 GraphNode 发布此事件。
+type GraphNodeUpdatedEvent struct {
+	taskID          string
+	spiritSessionID string
+	GraphNode       GraphNode
+	occurredAt      time.Time
+}
+
+func (e *GraphNodeUpdatedEvent) EventKind() EventKind      { return EventKindGraphNodeUpdated }
+func (e *GraphNodeUpdatedEvent) SpiritSessionID() string   { return e.spiritSessionID }
+func (e *GraphNodeUpdatedEvent) TaskID() string            { return e.taskID }
+func (e *GraphNodeUpdatedEvent) OccurredAt() time.Time     { return e.occurredAt }
+func (e *GraphNodeUpdatedEvent) SetOccurredAt(t time.Time) { e.occurredAt = t }
 
 // === v2 EventBus ===
 

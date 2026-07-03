@@ -38,9 +38,16 @@ const { t } = useI18n();
 
 const isPlaceholder = computed(() => !props.fullText.trim() && props.hasMessages);
 
+const PROMPT_PREVIEW_MAX = 30;
+
 const displayLine = computed(() => {
   const prompt = props.fullText.trim();
-  if (prompt) return prompt;
+  if (prompt) {
+    // Show first 30 chars; ellipsis if longer
+    return prompt.length > PROMPT_PREVIEW_MAX
+      ? prompt.slice(0, PROMPT_PREVIEW_MAX) + '…'
+      : prompt;
+  }
   if (!props.hasMessages) {
     return (props.sessionTitle ?? '').trim() || t('chat.untitledSession');
   }

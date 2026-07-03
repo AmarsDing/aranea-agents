@@ -64,16 +64,19 @@ func (f *fakeOrchestrator) waitForCall(stepID string, timeout time.Duration) boo
 
 // fakeReposForExecutor implements executorRepos for testing.
 type fakeReposForExecutor struct {
-	mu     sync.Mutex
-	steps  map[string]biz.PlanStep
-	stages map[string]biz.TeamStage
-	board  *biz.PlanBoard
+	mu          sync.Mutex
+	steps       map[string]biz.PlanStep
+	stages      map[string]biz.TeamStage
+	board       *biz.PlanBoard
+	graphStage  *biz.GraphStage
+	graphNodes  map[string]biz.GraphNode
 }
 
 func newFakeReposForExecutor() *fakeReposForExecutor {
 	return &fakeReposForExecutor{
-		steps:  make(map[string]biz.PlanStep),
-		stages: make(map[string]biz.TeamStage),
+		steps:      make(map[string]biz.PlanStep),
+		stages:     make(map[string]biz.TeamStage),
+		graphNodes: make(map[string]biz.GraphNode),
 	}
 }
 
@@ -106,6 +109,33 @@ func (f *fakeReposForExecutor) GetPlanStep(_ context.Context, id string) (biz.Pl
 		return s, nil
 	}
 	return biz.PlanStep{}, errors.New("not found")
+}
+
+// UpsertGraphStage stores the GraphStage in memory (2026-07-04 补齐).
+func (f *fakeReposForExecutor) UpsertGraphStage(_ context.Context, gs biz.GraphStage) (biz.GraphStage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cp := gs
+	f.graphStage = &cp
+	return gs, nil
+}
+
+// UpsertGraphNode stores the GraphNode in memory (2026-07-04 补齐).
+func (f *fakeReposForExecutor) UpsertGraphNode(_ context.Context, gn biz.GraphNode) (biz.GraphNode, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.graphNodes[gn.ID] = gn
+	return gn, nil
+}
+
+// GetGraphStageByPlanBoard returns the stored GraphStage if its PlanBoardID matches (2026-07-04 补齐).
+func (f *fakeReposForExecutor) GetGraphStageByPlanBoard(_ context.Context, planBoardID string) (biz.GraphStage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.graphStage != nil && f.graphStage.PlanBoardID == planBoardID {
+		return *f.graphStage, nil
+	}
+	return biz.GraphStage{}, errors.New("not found")
 }
 
 // fakeSeq implements sequencerPublisher for testing.

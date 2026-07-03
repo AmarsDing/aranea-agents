@@ -362,3 +362,76 @@ func (e *PlanStepCompletedEvent) EntityID() string { return e.PlanStep.ID }
 func (e *PlanStepFailedEvent) EntityID() string    { return e.PlanStep.ID }
 func (e *PlanStepSkippedEvent) EntityID() string   { return e.PlanStep.ID }
 func (e *PlanStepUpdatedEvent) EntityID() string   { return e.PlanStep.ID }
+
+func (e *GraphStageCreatedEvent) EntityID() string     { return e.GraphStage.ID }
+func (e *GraphStageUpdatedEvent) EntityID() string     { return e.GraphStage.ID }
+func (e *GraphStageCompletedEvent) EntityID() string   { return e.GraphStage.ID }
+func (e *GraphStageFailedEvent) EntityID() string      { return e.GraphStage.ID }
+func (e *GraphStageInterruptedEvent) EntityID() string { return e.GraphStage.ID }
+func (e *GraphNodeUpdatedEvent) EntityID() string      { return e.GraphNode.ID }
+
+// === GraphStage event factories ===
+// GraphStage has SpiritSessionID via SessionID field (= spirit_session_id).
+
+// NewGraphStageCreatedEvent constructs a GraphStageCreatedEvent.
+// spiritSessionID is derived from GraphStage.SessionID (= spirit_session_id).
+func NewGraphStageCreatedEvent(gs GraphStage) *GraphStageCreatedEvent {
+	return &GraphStageCreatedEvent{
+		taskID:          gs.TaskID,
+		spiritSessionID: gs.SessionID,
+		GraphStage:      gs,
+		occurredAt:      time.Now(),
+	}
+}
+
+// NewGraphStageUpdatedEvent constructs a GraphStageUpdatedEvent.
+func NewGraphStageUpdatedEvent(gs GraphStage) *GraphStageUpdatedEvent {
+	return &GraphStageUpdatedEvent{
+		taskID:          gs.TaskID,
+		spiritSessionID: gs.SessionID,
+		GraphStage:      gs,
+		occurredAt:      time.Now(),
+	}
+}
+
+// NewGraphStageCompletedEvent constructs a GraphStageCompletedEvent.
+func NewGraphStageCompletedEvent(gs GraphStage) *GraphStageCompletedEvent {
+	return &GraphStageCompletedEvent{
+		taskID:          gs.TaskID,
+		spiritSessionID: gs.SessionID,
+		GraphStage:      gs,
+		occurredAt:      time.Now(),
+	}
+}
+
+// NewGraphStageFailedEvent constructs a GraphStageFailedEvent.
+func NewGraphStageFailedEvent(gs GraphStage) *GraphStageFailedEvent {
+	return &GraphStageFailedEvent{
+		taskID:          gs.TaskID,
+		spiritSessionID: gs.SessionID,
+		GraphStage:      gs,
+		occurredAt:      time.Now(),
+	}
+}
+
+// NewGraphStageInterruptedEvent constructs a GraphStageInterruptedEvent.
+func NewGraphStageInterruptedEvent(gs GraphStage) *GraphStageInterruptedEvent {
+	return &GraphStageInterruptedEvent{
+		taskID:          gs.TaskID,
+		spiritSessionID: gs.SessionID,
+		GraphStage:      gs,
+		occurredAt:      time.Now(),
+	}
+}
+
+// NewGraphNodeUpdatedEvent constructs a GraphNodeUpdatedEvent.
+// GraphNode has no TaskID/SpiritSessionID fields; the factory accepts them as parameters.
+// graphStageID is used to look up the parent GraphStage for spiritSessionID/taskID derivation.
+func NewGraphNodeUpdatedEvent(gn GraphNode, taskID, spiritSessionID string) *GraphNodeUpdatedEvent {
+	return &GraphNodeUpdatedEvent{
+		taskID:          taskID,
+		spiritSessionID: spiritSessionID,
+		GraphNode:       gn,
+		occurredAt:      time.Now(),
+	}
+}

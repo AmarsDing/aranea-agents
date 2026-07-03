@@ -6,7 +6,7 @@
         :show-evolving="showEvolving"
         :favorite="form.is_favorite"
         :saving="saving"
-        @back="router.push({ name: 'agents' })"
+        @back="goBack"
         @change-avatar="avatarPickerOpen = true"
         @open-prompt="promptDialog = true"
         @open-advanced="advancedDialog = true"
@@ -265,6 +265,15 @@ const {
   advancedChannelOptions,
   loadingAdvancedChannels,
 } = useAgentSettingsPage();
+
+/** Return to the previous page (e.g. chat); fall back to agents list. */
+function goBack() {
+  if (window.history.length > 1) {
+    router.back();
+  } else {
+    router.push({ name: 'agents' });
+  }
+}
 
 const promptInstructionText = computed(() => {
   const p = toValue(promptPreview);

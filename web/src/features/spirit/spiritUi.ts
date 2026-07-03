@@ -167,11 +167,15 @@ export function formatDuration(ms: number | undefined): string {
   return `${min}m${sec > 0 ? ` ${sec}s` : ''}`;
 }
 
-/** Format token counts to human-readable string */
+/** Format token counts to human-readable string showing input/output/total */
 export function formatTokenCount(tokenIn?: number, tokenOut?: number): string {
   if (!tokenIn && !tokenOut) return '';
-  const total = ((tokenIn ?? 0) + (tokenOut ?? 0)) / 1000;
-  return `${total.toFixed(1)}k Token`;
+  const tin = tokenIn ?? 0;
+  const tout = tokenOut ?? 0;
+  const total = tin + tout;
+  // Show as: 输入 1.2k · 输出 0.8k · 总计 2.0k
+  const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
+  return `输入 ${fmt(tin)} · 输出 ${fmt(tout)} · 总计 ${fmt(total)}`;
 }
 
 /** Get DQ score color CSS variable based on score value */

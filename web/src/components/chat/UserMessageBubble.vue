@@ -25,7 +25,8 @@ const renderedContent = computed(() => renderChatMarkdown(props.message.content_
   display: flex
   gap: 10px
   align-items: flex-start
-  margin-bottom: 8px
+  margin-top: 14px
+  margin-bottom: 14px
 
   &__avatar
     flex-shrink: 0

@@ -16,6 +16,10 @@ export type PlanStrategy = 'sequential' | 'parallel' | 'dag' | 'coordinator';
 export type PlanStatus = 'planning' | 'executing' | 'completed' | 'failed' | 'partial_failure';
 export type PlanStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped' | 'partial_failure';
 
+// 2026-07-04 补齐：GraphStage / GraphNode（与 PlanBoard 一对一）
+export type GraphStageStatus = 'running' | 'completed' | 'failed' | 'interrupted';
+export type GraphNodeStatus = 'pending' | 'running' | 'completed' | 'failed' | 'interrupted';
+
 // === Entity structs (PascalCase JSON keys — no json tags on backend) ===
 
 export interface Task {
@@ -192,6 +196,32 @@ export interface PlanBoard {
   Version: number;
 }
 
+// 2026-07-04 补齐：GraphStage（与 PlanBoard 一对一关联）
+// 设计：docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md §3.2.2 / §3.7.5
+export interface GraphNode {
+  ID: string;
+  GraphStageID: string;
+  Label: string;
+  DagNodeID: string; // 对应 plan_step.id
+  TeamStageID: string; // 关联的 team_stage（如已创建，否则空）
+  Status: GraphNodeStatus;
+  DependsOn: string[]; // 派生自 plan_step.depends_on，不持久化
+}
+
+export interface GraphStage {
+  ID: string;
+  TaskID: string;
+  TurnID: string;
+  SessionID: string;
+  PlanBoardID: string; // 一对一关联 PlanBoard
+  Nodes: GraphNode[];
+  Status: GraphStageStatus;
+  StartedAt: string;
+  CompletedAt: string | null;
+  Seq: number;
+  Version: number;
+}
+
 // === EventKind string literals ===
 
 export type EventKind =
@@ -223,6 +253,13 @@ export type EventKind =
   | 'plan_step.failed'
   | 'plan_step.skipped'
   | 'plan_step.updated'
+  // 2026-07-04 补齐：GraphStage/GraphNode 事件（与 PlanBoard 一对一）
+  | 'graph_stage.created'
+  | 'graph_stage.updated'
+  | 'graph_stage.completed'
+  | 'graph_stage.failed'
+  | 'graph_stage.interrupted'
+  | 'graph_node.updated'
   // Phase 3b-D Task 12: system-domain events (no entity table).
   // Backend structs: biz.RunStatusEvent / HeartbeatEvent / SystemNoticeEvent.
   // Note: sessionID is unexported on the backend → NOT in JSON payload;
@@ -280,6 +317,14 @@ export interface PlanStepSkippedPayload {
   Reason: string;
 }
 
+// 2026-07-04 补齐：GraphStage / GraphNode 事件 payload
+export interface GraphStageEventPayload {
+  GraphStage: GraphStage;
+}
+export interface GraphNodeEventPayload {
+  GraphNode: GraphNode;
+}
+
 // Phase 3b-D Task 12: system-domain event payloads.
 // Backend structs: biz.RunStatusEvent / HeartbeatEvent / SystemNoticeEvent.
 // Only exported (PascalCase) fields are serialized; sessionID is unexported.
@@ -326,6 +371,8 @@ export type V2Event =
   | PlanBoardEventPayload
   | PlanStepEventPayload
   | PlanStepSkippedPayload
+  | GraphStageEventPayload
+  | GraphNodeEventPayload
   | RunStatusEventPayload
   | HeartbeatEventPayload
   | SystemNoticeEventPayload

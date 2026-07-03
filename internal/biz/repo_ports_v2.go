@@ -172,3 +172,40 @@ type PlanStepV2Repo interface {
 	PlanStepV2Reader
 	PlanStepV2Writer
 }
+
+// === GraphStage ===（2026-07-04 补齐：与 PlanBoard 一对一关联）
+
+type GraphStageV2Reader interface {
+	GetGraphStage(ctx context.Context, id string) (GraphStage, error)
+	ListGraphStagesByTask(ctx context.Context, taskID string) ([]GraphStage, error)
+	GetGraphStageByPlanBoard(ctx context.Context, planBoardID string) (GraphStage, error)
+}
+
+type GraphStageV2Writer interface {
+	CreateGraphStage(ctx context.Context, gs GraphStage) (GraphStage, error)
+	UpdateGraphStage(ctx context.Context, gs GraphStage) (GraphStage, error)
+	UpsertGraphStage(ctx context.Context, gs GraphStage) (GraphStage, error)
+}
+
+type GraphStageV2Repo interface {
+	GraphStageV2Reader
+	GraphStageV2Writer
+}
+
+// === GraphNode ===（GraphNode 独立存储，便于 team_stage 创建时回填 team_stage_id）
+
+type GraphNodeV2Reader interface {
+	GetGraphNode(ctx context.Context, id string) (GraphNode, error)
+	ListGraphNodesByStage(ctx context.Context, graphStageID string) ([]GraphNode, error)
+}
+
+type GraphNodeV2Writer interface {
+	CreateGraphNode(ctx context.Context, gn GraphNode) (GraphNode, error)
+	UpdateGraphNode(ctx context.Context, gn GraphNode) (GraphNode, error)
+	UpsertGraphNode(ctx context.Context, gn GraphNode) (GraphNode, error)
+}
+
+type GraphNodeV2Repo interface {
+	GraphNodeV2Reader
+	GraphNodeV2Writer
+}

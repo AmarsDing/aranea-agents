@@ -12,77 +12,59 @@
     @click="$emit('locate', { agentKey: member.agentKey, teamSessionId, teamId })"
     @keydown.enter="$emit('locate', { agentKey: member.agentKey, teamSessionId, teamId })"
   >
-    <div class="agent-sidebar-card__main">
-      <AgentAvatarQ
-        v-if="resolvedAvatar"
-        :icon="resolvedAvatar"
-        size="32px"
-        avatar-class="agent-sidebar-card__avatar-img"
-        :alt="member.displayName"
-      />
-      <div v-else class="agent-sidebar-card__avatar agent-sidebar-card__avatar--fallback">
-        <q-icon name="smart_toy" size="16px" />
-      </div>
-      <div class="agent-sidebar-card__info col min-width-0">
-        <div class="agent-sidebar-card__name ellipsis">{{ member.displayName }}</div>
-        <div class="agent-sidebar-card__status ellipsis">
-          <span class="agent-sidebar-card__status-dot" :class="`agent-sidebar-card__status-dot--${displayStatus}`" />
-          <span v-if="displayStatus === 'blocked'" class="agent-sidebar-card__status-text">{{
-            blockedInfo?.message || t('chat.agentSidebar.blockedFallback')
-          }}</span>
-          <span v-else>{{ statusText }}</span>
-        </div>
-      </div>
-    </div>
-    <div class="agent-sidebar-card__actions">
-      <q-btn
-        v-if="displayStatus === 'running'"
-        dense
-        round
-        flat
-        size="10px"
-        icon="pause"
-        :title="t('chat.agentSidebar.pause')"
-        :aria-label="t('chat.agentSidebar.pause')"
-        class="agent-sidebar-card__action-btn"
-        @click.stop="$emit('pause', member.agentKey)"
-      />
-      <q-btn
-        v-else-if="displayStatus === 'blocked'"
-        dense
-        round
-        flat
-        size="10px"
-        icon="play_arrow"
-        :title="t('chat.agentSidebar.resume')"
-        :aria-label="t('chat.agentSidebar.resume')"
-        class="agent-sidebar-card__action-btn"
-        @click.stop="$emit('resume', member.agentKey)"
-      />
-      <q-btn
-        v-if="showLifecycleCancel"
-        dense
-        round
-        flat
-        size="10px"
-        icon="close"
-        :title="t('chat.agentSidebar.cancel')"
-        :aria-label="t('chat.agentSidebar.cancel')"
-        class="agent-sidebar-card__action-btn agent-sidebar-card__action-btn--cancel"
-        @click.stop="$emit('cancel', member.agentKey)"
-      />
-      <q-btn
-        dense
-        round
-        flat
-        size="10px"
-        icon="settings"
-        :title="t('chat.agentSidebar.settings')"
-        :aria-label="t('chat.agentSidebar.settings')"
-        class="agent-sidebar-card__action-btn agent-sidebar-card__action-btn--settings"
-        @click.stop="$emit('settings', member.agentKey)"
-      />
-    </div>
+    <!-- 单行布局：名称 → 状态标签 → 暂停/重试按钮 → 设置按钮 -->
+    <span class="agent-sidebar-card__name ellipsis">{{ member.displayName }}</span>
+    <span class="agent-sidebar-card__status" :class="`agent-sidebar-card__status--${displayStatus}`">
+      <span class="agent-sidebar-card__status-dot" :class="`agent-sidebar-card__status-dot--${displayStatus}`" />
+      <span class="agent-sidebar-card__status-text">{{ statusText }}</span>
+    </span>
+    <q-btn
+      v-if="displayStatus === 'running'"
+      dense
+      round
+      flat
+      size="9px"
+      icon="pause"
+      :title="t('chat.agentSidebar.pause')"
+      :aria-label="t('chat.agentSidebar.pause')"
+      class="agent-sidebar-card__action-btn"
+      @click.stop="$emit('pause', member.agentKey)"
+    />
+    <q-btn
+      v-else-if="displayStatus === 'blocked'"
+      dense
+      round
+      flat
+      size="9px"
+      icon="play_arrow"
+      :title="t('chat.agentSidebar.resume')"
+      :aria-label="t('chat.agentSidebar.resume')"
+      class="agent-sidebar-card__action-btn"
+      @click.stop="$emit('resume', member.agentKey)"
+    />
+    <q-btn
+      v-else-if="displayStatus === 'failed'"
+      dense
+      round
+      flat
+      size="9px"
+      icon="refresh"
+      :title="t('chat.agentSidebar.resume')"
+      :aria-label="t('chat.agentSidebar.resume')"
+      class="agent-sidebar-card__action-btn"
+      @click.stop="$emit('resume', member.agentKey)"
+    />
+    <q-btn
+      dense
+      round
+      flat
+      size="9px"
+      icon="settings"
+      :title="t('chat.agentSidebar.settings')"
+      :aria-label="t('chat.agentSidebar.settings')"
+      class="agent-sidebar-card__action-btn agent-sidebar-card__action-btn--settings"
+      @click.stop="$emit('settings', member.agentKey)"
+    />
   </div>
 </template>
 
@@ -90,9 +72,7 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { SpiritMember, SpiritTeamStatus } from '../../features/spirit/types';
-import type { Agent } from '../../features/agents/types';
 import type { BlockedResult } from '../../features/chat/composables/useBlockedStatus';
-import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
 
 const { t } = useI18n();
 
@@ -106,8 +86,6 @@ const props = defineProps<{
   teamStatus?: SpiritTeamStatus;
   /** 从 useBlockedStatus 获取的阻塞信息；命中本卡片 agentKey 时才显示阻塞态 */
   blockedInfo?: BlockedResult;
-  /** 当前用户可见的 Agent 配置列表，用于补充成员头像（当后端未下发 avatar_url 时） */
-  agents?: Agent[];
   /** 是否选中态（用于高亮） */
   active?: boolean;
 }>();
@@ -116,18 +94,17 @@ defineEmits<{
   locate: [payload: { agentKey: string; teamSessionId: string; teamId: string }];
   pause: [agentKey: string];
   resume: [agentKey: string];
-  cancel: [agentKey: string];
   /** 点击设置按钮，由外层根据 agentKey 解析 agentId 后打开设置弹窗 */
   settings: [agentKey: string];
 }>();
 
 /** 将 SpiritMember.status + teamStatus + 阻塞信息映射为显示状态。
  * 团队进入终态（completed/failed/cancelled）时，成员卡片应同步显示对应终态。
+ * 团队运行中（running/pending）时，成员未明确终态则继承运行态。
  */
 const displayStatus = computed<'running' | 'blocked' | 'completed' | 'failed' | 'pending'>(() => {
   if (props.blockedInfo?.blocked) return 'blocked';
 
-  // 团队终态优先于成员空/滞后状态
   const ts = props.teamStatus;
   if (ts === 'completed' || ts === 'archived') return 'completed';
   if (ts === 'failed') return 'failed';
@@ -138,20 +115,9 @@ const displayStatus = computed<'running' | 'blocked' | 'completed' | 'failed' | 
   if (s === 'blocked' || s === 'stuck') return 'blocked';
   if (s === 'completed' || s === 'ok' || s === 'done') return 'completed';
   if (s === 'failed' || s === 'error') return 'failed';
+  // 团队运行中时，成员未明确终态则显示为 running（触发暂停按钮）
+  if (ts === 'running' || ts === 'pending') return 'running';
   return 'pending';
-});
-
-const showLifecycleCancel = computed(() => displayStatus.value === 'running' || displayStatus.value === 'blocked');
-
-/** 头像解析：
- *  1. 优先使用成员自己的 avatarUrl
- *  2. 后端未下发时，从用户 Agent 库中按 agentKey 查找对应 Agent 的 icon
- *  3. 都没有时返回空字符串，模板渲染 fallback（smart_toy 临时头像）
- */
-const resolvedAvatar = computed(() => {
-  if (props.member.avatarUrl) return props.member.avatarUrl;
-  const agent = props.agents?.find((a) => a.agent_key === props.member.agentKey);
-  return agent?.icon ?? '';
 });
 
 const statusText = computed(() => {
@@ -174,14 +140,16 @@ const statusText = computed(() => {
 .agent-sidebar-card
   display: flex
   align-items: center
-  gap: var(--space-2, 8px)
+  gap: 6px
   padding: 6px 8px
-  border-radius: 10px
+  border-radius: 8px
   cursor: pointer
   transition: background 0.15s ease, border-color 0.15s ease
   border: 1px solid transparent
   background: color-mix(in srgb, var(--glass-surface) 40%, transparent)
   border-left: 3px solid transparent
+  // 单行布局：name flex-1 min-width-0，status 和 actions 不收缩
+  min-width: 0
 
   &:hover
     background: color-mix(in srgb, var(--glass-surface) 65%, transparent)
@@ -208,113 +176,95 @@ const statusText = computed(() => {
   &--pending
     border-left-color: var(--color-icon-muted, var(--color-text-tertiary))
 
-  &__main
-    display: flex
-    align-items: center
-    gap: var(--space-2, 8px)
-    flex: 1
-    min-width: 0
-
-  &__avatar
-    display: flex
-    align-items: center
-    justify-content: center
-    width: 32px
-    height: 32px
-    border-radius: 50%
-    flex-shrink: 0
-    color: var(--color-text-secondary)
-
-    &--fallback
-      background: color-mix(in srgb, var(--color-accent) 12%, var(--glass-surface))
-      border: 1px solid color-mix(in srgb, var(--color-accent) 25%, var(--glass-border))
-
-  &__avatar-img
-    flex-shrink: 0
-
-  &__info
-    display: flex
-    flex-direction: column
-    gap: 2px
-    min-width: 0
-
   &__name
-    font-size: 13px
+    font-size: 12px
     font-weight: 600
     color: var(--color-text-primary)
     line-height: 1.3
     white-space: nowrap
     overflow: hidden
     text-overflow: ellipsis
+    flex: 1 1 auto
+    min-width: 0
 
   &__status
-    display: flex
+    display: inline-flex
     align-items: center
-    gap: 4px
+    gap: 3px
     font-size: 10px
-    color: var(--color-text-secondary)
-    line-height: 1.3
+    line-height: 1.2
+    padding: 1px 5px
+    border-radius: 8px
     white-space: nowrap
-    overflow: hidden
-    text-overflow: ellipsis
+    flex-shrink: 0
+    background: color-mix(in srgb, var(--color-text-tertiary) 12%, transparent)
+    color: var(--color-text-secondary)
+
+    &--running
+      background: color-mix(in srgb, var(--color-accent) 15%, transparent)
+      color: var(--color-accent)
+
+    &--blocked
+      background: color-mix(in srgb, var(--color-warning) 18%, transparent)
+      color: var(--color-warning)
+
+    &--completed
+      background: color-mix(in srgb, var(--color-success) 15%, transparent)
+      color: var(--color-success)
+
+    &--failed
+      background: color-mix(in srgb, var(--color-danger) 15%, transparent)
+      color: var(--color-danger)
+
+    &--pending
+      background: color-mix(in srgb, var(--color-text-tertiary) 12%, transparent)
+      color: var(--color-text-secondary)
 
   &__status-text
     overflow: hidden
     text-overflow: ellipsis
+    max-width: 60px
 
   &__status-dot
-    width: 6px
-    height: 6px
+    width: 5px
+    height: 5px
     border-radius: 50%
     flex-shrink: 0
 
     &--running
-      background: var(--color-accent)
+      background: currentColor
       animation: agent-card-spin 1s linear infinite
 
     &--blocked
-      background: var(--color-warning)
+      background: currentColor
 
     &--completed
-      background: var(--color-success)
+      background: currentColor
 
     &--failed
-      background: var(--color-danger)
+      background: currentColor
 
     &--pending
-      background: var(--color-icon-muted, var(--color-text-tertiary))
-
-  &__actions
-    display: flex
-    align-items: center
-    gap: 2px
-    flex-shrink: 0
-    opacity: 0
-    transition: opacity 0.2s ease
-
-  &:hover &__actions,
-  &--active &__actions,
-  &--running &__actions,
-  &--blocked &__actions
-    opacity: 1
+      background: currentColor
 
   &__action-btn
-    width: 24px
-    height: 24px
-    min-height: 24px
-    border-radius: 8px
+    width: 22px
+    height: 22px
+    min-height: 22px
+    border-radius: 6px
     color: var(--color-text-secondary)
+    flex-shrink: 0
 
     &:hover
       background: color-mix(in srgb, var(--color-accent) 15%, transparent)
       color: var(--color-accent)
 
-    &--cancel:hover
-      background: color-mix(in srgb, var(--color-danger) 15%, transparent)
-      color: var(--color-danger)
-
     &--settings
       color: var(--color-text-tertiary)
+
+      &:hover
+        background: color-mix(in srgb, var(--color-text-secondary) 15%, transparent)
+        color: var(--color-text-primary)
 
 :global(.body--dark) .agent-sidebar-card__action-btn
   color: var(--color-text-primary)

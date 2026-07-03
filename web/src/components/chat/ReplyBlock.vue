@@ -49,7 +49,16 @@ const renderedContent = computed(() => renderChatMarkdownForMessage(messageId.va
 </script>
 
 <style lang="sass" scoped>
+// Agent replies are left-aligned (mirroring user bubbles which are
+// right-aligned). Without max-width, the reply block fills the entire
+// parent width, making its right edge align with the user bubble's right
+// edge — visually indistinguishable from a right-aligned bubble.
+// Constraint: 85% keeps long content readable while leaving a visible
+// gutter on the right that distinguishes agent from user.
 .reply-block
+  max-width: 85%
+  align-self: flex-start
+
   &__label
     display: flex
     align-items: center

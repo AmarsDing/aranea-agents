@@ -74,19 +74,22 @@ export function useChatScrollTitle(opts: {
     const anchor = root.getBoundingClientRect().top + HEADER_VIEWPORT_OFFSET;
     let bestTop = Number.POSITIVE_INFINITY;
     let bestText = '';
+    let lastText = '';
 
     markers.forEach((el) => {
       const rect = el.getBoundingClientRect();
-      if (rect.bottom < anchor - 8) return;
       const text = (el.dataset.chatUserPrompt ?? '').trim();
       if (!text) return;
+      lastText = text;
+      if (rect.bottom < anchor - 8) return; // above viewport anchor
       if (rect.top < bestTop) {
         bestTop = rect.top;
         bestText = text;
       }
     });
 
-    activeUserPrompt.value = bestText;
+    // If no marker is below the anchor (all scrolled past), use the last one.
+    activeUserPrompt.value = bestText || lastText;
   }
 
   function resetToLatestOrSession() {

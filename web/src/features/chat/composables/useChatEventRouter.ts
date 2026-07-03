@@ -87,6 +87,20 @@ export function useChatEventRouter(store: Store) {
         if (p.PlanStep) store.upsertPlanStep(p.PlanStep as never);
         break;
 
+      // 2026-07-04 补齐：GraphStage 事件（与 PlanBoard 一对一）
+      case 'graph_stage.created':
+      case 'graph_stage.updated':
+      case 'graph_stage.completed':
+      case 'graph_stage.failed':
+      case 'graph_stage.interrupted':
+        if (p.GraphStage) store.upsertGraphStage(p.GraphStage as never);
+        break;
+
+      // GraphNode 事件
+      case 'graph_node.updated':
+        if (p.GraphNode) store.upsertGraphNode(p.GraphNode as never);
+        break;
+
       // Phase 3b-D Task 12: system-domain events are intercepted in
       // useChatWorkspace.handleV2Event (side-effect routing via
       // inboundActivityEventHandler) and never reach this router. The cases

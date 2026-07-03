@@ -1,6 +1,10 @@
 <!-- web/src/components/chat/v2/TeamStagePanel.vue -->
 <template>
-  <div class="team-stage-panel" :data-team-stage-id="teamStage.ID">
+  <div
+    class="team-stage-panel"
+    :data-team-stage-id="teamStage.ID"
+    :data-team-id="teamStage.TeamID"
+  >
     <div class="team-stage-header">
       <span>Team: {{ teamStage.TeamID }}</span>
       <q-badge :color="stageColor">{{ teamStage.Stage }}</q-badge>

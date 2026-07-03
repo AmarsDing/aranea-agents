@@ -49,24 +49,7 @@
     </q-banner>
     <q-card-section class="chat-message-header q-px-md q-py-sm">
       <div class="chat-message-header__grid">
-        <ChatHeaderUsagePanel
-          class="chat-message-header__usage"
-          :context-ratio="contextRatio"
-          :context-status="contextStatus"
-          :usage-snapshot="usageSnapshot"
-          :breakdown="contextBreakdown"
-          :is-dark="isDark"
-          :session-id="sessionId"
-          @compact="onCompactSession"
-        />
-        <ChatHeaderPromptBar
-          class="chat-message-header__prompt"
-          :full-text="headerUserPrompt"
-          :prompt-key="promptKey"
-          :session-title="sessionTitle"
-          :has-messages="props.messages.length > 0"
-        />
-        <div class="chat-message-header__actions row items-center justify-end no-wrap">
+        <div class="chat-message-header__actions chat-message-header__actions--left row items-center no-wrap">
           <template v-if="wsConnected === false">
             <q-icon name="wifi_off" size="18px" color="warning" class="q-mr-xs">
               <q-tooltip>{{ t('chat.connectionDisconnected') }}</q-tooltip>
@@ -93,6 +76,17 @@
             :event-count="runEventCount"
             @cancel="emit('stop')"
           />
+        </div>
+        <ChatHeaderPromptBar
+          class="chat-message-header__prompt"
+          :full-text="headerUserPrompt"
+          :prompt-key="promptKey"
+          :session-title="sessionTitle"
+          :has-messages="props.messages.length > 0"
+        />
+        <div
+          class="chat-message-header__actions chat-message-header__actions--right row items-center justify-end no-wrap"
+        >
           <q-btn flat round dense icon="bolt" :aria-label="t('chat.sessionEvents')" @click="emit('open-events')">
             <q-tooltip>{{ t('chat.sessionEvents') }}</q-tooltip>
           </q-btn>
@@ -122,19 +116,6 @@
         <span class="text-caption">{{ spiritLoadingMessage.text }}</span>
       </div>
     </div>
-    <div v-if="!panelMode || panelMode === 'spirit'" class="row items-center justify-end q-px-md q-py-xs">
-      <UiConfigToggle class="q-mr-sm" :show-tool-calls="showToolCalls ?? true" @toggle="emit('toggle-tool-calls')" />
-      <q-btn
-        flat
-        dense
-        no-caps
-        :icon="expandAllActive ? 'unfold_less' : 'unfold_more'"
-        :label="expandAllActive ? t('chat.collapseAll', '折叠全部') : t('chat.expandAll', '展开全部')"
-        class="text-caption"
-        :style="{ color: 'var(--color-text-tertiary)' }"
-        @click="expandAllActive ? handleCollapseAll() : handleExpandAll()"
-      />
-    </div>
     <div class="col row no-wrap chat-messages-area" style="min-height: 0">
       <div class="col column no-wrap chat-messages-main" style="min-height: 0">
         <TodoKanbanBoard
@@ -160,6 +141,7 @@
           @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
           @feedback="(p) => emit('feedback', p)"
           @regenerate="(msg) => emit('regenerate', msg)"
+          @regenerate-v2="(task) => emit('regenerate-v2', task)"
           @retry="(id) => emit('retry', id)"
           @dismiss-failed="(id) => emit('dismiss-failed', id)"
           @attachment-deleted="(id) => emit('attachment-deleted', id)"
@@ -214,7 +196,6 @@
           :provider-options="providerOptions"
           :context-ratio="contextRatio"
           :context-status="contextStatus"
-          :usage-snapshot="usageSnapshot"
           :knowledge-base-options="knowledgeBaseOptions"
           :selected-knowledge-bases="selectedKnowledgeBases"
           :is-dark="isDark"
@@ -226,13 +207,8 @@
           :await-tool-key="awaitToolKey"
           :show-enqueue="showEnqueue"
           :session-id="sessionId"
-          :session-artifacts="sessionArtifacts"
-          :session-artifacts-loading="sessionArtifactsLoading"
           :file-supported="fileSupported"
           :file-accept="fileAccept"
-          :show-background-jobs="showBackgroundJobs"
-          :agent-id="agentId"
-          :jobs-refresh-nonce="jobsRefreshNonce"
           @update:model-value="emit('update:modelValue', $event)"
           @update:dialog-mode="emit('update:dialogMode', $event)"
           @update:model-provider="emit('update:modelProvider', $event)"
@@ -245,13 +221,7 @@
           @enqueue-message="emit('enqueue-message', $event)"
           @submit-await-reply="emit('submit-await-reply')"
           @submit-tool-confirm="emit('submit-tool-confirm', $event)"
-          @open-artifact="emit('open-artifact', $event)"
-          @attachment-deleted="emit('attachment-deleted', $event)"
-          @download-artifact="emit('download-artifact', $event)"
           @paste-file="emit('paste-file', $event)"
-          @focus-turn="emit('focus-turn', $event)"
-          @navigate="emit('navigate', $event)"
-          @cancel-job="emit('cancel-job', $event)"
           @paste-unsupported="emit('paste-unsupported')"
           @new-session="emit('new-session')"
         />
@@ -270,6 +240,10 @@
       :quota-used="spiritStatusBar.quotaUsed"
       :quota-max="spiritStatusBar.quotaMax"
       :token-usage="spiritStatusBar.tokenUsage"
+      :context-ratio="spiritStatusBar.contextRatio"
+      :context-used-tokens="spiritStatusBar.contextUsedTokens"
+      :context-window="spiritStatusBar.contextWindow"
+      :session-id="sessionId"
       :last-event="spiritStatusBar.lastEvent"
       :complexity-level="spiritStatusBar.complexityLevel"
       :complexity-reason="spiritStatusBar.complexityReason"
@@ -290,10 +264,8 @@ import ChatTeamMemberStrip from './ChatTeamMemberStrip.vue';
 import type { TeamMemberLane } from './ChatTeamMemberStrip.vue';
 import ChatMessageList from './ChatMessageList.vue';
 import ChatComposer from './ChatComposer.vue';
-import ChatHeaderUsagePanel from './ChatHeaderUsagePanel.vue';
 import ChatHeaderPromptBar from './ChatHeaderPromptBar.vue';
 import ChatReasoningDrawer from './ChatReasoningDrawer.vue';
-import UiConfigToggle from './UiConfigToggle.vue';
 import TodoKanbanBoard from './TodoKanbanBoard.vue';
 import ContextIndicator from '../sessions/ContextIndicator.vue';
 import SynthesisResultCard from '../spirit/SynthesisResultCard.vue';
@@ -308,7 +280,6 @@ import { useChatMessageScroll, useChatCodeCopy } from '../../features/chat/compo
 import { useChatScrollTitle } from '../../features/chat/useChatScrollTitle';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { Message } from '../../features/chat/types';
-import type { ComposerUsageSnapshot } from '../../features/chat/composerUsageMetrics';
 import type { PromptBreakdown } from '../../features/chat/contextBreakdown';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { ChatAttachment } from './types';
@@ -336,7 +307,6 @@ const props = defineProps<{
   sessionId?: string;
   contextRatio: number;
   contextStatus?: string;
-  usageSnapshot?: ComposerUsageSnapshot | null;
   contextBreakdown?: PromptBreakdown | null;
   knowledgeBaseOptions?: Option[];
   selectedKnowledgeBases?: string[];
@@ -409,6 +379,7 @@ const emit = defineEmits<{
   'attachment-deleted': [id: string];
   'download-artifact': [meta: import('../../features/artifact/types').ArtifactMeta];
   regenerate: [message: Message];
+  'regenerate-v2': [task: import('../../features/chat/v2Types').Task];
   'cancel-job': [job: { id: string; source: string }];
   'paste-unsupported': [];
   'new-session': [];
@@ -480,9 +451,13 @@ const teamMemberLanes = computed((): TeamMemberLane[] => {
 });
 
 // ── SP-FE-30: Provide/Inject global collapse control ──
+// T8.5: The "Expand All" / "Collapse All" toolbar buttons above the chat were
+// removed per user request (2026-07-04). The provide signals remain at 0 so
+// child components injecting EXECUTION_COLLAPSE_CONTROL_KEY still get a valid
+// object; if a future UI control wants to trigger expand/collapse, it just
+// needs to increment the respective signal.
 const expandAllSignal = ref(0);
 const collapseAllSignal = ref(0);
-const expandAllActive = ref(false);
 provide(EXECUTION_COLLAPSE_CONTROL_KEY, {
   expandAllSignal: readonly(expandAllSignal),
   collapseAllSignal: readonly(collapseAllSignal),
@@ -498,16 +473,6 @@ provide(
 
 // ── TK: Todo board composable ──
 const { todoBoardState } = useTodoBoard(messagesRef);
-
-function handleExpandAll() {
-  expandAllActive.value = true;
-  expandAllSignal.value++;
-}
-
-function handleCollapseAll() {
-  expandAllActive.value = false;
-  collapseAllSignal.value++;
-}
 
 const messageListRef = ref<InstanceType<typeof ChatMessageList> | null>(null);
 
@@ -534,10 +499,6 @@ const { headerUserPrompt, promptKey, refreshActivePrompt, resetToLatestOrSession
 function onMessagesScrollWrapped(event?: Event) {
   onMessagesScroll(event);
   refreshActivePrompt();
-}
-
-function onCompactSession(sid: string) {
-  emit('compact', sid);
 }
 
 const { handleMessagesClick } = useChatCodeCopy();

@@ -161,9 +161,15 @@ func (p *ActivityProjector) EmitNotice(ctx context.Context, content, noticeType 
 	}
 	// Inline step creation (instead of BeginStep) so NoticeType is set before
 	// the StepCreatedEvent is published — the frontend needs it for rendering.
+	// Seq is allocated immediately from SeqAssigner to ensure notice steps get
+	// a monotonic Seq (consistent with BeginStep) for correct frontend ordering.
 	n := p.stepCounter.Add(1)
 	stepID := p.meta.TurnID + "-s" + strconv.Itoa(int(n))
-	step := p.meta.newStep(stepID, biz.StepKindNotice, 0)
+	var seq int64
+	if p.seqAsg != nil {
+		seq = p.seqAsg.NextSeq(p.meta.SpiritSessionID)
+	}
+	step := p.meta.newStep(stepID, biz.StepKindNotice, seq)
 	step.NoticeType = noticeType
 	step.Content = content
 	p.mu.Lock()
@@ -269,9 +275,15 @@ func (p *ActivityProjector) OnError(ctx context.Context, errMsg, errType, errCod
 		return
 	}
 	// Emit error Step (carries error details for the frontend).
+	// Seq is allocated immediately from SeqAssigner so error steps sort after
+	// prior steps (thinking/action/reply) in the frontend's Seq ASC ordering.
 	n := p.stepCounter.Add(1)
 	errStepID := p.meta.TurnID + "-s" + strconv.Itoa(int(n))
-	errStep := p.meta.newStep(errStepID, biz.StepKindError, 0)
+	var errSeq int64
+	if p.seqAsg != nil {
+		errSeq = p.seqAsg.NextSeq(p.meta.SpiritSessionID)
+	}
+	errStep := p.meta.newStep(errStepID, biz.StepKindError, errSeq)
 	errStep.Content = errMsg
 	errStep.ToolErrorCode = errType
 	if errCode != "" && errType == "" {
@@ -417,15 +429,22 @@ func (p *ActivityProjector) OnTurnEndEnhanced(ctx context.Context, meta ProjectM
 // emits step.created, and returns the step ID.
 //
 // The step ID is derived from the turn ID with a "-s<N>" suffix where N is a
-// per-projector counter. The step's Seq is left at 0 and lazily allocated on
-// the first streaming delta (see emitStreaming).
+// per-projector counter. The step's Seq is allocated immediately from the
+// SeqAssigner so that all step kinds (thinking/action/reply/notice/confirm/error)
+// have a monotonic Seq for correct frontend ordering. Previously Seq was
+// lazily assigned only for streaming steps (thinking/reply), causing action/
+// notice steps to have Seq=0 and sort before thinking steps.
 func (p *ActivityProjector) BeginStep(meta ProjectMeta, kind biz.StepKind) string {
 	if p.seq == nil {
 		return ""
 	}
 	n := p.stepCounter.Add(1)
 	stepID := meta.TurnID + "-s" + strconv.Itoa(int(n))
-	step := meta.newStep(stepID, kind, 0)
+	var seq int64
+	if p.seqAsg != nil {
+		seq = p.seqAsg.NextSeq(meta.SpiritSessionID)
+	}
+	step := meta.newStep(stepID, kind, seq)
 	p.mu.Lock()
 	p.activeStep[stepID] = &step
 	p.mu.Unlock()
@@ -445,17 +464,15 @@ func (p *ActivityProjector) OnTextDelta(ctx context.Context, stepID, delta, _ st
 	p.emitStreaming(ctx, stepID, "content", delta)
 }
 
-// emitStreaming looks up the active step, lazily allocates its Seq if still 0,
-// and publishes a StepStreamingEvent. No-op if the step is unknown.
+// emitStreaming looks up the active step and publishes a StepStreamingEvent.
+// Seq is allocated upfront in BeginStep (no lazy allocation here).
+// No-op if the step is unknown.
 func (p *ActivityProjector) emitStreaming(ctx context.Context, stepID, field, delta string) {
 	if p.seq == nil {
 		return
 	}
 	p.mu.Lock()
 	step, ok := p.activeStep[stepID]
-	if ok && step.Seq == 0 && p.seqAsg != nil {
-		step.Seq = p.seqAsg.NextSeq(step.SpiritSessionID)
-	}
 	p.mu.Unlock()
 	if !ok {
 		return

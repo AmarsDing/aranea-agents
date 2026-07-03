@@ -14,13 +14,19 @@ import (
 )
 
 // executorRepos is the narrow repo interface required by PlanExecutor.
-// Satisfied by composing PlanStepV2Repo + TeamStageV2Repo + PlanBoardV2Writer.
-// Methods ≤ 5 per interface (CS-B4).
+// Satisfied by composing PlanStepV2Repo + TeamStageV2Repo + PlanBoardV2Writer
+// + GraphStageV2Repo + GraphNodeV2Repo. Methods ≤ 5 per interface (CS-B4).
+//
+// 2026-07-04 补齐：新增 UpsertGraphStage / UpsertGraphNode / GetGraphStageByPlanBoard
+// 用于同步创建 GraphStage 和更新 GraphNode 状态（与 PlanBoard 一对一关联）。
 type executorRepos interface {
 	UpsertPlanStep(ctx context.Context, ps biz.PlanStep) (biz.PlanStep, error)
 	UpsertTeamStage(ctx context.Context, ts biz.TeamStage) (biz.TeamStage, error)
 	UpsertPlanBoard(ctx context.Context, pb biz.PlanBoard) (biz.PlanBoard, error)
 	GetPlanStep(ctx context.Context, id string) (biz.PlanStep, error)
+	UpsertGraphStage(ctx context.Context, gs biz.GraphStage) (biz.GraphStage, error)
+	UpsertGraphNode(ctx context.Context, gn biz.GraphNode) (biz.GraphNode, error)
+	GetGraphStageByPlanBoard(ctx context.Context, planBoardID string) (biz.GraphStage, error)
 }
 
 // sequencerPublisher mirrors v2.SequencerPublisher to avoid importing
@@ -60,12 +66,81 @@ func NewPlanExecutor(repos executorRepos, orch TeamOrchestrator, seq sequencerPu
 
 // Subscribe starts DAG execution for the given board and blocks until all
 // steps reach a terminal status or ctx is canceled.
+//
+// 2026-07-04 补齐：在 DAG 执行前同步创建 GraphStage（与 PlanBoard 一对一关联）
+// 和 GraphNode 列表（每个 PlanStep 对应一个 GraphNode），并发布 v2 事件。
 func (e *PlanExecutor) Subscribe(ctx context.Context, board biz.PlanBoard) error {
 	if len(board.Steps) == 0 {
 		return nil
 	}
+	// 同步创建 GraphStage（与 PlanBoard 一对一）。失败不阻断主流程，
+	// 仅记录日志（GraphStage 是可视化层，缺失不影响 DAG 调度正确性）。
+	e.initGraphStage(ctx, board)
 	r := newDagRun(e, board)
 	return r.run(ctx)
+}
+
+// initGraphStage creates the GraphStage (and its GraphNodes) for the given
+// PlanBoard if it doesn't already exist. Idempotent: if a GraphStage is
+// already associated with the PlanBoard, it's left as-is.
+//
+// 设计：docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md §3.2.4
+// GraphStage ID 由 planBoardID 确定性派生（uuid.NewSHA1(aranea.graph_stage.v2, planBoardID)）。
+// GraphNode ID = plan_step.id（直接复用，确定性）。
+func (e *PlanExecutor) initGraphStage(ctx context.Context, board biz.PlanBoard) {
+	// 检查是否已存在 GraphStage（避免重复创建）。
+	if existing, err := e.repos.GetGraphStageByPlanBoard(ctx, board.ID); err == nil && existing.ID != "" {
+		// 已存在，跳过创建（可能来自历史 Subscribe 或 crash recovery）。
+		return
+	}
+	// 派生 GraphStage ID（确定性，确保多次调用产生相同 ID）。
+	gsID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.graph_stage.v2:"+board.ID)).String()
+	now := time.Now()
+	gs := biz.GraphStage{
+		ID:          gsID,
+		TaskID:      board.TaskID,
+		TurnID:      board.TurnID,
+		SessionID:   board.SessionID,
+		PlanBoardID: board.ID,
+		Status:      biz.GraphStageStatusRunning,
+		StartedAt:   now,
+		Seq:         board.Seq, // 与 PlanBoard 同 Seq
+		Version:     1,
+	}
+	// 构建 GraphNode 列表（每个 PlanStep 对应一个 GraphNode）。
+	nodes := make([]biz.GraphNode, 0, len(board.Steps))
+	for _, step := range board.Steps {
+		gn := biz.GraphNode{
+			ID:           step.ID, // GraphNode.ID = PlanStep.ID（确定性派生）
+			GraphStageID: gsID,
+			Label:        step.Label,
+			DagNodeID:    step.ID,
+			Status:       biz.MapPlanStepToGraphNodeStatus(step.Status),
+			DependsOn:    append([]string(nil), step.DependsOn...),
+		}
+		nodes = append(nodes, gn)
+	}
+	gs.Nodes = nodes
+	// 持久化 GraphStage。
+	if _, err := e.repos.UpsertGraphStage(ctx, gs); err != nil {
+		e.lg.Warn("upsert graph_stage failed (non-blocking)",
+			loggateway.Str("graph_stage_id", gsID),
+			loggateway.Str("plan_board_id", board.ID),
+			loggateway.Err(err),
+		)
+		return
+	}
+	// 持久化 GraphNodes。
+	for _, gn := range nodes {
+		if _, err := e.repos.UpsertGraphNode(ctx, gn); err != nil {
+			e.lg.Warn("upsert graph_node failed (non-blocking)",
+				loggateway.Str("graph_node_id", gn.ID),
+				loggateway.Err(err),
+			)
+		}
+	}
+	// 发布 GraphStageCreatedEvent。
+	e.seq.Publish(ctx, biz.NewGraphStageCreatedEvent(gs))
 }
 
 // dagRun encapsulates the per-Subscribe DAG state. Created fresh for each
@@ -73,6 +148,10 @@ func (e *PlanExecutor) Subscribe(ctx context.Context, board biz.PlanBoard) error
 type dagRun struct {
 	pe    *PlanExecutor
 	board biz.PlanBoard
+
+	// graphStageID 是与 PlanBoard 一对一关联的 GraphStage 的 ID（在 initGraphStage
+	// 中创建）。如果创建失败则为空，此时跳过 GraphNode 更新。
+	graphStageID string
 
 	mu         sync.Mutex
 	stepsByID  map[string]*biz.PlanStep
@@ -90,11 +169,19 @@ func newDagRun(pe *PlanExecutor, board biz.PlanBoard) *dagRun {
 			dependents[dep] = append(dependents[dep], s.ID)
 		}
 	}
+	// 查找与 PlanBoard 关联的 GraphStage ID（在 initGraphStage 中创建）。
+	// 如果未找到（创建失败或未调用 initGraphStage），graphStageID 为空，
+	// dagRun 会跳过 GraphNode 更新，但 DAG 调度仍正常运行。
+	var gsID string
+	if existing, err := pe.repos.GetGraphStageByPlanBoard(context.Background(), board.ID); err == nil && existing.ID != "" {
+		gsID = existing.ID
+	}
 	return &dagRun{
-		pe:         pe,
-		board:      board,
-		stepsByID:  stepsByID,
-		dependents: dependents,
+		pe:           pe,
+		board:        board,
+		graphStageID: gsID,
+		stepsByID:    stepsByID,
+		dependents:   dependents,
 	}
 }
 
@@ -157,6 +244,8 @@ func (r *dagRun) dispatchStep(ctx context.Context, step *biz.PlanStep) {
 	}
 	// 2. Publish TeamStageCreated.
 	r.pe.seq.Publish(ctx, biz.NewTeamStageCreatedEvent(ts))
+	// 2026-07-04 补齐：同步更新 GraphNode 状态为 Running，回填 TeamStageID。
+	r.updateGraphNode(ctx, step.ID, biz.GraphNodeStatusRunning, tsID)
 	// 3. Transition step to Running.
 	r.mu.Lock()
 	step.MappedTeamStageID = tsID
@@ -221,9 +310,13 @@ func (r *dagRun) handleCompletion(ctx context.Context, step *biz.PlanStep, ev bi
 	}
 	if ev.Success {
 		r.pe.seq.Publish(ctx, biz.NewPlanStepCompletedEvent(current, r.board.SessionID))
+		// 2026-07-04 补齐：GraphNode → Completed
+		r.updateGraphNode(ctx, step.ID, biz.GraphNodeStatusCompleted, "")
 		r.checkDownstream(ctx, step.ID)
 	} else {
 		r.pe.seq.Publish(ctx, biz.NewPlanStepFailedEvent(current, r.board.SessionID))
+		// 2026-07-04 补齐：GraphNode → Failed
+		r.updateGraphNode(ctx, step.ID, biz.GraphNodeStatusFailed, "")
 		r.cascadeSkip(ctx, step.ID)
 	}
 }
@@ -244,6 +337,8 @@ func (r *dagRun) failStep(ctx context.Context, step *biz.PlanStep, msg string) {
 			loggateway.Str("step_id", step.ID), loggateway.Err(err))
 	}
 	r.pe.seq.Publish(ctx, biz.NewPlanStepFailedEvent(current, r.board.SessionID))
+	// 2026-07-04 补齐：GraphNode → Failed
+	r.updateGraphNode(ctx, step.ID, biz.GraphNodeStatusFailed, "")
 	r.cascadeSkip(ctx, step.ID)
 }
 
@@ -305,7 +400,40 @@ func (r *dagRun) cascadeSkip(ctx context.Context, failedID string) {
 					loggateway.Str("step_id", skipped.ID), loggateway.Err(err))
 			}
 			r.pe.seq.Publish(ctx, biz.NewPlanStepSkippedEvent(skipped, r.board.SessionID, reason))
+			// 2026-07-04 补齐：GraphNode → Interrupted（skipped 映射为 interrupted）
+			r.updateGraphNode(ctx, depID, biz.GraphNodeStatusInterrupted, "")
 			queue = append(queue, depID)
 		}
 	}
+}
+
+// updateGraphNode updates the GraphNode status (and optionally TeamStageID)
+// and publishes a GraphNodeUpdatedEvent. No-op if graphStageID is empty
+// (GraphStage creation failed or was skipped).
+//
+// 设计：docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md §3.7.5
+// GraphNode 状态由 PlanStep.Status 通过 MapPlanStepToGraphNodeStatus 映射得到。
+// TeamStageID 在 dispatchStep 时回填，便于前端高亮显示对应节点。
+func (r *dagRun) updateGraphNode(ctx context.Context, stepID string, status biz.GraphNodeStatus, teamStageID string) {
+	if r.graphStageID == "" {
+		return // GraphStage 未创建，跳过
+	}
+	gn := biz.GraphNode{
+		ID:           stepID, // GraphNode.ID = PlanStep.ID
+		GraphStageID: r.graphStageID,
+		Status:       status,
+	}
+	if teamStageID != "" {
+		gn.TeamStageID = teamStageID
+	}
+	if _, err := r.pe.repos.UpsertGraphNode(ctx, gn); err != nil {
+		r.pe.lg.Warn("upsert graph_node (status update) failed (non-blocking)",
+			loggateway.Str("graph_node_id", stepID),
+			loggateway.Str("status", string(status)),
+			loggateway.Err(err),
+		)
+		return
+	}
+	// 发布 GraphNodeUpdatedEvent。taskID 和 spiritSessionID 从 board 派生。
+	r.pe.seq.Publish(ctx, biz.NewGraphNodeUpdatedEvent(gn, r.board.TaskID, r.board.SessionID))
 }

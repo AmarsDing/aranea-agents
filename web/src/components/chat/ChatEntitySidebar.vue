@@ -45,12 +45,10 @@
               :team-session-id="card.teamSessionId"
               :team-status="card.teamStatus"
               :team-id="card.teamId"
-              :agents="props.agents"
               :blocked-info="getBlockedInfoForAgent(card.member.agentKey)"
               @locate="onLocateAgent"
               @pause="$emit('pause-agent', $event)"
               @resume="$emit('resume-agent', $event)"
-              @cancel="$emit('cancel-agent', $event)"
               @settings="onAgentSettings"
             />
             <div
@@ -205,6 +203,14 @@ function getBlockedInfoForAgent(agentKey: string): BlockedResult {
   min-width: min(var(--chat-side-left-width, 280px), 100%);
   flex: 0 0 var(--chat-side-left-width, 280px);
   overflow: hidden;
+}
+
+/* Agent 卡片列表：垂直布局 + 上下左右间隔 */
+.agent-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 6px 10px;
 }
 
 :global(.body--dark) .chat-side-hint {

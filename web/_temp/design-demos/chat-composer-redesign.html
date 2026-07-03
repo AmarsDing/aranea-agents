@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat Composer Redesign · 3 Variations</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      /* Aranea light tokens */
+      --canvas-base: #FEFBF4;
+      --glass-surface: rgba(255, 253, 245, 0.72);
+      --glass-surface-hover: rgba(255, 253, 245, 0.85);
+      --glass-border: rgba(235, 220, 200, 0.75);
+      --glass-elevated: rgba(255, 255, 255, 0.82);
+      --color-accent: #E9A23B;
+      --color-accent-hover: #D48C1A;
+      --color-text-primary: #3A322C;
+      --color-text-secondary: #8B7A6B;
+      --color-icon-muted: #B8A590;
+      --color-success: #4CAF7C;
+      --color-danger: #E55C5C;
+      --shadow-sm: 0 1px 4px rgba(58, 50, 44, 0.04);
+      --shadow-md: 0 4px 20px rgba(58, 50, 44, 0.08);
+    }
+
+    body.body--dark {
+      --canvas-base: #090D14;
+      --glass-surface: rgba(18, 24, 34, 0.72);
+      --glass-surface-hover: rgba(22, 28, 40, 0.82);
+      --glass-border: rgba(255, 255, 255, 0.10);
+      --glass-elevated: rgba(18, 24, 34, 0.85);
+      --color-accent: #00E5FF;
+      --color-accent-hover: #5aebff;
+      --color-text-primary: #EBEBF0;
+      --color-text-secondary: #9CA0B0;
+      --color-icon-muted: #7A8194;
+      --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.25);
+      --shadow-md: 0 4px 24px rgba(0, 0, 0, 0.35);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--canvas-base);
+      color: var(--color-text-primary);
+      transition: background 0.3s ease, color 0.3s ease;
+      line-height: 1.5;
+    }
+
+    .page {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 48px 24px 96px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 40px;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 600;
+      margin: 0 0 6px;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      color: var(--color-text-secondary);
+      font-size: 14px;
+    }
+
+    .theme-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--glass-border);
+      background: var(--glass-surface);
+      color: var(--color-text-primary);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .theme-toggle:hover {
+      background: var(--glass-surface-hover);
+    }
+
+    .variations {
+      display: grid;
+      gap: 40px;
+    }
+
+    .variation {
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      background: var(--glass-elevated);
+      padding: 28px;
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .variation-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .variation-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .variation-tag {
+      font-size: 12px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: var(--color-accent);
+      color: #fff;
+      font-weight: 500;
+    }
+
+    body.body--dark .variation-tag {
+      color: #090D14;
+    }
+
+    .variation-desc {
+      color: var(--color-text-secondary);
+      font-size: 13px;
+      margin: -12px 0 20px;
+      line-height: 1.6;
+    }
+
+    .mockup-frame {
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      background: var(--canvas-base);
+      padding: 24px;
+      box-shadow: var(--shadow-md);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Common composer tokens */
+    .composer {
+      width: 100%;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .select {
+      appearance: none;
+      -webkit-appearance: none;
+      border: 1px solid var(--glass-border);
+      border-radius: 10px;
+      background: var(--glass-surface);
+      color: var(--color-text-primary);
+      padding: 6px 26px 6px 10px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238B7A6B' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+    }
+
+    body.body--dark .select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239CA0B0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    }
+
+    .icon-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      border: 1px solid var(--glass-border);
+      background: var(--glass-surface);
+      color: var(--color-icon-muted);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .icon-btn:hover {
+      background: var(--glass-surface-hover);
+      color: var(--color-accent);
+      border-color: var(--color-accent);
+    }
+
+    .icon-btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .send-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      border: none;
+      background: var(--color-accent);
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.15s ease, transform 0.08s ease;
+    }
+
+    .send-btn:hover {
+      background: var(--color-accent-hover);
+    }
+
+    .send-btn:active {
+      transform: scale(0.96);
+    }
+
+    body.body--dark .send-btn {
+      color: #090D14;
+    }
+
+    .send-btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .token-hint {
+      font-size: 11px;
+      color: var(--color-text-secondary);
+      text-align: center;
+      margin-top: 4px;
+    }
+
+    /* === Variation A: Unified Rounded Card === */
+    .v-a .composer-card {
+      border: 1px solid var(--glass-border);
+      border-radius: 18px;
+      background: var(--glass-surface);
+      padding: 14px 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: box-shadow 0.2s ease;
+    }
+
+    .v-a .composer-card:focus-within {
+      box-shadow: 0 0 0 2px rgba(233, 162, 59, 0.25);
+    }
+
+    body.body--dark .v-a .composer-card:focus-within {
+      box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.25);
+    }
+
+    .v-a .top-pills {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .v-a .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--glass-border);
+      background: var(--glass-elevated);
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+    }
+
+    .v-a .pill strong {
+      color: var(--color-text-primary);
+      font-weight: 500;
+    }
+
+    .v-a .pill:hover {
+      border-color: var(--color-accent);
+      color: var(--color-accent);
+    }
+
+    .v-a .input-area {
+      width: 100%;
+      min-height: 48px;
+      border: none;
+      background: transparent;
+      color: var(--color-text-primary);
+      font-size: 14px;
+      line-height: 1.5;
+      resize: none;
+      outline: none;
+      font-family: inherit;
+    }
+
+    .v-a .input-area::placeholder {
+      color: var(--color-icon-muted);
+    }
+
+    .v-a .bottom-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .v-a .left-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    /* === Variation B: Minimal Floating Bar === */
+    .v-b .composer-card {
+      border: 1px solid var(--glass-border);
+      border-radius: 999px;
+      background: var(--glass-surface);
+      padding: 6px 6px 6px 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      max-width: 680px;
+      margin: 0 auto;
+      transition: box-shadow 0.2s ease;
+    }
+
+    .v-b .composer-card:focus-within {
+      box-shadow: 0 0 0 2px rgba(233, 162, 59, 0.25);
+    }
+
+    body.body--dark .v-b .composer-card:focus-within {
+      box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.25);
+    }
+
+    .v-b .input-area {
+      flex: 1;
+      border: none;
+      background: transparent;
+      color: var(--color-text-primary);
+      font-size: 14px;
+      height: 38px;
+      outline: none;
+      font-family: inherit;
+    }
+
+    .v-b .input-area::placeholder {
+      color: var(--color-icon-muted);
+    }
+
+    .v-b .right-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .v-b .send-btn {
+      border-radius: 50%;
+    }
+
+    .v-b .top-hint {
+      text-align: center;
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      margin-bottom: 8px;
+    }
+
+    /* === Variation C: Structured Two-Row (Refined) === */
+    .v-c .top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .v-c .top-row .left {
+      display: flex;
+      gap: 8px;
+    }
+
+    .v-c .top-row .right {
+      display: flex;
+      gap: 6px;
+    }
+
+    .v-c .input-card {
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      background: var(--glass-surface);
+      padding: 12px 14px;
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+    }
+
+    .v-c .input-area {
+      flex: 1;
+      min-height: 44px;
+      border: none;
+      background: transparent;
+      color: var(--color-text-primary);
+      font-size: 14px;
+      line-height: 1.5;
+      resize: none;
+      outline: none;
+      font-family: inherit;
+    }
+
+    .v-c .input-area::placeholder {
+      color: var(--color-icon-muted);
+    }
+
+    .v-c .right-actions {
+      display: flex;
+      align-items: flex-end;
+      gap: 6px;
+    }
+
+    .recommendation {
+      margin-top: 44px;
+      padding: 22px 24px;
+      border-radius: 16px;
+      border: 1px solid var(--glass-border);
+      background: var(--glass-elevated);
+    }
+
+    .recommendation h2 {
+      font-size: 16px;
+      margin: 0 0 10px;
+    }
+
+    .recommendation p {
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      margin: 0;
+      line-height: 1.7;
+    }
+
+    .note {
+      margin-top: 32px;
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div>
+        <h1>Chat Composer 重设计方案</h1>
+        <div class="subtitle">针对「输入框与按钮布局太杂乱」的 3 个方向</div>
+      </div>
+      <button class="theme-toggle" onclick="document.body.classList.toggle('body--dark')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+        切换昼夜
+      </button>
+    </header>
+
+    <div class="variations">
+      <!-- Variation A -->
+      <section class="variation v-a">
+        <div class="variation-header">
+          <h2 class="variation-title">方案 A · 统一圆角卡片</h2>
+          <span class="variation-tag">推荐</span>
+        </div>
+        <p class="variation-desc">参考 ChatGPT / Claude 的现代聊天输入：把选择器、文本域、操作按钮全部收纳进一个圆角卡片。选择器以紧凑 pill 形式放在卡片顶部，按钮在底部一行排开，视觉重心聚焦在输入区。</p>
+
+        <div class="mockup-frame">
+          <div class="composer">
+            <div class="composer-card">
+              <div class="top-pills">
+                <div class="pill"><strong>模式</strong> 标准对话</div>
+                <div class="pill"><strong>模型</strong> DeepSeek V4 Flash</div>
+                <div class="pill" style="margin-left: auto;">会话制品</div>
+                <div class="pill">后台任务</div>
+              </div>
+              <textarea class="input-area" rows="2" placeholder="输入内容..."></textarea>
+              <div class="bottom-bar">
+                <div class="left-actions">
+                  <button class="icon-btn" title="附件">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                  </button>
+                  <button class="icon-btn" title="语音">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                  </button>
+                </div>
+                <button class="send-btn" title="发送">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="token-hint">输入 0 · 输出 0 · 总计 0</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Variation B -->
+      <section class="variation v-b">
+        <div class="variation-header">
+          <h2 class="variation-title">方案 B · 极简悬浮条</h2>
+          <span class="variation-tag">最干净</span>
+        </div>
+        <p class="variation-desc">把次要操作（附件、语音、面板入口）收到胶囊入口里，默认只显示输入框和发送按钮。适合希望界面尽可能克制的场景；复杂选择器通过入口展开或前置到顶部。</p>
+
+        <div class="mockup-frame">
+          <div class="composer">
+            <div class="top-hint">
+              <span class="select" style="margin-right: 8px;">标准对话</span>
+              <span class="select">DeepSeek V4 Flash</span>
+            </div>
+            <div class="composer-card">
+              <input class="input-area" placeholder="输入内容..." />
+              <div class="right-actions">
+                <button class="icon-btn" title="更多">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+                </button>
+                <button class="send-btn" title="发送">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="token-hint">输入 0 · 输出 0 · 总计 0</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Variation C -->
+      <section class="variation v-c">
+        <div class="variation-header">
+          <h2 class="variation-title">方案 C · 结构化双行（精炼版）</h2>
+          <span class="variation-tag">保留现有结构</span>
+        </div>
+        <p class="variation-desc">保留「顶部工具栏 + 底部输入区」的双行骨架，但把选择器压缩为更小的下拉控件，并把输入框与按钮整合进同一张卡片，减少视觉碎片。</p>
+
+        <div class="mockup-frame">
+          <div class="composer">
+            <div class="top-row">
+              <div class="left">
+                <select class="select"><option>标准对话</option></select>
+                <select class="select"><option>DeepSeek V4 Flash</option></select>
+              </div>
+              <div class="right">
+                <button class="icon-btn" title="会话制品">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8"/><path d="M3 8l9-5 9 5"/><line x1="12" y1="3" x2="12" y2="13"/><line x1="8" y1="13" x2="16" y2="13"/></svg>
+                </button>
+                <button class="icon-btn" title="后台任务">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="input-card">
+              <textarea class="input-area" rows="2" placeholder="输入内容..."></textarea>
+              <div class="right-actions">
+                <button class="icon-btn" title="附件">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                </button>
+                <button class="icon-btn" title="语音">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                </button>
+                <button class="send-btn" title="发送">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="token-hint">输入 0 · 输出 0 · 总计 0</div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="recommendation">
+      <h2>设计师建议</h2>
+      <p>
+        针对当前产品定位（企业级多 Agent 编排助手，非轻量聊天工具），<strong>推荐方案 A</strong>：它既保留了模式/模型选择的可见性（用户需要知道当前 Agent 以什么能力运行），又把输入框、附件、语音、发送整合到一个卡片内，视觉碎片最少。方案 B 虽然最干净，但会把高频选择器隐藏，增加用户认知负担；方案 C 是对现有结构的温和改良，适合不希望大改交互习惯的场景。
+      </p>
+    </div>
+
+    <div class="note">请点击右上角「切换昼夜」查看两套主题下的效果。</div>
+  </div>
+</body>
+</html>

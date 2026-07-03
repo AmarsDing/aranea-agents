@@ -383,21 +383,19 @@ export function useChatWorkspace() {
   const contextualLoading = useContextualLoadingMessage(streamManager.wsReplaying);
   const statusPulse = useStatusPulse(streamManager.wsReplaying);
 
-  // D1: Load spirit teams when a Spirit session is selected
+  // D1: Load spirit teams whenever a session is selected.
+  // Teams are bound to the spirit session (session.id), not to the currently
+  // selected agent in the UI. Previously this only loaded teams when
+  // agentKey === '__spirit__', which caused the sidebar to clear when the
+  // user switched to a team/member view — even though those teams still
+  // belong to the same spirit session. The store's loadSpiritTeams handles
+  // session switching (clears old teams) and empty results (no-op), so it's
+  // safe to call unconditionally.
   watch(
-    () => ({
-      sessionId: sessionStore.selectedSession?.id,
-      agentKey: appStore.selectedAgent?.agent_key,
-    }),
-    ({ sessionId, agentKey }) => {
+    () => sessionStore.selectedSession?.id,
+    (sessionId) => {
       if (!sessionId) return;
-      if (agentKey === '__spirit__') {
-        spiritStore.loadSpiritTeams(sessionId);
-      } else {
-        if (spiritStore.teams.length > 0) {
-          spiritStore.reset();
-        }
-      }
+      spiritStore.loadSpiritTeams(sessionId);
     },
     { immediate: true },
   );
@@ -1178,8 +1176,14 @@ export function useChatWorkspace() {
 
       // Phase 2 v2: Activity data is hydrated via the v2 WS replay path
       // (useChatStreamManager → onV2Event → eventRouter → activityStore).
-      // No explicit REST pre-load is needed; messages load below.
+      // REST fallback: also fetch v2 history so the activity stream renders
+      // even when WS replay is unavailable (dev proxy, reconnect failures).
+      const v2Promise = activityStore.fetchSessionHistory(sessionId).catch((e) => {
+        // Swallow v2 fetch errors — WS replay may still populate the store.
+        console.warn('[chat] v2 history fetch failed', e);
+      });
       await messageStore.loadMessages(replace ? { sessionId, replace: true } : { sessionId });
+      await v2Promise;
     } catch (err) {
       $q.notify({
         type: 'negative',

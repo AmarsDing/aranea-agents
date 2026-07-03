@@ -1,5 +1,10 @@
 // web/src/features/chat/composables/usePlanDAGLayout.ts
-import type { PlanStep } from '../v2Types';
+
+/** Minimal node contract for DAG layout: an ID and a list of dependency IDs. */
+export interface LayoutableNode {
+  ID: string;
+  DependsOn: string[];
+}
 
 export interface DAGLayoutOptions {
   width: number;
@@ -17,9 +22,12 @@ export interface NodePosition {
 /**
  * usePlanDAGLayout computes (x, y) positions for plan step nodes in a
  * top-down DAG layout using longest-path layering.
+ *
+ * Generic over LayoutableNode so both PlanStep[] and GraphNode[] can reuse
+ * the same layout algorithm (2026-07-04 补齐：GraphStage 复用)。
  */
-export function usePlanDAGLayout() {
-  function layoutDAG(steps: PlanStep[], opts: DAGLayoutOptions): Map<string, NodePosition> {
+export function usePlanDAGLayout<T extends LayoutableNode>() {
+  function layoutDAG(steps: T[], opts: DAGLayoutOptions): Map<string, NodePosition> {
     const positions = new Map<string, NodePosition>();
     if (steps.length === 0) return positions;
 

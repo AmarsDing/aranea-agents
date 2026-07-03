@@ -62,7 +62,6 @@
         :session-id="session.selectedSessionForUi?.id"
         :context-ratio="session.selectedSessionForUi?.context_used_ratio ?? 0"
         :context-status="session.selectedSessionForUi?.context_status"
-        :usage-snapshot="session.composerUsageSnapshot"
         :context-breakdown="session.contextBreakdown"
         :knowledge-base-options="composer.knowledgeBaseOptions"
         :selected-knowledge-bases="composer.selectedKnowledgeBases"
@@ -298,20 +297,29 @@ function onSelectSessionTreeNode(sessionId: string) {
 
 const spiritStatusBar = computed(() => {
   const teams = spiritStore.teams;
-  if (!teams.length) return null;
   const running = teams.filter((t) => t.status === 'running' || t.status === 'pending').length;
   const interrupted = teams.filter((t) => t.status === 'interrupted').length;
   const completedTeams = teams.filter((t) => t.status === 'completed');
   const failedTeams = teams.filter((t) => t.status === 'failed');
-  // Aggregate token usage from all teams that have token data
+  // Aggregate token usage from all teams that have token data; fall back to session-level usage
   const totalTokenIn = teams.reduce((sum, t) => sum + (t.tokenIn ?? 0), 0);
   const totalTokenOut = teams.reduce((sum, t) => sum + (t.tokenOut ?? 0), 0);
+  const sessionTokens = session.composerUsageSnapshot;
+  const tokenUsage =
+    totalTokenIn > 0 || totalTokenOut > 0
+      ? { in: totalTokenIn, out: totalTokenOut }
+      : sessionTokens && (sessionTokens.inputTokens > 0 || sessionTokens.outputTokens > 0)
+        ? { in: sessionTokens.inputTokens, out: sessionTokens.outputTokens }
+        : null;
   return {
     runningTeamCount: running,
     interruptedTeamCount: interrupted,
     quotaUsed: running,
-    quotaMax: spiritStore.maxConcurrentTeams ?? DEFAULT_MAX_PARALLEL_TEAMS,
-    tokenUsage: totalTokenIn > 0 || totalTokenOut > 0 ? { in: totalTokenIn, out: totalTokenOut } : null,
+    quotaMax: teams.length ? (spiritStore.maxConcurrentTeams ?? DEFAULT_MAX_PARALLEL_TEAMS) : 0,
+    tokenUsage,
+    contextRatio: sessionTokens?.contextRatio ?? null,
+    contextUsedTokens: sessionTokens?.contextUsedTokens ?? null,
+    contextWindow: sessionTokens?.contextWindow ?? null,
     lastEvent:
       completedTeams.length > 0 || failedTeams.length > 0
         ? {

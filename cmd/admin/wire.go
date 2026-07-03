@@ -2092,15 +2092,20 @@ func provideWSV2Subscriber(bus *event.V2Bus, wsSrv *server.WSServer, lg loggatew
 // stub TeamOrchestrator in Phase 1 (actual team orchestration deferred to
 // Phase 2). The PlanExecutor is injected into TeamStarter via SetPlanExecutor
 // (called in ProvideChatService).
+//
+// 2026-07-04 补齐：新增 graphStage + graphNode 依赖，用于同步创建 GraphStage
+// 和更新 GraphNode 状态（与 PlanBoard 一对一关联）。
 func providePlanExecutor(
 	planStep biz.PlanStepV2Repo,
 	teamStage biz.TeamStageV2Repo,
 	planBoard biz.PlanBoardV2Repo,
+	graphStage biz.GraphStageV2Repo,
+	graphNode biz.GraphNodeV2Repo,
 	orch service.TeamOrchestrator,
 	seq *v2.Sequencer,
 	lg loggateway.Logger,
 ) *service.PlanExecutor {
-	return service.NewPlanExecutorFromV2Repos(planStep, teamStage, planBoard, orch, seq, lg)
+	return service.NewPlanExecutorFromV2Repos(planStep, teamStage, planBoard, graphStage, graphNode, orch, seq, lg)
 }
 
 // provideTeamOrchestratorStub returns the Phase 1 no-op TeamOrchestrator.

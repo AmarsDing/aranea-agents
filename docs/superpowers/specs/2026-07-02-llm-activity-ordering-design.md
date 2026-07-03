@@ -1,10 +1,12 @@
 # LLM 回复数据顺序与 Plan 执行架构重设计
 
-> **设计稿** · 2026-07-02 · 状态：待用户复核
+> **设计稿** · 2026-07-02 · **2026-07-04 补齐** · 状态：可实施
 >
-> **范围**：chat 模块「思考-act-回复」显示顺序 + 任务计划面板执行机制
+> **范围**：chat 模块「思考-act-回复」显示顺序 + 任务计划面板执行机制 + GraphStage 流程图可视化
 > **方式**：推倒重来（按层切换）
 > **前置 spec**：[2026-06-27-chat-ui-streaming-fix-design.md](./2026-06-27-chat-ui-streaming-fix-design.md)（部分实施后仍有顺序/状态同步问题，本 spec 为根本性重设计）
+>
+> **2026-07-04 补齐**：原设计稿遗漏了 GraphStage v2 实体（§3.2.2 GraphStage / §3.2.3 graph_stages + graph_nodes 表 / §3.3.2 EventKind / §3.6.3 组件层级 / §3.7.5 GraphStageBlock 与 PlanDAG 的关系 / §九 关键文件清单）。本次补齐后 v2 数据模型完整覆盖需求 §A.4「plan → graph → team/agent」三层结构。
 
 ---
 
@@ -96,6 +98,8 @@ Session (spirit_session_id)
 └── Task (root_activity_id, user message)
     ├── PlanBoard? (可选)
     │   └── PlanStep (id, depends_on, mapped_team_stage_id, status)
+    ├── GraphStage? (可选，plan 创建后产生，与 PlanBoard 一对一关联)
+    │   └── GraphNode (id, dag_node_id=plan_step.id, team_stage_id, status)
     └── Turn (turn_id, seq)         ← 最小对话单元
         ├── ThinkingStep (seq=1)
         ├── ActionStep   (seq=2)
@@ -115,6 +119,20 @@ Session (spirit_session_id)
 - `session_id`（按 session 过滤 WS 推送）
 
 前端按 `task_id` 索引、按 `seq` 排序，**不需要 computed 重算树**。
+
+**GraphStage 与 PlanBoard 的关系**：
+- `PlanBoard` 是 plan 的**数据层**：PlanStep 列表 + 依赖关系 + 状态机
+- `GraphStage` 是 plan 的**可视化层**：基于 PlanStep 渲染 DAG 流程图，节点状态映射自 PlanStep
+- 二者**一对一**关联（`GraphStage.PlanBoardID`），但分离职责：
+  - PlanBoardCard 渲染 PlanStep 列表 + 折叠/摘要（文字为主）
+  - GraphStageBlock 渲染 DAG 节点 + 边 + 状态色（SVG 为主）
+- 节点状态映射（PlanStep → GraphNode）：
+  - `pending` → `pending`（灰色）
+  - `running` → `running`（青色脉冲）
+  - `completed` → `completed`（绿色✓）
+  - `failed` → `failed`（红色✗）
+  - `skipped` → `interrupted`（黄色⏸，需求 §A.4.2 要求）
+  - `partial_failure` → `failed`（红色✗）
 
 #### 3.2.2 后端数据模型
 
@@ -439,6 +457,57 @@ type TokenUsage struct {
 }
 ```
 
+##### GraphStage（Graph 流程图，与 PlanBoard 一对一）
+
+```go
+// internal/biz/graph_stage.go
+type GraphStage struct {
+    ID            string  // graph_stage_id
+    TaskID        string  // parent task
+    TurnID        string  // 触发 graph 的 turn（plan 创建后）
+    SessionID     string  // spirit_session_id
+    PlanBoardID   string  // 关联的 PlanBoard（一对一）
+    Nodes         []GraphNode  // 节点列表（映射自 PlanStep）
+    Status        GraphStageStatus  // running/completed/failed/interrupted
+    StartedAt     time.Time
+    CompletedAt    *time.Time
+    Seq           int64  // 在 task 内的序号
+}
+
+type GraphStageStatus string
+const (
+    GraphStageStatusRunning     GraphStageStatus = "running"
+    GraphStageStatusCompleted   GraphStageStatus = "completed"
+    GraphStageStatusFailed      GraphStageStatus = "failed"
+    GraphStageStatusInterrupted GraphStageStatus = "interrupted"  // 暂停/中断
+)
+
+type GraphNode struct {
+    ID            string  // graph_node_id（通常 = plan_step.id）
+    GraphStageID  string  // parent graph_stage
+    Label         string  // 节点显示名（取自 PlanStep.Label）
+    DagNodeID     string  // 对应 plan_step.id
+    TeamStageID   string  // 关联的 team_stage（如已创建）
+    Status        GraphNodeStatus
+    DependsOn     []string  // 节点依赖（取自 PlanStep.DependsOn）
+}
+
+type GraphNodeStatus string
+const (
+    GraphNodeStatusPending     GraphNodeStatus = "pending"      // 灰色
+    GraphNodeStatusRunning     GraphNodeStatus = "running"      // 青色脉冲
+    GraphNodeStatusCompleted   GraphNodeStatus = "completed"    // 绿色 ✓
+    GraphNodeStatusFailed      GraphNodeStatus = "failed"       // 红色 ✗
+    GraphNodeStatusInterrupted GraphNodeStatus = "interrupted"  // 黄色 ⏸
+)
+```
+
+**GraphStage 与 PlanBoard 的关系**：
+- 一对一关联：`GraphStage.PlanBoardID` 唯一指向一个 PlanBoard
+- GraphNode 由 PlanStep 派生：节点状态由 PlanStep.Status 实时映射
+- GraphStage 是独立 entity（独立表 + 独立 Repo + 独立事件），不存储在 PlanBoard 内
+- 持久化策略：与 PlanBoard 同步创建，状态由 PlanExecutor 在 dispatchStep/checkDownstream 时同步更新
+
 #### 3.2.3 数据库 Schema（Ent）
 
 新增 7 张表（替代 `activities` 表）：
@@ -460,6 +529,15 @@ type TokenUsage struct {
 | `plan_boards` | id | task_id, turn_id, strategy, status, seq |
 | `plan_steps` | id | plan_id, task_id, label, depends_on, mapped_team_stage_id, status, auto_synthesis, seq |
 
+新增 graph 相关表：
+
+| 表名 | 主键 | 关键字段 | 索引 |
+|------|------|---------|------|
+| `graph_stages` | id | task_id, turn_id, plan_board_id, status, seq | (task_id, seq), (plan_board_id) |
+| `graph_nodes` | id | graph_stage_id, dag_node_id, team_stage_id, status | (graph_stage_id), (dag_node_id) |
+
+> GraphStage 与 PlanBoard 一对一关联，但独立表存储，便于 GraphStage 独立更新（如 team_stage 创建时回填 `team_stage_id`）。GraphNode 的 `depends_on` 字段不持久化（从 plan_steps 派生），但 `status` 字段持久化以支持刷新后恢复。
+
 **废弃表**：`activities`、`task_plans`（旧 Plan 模型）、`plan_steps`（旧 PlanStep 模型，与新表名冲突需 rename）。
 
 #### 3.2.4 ID 生成策略
@@ -473,6 +551,8 @@ type TokenUsage struct {
 - **MemberSession ID**：`uuid.NewSHA1(aranea.member_session.v2, teamID:agentKey)`
 - **PlanBoard ID**：planner 创建时生成（UUID v4）
 - **PlanStep ID**：planner 解析 LLM 输出时生成（UUID v4 或 LLM 提供的 id）
+- **GraphStage ID**：`uuid.NewSHA1(aranea.graph_stage.v2, planBoardID)`（确定性，与 PlanBoard 一对一）
+- **GraphNode ID**：`uuid.NewSHA1(aranea.graph_node.v2, graphStageID:planStepID)`（确定性，与 PlanStep 一对一）
 
 **版本号 v2**：与旧 v1 namespace 隔离，避免历史数据混淆。
 
@@ -573,6 +653,13 @@ const (
     EventKindPlanStepCompleted EventKind = "plan_step.completed"
     EventKindPlanStepFailed    EventKind = "plan_step.failed"
     EventKindPlanStepSkipped   EventKind = "plan_step.skipped"
+
+    EventKindGraphStageCreated     EventKind = "graph_stage.created"
+    EventKindGraphStageUpdated     EventKind = "graph_stage.updated"
+    EventKindGraphStageCompleted   EventKind = "graph_stage.completed"
+    EventKindGraphStageFailed      EventKind = "graph_stage.failed"
+    EventKindGraphStageInterrupted EventKind = "graph_stage.interrupted"
+    EventKindGraphNodeUpdated      EventKind = "graph_node.updated"
 )
 ```
 
@@ -629,6 +716,8 @@ func (s *Sequencer) canMergeDeltas(pending, current *publishTask) bool {
 | MemberSession | MemberSessionRepo | UpsertMemberSession |
 | PlanBoard | PlanBoardRepo | UpsertPlanBoard（含 steps JSON） |
 | PlanStep | PlanStepRepo | UpsertPlanStep |
+| GraphStage | GraphStageRepo | UpsertGraphStage（含 nodes JSON） |
+| GraphNode | GraphNodeRepo | UpsertGraphNode |
 
 **streaming 持久化细节**：
 - `step.streaming` 事件**不入库**（仅推送 WS，前端累加 content/reasoning）
@@ -909,10 +998,13 @@ ChatPage
 └── SessionPanel.vue
     └── TaskList.vue (按 task.seq)
         └── TaskCard.vue (用户消息 + 状态)
-            ├── PlanBoardCard.vue? (可选)
-            │   ├── PlanDAG.vue (SVG 依赖图)
+            ├── PlanBoardCard.vue? (可选，渲染 plan 列表 + 折叠/摘要)
+            │   ├── PlanDAG.vue (SVG 依赖图，可选展示)
             │   │   └── PlanStepNode.vue (DAG 节点)
             │   └── PlanStepDetailPanel.vue (点击节点展开)
+            │
+            ├── GraphStageBlock.vue? (可选，plan 创建后，渲染 graph 流程图)
+            │   └── GraphNode.vue (按节点状态着色)
             │
             └── TurnList.vue (按 turn.seq)
                 └── TurnContainer.vue
@@ -928,6 +1020,8 @@ ChatPage
                             └── MemberSessionPanel.vue (agent_key)
                                 └── TurnList.vue (递归，三层封顶)
 ```
+
+**渲染顺序**（TaskCard 内）：`PlanBoardCard → GraphStageBlock → TurnList`，对应需求 §A.4 "plan → graph → team/agent" 三层结构。GraphStageBlock 在 plan 之后、team 之前独立显示，**始终展开**（需求 §A.4.5）。
 
 #### 3.6.4 WS 事件处理
 
@@ -1043,6 +1137,81 @@ function layoutDAG(steps: PlanStep[]): { nodes: DAGNode[], edges: DAGEdge[] } {
 - 点击节点 → 展开详情面板（输出/错误/member 列表）
 - hover 节点 → 高亮所有上下游依赖路径
 - 不做缩放/平移（YAGNI，节点数通常 < 20，固定布局足够；后续如需再迭代）
+
+#### 3.7.5 GraphStageBlock 与 PlanDAG 的关系
+
+需求 §A.4.2 要求 GraphStageBlock "在 plan 之后、team 之前独立显示"，节点状态有 5 种：pending/running/completed/failed/interrupted。本设计将 GraphStage 作为独立 entity（§3.2.2 GraphStage），与 PlanBoard 一对一关联，但分离数据与可视化职责：
+
+| 维度 | PlanBoardCard | GraphStageBlock |
+|------|--------------|----------------|
+| 数据来源 | PlanBoard + PlanStep | GraphStage + GraphNode |
+| 渲染形态 | 文字列表 + 折叠/摘要 | SVG DAG 节点 + 边 |
+| 主要用途 | 任务执行指导 + 进度可观测性 | 流程图可视化 + 节点状态实时反馈 |
+| 折叠行为 | 支持折叠（§A.4.5） | 始终展开（§A.4.5） |
+| 状态色 | 文字 + badge | 节点底色 + 图标 + 脉冲动画 |
+
+**GraphStageBlock 组件结构**：
+
+```vue
+<!-- web/src/components/chat/v2/GraphStageBlock.vue -->
+<template>
+  <div class="graph-stage-block">
+    <header class="graph-stage-header">
+      <span class="graph-status" :class="statusClass">{{ statusLabel }}</span>
+      <span class="graph-progress">{{ completedCount }}/{{ totalNodes }}</span>
+    </header>
+    <div class="graph-stage-canvas">
+      <GraphNode
+        v-for="node in layeredNodes"
+        :key="node.ID"
+        :node="node"
+        @click="onSelectNode"
+      />
+      <GraphEdge
+        v-for="edge in edges"
+        :key="edge.from + edge.to"
+        :edge="edge"
+      />
+    </div>
+  </div>
+</template>
+```
+
+**节点状态色**（与 §3.7.3 一致，但 `interrupted` 替代 `skipped`）：
+
+| Status | 颜色 | 动效 |
+|--------|------|------|
+| pending | 灰色 `#9e9e9e` | 无 |
+| running | 青色 `#00bcd4` | 脉冲动画（box-shadow 2s infinite） |
+| completed | 绿色 `#4caf50` | ✓ 图标 |
+| failed | 红色 `#f44336` | ✗ 图标 + 抖动 |
+| interrupted | 黄色 `#ffc107` | ⏸ 图标 |
+
+**GraphNode 状态映射**（PlanStep → GraphNode，由 PlanExecutor 同步）：
+
+```go
+// internal/service/plan_executor.go
+func mapPlanStepToGraphNodeStatus(ps PlanStepStatus) GraphNodeStatus {
+    switch ps {
+    case PlanStepStatusPending:
+        return GraphNodeStatusPending
+    case PlanStepStatusRunning:
+        return GraphNodeStatusRunning
+    case PlanStepStatusCompleted:
+        return GraphNodeStatusCompleted
+    case PlanStepStatusFailed, PlanStepStatusPartialFailure:
+        return GraphNodeStatusFailed
+    case PlanStepStatusSkipped:
+        return GraphNodeStatusInterrupted  // skipped 在 graph 上显示为 interrupted（黄色⏸）
+    }
+    return GraphNodeStatusPending
+}
+```
+
+**与现有 GraphStageBlock.vue 的关系**：
+- 现有 `web/src/components/chat/GraphStageBlock.vue`（323 行）走 v1 `activity.bridge` 路径
+- 新 v2 版本位于 `web/src/components/chat/v2/GraphStageBlock.vue`，从 v2 GraphStage entity 取数据
+- v1 版本在 v2 渲染链完全接入后删除（参考 §九 关键文件清单）
 
 ### 3.8 阻塞判定
 
@@ -1209,7 +1378,7 @@ function detectHITLBlocked(teamStage: TeamStage): BlockedInfo | null {
 ### 6.1 推倒重来的范围
 
 **重写**：
-- `internal/biz/activity*.go` → 拆分为 9 个新 entity 文件
+- `internal/biz/activity*.go` → 拆分为 10 个新 entity 文件（含 GraphStage）
 - `internal/agent/activity_projector.go` → 适配新模型
 - `internal/agent/activity_event_sequencer.go` → 统一入口 + SeqAssigner
 - `internal/service/spirit_team.go` → 拆分，移除 `updatePlanStepForTeam`
@@ -1217,12 +1386,15 @@ function detectHITLBlocked(teamStage: TeamStage): BlockedInfo | null {
 - `web/src/components/chat/ActivityStream.vue` → 拆分为按类型组件
 - `web/src/components/chat/PlanBlock.vue` → `PlanBoardCard.vue` + SVG 依赖图
 - `web/src/components/chat/TeamCard.vue`/`AgentCard.vue` → `TeamStagePanel.vue`/`MemberSessionPanel.vue`
+- `web/src/components/chat/GraphStageBlock.vue` → 迁移到 v2 路径 `v2/GraphStageBlock.vue`
 
 **新增**：
 - `internal/service/plan_executor.go`
 - `internal/biz/plan_step_state_machine.go`
-- 9 个 Ent Schema 文件
+- `internal/biz/graph_stage.go` + `internal/biz/graph_node.go`（GraphStage/GraphNode entity）
+- 10 个 Ent Schema 文件（含 graph_stages / graph_nodes）
 - 前端 Plan DAG 可视化组件
+- 前端 v2 GraphStageBlock 组件（从 v1 Activity 模型迁移到 v2 GraphStage entity）
 
 **保留**：
 - WS 传输层（`ws-transport.ts`/`globalWsHub.ts`/`ws_io_pump.go`）
@@ -1315,6 +1487,8 @@ function detectHITLBlocked(teamStage: TeamStage): BlockedInfo | null {
 | `internal/biz/member_session.go` | 新增 | MemberSession entity |
 | `internal/biz/plan_board.go` | 新增 | PlanBoard entity |
 | `internal/biz/plan_step.go` | 新增 | PlanStep entity |
+| `internal/biz/graph_stage.go` | 新增 | GraphStage entity |
+| `internal/biz/graph_node.go` | 新增 | GraphNode entity（GraphNode 状态映射） |
 | `internal/biz/plan_step_state_machine.go` | 新增 | Step 状态机 |
 | `internal/biz/event.go` | 新增 | Event 接口 + 类型 |
 | `internal/agent/seq_assigner.go` | 新增 | Seq 分配器 |
@@ -1322,16 +1496,16 @@ function detectHITLBlocked(teamStage: TeamStage): BlockedInfo | null {
 | `internal/agent/activity_projector.go` | 重写 | 适配新模型 |
 | `internal/agent/project_meta.go` | 重写 | 新 ProjectMeta |
 | `internal/agent/stream_consumer.go` | 改造 | 适配新 ProjectMeta |
-| `internal/service/plan_executor.go` | 新增 | Plan 调度器 |
+| `internal/service/plan_executor.go` | 新增 | Plan 调度器（含 GraphStage 同步） |
 | `internal/service/spirit_team.go` | 重写 | 移除 updatePlanStepForTeam |
-| `internal/data/ent/schema/session.go` ~ `plan_step.go` | 新增 | 9 张表 Schema |
-| `internal/data/*_repo.go` | 新增 | 9 个 Repo |
+| `internal/data/ent/schema/session.go` ~ `graph_node.go` | 新增 | 10 张表 Schema |
+| `internal/data/*_repo.go` | 新增 | 10 个 Repo（含 GraphStageRepo / GraphNodeRepo） |
 
 ### 9.2 后端删除
 
 | 文件 | 原因 |
 |------|------|
-| `internal/biz/activity.go` | 拆分为 9 个 entity |
+| `internal/biz/activity.go` | 拆分为 10 个 entity |
 | `internal/biz/activity_event.go` | 替换为 `event.go` |
 | `internal/biz/plan.go` | 旧 Plan 模型废弃 |
 | `internal/biz/plan_state_machine.go` | 旧状态机废弃 |
@@ -1339,7 +1513,7 @@ function detectHITLBlocked(teamStage: TeamStage): BlockedInfo | null {
 | `internal/data/ent/schema/activity.go` | 表废弃 |
 | `internal/data/ent/schema/task_plan.go` | 表废弃 |
 | `internal/data/ent/schema/plan.go` | 表废弃 |
-| `internal/data/activity_repo.go` | 替换为 9 个 Repo |
+| `internal/data/activity_repo.go` | 替换为 10 个 Repo |
 | `internal/data/task_plan_repo.go` | 替换 |
 
 ### 9.3 前端新增/重写
@@ -1359,6 +1533,8 @@ function detectHITLBlocked(teamStage: TeamStage): BlockedInfo | null {
 | `web/src/components/chat/PlanDAG.vue` | 新增 | SVG 依赖图 |
 | `web/src/components/chat/PlanStepNode.vue` | 新增 | DAG 节点 |
 | `web/src/components/chat/PlanStepDetailPanel.vue` | 新增 | 节点详情 |
+| `web/src/components/chat/v2/GraphStageBlock.vue` | 新增 | Graph 流程图（v2 entity） |
+| `web/src/components/chat/v2/GraphNode.vue` | 新增 | Graph 节点（按状态着色） |
 | `web/src/components/chat/TeamStagePanel.vue` | 新增 | team 执行面板 |
 | `web/src/components/chat/TeamRunCard.vue` | 新增 | team run 卡片 |
 | `web/src/components/chat/MemberSessionPanel.vue` | 新增 | member 面板 |
@@ -1436,3 +1612,240 @@ function detectHITLBlocked(teamStage: TeamStage): BlockedInfo | null {
 - 持久化：B 路径无重试无死信
 - 类型安全：Meta map 类型断言
 - 状态机：step 状态直接赋值
+
+---
+
+## 十二、实施计划（2026-07-04 补齐）
+
+> 本章节为 GraphStage v2 模型补齐的细粒度实施计划。基于"v2 架构已部分实现，但 GraphStage 实体设计遗漏"的现状，按 9 个 Phase 顺序推进，每个 Phase 独立可验证。
+
+### 12.1 现状评估
+
+**已实现**：
+- v2 渲染链：ChatMessageList → SessionPanelV2 → TaskList → TaskCard → TurnList → TurnContainer（6 种 step kind）
+- activityV2Store：8 个 Map（tasks/turns/steps/teamStages/teamRuns/memberSessions/planBoards/planSteps）
+- 后端 PlanExecutor：`internal/service/plan_executor.go`（正向调度器）
+- 后端 SeqAssigner + ActivityEventSequencer（统一 sequencer）
+- v2 EventKind：24 个（task/turn/step/team_stage/team_run/member_session/plan_board/plan_step + system/bridge）
+- v1 GraphStageBlock.vue（323 行，走 v1 activity.bridge 路径）
+
+**未实现**（本计划补齐）：
+- GraphStage/GraphNode v2 entity（前后端均无）
+- `graph_stage.*` / `graph_node.*` EventKind（前后端均无）
+- v2 GraphStageBlock 组件（前端 v2 渲染链不消费 graph_stage 数据）
+- TaskCard 渲染顺序错误（现：Turn → Team → Plan，应：Plan → Graph → Team）
+- TeamRunCard 三段式布局 + 操作按钮 + 对话框（现仅 29 行骨架）
+- MemberSessionPanel 简化布局 + 操作按钮 + 对话框（现仅 31 行骨架）
+- PlanBoardCard 折叠/摘要逻辑（现仅 44 行骨架）
+
+**v1 → v2 迁移点**：
+- `internal/service/spirit_team.go` 的 `publishSpiritGraphStageSnapshot` 当前走 v1 `bus` + v2 `seq` 双路径，需迁移为纯 v2 事件
+- 前端 `useChatWorkspace.ts:151` 的 `activity.bridge` 拦截路径在 graph_stage 完成迁移后可移除
+
+### 12.2 Phase 划分
+
+| Phase | 内容 | 范围 | 验证 | 状态 |
+|-------|------|------|------|------|
+| Phase 1 | 后端 GraphStage v2 entity | biz + data + ent | `go build` + Ent 生成 | ✅ 完成（含 Wire 绑定） |
+| Phase 2 | 前端 v2Types 补齐 | v2Types.ts | `pnpm lint` | ✅ 完成 |
+| Phase 3 | activityV2Store 补齐 graphStages Map + 事件路由 | store + composable | `pnpm lint` | ✅ 完成（合并 Phase 3+4） |
+| Phase 4 | 新增 v2/GraphStageBlock.vue + GraphNode.vue | 组件 | `pnpm build` | ✅ 完成（泛化 usePlanDAGLayout） |
+| Phase 5 | TaskCard 修正渲染顺序 + 接入 GraphStageBlock | 组件 | `pnpm build` | ✅ 完成（顺序 Plan→Graph→Team→Turn） |
+| Phase 6 | 后端发布 v2 graph_stage 事件（替换 v1 路径） | service | `go build` + `go test` | ✅ 完成（PlanExecutor.Subscribe 中 initGraphStage + 6 处 GraphNode 状态更新） |
+| Phase 7 | 完善骨架组件（Plan/Team/Agent 三件套） | 组件 | `pnpm build` | ✅ 完成（PlanBoardCard 折叠/摘要 + TeamRunCard 三段式 + MemberSessionPanel 简化布局 + 系统 agent 排除） |
+| Phase 8 | 全量验证 | - | `make build && make test` + `pnpm lint && pnpm build` | ✅ 通过（go build/test + pnpm lint/build 全绿；2 个 Pinia 失败为 ChatMessagePanel.legacy 既有问题） |
+
+### 12.3 Phase 1: 后端 GraphStage v2 entity
+
+**改动文件**：
+- `internal/biz/graph_stage.go`（新增）：GraphStage + GraphNode struct + Status 枚举
+- `internal/biz/graph_node.go`（新增）：GraphNodeStatus 映射函数 + 辅助方法
+- `internal/biz/event.go`（修改）：新增 6 个 `EventKindGraphStage*` 常量 + `GraphStageCreatedEvent`/`UpdatedEvent`/`CompletedEvent`/`FailedEvent`/`InterruptedEvent` + `GraphNodeUpdatedEvent` 事件类型
+- `internal/data/ent/schema/graph_stage.go`（新增）：graph_stages 表 Schema
+- `internal/data/ent/schema/graph_node.go`（新增）：graph_nodes 表 Schema（GraphNode JSON 嵌入或独立表，二选一）
+- `internal/data/graph_stage_repo.go`（新增）：GraphStageRepo（含 UpsertGraphStage + ListByTaskID + ListByPlanBoardID）
+- `internal/data/ent/`（生成）：`go generate ./internal/data/ent`
+
+**Schema 设计**（基于 §3.2.3）：
+- `graph_stages` 表：id, task_id, turn_id, session_id, plan_board_id（唯一约束）, status, seq, started_at, completed_at, version
+- `graph_nodes` 表：id, graph_stage_id, dag_node_id, team_stage_id, status, label（GraphNode 独立存储，便于 team_stage 创建时回填）
+
+**事件类型**（基于 §3.3.2）：
+- `GraphStageCreatedEvent{ GraphStage }` → `graph_stage.created`
+- `GraphStageUpdatedEvent{ GraphStage }` → `graph_stage.updated`
+- `GraphStageCompletedEvent{ GraphStage }` → `graph_stage.completed`
+- `GraphStageFailedEvent{ GraphStage }` → `graph_stage.failed`
+- `GraphStageInterruptedEvent{ GraphStage }` → `graph_stage.interrupted`
+- `GraphNodeUpdatedEvent{ GraphNode }` → `graph_node.updated`
+
+**验收**：`go build ./...` 通过，Ent 生成无报错
+
+### 12.4 Phase 2: 前端 v2Types 补齐
+
+**改动文件**：
+- `web/src/features/chat/v2Types.ts`（修改）：
+  - 新增 `GraphStageStatus` / `GraphNodeStatus` 类型
+  - 新增 `GraphStage` / `GraphNode` 接口
+  - 在 `EventKind` 联合类型添加 6 个 `graph_stage.*` / `graph_node.*` 字面量
+  - 新增 `GraphStageEventPayload` / `GraphNodeEventPayload` 接口
+  - 在 `V2Event` 联合类型添加新 payload
+
+**类型定义**（与后端 §3.2.2 一致）：
+```typescript
+export type GraphStageStatus = 'running' | 'completed' | 'failed' | 'interrupted';
+export type GraphNodeStatus = 'pending' | 'running' | 'completed' | 'failed' | 'interrupted';
+
+export interface GraphNode {
+  ID: string;
+  GraphStageID: string;
+  Label: string;
+  DagNodeID: string;
+  TeamStageID: string;
+  Status: GraphNodeStatus;
+  DependsOn: string[];
+}
+
+export interface GraphStage {
+  ID: string;
+  TaskID: string;
+  TurnID: string;
+  SessionID: string;
+  PlanBoardID: string;
+  Nodes: GraphNode[];
+  Status: GraphStageStatus;
+  StartedAt: string;
+  CompletedAt: string | null;
+  Seq: number;
+  Version: number;
+}
+```
+
+**验收**：`pnpm lint` 通过
+
+### 12.5 Phase 3: activityV2Store 补齐 graphStages Map
+
+**改动文件**：
+- `web/src/stores/chat/activityV2Store.ts`（修改）：
+  - 新增 `graphStages = ref(new Map<string, GraphStage>())`
+  - 新增 `upsertGraphStage(gs)` 方法（VersionLT 守卫）
+  - 新增 `getTaskGraphStages(taskId)` 查询方法（按 Seq 排序）
+  - 在 `clearSession(spiritSessionId)` 中清理 graphStages（按 SessionID 过滤）
+  - 在 `clearAll()` 中清理 graphStages
+  - 在 return 中导出新方法
+
+**验收**：`pnpm lint` 通过
+
+### 12.6 Phase 4: useChatEventRouter 接入 graph_stage 事件
+
+**改动文件**：
+- `web/src/features/chat/composables/useChatEventRouter.ts`（修改）：
+  - 在 `handleKind` switch 中添加 6 个 case：
+    - `graph_stage.created` / `updated` / `completed` / `failed` / `interrupted` → `store.upsertGraphStage(payload.GraphStage)`
+    - `graph_node.updated` → 在 store.graphStages 中找到父 GraphStage，更新对应 GraphNode
+
+**验收**：`pnpm lint` 通过
+
+### 12.7 Phase 5: 新增 v2/GraphStageBlock.vue + GraphNode.vue
+
+**新增文件**：
+- `web/src/components/chat/v2/GraphStageBlock.vue`（新增）：
+  - props: `graphStage: GraphStage`
+  - 渲染 header（status + progress X/N）+ canvas（GraphNode 列表 + 边）
+  - 复用 v1 `GraphStageBlock.vue` 的 `kahnTopoLayers` 算法
+  - 节点状态色按 §3.7.5 表（5 种状态）
+  - 始终展开（需求 §A.4.5）
+- `web/src/components/chat/v2/GraphNode.vue`（新增）：
+  - props: `node: GraphNode`
+  - 渲染单个节点（80×40px，状态色底色，✓/✗/⏸ 图标）
+  - hover 高亮上下游依赖路径
+
+**验收**：`pnpm build` 通过
+
+### 12.8 Phase 6: TaskCard 修正渲染顺序
+
+**改动文件**：
+- `web/src/components/chat/v2/TaskCard.vue`（修改）：
+  - 修正渲染顺序为：`PlanBoardCard → GraphStageBlock → TurnList → TeamStagePanel`
+  - 新增 `import { GraphStageBlock } from './GraphStageBlock.vue'`
+  - 从 store 获取 `graphStages = store.getTaskGraphStages(task.ID)`
+  - 在 template 中插入 `<GraphStageBlock v-for="gs in graphStages" :key="gs.ID" :graph-stage="gs" />`（位于 PlanBoardCard 之后、TurnList 之前）
+
+**验收**：`pnpm build` 通过，UI 显示 plan → graph → team 顺序
+
+### 12.9 Phase 7: 后端发布 v2 graph_stage 事件
+
+**改动文件**：
+- `internal/service/spirit_team.go`（修改）：
+  - 将 `publishSpiritGraphStageSnapshot` 改为发布 v2 `GraphStageCreatedEvent` / `GraphStageUpdatedEvent`（通过 eventBus）
+  - 移除 v1 `bus` (ActivityEventBus) 依赖（如果其他事件也完成迁移）
+  - 在 `SpiritTeamAssembler` 构造函数中移除 `bus` 字段（如无其他用途）
+- `internal/service/plan_executor.go`（修改）：
+  - 在 `dispatchStep` 时同步更新 GraphNode 状态（`mapPlanStepToGraphNodeStatus`）
+  - 发布 `GraphNodeUpdatedEvent`
+  - Plan 完成时发布 `GraphStageCompletedEvent`
+- `internal/service/graph_task_status.go`（修改）：处理 GraphInterrupt 时发布 `GraphStageInterruptedEvent`
+
+**验收**：`go build ./...` + `go test ./internal/service/... -count=1` 通过
+
+### 12.10 Phase 8: 完善骨架组件
+
+**改动文件**（按需求 §A.4 详细规格实施）：
+
+#### 8.1 PlanBoardCard.vue 完善（§A.4.1）
+- 添加折叠/摘要逻辑：进行中默认展开，初始渲染时若全部完成自动折叠为摘要（"✅ N 项任务已完成"）
+- 用户手动展开/折叠后状态由用户掌控（不被状态变化自动覆盖）
+- 计划变更直接更新 plan 内容，不显示 diff
+
+#### 8.2 TeamRunCard.vue 完善（§A.4.3）
+- 三段式布局：头部 20%（团队名/任务名/创建时间）+ 中部 60%（成员头像+名称/进度条:状态:耗时）+ 尾部 20%（对话框+操作按钮）
+- 状态映射：running/paused/completed/failed/cancelled（按状态切换按钮显示）
+- 操作按钮：暂停/恢复（`POST /v1/team-runs/{id}/pause` / `unpause`）、取消（`/cancel`）、重试（`/v1/teams/{id}/retry`）
+- 注入对话框：`POST /v1/teams/{id}/inject`，仅 running/paused 可见
+- 始终默认折叠（含 running），用户手动展开后状态由用户掌控
+
+#### 8.3 MemberSessionPanel.vue 完善（§A.4.4）
+- 简化布局：头部 80%（avatar + 名称 + status badge + 创建时间）+ 尾部 20%（对话框+操作按钮）
+- 状态映射：running/paused/completed/failed/cancelled
+- 操作按钮：暂停/恢复（`POST /v1/chat/sessions/{id}/pause` / `resume`）、取消（`/v1/chat/stop`）、重试（`/v1/chat/sessions/{id}/retry`）
+- 注入对话框：`POST /v1/chat/sessions/{id}/enqueue`
+- 系统 agent 排除：`__spirit__` 及 `__` 前缀 agent 不显示操作按钮和对话框
+- 始终默认折叠，与 team-card 一致
+
+**验收**：`pnpm build` 通过，UI 符合需求 §A.4 视觉规格
+
+### 12.11 Phase 9: 全量验证
+
+**后端**：
+```bash
+make api && make wire && make build && make test && make lint
+```
+
+**前端**：
+```bash
+cd web && pnpm lint && pnpm test && pnpm build
+```
+
+**功能验证**（手工）：
+1. 发送简单问题 → 仅 thinking + reply，无 plan/graph/team
+2. 发送复杂任务 → 显示 plan → graph → team-card 顺序
+3. 点击 plan 折叠/展开 → 摘要显示 "X/N"
+4. 点击 team-card 展开 → 显示成员列表
+5. 点击暂停按钮 → team 状态变为 paused
+6. 注入对话框输入 → 发送 inject API
+7. 刷新页面 → 历史 plan/graph/team 完整恢复
+
+### 12.12 风险与回退
+
+| 风险 | 缓解 |
+|------|------|
+| Ent Schema 新增表迁移失败 | Phase 1 完成后立即运行 `go generate`，失败回退 Schema 改动 |
+| v1 → v2 graph_stage 迁移期数据丢失 | Phase 7 保留 v1 bus fallback，待 v2 验证通过后移除 |
+| 前端 v1 GraphStageBlock.vue 与 v2 共存混乱 | Phase 5 完成后立即在 TaskCard 接入 v2，Phase 6 完成后 v1 不再被引用 |
+| 骨架组件完善工作量超预期 | Phase 8 拆分为 8.1/8.2/8.3 三个子任务，独立验证 |
+
+### 12.13 文档同步
+
+每个 Phase 完成后同步更新：
+- `docs/development/1-chat.development.md`：标记 Phase 完成状态
+- `docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md`：更新 §3.2.3 表结构（如有调整）
+- 本文件 §12.2 表格：标记 Phase 状态（✅/⏳/🟡）

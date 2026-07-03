@@ -36,7 +36,7 @@
       class="thinking-block__streaming-indicator thinking-block__streaming-indicator--card"
       @click.stop="onClick"
     >
-      <q-icon name="psychology_alt" size="14px" color="accent" />
+      <q-icon name="psychology_alt" size="14px" color="blue" />
       <span class="thinking-block__streaming-text">{{ displayLabel }}</span>
       <span class="thinking-block__pulse" aria-hidden="true" />
       <span v-if="durationMs != null" class="thinking-block__duration">{{ formattedDuration }}</span>
@@ -45,7 +45,7 @@
 
     <!-- ===== US-24/§6.8.3: Completed inline-no-collapse (reasoning < 30 chars) ===== -->
     <span v-else-if="inlineNoCollapse" class="thinking-block__inline-short" :title="t('chat.reasoningTitle')">
-      <span class="thinking-block__icon-emoji" aria-hidden="true">🧠</span>
+      <q-icon name="psychology_alt" size="14px" color="blue" class="thinking-block__icon-emoji" aria-hidden="true" />
       <span class="thinking-block__inline-text">{{ reasoning }}</span>
     </span>
 
@@ -58,7 +58,7 @@
       role="region"
       :aria-label="t('chat.reasoningTitle')"
     >
-      <span class="thinking-block__icon-emoji" aria-hidden="true">🧠</span>
+      <q-icon name="psychology_alt" size="14px" color="blue" class="thinking-block__icon-emoji" aria-hidden="true" />
       <span class="thinking-block__collapsed-text">{{ summary }}</span>
       <span class="thinking-block__collapsed-toggle" aria-hidden="true">▶</span>
     </span>
@@ -66,7 +66,7 @@
     <!-- ===== Expanded (streaming live or user-clicked): label row + body ===== -->
     <template v-else>
       <div class="thinking-block__label">
-        <span class="thinking-block__icon-emoji" aria-hidden="true">🧠</span>
+        <q-icon name="psychology_alt" size="14px" color="blue" class="thinking-block__icon-emoji" aria-hidden="true" />
         <span class="thinking-block__label-text">{{ displayLabel }}</span>
         <span v-if="streaming" class="thinking-block__pulse" aria-hidden="true" />
         <span v-if="durationMs != null" class="thinking-block__duration">{{ formattedDuration }}</span>

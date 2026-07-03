@@ -45,6 +45,12 @@ export type SpiritStatusBarData = {
   quotaUsed: number;
   quotaMax: number;
   tokenUsage?: { in: number; out: number } | null;
+  /** Context usage ratio (0-1) for the data_usage ring-style display. */
+  contextRatio?: number | null;
+  /** Current context tokens used. */
+  contextUsedTokens?: number | null;
+  /** Model context window size in tokens. */
+  contextWindow?: number | null;
   lastEvent?: { type: 'completed' | 'failed'; teamName: string; teamId?: string } | null;
   complexityLevel?: string | null;
   complexityReason?: string | null;

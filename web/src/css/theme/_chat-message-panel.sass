@@ -25,24 +25,32 @@ body.body--dark .chat-message-header
   width: 100%
   min-width: 0
 
-.chat-message-header__usage
-  flex: 0 1 auto
-  min-width: 0
-  max-width: 42%
-
-.chat-message-header__prompt
-  flex: 0 1 auto
-  min-width: 0
-  max-width: 48%
-  margin-left: auto
-  display: flex
-  justify-content: flex-end
-
 .chat-message-header__actions
   flex: 0 0 auto
-  min-width: 44px
-  margin-left: 8px
+  min-width: 32px
   justify-content: flex-end
+
+  &--left
+    margin-right: auto
+
+  &--right
+    margin-left: 8px
+
+.chat-message-header__prompt
+  flex: 1 1 auto
+  min-width: 0
+  display: flex
+  justify-content: center
+  align-items: center
+
+.chat-header-prompt
+  min-width: 0
+  width: auto
+  max-width: 60%
+  height: 100%
+  display: flex
+  align-items: center
+  justify-content: center
 
 .chat-header-usage
   min-width: 0
@@ -117,14 +125,6 @@ body.body--dark .chat-header-usage__ring-value
   .q-menu
     background: transparent
 
-.chat-header-prompt
-  min-width: 0
-  width: 100%
-  height: 100%
-  display: flex
-  align-items: center
-  justify-content: flex-end
-
 .chat-header-prompt__box
   width: auto
   max-width: 100%
@@ -137,6 +137,7 @@ body.body--dark .chat-header-usage__ring-value
   background: color-mix(in srgb, var(--glass-surface) 88%, transparent)
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 10%, transparent), 0 0 10px color-mix(in srgb, var(--color-accent) 22%, transparent), 0 0 20px color-mix(in srgb, var(--color-accent) 10%, transparent)
   transition: border-color 0.2s ease, box-shadow 0.2s ease
+  margin: 0 auto
 
 body.body--dark .chat-header-prompt__box
   background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
@@ -153,7 +154,7 @@ body.body--dark .chat-header-prompt__box
   font-weight: 600
   line-height: 1.35
   color: var(--color-text-primary)
-  text-align: right
+  text-align: center
 
 .chat-header-prompt__box--placeholder .chat-header-prompt__text
   font-weight: 500
@@ -181,13 +182,9 @@ body.body--dark .chat-header-prompt__box
   max-width: 100%
 
 @media (max-width: 720px)
-  .chat-message-header__usage,
   .chat-message-header__prompt
-    max-width: 38%
+    max-width: 80%
     min-width: 100px
-
-  .chat-header-usage__chip
-    font-size: 10px
 
   .chat-header-prompt__text
     font-size: 13px

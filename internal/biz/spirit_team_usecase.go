@@ -278,6 +278,25 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 		mode = TeamModeCoordinator
 	}
 
+	// Team/Agent reuse (Issue 5): before creating a new team, check if there's
+	// an existing reusable team for the same spirit session + task description.
+	// A team is reusable when:
+	//   - Same spirit_session_id + same task_description (case-insensitive)
+	//     OR same dag_node_id (when non-empty, for DAG-based orchestration)
+	//   - Status is pending or running (not terminal)
+	//   - Not deleted
+	// This prevents duplicate team/agent creation when the same task is
+	// re-executed (e.g. user retries, orchestrator re-runs), which was causing
+	// management bloat.
+	if reusable, ok := u.findReusableTeam(ctx, spiritSessionID, taskDesc, params.DagNodeID); ok {
+		u.lg.Info("AssembleTeam 命中可复用团队，跳过创建",
+			loggateway.StepID("spirit.assemble.reuse"),
+			loggateway.Str("team_id", reusable.Team.ID),
+			loggateway.Str("task_description", taskDesc),
+		)
+		return reusable, nil
+	}
+
 	// Resolve agentKeys → agent IDs. The team definition JSON's member.agent_id
 	// field must hold the real agent ID (e.g. "agent___spirit__" or UUID), not
 	// the agentKey (e.g. "__spirit__"), because validateTeamMembersExist uses
@@ -410,6 +429,108 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 	}
 
 	return result, nil
+}
+
+// findReusableTeam searches for an existing team that can be reused instead of
+// creating a new one. A team is reusable when:
+//   - Same spirit_session_id
+//   - Same task_description (case-insensitive trimmed match) OR same dag_node_id
+//     (when both caller and candidate have a non-empty dag_node_id)
+//   - Status is pending or running (not terminal: completed/failed/cancelled/archived)
+//
+// Returns the team with its session and member sessions if found.
+// This is a best-effort lookup: any query failure returns (zero, false) and the
+// caller proceeds to create a new team.
+func (u *SpiritTeamUsecase) findReusableTeam(
+	ctx context.Context,
+	spiritSessionID, taskDesc, dagNodeID string,
+) (SpiritTeamResult, bool) {
+	teams, err := u.teamUC.ListBySpiritSessionID(ctx, spiritSessionID)
+	if err != nil {
+		u.lg.Warn("findReusableTeam 查询团队列表失败，跳过复用",
+			loggateway.StepID("spirit.assemble.reuse_list"),
+			loggateway.Err(err),
+		)
+		return SpiritTeamResult{}, false
+	}
+
+	normalizedDesc := strings.ToLower(strings.TrimSpace(taskDesc))
+	var matched *Team
+	for i := range teams {
+		t := &teams[i]
+		if t.Status != TeamStatusPending && t.Status != TeamStatusRunning {
+			continue
+		}
+		// DAG-based: match by dag_node_id when both are non-empty
+		if dagNodeID != "" && t.DagNodeID != "" {
+			if t.DagNodeID == dagNodeID {
+				matched = t
+				break
+			}
+			continue
+		}
+		// Non-DAG: match by task_description (case-insensitive)
+		if normalizedDesc != "" && strings.ToLower(strings.TrimSpace(t.TaskDescription)) == normalizedDesc {
+			matched = t
+			break
+		}
+	}
+	if matched == nil {
+		return SpiritTeamResult{}, false
+	}
+
+	// Find the team session (OwnerType="team", TeamID=matched.ID) via child sessions.
+	childSessions, err := u.sessionUC.ListChildSessions(ctx, spiritSessionID)
+	if err != nil {
+		u.lg.Warn("findReusableTeam 查询子 session 失败，跳过复用",
+			loggateway.StepID("spirit.assemble.reuse_session"),
+			loggateway.Str("team_id", matched.ID),
+			loggateway.Err(err),
+		)
+		return SpiritTeamResult{}, false
+	}
+
+	var teamSession *Session
+	for i := range childSessions {
+		s := &childSessions[i]
+		if s.TeamID == matched.ID && s.OwnerType == "team" {
+			teamSession = s
+			break
+		}
+	}
+	if teamSession == nil {
+		u.lg.Warn("findReusableTeam 未找到团队 session，跳过复用",
+			loggateway.StepID("spirit.assemble.reuse_no_session"),
+			loggateway.Str("team_id", matched.ID),
+		)
+		return SpiritTeamResult{}, false
+	}
+
+	// Find member agent sessions (OwnerType="agent", TeamID=matched.ID) via
+	// child sessions of the team session.
+	memberSessions := make(map[string]string)
+	memberChildren, err := u.sessionUC.ListChildSessions(ctx, teamSession.ID)
+	if err != nil {
+		u.lg.Warn("findReusableTeam 查询成员 session 失败，跳过成员映射",
+			loggateway.StepID("spirit.assemble.reuse_members"),
+			loggateway.Str("team_id", matched.ID),
+			loggateway.Err(err),
+		)
+		// Continue without member sessions — team can still be reused.
+	} else {
+		for i := range memberChildren {
+			s := &memberChildren[i]
+			if s.OwnerType == "agent" && s.MemberAgentKey != "" {
+				memberSessions[s.MemberAgentKey] = s.ID
+			}
+		}
+	}
+
+	return SpiritTeamResult{
+		Team:           *matched,
+		Session:        *teamSession,
+		MemberSessions: memberSessions,
+	}, true
 }
 
 // submitBorrowRequests creates borrow requests for cross-department members.

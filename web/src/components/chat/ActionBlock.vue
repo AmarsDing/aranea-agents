@@ -11,15 +11,21 @@
         <span class="act-activity__status" :class="statusClass">{{ statusIcon }}</span>
         <span v-if="step.ToolDurationMs > 0" class="act-activity__duration">{{ formattedDuration }}</span>
       </div>
-      <!-- v2 Step has no toolCategory field; per-category dispatch removed.
-           GenericToolDetail handles all tool kinds generically. -->
-      <GenericToolDetail v-if="expanded" :step="step" class="act-activity__detail" />
+      <!-- Per-category dispatch: pick the specialized detail component based
+           on toolCategory (inferred from toolName via classifyTool). Falls
+           back to GenericToolDetail for unknown categories. -->
+      <component
+        v-if="expanded"
+        :is="detailComponent"
+        :step="step"
+        class="act-activity__detail"
+      />
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, watch, type Component } from 'vue';
 import type { Step } from '../../features/chat/v2Types';
 import type { ToolUseEvent } from '../../features/chat/types';
 import { formatDuration } from '../../features/chat/agentTreeUtils';
@@ -27,6 +33,15 @@ import { isTodoWriteTool } from '../../features/chat/activityPresentation';
 import { useCollapseState } from '../../features/chat/composables/useCollapseState';
 import TodoInlineList from './TodoInlineList.vue';
 import GenericToolDetail from './tools/GenericToolDetail.vue';
+import ShellToolDetail from './tools/ShellToolDetail.vue';
+import BrowserToolDetail from './tools/BrowserToolDetail.vue';
+import FileReadToolDetail from './tools/FileReadToolDetail.vue';
+import FileWriteToolDetail from './tools/FileWriteToolDetail.vue';
+import FileSearchToolDetail from './tools/FileSearchToolDetail.vue';
+import WebSearchToolDetail from './tools/WebSearchToolDetail.vue';
+import McpToolDetail from './tools/McpToolDetail.vue';
+import CodeToolDetail from './tools/CodeToolDetail.vue';
+import { classifyTool, TOOL_CATEGORY_ICON, type ToolCategory } from './tools/classifyTool';
 import { asRecord } from './tools/toolDetailShared';
 
 /** T8.4: Tool result/arguments longer than this threshold auto-collapse. */
@@ -39,8 +54,35 @@ const props = defineProps<{
 
 const isTodo = computed(() => isTodoWriteTool(props.step.ToolName));
 
-// v2 Step has no toolCategory field → icon is always the generic wrench.
-const toolIcon = '🔧';
+// Infer tool category from toolName (v2 Step has no ToolCategory field yet).
+const toolCategory = computed<ToolCategory>(() => classifyTool(props.step.ToolName));
+
+// Per-category icon — gives the user a visual hint of tool type at a glance.
+const toolIcon = computed(() => TOOL_CATEGORY_ICON[toolCategory.value]);
+
+// Pick the specialized detail component based on tool category.
+const detailComponent = computed<Component>(() => {
+  switch (toolCategory.value) {
+    case 'shell':
+      return ShellToolDetail;
+    case 'browser':
+      return BrowserToolDetail;
+    case 'file_read':
+      return FileReadToolDetail;
+    case 'file_write':
+      return FileWriteToolDetail;
+    case 'file_search':
+      return FileSearchToolDetail;
+    case 'web_search':
+      return WebSearchToolDetail;
+    case 'mcp':
+      return McpToolDetail;
+    case 'code':
+      return CodeToolDetail;
+    default:
+      return GenericToolDetail;
+  }
+});
 
 const parsedToolArgs = computed(() => asRecord(props.step.ToolArgs));
 const parsedToolResult = computed(() => asRecord(props.step.ToolResult));

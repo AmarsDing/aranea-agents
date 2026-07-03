@@ -1,7 +1,7 @@
 <template>
   <div :key="sessionKey" class="chat-messages col column no-wrap" style="min-height: 0">
     <div
-      v-if="!messages.length"
+      v-if="!visibleLegacyMessages.length && !hasV2Activities"
       ref="emptyScrollEl"
       class="col relative-position chat-messages__viewport"
       @click="$emit('messages-click', $event)"
@@ -32,6 +32,26 @@
       Virtual scrolling is a future optimization (YAGNI); for typical chat
       lengths the native DOM is sufficient. If long-conversation perf returns,
       wrap ActivityStream items in DynamicScroller with per-activity items.
+      v2 history: also render SessionPanelV2 when the v2 activity store has
+      tasks for this session, even if legacy messages are empty (dev proxy
+      WS replay failure or fresh page load before WS connects).
+    -->
+    <div
+      v-else-if="hasV2Activities"
+      ref="scrollViewportEl"
+      class="col chat-messages__viewport chat-messages__viewport--virtual"
+      @scroll.passive="$emit('scroll', $event)"
+      @click="$emit('messages-click', $event)"
+    >
+      <SessionPanelV2 :session-id="sessionId ?? ''" @regenerate="(t) => $emit('regenerate-v2', t)" />
+    </div>
+    <!--
+      Legacy message fallback: when v2 activity store is empty but legacy
+      messages exist (e.g. fetchSessionHistory failed or pre-v2 sessions),
+      render messages directly to avoid a blank panel.
+      Filters out:
+        - role='system' (notice/system events like context_usage)
+        - messages whose content matches a system-internal notice type
     -->
     <div
       v-else
@@ -40,7 +60,20 @@
       @scroll.passive="$emit('scroll', $event)"
       @click="$emit('messages-click', $event)"
     >
-      <SessionPanelV2 :session-id="sessionId ?? ''" />
+      <div
+        v-for="msg in visibleLegacyMessages"
+        :key="msg.id"
+        class="legacy-msg-row"
+        :class="`legacy-msg-row--${msg.role}`"
+        :data-chat-user-prompt="msg.role === 'user' ? msg.content_markdown : undefined"
+      >
+        <div v-if="msg.role === 'user'" class="legacy-msg-bubble legacy-msg-bubble--user">
+          {{ msg.content_markdown }}
+        </div>
+        <div v-else class="legacy-msg-bubble legacy-msg-bubble--assistant">
+          <div class="chat-message-prose" v-html="renderLegacyContent(msg)"></div>
+        </div>
+      </div>
     </div>
     <ChatPendingQueue
       :messages="pendingMessages"
@@ -65,11 +98,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ChatPendingQueue from './ChatPendingQueue.vue';
 import SessionPanelV2 from './v2/SessionPanel.vue';
 import { useScrollToActivity } from '../../features/chat/composables/useScrollToActivity';
+import { useChatActivityStore } from '../../stores/chat/activityV2Store';
+import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
+import { SYSTEM_NOTICE_TYPES } from '../../features/chat/noticeFilter';
 import type { Message, PendingMessage } from '../../features/chat/types';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
@@ -131,9 +167,40 @@ defineEmits<{
   // T5.2/T5.3 / §B.7.2: Forward team-card / agent-card expand events upstream
   // so ChatPage can lazy-load member/child session activities.
   expand: [sessionIds: string[]];
+  'regenerate-v2': [task: import('../../features/chat/v2Types').Task];
 }>();
 
 const { t } = useI18n();
+
+// v2 activity store: when legacy messages are empty but the v2 store has
+// tasks for this session (e.g. dev proxy WS replay failure, fresh page load),
+// we still render SessionPanelV2 instead of the empty state.
+const activityStore = useChatActivityStore();
+const hasV2Activities = computed(() =>
+  props.sessionId ? activityStore.getSessionTasks(props.sessionId).length > 0 : false,
+);
+
+/**
+ * Legacy messages visible in the fallback panel.
+ * Filters out:
+ *   - role='system' (notice/system events like context_usage)
+ *   - role='tool' (tool result cards; rendered via v2 activity stream)
+ *   - messages whose content_markdown matches a system-internal notice type
+ *     (e.g. context_usage, token_usage) — backend may not set role='system'
+ *     consistently for these.
+ */
+const visibleLegacyMessages = computed(() =>
+  props.messages.filter((m) => {
+    if (m.role === 'system' || m.role === 'tool') return false;
+    if (SYSTEM_NOTICE_TYPES.has(m.content_markdown?.trim() ?? '')) return false;
+    return true;
+  }),
+);
+
+/** Render legacy message content as markdown (fallback when v2 store is empty). */
+function renderLegacyContent(msg: Message): string {
+  return renderChatMarkdownForMessage(msg.id, msg.content_markdown, false);
+}
 
 const quickStartHints = [
   { icon: 'edit_note', text: t('chat.hintWrite', '帮我写一段代码') },
@@ -208,7 +275,7 @@ defineExpose({
   useVirtualScroll,
   scrollToTurnId,
   getScrollTarget: () => {
-    if (!props.messages.length) return emptyScrollEl.value;
+    if (!visibleLegacyMessages.value.length && !hasV2Activities.value) return emptyScrollEl.value;
     return scrollViewportEl.value;
   },
 });
@@ -227,4 +294,58 @@ defineExpose({
 .activity-locate-highlight
   animation: activity-locate-flash 1s ease-in-out 3
   border-radius: 6px
+
+/* Legacy message fallback bubbles (shown when v2 store is empty) */
+.legacy-msg-row
+  padding: 6px 12px
+  display: flex
+  flex-direction: column
+
+  &--user
+    align-items: flex-end
+
+  &--assistant
+    align-items: flex-start
+
+.legacy-msg-bubble
+  max-width: 80%
+  padding: 10px 14px
+  border-radius: 14px
+  word-break: break-word
+  font-size: 14px
+  line-height: 1.5
+
+  &--user
+    background: var(--glass-surface)
+    border: 1px solid var(--glass-border)
+    border-radius: 14px 14px 4px 14px
+    white-space: pre-wrap
+
+  &--assistant
+    background: transparent
+    border: none
+    border-radius: 4px 14px 14px 14px
+
+    p
+      margin: 0 0 8px
+
+    p:last-child
+      margin-bottom: 0
+
+    code
+      background: rgba(127, 127, 127, 0.15)
+      padding: 1px 4px
+      border-radius: 3px
+      font-size: 13px
+
+    pre
+      background: rgba(0, 0, 0, 0.06)
+      border-radius: 8px
+      padding: 10px 12px
+      overflow-x: auto
+      margin: 6px 0
+
+    pre code
+      background: transparent
+      padding: 0
 </style>

@@ -183,6 +183,8 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
 
   /** In-flight load promise to deduplicate concurrent loadSpiritTeams calls. */
   let _loadPromise: Promise<void> | null = null;
+  /** Tracks which sessionId the in-flight _loadPromise is loading. */
+  let _loadSessionId: string | null = null;
 
   /** Max concurrent teams quota from backend ParallelConfig. */
   const maxConcurrentTeams = ref<number | null>(null);
@@ -222,17 +224,32 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
    * Concurrent calls for the same sessionId are deduplicated.
    */
   async function loadSpiritTeams(spiritSessionId: string) {
-    // Deduplicate: if a load is already in flight for this session, await it
-    if (_loadPromise) {
+    // Deduplicate: only await if a load is in flight for the SAME session.
+    // If a load is in flight for a DIFFERENT session, we proceed to load this
+    // session's data — the older load will skip its state mutation when it
+    // completes (see _loadSessionId guard below).
+    if (_loadPromise && _loadSessionId === spiritSessionId) {
       await _loadPromise;
-      // After awaiting, if sessionId changed (e.g. reset), skip
-      if (currentSpiritSessionId.value !== spiritSessionId) return;
+      return;
     }
     loading.value = true;
+    _loadSessionId = spiritSessionId;
+    // When switching to a DIFFERENT spirit session, clear teams from the
+    // previous session before loading. Without this, teams from session A
+    // persist when switching to session B (especially when B has no teams).
+    const isSessionSwitch = currentSpiritSessionId.value !== null && currentSpiritSessionId.value !== spiritSessionId;
     _loadPromise = (async () => {
       try {
         const apiTeams = await listSpiritTeams(spiritSessionId);
+        // If a newer load superseded this one (different session ID requested
+        // during the await), skip the state mutation to avoid clobbering the
+        // newer load's results.
+        if (_loadSessionId !== spiritSessionId) return;
         currentSpiritSessionId.value = spiritSessionId;
+        if (isSessionSwitch) {
+          // Clear teams from the previous session before merging new data.
+          teams.value = [];
+        }
         const apiIds = new Set(apiTeams.map((t) => t.id));
         for (const team of apiTeams) {
           const existing = teams.value.find((t) => t.id === team.id);
@@ -244,13 +261,25 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
             teams.value.push(team);
           }
         }
-        // Remove teams that no longer exist on the server
-        teams.value = teams.value.filter((t) => apiIds.has(t.id));
+        // Remove teams that no longer exist on the server — but only when the
+        // API returned a non-empty list. An empty API response usually means
+        // the server hasn't persisted yet or a transient failure; clearing all
+        // teams in that case would wipe WS-driven teams (race condition fix).
+        // Note: when isSessionSwitch is true, teams.value was already cleared
+        // above, so this filter is a no-op for the switch case.
+        if (apiTeams.length > 0 && !isSessionSwitch) {
+          teams.value = teams.value.filter((t) => apiIds.has(t.id));
+        }
       } catch {
         Notify.create({ type: 'negative', message: i18n.global.t('chat.teamStage.loadFailed'), position: 'top' });
       } finally {
-        loading.value = false;
-        _loadPromise = null;
+        // Only clear if this is still the active load — otherwise a newer load
+        // owns these slots and will clear them itself.
+        if (_loadSessionId === spiritSessionId) {
+          loading.value = false;
+          _loadPromise = null;
+          _loadSessionId = null;
+        }
       }
     })();
     await _loadPromise;
@@ -272,6 +301,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     activeMemberId.value = null;
     loading.value = false;
     _loadPromise = null;
+    _loadSessionId = null;
     teamProgress.value = [];
     allTeamsCompleted.value = false;
     synthesisCompleted.value = false;

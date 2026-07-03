@@ -1,5 +1,5 @@
 <template>
-  <q-card-section class="chat-composer q-px-md q-py-sm">
+  <q-card-section class="chat-composer" style="padding: 8px var(--chat-edge-gutter, 12px)">
     <q-banner
       v-if="isAwaitingUser && awaitKind === AWAIT_KIND_TOOL_CONFIRM"
       rounded
@@ -74,31 +74,6 @@
     </q-banner>
 
     <div class="chat-composer-inner">
-      <div v-if="attachments.length" class="chat-attachments row q-gutter-xs q-mb-sm">
-        <div v-for="file in attachments" :key="file.id" class="chat-file-tile row items-center">
-          <q-circular-progress
-            v-if="file.progress < 1"
-            :value="file.progress * 100"
-            size="28px"
-            :thickness="0.2"
-            color="accent"
-            class="q-mr-xs"
-          />
-          <q-icon v-else name="insert_drive_file" size="20px" class="q-mr-xs" color="accent" />
-          <span class="ellipsis text-caption" style="max-width: 140px">{{ file.name }}</span
-          ><q-tooltip>{{ file.name }}</q-tooltip>
-          <q-btn
-            icon="close"
-            class="chat-file-tile__close"
-            size="sm"
-            round
-            dense
-            flat
-            @click="$emit('remove-attachment', file.id)"
-          />
-        </div>
-      </div>
-
       <ChatEnqueueMessage
         v-if="showEnqueue"
         :is-dark="isDark"
@@ -106,23 +81,36 @@
         @enqueue="(text) => $emit('enqueue-message', text)"
       />
 
-      <q-input
-        :model-value="modelValue"
-        filled
-        class="chat-input"
-        :label="t('chat.inputLabel')"
-        type="textarea"
-        autogrow
-        :input-style="{ minHeight: '56px' }"
-        :dark="isDark"
-        :disable="isRunnerActive ? false : (inputDisabled ?? sending)"
-        @keydown="onInputKeydown"
-        @paste="handlePaste"
-        @update:model-value="$emit('update:modelValue', String($event ?? ''))"
-      />
+      <!-- 统一圆角卡片：附件 + 选择器 + 输入框 + 底部工具条 -->
+      <div class="composer-card" :class="{ 'composer-card--dark': isDark }">
+        <!-- 附件缩略图（输入框上方） -->
+        <div v-if="attachments.length" class="chat-attachments row q-gutter-xs">
+          <div v-for="file in attachments" :key="file.id" class="chat-file-tile row items-center">
+            <q-circular-progress
+              v-if="file.progress < 1"
+              :value="file.progress * 100"
+              size="28px"
+              :thickness="0.2"
+              color="accent"
+              class="q-mr-xs"
+            />
+            <q-icon v-else name="insert_drive_file" size="20px" class="q-mr-xs" color="accent" />
+            <span class="ellipsis text-caption" style="max-width: 140px">{{ file.name }}</span>
+            <q-tooltip>{{ file.name }}</q-tooltip>
+            <q-btn
+              icon="close"
+              class="chat-file-tile__close"
+              size="sm"
+              round
+              dense
+              flat
+              @click="$emit('remove-attachment', file.id)"
+            />
+          </div>
+        </div>
 
-      <div class="chat-toolbar q-mt-sm">
-        <div class="chat-toolbar-fields row items-center no-wrap">
+        <!-- 顶部：模式 / 模型 / 知识库 -->
+        <div class="composer-top-bar row no-wrap items-center q-gutter-x-sm">
           <q-select
             :model-value="dialogMode"
             dense
@@ -132,7 +120,7 @@
             emit-value
             map-options
             :label="t('chat.dialogMode')"
-            class="chat-toolbar-field chat-toolbar-field--mode"
+            class="composer-field composer-field--mode"
             :dark="isDark"
             @update:model-value="$emit('update:dialogMode', String($event ?? ''))"
           />
@@ -145,7 +133,7 @@
             emit-value
             map-options
             :label="t('chat.modelProvider')"
-            class="chat-toolbar-field chat-toolbar-field--model"
+            class="composer-field composer-field--model"
             :dark="isDark"
             @update:model-value="$emit('update:modelProvider', String($event ?? ''))"
           >
@@ -170,86 +158,84 @@
             map-options
             :options="knowledgeBaseOptions"
             :label="t('chat.knowledgeBases')"
-            class="chat-toolbar-field chat-toolbar-field--kb"
+            class="composer-field composer-field--kb"
             :dark="isDark"
             @update:model-value="$emit('update:selectedKnowledgeBases', ($event as string[]) ?? [])"
           />
         </div>
-        <div class="chat-toolbar-actions row items-center no-wrap">
-          <ChatSessionArtifactsPanel
-            v-if="sessionId"
-            :session-id="sessionId"
-            :items="sessionArtifacts ?? []"
-            :loading="sessionArtifactsLoading"
-            :is-dark="isDark"
-            @open="$emit('open-artifact', $event)"
-            @deleted="$emit('attachment-deleted', $event)"
-          />
-          <ChatBackgroundJobsPanel
-            v-if="showBackgroundJobs"
-            :session-id="sessionId"
-            :agent-id="agentId"
-            :refresh-nonce="jobsRefreshNonce"
-            :is-dark="isDark"
-            @focus-turn="$emit('focus-turn', $event)"
-            @navigate="$emit('navigate', $event)"
-            @cancel-job="$emit('cancel-job', $event)"
-          />
-          <span class="chat-toolbar-btn-wrapper">
+
+        <!-- 输入框 -->
+        <q-input
+          :model-value="modelValue"
+          filled
+          class="composer-input"
+          :label="t('chat.inputLabel')"
+          type="textarea"
+          autogrow
+          :input-style="{ minHeight: '56px', maxHeight: '200px' }"
+          :dark="isDark"
+          :disable="isRunnerActive ? false : (inputDisabled ?? sending)"
+          @keydown="onInputKeydown"
+          @paste="handlePaste"
+          @update:model-value="$emit('update:modelValue', String($event ?? ''))"
+        />
+
+        <!-- 底部工具条：右侧操作按钮 -->
+        <div class="composer-bottom-bar row items-center justify-end no-wrap">
+          <!-- 右侧操作按钮 -->
+          <div class="composer-actions row items-center no-wrap q-gutter-x-sm">
+            <span class="composer-btn-wrapper">
+              <q-btn
+                unelevated
+                outline
+                color="accent"
+                :disable="fileSupported === false"
+                :aria-label="t('chat.fileImport')"
+                class="composer-btn composer-btn--outline"
+                @click="$emit('pick-file')"
+              >
+                <q-icon name="attach_file" size="22px" />
+              </q-btn>
+              <q-tooltip anchor="top middle" self="bottom middle">{{
+                fileSupported === false
+                  ? t('chat.fileNotSupported')
+                  : fileAccept
+                    ? t('chat.limitedFileTypes')
+                    : artifactMaxSizeHint()
+              }}</q-tooltip>
+            </span>
             <q-btn
-              dense
               unelevated
               outline
               color="accent"
-              :disable="fileSupported === false"
-              :aria-label="t('chat.fileImport')"
-              class="chat-toolbar-btn chat-toolbar-btn--outline"
-              @click="$emit('pick-file')"
+              :aria-label="t('chat.voiceInput')"
+              class="composer-btn composer-btn--outline"
+              @click="$emit('voice')"
             >
-              <q-icon name="attach_file" size="18px" />
+              <q-icon name="mic" size="22px" />
             </q-btn>
-            <q-tooltip anchor="top middle" self="bottom middle">{{
-              fileSupported === false
-                ? t('chat.fileNotSupported')
-                : fileAccept
-                  ? t('chat.limitedFileTypes')
-                  : artifactMaxSizeHint()
-            }}</q-tooltip>
-          </span>
-          <q-btn
-            dense
-            unelevated
-            outline
-            color="accent"
-            :aria-label="t('chat.voiceInput')"
-            class="chat-toolbar-btn chat-toolbar-btn--outline"
-            @click="$emit('voice')"
-          >
-            <q-icon name="mic" size="18px" />
-          </q-btn>
-          <q-btn
-            v-if="sending || isRunnerActive"
-            dense
-            unelevated
-            color="negative"
-            :aria-label="t('chat.stop')"
-            class="chat-toolbar-btn chat-toolbar-btn--filled"
-            @click="$emit('stop')"
-          >
-            <q-icon name="stop" size="18px" />
-          </q-btn>
-          <q-btn
-            v-else
-            dense
-            unelevated
-            color="accent"
-            :disable="!modelValue.trim()"
-            :aria-label="t('chat.send')"
-            class="chat-toolbar-btn chat-toolbar-btn--filled"
-            @click="$emit('send')"
-          >
-            <q-icon name="send" size="18px" />
-          </q-btn>
+            <q-btn
+              v-if="sending || isRunnerActive"
+              unelevated
+              color="negative"
+              :aria-label="t('chat.stop')"
+              class="composer-btn composer-btn--filled"
+              @click="$emit('stop')"
+            >
+              <q-icon name="stop" size="22px" />
+            </q-btn>
+            <q-btn
+              v-else
+              unelevated
+              color="accent"
+              :disable="!modelValue.trim()"
+              :aria-label="t('chat.send')"
+              class="composer-btn composer-btn--filled"
+              @click="$emit('send')"
+            >
+              <q-icon name="send" size="22px" />
+            </q-btn>
+          </div>
         </div>
       </div>
     </div>
@@ -260,12 +246,8 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ChatEnqueueMessage from './ChatEnqueueMessage.vue';
-import ChatSessionArtifactsPanel from './ChatSessionArtifactsPanel.vue';
-import ChatBackgroundJobsPanel from './ChatBackgroundJobsPanel.vue';
 import { AWAIT_KIND_TOOL_CONFIRM } from '../../features/chat/awaitConstants';
 import type { ChatAttachment } from './types';
-import type { ComposerUsageSnapshot } from '../../features/chat/composerUsageMetrics';
-import type { ArtifactMeta } from '../../features/artifact/types';
 import { artifactMaxSizeHint } from '../../features/artifact/limits';
 
 type Option = { label: string; value: string; caption?: string };
@@ -279,7 +261,6 @@ const props = defineProps<{
   providerOptions: Option[];
   contextRatio: number;
   contextStatus?: string;
-  usageSnapshot?: ComposerUsageSnapshot | null;
   knowledgeBaseOptions?: Option[];
   selectedKnowledgeBases?: string[];
   isDark: boolean;
@@ -291,13 +272,8 @@ const props = defineProps<{
   awaitToolKey?: string;
   showEnqueue?: boolean;
   sessionId?: string;
-  sessionArtifacts?: ArtifactMeta[];
-  sessionArtifactsLoading?: boolean;
   fileSupported?: boolean;
   fileAccept?: string;
-  showBackgroundJobs?: boolean;
-  agentId?: string;
-  jobsRefreshNonce?: number;
 }>();
 
 const emit = defineEmits<{
@@ -313,12 +289,7 @@ const emit = defineEmits<{
   'enqueue-message': [content: string];
   'submit-await-reply': [];
   'submit-tool-confirm': [approved: boolean];
-  'open-artifact': [id: string];
-  'attachment-deleted': [id: string];
   'paste-file': [file: File];
-  'focus-turn': [turnId: string];
-  navigate: [route: { name: string; params: Record<string, string> }];
-  'cancel-job': [job: { id: string; source: string }];
   'paste-unsupported': [];
   'new-session': [];
 }>();
@@ -362,7 +333,6 @@ function onInputKeydown(event: KeyboardEvent) {
     const text = props.modelValue.trim();
     if (text) {
       emit('enqueue-message', text);
-      // Don't clear input here — the consumer will clear it after successful enqueue
     }
   } else {
     emit('send');
@@ -370,8 +340,115 @@ function onInputKeydown(event: KeyboardEvent) {
 }
 </script>
 
-<style scoped>
-.chat-toolbar-btn-wrapper {
-  display: inline-flex;
-}
+<style scoped lang="sass">
+/* 统一圆角卡片 */
+.composer-card
+  border: 1px solid var(--glass-border)
+  border-radius: 18px
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  padding: 12px 14px 10px
+  display: flex
+  flex-direction: column
+  gap: 10px
+  transition: box-shadow 0.2s ease
+
+  &:focus-within
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent)
+
+  &--dark
+    background: var(--glass-surface)
+
+/* 顶部选择器行 */
+.composer-top-bar
+  flex-wrap: nowrap
+  overflow: hidden
+
+.composer-field
+  flex: 1 1 auto
+  min-width: 0
+
+  &--mode
+    flex: 0 1 130px
+
+  &--model
+    flex: 0 1 180px
+
+  &--kb
+    flex: 1 1 auto
+
+/* 输入框：保持 hover/focus 状态下背景色与默认一致，不变化 */
+.composer-card :deep(.composer-input .q-field__control)
+  background: transparent !important
+  border-radius: 12px
+  box-shadow: none !important
+
+/* 覆盖所有 Quasar filled 状态（默认/hover/focus/highlighted 及组合）的 ::before/::after 伪元素 */
+.composer-card :deep(.composer-input .q-field__control::before),
+.composer-card :deep(.composer-input .q-field__control::after),
+.composer-card :deep(.composer-input:hover .q-field__control::before),
+.composer-card :deep(.composer-input:hover .q-field__control::after),
+.composer-card :deep(.composer-input.q-field--filled .q-field__control::before),
+.composer-card :deep(.composer-input.q-field--filled .q-field__control::after),
+.composer-card :deep(.composer-input.q-field--filled:hover .q-field__control::before),
+.composer-card :deep(.composer-input.q-field--filled:hover .q-field__control::after),
+.composer-card :deep(.composer-input.q-field--focused .q-field__control::before),
+.composer-card :deep(.composer-input.q-field--focused .q-field__control::after),
+.composer-card :deep(.composer-input.q-field--highlighted .q-field__control::before),
+.composer-card :deep(.composer-input.q-field--highlighted .q-field__control::after),
+.composer-card :deep(.composer-input.q-field--filled.q-field--focused .q-field__control::before),
+.composer-card :deep(.composer-input.q-field--filled.q-field--focused .q-field__control::after),
+.composer-card :deep(.composer-input.q-field--filled.q-field--highlighted .q-field__control::before),
+.composer-card :deep(.composer-input.q-field--filled.q-field--highlighted .q-field__control::after)
+  background: transparent !important
+  display: none !important
+
+/* textarea 原生元素本身也保持透明、无边框 */
+.composer-card :deep(.composer-input .q-field__native),
+.composer-card :deep(.composer-input .q-field__native:hover),
+.composer-card :deep(.composer-input .q-field__native:focus),
+.composer-card :deep(.composer-input .q-field__native:focus-visible)
+  background: transparent !important
+  border: none !important
+  outline: none !important
+  box-shadow: none !important
+
+/* 底部工具条 */
+.composer-bottom-bar
+  gap: 8px
+
+/* 右侧按钮 */
+.composer-btn-wrapper
+  display: inline-flex
+
+.composer-btn
+  border-radius: 12px
+  min-height: 40px
+  min-width: 40px
+  padding: 8px 10px
+
+  &--outline
+    border-width: 1.5px
+
+  &--filled
+    box-shadow: 0 2px 6px color-mix(in srgb, var(--color-accent) 28%, transparent)
+
+    &:not(:disabled):hover
+      box-shadow: 0 4px 10px color-mix(in srgb, var(--color-accent) 38%, transparent)
+
+@media (max-width: 899px)
+  .composer-top-bar
+    flex-wrap: wrap
+
+  .composer-field
+    flex: 1 1 100%
+
+  .composer-bottom-bar
+    flex-wrap: wrap
+    gap: 6px
+
+  .composer-actions
+    flex: 1 1 100%
+    justify-content: flex-end
 </style>

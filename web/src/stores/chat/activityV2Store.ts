@@ -10,6 +10,8 @@ import type {
   MemberSession,
   PlanBoard,
   PlanStep,
+  GraphStage,
+  GraphNode,
 } from '../../features/chat/v2Types';
 import { listTasksV2, listTurnsV2, listStepsV2 } from '../../features/session/v2Api';
 
@@ -28,6 +30,9 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   const memberSessions = ref(new Map<string, MemberSession>());
   const planBoards = ref(new Map<string, PlanBoard>());
   const planSteps = ref(new Map<string, PlanStep>());
+  // 2026-07-04 补齐：GraphStage / GraphNode（与 PlanBoard 一对一）
+  const graphStages = ref(new Map<string, GraphStage>());
+  const graphNodes = ref(new Map<string, GraphNode>());
 
   // === Upsert helpers (optimistic-concurrency guarded) ===
 
@@ -88,6 +93,18 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     }
   }
 
+  // 2026-07-04 补齐：GraphStage / GraphNode upsert
+  function upsertGraphStage(gs: GraphStage) {
+    const ex = graphStages.value.get(gs.ID);
+    if (ex && gs.Version <= ex.Version) return;
+    graphStages.value.set(gs.ID, { ...gs });
+  }
+
+  function upsertGraphNode(gn: GraphNode) {
+    // GraphNode 没有 Version 字段；直接覆盖（事件顺序保证最新）
+    graphNodes.value.set(gn.ID, { ...gn });
+  }
+
   // === Streaming delta (does NOT bump version) ===
 
   function appendStepDelta(stepId: string, field: 'content' | 'reasoning', chunk: string) {
@@ -139,6 +156,30 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     return out.sort((a, b) => a.Seq - b.Seq);
   }
 
+  // 2026-07-04 补齐：GraphStage / GraphNode 查询辅助
+  function getTaskGraphStages(taskId: string): GraphStage[] {
+    const out: GraphStage[] = [];
+    for (const gs of graphStages.value.values()) {
+      if (gs.TaskID === taskId) out.push(gs);
+    }
+    return out.sort((a, b) => a.Seq - b.Seq);
+  }
+
+  function getGraphStageByPlanBoard(planBoardId: string): GraphStage | undefined {
+    for (const gs of graphStages.value.values()) {
+      if (gs.PlanBoardID === planBoardId) return gs;
+    }
+    return undefined;
+  }
+
+  function getGraphStageNodes(graphStageId: string): GraphNode[] {
+    const out: GraphNode[] = [];
+    for (const gn of graphNodes.value.values()) {
+      if (gn.GraphStageID === graphStageId) out.push(gn);
+    }
+    return out;
+  }
+
   function getTeamStageTeamRuns(teamStageId: string): TeamRun[] {
     const out: TeamRun[] = [];
     for (const tr of teamRuns.value.values()) {
@@ -182,6 +223,13 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const [id, ps] of planSteps.value) {
       if (ps.TaskID && tasks.value.has(ps.TaskID) === false) planSteps.value.delete(id);
     }
+    // 2026-07-04 补齐：清理 GraphStage / GraphNode
+    for (const [id, gs] of graphStages.value) {
+      if (gs.SessionID === spiritSessionId) graphStages.value.delete(id);
+    }
+    for (const [id, gn] of graphNodes.value) {
+      if (gn.GraphStageID && graphStages.value.has(gn.GraphStageID) === false) graphNodes.value.delete(id);
+    }
   }
 
   function clearAll() {
@@ -193,6 +241,8 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     memberSessions.value.clear();
     planBoards.value.clear();
     planSteps.value.clear();
+    graphStages.value.clear();
+    graphNodes.value.clear();
   }
 
   // === History fetch (page refresh / WS reconnect) ===
@@ -224,6 +274,8 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     memberSessions,
     planBoards,
     planSteps,
+    graphStages,
+    graphNodes,
     upsertTask,
     upsertTurn,
     upsertStep,
@@ -232,12 +284,17 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     upsertMemberSession,
     upsertPlanBoard,
     upsertPlanStep,
+    upsertGraphStage,
+    upsertGraphNode,
     appendStepDelta,
     getSessionTasks,
     getTaskTurns,
     getTurnSteps,
     getTaskTeamStages,
     getTaskPlanBoards,
+    getTaskGraphStages,
+    getGraphStageByPlanBoard,
+    getGraphStageNodes,
     getTeamStageTeamRuns,
     getTeamRunMemberSessions,
     clearSession,

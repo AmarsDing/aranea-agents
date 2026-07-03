@@ -1,18 +1,98 @@
-<!-- web/src/components/chat/v2/MemberSessionPanel.vue -->
+<!-- web/src/components/chat/v2/MemberSessionPanel.vue
+  2026-07-04 完善：简化布局 + 操作按钮 + 注入对话框（需求 §A.4.4）
+  - 头部 80%：avatar + 名称 + status badge + 创建时间
+  - 尾部 20%：注入对话框 + 操作按钮（暂停/恢复/取消/重试）
+  - 状态映射：running/paused/completed/failed/cancelled
+  - 系统 agent 排除：__spirit__ 及 __ 前缀 agent 不显示操作按钮和对话框
+  - 始终默认折叠，与 team-card 一致
+-->
 <template>
   <div class="member-session-panel" :data-agent-key="memberSession.AgentKey">
-    <div class="member-header">
-      <q-avatar v-if="memberSession.AvatarURL" :src="memberSession.AvatarURL" size="32px" />
-      <span class="member-name">{{ memberSession.AgentName }}</span>
-      <q-badge v-if="memberSession.Status === 'running'" color="blue" :label="t('chat.v2.statusRunning')" />
-      <q-badge v-else-if="memberSession.Status === 'completed'" color="green" :label="t('chat.v2.statusCompleted')" />
-      <q-badge v-else-if="memberSession.Status === 'failed'" color="red" :label="t('chat.v2.statusFailed')" />
+    <!-- 头部 80%：avatar + 名称 + status badge + 创建时间 -->
+    <div class="member-header" @click="toggleCollapse">
+      <div class="member-header__left">
+        <q-icon :name="collapsed ? 'expand_more' : 'expand_less'" size="16px" class="member-header__icon" />
+        <q-avatar v-if="memberSession.AvatarURL" :src="memberSession.AvatarURL" size="24px" />
+        <q-icon v-else name="person" size="20px" class="member-header__avatar-fallback" />
+        <span class="member-header__name">{{ memberSession.AgentName }}</span>
+        <q-badge :color="statusColor" class="member-header__status">{{ statusLabel }}</q-badge>
+      </div>
+      <div class="member-header__right">
+        <span class="member-header__time">{{ formattedTime }}</span>
+      </div>
     </div>
-    <div v-if="memberSession.Error" class="member-error">{{ memberSession.Error }}</div>
+
+    <div v-show="!collapsed" class="member-body">
+      <!-- 错误提示 -->
+      <div v-if="memberSession.Error" class="member-error">{{ memberSession.Error }}</div>
+
+      <!-- 尾部 20%：注入对话框 + 操作按钮（系统 agent 排除） -->
+      <div v-if="!isSystemAgent" class="member-actions">
+        <q-input
+          v-model="injectText"
+          dense
+          outlined
+          :placeholder="t('chat.v2.injectPlaceholder')"
+          class="member-inject-input"
+          @keyup.enter="submitInject"
+        />
+        <q-btn
+          v-if="canInject"
+          flat
+          dense
+          size="sm"
+          :label="t('chat.v2.inject')"
+          color="primary"
+          :disable="!injectText.trim()"
+          @click="submitInject"
+        />
+        <q-btn
+          v-if="canPause"
+          flat
+          dense
+          size="sm"
+          :label="t('chat.v2.pause')"
+          icon="pause"
+          color="warning"
+          @click="$emit('pause', memberSession.ID)"
+        />
+        <q-btn
+          v-if="canResume"
+          flat
+          dense
+          size="sm"
+          :label="t('chat.v2.resume')"
+          icon="play_arrow"
+          color="positive"
+          @click="$emit('resume', memberSession.ID)"
+        />
+        <q-btn
+          v-if="canCancel"
+          flat
+          dense
+          size="sm"
+          :label="t('chat.v2.cancel')"
+          icon="stop"
+          color="negative"
+          @click="$emit('cancel', memberSession.ID)"
+        />
+        <q-btn
+          v-if="canRetry"
+          flat
+          dense
+          size="sm"
+          :label="t('chat.v2.retry')"
+          icon="refresh"
+          color="primary"
+          @click="$emit('retry', memberSession.ID)"
+        />
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { MemberSession } from '../../../features/chat/v2Types';
 
@@ -26,6 +106,154 @@ function useSafeI18n() {
   }
 }
 
-defineProps<{ memberSession: MemberSession }>();
+const props = defineProps<{ memberSession: MemberSession }>();
+const emit = defineEmits<{
+  pause: [id: string];
+  resume: [id: string];
+  cancel: [id: string];
+  retry: [id: string];
+  inject: [id: string, text: string];
+}>();
+
 const { t } = useSafeI18n();
+
+// 折叠状态：默认折叠（与 team-card 一致，需求 §A.4.4）
+const collapsed = ref(true);
+
+function toggleCollapse() {
+  collapsed.value = !collapsed.value;
+}
+
+// 注入对话框
+const injectText = ref('');
+function submitInject() {
+  const text = injectText.value.trim();
+  if (!text || !canInject.value) return;
+  emit('inject', props.memberSession.ID, text);
+  injectText.value = '';
+}
+
+// 系统 agent 排除：__spirit__ 及 __ 前缀不显示操作按钮和对话框（需求 §A.4.4）
+const isSystemAgent = computed(() => {
+  const key = props.memberSession.AgentKey || '';
+  return key === '__spirit__' || key.startsWith('__');
+});
+
+// 状态映射：running/paused/completed/failed/cancelled（需求 §A.4.4）
+const statusColor = computed(
+  () =>
+    ({
+      pending: 'grey',
+      running: 'blue',
+      paused: 'warning',
+      completed: 'green',
+      failed: 'red',
+      cancelled: 'grey-6',
+      skipped: 'grey-5',
+    })[props.memberSession.Status] || 'grey',
+);
+
+const statusLabel = computed(() => {
+  const map: Record<string, string> = {
+    pending: t('chat.v2.statusPending'),
+    running: t('chat.v2.statusRunning'),
+    paused: t('chat.v2.statusPaused'),
+    completed: t('chat.v2.statusCompleted'),
+    failed: t('chat.v2.statusFailed'),
+    cancelled: t('chat.v2.statusCancelled'),
+    skipped: t('chat.v2.statusSkipped'),
+  };
+  return map[props.memberSession.Status] || props.memberSession.Status;
+});
+
+// 按钮可见性（按状态切换，需求 §A.4.4）
+const canPause = computed(() => props.memberSession.Status === 'running');
+const canResume = computed(() => props.memberSession.Status === 'paused');
+const canCancel = computed(() => props.memberSession.Status === 'running' || props.memberSession.Status === 'paused');
+const canRetry = computed(() => props.memberSession.Status === 'failed' || props.memberSession.Status === 'cancelled');
+const canInject = computed(() => props.memberSession.Status === 'running' || props.memberSession.Status === 'paused');
+
+const formattedTime = computed(() => {
+  const raw = props.memberSession.StartedAt;
+  if (!raw) return '';
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+});
 </script>
+
+<style lang="sass" scoped>
+.member-session-panel
+  border: 1px solid var(--color-border, #eee)
+  border-radius: 4px
+  margin: 4px 0
+  background: var(--color-surface, #fafafa)
+
+.member-header
+  display: flex
+  align-items: center
+  justify-content: space-between
+  padding: 4px 8px
+  cursor: pointer
+  user-select: none
+
+  &:hover
+    background: var(--color-hover, #f5f5f5)
+
+  &__left
+    display: flex
+    align-items: center
+    gap: 6px
+    flex: 1
+    min-width: 0
+
+  &__icon
+    color: var(--color-text-secondary)
+
+  &__avatar-fallback
+    color: var(--color-text-secondary)
+
+  &__name
+    font-size: 12px
+    font-weight: 500
+    color: var(--color-text-primary)
+    max-width: 140px
+    overflow: hidden
+    text-overflow: ellipsis
+    white-space: nowrap
+
+  &__status
+    margin-left: 2px
+
+  &__right
+    display: flex
+    align-items: center
+
+  &__time
+    font-size: 11px
+    color: var(--color-text-tertiary)
+    font-variant-numeric: tabular-nums
+
+.member-body
+  padding: 6px 8px
+
+.member-error
+  font-size: 11px
+  color: var(--color-negative, #f44336)
+  margin-bottom: 6px
+  padding: 4px 6px
+  background: var(--color-negative-bg, #ffebee)
+  border-radius: 3px
+
+.member-actions
+  display: flex
+  align-items: center
+  gap: 4px
+  padding-top: 6px
+  border-top: 1px solid var(--color-border, #f0f0f0)
+
+.member-inject-input
+  flex: 1
+  min-width: 0
+</style>
