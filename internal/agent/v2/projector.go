@@ -62,6 +62,9 @@ type ActivityProjector struct {
 	// toolCallSteps maps model tool_call_id → v2 stepID, for correlating
 	// tool response events back to the action step created by OnToolCall.
 	toolCallSteps map[string]string
+	// memberToolCalls tracks per-member tool call counts observed during the
+	// turn. Used by stream_consumer for team run step persistence.
+	memberToolCalls map[string]int
 }
 
 // NewActivityProjector constructs an ActivityProjector.
@@ -72,13 +75,14 @@ func NewActivityProjector(seq SequencerPublisher, seqAsg SeqAssigner, lg loggate
 		lg = loggateway.NewNoop()
 	}
 	return &ActivityProjector{
-		seq:           seq,
-		seqAsg:        seqAsg,
-		lg:            lg.With(loggateway.Domain("projector_v2")),
-		activeStep:    make(map[string]*biz.Step),
-		activeTurn:    make(map[string]*biz.Turn),
-		activeTask:    make(map[string]*biz.Task),
-		toolCallSteps: make(map[string]string),
+		seq:            seq,
+		seqAsg:         seqAsg,
+		lg:             lg.With(loggateway.Domain("projector_v2")),
+		activeStep:     make(map[string]*biz.Step),
+		activeTurn:     make(map[string]*biz.Turn),
+		activeTask:     make(map[string]*biz.Task),
+		toolCallSteps:  make(map[string]string),
+		memberToolCalls: make(map[string]int),
 	}
 }
 
@@ -96,6 +100,7 @@ func (p *ActivityProjector) OnTurnStart(ctx context.Context, meta ProjectMeta) {
 	p.thinkingStepID = ""
 	p.replyStepID = ""
 	p.toolCallSteps = make(map[string]string)
+	p.memberToolCalls = make(map[string]int)
 
 	if p.seq == nil {
 		return
@@ -139,6 +144,7 @@ func (p *ActivityProjector) Reset() {
 	p.thinkingStepID = ""
 	p.replyStepID = ""
 	p.toolCallSteps = make(map[string]string)
+	p.memberToolCalls = make(map[string]int)
 }
 
 // === ActivityEmitter interface (biz.ActivityEmitter) ===
@@ -227,6 +233,186 @@ func (p *ActivityProjector) EmitConfirmResult(ctx context.Context, stepID string
 // compile-time interface check
 var _ biz.ActivityEmitter = (*ActivityProjector)(nil)
 
+// === Tier 2: v1 parity callbacks ===
+
+// stuckToolErrorCode is the ToolErrorCode set on action steps that never
+// received a tool_result when the turn finalizes (OnStuckTools).
+const stuckToolErrorCode = "tool_timeout"
+
+// OnError marks the root Task as failed and creates an error Step carrying
+// the error message + classification. If no root task exists (error before
+// OnTurnStart), the error is logged but no event is emitted.
+//
+// The error Step uses Kind=error with Content=errMsg and ToolErrorCode=errType,
+// providing the frontend with error details without requiring schema changes
+// to the Task entity (v2 architecture: everything is a Step).
+func (p *ActivityProjector) OnError(ctx context.Context, errMsg, errType, errCode string) {
+	if p == nil || p.seq == nil || p.meta.TaskID == "" {
+		return
+	}
+	now := time.Now()
+	p.mu.Lock()
+	task, ok := p.activeTask[p.meta.TaskID]
+	if ok {
+		task.Status = biz.TaskStatusFailed
+		task.CompletedAt = &now
+		task.UpdatedAt = now
+		task.Version++
+		delete(p.activeTask, p.meta.TaskID)
+	}
+	p.mu.Unlock()
+	if !ok {
+		p.lg.Warn("projector_v2: OnError with no active task",
+			loggateway.Str("task_id", p.meta.TaskID),
+			loggateway.Str("err_msg", errMsg),
+			loggateway.Str("err_type", errType))
+		return
+	}
+	// Emit error Step (carries error details for the frontend).
+	n := p.stepCounter.Add(1)
+	errStepID := p.meta.TurnID + "-s" + strconv.Itoa(int(n))
+	errStep := p.meta.newStep(errStepID, biz.StepKindError, 0)
+	errStep.Content = errMsg
+	errStep.ToolErrorCode = errType
+	if errCode != "" && errType == "" {
+		errStep.ToolErrorCode = errCode
+	}
+	errStep.Status = biz.StepStatusCompleted
+	errStep.CompletedAt = &now
+	errStep.Version++
+	p.mu.Lock()
+	p.activeStep[errStepID] = &errStep
+	p.mu.Unlock()
+	p.seq.Publish(ctx, biz.NewStepCreatedEvent(errStep))
+	p.seq.Publish(ctx, biz.NewStepCompletedEvent(errStep))
+	// Emit TaskFailedEvent (carries the Task with status=failed).
+	p.seq.Publish(ctx, biz.NewTaskFailedEvent(*task))
+}
+
+// OnStuckTools marks all tool_running steps as failed. Called from
+// OnTurnEndEnhanced when the turn ends with pending tool calls that never
+// received a tool_result.
+func (p *ActivityProjector) OnStuckTools(ctx context.Context) {
+	if p == nil || p.seq == nil {
+		return
+	}
+	now := time.Now()
+	p.mu.Lock()
+	var stuck []*biz.Step
+	for id, step := range p.activeStep {
+		if step.Status == biz.StepStatusToolRunning {
+			step.Status = biz.StepStatusFailed
+			step.CompletedAt = &now
+			step.ToolErrorCode = stuckToolErrorCode
+			step.Version++
+			stuck = append(stuck, step)
+			delete(p.activeStep, id)
+		}
+	}
+	p.mu.Unlock()
+	for _, step := range stuck {
+		p.lg.Warn("stuck tool detected at turn finalization",
+			loggateway.StepID("agent.v2.projector.stuck_tool"),
+			loggateway.Str("step_id", step.ID),
+			loggateway.Str("tool_name", step.ToolName),
+		)
+		p.seq.Publish(ctx, biz.NewStepFailedEvent(*step))
+	}
+}
+
+// EmitSystemEvent emits a notice step for system-level notifications
+// (e.g. context_usage token counts). Delegates to EmitNotice with noticeType
+// derived from meta["type"] or the content itself. The kind parameter is
+// accepted for v1 compatibility but v2 always uses StepKindNotice.
+func (p *ActivityProjector) EmitSystemEvent(ctx context.Context, kind biz.ActivityKind, content string, meta map[string]any) {
+	if p == nil || p.seq == nil || p.meta.TaskID == "" {
+		return
+	}
+	noticeType := content
+	if t, ok := meta["type"].(string); ok && t != "" {
+		noticeType = t
+	}
+	contentText := content
+	if contentText == "" {
+		if data, err := json.Marshal(meta); err == nil {
+			contentText = string(data)
+		}
+	}
+	_ = p.EmitNotice(ctx, contentText, noticeType)
+}
+
+// MemberToolCalls returns per-member tool call counts observed during the
+// turn. Used by stream_consumer for team run step persistence.
+func (p *ActivityProjector) MemberToolCalls() map[string]int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.memberToolCalls) == 0 {
+		return nil
+	}
+	out := make(map[string]int, len(p.memberToolCalls))
+	for k, v := range p.memberToolCalls {
+		out[k] = v
+	}
+	return out
+}
+
+// Close is a no-op for the singleton v2 projector. Per-turn cleanup is
+// handled by OnTurnEndEnhanced and Reset. The v2 Sequencer is a singleton
+// and must NOT be closed per-turn (it would break other concurrent turns).
+func (p *ActivityProjector) Close() {
+	// no-op: sequencer is a singleton, not closed per-turn
+}
+
+// ActivityUsage holds token usage for a turn. Mirrors agent.ActivityUsage.
+type ActivityUsage struct {
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+}
+
+// OnTurnEndEnhanced is the v1-compatible OnTurnEnd that also handles stuck
+// tools, token usage, and cancellation. This is the method the stream_consumer
+// should call instead of OnTurnEnd.
+//
+// Sequence: OnStuckTools → finalize remaining active steps → OnTurnEnd.
+// Usage is NOT attached to the Task entity (the stream_consumer attaches it
+// to EventStreamResult, which is consumed by the team runner for persistence).
+func (p *ActivityProjector) OnTurnEndEnhanced(ctx context.Context, meta ProjectMeta, usage *ActivityUsage, canceled bool) {
+	if p == nil || p.seq == nil {
+		return
+	}
+	// 1. Mark stuck tools as failed (before finalizing turn).
+	p.OnStuckTools(ctx)
+
+	// 2. Finalize remaining active steps with terminal status.
+	now := time.Now()
+	terminalStatus := biz.StepStatusCompleted
+	if canceled {
+		terminalStatus = biz.StepStatusCancelled
+	}
+	p.mu.Lock()
+	var remaining []*biz.Step
+	for id, step := range p.activeStep {
+		step.Status = terminalStatus
+		step.CompletedAt = &now
+		step.Version++
+		remaining = append(remaining, step)
+		delete(p.activeStep, id)
+	}
+	p.mu.Unlock()
+	for _, step := range remaining {
+		p.seq.Publish(ctx, biz.NewStepCompletedEvent(*step))
+	}
+
+	// 3. Emit turn.completed + task.completed (delegates to OnTurnEnd).
+	p.OnTurnEnd(ctx, meta)
+
+	// Usage is intentionally not attached to the Task entity — the
+	// stream_consumer attaches usage to EventStreamResult for team run
+	// persistence. This keeps the Task struct lean.
+	_ = usage
+}
+
 // BeginStep creates a new step of the given kind, stores it in the active map,
 // emits step.created, and returns the step ID.
 //
@@ -312,6 +498,10 @@ func (p *ActivityProjector) OnToolCall(ctx context.Context, meta ProjectMeta, to
 		step.ToolArgs = args
 		step.Status = biz.StepStatusToolRunning
 		step.Version++
+	}
+	// Track per-member tool calls for team run step persistence.
+	if meta.TeamStageID != "" && meta.AgentKey != "" {
+		p.memberToolCalls[meta.AgentKey]++
 	}
 	p.mu.Unlock()
 	if ok {
@@ -452,12 +642,14 @@ func (p *ActivityProjector) ProcessEvent(ctx context.Context, ev *trpcevent.Even
 	}
 
 	// Tool responses carrying errors are handled by processToolResponse
-	// (failStep path), not short-circuited here. Other error events are logged
-	// but have no v2 callback in the baseline.
+	// (failStep path), not short-circuited here. Other error events are
+	// routed to OnError which marks the root Task as failed.
 	if ev.Response.Error != nil && ev.Response.Object != trpcmodel.ObjectTypeToolResponse {
-		p.lg.Warn("projector_v2: error event (no v2 OnError callback)",
-			loggateway.Str("type", ev.Response.Error.Type),
-			loggateway.Str("msg", ev.Response.Error.Message))
+		errType := ev.Response.Error.Type
+		if errType == "" {
+			errType = "run_error"
+		}
+		p.OnError(ctx, ev.Response.Error.Message, errType, "")
 		return
 	}
 
