@@ -48,7 +48,6 @@ import type { AgentPromptPreview } from '../../agents/types';
 import { useReasoningSidebar } from './useReasoningSidebar';
 import { useContextualLoadingMessage } from './useContextualLoadingMessage';
 import { useStatusPulse } from './useStatusPulse';
-import { useActivityTimeline } from './useActivityTimeline';
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
 import { useChatEventRouter } from './useChatEventRouter';
 import type { V2WsEnvelope } from '../v2Types';
@@ -116,11 +115,7 @@ export function useChatWorkspace() {
     createSubmitHandlers,
   } = awaitReply;
 
-  // AF-FE-02~04: Activity-First timeline composable
-  const activityTimeline = useActivityTimeline();
-
   // Phase 2 v2: Activity store + event router for the new v2 event pipeline.
-  // Runs alongside v1 activityTimeline — Task 13 will remove the v1 path.
   const activityStore = useChatActivityStore();
   const eventRouter = useChatEventRouter(activityStore);
 
@@ -158,7 +153,6 @@ export function useChatWorkspace() {
   const systemEventNotification = useSystemEventNotification({
     applyRunStatusFromActivityEvent: (ev) => applyRunStatusFromActivityEvent(ev),
     getInboundActivityEventHandler: () => inboundActivityEventHandler,
-    activityTimeline,
   });
 
   // Activity-First (AF): Handler for the new business-semantic ActivityEvent
@@ -187,10 +181,10 @@ export function useChatWorkspace() {
       return;
     }
 
-    // Chat-rendering events: route to the Activity timeline.
-    // - task streaming/created/completed: main reply/thinking stream
-    // - thinking/action/reply/confirm: auxiliary chat-rendering kinds
-    activityTimeline.handleActivityEvent(ev);
+    // Chat-rendering events (task streaming/created/completed, thinking,
+    // action, reply, confirm) are now handled by the v2 event pipeline
+    // (handleV2Event → eventRouter → activityStore). The v1 ActivityEvent
+    // path here only retains dedup + system-event routing + sender reset.
     // OBS-02: Trigger contextual loading message for tool events (kind=action).
     if (ev.activity.kind === 'action') {
       contextualLoading.onSpiritActivityEvent(ev);
@@ -990,29 +984,9 @@ export function useChatWorkspace() {
     try {
       if (replace) clearChatMarkdownCache();
 
-      // AF-FE-14 / §9.1.3: Load Activity data BEFORE messages so that the AF
-      // path (useActivityTimeline) has data available when
-      // sortedActivities is computed. `ensureActivitiesLoaded` skips the API
-      // call when the session is already cached (Phase 3 per-session
-      // isolation) — WS replay reconciles missed events on reconnect. Use
-      // `retryLoad` to force a full refresh after a load failure.
-      await activityTimeline.ensureActivitiesLoaded(sessionId);
-      // AF-GAP-05: When AF API fails after 5 retries, show a visible
-      // "数据加载失败，请刷新" notice instead of silently falling back to
-      // Legacy rendering. The user must refresh to recover — silent Legacy
-      // fallback masks the failure and causes confusion when AF data is
-      // expected but missing.
-      if (activityTimeline.loadError.value) {
-        $q.notify({
-          type: 'negative',
-          message: t('chat.activityLoadFailed'),
-          timeout: 0, // persist until user refreshes
-          actions: [
-            { label: t('chat.activityLoadFailedRefresh'), color: 'white', handler: () => window.location.reload() },
-          ],
-        });
-      }
-
+      // Phase 2 v2: Activity data is hydrated via the v2 WS replay path
+      // (useChatStreamManager → onV2Event → eventRouter → activityStore).
+      // No explicit REST pre-load is needed; messages load below.
       await messageStore.loadMessages(replace ? { sessionId, replace: true } : { sessionId });
     } catch (err) {
       $q.notify({
@@ -1031,10 +1005,6 @@ export function useChatWorkspace() {
         sessionDrafts.set(prevSid, inputText.value);
       }
       if (!sid) {
-        // Phase 3: activities are isolated per session; just clear the
-        // current pointer. Data for each session remains cached and resumes
-        // instantly when the user switches back.
-        activityTimeline.setCurrentSession(null);
         onSessionSwitch(undefined);
         isAwaitingUser.value = false;
         awaitingRunId.value = '';
@@ -1049,9 +1019,6 @@ export function useChatWorkspace() {
       stopCompressPolling();
       startCompressPolling();
       if (sid !== prevSid) {
-        // Phase 3: switch the active session pointer (no reset). bindSessionView
-        // below will load activities for this session if not yet cached.
-        activityTimeline.setCurrentSession(sid);
         sender.clearFailedPendingForSession(prevSid);
         // Bugfix P1#5: previous run's sending state must not leak into the
         // newly-selected session. onSessionSwitch only resets runStatus via
@@ -1068,10 +1035,9 @@ export function useChatWorkspace() {
     { immediate: true },
   );
 
-  // Phase B-3: Sync activityTimeline.currentSessionId with spirit panelMode.
-  // - spirit mode: currentSessionId = selectedSessionForUi.id (already set
-  //   by the watcher above; this branch re-asserts it for explicitness)
-  // - team mode:   currentSessionId = activeTeam.teamSessionId
+  // Phase B-3: Resolve spirit panel-mode → target session id and bind it.
+  // - spirit mode: target = selectedSessionForUi.id
+  // - team mode:   target = activeTeam.teamSessionId
   // - member mode: resolve via sessionTree.findMemberSessionId
   watch(
     () => spiritStore.activePanelMode,
@@ -1095,12 +1061,8 @@ export function useChatWorkspace() {
         findMemberSessionId: sessionTree.findMemberSessionId,
       });
       if (targetSessionId) {
-        activityTimeline.setCurrentSession(targetSessionId);
         const streamKind: 'chat' | 'team' = mode === 'team' ? 'team' : 'chat';
         void bindSessionView(targetSessionId, true, streamKind);
-      } else if (mode === 'spirit') {
-        // spirit mode with no selected session: clear.
-        activityTimeline.setCurrentSession(null);
       }
     },
   );
@@ -1117,7 +1079,6 @@ export function useChatWorkspace() {
       await sessionTree.loadTreeFor(spiritSessionId);
       const memberSessionId = sessionTree.findMemberSessionId(spiritSessionId, agentKey);
       if (memberSessionId) {
-        activityTimeline.setCurrentSession(memberSessionId);
         void bindSessionView(memberSessionId, true, 'chat');
       }
     },
@@ -1289,7 +1250,6 @@ export function useChatWorkspace() {
       onCompactSession,
       onConfirmActivity,
       compressStatus,
-      activityTimeline,
       activityStore,
       v2Tasks: computed(() => activityStore.getSessionTasks(selectedSessionForUi.value?.id ?? '')),
       sessionTree,

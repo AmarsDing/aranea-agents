@@ -1,5 +1,4 @@
 import type { ActivityEvent as AFActivityEvent } from '../../../realtime/activityEvent';
-import type { useActivityTimeline } from './useActivityTimeline';
 
 export interface UseSystemEventNotificationDeps {
   /**
@@ -15,8 +14,6 @@ export interface UseSystemEventNotificationDeps {
    * fetch it lazily at event-dispatch time.
    */
   getInboundActivityEventHandler: () => ((ev: AFActivityEvent) => void | Promise<void>) | null;
-  /** The Activity timeline, used as a fallback when no inbound handler is bound yet. */
-  activityTimeline: ReturnType<typeof useActivityTimeline>;
 }
 
 /**
@@ -99,8 +96,11 @@ export function useSystemEventNotification(deps: UseSystemEventNotificationDeps)
    *   - run_status → apply run-status updates (follow-up queue, runStatus ref,
    *     tool-message cancellation on terminal statuses).
    *   - all other system events → route to the inbound-sync pipeline
-   *     (useChatInboundSync.handleInboundActivityEvent). Falls back to the
-   *     Activity timeline if the inbound handler is not bound yet.
+   *     (useChatInboundSync.handleInboundActivityEvent) when bound.
+   *
+   * Rendering of system events (notices, team/graph/plan cards) is now
+   * handled by the v2 event pipeline (eventRouter → activityStore); this
+   * handler only drives state side-effects (run status, inbound sync).
    *
    * Returns true if the event was handled as a system event; false if it
    * should be treated as a chat-rendering event by the caller.
@@ -116,29 +116,10 @@ export function useSystemEventNotification(deps: UseSystemEventNotificationDeps)
     const inboundHandler = deps.getInboundActivityEventHandler();
     if (inboundHandler) {
       void inboundHandler(ev);
-    } else {
-      // Fallback: no inbound handler bound yet — pass to the timeline so
-      // nothing is dropped before useChatInboundSync wires up.
-      deps.activityTimeline.handleActivityEvent(ev);
     }
-
-    // Notice events (run_status, session_status_changed, pre_planning_gate, …)
-    // are system notifications that should ALSO render as NoticeBlock in the
-    // Activity timeline when they carry a user-facing message. Passing them here
-    // ensures chat-domain notices are visible while still receiving inbound-sync
-    // state updates above. Empty notices (e.g. background_job_refresh) stay off
-    // the timeline and are handled purely by inbound-sync / store side effects.
-    if (ev.activity.kind === 'notice' && (ev.activity.content || '').trim()) {
-      deps.activityTimeline.handleActivityEvent(ev);
-    }
-
-    // Orchestration events (team_stage/graph_stage/plan/session) are published
-    // with Domain=chat because they render as Activity timeline cards. They
-    // were already routed to inbound-sync above for spirit-store updates, so
-    // also feed them to the timeline to keep team/graph/plan cards visible.
-    if (isOrchestrationActivityEvent(ev)) {
-      deps.activityTimeline.handleActivityEvent(ev);
-    }
+    // No fallback: the inbound handler is bound by useChatWorkspace before
+    // any ActivityEvent is dispatched. v1 timeline rendering is removed;
+    // notice/orchestration events are rendered via the v2 pipeline.
     return true;
   }
 
