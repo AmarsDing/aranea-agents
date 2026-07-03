@@ -74,6 +74,19 @@ type EventPipeline struct {
 	ActivityBus     biz.ActivityEventBus
 	EventBus        biz.EventBus // Phase 3b-D: v2 EventBus for typed Events (replaces ActivityBus for new code)
 	MonitorEventBus contract.MonitorBus
+	// Sequencer is the v2 publish-only entry point for ActivityBridgeEvent.
+	// team/service packages route Publish through Sequencer to obtain FIFO
+	// ordering + retry/dead-letter; EventBus is retained only for Subscribe.
+	// *v2.Sequencer satisfies this interface; nil = fall back to EventBus.Publish.
+	Sequencer EventPublisher
+}
+
+// EventPublisher is the publish-only subset of biz.EventBus.
+// *v2.Sequencer implements this interface (Publish without Subscribe).
+// Defined here (runtime pkg) so team/service packages can depend on it
+// without importing internal/agent/v2 (which would reverse the dependency).
+type EventPublisher interface {
+	Publish(ctx context.Context, e biz.Event)
 }
 
 // TurnDeps is the consolidated dependency set threaded through each chat turn.

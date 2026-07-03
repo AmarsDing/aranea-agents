@@ -834,6 +834,7 @@ func provideTeamTurnDeps(
 	activityBus biz.ActivityEventBus,
 	eventBus biz.EventBus,
 	monitorEventBus contract.MonitorBus,
+	seq *v2.Sequencer,
 	lg loggateway.Logger,
 ) rt.TurnDeps {
 	// LLMHTTP timeout is sourced from TimeoutPolicy.
@@ -843,7 +844,7 @@ func provideTeamTurnDeps(
 	return rt.TurnDeps{
 		ReadDeps:  provideTurnReadDeps(agents, agentsUC, toolRegistry, toolUC, llmCatalog, skillUC, sys),
 		Persist:   persist,
-		Pipeline:  rt.EventPipeline{ActivityBus: activityBus, EventBus: eventBus, MonitorEventBus: monitorEventBus},
+		Pipeline:  rt.EventPipeline{ActivityBus: activityBus, EventBus: eventBus, MonitorEventBus: monitorEventBus, Sequencer: seq},
 		LLMHTTP:   &http.Client{Timeout: timeoutPolicy.TimeoutFor(provider.TaskTypeModerate)},
 		Sessions:  sessions,
 		Compress:  compress,
@@ -2068,8 +2069,10 @@ func provideV2RepoSet(
 }
 
 // provideV2Sequencer constructs the v2 Sequencer.
-func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, lg loggateway.Logger) *v2.Sequencer {
-	return v2.NewSequencer(rs, bus, lg)
+// Phase 2: injects WithActivityUpserter so ActivityBridgeEvent payloads
+// (team package direct-publish) are persisted via the v1 activities table.
+func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, au biz.ActivityUpserter, lg loggateway.Logger) *v2.Sequencer {
+	return v2.NewSequencer(rs, bus, lg, v2.WithActivityUpserter(au))
 }
 
 // provideV2Projector constructs the singleton v2 ActivityProjector.
@@ -2422,6 +2425,10 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		// Phase 3b-D: bind v2 EventBus interface to *event.V2Bus implementation
 		// so Wire can inject biz.EventBus into consumers migrated from v1 ActivityEventBus.
 		wire.Bind(new(biz.EventBus), new(*event.V2Bus)),
+		// Phase 2: bind v2 EventPublisher interface to *v2.Sequencer so Wire
+		// can inject the publish-only Sequencer entry into team package consumers
+		// (Runner.Pipeline.Sequencer, TeamGraphRunCoordinator.seq).
+		wire.Bind(new(rt.EventPublisher), new(*v2.Sequencer)),
 		provideV2Sequencer,
 		provideV2Projector,
 		provideWSV2Subscriber,

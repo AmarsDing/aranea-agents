@@ -27,7 +27,11 @@ type RepoSet interface {
 // persistAction routes an Event to the appropriate Repo method.
 // Returns false if the event should NOT be persisted (e.g. step.streaming).
 // Returns the upserted entity's version on success (used for sequencing).
-func persistAction(ctx context.Context, rs RepoSet, e biz.Event) (persisted bool, err error) {
+//
+// Phase 2: au (ActivityUpserter) is the v1 Activity persistence interface,
+// used for ActivityBridgeEvent payloads that wrap a v1 ActivityEvent. May be
+// nil — in that case ActivityBridgeEvent is skipped (no persist, no error).
+func persistAction(ctx context.Context, rs RepoSet, au biz.ActivityUpserter, e biz.Event) (persisted bool, err error) {
 	switch ev := e.(type) {
 	case *biz.TaskCreatedEvent:
 		_, err = rs.UpsertTask(ctx, ev.Task)
@@ -115,6 +119,18 @@ func persistAction(ctx context.Context, rs RepoSet, e biz.Event) (persisted bool
 		return true, err
 	case *biz.PlanStepSkippedEvent:
 		_, err = rs.UpsertPlanStep(ctx, ev.PlanStep)
+		return true, err
+
+	case *biz.ActivityBridgeEvent:
+		// Phase 2: persist the wrapped v1 Activity so direct-publish events
+		// (graph_stage/team_stage/session/plan) routed through the Sequencer
+		// survive page refresh. Skipped when au is nil (no v1 ActivityUpserter
+		// wired); the v1 ActivityEventBus path or other subscribers handle
+		// persistence in that case.
+		if au == nil {
+			return false, nil
+		}
+		_, err = au.UpsertActivity(ctx, ev.Event.Activity)
 		return true, err
 	}
 	// Unknown event type: skip persistence

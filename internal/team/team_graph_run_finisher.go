@@ -147,7 +147,7 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 		r.lg.Warn("UpdateTeamRun failed in FinalizeGraphTeamRun", loggateway.StepID("team.graph.finisher_update_fail"), loggateway.Str("team_run_id", updatedRun.ID), loggateway.Err(err))
 	}
 	run = updatedRun
-	if r.td.Pipeline.EventBus != nil {
+	if r.hasPublisher() {
 		cp := run
 		ev := biz.ActivityEvent{
 			Event: biz.ActivityEventCompleted,
@@ -167,7 +167,7 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 		// Phase 3b-D: bridge to v2 EventBus. ActivityBridgeEvent preserves the
 		// v1 TeamStage Completed activity (Meta.run_id, Meta.run snapshot) so
 		// the frontend team_stage terminal state renders correctly.
-		r.td.Pipeline.EventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
+		r.publishEvent(ctx, biz.NewActivityBridgeEvent(ev))
 		// Finalize session activities for members that were started (session
 		// "created" event published at team start) but never executed in the
 		// graph. Without this, their AgentCards stay in "running" forever even
@@ -194,7 +194,7 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 // event for the gap. Uses AgentKey for dedup since multiple member entries
 // can share the same agent (e.g., programmer as both synthesizer and worker).
 func (r *Runner) finalizePendingSessionActivities(ctx context.Context, run biz.TeamRunRecord, teamID string, persistedSteps []biz.TeamRunStep) {
-	if r == nil || r.td.Pipeline.EventBus == nil {
+	if r == nil || !r.hasPublisher() {
 		return
 	}
 	persistedAgentKeys := make(map[string]struct{}, len(persistedSteps))
@@ -297,7 +297,7 @@ func (r *Runner) ensureGraphRunStepsFallback(
 	}
 	// Publish the "created" session event for the fallback case since no
 	// node_start graph event was published (PublishTeamStepStarted was not called).
-	if r.td.Pipeline.EventBus != nil {
+	if r.hasPublisher() {
 		agentName := strutil.FirstNonEmpty(anchorAg.DisplayName, anchorAg.AgentKey)
 		r.publishTeamStepActivity(ctx, run, teamID, anchorAg.AgentKey, agentName,
 			biz.ActivityEventCreated, biz.ActivityStatusRunning, "executing", nil)

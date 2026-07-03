@@ -10,6 +10,7 @@ import (
 
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/telemetry/turntrace"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -69,6 +70,7 @@ type TeamGraphRunCoordinator struct {
 	// (which deeply inspects v1 Kind/Stage/Meta/Event/Content to drive the
 	// graph watch state machine). All publish sites also use NewActivityBridgeEvent.
 	eventBus        biz.EventBus
+	seq             rt.EventPublisher // Phase 2: Publish via v2 Sequencer (FIFO + retry); eventBus retained for Subscribe
 	finisher        *TeamRunMediator
 	sessionRepo     biz.TeamGraphSessionRepo
 	cfg             CoordinatorConfig
@@ -104,7 +106,7 @@ const (
 	graphWatchStepsAndFinalize
 )
 
-func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teamRunReader biz.TeamRunReader, teamRunWriter biz.TeamRunWriter, runTransitioner biz.TeamRunStatusTransitioner, eventBus biz.EventBus, sessionRepo biz.TeamGraphSessionRepo, agentKeyFn func(agentID string) string, lg loggateway.Logger) *TeamGraphRunCoordinator {
+func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teamRunReader biz.TeamRunReader, teamRunWriter biz.TeamRunWriter, runTransitioner biz.TeamRunStatusTransitioner, eventBus biz.EventBus, seq rt.EventPublisher, sessionRepo biz.TeamGraphSessionRepo, agentKeyFn func(agentID string) string, lg loggateway.Logger) *TeamGraphRunCoordinator {
 	if agentKeyFn == nil {
 		agentKeyFn = func(agentID string) string { return strings.TrimSpace(agentID) }
 	}
@@ -114,11 +116,27 @@ func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teamRunReader 
 		teamRunWriter:   teamRunWriter,
 		runTransitioner: runTransitioner,
 		eventBus:        eventBus,
+		seq:             seq,
 		sessionRepo:     sessionRepo,
 		agentKeyFn:      agentKeyFn,
 		sessions:        make(map[string]*teamGraphRunSession),
 		cfg:             DefaultCoordinatorConfig(),
 		lg:              lg,
+	}
+}
+
+// publishEvent routes an ActivityBridgeEvent through the v2 Sequencer when
+// available; falls back to EventBus.Publish when Sequencer is nil.
+func (c *TeamGraphRunCoordinator) publishEvent(ctx context.Context, e biz.Event) {
+	if c == nil {
+		return
+	}
+	if c.seq != nil {
+		c.seq.Publish(ctx, e)
+		return
+	}
+	if c.eventBus != nil {
+		c.eventBus.Publish(ctx, e)
 	}
 }
 
@@ -282,7 +300,7 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 						}
 					}
 				}
-				if c.eventBus != nil {
+				if c.seq != nil || c.eventBus != nil {
 					ev := biz.ActivityEvent{
 						Event: biz.ActivityEventFailed,
 						Activity: biz.Activity{
@@ -303,7 +321,7 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 						Domain: biz.ActivityDomainChat,
 					}
 					// Phase 3b-D: bridge to v2 EventBus.
-					c.eventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
+					c.publishEvent(ctx, biz.NewActivityBridgeEvent(ev))
 				}
 			}
 		}
@@ -631,7 +649,7 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 		}
 	}
 	run = updatedRun
-	if c.eventBus != nil {
+	if c.seq != nil || c.eventBus != nil {
 		var eventType biz.ActivityEventType
 		var status biz.ActivityStatus
 		var stage string

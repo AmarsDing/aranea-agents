@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
@@ -32,6 +33,9 @@ type OrchestrationProjectorConfig struct {
 	// projector extracts the v1 ActivityEvent from each ActivityBridgeEvent and
 	// feeds it to OrchestrationStatusStore.ApplyActivityEvent unchanged.
 	EventBus biz.EventBus
+	// Sequencer routes orchestration_status Notice events through the v2
+	// Sequencer (FIFO + retry); falls back to EventBus when nil.
+	Sequencer rt.EventPublisher
 }
 
 // BuildOrchestrationRegistry maps team members to graph node IDs (member-{sort_order}).
@@ -114,7 +118,7 @@ func StartOrchestrationStatusProjector(ctx context.Context, cfg OrchestrationPro
 				}
 				changed := store.ApplyActivityEvent(aev, cfg.Registry)
 				for _, st := range changed {
-					publishOrchestrationStatus(procCtx, cfg.EventBus, cfg, channel, st)
+					publishOrchestrationStatus(procCtx, cfg, channel, st)
 				}
 			}
 		}
@@ -123,8 +127,8 @@ func StartOrchestrationStatusProjector(ctx context.Context, cfg OrchestrationPro
 	return cancel
 }
 
-func publishOrchestrationStatus(ctx context.Context, bus biz.EventBus, cfg OrchestrationProjectorConfig, channel string, st *biz.AgentNodeState) {
-	if st == nil || bus == nil {
+func publishOrchestrationStatus(ctx context.Context, cfg OrchestrationProjectorConfig, channel string, st *biz.AgentNodeState) {
+	if st == nil || (cfg.Sequencer == nil && cfg.EventBus == nil) {
 		return
 	}
 	status := st.Status
@@ -178,9 +182,14 @@ func publishOrchestrationStatus(ctx context.Context, bus biz.EventBus, cfg Orche
 		},
 		Domain: biz.ActivityDomainChat,
 	}
-	// Phase 3b-D: bridge to v2 EventBus. The orchestration_status Notice
-	// activity is consumed by the frontend AgentCard and Kanban UIs.
-	bus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
+	// Phase 3b-D: bridge to v2 EventBus. Phase 2: prefer v2 Sequencer
+	// (FIFO + retry) for the orchestration_status Notice activity consumed
+	// by the frontend AgentCard and Kanban UIs; fall back to EventBus.
+	if cfg.Sequencer != nil {
+		cfg.Sequencer.Publish(ctx, biz.NewActivityBridgeEvent(ev))
+	} else {
+		cfg.EventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
+	}
 }
 
 // agentNodeStatusToActivityStatus maps an AgentNodeStatus to the closest

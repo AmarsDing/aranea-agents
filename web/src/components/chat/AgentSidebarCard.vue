@@ -1,80 +1,87 @@
 <template>
   <div
     class="agent-sidebar-card"
-    :class="`agent-sidebar-card--${displayStatus}`"
+    :class="[`agent-sidebar-card--${displayStatus}`, { 'agent-sidebar-card--active': active }]"
     :data-agent-key="member.agentKey"
     :data-team-session-id="teamSessionId"
     :data-team-status="teamStatus || ''"
     :data-team-id="teamId"
+    role="button"
+    tabindex="0"
+    :aria-label="member.displayName"
     @click="$emit('locate', { agentKey: member.agentKey, teamSessionId, teamId })"
+    @keydown.enter="$emit('locate', { agentKey: member.agentKey, teamSessionId, teamId })"
   >
     <div class="agent-sidebar-card__main">
-      <span class="agent-sidebar-card__avatar">
-        <ResolvedAvatarImg
-          v-if="resolvedAvatar && shouldRenderAgentAvatarImage(resolvedAvatar)"
-          :icon="resolvedAvatar"
-          :alt="member.displayName"
-        />
-        <q-icon
-          v-else-if="resolvedAvatar && quasarAvatarIconForAgentField(resolvedAvatar)"
-          :name="quasarAvatarIconForAgentField(resolvedAvatar)"
-          size="14px"
-        />
-        <template v-else>{{ memberInitial }}</template>
-      </span>
-      <div class="agent-sidebar-card__info">
-        <div class="agent-sidebar-card__name">
-          {{ member.displayName }}
-        </div>
-        <div class="agent-sidebar-card__team">{{ teamName }}</div>
+      <AgentAvatarQ
+        v-if="resolvedAvatar"
+        :icon="resolvedAvatar"
+        size="32px"
+        avatar-class="agent-sidebar-card__avatar-img"
+        :alt="member.displayName"
+      />
+      <div v-else class="agent-sidebar-card__avatar agent-sidebar-card__avatar--fallback">
+        <q-icon name="smart_toy" size="16px" />
       </div>
-      <span class="agent-sidebar-card__status">
-        <!-- 执行中：CSS 转圈动画 -->
-        <span v-if="displayStatus === 'running'" class="agent-sidebar-card__spinner" />
-        <!-- 阻塞：黄色 ⚠ + 阻塞原因 -->
-        <span v-else-if="displayStatus === 'blocked'" class="agent-sidebar-card__blocked-badge"
-          >⚠ {{ statusText }}</span
-        >
-        <!-- 已完成：绿色标签 -->
-        <span v-else-if="displayStatus === 'completed'" class="agent-sidebar-card__completed-tag">{{
-          t('chat.agentSidebar.completedLabel')
-        }}</span>
-        <!-- 失败：红色标签 -->
-        <span v-else-if="displayStatus === 'failed'" class="agent-sidebar-card__failed-badge">{{
-          t('chat.agentSidebar.failedLabel')
-        }}</span>
-      </span>
+      <div class="agent-sidebar-card__info col min-width-0">
+        <div class="agent-sidebar-card__name ellipsis">{{ member.displayName }}</div>
+        <div class="agent-sidebar-card__status ellipsis">
+          <span class="agent-sidebar-card__status-dot" :class="`agent-sidebar-card__status-dot--${displayStatus}`" />
+          <span v-if="displayStatus === 'blocked'" class="agent-sidebar-card__status-text">{{
+            blockedInfo?.message || t('chat.agentSidebar.blockedFallback')
+          }}</span>
+          <span v-else>{{ statusText }}</span>
+        </div>
+      </div>
     </div>
-    <!-- 操作按钮：设置入口始终显示；运行中/阻塞时额外显示生命周期控制 -->
     <div class="agent-sidebar-card__actions">
-      <button
+      <q-btn
         v-if="displayStatus === 'running'"
-        class="agent-sidebar-card__btn agent-sidebar-card__btn--pause"
+        dense
+        round
+        flat
+        size="10px"
+        icon="pause"
+        :title="t('chat.agentSidebar.pause')"
+        :aria-label="t('chat.agentSidebar.pause')"
+        class="agent-sidebar-card__action-btn"
         @click.stop="$emit('pause', member.agentKey)"
-      >
-        ⏸ {{ t('chat.agentSidebar.pause') }}
-      </button>
-      <button
+      />
+      <q-btn
         v-else-if="displayStatus === 'blocked'"
-        class="agent-sidebar-card__btn agent-sidebar-card__btn--resume"
+        dense
+        round
+        flat
+        size="10px"
+        icon="play_arrow"
+        :title="t('chat.agentSidebar.resume')"
+        :aria-label="t('chat.agentSidebar.resume')"
+        class="agent-sidebar-card__action-btn"
         @click.stop="$emit('resume', member.agentKey)"
-      >
-        ▶ {{ t('chat.agentSidebar.resume') }}
-      </button>
-      <button
+      />
+      <q-btn
         v-if="showLifecycleCancel"
-        class="agent-sidebar-card__btn agent-sidebar-card__btn--cancel"
+        dense
+        round
+        flat
+        size="10px"
+        icon="close"
+        :title="t('chat.agentSidebar.cancel')"
+        :aria-label="t('chat.agentSidebar.cancel')"
+        class="agent-sidebar-card__action-btn agent-sidebar-card__action-btn--cancel"
         @click.stop="$emit('cancel', member.agentKey)"
-      >
-        ✕ {{ t('chat.agentSidebar.cancel') }}
-      </button>
-      <button
-        class="agent-sidebar-card__btn agent-sidebar-card__btn--settings"
+      />
+      <q-btn
+        dense
+        round
+        flat
+        size="10px"
+        icon="settings"
         :title="t('chat.agentSidebar.settings')"
+        :aria-label="t('chat.agentSidebar.settings')"
+        class="agent-sidebar-card__action-btn agent-sidebar-card__action-btn--settings"
         @click.stop="$emit('settings', member.agentKey)"
-      >
-        ⚙
-      </button>
+      />
     </div>
   </div>
 </template>
@@ -85,9 +92,7 @@ import { useI18n } from 'vue-i18n';
 import type { SpiritMember, SpiritTeamStatus } from '../../features/spirit/types';
 import type { Agent } from '../../features/agents/types';
 import type { BlockedResult } from '../../features/chat/composables/useBlockedStatus';
-import { nameInitial } from '../../features/spirit/spiritUi';
-import { shouldRenderAgentAvatarImage, quasarAvatarIconForAgentField } from '../../features/avatar/iconModel';
-import ResolvedAvatarImg from '../avatar/ResolvedAvatarImg.vue';
+import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
 
 const { t } = useI18n();
 
@@ -103,6 +108,8 @@ const props = defineProps<{
   blockedInfo?: BlockedResult;
   /** 当前用户可见的 Agent 配置列表，用于补充成员头像（当后端未下发 avatar_url 时） */
   agents?: Agent[];
+  /** 是否选中态（用于高亮） */
+  active?: boolean;
 }>();
 
 defineEmits<{
@@ -113,8 +120,6 @@ defineEmits<{
   /** 点击设置按钮，由外层根据 agentKey 解析 agentId 后打开设置弹窗 */
   settings: [agentKey: string];
 }>();
-
-const memberInitial = computed(() => nameInitial(props.member.displayName));
 
 /** 将 SpiritMember.status + teamStatus + 阻塞信息映射为显示状态。
  * 团队进入终态（completed/failed/cancelled）时，成员卡片应同步显示对应终态。
@@ -138,7 +143,11 @@ const displayStatus = computed<'running' | 'blocked' | 'completed' | 'failed' | 
 
 const showLifecycleCancel = computed(() => displayStatus.value === 'running' || displayStatus.value === 'blocked');
 
-/** 头像解析：优先使用成员自己的 avatarUrl；后端未下发时，从用户 Agent 库中按 agentKey 查找对应 Agent 的 icon。 */
+/** 头像解析：
+ *  1. 优先使用成员自己的 avatarUrl
+ *  2. 后端未下发时，从用户 Agent 库中按 agentKey 查找对应 Agent 的 icon
+ *  3. 都没有时返回空字符串，模板渲染 fallback（smart_toy 临时头像）
+ */
 const resolvedAvatar = computed(() => {
   if (props.member.avatarUrl) return props.member.avatarUrl;
   const agent = props.agents?.find((a) => a.agent_key === props.member.agentKey);
@@ -150,7 +159,7 @@ const statusText = computed(() => {
     case 'running':
       return t('chat.agentSidebar.statusRunning');
     case 'blocked':
-      return props.blockedInfo?.message || t('chat.agentSidebar.blockedFallback');
+      return t('chat.agentSidebar.blockedFallback');
     case 'completed':
       return t('chat.agentSidebar.statusCompleted');
     case 'failed':
@@ -163,183 +172,160 @@ const statusText = computed(() => {
 
 <style lang="sass" scoped>
 .agent-sidebar-card
-  border-radius: 8px
-  padding: 8px 10px
-  margin-bottom: 6px
+  display: flex
+  align-items: center
+  gap: var(--space-2, 8px)
+  padding: 6px 8px
+  border-radius: 10px
   cursor: pointer
-  transition: background 0.15s
+  transition: background 0.15s ease, border-color 0.15s ease
+  border: 1px solid transparent
+  background: color-mix(in srgb, var(--glass-surface) 40%, transparent)
   border-left: 3px solid transparent
 
   &:hover
-    background: rgba(255, 255, 255, 0.06)
+    background: color-mix(in srgb, var(--glass-surface) 65%, transparent)
+    border-color: var(--glass-border)
+
+  &--active
+    background: color-mix(in srgb, var(--color-accent) 8%, var(--glass-surface))
+    border-color: color-mix(in srgb, var(--color-accent) 30%, var(--glass-border))
 
   &--running
-    border-left-color: #00E5FF
-    background: rgba(0, 229, 255, 0.06)
+    border-left-color: var(--color-accent)
 
   &--blocked
-    border-left-color: #E9A23B
-    background: rgba(233, 162, 59, 0.10)
-    animation: stuck-pulse 2s infinite
+    border-left-color: var(--color-warning)
+    animation: agent-card-stuck-pulse 2s infinite
 
   &--completed
-    border-left-color: #4CAF7C
-    opacity: 0.7
+    border-left-color: var(--color-success)
+    opacity: 0.85
 
   &--failed
-    border-left-color: #f44
+    border-left-color: var(--color-danger)
 
   &--pending
-    border-left-color: #444
+    border-left-color: var(--color-icon-muted, var(--color-text-tertiary))
 
   &__main
     display: flex
     align-items: center
-    gap: 10px
+    gap: var(--space-2, 8px)
+    flex: 1
+    min-width: 0
 
   &__avatar
-    width: 28px
-    height: 28px
-    border-radius: 50%
-    background: var(--glass-elevated, var(--glass-surface))
     display: flex
     align-items: center
     justify-content: center
-    font-size: 11px
-    font-weight: 600
-    color: var(--color-text-secondary)
+    width: 32px
+    height: 32px
+    border-radius: 50%
     flex-shrink: 0
-    overflow: hidden
+    color: var(--color-text-secondary)
+
+    &--fallback
+      background: color-mix(in srgb, var(--color-accent) 12%, var(--glass-surface))
+      border: 1px solid color-mix(in srgb, var(--color-accent) 25%, var(--glass-border))
+
+  &__avatar-img
+    flex-shrink: 0
 
   &__info
-    flex: 1
-    min-width: 0
     display: flex
     flex-direction: column
     gap: 2px
+    min-width: 0
 
   &__name
     font-size: 13px
     font-weight: 600
-    color: var(--color-text-primary, #fff)
+    color: var(--color-text-primary)
+    line-height: 1.3
     white-space: nowrap
     overflow: hidden
     text-overflow: ellipsis
-    line-height: 1.3
-
-  &__team
-    font-size: 10px
-    color: var(--color-text-tertiary, #666)
-    white-space: nowrap
-    overflow: hidden
-    text-overflow: ellipsis
-    line-height: 1.3
 
   &__status
-    flex-shrink: 0
-    display: inline-flex
+    display: flex
     align-items: center
-    justify-content: center
+    gap: 4px
+    font-size: 10px
+    color: var(--color-text-secondary)
+    line-height: 1.3
+    white-space: nowrap
+    overflow: hidden
+    text-overflow: ellipsis
 
-  &__spinner
-    display: inline-block
-    width: 14px
-    height: 14px
-    border: 2px solid #00E5FF
-    border-top-color: transparent
+  &__status-text
+    overflow: hidden
+    text-overflow: ellipsis
+
+  &__status-dot
+    width: 6px
+    height: 6px
     border-radius: 50%
-    animation: spin 0.8s linear infinite
+    flex-shrink: 0
 
-  &__blocked-badge
-    display: inline-flex
-    align-items: center
-    gap: 2px
-    padding: 2px 6px
-    border-radius: 8px
-    background: rgba(233, 162, 59, 0.15)
-    border: 1px solid rgba(233, 162, 59, 0.5)
-    color: #E9A23B
-    font-size: 9px
-    font-weight: 600
-    line-height: 1.2
-    white-space: nowrap
+    &--running
+      background: var(--color-accent)
+      animation: agent-card-spin 1s linear infinite
 
-  &__completed-tag
-    display: inline-flex
-    align-items: center
-    gap: 2px
-    padding: 2px 6px
-    border-radius: 8px
-    background: rgba(76, 175, 124, 0.18)
-    border: 1px solid rgba(76, 175, 124, 0.5)
-    color: #4CAF7C
-    font-size: 9px
-    font-weight: 600
-    line-height: 1.2
-    white-space: nowrap
+    &--blocked
+      background: var(--color-warning)
 
-  &__failed-badge
-    display: inline-flex
-    align-items: center
-    gap: 2px
-    padding: 2px 6px
-    border-radius: 8px
-    background: rgba(244, 67, 54, 0.15)
-    border: 1px solid rgba(244, 67, 54, 0.5)
-    color: #f88
-    font-size: 9px
-    font-weight: 600
-    line-height: 1.2
-    white-space: nowrap
+    &--completed
+      background: var(--color-success)
+
+    &--failed
+      background: var(--color-danger)
+
+    &--pending
+      background: var(--color-icon-muted, var(--color-text-tertiary))
 
   &__actions
     display: flex
-    gap: 6px
-    margin-top: 6px
-    margin-left: 38px
-
-  &__btn
-    border-radius: 4px
-    padding: 2px 6px
-    font-size: 9px
-    cursor: pointer
-    border: 1px solid
-    display: inline-flex
     align-items: center
-    gap: 3px
+    gap: 2px
+    flex-shrink: 0
+    opacity: 0
+    transition: opacity 0.2s ease
 
-    &--pause
-      background: rgba(255, 165, 0, 0.15)
-      border-color: rgba(255, 165, 0, 0.5)
-      color: #E9A23B
+  &:hover &__actions,
+  &--active &__actions,
+  &--running &__actions,
+  &--blocked &__actions
+    opacity: 1
 
-    &--resume
-      background: rgba(0, 229, 255, 0.15)
-      border-color: rgba(0, 229, 255, 0.5)
-      color: #00E5FF
+  &__action-btn
+    width: 24px
+    height: 24px
+    min-height: 24px
+    border-radius: 8px
+    color: var(--color-text-secondary)
 
-    &--cancel
-      background: rgba(244, 67, 54, 0.15)
-      border-color: rgba(244, 67, 54, 0.5)
-      color: #f88
+    &:hover
+      background: color-mix(in srgb, var(--color-accent) 15%, transparent)
+      color: var(--color-accent)
+
+    &--cancel:hover
+      background: color-mix(in srgb, var(--color-danger) 15%, transparent)
+      color: var(--color-danger)
 
     &--settings
-      margin-left: auto
-      background: transparent
-      border-color: rgba(255, 255, 255, 0.12)
       color: var(--color-text-tertiary)
 
-      &:hover
-        border-color: var(--color-accent)
-        color: var(--color-accent)
+:global(.body--dark) .agent-sidebar-card__action-btn
+  color: var(--color-text-primary)
 
-@keyframes spin
+@keyframes agent-card-spin
   to
     transform: rotate(360deg)
 
-@keyframes stuck-pulse
+@keyframes agent-card-stuck-pulse
   0%, 100%
-    box-shadow: 0 0 0 rgba(233, 162, 59, 0)
+    box-shadow: 0 0 0 rgba(240, 155, 84, 0)
   50%
-    box-shadow: 0 0 6px rgba(233, 162, 59, 0.3)
+    box-shadow: 0 0 6px rgba(240, 155, 84, 0.3)
 </style>

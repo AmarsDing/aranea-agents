@@ -89,6 +89,30 @@ func NewRunner(
 	}
 }
 
+// publishEvent routes an ActivityBridgeEvent through the v2 Sequencer when
+// available (FIFO ordering + retry/dead-letter); falls back to EventBus.Publish
+// when Sequencer is nil (test/legacy paths). Returns false when neither is set
+// so callers can short-circuit downstream work.
+func (r *Runner) publishEvent(ctx context.Context, e biz.Event) bool {
+	if r == nil {
+		return false
+	}
+	if r.td.Pipeline.Sequencer != nil {
+		r.td.Pipeline.Sequencer.Publish(ctx, e)
+		return true
+	}
+	if r.td.Pipeline.EventBus != nil {
+		r.td.Pipeline.EventBus.Publish(ctx, e)
+		return true
+	}
+	return false
+}
+
+// hasPublisher returns true when either Sequencer or EventBus is available.
+func (r *Runner) hasPublisher() bool {
+	return r != nil && (r.td.Pipeline.Sequencer != nil || r.td.Pipeline.EventBus != nil)
+}
+
 func (r *Runner) lookupAgent(ctx context.Context, id string) (biz.Agent, error) {
 	if r.td.ReadDeps.AgentsUC != nil {
 		return r.td.ReadDeps.AgentsUC.Get(ctx, id)

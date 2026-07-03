@@ -193,7 +193,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	// frontend deduplicates and treats subsequent publishes as status updates
 	// rather than new AgentCards. Members that never execute stay in "running"
 	// until FinalizeGraphTeamRun or timeout transitions them.
-	if r.td.Pipeline.EventBus != nil {
+	if r.hasPublisher() {
 		for _, m := range ti.members {
 			ag, lookupErr := r.lookupAgent(ctx, m.AgentID)
 			if lookupErr != nil {
@@ -320,7 +320,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	r.finalizeGraphRunStepsFallback(ctx, finishIn)
 
 	// Publish completed session activities for non-graph mode.
-	if graphExecID == "" && r.td.Pipeline.EventBus != nil {
+	if graphExecID == "" && r.hasPublisher() {
 		for _, m := range ti.members {
 			ag, lookupErr := r.lookupAgent(ctx, m.AgentID)
 			if lookupErr != nil {

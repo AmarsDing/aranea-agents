@@ -1,61 +1,91 @@
 <template>
   <div class="notice-block" :class="`notice-block--${noticeType}`">
-    <span class="notice-block__icon">{{ iconForType }}</span>
-    <span class="notice-block__message">{{ step.Content }}</span>
+    <q-icon :name="iconForType" size="14px" class="notice-block__icon" />
+    <div class="notice-block__message chat-message-prose" v-html="renderedContent"></div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { Step } from '../../features/chat/v2Types';
+import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
 
-const props = defineProps<{
-  step: Step;
-}>();
+const props = defineProps<{ step: Step }>();
 
-// v2 Step has no notice severity field; default to 'info'.
-const noticeType = computed<'info' | 'warning' | 'success'>(() => 'info');
+/** NoticeType 来源：后端 meta.notice_type（"info" / "warning" / "success"）。
+ *  v2 Step.NoticeType 字段在 step.created 事件中已映射，优先使用。
+ */
+const noticeType = computed<'info' | 'warning' | 'success'>(() => {
+  const t = (props.step.NoticeType ?? '').trim().toLowerCase();
+  if (t === 'warning' || t === 'warn') return 'warning';
+  if (t === 'success' || t === 'ok') return 'success';
+  return 'info';
+});
 
 const iconForType = computed(() => {
   switch (noticeType.value) {
     case 'warning':
-      return '⚠️';
+      return 'warning';
     case 'success':
-      return '✅';
+      return 'check_circle';
     default:
-      return 'ℹ️';
+      return 'info';
   }
 });
+
+const renderedContent = computed(() => renderChatMarkdownForMessage(props.step.ID, props.step.Content, false));
 </script>
 
 <style lang="sass" scoped>
 .notice-block
   display: flex
-  align-items: center
-  gap: 6px
-  padding: 6px 10px
-  border-radius: 8px
+  align-items: flex-start
+  gap: 8px
+  padding: 8px 12px
+  border-radius: 10px
   font-size: 13px
+  line-height: 1.5
+  margin: 4px 0
 
   &--warning
-    background: var(--chat-status-warning-bg)
-    border: 1px solid var(--chat-status-warning-border)
+    background: color-mix(in srgb, var(--color-warning) 8%, transparent)
+    border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent)
     color: var(--color-warning)
+
+    .notice-block__icon
+      color: var(--color-warning)
 
   &--success
     background: color-mix(in srgb, var(--color-success) 8%, transparent)
     border: 1px solid color-mix(in srgb, var(--color-success) 30%, transparent)
     color: var(--color-success)
 
+    .notice-block__icon
+      color: var(--color-success)
+
   &--info
     background: var(--glass-surface)
     border: 1px solid var(--glass-border)
     color: var(--color-text-secondary)
 
+    .notice-block__icon
+      color: var(--color-text-secondary)
+
   &__icon
-    font-size: 13px
     flex-shrink: 0
+    margin-top: 1px
 
   &__message
-    line-height: 1.4
+    flex: 1
+    min-width: 0
+    overflow-wrap: break-word
+
+    :deep(p)
+      margin: 0
+
+    :deep(code)
+      background: rgba(127, 127, 127, 0.15)
+      padding: 1px 4px
+      border-radius: 3px
+      font-size: 12px
 </style>

@@ -63,6 +63,7 @@ func (r *Runner) startObservers(
 		ActivityFlusher:  setup.activityFlusher,
 		FailureOnError:   failureOnError,
 		EventBus:         r.td.Pipeline.EventBus,
+		Sequencer:        r.td.Pipeline.Sequencer,
 	})
 	if r.mediator != nil && graphExecID != "" {
 		setup.stopGraphStepWatch = r.mediator.StartGraphStepWatch(ctx, graphExecID)

@@ -19,7 +19,7 @@ import (
 // v2 EventBus via the ActivityBridgeEvent wrapper. Replaces the legacy
 // EnvelopeTypeTeamRunFailed publish.
 func (r *Runner) publishTeamRunFailedActivity(ctx context.Context, run biz.TeamRunRecord, msg string) {
-	if r.td.Pipeline.EventBus == nil {
+	if !r.hasPublisher() {
 		return
 	}
 	// SessionID = spirit session ID (not run.SessionID which is the team
@@ -47,7 +47,7 @@ func (r *Runner) publishTeamRunFailedActivity(ctx context.Context, run biz.TeamR
 	// Phase 3b-D: bridge to v2 EventBus. The v1 ActivityEvent is preserved
 	// verbatim inside ActivityBridgeEvent so consumers (OrchestrationStatusStore,
 	// frontend inboundActivityEventHandler) can reuse existing field-aware logic.
-	r.td.Pipeline.EventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
+	r.publishEvent(ctx, biz.NewActivityBridgeEvent(ev))
 }
 
 // publishTeamStepActivity publishes a per-member session ActivityEvent
@@ -60,7 +60,7 @@ func (r *Runner) publishTeamRunFailedActivity(ctx context.Context, run biz.TeamR
 // individual agent session (resolved via SessionChildLookup) so the frontend
 // can lazy-load member execution processes (thinking/action/reply).
 func (r *Runner) publishTeamStepActivity(ctx context.Context, run biz.TeamRunRecord, teamID, agentKey, agentName string, eventType biz.ActivityEventType, status biz.ActivityStatus, stage string, step any) {
-	if r.td.Pipeline.EventBus == nil {
+	if !r.hasPublisher() {
 		return
 	}
 	// Resolve the member's individual agent session ID for child_session_id.
@@ -108,7 +108,7 @@ func (r *Runner) publishTeamStepActivity(ctx context.Context, run biz.TeamRunRec
 	// Phase 3b-D: bridge to v2 EventBus. ActivityBridgeEvent preserves all
 	// v1 fields (Meta.child_session_id, ParentActivityID, AgentKey/Name) so
 	// the frontend AgentCard renders correctly under the team_stage parent.
-	r.td.Pipeline.EventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
+	r.publishEvent(ctx, biz.NewActivityBridgeEvent(ev))
 }
 
 func preview(s string, max int) string {
@@ -212,7 +212,7 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRunRecord, t0 ti
 			r.lg.Warn("CreateTaskDeadLetter failed", loggateway.StepID("team.run.dead_letter_fail"), loggateway.Str("team_run_id", run.ID), loggateway.Err(dlerr))
 		}
 	}
-	if r.td.Pipeline.EventBus != nil {
+	if r.hasPublisher() {
 		r.publishTeamRunFailedActivity(ctx, *run, msg)
 	}
 	r.publishTeamRunSummary(ctx, *run)
@@ -220,7 +220,7 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRunRecord, t0 ti
 }
 
 func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRunRecord) {
-	if r == nil || r.td.Pipeline.EventBus == nil || r.runReader == nil {
+	if r == nil || !r.hasPublisher() || r.runReader == nil {
 		return
 	}
 	steps, err := r.runReader.ListTeamRunSteps(ctx, run.ID)
@@ -238,7 +238,7 @@ func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRunRecor
 	// summary event carries a team_summary meta blob with no direct v2 typed
 	// equivalent; ActivityBridgeEvent preserves the payload so the frontend
 	// summary renderer continues to work without changes.
-	r.td.Pipeline.EventBus.Publish(ctx, biz.NewActivityBridgeEvent(TeamSummaryActivityEvent(run, steps)))
+	r.publishEvent(ctx, biz.NewActivityBridgeEvent(TeamSummaryActivityEvent(run, steps)))
 }
 
 func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage, prov, mod, dialogMode string, toolCallCount int) {
@@ -269,7 +269,7 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID 
 		return
 	}
 	r.recordMemberUsage(ctx, run, teamID, ag, asst, prov, mod, dialogMode, saved.ID)
-	if r.td.Pipeline.EventBus != nil {
+	if r.hasPublisher() {
 		r.publishTeamStepActivity(ctx, run, teamID, ag.AgentKey, saved.AgentName, biz.ActivityEventCompleted, biz.ActivityStatusCompleted, "completed", saved)
 	}
 }

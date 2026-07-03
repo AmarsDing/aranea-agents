@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/biz/shared"
+	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/tools"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -34,11 +35,16 @@ var (
 // for graph_stage snapshot events (no v2 EventKind equivalent exists). `eventBus`
 // (v2 EventBus) is used for team_stage and notice events. Once a v2
 // graph_stage event kind is introduced, `bus` can be removed.
+//
+// Phase 2: `seq` (v2 Sequencer) routes graph_stage snapshots through the
+// unified v2 publish entry (FIFO + retry). `bus` is retained as v1 fallback
+// when neither seq nor eventBus is available.
 type TeamStarter struct {
 	sessions         *biz.SessionUsecase
 	team             TeamOrchestrationDeps
-	bus              biz.ActivityEventBus // v1: graph_stage snapshot only (no v2 equivalent yet)
+	bus              biz.ActivityEventBus // v1: graph_stage snapshot fallback (no v2 equivalent yet)
 	eventBus         biz.EventBus         // v2: team_stage + notice events
+	seq              rt.EventPublisher    // Phase 2: v2 Sequencer for graph_stage snapshot (FIFO + retry)
 	activityReader   biz.ActivityReader
 	activityUpserter biz.ActivityUpserter
 	lg               loggateway.Logger
@@ -72,6 +78,7 @@ func NewTeamStarter(
 	team TeamOrchestrationDeps,
 	bus biz.ActivityEventBus,
 	eventBus biz.EventBus,
+	seq rt.EventPublisher,
 	activityReader biz.ActivityReader,
 	activityUpserter biz.ActivityUpserter,
 	lg loggateway.Logger,
@@ -82,6 +89,7 @@ func NewTeamStarter(
 		team:             team,
 		bus:              bus,
 		eventBus:         eventBus,
+		seq:              seq,
 		activityReader:   activityReader,
 		activityUpserter: activityUpserter,
 		lg:               lg,
@@ -353,7 +361,7 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		// Phase 3b-D Task 10: graph_stage has no v2 EventKind equivalent;
 		// stays on v1 bus. TODO: migrate once EventKindGraphStage* is added.
 		if allTeams, listErr := s.team.TeamUC.ListBySpiritSessionID(ctx, spiritSessionID); listErr == nil {
-			publishGraphStageSnapshot(ctx, s.bus, s.lg, spiritSessionID, allTeams)
+			publishGraphStageSnapshot(ctx, s.seq, s.eventBus, s.bus, s.lg, spiritSessionID, allTeams)
 		} else {
 			s.lg.Warn("graph_stage 快照刷新失败：列出团队失败",
 				loggateway.StepID("spirit.graph_stage.list_fail"),
@@ -581,8 +589,9 @@ func (s *TeamStarter) NotifyAllTeamsCompleted(ctx context.Context, spiritSession
 type SpiritTeamAssembler struct {
 	spiritUC     *biz.SpiritTeamUsecase
 	orchCache    *biz.OrchestrationCache
-	bus          biz.ActivityEventBus // v1: graph_stage snapshot only
+	bus          biz.ActivityEventBus // v1: graph_stage snapshot fallback (no v2 equivalent yet)
 	eventBus     biz.EventBus         // v2: team_stage + notice events
+	seq          rt.EventPublisher   // Phase 2: v2 Sequencer for graph_stage snapshot (FIFO + retry)
 	activityRepo biz.ActivityUpserter
 	teamStarter  biz.TeamStarterPort
 	agentReader  biz.AgentReader
@@ -594,6 +603,7 @@ func NewSpiritTeamAssembler(
 	orchCache *biz.OrchestrationCache,
 	bus biz.ActivityEventBus,
 	eventBus biz.EventBus,
+	seq rt.EventPublisher,
 	activityRepo biz.ActivityUpserter,
 	teamStarter biz.TeamStarterPort,
 	agentReader biz.AgentReader,
@@ -604,6 +614,7 @@ func NewSpiritTeamAssembler(
 		orchCache:    orchCache,
 		bus:          bus,
 		eventBus:     eventBus,
+		seq:          seq,
 		activityRepo: activityRepo,
 		teamStarter:  teamStarter,
 		agentReader:  agentReader,
@@ -910,11 +921,11 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 // Called from publishSpiritTeamAssembled (after team creation) and
 // HandleTeamTurnResult (after team status change) to keep the snapshot fresh.
 //
-// Phase 3b-D Task 10: graph_stage has NO v2 EventKind equivalent. This method
-// RETAINS the v1 ActivityEventBus (a.bus) until a v2 EventKindGraphStage* is
-// introduced. TODO: migrate to v2 EventBus once the graph_stage event kind exists.
+// Phase 2: graph_stage snapshots are routed through the v2 Sequencer (FIFO +
+// retry) via ActivityBridgeEvent wrapping. The v1 ActivityEventBus is retained
+// as fallback only when neither seq nor eventBus is available.
 func (a *SpiritTeamAssembler) publishSpiritGraphStageSnapshot(ctx context.Context, spiritSessionID string) {
-	if a.bus == nil || spiritSessionID == "" || a.spiritUC == nil {
+	if (a.seq == nil && a.eventBus == nil && a.bus == nil) || spiritSessionID == "" || a.spiritUC == nil {
 		return
 	}
 	teams, err := a.spiritUC.ListAllTeams(ctx, spiritSessionID)
@@ -926,7 +937,7 @@ func (a *SpiritTeamAssembler) publishSpiritGraphStageSnapshot(ctx context.Contex
 		)
 		return
 	}
-	publishGraphStageSnapshot(ctx, a.bus, a.lg, spiritSessionID, teams)
+	publishGraphStageSnapshot(ctx, a.seq, a.eventBus, a.bus, a.lg, spiritSessionID, teams)
 }
 
 // publishGraphStageSnapshot is the free-function core of
@@ -935,11 +946,12 @@ func (a *SpiritTeamAssembler) publishSpiritGraphStageSnapshot(ctx context.Contex
 // the logic without depending on SpiritTeamUsecase. See
 // publishSpiritGraphStageSnapshot for the full design rationale.
 //
-// Phase 3b-D Task 10: graph_stage has NO v2 EventKind equivalent. This function
-// RETAINS the v1 ActivityEventBus parameter until a v2 EventKindGraphStage* is
-// introduced. TODO: migrate to v2 EventBus once the graph_stage event kind exists.
-func publishGraphStageSnapshot(ctx context.Context, bus biz.ActivityEventBus, lg loggateway.Logger, spiritSessionID string, teams []biz.Team) {
-	if bus == nil || spiritSessionID == "" || len(teams) == 0 {
+// Phase 2: graph_stage snapshots are routed through the v2 Sequencer (preferred)
+// → v2 EventBus (fallback) → v1 ActivityEventBus (last resort). The v1
+// ActivityEvent is wrapped in ActivityBridgeEvent so v2 consumers (front-end
+// AgentCard, Kanban) receive the payload unchanged.
+func publishGraphStageSnapshot(ctx context.Context, seq rt.EventPublisher, eventBus biz.EventBus, bus biz.ActivityEventBus, lg loggateway.Logger, spiritSessionID string, teams []biz.Team) {
+	if (seq == nil && eventBus == nil && bus == nil) || spiritSessionID == "" || len(teams) == 0 {
 		return
 	}
 	nodes := make([]map[string]any, 0, len(teams))
@@ -1005,7 +1017,7 @@ func publishGraphStageSnapshot(ctx context.Context, bus biz.ActivityEventBus, lg
 	// → frontend upsert updates the existing GraphStageBlock instead of creating
 	// a new one each snapshot.
 	activityID := string(agent.NewGraphStageActivityID(spiritSessionID))
-	bus.Publish(ctx, biz.ActivityEvent{
+	ev := biz.ActivityEvent{
 		Event: eventType,
 		Activity: biz.Activity{
 			ID:               activityID,
@@ -1026,5 +1038,15 @@ func publishGraphStageSnapshot(ctx context.Context, bus biz.ActivityEventBus, lg
 			},
 		},
 		Domain: biz.ActivityDomainChat,
-	})
+	}
+	// Phase 2: route through v2 Sequencer (FIFO + retry) when available;
+	// fall back to v2 EventBus; last resort v1 ActivityEventBus.
+	switch {
+	case seq != nil:
+		seq.Publish(ctx, biz.NewActivityBridgeEvent(ev))
+	case eventBus != nil:
+		eventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
+	case bus != nil:
+		bus.Publish(ctx, ev)
+	}
 }
