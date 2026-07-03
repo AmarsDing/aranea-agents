@@ -2179,7 +2179,7 @@ func provideAgentAllocator(
 	agentReader biz.AgentReader,
 	perfRepo biz.AgentPerformanceRepository,
 	catalog *biz.LlmProviderModelUsecase,
-	activityBus biz.ActivityEventBus,
+	eventBus biz.EventBus,
 	embedder knowledge.Embedder,
 	agentFactory biz.AgentFactory,
 	lg loggateway.Logger,
@@ -2187,7 +2187,7 @@ func provideAgentAllocator(
 ) biz.AgentAllocatorPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
 	capBuilder := chatagent.NewAgentCapabilityBuilder(agentReader, lg)
-	return chatagent.NewAgentAllocator(repo, agentReader, perfRepo, capBuilder, catalog, httpClient, activityBus, lg, embedder, agentFactory, sysUC)
+	return chatagent.NewAgentAllocator(repo, agentReader, perfRepo, capBuilder, catalog, httpClient, eventBus, lg, embedder, agentFactory, sysUC)
 }
 
 // provideAgentFactory constructs the AgentFactory (P1-4). The LLM model is

@@ -252,11 +252,14 @@ func buildChatOptions(opts map[string]any) *chatv1.SendMessageOptions {
 // Replaces the legacy EnvelopeTypeError publish.
 //
 // TODO(phase3b-d): migrate to v2 EventBus (biz.NewTaskFailedEvent).
-// Blocked because WSServer.activityBus field type is defined in ws.go (not in
-// this task's scope) and is shared with ws_event.go's v1 Subscribe. Migrating
-// this publish alone would break the WS broadcast path. The WSServer struct
-// must gain a v2 EventBus field (or the field type must change) before this
-// publish can be migrated.
+// Blocker: WSServer.activityBus field type is biz.ActivityEventBus (v1) and is
+// shared with ws_event.go's v1 Subscribe path (the WS broadcast pump). To migrate
+// this publish site alone, WSServer must gain a separate v2 EventBus field
+// (or the v1 Subscribe path in ws_event.go must be removed first, which is
+// Tier 4 work). Additionally, the test TestWSUpstreamTurnGatewayErrorPublishes
+// Envelope asserts on v1 ActivityEvent.Meta (request_id/error_type) which is
+// lost in v2 TaskFailedEvent (DATA LOSS — same as chat_event_publisher.go).
+// Deferring until Tier 4 cleanup of v1 WS path.
 func (s *WSServer) publishWSErrorActivity(sessionID, requestID, errorType, message string) {
 	if s.activityBus == nil {
 		return

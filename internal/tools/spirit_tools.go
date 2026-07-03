@@ -12,7 +12,6 @@ import (
 	"aranea-agents/internal/telemetry/turntrace"
 	"aranea-agents/pkg/loggateway"
 
-	"github.com/google/uuid"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 
@@ -56,7 +55,7 @@ type planAndExecuteDeps struct {
 	orchestrator       biz.TaskOrchestratorPort
 	teamQuery          SpiritTeamQueryPort
 	sessionModelLookup SessionModelLookup
-	bus                biz.ActivityEventBus
+	bus                biz.EventBus // Phase 3b-D: v2 EventBus
 	lg                 loggateway.Logger
 }
 
@@ -69,7 +68,7 @@ type SessionModelLookup interface {
 
 // NewPlanAndExecuteTool creates the plan_and_execute tool that replaces
 // assess_complexity + assemble_team + list_butlers + query_butler_status.
-func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAllocatorPort, orchestrator biz.TaskOrchestratorPort, teamQuery SpiritTeamQueryPort, sessionModelLookup SessionModelLookup, bus biz.ActivityEventBus, lg loggateway.Logger) *trpcfunction.FunctionTool[PlanAndExecuteInput, PlanAndExecuteOutput] {
+func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAllocatorPort, orchestrator biz.TaskOrchestratorPort, teamQuery SpiritTeamQueryPort, sessionModelLookup SessionModelLookup, bus biz.EventBus, lg loggateway.Logger) *trpcfunction.FunctionTool[PlanAndExecuteInput, PlanAndExecuteOutput] {
 	deps := planAndExecuteDeps{
 		planner:            planner,
 		allocator:          allocator,
@@ -101,26 +100,14 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			}
 
 			// Emit ButlerOrchestrationStarted event.
-			if deps.bus != nil {
-				ev := biz.ActivityEvent{
-					Event: biz.ActivityEventCreated,
-					Activity: biz.Activity{
-						ID:              uuid.NewString(),
-						Kind:            biz.ActivityKindNotice,
-						Status:          biz.ActivityStatusRunning,
-						Stage:           "started",
-						Timestamp:       time.Now().UTC(),
-						SpiritSessionID: spiritSessionID,
-						AgentKey:        "plan_and_execute",
-						Meta: map[string]any{
-							"task_prompt": taskPrompt,
-							"mode":        input.Mode,
-						},
-					},
-					Domain: biz.ActivityDomainChat,
-				}
-				deps.bus.Publish(ctx, ev)
+		if deps.bus != nil {
+			meta := map[string]any{
+				"task_prompt": taskPrompt,
+				"mode":         input.Mode,
+				"agent_key":    "plan_and_execute",
 			}
+			deps.bus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "orchestration_started", "", meta))
+		}
 
 			// Check parallel quota before proceeding.
 			if deps.teamQuery != nil {
@@ -312,54 +299,30 @@ func executeOrchestratePhase(ctx context.Context, taskPlan *biz.TaskPlan, allocP
 }
 
 // publishOrchestrationFailed emits a ButlerOrchestrationFailed event.
-func publishOrchestrationFailed(bus biz.ActivityEventBus, ctx context.Context, sessionID, phase, errMsg string) {
+func publishOrchestrationFailed(bus biz.EventBus, ctx context.Context, sessionID, phase, errMsg string) {
 	if bus == nil {
 		return
 	}
-	ev := biz.ActivityEvent{
-		Event: biz.ActivityEventFailed,
-		Activity: biz.Activity{
-			ID:              uuid.NewString(),
-			Kind:            biz.ActivityKindNotice,
-			Status:          biz.ActivityStatusFailed,
-			Stage:           "failed",
-			Timestamp:       time.Now().UTC(),
-			SpiritSessionID: sessionID,
-			AgentKey:        "plan_and_execute",
-			Meta: map[string]any{
-				"phase": phase,
-				"error": errMsg,
-			},
-		},
-		Domain: biz.ActivityDomainChat,
+	meta := map[string]any{
+		"phase":     phase,
+		"error":     errMsg,
+		"agent_key": "plan_and_execute",
 	}
-	bus.Publish(ctx, ev)
+	bus.Publish(ctx, biz.NewSystemNoticeEvent(sessionID, "orchestration_failed", "", meta))
 }
 
 // publishOrchestrationCompleted emits a ButlerOrchestrationCompleted event.
-func publishOrchestrationCompleted(bus biz.ActivityEventBus, ctx context.Context, sessionID, orchestrationID, strategy string, subtaskCount int) {
+func publishOrchestrationCompleted(bus biz.EventBus, ctx context.Context, sessionID, orchestrationID, strategy string, subtaskCount int) {
 	if bus == nil {
 		return
 	}
-	ev := biz.ActivityEvent{
-		Event: biz.ActivityEventCompleted,
-		Activity: biz.Activity{
-			ID:              uuid.NewString(),
-			Kind:            biz.ActivityKindNotice,
-			Status:          biz.ActivityStatusCompleted,
-			Stage:           "completed",
-			Timestamp:       time.Now().UTC(),
-			SpiritSessionID: sessionID,
-			AgentKey:        "plan_and_execute",
-			Meta: map[string]any{
-				"orchestration_id": orchestrationID,
-				"strategy":         strategy,
-				"subtask_count":    subtaskCount,
-			},
-		},
-		Domain: biz.ActivityDomainChat,
+	meta := map[string]any{
+		"orchestration_id": orchestrationID,
+		"strategy":         strategy,
+		"subtask_count":    subtaskCount,
+		"agent_key":        "plan_and_execute",
 	}
-	bus.Publish(ctx, ev)
+	bus.Publish(ctx, biz.NewSystemNoticeEvent(sessionID, "orchestration_completed", "", meta))
 }
 
 // CheckOrchestrationProgressInput is the input for the check_progress tool.

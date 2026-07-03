@@ -25,7 +25,7 @@ type agentAllocatorImpl struct {
 	capBuilder     *AgentCapabilityBuilder
 	catalog        *biz.LlmProviderModelUsecase
 	httpClient     *http.Client
-	bus            biz.ActivityEventBus
+	bus            biz.EventBus // Phase 3b-D: v2 EventBus
 	lg             loggateway.Logger
 	embedder       knowledge.Embedder
 	agentFactory   biz.AgentFactory
@@ -42,7 +42,7 @@ func NewAgentAllocator(
 	capBuilder *AgentCapabilityBuilder,
 	catalog *biz.LlmProviderModelUsecase,
 	httpClient *http.Client,
-	bus biz.ActivityEventBus,
+	bus biz.EventBus,
 	lg loggateway.Logger,
 	embedder knowledge.Embedder,
 	agentFactory biz.AgentFactory,
@@ -1159,26 +1159,13 @@ func (impl *agentAllocatorImpl) publishAllocationCreated(ctx context.Context, pl
 		return
 	}
 	spiritSessionID := plan.SpiritSessionID
-
-	ev := biz.ActivityEvent{
-		Event: biz.ActivityEventCreated,
-		Activity: biz.Activity{
-			ID:              uuid.NewString(),
-			Kind:            biz.ActivityKindNotice,
-			Status:          biz.ActivityStatusCompleted,
-			Stage:           "created",
-			Timestamp:       time.Now().UTC(),
-			SpiritSessionID: spiritSessionID,
-			AgentKey:        "agent-allocator",
-			Meta: map[string]any{
-				"allocation_id":     plan.ID,
-				"task_plan_id":      plan.TaskPlanID,
-				"spirit_session_id": spiritSessionID,
-				"allocation_count":  len(plan.Allocations),
-				"status":            string(plan.Status),
-			},
-		},
-		Domain: biz.ActivityDomainChat,
+	meta := map[string]any{
+		"allocation_id":     plan.ID,
+		"task_plan_id":      plan.TaskPlanID,
+		"spirit_session_id": spiritSessionID,
+		"allocation_count":  len(plan.Allocations),
+		"status":             string(plan.Status),
+		"agent_key":          "agent-allocator",
 	}
-	impl.bus.Publish(ctx, ev)
+	impl.bus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "allocation_created", "", meta))
 }

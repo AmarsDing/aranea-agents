@@ -3,21 +3,18 @@ package service
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/tools"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
-
-	"github.com/google/uuid"
 )
 
 var _ tools.SpiritSynthesisPort = (*SpiritSynthesisService)(nil)
 
-// synthesisEventPublisher adapts biz.ActivityEventBus to biz.SynthesisEventPublisher.
+// synthesisEventPublisher adapts biz.EventBus (v2) to biz.SynthesisEventPublisher.
 type synthesisEventPublisher struct {
-	bus biz.ActivityEventBus
+	bus biz.EventBus
 }
 
 func (p *synthesisEventPublisher) PublishSynthesisCompleted(ctx context.Context, spiritSessionID string, output *biz.SynthesisOutput) {
@@ -43,30 +40,17 @@ func (p *synthesisEventPublisher) PublishSynthesisCompleted(ctx context.Context,
 			KeyFindings: r.KeyFindings,
 		})
 	}
-	ev := biz.ActivityEvent{
-		Event: biz.ActivityEventCompleted,
-		Activity: biz.Activity{
-			ID:              uuid.NewString(),
-			Kind:            biz.ActivityKindNotice,
-			Status:          biz.ActivityStatusCompleted,
-			Timestamp:       time.Now().UTC(),
-			SpiritSessionID: spiritSessionID,
-			AgentKey:        "spirit-synthesis",
-			AgentName:       "结果汇总",
-			Stage:           "synthesis_completed",
-			Content:         "结果汇总已完成",
-			Meta: map[string]any{
-				"spirit_session_id": spiritSessionID,
-				"strategy":          string(output.Strategy),
-				"team_count":        len(output.TeamResults),
-				"content":           output.Content,
-				"team_results":      richResults,
-				"notice_type":       "success",
-			},
-		},
-		Domain: biz.ActivityDomainChat,
+	meta := map[string]any{
+		"spirit_session_id": spiritSessionID,
+		"strategy":          string(output.Strategy),
+		"team_count":        len(output.TeamResults),
+		"content":           output.Content,
+		"team_results":      richResults,
+		"agent_key":         "spirit-synthesis",
+		"agent_name":        "结果汇总",
+		"notice_type":       "success",
 	}
-	p.bus.Publish(ctx, ev)
+	p.bus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "synthesis_completed", "结果汇总已完成", meta))
 }
 
 // SpiritSynthesisService is a thin transport adapter that delegates all business
@@ -79,10 +63,10 @@ type SpiritSynthesisService struct {
 func NewSpiritSynthesisService(
 	spiritUC *biz.SpiritTeamUsecase,
 	engine *biz.SynthesisEngine,
-	activityBus biz.ActivityEventBus,
+	eventBus biz.EventBus,
 	lg loggateway.Logger,
 ) *SpiritSynthesisService {
-	pub := &synthesisEventPublisher{bus: activityBus}
+	pub := &synthesisEventPublisher{bus: eventBus}
 	uc := biz.NewSynthesisUsecase(spiritUC, engine, pub, lg)
 	return &SpiritSynthesisService{uc: uc, lg: lg}
 }
