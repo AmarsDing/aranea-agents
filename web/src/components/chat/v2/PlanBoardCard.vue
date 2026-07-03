@@ -30,11 +30,15 @@ function useSafeI18n() {
 const props = defineProps<{ planBoard: PlanBoard }>();
 const { t } = useSafeI18n();
 const selectedStepId = ref<string | null>(null);
-const selectedStep = computed(() =>
-  props.planBoard.Steps.find(s => s.ID === selectedStepId.value) || null
+const selectedStep = computed(() => props.planBoard.Steps.find((s) => s.ID === selectedStepId.value) || null);
+const statusColor = computed(
+  () =>
+    ({
+      planning: 'orange',
+      executing: 'blue',
+      completed: 'green',
+      failed: 'red',
+      partial_failure: 'orange-8',
+    })[props.planBoard.Status] || 'grey',
 );
-const statusColor = computed(() => ({
-  planning: 'orange', executing: 'blue', completed: 'green',
-  failed: 'red', partial_failure: 'orange-8',
-}[props.planBoard.Status] || 'grey'));
 </script>

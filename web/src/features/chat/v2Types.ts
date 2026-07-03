@@ -5,18 +5,14 @@
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type TurnStatus = 'running' | 'completed' | 'failed';
 export type StepKind = 'thinking' | 'action' | 'reply' | 'notice' | 'confirm' | 'error';
-export type StepStatus =
-  | 'pending' | 'running' | 'tool_running' | 'tool_blocked'
-  | 'completed' | 'failed' | 'cancelled';
-export type TeamStageStatus =
-  | 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'waiting_human';
+export type StepStatus = 'pending' | 'running' | 'tool_running' | 'tool_blocked' | 'completed' | 'failed' | 'cancelled';
+export type TeamStageStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'waiting_human';
 export type TeamStageStage = 'assembled' | 'planning' | 'executing' | 'completed' | 'failed';
 export type TeamRunStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 export type MemberSessionStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
 export type PlanStrategy = 'sequential' | 'parallel' | 'dag' | 'coordinator';
 export type PlanStatus = 'planning' | 'executing' | 'completed' | 'failed' | 'partial_failure';
-export type PlanStepStatus =
-  | 'pending' | 'running' | 'completed' | 'failed' | 'skipped' | 'partial_failure';
+export type PlanStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped' | 'partial_failure';
 
 // === Entity structs (PascalCase JSON keys — no json tags on backend) ===
 
@@ -62,11 +58,11 @@ export interface Step {
   Reasoning: string;
   ToolName: string;
   ToolCallID: string;
-  ToolArgs: unknown | null;   // json.RawMessage → nested JSON value
+  ToolArgs: unknown | null; // json.RawMessage → nested JSON value
   ToolResult: unknown | null;
   ToolDurationMs: number;
   ToolErrorCode: string;
-  NoticeType?: string;   // kind=notice: notification type (e.g. "model_router", "cost_guard")
+  NoticeType?: string; // kind=notice: notification type (e.g. "model_router", "cost_guard")
   Status: StepStatus;
   IsFinal: boolean;
   StartedAt: string;
@@ -197,39 +193,91 @@ export interface PlanBoard {
 // === EventKind string literals ===
 
 export type EventKind =
-  | 'task.created' | 'task.updated' | 'task.completed' | 'task.failed'
-  | 'turn.started' | 'turn.completed' | 'turn.failed'
-  | 'step.created' | 'step.streaming' | 'step.updated' | 'step.completed' | 'step.failed'
-  | 'team_stage.created' | 'team_stage.updated' | 'team_stage.completed' | 'team_stage.failed'
-  | 'team_run.started' | 'team_run.completed' | 'team_run.failed'
-  | 'member_session.created' | 'member_session.updated'
-  | 'plan_board.created' | 'plan_board.updated'
-  | 'plan_step.started' | 'plan_step.completed' | 'plan_step.failed'
-  | 'plan_step.skipped' | 'plan_step.updated';
+  | 'task.created'
+  | 'task.updated'
+  | 'task.completed'
+  | 'task.failed'
+  | 'turn.started'
+  | 'turn.completed'
+  | 'turn.failed'
+  | 'step.created'
+  | 'step.streaming'
+  | 'step.updated'
+  | 'step.completed'
+  | 'step.failed'
+  | 'team_stage.created'
+  | 'team_stage.updated'
+  | 'team_stage.completed'
+  | 'team_stage.failed'
+  | 'team_run.started'
+  | 'team_run.completed'
+  | 'team_run.failed'
+  | 'member_session.created'
+  | 'member_session.updated'
+  | 'plan_board.created'
+  | 'plan_board.updated'
+  | 'plan_step.started'
+  | 'plan_step.completed'
+  | 'plan_step.failed'
+  | 'plan_step.skipped'
+  | 'plan_step.updated';
 
 // === Event payload shapes (what's inside envelope.payload) ===
 // Note: backend event structs have NO json tags, so exported fields
 // (PascalCase) are the JSON keys. Unexported fields (taskID, spiritSessionID,
 // occurredAt) are NOT serialized.
 
-export interface TaskEventPayload { Task: Task }
-export interface TurnEventPayload { TurnID: string; Turn: Turn }
-export interface StepCreatedPayload { Step: Step }
-export interface StepStreamingPayload { StepID: string; DeltaField: string; DeltaChunk: string }
-export interface StepUpdatedPayload { Step: Step }
-export interface TeamStageEventPayload { TeamStage: TeamStage }
-export interface TeamRunEventPayload { TeamRun: TeamRun }
-export interface MemberSessionEventPayload { MemberSession: MemberSession }
-export interface PlanBoardEventPayload { PlanBoard: PlanBoard }
-export interface PlanStepEventPayload { PlanStep: PlanStep }
-export interface PlanStepSkippedPayload { PlanStep: PlanStep; Reason: string }
+export interface TaskEventPayload {
+  Task: Task;
+}
+export interface TurnEventPayload {
+  TurnID: string;
+  Turn: Turn;
+}
+export interface StepCreatedPayload {
+  Step: Step;
+}
+export interface StepStreamingPayload {
+  StepID: string;
+  DeltaField: string;
+  DeltaChunk: string;
+}
+export interface StepUpdatedPayload {
+  Step: Step;
+}
+export interface TeamStageEventPayload {
+  TeamStage: TeamStage;
+}
+export interface TeamRunEventPayload {
+  TeamRun: TeamRun;
+}
+export interface MemberSessionEventPayload {
+  MemberSession: MemberSession;
+}
+export interface PlanBoardEventPayload {
+  PlanBoard: PlanBoard;
+}
+export interface PlanStepEventPayload {
+  PlanStep: PlanStep;
+}
+export interface PlanStepSkippedPayload {
+  PlanStep: PlanStep;
+  Reason: string;
+}
 
 // Discriminated union of all v2 events
 export type V2Event =
-  | TaskEventPayload | TurnEventPayload
-  | StepCreatedPayload | StepStreamingPayload | StepUpdatedPayload
-  | TeamStageEventPayload | TeamRunEventPayload | MemberSessionEventPayload
-  | PlanBoardEventPayload | PlanStepEventPayload | PlanStepSkippedPayload;
+  | TaskEventPayload
+  | TurnEventPayload
+  | StepCreatedPayload
+  | StepStreamingPayload
+  | StepUpdatedPayload
+  | TeamStageEventPayload
+  | TeamRunEventPayload
+  | MemberSessionEventPayload
+  | PlanBoardEventPayload
+  | PlanStepEventPayload
+  | PlanStepSkippedPayload;
 
 // === WS envelope ===
 

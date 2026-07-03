@@ -45,9 +45,7 @@ const label = computed(() =>
   isFinal.value ? t('chat.agentBlock.finalReply') : t('chat.agentBlock.intermediateReply'),
 );
 
-const renderedContent = computed(() =>
-  renderChatMarkdownForMessage(messageId.value, content.value, streaming.value),
-);
+const renderedContent = computed(() => renderChatMarkdownForMessage(messageId.value, content.value, streaming.value));
 </script>
 
 <style lang="sass" scoped>

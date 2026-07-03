@@ -5,9 +5,22 @@ import type { PlanStep } from '../../v2Types';
 
 function mkStep(id: string, deps: string[] = [], over: Partial<PlanStep> = {}): PlanStep {
   return {
-    ID: id, PlanID: 'pb1', TaskID: 'tk1', Label: id, Description: '',
-    DependsOn: deps, MappedTeamStageID: '', Status: 'pending', AutoSynthesis: false,
-    StartedAt: '', CompletedAt: null, Seq: 1, Version: 1, Result: null, Error: null, ...over,
+    ID: id,
+    PlanID: 'pb1',
+    TaskID: 'tk1',
+    Label: id,
+    Description: '',
+    DependsOn: deps,
+    MappedTeamStageID: '',
+    Status: 'pending',
+    AutoSynthesis: false,
+    StartedAt: '',
+    CompletedAt: null,
+    Seq: 1,
+    Version: 1,
+    Result: null,
+    Error: null,
+    ...over,
   };
 }
 

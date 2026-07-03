@@ -27,7 +27,7 @@ export function useTaskTree(store: Store) {
     if (!task) return null;
 
     const turns = store.getTaskTurns(taskId);
-    const turnTrees: TurnTree[] = turns.map(turn => ({
+    const turnTrees: TurnTree[] = turns.map((turn) => ({
       turn,
       steps: store.getTurnSteps(turn.ID),
     }));

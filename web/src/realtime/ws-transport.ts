@@ -146,12 +146,14 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
       return;
     }
 
-    const url = opts.url ?? buildWsUrl({
-      sessionId: opts.sessionId,
-      lastEventId: _lastEventId,
-      token: opts.token,
-      logEnabled: opts.logEnabled,
-    });
+    const url =
+      opts.url ??
+      buildWsUrl({
+        sessionId: opts.sessionId,
+        lastEventId: _lastEventId,
+        token: opts.token,
+        logEnabled: opts.logEnabled,
+      });
     ws = opts.socketFactory ? opts.socketFactory(url) : new WebSocket(url);
 
     ws.onopen = () => {

@@ -218,39 +218,33 @@ function scrollToBottom() {
 }
 
 // Auto-scroll during streaming
-watch(
-  reasoning,
-  () => {
-    if (streaming.value && !userScrolledUp.value) {
-      void nextTick(scrollToBottom);
-    }
-  },
-);
+watch(reasoning, () => {
+  if (streaming.value && !userScrolledUp.value) {
+    void nextTick(scrollToBottom);
+  }
+});
 
 // When streaming starts, expand so users can follow the reasoning live.
 // When streaming ends, only auto-collapse if the user hasn't manually toggled
 // during this streaming session — respecting their expand/collapse intent
 // (P2-B: the previous behavior force-collapsed on streaming-end, overriding
 // a user who expanded to read along).
-watch(
-  streaming,
-  (live) => {
-    if (live) {
-      userScrolledUp.value = false;
-      userToggled.value = false;
+watch(streaming, (live) => {
+  if (live) {
+    userScrolledUp.value = false;
+    userToggled.value = false;
+    setCollapsed(false);
+    void nextTick(scrollToBottom);
+  } else if (!userToggled.value) {
+    // US-24/§6.8.3: < 30 chars → inline no-collapse (don't auto-collapse)
+    if (inlineNoCollapse.value) {
       setCollapsed(false);
-      void nextTick(scrollToBottom);
-    } else if (!userToggled.value) {
-      // US-24/§6.8.3: < 30 chars → inline no-collapse (don't auto-collapse)
-      if (inlineNoCollapse.value) {
-        setCollapsed(false);
-      } else {
-        // streaming 结束时折叠（仅当用户未手动操作时）
-        setCollapsed(props.defaultCollapsed);
-      }
+    } else {
+      // streaming 结束时折叠（仅当用户未手动操作时）
+      setCollapsed(props.defaultCollapsed);
     }
-  },
-);
+  }
+});
 
 // US-24/§6.8.3: when reasoning shrinks below 30 chars (e.g., trimmed) or
 // streaming ends with short content, force-expand to trigger inline render.

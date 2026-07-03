@@ -4,11 +4,7 @@
     <div class="team-run-header">
       <q-badge :color="statusColor">{{ teamRun.Status }}</q-badge>
     </div>
-    <MemberSessionPanel
-      v-for="ms in memberSessions"
-      :key="ms.ID"
-      :member-session="ms"
-    />
+    <MemberSessionPanel v-for="ms in memberSessions" :key="ms.ID" :member-session="ms" />
   </div>
 </template>
 
@@ -21,7 +17,13 @@ import MemberSessionPanel from './MemberSessionPanel.vue';
 const props = defineProps<{ teamRun: TeamRun }>();
 const store = useChatActivityStore();
 const memberSessions = computed(() => store.getTeamRunMemberSessions(props.teamRun.ID));
-const statusColor = computed(() => ({
-  running: 'blue', completed: 'green', failed: 'red', cancelled: 'grey',
-}[props.teamRun.Status] || 'grey'));
+const statusColor = computed(
+  () =>
+    ({
+      running: 'blue',
+      completed: 'green',
+      failed: 'red',
+      cancelled: 'grey',
+    })[props.teamRun.Status] || 'grey',
+);
 </script>

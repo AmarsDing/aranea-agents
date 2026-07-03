@@ -16,53 +16,55 @@ func TestCancelRunningActivityMessages_NilReader(t *testing.T) {
 }
 
 func TestCancelRunningActivityMessages_EmptySessionID(t *testing.T) {
-	n, err := CancelRunningActivityMessages(context.Background(), &stubActivityRepo{}, &stubActivityRepo{}, "  ", loggateway.NewNoop())
+	n, err := CancelRunningActivityMessages(context.Background(), &stubStepReader{}, &stubActivityRepo{}, "  ", loggateway.NewNoop())
 	if err != nil || n != 0 {
 		t.Fatalf("expected 0,nil got %d,%v", n, err)
 	}
 }
 
 func TestCancelRunningActivityMessages_SkipsTerminalStatuses(t *testing.T) {
-	repo := &stubActivityRepo{
-		activities: []biz.Activity{
-			{ID: "a1", SessionID: "sess1", Status: biz.ActivityStatusCompleted},
-			{ID: "a2", SessionID: "sess1", Status: biz.ActivityStatusFailed},
-			{ID: "a3", SessionID: "sess1", Status: biz.ActivityStatusCancelled},
-			{ID: "a4", SessionID: "sess1", Status: biz.ActivityStatusInterrupted},
+	reader := &stubStepReader{
+		steps: []biz.Step{
+			{ID: "a1", SessionID: "sess1", Status: biz.StepStatusCompleted},
+			{ID: "a2", SessionID: "sess1", Status: biz.StepStatusFailed},
+			{ID: "a3", SessionID: "sess1", Status: "cancelled"},
+			{ID: "a4", SessionID: "sess1", Status: "interrupted"},
 		},
 	}
-	n, err := CancelRunningActivityMessages(context.Background(), repo, repo, "sess1", loggateway.NewNoop())
+	writer := &stubActivityRepo{}
+	n, err := CancelRunningActivityMessages(context.Background(), reader, writer, "sess1", loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
 	if n != 0 {
 		t.Fatalf("expected 0 cancellations, got %d", n)
 	}
-	if len(repo.updated) != 0 {
-		t.Fatalf("expected no updates, got %d", len(repo.updated))
+	if len(writer.updated) != 0 {
+		t.Fatalf("expected no updates, got %d", len(writer.updated))
 	}
 }
 
 func TestCancelRunningActivityMessages_CancelsInFlight(t *testing.T) {
-	repo := &stubActivityRepo{
-		activities: []biz.Activity{
-			{ID: "a1", SessionID: "sess1", Status: biz.ActivityStatusRunning},
-			{ID: "a2", SessionID: "sess1", Status: biz.ActivityStatusToolRunning},
-			{ID: "a3", SessionID: "sess1", Status: biz.ActivityStatusToolBlocked},
-			{ID: "a4", SessionID: "sess1", Status: biz.ActivityStatusCompleted},
+	reader := &stubStepReader{
+		steps: []biz.Step{
+			{ID: "a1", SessionID: "sess1", Status: biz.StepStatusRunning},
+			{ID: "a2", SessionID: "sess1", Status: biz.StepStatusToolRunning},
+			{ID: "a3", SessionID: "sess1", Status: biz.StepStatusToolBlocked},
+			{ID: "a4", SessionID: "sess1", Status: biz.StepStatusCompleted},
 		},
 	}
-	n, err := CancelRunningActivityMessages(context.Background(), repo, repo, "sess1", loggateway.NewNoop())
+	writer := &stubActivityRepo{}
+	n, err := CancelRunningActivityMessages(context.Background(), reader, writer, "sess1", loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
 	if n != 3 {
 		t.Fatalf("expected 3 cancellations, got %d", n)
 	}
-	if len(repo.updated) != 3 {
-		t.Fatalf("expected 3 updates, got %d", len(repo.updated))
+	if len(writer.updated) != 3 {
+		t.Fatalf("expected 3 updates, got %d", len(writer.updated))
 	}
-	for _, u := range repo.updated {
+	for _, u := range writer.updated {
 		if u.Status != biz.ActivityStatusCancelled {
 			t.Fatalf("expected cancelled status, got %s", u.Status)
 		}
@@ -70,10 +72,10 @@ func TestCancelRunningActivityMessages_CancelsInFlight(t *testing.T) {
 }
 
 func TestCancelRunningActivityMessages_UpdateErrorContinues(t *testing.T) {
-	reader := &stubActivityRepo{
-		activities: []biz.Activity{
-			{ID: "a1", SessionID: "sess1", Status: biz.ActivityStatusRunning},
-			{ID: "a2", SessionID: "sess1", Status: biz.ActivityStatusToolRunning},
+	reader := &stubStepReader{
+		steps: []biz.Step{
+			{ID: "a1", SessionID: "sess1", Status: biz.StepStatusRunning},
+			{ID: "a2", SessionID: "sess1", Status: biz.StepStatusToolRunning},
 		},
 	}
 	writer := &stubActivityRepo{updateErr: errUpdateFailed}
@@ -108,7 +110,28 @@ func TestIsInFlightActivity(t *testing.T) {
 	}
 }
 
-// stubActivityRepo implements biz.ActivityRepo for cancel tests.
+// stubStepReader implements biz.StepV2Reader for cancel tests.
+type stubStepReader struct {
+	steps []biz.Step
+}
+
+func (s *stubStepReader) GetStep(_ context.Context, _ string) (biz.Step, error) {
+	return biz.Step{}, nil
+}
+
+func (s *stubStepReader) ListStepsByTurn(_ context.Context, _ string) ([]biz.Step, error) {
+	return nil, nil
+}
+
+func (s *stubStepReader) ListStepsByTask(_ context.Context, _ string) ([]biz.Step, error) {
+	return nil, nil
+}
+
+func (s *stubStepReader) ListStepsBySession(_ context.Context, _ string) ([]biz.Step, error) {
+	return s.steps, nil
+}
+
+// stubActivityRepo implements biz.ActivityRepo for cancel tests (writer only).
 // The same instance can serve as both reader and writer.
 type stubActivityRepo struct {
 	activities []biz.Activity

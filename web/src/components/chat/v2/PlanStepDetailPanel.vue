@@ -34,8 +34,15 @@ function useSafeI18n() {
 
 const props = defineProps<{ step: PlanStep | null }>();
 const { t } = useSafeI18n();
-const statusColor = computed(() => ({
-  pending: 'grey', running: 'blue', completed: 'green',
-  failed: 'red', skipped: 'orange', partial_failure: 'red-7',
-}[props.step?.Status || 'pending'] || 'grey'));
+const statusColor = computed(
+  () =>
+    ({
+      pending: 'grey',
+      running: 'blue',
+      completed: 'green',
+      failed: 'red',
+      skipped: 'orange',
+      partial_failure: 'red-7',
+    })[props.step?.Status || 'pending'] || 'grey',
+);
 </script>

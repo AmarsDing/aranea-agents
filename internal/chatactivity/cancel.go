@@ -36,33 +36,34 @@ func isInFlightActivity(s biz.ActivityStatus) bool {
 // CancelRunningActivityMessages marks in-flight activity cards (running /
 // tool_running / tool_blocked) as cancelled when the user stops generation.
 //
-// It reads activities via ActivityReader and updates each in-flight entry
-// through ActivityWriter, avoiding the legacy ChatMessage adapter layer
-// (which is a NoopWriter in the new persistence path).
+// Phase 3b-D Task 7: reads via v2 StepV2Reader.ListStepsBySession and converts
+// each Step to the v1 Activity shape for the v1 ActivityWriter (writer migration
+// is Tier 3). The v1 ActivityWriter is retained because cancel persists status
+// transitions via the v1 write path.
 //
 // The returned count is the number of activities successfully transitioned
 // to cancelled status.
 func CancelRunningActivityMessages(
 	ctx context.Context,
-	reader biz.ActivityReader,
+	stepReader biz.StepV2Reader,
 	writer biz.ActivityWriter,
 	sessionID string,
 	lg loggateway.Logger,
 ) (int, error) {
-	if isNilInterface(reader) || isNilInterface(writer) {
+	if isNilInterface(stepReader) || isNilInterface(writer) {
 		return 0, nil
 	}
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return 0, nil
 	}
-	acts, err := reader.ListBySession(ctx, sessionID)
+	steps, err := stepReader.ListStepsBySession(ctx, sessionID)
 	if err != nil {
 		return 0, err
 	}
 	cancelled := 0
-	for i := range acts {
-		a := acts[i]
+	for i := range steps {
+		a := biz.StepToActivity(steps[i])
 		if !isInFlightActivity(a.Status) {
 			continue
 		}
@@ -72,7 +73,7 @@ func CancelRunningActivityMessages(
 		if err != nil {
 			// Illegal transition — skip silently to avoid blocking the cancel loop.
 			// This can happen if the activity transitioned to a terminal state
-			// between ListBySession and UpdateActivity (race).
+			// between ListStepsBySession and UpdateActivity (race).
 			lg.Debug("跳过非法状态转换",
 				loggateway.StepID("chat.activity.cancel"),
 				loggateway.Str("session_id", sessionID),

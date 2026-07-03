@@ -28,7 +28,7 @@ func newPauseTestService(t *testing.T, repo *cancelTeamRunRepo, reg *testRunRegi
 		DeadLetter: repo,
 		Lg:         loggateway.NewNoop(),
 	})
-	svc := NewTeamService(uc, nil, nil, nil, nil, reg, bus, loggateway.NewNoop(), nil, nil, nil)
+	svc := NewTeamService(uc, nil, nil, nil, nil, reg, bus, loggateway.NewNoop(), nil, nil, nil, nil)
 	return svc, ch, unsub
 }
 

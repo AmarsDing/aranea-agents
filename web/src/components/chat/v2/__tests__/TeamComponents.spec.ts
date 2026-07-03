@@ -15,10 +15,21 @@ describe('v2 Team Components', () => {
     const wrapper = mount(MemberSessionPanel, {
       props: {
         memberSession: {
-          ID: 'ms1', TeamRunID: 'tr1', TeamStageID: 'ts1', TaskID: 'tk1',
-          SessionID: 'ms-sess', SpiritSessionID: 's1', AgentKey: 'coder',
-          AgentName: 'Coder', AvatarURL: '', Status: 'running', Seq: 1, Version: 1,
-          StartedAt: '', FinishedAt: null, Error: '',
+          ID: 'ms1',
+          TeamRunID: 'tr1',
+          TeamStageID: 'ts1',
+          TaskID: 'tk1',
+          SessionID: 'ms-sess',
+          SpiritSessionID: 's1',
+          AgentKey: 'coder',
+          AgentName: 'Coder',
+          AvatarURL: '',
+          Status: 'running',
+          Seq: 1,
+          Version: 1,
+          StartedAt: '',
+          FinishedAt: null,
+          Error: '',
         } as MemberSession,
       },
     });
@@ -28,17 +39,38 @@ describe('v2 Team Components', () => {
   it('TeamRunCard renders member sessions', async () => {
     const store = useChatActivityStore();
     store.upsertMemberSession({
-      ID: 'ms1', TeamRunID: 'tr1', TeamStageID: 'ts1', TaskID: 'tk1',
-      SessionID: 'ms-sess', SpiritSessionID: 's1', AgentKey: 'coder',
-      AgentName: 'Coder', AvatarURL: '', Status: 'completed', Seq: 1, Version: 1,
-      StartedAt: '', FinishedAt: '', Error: '',
+      ID: 'ms1',
+      TeamRunID: 'tr1',
+      TeamStageID: 'ts1',
+      TaskID: 'tk1',
+      SessionID: 'ms-sess',
+      SpiritSessionID: 's1',
+      AgentKey: 'coder',
+      AgentName: 'Coder',
+      AvatarURL: '',
+      Status: 'completed',
+      Seq: 1,
+      Version: 1,
+      StartedAt: '',
+      FinishedAt: '',
+      Error: '',
     } as MemberSession);
     const wrapper = mount(TeamRunCard, {
       props: {
         teamRun: {
-          ID: 'tr1', TeamStageID: 'ts1', TaskID: 'tk1', SessionID: 's1',
-          SpiritSessionID: 's1', DagNodeID: '', DependsOn: [], Status: 'completed',
-          StartedAt: '', CompletedAt: '', Seq: 1, Version: 1, Error: '',
+          ID: 'tr1',
+          TeamStageID: 'ts1',
+          TaskID: 'tk1',
+          SessionID: 's1',
+          SpiritSessionID: 's1',
+          DagNodeID: '',
+          DependsOn: [],
+          Status: 'completed',
+          StartedAt: '',
+          CompletedAt: '',
+          Seq: 1,
+          Version: 1,
+          Error: '',
         } as TeamRun,
       },
     });

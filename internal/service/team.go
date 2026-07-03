@@ -29,6 +29,7 @@ type TeamService struct {
 	synthesis       *SpiritSynthesisService
 	activityRepo    biz.ActivityRepo
 	teamStageReader biz.TeamStageV2Reader // Phase 3b-D Task 6: v2 reader for ListSpiritTeams members
+	stepReader      biz.StepV2Reader      // Phase 3b-D Task 7: v2 step reader for CancelSessionRunSideEffects
 }
 
 func NewTeamService(
@@ -43,13 +44,15 @@ func NewTeamService(
 	synthesis *SpiritSynthesisService,
 	activityRepo biz.ActivityRepo,
 	teamStageReader biz.TeamStageV2Reader,
+	stepReader biz.StepV2Reader,
 ) *TeamService {
 	return &TeamService{
 		uc: uc, graphUC: graphUC, agents: agents, sessions: sessions,
 		teamRunner: teamRunner, runs: runs, eventBus: eventBus, lg: lg,
-		synthesis:        synthesis,
-		activityRepo:     activityRepo,
-		teamStageReader:  teamStageReader,
+		synthesis:       synthesis,
+		activityRepo:    activityRepo,
+		teamStageReader: teamStageReader,
+		stepReader:      stepReader,
 	}
 }
 
@@ -334,7 +337,7 @@ func (s *TeamService) CancelTeamRun(ctx context.Context, req *v1.CancelTeamRunRe
 		if entry, ok := s.runs.GetStatus(r.SessionID); ok && strings.TrimSpace(entry.RunID) != "" {
 			runID = entry.RunID
 		}
-		CancelSessionRunSideEffects(ctx, s.eventBus, s.activityRepo, s.activityRepo, r.SessionID, runID, s.lg)
+		CancelSessionRunSideEffects(ctx, s.eventBus, s.stepReader, s.activityRepo, r.SessionID, runID, s.lg)
 	}
 	return toProtoTeamRun(r), nil
 }

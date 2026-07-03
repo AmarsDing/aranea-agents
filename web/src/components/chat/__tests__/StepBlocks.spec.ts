@@ -17,12 +17,29 @@ const i18n = createI18n({
 
 function mkStep(over: Partial<Step> = {}): Step {
   return {
-    ID: 's1', TurnID: 't1', TaskID: 'tk1', SessionID: 's1',
-    SpiritSessionID: 's1', Kind: 'thinking', AuthorAgentKey: 'a1',
-    Seq: 1, Version: 1, Content: '', Reasoning: 'I should help',
-    ToolName: '', ToolCallID: '', ToolArgs: null, ToolResult: null,
-    ToolDurationMs: 0, ToolErrorCode: '', NoticeType: '', Status: 'completed',
-    IsFinal: false, StartedAt: '', CompletedAt: null, ...over,
+    ID: 's1',
+    TurnID: 't1',
+    TaskID: 'tk1',
+    SessionID: 's1',
+    SpiritSessionID: 's1',
+    Kind: 'thinking',
+    AuthorAgentKey: 'a1',
+    Seq: 1,
+    Version: 1,
+    Content: '',
+    Reasoning: 'I should help',
+    ToolName: '',
+    ToolCallID: '',
+    ToolArgs: null,
+    ToolResult: null,
+    ToolDurationMs: 0,
+    ToolErrorCode: '',
+    NoticeType: '',
+    Status: 'completed',
+    IsFinal: false,
+    StartedAt: '',
+    CompletedAt: null,
+    ...over,
   };
 }
 

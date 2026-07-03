@@ -23,8 +23,14 @@ import TeamRunCard from './TeamRunCard.vue';
 const props = defineProps<{ teamStage: TeamStage }>();
 const store = useChatActivityStore();
 const teamRuns = computed(() => store.getTeamStageTeamRuns(props.teamStage.ID));
-const stageColor = computed(() => ({
-  assembled: 'grey', planning: 'orange', executing: 'blue',
-  completed: 'green', failed: 'red',
-}[props.teamStage.Stage] || 'grey'));
+const stageColor = computed(
+  () =>
+    ({
+      assembled: 'grey',
+      planning: 'orange',
+      executing: 'blue',
+      completed: 'green',
+      failed: 'red',
+    })[props.teamStage.Stage] || 'grey',
+);
 </script>

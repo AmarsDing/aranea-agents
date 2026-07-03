@@ -6,8 +6,15 @@ import type { Task, Turn, Step } from '../../features/chat/v2Types';
 
 function makeTask(over: Partial<Task> = {}): Task {
   return {
-    ID: 't1', SessionID: 's1', UserMessage: 'hi', Status: 'running',
-    Seq: 1, Version: 1, CreatedAt: '', UpdatedAt: '', CompletedAt: null,
+    ID: 't1',
+    SessionID: 's1',
+    UserMessage: 'hi',
+    Status: 'running',
+    Seq: 1,
+    Version: 1,
+    CreatedAt: '',
+    UpdatedAt: '',
+    CompletedAt: null,
     ...over,
   };
 }
@@ -45,12 +52,27 @@ describe('useChatActivityStore', () => {
   it('upsertStep merges streaming content', () => {
     const s = useChatActivityStore();
     const step: Step = {
-      ID: 's1', TurnID: 't1', TaskID: 'tk1', SessionID: 's1',
-      SpiritSessionID: 's1', Kind: 'reply', AuthorAgentKey: 'a1',
-      Seq: 1, Version: 1, Content: '', Reasoning: '',
-      ToolName: '', ToolCallID: '', ToolArgs: null, ToolResult: null,
-      ToolDurationMs: 0, ToolErrorCode: '', Status: 'running',
-      IsFinal: false, StartedAt: '', CompletedAt: null,
+      ID: 's1',
+      TurnID: 't1',
+      TaskID: 'tk1',
+      SessionID: 's1',
+      SpiritSessionID: 's1',
+      Kind: 'reply',
+      AuthorAgentKey: 'a1',
+      Seq: 1,
+      Version: 1,
+      Content: '',
+      Reasoning: '',
+      ToolName: '',
+      ToolCallID: '',
+      ToolArgs: null,
+      ToolResult: null,
+      ToolDurationMs: 0,
+      ToolErrorCode: '',
+      Status: 'running',
+      IsFinal: false,
+      StartedAt: '',
+      CompletedAt: null,
     };
     s.upsertStep(step);
     s.appendStepDelta('s1', 'content', 'hello ');
@@ -63,7 +85,7 @@ describe('useChatActivityStore', () => {
     s.upsertTask(makeTask({ ID: 't2', Seq: 2 }));
     s.upsertTask(makeTask({ ID: 't1', Seq: 1 }));
     const tasks = s.getSessionTasks('s1');
-    expect(tasks.map(t => t.ID)).toEqual(['t1', 't2']);
+    expect(tasks.map((t) => t.ID)).toEqual(['t1', 't2']);
   });
 
   it('clearSession removes entities by spirit session id', () => {

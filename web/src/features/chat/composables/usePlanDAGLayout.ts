@@ -24,7 +24,7 @@ export function usePlanDAGLayout() {
     if (steps.length === 0) return positions;
 
     // Build dependency graph
-    const stepMap = new Map(steps.map(s => [s.ID, s]));
+    const stepMap = new Map(steps.map((s) => [s.ID, s]));
     const layer = new Map<string, number>(); // step ID → layer (0 = root)
 
     // Compute layer = longest path from any root
@@ -35,12 +35,12 @@ export function usePlanDAGLayout() {
         layer.set(id, 0);
         return 0;
       }
-      const maxDepLayer = Math.max(...s.DependsOn.map(d => getLayer(d)));
+      const maxDepLayer = Math.max(...s.DependsOn.map((d) => getLayer(d)));
       const l = maxDepLayer + 1;
       layer.set(id, l);
       return l;
     }
-    steps.forEach(s => getLayer(s.ID));
+    steps.forEach((s) => getLayer(s.ID));
 
     // Group by layer
     const byLayer = new Map<number, string[]>();

@@ -145,13 +145,13 @@ func PublishBackgroundJobRefresh(bus biz.ActivityEventBus, sessionID, jobID, sta
 }
 
 // CancelSessionRunSideEffects publishes cancelled run_status and marks running activity cards cancelled.
-func CancelSessionRunSideEffects(ctx context.Context, bus biz.ActivityEventBus, reader biz.ActivityReader, writer biz.ActivityWriter, sessionID, runID string, lg loggateway.Logger) {
+func CancelSessionRunSideEffects(ctx context.Context, bus biz.ActivityEventBus, stepReader biz.StepV2Reader, writer biz.ActivityWriter, sessionID, runID string, lg loggateway.Logger) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return
 	}
 	PublishRunStatus(bus, sessionID, runID, biz.SessionRunPhaseCancelled, "")
-	if _, err := chatactivity.CancelRunningActivityMessages(ctx, reader, writer, sessionID, lg); err != nil {
+	if _, err := chatactivity.CancelRunningActivityMessages(ctx, stepReader, writer, sessionID, lg); err != nil {
 		lg.Warn("取消执行卡片查询失败",
 			loggateway.StepID("chat.activity.cancel"),
 			loggateway.Str("session_id", sessionID),

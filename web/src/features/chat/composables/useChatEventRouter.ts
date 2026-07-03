@@ -40,11 +40,7 @@ export function useChatEventRouter(store: Store) {
         break;
       case 'step.streaming':
         if (p.StepID && p.DeltaField && p.DeltaChunk) {
-          store.appendStepDelta(
-            p.StepID as string,
-            p.DeltaField as 'content' | 'reasoning',
-            p.DeltaChunk as string,
-          );
+          store.appendStepDelta(p.StepID as string, p.DeltaField as 'content' | 'reasoning', p.DeltaChunk as string);
         }
         break;
       case 'step.updated':
