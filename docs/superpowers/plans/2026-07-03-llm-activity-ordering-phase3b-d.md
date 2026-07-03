@@ -1278,3 +1278,46 @@ After Phase 3b-D completes, the remaining cleanup is:
 2. **Delete v1 `ListActivities` RPC** — once the frontend uses `ListStepsV2` directly (the v1 RPC currently wraps v2 for backward compat).
 3. **Unify WS queue strategy** — v2 events use `enqueueSystem` (system queue), while v1 used priority-based chat queue. Verify that real-time streaming performance is not degraded.
 4. **Delete `biz.Activity` type entirely** — once all adapters and conversion functions are removed.
+
+---
+
+## Phase 3b-D Progress Log (in-session updates)
+
+### 2026-07-03 — Tier 3 (Tasks 8-12) + extra migrations ✅
+
+**Completed (in dependency order):**
+
+| Commit | Scope | Files |
+|--------|-------|-------|
+| `c13e388ed` | Task 8: feat(biz) — add v2 system-domain Event types (`RunStatusEvent` / `HeartbeatEvent` / `SystemNoticeEvent`) | 1 |
+| `ef24fa5b3` | Task 9: refactor(service) — migrate 6 system-domain Publish sites | 7 |
+| `514a15119` | Task 10: refactor(service) — migrate 13 chat-domain v1 `ActivityEventBus` to v2 `EventBus` | 9 |
+| `07f6a03a6` | Task 11: refactor — migrate 8 chat-domain direct-publish sites | 9 |
+| `9d992a235` | fix: integrate v2 EventBus into Wire providers + adapt test mocks | 7 |
+| `2a69ce4a4` | Task 12: refactor(web) — handle v2 system-domain events in frontend (kept v1 path for backward compat) | 3 |
+| `d5a52ea7e` | refactor(service) — migrate `PublishRunStatus` / `PublishSessionStatusChanged` / `PublishBackgroundJobRefresh` / `PublishMetricsUpdated` to v2 EventBus (extra, beyond original plan) | 16 |
+| `bf026a164` | refactor(service) — migrate 3 more direct-publish sites (`spirit_tools.go`, `spirit_synthesis.go`, `agent_allocator_impl.go`) to v2 `SystemNoticeEvent` (extra) | 6 |
+| `97bee499e` | refactor(web) — route v2 `system.run_status` to side-effects (frontend adapter for v2 RunStatusEventPayload → v1 AFActivityEvent) (extra) | 1 |
+
+**Deviations from plan:**
+
+- **Task 12** kept the v1 path (`useSystemEventNotification` + `inboundActivityEventHandler`) for now; the v2 events route through a `v2NoticeToAFEvent` adapter that re-enters the v1 inbound pipeline. Direct deletion of `useSystemEventNotification.ts` is deferred to Tier 4.
+- **Extra migration**: `PublishRunStatus` / `PublishSessionStatusChanged` were originally planned to remain on v1 (Task 10 deferred their migration). They were migrated in commit `d5a52ea7e` to unblock the frontend `system.run_status` adapter (commit `97bee499e`).
+
+**Remaining v1 publish sites (12 total):**
+
+1. **Low-friction candidate, deferred**: `ws_message_handler.go:271` (`publishWSErrorActivity` — Kind=task, Failed). Blocked because `WSServer.activityBus` field type is `biz.ActivityEventBus` and is shared with `ws_event.go`'s v1 Subscribe path (the WS broadcast pump). Migrating requires either adding a separate `eventBus biz.EventBus` field to `WSServer` or removing the v1 Subscribe path first (Tier 4 work). Additionally, the test `TestWSUpstreamTurnGatewayErrorPublishesEnvelope` asserts on v1 `ActivityEvent.Meta` (`request_id`/`error_type`) which is lost in v2 `TaskFailedEvent` (DATA LOSS — same as `chat_event_publisher.go`).
+2. **Blocked by TeamGraphRunCoordinator v1 Subscribe** (3 sites): `team_graph_run_coordinator.go:308,651` + `session_status_guard.go:94`. The coordinator both publishes and subscribes v1 events; `handleGraphWatchActivity` deeply inspects v1 Kind/Stage/Meta/Event. Migrating these requires replacing the v1 Subscribe + `handleGraphWatchActivity` with a v2 Subscribe + v2 event type switch.
+3. **No direct v2 equivalent** (5 sites): 4 `Kind=GraphStage` + 1 `Kind=Plan` publish sites in `team_graph_run_coordinator.go` and `graph_task_status.go`. These need either new v2 event types (`GraphStageEvent`, `PlanEvent`) or a degradation to `SystemNoticeEvent`.
+
+**Tier 4 (Tasks 13-16) status**: 🟡 Blocked by remaining 12 v1 publish sites above. Cannot delete v1 `ActivityEventBus` / `activities` table / v1 WS subscription path while v1 publishes remain.
+
+**Frontend v2 pipeline status**: ✅ Fully connected (`WS v2_event` → `onV2Event` → `useChatEventRouter` → `activityV2Store` → `SessionPanelV2`). The v1 ActivityEvent rendering path was removed in Phase 3b-C Tier 4 Task 15. The v1 WS path (`ws_event.go` Subscribe → `activityEventPump` → frontend `handleActivityEvent`) still delivers v1 system events; the frontend's `handleActivityEvent` now only does dedup + system-event routing (no chat rendering).
+
+**Next steps:**
+
+1. Migrate TeamGraphRunCoordinator's v1 Subscribe + `handleGraphWatchActivity` to v2 (unblocks 3 of the 12 remaining publish sites).
+2. Decide whether to add `GraphStageEvent` / `PlanEvent` v2 types or degrade to `SystemNoticeEvent` (unblocks the 5 remaining sites).
+3. Migrate `ws_message_handler.go:271` once WSServer gains a v2 EventBus field (unblocks 1 site, with the test data-loss tradeoff).
+4. Begin Tier 4 deletion (Tasks 13-16) once all v1 publish sites are migrated.
+
