@@ -126,42 +126,37 @@ func NewChatRunStatusPersister(sessions biz.SessionStatePort, lg loggateway.Logg
 	return &chatRunStatusPersister{sessions: sessions, lg: lg}
 }
 
-// chatEventPublisher implements biz.ChatEventPublisher using dual buses.
+// chatEventPublisher implements biz.ChatEventPublisher using the v2 EventBus.
 //
+// Phase 3b-D Task 9: PublishRunStatus migrated to v2 EventBus (biz.RunStatusEvent).
 // Phase 3b-D Task 10: PublishMessageQueued migrated to v2 EventBus
-// (biz.NewStepCreatedEvent, Kind=StepKindNotice). PublishRunStatus still
-// delegates to the v1 free function PublishRunStatus in run_status_publish.go
-// (owned by Task 9); once Task 9 migrates that function, activityBus can be
-// removed.
+// (biz.NewStepCreatedEvent, Kind=StepKindNotice).
 type chatEventPublisher struct {
-	activityBus biz.ActivityEventBus // v1: for PublishRunStatus delegation (Task 9 owns the free function)
-	eventBus    biz.EventBus         // v2: for PublishMessageQueued
+	eventBus biz.EventBus // v2: for PublishRunStatus + PublishMessageQueued
 }
 
 func (pub *chatEventPublisher) PublishRunStatus(sessionID, runID, status, errMsg string) {
-	PublishRunStatus(pub.activityBus, sessionID, runID, status, errMsg)
+	PublishRunStatus(pub.eventBus, sessionID, runID, status, errMsg)
 }
 
 func (pub *chatEventPublisher) PublishMessageQueued(sessionID string) {
 	publishMessageQueuedToBus(pub.eventBus, sessionID)
 }
 
-func NewChatEventPublisher(activityBus biz.ActivityEventBus, eventBus biz.EventBus) biz.ChatEventPublisher {
-	return &chatEventPublisher{activityBus: activityBus, eventBus: eventBus}
+func NewChatEventPublisher(eventBus biz.EventBus) biz.ChatEventPublisher {
+	return &chatEventPublisher{eventBus: eventBus}
 }
 
 // NewChatUsecaseFromDeps wires the shared run registry, pending queue, and session
 // lock into a single Biz orchestration entrypoint for ChatService.
 //
-// Phase 3b-D Task 10: added eventBus param for v2 EventBus (PublishMessageQueued).
-// activityBus remains for PublishRunStatus delegation until Task 9 migrates
-// the free function.
+// Phase 3b-D Task 9: migrated PublishRunStatus to v2 EventBus; activityBus
+// param removed since all ChatEventPublisher methods now use v2.
 func NewChatUsecaseFromDeps(
 	runs *runtime.RunRegistry,
 	pending *runtime.PendingMessageQueue,
 	locks *biz.SessionLockManager,
 	sessions biz.SessionStatePort,
-	activityBus biz.ActivityEventBus,
 	eventBus biz.EventBus,
 	lg loggateway.Logger,
 ) *biz.ChatUsecase {
@@ -170,7 +165,7 @@ func NewChatUsecaseFromDeps(
 		locks,
 		NewPendingQueueAdapter(pending),
 		NewChatRunStatusPersister(sessions, lg),
-		NewChatEventPublisher(activityBus, eventBus),
+		NewChatEventPublisher(eventBus),
 		lg,
 	)
 	uc.StartBackgroundGoroutines()

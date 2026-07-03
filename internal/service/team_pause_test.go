@@ -7,7 +7,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event/activityevent"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
@@ -15,10 +15,10 @@ import (
 // newPauseTestService wires a TeamService with the cancelTeamRunRepo and
 // testRunRegistry configured for pause/unpause/inject scenarios.
 // Helper kept minimal — callers further mutate repo.runs before invoking.
-func newPauseTestService(t *testing.T, repo *cancelTeamRunRepo, reg *testRunRegistry) (*TeamService, <-chan biz.ActivityEvent, func()) {
+func newPauseTestService(t *testing.T, repo *cancelTeamRunRepo, reg *testRunRegistry) (*TeamService, <-chan biz.Event, func()) {
 	t.Helper()
-	bus := activityevent.New(nil, nil)
-	ch, unsub := bus.Subscribe(biz.ActivityEventSubscribeOptions{BufferSize: 4, GlobalMode: true})
+	bus := event.NewV2Bus()
+	ch, unsub := bus.Subscribe(biz.EventSubscribeOptions{})
 	uc := biz.NewTeamUsecase(biz.TeamUsecaseOpts{
 		Reader:     repo,
 		Writer:     repo,
@@ -64,14 +64,15 @@ func TestPauseTeamRun_RunningToPaused(t *testing.T) {
 	// run_status notice (paused) should be published.
 	select {
 	case ev := <-ch:
-		if ev.Activity.Stage != "run_status" {
-			t.Fatalf("stage=%q want run_status", ev.Activity.Stage)
+		rse, ok := ev.(*biz.RunStatusEvent)
+		if !ok {
+			t.Fatalf("expected *RunStatusEvent, got %T", ev)
 		}
-		if ev.Activity.SessionID != "sess-team-1" {
-			t.Fatalf("session_id=%q want sess-team-1", ev.Activity.SessionID)
+		if rse.Status != biz.TeamRunStatusPaused {
+			t.Fatalf("status=%s want %q", rse.Status, biz.TeamRunStatusPaused)
 		}
-		if ev.Activity.Meta["status"] != biz.TeamRunStatusPaused {
-			t.Fatalf("meta.status=%v want %q", ev.Activity.Meta["status"], biz.TeamRunStatusPaused)
+		if rse.SpiritSessionID() != "sess-team-1" {
+			t.Fatalf("session_id=%q want sess-team-1", rse.SpiritSessionID())
 		}
 	default:
 		t.Fatal("expected run_status paused event")
@@ -134,11 +135,12 @@ func TestUnpauseTeamRun_PausedToRunning(t *testing.T) {
 	// run_status notice (running) should be published.
 	select {
 	case ev := <-ch:
-		if ev.Activity.Stage != "run_status" {
-			t.Fatalf("stage=%q want run_status", ev.Activity.Stage)
+		rse, ok := ev.(*biz.RunStatusEvent)
+		if !ok {
+			t.Fatalf("expected *RunStatusEvent, got %T", ev)
 		}
-		if ev.Activity.Meta["status"] != biz.TeamRunStatusRunning {
-			t.Fatalf("meta.status=%v want %q", ev.Activity.Meta["status"], biz.TeamRunStatusRunning)
+		if rse.Status != biz.TeamRunStatusRunning {
+			t.Fatalf("status=%s want %q", rse.Status, biz.TeamRunStatusRunning)
 		}
 	default:
 		t.Fatal("expected run_status running event")

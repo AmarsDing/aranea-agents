@@ -21,7 +21,7 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/agent/intent"
-	"aranea-agents/internal/agent/v2"
+	v2 "aranea-agents/internal/agent/v2"
 	"aranea-agents/internal/artifact"
 	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
@@ -89,6 +89,7 @@ import (
 func provideEventBusSideConsumers(
 	infra *event.Infra,
 	activityBus biz.ActivityEventBus,
+	eventBus biz.EventBus,
 	tools *biz.ToolUsecase,
 	webhooks *biz.WebhookDispatcher,
 	sessions *biz.SessionUsecase,
@@ -104,7 +105,7 @@ func provideEventBusSideConsumers(
 	if infra != nil {
 		monitorEventBus = infra.MonitorEventBus
 	}
-	return biz.NewEventBusSideConsumers(activityBus, monitorEventBus, tools, webhooks, sessions, flowLogs, monitor, memWorker, traceProj, fileAppender, usage, logger)
+	return biz.NewEventBusSideConsumers(activityBus, eventBus, monitorEventBus, tools, webhooks, sessions, flowLogs, monitor, memWorker, traceProj, fileAppender, usage, logger)
 }
 
 func provideCronRunnerDeps(
@@ -753,8 +754,8 @@ func provideRunnerConfig(
 		KnowledgeUsecase: knowledgeUC,
 		Runs:             runs,
 		StreamOptsFactory: &chatactivity.StreamOptsFactoryAdapter{
-			ActivityBus:  activityBus,
-			V2Projector:  v2Projector,
+			ActivityBus: activityBus,
+			V2Projector: v2Projector,
 		},
 		AgentHelper:     &chatagent.TeamAgentHelperAdapter{},
 		OrganizationUC:  orgUC,
@@ -1371,6 +1372,7 @@ func provideChannelIngress(
 	graphs biz.GraphExecutor,
 	cron biz.CronTriggerGateway,
 	activityBus biz.ActivityEventBus,
+	eventBus biz.EventBus,
 	admission *biz.TurnAdmissionUsecase,
 	teamCompiler biz.TeamCompiler,
 	lg loggateway.Logger,
@@ -1379,7 +1381,7 @@ func provideChannelIngress(
 	debouncer := biz.NewIngressPeerDebouncer(biz.DefaultIngressDebounce, lg)
 	registry := biz.NewTurnPreviewRegistry()
 	gate := biz.NewChannelConcurrentGate()
-	return service.NewChannelIngress(channels, turnJobs, sessions, chat, graphs, cron, activityBus, dedupe, debouncer, registry, gate, admission, teamCompiler, lg)
+	return service.NewChannelIngress(channels, turnJobs, sessions, chat, graphs, cron, activityBus, eventBus, dedupe, debouncer, registry, gate, admission, teamCompiler, lg)
 }
 
 func provideChannelIngressAdmission(

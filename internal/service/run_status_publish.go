@@ -3,17 +3,14 @@ package service
 import (
 	"context"
 	"strings"
-	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/chatactivity"
 	"aranea-agents/pkg/loggateway"
-
-	"github.com/google/uuid"
 )
 
-// PublishRunStatus emits a run_status ActivityEvent for WS subscribers.
-func PublishRunStatus(bus biz.ActivityEventBus, sessionID, runID, status, errMsg string) {
+// PublishRunStatus emits a run_status v2 RunStatusEvent for WS subscribers.
+func PublishRunStatus(bus biz.EventBus, sessionID, runID, status, errMsg string) {
 	PublishRunStatusMeta(bus, sessionID, runID, status, errMsg, nil)
 }
 
@@ -21,12 +18,12 @@ func PublishRunStatus(bus biz.ActivityEventBus, sessionID, runID, status, errMsg
 type AwaitStatusMeta = biz.ChatAwaitMeta
 
 // PublishRunStatusMeta emits run_status with optional await metadata.
-func PublishRunStatusMeta(bus biz.ActivityEventBus, sessionID, runID, status, errMsg string, await *AwaitStatusMeta) {
+func PublishRunStatusMeta(bus biz.EventBus, sessionID, runID, status, errMsg string, await *AwaitStatusMeta) {
 	PublishRunStatusFull(bus, sessionID, runID, status, errMsg, await, "", "")
 }
 
 // PublishRunStatusFull emits run_status with optional session_run_id and turn_id (CC-R-04).
-func PublishRunStatusFull(bus biz.ActivityEventBus, sessionID, runID, status, errMsg string, await *AwaitStatusMeta, sessionRunID, turnID string) {
+func PublishRunStatusFull(bus biz.EventBus, sessionID, runID, status, errMsg string, await *AwaitStatusMeta, sessionRunID, turnID string) {
 	if bus == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
@@ -52,25 +49,9 @@ func PublishRunStatusFull(bus biz.ActivityEventBus, sessionID, runID, status, er
 			meta["await_tool_call_id"] = k
 		}
 	}
-	noticeType, statusLabel := runStatusNoticeTypeAndLabel(status)
+	noticeType, _ := runStatusNoticeTypeAndLabel(status)
 	meta["notice_type"] = noticeType
-	ev := biz.ActivityEvent{
-		Event: biz.ActivityEventUpdated,
-		Activity: biz.Activity{
-			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindNotice,
-			Status:    mapRunStatusToActivityStatus(status),
-			Timestamp: time.Now().UTC(),
-			SessionID: sessionID,
-			AgentKey:  "run-service",
-			AgentName: "运行状态",
-			Stage:     "run_status",
-			Content:   "运行状态：" + statusLabel,
-			Meta:      meta,
-		},
-		Domain: biz.ActivityDomainChat,
-	}
-	bus.Publish(context.Background(), ev)
+	bus.Publish(context.Background(), biz.NewRunStatusEvent(sessionID, runID, status, meta))
 }
 
 // mapRunStatusToActivityStatus maps a raw run-status string to the closest
@@ -118,34 +99,21 @@ func runStatusNoticeTypeAndLabel(status string) (noticeType, label string) {
 }
 
 // PublishBackgroundJobRefresh notifies Web clients to reload background job panels (DECO-12 · M55-JOB-01).
-func PublishBackgroundJobRefresh(bus biz.ActivityEventBus, sessionID, jobID, status string) {
+func PublishBackgroundJobRefresh(bus biz.EventBus, sessionID, jobID, status string) {
 	if bus == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
-	ev := biz.ActivityEvent{
-		Event: biz.ActivityEventUpdated,
-		Activity: biz.Activity{
-			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindNotice,
-			Status:    biz.ActivityStatusRunning,
-			Timestamp: time.Now().UTC(),
-			SessionID: sessionID,
-			AgentKey:  "background-job",
-			Stage:     "background_job_refresh",
-			Meta: map[string]any{
-				"background_job_refresh": true,
-				"job_id":                 strings.TrimSpace(jobID),
-				"job_status":             strings.TrimSpace(status),
-				"status":                 "background_job",
-			},
-		},
-		Domain: biz.ActivityDomainSystem,
+	meta := map[string]any{
+		"background_job_refresh": true,
+		"job_id":                 strings.TrimSpace(jobID),
+		"job_status":             strings.TrimSpace(status),
+		"status":                 "background_job",
 	}
-	bus.Publish(context.Background(), ev)
+	bus.Publish(context.Background(), biz.NewSystemNoticeEvent(sessionID, "background_job_refresh", "", meta))
 }
 
 // CancelSessionRunSideEffects publishes cancelled run_status and marks running activity cards cancelled.
-func CancelSessionRunSideEffects(ctx context.Context, bus biz.ActivityEventBus, stepReader biz.StepV2Reader, writer biz.ActivityWriter, sessionID, runID string, lg loggateway.Logger) {
+func CancelSessionRunSideEffects(ctx context.Context, bus biz.EventBus, stepReader biz.StepV2Reader, writer biz.ActivityWriter, sessionID, runID string, lg loggateway.Logger) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return
@@ -160,39 +128,24 @@ func CancelSessionRunSideEffects(ctx context.Context, bus biz.ActivityEventBus, 
 	}
 }
 
-// PublishSessionStatusChanged emits a session.status_changed ActivityEvent for WS subscribers.
-func PublishSessionStatusChanged(bus biz.ActivityEventBus, sessionID, status, statusReason, statusChangedAt string) {
+// PublishSessionStatusChanged emits a session.status_changed v2 SystemNoticeEvent for WS subscribers.
+func PublishSessionStatusChanged(bus biz.EventBus, sessionID, status, statusReason, statusChangedAt string) {
 	if bus == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
 	noticeType, statusLabel := runStatusNoticeTypeAndLabel(status)
-	ev := biz.ActivityEvent{
-		Event: biz.ActivityEventUpdated,
-		Activity: biz.Activity{
-			ID:        uuid.NewString(),
-			Kind:      biz.ActivityKindNotice,
-			Status:    mapRunStatusToActivityStatus(status),
-			Timestamp: time.Now().UTC(),
-			SessionID: sessionID,
-			AgentKey:  "session-service",
-			AgentName: "会话状态",
-			Stage:     "session_status_changed",
-			Content:   "会话状态：" + statusLabel,
-			Meta: map[string]any{
-				"session_id":        sessionID,
-				"status":            status,
-				"status_reason":     statusReason,
-				"status_changed_at": statusChangedAt,
-				"notice_type":       noticeType,
-			},
-		},
-		Domain: biz.ActivityDomainChat,
+	meta := map[string]any{
+		"session_id":        sessionID,
+		"status":            status,
+		"status_reason":     statusReason,
+		"status_changed_at": statusChangedAt,
+		"notice_type":       noticeType,
 	}
-	bus.Publish(context.Background(), ev)
+	bus.Publish(context.Background(), biz.NewSystemNoticeEvent(sessionID, "session_status_changed", "会话状态："+statusLabel, meta))
 }
 
 type sessionStatusPublisher struct {
-	bus biz.ActivityEventBus
+	bus biz.EventBus
 }
 
 func (p *sessionStatusPublisher) PublishSessionStatusChanged(sessionID, status, statusReason, statusChangedAt string) {
@@ -220,8 +173,8 @@ func PublishMetricsUpdated(bus biz.EventBus, sessionID string) {
 	bus.Publish(context.Background(), biz.NewSystemNoticeEvent(sessionID, "metrics_updated", "会话指标", meta))
 }
 
-// ProvideSessionStatusPublisher creates a SessionStatusPublisher backed by ActivityEventBus.
-func ProvideSessionStatusPublisher(bus biz.ActivityEventBus) biz.SessionStatusPublisher {
+// ProvideSessionStatusPublisher creates a SessionStatusPublisher backed by the v2 EventBus.
+func ProvideSessionStatusPublisher(bus biz.EventBus) biz.SessionStatusPublisher {
 	if bus == nil {
 		return nil
 	}

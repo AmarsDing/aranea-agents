@@ -24,7 +24,7 @@ type TeamService struct {
 	sessions        *biz.SessionUsecase
 	teamRunner      biz.TeamTurnRunnerPort
 	runs            biz.RunRegistryPort
-	eventBus        biz.ActivityEventBus
+	eventBus        biz.EventBus // Phase 3b-D Task 9: migrated from v1 ActivityEventBus to v2 EventBus
 	lg              loggateway.Logger
 	synthesis       *SpiritSynthesisService
 	activityRepo    biz.ActivityRepo
@@ -39,7 +39,7 @@ func NewTeamService(
 	sessions *biz.SessionUsecase,
 	teamRunner biz.TeamTurnRunnerPort,
 	runs biz.RunRegistryPort,
-	eventBus biz.ActivityEventBus,
+	eventBus biz.EventBus,
 	lg loggateway.Logger,
 	synthesis *SpiritSynthesisService,
 	activityRepo biz.ActivityRepo,

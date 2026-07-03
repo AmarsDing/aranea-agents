@@ -164,11 +164,11 @@ func (h *ChannelIngress) markTurnJobAsyncTarget(ctx context.Context, targetType,
 }
 
 func (h *ChannelIngress) publishBackgroundJobRefresh(ctx context.Context, jobID, sessionID, status string) {
-	if h == nil || h.activityBus == nil {
+	if h == nil || h.eventBus == nil {
 		return
 	}
 	if strings.TrimSpace(sessionID) == "" {
 		_, sessionID = channelTurnJobFromContext(ctx)
 	}
-	PublishBackgroundJobRefresh(h.activityBus, sessionID, jobID, status)
+	PublishBackgroundJobRefresh(h.eventBus, sessionID, jobID, status)
 }

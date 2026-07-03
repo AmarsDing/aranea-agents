@@ -29,6 +29,7 @@ type EventBusSideConsumers struct {
 
 func NewEventBusSideConsumers(
 	activityBus ActivityEventBus,
+	eventBus EventBus,
 	monitorEventBus contract.MonitorBus,
 	tools *ToolUsecase,
 	webhooks *WebhookDispatcher,
@@ -41,11 +42,11 @@ func NewEventBusSideConsumers(
 	usage *UsageUsecase,
 	logger SessionLogWriter,
 ) *EventBusSideConsumers {
-	if activityBus == nil && monitorEventBus == nil {
+	if activityBus == nil && eventBus == nil && monitorEventBus == nil {
 		return nil
 	}
 	return &EventBusSideConsumers{
-		callback:        newCallbackConsumer(activityBus, webhooks, logger),
+		callback:        newCallbackConsumer(eventBus, webhooks, logger),
 		flowLog:         newFlowLogPersistConsumer(flowLogs, logger, monitorEventBus),
 		userFeedback:    newUserFeedbackConsumer(activityBus, monitorUC, memWorker, logger),
 		usageRollup:     newUsageRollupConsumer(activityBus, usage, logger),

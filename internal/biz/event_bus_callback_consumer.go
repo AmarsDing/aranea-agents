@@ -3,23 +3,25 @@ package biz
 import (
 	"context"
 	"strings"
+
+	"aranea-agents/pkg/safego"
 )
 
 // callbackConsumer dispatches outbound webhooks on terminal run_status
-// ActivityEvents.
+// v2 RunStatusEvents.
 //
-// Phase 5 Blocker B: migrated from legacy Envelope-based SessionBus to
-// ActivityEventBus. The run_status publisher (service.PublishRunStatusFull)
-// emits ActivityEvent{Stage:"run_status", Meta:{"status","run_id","error_message"}}.
-// This consumer filters at the bus level by Stage=="run_status" and extracts
-// the same fields from Activity.Meta.
+// Phase 3b-D: migrated from v1 ActivityEventBus to v2 EventBus. The
+// run_status publisher (service.PublishRunStatusFull) emits
+// *biz.RunStatusEvent{RunID, Status, Meta}. This consumer filters at the
+// bus level by EventKind == EventKindSystemRunStatus and extracts the
+// same fields from the event's exported fields.
 type callbackConsumer struct {
-	bus      ActivityEventBus
+	bus      EventBus
 	webhooks *WebhookDispatcher
 	logger   SessionLogWriter
 }
 
-func newCallbackConsumer(bus ActivityEventBus, webhooks *WebhookDispatcher, logger SessionLogWriter) *callbackConsumer {
+func newCallbackConsumer(bus EventBus, webhooks *WebhookDispatcher, logger SessionLogWriter) *callbackConsumer {
 	if webhooks == nil {
 		return nil
 	}
@@ -39,33 +41,45 @@ func (c *callbackConsumer) Start(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	runActivityConsumerWithOpts(ctx, "event-bus-callback", c.bus, ActivityEventSubscribeOptions{
-		BufferSize: 128,
-		GlobalMode: true,
-		Filter: func(ev ActivityEvent) bool {
-			return ev.Activity.Stage == "run_status"
-		},
-	}, c.handle, offerOption[ActivityEvent]{FallbackSync: true, FallbackFn: c.handle}, c.logger)
+	worker := newAsyncEventWorker("event-bus-callback", sideConsumerQueueSize(), 0, c.logger, v2EventLogFields)
+	worker.Start(ctx, c.handle)
+	ch, unsub := c.bus.Subscribe(EventSubscribeOptions{})
+	safego.Go(ctx, "event-bus-callback", func() {
+		defer unsub()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case ev, ok := <-ch:
+				if !ok {
+					return
+				}
+				if _, ok := ev.(*RunStatusEvent); !ok {
+					continue
+				}
+				worker.OfferWithOptions(ctx, ev, offerOption[Event]{FallbackSync: true, FallbackFn: c.handle})
+			}
+		}
+	})
 }
 
-func (c *callbackConsumer) handle(ctx context.Context, ev ActivityEvent) {
+func (c *callbackConsumer) handle(ctx context.Context, ev Event) {
 	if c == nil || c.webhooks == nil {
 		return
 	}
-	meta := ev.Activity.Meta
-	if meta == nil {
+	rse, ok := ev.(*RunStatusEvent)
+	if !ok {
 		return
 	}
-	status, _ := meta["status"].(string)
-	status = strings.TrimSpace(status)
+	status := strings.TrimSpace(rse.Status)
 	if status == "" {
 		return
 	}
 	if _, ok := terminalRunStatuses()[strings.ToLower(status)]; !ok {
 		return
 	}
-	runID, _ := meta["run_id"].(string)
-	errMsg, _ := meta["error_message"].(string)
+	runID := rse.RunID
+	errMsg, _ := rse.Meta["error_message"].(string)
 	eventType := RunStatusToWebhookEvent(status)
 	if eventType == "" {
 		return
@@ -74,5 +88,14 @@ func (c *callbackConsumer) handle(ctx context.Context, ev ActivityEvent) {
 	if msg := strings.TrimSpace(errMsg); msg != "" {
 		data["error_message"] = msg
 	}
-	c.webhooks.Dispatch(ctx, eventType, runID, ev.Activity.SessionID, status, data)
+	c.webhooks.Dispatch(ctx, eventType, runID, rse.SpiritSessionID(), status, data)
+}
+
+// v2EventLogFields extracts identifying fields from a v2 Event for
+// queue-full warning logging.
+func v2EventLogFields(ev Event) (sessionID, typeName, eventID string) {
+	if ev == nil {
+		return "", "", ""
+	}
+	return ev.SpiritSessionID(), string(ev.EventKind()), ev.EntityID()
 }

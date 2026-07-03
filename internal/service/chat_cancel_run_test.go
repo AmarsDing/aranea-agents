@@ -3,15 +3,16 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event/activityevent"
+	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
 )
 
 func TestCancelRun_PublishesCancelledRunStatus(t *testing.T) {
-	bus := activityevent.New(nil, nil)
-	ch, unsub := bus.Subscribe(biz.ActivityEventSubscribeOptions{BufferSize: 8, GlobalMode: true})
+	bus := event.NewV2Bus()
+	ch, unsub := bus.Subscribe(biz.EventSubscribeOptions{})
 	defer unsub()
 
 	reg := rt.NewRunRegistry()
@@ -23,7 +24,7 @@ func TestCancelRun_PublishesCancelledRunStatus(t *testing.T) {
 	svc := &ChatService{
 		orch: &ChatOrchestrator{
 			runs: reg,
-			core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{ActivityBus: bus}}},
+			core: chatTurnCoreDeps{TD: rt.TurnDeps{}},
 			runMgr: &chatRunManagerImpl{
 				runStatusTracker:    rStatus,
 				pendingQueueManager: noopPendingQueueManager{},
@@ -40,13 +41,17 @@ func TestCancelRun_PublishesCancelledRunStatus(t *testing.T) {
 
 	select {
 	case ev := <-ch:
-		if ev.Activity.Stage != "run_status" {
-			t.Fatalf("stage=%s", ev.Activity.Stage)
+		rse, ok := ev.(*biz.RunStatusEvent)
+		if !ok {
+			t.Fatalf("expected *RunStatusEvent, got %T", ev)
 		}
-		if ev.Activity.Meta["status"] != "cancelled" {
-			t.Fatalf("status=%v", ev.Activity.Meta["status"])
+		if rse.Status != biz.SessionRunPhaseCancelled {
+			t.Fatalf("status=%s", rse.Status)
 		}
-	default:
-		t.Fatal("expected run_status activity event")
+		if rse.SpiritSessionID() != "sess-ws" {
+			t.Fatalf("session=%s", rse.SpiritSessionID())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected run_status event")
 	}
 }

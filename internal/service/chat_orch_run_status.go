@@ -66,17 +66,20 @@ type runStatusTracker interface {
 //
 // Part of the TECH-DEBT(BL8) resolution: extracting run status management
 // from ChatOrchestrator to reduce cognitive complexity (AS-COG-01).
+//
+// Phase 3b-D Task 9: migrated bus field from v1 ActivityEventBus to v2 EventBus;
+// PublishRunStatusFull now emits biz.RunStatusEvent.
 type chatRunStatusTracker struct {
 	runs       *rt.RunRegistry
 	sessions   biz.SessionStatePort
-	bus        biz.ActivityEventBus
+	bus        biz.EventBus
 	bindings   *TypedSyncMap[string, sessionRunTurnBinding]
 	awaitCache *TypedSyncMap[string, biz.ChatAwaitMeta]
 	sm         *biz.RunStateMachine
 	lg         loggateway.Logger
 }
 
-func newChatRunStatusTracker(runs *rt.RunRegistry, sessions biz.SessionStatePort, bus biz.ActivityEventBus, lg loggateway.Logger) *chatRunStatusTracker {
+func newChatRunStatusTracker(runs *rt.RunRegistry, sessions biz.SessionStatePort, bus biz.EventBus, lg loggateway.Logger) *chatRunStatusTracker {
 	return &chatRunStatusTracker{
 		runs:       runs,
 		sessions:   sessions,
