@@ -11,22 +11,51 @@ import (
 	"aranea-agents/pkg/apierror"
 )
 
-// SessionV2Service implements the v2 entity read RPCs (Task/Turn/Step) by
-// delegating to the v2 repo readers. It replaces the v1 ListActivities path.
+// SessionV2Service implements the v2 entity read RPCs (Task/Turn/Step + 7
+// child entities) by delegating to the v2 repo readers. It replaces the v1
+// ListActivities path.
+//
+// 2026-07-04 问题 6 修复：补齐 7 个 child entity 的读取 RPC，让前端
+// fetchSessionHistory 刷新后能重建完整活动树（Plan/Graph/Team/Member）。
 type SessionV2Service struct {
 	v1.UnimplementedSessionV2ServiceServer
 
-	taskReader biz.TaskV2Reader
-	turnReader biz.TurnV2Reader
-	stepReader biz.StepV2Reader
+	taskReader          biz.TaskV2Reader
+	turnReader          biz.TurnV2Reader
+	stepReader          biz.StepV2Reader
+	teamStageReader     biz.TeamStageV2Reader
+	teamRunReader       biz.TeamRunV2Reader
+	memberSessionReader biz.MemberSessionV2Reader
+	planBoardReader     biz.PlanBoardV2Reader
+	planStepReader      biz.PlanStepV2Reader
+	graphStageReader    biz.GraphStageV2Reader
+	graphNodeReader     biz.GraphNodeV2Reader
 }
 
 // NewSessionV2Service constructs a SessionV2Service from v2 repo readers.
-func NewSessionV2Service(taskReader biz.TaskV2Reader, turnReader biz.TurnV2Reader, stepReader biz.StepV2Reader) *SessionV2Service {
+func NewSessionV2Service(
+	taskReader biz.TaskV2Reader,
+	turnReader biz.TurnV2Reader,
+	stepReader biz.StepV2Reader,
+	teamStageReader biz.TeamStageV2Reader,
+	teamRunReader biz.TeamRunV2Reader,
+	memberSessionReader biz.MemberSessionV2Reader,
+	planBoardReader biz.PlanBoardV2Reader,
+	planStepReader biz.PlanStepV2Reader,
+	graphStageReader biz.GraphStageV2Reader,
+	graphNodeReader biz.GraphNodeV2Reader,
+) *SessionV2Service {
 	return &SessionV2Service{
-		taskReader: taskReader,
-		turnReader: turnReader,
-		stepReader: stepReader,
+		taskReader:          taskReader,
+		turnReader:          turnReader,
+		stepReader:          stepReader,
+		teamStageReader:     teamStageReader,
+		teamRunReader:       teamRunReader,
+		memberSessionReader: memberSessionReader,
+		planBoardReader:     planBoardReader,
+		planStepReader:      planStepReader,
+		graphStageReader:    graphStageReader,
+		graphNodeReader:     graphNodeReader,
 	}
 }
 
@@ -103,6 +132,129 @@ func (s *SessionV2Service) GetStep(ctx context.Context, req *v1.GetStepV2Request
 	return &v1.GetStepV2Response{Step: bizStepToProto(step)}, nil
 }
 
+// === 2026-07-04 问题 6 修复：7 个 child entity 的 List RPC ===
+// 每个 handler 委托给对应的 v2 repo reader，并将 biz struct 转换为 proto 消息。
+// 错误处理遵循 v2 约定：apierror.BadRequest 用于参数校验，repo 错误透传。
+
+// ListTeamStages returns all team_stages for a task.
+func (s *SessionV2Service) ListTeamStages(ctx context.Context, req *v1.ListTeamStagesV2Request) (*v1.ListTeamStagesV2Response, error) {
+	taskID := strings.TrimSpace(req.GetTaskId())
+	if taskID == "" {
+		return nil, apierror.BadRequest(apierror.DomainShared, "task_id is required")
+	}
+	stages, err := s.teamStageReader.ListTeamStagesByTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.TeamStageV2, 0, len(stages))
+	for _, ts := range stages {
+		out = append(out, bizTeamStageToProto(ts))
+	}
+	return &v1.ListTeamStagesV2Response{TeamStages: out}, nil
+}
+
+// ListTeamRuns returns all team_runs for a team_stage.
+func (s *SessionV2Service) ListTeamRuns(ctx context.Context, req *v1.ListTeamRunsV2Request) (*v1.ListTeamRunsV2Response, error) {
+	stageID := strings.TrimSpace(req.GetStageId())
+	if stageID == "" {
+		return nil, apierror.BadRequest(apierror.DomainShared, "stage_id is required")
+	}
+	runs, err := s.teamRunReader.ListTeamRunsByStage(ctx, stageID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.TeamRunV2, 0, len(runs))
+	for _, tr := range runs {
+		out = append(out, bizTeamRunToProto(tr))
+	}
+	return &v1.ListTeamRunsV2Response{TeamRuns: out}, nil
+}
+
+// ListMemberSessions returns all member_sessions for a team_run.
+func (s *SessionV2Service) ListMemberSessions(ctx context.Context, req *v1.ListMemberSessionsV2Request) (*v1.ListMemberSessionsV2Response, error) {
+	runID := strings.TrimSpace(req.GetRunId())
+	if runID == "" {
+		return nil, apierror.BadRequest(apierror.DomainShared, "run_id is required")
+	}
+	sessions, err := s.memberSessionReader.ListMemberSessionsByRun(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.MemberSessionV2, 0, len(sessions))
+	for _, ms := range sessions {
+		out = append(out, bizMemberSessionToProto(ms))
+	}
+	return &v1.ListMemberSessionsV2Response{MemberSessions: out}, nil
+}
+
+// ListPlanBoards returns all plan_boards for a task.
+func (s *SessionV2Service) ListPlanBoards(ctx context.Context, req *v1.ListPlanBoardsV2Request) (*v1.ListPlanBoardsV2Response, error) {
+	taskID := strings.TrimSpace(req.GetTaskId())
+	if taskID == "" {
+		return nil, apierror.BadRequest(apierror.DomainShared, "task_id is required")
+	}
+	boards, err := s.planBoardReader.ListPlanBoardsByTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.PlanBoardV2, 0, len(boards))
+	for _, pb := range boards {
+		out = append(out, bizPlanBoardToProto(pb))
+	}
+	return &v1.ListPlanBoardsV2Response{PlanBoards: out}, nil
+}
+
+// ListPlanSteps returns all plan_steps for a task.
+func (s *SessionV2Service) ListPlanSteps(ctx context.Context, req *v1.ListPlanStepsV2Request) (*v1.ListPlanStepsV2Response, error) {
+	taskID := strings.TrimSpace(req.GetTaskId())
+	if taskID == "" {
+		return nil, apierror.BadRequest(apierror.DomainShared, "task_id is required")
+	}
+	steps, err := s.planStepReader.ListPlanStepsByTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.PlanStepV2, 0, len(steps))
+	for _, ps := range steps {
+		out = append(out, bizPlanStepToProto(ps))
+	}
+	return &v1.ListPlanStepsV2Response{PlanSteps: out}, nil
+}
+
+// ListGraphStages returns all graph_stages for a task.
+func (s *SessionV2Service) ListGraphStages(ctx context.Context, req *v1.ListGraphStagesV2Request) (*v1.ListGraphStagesV2Response, error) {
+	taskID := strings.TrimSpace(req.GetTaskId())
+	if taskID == "" {
+		return nil, apierror.BadRequest(apierror.DomainShared, "task_id is required")
+	}
+	stages, err := s.graphStageReader.ListGraphStagesByTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.GraphStageV2, 0, len(stages))
+	for _, gs := range stages {
+		out = append(out, bizGraphStageToProto(gs))
+	}
+	return &v1.ListGraphStagesV2Response{GraphStages: out}, nil
+}
+
+// ListGraphNodes returns all graph_nodes for a graph_stage.
+func (s *SessionV2Service) ListGraphNodes(ctx context.Context, req *v1.ListGraphNodesV2Request) (*v1.ListGraphNodesV2Response, error) {
+	stageID := strings.TrimSpace(req.GetStageId())
+	if stageID == "" {
+		return nil, apierror.BadRequest(apierror.DomainShared, "stage_id is required")
+	}
+	nodes, err := s.graphNodeReader.ListGraphNodesByStage(ctx, stageID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.GraphNodeV2, 0, len(nodes))
+	for _, gn := range nodes {
+		out = append(out, bizGraphNodeToProto(gn))
+	}
+	return &v1.ListGraphNodesV2Response{GraphNodes: out}, nil
+}
+
 // === Conversion helpers (biz → proto) ===
 
 func bizTaskToProto(t biz.Task) *v1.TaskV2 {
@@ -154,7 +306,7 @@ func bizStepToProto(s biz.Step) *v1.StepV2 {
 		ToolCallId:      s.ToolCallID,
 		ToolArgs:        []byte(s.ToolArgs),
 		ToolResult:      []byte(s.ToolResult),
-		ToolDurationMs:   s.ToolDurationMs,
+		ToolDurationMs:  s.ToolDurationMs,
 		ToolErrorCode:   s.ToolErrorCode,
 		NoticeType:      s.NoticeType,
 		Status:          string(s.Status),
@@ -170,6 +322,200 @@ func formatTimePtr(t *time.Time) string {
 		return ""
 	}
 	return t.Format(time.RFC3339)
+}
+
+// === 2026-07-04 问题 6 修复：7 个 child entity 的 biz→proto 转换函数 ===
+
+func bizTeamStageToProto(ts biz.TeamStage) *v1.TeamStageV2 {
+	members := make([]*v1.MemberInfoV2, 0, len(ts.Members))
+	for _, m := range ts.Members {
+		members = append(members, &v1.MemberInfoV2{
+			AgentKey:       m.AgentKey,
+			AgentName:      m.AgentName,
+			AvatarUrl:      m.AvatarURL,
+			ChildSessionId: m.ChildSessionID,
+			Status:         m.Status,
+		})
+	}
+	return &v1.TeamStageV2{
+		Id:          ts.ID,
+		TaskId:      ts.TaskID,
+		TurnId:      ts.TurnID,
+		SessionId:   ts.SessionID,
+		TeamId:      ts.TeamID,
+		TeamName:    ts.TeamName,
+		DagNodeId:   ts.DagNodeID,
+		DependsOn:   ts.DependsOn,
+		Status:      string(ts.Status),
+		Stage:       string(ts.Stage),
+		Members:     members,
+		Strategy:    ts.Strategy,
+		StartedAt:   ts.StartedAt.Format(time.RFC3339),
+		CompletedAt: formatTimePtr(ts.CompletedAt),
+		Seq:         ts.Seq,
+		Version:     ts.Version,
+	}
+}
+
+func bizTeamRunToProto(tr biz.TeamRun) *v1.TeamRunV2 {
+	return &v1.TeamRunV2{
+		Id:              tr.ID,
+		TeamStageId:     tr.TeamStageID,
+		TaskId:          tr.TaskID,
+		SessionId:       tr.SessionID,
+		SpiritSessionId: tr.SpiritSessionID,
+		DagNodeId:       tr.DagNodeID,
+		DependsOn:       tr.DependsOn,
+		Status:          string(tr.Status),
+		StartedAt:       tr.StartedAt.Format(time.RFC3339),
+		CompletedAt:     formatTimePtr(tr.CompletedAt),
+		Seq:             tr.Seq,
+		Version:         tr.Version,
+		Error:           tr.Error,
+	}
+}
+
+func bizMemberSessionToProto(ms biz.MemberSession) *v1.MemberSessionV2 {
+	return &v1.MemberSessionV2{
+		Id:              ms.ID,
+		TeamRunId:       ms.TeamRunID,
+		TeamStageId:     ms.TeamStageID,
+		TaskId:          ms.TaskID,
+		SessionId:       ms.SessionID,
+		SpiritSessionId: ms.SpiritSessionID,
+		AgentKey:        ms.AgentKey,
+		AgentName:       ms.AgentName,
+		AvatarUrl:       ms.AvatarURL,
+		Status:          string(ms.Status),
+		Seq:             ms.Seq,
+		Version:         ms.Version,
+		StartedAt:       ms.StartedAt.Format(time.RFC3339),
+		FinishedAt:      formatTimePtr(ms.FinishedAt),
+		Error:           ms.Error,
+	}
+}
+
+func bizPlanBoardToProto(pb biz.PlanBoard) *v1.PlanBoardV2 {
+	steps := make([]*v1.PlanStepV2, 0, len(pb.Steps))
+	for _, ps := range pb.Steps {
+		steps = append(steps, bizPlanStepToProto(ps))
+	}
+	return &v1.PlanBoardV2{
+		Id:          pb.ID,
+		TaskId:      pb.TaskID,
+		TurnId:      pb.TurnID,
+		SessionId:   pb.SessionID,
+		Strategy:    string(pb.Strategy),
+		Status:      string(pb.Status),
+		Steps:       steps,
+		StartedAt:   pb.StartedAt.Format(time.RFC3339),
+		CompletedAt: formatTimePtr(pb.CompletedAt),
+		Seq:         pb.Seq,
+		Version:     pb.Version,
+	}
+}
+
+func bizPlanStepToProto(ps biz.PlanStep) *v1.PlanStepV2 {
+	return &v1.PlanStepV2{
+		Id:                ps.ID,
+		PlanId:            ps.PlanID,
+		TaskId:            ps.TaskID,
+		Label:             ps.Label,
+		Description:       ps.Description,
+		DependsOn:         ps.DependsOn,
+		MappedTeamStageId: ps.MappedTeamStageID,
+		Status:            string(ps.Status),
+		AutoSynthesis:     ps.AutoSynthesis,
+		StartedAt:         ps.StartedAt.Format(time.RFC3339),
+		CompletedAt:       formatTimePtr(ps.CompletedAt),
+		Seq:               ps.Seq,
+		Version:           ps.Version,
+		Result:            bizStepResultToProto(ps.Result),
+		Error:             bizStepErrorToProto(ps.Error),
+	}
+}
+
+func bizStepResultToProto(r *biz.StepResult) *v1.StepResultV2 {
+	if r == nil {
+		return nil
+	}
+	reports := make([]*v1.MemberReportV2, 0, len(r.MemberReports))
+	for _, mr := range r.MemberReports {
+		reports = append(reports, bizMemberReportToProto(mr))
+	}
+	return &v1.StepResultV2{
+		Output:        r.Output,
+		MemberReports: reports,
+		TokensUsed:    bizTokenUsageToProto(r.TokensUsed),
+		DurationMs:    r.DurationMs,
+	}
+}
+
+func bizStepErrorToProto(e *biz.StepError) *v1.StepErrorV2 {
+	if e == nil {
+		return nil
+	}
+	var failedMember *v1.MemberReportV2
+	if e.FailedMember != nil {
+		failedMember = bizMemberReportToProto(*e.FailedMember)
+	}
+	return &v1.StepErrorV2{
+		Code:         e.Code,
+		Message:      e.Message,
+		Retryable:    e.Retryable,
+		FailedMember: failedMember,
+	}
+}
+
+func bizMemberReportToProto(mr biz.MemberReport) *v1.MemberReportV2 {
+	return &v1.MemberReportV2{
+		AgentKey:   mr.AgentKey,
+		AgentName:  mr.AgentName,
+		Output:     mr.Output,
+		TokensUsed: bizTokenUsageToProto(mr.TokensUsed),
+		DurationMs: mr.DurationMs,
+		Error:      mr.Error,
+	}
+}
+
+func bizTokenUsageToProto(t biz.TokenUsage) *v1.TokenUsageV2 {
+	return &v1.TokenUsageV2{
+		PromptTokens:     t.PromptTokens,
+		CompletionTokens: t.CompletionTokens,
+		TotalTokens:      t.TotalTokens,
+	}
+}
+
+func bizGraphStageToProto(gs biz.GraphStage) *v1.GraphStageV2 {
+	nodes := make([]*v1.GraphNodeV2, 0, len(gs.Nodes))
+	for _, gn := range gs.Nodes {
+		nodes = append(nodes, bizGraphNodeToProto(gn))
+	}
+	return &v1.GraphStageV2{
+		Id:          gs.ID,
+		TaskId:      gs.TaskID,
+		TurnId:      gs.TurnID,
+		SessionId:   gs.SessionID,
+		PlanBoardId: gs.PlanBoardID,
+		Nodes:       nodes,
+		Status:      string(gs.Status),
+		StartedAt:   gs.StartedAt.Format(time.RFC3339),
+		CompletedAt: formatTimePtr(gs.CompletedAt),
+		Seq:         gs.Seq,
+		Version:     gs.Version,
+	}
+}
+
+func bizGraphNodeToProto(gn biz.GraphNode) *v1.GraphNodeV2 {
+	return &v1.GraphNodeV2{
+		Id:           gn.ID,
+		GraphStageId: gn.GraphStageID,
+		Label:        gn.Label,
+		DagNodeId:    gn.DagNodeID,
+		TeamStageId:  gn.TeamStageID,
+		Status:       string(gn.Status),
+		DependsOn:    gn.DependsOn,
+	}
 }
 
 // stepV2ToActivityV1 converts a v2 StepV2 proto back to the v1 Activity proto

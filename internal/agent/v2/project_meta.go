@@ -26,6 +26,23 @@ type ProjectMeta struct {
 	AgentName       string
 	MemberAgentKeys map[string]struct{}
 	TaskContent     string // user input text for the root task
+	// ParentTaskID, when non-empty, signals a system-push continuation turn:
+	// the Projector attaches the new Turn to this existing Task ID instead of
+	// creating a new Task, and skips emitting task.created / task.completed /
+	// task.failed events (the existing Task's state machine is owned by the
+	// original user-input turn). Design: 2026-07-02-llm-activity-ordering-design §3.2.1
+	ParentTaskID string
+	// NodeIDToAgentKey maps graph node IDs (e.g. "member-1") to member agent
+	// keys (e.g. "spirit-worker-a"). Used by ActivityProjector.ProcessEvent
+	// to attribute Steps to the correct member agent when GraphAgent executes
+	// multiple member agents through a single projector.
+	//
+	// 2026-07-04 问题 1 修复：Graph 模式下 V2Projector 只配置一次 anchor
+	// agent 的 meta，所有 member agent 的 Step 事件被错误归到 anchor agent
+	// 名下，导致前端 MemberSessionPanel 通过 AuthorAgentKey 匹配不到成员
+	// 的 thinking/action/reply 活动。通过在 ProcessEvent 中根据 ev.Author
+	// （graph emitter 设置为 node ID）查表，临时切换 p.meta.AgentKey。
+	NodeIDToAgentKey map[string]string
 }
 
 // newTask constructs a biz.Task from ProjectMeta. The Task's SessionID is the

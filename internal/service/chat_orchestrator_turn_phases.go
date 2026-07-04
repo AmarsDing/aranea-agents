@@ -9,6 +9,7 @@ import (
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/agent/intent"
+	"aranea-agents/internal/agent/v2"
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	sessstatus "aranea-agents/internal/biz/session"
@@ -141,8 +142,16 @@ func (o *ChatOrchestrator) persistTurnUserMessage(
 	if durableCtx.active {
 		userMsg = durableCtx.buildUserMessage(sessionID, userOpts, attN, emitter)
 	} else {
+		// 2026-07-04 问题 2/3 修复：优先使用 ctx 中预生成的 RootTaskActivityID
+		// 作为 userMsg.ID，保证 userMsg.ID 与 PlanBoard.TaskID 一致（PRE-PLANNING
+		// GATE 在本函数之前调用，已通过 ContextWithRootTaskActivityID 注入 ID）。
+		// 缺失时 fallback 到 uuid.NewString()。
+		msgID := string(chatagent.RootTaskActivityIDFromCtx(ctx))
+		if msgID == "" {
+			msgID = uuid.NewString()
+		}
 		userMsg = biz.ChatMessage{
-			ID:               uuid.NewString(),
+			ID:               msgID,
 			SessionID:        sessionID,
 			Role:             "user",
 			ContentMarkdown:  content,
@@ -205,11 +214,15 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 	// N-21/N-03: Pre-configure the v2 ActivityProjector and inject it into
 	// runCtx so that plugins (cost_guard, model_router) and hooks
 	// (tool_confirmation) can emit notice/confirm events via
-	// biz.ActivityEmitterFromContext during the LLM call. Reset clears stale
-	// state from a previous turn; Configure sets the meta without emitting
-	// events. OnTurnStart (called later by the stream consumer) will emit
-	// task.created + turn.started.
-	if o.infraDeps.V2Projector != nil {
+	// biz.ActivityEmitterFromContext during the LLM call. Configure sets the
+	// meta without emitting events. OnTurnStart (called later by the stream
+	// consumer) will emit task.created + turn.started.
+	//
+	// 2026-07-04 问题 4 根因修复：每次 turn 通过 V2ProjectorFactory.NewProjector()
+	// 创建独立实例，避免 spirit turn 与 team member turn 共享单例导致的 Reset()
+	// 互相清空状态问题。Sequencer 仍为单例（共享发布管道与全局 SeqAssigner）。
+	var turnProjector *v2.ActivityProjector
+	if o.infraDeps.V2ProjectorFactory != nil {
 		earlyMeta := chatagent.ProjectMeta{
 			SessionID:        sessionID,
 			RequestID:        userMsg.ID,
@@ -221,11 +234,12 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 			ContextWindow:    o.resolveContextWindowTokens(runCtx, sess, ag, admit.provider, admit.model),
 			Source:           event.EnvelopeSourceFromContext(runCtx),
 			TaskContent:      content,
+			ParentTaskID:     input.ParentTaskID,
 		}
 		v2Meta := chatagent.V2ProjectMetaFromV1(earlyMeta)
-		o.infraDeps.V2Projector.Reset()
-		o.infraDeps.V2Projector.Configure(v2Meta)
-		runCtx = biz.WithActivityEmitter(runCtx, o.infraDeps.V2Projector)
+		turnProjector = o.infraDeps.V2ProjectorFactory.NewProjector()
+		turnProjector.Configure(v2Meta)
+		runCtx = biz.WithActivityEmitter(runCtx, turnProjector)
 	}
 
 	// LLM invocation
@@ -235,7 +249,7 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 	}
 
 	// Stream consumption
-	result, streamErr := o.consumeTurnStream(runCtx, sess, ag, admit, emitter, traceBridge, events, firstByteTimeout, time.Now(), content)
+	result, streamErr := o.consumeTurnStream(runCtx, sess, ag, admit, emitter, traceBridge, events, firstByteTimeout, turnProjector, time.Now(), content, input.ParentTaskID)
 	if streamErr != nil {
 		return o.handleStreamError(ctx, ag, admit, emitter, userMsg, streamErr, firstByteTimeout, turnStart), streamErr
 	}
@@ -498,6 +512,11 @@ func (o *ChatOrchestrator) buildTurnRunOptions(
 }
 
 // consumeTurnStream wraps the stream consumption with logging.
+// v2Projector is the per-turn projector (created in invokeTurnLLMAndStream
+// via V2ProjectorFactory). When non-nil, the stream consumer calls
+// OnTurnStart/OnTurnEndEnhanced on this instance. Passing the same instance
+// ensures plugin notice/confirm events emitted during the LLM call share
+// state with the stream consumer's event handling.
 // Stability:internal
 func (o *ChatOrchestrator) consumeTurnStream(
 	runCtx context.Context,
@@ -508,8 +527,10 @@ func (o *ChatOrchestrator) consumeTurnStream(
 	traceBridge *turntrace.Bridge,
 	events <-chan *trpcevent.Event,
 	firstByteTimeout time.Duration,
+	v2Projector *v2.ActivityProjector,
 	llmStart time.Time,
 	userContent string,
+	parentTaskID string,
 ) (chatagent.EventStreamResult, error) {
 	sessionID := strings.TrimSpace(sess.ID)
 	runID := admit.runID
@@ -525,14 +546,15 @@ func (o *ChatOrchestrator) consumeTurnStream(
 		Source:           event.EnvelopeSourceFromContext(runCtx),
 		TaskContent:      userContent,
 		SpiritSessionID:  sessionID,
+		ParentTaskID:     parentTaskID,
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
-	streamOpts := NewChatStreamConsumeOptions(o.infraDeps.V2Projector)
-	// N-21/N-03: The v2 projector was pre-configured in invokeTurnLLMAndStream
-	// (Reset + Configure + WithActivityEmitter). It is passed via
-	// streamOpts.V2Projector; no type assertion needed. The stream consumer's
-	// OnTurnStart will emit task.created + turn.started, preserving any early
-	// notice/confirm steps emitted by plugins during the LLM call.
+	streamOpts := NewChatStreamConsumeOptions(v2Projector)
+	// 2026-07-04 问题 4 修复：v2Projector 是 invokeTurnLLMAndStream 通过
+	// V2ProjectorFactory.NewProjector() 创建的 per-turn 实例，已通过
+	// Configure(v2Meta) + WithActivityEmitter 注入到 runCtx。它通过
+	// streamOpts.V2Projector 传给 stream consumer；OnTurnStart 会发出
+	// task.created + turn.started，保留 LLM 调用期间插件发出的 notice/confirm。
 	o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始消费事件流",
 		loggateway.StepID("chat.stream_consume_start"),
 		loggateway.Any("first_byte_timeout", firstByteTimeout.String()))

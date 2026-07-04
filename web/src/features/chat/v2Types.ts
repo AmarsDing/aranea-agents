@@ -89,6 +89,7 @@ export interface TeamStage {
   TurnID: string;
   SessionID: string;
   TeamID: string;
+  TeamName: string; // 2026-07-04 问题 3 修复：团队显示名称（前端展示用）
   DagNodeID: string;
   DependsOn: string[];
   Status: TeamStageStatus;

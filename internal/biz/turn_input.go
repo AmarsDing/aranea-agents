@@ -17,6 +17,13 @@ type TurnInput struct {
 	Options     TurnOptions
 	Timeouts    TurnTimeouts
 	EntryConfig TurnEntryPointConfig
+	// ParentTaskID is set by the system-push pattern (e.g. synthesis trigger
+	// after all teams complete) to attach the new Turn to an existing Task
+	// instead of creating a new one. Empty for normal user-input turns.
+	// Design: docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md
+	// §3.2.1 — a Task corresponds to one user input; system-push Turns are
+	// continuation Turns on the same Task, not new Tasks.
+	ParentTaskID string
 }
 
 // TurnOptions carries per-turn overrides (dialog mode, provider, model, attachments).

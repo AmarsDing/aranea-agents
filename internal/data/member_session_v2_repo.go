@@ -113,6 +113,9 @@ func (r *memberSessionV2Repo) UpdateMemberSession(ctx context.Context, ms biz.Me
 }
 
 // UpsertMemberSession applies optimistic-concurrency upsert (see UpsertTask for semantics).
+// 2026-07-04 问题 3 修复：AgentName/AvatarURL 仅在非空时 SET，避免完成事件
+// （不携带这些字段）覆盖创建事件已写入的值。Status/FinishedAt/Error 等
+// 完成阶段字段总是 SET（它们才是 completion 事件的语义重点）。
 func (r *memberSessionV2Repo) UpsertMemberSession(ctx context.Context, ms biz.MemberSession) (biz.MemberSession, error) {
 	if r == nil || r.data == nil {
 		return biz.MemberSession{}, fmt.Errorf("member session v2 repo: database not configured")
@@ -125,12 +128,18 @@ func (r *memberSessionV2Repo) UpsertMemberSession(ctx context.Context, ms biz.Me
 		SetSessionID(ms.SessionID).
 		SetSpiritSessionID(ms.SpiritSessionID).
 		SetAgentKey(ms.AgentKey).
-		SetAgentName(ms.AgentName).
-		SetAvatarURL(ms.AvatarURL).
 		SetStatus(string(ms.Status)).
 		SetSeq(ms.Seq).
 		SetVersion(ms.Version).
 		SetError(ms.Error)
+	// 2026-07-04 问题 3 修复：仅当非空时才 SET AgentName/AvatarURL，
+	// 避免 completion 事件（不携带这些字段）清空已持久化的值。
+	if ms.AgentName != "" {
+		b.SetAgentName(ms.AgentName)
+	}
+	if ms.AvatarURL != "" {
+		b.SetAvatarURL(ms.AvatarURL)
+	}
 	if ms.FinishedAt != nil {
 		b.SetFinishedAt(*ms.FinishedAt)
 	}
@@ -140,6 +149,16 @@ func (r *memberSessionV2Repo) UpsertMemberSession(ctx context.Context, ms biz.Me
 			return biz.MemberSession{}, entErrToBizErr(getErr, "MEMBER_SESSION_V2")
 		}
 		return entMemberSessionV2ToBiz(row), nil
+	}
+	// UPDATE failed. Two possible causes:
+	//   1. Record doesn't exist yet → fall through to CREATE.
+	//   2. Record exists but Version >= ms.Version (WHERE didn't match) →
+	//      return existing record (idempotent: a newer version is already
+	//      persisted, e.g. sync persist wrote before the async event arrived).
+	//      Without this check, the CREATE fallback would fail with CONFLICT
+	//      and propagate an error to the v2 sequencer's retry loop.
+	if existing, getErr := r.data.RW().Read(ctx).MemberSessionV2.Get(ctx, ms.ID); getErr == nil {
+		return entMemberSessionV2ToBiz(existing), nil
 	}
 	cb := r.data.RW().Write(ctx).MemberSessionV2.Create().
 		SetID(ms.ID).

@@ -376,3 +376,142 @@ func TestMemberToolCalls(t *testing.T) {
 		t.Errorf("expected member-1 count=2, got %d", mtc["member-1"])
 	}
 }
+
+// TestHandleTextDelta_WhitespaceNoCreate verifies that a pure-whitespace
+// leading delta does NOT create a ReplyStep. Only when a delta with non-blank
+// content arrives should the step be created. This prevents empty ReplyBlocks
+// in the frontend when LLM emits leading "\n" or " " deltas.
+//
+// Spec: docs/superpowers/specs/2026-07-04-empty-reply-step-cleanup-design.md §4.1.1
+func TestHandleTextDelta_WhitespaceNoCreate(t *testing.T) {
+	p, capture := testProjector()
+	capture.events = nil // ignore turn.started/task.created setup
+
+	// 1. Pure-whitespace delta: should NOT create a step
+	p.handleTextDelta(context.Background(), "\n   ")
+	if stepID, ok := p.replyStepIDs[p.meta.AgentKey]; ok && stepID != "" {
+		t.Errorf("expected replyStepIDs empty after whitespace delta, got %q", stepID)
+	}
+	if len(capture.events) != 0 {
+		t.Errorf("expected 0 events after whitespace delta, got %d", len(capture.events))
+	}
+
+	// 2. Real-content delta: should create a step + emit streaming
+	p.handleTextDelta(context.Background(), "Hello")
+	if stepID, ok := p.replyStepIDs[p.meta.AgentKey]; !ok || stepID == "" {
+		t.Fatal("expected replyStepIDs set after real-content delta")
+	}
+	// Expect 2 events: StepCreatedEvent (BeginStep) + StepStreamingEvent (OnTextDelta)
+	if len(capture.events) != 2 {
+		t.Fatalf("expected 2 events after real-content delta, got %d", len(capture.events))
+	}
+	created, ok := capture.events[0].(*biz.StepCreatedEvent)
+	if !ok {
+		t.Fatalf("expected events[0]=StepCreatedEvent, got %T", capture.events[0])
+	}
+	if created.Step.Kind != biz.StepKindReply {
+		t.Errorf("expected kind=reply, got %s", created.Step.Kind)
+	}
+	if _, ok := capture.events[1].(*biz.StepStreamingEvent); !ok {
+		t.Fatalf("expected events[1]=StepStreamingEvent, got %T", capture.events[1])
+	}
+
+	// 3. Subsequent whitespace delta on existing step: should still stream
+	//    (whitespace is meaningful content once the step exists)
+	capture.events = nil
+	p.handleTextDelta(context.Background(), " \n")
+	if len(capture.events) != 1 {
+		t.Fatalf("expected 1 streaming event for trailing whitespace, got %d", len(capture.events))
+	}
+	if _, ok := capture.events[0].(*biz.StepStreamingEvent); !ok {
+		t.Fatalf("expected StepStreamingEvent, got %T", capture.events[0])
+	}
+}
+
+// TestHandleTextDone_EmptyContentCancelled verifies that when a ReplyStep was
+// created (e.g. by an earlier non-blank delta that turned out to be only
+// whitespace after TrimSpace) but finalContent is empty, the step is finalized
+// with Status=cancelled (not completed) so the frontend can filter it out.
+//
+// Spec: docs/superpowers/specs/2026-07-04-empty-reply-step-cleanup-design.md §4.1.2
+func TestHandleTextDone_EmptyContentCancelled(t *testing.T) {
+	p, capture := testProjector()
+	capture.events = nil
+
+	// Simulate: LLM emitted a delta that created the step, but the accumulated
+	// content is whitespace. Use BeginStep directly to control the step's
+	// initial Content, then call handleTextDone with empty finalContent.
+	stepID := p.BeginStep(p.meta, biz.StepKindReply)
+	p.mu.Lock()
+	if step, ok := p.activeStep[stepID]; ok {
+		step.Content = " " // whitespace-only accumulated content
+	}
+	p.mu.Unlock()
+	p.replyStepIDs[p.meta.AgentKey] = stepID
+	capture.events = nil // ignore the step.created from BeginStep
+
+	p.handleTextDone(context.Background(), "")
+
+	// Expect 1 event: StepCompletedEvent with Status=cancelled, IsFinal=false
+	if len(capture.events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(capture.events))
+	}
+	completed, ok := capture.events[0].(*biz.StepCompletedEvent)
+	if !ok {
+		t.Fatalf("expected StepCompletedEvent, got %T", capture.events[0])
+	}
+	if completed.Step.Status != biz.StepStatusCancelled {
+		t.Errorf("expected status=cancelled, got %s", completed.Step.Status)
+	}
+	if completed.Step.IsFinal {
+		t.Error("expected IsFinal=false for cancelled empty reply")
+	}
+	if stepID, ok := p.replyStepIDs[p.meta.AgentKey]; ok && stepID != "" {
+		t.Errorf("expected replyStepIDs cleared after done, got %q", stepID)
+	}
+}
+
+// TestHandleTextDone_NormalReply verifies the normal path still works:
+// real content → Status=completed, IsFinal=true.
+func TestHandleTextDone_NormalReply(t *testing.T) {
+	p, capture := testProjector()
+	capture.events = nil
+
+	p.handleTextDelta(context.Background(), "Hello")
+	capture.events = nil // ignore created/streaming
+
+	p.handleTextDone(context.Background(), "Hello world")
+
+	if len(capture.events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(capture.events))
+	}
+	completed, ok := capture.events[0].(*biz.StepCompletedEvent)
+	if !ok {
+		t.Fatalf("expected StepCompletedEvent, got %T", capture.events[0])
+	}
+	if completed.Step.Status != biz.StepStatusCompleted {
+		t.Errorf("expected status=completed, got %s", completed.Step.Status)
+	}
+	if !completed.Step.IsFinal {
+		t.Error("expected IsFinal=true for normal reply")
+	}
+	if completed.Step.Content != "Hello world" {
+		t.Errorf("expected content='Hello world', got %q", completed.Step.Content)
+	}
+}
+
+// TestHandleTextDone_NoReplyStep_NoOp verifies that when no ReplyStep exists
+// and finalContent is empty, no events are emitted (existing no-op path).
+func TestHandleTextDone_NoReplyStep_NoOp(t *testing.T) {
+	p, capture := testProjector()
+	capture.events = nil
+
+	p.handleTextDone(context.Background(), "")
+
+	if len(capture.events) != 0 {
+		t.Fatalf("expected 0 events for no-op, got %d", len(capture.events))
+	}
+	if stepID, ok := p.replyStepIDs[p.meta.AgentKey]; ok && stepID != "" {
+		t.Errorf("expected replyStepIDs empty, got %q", stepID)
+	}
+}

@@ -71,6 +71,12 @@ type TeamStarter struct {
 	// dependency is satisfied by SpiritTeamAssembler, which itself depends on
 	// TeamStarter. May be nil in v1-only deployments.
 	planExecutor *PlanExecutor
+	// taskV2Reader is used by resolveLatestUserTaskID to look up the most
+	// recent user-input Task for the spirit session, so the system-push
+	// synthesis Turn can be attached to that existing Task (ParentTaskID)
+	// instead of creating a new Task. Design: 2026-07-02-llm-activity-
+	// ordering-design §3.2.1.
+	taskV2Reader biz.TaskV2Reader
 }
 
 func NewTeamStarter(
@@ -83,6 +89,7 @@ func NewTeamStarter(
 	activityUpserter biz.ActivityUpserter,
 	lg loggateway.Logger,
 	synthesisSvc *SpiritSynthesisService,
+	taskV2Reader biz.TaskV2Reader,
 ) *TeamStarter {
 	return &TeamStarter{
 		sessions:         sessions,
@@ -94,6 +101,7 @@ func NewTeamStarter(
 		activityUpserter: activityUpserter,
 		lg:               lg,
 		synthesisSvc:     synthesisSvc,
+		taskV2Reader:     taskV2Reader,
 	}
 }
 
@@ -112,6 +120,44 @@ func (s *TeamStarter) SetTurnGateway(gw biz.TurnGateway) {
 // auto-updated by team completion — the v2 PlanExecutor handles this when wired).
 func (s *TeamStarter) SetPlanExecutor(pe *PlanExecutor) {
 	s.planExecutor = pe
+}
+
+// publishV2Event publishes a v2 event via seq (DB persist + WS) when available,
+// falling back to eventBus (WS only) otherwise.
+// 2026-07-04 问题 2 修复：之前所有 TeamStage/Step 事件用 eventBus.Publish，
+// 不经过 sequencer.persistAction，刷新后数据丢失。改为优先用 seq.Publish
+// 确保落库；v1-only 部署（seq=nil）保留 eventBus 兜底。
+func (s *TeamStarter) publishV2Event(ctx context.Context, e biz.Event) {
+	if s.seq != nil {
+		s.seq.Publish(ctx, e)
+		return
+	}
+	if s.eventBus != nil {
+		s.eventBus.Publish(ctx, e)
+	}
+}
+
+// publishV2EventAssembler is the SpiritTeamAssembler counterpart of
+// publishV2Event. Same semantics: seq first (persist + WS), eventBus fallback.
+func (a *SpiritTeamAssembler) publishV2Event(ctx context.Context, e biz.Event) {
+	if a.seq != nil {
+		a.seq.Publish(ctx, e)
+		return
+	}
+	if a.eventBus != nil {
+		a.eventBus.Publish(ctx, e)
+	}
+}
+
+// v2EventReady returns true if either seq or eventBus is wired.
+// Used to guard TeamStage/Step publish blocks (replacing bare eventBus nil-check).
+func (s *TeamStarter) v2EventReady() bool {
+	return s.seq != nil || s.eventBus != nil
+}
+
+// v2EventReady is the SpiritTeamAssembler counterpart.
+func (a *SpiritTeamAssembler) v2EventReady() bool {
+	return a.seq != nil || a.eventBus != nil
 }
 
 func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, content string) error {
@@ -161,22 +207,25 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 		}
 	}
 
-	if s.eventBus != nil && teamID != "" && spiritSessionID != "" {
+	if s.v2EventReady() && teamID != "" && spiritSessionID != "" {
 		// Phase 3b-D Task 10: migrated to v2 NewTeamStageUpdatedEvent.
 		// DependsOn is carried by the TeamStage entity (type-safe).
-		// DATA LOSS: team_name/progress_pct from v1 Meta are dropped
-		// (v2 TeamStage has no Meta field).
+		// 2026-07-04 问题 3 修复：携带 TeamName 让前端展示团队名称而非 ID；
+		// 同时把 Stage 从字面量 "progress"（不在枚举内）改为枚举常量
+		// TeamStageStageExecuting。
+		// 2026-07-04 问题 2 修复：改用 publishV2Event（seq 优先持久化）。
 		dependsOn := team.DependsOn
 		ts := biz.TeamStage{
 			ID:        string(agent.NewTeamStageActivityID(teamID)),
 			TeamID:    teamID,
+			TeamName:  team.DisplayName,
 			SessionID: spiritSessionID,
 			Status:    biz.TeamStageStatusRunning,
-			Stage:     "progress",
+			Stage:     biz.TeamStageStageExecuting,
 			DependsOn: dependsOn,
 			StartedAt: time.Now().UTC(),
 		}
-		s.eventBus.Publish(ctx, biz.NewTeamStageUpdatedEvent(ts))
+		s.publishV2Event(ctx, biz.NewTeamStageUpdatedEvent(ts))
 	}
 
 	input := biz.TurnInput{
@@ -293,29 +342,40 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		s.scheduleDependentTeams(ctx, spiritSessionID, team)
 	}
 
-	if s.eventBus != nil {
+	// 2026-07-04 问题 4 修复：将 primaryStatus 提取到 eventBus 块外，
+	// 让 publishV2TeamRunCompletion 也能使用（该函数仅依赖 seq，不依赖 eventBus）。
+	primaryStatus := biz.TeamStageStatusFailed
+	switch status {
+	case biz.TeamStatusCompleted:
+		primaryStatus = biz.TeamStageStatusCompleted
+	case biz.TeamStatusCancelled:
+		primaryStatus = biz.TeamStageStatusCancelled
+	default:
+		primaryStatus = biz.TeamStageStatusFailed
+	}
+
+	if s.v2EventReady() {
 		// Phase 3b-D Task 10: migrated to v2 TeamStage events.
 		// Map v1 status → v2 TeamStageStatus + factory function.
-		primaryStatus := biz.TeamStageStatusFailed
+		// 2026-07-04 问题 2 修复：改用 publishV2Event（seq 优先持久化）。
 		primaryStage := "failed"
 		switch status {
 		case biz.TeamStatusCompleted:
-			primaryStatus = biz.TeamStageStatusCompleted
 			primaryStage = "completed"
 		case biz.TeamStatusCancelled:
-			primaryStatus = biz.TeamStageStatusCancelled
 			primaryStage = "cancelled"
 		default:
-			primaryStatus = biz.TeamStageStatusFailed
 			primaryStage = "failed"
 		}
 		// Carry DependsOn from the team so the frontend can render DAG
 		// edges and the database preserves the dependency graph across
 		// status updates (assembled → progress → completed/failed/cancelled).
+		// 2026-07-04 问题 3 修复：携带 TeamName 让前端展示团队名称而非 ID。
 		dependsOn := team.DependsOn
 		ts := biz.TeamStage{
 			ID:        string(agent.NewTeamStageActivityID(teamID)),
 			TeamID:    teamID,
+			TeamName:  team.DisplayName,
 			SessionID: spiritSessionID,
 			Status:    primaryStatus,
 			Stage:     biz.TeamStageStage(primaryStage),
@@ -328,13 +388,13 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		// recordTeamCompletion above and are available in the TeamRun DB record.
 		switch primaryStatus {
 		case biz.TeamStageStatusCompleted:
-			s.eventBus.Publish(ctx, biz.NewTeamStageCompletedEvent(ts))
+			s.publishV2Event(ctx, biz.NewTeamStageCompletedEvent(ts))
 		case biz.TeamStageStatusFailed:
-			s.eventBus.Publish(ctx, biz.NewTeamStageFailedEvent(ts))
+			s.publishV2Event(ctx, biz.NewTeamStageFailedEvent(ts))
 		default:
 			// cancelled: no NewTeamStageCancelledEvent factory exists; use
 			// NewTeamStageUpdatedEvent as the closest semantic match.
-			s.eventBus.Publish(ctx, biz.NewTeamStageUpdatedEvent(ts))
+			s.publishV2Event(ctx, biz.NewTeamStageUpdatedEvent(ts))
 		}
 
 		// BUGFIX: the progress event (Status=Running) was published AFTER the
@@ -347,13 +407,14 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 			progressTs := biz.TeamStage{
 				ID:        string(agent.NewTeamStageActivityID(teamID)),
 				TeamID:    teamID,
+				TeamName:  team.DisplayName,
 				SessionID: spiritSessionID,
 				Status:    biz.TeamStageStatusRunning,
-				Stage:     "progress",
+				Stage:     biz.TeamStageStageExecuting,
 				DependsOn: dependsOn,
 				StartedAt: time.Now().UTC(),
 			}
-			s.eventBus.Publish(ctx, biz.NewTeamStageUpdatedEvent(progressTs))
+			s.publishV2Event(ctx, biz.NewTeamStageUpdatedEvent(progressTs))
 		}
 
 		// B.4.4: After team status change, republish the graph_stage DAG
@@ -372,7 +433,21 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 
 	}
 
+	// 2026-07-04 问题 4 修复：发布 v2 TeamRun + MemberSession 完成事件，
+	// 让前端 MemberSessionPanel 能更新成员会话状态（running → completed/failed）。
+	// 移出 eventBus nil-check 块：此函数仅依赖 seq（v2 Sequencer），与 eventBus 无关。
+	// 之前放在 eventBus 块内导致 eventBus=nil 但 seq!=nil 的部署场景下成员状态永远停在 running。
+	s.publishV2TeamRunCompletion(ctx, spiritSessionID, team.ID, primaryStatus, status)
+
 	s.checkAllTeamsCompleted(ctx, spiritSessionID)
+
+	// 2026-07-04 问题 4 修复：通知 PlanExecutor team_run 已完成，
+	// 让等待的 dispatchStep 能继续执行（通过 TeamOrchestrator 转发 channel 事件）。
+	// 必须在 checkAllTeamsCompleted 之后调用，确保 synthesis 逻辑先执行。
+	if s.planExecutor != nil && teamID != "" {
+		success := status == biz.TeamStatusCompleted
+		s.planExecutor.NotifyTeamCompletion(teamID, success, errMsg)
+	}
 
 	// Trigger auto-archive for completed/failed/cancelled teams that have
 	// exceeded the configured threshold. This is the primary call site for
@@ -402,18 +477,20 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 					loggateway.Str("team_id", action.TeamID),
 					loggateway.Str("dag_node_id", action.DagNodeID),
 				)
-				if s.eventBus != nil {
+				if s.v2EventReady() {
 					// Phase 3b-D Task 10: migrated to v2 NewTeamStageFailedEvent.
-					// DATA LOSS: team_name/error from v1 Meta are dropped.
+					// 2026-07-04 问题 3 修复：携带 TeamName（来自 DependentTeamAction）。
+					// 2026-07-04 问题 2 修复：改用 publishV2Event（seq 优先持久化）。
 					ts := biz.TeamStage{
 						ID:        string(agent.NewTeamStageActivityID(action.TeamID)),
 						TeamID:    action.TeamID,
+						TeamName:  action.TeamName,
 						SessionID: spiritSessionID,
 						Status:    biz.TeamStageStatusFailed,
 						Stage:     biz.TeamStageStageFailed,
 						StartedAt: time.Now().UTC(),
 					}
-					s.eventBus.Publish(ctx, biz.NewTeamStageFailedEvent(ts))
+					s.publishV2Event(ctx, biz.NewTeamStageFailedEvent(ts))
 				}
 			}
 		} else if action.Action == "activate" {
@@ -431,19 +508,21 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 				loggateway.Str("team_id", action.TeamID),
 				loggateway.Str("dag_node_id", action.DagNodeID),
 			)
-			if s.eventBus != nil {
+			if s.v2EventReady() {
 				// Phase 3b-D Task 10: migrated to v2 NewTeamStageUpdatedEvent.
-				// DATA LOSS: team_name from v1 Meta is dropped (v2 TeamStage
-				// has no Meta field). team_id/status are preserved as typed fields.
+				// 2026-07-04 问题 3 修复：携带 TeamName；Stage 从字面量 "progress"
+				// （不在枚举内）改为枚举常量 TeamStageStageExecuting。
+				// 2026-07-04 问题 2 修复：改用 publishV2Event（seq 优先持久化）。
 				ts := biz.TeamStage{
 					ID:        string(agent.NewTeamStageActivityID(action.TeamID)),
 					TeamID:    action.TeamID,
+					TeamName:  action.TeamName,
 					SessionID: spiritSessionID,
 					Status:    biz.TeamStageStatusRunning,
-					Stage:     "progress",
+					Stage:     biz.TeamStageStageExecuting,
 					StartedAt: time.Now().UTC(),
 				}
-				s.eventBus.Publish(ctx, biz.NewTeamStageUpdatedEvent(ts))
+				s.publishV2Event(ctx, biz.NewTeamStageUpdatedEvent(ts))
 			}
 			taskDesc := action.TeamName // DagNodeID is used as task description fallback
 			depTeamID := action.TeamID
@@ -502,9 +581,18 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 		if _, alreadyTriggered := s.synthesisTriggered.LoadOrStore(spiritSessionID, true); !alreadyTriggered {
 			synthesisMsg := s.buildSynthesisMessage(ctx, spiritSessionID)
 			if synthesisMsg != "" {
+				// Resolve the most recent user-input Task for this spirit
+				// session so the synthesis Turn attaches as a continuation
+				// Turn (ParentTaskID) instead of creating a new Task. This
+				// prevents the synthesis trigger text from being rendered as
+				// a user-input bubble by TaskCard (spec §3.2.1: a Task
+				// corresponds to one user input; system-push Turns are
+				// continuation Turns on the same Task).
+				parentTaskID := s.resolveLatestUserTaskID(ctx, spiritSessionID)
 				if _, err := s.turnGateway.ExecuteTurn(ctx, biz.TurnInput{
-					SessionID: spiritSessionID,
-					Content:   synthesisMsg,
+					SessionID:    spiritSessionID,
+					Content:      synthesisMsg,
+					ParentTaskID: parentTaskID,
 				}); err != nil {
 					s.lg.Warn("all teams completed: failed to trigger Spirit synthesis turn",
 						loggateway.StepID("spirit.synthesis_turn_err"),
@@ -515,6 +603,7 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 					s.lg.Info("all teams completed: triggered Spirit synthesis turn",
 						loggateway.StepID("spirit.synthesis_turn_triggered"),
 						loggateway.Str("spirit_session_id", spiritSessionID),
+						loggateway.Str("parent_task_id", parentTaskID),
 						loggateway.Int("total_teams", result.TotalTeams),
 						loggateway.Int("completed_teams", result.CompletedTeams),
 						loggateway.Int("failed_teams", result.FailedTeams),
@@ -529,7 +618,8 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 	// DATA LOSS: v2 Step has no Meta field, so team_ids/total_teams/completed_teams/
 	// failed_teams/total_token_in/total_token_out from v1 Meta are dropped.
 	// The notice_type is preserved as Step.NoticeType, and the message as Step.Content.
-	if s.eventBus != nil {
+	if s.v2EventReady() {
+		// 2026-07-04 问题 2 修复：改用 publishV2Event（seq 优先持久化）。
 		step := biz.Step{
 			ID:              uuid.NewString(),
 			SessionID:       spiritSessionID,
@@ -540,13 +630,28 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 			Status:          biz.StepStatusCompleted,
 			AuthorAgentKey:  "team-starter",
 		}
-		s.eventBus.Publish(ctx, biz.NewStepCreatedEvent(step))
+		s.publishV2Event(ctx, biz.NewStepCreatedEvent(step))
 	}
 }
 
-// buildSynthesisMessage synthesizes team results and formats them as a message
-// for the Spirit session. Returns empty string if synthesis fails or produces
-// no content.
+// buildSynthesisMessage triggers synthesis and returns a short system-trigger
+// prompt for the Spirit LLM. Returns empty string if synthesis fails or
+// produces no content.
+//
+// Design rationale (spec 2026-07-02-llm-activity-ordering-design §3.5.2 step 6
+// + §3.5.5 反馈机制表): the synthesis content is delivered to the frontend
+// via the synthesis_completed event → SynthesisResultCard. We do NOT inject
+// the synthesis content as a user message because:
+//
+//	(a) TaskCard would misrender the synthesis as user input (the bug being
+//	    fixed here), and
+//	(b) it would poison SpiritTeamUsecase.GetSpiritQuery on subsequent
+//	    syntheses — GetSpiritQuery returns the most recent user message,
+//	    which would become the synthesis text itself, recursively corrupting
+//	    the synthesis template's {{query}} substitution.
+//
+// Instead, return a short system-trigger prompt so Spirit LLM generates a
+// final summary based on team replies already in the session context.
 func (s *TeamStarter) buildSynthesisMessage(ctx context.Context, spiritSessionID string) string {
 	output, err := s.synthesisSvc.SynthesizeResults(ctx, spiritSessionID, "")
 	if err != nil {
@@ -564,7 +669,53 @@ func (s *TeamStarter) buildSynthesisMessage(ctx context.Context, spiritSessionID
 		)
 		return ""
 	}
-	return "所有团队已完成任务。以下是综合结果：\n\n" + output.Content + "\n\n请基于以上结果给出最终总结和分析。"
+	return "所有团队已完成，请基于已有上下文给出最终总结和分析。"
+}
+
+// resolveLatestUserTaskID returns the most recent Task ID for the given spirit
+// session, so the system-push synthesis Turn can attach to it as a continuation
+// Turn (ParentTaskID). Returns empty string if no Task exists or the reader is
+// not wired (v1-only deployments) — in that case the synthesis Turn creates a
+// new Task as before (legacy behaviour).
+//
+// 2026-07-04 问题 5 修复：v2 Sequencer 异步持久化 Task，当所有团队快速完成时
+// （例如单团队秒级返回），ListTasksBySession 可能查不到记录，导致 parentTaskID
+// 为空，synthesis Turn 在 projector.OnTurnStart 中走"创建新 Task"分支，把
+// synthesis 触发文本"所有团队已完成…"渲染成新的用户输入气泡（重复执行）。
+// 解决方案：DB 查不到时，从 ctx 中取 RootTaskActivityID（由 chat_orchestrator
+// 在 chat_orchestrator_turn.go:401 通过 ContextWithRootTaskActivityID 注入）
+// 作为 fallback。RootTaskActivityID 是根 Task 的 ID，与 team 阶段的 ctx 链
+// 一脉相承，是可靠的内存态真相源。
+func (s *TeamStarter) resolveLatestUserTaskID(ctx context.Context, spiritSessionID string) string {
+	if s.taskV2Reader != nil {
+		tasks, err := s.taskV2Reader.ListTasksBySession(ctx, spiritSessionID)
+		if err != nil {
+			s.lg.Warn("resolveLatestUserTaskID: ListTasksBySession failed",
+				loggateway.StepID("spirit.synthesis.parent_task_lookup_err"),
+				loggateway.Str("spirit_session_id", spiritSessionID),
+				loggateway.Err(err),
+			)
+			// fall through to ctx fallback
+		} else if len(tasks) > 0 {
+			// tasks are returned in ascending Seq order; the last one is the most
+			// recent user-input Task.
+			return tasks[len(tasks)-1].ID
+		}
+	}
+	// Fallback: use RootTaskActivityID from ctx (set by chat_orchestrator).
+	// This covers the timing gap where the v2 Task hasn't been persisted yet
+	// when checkAllTeamsCompleted runs, as well as v1-only deployments where
+	// taskV2Reader is nil. RootTaskActivityID is the canonical root task ID
+	// for the current spirit session turn chain.
+	if rtID := string(agent.RootTaskActivityIDFromCtx(ctx)); rtID != "" {
+		s.lg.Info("resolveLatestUserTaskID: fell back to ctx RootTaskActivityID",
+			loggateway.StepID("spirit.synthesis.parent_task_ctx_fallback"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Str("root_task_id", rtID),
+		)
+		return rtID
+	}
+	return ""
 }
 
 // HandleTeamTimeout implements biz.TimeoutHandler. Called when a team times out
@@ -591,7 +742,7 @@ type SpiritTeamAssembler struct {
 	orchCache    *biz.OrchestrationCache
 	bus          biz.ActivityEventBus // v1: graph_stage snapshot fallback (no v2 equivalent yet)
 	eventBus     biz.EventBus         // v2: team_stage + notice events
-	seq          rt.EventPublisher   // Phase 2: v2 Sequencer for graph_stage snapshot (FIFO + retry)
+	seq          rt.EventPublisher    // Phase 2: v2 Sequencer for graph_stage snapshot (FIFO + retry)
 	activityRepo biz.ActivityUpserter
 	teamStarter  biz.TeamStarterPort
 	agentReader  biz.AgentReader
@@ -622,7 +773,7 @@ func NewSpiritTeamAssembler(
 	}
 }
 
-func (a *SpiritTeamAssembler) AssembleTeam(ctx context.Context, params biz.SpiritTeamParams) (biz.Team, biz.Session, error) {
+func (a *SpiritTeamAssembler) AssembleTeam(ctx context.Context, params biz.SpiritTeamParams) (biz.Team, biz.Session, map[string]string, error) {
 	spiritSessionID := strings.TrimSpace(params.SpiritSessionID)
 
 	a.lg.Info("精灵团队组装开始",
@@ -639,7 +790,7 @@ func (a *SpiritTeamAssembler) AssembleTeam(ctx context.Context, params biz.Spiri
 			loggateway.Str("spirit_session_id", spiritSessionID),
 			loggateway.Err(err),
 		)
-		return biz.Team{}, biz.Session{}, err
+		return biz.Team{}, biz.Session{}, nil, err
 	}
 
 	a.publishSpiritTeamAssembled(ctx, spiritSessionID, result.Team, result.Session, params.Mode, params.TaskDescription, params.TopologyReason, params.AgentKeys, result.MemberSessions)
@@ -665,7 +816,7 @@ func (a *SpiritTeamAssembler) AssembleTeam(ctx context.Context, params biz.Spiri
 		loggateway.Str("session_id", result.Session.ID),
 	)
 
-	return result.Team, result.Session, nil
+	return result.Team, result.Session, result.MemberSessions, nil
 }
 
 func (a *SpiritTeamAssembler) FindTeamSessionAndStartTurn(ctx context.Context, teamID string, taskDesc string) {
@@ -708,20 +859,22 @@ func (a *SpiritTeamAssembler) CancelTeam(ctx context.Context, teamID string) err
 		return err
 	}
 	spiritSessionID := strings.TrimSpace(team.SpiritSessionID)
-	if a.eventBus != nil && spiritSessionID != "" {
+	if a.v2EventReady() && spiritSessionID != "" {
 		// Phase 3b-D Task 10: migrated to v2 NewTeamStageUpdatedEvent.
 		// No NewTeamStageCancelledEvent factory exists; use Updated as the
 		// closest semantic match (same as HandleTeamTurnResult cancelled case).
-		// DATA LOSS: team_name from v1 Meta is dropped (v2 TeamStage has no Meta).
+		// 2026-07-04 问题 3 修复：携带 TeamName 让前端展示团队名称而非 ID。
+		// 2026-07-04 问题 2 修复：改用 publishV2Event（seq 优先持久化）。
 		ts := biz.TeamStage{
 			ID:        string(agent.NewTeamStageActivityID(teamID)),
 			TeamID:    teamID,
+			TeamName:  team.DisplayName,
 			SessionID: spiritSessionID,
 			Status:    biz.TeamStageStatusCancelled,
 			Stage:     "cancelled",
 			StartedAt: time.Now().UTC(),
 		}
-		a.eventBus.Publish(ctx, biz.NewTeamStageUpdatedEvent(ts))
+		a.publishV2Event(ctx, biz.NewTeamStageUpdatedEvent(ts))
 	}
 	if a.teamStarter != nil && spiritSessionID != "" {
 		a.teamStarter.HandleTeamTurnResult(ctx, spiritSessionID, teamID, biz.TeamStatusCancelled, "", "")
@@ -748,7 +901,8 @@ func (a *SpiritTeamAssembler) SuggestTopology(ctx context.Context, taskDescripti
 		// DATA LOSS: v2 Step has no Meta field, so task_pattern/topology from v1
 		// Meta are dropped. The original v1 Activity had no Content/SpiritSessionID;
 		// v2 Step also leaves these empty (no spirit session context in SuggestTopology).
-		if a.eventBus != nil {
+		if a.v2EventReady() {
+			// 2026-07-04 问题 2 修复：改用 publishV2Event（seq 优先持久化）。
 			step := biz.Step{
 				ID:             uuid.NewString(),
 				Kind:           biz.StepKindNotice,
@@ -756,7 +910,7 @@ func (a *SpiritTeamAssembler) SuggestTopology(ctx context.Context, taskDescripti
 				Status:         biz.StepStatusCompleted,
 				AuthorAgentKey: "spirit-team-assembler",
 			}
-			a.eventBus.Publish(ctx, biz.NewStepCreatedEvent(step))
+			a.publishV2Event(ctx, biz.NewStepCreatedEvent(step))
 		}
 	}
 	return string(topology), found
@@ -765,8 +919,9 @@ func (a *SpiritTeamAssembler) SuggestTopology(ctx context.Context, taskDescripti
 func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, spiritSessionID string, team biz.Team, teamSession biz.Session, mode, taskDesc, topologyReason string, agentKeys []string, memberSessions map[string]string) {
 	// Phase 3b-D Task 10: dual-bus scheme. eventBus (v2) is the primary bus
 	// for team_stage events; bus (v1) is retained for graph_stage snapshot only.
-	// If eventBus is nil, skip the entire method (matching original guard).
-	if a.eventBus == nil {
+	// 2026-07-04 问题 2 修复：放宽守卫为 v2EventReady()（seq 或 eventBus 任一可用），
+	// 让 seq-only 部署也能发布 TeamStage 事件并持久化。
+	if !a.v2EventReady() {
 		return
 	}
 	// B.4.4: Publish graph_stage snapshot BEFORE team_stage so the graph appears
@@ -888,21 +1043,31 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 	// UpsertActivity makes the async attempt a no-op if sync already wrote the
 	// record. The `persistedSync` variable is now unused for the bus call but
 	// retained for the sync persist log above.
-	// DATA LOSS: v2 TeamStage has no Meta field, so team_name/session_id/mode/
-	// task_summary/dag_node_id/depends_on/topology_reason/duration_ms/total_steps/
-	// members from v1 Meta are dropped. The members data is still persisted
-	// synchronously via the v1 Activity above (activityRepo.UpsertActivity).
+	// 2026-07-04 问题 4 修复：设置 TaskID + Members，让前端 TeamStagePanel 能直接
+	// 显示 Team ID 和成员列表（之前 Members 为 null，前端无法渲染 member-chip）。
+	// Members 数据从上面构建的 members 数组（v1 Meta 格式）转换为 v2 类型安全的 []MemberInfo。
+	// 2026-07-04 问题 3 修复：携带 TeamName 让前端展示团队名称而非 ID。
 	ts := biz.TeamStage{
 		ID:        string(agent.NewTeamStageActivityID(team.ID)),
+		TaskID:    string(agent.RootTaskActivityIDFromCtx(ctx)),
 		TeamID:    team.ID,
+		TeamName:  team.DisplayName,
 		SessionID: spiritSessionID,
 		Status:    biz.TeamStageStatusPending,
 		Stage:     biz.TeamStageStageAssembled,
 		DependsOn: team.DependsOn,
+		Members:   buildV2Members(members),
 		StartedAt: time.Now().UTC(),
+		Version:   1,
 	}
 	_ = persistedSync // retained for sync persist logging; no longer used by bus
-	a.eventBus.Publish(ctx, biz.NewTeamStageCreatedEvent(ts))
+	// 2026-07-04 问题 2 修复：改用 publishV2Event（seq 优先持久化）。
+	a.publishV2Event(ctx, biz.NewTeamStageCreatedEvent(ts))
+
+	// 2026-07-04 问题 4 修复：发布 v2 TeamRun + MemberSession 创建事件。
+	// 原先仅发布 TeamStage 事件，前端 v2 store 的 teamRuns/memberSessions Map 为空，
+	// 导致 MemberSessionPanel 无法渲染成员会话树。
+	a.publishV2TeamRunAndMemberSessions(ctx, spiritSessionID, team, teamSession, agentKeys, members)
 }
 
 // publishSpiritGraphStageSnapshot publishes a graph_stage Activity carrying
@@ -1048,5 +1213,248 @@ func publishGraphStageSnapshot(ctx context.Context, seq rt.EventPublisher, event
 		eventBus.Publish(ctx, biz.NewActivityBridgeEvent(ev))
 	case bus != nil:
 		bus.Publish(ctx, ev)
+	}
+}
+
+// buildV2Members converts the v1 members array (map[string]any, used by v1
+// Activity Meta) to the v2 type-safe []biz.MemberInfo.
+//
+// 2026-07-04 问题 4 修复：publishSpiritTeamAssembled 在创建 v2 TeamStage 时
+// 需要填充 Members 字段，但 members 数据已构建为 v1 Meta 格式（[]map[string]any）。
+// 此函数负责转换，避免重复构建。
+func buildV2Members(members []map[string]any) []biz.MemberInfo {
+	if len(members) == 0 {
+		return nil
+	}
+	out := make([]biz.MemberInfo, 0, len(members))
+	for _, m := range members {
+		mi := biz.MemberInfo{}
+		if v, ok := m["agent_key"].(string); ok {
+			mi.AgentKey = v
+		}
+		if v, ok := m["agent_name"].(string); ok {
+			mi.AgentName = v
+		}
+		if v, ok := m["avatar_url"].(string); ok {
+			mi.AvatarURL = v
+		}
+		if v, ok := m["session_id"].(string); ok {
+			mi.ChildSessionID = v
+		}
+		if v, ok := m["status"].(string); ok {
+			mi.Status = v
+		}
+		out = append(out, mi)
+	}
+	return out
+}
+
+// publishV2TeamRunAndMemberSessions 发布 v2 TeamRun + MemberSession 创建事件。
+// 这些事件通过 v2 Sequencer 持久化到 v2 表 + 推送到 WS，前端 v2 store 收到后
+// 渲染 MemberSessionPanel（团队成员会话树）。
+//
+// 设计参考：docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md
+// §3.2.2 TeamRun / §3.2.2 MemberSession
+//
+// 关键关系：
+//   - TeamRun.TeamStageID = TeamStage.ID（已由 publishSpiritTeamAssembled 创建）
+//   - MemberSession.TeamRunID = TeamRun.ID
+//   - MemberSession.TeamStageID = TeamStage.ID
+//   - MemberSession.SessionID = 成员自己的 session ID（来自 memberSessions map）
+//
+// 注意：此处仅发布 created 事件（status=running/pending）。后续生命周期事件
+// （completed/failed）由 HandleTeamTurnResult 在团队状态变更时发布。
+func (a *SpiritTeamAssembler) publishV2TeamRunAndMemberSessions(
+	ctx context.Context,
+	spiritSessionID string,
+	team biz.Team,
+	teamSession biz.Session,
+	agentKeys []string,
+	members []map[string]any,
+) {
+	if a.seq == nil || spiritSessionID == "" || team.ID == "" {
+		return
+	}
+	rootTaskID := string(agent.RootTaskActivityIDFromCtx(ctx))
+	teamStageID := string(agent.NewTeamStageActivityID(team.ID))
+	now := time.Now().UTC()
+	// 派生 TeamRun ID（基于 teamStageID 确定性派生，确保多次调用产生相同 ID）。
+	teamRunID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.team_run.v2:"+teamStageID)).String()
+	// 构建 v2 TeamRun 实体。
+	tr := biz.TeamRun{
+		ID:              teamRunID,
+		TeamStageID:     teamStageID,
+		TaskID:          rootTaskID,
+		SessionID:       teamSession.ID,
+		SpiritSessionID: spiritSessionID,
+		DagNodeID:       team.DagNodeID,
+		DependsOn:       append([]string(nil), team.DependsOn...),
+		Status:          biz.TeamRunV2StatusRunning,
+		StartedAt:       now,
+		Version:         1,
+	}
+	a.seq.Publish(ctx, biz.NewTeamRunStartedEvent(tr))
+	// 为每个成员发布 MemberSessionCreatedEvent。
+	for i, key := range agentKeys {
+		if key == "" {
+			continue
+		}
+		// 从 members 数组中获取对应的元数据（agent_name, avatar_url, session_id）。
+		var agentName, avatarURL, memberSessionID string
+		if i < len(members) {
+			if v, ok := members[i]["agent_name"].(string); ok {
+				agentName = v
+			}
+			if v, ok := members[i]["avatar_url"].(string); ok {
+				avatarURL = v
+			}
+			if v, ok := members[i]["session_id"].(string); ok {
+				memberSessionID = v
+			}
+		}
+		if memberSessionID == "" {
+			memberSessionID = teamSession.ID
+		}
+		// 派生 MemberSession ID（基于 teamRunID + agentKey 确定性派生）。
+		msID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.member_session.v2:"+teamRunID+":"+key)).String()
+		ms := biz.MemberSession{
+			ID:              msID,
+			TeamRunID:       teamRunID,
+			TeamStageID:     teamStageID,
+			TaskID:          rootTaskID,
+			SessionID:       memberSessionID,
+			SpiritSessionID: spiritSessionID,
+			AgentKey:        key,
+			AgentName:       agentName,
+			AvatarURL:       avatarURL,
+			Status:          biz.MemberSessionStatusRunning,
+			StartedAt:       now,
+			Version:         1,
+		}
+		a.seq.Publish(ctx, biz.NewMemberSessionCreatedEvent(ms))
+	}
+}
+
+// publishV2TeamRunCompletion 发布 v2 TeamRun 完成事件 + MemberSession 更新事件。
+// 由 HandleTeamTurnResult 在团队状态变为 completed/failed/cancelled 时调用。
+//
+// 关键设计：
+//   - 使用与 publishV2TeamRunAndMemberSessions 相同的确定性派生 ID 公式，确保
+//     同一 TeamRun 的 created/completed 事件 ID 一致（v2 store 的 mapKey 替换而非新增）
+//   - 查询团队成员会话（SessionType=agent, MemberAgentKey 非空）来发布每个成员的
+//     MemberSessionUpdatedEvent
+//   - 失败原因（errMsg）不在此处传入：HandleTeamTurnResult 已通过 v1 recordTeamCompletion
+//     记录；v2 TeamRun.Error 字段由 RepoSet 从 v1 同步或后续补丁填充
+//
+// 参数：
+//   - primaryStatus: v2 TeamStage 状态（Completed/Failed/Cancelled）
+//   - originalStatus: v1 biz.TeamStatus 原始状态字符串
+func (s *TeamStarter) publishV2TeamRunCompletion(
+	ctx context.Context,
+	spiritSessionID, teamID string,
+	primaryStatus biz.TeamStageStatus,
+	originalStatus string,
+) {
+	if s.seq == nil || spiritSessionID == "" || teamID == "" {
+		return
+	}
+	// 映射 TeamStageStatus → TeamRunV2Status
+	teamRunStatus := biz.TeamRunV2StatusFailed
+	memberStatus := biz.MemberSessionStatusFailed
+	switch primaryStatus {
+	case biz.TeamStageStatusCompleted:
+		teamRunStatus = biz.TeamRunV2StatusCompleted
+		memberStatus = biz.MemberSessionStatusCompleted
+	case biz.TeamStageStatusCancelled:
+		teamRunStatus = biz.TeamRunV2StatusCancelled
+		memberStatus = biz.MemberSessionStatusSkipped
+	case biz.TeamStageStatusFailed:
+		teamRunStatus = biz.TeamRunV2StatusFailed
+		memberStatus = biz.MemberSessionStatusFailed
+	default:
+		// Unknown status; skip publishing to avoid data corruption.
+		return
+	}
+
+	rootTaskID := string(agent.RootTaskActivityIDFromCtx(ctx))
+	teamStageID := string(agent.NewTeamStageActivityID(teamID))
+	teamRunID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.team_run.v2:"+teamStageID)).String()
+	now := time.Now().UTC()
+
+	// 获取 team 实体（用于 DependsOn 等字段）。
+	team, teamErr := s.team.TeamUC.Get(ctx, teamID)
+	if teamErr != nil {
+		s.lg.Warn("publishV2TeamRunCompletion: 获取 team 失败，跳过 DependsOn 字段",
+			loggateway.StepID("spirit.v2.team_run_completion.team_fetch_fail"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Err(teamErr),
+		)
+	}
+	var dependsOn []string
+	if team.ID != "" {
+		dependsOn = append([]string(nil), team.DependsOn...)
+	}
+
+	// 发布 TeamRun 完成事件。
+	tr := biz.TeamRun{
+		ID:              teamRunID,
+		TeamStageID:     teamStageID,
+		TaskID:          rootTaskID,
+		SessionID:       "", // RepoSet 不依赖此字段做合并；保持空避免覆盖
+		SpiritSessionID: spiritSessionID,
+		DagNodeID:       team.DagNodeID,
+		DependsOn:       dependsOn,
+		Status:          teamRunStatus,
+		StartedAt:       now, // 此处用 now 是 RepoSet 的 fallback；真实 StartedAt 已在 created 事件中持久化
+		CompletedAt:     &now,
+		Version:         2, // Version > 1 以通过 VersionLT 守卫覆盖 created 记录
+	}
+	switch teamRunStatus {
+	case biz.TeamRunV2StatusCompleted:
+		s.seq.Publish(ctx, biz.NewTeamRunCompletedEvent(tr))
+	case biz.TeamRunV2StatusFailed:
+		s.seq.Publish(ctx, biz.NewTeamRunFailedEvent(tr))
+	default:
+		// cancelled: 无 NewTeamRunCancelledEvent 工厂；用 UpdatedEvent 兜底。
+		// RepoSet 的 persistTeamRun 会根据 Status 字段更新实体。
+		s.seq.Publish(ctx, biz.NewTeamRunStartedEvent(tr)) // placeholder: v2 store 用 StartedEvent 触发 upsert
+	}
+
+	// 查询团队成员会话，为每个成员发布 MemberSessionUpdatedEvent。
+	// SessionType="agent" 的会话即为成员会话；MemberAgentKey 标识成员的 agent key。
+	result, searchErr := s.sessions.Search(ctx, biz.SessionSearchQuery{TeamID: teamID, Limit: 100})
+	if searchErr != nil {
+		s.lg.Warn("publishV2TeamRunCompletion: 查询团队成员会话失败，仅发布 TeamRun 完成事件",
+			loggateway.StepID("spirit.v2.team_run_completion.search_fail"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Err(searchErr),
+		)
+		return
+	}
+	for _, sess := range result.Items {
+		// 仅处理 agent 类型的会话（团队成员会话）。父会话（SessionType=team）跳过。
+		if sess.SessionType != "agent" {
+			continue
+		}
+		agentKey := sess.MemberAgentKey
+		if agentKey == "" {
+			continue
+		}
+		// 派生 MemberSession ID（与 publishV2TeamRunAndMemberSessions 一致）。
+		msID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.member_session.v2:"+teamRunID+":"+agentKey)).String()
+		ms := biz.MemberSession{
+			ID:              msID,
+			TeamRunID:       teamRunID,
+			TeamStageID:     teamStageID,
+			TaskID:          rootTaskID,
+			SessionID:       sess.ID,
+			SpiritSessionID: spiritSessionID,
+			AgentKey:        agentKey,
+			Status:          memberStatus,
+			StartedAt:       now,
+			FinishedAt:      &now,
+			Version:         2,
+		}
+		s.seq.Publish(ctx, biz.NewMemberSessionUpdatedEvent(ms))
 	}
 }

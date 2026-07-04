@@ -48,6 +48,21 @@ type ProjectMeta struct {
 	// Set by the team runner to SessionActivityID(teamID, agentKey) so that
 	// member thinking/action/reply are children of the session activity.
 	ParentActivityID string
+
+	// ParentTaskID is set by the system-push pattern (e.g. synthesis trigger
+	// after all teams complete) to attach the new Turn to an existing Task
+	// instead of creating a new one. Empty for normal user-input turns.
+	// Design: docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md §3.2.1
+	ParentTaskID string
+
+	// NodeIDToAgentKey maps graph node IDs (e.g. "member-1") to member agent
+	// keys (e.g. "spirit-worker-a"). Used by V2Projector.ProcessEvent to
+	// attribute Steps to the correct member agent when GraphAgent executes
+	// multiple member agents through a single projector.
+	//
+	// 2026-07-04 问题 1 修复：Graph 模式下所有 member agent 事件被错误归到
+	// anchor agent 名下，前端 MemberSessionPanel 匹配不到成员活动。
+	NodeIDToAgentKey map[string]string
 }
 
 // isTeamMemberAuthor reports whether the given author string identifies a

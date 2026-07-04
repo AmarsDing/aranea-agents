@@ -13,7 +13,18 @@ import type {
   GraphStage,
   GraphNode,
 } from '../../features/chat/v2Types';
-import { listTasksV2, listTurnsV2, listStepsV2 } from '../../features/session/v2Api';
+import {
+  listTasksV2,
+  listTurnsV2,
+  listStepsV2,
+  listTeamStagesV2,
+  listTeamRunsV2,
+  listMemberSessionsV2,
+  listPlanBoardsV2,
+  listPlanStepsV2,
+  listGraphStagesV2,
+  listGraphNodesV2,
+} from '../../features/session/v2Api';
 
 /**
  * useChatActivityStore holds all v2 chat entities in flat Maps keyed by ID.
@@ -40,6 +51,20 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     const ex = tasks.value.get(t.ID);
     if (ex && t.Version <= ex.Version) return;
     tasks.value.set(t.ID, { ...t });
+    // 2026-07-04 问题 5 修复：真实 Task 事件到达时，清理同 sessionId 下
+    // 所有 'pending-user-' 开头的乐观 Task（已无法被替换为真实 Task）
+    if (!t.ID.startsWith('pending-user-')) {
+      for (const [id, task] of tasks.value) {
+        if (id.startsWith('pending-user-') && task.SessionID === t.SessionID) {
+          tasks.value.delete(id);
+        }
+      }
+    }
+  }
+
+  /** removeTask 删除指定 ID 的 Task（用于乐观 Task 失败时清理） */
+  function removeTask(taskId: string) {
+    tasks.value.delete(taskId);
   }
 
   function upsertTurn(t: Turn) {
@@ -62,6 +87,12 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   function upsertTeamStage(ts: TeamStage) {
     const ex = teamStages.value.get(ts.ID);
     if (ex && ts.Version <= ex.Version) return;
+    // 2026-07-04 问题 4 修复：dispatchStep 的 TeamStageUpdatedEvent 不携带
+    // Members（ intentionally nil，避免覆盖 publishSpiritTeamAssembled 写入
+    // 的完整 Members）。当事件 Members 为空时，保留已有 Members 数据。
+    if (ex && (!ts.Members || ts.Members.length === 0) && ex.Members && ex.Members.length > 0) {
+      ts = { ...ts, Members: ex.Members };
+    }
     teamStages.value.set(ts.ID, { ...ts });
   }
 
@@ -74,13 +105,31 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   function upsertMemberSession(ms: MemberSession) {
     const ex = memberSessions.value.get(ms.ID);
     if (ex && ms.Version <= ex.Version) return;
-    memberSessions.value.set(ms.ID, { ...ms });
+    // 2026-07-04 问题 3 修复：completion 事件不携带 AgentName/AvatarURL，
+    // 用字段合并避免清空已有值（与后端 repo 的条件 SET 语义一致）。
+    if (ex) {
+      memberSessions.value.set(ms.ID, { ...ex, ...ms });
+    } else {
+      memberSessions.value.set(ms.ID, { ...ms });
+    }
   }
 
   function upsertPlanBoard(pb: PlanBoard) {
     const ex = planBoards.value.get(pb.ID);
     if (ex && pb.Version <= ex.Version) return;
     planBoards.value.set(pb.ID, { ...pb });
+    // 2026-07-04 修复：同步将嵌入的 Steps 写入 planSteps Map，
+    // 使后续 plan_step.* 事件与初始创建走同一条数据路径。
+    // 单步事件到达时通过 upsertPlanStep 更新 Map，组件通过
+    // getPlanBoardSteps 查询始终拿到最新状态。
+    if (pb.Steps && pb.Steps.length > 0) {
+      for (const ps of pb.Steps) {
+        const exStep = planSteps.value.get(ps.ID);
+        if (!exStep || ps.Version > exStep.Version) {
+          planSteps.value.set(ps.ID, { ...ps });
+        }
+      }
+    }
   }
 
   function upsertPlanStep(ps: PlanStep) {
@@ -98,6 +147,14 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     const ex = graphStages.value.get(gs.ID);
     if (ex && gs.Version <= ex.Version) return;
     graphStages.value.set(gs.ID, { ...gs });
+    // 2026-07-04 修复：同步将嵌入的 Nodes 写入 graphNodes Map，
+    // 使后续 graph_node.updated 事件与初始创建走同一条数据路径。
+    if (gs.Nodes && gs.Nodes.length > 0) {
+      for (const gn of gs.Nodes) {
+        // GraphNode 无 Version 字段，直接覆盖
+        graphNodes.value.set(gn.ID, { ...gn });
+      }
+    }
   }
 
   function upsertGraphNode(gn: GraphNode) {
@@ -170,6 +227,33 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       if (gs.PlanBoardID === planBoardId) return gs;
     }
     return undefined;
+  }
+
+  // 2026-07-04 修复：通过 PlanBoard.ID 查询其下所有 PlanStep（从独立 Map，
+  // 始终反映最新状态）。PlanBoard.Steps 嵌入数组仅在创建时填充，后续
+  // plan_step.* 事件更新独立 Map，组件必须通过此查询辅助获取最新数据。
+  function getPlanBoardSteps(planBoardId: string): PlanStep[] {
+    const out: PlanStep[] = [];
+    for (const ps of planSteps.value.values()) {
+      if (ps.PlanID === planBoardId) out.push(ps);
+    }
+    return out.sort((a, b) => a.Seq - b.Seq);
+  }
+
+  // 2026-07-04 修复：查询 MemberSession 对应的 agent 内部活动 steps。
+  // Step 无直接外键关联 MemberSession，通过 AuthorAgentKey + TaskID 间接匹配。
+  // 同一 agent 在同一 task 下的 thinking/action/reply 等 step 都会返回。
+  function getMemberSessionSteps(memberSession: MemberSession): Step[] {
+    const out: Step[] = [];
+    const agentKey = memberSession.AgentKey;
+    const taskId = memberSession.TaskID;
+    if (!agentKey || !taskId) return out;
+    for (const s of steps.value.values()) {
+      if (s.AuthorAgentKey === agentKey && s.TaskID === taskId) {
+        out.push(s);
+      }
+    }
+    return out.sort((a, b) => a.Seq - b.Seq);
   }
 
   function getGraphStageNodes(graphStageId: string): GraphNode[] {
@@ -249,19 +333,75 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
 
   /**
    * fetchSessionHistory loads the full v2 entity tree for a session:
-   * all tasks + all steps for the session (parallel), then turns per-task
-   * (parallel). Per-task turn fetch failures are swallowed so partial
-   * history can still render. Top-level task/step failures propagate.
+   *   - Top level (parallel): tasks + steps for the session
+   *   - Per task (parallel): turns + team_stages + plan_boards + plan_steps + graph_stages
+   *   - Per team_stage (parallel): team_runs
+   *   - Per team_run (parallel): member_sessions
+   *   - Per graph_stage (parallel): graph_nodes
+   *
+   * 2026-07-04 问题 6 修复：原先只加载 tasks/turns/steps，刷新后 plan/graph/
+   * team/member 全部丢失。补齐 7 类子实体的 REST 调用。
+   *
+   * Isolated failures at child levels are swallowed (.catch(() => [])) so
+   * partial history can still render. Top-level task/step failures propagate.
    */
   async function fetchSessionHistory(sessionId: string): Promise<void> {
     const [tasksList, stepsList] = await Promise.all([listTasksV2(sessionId), listStepsV2(sessionId)]);
     for (const t of tasksList) upsertTask(t);
     for (const s of stepsList) upsertStep(s);
 
-    // Fetch turns per-task in parallel; isolated failures yield empty arrays.
-    const turnLists = await Promise.all(tasksList.map((t) => listTurnsV2(t.ID).catch(() => [] as Turn[])));
-    for (const turns of turnLists) {
-      for (const turn of turns) upsertTurn(turn);
+    // Per-task parallel fetch: turns + 4 task-scoped child entities.
+    // Each call catches its own failure → empty array, so one failing task
+    // doesn't poison the others.
+    const perTaskResults = await Promise.all(
+      tasksList.map(async (t) => ({
+        turns: await listTurnsV2(t.ID).catch(() => [] as Turn[]),
+        teamStages: await listTeamStagesV2(t.ID).catch(() => [] as TeamStage[]),
+        planBoards: await listPlanBoardsV2(t.ID).catch(() => [] as PlanBoard[]),
+        planSteps: await listPlanStepsV2(t.ID).catch(() => [] as PlanStep[]),
+        graphStages: await listGraphStagesV2(t.ID).catch(() => [] as GraphStage[]),
+      })),
+    );
+    for (const r of perTaskResults) {
+      for (const turn of r.turns) upsertTurn(turn);
+      for (const ts of r.teamStages) upsertTeamStage(ts);
+      for (const pb of r.planBoards) upsertPlanBoard(pb);
+      for (const ps of r.planSteps) upsertPlanStep(ps);
+      for (const gs of r.graphStages) upsertGraphStage(gs);
+    }
+
+    // Flatten team_stages and graph_stages across all tasks for next-level fetch.
+    const allTeamStages: TeamStage[] = [];
+    const allGraphStages: GraphStage[] = [];
+    for (const r of perTaskResults) {
+      allTeamStages.push(...r.teamStages);
+      allGraphStages.push(...r.graphStages);
+    }
+
+    // Per team_stage: fetch team_runs (parallel). Isolated failures → [].
+    const teamRunLists = await Promise.all(
+      allTeamStages.map((ts) => listTeamRunsV2(ts.ID).catch(() => [] as TeamRun[])),
+    );
+    const allTeamRuns: TeamRun[] = [];
+    for (const runs of teamRunLists) {
+      for (const tr of runs) upsertTeamRun(tr);
+      allTeamRuns.push(...runs);
+    }
+
+    // Per team_run: fetch member_sessions (parallel). Isolated failures → [].
+    const memberSessionLists = await Promise.all(
+      allTeamRuns.map((tr) => listMemberSessionsV2(tr.ID).catch(() => [] as MemberSession[])),
+    );
+    for (const sessions of memberSessionLists) {
+      for (const ms of sessions) upsertMemberSession(ms);
+    }
+
+    // Per graph_stage: fetch graph_nodes (parallel). Isolated failures → [].
+    const graphNodeLists = await Promise.all(
+      allGraphStages.map((gs) => listGraphNodesV2(gs.ID).catch(() => [] as GraphNode[])),
+    );
+    for (const nodes of graphNodeLists) {
+      for (const gn of nodes) upsertGraphNode(gn);
     }
   }
 
@@ -277,6 +417,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     graphStages,
     graphNodes,
     upsertTask,
+    removeTask,
     upsertTurn,
     upsertStep,
     upsertTeamStage,
@@ -294,6 +435,8 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     getTaskPlanBoards,
     getTaskGraphStages,
     getGraphStageByPlanBoard,
+    getPlanBoardSteps,
+    getMemberSessionSteps,
     getGraphStageNodes,
     getTeamStageTeamRuns,
     getTeamRunMemberSessions,

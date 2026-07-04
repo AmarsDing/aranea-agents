@@ -283,3 +283,51 @@ func TestDetectTeamIntent(t *testing.T) {
 		})
 	}
 }
+
+// TestDetectTeamCount verifies that detectTeamCount correctly extracts the
+// user's explicit team count from the message.
+//
+// 2026-07-04 问题 2 修复：detectTeamCount 用于在 decomposeTask 中约束 LLM
+// 生成恰好 N 个 subtask，避免 orchestrateDAG 多创建 team。
+func TestDetectTeamCount(t *testing.T) {
+	tests := []struct {
+		name    string
+		message string
+		want    int
+	}{
+		// 阿拉伯数字 + 量词 + team/团队
+		{"2个团队", "分派2个团队分别负责代码分析和数据分析", 2},
+		{"3个团队", "组建3个团队协作完成", 3},
+		{"2支团队", "分派2支团队", 2},
+		{"5 teams English", "please dispatch 5 teams to handle this", 5},
+		{"2 team English mix", "分派两个team进行", 2},
+		{"digit without 量词", "我需要3团队", 3},
+
+		// 中文数字
+		{"两个团队", "分派两个团队", 2},
+		{"三个团队", "组建三个团队", 3},
+		{"四支团队", "分派四支团队", 4},
+		{"十个团队", "需要十个团队", 10},
+
+		// 英文单词数字
+		{"two teams", "I need two teams to handle this", 2},
+		{"three teams", "dispatch three teams", 3},
+		{"five teams", "five teams working in parallel", 5},
+
+		// 不识别的数量
+		{"no count", "组建团队完成项目", 0},
+		{"no count generic", "团队协作", 0},
+		{"simple greeting", "你好", 0},
+		{"empty message", "", 0},
+		{"unrelated number", "我需要5分钟完成", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := detectTeamCount(tt.message)
+			if got != tt.want {
+				t.Errorf("detectTeamCount(%q) = %d, want %d", tt.message, got, tt.want)
+			}
+		})
+	}
+}
+

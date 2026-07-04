@@ -101,16 +101,30 @@ Session (spirit_session_id)
     ├── GraphStage? (可选，plan 创建后产生，与 PlanBoard 一对一关联)
     │   └── GraphNode (id, dag_node_id=plan_step.id, team_stage_id, status)
     └── Turn (turn_id, seq)         ← 最小对话单元
-        ├── ThinkingStep (seq=1)
-        ├── ActionStep   (seq=2)
-        ├── ReplyStep     (seq=3, is_final)
+        ├── ThinkingStep? (seq, 可多轮，0..N)
+        ├── ActionStep?   (seq, 可多轮，0..N)
+        ├── ... (thinking/action 交替，按 Seq 排序)
+        ├── ReplyStep?     (seq, is_final=true, 0..1 个)
+        ├── NoticeStep?    (seq, 0..N)
+        ├── ConfirmStep?   (seq, 0..N)
+        ├── ErrorStep?     (seq, 0..1)
         ├── TeamStage?     ← turn 内触发 team 执行
         │   └── TeamRun (run_id, dag_node_id=plan_step.id)
         │       └── MemberSession (agent_key)
         │           └── Turn (member 自己的 turn, seq)
-        │               └── ThinkingStep / ActionStep / ReplyStep
+        │               └── ThinkingStep? / ActionStep? / ReplyStep?
         └── (并行其他 TeamStage)
 ```
+
+**Turn 内 Step 模型**（2026-07-04 澄清，详见 [2026-07-04-empty-reply-step-cleanup-design.md](./2026-07-04-empty-reply-step-cleanup-design.md)）：
+
+- **实际 LLM 业务模式**：`thinking → action → thinking → action → ... → reply`
+- turn 内可有 **0..N 个 thinking/action step**（按 Seq 排序，支持多轮交替）
+- turn 内可有 **0..1 个 final reply step**（`is_final=true`）
+- **ReplyStep 仅在 LLM 输出非空文本时创建**：
+  - 纯空白 delta（如 `\n`、空格）不创建 step（`handleTextDelta` 检查 `TrimSpace` 后非空）
+  - 已创建但内容为空的 step 走 `cancelled` 路径（`handleTextDone` 检查 `step.Content` 与 `finalContent` 均为空白）
+- 图示中的 `?` 表示 step 可选，并非每个 turn 都包含所有 kind
 
 **关键设计**：每个 entity 都有：
 - `task_id`（聚合根，按 task 索引）

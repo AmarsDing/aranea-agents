@@ -317,6 +317,11 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 56 | **T8.6** 点击 Agent 卡片定位到中间面板会话+高亮闪烁 | P1 | ✅ |
 | 57 | **T8.7** 执行中转圈动画 + 已完成绿色标签 + 阻塞黄色高亮 | P1 | ✅ |
 | 58 | **T8.8** 设计文档同步 B.8.3 阻塞定义 + B.9 树形重构设计 | P1 | ✅ |
+| 59 | **T-ER.1** 后端 `handleTextDelta` 纯空白 delta 不创建 ReplyStep（防过早创建） | P1 | ✅ 2026-07-04 |
+| 60 | **T-ER.2** 后端 `handleTextDone` 空 content 走 cancelled 路径（复用 `NewStepCompletedEvent` + `Status=cancelled`） | P1 | ✅ 2026-07-04 |
+| 61 | **T-ER.3** 前端 `TurnContainer.visibleSteps` 兜底过滤空 reply step（非 running 且 Content trim 后为空） | P1 | ✅ 2026-07-04 |
+| 62 | **T-ER.4** spec `2026-07-02-llm-activity-ordering-design.md` §3.2.1 图示更新为多轮模式 | P2 | ✅ 2026-07-04 |
+| 63 | **T-ER.5** 设计文档同步 §12.8 v2 Step 模型 + 空 ReplyStep 过滤 | P2 | ✅ 2026-07-04 |
 
 ### T8 UI 树形重构（2026-07-01 新增）
 
@@ -342,6 +347,42 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | `web/src/i18n/locales/zh-CN.ts` / `en-US.ts` | 新增 `chat.agentSidebar.settings` 等文案 |
 | `web/src/features/chat/streamEventTypes.ts` | `TeamMemberStatus` 新增 `blocked` 状态 |
 | `web/src/features/chat/composables/useActivityTimeline.ts` | members 映射逻辑新增 blocked 状态 |
+
+### P-ER 空 ReplyStep 清理与多轮 Step 模型澄清（2026-07-04 新增）
+
+> **目标**：修复 chat 模块"空回复块"显示问题；澄清 turn 内 step 模型为多轮模式（`thinking → action → thinking → action → ... → reply`）。
+> **设计稿**：[docs/superpowers/specs/2026-07-04-empty-reply-step-cleanup-design.md](../superpowers/specs/2026-07-04-empty-reply-step-cleanup-design.md)
+> **关联 spec**：[docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md §3.2.1](../superpowers/specs/2026-07-02-llm-activity-ordering-design.md)
+
+#### 任务清单
+
+- [x] T-ER.1 后端 `handleTextDelta` 纯空白 delta 不创建 ReplyStep（防过早创建）
+- [x] T-ER.2 后端 `handleTextDone` 空 content 走 cancelled 路径（复用 `NewStepCompletedEvent` + `Status=cancelled`）
+- [x] T-ER.3 前端 `TurnContainer.visibleSteps` 兜底过滤空 reply step
+- [x] T-ER.4 spec `2026-07-02-llm-activity-ordering-design.md` §3.2.1 图示更新为多轮模式
+- [x] T-ER.5 设计文档同步 §12.8 v2 Step 模型 + 空 ReplyStep 过滤
+
+#### 改动文件清单
+
+| 文件 | 改动 |
+|------|------|
+| `internal/agent/v2/projector.go` | `handleTextDelta` + `handleTextDone` 修改（防过早创建 + 空 content 走 cancelled） |
+| `internal/agent/v2/projector_test.go` | 新增 4 个测试（whitespace no-create / empty cancelled / normal / no-op） |
+| `web/src/components/chat/v2/TurnContainer.vue` | `visibleSteps` 兜底过滤空 reply step |
+| `web/src/components/chat/__tests__/TurnContainer.spec.ts` | 新建 7 个测试 |
+| `docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md` | §3.2.1 图示更新为多轮模式 + Turn 内 Step 模型说明 |
+| `docs/superpowers/specs/2026-07-04-empty-reply-step-cleanup-design.md` | 新建设计稿 |
+| `docs/development/1-chat.design.md` | 新增 §12.8 v2 Step 模型与空 ReplyStep 过滤 |
+| `docs/development/1-chat.development.md` | 新增 P-ER Phase 块 + §6 任务清单追加 T-ER.1~T-ER.5 |
+
+#### 验收标准
+
+- [x] 后端 `go test ./internal/agent/v2/...` 通过（4 个新测试 + 全部历史测试）
+- [x] 后端 `internal/agent/...` + `internal/biz/...` 全量回归通过
+- [x] 前端 `TurnContainer.spec.ts` 7/7 通过
+- [x] 前端 lint 0 errors（52 个 warning 均为预先存在）
+- [x] 空 ReplyBlock 不再显示（completed/cancelled 状态的空 reply 被过滤）
+- [x] 流式中的 reply step 仍正常显示（Status=running 不被过滤）
 
 ---
 

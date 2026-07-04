@@ -11,7 +11,14 @@ import (
 // When non-nil, it is injected into TeamStarter via SetPlanExecutor to break
 // the Wire cycle: PlanExecutor → TeamOrchestrator → SpiritTeamAssembler
 // → TeamStarter → ... → ChatService.
-func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor) *ChatService {
+// 2026-07-04 问题 4 修复：
+// - 注入 EventBus 到 PlanExecutor 并启动订阅，让 PlanExecutor 自动响应
+//   PlanBoardCreatedEvent 触发 DAG 执行。
+// - 注入 SpiritTeamAssembler 和 TeamStarter 到 RealTeamOrchestrator，
+//   让 PlanExecutor.dispatchStep 能创建真实的 team + team_run。
+// - 注入 AgentReader 到 RealTeamOrchestrator，让 Orchestrate 能查询
+//   active agent 列表作为团队成员（PlanStep 不携带 AgentKeys）。
+func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus biz.EventBus, realOrch *RealTeamOrchestrator, agentReader biz.AgentReader) *ChatService {
 	deps.Turn.AfterTurn = biz.NoopNativeTurnAfter{}
 	cs := NewChatService(deps)
 	// Backfill turnGateway into TeamStarter to break the Wire cycle:
@@ -26,6 +33,27 @@ func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor) *Chat
 	if planExec != nil {
 		if setter, ok := deps.Team.TeamStarter.(interface{ SetPlanExecutor(*PlanExecutor) }); ok {
 			setter.SetPlanExecutor(planExec)
+		}
+		// 2026-07-04 问题 4 修复：注入 EventBus 并启动订阅，
+		// 让 PlanExecutor 自动响应 PlanBoardCreatedEvent 触发 DAG 执行。
+		if v2Bus != nil {
+			planExec.SetEventBus(v2Bus)
+			planExec.StartSubscription()
+		}
+	}
+	// 2026-07-04 问题 4 修复：注入 SpiritTeamAssembler、TeamStarter 和
+	// AgentReader 到 RealTeamOrchestrator，打破 Wire 循环：
+	// PlanExecutor → RealTeamOrchestrator → SpiritTeamAssembler → TeamStarter → PlanExecutor。
+	// AgentReader 用于查询 active agent 列表作为团队成员（PlanStep 不携带 AgentKeys）。
+	if realOrch != nil {
+		if deps.Team.SpiritAssembler != nil {
+			realOrch.SetAssembler(deps.Team.SpiritAssembler)
+		}
+		if deps.Team.TeamStarter != nil {
+			realOrch.SetStarter(deps.Team.TeamStarter)
+		}
+		if agentReader != nil {
+			realOrch.SetAgentReader(agentReader)
 		}
 	}
 	return cs

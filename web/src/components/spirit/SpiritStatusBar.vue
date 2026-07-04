@@ -23,11 +23,17 @@
         <q-icon name="pause_circle" size="14px" :style="{ color: 'var(--color-warning)' }" />
         <span>{{ t('spirit.interruptedCount', { count: interruptedTeamCount }) }}</span>
       </div>
-      <div v-if="checkpointStep" class="spirit-status-bar__item spirit-status-bar__item--hide-sm">
+      <div
+        v-if="checkpointStep"
+        class="spirit-status-bar__item spirit-status-bar__item--hide-sm spirit-status-bar__item--shift-md"
+      >
         <q-icon name="flag" size="14px" :style="{ color: 'var(--color-text-tertiary)' }" />
         <span class="ellipsis">{{ checkpointStep }}</span>
       </div>
-      <div v-if="quotaMax > 0" class="spirit-status-bar__item spirit-status-bar__item--hide-sm">
+      <div
+        v-if="quotaMax > 0"
+        class="spirit-status-bar__item spirit-status-bar__item--hide-sm spirit-status-bar__item--shift-md"
+      >
         <q-icon name="bar_chart" size="14px" :style="{ color: 'var(--color-text-tertiary)' }" />
         <span>{{ t('spirit.quotaLabel', { used: quotaUsed, max: quotaMax }) }}</span>
         <q-linear-progress
@@ -275,11 +281,14 @@ const quotaColor = computed(() => {
   &:hover
     background: color-mix(in srgb, var(--color-accent) 12%, transparent)
 
+.spirit-status-bar__item--shift-md
+  transform: translateY(3px)
+
 .spirit-status-bar__item--hoverable
   cursor: default
   border-radius: 4px
   padding: 1px 4px
-  transform: translateY(2px)
+  transform: translateY(3px)
   transition: background 0.15s ease
 
   &:hover

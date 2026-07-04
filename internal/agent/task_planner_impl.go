@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
+	"aranea-agents/internal/agent/v2"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -25,12 +27,15 @@ type taskPlannerImpl struct {
 	orchCache      *biz.OrchestrationCache
 	lg             loggateway.Logger
 	plannerSetting PlannerModelLookup
+	// seq is the v2 Sequencer (nil-safe) used to publish PlanBoard/PlanStep/
+	// GraphStage/GraphNode events. Nil = v2 publish skipped (backwards compat).
+	seq v2.SequencerPublisher
 }
 
 var _ biz.TaskPlannerPort = (*taskPlannerImpl)(nil)
 
 // NewTaskPlanner creates a new TaskPlanner implementation.
-func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, bus biz.ActivityEventBus, orchCache *biz.OrchestrationCache, lg loggateway.Logger, plannerSetting PlannerModelLookup) biz.TaskPlannerPort {
+func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, bus biz.ActivityEventBus, orchCache *biz.OrchestrationCache, lg loggateway.Logger, plannerSetting PlannerModelLookup, seq v2.SequencerPublisher) biz.TaskPlannerPort {
 	return &taskPlannerImpl{
 		repo:           repo,
 		catalog:        catalog,
@@ -39,6 +44,7 @@ func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUs
 		orchCache:      orchCache,
 		lg:             lg,
 		plannerSetting: plannerSetting,
+		seq:            seq,
 	}
 }
 
@@ -122,6 +128,17 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 	// explicit mode (direct/parallel/dag), but LLMs don't always comply. This
 	// ensures teams are created when the user clearly requests them, regardless
 	// of LLM cooperation.
+	//
+	// 2026-07-04 问题 2 修复：同时提取用户请求的 team 数量约束，传给
+	// decomposeTask 让 LLM 生成恰好 N 个 subtask（避免多出 team）。
+	teamCount := detectTeamCount(input.UserMessage)
+	if teamCount > 0 {
+		impl.lg.Info("检测到用户消息中的团队数量约束",
+			loggateway.StepID(biz.SpiritStepPlannerAssess),
+			loggateway.Str("trace_id", traceID),
+			loggateway.Int("team_count", teamCount),
+		)
+	}
 	if m := strings.ToLower(strings.TrimSpace(input.Mode)); m == "" || m == "auto" {
 		if detected := detectTeamIntent(input.UserMessage); detected != "" {
 			impl.lg.Info("检测到用户消息中的团队组建意图，自动升级模式",
@@ -129,6 +146,7 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 				loggateway.Str("trace_id", traceID),
 				loggateway.Str("detected_mode", detected),
 				loggateway.Str("original_mode", input.Mode),
+				loggateway.Int("team_count", teamCount),
 			)
 			input.Mode = detected
 		}
@@ -193,7 +211,7 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 	var decomposeReason string
 	if effectiveLevel == biz.ComplexityComplex {
 		var err error
-		subTasks, dag, err = impl.decomposeTask(ctx, input.UserMessage, input.IntentArtifact)
+		subTasks, dag, err = impl.decomposeTask(ctx, input.UserMessage, input.IntentArtifact, teamCount)
 		if err != nil {
 			impl.lg.Warn("任务分解失败，降级为 direct 策略",
 				loggateway.StepID(biz.SpiritStepPlannerDecompose),
@@ -205,6 +223,42 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			decomposeReason = "decompose_failed"
 		} else if len(subTasks) > 0 {
 			decomposeReason = fmt.Sprintf("分解为 %d 个子任务", len(subTasks))
+			// 2026-07-04 问题 2 修复：当用户明确请求 N 个 team 但 LLM 产生
+			// 不符数量的 subtask 时，截取前 N 个或记录警告。这是兜底——
+			// buildDecompositionPrompt 已通过 prompt 硬约束 LLM，但 LLM
+			// 可能不严格遵守。
+			if teamCount > 0 && len(subTasks) > teamCount {
+				impl.lg.Warn("LLM 分解的 subtask 数量超出用户请求的 team 数量，截取前 N 个",
+					loggateway.StepID(biz.SpiritStepPlannerDecompose),
+					loggateway.Str("trace_id", traceID),
+					loggateway.Int("requested_team_count", teamCount),
+					loggateway.Int("decomposed_subtask_count", len(subTasks)),
+				)
+				subTasks = subTasks[:teamCount]
+				// 清理截取后悬挂的 DependsOn 引用，避免 DAG 执行失败
+				validIDs := make(map[string]bool, len(subTasks))
+				for _, st := range subTasks {
+					validIDs[st.ID] = true
+				}
+				for i := range subTasks {
+					filtered := subTasks[i].DependsOn[:0]
+					for _, depID := range subTasks[i].DependsOn {
+						if validIDs[depID] {
+							filtered = append(filtered, depID)
+						}
+					}
+					subTasks[i].DependsOn = filtered
+				}
+				dag = buildDAGFromSubTasks(subTasks)
+				decomposeReason = fmt.Sprintf("分解为 %d 个子任务（按用户请求截取）", len(subTasks))
+			} else if teamCount > 0 && len(subTasks) < teamCount {
+				impl.lg.Warn("LLM 分解的 subtask 数量少于用户请求的 team 数量",
+					loggateway.StepID(biz.SpiritStepPlannerDecompose),
+					loggateway.Str("trace_id", traceID),
+					loggateway.Int("requested_team_count", teamCount),
+					loggateway.Int("decomposed_subtask_count", len(subTasks)),
+				)
+			}
 			// Strategy is determined solely by the explicit mode (or detected
 			// team intent). We no longer auto-refine based on DAG shape — the
 			// LLM is the decision authority. When mode is empty (no explicit
@@ -617,6 +671,51 @@ func shouldForceComplex(mode string) bool {
 	return false
 }
 
+// detectTeamCount extracts the user's explicit team count from the message.
+// Returns 0 when no count is specified (caller should use default range).
+// Recognized patterns:
+//   - "2个团队", "3支团队", "两个team", "三个团队"
+//   - "组建3个团队", "分派两个团队", "创建2个团队"
+//   - "two teams", "3 teams", "five teams"
+//
+// 2026-07-04 问题 2 修复：原 detectTeamIntent 只返回 mode（"dag"），
+// 丢弃数量约束。这导致 LLM decomposition 自由产生 2-6 个 subtask，
+// orchestrateDAG 为每个 subtask 创建一个 team，最终 team 数量与用户
+// 请求不符（用户要 2 个 team，可能多出 3-5 个）。
+func detectTeamCount(message string) int {
+	lower := strings.ToLower(message)
+	// 1. 阿拉伯数字 + 量词 + team/团队：例如 "2个团队"、"3支team"、"5 teams"
+	reDigit := regexp.MustCompile(`(\d+)\s*(?:个|支)?\s*(?:teams?|团队)`)
+	if m := reDigit.FindStringSubmatch(lower); len(m) >= 2 {
+		if n, err := strconv.Atoi(m[1]); err == nil && n > 0 && n <= 20 {
+			return n
+		}
+	}
+	// 2. 中文数字 + 量词 + team/团队：例如 "两个团队"、"三支team"
+	cnNumMap := map[string]int{
+		"一": 1, "两": 2, "二": 2, "三": 3, "四": 4, "五": 5,
+		"六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+	}
+	reCN := regexp.MustCompile(`(一|两|二|三|四|五|六|七|八|九|十)\s*(?:个|支)?\s*(?:teams?|团队)`)
+	if m := reCN.FindStringSubmatch(lower); len(m) >= 2 {
+		if n, ok := cnNumMap[m[1]]; ok && n > 0 {
+			return n
+		}
+	}
+	// 3. 英文单词数字 + teams：例如 "two teams"、"three teams"
+	enNumMap := map[string]int{
+		"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+		"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+	}
+	reEN := regexp.MustCompile(`\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+teams?\b`)
+	if m := reEN.FindStringSubmatch(lower); len(m) >= 2 {
+		if n, ok := enNumMap[m[1]]; ok && n > 0 {
+			return n
+		}
+	}
+	return 0
+}
+
 // detectTeamIntent scans the user message for explicit team-formation keywords
 // and returns the recommended mode ("parallel" or "dag"). Returns "" if no
 // team intent is detected.
@@ -650,8 +749,18 @@ func detectTeamIntent(message string) string {
 		"分派两个", "分派2个", "分派三个", "分派3个",
 		"分派团队", "分派team",
 		// Generic team formation keywords
+		// 2026-07-04 修复：扩展关键词，识别"组建一个团队"、"组建三个团队"等
+		// 数量+量词变体，避免 QuickAssess 误判为 simple 导致不触发规划。
 		"组建团队", "组建队", "组建team", "form a team", "build a team",
 		"团队协作", "团队a", "团队b", "团队c",
+		"组建一个团队", "组建一支团队", "组建1个团队", "组建1支团队",
+		"组建两个团队", "组建两支团队", "组建2个团队", "组建2支团队",
+		"组建三个团队", "组建三支团队", "组建3个团队", "组建3支团队",
+		"组建多个团队", "组建多支团队",
+		"创建团队", "创建一个团队", "创建一支团队",
+		"成立团队", "成立一个团队",
+		"编排团队", "编排一个团队",
+		"调度团队", "调度一个团队",
 	}
 	for _, kw := range teamKeywords {
 		if strings.Contains(lower, kw) {
@@ -671,12 +780,14 @@ func detectTeamIntent(message string) string {
 }
 
 // decomposeTask uses LLM to decompose a complex task into subtasks (T1.6).
-func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage string, artifact *biz.IntentArtifact) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+// teamCount > 0 时将作为硬约束传给 LLM，要求生成恰好 N 个 subtask（每个
+// subtask 在 orchestrateDAG 中对应一个 team）。teamCount = 0 时使用默认范围。
+func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
 	if impl.catalog == nil || impl.httpClient == nil {
 		return nil, nil, apierror.Internal(apierror.DomainSpirit, "LLM catalog or HTTP client not configured")
 	}
 
-	prompt := buildDecompositionPrompt(userMessage, artifact)
+	prompt := buildDecompositionPrompt(userMessage, artifact, teamCount)
 
 	// Resolve planner model via system setting (specify/inherit) with session
 	// model fallback. Replaces legacy env-var + catalog-first approach.
@@ -733,7 +844,13 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 }
 
 // buildDecompositionPrompt creates the system prompt for task decomposition.
-func buildDecompositionPrompt(userMessage string, artifact *biz.IntentArtifact) string {
+// teamCount > 0 时强制要求 LLM 生成恰好 N 个 subtask（用户明确请求 N 个 team）；
+// teamCount = 0 时使用默认 2-6 范围。
+//
+// 2026-07-04 问题 2 修复：原 prompt 固定 "2-6 subtasks"，未传递用户的数量
+// 约束。当用户说"派出2个team"时，LLM 可能产生 5 个 subtask，orchestrateDAG
+// 为每个 subtask 创建一个 team，导致最终多出 3 个 team。
+func buildDecompositionPrompt(userMessage string, artifact *biz.IntentArtifact, teamCount int) string {
 	intentContext := ""
 	if artifact != nil {
 		intentContext = fmt.Sprintf("\nIntent analysis:\n- Refined goal: %s\n- Intent kind: %s\n- Risk flags: %v",
@@ -743,7 +860,16 @@ func buildDecompositionPrompt(userMessage string, artifact *biz.IntentArtifact) 
 		)
 	}
 
-	return `You are a task decomposition specialist. Break down complex tasks into 2-6 subtasks.
+	countRule := "Break down complex tasks into 2-6 subtasks."
+	if teamCount > 0 {
+		// 用户明确请求 N 个 team：硬约束生成恰好 N 个 subtask。
+		// 每个 subtask 将在 orchestrateDAG 中对应一个独立 team。
+		countRule = fmt.Sprintf(`The user has explicitly requested EXACTLY %d teams.
+You MUST produce EXACTLY %d subtasks — no more, no less.
+Each subtask will be assigned to one dedicated team, so the subtask count MUST equal the requested team count.`, teamCount, teamCount)
+	}
+
+	return fmt.Sprintf(`You are a task decomposition specialist. %s
 
 Rules:
 - Each subtask must have: id (st_1, st_2, etc.), name, description, depends_on (array of other subtask IDs), required_capabilities (from the predefined list), priority (1-5, 1=highest), estimated_complexity (0.0-1.0)
@@ -751,7 +877,7 @@ Rules:
 - required_capabilities must use these predefined tags: go-backend, go-kratos, vue3-frontend, quasar-ui, devops, database, architecture, testing, security, research, documentation, api-design
 - depends_on must only reference IDs of other subtasks in the array
 - No circular dependencies allowed
-- Subtasks should be independently executable where possible` + intentContext
+- Subtasks should be independently executable where possible`, countRule) + intentContext
 }
 
 // resolvePlannerProviderModel and resolveFallbackProviderModelFromCatalog
@@ -1104,4 +1230,136 @@ func (impl *taskPlannerImpl) publishPlanCreated(ctx context.Context, plan *biz.T
 		Domain: biz.ActivityDomainChat,
 	}
 	impl.bus.Publish(ctx, ev)
+
+	// 2026-07-04 问题 2/3 修复：发布 v2 PlanBoard + PlanStep + GraphStage + GraphNode
+	// 事件，让前端 PlanBoardCard / GraphStageBlock 能渲染。原先仅发布 v1 ActivityEvent，
+	// 前端 v2 store 的 planBoards/graphStages Map 始终为空。
+	impl.publishV2PlanBoard(ctx, plan, chatSessionID, rootTaskID)
+}
+
+// publishV2PlanBoard 通过 v2 Sequencer 发布 PlanBoard + PlanStep + GraphStage + GraphNode
+// 创建事件。这些事件会被 Sequencer 持久化到 v2 表 + 推送到 WS，前端 v2 store 收到后
+// 渲染 PlanBoardCard 和 GraphStageBlock。
+//
+// 设计参考：docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md
+// §3.2.2 GraphStage / §3.5.2 执行流程
+//
+// 关键关系：
+//   - PlanBoard 与 GraphStage 一对一（GraphStage.PlanBoardID = PlanBoard.ID）
+//   - PlanStep 与 GraphNode 一对一（GraphNode.ID = PlanStep.ID，确定性派生）
+//   - 所有实体共用同一个 TaskID（rootTaskID）和 SpiritSessionID
+//
+// 注意：此处仅发布 created 事件（status=pending/running）。后续生命周期事件
+// （completed/failed）由 spirit_team.go 在团队状态变更时发布。
+func (impl *taskPlannerImpl) publishV2PlanBoard(ctx context.Context, plan *biz.TaskPlan, chatSessionID, rootTaskID string) {
+	if impl.seq == nil || plan == nil {
+		return
+	}
+	spiritSessionID := plan.SpiritSessionID
+	if spiritSessionID == "" {
+		return
+	}
+	// 2026-07-04 问题 3 修复：当 plan.SubTasks 为空时跳过发布，避免创建
+	// 空 PlanBoard（"规划中" 0/0）与空 GraphStage（"执行中" 暂无节点）。
+	// 触发场景：PrePlanningGate force planning（complexity >= Moderate）
+	// 时调用 Plan()，但任务分解失败或编排缓存命中导致 SubTasks 为空。
+	if len(plan.SubTasks) == 0 {
+		impl.lg.Info("publishV2PlanBoard: SubTasks 为空，跳过发布 PlanBoard/GraphStage",
+			loggateway.StepID(biz.SpiritStepPlannerPersist),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Str("plan_id", plan.ID),
+		)
+		return
+	}
+	// SessionID 优先使用 chatSessionID（与 v1 Activity 一致），便于前端按 chat session
+	// 过滤；fallback 到 spiritSessionID。
+	sessionID := chatSessionID
+	if sessionID == "" {
+		sessionID = spiritSessionID
+	}
+	now := time.Now()
+	pbID := "pb_" + uuid.NewString()
+	// 构建 v2 PlanStep 列表（每个 SubTask 对应一个 PlanStep）。
+	planSteps := make([]biz.PlanStep, 0, len(plan.SubTasks))
+	for i, st := range plan.SubTasks {
+		ps := biz.PlanStep{
+			ID:          st.ID,
+			PlanID:      pbID,
+			TaskID:      rootTaskID,
+			Label:       st.Name,
+			Description: st.Description,
+			DependsOn:   append([]string(nil), st.DependsOn...),
+			Status:      biz.PlanStepStatusPending,
+			StartedAt:   now,
+			Seq:         int64(i + 1),
+			Version:     1,
+		}
+		planSteps = append(planSteps, ps)
+	}
+	// 派生 GraphStage ID（确定性，基于 PlanBoard ID）。
+	gsID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.graph_stage.v2:"+pbID)).String()
+	// 构建 GraphNode 列表（每个 PlanStep 对应一个 GraphNode）。
+	graphNodes := make([]biz.GraphNode, 0, len(planSteps))
+	for _, ps := range planSteps {
+		gn := biz.GraphNode{
+			ID:           ps.ID,
+			GraphStageID: gsID,
+			Label:        ps.Label,
+			DagNodeID:    ps.ID,
+			Status:       biz.MapPlanStepToGraphNodeStatus(ps.Status),
+			DependsOn:    append([]string(nil), ps.DependsOn...),
+		}
+		graphNodes = append(graphNodes, gn)
+	}
+	// 构建 PlanBoard 实体。
+	pb := biz.PlanBoard{
+		ID:        pbID,
+		TaskID:    rootTaskID,
+		TurnID:    "", // TurnID 在 OnTurnStart 时关联；此处不持有 turn 信息
+		SessionID: spiritSessionID,
+		Strategy:  mapV1StrategyToV2(plan.Strategy),
+		Status:    biz.PlanStatusPlanning,
+		Steps:     planSteps,
+		StartedAt: now,
+		Version:   1,
+	}
+	// 构建 GraphStage 实体（1:1 关联 PlanBoard）。
+	gs := biz.GraphStage{
+		ID:          gsID,
+		TaskID:      rootTaskID,
+		TurnID:      "",
+		SessionID:   spiritSessionID,
+		PlanBoardID: pbID,
+		Nodes:       graphNodes,
+		Status:      biz.GraphStageStatusRunning,
+		StartedAt:   now,
+		Version:     1,
+	}
+	// 发布 PlanBoardCreatedEvent（先于 PlanStep 事件，保证前端先创建 PlanBoard）。
+	impl.seq.Publish(ctx, biz.NewPlanBoardCreatedEvent(pb))
+	// 发布 GraphStageCreatedEvent（先于 GraphNode 事件，保证前端先创建 GraphStage）。
+	impl.seq.Publish(ctx, biz.NewGraphStageCreatedEvent(gs))
+	// 发布 PlanStepStartedEvent（status=pending，使用 Started 状态表示已创建待执行）。
+	for _, ps := range planSteps {
+		impl.seq.Publish(ctx, biz.NewPlanStepStartedEvent(ps, spiritSessionID))
+	}
+	// 发布 GraphNodeUpdatedEvent（每个节点初始状态=pending）。
+	for _, gn := range graphNodes {
+		impl.seq.Publish(ctx, biz.NewGraphNodeUpdatedEvent(gn, rootTaskID, spiritSessionID))
+	}
+	_ = sessionID // 暂未使用 chatSessionID 派生其他字段；保留供未来扩展
+}
+
+// mapV1StrategyToV2 将 v1 biz.OrchestrationStrategy 映射为 v2 biz.PlanStrategy。
+func mapV1StrategyToV2(s biz.OrchestrationStrategy) biz.PlanStrategy {
+	switch s {
+	case biz.StrategyDirect:
+		return biz.PlanStrategySequential
+	case biz.StrategyParallel:
+		return biz.PlanStrategyParallel
+	case biz.StrategyDAG:
+		return biz.PlanStrategyDAG
+	default:
+		return biz.PlanStrategySequential
+	}
 }

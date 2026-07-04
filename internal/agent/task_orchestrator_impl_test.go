@@ -25,13 +25,13 @@ type fakeParallelAssembler struct {
 	callCount     int32 // atomic
 }
 
-func (f *fakeParallelAssembler) AssembleTeam(ctx context.Context, params biz.SpiritTeamParams) (biz.Team, biz.Session, error) {
+func (f *fakeParallelAssembler) AssembleTeam(ctx context.Context, params biz.SpiritTeamParams) (biz.Team, biz.Session, map[string]string, error) {
 	atomic.AddInt32(&f.callCount, 1)
 	if f.delay > 0 {
 		select {
 		case <-time.After(f.delay):
 		case <-ctx.Done():
-			return biz.Team{}, biz.Session{}, ctx.Err()
+			return biz.Team{}, biz.Session{}, nil, ctx.Err()
 		}
 	}
 	key := ""
@@ -39,13 +39,13 @@ func (f *fakeParallelAssembler) AssembleTeam(ctx context.Context, params biz.Spi
 		key = params.AgentKeys[0]
 	}
 	if f.failOnKeys[key] {
-		return biz.Team{}, biz.Session{}, fmt.Errorf("simulated assembly failure for %s", key)
+		return biz.Team{}, biz.Session{}, nil, fmt.Errorf("simulated assembly failure for %s", key)
 	}
 	f.mu.Lock()
 	f.teamIDCounter++
 	id := fmt.Sprintf("team_%d", f.teamIDCounter)
 	f.mu.Unlock()
-	return biz.Team{ID: id, TaskDescription: params.TaskDescription}, biz.Session{}, nil
+	return biz.Team{ID: id, TaskDescription: params.TaskDescription}, biz.Session{}, nil, nil
 }
 
 func (f *fakeParallelAssembler) SuggestTopology(_ context.Context, _ string) (string, bool) {

@@ -27,6 +27,16 @@ import ErrorBlock from '../ErrorBlock.vue';
 const props = defineProps<{ turn: Turn }>();
 const store = useChatActivityStore();
 const visibleSteps = computed(() =>
-  store.getTurnSteps(props.turn.ID).filter((s) => !isSystemInternalNotice(s.Kind, s.NoticeType)),
+  store.getTurnSteps(props.turn.ID).filter((s) => {
+    // 过滤系统内部通知（context_usage 等）
+    if (isSystemInternalNotice(s.Kind, s.NoticeType)) return false;
+    // 过滤空 reply step：Status 非 running 且 Content 为空或纯空白。
+    // 防止后端遗漏场景导致空 ReplyBlock 显示。streaming 中的 reply 仍显示。
+    // Spec: docs/superpowers/specs/2026-07-04-empty-reply-step-cleanup-design.md §4.2
+    if (s.Kind === 'reply' && s.Status !== 'running' && !s.Content?.trim()) {
+      return false;
+    }
+    return true;
+  }),
 );
 </script>

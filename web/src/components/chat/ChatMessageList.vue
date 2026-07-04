@@ -44,6 +44,16 @@
       @click="$emit('messages-click', $event)"
     >
       <SessionPanelV2 :session-id="sessionId ?? ''" @regenerate="(t) => $emit('regenerate-v2', t)" />
+      <!-- 2026-07-04 问题 1 修复：SynthesisResultCard 嵌入 viewport 末尾，
+           与 v2 活动流同处可滚动区域，确保用户能看到综合结果。
+           同时添加 chat-message-prose 类（在 SynthesisResultCard.vue 内）以格式化 markdown。 -->
+      <SynthesisResultCard
+        v-if="synthesisResult"
+        :result="synthesisResult"
+        :rendered-content="renderChatMarkdown(synthesisResult.content)"
+        :evolution-suggestion="spiritEvolutionSuggestion"
+        class="q-mx-md q-mb-sm"
+      />
     </div>
     <!--
       Legacy message fallback: when v2 activity store is empty but legacy
@@ -74,6 +84,14 @@
           <div class="chat-message-prose" v-html="renderLegacyContent(msg)"></div>
         </div>
       </div>
+      <!-- 2026-07-04 问题 1 修复：legacy 路径同样将 SynthesisResultCard 嵌入 viewport 末尾 -->
+      <SynthesisResultCard
+        v-if="synthesisResult"
+        :result="synthesisResult"
+        :rendered-content="renderChatMarkdown(synthesisResult.content)"
+        :evolution-suggestion="spiritEvolutionSuggestion"
+        class="q-mx-md q-mb-sm"
+      />
     </div>
     <ChatPendingQueue
       :messages="pendingMessages"
@@ -102,14 +120,16 @@ import { ref, computed, watch, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ChatPendingQueue from './ChatPendingQueue.vue';
 import SessionPanelV2 from './v2/SessionPanel.vue';
+import SynthesisResultCard from '../spirit/SynthesisResultCard.vue';
 import { useScrollToActivity } from '../../features/chat/composables/useScrollToActivity';
 import { useChatActivityStore } from '../../stores/chat/activityV2Store';
-import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
+import { renderChatMarkdownForMessage, renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import { SYSTEM_NOTICE_TYPES } from '../../features/chat/noticeFilter';
 import type { Message, PendingMessage } from '../../features/chat/types';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { Step } from '../../features/chat/v2Types';
+import type { EvolutionSuggestion, SynthesisOutput } from '../../features/spirit/types';
 
 const AUTO_EXPAND_HOLD_MS = 3000;
 
@@ -128,6 +148,9 @@ const props = defineProps<{
   agentMap?: Map<string, { displayName: string; agentKey: string }>;
   /** P1#3: parent run status to gate cancel button visibility. */
   runStatus?: import('../../features/chat/types').RunStatusValue;
+  /** 2026-07-04 问题 1 修复：synthesis 结果，渲染在会话流末尾 */
+  synthesisResult?: SynthesisOutput | null;
+  spiritEvolutionSuggestion?: EvolutionSuggestion | null;
 }>();
 
 defineEmits<{

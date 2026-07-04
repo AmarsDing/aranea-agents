@@ -633,6 +633,30 @@ service SessionV2Service {
   }
   // GetStep returns a single step by ID (replaces v1 GetActivity for confirm).
   rpc GetStep(GetStepV2Request) returns (GetStepV2Response) {}
+  // === 2026-07-04 问题 6 修复：补齐 7 个 v2 entity 的 REST API ===
+  // 刷新页面后前端 fetchSessionHistory 需要重建完整活动树（Plan/Graph/Team/Member），
+  // 原先只有 Task/Turn/Step 三个端点，其余 7 类实体无 REST API → 刷新后全部丢失。
+  rpc ListTeamStages(ListTeamStagesV2Request) returns (ListTeamStagesV2Response) {
+    option (google.api.http) = {get: "/v2/tasks/{task_id}/team_stages"};
+  }
+  rpc ListTeamRuns(ListTeamRunsV2Request) returns (ListTeamRunsV2Response) {
+    option (google.api.http) = {get: "/v2/team_stages/{stage_id}/team_runs"};
+  }
+  rpc ListMemberSessions(ListMemberSessionsV2Request) returns (ListMemberSessionsV2Response) {
+    option (google.api.http) = {get: "/v2/team_runs/{run_id}/member_sessions"};
+  }
+  rpc ListPlanBoards(ListPlanBoardsV2Request) returns (ListPlanBoardsV2Response) {
+    option (google.api.http) = {get: "/v2/tasks/{task_id}/plan_boards"};
+  }
+  rpc ListPlanSteps(ListPlanStepsV2Request) returns (ListPlanStepsV2Response) {
+    option (google.api.http) = {get: "/v2/tasks/{task_id}/plan_steps"};
+  }
+  rpc ListGraphStages(ListGraphStagesV2Request) returns (ListGraphStagesV2Response) {
+    option (google.api.http) = {get: "/v2/tasks/{task_id}/graph_stages"};
+  }
+  rpc ListGraphNodes(ListGraphNodesV2Request) returns (ListGraphNodesV2Response) {
+    option (google.api.http) = {get: "/v2/graph_stages/{stage_id}/graph_nodes"};
+  }
 }
 
 message ListTasksV2Request {
@@ -719,4 +743,209 @@ message StepV2 {
   bool is_final = 20;
   string started_at = 21;
   string completed_at = 22;
+}
+
+// === 2026-07-04 问题 6 修复：v2 entity 消息定义（7 类） ===
+// 镜像 biz 包对应 struct，字段顺序与 biz struct 一致。
+
+// --- TeamStage ---
+message TeamStageV2 {
+  string id = 1;
+  string task_id = 2;
+  string turn_id = 3;
+  string session_id = 4;
+  string team_id = 5;
+  string team_name = 6;
+  string dag_node_id = 7;
+  repeated string depends_on = 8;
+  string status = 9;
+  string stage = 10;
+  repeated MemberInfoV2 members = 11;
+  string strategy = 12;
+  string started_at = 13;
+  string completed_at = 14;
+  int64 seq = 15;
+  int64 version = 16;
+}
+
+message MemberInfoV2 {
+  string agent_key = 1;
+  string agent_name = 2;
+  string avatar_url = 3;
+  string child_session_id = 4;
+  string status = 5;
+}
+
+message ListTeamStagesV2Request {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+message ListTeamStagesV2Response {
+  repeated TeamStageV2 team_stages = 1;
+}
+
+// --- TeamRun ---
+message TeamRunV2 {
+  string id = 1;
+  string team_stage_id = 2;
+  string task_id = 3;
+  string session_id = 4;
+  string spirit_session_id = 5;
+  string dag_node_id = 6;
+  repeated string depends_on = 7;
+  string status = 8;
+  string started_at = 9;
+  string completed_at = 10;
+  int64 seq = 11;
+  int64 version = 12;
+  string error = 13;
+}
+
+message ListTeamRunsV2Request {
+  string stage_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+message ListTeamRunsV2Response {
+  repeated TeamRunV2 team_runs = 1;
+}
+
+// --- MemberSession ---
+message MemberSessionV2 {
+  string id = 1;
+  string team_run_id = 2;
+  string team_stage_id = 3;
+  string task_id = 4;
+  string session_id = 5;
+  string spirit_session_id = 6;
+  string agent_key = 7;
+  string agent_name = 8;
+  string avatar_url = 9;
+  string status = 10;
+  int64 seq = 11;
+  int64 version = 12;
+  string started_at = 13;
+  string finished_at = 14;
+  string error = 15;
+}
+
+message ListMemberSessionsV2Request {
+  string run_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+message ListMemberSessionsV2Response {
+  repeated MemberSessionV2 member_sessions = 1;
+}
+
+// --- PlanBoard ---
+message PlanBoardV2 {
+  string id = 1;
+  string task_id = 2;
+  string turn_id = 3;
+  string session_id = 4;
+  string strategy = 5;
+  string status = 6;
+  repeated PlanStepV2 steps = 7;
+  string started_at = 8;
+  string completed_at = 9;
+  int64 seq = 10;
+  int64 version = 11;
+}
+
+message ListPlanBoardsV2Request {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+message ListPlanBoardsV2Response {
+  repeated PlanBoardV2 plan_boards = 1;
+}
+
+// --- PlanStep ---
+message PlanStepV2 {
+  string id = 1;
+  string plan_id = 2;
+  string task_id = 3;
+  string label = 4;
+  string description = 5;
+  repeated string depends_on = 6;
+  string mapped_team_stage_id = 7;
+  string status = 8;
+  bool auto_synthesis = 9;
+  string started_at = 10;
+  string completed_at = 11;
+  int64 seq = 12;
+  int64 version = 13;
+  StepResultV2 result = 14;
+  StepErrorV2 error = 15;
+}
+
+message StepResultV2 {
+  string output = 1;
+  repeated MemberReportV2 member_reports = 2;
+  TokenUsageV2 tokens_used = 3;
+  int64 duration_ms = 4;
+}
+
+message StepErrorV2 {
+  string code = 1;
+  string message = 2;
+  bool retryable = 3;
+  MemberReportV2 failed_member = 4;
+}
+
+message MemberReportV2 {
+  string agent_key = 1;
+  string agent_name = 2;
+  string output = 3;
+  TokenUsageV2 tokens_used = 4;
+  int64 duration_ms = 5;
+  string error = 6;
+}
+
+message TokenUsageV2 {
+  int64 prompt_tokens = 1;
+  int64 completion_tokens = 2;
+  int64 total_tokens = 3;
+}
+
+message ListPlanStepsV2Request {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+message ListPlanStepsV2Response {
+  repeated PlanStepV2 plan_steps = 1;
+}
+
+// --- GraphStage ---
+message GraphStageV2 {
+  string id = 1;
+  string task_id = 2;
+  string turn_id = 3;
+  string session_id = 4;
+  string plan_board_id = 5;
+  repeated GraphNodeV2 nodes = 6;
+  string status = 7;
+  string started_at = 8;
+  string completed_at = 9;
+  int64 seq = 10;
+  int64 version = 11;
+}
+
+message ListGraphStagesV2Request {
+  string task_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+message ListGraphStagesV2Response {
+  repeated GraphStageV2 graph_stages = 1;
+}
+
+// --- GraphNode ---
+message GraphNodeV2 {
+  string id = 1;
+  string graph_stage_id = 2;
+  string label = 3;
+  string dag_node_id = 4;
+  string team_stage_id = 5;
+  string status = 6;
+  repeated string depends_on = 7;
+}
+
+message ListGraphNodesV2Request {
+  string stage_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+message ListGraphNodesV2Response {
+  repeated GraphNodeV2 graph_nodes = 1;
 }

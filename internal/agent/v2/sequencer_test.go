@@ -13,15 +13,17 @@ import (
 
 // fakeRepoSet is a minimal repo collection for testing — captures all upserts.
 type fakeRepoSet struct {
-	mu      sync.Mutex
-	tasks   []biz.Task
-	turns   []biz.Turn
-	steps   []biz.Step
-	boards  []biz.PlanBoard
-	pSteps  []biz.PlanStep
-	stages  []biz.TeamStage
-	runs    []biz.TeamRun
-	members []biz.MemberSession
+	mu         sync.Mutex
+	tasks      []biz.Task
+	turns      []biz.Turn
+	steps      []biz.Step
+	boards     []biz.PlanBoard
+	pSteps     []biz.PlanStep
+	stages     []biz.TeamStage
+	runs       []biz.TeamRun
+	members    []biz.MemberSession
+	graphStgs  []biz.GraphStage
+	graphNodes []biz.GraphNode
 }
 
 func (f *fakeRepoSet) UpsertTask(_ context.Context, t biz.Task) (biz.Task, error) {
@@ -71,6 +73,20 @@ func (f *fakeRepoSet) UpsertMemberSession(_ context.Context, m biz.MemberSession
 	defer f.mu.Unlock()
 	f.members = append(f.members, m)
 	return m, nil
+}
+
+// 2026-07-04 问题 2 修复：补齐 GraphStage/GraphNode 方法以满足 RepoSet 接口。
+func (f *fakeRepoSet) UpsertGraphStage(_ context.Context, g biz.GraphStage) (biz.GraphStage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.graphStgs = append(f.graphStgs, g)
+	return g, nil
+}
+func (f *fakeRepoSet) UpsertGraphNode(_ context.Context, g biz.GraphNode) (biz.GraphNode, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.graphNodes = append(f.graphNodes, g)
+	return g, nil
 }
 
 type fakeBus struct {

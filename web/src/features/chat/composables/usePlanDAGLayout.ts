@@ -39,7 +39,9 @@ export function usePlanDAGLayout<T extends LayoutableNode>() {
     function getLayer(id: string): number {
       if (layer.has(id)) return layer.get(id)!;
       const s = stepMap.get(id);
-      if (!s || s.DependsOn.length === 0) {
+      // 2026-07-04 修复：DependsOn 可能为 null（后端未设置依赖时），
+      // 需兼容 null/undefined/空数组三种情况，避免 null.length 抛 TypeError。
+      if (!s || !s.DependsOn || s.DependsOn.length === 0) {
         layer.set(id, 0);
         return 0;
       }

@@ -13,23 +13,69 @@ import (
 
 // fakeOrchestrator implements TeamOrchestrator for testing.
 // It records Orchestrate calls and provides completeStep to signal completion.
+//
+// 2026-07-04 问题 4 修复：fakeOrchestrator 现在模拟真实 Orchestrate 流程，
+// 在 Orchestrate 中发布 TeamStageCreatedEvent（模拟 publishSpiritTeamAssembled），
+// 这样 dispatchStep 测试能验证 TeamStageUpdated 事件计数（dispatchStep 在
+// Orchestrate 返回后发布 Updated，补充 TaskID/DagNodeID/Status=Running）。
 type fakeOrchestrator struct {
 	mu      sync.Mutex
 	pending map[string]chan biz.TeamCompleteEvent
 	calls   []string // stepIDs in dispatch order
+	seq     *fakeSeq // 用于发布 TeamStageCreatedEvent 模拟真实流程
 }
 
 func newFakeOrchestrator() *fakeOrchestrator {
 	return &fakeOrchestrator{pending: make(map[string]chan biz.TeamCompleteEvent)}
 }
 
-func (f *fakeOrchestrator) Orchestrate(_ context.Context, step biz.PlanStep, _ biz.TeamStage) (<-chan biz.TeamCompleteEvent, error) {
+// withSeq injects a fakeSeq so Orchestrate can publish TeamStageCreatedEvent.
+func (f *fakeOrchestrator) withSeq(seq *fakeSeq) *fakeOrchestrator {
+	f.seq = seq
+	return f
+}
+
+func (f *fakeOrchestrator) Orchestrate(ctx context.Context, step biz.PlanStep, _ biz.TeamStage) (*OrchestrateResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	ch := make(chan biz.TeamCompleteEvent, 1)
 	f.pending[step.ID] = ch
 	f.calls = append(f.calls, step.ID)
-	return ch, nil
+	// 2026-07-04 问题 4 修复：dispatchStep 现在要求 result.Team.ID 和
+	// result.TeamStageID 非空（否则 failStep）。测试用 fake ID 即可，
+	// 不需要真实派生（测试只关心 dispatchStep 的状态机行为）。
+	teamID := "fake-team-" + step.ID
+	teamStageID := "fake-team-stage-" + step.ID
+	// 模拟 publishSpiritTeamAssembled：发布 TeamStageCreatedEvent（带 Members）。
+	// 真实流程中这是 AssembleTeam → publishSpiritTeamAssembled 的副作用。
+	if f.seq != nil {
+		createdTS := biz.TeamStage{
+			ID:        teamStageID,
+			TeamID:    teamID,
+			SessionID: step.TaskID, // 测试用 taskID 作为 sessionID 占位
+			Status:    biz.TeamStageStatusPending,
+			Stage:     biz.TeamStageStageAssembled,
+			Members: []biz.MemberInfo{
+				{AgentKey: "fake-agent-key", AgentName: "fake-agent-key", ChildSessionID: "fake-member-session-" + step.ID, Status: "pending"},
+			},
+			StartedAt: time.Now(),
+			Version:   1,
+		}
+		f.seq.Publish(ctx, biz.NewTeamStageCreatedEvent(createdTS))
+	}
+	return &OrchestrateResult{
+		Team: biz.Team{
+			ID: teamID,
+		},
+		TeamSession: biz.Session{
+			ID: "fake-team-session-" + step.ID,
+		},
+		MemberSessions: map[string]string{
+			"fake-agent-key": "fake-member-session-" + step.ID,
+		},
+		TeamStageID:    teamStageID,
+		CompletionChan: ch,
+	}, nil
 }
 
 // completeStep signals completion for a step. Safe for concurrent use.
@@ -182,9 +228,9 @@ func TestPlanExecutor_SequentialDAG(t *testing.T) {
 			{ID: "s3", PlanID: "board-seq", TaskID: "task-1", Label: "step3", DependsOn: []string{"s2"}, Status: biz.PlanStepStatusPending, Version: 1},
 		},
 	}
-	orch := newFakeOrchestrator()
-	repos := newFakeReposForExecutor()
 	seq := &fakeSeq{}
+	orch := newFakeOrchestrator().withSeq(seq)
+	repos := newFakeReposForExecutor()
 	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
 
 	done := make(chan error, 1)
@@ -266,9 +312,9 @@ func TestPlanExecutor_ParallelRoots(t *testing.T) {
 			{ID: "r2", PlanID: "board-par", TaskID: "task-2", Label: "root2", Status: biz.PlanStepStatusPending, Version: 1},
 		},
 	}
-	orch := newFakeOrchestrator()
-	repos := newFakeReposForExecutor()
 	seq := &fakeSeq{}
+	orch := newFakeOrchestrator().withSeq(seq)
+	repos := newFakeReposForExecutor()
 	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
 
 	done := make(chan error, 1)
@@ -322,9 +368,9 @@ func TestPlanExecutor_FailedStepBlocksDownstream(t *testing.T) {
 			{ID: "f2", PlanID: "board-fail", TaskID: "task-3", Label: "depstep", DependsOn: []string{"f1"}, Status: biz.PlanStepStatusPending, Version: 1},
 		},
 	}
-	orch := newFakeOrchestrator()
-	repos := newFakeReposForExecutor()
 	seq := &fakeSeq{}
+	orch := newFakeOrchestrator().withSeq(seq)
+	repos := newFakeReposForExecutor()
 	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
 
 	done := make(chan error, 1)

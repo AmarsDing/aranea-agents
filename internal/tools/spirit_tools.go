@@ -454,7 +454,9 @@ func NewCancelOrchestrationTool(orchestrator biz.TaskOrchestratorPort, lg loggat
 // SpiritTeamAssemblerPort assembles teams for the Spirit agent.
 // Stability:evolving
 type SpiritTeamAssemblerPort interface {
-	AssembleTeam(ctx context.Context, params biz.SpiritTeamParams) (biz.Team, biz.Session, error)
+	// AssembleTeam returns the assembled team, its session, and a map of
+	// agentKey → member session ID for each team member.
+	AssembleTeam(ctx context.Context, params biz.SpiritTeamParams) (biz.Team, biz.Session, map[string]string, error)
 	SuggestTopology(ctx context.Context, taskDescription string) (string, bool)
 }
 

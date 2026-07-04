@@ -737,7 +737,7 @@ func provideRunnerConfig(
 	kanbanBridge kanbanpkg.Bridge,
 	a2aUC *biz.A2AUsecase,
 	sessions *biz.SessionUsecase,
-	v2Projector *v2.ActivityProjector,
+	v2ProjectorFactory *v2.ProjectorFactory,
 	lg loggateway.Logger,
 ) team.RunnerConfig {
 	cfg := team.RunnerConfig{
@@ -752,7 +752,7 @@ func provideRunnerConfig(
 		KnowledgeUsecase: knowledgeUC,
 		Runs:             runs,
 		StreamOptsFactory: &chatactivity.StreamOptsFactoryAdapter{
-			V2Projector: v2Projector,
+			V2ProjectorFactory: v2ProjectorFactory,
 		},
 		AgentHelper:     &chatagent.TeamAgentHelperAdapter{},
 		OrganizationUC:  orgUC,
@@ -919,7 +919,7 @@ func provideChatServiceDeps(
 	heartbeatEmitter *service.RunHeartbeatEmitter,
 	deadLetterQueue *lifecycle.DeadLetterQueue,
 	profileResolver *chatagent.ProfileResolver,
-	v2Projector *v2.ActivityProjector,
+	v2ProjectorFactory *v2.ProjectorFactory,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	// Backfill TaskOrchestrator into teamDeps to break the Wire cycle:
@@ -989,7 +989,7 @@ func provideChatServiceDeps(
 			HeartbeatEmitter: heartbeatEmitter,
 			DeadLetterQueue:  deadLetterQueue,
 			ProfileResolver:  profileResolver,
-			V2Projector:      v2Projector,
+			V2ProjectorFactory: v2ProjectorFactory,
 		},
 	}
 }
@@ -2053,8 +2053,9 @@ func provideV2EventBus() *event.V2Bus {
 	return event.NewV2Bus()
 }
 
-// provideV2RepoSet composes 8 v2 repo interfaces into a single RepoSet
+// provideV2RepoSet composes v2 repo interfaces into a single RepoSet
 // via v2.NewRepoSetAdapter.
+// 2026-07-04 问题 2 修复：补齐 graphStage/graphNode 参数，让 sequencer 能持久化。
 func provideV2RepoSet(
 	task biz.TaskV2Repo,
 	turn biz.TurnV2Repo,
@@ -2064,8 +2065,10 @@ func provideV2RepoSet(
 	memberSession biz.MemberSessionV2Repo,
 	planBoard biz.PlanBoardV2Repo,
 	planStep biz.PlanStepV2Repo,
+	graphStage biz.GraphStageV2Repo,
+	graphNode biz.GraphNodeV2Repo,
 ) v2.RepoSet {
-	return v2.NewRepoSetAdapter(task, turn, step, teamStage, teamRun, memberSession, planBoard, planStep)
+	return v2.NewRepoSetAdapter(task, turn, step, teamStage, teamRun, memberSession, planBoard, planStep, graphStage, graphNode)
 }
 
 // provideV2Sequencer constructs the v2 Sequencer.
@@ -2075,10 +2078,18 @@ func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, au biz.ActivityUpserter
 	return v2.NewSequencer(rs, bus, lg, v2.WithActivityUpserter(au))
 }
 
-// provideV2Projector constructs the singleton v2 ActivityProjector.
-// Safe as a singleton: per-turn state is reset in OnTurnStart.
-func provideV2Projector(seq *v2.Sequencer, lg loggateway.Logger) *v2.ActivityProjector {
-	return v2.NewActivityProjector(seq, seq.SeqAssigner(), lg)
+// provideV2ProjectorFactory constructs the v2 ProjectorFactory that produces
+// per-turn ActivityProjector instances. Each turn (spirit + each team member)
+// gets its own Projector instance, isolating per-turn streaming state.
+// The factory shares the singleton Sequencer + SeqAssigner so Seq allocation
+// remains globally monotonic per spirit session.
+//
+// 2026-07-04 问题 4 根因修复：原 provideV2Projector 返回单例 ActivityProjector，
+// 在 spirit turn 与 team member turn 并发场景下（team AutoStart 通过 safego.Go
+// 异步启动）会被互相 Reset()/Configure()，导致 spirit turn 状态被清空、事件
+// 归因错乱。改为返回 ProjectorFactory，每次 turn 创建独立实例。
+func provideV2ProjectorFactory(seq *v2.Sequencer, lg loggateway.Logger) *v2.ProjectorFactory {
+	return v2.NewProjectorFactory(seq, seq.SeqAssigner(), lg)
 }
 
 // provideWSV2Subscriber constructs the WS subscriber for v2 Events.
@@ -2088,9 +2099,9 @@ func provideWSV2Subscriber(bus *event.V2Bus, wsSrv *server.WSServer, lg loggatew
 	return server.NewWSV2Subscriber(bus, wsSrv, lg)
 }
 
-// providePlanExecutor constructs the v2 forward DAG scheduler. Uses the
-// stub TeamOrchestrator in Phase 1 (actual team orchestration deferred to
-// Phase 2). The PlanExecutor is injected into TeamStarter via SetPlanExecutor
+// providePlanExecutor constructs the v2 forward DAG scheduler.
+// 2026-07-04 问题 4 修复：使用 realTeamOrchestrator 替代 Phase 1 stub。
+// The PlanExecutor is injected into TeamStarter via SetPlanExecutor
 // (called in ProvideChatService).
 //
 // 2026-07-04 补齐：新增 graphStage + graphNode 依赖，用于同步创建 GraphStage
@@ -2108,7 +2119,15 @@ func providePlanExecutor(
 	return service.NewPlanExecutorFromV2Repos(planStep, teamStage, planBoard, graphStage, graphNode, orch, seq, lg)
 }
 
+// provideTeamOrchestrator returns the real TeamOrchestrator (Phase 2).
+// 2026-07-04 问题 4 修复：替代 Phase 1 stub，桥接到 SpiritTeamAssembler。
+// assembler 和 starter 通过 ProvideChatService 后注入（打破 Wire 循环）。
+func provideTeamOrchestrator(lg loggateway.Logger) *service.RealTeamOrchestrator {
+	return service.NewRealTeamOrchestrator(lg)
+}
+
 // provideTeamOrchestratorStub returns the Phase 1 no-op TeamOrchestrator.
+// 2026-07-04 问题 4 修复：已废弃，保留仅供回退使用。
 func provideTeamOrchestratorStub() service.TeamOrchestrator {
 	return service.NewStubTeamOrchestrator()
 }
@@ -2174,9 +2193,9 @@ func provideA2AService(
 	return service.NewA2AService(uc, chat, agents, reg, store, limiter, lg)
 }
 
-func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, activityBus biz.ActivityEventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase) biz.TaskPlannerPort {
+func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, activityBus biz.ActivityEventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer) biz.TaskPlannerPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
-	return chatagent.NewTaskPlanner(repo, catalog, httpClient, activityBus, orchCache, lg, sysUC)
+	return chatagent.NewTaskPlanner(repo, catalog, httpClient, activityBus, orchCache, lg, sysUC, seq)
 }
 
 func provideAgentAllocator(
@@ -2427,6 +2446,14 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		wire.Bind(new(biz.TurnV2Reader), new(biz.TurnV2Repo)),
 		wire.Bind(new(biz.StepV2Reader), new(biz.StepV2Repo)),
 		wire.Bind(new(biz.TeamStageV2Reader), new(biz.TeamStageV2Repo)),
+		// 2026-07-04 问题 6 修复：补齐 6 个 v2 Reader 的 Wire 绑定，让
+		// SessionV2Service 的 7 个新 List RPC 能注入对应 repo。
+		wire.Bind(new(biz.TeamRunV2Reader), new(biz.TeamRunV2Repo)),
+		wire.Bind(new(biz.MemberSessionV2Reader), new(biz.MemberSessionV2Repo)),
+		wire.Bind(new(biz.PlanBoardV2Reader), new(biz.PlanBoardV2Repo)),
+		wire.Bind(new(biz.PlanStepV2Reader), new(biz.PlanStepV2Repo)),
+		wire.Bind(new(biz.GraphStageV2Reader), new(biz.GraphStageV2Repo)),
+		wire.Bind(new(biz.GraphNodeV2Reader), new(biz.GraphNodeV2Repo)),
 		// Phase 3b-D: bind v2 EventBus interface to *event.V2Bus implementation
 		// so Wire can inject biz.EventBus into consumers migrated from v1 ActivityEventBus.
 		wire.Bind(new(biz.EventBus), new(*event.V2Bus)),
@@ -2435,9 +2462,11 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		// (Runner.Pipeline.Sequencer, TeamGraphRunCoordinator.seq).
 		wire.Bind(new(rt.EventPublisher), new(*v2.Sequencer)),
 		provideV2Sequencer,
-		provideV2Projector,
+		provideV2ProjectorFactory,
 		provideWSV2Subscriber,
-		provideTeamOrchestratorStub,
+		// 2026-07-04 问题 4 修复：使用 realTeamOrchestrator 替代 stub。
+		provideTeamOrchestrator,
+		wire.Bind(new(service.TeamOrchestrator), new(*service.RealTeamOrchestrator)),
 		providePlanExecutor,
 		provideTeamTurnDeps,
 		provideChannelTurnJobDeps,

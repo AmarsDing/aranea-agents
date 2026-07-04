@@ -24,6 +24,6 @@ func NewStubTeamOrchestrator() TeamOrchestrator {
 
 // Orchestrate returns a not-implemented error. The returned channel is nil
 // so callers fail fast; PlanExecutor.Subscribe propagates the error.
-func (s *stubTeamOrchestrator) Orchestrate(ctx context.Context, step biz.PlanStep, ts biz.TeamStage) (<-chan biz.TeamCompleteEvent, error) {
+func (s *stubTeamOrchestrator) Orchestrate(ctx context.Context, step biz.PlanStep, ts biz.TeamStage) (*OrchestrateResult, error) {
 	return nil, errors.New("TeamOrchestrator not implemented in Phase 1; wiring deferred to Phase 2")
 }

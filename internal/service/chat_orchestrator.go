@@ -336,10 +336,16 @@ type ChatInfraDeps struct {
 	// and converts it to framework RunOptions applied per turn. When nil,
 	// no profile overrides are applied (graceful degradation).
 	ProfileResolver *chatagent.ProfileResolver
-	// V2Projector is the singleton v2 ActivityProjector. When non-nil,
-	// every chat turn triggers the v2 dual-path (Projector v2 → Sequencer
-	// → RepoSet + EventBus) alongside v1. Wired via Wire DI; nil = v1-only.
-	V2Projector *v2.ActivityProjector
+	// V2ProjectorFactory creates per-turn v2 ActivityProjector instances.
+	// Each turn (spirit + each team member) gets its own instance, isolating
+	// per-turn streaming state. The factory shares the singleton Sequencer +
+	// SeqAssigner so Seq allocation remains globally monotonic per spirit
+	// session. Wired via Wire DI; nil = v2 disabled.
+	//
+	// 2026-07-04 问题 4 根因修复：原 V2Projector 单例在 spirit turn 与 team
+	// member turn 并发场景下被互相 Reset()/Configure()，导致 spirit turn
+	// 状态被清空、事件归因错乱。改为每 turn 一个实例。
+	V2ProjectorFactory *v2.ProjectorFactory
 }
 
 // ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.

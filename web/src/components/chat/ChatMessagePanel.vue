@@ -135,6 +135,8 @@
           :session-id="props.sessionId"
           :agent-map="props.agentMap"
           :run-status="props.runStatus"
+          :synthesis-result="synthesisResult"
+          :spirit-evolution-suggestion="spiritEvolutionSuggestion"
           @messages-click="handleMessagesClick"
           @scroll="onMessagesScrollWrapped"
           @scroll-to-bottom="scrollToBottom"
@@ -172,13 +174,8 @@
           @expand="(ids: string[]) => emit('expand', ids)"
         />
 
-        <SynthesisResultCard
-          v-if="synthesisResult && (!panelMode || panelMode === 'spirit')"
-          :result="synthesisResult"
-          :rendered-content="renderChatMarkdown(synthesisResult.content)"
-          :evolution-suggestion="spiritEvolutionSuggestion"
-          class="q-mx-md q-mb-sm"
-        />
+        <!-- 2026-07-04 问题 1 修复：SynthesisResultCard 已移到 ChatMessageList 内部
+             （v2/legacy 路径下都作为会话流末尾的总结卡片渲染） -->
 
         <ContextIndicator
           v-if="compressStatus && compressStatus !== 'normal' && (!panelMode || panelMode === 'spirit')"
@@ -268,7 +265,6 @@ import ChatHeaderPromptBar from './ChatHeaderPromptBar.vue';
 import ChatReasoningDrawer from './ChatReasoningDrawer.vue';
 import TodoKanbanBoard from './TodoKanbanBoard.vue';
 import ContextIndicator from '../sessions/ContextIndicator.vue';
-import SynthesisResultCard from '../spirit/SynthesisResultCard.vue';
 import SpiritStatusBar from '../spirit/SpiritStatusBar.vue';
 import type { RunStatusValue } from '../../features/chat/types';
 import { TOOL_DISPLAY_KEY } from '../../features/chat/types';
@@ -284,7 +280,6 @@ import type { PromptBreakdown } from '../../features/chat/contextBreakdown';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { ChatAttachment } from './types';
 import type { SpiritTeam, SpiritMember, SynthesisOutput } from '../../features/spirit/types';
-import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
 import type { ContextualMessage } from '../../features/chat/composables/useContextualLoadingMessage';
 import { EXECUTION_COLLAPSE_CONTROL_KEY } from '../../features/chat/executionCardHelpers';
 import type { Step } from '../../features/chat/v2Types';

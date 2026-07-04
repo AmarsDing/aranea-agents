@@ -31,9 +31,11 @@ type turnStreamConsumer struct {
 	// propagate the correct terminal status to OnTurnEnd.
 	canceled bool
 
-	// v2Projector is the singleton v2 ActivityProjector. When non-nil, all
+	// v2Projector is the per-turn v2 ActivityProjector. When non-nil, all
 	// trpc events are projected into v2 events (Step/Task/Turn). The v1
 	// dual-path has been removed; v2 is the sole projection path.
+	// 2026-07-04 问题 4 修复：每个 turn（spirit + 每个 team member）由
+	// ProjectorFactory.NewProjector() 创建独立实例，避免共享单例的竞态。
 	v2Projector *v2.ActivityProjector
 }
 
@@ -53,10 +55,11 @@ func newTurnStreamConsumer(
 		lg:                lg,
 	}
 	// v2 path: wire the v2 projector from opts and start the v2 turn.
-	// The v2 projector was pre-configured (Reset + Configure) by the
-	// chat_orchestrator or team runner before LLM invocation. OnTurnStart
-	// emits task.created + turn.started, preserving any early notice/confirm
-	// steps emitted by plugins during the LLM call.
+	// The v2 projector was pre-configured (Configure) by the chat_orchestrator
+	// or team runner before LLM invocation. Each turn gets its own projector
+	// instance via ProjectorFactory.NewProjector() (per-turn isolation).
+	// OnTurnStart emits task.created + turn.started, preserving any early
+	// notice/confirm steps emitted by plugins during the LLM call.
 	if opts != nil && opts.V2Projector != nil {
 		c.v2Projector = opts.V2Projector
 		v2Meta := V2ProjectMetaFromV1(projectMeta)
@@ -85,6 +88,8 @@ func V2ProjectMetaFromV1(m ProjectMeta) v2.ProjectMeta {
 		AgentName:       m.AgentDisplayName,
 		MemberAgentKeys: m.MemberAgentKeys,
 		TaskContent:     m.TaskContent,
+		ParentTaskID:    m.ParentTaskID,
+		NodeIDToAgentKey: m.NodeIDToAgentKey,
 	}
 }
 

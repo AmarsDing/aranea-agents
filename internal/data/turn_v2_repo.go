@@ -127,6 +127,16 @@ func (r *turnV2Repo) UpsertTurn(ctx context.Context, t biz.Turn) (biz.Turn, erro
 		}
 		return entTurnV2ToBiz(row), nil
 	}
+	// UPDATE failed. Two possible causes:
+	//   1. Record doesn't exist yet → fall through to CREATE.
+	//   2. Record exists but Version >= t.Version (WHERE didn't match) →
+	//      return existing record (idempotent: a newer version is already
+	//      persisted, e.g. sync persist wrote before the async event arrived).
+	//      Without this check, the CREATE fallback would fail with CONFLICT
+	//      and propagate an error to the v2 sequencer's retry loop.
+	if existing, getErr := r.data.RW().Read(ctx).TurnV2.Get(ctx, t.ID); getErr == nil {
+		return entTurnV2ToBiz(existing), nil
+	}
 	cb := r.data.RW().Write(ctx).TurnV2.Create().
 		SetID(t.ID).
 		SetTaskID(t.TaskID).

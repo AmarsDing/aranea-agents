@@ -434,10 +434,35 @@ export default {
     },
     v2: {
       finalReplyBadge: 'Final reply',
+      // Status labels (shared)
+      statusPending: 'Pending',
       statusRunning: 'Running',
+      statusPaused: 'Paused',
       statusCompleted: 'Completed',
       statusFailed: 'Failed',
+      statusCancelled: 'Cancelled',
+      statusSkipped: 'Skipped',
+      statusInterrupted: 'Interrupted',
+      statusPartialFailure: 'Partial failure',
+      statusPlanning: 'Planning',
+      // Plan board
       planBoardTitle: 'Plan',
+      failedLabel: 'failed',
+      // Graph stage
+      graphStageTitle: 'Flow',
+      graphStageEmpty: 'No nodes',
+      // Team stage
+      stageAssembled: 'Assembled',
+      // Team run + member session actions
+      noMembers: 'No members',
+      noActivities: 'No activities',
+      injectPlaceholder: 'Type a message to inject…',
+      inject: 'Inject',
+      pause: 'Pause',
+      resume: 'Resume',
+      cancel: 'Cancel',
+      retry: 'Retry',
+      // Common labels
       resultLabel: 'Result',
       errorLabel: 'Error',
       taskProcessing: 'Processing…',

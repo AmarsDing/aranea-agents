@@ -8,8 +8,10 @@ import { useI18n } from 'vue-i18n';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import { useChatSessionStore } from '../../../stores/chat/sessionStore';
 import { useChatMessageStore } from '../../../stores/chat/messageStore';
+import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
 import { useAuthStore } from '../../../stores/auth';
 import { useAppStore } from '../../../stores/app';
+import type { Task } from '../v2Types';
 import { checkBackendHealth, getServerHeartbeatState } from '../../heartbeat/useServerHeartbeat';
 import type { ChatAttachment, ChatEntityKind } from '../../../components/chat/types';
 import type { UseEnvelopeStreamReturn } from '../useEnvelopeStream';
@@ -83,6 +85,7 @@ export function useChatSender(deps: SenderDeps) {
   const router = useRouter();
   const { t } = useI18n();
   const runtime = useChatRuntimeStore();
+  const activityStore = useChatActivityStore();
 
   const sending = ref(false);
 
@@ -272,6 +275,8 @@ export function useChatSender(deps: SenderDeps) {
     // T6: placeholder mechanism removed — no local placeholder row to mark
     // as failed. Surface the error to the user via a notification instead.
     $q.notify({ type: 'negative', message: errorMsg });
+    // 2026-07-04 问题 5 修复：清理乐观 Task（发送失败时）
+    activityStore.removeTask(pendingUserId);
   }
 
   async function retryFailedMessage(pendingUserId: string) {
@@ -521,6 +526,22 @@ export function useChatSender(deps: SenderDeps) {
       if (!reusePendingId && !followUp) {
         deps.inputText.value = '';
       }
+
+      // 2026-07-04 问题 5 修复：乐观插入临时 Task，让用户消息立即显示。
+      // 真实 task.created 事件到达时，store.upsertTask 会自动清理同 sessionId
+      // 下所有 'pending-user-' 开头的乐观 Task。
+      const optimisticTask: Task = {
+        ID: pendingUserId,
+        SessionID: sessionId,
+        UserMessage: text,
+        Status: 'pending',
+        Seq: Date.now(),
+        Version: 0,
+        CreatedAt: new Date().toISOString(),
+        UpdatedAt: new Date().toISOString(),
+        CompletedAt: null,
+      };
+      activityStore.upsertTask(optimisticTask);
 
       const { provider, model } = strategy.resolveProviderModel();
       const selectedModel = deps.selectedProviderModel.value;

@@ -20,7 +20,7 @@
 
     <div class="synthesis-result-card__content">
       <!-- eslint-disable-next-line vue/no-v-html -- sanitized markdown HTML -->
-      <div class="synthesis-result-card__text" v-html="renderedContent" />
+      <div class="synthesis-result-card__text chat-message-prose" v-html="renderedContent" />
     </div>
 
     <div v-if="result.teamResults.length > 0" class="synthesis-result-card__teams q-mt-sm">

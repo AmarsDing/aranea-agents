@@ -26,6 +26,7 @@ func (TeamStageV2) Fields() []ent.Field {
 		field.String("turn_id").MaxLen(64).Comment("turn that triggered the team"),
 		field.String("session_id").MaxLen(128).Comment("spirit_session_id"),
 		field.String("team_id").MaxLen(128),
+		field.String("team_name").MaxLen(256).Default("").Comment("team display name for UI (2026-07-04 问题 3)"),
 		field.String("dag_node_id").MaxLen(128).Default("").Comment("corresponding plan_step.id"),
 		field.JSON("depends_on", []string{}).Optional().Comment("other team_stage.id DAG deps"),
 		field.String("status").MaxLen(32).Default("pending"),

@@ -22,6 +22,10 @@ type RepoSet interface {
 	UpsertMemberSession(ctx context.Context, ms biz.MemberSession) (biz.MemberSession, error)
 	UpsertPlanBoard(ctx context.Context, pb biz.PlanBoard) (biz.PlanBoard, error)
 	UpsertPlanStep(ctx context.Context, ps biz.PlanStep) (biz.PlanStep, error)
+	// 2026-07-04 问题 2 修复：补齐 GraphStage/GraphNode 持久化方法，
+	// 让 GraphStageCreatedEvent / GraphNodeUpdatedEvent 能经过 sequencer 落库。
+	UpsertGraphStage(ctx context.Context, gs biz.GraphStage) (biz.GraphStage, error)
+	UpsertGraphNode(ctx context.Context, gn biz.GraphNode) (biz.GraphNode, error)
 }
 
 // persistAction routes an Event to the appropriate Repo method.
@@ -119,6 +123,28 @@ func persistAction(ctx context.Context, rs RepoSet, au biz.ActivityUpserter, e b
 		return true, err
 	case *biz.PlanStepSkippedEvent:
 		_, err = rs.UpsertPlanStep(ctx, ev.PlanStep)
+		return true, err
+
+	// 2026-07-04 问题 2 修复：补齐 GraphStage/GraphNode 持久化 case。
+	// 之前这些事件 fall through 到 default（return false, nil），不持久化，
+	// 导致刷新后 graph_stage/graph_nodes 表为空，前端流程图消失。
+	case *biz.GraphStageCreatedEvent:
+		_, err = rs.UpsertGraphStage(ctx, ev.GraphStage)
+		return true, err
+	case *biz.GraphStageUpdatedEvent:
+		_, err = rs.UpsertGraphStage(ctx, ev.GraphStage)
+		return true, err
+	case *biz.GraphStageCompletedEvent:
+		_, err = rs.UpsertGraphStage(ctx, ev.GraphStage)
+		return true, err
+	case *biz.GraphStageFailedEvent:
+		_, err = rs.UpsertGraphStage(ctx, ev.GraphStage)
+		return true, err
+	case *biz.GraphStageInterruptedEvent:
+		_, err = rs.UpsertGraphStage(ctx, ev.GraphStage)
+		return true, err
+	case *biz.GraphNodeUpdatedEvent:
+		_, err = rs.UpsertGraphNode(ctx, ev.GraphNode)
 		return true, err
 
 	case *biz.ActivityBridgeEvent:

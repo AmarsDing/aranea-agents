@@ -85,6 +85,17 @@ export function projectConversationActivityEvent(
   const sessionId = (ev.activity.session_id ?? '').trim();
   if (!sessionId) return null;
 
+  // 2026-07-04 修复：子 session（team/member agent session）的事件不应该
+  // 进入 inbox 列表。子 session 的展示由 activityV2Store + team panel 负责。
+  // 判断依据：activity.spirit_session_id 非空且 ≠ session_id 说明这是子 session
+  // 事件（spirit session 自身的 spirit_session_id 为空或等于自身 ID）。
+  // 不过滤会导致 conversationStore.applyProjection 创建 title='Untitled session'
+  // 的 placeholder 污染 inbox 列表。
+  const spiritSessionId = (ev.activity.spirit_session_id ?? '').trim();
+  if (spiritSessionId && spiritSessionId !== sessionId) {
+    return null;
+  }
+
   const source = conversationSourceFromActivity(ev);
   const revision = activitySessionRevision(ev);
   const status = turnStatusFromActivity(ev);

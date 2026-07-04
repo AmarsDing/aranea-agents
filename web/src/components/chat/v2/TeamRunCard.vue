@@ -144,10 +144,17 @@ function submitInject() {
   injectText.value = '';
 }
 
+// 状态色映射（需求 §A.4.3 + §A.4.5）：
+//   running → 蓝色 "执行中"
+//   paused  → 橙色 "已暂停"
+//   completed → 绿色 "团队已完成"
+//   failed → 红色 "团队执行失败"
+//   cancelled → 灰色 "团队已取消"
 const statusColor = computed(
   () =>
     ({
       running: 'blue',
+      paused: 'orange-8',
       completed: 'green',
       failed: 'red',
       cancelled: 'grey',
@@ -157,6 +164,7 @@ const statusColor = computed(
 const statusLabel = computed(() => {
   const map: Record<string, string> = {
     running: t('chat.v2.statusRunning'),
+    paused: t('chat.v2.statusPaused'),
     completed: t('chat.v2.statusCompleted'),
     failed: t('chat.v2.statusFailed'),
     cancelled: t('chat.v2.statusCancelled'),
@@ -164,12 +172,17 @@ const statusLabel = computed(() => {
   return map[props.teamRun.Status] || props.teamRun.Status;
 });
 
-// 按钮可见性（需求 §A.4.3）
+// 按钮可见性（需求 §A.4.3）：
+//   running → 显示「⏸ 暂停」+「✕ 取消」按钮 + 注入对话框
+//   paused  → 显示「▶ 恢复」+「✕ 取消」按钮 + 注入对话框
+//   completed → 隐藏所有操作按钮
+//   failed → 显示「🔄 重试」按钮
+//   cancelled → 隐藏所有操作按钮
 const canPause = computed(() => props.teamRun.Status === 'running');
-const canResume = computed(() => props.teamRun.Status === 'running'); // 暂停态待后端支持
-const canCancel = computed(() => props.teamRun.Status === 'running');
+const canResume = computed(() => props.teamRun.Status === 'paused');
+const canCancel = computed(() => props.teamRun.Status === 'running' || props.teamRun.Status === 'paused');
 const canRetry = computed(() => props.teamRun.Status === 'failed' || props.teamRun.Status === 'cancelled');
-const canInject = computed(() => props.teamRun.Status === 'running');
+const canInject = computed(() => props.teamRun.Status === 'running' || props.teamRun.Status === 'paused');
 
 const formattedTime = computed(() => {
   const raw = props.teamRun.StartedAt;
@@ -182,11 +195,12 @@ const formattedTime = computed(() => {
 </script>
 
 <style lang="sass" scoped>
+// 2026-07-04 修复：使用 glass tokens 替换硬编码 hex fallback
 .team-run-card
-  border: 1px solid var(--color-border, #e0e0e0)
+  border: 1px solid var(--glass-border)
   border-radius: 6px
   margin: 4px 0
-  background: var(--color-surface, #fff)
+  background: var(--glass-surface)
 
 .team-run-header
   display: flex
@@ -197,7 +211,7 @@ const formattedTime = computed(() => {
   user-select: none
 
   &:hover
-    background: var(--color-hover, #f5f5f5)
+    background: var(--glass-surface-hover)
 
   &__left
     display: flex
@@ -205,7 +219,7 @@ const formattedTime = computed(() => {
     gap: 4px
 
   &__icon
-    color: var(--color-text-secondary)
+    color: var(--color-icon-muted)
 
   &__title
     font-size: 12px
@@ -225,7 +239,7 @@ const formattedTime = computed(() => {
 
   &__time
     font-size: 11px
-    color: var(--color-text-tertiary)
+    color: var(--color-text-secondary)
     font-variant-numeric: tabular-nums
 
 .team-run-body
@@ -236,7 +250,7 @@ const formattedTime = computed(() => {
 
 .team-run-empty
   font-size: 12px
-  color: var(--color-text-tertiary)
+  color: var(--color-text-secondary)
   text-align: center
   padding: 8px
 
@@ -245,7 +259,7 @@ const formattedTime = computed(() => {
   align-items: center
   gap: 4px
   padding-top: 6px
-  border-top: 1px solid var(--color-border, #f0f0f0)
+  border-top: 1px solid var(--glass-border)
 
 .team-run-inject-input
   flex: 1
@@ -254,5 +268,5 @@ const formattedTime = computed(() => {
 .team-run-error
   margin-top: 6px
   font-size: 12px
-  color: var(--color-negative, #f44336)
+  color: var(--color-danger)
 </style>

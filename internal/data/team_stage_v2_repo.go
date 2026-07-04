@@ -64,6 +64,7 @@ func (r *teamStageV2Repo) CreateTeamStage(ctx context.Context, ts biz.TeamStage)
 		SetTurnID(ts.TurnID).
 		SetSessionID(ts.SessionID).
 		SetTeamID(ts.TeamID).
+		SetTeamName(ts.TeamName).
 		SetDagNodeID(ts.DagNodeID).
 		SetDependsOn(ts.DependsOn).
 		SetStatus(string(ts.Status)).
@@ -91,6 +92,7 @@ func (r *teamStageV2Repo) UpdateTeamStage(ctx context.Context, ts biz.TeamStage)
 		SetTurnID(ts.TurnID).
 		SetSessionID(ts.SessionID).
 		SetTeamID(ts.TeamID).
+		SetTeamName(ts.TeamName).
 		SetDagNodeID(ts.DagNodeID).
 		SetDependsOn(ts.DependsOn).
 		SetStatus(string(ts.Status)).
@@ -120,14 +122,23 @@ func (r *teamStageV2Repo) UpsertTeamStage(ctx context.Context, ts biz.TeamStage)
 		SetTurnID(ts.TurnID).
 		SetSessionID(ts.SessionID).
 		SetTeamID(ts.TeamID).
+		SetTeamName(ts.TeamName).
 		SetDagNodeID(ts.DagNodeID).
 		SetDependsOn(ts.DependsOn).
 		SetStatus(string(ts.Status)).
 		SetStage(string(ts.Stage)).
-		SetMembers(membersToEnt(ts.Members)).
 		SetStrategy(ts.Strategy).
 		SetSeq(ts.Seq).
 		SetVersion(ts.Version)
+	// Only update Members when the caller provides a non-empty list.
+	// This prevents dispatchStep (whose buildTeamStageMembers may return nil
+	// or degraded data missing displayName/avatarUrl) from overwriting the
+	// complete Members written by publishSpiritTeamAssembled (via
+	// buildV2Members which carries displayName/avatarUrl).
+	// CREATE path below still always sets Members for new records.
+	if len(ts.Members) > 0 {
+		b = b.SetMembers(membersToEnt(ts.Members))
+	}
 	if ts.CompletedAt != nil {
 		b.SetCompletedAt(*ts.CompletedAt)
 	}
@@ -138,12 +149,24 @@ func (r *teamStageV2Repo) UpsertTeamStage(ctx context.Context, ts biz.TeamStage)
 		}
 		return entTeamStageV2ToBiz(row), nil
 	}
+	// UPDATE failed. Two possible causes:
+	//   1. Record doesn't exist yet → fall through to CREATE.
+	//   2. Record exists but Version >= ts.Version (WHERE didn't match) →
+	//      return existing record (idempotent: a newer version is already
+	//      persisted, e.g. sync persist wrote Version=2 before the async
+	//      event arrived). Without this check, the CREATE fallback would
+	//      fail with CONFLICT and propagate an error to the v2 sequencer's
+	//      retry loop, ending in dead-letter.
+	if existing, getErr := r.data.RW().Read(ctx).TeamStageV2.Get(ctx, ts.ID); getErr == nil {
+		return entTeamStageV2ToBiz(existing), nil
+	}
 	cb := r.data.RW().Write(ctx).TeamStageV2.Create().
 		SetID(ts.ID).
 		SetTaskID(ts.TaskID).
 		SetTurnID(ts.TurnID).
 		SetSessionID(ts.SessionID).
 		SetTeamID(ts.TeamID).
+		SetTeamName(ts.TeamName).
 		SetDagNodeID(ts.DagNodeID).
 		SetDependsOn(ts.DependsOn).
 		SetStatus(string(ts.Status)).
@@ -185,6 +208,7 @@ func entTeamStageV2ToBiz(row *ent.TeamStageV2) biz.TeamStage {
 		TurnID:      row.TurnID,
 		SessionID:   row.SessionID,
 		TeamID:      row.TeamID,
+		TeamName:    row.TeamName,
 		DagNodeID:   row.DagNodeID,
 		DependsOn:   row.DependsOn,
 		Status:      biz.TeamStageStatus(row.Status),

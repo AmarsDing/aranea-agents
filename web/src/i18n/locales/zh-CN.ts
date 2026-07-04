@@ -450,10 +450,35 @@ export default {
     },
     v2: {
       finalReplyBadge: '最终回复',
+      // 状态标签（通用）
+      statusPending: '等待中',
       statusRunning: '执行中',
+      statusPaused: '已暂停',
       statusCompleted: '完成',
       statusFailed: '失败',
+      statusCancelled: '已取消',
+      statusSkipped: '已跳过',
+      statusInterrupted: '已中断',
+      statusPartialFailure: '部分失败',
+      statusPlanning: '规划中',
+      // 计划面板（PlanBoard）
       planBoardTitle: '执行计划',
+      failedLabel: '失败',
+      // Graph 面板
+      graphStageTitle: '流程图',
+      graphStageEmpty: '暂无节点',
+      // 团队阶段（TeamStage）
+      stageAssembled: '已就绪',
+      // 团队运行（TeamRun）+ 成员会话（MemberSession）共用操作按钮
+      noMembers: '暂无成员',
+      noActivities: '暂无活动',
+      injectPlaceholder: '输入要注入的消息…',
+      inject: '注入',
+      pause: '暂停',
+      resume: '恢复',
+      cancel: '取消',
+      retry: '重试',
+      // 通用标签
       resultLabel: '结果',
       errorLabel: '错误',
       taskProcessing: '处理中…',

@@ -404,7 +404,7 @@ function onInputKeydown(event: KeyboardEvent) {
   background: transparent !important
   display: none !important
 
-/* textarea 原生元素本身也保持透明、无边框 */
+/* textarea 原生元素本身也保持透明、无边框；超出 maxHeight 时显示主题滚动条 */
 .composer-card :deep(.composer-input .q-field__native),
 .composer-card :deep(.composer-input .q-field__native:hover),
 .composer-card :deep(.composer-input .q-field__native:focus),
@@ -413,6 +413,37 @@ function onInputKeydown(event: KeyboardEvent) {
   border: none !important
   outline: none !important
   box-shadow: none !important
+  /* autogrow 会将 overflow-y 设为 hidden，这里覆盖以在超出 maxHeight 时显示滚动条 */
+  overflow-y: auto !important
+  /* Firefox */
+  scrollbar-width: thin
+  scrollbar-color: var(--chat-scrollbar-thumb, rgba(100, 116, 139, 0.28)) transparent
+
+/* WebKit 滚动条：日间 */
+.composer-card :deep(.composer-input .q-field__native)::-webkit-scrollbar
+  width: 8px
+
+.composer-card :deep(.composer-input .q-field__native)::-webkit-scrollbar-track
+  background: transparent
+
+.composer-card :deep(.composer-input .q-field__native)::-webkit-scrollbar-thumb
+  border-radius: 6px
+  border: 2px solid transparent
+  background-clip: content-box
+  background-color: var(--chat-scrollbar-thumb, rgba(100, 116, 139, 0.28))
+
+.composer-card :deep(.composer-input .q-field__native)::-webkit-scrollbar-thumb:hover
+  background-color: var(--chat-scrollbar-thumb-hover, rgba(100, 116, 139, 0.55))
+
+/* WebKit 滚动条：夜间 */
+body.body--dark .composer-card :deep(.composer-input .q-field__native)
+  scrollbar-color: var(--chat-scrollbar-thumb-dark, rgba(148, 163, 184, 0.22)) transparent
+
+body.body--dark .composer-card :deep(.composer-input .q-field__native)::-webkit-scrollbar-thumb
+  background-color: var(--chat-scrollbar-thumb-dark, rgba(148, 163, 184, 0.22))
+
+body.body--dark .composer-card :deep(.composer-input .q-field__native)::-webkit-scrollbar-thumb:hover
+  background-color: var(--chat-scrollbar-thumb-hover-dark, rgba(148, 163, 184, 0.45))
 
 /* 底部工具条 */
 .composer-bottom-bar

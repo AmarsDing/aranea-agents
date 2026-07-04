@@ -1,0 +1,199 @@
+package service
+
+import (
+	"context"
+	"sync"
+
+	"aranea-agents/internal/agent"
+	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
+)
+
+// RealTeamOrchestrator bridges PlanExecutor to SpiritTeamAssembler.
+//
+// 2026-07-04 问题 4 修复：实现真实的 TeamOrchestrator，替代 Phase 1 的 stub。
+// - Orchestrate: 调用 SpiritTeamAssembler.AssembleTeam 创建 team + session,
+//   然后手动启动 team_run（AutoStart=false 避免 channel 未就绪的竞态），
+//   返回 channel 等待 team_run 完成。
+// - NotifyTeamCompletion: 由 TeamStarter.HandleTeamTurnResult 通过
+//   PlanExecutor.NotifyTeamCompletion 转发调用，发送 TeamCompleteEvent 到 channel.
+//
+// 设计参考：docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md
+// §3.5.2 执行流程
+type RealTeamOrchestrator struct {
+	assembler *SpiritTeamAssembler
+	starter   biz.TeamStarterPort
+	agentRdr  biz.AgentReader
+	pending   sync.Map // teamID → chan biz.TeamCompleteEvent
+	lg        loggateway.Logger
+}
+
+// NewRealTeamOrchestrator constructs a RealTeamOrchestrator.
+// assembler 和 starter 通过后注入（SetAssembler/SetStarter）打破 Wire 循环：
+// PlanExecutor → TeamOrchestrator → SpiritTeamAssembler → TeamStarter → PlanExecutor。
+func NewRealTeamOrchestrator(lg loggateway.Logger) *RealTeamOrchestrator {
+	return &RealTeamOrchestrator{
+		lg: lg.With(loggateway.Domain("team_orchestrator")),
+	}
+}
+
+// SetAssembler injects the SpiritTeamAssembler after construction.
+func (o *RealTeamOrchestrator) SetAssembler(a *SpiritTeamAssembler) {
+	o.assembler = a
+}
+
+// SetStarter injects the TeamStarterPort after construction.
+func (o *RealTeamOrchestrator) SetStarter(s biz.TeamStarterPort) {
+	o.starter = s
+}
+
+// SetAgentReader injects the AgentReader after construction.
+// 用于在 PlanStep 未指定 AgentKeys 时查询可用 agent 列表。
+func (o *RealTeamOrchestrator) SetAgentReader(r biz.AgentReader) {
+	o.agentRdr = r
+}
+
+// Orchestrate creates a team for the given PlanStep and starts its team_run.
+// Returns an OrchestrateResult containing the team + member info and a
+// completion channel that emits exactly one TeamCompleteEvent when the
+// team_run reaches a terminal status, then closes.
+func (o *RealTeamOrchestrator) Orchestrate(ctx context.Context, step biz.PlanStep, ts biz.TeamStage) (*OrchestrateResult, error) {
+	if o.assembler == nil {
+		return nil, errOrchestratorNotReady
+	}
+	spiritSessionID := ts.SessionID
+	taskDesc := step.Description
+	if taskDesc == "" {
+		taskDesc = step.Label
+	}
+	// 查询可用 agent 列表作为团队成员。PlanStep 本身不携带 AgentKeys，
+	// 所以从数据库查询 active agent 列表（最多 3 个，匹配"三个专业 agent"场景）。
+	// 2026-07-04 问题 4 修复：避免 "team has no enabled members" 错误。
+	agentKeys := o.resolveAgentKeys(ctx)
+	o.lg.Info("Orchestrate 解析 AgentKeys",
+		loggateway.Str("step_id", step.ID),
+		loggateway.Int("agent_count", len(agentKeys)))
+	// 构建 SpiritTeamParams。AutoStart=false：手动启动 team_run，
+	// 确保 channel 在 StartTeamTurn 之前存入 pending map。
+	// 2026-07-04 问题 4 修复：使用 coordinator 模式（默认）让第一个成员
+	// 自动成为 synthesizer，避免 parallel 模式因缺少 synthesizer 被拒。
+	// 参考：internal/biz/team_usecase.go:189 (parallel 模式必须显式指定 synthesizer)
+	params := biz.SpiritTeamParams{
+		SpiritSessionID: spiritSessionID,
+		TaskDescription: taskDesc,
+		AgentKeys:       agentKeys,
+		DagNodeID:       step.ID,
+		Mode:            biz.TeamModeCoordinator,
+		AutoStart:       false,
+	}
+	team, teamSession, memberSessions, err := o.assembler.AssembleTeam(ctx, params)
+	if err != nil {
+		o.lg.Error("AssembleTeam 失败",
+			loggateway.Str("step_id", step.ID),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Err(err))
+		return nil, err
+	}
+	// 创建 channel 并存入 pending map（必须在 StartTeamTurn 之前）。
+	ch := make(chan biz.TeamCompleteEvent, 1)
+	o.pending.Store(team.ID, ch)
+	o.lg.Info("team_run 已创建，等待完成",
+		loggateway.Str("team_id", team.ID),
+		loggateway.Str("step_id", step.ID),
+		loggateway.Str("session_id", teamSession.ID))
+	// 手动启动 team_run（AutoStart=false 时 AssembleTeam 不会自动启动）。
+	if o.starter != nil && teamSession.ID != "" && taskDesc != "" {
+		safego.Go(ctx, "team_orchestrator.start_turn."+team.ID, func() {
+			startCtx := context.WithoutCancel(ctx)
+			if startErr := o.starter.StartTeamTurn(startCtx, teamSession.ID, taskDesc); startErr != nil {
+				o.lg.Warn("StartTeamTurn 失败",
+					loggateway.Str("team_id", team.ID),
+					loggateway.Err(startErr))
+				// 失败时发送失败事件到 channel，避免 dispatchStep 永久阻塞。
+				o.NotifyTeamCompletion(team.ID, false, startErr.Error())
+			}
+		})
+	} else {
+		// 没有 starter 或 session，直接失败。
+		o.NotifyTeamCompletion(team.ID, false, "starter or session missing")
+	}
+	// 2026-07-04 问题 4 修复：返回 team + memberSessions + TeamStageID 让
+	// dispatchStep 能更新同一 TeamStage 记录（与 publishSpiritTeamAssembled
+	// + publishV2TeamRunAndMemberSessions 派生 ID 一致），避免双重创建。
+	teamStageID := string(agent.NewTeamStageActivityID(team.ID))
+	result := &OrchestrateResult{
+		Team:           team,
+		TeamSession:    teamSession,
+		MemberSessions: memberSessions,
+		TeamStageID:    teamStageID,
+		CompletionChan: ch,
+	}
+	return result, nil
+}
+
+// NotifyTeamCompletion sends a TeamCompleteEvent to the waiting channel.
+// Called by PlanExecutor.NotifyTeamCompletion (forwarded from
+// TeamStarter.HandleTeamTurnResult).
+func (o *RealTeamOrchestrator) NotifyTeamCompletion(teamID string, success bool, errMsg string) {
+	v, ok := o.pending.LoadAndDelete(teamID)
+	if !ok {
+		return // 没有 pending 的 channel，可能是 v1 路径的 team_run
+	}
+	ch := v.(chan biz.TeamCompleteEvent)
+	ev := biz.TeamCompleteEvent{
+		TeamRunID: teamID,
+		Success:   success,
+		ErrorMsg:  errMsg,
+	}
+	select {
+	case ch <- ev:
+	default:
+		// channel 已满（buffer=1）， shouldn't happen
+	}
+	close(ch)
+	o.lg.Info("team_run 完成通知已发送",
+		loggateway.Str("team_id", teamID),
+		loggateway.Bool("success", success))
+}
+
+// resolveAgentKeys 查询可用 active agent 列表作为团队成员。
+// PlanStep 本身不携带 AgentKeys，所以从数据库查询。
+// 最多返回 3 个 agent（匹配"三个专业 agent"场景），按 updated_at 降序。
+// 如果 agentRdr 为 nil 或查询失败，返回空列表（会导致 AssembleTeam 失败，
+// 但这比硬编码 agent_key 更安全）。
+func (o *RealTeamOrchestrator) resolveAgentKeys(ctx context.Context) []string {
+	if o.agentRdr == nil {
+		return nil
+	}
+	result, err := o.agentRdr.SearchAgents(ctx, biz.AgentListQuery{
+		Status: "active",
+		Limit:  3,
+	})
+	if err != nil {
+		o.lg.Warn("查询可用 agent 列表失败",
+			loggateway.Err(err))
+		return nil
+	}
+	keys := make([]string, 0, len(result.Items))
+	for _, a := range result.Items {
+		if a.AgentKey != "" {
+			keys = append(keys, a.AgentKey)
+		}
+	}
+	return keys
+}
+
+// errOrchestratorNotReady is returned when Orchestrate is called before
+// SetAssembler has been invoked.
+var errOrchestratorNotReady = &orchestratorNotReadyError{}
+
+type orchestratorNotReadyError struct{}
+
+func (e *orchestratorNotReadyError) Error() string {
+	return "team orchestrator not ready: assembler not injected"
+}
+
+// 确保接口实现检查
+var _ TeamOrchestrator = (*RealTeamOrchestrator)(nil)
+var _ TeamCompletionNotifier = (*RealTeamOrchestrator)(nil)

@@ -10,6 +10,7 @@ type TeamStage struct {
 	TurnID      string // 触发 team 的 turn
 	SessionID   string // spirit_session_id
 	TeamID      string
+	TeamName    string // 团队显示名称（2026-07-04 问题 3 修复：UI 需要展示团队名称而非 ID）
 	DagNodeID   string   // 对应 plan_step.id（如有）
 	DependsOn   []string // 其他 team_stage.id（DAG 依赖）
 	Status      TeamStageStatus

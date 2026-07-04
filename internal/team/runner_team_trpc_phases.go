@@ -283,26 +283,51 @@ func (r *Runner) buildTeamRunContext(ctx context.Context, def Definition, builde
 }
 
 // buildTeamProjectMeta assembles the ProjectMeta for stream consumption.
-func (r *Runner) buildTeamProjectMeta(ctx context.Context, sess biz.Session, run biz.TeamRunRecord, teamRow biz.Team, ar anchorResolution, memberKeys []string, content, traceID string) agent.ProjectMeta {
+func (r *Runner) buildTeamProjectMeta(ctx context.Context, sess biz.Session, run biz.TeamRunRecord, teamRow biz.Team, def Definition, ar anchorResolution, memberKeys []string, content, traceID string) agent.ProjectMeta {
 	memberKeySet := make(map[string]struct{}, len(memberKeys))
 	for _, k := range memberKeys {
 		memberKeySet[k] = struct{}{}
 	}
 	contextWin := sessctx.ResolveContextWindowTokens(ctx, r.teamLLMCatalog(), sess, ar.agent, ar.prov, ar.mod)
+	// 2026-07-04 问题 1 修复：构建 nodeID → agentKey 映射。
+	// Graph 模式下，graph emitter 将 ev.Author 设为 node ID（如 "member-1"），
+	// 而非 agent key。V2Projector.ProcessEvent 需要通过此映射将 node ID
+	// 转换为正确的 member agent key，让 Step.AuthorAgentKey 归属到正确的
+	// member agent。否则所有 member agent 的 Step 都被错误归到 anchor agent
+	// 名下，前端 MemberSessionPanel 通过 (Step.AuthorAgentKey ===
+	// MemberSession.AgentKey) 匹配成员活动时找不到对应成员。
+	// 节点 ID 生成逻辑与 graph_compile.go:memberNodeID 保持一致。
+	nodeIDToAgentKey := r.buildNodeIDToAgentKey(ctx, def)
 	// Phase 1a fix: propagate session tree hierarchy so team activities are
 	// correctly attributed to the originating spirit session. sess is the team
 	// session created by SpiritTeamAssembler with ParentSessionID/RootSessionID
 	// pointing to the spirit session. SpiritSessionID for a team session equals
 	// its RootSessionID (the spirit session that initiated the tree).
 	spiritSessionID := deriveSpiritSessionID(sess)
+	// 2026-07-04 问题 4 修复：RequestID 决定 v2 ProjectMeta.TaskID（via
+	// V2ProjectMetaFromV1），而 v2 TaskID 必须等于根 Task ID 才能让前端
+	// MemberSessionPanel 通过 (AuthorAgentKey + TaskID) 匹配到成员的 steps。
+	// 之前 RequestID=run.ID 导致 Step.TaskID=run.ID，与 MemberSession.TaskID
+	// (=rootTaskID) 不匹配，成员活动无法显示。优先用 ctx 中的 RootTaskActivityID，
+	// 缺失时 fallback 到 run.ID（兼容旧调用路径）。
+	rootTaskID := string(agent.RootTaskActivityIDFromCtx(ctx))
+	requestID := rootTaskID
+	if requestID == "" {
+		requestID = run.ID
+	}
 	return agent.ProjectMeta{
-		SessionID:        sess.ID,
-		RequestID:        run.ID,
-		InvocationID:     run.ID,
-		RunID:            run.ID,
-		TraceID:          traceID,
-		TeamID:           teamRow.ID,
-		AgentID:          ar.agent.ID,
+		SessionID:    sess.ID,
+		RequestID:    requestID,
+		InvocationID: run.ID,
+		RunID:        run.ID,
+		TraceID:      traceID,
+		TeamID:       teamRow.ID,
+		// 2026-07-04 问题 1 修复：用 AgentKey（逻辑 key，如 "spirit-worker-a"）
+		// 而非 ID（UUID）。Step.AuthorAgentKey 经 stream_consumer → project_meta
+		// 最终写入 v2 Step.AuthorAgentKey，前端 getMemberSessionSteps 通过
+		// (Step.AuthorAgentKey === MemberSession.AgentKey) 匹配成员活动。
+		// MemberSession.AgentKey 来自 params.AgentKeys（逻辑 key），两者必须一致。
+		AgentID:          ar.agent.AgentKey,
 		AgentDisplayName: ar.agent.DisplayName,
 		MemberAgentKeys:  memberKeySet,
 		ContextWindow:    contextWin,
@@ -318,7 +343,45 @@ func (r *Runner) buildTeamProjectMeta(ctx context.Context, sess biz.Session, run
 		// Uses the same deterministic ID as publishTeamStepActivity, ensuring
 		// the frontend can link child activities to the correct parent.
 		ParentActivityID: string(agent.NewSessionActivityID(teamRow.ID, ar.agent.AgentKey)),
+		// 2026-07-04 问题 1 修复：node ID → agent key 映射，供 V2Projector
+		// 在 ProcessEvent 中根据 ev.Author (node ID) 切换 meta.AgentKey。
+		NodeIDToAgentKey: nodeIDToAgentKey,
 	}
+}
+
+// buildNodeIDToAgentKey builds the mapping from graph node IDs (e.g. "member-1")
+// to member agent keys (e.g. "spirit-worker-a"). Used by V2Projector to
+// attribute Steps to the correct member agent in Graph mode.
+//
+// Node ID generation mirrors graph_compile.go:memberNodeID, using the same
+// sortOrder/index logic. Agent key resolution uses the same lookupAgent path
+// as runner_team_compiler.go:43-49 (CompileAgentKey callback).
+func (r *Runner) buildNodeIDToAgentKey(ctx context.Context, def Definition) map[string]string {
+	members := EnabledMembers(def)
+	if len(members) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(members))
+	for i, m := range members {
+		agentID := strings.TrimSpace(m.AgentID)
+		if agentID == "" {
+			continue
+		}
+		ag, gerr := r.lookupAgent(ctx, agentID)
+		if gerr != nil {
+			r.lg.Warn("buildNodeIDToAgentKey: lookup agent failed",
+				loggateway.StepID("team.project_meta.node_id_map"),
+				loggateway.Str("agent_id", agentID),
+				loggateway.Err(gerr))
+			continue
+		}
+		agentKey := strings.TrimSpace(ag.AgentKey)
+		if agentKey == "" {
+			continue
+		}
+		out[memberNodeID(m, i)] = agentKey
+	}
+	return out
 }
 
 // assistantBuildResult holds the constructed assistant message and token counts.

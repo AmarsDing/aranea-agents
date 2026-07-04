@@ -5,6 +5,9 @@
   - 状态映射：running/paused/completed/failed/cancelled
   - 系统 agent 排除：__spirit__ 及 __ 前缀 agent 不显示操作按钮和对话框
   - 始终默认折叠，与 team-card 一致
+  2026-07-04 修复：
+  - 渲染 agent 内部活动（thinking/action/reply 等 steps）
+  - CSS 改用 glass tokens 符合主题
 -->
 <template>
   <div class="member-session-panel" :data-agent-key="memberSession.AgentKey">
@@ -25,6 +28,21 @@
     <div v-show="!collapsed" class="member-body">
       <!-- 错误提示 -->
       <div v-if="memberSession.Error" class="member-error">{{ memberSession.Error }}</div>
+
+      <!-- 2026-07-04 修复：渲染 agent 内部活动（thinking/action/reply 等 steps） -->
+      <div v-if="memberSteps.length > 0" class="member-activities">
+        <template v-for="step in memberSteps" :key="step.ID">
+          <ThinkingBlock v-if="step.Kind === 'thinking'" :step="step" />
+          <ActionBlock v-else-if="step.Kind === 'action'" :step="step" />
+          <ReplyBlock v-else-if="step.Kind === 'reply'" :step="step" />
+          <NoticeBlock v-else-if="step.Kind === 'notice'" :step="step" />
+          <ConfirmBlock v-else-if="step.Kind === 'confirm'" :step="step" />
+          <ErrorBlock v-else-if="step.Kind === 'error'" :step="step" />
+        </template>
+      </div>
+      <div v-else class="member-activities-empty">
+        {{ t('chat.v2.noActivities') }}
+      </div>
 
       <!-- 尾部 20%：注入对话框 + 操作按钮（系统 agent 排除） -->
       <div v-if="!isSystemAgent" class="member-actions">
@@ -94,7 +112,15 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
+import { isSystemInternalNotice } from '../../../features/chat/noticeFilter';
 import type { MemberSession } from '../../../features/chat/v2Types';
+import ThinkingBlock from '../ThinkingBlock.vue';
+import ActionBlock from '../ActionBlock.vue';
+import ReplyBlock from '../ReplyBlock.vue';
+import NoticeBlock from '../NoticeBlock.vue';
+import ConfirmBlock from '../ConfirmBlock.vue';
+import ErrorBlock from '../ErrorBlock.vue';
 
 // Safe i18n wrapper — falls back to the key when the i18n plugin isn't
 // installed (e.g., during unit tests without app.use(i18n)).
@@ -116,6 +142,23 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useSafeI18n();
+const store = useChatActivityStore();
+
+// 2026-07-04 修复：查询 member session 对应的 agent 内部活动 steps。
+// 通过 AuthorAgentKey + TaskID 间接匹配（Step 无 MemberSessionID 直接外键）。
+const memberSteps = computed(() => {
+  return store
+    .getMemberSessionSteps(props.memberSession)
+    .filter((s) => {
+      // 过滤系统内部通知（context_usage 等）
+      if (isSystemInternalNotice(s.Kind, s.NoticeType)) return false;
+      // 过滤空 reply step
+      if (s.Kind === 'reply' && s.Status !== 'running' && !s.Content?.trim()) {
+        return false;
+      }
+      return true;
+    });
+});
 
 // 折叠状态：默认折叠（与 team-card 一致，需求 §A.4.4）
 const collapsed = ref(true);
@@ -185,10 +228,10 @@ const formattedTime = computed(() => {
 
 <style lang="sass" scoped>
 .member-session-panel
-  border: 1px solid var(--color-border, #eee)
+  border: 1px solid var(--glass-border)
   border-radius: 4px
   margin: 4px 0
-  background: var(--color-surface, #fafafa)
+  background: var(--glass-surface)
 
 .member-header
   display: flex
@@ -199,7 +242,7 @@ const formattedTime = computed(() => {
   user-select: none
 
   &:hover
-    background: var(--color-hover, #f5f5f5)
+    background: var(--glass-surface-hover)
 
   &__left
     display: flex
@@ -232,18 +275,27 @@ const formattedTime = computed(() => {
 
   &__time
     font-size: 11px
-    color: var(--color-text-tertiary)
+    color: var(--color-icon-muted)
     font-variant-numeric: tabular-nums
 
 .member-body
   padding: 6px 8px
 
+.member-activities
+  margin-bottom: 8px
+
+.member-activities-empty
+  font-size: 12px
+  color: var(--color-icon-muted)
+  text-align: center
+  padding: 8px
+
 .member-error
   font-size: 11px
-  color: var(--color-negative, #f44336)
+  color: var(--color-danger)
   margin-bottom: 6px
   padding: 4px 6px
-  background: var(--color-negative-bg, #ffebee)
+  background: rgba(229, 92, 92, 0.08)
   border-radius: 3px
 
 .member-actions
@@ -251,7 +303,7 @@ const formattedTime = computed(() => {
   align-items: center
   gap: 4px
   padding-top: 6px
-  border-top: 1px solid var(--color-border, #f0f0f0)
+  border-top: 1px solid var(--glass-border)
 
 .member-inject-input
   flex: 1

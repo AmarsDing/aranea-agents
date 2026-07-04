@@ -9,8 +9,7 @@
       :y1="edge.y1"
       :x2="edge.x2"
       :y2="edge.y2"
-      stroke="#bbb"
-      stroke-width="1.5"
+      class="plan-dag__edge"
       marker-end="url(#arrowhead)"
     />
     <!-- Nodes -->
@@ -26,7 +25,7 @@
     />
     <defs>
       <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-        <polygon points="0 0, 10 3.5, 0 7" fill="#bbb" />
+        <polygon points="0 0, 10 3.5, 0 7" class="plan-dag__arrowhead" />
       </marker>
     </defs>
   </svg>
@@ -70,6 +69,9 @@ const edges = computed<Edge[]>(() => {
   for (const step of props.steps) {
     const toPos = positions.value.get(step.ID);
     if (!toPos) continue;
+    // 2026-07-04 修复：DependsOn 可能为 null/undefined（后端未设置依赖时），
+    // 需兼容 null/undefined/空数组三种情况，避免 for...of null 抛 TypeError。
+    if (!step.DependsOn) continue;
     for (const depId of step.DependsOn) {
       const fromPos = positions.value.get(depId);
       if (!fromPos) continue;
@@ -86,3 +88,17 @@ const edges = computed<Edge[]>(() => {
   return out;
 });
 </script>
+
+<style scoped>
+.plan-dag {
+  display: block;
+  max-width: 100%;
+}
+.plan-dag__edge {
+  stroke: var(--color-icon-muted);
+  stroke-width: 1.5;
+}
+.plan-dag__arrowhead {
+  fill: var(--color-icon-muted);
+}
+</style>

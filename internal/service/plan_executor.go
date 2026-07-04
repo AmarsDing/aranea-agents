@@ -51,6 +51,7 @@ type PlanExecutor struct {
 	repos executorRepos
 	orch  TeamOrchestrator
 	seq   sequencerPublisher
+	bus   biz.EventBus // 2026-07-04 问题 4 修复：订阅 PlanBoardCreatedEvent 触发 Subscribe
 	lg    loggateway.Logger
 }
 
@@ -62,6 +63,70 @@ func NewPlanExecutor(repos executorRepos, orch TeamOrchestrator, seq sequencerPu
 		seq:   seq,
 		lg:    lg.With(loggateway.Domain("plan_executor")),
 	}
+}
+
+// SetEventBus injects the v2 EventBus after construction to break the Wire
+// cycle: Sequencer → EventBus → PlanExecutor → Sequencer. May be nil
+// (subscription disabled; PlanExecutor.Subscribe must be called manually).
+// 2026-07-04 问题 4 修复：通过订阅 PlanBoardCreatedEvent 自动触发 Subscribe。
+func (e *PlanExecutor) SetEventBus(bus biz.EventBus) {
+	e.bus = bus
+}
+
+// TeamCompletionNotifier is implemented by TeamOrchestrators that track
+// pending team_run completions and notify waiting dispatchStep goroutines.
+// 2026-07-04 问题 4 修复：让 PlanExecutor 转发 team_run 完成通知给 TeamOrchestrator。
+type TeamCompletionNotifier interface {
+	NotifyTeamCompletion(teamID string, success bool, errMsg string)
+}
+
+// NotifyTeamCompletion forwards a team_run completion event to the
+// TeamOrchestrator (if it implements TeamCompletionNotifier). Called by
+// TeamStarter.HandleTeamTurnResult when a team_run reaches terminal status.
+// 2026-07-04 问题 4 修复：让 PlanExecutor 转发 team_run 完成通知。
+func (e *PlanExecutor) NotifyTeamCompletion(teamID string, success bool, errMsg string) {
+	if notifier, ok := e.orch.(TeamCompletionNotifier); ok {
+		notifier.NotifyTeamCompletion(teamID, success, errMsg)
+	}
+}
+
+// StartSubscription subscribes to PlanBoardCreatedEvent on the EventBus and
+// triggers PlanExecutor.Subscribe in a goroutine for each new PlanBoard.
+// Must be called after SetEventBus. No-op if bus is nil.
+// 2026-07-04 问题 4 修复：让 PlanExecutor 自动响应 PlanBoard 创建事件。
+func (e *PlanExecutor) StartSubscription() {
+	if e.bus == nil {
+		return
+	}
+	ch, cancel := e.bus.Subscribe(biz.EventSubscribeOptions{})
+	e.lg.Info("PlanExecutor 开始订阅 PlanBoardCreatedEvent")
+	go func() {
+		defer cancel()
+		for ev := range ch {
+			pbEv, ok := ev.(*biz.PlanBoardCreatedEvent)
+			if !ok {
+				continue
+			}
+			board := pbEv.PlanBoard
+			if len(board.Steps) == 0 {
+				continue
+			}
+			e.lg.Info("PlanExecutor 收到 PlanBoardCreatedEvent，启动 DAG 执行",
+				loggateway.Str("plan_board_id", board.ID),
+				loggateway.Str("task_id", board.TaskID),
+				loggateway.Int("steps", len(board.Steps)))
+			// Subscribe 是阻塞的，在独立 goroutine 中执行。
+			// 使用 context.Background() 因为 DAG 执行可能比原始 ctx 生命周期长。
+			go func(b biz.PlanBoard) {
+				runCtx := context.Background()
+				if err := e.Subscribe(runCtx, b); err != nil {
+					e.lg.Warn("PlanExecutor.Subscribe 失败",
+						loggateway.Str("plan_board_id", b.ID),
+						loggateway.Err(err))
+				}
+			}(board)
+		}
+	}()
 }
 
 // Subscribe starts DAG execution for the given board and blocks until all
@@ -188,6 +253,14 @@ func newDagRun(pe *PlanExecutor, board biz.PlanBoard) *dagRun {
 // run dispatches root steps and blocks until all steps are terminal.
 // If no root steps exist (all steps have dependencies — a cycle or empty
 // board), the WaitGroup count stays 0 and Wait returns immediately.
+//
+// 2026-07-04 问题 2 修复（Gap A）：DAG 执行结束后必须发布 GraphStage
+// terminal 事件（Completed/Failed/Interrupted），否则 graph_stages_v2 表
+// status 永远停留在 "running"，刷新后前端流程图显示状态过期。terminal
+// 状态判定：
+//   - ctx.Err() != nil  → Interrupted（被取消）
+//   - 任一 step Failed/PartialFailure → Failed
+//   - 否则 → Completed
 func (r *dagRun) run(ctx context.Context) error {
 	// Dispatch root steps (empty DependsOn). Add to WaitGroup before
 	// starting the goroutine to guarantee Wait sees the correct count.
@@ -201,12 +274,129 @@ func (r *dagRun) run(ctx context.Context) error {
 	// Wait for all goroutines (root + downstream) to finish.
 	done := make(chan struct{})
 	go func() { r.wg.Wait(); close(done) }()
+	var runErr error
 	select {
 	case <-done:
-		return nil
+		runErr = nil
 	case <-ctx.Done():
-		return ctx.Err()
+		runErr = ctx.Err()
 	}
+	// 发布 terminal 事件（无论成功/失败/取消），让前端流程图和计划列表
+	// 在刷新后能正确显示最终状态。失败仅记录日志，不阻断返回。
+	// 2026-07-04 问题 2 修复（Gap A + Gap B）：
+	//   - Gap A: GraphStage terminal 事件（Completed/Failed/Interrupted）
+	//   - Gap B: PlanBoard terminal 状态更新（Completed/Failed/PartialFailure）
+	r.publishPlanBoardTerminal(ctx)
+	r.publishGraphStageTerminal(ctx)
+	return runErr
+}
+
+// publishPlanBoardTerminal 根据 DAG 执行结果更新 PlanBoard terminal 状态
+// 并发布 PlanBoardUpdatedEvent。让计划列表在刷新后能正确显示最终状态。
+//
+// 2026-07-04 问题 2 修复（Gap B）：之前 PlanBoard 创建后 Status 始终是
+// "executing"，DAG 完成后也不更新，刷新后状态过期。
+func (r *dagRun) publishPlanBoardTerminal(ctx context.Context) {
+	hasFailed := false
+	hasPartial := false
+	for i := range r.board.Steps {
+		s := &r.board.Steps[i]
+		switch s.Status {
+		case biz.PlanStepStatusFailed:
+			hasFailed = true
+		case biz.PlanStepStatusPartialFailure:
+			hasPartial = true
+		}
+	}
+	var terminalStatus biz.PlanStatus
+	switch {
+	case ctx.Err() != nil:
+		terminalStatus = biz.PlanStatusFailed
+	case hasFailed:
+		terminalStatus = biz.PlanStatusFailed
+	case hasPartial:
+		terminalStatus = biz.PlanStatusPartialFailure
+	default:
+		terminalStatus = biz.PlanStatusCompleted
+	}
+	now := time.Now().UTC()
+	r.board.Status = terminalStatus
+	r.board.CompletedAt = &now
+	r.board.Version++
+	// 持久化（不阻断主流程；失败仅记录日志）。
+	if _, err := r.pe.repos.UpsertPlanBoard(ctx, r.board); err != nil {
+		r.pe.lg.Warn("upsert plan_board (terminal) failed",
+			loggateway.Str("plan_board_id", r.board.ID),
+			loggateway.Err(err))
+	}
+	// 发布事件让前端更新。
+	r.pe.seq.Publish(ctx, biz.NewPlanBoardUpdatedEvent(r.board))
+	r.pe.lg.Info("PlanBoard terminal 状态已发布",
+		loggateway.Str("plan_board_id", r.board.ID),
+		loggateway.Str("status", string(terminalStatus)))
+}
+
+// publishGraphStageTerminal 根据 DAG 执行结果发布 GraphStage terminal 事件。
+// 仅在 graphStageID 非空（initGraphStage 成功创建了 GraphStage）时发布。
+// 失败仅记录日志，不影响主流程返回值。
+//
+// 2026-07-04 问题 2 修复（Gap A）：补齐 terminal 事件发布，避免 graph_stages_v2
+// 表 status 永远为 "running"。
+func (r *dagRun) publishGraphStageTerminal(ctx context.Context) {
+	if r.graphStageID == "" {
+		return
+	}
+	// 扫描所有 step 状态，判定 terminal 状态。
+	hasFailed := false
+	hasRunning := false
+	for i := range r.board.Steps {
+		s := &r.board.Steps[i]
+		switch s.Status {
+		case biz.PlanStepStatusFailed, biz.PlanStepStatusPartialFailure:
+			hasFailed = true
+		case biz.PlanStepStatusRunning, biz.PlanStepStatusPending:
+			hasRunning = true
+		}
+	}
+	var terminalStatus biz.GraphStageStatus
+	switch {
+	case ctx.Err() != nil:
+		terminalStatus = biz.GraphStageStatusInterrupted
+	case hasFailed:
+		terminalStatus = biz.GraphStageStatusFailed
+	default:
+		// 没有 failed step；若仍有 running/pending（理论上不该出现，因为
+		// Wait 已返回），保守视为 Completed——状态详情由 GraphNode 体现。
+		_ = hasRunning
+		terminalStatus = biz.GraphStageStatusCompleted
+	}
+	now := time.Now().UTC()
+	gs := biz.GraphStage{
+		ID:          r.graphStageID,
+		TaskID:      r.board.TaskID,
+		TurnID:      r.board.TurnID,
+		SessionID:   r.board.SessionID,
+		PlanBoardID: r.board.ID,
+		Status:      terminalStatus,
+		CompletedAt: &now,
+		Version:     3, // Version > 1（initGraphStage 创建时 Version=1，更新时 Version=2）
+	}
+	var event biz.Event
+	switch terminalStatus {
+	case biz.GraphStageStatusCompleted:
+		event = biz.NewGraphStageCompletedEvent(gs)
+	case biz.GraphStageStatusFailed:
+		event = biz.NewGraphStageFailedEvent(gs)
+	case biz.GraphStageStatusInterrupted:
+		event = biz.NewGraphStageInterruptedEvent(gs)
+	default:
+		return
+	}
+	r.pe.seq.Publish(ctx, event)
+	r.pe.lg.Info("GraphStage terminal 事件已发布",
+		loggateway.Str("graph_stage_id", r.graphStageID),
+		loggateway.Str("plan_board_id", r.board.ID),
+		loggateway.Str("status", string(terminalStatus)))
 }
 
 // dispatch sends a single step to the TeamOrchestrator and listens for its
@@ -219,36 +409,24 @@ func (r *dagRun) dispatch(ctx context.Context, step *biz.PlanStep) {
 }
 
 // dispatchStep performs the full dispatch lifecycle for one step:
-// create TeamStage → persist → publish → transition step to Running →
-// persist → publish → call orchestrator → await completion.
+// transition step to Running → persist → publish → call orchestrator
+// (creates TeamStage with derived ID) → update TeamStage with TaskID/DagNodeID
+// → persist → publish → await completion.
+//
+// 2026-07-04 问题 4 修复：原先 dispatchStep 用 uuid.NewString() 创建 TeamStage，
+// 而 publishSpiritTeamAssembled 内部用 agent.NewTeamStageActivityID(team.ID)
+// 创建另一个 TeamStage，导致同一 team 有两条不同 ID 的记录，且 TeamRun/
+// MemberSession 的 TeamStageID 关联到 publishSpiritTeamAssembled 的记录，
+// dispatchStep 创建的记录在前端成为孤儿。
+//
+// 修复：dispatchStep 不再创建 TeamStage，而是让 Orchestrate 内部的
+// publishSpiritTeamAssembled 创建（带 Members + 派生 ID），dispatchStep 在
+// Orchestrate 返回后用 result.TeamStageID 更新同一记录（补充 TaskID/DagNodeID
+// /Status=Running/Stage=Executing）。
 func (r *dagRun) dispatchStep(ctx context.Context, step *biz.PlanStep) {
 	now := time.Now()
-	// 1. Create TeamStage.
-	tsID := uuid.NewString()
-	ts := biz.TeamStage{
-		ID:        tsID,
-		TaskID:    r.board.TaskID,
-		TurnID:    r.board.TurnID,
-		SessionID: r.board.SessionID,
-		DagNodeID: step.ID,
-		Status:    biz.TeamStageStatusPending,
-		Stage:     biz.TeamStageStageAssembled,
-		StartedAt: now,
-		Version:   1,
-	}
-	if _, err := r.pe.repos.UpsertTeamStage(ctx, ts); err != nil {
-		r.pe.lg.Error("upsert team_stage failed",
-			loggateway.Str("team_stage_id", tsID), loggateway.Err(err))
-		r.failStep(ctx, step, "persist team_stage: "+err.Error())
-		return
-	}
-	// 2. Publish TeamStageCreated.
-	r.pe.seq.Publish(ctx, biz.NewTeamStageCreatedEvent(ts))
-	// 2026-07-04 补齐：同步更新 GraphNode 状态为 Running，回填 TeamStageID。
-	r.updateGraphNode(ctx, step.ID, biz.GraphNodeStatusRunning, tsID)
-	// 3. Transition step to Running.
+	// 1. Transition step to Running.
 	r.mu.Lock()
-	step.MappedTeamStageID = tsID
 	if err := step.Transition(biz.PlanStepStatusRunning); err != nil {
 		r.mu.Unlock()
 		r.pe.lg.Error("transition to running failed",
@@ -260,21 +438,67 @@ func (r *dagRun) dispatchStep(ctx context.Context, step *biz.PlanStep) {
 	step.Version++
 	runningStep := *step
 	r.mu.Unlock()
-	// 4. Persist + publish PlanStepStarted.
+	// 2. Persist + publish PlanStepStarted.
 	if _, err := r.pe.repos.UpsertPlanStep(ctx, runningStep); err != nil {
 		r.pe.lg.Error("upsert plan_step (running) failed",
 			loggateway.Str("step_id", step.ID), loggateway.Err(err))
 	}
 	r.pe.seq.Publish(ctx, biz.NewPlanStepStartedEvent(runningStep, r.board.SessionID))
-	// 5. Call orchestrator.
-	ch, err := r.pe.orch.Orchestrate(ctx, runningStep, ts)
+	// 3. Call orchestrator (creates team + TeamStage via publishSpiritTeamAssembled).
+	// 传入带 SessionID 的 TeamStage（Orchestrate 从 ts.SessionID 获取 spiritSessionID；
+	// 不传入完整 TeamStage 是因为 TeamStage 的 ID/members 由 Orchestrate 内部派生）。
+	result, err := r.pe.orch.Orchestrate(ctx, runningStep, biz.TeamStage{
+		SessionID: r.board.SessionID,
+		TaskID:    r.board.TaskID,
+		TurnID:    r.board.TurnID,
+		DagNodeID: step.ID,
+	})
 	if err != nil {
 		r.pe.lg.Error("orchestrate failed",
 			loggateway.Str("step_id", step.ID), loggateway.Err(err))
 		r.failStep(ctx, step, "orchestrate: "+err.Error())
 		return
 	}
-	// 6. Await completion (single event then channel closes).
+	if result == nil || result.Team.ID == "" || result.TeamStageID == "" {
+		r.failStep(ctx, step, "orchestrate returned empty team or team_stage_id")
+		return
+	}
+	// 4. Update TeamStage (created inside Orchestrate) with TaskID/DagNodeID/
+	//    Status=Running/Stage=Executing. Uses the same derived ID so the
+	//    TeamRun/MemberSession records (already published with the same ID)
+	//    stay associated.
+	// Members is intentionally left nil: publishSpiritTeamAssembled already
+	// set Members (with displayName/avatarUrl from agent config) on the
+	// Version=1 record. Setting Members here would overwrite with degraded
+	// data (AgentName=AgentKey, missing displayName/avatarUrl). The repo's
+	// UpsertTeamStage skips SetMembers when nil, preserving the existing
+	// value. Frontend also preserves existing Members when incoming is empty.
+	ts := biz.TeamStage{
+		ID:        result.TeamStageID,
+		TaskID:    r.board.TaskID,
+		TurnID:    r.board.TurnID,
+		SessionID: r.board.SessionID,
+		TeamID:    result.Team.ID,
+		DagNodeID: step.ID,
+		Status:    biz.TeamStageStatusRunning,
+		Stage:     biz.TeamStageStageExecuting,
+		DependsOn: result.Team.DependsOn,
+		StartedAt: now,
+		Version:   2, // Version > 1 to override the created record
+	}
+	if _, err := r.pe.repos.UpsertTeamStage(ctx, ts); err != nil {
+		r.pe.lg.Error("upsert team_stage (running) failed",
+			loggateway.Str("team_stage_id", ts.ID), loggateway.Err(err))
+	}
+	r.pe.seq.Publish(ctx, biz.NewTeamStageUpdatedEvent(ts))
+	// 5. Update GraphNode status + TeamStageID.
+	r.updateGraphNode(ctx, step.ID, biz.GraphNodeStatusRunning, result.TeamStageID)
+	// 6. Set MappedTeamStageID on the step.
+	r.mu.Lock()
+	step.MappedTeamStageID = result.TeamStageID
+	r.mu.Unlock()
+	// 7. Await completion (single event then channel closes).
+	ch := result.CompletionChan
 	select {
 	case ev, ok := <-ch:
 		if !ok {

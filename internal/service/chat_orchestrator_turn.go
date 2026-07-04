@@ -389,6 +389,17 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		loggateway.StepID("chat.build_intent_parallel"),
 		loggateway.Any("elapsed_ms", time.Since(buildIntentStart).Milliseconds()))
 
+	// 2026-07-04 问题 2/3 修复：预生成 userMsg.ID 并通过 ctx 注入为
+	// RootTaskActivityID，让下游 publishV2PlanBoard 能拿到正确的 rootTaskID
+	// （用作 PlanBoard.TaskID 和 GraphStage.TaskID）。原先 PRE-PLANNING GATE
+	// 在 v2 ActivityProjector 的 OnTurnStart 之前调用，ctx 中没有
+	// rootTaskActivityIDKey，导致 PlanBoard.TaskID="" ，前端
+	// getTaskPlanBoards(taskId) 因 TaskID 不匹配返回空，PlanBoardCard 与
+	// GraphStageBlock 完全不渲染。预生成的 ID 会通过 ctx 一路传到
+	// prepareUserMessage，确保 userMsg.ID 与 PlanBoard.TaskID 一致。
+	preGeneratedTaskID := chatagent.RootTaskActivityID(uuid.NewString())
+	ctx = chatagent.ContextWithRootTaskActivityID(ctx, preGeneratedTaskID)
+
 	// ── PRE-PLANNING GATE (P1-2) ──
 	// After intent pass, run a quick complexity assessment. If Moderate/Complex,
 	// force the planning path by injecting a system instruction.

@@ -296,7 +296,7 @@ func (o *TaskOrchestratorImpl) orchestrateTeam(ctx context.Context, taskPlan *bi
 			DagNodeID:       dagNodeID,
 		}
 
-		team, _, err := o.assembler.AssembleTeam(ctx, params)
+		team, _, _, err := o.assembler.AssembleTeam(ctx, params)
 		if err != nil {
 			return apierror.Internal(apierror.DomainSpirit, "assemble team").WithCause(err)
 		}
@@ -365,7 +365,7 @@ func (o *TaskOrchestratorImpl) orchestrateParallelTeams(ctx context.Context, tas
 				DagNodeID:       al.SubTaskID,
 			}
 
-			team, _, err := o.assembler.AssembleTeam(gctx, params)
+			team, _, _, err := o.assembler.AssembleTeam(gctx, params)
 			if err != nil {
 				results[idx] = parallelTeamResult{
 					subtaskID: al.SubTaskID,
@@ -512,7 +512,7 @@ func (o *TaskOrchestratorImpl) orchestrateDAG(ctx context.Context, taskPlan *biz
 				DependsOn:       dependsMap[al.SubTaskID],
 			}
 
-			team, _, err := o.assembler.AssembleTeam(gctx, params)
+			team, _, _, err := o.assembler.AssembleTeam(gctx, params)
 			if err != nil {
 				o.lg.Warn("TaskOrchestrator: DAG team assembly failed",
 					loggateway.StepID(biz.SpiritStepOrchestratorExecute),
@@ -598,7 +598,7 @@ func (o *TaskOrchestratorImpl) orchestrateWithoutTemplate(ctx context.Context, t
 		Mode:            mode,
 		AutoStart:       true,
 	}
-	team, _, err := o.assembler.AssembleTeam(ctx, params)
+	team, _, _, err := o.assembler.AssembleTeam(ctx, params)
 	if err != nil {
 		return apierror.Internal(apierror.DomainSpirit, "assemble NL2Graph team").WithCause(err)
 	}

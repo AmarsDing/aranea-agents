@@ -2572,6 +2572,66 @@ async function ensureActivitiesLoaded(sessionId: string) {
 
 **缓存失效**：Session 切换时不清空缓存（保留已加载的子 Session Activity，便于来回切换）；仅在显式刷新时清空 `loadedSessions`。
 
+### 12.8 v2 Step 模型与空 ReplyStep 过滤（2026-07-04 新增）
+
+> **来源**：[docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md](../superpowers/specs/2026-07-02-llm-activity-ordering-design.md) + [docs/superpowers/specs/2026-07-04-empty-reply-step-cleanup-design.md](../superpowers/specs/2026-07-04-empty-reply-step-cleanup-design.md)
+
+#### 12.8.1 Turn 内 Step 模型（多轮模式）
+
+Turn 是最小对话单元，内含 0..N 个 Step（按 Seq 排序）：
+
+```
+Turn (turn_id, seq)
+├── ThinkingStep? (seq, 可多轮，0..N)
+├── ActionStep?   (seq, 可多轮，0..N)
+├── ... (thinking/action 交替，按 Seq 排序)
+├── ReplyStep?     (seq, is_final=true, 0..1 个)
+├── NoticeStep?    (seq, 0..N)
+├── ConfirmStep?   (seq, 0..N)
+├── ErrorStep?     (seq, 0..1)
+├── TeamStage?     ← turn 内触发 team 执行
+│   └── TeamRun → MemberSession → Turn（递归）
+└── (并行其他 TeamStage)
+```
+
+**实际 LLM 业务模式**：`thinking → action → thinking → action → ... → reply`。turn 内可有 0..N 个 thinking/action step（多轮交替）和 0..1 个 final reply step（`is_final=true`）。
+
+**实现位置**：`internal/agent/v2/projector.go` `ActivityProjector`（懒创建）：
+- `thinkingStepID`/`replyStepID` 是单 string 字段，Done 时清空，下一次 delta 创建新 step
+- 图示中的 `?` 表示 step 可选，并非每个 turn 都包含所有 kind
+
+#### 12.8.2 ReplyStep 创建规则（防空 reply）
+
+**问题**：LLM 框架常发 `\n`、空格等引导空白作为 text delta → 创建空 ReplyStep → `handleTextDone` 仍走 completed 路径，留下空 ReplyBlock。
+
+**修复**（[projector.go:788-862](../../internal/agent/v2/projector.go#L788-862)）：
+
+| 函数 | 规则 |
+|------|------|
+| `handleTextDelta` | 第一次 delta 到达时，`strings.TrimSpace(delta) == ""` 则不创建 ReplyStep（直接 return）；一旦 step 创建，后续空白 delta 正常 stream |
+| `handleTextDone` | 若 `replyStepID` 已存在但 `step.Content` 与 `finalContent` 均为空白，发布 `StepCompletedEvent`（status=cancelled, is_final=false），不进入 completed 路径 |
+
+**事件选择**：复用 `NewStepCompletedEvent`（与 `EmitConfirmResult` denied 路径一致，参见 [projector_test.go:168-174](../../internal/agent/v2/projector_test.go#L168-174)）。语义：step 走完生命周期但被取消，不是失败。
+
+#### 12.8.3 前端兜底过滤
+
+**位置**：[TurnContainer.vue:29-41](../../web/src/components/chat/v2/TurnContainer.vue#L29-41) `visibleSteps`
+
+```ts
+const visibleSteps = computed(() =>
+  store.getTurnSteps(props.turn.ID).filter((s) => {
+    if (isSystemInternalNotice(s.Kind, s.NoticeType)) return false;
+    // 过滤空 reply step：Status 非 running 且 Content 为空或纯空白
+    if (s.Kind === 'reply' && s.Status !== 'running' && !s.Content?.trim()) {
+      return false;
+    }
+    return true;
+  }),
+);
+```
+
+**注意**：`Status === 'running'` 的 reply step 仍显示（流式中），避免流式期间被隐藏导致用户看不到正在生成。
+
 ---
 
 ## 子模块：Chat 执行过程卡片 — 技术设计

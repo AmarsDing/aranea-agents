@@ -134,6 +134,16 @@ func (r *planBoardV2Repo) UpsertPlanBoard(ctx context.Context, pb biz.PlanBoard)
 		}
 		return entPlanBoardV2ToBiz(row), nil
 	}
+	// UPDATE failed. Two possible causes:
+	//   1. Record doesn't exist yet → fall through to CREATE.
+	//   2. Record exists but Version >= pb.Version (WHERE didn't match) →
+	//      return existing record (idempotent: a newer version is already
+	//      persisted, e.g. sync persist wrote before the async event arrived).
+	//      Without this check, the CREATE fallback would fail with CONFLICT
+	//      and propagate an error to the v2 sequencer's retry loop.
+	if existing, getErr := r.data.RW().Read(ctx).PlanBoardV2.Get(ctx, pb.ID); getErr == nil {
+		return entPlanBoardV2ToBiz(existing), nil
+	}
 	cb := r.data.RW().Write(ctx).PlanBoardV2.Create().
 		SetID(pb.ID).
 		SetTaskID(pb.TaskID).

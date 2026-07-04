@@ -105,7 +105,14 @@ const auth = useSafeAuthStore();
 const store = useChatActivityStore();
 const turns = computed(() => store.getTaskTurns(props.task.ID));
 const teamStages = computed(() => store.getTaskTeamStages(props.task.ID));
-const planBoards = computed(() => store.getTaskPlanBoards(props.task.ID));
+// 2026-07-04 问题 3 修复：过滤空 PlanBoard（无 steps 且非终态），避免渲染
+// 空"执行计划"卡片。后端已在 publishV2PlanBoard 加守卫，但旧数据可能残留。
+const planBoards = computed(() =>
+  store.getTaskPlanBoards(props.task.ID).filter((pb) => {
+    const steps = store.getPlanBoardSteps(pb.ID);
+    return steps.length > 0 || pb.Status === 'completed' || pb.Status === 'failed';
+  }),
+);
 // 2026-07-04 补齐：通过 PlanBoard.ID 查找关联的 GraphStage（一对一）
 function graphStageByPlanBoard(planBoardId: string) {
   return store.getGraphStageByPlanBoard(planBoardId);

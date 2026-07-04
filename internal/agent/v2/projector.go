@@ -53,12 +53,18 @@ type ActivityProjector struct {
 	// === Per-turn ProcessEvent state ===
 	// meta is the ProjectMeta for the current turn, set by OnTurnStart.
 	meta ProjectMeta
-	// thinkingStepID is the stepID of the current thinking step (lazily
-	// created on the first reasoning delta, finalized on OnReasoningDone).
-	thinkingStepID string
-	// replyStepID is the stepID of the current reply step (lazily created
-	// on the first text delta, finalized on OnTextDone).
-	replyStepID string
+	// thinkingStepIDs maps agentKey → stepID of the current thinking step
+	// (lazily created on the first reasoning delta, finalized on OnReasoningDone).
+	//
+	// 2026-07-04 问题 1 根因 2 修复：Graph 模式下多个 member agent 共享同一
+	// turn，per-turn 单值 thinkingStepID 会导致后续 member 复用首个 member 的
+	// thinking step。改为 per-agentKey map 让每个 member agent 拥有独立的
+	// thinking step。
+	thinkingStepIDs map[string]string
+	// replyStepIDs maps agentKey → stepID of the current reply step
+	// (lazily created on the first text delta, finalized on OnTextDone).
+	// 同 thinkingStepIDs，per-agentKey 隔离避免 member 间复用。
+	replyStepIDs map[string]string
 	// toolCallSteps maps model tool_call_id → v2 stepID, for correlating
 	// tool response events back to the action step created by OnToolCall.
 	toolCallSteps map[string]string
@@ -75,15 +81,55 @@ func NewActivityProjector(seq SequencerPublisher, seqAsg SeqAssigner, lg loggate
 		lg = loggateway.NewNoop()
 	}
 	return &ActivityProjector{
-		seq:            seq,
-		seqAsg:         seqAsg,
-		lg:             lg.With(loggateway.Domain("projector_v2")),
-		activeStep:     make(map[string]*biz.Step),
-		activeTurn:     make(map[string]*biz.Turn),
-		activeTask:     make(map[string]*biz.Task),
-		toolCallSteps:  make(map[string]string),
+		seq:             seq,
+		seqAsg:          seqAsg,
+		lg:              lg.With(loggateway.Domain("projector_v2")),
+		activeStep:      make(map[string]*biz.Step),
+		activeTurn:      make(map[string]*biz.Turn),
+		activeTask:      make(map[string]*biz.Task),
+		thinkingStepIDs: make(map[string]string),
+		replyStepIDs:    make(map[string]string),
+		toolCallSteps:   make(map[string]string),
 		memberToolCalls: make(map[string]int),
 	}
+}
+
+// ProjectorFactory creates per-turn ActivityProjector instances that share
+// the singleton Sequencer + SeqAssigner (so Seq allocation remains globally
+// monotonic per spirit session) while isolating per-turn streaming state.
+//
+// 2026-07-04 问题 4 根因修复：spirit turn 和 team member turn 是并发关系
+// （team AutoStart 通过 safego.Go 异步启动），共享单个 ActivityProjector
+// 单例时，team member turn 的 Reset()+Configure() 会清空 spirit turn 进行
+// 中的活跃状态（activeStep/activeTurn/activeTask/meta/thinkingStepIDs 等），
+// 导致 spirit turn 后续事件（reply delta）被错误归因到 member session。
+// 改为每次 turn 创建独立 Projector 实例，Sequencer 仍为单例（共享发布管道
+// 与全局 SeqAssigner）。
+type ProjectorFactory struct {
+	seq    SequencerPublisher
+	seqAsg SeqAssigner
+	lg     loggateway.Logger
+}
+
+// NewProjectorFactory constructs a factory that produces per-turn
+// ActivityProjector instances. seq and seqAsg are shared across all turns
+// produced by this factory; lg may be nil (defaults to Noop).
+func NewProjectorFactory(seq SequencerPublisher, seqAsg SeqAssigner, lg loggateway.Logger) *ProjectorFactory {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	return &ProjectorFactory{seq: seq, seqAsg: seqAsg, lg: lg}
+}
+
+// NewProjector returns a fresh ActivityProjector bound to the factory's
+// singleton Sequencer + SeqAssigner. Per-turn state (activeStep/meta/etc)
+// is isolated per instance. Returns nil when the factory itself is nil
+// (callers must handle nil gracefully).
+func (f *ProjectorFactory) NewProjector() *ActivityProjector {
+	if f == nil {
+		return nil
+	}
+	return NewActivityProjector(f.seq, f.seqAsg, f.lg)
 }
 
 // OnTurnStart emits task.created (root turns only) followed by turn.started.
@@ -92,20 +138,32 @@ func NewActivityProjector(seq SequencerPublisher, seqAsg SeqAssigner, lg loggate
 //
 // OnTurnStart also stores the ProjectMeta for ProcessEvent and resets per-turn
 // ProcessEvent state (thinkingStepID, replyStepID, toolCallSteps).
+//
+// System-push continuation turns (meta.ParentTaskID != "") attach the new Turn
+// to the existing Task ID without creating a new Task or emitting task events.
+// The existing Task's state machine is owned by the original user-input turn.
 func (p *ActivityProjector) OnTurnStart(ctx context.Context, meta ProjectMeta) {
 	// Store meta + reset per-turn ProcessEvent state regardless of seq,
 	// so that a projector with a nil sequencer (compile-check) still accepts
 	// the configuration without panicking on a nil-map write below.
 	p.meta = meta
-	p.thinkingStepID = ""
-	p.replyStepID = ""
+	p.thinkingStepIDs = make(map[string]string)
+	p.replyStepIDs = make(map[string]string)
 	p.toolCallSteps = make(map[string]string)
 	p.memberToolCalls = make(map[string]int)
 
 	if p.seq == nil {
 		return
 	}
-	if meta.TeamStageID == "" {
+	// System-push continuation: attach the Turn to the existing Task without
+	// creating a new Task or emitting task.created. The new Turn will be
+	// parented under meta.ParentTaskID (resolved below).
+	if meta.ParentTaskID != "" {
+		// Point TaskID at the inherited parent so subsequent step/turn
+		// emission correctly parents child steps under the existing Task.
+		p.meta.TaskID = meta.ParentTaskID
+		meta.TaskID = meta.ParentTaskID
+	} else if meta.TeamStageID == "" {
 		task := meta.newTask(meta.TaskID, biz.TaskStatusRunning, meta.TaskContent)
 		p.mu.Lock()
 		p.activeTask[meta.TaskID] = &task
@@ -141,8 +199,8 @@ func (p *ActivityProjector) Reset() {
 	p.activeStep = make(map[string]*biz.Step)
 	p.activeTurn = make(map[string]*biz.Turn)
 	p.activeTask = make(map[string]*biz.Task)
-	p.thinkingStepID = ""
-	p.replyStepID = ""
+	p.thinkingStepIDs = make(map[string]string)
+	p.replyStepIDs = make(map[string]string)
 	p.toolCallSteps = make(map[string]string)
 	p.memberToolCalls = make(map[string]int)
 }
@@ -249,6 +307,11 @@ const stuckToolErrorCode = "tool_timeout"
 // the error message + classification. If no root task exists (error before
 // OnTurnStart), the error is logged but no event is emitted.
 //
+// System-push continuation turns (ParentTaskID set) skip the task.failed
+// emission — the original Task's state machine is owned by the original
+// user-input turn, and a synthesis-trigger failure should not mark the user's
+// original Task as failed (team execution results remain valid).
+//
 // The error Step uses Kind=error with Content=errMsg and ToolErrorCode=errType,
 // providing the frontend with error details without requiring schema changes
 // to the Task entity (v2 architecture: everything is a Step).
@@ -267,12 +330,19 @@ func (p *ActivityProjector) OnError(ctx context.Context, errMsg, errType, errCod
 		delete(p.activeTask, p.meta.TaskID)
 	}
 	p.mu.Unlock()
-	if !ok {
+	// System-push continuation: skip task.failed emission (preserve original
+	// Task's state machine). Still emit the error Step below so the frontend
+	// surfaces the synthesis failure.
+	if p.meta.ParentTaskID != "" {
+		p.lg.Info("projector_v2: OnError in system-push turn, skipping task.failed",
+			loggateway.Str("parent_task_id", p.meta.ParentTaskID),
+			loggateway.Str("err_msg", errMsg),
+			loggateway.Str("err_type", errType))
+	} else if !ok {
 		p.lg.Warn("projector_v2: OnError with no active task",
 			loggateway.Str("task_id", p.meta.TaskID),
 			loggateway.Str("err_msg", errMsg),
 			loggateway.Str("err_type", errType))
-		return
 	}
 	// Emit error Step (carries error details for the frontend).
 	// Seq is allocated immediately from SeqAssigner so error steps sort after
@@ -298,7 +368,11 @@ func (p *ActivityProjector) OnError(ctx context.Context, errMsg, errType, errCod
 	p.seq.Publish(ctx, biz.NewStepCreatedEvent(errStep))
 	p.seq.Publish(ctx, biz.NewStepCompletedEvent(errStep))
 	// Emit TaskFailedEvent (carries the Task with status=failed).
-	p.seq.Publish(ctx, biz.NewTaskFailedEvent(*task))
+	// Skipped for system-push continuation turns (ParentTaskID set) — the
+	// original Task's state machine is owned by the original user-input turn.
+	if p.meta.ParentTaskID == "" && task != nil {
+		p.seq.Publish(ctx, biz.NewTaskFailedEvent(*task))
+	}
 }
 
 // OnStuckTools marks all tool_running steps as failed. Called from
@@ -528,11 +602,16 @@ func (p *ActivityProjector) OnToolCall(ctx context.Context, meta ProjectMeta, to
 }
 
 // findOrCreateActionStep returns the ID of an existing action step for the
-// turn, or creates a new one via BeginStep. Must be called without holding p.mu.
+// turn and agent, or creates a new one via BeginStep. Must be called without holding p.mu.
+//
+// 2026-07-04 问题 1 根因 2 修复：Graph 模式下多个 member agent 共享同一
+// turn，原逻辑只按 TurnID + Kind 查找会导致后续 member 复用首个 member 的
+// action step。增加 AuthorAgentKey 维度让每个 member agent 拥有独立的
+// action step。
 func (p *ActivityProjector) findOrCreateActionStep(meta ProjectMeta) string {
 	p.mu.Lock()
 	for id, s := range p.activeStep {
-		if s.TurnID == meta.TurnID && s.Kind == biz.StepKindAction {
+		if s.TurnID == meta.TurnID && s.Kind == biz.StepKindAction && s.AuthorAgentKey == meta.AgentKey {
 			p.mu.Unlock()
 			return id
 		}
@@ -551,6 +630,10 @@ func (p *ActivityProjector) OnToolResult(ctx context.Context, stepID string, res
 }
 
 // OnTurnEnd emits turn.completed and, for root turns, task.completed.
+//
+// System-push continuation turns (meta.ParentTaskID != "") emit turn.completed
+// only — the original Task's state machine is owned by the original user-input
+// turn and is not touched here.
 func (p *ActivityProjector) OnTurnEnd(ctx context.Context, meta ProjectMeta) {
 	if p.seq == nil {
 		return
@@ -567,6 +650,10 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, meta ProjectMeta) {
 	p.mu.Unlock()
 	if ok {
 		p.seq.Publish(ctx, biz.NewTurnCompletedEvent(*turn))
+	}
+	// System-push continuation: skip task.completed emission.
+	if meta.ParentTaskID != "" {
+		return
 	}
 	if meta.TeamStageID == "" {
 		p.mu.Lock()
@@ -656,6 +743,43 @@ func (p *ActivityProjector) ProcessEvent(ctx context.Context, ev *trpcevent.Even
 	}
 	if ev.Response == nil {
 		return
+	}
+
+	// 2026-07-04 问题 1 根因 1 修复：Graph 模式下多个 member agent 的事件
+	// 通过同一 projector 处理。ev.Author 有两种格式：
+	//   1. graph node 主动 emit 的事件（lifecycle）：ev.Author = node ID
+	//      （如 "member-1"，由 emitter.go:130-132 设置）
+	//   2. member agent LLM 流式事件（ChatCompletionChunk 等）：ev.Author =
+	//      agent key（如 "spirit-worker-a"，由 content.go:569 + llm_agent.go:1552
+	//      设置 invocation.AgentName = a.name = agent key）
+	// 之前的修复只处理 case 1，对 case 2（LLM 事件）lookup 失败，所有 member
+	// agent 的 Step 被错误归到 anchor agent 名下，前端匹配不到成员活动。
+	//
+	// 修复策略：两种 lookup 都尝试
+	//   - 先查 NodeIDToAgentKey（case 1：node ID → agent key）
+	//   - 再检查 MemberAgentKeys 集合（case 2：author 本身就是 agent key）
+	// ProcessEvent 由 stream consumer 顺序调用，无并发风险。
+	if author := strings.TrimSpace(ev.Author); author != "" {
+		var resolvedKey string
+		// Case 1: author 是 node ID，查 NodeIDToAgentKey
+		if p.meta.NodeIDToAgentKey != nil {
+			if k, ok := p.meta.NodeIDToAgentKey[author]; ok && k != "" {
+				resolvedKey = k
+			}
+		}
+		// Case 2: author 本身就是 agent key，检查是否在 MemberAgentKeys 集合中
+		if resolvedKey == "" && len(p.meta.MemberAgentKeys) > 0 {
+			if _, ok := p.meta.MemberAgentKeys[author]; ok {
+				resolvedKey = author
+			}
+		}
+		// 切换 p.meta.AgentKey 让 BeginStep 创建的 Step.AuthorAgentKey 归属到
+		// 正确的 member agent。defer 恢复原值。
+		if resolvedKey != "" && resolvedKey != p.meta.AgentKey {
+			origKey := p.meta.AgentKey
+			p.meta.AgentKey = resolvedKey
+			defer func() { p.meta.AgentKey = origKey }()
+		}
 	}
 
 	// Tool responses carrying errors are handled by processToolResponse
@@ -778,49 +902,106 @@ func (p *ActivityProjector) handleToolCall(ctx context.Context, toolCallID, tool
 
 // handleReasoningDelta lazily creates a thinking step on the first delta,
 // then emits the streaming delta.
+//
+// 2026-07-04 问题 1 根因 2 修复：使用 per-agentKey map 隔离不同 member
+// agent 的 thinking step，避免 graph 模式下后续 member 复用首个 member
+// 的 thinking step。
 func (p *ActivityProjector) handleReasoningDelta(ctx context.Context, delta string) {
-	if p.thinkingStepID == "" {
-		p.thinkingStepID = p.BeginStep(p.meta, biz.StepKindThinking)
+	agentKey := p.meta.AgentKey
+	stepID, ok := p.thinkingStepIDs[agentKey]
+	if !ok || stepID == "" {
+		stepID = p.BeginStep(p.meta, biz.StepKindThinking)
+		p.thinkingStepIDs[agentKey] = stepID
 	}
-	p.OnReasoningDelta(ctx, p.thinkingStepID, delta, "")
+	p.OnReasoningDelta(ctx, stepID, delta, "")
 }
 
-// handleTextDelta lazily creates a reply step on the first delta,
+// handleTextDelta lazily creates a reply step on the first non-blank delta,
 // then emits the streaming delta.
+//
+// Pure-whitespace leading deltas (e.g. "\n", " ") do NOT create a step —
+// LLM frameworks often emit these as separators. Creating a step for them
+// would leave an empty ReplyStep when no real content follows, producing
+// empty ReplyBlocks in the frontend. Once a step exists, subsequent
+// whitespace deltas are streamed normally (whitespace is meaningful content
+// mid-stream).
+//
+// Spec: docs/superpowers/specs/2026-07-04-empty-reply-step-cleanup-design.md §4.1.1
+//
+// 2026-07-04 问题 1 根因 2 修复：使用 per-agentKey map 隔离不同 member
+// agent 的 reply step。
 func (p *ActivityProjector) handleTextDelta(ctx context.Context, delta string) {
-	if p.replyStepID == "" {
-		p.replyStepID = p.BeginStep(p.meta, biz.StepKindReply)
+	agentKey := p.meta.AgentKey
+	stepID, ok := p.replyStepIDs[agentKey]
+	if !ok || stepID == "" {
+		// 防止 LLM 输出引导空白（"\n", " "）导致创建空 ReplyStep。
+		// 仅在 delta 含非空白字符时才创建 step；纯空白 delta 丢弃。
+		if strings.TrimSpace(delta) == "" {
+			return
+		}
+		stepID = p.BeginStep(p.meta, biz.StepKindReply)
+		p.replyStepIDs[agentKey] = stepID
 	}
-	p.OnTextDelta(ctx, p.replyStepID, delta, "")
+	p.OnTextDelta(ctx, stepID, delta, "")
 }
 
 // handleReasoningDone finalizes the thinking step. If no thinking step was
 // created (no prior delta) and the content is empty, this is a no-op.
 func (p *ActivityProjector) handleReasoningDone(ctx context.Context, finalContent string) {
-	if p.thinkingStepID == "" {
+	agentKey := p.meta.AgentKey
+	stepID, ok := p.thinkingStepIDs[agentKey]
+	if !ok || stepID == "" {
 		// No thinking step was started. If there's reasoning content, create
 		// and immediately complete a step for it; otherwise skip.
 		if strings.TrimSpace(finalContent) == "" {
 			return
 		}
-		p.thinkingStepID = p.BeginStep(p.meta, biz.StepKindThinking)
+		stepID = p.BeginStep(p.meta, biz.StepKindThinking)
+		p.thinkingStepIDs[agentKey] = stepID
 	}
-	p.OnReasoningDone(ctx, p.thinkingStepID, finalContent)
-	p.thinkingStepID = ""
+	p.OnReasoningDone(ctx, stepID, finalContent)
+	delete(p.thinkingStepIDs, agentKey)
 }
 
 // handleTextDone finalizes the reply step. If no reply step was created and
-// the content is empty, this is a no-op.
+// the content is empty, this is a no-op. If a reply step was created (e.g.
+// by an earlier delta) but both accumulated Content and finalContent are
+// blank, the step is finalized with Status=cancelled (not completed) so the
+// frontend can filter out empty ReplyBlocks.
+//
+// Spec: docs/superpowers/specs/2026-07-04-empty-reply-step-cleanup-design.md §4.1.2
 func (p *ActivityProjector) handleTextDone(ctx context.Context, finalContent string) {
-	if p.replyStepID == "" {
+	agentKey := p.meta.AgentKey
+	stepID, ok := p.replyStepIDs[agentKey]
+	if !ok || stepID == "" {
 		if strings.TrimSpace(finalContent) == "" {
 			return
 		}
-		p.replyStepID = p.BeginStep(p.meta, biz.StepKindReply)
+		stepID = p.BeginStep(p.meta, biz.StepKindReply)
+		p.replyStepIDs[agentKey] = stepID
+	}
+	// 检查 step 是否为空（已创建但 Content 与 finalContent 均为空白）
+	p.mu.Lock()
+	step, stepOk := p.activeStep[stepID]
+	isBlank := stepOk && strings.TrimSpace(step.Content) == "" && strings.TrimSpace(finalContent) == ""
+	if isBlank {
+		// 空 reply 取消而非完成，前端按 status=cancelled 过滤
+		now := time.Now()
+		step.Status = biz.StepStatusCancelled
+		step.IsFinal = false
+		step.CompletedAt = &now
+		step.Version++
+		delete(p.activeStep, stepID)
+	}
+	p.mu.Unlock()
+	if isBlank {
+		p.seq.Publish(ctx, biz.NewStepCompletedEvent(*step))
+		delete(p.replyStepIDs, agentKey)
+		return
 	}
 	// isFinal=true for the root turn's reply so the frontend can mark it.
-	p.OnTextDone(ctx, p.replyStepID, finalContent, true)
-	p.replyStepID = ""
+	p.OnTextDone(ctx, stepID, finalContent, true)
+	delete(p.replyStepIDs, agentKey)
 }
 
 // choiceStreamContent extracts text and reasoning from a streaming choice.

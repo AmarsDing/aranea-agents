@@ -9,7 +9,36 @@
 // files can be reconciled if desired.
 
 import { kratosApi } from '../../services';
-import type { Step, StepKind, StepStatus, Task, TaskStatus, Turn, TurnStatus } from '../chat/v2Types';
+import type {
+  GraphNode,
+  GraphNodeStatus,
+  GraphStage,
+  GraphStageStatus,
+  MemberInfo,
+  MemberReport,
+  MemberSession,
+  MemberSessionStatus,
+  PlanBoard,
+  PlanStatus,
+  PlanStep,
+  PlanStepStatus,
+  PlanStrategy,
+  Step,
+  StepKind,
+  StepStatus,
+  StepError,
+  StepResult,
+  Task,
+  TaskStatus,
+  TeamRun,
+  TeamRunStatus,
+  TeamStage,
+  TeamStageStage,
+  TeamStageStatus,
+  TokenUsage,
+  Turn,
+  TurnStatus,
+} from '../chat/v2Types';
 
 // === Proto JSON DTOs (camelCase, mirrors session_v2.proto messages) ===
 
@@ -215,3 +244,401 @@ export async function listStepsV2(sessionId: string, opts?: { turnId?: string; t
 // Note: GetStepV2 RPC is gRPC-only (no HTTP route in session.proto), so no
 // HTTP helper is exposed here. Frontend callers needing a single step should
 // use listStepsV2 + filter, or wire a gRPC client if a use case emerges.
+
+// === 2026-07-04 问题 6 修复：7 个 child entity 的 REST API 客户端 ===
+// 对应后端 SessionV2Service 的 7 个新 List RPC。前端 fetchSessionHistory
+// 刷新页面时调用这些端点重建完整活动树（Plan/Graph/Team/Member）。
+//
+// 2026-07-04 问题 2 修复（乱码根因）：Kratos HTTP 默认使用 protojson 编码
+// （UseProtoNames=false），proto snake_case 字段会输出为 camelCase JSON
+// （如 task_id → taskId）。之前的 DTO 用 snake_case 导致字段全部 undefined，
+// 刷新后所有子实体返回空数组，前端面板显示异常。现已统一为 camelCase。
+
+// --- DTOs ---
+
+interface MemberInfoV2Dto {
+  agentKey?: string;
+  agentName?: string;
+  avatarUrl?: string;
+  childSessionId?: string;
+  status?: string;
+}
+
+interface TeamStageV2Dto {
+  id?: string;
+  taskId?: string;
+  turnId?: string;
+  sessionId?: string;
+  teamId?: string;
+  teamName?: string;
+  dagNodeId?: string;
+  dependsOn?: string[];
+  status?: string;
+  stage?: string;
+  members?: MemberInfoV2Dto[];
+  strategy?: string;
+  startedAt?: string;
+  completedAt?: string | null;
+  seq?: number | string;
+  version?: number | string;
+}
+
+interface TeamRunV2Dto {
+  id?: string;
+  teamStageId?: string;
+  taskId?: string;
+  sessionId?: string;
+  spiritSessionId?: string;
+  dagNodeId?: string;
+  dependsOn?: string[];
+  status?: string;
+  startedAt?: string;
+  completedAt?: string | null;
+  seq?: number | string;
+  version?: number | string;
+  error?: string;
+}
+
+interface MemberSessionV2Dto {
+  id?: string;
+  teamRunId?: string;
+  teamStageId?: string;
+  taskId?: string;
+  sessionId?: string;
+  spiritSessionId?: string;
+  agentKey?: string;
+  agentName?: string;
+  avatarUrl?: string;
+  status?: string;
+  seq?: number | string;
+  version?: number | string;
+  startedAt?: string;
+  finishedAt?: string | null;
+  error?: string;
+}
+
+interface TokenUsageV2Dto {
+  promptTokens?: number | string;
+  completionTokens?: number | string;
+  totalTokens?: number | string;
+}
+
+interface MemberReportV2Dto {
+  agentKey?: string;
+  agentName?: string;
+  output?: string;
+  tokensUsed?: TokenUsageV2Dto;
+  durationMs?: number | string;
+  error?: string;
+}
+
+interface StepResultV2Dto {
+  output?: string;
+  memberReports?: MemberReportV2Dto[];
+  tokensUsed?: TokenUsageV2Dto;
+  durationMs?: number | string;
+}
+
+interface StepErrorV2Dto {
+  code?: string;
+  message?: string;
+  retryable?: boolean;
+  failedMember?: MemberReportV2Dto | null;
+}
+
+interface PlanStepV2Dto {
+  id?: string;
+  planId?: string;
+  taskId?: string;
+  label?: string;
+  description?: string;
+  dependsOn?: string[];
+  mappedTeamStageId?: string;
+  status?: string;
+  autoSynthesis?: boolean;
+  startedAt?: string;
+  completedAt?: string | null;
+  seq?: number | string;
+  version?: number | string;
+  result?: StepResultV2Dto | null;
+  error?: StepErrorV2Dto | null;
+}
+
+interface PlanBoardV2Dto {
+  id?: string;
+  taskId?: string;
+  turnId?: string;
+  sessionId?: string;
+  strategy?: string;
+  status?: string;
+  steps?: PlanStepV2Dto[];
+  startedAt?: string;
+  completedAt?: string | null;
+  seq?: number | string;
+  version?: number | string;
+}
+
+interface GraphNodeV2Dto {
+  id?: string;
+  graphStageId?: string;
+  label?: string;
+  dagNodeId?: string;
+  teamStageId?: string;
+  status?: string;
+  dependsOn?: string[];
+}
+
+interface GraphStageV2Dto {
+  id?: string;
+  taskId?: string;
+  turnId?: string;
+  sessionId?: string;
+  planBoardId?: string;
+  nodes?: GraphNodeV2Dto[];
+  status?: string;
+  startedAt?: string;
+  completedAt?: string | null;
+  seq?: number | string;
+  version?: number | string;
+}
+
+interface ListTeamStagesV2Response {
+  teamStages?: TeamStageV2Dto[];
+}
+interface ListTeamRunsV2Response {
+  teamRuns?: TeamRunV2Dto[];
+}
+interface ListMemberSessionsV2Response {
+  memberSessions?: MemberSessionV2Dto[];
+}
+interface ListPlanBoardsV2Response {
+  planBoards?: PlanBoardV2Dto[];
+}
+interface ListPlanStepsV2Response {
+  planSteps?: PlanStepV2Dto[];
+}
+interface ListGraphStagesV2Response {
+  graphStages?: GraphStageV2Dto[];
+}
+interface ListGraphNodesV2Response {
+  graphNodes?: GraphNodeV2Dto[];
+}
+
+// --- Mappers ---
+
+function mapMemberInfo(dto: MemberInfoV2Dto): MemberInfo {
+  return {
+    AgentKey: toStr(dto.agentKey),
+    AgentName: toStr(dto.agentName),
+    AvatarURL: toStr(dto.avatarUrl),
+    ChildSessionID: toStr(dto.childSessionId),
+    Status: toStr(dto.status),
+  };
+}
+
+function mapTeamStage(dto: TeamStageV2Dto): TeamStage {
+  return {
+    ID: toStr(dto.id),
+    TaskID: toStr(dto.taskId),
+    TurnID: toStr(dto.turnId),
+    SessionID: toStr(dto.sessionId),
+    TeamID: toStr(dto.teamId),
+    TeamName: toStr(dto.teamName),
+    DagNodeID: toStr(dto.dagNodeId),
+    DependsOn: dto.dependsOn ?? [],
+    Status: (toStr(dto.status) || 'pending') as TeamStageStatus,
+    Stage: (toStr(dto.stage) || 'assembled') as TeamStageStage,
+    Members: (dto.members ?? []).map(mapMemberInfo),
+    Strategy: toStr(dto.strategy),
+    StartedAt: toStr(dto.startedAt),
+    CompletedAt: toNullableStr(dto.completedAt),
+    Seq: toNum(dto.seq),
+    Version: toNum(dto.version),
+  };
+}
+
+function mapTeamRun(dto: TeamRunV2Dto): TeamRun {
+  return {
+    ID: toStr(dto.id),
+    TeamStageID: toStr(dto.teamStageId),
+    TaskID: toStr(dto.taskId),
+    SessionID: toStr(dto.sessionId),
+    SpiritSessionID: toStr(dto.spiritSessionId),
+    DagNodeID: toStr(dto.dagNodeId),
+    DependsOn: dto.dependsOn ?? [],
+    Status: (toStr(dto.status) || 'running') as TeamRunStatus,
+    StartedAt: toStr(dto.startedAt),
+    CompletedAt: toNullableStr(dto.completedAt),
+    Seq: toNum(dto.seq),
+    Version: toNum(dto.version),
+    Error: toStr(dto.error),
+  };
+}
+
+function mapMemberSession(dto: MemberSessionV2Dto): MemberSession {
+  return {
+    ID: toStr(dto.id),
+    TeamRunID: toStr(dto.teamRunId),
+    TeamStageID: toStr(dto.teamStageId),
+    TaskID: toStr(dto.taskId),
+    SessionID: toStr(dto.sessionId),
+    SpiritSessionID: toStr(dto.spiritSessionId),
+    AgentKey: toStr(dto.agentKey),
+    AgentName: toStr(dto.agentName),
+    AvatarURL: toStr(dto.avatarUrl),
+    Status: (toStr(dto.status) || 'pending') as MemberSessionStatus,
+    Seq: toNum(dto.seq),
+    Version: toNum(dto.version),
+    StartedAt: toStr(dto.startedAt),
+    FinishedAt: toNullableStr(dto.finishedAt),
+    Error: toStr(dto.error),
+  };
+}
+
+function mapTokenUsage(dto: TokenUsageV2Dto | undefined): TokenUsage {
+  if (!dto) return { PromptTokens: 0, CompletionTokens: 0, TotalTokens: 0 };
+  return {
+    PromptTokens: toNum(dto.promptTokens),
+    CompletionTokens: toNum(dto.completionTokens),
+    TotalTokens: toNum(dto.totalTokens),
+  };
+}
+
+function mapMemberReport(dto: MemberReportV2Dto): MemberReport {
+  return {
+    AgentKey: toStr(dto.agentKey),
+    AgentName: toStr(dto.agentName),
+    Output: toStr(dto.output),
+    TokensUsed: mapTokenUsage(dto.tokensUsed),
+    DurationMs: toNum(dto.durationMs),
+    Error: toStr(dto.error),
+  };
+}
+
+function mapStepResult(dto: StepResultV2Dto | null | undefined): StepResult | null {
+  if (!dto) return null;
+  return {
+    Output: toStr(dto.output),
+    MemberReports: (dto.memberReports ?? []).map(mapMemberReport),
+    TokensUsed: mapTokenUsage(dto.tokensUsed),
+    DurationMs: toNum(dto.durationMs),
+  };
+}
+
+function mapStepError(dto: StepErrorV2Dto | null | undefined): StepError | null {
+  if (!dto) return null;
+  return {
+    Code: toStr(dto.code),
+    Message: toStr(dto.message),
+    Retryable: Boolean(dto.retryable),
+    FailedMember: dto.failedMember ? mapMemberReport(dto.failedMember) : null,
+  };
+}
+
+function mapPlanStep(dto: PlanStepV2Dto): PlanStep {
+  return {
+    ID: toStr(dto.id),
+    PlanID: toStr(dto.planId),
+    TaskID: toStr(dto.taskId),
+    Label: toStr(dto.label),
+    Description: toStr(dto.description),
+    DependsOn: dto.dependsOn ?? [],
+    MappedTeamStageID: toStr(dto.mappedTeamStageId),
+    Status: (toStr(dto.status) || 'pending') as PlanStepStatus,
+    AutoSynthesis: Boolean(dto.autoSynthesis),
+    StartedAt: toStr(dto.startedAt),
+    CompletedAt: toNullableStr(dto.completedAt),
+    Seq: toNum(dto.seq),
+    Version: toNum(dto.version),
+    Result: mapStepResult(dto.result),
+    Error: mapStepError(dto.error),
+  };
+}
+
+function mapPlanBoard(dto: PlanBoardV2Dto): PlanBoard {
+  return {
+    ID: toStr(dto.id),
+    TaskID: toStr(dto.taskId),
+    TurnID: toStr(dto.turnId),
+    SessionID: toStr(dto.sessionId),
+    Strategy: (toStr(dto.strategy) || 'sequential') as PlanStrategy,
+    Status: (toStr(dto.status) || 'planning') as PlanStatus,
+    Steps: (dto.steps ?? []).map(mapPlanStep),
+    StartedAt: toStr(dto.startedAt),
+    CompletedAt: toNullableStr(dto.completedAt),
+    Seq: toNum(dto.seq),
+    Version: toNum(dto.version),
+  };
+}
+
+function mapGraphNode(dto: GraphNodeV2Dto): GraphNode {
+  return {
+    ID: toStr(dto.id),
+    GraphStageID: toStr(dto.graphStageId),
+    Label: toStr(dto.label),
+    DagNodeID: toStr(dto.dagNodeId),
+    TeamStageID: toStr(dto.teamStageId),
+    Status: (toStr(dto.status) || 'pending') as GraphNodeStatus,
+    DependsOn: dto.dependsOn ?? [],
+  };
+}
+
+function mapGraphStage(dto: GraphStageV2Dto): GraphStage {
+  return {
+    ID: toStr(dto.id),
+    TaskID: toStr(dto.taskId),
+    TurnID: toStr(dto.turnId),
+    SessionID: toStr(dto.sessionId),
+    PlanBoardID: toStr(dto.planBoardId),
+    Nodes: (dto.nodes ?? []).map(mapGraphNode),
+    Status: (toStr(dto.status) || 'running') as GraphStageStatus,
+    StartedAt: toStr(dto.startedAt),
+    CompletedAt: toNullableStr(dto.completedAt),
+    Seq: toNum(dto.seq),
+    Version: toNum(dto.version),
+  };
+}
+
+// --- Public API ---
+
+/** List team_stages for a task. Backend: GET /v2/tasks/{task_id}/team_stages. */
+export async function listTeamStagesV2(taskId: string): Promise<TeamStage[]> {
+  const resp = await kratosApi.get<ListTeamStagesV2Response>(`/v2/tasks/${encodeURIComponent(taskId)}/team_stages`);
+  return (resp.data?.teamStages ?? []).map(mapTeamStage);
+}
+
+/** List team_runs for a team_stage. Backend: GET /v2/team_stages/{stage_id}/team_runs. */
+export async function listTeamRunsV2(stageId: string): Promise<TeamRun[]> {
+  const resp = await kratosApi.get<ListTeamRunsV2Response>(`/v2/team_stages/${encodeURIComponent(stageId)}/team_runs`);
+  return (resp.data?.teamRuns ?? []).map(mapTeamRun);
+}
+
+/** List member_sessions for a team_run. Backend: GET /v2/team_runs/{run_id}/member_sessions. */
+export async function listMemberSessionsV2(runId: string): Promise<MemberSession[]> {
+  const resp = await kratosApi.get<ListMemberSessionsV2Response>(`/v2/team_runs/${encodeURIComponent(runId)}/member_sessions`);
+  return (resp.data?.memberSessions ?? []).map(mapMemberSession);
+}
+
+/** List plan_boards for a task. Backend: GET /v2/tasks/{task_id}/plan_boards. */
+export async function listPlanBoardsV2(taskId: string): Promise<PlanBoard[]> {
+  const resp = await kratosApi.get<ListPlanBoardsV2Response>(`/v2/tasks/${encodeURIComponent(taskId)}/plan_boards`);
+  return (resp.data?.planBoards ?? []).map(mapPlanBoard);
+}
+
+/** List plan_steps for a task. Backend: GET /v2/tasks/{task_id}/plan_steps. */
+export async function listPlanStepsV2(taskId: string): Promise<PlanStep[]> {
+  const resp = await kratosApi.get<ListPlanStepsV2Response>(`/v2/tasks/${encodeURIComponent(taskId)}/plan_steps`);
+  return (resp.data?.planSteps ?? []).map(mapPlanStep);
+}
+
+/** List graph_stages for a task. Backend: GET /v2/tasks/{task_id}/graph_stages. */
+export async function listGraphStagesV2(taskId: string): Promise<GraphStage[]> {
+  const resp = await kratosApi.get<ListGraphStagesV2Response>(`/v2/tasks/${encodeURIComponent(taskId)}/graph_stages`);
+  return (resp.data?.graphStages ?? []).map(mapGraphStage);
+}
+
+/** List graph_nodes for a graph_stage. Backend: GET /v2/graph_stages/{stage_id}/graph_nodes. */
+export async function listGraphNodesV2(stageId: string): Promise<GraphNode[]> {
+  const resp = await kratosApi.get<ListGraphNodesV2Response>(`/v2/graph_stages/${encodeURIComponent(stageId)}/graph_nodes`);
+  return (resp.data?.graphNodes ?? []).map(mapGraphNode);
+}
