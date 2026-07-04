@@ -54,6 +54,16 @@ type PlanExecutor struct {
 	seq   sequencerPublisher
 	bus   biz.EventBus // 2026-07-04 问题 4 修复：订阅 PlanBoardCreatedEvent 触发 Subscribe
 	lg    loggateway.Logger
+	// 2026-07-04 问题 P5/D1 修复：team 派发标记器，让 OnTurnEnd 知道此 task
+	// 有 team 在异步执行，不应立即发 task.completed。
+	marker TeamDispatchMarker
+}
+
+// TeamDispatchMarker 标记一个 task 已派发 team。
+// 由 ProjectorFactory 实现（internal/agent/v2）。
+// 2026-07-04 问题 P5/D1 修复。
+type TeamDispatchMarker interface {
+	MarkTeamDispatched(taskID string)
 }
 
 // NewPlanExecutor constructs a PlanExecutor. All dependencies are required.
@@ -72,6 +82,13 @@ func NewPlanExecutor(repos executorRepos, orch TeamOrchestrator, seq sequencerPu
 // 2026-07-04 问题 4 修复：通过订阅 PlanBoardCreatedEvent 自动触发 Subscribe。
 func (e *PlanExecutor) SetEventBus(bus biz.EventBus) {
 	e.bus = bus
+}
+
+// SetTeamDispatchMarker injects the team dispatch marker (ProjectorFactory).
+// 2026-07-04 问题 P5/D1 修复：让 dispatchStep 在 Orchestrate 成功后标记 task，
+// OnTurnEnd 据此延迟 task.completed 直到 synthesis turn 完成。
+func (e *PlanExecutor) SetTeamDispatchMarker(m TeamDispatchMarker) {
+	e.marker = m
 }
 
 // TeamCompletionNotifier is implemented by TeamOrchestrators that track
@@ -147,6 +164,11 @@ func (e *PlanExecutor) Subscribe(ctx context.Context, board biz.PlanBoard) error
 	if len(board.Steps) == 0 {
 		return nil
 	}
+	// 2026-07-04 问题 D2 修复：DAG 执行开始前，将 PlanBoard 状态从 planning
+	// 更新为 executing，让前端能看到计划已进入执行阶段。之前 PlanBoard 创建后
+	// Status 始终是 "planning"，DAG 执行完成后直接跳到 "completed"，前端无法
+	// 区分"正在编排"和"正在执行"。
+	e.markPlanBoardExecuting(ctx, board)
 	// 同步创建 GraphStage（与 PlanBoard 一对一）。失败不阻断主流程，
 	// 仅记录日志（GraphStage 是可视化层，缺失不影响 DAG 调度正确性）。
 	e.initGraphStage(ctx, board)
@@ -154,9 +176,39 @@ func (e *PlanExecutor) Subscribe(ctx context.Context, board biz.PlanBoard) error
 	return r.run(ctx)
 }
 
+// markPlanBoardExecuting updates the PlanBoard status from "planning" to
+// "executing" and publishes a PlanBoardUpdatedEvent so the frontend can
+// reflect the transition. Idempotent: if the PlanBoard is already in a
+// terminal or executing state, the update is skipped.
+//
+// 2026-07-04 问题 D2 修复：补齐 planning → executing 状态转换。
+func (e *PlanExecutor) markPlanBoardExecuting(ctx context.Context, board biz.PlanBoard) {
+	if board.Status != biz.PlanStatusPlanning {
+		return // already executing/completed/failed, skip
+	}
+	board.Status = biz.PlanStatusExecuting
+	board.Version++
+	if _, err := e.repos.UpsertPlanBoard(ctx, board); err != nil {
+		e.lg.Warn("markPlanBoardExecuting: upsert plan_board (executing) failed",
+			loggateway.Str("plan_board_id", board.ID),
+			loggateway.Err(err))
+		return
+	}
+	e.seq.Publish(ctx, biz.NewPlanBoardUpdatedEvent(board))
+	e.lg.Info("PlanBoard 状态转换: planning → executing",
+		loggateway.Str("plan_board_id", board.ID),
+		loggateway.Str("task_id", board.TaskID))
+}
+
 // initGraphStage creates the GraphStage (and its GraphNodes) for the given
 // PlanBoard if it doesn't already exist. Idempotent: if a GraphStage is
 // already associated with the PlanBoard, it's left as-is.
+//
+// 2026-07-04 问题 5 修复：task_planner_impl.go:publishV2PlanBoard 已通过
+// seq.Publish 异步创建 GraphStage + GraphNodes + 发送事件。此处保留同步
+// UpsertGraphStage 作为 crash recovery fallback（确保 newDagRun 的
+// GetGraphStageByPlanBoard 能查到），但移除 seq.Publish 避免重复发送
+// GraphStageCreatedEvent（task_planner 已发）。
 //
 // 设计：docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md §3.2.4
 // GraphStage ID 由 planBoardID 确定性派生（uuid.NewSHA1(aranea.graph_stage.v2, planBoardID)）。
@@ -164,7 +216,11 @@ func (e *PlanExecutor) Subscribe(ctx context.Context, board biz.PlanBoard) error
 func (e *PlanExecutor) initGraphStage(ctx context.Context, board biz.PlanBoard) {
 	// 检查是否已存在 GraphStage（避免重复创建）。
 	if existing, err := e.repos.GetGraphStageByPlanBoard(ctx, board.ID); err == nil && existing.ID != "" {
-		// 已存在，跳过创建（可能来自历史 Subscribe 或 crash recovery）。
+		// 已存在，跳过创建（可能来自 task_planner 的异步持久化或 crash recovery）。
+		e.lg.Info("initGraphStage: GraphStage 已存在，跳过创建",
+			loggateway.Str("plan_board_id", board.ID),
+			loggateway.Str("graph_stage_id", existing.ID),
+		)
 		return
 	}
 	// 派生 GraphStage ID（确定性，确保多次调用产生相同 ID）。
@@ -195,7 +251,8 @@ func (e *PlanExecutor) initGraphStage(ctx context.Context, board biz.PlanBoard) 
 		nodes = append(nodes, gn)
 	}
 	gs.Nodes = nodes
-	// 持久化 GraphStage。
+	// 持久化 GraphStage（同步，确保 newDagRun 能查到）。
+	// VersionLT 守卫使此写入幂等：若 task_planner 的异步持久化已完成，此写入被拒绝。
 	if _, err := e.repos.UpsertGraphStage(ctx, gs); err != nil {
 		e.lg.Warn("upsert graph_stage failed (non-blocking)",
 			loggateway.Str("graph_stage_id", gsID),
@@ -213,8 +270,15 @@ func (e *PlanExecutor) initGraphStage(ctx context.Context, board biz.PlanBoard) 
 			)
 		}
 	}
-	// 发布 GraphStageCreatedEvent。
-	e.seq.Publish(ctx, biz.NewGraphStageCreatedEvent(gs))
+	// 2026-07-04 问题 5 修复：不再调用 seq.Publish(NewGraphStageCreatedEvent)。
+	// task_planner_impl.go:publishV2PlanBoard 已经发送了该事件，
+	// 此处重复发送会导致前端收到两次 GraphStageCreatedEvent。
+	// 同步 UpsertGraphStage 已确保 DB 记录存在，供 newDagRun 查询。
+	e.lg.Info("initGraphStage: 同步创建 GraphStage 作为 crash recovery fallback",
+		loggateway.Str("plan_board_id", board.ID),
+		loggateway.Str("graph_stage_id", gsID),
+		loggateway.Int("node_count", len(nodes)),
+	)
 }
 
 // dagRun encapsulates the per-Subscribe DAG state. Created fresh for each
@@ -447,11 +511,9 @@ func (r *dagRun) dispatchStep(ctx context.Context, step *biz.PlanStep) {
 	step.Version++
 	runningStep := *step
 	r.mu.Unlock()
-	// 2. Persist + publish PlanStepStarted.
-	if _, err := r.pe.repos.UpsertPlanStep(ctx, runningStep); err != nil {
-		r.pe.lg.Error("upsert plan_step (running) failed",
-			loggateway.Str("step_id", step.ID), loggateway.Err(err))
-	}
+	// 2. Publish PlanStepStarted (seq.Publish → EventRouter → async UpsertPlanStep).
+	// 2026-07-04 问题 6 修复：移除直接 repos.UpsertPlanStep 调用，避免与
+	// seq.Publish 的异步持久化双写（VersionLT 守卫使第二次写入无效，纯冗余）。
 	r.pe.seq.Publish(ctx, biz.NewPlanStepStartedEvent(runningStep, r.board.SessionID))
 	// 3. Call orchestrator (creates team + TeamStage via publishSpiritTeamAssembled).
 	// 传入带 SessionID 的 TeamStage（Orchestrate 从 ts.SessionID 获取 spiritSessionID；
@@ -471,6 +533,17 @@ func (r *dagRun) dispatchStep(ctx context.Context, step *biz.PlanStep) {
 	if result == nil || result.Team.ID == "" || result.TeamStageID == "" {
 		r.failStep(ctx, step, "orchestrate returned empty team or team_stage_id")
 		return
+	}
+	// 2026-07-04 问题 P5/D1 修复：标记此 task 已派发 team。
+	// OnTurnEnd 检查此标记，若为 true 则跳过 task.completed，
+	// 等 synthesis turn 完成后再发 task.completed。
+	if r.pe.marker != nil && r.board.TaskID != "" {
+		r.pe.marker.MarkTeamDispatched(r.board.TaskID)
+		r.pe.lg.Info("dispatchStep: 标记 task 已派发 team，延迟 task.completed",
+			loggateway.Str("task_id", r.board.TaskID),
+			loggateway.Str("step_id", step.ID),
+			loggateway.Str("team_id", result.Team.ID),
+		)
 	}
 	// 4. Update TeamStage (created inside Orchestrate) with TaskID/DagNodeID/
 	//    Status=Running/Stage=Executing. Uses the same derived ID so the
@@ -536,11 +609,8 @@ func (r *dagRun) handleCompletion(ctx context.Context, step *biz.PlanStep, ev bi
 	step.Version++
 	current := *step
 	r.mu.Unlock()
-	// Persist + publish.
-	if _, err := r.pe.repos.UpsertPlanStep(ctx, current); err != nil {
-		r.pe.lg.Error("upsert plan_step (terminal) failed",
-			loggateway.Str("step_id", step.ID), loggateway.Err(err))
-	}
+	// Publish terminal event (seq.Publish → EventRouter → async UpsertPlanStep).
+	// 2026-07-04 问题 6 修复：移除直接 repos.UpsertPlanStep 调用（双写冗余）。
 	if ev.Success {
 		r.pe.seq.Publish(ctx, biz.NewPlanStepCompletedEvent(current, r.board.SessionID))
 		// 2026-07-04 补齐：GraphNode → Completed
@@ -565,10 +635,7 @@ func (r *dagRun) failStep(ctx context.Context, step *biz.PlanStep, msg string) {
 	step.Version++
 	current := *step
 	r.mu.Unlock()
-	if _, err := r.pe.repos.UpsertPlanStep(ctx, current); err != nil {
-		r.pe.lg.Error("upsert plan_step (failStep) failed",
-			loggateway.Str("step_id", step.ID), loggateway.Err(err))
-	}
+	// 2026-07-04 问题 6 修复：移除直接 repos.UpsertPlanStep 调用（双写冗余）。
 	r.pe.seq.Publish(ctx, biz.NewPlanStepFailedEvent(current, r.board.SessionID))
 	// 2026-07-04 补齐：GraphNode → Failed
 	r.updateGraphNode(ctx, step.ID, biz.GraphNodeStatusFailed, "")
@@ -628,10 +695,7 @@ func (r *dagRun) cascadeSkip(ctx context.Context, failedID string) {
 			depStep.Version++
 			skipped := *depStep
 			r.mu.Unlock()
-			if _, err := r.pe.repos.UpsertPlanStep(ctx, skipped); err != nil {
-				r.pe.lg.Error("upsert plan_step (skipped) failed",
-					loggateway.Str("step_id", skipped.ID), loggateway.Err(err))
-			}
+			// 2026-07-04 问题 6 修复：移除直接 repos.UpsertPlanStep 调用（双写冗余）。
 			r.pe.seq.Publish(ctx, biz.NewPlanStepSkippedEvent(skipped, r.board.SessionID, reason))
 			// 2026-07-04 补齐：GraphNode → Interrupted（skipped 映射为 interrupted）
 			r.updateGraphNode(ctx, depID, biz.GraphNodeStatusInterrupted, "")

@@ -7,6 +7,7 @@ import (
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
 	araneasession "aranea-agents/internal/session"
+	rt "aranea-agents/internal/runtime"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
@@ -63,12 +64,16 @@ type awaitCoordinator interface {
 //
 // Phase 3b-D Task 10: migrated from v1 ActivityEventBus to v2 EventBus.
 // PublishAwaitResumed now emits biz.NewStepCreatedEvent (Kind=StepKindNotice).
+//
+// 2026-07-04 问题 C5 修复：新增 seq 字段，PublishAwaitResumed 优先用 seq.Publish
+// （持久化 + WS），eventBus 作为 fallback（仅 WS）。
 type chatAwaitCoordinator struct {
 	chatUC         *biz.ChatUsecase
 	runStatus      runStatusTracker
 	sessionState   sessionStateTransitor
 	sessionRT      func() *araneasession.Runtime // lazy accessor
 	eventBus       biz.EventBus
+	seq            rt.EventPublisher // 2026-07-04 问题 C5：优先用 seq 持久化
 	resumeInFlight *TypedSyncMap[string, struct{}]
 	lg             loggateway.Logger
 }
@@ -82,18 +87,20 @@ type chatAwaitCoordinatorDeps struct {
 	SessionState sessionStateTransitor
 	SessionRT    func() *araneasession.Runtime
 	EventBus     biz.EventBus
+	Seq          rt.EventPublisher // 2026-07-04 问题 C5：v2 Sequencer
 	Logger       loggateway.Logger
 }
 
 func newChatAwaitCoordinator(d chatAwaitCoordinatorDeps) *chatAwaitCoordinator {
 	return &chatAwaitCoordinator{
 		chatUC:         d.ChatUC,
-		runStatus:     d.RunStatus,
-		sessionState:  d.SessionState,
-		sessionRT:     d.SessionRT,
-		eventBus:      d.EventBus,
+		runStatus:      d.RunStatus,
+		sessionState:   d.SessionState,
+		sessionRT:      d.SessionRT,
+		eventBus:       d.EventBus,
+		seq:            d.Seq,
 		resumeInFlight: NewTypedSyncMap[string, struct{}](orchMapMaxIdle),
-		lg:            d.Logger,
+		lg:             d.Logger,
 	}
 }
 
@@ -128,8 +135,13 @@ func (a *chatAwaitCoordinator) EndResume(sessionID string) {
 // details are dropped. runID was already published via PublishRunStatus
 // (run_status_publish.go, owned by Task 9) before this call, so the run
 // status is independently delivered to WS clients.
+//
+// 2026-07-04 问题 C5 修复：优先用 seq.Publish 持久化，避免刷新后丢失。
 func (a *chatAwaitCoordinator) PublishAwaitResumed(sessionID, runID string) {
-	if a.eventBus == nil || strings.TrimSpace(sessionID) == "" {
+	if a.seq == nil && a.eventBus == nil {
+		return
+	}
+	if strings.TrimSpace(sessionID) == "" {
 		return
 	}
 	step := biz.Step{
@@ -142,7 +154,12 @@ func (a *chatAwaitCoordinator) PublishAwaitResumed(sessionID, runID string) {
 		Status:          biz.StepStatusRunning,
 		AuthorAgentKey:  "chat-service",
 	}
-	a.eventBus.Publish(context.Background(), biz.NewStepCreatedEvent(step))
+	ev := biz.NewStepCreatedEvent(step)
+	if a.seq != nil {
+		a.seq.Publish(context.Background(), ev)
+		return
+	}
+	a.eventBus.Publish(context.Background(), ev)
 }
 
 // SessionAwaitingUser checks if a session is in awaiting_user state.

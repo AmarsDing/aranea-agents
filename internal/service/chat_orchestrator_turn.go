@@ -489,7 +489,10 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		// loop owns draining the queue; re-entering would spawn a new
 		// goroutine per message, re-introducing the chain we eliminated.
 		if !inPendingLoop(ctx) {
-			o.processPendingQueue(sessionID, sess, ag, dialogMode, prov, mod)
+			// 2026-07-04 问题 C2 修复：传入 RootTaskActivityID 让 pending queue
+			// 路径的下游事件能关联到根 Task。
+			o.processPendingQueue(sessionID, sess, ag, dialogMode, prov, mod,
+				string(chatagent.RootTaskActivityIDFromCtx(ctx)))
 		}
 	}()
 

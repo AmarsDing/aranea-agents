@@ -187,6 +187,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 9 | M55 ConversationTurn + Channel 同步 | ✅ | Phase A–D ✅；UX 收口 CC-C-UX-* ✅ |
 | 10 | **ADR-02 + ADR-03 Activity-First 架构迁移** | ✅ | Envelope 删除 + 统一总线 + 并行异步持久化 + Session 父子树 + 工具类别 |
 | P-N | **流式渲染与活动排序修复** | ✅ | 统一 MD 渲染路径 + seq On* 入口预分配 + sequencer v2 单 publish worker（ADR-06） |
+| P-V2LF | **v2 实体生命周期与状态级联修复** | ✅ | P1-P6 + P5 Task 延迟关闭 + Fixes 1-7（seq 注入/msID 诊断/Cancelled 事件/双写消除/GraphStage 去重等） |
 | 11 | **三种模式数据模型 + WS 协议设计文档** | ✅ | 需求文档 §1.7 + 设计文档 §5.4 + B.2.1（Phase T7） |
 
 ### P-N 流式渲染与活动排序修复（2026-06-27）
@@ -383,6 +384,89 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 - [x] 前端 lint 0 errors（52 个 warning 均为预先存在）
 - [x] 空 ReplyBlock 不再显示（completed/cancelled 状态的空 reply 被过滤）
 - [x] 流式中的 reply step 仍正常显示（Status=running 不被过滤）
+
+---
+
+### P-V2LF v2 实体生命周期与状态级联修复（2026-07-04 新增）
+
+> **目标**：修复 v2 实体（Task/TeamStage/TeamRun/MemberSession/PlanBoard）生命周期状态级联不关闭、刷新后数据丢失、团队名称为空等问题。
+> **分析报告**：[docs/reports/2026-07-04-analysis-v2-entity-lifecycle-state-cascade-fix.md](../reports/2026-07-04-analysis-v2-entity-lifecycle-state-cascade-fix.md)
+> **关联 spec**：[docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md](../superpowers/specs/2026-07-02-llm-activity-ordering-design.md)
+
+#### 任务清单
+
+- [x] P1.1 修复 pending queue RootTaskActivityID 丢失（C2）— `chat_orchestrator_turn_dispatch.go` + `chat_orchestrator_turn.go` + `team_turn_hooks.go`
+- [x] P1.2 `publishV2TeamRunCompletion` 增加日志（C1）— 0 结果 Warn + member count Info
+- [x] P2 修复 PlanBoard 状态转换（D2）— `plan_executor.go` 增加 `markPlanBoardExecuting`
+- [x] P3 放宽 TaskCard.vue 过滤（C7）— planning 状态 PlanBoard 也显示
+- [x] P4 修复 4 处绕过 seq.Publish（C5）— `chat_event_publisher.go` + `chat_orch_await.go` + `pre_planning_gate.go` + `chat_run_gateway.go`
+- [x] P6 team_name 防御性 Warn（C3）— `spirit_team.go` `publishSpiritTeamAssembled`
+- [x] P5 Task 状态延迟关闭（D1）— `ProjectorFactory.teamDispatched` 跟踪 + `OnTurnEnd` 延迟 task.completed，synthesis turn 触发关闭
+- [x] P-FIX1 `GraphOrchestrationProjector` 注入 seq（高）— `graph_task_status.go` 优先 `seq.Publish`（持久化+WS），fallback eventBus
+- [x] P-FIX2 `HandleTeamTurnResult` 入口 Warn（高）— `RootTaskActivityID` 为空时记录告警
+- [x] P-FIX3 `publishV2TeamRunCompletion` msID 诊断日志（高）— 记录 msID + agentKey + DB ID
+- [x] P-FIX4 Cancelled TeamRun 事件语义修正（中）— 改用 `NewTeamRunFailedEvent`
+- [x] P-FIX5 GraphStage 重复创建修复（中）— 移除 `initGraphStage` 中冗余 `seq.Publish`，保留同步 Upsert 作为 crash recovery
+- [x] P-FIX6 PlanStep 双写消除（低）— 移除 4 处直接 `repos.UpsertPlanStep`，统一由 `seq.Publish` → EventRouter 异步持久化
+- [x] P-FIX7 PlanExecutor 注入 TeamDispatchMarker（高/P5 配套）— `dispatchStep` 标记 task 已派发 team
+
+#### 改动文件清单
+
+| 文件 | 改动 |
+|------|------|
+| `internal/service/chat_orchestrator_turn_dispatch.go` | `processPendingQueue` 增加 `rootTaskID` 参数，注入 `loopCtx` |
+| `internal/service/chat_orchestrator_turn.go` | 调用 `processPendingQueue` 传 `RootTaskActivityIDFromCtx(ctx)` |
+| `internal/service/team_turn_hooks.go` | 调用 `processPendingQueue` 传 `RootTaskActivityIDFromCtx(ctx)` |
+| `internal/service/spirit_team.go` | `publishV2TeamRunCompletion` 增加 0 结果 Warn + member count Info；`publishSpiritTeamAssembled` 增加 team.DisplayName 为空 Warn |
+| `internal/service/plan_executor.go` | `Subscribe` 增加 `markPlanBoardExecuting`（planning → executing） |
+| `internal/agent/v2/projector.go` | `ProjectorFactory` 增加 `Seq()` 方法暴露 seq |
+| `internal/service/chat_orchestrator.go` | 增加 `v2Seq` 字段，从 `V2ProjectorFactory.Seq()` 提取 |
+| `internal/service/chat_event_publisher.go` | `chatTurnEventPublisher` 增加 `seq` 字段，`PublishTurnFailure` 用 seq 优先 |
+| `internal/service/chat_orch_await.go` | `chatAwaitCoordinator` 增加 `seq` 字段，`PublishAwaitResumed` 用 seq 优先 |
+| `internal/service/pre_planning_gate.go` | `PrePlanningGate` 增加 `seq` 字段，`publishPlanningPhase` 用 seq 优先 |
+| `internal/service/chat_run_gateway.go` | `chatEventPublisher` 增加 `seq` 字段，`publishMessageQueuedToBus` 用 seq 优先 |
+| `internal/service/chat_orchestrator_turn_preplanning.go` | `NewPrePlanningGate` 调用传 `o.v2Seq` |
+| `web/src/components/chat/v2/TaskCard.vue` | `planBoards` computed 移除过滤，planning 状态也显示 |
+| `internal/service/pre_planning_gate_test.go` | 2 处 `NewPrePlanningGate` 调用增加 `nil` seq 参数 |
+| `internal/service/turn_error_publish_test.go` | 3 处 `newChatTurnEventPublisher` 调用增加 `loggateway.NewNoop()` 参数 + import |
+| `internal/service/graph_orchestration_projector.go` | 增加 `seq` 字段 + `SetSeq` 方法（P-FIX1） |
+| `internal/service/graph_task_status.go` | `PublishGraphTaskStatus` 优先使用 `seq.Publish`，fallback `eventBus.Publish`（P-FIX1） |
+| `internal/service/spirit_team.go` | `HandleTeamTurnResult` 入口 Warn（P-FIX2）；`publishV2TeamRunCompletion` msID 诊断日志（P-FIX3）；Cancelled TeamRun 改用 `NewTeamRunFailedEvent`（P-FIX4） |
+| `internal/service/plan_executor.go` | 移除 `initGraphStage` 冗余 `seq.Publish`（P-FIX5）；移除 4 处直接 `repos.UpsertPlanStep`（P-FIX6）；新增 `TeamDispatchMarker` 接口 + `SetTeamDispatchMarker` + `dispatchStep` 标记（P-FIX7） |
+| `internal/service/plan_executor_test.go` | `fakeSeq` 增加 `repos` 字段模拟 EventRouter 持久化行为（P-FIX6 测试修复） |
+| `internal/agent/v2/projector.go` | `ProjectorFactory` 增加 `teamDispatched sync.Map` + `MarkTeamDispatched`/`HasTeamDispatch`/`ClearTeamDispatch`；`ActivityProjector` 增加 `factory` 字段；`OnTurnEnd` 检查 team 派发标记决定是否延迟 task.completed（P5） |
+| `internal/service/chat_wire.go` | `ProvideChatService` 新增 `graphProj` 参数；注入 seq 到 GraphOrchestrationProjector（P-FIX1）；注入 ProjectorFactory 到 PlanExecutor 作为 TeamDispatchMarker（P-FIX7） |
+| `cmd/admin/wire_gen.go` | `make wire` 自动重生成：`ProvideChatService` 调用增加 `graphOrchestrationProjector` 参数 |
+
+#### 验收标准
+
+- [x] `go build ./...` 通过
+- [x] `go test ./internal/service/... ./internal/agent/... ./internal/biz/...` 通过（含 `plan_executor_test.go` 修复后全绿）
+- [x] `pnpm lint` 0 errors（67 个 warning 均为预先存在）
+- [x] `pnpm build` 通过
+- [x] 设计文档同步：`1-chat.design.md` §B.4.3 补充 PlanBoard 状态机 + 显示规则
+- [x] `make wire` 重生成（`ProvideChatService` 签名变更）
+- [ ] **运行时验证**（待用户执行）：清空数据库 → 发起复杂任务 → 验证：
+  - Task 状态在 team 派发后保持 Running，synthesis turn 完成才转 completed
+  - 实体状态级联关闭（Task/Turn/TeamStage/TeamRun/MemberSession/PlanBoard/PlanStep）
+  - 刷新后数据不丢失（ActivityBridgeEvent 经 seq 持久化）
+  - team_name 非空
+  - Cancelled TeamRun 状态正确（Failed 事件而非 Started 占位）
+  - PlanStep 单写无冗余（仅 seq.Publish 路径）
+
+#### P5 Task 延迟关闭设计（已实现）
+
+**问题**：`ActivityProjector.OnTurnEnd` 在 root turn 完成时立即发射 `task.completed`，但 team 可能仍在执行，导致 Task 显示"已完成"而团队未结束。
+
+**方案**（system-push 模式配套）：
+1. `ProjectorFactory` 增加 `teamDispatched sync.Map`（key: taskID）
+2. `PlanExecutor.dispatchStep` 在 `Orchestrate` 成功后调用 `MarkTeamDispatched(taskID)`
+3. `OnTurnEnd` root turn 完成时检查 `HasTeamDispatch(meta.TaskID)`：
+   - 命中 → 跳过 `task.completed`，Task 保持 Running（等 synthesis turn）
+   - 未命中 → 正常发射 `task.completed`（原行为）
+4. synthesis continuation turn（`meta.ParentTaskID != ""`）完成时发射 `task.completed`（parent task）并 `ClearTeamDispatch(taskID)`
+
+**依赖**：`PlanExecutor.SetTeamDispatchMarker` 由 `ProvideChatService` 注入 `ProjectorFactory`（后置构造注入，避免 wire 循环）。
 
 ---
 

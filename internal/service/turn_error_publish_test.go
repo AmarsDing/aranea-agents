@@ -8,11 +8,12 @@ import (
 	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestPublishTurnFailure_usesEnvelopeErrorFromTurn(t *testing.T) {
 	activityBus := &captureEventBus{}
-	evtPub := newChatTurnEventPublisher(nil, activityBus, nil)
+	evtPub := newChatTurnEventPublisher(nil, activityBus, nil, loggateway.NewNoop())
 	orch := &ChatOrchestrator{
 		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{}}},
 		turnLC: &chatTurnLifecycleImpl{
@@ -45,7 +46,7 @@ func TestPublishTurnFailure_usesEnvelopeErrorFromTurn(t *testing.T) {
 
 func TestPublishTurnFailure_pendingID(t *testing.T) {
 	activityBus := &captureEventBus{}
-	evtPub := newChatTurnEventPublisher(nil, activityBus, nil)
+	evtPub := newChatTurnEventPublisher(nil, activityBus, nil, loggateway.NewNoop())
 	orch := &ChatOrchestrator{
 		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{}}},
 		turnLC: &chatTurnLifecycleImpl{
@@ -111,7 +112,7 @@ func (r *recordingRunStatusTracker) PublishRunStatus(sessionID, runID, status, e
 // newFailTurnTestOrch builds a ChatOrchestrator wired with the given
 // runStatusTracker, suitable for testing failTurn/markAndPublish.
 func newFailTurnTestOrch(activityBus *captureEventBus, rs runStatusTracker) *ChatOrchestrator {
-	evtPub := newChatTurnEventPublisher(nil, activityBus, nil)
+	evtPub := newChatTurnEventPublisher(nil, activityBus, nil, loggateway.NewNoop())
 	return &ChatOrchestrator{
 		core: chatTurnCoreDeps{TD: rt.TurnDeps{Pipeline: rt.EventPipeline{}}},
 		turnLC: &chatTurnLifecycleImpl{

@@ -131,8 +131,12 @@ func NewChatRunStatusPersister(sessions biz.SessionStatePort, lg loggateway.Logg
 // Phase 3b-D Task 9: PublishRunStatus migrated to v2 EventBus (biz.RunStatusEvent).
 // Phase 3b-D Task 10: PublishMessageQueued migrated to v2 EventBus
 // (biz.NewStepCreatedEvent, Kind=StepKindNotice).
+//
+// 2026-07-04 问题 C5 修复：新增 seq 字段，PublishMessageQueued 优先用 seq.Publish
+// （持久化 + WS），eventBus 作为 fallback（仅 WS）。
 type chatEventPublisher struct {
 	eventBus biz.EventBus // v2: for PublishRunStatus + PublishMessageQueued
+	seq      runtime.EventPublisher // 2026-07-04 问题 C5：优先用 seq 持久化
 }
 
 func (pub *chatEventPublisher) PublishRunStatus(sessionID, runID, status, errMsg string) {
@@ -140,11 +144,11 @@ func (pub *chatEventPublisher) PublishRunStatus(sessionID, runID, status, errMsg
 }
 
 func (pub *chatEventPublisher) PublishMessageQueued(sessionID string) {
-	publishMessageQueuedToBus(pub.eventBus, sessionID)
+	publishMessageQueuedToBus(pub.seq, pub.eventBus, sessionID)
 }
 
-func NewChatEventPublisher(eventBus biz.EventBus) biz.ChatEventPublisher {
-	return &chatEventPublisher{eventBus: eventBus}
+func NewChatEventPublisher(eventBus biz.EventBus, seq runtime.EventPublisher) biz.ChatEventPublisher {
+	return &chatEventPublisher{eventBus: eventBus, seq: seq}
 }
 
 // NewChatUsecaseFromDeps wires the shared run registry, pending queue, and session
@@ -152,12 +156,15 @@ func NewChatEventPublisher(eventBus biz.EventBus) biz.ChatEventPublisher {
 //
 // Phase 3b-D Task 9: migrated PublishRunStatus to v2 EventBus; activityBus
 // param removed since all ChatEventPublisher methods now use v2.
+//
+// 2026-07-04 问题 C5 修复：新增 seq 参数，注入到 chatEventPublisher。
 func NewChatUsecaseFromDeps(
 	runs *runtime.RunRegistry,
 	pending *runtime.PendingMessageQueue,
 	locks *biz.SessionLockManager,
 	sessions biz.SessionStatePort,
 	eventBus biz.EventBus,
+	seq runtime.EventPublisher,
 	lg loggateway.Logger,
 ) *biz.ChatUsecase {
 	uc := biz.NewChatUsecase(
@@ -165,7 +172,7 @@ func NewChatUsecaseFromDeps(
 		locks,
 		NewPendingQueueAdapter(pending),
 		NewChatRunStatusPersister(sessions, lg),
-		NewChatEventPublisher(eventBus),
+		NewChatEventPublisher(eventBus, seq),
 		lg,
 	)
 	uc.StartBackgroundGoroutines()
@@ -299,8 +306,14 @@ func clearAwaitingRunStateFromSession(sessions biz.SessionStatePort, ctx context
 // DATA LOSS: v2 Step has no Meta field, so status/hint/source carried in
 // v1 Activity.Meta are dropped. The message content is preserved as
 // Step.Content, and NoticeType="info" is preserved for NoticeBlock rendering.
-func publishMessageQueuedToBus(eventBus biz.EventBus, sessionID string) {
-	if eventBus == nil || strings.TrimSpace(sessionID) == "" {
+//
+// 2026-07-04 问题 C5 修复：优先用 seq.Publish 持久化，避免刷新后丢失；
+// eventBus 作为 fallback（仅 WS，无持久化）。
+func publishMessageQueuedToBus(seq runtime.EventPublisher, eventBus biz.EventBus, sessionID string) {
+	if strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	if seq == nil && eventBus == nil {
 		return
 	}
 	step := biz.Step{
@@ -313,5 +326,10 @@ func publishMessageQueuedToBus(eventBus biz.EventBus, sessionID string) {
 		Status:          biz.StepStatusPending,
 		AuthorAgentKey:  "chat-service",
 	}
-	eventBus.Publish(context.Background(), biz.NewStepCreatedEvent(step))
+	ev := biz.NewStepCreatedEvent(step)
+	if seq != nil {
+		seq.Publish(context.Background(), ev)
+		return
+	}
+	eventBus.Publish(context.Background(), ev)
 }

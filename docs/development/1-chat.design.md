@@ -3600,6 +3600,33 @@ ActivityEventSequencer (单 publish worker)
 
 > **不引入独立状态机**：Plan item 状态完全跟随对应 team/agent 的状态转换，由 team/agent 的状态机决定。引入独立状态机会导致 plan item 状态与实际 team/agent 状态不一致的同步问题。
 
+**PlanBoard 数据实体状态机**（2026-07-04 补充）：
+
+PlanBoard 是 plan 的数据层实体（区别于 PlanBlock UI 组件），拥有独立状态机：
+
+```mermaid
+stateDiagram-v2
+  [*] --> planning: PlanBoard 创建
+  planning --> executing: PlanExecutor.Subscribe 启动 DAG
+  executing --> completed: 所有 PlanStep 完成
+  executing --> failed: 任一 PlanStep 失败（不可恢复）
+  executing --> partial_failure: 部分 PlanStep 失败（可继续）
+  planning --> failed: 规划失败
+  completed --> [*]
+  failed --> [*]
+  partial_failure --> [*]
+```
+
+| 状态 | 含义 | 触发点 |
+|------|------|--------|
+| `planning` | PlanBoard 已创建，DAG 未启动 | `PlanExecutor.CreatePlanBoard` |
+| `executing` | DAG 已启动，PlanStep 派发中 | `PlanExecutor.Subscribe` → `markPlanBoardExecuting` |
+| `completed` | 所有 PlanStep 完成 | `dagRun.run` 完成 → `publishPlanBoardTerminal` |
+| `failed` | 不可恢复失败 | `dagRun.run` 失败 → `publishPlanBoardTerminal` |
+| `partial_failure` | 部分失败 | `dagRun.run` 部分失败 → `publishPlanBoardTerminal` |
+
+> **显示规则**（2026-07-04 修复 C7）：所有状态的 PlanBoard 都应显示，包括 `planning` 状态。`TaskCard.vue` 的 `planBoards` computed 不应过滤掉 `planning` 状态的 PlanBoard，否则在 DAG 启动前整个执行计划面板会消失。
+
 **计划变更处理**：
 - 直接更新 plan 内容（替换原面板的 items 列表）
 - 不引入 diff 标记（不显示"➕ 新增"/"⊘ 已移除"/"✏️ 已变更"）
@@ -4129,3 +4156,93 @@ ChatEntitySidebar（330px）
 - `ActivityStream.vue` 将 `autoExpandFor` prop 透传给 `TeamCard` / `AgentCard`，组件内部 `watch(autoExpand)` 调用 `toggleExpand()` 自动展开
 - **多成员 TeamCard 展开**：`TeamCard` 的 `autoExpand` 条件判断 `autoExpandFor` 是否等于 `teamId` 或任意成员的 `agentKey`，确保点击左侧任意成员都能展开父级团队卡片
 - 目标 DOM 元素通过 Vue attribute fallthrough 的 `:data-agent-key` / `:data-team-id` 属性定位，并对 agentKey 做 `CSS.escape` 转义避免选择器解析失败
+
+---
+
+### B.10 v2 实体生命周期与状态级联设计（2026-07-04 新增）
+
+> **背景**：system-push 模式（方案 B）下，Spirit turn #1 完成时 team 仍在执行，但 `ActivityProjector.OnTurnEnd` 立即发射 `task.completed`，导致 Task 状态与 Team 实际进度不一致。同时存在 v2 实体刷新后数据丢失、Cancelled TeamRun 事件语义错误、PlanStep 双写冗余等问题。
+
+#### B.10.1 Task 延迟关闭设计（P5/D1）
+
+**核心机制**：`ProjectorFactory` 跟踪 task 是否已派发 team，`OnTurnEnd` 据此决定是否延迟 `task.completed`。
+
+**组件协作**：
+
+```
+PlanExecutor.dispatchStep
+  └─ Orchestrate 成功 → marker.MarkTeamDispatched(taskID)
+                              ↓
+                          ProjectorFactory.teamDispatched[taskID] = true
+
+Spirit turn #1 完成 → ActivityProjector.OnTurnEnd
+  └─ root turn (meta.ParentTaskID == "")
+      └─ factory.HasTeamDispatch(meta.TaskID) == true
+          └─ 跳过 task.completed（Task 保持 Running）
+              ↓
+          [team 异步执行]
+              ↓
+          checkAllTeamsCompleted → 触发 synthesis turn #2
+              ↓
+synthesis turn 完成 → ActivityProjector.OnTurnEnd
+  └─ continuation turn (meta.ParentTaskID != "")
+      └─ 发射 task.completed（parent task）
+          └─ factory.ClearTeamDispatch(taskID)
+```
+
+**关键接口**：
+
+| 接口/字段 | 位置 | 职责 |
+|-----------|------|------|
+| `TeamDispatchMarker` | `plan_executor.go` | `MarkTeamDispatched(taskID)` 接口 |
+| `ProjectorFactory.teamDispatched` | `internal/agent/v2/projector.go` | `sync.Map` 跟踪 taskID → bool |
+| `ProjectorFactory.MarkTeamDispatched/HasTeamDispatch/ClearTeamDispatch` | 同上 | 标记/查询/清除 |
+| `ActivityProjector.factory` | 同上 | `OnTurnEnd` 通过此引用查询 |
+| `PlanExecutor.SetTeamDispatchMarker` | `plan_executor.go` | 后置构造注入 |
+
+**注入路径**：`ProvideChatService`（`chat_wire.go`）后置注入：
+1. `graphProj.SetSeq(pf.Seq())` — 为 GraphOrchestrationProjector 注入 seq
+2. `planExec.SetTeamDispatchMarker(pf)` — 为 PlanExecutor 注入 ProjectorFactory 作为 marker
+
+**不变量**：
+- `MarkTeamDispatched` 必须在 `Orchestrate` 成功返回后调用（确保 team 真实派发）
+- `ClearTeamDispatch` 必须在 synthesis turn `task.completed` 发射后调用（避免标记泄漏）
+- `teamDispatched` 使用 `sync.Map`（并发安全：PlanExecutor goroutine 写，Projector goroutine 读）
+
+#### B.10.2 ActivityBridgeEvent 持久化设计（P-FIX1）
+
+**问题**：`graph_task_status.go:PublishGraphTaskStatus` 通过 `eventBus.Publish` 发射 `ActivityBridgeEvent`，绕过 seq，导致刷新后数据丢失。
+
+**方案**：`GraphOrchestrationProjector` 注入 `seq runtime.EventPublisher`（通过 `SetSeq` 后置注入，避免 wire 循环）。`PublishGraphTaskStatus` 优先 `seq.Publish`（持久化 + WS），seq 为 nil 时 fallback 到 `eventBus.Publish`（仅 WS，兼容启动早期未注入场景）。
+
+#### B.10.3 Cancelled TeamRun 事件语义（P-FIX4）
+
+**问题**：Cancelled TeamRun 使用 `NewTeamRunStartedEvent` 作为占位，语义错误（Started 表示开始而非取消）。
+
+**方案**：改用 `NewTeamRunFailedEvent`。EventRouter 路由两个事件到同一 `UpsertTeamRun`，`persistTeamRun` 使用 `tr.Status` 字段（而非事件类型）决定状态，故语义修正不影响持久化逻辑。
+
+#### B.10.4 PlanStep 单写路径（P-FIX6）
+
+**问题**：`dispatchStep`/`handleCompletion`/`failStep`/`cascadeSkip` 4 处同时调用 `repos.UpsertPlanStep`（同步）和 `seq.Publish`（异步 → EventRouter → `UpsertPlanStep`），双写冗余。
+
+**方案**：移除直接 `repos.UpsertPlanStep` 调用，统一由 `seq.Publish` → EventRouter → 异步 `UpsertPlanStep` 单路径持久化。Repo 层 `VersionLT` 守卫使第二次写入无效（idempotent），故原双写纯冗余。
+
+**测试影响**：`fakeSeq` 需模拟 EventRouter 路由行为（将 `PlanStepStartedEvent` 等路由到 `repos.UpsertPlanStep`），否则测试中 fake repo 无状态更新。见 `plan_executor_test.go:fakeSeq.Publish`。
+
+#### B.10.5 GraphStage 创建路径（P-FIX5）
+
+**问题**：`task_planner_impl.go:publishV2PlanBoard` 已发射 `GraphStageCreatedEvent`，`initGraphStage` 又调用 `seq.Publish(NewGraphStageCreatedEvent)`，导致前端收到两次事件。
+
+**方案**：移除 `initGraphStage` 中的 `seq.Publish`。保留同步 `repos.UpsertGraphStage` 作为 **crash recovery fallback**——`newDagRun` 同步查询 GraphStage 需要记录立即可见，不能依赖异步 EventRouter。
+
+#### B.10.6 msID 一致性诊断（P-FIX3）
+
+**问题**：`publishV2TeamRunCompletion` 派生 msID 时使用 DB MemberAgentKey，可能与创建时 `agentKeys` 不一致，导致 msID 不匹配。
+
+**方案**：在派生 msID 时记录 Info 日志（msID + agentKey + member_session_db_id），便于运行时诊断。msID 派生公式保持不变：`uuid.NewSHA1(NameSpaceDNS, "aranea.member_session.v2:"+teamRunID+":"+agentKey)`。
+
+#### B.10.7 HandleTeamTurnResult 入口校验（P-FIX2）
+
+**问题**：`HandleTeamTurnResult` 入口未校验 `RootTaskActivityID`，为空时 v2 TeamRun/MemberSession 无法关联到根 Task。
+
+**方案**：入口增加 Warn 日志（不阻断流程，仅告警），便于排查 pending queue 未注入 `RootTaskActivityID` 的问题。

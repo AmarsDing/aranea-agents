@@ -105,14 +105,10 @@ const auth = useSafeAuthStore();
 const store = useChatActivityStore();
 const turns = computed(() => store.getTaskTurns(props.task.ID));
 const teamStages = computed(() => store.getTaskTeamStages(props.task.ID));
-// 2026-07-04 问题 3 修复：过滤空 PlanBoard（无 steps 且非终态），避免渲染
-// 空"执行计划"卡片。后端已在 publishV2PlanBoard 加守卫，但旧数据可能残留。
-const planBoards = computed(() =>
-  store.getTaskPlanBoards(props.task.ID).filter((pb) => {
-    const steps = store.getPlanBoardSteps(pb.ID);
-    return steps.length > 0 || pb.Status === 'completed' || pb.Status === 'failed';
-  }),
-);
+// 2026-07-04 问题 C7 修复：放宽 PlanBoard 过滤条件，planning/executing 状态
+// 也显示。之前过滤掉了 planning 状态（PlanBoard 从未进入 executing），导致整个
+// 执行计划面板不显示。现在只要 PlanBoard 存在就显示，让用户能看到计划正在编排中。
+const planBoards = computed(() => store.getTaskPlanBoards(props.task.ID));
 // 2026-07-04 问题 1 修复：按 PlanBoard.StartedAt 拆分 Turn，
 // 让精灵在创建计划前的思考/回复渲染在 PlanBoard 之前。
 const prePlanTurns = computed(() => {

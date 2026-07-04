@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"aranea-agents/internal/biz"
+	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
@@ -35,17 +36,23 @@ type GateDecision struct {
 // published so the frontend can render the assessment phase.
 //
 // Phase 3b-D Task 10: migrated from v1 ActivityEventBus to v2 EventBus.
+//
+// 2026-07-04 问题 C5 修复：新增 seq 字段，publishPlanningPhase 优先用 seq.Publish
+// （持久化 + WS），eventBus 作为 fallback（仅 WS）。
 type PrePlanningGate struct {
 	planner  biz.TaskPlannerPort
 	eventBus biz.EventBus
+	seq      rt.EventPublisher // 2026-07-04 问题 C5：优先用 seq 持久化
 	lg       loggateway.Logger
 }
 
 // NewPrePlanningGate constructs a PrePlanningGate.
-func NewPrePlanningGate(planner biz.TaskPlannerPort, eventBus biz.EventBus, lg loggateway.Logger) *PrePlanningGate {
+// 2026-07-04 问题 C5 修复：新增 seq 参数。
+func NewPrePlanningGate(planner biz.TaskPlannerPort, eventBus biz.EventBus, seq rt.EventPublisher, lg loggateway.Logger) *PrePlanningGate {
 	return &PrePlanningGate{
 		planner:  planner,
 		eventBus: eventBus,
+		seq:      seq,
 		lg:       lg.With(loggateway.Domain("pre-planning-gate")),
 	}
 }
@@ -111,7 +118,7 @@ func (g *PrePlanningGate) Evaluate(ctx context.Context, input biz.PlanInput) (Ga
 // and the status is mapped to StepStatus. noticeType is preserved as
 // Step.NoticeType for NoticeBlock rendering.
 func (g *PrePlanningGate) publishPlanningPhase(ctx context.Context, status biz.ActivityStatus, message, spiritSessionID string) {
-	if g.eventBus == nil {
+	if g.seq == nil && g.eventBus == nil {
 		return
 	}
 	// Map assess status → notice type for NoticeBlock rendering.
@@ -135,5 +142,11 @@ func (g *PrePlanningGate) publishPlanningPhase(ctx context.Context, status biz.A
 		Status:          stepStatus,
 		AuthorAgentKey:  "pre-planning-gate",
 	}
-	g.eventBus.Publish(ctx, biz.NewStepCreatedEvent(step))
+	// 2026-07-04 问题 C5 修复：优先用 seq.Publish 持久化，避免刷新后丢失。
+	ev := biz.NewStepCreatedEvent(step)
+	if g.seq != nil {
+		g.seq.Publish(ctx, ev)
+		return
+	}
+	g.eventBus.Publish(ctx, ev)
 }

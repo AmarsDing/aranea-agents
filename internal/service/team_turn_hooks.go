@@ -72,7 +72,10 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 		// loop owns draining the queue; re-entering would spawn a new
 		// goroutine per message, re-introducing the chain we eliminated.
 		if !inPendingLoop(ctx) {
-			o.processPendingQueue(sessionID, sess, biz.Agent{}, "", "", "")
+			// 2026-07-04 问题 C2 修复：传入 RootTaskActivityID 让 pending queue
+			// 路径的下游事件能关联到根 Task。
+			o.processPendingQueue(sessionID, sess, biz.Agent{}, "", "", "",
+				string(chatagent.RootTaskActivityIDFromCtx(ctx)))
 		}
 	}()
 

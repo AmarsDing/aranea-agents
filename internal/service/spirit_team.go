@@ -281,6 +281,18 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 	if s.team.TeamUC == nil {
 		return
 	}
+	// 2026-07-04 问题 2 修复：入口校验 RootTaskActivityID，为空时记录 Warn。
+	// RootTaskActivityID 由 chat_orchestrator_turn.go:401 注入到 ctx，
+	// publishV2TeamRunCompletion 依赖它派生 TaskID 关联 TeamRun/MemberSession。
+	// 为空会导致 v2 实体无法关联到根 Task，前端 AgentCard 渲染异常。
+	if rtID := string(agent.RootTaskActivityIDFromCtx(ctx)); rtID == "" {
+		s.lg.Warn("HandleTeamTurnResult: RootTaskActivityID 为空，v2 TeamRun/MemberSession 将无法关联到根 Task",
+			loggateway.StepID("spirit.handle_team_turn_result.empty_root_task"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Str("team_id", teamID),
+			loggateway.Str("status", string(status)),
+		)
+	}
 	team, err := s.team.TeamUC.Get(ctx, teamID)
 	if err != nil || !team.AutoCreated {
 		return
@@ -1062,6 +1074,13 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 	// 显示 Team ID 和成员列表（之前 Members 为 null，前端无法渲染 member-chip）。
 	// Members 数据从上面构建的 members 数组（v1 Meta 格式）转换为 v2 类型安全的 []MemberInfo。
 	// 2026-07-04 问题 3 修复：携带 TeamName 让前端展示团队名称而非 ID。
+	// 2026-07-04 问题 C3 修复：team.DisplayName 为空时记录 Warn 日志，便于定位。
+	if strings.TrimSpace(team.DisplayName) == "" {
+		a.lg.Warn("publishSpiritTeamAssembled: team.DisplayName 为空，前端将显示 team_id",
+			loggateway.StepID("spirit.team.empty_display_name"),
+			loggateway.Str("team_id", team.ID),
+		)
+	}
 	ts := biz.TeamStage{
 		ID:        string(agent.NewTeamStageActivityID(team.ID)),
 		TaskID:    string(agent.RootTaskActivityIDFromCtx(ctx)),
@@ -1430,9 +1449,12 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 	case biz.TeamRunV2StatusFailed:
 		s.seq.Publish(ctx, biz.NewTeamRunFailedEvent(tr))
 	default:
-		// cancelled: 无 NewTeamRunCancelledEvent 工厂；用 UpdatedEvent 兜底。
-		// RepoSet 的 persistTeamRun 会根据 Status 字段更新实体。
-		s.seq.Publish(ctx, biz.NewTeamRunStartedEvent(tr)) // placeholder: v2 store 用 StartedEvent 触发 upsert
+		// 2026-07-04 问题 4 修复：cancelled 状态改用 NewTeamRunFailedEvent（语义更接近）。
+		// 原来用 NewTeamRunStartedEvent 作为 placeholder 语义错误（Started 表示开始而非取消）。
+		// event_router.go 中 FailedEvent 与 StartedEvent 都路由到 UpsertTeamRun，
+		// RepoSet.persistTeamRun 根据 tr.Status 字段（Cancelled）更新实体，与事件类型无关。
+		// 使用 FailedEvent 让日志和事件流更易诊断：cancelled 是一种非成功终止。
+		s.seq.Publish(ctx, biz.NewTeamRunFailedEvent(tr))
 	}
 
 	// 查询团队成员会话，为每个成员发布 MemberSessionUpdatedEvent。
@@ -1446,6 +1468,17 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 		)
 		return
 	}
+	if len(result.Items) == 0 {
+		// 2026-07-04 问题 C1 修复：查询返回 0 条记录时记录 Warn，便于定位
+		// MemberSession 卡在 running 的根因（可能 TeamID 未正确关联到会话）。
+		s.lg.Warn("publishV2TeamRunCompletion: 查询团队成员会话返回 0 条记录，MemberSession 将停留在 running 状态",
+			loggateway.StepID("spirit.v2.team_run_completion.search_empty"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+		)
+	}
+	// 2026-07-04 问题 C1 修复：记录查询到的成员会话数量，便于调试。
+	memberCount := 0
 	for _, sess := range result.Items {
 		// 仅处理 agent 类型的会话（团队成员会话）。父会话（SessionType=team）跳过。
 		if sess.SessionType != "agent" {
@@ -1455,8 +1488,21 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 		if agentKey == "" {
 			continue
 		}
+		memberCount++
 		// 派生 MemberSession ID（与 publishV2TeamRunAndMemberSessions 一致）。
+		// 2026-07-04 问题 3 修复：记录 msID + agentKey 来源（DB MemberAgentKey），
+		// 用于诊断创建时 agentKeys 与完成时 DB MemberAgentKey 不一致导致的 msID 不匹配。
+		// 创建时 agentKeys 来自 publishV2TeamRunAndMemberSessions 的入参，
+		// 完成时 agentKey 来自 sess.MemberAgentKey（DB 字段），两者必须完全一致。
 		msID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.member_session.v2:"+teamRunID+":"+agentKey)).String()
+		s.lg.Info("publishV2TeamRunCompletion: 派生 MemberSession ID",
+			loggateway.StepID("spirit.v2.team_run_completion.msid"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Str("team_run_id", teamRunID),
+			loggateway.Str("member_session_id", msID),
+			loggateway.Str("agent_key", agentKey),
+			loggateway.Str("member_session_db_id", sess.ID),
+		)
 		ms := biz.MemberSession{
 			ID:              msID,
 			TeamRunID:       teamRunID,
@@ -1472,4 +1518,13 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 		}
 		s.seq.Publish(ctx, biz.NewMemberSessionUpdatedEvent(ms))
 	}
+	// 2026-07-04 问题 C1 修复：记录发布的 MemberSession 完成事件数量。
+	s.lg.Info("publishV2TeamRunCompletion: 已发布 MemberSession 完成事件",
+		loggateway.StepID("spirit.v2.team_run_completion.done"),
+		loggateway.Str("team_id", teamID),
+		loggateway.Str("team_run_id", teamRunID),
+		loggateway.Str("member_status", string(memberStatus)),
+		loggateway.Int("member_count", memberCount),
+		loggateway.Str("root_task_id", rootTaskID),
+	)
 }

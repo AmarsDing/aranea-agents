@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
@@ -34,14 +35,18 @@ type turnEventPublisher interface {
 // biz.NewTaskFailedEvent. Session revision bumps go directly to the
 // SessionRevisionBumper (DB increment) — the legacy Envelope publish path was
 // removed in ADR-03 Phase 5 Blocker D (SessionBus had no live subscriber).
+//
+// 2026-07-04 问题 C5 修复：新增 seq 字段，PublishTurnFailure 优先用 seq.Publish
+// （持久化 + WS），eventBus 作为 fallback（仅 WS）。
 type chatTurnEventPublisher struct {
 	sessions biz.SessionTurnManager
 	eventBus biz.EventBus
+	seq      rt.EventPublisher // 2026-07-04 问题 C5：优先用 seq 持久化
 	lg       loggateway.Logger
 }
 
-func newChatTurnEventPublisher(sessions biz.SessionTurnManager, eventBus biz.EventBus, lg loggateway.Logger) *chatTurnEventPublisher {
-	return &chatTurnEventPublisher{sessions: sessions, eventBus: eventBus, lg: lg}
+func newChatTurnEventPublisher(sessions biz.SessionTurnManager, eventBus biz.EventBus, seq rt.EventPublisher, lg loggateway.Logger) *chatTurnEventPublisher {
+	return &chatTurnEventPublisher{sessions: sessions, eventBus: eventBus, seq: seq, lg: lg}
 }
 
 // Compile-time interface check.
@@ -57,8 +62,13 @@ var _ turnEventPublisher = (*chatTurnEventPublisher)(nil)
 // are dropped here. The error message is still available via the caller's
 // logging path (turnPipeline.handleStreamError / publishTurnFailure callers
 // log the error before calling this method).
+//
+// 2026-07-04 问题 C5 修复：优先用 seq.Publish 持久化，避免刷新后丢失。
 func (p *chatTurnEventPublisher) PublishTurnFailure(sessionID, runID, source string, err error, pendingID string) {
-	if p == nil || p.eventBus == nil || err == nil {
+	if p == nil || err == nil {
+		return
+	}
+	if p.seq == nil && p.eventBus == nil {
 		return
 	}
 	publishCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -69,7 +79,12 @@ func (p *chatTurnEventPublisher) PublishTurnFailure(sessionID, runID, source str
 		SessionID: sessionID,
 		Status:    biz.TaskStatusFailed,
 	}
-	p.eventBus.Publish(publishCtx, biz.NewTaskFailedEvent(task))
+	ev := biz.NewTaskFailedEvent(task)
+	if p.seq != nil {
+		p.seq.Publish(publishCtx, ev)
+		return
+	}
+	p.eventBus.Publish(publishCtx, ev)
 }
 
 // BumpSessionRevision bumps the session revision counter after a turn or

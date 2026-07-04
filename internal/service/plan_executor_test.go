@@ -185,15 +185,35 @@ func (f *fakeReposForExecutor) GetGraphStageByPlanBoard(_ context.Context, planB
 }
 
 // fakeSeq implements sequencerPublisher for testing.
+// 2026-07-04 问题 6 修复：fakeSeq 现在模拟 EventRouter 的持久化行为，
+// 将 PlanStep 事件路由到 fakeRepos.UpsertPlanStep，与真实 EventRouter 一致。
+// 之前 dispatchStep 直接调用 repos.UpsertPlanStep，Fix 6 移除了直接调用，
+// 改为仅通过 seq.Publish 异步持久化，测试需要同步模拟此行为。
 type fakeSeq struct {
 	mu     sync.Mutex
 	events []biz.Event
+	repos  *fakeReposForExecutor // 用于模拟 EventRouter 持久化 PlanStep
 }
 
-func (f *fakeSeq) Publish(_ context.Context, e biz.Event) {
+func (f *fakeSeq) Publish(ctx context.Context, e biz.Event) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.events = append(f.events, e)
+	f.mu.Unlock()
+	// 模拟 EventRouter：将 PlanStep 事件路由到 repos.UpsertPlanStep。
+	// 真实 EventRouter 在 event_router.go 中做同样的路由。
+	if f.repos == nil {
+		return
+	}
+	switch ev := e.(type) {
+	case *biz.PlanStepStartedEvent:
+		_, _ = f.repos.UpsertPlanStep(ctx, ev.PlanStep)
+	case *biz.PlanStepCompletedEvent:
+		_, _ = f.repos.UpsertPlanStep(ctx, ev.PlanStep)
+	case *biz.PlanStepFailedEvent:
+		_, _ = f.repos.UpsertPlanStep(ctx, ev.PlanStep)
+	case *biz.PlanStepSkippedEvent:
+		_, _ = f.repos.UpsertPlanStep(ctx, ev.PlanStep)
+	}
 }
 
 func (f *fakeSeq) snapshot() []biz.Event {
@@ -231,6 +251,7 @@ func TestPlanExecutor_SequentialDAG(t *testing.T) {
 	seq := &fakeSeq{}
 	orch := newFakeOrchestrator().withSeq(seq)
 	repos := newFakeReposForExecutor()
+	seq.repos = repos // 2026-07-04 问题 6: 模拟 EventRouter 持久化
 	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
 
 	done := make(chan error, 1)
@@ -315,6 +336,7 @@ func TestPlanExecutor_ParallelRoots(t *testing.T) {
 	seq := &fakeSeq{}
 	orch := newFakeOrchestrator().withSeq(seq)
 	repos := newFakeReposForExecutor()
+	seq.repos = repos // 2026-07-04 问题 6: 模拟 EventRouter 持久化
 	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
 
 	done := make(chan error, 1)
@@ -371,6 +393,7 @@ func TestPlanExecutor_FailedStepBlocksDownstream(t *testing.T) {
 	seq := &fakeSeq{}
 	orch := newFakeOrchestrator().withSeq(seq)
 	repos := newFakeReposForExecutor()
+	seq.repos = repos // 2026-07-04 问题 6: 模拟 EventRouter 持久化
 	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
 
 	done := make(chan error, 1)

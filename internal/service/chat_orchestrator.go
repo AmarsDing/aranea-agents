@@ -172,6 +172,12 @@ type ChatOrchestrator struct {
 	// permission policy. Non-protected tools pass through with zero overhead.
 	cmdSafetyChecker *security.CommandSafetyPermissionChecker
 
+	// v2Seq is the v2 Sequencer (persist + WS) extracted from V2ProjectorFactory.
+	// 2026-07-04 问题 C5 修复：注入到 chatTurnEventPublisher / chatAwaitCoordinator
+	// / chatEventPublisher / PrePlanningGate，让 Notice step 事件经过 sequencer
+	// 持久化，避免刷新后丢失。
+	v2Seq rt.EventPublisher
+
 	sweepStop chan struct{}
 }
 
@@ -379,7 +385,13 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	runs := coalesceRunRegistry(deps.Turn.Runs)
 	pending := coalescePendingQueue(deps.Turn.PendingQueue)
 	sessionLocks := biz.NewSessionLockManager()
-	chatUC := NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Turn.Sessions, deps.Turn.Pipeline.EventBus, deps.Infra.LG)
+	// 2026-07-04 问题 C5 修复：从 V2ProjectorFactory 提取 seq，注入到需要
+	// 持久化 v2 事件的子组件，避免绕过 seq.Publish 导致 Notice step 刷新后丢失。
+	var v2Seq rt.EventPublisher
+	if pf := deps.Infra.V2ProjectorFactory; pf != nil {
+		v2Seq = pf.Seq()
+	}
+	chatUC := NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Turn.Sessions, deps.Turn.Pipeline.EventBus, v2Seq, deps.Infra.LG)
 	// Wire provider/model resolution ports (BA4): biz-layer methods need
 	// access to RefineLLM config, LLM catalog, and session updates.
 	chatUC.SetRefineLLMLookup(deps.Turn.ReadDeps.Settings)
@@ -389,7 +401,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	// Build individual sub-managers first.
 	stateMgr := sessionStateTransitor(deps.Infra.TurnLifecycle)
 	metrics := turnRecorder(newChatTurnMetrics(deps.Turn.Sessions, deps.Usage.Usage, deps.Infra.LG))
-	evtPub := turnEventPublisher(newChatTurnEventPublisher(deps.Turn.Sessions, deps.Turn.Pipeline.EventBus, deps.Infra.LG))
+	evtPub := turnEventPublisher(newChatTurnEventPublisher(deps.Turn.Sessions, deps.Turn.Pipeline.EventBus, v2Seq, deps.Infra.LG))
 	rStatus := runStatusTracker(newChatRunStatusTracker(runs, deps.Turn.Sessions, deps.Turn.Pipeline.EventBus, deps.Infra.LG))
 	pendQ := pendingQueueManager(newChatPendingQueueManager(chatUC))
 	awaitCoord := awaitCoordinator(newChatAwaitCoordinator(chatAwaitCoordinatorDeps{
@@ -405,8 +417,9 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 			}
 			return araneasession.NewRuntime(deps.Turn.Persist.Session, deps.Infra.LG)
 		},
-		EventBus:     deps.Turn.Pipeline.EventBus,
-		Logger:      deps.Infra.LG,
+		EventBus: deps.Turn.Pipeline.EventBus,
+		Seq:      v2Seq,
+		Logger:   deps.Infra.LG,
 	}))
 	sessRunLC := sessionRunLifecycle(newChatSessionRunLifecycle(chatSessionRunLifecycleDeps{
 		SessionRuns:  deps.Channel.ChJobs.SessionRuns,
@@ -442,6 +455,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		infraDeps:    deps.Infra,
 		runs:         runs,
 		chatUC:       chatUC,
+		v2Seq:        v2Seq,
 		turnLC: &chatTurnLifecycleImpl{
 			sessionStateTransitor: stateMgr,
 			turnRecorder:          metrics,

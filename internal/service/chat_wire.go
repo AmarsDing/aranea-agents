@@ -18,7 +18,11 @@ import (
 //   让 PlanExecutor.dispatchStep 能创建真实的 team + team_run。
 // - 注入 AgentReader 到 RealTeamOrchestrator，让 Orchestrate 能查询
 //   active agent 列表作为团队成员（PlanStep 不携带 AgentKeys）。
-func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus biz.EventBus, realOrch *RealTeamOrchestrator, agentReader biz.AgentReader) *ChatService {
+// 2026-07-04 问题 1 修复：注入 v2 Sequencer 到 GraphOrchestrationProjector，
+// 让 PublishGraphTaskStatus 的 ActivityBridgeEvent 经过持久化（EventRouter →
+// UpsertActivity），避免刷新后丢失。graphProj 在 wire 中先于 sequencer 创建，
+// 需后注入打破循环。
+func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus biz.EventBus, realOrch *RealTeamOrchestrator, agentReader biz.AgentReader, graphProj *GraphOrchestrationProjector) *ChatService {
 	deps.Turn.AfterTurn = biz.NoopNativeTurnAfter{}
 	cs := NewChatService(deps)
 	// Backfill turnGateway into TeamStarter to break the Wire cycle:
@@ -55,6 +59,21 @@ func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus
 		if agentReader != nil {
 			realOrch.SetAgentReader(agentReader)
 		}
+	}
+	// 2026-07-04 问题 1 修复：从 V2ProjectorFactory 提取 seq，注入到
+	// GraphOrchestrationProjector，让 graph_stage 事件经过 sequencer 持久化。
+	if graphProj != nil {
+		if pf := deps.Infra.V2ProjectorFactory; pf != nil {
+			if seq := pf.Seq(); seq != nil {
+				graphProj.SetSeq(seq)
+			}
+		}
+	}
+	// 2026-07-04 问题 P5/D1 修复：注入 ProjectorFactory 到 PlanExecutor 作为
+	// TeamDispatchMarker，让 dispatchStep 标记 task 已派发 team，
+	// OnTurnEnd 据此延迟 task.completed 直到 synthesis turn 完成。
+	if planExec != nil && deps.Infra.V2ProjectorFactory != nil {
+		planExec.SetTeamDispatchMarker(deps.Infra.V2ProjectorFactory)
 	}
 	return cs
 }

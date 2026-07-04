@@ -49,6 +49,10 @@ type ActivityProjector struct {
 	activeTurn  map[string]*biz.Turn // turnID → turn (for OnTurnEnd)
 	activeTask  map[string]*biz.Task // taskID → task (root only, for OnTurnEnd)
 	stepCounter atomic.Int64
+	// factory 是创建此 projector 的 ProjectorFactory 引用（可能为 nil）。
+	// 用于 OnTurnEnd 查询 HasTeamDispatch 决定是否延迟 task.completed。
+	// 2026-07-04 问题 P5/D1 修复。
+	factory *ProjectorFactory
 
 	// === Per-turn ProcessEvent state ===
 	// meta is the ProjectMeta for the current turn, set by OnTurnStart.
@@ -105,10 +109,18 @@ func NewActivityProjector(seq SequencerPublisher, seqAsg SeqAssigner, lg loggate
 // 导致 spirit turn 后续事件（reply delta）被错误归因到 member session。
 // 改为每次 turn 创建独立 Projector 实例，Sequencer 仍为单例（共享发布管道
 // 与全局 SeqAssigner）。
+//
+// 2026-07-04 问题 P5/D1 修复：新增 teamDispatched 跟踪表，记录哪些 task
+// 已派发了 team。OnTurnEnd 据此决定是否延迟 task.completed（等 synthesis
+// turn 完成后再发）。
 type ProjectorFactory struct {
 	seq    SequencerPublisher
 	seqAsg SeqAssigner
 	lg     loggateway.Logger
+	// teamDispatched 跟踪哪些 taskID 已派发 team（system-push 模式）。
+	// key=taskID, value=true。由 PlanExecutor.dispatchStep 调用 MarkTeamDispatched。
+	// OnTurnEnd 检查此表决定是否延迟 task.completed。
+	teamDispatched sync.Map
 }
 
 // NewProjectorFactory constructs a factory that produces per-turn
@@ -121,6 +133,36 @@ func NewProjectorFactory(seq SequencerPublisher, seqAsg SeqAssigner, lg loggatew
 	return &ProjectorFactory{seq: seq, seqAsg: seqAsg, lg: lg}
 }
 
+// MarkTeamDispatched 标记一个 task 已派发 team。
+// 由 PlanExecutor.dispatchStep 在 Orchestrate 成功后调用。
+// 2026-07-04 问题 P5/D1 修复：让 OnTurnEnd 知道此 task 有 team 在异步执行，
+// 不应立即发 task.completed，而应等 synthesis turn 完成后再发。
+func (f *ProjectorFactory) MarkTeamDispatched(taskID string) {
+	if f == nil || taskID == "" {
+		return
+	}
+	f.teamDispatched.Store(taskID, true)
+}
+
+// HasTeamDispatch 检查一个 task 是否已派发 team。
+// 由 ActivityProjector.OnTurnEnd 调用决定是否延迟 task.completed。
+func (f *ProjectorFactory) HasTeamDispatch(taskID string) bool {
+	if f == nil || taskID == "" {
+		return false
+	}
+	v, ok := f.teamDispatched.Load(taskID)
+	return ok && v.(bool)
+}
+
+// ClearTeamDispatch 清除 task 的 team 派发标记。
+// 由 synthesis turn 的 OnTurnEnd 在发出 task.completed 后调用。
+func (f *ProjectorFactory) ClearTeamDispatch(taskID string) {
+	if f == nil || taskID == "" {
+		return
+	}
+	f.teamDispatched.Delete(taskID)
+}
+
 // NewProjector returns a fresh ActivityProjector bound to the factory's
 // singleton Sequencer + SeqAssigner. Per-turn state (activeStep/meta/etc)
 // is isolated per instance. Returns nil when the factory itself is nil
@@ -129,7 +171,21 @@ func (f *ProjectorFactory) NewProjector() *ActivityProjector {
 	if f == nil {
 		return nil
 	}
-	return NewActivityProjector(f.seq, f.seqAsg, f.lg)
+	p := NewActivityProjector(f.seq, f.seqAsg, f.lg)
+	p.factory = f // 2026-07-04 问题 P5/D1: 注入 factory 引用供 OnTurnEnd 查询
+	return p
+}
+
+// Seq returns the underlying SequencerPublisher (may be nil).
+// Allows service-layer structs to publish v2 events via the sequencer
+// (persist + WS) instead of bare eventBus.Publish (WS only).
+// 2026-07-04 问题 C5 修复：暴露 seq 让 service 层的 Notice step 事件
+// 经过 sequencer 持久化，避免刷新后丢失。
+func (f *ProjectorFactory) Seq() SequencerPublisher {
+	if f == nil {
+		return nil
+	}
+	return f.seq
 }
 
 // OnTurnStart emits task.created (root turns only) followed by turn.started.
@@ -636,6 +692,16 @@ func (p *ActivityProjector) OnToolResult(ctx context.Context, stepID string, res
 // System-push continuation turns (meta.ParentTaskID != "") emit turn.completed
 // only — the original Task's state machine is owned by the original user-input
 // turn and is not touched here.
+//
+// 2026-07-04 问题 P5/D1 修复：Spirit 等待 team 完成后再关闭 Task。
+// - Root turn（ParentTaskID=="" && TeamStageID==""）：
+//   - 若 HasTeamDispatch(meta.TaskID) == true → 跳过 task.completed，
+//     Task 保持 Running，等 synthesis turn 完成后再发 task.completed。
+//   - 否则 → 发 task.completed（原行为，无 team 派发的普通对话）。
+//
+// - Synthesis continuation turn（ParentTaskID!="" && TeamStageID==""）：
+//   - 发 task.completed for ParentTaskID，并 ClearTeamDispatch。
+//   - 原 behavior 是跳过所有 task 事件，现在需要补发 task.completed。
 func (p *ActivityProjector) OnTurnEnd(ctx context.Context, meta ProjectMeta) {
 	if p.seq == nil {
 		return
@@ -653,11 +719,40 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, meta ProjectMeta) {
 	if ok {
 		p.seq.Publish(ctx, biz.NewTurnCompletedEvent(*turn))
 	}
-	// System-push continuation: skip task.completed emission.
+	// 2026-07-04 问题 P5/D1 修复：synthesis continuation turn 发 task.completed。
+	// synthesis turn 是 system-push 的第二 turn（ParentTaskID!="" 且 TeamStageID==""），
+	// 由 checkAllTeamsCompleted 触发，所有 team 已完成，此时关闭根 Task。
 	if meta.ParentTaskID != "" {
+		if meta.TeamStageID == "" {
+			// Synthesis turn: complete the parent task.
+			// 注意：synthesis turn 的 projector 是新实例，activeTask 中没有
+			// parent task（它在 root turn 的 projector 中）。构造最小 Task 对象。
+			task := biz.Task{
+				ID:          meta.ParentTaskID,
+				SessionID:   meta.SpiritSessionID,
+				Status:      biz.TaskStatusCompleted,
+				CompletedAt: &now,
+				Version:     2, // Version > 1 覆盖 task.created 的 Version=1
+			}
+			p.seq.Publish(ctx, biz.NewTaskCompletedEvent(task))
+			if p.factory != nil {
+				p.factory.ClearTeamDispatch(meta.ParentTaskID)
+			}
+		}
 		return
 	}
 	if meta.TeamStageID == "" {
+		// 2026-07-04 问题 P5/D1 修复：若此 task 派发了 team，延迟 task.completed。
+		// Task 保持 Running，等 synthesis turn 完成后再发 task.completed。
+		if p.factory != nil && p.factory.HasTeamDispatch(meta.TaskID) {
+			p.lg.Info("OnTurnEnd: task 已派发 team，延迟 task.completed（等 synthesis turn）",
+				loggateway.Str("task_id", meta.TaskID),
+				loggateway.Str("turn_id", meta.TurnID),
+			)
+			// 不删除 activeTask，不发 task.completed。
+			// Task 保持 Running 状态（task.created 已设置）。
+			return
+		}
 		p.mu.Lock()
 		task, tok := p.activeTask[meta.TaskID]
 		if tok {
