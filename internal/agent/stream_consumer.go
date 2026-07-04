@@ -316,7 +316,7 @@ func (c *turnStreamConsumer) publishContextUsageStep() {
 func (c *turnStreamConsumer) finalize() {
 	// v2 path: finalize the v2 turn. OnTurnEndEnhanced handles stuck-tool
 	// detection, remaining-step finalization, and emits turn.completed +
-	// task.completed. Close is a no-op for the singleton v2 projector.
+	// task.completed. Close is a no-op for the per-turn v2 projector.
 	if c.v2Projector != nil {
 		v2Meta := V2ProjectMetaFromV1(c.projectMeta)
 		usage := &v2.ActivityUsage{

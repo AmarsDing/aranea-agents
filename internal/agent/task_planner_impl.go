@@ -873,6 +873,7 @@ Each subtask will be assigned to one dedicated team, so the subtask count MUST e
 
 Rules:
 - Each subtask must have: id (st_1, st_2, etc.), name, description, depends_on (array of other subtask IDs), required_capabilities (from the predefined list), priority (1-5, 1=highest), estimated_complexity (0.0-1.0)
+- The "name" field MUST be a short noun-phrase suitable for displaying as a team name (e.g. "Code Analysis Team", "Data Pipeline Builder"), NOT a sentence-length task description. The "name" will be shown to the user as the team's display name; "id" is internal-only and never shown.
 - Output ONLY a JSON array, no markdown fences, no commentary
 - required_capabilities must use these predefined tags: go-backend, go-kratos, vue3-frontend, quasar-ui, devops, database, architecture, testing, security, research, documentation, api-design
 - depends_on must only reference IDs of other subtasks in the array

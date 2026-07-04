@@ -24,6 +24,20 @@ const (
 	DefaultToolsDenyFrameworkMemory = `["memory_add","memory_update","memory_delete","memory_search","memory_load"]`
 )
 
+// IsSystemAgentKey reports whether the given key is a built-in system agent
+// that should never participate in business task teams. System agents are
+// infrastructure-level (spirit orchestrator, memory/skills/system admin) and
+// must not be selected as team members by the allocator.
+//
+// 2026-07-04 问题 3 修复：统一系统 Agent 判断逻辑，避免每个过滤点重复写常量。
+func IsSystemAgentKey(key string) bool {
+	switch key {
+	case SpiritAgentKey, SystemAdminAgentKey, MemoryAgentKey, SkillsAgentKey:
+		return true
+	}
+	return false
+}
+
 // AgentStatus enumerates the valid lifecycle statuses for a catalog agent.
 // Using typed constants instead of free-form strings prevents invalid status values.
 type AgentStatus string

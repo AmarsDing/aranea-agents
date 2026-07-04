@@ -190,9 +190,11 @@ func (p *ActivityProjector) Configure(meta ProjectMeta) {
 	p.meta = meta
 }
 
-// Reset clears per-turn state. Called when the projector is reused across turns
-// or for explicit cleanup. OnTurnStart also resets streaming state, so Reset is
-// mainly for clearing the active entity maps between turns.
+// Reset clears per-turn state. Deprecated: per-turn Projector instances
+// created by ProjectorFactory.NewProjector() are never reused across turns,
+// so Reset is no longer needed. Kept for backwards compatibility with any
+// external callers that might exist (none currently).
+// 2026-07-04 问题 4 修复后：单例 Projector 已被 ProjectorFactory 取代。
 func (p *ActivityProjector) Reset() {
 	p.mu.Lock()
 	defer p.mu.Unlock()

@@ -284,8 +284,11 @@ func (o *TaskOrchestratorImpl) orchestrateTeam(ctx context.Context, taskPlan *bi
 		// Set DagNodeID to the first allocation's SubTaskID so updatePlanStepForTeam
 		// can match and update the corresponding plan step when the team completes.
 		dagNodeID := ""
+		teamName := ""
 		if len(allocPlan.Allocations) > 0 {
 			dagNodeID = allocPlan.Allocations[0].SubTaskID
+			// 2026-07-04 问题 2 修复：透传 SubTaskName 作为团队展示名。
+			teamName = allocPlan.Allocations[0].SubTaskName
 		}
 		params := biz.SpiritTeamParams{
 			SpiritSessionID: taskPlan.SpiritSessionID,
@@ -294,6 +297,7 @@ func (o *TaskOrchestratorImpl) orchestrateTeam(ctx context.Context, taskPlan *bi
 			Mode:            mode,
 			AutoStart:       true,
 			DagNodeID:       dagNodeID,
+			TeamName:        teamName,
 		}
 
 		team, _, _, err := o.assembler.AssembleTeam(ctx, params)
@@ -348,12 +352,15 @@ func (o *TaskOrchestratorImpl) orchestrateParallelTeams(ctx context.Context, tas
 			}
 
 			// Use the subtask name as the team's task description for focused execution.
+			// 2026-07-04 问题 2 修复：TaskDescription 不再回退到 SubTaskID（st_1），
+			// 改为回退到 UserMessage；TeamName 单独传递 SubTaskName 用于展示。
 			taskDesc := al.SubTaskName
 			if taskDesc == "" {
-				taskDesc = al.SubTaskID
-			}
-			if taskDesc == "" {
 				taskDesc = taskPlan.UserMessage
+			}
+			teamName := al.SubTaskName
+			if teamName == "" {
+				teamName = taskPlan.UserMessage
 			}
 
 			params := biz.SpiritTeamParams{
@@ -363,6 +370,7 @@ func (o *TaskOrchestratorImpl) orchestrateParallelTeams(ctx context.Context, tas
 				Mode:            "parallel",
 				AutoStart:       true,
 				DagNodeID:       al.SubTaskID,
+				TeamName:        teamName,
 			}
 
 			team, _, _, err := o.assembler.AssembleTeam(gctx, params)
@@ -494,12 +502,15 @@ func (o *TaskOrchestratorImpl) orchestrateDAG(ctx context.Context, taskPlan *biz
 			agentKeys := []string{lead}
 			agentKeys = append(agentKeys, al.TeamMemberKeys...)
 
+			// 2026-07-04 问题 2 修复：TaskDescription 不再回退到 SubTaskID（st_1），
+			// 改为回退到 UserMessage；TeamName 单独传递 SubTaskName 用于展示。
 			taskDesc := al.SubTaskName
 			if taskDesc == "" {
-				taskDesc = al.SubTaskID
-			}
-			if taskDesc == "" {
 				taskDesc = taskPlan.UserMessage
+			}
+			teamName := al.SubTaskName
+			if teamName == "" {
+				teamName = taskPlan.UserMessage
 			}
 
 			params := biz.SpiritTeamParams{
@@ -510,6 +521,7 @@ func (o *TaskOrchestratorImpl) orchestrateDAG(ctx context.Context, taskPlan *biz
 				AutoStart:       true,
 				DagNodeID:       al.SubTaskID,
 				DependsOn:       dependsMap[al.SubTaskID],
+				TeamName:        teamName,
 			}
 
 			team, _, _, err := o.assembler.AssembleTeam(gctx, params)
@@ -597,6 +609,8 @@ func (o *TaskOrchestratorImpl) orchestrateWithoutTemplate(ctx context.Context, t
 		AgentKeys:       agentKeys,
 		Mode:            mode,
 		AutoStart:       true,
+		// 2026-07-04 问题 2 修复：NL2Graph 路径无 subtask name，用 UserMessage 作为团队展示名。
+		TeamName: taskPlan.UserMessage,
 	}
 	team, _, _, err := o.assembler.AssembleTeam(ctx, params)
 	if err != nil {

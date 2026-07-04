@@ -273,6 +273,13 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 	if taskDesc == "" {
 		return SpiritTeamResult{}, apierror.BadRequest("SPIRIT", "task_description is required")
 	}
+	// 2026-07-04 问题 2 修复：优先使用 params.TeamName 作为 Team/Session 的展示名，
+	// 仅在 TeamName 为空时回退到 TaskDescription。之前 AssembleTeam 完全忽略
+	// params.TeamName，导致 Team.DisplayName 永远等于 TaskDescription（甚至是 st_1）。
+	teamName := strings.TrimSpace(params.TeamName)
+	if teamName == "" {
+		teamName = taskDesc
+	}
 	mode := strings.TrimSpace(params.Mode)
 	if mode == "" {
 		mode = TeamModeCoordinator
@@ -334,7 +341,7 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 	err = u.transactor.ExecInTx(ctx, func(txCtx context.Context) error {
 		team, err := u.teamUC.Create(txCtx, Team{
 			TeamKey:            fmt.Sprintf("spirit_%s_%s", spiritSessionID, uuid.New().String()[:8]),
-			DisplayName:        TruncateRunes(taskDesc, MaxTeamDisplayNameLen),
+			DisplayName:        TruncateRunes(teamName, MaxTeamDisplayNameLen),
 			Status:             initialStatus,
 			SpiritSessionID:    spiritSessionID,
 			TaskDescription:    taskDesc,
@@ -357,7 +364,7 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 			ParentSessionID: spiritSessionID,
 			RootSessionID:   spiritSessionID,
 			AgentDepth:      childDepth,
-			Title:           TruncateRunes(taskDesc, MaxTeamTitleLen),
+			Title:           TruncateRunes(teamName, MaxTeamTitleLen),
 		})
 		if err != nil {
 			return apierror.Wrap(err, apierror.CodeInternal, "SPIRIT")
@@ -385,6 +392,15 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 				if agentKey == "" {
 					continue
 				}
+				// 2026-07-04 问题 3 修复：系统 Agent（精灵助手/系统管家等）
+				// 不应进入业务团队，作为三保险跳过。
+				if IsSystemAgentKey(agentKey) {
+					u.lg.Warn("AssembleTeam 跳过系统 Agent",
+						loggateway.StepID("spirit.assemble.system_agent_skip"),
+						loggateway.Str("team_id", team.ID),
+						loggateway.Str("agent_key", agentKey))
+					continue
+				}
 				agentSession, aerr := u.sessionUC.Create(txCtx, Session{
 					OwnerType:       "agent",
 					SessionType:     string(SessionTypeAgent),
@@ -393,7 +409,7 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 					RootSessionID:   spiritSessionID,
 					AgentDepth:      agentDepth,
 					MemberAgentKey:  agentKey,
-					Title:           TruncateRunes(taskDesc, MaxTeamTitleLen),
+					Title:           TruncateRunes(teamName, MaxTeamTitleLen),
 				})
 				if aerr != nil {
 					u.lg.Warn("创建成员 agent session 失败",

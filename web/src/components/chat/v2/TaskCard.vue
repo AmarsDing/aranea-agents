@@ -39,18 +39,18 @@
       </div>
     </div>
     <div v-if="task.Status === 'running'" class="task-status">{{ t('chat.v2.taskProcessing') }}</div>
-    <!-- 2026-07-04 修正：渲染顺序 Plan → Graph → Team → Turn
-         （设计文档 §3.6.3）：
-         - PlanBoard 先渲染（数据层：PlanStep 列表 + 依赖关系）
-         - GraphStage 紧随其后（可视化层：与 PlanBoard 一对一关联）
-         - TeamStagePanel 在 Graph 之后（每个 GraphNode 可能对应一个 TeamStage）
-         - TurnList 最后（最终回复） -->
+    <!-- 2026-07-04 问题 1 修复：渲染顺序 PrePlanTurns → Plan → Graph → Team → PostPlanTurns
+         之前 Plan → Graph → Team → TurnList 把所有 Turn 放在最后，导致
+         精灵在创建计划前的思考/回复不可见。现在按 PlanBoard.StartedAt
+         时间戳拆分：早于 PlanBoard 的 Turn（精灵早期交互）渲染在计划之前，
+         晚于 PlanBoard 的 Turn（最终回复）渲染在团队之后。 -->
+    <TurnList v-if="prePlanTurns.length" :turns="prePlanTurns" />
     <template v-for="pb in planBoards" :key="pb.ID">
       <PlanBoardCard :plan-board="pb" />
       <GraphStageBlock v-if="graphStageByPlanBoard(pb.ID)" :graph-stage="graphStageByPlanBoard(pb.ID)!" />
     </template>
     <TeamStagePanel v-for="ts in teamStages" :key="ts.ID" :team-stage="ts" />
-    <TurnList :turns="turns" />
+    <TurnList v-if="postPlanTurns.length" :turns="postPlanTurns" />
   </div>
 </template>
 
@@ -113,6 +113,20 @@ const planBoards = computed(() =>
     return steps.length > 0 || pb.Status === 'completed' || pb.Status === 'failed';
   }),
 );
+// 2026-07-04 问题 1 修复：按 PlanBoard.StartedAt 拆分 Turn，
+// 让精灵在创建计划前的思考/回复渲染在 PlanBoard 之前。
+const prePlanTurns = computed(() => {
+  const pbs = planBoards.value;
+  if (pbs.length === 0) return turns.value;
+  const firstPlanTime = pbs[0].StartedAt;
+  return turns.value.filter((t) => !firstPlanTime || t.StartedAt < firstPlanTime);
+});
+const postPlanTurns = computed(() => {
+  const pbs = planBoards.value;
+  if (pbs.length === 0) return [];
+  const firstPlanTime = pbs[0].StartedAt;
+  return turns.value.filter((t) => firstPlanTime && t.StartedAt >= firstPlanTime);
+});
 // 2026-07-04 补齐：通过 PlanBoard.ID 查找关联的 GraphStage（一对一）
 function graphStageByPlanBoard(planBoardId: string) {
   return store.getGraphStageByPlanBoard(planBoardId);

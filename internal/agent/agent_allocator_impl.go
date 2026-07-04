@@ -324,6 +324,10 @@ func (impl *agentAllocatorImpl) selectAdditionalMembers(primaryKey string, capab
 		if cap.AgentKey == "" || cap.AgentKey == primaryKey {
 			continue
 		}
+		// 2026-07-04 问题 3 修复：系统 Agent 不应被选为附加团队成员。
+		if biz.IsSystemAgentKey(cap.AgentKey) {
+			continue
+		}
 		result = append(result, cap.AgentKey)
 		if len(result) >= count {
 			break
@@ -345,6 +349,10 @@ func (impl *agentAllocatorImpl) exactMatch(requiredCapabilities []string, capabi
 
 	var candidates []scored
 	for _, cap := range capabilities {
+		// 2026-07-04 问题 3 修复：系统 Agent 不参与业务任务匹配。
+		if biz.IsSystemAgentKey(cap.AgentKey) {
+			continue
+		}
 		overlapRatio := computeOverlapRatio(requiredCapabilities, cap.Roles)
 		if overlapRatio == 0 {
 			continue
@@ -405,11 +413,12 @@ func (impl *agentAllocatorImpl) matchLayer2Embedding(ctx context.Context, subTas
 		taskText += " " + cap
 	}
 
-	// Collect non-Spirit candidates and their capability text for batch embedding.
+	// Collect non-system candidates and their capability text for batch embedding.
+	// 2026-07-04 问题 3 修复：过滤所有系统 Agent，不仅是 SpiritAgentKey。
 	var agentCaps []biz.AgentCapability
 	var agentTexts []string
 	for _, cap := range capabilities {
-		if cap.AgentKey == biz.SpiritAgentKey {
+		if biz.IsSystemAgentKey(cap.AgentKey) {
 			continue
 		}
 		agentCaps = append(agentCaps, cap)
@@ -493,7 +502,8 @@ func (impl *agentAllocatorImpl) matchLayer2TFIDF(ctx context.Context, subTask bi
 
 	var candidates []scored
 	for _, cap := range capabilities {
-		if cap.AgentKey == biz.SpiritAgentKey {
+		// 2026-07-04 问题 3 修复：过滤所有系统 Agent，不仅是 SpiritAgentKey。
+		if biz.IsSystemAgentKey(cap.AgentKey) {
 			continue
 		}
 		score := computeSemanticScore(taskText, cap)
@@ -537,7 +547,8 @@ func (impl *agentAllocatorImpl) matchLayer2ForPlan(ctx context.Context, taskPlan
 
 	var candidates []scored
 	for _, cap := range capabilities {
-		if cap.AgentKey == biz.SpiritAgentKey {
+		// 2026-07-04 问题 3 修复：过滤所有系统 Agent，不仅是 SpiritAgentKey。
+		if biz.IsSystemAgentKey(cap.AgentKey) {
 			continue
 		}
 		score := computeSemanticScore(taskPlan.UserMessage, cap)

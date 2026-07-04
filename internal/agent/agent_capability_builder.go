@@ -35,6 +35,11 @@ func (b *AgentCapabilityBuilder) BuildAll(ctx context.Context) ([]biz.AgentCapab
 
 	var capabilities []biz.AgentCapability
 	for _, ag := range result.Items {
+		// 2026-07-04 问题 3 修复：系统 Agent（精灵助手/系统管家/记忆管家/技能管家）
+		// 是基础设施级 Agent，不参与业务任务团队匹配，从源头过滤掉。
+		if biz.IsSystemAgentKey(ag.AgentKey) {
+			continue
+		}
 		cap := biz.AgentCapability{
 			AgentKey:    ag.AgentKey,
 			DisplayName: ag.DisplayName,

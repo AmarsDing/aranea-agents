@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -117,8 +118,16 @@ func (e *PlanExecutor) StartSubscription() {
 				loggateway.Int("steps", len(board.Steps)))
 			// Subscribe 是阻塞的，在独立 goroutine 中执行。
 			// 使用 context.Background() 因为 DAG 执行可能比原始 ctx 生命周期长。
+			// 2026-07-04 问题 4 修复：从 PlanBoard.TaskID 恢复 RootTaskActivityID
+			// 注入 ctx，让下游 buildTeamProjectMeta / publishV2TeamRunAndMemberSessions
+			// / publishV2TeamRunCompletion 都能拿到正确的 rootTaskID（之前为空字符串
+			// 导致 MemberSession.TaskID 为空，前端 getMemberSessionSteps 返回空数组）。
 			go func(b biz.PlanBoard) {
 				runCtx := context.Background()
+				if b.TaskID != "" {
+					runCtx = agent.ContextWithRootTaskActivityID(
+						runCtx, agent.RootTaskActivityID(b.TaskID))
+				}
 				if err := e.Subscribe(runCtx, b); err != nil {
 					e.lg.Warn("PlanExecutor.Subscribe 失败",
 						loggateway.Str("plan_board_id", b.ID),

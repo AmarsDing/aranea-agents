@@ -942,6 +942,21 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 	// v1 bus. TODO: migrate once EventKindGraphStage* is added.
 	a.publishSpiritGraphStageSnapshot(ctx, spiritSessionID)
 
+	// 2026-07-04 问题 5 修复：在构建 members 数组和发布 v2 MemberSession
+	// created 事件之前过滤系统 Agent。之前仅 AssembleTeam 过滤了系统 Agent
+	// （不创建 DB session），但 publishSpiritTeamAssembled 仍用原始 agentKeys
+	// 发布 MemberSession created 事件，导致系统 Agent 的 MemberSession 记录
+	// 永远停在 running 状态（无 DB session → publishV2TeamRunCompletion 搜不到
+	// → 不发布 updated 事件）。
+	filteredKeys := make([]string, 0, len(agentKeys))
+	for _, k := range agentKeys {
+		if biz.IsSystemAgentKey(k) {
+			continue
+		}
+		filteredKeys = append(filteredKeys, k)
+	}
+	agentKeys = filteredKeys
+
 	// Build members array so the frontend TeamCard can render the member list.
 	// Problem 2 fix: previously agent_name was set to agent_key (showing raw
 	// kebab-case keys like "deep-researcher" in the UI). Now we batch-resolve
