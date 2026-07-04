@@ -156,6 +156,7 @@ func turnIntentFromInput(input biz.TurnInput) biz.TurnIntent {
 		Options:       input.Options,
 		Timeouts:      input.Timeouts,
 		EntryConfig:   input.EntryConfig,
+		ParentTaskID:  input.ParentTaskID,
 	}
 }
 

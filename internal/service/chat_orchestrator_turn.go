@@ -420,30 +420,6 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	if gateErr == nil && gateDecision.ForcePlanning {
 		emitter.LogDone("chat.pre_planning_gate", "强制规划路径", event.P("complexity_level", string(gateDecision.Level)), event.P("complexity_score", gateDecision.Score), event.P("reason", gateDecision.Reason))
 
-		// Hard gate: directly invoke TaskPlanner.Plan() to create and persist
-		// the plan. This guarantees a plan exists even if the LLM later
-		// ignores the forcedPlanningRunOption hint.
-		if planner := o.team().TaskPlanner; planner != nil {
-			planInput := biz.PlanInput{
-				UserMessage:     content,
-				SpiritSessionID: sessionID,
-				ChatSessionID:   sessionID, // plan activity must appear in chat session timeline
-				IntentArtifact:  gateDecision.IntentArtifact,
-			}
-			if traceID, ok := biz.SpiritTraceIDFromContext(ctx); ok {
-				planInput.TraceID = traceID
-			}
-			if plan, planErr := planner.Plan(ctx, planInput); planErr != nil {
-				emitter.LogWarn("chat.pre_planning_gate.hard", "硬门控规划失败，回退到软门控", "",
-					event.P("error", planErr.Error()))
-			} else if plan != nil {
-				emitter.LogDone("chat.pre_planning_gate.hard", "硬门控规划已创建",
-					event.P("plan_id", plan.ID),
-					event.P("strategy", string(plan.Strategy)),
-					event.P("subtask_count", len(plan.SubTasks)))
-			}
-		}
-
 		intentRunOpts = append(intentRunOpts, forcedPlanningRunOption(gateDecision))
 	}
 	deps := buildResult.deps

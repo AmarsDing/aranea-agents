@@ -1469,18 +1469,27 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 		return
 	}
 	if len(result.Items) == 0 {
-		// 2026-07-04 问题 C1 修复：查询返回 0 条记录时记录 Warn，便于定位
-		// MemberSession 卡在 running 的根因（可能 TeamID 未正确关联到会话）。
-		s.lg.Warn("publishV2TeamRunCompletion: 查询团队成员会话返回 0 条记录，MemberSession 将停留在 running 状态",
+		s.lg.Warn("publishV2TeamRunCompletion: 查询团队成员会话返回 0 条记录",
 			loggateway.StepID("spirit.v2.team_run_completion.search_empty"),
 			loggateway.Str("team_id", teamID),
 			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Int("total", result.Total),
+		)
+	} else {
+		types := make([]string, 0, len(result.Items))
+		for _, sess := range result.Items {
+			types = append(types, sess.SessionType+":"+sess.MemberAgentKey)
+		}
+		s.lg.Info("publishV2TeamRunCompletion: 查询到会话记录",
+			loggateway.StepID("spirit.v2.team_run_completion.search_result"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Int("total", result.Total),
+			loggateway.Int("items", len(result.Items)),
+			loggateway.Str("session_types", strings.Join(types, ",")),
 		)
 	}
-	// 2026-07-04 问题 C1 修复：记录查询到的成员会话数量，便于调试。
 	memberCount := 0
 	for _, sess := range result.Items {
-		// 仅处理 agent 类型的会话（团队成员会话）。父会话（SessionType=team）跳过。
 		if sess.SessionType != "agent" {
 			continue
 		}
@@ -1489,11 +1498,6 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 			continue
 		}
 		memberCount++
-		// 派生 MemberSession ID（与 publishV2TeamRunAndMemberSessions 一致）。
-		// 2026-07-04 问题 3 修复：记录 msID + agentKey 来源（DB MemberAgentKey），
-		// 用于诊断创建时 agentKeys 与完成时 DB MemberAgentKey 不一致导致的 msID 不匹配。
-		// 创建时 agentKeys 来自 publishV2TeamRunAndMemberSessions 的入参，
-		// 完成时 agentKey 来自 sess.MemberAgentKey（DB 字段），两者必须完全一致。
 		msID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.member_session.v2:"+teamRunID+":"+agentKey)).String()
 		s.lg.Info("publishV2TeamRunCompletion: 派生 MemberSession ID",
 			loggateway.StepID("spirit.v2.team_run_completion.msid"),

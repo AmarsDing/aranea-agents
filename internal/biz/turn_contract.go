@@ -77,6 +77,7 @@ type TurnIntent struct {
 	Options         TurnOptions
 	Timeouts        TurnTimeouts
 	EntryConfig     TurnEntryPointConfig
+	ParentTaskID    string
 }
 
 // Canonicalize fills source/target defaults from legacy TurnInput-compatible fields.
@@ -114,6 +115,7 @@ func (i TurnIntent) TurnInput() TurnInput {
 			AllowStream: i.EntryConfig.AllowStream,
 			Platform:    i.EntryConfig.Platform,
 		},
+		ParentTaskID: i.ParentTaskID,
 	}
 }
 

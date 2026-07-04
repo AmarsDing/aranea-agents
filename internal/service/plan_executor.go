@@ -270,11 +270,8 @@ func (e *PlanExecutor) initGraphStage(ctx context.Context, board biz.PlanBoard) 
 			)
 		}
 	}
-	// 2026-07-04 问题 5 修复：不再调用 seq.Publish(NewGraphStageCreatedEvent)。
-	// task_planner_impl.go:publishV2PlanBoard 已经发送了该事件，
-	// 此处重复发送会导致前端收到两次 GraphStageCreatedEvent。
-	// 同步 UpsertGraphStage 已确保 DB 记录存在，供 newDagRun 查询。
-	e.lg.Info("initGraphStage: 同步创建 GraphStage 作为 crash recovery fallback",
+	e.seq.Publish(ctx, biz.NewGraphStageCreatedEvent(gs))
+	e.lg.Info("initGraphStage: 同步创建 GraphStage 并发布 created 事件",
 		loggateway.Str("plan_board_id", board.ID),
 		loggateway.Str("graph_stage_id", gsID),
 		loggateway.Int("node_count", len(nodes)),
@@ -511,9 +508,11 @@ func (r *dagRun) dispatchStep(ctx context.Context, step *biz.PlanStep) {
 	step.Version++
 	runningStep := *step
 	r.mu.Unlock()
-	// 2. Publish PlanStepStarted (seq.Publish → EventRouter → async UpsertPlanStep).
-	// 2026-07-04 问题 6 修复：移除直接 repos.UpsertPlanStep 调用，避免与
-	// seq.Publish 的异步持久化双写（VersionLT 守卫使第二次写入无效，纯冗余）。
+	// 2. Persist + publish PlanStepStarted.
+	if _, err := r.pe.repos.UpsertPlanStep(ctx, runningStep); err != nil {
+		r.pe.lg.Error("upsert plan_step (running) failed",
+			loggateway.Str("step_id", step.ID), loggateway.Err(err))
+	}
 	r.pe.seq.Publish(ctx, biz.NewPlanStepStartedEvent(runningStep, r.board.SessionID))
 	// 3. Call orchestrator (creates team + TeamStage via publishSpiritTeamAssembled).
 	// 传入带 SessionID 的 TeamStage（Orchestrate 从 ts.SessionID 获取 spiritSessionID；
@@ -609,8 +608,11 @@ func (r *dagRun) handleCompletion(ctx context.Context, step *biz.PlanStep, ev bi
 	step.Version++
 	current := *step
 	r.mu.Unlock()
-	// Publish terminal event (seq.Publish → EventRouter → async UpsertPlanStep).
-	// 2026-07-04 问题 6 修复：移除直接 repos.UpsertPlanStep 调用（双写冗余）。
+	// Publish terminal event + direct persist.
+	if _, err := r.pe.repos.UpsertPlanStep(ctx, current); err != nil {
+		r.pe.lg.Error("upsert plan_step (terminal) failed",
+			loggateway.Str("step_id", step.ID), loggateway.Err(err))
+	}
 	if ev.Success {
 		r.pe.seq.Publish(ctx, biz.NewPlanStepCompletedEvent(current, r.board.SessionID))
 		// 2026-07-04 补齐：GraphNode → Completed
@@ -635,7 +637,10 @@ func (r *dagRun) failStep(ctx context.Context, step *biz.PlanStep, msg string) {
 	step.Version++
 	current := *step
 	r.mu.Unlock()
-	// 2026-07-04 问题 6 修复：移除直接 repos.UpsertPlanStep 调用（双写冗余）。
+	if _, err := r.pe.repos.UpsertPlanStep(ctx, current); err != nil {
+		r.pe.lg.Error("upsert plan_step (failed) failed",
+			loggateway.Str("step_id", step.ID), loggateway.Err(err))
+	}
 	r.pe.seq.Publish(ctx, biz.NewPlanStepFailedEvent(current, r.board.SessionID))
 	// 2026-07-04 补齐：GraphNode → Failed
 	r.updateGraphNode(ctx, step.ID, biz.GraphNodeStatusFailed, "")
@@ -695,7 +700,10 @@ func (r *dagRun) cascadeSkip(ctx context.Context, failedID string) {
 			depStep.Version++
 			skipped := *depStep
 			r.mu.Unlock()
-			// 2026-07-04 问题 6 修复：移除直接 repos.UpsertPlanStep 调用（双写冗余）。
+			if _, err := r.pe.repos.UpsertPlanStep(ctx, skipped); err != nil {
+				r.pe.lg.Error("upsert plan_step (skipped) failed",
+					loggateway.Str("step_id", depID), loggateway.Err(err))
+			}
 			r.pe.seq.Publish(ctx, biz.NewPlanStepSkippedEvent(skipped, r.board.SessionID, reason))
 			// 2026-07-04 补齐：GraphNode → Interrupted（skipped 映射为 interrupted）
 			r.updateGraphNode(ctx, depID, biz.GraphNodeStatusInterrupted, "")
