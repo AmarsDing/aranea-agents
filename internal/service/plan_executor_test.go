@@ -14,10 +14,6 @@ import (
 // fakeOrchestrator implements TeamOrchestrator for testing.
 // It records Orchestrate calls and provides completeStep to signal completion.
 //
-// 2026-07-04 问题 4 修复：fakeOrchestrator 现在模拟真实 Orchestrate 流程，
-// 在 Orchestrate 中发布 TeamStageCreatedEvent（模拟 publishSpiritTeamAssembled），
-// 这样 dispatchStep 测试能验证 TeamStageUpdated 事件计数（dispatchStep 在
-// Orchestrate 返回后发布 Updated，补充 TaskID/DagNodeID/Status=Running）。
 type fakeOrchestrator struct {
 	mu      sync.Mutex
 	pending map[string]chan biz.TeamCompleteEvent
@@ -41,9 +37,6 @@ func (f *fakeOrchestrator) Orchestrate(ctx context.Context, step biz.PlanStep, _
 	ch := make(chan biz.TeamCompleteEvent, 1)
 	f.pending[step.ID] = ch
 	f.calls = append(f.calls, step.ID)
-	// 2026-07-04 问题 4 修复：dispatchStep 现在要求 result.Team.ID 和
-	// result.TeamStageID 非空（否则 failStep）。测试用 fake ID 即可，
-	// 不需要真实派生（测试只关心 dispatchStep 的状态机行为）。
 	teamID := "fake-team-" + step.ID
 	teamStageID := "fake-team-stage-" + step.ID
 	// 模拟 publishSpiritTeamAssembled：发布 TeamStageCreatedEvent（带 Members）。
@@ -157,7 +150,7 @@ func (f *fakeReposForExecutor) GetPlanStep(_ context.Context, id string) (biz.Pl
 	return biz.PlanStep{}, errors.New("not found")
 }
 
-// UpsertGraphStage stores the GraphStage in memory (2026-07-04 补齐).
+// UpsertGraphStage stores the GraphStage in memory.
 func (f *fakeReposForExecutor) UpsertGraphStage(_ context.Context, gs biz.GraphStage) (biz.GraphStage, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -166,7 +159,7 @@ func (f *fakeReposForExecutor) UpsertGraphStage(_ context.Context, gs biz.GraphS
 	return gs, nil
 }
 
-// UpsertGraphNode stores the GraphNode in memory (2026-07-04 补齐).
+// UpsertGraphNode stores the GraphNode in memory.
 func (f *fakeReposForExecutor) UpsertGraphNode(_ context.Context, gn biz.GraphNode) (biz.GraphNode, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -174,7 +167,7 @@ func (f *fakeReposForExecutor) UpsertGraphNode(_ context.Context, gn biz.GraphNo
 	return gn, nil
 }
 
-// GetGraphStageByPlanBoard returns the stored GraphStage if its PlanBoardID matches (2026-07-04 补齐).
+// GetGraphStageByPlanBoard returns the stored GraphStage if its PlanBoardID matches.
 func (f *fakeReposForExecutor) GetGraphStageByPlanBoard(_ context.Context, planBoardID string) (biz.GraphStage, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -185,10 +178,6 @@ func (f *fakeReposForExecutor) GetGraphStageByPlanBoard(_ context.Context, planB
 }
 
 // fakeSeq implements sequencerPublisher for testing.
-// 2026-07-04 问题 6 修复：fakeSeq 现在模拟 EventRouter 的持久化行为，
-// 将 PlanStep 事件路由到 fakeRepos.UpsertPlanStep，与真实 EventRouter 一致。
-// 之前 dispatchStep 直接调用 repos.UpsertPlanStep，Fix 6 移除了直接调用，
-// 改为仅通过 seq.Publish 异步持久化，测试需要同步模拟此行为。
 type fakeSeq struct {
 	mu     sync.Mutex
 	events []biz.Event
@@ -251,7 +240,7 @@ func TestPlanExecutor_SequentialDAG(t *testing.T) {
 	seq := &fakeSeq{}
 	orch := newFakeOrchestrator().withSeq(seq)
 	repos := newFakeReposForExecutor()
-	seq.repos = repos // 2026-07-04 问题 6: 模拟 EventRouter 持久化
+	seq.repos = repos
 	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
 
 	done := make(chan error, 1)
@@ -336,7 +325,7 @@ func TestPlanExecutor_ParallelRoots(t *testing.T) {
 	seq := &fakeSeq{}
 	orch := newFakeOrchestrator().withSeq(seq)
 	repos := newFakeReposForExecutor()
-	seq.repos = repos // 2026-07-04 问题 6: 模拟 EventRouter 持久化
+	seq.repos = repos
 	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
 
 	done := make(chan error, 1)
@@ -393,7 +382,7 @@ func TestPlanExecutor_FailedStepBlocksDownstream(t *testing.T) {
 	seq := &fakeSeq{}
 	orch := newFakeOrchestrator().withSeq(seq)
 	repos := newFakeReposForExecutor()
-	seq.repos = repos // 2026-07-04 问题 6: 模拟 EventRouter 持久化
+	seq.repos = repos
 	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
 
 	done := make(chan error, 1)

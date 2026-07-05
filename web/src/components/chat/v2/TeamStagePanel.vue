@@ -1,5 +1,4 @@
 <!-- web/src/components/chat/v2/TeamStagePanel.vue
-  2026-07-04 修复：
   - 添加完整样式（glass tokens 符合主题）
   - 状态色映射 + i18n
   - 问题 3 修复：展示 TeamName 而非 TeamID（fallback 到 TeamID 兼容旧数据）
@@ -48,7 +47,6 @@ const store = useChatActivityStore();
 const { t } = useSafeI18n();
 const teamRuns = computed(() => store.getTeamStageTeamRuns(props.teamStage.ID));
 
-// 2026-07-04 问题 3 修复：优先展示 TeamName，缺失时 fallback 到 TeamID
 // （兼容旧数据，旧数据可能因 DDL 未升级而没有 team_name 字段）
 const displayTeamName = computed(() => props.teamStage.TeamName || props.teamStage.TeamID);
 

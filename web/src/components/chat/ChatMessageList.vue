@@ -44,9 +44,6 @@
       @click="$emit('messages-click', $event)"
     >
       <SessionPanelV2 :session-id="sessionId ?? ''" @regenerate="(t) => $emit('regenerate-v2', t)" />
-      <!-- 2026-07-04 问题 1 修复：SynthesisResultCard 嵌入 viewport 末尾，
-           与 v2 活动流同处可滚动区域，确保用户能看到综合结果。
-           同时添加 chat-message-prose 类（在 SynthesisResultCard.vue 内）以格式化 markdown。 -->
       <SynthesisResultCard
         v-if="synthesisResult"
         :result="synthesisResult"
@@ -84,7 +81,6 @@
           <div class="chat-message-prose" v-html="renderLegacyContent(msg)"></div>
         </div>
       </div>
-      <!-- 2026-07-04 问题 1 修复：legacy 路径同样将 SynthesisResultCard 嵌入 viewport 末尾 -->
       <SynthesisResultCard
         v-if="synthesisResult"
         :result="synthesisResult"
@@ -148,7 +144,6 @@ const props = defineProps<{
   agentMap?: Map<string, { displayName: string; agentKey: string }>;
   /** P1#3: parent run status to gate cancel button visibility. */
   runStatus?: import('../../features/chat/types').RunStatusValue;
-  /** 2026-07-04 问题 1 修复：synthesis 结果，渲染在会话流末尾 */
   synthesisResult?: SynthesisOutput | null;
   spiritEvolutionSuggestion?: EvolutionSuggestion | null;
 }>();
@@ -251,8 +246,15 @@ watch(locateCommand, async (cmd) => {
   }, AUTO_EXPAND_HOLD_MS);
   // 等待数据更新（如展开新会话）渲染到 DOM
   await nextTick();
-  let el = scrollViewportEl.value.querySelector(`[data-agent-key="${cssEscape(cmd.agentKey)}"]`) as HTMLElement | null;
-  // 多成员团队渲染为 TeamCard，按 teamId 二次定位
+  let el: HTMLElement | null = null;
+  if (cmd.teamId) {
+    el = scrollViewportEl.value.querySelector(
+      `[data-team-id="${cssEscape(cmd.teamId)}"] [data-agent-key="${cssEscape(cmd.agentKey)}"]`,
+    ) as HTMLElement | null;
+  }
+  if (!el) {
+    el = scrollViewportEl.value.querySelector(`[data-agent-key="${cssEscape(cmd.agentKey)}"]`) as HTMLElement | null;
+  }
   if (!el && cmd.teamId) {
     el = scrollViewportEl.value.querySelector(`[data-team-id="${cssEscape(cmd.teamId)}"]`) as HTMLElement | null;
   }

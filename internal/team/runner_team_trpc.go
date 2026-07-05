@@ -177,10 +177,6 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	projectMeta := r.buildTeamProjectMeta(ctx, sess, run, teamRow, def, ar, memberKeys, ti.content, traceID)
 	streamOpts := r.newStreamConsumeOptions()
 	if streamOpts != nil && streamOpts.V2Projector != nil {
-		// 2026-07-04 问题 4 根因修复：newStreamConsumeOptions() 通过
-		// V2ProjectorFactory.NewProjector() 创建独立 Projector 实例（不再共享
-		// spirit turn 的单例），所以无需 Reset() —— Configure 设置 meta 即可。
-		// 这避免与并发 spirit turn 互相清空 activeStep/meta/thinkingStepIDs。
 		v2Meta := agent.V2ProjectMetaFromV1(projectMeta)
 		streamOpts.V2Projector.Configure(v2Meta)
 		runCtx = biz.WithActivityEmitter(runCtx, streamOpts.V2Projector)

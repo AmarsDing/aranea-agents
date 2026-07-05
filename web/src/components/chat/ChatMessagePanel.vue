@@ -174,9 +174,6 @@
           @expand="(ids: string[]) => emit('expand', ids)"
         />
 
-        <!-- 2026-07-04 问题 1 修复：SynthesisResultCard 已移到 ChatMessageList 内部
-             （v2/legacy 路径下都作为会话流末尾的总结卡片渲染） -->
-
         <ContextIndicator
           v-if="compressStatus && compressStatus !== 'normal' && (!panelMode || panelMode === 'spirit')"
           :status="compressStatus"

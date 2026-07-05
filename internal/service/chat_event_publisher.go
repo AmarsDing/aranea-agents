@@ -36,12 +36,10 @@ type turnEventPublisher interface {
 // SessionRevisionBumper (DB increment) — the legacy Envelope publish path was
 // removed in ADR-03 Phase 5 Blocker D (SessionBus had no live subscriber).
 //
-// 2026-07-04 问题 C5 修复：新增 seq 字段，PublishTurnFailure 优先用 seq.Publish
-// （持久化 + WS），eventBus 作为 fallback（仅 WS）。
 type chatTurnEventPublisher struct {
 	sessions biz.SessionTurnManager
 	eventBus biz.EventBus
-	seq      rt.EventPublisher // 2026-07-04 问题 C5：优先用 seq 持久化
+	seq      rt.EventPublisher
 	lg       loggateway.Logger
 }
 
@@ -63,7 +61,6 @@ var _ turnEventPublisher = (*chatTurnEventPublisher)(nil)
 // logging path (turnPipeline.handleStreamError / publishTurnFailure callers
 // log the error before calling this method).
 //
-// 2026-07-04 问题 C5 修复：优先用 seq.Publish 持久化，避免刷新后丢失。
 func (p *chatTurnEventPublisher) PublishTurnFailure(sessionID, runID, source string, err error, pendingID string) {
 	if p == nil || err == nil {
 		return

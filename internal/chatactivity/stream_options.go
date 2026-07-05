@@ -12,10 +12,6 @@ import (
 // never read) have been removed. When v2Projector is nil (test scenarios),
 // events are not projected.
 //
-// 2026-07-04 问题 4 修复：v2Projector 由调用方通过 V2ProjectorFactory.NewProjector()
-// 创建的 per-turn 实例传入，不再使用全局单例。每个 turn（spirit + 每个 team
-// member）持有独立 Projector 实例，避免并发场景下的状态互相清空。
-//
 // Phase 3b-D Tier 4: the v1 ActivityBus parameter has been removed —
 // opts.ActivityBus was set but never read by the framework or any agent
 // code (all chat events now flow through the v2 EventBus + WSV2Subscriber).
@@ -30,9 +26,6 @@ func NewStreamConsumeOptions(v2Projector *v2.ActivityProjector) *chatagent.Strea
 // Inject this into the team Runner via SetStreamOptsFactory to eliminate
 // the team→chatactivity direct import.
 //
-// 2026-07-04 问题 4 修复：V2ProjectorFactory（替代原单例 V2Projector）。
-// 每次 NewStreamConsumeOptions() 调用都会通过 factory.NewProjector() 创建
-// 独立 Projector 实例，确保并发 team turn 之间状态隔离。
 type StreamOptsFactoryAdapter struct {
 	// V2ProjectorFactory produces per-turn v2 ActivityProjector instances.
 	// When nil, NewStreamConsumeOptions returns nil (v2 path disabled).

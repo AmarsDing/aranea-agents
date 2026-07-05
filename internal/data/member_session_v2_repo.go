@@ -113,9 +113,6 @@ func (r *memberSessionV2Repo) UpdateMemberSession(ctx context.Context, ms biz.Me
 }
 
 // UpsertMemberSession applies optimistic-concurrency upsert (see UpsertTask for semantics).
-// 2026-07-04 问题 3 修复：AgentName/AvatarURL 仅在非空时 SET，避免完成事件
-// （不携带这些字段）覆盖创建事件已写入的值。Status/FinishedAt/Error 等
-// 完成阶段字段总是 SET（它们才是 completion 事件的语义重点）。
 func (r *memberSessionV2Repo) UpsertMemberSession(ctx context.Context, ms biz.MemberSession) (biz.MemberSession, error) {
 	if r == nil || r.data == nil {
 		return biz.MemberSession{}, fmt.Errorf("member session v2 repo: database not configured")
@@ -132,8 +129,6 @@ func (r *memberSessionV2Repo) UpsertMemberSession(ctx context.Context, ms biz.Me
 		SetSeq(ms.Seq).
 		SetVersion(ms.Version).
 		SetError(ms.Error)
-	// 2026-07-04 问题 3 修复：仅当非空时才 SET AgentName/AvatarURL，
-	// 避免 completion 事件（不携带这些字段）清空已持久化的值。
 	if ms.AgentName != "" {
 		b.SetAgentName(ms.AgentName)
 	}

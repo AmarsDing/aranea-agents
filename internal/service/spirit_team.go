@@ -281,10 +281,6 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 	if s.team.TeamUC == nil {
 		return
 	}
-	// 2026-07-04 问题 2 修复：入口校验 RootTaskActivityID，为空时记录 Warn。
-	// RootTaskActivityID 由 chat_orchestrator_turn.go:401 注入到 ctx，
-	// publishV2TeamRunCompletion 依赖它派生 TaskID 关联 TeamRun/MemberSession。
-	// 为空会导致 v2 实体无法关联到根 Task，前端 AgentCard 渲染异常。
 	if rtID := string(agent.RootTaskActivityIDFromCtx(ctx)); rtID == "" {
 		s.lg.Warn("HandleTeamTurnResult: RootTaskActivityID 为空，v2 TeamRun/MemberSession 将无法关联到根 Task",
 			loggateway.StepID("spirit.handle_team_turn_result.empty_root_task"),

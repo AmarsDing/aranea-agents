@@ -16,7 +16,6 @@ export type PlanStrategy = 'sequential' | 'parallel' | 'dag' | 'coordinator';
 export type PlanStatus = 'planning' | 'executing' | 'completed' | 'failed' | 'partial_failure';
 export type PlanStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped' | 'partial_failure';
 
-// 2026-07-04 补齐：GraphStage / GraphNode（与 PlanBoard 一对一）
 export type GraphStageStatus = 'running' | 'completed' | 'failed' | 'interrupted';
 export type GraphNodeStatus = 'pending' | 'running' | 'completed' | 'failed' | 'interrupted';
 
@@ -89,7 +88,7 @@ export interface TeamStage {
   TurnID: string;
   SessionID: string;
   TeamID: string;
-  TeamName: string; // 2026-07-04 问题 3 修复：团队显示名称（前端展示用）
+  TeamName: string;
   DagNodeID: string;
   DependsOn: string[];
   Status: TeamStageStatus;
@@ -197,7 +196,6 @@ export interface PlanBoard {
   Version: number;
 }
 
-// 2026-07-04 补齐：GraphStage（与 PlanBoard 一对一关联）
 // 设计：docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md §3.2.2 / §3.7.5
 export interface GraphNode {
   ID: string;
@@ -254,7 +252,6 @@ export type EventKind =
   | 'plan_step.failed'
   | 'plan_step.skipped'
   | 'plan_step.updated'
-  // 2026-07-04 补齐：GraphStage/GraphNode 事件（与 PlanBoard 一对一）
   | 'graph_stage.created'
   | 'graph_stage.updated'
   | 'graph_stage.completed'
@@ -318,7 +315,6 @@ export interface PlanStepSkippedPayload {
   Reason: string;
 }
 
-// 2026-07-04 补齐：GraphStage / GraphNode 事件 payload
 export interface GraphStageEventPayload {
   GraphStage: GraphStage;
 }

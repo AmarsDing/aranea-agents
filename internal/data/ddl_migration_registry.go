@@ -106,7 +106,6 @@ var ddlMigrations = []ddlMigration{
 	// single-column indexes for common query patterns not covered by leftmost-prefix rule.
 	{Version: 20261001, Name: "v2_indexes", SQL: "sql/migrations/20261001_v2_indexes.sql"},
 	// 20261002 team_stage_team_name: add team_name column to team_stages_v2.
-	// 2026-07-04 问题 3 修复：前端 TeamStagePanel 需展示团队名称而非 ID。
 	// Ent Schema.Create() 不会为已存在表新增列，需要 ALTER TABLE 补列。
 	{Version: 20261002, Name: "team_stage_team_name", SQL: "sql/migrations/20261002_team_stage_team_name.sql"},
 }

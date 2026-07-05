@@ -39,11 +39,6 @@
       </div>
     </div>
     <div v-if="task.Status === 'running'" class="task-status">{{ t('chat.v2.taskProcessing') }}</div>
-    <!-- 2026-07-04 问题 1 修复：渲染顺序 PrePlanTurns → Plan → Graph → Team → PostPlanTurns
-         之前 Plan → Graph → Team → TurnList 把所有 Turn 放在最后，导致
-         精灵在创建计划前的思考/回复不可见。现在按 PlanBoard.StartedAt
-         时间戳拆分：早于 PlanBoard 的 Turn（精灵早期交互）渲染在计划之前，
-         晚于 PlanBoard 的 Turn（最终回复）渲染在团队之后。 -->
     <TurnList v-if="prePlanTurns.length" :turns="prePlanTurns" />
     <template v-for="pb in planBoards" :key="pb.ID">
       <PlanBoardCard :plan-board="pb" />
@@ -105,25 +100,20 @@ const auth = useSafeAuthStore();
 const store = useChatActivityStore();
 const turns = computed(() => store.getTaskTurns(props.task.ID));
 const teamStages = computed(() => store.getTaskTeamStages(props.task.ID));
-// 2026-07-04 问题 C7 修复：放宽 PlanBoard 过滤条件，planning/executing 状态
-// 也显示。之前过滤掉了 planning 状态（PlanBoard 从未进入 executing），导致整个
-// 执行计划面板不显示。现在只要 PlanBoard 存在就显示，让用户能看到计划正在编排中。
 const planBoards = computed(() => store.getTaskPlanBoards(props.task.ID));
-// 2026-07-04 问题 1 修复：按 PlanBoard.StartedAt 拆分 Turn，
-// 让精灵在创建计划前的思考/回复渲染在 PlanBoard 之前。
+const spiritTurns = computed(() => turns.value.filter((t) => !t.TeamStageID));
 const prePlanTurns = computed(() => {
   const pbs = planBoards.value;
-  if (pbs.length === 0) return turns.value;
+  if (pbs.length === 0) return spiritTurns.value;
   const firstPlanTime = pbs[0].StartedAt;
-  return turns.value.filter((t) => !firstPlanTime || t.StartedAt < firstPlanTime);
+  return spiritTurns.value.filter((t) => !firstPlanTime || t.StartedAt < firstPlanTime);
 });
 const postPlanTurns = computed(() => {
   const pbs = planBoards.value;
   if (pbs.length === 0) return [];
   const firstPlanTime = pbs[0].StartedAt;
-  return turns.value.filter((t) => firstPlanTime && t.StartedAt >= firstPlanTime);
+  return spiritTurns.value.filter((t) => firstPlanTime && t.StartedAt >= firstPlanTime);
 });
-// 2026-07-04 补齐：通过 PlanBoard.ID 查找关联的 GraphStage（一对一）
 function graphStageByPlanBoard(planBoardId: string) {
   return store.getGraphStageByPlanBoard(planBoardId);
 }

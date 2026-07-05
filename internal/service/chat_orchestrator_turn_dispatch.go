@@ -209,17 +209,12 @@ func (o *ChatOrchestrator) injectA2AContext(ctx context.Context, callerAgentID s
 // After each turn, the loop re-acquires the lock, checks for an active run
 // (e.g. user interrupted with "send now"), and dequeues the next message.
 //
-// 2026-07-04 问题 C2 修复：新增 rootTaskID 参数，将 RootTaskActivityID 注入
-// loopCtx，让 pending queue 路径的 HandleTeamTurnResult → publishV2TeamRunCompletion
-// 能拿到正确的 rootTaskID（之前 appctx.Ctx() 不携带 RootTaskActivityID，导致
-// MemberSession updated 事件的 TaskID 为空）。
 func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Session, ag biz.Agent, dialogMode, prov, mod string, rootTaskID string) {
 	safego.GoBackground("pending-queue", func() {
 		// Mark the context so turns started from this loop skip the
 		// processPendingQueue call in their defer (otherwise each turn would
 		// spawn a new goroutine, re-introducing the chain we're eliminating).
 		loopCtx := contextWithPendingLoop(appctx.Ctx())
-		// 2026-07-04 问题 C2 修复：注入 RootTaskActivityID 让下游事件能关联到根 Task。
 		if rootTaskID != "" {
 			loopCtx = chatagent.ContextWithRootTaskActivityID(
 				loopCtx, chatagent.RootTaskActivityID(rootTaskID))

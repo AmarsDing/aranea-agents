@@ -46,7 +46,6 @@ func (o *ChatOrchestrator) runPrePlanningGate(
 	}
 
 	bus := o.td().Pipeline.EventBus
-	// 2026-07-04 问题 C5 修复：注入 v2Seq 让 publishPlanningPhase 经过 sequencer 持久化。
 	gate := NewPrePlanningGate(planner, bus, o.v2Seq, o.lg())
 
 	planInput := biz.PlanInput{

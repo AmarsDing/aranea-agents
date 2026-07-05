@@ -41,7 +41,6 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   const memberSessions = ref(new Map<string, MemberSession>());
   const planBoards = ref(new Map<string, PlanBoard>());
   const planSteps = ref(new Map<string, PlanStep>());
-  // 2026-07-04 补齐：GraphStage / GraphNode（与 PlanBoard 一对一）
   const graphStages = ref(new Map<string, GraphStage>());
   const graphNodes = ref(new Map<string, GraphNode>());
 
@@ -51,8 +50,6 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     const ex = tasks.value.get(t.ID);
     if (ex && t.Version <= ex.Version) return;
     tasks.value.set(t.ID, { ...t });
-    // 2026-07-04 问题 5 修复：真实 Task 事件到达时，清理同 sessionId 下
-    // 所有 'pending-user-' 开头的乐观 Task（已无法被替换为真实 Task）
     if (!t.ID.startsWith('pending-user-')) {
       for (const [id, task] of tasks.value) {
         if (id.startsWith('pending-user-') && task.SessionID === t.SessionID) {
@@ -87,9 +84,6 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   function upsertTeamStage(ts: TeamStage) {
     const ex = teamStages.value.get(ts.ID);
     if (ex && ts.Version <= ex.Version) return;
-    // 2026-07-04 问题 4 修复：dispatchStep 的 TeamStageUpdatedEvent 不携带
-    // Members（ intentionally nil，避免覆盖 publishSpiritTeamAssembled 写入
-    // 的完整 Members）。当事件 Members 为空时，保留已有 Members 数据。
     if (ex && (!ts.Members || ts.Members.length === 0) && ex.Members && ex.Members.length > 0) {
       ts = { ...ts, Members: ex.Members };
     }
@@ -105,8 +99,6 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   function upsertMemberSession(ms: MemberSession) {
     const ex = memberSessions.value.get(ms.ID);
     if (ex && ms.Version <= ex.Version) return;
-    // 2026-07-04 问题 3 修复：completion 事件不携带 AgentName/AvatarURL，
-    // 用字段合并避免清空已有值（与后端 repo 的条件 SET 语义一致）。
     if (ex) {
       memberSessions.value.set(ms.ID, { ...ex, ...ms });
     } else {
@@ -118,10 +110,6 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     const ex = planBoards.value.get(pb.ID);
     if (ex && pb.Version <= ex.Version) return;
     planBoards.value.set(pb.ID, { ...pb });
-    // 2026-07-04 修复：同步将嵌入的 Steps 写入 planSteps Map，
-    // 使后续 plan_step.* 事件与初始创建走同一条数据路径。
-    // 单步事件到达时通过 upsertPlanStep 更新 Map，组件通过
-    // getPlanBoardSteps 查询始终拿到最新状态。
     if (pb.Steps && pb.Steps.length > 0) {
       for (const ps of pb.Steps) {
         const exStep = planSteps.value.get(ps.ID);
@@ -142,13 +130,10 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     }
   }
 
-  // 2026-07-04 补齐：GraphStage / GraphNode upsert
   function upsertGraphStage(gs: GraphStage) {
     const ex = graphStages.value.get(gs.ID);
     if (ex && gs.Version <= ex.Version) return;
     graphStages.value.set(gs.ID, { ...gs });
-    // 2026-07-04 修复：同步将嵌入的 Nodes 写入 graphNodes Map，
-    // 使后续 graph_node.updated 事件与初始创建走同一条数据路径。
     if (gs.Nodes && gs.Nodes.length > 0) {
       for (const gn of gs.Nodes) {
         // GraphNode 无 Version 字段，直接覆盖
@@ -213,7 +198,6 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     return out.sort((a, b) => a.Seq - b.Seq);
   }
 
-  // 2026-07-04 补齐：GraphStage / GraphNode 查询辅助
   function getTaskGraphStages(taskId: string): GraphStage[] {
     const out: GraphStage[] = [];
     for (const gs of graphStages.value.values()) {
@@ -229,9 +213,6 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     return undefined;
   }
 
-  // 2026-07-04 修复：通过 PlanBoard.ID 查询其下所有 PlanStep（从独立 Map，
-  // 始终反映最新状态）。PlanBoard.Steps 嵌入数组仅在创建时填充，后续
-  // plan_step.* 事件更新独立 Map，组件必须通过此查询辅助获取最新数据。
   function getPlanBoardSteps(planBoardId: string): PlanStep[] {
     const out: PlanStep[] = [];
     for (const ps of planSteps.value.values()) {
@@ -240,7 +221,6 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     return out.sort((a, b) => a.Seq - b.Seq);
   }
 
-  // 2026-07-04 修复：查询 MemberSession 对应的 agent 内部活动 steps。
   // Step 无直接外键关联 MemberSession，通过 AuthorAgentKey + TaskID 间接匹配。
   // 同一 agent 在同一 task 下的 thinking/action/reply 等 step 都会返回。
   function getMemberSessionSteps(memberSession: MemberSession): Step[] {
@@ -307,7 +287,6 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     for (const [id, ps] of planSteps.value) {
       if (ps.TaskID && tasks.value.has(ps.TaskID) === false) planSteps.value.delete(id);
     }
-    // 2026-07-04 补齐：清理 GraphStage / GraphNode
     for (const [id, gs] of graphStages.value) {
       if (gs.SessionID === spiritSessionId) graphStages.value.delete(id);
     }
@@ -338,9 +317,6 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
    *   - Per team_stage (parallel): team_runs
    *   - Per team_run (parallel): member_sessions
    *   - Per graph_stage (parallel): graph_nodes
-   *
-   * 2026-07-04 问题 6 修复：原先只加载 tasks/turns/steps，刷新后 plan/graph/
-   * team/member 全部丢失。补齐 7 类子实体的 REST 调用。
    *
    * Isolated failures at child levels are swallowed (.catch(() => [])) so
    * partial history can still render. Top-level task/step failures propagate.

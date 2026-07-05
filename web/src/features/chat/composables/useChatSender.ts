@@ -275,7 +275,6 @@ export function useChatSender(deps: SenderDeps) {
     // T6: placeholder mechanism removed — no local placeholder row to mark
     // as failed. Surface the error to the user via a notification instead.
     $q.notify({ type: 'negative', message: errorMsg });
-    // 2026-07-04 问题 5 修复：清理乐观 Task（发送失败时）
     activityStore.removeTask(pendingUserId);
   }
 
@@ -527,7 +526,6 @@ export function useChatSender(deps: SenderDeps) {
         deps.inputText.value = '';
       }
 
-      // 2026-07-04 问题 5 修复：乐观插入临时 Task，让用户消息立即显示。
       // 真实 task.created 事件到达时，store.upsertTask 会自动清理同 sessionId
       // 下所有 'pending-user-' 开头的乐观 Task。
       const optimisticTask: Task = {

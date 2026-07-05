@@ -55,8 +55,6 @@ func (p *GraphOrchestrationProjector) PublishGraphTaskStatus(ctx context.Context
 		},
 		Domain: biz.ActivityDomainChat,
 	}
-	// 2026-07-04 问题 1 修复：优先使用 seq.Publish（持久化 + WS），
-	// seq 为 nil 时 fallback 到 eventBus.Publish（仅 WS，刷新后丢失）。
 	// graph_stage has no typed v2 EventKind; ActivityBridgeEvent preserves
 	// the v1 payload for the frontend Kanban UI and the EventRouter persists
 	// it via ActivityUpserter.

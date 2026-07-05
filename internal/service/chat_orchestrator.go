@@ -173,9 +173,6 @@ type ChatOrchestrator struct {
 	cmdSafetyChecker *security.CommandSafetyPermissionChecker
 
 	// v2Seq is the v2 Sequencer (persist + WS) extracted from V2ProjectorFactory.
-	// 2026-07-04 问题 C5 修复：注入到 chatTurnEventPublisher / chatAwaitCoordinator
-	// / chatEventPublisher / PrePlanningGate，让 Notice step 事件经过 sequencer
-	// 持久化，避免刷新后丢失。
 	v2Seq rt.EventPublisher
 
 	sweepStop chan struct{}
@@ -347,10 +344,6 @@ type ChatInfraDeps struct {
 	// per-turn streaming state. The factory shares the singleton Sequencer +
 	// SeqAssigner so Seq allocation remains globally monotonic per spirit
 	// session. Wired via Wire DI; nil = v2 disabled.
-	//
-	// 2026-07-04 问题 4 根因修复：原 V2Projector 单例在 spirit turn 与 team
-	// member turn 并发场景下被互相 Reset()/Configure()，导致 spirit turn
-	// 状态被清空、事件归因错乱。改为每 turn 一个实例。
 	V2ProjectorFactory *v2.ProjectorFactory
 }
 
@@ -385,8 +378,6 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	runs := coalesceRunRegistry(deps.Turn.Runs)
 	pending := coalescePendingQueue(deps.Turn.PendingQueue)
 	sessionLocks := biz.NewSessionLockManager()
-	// 2026-07-04 问题 C5 修复：从 V2ProjectorFactory 提取 seq，注入到需要
-	// 持久化 v2 事件的子组件，避免绕过 seq.Publish 导致 Notice step 刷新后丢失。
 	var v2Seq rt.EventPublisher
 	if pf := deps.Infra.V2ProjectorFactory; pf != nil {
 		v2Seq = pf.Seq()

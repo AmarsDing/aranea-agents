@@ -13,10 +13,6 @@ import (
 // GraphOrchestrationProjector starts run-scoped status projectors for graph executions.
 type GraphOrchestrationProjector struct {
 	eventBus biz.EventBus // Phase 3b-D: was biz.ActivityEventBus, migrated to v2 EventBus
-	// 2026-07-04 问题 1 修复：注入 v2 Sequencer 让 ActivityBridgeEvent 经过
-	// 持久化（EventRouter → UpsertActivity），避免刷新后丢失。
-	// 通过 SetSeq 后注入（打破 wire 循环：graphOrchestrationProjector 在
-	// wire_gen.go:256 创建，sequencer 在 wire_gen.go:302 创建）。
 	seq      runtime.EventPublisher
 	mu       sync.Mutex
 	// execID -> cancel
@@ -34,8 +30,6 @@ func NewGraphOrchestrationProjector(eventBus biz.EventBus) *GraphOrchestrationPr
 
 // SetSeq injects the v2 Sequencer post-construction.
 // Called from ProvideChatService after V2ProjectorFactory is available.
-// 2026-07-04 问题 1 修复：打破 wire 循环——graphOrchestrationProjector 创建时
-// sequencer 尚未构造，需后注入。
 func (p *GraphOrchestrationProjector) SetSeq(seq runtime.EventPublisher) {
 	if p == nil {
 		return

@@ -158,7 +158,6 @@ var ProviderSet = wire.NewSet(
 	NewMemberSessionV2Repo,
 	NewPlanBoardV2Repo,
 	NewPlanStepV2Repo,
-	// 2026-07-04 补齐：GraphStage/GraphNode v2 Repo（与 PlanBoard 一对一）
 	NewGraphStageV2Repo,
 	NewGraphNodeV2Repo,
 )

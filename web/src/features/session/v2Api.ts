@@ -245,14 +245,9 @@ export async function listStepsV2(sessionId: string, opts?: { turnId?: string; t
 // HTTP helper is exposed here. Frontend callers needing a single step should
 // use listStepsV2 + filter, or wire a gRPC client if a use case emerges.
 
-// === 2026-07-04 问题 6 修复：7 个 child entity 的 REST API 客户端 ===
 // 对应后端 SessionV2Service 的 7 个新 List RPC。前端 fetchSessionHistory
 // 刷新页面时调用这些端点重建完整活动树（Plan/Graph/Team/Member）。
 //
-// 2026-07-04 问题 2 修复（乱码根因）：Kratos HTTP 默认使用 protojson 编码
-// （UseProtoNames=false），proto snake_case 字段会输出为 camelCase JSON
-// （如 task_id → taskId）。之前的 DTO 用 snake_case 导致字段全部 undefined，
-// 刷新后所有子实体返回空数组，前端面板显示异常。现已统一为 camelCase。
 
 // --- DTOs ---
 

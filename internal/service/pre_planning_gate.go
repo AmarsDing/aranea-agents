@@ -37,17 +37,14 @@ type GateDecision struct {
 //
 // Phase 3b-D Task 10: migrated from v1 ActivityEventBus to v2 EventBus.
 //
-// 2026-07-04 问题 C5 修复：新增 seq 字段，publishPlanningPhase 优先用 seq.Publish
-// （持久化 + WS），eventBus 作为 fallback（仅 WS）。
 type PrePlanningGate struct {
 	planner  biz.TaskPlannerPort
 	eventBus biz.EventBus
-	seq      rt.EventPublisher // 2026-07-04 问题 C5：优先用 seq 持久化
+	seq      rt.EventPublisher
 	lg       loggateway.Logger
 }
 
 // NewPrePlanningGate constructs a PrePlanningGate.
-// 2026-07-04 问题 C5 修复：新增 seq 参数。
 func NewPrePlanningGate(planner biz.TaskPlannerPort, eventBus biz.EventBus, seq rt.EventPublisher, lg loggateway.Logger) *PrePlanningGate {
 	return &PrePlanningGate{
 		planner:  planner,
@@ -142,7 +139,6 @@ func (g *PrePlanningGate) publishPlanningPhase(ctx context.Context, status biz.A
 		Status:          stepStatus,
 		AuthorAgentKey:  "pre-planning-gate",
 	}
-	// 2026-07-04 问题 C5 修复：优先用 seq.Publish 持久化，避免刷新后丢失。
 	ev := biz.NewStepCreatedEvent(step)
 	if g.seq != nil {
 		g.seq.Publish(ctx, ev)

@@ -2055,7 +2055,6 @@ func provideV2EventBus() *event.V2Bus {
 
 // provideV2RepoSet composes v2 repo interfaces into a single RepoSet
 // via v2.NewRepoSetAdapter.
-// 2026-07-04 问题 2 修复：补齐 graphStage/graphNode 参数，让 sequencer 能持久化。
 func provideV2RepoSet(
 	task biz.TaskV2Repo,
 	turn biz.TurnV2Repo,
@@ -2084,10 +2083,6 @@ func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, au biz.ActivityUpserter
 // The factory shares the singleton Sequencer + SeqAssigner so Seq allocation
 // remains globally monotonic per spirit session.
 //
-// 2026-07-04 问题 4 根因修复：原 provideV2Projector 返回单例 ActivityProjector，
-// 在 spirit turn 与 team member turn 并发场景下（team AutoStart 通过 safego.Go
-// 异步启动）会被互相 Reset()/Configure()，导致 spirit turn 状态被清空、事件
-// 归因错乱。改为返回 ProjectorFactory，每次 turn 创建独立实例。
 func provideV2ProjectorFactory(seq *v2.Sequencer, lg loggateway.Logger) *v2.ProjectorFactory {
 	return v2.NewProjectorFactory(seq, seq.SeqAssigner(), lg)
 }
@@ -2100,12 +2095,9 @@ func provideWSV2Subscriber(bus *event.V2Bus, wsSrv *server.WSServer, lg loggatew
 }
 
 // providePlanExecutor constructs the v2 forward DAG scheduler.
-// 2026-07-04 问题 4 修复：使用 realTeamOrchestrator 替代 Phase 1 stub。
 // The PlanExecutor is injected into TeamStarter via SetPlanExecutor
 // (called in ProvideChatService).
 //
-// 2026-07-04 补齐：新增 graphStage + graphNode 依赖，用于同步创建 GraphStage
-// 和更新 GraphNode 状态（与 PlanBoard 一对一关联）。
 func providePlanExecutor(
 	planStep biz.PlanStepV2Repo,
 	teamStage biz.TeamStageV2Repo,
@@ -2120,14 +2112,12 @@ func providePlanExecutor(
 }
 
 // provideTeamOrchestrator returns the real TeamOrchestrator (Phase 2).
-// 2026-07-04 问题 4 修复：替代 Phase 1 stub，桥接到 SpiritTeamAssembler。
 // assembler 和 starter 通过 ProvideChatService 后注入（打破 Wire 循环）。
 func provideTeamOrchestrator(lg loggateway.Logger) *service.RealTeamOrchestrator {
 	return service.NewRealTeamOrchestrator(lg)
 }
 
 // provideTeamOrchestratorStub returns the Phase 1 no-op TeamOrchestrator.
-// 2026-07-04 问题 4 修复：已废弃，保留仅供回退使用。
 func provideTeamOrchestratorStub() service.TeamOrchestrator {
 	return service.NewStubTeamOrchestrator()
 }
@@ -2446,8 +2436,6 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		wire.Bind(new(biz.TurnV2Reader), new(biz.TurnV2Repo)),
 		wire.Bind(new(biz.StepV2Reader), new(biz.StepV2Repo)),
 		wire.Bind(new(biz.TeamStageV2Reader), new(biz.TeamStageV2Repo)),
-		// 2026-07-04 问题 6 修复：补齐 6 个 v2 Reader 的 Wire 绑定，让
-		// SessionV2Service 的 7 个新 List RPC 能注入对应 repo。
 		wire.Bind(new(biz.TeamRunV2Reader), new(biz.TeamRunV2Repo)),
 		wire.Bind(new(biz.MemberSessionV2Reader), new(biz.MemberSessionV2Repo)),
 		wire.Bind(new(biz.PlanBoardV2Reader), new(biz.PlanBoardV2Repo)),
@@ -2464,7 +2452,6 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideV2Sequencer,
 		provideV2ProjectorFactory,
 		provideWSV2Subscriber,
-		// 2026-07-04 问题 4 修复：使用 realTeamOrchestrator 替代 stub。
 		provideTeamOrchestrator,
 		wire.Bind(new(service.TeamOrchestrator), new(*service.RealTeamOrchestrator)),
 		providePlanExecutor,

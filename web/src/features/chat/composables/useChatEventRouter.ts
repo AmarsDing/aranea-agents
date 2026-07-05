@@ -87,7 +87,6 @@ export function useChatEventRouter(store: Store) {
         if (p.PlanStep) store.upsertPlanStep(p.PlanStep as never);
         break;
 
-      // 2026-07-04 补齐：GraphStage 事件（与 PlanBoard 一对一）
       case 'graph_stage.created':
       case 'graph_stage.updated':
       case 'graph_stage.completed':

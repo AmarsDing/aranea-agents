@@ -1,8 +1,7 @@
 <!-- web/src/components/chat/v2/GraphStageBlock.vue
-  2026-07-04 补齐：GraphStage 流程图可视化（v2 实体，与 PlanBoard 一对一关联）。
+  GraphStage 流程图可视化（v2 实体，与 PlanBoard 一对一关联）。
   替代 v1 GraphStageBlock.vue（通过 activity.bridge 桥接到 v2）。
   设计：docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md §3.7.5
-  2026-07-04 修复：
   - 使用 store.getGraphStageNodes 查询辅助（从独立 Map，反映最新状态）
   - GraphStage.Status 派生自子 nodes 状态（后端只发 created，不发 updated/completed/failed）
   - CSS 改用 glass tokens 符合主题
@@ -77,7 +76,6 @@ const gapX = 40;
 const gapY = 30;
 const width = 600;
 
-// 2026-07-04 修复：从 store.getGraphStageNodes 查询辅助获取最新 nodes。
 // 不再使用 props.graphStage.Nodes 嵌入数组（创建后永不更新）。
 const nodes = computed(() => store.getGraphStageNodes(props.graphStage.ID));
 
@@ -120,7 +118,6 @@ const edges = computed<Edge[]>(() => {
   return out;
 });
 
-// 2026-07-04 修复：GraphStage.Status 派生自子 nodes 状态。
 // 后端只发 graph_stage.created（Status=running），不发 updated/completed/failed，
 // 所以容器状态必须从子 node 状态聚合得到。
 const derivedStatus = computed<GraphStageStatus>(() => {
@@ -172,7 +169,6 @@ const stageStatusLabel = computed(() => {
   margin-bottom: 8px
   font-size: 13px
   font-weight: 600
-  // 2026-07-04 问题 4 修复：提高对比度，用 primary 而非 secondary
   color: var(--color-text-primary)
 
 .header-icon
@@ -185,7 +181,6 @@ const stageStatusLabel = computed(() => {
 .graph-stage-svg
   display: block
   max-width: 100%
-  // 2026-07-04 问题 4 修复：用更不透明的背景，确保节点和边线可见
   background: var(--glass-elevated, rgba(255, 255, 255, 0.08))
   border-radius: 6px
   border: 1px solid var(--glass-border)
@@ -196,7 +191,6 @@ const stageStatusLabel = computed(() => {
   color: var(--color-text-secondary)
   font-size: 12px
 
-// 2026-07-04 问题 4 修复：边线/箭头用更高对比度的颜色
 .graph-edge
   stroke: var(--color-text-secondary, rgba(150, 150, 150, 0.6))
   stroke-width: 2

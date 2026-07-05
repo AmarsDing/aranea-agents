@@ -273,9 +273,6 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 	if taskDesc == "" {
 		return SpiritTeamResult{}, apierror.BadRequest("SPIRIT", "task_description is required")
 	}
-	// 2026-07-04 问题 2 修复：优先使用 params.TeamName 作为 Team/Session 的展示名，
-	// 仅在 TeamName 为空时回退到 TaskDescription。之前 AssembleTeam 完全忽略
-	// params.TeamName，导致 Team.DisplayName 永远等于 TaskDescription（甚至是 st_1）。
 	teamName := strings.TrimSpace(params.TeamName)
 	if teamName == "" {
 		teamName = taskDesc
@@ -308,9 +305,20 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 	// field must hold the real agent ID (e.g. "agent___spirit__" or UUID), not
 	// the agentKey (e.g. "__spirit__"), because validateTeamMembersExist uses
 	// AgentExistsByID to verify each member.
-	agentIDs, resolveErr := u.resolveAgentIDs(ctx, params.AgentKeys)
+	keyToID, resolveErr := u.resolveAgentKeyToIDMap(ctx, params.AgentKeys)
 	if resolveErr != nil {
 		return SpiritTeamResult{}, apierror.Wrap(resolveErr, apierror.CodeInternal, "SPIRIT")
+	}
+
+	agentIDs := make([]string, 0, len(params.AgentKeys))
+	for _, key := range params.AgentKeys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if id, ok := keyToID[key]; ok {
+			agentIDs = append(agentIDs, id)
+		}
 	}
 
 	defJSON := buildSpiritTeamDefinitionJSON(mode, agentIDs, u.lg, params.ParallelConfigJSON)
@@ -392,8 +400,6 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 				if agentKey == "" {
 					continue
 				}
-				// 2026-07-04 问题 3 修复：系统 Agent（精灵助手/系统管家等）
-				// 不应进入业务团队，作为三保险跳过。
 				if IsSystemAgentKey(agentKey) {
 					u.lg.Warn("AssembleTeam 跳过系统 Agent",
 						loggateway.StepID("spirit.assemble.system_agent_skip"),
@@ -401,8 +407,17 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 						loggateway.Str("agent_key", agentKey))
 					continue
 				}
+				agentID, ok := keyToID[agentKey]
+				if !ok {
+					u.lg.Warn("AssembleTeam 跳过成员：未解析到 agentID",
+						loggateway.StepID("spirit.assemble.agent_session.no_id"),
+						loggateway.Str("team_id", team.ID),
+						loggateway.Str("agent_key", agentKey))
+					continue
+				}
 				agentSession, aerr := u.sessionUC.Create(txCtx, Session{
 					OwnerType:       "agent",
+					AgentID:         agentID,
 					SessionType:     string(SessionTypeAgent),
 					TeamID:          team.ID,
 					ParentSessionID: teamSession.ID,
@@ -1009,10 +1024,10 @@ const (
 	MaxKeyFindingsCount = 5
 )
 
-// resolveAgentIDs maps agentKeys (e.g. "__spirit__") to agent IDs (e.g.
+// resolveAgentKeyToIDMap maps agentKeys (e.g. "__spirit__") to agent IDs (e.g.
 // "agent___spirit__" or UUID). Uses SpiritAgentResolver.List to fetch all
 // active agents once and builds a lookup map.
-func (u *SpiritTeamUsecase) resolveAgentIDs(ctx context.Context, agentKeys []string) ([]string, error) {
+func (u *SpiritTeamUsecase) resolveAgentKeyToIDMap(ctx context.Context, agentKeys []string) (map[string]string, error) {
 	if len(agentKeys) == 0 {
 		return nil, nil
 	}
@@ -1027,21 +1042,22 @@ func (u *SpiritTeamUsecase) resolveAgentIDs(ctx context.Context, agentKeys []str
 	for _, a := range result.Items {
 		keyToID[a.AgentKey] = a.ID
 	}
-	ids := make([]string, 0, len(agentKeys))
+	out := make(map[string]string, len(agentKeys))
 	for _, key := range agentKeys {
 		key = strings.TrimSpace(key)
 		if key == "" {
 			continue
 		}
+		if _, dup := out[key]; dup {
+			continue
+		}
 		id, ok := keyToID[key]
 		if !ok {
-			// Fallback: try "agent_" + key for built-in agents following the
-			// conventional ID scheme. This avoids a DB round-trip per key.
 			id = "agent_" + key
 		}
-		ids = append(ids, id)
+		out[key] = id
 	}
-	return ids, nil
+	return out, nil
 }
 
 func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggateway.Logger, parallelCfgJSON ...string) string {

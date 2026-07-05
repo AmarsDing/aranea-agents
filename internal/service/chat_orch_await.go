@@ -65,15 +65,13 @@ type awaitCoordinator interface {
 // Phase 3b-D Task 10: migrated from v1 ActivityEventBus to v2 EventBus.
 // PublishAwaitResumed now emits biz.NewStepCreatedEvent (Kind=StepKindNotice).
 //
-// 2026-07-04 问题 C5 修复：新增 seq 字段，PublishAwaitResumed 优先用 seq.Publish
-// （持久化 + WS），eventBus 作为 fallback（仅 WS）。
 type chatAwaitCoordinator struct {
 	chatUC         *biz.ChatUsecase
 	runStatus      runStatusTracker
 	sessionState   sessionStateTransitor
 	sessionRT      func() *araneasession.Runtime // lazy accessor
 	eventBus       biz.EventBus
-	seq            rt.EventPublisher // 2026-07-04 问题 C5：优先用 seq 持久化
+	seq            rt.EventPublisher
 	resumeInFlight *TypedSyncMap[string, struct{}]
 	lg             loggateway.Logger
 }
@@ -87,7 +85,7 @@ type chatAwaitCoordinatorDeps struct {
 	SessionState sessionStateTransitor
 	SessionRT    func() *araneasession.Runtime
 	EventBus     biz.EventBus
-	Seq          rt.EventPublisher // 2026-07-04 问题 C5：v2 Sequencer
+	Seq          rt.EventPublisher
 	Logger       loggateway.Logger
 }
 
@@ -136,7 +134,6 @@ func (a *chatAwaitCoordinator) EndResume(sessionID string) {
 // (run_status_publish.go, owned by Task 9) before this call, so the run
 // status is independently delivered to WS clients.
 //
-// 2026-07-04 问题 C5 修复：优先用 seq.Publish 持久化，避免刷新后丢失。
 func (a *chatAwaitCoordinator) PublishAwaitResumed(sessionID, runID string) {
 	if a.seq == nil && a.eventBus == nil {
 		return

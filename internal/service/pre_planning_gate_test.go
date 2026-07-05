@@ -97,9 +97,9 @@ func TestPrePlanningGate_Evaluate(t *testing.T) {
 			bus := &captureEventBus{}
 			gate := NewPrePlanningGate(
 				&fakePlanner{quickLevel: tt.level, quickScore: tt.score},
-				bus,
-				nil, // 2026-07-04 问题 C5: seq=nil, fallback to eventBus
-				loggateway.NewNoop(),
+			bus,
+			nil,
+			loggateway.NewNoop(),
 			)
 
 			decision, err := gate.Evaluate(context.Background(), biz.PlanInput{
@@ -156,7 +156,7 @@ func TestPrePlanningGate_Evaluate_PropagatesQuickAssessError(t *testing.T) {
 	gate := NewPrePlanningGate(
 		&fakePlanner{quickErr: errors.New("assess failed")},
 		bus,
-		nil, // 2026-07-04 问题 C5: seq=nil, fallback to eventBus
+		nil,
 		loggateway.NewNoop(),
 	)
 	_, err := gate.Evaluate(context.Background(), biz.PlanInput{})

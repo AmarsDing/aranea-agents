@@ -1,5 +1,5 @@
 <!-- web/src/components/chat/v2/GraphNode.vue
-  2026-07-04 补齐：GraphStage 中的单个节点，对应一个 PlanStep。
+  GraphStage 中的单个节点，对应一个 PlanStep。
   节点状态由 PlanStep.Status 通过 MapPlanStepToGraphNodeStatus 映射得到。
   节点状态色严格遵循设计文档 §3.7.5：
     pending → 灰色
@@ -7,7 +7,6 @@
     completed → 绿色 + ✓
     failed → 红色 + ✗ + 抖动
     interrupted → 黄色 + ⏸
-  2026-07-04 修复：
   - CSS 变量替代硬编码 hex，符合主题（日间不用霓虹青违规）
   - 状态文本走 i18n
 -->
@@ -72,7 +71,6 @@ const statusIcon = computed(
     })[props.node.Status] || '○',
 );
 
-// 2026-07-04 修复：状态文本走 i18n
 const statusLabel = computed(() => {
   const map: Record<string, string> = {
     pending: t('chat.v2.statusPending'),
@@ -84,7 +82,6 @@ const statusLabel = computed(() => {
   return map[props.node.Status] || props.node.Status;
 });
 
-// 2026-07-04 问题 4 修复：节点边框色按状态区分，提高可读性
 const nodeStrokeColor = computed(
   () =>
     ({
@@ -104,7 +101,7 @@ const nodeStrokeColor = computed(
 .graph-node__rect {
   transition: fill 0.2s ease, stroke 0.2s ease;
 }
-/* 2026-07-04 问题 4 修复：节点填充用半透明色，让文字在背景上可读。
+/* 节点填充用半透明色，让文字在背景上可读。
    之前用纯色填充，文字和背景对比度不足。现在用 rgba 半透明覆盖，
    文字用高对比度的 primary 色，确保日间/夜间都可读。 */
 .graph-node__rect--pending {
@@ -148,7 +145,7 @@ const nodeStrokeColor = computed(
     transform: translateX(2px);
   }
 }
-/* 2026-07-04 问题 4 修复：文字用高对比度颜色，确保在半透明背景上可读 */
+/* 文字用高对比度颜色，确保在半透明背景上可读 */
 .graph-node__label {
   fill: var(--color-text-primary, #fff);
   font-size: 12px;

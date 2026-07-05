@@ -142,10 +142,6 @@ func (o *ChatOrchestrator) persistTurnUserMessage(
 	if durableCtx.active {
 		userMsg = durableCtx.buildUserMessage(sessionID, userOpts, attN, emitter)
 	} else {
-		// 2026-07-04 问题 2/3 修复：优先使用 ctx 中预生成的 RootTaskActivityID
-		// 作为 userMsg.ID，保证 userMsg.ID 与 PlanBoard.TaskID 一致（PRE-PLANNING
-		// GATE 在本函数之前调用，已通过 ContextWithRootTaskActivityID 注入 ID）。
-		// 缺失时 fallback 到 uuid.NewString()。
 		msgID := string(chatagent.RootTaskActivityIDFromCtx(ctx))
 		if msgID == "" {
 			msgID = uuid.NewString()
@@ -218,9 +214,6 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 	// meta without emitting events. OnTurnStart (called later by the stream
 	// consumer) will emit task.created + turn.started.
 	//
-	// 2026-07-04 问题 4 根因修复：每次 turn 通过 V2ProjectorFactory.NewProjector()
-	// 创建独立实例，避免 spirit turn 与 team member turn 共享单例导致的 Reset()
-	// 互相清空状态问题。Sequencer 仍为单例（共享发布管道与全局 SeqAssigner）。
 	var turnProjector *v2.ActivityProjector
 	if o.infraDeps.V2ProjectorFactory != nil {
 		earlyMeta := chatagent.ProjectMeta{
@@ -550,11 +543,6 @@ func (o *ChatOrchestrator) consumeTurnStream(
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
 	streamOpts := NewChatStreamConsumeOptions(v2Projector)
-	// 2026-07-04 问题 4 修复：v2Projector 是 invokeTurnLLMAndStream 通过
-	// V2ProjectorFactory.NewProjector() 创建的 per-turn 实例，已通过
-	// Configure(v2Meta) + WithActivityEmitter 注入到 runCtx。它通过
-	// streamOpts.V2Projector 传给 stream consumer；OnTurnStart 会发出
-	// task.created + turn.started，保留 LLM 调用期间插件发出的 notice/confirm。
 	o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始消费事件流",
 		loggateway.StepID("chat.stream_consume_start"),
 		loggateway.Any("first_byte_timeout", firstByteTimeout.String()))
