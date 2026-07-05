@@ -36,15 +36,29 @@ export function useSessionTree() {
     return tree;
   }
 
-  function findMemberSessionId(spiritSessionId: string, agentKey: string): string | null {
+  function findMemberSessionId(spiritSessionId: string, agentKey: string, teamSessionId?: string | null): string | null {
     const tree = treesBySpirit.value.get(spiritSessionId);
     if (!tree) return null;
+    if (teamSessionId) {
+      const teamNode = findTeamNode(tree, teamSessionId);
+      if (teamNode) {
+        const hit = walkForAgent(teamNode, agentKey);
+        if (hit) return hit;
+      }
+    }
     return walkForAgent(tree, agentKey);
   }
 
+  function findTeamNode(node: SessionTreeNode, teamSessionId: string): SessionTreeNode | null {
+    if (node.session.id === teamSessionId) return node;
+    for (const child of node.children) {
+      const hit = findTeamNode(child, teamSessionId);
+      if (hit) return hit;
+    }
+    return null;
+  }
+
   function walkForAgent(node: SessionTreeNode, agentKey: string): string | null {
-    // Match by member_agent_key (the agent key string, e.g. "agent-key-A"),
-    // NOT agent_id (which is a UUID). See internal/biz/spirit_team_usecase.go:265-275.
     if (node.session.member_agent_key === agentKey) return node.session.id;
     for (const child of node.children) {
       const hit = walkForAgent(child, agentKey);

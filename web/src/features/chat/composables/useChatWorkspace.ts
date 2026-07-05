@@ -71,14 +71,14 @@ export function resolvePanelSessionId(args: {
   spiritSessionId: string | null;
   activeTeamSessionId: string | null;
   activeMemberAgentKey: string | null;
-  findMemberSessionId: (spiritSessionId: string, agentKey: string) => string | null;
+  findMemberSessionId: (spiritSessionId: string, agentKey: string, teamSessionId?: string | null) => string | null;
 }): string | null {
   const { mode, spiritSessionId, activeTeamSessionId, activeMemberAgentKey, findMemberSessionId } = args;
   if (mode === 'spirit') return spiritSessionId;
   if (mode === 'team') return activeTeamSessionId;
   if (mode === 'member') {
     if (!spiritSessionId || !activeMemberAgentKey) return null;
-    return findMemberSessionId(spiritSessionId, activeMemberAgentKey);
+    return findMemberSessionId(spiritSessionId, activeMemberAgentKey, activeTeamSessionId);
   }
   return null;
 }
@@ -1273,7 +1273,8 @@ export function useChatWorkspace() {
       const agentKey = spiritStore.activeTeam?.members.find((m) => m.agentId === memberId)?.agentKey ?? null;
       if (!spiritSessionId || !agentKey) return;
       await sessionTree.loadTreeFor(spiritSessionId);
-      const memberSessionId = sessionTree.findMemberSessionId(spiritSessionId, agentKey);
+      const teamSessionId = spiritStore.activeTeam?.teamSessionId ?? null;
+      const memberSessionId = sessionTree.findMemberSessionId(spiritSessionId, agentKey, teamSessionId);
       if (memberSessionId) {
         void bindSessionView(memberSessionId, true, 'chat');
       }

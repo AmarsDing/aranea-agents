@@ -44,14 +44,6 @@
 
     <DAGDiagramCard v-if="hasDagTeams" :teams="teams" class="q-mb-sm" />
 
-    <SynthesisResultCard
-      v-if="synthesisResult"
-      :result="synthesisResult"
-      :rendered-content="renderChatMarkdown(synthesisResult.content)"
-      :evolution-suggestion="evolutionSuggestion"
-      class="q-mb-sm"
-    />
-
     <div class="parallel-team-overview__cards">
       <TeamProgressCard
         v-for="team in teams"

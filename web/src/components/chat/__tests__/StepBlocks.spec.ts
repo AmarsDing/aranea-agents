@@ -61,12 +61,4 @@ describe('ReplyBlock v2', () => {
     });
     expect(wrapper.text()).toContain('Hello world');
   });
-
-  it('shows final label when IsFinal', () => {
-    const wrapper = mount(ReplyBlock, {
-      props: { step: mkStep({ Content: 'hi', IsFinal: true }) },
-      global: { plugins: [i18n] },
-    });
-    expect(wrapper.text()).toContain('最终回复');
-  });
 });

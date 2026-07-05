@@ -4,7 +4,6 @@
     <div class="reply-block__label">
       <span class="reply-block__icon">💬</span>
       <span class="reply-block__label-text">{{ label }}</span>
-      <span v-if="isFinal" class="reply-block__final-label">{{ t('chat.v2.finalReplyBadge') }}</span>
       <span v-if="streaming" class="pulse-dot"></span>
     </div>
     <div class="reply-block__content">
