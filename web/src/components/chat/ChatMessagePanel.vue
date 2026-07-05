@@ -135,8 +135,6 @@
           :session-id="props.sessionId"
           :agent-map="props.agentMap"
           :run-status="props.runStatus"
-          :synthesis-result="synthesisResult"
-          :spirit-evolution-suggestion="spiritEvolutionSuggestion"
           @messages-click="handleMessagesClick"
           @scroll="onMessagesScrollWrapped"
           @scroll-to-bottom="scrollToBottom"
@@ -231,21 +229,19 @@
       v-if="spiritStatusBar && (!panelMode || panelMode === 'spirit')"
       :running-team-count="spiritStatusBar.runningTeamCount"
       :interrupted-team-count="spiritStatusBar.interruptedTeamCount"
-      :quota-used="spiritStatusBar.quotaUsed"
-      :quota-max="spiritStatusBar.quotaMax"
+      :completed-team-count="spiritStatusBar.completedTeamCount"
+      :total-team-count="spiritStatusBar.totalTeamCount"
       :token-usage="spiritStatusBar.tokenUsage"
       :context-ratio="spiritStatusBar.contextRatio"
       :context-used-tokens="spiritStatusBar.contextUsedTokens"
       :context-window="spiritStatusBar.contextWindow"
       :session-id="sessionId"
-      :last-event="spiritStatusBar.lastEvent"
       :complexity-level="spiritStatusBar.complexityLevel"
       :complexity-reason="spiritStatusBar.complexityReason"
       :checkpoint-step="spiritStatusBar.checkpointStep"
       :dq-score="spiritStatusBar.dqScore"
       @click-running="emit('status-bar-click-running')"
       @click-interrupted="emit('status-bar-click-interrupted')"
-      @click-last-event="emit('status-bar-click-last-event')"
     />
   </q-card>
 </template>
@@ -266,7 +262,7 @@ import SpiritStatusBar from '../spirit/SpiritStatusBar.vue';
 import type { RunStatusValue } from '../../features/chat/types';
 import { TOOL_DISPLAY_KEY } from '../../features/chat/types';
 import type { CompressStatus } from '../../features/session/types';
-import type { EvolutionSuggestion, SpiritStatusBarData } from '../../features/spirit/types';
+import type { SpiritStatusBarData } from '../../features/spirit/types';
 
 import { useTodoBoard } from '../../features/chat/composables/useTodoBoard';
 import { useChatMessageScroll, useChatCodeCopy } from '../../features/chat/composables/useChatMessageScroll';
@@ -276,7 +272,7 @@ import type { Message } from '../../features/chat/types';
 import type { PromptBreakdown } from '../../features/chat/contextBreakdown';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { ChatAttachment } from './types';
-import type { SpiritTeam, SpiritMember, SynthesisOutput } from '../../features/spirit/types';
+import type { SpiritTeam, SpiritMember } from '../../features/spirit/types';
 import type { ContextualMessage } from '../../features/chat/composables/useContextualLoadingMessage';
 import { EXECUTION_COLLAPSE_CONTROL_KEY } from '../../features/chat/executionCardHelpers';
 import type { Step } from '../../features/chat/v2Types';
@@ -287,7 +283,6 @@ const props = defineProps<{
   panelMode?: 'spirit' | 'team' | 'member';
   spiritTeam?: SpiritTeam | null;
   activeMember?: SpiritMember | null;
-  synthesisResult?: SynthesisOutput | null;
   modelValue: string;
   messages: Message[];
   attachments: ChatAttachment[];
@@ -336,8 +331,6 @@ const props = defineProps<{
   spiritLoadingMessage?: ContextualMessage | null;
   /** Spirit status bar data. */
   spiritStatusBar?: SpiritStatusBarData | null;
-  /** Evolution suggestion from DQ analysis (for SynthesisResultCard). */
-  spiritEvolutionSuggestion?: EvolutionSuggestion | null;
   compressStatus?: CompressStatus;
   showToolCalls?: boolean;
 }>();
@@ -396,7 +389,6 @@ const emit = defineEmits<{
   compact: [sessionId: string];
   'status-bar-click-running': [];
   'status-bar-click-interrupted': [];
-  'status-bar-click-last-event': [];
   'toggle-tool-calls': [];
   'confirm-activity': [activityId: string, approved: boolean];
   'error-retry': [step: Step];

@@ -308,6 +308,12 @@ func (r *Runner) buildTeamProjectMeta(ctx context.Context, sess biz.Session, run
 		RunID:        run.ID,
 		TraceID:      traceID,
 		TeamID:       teamRow.ID,
+		// 2026-07-05 P1 #7 修复：填充 TeamStageID（派生自 teamRow.ID），
+		// 让 V2ProjectMetaFromV1 能正确透传到 Turn.TeamStageID。
+		// TeamStageID = NewTeamStageActivityID(teamRow.ID)，
+		// 与 service/spirit_team.go 的 publishV2TeamRunAndMemberSessions 中
+		// 创建 TeamStage 时使用的 ID 一致。
+		TeamStageID:      string(agent.NewTeamStageActivityID(teamRow.ID)),
 		AgentID:          ar.agent.AgentKey,
 		AgentDisplayName: ar.agent.DisplayName,
 		MemberAgentKeys:  memberKeySet,

@@ -7,11 +7,14 @@ export interface LayoutableNode {
 }
 
 export interface DAGLayoutOptions {
+  /** Max SVG width. Actual width is computed dynamically per layer. */
   width: number;
   nodeWidth: number;
   nodeHeight: number;
   gapX: number;
   gapY: number;
+  /** Horizontal padding inside the SVG (left/right). Default 20. */
+  padX?: number;
 }
 
 export interface NodePosition {
@@ -25,11 +28,20 @@ export interface NodePosition {
  *
  * Generic over LayoutableNode so both PlanStep[] and GraphNode[] can reuse
  * the same layout algorithm.
+ *
+ * Returns `{ positions, computedWidth }` where `computedWidth` is the actual
+ * SVG width needed to fit the widest layer (capped at `opts.width`).
+ * For linear chains (1 node per layer), the SVG narrows to fit a single node,
+ * avoiding wasted horizontal space.
  */
 export function usePlanDAGLayout<T extends LayoutableNode>() {
-  function layoutDAG(steps: T[], opts: DAGLayoutOptions): Map<string, NodePosition> {
+  function layoutDAG(
+    steps: T[],
+    opts: DAGLayoutOptions,
+  ): { positions: Map<string, NodePosition>; computedWidth: number } {
     const positions = new Map<string, NodePosition>();
-    if (steps.length === 0) return positions;
+    const padX = opts.padX ?? 20;
+    if (steps.length === 0) return { positions, computedWidth: padX * 2 };
 
     // Build dependency graph
     const stepMap = new Map(steps.map((s) => [s.ID, s]));
@@ -57,12 +69,22 @@ export function usePlanDAGLayout<T extends LayoutableNode>() {
       byLayer.get(l)!.push(id);
     }
 
-    // Position: y = layer * (nodeHeight + gapY), x = centered in layer
+    // Compute the actual width needed: widest layer + padding.
+    // For linear chains (1 node per layer), this narrows to nodeWidth + 2*padX.
     const maxLayer = Math.max(...layer.values());
+    let maxLayerWidth = 0;
     for (let l = 0; l <= maxLayer; l++) {
       const ids = byLayer.get(l) || [];
-      const layerWidth = ids.length * opts.nodeWidth + (ids.length - 1) * opts.gapX;
-      const startX = (opts.width - layerWidth) / 2;
+      const layerWidth = ids.length * opts.nodeWidth + Math.max(0, ids.length - 1) * opts.gapX;
+      if (layerWidth > maxLayerWidth) maxLayerWidth = layerWidth;
+    }
+    const computedWidth = Math.min(opts.width, maxLayerWidth + padX * 2);
+
+    // Position: y = layer * (nodeHeight + gapY), x = centered in layer
+    for (let l = 0; l <= maxLayer; l++) {
+      const ids = byLayer.get(l) || [];
+      const layerWidth = ids.length * opts.nodeWidth + Math.max(0, ids.length - 1) * opts.gapX;
+      const startX = (computedWidth - layerWidth) / 2;
       ids.forEach((id, i) => {
         positions.set(id, {
           x: startX + i * (opts.nodeWidth + opts.gapX),
@@ -71,7 +93,7 @@ export function usePlanDAGLayout<T extends LayoutableNode>() {
       });
     }
 
-    return positions;
+    return { positions, computedWidth };
   }
 
   return { layoutDAG };

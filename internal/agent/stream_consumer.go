@@ -80,7 +80,11 @@ func V2ProjectMetaFromV1(m ProjectMeta) v2.ProjectMeta {
 		TaskID:          m.RequestID,
 		TurnID:          m.InvocationID,
 		ParentTurnID:    m.ParentInvocationID,
-		TeamStageID:     m.TeamID, // team member turns are identified by non-empty TeamID
+		// 2026-07-05 P1 #7 修复：使用 m.TeamStageID（派生自 NewTeamStageActivityID(teamID)），
+		// 而非 m.TeamID。Turn.TeamStageID 应指向 TeamStage.ID，与 TeamStage.TeamID 不同。
+		// 旧代码 TeamStageID: m.TeamID 导致 Turn.TeamStageID == Turn.TeamID，
+		// 前端无法通过 TeamStageID 精确匹配 member steps。
+		TeamStageID:     m.TeamStageID,
 		TeamRunID:       "",
 		TeamID:          m.TeamID,
 		MemberSessionID: m.ParentSessionID,

@@ -24,7 +24,13 @@
         :y1="edge.y1"
         :x2="edge.x2"
         :y2="edge.y2"
-        class="graph-edge"
+        :class="[
+          'graph-edge',
+          {
+            'graph-edge--highlighted': highlightedEdgeKeys.has(`${edge.from}-${edge.to}`),
+            'graph-edge--dimmed': hoveredNodeId !== null && !highlightedEdgeKeys.has(`${edge.from}-${edge.to}`),
+          },
+        ]"
         marker-end="url(#graph-arrowhead)"
       />
       <!-- Nodes -->
@@ -36,7 +42,10 @@
         :node-width="nodeWidth"
         :node-height="nodeHeight"
         :is-selected="selectedId === node.ID"
-        @select="selectedId = $event"
+        :is-highlighted="highlightedNodeIds.has(node.ID)"
+        :is-dimmed="hoveredNodeId !== null && !highlightedNodeIds.has(node.ID)"
+        @select="onSelectNode"
+        @hover="onHoverNode"
       />
       <defs>
         <marker id="graph-arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -52,8 +61,9 @@
 import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
-import type { GraphStage, GraphStageStatus } from '../../../features/chat/v2Types';
+import type { GraphStage, GraphStageStatus, GraphNode as GraphNodeType } from '../../../features/chat/v2Types';
 import { usePlanDAGLayout } from '../../../features/chat/composables/usePlanDAGLayout';
+import { useLocateTeamStage } from '../../../features/chat/composables/useLocateTeamStage';
 import GraphNode from './GraphNode.vue';
 
 // Safe i18n wrapper — falls back to the key when the i18n plugin isn't
@@ -74,19 +84,96 @@ const nodeWidth = 130;
 const nodeHeight = 60;
 const gapX = 40;
 const gapY = 30;
-const width = 600;
+const maxWidth = 600;
 
 // 不再使用 props.graphStage.Nodes 嵌入数组（创建后永不更新）。
 const nodes = computed(() => store.getGraphStageNodes(props.graphStage.ID));
 
 const { layoutDAG } = usePlanDAGLayout();
-const positions = computed(() => layoutDAG(nodes.value, { width, nodeWidth, nodeHeight, gapX, gapY }));
+const layoutResult = computed(() =>
+  layoutDAG(nodes.value, { width: maxWidth, nodeWidth, nodeHeight, gapX, gapY }),
+);
+const positions = computed(() => layoutResult.value.positions);
+const width = computed(() => layoutResult.value.computedWidth);
 const height = computed(() => {
   const max = Math.max(0, ...Array.from(positions.value.values()).map((p) => p.y));
   return max + nodeHeight + 20;
 });
 
 const selectedId = ref<string | null>(null);
+
+// P1 #6: hover 节点 → 高亮所有上下游依赖路径
+const hoveredNodeId = ref<string | null>(null);
+
+function onHoverNode(nodeId: string | null) {
+  hoveredNodeId.value = nodeId;
+}
+
+// 计算上下游依赖路径节点集合（ hoveredNodeId 的所有上游 + 下游 + 自身）
+const highlightedNodeIds = computed<Set<string>>(() => {
+  const id = hoveredNodeId.value;
+  if (!id) return new Set();
+  const result = new Set<string>([id]);
+  const nodeMap = new Map(nodes.value.map((n) => [n.ID, n]));
+  // 上游：递归遍历 DependsOn
+  function addUpstream(currentId: string) {
+    const node = nodeMap.get(currentId);
+    if (!node?.DependsOn) return;
+    for (const depId of node.DependsOn) {
+      if (!result.has(depId)) {
+        result.add(depId);
+        addUpstream(depId);
+      }
+    }
+  }
+  // 下游：找到所有 DependsOn 包含 currentId 的节点
+  function addDownstream(currentId: string) {
+    for (const n of nodes.value) {
+      if (n.DependsOn?.includes(currentId) && !result.has(n.ID)) {
+        result.add(n.ID);
+        addDownstream(n.ID);
+      }
+    }
+  }
+  addUpstream(id);
+  addDownstream(id);
+  return result;
+});
+
+// 高亮路径上的边（两端节点都在 highlightedNodeIds 中）
+const highlightedEdgeKeys = computed<Set<string>>(() => {
+  const nodeSet = highlightedNodeIds.value;
+  const keys = new Set<string>();
+  for (const edge of edges.value) {
+    if (nodeSet.has(edge.from) && nodeSet.has(edge.to)) {
+      keys.add(`${edge.from}-${edge.to}`);
+    }
+  }
+  return keys;
+});
+
+// P1 #5: 点击 GraphNode → 选中高亮 + 跳转到对应 TeamStagePanel。
+// 优先使用 node.TeamStageID（后端回填后直接跳转）。
+// Fallback：后端未回填 TeamStageID 时，通过 DagNodeID 匹配 TeamStage
+// （GraphNode.DagNodeID === TeamStage.DagNodeID === PlanStep.ID）。
+const { locate } = useLocateTeamStage();
+function onSelectNode(nodeId: string) {
+  selectedId.value = nodeId;
+  const node: GraphNodeType | undefined = nodes.value.find((n) => n.ID === nodeId);
+  if (!node) return;
+  let teamStageId = node.TeamStageID;
+  if (!teamStageId && node.DagNodeID) {
+    for (const ts of store.teamStages.values()) {
+      if (ts.DagNodeID === node.DagNodeID) {
+        teamStageId = ts.ID;
+        break;
+      }
+    }
+  }
+  if (teamStageId) {
+    locate(teamStageId);
+  }
+}
 
 interface Edge {
   from: string;
@@ -194,6 +281,16 @@ const stageStatusLabel = computed(() => {
 .graph-edge
   stroke: var(--color-text-secondary, rgba(150, 150, 150, 0.6))
   stroke-width: 2
+  transition: opacity 0.2s ease, stroke-width 0.2s ease
+
+/* P1 #6: hover 节点时高亮上下游依赖路径 — 高亮路径上的边 */
+.graph-edge--highlighted
+  stroke: var(--q-primary, #00bcd4)
+  stroke-width: 3
+
+/* P1 #6: 非路径上的边暗化 */
+.graph-edge--dimmed
+  opacity: 0.2
 
 .graph-arrowhead
   fill: var(--color-text-secondary, rgba(150, 150, 150, 0.6))

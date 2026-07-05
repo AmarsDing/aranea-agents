@@ -39,13 +39,31 @@
       </div>
     </div>
     <div v-if="task.Status === 'running'" class="task-status">{{ t('chat.v2.taskProcessing') }}</div>
-    <TurnList v-if="prePlanTurns.length" :turns="prePlanTurns" />
+    <TurnList
+      v-if="prePlanTurns.length"
+      :turns="prePlanTurns"
+      @pause-agent="(sid) => $emit('pause-agent', sid)"
+      @inject-agent="(p) => $emit('inject-agent', p)"
+    />
     <template v-for="pb in planBoards" :key="pb.ID">
       <PlanBoardCard :plan-board="pb" />
       <GraphStageBlock v-if="graphStageByPlanBoard(pb.ID)" :graph-stage="graphStageByPlanBoard(pb.ID)!" />
     </template>
-    <TeamStagePanel v-for="ts in teamStages" :key="ts.ID" :team-stage="ts" />
-    <TurnList v-if="postPlanTurns.length" :turns="postPlanTurns" />
+    <!-- Fallback: TurnID 为空的 team stages（后端未正确关联 TurnID 时兜底）。
+         后端修复 PlanBoard.TurnID 后这些会自动移入 TurnContainer。 -->
+    <TeamStagePanel
+      v-for="ts in orphanTeamStages"
+      :key="ts.ID"
+      :team-stage="ts"
+      @pause-agent="(sid) => $emit('pause-agent', sid)"
+      @inject-agent="(p) => $emit('inject-agent', p)"
+    />
+    <TurnList
+      v-if="postPlanTurns.length"
+      :turns="postPlanTurns"
+      @pause-agent="(sid) => $emit('pause-agent', sid)"
+      @inject-agent="(p) => $emit('inject-agent', p)"
+    />
   </div>
 </template>
 
@@ -92,6 +110,8 @@ function useSafeAuthStore() {
 const props = defineProps<{ task: Task }>();
 defineEmits<{
   regenerate: [task: Task];
+  'pause-agent': [sessionId: string];
+  'inject-agent': [payload: { sessionId: string; message: string }];
 }>();
 
 const { t } = useSafeI18n();
@@ -99,8 +119,13 @@ const $q = useSafeQuasar();
 const auth = useSafeAuthStore();
 const store = useChatActivityStore();
 const turns = computed(() => store.getTaskTurns(props.task.ID));
-const teamStages = computed(() => store.getTaskTeamStages(props.task.ID));
 const planBoards = computed(() => store.getTaskPlanBoards(props.task.ID));
+// Fallback: TurnID 为空或未匹配到任何 turn 的 team stages（后端 PlanBoard.TurnID 未正确填充时兜底）
+const orphanTeamStages = computed(() => {
+  const all = store.getTaskTeamStages(props.task.ID);
+  const turnIds = new Set(turns.value.map((t) => t.ID));
+  return all.filter((ts) => !ts.TurnID || !turnIds.has(ts.TurnID));
+});
 const spiritTurns = computed(() => turns.value.filter((t) => !t.TeamStageID));
 const prePlanTurns = computed(() => {
   const pbs = planBoards.value;

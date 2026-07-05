@@ -1,5 +1,5 @@
 // web/src/stores/chat/activityV2Store.ts
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 import { defineStore } from 'pinia';
 import type {
   Task,
@@ -200,6 +200,15 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     return out.sort((a, b) => a.Seq - b.Seq);
   }
 
+  // 按触发 turn 查询 team stages（设计稿 §3.6.2：teamStages.filter(ts => ts.turnId === turn.id)）
+  function getTurnTeamStages(turnId: string): TeamStage[] {
+    const out: TeamStage[] = [];
+    for (const ts of teamStages.value.values()) {
+      if (ts.TurnID === turnId) out.push(ts);
+    }
+    return out.sort((a, b) => a.Seq - b.Seq);
+  }
+
   function getTaskPlanBoards(taskId: string): PlanBoard[] {
     const out: PlanBoard[] = [];
     for (const pb of planBoards.value.values()) {
@@ -231,18 +240,45 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     return out.sort((a, b) => a.Seq - b.Seq);
   }
 
-  // Step 无直接外键关联 MemberSession，通过 AuthorAgentKey + TaskID 间接匹配。
-  // 同一 agent 在同一 task 下的 thinking/action/reply 等 step 都会返回。
+  // P1 #7 修复：Step 精确匹配 MemberSession。
+  // 优先通过 Turn.TeamStageID 精确匹配（修复后后端会正确填充 Turn.TeamStageID）：
+  //   1. 找到所有 Turn.TeamStageID === MemberSession.TeamStageID 的 Turn
+  //   2. 收集 Turn ID 集合
+  //   3. 过滤 steps：Step.TurnID 在集合中 && Step.AuthorAgentKey === MemberSession.AgentKey
+  // Fallback（旧数据兼容）：如果精确匹配结果为空（Turn.TeamStageID 未修复或为空），
+  //   回退到 AuthorAgentKey + TaskID 匹配（旧逻辑，存在跨团队污染风险）。
   function getMemberSessionSteps(memberSession: MemberSession): Step[] {
-    const out: Step[] = [];
     const agentKey = memberSession.AgentKey;
     const taskId = memberSession.TaskID;
-    if (!agentKey || !taskId) return out;
-    for (const s of steps.value.values()) {
-      if (s.AuthorAgentKey === agentKey && s.TaskID === taskId) {
-        out.push(s);
+    if (!agentKey || !taskId) return [];
+
+    // 精确匹配：通过 Turn.TeamStageID
+    const turnIds = new Set<string>();
+    for (const t of turns.value.values()) {
+      if (t.TeamStageID && t.TeamStageID === memberSession.TeamStageID && t.AgentKey === agentKey) {
+        turnIds.add(t.ID);
       }
     }
+
+    const out: Step[] = [];
+    if (turnIds.size > 0) {
+      // 精确匹配路径
+      for (const s of steps.value.values()) {
+        if (turnIds.has(s.TurnID) && s.AuthorAgentKey === agentKey) {
+          out.push(s);
+        }
+      }
+    }
+
+    // Fallback：旧数据兼容（Turn.TeamStageID 未修复或为空时）
+    if (out.length === 0) {
+      for (const s of steps.value.values()) {
+        if (s.AuthorAgentKey === agentKey && s.TaskID === taskId) {
+          out.push(s);
+        }
+      }
+    }
+
     return out.sort((a, b) => a.Seq - b.Seq);
   }
 
@@ -418,6 +454,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     getTaskTurns,
     getTurnSteps,
     getTaskTeamStages,
+    getTurnTeamStages,
     getTaskPlanBoards,
     getTaskGraphStages,
     getGraphStageByPlanBoard,

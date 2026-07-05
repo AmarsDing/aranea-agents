@@ -74,6 +74,12 @@ func (a *planExecutorReposAdapter) GetGraphStageByPlanBoard(ctx context.Context,
 	return a.graphStage.GetGraphStageByPlanBoard(ctx, planBoardID)
 }
 
+// GetTeamStage delegates to TeamStageV2Repo (2026-07-05 P1 #9d 补齐).
+// 用于读取当前 TeamStage 的 Version 和 Status，修复 Version 硬编码 Bug。
+func (a *planExecutorReposAdapter) GetTeamStage(ctx context.Context, id string) (biz.TeamStage, error) {
+	return a.teamStage.GetTeamStage(ctx, id)
+}
+
 // NewPlanExecutorFromV2Repos is the Wire-friendly entry point for PlanExecutor.
 // It accepts only exported types and internally builds the unexported
 // executorRepos adapter (composing 5 v2 repo interfaces) before calling

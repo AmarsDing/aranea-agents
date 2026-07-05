@@ -107,6 +107,13 @@ export async function resumeAgentSession(sessionId: string): Promise<void> {
   await spiritService.resumeSession(sessionId);
 }
 
+// injectAgentSession enqueues a user message to a sub-agent session's
+// pending queue (POST /v1/chat/enqueue). Used by MemberSessionPanel input bar.
+// The message is processed at the next step boundary.
+export async function injectAgentSession(sessionId: string, message: string): Promise<void> {
+  await spiritService.enqueueUserMessage(sessionId, message);
+}
+
 function mapSpiritTeam(raw: Record<string, unknown>): SpiritTeam {
   return {
     id: String(raw.id ?? ''),

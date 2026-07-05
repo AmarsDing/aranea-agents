@@ -130,14 +130,20 @@ function toNullableStr(v: string | undefined | null): string | null {
  * as base64; some gateways may pre-decode to a UTF-8 JSON string. Handle both,
  * plus null / empty.
  */
-function decodeBytesJson(v: string | null | undefined): unknown | null {
+export function decodeBytesJson(v: string | null | undefined): unknown | null {
   if (v === undefined || v === null || v === '') return null;
   // Already-decoded object (defensive — gateway may pre-parse).
   if (typeof v === 'object') return v;
-  // Try base64 → UTF-8 string → JSON.parse.
+  // Try base64 → UTF-8 bytes → JSON.parse.
+  // atob() returns a Latin-1 binary string; non-ASCII (e.g. Chinese) UTF-8 bytes
+  // would be misinterpreted as Latin-1 characters, causing mojibake. We must
+  // re-encode to Uint8Array and decode as UTF-8 before JSON.parse.
   try {
-    const decoded = atob(v);
-    if (!decoded) return null;
+    const binary = atob(v);
+    if (!binary) return null;
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const decoded = new TextDecoder('utf-8').decode(bytes);
     return JSON.parse(decoded);
   } catch {
     // Fall through: maybe it's a literal JSON string.

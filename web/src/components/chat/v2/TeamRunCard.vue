@@ -1,103 +1,94 @@
 <!-- web/src/components/chat/v2/TeamRunCard.vue
-  2026-07-04 完善：三段式布局 + 操作按钮 + 注入对话框（需求 §A.4.3）
-  - 头部 20%：团队名/任务名/创建时间 + 状态 badge
-  - 中部 60%：成员头像+名称/进度条:状态:耗时（成员列表由 MemberSessionPanel 提供）
-  - 尾部 20%：注入对话框 + 操作按钮（暂停/恢复/取消/重试）
-  - 始终默认折叠，用户手动展开后状态由用户掌控
-  - 操作按钮按状态切换显示
+  2026-07-05 重构：三段式横向布局 2:3:1（设计稿 §4.2 + §B.10.10 修订）
+  - 头部 ~33%：groups 图标 + 团队名 / 任务名 / 创建时间（垂直 1:1:1）
+  - 中部 ~50%：成员 chips / 进度条（垂直 1:2）
+  - 尾部 ~17%：状态徽章（大、居中）+ 耗时（右下角）
+  - team 面板无任何操作按钮（纯展示）；影响 agent 的操作由 MemberSessionPanel 输入栏承担
+  - 展开后：成员列表（MemberSessionPanel 各自带输入栏）
+  - 展开折叠：整条 team-run-bar 可点击切换；running 默认展开，终态默认折叠
 -->
 <template>
   <div class="team-run-card" :data-team-run-id="teamRun.ID">
-    <!-- 头部：团队名 + 状态 + 折叠按钮 -->
-    <div class="team-run-header" @click="toggleCollapse">
-      <div class="team-run-header__left">
-        <q-icon :name="collapsed ? 'expand_more' : 'expand_less'" size="18px" class="team-run-header__icon" />
-        <span class="team-run-header__title">{{ teamRun.DagNodeID || teamRun.ID }}</span>
-        <q-badge :color="statusColor" class="team-run-header__status">{{ statusLabel }}</q-badge>
+    <!-- 顶部长条：三段式横向布局 2:3:1 -->
+    <div class="team-run-bar" @click="toggleCollapse">
+      <!-- 头部 ~33%：groups 图标 + 垂直 1:1:1（团队名 / 任务名 / 创建时间） -->
+      <div class="team-run-bar__header">
+        <q-icon name="groups" size="18px" class="team-run-bar__icon" />
+        <div class="header-rows">
+          <div class="header-row header-row--team" :title="displayTitle">
+            <span class="header-row__label">{{ t('chat.v2.teamLabel') }}</span>
+            <span class="header-row__value">{{ displayTitle }}</span>
+          </div>
+          <div class="header-row header-row--task" :title="taskName">
+            <span class="header-row__label">{{ t('chat.v2.taskLabel') }}</span>
+            <span class="header-row__value">{{ taskName }}</span>
+          </div>
+          <div class="header-row header-row--time">
+            <span class="header-row__label">{{ t('chat.v2.createdTimeLabel') }}</span>
+            <span class="header-row__value">{{ formattedTime }}</span>
+          </div>
+        </div>
       </div>
-      <div class="team-run-header__right">
-        <span class="team-run-header__time">{{ formattedTime }}</span>
+
+      <!-- 中部 ~50%：垂直 1:2（成员 chips / 进度条） -->
+      <div class="team-run-bar__middle">
+        <div class="middle-members">
+          <template v-if="memberChips.length > 0">
+            <div
+              v-for="chip in memberChips"
+              :key="chip.agentKey"
+              class="member-chip"
+              :class="`member-chip--${chip.status}`"
+              :title="`${chip.agentName} · ${chip.status}`"
+            >
+              <q-avatar v-if="chip.avatarURL" :src="chip.avatarURL" size="20px" />
+              <q-icon v-else name="person" size="16px" />
+              <span class="member-chip__name">{{ chip.agentName }}</span>
+            </div>
+          </template>
+          <span v-else class="middle-members__empty">{{ t('chat.v2.noMembers') }}</span>
+        </div>
+        <div class="middle-progress">
+          <div class="progress-bar">
+            <div class="progress-bar__fill" :style="{ width: progress.pct + '%' }" />
+            <span class="progress-bar__text">{{ progress.completed }}/{{ progress.total }}</span>
+          </div>
+        </div>
       </div>
+
+      <!-- 尾部 ~17%：状态徽章（大、居中）+ 耗时（右下角） -->
+      <div class="team-run-bar__tail">
+        <div class="tail-status">
+          <q-badge :color="statusColor" class="tail-status__badge">{{ statusLabel }}</q-badge>
+        </div>
+        <div class="tail-duration" :title="t('chat.v2.durationLabel')">
+          <q-icon name="schedule" size="11px" class="tail-duration__icon" />
+          <span class="tail-duration__text">{{ duration }}</span>
+        </div>
+      </div>
+      <!-- 折叠箭头 -->
+      <q-icon :name="collapsed ? 'expand_more' : 'expand_less'" size="18px" class="team-run-bar__toggle" />
     </div>
 
-    <div v-show="!collapsed" class="team-run-body">
-      <!-- 中部：成员列表（由 MemberSessionPanel 渲染） -->
-      <div class="team-run-members">
-        <div v-if="memberSessions.length === 0" class="team-run-empty">
-          {{ t('chat.v2.noMembers') }}
-        </div>
-        <MemberSessionPanel v-for="ms in memberSessions" :key="ms.ID" :member-session="ms" />
-      </div>
-
-      <!-- 尾部：注入对话框 + 操作按钮 -->
-      <div class="team-run-actions">
-        <q-input
-          v-model="injectText"
-          dense
-          outlined
-          :placeholder="t('chat.v2.injectPlaceholder')"
-          class="team-run-inject-input"
-          @keyup.enter="submitInject"
-        />
-        <q-btn
-          v-if="canInject"
-          flat
-          dense
-          size="sm"
-          :label="t('chat.v2.inject')"
-          color="primary"
-          :disable="!injectText.trim()"
-          @click="submitInject"
-        />
-        <q-btn
-          v-if="canPause"
-          flat
-          dense
-          size="sm"
-          :label="t('chat.v2.pause')"
-          icon="pause"
-          color="warning"
-          @click="$emit('pause', teamRun.ID)"
-        />
-        <q-btn
-          v-if="canResume"
-          flat
-          dense
-          size="sm"
-          :label="t('chat.v2.resume')"
-          icon="play_arrow"
-          color="positive"
-          @click="$emit('resume', teamRun.ID)"
-        />
-        <q-btn
-          v-if="canCancel"
-          flat
-          dense
-          size="sm"
-          :label="t('chat.v2.cancel')"
-          icon="stop"
-          color="negative"
-          @click="$emit('cancel', teamRun.ID)"
-        />
-        <q-btn
-          v-if="canRetry"
-          flat
-          dense
-          size="sm"
-          :label="t('chat.v2.retry')"
-          icon="refresh"
-          color="primary"
-          @click="$emit('retry', teamRun.ID)"
-        />
-      </div>
-
+    <!-- 展开后：成员列表（每个 MemberSessionPanel 自带底部输入栏） -->
+    <div v-show="!collapsed" class="team-run-expand">
       <div v-if="teamRun.Error" class="team-run-error">{{ teamRun.Error }}</div>
+      <div v-if="memberSessions.length === 0" class="team-run-empty">
+        {{ t('chat.v2.noMembers') }}
+      </div>
+      <MemberSessionPanel
+        v-for="ms in memberSessions"
+        :key="ms.ID"
+        :member-session="ms"
+        @pause-agent="(sid) => $emit('pause-agent', sid)"
+        @inject-agent="(p) => $emit('inject-agent', p)"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, inject, watch, type Ref } from 'vue';
+import { ref, computed, inject, watch, onMounted, onUnmounted, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
 import type { TeamRun } from '../../../features/chat/v2Types';
@@ -113,23 +104,107 @@ function useSafeI18n() {
 }
 
 const props = defineProps<{ teamRun: TeamRun }>();
-const emit = defineEmits<{
-  pause: [id: string];
-  resume: [id: string];
-  cancel: [id: string];
-  retry: [id: string];
-  inject: [id: string, text: string];
+defineEmits<{
+  'pause-agent': [sessionId: string];
+  'inject-agent': [payload: { sessionId: string; message: string }];
 }>();
 
 const { t } = useSafeI18n();
 const store = useChatActivityStore();
 const memberSessions = computed(() => store.getTeamRunMemberSessions(props.teamRun.ID));
 
-// 折叠状态：默认折叠（需求 §A.4.3）
-const collapsed = ref(true);
+// 显示标题：优先 TeamStage.TeamName → PlanStep.Label → DagNodeID → ID
+const displayTitle = computed(() => {
+  const ts = store.teamStages.get(props.teamRun.TeamStageID);
+  if (ts?.TeamName) return ts.TeamName;
+  if (props.teamRun.DagNodeID) {
+    const ps = store.planSteps.get(props.teamRun.DagNodeID);
+    if (ps?.Label) return ps.Label;
+  }
+  return props.teamRun.DagNodeID || props.teamRun.ID;
+});
+
+// 任务名称：优先 PlanStep.Description（更详细），fallback PlanStep.Label，再 fallback DagNodeID
+const taskName = computed(() => {
+  if (props.teamRun.DagNodeID) {
+    const ps = store.planSteps.get(props.teamRun.DagNodeID);
+    if (ps?.Description) return ps.Description;
+    if (ps?.Label) return ps.Label;
+  }
+  const ts = store.teamStages.get(props.teamRun.TeamStageID);
+  if (ts?.TeamID) return ts.TeamID;
+  return props.teamRun.DagNodeID || '-';
+});
+
+// 成员 chips
+interface MemberChip {
+  agentKey: string;
+  agentName: string;
+  avatarURL: string;
+  status: string;
+}
+const memberChips = computed<MemberChip[]>(() => {
+  return memberSessions.value.map((ms) => ({
+    agentKey: ms.AgentKey,
+    agentName: ms.AgentName || ms.AgentKey,
+    avatarURL: ms.AvatarURL || '',
+    status: ms.Status,
+  }));
+});
+
+// 进度计算
+const progress = computed(() => {
+  const total = memberSessions.value.length;
+  const completed = memberSessions.value.filter((ms) => ms.Status === 'completed').length;
+  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+  return { completed, total, pct };
+});
+
+// 耗时计算
+const now = ref(Date.now());
+let timer: ReturnType<typeof setInterval> | null = null;
+const duration = computed(() => {
+  const start = props.teamRun.StartedAt;
+  if (!start) return '-';
+  const startMs = new Date(start).getTime();
+  if (isNaN(startMs)) return '-';
+  const endMs = props.teamRun.CompletedAt ? new Date(props.teamRun.CompletedAt).getTime() : now.value;
+  if (isNaN(endMs)) return '-';
+  const diffMs = Math.max(0, endMs - startMs);
+  return formatDuration(diffMs);
+});
+
+function formatDuration(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  if (totalSec < 60) return `${totalSec}s`;
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  if (min < 60) return `${min}m${sec}s`;
+  const hr = Math.floor(min / 60);
+  const minRem = min % 60;
+  return `${hr}h${minRem}m`;
+}
+
+onMounted(() => {
+  if (props.teamRun.Status === 'running') {
+    timer = setInterval(() => {
+      now.value = Date.now();
+    }, 1000);
+  }
+});
+
+onUnmounted(() => {
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
+});
+
+// 折叠状态：running 默认展开，终态默认折叠
+const collapsed = ref(props.teamRun.Status !== 'running');
 const userToggled = ref(false);
 
-// 响应 ChatMessageList 的 autoExpandFor：当 locate 命中本卡片某成员时自动展开
+// 响应 ChatMessageList 的 autoExpandFor
 const autoExpandFor = inject<Ref<{ agentKey: string; teamId: string } | null>>('chat:autoExpandFor', ref(null));
 watch(
   autoExpandFor,
@@ -141,32 +216,16 @@ watch(
   { immediate: true },
 );
 
-// 当 teamRun.Status 变为 running 时，若用户未操作过，保持折叠
 function toggleCollapse() {
   userToggled.value = true;
   collapsed.value = !collapsed.value;
 }
 
-// 注入对话框
-const injectText = ref('');
-function submitInject() {
-  const text = injectText.value.trim();
-  if (!text || !canInject.value) return;
-  emit('inject', props.teamRun.ID, text);
-  injectText.value = '';
-}
-
-// 状态色映射（需求 §A.4.3 + §A.4.5）：
-//   running → 蓝色 "执行中"
-//   paused  → 橙色 "已暂停"
-//   completed → 绿色 "团队已完成"
-//   failed → 红色 "团队执行失败"
-//   cancelled → 灰色 "团队已取消"
+// 状态色映射
 const statusColor = computed(
   () =>
     ({
       running: 'blue',
-      paused: 'orange-8',
       completed: 'green',
       failed: 'red',
       cancelled: 'grey',
@@ -176,7 +235,6 @@ const statusColor = computed(
 const statusLabel = computed(() => {
   const map: Record<string, string> = {
     running: t('chat.v2.statusRunning'),
-    paused: t('chat.v2.statusPaused'),
     completed: t('chat.v2.statusCompleted'),
     failed: t('chat.v2.statusFailed'),
     cancelled: t('chat.v2.statusCancelled'),
@@ -184,81 +242,238 @@ const statusLabel = computed(() => {
   return map[props.teamRun.Status] || props.teamRun.Status;
 });
 
-// 按钮可见性（需求 §A.4.3）：
-//   running → 显示「⏸ 暂停」+「✕ 取消」按钮 + 注入对话框
-//   paused  → 显示「▶ 恢复」+「✕ 取消」按钮 + 注入对话框
-//   completed → 隐藏所有操作按钮
-//   failed → 显示「🔄 重试」按钮
-//   cancelled → 隐藏所有操作按钮
-const canPause = computed(() => props.teamRun.Status === 'running');
-const canResume = computed(() => props.teamRun.Status === 'paused');
-const canCancel = computed(() => props.teamRun.Status === 'running' || props.teamRun.Status === 'paused');
-const canRetry = computed(() => props.teamRun.Status === 'failed' || props.teamRun.Status === 'cancelled');
-const canInject = computed(() => props.teamRun.Status === 'running' || props.teamRun.Status === 'paused');
-
 const formattedTime = computed(() => {
   const raw = props.teamRun.StartedAt;
-  if (!raw) return '';
+  if (!raw) return '-';
   const d = new Date(raw);
-  if (isNaN(d.getTime())) return '';
+  if (isNaN(d.getTime())) return '-';
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 });
 </script>
 
 <style lang="sass" scoped>
-// 2026-07-04 修复：使用 glass tokens 替换硬编码 hex fallback
+// 2026-07-05 重构：三段式 2:3:1 横向布局
 .team-run-card
   border: 1px solid var(--glass-border)
   border-radius: 6px
   margin: 4px 0
   background: var(--glass-surface)
+  overflow: hidden
 
-.team-run-header
+// 顶部长条：三段式横向 flex（2:3:1）
+.team-run-bar
   display: flex
-  align-items: center
-  justify-content: space-between
-  padding: 6px 10px
+  flex-direction: row
+  align-items: stretch
   cursor: pointer
   user-select: none
+  position: relative
+  min-height: 64px
 
   &:hover
     background: var(--glass-surface-hover)
 
-  &__left
-    display: flex
-    align-items: center
-    gap: 4px
+// 头部 ~33%：groups 图标 + 垂直 1:1:1
+.team-run-bar__header
+  flex: 0 0 33%
+  display: flex
+  flex-direction: row
+  align-items: center
+  gap: 8px
+  padding: 6px 10px
+  border-right: 1px solid var(--glass-border)
+  min-width: 0
 
-  &__icon
-    color: var(--color-icon-muted)
+.team-run-bar__icon
+  color: var(--color-text-secondary)
+  flex-shrink: 0
 
-  &__title
-    font-size: 12px
-    font-weight: 600
+.header-rows
+  flex: 1
+  display: flex
+  flex-direction: column
+  justify-content: space-between
+  min-width: 0
+
+.header-row
+  display: flex
+  align-items: center
+  gap: 4px
+  min-width: 0
+  font-size: 11px
+  line-height: 1.3
+
+  &__label
+    color: var(--color-text-tertiary)
+    flex-shrink: 0
+
+  &__value
     color: var(--color-text-primary)
-    max-width: 200px
+    font-weight: 500
+    overflow: hidden
+    text-overflow: ellipsis
+    white-space: nowrap
+    min-width: 0
+
+  &--team &__value
+    font-weight: 600
+    font-size: 12px
+
+  &--task &__value
+    color: var(--color-text-secondary)
+    font-size: 11px
+
+  &--time &__value
+    color: var(--color-text-tertiary)
+    font-variant-numeric: tabular-nums
+    font-size: 11px
+
+// 中部 ~50%：垂直 1:2
+.team-run-bar__middle
+  flex: 0 0 50%
+  display: flex
+  flex-direction: column
+  padding: 6px 10px
+  border-right: 1px solid var(--glass-border)
+  min-width: 0
+
+.middle-members
+  flex: 1
+  display: flex
+  align-items: center
+  gap: 6px
+  flex-wrap: wrap
+  min-height: 22px
+  overflow: hidden
+
+.middle-members__empty
+  font-size: 11px
+  color: var(--color-text-tertiary)
+
+.member-chip
+  display: inline-flex
+  align-items: center
+  gap: 3px
+  padding: 1px 6px
+  border-radius: 10px
+  background: var(--glass-surface-hover)
+  border: 1px solid var(--glass-border)
+  font-size: 11px
+  color: var(--color-text-secondary)
+  max-width: 100px
+
+  &__name
     overflow: hidden
     text-overflow: ellipsis
     white-space: nowrap
 
-  &__status
-    margin-left: 4px
+  &--completed
+    background: rgba(76, 175, 80, 0.12)
+    border-color: rgba(76, 175, 80, 0.3)
+    color: var(--color-positive, #4caf50)
 
-  &__right
+  &--running
+    background: rgba(33, 150, 243, 0.12)
+    border-color: rgba(33, 150, 243, 0.3)
+    color: var(--color-info, #2196f3)
+
+  &--failed
+    background: rgba(244, 67, 54, 0.12)
+    border-color: rgba(244, 67, 54, 0.3)
+    color: var(--color-danger, #f44336)
+
+  &--pending
+    background: rgba(158, 158, 158, 0.12)
+    border-color: rgba(158, 158, 158, 0.3)
+    color: var(--color-text-tertiary)
+
+// 进度条（占满中部下 2/3）
+.middle-progress
+  flex: 2
+  display: flex
+  align-items: center
+  padding-top: 4px
+  min-height: 22px
+
+.progress-bar
+  flex: 1
+  position: relative
+  height: 14px
+  background: var(--glass-surface-hover)
+  border-radius: 7px
+  overflow: hidden
+  border: 1px solid var(--glass-border)
+
+  &__fill
+    height: 100%
+    background: linear-gradient(90deg, var(--color-info, #2196f3), var(--color-positive, #4caf50))
+    transition: width 0.3s ease
+
+  &__text
+    position: absolute
+    inset: 0
     display: flex
     align-items: center
-
-  &__time
-    font-size: 11px
-    color: var(--color-text-secondary)
+    justify-content: center
+    font-size: 10px
+    font-weight: 600
+    color: var(--color-text-primary)
     font-variant-numeric: tabular-nums
 
-.team-run-body
-  padding: 8px 10px
+// 尾部 ~17%：状态徽章（大、居中）+ 耗时（右下角）
+.team-run-bar__tail
+  flex: 0 0 17%
+  display: flex
+  flex-direction: column
+  align-items: center
+  justify-content: center
+  padding: 6px 8px
+  position: relative
+  min-width: 0
 
-.team-run-members
-  margin-bottom: 8px
+.tail-status
+  flex: 1
+  display: flex
+  align-items: center
+  justify-content: center
+  width: 100%
+
+  &__badge
+    font-size: 12px
+    font-weight: 600
+    padding: 4px 10px
+    min-width: 60px
+    justify-content: center
+
+.tail-duration
+  display: flex
+  align-items: center
+  gap: 2px
+  font-size: 11px
+  color: var(--color-text-secondary)
+  font-variant-numeric: tabular-nums
+  align-self: flex-end
+  margin-top: 2px
+
+  &__icon
+    color: var(--color-icon-muted)
+
+  &__text
+    white-space: nowrap
+
+// 折叠箭头
+.team-run-bar__toggle
+  position: absolute
+  top: 4px
+  right: 4px
+  color: var(--color-icon-muted)
+  pointer-events: none
+
+// 展开后成员列表 + 底部输入栏
+.team-run-expand
+  padding: 6px 10px
+  border-top: 1px solid var(--glass-border)
 
 .team-run-empty
   font-size: 12px
@@ -266,19 +481,11 @@ const formattedTime = computed(() => {
   text-align: center
   padding: 8px
 
-.team-run-actions
-  display: flex
-  align-items: center
-  gap: 4px
-  padding-top: 6px
-  border-top: 1px solid var(--glass-border)
-
-.team-run-inject-input
-  flex: 1
-  min-width: 0
-
 .team-run-error
-  margin-top: 6px
+  margin-bottom: 6px
   font-size: 12px
   color: var(--color-danger)
+  padding: 4px 6px
+  background: rgba(229, 92, 92, 0.08)
+  border-radius: 3px
 </style>

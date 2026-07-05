@@ -31,16 +31,20 @@
         <span class="ellipsis">{{ checkpointStep }}</span>
       </div>
       <div
-        v-if="quotaMax > 0"
+        v-if="totalTeamCount > 0"
         class="spirit-status-bar__item spirit-status-bar__item--hide-sm spirit-status-bar__item--shift-md"
       >
-        <q-icon name="bar_chart" size="14px" :style="{ color: 'var(--color-text-tertiary)' }" />
-        <span>{{ t('spirit.quotaLabel', { used: quotaUsed, max: quotaMax }) }}</span>
+        <q-icon
+          :name="allCompleted ? 'task_alt' : 'bar_chart'"
+          size="14px"
+          :style="{ color: allCompleted ? 'var(--color-success)' : 'var(--color-text-tertiary)' }"
+        />
+        <span>{{ t('spirit.teamProgressLabel', { done: completedTeamCount, total: totalTeamCount }) }}</span>
         <q-linear-progress
-          :value="quotaUsed / quotaMax"
+          :value="totalTeamCount > 0 ? completedTeamCount / totalTeamCount : 0"
           size="3px"
           rounded
-          :color="quotaColor"
+          :color="progressColor"
           class="spirit-status-bar__quota-bar"
         />
       </div>
@@ -84,18 +88,6 @@
         <span :style="{ color: dqScoreColor }">DQ: {{ dqScore.toFixed(2) }}</span>
         <q-tooltip :delay="300">{{ t('spirit.dqScoreTooltip') }}</q-tooltip>
       </div>
-      <div
-        v-if="lastEvent"
-        class="spirit-status-bar__item spirit-status-bar__last-event spirit-status-bar__item--clickable"
-        @click="emit('click-last-event')"
-      >
-        <q-icon
-          :name="lastEvent.type === 'completed' ? 'check_circle' : 'error'"
-          :style="{ color: lastEvent.type === 'completed' ? 'var(--color-success)' : 'var(--color-danger)' }"
-          size="14px"
-        />
-        <span class="ellipsis">{{ lastEvent.teamName }}</span>
-      </div>
     </div>
   </div>
 </template>
@@ -113,8 +105,10 @@ const { t } = useI18n();
 const props = defineProps<{
   runningTeamCount: number;
   interruptedTeamCount: number;
-  quotaUsed: number;
-  quotaMax: number;
+  /** Number of teams that have reached a terminal "completed" state. */
+  completedTeamCount: number;
+  /** Total number of teams in the current orchestration. */
+  totalTeamCount: number;
   tokenUsage?: { in: number; out: number } | null;
   /** Context usage ratio (0-1). */
   contextRatio?: number | null;
@@ -124,7 +118,6 @@ const props = defineProps<{
   contextWindow?: number | null;
   /** Current session id — used to fetch per-model token breakdown. */
   sessionId?: string | null;
-  lastEvent?: { type: 'completed' | 'failed'; teamName: string; teamId?: string } | null;
   /** Complexity level from spirit_plan_created event (simple/moderate/complex). */
   complexityLevel?: string | null;
   /** Strategy reason from spirit_plan_created event. */
@@ -138,17 +131,15 @@ const props = defineProps<{
 const emit = defineEmits<{
   'click-running': [];
   'click-interrupted': [];
-  'click-last-event': [];
 }>();
 
 const visible = computed(
   () =>
     props.runningTeamCount > 0 ||
     props.interruptedTeamCount > 0 ||
-    props.quotaMax > 0 ||
+    props.totalTeamCount > 0 ||
     !!props.tokenUsage ||
     props.contextRatio != null ||
-    !!props.lastEvent ||
     !!props.complexityLevel ||
     !!props.checkpointStep ||
     props.dqScore != null,
@@ -232,11 +223,11 @@ const complexityColor = computed(() => {
 
 const dqScoreColor = computed(() => getDqScoreColor(props.dqScore));
 
-const quotaColor = computed(() => {
-  if (props.quotaUsed >= props.quotaMax) return 'negative';
-  if (props.quotaUsed >= props.quotaMax * 0.8) return 'warning';
-  return 'accent';
-});
+const allCompleted = computed(
+  () => props.totalTeamCount > 0 && props.completedTeamCount >= props.totalTeamCount,
+);
+
+const progressColor = computed(() => (allCompleted.value ? 'positive' : 'accent'));
 </script>
 
 <style scoped lang="sass">
@@ -297,10 +288,6 @@ const quotaColor = computed(() => {
 .spirit-status-bar__inout
   color: var(--color-text-tertiary)
   font-variant-numeric: tabular-nums
-
-.spirit-status-bar__last-event
-  margin-left: auto
-  max-width: 160px
 
 .spirit-status-bar__item--hide-sm
   @media (max-width: 600px)

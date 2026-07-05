@@ -9,6 +9,8 @@ import {
   pauseSpiritTeam,
   unpauseSpiritTeam,
   injectSpiritTeam,
+  pauseAgentSession,
+  injectAgentSession,
 } from '../../features/spirit/api';
 import { i18n } from '../../i18n';
 import type {
@@ -400,6 +402,29 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
   async function injectTeam(teamId: string, message: string): Promise<boolean> {
     try {
       await injectSpiritTeam(teamId, message);
+      Notify.create({ type: 'positive', message: i18n.global.t('chat.teamStage.injectSent'), position: 'top' });
+      return true;
+    } catch {
+      Notify.create({ type: 'warning', message: i18n.global.t('chat.teamStage.injectFailed'), position: 'top' });
+      return false;
+    }
+  }
+
+  // pauseAgent pauses a running sub-agent session (B.5.3).
+  // Used by MemberSessionPanel input bar's stop button.
+  async function pauseAgent(sessionId: string): Promise<void> {
+    try {
+      await pauseAgentSession(sessionId);
+    } catch {
+      Notify.create({ type: 'warning', message: i18n.global.t('chat.teamStage.pauseFailed'), position: 'top' });
+    }
+  }
+
+  // injectAgent enqueues a user message to a sub-agent session's pending queue
+  // (POST /v1/chat/enqueue). Used by MemberSessionPanel input bar's send button.
+  async function injectAgent(sessionId: string, message: string): Promise<boolean> {
+    try {
+      await injectAgentSession(sessionId, message);
       Notify.create({ type: 'positive', message: i18n.global.t('chat.teamStage.injectSent'), position: 'top' });
       return true;
     } catch {
@@ -832,6 +857,8 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     pauseTeam,
     unpauseTeam,
     injectTeam,
+    pauseAgent,
+    injectAgent,
     archiveTeam,
     retryTeam,
     updateTeamProgress,

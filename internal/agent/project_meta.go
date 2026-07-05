@@ -3,8 +3,7 @@ package agent
 import "strings"
 
 // ProjectMeta carries the per-turn metadata required by ActivityProjector
-// (and historically by the deprecated EventProjector) to project runtime
-// events into Activity records and WS envelopes.
+// to project runtime events into Activity records and WS envelopes.
 //
 // All fields are set once at turn start via ActivityProjector.Configure and
 // treated as read-only for the duration of the turn.
@@ -14,6 +13,13 @@ type ProjectMeta struct {
 	InvocationID       string
 	ParentInvocationID string
 	TeamID             string
+	// TeamStageID is the deterministic team_stage activity ID (derived via
+	// NewTeamStageActivityID(TeamID)) for the team stage this turn belongs to.
+	// Empty for spirit root turns (no team_stage parent).
+	// 2026-07-05 P1 #7 修复：之前 V2ProjectMetaFromV1 错误地把 TeamID 赋给
+	// v2.ProjectMeta.TeamStageID，导致 Turn.TeamStageID == Turn.TeamID，
+	// 前端无法通过 TeamStageID 精确匹配 member steps。
+	TeamStageID        string
 	Branch             string
 	FilterKey          string
 	RunID              string

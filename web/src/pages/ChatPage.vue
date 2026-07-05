@@ -53,7 +53,6 @@
         :panel-mode="spiritStore.activePanelMode"
         :spirit-team="spiritStore.activeTeam"
         :active-member="activeMember"
-        :synthesis-result="spiritStore.synthesisResult"
         :messages="session.displayMessages"
         :attachments="composer.attachments"
         :mode-options="composer.modeOpts"
@@ -75,7 +74,6 @@
         :ws-replaying="session.wsReplaying"
         :spirit-loading-message="session.spiritLoadingMessage"
         :spirit-status-bar="spiritStatusBar"
-        :spirit-evolution-suggestion="spiritStore.lastEvolutionSuggestion"
         :compress-status="session.compressStatus"
         :show-tool-calls="uiConfig.showToolCalls"
         :session-loading="session.sessionLoading"
@@ -154,7 +152,6 @@
         @return-to-spirit="onSelectSpirit"
         @status-bar-click-running="onStatusBarClickRunning"
         @status-bar-click-interrupted="onStatusBarClickInterrupted"
-        @status-bar-click-last-event="onStatusBarClickLastEvent"
         @expand-member="onExpandMember"
         @enter-session="onEnterSession"
         @cancel-agent="onCancelAgent"
@@ -264,7 +261,6 @@ import { useScrollToActivity } from '../features/chat/composables/useScrollToAct
 import { useBlockedStatus } from '../features/chat/composables/useBlockedStatus';
 import { useSpiritTeamStore } from '../stores/spirit';
 import { useUiConfigStore } from '../stores/uiConfig';
-import { DEFAULT_MAX_PARALLEL_TEAMS } from '../features/spirit/observabilityConstants';
 import { cancelAgentSession, pauseAgentSession, resumeAgentSession, retryAgentSession } from '../features/spirit/api';
 import { enqueueMessage } from '../features/chat/api';
 import type { Agent } from '../features/agents/types';
@@ -300,7 +296,6 @@ const spiritStatusBar = computed(() => {
   const running = teams.filter((t) => t.status === 'running' || t.status === 'pending').length;
   const interrupted = teams.filter((t) => t.status === 'interrupted').length;
   const completedTeams = teams.filter((t) => t.status === 'completed');
-  const failedTeams = teams.filter((t) => t.status === 'failed');
   // Aggregate token usage from all teams that have token data; fall back to session-level usage
   const totalTokenIn = teams.reduce((sum, t) => sum + (t.tokenIn ?? 0), 0);
   const totalTokenOut = teams.reduce((sum, t) => sum + (t.tokenOut ?? 0), 0);
@@ -314,20 +309,12 @@ const spiritStatusBar = computed(() => {
   return {
     runningTeamCount: running,
     interruptedTeamCount: interrupted,
-    quotaUsed: running,
-    quotaMax: teams.length ? (spiritStore.maxConcurrentTeams ?? DEFAULT_MAX_PARALLEL_TEAMS) : 0,
+    completedTeamCount: completedTeams.length,
+    totalTeamCount: teams.length,
     tokenUsage,
     contextRatio: sessionTokens?.contextRatio ?? null,
     contextUsedTokens: sessionTokens?.contextUsedTokens ?? null,
     contextWindow: sessionTokens?.contextWindow ?? null,
-    lastEvent:
-      completedTeams.length > 0 || failedTeams.length > 0
-        ? {
-            type: (completedTeams.length > 0 ? 'completed' : 'failed') as 'completed' | 'failed',
-            teamName: (completedTeams[0] ?? failedTeams[0])?.teamName ?? '',
-            teamId: (completedTeams[0] ?? failedTeams[0])?.id ?? '',
-          }
-        : null,
     complexityLevel: spiritStore.planCreated?.complexity_level ?? null,
     complexityReason: spiritStore.planCreated?.strategy_reason ?? null,
     checkpointStep: spiritStore.lastCheckpoint?.step ?? null,
@@ -533,19 +520,6 @@ function onStatusBarClickRunning() {
 function onStatusBarClickInterrupted() {
   const team = spiritStore.teams.find((t) => t.status === 'interrupted');
   if (team) spiritStore.selectTeam(team.id);
-}
-
-function onStatusBarClickLastEvent() {
-  // Use the lastEvent teamId if available, otherwise find by name
-  const lastEvent = spiritStatusBar.value?.lastEvent;
-  if (lastEvent?.teamId) {
-    spiritStore.selectTeam(lastEvent.teamId);
-    return;
-  }
-  if (lastEvent?.teamName) {
-    const team = spiritStore.teams.find((t) => t.teamName === lastEvent.teamName);
-    if (team) spiritStore.selectTeam(team.id);
-  }
 }
 
 /**

@@ -1,17 +1,14 @@
 <!-- web/src/components/chat/v2/MemberSessionPanel.vue
-  2026-07-04 完善：简化布局 + 操作按钮 + 注入对话框（需求 §A.4.4）
-  - 头部 80%：avatar + 名称 + status badge + 创建时间
-  - 尾部 20%：注入对话框 + 操作按钮（暂停/恢复/取消/重试）
-  - 状态映射：running/paused/completed/failed/cancelled
-  - 系统 agent 排除：__spirit__ 及 __ 前缀 agent 不显示操作按钮和对话框
-  - 始终默认折叠，与 team-card 一致
-  2026-07-04 修复：
-  - 渲染 agent 内部活动（thinking/action/reply 等 steps）
-  - CSS 改用 glass tokens 符合主题
+  2026-07-05 重构：
+  - 头部三段式：左（avatar+名称+status）| 中（最新动作 icon+text）| 右（时间）
+  - 折叠规则：running 默认展开，终态默认折叠，用户意图优先（userToggled）
+  - 自动滚动：running + 展开时实时滚到底；用户滚动后 10s 恢复（useActivityAutoScroll）
+  - 底部输入栏：空+running → stop（暂停 agent）；有文字 → send（注入消息）
+  - 系统 agent 排除：__spirit__ 及 __ 前缀 agent 不显示输入栏
 -->
 <template>
   <div class="member-session-panel" :data-agent-key="memberSession.AgentKey">
-    <!-- 头部 80%：avatar + 名称 + status badge + 创建时间 -->
+    <!-- 头部三段式：左（avatar+名称+status）| 中（最新动作）| 右（时间） -->
     <div class="member-header" @click="toggleCollapse">
       <div class="member-header__left">
         <q-icon :name="collapsed ? 'expand_more' : 'expand_less'" size="16px" class="member-header__icon" />
@@ -19,6 +16,14 @@
         <q-icon v-else name="person" size="20px" class="member-header__avatar-fallback" />
         <span class="member-header__name">{{ memberSession.AgentName }}</span>
         <q-badge :color="statusColor" class="member-header__status">{{ statusLabel }}</q-badge>
+      </div>
+      <div v-if="latestAction" class="member-header__center">
+        <q-icon
+          :name="latestAction.icon"
+          size="14px"
+          :class="{ 'member-header__action-icon--active': latestAction.active }"
+        />
+        <span class="member-header__action-text ellipsis">{{ latestAction.text }}</span>
       </div>
       <div class="member-header__right">
         <span class="member-header__time">{{ formattedTime }}</span>
@@ -29,8 +34,13 @@
       <!-- 错误提示 -->
       <div v-if="memberSession.Error" class="member-error">{{ memberSession.Error }}</div>
 
-      <!-- 2026-07-04 修复：渲染 agent 内部活动（thinking/action/reply 等 steps） -->
-      <div v-if="memberSteps.length > 0" class="member-activities">
+      <!-- agent 内部活动（thinking/action/reply 等 steps），max-height 300px + 滚动条 -->
+      <div
+        v-if="memberSteps.length > 0"
+        ref="activitiesRef"
+        class="member-activities"
+        @scroll="onScroll"
+      >
         <template v-for="step in memberSteps" :key="step.ID">
           <ThinkingBlock v-if="step.Kind === 'thinking'" :step="step" />
           <ActionBlock v-else-if="step.Kind === 'action'" :step="step" />
@@ -44,66 +54,39 @@
         {{ t('chat.v2.noActivities') }}
       </div>
 
-      <!-- 尾部 20%：注入对话框 + 操作按钮（系统 agent 排除） -->
-      <div v-if="!isSystemAgent" class="member-actions">
+      <!-- 底部输入栏：发送/停止双功能按钮（系统 agent 排除；仅 running 状态显示） -->
+      <div v-if="canInject" class="member-input-bar">
         <q-input
-          v-model="injectText"
+          v-model="inputText"
           dense
           outlined
           :placeholder="t('chat.v2.injectPlaceholder')"
-          class="member-inject-input"
-          @keyup.enter="submitInject"
-        />
-        <q-btn
-          v-if="canInject"
-          flat
-          dense
-          size="sm"
-          :label="t('chat.v2.inject')"
-          color="primary"
-          :disable="!injectText.trim()"
-          @click="submitInject"
-        />
-        <q-btn
-          v-if="canPause"
-          flat
-          dense
-          size="sm"
-          :label="t('chat.v2.pause')"
-          icon="pause"
-          color="warning"
-          @click="$emit('pause', memberSession.ID)"
-        />
-        <q-btn
-          v-if="canResume"
-          flat
-          dense
-          size="sm"
-          :label="t('chat.v2.resume')"
-          icon="play_arrow"
-          color="positive"
-          @click="$emit('resume', memberSession.ID)"
-        />
-        <q-btn
-          v-if="canCancel"
-          flat
-          dense
-          size="sm"
-          :label="t('chat.v2.cancel')"
-          icon="stop"
-          color="negative"
-          @click="$emit('cancel', memberSession.ID)"
-        />
-        <q-btn
-          v-if="canRetry"
-          flat
-          dense
-          size="sm"
-          :label="t('chat.v2.retry')"
-          icon="refresh"
-          color="primary"
-          @click="$emit('retry', memberSession.ID)"
-        />
+          class="member-input-bar__input"
+          @keyup.enter="submitInput"
+        >
+          <template #append>
+            <q-btn
+              v-if="!inputText.trim()"
+              flat
+              dense
+              round
+              icon="stop"
+              color="negative"
+              :aria-label="t('chat.v2.pause')"
+              @click.stop="$emit('pause-agent', memberSession.ID)"
+            />
+            <q-btn
+              v-else
+              flat
+              dense
+              round
+              icon="send"
+              color="primary"
+              :aria-label="t('chat.v2.inject')"
+              @click.stop="submitInput"
+            />
+          </template>
+        </q-input>
       </div>
     </div>
   </div>
@@ -114,6 +97,7 @@ import { ref, computed, inject, watch, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
 import { isSystemInternalNotice } from '../../../features/chat/noticeFilter';
+import { useActivityAutoScroll } from '../../../features/chat/composables/useActivityAutoScroll';
 import type { MemberSession } from '../../../features/chat/v2Types';
 import ThinkingBlock from '../ThinkingBlock.vue';
 import ActionBlock from '../ActionBlock.vue';
@@ -134,25 +118,19 @@ function useSafeI18n() {
 
 const props = defineProps<{ memberSession: MemberSession }>();
 const emit = defineEmits<{
-  pause: [id: string];
-  resume: [id: string];
-  cancel: [id: string];
-  retry: [id: string];
-  inject: [id: string, text: string];
+  'pause-agent': [sessionId: string];
+  'inject-agent': [payload: { sessionId: string; message: string }];
 }>();
 
 const { t } = useSafeI18n();
 const store = useChatActivityStore();
 
-// 2026-07-04 修复：查询 member session 对应的 agent 内部活动 steps。
-// 通过 AuthorAgentKey + TaskID 间接匹配（Step 无 MemberSessionID 直接外键）。
+// 查询 member session 对应的 agent 内部活动 steps
 const memberSteps = computed(() => {
   return store
     .getMemberSessionSteps(props.memberSession)
     .filter((s) => {
-      // 过滤系统内部通知（context_usage 等）
       if (isSystemInternalNotice(s.Kind, s.NoticeType)) return false;
-      // 过滤空 reply step
       if (s.Kind === 'reply' && s.Status !== 'running' && !s.Content?.trim()) {
         return false;
       }
@@ -160,39 +138,111 @@ const memberSteps = computed(() => {
     });
 });
 
-// 折叠状态：默认折叠（与 team-card 一致，需求 §A.4.4）
-const collapsed = ref(true);
+// 标题栏中间区域：最新动作摘要（图标 + 简短文本）
+// 设计：取 memberSteps 最后一步，按 Kind 映射图标，running 状态显示动态指示
+const latestAction = computed(() => {
+  const steps = memberSteps.value;
+  if (steps.length === 0) return null;
+  const last = steps[steps.length - 1];
+  const isActive =
+    last.Status === 'running' || last.Status === 'tool_running' || last.Status === 'tool_blocked';
+  switch (last.Kind) {
+    case 'thinking':
+      return { icon: 'psychology', text: t('chat.v2.latestThinking'), active: isActive };
+    case 'action':
+      // 工具名本身就是简短标识（shell / file_read / web_search 等）
+      return { icon: 'build', text: last.ToolName || t('chat.v2.latestThinking'), active: isActive };
+    case 'reply':
+      return { icon: 'chat', text: t('chat.v2.latestReplying'), active: isActive };
+    case 'notice':
+      return { icon: 'info', text: t('chat.v2.latestNotice'), active: isActive };
+    case 'confirm':
+      return { icon: 'help', text: t('chat.v2.latestWaitingConfirm'), active: isActive };
+    case 'error':
+      return { icon: 'error', text: t('chat.v2.latestError'), active: isActive };
+    default:
+      return null;
+  }
+});
 
+// 折叠状态：running 默认展开，终态默认折叠，用户意图优先
+// 与 TeamRunCard 保持一致的 userToggled 模式
+const collapsed = ref(props.memberSession.Status !== 'running');
+const userToggled = ref(false);
+
+// 状态变化时自动展开/折叠（仅在用户未手动操作时生效）
+watch(
+  () => props.memberSession.Status,
+  (newStatus) => {
+    if (userToggled.value) return;
+    if (newStatus === 'running') {
+      collapsed.value = false;
+    } else if (
+      newStatus === 'completed' ||
+      newStatus === 'failed' ||
+      newStatus === 'cancelled' ||
+      newStatus === 'skipped'
+    ) {
+      collapsed.value = true;
+    }
+  },
+);
+
+// 响应 ChatMessageList 的 autoExpandFor（跨组件展开信号）
 const autoExpandFor = inject<Ref<{ agentKey: string; teamId: string } | null>>('chat:autoExpandFor', ref(null));
 watch(
   autoExpandFor,
   (cmd) => {
-    if (!cmd) return;
+    if (!cmd || userToggled.value) return;
     if (props.memberSession.AgentKey === cmd.agentKey) collapsed.value = false;
   },
   { immediate: true },
 );
 
 function toggleCollapse() {
+  userToggled.value = true;
   collapsed.value = !collapsed.value;
 }
 
-// 注入对话框
-const injectText = ref('');
-function submitInject() {
-  const text = injectText.value.trim();
+// 自动滚动：running + 展开时实时滚到底；用户滚动后 10s 恢复
+const activitiesRef = ref<HTMLElement | null>(null);
+const autoScrollEnabled = computed(
+  () => !collapsed.value && props.memberSession.Status === 'running',
+);
+// 内容签名：steps 数量 + 最后一步 ID + 内容长度（检测流式增长）
+const contentSignature = computed(() => {
+  const steps = memberSteps.value;
+  if (steps.length === 0) return '0:';
+  const last = steps[steps.length - 1];
+  return `${steps.length}:${last.ID}:${last.Content?.length ?? 0}`;
+});
+const { onScroll } = useActivityAutoScroll({
+  scrollEl: activitiesRef,
+  contentSignature,
+  enabled: autoScrollEnabled,
+});
+
+// 底部输入栏：发送/停止双功能按钮
+// - 输入为空 + running → stop 按钮 → emit('pause-agent', sessionId)
+// - 输入有文字 → send 按钮 → emit('inject-agent', { sessionId, message })
+const inputText = ref('');
+function submitInput() {
+  const text = inputText.value.trim();
   if (!text || !canInject.value) return;
-  emit('inject', props.memberSession.ID, text);
-  injectText.value = '';
+  emit('inject-agent', { sessionId: props.memberSession.ID, message: text });
+  inputText.value = '';
 }
 
-// 系统 agent 排除：__spirit__ 及 __ 前缀不显示操作按钮和对话框（需求 §A.4.4）
+// 系统 agent 排除：__spirit__ 及 __ 前缀不显示输入栏
 const isSystemAgent = computed(() => {
   const key = props.memberSession.AgentKey || '';
   return key === '__spirit__' || key.startsWith('__');
 });
 
-// 状态映射：running/paused/completed/failed/cancelled（需求 §A.4.4）
+// 输入栏仅在 running 状态显示（用户 spec：agent 正在执行时显示）
+const canInject = computed(() => !isSystemAgent.value && props.memberSession.Status === 'running');
+
+// 状态映射：running/paused/completed/failed/cancelled
 const statusColor = computed(
   () =>
     ({
@@ -219,13 +269,6 @@ const statusLabel = computed(() => {
   return map[props.memberSession.Status] || props.memberSession.Status;
 });
 
-// 按钮可见性（按状态切换，需求 §A.4.4）
-const canPause = computed(() => props.memberSession.Status === 'running');
-const canResume = computed(() => props.memberSession.Status === 'paused');
-const canCancel = computed(() => props.memberSession.Status === 'running' || props.memberSession.Status === 'paused');
-const canRetry = computed(() => props.memberSession.Status === 'failed' || props.memberSession.Status === 'cancelled');
-const canInject = computed(() => props.memberSession.Status === 'running' || props.memberSession.Status === 'paused');
-
 const formattedTime = computed(() => {
   const raw = props.memberSession.StartedAt;
   if (!raw) return '';
@@ -246,20 +289,38 @@ const formattedTime = computed(() => {
 .member-header
   display: flex
   align-items: center
-  justify-content: space-between
   padding: 4px 8px
   cursor: pointer
   user-select: none
+  gap: 8px
 
   &:hover
     background: var(--glass-surface-hover)
 
+  // 三段式布局：左（固定）| 中（弹性增长）| 右（固定）
   &__left
     display: flex
     align-items: center
     gap: 6px
-    flex: 1
+    flex: 0 0 auto
     min-width: 0
+
+  &__center
+    display: flex
+    align-items: center
+    gap: 4px
+    flex: 1 1 auto
+    min-width: 0
+    overflow: hidden
+    color: var(--color-text-tertiary)
+    font-size: 11px
+
+  &__action-text
+    color: var(--color-text-tertiary)
+
+  &__action-icon--active
+    animation: member-action-pulse 1.5s ease-in-out infinite
+    color: var(--color-accent)
 
   &__icon
     color: var(--color-text-secondary)
@@ -282,17 +343,35 @@ const formattedTime = computed(() => {
   &__right
     display: flex
     align-items: center
+    flex: 0 0 auto
 
   &__time
     font-size: 11px
     color: var(--color-icon-muted)
     font-variant-numeric: tabular-nums
 
+@keyframes member-action-pulse
+  0%, 100%
+    opacity: 1
+  50%
+    opacity: 0.4
+
 .member-body
   padding: 6px 8px
 
 .member-activities
   margin-bottom: 8px
+  // 2026-07-05: 限制活动列表最大高度 300px，超出显示滚动条
+  max-height: 300px
+  overflow-y: auto
+  // 滚动条样式（细条，符合玻璃主题）
+  &::-webkit-scrollbar
+    width: 6px
+  &::-webkit-scrollbar-thumb
+    background: var(--glass-border)
+    border-radius: 3px
+  &::-webkit-scrollbar-track
+    background: transparent
 
 .member-activities-empty
   font-size: 12px
@@ -308,14 +387,13 @@ const formattedTime = computed(() => {
   background: rgba(229, 92, 92, 0.08)
   border-radius: 3px
 
-.member-actions
-  display: flex
-  align-items: center
-  gap: 4px
-  padding-top: 6px
-  border-top: 1px solid var(--glass-border)
+// 底部输入栏：发送/停止双功能按钮
+.member-input-bar
+  margin-top: 8px
+  padding-top: 8px
+  border-top: 1px dashed var(--glass-border)
 
-.member-inject-input
-  flex: 1
-  min-width: 0
+  &__input
+    :deep(.q-field__append)
+      padding: 0 4px
 </style>

@@ -1309,6 +1309,9 @@ func (impl *taskPlannerImpl) PublishV2Board(ctx context.Context, plan *biz.TaskP
 	// 构建 v2 PlanStep 列表（每个 SubTask 对应一个 PlanStep）。
 	// 2026-07-05 Step 3 修复：从 allocPlan.Allocations 填充 AgentKeys，
 	// 匹配规则：alloc.SubTaskID == SubTask.ID（== PlanStep.ID）。
+	// 2026-07-05 FIX-A：DAG 模式下 alloc.TeamMemberKeys 也必须并入 AgentKeys，
+	// 否则下游 RealTeamOrchestrator 只能组装 lead 单 agent team，
+	// 导致前端左侧 agent 列表与实际 team 成员数不一致。
 	planSteps := make([]biz.PlanStep, 0, len(plan.SubTasks))
 	for i, st := range plan.SubTasks {
 		ps := biz.PlanStep{
@@ -1325,8 +1328,16 @@ func (impl *taskPlannerImpl) PublishV2Board(ctx context.Context, plan *biz.TaskP
 		}
 		if allocPlan != nil {
 			for _, alloc := range allocPlan.Allocations {
-				if alloc.SubTaskID == st.ID && alloc.AssignedKey != "" {
+				if alloc.SubTaskID != st.ID {
+					continue
+				}
+				if alloc.AssignedKey != "" {
 					ps.AgentKeys = append(ps.AgentKeys, alloc.AssignedKey)
+				}
+				for _, mk := range alloc.TeamMemberKeys {
+					if mk != "" {
+						ps.AgentKeys = append(ps.AgentKeys, mk)
+					}
 				}
 			}
 		}

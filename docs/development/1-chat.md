@@ -691,39 +691,39 @@ interface Activity {
 - **节点状态**：pending（灰色）/ running（蓝色+pulse）/ completed（绿色✓）/ failed（红色✗）/ interrupted（黄色⏸）。状态值与 Plan item 状态值、team 状态值保持一致，详见 [设计 B.4.4](./1-chat.design.md#b44-graph-流程图graphstageblock)
 
 #### A.4.3 Team 任务栏（TeamCard）
-- **布局**：长条卡片，头部2:中部6:尾部2
-- **头部**（20%）：上中下三部分（1:1:1）—— 团队名称 / 任务名称 / 创建时间
-- **中部**（60%）：上下两部分（1:2）—— 成员头像+名称 / 进度条:状态:耗时（3:1:1）
-- **尾部**（20%）：垂直堆叠——对话框（始终可见，输入框 + 发送按钮）+ 操作按钮（暂停/恢复/取消/重试，按状态切换）
+- **布局**：长条卡片，头部:中部:尾部 = 2:3:1（即 33%:50%:17%）
+- **头部**（33%）：团队图标（groups）+ 团队名称 + 任务名称 + 创建时间标签
+- **中部**（50%）：成员头像 chips + 进度条（仅此两项，状态与耗时移至尾部）
+- **尾部**（17%）：垂直堆叠——状态标签（大字号，居中）+ 耗时（右下角小字）
 - **进度计算**：子任务完成数 X/N（completed/total * 100%）
 - **状态映射**（B.5.3）：
-  - `running` → 蓝色"执行中"，显示「⏸ 暂停」+「✕ 取消」按钮 + 注入对话框
-  - `paused` → 橙色"已暂停"，显示「▶ 恢复」+「✕ 取消」按钮 + 注入对话框
-  - `completed` → 绿色"团队已完成"，隐藏所有操作按钮
-  - `failed` → 红色"团队执行失败"，显示「🔄 重试」按钮
-  - `cancelled` → 灰色"团队已取消"，隐藏所有操作按钮
-- **暂停/恢复**（B.5.3）：调用 `POST /v1/team-runs/{id}/pause` / `POST /v1/team-runs/{id}/unpause`
-- **取消/重试**：调用 `POST /v1/team-runs/{id}/cancel` / `POST /v1/teams/{id}/retry`
-- **用户补充信息**：输入框 + 发送按钮，触发 `POST /v1/teams/{id}/inject`；仅在 running/paused 状态可见
-- **展开/折叠**：始终默认折叠（含 running）；用户手动展开后状态由用户掌控，不被状态变化自动覆盖（详见 §A.4.5）
+  - `running` → 蓝色"执行中"
+  - `paused` → 橙色"已暂停"
+  - `completed` → 绿色"已完成"（大标签居中）
+  - `failed` → 红色"执行失败"
+  - `cancelled` → 灰色"已取消"
+- **操作按钮**：team 面板**无任何操作按钮**（纯展示）；影响 agent 的操作统一由 MemberSessionPanel 底部输入栏承担（详见 §A.4.4）
+- **展开/折叠**：点击 team 卡片可切换展开/折叠；running 默认展开，终态默认折叠；用户手动展开后状态由用户掌控，不被状态变化自动覆盖（详见 §A.4.5）
 
-#### A.4.4 Agent 卡片（AgentCard）
-- **布局**：简化版，头部80% + 尾部20%
+#### A.4.4 Agent 卡片（AgentCard / MemberSessionPanel）
+- **布局**：简化版，头部 + 展开内容 + 底部输入栏
 - **头部**：avatar + agent 名称 + status badge + 创建时间
-- **尾部**：垂直堆叠——对话框（始终可见，输入框 + 发送按钮）+ 操作按钮（暂停/恢复/取消/重试，按状态切换）
+- **展开内容**：活动列表（thinking/action/reply 等 steps），最大高度 300px，超出显示滚动条
+- **底部输入栏**（仅 running 状态显示，系统 agent 排除）：输入框 + 双功能按钮
+  - 输入框为空 **且** agent 正在执行时 → 按钮为方框形态（stop 图标），点击暂停 agent（调用 `POST /v1/chat/sessions/{id}/pause`）
+  - 输入框内输入文字时 → 按钮变为发送形态（send 图标），点击触发 `POST /v1/chat/enqueue`（参数为 sessionId + content）
 - **状态映射**（B.5.3）：
-  - `running` → 蓝色"{name} 执行中"，显示「⏸ 暂停」+「✕ 取消」按钮 + 注入对话框
-  - `paused` → 橙色"{name} 已暂停"，显示「▶ 恢复」+「✕ 取消」按钮 + 注入对话框
-  - `completed` → 绿色"{name} 已完成"，隐藏所有操作按钮
-  - `failed` → 红色"{name} 执行失败"，显示「🔄 重试」按钮
-  - `cancelled` → 灰色"{name} 已取消"，隐藏所有操作按钮
-- **暂停/恢复**（B.5.3）：调用 `POST /v1/chat/sessions/{id}/pause` / `POST /v1/chat/sessions/{id}/resume`
-- **取消/重试**：调用 `POST /v1/chat/stop`（复用 StopGeneration）/ `POST /v1/chat/sessions/{id}/retry`
-- **用户补充信息**：输入框 + 发送按钮，触发 `POST /v1/chat/sessions/{id}/enqueue`；仅在 running/paused 状态可见
-- **系统 agent 排除**：`__spirit__` 及 `__` 前缀的系统 agent（run-service/session-service 状态通知）不显示任何操作按钮和注入对话框
+  - `running` → 蓝色"{name} 执行中"，显示底部输入栏
+  - `paused` → 橙色"{name} 已暂停"，不显示输入栏
+  - `completed` → 绿色"{name} 已完成"，不显示输入栏
+  - `failed` → 红色"{name} 执行失败"，不显示输入栏
+  - `cancelled` → 灰色"{name} 已取消"，不显示输入栏
+- **系统 agent 排除**：`__spirit__` 及 `__` 前缀的系统 agent（run-service/session-service 状态通知）不显示输入栏
 - **展开后**：thinking（折叠）/ action（折叠）/ reply（展开）
 - **无团队信息、无进度条**（单个 agent，直接显示状态）
-- **展开/折叠**：始终默认折叠（含 running）；与 team-card 一致（详见 §A.4.5）
+- **展开/折叠**：running 默认展开，终态默认折叠，用户意图优先（详见 §A.4.5）
+- **自动滚动**：running + 展开时实时滚动到底部；用户滚动后 10s 恢复自动滚动（`useActivityAutoScroll`）
+- **标题栏最新动作**：三段式 header 中间区域显示最新 step 的图标+简短文本（thinking→思考中、action→工具名、reply→回复中）
 
 #### A.4.5 折叠规则
 | 节点类型 | 折叠行为 |
@@ -732,8 +732,8 @@ interface Activity {
 | action | 默认折叠（不区分进行中/完成，减少噪音） |
 | task | 始终展开 |
 | reply | 始终展开 |
-| team-card | 始终默认折叠（含 running），用户手动展开后状态由用户掌控 |
-| agent-card | 同 team-card |
+| team-card | running 默认展开，终态默认折叠；用户手动展开/折叠后状态由用户掌控 |
+| agent-card | 同 team-card；agent 完成时自动折叠（用户未操作时）；展开+running 时自动滚到底部（用户滚动后 10s 恢复） |
 | plan | 支持折叠：进行中默认展开，初始渲染时若全部完成则自动折叠为摘要 |
 | graph_stage | 始终展开 |
 
@@ -755,12 +755,19 @@ interface Activity {
 - [ ] 简单对话：精灵直接 thinking + reply，无 plan/graph/team
 - [ ] Team 模式：plan → graph → team-card 顺序显示
 - [ ] 任务计划面板：固定位置，不重复产生，支持折叠
-- [ ] team-card 布局：头部2:中部6:尾部2，符合设计
-- [ ] team-card 尾部：对话框（始终可见）+ 暂停/恢复/取消/重试按钮（按状态切换）+ 状态映射（running/paused/completed/failed/cancelled）
-- [ ] team-card 展开：显示成员列表，成员展开显示 thinking/action/reply
-- [ ] agent-card：简化版布局（头部80%+尾部20%），含对话框 + 暂停/恢复/取消/重试按钮（与 team-card 一致交互）
-- [ ] agent-card 系统 agent 排除：`__spirit__` 及 `__` 前缀 agent 不显示操作按钮
-- [ ] 暂停/恢复 API：team-run 走 `/v1/team-runs/{id}/pause` 与 `/unpause`；agent session 走 `/v1/chat/sessions/{id}/pause` 与 `/resume`
+- [ ] team-card 布局：头部:中部:尾部 = 2:3:1（33%:50%:17%），符合设计
+- [ ] team-card 头部：团队图标 + 团队名称 + 任务名称 + 创建时间标签
+- [ ] team-card 中部：仅成员头像 chips + 进度条（不含状态/耗时）
+- [ ] team-card 尾部：状态标签（大字号居中）+ 耗时（右下角小字）
+- [ ] team-card 操作按钮：team 面板内**无任何操作按钮**（暂停/恢复/取消/重试/输入框全部移除，纯展示）
+- [ ] team-card 状态映射：running/paused/completed（大标签居中）/failed/cancelled
+- [ ] team-card 展开：显示成员列表（MemberSessionPanel），成员展开显示 thinking/action/reply
+- [ ] agent-card 布局：简化版（头部 + 展开内容 + 底部输入栏），无任何操作按钮
+- [ ] agent-card 展开内容：最大高度 300px，超出显示滚动条
+- [ ] agent-card 底部输入栏：仅 running 状态显示（系统 agent 排除）；输入框为空+running 时按钮为 stop 形态（点击暂停 agent），输入文字后变为 send 形态（点击注入消息）
+- [ ] agent-card 系统 agent 排除：`__spirit__` 及 `__` 前缀 agent 不显示输入栏
+- [ ] agent 暂停 API：`POST /v1/chat/sessions/{id}/pause`（参数为 sessionId）
+- [ ] agent 注入 API：`POST /v1/chat/enqueue`（参数为 session_id + content）
 - [ ] plan 状态更新：由 team_stage 事件驱动
 - [ ] 进度计算：X/N 简单实现
 - [ ] Team 失败：手动重试

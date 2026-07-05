@@ -177,6 +177,16 @@ func (f *fakeReposForExecutor) GetGraphStageByPlanBoard(_ context.Context, planB
 	return biz.GraphStage{}, errors.New("not found")
 }
 
+// GetTeamStage returns the stored TeamStage by ID (2026-07-05 P1 #9d 补齐).
+func (f *fakeReposForExecutor) GetTeamStage(_ context.Context, id string) (biz.TeamStage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if s, ok := f.stages[id]; ok {
+		return s, nil
+	}
+	return biz.TeamStage{}, errors.New("not found")
+}
+
 // fakeSeq implements sequencerPublisher for testing.
 type fakeSeq struct {
 	mu     sync.Mutex

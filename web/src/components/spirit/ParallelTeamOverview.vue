@@ -62,10 +62,8 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import TeamProgressCard from './TeamProgressCard.vue';
-import SynthesisResultCard from './SynthesisResultCard.vue';
 import DAGDiagramCard from './DAGDiagramCard.vue';
-import { renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
-import type { SpiritTeam, SynthesisOutput, EvolutionSuggestion, CompletionStats } from '../../features/spirit/types';
+import type { SpiritTeam, CompletionStats } from '../../features/spirit/types';
 
 const { t } = useI18n();
 
@@ -74,8 +72,6 @@ const props = defineProps<{
   maxParallel: number;
   allCompleted: boolean;
   completionStats?: CompletionStats | null;
-  synthesisResult?: SynthesisOutput | null;
-  evolutionSuggestion?: EvolutionSuggestion | null;
 }>();
 
 defineEmits<{

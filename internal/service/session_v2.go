@@ -239,6 +239,12 @@ func (s *SessionV2Service) ListGraphStages(ctx context.Context, req *v1.ListGrap
 }
 
 // ListGraphNodes returns all graph_nodes for a graph_stage.
+//
+// 2026-07-05 修复：GraphNode.DependsOn 是 in-memory 字段（不持久化到 graph_nodes_v2 表），
+// 需在读取时从 PlanStep.DependsOn 派生。
+// 派生路径：graphStageID → GraphStage.PlanBoardID → ListPlanStepsByPlan →
+// 用 gn.DagNodeID == PlanStep.ID 关联，填充 DependsOn。
+// 设计依据：internal/biz/graph_stage.go 注释「DependsOn 取自 PlanStep.DependsOn（派生，不持久化）」。
 func (s *SessionV2Service) ListGraphNodes(ctx context.Context, req *v1.ListGraphNodesV2Request) (*v1.ListGraphNodesV2Response, error) {
 	stageID := strings.TrimSpace(req.GetStageId())
 	if stageID == "" {
@@ -248,11 +254,44 @@ func (s *SessionV2Service) ListGraphNodes(ctx context.Context, req *v1.ListGraph
 	if err != nil {
 		return nil, err
 	}
+	// 派生 DependsOn：从 PlanStep 关联数据填充
+	depMap, err := s.buildGraphNodeDependsOnMap(ctx, stageID)
+	if err != nil {
+		// 派生失败不阻断主流程（前端有 fallback），仅记录日志后继续
+		// 注：service 层无 logger，按现有代码风格保持静默降级
+	} else {
+		for i := range nodes {
+			if deps, ok := depMap[nodes[i].DagNodeID]; ok {
+				nodes[i].DependsOn = deps
+			}
+		}
+	}
 	out := make([]*v1.GraphNodeV2, 0, len(nodes))
 	for _, gn := range nodes {
 		out = append(out, bizGraphNodeToProto(gn))
 	}
 	return &v1.ListGraphNodesV2Response{GraphNodes: out}, nil
+}
+
+// buildGraphNodeDependsOnMap 构造 dagNodeID → PlanStep.DependsOn 的映射。
+// 用于在 ListGraphNodes 时派生 GraphNode.DependsOn 字段。
+func (s *SessionV2Service) buildGraphNodeDependsOnMap(ctx context.Context, graphStageID string) (map[string][]string, error) {
+	gs, err := s.graphStageReader.GetGraphStage(ctx, graphStageID)
+	if err != nil {
+		return nil, err
+	}
+	if gs.PlanBoardID == "" {
+		return nil, nil
+	}
+	steps, err := s.planStepReader.ListPlanStepsByPlan(ctx, gs.PlanBoardID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string][]string, len(steps))
+	for _, ps := range steps {
+		out[ps.ID] = ps.DependsOn
+	}
+	return out, nil
 }
 
 // === Conversion helpers (biz → proto) ===

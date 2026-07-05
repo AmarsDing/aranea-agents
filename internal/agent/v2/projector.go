@@ -246,23 +246,6 @@ func (p *ActivityProjector) Configure(meta ProjectMeta) {
 	p.meta = meta
 }
 
-// Reset clears per-turn state. Deprecated: per-turn Projector instances
-// created by ProjectorFactory.NewProjector() are never reused across turns,
-// so Reset is no longer needed. Kept for backwards compatibility with any
-// external callers that might exist (none currently).
-// 2026-07-04 问题 4 修复后：单例 Projector 已被 ProjectorFactory 取代。
-func (p *ActivityProjector) Reset() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.activeStep = make(map[string]*biz.Step)
-	p.activeTurn = make(map[string]*biz.Turn)
-	p.activeTask = make(map[string]*biz.Task)
-	p.thinkingStepIDs = make(map[string]string)
-	p.replyStepIDs = make(map[string]string)
-	p.toolCallSteps = make(map[string]string)
-	p.memberToolCalls = make(map[string]int)
-}
-
 // === ActivityEmitter interface (biz.ActivityEmitter) ===
 //
 // These methods allow plugins/hooks (cost_guard, model_router, tool_confirmation)

@@ -1,4 +1,7 @@
-<!-- web/src/components/chat/v2/TurnContainer.vue -->
+<!-- web/src/components/chat/v2/TurnContainer.vue
+  设计稿 §3.6.3 组件层级：TurnContainer 内渲染 steps + TeamStagePanel。
+  TeamStagePanel 通过 TeamStage.TurnID 关联到触发它的 turn。
+-->
 <template>
   <div class="turn-container" :data-turn-id="turn.ID">
     <template v-for="step in visibleSteps" :key="step.ID">
@@ -9,6 +12,13 @@
       <ConfirmBlock v-else-if="step.Kind === 'confirm'" :step="step" />
       <ErrorBlock v-else-if="step.Kind === 'error'" :step="step" />
     </template>
+    <TeamStagePanel
+      v-for="ts in turnTeamStages"
+      :key="ts.ID"
+      :team-stage="ts"
+      @pause-agent="(sid) => $emit('pause-agent', sid)"
+      @inject-agent="(p) => $emit('inject-agent', p)"
+    />
   </div>
 </template>
 
@@ -23,8 +33,13 @@ import ReplyBlock from '../ReplyBlock.vue';
 import NoticeBlock from '../NoticeBlock.vue';
 import ConfirmBlock from '../ConfirmBlock.vue';
 import ErrorBlock from '../ErrorBlock.vue';
+import TeamStagePanel from './TeamStagePanel.vue';
 
 const props = defineProps<{ turn: Turn }>();
+defineEmits<{
+  'pause-agent': [sessionId: string];
+  'inject-agent': [payload: { sessionId: string; message: string }];
+}>();
 const store = useChatActivityStore();
 const visibleSteps = computed(() =>
   store.getTurnSteps(props.turn.ID).filter((s) => {
@@ -39,4 +54,7 @@ const visibleSteps = computed(() =>
     return true;
   }),
 );
+
+// 当前 turn 触发的 team stages（设计稿 §3.6.2）
+const turnTeamStages = computed(() => store.getTurnTeamStages(props.turn.ID));
 </script>

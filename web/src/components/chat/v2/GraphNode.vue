@@ -13,8 +13,17 @@
 <template>
   <g
     :transform="`translate(${pos.x}, ${pos.y})`"
-    :class="['graph-node', { 'graph-node--failed': node.Status === 'failed' }]"
+    :class="[
+      'graph-node',
+      {
+        'graph-node--failed': node.Status === 'failed',
+        'graph-node--highlighted': isHighlighted,
+        'graph-node--dimmed': isDimmed,
+      },
+    ]"
     @click="$emit('select', node.ID)"
+    @mouseenter="$emit('hover', node.ID)"
+    @mouseleave="$emit('hover', null)"
   >
     <rect
       :width="nodeWidth"
@@ -22,7 +31,7 @@
       rx="8"
       :class="['graph-node__rect', `graph-node__rect--${node.Status}`]"
       :stroke="nodeStrokeColor"
-      :stroke-width="isSelected ? 2.5 : 1.5"
+      :stroke-width="isSelected || isHighlighted ? 2.5 : 1.5"
     />
     <text :x="nodeWidth / 2" :y="24" text-anchor="middle" class="graph-node__label">
       {{ node.Label }}
@@ -53,9 +62,14 @@ const props = defineProps<{
   nodeWidth: number;
   nodeHeight: number;
   isSelected?: boolean;
+  isHighlighted?: boolean;
+  isDimmed?: boolean;
 }>();
 
-defineEmits<{ select: [id: string] }>();
+defineEmits<{
+  select: [id: string];
+  hover: [id: string | null];
+}>();
 
 const { t } = useSafeI18n();
 
@@ -97,9 +111,20 @@ const nodeStrokeColor = computed(
 <style scoped>
 .graph-node {
   cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+/* P1 #6: hover 节点时高亮上下游依赖路径 — 暗化非路径节点 */
+.graph-node--dimmed {
+  opacity: 0.3;
+}
+/* P1 #6: 路径上的节点保持高亮，无额外样式（stroke-width 在 template 中通过 prop 控制） */
+.graph-node--highlighted {
+  opacity: 1;
 }
 .graph-node__rect {
-  transition: fill 0.2s ease, stroke 0.2s ease;
+  transition:
+    fill 0.2s ease,
+    stroke 0.2s ease;
 }
 /* 节点填充用半透明色，让文字在背景上可读。
    之前用纯色填充，文字和背景对比度不足。现在用 rgba 半透明覆盖，

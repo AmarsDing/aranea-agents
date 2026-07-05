@@ -24,7 +24,6 @@ const stubs = {
   TodoKanbanBoard: defineComponent({ template: '<div />' }),
   UiConfigToggle: defineComponent({ template: '<div />' }),
   UnifiedExecutionPanel: defineComponent({ template: '<div />' }),
-  SynthesisResultCard: defineComponent({ template: '<div />' }),
   ContextIndicator: defineComponent({ template: '<div />' }),
   SpiritStatusBar: defineComponent({ template: '<div />' }),
 };

@@ -3687,10 +3687,10 @@ stateDiagram-v2
 |------|---------|--------------|------|
 | PlanBlock | 展开 | ✅（全部完成后） | 任务进行中需可见 |
 | GraphStageBlock | 展开 | ❌（保留） | 流程图始终可见 |
-| team-card（进行中） | 折叠 | — | 用户指令覆盖：默认折叠（100px 高度限制），多个 team 同时展示时聚焦当前关注的 team；用户手动展开后状态变化不覆盖用户意图 |
-| team-card（终态） | 折叠 | — | 同上，默认折叠 |
-| agent-card（进行中） | 折叠 | — | 同 team-card |
-| agent-card（终态） | 折叠 | — | 同上，默认折叠 |
+| team-card（进行中） | 展开 | — | running 默认展开；用户手动展开/折叠后状态变化不覆盖用户意图（`userToggled` 标志） |
+| team-card（终态） | 折叠 | — | 终态默认折叠；用户未操作时由 status watcher 自动折叠 |
+| agent-card（进行中） | 展开 | — | running 默认展开；展开时自动滚到底部（用户滚动后 10s 恢复，`useActivityAutoScroll`）；标题栏中间显示最新动作图标+文本 |
+| agent-card（终态） | 折叠 | ✅ | 终态自动折叠（用户未操作时，status watcher 触发）；用户操作过则保持用户意图 |
 | thinking | 折叠 | ✅ | 推理过程默认折叠，减少噪音 |
 | action | 折叠 | ✅ | 工具调用结果默认折叠 |
 | reply | 展开 | ❌ | 回复内容始终展开 |
@@ -3709,6 +3709,25 @@ stateDiagram-v2
 **例外**：
 - PlanBlock 的"自动折叠为摘要"行为仅发生在**初始渲染时**所有 plan item 已完成的情况；运行中变为全部完成不触发自动折叠（保持用户当前展开/折叠状态）
 - 用户手动展开/折叠后，状态由用户掌控，不被状态变化自动覆盖
+
+**agent-card 自动滚动模型**（2026-07-05 新增）：
+- 触发条件：`!collapsed && status === 'running'`（展开 + 运行中）
+- 实时滚动：内容变化（新 step 或最后一步内容增长）时自动滚到底部
+- 用户意图优先：用户滚动离开底部时进入 10s 冷却期，期间不自动滚动
+- 恢复机制：10s 内无用户滚动 → 自动滚到底部并恢复实时跟踪；用户滚回底部时立即恢复
+- 实现位置：`web/src/features/chat/composables/useActivityAutoScroll.ts`
+- 与 `useChatMessageScroll` 的区别：后者使用阈值模型（80px 内 stick），前者使用时间模型（10s 恢复），符合"用户不操作了 10s 再自动刷新"的需求
+
+**agent-card 标题栏最新动作**（2026-07-05 新增）：
+- 三段式 header：左（avatar+name+status badge）| 中（最新动作 icon+text）| 右（时间）
+- 最新动作 = `memberSteps` 最后一步，按 Kind 映射：
+  - thinking → `psychology` + "思考中"
+  - action → `build` + 工具名（shell/file_read/web_search 等）
+  - reply → `chat` + "回复中"
+  - notice → `info` + "通知"
+  - confirm → `help` + "待确认"
+  - error → `error` + "错误"
+- running 状态的图标显示脉冲动画（`member-action-pulse` 1.5s 循环）
 
 ### B.5 Team 任务栏交互设计
 
@@ -4383,3 +4402,454 @@ PlanStep.DependsOn = ["st_<uuid-A>"]  ← 引用保持一致
 - FIX-3：移除 `publishGraphStageTerminal` 中的 `UpsertGraphStage` 调用（会导致 graph_stages_v2.status 永远为 running，不建议回滚）
 
 **编码验证说明**（2026-07-05 调查结论）：曾怀疑 `plan_steps_v2.label` 存在 UTF-8 编码异常（psql 终端显示 `鏁版嵁宸ョ▼鍥㈤槦`）。经 hex 验证，数据库实际存储的字节是完全正确的 UTF-8（`e695b0 e68dae e5b7a5 e7a88b e59ba2 e9989f` = `数据工程团队`）。乱码根因是 PowerShell 5 默认用 GBK 解码 psql 输出的 UTF-8 字节流（终端显示问题，非数据问题）。前端通过 API 获取并显示的 label 完全正确（Playwright 验证 `plan-step-item__label` textContent = `数据工程团队`）。后端代码、LLM 返回、JSON 解析、PostgreSQL 写入全链路编码正确，无需修复。
+
+#### B.10.10 TeamRunCard 三段式横向布局 2:3:1 + MemberSessionPanel 输入栏（2026-07-05 三轮修订）
+
+> **背景**：原 TeamRunCard 为垂直堆叠布局（头部 + 中部成员列表 + 尾部操作），与设计稿 §4.2 要求的三段式横向布局不符。本节记录 2026-07-05 的三轮修订：
+> - **初版**：头部 20% + 中部 60% + 尾部 20%（1:3:1），尾部含注入对话框 + 操作按钮，中部含状态徽章 + 耗时。
+> - **二轮修订**：头部 33% + 中部 50% + 尾部 17%（**2:3:1**），尾部仅显示状态徽章（大、居中）+ 耗时（右下角），操作按钮全部移除，影响 agent 的操作统一由 TeamRunCard 展开区底部输入栏承担（事件 `cancel-team`/`inject-team`，携带 `teamId`）。
+> - **三轮修订**（当前）：**输入栏从 TeamRunCard 下沉到 MemberSessionPanel**。TeamRunCard 展开区**纯展示**——仅渲染成员列表（`MemberSessionPanel`），无任何操作按钮与输入框；影响 agent 的操作（暂停/注入）改由每个 `MemberSessionPanel` 底部输入栏承担，事件改为 `pause-agent`/`inject-agent`，携带 **`sessionId`**（agent 级别，非 team 级别）。TeamStagePanel 的 `team-stage-header`（团队 UUID 行）已移除，团队名/状态/成员均由 TeamRunCard 承载，避免重复。
+
+**布局结构**（三轮修订版）：
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ team-run-bar（横向 flex 2:3:1，整条可点击展开/折叠；纯展示，无按钮）      │
+│ ┌──────────────────┬────────────────────────────┬──────────────────┐  │
+│ │    头部 ~33%      │        中部 ~50%            │   尾部 ~17%      │  │
+│ ├──────────────────┼────────────────────────────┼──────────────────┤  │
+│ │ 👥  团队:数据团队  │  ┌──────────────────────┐  │                  │  │
+│ │     任务:数据处理  │  │ 成员 chips (1/3)      │  │   ┌──────────┐  │  │
+│ │     创建:10:30    │  │ [G1][G2][G3]          │  │   │  已完成  │  │  │
+│ │                  │  └──────────────────────┘  │   │  (大徽章) │  │  │
+│ │                  │  ┌──────────────────────┐  │   └──────────┘  │  │
+│ │                  │  │ 进度条 (2/3)          │  │          ⏱ 2m30s│  │
+│ │                  │  │ [████████░░] 2/3      │  │     (右下角)    │  │
+│ │                  │  └──────────────────────┘  │                  │  │
+│ └──────────────────┴────────────────────────────┴──────────────────┘  │
+│                                                                       │
+│ ── 展开后（点击 team-run-bar）—— 纯展示，无任何按钮/输入框 ────────── │
+│                                                                       │
+│ ┌─────────────────────────────────────────────────────────────────┐ │
+│ │ [G1] MemberSessionPanel                                         │ │
+│ │   ├─ avatar + agentName + statusBadge + 创建时间                  │ │
+│ │   ├─ 活动列表（max-height 300px，超出滚动）                       │ │
+│ │   │    thinking（折叠）/ action（折叠）/ reply（展开）             │ │
+│ │   └─ 底部输入栏（仅 running + 非系统 agent 显示）                 │ │
+│ │        ┌────────────────────────────────────┐ [⏹/➤]              │ │
+│ │        │ 发送补充消息…                          │ 空+running → ⏹ 暂停 │ │
+│ │        └────────────────────────────────────┘ 有文字   → ➤ 注入   │ │
+│ │ [G2] MemberSessionPanel（同上）                                  │ │
+│ │ [G3] MemberSessionPanel（同上）                                  │ │
+│ └─────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+**字段来源映射**：
+
+| 区域 | 字段 | 数据来源 | fallback |
+|------|------|---------|----------|
+| 头部 - 团队名 | `displayTitle` | `TeamStage.TeamName`（通过 `TeamStageID` 反查 store） | `PlanStep.Label` → `DagNodeID` → `TeamRun.ID` |
+| 头部 - 任务名 | `taskName` | `PlanStep.Description`（通过 `DagNodeID` 反查 store） | `PlanStep.Label` → `TeamStage.TeamID` → `DagNodeID` → `'-'` |
+| 头部 - 创建时间 | `formattedTime` | `TeamRun.StartedAt`（HH:MM 格式） | `'-'` |
+| 中部 - 成员 chips | `memberChips` | `store.getTeamRunMemberSessions(TeamRun.ID)` 映射为 `{agentKey, agentName, avatarURL, status}` | 空数组 → 显示 `noMembers` |
+| 中部 - 进度 | `progress` | `{completed, total, pct}` 从 `memberSessions.Status === 'completed'` 计算 | `total=0` → `pct=0` |
+| 尾部 - 状态徽章 | `statusLabel` | `TeamRun.Status` 映射到 i18n key | 原始 Status 字符串 |
+| 尾部 - 耗时 | `duration` | `CompletedAt - StartedAt` 或 `now - StartedAt`（running 状态每秒刷新） | `'-'` |
+
+**展开/折叠行为**（设计稿 §4.6）：
+
+| TeamRun.Status | 初始状态 | 用户操作 |
+|---------------|---------|---------|
+| `running` | 默认展开 | 可手动折叠/展开 |
+| `completed` | 默认折叠 | 可手动展开 |
+| `failed` | 默认折叠 | 可手动展开 |
+| `cancelled` | 默认折叠 | 可手动展开 |
+
+**MemberSessionPanel 底部输入栏交互**（三轮修订核心）：
+
+| 输入框状态 | MemberSession.Status | 按钮形态 | 点击行为 |
+|-----------|---------------------|---------|---------|
+| 空 | `running` | ⏹ 方框形态（stop 图标，negative 色） | `emit('pause-agent', sessionId)` → `spiritStore.pauseAgent` → `POST /v1/chat/sessions/{id}/pause` |
+| 有文字 | `running` | ➤ 发送形态（send 图标，primary 色） | `emit('inject-agent', { sessionId, message })` → `spiritStore.injectAgent` → `POST /v1/chat/enqueue` |
+| 任意 | 非 running | 输入栏隐藏 | — |
+
+> **设计理由（三轮修订）**：
+> 1. **职责清晰**：team 面板是团队维度的展示单元（含多个 agent），不应承担单个 agent 的操作。原二轮修订将输入栏放在 TeamRunCard 底部，操作的是整个 team（`cancelSpiritTeam`/`injectSpiritTeam`，参数为 `teamId`），但用户实际需要的是「针对某个具体 agent 暂停/注入」，导致语义错配。
+> 2. **agent 级别操作**：输入栏下沉到 `MemberSessionPanel` 后，每个 agent 卡片都有独立的输入栏，操作直接以 `sessionId` 为参数调用 agent 级别 API（`/v1/chat/sessions/{id}/pause` 与 `/v1/chat/enqueue`），无需经过 team 维度的 run_id 解析。
+> 3. **team 面板零按钮**：用户明确要求「team 面板中的按钮全部去掉，尾部显示 team 的状态和耗时」。TeamRunCard 退化为纯展示组件，仅承担信息呈现（团队名/任务/进度/状态/耗时），不再 emit 任何操作事件。
+> 4. **停止/发送双功能按钮**借鉴 ChatComposer 的 send/stop 模式：输入为空 + agent running 时按钮为方框形态（stop），点击暂停 agent；输入有文字时变为发送形态（send），点击注入消息到 agent session。
+> 5. **300px 高度限制**：MemberSessionPanel 活动列表（thinking/action/reply steps）最大高度 300px，超出显示滚动条。避免单个 agent 活动过多撑开整个 team 展开区，保持团队视图紧凑。
+
+**事件链路**（三轮修订，从 MemberSessionPanel 出发）：
+
+```
+MemberSessionPanel (@pause-agent / @inject-agent，携带 sessionId)
+  → TeamRunCard
+    → TeamStagePanel
+      → TurnContainer / TaskCard
+        → TurnList / TaskCard
+          → TaskList
+            → SessionPanel
+              → ChatMessageList (@pause-agent / @inject-agent)
+                → ChatMessagePanel
+                  → ChatPage (@pause-agent="spiritStore.pauseAgent" / @inject-agent="spiritStore.injectAgent")
+```
+
+> **API 对照**：
+> - 暂停 agent：`POST /v1/chat/sessions/{sessionId}/pause` — 后端在 `chat.proto` `PauseSession` RPC 中实现，标记 session 为 paused 状态
+> - 注入消息：`POST /v1/chat/enqueue` — 后端在 `chat.proto` `EnqueueUserMessage` RPC 中实现，body 为 `{ session_id, content }`，将用户消息入队到指定 agent session 的待处理队列
+
+**MemberSessionPanel 活动列表样式**（三轮修订新增）：
+- 容器：`max-height: 300px; overflow-y: auto;`
+- 滚动条：自定义细滚动条（4px 宽，hover 时 6px），轨道半透明，滑块 `var(--color-icon-muted)`
+- 活动项渲染规则：
+  - `thinking`：默认折叠（不区分进行中/完成，减少噪音）
+  - `action`：默认折叠（不区分进行中/完成，减少噪音）
+  - `reply`：始终展开
+
+**进度条样式**：
+- 容器：`flex: 1`（占满中部下 2/3），高度 14px，圆角 7px
+- 填充：`linear-gradient(90deg, blue, green)`，宽度 = `progress.pct%`
+- 文本：居中显示 `completed/total`（如 `2/3`）
+
+**成员 chip 状态色**：
+
+| MemberSession.Status | 背景色 | 边框色 | 文字色 |
+|---------------------|--------|--------|--------|
+| `completed` | `rgba(76, 175, 80, 0.12)` | `rgba(76, 175, 80, 0.3)` | `#4caf50` |
+| `running` | `rgba(33, 150, 243, 0.12)` | `rgba(33, 150, 243, 0.3)` | `#2196f3` |
+| `failed` | `rgba(244, 67, 54, 0.12)` | `rgba(244, 67, 54, 0.3)` | `#f44336` |
+| `pending` | `rgba(158, 158, 158, 0.12)` | `rgba(158, 158, 158, 0.3)` | `color-text-tertiary` |
+| `skipped` | 同 pending | 同 pending | 同 pending |
+
+**耗时实时刷新机制**：
+- `running` 状态：`onMounted` 启动 `setInterval(1000)` 更新 `now.value`，触发 `duration` computed 重算
+- 终态：`onUnmounted` 清理 timer，`duration` 使用 `CompletedAt` 计算固定值
+- 格式化规则：`<60s` → `Ns`；`<60m` → `MmSs`；`≥60m` → `HhMm`
+
+**TeamStagePanel 简化**（三轮修订）：
+
+| 项 | 初版 | 二轮修订 | 三轮修订 |
+|----|------|---------|---------|
+| `team-stage-header` | 显示 groups 图标 + 团队名 + 状态徽章 + 成员 chips | **已移除**（团队名/状态/成员均由 TeamRunCard 承载，避免重复） | 同二轮（已移除） |
+| 容器 | 保留 | 保留（`data-team-stage-id` + `activity-locate-highlight` 仍需用于 GraphNode 点击高亮） | 同二轮 |
+| 事件转发 | — | `cancel-team`/`inject-team`（teamId） | **改为** `pause-agent`/`inject-agent`（sessionId） |
+
+**GraphStageBlock 动态宽度**（三轮修订同步优化）：
+
+> **背景**：原 GraphStageBlock 固定 600px 宽度，对于线性链（每层 1 个节点）造成大量水平空白。优化为根据最宽层动态计算 SVG 宽度。
+
+- 共享 composable `usePlanDAGLayout` 的返回类型从 `Map<string, NodePosition>` 改为 `{ positions: Map<string, NodePosition>; computedWidth: number }`
+- `computedWidth = Math.min(opts.width, maxLayerWidth + padX * 2)`，其中 `maxLayerWidth` 为最宽层的节点宽度 + 间距总和
+- 线性链（1 节点/层）：`computedWidth = nodeWidth + 2 * padX`（默认 `120 + 40 = 160px`）
+- 并行层（N 节点/层）：`computedWidth = N * nodeWidth + (N-1) * gapX + 2 * padX`
+- `padX` 默认 20，可通过 `DAGLayoutOptions.padX` 自定义
+- 消费方：`GraphStageBlock.vue`（`maxWidth=600`，`width=computedWidth`）、`PlanDAG.vue`（`svgMaxWidth=props.width||600`，`svgWidth=computedWidth`）
+
+**改动文件清单**（三轮修订）：
+
+| 文件 | 改动 |
+|------|------|
+| `web/src/components/chat/v2/MemberSessionPanel.vue` | **完全重写**：移除 5 个操作按钮（pause/resume/cancel/retry/inject）；移除 `.member-actions` 与 `.member-inject-input` 样式；新增底部输入栏（q-input + 双功能按钮）；活动列表 `.member-activities` 加 `max-height: 300px; overflow-y: auto` + 自定义滚动条；emit 改为 `pause-agent`/`inject-agent`（携带 `sessionId`）；输入栏仅在 `canInject`（`!isSystemAgent && status === 'running'`）时显示 |
+| `web/src/components/chat/v2/TeamRunCard.vue` | 移除二轮修订新增的底部输入栏及相关 `inputText`/`submitInput`/`teamId`/`canInject`；移除 `cancel-team`/`inject-team` emit；新增 `pause-agent`/`inject-agent` emit 并从 MemberSessionPanel 转发；移除 `.team-run-input-bar` 样式 |
+| `web/src/components/chat/v2/TeamStagePanel.vue` | emit 从 `cancel-team`/`inject-team` 改为 `pause-agent`/`inject-agent`；模板 `@pause-agent`/`@inject-agent` 转发到 TeamRunCard |
+| `web/src/components/chat/v2/TurnContainer.vue` | emit 与模板从 `cancel-team`/`inject-team` 改为 `pause-agent`/`inject-agent` |
+| `web/src/components/chat/v2/TurnList.vue` | 同上 |
+| `web/src/components/chat/v2/TaskCard.vue` | 同上（prePlanTurns / orphanTeamStages / postPlanTurns 三处） |
+| `web/src/components/chat/v2/TaskList.vue` | 同上 |
+| `web/src/components/chat/v2/SessionPanel.vue` | 同上 |
+| `web/src/components/chat/ChatMessageList.vue` | `SessionPanelV2` 监听器从 `@cancel-team`/`@inject-team` 改为 `@pause-agent`/`@inject-agent` 并向上转发 |
+| `web/src/components/chat/v2/GraphStageBlock.vue` | `width` 常量（600）改名为 `maxWidth`；新增 `layoutResult` computed；`width` 改为 computed 从 `layoutResult.computedWidth` 取值 |
+| `web/src/components/chat/v2/PlanDAG.vue` | prop `width` 派生的 computed 改名 `svgMaxWidth`；新增 `svgWidth` computed 从 `layoutResult.computedWidth` 取值；模板 `:width="svgWidth"` |
+| `web/src/features/chat/composables/usePlanDAGLayout.ts` | `DAGLayoutOptions` 新增 `padX?: number`（默认 20）；返回类型改为 `{ positions: Map<string, NodePosition>; computedWidth: number }`；新增 `maxLayerWidth` 计算与 `computedWidth` 推导 |
+| `web/src/features/chat/composables/__tests__/usePlanDAGLayout.spec.ts` | 现有 2 个测试解构 `{ positions }`；新增 2 个测试覆盖线性链（160px）与并行层（320px）的 `computedWidth` |
+| `web/src/features/spirit/api.ts` | 新增 `injectAgentSession(sessionId, message)` 调用 `spiritService.enqueueUserMessage` |
+| `web/src/services/index.ts` | spirit service 新增 `enqueueUserMessage(sessionId, content)` 方法，POST `/v1/chat/enqueue` |
+| `web/src/stores/spirit/index.ts` | 新增 `pauseAgent(sessionId)` / `injectAgent(sessionId, message)` store actions，含 Notify 反馈 |
+
+**不变量**：
+- TeamRunCard 顶部 `team-run-bar` 必须为横向三段式 flex（**2:3:1 = 33%:50%:17%**），不可退化为垂直堆叠
+- 头部必须垂直 1:1:1 显示团队名/任务名/创建时间，团队名加粗，头部含 groups 图标
+- 中部必须垂直 1:2 显示成员 chips + 进度条（进度条占满中部下 2/3，无状态/耗时）
+- 尾部必须显示状态徽章（大、居中）+ 耗时（右下角），不可包含操作按钮
+- 进度条填充宽度必须等于 `progress.pct%`，文本显示 `completed/total`
+- running 状态必须默认展开，其他状态默认折叠
+- **TeamRunCard 展开区禁止渲染任何按钮或输入框**——纯展示 MemberSessionPanel 列表
+- **MemberSessionPanel 底部输入栏仅在 `!isSystemAgent && status === 'running'` 时显示**
+- MemberSessionPanel 活动列表 `.member-activities` 必须有 `max-height: 300px; overflow-y: auto`
+- 输入框为空 + running 时按钮为方框形态（stop 图标），有文字时为发送形态（send 图标）
+- `displayTitle` 必须优先使用 `TeamStage.TeamName`，不可显示原始 UUID
+- `taskName` 必须优先使用 `PlanStep.Description`，与 `displayTitle` 数据源区分
+- TeamStagePanel 不得渲染 `team-stage-header`（团队名/状态/成员由 TeamRunCard 承载）
+- `pause-agent`/`inject-agent` 事件必须从 MemberSessionPanel 经完整链路转发到 ChatPage（携带 `sessionId`，非 `teamId`）
+- `usePlanDAGLayout` 必须返回 `{ positions, computedWidth }`，消费方使用 `computedWidth` 设置 SVG `width`
+
+**回滚方案**：恢复二轮修订（输入栏回到 TeamRunCard 底部，事件改回 `cancel-team`/`inject-team` 携带 `teamId`，调 `spiritStore.cancelTeam`/`injectTeam`）。注意：二轮修订的输入栏操作的是整个 team，与「针对单个 agent 暂停/注入」的语义不符，不建议回滚。布局调整不影响后端数据流，回滚不会导致数据丢失。
+
+#### B.10.11 GraphNode 点击跳转与 TeamStagePanel 高亮（2026-07-05 新增）
+
+> **背景**：设计稿 §3.7.5 中 GraphStageBlock 内的 GraphNode 已有 `@select` emit 但仅改变节点边框（stroke-width 1.5→2.5），点击后无跳转/定位行为。用户点击 GraphNode 期望滚动到对应 TeamStagePanel 并高亮，以建立 GraphNode 与 TeamStage 的视觉关联。
+
+**关联关系**（GraphNode → TeamStage）：
+
+```
+GraphNode.TeamStageID  ──(后端回填后)──→  TeamStage.ID     （直接路径，当前后端未回填，为空字符串）
+GraphNode.DagNodeID    ──(===)──→  TeamStage.DagNodeID    （fallback 路径，=== PlanStep.ID）
+```
+
+**跨组件通信**：模块级单例 ref 模式（参照 `useScrollToActivity.ts`）
+
+```
+GraphStageBlock.vue
+  └─ onSelectNode(nodeId)
+       ├─ node.TeamStageID 为空 → fallback: 遍历 store.teamStages 匹配 DagNodeID
+       └─ locate(teamStageId) → 设置 locateTeamStageCommand.value = { teamStageId }
+                                      │
+                ┌─────────────────────┴─────────────────────┐
+                ▼                                           ▼
+  ChatMessageList.vue                            TeamStagePanel.vue
+  └─ watch(() => locateTeamStageCommand.value)   └─ watch(() => locateTeamStageCommand.value)
+       ├─ querySelector([data-team-stage-id])         ├─ cmd.teamStageId === props.teamStage.ID?
+       └─ el.scrollIntoView({ block: 'center' })      ├─ isHighlighted.value = true
+                                                      └─ 3s 后自动清除
+```
+
+**关键设计决策**：
+
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| 跨组件通信方式 | 模块级单例 ref | 避免 props/emit 跨多层穿透（GraphStageBlock → TaskCard → ActivityStream → TurnContainer → TeamStagePanel） |
+| watch 监听对象 | `() => locateTeamStageCommand.value`（getter 返回对象） | 每次 `locate()` 创建新对象引用，确保重复点击同一节点时 watch 仍触发（返回字符串则相同值不触发） |
+| highlight class 管理 | Vue 响应式 `:class` 绑定 | 直接 DOM `classList.add` 会被 Vue 重新渲染清除；响应式绑定由 Vue 持久管理 |
+| 高亮时长 | 3 秒 | 与 `useScrollToActivity`（agent 定位）保持一致，复用 `activity-locate-highlight` 黄色闪烁动画 |
+| DagNodeID fallback | 前端实现 | 后端 GraphNode.TeamStageID 当前为空字符串（已知 bug），前端通过 DagNodeID 匹配补偿；后端补全后自动走直接路径 |
+
+**改动文件清单**：
+
+| 文件 | 改动 |
+|------|------|
+| `web/src/features/chat/composables/useLocateTeamStage.ts` | 新建：模块级单例 ref composable，提供 `locate(teamStageId)` 和 `locateTeamStageCommand` |
+| `web/src/components/chat/v2/GraphStageBlock.vue` | 新增 `onSelectNode` 方法：selectedId 设置 + DagNodeID fallback 查找 TeamStage + `locate()` 调用 |
+| `web/src/components/chat/ChatMessageList.vue` | 新增 watch `() => locateTeamStageCommand.value` → `querySelector` + `scrollIntoView({ block: 'center' })` |
+| `web/src/components/chat/v2/TeamStagePanel.vue` | 新增 `isHighlighted` ref + watch → `:class="{ 'activity-locate-highlight': isHighlighted }"` 响应式绑定 + 3s 自动清除 |
+
+**不变量**：
+- GraphNode 点击必须触发 `onSelectNode`，设置 `selectedId` 并调用 `locate(teamStageId)`
+- `locate()` 必须创建新对象 `{ teamStageId }`（确保重复点击同节点时 watch 触发）
+- watch 必须监听 `() => locateTeamStageCommand.value`（对象引用），不可监听 `() => locateTeamStageCommand.value?.teamStageId`（字符串，相同值不触发）
+- TeamStagePanel 的 highlight class 必须通过 `:class` 响应式绑定管理，不可通过 `classList.add` 直接操作 DOM
+- 高亮 3 秒后必须自动清除（`setTimeout` + `isHighlighted.value = false`）
+- `onUnmounted` 必须清理 `highlightTimer`，防止内存泄漏
+- 后端补全 `GraphNode.TeamStageID` 后，前端自动走直接路径（无需修改）
+
+**已知后端 bug**（前端已 fallback 补偿）：
+- `GraphNode.TeamStageID` 为空字符串 — 后端未回填。前端通过 `GraphNode.DagNodeID === TeamStage.DagNodeID` 匹配补偿
+- 后端补全后，前端 `onSelectNode` 中 `node.TeamStageID` 非空时直接使用，无需走 fallback
+
+**回滚方案**：删除 `useLocateTeamStage.ts`，移除 GraphStageBlock/ChatMessageList/TeamStagePanel 中的 watch 和 highlight 逻辑。回滚不影响后端数据流，仅丢失点击跳转交互。
+
+---
+
+### B.10.12 GraphNode hover 高亮上下游依赖路径（2026-07-05 新增）
+
+**需求来源**：`docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md` §3.7.4 第 1152 行「hover 节点 → 高亮所有上下游依赖路径」
+
+**关联关系图**：
+
+```
+GraphNode (SVG <g>)
+  ├── hover 事件 → GraphStageBlock.onHoverNode(nodeId)
+  │   └── hoveredNodeId ref 更新
+  │       └── highlightedNodeIds computed 重算
+  │           ├── 上游：递归遍历 node.DependsOn
+  │           └── 下游：反向查找所有 DependsOn 包含 currentId 的节点
+  │               └── 返回 Set<string>（包含自身 + 所有上下游）
+  ├── isHighlighted prop ← highlightedNodeIds.has(node.ID)
+  └── isDimmed prop ← hoveredNodeId !== null && !highlightedNodeIds.has(node.ID)
+
+graph-edge (SVG <line>)
+  ├── graph-edge--highlighted ← highlightedEdgeKeys.has(`${from}-${to}`)
+  └── graph-edge--dimmed ← hoveredNodeId !== null && !highlightedEdgeKeys.has(...)
+```
+
+**跨组件通信流程**：
+
+```
+用户 hover GraphNode
+  → GraphNode.vue: @mouseenter="$emit('hover', node.ID)"
+  → GraphStageBlock.vue: onHoverNode(nodeId) → hoveredNodeId.value = nodeId
+  → computed highlightedNodeIds 重算（上游递归 + 下游反向查找）
+  → computed highlightedEdgeKeys 重算（两端节点都在路径上）
+  → 模板重新渲染：
+      ├── GraphNode: isHighlighted/isDimmed props 更新
+      │   ├── isHighlighted=true → stroke-width=2.5（vs 默认 1.5）
+      │   └── isDimmed=true → opacity=0.3
+      └── graph-edge: class 添加 --highlighted 或 --dimmed
+          ├── --highlighted → stroke=var(--q-primary), stroke-width=3
+          └── --dimmed → opacity=0.2
+
+用户 mouseleave
+  → GraphNode.vue: @mouseleave="$emit('hover', null)"
+  → hoveredNodeId.value = null
+  → highlightedNodeIds 返回空 Set
+  → 所有节点/边恢复默认样式
+```
+
+**关键设计决策**：
+
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| hover 事件监听位置 | `<g>` 元素 | Vue `@mouseenter`/`@mouseleave` 直接绑定，覆盖 rect+text 子元素 |
+| 依赖路径算法 | 上游递归 + 下游反向查找 | 上游通过 `node.DependsOn` 直接遍历；下游需扫描所有节点找 `DependsOn.includes(currentId)` |
+| 路径节点集合数据结构 | `Set<string>` | O(1) 查询性能，避免重复 |
+| 边高亮判定 | 两端节点都在 `highlightedNodeIds` 中 | 确保只高亮路径上的边，非路径边 dimmed |
+| dimmed 实现 | CSS opacity | 简单有效，无需改变节点颜色 |
+| mouseleave 触发 | hover 到 SVG 外部 | `@mouseleave` on `<g>` 自动触发 |
+
+**改动文件清单**：
+
+| 文件 | 改动 |
+|------|------|
+| `web/src/components/chat/v2/GraphNode.vue` | 添加 `isHighlighted`/`isDimmed` props、`hover` emit、`@mouseenter`/`@mouseleave` 事件、CSS 高亮/暗化样式 |
+| `web/src/components/chat/v2/GraphStageBlock.vue` | 添加 `hoveredNodeId` ref、`onHoverNode` handler、`highlightedNodeIds`/`highlightedEdgeKeys` computed、模板传递 props、边的高亮/暗化 class、CSS 样式 |
+| `internal/service/session_v2.go` | **后端修复**：`ListGraphNodes` 派生 `DependsOn`（从 PlanStep 关联数据），新增 `buildGraphNodeDependsOnMap` 方法 |
+
+**后端 bug 修复（关键）**：
+
+**问题**：`GraphNode.DependsOn` 是 in-memory 字段（设计为不持久化到 `graph_nodes_v2` 表），但 `ListGraphNodes` RPC 直接返回 Repo 数据，未从 PlanStep 派生 `DependsOn`，导致前端拿到的所有节点 `dependsOn` 都是空数组 `[]`，edges 无法渲染。
+
+**根因**：
+- `internal/biz/graph_stage.go` 注释明确：「DependsOn 取自 PlanStep.DependsOn（派生，不持久化）」
+- `internal/data/graph_node_v2_repo.go` 注释明确：「DependsOn intentionally left nil — in-memory only, derived from PlanStep」
+- 但 service 层 `ListGraphNodes` 直接调用 `graphNodeReader.ListGraphNodesByStage`，**未做派生**
+
+**修复**：在 `SessionV2Service.ListGraphNodes` 中新增 `buildGraphNodeDependsOnMap` 方法：
+1. 通过 `graphStageID` 调用 `graphStageReader.GetGraphStage` 获取 `PlanBoardID`
+2. 通过 `PlanBoardID` 调用 `planStepReader.ListPlanStepsByPlan` 获取所有 PlanStep
+3. 构建 `PlanStep.ID → PlanStep.DependsOn` 的 map
+4. 遍历 GraphNodes，用 `gn.DagNodeID == PlanStep.ID` 关联，填充 `DependsOn`
+5. 派生失败不阻断主流程（静默降级，前端有 fallback）
+
+**不变量**：
+- `hoveredNodeId === null` 时，所有节点/边恢复默认样式（无 highlighted/dimmed class）
+- `highlightedNodeIds` 始终包含 `hoveredNodeId` 自身
+- `highlightedEdgeKeys` 仅包含两端节点都在 `highlightedNodeIds` 中的边
+- 依赖路径算法支持任意 DAG 结构（分支、菱形依赖等），递归终止条件为 `result.has(depId)` 防止循环
+
+**运行时验证证据**（2026-07-05）：
+
+测试数据：3 节点线性链（数据工程→算法→可视化）
+
+| 测试场景 | 预期 | 实际 |
+|---------|------|------|
+| Hover 第一个节点（数据工程团队） | 所有 3 节点 + 2 边高亮（线性链，下游+自身） | ✅ 所有 class 为 `--highlighted` |
+| Hover 中间节点（算法团队） | 所有 3 节点 + 2 边高亮（上游+自身+下游） | ✅ 所有 class 为 `--highlighted` |
+| Mouseleave（hover 到 body） | 所有 class 清除 | ✅ 所有 class 恢复 `graph-node`/`graph-edge` |
+
+**已知限制**：
+- 当前测试数据为线性链，未验证分支图的 dimmed 效果（非路径节点暗化）。代码逻辑已实现，分支图场景下会自动 dimmed 非路径节点
+- 后端 `GraphNode.TeamStageID` 仍为空（已知 bug，前端有 fallback）
+
+**回滚方案**：
+- 前端：移除 GraphNode.vue 的 `isHighlighted`/`isDimmed` props 和 hover 事件；移除 GraphStageBlock.vue 的 `hoveredNodeId`/`highlightedNodeIds`/`highlightedEdgeKeys` computed 和 CSS。回滚不影响数据流，仅丢失 hover 交互
+- 后端：移除 `ListGraphNodes` 中的 `buildGraphNodeDependsOnMap` 调用。回滚后 edges 不再渲染（DependsOn 为空）
+
+---
+
+### B.10.13 MemberSession steps 精确匹配（2026-07-05 新增）
+
+**需求来源**：P1 #7 — 跨团队污染风险（同一 agent 参与多个 TeamStage 时，steps 被错误归到当前 MemberSession）
+
+**问题分析**：
+
+**前端问题**：`getMemberSessionSteps` 通过 `AuthorAgentKey + TaskID` 间接匹配，过于宽泛。同一 agent 若参与多个 TeamStage（DAG 多节点），所有 step 会被错误归到当前 MemberSession。
+
+**后端根因**：`Turn.TeamStageID` 被错误填为 `TeamID`（team 的 ID），而非 `TeamStage.ID`。
+
+**测试数据证据**：
+| 字段 | 期望值 | 实际值 |
+|------|--------|--------|
+| Turn.TeamID | `27d6c3fd` (team.ID) | `27d6c3fd` ✅ |
+| Turn.TeamStageID | `5ff82ee8` (TeamStage.ID) | `27d6c3fd` ❌ |
+| TeamStage.ID | `5ff82ee8` | `5ff82ee8` ✅ |
+| TeamStage.TeamID | `27d6c3fd` | `27d6c3fd` ✅ |
+
+**Bug 位置**：`internal/agent/stream_consumer.go:83`
+```go
+// 旧代码（BUG）：
+TeamStageID: m.TeamID, // team member turns are identified by non-empty TeamID
+```
+
+**根因**：v1 `ProjectMeta`（`internal/agent/project_meta.go`）没有 `TeamStageID` 字段，只有 `TeamID`。v1→v2 转换时被迫"借用" TeamID 填充 TeamStageID。
+
+**修复方案**（两步）：
+
+**Step 1: 后端修复 Turn.TeamStageID**
+
+1. 在 v1 `ProjectMeta`（`internal/agent/project_meta.go`）添加 `TeamStageID string` 字段
+2. 在 `buildTeamProjectMeta`（`internal/team/runner_team_trpc_phases.go:286-329`）中通过 `agent.NewTeamStageActivityID(teamRow.ID)` 计算并填入
+3. 在 `V2ProjectMetaFromV1`（`internal/agent/stream_consumer.go:76-94`）改为 `TeamStageID: m.TeamStageID`
+
+**Step 2: 前端精确匹配**
+
+修改 `getMemberSessionSteps`（`web/src/stores/chat/activityV2Store.ts`）：
+1. 精确匹配：找到所有 `Turn.TeamStageID === MemberSession.TeamStageID && Turn.AgentKey === MemberSession.AgentKey` 的 Turn，收集 Turn ID 集合，过滤 `Step.TurnID 在集合中 && Step.AuthorAgentKey === MemberSession.AgentKey`
+2. Fallback（旧数据兼容）：精确匹配结果为空时，回退到 `AuthorAgentKey + TaskID` 匹配
+
+**数据流图**：
+
+```
+修复前（BUG）：
+  buildTeamProjectMeta → ProjectMeta{TeamID: teamRow.ID}  // 无 TeamStageID 字段
+    → V2ProjectMetaFromV1 → v2.ProjectMeta{TeamStageID: m.TeamID}  // 错误：借 TeamID 填充
+      → newTurn → biz.Turn{TeamStageID: teamID, TeamID: teamID}  // 两者相同，错误
+        → 前端 getMemberSessionSteps 无法通过 TeamStageID 区分 TeamStage
+
+修复后：
+  buildTeamProjectMeta → ProjectMeta{
+      TeamID: teamRow.ID,
+      TeamStageID: NewTeamStageActivityID(teamRow.ID),  // 新增：派生 TeamStage.ID
+    }
+    → V2ProjectMetaFromV1 → v2.ProjectMeta{TeamStageID: m.TeamStageID}  // 正确透传
+      → newTurn → biz.Turn{TeamStageID: teamStageID, TeamID: teamID}  // 两者不同，正确
+        → 前端 getMemberSessionSteps 通过 Turn.TeamStageID 精确匹配 MemberSession.TeamStageID
+```
+
+**关键设计决策**：
+
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| TeamStageID 派生方式 | `NewTeamStageActivityID(teamRow.ID)` | 与 `service/spirit_team.go` 的 `publishV2TeamRunAndMemberSessions` 中创建 TeamStage 时使用的 ID 一致 |
+| v1 ProjectMeta 字段添加位置 | `TeamID` 之后 | 语义相邻，便于维护 |
+| 前端匹配策略 | 精确匹配 + Fallback | 精确匹配优先（新数据），Fallback 兼容旧数据（Turn.TeamStageID 未修复时） |
+| Fallback 触发条件 | 精确匹配结果为空 | 避免在精确匹配可用时误用 Fallback |
+| 前端匹配字段 | `Turn.TeamStageID + Turn.AgentKey` | TeamStageID 定位 TeamStage，AgentKey 定位 member（同一 TeamStage 可能有多个 member） |
+
+**改动文件清单**：
+
+| 文件 | 改动 |
+|------|------|
+| `internal/agent/project_meta.go` | v1 `ProjectMeta` 添加 `TeamStageID string` 字段 |
+| `internal/team/runner_team_trpc_phases.go` | `buildTeamProjectMeta` 填入 `TeamStageID: NewTeamStageActivityID(teamRow.ID)` |
+| `internal/agent/stream_consumer.go` | `V2ProjectMetaFromV1` 改为 `TeamStageID: m.TeamStageID`（不再借用 TeamID） |
+| `web/src/stores/chat/activityV2Store.ts` | `getMemberSessionSteps` 改为精确匹配 + Fallback |
+
+**不变量**：
+- 修复后 `Turn.TeamStageID === TeamStage.ID`（两者都通过 `NewTeamStageActivityID(teamRow.ID)` 派生）
+- `Turn.TeamID !== Turn.TeamStageID`（前者是 team 表的 ID，后者是 team_stage 的派生 ID）
+- Spirit root turns 的 `TeamStageID` 和 `TeamID` 都为空（无 team 归属）
+- 前端 Fallback 仅在精确匹配结果为空时触发，避免误用
+
+**运行时验证**（需清空数据库重新测试）：
+- 旧数据的 `Turn.TeamStageID` 仍是错误的 `TeamID` 值，前端会走 Fallback 路径（行为与修复前一致）
+- 清空数据库重新发起任务后，新数据的 `Turn.TeamStageID` 正确，前端走精确匹配路径
+- 验证点：同一 agent 参与多个 TeamStage 时，每个 MemberSession 只显示对应 TeamStage 的 steps
+
+**已知限制**：
+- 修复前的旧数据 `Turn.TeamStageID` 仍是错误值，需清空数据库重新测试才能验证精确匹配
+- 如果 `Turn.TeamStageID` 修复后仍为空（极端情况），前端会走 Fallback，不会报错
+
+**回滚方案**：
+- 后端：移除 `ProjectMeta.TeamStageID` 字段，`buildTeamProjectMeta` 不再填入，`V2ProjectMetaFromV1` 改回 `TeamStageID: m.TeamID`。回滚后 `Turn.TeamStageID` 重新变为错误的 `TeamID` 值
+- 前端：`getMemberSessionSteps` 改回 `AuthorAgentKey + TaskID` 匹配。回滚后存在跨团队污染风险，但单 TeamStage 场景下行为正确

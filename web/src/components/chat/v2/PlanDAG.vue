@@ -1,6 +1,6 @@
 <!-- web/src/components/chat/v2/PlanDAG.vue -->
 <template>
-  <svg :width="width" :height="height" class="plan-dag">
+  <svg :width="svgWidth" :height="height" class="plan-dag">
     <!-- Dependency edges -->
     <line
       v-for="edge in edges"
@@ -46,9 +46,13 @@ const nodeWidth = 120;
 const nodeHeight = 60;
 const gapX = 40;
 const gapY = 30;
-const svgWidth = computed(() => props.width || 600);
+const svgMaxWidth = computed(() => props.width || 600);
 const { layoutDAG } = usePlanDAGLayout();
-const positions = computed(() => layoutDAG(props.steps, { width: svgWidth.value, nodeWidth, nodeHeight, gapX, gapY }));
+const layoutResult = computed(() =>
+  layoutDAG(props.steps, { width: svgMaxWidth.value, nodeWidth, nodeHeight, gapX, gapY }),
+);
+const positions = computed(() => layoutResult.value.positions);
+const svgWidth = computed(() => layoutResult.value.computedWidth);
 const height = computed(() => {
   const max = Math.max(0, ...Array.from(positions.value.values()).map((p) => p.y));
   return max + nodeHeight + 20;

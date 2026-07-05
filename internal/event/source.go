@@ -50,7 +50,7 @@ type envelopePlatformKey struct{}
 type envelopeSourceKey struct{}
 type envelopeChannelKeyKey struct{}
 
-// WithEnvelopeSource tags ctx so EventProjector can stamp envelope.source (web|channel|cron|a2a).
+// WithEnvelopeSource tags ctx so envelope.source (web|channel|cron|a2a) can be stamped downstream.
 func WithEnvelopeSource(ctx context.Context, source string) context.Context {
 	source = strings.TrimSpace(source)
 	if source == "" || ctx == nil {

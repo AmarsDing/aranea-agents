@@ -16,10 +16,15 @@ import (
 
 // executorRepos is the narrow repo interface required by PlanExecutor.
 // Satisfied by composing PlanStepV2Repo + TeamStageV2Repo + PlanBoardV2Writer
-// + GraphStageV2Repo + GraphNodeV2Repo. Methods ≤ 5 per interface (CS-B4).
+// + GraphStageV2Repo + GraphNodeV2Repo.
 //
 // 2026-07-04 补齐：新增 UpsertGraphStage / UpsertGraphNode / GetGraphStageByPlanBoard
 // 用于同步创建 GraphStage 和更新 GraphNode 状态（与 PlanBoard 一对一关联）。
+// 2026-07-05 P1 #9d 补齐：新增 GetTeamStage 用于读取当前 Version 和 Status，
+// 修复 dispatchStep 中 Version=2 硬编码 Bug（改为 current.Version+1）。
+//
+// TECH-DEBT(COG): 接口方法数=8 > 5（CS-B4），但本接口是组合接口（compose 5 个 v2 repo），
+// 组合接口的方法数放宽限制是合理的。拆分会引入 5 个独立 adapter，增加复杂度无收益。
 type executorRepos interface {
 	UpsertPlanStep(ctx context.Context, ps biz.PlanStep) (biz.PlanStep, error)
 	UpsertTeamStage(ctx context.Context, ts biz.TeamStage) (biz.TeamStage, error)
@@ -28,6 +33,7 @@ type executorRepos interface {
 	UpsertGraphStage(ctx context.Context, gs biz.GraphStage) (biz.GraphStage, error)
 	UpsertGraphNode(ctx context.Context, gn biz.GraphNode) (biz.GraphNode, error)
 	GetGraphStageByPlanBoard(ctx context.Context, planBoardID string) (biz.GraphStage, error)
+	GetTeamStage(ctx context.Context, id string) (biz.TeamStage, error)
 }
 
 // sequencerPublisher mirrors v2.SequencerPublisher to avoid importing
@@ -57,6 +63,13 @@ type PlanExecutor struct {
 	// 2026-07-04 问题 P5/D1 修复：team 派发标记器，让 OnTurnEnd 知道此 task
 	// 有 team 在异步执行，不应立即发 task.completed。
 	marker TeamDispatchMarker
+	// 2026-07-05 P1 #9b 修复（AS-FSM-01）：PlanBoard 状态机驱动状态转换，
+	// 替代直接字段赋值。状态机无状态，构造时一次性创建复用。
+	pbSM *biz.PlanBoardStateMachine
+	// 2026-07-05 P1 #9c 修复（AS-FSM-01）：GraphStage 状态机驱动状态转换。
+	gsSM *biz.GraphStageStateMachine
+	// 2026-07-05 P1 #9d 修复（AS-FSM-01）：TeamStage 状态机驱动状态转换。
+	tsSM *biz.TeamStageStateMachine
 }
 
 // TeamDispatchMarker 标记一个 task 已派发 team。
@@ -73,6 +86,12 @@ func NewPlanExecutor(repos executorRepos, orch TeamOrchestrator, seq sequencerPu
 		orch:  orch,
 		seq:   seq,
 		lg:    lg.With(loggateway.Domain("plan_executor")),
+		// 2026-07-05 P1 #9b：PlanBoard 状态机一次性创建复用（状态机本身无状态）。
+		pbSM: biz.NewPlanBoardStateMachine(),
+		// 2026-07-05 P1 #9c：GraphStage 状态机一次性创建复用。
+		gsSM: biz.NewGraphStageStateMachine(),
+		// 2026-07-05 P1 #9d：TeamStage 状态机一次性创建复用。
+		tsSM: biz.NewTeamStageStateMachine(),
 	}
 }
 
@@ -182,11 +201,20 @@ func (e *PlanExecutor) Subscribe(ctx context.Context, board biz.PlanBoard) error
 // terminal or executing state, the update is skipped.
 //
 // 2026-07-04 问题 D2 修复：补齐 planning → executing 状态转换。
+// 2026-07-05 P1 #9b（AS-FSM-01）：用 PlanBoardStateMachine 显式校验转换，
+// 替代直接 if + 字段赋值。状态机会拒绝任何非法 from 状态（如 terminal）。
 func (e *PlanExecutor) markPlanBoardExecuting(ctx context.Context, board biz.PlanBoard) {
-	if board.Status != biz.PlanStatusPlanning {
-		return // already executing/completed/failed, skip
+	// 状态机校验：只有 Planning 才能 Transition(Execute) → Executing。
+	// 若 board 已是 Executing 或 terminal 状态，Transition 返回错误，跳过。
+	newStatus, err := e.pbSM.Transition(board.Status, biz.PlanBoardEventExecute)
+	if err != nil {
+		e.lg.Debug("markPlanBoardExecuting: skip (invalid transition)",
+			loggateway.Str("plan_board_id", board.ID),
+			loggateway.Str("from_status", string(board.Status)),
+			loggateway.Err(err))
+		return
 	}
-	board.Status = biz.PlanStatusExecuting
+	board.Status = newStatus
 	board.Version++
 	if _, err := e.repos.UpsertPlanBoard(ctx, board); err != nil {
 		e.lg.Warn("markPlanBoardExecuting: upsert plan_board (executing) failed",
@@ -366,6 +394,14 @@ func (r *dagRun) run(ctx context.Context) error {
 //
 // 2026-07-04 问题 2 修复（Gap B）：之前 PlanBoard 创建后 Status 始终是
 // "executing"，DAG 完成后也不更新，刷新后状态过期。
+// 2026-07-05 P1 #9b（AS-FSM-01）：用 PlanBoardStateMachine 显式校验 terminal
+// 转换。事件映射：
+//   - ctx.Err() != nil 或 hasFailed → PlanBoardEventFail (Executing → Failed)
+//   - hasPartial → PlanBoardEventPartial (Executing → PartialFailure)
+//   - default → PlanBoardEventComplete (Executing → Completed)
+//
+// 若 from 状态不是 Executing（如 markPlanBoardExecuting 失败导致仍是 Planning），
+// 状态机拒绝转换并记 warn 日志，跳过发布——避免非法状态跳转。
 func (r *dagRun) publishPlanBoardTerminal(ctx context.Context) {
 	hasFailed := false
 	hasPartial := false
@@ -378,19 +414,29 @@ func (r *dagRun) publishPlanBoardTerminal(ctx context.Context) {
 			hasPartial = true
 		}
 	}
-	var terminalStatus biz.PlanStatus
+	var event biz.PlanBoardEvent
 	switch {
 	case ctx.Err() != nil:
-		terminalStatus = biz.PlanStatusFailed
+		event = biz.PlanBoardEventFail
 	case hasFailed:
-		terminalStatus = biz.PlanStatusFailed
+		event = biz.PlanBoardEventFail
 	case hasPartial:
-		terminalStatus = biz.PlanStatusPartialFailure
+		event = biz.PlanBoardEventPartial
 	default:
-		terminalStatus = biz.PlanStatusCompleted
+		event = biz.PlanBoardEventComplete
+	}
+	// 状态机校验：from=Executing → terminal 状态。
+	newStatus, err := r.pe.pbSM.Transition(r.board.Status, event)
+	if err != nil {
+		r.pe.lg.Warn("publishPlanBoardTerminal: invalid transition (skip)",
+			loggateway.Str("plan_board_id", r.board.ID),
+			loggateway.Str("from_status", string(r.board.Status)),
+			loggateway.Str("event", string(event)),
+			loggateway.Err(err))
+		return
 	}
 	now := time.Now().UTC()
-	r.board.Status = terminalStatus
+	r.board.Status = newStatus
 	r.board.CompletedAt = &now
 	r.board.Version++
 	// 持久化（不阻断主流程；失败仅记录日志）。
@@ -403,7 +449,7 @@ func (r *dagRun) publishPlanBoardTerminal(ctx context.Context) {
 	r.pe.seq.Publish(ctx, biz.NewPlanBoardUpdatedEvent(r.board))
 	r.pe.lg.Info("PlanBoard terminal 状态已发布",
 		loggateway.Str("plan_board_id", r.board.ID),
-		loggateway.Str("status", string(terminalStatus)))
+		loggateway.Str("status", string(newStatus)))
 }
 
 // publishGraphStageTerminal 根据 DAG 执行结果发布 GraphStage terminal 事件。
@@ -412,11 +458,32 @@ func (r *dagRun) publishPlanBoardTerminal(ctx context.Context) {
 //
 // 2026-07-04 问题 2 修复（Gap A）：补齐 terminal 事件发布，避免 graph_stages_v2
 // 表 status 永远为 "running"。
+// 2026-07-05 P1 #9c（AS-FSM-01）：用 GraphStageStateMachine 显式校验 terminal
+// 转换，并修复 Version=3 硬编码 Bug（改为 current.Version+1）。
+//
+// 事件映射：
+//   - ctx.Err() != nil → GraphStageEventInterrupt (Running → Interrupted)
+//   - hasFailed → GraphStageEventFail (Running → Failed)
+//   - default → GraphStageEventComplete (Running → Completed)
+//
+// Version 修复说明：之前硬编码 Version=3，假设 initGraphStage 创建时 Version=1、
+// 中间更新 Version=2。但如果 GraphStage 被其他路径多次更新（如 event_router
+// 处理多个 GraphStage 事件），Version 可能已 > 3，导致 VersionLT 守卫失败、
+// terminal 状态无法写入。修复：先读取当前 GraphStage，新 Version = current.Version+1。
 func (r *dagRun) publishGraphStageTerminal(ctx context.Context) {
 	if r.graphStageID == "" {
 		return
 	}
-	// 扫描所有 step 状态，判定 terminal 状态。
+	// 读取当前 GraphStage，获取准确的 Version 和 Status（避免硬编码 Version）。
+	current, err := r.pe.repos.GetGraphStageByPlanBoard(ctx, r.board.ID)
+	if err != nil || current.ID == "" {
+		r.pe.lg.Warn("publishGraphStageTerminal: failed to load current GraphStage (skip)",
+			loggateway.Str("plan_board_id", r.board.ID),
+			loggateway.Str("graph_stage_id", r.graphStageID),
+			loggateway.Err(err))
+		return
+	}
+	// 扫描所有 step 状态，判定 terminal 事件。
 	hasFailed := false
 	hasRunning := false
 	for i := range r.board.Steps {
@@ -428,17 +495,28 @@ func (r *dagRun) publishGraphStageTerminal(ctx context.Context) {
 			hasRunning = true
 		}
 	}
-	var terminalStatus biz.GraphStageStatus
+	var event biz.GraphStageEvent
 	switch {
 	case ctx.Err() != nil:
-		terminalStatus = biz.GraphStageStatusInterrupted
+		event = biz.GraphStageEventInterrupt
 	case hasFailed:
-		terminalStatus = biz.GraphStageStatusFailed
+		event = biz.GraphStageEventFail
 	default:
 		// 没有 failed step；若仍有 running/pending（理论上不该出现，因为
 		// Wait 已返回），保守视为 Completed——状态详情由 GraphNode 体现。
 		_ = hasRunning
-		terminalStatus = biz.GraphStageStatusCompleted
+		event = biz.GraphStageEventComplete
+	}
+	// 状态机校验：from=Running → terminal 状态。
+	// 若 current.Status 已是 terminal（其他路径已更新），Transition 返回错误，跳过。
+	newStatus, err := r.pe.gsSM.Transition(current.Status, event)
+	if err != nil {
+		r.pe.lg.Warn("publishGraphStageTerminal: invalid transition (skip)",
+			loggateway.Str("graph_stage_id", r.graphStageID),
+			loggateway.Str("from_status", string(current.Status)),
+			loggateway.Str("event", string(event)),
+			loggateway.Err(err))
+		return
 	}
 	now := time.Now().UTC()
 	gs := biz.GraphStage{
@@ -447,36 +525,37 @@ func (r *dagRun) publishGraphStageTerminal(ctx context.Context) {
 		TurnID:      r.board.TurnID,
 		SessionID:   r.board.SessionID,
 		PlanBoardID: r.board.ID,
-		Status:      terminalStatus,
+		Status:      newStatus,
+		StartedAt:   current.StartedAt,    // 保留原 StartedAt
 		CompletedAt: &now,
-		Version:     3, // Version > 1（initGraphStage 创建时 Version=1，更新时 Version=2）
+		Seq:         current.Seq,          // 保留原 Seq
+		Version:     current.Version + 1,  // 递增 Version（替代硬编码 Version=3）
 	}
-	var event biz.Event
-	switch terminalStatus {
+	var publishEvent biz.Event
+	switch newStatus {
 	case biz.GraphStageStatusCompleted:
-		event = biz.NewGraphStageCompletedEvent(gs)
+		publishEvent = biz.NewGraphStageCompletedEvent(gs)
 	case biz.GraphStageStatusFailed:
-		event = biz.NewGraphStageFailedEvent(gs)
+		publishEvent = biz.NewGraphStageFailedEvent(gs)
 	case biz.GraphStageStatusInterrupted:
-		event = biz.NewGraphStageInterruptedEvent(gs)
+		publishEvent = biz.NewGraphStageInterruptedEvent(gs)
 	default:
 		return
 	}
 	// 2026-07-05 修复：与 publishPlanBoardTerminal 对齐，先持久化再发布事件。
-	// 之前只 seq.Publish 不写库，导致 graph_stages_v2.status 永远停留在 "running"，
-	// 刷新页面后前端流程图状态过期。Version=3 通过 VersionLT 守卫盖过 initGraphStage
-	// 创建时的 Version=1。
+	// Version=current.Version+1 通过 VersionLT 守卫；若并发冲突则 idempotent
+	// 返回 existing（状态可能未更新，但说明已有其他路径更新——可接受）。
 	if _, err := r.pe.repos.UpsertGraphStage(ctx, gs); err != nil {
 		r.pe.lg.Warn("upsert graph_stage (terminal) failed",
 			loggateway.Str("graph_stage_id", r.graphStageID),
 			loggateway.Str("plan_board_id", r.board.ID),
 			loggateway.Err(err))
 	}
-	r.pe.seq.Publish(ctx, event)
+	r.pe.seq.Publish(ctx, publishEvent)
 	r.pe.lg.Info("GraphStage terminal 状态已发布",
 		loggateway.Str("graph_stage_id", r.graphStageID),
 		loggateway.Str("plan_board_id", r.board.ID),
-		loggateway.Str("status", string(terminalStatus)))
+		loggateway.Str("status", string(newStatus)))
 }
 
 // dispatch sends a single step to the TeamOrchestrator and listens for its
@@ -564,6 +643,28 @@ func (r *dagRun) dispatchStep(ctx context.Context, step *biz.PlanStep) {
 	// data (AgentName=AgentKey, missing displayName/avatarUrl). The repo's
 	// UpsertTeamStage skips SetMembers when nil, preserving the existing
 	// value. Frontend also preserves existing Members when incoming is empty.
+	//
+	// 2026-07-05 P1 #9d（AS-FSM-01）：用 TeamStageStateMachine 校验 Pending → Running
+	// 转换，并修复 Version=2 硬编码 Bug（改为 current.Version+1）。读取失败或状态机
+	// 校验失败时降级为原行为（Version=2, Status=Running），保证主流程不中断。
+	currentTS, getErr := r.pe.repos.GetTeamStage(ctx, result.TeamStageID)
+	newStatus := biz.TeamStageStatusRunning
+	newVersion := int64(2) // 降级默认值（与原硬编码一致）
+	if getErr != nil {
+		r.pe.lg.Warn("dispatchStep: failed to load current TeamStage, fallback to Version=2",
+			loggateway.Str("team_stage_id", result.TeamStageID),
+			loggateway.Err(getErr))
+	} else {
+		newVersion = currentTS.Version + 1
+		if ns, smErr := r.pe.tsSM.Transition(currentTS.Status, biz.TeamStageEventStart); smErr == nil {
+			newStatus = ns
+		} else {
+			r.pe.lg.Warn("dispatchStep: invalid TeamStage transition, fallback to Running",
+				loggateway.Str("team_stage_id", result.TeamStageID),
+				loggateway.Str("from_status", string(currentTS.Status)),
+				loggateway.Err(smErr))
+		}
+	}
 	ts := biz.TeamStage{
 		ID:        result.TeamStageID,
 		TaskID:    r.board.TaskID,
@@ -571,11 +672,11 @@ func (r *dagRun) dispatchStep(ctx context.Context, step *biz.PlanStep) {
 		SessionID: r.board.SessionID,
 		TeamID:    result.Team.ID,
 		DagNodeID: step.ID,
-		Status:    biz.TeamStageStatusRunning,
+		Status:    newStatus,
 		Stage:     biz.TeamStageStageExecuting,
 		DependsOn: result.Team.DependsOn,
 		StartedAt: now,
-		Version:   2, // Version > 1 to override the created record
+		Version:   newVersion,
 	}
 	if _, err := r.pe.repos.UpsertTeamStage(ctx, ts); err != nil {
 		r.pe.lg.Error("upsert team_stage (running) failed",

@@ -43,13 +43,11 @@
       @scroll.passive="$emit('scroll', $event)"
       @click="$emit('messages-click', $event)"
     >
-      <SessionPanelV2 :session-id="sessionId ?? ''" @regenerate="(t) => $emit('regenerate-v2', t)" />
-      <SynthesisResultCard
-        v-if="synthesisResult"
-        :result="synthesisResult"
-        :rendered-content="renderChatMarkdown(synthesisResult.content)"
-        :evolution-suggestion="spiritEvolutionSuggestion"
-        class="q-mx-md q-mb-sm"
+      <SessionPanelV2
+        :session-id="sessionId ?? ''"
+        @regenerate="(t) => $emit('regenerate-v2', t)"
+        @pause-agent="(sid) => $emit('pause-agent', sid)"
+        @inject-agent="(p) => $emit('inject-agent', p)"
       />
     </div>
     <!--
@@ -81,13 +79,6 @@
           <div class="chat-message-prose" v-html="renderLegacyContent(msg)"></div>
         </div>
       </div>
-      <SynthesisResultCard
-        v-if="synthesisResult"
-        :result="synthesisResult"
-        :rendered-content="renderChatMarkdown(synthesisResult.content)"
-        :evolution-suggestion="spiritEvolutionSuggestion"
-        class="q-mx-md q-mb-sm"
-      />
     </div>
     <ChatPendingQueue
       :messages="pendingMessages"
@@ -116,16 +107,15 @@ import { ref, computed, watch, nextTick, provide } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ChatPendingQueue from './ChatPendingQueue.vue';
 import SessionPanelV2 from './v2/SessionPanel.vue';
-import SynthesisResultCard from '../spirit/SynthesisResultCard.vue';
 import { useScrollToActivity } from '../../features/chat/composables/useScrollToActivity';
+import { useLocateTeamStage } from '../../features/chat/composables/useLocateTeamStage';
 import { useChatActivityStore } from '../../stores/chat/activityV2Store';
-import { renderChatMarkdownForMessage, renderChatMarkdown } from '../../features/chat/chatMessageMarkdown';
+import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
 import { SYSTEM_NOTICE_TYPES } from '../../features/chat/noticeFilter';
 import type { Message, PendingMessage } from '../../features/chat/types';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { Step } from '../../features/chat/v2Types';
-import type { EvolutionSuggestion, SynthesisOutput } from '../../features/spirit/types';
 
 const AUTO_EXPAND_HOLD_MS = 3000;
 
@@ -144,8 +134,6 @@ const props = defineProps<{
   agentMap?: Map<string, { displayName: string; agentKey: string }>;
   /** P1#3: parent run status to gate cancel button visibility. */
   runStatus?: import('../../features/chat/types').RunStatusValue;
-  synthesisResult?: SynthesisOutput | null;
-  spiritEvolutionSuggestion?: EvolutionSuggestion | null;
 }>();
 
 defineEmits<{
@@ -264,6 +252,24 @@ watch(locateCommand, async (cmd) => {
   el.classList.add('activity-locate-highlight');
   window.setTimeout(() => el.classList.remove('activity-locate-highlight'), 3000);
 });
+
+// P1 #5: GraphNode 点击 → 滚动并高亮对应 TeamStagePanel。
+// GraphStageBlock 调用 locateTeamStage(teamStageId) → 触发此处 watch。
+// 监听 command 对象（每次 locate() 创建新对象引用，确保重复点击同一节点时 watch 仍触发）。
+const { locateTeamStageCommand } = useLocateTeamStage();
+watch(
+  () => locateTeamStageCommand.value,
+  async (cmd) => {
+    if (!cmd || !scrollViewportEl.value) return;
+    await nextTick();
+    const el = scrollViewportEl.value.querySelector(
+      `[data-team-stage-id="${cssEscape(cmd.teamStageId)}"]`,
+    ) as HTMLElement | null;
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // highlight class 由 TeamStagePanel.vue 响应式管理（避免 Vue 重新渲染清除 DOM class）
+  },
+);
 
 /** 转义 agentKey 中可能的 CSS 选择器特殊字符（如点、冒号），避免 querySelector 解析失败。 */
 function cssEscape(value: string): string {

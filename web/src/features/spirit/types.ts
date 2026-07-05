@@ -42,8 +42,10 @@ export function isValidTeamMode(s: string): s is SpiritTeamMode {
 export type SpiritStatusBarData = {
   runningTeamCount: number;
   interruptedTeamCount: number;
-  quotaUsed: number;
-  quotaMax: number;
+  /** Number of teams that have reached a terminal "completed" state. */
+  completedTeamCount: number;
+  /** Total number of teams in the current orchestration. */
+  totalTeamCount: number;
   tokenUsage?: { in: number; out: number } | null;
   /** Context usage ratio (0-1) for the data_usage ring-style display. */
   contextRatio?: number | null;
@@ -51,7 +53,6 @@ export type SpiritStatusBarData = {
   contextUsedTokens?: number | null;
   /** Model context window size in tokens. */
   contextWindow?: number | null;
-  lastEvent?: { type: 'completed' | 'failed'; teamName: string; teamId?: string } | null;
   complexityLevel?: string | null;
   complexityReason?: string | null;
   checkpointStep?: string | null;
