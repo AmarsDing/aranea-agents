@@ -25,21 +25,21 @@ var _ biz.TaskOrchestratorPort = (*TaskOrchestratorImpl)(nil)
 
 // TaskOrchestratorImpl implements biz.TaskOrchestratorPort.
 type TaskOrchestratorImpl struct {
-	spiritUC         *biz.SpiritTeamUsecase
-	assembler        tools.SpiritTeamAssemblerPort
-	controller       tools.SpiritTeamControllerPort
-	compiler         *DAGToGraphCompiler
-	repo             biz.OrchestrationRepository
-	matcher          biz.AgentMatcherPort
-	deps             TRPCBuilderDeps
-	synthesis        tools.SpiritSynthesisPort
-	checkpointSaver  graph.CheckpointSaver
-	orchCache        *biz.OrchestrationCache
-	perfRepo         biz.AgentPerformanceRepository
-	evolutionSugg    biz.EvolutionSuggestionRepo
-	eventBus         biz.EventBus
-	nl2graph         araneagraph.NL2GraphConverter
-	lg               loggateway.Logger
+	spiritUC        *biz.SpiritTeamUsecase
+	assembler       tools.SpiritTeamAssemblerPort
+	controller      tools.SpiritTeamControllerPort
+	compiler        *DAGToGraphCompiler
+	repo            biz.OrchestrationRepository
+	matcher         biz.AgentMatcherPort
+	deps            TRPCBuilderDeps
+	synthesis       tools.SpiritSynthesisPort
+	checkpointSaver graph.CheckpointSaver
+	orchCache       *biz.OrchestrationCache
+	perfRepo        biz.AgentPerformanceRepository
+	evolutionSugg   biz.EvolutionSuggestionRepo
+	eventBus        biz.EventBus
+	nl2graph        araneagraph.NL2GraphConverter
+	lg              loggateway.Logger
 }
 
 // NewTaskOrchestratorImpl creates a new TaskOrchestratorImpl.
@@ -64,25 +64,32 @@ func NewTaskOrchestratorImpl(
 	lg loggateway.Logger,
 ) *TaskOrchestratorImpl {
 	return &TaskOrchestratorImpl{
-		spiritUC:         spiritUC,
-		assembler:        assembler,
-		controller:       controller,
-		compiler:         compiler,
-		repo:             repo,
-		matcher:          matcher,
-		deps:             deps,
-		synthesis:        synthesis,
-		checkpointSaver:  checkpointSaver,
-		orchCache:        orchCache,
-		perfRepo:         perfRepo,
-		evolutionSugg:    evolutionSugg,
-		eventBus:         eventBus,
-		nl2graph:         nl2graph,
-		lg:               lg,
+		spiritUC:        spiritUC,
+		assembler:       assembler,
+		controller:      controller,
+		compiler:        compiler,
+		repo:            repo,
+		matcher:         matcher,
+		deps:            deps,
+		synthesis:       synthesis,
+		checkpointSaver: checkpointSaver,
+		orchCache:       orchCache,
+		perfRepo:        perfRepo,
+		evolutionSugg:   evolutionSugg,
+		eventBus:        eventBus,
+		nl2graph:        nl2graph,
+		lg:              lg,
 	}
 }
 
 // Orchestrate builds and executes the orchestration graph based on the TaskPlan and AllocationPlan.
+//
+// Deprecated: 2026-07-05 Step 5 — team 创建已迁移到 PlanExecutor + RealTeamOrchestrator。
+// plan_and_execute 工具的 executeOrchestratePhase 不再调用此方法（返回 placeholder handle）。
+// PlanExecutor 订阅 PlanBoardCreatedEvent 触发 RealTeamOrchestrator.Orchestrate，
+// 使用 PlanStep.AgentKeys 组建 team，严格 DAG 调度。
+// 此方法保留以兼容 TaskOrchestratorPort 接口（CheckProgress/Cancel/RecoverAllInterrupted 仍被使用），
+// 但 orchestrateDAG/orchestrateTeam/orchestrateParallelTeams 路径已成为死代码。
 func (o *TaskOrchestratorImpl) Orchestrate(ctx context.Context, taskPlan *biz.TaskPlan, allocPlan *biz.AllocationPlan) (handle *biz.OrchestrationHandle, err error) {
 	start := time.Now()
 	defer func() {

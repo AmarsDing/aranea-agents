@@ -13,11 +13,11 @@ import (
 // RealTeamOrchestrator bridges PlanExecutor to SpiritTeamAssembler.
 //
 // 2026-07-04 问题 4 修复：实现真实的 TeamOrchestrator，替代 Phase 1 的 stub。
-// - Orchestrate: 调用 SpiritTeamAssembler.AssembleTeam 创建 team + session,
-//   然后手动启动 team_run（AutoStart=false 避免 channel 未就绪的竞态），
-//   返回 channel 等待 team_run 完成。
-// - NotifyTeamCompletion: 由 TeamStarter.HandleTeamTurnResult 通过
-//   PlanExecutor.NotifyTeamCompletion 转发调用，发送 TeamCompleteEvent 到 channel.
+//   - Orchestrate: 调用 SpiritTeamAssembler.AssembleTeam 创建 team + session,
+//     然后手动启动 team_run（AutoStart=false 避免 channel 未就绪的竞态），
+//     返回 channel 等待 team_run 完成。
+//   - NotifyTeamCompletion: 由 TeamStarter.HandleTeamTurnResult 通过
+//     PlanExecutor.NotifyTeamCompletion 转发调用，发送 TeamCompleteEvent 到 channel.
 //
 // 设计参考：docs/superpowers/specs/2026-07-02-llm-activity-ordering-design.md
 // §3.5.2 执行流程
@@ -67,13 +67,22 @@ func (o *RealTeamOrchestrator) Orchestrate(ctx context.Context, step biz.PlanSte
 	if taskDesc == "" {
 		taskDesc = step.Label
 	}
-	// 查询可用 agent 列表作为团队成员。PlanStep 本身不携带 AgentKeys，
-	// 所以从数据库查询 active agent 列表（最多 3 个，匹配"三个专业 agent"场景）。
-	// 2026-07-04 问题 4 修复：避免 "team has no enabled members" 错误。
-	agentKeys := o.resolveAgentKeys(ctx)
+	// 2026-07-05 Step 4 修复：优先使用 PlanStep.AgentKeys（来自 LLM 分配），
+	// 仅在 PlanStep 未携带 AgentKeys 时 fallback 到查 DB 取 active agent。
+	// 原先所有 team 都走 resolveAgentKeys 查 DB，导致所有 team 拿到同一批
+	// active agent（按 updated_at 降序前 3 个），与 LLM 分配意图不符。
+	agentKeys := step.AgentKeys
+	if len(agentKeys) == 0 {
+		o.lg.Info("PlanStep.AgentKeys 为空，fallback 到查 DB 取 active agent",
+			loggateway.Str("step_id", step.ID),
+			loggateway.Str("spirit_session_id", spiritSessionID))
+		agentKeys = o.resolveAgentKeys(ctx)
+	}
 	o.lg.Info("Orchestrate 解析 AgentKeys",
 		loggateway.Str("step_id", step.ID),
-		loggateway.Int("agent_count", len(agentKeys)))
+		loggateway.Str("source", agentKeysSource(step.AgentKeys)),
+		loggateway.Int("agent_count", len(agentKeys)),
+		loggateway.Any("agent_keys", agentKeys))
 	// 构建 SpiritTeamParams。AutoStart=false：手动启动 team_run，
 	// 确保 channel 在 StartTeamTurn 之前存入 pending map。
 	// 2026-07-04 问题 4 修复：使用 coordinator 模式（默认）让第一个成员
@@ -157,11 +166,13 @@ func (o *RealTeamOrchestrator) NotifyTeamCompletion(teamID string, success bool,
 		loggateway.Bool("success", success))
 }
 
-// resolveAgentKeys 查询可用 active agent 列表作为团队成员。
-// PlanStep 本身不携带 AgentKeys，所以从数据库查询。
-// 最多返回 3 个 agent（匹配"三个专业 agent"场景），按 updated_at 降序。
+// resolveAgentKeys 是 fallback 路径：当 PlanStep.AgentKeys 为空时查询可用
+// active agent 列表作为团队成员。最多返回 3 个 agent，按 updated_at 降序。
 // 如果 agentRdr 为 nil 或查询失败，返回空列表（会导致 AssembleTeam 失败，
 // 但这比硬编码 agent_key 更安全）。
+//
+// 2026-07-05 Step 4：原先所有 team 都走此方法查 DB，导致所有 team 拿到同一批
+// active agent。现在主路径使用 PlanStep.AgentKeys（来自 LLM 分配），此方法仅作 fallback。
 func (o *RealTeamOrchestrator) resolveAgentKeys(ctx context.Context) []string {
 	if o.agentRdr == nil {
 		return nil
@@ -182,6 +193,14 @@ func (o *RealTeamOrchestrator) resolveAgentKeys(ctx context.Context) []string {
 		}
 	}
 	return keys
+}
+
+// agentKeysSource 返回 AgentKeys 来源标识，用于日志诊断。
+func agentKeysSource(stepKeys []string) string {
+	if len(stepKeys) > 0 {
+		return "plan_step"
+	}
+	return "db_fallback"
 }
 
 // errOrchestratorNotReady is returned when Orchestrate is called before

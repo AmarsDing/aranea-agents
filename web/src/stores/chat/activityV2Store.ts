@@ -49,7 +49,17 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   function upsertTask(t: Task) {
     const ex = tasks.value.get(t.ID);
     if (ex && t.Version <= ex.Version) return;
-    tasks.value.set(t.ID, { ...t });
+    const merged: Task = ex
+      ? {
+          ...ex,
+          ...t,
+          UserMessage: t.UserMessage || ex.UserMessage,
+          CreatedAt: t.CreatedAt || ex.CreatedAt,
+          UpdatedAt: t.UpdatedAt || ex.UpdatedAt,
+          CompletedAt: t.CompletedAt ?? ex.CompletedAt ?? null,
+        }
+      : { ...t };
+    tasks.value.set(t.ID, merged);
     if (!t.ID.startsWith('pending-user-')) {
       for (const [id, task] of tasks.value) {
         if (id.startsWith('pending-user-') && task.SessionID === t.SessionID) {

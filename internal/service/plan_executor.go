@@ -462,8 +462,18 @@ func (r *dagRun) publishGraphStageTerminal(ctx context.Context) {
 	default:
 		return
 	}
+	// 2026-07-05 修复：与 publishPlanBoardTerminal 对齐，先持久化再发布事件。
+	// 之前只 seq.Publish 不写库，导致 graph_stages_v2.status 永远停留在 "running"，
+	// 刷新页面后前端流程图状态过期。Version=3 通过 VersionLT 守卫盖过 initGraphStage
+	// 创建时的 Version=1。
+	if _, err := r.pe.repos.UpsertGraphStage(ctx, gs); err != nil {
+		r.pe.lg.Warn("upsert graph_stage (terminal) failed",
+			loggateway.Str("graph_stage_id", r.graphStageID),
+			loggateway.Str("plan_board_id", r.board.ID),
+			loggateway.Err(err))
+	}
 	r.pe.seq.Publish(ctx, event)
-	r.pe.lg.Info("GraphStage terminal 事件已发布",
+	r.pe.lg.Info("GraphStage terminal 状态已发布",
 		loggateway.Str("graph_stage_id", r.graphStageID),
 		loggateway.Str("plan_board_id", r.board.ID),
 		loggateway.Str("status", string(terminalStatus)))
@@ -728,6 +738,16 @@ func (r *dagRun) updateGraphNode(ctx context.Context, stepID string, status biz.
 		GraphStageID: r.graphStageID,
 		Status:       status,
 	}
+	// 2026-07-05 修复：从 stepsByID 读取 step.Label 和 step.ID 填充 gn.Label
+	// 和 gn.DagNodeID，避免 UpsertGraphNode 的 Update 分支用空字符串覆盖
+	// initGraphStage 之前写入的正确值。
+	r.mu.Lock()
+	if step, ok := r.stepsByID[stepID]; ok {
+		gn.Label = step.Label
+		gn.DagNodeID = step.ID
+		gn.DependsOn = append([]string(nil), step.DependsOn...)
+	}
+	r.mu.Unlock()
 	if teamStageID != "" {
 		gn.TeamStageID = teamStageID
 	}

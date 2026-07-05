@@ -16,6 +16,8 @@ import (
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 
 	"aranea-agents/pkg/apierror"
+
+	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------
@@ -100,14 +102,14 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			}
 
 			// Emit ButlerOrchestrationStarted event.
-		if deps.bus != nil {
-			meta := map[string]any{
-				"task_prompt": taskPrompt,
-				"mode":         input.Mode,
-				"agent_key":    "plan_and_execute",
+			if deps.bus != nil {
+				meta := map[string]any{
+					"task_prompt": taskPrompt,
+					"mode":        input.Mode,
+					"agent_key":   "plan_and_execute",
+				}
+				deps.bus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "orchestration_started", "", meta))
 			}
-			deps.bus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "orchestration_started", "", meta))
-		}
 
 			// Check parallel quota before proceeding.
 			if deps.teamQuery != nil {
@@ -153,6 +155,9 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 
 			// For direct strategy, no allocation or orchestration needed.
 			if taskPlan.Strategy == biz.StrategyDirect {
+				// 2026-07-05 Step 3: direct 路径也发布 v2 PlanBoard（如有 SubTasks），
+				// allocPlan=nil 表示无 agent 分配，PlanStep.AgentKeys 为空。
+				deps.planner.PublishV2Board(ctx, taskPlan, nil, "")
 				publishOrchestrationCompleted(deps.bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))
 				return out, nil
 			}
@@ -174,6 +179,11 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 					}
 				}
 			}
+
+			// 2026-07-05 Step 3: Phase 2 之后发布 v2 PlanBoard，使 PlanStep.AgentKeys
+			// 能从 allocPlan.Allocations 填充。PlanExecutor 订阅 PlanBoardCreatedEvent
+			// 后读取 PlanStep.AgentKeys 组建 team，避免查 DB 取错 agent。
+			deps.planner.PublishV2Board(ctx, taskPlan, allocPlan, "")
 
 			// Phase 3: Orchestrate
 			handle, orchStep, orchErr := executeOrchestratePhase(ctx, taskPlan, allocPlan, deps)
@@ -273,22 +283,27 @@ func executeAllocatePhase(ctx context.Context, taskPlan *biz.TaskPlan, deps plan
 }
 
 // executeOrchestratePhase runs Phase 3 of plan_and_execute: task orchestration.
+// 2026-07-05 Step 1 止血修复：不再调用 TaskOrchestratorImpl.Orchestrate 创建 team。
+// team 创建完全交给 PlanExecutor（通过 PlanBoardCreatedEvent 订阅触发）。
+// 设计依据：docs/superpowers/plans/2026-07-05-fix-double-execution-plan-step-agent-keys.md
+// 原因：TaskOrchestratorImpl.orchestrateDAG 会与 PlanExecutor 双重执行，
+// 且不调用 MarkTeamDispatched，破坏 system-push 模式的 Task 延迟关闭机制。
 func executeOrchestratePhase(ctx context.Context, taskPlan *biz.TaskPlan, allocPlan *biz.AllocationPlan, deps planAndExecuteDeps) (*biz.OrchestrationHandle, biztypes.OrchestrationStepRecord, error) {
 	start := time.Now().UTC()
-	handle, err := deps.orchestrator.Orchestrate(ctx, taskPlan, allocPlan)
-	if err != nil {
-		deps.lg.Warn("plan_and_execute: orchestration failed, returning plan only",
-			loggateway.StepID("spirit.plan_and_execute.orch_fail"),
-			loggateway.Str("plan_id", taskPlan.ID),
-			loggateway.Err(err),
-		)
-		return nil, biztypes.OrchestrationStepRecord{
-			StepName:   "orchestrate",
-			Status:     "failed",
-			Error:      err.Error(),
-			StartedAt:  start,
-			FinishedAt: time.Now().UTC(),
-		}, err
+	deps.lg.Info("plan_and_execute: orchestration delegated to PlanExecutor",
+		loggateway.StepID("spirit.plan_and_execute.orch_delegated"),
+		loggateway.Str("plan_id", taskPlan.ID),
+		loggateway.Str("spirit_session_id", taskPlan.SpiritSessionID),
+		loggateway.Int("subtask_count", len(taskPlan.SubTasks)),
+	)
+	handle := &biz.OrchestrationHandle{
+		ID:              "orch_" + uuid.NewString()[:12],
+		TaskPlanID:      taskPlan.ID,
+		AllocationID:    allocPlan.ID,
+		SpiritSessionID: taskPlan.SpiritSessionID,
+		TraceID:         taskPlan.TraceID,
+		Strategy:        taskPlan.Strategy,
+		Status:          biz.OrchestrationStatusRunning,
 	}
 	return handle, biztypes.OrchestrationStepRecord{
 		StepName:   "orchestrate",

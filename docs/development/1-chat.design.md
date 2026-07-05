@@ -4246,3 +4246,140 @@ synthesis turn 完成 → ActivityProjector.OnTurnEnd
 **问题**：`HandleTeamTurnResult` 入口未校验 `RootTaskActivityID`，为空时 v2 TeamRun/MemberSession 无法关联到根 Task。
 
 **方案**：入口增加 Warn 日志（不阻断流程，仅告警），便于排查 pending queue 未注入 `RootTaskActivityID` 的问题。
+
+#### B.10.8 双重执行止血与 PlanStep.AgentKeys 传递（2026-07-05 新增）
+
+> **背景**：运行时日志显示同一 Plan 下两个编排器（`TaskOrchestratorImpl.orchestrateDAG` Path A 与 `PlanExecutor` + `RealTeamOrchestrator` Path B）同时为同一 PlanStep 创建 team，且 Path B 的 `RealTeamOrchestrator.resolveAgentKeys` 查 DB 取 active agent 前 3 个，导致所有 team 拿到同一批 agent，与 LLM 分配意图不符。
+
+**根因**：
+1. **Path A 与 Path B 双重执行**：`plan_and_execute` Phase 3 调用 `TaskOrchestratorImpl.Orchestrate`（Path A，AutoStart=true，并行不尊重 DAG），同时 `PlanExecutor` 订阅 `PlanBoardCreatedEvent` 触发 `RealTeamOrchestrator.Orchestrate`（Path B，AutoStart=false，严格 DAG）。Path A 不调用 `MarkTeamDispatched`，破坏 system-push 模式的 Task 延迟关闭机制。
+2. **PlanBoardCreatedEvent 发布过早**：`publishV2PlanBoard` 在 `Plan()` Phase 1 内调用，此时 Phase 2（Allocate）尚未执行，`allocPlan` 不存在，`PlanStep.AgentKeys` 为空。
+3. **PlanStep 无 AgentKeys 字段**：`biz.PlanStep` struct 不携带 agent 分配信息，`RealTeamOrchestrator` 无法获取 LLM 分配结果，退回查 DB。
+
+**修复方案**（5 步）：
+
+| Step | 改动 | 文件 |
+|------|------|------|
+| Step 1 | 禁用 Path A team 创建：`executeOrchestratePhase` 不再调用 `deps.orchestrator.Orchestrate`，返回 placeholder handle | `internal/tools/spirit_tools.go` |
+| Step 2 | PlanStep 携带 AgentKeys：增加 `AgentKeys []string` 字段 + Ent Schema `agent_keys` JSON 列 + DDL 迁移 20261003 | `internal/biz/plan_step.go` + `internal/data/ent/schema/plan_step_v2.go` + `internal/data/plan_step_v2_repo.go` + `internal/data/sql/migrations/20261003_plan_step_agent_keys.sql` + `internal/data/ddl_migration_registry.go` |
+| Step 3 | `publishV2PlanBoard` 移到 Phase 2 之后：从 `publishPlanCreated` 移除调用，新增 `PublishV2Board(ctx, plan, allocPlan, chatSessionID)` 公开方法，从 `allocPlan.Allocations` 填充 `PlanStep.AgentKeys` | `internal/biz/task_planner.go`（接口）+ `internal/agent/task_planner_impl.go` + `internal/tools/spirit_tools.go` |
+| Step 4 | `RealTeamOrchestrator` 优先使用 `step.AgentKeys`，fallback 到 `resolveAgentKeys(ctx)` | `internal/service/team_orchestrator_real.go` |
+| Step 5 | `TaskOrchestratorImpl.Orchestrate` 标记 Deprecated（team 创建迁移到 PlanExecutor + RealTeamOrchestrator） | `internal/agent/task_orchestrator_impl.go` |
+
+**数据流**（修复后）：
+
+```
+plan_and_execute Phase 1: Plan()
+  └─ publishPlanCreated → v1 spirit_plan_created（仅 v1 Activity）
+
+plan_and_execute Phase 2: Allocate()
+  └─ allocPlan = allocator.Allocate(taskPlan)
+
+plan_and_execute Phase 2 之后:
+  └─ planner.PublishV2Board(ctx, taskPlan, allocPlan, "")
+      └─ PlanStep.AgentKeys ← allocPlan.Allocations[].AssignedKey
+      └─ seq.Publish(PlanBoardCreatedEvent)  ← 携带 AgentKeys
+
+PlanExecutor.StartSubscription 接收 PlanBoardCreatedEvent
+  └─ newDagRun(board)  ← board.Steps[].AgentKeys 已填充
+  └─ dispatchStep(ctx, step)
+      └─ RealTeamOrchestrator.Orchestrate(ctx, step, ts)
+          └─ agentKeys = step.AgentKeys（主路径）
+          └─ fallback: resolveAgentKeys(ctx)（仅 step.AgentKeys 为空时）
+          └─ AssembleTeam(agentKeys)  ← 使用 LLM 分配的 agent
+```
+
+**关键接口变更**：
+
+| 接口/字段 | 变更 | 位置 |
+|-----------|------|------|
+| `biz.TaskPlannerPort.PublishV2Board` | 新增方法 | `internal/biz/task_planner.go` |
+| `biz.PlanStep.AgentKeys` | 新增字段 | `internal/biz/plan_step.go` |
+| `ent PlanStepV2.agent_keys` | 新增 JSON 列 | `internal/data/ent/schema/plan_step_v2.go` |
+| `RealTeamOrchestrator.Orchestrate` | 优先 `step.AgentKeys` | `internal/service/team_orchestrator_real.go` |
+| `TaskOrchestratorImpl.Orchestrate` | 标记 Deprecated | `internal/agent/task_orchestrator_impl.go` |
+
+**不变量**：
+- `PublishV2Board` 必须在 Phase 2（Allocate）之后调用，确保 `allocPlan` 存在
+- `PlanStep.AgentKeys` 为空时（如 direct strategy），`RealTeamOrchestrator` fallback 到 `resolveAgentKeys(ctx)` 查 DB
+- `PlanBoardCreatedEvent` 携带的 `PlanBoard.Steps[].AgentKeys` 必须与 `allocPlan.Allocations` 一致（匹配规则：`alloc.SubTaskID == SubTask.ID == PlanStep.ID`）
+- `TaskOrchestratorImpl.Orchestrate` 不再被 `plan_and_execute` 调用，但 `CheckProgress`/`Cancel`/`RecoverAllInterrupted` 仍被使用，struct 保留
+
+**回滚方案**：恢复 `executeOrchestratePhase` 调用 `deps.orchestrator.Orchestrate`，移除 `PublishV2Board` 调用，恢复 `publishPlanCreated` 内部调用 `publishV2PlanBoard`。`PlanStep.AgentKeys` 字段可保留（向后兼容）。
+
+#### B.10.9 PlanStep.ID 重写 / GraphNode 字段填充 / GraphStage terminal 持久化（2026-07-05 新增）
+
+> **背景**：B.10.8 修复后运行时验证发现三个数据完整性问题：
+> 1. `plan_steps_v2` 表插入失败（UNIQUE 约束冲突），LLM 生成的 `st_1/st_2/...` ID 跨 session 冲突
+> 2. `graph_nodes_v2.label` 和 `dag_node_id` 字段被空字符串覆盖（initGraphStage 写入正确值后被 updateGraphNode 的 Update 分支覆盖）
+> 3. `graph_stages_v2.status` 永远停留在 `running`，terminal 事件已发布但未持久化（与 `publishPlanBoardTerminal` 行为不一致）
+
+**三个独立修复**：
+
+| 编号 | 问题 | 根因 | 修复 |
+|------|------|------|------|
+| FIX-1 | PlanStep.ID 跨 session 冲突 | LLM prompt 指定生成 `st_<n>` 格式 ID，全局 UNIQUE 字段在第二次 session 插入时冲突 | `parseDecompositionOutput` 中将 LLM 返回的 ID 重写为 `st_<uuid>`，同步重写 `DependsOn` 中的引用 |
+| FIX-2 | GraphNode Label/DagNodeID 被覆盖 | `updateGraphNode` 只设置 `ID/GraphStageID/Status`，未填充 `Label/DagNodeID/DependsOn`；`UpsertGraphNode` 的 Update 分支会 `SetLabel("")/SetDagNodeID("")` 覆盖 initGraphStage 写入的正确值 | `updateGraphNode` 加锁从 `stepsByID[stepID]` 读取 `step.Label/step.ID/step.DependsOn` 填充到 `gn` |
+| FIX-3 | GraphStage terminal 状态未持久化 | `publishGraphStageTerminal` 只调用 `seq.Publish` 发布事件，未调用 `UpsertGraphStage` 持久化（与 `publishPlanBoardTerminal` 不一致） | 在 `seq.Publish` 前加 `r.pe.repos.UpsertGraphStage(ctx, gs)`，失败时记录 Warn 日志但不阻断 |
+
+**FIX-1 数据流**（ID 重写）：
+
+```
+LLM 输出 JSON: [{id: "st_1", name: "数据工程团队", depends_on: []}, {id: "st_2", depends_on: ["st_1"]}, ...]
+                                          ↓
+parseDecompositionOutput 重写:
+  idRemap = {"st_1": "st_<uuid-A>", "st_2": "st_<uuid-B>", ...}
+  SubTask.ID = idRemap[rt.ID]
+  SubTask.DependsOn = [idRemap[depID] for depID in rt.DependsOn]
+                                          ↓
+PlanStep.ID = "st_<uuid-A>"  ← 全局唯一，无冲突
+PlanStep.DependsOn = ["st_<uuid-A>"]  ← 引用保持一致
+```
+
+**FIX-2 字段填充对比**：
+
+| 调用点 | Label | DagNodeID | DependsOn |
+|--------|-------|-----------|-----------|
+| `initGraphStage`（创建） | ✅ `step.Label` | ✅ `step.ID` | ✅ `step.DependsOn` |
+| `updateGraphNode`（修复前） | ❌ 空字符串 | ❌ 空字符串 | ❌ nil |
+| `updateGraphNode`（修复后） | ✅ `step.Label`（从 stepsByID 读取） | ✅ `step.ID` | ✅ `step.DependsOn` |
+
+**FIX-3 持久化时序对比**：
+
+| 函数 | 修复前 | 修复后 |
+|------|--------|--------|
+| `publishPlanBoardTerminal` | ✅ `UpsertPlanBoard` → `seq.Publish` | 不变 |
+| `publishGraphStageTerminal` | ❌ 仅 `seq.Publish` | ✅ `UpsertGraphStage` → `seq.Publish` |
+
+**VersionLT 守卫机制**：
+- `initGraphStage` 创建 GraphStage 时 `Version=1`
+- `publishGraphStageTerminal` 更新时 `Version=3`
+- `UpsertGraphStage` 使用 `Where(graphstagev2.VersionLT(gs.Version))` 守卫
+- Version=3 的写入通过守卫盖过 Version=1 的旧记录，确保 status 正确更新为 terminal 状态
+
+**改动文件清单**：
+
+| 文件 | 改动 |
+|------|------|
+| `internal/agent/task_planner_impl.go` | `parseDecompositionOutput` 增加 ID 重写逻辑（`idRemap` + `DependsOn` 重写） |
+| `internal/service/plan_executor.go` | `updateGraphNode` 加锁从 `stepsByID` 读取 `Label/DagNodeID/DependsOn` 填充 `gn` |
+| `internal/service/plan_executor.go` | `publishGraphStageTerminal` 在 `seq.Publish` 前加 `UpsertGraphStage` 持久化调用 |
+
+**不变量**：
+- `PlanStep.ID` 必须为 `st_<uuid>` 格式，全局唯一（不再使用 LLM 生成的 `st_<n>` 格式）
+- `PlanStep.DependsOn` 中的 ID 引用必须与重写后的 `PlanStep.ID` 一致（通过 `idRemap` 保证）
+- `updateGraphNode` 必须填充 `Label/DagNodeID/DependsOn`，不能仅设置 `Status`
+- `publishGraphStageTerminal` 必须先 `UpsertGraphStage` 再 `seq.Publish`，与 `publishPlanBoardTerminal` 行为对齐
+- `UpsertGraphStage` 的 VersionLT 守卫确保 terminal 状态（Version=3）能盖过 initGraphStage 创建状态（Version=1）
+
+**运行时验证证据**（2026-07-05 14:37）：
+- `plan_steps_v2` 表 3 条记录均为 `st_<uuid>` 格式 ID，无 UNIQUE 冲突 ✅
+- `graph_nodes_v2` 表 `label` 字段正确显示团队名称（如 `数据工程团队`），未被空字符串覆盖 ✅
+- `graph_stages_v2` 表 `status = completed`，`completed_at` 有值，terminal 状态正确持久化 ✅
+
+**回滚方案**：
+- FIX-1：移除 `parseDecompositionOutput` 中的 `idRemap` 重写逻辑，恢复使用 LLM 返回的原始 ID（会导致跨 session UNIQUE 冲突，不建议回滚）
+- FIX-2：移除 `updateGraphNode` 中对 `stepsByID` 的读取，恢复仅设置 `Status`（会导致 Label/DagNodeID 被空字符串覆盖，不建议回滚）
+- FIX-3：移除 `publishGraphStageTerminal` 中的 `UpsertGraphStage` 调用（会导致 graph_stages_v2.status 永远为 running，不建议回滚）
+
+**编码验证说明**（2026-07-05 调查结论）：曾怀疑 `plan_steps_v2.label` 存在 UTF-8 编码异常（psql 终端显示 `鏁版嵁宸ョ▼鍥㈤槦`）。经 hex 验证，数据库实际存储的字节是完全正确的 UTF-8（`e695b0 e68dae e5b7a5 e7a88b e59ba2 e9989f` = `数据工程团队`）。乱码根因是 PowerShell 5 默认用 GBK 解码 psql 输出的 UTF-8 字节流（终端显示问题，非数据问题）。前端通过 API 获取并显示的 label 完全正确（Playwright 验证 `plan-step-item__label` textContent = `数据工程团队`）。后端代码、LLM 返回、JSON 解析、PostgreSQL 写入全链路编码正确，无需修复。

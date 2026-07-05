@@ -20,6 +20,10 @@ type PlanStep struct {
 	Version           int64       // 乐观并发版本号（spec §3.3.5 VersionLT）
 	Result            *StepResult // 完成时携带
 	Error             *StepError  // 失败时携带
+	// AgentKeys 是 LLM 分配给该 step 的 agent key 列表（来自 AllocationPlan）。
+	// RealTeamOrchestrator 优先使用此字段组建 team，避免查 DB 取到错误 agent。
+	// 2026-07-05 Step 2 修复：解决"所有 team 用同一 agent"问题。
+	AgentKeys []string
 }
 
 type PlanStepStatus string

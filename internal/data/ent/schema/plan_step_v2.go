@@ -36,6 +36,7 @@ func (PlanStepV2) Fields() []ent.Field {
 		field.Int64("version").Default(0),
 		field.JSON("result", map[string]any{}).Optional().Comment("StepResult JSON"),
 		field.JSON("error", map[string]any{}).Optional().Comment("StepError JSON"),
+		field.JSON("agent_keys", []string{}).Optional().Comment("LLM-allocated agent keys from AllocationPlan"),
 	}
 }
 

@@ -363,6 +363,18 @@ internal/data          ← Repo 实现
 3. **验证前置**：无新鲜验证证据不做完成声明。证据先于断言，永远
 4. **YAGNI**：不添加未请求的功能，不过度工程
 
+### 5.2 修改前必查清单（强制）
+
+> 以下 5 条规则在**任何功能修改和设计时**必须执行，违反即停。源自历次反复修改的教训总结。
+
+| # | 规则 | 执行方式 | 违反后果 |
+|---|------|---------|---------|
+| R1 | **先读需求文档 + 模块交叉参考** | 修改前必读 `docs/development/` 下对应模块的需求文档（`.md`）和 `docs/development/65-module-cross-reference-full.md`，理解设计意图和数据流 | 不读需求就动手 = 反复改错，浪费轮次 |
+| R2 | **画数据流图，理解 entity 关联** | 修改前先在脑中/草稿画出 entity 关联图（Task → Turn → Step → TeamStage → TeamRun → MemberSession），确认改一处的影响面 | 只看局部 = 改了 A 破坏 B |
+| R3 | **修复后必须运行时验证** | 编译/测试通过 ≠ 功能正确。修复后必须读日志（`logs/aranea-pipeline.log`）+ 看 UI（浏览器实际渲染），确认行为符合预期 | 只靠编译通过就声明完成 = 问题反复 |
+| R4 | **全局搜索清理，不要只改当前文件** | 清理注释/重命名/删除代码时用 `Grep` 全局搜索，不要只改当前文件；关联文件必须同步更新 | 只改当前文件 = 残留死代码/不一致 |
+| R5 | **小步快跑，每次只改一个明确问题** | 每次只修复一个明确的问题，验证通过后再改下一个；禁止一次改多个问题 | 一次改多个 = 无法定位回归原因 |
+
 > 可选的 Superpowers 辅助 SKILL（按需使用）：`brainstorming`、`writing-plans`、`subagent-driven-development`、`test-driven-development`、`verification-before-completion`、`systematic-debugging`、`executing-plans`、`requesting-code-review`、`receiving-code-review`、`finishing-a-development-branch`。
 
 ---

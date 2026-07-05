@@ -108,9 +108,9 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			TopologyHint:    topologyHint,
 			MemoryHit:       memoryHit,
 			Status:          biz.TaskPlanStatusDraft,
-	}
+		}
 
-	saved, err := impl.repo.Create(ctx, plan)
+		saved, err := impl.repo.Create(ctx, plan)
 		if err != nil {
 			impl.lg.Warn("TaskPlan 持久化失败",
 				loggateway.StepID(biz.SpiritStepPlannerPersist),
@@ -914,6 +914,21 @@ func parseDecompositionOutput(text string) ([]biz.SubTask, error) {
 		return nil, apierror.Internal(apierror.DomainSpirit, "json unmarshal").WithCause(err)
 	}
 
+	// 2026-07-05 修复：LLM prompt 指定生成 st_1/st_2/... 格式的 ID，
+	// 跨 session 会冲突（plan_steps_v2 表 id 字段全局 UNIQUE）。这里将
+	// LLM 返回的 ID 重写为 st_<uuid>，同步重写 DependsOn 中的引用。
+	// 所有后端/前端代码都不解析 ID 内容，仅作不透明字符串使用，因此
+	// 重写不会破坏引用链。
+	idRemap := make(map[string]string, len(rawTasks))
+	for _, rt := range rawTasks {
+		if strings.TrimSpace(rt.ID) == "" || strings.TrimSpace(rt.Name) == "" {
+			continue
+		}
+		if _, exists := idRemap[rt.ID]; !exists {
+			idRemap[rt.ID] = "st_" + uuid.NewString()
+		}
+	}
+
 	subTasks := make([]biz.SubTask, 0, len(rawTasks))
 	for _, rt := range rawTasks {
 		if strings.TrimSpace(rt.ID) == "" || strings.TrimSpace(rt.Name) == "" {
@@ -931,11 +946,21 @@ func parseDecompositionOutput(text string) ([]biz.SubTask, error) {
 		if rt.EstimatedComplexity == 0 {
 			rt.EstimatedComplexity = 0.5
 		}
+		// 重写 DependsOn 中的旧 ID 引用为新 UUID 格式
+		rewiredDeps := make([]string, 0, len(rt.DependsOn))
+		for _, depID := range rt.DependsOn {
+			if newID, ok := idRemap[depID]; ok {
+				rewiredDeps = append(rewiredDeps, newID)
+			} else {
+				// 未知引用保留原值，validateSubTaskDAG 会报错
+				rewiredDeps = append(rewiredDeps, depID)
+			}
+		}
 		subTasks = append(subTasks, biz.SubTask{
-			ID:                   rt.ID,
+			ID:                   idRemap[rt.ID],
 			Name:                 rt.Name,
 			Description:          rt.Description,
-			DependsOn:            rt.DependsOn,
+			DependsOn:            rewiredDeps,
 			RequiredCapabilities: rt.RequiredCapabilities,
 			Priority:             rt.Priority,
 			EstimatedComplexity:  rt.EstimatedComplexity,
@@ -1231,14 +1256,9 @@ func (impl *taskPlannerImpl) publishPlanCreated(ctx context.Context, plan *biz.T
 		Domain: biz.ActivityDomainChat,
 	}
 	impl.bus.Publish(ctx, ev)
-
-	// 2026-07-04 问题 2/3 修复：发布 v2 PlanBoard + PlanStep + GraphStage + GraphNode
-	// 事件，让前端 PlanBoardCard / GraphStageBlock 能渲染。原先仅发布 v1 ActivityEvent，
-	// 前端 v2 store 的 planBoards/graphStages Map 始终为空。
-	impl.publishV2PlanBoard(ctx, plan, chatSessionID, rootTaskID)
 }
 
-// publishV2PlanBoard 通过 v2 Sequencer 发布 PlanBoard + PlanStep + GraphStage + GraphNode
+// PublishV2Board 通过 v2 Sequencer 发布 PlanBoard + PlanStep + GraphStage + GraphNode
 // 创建事件。这些事件会被 Sequencer 持久化到 v2 表 + 推送到 WS，前端 v2 store 收到后
 // 渲染 PlanBoardCard 和 GraphStageBlock。
 //
@@ -1250,9 +1270,14 @@ func (impl *taskPlannerImpl) publishPlanCreated(ctx context.Context, plan *biz.T
 //   - PlanStep 与 GraphNode 一对一（GraphNode.ID = PlanStep.ID，确定性派生）
 //   - 所有实体共用同一个 TaskID（rootTaskID）和 SpiritSessionID
 //
+// 2026-07-05 Step 3 修复：从 publishPlanCreated 内部移到 spirit_tools.go Phase 2
+// 之后调用，使 PlanStep.AgentKeys 能从 allocPlan.Allocations 填充。原先在 Phase 1
+// 发布时 allocPlan 不存在，导致 RealTeamOrchestrator 无法获取 LLM 分配结果，
+// 退回查 DB 取错 agent（所有 team 用同一 agent）。
+//
 // 注意：此处仅发布 created 事件（status=pending/running）。后续生命周期事件
 // （completed/failed）由 spirit_team.go 在团队状态变更时发布。
-func (impl *taskPlannerImpl) publishV2PlanBoard(ctx context.Context, plan *biz.TaskPlan, chatSessionID, rootTaskID string) {
+func (impl *taskPlannerImpl) PublishV2Board(ctx context.Context, plan *biz.TaskPlan, allocPlan *biz.AllocationPlan, chatSessionID string) {
 	if impl.seq == nil || plan == nil {
 		return
 	}
@@ -1260,18 +1285,19 @@ func (impl *taskPlannerImpl) publishV2PlanBoard(ctx context.Context, plan *biz.T
 	if spiritSessionID == "" {
 		return
 	}
-	// 2026-07-04 问题 3 修复：当 plan.SubTasks 为空时跳过发布，避免创建
-	// 空 PlanBoard（"规划中" 0/0）与空 GraphStage（"执行中" 暂无节点）。
+	// 当 plan.SubTasks 为空时跳过发布，避免创建空 PlanBoard 与空 GraphStage。
 	// 触发场景：PrePlanningGate force planning（complexity >= Moderate）
 	// 时调用 Plan()，但任务分解失败或编排缓存命中导致 SubTasks 为空。
 	if len(plan.SubTasks) == 0 {
-		impl.lg.Info("publishV2PlanBoard: SubTasks 为空，跳过发布 PlanBoard/GraphStage",
+		impl.lg.Info("PublishV2Board: SubTasks 为空，跳过发布 PlanBoard/GraphStage",
 			loggateway.StepID(biz.SpiritStepPlannerPersist),
 			loggateway.Str("spirit_session_id", spiritSessionID),
 			loggateway.Str("plan_id", plan.ID),
 		)
 		return
 	}
+	// rootTaskID 从 ctx 读取（与 publishPlanCreated 一致）。
+	rootTaskID := string(RootTaskActivityIDFromCtx(ctx))
 	// SessionID 优先使用 chatSessionID（与 v1 Activity 一致），便于前端按 chat session
 	// 过滤；fallback 到 spiritSessionID。
 	sessionID := chatSessionID
@@ -1281,6 +1307,8 @@ func (impl *taskPlannerImpl) publishV2PlanBoard(ctx context.Context, plan *biz.T
 	now := time.Now()
 	pbID := "pb_" + uuid.NewString()
 	// 构建 v2 PlanStep 列表（每个 SubTask 对应一个 PlanStep）。
+	// 2026-07-05 Step 3 修复：从 allocPlan.Allocations 填充 AgentKeys，
+	// 匹配规则：alloc.SubTaskID == SubTask.ID（== PlanStep.ID）。
 	planSteps := make([]biz.PlanStep, 0, len(plan.SubTasks))
 	for i, st := range plan.SubTasks {
 		ps := biz.PlanStep{
@@ -1294,6 +1322,13 @@ func (impl *taskPlannerImpl) publishV2PlanBoard(ctx context.Context, plan *biz.T
 			StartedAt:   now,
 			Seq:         int64(i + 1),
 			Version:     1,
+		}
+		if allocPlan != nil {
+			for _, alloc := range allocPlan.Allocations {
+				if alloc.SubTaskID == st.ID && alloc.AssignedKey != "" {
+					ps.AgentKeys = append(ps.AgentKeys, alloc.AssignedKey)
+				}
+			}
 		}
 		planSteps = append(planSteps, ps)
 	}

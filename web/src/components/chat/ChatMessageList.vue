@@ -112,7 +112,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick, provide } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ChatPendingQueue from './ChatPendingQueue.vue';
 import SessionPanelV2 from './v2/SessionPanel.vue';
@@ -233,16 +233,17 @@ const scrollViewportEl = ref<HTMLElement | null>(null);
 // T8.6: 点击左侧 Agent 卡片 → 滚动并高亮中间面板对应的 AgentCard。
 // useScrollToActivity 为模块级 ref 单例，ChatEntitySidebar 调用 locate() 触发此处 watch。
 const { locateCommand } = useScrollToActivity();
-const autoExpandFor = ref<string>('');
+const autoExpandFor = ref<{ agentKey: string; teamId: string } | null>(null);
+provide('chat:autoExpandFor', autoExpandFor);
 let autoExpandTimer: ReturnType<typeof window.setTimeout> | null = null;
 
 watch(locateCommand, async (cmd) => {
   if (!cmd || !scrollViewportEl.value) return;
   // 触发父级 TeamCard / AgentCard 自动展开，确保目标节点可见
-  autoExpandFor.value = cmd.agentKey || cmd.teamId || '';
+  autoExpandFor.value = { agentKey: cmd.agentKey, teamId: cmd.teamId || '' };
   if (autoExpandTimer) window.clearTimeout(autoExpandTimer);
   autoExpandTimer = window.setTimeout(() => {
-    autoExpandFor.value = '';
+    autoExpandFor.value = null;
   }, AUTO_EXPAND_HOLD_MS);
   // 等待数据更新（如展开新会话）渲染到 DOM
   await nextTick();

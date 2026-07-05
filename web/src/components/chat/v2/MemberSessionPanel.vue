@@ -110,7 +110,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, inject, watch, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
 import { isSystemInternalNotice } from '../../../features/chat/noticeFilter';
@@ -162,6 +162,16 @@ const memberSteps = computed(() => {
 
 // 折叠状态：默认折叠（与 team-card 一致，需求 §A.4.4）
 const collapsed = ref(true);
+
+const autoExpandFor = inject<Ref<{ agentKey: string; teamId: string } | null>>('chat:autoExpandFor', ref(null));
+watch(
+  autoExpandFor,
+  (cmd) => {
+    if (!cmd) return;
+    if (props.memberSession.AgentKey === cmd.agentKey) collapsed.value = false;
+  },
+  { immediate: true },
+);
 
 function toggleCollapse() {
   collapsed.value = !collapsed.value;

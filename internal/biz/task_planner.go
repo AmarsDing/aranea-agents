@@ -16,6 +16,13 @@ type TaskPlannerPort interface {
 	// ListPlans returns all plans for a spirit session, newest first (T3.2).
 	ListPlans(ctx context.Context, spiritSessionID string) ([]*TaskPlan, error)
 	ConfirmPlan(ctx context.Context, planID string, adjustments PlanAdjustments) (*TaskPlan, error)
+	// PublishV2Board publishes v2 PlanBoard/PlanStep/GraphStage/GraphNode creation
+	// events via the v2 Sequencer. Must be called AFTER Phase 2 (Allocate) so
+	// PlanStep.AgentKeys can be filled from allocPlan. For direct strategy
+	// (no team execution), pass nil allocPlan — AgentKeys stays empty.
+	// 2026-07-05 Step 3 修复：原先在 Plan() 内部 Phase 1 发布，导致 allocPlan
+	// 不存在时 PlanStep.AgentKeys 为空，RealTeamOrchestrator 退回查 DB 取错 agent。
+	PublishV2Board(ctx context.Context, plan *TaskPlan, allocPlan *AllocationPlan, chatSessionID string)
 }
 
 // IntentArtifact mirrors the intent pass output fields consumed by TaskPlanner.

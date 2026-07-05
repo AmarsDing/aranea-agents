@@ -97,7 +97,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, inject, watch, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
 import type { TeamRun } from '../../../features/chat/v2Types';
@@ -128,6 +128,18 @@ const memberSessions = computed(() => store.getTeamRunMemberSessions(props.teamR
 // 折叠状态：默认折叠（需求 §A.4.3）
 const collapsed = ref(true);
 const userToggled = ref(false);
+
+// 响应 ChatMessageList 的 autoExpandFor：当 locate 命中本卡片某成员时自动展开
+const autoExpandFor = inject<Ref<{ agentKey: string; teamId: string } | null>>('chat:autoExpandFor', ref(null));
+watch(
+  autoExpandFor,
+  (cmd) => {
+    if (!cmd || userToggled.value) return;
+    const matched = memberSessions.value.some((ms) => ms.AgentKey === cmd.agentKey);
+    if (matched) collapsed.value = false;
+  },
+  { immediate: true },
+);
 
 // 当 teamRun.Status 变为 running 时，若用户未操作过，保持折叠
 function toggleCollapse() {

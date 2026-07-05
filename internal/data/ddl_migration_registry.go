@@ -108,6 +108,9 @@ var ddlMigrations = []ddlMigration{
 	// 20261002 team_stage_team_name: add team_name column to team_stages_v2.
 	// Ent Schema.Create() 不会为已存在表新增列，需要 ALTER TABLE 补列。
 	{Version: 20261002, Name: "team_stage_team_name", SQL: "sql/migrations/20261002_team_stage_team_name.sql"},
+	// 20261003 plan_step_agent_keys: add agent_keys column to plan_steps_v2.
+	// PlanStep 携带 LLM 分配的 agent key 列表，RealTeamOrchestrator 优先使用此字段。
+	{Version: 20261003, Name: "plan_step_agent_keys", SQL: "sql/migrations/20261003_plan_step_agent_keys.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

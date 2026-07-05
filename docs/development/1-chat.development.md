@@ -187,7 +187,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 9 | M55 ConversationTurn + Channel 同步 | ✅ | Phase A–D ✅；UX 收口 CC-C-UX-* ✅ |
 | 10 | **ADR-02 + ADR-03 Activity-First 架构迁移** | ✅ | Envelope 删除 + 统一总线 + 并行异步持久化 + Session 父子树 + 工具类别 |
 | P-N | **流式渲染与活动排序修复** | ✅ | 统一 MD 渲染路径 + seq On* 入口预分配 + sequencer v2 单 publish worker（ADR-06） |
-| P-V2LF | **v2 实体生命周期与状态级联修复** | ✅ | P1-P6 + P5 Task 延迟关闭 + Fixes 1-7（seq 注入/msID 诊断/Cancelled 事件/双写消除/GraphStage 去重等） |
+| P-V2LF | **v2 实体生命周期与状态级联修复** | ✅ | P1-P6 + P5 Task 延迟关闭 + Fixes 1-7（seq 注入/msID 诊断/Cancelled 事件/双写消除/GraphStage 去重等）+ P-DBLEXEC 双重执行止血与 PlanStep.AgentKeys 传递（2026-07-05） |
 | 11 | **三种模式数据模型 + WS 协议设计文档** | ✅ | 需求文档 §1.7 + 设计文档 §5.4 + B.2.1（Phase T7） |
 
 ### P-N 流式渲染与活动排序修复（2026-06-27）
@@ -409,6 +409,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 - [x] P-FIX5 GraphStage 重复创建修复（中）— 移除 `initGraphStage` 中冗余 `seq.Publish`，保留同步 Upsert 作为 crash recovery
 - [x] P-FIX6 PlanStep 双写消除（低）— 移除 4 处直接 `repos.UpsertPlanStep`，统一由 `seq.Publish` → EventRouter 异步持久化
 - [x] P-FIX7 PlanExecutor 注入 TeamDispatchMarker（高/P5 配套）— `dispatchStep` 标记 task 已派发 team
+- [x] P-DBLEXEC 双重执行止血与 PlanStep.AgentKeys 传递（2026-07-05 新增）— 5 步修复：禁用 Path A team 创建 + PlanStep 增加 AgentKeys 字段 + PublishV2Board 移到 Phase 2 之后 + RealTeamOrchestrator 优先 step.AgentKeys + TaskOrchestratorImpl.Orchestrate 标记 Deprecated。详见设计文档 §B.10.8
 
 #### 改动文件清单
 
@@ -437,6 +438,17 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | `internal/agent/v2/projector.go` | `ProjectorFactory` 增加 `teamDispatched sync.Map` + `MarkTeamDispatched`/`HasTeamDispatch`/`ClearTeamDispatch`；`ActivityProjector` 增加 `factory` 字段；`OnTurnEnd` 检查 team 派发标记决定是否延迟 task.completed（P5） |
 | `internal/service/chat_wire.go` | `ProvideChatService` 新增 `graphProj` 参数；注入 seq 到 GraphOrchestrationProjector（P-FIX1）；注入 ProjectorFactory 到 PlanExecutor 作为 TeamDispatchMarker（P-FIX7） |
 | `cmd/admin/wire_gen.go` | `make wire` 自动重生成：`ProvideChatService` 调用增加 `graphOrchestrationProjector` 参数 |
+| `internal/tools/spirit_tools.go` | P-DBLEXEC Step 1：`executeOrchestratePhase` 不再调用 `deps.orchestrator.Orchestrate`，返回 placeholder handle；Step 3：Phase 2 之后调用 `planner.PublishV2Board`，direct 路径传 nil allocPlan |
+| `internal/biz/plan_step.go` | P-DBLEXEC Step 2：`PlanStep` 增加 `AgentKeys []string` 字段 |
+| `internal/data/ent/schema/plan_step_v2.go` | P-DBLEXEC Step 2：Ent Schema 增加 `agent_keys` JSON 列 |
+| `internal/data/plan_step_v2_repo.go` | P-DBLEXEC Step 2：4 处 ent↔biz 转换函数更新（Create/Update/Upsert/entPlanStepV2ToBiz） |
+| `internal/data/sql/migrations/20261003_plan_step_agent_keys.sql` | P-DBLEXEC Step 2：DDL 迁移（ALTER TABLE plan_steps_v2 ADD COLUMN agent_keys TEXT） |
+| `internal/data/ddl_migration_registry.go` | P-DBLEXEC Step 2：注册 20261003 迁移 |
+| `internal/biz/task_planner.go` | P-DBLEXEC Step 3：`TaskPlannerPort` 接口新增 `PublishV2Board` 方法 |
+| `internal/agent/task_planner_impl.go` | P-DBLEXEC Step 3：`publishV2PlanBoard` → 公开 `PublishV2Board(ctx, plan, allocPlan, chatSessionID)`；从 `publishPlanCreated` 移除调用；从 `allocPlan.Allocations` 填充 `PlanStep.AgentKeys` |
+| `internal/service/team_orchestrator_real.go` | P-DBLEXEC Step 4：`Orchestrate` 优先 `step.AgentKeys`，fallback `resolveAgentKeys(ctx)`；新增 `agentKeysSource` 辅助日志 |
+| `internal/agent/task_orchestrator_impl.go` | P-DBLEXEC Step 5：`Orchestrate` 标记 Deprecated（team 创建迁移到 PlanExecutor + RealTeamOrchestrator） |
+| `internal/service/pre_planning_gate_test.go` | P-DBLEXEC Step 4：`fakePlanner` 增加 `PublishV2Board` stub 方法 |
 
 #### 验收标准
 
@@ -453,6 +465,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
   - team_name 非空
   - Cancelled TeamRun 状态正确（Failed 事件而非 Started 占位）
   - PlanStep 单写无冗余（仅 seq.Publish 路径）
+  - **P-DBLEXEC**：每个 PlanStep 只创建一个 team（无双重执行）；不同 team 使用不同 agent（PlanStep.AgentKeys 来自 LLM 分配，而非全部使用同一批 DB active agent）；`Orchestrate` 日志 `source=plan_step` 表示使用 LLM 分配，`source=db_fallback` 表示 fallback
 
 #### P5 Task 延迟关闭设计（已实现）
 
