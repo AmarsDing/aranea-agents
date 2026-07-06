@@ -118,8 +118,6 @@ func (r *teamStageV2Repo) UpsertTeamStage(ctx context.Context, ts biz.TeamStage)
 	}
 	b := r.data.RW().Write(ctx).TeamStageV2.UpdateOneID(ts.ID).
 		Where(teamstagev2.VersionLT(ts.Version)).
-		SetTaskID(ts.TaskID).
-		SetTurnID(ts.TurnID).
 		SetSessionID(ts.SessionID).
 		SetTeamID(ts.TeamID).
 		SetTeamName(ts.TeamName).
@@ -130,6 +128,16 @@ func (r *teamStageV2Repo) UpsertTeamStage(ctx context.Context, ts biz.TeamStage)
 		SetStrategy(ts.Strategy).
 		SetSeq(ts.Seq).
 		SetVersion(ts.Version)
+	// 2026-07-06 修复：TaskID/TurnID 空值不覆盖。
+	// StartTeamTurn 创建 TeamStage 时未设置 TaskID（仅 publishSpiritTeamAssembled
+	// 设置了），如果无条件 SetTaskID("") 会覆盖已有值，导致 ListTeamStagesByTask
+	// 查询返回空，前端 team 面板无法渲染。采用与 Members 相同的防御性策略。
+	if ts.TaskID != "" {
+		b = b.SetTaskID(ts.TaskID)
+	}
+	if ts.TurnID != "" {
+		b = b.SetTurnID(ts.TurnID)
+	}
 	// Only update Members when the caller provides a non-empty list.
 	// This prevents dispatchStep (whose buildTeamStageMembers may return nil
 	// or degraded data missing displayName/avatarUrl) from overwriting the

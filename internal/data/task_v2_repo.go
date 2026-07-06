@@ -113,11 +113,22 @@ func (r *taskV2Repo) UpsertTask(ctx context.Context, t biz.Task) (biz.Task, erro
 	b := r.data.RW().Write(ctx).TaskV2.UpdateOneID(t.ID).
 		Where(taskv2.VersionLT(t.Version)).
 		SetSessionID(t.SessionID).
-		SetUserMessage(t.UserMessage).
 		SetStatus(string(t.Status)).
 		SetSeq(t.Seq).
-		SetUpdatedAt(t.UpdatedAt).
 		SetVersion(t.Version)
+	// 2026-07-06 修复：UserMessage/UpdatedAt 空值不覆盖。
+	// synthesis turn 的 OnTurnEnd（projector.go OnTurnEnd synthesis 路径）构造
+	// 最小 task 对象（仅 ID/SessionID/Status/CompletedAt/Version），UserMessage
+	// 为空字符串、UpdatedAt 为零值。如果无条件 SetUserMessage("") SetUpdatedAt(zero)
+	// 会覆盖 publishSpiritTeamAssembled 之前持久化的真实 UserMessage 和 UpdatedAt，
+	// 导致前端用户指令显示为空、updated_at 异常。采用与 UpsertTeamStage
+	// TaskID/TurnID 相同的防御性策略：非空才设置。
+	if t.UserMessage != "" {
+		b = b.SetUserMessage(t.UserMessage)
+	}
+	if !t.UpdatedAt.IsZero() {
+		b = b.SetUpdatedAt(t.UpdatedAt)
+	}
 	if t.CompletedAt != nil {
 		b.SetCompletedAt(*t.CompletedAt)
 	}

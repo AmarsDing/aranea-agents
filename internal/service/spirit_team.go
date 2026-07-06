@@ -239,6 +239,15 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 		ts := biz.TeamStage{
 			ID:        tsID,
 			TeamID:    teamID,
+			// 2026-07-06 修复：补全 TaskID。之前 StartTeamTurn 创建 TeamStage 时
+			// 未设置 TaskID（仅 publishSpiritTeamAssembled 设置了），但
+			// resolveTeamStageUpdate fallback 会返回 Version=100，大于
+			// publishSpiritTeamAssembled 的 Version=1，导致 UpsertTeamStage
+			// 通过 SetTaskID("") 覆盖已有 TaskID，前端 listTeamStagesV2(taskId)
+			// 查询返回空，team 面板无法渲染。
+			// ctx 中携带 RootTaskActivityID 由 PlanExecutor 注入（plan_executor.go
+			// ContextWithRootTaskActivityID），context.WithoutCancel 保留该值。
+			TaskID:    string(agent.RootTaskActivityIDFromCtx(ctx)),
 			TeamName:  team.DisplayName,
 			SessionID: spiritSessionID,
 			Status:    newStatus,

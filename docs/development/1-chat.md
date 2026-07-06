@@ -768,6 +768,11 @@ interface Activity {
 - [ ] agent-card 系统 agent 排除：`__spirit__` 及 `__` 前缀 agent 不显示输入栏
 - [ ] agent 暂停 API：`POST /v1/chat/sessions/{id}/pause`（参数为 sessionId）
 - [ ] agent 注入 API：`POST /v1/chat/enqueue`（参数为 session_id + content）
+- [ ] agent-card 自动折叠：agent 完成时自动折叠为终态（用户未操作时）；running 默认展开
+- [ ] agent-card 自动滚动：running + 展开时实时滚动到底部；用户手动滚动后 10s 恢复自动滚动（`useActivityAutoScroll`）
+- [ ] agent-card 标题栏最新动作：三段式 header 中间区域实时显示最新 step 的图标+简短文本（thinking→思考中、action→工具名、reply→回复中）
+- [ ] agent-card 用户意图优先：用户手动展开/折叠后状态由用户掌控，不被状态变化自动覆盖
+- [ ] team-card 展开规则：running 默认展开，终态默认折叠，用户意图优先
 - [ ] plan 状态更新：由 team_stage 事件驱动
 - [ ] 进度计算：X/N 简单实现
 - [ ] Team 失败：手动重试
