@@ -165,6 +165,7 @@ func main() {
 		PatternMiningJob:            out.PatternMiningJob,
 		MemoryL2Decay:               out.MemoryL2Decay,
 		MemoryL1Archive:             out.MemoryL1Archive,
+		ChannelTurnJobSweeper:       out.ChannelTurnJobSweeper,
 		MemoryL3Decay:               out.MemoryL3Decay,
 		MemoryL4Decay:               out.MemoryL4Decay,
 		MemoryEbbinghausDecay:       out.MemoryEbbinghausDecay,

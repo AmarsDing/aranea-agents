@@ -31,6 +31,8 @@ export type PlatformResource = {
   is_system: boolean;
   config_json: string;
   metadata_json: string;
+  dept_lead_agent_id: string;
+  dept_lead_config_json: string;
   capabilities?: {
     text?: boolean;
     vision?: boolean;

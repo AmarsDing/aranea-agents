@@ -23,9 +23,11 @@ func TestChannelTurnJobStateMachine_ValidTransitions(t *testing.T) {
 		{ChannelTurnJobStatusRunning, JobEventTimeout, ChannelTurnJobStatusTimeout},
 		{ChannelTurnJobStatusRunning, JobEventCancel, ChannelTurnJobStatusCancelled},
 		{ChannelTurnJobStatusRunning, JobEventAsyncQueue, ChannelTurnJobStatusAsyncQueued},
+		{ChannelTurnJobStatusRunning, JobEventQueue, ChannelTurnJobStatusQueued},
 		// queued →
 		{ChannelTurnJobStatusQueued, JobEventDequeue, ChannelTurnJobStatusRunning},
 		{ChannelTurnJobStatusQueued, JobEventCancel, ChannelTurnJobStatusCancelled},
+		{ChannelTurnJobStatusQueued, JobEventTimeout, ChannelTurnJobStatusTimeout},
 		// async_queued →
 		{ChannelTurnJobStatusAsyncQueued, JobEventAsyncStart, ChannelTurnJobStatusRunning},
 		{ChannelTurnJobStatusAsyncQueued, JobEventAsyncFail, ChannelTurnJobStatusFailed},
@@ -78,10 +80,9 @@ func TestChannelTurnJobStateMachine_InvalidTransitions(t *testing.T) {
 		{"running→start", ChannelTurnJobStatusRunning, JobEventStart},
 		{"running→dequeue", ChannelTurnJobStatusRunning, JobEventDequeue},
 
-		// queued cannot complete/fail/timeout/start/async_queue
+		// queued cannot complete/fail/start/async_queue (timeout is allowed for sweeper)
 		{"queued→complete", ChannelTurnJobStatusQueued, JobEventComplete},
 		{"queued→fail", ChannelTurnJobStatusQueued, JobEventFail},
-		{"queued→timeout", ChannelTurnJobStatusQueued, JobEventTimeout},
 		{"queued→start", ChannelTurnJobStatusQueued, JobEventStart},
 		{"queued→async_queue", ChannelTurnJobStatusQueued, JobEventAsyncQueue},
 

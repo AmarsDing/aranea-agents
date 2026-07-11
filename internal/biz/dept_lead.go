@@ -3,7 +3,10 @@ package biz
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"text/template"
 	"time"
 
 	"aranea-agents/pkg/apierror"
@@ -89,8 +92,8 @@ func (m *DeptLeadManager) CreateDeptLead(ctx context.Context, deptNode Organizat
 		DisplayName:  fmt.Sprintf("部门主管-%s", deptNode.Name),
 		Kind:         "system_builtin",
 		Source:       "system",
-		PositionID:   "",
-		PositionKey:  "",
+		PositionID:   deptNode.ID,
+		PositionKey:  deptNode.Key,
 		AgentVariant: "dept_lead",
 		Status:       "active",
 		Readonly:     true,
@@ -176,27 +179,91 @@ func (m *DeptLeadManager) GetDeptLeadForTeam(ctx context.Context, deptID string)
 	return &a, nil
 }
 
-// buildDeptLeadPrompt generates the system prompt for a department lead.
-func (m *DeptLeadManager) buildDeptLeadPrompt(dept OrganizationNode) string {
-	desc := strings.TrimSpace(dept.Description)
-	if desc == "" {
-		desc = "（无描述）"
+// GetDeptLeadAgent returns the dept lead agent by its agent ID.
+func (m *DeptLeadManager) GetDeptLeadAgent(ctx context.Context, agentID string) (*Agent, error) {
+	a, err := m.agentUC.Get(ctx, agentID)
+	if err != nil {
+		return nil, err
 	}
-	return fmt.Sprintf(`你是「%s」的部门主管。你的职责：
+	return &a, nil
+}
+
+// extractSystemPrompt extracts the system prompt from an agent's Files.
+// Looks for a file named "system.md"; falls back to empty string if not found.
+func extractSystemPrompt(agent *Agent) string {
+	if agent == nil {
+		return ""
+	}
+	for _, f := range agent.Files {
+		if f.Name == "system.md" {
+			return f.Body
+		}
+	}
+	return ""
+}
+
+// deptLeadPromptData holds the template variables for dept_lead.md.
+type deptLeadPromptData struct {
+	DepartmentName        string
+	DepartmentDescription string
+}
+
+// deptLeadPromptTmpl is the parsed template for dept_lead.md.
+// Parsed once at init; if the file is missing, falls back to inline default.
+var deptLeadPromptTmpl *template.Template
+
+func init() {
+	tmplPath := filepath.Join(ScenarioDir(), "system", "prompts", "dept_lead.md")
+	tmplBytes, err := os.ReadFile(tmplPath)
+	if err != nil {
+		// Fallback: inline template matching dept_lead.md content
+		deptLeadPromptTmpl = template.Must(template.New("dept_lead_fallback").Parse(`# 部门主管
+
+你是「{{.DepartmentName}}」的部门主管。
+
+## 职责
 
 1. **资源协调**：管理本部门的人力资源分配，审批跨部门借调请求
 2. **质量把关**：审核本部门产出的交付物质量
 3. **验收确认**：确认其他部门交付给本部门的工作是否满足需求
 
-审批规则：
+## 审批规则
+
 - 跨部门交付物需要双方主管确认（输出方质量把关 + 接收方验收确认）
 - 借调成员加入其他 Team 时，你需要审批同意
 - 你自动加入本部门的所有 Team
 - 借调请求超过 5 分钟未处理，系统自动批准
 
-部门信息：
-- 部门名称：%s
-- 部门描述：%s`, dept.Name, dept.Name, desc)
+## 部门信息
+
+- 部门名称：{{.DepartmentName}}
+- 部门描述：{{.DepartmentDescription}}`))
+		return
+	}
+	deptLeadPromptTmpl = template.Must(template.New("dept_lead").Parse(string(tmplBytes)))
+}
+
+// buildDeptLeadPrompt generates the system prompt for a department lead
+// by loading and rendering the dept_lead.md template.
+func (m *DeptLeadManager) buildDeptLeadPrompt(dept OrganizationNode) string {
+	desc := strings.TrimSpace(dept.Description)
+	if desc == "" {
+		desc = "（无描述）"
+	}
+	data := deptLeadPromptData{
+		DepartmentName:        dept.Name,
+		DepartmentDescription: desc,
+	}
+	var buf strings.Builder
+	if err := deptLeadPromptTmpl.Execute(&buf, data); err != nil {
+		// Should never happen with a valid template and string data
+		m.lg.Warn("failed to render dept lead prompt template, using fallback",
+			loggateway.StepID("dept_lead.prompt"),
+			loggateway.Err(err),
+		)
+		return fmt.Sprintf("你是「%s」的部门主管。\n\n部门描述：%s", dept.Name, desc)
+	}
+	return buf.String()
 }
 
 // ---------------------------------------------------------------------------

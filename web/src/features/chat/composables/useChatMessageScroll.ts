@@ -2,7 +2,12 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Comput
 import type { Message } from '../types';
 import type { Task } from '../v2Types';
 
-const SCROLL_BOTTOM_THRESHOLD = 80;
+/** Distance from bottom (px) to consider "at the bottom" for immediate recovery. */
+const NEAR_BOTTOM_THRESHOLD = 20;
+/** Distance from bottom (px) to show the "scroll to bottom" button. */
+const SCROLL_BTN_THRESHOLD = 200;
+/** Idle period after the last user scroll before auto-scroll resumes (ms). */
+const RECOVERY_MS = 10_000;
 
 export type ChatMessageScrollOpts = {
   sessionKey: Ref<string> | ComputedRef<string>;
@@ -16,7 +21,18 @@ export type ChatMessageScrollOpts = {
 
 export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
   const showScrollBtn = ref(false);
-  const stickToBottom = ref(true);
+  /**
+   * Time-based auto-scroll model (matching useActivityAutoScroll):
+   * - `recoveryTimer === null`  → auto-scroll is ACTIVE (content changes scroll to bottom)
+   * - `recoveryTimer !== null`  → user scrolled recently, auto-scroll PAUSED (10s cooldown)
+   * - Each user scroll away from bottom resets the 10s timer
+   * - When the timer fires → scroll to bottom & resume auto-scroll
+   * - User scrolls near bottom → clear cooldown (resume immediately)
+   */
+  let recoveryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Distinguishes programmatic scrollToBottom() from user-initiated scrolls. */
+  let programmaticScroll = false;
+
   const highlightedTurnId = ref<string | undefined>(undefined);
   let highlightTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -37,6 +53,10 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
     return maxScrollTop(el) - el.scrollTop;
   }
 
+  function isNearBottom(el: HTMLElement): boolean {
+    return distanceFromBottom(el) <= NEAR_BOTTOM_THRESHOLD;
+  }
+
   function activeScrollEl(): HTMLElement | null {
     return opts.messagesScrollEl.value;
   }
@@ -49,13 +69,48 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
     }
   }
 
+  function clearRecoveryTimer() {
+    if (recoveryTimer) {
+      clearTimeout(recoveryTimer);
+      recoveryTimer = null;
+    }
+  }
+
+  /** Whether auto-scroll is currently active (no pending user cooldown). */
+  function isAutoScrollActive(): boolean {
+    return recoveryTimer === null;
+  }
+
   function onMessagesScroll(event?: Event) {
     const el = (event?.target as HTMLElement | undefined) ?? activeScrollEl();
     if (!el) return;
-    clampScrollTop(el, stickToBottom.value);
+
+    // Ignore programmatic scrolls (from scrollToBottom).
+    if (programmaticScroll) {
+      programmaticScroll = false;
+      clampScrollTop(el, true);
+      return;
+    }
+
+    clampScrollTop(el, true);
     const dist = distanceFromBottom(el);
-    showScrollBtn.value = dist > 200;
-    stickToBottom.value = dist <= SCROLL_BOTTOM_THRESHOLD;
+    showScrollBtn.value = dist > SCROLL_BTN_THRESHOLD;
+
+    // User scrolled near the bottom — treat as "still following", resume immediately.
+    if (isNearBottom(el)) {
+      clearRecoveryTimer();
+      return;
+    }
+
+    // User scrolled away from bottom — (re)start the 10s recovery timer.
+    clearRecoveryTimer();
+    recoveryTimer = setTimeout(() => {
+      recoveryTimer = null;
+      // 10s of no user scrolling — resume auto-scroll immediately.
+      void nextTick(() => {
+        void scrollToBottom(false);
+      });
+    }, RECOVERY_MS);
   }
 
   async function scrollToBottom(smooth = false) {
@@ -63,8 +118,8 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
     if (!el) return;
     clampScrollTop(el, true);
     const top = maxScrollTop(el);
+    programmaticScroll = true;
     el.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' });
-    stickToBottom.value = true;
     showScrollBtn.value = false;
   }
 
@@ -76,9 +131,9 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
       if (!el) continue;
       clampScrollTop(el, preferBottom);
       const top = preferBottom ? maxScrollTop(el) : 0;
+      programmaticScroll = true;
       el.scrollTop = top;
-      if (preferBottom && el.clientHeight > 0 && distanceFromBottom(el) <= SCROLL_BOTTOM_THRESHOLD) {
-        stickToBottom.value = true;
+      if (preferBottom && el.clientHeight > 0 && isNearBottom(el)) {
         showScrollBtn.value = false;
         return;
       }
@@ -88,10 +143,11 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
     }
   }
 
+  // Session switched: clear any user cooldown and scroll to bottom.
   watch(
     () => opts.sessionKey.value,
     () => {
-      stickToBottom.value = true;
+      clearRecoveryTimer();
       showScrollBtn.value = false;
       void alignMessageScroll(true);
     },
@@ -102,11 +158,13 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
     (len, prev) => {
       if (len === 0) return;
       if (prev === 0) {
-        stickToBottom.value = true;
+        // First message — clear cooldown and scroll to bottom.
+        clearRecoveryTimer();
         void alignMessageScroll(true);
         return;
       }
-      if (!stickToBottom.value) return;
+      // Auto-scroll only if no pending user cooldown.
+      if (!isAutoScrollActive()) return;
       void scrollToBottom(false);
     },
   );
@@ -120,11 +178,11 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
     (len, prev) => {
       if (len === 0) return;
       if (prev === 0) {
-        stickToBottom.value = true;
+        clearRecoveryTimer();
         void alignMessageScroll(true);
         return;
       }
-      if (!stickToBottom.value) return;
+      if (!isAutoScrollActive()) return;
       scheduleScrollToBottom();
     },
   );
@@ -145,13 +203,13 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
   });
   watch(lastFinalReplySignature, (sig, prev) => {
     if (!sig || sig === prev) return;
-    if (!stickToBottom.value) return;
+    if (!isAutoScrollActive()) return;
     scheduleScrollToBottom();
   });
 
   onMounted(() => {
     if (opts.messages.value.length > 0) {
-      stickToBottom.value = true;
+      clearRecoveryTimer();
       void alignMessageScroll(true);
     }
   });
@@ -174,7 +232,7 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
   watch(
     () => opts.messages.value[opts.messages.value.length - 1]?.content_markdown ?? '',
     () => {
-      if (!stickToBottom.value) return;
+      if (!isAutoScrollActive()) return;
       const now = Date.now();
       const elapsed = now - scrollStickLastRun;
       if (elapsed >= SCROLL_STICK_THROTTLE_MS) {
@@ -187,7 +245,7 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
         if (scrollStickTrailingTimer) clearTimeout(scrollStickTrailingTimer);
         scrollStickTrailingTimer = setTimeout(() => {
           scrollStickTrailingTimer = null;
-          if (!stickToBottom.value) return;
+          if (!isAutoScrollActive()) return;
           scheduleScrollToBottom();
         }, SCROLL_STICK_THROTTLE_MS - elapsed);
       }
@@ -195,6 +253,7 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
   );
 
   onBeforeUnmount(() => {
+    clearRecoveryTimer();
     if (scrollStickRaf) cancelAnimationFrame(scrollStickRaf);
     if (scrollStickTrailingTimer) clearTimeout(scrollStickTrailingTimer);
     if (highlightTimer) clearTimeout(highlightTimer);

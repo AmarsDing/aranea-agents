@@ -30,6 +30,8 @@ function wireCronTask(t: WireCronTask | null | undefined): PlatformResource {
     is_system: false,
     config_json: t?.configJson ?? '',
     metadata_json: t?.metadataJson ?? '',
+    dept_lead_agent_id: '',
+    dept_lead_config_json: '{}',
     created_at: t?.createdAt ?? '',
     updated_at: t?.updatedAt ?? '',
     deleted_at: t?.deletedAt ?? '',

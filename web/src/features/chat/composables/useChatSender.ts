@@ -512,6 +512,23 @@ export function useChatSender(deps: SenderDeps) {
         if (!followUp) markSendingDone();
         return;
       }
+      // If the session was pre-created (e.g. user clicked "新会话") with the
+      // default title "新对话", rename it to the first message content.
+      // ensureSession is a no-op when a session already exists, so without
+      // this check the title would stay "新对话" forever.
+      const defaultTitle = t('chat.untitledSession');
+      const currentTitle =
+        entityKind === 'team'
+          ? deps.sessionStore.teamSessions[deps.sessionStore.selectedTeamId ?? '']?.find(
+              (s) => s.id === sessionId,
+            )?.title
+          : deps.sessionStore.selectedSession?.title;
+      if (currentTitle === defaultTitle || !currentTitle) {
+        const newTitle = deps.makeSessionTitle(text);
+        if (newTitle && newTitle !== defaultTitle) {
+          void deps.sessionStore.renameSessionByKind(sessionId, newTitle);
+        }
+      }
       if (!followUp) {
         markSending(sessionId);
       }

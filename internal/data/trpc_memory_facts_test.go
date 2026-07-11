@@ -48,7 +48,7 @@ func openTestDataForMemory(t *testing.T) (*data.Data, *ent.Client) {
  archived_at TEXT NOT NULL DEFAULT '', deleted_at TEXT NOT NULL DEFAULT '',
  valid_from TEXT NOT NULL DEFAULT '', valid_until TEXT NOT NULL DEFAULT '',
  links TEXT NOT NULL DEFAULT '[]', keywords TEXT NOT NULL DEFAULT '[]', tags TEXT NOT NULL DEFAULT '[]',
- decay_score REAL NOT NULL DEFAULT 1.0,
+ decay_score REAL NOT NULL DEFAULT 1.0, context_note TEXT NOT NULL DEFAULT '',
  UNIQUE(scope_type, scope_id, fingerprint))`,
 		`CREATE TABLE IF NOT EXISTS memory_action_log (
  id TEXT PRIMARY KEY, action TEXT NOT NULL, target_kind TEXT NOT NULL, target_id TEXT NOT NULL,

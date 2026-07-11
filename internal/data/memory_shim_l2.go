@@ -25,6 +25,12 @@ func newL2EpisodeRepo(data *Data, vs vector.VectorStore) *l2EpisodeRepo {
 	return &l2EpisodeRepo{data: data, vectorStore: vs}
 }
 
+// NewL2RecallStore creates a biz.L2RecallStore backed by data.
+// Used by EpisodeConsolidator (Phase 6A-06) for reading L2 episodes.
+func NewL2RecallStore(data *Data, vs vector.VectorStore) biz.L2RecallStore {
+	return newL2EpisodeRepo(data, vs)
+}
+
 // Compile-time interface checks.
 var (
 	_ biz.L2EpisodeWriter = (*l2EpisodeRepo)(nil)

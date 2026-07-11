@@ -67,6 +67,7 @@ type ChannelTurnJobReader interface {
 	ListByChannel(ctx context.Context, channelID string, limit int) ([]ChannelTurnJob, error)
 	ListFiltered(ctx context.Context, q ChannelTurnJobListQuery) ([]ChannelTurnJob, error)
 	ListActiveBySession(ctx context.Context, channelID, sessionID string) ([]ChannelTurnJob, error)
+	ListStaleByStatus(ctx context.Context, status, beforeUpdatedAt string, limit int) ([]ChannelTurnJob, error)
 }
 
 // ChannelTurnJobRepo persists channel turn jobs.

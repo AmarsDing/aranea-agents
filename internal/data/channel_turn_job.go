@@ -347,3 +347,36 @@ ORDER BY created_at DESC`, terminalPlaceholders))
 	}
 	return out, nil
 }
+
+// ListStaleByStatus returns jobs in the given status whose updated_at is older than the cutoff.
+// Used by the sweeper to find timed-out queued jobs and orphaned async_queued jobs.
+func (r *channelTurnJobRepo) ListStaleByStatus(ctx context.Context, status, beforeUpdatedAt string, limit int) ([]biz.ChannelTurnJob, error) {
+	if r == nil || r.data == nil {
+		return nil, nil
+	}
+	status = strings.TrimSpace(status)
+	beforeUpdatedAt = strings.TrimSpace(beforeUpdatedAt)
+	if status == "" || beforeUpdatedAt == "" {
+		return nil, nil
+	}
+	limit = biz.NormalizeChannelTurnJobListLimit(limit)
+	db := r.data.RWDB().ReadDB(ctx)
+	if db == nil {
+		return nil, nil
+	}
+	rows, err := db.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(channelTurnJobSelectSQL+` WHERE status = ? AND updated_at < ? ORDER BY updated_at ASC LIMIT ?`),
+		status, beforeUpdatedAt, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []biz.ChannelTurnJob
+	for rows.Next() {
+		j, err := scanChannelTurnJobRow(rows)
+		if err != nil {
+			return out, err
+		}
+		out = append(out, j)
+	}
+	return out, nil
+}

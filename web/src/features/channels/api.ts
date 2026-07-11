@@ -67,6 +67,8 @@ function kratosChannelToLegacy(k: KratosChannel): ChannelRow {
     is_system: false,
     config_json: k.configJson ?? '',
     metadata_json: k.metadataJson ?? '',
+    dept_lead_agent_id: '',
+    dept_lead_config_json: '{}',
     created_at: k.createdAt ?? '',
     updated_at: k.updatedAt ?? '',
     deleted_at: k.deletedAt ?? '',

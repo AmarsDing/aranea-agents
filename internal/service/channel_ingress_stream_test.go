@@ -20,7 +20,7 @@ func TestProcessInboundStreamingUnsupportedPlatformUnaryFallback(t *testing.T) {
 	var preview string
 	var previewMsgID string
 	var queued bool
-	err := h.processInboundStreaming(context.Background(), ch, ev, "dingtalk", ltCfg, "", &preview, &previewMsgID, &queued)
+	err := h.processInboundStreaming(context.Background(), ch, ev, "dingtalk", ltCfg, "", biz.TurnInput{}, &preview, &previewMsgID, &queued)
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}

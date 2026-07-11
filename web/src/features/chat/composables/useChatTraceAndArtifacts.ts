@@ -28,7 +28,10 @@ export function useChatTraceDialog(
 
   async function loadTimeline() {
     const sessionId = String(traceSessionId.value ?? '').trim();
-    if (!traceOpen.value || !sessionId || traceInitialTab.value !== 'trace') return;
+    // 预加载：dialog 打开时即加载 trace 数据，不论 initialTab。
+    // 用户从 events Tab 进入后切到 trace Tab 时可立即看到数据，
+    // 切换时通过 SessionTimelineDialog 的 refresh-trace 事件触发刷新。
+    if (!traceOpen.value || !sessionId) return;
     timelineLoading.value = true;
     timelineError.value = '';
     try {

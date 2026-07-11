@@ -59,3 +59,48 @@ func TestEffectiveL3MinScore_PassiveSkipsFilter(t *testing.T) {
 		t.Fatalf("query min score should apply, got %v", got)
 	}
 }
+
+// TestResolveMemoryRuntimePolicy_LinkEvolutionAndEpisodeConsolidation verifies
+// that Phase 6A-03 T9 and 6A-06 T8 policy fields are set correctly.
+func TestResolveMemoryRuntimePolicy_LinkEvolutionAndEpisodeConsolidation(t *testing.T) {
+	// Memory enabled, L3 enabled → link evolution should be on.
+	p := ResolveMemoryRuntimePolicy(&AgentRuntimeSettings{
+		MemoryEnabled: true,
+		L3Enabled:     true,
+		L0InjectL3:    true,
+	})
+	if !p.LinkEvolutionEnabled {
+		t.Errorf("expected LinkEvolutionEnabled=true when L3 enabled")
+	}
+	if !p.EpisodeConsolidationEnabled {
+		t.Errorf("expected EpisodeConsolidationEnabled=true when memory enabled")
+	}
+	if p.EpisodeMinImportance != 0.3 {
+		t.Errorf("expected EpisodeMinImportance=0.3, got %v", p.EpisodeMinImportance)
+	}
+
+	// Memory enabled, L3 disabled → link evolution should be off.
+	p2 := ResolveMemoryRuntimePolicy(&AgentRuntimeSettings{
+		MemoryEnabled: true,
+		L3Enabled:     false,
+	})
+	if p2.LinkEvolutionEnabled {
+		t.Errorf("expected LinkEvolutionEnabled=false when L3 disabled")
+	}
+	// Episode consolidation should still be on (it's gated by MasterEnabled, not L3).
+	if !p2.EpisodeConsolidationEnabled {
+		t.Errorf("expected EpisodeConsolidationEnabled=true even when L3 disabled")
+	}
+
+	// Memory disabled → all off.
+	p3 := ResolveMemoryRuntimePolicy(&AgentRuntimeSettings{
+		MemoryEnabled: false,
+		L3Enabled:     true, // ignored when master off
+	})
+	if p3.LinkEvolutionEnabled {
+		t.Errorf("expected LinkEvolutionEnabled=false when memory disabled")
+	}
+	if p3.EpisodeConsolidationEnabled {
+		t.Errorf("expected EpisodeConsolidationEnabled=false when memory disabled")
+	}
+}

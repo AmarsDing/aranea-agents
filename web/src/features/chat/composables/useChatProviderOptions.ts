@@ -51,6 +51,8 @@ function chatModelOptionsToPlatform(rows: ChatOption[]): PlatformResource[] {
         is_system: false,
         config_json: '{}',
         metadata_json: item.metadata_json,
+        dept_lead_agent_id: '',
+        dept_lead_config_json: '{}',
         capabilities,
         created_at: '',
         updated_at: '',

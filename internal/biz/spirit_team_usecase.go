@@ -459,6 +459,20 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 		u.submitBorrowRequests(ctx, result.Team.ID, params.DepartmentID, params.CrossDeptMemberAgentIDs)
 	}
 
+	// Inject dept lead into team (DL-06): explicit injection point in the
+	// Spirit orchestration flow. team_usecase.go auto-inherits DeptLeadAgentID
+	// during Create, but this serves as the explicit step per design Phase 3.
+	if params.DepartmentID != "" {
+		if injectErr := u.InjectDeptLeadIntoTeam(ctx, result.Team.ID); injectErr != nil {
+			u.lg.Warn("注入部门主管失败",
+				loggateway.StepID("spirit.assemble.inject_dept_lead"),
+				loggateway.Str("team_id", result.Team.ID),
+				loggateway.Str("dept_id", params.DepartmentID),
+				loggateway.Err(injectErr),
+			)
+		}
+	}
+
 	return result, nil
 }
 

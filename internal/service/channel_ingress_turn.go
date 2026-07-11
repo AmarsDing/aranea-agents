@@ -11,29 +11,10 @@ import (
 	"aranea-agents/pkg/apierror"
 )
 
+// runChatTurnWithOutcome resolves the session and executes a single chat turn attempt.
+// Callers that already have a TurnInput should use runChatTurnWithInput instead to
+// avoid redundant prepareChannelChatRequest / ensureChannelSession DB calls.
 func (h *ChannelIngress) runChatTurnWithOutcome(ctx context.Context, chRow biz.Channel, platform string, ev port.InboundEvent) (biz.ChannelTurnResult, error) {
-	var last biz.ChannelTurnResult
-	var lastErr error
-	for attempt := 0; attempt < channelTurnBusyRetries; attempt++ {
-		if attempt > 0 {
-			timer := time.NewTimer(channelTurnBusyBackoff)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return biz.ChannelTurnResult{}, ctx.Err()
-			case <-timer.C:
-			}
-		}
-		result, err := h.runChatTurnWithOutcomeOnce(ctx, chRow, platform, ev)
-		last, lastErr = result, err
-		if err == nil || !isTurnBusyError(err) {
-			return result, err
-		}
-	}
-	return last, lastErr
-}
-
-func (h *ChannelIngress) runChatTurnWithOutcomeOnce(ctx context.Context, chRow biz.Channel, platform string, ev port.InboundEvent) (biz.ChannelTurnResult, error) {
 	if h == nil || h.chat == nil {
 		return biz.ChannelTurnResult{}, nil
 	}
@@ -45,6 +26,15 @@ func (h *ChannelIngress) runChatTurnWithOutcomeOnce(ctx context.Context, chRow b
 	input, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text, channelAllowQueueFromConfig(chRow.ConfigJSON))
 	if err != nil {
 		return biz.ChannelTurnResult{}, err
+	}
+	return h.runChatTurnWithInput(ctx, chRow, platform, input)
+}
+
+// runChatTurnWithInput executes a chat turn using a pre-resolved TurnInput,
+// skipping the prepareChannelChatRequest / ensureChannelSession DB round-trip.
+func (h *ChannelIngress) runChatTurnWithInput(ctx context.Context, chRow biz.Channel, platform string, input biz.TurnInput) (biz.ChannelTurnResult, error) {
+	if h == nil || h.chat == nil {
+		return biz.ChannelTurnResult{}, nil
 	}
 	sessionID := strings.TrimSpace(input.SessionID)
 	h.maybeInterruptActiveTurn(ctx, chRow, sessionID)

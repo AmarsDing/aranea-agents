@@ -8,7 +8,7 @@ import (
 	"aranea-agents/internal/channel/port"
 )
 
-func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string, ltCfg biz.ChannelLongTaskConfig, sessionID string, contentPreview *string, previewMessageID *string, turnQueued *bool) error {
+func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string, ltCfg biz.ChannelLongTaskConfig, sessionID string, turnInput biz.TurnInput, contentPreview *string, previewMessageID *string, turnQueued *bool) error {
 	meta := ev.OutboundMeta
 	if meta == nil {
 		meta = map[string]string{}
@@ -18,7 +18,7 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 		return err
 	}
 	if updater == nil {
-		preview, msgID, queued, err := h.processInboundUnaryWithOutcome(ctx, chRow, ev, platform, ltCfg, sessionID)
+		preview, msgID, queued, err := h.processInboundUnaryWithOutcome(ctx, chRow, ev, platform, ltCfg, sessionID, turnInput)
 		if contentPreview != nil {
 			*contentPreview = preview
 		}
@@ -31,14 +31,6 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 		return err
 	}
 
-	peerKey, err := h.inboundPeerKey(chRow, ev)
-	if err != nil {
-		return err
-	}
-	turnInput, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text, channelAllowQueueFromConfig(chRow.ConfigJSON))
-	if err != nil {
-		return err
-	}
 	if sessionID == "" {
 		sessionID = strings.TrimSpace(turnInput.SessionID)
 	}

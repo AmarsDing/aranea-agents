@@ -113,6 +113,8 @@ function platformResourceFromWire(raw: unknown): PlatformResource {
     is_system: Boolean(r.is_system ?? r.isSystem ?? false),
     config_json: String(r.config_json ?? r.configJson ?? '{}'),
     metadata_json: String(r.metadata_json ?? r.metadataJson ?? '{}'),
+    dept_lead_agent_id: '',
+    dept_lead_config_json: '{}',
     created_at: String(r.created_at ?? r.createdAt ?? ''),
     updated_at: String(r.updated_at ?? r.updatedAt ?? ''),
     deleted_at: String(r.deleted_at ?? r.deletedAt ?? ''),

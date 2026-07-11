@@ -111,6 +111,10 @@ var ddlMigrations = []ddlMigration{
 	// 20261003 plan_step_agent_keys: add agent_keys column to plan_steps_v2.
 	// PlanStep 携带 LLM 分配的 agent key 列表，RealTeamOrchestrator 优先使用此字段。
 	{Version: 20261003, Name: "plan_step_agent_keys", SQL: "sql/migrations/20261003_plan_step_agent_keys.sql"},
+	// 20261004 memory_context_note: add context_note column to memory_facts for
+	// A-MEM style memory evolution (Phase 6A-03). Stores LLM-generated contextual
+	// annotation explaining how this fact relates to / evolved from related memories.
+	{Version: 20261004, Name: "memory_context_note", SQL: "sql/migrations/20261004_memory_context_note.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

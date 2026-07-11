@@ -211,7 +211,10 @@ func (u *OrganizationUsecase) Update(ctx context.Context, id string, patch Organ
 	merged.SortOrder = patch.SortOrder
 	merged.ParentID = patch.ParentID
 	merged.Level = patch.Level
-	merged.ScenarioKey = patch.ScenarioKey
+	// ScenarioKey is NOT in the proto message, so patch.ScenarioKey is always "".
+	// Preserve it from current to avoid clearing on every update.
+	// DeptLeadAgentID and DeptLeadConfigJSON are also preserved from current
+	// (via merged := current above) — they should only be mutated by DeptLeadManager.
 	merged.WorkspaceID = patch.WorkspaceID
 	merged.OwnerUserID = patch.OwnerUserID
 	merged.IsSystem = patch.IsSystem

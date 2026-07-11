@@ -30,6 +30,8 @@ function mcpRowToPlatform(raw: unknown): PlatformResource {
     is_system: false,
     config_json: pickStr(r, 'config_json', 'configJson'),
     metadata_json: pickStr(r, 'metadata_json', 'metadataJson'),
+    dept_lead_agent_id: '',
+    dept_lead_config_json: '{}',
     created_at: pickStr(r, 'created_at', 'createdAt'),
     updated_at: pickStr(r, 'updated_at', 'updatedAt'),
     deleted_at: pickStr(r, 'deleted_at', 'deletedAt'),

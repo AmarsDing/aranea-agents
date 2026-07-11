@@ -108,6 +108,10 @@ func (s *turnJobRepoStub) ListActiveBySession(_ context.Context, channelID, sess
 	return out, nil
 }
 
+func (s *turnJobRepoStub) ListStaleByStatus(_ context.Context, status, beforeUpdatedAt string, limit int) ([]ChannelTurnJob, error) {
+	return nil, nil
+}
+
 func TestChannelTurnJobUsecaseCreateAcceptedReturnsStableID(t *testing.T) {
 	repo := &turnJobRepoStub{jobs: map[string]ChannelTurnJob{}}
 	uc := NewChannelTurnJobUsecase(nil, repo)

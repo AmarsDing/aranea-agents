@@ -15,8 +15,10 @@
 //	Running --> Timeout : timeout
 //	Running --> Cancelled : cancel
 //	Running --> AsyncQueued : async_queue
+//	Running --> Queued : queue
 //	Queued --> Running : dequeue
 //	Queued --> Cancelled : cancel
+//	Queued --> Timeout : timeout
 //	AsyncQueued --> Running : async_start
 //	AsyncQueued --> Failed : async_fail
 //	AsyncQueued --> Cancelled : async_cancel
@@ -88,9 +90,11 @@ var channelTurnJobTransitionRules = []shared.TransitionRule[ChannelTurnJobState,
 	{From: ChannelTurnJobStateRunning, Event: ChannelTurnJobEventTimeout, To: ChannelTurnJobStateTimeout},
 	{From: ChannelTurnJobStateRunning, Event: ChannelTurnJobEventCancel, To: ChannelTurnJobStateCancelled},
 	{From: ChannelTurnJobStateRunning, Event: ChannelTurnJobEventAsyncQueue, To: ChannelTurnJobStateAsyncQueued},
+	{From: ChannelTurnJobStateRunning, Event: ChannelTurnJobEventQueue, To: ChannelTurnJobStateQueued},
 	// queued →
 	{From: ChannelTurnJobStateQueued, Event: ChannelTurnJobEventDequeue, To: ChannelTurnJobStateRunning},
 	{From: ChannelTurnJobStateQueued, Event: ChannelTurnJobEventCancel, To: ChannelTurnJobStateCancelled},
+	{From: ChannelTurnJobStateQueued, Event: ChannelTurnJobEventTimeout, To: ChannelTurnJobStateTimeout},
 	// async_queued →
 	{From: ChannelTurnJobStateAsyncQueued, Event: ChannelTurnJobEventAsyncStart, To: ChannelTurnJobStateRunning},
 	{From: ChannelTurnJobStateAsyncQueued, Event: ChannelTurnJobEventAsyncFail, To: ChannelTurnJobStateFailed},

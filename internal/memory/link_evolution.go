@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -34,6 +35,18 @@ const (
 	// evolutionFactScopeTypeAgent is the scope type for agent-scoped facts,
 	// matching the constant used in internal/memory/trpc/sqlite_adapter.go.
 	evolutionFactScopeTypeAgent = "agent"
+)
+
+// Link type constants for A-MEM style memory evolution (Phase 6A-03).
+const (
+	// LinkTypeRelatedTo indicates a bidirectional association between two
+	// memories that share a topic, entity, or concept. Both memories remain
+	// valid. This is the default link type when the LLM does not specify one.
+	LinkTypeRelatedTo = "RELATED_TO"
+	// LinkTypeEvolvedFrom indicates the new memory evolves from / supersedes
+	// the historical memory. The historical memory is invalidated (valid_until
+	// set) because the new memory represents a more current or refined version.
+	LinkTypeEvolvedFrom = "EVOLVED_FROM"
 )
 
 // LinkEvolutionService analyses newly added memories and evolves the memory
@@ -68,16 +81,37 @@ type TxProvider interface {
 	ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
+// L4RelationWriter is the narrow interface for writing L4 memory relations
+// during link evolution (Phase 6A-03). nil-safe: when not wired, EVOLVED_FROM
+// links skip L4 relation creation (graceful degradation).
+type L4RelationWriter interface {
+	UpsertRelation(ctx context.Context, params biz.L4RelationWrite) error
+}
+
 // LinkEvolutionServiceImpl is the default LinkEvolutionService implementation.
 // It uses an LLM to extract keywords and judge links, and persists the
 // resulting links/keywords via the fact reader/writer ports.
 type LinkEvolutionServiceImpl struct {
-	llm        trpcmodel.Model
-	factReader biz.L3FactReader
-	factWriter biz.L3FactWriter
-	queue      EvolutionQueue
-	tx         TxProvider
-	lg         loggateway.Logger
+	llm             trpcmodel.Model
+	factReader      biz.L3FactReader
+	factWriter      biz.L3FactWriter
+	queue           EvolutionQueue
+	tx              TxProvider
+	relationWriter  L4RelationWriter  // optional: nil → skip L4 relation creation
+	actionLogWriter biz.MemoryActionLogWriter // optional: nil → skip action_log
+	lg              loggateway.Logger
+
+	// Phase 6A-03 T8: per-agent throttle. When throttleInterval > 0, LLM
+	// analysis is skipped if the last call for the same agent (uk.AppName)
+	// was less than throttleInterval ago. Prevents LLM cost spikes when
+	// many memories are added in rapid succession. 0 = no throttle.
+	throttleInterval time.Duration
+	lastLLMCall      sync.Map // agentKey(string) → time.Time
+
+	// Phase 6A-03 T9: global evolution kill switch. When false, EvolveLinks
+	// is a no-op. Per-agent control via MemoryRuntimePolicy.LinkEvolutionEnabled
+	// is resolved at the adapter call site (future enhancement).
+	linkEvolutionEnabled bool
 }
 
 // NewLinkEvolutionService creates a LinkEvolutionServiceImpl.
@@ -102,13 +136,55 @@ func NewLinkEvolutionService(
 		lg = loggateway.NewNoop()
 	}
 	return &LinkEvolutionServiceImpl{
-		llm:        llm,
-		factReader: factReader,
-		factWriter: factWriter,
-		queue:      queue,
-		tx:         tx,
-		lg:         lg.With(loggateway.Domain("link_evolution")),
+		llm:                  llm,
+		factReader:           factReader,
+		factWriter:           factWriter,
+		queue:                queue,
+		tx:                   tx,
+		lg:                   lg.With(loggateway.Domain("link_evolution")),
+		linkEvolutionEnabled: true, // T9: enabled by default
 	}
+}
+
+// SetRelationWriter wires the L4 relation writer for EVOLVED_FROM link
+// processing. When nil (default), EVOLVED_FROM links skip L4 relation creation.
+func (s *LinkEvolutionServiceImpl) SetRelationWriter(rw L4RelationWriter) {
+	if s == nil {
+		return
+	}
+	s.relationWriter = rw
+}
+
+// SetActionLogWriter wires the action log writer for auditing evolution
+// decisions. When nil (default), evolution actions are not logged to
+// memory_action_log.
+func (s *LinkEvolutionServiceImpl) SetActionLogWriter(aw biz.MemoryActionLogWriter) {
+	if s == nil {
+		return
+	}
+	s.actionLogWriter = aw
+}
+
+// SetThrottleInterval sets the minimum interval between LLM analysis calls
+// per agent (Phase 6A-03 T8). When d > 0, EvolveLinks skips LLM analysis if
+// the last call for the same agent (uk.AppName) was less than d ago.
+// When d == 0 (default), throttling is disabled.
+func (s *LinkEvolutionServiceImpl) SetThrottleInterval(d time.Duration) {
+	if s == nil {
+		return
+	}
+	s.throttleInterval = d
+}
+
+// SetLinkEvolutionEnabled toggles link evolution globally (Phase 6A-03 T9).
+// When false, EvolveLinks is a no-op (returns nil, nil). Default: true.
+// Per-agent control via MemoryRuntimePolicy.LinkEvolutionEnabled should be
+// enforced at the adapter call site; this setter is a global kill switch.
+func (s *LinkEvolutionServiceImpl) SetLinkEvolutionEnabled(enabled bool) {
+	if s == nil {
+		return
+	}
+	s.linkEvolutionEnabled = enabled
 }
 
 // EnqueueEvolution enqueues a link evolution job for the given user key and
@@ -173,6 +249,10 @@ func (s *LinkEvolutionServiceImpl) EvolveLinks(ctx context.Context, uk trpcmemor
 	if s == nil {
 		return nil, nil
 	}
+	// T9: global kill switch.
+	if !s.linkEvolutionEnabled {
+		return nil, nil
+	}
 	// Red line #26: nil defense for external input.
 	if newEntry == nil || newEntry.Memory == nil {
 		s.lg.Warn("link evolution skipped: nil new entry",
@@ -191,6 +271,22 @@ func (s *LinkEvolutionServiceImpl) EvolveLinks(ctx context.Context, uk trpcmemor
 			loggateway.Str("app", uk.AppName),
 			loggateway.Str("user", uk.UserID))
 		return nil, nil
+	}
+	// T8: per-agent throttle. Skip LLM analysis if called too soon.
+	if s.throttleInterval > 0 {
+		agentKey := uk.AppName
+		now := time.Now()
+		if last, ok := s.lastLLMCall.Load(agentKey); ok {
+			if lastTime, ok := last.(time.Time); ok && now.Sub(lastTime) < s.throttleInterval {
+				remaining := s.throttleInterval - now.Sub(lastTime)
+				s.lg.Debug("link evolution throttled: too soon since last call",
+					loggateway.Str("app", uk.AppName),
+					loggateway.Str("user", uk.UserID),
+					loggateway.Str("remaining", remaining.String()))
+				return nil, nil
+			}
+		}
+		s.lastLLMCall.Store(agentKey, now)
 	}
 
 	newMemText := strings.TrimSpace(newEntry.Memory.Memory)
@@ -250,6 +346,7 @@ func (s *LinkEvolutionServiceImpl) EvolveLinks(ctx context.Context, uk trpcmemor
 	// (see tx.go: txClientKey detection), so all writes participate in the
 	// same transaction.
 	applyBacklinks := func(ctx context.Context) ([]string, error) {
+		now := time.Now().UTC().Format(time.RFC3339Nano)
 		linkedIDs := make([]string, 0, len(result.Links))
 		for _, link := range result.Links {
 			targetID := strings.TrimSpace(link.TargetID)
@@ -273,8 +370,31 @@ func (s *LinkEvolutionServiceImpl) EvolveLinks(ctx context.Context, uk trpcmemor
 			upsert := factRowToUpsert(*targetRow)
 			upsert.LinksJSON = encodeStringArray(updatedLinks)
 			upsert.KeywordsJSON = encodeStringArray(updatedKeywords)
+
+			// EVOLVED_FROM: invalidate the old fact (set valid_until) and
+			// attach the LLM-generated context_note explaining the evolution.
+			// RELATED_TO: optionally attach context_note for the association.
+			if link.LinkType == LinkTypeEvolvedFrom {
+				if strings.TrimSpace(targetRow.ValidUntil) == "" {
+					upsert.ValidUntil = now
+				}
+				if link.ContextNote != "" {
+					upsert.ContextNote = link.ContextNote
+				}
+			} else if link.ContextNote != "" {
+				// For RELATED_TO, append context_note if the old fact doesn't already have one.
+				if strings.TrimSpace(targetRow.ContextNote) == "" {
+					upsert.ContextNote = link.ContextNote
+				}
+			}
+
 			if _, upErr := s.factWriter.UpsertFactRow(ctx, upsert); upErr != nil {
 				return nil, fmt.Errorf("update historical memory %s: %w", targetID, upErr)
+			}
+
+			// EVOLVED_FROM: create L4 memory_relations entry and action_log.
+			if link.LinkType == LinkTypeEvolvedFrom {
+				s.applyEvolvedFromSideEffects(ctx, newEntry.ID, targetRow, link, now)
 			}
 			linkedIDs = append(linkedIDs, targetID)
 		}
@@ -346,6 +466,46 @@ func (s *LinkEvolutionServiceImpl) updateNewMemoryLinks(ctx context.Context, uk 
 	return err
 }
 
+// applyEvolvedFromSideEffects creates the L4 memory_relations entry and
+// action_log record for an EVOLVED_FROM link. Both are best-effort:
+// failures are logged as warnings and do not abort the evolution batch.
+func (s *LinkEvolutionServiceImpl) applyEvolvedFromSideEffects(ctx context.Context, newFactID string, oldFact *factRowData, link linkDecision, now string) {
+	// L4 memory_relations entry: new fact EVOLVED_FROM old fact.
+	if s.relationWriter != nil && oldFact != nil {
+		rel := biz.L4RelationWrite{
+			ScopeType:    oldFact.ScopeType,
+			ScopeID:      oldFact.ScopeID,
+			SourceID:     newFactID,
+			TargetID:     oldFact.ID,
+			RelationType: LinkTypeEvolvedFrom,
+			Weight:       1.0,
+			Confidence:   0.8,
+		}
+		if err := s.relationWriter.UpsertRelation(ctx, rel); err != nil {
+			s.lg.Warn("link evolution: L4 relation creation failed",
+				loggateway.Str("source", newFactID),
+				loggateway.Str("target", oldFact.ID),
+				loggateway.Err(err))
+		}
+	}
+
+	// action_log: audit trail for the evolution decision.
+	if s.actionLogWriter != nil {
+		rec := biz.MemoryPolicyRecord{
+			Action:        "evolve_link",
+			TargetKind:    "memory_fact",
+			TargetID:      oldFact.ID,
+			Reason:        link.Reason,
+			PolicyVersion: "link_evolution_v1",
+		}
+		if err := s.actionLogWriter.WriteMemoryActionLog(ctx, rec); err != nil {
+			s.lg.Warn("link evolution: action_log write failed",
+				loggateway.Str("target", oldFact.ID),
+				loggateway.Err(err))
+		}
+	}
+}
+
 // linkAnalysisResult holds the LLM-produced keywords and link decisions.
 type linkAnalysisResult struct {
 	Keywords []string       `json:"keywords"`
@@ -354,8 +514,10 @@ type linkAnalysisResult struct {
 
 // linkDecision represents a single link decision from the LLM.
 type linkDecision struct {
-	TargetID string `json:"target_id"`
-	Reason   string `json:"reason,omitempty"`
+	TargetID    string `json:"target_id"`
+	LinkType    string `json:"link_type,omitempty"` // RELATED_TO (default) | EVOLVED_FROM
+	Reason      string `json:"reason,omitempty"`
+	ContextNote string `json:"context_note,omitempty"` // LLM-generated evolution context annotation
 }
 
 // llmAnalyzeLinks calls the LLM with the new memory and historical memories,
@@ -392,6 +554,15 @@ func (s *LinkEvolutionServiceImpl) llmAnalyzeLinks(ctx context.Context, newID, n
 	if len(result.Keywords) > evolutionKeywordLimit {
 		result.Keywords = result.Keywords[:evolutionKeywordLimit]
 	}
+	// Normalize link_type: default to RELATED_TO for empty/unknown values.
+	for i := range result.Links {
+		lt := strings.ToUpper(strings.TrimSpace(result.Links[i].LinkType))
+		if lt != LinkTypeEvolvedFrom {
+			lt = LinkTypeRelatedTo
+		}
+		result.Links[i].LinkType = lt
+		result.Links[i].ContextNote = strings.TrimSpace(result.Links[i].ContextNote)
+	}
 	return &result, nil
 }
 
@@ -425,13 +596,20 @@ Analyse the new memory and decide which historical memories should be linked to 
 const linkEvolutionSystemPrompt = `You are a memory linking agent. Given a new memory and a list of historical memories, your task is to:
 1. Extract 3-10 keywords that capture the key concepts of the new memory.
 2. Decide which historical memories are related to the new memory and should be linked.
+3. For each link, classify the relationship type and provide a context annotation.
 
 Return a JSON object with this schema:
-{"keywords": ["keyword1", "keyword2"], "links": [{"target_id": "memory-id", "reason": "brief reason"}]}
+{"keywords": ["keyword1", "keyword2"], "links": [{"target_id": "memory-id", "link_type": "RELATED_TO|EVOLVED_FROM", "reason": "brief reason", "context_note": "how this memory relates to or evolves from the target"}]}
+
+Link types:
+- RELATED_TO: the new memory is associated with the historical memory (same topic, entity, or concept). Both memories remain valid. Use this for most links.
+- EVOLVED_FROM: the new memory supersedes, refines, or contradicts the historical memory. The historical memory is no longer the current truth. Use this when the new memory represents a more recent or corrected version of the same fact.
 
 Rules:
 - Only link memories that are genuinely related (same topic, entity, or concept).
 - Do not link a memory to itself.
+- For EVOLVED_FROM links, context_note should explain how the new memory supersedes the old one (e.g., "User's location updated from Beijing to Shanghai").
+- For RELATED_TO links, context_note should explain the nature of the association.
 - If no historical memories are related, return {"keywords": [...], "links": []}.
 - Output ONLY the JSON object, no markdown fences or explanations.`
 
@@ -461,6 +639,7 @@ type factRowData struct {
 	ValidUntil      string  `json:"valid_until"`
 	LinksJSON       string  `json:"links"`
 	KeywordsJSON    string  `json:"keywords"`
+	ContextNote     string  `json:"context_note"`
 }
 
 // parseFactRowData parses a raw JSON byte slice into factRowData.
@@ -500,6 +679,7 @@ func factRowToUpsert(row factRowData) biz.FactUpsert {
 		ValidUntil:      row.ValidUntil,
 		LinksJSON:       row.LinksJSON,
 		KeywordsJSON:    row.KeywordsJSON,
+		ContextNote:     row.ContextNote,
 	}
 }
 

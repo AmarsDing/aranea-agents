@@ -733,3 +733,86 @@ func containsString(arr []string, target string) bool {
 	}
 	return false
 }
+
+// --- Phase 6A-03 T8/T9 tests ---
+
+// TestLinkEvolution_Throttle verifies that when throttleInterval is set,
+// consecutive EvolveLinks calls for the same agent within the interval
+// are skipped (Phase 6A-03 T8).
+func TestLinkEvolution_Throttle(t *testing.T) {
+	reader := newFakeFactReader()
+	reader.rowsByUser["user-1"] = [][]byte{
+		buildFactRowJSON("mem-old-1", "User likes Go"),
+	}
+	reader.rowsByID["mem-new-1"] = [][]byte{
+		buildFactRowJSON("mem-new-1", "User is learning Go"),
+	}
+	writer := newFakeFactWriter()
+	llm := &fakeModel{response: buildLLMResponse(`{"keywords":["go"],"links":[{"target_id":"mem-old-1","reason":"related"}]}`)}
+	svc := NewLinkEvolutionService(llm, reader, writer, nil, newFakeTxProvider(), loggateway.NewNoop())
+	svc.SetThrottleInterval(10 * time.Second) // 10s throttle
+
+	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
+	entry := makeEvolutionEntry("mem-new-1", "User is learning Go")
+
+	// First call: should succeed (no prior call).
+	links1, err := svc.EvolveLinks(context.Background(), uk, entry)
+	if err != nil {
+		t.Fatalf("first call: expected nil error, got %v", err)
+	}
+	if len(links1) != 1 {
+		t.Fatalf("first call: expected 1 link, got %d", len(links1))
+	}
+
+	// Second call within throttle window: should be skipped.
+	links2, err := svc.EvolveLinks(context.Background(), uk, entry)
+	if err != nil {
+		t.Fatalf("second call: expected nil error, got %v", err)
+	}
+	if len(links2) != 0 {
+		t.Fatalf("second call: expected 0 links (throttled), got %d", len(links2))
+	}
+
+	// Different agent: should NOT be throttled (per-agent throttle).
+	uk2 := trpcmemory.UserKey{AppName: "agent-2", UserID: "user-1"}
+	reader.rowsByUser["user-1"] = [][]byte{
+		buildFactRowJSON("mem-old-1", "User likes Go"),
+	}
+	links3, err := svc.EvolveLinks(context.Background(), uk2, entry)
+	if err != nil {
+		t.Fatalf("third call (different agent): expected nil error, got %v", err)
+	}
+	if len(links3) != 1 {
+		t.Fatalf("third call (different agent): expected 1 link, got %d", len(links3))
+	}
+}
+
+// TestLinkEvolution_Disabled verifies that SetLinkEvolutionEnabled(false)
+// makes EvolveLinks a no-op (Phase 6A-03 T9).
+func TestLinkEvolution_Disabled(t *testing.T) {
+	reader := newFakeFactReader()
+	reader.rowsByUser["user-1"] = [][]byte{
+		buildFactRowJSON("mem-old-1", "User likes Go"),
+	}
+	writer := newFakeFactWriter()
+	// LLM would error if called — verifies it's NOT called when disabled.
+	llm := &fakeModel{err: errors.New("LLM should not be called when disabled")}
+	svc := NewLinkEvolutionService(llm, reader, writer, nil, newFakeTxProvider(), loggateway.NewNoop())
+	svc.SetLinkEvolutionEnabled(false)
+
+	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
+	entry := makeEvolutionEntry("mem-new-1", "User is learning Go")
+
+	links, err := svc.EvolveLinks(context.Background(), uk, entry)
+	if err != nil {
+		t.Fatalf("expected nil error when disabled, got %v", err)
+	}
+	if len(links) != 0 {
+		t.Fatalf("expected 0 links when disabled, got %d", len(links))
+	}
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	if len(writer.upserts) != 0 {
+		t.Errorf("expected 0 upserts when disabled, got %d", len(writer.upserts))
+	}
+}

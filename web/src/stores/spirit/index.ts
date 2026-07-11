@@ -15,6 +15,7 @@ import {
 import { i18n } from '../../i18n';
 import type {
   SpiritTeam,
+  SpiritMember,
   SpiritPanelMode,
   SpiritTeamMode,
   SpiritTeamStatus,
@@ -26,6 +27,7 @@ import type {
 } from '../../features/spirit/types';
 import { isValidTeamStatus } from '../../features/spirit/types';
 import type { ActivityEvent } from '../../realtime/activityEvent';
+import type { TeamStage, MemberSession } from '../../features/chat/v2Types';
 
 // --- Spirit Orchestration Event Payloads (inlined from deleted envelope.ts) ---
 // These are type views over ActivityEvent.activity.meta for the spirit orchestration
@@ -816,6 +818,119 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     }
   }
 
+  /**
+   * Phase 3b-D: Upsert a team from a v2 TeamStage event payload.
+   *
+   * The v2 EventBus broadcasts team_stage.created/updated/completed/failed
+   * events carrying a structured TeamStage with a Members field. These reach
+   * the frontend as v2_event envelopes. Without this handler, the spirit
+   * store's teams array is never updated in real-time (only on session switch
+   * via loadSpiritTeams API), causing the left sidebar agent list to be empty
+   * after team assembly.
+   *
+   * This method converts the v2 TeamStage to SpiritTeam fields and upserts
+   * the team, preserving real-time WS-updated fields when merging.
+   */
+  function upsertTeamFromV2TeamStage(ts: TeamStage) {
+    if (!ts.TeamID) return;
+
+    const members: SpiritMember[] = (ts.Members ?? []).map((m) => ({
+      agentId: m.ChildSessionID ?? '',
+      agentKey: m.AgentKey ?? '',
+      displayName: m.AgentName ?? '',
+      role: '',
+      status: m.Status ?? '',
+      avatarUrl: m.AvatarURL ?? '',
+    }));
+
+    const incomingStatus: SpiritTeamStatus = isValidTeamStatus(ts.Status)
+      ? ts.Status
+      : 'pending';
+    const createdAt = ts.StartedAt ? new Date(ts.StartedAt).getTime() : Date.now();
+
+    const existing = teams.value.find((t) => t.id === ts.TeamID);
+    if (existing) {
+      // Merge: update mutable fields from the v2 event, preserve real-time
+      // fields that are more fresh (progressPct from progress events).
+      if (ts.TeamName) existing.teamName = ts.TeamName;
+      if (ts.DagNodeID) existing.dagNodeId = ts.DagNodeID;
+      if (ts.DependsOn) existing.dependsOn = ts.DependsOn;
+      if (ts.SessionID) existing.spiritSessionId = ts.SessionID;
+      // Fill members if empty, or merge profile fields for existing members.
+      if (members.length > 0 && existing.members.length === 0) {
+        existing.members = members;
+      } else if (members.length > 0) {
+        for (const inMember of members) {
+          const existingMember = existing.members.find((m) => m.agentKey === inMember.agentKey);
+          if (!existingMember) {
+            existing.members.push(inMember);
+          } else {
+            // Update status from v2 event (more real-time than API)
+            if (inMember.status) existingMember.status = inMember.status;
+            if (!existingMember.avatarUrl && inMember.avatarUrl) {
+              existingMember.avatarUrl = inMember.avatarUrl;
+            }
+            if (!existingMember.displayName && inMember.displayName) {
+              existingMember.displayName = inMember.displayName;
+            }
+            if (!existingMember.agentId && inMember.agentId) {
+              existingMember.agentId = inMember.agentId;
+            }
+          }
+        }
+      }
+      if (!existing.createdAt && createdAt > 0) {
+        existing.createdAt = createdAt;
+      }
+      updateTeamStatus(ts.TeamID, incomingStatus);
+    } else {
+      addTeam({
+        id: ts.TeamID,
+        teamName: ts.TeamName ?? '',
+        taskSummary: '',
+        status: incomingStatus,
+        mode: 'coordinator' as SpiritTeamMode,
+        memberAvatars: [],
+        completedSteps: 0,
+        totalSteps: 1,
+        progressPct: 0,
+        durationMs: 0,
+        spiritSessionId: ts.SessionID ?? '',
+        teamSessionId: '',
+        members,
+        sharedAgentIds: [],
+        createdAt: createdAt > 0 ? createdAt : Date.now(),
+        dagNodeId: ts.DagNodeID ?? '',
+        graphExecutionId: '',
+        interruptReason: '',
+        dependsOn: ts.DependsOn ?? [],
+        topologyReason: '',
+      });
+    }
+  }
+
+  /**
+   * Phase 3b-D: Update a member's status from a v2 MemberSession event.
+   *
+   * v2 member_session.created/updated events carry individual member session
+   * status (pending/running/completed/failed/skipped). Without this handler,
+   * member status in the spirit store is never updated after initial team
+   * assembly, causing stale member status in the left sidebar.
+   */
+  function updateMemberFromV2MemberSession(ms: MemberSession) {
+    if (!ms.AgentKey) return;
+    for (const team of teams.value) {
+      const member = team.members.find((m) => m.agentKey === ms.AgentKey);
+      if (member) {
+        member.status = ms.Status ?? member.status;
+        if (ms.AgentName && !member.displayName) member.displayName = ms.AgentName;
+        if (ms.AvatarURL && !member.avatarUrl) member.avatarUrl = ms.AvatarURL;
+        if (ms.SessionID && !member.agentId) member.agentId = ms.SessionID;
+        return;
+      }
+    }
+  }
+
   return {
     teams,
     expandedTeamIds,
@@ -865,5 +980,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     updateTeamStatus,
     addTeam,
     handleSpiritActivityEvent,
+    upsertTeamFromV2TeamStage,
+    updateMemberFromV2MemberSession,
   };
 });

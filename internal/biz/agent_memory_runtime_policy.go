@@ -72,6 +72,23 @@ type MemoryRuntimePolicy struct {
 	// to retain during compression. Older messages are evicted and folded
 	// into the recursive summary. Default: 0.30 (Letta's pattern).
 	CompressionKeepRatio float64
+
+	// LinkEvolutionEnabled (Phase 6A-03 T9): controls whether A-MEM style
+	// link evolution runs when new L3 facts are written. When false, new
+	// facts are stored without LLM-driven link analysis. Default: true
+	// (when L3 is enabled). Per-agent enforcement requires the adapter to
+	// resolve this policy before calling EvolveLinks.
+	LinkEvolutionEnabled bool
+
+	// EpisodeConsolidationEnabled (Phase 6A-06 T8): controls whether the
+	// Sleep-Time Agent extracts durable L3 facts from L2 episodes during
+	// consolidation. When false, only trpcmemory merge/reflect/update_core
+	// runs. Default: true (when memory is enabled).
+	EpisodeConsolidationEnabled bool
+	// EpisodeMinImportance (Phase 6A-06 T8): minimum importance threshold
+	// for facts extracted from L2 episodes. Facts with importance below
+	// this value are skipped. Default: 0.3.
+	EpisodeMinImportance float64
 }
 
 func (p MemoryRuntimePolicy) AnyInject() bool {
@@ -129,6 +146,12 @@ func ResolveMemoryRuntimePolicy(settings *AgentRuntimeSettings) MemoryRuntimePol
 		L3DecayIntervalHours:   settings.L3DecayIntervalHours,
 		CompressionThreshold:   llmcontext.ContextStatusCriticalThreshold,
 		CompressionKeepRatio:   0.30,
+		// Phase 6A-03 T9: link evolution is enabled when L3 facts are writable.
+		LinkEvolutionEnabled: settings.L3Enabled,
+		// Phase 6A-06 T8: episode consolidation enabled when memory is on,
+		// with a minimum importance threshold of 0.3 (filter low-value facts).
+		EpisodeConsolidationEnabled: true,
+		EpisodeMinImportance:        0.3,
 	}
 	if p.L2RecallMax <= 0 {
 		p.L2RecallMax = 3

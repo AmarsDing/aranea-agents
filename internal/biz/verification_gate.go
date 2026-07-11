@@ -78,22 +78,61 @@ func (e *VerificationGateExecutor) ExecuteGate(ctx context.Context, gate Verific
 	}
 }
 
+// gateApprovalSuffix is appended to the dept lead's system prompt for LLM gate calls.
+const gateApprovalSuffix = `
+
+## 当前任务
+
+请评估以下团队输出是否满足质量标准。请以 JSON 格式回复：
+{"approved": true/false, "reason": "审批理由"}`
+
+// gateDeliveryQualitySuffix is appended for output-side quality check.
+const gateDeliveryQualitySuffix = `
+
+## 当前任务
+
+请评估以下交付物是否满足质量标准。请以 JSON 格式回复：
+{"approved": true/false, "reason": "审批理由"}`
+
+// gateDeliveryAcceptanceSuffix is appended for receiving-side acceptance check.
+const gateDeliveryAcceptanceSuffix = `
+
+## 当前任务
+
+请评估以下交付物是否满足本部门需求。请以 JSON 格式回复：
+{"approved": true/false, "reason": "审批理由"}`
+
 // executeDeptLeadApproval calls the dept lead LLM to evaluate team output quality.
 func (e *VerificationGateExecutor) executeDeptLeadApproval(ctx context.Context, gate VerificationGate, teamOutput string, truncateChars int) (bool, string, error) {
 	if gate.AgentID == "" {
 		return false, "", apierror.BadRequest("GATE", "dept_lead_approval gate requires agent_id")
 	}
 
-	systemPrompt := `你是一个部门主管，负责审核团队产出的质量。请评估以下团队输出是否满足质量标准。
-
-请以 JSON 格式回复：
-{"approved": true/false, "reason": "审批理由"}`
+	// Fetch dept lead agent to use its Provider/Model/System prompt
+	lead, leadErr := e.deptLeadMgr.GetDeptLeadAgent(ctx, gate.AgentID)
+	systemPrompt := `你是一个部门主管，负责审核团队产出的质量。`
+	provider := ""
+	model := ""
+	if leadErr == nil && lead != nil {
+		if sp := extractSystemPrompt(lead); sp != "" {
+			systemPrompt = sp
+		}
+		provider = lead.Provider
+		model = lead.Model
+	} else {
+		e.lg.Warn("failed to fetch dept lead agent, using default config",
+			loggateway.StepID("gate.dept_lead_approval"),
+			loggateway.Str("agent_id", gate.AgentID),
+			loggateway.Err(leadErr),
+		)
+	}
+	systemPrompt += gateApprovalSuffix
 
 	userPrompt := fmt.Sprintf("团队输出：\n%s\n\n请评估此输出是否通过质量审核。", truncateForPrompt(teamOutput, truncateChars))
 
 	resp, _, err := e.llmCaller.Call(ctx, LLMCallRequest{
-		Provider: "", // uses default
-		Model:    "", // uses default
+		Provider: provider,
+		Model:    model,
 		System:   systemPrompt,
 		User:     userPrompt,
 	})
@@ -144,17 +183,22 @@ func (e *VerificationGateExecutor) executeCrossDeptDelivery(ctx context.Context,
 				return e
 			}()
 		}
-		systemPrompt := `你是一个部门主管，负责审核本部门产出的交付物质量。请评估以下交付物是否满足质量标准。
-
-请以 JSON 格式回复：
-{"approved": true/false, "reason": "审批理由"}`
+		systemPrompt := `你是一个部门主管，负责审核本部门产出的交付物质量。`
+		provider := ""
+		model := ""
+		if sp := extractSystemPrompt(outputLead); sp != "" {
+			systemPrompt = sp
+		}
+		provider = outputLead.Provider
+		model = outputLead.Model
+		systemPrompt += gateDeliveryQualitySuffix
 
 		userPrompt := fmt.Sprintf("交付物名称：%s\n团队输出：\n%s\n\n请评估此交付物是否通过质量审核。",
 			crossGate.DeliverableName, truncateForPrompt(teamOutput, truncateChars))
 
 		resp, _, err := e.llmCaller.Call(ctx, LLMCallRequest{
-			Provider: "",
-			Model:    "",
+			Provider: provider,
+			Model:    model,
 			System:   systemPrompt,
 			User:     userPrompt,
 		})
@@ -176,7 +220,6 @@ func (e *VerificationGateExecutor) executeCrossDeptDelivery(ctx context.Context,
 		} else if !result.Approved {
 			return false, fmt.Sprintf("输出方部门主管拒绝: %s", result.Reason), nil
 		}
-		_ = outputLead // dept lead found, LLM call completed
 	}
 
 	// Step 2: Receiving-side dept lead acceptance check
@@ -189,17 +232,22 @@ func (e *VerificationGateExecutor) executeCrossDeptDelivery(ctx context.Context,
 				return e
 			}()
 		}
-		systemPrompt := `你是一个部门主管，负责验收其他部门交付给本部门的工作成果。请评估以下交付物是否满足本部门的需求。
-
-请以 JSON 格式回复：
-{"approved": true/false, "reason": "审批理由"}`
+		systemPrompt := `你是一个部门主管，负责验收其他部门交付给本部门的工作成果。`
+		provider := ""
+		model := ""
+		if sp := extractSystemPrompt(receivingLead); sp != "" {
+			systemPrompt = sp
+		}
+		provider = receivingLead.Provider
+		model = receivingLead.Model
+		systemPrompt += gateDeliveryAcceptanceSuffix
 
 		userPrompt := fmt.Sprintf("交付物名称：%s\n团队输出：\n%s\n\n请评估此交付物是否满足本部门需求。",
 			crossGate.DeliverableName, truncateForPrompt(teamOutput, truncateChars))
 
 		resp, _, err := e.llmCaller.Call(ctx, LLMCallRequest{
-			Provider: "",
-			Model:    "",
+			Provider: provider,
+			Model:    model,
 			System:   systemPrompt,
 			User:     userPrompt,
 		})
@@ -221,7 +269,6 @@ func (e *VerificationGateExecutor) executeCrossDeptDelivery(ctx context.Context,
 		} else if !result.Approved {
 			return false, fmt.Sprintf("接收方部门主管拒绝: %s", result.Reason), nil
 		}
-		_ = receivingLead // dept lead found, LLM call completed
 	}
 
 	return true, "双方部门主管均通过审批", nil

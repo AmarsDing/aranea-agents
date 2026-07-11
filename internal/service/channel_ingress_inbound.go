@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
+	arametrics "aranea-agents/internal/metrics"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -14,26 +15,82 @@ const defaultChannelPassiveQueuedReply = "当前有任务进行中，请稍后�
 
 // processInboundCore runs a synchronous turn and returns reply text for platforms that
 // must embed the assistant reply in the webhook HTTP body (e.g. WeChat passive mode).
+// Includes TurnJob governance (creation, status tracking, metrics) and context pressure
+// check to align with the async executeInboundTurn path (P1 #1).
 func (h *ChannelIngress) processInboundCore(ctx context.Context, chRow biz.Channel, ev port.InboundEvent) (reply string, err error) {
 	if h == nil || h.chat == nil || h.channels == nil || h.sessions == nil {
 		return "", nil
 	}
 	platform := inboundPlatform(chRow, ev, h.lg)
-	result, err := h.runChatTurnWithOutcome(ctx, chRow, platform, ev)
+
+	// Create TurnJob for governance tracking (P1 #1).
+	jobID, ctx, err := h.createTurnJob(ctx, chRow, ev, platform)
 	if err != nil {
 		return "", err
 	}
-	switch result.Outcome {
-	case biz.TurnOutcomeQueued:
-		ltCfg := biz.ParseChannelLongTaskConfig(chRow.ConfigJSON)
-		text := strings.TrimSpace(ltCfg.AckOnQueued)
-		if text == "" {
-			text = defaultChannelPassiveQueuedReply
-		}
-		return biz.RenderChannelTemplate(text, map[string]string{"pending_id": result.PendingID}), nil
-	default:
-		return result.Reply, nil
+	h.markTurnJobByEvent(ctx, biz.JobEventStart, "", "", "")
+	if jobID != "" {
+		arametrics.ChannelTurnJobTotal.WithLabelValues(chRow.ID, biz.ChannelTurnJobStatusRunning).Inc()
 	}
+
+	// Resolve TurnInput once (avoids redundant prepareChannelChatRequest in runChatTurnWithOutcome).
+	turnInput, turnInputErr := h.resolveTurnInput(ctx, chRow, platform, ev)
+	sessionID := ""
+	if turnInputErr == nil {
+		sessionID = strings.TrimSpace(turnInput.SessionID)
+	}
+
+	var execErr error
+	terminalEvent := biz.JobEventComplete
+	defer func() {
+		if execErr == nil {
+			h.markTurnJobByEvent(ctx, terminalEvent, "", "", "")
+			terminalStatus, _ := biz.ChannelTurnJobStatusFromEvent(terminalEvent)
+			if jobID != "" && terminalStatus != "" {
+				arametrics.ChannelTurnJobTotal.WithLabelValues(chRow.ID, terminalStatus).Inc()
+			}
+			return
+		}
+		failEvent := biz.JobEventFail
+		h.markTurnJobByEvent(ctx, failEvent, execErr.Error(), "", "")
+		failStatus, _ := biz.ChannelTurnJobStatusFromEvent(failEvent)
+		if jobID != "" && failStatus != "" {
+			arametrics.ChannelTurnJobTotal.WithLabelValues(chRow.ID, failStatus).Inc()
+		}
+	}()
+
+	// Context pressure check: return error message synchronously (passive mode can't enqueue).
+	if h.sessionContextPressure(ctx, sessionID) {
+		recordIngressIntentMetric("context_pressure")
+		execErr = errContextPressureRejected
+		return biz.ChannelTurnErrorContextOverflowMsg, nil
+	}
+
+	if turnInputErr != nil {
+		execErr = turnInputErr
+		return "", turnInputErr
+	}
+
+	result, runErr := h.runChatTurnWithInput(ctx, chRow, platform, turnInput)
+	if runErr != nil {
+		if isTurnMessageQueued(runErr) || result.Outcome == biz.TurnOutcomeQueued {
+			pendingID := strings.TrimSpace(result.PendingID)
+			if pendingID == "" && h.chat != nil {
+				pendingID = h.chat.LastPendingMessageID(sessionID)
+			}
+			terminalEvent = biz.JobEventQueue
+			ltCfg := biz.ParseChannelLongTaskConfig(chRow.ConfigJSON)
+			text := strings.TrimSpace(ltCfg.AckOnQueued)
+			if text == "" {
+				text = defaultChannelPassiveQueuedReply
+			}
+			return biz.RenderChannelTemplate(text, map[string]string{"pending_id": pendingID}), nil
+		}
+		execErr = runErr
+		return "", runErr
+	}
+
+	return result.Reply, nil
 }
 
 // processWeChatPassiveInbound gates idempotency/access then runs a sync turn for XML reply.

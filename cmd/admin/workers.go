@@ -54,6 +54,7 @@ type backgroundWorkersConfig struct {
 	PatternMiningJob            BackgroundStarter
 	MemoryL2Decay               BackgroundStarter
 	MemoryL1Archive             BackgroundStarter
+	ChannelTurnJobSweeper       BackgroundStarter
 	MemoryL3Decay               BackgroundStarter
 	MemoryL4Decay               BackgroundStarter
 	MemoryEbbinghausDecay       BackgroundStarter
@@ -257,6 +258,11 @@ func startBackgroundWorkers(
 	if cfg.MemoryL1Archive != nil {
 		goAfterReady("memory_l1_archive", func() { cfg.MemoryL1Archive.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "memory l1 archive worker scheduled", "interval", "5m")
+	}
+
+	if cfg.ChannelTurnJobSweeper != nil {
+		goAfterReady("channel_turn_job_sweeper", func() { cfg.ChannelTurnJobSweeper.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "channel turn job sweeper scheduled", "interval", "2m")
 	}
 
 	if cfg.MemoryL3Decay != nil {

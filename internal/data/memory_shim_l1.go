@@ -23,6 +23,7 @@ var _ biz.L1TaskWriter = (*l1WorkingMemoryRepo)(nil)
 var _ biz.L1FieldWriter = (*l1WorkingMemoryRepo)(nil)
 var _ biz.L1AdminReader = (*l1WorkingMemoryRepo)(nil)
 var _ biz.L1IdleTaskReader = (*l1WorkingMemoryRepo)(nil)
+var _ biz.L1ExpiredFieldCleaner = (*l1WorkingMemoryRepo)(nil)
 var _ biz.L1SchemaReader = (*l1WorkingMemoryRepo)(nil)
 
 const (
@@ -640,6 +641,25 @@ func (r *l1WorkingMemoryRepo) ListIdleL1Tasks(ctx context.Context, cutoffRFC3339
 		out = append(out, b)
 	}
 	return out, entErrToBizErr(rows.Err(), "MEMORY_L1")
+}
+
+// --- L1ExpiredFieldCleaner ---
+
+// DeleteExpiredL1Fields removes all L1 fields whose expires_at is set and in
+// the past. These fields are already filtered from normal reads; this method
+// performs periodic DB cleanup so expired rows don't accumulate indefinitely.
+// Returns the number of deleted rows.
+func (r *l1WorkingMemoryRepo) DeleteExpiredL1Fields(ctx context.Context) (int, error) {
+	nowUTC := time.Now().UTC().Format(time.RFC3339)
+	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`DELETE FROM memory_l1_fields WHERE expires_at != '' AND expires_at < ?`),
+		nowUTC,
+	)
+	if err != nil {
+		return 0, entErrToBizErr(err, "MEMORY_L1")
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }
 
 // --- L1SchemaReader ---

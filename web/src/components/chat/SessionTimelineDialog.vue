@@ -101,6 +101,16 @@ watch(
     if (open && props.initialTab) activeTab.value = props.initialTab;
   },
 );
+
+// 用户切换到「历史 Trace」Tab 时触发刷新，确保显示最新数据。
+// 排除 dialog 打开时的初始 Tab 设置（由 modelValue watch 处理）和
+// 父组件通过 initialTab 同步的情况（activeTab 由 watch 驱动，会触发本 watch）。
+// 通过 dialog 已 open 且 activeTab 变为 'trace' 来识别用户手动切换。
+watch(activeTab, (tab, prev) => {
+  if (dialogOpen.value && tab === 'trace' && prev !== undefined) {
+    emit('refresh-trace');
+  }
+});
 </script>
 
 <style scoped>

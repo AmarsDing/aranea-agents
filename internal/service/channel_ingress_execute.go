@@ -41,7 +41,13 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 		arametrics.ChannelTurnJobTotal.WithLabelValues(chRow.ID, biz.ChannelTurnJobStatusRunning).Inc()
 	}
 
-	sessionID := h.resolveTurnSessionID(ctx, chRow, platform, ev)
+	// Resolve TurnInput once and pass it downstream to avoid redundant
+	// prepareChannelChatRequest / ensureChannelSession DB calls (P1 #3).
+	turnInput, turnInputErr := h.resolveTurnInput(ctx, chRow, platform, ev)
+	sessionID := ""
+	if turnInputErr == nil {
+		sessionID = strings.TrimSpace(turnInput.SessionID)
+	}
 	h.bindChannelPendingMode(sessionID, chRow.ConfigJSON)
 	defer h.clearChannelPendingMode(sessionID)
 	start := time.Now()
@@ -97,7 +103,10 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 
 	if handled, perr := h.rejectIfContextPressure(ctx, chRow, ev, platform, sessionID); handled {
 		if perr == nil {
-			terminalEvent = biz.JobEventComplete
+			// Context pressure rejected the turn and the error reply was already
+			// sent to the user. Mark as failed (not completed) since the turn
+			// did not execute. The sentinel error skips duplicate reply in defer.
+			execErr = errContextPressureRejected
 		} else {
 			execErr = perr
 		}
@@ -116,10 +125,15 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 	var turnQueued bool
 	stopReaction := h.startFeishuProcessingReaction(ctx, chRow, ev)
 	defer stopReaction()
+	if turnInputErr != nil {
+		// Session resolution failed; let the streaming/unary path surface the error.
+		execErr = turnInputErr
+		return execErr
+	}
 	if biz.ChannelStreamingEnabled(chRow.ConfigJSON) {
-		execErr = h.processInboundStreaming(ctx, chRow, ev, platform, ltCfg, sessionID, &contentPreview, &previewMsgID, &turnQueued)
+		execErr = h.processInboundStreaming(ctx, chRow, ev, platform, ltCfg, sessionID, turnInput, &contentPreview, &previewMsgID, &turnQueued)
 	} else {
-		contentPreview, previewMsgID, turnQueued, execErr = h.processInboundUnaryWithOutcome(ctx, chRow, ev, platform, ltCfg, sessionID)
+		contentPreview, previewMsgID, turnQueued, execErr = h.processInboundUnaryWithOutcome(ctx, chRow, ev, platform, ltCfg, sessionID, turnInput)
 	}
 	if execErr == nil && turnQueued {
 		terminalEvent = biz.JobEventQueue
@@ -127,16 +141,15 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 	return execErr
 }
 
-func (h *ChannelIngress) resolveTurnSessionID(ctx context.Context, chRow biz.Channel, platform string, ev port.InboundEvent) string {
+// resolveTurnInput resolves the TurnInput (including session) once for executeInboundTurn,
+// so it can be reused by streaming/unary paths without redundant DB calls.
+func (h *ChannelIngress) resolveTurnInput(ctx context.Context, chRow biz.Channel, platform string, ev port.InboundEvent) (biz.TurnInput, error) {
 	peerKey, err := h.inboundPeerKey(chRow, ev)
 	if err != nil {
-		return ""
+		h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "routing", "error": err.Error()}, err.Error())
+		return biz.TurnInput{}, err
 	}
-	input, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text, false)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(input.SessionID)
+	return h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text, channelAllowQueueFromConfig(chRow.ConfigJSON))
 }
 
 func (h *ChannelIngress) attachChannelTurnContext(ctx context.Context, ltCfg biz.ChannelLongTaskConfig) (context.Context, context.CancelFunc) {
@@ -160,7 +173,7 @@ func (h *ChannelIngress) attachChannelTurnContext(ctx context.Context, ltCfg biz
 	return WithChannelTurnDeadlines(ctx, deadlines), noop
 }
 
-func (h *ChannelIngress) processInboundUnaryWithOutcome(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string, ltCfg biz.ChannelLongTaskConfig, sessionID string) (string, string, bool, error) {
+func (h *ChannelIngress) processInboundUnaryWithOutcome(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string, ltCfg biz.ChannelLongTaskConfig, sessionID string, turnInput biz.TurnInput) (string, string, bool, error) {
 	policy := biz.ParseChannelIMRenderPolicy(chRow.ConfigJSON, ltCfg)
 	var previewCoord *TurnPreviewCoordinator
 	var stopPreview context.CancelFunc
@@ -169,7 +182,7 @@ func (h *ChannelIngress) processInboundUnaryWithOutcome(ctx context.Context, chR
 		defer stopPreview()
 	}
 
-	result, err := h.runChatTurnWithOutcome(ctx, chRow, platform, ev)
+	result, err := h.runChatTurnWithInput(ctx, chRow, platform, turnInput)
 	if err != nil {
 		return "", "", false, err
 	}

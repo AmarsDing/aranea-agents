@@ -18,13 +18,13 @@ func (r *sessionRepo) ListTimelineEventRefsPaged(ctx context.Context, sessionID 
 	if sessionID == "" {
 		return nil, 0, apierror.BadRequest("SESSION", "session id is required")
 	}
-	unionSQL, args := buildTimelineUnionSQL(sessionID, q.KindFilter)
+	d := r.data.Dialect()
+	unionSQL, args := buildTimelineUnionSQL(sessionID, q.KindFilter, d)
 	if unionSQL == "" {
 		return nil, 0, nil
 	}
 
 	client := r.data.RW().Read(ctx)
-	d := r.data.Dialect()
 	var total int
 	countSQL := d.RenumberPlaceholders(fmt.Sprintf("SELECT COUNT(*) FROM (%s)", unionSQL))
 	if err := entQueryRowScan(client, ctx, countSQL, args, &total); err != nil {
@@ -78,7 +78,7 @@ func clampTimelinePageLimit(limit, total int) int {
 	return limit
 }
 
-func buildTimelineUnionSQL(sessionID, kindFilter string) (string, []any) {
+func buildTimelineUnionSQL(sessionID, kindFilter string, dialect Dialect) (string, []any) {
 	kindFilter = strings.TrimSpace(strings.ToLower(kindFilter))
 	var branches []string
 	var args []any
@@ -89,7 +89,28 @@ func buildTimelineUnionSQL(sessionID, kindFilter string) (string, []any) {
 	appendMCP := kindFilter == "" || kindFilter == "mcp"
 
 	if appendMessage {
-		branches = append(branches, `SELECT 'message' AS src_kind, id, created_at AS occurred_at FROM messages WHERE session_id = ?`)
+		// Activity-First architecture: messages are now StepV2 rows with
+		// kind IN ('task','reply'). The legacy `messages` table was dropped
+		// (Phase 3b-D). The `activities` table is reserved for projected
+		// plan/stage metadata only — chat-shaped messages live in steps_v2.
+		// Filter by spirit_session_id (root Spirit session) and use
+		// started_at as occurred_at.
+		//
+		// steps_v2.started_at is a timestamp column (Postgres timestamptz /
+		// SQLite TEXT), while skill/tool branches return occurred_at as an
+		// ISO8601 string. We normalize via dialect-specific formatting so
+		// the UNION ALL ORDER BY is consistent.
+		var tsExpr string
+		if dialect.IsPostgres() {
+			tsExpr = `to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
+		} else {
+			// SQLite: started_at stored as TEXT in ISO8601 already.
+			tsExpr = `started_at`
+		}
+		branches = append(branches, fmt.Sprintf(
+			`SELECT 'message' AS src_kind, id, %s AS occurred_at FROM steps_v2 WHERE spirit_session_id = ? AND kind IN ('task', 'reply')`,
+			tsExpr,
+		))
 		args = append(args, sessionID)
 	}
 	if appendSkill {

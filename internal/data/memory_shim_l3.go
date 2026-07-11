@@ -699,6 +699,7 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 		validFrom = createdAt
 	}
 	validUntil := strings.TrimSpace(in.ValidUntil)
+	contextNote := strings.TrimSpace(in.ContextNote)
 	var result []byte
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		_, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx, r.data.Dialect().RenumberPlaceholders(`INSERT INTO memory_facts (
@@ -714,8 +715,9 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 		ttl_days, decay_factor, next_decay_at, last_used_at, expires_at,
 		quality_score, pii_types, metadata_json, created_at, updated_at,
 		archived_at, deleted_at,
-		valid_from, valid_until, links, keywords, tags
-	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		valid_from, valid_until, links, keywords, tags,
+		context_note
+	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 		statement = excluded.statement, details_markdown = excluded.details_markdown,
 		confidence = excluded.confidence, importance = excluded.importance,
@@ -733,7 +735,8 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 		updated_at = excluded.updated_at,
 		valid_from = COALESCE(NULLIF(memory_facts.valid_from, ''), excluded.valid_from),
 		valid_until = excluded.valid_until,
-		links = excluded.links, keywords = excluded.keywords`),
+		links = excluded.links, keywords = excluded.keywords,
+		context_note = excluded.context_note`),
 			id,
 			strings.TrimSpace(in.ScopeType),
 			strings.TrimSpace(in.ScopeID),
@@ -759,6 +762,7 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 			defaultFactQualityScore, piiTypesJSON, meta, createdAt, updatedAt,
 			"", "", // archived_at, deleted_at
 			validFrom, validUntil, links, keywords, tags,
+			contextNote,
 		)
 		if execErr != nil {
 			return execErr
@@ -1005,6 +1009,7 @@ func (r *l3FactRepo) InvalidateAndUpsertFactTx(ctx context.Context, oldFactID st
 		validFrom = createdAt
 	}
 	validUntil := strings.TrimSpace(in.ValidUntil)
+	contextNote := strings.TrimSpace(in.ContextNote)
 	oldID := strings.TrimSpace(oldFactID)
 
 	var result []byte
@@ -1035,8 +1040,9 @@ func (r *l3FactRepo) InvalidateAndUpsertFactTx(ctx context.Context, oldFactID st
 		ttl_days, decay_factor, next_decay_at, last_used_at, expires_at,
 		quality_score, pii_types, metadata_json, created_at, updated_at,
 		archived_at, deleted_at,
-		valid_from, valid_until, links, keywords, tags
-	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		valid_from, valid_until, links, keywords, tags,
+		context_note
+	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 		statement = excluded.statement, details_markdown = excluded.details_markdown,
 		confidence = excluded.confidence, importance = excluded.importance,
@@ -1054,7 +1060,8 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 		updated_at = excluded.updated_at,
 		valid_from = COALESCE(NULLIF(memory_facts.valid_from, ''), excluded.valid_from),
 		valid_until = excluded.valid_until,
-		links = excluded.links, keywords = excluded.keywords`),
+		links = excluded.links, keywords = excluded.keywords,
+		context_note = excluded.context_note`),
 			id,
 			strings.TrimSpace(in.ScopeType),
 			strings.TrimSpace(in.ScopeID),
@@ -1080,6 +1087,7 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 			defaultFactQualityScore, piiTypesJSON, meta, createdAt, updatedAt,
 			"", "",
 			validFrom, validUntil, links, keywords, tags,
+			contextNote,
 		)
 		if execErr != nil {
 			return execErr

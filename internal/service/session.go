@@ -457,6 +457,11 @@ func (s *SessionService) GetSessionTimeline(ctx context.Context, req *v1.GetSess
 	}
 	out, err := s.uc.Timeline(ctx, req.GetId(), q)
 	if err != nil {
+		s.lg.Error("GetSessionTimeline failed",
+			loggateway.Str("session_id", req.GetId()),
+			loggateway.Str("kind_filter", req.GetKindFilter()),
+			loggateway.Err(err),
+		)
 		return nil, mapSessionErr(err)
 	}
 	return toProtoTimeline(out), nil

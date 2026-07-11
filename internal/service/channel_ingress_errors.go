@@ -9,6 +9,12 @@ import (
 	"aranea-agents/internal/channel/port"
 )
 
+// errContextPressureRejected signals that a turn was rejected due to session
+// context pressure and the user-visible error reply was already sent by
+// rejectIfContextPressure. The defer in executeInboundTurn uses this sentinel
+// to mark the job as failed without sending a duplicate error reply.
+var errContextPressureRejected = errors.New("turn rejected: session context pressure")
+
 // deliverTurnErrorReply enqueues a user-visible IM error for failed Channel turns (LT-06).
 func (h *ChannelIngress) deliverTurnErrorReply(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string, execErr error) error {
 	if h == nil || execErr == nil {
@@ -34,7 +40,7 @@ func (h *ChannelIngress) deliverTurnErrorReply(ctx context.Context, chRow biz.Ch
 }
 
 func formatChannelTurnErrorMessage(err error) string {
-	if err == nil || turnErrorIsCanceled(err) {
+	if err == nil || turnErrorIsCanceled(err) || errors.Is(err, errContextPressureRejected) {
 		return ""
 	}
 	return biz.FormatChannelTurnErrorMessage(classifyChannelTurnError(err))

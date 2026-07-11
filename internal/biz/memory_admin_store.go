@@ -64,6 +64,11 @@ type FactUpsert struct {
 	// stores LLM-generated keywords as a JSON array. Both default to "[]".
 	LinksJSON    string
 	KeywordsJSON string
+	// ContextNote (Phase 6A-03): A-MEM style contextual annotation explaining
+	// how this fact relates to or evolved from related memories. LLM-generated
+	// during link evolution when a RELATED_TO/EVOLVED_FROM relationship is
+	// established. Empty string means no evolution context has been attached.
+	ContextNote string
 }
 
 // EvolutionEventInsert is the domain-level DTO for inserting evolution events.
@@ -156,6 +161,13 @@ type L1FieldWriter interface {
 // L1IdleTaskReader lists idle L1 tasks for the auto-archive worker.
 type L1IdleTaskReader interface {
 	ListIdleL1Tasks(ctx context.Context, cutoffRFC3339 string) ([][]byte, error)
+}
+
+// L1ExpiredFieldCleaner batch-deletes expired L1 fields (where expires_at != ''
+// and expires_at < now). Used by the auto-archive worker for periodic cleanup
+// so expired fields don't accumulate in the database.
+type L1ExpiredFieldCleaner interface {
+	DeleteExpiredL1Fields(ctx context.Context) (int, error)
 }
 
 // L1SchemaReader reads L1 schema definitions from memory_l1_schemas.
@@ -298,6 +310,7 @@ type MemoryAdminDeps interface {
 	L1TaskWriter
 	L1FieldWriter
 	L1IdleTaskReader
+	L1ExpiredFieldCleaner
 	L2EpisodeWriter
 	L3FactReader
 	L3ConflictStore

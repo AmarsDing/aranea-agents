@@ -84,11 +84,17 @@ type ConsolidationResult struct {
 // It follows the Letta/MemGPT "Sleep-time Agent" pattern: after active
 // conversation turns, memories are consolidated offline by an LLM that
 // analyses recent entries and produces merge/reflect/update_core operations.
+//
+// Phase 6A-06: an optional EpisodeConsolidator can be wired via
+// SetEpisodeConsolidator to additionally extract durable L3 facts from L2
+// episodes during each consolidation pass. The episode phase is independent
+// of the trpcmemory phase and runs best-effort (never fails the parent call).
 type SleepTimeService struct {
-	memory MemoryReaderWriter
-	llm    trpcmodel.Model
-	queue  ConsolidationQueue
-	lg     loggateway.Logger
+	memory              MemoryReaderWriter
+	llm                 trpcmodel.Model
+	queue               ConsolidationQueue
+	episodeConsolidator *EpisodeConsolidator // Phase 6A-06: optional L2→L3 fact extraction
+	lg                  loggateway.Logger
 }
 
 // NewSleepTimeService creates a SleepTimeService.
@@ -110,6 +116,17 @@ func NewSleepTimeService(memory MemoryReaderWriter, llm trpcmodel.Model, queue C
 	}
 }
 
+// SetEpisodeConsolidator wires an EpisodeConsolidator for L2→L3 fact
+// extraction (Phase 6A-06). Optional: when not set, Consolidate only runs
+// the trpcmemory merge/reflect/update_core phase. Must be called before
+// Start/Consolidate; not safe to call concurrently with active consolidation.
+func (s *SleepTimeService) SetEpisodeConsolidator(c *EpisodeConsolidator) {
+	if s == nil {
+		return
+	}
+	s.episodeConsolidator = c
+}
+
 // EnqueueConsolidationJob enqueues a consolidation job for the given user key.
 // Returns nil when no queue is wired (no-op). Respects context cancellation.
 func (s *SleepTimeService) EnqueueConsolidationJob(ctx context.Context, uk trpcmemory.UserKey) error {
@@ -126,20 +143,50 @@ func (s *SleepTimeService) EnqueueConsolidationJob(ctx context.Context, uk trpcm
 	return nil
 }
 
-// Consolidate reads recent memories, asks the LLM to produce consolidation
-// operations, and executes them.
+// Consolidate runs both consolidation phases:
+//
+//  1. trpcmemory consolidation (Letta-style merge/reflect/update_core) —
+//     operates on trpcmemory.Entry items. Read failures are retryable
+//     (return error); mutation failures are non-retryable (return nil).
+//
+//  2. L2 episode → L3 fact extraction (Phase 6A-06) — operates on project
+//     L2 episodes. Best-effort: never returns an error, runs independently
+//     of Phase 1. Only runs if an EpisodeConsolidator is wired.
+//
+// Phase 2 runs even when Phase 1 has no memories to consolidate, because
+// episodes are an independent data source. Phase 2 is skipped only when
+// Phase 1 returns a retryable error (so JobRunner retry doesn't produce
+// duplicate facts).
 //
 // Behaviour:
-//   - Empty memories → no-op (returns nil, LLM not called).
-//   - LLM failure (function error, API error, or malformed JSON) → graceful
-//     degradation: logs a warning and returns nil without mutating memories.
-//   - Memory read failure → returns the error (not graceful degradation).
-//   - Memory mutation failure → returns the error.
+//   - Empty memories + no episodes → no-op (returns nil).
+//   - LLM failure → graceful degradation (logs warn, returns nil).
+//   - Memory read failure → returns the error (retryable).
+//   - Memory mutation failure → returns nil (non-retryable).
 func (s *SleepTimeService) Consolidate(ctx context.Context, uk trpcmemory.UserKey) error {
-	if s == nil || s.memory == nil {
+	if s == nil {
 		return nil
 	}
 
+	// Phase 1: trpcmemory consolidation.
+	if s.memory != nil {
+		if err := s.consolidateMemories(ctx, uk); err != nil {
+			// Retryable read failure — skip Phase 2 to avoid duplicate facts on retry.
+			return err
+		}
+	}
+
+	// Phase 2: L2 episode → L3 fact extraction (Phase 6A-06).
+	// Best-effort: never returns an error.
+	s.consolidateEpisodes(ctx, uk)
+
+	return nil
+}
+
+// consolidateMemories runs the Letta-style trpcmemory consolidation phase.
+// Returns an error only on read failure (retryable); mutation failures are
+// treated as graceful degradation (return nil, non-retryable).
+func (s *SleepTimeService) consolidateMemories(ctx context.Context, uk trpcmemory.UserKey) error {
 	// 1. Read recent memories.
 	memories, err := s.memory.ReadMemories(ctx, uk, defaultConsolidationLimit)
 	if err != nil {
@@ -149,7 +196,7 @@ func (s *SleepTimeService) Consolidate(ctx context.Context, uk trpcmemory.UserKe
 			loggateway.Err(err))
 		return err
 	}
-	// Empty memories → no-op.
+	// Empty memories → no-op (but Phase 2 may still run).
 	if len(memories) == 0 {
 		return nil
 	}
@@ -188,6 +235,21 @@ func (s *SleepTimeService) Consolidate(ctx context.Context, uk trpcmemory.UserKe
 		loggateway.Int("operations", len(result.Operations)),
 		loggateway.Int("memories_scanned", len(memories)))
 	return nil
+}
+
+// consolidateEpisodes runs the L2→L3 fact extraction phase (Phase 6A-06).
+// Best-effort: logs warnings on failure but never returns an error, so it
+// never affects JobRunner retry decisions.
+func (s *SleepTimeService) consolidateEpisodes(ctx context.Context, uk trpcmemory.UserKey) {
+	if s == nil || s.episodeConsolidator == nil {
+		return
+	}
+	if err := s.episodeConsolidator.ConsolidateEpisodes(ctx, uk); err != nil {
+		s.lg.Warn("sleep-time episode consolidation failed",
+			loggateway.Str("app", uk.AppName),
+			loggateway.Str("user", uk.UserID),
+			loggateway.Err(err))
+	}
 }
 
 // Start runs the worker loop that drains the consolidation queue and calls

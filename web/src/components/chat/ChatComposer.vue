@@ -82,9 +82,23 @@
       />
 
       <!-- 统一圆角卡片：附件 + 选择器 + 输入框 + 底部工具条 -->
-      <div class="composer-card" :class="{ 'composer-card--dark': isDark }">
-        <!-- 附件缩略图（输入框上方） -->
-        <div v-if="attachments.length" class="chat-attachments row q-gutter-xs">
+      <div class="composer-card" :class="{ 'composer-card--dark': isDark, 'composer-card--compact': compactMode }">
+        <!-- 精简模式切换按钮（右上角） -->
+        <q-btn
+          flat
+          dense
+          round
+          size="sm"
+          :icon="compactMode ? 'unfold_more' : 'unfold_less'"
+          :aria-label="compactMode ? t('chat.expandInput', '展开输入') : t('chat.compactInput', '精简输入')"
+          class="composer-compact-toggle"
+          @click="compactMode = !compactMode"
+        >
+          <q-tooltip>{{ compactMode ? t('chat.expandInput', '展开输入') : t('chat.compactInput', '精简输入') }}</q-tooltip>
+        </q-btn>
+
+        <!-- 附件缩略图（输入框上方，精简模式隐藏） -->
+        <div v-if="attachments.length && !compactMode" class="chat-attachments row q-gutter-xs">
           <div v-for="file in attachments" :key="file.id" class="chat-file-tile row items-center">
             <q-circular-progress
               v-if="file.progress < 1"
@@ -109,8 +123,8 @@
           </div>
         </div>
 
-        <!-- 顶部：模式 / 模型 / 知识库 -->
-        <div class="composer-top-bar row no-wrap items-center q-gutter-x-sm">
+        <!-- 顶部：模式 / 模型 / 知识库（精简模式隐藏） -->
+        <div v-show="!compactMode" class="composer-top-bar row no-wrap items-center q-gutter-x-sm">
           <q-select
             :model-value="dialogMode"
             dense
@@ -169,10 +183,12 @@
           :model-value="modelValue"
           filled
           class="composer-input"
-          :label="t('chat.inputLabel')"
+          :label="compactMode ? '' : t('chat.inputLabel')"
+          :dense="compactMode"
+          :hide-bottom-space="compactMode"
           type="textarea"
-          autogrow
-          :input-style="{ minHeight: '56px', maxHeight: '200px' }"
+          :autogrow="!compactMode"
+          :input-style="compactMode ? { minHeight: '32px', maxHeight: '32px', overflow: 'hidden', resize: 'none', padding: '0' } : { minHeight: '56px', maxHeight: '200px' }"
           :dark="isDark"
           :disable="isRunnerActive ? false : (inputDisabled ?? sending)"
           @keydown="onInputKeydown"
@@ -180,8 +196,8 @@
           @update:model-value="$emit('update:modelValue', String($event ?? ''))"
         />
 
-        <!-- 底部工具条：右侧操作按钮 -->
-        <div class="composer-bottom-bar row items-center justify-end no-wrap">
+        <!-- 底部工具条：右侧操作按钮（精简模式隐藏，通过回车发送） -->
+        <div v-show="!compactMode" class="composer-bottom-bar row items-center justify-end no-wrap">
           <!-- 右侧操作按钮 -->
           <div class="composer-actions row items-center no-wrap q-gutter-x-sm">
             <span class="composer-btn-wrapper">
@@ -243,7 +259,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ChatEnqueueMessage from './ChatEnqueueMessage.vue';
 import { AWAIT_KIND_TOOL_CONFIRM } from '../../features/chat/awaitConstants';
@@ -296,6 +312,9 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
+/** 精简模式：只保留输入框 + 切换按钮，隐藏选择器/附件/底部工具条，通过回车发送 */
+const compactMode = ref(false);
+
 const contextPressureLevel = computed<'warning' | 'critical' | null>(() => {
   const ratio = props.contextRatio ?? 0;
   const status = props.contextStatus?.trim();
@@ -343,6 +362,7 @@ function onInputKeydown(event: KeyboardEvent) {
 <style scoped lang="sass">
 /* 统一圆角卡片 */
 .composer-card
+  position: relative
   border: 1px solid var(--glass-border)
   border-radius: 18px
   background: var(--glass-surface)
@@ -359,6 +379,45 @@ function onInputKeydown(event: KeyboardEvent) {
 
   &--dark
     background: var(--glass-surface)
+
+  &--compact
+    padding: 4px 10px 4px
+    gap: 6px
+    flex-direction: row
+    align-items: center
+
+    /* 切换按钮回归文档流，推到右侧 */
+    .composer-compact-toggle
+      position: static
+      flex-shrink: 0
+      order: 2
+
+    /* 输入框占满剩余宽度 */
+    .composer-input
+      flex: 1 1 auto
+      min-width: 0
+      order: 1
+
+    /* 覆盖 Quasar q-field__control 默认 min-height: 56px */
+    :deep(.composer-input .q-field__control)
+      min-height: 32px !important
+      height: 32px !important
+      padding: 0 8px !important
+
+    :deep(.composer-input .q-field__native)
+      padding: 0 !important
+      line-height: 32px
+
+/* 精简模式切换按钮：右上角浮动 */
+.composer-compact-toggle
+  position: absolute
+  top: 6px
+  right: 6px
+  z-index: 1
+  color: var(--color-text-secondary)
+
+  &:hover
+    color: var(--color-accent)
 
 /* 顶部选择器行 */
 .composer-top-bar

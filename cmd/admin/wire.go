@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1452,6 +1453,18 @@ func provideMemoryL1ArchiveWorker(admin biz.SessionAdminStore, agents *biz.Agent
 	return jobs.NewMemoryL1ArchiveWorker(0, admin, agents, lg)
 }
 
+func provideChannelTurnJobSweeper(
+	turnJobRepo biz.ChannelTurnJobRepo,
+	graphs *biz.GraphUsecase,
+	cron biz.CronTriggerGateway,
+	lg loggateway.Logger,
+) *jobs.ChannelTurnJobSweeper {
+	if jobs.ChannelTurnJobSweeperDisabled() {
+		return nil
+	}
+	return jobs.NewChannelTurnJobSweeper(0, 0, turnJobRepo, graphs, cron, lg)
+}
+
 func provideMemoryEpisodeBackfillWorker(reader biz.MemoryEpisodeBackfillReader, episodeSync biz.EpisodeIndexSyncer, sys biz.SystemSettingRepo, stats *biz.MemoryWorkerStats, lg loggateway.Logger) *jobs.MemoryEpisodeBackfillWorker {
 	if biz.ResolveEpisodeBackfillDisabled(context.Background(), sys) {
 		return nil
@@ -1519,6 +1532,7 @@ func provideMemorySleepTimeWorker(
 	catalog *biz.LlmProviderModelUsecase,
 	sessionReader biz.SessionReader,
 	deadLetterSink biz.MemoryDeadLetterSink,
+	d *data.Data,
 	lg loggateway.Logger,
 ) *jobs.MemorySleepTimeWorker {
 	if jobs.MemorySleepTimeDisabled() {
@@ -1543,6 +1557,28 @@ func provideMemorySleepTimeWorker(
 	}
 	queue := memory.NewConsolidationQueue(memorySleepTimeQueueSize)
 	svc := memory.NewSleepTimeService(memSvc, llm, queue, lg)
+	// Phase 6A-06: wire EpisodeConsolidator for L2→L3 fact extraction.
+	// Reuses the same LLM (if configured) for episode analysis. When d is nil
+	// or LLM is unset, EpisodeConsolidator gracefully degrades to a no-op.
+	if d != nil {
+		ec := memory.NewEpisodeConsolidator(
+			data.NewL2RecallStore(d, d.VectorStore()),
+			data.NewL3FactWriterAdapter(d, d.VectorStore()),
+			data.NewMemoryActionLogWriter(d),
+			llm,
+			lg,
+		)
+		// T8: configurable min importance (env: MEMORY_EPISODE_MIN_IMPORTANCE).
+		// Default: 0.3. Set to "0" to disable filtering (keep all extracted facts).
+		if raw := strings.TrimSpace(os.Getenv("MEMORY_EPISODE_MIN_IMPORTANCE")); raw != "" {
+			if val, parseErr := strconv.ParseFloat(raw, 64); parseErr == nil && val >= 0 {
+				ec.SetMinImportance(val)
+				lg.Info("episode consolidator: min importance configured",
+					loggateway.Str("min_importance", strconv.FormatFloat(val, 'f', 2, 64)))
+			}
+		}
+		svc.SetEpisodeConsolidator(ec)
+	}
 	// Build target lister. Priority: env-var override → SessionRepo-derived.
 	var lister jobs.SleepTimeTargetLister
 	if userIDs := parseSleepTimeUserIDsFromEnv(); len(userIDs) > 0 {
@@ -1923,6 +1959,7 @@ type wireOut struct {
 	MonitorTraceBackfillWorker  *jobs.MonitorTraceBackfillWorker
 	MemoryL2Decay               *jobs.MemoryL2DecayWorker
 	MemoryL1Archive             *jobs.MemoryL1ArchiveWorker
+	ChannelTurnJobSweeper       *jobs.ChannelTurnJobSweeper
 	MemoryL3Decay               *jobs.MemoryL3DecayWorker
 	MemoryL4Decay               *jobs.MemoryL4DecayWorker
 	MemoryEbbinghausDecay       *jobs.MemoryEbbinghausDecayWorker
@@ -1976,6 +2013,7 @@ func provideWireOut(
 	monitorTraceBackfillWorker *jobs.MonitorTraceBackfillWorker,
 	memoryL2Decay *jobs.MemoryL2DecayWorker,
 	memoryL1Archive *jobs.MemoryL1ArchiveWorker,
+	channelTurnJobSweeper *jobs.ChannelTurnJobSweeper,
 	memoryL3Decay *jobs.MemoryL3DecayWorker,
 	memoryL4Decay *jobs.MemoryL4DecayWorker,
 	memoryEbbinghausDecay *jobs.MemoryEbbinghausDecayWorker,
@@ -2013,7 +2051,7 @@ func provideWireOut(
 		ChannelRuntime:          channelRuntime,
 		PluginRuntime:           pluginRuntime,
 		ToolAuditCleanup:        toolAuditCleanup,
-		FlowLogCleanup:          flowLogCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
+		FlowLogCleanup:          flowLogCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, ChannelTurnJobSweeper: channelTurnJobSweeper, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
 		MemoryEbbinghausDecay:     memoryEbbinghausDecay,
 		MemorySleepTime:           memorySleepTime,
 		MemoryEpisodeBackfill:     memoryEpisodeBackfill,
@@ -2510,6 +2548,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideSessionAdminStore,
 		provideMemoryAdminDeps,
 		provideMemoryL1ArchiveWorker,
+		provideChannelTurnJobSweeper,
 		provideMemoryL3DecayWorker,
 		provideMemoryL4DecayWorker,
 		provideMemoryEbbinghausDecayWorker,

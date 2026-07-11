@@ -157,8 +157,36 @@ export function useChatWorkspace() {
       handleActivityEvent((envelope.payload as ActivityBridgeEventPayload).Event);
       return;
     }
+    // Route team/member v2 events to spirit store for left sidebar updates.
+    // The v2 event router (below) also receives these for activityV2Store
+    // rendering — both paths run in parallel.
+    routeTeamEventToSpiritStore(envelope);
     eventRouter.dispatch(envelope);
   };
+
+  /**
+   * Route v2 team_stage and member_session events to the spirit store so the
+   * left sidebar agent list updates in real-time. Without this, the spirit
+   * store only refreshes on session switch (loadSpiritTeams API), leaving the
+   * agent list empty after team assembly and member statuses stale.
+   */
+  function routeTeamEventToSpiritStore(envelope: V2WsEnvelope) {
+    const p = envelope.payload as Record<string, unknown>;
+    switch (envelope.kind) {
+      case 'team_stage.created':
+      case 'team_stage.updated':
+      case 'team_stage.completed':
+      case 'team_stage.failed':
+        if (p.TeamStage) spiritStore.upsertTeamFromV2TeamStage(p.TeamStage as never);
+        break;
+      case 'member_session.created':
+      case 'member_session.updated':
+        if (p.MemberSession) spiritStore.updateMemberFromV2MemberSession(p.MemberSession as never);
+        break;
+      default:
+        break;
+    }
+  }
 
   // Phase B-2: per-spirit-session recursive tree cache for SessionTreeSidebar.
   const sessionTree = useSessionTree();

@@ -127,7 +127,7 @@ func provideLinkEvolutionService(
 				loggateway.Err(err))
 		}
 	}
-	return memory.NewLinkEvolutionService(
+	svc := memory.NewLinkEvolutionService(
 		llm,
 		data.NewL3FactReaderForUser(d),
 		data.NewL3FactWriterAdapter(d, d.VectorStore()),
@@ -135,6 +135,21 @@ func provideLinkEvolutionService(
 		d,   // tx: *data.Data implements memory.TxProvider for atomic backlink updates
 		lg,
 	)
+	// Phase 6A-03: wire L4 relation writer + action log for EVOLVED_FROM links.
+	svc.SetRelationWriter(data.NewL4GraphRepo(d))
+	svc.SetActionLogWriter(data.NewMemoryActionLogWriter(d))
+	// T8: per-agent throttle interval (env: MEMORY_LINK_EVOLUTION_THROTTLE).
+	// Example: "10s" → at most one LLM call per agent every 10 seconds.
+	// Empty or "0" disables throttling (default).
+	if raw := strings.TrimSpace(os.Getenv("MEMORY_LINK_EVOLUTION_THROTTLE")); raw != "" && raw != "0" {
+		if throttleDur, parseErr := time.ParseDuration(raw); parseErr == nil && throttleDur > 0 {
+			svc.SetThrottleInterval(throttleDur)
+			lg.Info("link evolution throttle configured",
+				loggateway.StepID("memory.link_evolution.wire"),
+				loggateway.Str("throttle", throttleDur.String()))
+		}
+	}
+	return svc
 }
 
 func provideMemoryAdminUsecase(admin biz.MemoryAdminDeps, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, d *data.Data, lg loggateway.Logger) *biz.MemoryAdminUsecase {
