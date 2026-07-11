@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aranea-Agents — AI 总裁工作台 | TRAE AI 创造力大赛</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Sora:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#060611;
+    --bg-2:#0a0a1c;
+    --surface:rgba(255,255,255,.035);
+    --surface-2:rgba(255,255,255,.06);
+    --border:rgba(255,255,255,.09);
+    --border-strong:rgba(139,92,246,.35);
+    --text:#eef0ff;
+    --muted:#9aa0b8;
+    --dim:#6b7088;
+    --indigo:#6366f1;
+    --violet:#8b5cf6;
+    --fuchsia:#d946ef;
+    --cyan:#22d3ee;
+    --emerald:#34d399;
+    --amber:#fbbf24;
+    --rose:#fb7185;
+    --grad-main:linear-gradient(135deg,#6366f1 0%,#8b5cf6 45%,#d946ef 100%);
+    --grad-cyan:linear-gradient(135deg,#22d3ee 0%,#6366f1 100%);
+    --grad-text:linear-gradient(120deg,#a5b4fc 0%,#c4b5fd 35%,#f0abfc 70%,#67e8f9 100%);
+    --shadow-glow:0 0 40px rgba(139,92,246,.25);
+    --r:18px;
+    --r-sm:12px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:"Sora","Noto Sans SC",sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    line-height:1.65;
+    overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* ===== animated background ===== */
+  .bg-grid{
+    position:fixed;inset:0;z-index:-2;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(99,102,241,.25), transparent 60%),
+      radial-gradient(ellipse 60% 50% at 90% 20%, rgba(217,70,239,.12), transparent 55%),
+      radial-gradient(ellipse 50% 40% at 10% 80%, rgba(34,211,238,.10), transparent 55%),
+      var(--bg);
+  }
+  .bg-grid::before{
+    content:"";position:absolute;inset:0;
+    background-image:
+      linear-gradient(rgba(139,92,246,.06) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(139,92,246,.06) 1px,transparent 1px);
+    background-size:54px 54px;
+    mask-image:radial-gradient(ellipse 70% 60% at 50% 40%,#000 30%,transparent 80%);
+    animation:gridDrift 30s linear infinite;
+  }
+  @keyframes gridDrift{to{background-position:54px 54px}}
+  .bg-grid::after{
+    content:"";position:absolute;inset:0;
+    background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/><feColorMatrix values='0 0 0 0 0.6 0 0 0 0 0.6 0 0 0 0 1 0 0 0 0.06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    opacity:.5;mix-blend-mode:overlay;pointer-events:none;
+  }
+
+  .wrap{max-width:1200px;margin:0 auto;padding:0 24px}
+  section{padding:90px 0;position:relative}
+
+  /* ===== reveal ===== */
+  .reveal{opacity:0;transform:translateY(34px);transition:opacity .9s cubic-bezier(.2,.7,.2,1),transform .9s cubic-bezier(.2,.7,.2,1)}
+  .reveal.in{opacity:1;transform:none}
+
+  /* ===== top bar ===== */
+  .topbar{
+    position:fixed;top:0;left:0;right:0;z-index:50;
+    backdrop-filter:blur(14px);
+    background:rgba(6,6,17,.6);
+    border-bottom:1px solid var(--border);
+  }
+  .topbar .wrap{display:flex;align-items:center;justify-content:space-between;height:62px}
+  .brand{display:flex;align-items:center;gap:10px;font-family:"Chakra Petch";font-weight:600;letter-spacing:.5px}
+  .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--grad-main);box-shadow:0 0 12px var(--violet)}
+  .brand small{color:var(--muted);font-family:"JetBrains Mono";font-size:11px;letter-spacing:1px}
+  .nav-links{display:flex;gap:26px}
+  .nav-links a{color:var(--muted);text-decoration:none;font-size:13px;transition:color .2s}
+  .nav-links a:hover{color:var(--text)}
+  @media(max-width:720px){.nav-links{display:none}}
+
+  /* ===== hero ===== */
+  .hero{padding:160px 0 80px;text-align:center;position:relative}
+  .badge{
+    display:inline-flex;align-items:center;gap:8px;
+    font-family:"JetBrains Mono";font-size:12px;letter-spacing:2px;text-transform:uppercase;
+    padding:7px 16px;border-radius:100px;
+    background:var(--surface-2);border:1px solid var(--border-strong);
+    color:#c4b5fd;margin-bottom:30px;
+  }
+  .badge .pulse{width:7px;height:7px;border-radius:50%;background:var(--emerald);box-shadow:0 0 8px var(--emerald);animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .hero h1{
+    font-family:"Chakra Petch","Noto Sans SC";font-weight:700;
+    font-size:clamp(38px,7vw,82px);line-height:1.02;letter-spacing:-1px;
+    margin-bottom:18px;
+  }
+  .hero h1 .grad{background:var(--grad-text);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero .sub{
+    font-size:clamp(17px,2.4vw,23px);color:var(--muted);max-width:720px;margin:0 auto 14px;
+    font-weight:300;
+  }
+  .hero .slogan{
+    font-family:"Chakra Petch";font-size:clamp(15px,2vw,19px);
+    color:#a5b4fc;letter-spacing:1px;margin-bottom:42px;
+  }
+  .hero .slogan span{color:var(--fuchsia)}
+  .hero-meta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-bottom:54px}
+  .chip{
+    font-family:"JetBrains Mono";font-size:12px;padding:6px 14px;border-radius:8px;
+    background:var(--surface);border:1px solid var(--border);color:var(--muted);
+  }
+  .chip b{color:#c4b5fd;font-weight:600}
+
+  /* hero orbit visual */
+  .orbit{position:relative;width:min(560px,92vw);height:300px;margin:0 auto}
+  .orbit .core{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:84px;height:84px;border-radius:50%;
+    background:var(--grad-main);
+    display:flex;align-items:center;justify-content:center;
+    font-family:"Chakra Petch";font-weight:700;font-size:13px;
+    box-shadow:0 0 50px rgba(139,92,246,.6),inset 0 0 20px rgba(255,255,255,.2);
+    z-index:3;
+  }
+  .orbit .ring{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);border-radius:50%;border:1px dashed rgba(139,92,246,.25)}
+  .orbit .r1{width:200px;height:200px;animation:spin 22s linear infinite}
+  .orbit .r2{width:320px;height:320px;animation:spin 36s linear infinite reverse;border-color:rgba(34,211,238,.18)}
+  .orbit .r3{width:440px;height:440px;border-color:rgba(217,70,239,.14);animation:spin 50s linear infinite}
+  .orbit .node{
+    position:absolute;width:34px;height:34px;border-radius:10px;
+    background:var(--surface-2);border:1px solid var(--border-strong);
+    display:flex;align-items:center;justify-content:center;
+    backdrop-filter:blur(8px);
+    box-shadow:0 0 18px rgba(139,92,246,.3);
+  }
+  .orbit .node svg{width:18px;height:18px}
+  @keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+  .orbit .n1{top:50%;left:calc(50% + 100px);transform:translate(-50%,-50%)}
+  .orbit .n2{top:calc(50% - 100px);left:50%;transform:translate(-50%,-50%)}
+  .orbit .n3{top:50%;left:calc(50% - 100px);transform:translate(-50%,-50%)}
+  .orbit .n4{top:calc(50% + 100px);left:50%;transform:translate(-50%,-50%)}
+  @media(max-width:520px){.orbit{transform:scale(.8);height:240px}}
+
+  /* ===== section heading ===== */
+  .sec-head{text-align:center;margin-bottom:56px}
+  .sec-tag{font-family:"JetBrains Mono";font-size:12px;letter-spacing:3px;text-transform:uppercase;color:var(--violet);margin-bottom:14px;display:block}
+  .sec-head h2{font-family:"Chakra Petch","Noto Sans SC";font-weight:700;font-size:clamp(28px,4.5vw,46px);letter-spacing:-.5px}
+  .sec-head h2 .grad{background:var(--grad-text);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sec-head p{color:var(--muted);max-width:580px;margin:14px auto 0;font-size:15px}
+
+  /* ===== pain vs solution ===== */
+  .versus{display:grid;grid-template-columns:1fr auto 1fr;gap:24px;align-items:stretch}
+  @media(max-width:820px){.versus{grid-template-columns:1fr;gap:16px}}
+  .vcard{padding:34px 30px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);position:relative;overflow:hidden}
+  .vcard.bad{border-color:rgba(251,113,133,.25)}
+  .vcard.bad::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 80% 0%,rgba(251,113,133,.10),transparent 60%)}
+  .vcard.good{border-color:var(--border-strong)}
+  .vcard.good::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 80% 0%,rgba(139,92,246,.14),transparent 60%)}
+  .vcard .vh{display:flex;align-items:center;gap:12px;margin-bottom:22px;position:relative}
+  .vcard .vh .ico{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center}
+  .vcard.bad .ico{background:rgba(251,113,133,.14);color:var(--rose)}
+  .vcard.good .ico{background:rgba(139,92,246,.16);color:#c4b5fd}
+  .vcard .vh h3{font-family:"Chakra Petch","Noto Sans SC";font-size:20px;font-weight:600}
+  .vcard .vh .tag{font-family:"JetBrains Mono";font-size:11px;color:var(--dim);letter-spacing:1px}
+  .vcard ul{list-style:none;position:relative}
+  .vcard li{padding:11px 0 11px 28px;border-bottom:1px dashed var(--border);color:var(--muted);font-size:14.5px;position:relative}
+  .vcard li:last-child{border-bottom:none}
+  .vcard li::before{position:absolute;left:0;top:13px;font-family:"JetBrains Mono";font-size:13px}
+  .vcard.bad li::before{content:"✕";color:var(--rose)}
+  .vcard.good li::before{content:"✓";color:var(--emerald)}
+  .vcard.good li b{color:#c4b5fd;font-weight:600}
+  .vs-divider{display:flex;align-items:center;justify-content:center}
+  .vs-divider .vs{
+    font-family:"Chakra Petch";font-weight:700;font-size:22px;
+    width:54px;height:54px;border-radius:50%;
+    background:var(--grad-main);display:flex;align-items:center;justify-content:center;
+    box-shadow:0 0 30px rgba(139,92,246,.5);
+  }
+  @media(max-width:820px){.vs-divider{padding:4px 0}.vs-divider .vs{transform:rotate(90deg)}}
+
+  /* ===== capability cards ===== */
+  .cap-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+  @media(max-width:900px){.cap-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:560px){.cap-grid{grid-template-columns:1fr}}
+  .cap{
+    padding:28px 26px;border-radius:var(--r);border:1px solid var(--border);
+    background:var(--surface);position:relative;overflow:hidden;
+    transition:transform .35s cubic-bezier(.2,.7,.2,1),border-color .35s,box-shadow .35s;
+  }
+  .cap::after{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad-main);opacity:0;transition:opacity .35s}
+  .cap:hover{transform:translateY(-6px);border-color:var(--border-strong);box-shadow:0 18px 50px rgba(99,102,241,.18)}
+  .cap:hover::after{opacity:1}
+  .cap .num{position:absolute;top:18px;right:22px;font-family:"Chakra Petch";font-weight:700;font-size:42px;color:rgba(255,255,255,.05)}
+  .cap .ico{width:50px;height:50px;border-radius:13px;background:var(--surface-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin-bottom:20px;color:#c4b5fd}
+  .cap .ico svg{width:26px;height:26px}
+  .cap h3{font-family:"Chakra Petch","Noto Sans SC";font-size:18px;font-weight:600;margin-bottom:10px}
+  .cap p{color:var(--muted);font-size:13.8px;line-height:1.7}
+  .cap .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:16px}
+  .cap .tags span{font-family:"JetBrains Mono";font-size:10.5px;padding:3px 9px;border-radius:6px;background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.2);color:#c4b5fd}
+
+  /* ===== architecture ===== */
+  .arch-block{margin-bottom:48px}
+  .arch-title{display:flex;align-items:center;gap:12px;margin-bottom:26px;font-family:"Chakra Petch","Noto Sans SC";font-size:19px;font-weight:600}
+  .arch-title .pill{font-family:"JetBrains Mono";font-size:11px;padding:3px 10px;border-radius:6px;background:var(--grad-main);color:#fff;letter-spacing:1px}
+  .arch-title .desc{color:var(--muted);font-size:13.5px;font-weight:300;font-family:"Sora","Noto Sans SC"}
+
+  /* orchestration tiers */
+  .tiers{display:flex;flex-direction:column;gap:14px}
+  .tier{display:grid;grid-template-columns:160px 1fr;gap:18px;align-items:center;padding:20px 24px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);position:relative;overflow:hidden}
+  @media(max-width:680px){.tier{grid-template-columns:1fr;gap:10px}}
+  .tier .tname{font-family:"Chakra Petch";font-weight:700;font-size:22px}
+  .tier .tname small{display:block;font-family:"JetBrains Mono";font-size:11px;color:var(--dim);font-weight:400;letter-spacing:1px;margin-top:2px}
+  .tier .modes{display:flex;flex-wrap:wrap;gap:8px}
+  .tier .mode{font-size:12.5px;padding:6px 12px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text)}
+  .tier.t1{border-color:rgba(217,70,239,.3)}.tier.t1::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--fuchsia)}
+  .tier.t2{border-color:rgba(34,211,238,.3)}.tier.t2::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--cyan)}
+  .tier.t3{border-color:rgba(139,92,246,.3)}.tier.t3::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--violet)}
+
+  /* memory layers */
+  .mem-stack{display:flex;flex-direction:column;gap:8px}
+  .mem-layer{display:grid;grid-template-columns:70px 130px 1fr;gap:18px;align-items:center;padding:16px 22px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--surface);transition:transform .3s,background .3s}
+  .mem-layer:hover{transform:translateX(8px);background:var(--surface-2)}
+  @media(max-width:680px){.mem-layer{grid-template-columns:60px 1fr}.mem-layer .mdesc{grid-column:1/-1;padding-left:78px;color:var(--muted);font-size:13px}}
+  .mem-layer .mlv{font-family:"Chakra Petch";font-weight:700;font-size:24px;color:#c4b5fd}
+  .mem-layer .mnm{font-family:"Chakra Petch","Noto Sans SC";font-weight:600;font-size:15px}
+  .mem-layer .mdesc{color:var(--muted);font-size:13.5px}
+  .mem-layer.l0 .mlv{color:var(--cyan)}
+  .mem-layer.l1 .mlv{color:#67e8f9}
+  .mem-layer.l2 .mlv{color:var(--indigo)}
+  .mem-layer.l3 .mlv{color:var(--violet)}
+  .mem-layer.l4 .mlv{color:var(--fuchsia)}
+
+  /* org structure */
+  .org{display:flex;flex-direction:column;gap:14px}
+  .org-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .org-row .lvl{font-family:"JetBrains Mono";font-size:11px;color:var(--dim);width:64px;flex-shrink:0;letter-spacing:1px}
+  .org-pill{padding:9px 16px;border-radius:10px;font-size:13.5px;border:1px solid var(--border);background:var(--surface);font-family:"Chakra Petch","Noto Sans SC"}
+  .org-pill.ind{background:rgba(217,70,239,.1);border-color:rgba(217,70,239,.3);color:#f0abfc;font-weight:600}
+  .org-pill.dep{background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.3);color:#c4b5fd}
+  .org-pill.pos{background:var(--surface);color:var(--muted)}
+  .org-arrow{color:var(--dim);font-family:"JetBrains Mono"}
+
+  /* ===== scenarios ===== */
+  .scen-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+  @media(max-width:900px){.scen-grid{grid-template-columns:1fr}}
+  .scen{padding:30px 26px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);position:relative;overflow:hidden;transition:transform .35s,border-color .35s}
+  .scen:hover{transform:translateY(-5px);border-color:var(--border-strong)}
+  .scen .glow{position:absolute;top:-40px;right:-40px;width:140px;height:140px;border-radius:50%;filter:blur(40px);opacity:.5}
+  .scen.s1 .glow{background:var(--fuchsia)}
+  .scen.s2 .glow{background:var(--cyan)}
+  .scen.s3 .glow{background:var(--indigo)}
+  .scen .sico{width:54px;height:54px;border-radius:14px;background:var(--surface-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin-bottom:20px;position:relative}
+  .scen .sico svg{width:28px;height:28px}
+  .scen.s1 .sico{color:var(--fuchsia)}
+  .scen.s2 .sico{color:var(--cyan)}
+  .scen.s3 .sico{color:#a5b4fc}
+  .scen h3{font-family:"Chakra Petch","Noto Sans SC";font-size:19px;font-weight:600;margin-bottom:8px;position:relative}
+  .scen .sub{font-family:"JetBrains Mono";font-size:11px;color:var(--dim);letter-spacing:1px;margin-bottom:16px;position:relative}
+  .scen .flow{position:relative;margin-bottom:16px}
+  .scen .flow .step{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:13.5px;color:var(--muted);position:relative}
+  .scen .flow .step .k{font-family:"JetBrains Mono";font-size:10px;color:var(--violet);width:22px}
+  .scen .flow .step b{color:var(--text);font-weight:500}
+  .scen .out{padding:12px 14px;border-radius:10px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.2);font-size:13px;color:#a7f3d0;position:relative}
+  .scen .out b{color:var(--emerald)}
+
+  /* ===== value ===== */
+  .value{padding:80px 0;text-align:center;position:relative}
+  .value-card{padding:56px 40px;border-radius:24px;border:1px solid var(--border-strong);background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(217,70,239,.08));position:relative;overflow:hidden}
+  .value-card::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse 60% 80% at 50% 0%,rgba(139,92,246,.2),transparent 70%)}
+  .value-card h2{font-family:"Chakra Petch","Noto Sans SC";font-weight:700;font-size:clamp(26px,4vw,40px);margin-bottom:18px;position:relative}
+  .value-card h2 .grad{background:var(--grad-text);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .value-card .big{font-family:"Chakra Petch","Noto Sans SC";font-size:clamp(22px,3.2vw,34px);font-weight:600;color:#c4b5fd;margin:20px 0;position:relative}
+  .value-card .big span{color:var(--fuchsia)}
+  .value-card p{color:var(--muted);max-width:680px;margin:0 auto;position:relative;font-size:15.5px}
+  .stats{display:flex;gap:30px;justify-content:center;flex-wrap:wrap;margin-top:38px;position:relative}
+  .stat{text-align:center}
+  .stat .n{font-family:"Chakra Petch";font-weight:700;font-size:clamp(30px,5vw,46px);background:var(--grad-text);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .stat .l{font-family:"JetBrains Mono";font-size:12px;color:var(--muted);letter-spacing:1px;margin-top:4px}
+
+  /* ===== footer ===== */
+  footer{padding:50px 0 40px;border-top:1px solid var(--border);text-align:center}
+  footer .fbrand{font-family:"Chakra Petch";font-weight:600;font-size:15px;margin-bottom:8px}
+  footer .fbrand span{background:var(--grad-text);-webkit-background-clip:text;background-clip:text;color:transparent}
+  footer .tech{font-family:"JetBrains Mono";font-size:11.5px;color:var(--dim);letter-spacing:.5px;line-height:2}
+  footer .tech b{color:var(--muted);font-weight:400}
+  footer .copy{margin-top:14px;font-size:12px;color:var(--dim)}
+
+  .cta{
+    display:inline-flex;align-items:center;gap:10px;margin-top:10px;
+    font-family:"Chakra Petch";font-weight:600;font-size:15px;
+    padding:13px 30px;border-radius:100px;background:var(--grad-main);color:#fff;
+    text-decoration:none;box-shadow:0 0 30px rgba(139,92,246,.4);transition:transform .25s,box-shadow .25s;
+  }
+  .cta:hover{transform:translateY(-2px);box-shadow:0 8px 40px rgba(139,92,246,.55)}
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="wrap">
+    <div class="brand"><span class="dot"></span>ARANEA <small>// AI PRESIDENT WORKBENCH</small></div>
+    <nav class="nav-links">
+      <a href="#pain">痛点</a>
+      <a href="#cap">能力</a>
+      <a href="#arch">架构</a>
+      <a href="#scen">场景</a>
+      <a href="#value">价值</a>
+    </nav>
+  </div>
+</div>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="wrap">
+    <div class="badge reveal"><span class="pulse"></span>TRAE AI 创造力大赛 · 学习工作赛道</div>
+    <h1 class="reveal">Aranea-Agents<br><span class="grad">AI 总裁工作台</span></h1>
+    <p class="sub reveal">一人通过 AI 精灵同时控制 N 家虚拟公司，自己当发号施令的总裁。</p>
+    <p class="slogan reveal">企业级多智能体编排平台 · <span>Spirit 动态编排引擎</span> · 让一个人拥有一支公司</p>
+    <div class="hero-meta reveal">
+      <span class="chip"><b>赛道</b> · 学习工作</span>
+      <span class="chip"><b>定位</b> · 个人总裁 × N 家虚拟公司</span>
+      <span class="chip"><b>引擎</b> · Spirit 动态编排</span>
+    </div>
+
+    <!-- orbit visual -->
+    <div class="orbit reveal">
+      <div class="ring r3"></div>
+      <div class="ring r2"></div>
+      <div class="ring r1"></div>
+      <div class="core">SPIRIT<br>总裁</div>
+      <div class="node n1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg></div>
+      <div class="node n2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></div>
+      <div class="node n3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+      <div class="node n4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+    </div>
+  </div>
+</header>
+
+<!-- PAIN vs SOLUTION -->
+<section id="pain">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="sec-tag">01 / Problem × Solution</span>
+      <h2>痛点与<span class="grad">方案</span></h2>
+      <p>从「一个人干不过来」到「一个人指挥一支公司」的范式跃迁。</p>
+    </div>
+    <div class="versus">
+      <div class="vcard bad reveal">
+        <div class="vh">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>
+          <div><h3>没有产品时</h3><div class="tag">BEFORE · 个人困境</div></div>
+        </div>
+        <ul>
+          <li>一个人干不过来，写文案、做设计、跑数据全靠自己</li>
+          <li>雇佣团队成本太高，社保工资场地一年几十万起</li>
+          <li>现有 AI 工具只能单点问答，无法团队协作与分工</li>
+          <li>多步骤流程全靠人肉串联，上下文丢失、反复返工</li>
+          <li>专业知识分散，无法沉淀成可复用的组织能力</li>
+        </ul>
+      </div>
+      <div class="vs-divider reveal"><div class="vs">VS</div></div>
+      <div class="vcard good reveal">
+        <div class="vh">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></div>
+          <div><h3>有了 Aranea 后</h3><div class="tag">AFTER · 总裁模式</div></div>
+        </div>
+        <ul>
+          <li>一句话下达任务，<b>Spirit 自动分解</b>成子任务并行推进</li>
+          <li>按行业自动<b>组建虚拟公司</b>，专业岗位各司其职，零人力成本</li>
+          <li>Agent 之间<b>实时协作</b>，6 种协作模式覆盖所有工作流</li>
+          <li>全链路上下文<b>五层记忆</b>沉淀，越用越懂你的业务</li>
+          <li>技能自动进化、人机协同审批，组织能力持续复利</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CAPABILITIES -->
+<section id="cap">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="sec-tag">02 / Core Capabilities</span>
+      <h2>六大<span class="grad">核心能力</span></h2>
+      <p>从编排引擎到记忆系统，从组织架构到可观测性，企业级能力的完整闭环。</p>
+    </div>
+    <div class="cap-grid">
+      <div class="cap reveal">
+        <span class="num">01</span>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="3"/><path d="M12 22V8M5 12l7-4 7 4M5 12v6l7 4 7-4v-6"/></svg></div>
+        <h3>三层编排引擎</h3>
+        <p>Team 六模式协作（顺序/并行/协调者/批评循环/群智/自适应）+ Graph 图编排（可视化拖拽 + 检查点回溯）+ Spirit 动态编排（自动分解 → 分配 → 执行 → 综合）。</p>
+        <div class="tags"><span>Spirit</span><span>Team×6</span><span>Graph DAG</span><span>Checkpoint</span></div>
+      </div>
+      <div class="cap reveal">
+        <span class="num">02</span>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></div>
+        <h3>五层记忆系统</h3>
+        <p>L0 上下文窗口 / L1 工作记忆 / L2 情景记忆 / L3 语义事实 / L4 知识图谱。Agent 越用越懂你，跨会话、跨任务的长期记忆与语义检索。</p>
+        <div class="tags"><span>L0~L4</span><span>pgvector</span><span>知识图谱</span></div>
+      </div>
+      <div class="cap reveal">
+        <span class="num">03</span>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+        <h3>组织架构</h3>
+        <p>行业 → 部门 → 岗位三级体系，专人专事，模拟真实公司。内置金融、自媒体、软件开发三大行业完整岗位体系与技能库。</p>
+        <div class="tags"><span>三级体系</span><span>三大行业</span><span>岗位库</span></div>
+      </div>
+      <div class="cap reveal">
+        <span class="num">04</span>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+        <h3>技能进化</h3>
+        <p>自动发现技能、去重融合、人机协同审批、版本管理。组织能力像生物一样持续进化，越用越强。</p>
+        <div class="tags"><span>自动发现</span><span>去重融合</span><span>人机审批</span><span>版本管理</span></div>
+      </div>
+      <div class="cap reveal">
+        <span class="num">05</span>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg></div>
+        <h3>全链路可观测</h3>
+        <p>全链路追踪、根因分析、自动自愈、实时监控。每一步执行都可回溯、可调试、可优化，生产级可靠性。</p>
+        <div class="tags"><span>Trace</span><span>根因分析</span><span>自动自愈</span><span>实时监控</span></div>
+      </div>
+      <div class="cap reveal">
+        <span class="num">06</span>
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></div>
+        <h3>36+ 业务模块</h3>
+        <p>额度计费、A2A 协议、多 Channel、MCP 支持、Plugin 系统等 36+ 业务模块，开箱即用的企业级能力矩阵。</p>
+        <div class="tags"><span>额度计费</span><span>A2A</span><span>MCP</span><span>Plugin</span><span>Multi-Channel</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE -->
+<section id="arch">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="sec-tag">03 / Architecture</span>
+      <h2>架构<span class="grad">示意</span></h2>
+      <p>三层编排引擎 × 五层记忆系统 × 组织架构，构建可生长的智能体协作底座。</p>
+    </div>
+
+    <!-- Orchestration tiers -->
+    <div class="arch-block reveal">
+      <div class="arch-title"><span class="pill">A</span>三层编排引擎 <span class="desc">— 从动态分解到图编排的完整编排能力</span></div>
+      <div class="tiers">
+        <div class="tier t3">
+          <div class="tname">Spirit<small>DYNAMIC ORCHESTRATOR</small></div>
+          <div class="modes">
+            <span class="mode">自动分解</span><span class="mode">智能分配</span><span class="mode">并行执行</span><span class="mode">结果综合</span><span class="mode">动态编排</span>
+          </div>
+        </div>
+        <div class="tier t2">
+          <div class="tname">Team<small>6 COLLAB MODES</small></div>
+          <div class="modes">
+            <span class="mode">顺序</span><span class="mode">并行</span><span class="mode">协调者</span><span class="mode">批评循环</span><span class="mode">群智</span><span class="mode">自适应</span>
+          </div>
+        </div>
+        <div class="tier t1">
+          <div class="tname">Graph<small>VISUAL DAG</small></div>
+          <div class="modes">
+            <span class="mode">可视化拖拽</span><span class="mode">检查点回溯</span><span class="mode">条件分支</span><span class="mode">循环节点</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Memory layers -->
+    <div class="arch-block reveal">
+      <div class="arch-title"><span class="pill">B</span>五层记忆系统 <span class="desc">— Agent 越用越懂你的秘密</span></div>
+      <div class="mem-stack">
+        <div class="mem-layer l0"><div class="mlv">L0</div><div class="mnm">上下文窗口</div><div class="mdesc">实时对话上下文，当前会话的短期记忆</div></div>
+        <div class="mem-layer l1"><div class="mlv">L1</div><div class="mnm">工作记忆</div><div class="mdesc">任务进行中的中间状态与草稿，可被 Agent 主动读写</div></div>
+        <div class="mem-layer l2"><div class="mlv">L2</div><div class="mnm">情景记忆</div><div class="mdesc">历史执行轨迹的回放，跨会话的经验复用</div></div>
+        <div class="mem-layer l3"><div class="mlv">L3</div><div class="mnm">语义事实</div><div class="mdesc">向量化的事实库，语义检索 + 自动维护</div></div>
+        <div class="mem-layer l4"><div class="mlv">L4</div><div class="mnm">知识图谱</div><div class="mdesc">实体关系的结构化图谱，推理与关联发现</div></div>
+      </div>
+    </div>
+
+    <!-- Org structure -->
+    <div class="arch-block reveal">
+      <div class="arch-title"><span class="pill">C</span>组织架构 <span class="desc">— 专人专事，模拟真实公司</span></div>
+      <div class="org">
+        <div class="org-row"><span class="lvl">行业</span><span class="org-pill ind">金融</span><span class="org-pill ind">自媒体</span><span class="org-pill ind">软件开发</span></div>
+        <div class="org-row"><span class="lvl">部门</span><span class="org-arrow">▼</span><span class="org-pill dep">投研部</span><span class="org-pill dep">风控部</span><span class="org-pill dep">内容部</span><span class="org-pill dep">运营部</span><span class="org-pill dep">产品部</span><span class="org-pill dep">研发部</span></div>
+        <div class="org-row"><span class="lvl">岗位</span><span class="org-arrow">▼</span><span class="org-pill pos">分析师</span><span class="org-pill pos">风控师</span><span class="org-pill pos">文案</span><span class="org-pill pos">编辑</span><span class="org-pill pos">PM</span><span class="org-pill pos">前端</span><span class="org-pill pos">后端</span><span class="org-pill pos">测试</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SCENARIOS -->
+<section id="scen">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="sec-tag">04 / Demo Scenarios</span>
+      <h2>典型<span class="grad">演示场景</span></h2>
+      <p>一句话下指令，Spirit 自动组建团队、并行推进、综合交付。</p>
+    </div>
+    <div class="scen-grid">
+      <div class="scen s1 reveal">
+        <div class="glow"></div>
+        <div class="sico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg></div>
+        <h3>创业验证</h3>
+        <div class="sub">SCENARIO · MARKET RESEARCH</div>
+        <div class="flow">
+          <div class="step"><span class="k">01</span><b>市场调研员</b> 搜集赛道数据与竞品</div>
+          <div class="step"><span class="k">02</span><b>财务分析师</b> 测算成本与盈利模型</div>
+          <div class="step"><span class="k">03</span><b>策略顾问</b> 综合输出可行性报告</div>
+        </div>
+        <div class="out"><b>交付 ▸</b> 一份完整的创业可行性评估报告，含市场规模、竞品分析、财务测算与风险提示。</div>
+      </div>
+      <div class="scen s2 reveal">
+        <div class="glow"></div>
+        <div class="sico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
+        <h3>自媒体一条龙</h3>
+        <div class="sub">SCENARIO · CONTENT PIPELINE</div>
+        <div class="flow">
+          <div class="step"><span class="k">01</span><b>选题策划</b> 热点追踪与选题生成</div>
+          <div class="step"><span class="k">02</span><b>文案编辑</b> 撰写多平台适配稿件</div>
+          <div class="step"><span class="k">03</span><b>排版运营</b> 生成配图建议与发布排期</div>
+        </div>
+        <div class="out"><b>交付 ▸</b> 从选题到成稿再到排期，一篇可发布的自媒体内容，跨平台适配。</div>
+      </div>
+      <div class="scen s3 reveal">
+        <div class="glow"></div>
+        <div class="sico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+        <h3>软件开发协作</h3>
+        <div class="sub">SCENARIO · SOFTWARE DEV</div>
+        <div class="flow">
+          <div class="step"><span class="k">01</span><b>产品经理</b> 拆解需求与验收标准</div>
+          <div class="step"><span class="k">02</span><b>前后端工程师</b> 并行编码与联调</div>
+          <div class="step"><span class="k">03</span><b>测试工程师</b> 生成用例并验证交付</div>
+        </div>
+        <div class="out"><b>交付 ▸</b> 一个可运行的功能模块，含需求文档、代码实现与测试报告。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- VALUE -->
+<section id="value" class="value">
+  <div class="wrap">
+    <div class="value-card reveal">
+      <span class="sec-tag" style="color:#c4b5fd">05 / Value Proposition</span>
+      <h2>将公司级协作生产力<br><span class="grad">从组织门槛降为个人门槛</span></h2>
+      <div class="big">一个人 · 一句话 · <span>一支公司</span></div>
+      <p>Aranea-Agents 让个人创业者、自由职业者、自媒体运营者、小型咨询团队，无需雇佣、无需管理，即可拥有完整的企业级协作生产力。Spirit 动态编排引擎承担分解、分配、执行、综合的全部复杂度，你只需要做一件事——当总裁，发号施令。</p>
+      <div class="stats">
+        <div class="stat"><div class="n">3</div><div class="l">行业体系</div></div>
+        <div class="stat"><div class="n">6</div><div class="l">协作模式</div></div>
+        <div class="stat"><div class="n">5</div><div class="l">记忆层级</div></div>
+        <div class="stat"><div class="n">36+</div><div class="l">业务模块</div></div>
+      </div>
+      <a class="cta" href="#top">成为 AI 总裁
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer id="top">
+  <div class="wrap">
+    <div class="fbrand"><span>ARANEA-AGENTS</span> · AI 总裁工作台</div>
+    <div class="tech">
+      <b>TECH STACK ▸</b> Go · Kratos v2 · trpc-agent-go · Vue 3 · Quasar · Pinia · TypeScript · PostgreSQL(pgvector)<br>
+      <b>ENGINE ▸</b> Spirit 动态编排 · Team 六模式协作 · Graph 图编排 · 五层记忆 · 36+ 业务模块
+    </div>
+    <div class="copy">TRAE AI 创造力大赛 · 学习工作赛道 · © 2026 Aranea-Agents</div>
+  </div>
+</footer>
+
+<script>
+  // scroll reveal
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach((e,i)=>{
+      if(e.isIntersecting){
+        const el = e.target;
+        const siblings = Array.from(el.parentElement.querySelectorAll('.reveal'));
+        const idx = siblings.indexOf(el);
+        el.style.transitionDelay = (idx>=0? idx%4 : 0)*0.08 + 's';
+        el.classList.add('in');
+        io.unobserve(el);
+      }
+    });
+  },{threshold:0.12, rootMargin:'0px 0px -60px 0px'});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+</script>
+</body>
+</html>

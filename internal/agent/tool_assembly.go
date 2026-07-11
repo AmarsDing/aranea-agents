@@ -12,6 +12,7 @@ import (
 	mcpconfig "aranea-agents/internal/mcp/config"
 	"aranea-agents/internal/skill/storage"
 	"aranea-agents/internal/tools"
+	"aranea-agents/internal/tools/memory"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	tooltrpc "aranea-agents/internal/tools/trpc"
 	"aranea-agents/pkg/loggateway"
@@ -96,6 +97,10 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		// Auto-enable working_memory tools when memory is enabled and MemoryAdmin is wired
 		if deps.MemoryAdmin != nil {
 			cfg.WorkingMemory = true
+		}
+		// Register the compact tool when ManualCompressor is wired.
+		if deps.ManualCompressor != nil {
+			cfg.CustomTools = append(cfg.CustomTools, memory.NewCompactTool())
 		}
 	}
 

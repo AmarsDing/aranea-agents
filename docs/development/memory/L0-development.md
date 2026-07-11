@@ -21,7 +21,7 @@
 
 | # | 任务 | 状态 |
 |---|------|------|
-| L0-1 | Team 多 Agent L0 隔离验收 | 🟡 |
+| L0-1 | Team 多 Agent L0 隔离验收 | ✅ `ListL0SnapshotRows` 已支持 agent_id 过滤（2026-07-11 验证） |
 | L0-2 | Prompt Preview 完整分段 UI | 🟡 |
 | L0-3 | `GetL0Snapshot` HTTP 路由对齐 proto | ❌ |
 

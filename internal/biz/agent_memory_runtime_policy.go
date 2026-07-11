@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+
+	"aranea-agents/internal/llmcontext"
 )
 
 const maxL3RecallLimit = 20
@@ -61,6 +63,15 @@ type MemoryRuntimePolicy struct {
 
 	L2RetentionDays      int
 	L3DecayIntervalHours int
+
+	// CompressionThreshold is the context-window usage ratio at which the
+	// BeforeModel compression hook triggers recursive summarisation.
+	// Default: llmcontext.ContextStatusCriticalThreshold (0.80).
+	CompressionThreshold float64
+	// CompressionKeepRatio is the fraction of recent conversation messages
+	// to retain during compression. Older messages are evicted and folded
+	// into the recursive summary. Default: 0.30 (Letta's pattern).
+	CompressionKeepRatio float64
 }
 
 func (p MemoryRuntimePolicy) AnyInject() bool {
@@ -74,10 +85,18 @@ func (p MemoryRuntimePolicy) AnyWrite() bool {
 // ResolveMemoryRuntimePolicy maps agent_runtime_settings + optional session context
 // into symmetric read/write gates. Missing settings fail closed.
 func ResolveMemoryRuntimePolicy(settings *AgentRuntimeSettings) MemoryRuntimePolicy {
-	if settings == nil || !settings.MemoryEnabled {
-		return MemoryRuntimePolicy{}
-	}
+	// Compression defaults are always populated because the BeforeModel
+	// compression hook is platform-level (wired when ContextCompressor is
+	// available) and must have valid thresholds even for agents with memory
+	// disabled.
 	p := MemoryRuntimePolicy{
+		CompressionThreshold: llmcontext.ContextStatusCriticalThreshold,
+		CompressionKeepRatio: 0.30,
+	}
+	if settings == nil || !settings.MemoryEnabled {
+		return p
+	}
+	p = MemoryRuntimePolicy{
 		MasterEnabled:          true,
 		InjectL1:               settings.L1Enabled && settings.L0InjectL1,
 		RecallL2:               settings.L2RecallEnabled,
@@ -108,6 +127,8 @@ func ResolveMemoryRuntimePolicy(settings *AgentRuntimeSettings) MemoryRuntimePol
 		MemoryToolMinScore:     settings.MemoryMinScore,
 		L2RetentionDays:        settings.L2RetentionDays,
 		L3DecayIntervalHours:   settings.L3DecayIntervalHours,
+		CompressionThreshold:   llmcontext.ContextStatusCriticalThreshold,
+		CompressionKeepRatio:   0.30,
 	}
 	if p.L2RecallMax <= 0 {
 		p.L2RecallMax = 3

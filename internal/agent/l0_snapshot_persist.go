@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
@@ -185,6 +186,14 @@ func persistL0AssemblySnapshot(ctx context.Context, deps TRPCBuilderDeps, ag biz
 		WarningCodesJSON:     biz.L0WarningCodesJSON(biz.L0WarningCodesFromRatio(usedRatio)),
 		MetadataJSON:         metaJSON,
 		CreatedAt:            time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	// Overlay compression metadata when the compression hook fired this call.
+	if compMeta := LoadCompressionMeta(ctx); compMeta.Occurred {
+		in.TruncateStrategy = "recursive_summary"
+		in.TruncatedMessageCount = compMeta.EvictedCount
+		if compMeta.SummaryText != "" {
+			in.SummaryTokenEstimate = estTokensFromChars(utf8.RuneCountInString(compMeta.SummaryText))
+		}
 	}
 	if err := deps.MemoryAdmin.InsertL0AssemblySnapshot(ctx, in); err != nil {
 		deps.Logger().Warn("L0 快照落库失败",

@@ -756,7 +756,99 @@ make all
 
 ```bash
 # 开发模式 A：免登录（最快）
-# Windows PowerShell:
+13:21
+用户8128084130
+检查项目进度和完成情况，规划下一步完善的模块功能
+Agent
+思考过程
+我将先检查项目进度文档和开发计划,然后规划下一步工作。
+
+aranea-agents\docs\development
+Thought
+项目文档很多,我需要并行读取关键进度文件来了解整体状态。
+
+docs\development\README.md
+Thought
+docs\development\phase1-补齐框架能力缺口\实施进度.md
+docs\development\phase2-增强自主性\实施进度.md
+docs\development\phase3-进化能力\实施进度.md
+docs\development\phase4-生产级增强\实施进度.md
+docs\development\phase5-差异化创新\实施进度.md
+docs\development\phase6-记忆系统增强\实施进度.md
+Thought
+让我再查看记忆系统实施进度和聊天模块的开发状态,以便更全面地了解项目现状。
+
+docs\development\memory\实施进度.md
+现在我对整体进度已有清晰认识。让我再快速查看聊天模块和团队编排的开发状态,这两个是近期活跃的模块。
+
+docs\development\1-chat.development.md
+docs\development\1-chat.development.md
+docs\development\53-team-graph-orchestration.development.md
+Thought
+我已全面检查了项目进度。以下是完整的进度分析和下一步规划建议。
+
+一、项目整体进度概览
+阶段	主题	整体进度	状态
+Phase 1	补齐框架能力缺口	100%	✅ 全部完成 (8/8)
+Phase 2	增强自主性	90%	🟡 4/5 基本完成,浏览器工具仅 30%
+Phase 3	进化能力	66%	🟡 3/5 完成,Persona 30%,Skill 市场 0%
+Phase 4	生产级增强	73%	🟡 3/7 完成,3 个部分实现,Session 分布式 0%
+Phase 5	差异化创新	0%	❌ 全部未开始 (5/5)
+Phase 6	记忆系统增强	0%	❌ 全部未开始 (10/10,RL 为研究阶段)
+Memory 核心	L0-L4 + Worker	85%	🟡 基础完整,Neural Memory 仅 5%
+Chat 模块	对话核心	~95%	✅ ADR-02/03 完成,遗留 P3 优化项
+二、关键缺口分析(按优先级)
+P0 — 高 ROI 收尾项(已投入 90%+,差最后一步)
+模块	缺口	工作量	价值
+Phase 2-03 浏览器工具	Driver 接口抽象层未实现(P3-04~08),仅有 GuardedToolset 包装	中	浏览器自动化能力补齐
+Phase 3-04 Persona 角色系统	缺独立领域模型/Usecase/前端 UI,仅 Evolution 子集	中	角色切换体验
+Phase 4-06 Langfuse	Baggage 注入显式化(T6 🟡)	小	可观测性完整性
+Phase 4-03 GraphCache	图节点级缓存未实现,仅工具级 ResultCache	中	跨请求性能
+P1 — 关键基础设施缺口(阻塞后续阶段)
+模块	缺口	阻塞影响
+Phase 4-01 Session 分布式存储	0% 完全未实现	阻塞 Phase 6 双时序模型(依赖 pgvector)、多实例部署
+Phase 4-02 Memory 向量存储	50%,缺 MemoryFactory 抽象 + Mem0 集成	阻塞 Phase 6-10 外挂记忆集成
+Memory L0 Team 隔离	ListL0SnapshotRows 未按 agent 过滤	Team 多 Agent 场景 L0 混淆
+Memory L2 跨表视图	ListEvents 仅查单表,设计要求 UNION ALL	事件时间线不完整
+P2 — 新功能启动(高价值新方向)
+模块	价值	前置依赖
+Phase 6A-02 Agent 自主编辑记忆	memory_replace/rethink/insert 工具	无,可独立启动
+Phase 6A-04 递归摘要与上下文压缩	/compact 命令 + 自动压缩	无,可独立启动
+Phase 3-03 Skill 市场生态	技能分发闭环	技能自创建已完成 ✅
+Phase 2-05 OutboundRouter 前端 UI	出站路由配置可视化	后端已完成 95%
+三、下一步规划建议
+基于依赖关系和 ROI,我建议按以下顺序推进:
+
+第一优先级:Memory 系统收尾 + Phase 6A 启动
+理由:Memory 核心 85%,投入产出比最高,且 Phase 6A 两项无前置依赖
+
+Memory 缺口收尾(P1):
+
+L0 Team 多 Agent 隔离(查询过滤)
+L2 跨表 UNION ALL 视图
+L3 pgvector HNSW 索引(性能)
+L4 Graph Tab 前端启用
+Phase 6A-02 Agent 自主编辑记忆(P2,无依赖):
+
+memory_replace / memory_rethink / memory_insert 三个工具
+操作日志 + 索引同步
+Phase 6A-04 递归摘要(P2,无依赖):
+
+ContextCompressor + BeforeModel Hook
+/compact 命令
+第二优先级:Phase 4 分布式基础设施
+理由:阻塞 Phase 6 后续和多实例部署
+
+Phase 4-02 Memory 向量存储(MemoryFactory 抽象 + 配置驱动)
+Phase 4-01 Session 分布式存储(Postgres 抽象)
+第三优先级:用户体验补齐
+Phase 3-04 Persona 角色系统(完整动态注入)
+Phase 2-05 OutboundRouter 前端 UI
+Phase 2-03 浏览器工具 Driver 抽象
+请选择您希望优先推进的方向,我将进一步细化实施计划。
+
+
+正在等待你的操作# Windows PowerShell:
 $env:DEPLOY_ENV="dev"
 $env:DAO_VECTOR_PGVECTOR="1"
 $env:KRATOS_HTTP_AUTH_DISABLED="1"

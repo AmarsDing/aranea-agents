@@ -6,6 +6,19 @@ type ManualCompressor interface {
 	CompactSession(ctx context.Context, sessionID string, preserveInstruction string) (*CompactResult, error)
 }
 
+// ManualCompressorFromNative extracts ManualCompressor from a NativeTurnCompressor
+// via type assertion. Returns nil when the implementation does not also implement
+// ManualCompressor. This is used by service/team layers to wire the compact tool.
+func ManualCompressorFromNative(c NativeTurnCompressor) ManualCompressor {
+	if c == nil {
+		return nil
+	}
+	if mc, ok := c.(ManualCompressor); ok {
+		return mc
+	}
+	return nil
+}
+
 type CompactResult struct {
 	Compacted             bool
 	FromTurn              int

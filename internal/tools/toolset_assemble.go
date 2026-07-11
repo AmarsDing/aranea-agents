@@ -291,6 +291,7 @@ func (ac *assembleContext) assembleSessionTools() {
 		ac.out.Tools = append(ac.out.Tools, ac.cfg.Session.MemoryTools...)
 	} else if ac.cfg.Session.MemoryEnabled {
 		ac.out.Tools = append(ac.out.Tools, memorytool.DefaultTools()...)
+		ac.out.Tools = append(ac.out.Tools, memorytool.AdvancedTools()...)
 	}
 
 	ac.out.Tools = append(ac.out.Tools, ac.cfg.Session.CustomTools...)
