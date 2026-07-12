@@ -380,6 +380,13 @@ function onInputKeydown(event: KeyboardEvent) {
   &--dark
     background: var(--glass-surface)
 
+  /* 展开模式：切换按钮浮动到右上角（仅非 compact 模式生效，避免 HMR 残留导致 compact 模式下覆盖输入框） */
+  &:not(.composer-card--compact) .composer-compact-toggle
+    position: absolute
+    top: 6px
+    right: 6px
+    z-index: 1
+
   &--compact
     padding: 4px 10px 4px
     gap: 6px
@@ -391,6 +398,7 @@ function onInputKeydown(event: KeyboardEvent) {
       position: static
       flex-shrink: 0
       order: 2
+      z-index: auto
 
     /* 输入框占满剩余宽度 */
     .composer-input
@@ -403,17 +411,23 @@ function onInputKeydown(event: KeyboardEvent) {
       min-height: 32px !important
       height: 32px !important
       padding: 0 8px !important
+      align-items: center !important
+
+    :deep(.composer-input .q-field__control-container)
+      padding: 0 !important
+      align-items: center !important
 
     :deep(.composer-input .q-field__native)
+      min-height: 32px !important
       padding: 0 !important
+      margin: 0 !important
       line-height: 32px
+      display: flex
+      align-items: center
 
-/* 精简模式切换按钮：右上角浮动 */
+/* 精简模式切换按钮基础样式（默认静态，定位由 .composer-card 嵌套控制） */
 .composer-compact-toggle
-  position: absolute
-  top: 6px
-  right: 6px
-  z-index: 1
+  flex-shrink: 0
   color: var(--color-text-secondary)
 
   &:hover

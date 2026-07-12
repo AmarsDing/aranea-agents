@@ -103,6 +103,7 @@ export const useChatConversationStore = defineStore('chatConversation', () => {
     setCurrentTarget,
     upsertSession,
     applyProjection,
+    addInboxSession,
     markSessionRead,
     clear,
   };

@@ -19,6 +19,7 @@ const (
 	ChannelTurnErrorSyncCapMsg         = "任务执行较慢，建议使用 /background 转入后台继续。"
 	ChannelTurnErrorGenericMsg         = "任务执行失败，请稍后重试。"
 	ChannelTurnErrorBusyMsg            = "上一条仍在处理中，请稍候再试。"
+	ChannelTurnEmptyReplyMsg           = "助手未返回内容，请稍后重试。"
 )
 
 // FormatChannelTurnErrorMessage maps an error kind to a user-visible IM message.

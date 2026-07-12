@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/internal/channel/preview"
 )
 
 func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string, ltCfg biz.ChannelLongTaskConfig, sessionID string, turnInput biz.TurnInput, contentPreview *string, previewMessageID *string, turnQueued *bool) error {
@@ -77,9 +78,15 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 	}
 	_ = interrupted // admission may have cancelled prior run; preview still valid
 
-	rendered := strings.TrimSpace(previewCoord.RenderedText())
+	// Priority: LLM actual reply > transcript render (transcript no longer
+	// subscribes to EventBus after Blocker F Stage 1; it only holds the
+	// initial ACK system message, not the assistant reply).
+	rendered := strings.TrimSpace(result.AssistantMsg.ContentMarkdown)
+	if rendered != "" {
+		rendered = preview.FormatAssistantReplyForIM(platform, rendered)
+	}
 	if rendered == "" {
-		rendered = strings.TrimSpace(result.AssistantMsg.ContentMarkdown)
+		rendered = strings.TrimSpace(previewCoord.RenderedText())
 	}
 	if rendered == "" {
 		if previewCoord.PreviewMessageID() != "" {
@@ -95,12 +102,12 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 		return nil
 	}
 	if contentPreview != nil {
-		*contentPreview = previewCoord.ContentPreview(200)
+		*contentPreview = truncateForLog(rendered, 200)
 	}
 	if previewMessageID != nil {
 		*previewMessageID = previewCoord.PreviewMessageID()
 	}
-	if err := previewCoord.Flush(ctx, true); err != nil {
+	if err := previewCoord.FlushFinalText(ctx, rendered); err != nil {
 		recordStreamUpdate(platform, "flush", err)
 		h.recordDelivery(ctx, chRow.ID, "error", map[string]any{
 			"phase":    "stream_flush",

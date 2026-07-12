@@ -61,15 +61,35 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 	var execErr error
 	var contentPreview string
 	var previewMsgID string
+	// terminalEvent is the single source of truth for the job's terminal state.
+	// Success paths set it to Complete (default) or Queue; the defer derives
+	// Fail/Timeout from execErr for error paths.
 	terminalEvent := biz.JobEventComplete
 	defer func() {
 		arametrics.ChannelTurnDuration.WithLabelValues(platform).Observe(time.Since(start).Seconds())
-		if execErr == nil {
-			h.markTurnJobByEvent(ctx, terminalEvent, "", previewMsgID, contentPreview)
-			terminalStatus, _ := biz.ChannelTurnJobStatusFromEvent(terminalEvent)
-			if jobID != "" && terminalStatus != "" {
-				arametrics.ChannelTurnJobTotal.WithLabelValues(chRow.ID, terminalStatus).Inc()
+
+		// Derive terminalEvent from execErr for error paths.
+		errMsg := ""
+		jobPreviewMsgID := ""
+		jobContentPreview := ""
+		if execErr != nil {
+			terminalEvent = biz.JobEventFail
+			if turnErrorIsTimeout(execErr) {
+				terminalEvent = biz.JobEventTimeout
 			}
+			errMsg = execErr.Error()
+		} else {
+			jobPreviewMsgID = previewMsgID
+			jobContentPreview = contentPreview
+		}
+
+		h.markTurnJobByEvent(ctx, terminalEvent, errMsg, jobPreviewMsgID, jobContentPreview)
+		terminalStatus, _ := biz.ChannelTurnJobStatusFromEvent(terminalEvent)
+		if jobID != "" && terminalStatus != "" {
+			arametrics.ChannelTurnJobTotal.WithLabelValues(chRow.ID, terminalStatus).Inc()
+		}
+
+		if execErr == nil {
 			step := flowStepChannelTurnDone
 			msg := "Channel Turn 执行完成"
 			if terminalStatus == biz.ChannelTurnJobStatusQueued {
@@ -79,16 +99,9 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 				event.P("channel_id", chRow.ID), event.P("job_id", jobID), event.P("status", terminalStatus))
 			return
 		}
-		failEvent := biz.JobEventFail
 		step := flowStepChannelTurnDone
-		if turnErrorIsTimeout(execErr) {
-			failEvent = biz.JobEventTimeout
+		if terminalStatus == biz.ChannelTurnJobStatusTimeout {
 			step = flowStepChannelTurnTimeout
-		}
-		h.markTurnJobByEvent(ctx, failEvent, execErr.Error(), "", "")
-		failStatus, _ := biz.ChannelTurnJobStatusFromEvent(failEvent)
-		if jobID != "" && failStatus != "" {
-			arametrics.ChannelTurnJobTotal.WithLabelValues(chRow.ID, failStatus).Inc()
 		}
 		h.logTurnFlow(ctx, sessionID, step, "Channel Turn 执行失败", execErr,
 			event.P("channel_id", chRow.ID), event.P("job_id", jobID))
@@ -196,10 +209,17 @@ func (h *ChannelIngress) processInboundUnaryWithOutcome(ctx context.Context, chR
 		return "", "", true, nil
 	case biz.TurnOutcomeCompleted:
 		reply := strings.TrimSpace(result.Reply)
+		if reply == "" {
+			h.lg.Warn("Channel Turn 返回空回复，使用 fallback 消息",
+				loggateway.StepID("channel.turn.empty_reply"),
+				loggateway.Str("channel_id", chRow.ID),
+				loggateway.Str("session_id", sessionID),
+			)
+			reply = biz.ChannelTurnEmptyReplyMsg
+		}
 		if previewCoord != nil {
-			if rendered := strings.TrimSpace(previewCoord.RenderedText()); rendered != "" {
-				reply = rendered
-			}
+			// transcript no longer subscribes to EventBus (Blocker F Stage 1);
+			// it only holds the initial ACK, so don't let it override the LLM reply.
 			if previewID := strings.TrimSpace(previewCoord.PreviewMessageID()); previewID != "" {
 				if err := previewCoord.FlushFinalText(ctx, reply); err != nil {
 					h.lg.Warn("preview flush final text failed", loggateway.StepID("channel.turn.preview_flush"), loggateway.Err(err))

@@ -16,6 +16,7 @@ import {
 import { useInboundNotificationStore } from '../stores/inboundNotifications';
 import { useAppStore } from '../stores/app';
 import { useChatSessionStore } from '../stores/chat/sessionStore';
+import { useChatConversationStore } from '../stores/chat/conversationStore';
 import { refreshAgentSessionsForChannel } from '../features/chat/channelInboundSessionRefresh';
 
 const TOAST_DEDUPE_MS = 4000;
@@ -28,6 +29,7 @@ export function useGlobalInboundNotifications() {
   const notifyStore = useInboundNotificationStore();
   const appStore = useAppStore();
   const sessionStore = useChatSessionStore();
+  const conversationStore = useChatConversationStore();
   const router = useRouter();
   const $q = useQuasar();
   const { t } = useI18n();
@@ -49,6 +51,33 @@ export function useGlobalInboundNotifications() {
     if (sid !== sessionId) return false;
     const selectedAgent = appStore.selectedAgent?.id?.trim() ?? '';
     return selectedAgent === agentId.trim();
+  }
+
+  /**
+   * Sync the resolved Session into conversationStore so the inbox entry shows
+   * the real title (e.g. "feishu:channel_key:peer_key") instead of the
+   * "Untitled session" placeholder set by applyProjection when no prior
+   * session metadata exists. Also ensures the session is added to inbox even
+   * when the user is not on ChatPage (useChatInboundSync not mounted).
+   */
+  function syncConversationInbox(sessionId: string, sess: Session | null, isViewing: boolean) {
+    if (!sess) return;
+    const title = sess.title?.trim() || parseChannelSessionMeta(sess.metadata_json)?.channel_key || 'Channel';
+    const existing = conversationStore.sessionsById[sessionId];
+    conversationStore.upsertSession({
+      id: sessionId,
+      title,
+      target: existing?.target ?? {
+        type: 'agent',
+        id: sess.agent_id,
+        source: 'channel',
+      },
+      // Preserve existing unreadCount; applyProjection (when mounted) handles increments.
+      unreadCount: existing?.unreadCount ?? 0,
+    });
+    if (!isViewing) {
+      conversationStore.addInboxSession(sessionId);
+    }
   }
 
   function pushNotification(sessionId: string, agentId: string, kind: 'running' | 'completed', title: string) {
@@ -84,6 +113,7 @@ export function useGlobalInboundNotifications() {
     });
 
     const title = sess?.title?.trim() || parseChannelSessionMeta(sess?.metadata_json)?.channel_key || 'Channel';
+    syncConversationInbox(sessionId, sess, isViewingSession(sessionId, agentId));
 
     if (ev.activity.stage === 'run_status') {
       const rs = runStatusFromActivityEvent(ev);
