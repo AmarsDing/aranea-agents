@@ -72,54 +72,72 @@ jobs:
         run: |
           .\scripts\download-deps.ps1 -OutDir build/deps
 
-      - name: Compile pgvector
+      - name: Compile pgvector (non-blocking)
         shell: pwsh
         run: |
-          $bundledPgDir = Resolve-Path "build/deps/postgres"
-          $vectorDll = Join-Path $bundledPgDir "lib\vector.dll"
-          if (Test-Path $vectorDll) {
-            Write-Host "vector.dll already exists, skipping compilation"
-            return
-          }
+          # 非阻塞：pgvector 编译失败不中断构建。
+          # 缺失 vector.dll 时 PostgreSQL 仍能启动，仅向量搜索功能不可用。
+          # start.bat 中 "CREATE EXTENSION vector" 会失败但非致命，应用可降级运行。
+          try {
+            $bundledPgDir = Resolve-Path "build/deps/postgres"
+            $vectorDll = Join-Path $bundledPgDir "lib\vector.dll"
+            if (Test-Path $vectorDll) {
+              Write-Host "vector.dll already exists, skipping compilation"
+              return
+            }
 
-          # EnterpriseDB binaries zip 不含 include/server 开发头文件，
-          # 需通过 installer 静默安装获取 PG17 dev headers 用于编译 pgvector。
-          $pgInstallDir = "C:\Program Files\PostgreSQL\17"
-          $serverInclude = Join-Path $pgInstallDir "include\server\postgres.h"
-          if (-not (Test-Path $serverInclude)) {
-            $installerUrl = "https://get.enterprisedb.com/postgresql/postgresql-17.5-1-windows-x64.exe"
-            $installerPath = "$env:TEMP\pg17-installer.exe"
-            Write-Host "Downloading PostgreSQL 17.5 installer for dev headers..."
-            Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath -UseBasicParsing
-            Write-Host "Installing PostgreSQL 17.5 silently..."
-            Start-Process -FilePath $installerPath `
-              -ArgumentList "--mode","unattended","--unattendedmodeui","none","--superpassword","postgres","--servicename","postgresql-17-build","--serverport","5433" `
-              -Wait -NoNewWindow
-            Remove-Item $installerPath -Force
-          }
+            # EnterpriseDB binaries zip 不含 include/server 开发头文件，
+            # 需通过 installer 静默安装获取 PG17 dev headers 用于编译 pgvector。
+            $pgInstallDir = "C:\Program Files\PostgreSQL\17"
+            $serverInclude = Join-Path $pgInstallDir "include\server\postgres.h"
+            if (-not (Test-Path $serverInclude)) {
+              $installerUrl = "https://get.enterprisedb.com/postgresql/postgresql-17.5-1-windows-x64.exe"
+              $installerPath = "$env:TEMP\pg17-installer.exe"
+              Write-Host "Downloading PostgreSQL 17.5 installer for dev headers..."
+              Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath -UseBasicParsing
+              Write-Host "Installing PostgreSQL 17.5 silently..."
+              $proc = Start-Process -FilePath $installerPath `
+                -ArgumentList "--mode","unattended","--unattendedmodeui","none","--superpassword","postgres","--servicename","postgresql-17-build","--serverport","5433" `
+                -Wait -NoNewWindow -PassThru
+              if ($proc.ExitCode -ne 0) {
+                throw "PostgreSQL installer exited with code $($proc.ExitCode)"
+              }
+              Remove-Item $installerPath -Force
+            }
 
-          # pgvector Makefile.win 强制要求 PGROOT（!ifndef PGROOT / !error PGROOT is not set）
-          $env:PGROOT = $pgInstallDir
-          Write-Host "PGROOT: $env:PGROOT"
+            # pgvector Makefile.win 强制要求 PGROOT（!ifndef PGROOT / !error PGROOT is not set）
+            $env:PGROOT = $pgInstallDir
+            Write-Host "PGROOT: $env:PGROOT"
 
-          git clone --depth 1 --branch v0.8.0 https://github.com/pgvector/pgvector.git C:\pgvector
+            git clone --depth 1 --branch v0.8.0 https://github.com/pgvector/pgvector.git C:\pgvector
 
-          $vsPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-          if (-not (Test-Path $vsPath)) {
-            $vsPath = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-          }
+            $vsPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+            if (-not (Test-Path $vsPath)) {
+              $vsPath = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+            }
 
-          Push-Location C:\pgvector
-          cmd /c "`"$vsPath`" && nmake /F Makefile.win OPTIMIZE=0"
-          if ($LASTEXITCODE -ne 0) {
+            Push-Location C:\pgvector
+            $buildOutput = cmd /c "`"$vsPath`" && nmake /F Makefile.win OPTIMIZE=0" 2>&1
+            $buildExit = $LASTEXITCODE
+            Write-Host $buildOutput
             Pop-Location
-            Write-Error "pgvector compilation failed"
-            exit 1
+            if ($buildExit -ne 0) {
+              throw "pgvector nmake failed (exit $buildExit)"
+            }
+            Copy-Item "C:\pgvector\vector.dll" $vectorDll -Force
+            Write-Host "vector.dll compiled and copied to $vectorDll" -ForegroundColor Green
+          } catch {
+            Write-Host ""
+            Write-Host "==========================================" -ForegroundColor Yellow
+            Write-Host "  [WARN] pgvector compilation failed." -ForegroundColor Yellow
+            Write-Host "  Reason: $($_.Exception.Message)" -ForegroundColor Yellow
+            Write-Host "  Build will continue without vector.dll." -ForegroundColor Yellow
+            Write-Host "  PostgreSQL will start normally but vector search" -ForegroundColor Yellow
+            Write-Host "  will be unavailable. See start.bat line 78 for the" -ForegroundColor Yellow
+            Write-Host "  non-fatal 'CREATE EXTENSION vector' step." -ForegroundColor Yellow
+            Write-Host "==========================================" -ForegroundColor Yellow
+            Write-Host ""
           }
-          Copy-Item "vector.dll" $vectorDll -Force
-          Pop-Location
-
-          Write-Host "vector.dll compiled and copied to $vectorDll"
 
       - name: Setup Electron template
         shell: pwsh
