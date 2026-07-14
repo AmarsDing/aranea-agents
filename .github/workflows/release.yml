@@ -172,12 +172,27 @@ jobs:
           $env:GOARCH = "amd64"
           $version = "${{ steps.version.outputs.version }}"
           $ldflags = "-s -w -X main.Version=$version -X main.Name=aranea-agents"
-          & go build -tags pgvector -ldflags $ldflags -o build/aranea-server.exe ./cmd/admin
+          Write-Host "Downloading Go modules..."
+          & go mod download 2>&1
           if ($LASTEXITCODE -ne 0) {
-            Write-Error "Backend build failed (exit $LASTEXITCODE)"
+            Write-Host "[WARN] go mod download failed, continuing with cache" -ForegroundColor Yellow
+          }
+          Write-Host "Building aranea-server.exe..."
+          $buildOutput = & go build -tags pgvector -ldflags $ldflags -o build/aranea-server.exe ./cmd/admin 2>&1
+          $buildExit = $LASTEXITCODE
+          Write-Host $buildOutput
+          if ($buildExit -ne 0) {
+            Write-Host ""
+            Write-Host "===== BUILD FAILED (exit $buildExit) =====" -ForegroundColor Red
+            Write-Host "Go version:" -ForegroundColor Yellow
+            & go version
+            Write-Host "Module verify:" -ForegroundColor Yellow
+            & go mod verify 2>&1
+            Write-Host "Replace directives in go.mod:" -ForegroundColor Yellow
+            Select-String -Path go.mod -Pattern "^replace" | ForEach-Object { Write-Host "  $_" }
             exit 1
           }
-          Write-Host "Backend built: build/aranea-server.exe"
+          Write-Host "Backend built: build/aranea-server.exe" -ForegroundColor Green
 
       - name: Build frontend (pnpm build)
         shell: pwsh
