@@ -76,9 +76,12 @@ jobs:
         shell: pwsh
         run: |
           $pgDir = Resolve-Path "build/deps/postgres"
+          # pgvector Makefile.win 强制要求 PGROOT（!ifndef PGROOT / !error PGROOT is not set）
+          $env:PGROOT = $pgDir
           $env:PG_INC = Join-Path $pgDir "include"
           $env:PG_LIB = Join-Path $pgDir "lib"
 
+          Write-Host "PGROOT: $env:PGROOT"
           Write-Host "PG_INC: $env:PG_INC"
           Write-Host "PG_LIB: $env:PG_LIB"
 
