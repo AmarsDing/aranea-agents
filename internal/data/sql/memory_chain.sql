@@ -440,6 +440,12 @@ CREATE TABLE IF NOT EXISTS memory_entities (
   updated_at TEXT NOT NULL,
   archived_at TEXT NOT NULL DEFAULT '',
   deleted_at TEXT NOT NULL DEFAULT '',
+  -- 20261005 neuron enhancement: spreading activation + affect reservation
+  activation REAL NOT NULL DEFAULT 0,
+  activation_updated_at TEXT NOT NULL DEFAULT '',
+  source_type TEXT NOT NULL DEFAULT '',
+  valence REAL NOT NULL DEFAULT 0,
+  arousal REAL NOT NULL DEFAULT 0,
   UNIQUE(scope_type, scope_id, entity_type, name_normalized)
 );
 
@@ -467,6 +473,10 @@ CREATE TABLE IF NOT EXISTS memory_relations (
   updated_at TEXT NOT NULL,
   archived_at TEXT NOT NULL DEFAULT '',
   deleted_at TEXT NOT NULL DEFAULT '',
+  -- 20261005 neuron enhancement: Hebbian co-activation + A-MEM context note
+  co_activation_count INTEGER NOT NULL DEFAULT 0,
+  last_reinforced_at TEXT NOT NULL DEFAULT '',
+  context_note TEXT NOT NULL DEFAULT '',
   UNIQUE(scope_type, scope_id, source_id, target_id, relation_type)
 );
 

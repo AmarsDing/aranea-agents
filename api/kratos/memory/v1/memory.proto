@@ -253,6 +253,35 @@ message GraphNeighborhood {
   string query_at = 5;
 }
 
+// Spreading activation (Phase E, FR-10.3 / FR-10.8 / AC-9)
+
+message SpreadingActivationRequest {
+  string center_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 hops = 2;   // default 3 when <= 0
+  int32 top_k = 3;  // default 20 when <= 0
+}
+
+message ActivationPathStep {
+  string from_node_id = 1;
+  string to_node_id = 2;
+  double edge_weight = 3;
+  string relation_type = 4;
+}
+
+message ActivationResult {
+  string node_id = 1;
+  double activation = 2;
+  int32 hop_count = 3;
+  repeated ActivationPathStep activation_path = 4;
+}
+
+message SpreadingActivationResponse {
+  string center_id = 1;
+  int32 hops = 2;
+  int32 top_k = 3;
+  repeated ActivationResult items = 4;
+}
+
 message GetAgentIdentityRequest {
   string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
 }
@@ -687,6 +716,9 @@ service MemoryService {
   }
   rpc GetMemoryNeighborhood(GetMemoryNeighborhoodRequest) returns (GraphNeighborhood) {
     option (google.api.http) = {get: "/v1/memory/l4/entities/{center_id}/neighborhood"};
+  }
+  rpc SpreadingActivation(SpreadingActivationRequest) returns (SpreadingActivationResponse) {
+    option (google.api.http) = {get: "/v1/memory/l4/spreading-activation"};
   }
   rpc GetAgentIdentity(GetAgentIdentityRequest) returns (AgentIdentity) {
     option (google.api.http) = {get: "/v1/agents/{agent_id}/identity"};

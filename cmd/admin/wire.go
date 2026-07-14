@@ -735,16 +735,16 @@ func provideChatServiceDeps(
 			Evolution: evolution,
 		},
 		Infra: service.ChatInfraDeps{
-			LG:               lg,
-			OrchCache:        orchCache,
-			A2AUC:            a2aUC,
-			MCPServers:       mcpUC,
-			OutboundRouter:   outboundRouter,
-			SubAgentService:  subAgentSvc,
-			TurnLifecycle:    turnLifecycle,
-			HeartbeatEmitter: heartbeatEmitter,
-			DeadLetterQueue:  deadLetterQueue,
-			ProfileResolver:  profileResolver,
+			LG:                 lg,
+			OrchCache:          orchCache,
+			A2AUC:              a2aUC,
+			MCPServers:         mcpUC,
+			OutboundRouter:     outboundRouter,
+			SubAgentService:    subAgentSvc,
+			TurnLifecycle:      turnLifecycle,
+			HeartbeatEmitter:   heartbeatEmitter,
+			DeadLetterQueue:    deadLetterQueue,
+			ProfileResolver:    profileResolver,
 			V2ProjectorFactory: v2ProjectorFactory,
 		},
 	}
@@ -771,16 +771,17 @@ func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase, fac
 		})
 	}
 	return service.NewMemoryService(service.MemoryServiceConfig{
-		Admin:             biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec, factSync, data.NewL3FactWriterAdapter(d, d.VectorStore()), lg),
-		Cascade:           cascade,
-		SysUC:             sysUC,
-		DeadLetterRepo:    deadLetterRepo,
-		DebugRecaller:     data.NewMemoryDebugRecaller(d),
-		FactIndexCounter:  data.NewMemoryFactIndexCounter(d),
-		WorkerStats:       workerStats,
-		DeadLetterEnqueue: enqueue,
-		QueueStats:        queueStats,
-		Logger:            lg,
+		Admin:               biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec, factSync, data.NewL3FactWriterAdapter(d, d.VectorStore()), lg),
+		Cascade:             cascade,
+		SysUC:               sysUC,
+		DeadLetterRepo:      deadLetterRepo,
+		DebugRecaller:       data.NewMemoryDebugRecaller(d),
+		FactIndexCounter:    data.NewMemoryFactIndexCounter(d),
+		WorkerStats:         workerStats,
+		SpreadingActivation: memory.NewSpreadingActivationEngine(data.NewL4GraphTraverser(d), lg),
+		DeadLetterEnqueue:   enqueue,
+		QueueStats:          queueStats,
+		Logger:              lg,
 	})
 }
 
@@ -1795,7 +1796,6 @@ func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, au biz.ActivityUpserter
 // gets its own Projector instance, isolating per-turn streaming state.
 // The factory shares the singleton Sequencer + SeqAssigner so Seq allocation
 // remains globally monotonic per spirit session.
-//
 func provideV2ProjectorFactory(seq *v2.Sequencer, lg loggateway.Logger) *v2.ProjectorFactory {
 	return v2.NewProjectorFactory(seq, seq.SeqAssigner(), lg)
 }
@@ -1810,7 +1810,6 @@ func provideWSV2Subscriber(bus *event.V2Bus, wsSrv *server.WSServer, lg loggatew
 // providePlanExecutor constructs the v2 forward DAG scheduler.
 // The PlanExecutor is injected into TeamStarter via SetPlanExecutor
 // (called in ProvideChatService).
-//
 func providePlanExecutor(
 	planStep biz.PlanStepV2Repo,
 	teamStage biz.TeamStageV2Repo,

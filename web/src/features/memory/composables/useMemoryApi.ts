@@ -38,6 +38,18 @@ export function useMemoryApi() {
     }
   }
 
+  async function getSpreadingActivation(
+    centerID: string,
+    params?: Parameters<typeof store.fetchSpreadingActivation>[1],
+  ) {
+    setLoading('spreadingActivation', true);
+    try {
+      return await store.fetchSpreadingActivation(centerID, params);
+    } finally {
+      setLoading('spreadingActivation', false);
+    }
+  }
+
   async function getMemoryPlatformSettings() {
     setLoading('platformSettings', true);
     try {
@@ -70,6 +82,7 @@ export function useMemoryApi() {
     compositeSearchMemories,
     debugMemoryRecall,
     getMemoryNeighborhood,
+    getSpreadingActivation,
     getMemoryPlatformSettings,
     listMemoryDeadLetters,
     updateMemoryPlatformSettings,

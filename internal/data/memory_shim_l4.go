@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 )
 
 // l4EntityRepo implements biz.L4EntityStore + biz.L4EvolutionStore using direct Raw SQL.
@@ -23,10 +24,22 @@ func newL4EntityRepo(data *Data) *l4EntityRepo {
 	return &l4EntityRepo{data: data}
 }
 
+// NewL4GraphTraverser returns the narrow L4GraphTraverser interface for
+// spreading-activation subgraph fetching. Exposed so the wire layer can inject
+// it into SpreadingActivationEngine without depending on the full L4GraphRepo.
+func NewL4GraphTraverser(data *Data) biz.L4GraphTraverser {
+	return newL4EntityRepo(data)
+}
+
 // Compile-time interface checks.
 var (
-	_ biz.L4EntityStore    = (*l4EntityRepo)(nil)
-	_ biz.L4EvolutionStore = (*l4EntityRepo)(nil)
+	_ biz.L4EntityStore          = (*l4EntityRepo)(nil)
+	_ biz.L4EvolutionStore       = (*l4EntityRepo)(nil)
+	_ biz.L4GraphTraverser       = (*l4EntityRepo)(nil)
+	_ biz.L4HebbianStore         = (*l4EntityRepo)(nil)
+	_ biz.L4ReconsolidationStore = (*l4EntityRepo)(nil)
+	_ biz.L4ConflictStore        = (*l4EntityRepo)(nil)
+	_ biz.L4KnowledgeBridgeStore = (*l4EntityRepo)(nil)
 )
 
 // --- L4EntityStore ---
@@ -117,6 +130,9 @@ func (r *l4EntityRepo) NeighborhoodJSON(ctx context.Context, centerID string, ho
 	frontier := []string{centerID}
 
 	for step := 0; step < maxH; step++ {
+		if len(frontier) == 0 {
+			break
+		}
 		var nextFrontier []string
 		// Collect unvisited neighbors via relations
 		ph := make([]string, len(frontier))
@@ -133,6 +149,10 @@ func (r *l4EntityRepo) NeighborhoodJSON(ctx context.Context, centerID string, ho
 		args = append(args, args2...)
 		rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(relQ), args...)
 		if err != nil {
+			r.data.lg.Warn("neighborhood: relation query failed",
+				loggateway.StepID("data.l4.neighborhood"),
+				loggateway.Err(err),
+				loggateway.Str("sql", relQ))
 			return nil, entErrToBizErr(err, "MEMORY_L4")
 		}
 		lg := r.data.lg
@@ -140,6 +160,9 @@ func (r *l4EntityRepo) NeighborhoodJSON(ctx context.Context, centerID string, ho
 			b, err := scanRelationRowJSON(rows)
 			if err != nil {
 				rows.Close()
+				r.data.lg.Warn("neighborhood: relation scan failed",
+					loggateway.StepID("data.l4.neighborhood"),
+					loggateway.Err(err))
 				return nil, entErrToBizErr(err, "MEMORY_L4")
 			}
 			relations = append(relations, b)
@@ -183,12 +206,19 @@ func (r *l4EntityRepo) NeighborhoodJSON(ctx context.Context, centerID string, ho
 				sqlEntityCols, strings.Join(ph2, ","))
 			entRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(entQ), args2...)
 			if err != nil {
+				r.data.lg.Warn("neighborhood: entity query failed",
+					loggateway.StepID("data.l4.neighborhood"),
+					loggateway.Err(err),
+					loggateway.Str("sql", entQ))
 				return nil, entErrToBizErr(err, "MEMORY_L4")
 			}
 			for entRows.Next() {
 				b, err := scanEntityRowJSON(entRows, lg)
 				if err != nil {
 					entRows.Close()
+					r.data.lg.Warn("neighborhood: entity scan failed",
+						loggateway.StepID("data.l4.neighborhood"),
+						loggateway.Err(err))
 					return nil, entErrToBizErr(err, "MEMORY_L4")
 				}
 				entities = append(entities, b)
@@ -203,9 +233,14 @@ func (r *l4EntityRepo) NeighborhoodJSON(ctx context.Context, centerID string, ho
 	}
 
 	// Also fetch center entity
+	var centerEntity []byte
 	centerRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		r.data.Dialect().RenumberPlaceholders("SELECT"+sqlEntityCols+" FROM memory_entities WHERE id = ? AND status = 'active' AND deleted_at = ''"), centerID)
 	if err != nil {
+		r.data.lg.Warn("neighborhood: center entity query failed",
+			loggateway.StepID("data.l4.neighborhood"),
+			loggateway.Err(err),
+			loggateway.Str("center_id", centerID))
 		return nil, entErrToBizErr(err, "MEMORY_L4")
 	}
 	lg := r.data.lg
@@ -213,14 +248,27 @@ func (r *l4EntityRepo) NeighborhoodJSON(ctx context.Context, centerID string, ho
 		b, err := scanEntityRowJSON(centerRows, lg)
 		if err != nil {
 			centerRows.Close()
+			r.data.lg.Warn("neighborhood: center entity scan failed",
+				loggateway.StepID("data.l4.neighborhood"),
+				loggateway.Err(err))
 			return nil, entErrToBizErr(err, "MEMORY_L4")
 		}
-		entities = append([][]byte{b}, entities...)
+		if centerEntity == nil {
+			centerEntity = b
+		} else {
+			entities = append(entities, b)
+		}
 	}
 	centerRows.Close()
 
+	// Decode centerEntity to a map for the "center" field; nil if not found.
+	var centerMap map[string]any
+	if centerEntity != nil {
+		_ = json.Unmarshal(centerEntity, &centerMap)
+	}
 	result := map[string]any{
 		"center_id":  centerID,
+		"center":     centerMap,
 		"entities":   entities,
 		"relations":  relations,
 		"query_at":   qt,
@@ -549,4 +597,475 @@ func (r *l4EntityRepo) InsertEvolutionEventRow(ctx context.Context, in biz.Evolu
 		"reverted": reverted != 0,
 	}
 	return json.Marshal(result)
+}
+
+// --- L4GraphTraverser ---
+
+// graphTraverseCTESQL is the recursive CTE that traverses the memory_relations
+// graph up to `hops` levels from a center node, propagating activation as
+// parent_activation * edge_weight. Nodes are aggregated by ID (strongest
+// activation wins), then ordered by activation DESC and limited to topK.
+//
+// Placeholders (in order): center_id, max_hops, top_k
+//
+// SQLite and PostgreSQL both support WITH RECURSIVE; the ? placeholders are
+// renumbered to $N by Dialect().RenumberPlaceholders() for Postgres.
+const graphTraverseCTESQL = `WITH RECURSIVE graph_traverse(node_id, hop, activation) AS (
+  SELECT ?, 0, CAST(1.0 AS REAL)
+  UNION ALL
+  SELECT
+    CASE WHEN r.source_id = gt.node_id THEN r.target_id ELSE r.source_id END,
+    gt.hop + 1,
+    gt.activation * r.weight
+  FROM graph_traverse gt
+  JOIN memory_relations r ON
+    r.status = 'active' AND r.deleted_at = ''
+    AND (r.source_id = gt.node_id OR r.target_id = gt.node_id)
+  WHERE gt.hop < ? AND gt.activation >= 0.01
+)
+SELECT gt.node_id, MIN(gt.hop) AS hop, MAX(gt.activation) AS activation,
+       COALESCE(MIN(e.entity_type), '') AS entity_type, COALESCE(MIN(e.name), '') AS name
+FROM graph_traverse gt
+LEFT JOIN memory_entities e ON e.id = gt.node_id AND e.status = 'active' AND e.deleted_at = ''
+GROUP BY gt.node_id
+ORDER BY activation DESC
+LIMIT ?`
+
+// GraphTraverseCTE performs a single recursive-CTE traversal starting from
+// centerID, propagating activation = parent_activation * edge_weight up to
+// `hops` levels. It returns the reachable nodes (with activation + hop) and
+// the edges among them.
+//
+// The traversal uses a single recursive CTE for node discovery (1 SQL round
+// trip), plus 1 additional round trip to fetch the edges among the discovered
+// nodes. This replaces the previous application-layer BFS which required 2N
+// round trips for N hops (FR-10.11 / NFR-1.7).
+//
+// topK limits the number of returned nodes (highest activation first). hops
+// is the maximum traversal depth (center node is hop=0; direct neighbors are
+// hop=1). Edges with weight 0 are still traversed but contribute 0 activation.
+func (r *l4EntityRepo) GraphTraverseCTE(ctx context.Context, centerID string, hops, topK int) (*biz.MemoryGraphTraversal, error) {
+	if r == nil {
+		return nil, apierror.Internal("MEMORY_L4", "l4 repo not initialized")
+	}
+	centerID = strings.TrimSpace(centerID)
+	if centerID == "" {
+		return nil, apierror.BadRequest("MEMORY_L4", "center_id is required")
+	}
+	if hops <= 0 {
+		hops = 3
+	}
+	if topK <= 0 {
+		topK = 20
+	}
+
+	// Query 1: recursive CTE for nodes (1 SQL round trip).
+	nodeRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(graphTraverseCTESQL),
+		centerID, hops, topK)
+	if err != nil {
+		return nil, entErrToBizErr(err, "MEMORY_L4")
+	}
+	defer nodeRows.Close()
+
+	var nodes []biz.MemoryGraphNode
+	var nodeIDs []string
+	for nodeRows.Next() {
+		var n biz.MemoryGraphNode
+		var nodeID, entityType, name string
+		var hop int
+		var activation float64
+		if err := nodeRows.Scan(&nodeID, &hop, &activation, &entityType, &name); err != nil {
+			return nil, entErrToBizErr(err, "MEMORY_L4")
+		}
+		n.ID = nodeID
+		n.Hop = hop
+		n.Activation = activation
+		n.EntityType = entityType
+		n.Name = name
+		nodes = append(nodes, n)
+		nodeIDs = append(nodeIDs, nodeID)
+	}
+	if err := nodeRows.Err(); err != nil {
+		return nil, entErrToBizErr(err, "MEMORY_L4")
+	}
+
+	traversal := &biz.MemoryGraphTraversal{
+		CenterID: centerID,
+		Hops:     hops,
+		Nodes:    nodes,
+	}
+
+	if len(nodeIDs) == 0 {
+		return traversal, nil
+	}
+
+	// Query 2: fetch edges among the discovered nodes (1 SQL round trip).
+	// We look up relations where either endpoint is in the node set.
+	placeholders := make([]string, len(nodeIDs))
+	args := make([]any, 0, len(nodeIDs)*2)
+	for i, id := range nodeIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	args = append(args, args...) // duplicate for second IN clause
+	edgeQ := fmt.Sprintf(`SELECT source_id, target_id, relation_type, weight
+FROM memory_relations
+WHERE status = 'active' AND deleted_at = ''
+  AND (source_id IN (%s) OR target_id IN (%s))`,
+		strings.Join(placeholders, ","), strings.Join(placeholders, ","))
+	edgeRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(edgeQ), args...)
+	if err != nil {
+		return nil, entErrToBizErr(err, "MEMORY_L4")
+	}
+	defer edgeRows.Close()
+
+	// Deduplicate edges: the IN (...) OR IN (...) clause may return the same
+	// edge twice (once matching source_id, once matching target_id).
+	seen := make(map[string]bool)
+	for edgeRows.Next() {
+		var e biz.MemoryGraphEdge
+		if err := edgeRows.Scan(&e.SourceID, &e.TargetID, &e.RelationType, &e.Weight); err != nil {
+			return nil, entErrToBizErr(err, "MEMORY_L4")
+		}
+		key := e.SourceID + "\x00" + e.TargetID + "\x00" + e.RelationType
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		traversal.Edges = append(traversal.Edges, e)
+	}
+	if err := edgeRows.Err(); err != nil {
+		return nil, entErrToBizErr(err, "MEMORY_L4")
+	}
+
+	return traversal, nil
+}
+
+// --- L4HebbianStore (Phase E, FR-10.4) ---
+
+// findRelationSQL finds an active relation between nodeA and nodeB with the
+// given relation type, JOINing memory_entities to read both endpoints'
+// activation values. For bidirectional types, either (A→B) or (B→A) matches.
+const findRelationSQL = `SELECT r.id, r.source_id, r.target_id, r.relation_type,
+       r.weight, r.co_activation_count,
+       COALESCE(es.activation, 0) AS source_activation,
+       COALESCE(et.activation, 0) AS target_activation
+FROM memory_relations r
+LEFT JOIN memory_entities es ON es.id = r.source_id AND es.deleted_at = ''
+LEFT JOIN memory_entities et ON et.id = r.target_id AND et.deleted_at = ''
+WHERE r.deleted_at = '' AND r.status = 'active'
+  AND r.relation_type = ?
+  AND ((r.source_id = ? AND r.target_id = ?) OR (r.source_id = ? AND r.target_id = ?))
+LIMIT 1`
+
+// FindRelation finds an active relation between nodeA and nodeB with the
+// given relation type. For bidirectional types, either direction matches.
+func (r *l4EntityRepo) FindRelation(ctx context.Context, nodeA, nodeB, relationType string) (biz.L4HebbianRelation, bool, error) {
+	if r == nil {
+		return biz.L4HebbianRelation{}, false, apierror.Internal("MEMORY_L4", "l4 repo not initialized")
+	}
+	nodeA = strings.TrimSpace(nodeA)
+	nodeB = strings.TrimSpace(nodeB)
+	if nodeA == "" || nodeB == "" || relationType == "" {
+		return biz.L4HebbianRelation{}, false, nil
+	}
+
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(findRelationSQL),
+		relationType, nodeA, nodeB, nodeB, nodeA)
+	if err != nil {
+		return biz.L4HebbianRelation{}, false, entErrToBizErr(err, "MEMORY_L4")
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		return biz.L4HebbianRelation{}, false, rows.Err()
+	}
+	var rel biz.L4HebbianRelation
+	if err := rows.Scan(&rel.ID, &rel.SourceID, &rel.TargetID, &rel.RelationType,
+		&rel.Weight, &rel.CoActivationCount, &rel.SourceActivation, &rel.TargetActivation); err != nil {
+		return biz.L4HebbianRelation{}, false, entErrToBizErr(err, "MEMORY_L4")
+	}
+	return rel, true, rows.Err()
+}
+
+// updateRelationWeightSQL updates weight, co_activation_count, and
+// last_reinforced_at for a single relation.
+const updateRelationWeightSQL = `UPDATE memory_relations
+SET weight = ?, co_activation_count = ?, last_reinforced_at = ?, updated_at = ?
+WHERE id = ? AND deleted_at = ''`
+
+// UpdateRelationWeight updates weight, co_activation_count, and
+// last_reinforced_at for the relation with the given ID.
+func (r *l4EntityRepo) UpdateRelationWeight(ctx context.Context, relationID string, newWeight float64, coActivationCount int, lastReinforcedAtRFC3339 string) error {
+	if r == nil {
+		return apierror.Internal("MEMORY_L4", "l4 repo not initialized")
+	}
+	if relationID == "" {
+		return apierror.BadRequest("MEMORY_L4", "relation_id is required")
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(updateRelationWeightSQL),
+		newWeight, coActivationCount, lastReinforcedAtRFC3339, now, relationID)
+	if err != nil {
+		return entErrToBizErr(err, "MEMORY_L4")
+	}
+	return nil
+}
+
+// decayUnusedRelationsSQL decays weights of active relations whose
+// last_reinforced_at (falling back to created_at) is older than the cutoff.
+// Weight *= 0.95; relations whose weight drops below 0.1 are archived.
+// This is done in two steps to avoid a complex single UPDATE.
+const decayUnusedDecaySQL = `UPDATE memory_relations
+SET weight = weight * 0.95, updated_at = ?
+WHERE deleted_at = '' AND status = 'active'
+  AND COALESCE(NULLIF(last_reinforced_at, ''), created_at) < ?`
+
+const decayUnusedArchiveSQL = `UPDATE memory_relations
+SET status = 'archived', archived_at = ?, updated_at = ?
+WHERE deleted_at = '' AND status = 'active' AND weight < 0.1`
+
+// DecayUnusedRelations decays weights of active relations whose
+// last_reinforced_at (or created_at fallback) is older than olderThanRFC3339.
+// Weight *= 0.95; relations whose weight drops below 0.1 are marked
+// status='archived'. Returns counts of decayed and archived relations.
+func (r *l4EntityRepo) DecayUnusedRelations(ctx context.Context, olderThanRFC3339 string) (biz.L4DecayResult, error) {
+	if r == nil {
+		return biz.L4DecayResult{}, apierror.Internal("MEMORY_L4", "l4 repo not initialized")
+	}
+	if olderThanRFC3339 == "" {
+		return biz.L4DecayResult{}, nil
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	writeDB := r.data.RWDB().WriteDB(ctx)
+
+	// Step 1: decay weights of old relations.
+	decayRes, err := writeDB.ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(decayUnusedDecaySQL),
+		now, olderThanRFC3339)
+	if err != nil {
+		return biz.L4DecayResult{}, entErrToBizErr(err, "MEMORY_L4")
+	}
+	decayed, _ := decayRes.RowsAffected()
+
+	// Step 2: archive relations whose weight dropped below 0.1.
+	archiveRes, err := writeDB.ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(decayUnusedArchiveSQL),
+		now, now)
+	if err != nil {
+		return biz.L4DecayResult{}, entErrToBizErr(err, "MEMORY_L4")
+	}
+	archived, _ := archiveRes.RowsAffected()
+
+	return biz.L4DecayResult{
+		Decayed:  int(decayed),
+		Archived: int(archived),
+	}, nil
+}
+
+// --- L4ReconsolidationStore (Phase E, FR-10.5) ---
+
+// boostActivationSQL atomically increases activation by delta (saturated to
+// 1.0) using a CASE expression for cross-dialect compatibility (SQLite and
+// Postgres both support standard CASE WHEN). activation_updated_at and
+// updated_at are stamped to now. Only matches non-deleted entities.
+const boostActivationSQL = `UPDATE memory_entities
+SET activation = CASE
+        WHEN activation + ? > 1.0 THEN 1.0
+        ELSE activation + ?
+    END,
+    activation_updated_at = ?,
+    updated_at = ?
+WHERE id = ? AND deleted_at = ''`
+
+// BoostActivation atomically increases activation by delta (saturated to 1.0)
+// and sets activation_updated_at to nowRFC3339. Returns ok=false if the entity
+// was not found or is soft-deleted (no rows affected).
+func (r *l4EntityRepo) BoostActivation(ctx context.Context, nodeID string, delta float64, nowRFC3339 string) (bool, error) {
+	if r == nil {
+		return false, apierror.Internal("MEMORY_L4", "l4 repo not initialized")
+	}
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return false, apierror.BadRequest("MEMORY_L4", "node_id is required")
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(boostActivationSQL),
+		delta, delta, nowRFC3339, now, nodeID)
+	if err != nil {
+		return false, entErrToBizErr(err, "MEMORY_L4")
+	}
+	affected, _ := res.RowsAffected()
+	return affected > 0, nil
+}
+
+// incrementUseCountSQL atomically increments use_count by 1 for a single
+// non-deleted entity.
+const incrementUseCountSQL = `UPDATE memory_entities
+SET use_count = use_count + 1, updated_at = ?
+WHERE id = ? AND deleted_at = ''`
+
+// IncrementUseCount atomically increments use_count by 1 for the given entity.
+// Returns ok=false if the entity was not found or is soft-deleted (no rows
+// affected).
+func (r *l4EntityRepo) IncrementUseCount(ctx context.Context, nodeID string) (bool, error) {
+	if r == nil {
+		return false, apierror.Internal("MEMORY_L4", "l4 repo not initialized")
+	}
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return false, apierror.BadRequest("MEMORY_L4", "node_id is required")
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(incrementUseCountSQL),
+		now, nodeID)
+	if err != nil {
+		return false, entErrToBizErr(err, "MEMORY_L4")
+	}
+	affected, _ := res.RowsAffected()
+	return affected > 0, nil
+}
+
+// --- L4ConflictStore (Phase E, FR-10.6) ---
+
+// createInhibitRelationSQL inserts (or upserts) a directed INHIBIT relation
+// from SourceID to TargetID with the given weight and context_note. The
+// ON CONFLICT clause updates weight/context_note/status on existing relations
+// (idempotent re-resolution of the same conflict).
+const createInhibitRelationSQL = `INSERT INTO memory_relations (
+	id, scope_type, scope_id, workspace_id,
+	source_id, target_id, relation_type, bidirectional,
+	weight, confidence, importance, use_count,
+	attributes_json, evidence_json, status, source_kind,
+	metadata_json, valid_from, valid_to, created_at, updated_at, context_note
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+ON CONFLICT(scope_type, scope_id, source_id, target_id, relation_type) DO UPDATE SET
+	weight = excluded.weight, context_note = excluded.context_note,
+	status = 'active', updated_at = excluded.updated_at`
+
+// CreateInhibitRelation creates (or upserts) a directed INHIBIT relation from
+// SourceID to TargetID. The relation_type is forced to INHIBIT (callers cannot
+// override it). Weight defaults to 0.8 if params.Weight is zero.
+func (r *l4EntityRepo) CreateInhibitRelation(ctx context.Context, params biz.L4InhibitRelationCreate) error {
+	if r == nil {
+		return apierror.Internal("MEMORY_L4", "l4 repo not initialized")
+	}
+	sourceID := strings.TrimSpace(params.SourceID)
+	targetID := strings.TrimSpace(params.TargetID)
+	if sourceID == "" || targetID == "" {
+		return apierror.BadRequest("MEMORY_L4", "source_id and target_id are required for INHIBIT relation")
+	}
+	if sourceID == targetID {
+		return apierror.BadRequest("MEMORY_L4", "self-inhibition not allowed (source_id == target_id)")
+	}
+
+	weight := params.Weight
+	if weight <= 0 {
+		weight = 0.8 // default strong inhibition
+	}
+
+	id := newUUIDString()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(createInhibitRelationSQL),
+		id,
+		strings.TrimSpace(params.ScopeType),
+		strings.TrimSpace(params.ScopeID),
+		"", // workspace_id
+		sourceID,
+		targetID,
+		biz.RelationInhibit,
+		0,                   // bidirectional=0 (INHIBIT is directed)
+		weight, 0.5, 0.5, 0, // weight, confidence, importance, use_count
+		"{}", "{}", "active", "", // attributes_json, evidence_json, status, source_kind
+		"{}", now, "", now, now, // metadata_json, valid_from, valid_to, created_at, updated_at
+		params.ContextNote, // context_note
+	)
+	return entErrToBizErr(err, "MEMORY_L4")
+}
+
+// adjustConfidenceSQL atomically adjusts confidence by delta (saturated to
+// [0, 1]) using a CASE expression for cross-dialect compatibility (SQLite and
+// Postgres both support standard CASE WHEN). Only matches non-deleted entities.
+const adjustConfidenceSQL = `UPDATE memory_entities
+SET confidence = CASE
+        WHEN confidence + ? > 1.0 THEN 1.0
+        WHEN confidence + ? < 0.0 THEN 0.0
+        ELSE confidence + ?
+    END,
+    updated_at = ?
+WHERE id = ? AND deleted_at = ''`
+
+// AdjustConfidence atomically adjusts confidence by delta (saturated to [0, 1])
+// for the given entity. Returns ok=false if the entity was not found or is
+// soft-deleted (no rows affected).
+func (r *l4EntityRepo) AdjustConfidence(ctx context.Context, entityID string, delta float64) (bool, error) {
+	if r == nil {
+		return false, apierror.Internal("MEMORY_L4", "l4 repo not initialized")
+	}
+	entityID = strings.TrimSpace(entityID)
+	if entityID == "" {
+		return false, apierror.BadRequest("MEMORY_L4", "entity_id is required")
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(adjustConfidenceSQL),
+		delta, delta, delta, now, entityID)
+	if err != nil {
+		return false, entErrToBizErr(err, "MEMORY_L4")
+	}
+	affected, _ := res.RowsAffected()
+	return affected > 0, nil
+}
+
+// --- L4KnowledgeBridgeStore (Phase E, FR-11.7 / FR-10.10) ---
+
+// FindBySourceCollection returns all active, non-deleted entities whose
+// metadata_json.source_collection_id matches collectionID. Uses dialect-aware
+// JSON extraction (SQLite json_extract / Postgres ->>) for cross-dialect
+// compatibility. AdjustConfidence is shared with L4ConflictStore (same method
+// signature, implemented once above).
+func (r *l4EntityRepo) FindBySourceCollection(ctx context.Context, collectionID string) ([]biz.L4EntitySnapshot, error) {
+	if r == nil {
+		return nil, apierror.Internal("MEMORY_L4", "l4 repo not initialized")
+	}
+	collectionID = strings.TrimSpace(collectionID)
+	if collectionID == "" {
+		return nil, nil
+	}
+
+	// Build SQL with dialect-aware JSON extraction expression.
+	expr := r.data.Dialect().JSONExtract("metadata_json", "source_collection_id")
+	q := `SELECT id, name, name_normalized, confidence, metadata_json, updated_at
+FROM memory_entities
+WHERE deleted_at = '' AND status = 'active' AND ` + expr + ` = ?`
+
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(q), collectionID)
+	if err != nil {
+		return nil, entErrToBizErr(err, "MEMORY_L4")
+	}
+	defer rows.Close()
+
+	var out []biz.L4EntitySnapshot
+	for rows.Next() {
+		var snap biz.L4EntitySnapshot
+		var updatedAt string
+		if err := rows.Scan(&snap.ID, &snap.Name, &snap.NameNormalized,
+			&snap.Confidence, &snap.MetadataJSON, &updatedAt); err != nil {
+			return nil, entErrToBizErr(err, "MEMORY_L4")
+		}
+		out = append(out, snap)
+	}
+	return out, entErrToBizErr(rows.Err(), "MEMORY_L4")
 }

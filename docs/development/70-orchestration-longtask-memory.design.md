@@ -1552,3 +1552,393 @@ END $$;
 **Domain 命名规范**：使用大写下划线格式，如 `SESSION`、`SESSION_RUN`、`SESSION_METRICS`、`AGENT`、`TOOL`、`MONITOR`、`MEMORY_L1`、`MODEL_REGISTRY`、`AGENT_PERFORMANCE`、`BORROW_REQUEST`。
 
 > 改动文件清单与验收状态详见 [70-orchestration-longtask-memory.development.md §3.4](./70-orchestration-longtask-memory.development.md#34-p0-4修复-db-r5-错误翻译)。
+
+---
+
+## 十五、记忆神经元模型增强设计
+
+> 基于 DeepSeek 神经元式记忆数据库方案，渐进增强现有 L4 实体图谱。核心思路：**memory_entities = 神经元节点，memory_relations = 突触关系**，在现有表上增加激活值/共同激活计数字段，新增扩散激活检索引擎，不重构存储引擎。
+
+### 15.1 现有表结构盘点
+
+**memory_entities**（[memory_chain.sql:415](../../internal/data/sql/memory_chain.sql#L415)）已有字段：
+
+| 字段 | 类型 | 神经元语义 |
+|------|------|-----------|
+| id | TEXT PK | 神经元唯一标识 |
+| entity_type | TEXT | 神经元类型（person/place/preference/event/concept） |
+| importance | REAL | 重要性（现有） |
+| confidence | REAL | 置信度（现有） |
+| use_count | INTEGER | 访问次数（现有，≈ access_count） |
+| source_kind | TEXT | 来源（'extracted'，现有） |
+| embedding_blob | BLOB | 文本向量（现有） |
+| status | TEXT | 状态（active/archived/deleted） |
+
+**memory_relations**（[memory_chain.sql:446](../../internal/data/sql/memory_chain.sql#L446)）已有字段：
+
+| 字段 | 类型 | 突触语义 |
+|------|------|---------|
+| source_id | TEXT | 突触前神经元 |
+| target_id | TEXT | 突触后神经元 |
+| relation_type | TEXT | 关系类型（现有，自由值） |
+| bidirectional | INTEGER | 是否双向 |
+| **weight** | **REAL DEFAULT 1.0** | **连接强度（现有！）** |
+| confidence | REAL | 关系置信度 |
+| use_count | INTEGER | 使用次数 |
+| valid_from / valid_to | TEXT | Bi-temporal 有效区间 |
+
+**关键发现**：`weight` 字段已存在（默认 1.0），`relation_type` 已为自由值 TEXT，`use_count` 已有。**无需重构存储**，只需增量加字段。
+
+### 15.2 神经元字段增强（DDL 迁移）
+
+```sql
+-- internal/data/sql/migrations/20261005_memory_neuron_enhancement.sql
+-- 版本 20261005：神经元模型字段增强（20260728 已被 memory_job_deadletter_schema 占用）
+
+-- memory_entities 新增激活值与来源类型
+ALTER TABLE memory_entities ADD COLUMN activation REAL NOT NULL DEFAULT 0;
+ALTER TABLE memory_entities ADD COLUMN activation_updated_at TEXT NOT NULL DEFAULT '';
+ALTER TABLE memory_entities ADD COLUMN source_type TEXT NOT NULL DEFAULT '';
+  -- source_type: perception/inference/told/knowledge（区分现有 source_kind='extracted'）
+ALTER TABLE memory_entities ADD COLUMN valence REAL NOT NULL DEFAULT 0;   -- 预留：情感效价
+ALTER TABLE memory_entities ADD COLUMN arousal REAL NOT NULL DEFAULT 0;   -- 预留：情感唤醒度
+
+-- memory_relations 新增共同激活计数与强化时间
+ALTER TABLE memory_relations ADD COLUMN co_activation_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE memory_relations ADD COLUMN last_reinforced_at TEXT NOT NULL DEFAULT '';
+ALTER TABLE memory_relations ADD COLUMN context_note TEXT NOT NULL DEFAULT '';
+
+-- 扩散激活索引：按激活值降序检索 Top-K
+CREATE INDEX IF NOT EXISTS idx_memory_entities_activation
+  ON memory_entities(scope_type, scope_id, status, activation DESC);
+
+-- 关系联合索引：图遍历加速
+CREATE INDEX IF NOT EXISTS idx_memory_relations_graph
+  ON memory_relations(source_id, target_id, status, weight DESC);
+```
+
+**迁移注册**：在 `internal/data/ddl_migration_registry.go` 注册版本 20261005（最新可用版本号，20260728 已被占用）。
+
+### 15.3 关系类型扩展
+
+现有 `relation_type` 为自由值 TEXT（无枚举约束），扩展类型定义在应用层：
+
+```go
+// internal/biz/memory_l4.go 扩展
+const (
+    RelationRelatedTo   = "RELATED_TO"     // 现有：双向关联
+    RelationEvolvedFrom = "EVOLVED_FROM"   // 现有：有向，新记忆替代旧记忆
+    RelationCausal      = "CAUSAL"         // 新增：有向，因果关系（A 导致 B）
+    RelationTemporalNext = "TEMPORAL_NEXT" // 新增：有向，时序关系（B 在 A 之后）
+    RelationInhibit     = "INHIBIT"        // 新增：有向，抑制关系（冲突消解）
+)
+
+// relationTypeProps 定义每种关系类型的属性（方向性、是否强化目标、是否抑制）
+var relationTypeProps = map[string]RelationTypeProp{
+    RelationRelatedTo:    {Bidirectional: true,  ReinforcesTarget: true,  InhibitsTarget: false},
+    RelationEvolvedFrom:  {Bidirectional: false, ReinforcesTarget: false, InhibitsTarget: true},
+    RelationCausal:       {Bidirectional: false, ReinforcesTarget: true,  InhibitsTarget: false},
+    RelationTemporalNext: {Bidirectional: false, ReinforcesTarget: false, InhibitsTarget: false},
+    RelationInhibit:      {Bidirectional: false, ReinforcesTarget: false, InhibitsTarget: true},
+}
+```
+
+### 15.4 递归 CTE 图遍历（替换现有应用层 BFS）
+
+**现有实现**（[memory_shim_l4.go:99-232](../../internal/data/memory_shim_l4.go#L99)）：应用层逐跳 BFS，每跳 2 次 SQL 查询（relations + entities），N 跳 = 2N 次往返。
+
+**新设计**：单次递归 CTE 完成全图遍历，应用层只做加权传播计算。
+
+```sql
+-- PostgreSQL 递归 CTE（Postgres 环境）
+WITH RECURSIVE graph_traverse AS (
+  -- 种子：中心节点
+  SELECT source_id AS node_id, 0 AS hop, 1.0 AS activation
+  FROM memory_relations
+  WHERE source_id = $1 AND status = 'active'
+  UNION ALL
+  -- 递归：沿关系传播
+  SELECT
+    CASE WHEN r.source_id = gt.node_id THEN r.target_id ELSE r.source_id END AS node_id,
+    gt.hop + 1 AS hop,
+    gt.activation * r.weight AS activation
+  FROM graph_traverse gt
+  JOIN memory_relations r ON
+    (r.source_id = gt.node_id OR r.target_id = gt.node_id)
+    AND r.status = 'active'
+  WHERE gt.hop < $2  -- 最大跳数
+)
+SELECT DISTINCT ON (node_id) node_id, hop, activation
+FROM graph_traverse
+ORDER BY node_id, activation DESC
+LIMIT $3;  -- Top-K
+```
+
+**SQLite 兼容**：SQLite 同样支持 `WITH RECURSIVE` 语法，但占位符用 `?` 而非 `$N`。通过 `Dialect().RenumberPlaceholders()` 适配（现有模式）。
+
+**性能对比**：
+
+| 指标 | 现有应用层 BFS | 递归 CTE |
+|------|--------------|---------|
+| SQL 往返（3 跳） | 6 次 | 1 次 |
+| 网络延迟（3 跳） | 6×RTT | 1×RTT |
+| 应用层逻辑 | 逐跳循环+去重 | 纯结果处理 |
+| 加权传播 | 无法在 SQL 做 | SQL 内完成 |
+
+### 15.5 扩散激活算法（Go 应用层）
+
+递归 CTE 返回图结构后，Go 应用层执行加权传播 + Top-K 剪枝：
+
+```go
+// internal/memory/spreading_activation.go 新增
+type SpreadingActivationEngine struct {
+    l4Repo  biz.L4EntityStore
+    lg      loggateway.Logger
+}
+
+type ActivationResult struct {
+    NodeID       string
+    Activation   float64
+    HopCount     int
+    ActivationPath []PathStep // 可解释激活路径
+}
+
+type PathStep struct {
+    FromNodeID string
+    ToNodeID   string
+    EdgeWeight float64
+    RelationType string
+}
+
+// SpreadingActivation 执行扩散激活检索
+// centerID: 线索神经元 ID
+// hops: 最大传播跳数（默认 3）
+// topK: 每跳保留的最大节点数（默认 20）
+func (e *SpreadingActivationEngine) SpreadingActivation(
+    ctx context.Context, centerID string, hops, topK int,
+) ([]ActivationResult, error) {
+    // 1. 递归 CTE 获取 N 跳内所有节点+边
+    graph, err := e.l4Repo.GraphTraverseCTE(ctx, centerID, hops, topK*2)
+    if err != nil {
+        return nil, entErrToBizErr(err, "MEMORY_L4")
+    }
+
+    // 2. 初始化：center 节点 activation = 1.0
+    activations := map[string]float64{centerID: 1.0}
+    paths := map[string][]PathStep{} // 每个节点的激活路径
+
+    // 3. 逐跳传播
+    for hop := 1; hop <= hops; hop++ {
+        nextActivations := map[string]float64{}
+        for nodeID, activation := range activations {
+            if activation < 0.01 {
+                continue // 低于阈值的节点不传播
+            }
+            // 获取该节点的邻居
+            neighbors := graph.Neighbors(nodeID)
+            for _, edge := range neighbors {
+                propagated := activation * edge.Weight * decayFactor(hop)
+                target := edge.TargetID
+                if target == nodeID {
+                    target = edge.SourceID
+                }
+                // 累加激活值（多条路径汇聚）
+                nextActivations[target] += propagated
+                // 记录激活路径
+                paths[target] = append(paths[target], PathStep{
+                    FromNodeID: nodeID, ToNodeID: target,
+                    EdgeWeight: edge.Weight, RelationType: edge.RelationType,
+                })
+            }
+        }
+        // Top-K 剪枝：每跳只保留激活值最高的 K 个节点
+        activations = topKFilter(nextActivations, topK)
+    }
+
+    // 4. 构建结果（按激活值降序）
+    results := buildActivationResults(activations, paths)
+    return results, nil
+}
+
+// decayFactor 跳数衰减因子（模拟信号衰减）
+func decayFactor(hop int) float64 {
+    return math.Pow(0.7, float64(hop-1)) // hop1=1.0, hop2=0.7, hop3=0.49
+}
+```
+
+### 15.6 赫布权重更新规则
+
+"一起放电，连在一起"——同时激活的神经元之间增强连接权重：
+
+```go
+// internal/memory/hebbian_update.go 新增
+type HebbianUpdater struct {
+    l4Repo biz.L4EntityWriter
+    lg     loggateway.Logger
+}
+
+// ReinforceConnection 赫布规则强化连接
+// 当两个神经元在同一上下文中被同时激活时调用
+func (u *HebbianUpdater) ReinforceConnection(
+    ctx context.Context, nodeA, nodeB string, relationType string,
+) error {
+    // 1. 查找现有关系
+    rel, err := u.l4Repo.FindRelation(ctx, nodeA, nodeB, relationType)
+    if err != nil {
+        return err
+    }
+
+    // 2. 赫布规则：Δw = η * pre_activation * post_activation
+    //    η = learning_rate（默认 0.1）
+    //    pre/post_activation 从 memory_entities.activation 读取
+    learningRate := 0.1
+    newWeight := rel.Weight + learningRate*rel.SourceActivation*rel.TargetActivation
+
+    // 3. 权重饱和保护（0~1）
+    if newWeight > 1.0 {
+        newWeight = 1.0
+    }
+
+    // 4. 更新 weight + co_activation_count + last_reinforced_at
+    return u.l4Repo.UpdateRelationWeight(ctx, rel.ID, newWeight,
+        rel.CoActivationCount+1, time.Now().UTC().Format(time.RFC3339Nano))
+}
+
+// DecayUnused 长期未使用的连接权重衰减（配合 Ebbinghaus）
+func (u *HebbianUpdater) DecayUnused(ctx context.Context, threshold time.Duration) error {
+    // 查找 last_reinforced_at < threshold 的关系
+    // weight *= 0.95（衰减因子）
+    // weight < 0.1 时标记 status = 'archived'（弱连接归档）
+}
+```
+
+### 15.7 记忆重巩固机制
+
+回忆时神经元属性可被更新（模拟人脑记忆重巩固）：
+
+```go
+// internal/memory/reconsolidation.go 新增
+type ReconsolidationService struct {
+    l4Repo      biz.L4EntityWriter
+    hebbian     *HebbianUpdater
+    lg          loggateway.Logger
+}
+
+// OnRecall 当神经元被召回时触发重巩固
+func (s *ReconsolidationService) OnRecall(
+    ctx context.Context, nodeID string, recalledWith []string,
+) error {
+    // 1. 提升被召回神经元的 activation
+    newActivation := math.Min(1.0, currentActivation+0.2)
+    s.l4Repo.UpdateActivation(ctx, nodeID, newActivation, time.Now())
+
+    // 2. 增加访问计数（use_count + 1）
+    s.l4Repo.IncrementUseCount(ctx, nodeID)
+
+    // 3. 对同时召回的神经元执行赫布强化
+    for _, otherID := range recalledWith {
+        s.hebbian.ReinforceConnection(ctx, nodeID, otherID, RelationRelatedTo)
+    }
+
+    return nil
+}
+```
+
+**集成点**：在 [memory_inject.go](../../internal/agent/memory_inject.go) 的 BeforeModel 钩子中，召回记忆后异步触发 `OnRecall`（不阻塞模型调用）。
+
+### 15.8 冲突消解策略
+
+新记忆与旧记忆矛盾时建立 INHIBIT 抑制关系：
+
+```go
+// internal/memory/conflict_resolver.go 新增
+type ConflictResolver struct {
+    l4Repo  biz.L4EntityWriter
+    lg      loggateway.Logger
+}
+
+// ResolveConflict 当检测到新记忆与旧记忆矛盾时调用
+func (r *ConflictResolver) ResolveConflict(
+    ctx context.Context, newEntityID, oldEntityID string, conflictReason string,
+) error {
+    // 1. 建立 INHIBIT 关系（新记忆 → 抑制 → 旧记忆）
+    err := r.l4Repo.CreateRelation(ctx, biz.RelationInsert{
+        SourceID:    newEntityID,
+        TargetID:    oldEntityID,
+        RelationType: RelationInhibit,
+        Weight:      0.8, // 强抑制
+        ContextNote: conflictReason,
+        ValidFrom:   time.Now().UTC().Format(time.RFC3339Nano),
+    })
+    if err != nil {
+        return err
+    }
+
+    // 2. 降低旧记忆的 confidence（不删除，保留历史）
+    return r.l4Repo.AdjustConfidence(ctx, oldEntityID, -0.3)
+}
+
+// 检索时过滤被抑制的记忆
+// SpreadingActivationEngine 中，遇到 INHIBIT 关系时：
+//   - 不传播激活值到被抑制的节点
+//   - 或传播负向激活值（降低目标节点激活值）
+```
+
+### 15.9 知识库协同设计
+
+知识库（37 号模块）与记忆（70 号模块）的协同关系：
+
+```go
+// memory_entities 新增可选字段（通过 metadata_json 存储，不改表结构）
+// metadata_json.source_collection_id: 标记实体来源的知识库 Collection
+
+// 知识库检索结果触发记忆强化（FR-11.7）
+func (s *KnowledgeMemoryBridge) OnKnowledgeConfirmed(
+    ctx context.Context, collectionID string, query string, confirmed bool,
+) error {
+    // 用户确认的知识库检索结果 → 提升 L4 相关实体的 confidence
+    entities := s.l4Repo.FindBySourceCollection(ctx, collectionID)
+    for _, entity := range entities {
+        if confirmed {
+            s.l4Repo.AdjustConfidence(ctx, entity.ID, +0.1)
+        } else {
+            s.l4Repo.AdjustConfidence(ctx, entity.ID, -0.1)
+        }
+    }
+    return nil
+}
+```
+
+**边界约束**：
+- 知识库块（knowledge_chunks）**不进入** memory_entities
+- 记忆事实（memory_facts）**不进入** knowledge_chunks
+- 协同仅通过 `source_collection_id` 引用 + confidence 调整
+
+### 15.10 迁移路径（何时切换图数据库）
+
+**触发条件**（满足任一即可评估迁移）：
+
+| 条件 | 阈值 | 理由 |
+|------|------|------|
+| 单 Agent 图谱节点数 | >10万 | 递归 CTE 性能下降 |
+| 图遍历深度 | >5 跳 | 递归 CTE 指数级膨胀 |
+| 图算法需求 | PageRank/社区发现 | SQL 无法高效实现 |
+| 跨 Agent 全局推理 | 需要 | 需要全局图视图 |
+
+**迁移目标**：
+- **Neo4j**：原生图存储，亿级节点，Cypher 查询，适合大规模
+- **Apache AGE**：PG 图扩展，保持单 PG 部署，适合中等规模（注意 Windows 支持）
+
+**兼容性**：本期数据模型（memory_entities 节点 + memory_relations 边）与图数据库的节点/边模型完全兼容，迁移时只需导出数据 + 转换为 Cypher 导入格式。
+
+### 15.11 性能预算
+
+| 操作 | 目标延迟 | 实现方式 |
+|------|---------|---------|
+| 扩散激活 1 跳 | <20ms | 递归 CTE + Top-20 剪枝 |
+| 扩散激活 3 跳 | <100ms | 递归 CTE + Top-20 剪枝 |
+| 赫布权重更新 | <10ms | 单行 UPDATE |
+| 记忆重巩固 | <20ms | 2 行 UPDATE（activation + use_count） |
+| 冲突消解 | <30ms | 1 INSERT + 1 UPDATE |
+
+**容量假设**：单 Agent 图谱 ≤10万节点、≤50万边。超过此规模触发图数据库迁移评估。

@@ -20,45 +20,48 @@ type queueStatsProvider interface {
 // Using a config struct instead of positional parameters improves readability
 // and makes future additions non-breaking.
 type MemoryServiceConfig struct {
-	Admin             *biz.MemoryAdminUsecase
-	Cascade           *biz.L4CascadeUsecase
-	SysUC             *biz.SystemSettingUsecase
-	DeadLetterRepo    biz.MemoryDeadLetterAdminRepo
-	DebugRecaller     biz.MemoryDebugRecaller
-	FactIndexCounter  biz.MemoryFactIndexCounter
-	WorkerStats       *biz.MemoryWorkerStats
-	DeadLetterEnqueue func(ctx context.Context, id int64) error
-	QueueStats        queueStatsProvider
-	Logger            loggateway.Logger
+	Admin               *biz.MemoryAdminUsecase
+	Cascade             *biz.L4CascadeUsecase
+	SysUC               *biz.SystemSettingUsecase
+	DeadLetterRepo      biz.MemoryDeadLetterAdminRepo
+	DebugRecaller       biz.MemoryDebugRecaller
+	FactIndexCounter    biz.MemoryFactIndexCounter
+	WorkerStats         *biz.MemoryWorkerStats
+	SpreadingActivation biz.L4SpreadingActivationEngine
+	DeadLetterEnqueue   func(ctx context.Context, id int64) error
+	QueueStats          queueStatsProvider
+	Logger              loggateway.Logger
 }
 
 type MemoryService struct {
 	v1.UnimplementedMemoryServiceServer
 
-	admin             *biz.MemoryAdminUsecase
-	cascade           *biz.L4CascadeUsecase
-	sysUC             *biz.SystemSettingUsecase
-	deadLetterRepo    biz.MemoryDeadLetterAdminRepo
-	debugRecaller     biz.MemoryDebugRecaller
-	factIndexCounter  biz.MemoryFactIndexCounter
-	workerStats       *biz.MemoryWorkerStats
-	deadLetterEnqueue func(ctx context.Context, id int64) error
-	queueStats        queueStatsProvider
-	lg                loggateway.Logger
+	admin               *biz.MemoryAdminUsecase
+	cascade             *biz.L4CascadeUsecase
+	sysUC               *biz.SystemSettingUsecase
+	deadLetterRepo      biz.MemoryDeadLetterAdminRepo
+	debugRecaller       biz.MemoryDebugRecaller
+	factIndexCounter    biz.MemoryFactIndexCounter
+	workerStats         *biz.MemoryWorkerStats
+	spreadingActivation biz.L4SpreadingActivationEngine
+	deadLetterEnqueue   func(ctx context.Context, id int64) error
+	queueStats          queueStatsProvider
+	lg                  loggateway.Logger
 }
 
 func NewMemoryService(cfg MemoryServiceConfig) *MemoryService {
 	return &MemoryService{
-		admin:             cfg.Admin,
-		cascade:           cfg.Cascade,
-		sysUC:             cfg.SysUC,
-		deadLetterRepo:    cfg.DeadLetterRepo,
-		debugRecaller:     cfg.DebugRecaller,
-		factIndexCounter:  cfg.FactIndexCounter,
-		workerStats:       cfg.WorkerStats,
-		deadLetterEnqueue: cfg.DeadLetterEnqueue,
-		queueStats:        cfg.QueueStats,
-		lg:                cfg.Logger,
+		admin:               cfg.Admin,
+		cascade:             cfg.Cascade,
+		sysUC:               cfg.SysUC,
+		deadLetterRepo:      cfg.DeadLetterRepo,
+		debugRecaller:       cfg.DebugRecaller,
+		factIndexCounter:    cfg.FactIndexCounter,
+		workerStats:         cfg.WorkerStats,
+		spreadingActivation: cfg.SpreadingActivation,
+		deadLetterEnqueue:   cfg.DeadLetterEnqueue,
+		queueStats:          cfg.QueueStats,
+		lg:                  cfg.Logger,
 	}
 }
 
@@ -394,6 +397,45 @@ func (s *MemoryService) GetMemoryNeighborhood(ctx context.Context, req *v1.GetMe
 				out.Relations = append(out.Relations, r)
 			}
 		}
+	}
+	return out, nil
+}
+
+// SpreadingActivation executes a spreading-activation retrieval from the given
+// center entity (FR-10.3 / FR-10.8 / AC-9). Returns nodes sorted by activation
+// descending, each carrying the strongest propagation path for explainability.
+func (s *MemoryService) SpreadingActivation(ctx context.Context, req *v1.SpreadingActivationRequest) (*v1.SpreadingActivationResponse, error) {
+	if s.spreadingActivation == nil {
+		return nil, apierror.Internal(apierror.DomainMemory, "spreading activation engine not wired")
+	}
+	cid := strings.TrimSpace(req.GetCenterId())
+	if cid == "" {
+		return nil, apierror.BadRequest(apierror.DomainMemory, "center_id is required")
+	}
+	results, err := s.spreadingActivation.SpreadingActivation(ctx, cid, int(req.GetHops()), int(req.GetTopK()))
+	if err != nil {
+		return nil, err
+	}
+	out := &v1.SpreadingActivationResponse{
+		CenterId: cid,
+		Hops:     req.GetHops(),
+		TopK:     req.GetTopK(),
+	}
+	for _, r := range results {
+		pb := &v1.ActivationResult{
+			NodeId:     r.NodeID,
+			Activation: r.Activation,
+			HopCount:   int32(r.HopCount),
+		}
+		for _, step := range r.ActivationPath {
+			pb.ActivationPath = append(pb.ActivationPath, &v1.ActivationPathStep{
+				FromNodeId:   step.FromNodeID,
+				ToNodeId:     step.ToNodeID,
+				EdgeWeight:   step.EdgeWeight,
+				RelationType: step.RelationType,
+			})
+		}
+		out.Items = append(out.Items, pb)
 	}
 	return out, nil
 }

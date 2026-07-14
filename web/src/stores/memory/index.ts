@@ -20,6 +20,7 @@ import {
   compositeSearchMemories,
   debugMemoryRecall,
   getMemoryNeighborhood,
+  getSpreadingActivation,
   getMemoryPlatformSettings,
   listMemoryDeadLetters,
   updateMemoryPlatformSettings,
@@ -217,6 +218,10 @@ export const useMemoryStore = defineStore('memory', () => {
     return getMemoryNeighborhood(centerID, params);
   }
 
+  async function fetchSpreadingActivation(centerID: string, params?: Parameters<typeof getSpreadingActivation>[1]) {
+    return getSpreadingActivation(centerID, params);
+  }
+
   async function fetchPlatformSettings() {
     return getMemoryPlatformSettings();
   }
@@ -321,6 +326,7 @@ export const useMemoryStore = defineStore('memory', () => {
     searchMemoriesComposite,
     recallDebug,
     fetchNeighborhood,
+    fetchSpreadingActivation,
     fetchPlatformSettings,
     fetchDeadLetters,
     savePlatformSettings,

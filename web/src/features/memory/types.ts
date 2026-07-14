@@ -187,6 +187,27 @@ export type GraphNeighborhood = {
   query_at?: string;
 };
 
+export type ActivationPathStep = {
+  from_node_id: string;
+  to_node_id: string;
+  edge_weight: number;
+  relation_type: string;
+};
+
+export type SpreadingActivationResult = {
+  node_id: string;
+  activation: number;
+  hop_count: number;
+  activation_path: ActivationPathStep[];
+};
+
+export type SpreadingActivationResponse = {
+  center_id: string;
+  hops: number;
+  top_k: number;
+  items: SpreadingActivationResult[];
+};
+
 export type AgentIdentity = {
   agent_id: string;
   persona: string;

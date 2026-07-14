@@ -31,6 +31,9 @@ export type {
   MemoryWorkerQueueStats,
   MemoryDeadLetterEntry,
   MemoryPlatformSettings,
+  ActivationPathStep,
+  SpreadingActivationResult,
+  SpreadingActivationResponse,
 } from './types';
 
 export { memoryEndpoints } from './memoryEndpoints';
@@ -64,6 +67,9 @@ import type {
   MemoryWorkerQueueStats,
   MemoryDeadLetterEntry,
   MemoryPlatformSettings,
+  ActivationPathStep,
+  SpreadingActivationResult,
+  SpreadingActivationResponse,
 } from './types';
 import {
   asRecord,
@@ -264,6 +270,27 @@ function mapGraphNH(raw: unknown): GraphNeighborhood {
   };
 }
 
+function mapActivationPathStep(raw: unknown): ActivationPathStep {
+  const s = asRecord(raw);
+  return {
+    from_node_id: pickStr(s, 'from_node_id', 'fromNodeId'),
+    to_node_id: pickStr(s, 'to_node_id', 'toNodeId'),
+    edge_weight: pickNum(s, 'edge_weight', 'edgeWeight'),
+    relation_type: pickStr(s, 'relation_type', 'relationType'),
+  };
+}
+
+function mapActivationResult(raw: unknown): SpreadingActivationResult {
+  const r = asRecord(raw);
+  const pathRaw = r.activation_path ?? r.activationPath;
+  return {
+    node_id: pickStr(r, 'node_id', 'nodeId'),
+    activation: pickNum(r, 'activation', 'activation'),
+    hop_count: pickI32(r, 'hop_count', 'hopCount'),
+    activation_path: Array.isArray(pathRaw) ? pathRaw.map(mapActivationPathStep) : [],
+  };
+}
+
 function mapAgentIdentity(raw: unknown): AgentIdentity {
   const a = asRecord(raw);
   return {
@@ -447,6 +474,26 @@ export async function getMemoryNeighborhood(
     queryAt: undefined,
   });
   return mapGraphNH(raw);
+}
+
+export async function getSpreadingActivation(
+  centerID: string,
+  params: { hops?: number; top_k?: number } = {},
+): Promise<SpreadingActivationResponse> {
+  const raw = asRecord(
+    await memory.SpreadingActivation({
+      centerId: centerID,
+      hops: params.hops,
+      topK: params.top_k,
+    }),
+  );
+  const itemsRaw = raw.items ?? raw.Items;
+  return {
+    center_id: pickStr(raw, 'center_id', 'centerId'),
+    hops: pickI32(raw, 'hops', 'hops'),
+    top_k: pickI32(raw, 'top_k', 'topK'),
+    items: Array.isArray(itemsRaw) ? itemsRaw.map(mapActivationResult) : [],
+  };
 }
 
 export async function getAgentIdentity(agentID: string): Promise<AgentIdentity> {

@@ -115,6 +115,11 @@ var ddlMigrations = []ddlMigration{
 	// A-MEM style memory evolution (Phase 6A-03). Stores LLM-generated contextual
 	// annotation explaining how this fact relates to / evolved from related memories.
 	{Version: 20261004, Name: "memory_context_note", SQL: "sql/migrations/20261004_memory_context_note.sql"},
+	// 20261005 memory_neuron_enhancement: add neuron-model fields to memory_entities
+	// (activation/activation_updated_at/source_type/valence/arousal) and memory_relations
+	// (co_activation_count/last_reinforced_at/context_note) for Phase E spreading activation,
+	// Hebbian reinforcement, and A-MEM style relationship evolution (FR-10.1/10.2/10.7).
+	{Version: 20261005, Name: "memory_neuron_enhancement", SQL: "sql/migrations/20261005_memory_neuron_enhancement.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

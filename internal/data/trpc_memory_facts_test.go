@@ -63,6 +63,8 @@ func openTestDataForMemory(t *testing.T) (*data.Data, *ent.Client) {
  embedding_blob BLOB, embedding_norm REAL NOT NULL DEFAULT 0,
  status TEXT NOT NULL DEFAULT 'active', merged_into TEXT NOT NULL DEFAULT '', metadata_json TEXT NOT NULL DEFAULT '{}',
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived_at TEXT NOT NULL DEFAULT '', deleted_at TEXT NOT NULL DEFAULT '',
+ activation REAL NOT NULL DEFAULT 0, activation_updated_at TEXT NOT NULL DEFAULT '', source_type TEXT NOT NULL DEFAULT '',
+ valence REAL NOT NULL DEFAULT 0, arousal REAL NOT NULL DEFAULT 0,
  UNIQUE(scope_type, scope_id, entity_type, name_normalized))`,
 		`CREATE TABLE IF NOT EXISTS schema_migrations (
  version INTEGER PRIMARY KEY NOT NULL,

@@ -10,6 +10,7 @@ export const memoryEndpoints = {
   listMemoryFacts: () => 'v1/memory/l3/facts',
   listMemoryEntities: () => 'v1/memory/l4/entities',
   getMemoryNeighborhood: (centerId: string) => `v1/memory/l4/entities/${encodeURIComponent(centerId)}/neighborhood`,
+  spreadingActivation: () => 'v1/memory/l4/spreading-activation',
   getAgentIdentity: (agentId: string) => `v1/agents/${encodeURIComponent(agentId)}/identity`,
   getAgentStrategy: (agentId: string) => `v1/agents/${encodeURIComponent(agentId)}/strategy`,
   listEvolutionProposals: (agentId: string) => `v1/agents/${encodeURIComponent(agentId)}/evolution/proposals`,

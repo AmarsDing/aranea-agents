@@ -257,14 +257,16 @@ const sqlEntityCols = `
  importance, confidence, use_count, source_kind,
  embedding_status, embedding_model, embedding_dim, embedding_blob, embedding_norm,
  status, merged_into,
- metadata_json, created_at, updated_at, archived_at, deleted_at`
+ metadata_json, created_at, updated_at, archived_at, deleted_at,
+ activation, activation_updated_at, source_type, valence, arousal`
 
 const sqlRelationCols = `
  id, scope_type, scope_id, workspace_id,
  source_id, target_id, relation_type, bidirectional,
  weight, confidence, importance, use_count,
  attributes_json, evidence_json, status, source_kind,
- metadata_json, valid_from, valid_to, created_at, updated_at, archived_at, deleted_at`
+ metadata_json, valid_from, valid_to, created_at, updated_at, archived_at, deleted_at,
+ co_activation_count, last_reinforced_at, context_note`
 
 // ──────────────────────────────────────────────────────────
 // Scan helpers
@@ -494,6 +496,9 @@ func scanEntityRowJSON(rows *sql.Rows, lg loggateway.Logger) ([]byte, error) {
 		embBlob                                                                   []byte
 		embNorm                                                                   float64
 		status, merged, meta, ca, ua, arch, del                                   string
+		// 20261005 neuron enhancement fields
+		activation, valence, arousal                                              float64
+		activationUpdatedAt, sourceType                                           string
 	)
 	if err := rows.Scan(
 		&id, &scopeType, &scopeID, &wid, &uid, &etype, &name, &nnorm, &aliases, &desc, &attr,
@@ -501,6 +506,7 @@ func scanEntityRowJSON(rows *sql.Rows, lg loggateway.Logger) ([]byte, error) {
 		&embSt, &embModel, &embDim, &embBlob, &embNorm,
 		&status, &merged,
 		&meta, &ca, &ua, &arch, &del,
+		&activation, &activationUpdatedAt, &sourceType, &valence, &arousal,
 	); err != nil {
 		return nil, err
 	}
@@ -518,6 +524,12 @@ func scanEntityRowJSON(rows *sql.Rows, lg loggateway.Logger) ([]byte, error) {
 		"status":         status, "merged_into": merged,
 		"metadata_json": meta, "created_at": ca, "updated_at": ua,
 		"archived_at": arch, "deleted_at": del,
+		// 20261005 neuron enhancement fields
+		"activation":            activation,
+		"activation_updated_at": activationUpdatedAt,
+		"source_type":           sourceType,
+		"valence":               valence,
+		"arousal":               arousal,
 	}
 	if attr != "" && attr != "{}" {
 		m["attributes_json"] = attr
@@ -534,12 +546,16 @@ func scanRelationRowJSON(rows *sql.Rows) ([]byte, error) {
 		attrJ, evidJ, status, srcKind, metaJ       string
 		validFrom, validTo                         string
 		ca, ua, arch, del                          string
+		// 20261005 neuron enhancement fields
+		coActCount                                 int
+		lastReinforcedAt, contextNote              string
 	)
 	if err := rows.Scan(
 		&id, &stype, &sid, &wid, &srcID, &tgtID, &relType, &bidir,
 		&w, &conf, &imp, &uc,
 		&attrJ, &evidJ, &status, &srcKind,
 		&metaJ, &validFrom, &validTo, &ca, &ua, &arch, &del,
+		&coActCount, &lastReinforcedAt, &contextNote,
 	); err != nil {
 		return nil, err
 	}
@@ -552,9 +568,13 @@ func scanRelationRowJSON(rows *sql.Rows) ([]byte, error) {
 		"status": status, "source_kind": srcKind,
 		"metadata_json": metaJ,
 		"valid_from":    validFrom,
-		"valid_to":      validTo,
-		"created_at":    ca, "updated_at": ua,
+		"valid_to":     validTo,
+		"created_at":   ca, "updated_at": ua,
 		"archived_at": arch, "deleted_at": del,
+		// 20261005 neuron enhancement fields
+		"co_activation_count": coActCount,
+		"last_reinforced_at":  lastReinforcedAt,
+		"context_note":        contextNote,
 	}
 	return json.Marshal(m)
 }
