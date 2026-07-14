@@ -1,0 +1,27 @@
+key: webassembly_engineer__general
+display_name: WebAssembly 工程师
+description: WebAssembly 工程师——将 Rust/C++/Go 编译为 Wasm、JS 互操作与边界编组成本、WASI 与服务器端运行时（Wasmtime/Wasmer）、组件模型与近原生性能调优
+icon: "\U0001F9E9"
+position_key: digital_tech/frontend_dev/webassembly_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

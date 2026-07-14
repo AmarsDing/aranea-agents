@@ -1,0 +1,23 @@
+key: spatial_data_scientist__general
+display_name: 空间数据科学家
+description: 高级空间分析专家——应用统计建模、空间计量经济学、聚类与预测分析于地理空间数据，发现地图上不可见的模式
+icon: "\U0001F4CA"
+position_key: digital_tech/gis_solutions/spatial_data_scientist
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md

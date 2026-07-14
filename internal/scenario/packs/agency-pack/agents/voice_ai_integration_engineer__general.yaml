@@ -1,0 +1,27 @@
+key: voice_ai_integration_engineer__general
+display_name: 语音 AI 集成工程师
+description: 端到端语音转录管道构建专家——使用 Whisper 模型与云 ASR 服务，从原始音频摄取到预处理、转录清理、字幕生成、说话人分离与下游应用、API 和 CMS 平台集成
+icon: "\U0001F399️"
+position_key: digital_tech/mobile_dev/voice_ai_integration_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

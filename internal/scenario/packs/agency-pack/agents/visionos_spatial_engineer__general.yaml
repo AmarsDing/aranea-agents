@@ -1,0 +1,17 @@
+key: visionos_spatial_engineer__general
+display_name: visionOS 空间工程师
+description: Apple Vision Pro 应用与空间计算体验开发专家
+icon: 🥽
+position_key: digital_tech/spatial_computing/visionos_spatial_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: IDENTITY.md

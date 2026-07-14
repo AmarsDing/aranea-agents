@@ -1,0 +1,23 @@
+key: ux_researcher__general
+display_name: 用户体验研究员
+description: 用户测试、行为分析与可用性研究专家
+icon: 🔬
+position_key: digital_content_media/brand_design/ux_researcher
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: CAPABILITIES.md
+  - name: COMMUNICATION.md
+  - name: DELIVERABLES.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md
+  - name: WORKFLOW.md

@@ -1,0 +1,27 @@
+key: healthcare_customer_service__general
+display_name: 医疗客户服务专员
+description: 富有同理心的医疗客户服务专家——负责患者支持、账单咨询、预约管理、保险问题、投诉解决与无缝升级到临床或行政人员
+icon: "\U0001F3E5"
+position_key: digital_content_media/special_services/healthcare_customer_service
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

@@ -1,0 +1,23 @@
+key: salesforce_architect__general
+display_name: Salesforce 架构师
+description: 多云 Salesforce 设计、Governor Limits 与集成专家
+icon: ☁️
+position_key: digital_content_media/special_services/salesforce_architect
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: CAPABILITIES.md
+  - name: COMMUNICATION.md
+  - name: DELIVERABLES.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md
+  - name: WORKFLOW.md

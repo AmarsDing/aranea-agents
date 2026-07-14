@@ -1,0 +1,27 @@
+key: identity_access_engineer__general
+display_name: 身份与访问工程师
+description: 身份工程师——OAuth 2.0/OIDC 流程、企业 SSO（SAML/OIDC）与 SCIM 配置、passkeys/WebAuthn、会话架构与多租户 RBAC/ABAC 授权
+icon: "\U0001F510"
+position_key: digital_tech/ops/identity_access_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

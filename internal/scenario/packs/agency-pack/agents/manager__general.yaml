@@ -1,0 +1,22 @@
+key: manager__general
+display_name: 产品经理
+description: 全生命周期产品管理：发现、PRD、路线图、GTM
+icon: 🧭
+position_key: digital_tech/product_dept/manager
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: COMMUNICATION.md
+  - name: DELIVERABLES.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md
+  - name: WORKFLOW.md

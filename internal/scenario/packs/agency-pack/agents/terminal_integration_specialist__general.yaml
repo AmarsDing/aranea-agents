@@ -1,0 +1,17 @@
+key: terminal_integration_specialist__general
+display_name: 终端集成专家
+description: 终端集成、命令行工具与开发者工作流专家
+icon: 🖥️
+position_key: digital_tech/spatial_computing/terminal_integration_specialist
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: IDENTITY.md

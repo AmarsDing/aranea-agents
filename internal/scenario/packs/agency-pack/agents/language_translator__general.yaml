@@ -1,0 +1,27 @@
+key: language_translator__general
+display_name: 语言翻译专家
+description: 实时西班牙语 ↔ 英语翻译专家——具备文化背景、地区方言意识、旅行用语指导与语气适配能力，覆盖日常、商务与紧急场景
+icon: "\U0001F310"
+position_key: digital_content_media/special_services/language_translator
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

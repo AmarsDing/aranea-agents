@@ -1,0 +1,26 @@
+key: email_intelligence_engineer__general
+display_name: 邮件智能工程师
+description: 从原始邮件线程中提取结构化、可推理数据的专家——服务 AI agent 与自动化系统
+icon: "\U0001F4E7"
+position_key: digital_tech/backend_dev/email_intelligence_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

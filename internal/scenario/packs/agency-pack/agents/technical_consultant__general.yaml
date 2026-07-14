@@ -1,0 +1,23 @@
+key: technical_consultant__general
+display_name: 技术顾问
+description: 战略 GIS 顾问——将业务问题转化为地理空间解决方案，差距分析、技术路线图、RFP 响应与数字化转型策略，覆盖 Esri 和开源生态
+icon: "\U0001F9E0"
+position_key: digital_tech/gis_solutions/technical_consultant
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md

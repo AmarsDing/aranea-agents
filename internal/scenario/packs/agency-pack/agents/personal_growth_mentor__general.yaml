@@ -1,0 +1,27 @@
+key: personal_growth_mentor__general
+display_name: 个人成长导师
+description: 跨领域个人发展导师——专注目标清晰、习惯设计、战略决策与问责，没有空洞的励志鸡汤
+icon: "\U0001F331"
+position_key: digital_content_media/special_services/personal_growth_mentor
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

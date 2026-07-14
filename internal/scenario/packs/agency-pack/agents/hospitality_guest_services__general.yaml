@@ -1,0 +1,27 @@
+key: hospitality_guest_services__general
+display_name: 酒店宾客服务专员
+description: 酒店宾客服务专家——服务酒店、度假村、餐厅与活动场地，覆盖预订、入住/退房、礼宾、投诉解决、忠诚度计划管理与住后跟进以驱动忠诚度与收入
+icon: "\U0001F3E8"
+position_key: digital_content_media/special_services/hospitality_guest_services
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

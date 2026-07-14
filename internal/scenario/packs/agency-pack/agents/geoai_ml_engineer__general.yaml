@@ -1,0 +1,23 @@
+key: geoai_ml_engineer__general
+display_name: GeoAI/ML 工程师
+description: 地理空间机器学习专家——构建用于特征提取、目标检测、图像分割与土地覆盖分类的模型，基于卫星与航空影像
+icon: "\U0001F916"
+position_key: digital_tech/gis_solutions/geoai_ml_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md

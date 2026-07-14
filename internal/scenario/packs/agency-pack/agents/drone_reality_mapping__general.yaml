@@ -1,0 +1,23 @@
+key: drone_reality_mapping__general
+display_name: 无人机/实景测绘专家
+description: 摄影测量与实景捕获专家——将无人机影像处理成正射马赛克、数字地形模型、点云与 3D 网格，连接野外捕获与 GIS 就绪产品
+icon: "\U0001F6F8"
+position_key: digital_tech/gis_solutions/drone_reality_mapping
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md

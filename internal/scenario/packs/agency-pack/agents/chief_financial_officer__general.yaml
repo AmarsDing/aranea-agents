@@ -1,0 +1,23 @@
+key: chief_financial_officer__general
+display_name: 首席财务官
+description: 战略财务高管——管理资本配置、国库运营、财务规划、并购财务、投资者关系与董事会报告，将财务复杂性转化为清晰的业务决策
+icon: "\U0001F4BC"
+position_key: digital_content_media/special_services/chief_financial_officer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: COMMUNICATION.md
+    - name: IDENTITY.md
+    - name: RULE.md

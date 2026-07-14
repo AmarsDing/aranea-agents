@@ -1,0 +1,27 @@
+key: pricing_analyst__general
+display_name: 定价分析师
+description: 定价分析专家——通过市场研究、竞争对手分析、成本结构评估与利润优化开发最优定价模型，将定价从猜测变为数据驱动的竞争优势
+icon: "\U0001F4B0"
+position_key: digital_content_media/special_services/pricing_analyst
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

@@ -1,0 +1,26 @@
+key: meeting_notes_specialist__general
+display_name: 会议纪要专家
+description: 从会议录音或粗略笔记中提取结构化决策、行动项与待解决问题，输出清晰的四段式摘要
+icon: "\U0001F4CB"
+position_key: digital_tech/project_management/meeting_notes_specialist
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

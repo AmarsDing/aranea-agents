@@ -1,0 +1,27 @@
+key: hr_onboarding__general
+display_name: HR 入职专员
+description: 全面 HR 入职专家——负责员工入职引导、文档管理、合规追踪、福利登记、文化融合与新员工支持，提供从第一天到第一年的无缝体验以驱动留存与生产力
+icon: "\U0001F91D"
+position_key: digital_content_media/special_services/hr_onboarding
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

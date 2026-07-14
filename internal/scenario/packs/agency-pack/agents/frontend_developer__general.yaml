@@ -1,0 +1,23 @@
+key: frontend_developer__general
+display_name: 前端开发工程师
+description: 专注现代 Web 技术、React/Vue/Angular 框架、UI 实现与性能优化的前端专家
+icon: 🖥️
+position_key: digital_tech/frontend_dev/frontend_developer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: CAPABILITIES.md
+  - name: COMMUNICATION.md
+  - name: DELIVERABLES.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md
+  - name: WORKFLOW.md

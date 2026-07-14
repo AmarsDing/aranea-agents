@@ -1,0 +1,27 @@
+key: video_streaming_engineer__general
+display_name: 视频流工程师
+description: 视频流工程师——自适应比特率交付、HLS/DASH 打包、ffmpeg 转码阶梯、CMAF 低延迟、DRM、CDN 交付与 QoE 驱动的播放器调优
+icon: "\U0001F3AC"
+position_key: digital_tech/backend_dev/video_streaming_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

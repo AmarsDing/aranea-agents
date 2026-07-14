@@ -1,0 +1,27 @@
+key: change_management_consultant__general
+display_name: 变革管理顾问
+description: 变革管理专家——使用 ADKAR、Kotter 和 Prosci 框架指导组织实施技术转型、重组、文化变革与并购整合，管理阻力、建立采纳并确保变革长期持久
+icon: "\U0001F504"
+position_key: digital_content_media/special_services/change_management_consultant
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

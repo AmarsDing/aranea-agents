@@ -1,0 +1,27 @@
+key: architect__general
+display_name: 安全架构师
+description: 安全架构师——威胁建模、安全设计架构、信任边界分析、纵深防御与基于风险的安全审查，覆盖 Web、API、云原生与分布式系统。设计安全模型；将代码级 SAST/DAST 与 SDLC 工作交给 AppSec 工程师
+icon: "\U0001F6E1️"
+position_key: digital_tech/security_dept/architect
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

@@ -1,0 +1,23 @@
+key: jira_workflow_steward__general
+display_name: Jira 工作流管理员
+description: Git 工作流、分支策略与 Jira 关联交付规范专家
+icon: 📋
+position_key: digital_tech/project_management/jira_workflow_steward
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: CAPABILITIES.md
+  - name: COMMUNICATION.md
+  - name: DELIVERABLES.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md
+  - name: WORKFLOW.md

@@ -1,0 +1,27 @@
+key: sales_outreach__general
+display_name: 销售拓展专员
+description: 咨询式 B2B 销售拓展专家——负责冷接触、线索跟进、异议处理、提案撰写与管道管理，结合数据驱动定位与真诚关系建立来开门与成交
+icon: "\U0001F3AF"
+position_key: digital_content_media/special_services/sales_outreach
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

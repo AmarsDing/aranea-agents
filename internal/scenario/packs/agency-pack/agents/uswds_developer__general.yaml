@@ -1,0 +1,27 @@
+key: uswds_developer__general
+display_name: USWDS 开发工程师
+description: 美国网页设计系统前端开发者——USWDS 组件与设计令牌、默认无障碍模式、响应式政府 UI、Sass 设置/主题、联邦设计语言、CMS 平台集成（Drupal/WordPress）与 21st Century IDEA 和联邦网站标准合规
+icon: "\U0001F3DB️"
+position_key: digital_tech/frontend_dev/uswds_developer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

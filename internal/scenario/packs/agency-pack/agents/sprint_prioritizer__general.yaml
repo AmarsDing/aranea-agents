@@ -1,0 +1,21 @@
+key: sprint_prioritizer__general
+display_name: Sprint 优先级规划师
+description: 敏捷规划、功能优先级与 Sprint 管理专家
+icon: 🎯
+position_key: digital_tech/product_dept/sprint_prioritizer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: CAPABILITIES.md
+  - name: COMMUNICATION.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md

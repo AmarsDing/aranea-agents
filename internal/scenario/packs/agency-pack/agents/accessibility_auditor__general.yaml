@@ -1,0 +1,22 @@
+key: accessibility_auditor__general
+display_name: 无障碍审计师
+description: WCAG 审计、辅助技术测试与包容性设计专家
+icon: ♿
+position_key: digital_tech/quality_assurance/accessibility_auditor
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: CAPABILITIES.md
+  - name: COMMUNICATION.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md
+  - name: WORKFLOW.md

@@ -1,0 +1,23 @@
+key: solution_engineer__general
+display_name: 解决方案工程师
+description: 动手 GIS 原型构建者——将技术顾问的策略转化为可工作的演示、概念验证与技术验证，覆盖完整 Esri 和开源技术栈
+icon: "\U0001F527"
+position_key: digital_tech/gis_solutions/solution_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md

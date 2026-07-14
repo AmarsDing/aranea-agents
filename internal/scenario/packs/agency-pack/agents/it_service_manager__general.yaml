@@ -1,0 +1,27 @@
+key: it_service_manager__general
+display_name: IT 服务经理
+description: IT 服务管理专家——使用 ITIL 4 框架进行服务目录设计、事件与问题管理、变更控制、SLA 治理、CMDB 维护与持续服务改进，确保 IT 交付可靠、可衡量的业务价值
+icon: "\U0001F5A7"
+position_key: digital_tech/ops/it_service_manager
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

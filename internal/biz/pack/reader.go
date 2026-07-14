@@ -21,7 +21,7 @@ const (
 	graphsDir    = "graphs/"
 
 	// 安全限制常量
-	MaxTarEntries       = 1000              // 单个 Pack 最多 1000 个 tar 条目
+	MaxTarEntries       = 5000              // 单个 Pack 最多 5000 个 tar/fs 条目（agency-pack 239 agents × 7 files ≈ 1700）
 	MaxEntrySize  int64 = 10 * 1024 * 1024  // 单个条目最大 10MB
 	MaxTotalSize  int64 = 200 * 1024 * 1024 // Pack 解压后总大小上限 200MB
 	MaxPackSize         = 200 * 1024 * 1024 // Pack 原始文件大小上限 200MB

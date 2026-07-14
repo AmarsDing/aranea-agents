@@ -1,0 +1,23 @@
+key: multi_agent_systems_architect__general
+display_name: 多智能体系统架构师
+description: 多智能体 AI 管道设计、协调与治理系统架构师——覆盖拓扑选择、上下文管理、agent 间信任、故障恢复、人工审核门控与可观测性，面向生产级 agent 系统
+icon: "\U0001F578️"
+position_key: digital_tech/backend_dev/multi_agent_systems_architect
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: COMMUNICATION.md
+    - name: IDENTITY.md
+    - name: RULE.md

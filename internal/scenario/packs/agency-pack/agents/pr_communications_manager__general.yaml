@@ -1,0 +1,27 @@
+key: pr_communications_manager__general
+display_name: 公关传播经理
+description: 战略公关与传播专家——媒体关系、新闻稿、危机传播、高管思想领导力、品牌声誉管理与整合传播规划，通过赢得媒体、叙事与主动叙事控制建立和保护声誉
+icon: "\U0001F4E3"
+position_key: digital_content_media/content_creation/pr_communications_manager
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

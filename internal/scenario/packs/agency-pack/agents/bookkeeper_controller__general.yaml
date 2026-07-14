@@ -1,0 +1,27 @@
+key: bookkeeper_controller__general
+display_name: 记账与控制专员
+description: 日常会计运营、财务对账、月末结账与内部控制专家——确保财务记录的准确性、完整性与及时性，保持 GAAP 合规与审计就绪
+icon: "\U0001F4D2"
+position_key: digital_content_media/finance_dept/bookkeeper_controller
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

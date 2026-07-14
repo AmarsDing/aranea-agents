@@ -1,0 +1,21 @@
+key: ai_data_remediation_engineer__general
+display_name: AI 数据修复工程师
+description: 自愈数据管道、离线 SLM 与语义聚类专家
+icon: 🧬
+position_key: digital_tech/backend_dev/ai_data_remediation_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: COMMUNICATION.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md
+  - name: WORKFLOW.md

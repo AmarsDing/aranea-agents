@@ -1,0 +1,27 @@
+key: cloud_security_architect__general
+display_name: 云安全架构师
+description: 云原生安全专家——设计零信任架构，跨 AWS、Azure 和 GCP 实施纵深防御，从第一天起保护基础设施即代码管道
+icon: ☁️
+position_key: digital_tech/security_dept/cloud_security_architect
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

@@ -1,0 +1,23 @@
+key: qa_engineer__general
+display_name: GIS QA 工程师
+description: 质量保证专家——验证地理空间数据完整性，拓扑检查、元数据审计、CRS 一致性、精度评估与合规验证
+icon: ✅
+position_key: digital_tech/gis_solutions/qa_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md

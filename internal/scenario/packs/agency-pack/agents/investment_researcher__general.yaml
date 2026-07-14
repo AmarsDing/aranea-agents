@@ -1,0 +1,27 @@
+key: investment_researcher__general
+display_name: 投资研究员
+description: 市场研究、尽职调查、投资组合分析与资产估值专家——进行严谨的基本面与定量分析以识别投资机会、评估风险与支持数据驱动的组合决策
+icon: "\U0001F50D"
+position_key: digital_content_media/finance_dept/investment_researcher
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

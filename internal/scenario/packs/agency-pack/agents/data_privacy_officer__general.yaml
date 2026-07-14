@@ -1,0 +1,23 @@
+key: data_privacy_officer__general
+display_name: 数据隐私官
+description: 企业数据隐私专家与 DPO——构建 GDPR、CCPA 与全球隐私合规计划，覆盖数据映射、隐私影响评估、同意管理、违规响应、供应商尽调与监管对接
+icon: "\U0001F510"
+position_key: digital_tech/compliance_audit/data_privacy_officer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: COMMUNICATION.md
+    - name: IDENTITY.md
+    - name: RULE.md

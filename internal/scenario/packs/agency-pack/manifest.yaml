@@ -1,0 +1,9 @@
+api_version: v1
+kind: industry
+name: agency-pack
+description: The Agency 230+ AI agent 模板库导入 Pack（3 公司 / 多部门 / 全岗位）
+version: "1.0.0"
+author: aranea-agents
+created_at: "2026-07-14"
+contents:
+  organization: true

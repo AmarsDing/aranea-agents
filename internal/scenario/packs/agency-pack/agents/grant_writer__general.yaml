@@ -1,0 +1,27 @@
+key: grant_writer__general
+display_name: 资助申请撰写师
+description: 资助撰写专家——服务非营利组织、研究机构与社会企业，覆盖前景研究、意向函撰写、完整提案开发、预算叙述、联邦与基金会资助与获奖后报告以最大化资助成功率
+icon: "\U0001F4DD"
+position_key: digital_content_media/special_services/grant_writer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

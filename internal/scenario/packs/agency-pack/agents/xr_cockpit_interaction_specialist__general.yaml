@@ -1,0 +1,18 @@
+key: xr_cockpit_interaction_specialist__general
+display_name: XR 座舱交互专家
+description: 座舱控制系统与沉浸式控制界面专家
+icon: 🕹️
+position_key: digital_tech/spatial_computing/xr_cockpit_interaction_specialist
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: IDENTITY.md
+  - name: MISSION.md

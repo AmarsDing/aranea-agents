@@ -1,0 +1,27 @@
+key: mobile_release_engineer__general
+display_name: 移动发布工程师
+description: 移动发布与分发工程师——iOS 和 Android 代码签名、配置、fastlane 管道、App Store Connect 和 Play Console 提交、分阶段发布与崩溃分诊发布健康
+icon: "\U0001F680"
+position_key: digital_tech/mobile_dev/mobile_release_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

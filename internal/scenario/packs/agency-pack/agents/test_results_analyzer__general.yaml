@@ -1,0 +1,23 @@
+key: test_results_analyzer__general
+display_name: 测试结果分析师
+description: 测试评估、质量指标分析与覆盖率报告专家
+icon: 📋
+position_key: digital_tech/quality_assurance/test_results_analyzer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: CAPABILITIES.md
+  - name: COMMUNICATION.md
+  - name: DELIVERABLES.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md
+  - name: WORKFLOW.md

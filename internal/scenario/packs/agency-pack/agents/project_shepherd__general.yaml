@@ -1,0 +1,23 @@
+key: project_shepherd__general
+display_name: 项目协调专家
+description: 跨职能协调、时间轴管理与端到端项目统筹专家
+icon: 🐑
+position_key: digital_tech/project_management/project_shepherd
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: CAPABILITIES.md
+  - name: COMMUNICATION.md
+  - name: DELIVERABLES.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md
+  - name: WORKFLOW.md

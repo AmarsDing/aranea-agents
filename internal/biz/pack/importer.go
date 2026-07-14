@@ -213,8 +213,10 @@ func (im *Importer) importOrganization(ctx context.Context, spec *OrganizationPa
 	// IsSystem: organization nodes from system_builtin or ecosystem_preset packs are system nodes
 	isSystem := kindOverride == "system_builtin" || kindOverride == "ecosystem_preset"
 
-	// 预取所有已存在的 organization 节点，构建 key→node 缓存
+	// 预取所有已存在的 organization 节点，构建 cacheKey→node 缓存。
+	// cacheKey = level + "/" + key，避免不同层级（如 department 与 position）key 相同时互相覆盖。
 	existingMap := make(map[string]biz.OrganizationNode)
+	cacheKeyFn := func(level, key string) string { return level + "/" + key }
 	for _, level := range []string{"company", "department", "position"} {
 		nodes, err := im.repo.ListOrganizationNodesByLevel(ctx, level)
 		if err != nil {
@@ -222,12 +224,13 @@ func (im *Importer) importOrganization(ctx context.Context, spec *OrganizationPa
 			break
 		}
 		for _, n := range nodes {
-			existingMap[n.Key] = n
+			existingMap[cacheKeyFn(n.Level, n.Key)] = n
 		}
 	}
 
 	upsertWithCache := func(node biz.OrganizationNode, s ConflictStrategy) (biz.OrganizationNode, error) {
-		if existing, ok := existingMap[node.Key]; ok {
+		ck := cacheKeyFn(node.Level, node.Key)
+		if existing, ok := existingMap[ck]; ok {
 			// 缓存命中，跳过 SELECT
 			if s == ConflictSkip {
 				return existing, nil
@@ -236,7 +239,7 @@ func (im *Importer) importOrganization(ctx context.Context, spec *OrganizationPa
 				node.ID = existing.ID
 				updated, err := im.repo.UpdateOrganizationNode(ctx, node)
 				if err == nil {
-					existingMap[node.Key] = updated
+					existingMap[ck] = updated
 				}
 				return updated, err
 			}
@@ -245,7 +248,7 @@ func (im *Importer) importOrganization(ctx context.Context, spec *OrganizationPa
 		// 缓存未命中，走完整的 upsert 逻辑（检查软删除等）
 		result, err := im.upsertOrganizationNode(ctx, node, s)
 		if err == nil {
-			existingMap[node.Key] = result
+			existingMap[ck] = result
 		}
 		return result, err
 	}

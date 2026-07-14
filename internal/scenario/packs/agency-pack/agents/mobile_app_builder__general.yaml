@@ -1,0 +1,23 @@
+key: mobile_app_builder__general
+display_name: 移动端开发工程师
+description: iOS/Android、React Native、Flutter 跨平台移动应用构建者
+icon: 📲
+position_key: digital_tech/mobile_dev/mobile_app_builder
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: CAPABILITIES.md
+  - name: COMMUNICATION.md
+  - name: DELIVERABLES.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md
+  - name: WORKFLOW.md

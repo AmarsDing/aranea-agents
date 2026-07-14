@@ -1,0 +1,23 @@
+key: wechat_official_account__general
+display_name: 微信公众号运营专家
+description: 粉丝互动、内容营销与微信公众号策略专家
+icon: 📱
+position_key: digital_content_media/media_operations/wechat_official_account
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: CAPABILITIES.md
+  - name: COMMUNICATION.md
+  - name: DELIVERABLES.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md
+  - name: WORKFLOW.md

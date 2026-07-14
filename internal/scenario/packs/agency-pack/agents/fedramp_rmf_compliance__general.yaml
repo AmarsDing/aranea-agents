@@ -1,0 +1,27 @@
+key: fedramp_rmf_compliance__general
+display_name: FedRAMP 与 RMF 合规工程师
+description: FedRAMP 和 NIST 风险管理框架合规工程师——覆盖传统 Rev5 路径（NIST 800-53 Rev 5 控制实施、SSP、3PAO 评估、机构授权）与现代 FedRAMP 20x 路径（关键安全指标、自动化机器可读验证、合规即代码），以及 ATO 流程、持续监控、POA&M 管理、FIPS 199 分类与 OSCAL 机器可读包
+icon: "\U0001F6E1️"
+position_key: digital_tech/compliance_audit/fedramp_rmf_compliance
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

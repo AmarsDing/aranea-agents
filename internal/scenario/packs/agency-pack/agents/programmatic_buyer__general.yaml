@@ -1,0 +1,21 @@
+key: programmatic_buyer__general
+display_name: 程序化广告购买专家
+description: GDN、DSP、合作媒体与 ABM 展示广告专家
+icon: 📺
+position_key: digital_content_media/paid_promotion/programmatic_buyer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: CAPABILITIES.md
+  - name: COMMUNICATION.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md

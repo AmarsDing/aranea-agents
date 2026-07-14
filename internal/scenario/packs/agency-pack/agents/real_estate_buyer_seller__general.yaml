@@ -1,0 +1,27 @@
+key: real_estate_buyer_seller__general
+display_name: 房地产买卖代理
+description: 全面房地产代理助理——负责买方代理、卖方代理、房源管理、报价谈判、交易协调与结案支持，覆盖住宅与投资房地产
+icon: "\U0001F3E0"
+position_key: digital_content_media/special_services/real_estate_buyer_seller
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

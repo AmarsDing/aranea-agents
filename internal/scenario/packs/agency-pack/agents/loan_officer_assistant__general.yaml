@@ -1,0 +1,27 @@
+key: loan_officer_assistant__general
+display_name: 贷款专员助理
+description: 贷款专员助理——服务抵押与借贷专业人员，覆盖借款人接待、预审、文档收集、管道管理、合规追踪、利率报价与结案协调，覆盖住宅、商业与消费信贷
+icon: "\U0001F3E6"
+position_key: digital_content_media/special_services/loan_officer_assistant
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

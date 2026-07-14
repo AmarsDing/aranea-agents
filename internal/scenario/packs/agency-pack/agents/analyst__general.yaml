@@ -1,0 +1,23 @@
+key: analyst__general
+display_name: GIS 分析师
+description: 日常 GIS 操作员——创建地图、管理图层、执行空间查询与维护桌面和 Web 环境中的地理空间数据完整性
+icon: "\U0001F5A5️"
+position_key: digital_tech/gis_solutions/analyst
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md

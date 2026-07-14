@@ -1,0 +1,27 @@
+key: strategy_duel_agent__general
+display_name: 策略对决 Agent
+description: 使用博弈论与三十六计进行实时策略对决的专家
+icon: ⚔️
+position_key: digital_content_media/special_services/strategy_duel_agent
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

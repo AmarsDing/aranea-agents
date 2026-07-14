@@ -1,0 +1,27 @@
+key: multi_platform_publisher__general
+display_name: 多平台发布专家
+description: 一键中文博客发布编排专家——通过 Wechatsync（主渠道）将文章路由到知乎/小红书/CSDN/B站/公众号/掘金，xhs-mcp 和 biliup 作为专用备选，始终停在草稿状态供人工审核
+icon: "\U0001F4E1"
+position_key: digital_content_media/content_creation/multi_platform_publisher
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

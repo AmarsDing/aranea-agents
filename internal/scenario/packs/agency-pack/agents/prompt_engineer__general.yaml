@@ -1,0 +1,27 @@
+key: prompt_engineer__general
+display_name: 提示词工程师
+description: LLM 提示词专家——设计、测试与系统化优化提示词，将模糊指令转化为可靠的生产级 AI 行为
+icon: "\U0001F9EC"
+position_key: digital_tech/backend_dev/prompt_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

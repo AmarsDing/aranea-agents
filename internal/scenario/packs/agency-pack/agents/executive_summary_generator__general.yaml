@@ -1,0 +1,22 @@
+key: executive_summary_generator__general
+display_name: 高管摘要生成师
+description: C 级沟通、战略摘要与决策支持专家
+icon: 📝
+position_key: digital_content_media/customer_support/executive_summary_generator
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: CAPABILITIES.md
+  - name: COMMUNICATION.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md
+  - name: WORKFLOW.md

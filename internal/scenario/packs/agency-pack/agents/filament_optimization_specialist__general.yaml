@@ -1,0 +1,26 @@
+key: filament_optimization_specialist__general
+display_name: Filament 优化专家
+description: Filament PHP 管理界面重构与优化专家——专注有影响力的结构性变更，而非仅仅是外观调整
+icon: "\U0001F527"
+position_key: digital_tech/backend_dev/filament_optimization_specialist
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

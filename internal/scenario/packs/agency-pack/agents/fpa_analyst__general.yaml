@@ -1,0 +1,27 @@
+key: fpa_analyst__general
+display_name: FP&A 分析师
+description: 财务规划与分析专家——预算、差异分析、财务规划、滚动预测与战略决策支持，连接数字与业务叙事以驱动运营绩效与战略资源配置
+icon: "\U0001F4C8"
+position_key: digital_content_media/finance_dept/fpa_analyst
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

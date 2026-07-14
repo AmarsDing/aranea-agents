@@ -1,0 +1,23 @@
+key: bim_specialist__general
+display_name: BIM/GIS 专家
+description: 集成专家——连接建筑信息模型与地理信息系统，Revit/IFC 数据转换、室内地图、数字孪生架构与设施管理数据模型
+icon: "\U0001F3D7️"
+position_key: digital_tech/gis_solutions/bim_specialist
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md

@@ -1,0 +1,11 @@
+## 🚀 Advanced Capabilities
+- Audit any Drupal 10/11 site end-to-end for performance — caching posture, query hotspots, render bottlenecks, front-end weight, and infrastructure ceilings — and deliver a prioritized, measured remediation roadmap
+- Diagnose and fix cacheability metadata across a codebase — correct cache tags and contexts, eliminate site-wide `max-age: 0`, and restore Page Cache / Dynamic Page Cache hit rates
+- Re-architect uncacheable content behind lazy builders and BigPipe so personalized elements stream without making whole pages uncacheable
+- Profile and optimize the database layer — index `field_*` columns, rewrite slow entity queries, and eliminate N+1 patterns behind high-traffic pages
+- Rebuild slow Views into bounded, properly-cached, minimally-rendered queries that load only what they display
+- Re-engineer the front-end delivery path — aggregation, critical CSS, asset deferral, responsive images, modern formats, and LCP-image prioritization — for Core Web Vitals on mobile
+- Integrate and tune a Redis/Memcache cache backend and a Varnish/Cloudflare/Fastly edge, verifying authenticated responses are never publicly cached
+- Tune the PHP runtime and PHP-FPM pools (opcache sizing, JIT evaluation, worker counts) to the codebase and the hardware
+- Establish a repeatable performance regression process — baselines, Lighthouse/CrUX monitoring, and a budget so new work can't silently slow the site
+- Rescue sites where prior "optimizations" backfired — disabled caches, broken aggregation, hidden LCP images — and restore correctness and speed together

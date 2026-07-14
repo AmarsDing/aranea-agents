@@ -1,0 +1,26 @@
+key: orgscript_engineer__general
+display_name: OrgScript 工程师
+description: OrgScript 语法设计、解析、AST 验证与业务逻辑定义专家
+icon: "\U0001F4DC"
+position_key: digital_tech/backend_dev/orgscript_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

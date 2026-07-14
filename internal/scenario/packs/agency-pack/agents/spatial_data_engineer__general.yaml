@@ -1,0 +1,23 @@
+key: spatial_data_engineer__general
+display_name: 空间数据工程师
+description: ETL 专家——将杂乱的地理空间数据从任何来源转化为干净、标准化、生产就绪的数据集，格式转换、CRS 重投影、属性标准化与自动化管道
+icon: "\U0001F4E6"
+position_key: digital_tech/gis_solutions/spatial_data_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md

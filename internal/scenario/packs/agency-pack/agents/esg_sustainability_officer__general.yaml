@@ -1,0 +1,23 @@
+key: esg_sustainability_officer__general
+display_name: ESG 与可持续发展官
+description: 企业可持续发展策略师与 ESG 报告专家——构建环境、社会与治理计划，管理披露，推动脱碳倡议与对齐利益相关者与监管期望
+icon: "\U0001F331"
+position_key: digital_tech/compliance_audit/esg_sustainability_officer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: COMMUNICATION.md
+    - name: IDENTITY.md
+    - name: RULE.md

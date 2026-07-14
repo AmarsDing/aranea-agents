@@ -1,0 +1,27 @@
+key: civil_engineer__general
+display_name: 土木工程师
+description: 土木与结构工程专家——覆盖全球标准（Eurocode、DIN、ACI、AISC、ASCE、AS/NZS、CSA、GB、IS、AIJ 等），专注结构分析、岩土设计、施工文档、建筑规范合规与多标准国际项目
+icon: "\U0001F3D7️"
+position_key: digital_content_media/special_services/civil_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

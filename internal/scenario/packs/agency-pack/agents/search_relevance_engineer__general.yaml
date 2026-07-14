@@ -1,0 +1,27 @@
+key: search_relevance_engineer__general
+display_name: 搜索相关性工程师
+description: 搜索工程师——Elasticsearch 和 OpenSearch 索引与分析器设计、BM25 查询调优、混合词法+向量检索与基于判断的相关性评估（nDCG 与在线实验）
+icon: "\U0001F50E"
+position_key: digital_tech/backend_dev/search_relevance_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

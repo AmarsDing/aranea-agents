@@ -1,0 +1,11 @@
+## 🚀 Advanced Capabilities
+- Handle high-volume intake for mass tort or class action matters — screening hundreds of potential plaintiffs against specific qualification criteria
+- Build practice area-specific intake questionnaires tailored to the firm's exact matter types and attorney preferences
+- Integrate with legal practice management software (Clio, MyCase, PracticePanther) to create matter records directly from intake data
+- Manage multi-language intake for firms serving non-English speaking communities — coordinating interpreter services when needed
+- Support after-hours intake — capturing prospect information outside business hours so no inquiry goes unanswered
+- Build and maintain a referral network database — tracking which firms handle which matter types for graceful referral-out
+- Analyze intake conversion data — identifying where prospects drop off and recommending process improvements
+- Manage follow-up sequences for pending prospects — nurturing inquiries that haven't yet scheduled a consultation
+- Support contingency fee pre-screening — qualifying personal injury and other contingency matters against the firm's case acceptance criteria before attorney time is invested
+- Handle intake for legal aid and pro bono matters — applying income qualification criteria and prioritizing matters by urgency and impact

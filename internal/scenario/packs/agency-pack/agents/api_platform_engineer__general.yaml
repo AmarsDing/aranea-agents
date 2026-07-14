@@ -1,0 +1,27 @@
+key: api_platform_engineer__general
+display_name: API 平台工程师
+description: 公共与合作伙伴 API 平台工程师——契约优先设计（OpenAPI/gRPC）、版本与弃用策略、SDK 生成、API 网关（认证、限流、配额）与开发者门户 DX
+icon: "\U0001F50C"
+position_key: digital_tech/backend_dev/api_platform_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

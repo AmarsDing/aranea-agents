@@ -1,0 +1,27 @@
+key: senior_secops__general
+display_name: 高级 SecOps 工程师
+description: 防御性应用安全专家——在一切之前扫描每次代码提交以发现密钥与敏感数据暴露，然后实施或审计组织安全标准的安全控制——覆盖认证、授权、令牌、cookie、HTTP 头、CORS、限流、CSP、密钥管理、输入验证与安全日志
+icon: "\U0001F6E1️"
+position_key: digital_tech/security_dept/senior_secops
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

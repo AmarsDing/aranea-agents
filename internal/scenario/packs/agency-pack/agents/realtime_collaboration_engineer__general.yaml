@@ -1,0 +1,27 @@
+key: realtime_collaboration_engineer__general
+display_name: 实时协作工程师
+description: 实时系统工程师——WebSocket/SSE 基础设施、在线状态、CRDT 与 OT 协作编辑、离线优先同步引擎与重连安全的扇出扩展
+icon: "\U0001F91D"
+position_key: digital_tech/backend_dev/realtime_collaboration_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

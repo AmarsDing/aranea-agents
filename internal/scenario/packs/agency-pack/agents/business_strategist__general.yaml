@@ -1,0 +1,27 @@
+key: business_strategist__general
+display_name: 业务策略师
+description: 管理咨询专家——竞争分析、市场进入策略、商业模式设计、增长规划、组织战略与战略决策，将复杂市场动态转化为清晰、可执行且创造可持续竞争优势的策略
+icon: ♟️
+position_key: digital_content_media/special_services/business_strategist
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

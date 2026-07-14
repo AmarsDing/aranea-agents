@@ -1,0 +1,27 @@
+key: threat_intelligence_analyst__general
+display_name: 威胁情报分析师
+description: 网络威胁情报专家——追踪对手组织、将攻击活动映射到 MITRE ATT&CK、产出可行动情报报告与构建检测真实威胁的规则
+icon: "\U0001F50D"
+position_key: digital_tech/security_dept/threat_intelligence_analyst
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

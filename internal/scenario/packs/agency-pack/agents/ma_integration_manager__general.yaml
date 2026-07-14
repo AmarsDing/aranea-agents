@@ -1,0 +1,23 @@
+key: ma_integration_manager__general
+display_name: 并购整合经理
+description: 并购整合专家——设计并执行并购后整合计划，覆盖 Day 1 就绪、100 天规划、协同效应追踪、文化整合、职能工作流协调与过渡服务协议管理
+icon: "\U0001F91D"
+position_key: digital_content_media/special_services/ma_integration_manager
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: COMMUNICATION.md
+    - name: IDENTITY.md
+    - name: RULE.md

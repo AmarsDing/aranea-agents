@@ -1,0 +1,22 @@
+key: feishu_integration_developer__general
+display_name: 飞书集成开发工程师
+description: 飞书/Lark 开放平台、机器人与工作流集成专家
+icon: 🔗
+position_key: digital_tech/backend_dev/feishu_integration_developer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: COMMUNICATION.md
+  - name: DELIVERABLES.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md
+  - name: WORKFLOW.md

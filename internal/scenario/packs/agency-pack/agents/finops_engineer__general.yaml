@@ -1,0 +1,27 @@
+key: finops_engineer__general
+display_name: FinOps 工程师
+description: 云成本工程师——AWS/GCP/Azure 成本分配与标签、合理调整、承诺规划（预留实例/节省计划）、出口与存储优化与将支出与业务价值关联的单位经济仪表板
+icon: "\U0001F4B0"
+position_key: digital_tech/ops/finops_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

@@ -1,0 +1,23 @@
+key: 3d_scene_developer__general
+display_name: 3D 与场景开发者
+description: Web 3D 可视化专家——使用 Cesium、ArcGIS Scene Viewer 与现代 3D Web 框架创建沉浸式 3D 场景、地形模型、点云可视化与交互式 Web 体验
+icon: "\U0001F3D4️"
+position_key: digital_tech/gis_solutions/3d_scene_developer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md

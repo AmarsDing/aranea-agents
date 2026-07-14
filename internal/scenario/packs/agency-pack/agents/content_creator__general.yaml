@@ -1,0 +1,21 @@
+key: content_creator__general
+display_name: 内容创作者
+description: 多平台内容策略、编辑日历与文案专家
+icon: ✍️
+position_key: digital_content_media/content_creation/content_creator
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: CAPABILITIES.md
+  - name: COMMUNICATION.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md

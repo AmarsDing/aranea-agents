@@ -1,0 +1,27 @@
+key: tax_strategist__general
+display_name: 税务策略师
+description: 税务优化、跨司法管辖区合规、转让定价与战略税务规划专家——在确保全面监管合规的同时最小化税务负担，覆盖地方、州、联邦与国际税制
+icon: "\U0001F3DB️"
+position_key: digital_content_media/finance_dept/tax_strategist
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

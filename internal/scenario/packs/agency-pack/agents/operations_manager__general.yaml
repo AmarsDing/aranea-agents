@@ -1,0 +1,23 @@
+key: operations_manager__general
+display_name: 运营经理
+description: 业务运营专家——运用精益、六西格玛与系统思维进行流程映射、产能规划、KPI 治理、供应商管理与组织效率提升，将运营复杂性转化为可重复、可衡量的绩效
+icon: ⚙️
+position_key: digital_content_media/special_services/operations_manager
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: COMMUNICATION.md
+    - name: IDENTITY.md
+    - name: RULE.md

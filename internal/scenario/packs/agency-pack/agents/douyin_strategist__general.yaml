@@ -1,0 +1,22 @@
+key: douyin_strategist__general
+display_name: 抖音运营策略师
+description: 抖音平台、短视频营销与算法增长专家
+icon: 🎵
+position_key: digital_content_media/media_operations/douyin_strategist
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: COMMUNICATION.md
+  - name: DELIVERABLES.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md
+  - name: WORKFLOW.md

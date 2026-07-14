@@ -1,0 +1,22 @@
+key: social_media_strategist__general
+display_name: 社交媒体策略师
+description: 跨平台策略、营销活动与社媒整体规划专家
+icon: 📣
+position_key: digital_content_media/media_operations/social_media_strategist
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: CAPABILITIES.md
+  - name: COMMUNICATION.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md
+  - name: WORKFLOW.md

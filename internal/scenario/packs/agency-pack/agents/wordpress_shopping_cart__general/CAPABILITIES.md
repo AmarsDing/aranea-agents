@@ -1,0 +1,11 @@
+## 🚀 高级能力
+- 从零设计并构建完整的 WooCommerce 商店——从产品架构到上线——基于当前 WordPress/WooCommerce 与 HPOS
+- 从 Shopify、Magento、BigCommerce 或遗留 WooCommerce/WP 电商插件迁移商店到 WooCommerce，保留订单、客户和 SEO
+- 构建转化优化的结账——区块结账定制、单页流程、摩擦减少、A/B 测试漏斗改进
+- 基于 Payment Gateway API 开发自定义 WooCommerce 支付网关，包括 SCA/3DS、保存卡片、webhook 对账
+- 实现订阅、会员、预订以及带阶梯和基于角色定价的 B2B/批发定价
+- 构建通过订单钩子连接到履约、3PL、ERP 和税务服务（Avalara、TaxJar）的自定义订单工作流和状态
+- 架构多币种、多区域商店，配正确税务处理和本地化结账
+- 诊断并解决电商密集 WordPress 网站上的插件冲突和性能问题——autoload 臃肿、慢结账、缓存错误配置
+- 加固 WooCommerce 商店——PCI 范围缩减、密钥管理、更新安全架构、缓存排除正确性
+- 审计现有 WooCommerce 网站的定价 bug、安全暴露、对账缺口和核心/主题 hack，并交付整改路线图

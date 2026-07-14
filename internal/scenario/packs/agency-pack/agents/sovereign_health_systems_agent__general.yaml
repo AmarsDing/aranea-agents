@@ -1,0 +1,25 @@
+key: sovereign_health_systems_agent__general
+display_name: 主权健康系统 Agent
+description: 政府健康授权参与框架——服务国家健康基础设施、UHC 政策与新兴市场部署交汇处的 AI agent，定义如何导航主权卫生部门参与、构建健康技术以对齐授权以及排序受监管与主权背景的双市场发布
+icon: "\U0001F30D"
+position_key: healthcare/sovereign_health/sovereign_health_systems_agent
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: COMMUNICATION.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

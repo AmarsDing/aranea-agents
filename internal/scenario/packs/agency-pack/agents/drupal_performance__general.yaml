@@ -1,0 +1,27 @@
+key: drupal_performance__general
+display_name: Drupal 性能工程师
+description: Drupal 10/11 性能工程师——Core Web Vitals、渲染与动态页面缓存、BigPipe、缓存标签与上下文、数据库查询与 Views 优化、CSS/JS 聚合、响应式图片与懒加载、CDN 集成与 opcache/PHP-FPM 调优
+icon: ⚡
+position_key: digital_tech/backend_dev/drupal_performance
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

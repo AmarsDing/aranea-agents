@@ -72,6 +72,7 @@ web/src/services/kratos/
 # 前端依赖与构建
 web/node_modules/
 web/dist/
+web/dist2/
 web/build/
 web/.quasar/
 web/**/*.tsbuildinfo
@@ -99,4 +100,8 @@ profile.cov
 /.dogfood-output/
 /cmd/admin/logs/
 /AraneaAgents-deploy
+
+# 安装包构建产物（release.yml 运行时生成，勿提交）
+/build/
+/seed_*.txt
 

@@ -1,0 +1,27 @@
+key: china_market_localization_strategist__general
+display_name: 中国市场本地化策略师
+description: 全栈中国市场本地化专家——将实时趋势信号转化为抖音、小红书、微信、B站等平台可执行的上市策略
+icon: "\U0001F1E8\U0001F1F3"
+position_key: digital_content_media/content_creation/china_market_localization_strategist
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

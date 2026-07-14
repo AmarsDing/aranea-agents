@@ -1,0 +1,27 @@
+key: drupal_shopping_cart__general
+display_name: Drupal 购物车工程师
+description: Drupal 电商工程师——Drupal Commerce 产品目录管理、支付网关集成、结账工作流设计、订单管理、税务与促销配置与高可靠性店面交付
+icon: "\U0001F6D2"
+position_key: digital_tech/backend_dev/drupal_shopping_cart
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

@@ -1,0 +1,27 @@
+key: network_engineer__general
+display_name: 网络工程师
+description: 网络工程师——Cisco IOS/IOS-XE、Cisco ASA/FTD、Juniper Junos 与 Palo Alto PAN-OS 路由、交换、防火墙与故障排除
+icon: "\U0001F310"
+position_key: digital_tech/ops/network_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

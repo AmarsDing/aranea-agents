@@ -1,0 +1,27 @@
+key: offer_lead_gen_strategist__general
+display_name: 优惠与获客策略师
+description: 漏斗顶端架构师——设计无法抗拒的优惠和吸铁石式引流物，规模化吸引合格买家。专注价值等式优惠构建、引流物类型学、多渠道获客与通过客户、员工、代理与联盟复合增长
+icon: "\U0001F9F2"
+position_key: digital_content_media/sales_dept/offer_lead_gen_strategist
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

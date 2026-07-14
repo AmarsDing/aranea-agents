@@ -1,0 +1,27 @@
+key: incident_responder__general
+display_name: 事件响应专家
+description: 数字取证与事件响应专家——领导违规调查、遏制活跃威胁、协调危机响应与撰写事后复盘报告以防止复发
+icon: "\U0001F6A8"
+position_key: digital_tech/security_dept/incident_responder
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

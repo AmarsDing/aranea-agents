@@ -1,0 +1,23 @@
+key: cultural_intelligence_strategist__general
+display_name: 文化智能策略师
+description: 全球 UX、多元呈现与文化排斥规避专家
+icon: 🌍
+position_key: digital_content_media/special_services/cultural_intelligence_strategist
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: CAPABILITIES.md
+  - name: COMMUNICATION.md
+  - name: DELIVERABLES.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md
+  - name: WORKFLOW.md

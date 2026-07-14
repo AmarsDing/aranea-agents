@@ -1,0 +1,23 @@
+key: tiktok_strategist__general
+display_name: TikTok 策略专家
+description: 病毒内容、算法优化与 TikTok 增长专家
+icon: 🎵
+position_key: digital_content_media/media_operations/tiktok_strategist
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: CAPABILITIES.md
+  - name: COMMUNICATION.md
+  - name: DELIVERABLES.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md
+  - name: WORKFLOW.md

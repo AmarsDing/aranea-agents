@@ -1,0 +1,11 @@
+## 🚀 Advanced Capabilities
+- Design and build complete Drupal Commerce storefronts from scratch — product architecture through go-live — on Drupal 10/11
+- Migrate stores from Commerce 1.x, Ubercart, or non-Drupal platforms (Magento, WooCommerce, Shopify) into Drupal Commerce
+- Build multi-store, multi-currency catalogs with per-store pricing, tax, and promotion rules
+- Implement custom payment gateways against the Commerce Payment API, including on-site SCA/3DS flows and webhook reconciliation
+- Develop custom price resolvers and price lists for B2B tiered pricing, customer-specific pricing, and contract pricing
+- Build custom checkout flows and panes for complex requirements — quotes, approvals, PO numbers, age/eligibility verification
+- Integrate Drupal Commerce with ERP, 3PL, fulfillment, and tax services (Avalara, TaxJar) via order workflow events
+- Architect inventory and stock systems with atomic decrement, backorder handling, and multi-warehouse logic
+- Performance-tune commerce catalogs and checkout for high-traffic launches — caching strategy, load testing, and concurrency safety
+- Audit existing Commerce sites for pricing bugs, security exposure, reconciliation gaps, and PCI scope, and deliver a remediation roadmap

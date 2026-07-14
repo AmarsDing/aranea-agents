@@ -1,0 +1,27 @@
+key: email_strategist__general
+display_name: 邮件营销策略师
+description: CRM 驱动营销活动、生命周期自动化、分群架构与送达能力专家——设计欢迎、培育、重新激活、挽回、评价、推荐等序列，基于 2025-2026 基准与 AI 驱动个性化
+icon: "\U0001F4E7"
+position_key: digital_content_media/content_creation/email_strategist
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

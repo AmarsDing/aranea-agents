@@ -856,8 +856,12 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 	// 每个步骤使用独立的 30 秒 context，避免前面的步骤消耗共享 context 时间。
 	var seedErrs []error
 
-	seedStep := func(stepID string, fn func(ctx context.Context) error) {
-		stepCtx, stepCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	seedStep := func(stepID string, fn func(ctx context.Context) error, timeouts ...time.Duration) {
+		timeout := 30 * time.Second
+		if len(timeouts) > 0 {
+			timeout = timeouts[0]
+		}
+		stepCtx, stepCancel := context.WithTimeout(context.Background(), timeout)
 		defer stepCancel()
 		if err := fn(stepCtx); err != nil {
 			lg.Warn("seed step failed", loggateway.StepID(stepID), loggateway.Err(err))
@@ -895,6 +899,13 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 	seedStep("data.seed.pack_builtin_templates_v2", func(ctx context.Context) error {
 		return SeedPackBuiltinTemplatesV2(ctx, entClient, d.Dialect(), scenarioDir, lg)
 	})
+	// cleanup + agency-pack 导入：清理非系统数据后导入 agency-pack（239 agents / 3 公司 / 26 部门）
+	seedStep("data.seed.cleanup_non_system_data", func(ctx context.Context) error {
+		return CleanupNonSystemData(ctx, entClient, d.Dialect(), lg)
+	}, 2*time.Minute)
+	seedStep("data.seed.pack_agency", func(ctx context.Context) error {
+		return SeedPackAgency(ctx, entClient, d.Dialect(), scenarioDir, lg)
+	}, 5*time.Minute)
 	seedStep("data.seed.spirit_prompt_files", func(ctx context.Context) error {
 		return SeedSpiritPromptFiles(ctx, entClient, d.Dialect(), scenarioDir, lg)
 	})

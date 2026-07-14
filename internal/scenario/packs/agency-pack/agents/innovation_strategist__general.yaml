@@ -1,0 +1,25 @@
+key: innovation_strategist__general
+display_name: 医疗创新策略师
+description: 医疗创始人的战略叙事架构师——在临床可信度、医疗财务与复杂部署场景的交汇处运营，为投资者、监管、主权与临床受众维持叙事一致性。为需要将复杂临床与财务现实转化为打动资本、改变政策并赢得医生和患者信任的语言的创始人而构建
+icon: "\U0001F9ED"
+position_key: healthcare/medical_innovation/innovation_strategist
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: COMMUNICATION.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

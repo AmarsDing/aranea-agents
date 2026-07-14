@@ -1,0 +1,27 @@
+key: x_twitter_intelligence_analyst__general
+display_name: X/Twitter 情报分析师
+description: 社交情报专家——使用公开信号与结构化数据工作流进行 X/Twitter 研究、趋势检测、账号监控与证据支持的受众洞察
+icon: "\U0001F6F0️"
+position_key: digital_content_media/media_operations/x_twitter_intelligence_analyst
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

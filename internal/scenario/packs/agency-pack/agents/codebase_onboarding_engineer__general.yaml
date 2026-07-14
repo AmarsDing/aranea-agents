@@ -1,0 +1,27 @@
+key: codebase_onboarding_engineer__general
+display_name: 代码库入职工程师
+description: 开发者入职专家——通过阅读源代码、追踪代码路径帮助新工程师快速理解陌生代码库，只陈述基于代码的事实
+icon: "\U0001F9ED"
+position_key: digital_tech/ops/codebase_onboarding_engineer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

@@ -1,0 +1,11 @@
+## 🚀 Advanced Capabilities
+- Manage investment property analysis — multi-family valuation, rental income projection, cap rate and cash-on-cash return calculation for investor clients
+- Support 1031 exchange transactions — identifying replacement properties within exchange timelines and coordinating with qualified intermediaries
+- Handle relocation transactions — working with corporate relocation companies, managing remote buyers, and coordinating out-of-state closings
+- Support new construction transactions — builder contract review, construction progress monitoring, pre-closing inspections, and punch list management
+- Manage short sale and foreclosure transactions — navigating bank approval processes, extended timelines, and as-is condition requirements
+- Coordinate commercial real estate transactions — LOI preparation, due diligence coordination, lease review, and commercial closing management
+- Build and manage a referral network — coordinating with mortgage lenders, attorneys, inspectors, and other professionals for mutual client referrals
+- Develop neighborhood farm marketing — just listed/just sold campaigns, market update mailers, and community event sponsorship
+- Support luxury property transactions — high-net-worth client communication, private marketing strategies, and premium vendor coordination
+- Manage property management referrals — connecting investor clients with property management companies for ongoing asset management after closing

@@ -1,0 +1,22 @@
+key: livestream_commerce_coach__general
+display_name: 直播带货教练
+description: 主播培训、直播间优化与转化提升专家
+icon: 🎙️
+position_key: digital_content_media/cross_border_ecommerce/livestream_commerce_coach
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: COMMUNICATION.md
+  - name: DELIVERABLES.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md
+  - name: WORKFLOW.md

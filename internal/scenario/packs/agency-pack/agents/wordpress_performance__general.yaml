@@ -1,0 +1,27 @@
+key: wordpress_performance__general
+display_name: WordPress 性能工程师
+description: WordPress 性能工程师——Core Web Vitals、对象缓存（Redis/Memcached）、页面缓存、数据库与 WP_Query 优化、Transients API、资源压缩/延迟/关键 CSS、图片优化与懒加载、CDN 集成、插件性能审计与 PHP-FPM/opcache 调优
+icon: ⚡
+position_key: digital_tech/backend_dev/wordpress_performance
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: CAPABILITIES.md
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md

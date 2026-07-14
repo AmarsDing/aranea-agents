@@ -1,0 +1,23 @@
+key: app_store_optimizer__general
+display_name: 应用商店优化专家
+description: ASO、转化率优化与应用曝光专家
+icon: 📱
+position_key: digital_content_media/media_operations/app_store_optimizer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny: [workspace_exec, filesystem, shell, bash]
+ownership_kind: ecosystem_preset
+source: imported
+files:
+  - name: CAPABILITIES.md
+  - name: COMMUNICATION.md
+  - name: DELIVERABLES.md
+  - name: IDENTITY.md
+  - name: MISSION.md
+  - name: RULE.md
+  - name: WORKFLOW.md

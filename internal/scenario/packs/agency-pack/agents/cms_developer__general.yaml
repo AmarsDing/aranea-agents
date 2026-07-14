@@ -1,0 +1,26 @@
+key: cms_developer__general
+display_name: CMS 开发工程师
+description: Drupal 和 WordPress 专家——主题开发、自定义插件/模块、内容架构与代码优先 CMS 实现
+icon: "\U0001F9F1"
+position_key: digital_tech/backend_dev/cms_developer
+variant: general
+variant_description: 通用
+provider: deepseek
+model: deepseek-chat
+model_tier: fast
+system_prompt_mode: complete
+context_window: 64000
+tools_deny:
+    - workspace_exec
+    - filesystem
+    - shell
+    - bash
+ownership_kind: ecosystem_preset
+source: imported
+files:
+    - name: COMMUNICATION.md
+    - name: DELIVERABLES.md
+    - name: IDENTITY.md
+    - name: MISSION.md
+    - name: RULE.md
+    - name: WORKFLOW.md
