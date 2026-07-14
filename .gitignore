@@ -100,8 +100,22 @@ profile.cov
 /.dogfood-output/
 /cmd/admin/logs/
 /AraneaAgents-deploy
+/.auto-fix
+/.codegraph
+/.dbg
+/.husky
+/.superpowers
+/.tools
+/.trae
+
 
 # 安装包构建产物（release.yml 运行时生成，勿提交）
 /build/
 /seed_*.txt
+
+# trpc-agent-go 非核心目录（框架自带示例/文档/测试，项目不 import，且含超长路径文件导致 Windows checkout 失败）
+/pkg/trpc-agent-go/examples/
+/pkg/trpc-agent-go/benchmark/
+/pkg/trpc-agent-go/docs/
+/pkg/trpc-agent-go/test/
 
