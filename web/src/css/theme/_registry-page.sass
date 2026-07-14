@@ -723,6 +723,10 @@ body.body--dark .channel-icon-btn:hover
   line-height: 1.35
   white-space: nowrap
 
+.usage-badge--none
+  background: color-mix(in srgb, var(--color-text-tertiary) 12%, var(--glass-elevated))
+  color: var(--color-text-tertiary)
+
 .usage-badge--idle
   background: color-mix(in srgb, var(--color-text-tertiary) 24%, var(--glass-elevated))
   color: var(--color-text-secondary)
@@ -752,6 +756,9 @@ body.body--dark .channel-icon-btn:hover
   height: 100%
   border-radius: inherit
   transition: width 180ms ease
+
+.usage-bar-fill--none
+  background: transparent
 
 .usage-bar-fill--idle
   background: var(--color-text-tertiary)

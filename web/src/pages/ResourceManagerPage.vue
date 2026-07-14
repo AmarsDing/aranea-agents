@@ -334,7 +334,11 @@
       :metric-options="trendMetricOptions"
       :overview="trendOverview"
       :loading="trendOverviewLoading"
+      :range="trendRange"
+      :range-options="trendRangeOptions"
+      :range-label="trendRangeLabel"
       @update:metric="trendMetric = $event"
+      @update:range="trendRange = $event"
     />
   </q-page>
 </template>
@@ -446,6 +450,9 @@ const {
   trendOverviewLoading,
   trendMetric,
   trendMetricOptions,
+  trendRange,
+  trendRangeOptions,
+  trendRangeLabel,
   providerCodeRule,
   updateHAForm,
   credentialEncryptionAvailable,

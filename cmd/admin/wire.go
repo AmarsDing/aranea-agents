@@ -190,8 +190,14 @@ func provideCredentialCrypto(sys biz.SystemSettingRepo, lg loggateway.Logger) *b
 	return cc
 }
 
-func provideLlmProviderModelUsecaseWithDeps(repo biz.LlmProviderModelRepo, inspector biz.LLMInspector, crypto *biz.CredentialCrypto, agentRefs biz.AgentReferenceChecker, lg loggateway.Logger) *biz.LlmProviderModelUsecase {
-	return biz.NewLlmProviderModelUsecase(repo, repo, repo, repo, inspector, crypto, agentRefs, lg)
+func provideLlmProviderModelUsecaseWithDeps(repo biz.LlmProviderModelRepo, inspector biz.LLMInspector, crypto *biz.CredentialCrypto, agentRefs biz.AgentReferenceChecker, statsInjector *biz.ModelStatsInjector, lg loggateway.Logger) *biz.LlmProviderModelUsecase {
+	return biz.NewLlmProviderModelUsecase(repo, repo, repo, repo, inspector, crypto, agentRefs, statsInjector, lg)
+}
+
+// provideModelStatsInjector 构造统计注入器，绑定到 usage.AnalyticsRepo（已绑定为 biz.UsageRepo）。
+// cacheTTL 默认 5 分钟（在 NewModelStatsInjector 内部设定），避免每次 List 都查询 DB。
+func provideModelStatsInjector(reader biz.ModelStatsReader, lg loggateway.Logger) *biz.ModelStatsInjector {
+	return biz.NewModelStatsInjector(reader, lg)
 }
 
 func provideAgentUsecaseWithDeps(repo biz.AgentRepository, tools biz.ToolRegistryReader, sys biz.SystemSettingRepo, checker biz.WebResearchReadinessChecker, providerValidator biz.ProviderModelPairValidator, lg loggateway.Logger) *biz.AgentUsecase {
@@ -2130,6 +2136,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		provideLLMInspector,
 		provideCredentialCrypto,
 		provideLlmProviderModelUsecaseWithDeps,
+		provideModelStatsInjector,
 		provideWebResearchReadinessChecker,
 		provideBizWebResearchReadinessChecker,
 		provideAgentUsecaseWithDeps,
@@ -2309,6 +2316,9 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		wire.Bind(new(biz.SkillMergeWriter), new(*data.SkillMergeRepo)),
 		wire.Bind(new(biz.SkillContentFuser), new(*biz.RuleBasedContentFuser)),
 		wire.Bind(new(bizusage.AnalyticsRepo), new(biz.UsageRepo)),
+		// biz.ModelStatsReader 是 usage.AnalyticsRepo 的子集（仅 ListTopModelUsageFromDaily）。
+		// 通过 AnalyticsRepo 中转绑定，复用 biz.UsageRepo 实现，避免新增 data 层 Repo。
+		wire.Bind(new(biz.ModelStatsReader), new(bizusage.AnalyticsRepo)),
 		wire.Bind(new(biz.SessionReader), new(biz.SessionRepo)),
 		wire.Bind(new(bizsession.ContextUpdater), new(biz.SessionRepo)),
 		wire.Bind(new(biztool.ToolInvocationReader), new(biz.ToolRepo)),

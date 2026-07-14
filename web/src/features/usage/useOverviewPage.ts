@@ -16,6 +16,7 @@ import { useMonitorRunNavigation } from '../monitor/useMonitorRunNavigation';
 // TECH-DEBT(O-9): listTeams 拉取全量数据仅取 length，Team 数量多时有性能问题。
 //   待办：后端 ListTeams 支持分页后改用 total 字段，或新增 CountTeams RPC。
 import { listTeams } from '../teams/api';
+import { allowedGranularitiesForRange, resolveGranularityForRange, type Granularity } from './usageGranularityLinkage';
 
 const VALID_RANGES = new Set(['today', '7d', '30d', 'month']);
 
@@ -24,7 +25,6 @@ export function useOverviewPage() {
   const route = useRoute();
   const usageStore = useUsageStore();
   const { overview, loading, error } = storeToRefs(usageStore);
-  const trendGranularity = ref<'day' | 'hour'>('day');
   const initialRange = String(route.query.range || '30d');
   const filters = reactive<ModelUsageQuery>({
     range: VALID_RANGES.has(initialRange) ? initialRange : '30d',
@@ -32,6 +32,9 @@ export function useOverviewPage() {
     model_api_id: '',
     status: '',
   });
+  // trendGranularity 初始化为当前 range 的默认值（保证初始一致）。
+  // 后续 range 变化时由 onRangeChange 解析新值。
+  const trendGranularity = ref<Granularity>(resolveGranularityForRange('day', filters.range));
 
   const rangeOptions = computed(() => [
     { label: t('overviewPage.rangeToday'), value: 'today' },
@@ -48,10 +51,19 @@ export function useOverviewPage() {
     { label: t('overviewPage.statusTimeout'), value: 'timeout' },
   ]);
 
-  const granularityOptions = computed(() => [
-    { label: t('overviewPage.granularityDay'), value: 'day' },
-    { label: t('overviewPage.granularityHour'), value: 'hour' },
-  ]);
+  // granularityOptions 跟随 range 智能联动：
+  //   today → [hour]
+  //   7d    → [day, hour]
+  //   30d / month → [day]
+  // 当 P2-1 引入 5min/week/month 粒度后，只需扩展 usageGranularityLinkage 的映射表。
+  const granularityOptions = computed(() => {
+    const allowed = allowedGranularitiesForRange(filters.range);
+    const labelMap: Record<Granularity, string> = {
+      day: t('overviewPage.granularityDay'),
+      hour: t('overviewPage.granularityHour'),
+    };
+    return allowed.map((g) => ({ label: labelMap[g], value: g }));
+  });
 
   const platformStore = usePlatformStore();
   const { providerModels } = storeToRefs(platformStore);
@@ -88,6 +100,16 @@ export function useOverviewPage() {
       const valid = modelOptions.value.some((o) => o.value === currentModel);
       if (!valid) filters.model_api_id = '';
     }
+    loadOverview();
+  }
+
+  // onRangeChange 处理 range 切换时的 granularity 智能联动：
+  //   - 若当前 granularity 在新 range 下仍合法，保留之（避免无谓重置）
+  //   - 否则回退到新 range 的默认 granularity
+  // 解析完成后再触发 loadOverview，确保后端查询使用的是合法的 granularity。
+  // 注：v-model 已经把新 range 写入 filters.range，这里只需解析 granularity。
+  function onRangeChange() {
+    trendGranularity.value = resolveGranularityForRange(trendGranularity.value, filters.range);
     loadOverview();
   }
 
@@ -202,7 +224,8 @@ export function useOverviewPage() {
     return { active, degraded, total: models.length };
   });
 
-  const sessionActiveCount = computed(() => overview.value?.today?.call_count ?? 0);
+  // 今日模型调用次数（overview.today.call_count）。UI 标签为"今日调用"，非"活跃会话数"。
+  const todayCallCount = computed(() => overview.value?.today?.call_count ?? 0);
 
   // Sparkline shows the last 24 trend points as "recent trend" context for today's call count.
   // Semantic depends on granularity: hourly = last 24 hours, daily = last 24 days.
@@ -240,6 +263,7 @@ export function useOverviewPage() {
     providerOptions,
     modelOptions,
     onProviderChange,
+    onRangeChange,
     loadOverview,
     formatCount,
     formatMoney,
@@ -259,7 +283,7 @@ export function useOverviewPage() {
     openTokenTrendDialog,
     username,
     providerHealthSummary,
-    sessionActiveCount,
+    todayCallCount,
     sessionSparkline,
     runnerStats,
   };

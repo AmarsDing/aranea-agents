@@ -75,19 +75,26 @@ export function haTagClass(config: ProviderConfig): string {
   return (config.ha_mode || '').toLowerCase() === 'hedge' ? 'provider-tag--ha-hedge' : 'provider-tag--ha-failover';
 }
 
-export function hotnessScore(config: ProviderConfig): number {
+/**
+ * 返回模型热度分数。null 表示数据缺失（后端未注入统计），UI 应显示「—」而非「冷门」。
+ * 0 表示真实冷门（已有调用但极低）。
+ */
+export function hotnessScore(config: ProviderConfig): number | null {
   const score = toNullableNumber(config.model_hotness_score);
-  return score === null ? 0 : Math.max(0, Math.min(100, Math.round(score)));
+  if (score === null) return null;
+  return Math.max(0, Math.min(100, Math.round(score)));
 }
 
-export function hotnessLabel(score: number): string {
+export function hotnessLabel(score: number | null): string {
+  if (score === null) return '—';
   if (score >= 80) return '热门';
   if (score >= 50) return '活跃';
   if (score >= 20) return '低频';
   return '冷门';
 }
 
-export function hotnessTone(score: number): string {
+export function hotnessTone(score: number | null): string {
+  if (score === null) return 'none';
   if (score >= 80) return 'hot';
   if (score >= 50) return 'warm';
   if (score >= 20) return 'cool';

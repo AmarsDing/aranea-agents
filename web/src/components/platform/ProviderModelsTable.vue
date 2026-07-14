@@ -88,12 +88,13 @@
         <div class="provider-usage">
           <div class="usage-line">
             <span class="usage-badge" :class="`usage-badge--${rowHotnessTone(props.row)}`">
-              {{ rowHotnessLabel(props.row) }} {{ rowHotnessScore(props.row) }}
+              {{ rowHotnessLabel(props.row)
+              }}<template v-if="rowHotnessScore(props.row) !== null"> {{ rowHotnessScore(props.row) }}</template>
             </span>
             <div class="usage-bar-wrap">
               <div
                 class="usage-bar-fill"
-                :style="{ width: `${rowHotnessScore(props.row)}%` }"
+                :style="{ width: `${rowHotnessScore(props.row) ?? 0}%` }"
                 :class="`usage-bar-fill--${rowHotnessTone(props.row)}`"
               />
             </div>

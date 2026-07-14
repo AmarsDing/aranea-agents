@@ -15,7 +15,7 @@
         <q-skeleton type="text" width="60px" />
       </div>
       <template v-else>
-        <div class="command-center-stat-panel__big-value">{{ activeCount }}</div>
+        <div class="command-center-stat-panel__big-value">{{ todayCallCount }}</div>
         <div class="command-center-stat-panel__caption">模型调用次数 · 近期趋势</div>
         <div v-if="sparkline.length > 1" class="command-center-stat-panel__sparkline">
           <svg viewBox="0 0 100 24" preserveAspectRatio="none" class="command-center-stat-panel__sparkline-svg">
@@ -38,7 +38,7 @@
 import { computed } from 'vue';
 
 const props = defineProps<{
-  activeCount: number;
+  todayCallCount: number;
   sparkline: number[];
   loading: boolean;
 }>();

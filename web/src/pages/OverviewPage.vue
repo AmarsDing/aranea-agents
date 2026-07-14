@@ -7,7 +7,7 @@
         :provider-count="providerCount"
         :category-count="categoryCount"
         :team-count="teamCount"
-        :today-session-count="sessionActiveCount"
+        :today-call-count="todayCallCount"
         :today-token-count="overview?.today?.total_tokens ?? 0"
         @navigate="onMetricNavigate"
       >
@@ -36,7 +36,7 @@
 
       <CommandCenterStatusPanels
         :agent-stats="agentStats"
-        :session-active-count="sessionActiveCount"
+        :today-call-count="todayCallCount"
         :session-sparkline="sessionSparkline"
         :provider-health="providerHealthSummary"
         :runner-stats="runnerStats"
@@ -54,7 +54,7 @@
             :label="t('overviewPage.filterRange')"
             :options="rangeOptions"
             class="overview-filter-field"
-            @update:model-value="loadOverview"
+            @update:model-value="onRangeChange"
           />
           <q-select
             v-model="filters.provider_code"
@@ -117,7 +117,7 @@
           <template #action><q-btn flat :label="t('overviewPage.btnRetry')" @click="loadOverview" /></template>
         </q-banner>
 
-        <UsageMetricCards :overview="overview" @navigate="onMetricNavigate" />
+        <UsageMetricCards :overview="overview" :range="filters.range" @navigate="onMetricNavigate" />
 
         <div class="overview-chart-row">
           <div class="overview-chart-row__main">
@@ -238,6 +238,7 @@ const {
   providerOptions,
   modelOptions,
   onProviderChange,
+  onRangeChange,
   loadOverview,
   formatCount,
   formatMoney,
@@ -255,7 +256,7 @@ const {
   teamCount,
   username,
   providerHealthSummary,
-  sessionActiveCount,
+  todayCallCount,
   sessionSparkline,
   runnerStats,
 } = useOverviewPage();

@@ -233,11 +233,17 @@ type LlmProviderModelUsecase struct {
 	inspector LLMInspector
 	crypto    *CredentialCrypto
 	agentRefs AgentReferenceChecker
-	lg        loggateway.Logger
+	// statsInjector 注入 30 天用量统计到 List 响应的 ConfigJSON（仅响应装饰，不持久化）。
+	// 可为 nil：nil 时 List 跳过注入，保持向后兼容（用于不关心统计的调用方/测试）。
+	statsInjector *ModelStatsInjector
+	lg            loggateway.Logger
 }
 
-func NewLlmProviderModelUsecase(reader LlmProviderModelReader, writer LlmProviderModelWriter, validator LlmProviderModelValidator, pricing ModelPricingRepo, inspector LLMInspector, crypto *CredentialCrypto, agentRefs AgentReferenceChecker, lg loggateway.Logger) *LlmProviderModelUsecase {
-	return &LlmProviderModelUsecase{reader: reader, writer: writer, validator: validator, pricing: pricing, inspector: inspector, crypto: crypto, agentRefs: agentRefs, lg: lg}
+// NewLlmProviderModelUsecase 构造 Usecase。statsInjector 可为 nil。
+// TECH-DEBT(CS-B7): 参数数量=9 超出 ≤5 上限。后续应迁移到 LlmProviderModelUsecaseDeps struct 模式
+// （参考 AgentUsecaseDeps），本次仅追加 statsInjector 以解决 P1-1 统计注入需求，不顺带重构。
+func NewLlmProviderModelUsecase(reader LlmProviderModelReader, writer LlmProviderModelWriter, validator LlmProviderModelValidator, pricing ModelPricingRepo, inspector LLMInspector, crypto *CredentialCrypto, agentRefs AgentReferenceChecker, statsInjector *ModelStatsInjector, lg loggateway.Logger) *LlmProviderModelUsecase {
+	return &LlmProviderModelUsecase{reader: reader, writer: writer, validator: validator, pricing: pricing, inspector: inspector, crypto: crypto, agentRefs: agentRefs, statsInjector: statsInjector, lg: lg}
 }
 
 func (u *LlmProviderModelUsecase) List(ctx context.Context) ([]ProviderModel, error) {
@@ -247,6 +253,11 @@ func (u *LlmProviderModelUsecase) List(ctx context.Context) ([]ProviderModel, er
 	}
 	for i := range items {
 		items[i] = sanitizeProviderModelForAPI(items[i])
+	}
+	// 装饰阶段：注入 30 天用量统计到 ConfigJSON（仅响应装饰，不持久化）。
+	// statsInjector 自身处理 nil reader / 错误（仅 Warn 日志，不影响主流程）。
+	if u.statsInjector != nil {
+		u.statsInjector.InjectStats(ctx, items)
 	}
 	return items, nil
 }

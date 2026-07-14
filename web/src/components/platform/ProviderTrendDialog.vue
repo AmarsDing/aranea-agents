@@ -26,15 +26,15 @@
               </div>
             </div>
             <div class="app-trend-kpi-card">
-              <span class="app-trend-kpi-label">30 天调用</span>
+              <span class="app-trend-kpi-label">{{ rangeLabel }}调用</span>
               <span class="app-trend-kpi-value">{{ formatCount(overview?.range.call_count) }}</span>
             </div>
             <div class="app-trend-kpi-card">
-              <span class="app-trend-kpi-label">30 天 Token</span>
+              <span class="app-trend-kpi-label">{{ rangeLabel }} Token</span>
               <span class="app-trend-kpi-value">{{ formatCount(overview?.range.total_tokens) }}</span>
             </div>
             <div class="app-trend-kpi-card">
-              <span class="app-trend-kpi-label">30 天费用</span>
+              <span class="app-trend-kpi-label">{{ rangeLabel }}费用</span>
               <span class="app-trend-kpi-value">{{ formatMicroUsd(overview?.range.total_cost_micro_usd) }}</span>
             </div>
           </div>
@@ -43,18 +43,30 @@
             <div class="app-trend-chart-toolbar row items-center justify-between q-col-gutter-sm">
               <div>
                 <div class="app-trend-chart-title">用量趋势</div>
-                <div class="app-trend-chart-caption">近 30 天 · {{ metricCaption }}</div>
+                <div class="app-trend-chart-caption">{{ rangeLabel }} · {{ metricCaption }}</div>
               </div>
-              <q-btn-toggle
-                :model-value="metric"
-                dense
-                no-caps
-                unelevated
-                toggle-color="primary"
-                :options="metricOptions"
-                class="app-metric-toggle"
-                @update:model-value="emit('update:metric', $event)"
-              />
+              <div class="row items-center q-gutter-sm">
+                <q-select
+                  :model-value="range"
+                  dense
+                  outlined
+                  emit-value
+                  map-options
+                  :options="rangeOptions"
+                  class="provider-trend-range-select"
+                  @update:model-value="emit('update:range', String($event))"
+                />
+                <q-btn-toggle
+                  :model-value="metric"
+                  dense
+                  no-caps
+                  unelevated
+                  toggle-color="primary"
+                  :options="metricOptions"
+                  class="app-metric-toggle"
+                  @update:model-value="emit('update:metric', $event)"
+                />
+              </div>
             </div>
             <div v-if="!trends.length && !loading" class="app-trend-chart-empty">暂无历史趋势数据</div>
             <div v-show="trends.length || loading" ref="chartEl" class="app-trend-chart" />
@@ -104,11 +116,15 @@ const props = defineProps<{
   metricOptions: { label: string; value: UsageTrendMetric }[];
   overview: ModelUsageOverview | null;
   loading: boolean;
+  range: string;
+  rangeOptions: { label: string; value: string }[];
+  rangeLabel: string;
 }>();
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean];
   'update:metric': [value: UsageTrendMetric];
+  'update:range': [value: string];
 }>();
 
 const config = computed(() => (props.row ? getProviderConfig(props.row) : {}));

@@ -29,14 +29,21 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { ModelUsageOverview } from '../../features/usage/types';
+import type { ModelUsageOverview, ModelUsageSummary } from '../../features/usage/types';
 import { formatUsdFromMicro, formatCount } from '../../features/usage/moneyFormat';
 
 const { t } = useI18n();
 
-const props = defineProps<{
-  overview: ModelUsageOverview | null;
-}>();
+const props = withDefaults(
+  defineProps<{
+    overview: ModelUsageOverview | null;
+    /** 当前筛选的时间范围。today 使用 overview.today + yesterday 环比；其他值使用 overview.range + today 参考。 */
+    range?: string;
+  }>(),
+  {
+    range: 'today',
+  },
+);
 
 interface StatCard {
   label: string;
@@ -54,69 +61,108 @@ interface StatCard {
   forecastClass?: string;
 }
 
+/** 根据 range 返回 i18n 标签中的范围文本（今日 / 7 天 / 30 天 / 本月）。 */
+const rangeLabel = computed(() => {
+  switch (props.range) {
+    case '7d':
+      return t('overviewPage.range7d');
+    case '30d':
+      return t('overviewPage.range30d');
+    case 'month':
+      return t('overviewPage.rangeMonth');
+    case 'today':
+    default:
+      return t('overviewPage.rangeToday');
+  }
+});
+
+/** range==='today' 时主数据为 today，对比基准为 yesterday；否则主数据为 range，参考为 today。 */
+const isToday = computed(() => props.range === 'today');
+
+const primary = computed<ModelUsageSummary | undefined>(() =>
+  isToday.value ? props.overview?.today : props.overview?.range,
+);
+const reference = computed<ModelUsageSummary | undefined>(() =>
+  isToday.value ? props.overview?.yesterday : props.overview?.today,
+);
+const month = computed<ModelUsageSummary | undefined>(() => props.overview?.month);
+const dash = computed(() => props.overview?.quota_dashboard);
+
 const cards = computed<StatCard[]>(() => {
-  const today = props.overview?.today;
-  const yesterday = props.overview?.yesterday;
-  const month = props.overview?.month;
-  const dash = props.overview?.quota_dashboard;
+  const cur = primary.value;
+  const ref = reference.value;
+  const mon = month.value;
+
+  const callsLabel = isToday.value
+    ? t('overviewPage.metricTodayCalls')
+    : t('overviewPage.metricRangeCalls', { range: rangeLabel.value });
+  const costLabel = isToday.value
+    ? t('overviewPage.metricTodayCost')
+    : t('overviewPage.metricRangeCost', { range: rangeLabel.value });
+  const tokensLabel = isToday.value
+    ? t('overviewPage.metricTodayTokens')
+    : t('overviewPage.metricRangeTokens', { range: rangeLabel.value });
+
+  // range≠today 时不展示环比 delta（后端暂无 prev_range_summary），改为显示 today 占比 caption。
+  const showDelta = isToday.value;
 
   const result: StatCard[] = [
     {
-      label: t('overviewPage.metricTodayCalls'),
+      label: callsLabel,
       icon: 'phone_in_talk',
-      value: fmtCount(today?.call_count),
+      value: fmtCount(cur?.call_count),
       valueClass: 'overview-stat-card__value--tech-blue',
-      delta: fmtDelta(today?.call_count, yesterday?.call_count),
+      delta: showDelta ? fmtDelta(cur?.call_count, ref?.call_count) : undefined,
       deltaClass:
-        (today?.call_count ?? 0) >= (yesterday?.call_count ?? 0)
+        (cur?.call_count ?? 0) >= (ref?.call_count ?? 0)
           ? 'overview-stat-card__delta--up'
           : 'overview-stat-card__delta--down',
-      sub: fmtPct(today?.success_rate),
+      sub: fmtPct(cur?.success_rate),
       subClass: 'overview-stat-card__bottom-left--tech',
-      caption: `${t('overviewPage.metricYesterday')} ${fmtCount(yesterday?.call_count)}`,
+      caption: refCaption(ref?.call_count, t('overviewPage.metricTodayRef')),
     },
     {
-      label: t('overviewPage.metricTodayCost'),
+      label: costLabel,
       icon: 'payments',
       iconClass: 'overview-stat-card__icon-wrap--accent',
-      value: fmtMoney(today?.total_cost_micro_usd),
+      value: fmtMoney(cur?.total_cost_micro_usd),
       valueClass: 'overview-stat-card__value--tech-amber',
-      delta: fmtDelta(today?.total_cost_micro_usd, yesterday?.total_cost_micro_usd),
+      delta: showDelta ? fmtDelta(cur?.total_cost_micro_usd, ref?.total_cost_micro_usd) : undefined,
       deltaClass:
-        (today?.total_cost_micro_usd ?? 0) >= (yesterday?.total_cost_micro_usd ?? 0)
+        (cur?.total_cost_micro_usd ?? 0) >= (ref?.total_cost_micro_usd ?? 0)
           ? 'overview-stat-card__delta--up'
           : 'overview-stat-card__delta--down',
-      sub: `${t('overviewPage.metricMonthCost')} ${fmtMoney(month?.total_cost_micro_usd)}`,
+      sub: `${t('overviewPage.metricMonthCost')} ${fmtMoney(mon?.total_cost_micro_usd)}`,
       subClass: '',
-      caption: `${t('overviewPage.metricAvgPerCall')} ${fmtMoney(today?.call_count ? (today.total_cost_micro_usd ?? 0) / today.call_count : 0)}`,
+      caption: `${t('overviewPage.metricAvgPerCall')} ${fmtMoney(cur?.call_count ? (cur.total_cost_micro_usd ?? 0) / cur.call_count : 0)}`,
     },
     {
-      label: t('overviewPage.metricTodayTokens'),
+      label: tokensLabel,
       icon: 'data_usage',
-      value: fmtCount(today?.total_tokens),
+      value: fmtCount(cur?.total_tokens),
       valueClass: 'overview-stat-card__value--tech-cyan',
-      delta: fmtDelta(today?.total_tokens, yesterday?.total_tokens),
+      delta: showDelta ? fmtDelta(cur?.total_tokens, ref?.total_tokens) : undefined,
       deltaClass:
-        (today?.total_tokens ?? 0) >= (yesterday?.total_tokens ?? 0)
+        (cur?.total_tokens ?? 0) >= (ref?.total_tokens ?? 0)
           ? 'overview-stat-card__delta--up'
           : 'overview-stat-card__delta--down',
-      sub: `${t('overviewPage.metricInput')} ${fmtCount(today?.input_tokens)} / ${t('overviewPage.metricOutput')} ${fmtCount(today?.output_tokens)}`,
+      sub: `${t('overviewPage.metricInput')} ${fmtCount(cur?.input_tokens)} / ${t('overviewPage.metricOutput')} ${fmtCount(cur?.output_tokens)}`,
       subClass: '',
-      caption: `${t('overviewPage.metricAvgSpeed')} ${today?.avg_tokens_per_second ? today.avg_tokens_per_second.toFixed(1) : '—'} tok/s`,
+      caption: `${t('overviewPage.metricAvgSpeed')} ${cur?.avg_tokens_per_second ? cur.avg_tokens_per_second.toFixed(1) : '—'} tok/s`,
     },
     {
       label: t('overviewPage.metricSuccessRate'),
       icon: 'verified',
-      value: fmtPct(today?.success_rate),
+      value: fmtPct(cur?.success_rate),
       valueClass: 'overview-stat-card__value--tech-green',
-      sub: `${t('overviewPage.metricFailed')} ${fmtCount(today?.failed_count)}`,
+      sub: `${t('overviewPage.metricFailed')} ${fmtCount(cur?.failed_count)}`,
       subClass: '',
-      caption: `${t('overviewPage.metricAvgLatency')} ${today?.avg_latency_ms ? Math.round(today.avg_latency_ms) : '—'}ms`,
+      caption: `${t('overviewPage.metricAvgLatency')} ${cur?.avg_latency_ms ? Math.round(cur.avg_latency_ms) : '—'}ms`,
     },
   ];
 
-  if (dash && dash.configured_count > 0) {
-    const util = dash.max_utilization_ratio ?? 0;
+  if (dash.value && dash.value.configured_count > 0) {
+    const util = dash.value.max_utilization_ratio ?? 0;
     const pct = Math.round(util * 100);
     let fillClass: string;
     if (pct >= 90) fillClass = 'overview-stat-card__bar-fill--danger';
@@ -125,15 +171,16 @@ const cards = computed<StatCard[]>(() => {
 
     let forecast: string | undefined;
     let forecastClass = '';
-    if (month && dash.total_cap_micro_usd > 0) {
+    if (mon && dash.value.total_cap_micro_usd > 0) {
       const now = new Date();
       const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
       const dayOfMonth = now.getDate();
       if (dayOfMonth > 0 && daysInMonth > 0) {
-        const dailyAvg = (month.total_cost_micro_usd ?? 0) / dayOfMonth;
+        const dailyAvg = (mon.total_cost_micro_usd ?? 0) / dayOfMonth;
         const f = (dailyAvg * daysInMonth) / 1_000_000;
         forecast = `${t('overviewPage.metricForecast')} $${f.toFixed(2)}`;
-        if (dailyAvg * daysInMonth > dash.total_cap_micro_usd) forecastClass = 'overview-stat-card__forecast--danger';
+        if (dailyAvg * daysInMonth > dash.value.total_cap_micro_usd)
+          forecastClass = 'overview-stat-card__forecast--danger';
       }
     }
 
@@ -153,7 +200,7 @@ const cards = computed<StatCard[]>(() => {
           : pct >= 70
             ? 'overview-stat-card__value--tech-amber'
             : 'overview-stat-card__value--tech-green',
-      caption: `${dash.configured_count} ${t('overviewPage.metricAgents')} · $${((dash.total_spent_micro_usd ?? 0) / 1_000_000).toFixed(2)} / $${((dash.total_cap_micro_usd ?? 0) / 1_000_000).toFixed(2)}`,
+      caption: `${dash.value.configured_count} ${t('overviewPage.metricAgents')} · $${((dash.value.total_spent_micro_usd ?? 0) / 1_000_000).toFixed(2)} / $${((dash.value.total_cap_micro_usd ?? 0) / 1_000_000).toFixed(2)}`,
       bar: { width: `${Math.min(pct, 100)}%`, fillClass },
       forecast,
       forecastClass,
@@ -162,6 +209,11 @@ const cards = computed<StatCard[]>(() => {
 
   return result;
 });
+
+/** range=today 时 caption 显示"昨日 N"；range≠today 时 caption 显示"今日 N"。 */
+function refCaption(value: number | undefined, label: string) {
+  return `${label} ${fmtCount(value)}`;
+}
 
 function fmtCount(v?: number) {
   return formatCount(v);

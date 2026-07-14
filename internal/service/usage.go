@@ -149,3 +149,18 @@ func (s *UsageService) PurgeUsageEvents(ctx context.Context, req *v1.PurgeUsageE
 	}
 	return &v1.PurgeUsageEventsResponse{DeletedCount: deleted}, nil
 }
+
+// ListAllModelsBreakdown returns a paginated, searchable, sortable breakdown of all models
+// for the full-model consumption overview table. Server-side pagination/sort/search.
+func (s *UsageService) ListAllModelsBreakdown(ctx context.Context, req *v1.ListAllModelsBreakdownRequest) (*v1.ListAllModelsBreakdownResponse, error) {
+	result, err := s.uc.AllModelsBreakdown(ctx, fromProtoBreakdownQuery(req))
+	if err != nil {
+		return nil, err
+	}
+	return &v1.ListAllModelsBreakdownResponse{
+		Items:    toProtoUsageBreakdownRows(result.Items),
+		Total:    result.Total,
+		Page:     result.Page,
+		PageSize: result.PageSize,
+	}, nil
+}

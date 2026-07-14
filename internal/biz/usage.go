@@ -7,6 +7,8 @@ type (
 	UsageSummary              = usage.Summary
 	UsageTrendPoint           = usage.TrendPoint
 	UsageBreakdownRow         = usage.BreakdownRow
+	UsageBreakdownQuery        = usage.BreakdownQuery
+	UsageBreakdownResult       = usage.BreakdownResult
 	TokenUsageEvent           = usage.TokenUsageEvent
 	UsageOverview             = usage.Overview
 	ModelPricingSnapshot      = usage.ModelPricingSnapshot

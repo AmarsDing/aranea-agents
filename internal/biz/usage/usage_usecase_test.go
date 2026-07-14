@@ -22,6 +22,7 @@ type mockUsageRepo struct {
 	listModelUsageDailyTrendsFn     func(context.Context, Query) ([]TrendPoint, error)
 	listTopModelUsageFromDailyFn    func(context.Context, Query) ([]BreakdownRow, error)
 	listTopAgentUsageFromDailyFn    func(context.Context, Query) ([]BreakdownRow, error)
+	listAllModelsBreakdownFn        func(context.Context, BreakdownQuery) (BreakdownResult, error)
 	recordTokenUsageEventFn         func(context.Context, TokenUsageEvent) (TokenUsageEvent, error)
 	getActiveModelPricingFn         func(context.Context, string, string) (ModelPricingSnapshot, bool, error)
 	getQuotaFn                      func(context.Context, string, string) (Quota, error)
@@ -103,6 +104,13 @@ func (m *mockUsageRepo) ListTopAgentUsageFromDaily(ctx context.Context, q Query)
 		return m.listTopAgentUsageFromDailyFn(ctx, q)
 	}
 	return nil, nil
+}
+
+func (m *mockUsageRepo) ListAllModelsBreakdown(ctx context.Context, q BreakdownQuery) (BreakdownResult, error) {
+	if m.listAllModelsBreakdownFn != nil {
+		return m.listAllModelsBreakdownFn(ctx, q)
+	}
+	return BreakdownResult{}, nil
 }
 
 func (m *mockUsageRepo) RecordTokenUsageEvent(ctx context.Context, e TokenUsageEvent) (TokenUsageEvent, error) {

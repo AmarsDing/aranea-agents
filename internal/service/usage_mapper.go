@@ -24,6 +24,26 @@ func fromProtoUsageQuery(in *v1.UsageQuery) biz.UsageQuery {
 	}
 }
 
+// fromProtoBreakdownQuery converts the proto ListAllModelsBreakdown request to the biz query.
+// Range/StartDate/EndDate are passed through; biz.Usecase.AllModelsBreakdown resolves the
+// date range if StartDate/EndDate are empty (via normalizeBreakdownQuery).
+func fromProtoBreakdownQuery(in *v1.ListAllModelsBreakdownRequest) biz.UsageBreakdownQuery {
+	if in == nil {
+		return biz.UsageBreakdownQuery{}
+	}
+	return biz.UsageBreakdownQuery{
+		Range:        in.GetRange(),
+		StartDate:    in.GetStartDate(),
+		EndDate:      in.GetEndDate(),
+		ProviderCode: in.GetProviderCode(),
+		Search:       in.GetSearch(),
+		SortField:    in.GetSortField(),
+		SortDir:      in.GetSortDir(),
+		Page:         in.GetPage(),
+		PageSize:     in.GetPageSize(),
+	}
+}
+
 func fromProtoTokenUsageEvent(p *v1.TokenUsageEvent) biz.TokenUsageEvent {
 	if p == nil {
 		return biz.TokenUsageEvent{}

@@ -1,7 +1,7 @@
 <template>
   <div class="command-center-status-panels">
     <StatusPanelAgent :active="agentStats.active" :total="agentStats.total" :loading="loading" />
-    <StatusPanelSession :active-count="sessionActiveCount" :sparkline="sessionSparkline" :loading="loading" />
+    <StatusPanelSession :today-call-count="todayCallCount" :sparkline="sessionSparkline" :loading="loading" />
     <StatusPanelProvider
       :active="providerHealth.active"
       :degraded="providerHealth.degraded"
@@ -26,7 +26,7 @@ import StatusPanelRunner from './StatusPanelRunner.vue';
 
 defineProps<{
   agentStats: { active: number; total: number };
-  sessionActiveCount: number;
+  todayCallCount: number;
   sessionSparkline: number[];
   providerHealth: { active: number; degraded: number; total: number };
   runnerStats: { totalRuns: number; errorRuns: number; successRate: number; errorRate: number };

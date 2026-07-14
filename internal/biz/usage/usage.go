@@ -117,6 +117,29 @@ type BreakdownRow struct {
 	SuccessRate        float64
 }
 
+// BreakdownQuery 是 ListAllModelsBreakdown 的查询参数（分页 + 搜索 + 排序）。
+// 与 Query（用于 trend/top 等）不同，BreakdownQuery 专为「全模型消耗总览表」设计，
+// 因为它需要服务端分页/排序，而 Query 仅支持 limit。
+type BreakdownQuery struct {
+	Range        string // today/7d/30d/month（输入）
+	StartDate    string // 由 Usecase.normalizeBreakdownQuery 解析后填充（data 层使用）
+	EndDate      string // 由 Usecase.normalizeBreakdownQuery 解析后填充（data 层使用）
+	ProviderCode string // 可选 provider 过滤
+	Search       string // 可选 LIKE 搜索（匹配 provider_code 或 model_api_id）
+	SortField    string // call_count/total_tokens/total_cost_micro_usd/success_rate/avg_latency_ms
+	SortDir      string // asc/desc
+	Page         int32  // 1-based
+	PageSize     int32  // 默认 20，最大 100
+}
+
+// BreakdownResult 是 ListAllModelsBreakdown 的分页结果。
+type BreakdownResult struct {
+	Items    []BreakdownRow
+	Total    int32 // 匹配过滤条件的总行数（用于前端分页 UI）
+	Page     int32
+	PageSize int32
+}
+
 // TokenUsageEvent mirrors SQLite row from model_token_usage_events.
 type TokenUsageEvent struct {
 	ID                            string
@@ -285,6 +308,11 @@ type AnalyticsRepo interface {
 	ListModelUsageDailyTrends(ctx context.Context, query Query) ([]TrendPoint, error)
 	ListTopModelUsageFromDaily(ctx context.Context, query Query) ([]BreakdownRow, error)
 	ListTopAgentUsageFromDaily(ctx context.Context, query Query) ([]BreakdownRow, error)
+	// ListAllModelsBreakdown 返回全模型消耗分页明细（用于「全模型消耗总览表」）。
+	// 与 ListTopModelUsageFromDaily 不同：支持服务端分页/搜索/动态排序，且返回 total。
+	// TECH-DEBT(CS-B4): AnalyticsRepo 方法数=11，超出 ≤5 上限（DB-DEBT-02）。
+	// 后续应拆分为 ModelTrendReader / ModelBreakdownReader / AgentBreakdownReader 子接口。
+	ListAllModelsBreakdown(ctx context.Context, query BreakdownQuery) (BreakdownResult, error)
 }
 
 // WriteRepo persists usage events and resolves pricing.
@@ -602,6 +630,42 @@ func (u *Usecase) TopModels(ctx context.Context, query Query) ([]BreakdownRow, e
 // TopAgents returns top agent usage breakdown.
 func (u *Usecase) TopAgents(ctx context.Context, query Query) ([]BreakdownRow, error) {
 	return u.repo.ListTopAgentUsage(ctx, u.normalizeQuery(query, u.now()))
+}
+
+// AllModelsBreakdown 返回全模型消耗分页明细（用于「全模型消耗总览表」）。
+// 与 TopModels 不同：支持服务端分页、LIKE 搜索、动态字段排序，且返回 total 用于前端分页 UI。
+// 排序字段与方向由 data 层做白名单校验，避免 SQL 注入。
+func (u *Usecase) AllModelsBreakdown(ctx context.Context, query BreakdownQuery) (BreakdownResult, error) {
+	return u.repo.ListAllModelsBreakdown(ctx, u.normalizeBreakdownQuery(query, u.now()))
+}
+
+// normalizeBreakdownQuery 将 BreakdownQuery.Range 解析为 StartDate/EndDate，
+// 并归一化分页参数（page≥1, page_size 默认 20，最大 100）。
+// 与 normalizeQuery 不同：BreakdownQuery 不复用 Query 结构（语义不同）。
+func (u *Usecase) normalizeBreakdownQuery(query BreakdownQuery, now time.Time) BreakdownQuery {
+	if query.StartDate == "" || query.EndDate == "" {
+		end := dateKey(now)
+		var start time.Time
+		switch query.Range {
+		case "today":
+			start = now
+		case "7d":
+			start = now.AddDate(0, 0, -6)
+		case "month":
+			start = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+		case "30d", "":
+			start = now.AddDate(0, 0, -(defaultQueryRangeDays - 1))
+		default:
+			start = now.AddDate(0, 0, -(defaultQueryRangeDays - 1))
+		}
+		if query.StartDate == "" {
+			query.StartDate = dateKey(start)
+		}
+		if query.EndDate == "" {
+			query.EndDate = end
+		}
+	}
+	return query
 }
 
 // Events returns raw usage events.

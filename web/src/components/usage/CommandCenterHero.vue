@@ -58,7 +58,7 @@
         </div>
         <div class="command-center-hero__stat-body">
           <div class="command-center-hero__stat-value command-center-hero__stat-value--tech">
-            {{ todaySessionCount }}
+            {{ todayCallCount }}
           </div>
           <div class="command-center-hero__stat-label">{{ t('overviewPage.statTodayChats') }}</div>
         </div>
@@ -91,7 +91,7 @@ const props = defineProps<{
   providerCount: number;
   categoryCount: number;
   teamCount: number;
-  todaySessionCount: number;
+  todayCallCount: number;
   todayTokenCount: number;
 }>();
 

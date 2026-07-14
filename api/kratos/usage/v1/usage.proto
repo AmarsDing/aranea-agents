@@ -243,6 +243,28 @@ message PurgeUsageEventsResponse {
   int64 deleted_count = 1;
 }
 
+// ListAllModelsBreakdownRequest is the paginated query for the full-model consumption overview table.
+// Unlike ListTopModels (capped at 200 rows, fixed cost sort), this RPC supports server-side
+// pagination, dynamic sorting, and LIKE search across provider_code + model_api_id.
+message ListAllModelsBreakdownRequest {
+  string range = 1;          // today | 7d | 30d | month (resolved to start_date/end_date server-side)
+  string start_date = 2;     // explicit override (YYYY-MM-DD); empty = use range
+  string end_date = 3;       // explicit override (YYYY-MM-DD); empty = use range
+  string provider_code = 4;   // optional exact provider filter
+  string search = 5;          // optional LIKE search on provider_code + model_api_id
+  string sort_field = 6;      // call_count | total_tokens | total_cost_micro_usd | success_rate | avg_latency_ms
+  string sort_dir = 7;        // asc | desc (default: desc)
+  int32 page = 8;             // 1-based (default: 1)
+  int32 page_size = 9;        // default: 20, max: 100
+}
+
+message ListAllModelsBreakdownResponse {
+  repeated UsageBreakdownRow items = 1;
+  int32 total = 2;            // total matching rows (pre-pagination)
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
 service UsageService {
   rpc GetUsageOverview(UsageQuery) returns (UsageOverview) {
     option (google.api.http) = {get: "/v1/usage/overview"};
@@ -295,5 +317,10 @@ service UsageService {
       post: "/v1/usage/events/purge"
       body: "*"
     };
+  }
+  // ListAllModelsBreakdown returns a paginated, searchable, sortable breakdown of all models
+  // for the full-model consumption overview table. Server-side pagination/sort/search.
+  rpc ListAllModelsBreakdown(ListAllModelsBreakdownRequest) returns (ListAllModelsBreakdownResponse) {
+    option (google.api.http) = {get: "/v1/usage/all-models-breakdown"};
   }
 }
