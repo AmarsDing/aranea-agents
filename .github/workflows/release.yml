@@ -137,7 +137,9 @@ jobs:
             Write-Host "  non-fatal 'CREATE EXTENSION vector' step." -ForegroundColor Yellow
             Write-Host "==========================================" -ForegroundColor Yellow
             Write-Host ""
+            exit 0
           }
+          exit 0
 
       - name: Setup Electron template
         shell: pwsh
