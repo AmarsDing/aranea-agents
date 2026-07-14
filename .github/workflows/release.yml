@@ -164,14 +164,81 @@ jobs:
             Write-Host "Electron template already exists at $templateDir"
           }
 
-      - name: Build package
+      - name: Build backend (go build)
+        shell: pwsh
+        run: |
+          $env:CGO_ENABLED = "0"
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          $version = "${{ steps.version.outputs.version }}"
+          $ldflags = "-s -w -X main.Version=$version -X main.Name=aranea-agents"
+          & go build -tags pgvector -ldflags $ldflags -o build/aranea-server.exe ./cmd/admin
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Backend build failed (exit $LASTEXITCODE)"
+            exit 1
+          }
+          Write-Host "Backend built: build/aranea-server.exe"
+
+      - name: Build frontend (pnpm build)
+        shell: pwsh
+        run: |
+          Push-Location web
+          & pnpm install --frozen-lockfile 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "pnpm install with frozen-lockfile failed, retrying..." -ForegroundColor Yellow
+            & pnpm install
+          }
+          & pnpm build
+          if ($LASTEXITCODE -ne 0) {
+            Pop-Location
+            Write-Error "Frontend build failed (exit $LASTEXITCODE)"
+            exit 1
+          }
+          Pop-Location
+          if (-not (Test-Path "web/dist/index.html")) {
+            Write-Error "web/dist/index.html not found after pnpm build"
+            exit 1
+          }
+          Write-Host "Frontend built: web/dist/"
+
+      - name: Package Electron app
+        shell: pwsh
+        run: |
+          Push-Location web
+          $env:QUASAR_ELECTRON_PRELOAD_FOLDER = "preload"
+          $env:QUASAR_ELECTRON_PRELOAD_EXTENSION = ".cjs"
+          & node scripts/build-electron.mjs --platform=win32 --arch=x64
+          if ($LASTEXITCODE -ne 0) {
+            Pop-Location
+            Write-Error "Electron packaging failed (exit $LASTEXITCODE)"
+            exit 1
+          }
+          Pop-Location
+          $electronAppDir = "web/build/electron/AraneaAgents-win32-x64"
+          if (-not (Test-Path $electronAppDir)) {
+            $fallback = Get-ChildItem -Path "web/build" -Directory -Filter "electron-*" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($fallback) { $electronAppDir = Join-Path $fallback.FullName "AraneaAgents-win32-x64" }
+          }
+          if (-not (Test-Path $electronAppDir)) {
+            Write-Error "Electron app dir not found: $electronAppDir"
+            exit 1
+          }
+          Write-Host "Electron app packaged: $electronAppDir"
+
+      - name: Assemble staging & NSIS package
         shell: pwsh
         run: |
           .\scripts\build-package.ps1 `
             -Version ${{ steps.version.outputs.version }} `
             -DepsDir build/deps `
             -SkipDepsDownload `
+            -SkipBackend `
+            -SkipFrontend `
             -OutDir release
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Staging/NSIS failed (exit $LASTEXITCODE)"
+            exit 1
+          }
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
