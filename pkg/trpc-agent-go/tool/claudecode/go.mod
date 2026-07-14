@@ -1,6 +1,6 @@
 module trpc.group/trpc-go/trpc-agent-go/tool/claudecode
 
-go 1.24.1
+go 1.25.0
 
 replace trpc.group/trpc-go/trpc-agent-go => ../..
 
@@ -10,8 +10,8 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/net v0.34.0
-	golang.org/x/text v0.21.0
+	golang.org/x/net v0.55.0
+	golang.org/x/text v0.40.0
 	trpc.group/trpc-go/trpc-agent-go v0.5.0
 )
 
