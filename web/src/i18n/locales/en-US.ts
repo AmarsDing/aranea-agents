@@ -39,6 +39,7 @@ export default {
     loginFailedUnknown: 'Sign-in failed. Please try again',
     backendDown: 'Backend unavailable. Start admin on :8000 and use http://localhost:9001',
     backendHint: 'Dev: UI on :9001 · API/WS proxied to :8000 · account dev/dev',
+    defaultAccountHint: 'Default account: admin / changeme (first-run only; please change password after login)',
     devBypassHint: 'Dev auth bypass is active — you can enter without signing in, or use dev/dev.',
     devModeBTitle: 'Dev mode B (real login)',
     logout: 'Log out',

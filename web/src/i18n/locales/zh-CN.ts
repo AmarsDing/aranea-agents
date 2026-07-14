@@ -39,6 +39,7 @@ export default {
     loginFailedUnknown: '登录失败，请稍后重试',
     backendDown: '后端服务不可用，请确认 admin 已在 :8000 启动，页面使用 http://localhost:9001',
     backendHint: '开发：页面 http://localhost:9001 · API/WS 代理到 :8000 · 账号 dev/dev',
+    defaultAccountHint: '初始账号：admin / changeme（首次启动可用，登录后请尽快修改密码）',
     devBypassHint: '当前为开发免登录模式（auth bypass），可直接进入系统；也可使用 dev/dev 登录。',
     devModeBTitle: '开发模式 B（真实登录）',
     logout: '退出登录',

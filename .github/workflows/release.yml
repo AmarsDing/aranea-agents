@@ -4,47 +4,172 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (如 v1.0.0，不带 v 前缀也行)'
+        required: true
+        default: 'v0.1.0'
 
 permissions:
   contents: write
-  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  test:
-    uses: ./.github/workflows/ci.yml
-
-  release:
-    needs: test
-    runs-on: ubuntu-latest
+  build-windows:
+    name: Build Windows Installer
+    runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+      - name: Determine version
+        id: version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -match 'refs/tags/v(.+)') {
+            $version = $matches[1]
+          } elseif ('${{ github.event.inputs.version }}' -ne '') {
+            $version = '${{ github.event.inputs.version }}' -replace '^v', ''
+          } else {
+            $version = '0.0.0-dev'
+          }
+          Write-Output "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Output "tag=v$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $version"
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          node-version: '20'
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          version: 10
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          # 确保 makensis 在 PATH 中
+          echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
+
+      - name: Download dependencies (PostgreSQL + Redis)
+        shell: pwsh
+        run: |
+          .\scripts\download-deps.ps1 -OutDir build/deps
+
+      - name: Compile pgvector
+        shell: pwsh
+        run: |
+          $pgDir = Resolve-Path "build/deps/postgres"
+          $env:PG_INC = Join-Path $pgDir "include"
+          $env:PG_LIB = Join-Path $pgDir "lib"
+
+          Write-Host "PG_INC: $env:PG_INC"
+          Write-Host "PG_LIB: $env:PG_LIB"
+
+          # 检查是否已有 vector.dll
+          $vectorDll = Join-Path $pgDir "lib\vector.dll"
+          if (Test-Path $vectorDll) {
+            Write-Host "vector.dll already exists, skipping compilation" -ForegroundColor Green
+            return
+          }
+
+          # 克隆 pgvector
+          git clone --depth 1 --branch v0.8.0 https://github.com/pgvector/pgvector.git C:\pgvector
+
+          # 使用 Visual Studio 的 nmake 编译
+          $vsPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          if (-not (Test-Path $vsPath)) {
+            $vsPath = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+          }
+
+          Push-Location C:\pgvector
+          cmd /c "`"$vsPath`" && nmake /F Makefile.win OPTIMIZE=0"
+          if ($LASTEXITCODE -ne 0) {
+            Pop-Location
+            Write-Error "pgvector compilation failed"
+          }
+          Copy-Item "vector.dll" $vectorDll -Force
+          Pop-Location
+
+          Write-Host "vector.dll compiled and copied to $vectorDll" -ForegroundColor Green
+
+      - name: Setup Electron template
+        shell: pwsh
+        run: |
+          # build-electron.mjs requires AraneaAgents-deploy/frontend/ as Electron runtime template.
+          # This directory is not in git (large binaries). Download Electron 43.1.0 for win32-x64.
+          $electronVersion = "43.1.0"
+          $templateDir = "AraneaAgents-deploy\frontend"
+          $zipPath = "$env:TEMP\electron-v$electronVersion-win32-x64.zip"
+
+          if (-not (Test-Path $templateDir)) {
+            Write-Host "Downloading Electron v$electronVersion..."
+            $url = "https://github.com/electron/electron/releases/download/v$electronVersion/electron-v$electronVersion-win32-x64.zip"
+            Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+
+            Write-Host "Extracting to $templateDir..."
+            New-Item -ItemType Directory -Force -Path $templateDir | Out-Null
+            Expand-Archive -Path $zipPath -DestinationPath $templateDir -Force
+            Remove-Item $zipPath -Force
+            Write-Host "Electron template ready at $templateDir"
+          } else {
+            Write-Host "Electron template already exists at $templateDir"
+          }
+
+      - name: Build package
+        shell: pwsh
+        run: |
+          .\scripts\build-package.ps1 `
+            -Version ${{ steps.version.outputs.version }} `
+            -DepsDir build/deps `
+            -SkipDepsDownload `
+            -OutDir release
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
         with:
-          context: .
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}:latest
+          name: AraneaAgents-${{ steps.version.outputs.version }}-win-x64
+          path: release/AraneaAgents-*.exe
+          retention-days: 30
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Aranea-Agents ${{ steps.version.outputs.version }}
+          draft: true
+          generate_release_notes: true
+          files: |
+            release/AraneaAgents-*.exe
+          body: |
+            ## Aranea-Agents ${{ steps.version.outputs.version }}
+
+            ### Windows 安装包
+            - 下载 `AraneaAgents-${{ steps.version.outputs.version }}-win-x64.exe`
+            - 双击安装，点击桌面快捷方式启动
+            - 默认登录：`admin` / `changeme`
+
+            ### 系统要求
+            - Windows 10 64位及以上
+            - 最低 4GB 内存（推荐 8GB+）
+            - 1GB 可用磁盘空间
+
+            ### 内置组件
+            - 后端服务（Go + Kratos + trpc-agent-go）
+            - 前端桌面应用（Vue 3 + Quasar + Electron）
+            - PostgreSQL 17 + pgvector
+            - Redis 5

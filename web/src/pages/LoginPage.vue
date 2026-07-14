@@ -118,6 +118,9 @@
                 :label="t('auth.enterWithoutLogin')"
                 @click="enterWithoutLogin"
               />
+              <div v-if="!authBypass" class="text-caption text-grey-7 text-center q-mt-sm">
+                {{ t('auth.defaultAccountHint') }}
+              </div>
               <div class="text-caption text-grey-7 text-center q-mt-sm">{{ t('auth.backendHint') }}</div>
             </q-card-actions>
           </template>

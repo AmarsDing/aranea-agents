@@ -72,6 +72,7 @@ web/src/services/kratos/
 # 前端依赖与构建
 web/node_modules/
 web/dist/
+web/build/
 web/.quasar/
 web/**/*.tsbuildinfo
 

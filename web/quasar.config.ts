@@ -11,7 +11,6 @@ export default configure(() => {
         browser: ["es2022", "firefox115", "chrome115", "safari14"]
       },
       vueRouterMode: "history",
-      distDir: "dist",
       rollupOptions: {
         external: []
       },

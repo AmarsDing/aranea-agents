@@ -21,7 +21,8 @@
     "e2e:ui": "playwright test --ui",
     "clean-config": "node clean-backend.cjs",
     "inject-backend": "node set-backend.cjs",
-    "serve": "npm run clean-config && npm run inject-backend && quasar dev"
+    "serve": "npm run clean-config && npm run inject-backend && quasar dev",
+    "electron:build": "node scripts/build-electron.mjs --platform=win32 --arch=x64"
   },
   "dependencies": {
     "@types/dagre": "^0.7.54",
@@ -59,6 +60,7 @@
     "@vue/test-utils": "^2.4.11",
     "electron": "^43.1.0",
     "electron-builder": "^26.15.3",
+    "esbuild": "^0.21.0",
     "eslint": "^10.4.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.6",
