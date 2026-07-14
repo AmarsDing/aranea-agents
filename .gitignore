@@ -93,9 +93,9 @@ profile.cov
 /node_modules
 /.gocache
 /workspace
-/data/artifacts
-/data/model-catalog
+/data
 /logs/
 /.dogfood-output/
 /cmd/admin/logs/
+/AraneaAgents-deploy
 

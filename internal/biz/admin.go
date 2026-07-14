@@ -106,14 +106,20 @@ func verifyPassword(stored, plain string) bool {
 // MD5 hash can be replaced. Callers should persist the returned hash via
 // UpdateAdmin. Errors are logged but non-fatal: a failed migration does not
 // block the login that already succeeded.
-func (uc *AdminUsecase) migratePasswordToBcrypt(ctx context.Context, adminID int64, plain string) {
+//
+// IMPORTANT: the full *Admin record (already loaded by LoginByUsername/LoginByEmail)
+// must be passed so UpdateAdmin preserves name/email/access/avatar. Passing only
+// ID+Password would zero out the other fields because adminRepo.UpdateAdmin is a
+// full-field update, not a patch.
+func (uc *AdminUsecase) migratePasswordToBcrypt(ctx context.Context, user *Admin, plain string) {
 	hashed, err := bcrypt.GenerateFromPassword([]byte(plain), bcrypt.DefaultCost)
 	if err != nil {
 		uc.lg.Warn("admin login: bcrypt migration failed",
 			loggateway.StepID("admin.login"), loggateway.Err(err))
 		return
 	}
-	if _, err := uc.writer.UpdateAdmin(ctx, &Admin{ID: adminID, Password: string(hashed)}); err != nil {
+	user.Password = string(hashed)
+	if _, err := uc.writer.UpdateAdmin(ctx, user); err != nil {
 		uc.lg.Warn("admin login: persist bcrypt migration failed",
 			loggateway.StepID("admin.login"), loggateway.Err(err))
 	}
@@ -136,7 +142,7 @@ func (uc *AdminUsecase) LoginByUsername(ctx context.Context, username, password 
 		return nil, ErrInvalidCredentials
 	}
 	if isLegacyMD5Hash(user.Password) {
-		uc.migratePasswordToBcrypt(ctx, user.ID, password)
+		uc.migratePasswordToBcrypt(ctx, user, password)
 	}
 	uc.lg.Info("admin logged in",
 		loggateway.StepID("admin.login"), loggateway.Str("method", "username"), loggateway.Str("admin_name", user.Name))
@@ -160,7 +166,7 @@ func (uc *AdminUsecase) LoginByEmail(ctx context.Context, email, password string
 		return nil, ErrInvalidCredentials
 	}
 	if isLegacyMD5Hash(user.Password) {
-		uc.migratePasswordToBcrypt(ctx, user.ID, password)
+		uc.migratePasswordToBcrypt(ctx, user, password)
 	}
 	uc.lg.Info("admin logged in",
 		loggateway.StepID("admin.login"), loggateway.Str("method", "email"), loggateway.Str("admin_name", user.Name))

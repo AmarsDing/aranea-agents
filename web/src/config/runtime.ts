@@ -9,11 +9,28 @@ type RuntimeConfig = {
 let runtimeConfig: RuntimeConfig = {};
 
 export async function loadRuntimeConfig(): Promise<void> {
+  // Electron production uses file:// protocol — absolute path fetch fails.
+  // Detect and use relative path; fall back to local backend on error.
+  const isFileProtocol = typeof window !== 'undefined' && window.location?.protocol === 'file:';
+  const configPath = isFileProtocol
+    ? './assets/config/runtime-config.json'
+    : '/assets/config/runtime-config.json';
   try {
-    const resp = await fetch('/assets/config/runtime-config.json', { cache: 'no-store' });
-    if (!resp.ok) return;
-    runtimeConfig = await resp.json();
+    const resp = await fetch(configPath, { cache: 'no-store' });
+    if (resp.ok) {
+      runtimeConfig = await resp.json();
+      return;
+    }
   } catch {
+    // fetch failed (e.g. Electron file:// without relative file access)
+  }
+  // Fallback for Electron / standalone: point to local backend
+  if (isFileProtocol) {
+    runtimeConfig = {
+      backendUrl: 'http://127.0.0.1:8000',
+      wsOrigin: 'http://127.0.0.1:8000',
+    };
+  } else {
     runtimeConfig = {};
   }
 }
@@ -65,6 +82,22 @@ export function getWsOrigin(): string {
 /** True when WS uses the same origin as the SPA (Vite proxy); HttpOnly session cookies are sent automatically. */
 export function isWsSameOriginAsPage(): boolean {
   return getWsOrigin() === '';
+}
+
+/**
+ * True when the page is served from a local HTTP origin (127.0.0.1 / localhost / ::1).
+ * In Electron production, the main process starts a local static HTTP server so
+ * the page origin is `http://127.0.0.1:PORT/` — same-site as the backend at
+ * `http://127.0.0.1:8000`. This means SameSite=Lax session cookies are sent
+ * with XHR/fetch/WS requests even though JS cannot read the HttpOnly cookie.
+ */
+export function isLocalHttpOrigin(): boolean {
+  if (typeof window === 'undefined') return false;
+  const { protocol, hostname } = window.location;
+  return (
+    protocol === 'http:' &&
+    (hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '[::1]')
+  );
 }
 
 export function buildWsUrl(params: {

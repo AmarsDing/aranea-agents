@@ -284,6 +284,33 @@ func ddlSessionRevisionDataMigration(ctx context.Context, rawDB *sql.DB, entClie
 	if entClient == nil {
 		return nil
 	}
+	// Skip on fresh databases where the messages table was never created.
+	// Migration 20260902 drops the messages subsystem (superseded by activities);
+	// on a fresh DB the messages table never exists, so there is nothing to backfill.
+	var tableExists bool
+	if d.IsPostgres() {
+		// to_regclass returns NULL when the table doesn't exist; scan into a
+		// nullable string and check for empty/NULL.
+		var regclass *string
+		err := rawDB.QueryRowContext(ctx, "SELECT to_regclass('public.messages')::text").Scan(&regclass)
+		if err != nil || regclass == nil || *regclass == "" {
+			lg.Info("ddlSessionRevisionDataMigration: messages table not found, skipping backfill")
+			return nil
+		}
+		tableExists = true
+	} else {
+		var name string
+		err := rawDB.QueryRowContext(ctx, "SELECT name FROM sqlite_master WHERE type='table' AND name='messages'").Scan(&name)
+		if err != nil {
+			lg.Info("ddlSessionRevisionDataMigration: messages table not found, skipping backfill")
+			return nil
+		}
+		tableExists = name == "messages"
+	}
+	if !tableExists {
+		lg.Info("ddlSessionRevisionDataMigration: messages table not found, skipping backfill")
+		return nil
+	}
 	whereClause := "WHERE session_revision IS NULL OR session_revision = ''"
 	if d.IsPostgres() {
 		whereClause = "WHERE session_revision IS NULL"

@@ -173,7 +173,9 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 		return nil
 	})
 	if graphErr != nil {
-		return result, apierror.BadRequest("PACK_GRAPH_IMPORT", "pack import: Phase 3 (Graphs) 失败: %s", graphErr.Error())
+		// Graphs 失败不阻塞 Teams 导入（独立事务，互不影响）。
+		// 记录为 warning 并继续执行 Phase 4。
+		result.Warnings = append(result.Warnings, fmt.Sprintf("pack import: Phase 3 (Graphs) 失败: %s", graphErr.Error()))
 	}
 
 	// Phase 4: Teams (wrapped in transaction for atomicity)

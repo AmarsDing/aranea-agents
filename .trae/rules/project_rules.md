@@ -525,7 +525,7 @@ internal/data          ← Repo 实现
 
 **检测方式**：代码审查时校验新增事件类型的分级是否正确。
 
-**实现位置**：[activity_event_sequencer.go:311](../internal/agent/activity_event_sequencer.go#L311) `processTask` — async persist via `persistChan` + sync `eventBus.Publish`；失败经 `persistWithRetry` 重试后入 `deadLetter` 环形缓冲。
+**实现位置**：[v2/sequencer.go:304](../internal/agent/v2/sequencer.go#L304) `processTask` — async persist via `persistChan` + sync `eventBus.Publish`；失败经 `persistWithRetry` 重试后入 `deadLetter` 环形缓冲。
 
 ---
 

@@ -80,3 +80,55 @@ func TestApplyTeamRuntimeExecutionOptions_circuitBreaker(t *testing.T) {
 		t.Fatalf("expected retry floor for breaker, got %d", out.Nodes[0].RetryMaxAttempts)
 	}
 }
+
+func TestFinalizeRuntimeGraphConfig_deliverableStateField(t *testing.T) {
+	// Case 1: EnableStateDeliverable=true → StateFields contains deliverable
+	def := Definition{
+		Mode:                    "sequential",
+		EnableStateDeliverable:  true,
+		Members:                 []MemberDef{{AgentID: "a", SortOrder: 1}},
+	}
+	cfg := biz.GraphBuildConfig{
+		Nodes:       []biz.NodeDef{{ID: "member-1", Type: "agent"}},
+		EntryPoint:  "member-1",
+		FinishPoint: "member-1",
+		Edges:       []biz.EdgeDef{{From: "member-1", To: "end"}},
+	}
+	out := finalizeRuntimeGraphConfig(cfg, def, `{"mode":"sequential","enable_state_deliverable":true}`, nil, nil)
+	found := false
+	for _, sf := range out.StateFields {
+		if sf.Name == biz.DeliverableStateKey {
+			found = true
+			if sf.Reducer != biz.ReducerCover {
+				t.Fatalf("deliverable reducer=%q want %q", sf.Reducer, biz.ReducerCover)
+			}
+			if sf.Type != "map[string]any" {
+				t.Fatalf("deliverable type=%q want map[string]any", sf.Type)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected StateFields to contain %q, got: %#v", biz.DeliverableStateKey, out.StateFields)
+	}
+
+	// Case 2: EnableStateDeliverable=false → no deliverable StateField
+	def2 := Definition{Mode: "sequential", Members: []MemberDef{{AgentID: "a", SortOrder: 1}}}
+	out2 := finalizeRuntimeGraphConfig(cfg, def2, `{"mode":"sequential"}`, nil, nil)
+	for _, sf := range out2.StateFields {
+		if sf.Name == biz.DeliverableStateKey {
+			t.Fatalf("expected no deliverable StateField when disabled, got: %#v", sf)
+		}
+	}
+
+	// Case 3: Idempotent — calling twice does not duplicate
+	out3 := finalizeRuntimeGraphConfig(out, def, `{"mode":"sequential","enable_state_deliverable":true}`, nil, nil)
+	count := 0
+	for _, sf := range out3.StateFields {
+		if sf.Name == biz.DeliverableStateKey {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly 1 deliverable StateField after double finalize, got %d", count)
+	}
+}

@@ -31,10 +31,10 @@ let mediaListener: ((e: MediaQueryListEvent) => void) | null = null;
 let initialized = false;
 
 function loadThemeMode(): ThemeMode {
-  if (typeof localStorage === 'undefined') return 'auto';
+  if (typeof localStorage === 'undefined') return 'dark';
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (raw === 'dark' || raw === 'light') return raw;
-  return 'auto';
+  if (raw === 'dark' || raw === 'light' || raw === 'auto') return raw;
+  return 'dark';
 }
 
 function getSystemPrefersDark(): boolean {

@@ -370,22 +370,25 @@ type TaskDeadLetterRepo interface {
 
 ```go
 type Definition struct {
-    Version            int               `json:"version"`
-    Mode               string            `json:"mode"`
-    SynthesizerAgentID string            `json:"synthesizer_agent_id"`
-    Members            []MemberDef       `json:"members"`
-    MaxConcurrency     int               `json:"max_concurrency"`
-    TimeoutSeconds     int               `json:"timeout_seconds"`
-    LoopMaxIterations  int               `json:"loop_max_iterations,omitempty"`
-    RuntimeEngine      string            `json:"runtime_engine,omitempty"`
-    TeamGraphRuntime   bool              `json:"team_graph_runtime,omitempty"`
-    CriticLoop         *CriticLoopConfig `json:"critic_loop,omitempty"`
-    IntentAnchorAgentID string           `json:"intent_anchor_agent_id,omitempty"`
-    Swarm              *SwarmConfigDef   `json:"swarm,omitempty"`
-    MemberTool         *MemberToolDef    `json:"member_tool_config,omitempty"`
-    FailurePolicy      *FailurePolicy    `json:"failure_policy,omitempty"`
+    Version                int               `json:"version"`
+    Mode                   string            `json:"mode"`
+    SynthesizerAgentID     string            `json:"synthesizer_agent_id"`
+    Members                []MemberDef       `json:"members"`
+    MaxConcurrency         int               `json:"max_concurrency"`
+    TimeoutSeconds         int               `json:"timeout_seconds"`
+    LoopMaxIterations      int               `json:"loop_max_iterations,omitempty"`
+    RuntimeEngine          string            `json:"runtime_engine,omitempty"`
+    TeamGraphRuntime       bool              `json:"team_graph_runtime,omitempty"`
+    CriticLoop             *CriticLoopConfig `json:"critic_loop,omitempty"`
+    IntentAnchorAgentID    string            `json:"intent_anchor_agent_id,omitempty"`
+    Swarm                  *SwarmConfigDef   `json:"swarm,omitempty"`
+    MemberTool             *MemberToolDef    `json:"member_tool_config,omitempty"`
+    FailurePolicy          *FailurePolicy    `json:"failure_policy,omitempty"`
+    EnableStateDeliverable bool              `json:"enable_state_deliverable,omitempty"`
 }
 ```
+
+**EnableStateDeliverable**（默认 `false`）：启用后，`finalizeRuntimeGraphConfig` 会在 graph StateSchema 中注入一个 `deliverable` StateField（类型 `map[string]any`，Reducer `Cover`）。成员 agent 可通过 `set_deliverable`/`get_deliverable` 工具读写该字段，实现结构化交付物在 agent 之间的显式传递。
 
 ### 3.7 校验规则
 
@@ -533,6 +536,27 @@ Graph 路径要点：
 - 注入：`internal/tools/trpc/toolsets.go` 在 `cfg.CallAgent == true` 时挂载
 - 开关：`internal/agent/trpc_build.go` 读取 Agent 有效工具集 `biz.ToolKeyCallAgent`
 - 执行：`internal/service/chat_native.go` 实现 `a2a.AgentTurnRunner`
+
+### 6.5 set_deliverable / get_deliverable 工具
+
+用于 Team 成员之间通过 graph state 显式传递结构化交付物。当 Definition `enable_state_deliverable=true` 时启用。
+
+- 定义：`internal/tools/deliverable/tool.go`
+- 注册：`internal/tools/toolset.go` → `Registry()` 中 `deliverable` ToolSet（`EnabledByDefault=false`）
+- State Key：`biz.DeliverableStateKey = "deliverable"`（定义在 `internal/biz/graph.go`）
+- StateField 注入：`internal/team/graph_runtime_config.go` → `ensureDeliverableStateField()`（Reducer=`Cover`，最近写入者覆盖）
+
+**set_deliverable**：
+- 实现 `tool.CallableTool` + `StateDelta` 方法（duck typing 接口，见 `internal/flow/processor/functioncall.go`）
+- `Call()` 验证输入并返回 output；`StateDelta()` 从 resultJSON 提取 data，返回 `{deliverable: jsonBytes}` 供框架合并到 graph state
+- 输入：`{data: map[string]any, note?: string}`
+- 输出：`{written: bool, data: map, keys: int, note?: string}`
+
+**get_deliverable**：
+- 实现 `tool.CallableTool`（只读，无 StateDelta）
+- 通过 `agent.InvocationFromContext(ctx)` → `inv.Session.GetState(biz.DeliverableStateKey)` 读取
+- 输入：`{key?: string}`（空则返回完整 deliverable 对象）
+- 输出：`{data: map, found: bool, key?: string}`
 
 ---
 

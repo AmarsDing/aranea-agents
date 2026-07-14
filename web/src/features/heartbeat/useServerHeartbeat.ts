@@ -3,7 +3,7 @@ import { buildHealthWsUrl } from './api';
 import { getCurrentAdmin } from '../admin/api';
 import { useAuthStore } from '../../stores/auth';
 import { Notify } from 'quasar';
-import { getBackendOrigin, isWsSameOriginAsPage, readAccessTokenCookie } from '../../config/runtime';
+import { getBackendOrigin, isWsSameOriginAsPage, isLocalHttpOrigin, readAccessTokenCookie } from '../../config/runtime';
 import {
   HEARTBEAT_PING_INTERVAL_MS,
   HEARTBEAT_PONG_TIMEOUT_MS,
@@ -120,7 +120,7 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
       return;
     }
 
-    const canOpenWs = import.meta.env.DEV || isWsSameOriginAsPage() || !!readAccessTokenCookie();
+    const canOpenWs = import.meta.env.DEV || isWsSameOriginAsPage() || !!readAccessTokenCookie() || isLocalHttpOrigin();
     if (!canOpenWs) {
       startTokenPoll();
       return;

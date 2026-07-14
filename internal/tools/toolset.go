@@ -25,6 +25,7 @@ import (
 	trpcduckduckgo "trpc.group/trpc-go/trpc-agent-go/tool/duckduckgo"
 	trpcemail "trpc.group/trpc-go/trpc-agent-go/tool/email"
 
+	deliverabletools "aranea-agents/internal/tools/deliverable"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	workingmemory "aranea-agents/internal/tools/working_memory"
 
@@ -372,6 +373,15 @@ func Registry() []*ToolRegistration {
 				Tags:             []string{"memory", "working-memory", "l1"},
 				ToolSetFactory:   func(ctx context.Context) (ToolSet, error) { return workingmemory.ToolSet{}, nil },
 				EnabledByDefault: true,
+				RiskLevel:        "low",
+			},
+			{
+				Name:             "deliverable",
+				Description:      "Cross-agent deliverable handoff tools (set_deliverable, get_deliverable) for structured output passing via graph state",
+				Category:         "team",
+				Tags:             []string{"team", "deliverable", "handoff", "a2a"},
+				ToolSetFactory:   func(ctx context.Context) (ToolSet, error) { return deliverabletools.ToolSet{}, nil },
+				EnabledByDefault: false,
 				RiskLevel:        "low",
 			},
 			{

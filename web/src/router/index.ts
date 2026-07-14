@@ -1,10 +1,14 @@
-import { createRouter, createWebHistory } from 'vue-router';
+import { createRouter, createWebHashHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { routes } from './routes';
 
+// Electron production loads via file:// protocol — history mode doesn't work
+// with file://. Always use hash mode for the desktop app.
+const history = createWebHashHistory();
+
 // Quasar CLI 约定：这里必须 default export 路由实例或工厂函数（见 .quasar/dev-spa/app.js）
 const router = createRouter({
-  history: createWebHistory(),
+  history,
   routes,
 });
 

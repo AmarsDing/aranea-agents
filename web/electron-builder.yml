@@ -1,0 +1,10 @@
+appId: com.aranea.agents
+productName: AraneaAgents
+directories:
+  output: dist/electron
+  app: dist/UnPackaged
+files:
+  - "**/*"
+win:
+  target: portable
+  artifactName: AraneaAgents.exe

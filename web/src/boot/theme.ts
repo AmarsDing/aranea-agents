@@ -21,11 +21,7 @@ export default defineBoot(() => {
   } else if (raw === 'light') {
     Dark.set(false);
   } else {
-    // 'auto' or unset — follow system preference.
-    const prefersDark =
-      typeof window !== 'undefined' && window.matchMedia
-        ? window.matchMedia('(prefers-color-scheme: dark)').matches
-        : false;
-    Dark.set(prefersDark);
+    // Default to dark mode for a better out-of-box experience.
+    Dark.set(true);
   }
 });

@@ -68,6 +68,18 @@ func RunTurnIndexToTurnIDMigration(ctx context.Context, client *ent.Client, d Di
 	if applied {
 		return nil
 	}
+
+	// Skip on fresh databases where the messages table was dropped by migration
+	// 20260902 (superseded by activities). Record as applied so it doesn't retry.
+	hasTable, err := tableExistsWithDialect(ctx, client, lg, "messages", d)
+	if err != nil {
+		return fmt.Errorf("turn_index migration: check messages table: %w", err)
+	}
+	if !hasTable {
+		lg.Info("turn_index migration: messages table not found, skipping", loggateway.StepID("migration.turn_index"))
+		return recordMigrationApplied(ctx, client, d, MigrationTurnIndexToTurnID, migrationNameTurnIndexToTurnID, lg)
+	}
+
 	lg.Info("turn_index -> turn_id/turn_number/seq_in_turn: starting", loggateway.StepID("migration.turn_index"))
 
 	if err := entAddColumnIfMissing(ctx, client, d, "messages", "turn_id",

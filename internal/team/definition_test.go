@@ -54,3 +54,33 @@ func TestParseDefinition_intentAnchorAgentID(t *testing.T) {
 		t.Fatalf("got %q", def.IntentAnchorAgentID)
 	}
 }
+
+func TestParseDefinition_enableStateDeliverable(t *testing.T) {
+	// Explicitly enabled
+	raw := `{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[]}`
+	def, err := ParseDefinition(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !def.EnableStateDeliverable {
+		t.Fatal("expected EnableStateDeliverable=true when JSON sets it")
+	}
+
+	// Default false when omitted
+	def2, err := ParseDefinition(`{"version":1,"mode":"sequential","members":[]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if def2.EnableStateDeliverable {
+		t.Fatal("expected EnableStateDeliverable=false by default")
+	}
+
+	// Explicitly false
+	def3, err := ParseDefinition(`{"version":1,"mode":"sequential","enable_state_deliverable":false,"members":[]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if def3.EnableStateDeliverable {
+		t.Fatal("expected EnableStateDeliverable=false when JSON sets it false")
+	}
+}

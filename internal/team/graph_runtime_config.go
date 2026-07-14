@@ -77,10 +77,30 @@ func appendAdaptiveDests(existing []string, extra ...string) []string {
 	return existing
 }
 
+// ensureDeliverableStateField injects the deliverable StateField when EnableStateDeliverable=true.
+// Idempotent: skips injection if a field with the same name already exists.
+func ensureDeliverableStateField(cfg biz.GraphBuildConfig) biz.GraphBuildConfig {
+	for _, sf := range cfg.StateFields {
+		if sf.Name == biz.DeliverableStateKey {
+			return cfg
+		}
+	}
+	cfg.StateFields = append(cfg.StateFields, biz.StateFieldDef{
+		Name:         biz.DeliverableStateKey,
+		Type:         "map[string]any",
+		Reducer:      biz.ReducerCover,
+		DefaultValue: map[string]any{},
+	})
+	return cfg
+}
+
 func finalizeRuntimeGraphConfig(cfg biz.GraphBuildConfig, def Definition, rawDefinitionJSON string, policy *biz.TeamFailurePolicy, parallelBranchIDs []string) biz.GraphBuildConfig {
 	cfg = biz.FilterVisualizationEdges(cfg)
 	cfg = biz.ApplyFailurePolicy(cfg, policy)
 	cfg = biz.FinalizeGraphFailurePolicy(cfg, policy, parallelBranchIDs)
 	cfg = applyTeamRuntimeExecutionOptions(cfg, def, rawDefinitionJSON)
+	if def.EnableStateDeliverable {
+		cfg = ensureDeliverableStateField(cfg)
+	}
 	return cfg
 }
