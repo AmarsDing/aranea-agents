@@ -160,3 +160,24 @@ export type ModelUsageOverview = {
   quota_dashboard?: UsageQuotaDashboard;
   inefficient_models?: UsageModelInsight[];
 };
+
+// AllModelsBreakdownQuery 是全模型消耗总览表的查询参数（snake_case）。
+// 与 ModelUsageQuery 不同：支持服务端分页/搜索/动态排序，专为前端 QTable 分页 UI 设计。
+export type AllModelsBreakdownQuery = {
+  range?: string; // today | 7d | 30d | month
+  start_date?: string; // YYYY-MM-DD 显式覆盖
+  end_date?: string; // YYYY-MM-DD 显式覆盖
+  provider_code?: string; // 可选 provider 过滤（精确匹配）
+  search?: string; // 可选 LIKE 搜索（provider_code + model_api_id）
+  sort_field?: string; // call_count | total_tokens | total_cost_micro_usd | success_rate | avg_latency_ms
+  sort_dir?: string; // asc | desc
+  page?: number; // 1-based
+  page_size?: number; // 默认 20，最大 100
+};
+
+export type AllModelsBreakdownResult = {
+  items: ModelUsageBreakdownRow[];
+  total: number;
+  page: number;
+  page_size: number;
+};

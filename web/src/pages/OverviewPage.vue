@@ -174,6 +174,8 @@
           <UsageTopAgents :rows="overview?.top_agents ?? []" />
         </div>
 
+        <AllModelsBreakdownTable :range="filters.range || '30d'" :provider-code="filters.provider_code || ''" />
+
         <div class="overview-section">
           <OverviewRunnerMetrics
             :metrics="runnerMetrics"
@@ -222,6 +224,7 @@ import UsageTopAgents from '../components/usage/UsageTopAgents.vue';
 import UsageTopModels from '../components/usage/UsageTopModels.vue';
 import UsageModelCostPie from '../components/usage/UsageModelCostPie.vue';
 import UsageProviderCostPie from '../components/usage/UsageProviderCostPie.vue';
+import AllModelsBreakdownTable from '../components/usage/AllModelsBreakdownTable.vue';
 
 const UsageTrendChart = defineAsyncComponent(() => import('../components/usage/UsageTrendChart.vue'));
 

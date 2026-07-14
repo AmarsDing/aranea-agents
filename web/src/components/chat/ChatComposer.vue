@@ -90,11 +90,11 @@
           round
           size="sm"
           :icon="compactMode ? 'unfold_more' : 'unfold_less'"
-          :aria-label="compactMode ? t('chat.expandInput', '展开输入') : t('chat.compactInput', '精简输入')"
+          :aria-label="compactToggleLabel"
           class="composer-compact-toggle"
           @click="compactMode = !compactMode"
         >
-          <q-tooltip>{{ compactMode ? t('chat.expandInput', '展开输入') : t('chat.compactInput', '精简输入') }}</q-tooltip>
+          <q-tooltip>{{ compactToggleLabel }}</q-tooltip>
         </q-btn>
 
         <!-- 附件缩略图（输入框上方，精简模式隐藏） -->
@@ -314,6 +314,11 @@ const { t } = useI18n();
 
 /** 精简模式：只保留输入框 + 切换按钮，隐藏选择器/附件/底部工具条，通过回车发送 */
 const compactMode = ref(false);
+
+/** 切换按钮的可访问性标签与提示文案（统一来源，避免模板中重复） */
+const compactToggleLabel = computed(() =>
+  compactMode.value ? t('chat.expandInput', '展开输入') : t('chat.compactInput', '精简输入'),
+);
 
 const contextPressureLevel = computed<'warning' | 'critical' | null>(() => {
   const ratio = props.contextRatio ?? 0;

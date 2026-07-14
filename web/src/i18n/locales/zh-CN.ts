@@ -1516,6 +1516,10 @@ export default {
     metricForecast: '预计月底',
     metricAgents: '个 Agent',
     metricNew: '新增',
+    allModelsTitle: '全模型消耗总览',
+    allModelsCaption: '支持搜索、排序、分页的完整模型清单',
+    searchPlaceholder: '搜索 provider / model',
+    allModelsEmpty: '当前筛选条件下暂无模型用量数据',
   },
   spirit: {
     stepsComplete: '{completed} / {total} 步骤完成',

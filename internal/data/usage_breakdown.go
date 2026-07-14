@@ -10,8 +10,8 @@ import (
 )
 
 // breakdownQueryWhere builds the WHERE clause for the all-models breakdown query.
-// It differs from usageDailyWhere: provider_code uses raw equality (not alias expansion),
-// and supports an optional LIKE search across provider_code + model_api_id.
+// Provider filter uses usageProviderWhere (alias expansion) for consistency with usageDailyWhere.
+// Supports an optional LIKE search across provider_code + model_api_id.
 func breakdownQueryWhere(query biz.UsageBreakdownQuery) (string, []any) {
 	parts := []string{sqlUsageBillableKind}
 	args := []any{}
@@ -24,8 +24,9 @@ func breakdownQueryWhere(query biz.UsageBreakdownQuery) (string, []any) {
 		args = append(args, query.EndDate)
 	}
 	if query.ProviderCode != "" {
-		parts = append(parts, "provider_code = ?")
-		args = append(args, query.ProviderCode)
+		clause, provArgs := usageProviderWhere(query.ProviderCode)
+		parts = append(parts, clause)
+		args = append(args, provArgs...)
 	}
 	if s := strings.TrimSpace(query.Search); s != "" {
 		parts = append(parts, "(provider_code LIKE ? OR model_api_id LIKE ?)")
@@ -71,6 +72,11 @@ func breakdownSortClause(field, dir string) string {
 // models in the daily usage table. Unlike ListTopModelUsageFromDaily (which is hard-capped
 // at 200 rows and sorted by cost), this method supports server-side pagination, dynamic
 // sorting, and LIKE search — suitable for a full-table overview UI.
+//
+// Known limitation: mergeUsageBreakdownByAlias is applied AFTER pagination, so when
+// multiple raw rows share a canonical alias (e.g., "openai" + "openai-proxy" → "openai"),
+// the merged page may show fewer rows than pageSize. Total reflects raw (pre-merge) count.
+// Acceptable for v1 because alias collisions are rare in practice.
 func (r *usageRepo) ListAllModelsBreakdown(ctx context.Context, query biz.UsageBreakdownQuery) (biz.UsageBreakdownResult, error) {
 	where, args := breakdownQueryWhere(query)
 	limit, offset, pageOut, pageSizeOut := shared.PageToLimitOffset(query.Page, query.PageSize)

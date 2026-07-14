@@ -1511,6 +1511,10 @@ export default {
     metricForecast: 'Est. EOM',
     metricAgents: 'agents',
     metricNew: 'New',
+    allModelsTitle: 'All Models Consumption',
+    allModelsCaption: 'Full model list with search, sort, and pagination',
+    searchPlaceholder: 'Search provider / model',
+    allModelsEmpty: 'No model usage data for current filters',
   },
   spirit: {
     stepsComplete: '{completed} / {total} steps completed',

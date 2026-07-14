@@ -10,6 +10,8 @@ import type {
   UsageQuery as KUsageQuery,
   ListUsageTrendsResponse,
   ListUsageEventsResponse,
+  ListAllModelsBreakdownRequest as KBreakdownReq,
+  ListAllModelsBreakdownResponse as KBreakdownResp,
 } from '../../services/kratos/usage/v1/index';
 import type {
   ModelTokenUsageEvent,
@@ -18,6 +20,8 @@ import type {
   ModelUsageQuery,
   ModelUsageTrendPoint,
   ModelUsageSummary,
+  AllModelsBreakdownQuery,
+  AllModelsBreakdownResult,
 } from './types';
 
 export type {
@@ -27,6 +31,8 @@ export type {
   ModelUsageQuery,
   ModelUsageTrendPoint,
   ModelUsageSummary,
+  AllModelsBreakdownQuery,
+  AllModelsBreakdownResult,
 } from './types';
 
 const usage = createUsageService();
@@ -391,5 +397,32 @@ export async function purgeUsageEvents(retainDays: number): Promise<{ deleted_co
   const raw = await usage.PurgeUsageEvents({ retainDays });
   return {
     deleted_count: num((raw as Record<string, unknown>).deletedCount ?? (raw as Record<string, unknown>).deleted_count),
+  };
+}
+
+/**
+ * listAllModelsBreakdown —— 全模型消耗总览表的服务端分页查询。
+ * 与 listTopModels (top-N capped) 不同：支持 LIKE 搜索 + 动态排序 + 分页。
+ * 后端通过 GET /v1/usage/all-models-breakdown 实现。
+ */
+export async function listAllModelsBreakdown(query: AllModelsBreakdownQuery = {}): Promise<AllModelsBreakdownResult> {
+  const req: KBreakdownReq = {
+    range: query.range,
+    startDate: query.start_date,
+    endDate: query.end_date,
+    providerCode: query.provider_code,
+    search: query.search,
+    sortField: query.sort_field,
+    sortDir: query.sort_dir,
+    page: query.page,
+    pageSize: query.page_size,
+  };
+  const raw = (await usage.ListAllModelsBreakdown(req)) as KBreakdownResp;
+  const items = Array.isArray(raw.items) ? raw.items.map(breakdownFromUnknown) : [];
+  return {
+    items,
+    total: num(raw.total),
+    page: num(raw.page),
+    page_size: num(raw.pageSize),
   };
 }

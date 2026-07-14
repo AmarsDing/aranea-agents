@@ -247,6 +247,7 @@
   "components/usage/UsageTopAgents.vue": 6,
   "components/usage/UsageTopModels.vue": 4,
   "components/usage/UsageTrendChart.vue": 6,
+  "components/usage/allModelsBreakdownTableUi.ts": 7,
   "components/usage/usageAnomalyTableUi.ts": 3,
   "composables/useGlobalInboundNotifications.ts": 5,
   "config/chatOptions.ts": 5,
