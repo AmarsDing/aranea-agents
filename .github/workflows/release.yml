@@ -198,15 +198,31 @@ jobs:
         shell: pwsh
         run: |
           Push-Location web
-          & pnpm install --frozen-lockfile 2>$null
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "pnpm install with frozen-lockfile failed, retrying..." -ForegroundColor Yellow
+          Write-Host "=== Node/pnpm versions ==="
+          & node --version
+          & pnpm --version
+          Write-Host "=== pnpm install (frozen-lockfile) ==="
+          & pnpm install --frozen-lockfile
+          $installExit = $LASTEXITCODE
+          Write-Host "pnpm install exit: $installExit"
+          if ($installExit -ne 0) {
+            Write-Host "=== pnpm install (retry without frozen-lockfile) ===" -ForegroundColor Yellow
             & pnpm install
+            $installExit = $LASTEXITCODE
+            Write-Host "pnpm install retry exit: $installExit"
+            if ($installExit -ne 0) {
+              Pop-Location
+              Write-Error "pnpm install failed (exit $installExit)"
+              exit 1
+            }
           }
+          Write-Host "=== pnpm build ==="
           & pnpm build
-          if ($LASTEXITCODE -ne 0) {
+          $buildExit = $LASTEXITCODE
+          Write-Host "pnpm build exit: $buildExit"
+          if ($buildExit -ne 0) {
             Pop-Location
-            Write-Error "Frontend build failed (exit $LASTEXITCODE)"
+            Write-Error "Frontend build failed (exit $buildExit)"
             exit 1
           }
           Pop-Location
@@ -214,7 +230,7 @@ jobs:
             Write-Error "web/dist/index.html not found after pnpm build"
             exit 1
           }
-          Write-Host "Frontend built: web/dist/"
+          Write-Host "Frontend built: web/dist/" -ForegroundColor Green
 
       - name: Package Electron app
         shell: pwsh
