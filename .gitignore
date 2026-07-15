@@ -66,8 +66,8 @@ bin/
 # wire（已提交，CI 构建需要）
 # **/wire_gen.go
 
-# protoc → 前端 TS 客户端（保留 web/src/services 下手写文件）
-web/src/services/kratos/
+# protoc → 前端 TS 客户端（CI 构建需要，已提交到仓库）
+# web/src/services/kratos/
 
 # 前端依赖与构建
 web/node_modules/
