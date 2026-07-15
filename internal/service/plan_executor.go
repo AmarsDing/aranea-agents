@@ -359,7 +359,26 @@ func newDagRun(pe *PlanExecutor, board biz.PlanBoard) *dagRun {
 //   - ctx.Err() != nil  → Interrupted（被取消）
 //   - 任一 step Failed/PartialFailure → Failed
 //   - 否则 → Completed
+//
+// 2026-07-15 P0-2 修复（fail-closed DAG validation）：在 dispatch 之前
+// 校验 DAG（环检测 + 悬挂依赖），失败时强制标 PlanBoard/GraphStage 为
+// Failed 并返回 error。之前 run() 只派发根 step，环图无根 → wg=0 →
+// 返回 nil → publishPlanBoardTerminal 标 Completed，导致 cyclic PlanBoard
+// 静默成功（审计报告 P0-2）。
 func (r *dagRun) run(ctx context.Context) error {
+	// P0-2: fail-closed DAG validation. Reject cyclic or malformed DAGs
+	// before dispatching any step. Without this guard, a cyclic DAG has
+	// no root steps → WaitGroup stays 0 → run() returns nil and the
+	// board is silently marked Completed without executing anything.
+	if err := r.validateDAG(); err != nil {
+		r.pe.lg.Error("DAG 校验失败，拒绝执行（fail-closed）",
+			loggateway.Str("plan_board_id", r.board.ID),
+			loggateway.Str("task_id", r.board.TaskID),
+			loggateway.Err(err))
+		r.publishPlanBoardFailed(ctx, err.Error())
+		r.publishGraphStageFailed(ctx, err.Error())
+		return err
+	}
 	// Dispatch root steps (empty DependsOn). Add to WaitGroup before
 	// starting the goroutine to guarantee Wait sees the correct count.
 	for i := range r.board.Steps {
@@ -556,6 +575,166 @@ func (r *dagRun) publishGraphStageTerminal(ctx context.Context) {
 		loggateway.Str("graph_stage_id", r.graphStageID),
 		loggateway.Str("plan_board_id", r.board.ID),
 		loggateway.Str("status", string(newStatus)))
+}
+
+// validateDAG 校验 PlanBoard 的 DAG 是否合法：
+//  1. 无悬挂依赖：每个 step 的 DependsOn 引用的 stepID 必须存在于 board.Steps
+//  2. 无环：Kahn 拓扑排序后所有节点都被访问（visited == len(steps)）
+//
+// 2026-07-15 P0-2 修复（审计报告 P0-2）：之前 run() 只派发根 step，环图无根
+// → wg=0 → 返回 nil → publishPlanBoardTerminal 标 Completed，导致 cyclic
+// PlanBoard 静默成功。此函数在 dispatch 前强制校验，fail-closed。
+func (r *dagRun) validateDAG() error {
+	// 1. 悬挂依赖检测：每个 DependsOn 必须指向已存在的 step。
+	for i := range r.board.Steps {
+		s := &r.board.Steps[i]
+		for _, dep := range s.DependsOn {
+			if _, ok := r.stepsByID[dep]; !ok {
+				return fmt.Errorf("step %s depends on non-existent step %q (dangling dependency)", s.ID, dep)
+			}
+		}
+	}
+	// 2. 环检测（Kahn 拓扑排序）。
+	// 入度 = step.DependsOn 的长度（每条入边代表一个前置依赖）。
+	inDegree := make(map[string]int, len(r.board.Steps))
+	for i := range r.board.Steps {
+		s := &r.board.Steps[i]
+		inDegree[s.ID] = len(s.DependsOn)
+	}
+	// 队列初始化：入度为 0 的节点（根 step）。
+	queue := make([]string, 0, len(r.board.Steps))
+	for i := range r.board.Steps {
+		s := &r.board.Steps[i]
+		if inDegree[s.ID] == 0 {
+			queue = append(queue, s.ID)
+		}
+	}
+	// BFS：每次出队一个节点，将其所有 dependents 的入度 -1；入度归 0 入队。
+	visited := 0
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		visited++
+		for _, depID := range r.dependents[cur] {
+			inDegree[depID]--
+			if inDegree[depID] == 0 {
+				queue = append(queue, depID)
+			}
+		}
+	}
+	if visited != len(r.board.Steps) {
+		// 入度仍 > 0 的节点构成环（或环的下游）。
+		var cyclicNodes []string
+		for i := range r.board.Steps {
+			s := &r.board.Steps[i]
+			if inDegree[s.ID] > 0 {
+				cyclicNodes = append(cyclicNodes, s.ID)
+			}
+		}
+		return fmt.Errorf("cyclic dependency detected: steps %v form a cycle (visited %d of %d steps)", cyclicNodes, visited, len(r.board.Steps))
+	}
+	return nil
+}
+
+// publishPlanBoardFailed 强制将 PlanBoard 标记为 Failed 并发布事件。
+// 用于 DAG 校验失败时的 fail-closed 路径。
+//
+// 2026-07-15 P0-2 修复：publishPlanBoardTerminal 基于 step 状态扫描判定
+// terminal 事件，环图所有 step 都是 Pending 会走 default 分支标 Completed。
+// 此函数绕过 step 状态扫描，直接用状态机强制 Fail：
+//   - board.Status == Planning → PlanBoardEventFailEarly（Planning → Failed）
+//   - board.Status == Executing → PlanBoardEventFail（Executing → Failed）
+//   - 其他（已 terminal 等）→ 跳过，不覆盖已有 terminal 状态
+func (r *dagRun) publishPlanBoardFailed(ctx context.Context, reason string) {
+	var event biz.PlanBoardEvent
+	switch r.board.Status {
+	case biz.PlanStatusPlanning:
+		event = biz.PlanBoardEventFailEarly
+	case biz.PlanStatusExecuting:
+		event = biz.PlanBoardEventFail
+	default:
+		// 已是 terminal 或其他状态，不强制覆盖。
+		r.pe.lg.Warn("publishPlanBoardFailed: skip (board already terminal or unknown state)",
+			loggateway.Str("plan_board_id", r.board.ID),
+			loggateway.Str("status", string(r.board.Status)))
+		return
+	}
+	newStatus, err := r.pe.pbSM.Transition(r.board.Status, event)
+	if err != nil {
+		r.pe.lg.Warn("publishPlanBoardFailed: invalid transition (skip)",
+			loggateway.Str("plan_board_id", r.board.ID),
+			loggateway.Str("from_status", string(r.board.Status)),
+			loggateway.Str("event", string(event)),
+			loggateway.Err(err))
+		return
+	}
+	now := time.Now().UTC()
+	r.board.Status = newStatus
+	r.board.CompletedAt = &now
+	r.board.Version++
+	if _, err := r.pe.repos.UpsertPlanBoard(ctx, r.board); err != nil {
+		r.pe.lg.Warn("publishPlanBoardFailed: upsert plan_board failed",
+			loggateway.Str("plan_board_id", r.board.ID),
+			loggateway.Err(err))
+	}
+	r.pe.seq.Publish(ctx, biz.NewPlanBoardUpdatedEvent(r.board))
+	r.pe.lg.Info("PlanBoard 强制 Failed（DAG 校验失败）",
+		loggateway.Str("plan_board_id", r.board.ID),
+		loggateway.Str("status", string(newStatus)),
+		loggateway.Str("reason", reason))
+}
+
+// publishGraphStageFailed 强制将 GraphStage 标记为 Failed 并发布事件。
+// 用于 DAG 校验失败时的 fail-closed 路径。
+//
+// 2026-07-15 P0-2 修复：与 publishPlanBoardFailed 同理，绕过 step 状态扫描。
+// 仅在 graphStageID 非空（initGraphStage 成功创建了 GraphStage）时发布。
+func (r *dagRun) publishGraphStageFailed(ctx context.Context, reason string) {
+	if r.graphStageID == "" {
+		return
+	}
+	current, err := r.pe.repos.GetGraphStageByPlanBoard(ctx, r.board.ID)
+	if err != nil || current.ID == "" {
+		r.pe.lg.Warn("publishGraphStageFailed: failed to load current GraphStage (skip)",
+			loggateway.Str("plan_board_id", r.board.ID),
+			loggateway.Str("graph_stage_id", r.graphStageID),
+			loggateway.Err(err))
+		return
+	}
+	// 状态机校验：from=Running → Failed。若 current.Status 已是 terminal，
+	// Transition 返回错误，跳过（不覆盖已有 terminal 状态）。
+	newStatus, err := r.pe.gsSM.Transition(current.Status, biz.GraphStageEventFail)
+	if err != nil {
+		r.pe.lg.Warn("publishGraphStageFailed: invalid transition (skip)",
+			loggateway.Str("graph_stage_id", r.graphStageID),
+			loggateway.Str("from_status", string(current.Status)),
+			loggateway.Err(err))
+		return
+	}
+	now := time.Now().UTC()
+	gs := biz.GraphStage{
+		ID:          r.graphStageID,
+		TaskID:      r.board.TaskID,
+		TurnID:      r.board.TurnID,
+		SessionID:   r.board.SessionID,
+		PlanBoardID: r.board.ID,
+		Status:      newStatus,
+		StartedAt:   current.StartedAt,
+		CompletedAt: &now,
+		Seq:         current.Seq,
+		Version:     current.Version + 1,
+	}
+	if _, err := r.pe.repos.UpsertGraphStage(ctx, gs); err != nil {
+		r.pe.lg.Warn("publishGraphStageFailed: upsert graph_stage failed",
+			loggateway.Str("graph_stage_id", r.graphStageID),
+			loggateway.Str("plan_board_id", r.board.ID),
+			loggateway.Err(err))
+	}
+	r.pe.seq.Publish(ctx, biz.NewGraphStageFailedEvent(gs))
+	r.pe.lg.Info("GraphStage 强制 Failed（DAG 校验失败）",
+		loggateway.Str("graph_stage_id", r.graphStageID),
+		loggateway.Str("plan_board_id", r.board.ID),
+		loggateway.Str("reason", reason))
 }
 
 // dispatch sends a single step to the TeamOrchestrator and listens for its

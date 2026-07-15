@@ -3,6 +3,7 @@ package v2
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -66,10 +67,12 @@ type publishTask struct {
 	event      biz.Event
 	persist    bool
 	enqueuedAt time.Time
+	flushCh    chan struct{} // non-nil for flush markers
 }
 
 type persistItem struct {
-	event biz.Event
+	event   biz.Event
+	flushCh chan struct{} // non-nil for flush markers
 }
 
 type config struct {
@@ -198,26 +201,41 @@ func (s *Sequencer) shouldPersist(e biz.Event) bool {
 // Flush blocks until all queued events are processed (publish + persist).
 // Mainly for tests; production callers should rely on Close() for shutdown.
 //
-// Note: also waits deltaBatchInterval + small buffer so any pending streaming
-// event held in publishLoop's local variable can be flushed by its timer.
+// Uses a flush marker enqueued into publishQueue: the marker is processed
+// only after all prior tasks (including bus.Publish) have completed,
+// establishing a happens-before relationship that eliminates data races
+// between publishLoop and test assertions.
 func (s *Sequencer) Flush(ctx context.Context) error {
-	done := make(chan struct{})
-	go func() {
-		// Wait until publishQueue empties.
-		for len(s.publishQueue) > 0 {
-			time.Sleep(time.Millisecond)
-		}
-		// Allow pending streaming timer to fire.
-		time.Sleep(s.deltaBatchInterval + time.Millisecond*2)
-		// Wait until persistChan empties.
-		for len(s.persistChan) > 0 {
-			time.Sleep(time.Millisecond)
-		}
-		close(done)
-	}()
-	select {
-	case <-done:
+	if s.closed.Load() {
 		return nil
+	}
+	flushCh := make(chan struct{})
+	select {
+	case s.publishQueue <- publishTask{flushCh: flushCh, enqueuedAt: time.Now()}:
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(5 * time.Second):
+		return errors.New("sequencer flush: publish queue full")
+	}
+	select {
+	case <-flushCh:
+		// All publish tasks processed. Send persist flush marker.
+		persistFlushCh := make(chan struct{})
+		select {
+		case s.persistChan <- persistItem{flushCh: persistFlushCh}:
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(5 * time.Second):
+			return errors.New("sequencer flush: persist queue full")
+		}
+		select {
+		case <-persistFlushCh:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(5 * time.Second):
+			return errors.New("sequencer flush: persist timed out")
+		}
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-time.After(5 * time.Second):
@@ -245,6 +263,21 @@ func (s *Sequencer) publishLoop() {
 					s.flushStreaming(pendingStreaming)
 				}
 				return
+			}
+			// Flush marker: all prior tasks have been fully processed.
+			// Flush any pending streaming event, then signal the caller.
+			if task.flushCh != nil {
+				if pendingStreaming != nil {
+					if pendingTimer != nil {
+						pendingTimer.Stop()
+					}
+					s.flushStreaming(pendingStreaming)
+					pendingStreaming = nil
+					pendingDone = nil
+					pendingTimer = nil
+				}
+				close(task.flushCh)
+				continue
 			}
 			// If we have a pending streaming event and the new task is NOT a
 			// mergeable streaming chunk, flush pending first.
@@ -300,12 +333,39 @@ func (s *Sequencer) flushStreaming(ev *biz.StepStreamingEvent) {
 	s.bus.Publish(ctx, ev)
 }
 
-// processTask handles a non-mergeable event: persist (async) + bus publish (sync).
+// processTask handles a non-mergeable event: persist + bus publish.
+//
+// P1-04 fix: terminal events (completed/failed/cancelled/interrupted/skipped)
+// use write-before-publish (WBPF) — a single synchronous persist attempt is
+// made BEFORE the bus publish. If the sync persist succeeds, the DB is
+// guaranteed to have the terminal state before the frontend receives it. If
+// the sync persist fails, the event falls back to the async persist path
+// (with retries) and is still published — this is a best-effort WBPF that
+// avoids leaving the frontend stuck in a non-terminal state when the DB is
+// temporarily unavailable.
+//
+// Non-terminal events (created/updated/streaming) keep the original async
+// persist + sync publish flow for low latency.
 func (s *Sequencer) processTask(task publishTask) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	// 1. Async persist (skip if streaming — but streaming never reaches here).
 	if task.persist {
+		if isTerminalEventKind(task.event.EventKind()) {
+			// P1-04: WBPF for terminal events — try synchronous persist first.
+			persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			_, err := persistAction(persistCtx, s.repoSet, s.activityRepo, task.event)
+			persistCancel()
+			if err == nil {
+				// Sync persist succeeded — safe to publish.
+				s.bus.Publish(ctx, task.event)
+				return
+			}
+			// Sync persist failed — log and fall through to async retry + publish.
+			s.lg.Warn("terminal event sync persist failed, falling back to async",
+				loggateway.Str("kind", string(task.event.EventKind())),
+				loggateway.Err(err))
+		}
+		// Async persist (non-terminal or terminal fallback).
 		select {
 		case s.persistChan <- persistItem{event: task.event}:
 		default:
@@ -315,14 +375,31 @@ func (s *Sequencer) processTask(task publishTask) {
 			s.deadLetter.Push(task.event)
 		}
 	}
-	// 2. Sync bus publish.
+	// Sync bus publish.
 	s.bus.Publish(ctx, task.event)
+}
+
+// isTerminalEventKind returns true for event kinds that represent a terminal
+// lifecycle state (completed/failed/cancelled/interrupted/skipped). These
+// events require write-before-publish to guarantee the DB has the terminal
+// state before the frontend receives it.
+func isTerminalEventKind(kind biz.EventKind) bool {
+	k := string(kind)
+	return strings.HasSuffix(k, ".completed") ||
+		strings.HasSuffix(k, ".failed") ||
+		strings.HasSuffix(k, ".cancelled") ||
+		strings.HasSuffix(k, ".interrupted") ||
+		strings.HasSuffix(k, ".skipped")
 }
 
 // persistLoop consumes persistChan with retry + dead-letter.
 func (s *Sequencer) persistLoop() {
 	defer s.persistWG.Done()
 	for item := range s.persistChan {
+		if item.flushCh != nil {
+			close(item.flushCh)
+			continue
+		}
 		s.persistWithRetry(item.event)
 	}
 }

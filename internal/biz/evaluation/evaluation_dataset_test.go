@@ -57,6 +57,10 @@ func (m *dsMockRepo) InsertCases(_ context.Context, _ []Case) error {
 	return nil
 }
 
+func (m *dsMockRepo) InsertCasesWithCountUpdate(_ context.Context, _ string, _ []Case) error {
+	return nil
+}
+
 func (m *dsMockRepo) ListCases(_ context.Context, _ string) ([]Case, error) {
 	return nil, nil
 }

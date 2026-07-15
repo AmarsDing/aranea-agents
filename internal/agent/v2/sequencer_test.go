@@ -134,10 +134,10 @@ func TestSequencer_PublishTaskCreated(t *testing.T) {
 		t.Fatalf("Flush: %v", err)
 	}
 	rs.mu.Lock()
+	defer rs.mu.Unlock()
 	if len(rs.tasks) != 1 || rs.tasks[0].ID != "task-1" {
 		t.Fatalf("expected 1 task persisted, got %+v", rs.tasks)
 	}
-	rs.mu.Unlock()
 
 	bus.mu.Lock()
 	defer bus.mu.Unlock()
@@ -377,6 +377,8 @@ func TestSequencer_PublishActivityBridgeEvent_NoUpserter(t *testing.T) {
 	}
 
 	// bus still receives the event
+	bus.mu.Lock()
+	defer bus.mu.Unlock()
 	if len(bus.pub) != 1 {
 		t.Errorf("expected 1 bus publish, got %d", len(bus.pub))
 	}
@@ -423,4 +425,129 @@ func TestSequencer_PublishActivityBridgeEvent_SeqMonotonic(t *testing.T) {
 			t.Errorf("persisted[%d].Seq = %d, want %d", i, a.Seq, i+1)
 		}
 	}
+}
+
+// TestSequencer_TerminalEventWBPF verifies P1-04 fix: terminal events
+// (task.completed) are persisted via the write-before-publish path. A terminal
+// event should be persisted and published correctly.
+//
+// The WBPF ordering guarantee (persist before publish) is verified by code
+// inspection of processTask — the sync persistAction call precedes bus.Publish
+// in the same goroutine, with no async gap.
+func TestSequencer_TerminalEventWBPF(t *testing.T) {
+	t.Parallel()
+
+	rs := &fakeRepoSet{}
+	bus := &fakeBus{}
+	s := NewSequencer(rs, bus, loggateway.NewNoop(),
+		WithPublishBuffer(16),
+		WithPersistBuffer(16),
+		WithDeltaBatchInterval(time.Millisecond*4),
+	)
+	t.Cleanup(func() { _ = s.Close() })
+
+	ctx := context.Background()
+	task := biz.Task{
+		ID:        "task-wbpf",
+		SessionID: "sess-1",
+		Status:    biz.TaskStatusCompleted,
+		Version:   2,
+	}
+	evt := biz.NewTaskCompletedEvent(task)
+	s.Publish(ctx, evt)
+
+	if err := s.Flush(ctx); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	// Verify the task was persisted exactly once (WBPF sync persist succeeds,
+	// so the async retry path is NOT taken — no double persist).
+	rs.mu.Lock()
+	if len(rs.tasks) != 1 {
+		rs.mu.Unlock()
+		t.Fatalf("expected 1 task persisted (WBPF sync), got %d", len(rs.tasks))
+	}
+	if rs.tasks[0].ID != "task-wbpf" || rs.tasks[0].Status != biz.TaskStatusCompleted {
+		rs.mu.Unlock()
+		t.Errorf("persisted task = %+v, want task-wbpf/completed", rs.tasks[0])
+	}
+	rs.mu.Unlock()
+
+	// Verify the event was published.
+	bus.mu.Lock()
+	defer bus.mu.Unlock()
+	if len(bus.pub) != 1 {
+		t.Fatalf("expected 1 event published, got %d", len(bus.pub))
+	}
+	if bus.pub[0].EventKind() != biz.EventKindTaskCompleted {
+		t.Errorf("published event kind = %s, want task.completed", bus.pub[0].EventKind())
+	}
+}
+
+// TestSequencer_TerminalEventWBPF_FallbackOnPersistError verifies P1-04 fix:
+// when the sync persist for a terminal event fails, the event falls back to
+// the async persist path and is still published to the bus (best-effort WBPF).
+func TestSequencer_TerminalEventWBPF_FallbackOnPersistError(t *testing.T) {
+	t.Parallel()
+
+	rs := &errorThenSuccessRepoSet{}
+	bus := &fakeBus{}
+	s := NewSequencer(rs, bus, loggateway.NewNoop(),
+		WithPublishBuffer(16),
+		WithPersistBuffer(16),
+		WithDeltaBatchInterval(time.Millisecond*4),
+	)
+	t.Cleanup(func() { _ = s.Close() })
+
+	ctx := context.Background()
+	task := biz.Task{
+		ID:        "task-fallback",
+		SessionID: "sess-1",
+		Status:    biz.TaskStatusFailed,
+		Version:   2,
+	}
+	evt := biz.NewTaskFailedEvent(task)
+	s.Publish(ctx, evt)
+
+	if err := s.Flush(ctx); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	// Give the async persist loop time to drain.
+	time.Sleep(100 * time.Millisecond)
+
+	// The sync persist failed (first call returns error), so the async path
+	// was taken. The async persist should succeed (second call).
+	rs.mu.Lock()
+	if rs.persistCount < 2 {
+		rs.mu.Unlock()
+		t.Fatalf("expected >=2 persist attempts (sync fail + async retry), got %d", rs.persistCount)
+	}
+	rs.mu.Unlock()
+
+	// The event should still be published.
+	bus.mu.Lock()
+	defer bus.mu.Unlock()
+	if len(bus.pub) == 0 {
+		t.Fatalf("no event published (should still publish on sync persist failure)")
+	}
+	if bus.pub[0].EventKind() != biz.EventKindTaskFailed {
+		t.Errorf("published event kind = %s, want task.failed", bus.pub[0].EventKind())
+	}
+}
+
+// errorThenSuccessRepoSet fails the first UpsertTask call, then succeeds.
+type errorThenSuccessRepoSet struct {
+	fakeRepoSet
+	persistCount int
+}
+
+func (f *errorThenSuccessRepoSet) UpsertTask(ctx context.Context, t biz.Task) (biz.Task, error) {
+	f.mu.Lock()
+	f.persistCount++
+	count := f.persistCount
+	f.mu.Unlock()
+	if count == 1 {
+		return biz.Task{}, errors.New("simulated persist failure")
+	}
+	return f.fakeRepoSet.UpsertTask(ctx, t)
 }

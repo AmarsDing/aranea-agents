@@ -21,7 +21,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onUnmounted } from 'vue';
-import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
+import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import { useLocateTeamStage } from '../../../features/chat/composables/useLocateTeamStage';
 import type { TeamStage } from '../../../features/chat/v2Types';
 import TeamRunCard from './TeamRunCard.vue';
@@ -31,7 +31,7 @@ defineEmits<{
   'pause-agent': [sessionId: string];
   'inject-agent': [payload: { sessionId: string; message: string }];
 }>();
-const store = useChatActivityStore();
+const store = useActivityQueries();
 const teamRuns = computed(() => store.getTeamStageTeamRuns(props.teamStage.ID));
 
 // P1 #5: GraphNode 点击 → 高亮对应 TeamStagePanel。

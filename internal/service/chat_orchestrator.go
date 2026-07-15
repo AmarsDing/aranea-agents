@@ -549,6 +549,18 @@ func (o *ChatOrchestrator) HasActiveRunner(sessionID string) bool {
 
 // CancelRun stops the active run for a session.
 func (o *ChatOrchestrator) CancelRun(ctx context.Context, sessionID string) bool {
+	// P0-01 fix: verify session ownership before cancelling.
+	authUserID := ctxuser.FromContext(ctx)
+	if authUserID != ctxuser.DefaultUserID {
+		if sess, err := o.td().Sessions.Get(ctx, sessionID); err == nil && sess.UserID != "" && authUserID != sess.UserID {
+			o.lg().Warn("cancel denied: session ownership mismatch",
+				loggateway.StepID("chat.cancel_ownership"),
+				loggateway.SessionID(sessionID),
+				loggateway.Str("auth_user", authUserID),
+				loggateway.Str("session_user", sess.UserID))
+			return false
+		}
+	}
 	return o.cancelActiveRun(ctx, sessionID)
 }
 

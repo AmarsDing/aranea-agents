@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createApp, defineComponent, type App as VueApp } from 'vue';
+import { createPinia, setActivePinia } from 'pinia';
 import { createI18n } from 'vue-i18n';
 
 // Mock the session/api module to prevent transitive side effects via composables.
@@ -37,6 +38,7 @@ const i18n = createI18n({
 function mountPanel(props: Record<string, unknown>): { container: HTMLElement; app: VueApp } {
   const container = document.createElement('div');
   document.body.appendChild(container);
+  setActivePinia(createPinia());
   const app = createApp(ChatMessagePanel, {
     modelValue: '',
     messages: [],
@@ -50,6 +52,7 @@ function mountPanel(props: Record<string, unknown>): { container: HTMLElement; a
     activityTree: [],
     ...props,
   });
+  app.use(createPinia());
   app.use(i18n);
   for (const [name, stub] of Object.entries(stubs)) {
     app.component(name, stub);

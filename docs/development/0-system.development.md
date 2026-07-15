@@ -2,8 +2,8 @@
 
 > **版本**：2026-06-17（Agent 优化）| **状态**：M0–M3 ✅；M4 进行中（Monitor/Token/Quota/MCP 部分已通；Channel/Ecosystem/Telemetry UI 待补）  
 > **系统总览**：[0-system-diagram.md](./0-system-diagram.md)  
-> **模块索引**：[README-development.md](./README-development.md)  
-> **进度真相**：[../guides/execution-plan.md](../guides/execution-plan.md)
+> **模块索引**：[README.md](./README.md)  
+> **进度真相**：本文档（0-system.development.md）即为系统级进度真相源
 >
 > **文档性质**：开发计划（模块定位、代码锚点、现状评估、差距与优化、Phase 划分、任务清单、验收标准、改动文件清单）。架构设计、Proto/API 契约、模块关系见 [0-system-diagram.md](./0-system-diagram.md)。
 

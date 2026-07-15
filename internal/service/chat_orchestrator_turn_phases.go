@@ -844,6 +844,9 @@ func (o *ChatOrchestrator) buildTurnRunner(
 		Plugins: plugins, AwaitUserReplyRouting: deps.AwaitHook != nil,
 		BuilderDeps: deps, AgentFactoryKeys: []string{ag.AgentKey},
 		LookupAgents: lookup, RalphLoop: rl.Config,
+		// P0-03 fix: use real agent ID as AppName so framework memory tools
+		// and product proactive recall share the same scope.
+		AppName: ag.ID,
 	})
 	if err != nil {
 		emitter.LogError("chat.runner.create", "Runner 创建失败", event.P("error", err.Error()))

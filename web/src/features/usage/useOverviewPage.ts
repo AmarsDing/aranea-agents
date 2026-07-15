@@ -34,7 +34,7 @@ export function useOverviewPage() {
   });
   // trendGranularity 初始化为当前 range 的默认值（保证初始一致）。
   // 后续 range 变化时由 onRangeChange 解析新值。
-  const trendGranularity = ref<Granularity>(resolveGranularityForRange('day', filters.range));
+  const trendGranularity = ref<Granularity>(resolveGranularityForRange('day', filters.range || '30d'));
 
   const rangeOptions = computed(() => [
     { label: t('overviewPage.rangeToday'), value: 'today' },
@@ -57,7 +57,7 @@ export function useOverviewPage() {
   //   30d / month → [day]
   // 当 P2-1 引入 5min/week/month 粒度后，只需扩展 usageGranularityLinkage 的映射表。
   const granularityOptions = computed(() => {
-    const allowed = allowedGranularitiesForRange(filters.range);
+    const allowed = allowedGranularitiesForRange(filters.range || '30d');
     const labelMap: Record<Granularity, string> = {
       day: t('overviewPage.granularityDay'),
       hour: t('overviewPage.granularityHour'),
@@ -109,7 +109,7 @@ export function useOverviewPage() {
   // 解析完成后再触发 loadOverview，确保后端查询使用的是合法的 granularity。
   // 注：v-model 已经把新 range 写入 filters.range，这里只需解析 granularity。
   function onRangeChange() {
-    trendGranularity.value = resolveGranularityForRange(trendGranularity.value, filters.range);
+    trendGranularity.value = resolveGranularityForRange(trendGranularity.value, filters.range || '30d');
     loadOverview();
   }
 

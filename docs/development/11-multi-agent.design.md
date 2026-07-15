@@ -121,7 +121,7 @@ pkg/trpc-agent-go/team            ← 框架 Team / Swarm 真相源
 | `ArchiveTeamRequest/Response` | Team 归档 |
 | `RetryTeamRequest/Response` | Team 重试 |
 
-### 2.2 RPC 一览（24 个）
+### 2.2 RPC 一览（27 个）
 
 | RPC | HTTP | 用途 |
 |-----|------|------|
@@ -149,6 +149,9 @@ pkg/trpc-agent-go/team            ← 框架 Team / Swarm 真相源
 | `SynthesizeResults` | `POST /v1/spirit/{spirit_session_id}/synthesize` | Spirit 结果合成 |
 | `ArchiveTeam` | `POST /v1/teams/{team_id}/archive` | 归档 Team |
 | `RetryTeam` | `POST /v1/teams/{team_id}/retry` | 重试 Team |
+| `PauseTeamRun` | `POST /v1/team-runs/{id}/pause` | 暂停 Team 运行 |
+| `UnpauseTeamRun` | `POST /v1/team-runs/{id}/unpause` | 恢复 Team 运行 |
+| `InjectTeamMessage` | `POST /v1/teams/{team_id}/inject` | 向 Team 注入消息 |
 
 ---
 

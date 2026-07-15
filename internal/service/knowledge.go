@@ -373,14 +373,22 @@ func (s *KnowledgeService) UpdateEmbedderConfig(ctx context.Context, req *v1.Upd
 		provider != knowledge.ProviderGemini && provider != knowledge.ProviderHuggingFace {
 		return nil, apierror.BadRequest("KNOWLEDGE", "provider must be openai, ollama, gemini, or huggingface")
 	}
-	s.embedderAdmin.Update(provider, req.GetBaseUrl(), req.GetApiKey(), req.GetModel(), int(req.GetDim()))
-	p, baseURL, model, dim, _, _ := s.embedderAdmin.Config()
-	if err := PersistKnowledgeEmbed(ctx, s.systemSetting, p, baseURL, strings.TrimSpace(req.GetApiKey()), model, dim); err != nil {
-		s.lg.Warn("写入 system_settings 失败",
+	// Persist to DB FIRST. If persistence fails we must NOT update the in-memory
+	// embedder, because that would diverge the in-memory config from the DB
+	// config and the new setting would be silently lost on the next restart.
+	// The previous code logged a warning and returned success, leaving the
+	// admin UI with a false "saved" impression.
+	if err := PersistKnowledgeEmbed(ctx, s.systemSetting,
+		provider, req.GetBaseUrl(), strings.TrimSpace(req.GetApiKey()), req.GetModel(), int(req.GetDim())); err != nil {
+		s.lg.Error("写入 system_settings 失败 — 拒绝更新内存态以避免与 DB 不一致",
 			loggateway.StepID("knowledge.embedder.persist"),
 			loggateway.Err(err),
 		)
+		return nil, apierror.Internal("KNOWLEDGE", "failed to persist embedder config: %v", err)
 	}
+	// Persist succeeded — now it is safe to apply the same patch to the
+	// in-memory embedder. After this, in-memory and DB state are consistent.
+	s.embedderAdmin.Update(provider, req.GetBaseUrl(), req.GetApiKey(), req.GetModel(), int(req.GetDim()))
 	return &v1.UpdateEmbedderConfigResponse{Config: s.embedderConfigProto()}, nil
 }
 

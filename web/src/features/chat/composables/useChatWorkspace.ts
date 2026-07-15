@@ -171,7 +171,7 @@ export function useChatWorkspace() {
    * agent list empty after team assembly and member statuses stale.
    */
   function routeTeamEventToSpiritStore(envelope: V2WsEnvelope) {
-    const p = envelope.payload as Record<string, unknown>;
+    const p = envelope.payload as unknown as Record<string, unknown>;
     switch (envelope.kind) {
       case 'team_stage.created':
       case 'team_stage.updated':

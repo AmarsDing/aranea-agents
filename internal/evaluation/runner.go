@@ -118,8 +118,12 @@ func (r *Runner) executeFramework(
 		results[i].RunID = run.ID
 		if err := r.uc.InsertCaseResult(ctx, results[i]); err != nil {
 			r.lg.Warn("failed to insert evaluation case result", loggateway.Err(err), loggateway.Str("run_id", run.ID))
+		} else {
+			// Only count cases whose results were actually persisted; otherwise
+			// CompletedCases would diverge from the persisted CaseResult rows
+			// and the run would report "completed" with an inflated count.
+			run.CompletedCases++
 		}
-		run.CompletedCases++
 		if err := r.uc.UpdateRun(ctx, run); err != nil {
 			r.lg.Warn("failed to update evaluation run", loggateway.Err(err), loggateway.Str("run_id", run.ID))
 		}

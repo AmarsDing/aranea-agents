@@ -90,7 +90,7 @@
 <script setup lang="ts">
 import { ref, computed, inject, watch, onMounted, onUnmounted, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
+import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import type { TeamRun } from '../../../features/chat/v2Types';
 import MemberSessionPanel from './MemberSessionPanel.vue';
 
@@ -110,15 +110,15 @@ defineEmits<{
 }>();
 
 const { t } = useSafeI18n();
-const store = useChatActivityStore();
+const store = useActivityQueries();
 const memberSessions = computed(() => store.getTeamRunMemberSessions(props.teamRun.ID));
 
 // 显示标题：优先 TeamStage.TeamName → PlanStep.Label → DagNodeID → ID
 const displayTitle = computed(() => {
-  const ts = store.teamStages.get(props.teamRun.TeamStageID);
+  const ts = store.teamStages().get(props.teamRun.TeamStageID);
   if (ts?.TeamName) return ts.TeamName;
   if (props.teamRun.DagNodeID) {
-    const ps = store.planSteps.get(props.teamRun.DagNodeID);
+    const ps = store.planSteps().get(props.teamRun.DagNodeID);
     if (ps?.Label) return ps.Label;
   }
   return props.teamRun.DagNodeID || props.teamRun.ID;
@@ -127,11 +127,11 @@ const displayTitle = computed(() => {
 // 任务名称：优先 PlanStep.Description（更详细），fallback PlanStep.Label，再 fallback DagNodeID
 const taskName = computed(() => {
   if (props.teamRun.DagNodeID) {
-    const ps = store.planSteps.get(props.teamRun.DagNodeID);
+    const ps = store.planSteps().get(props.teamRun.DagNodeID);
     if (ps?.Description) return ps.Description;
     if (ps?.Label) return ps.Label;
   }
-  const ts = store.teamStages.get(props.teamRun.TeamStageID);
+  const ts = store.teamStages().get(props.teamRun.TeamStageID);
   if (ts?.TeamID) return ts.TeamID;
   return props.teamRun.DagNodeID || '-';
 });

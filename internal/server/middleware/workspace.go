@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"aranea-agents/internal/workspace"
-	"aranea-agents/pkg/apierror"
 
 	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
 )
@@ -47,16 +46,16 @@ func WorkspaceFilter() kratoshttp.FilterFunc {
 	}
 }
 
-// AssertWorkspace is a helper for service-layer validation of workspace access.
-// Returns apierror.Forbidden when the caller's workspace does not match the
-// resource workspace. Pass as a guard at the top of service methods.
-// System workspace (WithSystemWorkspace) bypasses the check.
+// AssertWorkspace is a backward-compatibility thin wrapper around
+// workspace.AssertWorkspace.
+//
+// 2026-07-15 P1-2: 实现已提升到 workspace 包，让 service 层可调用而无需
+// 反向依赖 server/middleware。此函数保留以避免破坏现有调用者（如有），
+// 行为与 workspace.AssertWorkspace 完全一致。
+//
+// 语义变更（P1-2）：空 resourceWorkspaceID 现在被视为 DefaultWorkspaceID
+// 而非"任意 caller 都可访问"。这修复了旧实现中遗留数据（无 WorkspaceID）
+// 被任意租户访问的 IDOR 风险——legacy 数据现在归属 default workspace。
 func AssertWorkspace(ctxWorkspaceID, resourceWorkspaceID string) error {
-	if ctxWorkspaceID == workspace.SystemWorkspaceID {
-		return nil
-	}
-	if resourceWorkspaceID == "" || ctxWorkspaceID == resourceWorkspaceID {
-		return nil
-	}
-	return apierror.Forbidden("workspace", "access to resource in another workspace is not allowed")
+	return workspace.AssertWorkspace(ctxWorkspaceID, resourceWorkspaceID)
 }

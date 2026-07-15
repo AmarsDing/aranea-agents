@@ -532,7 +532,9 @@ func (p *ActivityProjector) OnTurnEndEnhanced(ctx context.Context, meta ProjectM
 	}
 
 	// 3. Emit turn.completed + task.completed (delegates to OnTurnEnd).
-	p.OnTurnEnd(ctx, meta)
+	// P1-02 fix: propagate the canceled flag so the Turn/Task entities receive
+	// the correct terminal status (Cancelled) instead of Completed.
+	p.OnTurnEnd(ctx, meta, canceled)
 
 	// Usage is intentionally not attached to the Task entity — the
 	// stream_consumer attaches usage to EventStreamResult for team run
@@ -672,29 +674,46 @@ func (p *ActivityProjector) OnToolResult(ctx context.Context, stepID string, res
 
 // OnTurnEnd emits turn.completed and, for root turns, task.completed.
 //
+// The canceled flag controls the terminal status applied to the Turn and Task
+// entities. When false (normal completion) the entities are marked Completed;
+// when true (user-initiated cancellation) they are marked Cancelled. The event
+// kind (TurnCompletedEvent / TaskCompletedEvent) is reused in both cases — it
+// represents "lifecycle ended" while the entity.Status field carries the
+// actual terminal state. This avoids introducing a parallel Cancelled event
+// type and keeps the frontend terminal-event handling uniform.
+//
 // System-push continuation turns (meta.ParentTaskID != "") emit turn.completed
 // only — the original Task's state machine is owned by the original user-input
-// turn and is not touched here.
+// turn and is not touched here. Exception: synthesis continuation turns
+// (TeamStageID == "") close the parent Task.
 //
 // 2026-07-04 问题 P5/D1 修复：Spirit 等待 team 完成后再关闭 Task。
 // - Root turn（ParentTaskID=="" && TeamStageID==""）：
-//   - 若 HasTeamDispatch(meta.TaskID) == true → 跳过 task.completed，
+//   - 若 HasTeamDispatch(meta.TaskID) == true 且未取消 → 跳过 task.completed，
 //     Task 保持 Running，等 synthesis turn 完成后再发 task.completed。
+//   - 若已取消 → 立即发 task.completed（Status=Cancelled），不等待 synthesis turn。
 //   - 否则 → 发 task.completed（原行为，无 team 派发的普通对话）。
 //
 // - Synthesis continuation turn（ParentTaskID!="" && TeamStageID==""）：
 //   - 发 task.completed for ParentTaskID，并 ClearTeamDispatch。
 //   - 原 behavior 是跳过所有 task 事件，现在需要补发 task.completed。
-func (p *ActivityProjector) OnTurnEnd(ctx context.Context, meta ProjectMeta) {
+func (p *ActivityProjector) OnTurnEnd(ctx context.Context, meta ProjectMeta, canceled bool) {
 	if p.seq == nil {
 		return
 	}
 	now := time.Now()
+	// P1-02 fix: select terminal status based on the canceled flag.
+	turnStatus := biz.TurnStatusCompleted
+	taskStatus := biz.TaskStatusCompleted
+	if canceled {
+		turnStatus = biz.TurnStatusCancelled
+		taskStatus = biz.TaskStatusCancelled
+	}
 	p.mu.Lock()
 	turn, ok := p.activeTurn[meta.TurnID]
 	if ok {
 		turn.CompletedAt = &now
-		turn.Status = biz.TurnStatusCompleted
+		turn.Status = turnStatus
 		turn.Version++
 		delete(p.activeTurn, meta.TurnID)
 	}
@@ -707,13 +726,13 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, meta ProjectMeta) {
 	// 由 checkAllTeamsCompleted 触发，所有 team 已完成，此时关闭根 Task。
 	if meta.ParentTaskID != "" {
 		if meta.TeamStageID == "" {
-			// Synthesis turn: complete the parent task.
+			// Synthesis turn: complete (or cancel) the parent task.
 			// 注意：synthesis turn 的 projector 是新实例，activeTask 中没有
 			// parent task（它在 root turn 的 projector 中）。构造最小 Task 对象。
 			task := biz.Task{
 				ID:          meta.ParentTaskID,
 				SessionID:   meta.SpiritSessionID,
-				Status:      biz.TaskStatusCompleted,
+				Status:      taskStatus,
 				CompletedAt: &now,
 				Version:     2, // Version > 1 覆盖 task.created 的 Version=1
 			}
@@ -727,7 +746,10 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, meta ProjectMeta) {
 	if meta.TeamStageID == "" {
 		// 2026-07-04 问题 P5/D1 修复：若此 task 派发了 team，延迟 task.completed。
 		// Task 保持 Running，等 synthesis turn 完成后再发 task.completed。
-		if p.factory != nil && p.factory.HasTeamDispatch(meta.TaskID) {
+		// P1-02 fix: when canceled, do not delay — emit task.completed
+		// (Status=Cancelled) immediately. A cancelled run will not produce
+		// a synthesis turn, so waiting would leak a Running task forever.
+		if !canceled && p.factory != nil && p.factory.HasTeamDispatch(meta.TaskID) {
 			p.lg.Info("OnTurnEnd: task 已派发 team，延迟 task.completed（等 synthesis turn）",
 				loggateway.Str("task_id", meta.TaskID),
 				loggateway.Str("turn_id", meta.TurnID),
@@ -739,7 +761,7 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, meta ProjectMeta) {
 		p.mu.Lock()
 		task, tok := p.activeTask[meta.TaskID]
 		if tok {
-			task.Status = biz.TaskStatusCompleted
+			task.Status = taskStatus
 			task.CompletedAt = &now
 			task.Version++
 			delete(p.activeTask, meta.TaskID)
@@ -747,6 +769,18 @@ func (p *ActivityProjector) OnTurnEnd(ctx context.Context, meta ProjectMeta) {
 		p.mu.Unlock()
 		if tok {
 			p.seq.Publish(ctx, biz.NewTaskCompletedEvent(*task))
+		} else if canceled {
+			// Cancelled root turn whose task is not in activeTask (e.g. team
+			// dispatch path where the task was already removed). Construct a
+			// minimal cancelled task so the frontend receives the terminal state.
+			task := biz.Task{
+				ID:          meta.TaskID,
+				SessionID:   meta.SpiritSessionID,
+				Status:      taskStatus,
+				CompletedAt: &now,
+				Version:     2,
+			}
+			p.seq.Publish(ctx, biz.NewTaskCompletedEvent(task))
 		}
 	}
 }

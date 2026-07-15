@@ -54,6 +54,13 @@ func (m *mockRepo) InsertCases(_ context.Context, cases []Case) error {
 	return m.insertCasesErr
 }
 
+func (m *mockRepo) InsertCasesWithCountUpdate(ctx context.Context, _ string, cases []Case) error {
+	if err := m.InsertCases(ctx, cases); err != nil {
+		return err
+	}
+	return m.UpdateDatasetCaseCount(ctx, "", 0)
+}
+
 func (m *mockRepo) ListCases(_ context.Context, _ string) ([]Case, error) {
 	return nil, nil
 }

@@ -100,6 +100,11 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		AgentFactoryKeys:      memberKeys,
 		LookupAgents:          memberLookup,
 		RalphLoop:             rl.Config,
+		// P0-03 fix: use manager agent ID as AppName for memory scope.
+		// Member agents share the manager's Runner session; their proactive
+		// recall uses their own agentID. Full per-member scope isolation
+		// requires per-member Runners (future work).
+		AppName: ar.agent.ID,
 	})
 	if err != nil {
 		turnStatus = biz.TeamMemberStepStatusError

@@ -109,7 +109,7 @@ import ChatPendingQueue from './ChatPendingQueue.vue';
 import SessionPanelV2 from './v2/SessionPanel.vue';
 import { useScrollToActivity } from '../../features/chat/composables/useScrollToActivity';
 import { useLocateTeamStage } from '../../features/chat/composables/useLocateTeamStage';
-import { useChatActivityStore } from '../../stores/chat/activityV2Store';
+import { useActivityQueries } from '../../features/chat/composables/useActivityQueries';
 import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
 import { SYSTEM_NOTICE_TYPES } from '../../features/chat/noticeFilter';
 import type { Message, PendingMessage } from '../../features/chat/types';
@@ -181,7 +181,7 @@ const { t } = useI18n();
 // v2 activity store: when legacy messages are empty but the v2 store has
 // tasks for this session (e.g. dev proxy WS replay failure, fresh page load),
 // we still render SessionPanelV2 instead of the empty state.
-const activityStore = useChatActivityStore();
+const activityStore = useActivityQueries();
 const hasV2Activities = computed(() =>
   props.sessionId ? activityStore.getSessionTasks(props.sessionId).length > 0 : false,
 );
@@ -223,14 +223,14 @@ const scrollViewportEl = ref<HTMLElement | null>(null);
 const { locateCommand } = useScrollToActivity();
 const autoExpandFor = ref<{ agentKey: string; teamId: string } | null>(null);
 provide('chat:autoExpandFor', autoExpandFor);
-let autoExpandTimer: ReturnType<typeof window.setTimeout> | null = null;
+let autoExpandTimer: ReturnType<typeof setTimeout> | null = null;
 
 watch(locateCommand, async (cmd) => {
   if (!cmd || !scrollViewportEl.value) return;
   // 触发父级 TeamCard / AgentCard 自动展开，确保目标节点可见
   autoExpandFor.value = { agentKey: cmd.agentKey, teamId: cmd.teamId || '' };
-  if (autoExpandTimer) window.clearTimeout(autoExpandTimer);
-  autoExpandTimer = window.setTimeout(() => {
+  if (autoExpandTimer) clearTimeout(autoExpandTimer);
+  autoExpandTimer = setTimeout(() => {
     autoExpandFor.value = null;
   }, AUTO_EXPAND_HOLD_MS);
   // 等待数据更新（如展开新会话）渲染到 DOM

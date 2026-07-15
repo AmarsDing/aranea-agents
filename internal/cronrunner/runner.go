@@ -198,12 +198,28 @@ func (r *Runner) TriggerTask(ctx context.Context, taskID string) (biz.CronTaskRu
 	return r.deps.Cron.GetCronTaskRun(ctx, runID)
 }
 
+// cronDispatchState carries session-creation state across retry attempts so
+// retries reuse the same session instead of leaking orphan sessions.
+//
+// Background: dispatchCronTask creates a new Session before invoking Chat.RunCronTurn.
+// Without state threading, dispatchWithRetry would call dispatchCronTask again on
+// each retry, creating N orphan sessions for N attempts. With state threading,
+// the session is created on the first attempt and reused on every retry.
+type cronDispatchState struct {
+	sessID string
+}
+
 // dispatchWithRetry runs dispatchCronTask with exponential back-off retries (30s/2m/10m).
 // It recovers from panics on each attempt via safego.RecoverFunc.
+//
+// Session creation is idempotent across retries: the first attempt that creates
+// a session stores its ID in cronDispatchState, and subsequent attempts reuse
+// that ID instead of creating another session.
 func (r *Runner) dispatchWithRetry(ctx context.Context, task biz.CronTask, cfg cronTaskConfig) (res cronDispatchResult, err error) {
+	state := &cronDispatchState{}
 	attempts, backoff := retryPlan(effectiveRetryMaxAttempts(cfg))
 	for attempt := 0; attempt < attempts; attempt++ {
-		res, err = r.dispatchSafe(ctx, task, cfg)
+		res, err = r.dispatchSafe(ctx, task, cfg, state)
 		if err == nil {
 			return res, nil
 		}
@@ -226,7 +242,7 @@ func (r *Runner) dispatchWithRetry(ctx context.Context, task biz.CronTask, cfg c
 }
 
 // dispatchSafe wraps dispatchCronTask with panic recovery.
-func (r *Runner) dispatchSafe(ctx context.Context, task biz.CronTask, cfg cronTaskConfig) (res cronDispatchResult, retErr error) {
+func (r *Runner) dispatchSafe(ctx context.Context, task biz.CronTask, cfg cronTaskConfig, state *cronDispatchState) (res cronDispatchResult, retErr error) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			retErr = fmt.Errorf("cron panic: %v", rec)
@@ -236,7 +252,7 @@ func (r *Runner) dispatchSafe(ctx context.Context, task biz.CronTask, cfg cronTa
 				loggateway.Any("panic", rec))
 		}
 	}()
-	return r.dispatchCronTask(ctx, task, cfg)
+	return r.dispatchCronTask(ctx, task, cfg, state)
 }
 
 // publishDeadLetterEvent emits a dead-letter admin alert event via the typed MonitorBus.
@@ -261,7 +277,7 @@ type cronDispatchResult struct {
 	AgentMessageID string
 }
 
-func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cronTaskConfig) (cronDispatchResult, error) {
+func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cronTaskConfig, state *cronDispatchState) (cronDispatchResult, error) {
 	targetType := cronTargetType(cfg)
 	switch targetType {
 	case "model_registry_sync":
@@ -280,7 +296,7 @@ func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cr
 		if _, err := r.deps.Teams.GetTeamByID(ctx, teamID); err != nil {
 			return cronDispatchResult{}, err
 		}
-		sess, err := r.deps.Session.Create(ctx, biz.Session{
+		sessID, err := r.ensureCronSession(ctx, state, biz.Session{
 			OwnerType:  "team",
 			TeamID:     teamID,
 			Title:      task.Name,
@@ -292,18 +308,18 @@ func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cr
 		}
 		var res cronDispatchResult
 		if r.deps.Chat != nil {
-			if err := r.sessionBusyErr(sess.ID); err != nil {
-				return cronDispatchResult{SessionID: sess.ID}, err
+			if err := r.sessionBusyErr(sessID); err != nil {
+				return cronDispatchResult{SessionID: sessID}, err
 			}
 			// EP-RT-07: in-process dispatch via plugin runtime.
-			uid, aid, rerr := r.deps.Chat.RunCronTurn(ctx, sess.ID, cfg.Message, teamID)
+			uid, aid, rerr := r.deps.Chat.RunCronTurn(ctx, sessID, cfg.Message, teamID)
 			if rerr != nil {
 				return cronDispatchResult{}, rerr
 			}
-			res = cronDispatchResult{SessionID: sess.ID, UserMessageID: uid, AgentMessageID: aid}
+			res = cronDispatchResult{SessionID: sessID, UserMessageID: uid, AgentMessageID: aid}
 		} else {
 			res, err = r.postChat(ctx, sendMessagePayload{
-				SessionID: sess.ID,
+				SessionID: sessID,
 				TeamID:    teamID,
 				Content:   cfg.Message,
 				Options:   sendMessageOptions{DialogMode: "cron"},
@@ -319,7 +335,7 @@ func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cr
 		if err != nil {
 			return cronDispatchResult{}, err
 		}
-		sess, err := r.deps.Session.Create(ctx, biz.Session{
+		sessID, err := r.ensureCronSession(ctx, state, biz.Session{
 			OwnerType:  "agent",
 			AgentID:    agent.ID,
 			Title:      task.Name,
@@ -330,23 +346,42 @@ func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cr
 			return cronDispatchResult{}, err
 		}
 		if r.deps.Chat != nil {
-			if err := r.sessionBusyErr(sess.ID); err != nil {
-				return cronDispatchResult{SessionID: sess.ID}, err
+			if err := r.sessionBusyErr(sessID); err != nil {
+				return cronDispatchResult{SessionID: sessID}, err
 			}
 			// EP-RT-07: in-process dispatch via plugin runtime.
-			uid, aid, rerr := r.deps.Chat.RunCronTurn(ctx, sess.ID, cfg.Message, "")
+			uid, aid, rerr := r.deps.Chat.RunCronTurn(ctx, sessID, cfg.Message, "")
 			if rerr != nil {
 				return cronDispatchResult{}, rerr
 			}
-			return cronDispatchResult{SessionID: sess.ID, UserMessageID: uid, AgentMessageID: aid}, nil
+			return cronDispatchResult{SessionID: sessID, UserMessageID: uid, AgentMessageID: aid}, nil
 		}
 		return r.postChat(ctx, sendMessagePayload{
-			SessionID: sess.ID,
+			SessionID: sessID,
 			AgentKey:  agent.AgentKey,
 			Content:   cfg.Message,
 			Options:   sendMessageOptions{DialogMode: "cron"},
 		})
 	}
+}
+
+// ensureCronSession returns the session ID to use for this dispatch invocation.
+// If state already carries a session ID (set by a previous retry attempt), it is
+// reused — this prevents retries from creating N orphan sessions for N attempts.
+// Otherwise a new session is created via Session.Create and its ID is stored in
+// state so subsequent retries reuse it.
+func (r *Runner) ensureCronSession(ctx context.Context, state *cronDispatchState, template biz.Session) (string, error) {
+	if state != nil && state.sessID != "" {
+		return state.sessID, nil
+	}
+	sess, err := r.deps.Session.Create(ctx, template)
+	if err != nil {
+		return "", err
+	}
+	if state != nil {
+		state.sessID = sess.ID
+	}
+	return sess.ID, nil
 }
 
 func (r *Runner) resolveCronAgent(ctx context.Context, task biz.CronTask) (biz.Agent, error) {

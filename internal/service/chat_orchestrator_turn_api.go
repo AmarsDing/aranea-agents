@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/appctx"
+	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -97,7 +98,7 @@ func (o *ChatOrchestrator) nativeSendChatMessage(ctx context.Context, req *chatv
 //   - The response intentionally carries no message content; message_id and
 //     turn_id are empty on accept and delivered via WS events
 //     (`message.persisted`, `run_status=running`).
-func (o *ChatOrchestrator) submitChatMessageAsync(_ context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SubmitChatMessageResponse, error) {
+func (o *ChatOrchestrator) submitChatMessageAsync(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SubmitChatMessageResponse, error) {
 	if strings.TrimSpace(req.GetSessionId()) == "" {
 		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
 	}
@@ -110,7 +111,10 @@ func (o *ChatOrchestrator) submitChatMessageAsync(_ context.Context, req *chatv1
 
 	// Derive from appctx.Ctx() so the turn outlives the HTTP request.
 	// StopGeneration cancels via the RunRegistry, not via this context.
-	bgCtx := appctx.Ctx()
+	// P0-02 fix: extract the authenticated userID from the HTTP context and
+	// propagate it into the background context so the Runner session key,
+	// memory tools, and quota checks use the real user scope.
+	bgCtx := ctxuser.WithUserID(appctx.Ctx(), ctxuser.FromContext(ctx))
 	safego.Go(bgCtx, "chat-submit-async", func() {
 		if _, err := o.Execute(bgCtx, input); err != nil {
 			if isTurnMessageQueued(err) {

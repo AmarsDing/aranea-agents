@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/modelregistry"
@@ -57,12 +58,17 @@ func (r *usageRepo) RollupDailyHourly(ctx context.Context, e biz.TokenUsageEvent
 func (r *usageRepo) PurgeUsageEventsOlderThan(ctx context.Context, retainDays int) (int64, error) {
 	c := r.data.RW().Write(ctx)
 	dialect := r.data.Dialect()
-	cutoff := `date('now', '-'||?||' days')`
+	// Compute the cutoff date in Go rather than using SQLite's
+	// date('now','-N days') in SQL. The latter is a runtime (non-DDL)
+	// statement, so it bypasses translateSQLiteDDLToPostgres and would error
+	// on Postgres ("function date(unknown, unknown) does not exist").
+	// date_key is stored as "2006-01-02" UTC (see usage_quota.go).
+	cutoff := time.Now().UTC().AddDate(0, 0, -retainDays).Format("2006-01-02")
 
 	// Purge raw events.
 	resEvents, err := c.ExecContext(ctx,
-		dialect.RenumberPlaceholders(`DELETE FROM model_token_usage_events WHERE date_key < `+cutoff),
-		retainDays,
+		dialect.RenumberPlaceholders(`DELETE FROM model_token_usage_events WHERE date_key < ?`),
+		cutoff,
 	)
 	if err != nil {
 		return 0, err
@@ -70,16 +76,16 @@ func (r *usageRepo) PurgeUsageEventsOlderThan(ctx context.Context, retainDays in
 
 	// Purge daily rollups so aggregate views stay consistent with raw events.
 	if _, err := c.ExecContext(ctx,
-		dialect.RenumberPlaceholders(`DELETE FROM model_token_usage_daily WHERE date_key < `+cutoff),
-		retainDays,
+		dialect.RenumberPlaceholders(`DELETE FROM model_token_usage_daily WHERE date_key < ?`),
+		cutoff,
 	); err != nil {
 		return 0, err
 	}
 
 	// Purge hourly rollups. hour_key format is "2006-01-02T15", compare the date prefix.
 	if _, err := c.ExecContext(ctx,
-		dialect.RenumberPlaceholders(`DELETE FROM model_token_usage_hourly WHERE substr(hour_key, 1, 10) < `+cutoff),
-		retainDays,
+		dialect.RenumberPlaceholders(`DELETE FROM model_token_usage_hourly WHERE substr(hour_key, 1, 10) < ?`),
+		cutoff,
 	); err != nil {
 		return 0, err
 	}

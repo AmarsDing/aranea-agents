@@ -60,7 +60,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
+import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import type { GraphStage, GraphStageStatus, GraphNode as GraphNodeType } from '../../../features/chat/v2Types';
 import { usePlanDAGLayout } from '../../../features/chat/composables/usePlanDAGLayout';
 import { useLocateTeamStage } from '../../../features/chat/composables/useLocateTeamStage';
@@ -78,7 +78,7 @@ function useSafeI18n() {
 
 const props = defineProps<{ graphStage: GraphStage }>();
 const { t } = useSafeI18n();
-const store = useChatActivityStore();
+const store = useActivityQueries();
 
 const nodeWidth = 130;
 const nodeHeight = 60;
@@ -163,7 +163,7 @@ function onSelectNode(nodeId: string) {
   if (!node) return;
   let teamStageId = node.TeamStageID;
   if (!teamStageId && node.DagNodeID) {
-    for (const ts of store.teamStages.values()) {
+    for (const ts of store.teamStages().values()) {
       if (ts.DagNodeID === node.DagNodeID) {
         teamStageId = ts.ID;
         break;

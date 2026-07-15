@@ -156,6 +156,13 @@ Cron Scheduler
 | POST | `/v1/chat/jobs/{id}/cancel` | unary | 取消后台任务 |
 | POST | `/v1/chat/messages/{message_id}/feedback` | unary | 提交 👍/👎 反馈 |
 | POST | `/v1/chat/activities/{activity_id}/confirm` | unary | 提交工具确认（approved=true 恢复，approved=false 取消） |
+| POST | `/v1/chat/messages/submit` | unary | WS 连接时的 fire-and-ack 命令通道提交（SubmitChatMessage） |
+| POST | `/v1/chat/sessions/{session_id}/retry` | unary | 重试上次失败/中断的 Turn（RetrySession） |
+| POST | `/v1/chat/sessions/{session_id}/pause` | unary | 暂停运行中的会话（PauseSession） |
+| POST | `/v1/chat/sessions/{session_id}/resume` | unary | 恢复已暂停的会话（ResumeSession） |
+| POST | `/v1/chat/plans/{plan_id}/confirm` | unary | 确认执行计划（ConfirmPlan） |
+| GET | `/v1/chat/plans` | unary | 列出执行计划（ListPlans） |
+| GET | `/v1/chat/plans/{plan_id}` | unary | 获取执行计划详情（GetPlan） |
 
 ### 4.2 主要 Proto 定义
 

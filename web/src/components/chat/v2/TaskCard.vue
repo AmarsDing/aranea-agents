@@ -71,8 +71,8 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
-import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
-import { useAuthStore } from '../../../stores/auth';
+import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
+import { useSafeAuth } from '../../../features/chat/composables/useSafeAuth';
 import type { Task } from '../../../features/chat/v2Types';
 import TurnList from './TurnList.vue';
 import TeamStagePanel from './TeamStagePanel.vue';
@@ -98,15 +98,6 @@ function useSafeQuasar() {
   }
 }
 
-// Safe auth store wrapper — returns a minimal fallback when Pinia isn't installed.
-function useSafeAuthStore() {
-  try {
-    return useAuthStore();
-  } catch {
-    return { displayLabel: '你', avatarLetter: 'U' };
-  }
-}
-
 const props = defineProps<{ task: Task }>();
 defineEmits<{
   regenerate: [task: Task];
@@ -116,8 +107,8 @@ defineEmits<{
 
 const { t } = useSafeI18n();
 const $q = useSafeQuasar();
-const auth = useSafeAuthStore();
-const store = useChatActivityStore();
+const auth = useSafeAuth();
+const store = useActivityQueries();
 const turns = computed(() => store.getTaskTurns(props.task.ID));
 const planBoards = computed(() => store.getTaskPlanBoards(props.task.ID));
 // Fallback: TurnID 为空或未匹配到任何 turn 的 team stages（后端 PlanBoard.TurnID 未正确填充时兜底）

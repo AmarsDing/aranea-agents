@@ -83,7 +83,7 @@ func TestEndToEnd_V2Pipeline(t *testing.T) {
 	replyStep := projector.BeginStep(meta, biz.StepKindReply)
 	projector.OnTextDelta(ctx, replyStep, "4", "")
 	projector.OnTextDone(ctx, replyStep, "4", true /* isFinal */)
-	projector.OnTurnEnd(ctx, meta)
+	projector.OnTurnEnd(ctx, meta, false /* canceled */)
 
 	if err := seq.Flush(ctx); err != nil {
 		t.Fatalf("Flush: %v", err)
@@ -147,7 +147,7 @@ func TestEndToEnd_FIFOOrdering(t *testing.T) {
 	replyStep := projector.BeginStep(meta, biz.StepKindReply)
 	projector.OnTextDelta(ctx, replyStep, "answer", "")
 	projector.OnTextDone(ctx, replyStep, "answer", true)
-	projector.OnTurnEnd(ctx, meta)
+	projector.OnTurnEnd(ctx, meta, false /* canceled */)
 
 	if err := seq.Flush(ctx); err != nil {
 		t.Fatalf("Flush: %v", err)
@@ -181,5 +181,108 @@ func TestEndToEnd_FIFOOrdering(t *testing.T) {
 	if turnStartedIdx > firstStepIdx {
 		t.Errorf("FIFO violated: turn.started (idx=%d) published AFTER step.created (idx=%d)",
 			turnStartedIdx, firstStepIdx)
+	}
+}
+
+// TestEndToEnd_CancelledTurnMarksCancelledStatus verifies P1-02 fix: when a
+// turn is cancelled (OnTurnEndEnhanced with canceled=true, or OnTurnEnd with
+// canceled=true), the Turn and root Task entities must be persisted with
+// Status="cancelled" — NOT "completed". The published events must carry the
+// cancelled status in their entity payloads.
+//
+// Regression: previously OnTurnEnd unconditionally set Status=Completed,
+// causing cancelled runs to appear as successfully completed in the UI.
+func TestEndToEnd_CancelledTurnMarksCancelledStatus(t *testing.T) {
+	t.Parallel()
+
+	rs := &fakeRepoSet{}
+	v2Bus := &recordingBus{}
+
+	seq := NewSequencer(rs, NewEventBusAdapter(v2Bus), loggateway.NewNoop(),
+		WithPublishBuffer(64),
+		WithPersistBuffer(64),
+		WithDeltaBatchInterval(time.Millisecond*2),
+	)
+	defer seq.Close()
+
+	projector := NewActivityProjector(seq, seq.SeqAssigner(), loggateway.NewNoop())
+	ctx := context.Background()
+	meta := ProjectMeta{
+		SessionID:       "sess-cancel",
+		SpiritSessionID: "sess-cancel",
+		TaskID:          "task-cancel",
+		TurnID:          "turn-cancel",
+		AgentKey:        "spirit",
+		TaskContent:     "long-running query",
+	}
+
+	projector.OnTurnStart(ctx, meta)
+	thinkingStep := projector.BeginStep(meta, biz.StepKindThinking)
+	projector.OnReasoningDelta(ctx, thinkingStep, "thinking...", "")
+	// Simulate user cancellation: OnTurnEndEnhanced with canceled=true.
+	projector.OnTurnEndEnhanced(ctx, meta, &ActivityUsage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15}, true)
+
+	if err := seq.Flush(ctx); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify persisted Turn has Status=cancelled.
+	rs.mu.Lock()
+	var lastTurn biz.Turn
+	var hasTurn bool
+	for i := range rs.turns {
+		if rs.turns[i].ID == "turn-cancel" {
+			lastTurn = rs.turns[i]
+			hasTurn = true
+		}
+	}
+	var lastTask biz.Task
+	var hasTask bool
+	for i := range rs.tasks {
+		if rs.tasks[i].ID == "task-cancel" {
+			lastTask = rs.tasks[i]
+			hasTask = true
+		}
+	}
+	rs.mu.Unlock()
+	if !hasTurn {
+		t.Fatalf("no turn persisted for turn-cancel")
+	}
+	if lastTurn.Status != biz.TurnStatusCancelled {
+		t.Errorf("cancelled turn Status = %q, want %q", lastTurn.Status, biz.TurnStatusCancelled)
+	}
+	if !hasTask {
+		t.Fatalf("no task persisted for task-cancel")
+	}
+	if lastTask.Status != biz.TaskStatusCancelled {
+		t.Errorf("cancelled task Status = %q, want %q", lastTask.Status, biz.TaskStatusCancelled)
+	}
+
+	// Verify published events carry cancelled status.
+	events := v2Bus.Events()
+	var turnCompletedEvent *biz.TurnCompletedEvent
+	var taskCompletedEvent *biz.TaskCompletedEvent
+	for _, e := range events {
+		switch ev := e.(type) {
+		case *biz.TurnCompletedEvent:
+			turnCompletedEvent = ev
+		case *biz.TaskCompletedEvent:
+			taskCompletedEvent = ev
+		}
+	}
+	if turnCompletedEvent == nil {
+		t.Fatalf("TurnCompletedEvent not published")
+	}
+	if turnCompletedEvent.Turn.Status != biz.TurnStatusCancelled {
+		t.Errorf("published TurnCompletedEvent.Turn.Status = %q, want %q",
+			turnCompletedEvent.Turn.Status, biz.TurnStatusCancelled)
+	}
+	if taskCompletedEvent == nil {
+		t.Fatalf("TaskCompletedEvent not published")
+	}
+	if taskCompletedEvent.Task.Status != biz.TaskStatusCancelled {
+		t.Errorf("published TaskCompletedEvent.Task.Status = %q, want %q",
+			taskCompletedEvent.Task.Status, biz.TaskStatusCancelled)
 	}
 }

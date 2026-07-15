@@ -199,6 +199,12 @@ func (m *memEvalRepo2) InsertCases(_ context.Context, cases []biz.EvalCase) erro
 	m.cases = append(m.cases, cases...)
 	return nil
 }
+func (m *memEvalRepo2) InsertCasesWithCountUpdate(ctx context.Context, datasetID string, cases []biz.EvalCase) error {
+	if err := m.InsertCases(ctx, cases); err != nil {
+		return err
+	}
+	return m.UpdateDatasetCaseCount(ctx, datasetID, len(cases))
+}
 func (m *memEvalRepo2) ListCases(_ context.Context, _ string) ([]biz.EvalCase, error) {
 	return m.cases, nil
 }

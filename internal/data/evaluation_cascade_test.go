@@ -6,7 +6,13 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/data/ent"
 	"aranea-agents/pkg/loggateway"
+
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
+
+	_ "github.com/glebarez/go-sqlite/compat"
 )
 
 func TestEvalDeleteCascade(t *testing.T) {
@@ -118,5 +124,78 @@ func TestEvalUpdateDataset(t *testing.T) {
 	}
 	if updated.Name != "new-name" || updated.Description != "new-desc" {
 		t.Fatalf("update mismatch: %+v", updated)
+	}
+}
+
+// TestEvalInsertCasesWithCountUpdateAtomic verifies that InsertCasesWithCountUpdate
+// bumps dataset.case_count and inserts cases in one transaction. If a failure
+// occurs mid-transaction (e.g. duplicate case ID), both writes must roll back so
+// case_count cannot diverge from the actual row count in eval_cases.
+func TestEvalInsertCasesWithCountUpdateAtomic(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:eval-atomic-test?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	if err := EnsureEvalSchema(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	// Set up a real ent.Client so ExecInTx actually opens a transaction
+	// (otherwise ExecInTx no-ops when entClient is nil and writes auto-commit).
+	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.SQLite, db)))
+	defer client.Close()
+	d := &Data{entClient: client, rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop()}
+	d.SetEntClientForTest(client, db, loggateway.NewNoop())
+	repo := NewEvalRepo(d, loggateway.NewNoop())
+
+	if _, err := repo.CreateDataset(ctx, biz.EvalDataset{ID: "ds-atomic", Name: "atomic"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Happy path: 2 new cases → case_count becomes 2.
+	if err := repo.InsertCasesWithCountUpdate(ctx, "ds-atomic", []biz.EvalCase{
+		{ID: "c-a1", DatasetID: "ds-atomic", Input: "q1", ExpectedOutput: "a1"},
+		{ID: "c-a2", DatasetID: "ds-atomic", Input: "q2", ExpectedOutput: "a2"},
+	}); err != nil {
+		t.Fatalf("happy path InsertCasesWithCountUpdate: %v", err)
+	}
+	ds, err := repo.GetDataset(ctx, "ds-atomic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ds.CaseCount != 2 {
+		t.Fatalf("expected case_count=2 after happy path, got %d", ds.CaseCount)
+	}
+	cases, err := repo.ListCases(ctx, "ds-atomic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cases) != 2 {
+		t.Fatalf("expected 2 case rows after happy path, got %d", len(cases))
+	}
+
+	// Failure path: include a duplicate ID (PRIMARY KEY conflict). The whole
+	// transaction must roll back: case_count stays at 2, no new case rows.
+	err = repo.InsertCasesWithCountUpdate(ctx, "ds-atomic", []biz.EvalCase{
+		{ID: "c-a3", DatasetID: "ds-atomic", Input: "q3", ExpectedOutput: "a3"},
+		{ID: "c-a1", DatasetID: "ds-atomic", Input: "dup", ExpectedOutput: "dup"}, // duplicate → conflict
+	})
+	if err == nil {
+		t.Fatal("expected error from InsertCasesWithCountUpdate with duplicate ID, got nil")
+	}
+	ds, err = repo.GetDataset(ctx, "ds-atomic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ds.CaseCount != 2 {
+		t.Fatalf("expected case_count to remain 2 after rollback, got %d (diverged from rows)", ds.CaseCount)
+	}
+	cases, err = repo.ListCases(ctx, "ds-atomic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cases) != 2 {
+		t.Fatalf("expected 2 case rows after rollback, got %d", len(cases))
 	}
 }

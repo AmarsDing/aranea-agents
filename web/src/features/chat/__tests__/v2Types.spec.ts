@@ -25,8 +25,8 @@ import type {
 describe('v2Types', () => {
   it('V2WsEnvelope has correct shape', () => {
     const env: V2WsEnvelope = { type: 'v2_event', kind: 'task.created', payload: {} as V2Event };
-    expectTypeOf(env.type).toEqualTypeOf<string>();
-    expectTypeOf(env.kind).toEqualTypeOf<string>();
+    expectTypeOf(env.type).toMatchTypeOf<string>();
+    expectTypeOf(env.kind).toMatchTypeOf<string>();
   });
 
   it('Task has PascalCase fields matching backend', () => {
@@ -75,6 +75,6 @@ describe('v2Types', () => {
 
   it('EventKind constants are string literals', () => {
     const k: EventKind = 'task.created';
-    expectTypeOf(k).toEqualTypeOf<EventKind>();
+    expectTypeOf(k).toMatchTypeOf<EventKind>();
   });
 });

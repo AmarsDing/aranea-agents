@@ -27,6 +27,13 @@ type TurnRunnerSpec struct {
 	ExtraOpts             []trpcrunner.Option
 	// RegistryKey, when set, stores the runner in the instance registry until CloseRunner.
 	RegistryKey string
+	// AppName is the framework application name used for Runner session keys
+	// and memory tool UserKey. When set, it should be the real agent ID so
+	// that framework memory tools (which write using AppName as ScopeID/AgentID)
+	// share the same scope as product proactive recall (which uses agentID).
+	// When empty, defaults to trpcscope.DefaultAppName ("aranea").
+	// P0-03 fix: unifies memory scope between framework tools and product recall.
+	AppName string
 }
 
 // RunnerManager centralizes trpc runner assembly (session/memory/artifact/plugins/factories).
@@ -68,6 +75,9 @@ func (m *RunnerManager) NewTurnRunner(root trpcagent.Agent, spec TurnRunnerSpec)
 	)
 	runnerDeps.AwaitUserReplyRouting = spec.AwaitUserReplyRouting
 	runnerDeps.RalphLoop = spec.RalphLoop
+	// P0-03 fix: set AppName to the real agent ID so framework memory tools
+	// and product proactive recall share the same scope.
+	runnerDeps.AppName = strings.TrimSpace(spec.AppName)
 
 	opts := append([]trpcrunner.Option{}, spec.ExtraOpts...)
 	opts = append(opts, chatagent.BizAgentRegistryOptions(spec.LookupAgents)...)

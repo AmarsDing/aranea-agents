@@ -217,6 +217,29 @@ func (r *evalRepo) InsertCases(ctx context.Context, cases []biz.EvalCase) error 
 	})
 }
 
+// InsertCasesWithCountUpdate inserts cases and bumps dataset.case_count in a
+// single transaction so the two writes cannot diverge. The dataset's case_count
+// is bumped by len(cases) regardless of the per-case dataset_id values, because
+// UploadCases only ever targets one dataset (validated by the usecase).
+func (r *evalRepo) InsertCasesWithCountUpdate(ctx context.Context, datasetID string, cases []biz.EvalCase) error {
+	insertSQL := r.data.Dialect().RenumberPlaceholders(`INSERT INTO eval_cases (id,dataset_id,input,expected_output,metadata_json) VALUES (?,?,?,?,?)`)
+	updateSQL := r.data.Dialect().RenumberPlaceholders(`UPDATE eval_datasets SET case_count=case_count+?, updated_at=? WHERE id=?`)
+	t := now()
+	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		e := TxExecerFromCtx(txCtx, r.data.RWDB().WriteHandle())
+		for _, c := range cases {
+			if _, err := e.ExecContext(txCtx, insertSQL,
+				c.ID, c.DatasetID, c.Input, c.ExpectedOutput, c.MetadataJSON); err != nil {
+				return err
+			}
+		}
+		if _, err := e.ExecContext(txCtx, updateSQL, len(cases), t, datasetID); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
 func (r *evalRepo) ListCases(ctx context.Context, datasetID string) ([]biz.EvalCase, error) {
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`SELECT id,dataset_id,input,expected_output,metadata_json FROM eval_cases WHERE dataset_id=?`), datasetID)

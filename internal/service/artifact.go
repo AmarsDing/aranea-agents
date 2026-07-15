@@ -14,23 +14,88 @@ import (
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/metrics"
+	"aranea-agents/internal/workspace"
 
 	"aranea-agents/pkg/apierror"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
+// sessionWorkspaceLookup resolves a session ID to its Session (carrying
+// WorkspaceID). Used by ArtifactService for IDOR protection (P1-1).
+// Satisfied by *biz.SessionUsecase.
+//
+// 2026-07-15 P1-1 修复（审计报告 P1-1）：Artifact 模型只有 SessionID 没有
+// WorkspaceID，跨租户访问只能通过 session→workspace 解析校验。
+type sessionWorkspaceLookup interface {
+	Get(ctx context.Context, id string) (biz.Session, error)
+}
+
+// ProvideSessionWorkspaceLookup 适配 *biz.SessionUsecase 到 sessionWorkspaceLookup。
+// 供 wire 注入到 ArtifactService 做 IDOR 防护。
+func ProvideSessionWorkspaceLookup(uc *biz.SessionUsecase) sessionWorkspaceLookup {
+	return uc
+}
+
 // ArtifactService implements kratos artifact.v1.
 type ArtifactService struct {
 	v1.UnimplementedArtifactServiceServer
-	uc     *biz.ArtifactUsecase
-	signer *artifact.Signer
+	uc            *biz.ArtifactUsecase
+	signer        *artifact.Signer
+	sessionLookup sessionWorkspaceLookup // P1-1: IDOR 防护
 }
 
 // NewArtifactService constructs an ArtifactService.
-func NewArtifactService(uc *biz.ArtifactUsecase, signer *artifact.Signer) *ArtifactService {
-	s := &ArtifactService{uc: uc, signer: signer}
+// sessionLookup 用于 IDOR 防护（P1-1）：解析 session→workspace 做跨租户校验。
+// 传 nil 则跳过 workspace 校验（仅向后兼容旧测试；生产必须由 wire 注入）。
+func NewArtifactService(uc *biz.ArtifactUsecase, signer *artifact.Signer, sl sessionWorkspaceLookup) *ArtifactService {
+	s := &ArtifactService{uc: uc, signer: signer, sessionLookup: sl}
 	s.refreshStorageGauge(context.Background())
 	return s
+}
+
+// assertWorkspaceOwnsSession 校验 caller workspace 拥有指定 session。
+// P1-1: IDOR 防护 — 防止跨租户访问 artifact。
+//
+// 校验逻辑：
+//  1. sessionLookup 为 nil（旧测试）→ 跳过（向后兼容）
+//  2. callerWS == SystemWorkspaceID → 绕过（cron/admin 后台任务）
+//  3. 查 session → session.WorkspaceID；session 不存在返回 NotFound（不泄露存在性）
+//  4. callerWS != session.WorkspaceID → Forbidden（调用 workspace.AssertWorkspace）
+func (s *ArtifactService) assertWorkspaceOwnsSession(ctx context.Context, sessionID string) error {
+	if s.sessionLookup == nil {
+		return nil // 向后兼容：旧测试未注入 sessionLookup
+	}
+	if strings.TrimSpace(sessionID) == "" {
+		return apierror.BadRequest(apierror.DomainArtifact, "session_id is required")
+	}
+	callerWS := workspace.IDFromContext(ctx)
+	if callerWS == workspace.SystemWorkspaceID {
+		return nil // 系统工作空间绕过（cron/admin）
+	}
+	sess, err := s.sessionLookup.Get(ctx, sessionID)
+	if err != nil {
+		// session 不存在 → NotFound，不泄露 session 是否存在
+		return apierror.NotFound(apierror.DomainArtifact, "session not found")
+	}
+	// P1-2: 调用 workspace.AssertWorkspace（从 middleware 提升到 workspace 包）。
+	return workspace.AssertWorkspace(callerWS, sess.WorkspaceID)
+}
+
+// assertWorkspaceOwnsArtifact 校验 caller workspace 拥有指定 artifact（通过其 session）。
+// P1-1: IDOR 防护 — artifact 只挂 sessionID，需先 Load meta 再查 session workspace。
+// 用 LoadMeta（轻量，不读 payload），返回 meta 供调用方复用。
+func (s *ArtifactService) assertWorkspaceOwnsArtifact(ctx context.Context, artifactID string, version int) (artifactbiz.Artifact, error) {
+	meta, err := s.uc.LoadMeta(ctx, artifactID, version)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return artifactbiz.Artifact{}, apierror.NotFound(apierror.DomainArtifact, "artifact not found")
+		}
+		return artifactbiz.Artifact{}, err
+	}
+	if err := s.assertWorkspaceOwnsSession(ctx, meta.SessionID); err != nil {
+		return artifactbiz.Artifact{}, err
+	}
+	return meta, nil
 }
 
 // UploadArtifact stores a base64-encoded artifact and returns its metadata.
@@ -40,6 +105,10 @@ func (s *ArtifactService) UploadArtifact(ctx context.Context, req *v1.UploadArti
 	}
 	if strings.TrimSpace(req.GetName()) == "" {
 		return nil, apierror.BadRequest(apierror.DomainArtifact, "name is required")
+	}
+	// P1-1: IDOR 防护 — 校验 caller workspace 拥有目标 session。
+	if err := s.assertWorkspaceOwnsSession(ctx, req.GetSessionId()); err != nil {
+		return nil, err
 	}
 	data, err := base64.StdEncoding.DecodeString(req.GetDataBase64())
 	if err != nil {
@@ -68,6 +137,10 @@ func (s *ArtifactService) GetArtifact(ctx context.Context, req *v1.GetArtifactRe
 		return nil, apierror.BadRequest(apierror.DomainArtifact, "id is required")
 	}
 	version := int(req.GetVersion())
+	// P1-1: IDOR 防护 — 先校验 workspace 所有权（LoadMeta + session→workspace）。
+	if _, err := s.assertWorkspaceOwnsArtifact(ctx, id, version); err != nil {
+		return nil, err
+	}
 	meta, data, err := s.uc.Load(ctx, id, version)
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -87,6 +160,10 @@ func (s *ArtifactService) ListArtifacts(ctx context.Context, req *v1.ListArtifac
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
 		return nil, apierror.BadRequest(apierror.DomainArtifact, "session_id is required")
+	}
+	// P1-1: IDOR 防护 — 校验 caller workspace 拥有目标 session。
+	if err := s.assertWorkspaceOwnsSession(ctx, sessionID); err != nil {
+		return nil, err
 	}
 	limit := int(req.GetLimit())
 	offset := int(req.GetOffset())
@@ -115,11 +192,9 @@ func (s *ArtifactService) ListArtifactVersions(ctx context.Context, req *v1.List
 	if id == "" {
 		return nil, apierror.BadRequest(apierror.DomainArtifact, "id is required")
 	}
-	meta, _, err := s.uc.Load(ctx, id, 0)
+	// P1-1: IDOR 防护 — 校验 workspace 所有权（LoadMeta + session→workspace）。
+	meta, err := s.assertWorkspaceOwnsArtifact(ctx, id, 0)
 	if err != nil {
-		if apierror.IsCode(err, apierror.CodeNotFound) {
-			return nil, apierror.NotFound(apierror.DomainArtifact, "artifact not found")
-		}
 		return nil, err
 	}
 	versions, err := s.uc.ListVersions(ctx, meta.SessionID, meta.Name)
@@ -139,6 +214,10 @@ func (s *ArtifactService) DeleteArtifact(ctx context.Context, req *v1.DeleteArti
 	if id == "" {
 		return nil, apierror.BadRequest(apierror.DomainArtifact, "id is required")
 	}
+	// P1-1: IDOR 防护 — 校验 workspace 所有权后再删除。
+	if _, err := s.assertWorkspaceOwnsArtifact(ctx, id, 0); err != nil {
+		return nil, err
+	}
 	if err := s.uc.Delete(ctx, id); err != nil {
 		return nil, err
 	}
@@ -155,6 +234,10 @@ func (s *ArtifactService) DeleteArtifactVersion(ctx context.Context, req *v1.Del
 	version := int(req.GetVersion())
 	if version <= 0 {
 		return nil, apierror.BadRequest(apierror.DomainArtifact, "version must be > 0")
+	}
+	// P1-1: IDOR 防护 — 校验 workspace 所有权后再删除版本。
+	if _, err := s.assertWorkspaceOwnsArtifact(ctx, id, version); err != nil {
+		return nil, err
 	}
 	if err := s.uc.DeleteVersion(ctx, id, version); err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -173,6 +256,10 @@ func (s *ArtifactService) PreviewArtifact(ctx context.Context, req *v1.PreviewAr
 		return nil, apierror.BadRequest(apierror.DomainArtifact, "id is required")
 	}
 	version := int(req.GetVersion())
+	// P1-1: IDOR 防护 — 校验 workspace 所有权后再预览。
+	if _, err := s.assertWorkspaceOwnsArtifact(ctx, id, version); err != nil {
+		return nil, err
+	}
 	result, err := s.uc.Preview(ctx, id, version)
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -204,10 +291,8 @@ func (s *ArtifactService) SignDownloadUrl(ctx context.Context, req *v1.SignDownl
 		return nil, apierror.BadRequest(apierror.DomainArtifact, "id is required")
 	}
 	version := int(req.GetVersion())
-	if _, _, err := s.uc.Load(ctx, id, version); err != nil {
-		if apierror.IsCode(err, apierror.CodeNotFound) {
-			return nil, apierror.NotFound(apierror.DomainArtifact, "artifact not found")
-		}
+	// P1-1: IDOR 防护 — 校验 workspace 所有权后再签名。
+	if _, err := s.assertWorkspaceOwnsArtifact(ctx, id, version); err != nil {
 		return nil, err
 	}
 	ttl := time.Duration(req.GetTtlSeconds()) * time.Second
@@ -215,7 +300,7 @@ func (s *ArtifactService) SignDownloadUrl(ctx context.Context, req *v1.SignDownl
 		ttl = 15 * time.Minute
 	}
 	if ttl > 24*time.Hour {
-		ttl = 24 * time.Hour
+		ttl = 24*time.Hour
 	}
 	expires := time.Now().UTC().Add(ttl)
 	token, err := s.signer.DownloadToken(id, version, expires)

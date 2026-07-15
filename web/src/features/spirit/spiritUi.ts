@@ -9,6 +9,7 @@ export function mapSpiritStatusToSession(status: SpiritTeamStatus): SessionStatu
   const mapping: Record<SpiritTeamStatus, SessionStatus> = {
     pending: 'idle',
     running: 'running',
+    paused: 'interrupted',
     completed: 'completed',
     failed: 'interrupted',
     cancelled: 'interrupted',
@@ -141,6 +142,7 @@ export function spiritTeamStatusToLabel(status: SpiritTeamStatus): AgentNodeStat
   const mapping: Record<SpiritTeamStatus, AgentNodeStatusLabel> = {
     pending: 'queued',
     running: 'active',
+    paused: 'suspended',
     completed: 'done',
     failed: 'failed',
     cancelled: 'cancelled',

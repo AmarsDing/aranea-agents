@@ -75,6 +75,9 @@ var ProviderSet = wire.NewSet(
 	WireGraphTaskRuntime,
 	NewKanbanToolBridge,
 	NewArtifactService,
+	// P1-1: 提供 sessionWorkspaceLookup 适配器，让 wire 自动注入到
+	// ArtifactService 做 IDOR 防护。
+	ProvideSessionWorkspaceLookup,
 	NewKnowledgeService,
 	NewEvaluationService,
 	NewA2AEndpointBuilder,

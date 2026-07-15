@@ -56,6 +56,16 @@ type ChatSender interface {
 	EnqueueUserMessage(ctx context.Context, req *chatv1.EnqueueUserMessageRequest) (*chatv1.EnqueueUserMessageResponse, error)
 }
 
+// SessionAuthorizer checks whether a user is allowed to subscribe to a
+// specific session's WebSocket events. Used by the WS handler to prevent
+// users from subscribing to other users' sessions (IDOR protection).
+//
+// Implementations should return nil if the user owns the session (or is
+// otherwise authorized), and a non-nil error otherwise.
+type SessionAuthorizer interface {
+	CheckOwnership(ctx context.Context, sessionID, userID string) error
+}
+
 // WSServer is the WebSocket server coordinator. It delegates to focused sub-modules:
 //   - ws_conn.go         — wsConn struct + connStore (connection lifecycle)
 //   - ws_conn_manager.go — connection limit checks and removal
@@ -74,6 +84,7 @@ type WSServer struct {
 	canceller             RunCanceller
 	sender                ChatSender
 	turnExecutor          WSTurnExecutor
+	sessionAuth           SessionAuthorizer
 	serverConf            *conf.Server
 	runtimeConf           *conf.Runtime
 	upgrader              websocket.Upgrader
@@ -85,7 +96,7 @@ type WSServer struct {
 
 // NewWSServerFromInfra uses monitor bus for monitor events and the v2 EventBus
 // for chat/system events (AF pipeline via WSV2Subscriber).
-func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnExecutor WSTurnExecutor, runtimeConf *conf.Runtime, lg loggateway.Logger, eventBus biz.EventBus) *WSServer {
+func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnExecutor WSTurnExecutor, runtimeConf *conf.Runtime, lg loggateway.Logger, eventBus biz.EventBus, sessionAuth SessionAuthorizer) *WSServer {
 	if c == nil || c.GetWs() == nil || !c.GetWs().GetEnable() {
 		return nil
 	}
@@ -101,6 +112,7 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 		canceller:             canceller,
 		sender:                sender,
 		turnExecutor:          turnExecutor,
+		sessionAuth:           sessionAuth,
 		serverConf:            c,
 		runtimeConf:           runtimeConf,
 		maxSessionConns:       envInt("WS_MAX_SESSION_CONNS", int(wsCfg.MaxSessionConns)),
@@ -182,10 +194,35 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 	probeMode := globalMode && wsProbeMode(r)
 
 	// Authentication
-	userID, err := wsAuthenticate(r)
+	claims, err := wsAuthenticate(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
+	}
+	userID := fmt.Sprintf("%d", claims.UserID)
+
+	// Global mode (session_id=*) requires admin access — prevents any
+	// authenticated user from subscribing to all sessions' events.
+	if globalMode && !claims.HasAdminAccess() {
+		http.Error(w, "admin access required for global subscription", http.StatusForbidden)
+		return
+	}
+
+	// Non-global mode: verify session ownership — prevents users from
+	// subscribing to other users' sessions (IDOR protection). Admins
+	// bypass this check. Skipped when no SessionAuthorizer is wired
+	// (e.g., in unit tests without a session repo).
+	if !globalMode && !claims.HasAdminAccess() && s.sessionAuth != nil {
+		if err := s.sessionAuth.CheckOwnership(r.Context(), sessionID, userID); err != nil {
+			s.lg.Warn("WS session ownership denied",
+				loggateway.StepID("ws.ownership_denied"),
+				loggateway.Str("session_id", sessionID),
+				loggateway.Str("user_id", userID),
+				loggateway.Err(err),
+			)
+			http.Error(w, "session ownership required", http.StatusForbidden)
+			return
+		}
 	}
 
 	// Connection limit check
@@ -235,21 +272,21 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// wsAuthenticate validates the request and returns the userID.
-func wsAuthenticate(r *http.Request) (string, error) {
+// wsAuthenticate validates the request and returns the authenticated claims.
+func wsAuthenticate(r *http.Request) (*auth.Auth, error) {
 	if auth.HTTPAuthBypassEnabled() {
 		claims := auth.DevBypassPrincipal()
-		return fmt.Sprintf("%d", claims.UserID), nil
+		return claims, nil
 	}
 	tokenStr := auth.TokenFromHTTPRequest(r)
 	if tokenStr == "" {
-		return "", errors.New("unauthorized")
+		return nil, errors.New("unauthorized")
 	}
 	claims, err := auth.ParseTokenFromRequest(tokenStr)
 	if err != nil {
-		return "", errors.New("invalid token")
+		return nil, errors.New("invalid token")
 	}
-	return fmt.Sprintf("%d", claims.UserID), nil
+	return claims, nil
 }
 
 // newWSConn creates a wsConn from the upgraded WebSocket connection and request parameters.

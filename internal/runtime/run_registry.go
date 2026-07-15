@@ -27,6 +27,14 @@ type activeRun struct {
 	runner      trpcrunner.Runner
 	cancel      context.CancelFunc
 	placeholder bool
+	// cancelling is set true by Cancel after invoking the cancel func.
+	// The entry is NOT deleted immediately so that HasActive continues
+	// to block new turns until the old Runner's defer calls Finish.
+	// A subsequent Cancel on a cancelling entry force-deletes it as a
+	// safety valve for stuck Runners.
+	// P1-01 fix: previously Cancel deleted the entry immediately, allowing
+	// a new turn to start before the old Runner had drained/exited.
+	cancelling bool
 }
 
 // cancelMap wraps sync.Map for context.CancelFunc storage.
@@ -201,16 +209,39 @@ func (r *RunRegistry) Cancel(sessionID, reason string) (bool, string) {
 		return false, ""
 	}
 
+	// P1-01 fix: safety valve — if the entry is already in "cancelling" state,
+	// the previous Cancel's cancel func has been invoked but the Runner has
+	// not yet called Finish (it may be stuck). Force-delete the entry so the
+	// user is not permanently blocked from starting a new turn.
+	// Note: runStatuses is intentionally NOT deleted here — the cancelled
+	// status was set by the first Cancel and should remain visible to the
+	// frontend. It will be cleaned up by Finish or the next StorePlaceholder.
+	if run.cancelling {
+		r.activeRuns.Delete(sessionID)
+		r.pendingCancels.delete(sessionID)
+		if r.lg != nil {
+			r.lg.Warn("force-deleting stuck cancelling run", loggateway.SessionID(sessionID), loggateway.Str("run_id", run.runID))
+		}
+		return true, run.runID
+	}
+
 	// Path 1: context.CancelFunc present (chat/team turns). Invoke once and
-	// delete the entry so subsequent Cancel calls are no-ops.
+	// mark the entry as cancelling. The entry is NOT deleted — it will be
+	// removed by Finish when the Runner's defer runs.
+	// P1-01 fix: previously deleted immediately, allowing new turns before
+	// the old Runner had drained.
 	if run.cancel != nil {
 		run.cancel()
 		r.SetStatus(sessionID, run.runID, biz.SessionRunPhaseCancelled, "")
-		// Double-check the active run is still the one we cancelled; a
-		// concurrent Finish or a new StoreRunner may have replaced it.
-		if current, ok := r.activeRuns.Load(sessionID); ok && current.runID == run.runID {
-			r.activeRuns.Delete(sessionID)
-		}
+		// Mark as cancelling instead of deleting. Use UpdateOrStore to
+		// atomically set the flag without losing concurrent updates.
+		r.activeRuns.UpdateOrStore(sessionID, func(existing activeRun, ok bool) activeRun {
+			if !ok || existing.runID != run.runID {
+				return existing // concurrent Finish or StoreRunner replaced it
+			}
+			existing.cancelling = true
+			return existing
+		})
 		return true, run.runID
 	}
 
@@ -219,19 +250,24 @@ func (r *RunRegistry) Cancel(sessionID, reason string) (bool, string) {
 		return false, ""
 	}
 
-	// Path 3: ManagedRunner.Cancel — idempotent within the registry because we
-	// delete the entry immediately after a successful cancel.
+	// Path 3: ManagedRunner.Cancel — idempotent within the registry.
+	// P1-01 fix: mark as cancelling instead of deleting. The entry is removed
+	// by Finish when the Runner's defer runs.
 	if mr, ok := run.runner.(trpcrunner.ManagedRunner); ok && mr.Cancel(sessionID) {
 		r.SetStatus(sessionID, run.runID, biz.SessionRunPhaseCancelled, "")
-		// Double-check the run is still the same before deleting.
-		if current, ok := r.activeRuns.Load(sessionID); ok && current.runID == run.runID {
-			r.activeRuns.Delete(sessionID)
-		}
+		r.activeRuns.UpdateOrStore(sessionID, func(existing activeRun, ok bool) activeRun {
+			if !ok || existing.runID != run.runID {
+				return existing
+			}
+			existing.cancelling = true
+			return existing
+		})
 		return true, run.runID
 	}
 
 	// Path 4: fallback to Close. Delete first so concurrent callers see the
-	// run is gone and skip Close.
+	// run is gone and skip Close. Close() is synchronous, so deleting
+	// immediately is safe here (unlike Paths 1/3 where cancel is async).
 	if current, ok := r.activeRuns.Load(sessionID); ok && current.runID == run.runID {
 		r.activeRuns.Delete(sessionID)
 	}

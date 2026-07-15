@@ -34,9 +34,27 @@ func TestAssertWorkspace_SameWorkspace(t *testing.T) {
 	}
 }
 
-func TestAssertWorkspace_EmptyResource(t *testing.T) {
-	if err := middleware.AssertWorkspace("ws-1", ""); err != nil {
-		t.Fatalf("empty resource workspace should pass, got %v", err)
+// TestAssertWorkspace_EmptyResourceTreatedAsDefault verifies P1-2 semantics:
+// empty resourceWorkspaceID is treated as DefaultWorkspaceID, NOT as "allow any
+// caller". This closes the legacy-data IDOR hole where resources without
+// WorkspaceID were accessible to any tenant.
+func TestAssertWorkspace_EmptyResourceTreatedAsDefault(t *testing.T) {
+	// Caller from non-default workspace → blocked (was allowed pre-P1-2).
+	err := middleware.AssertWorkspace("ws-1", "")
+	if err == nil {
+		t.Fatal("expected error for ws-1 caller accessing empty (default) resource, got nil")
+	}
+	ae, ok := apierror.From(err)
+	if !ok {
+		t.Fatal("expected *apierror.Error")
+	}
+	if ae.Code != apierror.CodeForbidden {
+		t.Fatalf("expected FORBIDDEN code, got %s", ae.Code)
+	}
+
+	// Caller from default workspace → allowed (legacy data belongs to default).
+	if err := middleware.AssertWorkspace(workspace.DefaultWorkspaceID, ""); err != nil {
+		t.Fatalf("default workspace caller should access empty (legacy) resource, got %v", err)
 	}
 }
 

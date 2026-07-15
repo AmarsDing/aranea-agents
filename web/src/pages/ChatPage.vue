@@ -19,13 +19,13 @@
       :pulse-team-colors="pulseTeamColors"
       :spirit-mode="spiritStore.activePanelMode === 'spirit'"
       :orchestration-phase="spiritStore.orchestrationPhase"
-      :blocked-status="blockedStatus"
+      :blocked-status="blockedInfo"
       @update:search="layout.search = $event"
       @select-spirit="onSelectSpirit()"
       @select-agent="entity.selectAgent($event)"
-      @agent-settings="(id) => entity.openSettings('agent', id)"
-      @agent-delete="(id) => entity.openDelete('agent', id)"
-      @agent-reorder="(payload) => entity.onGroupReorder(payload.groupKey, payload.ids)"
+      @agent-settings="(id: string) => entity.openSettings('agent', id)"
+      @agent-delete="(id: string) => entity.openDelete('agent', id)"
+      @agent-reorder="(payload: { groupKey: string; ids: string[] }) => entity.onGroupReorder(payload.groupKey, payload.ids)"
       @select-spirit-team="spiritStore.selectTeam($event)"
       @toggle-team-expand="spiritStore.toggleTeamExpand($event)"
       @spirit-settings="(id) => entity.openSettings('agent', id)"
@@ -193,7 +193,7 @@
     <SessionTreeSidebar
       v-else
       :tree-nodes="session.sessionTree.spiritTreeNodes"
-      :active-session-id="session.activityTimeline.currentSessionId ?? session.selectedSessionForUi?.id ?? ''"
+      :active-session-id="session.selectedSessionForUi?.id ?? ''"
       :default-expanded="true"
       @select="onSelectSessionTreeNode"
     />
@@ -271,7 +271,9 @@ const { coreReady, fileRef, layout, entity, session, composer, dialogs, errorBlo
 const spiritStore = useSpiritTeamStore();
 const { locate } = useScrollToActivity();
 const uiConfig = useUiConfigStore();
-const blockedStatus = useBlockedStatus(session.v2Tasks);
+const blockedStatus = useBlockedStatus(computed(() => session.v2Tasks));
+/** Exposed to template — auto-unwraps the ComputedRef<BlockedResult> to its value. */
+const blockedInfo = blockedStatus.blockedInfo;
 const router = useRouter();
 // T5.5: Mobile (<1024px) responsive logic removed — app targets desktop only.
 
@@ -287,8 +289,7 @@ const showSessionTree = computed(() => spiritStore.activePanelMode === 'spirit' 
 
 /** Navigate to a session tree node: switch Activity stream and lazy-load if needed. */
 function onSelectSessionTreeNode(sessionId: string) {
-  session.activityTimeline.setCurrentSession(sessionId);
-  void session.activityTimeline.ensureActivitiesLoaded(sessionId);
+  void session.onSelectSession(sessionId);
 }
 
 const spiritStatusBar = computed(() => {
@@ -434,8 +435,7 @@ function onExpandMember(payload: { agentKey: string; agentName?: string; teamId?
  *  session and lazy-loads its activities (cache-aware — skips the API call
  *  when the session is already cached). */
 function onEnterSession(sessionId: string) {
-  session.activityTimeline.setCurrentSession(sessionId);
-  void session.activityTimeline.ensureActivitiesLoaded(sessionId);
+  void session.onSelectSession(sessionId);
 }
 
 /** T5.2/T5.3 / §B.7.2: Lazy-load member/child session activities when a
@@ -446,7 +446,7 @@ function onEnterSession(sessionId: string) {
 function onExpandChildren(sessionIds: string[]) {
   for (const sid of sessionIds) {
     if (!sid) continue;
-    void session.activityTimeline.ensureActivitiesLoaded(sid);
+    void session.activityStore.fetchSessionHistory(sid);
   }
 }
 

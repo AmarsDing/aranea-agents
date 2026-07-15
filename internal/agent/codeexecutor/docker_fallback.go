@@ -35,6 +35,16 @@ func (d *dockerRuntimeFallback) ExecuteCode(ctx context.Context, input trpcagent
 	if err == nil {
 		return result, nil
 	}
+	// 生产环境且未显式允许 local 时 fail-closed：返回错误而非回退到无隔离的
+	// local 执行器。与 Factory.applyAvailabilityFallback 的配置期守卫一致，
+	// 避免运行期 docker 故障导致不可信代码在宿主机上执行。
+	if isProductionEnv() && !d.factory.env.AllowLocalInProd {
+		d.lg.Error("生产环境 Docker 运行期失败，拒绝回退 local（fail-closed）",
+			loggateway.StepID("agent.codeexec.docker_runtime_fail_closed"),
+			loggateway.Err(err))
+		ResetDockerProbe()
+		return trpcagentcodeexec.CodeExecutionResult{}, err
+	}
 	d.lg.Warn("Docker 执行失败，回退到 local 执行器",
 		loggateway.StepID("agent.codeexec.docker_runtime_fallback"),
 		loggateway.Err(err))

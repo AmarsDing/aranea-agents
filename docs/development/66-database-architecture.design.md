@@ -25,9 +25,9 @@
            │                            │
            ▼                            ▼
 ┌─────────────────────┐    ┌─────────────────────────┐
-│   SQLite (主库)      │    │  PostgreSQL (可选)       │
-│   Ent ORM            │    │  database/sql + pgvector │
-│   WAL 读写分离       │    │  向量搜索 + 知识库       │
+│  PostgreSQL (主库)   │    │  SQLite (仅测试/CLI)     │
+│  Ent ORM + pgvector  │    │  in-memory / 文件        │
+│  读写分离 + WAL      │    │  testhelper / CLI 工具   │
 └─────────────────────┘    └─────────────────────────┘
 ```
 
@@ -100,15 +100,15 @@ ConnMaxIdleTime=5min         ConnMaxIdleTime=5min
      └── DDL
 ```
 
-**降级策略**：PostgreSQL 连接失败不阻断启动，`log.Warn` 后降级为纯 SQLite 模式。`PostgresRead()` 在读池未初始化时回退到写池。
+**当前策略**：PostgreSQL 是生产唯一主库，启动时强制初始化（`data.go:428`：`Postgres is the only supported primary database`）。SQLite 仅保留用于测试基础设施（`testhelper.SetupTestDB` 使用 in-memory SQLite）和离线 CLI 维护工具（`OpenSQLiteEntClient`/`NewCLIData`）。生产环境不允许降级为 SQLite 模式。
 
 ### 2.3 连接初始化流程
 
 ```
 NewData(bc, lg)
-  ├── SQLite 写连接 → PRAGMA → Ent Client → Schema.Create (自动迁移)
-  ├── SQLite 读连接 → PRAGMA → Ent Client
-  ├── PostgreSQL 写池 + 读池（可选）→ Ping → pgvector/knowledge schema
+  ├── PostgreSQL 写池 + 读池 → Ping → Ent Client → Schema.Create (自动迁移)
+  ├── pgvector.EnsureSchema() + EnsureKnowledgeSchema()
+  ├── SQLite (仅测试模式：testhelper.SetupTestDB 使用 in-memory)
   ├── ReadinessGate 初始化（Pending 态）
   └── 后台 goroutine (P1)
        ├── ensureSchemaDDL (DDL 迁移)
@@ -383,7 +383,9 @@ ensureSchemaDDL()
 
 ### 5.1 Schema 总表
 
-共 82 个 Ent Schema，位于 `internal/data/ent/schema/`。其中 79 个使用 `entsql.Annotation{Table: ...}` 显式映射表名，3 个使用 Ent 默认复数化规则。
+共 91 个 Ent Schema，位于 `internal/data/ent/schema/`。其中 88 个使用 `entsql.Annotation{Table: ...}` 显式映射表名，3 个使用 Ent 默认复数化规则。
+
+> **已删除的 Schema**：`Message`（messages 表）和 `EventStore`（event_store 表）已于 2026-09 迁移中删除（`20260901_drop_event_store_subsystem.sql`、`20260902_drop_messages_subsystem.sql`）。WS replay 已移除，历史事件改用 `ListActivities` RPC 获取。
 
 | 域 | Schema | 表名 | 说明 |
 |----|--------|------|------|
@@ -403,7 +405,6 @@ ensureSchemaDDL()
 | | SessionMetrics | session_metrics | 会话指标 |
 | | SessionParticipant | session_participants | 会话参与者 |
 | | SessionTurn | session_turns | 会话轮次 |
-| **Message** | Message | messages | 消息（FTS5 全文搜索） |
 | **Tool** | ToolInvocation | tool_invocations | 工具调用 |
 | | ToolInvocationAudit | tool_invocation_audit | 工具调用审计 |
 | | ToolInvocationParam | tool_invocation_params | 工具调用参数 |
@@ -427,7 +428,17 @@ ensureSchemaDDL()
 | | GraphTaskRun | graph_task_runs | 任务运行 |
 | **Cron** | CronTask | cron_task | 定时任务 |
 | | CronTaskRun | cron_task_run | 定时任务运行 |
-| **Memory** | EventStore | event_store | 事件存储 |
+| **Activity V2** | SessionV2 | sessions_v2 | V2 会话（替代原 sessions 子集） |
+| | TurnV2 | turns_v2 | V2 轮次 |
+| | TaskV2 | tasks_v2 | V2 任务 |
+| | StepV2 | steps_v2 | V2 步骤 |
+| | PlanBoardV2 | plan_boards_v2 | V2 计划看板 |
+| | PlanStepV2 | plan_steps_v2 | V2 计划步骤 |
+| | TeamRunV2 | team_runs_v2 | V2 Team 运行 |
+| | TeamStageV2 | team_stages_v2 | V2 Team 阶段 |
+| | MemberSessionV2 | member_sessions_v2 | V2 成员会话 |
+| | GraphStageV2 | graph_stages_v2 | V2 Graph 阶段 |
+| | GraphNodeV2 | graph_nodes_v2 | V2 Graph 节点 |
 | **Monitor** | FlowLogEvent | flow_log_events | 流日志事件 |
 | | SelfCheckReport | self_check_reports | 自检报告 |
 | **Usage** | ModelPricingRule | model_pricing_rules | 模型定价规则 |

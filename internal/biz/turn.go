@@ -26,4 +26,5 @@ const (
 	TurnStatusRunning   TurnStatus = "running"
 	TurnStatusCompleted TurnStatus = "completed"
 	TurnStatusFailed    TurnStatus = "failed"
+	TurnStatusCancelled TurnStatus = "cancelled"
 )

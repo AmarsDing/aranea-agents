@@ -228,6 +228,10 @@ jobs:
         working-directory: web
         run: pnpm install --frozen-lockfile
 
+      - name: Frontend layer check
+        working-directory: web
+        run: node scripts/check-frontend-layer.mjs
+
       - name: Build frontend
         working-directory: web
         run: pnpm build
@@ -313,4 +317,3 @@ jobs:
           scan-ref: '.'
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
-        continue-on-error: true

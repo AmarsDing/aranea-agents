@@ -19,6 +19,7 @@ import (
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/runtime/turn"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 
@@ -132,6 +133,18 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 		loggateway.StepID("chat.session_get"),
 		loggateway.Any("elapsed_ms", time.Since(sessGetStart).Milliseconds()))
 	flow.LogDone("chat.session_fetch", "会话已获取", event.P("owner_type", sess.OwnerType), event.P("agent_id", sess.AgentID), event.P("team_id", sess.TeamID))
+
+	// P0-01 fix: verify the authenticated user owns this session.
+	// Skip for system-initiated turns (default_user) and shared sessions
+	// (empty UserID) to avoid breaking cron/channel/durable entry points.
+	authUserID := ctxuser.FromContext(ctx)
+	if authUserID != ctxuser.DefaultUserID && sess.UserID != "" && authUserID != sess.UserID {
+		unlock()
+		flow.LogError("chat.session_ownership", "会话归属校验失败",
+			event.P("auth_user", authUserID), event.P("session_user", sess.UserID))
+		return biz.ChatMessage{}, biz.ChatMessage{}, apierror.Forbidden(apierror.DomainChatNative,
+			"session does not belong to the authenticated user")
+	}
 
 	releaseLane := rt.AcquireTurnLane(ctx, input, sess.OwnerType)
 	defer releaseLane()
@@ -436,16 +449,29 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	defer func() {
 		if turnStatus != "ok" {
 			rollbackRunnerSession()
-			// Ensure frontend runStatus is reset to "failed" on EXECUTE/PERSIST
-			// errors (e.g. turn timeout). BUILD-phase errors already publish
-			// run_status=failed above (line ~386). Without this, the frontend
-			// runStatus stays "running" → isActiveRun() returns true → new
-			// messages go through enqueueDuringRun instead of direct send →
-			// input box never clears (root cause of "no response after send").
-			// Use context.Background() because ctx may be cancelled (timeout).
-			failCtx := context.Background()
-			o.publishRunStatus(sessionID, runID, "failed", safeErrMsgForWS(turnErr))
-			o.transitionSessionStatus(failCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
+			// P1-03 fix: check if the run was cancelled before publishing "failed".
+			// When cancelActiveRun is called, it sets the run status to "cancelled"
+			// and transitions the session to "interrupted (user_cancelled)". If we
+			// unconditionally publish "failed" here, the frontend receives a
+			// conflicting "failed" notification after the correct "cancelled" one.
+			// The in-memory RunRegistry status is the source of truth — if it says
+			// "cancelled", the cancel path already handled the terminal state.
+			isCancelled := false
+			if entry, ok := o.runs.GetStatus(sessionID); ok && entry.Status == biz.SessionRunPhaseCancelled {
+				isCancelled = true
+			}
+			if !isCancelled {
+				// Ensure frontend runStatus is reset to "failed" on EXECUTE/PERSIST
+				// errors (e.g. turn timeout). BUILD-phase errors already publish
+				// run_status=failed above (line ~386). Without this, the frontend
+				// runStatus stays "running" → isActiveRun() returns true → new
+				// messages go through enqueueDuringRun instead of direct send →
+				// input box never clears (root cause of "no response after send").
+				// Use context.Background() because ctx may be cancelled (timeout).
+				failCtx := context.Background()
+				o.publishRunStatus(sessionID, runID, "failed", safeErrMsgForWS(turnErr))
+				o.transitionSessionStatus(failCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
+			}
 			if turnErr != nil {
 				o.publishTurnFailure(sessionID, runID, "chat-service", turnErr, "")
 			}

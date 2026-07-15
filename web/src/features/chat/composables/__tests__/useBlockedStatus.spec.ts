@@ -25,6 +25,7 @@ describe('useBlockedStatus v2', () => {
     const tasks = ref(store.getSessionTasks('s1'));
     const { blockedInfo } = useBlockedStatus(tasks);
     expect(blockedInfo.value.type).toBe('none');
+    expect(blockedInfo.value.blocked).toBe(false);
   });
 
   it('detects tool_blocked step', () => {
@@ -66,5 +67,6 @@ describe('useBlockedStatus v2', () => {
     const tasks = ref(store.getSessionTasks('s1'));
     const { blockedInfo } = useBlockedStatus(tasks);
     expect(blockedInfo.value.type).toBe('tool');
+    expect(blockedInfo.value.blocked).toBe(true);
   });
 });

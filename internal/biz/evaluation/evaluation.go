@@ -132,6 +132,12 @@ type Repo interface {
 	UpdateDatasetCaseCount(ctx context.Context, id string, delta int) error
 
 	InsertCases(ctx context.Context, cases []Case) error
+	// InsertCasesWithCountUpdate inserts cases and bumps dataset.case_count in a
+	// single transaction. Use this instead of separate InsertCases +
+	// UpdateDatasetCaseCount calls when the two writes must be atomic
+	// (e.g. UploadCases). Without atomicity, a failure between the two writes
+	// would leave case_count diverged from the actual row count in eval_cases.
+	InsertCasesWithCountUpdate(ctx context.Context, datasetID string, cases []Case) error
 	ListCases(ctx context.Context, datasetID string) ([]Case, error)
 
 	CreateRun(ctx context.Context, r Run) (Run, error)
@@ -249,11 +255,8 @@ func (u *Usecase) UploadCases(ctx context.Context, datasetID, casesJSON string) 
 			MetadataJSON:   up.MetadataJSON,
 		})
 	}
-	if err := u.repo.InsertCases(ctx, cases); err != nil {
+	if err := u.repo.InsertCasesWithCountUpdate(ctx, datasetID, cases); err != nil {
 		return 0, err
-	}
-	if err := u.repo.UpdateDatasetCaseCount(ctx, datasetID, len(cases)); err != nil {
-		u.lg.Warn("update dataset case count failed", loggateway.Err(err), loggateway.Str("dataset_id", datasetID))
 	}
 	return len(cases), nil
 }

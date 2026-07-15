@@ -95,14 +95,30 @@ func (m *SessionLockManager) sweepLoop() {
 }
 
 // sweep reaps entries that have been idle for longer than SessionLockMaxIdle.
+//
+// A lock that is currently held must never be reaped, even if it has been
+// held longer than the idle threshold: a long-running turn may legitimately
+// hold the per-session mutex for >SessionLockMaxIdle. Reaping a held entry
+// would drop it from the map, so the next Lock() for that session would
+// create a fresh mutex and run concurrently with the still-running turn,
+// breaking per-session mutual exclusion.
+//
+// TryLock is performed under the manager mutex (getOrCreate also takes the
+// manager mutex), so the check-and-delete is race-free against new acquirers.
 func (m *SessionLockManager) sweep() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := time.Now()
 	for id, e := range m.entries {
-		if now.Sub(e.lastUsed) > SessionLockMaxIdle {
-			delete(m.entries, id)
+		if now.Sub(e.lastUsed) <= SessionLockMaxIdle {
+			continue
 		}
+		// Skip (and keep) entries whose per-session mutex is currently held.
+		if !e.mu.TryLock() {
+			continue
+		}
+		e.mu.Unlock()
+		delete(m.entries, id)
 	}
 }
 

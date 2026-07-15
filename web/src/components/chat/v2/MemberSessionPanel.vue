@@ -95,7 +95,7 @@
 <script setup lang="ts">
 import { ref, computed, inject, watch, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
+import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import { isSystemInternalNotice } from '../../../features/chat/noticeFilter';
 import { useActivityAutoScroll } from '../../../features/chat/composables/useActivityAutoScroll';
 import type { MemberSession } from '../../../features/chat/v2Types';
@@ -123,7 +123,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useSafeI18n();
-const store = useChatActivityStore();
+const store = useActivityQueries();
 
 // 查询 member session 对应的 agent 内部活动 steps
 const memberSteps = computed(() => {
@@ -180,7 +180,6 @@ watch(
     } else if (
       newStatus === 'completed' ||
       newStatus === 'failed' ||
-      newStatus === 'cancelled' ||
       newStatus === 'skipped'
     ) {
       collapsed.value = true;

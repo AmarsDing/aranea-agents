@@ -32,6 +32,12 @@ func safeErrMsgForWS(err error) string {
 // NOTE: Only use for BUILD-phase errors. EXECUTE/PERSIST-phase errors should
 // only call markTurnError; the defer block in runSingleAgentViaTRPC handles
 // the rest (publishRunStatus + transitionSessionStatus + publishTurnFailure).
+//
+// P1-03 fix: if the run was already cancelled (user clicked stop during BUILD),
+// the "cancelled" status and session transition were already set by
+// cancelActiveRun. We skip the "failed" publish and session transition to
+// avoid conflicting terminal notifications. The cancel status is checked
+// BEFORE beforePublish (which may call Finish and delete the status entry).
 func (o *ChatOrchestrator) failTurn(
 	ctx context.Context,
 	sessionID, runID string,
@@ -44,11 +50,19 @@ func (o *ChatOrchestrator) failTurn(
 		fn(&opt)
 	}
 	markTurnError(turnStatus, turnErr, turnErrMsg, err)
+	// P1-03 fix: check cancelled state BEFORE beforePublish (which may call
+	// Finish and delete the run status entry).
+	isCancelled := false
+	if entry, ok := o.runs.GetStatus(sessionID); ok && entry.Status == biz.SessionRunPhaseCancelled {
+		isCancelled = true
+	}
 	if opt.beforePublish != nil {
 		opt.beforePublish()
 	}
-	o.publishRunStatus(sessionID, runID, "failed", safeErrMsgForWS(err))
-	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
+	if !isCancelled {
+		o.publishRunStatus(sessionID, runID, "failed", safeErrMsgForWS(err))
+		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
+	}
 	o.publishTurnFailure(sessionID, runID, opt.source, err, "")
 	return biz.ChatMessage{}, biz.ChatMessage{}, err
 }

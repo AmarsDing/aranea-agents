@@ -216,6 +216,8 @@ func (s *ChatService) BuildOpenAIRunner(ctx context.Context, agentKey string) (t
 		AgentFactoryKeys: []string{ag.AgentKey},
 		LookupAgents:     lookup,
 		RalphLoop:        rl.Config,
+		// P0-03 fix: unify memory scope with real agent ID.
+		AppName: ag.ID,
 	})
 	if err != nil {
 		return nil, nil, err

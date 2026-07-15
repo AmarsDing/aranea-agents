@@ -46,7 +46,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
+import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import type { PlanBoard, PlanStepStatus, PlanStatus } from '../../../features/chat/v2Types';
 
 function useSafeI18n() {
@@ -59,7 +59,7 @@ function useSafeI18n() {
 
 const props = defineProps<{ planBoard: PlanBoard }>();
 const { t } = useSafeI18n();
-const store = useChatActivityStore();
+const store = useActivityQueries();
 
 // 从 store.getPlanBoardSteps 查询辅助获取最新 steps（独立 Map，反映最新状态）
 const steps = computed(() => store.getPlanBoardSteps(props.planBoard.ID));

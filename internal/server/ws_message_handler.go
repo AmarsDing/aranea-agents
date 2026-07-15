@@ -9,6 +9,7 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/appctx"
+	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -61,7 +62,8 @@ func (s *WSServer) handleUpstream(wc *wsConn, raw []byte) {
 
 	case "cancel":
 		if s.canceller != nil {
-			s.canceller.CancelRun(context.Background(), wc.sessionID)
+			// P0-02 fix: propagate authenticated userID for ownership checks downstream.
+			s.canceller.CancelRun(ctxuser.WithUserID(context.Background(), wc.userID), wc.sessionID)
 		}
 
 	case "enable_log":
@@ -135,8 +137,13 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 		// Disconnecting the WS no longer cancels in-flight turns; users cancel via
 		// StopGeneration (RunRegistry.Cancel) instead. Aligns with HTTP path
 		// (submitChatMessageAsync) and the No-Timeout principle (2026-06-18).
-		safego.Go(appctx.Ctx(), "ws-user-message", func() {
-			if err := s.turnExecutor.ExecuteTurn(appctx.Ctx(), input); err != nil {
+		//
+		// P0-02 fix: propagate the authenticated userID into the turn context so
+		// the Runner session key, memory tools, and quota checks use the real user
+		// scope instead of default_user.
+		turnCtx := ctxuser.WithUserID(appctx.Ctx(), wc.userID)
+		safego.Go(turnCtx, "ws-user-message", func() {
+			if err := s.turnExecutor.ExecuteTurn(turnCtx, input); err != nil {
 				s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
 				s.publishWSErrorActivity(sessionID, requestID, "send_failed", err.Error())
 				s.lg.With(loggateway.SessionID(sessionID)).Info("WebSocket error ActivityEvent published",
@@ -165,8 +172,10 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 	// Derive from appctx.Ctx() so the turn outlives the WebSocket connection
 	// (aligns with HTTP path and No-Timeout principle). Cancellation is handled
 	// via StopGeneration (RunRegistry.Cancel), not via the connection context.
-	safego.Go(appctx.Ctx(), "ws-user-message", func() {
-		_, err := s.sender.SendChatMessage(appctx.Ctx(), req)
+	// P0-02 fix: propagate authenticated userID into the turn context.
+	legacyCtx := ctxuser.WithUserID(appctx.Ctx(), wc.userID)
+	safego.Go(legacyCtx, "ws-user-message", func() {
+		_, err := s.sender.SendChatMessage(legacyCtx, req)
 		if err != nil {
 			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
 			s.publishWSErrorActivity(sessionID, requestID, "send_failed", err.Error())
@@ -203,8 +212,10 @@ func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
 
 	// Derive from appctx.Ctx() so the enqueue outlives the WebSocket connection
 	// (aligns with HTTP path and No-Timeout principle).
-	safego.Go(appctx.Ctx(), "ws-enqueue-message", func() {
-		resp, err := s.sender.EnqueueUserMessage(appctx.Ctx(), req)
+	// P0-02 fix: propagate authenticated userID into the turn context.
+	enqCtx := ctxuser.WithUserID(appctx.Ctx(), wc.userID)
+	safego.Go(enqCtx, "ws-enqueue-message", func() {
+		resp, err := s.sender.EnqueueUserMessage(enqCtx, req)
 		if err != nil {
 			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 入队消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
 			s.publishWSErrorActivity(sessionID, requestID, "enqueue_failed", err.Error())

@@ -367,3 +367,101 @@ func TestRunRegistryCancel_DoubleCheckActive(t *testing.T) {
 		t.Fatalf("second runner.Cancel() = %d, want 1", got)
 	}
 }
+
+// TestRunRegistryCancel_KeepsEntryUntilFinish verifies P1-01 fix: Cancel marks
+// the entry as "cancelling" but does NOT delete it. HasActive continues to
+// return true, blocking new turns until Finish is called by the Runner's defer.
+//
+// Regression: previously Cancel deleted the entry immediately, allowing a new
+// turn to start before the old Runner had drained/exited.
+func TestRunRegistryCancel_KeepsEntryUntilFinish(t *testing.T) {
+	reg := NewRunRegistry()
+	runner := &registryRunner{cancelOK: true}
+	reg.StoreRunner("session-1", "run-1", runner)
+
+	// Before Cancel: active.
+	if !reg.HasActive("session-1") {
+		t.Fatalf("HasActive = false before Cancel, want true")
+	}
+
+	stopped, runID := reg.Cancel("session-1", "")
+	if !stopped || runID != "run-1" {
+		t.Fatalf("Cancel() = (%v, %q), want (true, run-1)", stopped, runID)
+	}
+	if !runner.cancelled {
+		t.Fatalf("runner.Cancel not called")
+	}
+
+	// After Cancel: entry must still be active (cancelling state) to block
+	// new turns until the Runner's defer calls Finish.
+	if !reg.HasActive("session-1") {
+		t.Fatalf("HasActive = false after Cancel, want true (entry should be in cancelling state)")
+	}
+
+	// Status should be "cancelled".
+	status, ok := reg.GetStatus("session-1")
+	if !ok || status.Status != biz.SessionRunPhaseCancelled || status.RunID != "run-1" {
+		t.Fatalf("GetStatus() = (%+v, %v), want cancelled run-1", status, ok)
+	}
+
+	// Second Cancel force-deletes the stuck cancelling entry (safety valve).
+	stopped2, _ := reg.Cancel("session-1", "")
+	if !stopped2 {
+		t.Fatalf("second Cancel (safety valve) = false, want true")
+	}
+	if reg.HasActive("session-1") {
+		t.Fatalf("HasActive = true after safety-valve Cancel, want false")
+	}
+}
+
+// TestRunRegistryCancel_FinishReleasesCancellingEntry verifies that Finish
+// (called by the Runner's defer) releases a cancelling entry, allowing new
+// turns to start.
+func TestRunRegistryCancel_FinishReleasesCancellingEntry(t *testing.T) {
+	reg := NewRunRegistry()
+	runner := &registryRunner{cancelOK: true}
+	reg.StoreRunner("session-1", "run-1", runner)
+
+	reg.Cancel("session-1", "")
+
+	// Entry is in cancelling state.
+	if !reg.HasActive("session-1") {
+		t.Fatalf("HasActive = false after Cancel, want true")
+	}
+
+	// Runner's defer calls Finish.
+	reg.Finish("session-1")
+
+	// Entry is now released.
+	if reg.HasActive("session-1") {
+		t.Fatalf("HasActive = true after Finish, want false")
+	}
+}
+
+// TestRunRegistryCancel_CancelableFuncKeepsEntry verifies the cancelling
+// behavior for Path 1 (context.CancelFunc), which is the most common path
+// for chat/team turns.
+func TestRunRegistryCancel_CancelableFuncKeepsEntry(t *testing.T) {
+	reg := NewRunRegistry()
+	cancelCalled := false
+	reg.StoreCancelable("session-1", "run-1", func() { cancelCalled = true })
+
+	stopped, _ := reg.Cancel("session-1", "")
+	if !stopped {
+		t.Fatalf("Cancel = false, want true")
+	}
+	if !cancelCalled {
+		t.Fatalf("cancel func not called")
+	}
+
+	// Entry must remain (cancelling state) — not deleted.
+	if !reg.HasActive("session-1") {
+		t.Fatalf("HasActive = false after Cancel, want true (cancelling state)")
+	}
+
+	// Finish releases it.
+	reg.Finish("session-1")
+	if reg.HasActive("session-1") {
+		t.Fatalf("HasActive = true after Finish, want false")
+	}
+}

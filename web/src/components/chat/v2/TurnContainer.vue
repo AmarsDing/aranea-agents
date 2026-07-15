@@ -24,7 +24,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
+import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
 import type { Turn } from '../../../features/chat/v2Types';
 import { isSystemInternalNotice } from '../../../features/chat/noticeFilter';
 import ThinkingBlock from '../ThinkingBlock.vue';
@@ -40,7 +40,7 @@ defineEmits<{
   'pause-agent': [sessionId: string];
   'inject-agent': [payload: { sessionId: string; message: string }];
 }>();
-const store = useChatActivityStore();
+const store = useActivityQueries();
 const visibleSteps = computed(() =>
   store.getTurnSteps(props.turn.ID).filter((s) => {
     // 过滤系统内部通知（context_usage 等）

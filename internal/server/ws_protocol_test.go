@@ -18,7 +18,7 @@ func newTestWSServer(canceller RunCanceller, sender ChatSender) *WSServer {
 	return NewWSServerFromInfra(
 		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
 		&event.Infra{MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop())},
-		canceller, sender, nil, nil, loggateway.NewNoop(), nil,
+		canceller, sender, nil, nil, loggateway.NewNoop(), nil, nil,
 	)
 }
 
