@@ -75,6 +75,9 @@ type EvalDataset func(*sql.Selector)
 // EvalRun is the predicate function for evalrun builders.
 type EvalRun func(*sql.Selector)
 
+// EventDeliveryOutbox is the predicate function for eventdeliveryoutbox builders.
+type EventDeliveryOutbox func(*sql.Selector)
+
 // EvolutionSuggestion is the predicate function for evolutionsuggestion builders.
 type EvolutionSuggestion func(*sql.Selector)
 

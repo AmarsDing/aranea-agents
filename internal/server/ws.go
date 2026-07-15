@@ -81,6 +81,8 @@ type WSServer struct {
 	// to emit ActivityBridgeEvent payloads (wrapping v1 ActivityEvent) for the
 	// chat error activity. The v2 WSV2Subscriber fans these out to WS clients.
 	eventBus              biz.EventBus
+	// outbox provides durable critical-event replay for last_event_id (B-06). Optional.
+	outbox                biz.EventDeliveryOutboxRepo
 	canceller             RunCanceller
 	sender                ChatSender
 	turnExecutor          WSTurnExecutor
@@ -92,6 +94,14 @@ type WSServer struct {
 	maxSessionConns       int
 	maxGlobalMonitorConns int
 	lg                    loggateway.Logger
+}
+
+// SetEventOutbox wires the durable critical-event outbox used for last_event_id replay.
+func (s *WSServer) SetEventOutbox(repo biz.EventDeliveryOutboxRepo) {
+	if s == nil {
+		return
+	}
+	s.outbox = repo
 }
 
 // NewWSServerFromInfra uses monitor bus for monitor events and the v2 EventBus
@@ -250,20 +260,20 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 	// Register connection
 	s.store.add(sessionID, wc)
 
-	// Send connected message
+	// B-06: replay missed critical outbox frames before "connected" so the
+	// client applies them prior to treating the stream as caught up.
 	lastEventID := strings.TrimSpace(r.URL.Query().Get("last_event_id"))
+	if !globalMode && !probeMode && lastEventID != "" {
+		s.replayOutbox(wc, sessionID, lastEventID)
+	}
+
+	// Send connected message
 	s.sendConnected(wc, sessionID, lastEventID)
 
 	// Start goroutines
 	connCtx := r.Context()
 	safego.Go(connCtx, "ws-write-pump", func() { s.writePump(wc) })
 	safego.Go(connCtx, "ws-read-pump", func() { s.readPump(wc) })
-
-	// Phase 5 Blocker A: WS replay path has been removed. Clients needing
-	// historical events on reconnect should call the ListActivities RPC
-	// (GET /v1/sessions/{session_id}/activities). The lastEventID query
-	// parameter is still echoed back in the "connected" payload so clients
-	// can correlate, but no in-memory envelope replay is performed.
 
 	if !probeMode {
 		if monitorCh != nil {

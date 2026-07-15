@@ -33,6 +33,15 @@ const (
 //  2. Authenticated principal: always JWT EffectiveWorkspaceID. A mismatched
 //     Header/Query is rejected with 403.
 //
+// C-25 / RLS: Postgres policies in 20261011_tenant_rls_phase1.sql read
+// current_setting('app.workspace_id', true). Repo-layer predicates (see
+// data.workspaceSharedOrOwnIDs / workspacePrivateIDs) are the primary
+// isolation today. To activate RLS as a second line of defense, set the GUC
+// on the request DB connection via data.SetAppWorkspaceIDOnConn after this
+// filter resolves wsID (pool-safe: use SET LOCAL / is_local=true on a
+// per-request conn). Do not call SetAppWorkspaceID on a shared pool without
+// a dedicated conn — GUC would leak across requests.
+//
 // Inject this filter AFTER the auth filter so that auth has already
 // validated the bearer token.
 func WorkspaceFilter() kratoshttp.FilterFunc {

@@ -11,6 +11,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	bizknowledge "aranea-agents/internal/biz/knowledge"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
@@ -129,11 +130,18 @@ func (r *knowledgeRepo) CreateCollection(ctx context.Context, c biz.KnowledgeCol
 }
 
 func (r *knowledgeRepo) GetCollection(ctx context.Context, id string) (biz.KnowledgeCollection, error) {
+	// C-25: tenant sees own + shared (empty workspace); system sees all.
 	q := `SELECT id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace,
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_collections WHERE id = $1`
-	return scanCollection(r.data.Postgres().QueryRowContext(ctx, q, id))
+	args := []any{id}
+	if !workspace.IsSystem(ctx) {
+		ws := workspace.IDFromContext(ctx)
+		q += ` AND (workspace = $2 OR workspace = '')`
+		args = append(args, ws)
+	}
+	return scanCollection(r.data.Postgres().QueryRowContext(ctx, q, args...))
 }
 
 func (r *knowledgeRepo) ListCollections(ctx context.Context, workspace string, limit, offset int) ([]biz.KnowledgeCollection, int, error) {
@@ -195,11 +203,20 @@ func (r *knowledgeRepo) CreateDocument(ctx context.Context, d biz.KnowledgeDocum
 }
 
 func (r *knowledgeRepo) GetDocument(ctx context.Context, id string) (biz.KnowledgeDocument, error) {
-	q := `SELECT id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message,
-		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
-		  FROM knowledge_documents WHERE id = $1`
-	return scanDocument(r.data.Postgres().QueryRowContext(ctx, q, id))
+	// C-25: documents inherit collection workspace; filter via JOIN.
+	q := `SELECT d.id, d.collection_id, d.source, d.mime_type, d.size_bytes, d.chunk_count, d.status, d.error_message,
+		         to_char(d.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		         to_char(d.updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+		  FROM knowledge_documents d
+		  JOIN knowledge_collections c ON c.id = d.collection_id
+		  WHERE d.id = $1`
+	args := []any{id}
+	if !workspace.IsSystem(ctx) {
+		ws := workspace.IDFromContext(ctx)
+		q += ` AND (c.workspace = $2 OR c.workspace = '')`
+		args = append(args, ws)
+	}
+	return scanDocument(r.data.Postgres().QueryRowContext(ctx, q, args...))
 }
 
 func (r *knowledgeRepo) UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error {

@@ -2,6 +2,7 @@ package v2
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -550,4 +551,90 @@ func (f *errorThenSuccessRepoSet) UpsertTask(ctx context.Context, t biz.Task) (b
 		return biz.Task{}, errors.New("simulated persist failure")
 	}
 	return f.fakeRepoSet.UpsertTask(ctx, t)
+}
+
+// fakeOutbox captures critical outbox Insert/MarkPublished for B-06 tests.
+type fakeOutbox struct {
+	mu            sync.Mutex
+	inserted      []biz.EventDeliveryOutboxRow
+	markPublished []string
+}
+
+func (f *fakeOutbox) Insert(_ context.Context, row biz.EventDeliveryOutboxRow) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.inserted = append(f.inserted, row)
+	return nil
+}
+
+func (f *fakeOutbox) MarkPublished(_ context.Context, id string, _ time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.markPublished = append(f.markPublished, id)
+	return nil
+}
+
+func (f *fakeOutbox) ListAfter(context.Context, string, string, int64, int) ([]biz.EventDeliveryOutboxRow, error) {
+	return nil, nil
+}
+
+func TestSequencer_CriticalOutboxInsert(t *testing.T) {
+	t.Parallel()
+
+	rs := &fakeRepoSet{}
+	bus := &fakeBus{}
+	outbox := &fakeOutbox{}
+	s := NewSequencer(rs, bus, loggateway.NewNoop(),
+		WithPublishBuffer(16),
+		WithPersistBuffer(16),
+		WithDeltaBatchInterval(time.Millisecond*4),
+		WithEventOutbox(outbox),
+	)
+	t.Cleanup(func() { _ = s.Close() })
+
+	ctx := context.Background()
+	task := biz.Task{
+		ID:        "task-outbox",
+		SessionID: "sess-1",
+		Status:    biz.TaskStatusCompleted,
+		Seq:       9,
+		Version:   2,
+	}
+	s.Publish(ctx, biz.NewTaskCompletedEvent(task))
+	if err := s.Flush(ctx); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	outbox.mu.Lock()
+	defer outbox.mu.Unlock()
+	if len(outbox.inserted) != 1 {
+		t.Fatalf("outbox inserts = %d, want 1", len(outbox.inserted))
+	}
+	row := outbox.inserted[0]
+	wantID := biz.DeliveryEventID(biz.NewTaskCompletedEvent(task), 9)
+	if row.EventID != wantID {
+		t.Fatalf("event_id = %q, want %q", row.EventID, wantID)
+	}
+	if row.Seq != 9 || row.SessionID != "sess-1" {
+		t.Fatalf("row = %+v", row)
+	}
+	if len(row.Payload) == 0 {
+		t.Fatal("payload empty")
+	}
+	var env map[string]any
+	if err := json.Unmarshal(row.Payload, &env); err != nil {
+		t.Fatalf("payload json: %v", err)
+	}
+	if env["type"] != "v2_event" || env["kind"] != "task.completed" {
+		t.Fatalf("envelope type/kind = %v/%v", env["type"], env["kind"])
+	}
+	if env["session_id"] != "sess-1" || env["event_id"] != wantID {
+		t.Fatalf("envelope session/event_id = %v/%v want sess-1/%s", env["session_id"], env["event_id"], wantID)
+	}
+	if env["payload"] == nil {
+		t.Fatal("envelope missing payload")
+	}
+	if len(outbox.markPublished) != 1 || outbox.markPublished[0] != row.ID {
+		t.Fatalf("MarkPublished = %v, want [%s]", outbox.markPublished, row.ID)
+	}
 }

@@ -5,4 +5,6 @@ import (
 )
 
 // ProviderSet is server providers.
-var ProviderSet = wire.NewSet(NewGRPCServer, NewHTTPServer, NewWSServerFromInfra, NewServiceRegistry)
+// NewWSServerFromInfra is provided via cmd/admin provideWSServer so the durable
+// event outbox can be attached for B-06 last_event_id replay.
+var ProviderSet = wire.NewSet(NewGRPCServer, NewHTTPServer, NewServiceRegistry, NewSessionAuthorizer)

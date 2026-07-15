@@ -139,6 +139,13 @@ func (u *MCPServerUsecase) Create(ctx context.Context, in MCPServer) (MCPServer,
 	if err := validateMCPConfigURLs(in.ConfigJSON); err != nil {
 		return MCPServer{}, err
 	}
+	if u.crypto != nil {
+		encrypted, err := u.crypto.ProcessMCPConfigJSONForStorage(ctx, in.ConfigJSON)
+		if err != nil {
+			return MCPServer{}, err
+		}
+		in.ConfigJSON = encrypted
+	}
 	if in.ID == "" {
 		in.ID = newMCPServerID()
 	}
@@ -190,7 +197,20 @@ func (u *MCPServerUsecase) Update(ctx context.Context, id string, patch MCPServe
 		merged.SortOrder = *patch.SortOrder
 	}
 	if patch.ConfigJSON != nil {
-		merged.ConfigJSON = *patch.ConfigJSON
+		mergedCfg, err := MergeMCPConfigJSONForUpdate(cur.ConfigJSON, *patch.ConfigJSON)
+		if err != nil {
+			return MCPServer{}, err
+		}
+		if err := validateMCPConfigURLs(mergedCfg); err != nil {
+			return MCPServer{}, err
+		}
+		if u.crypto != nil {
+			mergedCfg, err = u.crypto.ProcessMCPConfigJSONForStorage(ctx, mergedCfg)
+			if err != nil {
+				return MCPServer{}, err
+			}
+		}
+		merged.ConfigJSON = mergedCfg
 	}
 	if patch.MetadataJSON != nil {
 		merged.MetadataJSON = *patch.MetadataJSON
@@ -201,8 +221,10 @@ func (u *MCPServerUsecase) Update(ctx context.Context, id string, patch MCPServe
 	if strings.TrimSpace(merged.Name) == "" {
 		return MCPServer{}, apierror.BadRequest("MCP_SERVER", "name cannot be empty")
 	}
-	if err := validateMCPConfigURLs(merged.ConfigJSON); err != nil {
-		return MCPServer{}, err
+	if patch.ConfigJSON == nil {
+		if err := validateMCPConfigURLs(merged.ConfigJSON); err != nil {
+			return MCPServer{}, err
+		}
 	}
 	return u.repo.UpdateMCPServer(ctx, merged)
 }
@@ -229,7 +251,11 @@ func (u *MCPServerUsecase) TestMCPServer(ctx context.Context, id string) (TestMC
 	if u.prober == nil {
 		return TestMCPServerResult{}, apierror.Internal("MCP_SERVER", "mcp prober not configured")
 	}
-	result := u.prober.Evaluate(ctx, row.Enabled, row.ConfigJSON)
+	cfgJSON, err := u.configJSONForRuntime(ctx, row.ConfigJSON)
+	if err != nil {
+		return TestMCPServerResult{}, err
+	}
+	result := u.prober.Evaluate(ctx, row.Enabled, cfgJSON)
 	updated, persistErr := u.persistHealth(ctx, &row, result)
 	// Return both result and updated server; caller can use updated metadata
 	// without an extra DB read.
@@ -282,11 +308,29 @@ func (u *MCPServerUsecase) MarkHealthAlertEmitted(ctx context.Context, id string
 // ValidateConfig runs probe without persisting (pre-create URL check).
 // Always passes enabled=true so the probe actually validates the config,
 // regardless of the server's enabled state.
+// Incoming config may be plaintext (pre-create) or already encrypted (re-validate).
 func (u *MCPServerUsecase) ValidateConfig(ctx context.Context, _ bool, configJSON string) MCPTestResult {
 	if u.prober == nil {
 		return MCPTestResult{OK: false, Status: "unknown", Message: "mcp prober not configured"}
 	}
-	return u.prober.Evaluate(ctx, true, configJSON)
+	cfgJSON, err := u.configJSONForRuntime(ctx, configJSON)
+	if err != nil {
+		return MCPTestResult{OK: false, Status: "error", Message: err.Error()}
+	}
+	return u.prober.Evaluate(ctx, true, cfgJSON)
+}
+
+// configJSONForRuntime decrypts at-rest secrets when crypto is configured (C-05).
+func (u *MCPServerUsecase) configJSONForRuntime(ctx context.Context, cfg string) (string, error) {
+	if u == nil || u.crypto == nil {
+		return cfg, nil
+	}
+	return u.crypto.DecryptMCPConfigJSONForRuntime(ctx, cfg)
+}
+
+// PrepareConfigJSONForRuntime decrypts stored MCP config for tool/connect paths.
+func (u *MCPServerUsecase) PrepareConfigJSONForRuntime(ctx context.Context, cfg string) (string, error) {
+	return u.configJSONForRuntime(ctx, cfg)
 }
 
 func (u *MCPServerUsecase) persistHealth(ctx context.Context, row *MCPServer, result MCPTestResult) (MCPServer, error) {

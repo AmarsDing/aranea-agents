@@ -1800,8 +1800,29 @@ func provideV2RepoSet(
 // provideV2Sequencer constructs the v2 Sequencer.
 // Phase 2: injects WithActivityUpserter so ActivityBridgeEvent payloads
 // (team package direct-publish) are persisted via the v1 activities table.
-func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, au biz.ActivityUpserter, lg loggateway.Logger) *v2.Sequencer {
-	return v2.NewSequencer(rs, bus, lg, v2.WithActivityUpserter(au))
+func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, au biz.ActivityUpserter, outbox biz.EventDeliveryOutboxRepo, lg loggateway.Logger) *v2.Sequencer {
+	return v2.NewSequencer(rs, bus, lg, v2.WithActivityUpserter(au), v2.WithEventOutbox(outbox))
+}
+
+// provideWSServer constructs the WS server and attaches the durable outbox for
+// last_event_id critical-event replay (B-06).
+func provideWSServer(
+	c *conf.Server,
+	infra *event.Infra,
+	canceller server.RunCanceller,
+	sender server.ChatSender,
+	turnExecutor server.WSTurnExecutor,
+	runtimeConf *conf.Runtime,
+	lg loggateway.Logger,
+	eventBus biz.EventBus,
+	sessionAuth server.SessionAuthorizer,
+	outbox biz.EventDeliveryOutboxRepo,
+) *server.WSServer {
+	srv := server.NewWSServerFromInfra(c, infra, canceller, sender, turnExecutor, runtimeConf, lg, eventBus, sessionAuth)
+	if srv != nil {
+		srv.SetEventOutbox(outbox)
+	}
+	return srv
 }
 
 // provideV2ProjectorFactory constructs the v2 ProjectorFactory that produces
@@ -1816,6 +1837,7 @@ func provideV2ProjectorFactory(seq *v2.Sequencer, lg loggateway.Logger) *v2.Proj
 // provideWSV2Subscriber constructs the WS subscriber for v2 Events.
 // Subscribe is called synchronously in the constructor to avoid missing
 // events between construction and goroutine startup.
+// Outbox wiring for last_event_id replay is done in provideWSServer.
 func provideWSV2Subscriber(bus *event.V2Bus, wsSrv *server.WSServer, lg loggateway.Logger) *server.WSV2Subscriber {
 	return server.NewWSV2Subscriber(bus, wsSrv, lg)
 }
@@ -2178,6 +2200,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.DebugRecorder, log.L
 		wire.Bind(new(rt.EventPublisher), new(*v2.Sequencer)),
 		provideV2Sequencer,
 		provideV2ProjectorFactory,
+		provideWSServer,
 		provideWSV2Subscriber,
 		provideTeamOrchestrator,
 		wire.Bind(new(service.TeamOrchestrator), new(*service.RealTeamOrchestrator)),

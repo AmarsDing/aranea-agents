@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/orchestrationstep"
+	"aranea-agents/internal/data/ent/predicate"
 	"aranea-agents/internal/data/ent/taskdeadletter"
 	"aranea-agents/internal/data/ent/team"
 	"aranea-agents/internal/data/ent/teamrun"
@@ -186,7 +187,11 @@ func (r *TeamRepo) ListTeamsByWorkspace(ctx context.Context, workspaceID string)
 
 func (r *TeamRepo) GetTeamByID(ctx context.Context, id string) (biz.Team, error) {
 	c := r.data.RW().Read(ctx)
-	row, err := c.Team.Query().Where(team.IDEQ(id), team.DeletedAtEQ("")).Only(ctx)
+	preds := []predicate.Team{team.IDEQ(id), team.DeletedAtEQ("")}
+	if ids := workspaceSharedOrOwnIDs(ctx); ids != nil {
+		preds = append(preds, team.WorkspaceIDIn(ids...))
+	}
+	row, err := c.Team.Query().Where(preds...).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.Team{}, apierror.NotFound(apierror.DomainTeam, "not found")

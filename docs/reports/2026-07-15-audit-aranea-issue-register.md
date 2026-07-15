@@ -139,3 +139,11 @@
 | M-02 | 🟡 契约明确 | `last_event_id` echo-only；客户端 snapshot reconciliation |
 | M-03 | 🟡 部分关闭 | 重连自动 `fetchSessionHistory`；尚无 complete/partial/failed 三态 |
 | Upsert CAS (Task/Turn/Step) | ✅ 已具备 | `VersionLT` 单调守卫 + 三实体回归测试 |
+| C-25 | 🟡 部分关闭 | Repo Get/List workspace predicates（channel/cron/task_v2/knowledge/mcp/skill/tool/agent/team）+ RLS ENABLE（无 FORCE）+ GUC helper；池化 `SET LOCAL` 未全链路接线 |
+| D-01 | ✅ 已修 | `docs/README.md`、`guides/execution-plan.md`、`README-development.md` stub |
+| D-02 | ✅ 已修 | 70 号 EventWAL/EventStore/Postgres replay 标 superseded |
+| D-03 | ✅ 已修 | 65 事件节对齐 v2 Activity/Monitor bus |
+| D-04 | ✅ 已确认 | `1-chat.design.md` §4.1 已含 Submit/Retry/Pause/Resume/Plans 等 RPC |
+| D-05 | ✅ 已确认 | `11-multi-agent.design.md` 已含 Pause/Unpause/Inject |
+| D-06 | ✅ 已修 | 66 design 剔除 Message/EventStore/FTS 活文档表述 |
+| D-08 | ✅ 已修 | `development/README.md` 跨模块表指向真实文件 |

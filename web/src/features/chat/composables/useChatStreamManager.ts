@@ -78,8 +78,9 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       onConnected: () => {
         deps.runtimeStore.setWsConnected(sessionId, true);
         void deps.refreshRunStatus(sessionId);
-        // B-06: after a disconnect, re-hydrate authoritative v2 snapshot
-        // (WS last_event_id is echo-only; server replay was removed).
+        // B-06: after a disconnect, re-hydrate authoritative v2 snapshot.
+        // Server also replays missed critical outbox frames via last_event_id;
+        // REST hydrate remains the safety net for non-critical state.
         if (needsHydrateAfterReconnect.get(sessionId)) {
           needsHydrateAfterReconnect.set(sessionId, false);
           void hydrateAfterReconnect(sessionId);

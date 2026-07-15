@@ -160,6 +160,8 @@ var ProviderSet = wire.NewSet(
 	NewPlanStepV2Repo,
 	NewGraphStageV2Repo,
 	NewGraphNodeV2Repo,
+	// B-06: durable critical-event outbox for WS last_event_id replay.
+	NewEventDeliveryOutboxRepoFromData,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.

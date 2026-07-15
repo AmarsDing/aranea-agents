@@ -10,7 +10,6 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
-	"aranea-agents/internal/workspace"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -90,18 +89,9 @@ func entToBizCronTaskRun(e *ent.CronTaskRun, taskName string) biz.CronTaskRun {
 func (r *cronRepo) ListCronTasks(ctx context.Context) ([]biz.CronTask, error) {
 	query := r.data.RW().Read(ctx).CronTask.Query().
 		Where(crontask.DeletedAtEQ(""))
-	// P2-B: workspace visibility filter.
-	// cron_task is tenant-owned (private): empty workspace_id = legacy/system-owned.
-	// System caller sees all; non-system caller sees only own workspace's records.
-	// Default-workspace caller also sees legacy (empty workspace_id) records, because
-	// AssertWorkspace treats empty resourceWS as DefaultWorkspaceID.
-	if !workspace.IsSystem(ctx) {
-		callerWS := workspace.IDFromContext(ctx)
-		if callerWS == workspace.DefaultWorkspaceID {
-			query = query.Where(crontask.WorkspaceIDIn(callerWS, ""))
-		} else {
-			query = query.Where(crontask.WorkspaceIDEQ(callerWS))
-		}
+	// P2-B / C-25: private workspace visibility (see workspacePrivateIDs).
+	if ids := workspacePrivateIDs(ctx); ids != nil {
+		query = query.Where(crontask.WorkspaceIDIn(ids...))
 	}
 	rows, err := query.
 		Order(
@@ -120,9 +110,13 @@ func (r *cronRepo) ListCronTasks(ctx context.Context) ([]biz.CronTask, error) {
 }
 
 func (r *cronRepo) GetCronTask(ctx context.Context, id string) (biz.CronTask, error) {
-	row, err := r.data.RW().Read(ctx).CronTask.Query().
-		Where(crontask.IDEQ(id), crontask.DeletedAtEQ("")).
-		Only(ctx)
+	query := r.data.RW().Read(ctx).CronTask.Query().
+		Where(crontask.IDEQ(id), crontask.DeletedAtEQ(""))
+	// C-25: same private visibility as ListCronTasks.
+	if ids := workspacePrivateIDs(ctx); ids != nil {
+		query = query.Where(crontask.WorkspaceIDIn(ids...))
+	}
+	row, err := query.Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.CronTask{}, biz.ErrCronNotFound

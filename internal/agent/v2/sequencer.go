@@ -2,6 +2,7 @@ package v2
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -9,6 +10,8 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
+
+	"github.com/google/uuid"
 )
 
 // Defaults — match v1 for parity.
@@ -43,6 +46,7 @@ type EventBus interface {
 type Sequencer struct {
 	repoSet      RepoSet
 	activityRepo biz.ActivityUpserter // Phase 2: optional, for ActivityBridgeEvent persist
+	outbox       biz.EventDeliveryOutboxRepo // B-06: durable critical-event outbox (optional)
 	bus          EventBus
 	lg           loggateway.Logger
 	seqAssigner  SeqAssigner // shared with Projector (v2-local defaultSeqAssigner; breaks agent→v2 cycle)
@@ -82,6 +86,7 @@ type config struct {
 	persistBackoff     time.Duration
 	deadLetterCapacity int
 	activityUpserter   biz.ActivityUpserter // Phase 2: optional v1 Activity persistence for ActivityBridgeEvent
+	outbox             biz.EventDeliveryOutboxRepo
 }
 
 // Option configures a Sequencer.
@@ -104,6 +109,13 @@ func WithActivityUpserter(au biz.ActivityUpserter) Option {
 	return func(c *config) { c.activityUpserter = au }
 }
 
+// WithEventOutbox injects the durable critical-event outbox (B-06).
+// When set, critical events are written to the outbox after entity persist
+// (WBPF path) and before bus fan-out so WS reconnect can replay by last_event_id.
+func WithEventOutbox(repo biz.EventDeliveryOutboxRepo) Option {
+	return func(c *config) { c.outbox = repo }
+}
+
 // NewSequencer constructs a Sequencer and starts its publish + persist workers.
 func NewSequencer(rs RepoSet, bus EventBus, lg loggateway.Logger, opts ...Option) *Sequencer {
 	cfg := config{
@@ -121,6 +133,7 @@ func NewSequencer(rs RepoSet, bus EventBus, lg loggateway.Logger, opts ...Option
 	s := &Sequencer{
 		repoSet:            rs,
 		activityRepo:       cfg.activityUpserter,
+		outbox:             cfg.outbox,
 		bus:                bus,
 		lg:                 lg.With(loggateway.Domain("sequencer_v2")),
 		seqAssigner:        NewDefaultSeqAssigner(),
@@ -355,8 +368,8 @@ func (s *Sequencer) processTask(task publishTask) {
 			_, err := persistAction(persistCtx, s.repoSet, s.activityRepo, task.event)
 			persistCancel()
 			if err == nil {
-				// Sync persist succeeded — safe to publish.
-				s.bus.Publish(ctx, task.event)
+				// Sync persist succeeded — durable outbox then publish (B-06).
+				s.publishCritical(ctx, task.event)
 				return
 			}
 			// Sync persist failed — log and fall through to async retry + publish.
@@ -374,8 +387,84 @@ func (s *Sequencer) processTask(task publishTask) {
 			s.deadLetter.Push(task.event)
 		}
 	}
+	if biz.IsCriticalDeliveryEvent(task.event) {
+		s.publishCritical(ctx, task.event)
+		return
+	}
 	// Sync bus publish.
 	s.bus.Publish(ctx, task.event)
+}
+
+// publishCritical writes the durable outbox row (best-effort) then fans out on the bus.
+func (s *Sequencer) publishCritical(ctx context.Context, e biz.Event) {
+	outboxID := s.insertCriticalOutbox(ctx, e)
+	s.bus.Publish(ctx, e)
+	if outboxID != "" && s.outbox != nil {
+		if err := s.outbox.MarkPublished(ctx, outboxID, time.Now().UTC()); err != nil {
+			s.lg.Warn("outbox mark published failed",
+				loggateway.Str("kind", string(e.EventKind())),
+				loggateway.Err(err))
+		}
+	}
+}
+
+// insertCriticalOutbox assigns seq when missing, inserts an outbox row, and returns its id.
+// Failures are logged and ignored so publish is never fail-closed on outbox errors.
+func (s *Sequencer) insertCriticalOutbox(ctx context.Context, e biz.Event) string {
+	if s.outbox == nil || e == nil || !biz.IsCriticalDeliveryEvent(e) {
+		return ""
+	}
+	sessionID := e.SpiritSessionID()
+	if sessionID == "" {
+		return ""
+	}
+	seq := biz.EventSeq(e)
+	if seq <= 0 {
+		if s.seqAssigner == nil {
+			return ""
+		}
+		seq = s.seqAssigner.NextSeq(sessionID)
+		biz.SetEventSeq(e, seq)
+	}
+	eventID := biz.DeliveryEventID(e, seq)
+	payload, err := marshalV2EventEnvelope(e, eventID)
+	if err != nil {
+		s.lg.Warn("outbox marshal failed",
+			loggateway.Str("kind", string(e.EventKind())),
+			loggateway.Err(err))
+		return ""
+	}
+	rowID := uuid.NewString()
+	row := biz.EventDeliveryOutboxRow{
+		ID:        rowID,
+		SessionID: sessionID,
+		Seq:       seq,
+		EventID:   eventID,
+		Kind:      string(e.EventKind()),
+		EntityID:  e.EntityID(),
+		Payload:   payload,
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := s.outbox.Insert(ctx, row); err != nil {
+		s.lg.Warn("outbox insert failed",
+			loggateway.Str("kind", string(e.EventKind())),
+			loggateway.SessionID(sessionID),
+			loggateway.Err(err))
+		return ""
+	}
+	return rowID
+}
+
+// marshalV2EventEnvelope builds the same WS frame shape as WSV2Subscriber.
+func marshalV2EventEnvelope(e biz.Event, eventID string) ([]byte, error) {
+	envelope := map[string]any{
+		"type":       "v2_event",
+		"kind":       string(e.EventKind()),
+		"session_id": e.SpiritSessionID(),
+		"event_id":   eventID,
+		"payload":    e,
+	}
+	return json.Marshal(envelope)
 }
 
 // persistLoop consumes persistChan with retry + dead-letter.

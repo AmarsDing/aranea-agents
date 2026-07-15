@@ -440,6 +440,14 @@ func resolveMCPServers(ctx context.Context, deps TRPCBuilderDeps, agentID string
 		if cfgJSON == "" {
 			continue
 		}
+		if deps.MCPTooling != nil && deps.MCPTooling.MCP() != nil {
+			if dec, decErr := deps.MCPTooling.MCP().PrepareConfigJSONForRuntime(ctx, cfgJSON); decErr != nil {
+				lg.Warn("MCP server config decrypt failed", loggateway.StepID("agent.tool_build"), loggateway.Str("server_key", key), loggateway.Err(decErr))
+				continue
+			} else if strings.TrimSpace(dec) != "" {
+				cfgJSON = dec
+			}
+		}
 		sc, err := mcpconfig.ParseServerConfigJSON(cfgJSON)
 		if err != nil {
 			lg.Warn("MCP server config parse failed", loggateway.StepID("agent.tool_build"), loggateway.Str("server_key", key), loggateway.Err(err))

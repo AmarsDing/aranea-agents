@@ -284,6 +284,18 @@ func (f EvalRunFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EvalRunMutation", m)
 }
 
+// The EventDeliveryOutboxFunc type is an adapter to allow the use of ordinary
+// function as EventDeliveryOutbox mutator.
+type EventDeliveryOutboxFunc func(context.Context, *ent.EventDeliveryOutboxMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f EventDeliveryOutboxFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.EventDeliveryOutboxMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EventDeliveryOutboxMutation", m)
+}
+
 // The EvolutionSuggestionFunc type is an adapter to allow the use of ordinary
 // function as EvolutionSuggestion mutator.
 type EvolutionSuggestionFunc func(context.Context, *ent.EvolutionSuggestionMutation) (ent.Value, error)

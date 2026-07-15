@@ -640,7 +640,11 @@ func creatorLabel(userID string) string {
 }
 
 func (r *agentRepo) GetAgentByID(ctx context.Context, id string) (biz.Agent, error) {
-	row, err := r.data.RW().Read(ctx).Agent.Query().Where(agent.IDEQ(id), agent.DeletedAtEQ("")).Only(ctx)
+	preds := []predicate.Agent{agent.IDEQ(id), agent.DeletedAtEQ("")}
+	if ids := workspaceSharedOrOwnIDs(ctx); ids != nil {
+		preds = append(preds, agent.WorkspaceIDIn(ids...))
+	}
+	row, err := r.data.RW().Read(ctx).Agent.Query().Where(preds...).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.Agent{}, shared.ErrNotFound

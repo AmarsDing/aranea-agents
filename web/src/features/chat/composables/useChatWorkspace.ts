@@ -56,6 +56,7 @@ import type {
   RunStatusEventPayload,
   ActivityBridgeEventPayload,
 } from '../v2Types';
+import { noteChannelWsEnvelope } from '../channelWsCursor';
 import { useSessionTree } from './useSessionTree';
 import { useSystemEventNotification } from './useSystemEventNotification';
 import type { ActivityEvent as AFActivityEvent } from '../../../realtime/activityEvent';
@@ -126,6 +127,12 @@ export function useChatWorkspace() {
 
   // v2 WS event handler — dispatched by the stream manager's onV2Event callback.
   const handleV2Event = (envelope: V2WsEnvelope) => {
+    // B-06: advance WS cursor from durable outbox event_id when present.
+    const cursorEventId = String(envelope.event_id ?? '').trim();
+    const cursorSessionId = String(envelope.session_id ?? '').trim();
+    if (cursorEventId && cursorSessionId) {
+      noteChannelWsEnvelope(cursorSessionId, cursorEventId);
+    }
     // Phase 3b-D Task 12: intercept v2 system-domain events for side-effect
     // routing. Entity events (task/turn/step/team_stage/etc.) go to the v2
     // event router → activityV2Store. System events need side-effect routing
@@ -406,8 +413,9 @@ export function useChatWorkspace() {
     onActivityEvent: handleActivityEvent,
     onV2Event: handleV2Event,
     refreshRunStatus: refreshRunStatusForUi,
-    // B-06: after WS reconnect, re-fetch authoritative v2 entity snapshot
-    // (server no longer replays missed events via last_event_id).
+    // B-06: after WS reconnect, re-fetch authoritative v2 entity snapshot.
+    // Server also replays missed critical outbox frames via last_event_id;
+    // REST hydrate remains the safety net for non-critical / full state.
     onReconnectHydrate: async (sessionId) => {
       await activityStore.fetchSessionHistory(sessionId);
     },
@@ -1208,7 +1216,7 @@ export function useChatWorkspace() {
       if (replace) clearChatMarkdownCache();
 
       // B-06: hydrate Activity v2 via REST authoritative snapshot.
-      // WS last_event_id is echo-only (server replay removed); reconnect
+      // WS last_event_id drives critical outbox replay on connect; reconnect
       // also calls fetchSessionHistory via onReconnectHydrate.
       const v2Promise = activityStore.fetchSessionHistory(sessionId).catch((e) => {
         console.warn('[chat] v2 history fetch failed', e);

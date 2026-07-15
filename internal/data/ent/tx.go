@@ -60,6 +60,8 @@ type Tx struct {
 	EvalDataset *EvalDatasetClient
 	// EvalRun is the client for interacting with the EvalRun builders.
 	EvalRun *EvalRunClient
+	// EventDeliveryOutbox is the client for interacting with the EventDeliveryOutbox builders.
+	EventDeliveryOutbox *EventDeliveryOutboxClient
 	// EvolutionSuggestion is the client for interacting with the EvolutionSuggestion builders.
 	EvolutionSuggestion *EvolutionSuggestionClient
 	// ExperienceReport is the client for interacting with the ExperienceReport builders.
@@ -350,6 +352,7 @@ func (tx *Tx) init() {
 	tx.EvalCaseResult = NewEvalCaseResultClient(tx.config)
 	tx.EvalDataset = NewEvalDatasetClient(tx.config)
 	tx.EvalRun = NewEvalRunClient(tx.config)
+	tx.EventDeliveryOutbox = NewEventDeliveryOutboxClient(tx.config)
 	tx.EvolutionSuggestion = NewEvolutionSuggestionClient(tx.config)
 	tx.ExperienceReport = NewExperienceReportClient(tx.config)
 	tx.FailurePattern = NewFailurePatternClient(tx.config)

@@ -25,7 +25,6 @@ import {
 import { isSessionCompressNoticeFromActivityEvent, sessionContextPatchFromActivityEvent } from '../sessionContextPatch';
 import { refreshAgentSessionsForChannel } from '../channelInboundSessionRefresh';
 import { isChannelInboundSession, resolveInboundAgentIdFromActivity } from '../channelInboundSession';
-import { noteChannelWsEnvelope } from '../channelWsCursor';
 import { projectConversationActivityEvent } from '../conversationEventDispatcher';
 import { emitSessionMutation } from '../../../stores/sessionSync';
 import { useSpiritTeamStore } from '../../../stores/spirit';
@@ -239,9 +238,10 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       conversationStore.applyProjection(projection);
     }
 
-    if (ev.activity.id) {
-      noteChannelWsEnvelope(sessionId, ev.activity.id);
-    }
+    // B-06: do NOT advance the WS outbox cursor from activity.id.
+    // Durable replay uses event_id (v2:{session}:{seq}:{kind}:{entity}) set only
+    // on critical v2_event envelopes (see useChatWorkspace handleV2Event).
+    // Writing activity UUIDs here poisons last_event_id → ListAfter miss → no replay.
 
     // Session compress notice (text_done + meta.kind=system.session.compress)
     if (isSessionCompressNoticeFromActivityEvent(ev)) {

@@ -88,6 +88,12 @@ export type EmbeddedGraphNode = {
   destinations: string[] | undefined;
   taskPrompt: string | undefined;
   enabled?: boolean;
+  // Runtime node fields (C-21): round-trip through OrchestrationSpec API.
+  retryMaxAttempts: number | undefined;
+  fallbackAgent: string | undefined;
+  reviewerAgent: string | undefined;
+  reviewRules: string | undefined;
+  funcRef: string | undefined;
 };
 
 export type EmbeddedGraphEdge = {

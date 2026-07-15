@@ -295,7 +295,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	graphStageV2Repo := data.NewGraphStageV2Repo(dataData, loggatewayLogger)
 	graphNodeV2Repo := data.NewGraphNodeV2Repo(dataData, loggatewayLogger)
 	repoSet := provideV2RepoSet(taskV2Repo, turnV2Repo, stepV2Repo, teamStageV2Repo, teamRunV2Repo, memberSessionV2Repo, planBoardV2Repo, planStepV2Repo, graphStageV2Repo, graphNodeV2Repo)
-	sequencer := provideV2Sequencer(repoSet, v2Bus, activityRepo, loggatewayLogger)
+	eventDeliveryOutboxRepo := data.NewEventDeliveryOutboxRepoFromData(dataData)
+	sequencer := provideV2Sequencer(repoSet, v2Bus, activityRepo, eventDeliveryOutboxRepo, loggatewayLogger)
 	turnDeps := provideTeamTurnDeps(sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, persistenceSet, sessionCompressor, bus, v2Bus, monitorBus, sequencer, loggatewayLogger)
 	projectorFactory := provideV2ProjectorFactory(sequencer, loggatewayLogger)
 	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, toolUsecase, agentRepository, activityRepo, activityRepo, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, a2aUsecase, sessionUsecase, projectorFactory, loggatewayLogger)
@@ -327,8 +328,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	channelTurnJobDeps := provideChannelTurnJobDeps(channelTurnJobUsecase, sessionRunUsecase, channelUsecase)
 	sessionRunEscalationNotifier := provideChannelRunEscalationNotifier(channelUsecase, sessionUsecase, loggatewayLogger)
 	channelNotifierDeps := provideChannelNotifierDeps(sessionRunEscalationNotifier)
-	synthesisModelAdapter := service.NewSynthesisModelAdapter(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
-	synthesisEngine := biz.NewSynthesisEngine(synthesisModelAdapter, loggatewayLogger)
+	synthesisModelPort := service.NewSynthesisModelAdapter(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
+	synthesisEngine := biz.NewSynthesisEngine(synthesisModelPort, loggatewayLogger)
 	spiritSynthesisService := service.NewSpiritSynthesisService(spiritTeamUsecase, synthesisEngine, v2Bus, loggatewayLogger)
 	teamStarter := service.NewTeamStarter(sessionUsecase, teamOrchestrationDeps, bus, v2Bus, sequencer, activityRepo, activityRepo, loggatewayLogger, spiritSynthesisService, taskV2Repo, teamStageV2Repo, teamRunV2Repo)
 	spiritTeamAssembler := service.NewSpiritTeamAssembler(spiritTeamUsecase, orchestrationCache, bus, v2Bus, sequencer, activityRepo, teamStarter, agentRepository, loggatewayLogger, teamStageV2Repo)
@@ -492,7 +493,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	chatSender := provideChatSender(chatService)
 	wsTurnExecutor := provideWSTurnExecutor(chatService, loggatewayLogger)
 	sessionAuthorizer := server.NewSessionAuthorizer(sessionRepo, loggatewayLogger)
-	wsServer := server.NewWSServerFromInfra(confServer, infra, runCanceller, chatSender, wsTurnExecutor, runtime, loggatewayLogger, v2Bus, sessionAuthorizer)
+	wsServer := provideWSServer(confServer, infra, runCanceller, chatSender, wsTurnExecutor, runtime, loggatewayLogger, v2Bus, sessionAuthorizer, eventDeliveryOutboxRepo)
 	httpServer := server.NewHTTPServer(confServer, serviceRegistry, wsServer, dataData, loggatewayLogger)
 	feedbackMemoryEnqueuer := provideFeedbackMemoryEnqueuer(memoryJobQueue)
 	turnMemoryWorker := biz.NewTurnMemoryWorker(feedbackMemoryEnqueuer, sessionLogWriter)
@@ -619,7 +620,7 @@ func provideCronRunner(deps cronrunner.Deps, d *data.Data, lg loggateway.Logger)
 	if strings.TrimSpace(os.Getenv("CRON_RUNNER_DISABLED")) == "1" {
 		return nil
 	}
-	// C-26: optional Postgres advisory lease for cross-instance exclusivity.
+
 	deps.DB = providePrimaryRawDB(d)
 	return cronrunner.NewRunner(deps, lg)
 }
@@ -2226,8 +2227,29 @@ func provideV2RepoSet(
 // provideV2Sequencer constructs the v2 Sequencer.
 // Phase 2: injects WithActivityUpserter so ActivityBridgeEvent payloads
 // (team package direct-publish) are persisted via the v1 activities table.
-func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, au biz.ActivityUpserter, lg loggateway.Logger) *v2.Sequencer {
-	return v2.NewSequencer(rs, bus, lg, v2.WithActivityUpserter(au))
+func provideV2Sequencer(rs v2.RepoSet, bus *event.V2Bus, au biz.ActivityUpserter, outbox biz.EventDeliveryOutboxRepo, lg loggateway.Logger) *v2.Sequencer {
+	return v2.NewSequencer(rs, bus, lg, v2.WithActivityUpserter(au), v2.WithEventOutbox(outbox))
+}
+
+// provideWSServer constructs the WS server and attaches the durable outbox for
+// last_event_id critical-event replay (B-06).
+func provideWSServer(
+	c *conf.Server,
+	infra *event.Infra,
+	canceller server.RunCanceller,
+	sender server.ChatSender,
+	turnExecutor server.WSTurnExecutor,
+	runtimeConf *conf.Runtime,
+	lg loggateway.Logger,
+	eventBus biz.EventBus,
+	sessionAuth server.SessionAuthorizer,
+	outbox biz.EventDeliveryOutboxRepo,
+) *server.WSServer {
+	srv := server.NewWSServerFromInfra(c, infra, canceller, sender, turnExecutor, runtimeConf, lg, eventBus, sessionAuth)
+	if srv != nil {
+		srv.SetEventOutbox(outbox)
+	}
+	return srv
 }
 
 // provideV2ProjectorFactory constructs the v2 ProjectorFactory that produces
@@ -2242,6 +2264,7 @@ func provideV2ProjectorFactory(seq *v2.Sequencer, lg loggateway.Logger) *v2.Proj
 // provideWSV2Subscriber constructs the WS subscriber for v2 Events.
 // Subscribe is called synchronously in the constructor to avoid missing
 // events between construction and goroutine startup.
+// Outbox wiring for last_event_id replay is done in provideWSServer.
 func provideWSV2Subscriber(bus *event.V2Bus, wsSrv *server.WSServer, lg loggateway.Logger) *server.WSV2Subscriber {
 	return server.NewWSV2Subscriber(bus, wsSrv, lg)
 }

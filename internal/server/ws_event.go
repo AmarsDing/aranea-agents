@@ -1,10 +1,14 @@
 package server
 
 import (
+	"context"
 	"time"
 
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/pkg/loggateway"
 )
+
+const defaultOutboxReplayLimit = 100
 
 // sendConnected sends the initial "connected" downstream message to a new connection.
 func (s *WSServer) sendConnected(wc *wsConn, sessionID, lastEventID string) {
@@ -23,15 +27,47 @@ func (s *WSServer) sendConnected(wc *wsConn, sessionID, lastEventID string) {
 	wc.sendSystemDownstream(msg)
 }
 
+// replayOutbox pushes durable critical v2_event frames missed since lastEventID
+// (B-06). Session-scoped only; best-effort — failures are logged and ignored.
+func (s *WSServer) replayOutbox(wc *wsConn, sessionID, lastEventID string) {
+	if s == nil || s.outbox == nil || wc == nil || lastEventID == "" || sessionID == "" || sessionID == "*" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	rows, err := s.outbox.ListAfter(ctx, sessionID, lastEventID, 0, defaultOutboxReplayLimit)
+	if err != nil {
+		s.lg.Warn("WS outbox replay failed",
+			loggateway.StepID("ws.outbox_replay"),
+			loggateway.SessionID(sessionID),
+			loggateway.Err(err))
+		return
+	}
+	cfg := s.wsConfig()
+	for _, row := range rows {
+		if len(row.Payload) == 0 {
+			continue
+		}
+		if ok := wc.queues.enqueue(cfg, wsPriorityHigh, row.Payload); !ok {
+			s.lg.Warn("WS outbox replay high-queue timeout",
+				loggateway.StepID("ws.outbox_replay"),
+				loggateway.SessionID(sessionID),
+				loggateway.Str("event_id", row.EventID))
+			break
+		}
+	}
+	if len(rows) > 0 {
+		wc.wakeWriter()
+	}
+}
+
 // setupEventSubscription subscribes the connection to the monitor bus and
 // sets wc.unsubscribe. The v1 ActivityEventBus subscription was removed in
 // Phase 3b-D Tier 4 — chat events now flow exclusively via the v2 EventBus
 // (WSV2Subscriber → BroadcastToSession → conn priority queue).
 //
-// Phase 5 Blocker A: WS replay path has been removed. Clients needing
-// historical events should call the ListActivities RPC
-// (GET /v1/sessions/{session_id}/activities) to fetch Activity records
-// on reconnect. The server no longer replays buffered envelopes.
+// B-06: critical-event reconnect replay uses the durable outbox via
+// replayOutbox (last_event_id); REST snapshot hydrate remains the fallback.
 func (s *WSServer) setupEventSubscription(wc *wsConn, globalMode bool) <-chan contract.MonitorEvent {
 	var monitorCh <-chan contract.MonitorEvent
 

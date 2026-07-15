@@ -34,6 +34,7 @@ import (
 	"aranea-agents/internal/data/ent/evalcaseresult"
 	"aranea-agents/internal/data/ent/evaldataset"
 	"aranea-agents/internal/data/ent/evalrun"
+	"aranea-agents/internal/data/ent/eventdeliveryoutbox"
 	"aranea-agents/internal/data/ent/evolutionsuggestion"
 	"aranea-agents/internal/data/ent/experiencereport"
 	"aranea-agents/internal/data/ent/failurepattern"
@@ -162,6 +163,8 @@ type Client struct {
 	EvalDataset *EvalDatasetClient
 	// EvalRun is the client for interacting with the EvalRun builders.
 	EvalRun *EvalRunClient
+	// EventDeliveryOutbox is the client for interacting with the EventDeliveryOutbox builders.
+	EventDeliveryOutbox *EventDeliveryOutboxClient
 	// EvolutionSuggestion is the client for interacting with the EvolutionSuggestion builders.
 	EvolutionSuggestion *EvolutionSuggestionClient
 	// ExperienceReport is the client for interacting with the ExperienceReport builders.
@@ -332,6 +335,7 @@ func (c *Client) init() {
 	c.EvalCaseResult = NewEvalCaseResultClient(c.config)
 	c.EvalDataset = NewEvalDatasetClient(c.config)
 	c.EvalRun = NewEvalRunClient(c.config)
+	c.EventDeliveryOutbox = NewEventDeliveryOutboxClient(c.config)
 	c.EvolutionSuggestion = NewEvolutionSuggestionClient(c.config)
 	c.ExperienceReport = NewExperienceReportClient(c.config)
 	c.FailurePattern = NewFailurePatternClient(c.config)
@@ -515,6 +519,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		EvalCaseResult:             NewEvalCaseResultClient(cfg),
 		EvalDataset:                NewEvalDatasetClient(cfg),
 		EvalRun:                    NewEvalRunClient(cfg),
+		EventDeliveryOutbox:        NewEventDeliveryOutboxClient(cfg),
 		EvolutionSuggestion:        NewEvolutionSuggestionClient(cfg),
 		ExperienceReport:           NewExperienceReportClient(cfg),
 		FailurePattern:             NewFailurePatternClient(cfg),
@@ -625,6 +630,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		EvalCaseResult:             NewEvalCaseResultClient(cfg),
 		EvalDataset:                NewEvalDatasetClient(cfg),
 		EvalRun:                    NewEvalRunClient(cfg),
+		EventDeliveryOutbox:        NewEventDeliveryOutboxClient(cfg),
 		EvolutionSuggestion:        NewEvolutionSuggestionClient(cfg),
 		ExperienceReport:           NewExperienceReportClient(cfg),
 		FailurePattern:             NewFailurePatternClient(cfg),
@@ -727,22 +733,22 @@ func (c *Client) Use(hooks ...Hook) {
 		c.BackgroundJob, c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt,
 		c.ChannelRuntimeLease, c.ChannelTurnJob, c.CircuitBreakerState, c.CompiledTeam,
 		c.CronTask, c.CronTaskRun, c.EvalCase, c.EvalCaseResult, c.EvalDataset,
-		c.EvalRun, c.EvolutionSuggestion, c.ExperienceReport, c.FailurePattern,
-		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
-		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
-		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
-		c.HealRecord, c.LlmProviderModel, c.MemberSessionV2, c.ModelPricingRule,
-		c.ModelTokenUsageHourly, c.Orchestration, c.OrchestrationStep, c.Organization,
-		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
-		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
-		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
-		c.PlatformSkill, c.PlatformTool, c.SchemaMigration, c.SelfCheckReport,
-		c.Session, c.SessionMetrics, c.SessionParticipant, c.SessionRun,
-		c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn, c.SessionV2,
-		c.SkillEvolutionSuggestion, c.SkillImportJob, c.SkillInvocation,
-		c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
-		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
-		c.ToolAgentOverride, c.ToolInvocation, c.ToolInvocationAudit,
+		c.EvalRun, c.EventDeliveryOutbox, c.EvolutionSuggestion, c.ExperienceReport,
+		c.FailurePattern, c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition,
+		c.GraphExecution, c.GraphNodeV2, c.GraphStageV2, c.GraphTask,
+		c.GraphTaskComment, c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog,
+		c.GraphTaskRun, c.HealRecord, c.LlmProviderModel, c.MemberSessionV2,
+		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Orchestration,
+		c.OrchestrationStep, c.Organization, c.PlanBoardV2, c.PlanStepV2,
+		c.PlatformChannel, c.PlatformChannelCredential, c.PlatformChannelDelivery,
+		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
+		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
+		c.SchemaMigration, c.SelfCheckReport, c.Session, c.SessionMetrics,
+		c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime,
+		c.SessionTurn, c.SessionV2, c.SkillEvolutionSuggestion, c.SkillImportJob,
+		c.SkillInvocation, c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter,
+		c.TaskPlan, c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2,
+		c.TeamStageV2, c.ToolAgentOverride, c.ToolInvocation, c.ToolInvocationAudit,
 		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
 		c.UsageQuota, c.UserEmbeddingSetting,
 	} {
@@ -759,22 +765,22 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.BackgroundJob, c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt,
 		c.ChannelRuntimeLease, c.ChannelTurnJob, c.CircuitBreakerState, c.CompiledTeam,
 		c.CronTask, c.CronTaskRun, c.EvalCase, c.EvalCaseResult, c.EvalDataset,
-		c.EvalRun, c.EvolutionSuggestion, c.ExperienceReport, c.FailurePattern,
-		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
-		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
-		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
-		c.HealRecord, c.LlmProviderModel, c.MemberSessionV2, c.ModelPricingRule,
-		c.ModelTokenUsageHourly, c.Orchestration, c.OrchestrationStep, c.Organization,
-		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
-		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
-		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
-		c.PlatformSkill, c.PlatformTool, c.SchemaMigration, c.SelfCheckReport,
-		c.Session, c.SessionMetrics, c.SessionParticipant, c.SessionRun,
-		c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn, c.SessionV2,
-		c.SkillEvolutionSuggestion, c.SkillImportJob, c.SkillInvocation,
-		c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
-		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
-		c.ToolAgentOverride, c.ToolInvocation, c.ToolInvocationAudit,
+		c.EvalRun, c.EventDeliveryOutbox, c.EvolutionSuggestion, c.ExperienceReport,
+		c.FailurePattern, c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition,
+		c.GraphExecution, c.GraphNodeV2, c.GraphStageV2, c.GraphTask,
+		c.GraphTaskComment, c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog,
+		c.GraphTaskRun, c.HealRecord, c.LlmProviderModel, c.MemberSessionV2,
+		c.ModelPricingRule, c.ModelTokenUsageHourly, c.Orchestration,
+		c.OrchestrationStep, c.Organization, c.PlanBoardV2, c.PlanStepV2,
+		c.PlatformChannel, c.PlatformChannelCredential, c.PlatformChannelDelivery,
+		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
+		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
+		c.SchemaMigration, c.SelfCheckReport, c.Session, c.SessionMetrics,
+		c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime,
+		c.SessionTurn, c.SessionV2, c.SkillEvolutionSuggestion, c.SkillImportJob,
+		c.SkillInvocation, c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter,
+		c.TaskPlan, c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2,
+		c.TeamStageV2, c.ToolAgentOverride, c.ToolInvocation, c.ToolInvocationAudit,
 		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
 		c.UsageQuota, c.UserEmbeddingSetting,
 	} {
@@ -831,6 +837,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.EvalDataset.mutate(ctx, m)
 	case *EvalRunMutation:
 		return c.EvalRun.mutate(ctx, m)
+	case *EventDeliveryOutboxMutation:
+		return c.EventDeliveryOutbox.mutate(ctx, m)
 	case *EvolutionSuggestionMutation:
 		return c.EvolutionSuggestion.mutate(ctx, m)
 	case *ExperienceReportMutation:
@@ -4156,6 +4164,139 @@ func (c *EvalRunClient) mutate(ctx context.Context, m *EvalRunMutation) (Value, 
 		return (&EvalRunDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown EvalRun mutation op: %q", m.Op())
+	}
+}
+
+// EventDeliveryOutboxClient is a client for the EventDeliveryOutbox schema.
+type EventDeliveryOutboxClient struct {
+	config
+}
+
+// NewEventDeliveryOutboxClient returns a client for the EventDeliveryOutbox from the given config.
+func NewEventDeliveryOutboxClient(c config) *EventDeliveryOutboxClient {
+	return &EventDeliveryOutboxClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `eventdeliveryoutbox.Hooks(f(g(h())))`.
+func (c *EventDeliveryOutboxClient) Use(hooks ...Hook) {
+	c.hooks.EventDeliveryOutbox = append(c.hooks.EventDeliveryOutbox, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `eventdeliveryoutbox.Intercept(f(g(h())))`.
+func (c *EventDeliveryOutboxClient) Intercept(interceptors ...Interceptor) {
+	c.inters.EventDeliveryOutbox = append(c.inters.EventDeliveryOutbox, interceptors...)
+}
+
+// Create returns a builder for creating a EventDeliveryOutbox entity.
+func (c *EventDeliveryOutboxClient) Create() *EventDeliveryOutboxCreate {
+	mutation := newEventDeliveryOutboxMutation(c.config, OpCreate)
+	return &EventDeliveryOutboxCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of EventDeliveryOutbox entities.
+func (c *EventDeliveryOutboxClient) CreateBulk(builders ...*EventDeliveryOutboxCreate) *EventDeliveryOutboxCreateBulk {
+	return &EventDeliveryOutboxCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *EventDeliveryOutboxClient) MapCreateBulk(slice any, setFunc func(*EventDeliveryOutboxCreate, int)) *EventDeliveryOutboxCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &EventDeliveryOutboxCreateBulk{err: fmt.Errorf("calling to EventDeliveryOutboxClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*EventDeliveryOutboxCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &EventDeliveryOutboxCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for EventDeliveryOutbox.
+func (c *EventDeliveryOutboxClient) Update() *EventDeliveryOutboxUpdate {
+	mutation := newEventDeliveryOutboxMutation(c.config, OpUpdate)
+	return &EventDeliveryOutboxUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *EventDeliveryOutboxClient) UpdateOne(_m *EventDeliveryOutbox) *EventDeliveryOutboxUpdateOne {
+	mutation := newEventDeliveryOutboxMutation(c.config, OpUpdateOne, withEventDeliveryOutbox(_m))
+	return &EventDeliveryOutboxUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *EventDeliveryOutboxClient) UpdateOneID(id string) *EventDeliveryOutboxUpdateOne {
+	mutation := newEventDeliveryOutboxMutation(c.config, OpUpdateOne, withEventDeliveryOutboxID(id))
+	return &EventDeliveryOutboxUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for EventDeliveryOutbox.
+func (c *EventDeliveryOutboxClient) Delete() *EventDeliveryOutboxDelete {
+	mutation := newEventDeliveryOutboxMutation(c.config, OpDelete)
+	return &EventDeliveryOutboxDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *EventDeliveryOutboxClient) DeleteOne(_m *EventDeliveryOutbox) *EventDeliveryOutboxDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *EventDeliveryOutboxClient) DeleteOneID(id string) *EventDeliveryOutboxDeleteOne {
+	builder := c.Delete().Where(eventdeliveryoutbox.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &EventDeliveryOutboxDeleteOne{builder}
+}
+
+// Query returns a query builder for EventDeliveryOutbox.
+func (c *EventDeliveryOutboxClient) Query() *EventDeliveryOutboxQuery {
+	return &EventDeliveryOutboxQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeEventDeliveryOutbox},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a EventDeliveryOutbox entity by its id.
+func (c *EventDeliveryOutboxClient) Get(ctx context.Context, id string) (*EventDeliveryOutbox, error) {
+	return c.Query().Where(eventdeliveryoutbox.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *EventDeliveryOutboxClient) GetX(ctx context.Context, id string) *EventDeliveryOutbox {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *EventDeliveryOutboxClient) Hooks() []Hook {
+	return c.hooks.EventDeliveryOutbox
+}
+
+// Interceptors returns the client interceptors.
+func (c *EventDeliveryOutboxClient) Interceptors() []Interceptor {
+	return c.inters.EventDeliveryOutbox
+}
+
+func (c *EventDeliveryOutboxClient) mutate(ctx context.Context, m *EventDeliveryOutboxMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&EventDeliveryOutboxCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&EventDeliveryOutboxUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&EventDeliveryOutboxUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&EventDeliveryOutboxDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown EventDeliveryOutbox mutation op: %q", m.Op())
 	}
 }
 
@@ -13210,43 +13351,44 @@ type (
 		AgentTemplate, AllocationPlan, AvatarAsset, BackgroundJob, BorrowRequest,
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
 		CircuitBreakerState, CompiledTeam, CronTask, CronTaskRun, EvalCase,
-		EvalCaseResult, EvalDataset, EvalRun, EvolutionSuggestion, ExperienceReport,
-		FailurePattern, FlowLogEvent, GatewayWebhook, GraphDefinition, GraphExecution,
-		GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment, GraphTaskEvent,
-		GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord, LlmProviderModel,
-		MemberSessionV2, ModelPricingRule, ModelTokenUsageHourly, Orchestration,
-		OrchestrationStep, Organization, PlanBoardV2, PlanStepV2, PlatformChannel,
-		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
-		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
-		PlatformSkill, PlatformTool, SchemaMigration, SelfCheckReport, Session,
-		SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
-		SessionRuntime, SessionTurn, SessionV2, SkillEvolutionSuggestion,
-		SkillImportJob, SkillInvocation, SkillVersion, StepV2, SystemSetting,
-		TaskDeadLetter, TaskPlan, TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2,
-		TeamStageV2, ToolAgentOverride, ToolInvocation, ToolInvocationAudit,
-		ToolInvocationParam, ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
-		UserEmbeddingSetting []ent.Hook
+		EvalCaseResult, EvalDataset, EvalRun, EventDeliveryOutbox, EvolutionSuggestion,
+		ExperienceReport, FailurePattern, FlowLogEvent, GatewayWebhook,
+		GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2, GraphTask,
+		GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun,
+		HealRecord, LlmProviderModel, MemberSessionV2, ModelPricingRule,
+		ModelTokenUsageHourly, Orchestration, OrchestrationStep, Organization,
+		PlanBoardV2, PlanStepV2, PlatformChannel, PlatformChannelCredential,
+		PlatformChannelDelivery, PlatformChannelPeerSession, PlatformHook,
+		PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin, PlatformSkill,
+		PlatformTool, SchemaMigration, SelfCheckReport, Session, SessionMetrics,
+		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
+		SessionTurn, SessionV2, SkillEvolutionSuggestion, SkillImportJob,
+		SkillInvocation, SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan,
+		TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride,
+		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
+		ToolResultReplacement, TurnV2, UsageQuota, UserEmbeddingSetting []ent.Hook
 	}
 	inters struct {
 		Activity, Admin, Agent, AgentPerformance, AgentPromptFile, AgentRuntimeSetting,
 		AgentTemplate, AllocationPlan, AvatarAsset, BackgroundJob, BorrowRequest,
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
 		CircuitBreakerState, CompiledTeam, CronTask, CronTaskRun, EvalCase,
-		EvalCaseResult, EvalDataset, EvalRun, EvolutionSuggestion, ExperienceReport,
-		FailurePattern, FlowLogEvent, GatewayWebhook, GraphDefinition, GraphExecution,
-		GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment, GraphTaskEvent,
-		GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord, LlmProviderModel,
-		MemberSessionV2, ModelPricingRule, ModelTokenUsageHourly, Orchestration,
-		OrchestrationStep, Organization, PlanBoardV2, PlanStepV2, PlatformChannel,
-		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
-		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
-		PlatformSkill, PlatformTool, SchemaMigration, SelfCheckReport, Session,
-		SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
-		SessionRuntime, SessionTurn, SessionV2, SkillEvolutionSuggestion,
-		SkillImportJob, SkillInvocation, SkillVersion, StepV2, SystemSetting,
-		TaskDeadLetter, TaskPlan, TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2,
-		TeamStageV2, ToolAgentOverride, ToolInvocation, ToolInvocationAudit,
-		ToolInvocationParam, ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
+		EvalCaseResult, EvalDataset, EvalRun, EventDeliveryOutbox, EvolutionSuggestion,
+		ExperienceReport, FailurePattern, FlowLogEvent, GatewayWebhook,
+		GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2, GraphTask,
+		GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun,
+		HealRecord, LlmProviderModel, MemberSessionV2, ModelPricingRule,
+		ModelTokenUsageHourly, Orchestration, OrchestrationStep, Organization,
+		PlanBoardV2, PlanStepV2, PlatformChannel, PlatformChannelCredential,
+		PlatformChannelDelivery, PlatformChannelPeerSession, PlatformHook,
+		PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin, PlatformSkill,
+		PlatformTool, SchemaMigration, SelfCheckReport, Session, SessionMetrics,
+		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
+		SessionTurn, SessionV2, SkillEvolutionSuggestion, SkillImportJob,
+		SkillInvocation, SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan,
+		TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride,
+		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
+		ToolResultReplacement, TurnV2, UsageQuota,
 		UserEmbeddingSetting []ent.Interceptor
 	}
 )

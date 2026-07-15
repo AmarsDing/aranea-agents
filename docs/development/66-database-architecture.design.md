@@ -94,13 +94,14 @@ MaxIdleConns=4               MaxIdleConns=8
 ConnMaxLifetime=30min        ConnMaxLifetime=30min
 ConnMaxIdleTime=5min         ConnMaxIdleTime=5min
      │                            │
-     ├── pgvector.EnsureSchema()  ├── 向量相似度搜索
-     ├── EnsureKnowledgeSchema() ├── 知识库查询
-     ├── WAL/EventStore/Checkpoint 写入
-     └── DDL
+     ├── Knowledge / pgvector schema
+     ├── Session run checkpoints
+     └── DDL migrations
 ```
 
-**当前策略**：PostgreSQL 是生产唯一主库，启动时强制初始化（`data.go:428`：`Postgres is the only supported primary database`）。SQLite 仅保留用于测试基础设施（`testhelper.SetupTestDB` 使用 in-memory SQLite）和离线 CLI 维护工具（`OpenSQLiteEntClient`/`NewCLIData`）。生产环境不允许降级为 SQLite 模式。
+**当前策略**：PostgreSQL 是生产唯一主库，启动时强制初始化（`data.go`：`Postgres is the only supported primary database`）。SQLite 仅保留用于测试基础设施（`testhelper.SetupTestDB` 使用 in-memory SQLite）和离线 CLI 维护工具（`OpenSQLiteEntClient`/`NewCLIData`）。生产环境不允许降级为 SQLite 模式。
+
+> **D-06 注**：历史「WAL/EventStore/Checkpoint 写入」路径中的 EventWAL / EventStore 已删除（`20260901_drop_event_store_subsystem.sql`）。Checkpoint 仍由 session_run_checkpoints 承担。
 
 ### 2.3 连接初始化流程
 
@@ -385,7 +386,7 @@ ensureSchemaDDL()
 
 共 91 个 Ent Schema，位于 `internal/data/ent/schema/`。其中 88 个使用 `entsql.Annotation{Table: ...}` 显式映射表名，3 个使用 Ent 默认复数化规则。
 
-> **已删除的 Schema**：`Message`（messages 表）和 `EventStore`（event_store 表）已于 2026-09 迁移中删除（`20260901_drop_event_store_subsystem.sql`、`20260902_drop_messages_subsystem.sql`）。WS replay 已移除，历史事件改用 `ListActivities` RPC 获取。
+> **已删除（勿再实现）**：`Message`（messages）与 `EventStore`（event_store）已于 2026-09 删除（`20260901_drop_event_store_subsystem.sql`、`20260902_drop_messages_subsystem.sql`）。下表**不**再列出二者。WS replay 已移除；历史事件用 `ListActivities` RPC。V2 Activity 相关 Schema 见下表「Activity V2」行。
 
 | 域 | Schema | 表名 | 说明 |
 |----|--------|------|------|
@@ -513,7 +514,7 @@ ensureSchemaDDL()
 
 | SQL 文件 / 迁移 | 表名 | 用途 |
 |----------------|------|------|
-| `message_fts.sql` | `messages_fts` | FTS5 全文搜索虚拟表 + 3 触发器 |
+| ~~`message_fts.sql`~~ | ~~`messages_fts`~~ | ⚠️ 已随 messages 子系统删除（20260902）；FTS 迁移入口保留为空操作 |
 | `flow_log.sql` | `flow_log_events` | 流日志持久化 |
 | `plugin_run.sql` | `plugin_runs` | 插件运行记录 |
 | `monitor_alert.sql` | `monitor_alert_rules` | 监控告警规则 |
@@ -527,7 +528,7 @@ ensureSchemaDDL()
 | `unified_evolution.sql` | `unified_evolution_suggestions` | 统一演化建议 |
 | 迁移 20260608 | `entity_reinforcements` | 实体强化 |
 | 迁移 20260609 | `cascade_saga_steps` | 级联 Saga 步骤 |
-| 迁移 20260617 | `event_wal`, `event_store`, `session_run_checkpoints` | Postgres Phase 1 表 |
+| 迁移 20260617 | ~~`event_wal`~~, ~~`event_store`~~, `session_run_checkpoints` | Phase 1；WAL/EventStore 表已于 20260901 删除，Checkpoint 保留 |
 | 迁移 20260708 | `session_metrics`, `session_runtime` | Session 表拆分 |
 | 迁移 20260715 | `self_check_reports` | 自检报告 |
 | 迁移 20260717 | `model_token_usage_events`, `model_token_usage_daily` | 用量事件和日统计 |
@@ -596,17 +597,7 @@ Repo 方法 → ReadWriteClient.Read/Write(ctx)
 
 ### 7.4 原生 SQL 查询
 
-当 Ent 查询构建器无法满足时（如 FTS5、聚合统计、跨表 JOIN），使用原生 SQL：
-
-```go
-func (r *sessionRepo) SearchMessages(ctx, sessionID, query, ...) ([]*Message, error) {
-    // 优先 FTS5
-    rows, err := r.d.RWDB().ReadDB(ctx).QueryContext(ctx, fts5SQL, ...)
-    // 回退 LIKE
-    rows, err := r.d.RWDB().ReadDB(ctx).QueryContext(ctx, likeSQL, ...)
-}
-```
-
+当 Ent 查询构建器无法满足时（如 FTS、聚合统计、跨表 JOIN），使用原生 SQL（例如 Activity / knowledge / usage 报表查询）。历史 `SearchMessages` / `Message` 路径已删除，勿再引用。
 ### 7.5 查询辅助
 
 | 辅助 | 位置 | 说明 |
@@ -646,8 +637,7 @@ cascadeDeleteBySession(ctx, sessionID)  // 事务内，14 个 DELETE
   ├── 硬删 skill_invocation
   ├── 硬删 tool_result_replacements
   ├── 硬删 tool_result_blobs
-  ├── 硬删 messages
-  ├── 硬删 event_store
+  ├── （messages / event_store 已随子系统删除，不再 cascade）
   ├── 硬删 session_runs
   ├── 硬删 session_runtime
   ├── 硬删 session_metrics
@@ -724,37 +714,17 @@ conf.DAOVectorPgVector() == true && PostgreSQL 可用?
 
 ## 10. FTS5 全文搜索设计
 
-### 10.1 虚拟表
+> ⚠️ **已废弃（D-06 / 20260902）**：`messages` / `messages_fts` 随 messages 子系统删除。历史检索改走 `activities` + `ListActivities` RPC。下列 SQL 仅作考古记录。
+
+### 10.1 虚拟表（历史）
 
 ```sql
-CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
-  message_id UNINDEXED,
-  session_id UNINDEXED,
-  content_markdown,
-  tokenize = 'unicode61'
-);
+-- REMOVED: CREATE VIRTUAL TABLE messages_fts USING fts5(...)
 ```
 
-### 10.2 自动同步触发器
+### 10.2–10.3 触发器与查询
 
-```
-messages 表 INSERT → messages_fts_ai 触发器 → FTS 插入
-messages 表 DELETE → messages_fts_ad 触发器 → FTS 删除
-messages 表 UPDATE → messages_fts_au 触发器 → FTS 更新（先删后插）
-```
-
-### 10.3 查询模式
-
-```sql
-SELECT m.*, snippet(messages_fts, 2, '>>>', '<<<', '...', 32) as highlight
-FROM messages_fts f
-JOIN messages m ON m.id = f.message_id
-WHERE messages_fts MATCH ?
-ORDER BY bm25(messages_fts)
-LIMIT ? OFFSET ?
-```
-
-**回退策略**：FTS 表不存在时回退到 `content_markdown LIKE ?`。
+已删除。勿再依赖 `messages_fts` / `content_markdown LIKE` 消息全文路径。
 
 ---
 

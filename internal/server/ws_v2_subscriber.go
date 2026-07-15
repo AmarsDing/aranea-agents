@@ -94,6 +94,12 @@ func (s *WSV2Subscriber) forward(e biz.Event) {
 		SessionID: sessionID,
 		Payload:   e,
 	}
+	// B-06: critical frames carry a stable event_id matching the durable outbox cursor.
+	if biz.IsCriticalDeliveryEvent(e) {
+		if seq := biz.EventSeq(e); seq > 0 {
+			envelope.EventID = biz.DeliveryEventID(e, seq)
+		}
+	}
 	msg, err := json.Marshal(envelope)
 	if err != nil {
 		s.lg.Warn("ws v2 marshal failed",
@@ -132,6 +138,7 @@ type wsEnvelope struct {
 	Type      string `json:"type"`                 // "v2_event" or "v1_activity_event"
 	Kind      string `json:"kind"`                 // EventKind value (e.g. "task.created")
 	SessionID string `json:"session_id,omitempty"` // SpiritSessionID for routing
+	EventID   string `json:"event_id,omitempty"`   // B-06 outbox cursor for reconnect replay
 	Payload   any    `json:"payload"`              // the Event or ActivityEvent
 }
 

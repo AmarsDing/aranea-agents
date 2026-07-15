@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/data/ent/platformchannel"
 	"aranea-agents/internal/data/ent/platformchannelcredential"
 	"aranea-agents/internal/data/ent/platformchanneldelivery"
+	"aranea-agents/internal/data/ent/predicate"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
@@ -51,9 +52,22 @@ func entToChannel(e *ent.PlatformChannel) biz.Channel {
 	}
 }
 
+// channelWorkspacePredicate returns shared-or-own visibility for channel (C-25).
+func channelWorkspacePredicate(ctx context.Context) predicate.PlatformChannel {
+	ids := workspaceSharedOrOwnIDs(ctx)
+	if ids == nil {
+		return nil
+	}
+	return platformchannel.WorkspaceIDIn(ids...)
+}
+
 func (r *channelRepo) List(ctx context.Context) ([]biz.Channel, error) {
+	preds := []predicate.PlatformChannel{platformchannel.DeletedAtEQ("")}
+	if wsPred := channelWorkspacePredicate(ctx); wsPred != nil {
+		preds = append(preds, wsPred)
+	}
 	rows, err := r.data.RW().Read(ctx).PlatformChannel.Query().
-		Where(platformchannel.DeletedAtEQ("")).
+		Where(preds...).
 		Order(platformchannel.BySortOrder(sql.OrderAsc()), platformchannel.ByCreatedAt(sql.OrderDesc())).
 		All(ctx)
 	if err != nil {
@@ -71,11 +85,15 @@ func (r *channelRepo) Get(ctx context.Context, id string) (biz.Channel, error) {
 	if id == "" {
 		return biz.Channel{}, apierror.BadRequest("CHANNEL", "channel id is required")
 	}
+	preds := []predicate.PlatformChannel{
+		platformchannel.IDEQ(id),
+		platformchannel.DeletedAtEQ(""),
+	}
+	if wsPred := channelWorkspacePredicate(ctx); wsPred != nil {
+		preds = append(preds, wsPred)
+	}
 	e, err := r.data.RW().Read(ctx).PlatformChannel.Query().
-		Where(
-			platformchannel.IDEQ(id),
-			platformchannel.DeletedAtEQ(""),
-		).
+		Where(preds...).
 		Only(ctx)
 	if err != nil {
 		return biz.Channel{}, entErrToBizErr(err, "CHANNEL")
@@ -88,11 +106,15 @@ func (r *channelRepo) GetByKey(ctx context.Context, key string) (biz.Channel, er
 	if key == "" {
 		return biz.Channel{}, apierror.BadRequest("CHANNEL", "channel key is required")
 	}
+	preds := []predicate.PlatformChannel{
+		platformchannel.ChannelKeyEQ(key),
+		platformchannel.DeletedAtEQ(""),
+	}
+	if wsPred := channelWorkspacePredicate(ctx); wsPred != nil {
+		preds = append(preds, wsPred)
+	}
 	e, err := r.data.RW().Read(ctx).PlatformChannel.Query().
-		Where(
-			platformchannel.ChannelKeyEQ(key),
-			platformchannel.DeletedAtEQ(""),
-		).
+		Where(preds...).
 		Only(ctx)
 	if err != nil {
 		return biz.Channel{}, entErrToBizErr(err, "CHANNEL")

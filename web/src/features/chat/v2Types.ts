@@ -382,5 +382,7 @@ export interface V2WsEnvelope {
   kind: EventKind;
   /** Spirit session id (envelope root) for global WS consumers. */
   session_id?: string;
+  /** B-06 durable outbox cursor for last_event_id reconnect replay. */
+  event_id?: string;
   payload: V2Event;
 }

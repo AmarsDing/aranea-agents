@@ -6,8 +6,8 @@ import (
 
 // StateKeyControlCommand is the graph state key where AfterNode stores the
 // latest ControlCommand when a replan decision is applied. Downstream
-// observers and future executor hooks can detect retry/fallback without
-// mistaking soft string recovery for successful node content.
+// observers and event bridges MUST detect this key / IsControlCommand and
+// never treat the signal as agent text content.
 const StateKeyControlCommand = "__aranea_control_command"
 
 // ControlCommand is a structured replan control signal produced by the
@@ -16,9 +16,10 @@ const StateKeyControlCommand = "__aranea_control_command"
 // Framework note: trpc-agent-go AfterNode can recover a failed node by
 // returning (customResult, nil), which clears nodeErr and continues the
 // graph. True node re-invocation is not exposed from AfterNode (retries
-// must be configured via RetryPolicy before the final failure). Returning
-// a ControlCommand (instead of a "[recovered]" string) stops pretending
-// soft string recovery is successful agent content — consumers MUST check
+// must be configured via RetryPolicy before the final failure reaches
+// AfterNode). C-23 therefore fail-closes: ControlCommand is stashed in
+// state for observability / interrupt payload, and is NOT returned as the
+// AfterNode result (that would soft-recover). Consumers MUST check
 // IsControlCommand / AsControlCommand before treating a result as output.
 type ControlCommand struct {
 	// Action is the replan type (retry, insert_fallback, …).

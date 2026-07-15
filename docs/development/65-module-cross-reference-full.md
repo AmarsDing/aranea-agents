@@ -141,11 +141,11 @@
 
 | 维度 | 内容 |
 |------|------|
-| **上游依赖** | `biz/session`（SessionUsecase、SessionRepo）、`event`（Envelope 发布）、`loggateway`（日志） |
+| **上游依赖** | `biz/session`（SessionUsecase、SessionRepo）、`event`（ActivityEvent 发布）、`loggateway`（日志） |
 | **下游影响** | `service/chat`（ChatOrchestrator 调用 TransitionStatus）、`service/team`（TeamTurnHooks 调用 TransitionStatus）、`cmd/admin/wire.go`（SessionStatusGuard 注册到 Kratos 生命周期） |
 | **核心导出** | `SessionStatus`/`SessionStatusReason` 常量、`IsProtectedStatus`、`SessionStatusMachine`、`SessionStatusPublisher`（端口接口）、`SessionStatusTransitioner`（端口接口）、`SessionStatusGuard` |
 | **共享类型** | `SessionStatus`（5 枚举值）、`SessionStatusReason`（11 枚举值） |
-| **事件生产** | `session.status_changed`（通过 `SessionStatusPublisher` → WS Envelope） |
+| **事件生产** | `session.status_changed`（通过 `SessionStatusPublisher` → ActivityEvent / WS） |
 | **事件消费** | 无 |
 | **数据库** | SQLite sessions 表（status/status_reason/status_changed_at 三列）；**生命周期由 `archived_at`/`deleted_at` 时间戳判断，status 列仅存执行状态** |
 | **前端对应** | `SessionStatusBadge.vue`（5 种状态徽章）、`sessionSync.ts`（status_changed 变体，WS → emitSessionMutation → sessionSync 总线）、`useChatInboundSync.ts`（session.status_changed → emitSessionMutation） |
@@ -172,7 +172,7 @@
 - **最关键的模块**：修改 ChatService 的任何方法签名，可能影响 Channel/Cron/A2A/WS/DurableWorker
 - 新增 Turn 入口点时，必须同步更新 `TurnEntryPointConfig` 和 `ChatOrchestrator.ExecuteTurn` 的准入逻辑
 - 修改 `TurnInput` 结构体时，所有调用方（Channel/Cron/A2A/WS）都需要同步更新
-- 修改事件类型时，前端 `realtime/envelope.ts` 和 `features/chat/` 的流处理器需要同步
+- 修改 Activity / Monitor 事件形状时，同步前端 `realtime/`（ActivityEvent / MonitorEvent 消费路径）与 `features/chat/`；legacy Envelope 类型已删除（ADR-03）
 
 ---
 
@@ -870,17 +870,18 @@
 
 ### 2.6 实时通信层 (`realtime/`)
 
-**涉及文件**：`ws-transport.ts`、`globalWsHub.ts`、`useEnvelopeStream.ts`、`dispatcher.ts`、`envelope.ts`
+**涉及文件**：`ws-transport.ts`、`globalWsHub.ts`、Activity/Monitor 流消费 hooks（legacy `useEnvelopeStream` / `envelope.ts` 已按 ADR-03 退役或收窄）
 
 | 维度 | 内容 |
 |------|------|
-| **核心导出** | `createEnvelopeStream()`、`useEnvelopeStream()`、`EnvelopeDispatcher`、`Envelope` 类型、46 种 `EnvelopeType` |
+| **核心导出** | WS 传输、全局 hub、ActivityEvent / MonitorEvent 分发（v2 bus；非 legacy Envelope fan-out） |
 | **消费方** | Chat（会话流）、Monitor（日志流）、Teams（运行流）、Graph（执行流）、Orchestration（编排流） |
-| **后端对应** | WSServer (`internal/server/ws.go`，使用本地 `WSTurnInput`/`WSTurnOptions`/`WSTurnExecutor` 类型，通过 Wire `wsTurnExecutorAdapter` 桥接 `biz.TurnExecutorGateway`) + EventBus (`internal/event/`) |
+| **后端对应** | WSServer (`internal/server/ws.go`) + `biz.ActivityEventBus` + `contract.MonitorEventBus`（`internal/event/`） |
 
 **⚠️ 开发注意**：
-- 新增 `EnvelopeType` 时，必须同时更新：后端 `internal/event/envelope.go` + 前端 `realtime/envelope.ts`
+- 新增聊天/系统事件走 `ActivityEvent`；监控事件走 `MonitorEvent`。勿再新增 legacy `EnvelopeType`。
 - `globalWsHub` 使用引用计数，`acquireGlobalWsConsumer`/`releaseGlobalWsConsumer` 必须配对调用
+- WS 重连历史补全用 `ListActivities` RPC，不走服务端 EventBuffer / EventStore replay
 
 ---
 
@@ -919,8 +920,7 @@
 | `TurnInput` | `biz/turn_input.go` | ChatService、ChannelIngress、CronService、A2AService、WSServer（通过 `WSTurnInput` 本地类型 + adapter 转换） |
 | `TurnResult` | `biz/turn_input.go` | ChatOrchestrator、ChannelIngress |
 | `NativeTurnResult` | `biz/native_turn_result.go` | ChatOrchestrator、ChannelIngress |
-| `Envelope` | `event/envelope.go` | 所有事件生产者/消费者 + 前端 `realtime/envelope.ts` |
-| `EnvelopeType` | `event/envelope.go` | 所有事件生产者/消费者 + 前端 `realtime/envelope.ts` |
+| ~~`Envelope` / `EnvelopeType`~~ | legacy（ADR-03 后收窄） | 新代码用 `ActivityEvent` / `MonitorEvent`；前端勿再扩 `EnvelopeType` |
 | `Agent` | `biz/agent_types.go` | AgentUsecase、ChatOrchestrator、Team、A2A、前端 |
 | `Tool` | `biz/tool/tool.go` | ToolUsecase、ChatOrchestrator、前端 |
 | `GraphDefinition` | `biz/graph.go` | GraphUsecase、GraphService、Team、前端 |

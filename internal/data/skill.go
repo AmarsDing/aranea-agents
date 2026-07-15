@@ -508,8 +508,15 @@ func (r *skillRepo) SearchSkills(ctx context.Context, q biz.SkillListQuery) (biz
 }
 
 func (r *skillRepo) GetSkillByID(ctx context.Context, id string) (biz.Skill, error) {
+	preds := []predicate.PlatformSkill{
+		platformskill.IDEQ(id),
+		platformskill.DeletedAtEQ(""),
+	}
+	if ids := workspaceSharedOrOwnIDs(ctx); ids != nil {
+		preds = append(preds, platformskill.WorkspaceIDIn(ids...))
+	}
 	e, err := r.data.RW().Read(ctx).PlatformSkill.Query().
-		Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
+		Where(preds...).
 		Only(ctx)
 	if err != nil {
 		if dataent.IsNotFound(err) {
@@ -893,8 +900,15 @@ func (r *skillRepo) GetSkillBySkillKey(ctx context.Context, skillKey string) (bi
 	if skillKey == "" {
 		return biz.Skill{}, apierror.BadRequest("SKILL", "skill key is required")
 	}
+	preds := []predicate.PlatformSkill{
+		platformskill.SkillKeyEQ(skillKey),
+		platformskill.DeletedAtEQ(""),
+	}
+	if ids := workspaceSharedOrOwnIDs(ctx); ids != nil {
+		preds = append(preds, platformskill.WorkspaceIDIn(ids...))
+	}
 	e, err := r.data.RW().Read(ctx).PlatformSkill.Query().
-		Where(platformskill.SkillKeyEQ(skillKey), platformskill.DeletedAtEQ("")).
+		Where(preds...).
 		Only(ctx)
 	if err != nil {
 		if dataent.IsNotFound(err) {

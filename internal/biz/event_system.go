@@ -69,6 +69,8 @@ type SystemNoticeEvent struct {
 	NoticeType string
 	Message    string
 	Meta       map[string]any
+	// Seq is assigned by the v2 Sequencer for critical delivery outbox ordering (B-06).
+	Seq        int64
 	occurredAt time.Time
 }
 

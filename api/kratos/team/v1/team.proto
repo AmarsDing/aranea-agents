@@ -237,6 +237,12 @@ message EmbeddedGraphNode {
   repeated string destinations = 8;
   string task_prompt = 9;
   optional bool enabled = 10;
+  // Runtime node fields (C-21): round-trip through OrchestrationSpec API.
+  int32 retry_max_attempts = 11;
+  string fallback_agent = 12;
+  string reviewer_agent = 13;
+  string review_rules = 14;
+  string func_ref = 15;
 }
 
 message EmbeddedGraphEdge {

@@ -28,7 +28,7 @@ func (PlatformMCPServer) Fields() []ent.Field {
 		field.String("status").Default("active"),
 		field.Bool("enabled").Default(true),
 		field.Int("sort_order").Default(0),
-		field.Text("config_json").Default(""),
+		field.Text("config_json").Default("").Sensitive().Comment("MCP connection JSON; secrets encrypted at rest (C-05)"),
 		field.Text("metadata_json").Default(""),
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),

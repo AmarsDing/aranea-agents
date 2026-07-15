@@ -133,6 +133,12 @@ var ddlMigrations = []ddlMigration{
 	// 20261009 platform_workspace_id: P2-B Phase 2 — workspace_id on tools/skill/
 	// mcp_server/channel/cron_task/eval_runs/tasks_v2/task_plans (Ent already had fields).
 	{Version: 20261009, Name: "platform_workspace_id", SQL: "sql/migrations/20261009_platform_workspace_id.sql"},
+	// 20261010 event_delivery_outbox: B-06 durable critical-event outbox for
+	// WS last_event_id cursor replay. Primary durability; critical_journal is secondary.
+	{Version: 20261010, Name: "event_delivery_outbox", SQL: "sql/migrations/20261010_event_delivery_outbox.sql"},
+	// 20261011 tenant_rls_phase1: ENABLE ROW LEVEL SECURITY (no FORCE) on tenant-owned
+	// tables with workspace_id. Postgres-only; skipped on SQLite via Func.
+	{Version: 20261011, Name: "tenant_rls_phase1", Func: ddlTenantRLSPhase1},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -626,4 +632,15 @@ func ddlIntentPassDefaultOnMigration(ctx context.Context, rawDB *sql.DB, _ *ent.
 		return fmt.Errorf("commit intent_pass_default_on migration: %w", err)
 	}
 	return nil
+}
+
+// ddlTenantRLSPhase1 enables Postgres RLS on tenant-owned tables (C-25).
+// Skipped on non-Postgres dialects (SQLite tests / CLI).
+func ddlTenantRLSPhase1(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if !d.IsPostgres() || rawDB == nil {
+		lg.Info("tenant_rls_phase1 skipped (non-postgres or nil db)",
+			loggateway.StepID("data.ddl_migration.tenant_rls_phase1"))
+		return nil
+	}
+	return executeSQLFileWithDialect(ctx, rawDB, "sql/migrations/20261011_tenant_rls_phase1.sql", d, lg)
 }

@@ -931,6 +931,41 @@ var (
 			},
 		},
 	}
+	// EventDeliveryOutboxColumns holds the columns for the "event_delivery_outbox" table.
+	EventDeliveryOutboxColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "session_id", Type: field.TypeString, Size: 128},
+		{Name: "seq", Type: field.TypeInt64},
+		{Name: "event_id", Type: field.TypeString, Size: 256},
+		{Name: "kind", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "entity_id", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "payload", Type: field.TypeBytes},
+		{Name: "published_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// EventDeliveryOutboxTable holds the schema information for the "event_delivery_outbox" table.
+	EventDeliveryOutboxTable = &schema.Table{
+		Name:       "event_delivery_outbox",
+		Columns:    EventDeliveryOutboxColumns,
+		PrimaryKey: []*schema.Column{EventDeliveryOutboxColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "eventdeliveryoutbox_session_id_seq",
+				Unique:  true,
+				Columns: []*schema.Column{EventDeliveryOutboxColumns[1], EventDeliveryOutboxColumns[2]},
+			},
+			{
+				Name:    "eventdeliveryoutbox_session_id_event_id",
+				Unique:  true,
+				Columns: []*schema.Column{EventDeliveryOutboxColumns[1], EventDeliveryOutboxColumns[3]},
+			},
+			{
+				Name:    "eventdeliveryoutbox_session_id",
+				Unique:  false,
+				Columns: []*schema.Column{EventDeliveryOutboxColumns[1]},
+			},
+		},
+	}
 	// EvolutionSuggestionsColumns holds the columns for the "evolution_suggestions" table.
 	EvolutionSuggestionsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
@@ -3434,6 +3469,7 @@ var (
 		EvalCaseResultsTable,
 		EvalDatasetsTable,
 		EvalRunsTable,
+		EventDeliveryOutboxTable,
 		EvolutionSuggestionsTable,
 		ExperienceReportsTable,
 		FailurePatternTable,
@@ -3575,6 +3611,9 @@ func init() {
 	EvalRunsTable.ForeignKeys[0].RefTable = EvalDatasetsTable
 	EvalRunsTable.Annotation = &entsql.Annotation{
 		Table: "eval_runs",
+	}
+	EventDeliveryOutboxTable.Annotation = &entsql.Annotation{
+		Table: "event_delivery_outbox",
 	}
 	EvolutionSuggestionsTable.Annotation = &entsql.Annotation{
 		Table: "evolution_suggestions",

@@ -3,6 +3,7 @@ package adapter
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"aranea-agents/pkg/apierror"
@@ -249,6 +250,10 @@ func (r *trpcGraphRuntime) GetLineageID() string {
 func convertTrpcEvent(e *trpcevent.Event, bridge *graphtrpc.EventBridge, lg loggateway.Logger) biz.GraphRuntimeEvent {
 	if bridge != nil {
 		ev := bridge.ConvertEvent(e)
+		if ev != nil {
+			// C-23: never surface ControlCommand / replan control as agent text.
+			sanitizeActivityControlCommand(ev, e)
+		}
 		if ev != nil && bridge.EventBus() != nil {
 			// Phase 3b-D: bridge to v2 EventBus. ActivityBridgeEvent preserves
 			// the v1 ActivityEvent payload (Kind/Stage/Meta) for the frontend
@@ -286,6 +291,40 @@ func convertTrpcEvent(e *trpcevent.Event, bridge *graphtrpc.EventBridge, lg logg
 	}
 
 	return runtimeEvt
+}
+
+// sanitizeActivityControlCommand marks ControlCommand signals in activity meta
+// and clears Content so the UI does not render control as agent text (C-23).
+func sanitizeActivityControlCommand(ev *biz.ActivityEvent, e *trpcevent.Event) {
+	if ev == nil {
+		return
+	}
+	if ev.Activity.Meta == nil {
+		ev.Activity.Meta = map[string]any{}
+	}
+	// Content is a string in Activity; also reject typed ControlCommand if ever set.
+	if graph.IsControlCommand(ev.Activity.Content) || strings.HasPrefix(ev.Activity.Content, "ControlCommand{") {
+		ev.Activity.Meta["control_command"] = true
+		ev.Activity.Content = ""
+	}
+	if e != nil && e.StateDelta != nil {
+		if raw, ok := e.StateDelta[graph.StateKeyControlCommand]; ok && len(raw) > 0 {
+			ev.Activity.Meta["control_command"] = true
+			ev.Activity.Meta[graph.StateKeyControlCommand] = true
+		}
+	}
+	if iv, ok := ev.Activity.Meta["interrupt_value"]; ok {
+		if m, ok := iv.(map[string]any); ok {
+			if ctrl, _ := m["control"].(string); ctrl != "" {
+				ev.Activity.Meta["control_command"] = true
+				ev.Activity.Meta["replan_type"] = ctrl
+				if fa, _ := m["fallback_agent"].(string); fa != "" {
+					ev.Activity.Meta["fallback_agent"] = fa
+				}
+				ev.Activity.Content = ""
+			}
+		}
+	}
 }
 
 type trpcGraphBuilderFactory struct {
@@ -391,14 +430,22 @@ func (f *trpcGraphBuilderFactory) buildNodeCallbacks(sessionID, spiritSessionID,
 				loggateway.Err(err),
 			)
 		})
-		// C-23: AfterNode applies the replanner decision as a ControlCommand.
+		// C-23: AfterNode applies the replanner decision as real control — not soft recovery.
 		//
-		// Framework contract (AfterNodeCallback): returning (customResult, nil)
-		// when nodeErr != nil recovers the node (clears error, continues graph).
-		// True re-invocation is not available here — use RetryPolicy for that.
-		// We therefore return a typed ControlCommand (not a "[recovered]" string)
-		// and stash it under graph.StateKeyControlCommand so runtime/observers
-		// can detect retry/fallback without mistaking soft recovery for content.
+		// Framework contract (AfterNodeCallback / finalizeFailedExecution):
+		//   - AfterNode runs only after RetryPolicy budget is exhausted.
+		//   - Returning (customResult, nil) recovers the node (clears error).
+		//   - Returning (nil, nil) leaves the original nodeErr (fail-closed).
+		//   - Returning (_, err) replaces the node error.
+		//
+		// Chosen policy (documented for tests):
+		//   - ReplanRetry → fail-closed: stash ControlCommand for observability,
+		//     return (nil, originalErr) so the exhausted RetryPolicy failure stands.
+		//     Soft-recovering with a fake success/ControlCommand result is forbidden.
+		//   - ReplanInsertFallback → stash ControlCommand with FallbackAgent;
+		//     runtime has no mid-flight agent switch, so fail-closed via
+		//     InterruptError (interrupt/resume) rather than fake "[fallback]" text.
+		//   - Other actions → (nil, nil); original error propagates.
 		cb.RegisterAfterNode(func(ctx context.Context, cbCtx *trpcgraph.NodeCallbackContext, state trpcgraph.State, result any, nodeErr error) (any, error) {
 			if cbCtx == nil || nodeErr == nil {
 				return nil, nil
@@ -419,6 +466,14 @@ func (f *trpcGraphBuilderFactory) buildNodeCallbacks(sessionID, spiritSessionID,
 			}
 			out, applyErr := applyReplanControl(state, cbCtx.NodeID, nodeErr, action)
 			if applyErr != nil {
+				lg.Info("runtime replanner: fail-closed control",
+					loggateway.StepID("replanner.fail_closed"),
+					loggateway.Str("execution_id", execID),
+					loggateway.Str("session_id", sessionID),
+					loggateway.Str("graph_id", graphID),
+					loggateway.Str("failed_node", cbCtx.NodeID),
+					loggateway.Err(applyErr),
+				)
 				return nil, applyErr
 			}
 			if out == nil {
@@ -426,8 +481,8 @@ func (f *trpcGraphBuilderFactory) buildNodeCallbacks(sessionID, spiritSessionID,
 				if action != nil {
 					replanType = string(action.Type)
 				}
-				lg.Info("runtime replanner: action requires topology mutation, not applied",
-					loggateway.StepID("replanner.not_applied"),
+				lg.Info("runtime replanner: action recorded without soft recovery",
+					loggateway.StepID("replanner.not_recovered"),
 					loggateway.Str("execution_id", execID),
 					loggateway.Str("session_id", sessionID),
 					loggateway.Str("graph_id", graphID),
@@ -436,16 +491,16 @@ func (f *trpcGraphBuilderFactory) buildNodeCallbacks(sessionID, spiritSessionID,
 				)
 				return nil, nil
 			}
-			cmd, _ := graph.AsControlCommand(out)
-			lg.Info("runtime replanner: control command applied",
-				loggateway.StepID("replanner.control"),
-				loggateway.Str("execution_id", execID),
-				loggateway.Str("session_id", sessionID),
-				loggateway.Str("graph_id", graphID),
-				loggateway.Str("failed_node", cbCtx.NodeID),
-				loggateway.Str("replan_type", string(cmd.Action)),
-				loggateway.Str("fallback_agent", cmd.FallbackAgent),
-			)
+			// Soft recovery path should not be used for retry/fallback (C-23).
+			// Kept for defensive completeness if a future action returns a result.
+			if graph.IsControlCommand(out) {
+				lg.Warn("runtime replanner: refusing to soft-recover with ControlCommand as node result",
+					loggateway.StepID("replanner.refuse_soft_recover"),
+					loggateway.Str("execution_id", execID),
+					loggateway.Str("failed_node", cbCtx.NodeID),
+				)
+				return nil, nil
+			}
 			return out, nil
 		})
 	}
@@ -517,23 +572,50 @@ func (f *trpcGraphBuilderFactory) buildNodeCallbacks(sessionID, spiritSessionID,
 	return cb
 }
 
-// applyReplanControl maps a ReplanAction into an AfterNode result.
+// applyReplanControl maps a ReplanAction into AfterNode behavior (C-23).
 //
-//   - ReplanRetry / ReplanInsertFallback → ControlCommand (recover node; not fake text)
-//   - ReplanReroute / ReplanRebuildSubgraph → (nil, nil) so the original nodeErr propagates
+// Policy (fail-closed, no fake success strings):
 //
-// When state is non-nil, the command is also written to StateKeyControlCommand.
+//   - ReplanRetry: stash ControlCommand in state for observers; return (nil, originalErr)
+//     so the failure is explicit. AfterNode runs after RetryPolicy is exhausted —
+//     soft-recovering here would fake success. (nil, nil) would also propagate
+//     originalErr via RunAfterNode, but returning originalErr documents intent.
+//   - ReplanInsertFallback: stash ControlCommand (with FallbackAgent). There is
+//     no runtime state key to switch the agent mid-flight, so return an
+//     InterruptError that carries the control payload for interrupt/resume
+//     rather than synthesizing "[fallback]" content.
+//   - ReplanReroute / ReplanRebuildSubgraph: (nil, nil) — original error propagates.
+//
+// Returning a ControlCommand as the AfterNode result is intentionally avoided:
+// that would set overridden=true and clear the node error (soft recover).
 func applyReplanControl(state trpcgraph.State, nodeID string, nodeErr error, action *graph.ReplanAction) (any, error) {
 	if action == nil {
 		return nil, nil
 	}
+	cmd := graph.NewControlCommand(action, nodeID, nodeErr)
 	switch action.Type {
-	case graph.ReplanRetry, graph.ReplanInsertFallback:
-		cmd := graph.NewControlCommand(action, nodeID, nodeErr)
+	case graph.ReplanRetry:
 		if state != nil {
 			state[graph.StateKeyControlCommand] = cmd
 		}
-		return cmd, nil
+		// Fail-closed: do not soft-recover. Prefer originalErr so RetryPolicy
+		// exhaustion is visible (not a fake success ControlCommand result).
+		return nil, nodeErr
+	case graph.ReplanInsertFallback:
+		if state != nil {
+			state[graph.StateKeyControlCommand] = cmd
+		}
+		// No mid-flight agent switch in graph state → interrupt/resume path.
+		intr := trpcgraph.NewInterruptError(map[string]any{
+			"control":        "insert_fallback",
+			"fallback_agent": cmd.FallbackAgent,
+			"node_id":        nodeID,
+			"cause":          cmd.Cause,
+		})
+		intr.NodeID = nodeID
+		intr.TaskID = nodeID
+		intr.Key = graph.StateKeyControlCommand
+		return nil, intr
 	default:
 		return nil, nil
 	}

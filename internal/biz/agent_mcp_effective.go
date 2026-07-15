@@ -184,5 +184,13 @@ func (t *AgentMCPTooling) EffectiveServersForAgent(ctx context.Context, agentID 
 		})
 	}
 	out = FilterEffectiveMCPServers(out, MCPPolicyFromAgentEffectiveTools(eff))
+	// C-05: decrypt at-rest secrets before runtime tool assembly.
+	for i := range out {
+		dec, err := t.mcp.PrepareConfigJSONForRuntime(ctx, out[i].ConfigJSON)
+		if err != nil {
+			return nil, err
+		}
+		out[i].ConfigJSON = dec
+	}
 	return out, nil
 }

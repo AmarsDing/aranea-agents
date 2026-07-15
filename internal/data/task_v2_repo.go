@@ -68,14 +68,11 @@ func (r *taskV2Repo) ListTasksBySession(ctx context.Context, sessionID string) (
 // taskV2WorkspacePredicate returns a workspace visibility predicate for tasks_v2 (C-25).
 // System callers see all; default workspace also sees legacy empty workspace_id.
 func taskV2WorkspacePredicate(ctx context.Context) predicate.TaskV2 {
-	if workspace.IsSystem(ctx) {
+	ids := workspacePrivateIDs(ctx)
+	if ids == nil {
 		return nil
 	}
-	callerWS := workspace.IDFromContext(ctx)
-	if callerWS == workspace.DefaultWorkspaceID {
-		return taskv2.WorkspaceIDIn(callerWS, "")
-	}
-	return taskv2.WorkspaceIDEQ(callerWS)
+	return taskv2.WorkspaceIDIn(ids...)
 }
 
 // CreateTask inserts a new Task with the caller's claimed Version.

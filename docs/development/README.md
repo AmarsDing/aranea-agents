@@ -74,14 +74,15 @@ docs/development/
 
 | 文档 | 用途 |
 |------|------|
-| `architecture-blueprint.md` | 项目总体架构蓝图 |
-| `module-cross-reference-full.md` | 模块交叉参考手册 |
-| `backend-layers.md` | 后端分层规范 |
-| `frontend-layers.md` | 前端分层规范 |
-| `frontend-pages.md` | 前端页面梳理 |
-| `logging-framework.md` | 日志框架规范 |
-| `built-in-tools-guide.md` | 内置工具指南 |
-| `aranea-agents-product-whitepaper.md` | 产品白皮书 |
+| [0-system-diagram.md](./0-system-diagram.md) | 系统架构总览 |
+| [0-system.development.md](./0-system.development.md) | 系统级开发计划与入口约定 |
+| [65-module-cross-reference-full.md](./65-module-cross-reference-full.md) | 模块交叉参考手册（开发前必读） |
+| [66-database-architecture.md](./66-database-architecture.md) / [66-database-architecture.design.md](./66-database-architecture.design.md) | 数据库需求与设计 |
+| [64-logging-framework.md](./64-logging-framework.md) / [64-logging-framework.design.md](./64-logging-framework.design.md) | 日志框架规范 |
+| [../guides/frontend-guide.md](../guides/frontend-guide.md) | 前端开发指南 |
+| [../guides/kratos-framework-guide.md](../guides/kratos-framework-guide.md) | Kratos 框架指南 |
+| [../guides/trpc-agent-go-framework.md](../guides/trpc-agent-go-framework.md) | trpc-agent-go 框架指南 |
+| [../README.md](../README.md) | docs 总索引 |
 
 ### 子目录
 

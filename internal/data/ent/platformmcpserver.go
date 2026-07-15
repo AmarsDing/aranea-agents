@@ -28,8 +28,8 @@ type PlatformMCPServer struct {
 	Enabled bool `json:"enabled,omitempty"`
 	// SortOrder holds the value of the "sort_order" field.
 	SortOrder int `json:"sort_order,omitempty"`
-	// ConfigJSON holds the value of the "config_json" field.
-	ConfigJSON string `json:"config_json,omitempty"`
+	// MCP connection JSON; secrets encrypted at rest (C-05)
+	ConfigJSON string `json:"-"`
 	// MetadataJSON holds the value of the "metadata_json" field.
 	MetadataJSON string `json:"metadata_json,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -201,8 +201,7 @@ func (_m *PlatformMCPServer) String() string {
 	builder.WriteString("sort_order=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SortOrder))
 	builder.WriteString(", ")
-	builder.WriteString("config_json=")
-	builder.WriteString(_m.ConfigJSON)
+	builder.WriteString("config_json=<sensitive>")
 	builder.WriteString(", ")
 	builder.WriteString("metadata_json=")
 	builder.WriteString(_m.MetadataJSON)

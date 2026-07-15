@@ -40,22 +40,22 @@ func toProtoOrchestrationSpec(raw string) *v1.OrchestrationSpec {
 	if spec.Graph != nil {
 		g := &v1.EmbeddedGraph{Version: int32(spec.Graph.Version), Layout: spec.Graph.Layout}
 		for _, n := range spec.Graph.Nodes {
-			// C-21: retry_max_attempts / fallback_agent / reviewer_agent /
-			// review_rules / func_ref live on biz.EmbeddedGraphNodeSpec and
-			// definition_json. Proto EmbeddedGraphNode lacks these fields;
-			// MergeOrchestrationSpecIntoDefinition deep-merges graph nodes so
-			// API read→write does not wipe them from definition_json.
 			g.Nodes = append(g.Nodes, &v1.EmbeddedGraphNode{
-				Id:              n.ID,
-				Type:            n.Type,
-				Label:           n.Label,
-				AgentId:         n.AgentID,
-				Role:            n.Role,
-				TaskPrompt:      n.TaskPrompt,
-				Enabled:         n.Enabled,
-				InterruptBefore: n.InterruptBefore,
-				InterruptAfter:  n.InterruptAfter,
-				Destinations:    append([]string(nil), n.Destinations...),
+				Id:               n.ID,
+				Type:             n.Type,
+				Label:            n.Label,
+				AgentId:          n.AgentID,
+				Role:             n.Role,
+				TaskPrompt:       n.TaskPrompt,
+				Enabled:          n.Enabled,
+				InterruptBefore:  n.InterruptBefore,
+				InterruptAfter:   n.InterruptAfter,
+				Destinations:     append([]string(nil), n.Destinations...),
+				RetryMaxAttempts: int32(n.RetryMaxAttempts),
+				FallbackAgent:    n.FallbackAgent,
+				ReviewerAgent:    n.ReviewerAgent,
+				ReviewRules:      n.ReviewRules,
+				FuncRef:          n.FuncRef,
 			})
 		}
 		for _, e := range spec.Graph.Edges {
@@ -147,7 +147,12 @@ func fromProtoOrchestrationSpec(pb *v1.OrchestrationSpec) biz.OrchestrationSpec 
 				AgentID: n.GetAgentId(), Role: n.GetRole(),
 				TaskPrompt: n.GetTaskPrompt(), Enabled: n.Enabled,
 				InterruptBefore: n.GetInterruptBefore(), InterruptAfter: n.GetInterruptAfter(),
-				Destinations: append([]string(nil), n.GetDestinations()...),
+				Destinations:     append([]string(nil), n.GetDestinations()...),
+				RetryMaxAttempts: int(n.GetRetryMaxAttempts()),
+				FallbackAgent:    n.GetFallbackAgent(),
+				ReviewerAgent:    n.GetReviewerAgent(),
+				ReviewRules:      n.GetReviewRules(),
+				FuncRef:          n.GetFuncRef(),
 			})
 		}
 		for _, e := range g.GetEdges() {

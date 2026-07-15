@@ -151,8 +151,9 @@ func KnownTransports() []string {
 const redactedSecret = "******"
 
 // RedactConfigJSON returns config_json safe for API clients (C-05).
-// Redacts auth secrets (api_key, token, client_secret, Authorization headers, etc.).
-// Write paths (Create/Update) must keep accepting raw secrets unchanged.
+// Redacts auth secrets (api_key, token, client_secret, Authorization headers, etc.),
+// including at-rest enc: ciphertext. Write paths encrypt plaintext to enc: refs
+// via CredentialCrypto.ProcessMCPConfigJSONForStorage before persistence.
 func RedactConfigJSON(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

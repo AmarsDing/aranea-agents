@@ -240,7 +240,14 @@ func (r *toolRepo) GetTool(ctx context.Context, idOrKey string) (biz.Tool, error
 		return biz.Tool{}, apierror.Internal("TOOL", "ent client unavailable")
 	}
 	cutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
-	rows, err := client.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(toolSelectSQL(r.data.Dialect())+` WHERE (t.id = ? OR t.tool_key = ?) AND t.deleted_at = '' LIMIT 1`), cutoff, idOrKey, idOrKey)
+	where := `(t.id = ? OR t.tool_key = ?) AND t.deleted_at = ''`
+	args := []any{cutoff, idOrKey, idOrKey}
+	// C-25: shared-or-own workspace filter on Get.
+	if ids := workspaceSharedOrOwnIDs(ctx); ids != nil {
+		where += ` AND t.workspace_id IN (?, ?)`
+		args = append(args, ids[0], ids[1])
+	}
+	rows, err := client.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(toolSelectSQL(r.data.Dialect())+` WHERE `+where+` LIMIT 1`), args...)
 	if err != nil {
 		return biz.Tool{}, entErrToBizErr(err, "TOOL")
 	}

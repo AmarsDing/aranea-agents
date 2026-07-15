@@ -26,6 +26,7 @@ import (
 	"aranea-agents/internal/data/ent/evalcaseresult"
 	"aranea-agents/internal/data/ent/evaldataset"
 	"aranea-agents/internal/data/ent/evalrun"
+	"aranea-agents/internal/data/ent/eventdeliveryoutbox"
 	"aranea-agents/internal/data/ent/evolutionsuggestion"
 	"aranea-agents/internal/data/ent/experiencereport"
 	"aranea-agents/internal/data/ent/failurepattern"
@@ -1807,6 +1808,64 @@ func init() {
 	evalrunDescID := evalrunFields[0].Descriptor()
 	// evalrun.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	evalrun.IDValidator = evalrunDescID.Validators[0].(func(string) error)
+	eventdeliveryoutboxFields := schema.EventDeliveryOutbox{}.Fields()
+	_ = eventdeliveryoutboxFields
+	// eventdeliveryoutboxDescSessionID is the schema descriptor for session_id field.
+	eventdeliveryoutboxDescSessionID := eventdeliveryoutboxFields[1].Descriptor()
+	// eventdeliveryoutbox.SessionIDValidator is a validator for the "session_id" field. It is called by the builders before save.
+	eventdeliveryoutbox.SessionIDValidator = func() func(string) error {
+		validators := eventdeliveryoutboxDescSessionID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(session_id string) error {
+			for _, fn := range fns {
+				if err := fn(session_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// eventdeliveryoutboxDescEventID is the schema descriptor for event_id field.
+	eventdeliveryoutboxDescEventID := eventdeliveryoutboxFields[3].Descriptor()
+	// eventdeliveryoutbox.EventIDValidator is a validator for the "event_id" field. It is called by the builders before save.
+	eventdeliveryoutbox.EventIDValidator = func() func(string) error {
+		validators := eventdeliveryoutboxDescEventID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(event_id string) error {
+			for _, fn := range fns {
+				if err := fn(event_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// eventdeliveryoutboxDescKind is the schema descriptor for kind field.
+	eventdeliveryoutboxDescKind := eventdeliveryoutboxFields[4].Descriptor()
+	// eventdeliveryoutbox.DefaultKind holds the default value on creation for the kind field.
+	eventdeliveryoutbox.DefaultKind = eventdeliveryoutboxDescKind.Default.(string)
+	// eventdeliveryoutbox.KindValidator is a validator for the "kind" field. It is called by the builders before save.
+	eventdeliveryoutbox.KindValidator = eventdeliveryoutboxDescKind.Validators[0].(func(string) error)
+	// eventdeliveryoutboxDescEntityID is the schema descriptor for entity_id field.
+	eventdeliveryoutboxDescEntityID := eventdeliveryoutboxFields[5].Descriptor()
+	// eventdeliveryoutbox.DefaultEntityID holds the default value on creation for the entity_id field.
+	eventdeliveryoutbox.DefaultEntityID = eventdeliveryoutboxDescEntityID.Default.(string)
+	// eventdeliveryoutbox.EntityIDValidator is a validator for the "entity_id" field. It is called by the builders before save.
+	eventdeliveryoutbox.EntityIDValidator = eventdeliveryoutboxDescEntityID.Validators[0].(func(string) error)
+	// eventdeliveryoutboxDescCreatedAt is the schema descriptor for created_at field.
+	eventdeliveryoutboxDescCreatedAt := eventdeliveryoutboxFields[8].Descriptor()
+	// eventdeliveryoutbox.DefaultCreatedAt holds the default value on creation for the created_at field.
+	eventdeliveryoutbox.DefaultCreatedAt = eventdeliveryoutboxDescCreatedAt.Default.(func() time.Time)
+	// eventdeliveryoutboxDescID is the schema descriptor for id field.
+	eventdeliveryoutboxDescID := eventdeliveryoutboxFields[0].Descriptor()
+	// eventdeliveryoutbox.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	eventdeliveryoutbox.IDValidator = eventdeliveryoutboxDescID.Validators[0].(func(string) error)
 	evolutionsuggestionFields := schema.EvolutionSuggestion{}.Fields()
 	_ = evolutionsuggestionFields
 	// evolutionsuggestionDescAgentID is the schema descriptor for agent_id field.

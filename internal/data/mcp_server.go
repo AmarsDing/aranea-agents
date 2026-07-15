@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/platformmcpserver"
 	"aranea-agents/internal/data/ent/platformmcpusercredential"
+	"aranea-agents/internal/data/ent/predicate"
 	"aranea-agents/pkg/apierror"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -69,9 +70,25 @@ func (r *mcpServerRepo) ListMCPServers(ctx context.Context, q biz.MCPListQuery) 
 	return out, nil
 }
 
+// mcpWorkspacePredicate returns shared-or-own visibility for mcp_server (C-25).
+func mcpWorkspacePredicate(ctx context.Context) predicate.PlatformMCPServer {
+	ids := workspaceSharedOrOwnIDs(ctx)
+	if ids == nil {
+		return nil
+	}
+	return platformmcpserver.WorkspaceIDIn(ids...)
+}
+
 func (r *mcpServerRepo) GetMCPServer(ctx context.Context, id string) (biz.MCPServer, error) {
+	preds := []predicate.PlatformMCPServer{
+		platformmcpserver.IDEQ(id),
+		platformmcpserver.DeletedAtEQ(""),
+	}
+	if wsPred := mcpWorkspacePredicate(ctx); wsPred != nil {
+		preds = append(preds, wsPred)
+	}
 	row, err := r.data.RW().Read(ctx).PlatformMCPServer.Query().
-		Where(platformmcpserver.IDEQ(id), platformmcpserver.DeletedAtEQ("")).
+		Where(preds...).
 		Only(ctx)
 	if err != nil {
 		return biz.MCPServer{}, entErrToBizErr(err, apierror.DomainMCP)
@@ -80,8 +97,15 @@ func (r *mcpServerRepo) GetMCPServer(ctx context.Context, id string) (biz.MCPSer
 }
 
 func (r *mcpServerRepo) GetMCPServerByKey(ctx context.Context, key string) (biz.MCPServer, error) {
+	preds := []predicate.PlatformMCPServer{
+		platformmcpserver.ServerKeyEQ(key),
+		platformmcpserver.DeletedAtEQ(""),
+	}
+	if wsPred := mcpWorkspacePredicate(ctx); wsPred != nil {
+		preds = append(preds, wsPred)
+	}
 	row, err := r.data.RW().Read(ctx).PlatformMCPServer.Query().
-		Where(platformmcpserver.ServerKeyEQ(key), platformmcpserver.DeletedAtEQ("")).
+		Where(preds...).
 		Only(ctx)
 	if err != nil {
 		return biz.MCPServer{}, entErrToBizErr(err, apierror.DomainMCP)

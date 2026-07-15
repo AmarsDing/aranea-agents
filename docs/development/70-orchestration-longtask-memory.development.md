@@ -57,6 +57,8 @@
 
 ### 3.1 P0-1：修复 WBPF 语义违规
 
+> ⚠️ **已废弃 / 被 supersede（D-02, 2026-09）**：`EventWAL` / WBPF 路径已随 `event_store` 子系统删除（`20260901_drop_event_store_subsystem.sql`）。当前 `internal/event/infra.go` 仅持有 typed `MonitorEventBus`；Critical 事件不再走 WAL。历史验收记录保留供追溯。
+
 **任务**：Critical 事件 WAL 写入失败时不发布事件
 
 **改动文件**：
@@ -68,11 +70,11 @@
 - 非 Critical 事件直接走 `publishToBuses`，无 WAL 开销
 
 **验收**：
-- ✅ WBPF 失败时不发布 Critical 事件（pre-publish 失败路径）
-- ✅ WAL 成功时正常发布
-- ✅ post-publish 失败时事件已发布，日志标记 "may republish on restart"
+- ~~✅ WBPF 失败时不发布 Critical 事件（pre-publish 失败路径）~~
+- ~~✅ WAL 成功时正常发布~~
+- ~~✅ post-publish 失败时事件已发布，日志标记 "may republish on restart"~~
 
-**状态**：✅ 完成
+**状态**：❌ 已移除（原 ✅ 完成声明作废）
 
 ### 3.2 P0-2：接入状态机
 
@@ -101,35 +103,29 @@
 
 ### 3.3 P0-3：Postgres Phase 1 迁移
 
+> ⚠️ **部分已废弃（D-02）**：`event_wal` / `event_store` 表与 `EventWAL` / `PostgresEventStore` 代码路径已删除（`20260901_drop_event_store_subsystem.sql`）。Checkpoint / 事务超时 / Postgres 错误翻译等仍有效。WS 重连不再 Postgres replay，改用 `ListActivities` RPC。
+
 **任务**：WAL/EventStore/Checkpoint 关键表迁移到 Postgres 原生 schema + 可配置事务超时
 
 **改动文件**：
 - `internal/data/data.go`（新增 `ensurePostgresPhase1Schema` + `isPostgresAlreadyExistsErr`，Postgres Phase 1 迁移执行）
 - `internal/data/tx.go`（30s 硬超时改为可配置 `TxTimeout()`，支持 `SetTxTimeout(0)` 禁用）
 - `internal/data/errors.go`（新增 Postgres SQLSTATE 错误翻译：23505/23503→Conflict, 23502/23514→BadRequest，使用 `errors.As` 支持包装错误）
-- `internal/event/wal.go`（`NewEventWAL` 改为双 DB 签名，Postgres 优先 SQLite 回退）
-- `internal/event/postgres_wal_storage.go`（新增，Postgres WAL 存储适配器，ON CONFLICT/TIMESTAMPTZ/$N 语法）
-- `internal/event/infra.go`（`ProvideEventWAL` 双 DB 签名，从 `InfraProviderSet` 移除因 Wire 类型歧义）
-- `cmd/admin/wire.go`（新增 `provideEventWAL` 桥接 `*data.Data` → 双 DB 句柄）
+- ~~`internal/event/wal.go` / `postgres_wal_storage.go` / `ProvideEventWAL`~~（已删除）
 - `internal/data/errors_postgres_test.go`（新增，5 个 Postgres 错误翻译测试）
 
 **新增文件**：
-- `internal/data/sql/migrations/20260617_postgres_phase1.sql`（event_wal/event_store/session_run_checkpoints 表 + INV-UNIQ-01/02 唯一索引 + INV-REF-01/02/03 FK 约束，DO $$ 块幂等）
+- `internal/data/sql/migrations/20260617_postgres_phase1.sql`（历史：曾含 event_wal/event_store；后续由 drop migration 清理）
 
-**实现细节**：
-- WAL 双后端选择：Postgres 可用时优先（Phase 1），否则回退 SQLite
-- Wire DI 解决 `*sql.DB` 类型歧义：`provideEventWAL` 从 `*data.Data` 提取双 DB
-- Postgres 迁移幂等：整个 SQL 作为单个 `ExecContext`（DO $$ 块含分号不能用 `splitDDLStatements`），`isPostgresAlreadyExistsErr` 处理 SQLSTATE 42P07/42710/42701
+**实现细节**（现行有效部分）：
 - 事务超时可配置：默认 30s，`SetTxTimeout(0)` 禁用用于长运行 Postgres 操作
+- Postgres 错误翻译（SQLSTATE）仍生效
 
 **验收**：
-- ✅ `go build ./...` 通过
-- ✅ `go vet ./internal/data/ ./internal/event/` 通过
-- ✅ 现有测试全部通过（预存失败除外）
 - ✅ Postgres 错误翻译测试通过（5 个 SQLSTATE 场景）
-- ✅ WAL 双后端选择正确（Postgres 优先，SQLite 回退）
+- ~~✅ WAL 双后端选择正确~~（已移除）
 
-**状态**：✅ 完成
+**状态**：🟡 部分有效（Checkpoint/错误翻译保留；WAL/EventStore 已下线）
 
 ### 3.4 P0-4：修复 DB-R5 错误翻译
 
@@ -304,35 +300,21 @@
 
 ### 4.6 P1-6：跨进程事件流
 
+> ⚠️ **已废弃 / 被 supersede（D-02, 2026-09）**：`PostgresEventStore`、`CrossProcessStore`、WS `replayEvents` Postgres fallback 均已删除。跨进程 / 重连历史改用 Activity 表 + `ListActivities` RPC（见 `1-chat.design.md` §8.19）。下列正文为历史实现记录。
+
 **任务**：event.Bus 增加 Postgres-backed EventStore
 
-**新增文件**：
-- `internal/event/postgres_eventstore.go`
-- `internal/event/postgres_eventstore_test.go`
+**状态**：❌ 已移除（原 ✅ Wave 2 完成声明作废）
 
-**改动文件**（审查修复 P1-6 后补充的接线）：
-- `internal/event/contract/bus.go`（新增 `CrossProcessStore` 接口）
-- `internal/event/infra.go`（`Infra` 增加 `CrossProcessStore` 字段，`NewInfra` 接受 `*PostgresEventStore`）
-- `internal/biz/event_bus_consumer.go`（新增 `crossProcessSink` 字段 + `WithCrossProcessSink` setter + `handleEnvelope` 双写）
-- `internal/server/ws.go`（`WSServer` 持有 `crossProcessStore`，从 `infra.CrossProcessStore` 注入）
-- `internal/server/ws_event.go`（`replayEvents` 在内存 buffer 空时回退到 Postgres replay）
-- `cmd/admin/wire.go`（注册 `providePostgresEventStore`）
-- `cmd/admin/app.go`（`newApp`/`startReadinessDependentServices` 注入 pgEventStore，启动前 `consumer.WithCrossProcessSink`）
-- `pkg/apierror/domains.go`（新增 `DomainEventStore = "EVENT_STORE"` 常量，CQ-2 修复）
+<details><summary>历史实现摘要（折叠）</summary>
 
-**验收**：
-- 事件持久化到 Postgres
-- WS 重连时从 Postgres replay
-- 跨进程事件可消费
+**曾新增文件**：`internal/event/postgres_eventstore.go`、`postgres_eventstore_test.go`
 
-**状态**：✅ 已完成（Wave 2）
-- `PostgresEventStore` 实现 `Save/Replay/EnsureSchema/Cleanup`，幂等（`ON CONFLICT DO NOTHING`），`Replay` 支持 `afterEventID` 游标 + `limit` 上限（默认 100）
-- 8 个集成测试覆盖：Save/Replay/Replay after cursor/Replay limit/Cleanup/EnsureSchema idempotent/nil envelope/nil db
-- **`CrossProcessStore` 接口**（`contract/bus.go`）：窄接口 `Save(ctx, *Envelope) error` + `Replay(ctx, sessionID, afterEventID, limit) ([]*Envelope, error)`，`Stability:evolving`，避免上层直接依赖具体实现
-- **双写路径**（`EventBusConsumer.handleEnvelope`）：`shouldPersistEnvelope(env)` 为真时 best-effort 非阻塞写 Postgres，失败仅 Warn 日志（不阻塞主流程，符合 Informational/Important 级别语义）
-- **WS replay fallback**（`ws_event.go::replayEvents`）：内存 buffer 为空且 `crossProcessStore != nil` 时，5s 超时调用 `Replay(ctx, sessionID, lastEventID, 100)`，失败仅 Warn
-- **Wire 接线**：`providePostgresEventStore` 从 `data.Data.Postgres()` 取连接，构造时 `EnsureSchema` 幂等建表；`startReadinessDependentServices` 在 `consumer.Start(ctx)` 前 `consumer.WithCrossProcessSink(pgEventStore)`
-- **错误域**：`apierror.DomainEventStore`（CQ-2 修复，统一错误翻译出口）
+**曾改动**：`CrossProcessStore`、`EventBusConsumer` 双写、`WSServer.replayEvents` Postgres 回退、Wire `providePostgresEventStore`
+
+**曾验收**：事件持久化到 Postgres；WS 重连 Postgres replay
+
+</details>
 
 ### 4.7 P1-7：任务级心跳
 
@@ -933,9 +915,9 @@
 
 | # | 验收项 | 验证方式 | 状态 |
 |---|--------|---------|------|
-| 1 | WBPF 语义修复 | WAL 失败时不发布 Critical 事件（pre-publish 失败路径） | ✅ |
+| 1 | WBPF 语义修复 | ~~WAL 失败时不发布 Critical 事件~~ → **已移除 EventWAL** | ❌ superseded |
 | 2 | 状态机接入 | 无直接赋值，非法转换被拒绝，WaitingHuman→Failed 合法 | ✅ |
-| 3 | Postgres Phase 1 | 关键表迁移完成，FK/唯一约束生效，WAL 双后端选择 | ✅ |
+| 3 | Postgres Phase 1 | 关键表迁移 / 错误翻译；~~WAL 双后端~~ 已下线 | 🟡 |
 | 4 | DB-R5 修复 | 无直接返回 Ent 错误（含审查修复 session_metrics_repo） | ✅ |
 
 ### 7.2 Phase 1 验收
@@ -947,7 +929,7 @@
 | 7 | pgvector 语义匹配 | 准确率 > TF-IDF | ✅ |
 | 8 | AgentFactory | 无匹配时自动创建，可观测，可复用 | ✅ |
 | 9 | taskrun 事件透传 | 后台任务事件可消费 | ✅ |
-| 10 | 跨进程事件流 | WS 重连从 Postgres replay | ✅ |
+| 10 | 跨进程事件流 | ~~WS 重连从 Postgres replay~~ → **ListActivities RPC** | ❌ superseded |
 | 11 | 任务级心跳 | 10s 间隔，30s 检测 stale | ✅ |
 | 12 | 崩溃恢复 | 进程重启从 checkpoint 恢复 | ✅ |
 
