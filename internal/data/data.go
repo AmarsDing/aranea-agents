@@ -457,10 +457,19 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 	if pg != nil && conf.DAOVectorPgVector() {
 		pgvs, vsErr := vector.NewPgVectorStore(pg, "vector_embeddings", vdim, lg)
 		if vsErr != nil {
-			cleanup()
-			return nil, nil, fmt.Errorf("pgvector store init: %w", vsErr)
+			// pgvector extension missing or broken: degrade to nil vector store.
+			// All vector-dependent call sites (memory_shim_l2.go, memory_shim_l3.go,
+			// memory_shim_l3_recall.go) have nil guards and fall back to keyword
+			// search. This allows the app to start on systems where pgvector is
+			// not installed (e.g., portable PostgreSQL without vector.dll).
+			// Semantic memory recall (L2/L3) will be unavailable; other features
+			// work normally.
+			lg.Warn("pgvector unavailable, vector search disabled; install pgvector extension to enable semantic memory recall",
+				loggateway.StepID("data.vector"),
+				loggateway.Err(vsErr))
+		} else {
+			vs = pgvs
 		}
-		vs = pgvs
 	} else {
 		cleanup()
 		return nil, nil, fmt.Errorf("pgvector is required: set data.postgres.source and enable DAO_VECTOR_PGVECTOR")

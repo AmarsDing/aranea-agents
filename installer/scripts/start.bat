@@ -44,6 +44,14 @@ if errorlevel 1 (
 echo   Database initialized.
 
 :pg_start
+REM Force PostgreSQL log messages to English (lc_messages=C) to avoid GBK/UTF-8
+REM mojibake on Windows (default lc_messages is Chinese_China.936 = GBK, but logs
+REM are read as UTF-8, producing garbage like "閿欒" instead of "错误").
+REM Idempotent: skip if already set. Runs on every start to cover existing installs
+REM upgraded from v0.1.21 where postgresql.conf was initialized without this setting.
+findstr /C:"lc_messages = 'C'" "%PGDATA%\postgresql.conf" >nul 2>&1
+if errorlevel 1 echo lc_messages = 'C' >> "%PGDATA%\postgresql.conf"
+
 echo   Starting PostgreSQL...
 "%PGBIN%\pg_ctl.exe" start -D "%PGDATA%" -l "%LOGDIR%\postgres.log" -o "-p 5433" -w > "%LOGDIR%\pgctl.log" 2>&1
 if errorlevel 1 (
@@ -55,7 +63,7 @@ if errorlevel 1 (
 echo   Waiting for PostgreSQL to be ready...
 set /a ready_count=0
 :pg_wait
-"%PGBIN%\pg_isready.exe" -h 127.0.0.1 -p 5433 >nul 2>&1
+"%PGBIN%\pg_isready.exe" -U postgres -h 127.0.0.1 -p 5433 >nul 2>&1
 if errorlevel 1 (
     set /a ready_count+=1
     if !ready_count! geq 10 (
