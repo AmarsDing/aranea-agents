@@ -218,16 +218,18 @@ jobs:
         shell: pwsh
         run: |
           Push-Location web
-          & pnpm build
+          $output = & pnpm build 2>&1
           $buildExit = $LASTEXITCODE
+          $output | ForEach-Object { Write-Host $_ }
           if ($buildExit -ne 0) {
             Pop-Location
-            Write-Error "pnpm build failed (exit $buildExit)"
+            $lastLines = ($output | Select-Object -Last 10) -join " | "
+            Write-Host "::error::pnpm build failed (exit $buildExit). Last 10 lines: $lastLines"
             exit 1
           }
           Pop-Location
           if (-not (Test-Path "web/dist/index.html")) {
-            Write-Error "web/dist/index.html not found after pnpm build"
+            Write-Host "::error::web/dist/index.html not found after pnpm build"
             exit 1
           }
           Write-Host "Frontend built: web/dist/" -ForegroundColor Green
