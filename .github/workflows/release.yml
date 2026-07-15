@@ -194,35 +194,35 @@ jobs:
           }
           Write-Host "Backend built: build/aranea-server.exe" -ForegroundColor Green
 
+      - name: Install frontend deps (pnpm install)
+        shell: pwsh
+        run: |
+          Push-Location web
+          & node --version
+          & pnpm --version
+          & pnpm install --frozen-lockfile
+          $installExit = $LASTEXITCODE
+          if ($installExit -ne 0) {
+            Write-Host "frozen-lockfile failed (exit $installExit), retrying..." -ForegroundColor Yellow
+            & pnpm install
+            $installExit = $LASTEXITCODE
+          }
+          Pop-Location
+          if ($installExit -ne 0) {
+            Write-Error "pnpm install failed (exit $installExit)"
+            exit 1
+          }
+          Write-Host "pnpm install OK" -ForegroundColor Green
+
       - name: Build frontend (pnpm build)
         shell: pwsh
         run: |
           Push-Location web
-          Write-Host "=== Node/pnpm versions ==="
-          & node --version
-          & pnpm --version
-          Write-Host "=== pnpm install (frozen-lockfile) ==="
-          & pnpm install --frozen-lockfile
-          $installExit = $LASTEXITCODE
-          Write-Host "pnpm install exit: $installExit"
-          if ($installExit -ne 0) {
-            Write-Host "=== pnpm install (retry without frozen-lockfile) ===" -ForegroundColor Yellow
-            & pnpm install
-            $installExit = $LASTEXITCODE
-            Write-Host "pnpm install retry exit: $installExit"
-            if ($installExit -ne 0) {
-              Pop-Location
-              Write-Error "pnpm install failed (exit $installExit)"
-              exit 1
-            }
-          }
-          Write-Host "=== pnpm build ==="
           & pnpm build
           $buildExit = $LASTEXITCODE
-          Write-Host "pnpm build exit: $buildExit"
           if ($buildExit -ne 0) {
             Pop-Location
-            Write-Error "Frontend build failed (exit $buildExit)"
+            Write-Error "pnpm build failed (exit $buildExit)"
             exit 1
           }
           Pop-Location
