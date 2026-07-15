@@ -3,6 +3,7 @@ package cronrunner
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -71,6 +72,9 @@ type Deps struct {
 	MonitorBus        contract.MonitorBus // typed monitor bus (cron.dead_letter)
 	Chat              CronChatRunner
 	RegistrySyncAgent CronRegistrySyncAgent
+	// DB is optional. When set (Postgres), Runner uses pg_try_advisory_lock
+	// for cross-instance exclusive task execution (C-26).
+	DB *sql.DB
 }
 
 type CronRegistrySyncAgent interface {
@@ -83,10 +87,23 @@ type Runner struct {
 	lg     loggateway.Logger
 	mu     sync.Mutex
 	taskMu sync.Map
+	lease  taskLease
 }
 
 func NewRunner(deps Deps, lg loggateway.Logger) *Runner {
-	return &Runner{deps: deps, lg: lg}
+	return &Runner{
+		deps:  deps,
+		lg:    lg,
+		lease: resolveTaskLease(deps.DB, lg),
+	}
+}
+
+// WithLease overrides the cross-instance lease implementation (tests).
+func (r *Runner) WithLease(lease taskLease) *Runner {
+	if r != nil && lease != nil {
+		r.lease = lease
+	}
+	return r
 }
 
 // DefaultInterval reads CRON_RUNNER_INTERVAL (default 1m); values <=0 fall back to 1m.

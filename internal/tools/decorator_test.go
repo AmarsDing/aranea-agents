@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -245,6 +246,46 @@ func TestToolDecorator_CacheIsolatedBySession(t *testing.T) {
 	defer mu.Unlock()
 	if callCount != 2 {
 		t.Fatalf("expected 2 inner calls across sessions, got %d", callCount)
+	}
+}
+
+// TestToolDecorator_CacheIsolatedByWorkspace verifies C-03: identical
+// session/user/args from different workspaces do not share cached results.
+func TestToolDecorator_CacheIsolatedByWorkspace(t *testing.T) {
+	var callCount int32
+	var mu sync.Mutex
+	tool := &decoratorMockTool{
+		name: "file",
+		call: func(ctx context.Context, args []byte) (any, error) {
+			mu.Lock()
+			callCount++
+			mu.Unlock()
+			return "ok", nil
+		},
+	}
+	d := NewToolDecorator(tool, ToolDecoratorConfig{
+		EnableCache: true,
+		Logger:      loggateway.NewNoop(),
+	})
+	args := []byte(`{"path":"shared.txt"}`)
+	baseInv := invocationCtx("agent-a", "user-1", "sess-shared")
+	ctxA := workspace.WithContext(baseInv, "ws-a")
+	ctxB := workspace.WithContext(baseInv, "ws-b")
+
+	if _, err := d.Call(ctxA, args); err != nil {
+		t.Fatalf("ws-a call: %v", err)
+	}
+	if _, err := d.Call(ctxB, args); err != nil {
+		t.Fatalf("ws-b call: %v", err)
+	}
+	// Same workspace should hit cache.
+	if _, err := d.Call(ctxA, args); err != nil {
+		t.Fatalf("ws-a cache hit: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if callCount != 2 {
+		t.Fatalf("expected 2 inner calls across workspaces (3rd hit cache), got %d", callCount)
 	}
 }
 

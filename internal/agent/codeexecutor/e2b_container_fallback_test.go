@@ -80,3 +80,40 @@ func TestE2BAllowLocalInProd(t *testing.T) {
 		t.Fatal("expected local executor fallback in production with AllowLocalInProd=1 when E2B unavailable, got nil")
 	}
 }
+
+// TestLocalFailClosedInProd asserts that an explicit TypeLocal request is
+// refused in production when CODE_EXECUTOR_ALLOW_LOCAL_IN_PROD is unset (B-03).
+func TestLocalFailClosedInProd(t *testing.T) {
+	t.Setenv("ARANEA_ENV", "production")
+	// CODE_EXECUTOR_ALLOW_LOCAL_IN_PROD intentionally unset → AllowLocalInProd=false
+
+	f := NewFactoryWithLogger(loggateway.NewNoop())
+	exec := f.Resolve(context.Background(), TypeLocal, t.TempDir())
+	if exec != nil {
+		t.Fatal("expected nil executor in production for TypeLocal (fail-closed), got non-nil")
+	}
+}
+
+// TestLocalAllowedInProdWithBreakGlass asserts TypeLocal works in production
+// when CODE_EXECUTOR_ALLOW_LOCAL_IN_PROD=1.
+func TestLocalAllowedInProdWithBreakGlass(t *testing.T) {
+	t.Setenv("ARANEA_ENV", "production")
+	t.Setenv("CODE_EXECUTOR_ALLOW_LOCAL_IN_PROD", "1")
+
+	f := NewFactoryWithLogger(loggateway.NewNoop())
+	exec := f.Resolve(context.Background(), TypeLocal, t.TempDir())
+	if exec == nil {
+		t.Fatal("expected local executor in production with AllowLocalInProd=1, got nil")
+	}
+}
+
+// TestLocalAllowedInNonProd asserts TypeLocal remains available outside production.
+func TestLocalAllowedInNonProd(t *testing.T) {
+	t.Setenv("ARANEA_ENV", "dev")
+
+	f := NewFactoryWithLogger(loggateway.NewNoop())
+	exec := f.Resolve(context.Background(), TypeLocal, t.TempDir())
+	if exec == nil {
+		t.Fatal("expected local executor in non-prod, got nil")
+	}
+}

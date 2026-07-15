@@ -102,7 +102,9 @@ func TestCostGuard_BeforeModel_FallbackBypassesDailyBudget(t *testing.T) {
 		cfg: cfg,
 		rt: &Runtime{
 			budgets: registry,
-			active:  []runtimeEntry{{key: "cost_guard", scope: "global", costGuard: &cfg}},
+			activeByWS: map[string][]runtimeEntry{
+				"": {{key: "cost_guard", scope: "global", costGuard: &cfg}},
+			},
 		},
 	}
 
@@ -142,7 +144,9 @@ func TestCostGuard_BeforeModel_BlocksNonFallbackWhenOverBudget(t *testing.T) {
 		cfg: cfg,
 		rt: &Runtime{
 			budgets: registry,
-			active:  []runtimeEntry{{key: "cost_guard", scope: "global", costGuard: &cfg}},
+			activeByWS: map[string][]runtimeEntry{
+				"": {{key: "cost_guard", scope: "global", costGuard: &cfg}},
+			},
 		},
 	}
 

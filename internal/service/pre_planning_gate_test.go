@@ -34,7 +34,8 @@ func (f *fakePlanner) ListPlans(_ context.Context, _ string) ([]*biz.TaskPlan, e
 func (f *fakePlanner) ConfirmPlan(_ context.Context, _ string, _ biz.PlanAdjustments) (*biz.TaskPlan, error) {
 	return nil, nil
 }
-func (f *fakePlanner) PublishV2Board(_ context.Context, _ *biz.TaskPlan, _ *biz.AllocationPlan, _ string) {
+func (f *fakePlanner) PublishV2Board(_ context.Context, _ *biz.TaskPlan, _ *biz.AllocationPlan, _ string) (biz.PlanBoard, error) {
+	return biz.PlanBoard{}, nil
 }
 
 // gateCaptureBus captures published v1 ActivityEvents for assertion.

@@ -54,13 +54,14 @@ func TestSynthesize_PromptStrategy_CallsModel(t *testing.T) {
 }
 
 func TestSynthesize_PromptStrategy_NilModelFallsBackToRawPrompt(t *testing.T) {
+	t.Setenv("ARANEA_ENV", "dev")
 	engine := NewSynthesisEngine(nil, loggateway.NewNoop())
 
 	out, err := engine.Synthesize(context.Background(), SynthesisInput{
 		TeamResults: []TeamSynthesisResult{
 			{TeamID: "t1", TeamName: "团队A", Status: "completed"},
 		},
-		Strategy: SynthesisStrategyPrompt,
+		Strategy:    SynthesisStrategyPrompt,
 		SpiritQuery: "测试查询",
 	})
 	if err != nil {
@@ -74,7 +75,27 @@ func TestSynthesize_PromptStrategy_NilModelFallsBackToRawPrompt(t *testing.T) {
 	}
 }
 
+func TestSynthesize_PromptStrategy_NilModelErrorsInProduction(t *testing.T) {
+	t.Setenv("ARANEA_ENV", "production")
+	engine := NewSynthesisEngine(nil, loggateway.NewNoop())
+
+	_, err := engine.Synthesize(context.Background(), SynthesisInput{
+		TeamResults: []TeamSynthesisResult{
+			{TeamID: "t1", TeamName: "团队A", Status: "completed"},
+		},
+		Strategy:    SynthesisStrategyPrompt,
+		SpiritQuery: "生产环境",
+	})
+	if err == nil {
+		t.Fatal("expected error when model is nil in production")
+	}
+	if !errors.Is(err, ErrSynthesisModelRequired) {
+		t.Fatalf("want ErrSynthesisModelRequired, got %v", err)
+	}
+}
+
 func TestSynthesize_PromptStrategy_ModelErrorFallsBackToRawPrompt(t *testing.T) {
+	t.Setenv("ARANEA_ENV", "dev")
 	stub := &stubSynthesisModel{err: errors.New("LLM unavailable")}
 	engine := NewSynthesisEngine(stub, loggateway.NewNoop())
 
@@ -82,7 +103,7 @@ func TestSynthesize_PromptStrategy_ModelErrorFallsBackToRawPrompt(t *testing.T) 
 		TeamResults: []TeamSynthesisResult{
 			{TeamID: "t1", TeamName: "团队A", Status: "completed"},
 		},
-		Strategy: SynthesisStrategyPrompt,
+		Strategy:    SynthesisStrategyPrompt,
 		SpiritQuery: "错误回退测试",
 	})
 	if err != nil {
@@ -96,7 +117,28 @@ func TestSynthesize_PromptStrategy_ModelErrorFallsBackToRawPrompt(t *testing.T) 
 	}
 }
 
+func TestSynthesize_PromptStrategy_ModelErrorInProduction(t *testing.T) {
+	t.Setenv("ARANEA_ENV", "prod")
+	stub := &stubSynthesisModel{err: errors.New("LLM unavailable")}
+	engine := NewSynthesisEngine(stub, loggateway.NewNoop())
+
+	_, err := engine.Synthesize(context.Background(), SynthesisInput{
+		TeamResults: []TeamSynthesisResult{
+			{TeamID: "t1", TeamName: "团队A", Status: "completed"},
+		},
+		Strategy:    SynthesisStrategyPrompt,
+		SpiritQuery: "生产失败",
+	})
+	if err == nil {
+		t.Fatal("expected error when model fails in production")
+	}
+	if !errors.Is(err, ErrSynthesisModelFailed) {
+		t.Fatalf("want ErrSynthesisModelFailed, got %v", err)
+	}
+}
+
 func TestSynthesize_PromptStrategy_EmptyModelOutputFallsBack(t *testing.T) {
+	t.Setenv("ARANEA_ENV", "dev")
 	stub := &stubSynthesisModel{text: "   "}
 	engine := NewSynthesisEngine(stub, loggateway.NewNoop())
 
@@ -104,7 +146,7 @@ func TestSynthesize_PromptStrategy_EmptyModelOutputFallsBack(t *testing.T) {
 		TeamResults: []TeamSynthesisResult{
 			{TeamID: "t1", TeamName: "团队A", Status: "completed"},
 		},
-		Strategy: SynthesisStrategyPrompt,
+		Strategy:    SynthesisStrategyPrompt,
 		SpiritQuery: "空输出测试",
 	})
 	if err != nil {

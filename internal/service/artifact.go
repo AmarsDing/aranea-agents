@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -285,6 +286,7 @@ func (s *ArtifactService) PreviewArtifact(ctx context.Context, req *v1.PreviewAr
 }
 
 // SignDownloadUrl returns a time-limited HMAC-signed download URL.
+// C-02: token payload binds workspace_id so forged cross-tenant URLs fail verification.
 func (s *ArtifactService) SignDownloadUrl(ctx context.Context, req *v1.SignDownloadUrlRequest) (*v1.SignDownloadUrlResponse, error) {
 	id := strings.TrimSpace(req.GetId())
 	if id == "" {
@@ -292,7 +294,8 @@ func (s *ArtifactService) SignDownloadUrl(ctx context.Context, req *v1.SignDownl
 	}
 	version := int(req.GetVersion())
 	// P1-1: IDOR 防护 — 校验 workspace 所有权后再签名。
-	if _, err := s.assertWorkspaceOwnsArtifact(ctx, id, version); err != nil {
+	meta, err := s.assertWorkspaceOwnsArtifact(ctx, id, version)
+	if err != nil {
 		return nil, err
 	}
 	ttl := time.Duration(req.GetTtlSeconds()) * time.Second
@@ -300,27 +303,49 @@ func (s *ArtifactService) SignDownloadUrl(ctx context.Context, req *v1.SignDownl
 		ttl = 15 * time.Minute
 	}
 	if ttl > 24*time.Hour {
-		ttl = 24*time.Hour
+		ttl = 24 * time.Hour
 	}
 	expires := time.Now().UTC().Add(ttl)
-	token, err := s.signer.DownloadToken(id, version, expires)
+	wsID, err := s.artifactWorkspaceID(ctx, meta.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	token, err := s.signer.DownloadToken(id, version, expires, wsID)
 	if err != nil {
 		// OUT-05 / ART-02: prod environments without a configured key must
 		// fail closed; never hand out a forgeable URL signed with the dev key.
 		return nil, apierror.Unavailable(apierror.DomainArtifact, "download signing unavailable")
 	}
-	q := fmt.Sprintf("/v1/artifacts/download?id=%s&version=%d&expires=%d&token=%s",
-		id, version, expires.Unix(), token)
+	q := fmt.Sprintf("/v1/artifacts/download?id=%s&version=%d&expires=%d&workspace_id=%s&token=%s",
+		url.QueryEscape(id), version, expires.Unix(), url.QueryEscape(wsID), url.QueryEscape(token))
 	return &v1.SignDownloadUrlResponse{
 		Url:       q,
 		ExpiresAt: expires.Format(time.RFC3339),
 	}, nil
 }
 
+// artifactWorkspaceID resolves the owning workspace for a session (bound into signed URLs).
+func (s *ArtifactService) artifactWorkspaceID(ctx context.Context, sessionID string) (string, error) {
+	if s.sessionLookup == nil {
+		return workspace.IDFromContext(ctx), nil
+	}
+	sess, err := s.sessionLookup.Get(ctx, sessionID)
+	if err != nil {
+		return "", apierror.NotFound(apierror.DomainArtifact, "session not found")
+	}
+	ws := strings.TrimSpace(sess.WorkspaceID)
+	if ws == "" {
+		ws = workspace.DefaultWorkspaceID
+	}
+	return ws, nil
+}
+
 // ServeSignedDownload streams artifact bytes when the HMAC token is valid.
+// C-02: verifies workspace_id from the signed payload matches the artifact owner.
 func (s *ArtifactService) ServeSignedDownload(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSpace(r.URL.Query().Get("id"))
 	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	wsID := strings.TrimSpace(r.URL.Query().Get("workspace_id"))
 	expiresRaw := strings.TrimSpace(r.URL.Query().Get("expires"))
 	version := 0
 	if v := strings.TrimSpace(r.URL.Query().Get("version")); v != "" {
@@ -333,7 +358,7 @@ func (s *ArtifactService) ServeSignedDownload(w http.ResponseWriter, r *http.Req
 		http.Error(w, "invalid expires", http.StatusBadRequest)
 		return
 	}
-	ok, verr := s.signer.VerifyDownloadToken(id, version, expiresUnix, token)
+	ok, verr := s.signer.VerifyDownloadToken(id, version, expiresUnix, wsID, token)
 	if verr != nil {
 		// OUT-05 / ART-02: surface a clear 503 instead of a 403 storm when prod
 		// is missing its key — operators see misconfig, not a generic auth error.
@@ -351,6 +376,16 @@ func (s *ArtifactService) ServeSignedDownload(w http.ResponseWriter, r *http.Req
 			return
 		}
 		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	// C-02: token workspace must match the artifact's owning workspace.
+	ownerWS, wsErr := s.artifactWorkspaceID(r.Context(), meta.SessionID)
+	if wsErr != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if err := workspace.AssertWorkspace(wsID, ownerWS); err != nil {
+		http.Error(w, "invalid or expired token", http.StatusForbidden)
 		return
 	}
 	mime := strings.TrimSpace(meta.MimeType)

@@ -22,22 +22,27 @@ func TestDownloadTokenRoundTrip(t *testing.T) {
 	s := newTestSigner()
 	id := "art-123"
 	version := 2
+	ws := "ws-tenant"
 	expires := time.Now().UTC().Add(5 * time.Minute)
-	token, err := s.DownloadToken(id, version, expires)
+	token, err := s.DownloadToken(id, version, expires, ws)
 	if err != nil {
 		t.Fatalf("sign: %v", err)
 	}
-	ok, err := s.VerifyDownloadToken(id, version, expires.Unix(), token)
+	ok, err := s.VerifyDownloadToken(id, version, expires.Unix(), ws, token)
 	if err != nil || !ok {
 		t.Fatalf("expected valid token: ok=%v err=%v", ok, err)
 	}
-	bad, err := s.VerifyDownloadToken(id, version, expires.Unix(), "bad")
+	bad, err := s.VerifyDownloadToken(id, version, expires.Unix(), ws, "bad")
 	if err != nil || bad {
 		t.Fatalf("expected invalid token rejected: ok=%v err=%v", bad, err)
 	}
-	expired, err := s.VerifyDownloadToken(id, version, time.Now().Add(-time.Minute).Unix(), token)
+	expired, err := s.VerifyDownloadToken(id, version, time.Now().Add(-time.Minute).Unix(), ws, token)
 	if err != nil || expired {
 		t.Fatalf("expected expired token rejected: ok=%v err=%v", expired, err)
+	}
+	crossWS, err := s.VerifyDownloadToken(id, version, expires.Unix(), "ws-other", token)
+	if err != nil || crossWS {
+		t.Fatalf("expected workspace mismatch rejected: ok=%v err=%v", crossWS, err)
 	}
 }
 
@@ -52,10 +57,10 @@ func TestSignKeyFailClosedInProduction(t *testing.T) {
 	if _, err := s.SignKey(); !errors.Is(err, ErrSignKeyMissing) {
 		t.Fatalf("expected ErrSignKeyMissing, got %v", err)
 	}
-	if _, err := s.DownloadToken("art", 1, time.Now().Add(time.Minute)); !errors.Is(err, ErrSignKeyMissing) {
+	if _, err := s.DownloadToken("art", 1, time.Now().Add(time.Minute), "ws"); !errors.Is(err, ErrSignKeyMissing) {
 		t.Fatalf("expected ErrSignKeyMissing from DownloadToken, got %v", err)
 	}
-	ok, err := s.VerifyDownloadToken("art", 1, time.Now().Add(time.Minute).Unix(), "deadbeef")
+	ok, err := s.VerifyDownloadToken("art", 1, time.Now().Add(time.Minute).Unix(), "ws", "deadbeef")
 	if ok || !errors.Is(err, ErrSignKeyMissing) {
 		t.Fatalf("expected (false, ErrSignKeyMissing), got (%v, %v)", ok, err)
 	}

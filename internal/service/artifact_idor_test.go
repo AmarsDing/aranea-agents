@@ -4,6 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	v1 "aranea-agents/api/kratos/artifact/v1"
@@ -292,5 +296,52 @@ func TestArtifactService_IDOR_SignDownloadUrl_RejectedAcrossWorkspaces(t *testin
 	}
 	if !apierror.IsCode(err, apierror.CodeForbidden) {
 		t.Fatalf("期望 Forbidden，got: %v", err)
+	}
+}
+
+// TestArtifactService_SignedDownload_BindsWorkspace 验证 C-02：
+// 签名 URL 绑定 workspace_id；篡改 workspace_id 或跨租户 token 被拒绝。
+func TestArtifactService_SignedDownload_BindsWorkspace(t *testing.T) {
+	t.Setenv("DEPLOY_ENV", "dev")
+	t.Setenv("KRATOS_ARTIFACT_SIGN_KEY", "")
+	t.Setenv("KRATOS_AUTH_SECRET", "")
+
+	lookup := &fakeSessionLookup{
+		sessions: map[string]biz.Session{
+			"sess-ok": {ID: "sess-ok", WorkspaceID: "ws-ok"},
+		},
+	}
+	svc := newArtifactServiceWithLookup(lookup)
+	ctx := workspace.WithContext(context.Background(), "ws-ok")
+	artID := uploadArtifactHelper(t, svc, ctx, "sess-ok", "ok.txt")
+
+	signed, err := svc.SignDownloadUrl(ctx, &v1.SignDownloadUrlRequest{Id: artID, Version: 1})
+	if err != nil {
+		t.Fatalf("SignDownloadUrl: %v", err)
+	}
+	if !strings.Contains(signed.GetUrl(), "workspace_id=ws-ok") {
+		t.Fatalf("signed URL missing workspace_id: %s", signed.GetUrl())
+	}
+
+	// Valid signed download succeeds.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, signed.GetUrl(), nil)
+	svc.ServeSignedDownload(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	// Tampered workspace_id must fail HMAC verification.
+	u, err := url.Parse(signed.GetUrl())
+	if err != nil {
+		t.Fatalf("parse url: %v", err)
+	}
+	q := u.Query()
+	q.Set("workspace_id", "ws-attacker")
+	u.RawQuery = q.Encode()
+	rec2 := httptest.NewRecorder()
+	svc.ServeSignedDownload(rec2, httptest.NewRequest(http.MethodGet, u.String(), nil))
+	if rec2.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for tampered workspace_id, got %d", rec2.Code)
 	}
 }

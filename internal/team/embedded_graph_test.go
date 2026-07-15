@@ -280,3 +280,85 @@ func TestCompileToGraphBuildConfig_singleNodeNoEntryOK(t *testing.T) {
 		t.Fatalf("entry/finish=%q/%q, want member-1/member-1", cfg.EntryPoint, cfg.FinishPoint)
 	}
 }
+
+// TestCompileToGraphBuildConfig_unknownNodeTypeRejected (C-22 residual) verifies
+// unknown node types are rejected instead of silently skipped.
+func TestCompileToGraphBuildConfig_unknownNodeTypeRejected(t *testing.T) {
+	raw := `{
+		"mode":"sequential",
+		"members":[{"agent_id":"a1","sort_order":1}],
+		"graph":{
+			"nodes":[
+				{"id":"start","type":"start"},
+				{"id":"member-1","type":"agent","agent_id":"a1"},
+				{"id":"weird","type":"magic_box"},
+				{"id":"end","type":"end"}
+			],
+			"edges":[
+				{"source":"start","target":"member-1"},
+				{"source":"member-1","target":"end"}
+			]
+		}
+	}`
+	def, err := ParseDefinition(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = CompileToGraphBuildConfigFromJSON(def, raw, nil, loggateway.NewNoop())
+	if err == nil {
+		t.Fatal("expected error for unknown node type magic_box, got nil")
+	}
+}
+
+// TestCompileToGraphBuildConfig_emptyNodeIDRejected (C-22 residual) verifies
+// empty node ids are rejected.
+func TestCompileToGraphBuildConfig_emptyNodeIDRejected(t *testing.T) {
+	raw := `{
+		"mode":"sequential",
+		"members":[{"agent_id":"a1","sort_order":1}],
+		"graph":{
+			"nodes":[
+				{"id":"","type":"agent","agent_id":"a1"},
+				{"id":"member-1","type":"agent","agent_id":"a1"}
+			],
+			"edges":[]
+		}
+	}`
+	def, err := ParseDefinition(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = CompileToGraphBuildConfigFromJSON(def, raw, nil, loggateway.NewNoop())
+	if err == nil {
+		t.Fatal("expected error for empty node id, got nil")
+	}
+}
+
+// TestCompileToGraphBuildConfig_emptyEdgeEndpointRejected (C-22 residual) verifies
+// edges with empty source/target are rejected when edges are present.
+func TestCompileToGraphBuildConfig_emptyEdgeEndpointRejected(t *testing.T) {
+	raw := `{
+		"mode":"sequential",
+		"members":[{"agent_id":"a1","sort_order":1}],
+		"graph":{
+			"nodes":[
+				{"id":"start","type":"start"},
+				{"id":"member-1","type":"agent","agent_id":"a1"},
+				{"id":"end","type":"end"}
+			],
+			"edges":[
+				{"source":"start","target":"member-1"},
+				{"source":"","target":"end"}
+			]
+		}
+	}`
+	def, err := ParseDefinition(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = CompileToGraphBuildConfigFromJSON(def, raw, nil, loggateway.NewNoop())
+	if err == nil {
+		t.Fatal("expected error for empty edge endpoint, got nil")
+	}
+}
+

@@ -85,12 +85,14 @@ func (q *PendingMessageQueue) Enqueue(sessionID, content string) string {
 		CreatedAt: time.Now().Format(time.RFC3339),
 	}
 	q.mu.Lock()
-	defer q.mu.Unlock()
 	queue := q.queues[sessionID]
 	if len(queue) >= MaxPendingPerSession {
+		q.mu.Unlock()
 		return ""
 	}
 	q.queues[sessionID] = append(queue, entry)
+	q.mu.Unlock()
+	q.writeThrough()
 	return id
 }
 
@@ -154,24 +156,25 @@ func (q *PendingMessageQueue) Peek(sessionID string) (PendingMessage, bool) {
 
 func (q *PendingMessageQueue) Dequeue(sessionID string) (PendingMessage, bool) {
 	q.mu.Lock()
-	defer q.mu.Unlock()
 	queue := q.queues[sessionID]
 	if len(queue) == 0 {
 		delete(q.queues, sessionID)
+		q.mu.Unlock()
 		return PendingMessage{}, false
 	}
 	head := queue[0]
 	if len(queue) == 1 {
 		delete(q.queues, sessionID)
-		return head, true
+	} else {
+		q.queues[sessionID] = append([]PendingMessage(nil), queue[1:]...)
 	}
-	q.queues[sessionID] = append([]PendingMessage(nil), queue[1:]...)
+	q.mu.Unlock()
+	q.writeThrough()
 	return head, true
 }
 
 func (q *PendingMessageQueue) Remove(sessionID, entryID string) bool {
 	q.mu.Lock()
-	defer q.mu.Unlock()
 	queue := q.queues[sessionID]
 	for i, e := range queue {
 		if e.ID == entryID {
@@ -181,10 +184,22 @@ func (q *PendingMessageQueue) Remove(sessionID, entryID string) bool {
 			} else {
 				q.queues[sessionID] = append([]PendingMessage(nil), queue...)
 			}
+			q.mu.Unlock()
+			q.writeThrough()
 			return true
 		}
 	}
+	q.mu.Unlock()
 	return false
+}
+
+// writeThrough synchronously persists the current snapshot (C-12).
+// Complements the periodic 10s snapshot so Enqueue/Dequeue/Remove survive crashes.
+func (q *PendingMessageQueue) writeThrough() {
+	if q == nil || !q.snapshot {
+		return
+	}
+	q.saveSnapshot()
 }
 
 func (q *PendingMessageQueue) Update(sessionID, entryID, newContent string) bool {

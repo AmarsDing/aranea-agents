@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -60,5 +61,24 @@ func TestTransportUnmarshalJSON_AutoNormalize(t *testing.T) {
 	}
 	if c.Transport != TransportStreamable {
 		t.Fatalf("transport=%q, want %q", c.Transport, TransportStreamable)
+	}
+}
+
+func TestRedactConfigJSON_Secrets(t *testing.T) {
+	raw := `{"transport":"sse","auth":{"api_key":"sk-secret","client_secret":"cs-value","access_token":"tok-value"},"headers":{"Authorization":"Bearer x","X-Custom":"ok"}}`
+	got := RedactConfigJSON(raw)
+	for _, secret := range []string{"sk-secret", "cs-value", "tok-value", "Bearer x"} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("secret %q leaked in %s", secret, got)
+		}
+	}
+	if !strings.Contains(got, `"X-Custom":"ok"`) {
+		t.Fatalf("non-secret header should remain, got %s", got)
+	}
+	if RedactConfigJSON("") != "" {
+		t.Fatal("empty should stay empty")
+	}
+	if RedactConfigJSON("{not json") != "{not json" {
+		t.Fatal("invalid json should pass through")
 	}
 }

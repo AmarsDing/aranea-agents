@@ -95,14 +95,23 @@ func TestTurnErrorCodeFromErr_kratos(t *testing.T) {
 
 // --- failTurn / markAndPublish tests ---
 
-// recordingRunStatusTracker records PublishRunStatus calls for verification.
+// recordingRunStatusTracker records SetRunStatus / PublishRunStatus calls.
 type recordingRunStatusTracker struct {
 	noopRunStatusTracker
 	published []runStatusPublish
+	setCalls  []runStatusPublish
 }
 
 type runStatusPublish struct {
 	sessionID, runID, status, errMsg string
+}
+
+func (r *recordingRunStatusTracker) SetRunStatus(_ context.Context, sessionID, runID, status, errMsg string) error {
+	r.setCalls = append(r.setCalls, runStatusPublish{sessionID, runID, status, errMsg})
+	// Mirror prior PublishRunStatus observation used by failTurn tests (C-11
+	// now routes through SetRunStatus → persist+publish).
+	r.published = append(r.published, runStatusPublish{sessionID, runID, status, errMsg})
+	return nil
 }
 
 func (r *recordingRunStatusTracker) PublishRunStatus(sessionID, runID, status, errMsg string) {
@@ -164,13 +173,13 @@ func TestFailTurn_cascadeAndReturn(t *testing.T) {
 		t.Errorf("turnErrMsg = %q, want %q", turnErrMsg, turnError.Error())
 	}
 
-	// publishRunStatus called with status="failed".
-	if len(rs.published) != 1 {
-		t.Fatalf("expected 1 PublishRunStatus call, got %d", len(rs.published))
+	// setRunStatus called with status="failed" (C-11: persist+publish path).
+	if len(rs.setCalls) != 1 {
+		t.Fatalf("expected 1 SetRunStatus call, got %d", len(rs.setCalls))
 	}
-	p := rs.published[0]
+	p := rs.setCalls[0]
 	if p.sessionID != "sess-1" || p.runID != "run-1" || p.status != "failed" {
-		t.Errorf("PublishRunStatus = %+v", p)
+		t.Errorf("SetRunStatus = %+v", p)
 	}
 
 	// publishTurnFailure emitted a failed TaskFailedEvent.
@@ -205,8 +214,8 @@ func TestFailTurn_beforePublishCallback(t *testing.T) {
 		errors.New("test error"),
 		withBeforePublish(func() {
 			callbackCalled = true
-			// beforePublish must run BEFORE publishRunStatus.
-			callbackRanBeforePublish = len(rs.published) == 0
+			// beforePublish must run BEFORE setRunStatus (terminal persist+publish).
+			callbackRanBeforePublish = len(rs.setCalls) == 0
 		}),
 	)
 
@@ -214,11 +223,11 @@ func TestFailTurn_beforePublishCallback(t *testing.T) {
 		t.Fatal("expected beforePublish callback to be called")
 	}
 	if !callbackRanBeforePublish {
-		t.Fatal("expected beforePublish to run before publishRunStatus")
+		t.Fatal("expected beforePublish to run before SetRunStatus")
 	}
-	// After failTurn completes, publishRunStatus should have been called.
-	if len(rs.published) != 1 {
-		t.Fatalf("expected 1 PublishRunStatus call after failTurn, got %d", len(rs.published))
+	// After failTurn completes, SetRunStatus should have been called.
+	if len(rs.setCalls) != 1 {
+		t.Fatalf("expected 1 SetRunStatus call after failTurn, got %d", len(rs.setCalls))
 	}
 }
 

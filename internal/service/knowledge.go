@@ -70,6 +70,9 @@ type KnowledgeService struct {
 }
 
 func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, searchDeps KnowledgeSearchDeps, eventBus biz.EventBus, systemSetting biz.SystemSettingRepo, lg loggateway.Logger) *KnowledgeService {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	var admin knowledge.EmbedderAdmin
 	if a, ok := embedder.(knowledge.EmbedderAdmin); ok {
 		admin = a

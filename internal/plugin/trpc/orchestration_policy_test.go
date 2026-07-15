@@ -41,7 +41,7 @@ func TestRuntime_PluginsForAgent_includesAll(t *testing.T) {
 	}
 	rt.Apply(context.Background(), []biz.Plugin{p})
 
-	runner := rt.PluginsForAgent("a1")
+	runner := rt.PluginsForAgent("a1", "")
 	if len(runner) != 1 {
 		t.Fatalf("runner plugins=%d want 1 (unified path)", len(runner))
 	}

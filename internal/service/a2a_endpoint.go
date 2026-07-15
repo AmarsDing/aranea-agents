@@ -10,6 +10,7 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -113,10 +114,11 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 	deps.CustomTools = append(deps.CustomTools, s.orch.skillsButlerTools(ctx, ag)...)
 	deps.CustomTools = append(deps.CustomTools, s.orch.memoryButlerTools(ctx, ag)...)
 	var plugins []trpcplugin.Plugin
+	wsID := workspace.IDFromContext(ctx)
 	if s.orch.rt().PluginManager != nil {
-		plugins = s.orch.rt().PluginManager.RunnerPluginsForAgent(ag.ID)
+		plugins = s.orch.rt().PluginManager.RunnerPluginsForAgent(ag.ID, wsID)
 	} else if s.orch.rt().PluginRT != nil {
-		plugins = s.orch.rt().PluginRT.PluginsForAgent(ag.ID)
+		plugins = s.orch.rt().PluginRT.PluginsForAgent(ag.ID, wsID)
 	}
 	deps.Plugins = plugins
 

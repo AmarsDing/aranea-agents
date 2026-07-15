@@ -1,6 +1,9 @@
 package runtime
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func TestPendingMessageQueue_EnqueueDequeueFIFO(t *testing.T) {
 	q := NewPendingMessageQueue()
@@ -50,6 +53,34 @@ func TestPendingMessageQueue_MaxPerSession(t *testing.T) {
 	if q.Enqueue("sess-3", "overflow") != "" {
 		t.Fatal("expected enqueue cap")
 	}
+}
+
+func TestPendingMessageQueue_WriteThroughSurvivesRestart(t *testing.T) {
+	dir := t.TempDir()
+	q1 := NewPendingMessageQueueWithDir(dir)
+	id := q1.Enqueue("sess-dur", "persist-me")
+	if id == "" {
+		t.Fatal("enqueue failed")
+	}
+	q1.Close()
+
+	q2 := NewPendingMessageQueueWithDir(dir)
+	list := q2.List("sess-dur")
+	if len(list) != 1 || list[0].Content != "persist-me" || list[0].ID != id {
+		t.Fatalf("after restart expected persisted message, got %+v (file=%s)", list, filepath.Join(dir, pendingSnapshotFile))
+	}
+
+	head, ok := q2.Dequeue("sess-dur")
+	if !ok || head.ID != id {
+		t.Fatalf("dequeue: %+v ok=%v", head, ok)
+	}
+	q2.Close()
+
+	q3 := NewPendingMessageQueueWithDir(dir)
+	if len(q3.List("sess-dur")) != 0 {
+		t.Fatalf("after dequeue+restart expected empty, got %+v", q3.List("sess-dur"))
+	}
+	q3.Close()
 }
 
 func TestPendingMessageQueue_Peek(t *testing.T) {

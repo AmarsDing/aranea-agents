@@ -121,7 +121,7 @@ func (rt *Runtime) CostGuardScopeForAgentInWorkspace(workspaceID, agentID string
 	}
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
-	for _, e := range rt.active {
+	for _, e := range rt.entriesVisibleTo(workspaceID) {
 		if e.key != "cost_guard" || e.costGuard == nil {
 			continue
 		}

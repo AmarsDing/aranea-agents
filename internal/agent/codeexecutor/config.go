@@ -20,7 +20,7 @@ type EnvConfig struct {
 	DockerImage      string
 	Timeout          time.Duration
 	E2BAPIKey        string
-	AllowLocalInProd bool // when false and ARANEA_ENV=production, warn on local
+	AllowLocalInProd bool // when false and ARANEA_ENV=production, refuse local (fail-closed)
 }
 
 // LoadEnvConfig reads CODE_EXECUTOR_* and related environment variables.

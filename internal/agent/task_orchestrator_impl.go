@@ -140,7 +140,9 @@ func (o *TaskOrchestratorImpl) Orchestrate(ctx context.Context, taskPlan *biz.Ta
 	case biz.StrategyDirect:
 		// No orchestration needed, Spirit answers directly.
 		// AS-FSM-01: validate state transition before assignment.
-		o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusCompleted)
+		if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusCompleted); tErr != nil {
+			return nil, tErr
+		}
 		o.lg.Info("TaskOrchestrator: direct strategy, no orchestration needed",
 			loggateway.StepID(biz.SpiritStepOrchestratorStrategy),
 			loggateway.Str("orchestration_id", handle.ID),
@@ -149,33 +151,36 @@ func (o *TaskOrchestratorImpl) Orchestrate(ctx context.Context, taskPlan *biz.Ta
 	case biz.StrategySingleAgent:
 		// Agent-as-Tool path.
 		if err := o.orchestrateSingleAgent(ctx, taskPlan, allocPlan, handle); err != nil {
-			o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusFailed)
-			// Best-effort persist on error path; primary error is returned below.
-			_ = o.persistHandle(ctx, handle)
+			if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusFailed); tErr == nil {
+				_ = o.persistHandle(ctx, handle)
+			}
 			return nil, err
 		}
 
 	case biz.StrategyParallel:
 		// Parallel team path.
 		if err := o.orchestrateTeam(ctx, taskPlan, allocPlan, handle, "parallel"); err != nil {
-			o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusFailed)
-			_ = o.persistHandle(ctx, handle)
+			if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusFailed); tErr == nil {
+				_ = o.persistHandle(ctx, handle)
+			}
 			return nil, err
 		}
 
 	case biz.StrategyDAG:
 		// DAG → Graph compilation path.
 		if err := o.orchestrateDAG(ctx, taskPlan, allocPlan, handle); err != nil {
-			o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusFailed)
-			_ = o.persistHandle(ctx, handle)
+			if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusFailed); tErr == nil {
+				_ = o.persistHandle(ctx, handle)
+			}
 			return nil, err
 		}
 
 	case biz.StrategyCoordinator:
 		// Coordinator team path.
 		if err := o.orchestrateTeam(ctx, taskPlan, allocPlan, handle, "coordinator"); err != nil {
-			o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusFailed)
-			_ = o.persistHandle(ctx, handle)
+			if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusFailed); tErr == nil {
+				_ = o.persistHandle(ctx, handle)
+			}
 			return nil, err
 		}
 
@@ -232,7 +237,9 @@ func (o *TaskOrchestratorImpl) orchestrateSingleAgent(ctx context.Context, taskP
 	}
 
 	// For now, mark as running. The actual tool invocation happens in the Spirit turn.
-	o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusRunning)
+	if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusRunning); tErr != nil {
+		return tErr
+	}
 	// Extract agent key from allocation for performance tracking.
 	if len(allocPlan.Allocations) > 0 {
 		key := strings.TrimSpace(allocPlan.Allocations[0].AssignedKey)
@@ -322,7 +329,9 @@ func (o *TaskOrchestratorImpl) orchestrateTeam(ctx context.Context, taskPlan *bi
 
 	handle.TeamIDs = teamIDs
 	handle.AgentKeys = agentKeys
-	o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusRunning)
+	if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusRunning); tErr != nil {
+		return tErr
+	}
 	return nil
 }
 
@@ -577,7 +586,9 @@ func (o *TaskOrchestratorImpl) orchestrateDAG(ctx context.Context, taskPlan *biz
 
 	handle.TeamIDs = teamIDs
 	handle.AgentKeys = allAgentKeys
-	o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusRunning)
+	if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusRunning); tErr != nil {
+		return tErr
+	}
 
 	o.lg.Info("TaskOrchestrator: DAG multi-team assembly complete",
 		loggateway.StepID(biz.SpiritStepOrchestratorExecute),
@@ -626,7 +637,9 @@ func (o *TaskOrchestratorImpl) orchestrateWithoutTemplate(ctx context.Context, t
 	handle.TeamIDs = []string{team.ID}
 	handle.AgentKeys = agentKeys
 	handle.GraphExecutionID = team.ID
-	o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusRunning)
+	if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusRunning); tErr != nil {
+		return tErr
+	}
 	o.lg.Info("TaskOrchestrator: NL2Graph team assembled",
 		loggateway.StepID(biz.SpiritStepOrchestratorExecute),
 		loggateway.Str("orchestration_id", handle.ID),
@@ -746,7 +759,9 @@ func (o *TaskOrchestratorImpl) Cancel(ctx context.Context, orchestrationID strin
 		}
 	}
 
-	o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusCancelled)
+	if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusCancelled); tErr != nil {
+		return tErr
+	}
 	_, err = o.repo.Update(ctx, handle)
 	if err != nil {
 		o.lg.Warn("TaskOrchestrator: failed to update cancelled orchestration",
@@ -790,13 +805,14 @@ func (o *TaskOrchestratorImpl) Synthesize(ctx context.Context, orchestrationID s
 				)
 			} else {
 				handle.SynthesisResultJSON = synthesisJSON
-				o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusCompleted)
-				if _, updateErr := o.repo.Update(ctx, handle); updateErr != nil {
-					o.lg.Warn("TaskOrchestrator: failed to update orchestration with synthesis result",
-						loggateway.StepID(biz.SpiritStepOrchestratorSynthesize),
-						loggateway.Str("orchestration_id", orchestrationID),
-						loggateway.Err(updateErr),
-					)
+				if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusCompleted); tErr == nil {
+					if _, updateErr := o.repo.Update(ctx, handle); updateErr != nil {
+						o.lg.Warn("TaskOrchestrator: failed to update orchestration with synthesis result",
+							loggateway.StepID(biz.SpiritStepOrchestratorSynthesize),
+							loggateway.Str("orchestration_id", orchestrationID),
+							loggateway.Err(updateErr),
+						)
+					}
 				}
 			}
 
@@ -833,13 +849,14 @@ func (o *TaskOrchestratorImpl) Recover(ctx context.Context, orchestrationID stri
 			loggateway.StepID(biz.SpiritStepOrchestratorRecover),
 			loggateway.Str("orchestration_id", orchestrationID),
 		)
-		o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusFailed)
-		if _, updateErr := o.repo.Update(ctx, handle); updateErr != nil {
-			o.lg.Warn("TaskOrchestrator: failed to update orchestration to failed",
-				loggateway.StepID(biz.SpiritStepOrchestratorRecover),
-				loggateway.Str("orchestration_id", orchestrationID),
-				loggateway.Err(updateErr),
-			)
+		if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusFailed); tErr == nil {
+			if _, updateErr := o.repo.Update(ctx, handle); updateErr != nil {
+				o.lg.Warn("TaskOrchestrator: failed to update orchestration to failed",
+					loggateway.StepID(biz.SpiritStepOrchestratorRecover),
+					loggateway.Str("orchestration_id", orchestrationID),
+					loggateway.Err(updateErr),
+				)
+			}
 		}
 		return apierror.NotFound(apierror.DomainSpirit, "no checkpoint available for orchestration %s", orchestrationID)
 	}
@@ -857,13 +874,14 @@ func (o *TaskOrchestratorImpl) Recover(ctx context.Context, orchestrationID stri
 				loggateway.Err(loadErr),
 			)
 			// Cannot load checkpoint; mark as failed.
-			o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusFailed)
-			if _, updateErr := o.repo.Update(ctx, handle); updateErr != nil {
-				o.lg.Warn("TaskOrchestrator: failed to update orchestration to failed",
-					loggateway.StepID(biz.SpiritStepOrchestratorRecover),
-					loggateway.Str("orchestration_id", orchestrationID),
-					loggateway.Err(updateErr),
-				)
+			if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusFailed); tErr == nil {
+				if _, updateErr := o.repo.Update(ctx, handle); updateErr != nil {
+					o.lg.Warn("TaskOrchestrator: failed to update orchestration to failed",
+						loggateway.StepID(biz.SpiritStepOrchestratorRecover),
+						loggateway.Str("orchestration_id", orchestrationID),
+						loggateway.Err(updateErr),
+					)
+				}
 			}
 			return apierror.Internal(apierror.DomainSpirit, "failed to load checkpoint for orchestration %s", orchestrationID).WithCause(loadErr)
 		}
@@ -874,13 +892,14 @@ func (o *TaskOrchestratorImpl) Recover(ctx context.Context, orchestrationID stri
 				loggateway.Str("orchestration_id", orchestrationID),
 				loggateway.Str("checkpoint_id", handle.CheckpointID),
 			)
-			o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusFailed)
-			if _, updateErr := o.repo.Update(ctx, handle); updateErr != nil {
-				o.lg.Warn("TaskOrchestrator: failed to update orchestration to failed",
-					loggateway.StepID(biz.SpiritStepOrchestratorRecover),
-					loggateway.Str("orchestration_id", orchestrationID),
-					loggateway.Err(updateErr),
-				)
+			if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusFailed); tErr == nil {
+				if _, updateErr := o.repo.Update(ctx, handle); updateErr != nil {
+					o.lg.Warn("TaskOrchestrator: failed to update orchestration to failed",
+						loggateway.StepID(biz.SpiritStepOrchestratorRecover),
+						loggateway.Str("orchestration_id", orchestrationID),
+						loggateway.Err(updateErr),
+					)
+				}
 			}
 			return apierror.NotFound(apierror.DomainSpirit, "checkpoint %s not found for orchestration %s", handle.CheckpointID, orchestrationID)
 		}
@@ -905,7 +924,9 @@ func (o *TaskOrchestratorImpl) Recover(ctx context.Context, orchestrationID stri
 	}
 
 	// Mark as running so the orchestration can be tracked.
-	o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusRunning)
+	if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusRunning); tErr != nil {
+		return tErr
+	}
 	_, err = o.repo.Update(ctx, handle)
 	if err != nil {
 		o.lg.Warn("TaskOrchestrator: failed to update recovered orchestration",
@@ -1365,25 +1386,24 @@ func (o *TaskOrchestratorImpl) persistHandle(ctx context.Context, handle *biz.Or
 // transitionOrchestrationStatus validates and applies a state transition on
 // the orchestration handle using the AS-FSM-01 state machine.
 //
-// On illegal transitions, the target status is still applied (to preserve the
-// existing behavior of recording the intended terminal state for debugging),
-// but a warning is logged so operators can detect state-machine violations.
-// This avoids breaking the orchestration flow when a transition rule is
-// missing from the table, while still surfacing the violation.
-func (o *TaskOrchestratorImpl) transitionOrchestrationStatus(ctx context.Context, handle *biz.OrchestrationHandle, target biz.OrchestrationStatus) {
+// C-19: fail-closed — illegal transitions return an error and do NOT apply
+// the target status. Callers must log and skip persist / return on error.
+func (o *TaskOrchestratorImpl) transitionOrchestrationStatus(ctx context.Context, handle *biz.OrchestrationHandle, target biz.OrchestrationStatus) error {
 	from := handle.Status
 	if from == target {
-		return
+		return nil
 	}
 	if !biz.CanTransitionOrchestrationStatus(from, target) {
-		o.lg.Warn("TaskOrchestrator: illegal orchestration state transition",
+		o.lg.Warn("TaskOrchestrator: illegal orchestration state transition (rejected)",
 			loggateway.StepID(biz.SpiritStepOrchestratorStrategy),
 			loggateway.Str("orchestration_id", handle.ID),
 			loggateway.Str("from", string(from)),
 			loggateway.Str("to", string(target)),
 		)
+		return fmt.Errorf("illegal orchestration transition %s → %s", from, target)
 	}
 	handle.Status = target
+	return nil
 }
 
 // marshalSynthesisOutput serializes a SynthesisOutput to JSON.

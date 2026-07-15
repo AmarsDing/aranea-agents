@@ -2,11 +2,36 @@ package service
 
 import (
 	"context"
+	"errors"
 
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/pkg/apierror"
 )
+
+// runWasCancelled reports whether the run should be treated as user-cancelled
+// rather than failed (C-10). Checks in-memory status first, then context /
+// turn error cancellation signals.
+func (o *ChatOrchestrator) runWasCancelled(ctx context.Context, sessionID string, turnErr error) bool {
+	if o != nil && o.runs != nil {
+		if entry, ok := o.runs.GetStatus(sessionID); ok && entry.Status == biz.SessionRunPhaseCancelled {
+			return true
+		}
+	}
+	if turnErr != nil && errors.Is(turnErr, context.Canceled) {
+		return true
+	}
+	if ctx == nil {
+		return false
+	}
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return true
+	}
+	if cause := context.Cause(ctx); cause != nil && errors.Is(cause, context.Canceled) {
+		return true
+	}
+	return false
+}
 
 // publishTurnFailure emits a WS-visible error envelope for HTTP turn failures.
 func (o *ChatOrchestrator) publishTurnFailure(sessionID, runID, source string, err error, pendingID string) {
@@ -50,18 +75,21 @@ func (o *ChatOrchestrator) failTurn(
 		fn(&opt)
 	}
 	markTurnError(turnStatus, turnErr, turnErrMsg, err)
-	// P1-03 fix: check cancelled state BEFORE beforePublish (which may call
+	// C-10 / P1-03: check cancelled BEFORE beforePublish (which may call
 	// Finish and delete the run status entry).
-	isCancelled := false
-	if entry, ok := o.runs.GetStatus(sessionID); ok && entry.Status == biz.SessionRunPhaseCancelled {
-		isCancelled = true
-	}
+	isCancelled := o.runWasCancelled(ctx, sessionID, err)
 	if opt.beforePublish != nil {
 		opt.beforePublish()
 	}
 	if !isCancelled {
-		o.publishRunStatus(sessionID, runID, "failed", safeErrMsgForWS(err))
-		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
+		// C-11: persist terminal status before (and with) WS publish — do not
+		// use publishRunStatus alone, which skips PersistRunStatus.
+		failCtx := ctx
+		if failCtx == nil || failCtx.Err() != nil {
+			failCtx = context.Background()
+		}
+		o.setRunStatus(failCtx, sessionID, runID, "failed", safeErrMsgForWS(err))
+		o.transitionSessionStatus(failCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 	}
 	o.publishTurnFailure(sessionID, runID, opt.source, err, "")
 	return biz.ChatMessage{}, biz.ChatMessage{}, err
@@ -69,7 +97,7 @@ func (o *ChatOrchestrator) failTurn(
 
 type failTurnOpts struct {
 	source        string
-	beforePublish func() // e.g., o.runs.Finish(sessionID) or emitter.LogWarn(...)
+	beforePublish func() // e.g., o.runs.Finish(sessionID, runID) or emitter.LogWarn(...)
 }
 type failTurnOption func(*failTurnOpts)
 

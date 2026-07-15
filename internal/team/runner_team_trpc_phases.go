@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/telemetry/turntrace"
 	knowledgetool "aranea-agents/internal/tools/knowledge"
 	"aranea-agents/internal/tools/serviceawaitreply"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
@@ -242,12 +243,13 @@ func (r *Runner) buildTeamBuilderDeps(ctx context.Context, sess biz.Session, run
 }
 
 // resolveTeamPlugins resolves the plugin list for the anchor agent.
-func (r *Runner) resolveTeamPlugins(agentID string) []trpcplugin.Plugin {
+func (r *Runner) resolveTeamPlugins(ctx context.Context, agentID string) []trpcplugin.Plugin {
+	wsID := workspace.IDFromContext(ctx)
 	if r.cfg.PluginManager != nil {
-		return r.cfg.PluginManager.RunnerPluginsForAgent(agentID)
+		return r.cfg.PluginManager.RunnerPluginsForAgent(agentID, wsID)
 	}
 	if r.cfg.PluginRT != nil {
-		return r.cfg.PluginRT.PluginsForAgent(agentID)
+		return r.cfg.PluginRT.PluginsForAgent(agentID, wsID)
 	}
 	return nil
 }

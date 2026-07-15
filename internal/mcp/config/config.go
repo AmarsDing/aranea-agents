@@ -147,3 +147,61 @@ func IsKnownTransport(t string) bool {
 func KnownTransports() []string {
 	return []string{string(TransportStdio), string(TransportSSE), string(TransportStreamable)}
 }
+
+const redactedSecret = "******"
+
+// RedactConfigJSON returns config_json safe for API clients (C-05).
+// Redacts auth secrets (api_key, token, client_secret, Authorization headers, etc.).
+// Write paths (Create/Update) must keep accepting raw secrets unchanged.
+func RedactConfigJSON(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return raw
+	}
+	var parsed any
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return raw
+	}
+	redacted := redactJSONValue(parsed)
+	out, err := json.Marshal(redacted)
+	if err != nil {
+		return raw
+	}
+	return string(out)
+}
+
+func redactJSONValue(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for key, child := range v {
+			if isSensitiveConfigKey(key) {
+				out[key] = redactedSecret
+				continue
+			}
+			out[key] = redactJSONValue(child)
+		}
+		return out
+	case []any:
+		out := make([]any, 0, len(v))
+		for _, child := range v {
+			out = append(out, redactJSONValue(child))
+		}
+		return out
+	default:
+		return value
+	}
+}
+
+func isSensitiveConfigKey(key string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	for _, token := range []string{
+		"api_key", "apikey", "token", "secret", "password",
+		"authorization", "cookie", "bearer",
+	} {
+		if strings.Contains(key, token) {
+			return true
+		}
+	}
+	return false
+}

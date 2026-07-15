@@ -396,7 +396,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	buildIntentStart := time.Now()
 	if err := eg.Wait(); err != nil {
 		return o.failTurn(ctx, sessionID, runID, &turnStatus, &turnErr, &turnErrMsg, err,
-			withBeforePublish(func() { o.runs.Finish(sessionID) }))
+			withBeforePublish(func() { o.runs.Finish(sessionID, runID) }))
 	}
 	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: BUILD+IntentPass parallel",
 		loggateway.StepID("chat.build_intent_parallel"),
@@ -449,18 +449,10 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	defer func() {
 		if turnStatus != "ok" {
 			rollbackRunnerSession()
-			// P1-03 fix: check if the run was cancelled before publishing "failed".
-			// When cancelActiveRun is called, it sets the run status to "cancelled"
-			// and transitions the session to "interrupted (user_cancelled)". If we
-			// unconditionally publish "failed" here, the frontend receives a
-			// conflicting "failed" notification after the correct "cancelled" one.
-			// The in-memory RunRegistry status is the source of truth — if it says
-			// "cancelled", the cancel path already handled the terminal state.
-			isCancelled := false
-			if entry, ok := o.runs.GetStatus(sessionID); ok && entry.Status == biz.SessionRunPhaseCancelled {
-				isCancelled = true
-			}
-			if !isCancelled {
+			// C-10 / P1-03: cancelled wins over failed. cancelActiveRun sets
+			// status to "cancelled" before Finish; also honour context.Canceled
+			// / context.Cause so a racing fail path cannot overwrite cancel.
+			if !o.runWasCancelled(ctx, sessionID, turnErr) {
 				// Ensure frontend runStatus is reset to "failed" on EXECUTE/PERSIST
 				// errors (e.g. turn timeout). BUILD-phase errors already publish
 				// run_status=failed above (line ~386). Without this, the frontend
@@ -469,14 +461,14 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 				// input box never clears (root cause of "no response after send").
 				// Use context.Background() because ctx may be cancelled (timeout).
 				failCtx := context.Background()
-				o.publishRunStatus(sessionID, runID, "failed", safeErrMsgForWS(turnErr))
+				o.setRunStatus(failCtx, sessionID, runID, "failed", safeErrMsgForWS(turnErr))
 				o.transitionSessionStatus(failCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 			}
 			if turnErr != nil {
 				o.publishTurnFailure(sessionID, runID, "chat-service", turnErr, "")
 			}
 		}
-		o.runs.Finish(sessionID)
+		o.runs.Finish(sessionID, runID)
 		runner.Close()
 		// Skip processPendingQueue when this turn was started from inside
 		// the iterative pending-queue loop (see processPendingQueue). The

@@ -6,6 +6,7 @@ import (
 	mcpv1 "aranea-agents/api/kratos/mcp_server/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/service"
+	"strings"
 )
 
 func TestToProtoMCP(t *testing.T) {
@@ -67,6 +68,27 @@ func TestToProtoMCP(t *testing.T) {
 				t.Errorf("MetadataJson = %q, want %q", got.MetadataJson, tt.want.MetadataJson)
 			}
 		})
+	}
+}
+
+func TestToProtoMCP_RedactsAPIKey(t *testing.T) {
+	in := biz.MCPServer{
+		ID: "sec1", Key: "k", Name: "n",
+		ConfigJSON: `{"transport":"sse","url":"https://mcp.example/sse","auth":{"api_key":"sk-live-secret","type":"api_key"},"headers":{"Authorization":"Bearer tok"}}`,
+	}
+	got := service.ToProtoMCP(in)
+	if strings.Contains(got.ConfigJson, "sk-live-secret") {
+		t.Fatalf("Get/List must not echo raw api_key, got %s", got.ConfigJson)
+	}
+	if strings.Contains(got.ConfigJson, "Bearer tok") {
+		t.Fatalf("Get/List must not echo Authorization header, got %s", got.ConfigJson)
+	}
+	if !strings.Contains(got.ConfigJson, "******") {
+		t.Fatalf("expected redacted placeholders, got %s", got.ConfigJson)
+	}
+	// Non-secret fields preserved.
+	if !strings.Contains(got.ConfigJson, "https://mcp.example/sse") {
+		t.Fatalf("expected url preserved, got %s", got.ConfigJson)
 	}
 }
 

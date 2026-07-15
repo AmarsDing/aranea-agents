@@ -2,6 +2,8 @@ package data
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -9,6 +11,8 @@ import (
 	entsessionturn "aranea-agents/internal/data/ent/sessionturn"
 	"aranea-agents/pkg/apierror"
 )
+
+const createSessionTurnMaxAttempts = 5
 
 func entSessionTurnToBiz(e *ent.SessionTurn) biz.SessionTurn {
 	if e == nil {
@@ -50,87 +54,133 @@ func entSessionTurnToBiz(e *ent.SessionTurn) biz.SessionTurn {
 }
 
 func (r *sessionRepo) CreateSessionTurn(ctx context.Context, turn biz.SessionTurn) (biz.SessionTurn, error) {
+	requestedTurnNumber := turn.TurnNumber
 	var saved biz.SessionTurn
-	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
-		c := EntClientFromCtx(txCtx, r.data.entClient)
-		if turn.TurnNumber <= 0 {
-			maxTurnNumber, err := nextSessionTurnNumber(txCtx, c, r.data.Dialect(), turn.SessionID)
-			if err != nil {
-				return err
+	var lastErr error
+	for attempt := 0; attempt < createSessionTurnMaxAttempts; attempt++ {
+		if attempt > 0 {
+			// C-14: unique (session_id, turn_number) race — re-allocate.
+			turn.TurnNumber = 0
+		} else {
+			turn.TurnNumber = requestedTurnNumber
+		}
+		lastErr = r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+			c := EntClientFromCtx(txCtx, r.data.entClient)
+			if turn.TurnNumber <= 0 {
+				maxTurnNumber, err := nextSessionTurnNumber(txCtx, c, r.data.Dialect(), turn.SessionID)
+				if err != nil {
+					return err
+				}
+				turn.TurnNumber = maxTurnNumber
 			}
-			turn.TurnNumber = maxTurnNumber
-		}
-		idemKey := strings.TrimSpace(turn.IdempotencyKey)
-		if idemKey == "" {
-			// C-13: empty client keys become id-scoped sentinels so the unique
-			// index never collides across independent turns.
-			idemKey = "__id__:" + turn.ID
-			turn.IdempotencyKey = idemKey
-		}
-		b := c.SessionTurn.Create().
-			SetID(turn.ID).
-			SetSessionID(turn.SessionID).
-			SetRunID(turn.RunID).
-			SetTurnNumber(turn.TurnNumber).
-			SetUserMessageID(turn.UserMessageID).
-			SetAssistantMessageID(turn.AssistantMessageID).
-			SetOwnerType(turn.OwnerType).
-			SetAgentID(turn.AgentID).
-			SetTeamID(turn.TeamID).
-			SetStatus(turn.Status).
-			SetStartedAt(turn.StartedAt).
-			SetEndedAt(turn.EndedAt).
-			SetDurationMs(turn.DurationMs).
-			SetFirstTokenMs(turn.FirstTokenMs).
-			SetModelCallCount(turn.ModelCallCount).
-			SetToolCallCount(turn.ToolCallCount).
-			SetSkillCallCount(turn.SkillCallCount).
-			SetMcpCallCount(turn.MCPCallCount).
-			SetInputTokens(turn.InputTokens).
-			SetOutputTokens(turn.OutputTokens).
-			SetTotalTokens(turn.TotalTokens).
-			SetTotalCostMicroUsd(turn.TotalCostMicroUSD).
-			SetFinalProvider(turn.FinalProvider).
-			SetFinalModel(turn.FinalModel).
-			SetFinalContentPreview(turn.FinalContentPreview).
-			SetErrorCode(turn.ErrorCode).
-			SetErrorMessage(turn.ErrorMessage).
-			SetMetadataJSON(turn.MetadataJSON).
-			SetIdempotencyKey(idemKey).
-			SetCreatedAt(turn.CreatedAt).
-			SetUpdatedAt(turn.UpdatedAt).
-			OnConflictColumns(entsessionturn.FieldSessionID, entsessionturn.FieldIdempotencyKey).
-			Ignore()
+			idemKey := strings.TrimSpace(turn.IdempotencyKey)
+			if idemKey == "" {
+				// C-13: empty client keys become id-scoped sentinels so the unique
+				// index never collides across independent turns.
+				idemKey = "__id__:" + turn.ID
+				turn.IdempotencyKey = idemKey
+			}
+			b := c.SessionTurn.Create().
+				SetID(turn.ID).
+				SetSessionID(turn.SessionID).
+				SetRunID(turn.RunID).
+				SetTurnNumber(turn.TurnNumber).
+				SetUserMessageID(turn.UserMessageID).
+				SetAssistantMessageID(turn.AssistantMessageID).
+				SetOwnerType(turn.OwnerType).
+				SetAgentID(turn.AgentID).
+				SetTeamID(turn.TeamID).
+				SetStatus(turn.Status).
+				SetStartedAt(turn.StartedAt).
+				SetEndedAt(turn.EndedAt).
+				SetDurationMs(turn.DurationMs).
+				SetFirstTokenMs(turn.FirstTokenMs).
+				SetModelCallCount(turn.ModelCallCount).
+				SetToolCallCount(turn.ToolCallCount).
+				SetSkillCallCount(turn.SkillCallCount).
+				SetMcpCallCount(turn.MCPCallCount).
+				SetInputTokens(turn.InputTokens).
+				SetOutputTokens(turn.OutputTokens).
+				SetTotalTokens(turn.TotalTokens).
+				SetTotalCostMicroUsd(turn.TotalCostMicroUSD).
+				SetFinalProvider(turn.FinalProvider).
+				SetFinalModel(turn.FinalModel).
+				SetFinalContentPreview(turn.FinalContentPreview).
+				SetErrorCode(turn.ErrorCode).
+				SetErrorMessage(turn.ErrorMessage).
+				SetMetadataJSON(turn.MetadataJSON).
+				SetIdempotencyKey(idemKey).
+				SetCreatedAt(turn.CreatedAt).
+				SetUpdatedAt(turn.UpdatedAt).
+				OnConflictColumns(entsessionturn.FieldSessionID, entsessionturn.FieldIdempotencyKey).
+				Ignore()
 
-		id, err := b.ID(txCtx)
-		if err != nil {
-			// Conflict path: load the canonical row by unique key.
-			existing, findErr := c.SessionTurn.Query().
-				Where(
-					entsessionturn.SessionID(turn.SessionID),
-					entsessionturn.IdempotencyKey(idemKey),
-				).
-				Only(txCtx)
-			if findErr != nil {
-				return err
+			id, err := b.ID(txCtx)
+			if err != nil {
+				// Conflict path: load the canonical row by unique key.
+				existing, findErr := c.SessionTurn.Query().
+					Where(
+						entsessionturn.SessionID(turn.SessionID),
+						entsessionturn.IdempotencyKey(idemKey),
+					).
+					Only(txCtx)
+				if findErr != nil {
+					return err
+				}
+				saved = entSessionTurnToBiz(existing)
+				return nil
 			}
-			saved = entSessionTurnToBiz(existing)
+			row, findErr := c.SessionTurn.Get(txCtx, id)
+			if findErr != nil {
+				return findErr
+			}
+			saved = entSessionTurnToBiz(row)
 			return nil
+		})
+		if lastErr == nil {
+			return saved, nil
 		}
-		row, findErr := c.SessionTurn.Get(txCtx, id)
-		if findErr != nil {
-			return findErr
+		if !isSessionTurnUniqueConflict(r.data.Dialect(), lastErr) {
+			return biz.SessionTurn{}, entErrToBizErr(lastErr, "SESSION_TURN")
 		}
-		saved = entSessionTurnToBiz(row)
-		return nil
-	})
-	if err != nil {
-		return biz.SessionTurn{}, entErrToBizErr(err, "SESSION_TURN")
 	}
-	return saved, nil
+	return biz.SessionTurn{}, entErrToBizErr(lastErr, "SESSION_TURN")
+}
+
+func isSessionTurnUniqueConflict(d Dialect, err error) bool {
+	if err == nil {
+		return false
+	}
+	if d.UniqueConstraintErr(err) {
+		return true
+	}
+	return ent.IsConstraintError(err)
+}
+
+// lockParentSessionForTurnAlloc locks the sessions row FOR UPDATE so concurrent
+// first-turn creators serialize turn_number allocation (C-14). Missing session
+// rows and missing tables are non-fatal — unique-violation retry still covers
+// the race.
+func lockParentSessionForTurnAlloc(ctx context.Context, c *ent.Client, d Dialect, sessionID string) error {
+	if !d.IsPostgres() || c == nil || strings.TrimSpace(sessionID) == "" {
+		return nil
+	}
+	query := d.RenumberPlaceholders(`SELECT id FROM sessions WHERE id = ? FOR UPDATE`)
+	var id string
+	err := QueryRowScan(ctx, c, query, []any{sessionID}, &id)
+	if err == nil || errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if d.UndefinedObjectErr(err) {
+		return nil
+	}
+	return err
 }
 
 func nextSessionTurnNumber(ctx context.Context, c *ent.Client, d Dialect, sessionID string) (int, error) {
+	if err := lockParentSessionForTurnAlloc(ctx, c, d, sessionID); err != nil {
+		return 0, err
+	}
 	// Postgres 不允许在含聚合函数的查询上直接使用 FOR UPDATE（错误 0A000），
 	// 改用子查询先锁定该 session 的行，再在外层做聚合，达到相同的串行化效果。
 	query := `SELECT COALESCE(MAX(turn_number), 0) FROM session_turns WHERE session_id = ?`

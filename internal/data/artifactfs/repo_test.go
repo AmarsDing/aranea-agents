@@ -239,3 +239,25 @@ func TestFSArtifactRepo_LegacyStorageURIWithRoot(t *testing.T) {
 		t.Fatalf("payload mismatch: %q", data2)
 	}
 }
+
+func TestFSArtifactRepo_ResolveBinPath_RejectsAbsOutsideRoot(t *testing.T) {
+	dir := t.TempDir()
+	repo := artifactfs.NewFSArtifactRepoAt(dir, loggateway.NewNoop())
+	outside := filepath.Join(t.TempDir(), "evil.bin")
+	if err := os.WriteFile(outside, []byte("pwned"), 0o644); err != nil {
+		t.Fatalf("write outside: %v", err)
+	}
+
+	got := artifactfs.ResolveBinPath(repo, artifactfs.ArtifactMeta{
+		ID: "art-1", SessionID: "sess1", Version: 0, StorageURI: outside,
+	})
+	gotAbs, _ := filepath.Abs(got)
+	outsideAbs, _ := filepath.Abs(outside)
+	if gotAbs == outsideAbs {
+		t.Fatalf("must not return absolute path outside root: %q", got)
+	}
+	rootAbs, _ := filepath.Abs(dir)
+	if !strings.HasPrefix(strings.ToLower(gotAbs), strings.ToLower(rootAbs)) {
+		t.Fatalf("fallback path %q must stay under root %q", gotAbs, rootAbs)
+	}
+}

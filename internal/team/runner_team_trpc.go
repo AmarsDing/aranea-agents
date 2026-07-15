@@ -75,7 +75,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		}
 	}
 
-	plugins := r.resolveTeamPlugins(ar.agent.ID)
+	plugins := r.resolveTeamPlugins(ctx, ar.agent.ID)
 	builderDeps.Plugins = plugins
 	memberKeys, err := memberAgentKeys(ctx, def, r.lookupAgent)
 	if err != nil {
@@ -130,7 +130,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 			rollbackRunnerSession()
 		}
 		if r.cfg.Runs != nil {
-			r.cfg.Runs.Finish(sess.ID)
+			r.cfg.Runs.Finish(sess.ID, run.ID)
 		}
 		runner.Close()
 	}()

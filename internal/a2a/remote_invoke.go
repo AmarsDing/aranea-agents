@@ -32,6 +32,11 @@ func InvokeRemoteRegistry(ctx context.Context, remote biz.A2ARemoteAgent, capabi
 	if targetURL == "" {
 		return "", apierror.BadRequest(apierror.DomainA2A, "remote_url is required")
 	}
+	// C-07: reject private/loopback/metadata URLs before any dial.
+	if err := validateRemoteURL(targetURL); err != nil {
+		lg.Warn("A2A remote invoke SSRF blocked", loggateway.StepID("a2a.invoke.remote_ssrf_blocked"), loggateway.Str("remote_url", targetURL), loggateway.Err(err))
+		return "", apierror.BadRequest(apierror.DomainA2A, "remote_url blocked by SSRF policy").WithCause(err)
+	}
 	if timeoutSec <= 0 {
 		timeoutSec = a2abiz.DefaultRemoteInvokeTimeoutSec
 	}
@@ -43,7 +48,11 @@ func InvokeRemoteRegistry(ctx context.Context, remote biz.A2ARemoteAgent, capabi
 		lg.Warn("A2A remote auth options failed", loggateway.StepID("a2a.invoke.remote_auth_fail"), loggateway.Str("remote_url", targetURL), loggateway.Err(err))
 		return "", err
 	}
-	opts = append(opts, a2aclient.WithTimeout(time.Duration(timeoutSec)*time.Second))
+	timeout := time.Duration(timeoutSec) * time.Second
+	opts = append(opts,
+		a2aclient.WithTimeout(timeout),
+		a2aclient.WithHTTPClient(newSSRFSafeHTTPClient(timeout)),
+	)
 	client, err := a2aclient.NewA2AClient(targetURL, opts...)
 	if err != nil {
 		lg.Warn("A2A remote client creation failed", loggateway.StepID("a2a.invoke.remote_connect_fail"), loggateway.Str("remote_url", targetURL), loggateway.Err(err))

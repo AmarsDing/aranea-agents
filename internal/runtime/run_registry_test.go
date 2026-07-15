@@ -327,7 +327,7 @@ func TestRunRegistryCancel_RaceWithFinish(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		reg.Finish("session-1")
+		reg.Finish("session-1", "run-1")
 	}()
 	go func() {
 		defer wg.Done()
@@ -430,7 +430,7 @@ func TestRunRegistryCancel_FinishReleasesCancellingEntry(t *testing.T) {
 	}
 
 	// Runner's defer calls Finish.
-	reg.Finish("session-1")
+	reg.Finish("session-1", "run-1")
 
 	// Entry is now released.
 	if reg.HasActive("session-1") {
@@ -460,8 +460,50 @@ func TestRunRegistryCancel_CancelableFuncKeepsEntry(t *testing.T) {
 	}
 
 	// Finish releases it.
-	reg.Finish("session-1")
+	reg.Finish("session-1", "run-1")
 	if reg.HasActive("session-1") {
 		t.Fatalf("HasActive = true after Finish, want false")
+	}
+}
+
+// TestRunRegistryFinish_StaleRunIDDoesNotDeleteNewEntry verifies C-09:
+// Cancel → force Cancel → StoreRunner(new) → Finish(oldRunID) must not
+// wipe the newer entry.
+func TestRunRegistryFinish_StaleRunIDDoesNotDeleteNewEntry(t *testing.T) {
+	reg := NewRunRegistry()
+	oldRunner := &registryRunner{cancelOK: true}
+	reg.StoreRunner("session-1", "run-old", oldRunner)
+
+	// First Cancel marks cancelling; second force-deletes the stuck entry.
+	if stopped, id := reg.Cancel("session-1", ""); !stopped || id != "run-old" {
+		t.Fatalf("first Cancel() = (%v, %q), want (true, run-old)", stopped, id)
+	}
+	if stopped, _ := reg.Cancel("session-1", ""); !stopped {
+		t.Fatal("force Cancel = false, want true")
+	}
+	if reg.HasActive("session-1") {
+		t.Fatal("HasActive = true after force Cancel, want false")
+	}
+
+	newRunner := &registryRunner{cancelOK: true}
+	reg.StoreRunner("session-1", "run-new", newRunner)
+	if !reg.HasActive("session-1") {
+		t.Fatal("HasActive = false after StoreRunner(new), want true")
+	}
+
+	// Old Runner's deferred Finish must not delete the new entry.
+	reg.Finish("session-1", "run-old")
+	if !reg.HasActive("session-1") {
+		t.Fatal("HasActive = false after stale Finish(run-old), want true (run-new preserved)")
+	}
+	runner, runID, ok := reg.ActiveRunner("session-1")
+	if !ok || runID != "run-new" || runner != newRunner {
+		t.Fatalf("ActiveRunner() = (%v, %q, %v), want (newRunner, run-new, true)", runner, runID, ok)
+	}
+
+	// Matching Finish still clears the new entry.
+	reg.Finish("session-1", "run-new")
+	if reg.HasActive("session-1") {
+		t.Fatal("HasActive = true after Finish(run-new), want false")
 	}
 }

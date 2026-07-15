@@ -22,7 +22,11 @@ type TaskPlannerPort interface {
 	// (no team execution), pass nil allocPlan — AgentKeys stays empty.
 	// 2026-07-05 Step 3 修复：原先在 Plan() 内部 Phase 1 发布，导致 allocPlan
 	// 不存在时 PlanStep.AgentKeys 为空，RealTeamOrchestrator 退回查 DB 取错 agent。
-	PublishV2Board(ctx context.Context, plan *TaskPlan, allocPlan *AllocationPlan, chatSessionID string)
+	//
+	// C-18: returns the created PlanBoard (ID is the canonical orchestration_id).
+	// When publishing is skipped (nil seq/plan, empty SubTasks), returns a zero
+	// PlanBoard and nil error.
+	PublishV2Board(ctx context.Context, plan *TaskPlan, allocPlan *AllocationPlan, chatSessionID string) (PlanBoard, error)
 }
 
 // IntentArtifact mirrors the intent pass output fields consumed by TaskPlanner.

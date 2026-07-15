@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -65,11 +66,23 @@ type SynthesisUsecase struct {
 }
 
 var (
-	ErrActiveTeamsExist = apierror.Conflict(apierror.DomainSpirit, "cannot synthesize: active teams still running")
-	ErrNoCompletedTeams = apierror.BadRequest(apierror.DomainSpirit, "no completed or failed teams to synthesize")
-	ErrNoTeamResults    = apierror.BadRequest(apierror.DomainSpirit, "no team results to synthesize")
-	ErrUnknownStrategy  = apierror.BadRequest(apierror.DomainSpirit, "unknown synthesis strategy")
+	ErrActiveTeamsExist   = apierror.Conflict(apierror.DomainSpirit, "cannot synthesize: active teams still running")
+	ErrNoCompletedTeams   = apierror.BadRequest(apierror.DomainSpirit, "no completed or failed teams to synthesize")
+	ErrNoTeamResults      = apierror.BadRequest(apierror.DomainSpirit, "no team results to synthesize")
+	ErrUnknownStrategy    = apierror.BadRequest(apierror.DomainSpirit, "unknown synthesis strategy")
+	ErrSynthesisModelRequired = apierror.Unavailable(apierror.DomainSpirit, "synthesis model required in production")
+	ErrSynthesisModelFailed   = apierror.Unavailable(apierror.DomainSpirit, "synthesis model generate failed")
 )
+
+// isProductionEnv reports whether ARANEA_ENV is production or prod (C-24).
+func isProductionEnv() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("ARANEA_ENV"))) {
+	case "production", "prod":
+		return true
+	default:
+		return false
+	}
+}
 
 func NewSynthesisUsecase(
 	spiritUC *SpiritTeamUsecase,
@@ -184,11 +197,15 @@ func (e *SynthesisEngine) Synthesize(ctx context.Context, input SynthesisInput) 
 	case SynthesisStrategyTemplate:
 		content, err = e.synthesizeTemplate(input)
 	case SynthesisStrategyPrompt:
-		content = e.synthesizePromptOrModel(ctx, input)
+		content, err = e.synthesizePromptOrModel(ctx, input)
 	case SynthesisStrategyHybrid:
 		content, err = e.synthesizeTemplate(input)
 		if err == nil {
-			content += "\n\n---\n\n" + e.synthesizePromptOrModel(ctx, input)
+			var modelPart string
+			modelPart, err = e.synthesizePromptOrModel(ctx, input)
+			if err == nil {
+				content += "\n\n---\n\n" + modelPart
+			}
 		}
 	default:
 		return nil, ErrUnknownStrategy
@@ -204,26 +221,42 @@ func (e *SynthesisEngine) Synthesize(ctx context.Context, input SynthesisInput) 
 	}, nil
 }
 
-// synthesizePromptOrModel invokes the LLM via the model port when wired;
-// otherwise (or on error) it falls back to returning the raw prompt so the
-// caller still gets usable content. C-24 fix.
-func (e *SynthesisEngine) synthesizePromptOrModel(ctx context.Context, input SynthesisInput) string {
+// synthesizePromptOrModel invokes the LLM via the model port when wired.
+// C-24: in production (ARANEA_ENV=production|prod), nil model or Generate
+// failure returns an error — never the raw prompt template. Non-prod keeps
+// the template fallback with a warn log.
+func (e *SynthesisEngine) synthesizePromptOrModel(ctx context.Context, input SynthesisInput) (string, error) {
 	rawPrompt := e.synthesizePrompt(input)
+	prod := isProductionEnv()
 	if e.model == nil {
-		return rawPrompt
+		if prod {
+			return "", ErrSynthesisModelRequired
+		}
+		e.lg.Warn("synthesis model port nil, falling back to raw prompt (non-prod)",
+			loggateway.StepID("spirit.synthesis.model_nil_fallback"))
+		return rawPrompt, nil
 	}
 	systemPrompt := "你是一名资深的多团队协作结果综合分析师。请基于多个团队的执行结果，为用户产出结构化、可执行的综合分析。"
 	text, err := e.model.SynthesizeWithModel(ctx, systemPrompt, rawPrompt)
 	if err != nil {
+		if prod {
+			e.lg.Error("LLM 综合失败（生产环境不回退）",
+				loggateway.StepID("spirit.synthesis.model_fail_prod"),
+				loggateway.Err(err))
+			return "", fmt.Errorf("%w: %v", ErrSynthesisModelFailed, err)
+		}
 		e.lg.Warn("LLM 综合失败，回退到原始 prompt",
 			loggateway.StepID("spirit.synthesis.model_fallback"),
 			loggateway.Err(err))
-		return rawPrompt
+		return rawPrompt, nil
 	}
 	if text = strings.TrimSpace(text); text == "" {
-		return rawPrompt
+		if prod {
+			return "", ErrSynthesisModelFailed
+		}
+		return rawPrompt, nil
 	}
-	return text
+	return text, nil
 }
 
 func (e *SynthesisEngine) inferStrategy(input SynthesisInput) SynthesisStrategy {

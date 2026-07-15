@@ -51,6 +51,9 @@ type Signer struct {
 }
 
 func NewSigner(lg loggateway.Logger) *Signer {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	return &Signer{lg: lg}
 }
 
@@ -76,25 +79,29 @@ func (s *Signer) SignKey() ([]byte, error) {
 	return s.cached, s.cacheErr
 }
 
-func (s *Signer) DownloadToken(id string, version int, expires time.Time) (string, error) {
+func (s *Signer) DownloadToken(id string, version int, expires time.Time, workspaceID string) (string, error) {
 	key, err := s.SignKey()
 	if err != nil {
 		return "", err
 	}
-	payload := fmt.Sprintf("%s|%d|%d", strings.TrimSpace(id), version, expires.Unix())
+	ws := strings.TrimSpace(workspaceID)
+	if ws == "" {
+		ws = "default"
+	}
+	payload := fmt.Sprintf("%s|%d|%d|%s", strings.TrimSpace(id), version, expires.Unix(), ws)
 	mac := hmac.New(sha256.New, key)
 	_, _ = mac.Write([]byte(payload))
 	return hex.EncodeToString(mac.Sum(nil)), nil
 }
 
-func (s *Signer) VerifyDownloadToken(id string, version int, expiresUnix int64, token string) (bool, error) {
+func (s *Signer) VerifyDownloadToken(id string, version int, expiresUnix int64, workspaceID, token string) (bool, error) {
 	if strings.TrimSpace(id) == "" || strings.TrimSpace(token) == "" {
 		return false, nil
 	}
 	if time.Now().Unix() > expiresUnix {
 		return false, nil
 	}
-	expected, err := s.DownloadToken(id, version, time.Unix(expiresUnix, 0))
+	expected, err := s.DownloadToken(id, version, time.Unix(expiresUnix, 0), workspaceID)
 	if err != nil {
 		return false, err
 	}

@@ -30,8 +30,8 @@ func TestCostGuardScopeForAgent_GlobalPluginPerAgent(t *testing.T) {
 	t.Parallel()
 	rt := &Runtime{
 		budgets: NewCostGuardBudgetRegistry(loggateway.NewNoop()),
-		active: []runtimeEntry{
-			{key: "cost_guard", scope: "global", costGuard: &CostGuardConfig{}},
+		activeByWS: map[string][]runtimeEntry{
+			"": {{key: "cost_guard", scope: "global", costGuard: &CostGuardConfig{}}},
 		},
 	}
 	if got := rt.CostGuardScopeForAgent("agent-42"); got != "default:agent-42" {
@@ -43,8 +43,8 @@ func TestCostGuardScopeForAgentInWorkspace_Isolation(t *testing.T) {
 	t.Parallel()
 	rt := &Runtime{
 		budgets: NewCostGuardBudgetRegistry(loggateway.NewNoop()),
-		active: []runtimeEntry{
-			{key: "cost_guard", scope: "global", costGuard: &CostGuardConfig{}},
+		activeByWS: map[string][]runtimeEntry{
+			"": {{key: "cost_guard", scope: "global", costGuard: &CostGuardConfig{}}},
 		},
 	}
 	a := rt.CostGuardScopeForAgentInWorkspace("ws-a", "agent-1")

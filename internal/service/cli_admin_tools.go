@@ -159,7 +159,7 @@ func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
 			// → SynthesizeResults → ExecuteTurn) replaces the LLM-polling pattern.
 			// The Spirit LLM no longer needs to poll team status; the system
 			// automatically injects a synthesis message when all teams complete.
-			out = append(out, tools.NewCancelOrchestrationTool(orchestrator, o.lg()))
+			out = append(out, tools.NewCancelOrchestrationTool(orchestrator, o.planBoardOrchFallback(), o.lg()))
 		}
 
 		// Synthesize results tool (still actively used for post-orchestration result synthesis).

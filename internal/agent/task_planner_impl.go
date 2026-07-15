@@ -36,6 +36,9 @@ var _ biz.TaskPlannerPort = (*taskPlannerImpl)(nil)
 
 // NewTaskPlanner creates a new TaskPlanner implementation.
 func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, bus biz.ActivityEventBus, orchCache *biz.OrchestrationCache, lg loggateway.Logger, plannerSetting PlannerModelLookup, seq v2.SequencerPublisher) biz.TaskPlannerPort {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	return &taskPlannerImpl{
 		repo:           repo,
 		catalog:        catalog,
@@ -1277,13 +1280,13 @@ func (impl *taskPlannerImpl) publishPlanCreated(ctx context.Context, plan *biz.T
 //
 // 注意：此处仅发布 created 事件（status=pending/running）。后续生命周期事件
 // （completed/failed）由 spirit_team.go 在团队状态变更时发布。
-func (impl *taskPlannerImpl) PublishV2Board(ctx context.Context, plan *biz.TaskPlan, allocPlan *biz.AllocationPlan, chatSessionID string) {
+func (impl *taskPlannerImpl) PublishV2Board(ctx context.Context, plan *biz.TaskPlan, allocPlan *biz.AllocationPlan, chatSessionID string) (biz.PlanBoard, error) {
 	if impl.seq == nil || plan == nil {
-		return
+		return biz.PlanBoard{}, nil
 	}
 	spiritSessionID := plan.SpiritSessionID
 	if spiritSessionID == "" {
-		return
+		return biz.PlanBoard{}, nil
 	}
 	// 当 plan.SubTasks 为空时跳过发布，避免创建空 PlanBoard 与空 GraphStage。
 	// 触发场景：PrePlanningGate force planning（complexity >= Moderate）
@@ -1294,7 +1297,7 @@ func (impl *taskPlannerImpl) PublishV2Board(ctx context.Context, plan *biz.TaskP
 			loggateway.Str("spirit_session_id", spiritSessionID),
 			loggateway.Str("plan_id", plan.ID),
 		)
-		return
+		return biz.PlanBoard{}, nil
 	}
 	// rootTaskID 从 ctx 读取（与 publishPlanCreated 一致）。
 	rootTaskID := string(RootTaskActivityIDFromCtx(ctx))
@@ -1395,6 +1398,7 @@ func (impl *taskPlannerImpl) PublishV2Board(ctx context.Context, plan *biz.TaskP
 		impl.seq.Publish(ctx, biz.NewGraphNodeUpdatedEvent(gn, rootTaskID, spiritSessionID))
 	}
 	_ = sessionID // 暂未使用 chatSessionID 派生其他字段；保留供未来扩展
+	return pb, nil
 }
 
 // mapV1StrategyToV2 将 v1 biz.OrchestrationStrategy 映射为 v2 biz.PlanStrategy。

@@ -175,6 +175,10 @@ type ChatOrchestrator struct {
 	// v2Seq is the v2 Sequencer (persist + WS) extracted from V2ProjectorFactory.
 	v2Seq rt.EventPublisher
 
+	// planBoardOrch resolves check_progress/cancel by PlanBoard.ID when the
+	// legacy OrchestrationRepository has no row (C-18). May be nil.
+	planBoardOrch tools.PlanBoardOrchFallback
+
 	sweepStop chan struct{}
 }
 
@@ -528,6 +532,22 @@ func (o *ChatOrchestrator) Execute(ctx context.Context, input biz.TurnInput) (bi
 	return o.RunNativeAgentTurnWithOutcome(ctx, input)
 }
 
+// SetPlanBoardOrch injects the PlanBoard-backed progress/cancel fallback (C-18).
+// Called from ProvideChatService after PlanExecutor construction.
+func (o *ChatOrchestrator) SetPlanBoardOrch(f tools.PlanBoardOrchFallback) {
+	if o == nil {
+		return
+	}
+	o.planBoardOrch = f
+}
+
+func (o *ChatOrchestrator) planBoardOrchFallback() tools.PlanBoardOrchFallback {
+	if o == nil {
+		return nil
+	}
+	return o.planBoardOrch
+}
+
 // RunGateway exposes the shared session run registry.
 func (o *ChatOrchestrator) RunGateway() rt.RunGateway {
 	return o.runs
@@ -623,6 +643,8 @@ func (o *ChatOrchestrator) transitionSessionStatus(ctx context.Context, sessionI
 }
 
 // cancelActiveRun cancels the active run for a session.
+// C-10: Cancel sets in-memory cancelled status before the turn's Finish defer
+// runs; we then persist+publish cancelled so a racing failed path is refused.
 func (o *ChatOrchestrator) cancelActiveRun(ctx context.Context, sessionID string) bool {
 	if o == nil || sessionID == "" {
 		return false
@@ -631,14 +653,21 @@ func (o *ChatOrchestrator) cancelActiveRun(ctx context.Context, sessionID string
 	if !stopped {
 		return false
 	}
-	if err := o.runStatus().SetRunStatus(ctx, sessionID, runID, biz.SessionRunPhaseCancelled, ""); err != nil {
+	// Persist+publish cancelled while the status entry still exists (before
+	// the turn defer calls Finish). Prefer a non-cancelled ctx so terminal
+	// persist is not aborted by the turn cancellation itself.
+	persistCtx := ctx
+	if persistCtx == nil || persistCtx.Err() != nil {
+		persistCtx = context.Background()
+	}
+	if err := o.runStatus().SetRunStatus(persistCtx, sessionID, runID, biz.SessionRunPhaseCancelled, ""); err != nil {
 		o.lg().Warn("set run status failed on cancel",
 			loggateway.StepID("chat.cancel_run"),
 			loggateway.Str("session_id", sessionID),
 			loggateway.Str("run_id", runID),
 			loggateway.Err(err))
 	}
-	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonUserCancelled)
+	o.transitionSessionStatus(persistCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonUserCancelled)
 	if _, err := chatactivity.CancelRunningActivityMessages(ctx, o.stepReader(), o.activityWriter(), sessionID, o.lg()); err != nil {
 		o.lg().Warn("取消执行卡片查询失败",
 			loggateway.StepID("chat.activity.cancel"),

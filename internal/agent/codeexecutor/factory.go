@@ -111,7 +111,7 @@ func (f *Factory) getContainer() trpcagentcodeexec.CodeExecutor {
 func (f *Factory) Resolve(ctx context.Context, agentType, workDir string) trpcagentcodeexec.CodeExecutor {
 	typ := ResolveType(agentType, f.env.Backend)
 	typ = f.applyAvailabilityFallback(ctx, typ)
-	f.warnLocalInProd(ctx, typ)
+	typ = f.refuseLocalInProd(typ)
 
 	switch typ {
 	case TypeDisabled:
@@ -126,11 +126,23 @@ func (f *Factory) Resolve(ctx context.Context, agentType, workDir string) trpcag
 		if exec := f.getE2B(); exec != nil {
 			return exec
 		}
+		if isProductionEnv() && !f.env.AllowLocalInProd {
+			f.logger().Error("生产环境 E2B 初始化失败且未允许 local 执行器，拒绝代码执行",
+				loggateway.StepID("codeexec.e2b_init_fail_prod"),
+				loggateway.Str("requested", TypeE2B))
+			return nil
+		}
 		f.warnResolveFallback(ctx, typ)
 		return f.getLocal(workDir)
 	case TypeContainer:
 		if exec := f.getContainer(); exec != nil {
 			return exec
+		}
+		if isProductionEnv() && !f.env.AllowLocalInProd {
+			f.logger().Error("生产环境 Container 初始化失败且未允许 local 执行器，拒绝代码执行",
+				loggateway.StepID("codeexec.container_init_fail_prod"),
+				loggateway.Str("requested", TypeContainer))
+			return nil
 		}
 		f.warnResolveFallback(ctx, typ)
 		return f.getLocal(workDir)
@@ -188,13 +200,16 @@ func (f *Factory) warnResolveFallback(ctx context.Context, requested string) {
 		loggateway.Str("requested", requested))
 }
 
-func (f *Factory) warnLocalInProd(ctx context.Context, typ string) {
+// refuseLocalInProd converts TypeLocal → TypeDisabled in production unless
+// CODE_EXECUTOR_ALLOW_LOCAL_IN_PROD is explicitly set (B-03 fail-closed).
+func (f *Factory) refuseLocalInProd(typ string) string {
 	if typ != TypeLocal || f.env.AllowLocalInProd || !isProductionEnv() {
-		return
+		return typ
 	}
-	f.logger().Warn("生产环境使用 local 执行器（无隔离）；建议配置 docker 或设置 CODE_EXECUTOR_ALLOW_LOCAL_IN_PROD=1",
-		loggateway.StepID("codeexec.local_in_prod"),
+	f.logger().Error("生产环境拒绝 local 执行器（无隔离）；请配置 docker/e2b/container 或设置 CODE_EXECUTOR_ALLOW_LOCAL_IN_PROD=1",
+		loggateway.StepID("codeexec.local_in_prod_refused"),
 		loggateway.Str("backend", TypeLocal))
+	return TypeDisabled
 }
 
 func isProductionEnv() bool {

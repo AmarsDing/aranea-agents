@@ -16,8 +16,8 @@ func TestBudgetTrackerForContext_PerAgentIsolation(t *testing.T) {
 	t.Parallel()
 	rt := &Runtime{
 		budgets: NewCostGuardBudgetRegistry(loggateway.NewNoop()),
-		active: []runtimeEntry{
-			{key: "cost_guard", scope: "global", costGuard: &CostGuardConfig{}},
+		activeByWS: map[string][]runtimeEntry{
+			"": {{key: "cost_guard", scope: "global", costGuard: &CostGuardConfig{}}},
 		},
 	}
 	rt.SetAgentKeyResolver(func(_ context.Context, agentKey string) string {
@@ -47,12 +47,12 @@ func TestBudgetTrackerForContext_PerAgentIsolation(t *testing.T) {
 func TestRetryReflect_SkipsHighRiskConfirmTools(t *testing.T) {
 	t.Parallel()
 	rt := &Runtime{
-		active: []runtimeEntry{
-			{
+		activeByWS: map[string][]runtimeEntry{
+			"": {{
 				key:               "confirmation_guard",
 				scope:             "global",
 				confirmationGuard: &ConfirmationGuardConfig{ConfirmTools: []string{"delete_file"}},
-			},
+			}},
 		},
 	}
 	rt.SetAgentKeyResolver(func(_ context.Context, _ string) string { return "agent-1" })
@@ -99,12 +99,12 @@ func TestRetryReflect_SkipsCatalogConfirmTools(t *testing.T) {
 func TestToolRequiresConfirmation_CatalogAndPlugin(t *testing.T) {
 	t.Parallel()
 	rt := &Runtime{
-		active: []runtimeEntry{
-			{
+		activeByWS: map[string][]runtimeEntry{
+			"": {{
 				key:               "confirmation_guard",
 				scope:             "global",
 				confirmationGuard: &ConfirmationGuardConfig{ConfirmTools: []string{"delete_file"}},
-			},
+			}},
 		},
 	}
 	rt.SetCatalogConfirmChecker(func(_ context.Context, _, toolName string) bool {

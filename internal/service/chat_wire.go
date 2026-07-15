@@ -38,6 +38,8 @@ func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus
 		if setter, ok := deps.Team.TeamStarter.(interface{ SetPlanExecutor(*PlanExecutor) }); ok {
 			setter.SetPlanExecutor(planExec)
 		}
+		// C-18: cancel_orchestration / check_progress fall back to PlanBoard.ID.
+		cs.orch.SetPlanBoardOrch(planExec)
 		// 2026-07-04 问题 4 修复：注入 EventBus 并启动订阅，
 		// 让 PlanExecutor 自动响应 PlanBoardCreatedEvent 触发 DAG 执行。
 		if v2Bus != nil {

@@ -21,6 +21,7 @@ import (
 	knowledgetool "aranea-agents/internal/tools/knowledge"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/internal/tools/skillruntime"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -828,10 +829,11 @@ func (o *ChatOrchestrator) buildTurnRunner(
 	emitter.LogDone("chat.agent.build", "Agent实例已构建", event.P("provider", prov), event.P("model", mod))
 
 	var plugins []trpcplugin.Plugin
+	wsID := workspace.IDFromContext(ctx)
 	if o.rt().PluginManager != nil {
-		plugins = o.rt().PluginManager.RunnerPluginsForAgent(ag.ID)
+		plugins = o.rt().PluginManager.RunnerPluginsForAgent(ag.ID, wsID)
 	} else if o.rt().PluginRT != nil {
-		plugins = o.rt().PluginRT.PluginsForAgent(ag.ID)
+		plugins = o.rt().PluginRT.PluginsForAgent(ag.ID, wsID)
 	}
 	emitter.LogDone("chat.plugins_load", "插件已加载", event.P("plugin_count", len(plugins)))
 	deps.Plugins = plugins

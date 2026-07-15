@@ -40,6 +40,11 @@ func toProtoOrchestrationSpec(raw string) *v1.OrchestrationSpec {
 	if spec.Graph != nil {
 		g := &v1.EmbeddedGraph{Version: int32(spec.Graph.Version), Layout: spec.Graph.Layout}
 		for _, n := range spec.Graph.Nodes {
+			// C-21: retry_max_attempts / fallback_agent / reviewer_agent /
+			// review_rules / func_ref live on biz.EmbeddedGraphNodeSpec and
+			// definition_json. Proto EmbeddedGraphNode lacks these fields;
+			// MergeOrchestrationSpecIntoDefinition deep-merges graph nodes so
+			// API read→write does not wipe them from definition_json.
 			g.Nodes = append(g.Nodes, &v1.EmbeddedGraphNode{
 				Id:              n.ID,
 				Type:            n.Type,

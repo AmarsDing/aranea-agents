@@ -25,11 +25,22 @@ type V2Bus struct {
 	subscribers map[uint64]chan biz.Event
 	nextID      uint64
 	dropped     atomic.Uint64
+	// journal optionally persists critical events to JSONL (B-06). Nil = no-op.
+	journal *CriticalJournal
 }
 
-// NewV2Bus creates a new in-process V2Bus.
+// NewV2Bus creates a new in-process V2Bus without a durable critical journal.
 func NewV2Bus() *V2Bus {
 	return &V2Bus{subscribers: make(map[uint64]chan biz.Event)}
+}
+
+// NewV2BusWithJournal creates a V2Bus that best-effort appends critical events
+// to journal before fan-out. journal may be nil (same as NewV2Bus).
+func NewV2BusWithJournal(journal *CriticalJournal) *V2Bus {
+	return &V2Bus{
+		subscribers: make(map[uint64]chan biz.Event),
+		journal:     journal,
+	}
 }
 
 const terminalPublishBlock = 2 * time.Second
@@ -44,6 +55,9 @@ func (b *V2Bus) Publish(ctx context.Context, e biz.Event) {
 		return
 	}
 	critical := biz.IsCriticalDeliveryEvent(e)
+	if critical && b.journal != nil {
+		_ = b.journal.Append(e) // best-effort; never block publish on disk errors
+	}
 	b.mu.RLock()
 	subs := make([]chan biz.Event, 0, len(b.subscribers))
 	for _, ch := range b.subscribers {

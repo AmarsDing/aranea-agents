@@ -70,6 +70,9 @@ type EmbeddedGraphNodeSpec struct {
 	Destinations     []string `json:"destinations,omitempty"`
 	RetryMaxAttempts int      `json:"retry_max_attempts,omitempty"`
 	FallbackAgent    string   `json:"fallback_agent,omitempty"`
+	ReviewerAgent    string   `json:"reviewer_agent,omitempty"`
+	ReviewRules      string   `json:"review_rules,omitempty"`
+	FuncRef          string   `json:"func_ref,omitempty"`
 }
 
 type EmbeddedGraphEdgeSpec struct {
@@ -214,6 +217,12 @@ func MergeOrchestrationSpecIntoDefinition(raw string, spec OrchestrationSpec) (s
 				}
 			}
 		}
+		// C-21: deep-merge graph nodes by id so proto/partial overlays do not
+		// drop retry/fallback/reviewer/func_ref preserved in definition_json.
+		if k == "graph" {
+			base[k] = mergeEmbeddedGraphMaps(base["graph"], v)
+			continue
+		}
 		base[k] = v
 	}
 	b, err := json.Marshal(base)
@@ -249,6 +258,73 @@ func EnsureGraphRuntimeDefault(raw string) string {
 	out, err := MergeOrchestrationSpecIntoDefinition(raw, spec)
 	if err != nil {
 		return raw
+	}
+	return out
+}
+
+// mergeEmbeddedGraphMaps merges overlay graph onto base graph, preserving node
+// fields from base when overlay omits them (C-21 JSON passthrough).
+func mergeEmbeddedGraphMaps(baseAny, overlayAny any) any {
+	overlay, ok := overlayAny.(map[string]any)
+	if !ok {
+		return overlayAny
+	}
+	base, _ := baseAny.(map[string]any)
+	if base == nil {
+		return overlay
+	}
+	out := make(map[string]any, len(base)+len(overlay))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range overlay {
+		if k == "nodes" {
+			out[k] = mergeEmbeddedGraphNodes(base["nodes"], v)
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
+func mergeEmbeddedGraphNodes(baseAny, overlayAny any) any {
+	overlayNodes, ok := overlayAny.([]any)
+	if !ok {
+		return overlayAny
+	}
+	baseByID := map[string]map[string]any{}
+	if baseNodes, ok := baseAny.([]any); ok {
+		for _, n := range baseNodes {
+			m, ok := n.(map[string]any)
+			if !ok {
+				continue
+			}
+			id, _ := m["id"].(string)
+			if id != "" {
+				baseByID[id] = m
+			}
+		}
+	}
+	out := make([]any, 0, len(overlayNodes))
+	for _, n := range overlayNodes {
+		om, ok := n.(map[string]any)
+		if !ok {
+			out = append(out, n)
+			continue
+		}
+		id, _ := om["id"].(string)
+		if bm, ok := baseByID[id]; ok {
+			merged := make(map[string]any, len(bm)+len(om))
+			for k, v := range bm {
+				merged[k] = v
+			}
+			for k, v := range om {
+				merged[k] = v
+			}
+			out = append(out, merged)
+			continue
+		}
+		out = append(out, om)
 	}
 	return out
 }

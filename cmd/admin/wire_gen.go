@@ -365,7 +365,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 		return wireOut{}, nil, err
 	}
 	deps := provideCronRunnerDeps(cronRepo, sessionUsecase, teamRepo, agentRepository, v2Bus, monitorBus, chatService, modelRegistrySyncAgent)
-	cronrunnerRunner := provideCronRunner(deps, loggatewayLogger)
+	cronrunnerRunner := provideCronRunner(deps, dataData, loggatewayLogger)
 	cronUsecase := cron.NewUsecase(cronRepo, cronrunnerRunner)
 	cronService := service.NewCronService(cronUsecase)
 	scopeAgentLookup := biz.NewScopeAgentLookup(agentRepository)
@@ -615,10 +615,12 @@ func provideCronRunnerDeps(cron2 biz.CronRepo, session3 *biz.SessionUsecase,
 	}
 }
 
-func provideCronRunner(deps cronrunner.Deps, lg loggateway.Logger) *cronrunner.Runner {
+func provideCronRunner(deps cronrunner.Deps, d *data.Data, lg loggateway.Logger) *cronrunner.Runner {
 	if strings.TrimSpace(os.Getenv("CRON_RUNNER_DISABLED")) == "1" {
 		return nil
 	}
+	// C-26: optional Postgres advisory lease for cross-instance exclusivity.
+	deps.DB = providePrimaryRawDB(d)
 	return cronrunner.NewRunner(deps, lg)
 }
 
@@ -2197,8 +2199,11 @@ func provideWireOut(
 }
 
 // provideV2EventBus constructs the in-process fan-out bus for v2 Events.
+// B-06: optionally journals critical events to ARANEA_DATA_DIR/critical_events
+// (best-effort JSONL). Nil journal path is still valid via empty NewCriticalJournal.
 func provideV2EventBus() *event.V2Bus {
-	return event.NewV2Bus()
+	journal := event.NewCriticalJournal(event.DefaultCriticalJournalDir())
+	return event.NewV2BusWithJournal(journal)
 }
 
 // provideV2RepoSet composes v2 repo interfaces into a single RepoSet

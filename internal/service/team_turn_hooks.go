@@ -66,7 +66,7 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 		unlock()
 	}
 	defer func() {
-		o.runs.Finish(sessionID)
+		o.runs.Finish(sessionID, runID)
 		// Skip processPendingQueue when this turn was started from inside
 		// the iterative pending-queue loop (see processPendingQueue). The
 		// loop owns draining the queue; re-entering would spawn a new

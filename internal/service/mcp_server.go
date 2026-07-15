@@ -9,6 +9,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/mcp_server/v1"
 	"aranea-agents/internal/biz"
+	mcpconfig "aranea-agents/internal/mcp/config"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/auth"
@@ -74,7 +75,7 @@ func toProtoMCP(m biz.MCPServer) *v1.MCPServer {
 		Status:       m.Status,
 		Enabled:      m.Enabled,
 		SortOrder:    int32(m.SortOrder),
-		ConfigJson:   m.ConfigJSON,
+		ConfigJson:   mcpconfig.RedactConfigJSON(m.ConfigJSON),
 		MetadataJson: m.MetadataJSON,
 		CreatedAt:    m.CreatedAt,
 		UpdatedAt:    m.UpdatedAt,

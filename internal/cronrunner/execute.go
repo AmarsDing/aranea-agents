@@ -167,6 +167,17 @@ func (r *Runner) executeTask(ctx context.Context, task biz.CronTask, cfg cronTas
 	unlock := r.lockTask(task.ID)
 	defer unlock()
 
+	// C-26: cross-instance lease (Postgres advisory lock when DB is wired).
+	releaseLease, ok := r.acquireTaskLease(ctx, task.ID)
+	if !ok {
+		r.lg.Info("cron task skipped: lease held by another instance",
+			loggateway.StepID("cron.lease_skip"),
+			loggateway.Str("task_id", task.ID),
+			loggateway.Str("trigger", trigger))
+		return ""
+	}
+	defer releaseLease()
+
 	runID, started, ok := r.insertPendingRun(ctx, task.ID, trigger, now)
 	if !ok {
 		return ""
@@ -180,6 +191,16 @@ func (r *Runner) runManualTask(ctx context.Context, taskID, runID, started strin
 	unlock := r.lockTask(taskID)
 	defer unlock()
 
+	releaseLease, ok := r.acquireTaskLease(ctx, taskID)
+	if !ok {
+		finished := time.Now().UTC().Format(time.RFC3339)
+		if uerr := r.deps.Cron.UpdateCronTaskRun(ctx, runID, "skipped", finished, "{}", "lease held by another instance"); uerr != nil {
+			r.lg.Warn("update cron_task_run on lease skip failed", loggateway.Str("task_id", taskID), loggateway.Str("run_id", runID), loggateway.Err(uerr))
+		}
+		return
+	}
+	defer releaseLease()
+
 	task, err := r.deps.Cron.GetCronTask(ctx, taskID)
 	if err != nil {
 		finished := time.Now().UTC().Format(time.RFC3339)
@@ -190,6 +211,17 @@ func (r *Runner) runManualTask(ctx context.Context, taskID, runID, started strin
 	}
 	outcome := r.runDispatch(ctx, task, cfg)
 	r.finishTaskRun(ctx, taskID, runID, started, "manual", cfg, outcome)
+}
+
+func (r *Runner) acquireTaskLease(ctx context.Context, taskID string) (release func(), ok bool) {
+	if r == nil {
+		return func() {}, true
+	}
+	lease := r.lease
+	if lease == nil {
+		lease = alwaysHeldLease{}
+	}
+	return lease.TryAcquire(ctx, taskID)
 }
 
 func isSessionBusyErr(err error) bool {

@@ -391,15 +391,14 @@ func (f *trpcGraphBuilderFactory) buildNodeCallbacks(sessionID, spiritSessionID,
 				loggateway.Err(err),
 			)
 		})
-		// C-23 fix: AfterNode callback that applies the replanner's decision.
-		// When a node fails (nodeErr != nil), calls replanner.OnNodeFailure to
-		// get the action. For ReplanRetry/ReplanInsertFallback, returns a
-		// fallback result with nil error to recover the node and let the graph
-		// continue. For ReplanReroute/ReplanRebuildSubgraph (which require
-		// topology mutation the framework doesn't support), returns (nil, nil)
-		// to let the original error propagate.
-		// Previously the replanner's decision was only logged in OnNodeError
-		// and never applied, so ALL node failures halted the graph.
+		// C-23: AfterNode applies the replanner decision as a ControlCommand.
+		//
+		// Framework contract (AfterNodeCallback): returning (customResult, nil)
+		// when nodeErr != nil recovers the node (clears error, continues graph).
+		// True re-invocation is not available here — use RetryPolicy for that.
+		// We therefore return a typed ControlCommand (not a "[recovered]" string)
+		// and stash it under graph.StateKeyControlCommand so runtime/observers
+		// can detect retry/fallback without mistaking soft recovery for content.
 		cb.RegisterAfterNode(func(ctx context.Context, cbCtx *trpcgraph.NodeCallbackContext, state trpcgraph.State, result any, nodeErr error) (any, error) {
 			if cbCtx == nil || nodeErr == nil {
 				return nil, nil
@@ -418,53 +417,36 @@ func (f *trpcGraphBuilderFactory) buildNodeCallbacks(sessionID, spiritSessionID,
 				)
 				return nil, nil // original error propagates
 			}
-			if action == nil {
-				return nil, nil
+			out, applyErr := applyReplanControl(state, cbCtx.NodeID, nodeErr, action)
+			if applyErr != nil {
+				return nil, applyErr
 			}
-			switch action.Type {
-			case graph.ReplanRetry:
-				// Transient failure: recover with a fallback result so the graph
-				// continues. True retry (re-invoking the node agent) is not
-				// possible within the AfterNode callback because the framework
-				// doesn't expose a re-invocation API. The fallback result lets
-				// downstream nodes proceed.
-				fallback := fmt.Sprintf("[recovered] transient failure tolerated for node %s: %s",
-					cbCtx.NodeID, nodeErr.Error())
-				lg.Info("runtime replanner: node recovered (retry/fallback)",
-					loggateway.StepID("replanner.recovered"),
-					loggateway.Str("execution_id", execID),
-					loggateway.Str("session_id", sessionID),
-					loggateway.Str("graph_id", graphID),
-					loggateway.Str("failed_node", cbCtx.NodeID),
-					loggateway.Str("replan_type", string(action.Type)),
-				)
-				return fallback, nil
-			case graph.ReplanInsertFallback:
-				fallback := fmt.Sprintf("[fallback] node %s failed, using fallback: %s",
-					cbCtx.NodeID, nodeErr.Error())
-				lg.Info("runtime replanner: node recovered (insert_fallback)",
-					loggateway.StepID("replanner.recovered"),
-					loggateway.Str("execution_id", execID),
-					loggateway.Str("session_id", sessionID),
-					loggateway.Str("graph_id", graphID),
-					loggateway.Str("failed_node", cbCtx.NodeID),
-					loggateway.Str("replan_type", string(action.Type)),
-				)
-				return fallback, nil
-			default:
-				// ReplanReroute / ReplanRebuildSubgraph require topology mutation
-				// which the framework doesn't support at runtime. Log and let the
-				// original error propagate.
+			if out == nil {
+				replanType := ""
+				if action != nil {
+					replanType = string(action.Type)
+				}
 				lg.Info("runtime replanner: action requires topology mutation, not applied",
 					loggateway.StepID("replanner.not_applied"),
 					loggateway.Str("execution_id", execID),
 					loggateway.Str("session_id", sessionID),
 					loggateway.Str("graph_id", graphID),
 					loggateway.Str("failed_node", cbCtx.NodeID),
-					loggateway.Str("replan_type", string(action.Type)),
+					loggateway.Str("replan_type", replanType),
 				)
 				return nil, nil
 			}
+			cmd, _ := graph.AsControlCommand(out)
+			lg.Info("runtime replanner: control command applied",
+				loggateway.StepID("replanner.control"),
+				loggateway.Str("execution_id", execID),
+				loggateway.Str("session_id", sessionID),
+				loggateway.Str("graph_id", graphID),
+				loggateway.Str("failed_node", cbCtx.NodeID),
+				loggateway.Str("replan_type", string(cmd.Action)),
+				loggateway.Str("fallback_agent", cmd.FallbackAgent),
+			)
+			return out, nil
 		})
 	}
 
@@ -533,6 +515,28 @@ func (f *trpcGraphBuilderFactory) buildNodeCallbacks(sessionID, spiritSessionID,
 	}
 
 	return cb
+}
+
+// applyReplanControl maps a ReplanAction into an AfterNode result.
+//
+//   - ReplanRetry / ReplanInsertFallback → ControlCommand (recover node; not fake text)
+//   - ReplanReroute / ReplanRebuildSubgraph → (nil, nil) so the original nodeErr propagates
+//
+// When state is non-nil, the command is also written to StateKeyControlCommand.
+func applyReplanControl(state trpcgraph.State, nodeID string, nodeErr error, action *graph.ReplanAction) (any, error) {
+	if action == nil {
+		return nil, nil
+	}
+	switch action.Type {
+	case graph.ReplanRetry, graph.ReplanInsertFallback:
+		cmd := graph.NewControlCommand(action, nodeID, nodeErr)
+		if state != nil {
+			state[graph.StateKeyControlCommand] = cmd
+		}
+		return cmd, nil
+	default:
+		return nil, nil
+	}
 }
 
 func (f *trpcGraphBuilderFactory) BuildRuntime(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, spiritSessionID, graphID, execID, lineageID string) (biz.GraphRuntime, error) {

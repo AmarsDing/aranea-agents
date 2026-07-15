@@ -122,10 +122,12 @@ func compileFromEmbeddedGraph(ctx context.Context, def Definition, spec *embedde
 	subgraphs := make([]biz.SubgraphDef, 0)
 	taskMeta := make(map[string]biz.NodeTaskMeta)
 	loading := map[string]struct{}{}
+	var nodeErrs []string
 
-	for _, n := range spec.Nodes {
+	for i, n := range spec.Nodes {
 		id := strings.TrimSpace(n.ID)
 		if id == "" {
+			nodeErrs = append(nodeErrs, fmt.Sprintf("node[%d] has empty id", i))
 			continue
 		}
 		nodeType := strings.ToLower(strings.TrimSpace(n.Type))
@@ -206,19 +208,28 @@ func compileFromEmbeddedGraph(ctx context.Context, def Definition, spec *embedde
 				ID: id, Type: biz.NodeTypeFunction, FuncRef: funcRef, Description: strings.TrimSpace(n.Label),
 			})
 			nodes = append(nodes, nd)
+		case "start", "end", "join":
+			// Decorative nodes — recorded in nodeTypeByID for edge resolution.
+		default:
+			nodeErrs = append(nodeErrs, fmt.Sprintf("node %q has unknown type %q", id, n.Type))
 		}
+	}
+	if len(nodeErrs) > 0 {
+		return biz.GraphBuildConfig{}, nil, nil, apierror.BadRequest(apierror.DomainTeam,
+			"embedded graph has invalid nodes: "+strings.Join(nodeErrs, "; "))
 	}
 	if len(executableIDs) == 0 {
 		return biz.GraphBuildConfig{}, nil, nil, apierror.BadRequest(apierror.DomainTeam, "embedded graph has no executable nodes")
 	}
 
 	// C-22 fix: validate edge endpoints before compilation. Reject edges
-	// referencing unknown nodes instead of silently dropping them (fail-open).
+	// referencing unknown nodes or with empty endpoints (fail-closed).
 	var edgeErrs []string
 	for i, e := range spec.Edges {
 		from := strings.TrimSpace(e.Source)
 		to := strings.TrimSpace(e.Target)
 		if from == "" || to == "" {
+			edgeErrs = append(edgeErrs, fmt.Sprintf("edge[%d] has empty source or target", i))
 			continue
 		}
 		if _, ok := nodeTypeByID[from]; !ok && !isEmbeddedDecorID(from) {

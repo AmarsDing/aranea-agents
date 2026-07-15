@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
@@ -36,6 +37,10 @@ func (r *taskPlanRepo) Create(ctx context.Context, plan *biz.TaskPlan) (*biz.Tas
 	plan.UpdatedAt = now
 	if plan.Status == "" {
 		plan.Status = biz.TaskPlanStatusDraft
+	}
+	// C-25: stamp workspace from context so Create→GetByID round-trip stays visible.
+	if strings.TrimSpace(plan.WorkspaceID) == "" && !workspace.IsSystem(ctx) {
+		plan.WorkspaceID = workspace.IDFromContext(ctx)
 	}
 
 	dimensionsJSON, err := json.Marshal(plan.Dimensions)
@@ -89,12 +94,14 @@ func (r *taskPlanRepo) GetByID(ctx context.Context, id string) (*biz.TaskPlan, e
 	if id == "" {
 		return nil, apierror.BadRequest("TASK_PLAN", "id is required")
 	}
+	wsClause, wsArgs := taskPlansWorkspaceFilter(ctx)
+	args := append([]any{id}, wsArgs...)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`SELECT id, spirit_session_id, trace_id, user_message, intent_artifact_json,
 			complexity_level, complexity_score, dimensions_json, sub_tasks_json, dag_json,
 			decompose_reason, strategy, strategy_reason, topology_hint, memory_hit_json,
 			status, workspace_id, created_at, updated_at
-		 FROM task_plans WHERE id = ?`), id)
+		 FROM task_plans WHERE id = ?`+wsClause), args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "TASK_PLAN")
 	}
@@ -164,12 +171,14 @@ func (r *taskPlanRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionI
 	if spiritSessionID == "" {
 		return nil, nil
 	}
+	wsClause, wsArgs := taskPlansWorkspaceFilter(ctx)
+	args := append([]any{spiritSessionID}, wsArgs...)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`SELECT id, spirit_session_id, trace_id, user_message, intent_artifact_json,
 			complexity_level, complexity_score, dimensions_json, sub_tasks_json, dag_json,
 			decompose_reason, strategy, strategy_reason, topology_hint, memory_hit_json,
 			status, workspace_id, created_at, updated_at
-		 FROM task_plans WHERE spirit_session_id = ? ORDER BY created_at DESC`), spiritSessionID)
+		 FROM task_plans WHERE spirit_session_id = ?`+wsClause+` ORDER BY created_at DESC`), args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "TASK_PLAN")
 	}
@@ -183,6 +192,22 @@ func (r *taskPlanRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionI
 		plans = append(plans, plan)
 	}
 	return plans, nil
+}
+
+// taskPlansWorkspaceFilter returns a SQL fragment (prefixed with " AND") and
+// matching args for workspace visibility of task_plans (C-25).
+//   - system caller: no filtering
+//   - default workspace: own rows plus legacy (workspace_id='')
+//   - other tenants: strict equality
+func taskPlansWorkspaceFilter(ctx context.Context) (string, []any) {
+	if workspace.IsSystem(ctx) {
+		return "", nil
+	}
+	callerWS := workspace.IDFromContext(ctx)
+	if callerWS == workspace.DefaultWorkspaceID {
+		return ` AND workspace_id IN (?, ?)`, []any{callerWS, ""}
+	}
+	return ` AND workspace_id=?`, []any{callerWS}
 }
 
 // EnsureTaskPlanSchema creates the task_plans table if it does not exist.

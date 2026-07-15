@@ -23,6 +23,9 @@ type PluginService struct {
 }
 
 func NewPluginService(uc *biz.PluginUsecase, runtime *plugintrpc.Runtime, lg loggateway.Logger) *PluginService {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	return &PluginService{uc: uc, runtime: runtime, lg: lg}
 }
 
@@ -31,7 +34,8 @@ func (s *PluginService) Bootstrap(ctx context.Context) {
 	if s == nil {
 		return
 	}
-	s.seedBuiltinPlugins(ctx)
+	// System context: full runtime snapshot across all workspaces (C-06).
+	s.seedBuiltinPlugins(workspace.WithSystemWorkspace(ctx))
 }
 
 // NewPluginServiceWithBootstrap constructs PluginService and runs one-time bootstrap.
@@ -73,13 +77,23 @@ func (s *PluginService) seedBuiltinPlugins(ctx context.Context) {
 	s.reloadRuntime(ctx)
 }
 
-// reloadRuntime fetches all enabled plugins and hot-reloads the plugin Runtime.
+// reloadRuntime fetches enabled plugins and hot-reloads the plugin Runtime (C-06).
+// Preserves request workspace (or system when absent) — never uses bare Background
+// without workspace for List/Apply.
 func (s *PluginService) reloadRuntime(ctx context.Context) {
 	if s.runtime == nil {
 		return
 	}
+	reloadCtx := workspace.WithSystemWorkspace(context.Background())
+	if ws, ok := workspace.FromContext(ctx); ok {
+		reloadCtx = workspace.WithContext(context.Background(), ws)
+	}
 	safego.Go(ctx, "plugin.reloadRuntime", func() {
-		result, err := s.uc.List(context.Background(), biz.PluginListQuery{Enabled: "true", Limit: 200})
+		q := biz.PluginListQuery{Enabled: "true", Limit: 200}
+		if !workspace.IsSystem(reloadCtx) {
+			q.WorkspaceID = workspace.IDFromContext(reloadCtx)
+		}
+		result, err := s.uc.List(reloadCtx, q)
 		if err != nil {
 			s.lg.Warn("插件运行时重载列表失败",
 				loggateway.StepID("plugin.reload_fail"),
@@ -87,7 +101,7 @@ func (s *PluginService) reloadRuntime(ctx context.Context) {
 			)
 			return
 		}
-		s.runtime.Apply(context.Background(), result.Items)
+		s.runtime.Apply(reloadCtx, result.Items)
 	})
 }
 

@@ -99,6 +99,84 @@ func TestNormalizeBackfillPreservesTaskPromptAndEnabled(t *testing.T) {
 	}
 }
 
+func TestEmbeddedGraphNodeSpec_RetryFallbackReviewerRoundTrip(t *testing.T) {
+	// C-21: marshal→unmarshal preserves runtime node fields used by embedded graph.
+	raw := `{
+		"version":2,
+		"mode":"sequential",
+		"runtime_engine":"graph",
+		"members":[],
+		"graph":{
+			"version":1,
+			"layout":"linear",
+			"nodes":[
+				{
+					"id":"n1",
+					"type":"agent",
+					"label":"Worker",
+					"agent_id":"a1",
+					"retry_max_attempts":3,
+					"fallback_agent":"a2",
+					"reviewer_agent":"critic",
+					"review_rules":"approve if tests pass",
+					"func_ref":"pkg.Fn"
+				}
+			],
+			"edges":[]
+		}
+	}`
+	spec, err := ParseOrchestrationSpec(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.Graph == nil || len(spec.Graph.Nodes) != 1 {
+		t.Fatalf("graph nodes=%v", spec.Graph)
+	}
+	n := spec.Graph.Nodes[0]
+	if n.RetryMaxAttempts != 3 || n.FallbackAgent != "a2" || n.ReviewerAgent != "critic" ||
+		n.ReviewRules != "approve if tests pass" || n.FuncRef != "pkg.Fn" {
+		t.Fatalf("parse lost node fields: %+v", n)
+	}
+	out, err := OrchestrationSpecToDefinitionJSON(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec2, err := ParseOrchestrationSpec(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n2 := spec2.Graph.Nodes[0]
+	if n2.RetryMaxAttempts != 3 || n2.FallbackAgent != "a2" || n2.ReviewerAgent != "critic" ||
+		n2.ReviewRules != "approve if tests pass" || n2.FuncRef != "pkg.Fn" {
+		t.Fatalf("round-trip lost node fields: %+v", n2)
+	}
+
+	// Partial overlay (proto-shaped: missing runtime fields) must not wipe base JSON.
+	partial := OrchestrationSpec{
+		Version: 2,
+		Mode:    "sequential",
+		Graph: &EmbeddedGraphSpec{
+			Version: 1,
+			Layout:  "linear",
+			Nodes: []EmbeddedGraphNodeSpec{{
+				ID: "n1", Type: "agent", Label: "Worker", AgentID: "a1",
+			}},
+		},
+	}
+	merged, err := MergeOrchestrationSpecIntoDefinition(raw, partial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec3, err := ParseOrchestrationSpec(merged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n3 := spec3.Graph.Nodes[0]
+	if n3.RetryMaxAttempts != 3 || n3.FallbackAgent != "a2" || n3.ReviewerAgent != "critic" {
+		t.Fatalf("merge wiped runtime fields: %+v", n3)
+	}
+}
+
 func TestMergeProtectsBaseMembers(t *testing.T) {
 	// B1 fix: overlay with empty members should not overwrite base members
 	base := `{"version":2,"mode":"sequential","members":[{"agent_id":"existing","role":"coordinator","name":"已有","enabled":true,"sort_order":1}]}`

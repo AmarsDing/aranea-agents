@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/tools"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -29,7 +31,9 @@ type executorRepos interface {
 	UpsertPlanStep(ctx context.Context, ps biz.PlanStep) (biz.PlanStep, error)
 	UpsertTeamStage(ctx context.Context, ts biz.TeamStage) (biz.TeamStage, error)
 	UpsertPlanBoard(ctx context.Context, pb biz.PlanBoard) (biz.PlanBoard, error)
+	GetPlanBoard(ctx context.Context, id string) (biz.PlanBoard, error)
 	GetPlanStep(ctx context.Context, id string) (biz.PlanStep, error)
+	ListPlanStepsByPlan(ctx context.Context, planID string) ([]biz.PlanStep, error)
 	UpsertGraphStage(ctx context.Context, gs biz.GraphStage) (biz.GraphStage, error)
 	UpsertGraphNode(ctx context.Context, gn biz.GraphNode) (biz.GraphNode, error)
 	GetGraphStageByPlanBoard(ctx context.Context, planBoardID string) (biz.GraphStage, error)
@@ -72,8 +76,13 @@ type PlanExecutor struct {
 	tsSM *biz.TeamStageStateMachine
 	// C-20 fix: in-process execution lease. Prevents duplicate Team creation
 	// when the same PlanBoardCreatedEvent is delivered multiple times (replay,
-	// multi-instance, or event bus redelivery). Key: board.ID, Value: struct{}.
+	// multi-instance, or event bus redelivery). Key: board.ID, Value: *boardRunLease.
 	running sync.Map
+}
+
+// boardRunLease holds the cancel func for an in-flight PlanBoard DAG run (C-18).
+type boardRunLease struct {
+	cancel context.CancelFunc
 }
 
 // TeamDispatchMarker 标记一个 task 已派发 team。
@@ -114,6 +123,128 @@ func (e *PlanExecutor) SetTeamDispatchMarker(m TeamDispatchMarker) {
 	e.marker = m
 }
 
+// CheckPlanBoardProgress implements tools.PlanBoardOrchFallback (C-18).
+// Returns per-step progress from PlanStep rows keyed by PlanBoard.ID.
+func (e *PlanExecutor) CheckPlanBoardProgress(ctx context.Context, planBoardID string) ([]biz.TaskProgress, error) {
+	planBoardID = strings.TrimSpace(planBoardID)
+	if planBoardID == "" {
+		return nil, fmt.Errorf("plan board id is required")
+	}
+	board, err := e.repos.GetPlanBoard(ctx, planBoardID)
+	if err != nil {
+		return nil, err
+	}
+	steps, err := e.repos.ListPlanStepsByPlan(ctx, planBoardID)
+	if err != nil {
+		// Board exists but steps unavailable — return board-level status only.
+		return []biz.TaskProgress{{
+			Status:   string(board.Status),
+			Progress: planBoardProgressPct(board.Status),
+		}}, nil
+	}
+	if len(steps) == 0 {
+		return []biz.TaskProgress{{
+			Status:   string(board.Status),
+			Progress: planBoardProgressPct(board.Status),
+		}}, nil
+	}
+	out := make([]biz.TaskProgress, 0, len(steps))
+	for _, s := range steps {
+		out = append(out, biz.TaskProgress{
+			SubTaskID:   s.ID,
+			SubTaskName: s.Label,
+			Status:      mapPlanStepStatusToProgress(s.Status),
+			Progress:    planStepProgressPct(s.Status),
+		})
+	}
+	return out, nil
+}
+
+// CancelPlanBoard implements tools.PlanBoardOrchFallback (C-18).
+// Cancels the in-flight DAG run for the given PlanBoard.ID.
+func (e *PlanExecutor) CancelPlanBoard(ctx context.Context, planBoardID string) error {
+	planBoardID = strings.TrimSpace(planBoardID)
+	if planBoardID == "" {
+		return fmt.Errorf("plan board id is required")
+	}
+	if v, ok := e.running.Load(planBoardID); ok {
+		if lease, ok := v.(*boardRunLease); ok && lease.cancel != nil {
+			lease.cancel()
+			return nil
+		}
+	}
+	board, err := e.repos.GetPlanBoard(ctx, planBoardID)
+	if err != nil {
+		return err
+	}
+	if biz.IsPlanBoardTerminal(board.Status) {
+		return fmt.Errorf("plan board %s is already terminal (%s)", planBoardID, board.Status)
+	}
+	// Board exists but no active lease (e.g. not yet subscribed). Best-effort
+	// fail-early via state machine so check_progress sees a terminal status.
+	newStatus, tErr := e.pbSM.Transition(board.Status, biz.PlanBoardEventFailEarly)
+	if tErr != nil {
+		newStatus, tErr = e.pbSM.Transition(board.Status, biz.PlanBoardEventFail)
+	}
+	if tErr != nil {
+		return fmt.Errorf("cannot cancel plan board %s from status %s: %w", planBoardID, board.Status, tErr)
+	}
+	now := time.Now().UTC()
+	board.Status = newStatus
+	board.CompletedAt = &now
+	board.Version++
+	if _, err := e.repos.UpsertPlanBoard(ctx, board); err != nil {
+		return err
+	}
+	if e.seq != nil {
+		e.seq.Publish(ctx, biz.NewPlanBoardUpdatedEvent(board))
+	}
+	return nil
+}
+
+func planBoardProgressPct(status biz.PlanStatus) float64 {
+	switch status {
+	case biz.PlanStatusCompleted:
+		return 1.0
+	case biz.PlanStatusExecuting:
+		return 0.5
+	case biz.PlanStatusFailed, biz.PlanStatusPartialFailure:
+		return 1.0
+	default:
+		return 0.0
+	}
+}
+
+func planStepProgressPct(status biz.PlanStepStatus) float64 {
+	switch status {
+	case biz.PlanStepStatusCompleted, biz.PlanStepStatusFailed, biz.PlanStepStatusSkipped, biz.PlanStepStatusPartialFailure:
+		return 1.0
+	case biz.PlanStepStatusRunning:
+		return 0.5
+	default:
+		return 0.0
+	}
+}
+
+func mapPlanStepStatusToProgress(status biz.PlanStepStatus) string {
+	switch status {
+	case biz.PlanStepStatusPending:
+		return "pending"
+	case biz.PlanStepStatusRunning:
+		return "running"
+	case biz.PlanStepStatusCompleted:
+		return "completed"
+	case biz.PlanStepStatusFailed, biz.PlanStepStatusPartialFailure:
+		return "failed"
+	case biz.PlanStepStatusSkipped:
+		return "cancelled"
+	default:
+		return string(status)
+	}
+}
+
+var _ tools.PlanBoardOrchFallback = (*PlanExecutor)(nil)
+
 // TeamCompletionNotifier is implemented by TeamOrchestrators that track
 // pending team_run completions and notify waiting dispatchStep goroutines.
 // 2026-07-04 问题 4 修复：让 PlanExecutor 转发 team_run 完成通知给 TeamOrchestrator。
@@ -149,37 +280,42 @@ func (e *PlanExecutor) StartSubscription() {
 				continue
 			}
 			board := pbEv.PlanBoard
-			if len(board.Steps) == 0 {
-				e.lg.Warn("PlanBoard 无 steps，fail-closed 跳过",
+			// C-20: skip Subscribe when board is already terminal (replay / stale event).
+			if biz.IsPlanBoardTerminal(board.Status) {
+				e.lg.Warn("PlanBoard 已是终态，跳过 Subscribe",
 					loggateway.Str("plan_board_id", board.ID),
-					loggateway.Str("task_id", board.TaskID))
-				go func(b biz.PlanBoard) {
-					_ = e.Subscribe(context.Background(), b)
-				}(board)
+					loggateway.Str("task_id", board.TaskID),
+					loggateway.Str("status", string(board.Status)))
 				continue
 			}
-			// C-20 fix: execution lease — skip duplicate events for the same
-			// board. LoadOrStore is atomic: if board.ID already exists, the
-			// event is a replay/duplicate → skip. Otherwise mark as running.
-			if _, loaded := e.running.LoadOrStore(board.ID, struct{}{}); loaded {
+			// C-20 + C-18: execution lease for empty and non-empty boards alike.
+			runCtx, cancel := context.WithCancel(context.Background())
+			lease := &boardRunLease{cancel: cancel}
+			if _, loaded := e.running.LoadOrStore(board.ID, lease); loaded {
+				cancel() // unused; an existing run owns this board
 				e.lg.Warn("PlanBoard 已在执行中，跳过重复事件",
 					loggateway.Str("plan_board_id", board.ID),
 					loggateway.Str("task_id", board.TaskID))
 				continue
 			}
-			e.lg.Info("PlanExecutor 收到 PlanBoardCreatedEvent，启动 DAG 执行",
-				loggateway.Str("plan_board_id", board.ID),
-				loggateway.Str("task_id", board.TaskID),
-				loggateway.Int("steps", len(board.Steps)))
+			if len(board.Steps) == 0 {
+				e.lg.Warn("PlanBoard 无 steps，fail-closed",
+					loggateway.Str("plan_board_id", board.ID),
+					loggateway.Str("task_id", board.TaskID))
+			} else {
+				e.lg.Info("PlanExecutor 收到 PlanBoardCreatedEvent，启动 DAG 执行",
+					loggateway.Str("plan_board_id", board.ID),
+					loggateway.Str("task_id", board.TaskID),
+					loggateway.Int("steps", len(board.Steps)))
+			}
 			// Subscribe 是阻塞的，在独立 goroutine 中执行。
-			// 使用 context.Background() 因为 DAG 执行可能比原始 ctx 生命周期长。
 			// 2026-07-04 问题 4 修复：从 PlanBoard.TaskID 恢复 RootTaskActivityID
 			// 注入 ctx，让下游 buildTeamProjectMeta / publishV2TeamRunAndMemberSessions
 			// / publishV2TeamRunCompletion 都能拿到正确的 rootTaskID（之前为空字符串
 			// 导致 MemberSession.TaskID 为空，前端 getMemberSessionSteps 返回空数组）。
-			go func(b biz.PlanBoard) {
+			go func(b biz.PlanBoard, runCtx context.Context, cancel context.CancelFunc) {
 				defer e.running.Delete(b.ID) // C-20: release lease on exit
-				runCtx := context.Background()
+				defer cancel()
 				if b.TaskID != "" {
 					runCtx = agent.ContextWithRootTaskActivityID(
 						runCtx, agent.RootTaskActivityID(b.TaskID))
@@ -189,7 +325,7 @@ func (e *PlanExecutor) StartSubscription() {
 						loggateway.Str("plan_board_id", b.ID),
 						loggateway.Err(err))
 				}
-			}(board)
+			}(board, runCtx, cancel)
 		}
 	}()
 }
@@ -200,6 +336,10 @@ func (e *PlanExecutor) StartSubscription() {
 // 2026-07-04 补齐：在 DAG 执行前同步创建 GraphStage（与 PlanBoard 一对一关联）
 // 和 GraphNode 列表（每个 PlanStep 对应一个 GraphNode），并发布 v2 事件。
 func (e *PlanExecutor) Subscribe(ctx context.Context, board biz.PlanBoard) error {
+	// C-20: durable-ish guard — refuse to re-enter a board already terminal.
+	if biz.IsPlanBoardTerminal(board.Status) {
+		return fmt.Errorf("plan board %s is already terminal (%s)", board.ID, board.Status)
+	}
 	if len(board.Steps) == 0 {
 		// Fail-closed: an empty board previously returned nil and could be
 		// treated as a successful zero-work completion.

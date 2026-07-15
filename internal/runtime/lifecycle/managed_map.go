@@ -100,6 +100,26 @@ func (m *ManagedMap[K, V]) Delete(key K) {
 	delete(m.items, key)
 }
 
+// DeleteIf 原子地删除 key：仅当 pred(value) 为 true 时删除。
+// 返回是否实际删除。用于 CAS 清理（如 RunRegistry.Finish 按 runID 匹配）。
+func (m *ManagedMap[K, V]) DeleteIf(key K, pred func(V) bool) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	e, ok := m.items[key]
+	if !ok {
+		return false
+	}
+	if !e.expiresAt.IsZero() && time.Now().After(e.expiresAt) {
+		delete(m.items, key)
+		return false
+	}
+	if pred == nil || !pred(e.value) {
+		return false
+	}
+	delete(m.items, key)
+	return true
+}
+
 // LoadOrStore 原子地加载或存储：若 key 存在返回 (现有值, true)；否则存储 value 并返回 (value, false)。
 //
 // 此方法替代裸 sync.Map 的 load+store 复合操作，根治 TOCTOU 窗口。

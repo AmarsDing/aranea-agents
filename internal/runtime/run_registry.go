@@ -165,13 +165,31 @@ func (r *RunRegistry) StoreCancelable(sessionID, runID string, cancel context.Ca
 	})
 }
 
-func (r *RunRegistry) Finish(sessionID string) {
+func (r *RunRegistry) Finish(sessionID, runID string) {
 	if r == nil {
 		return
 	}
 	r.cancelMu.Lock()
 	defer r.cancelMu.Unlock()
-	r.activeRuns.Delete(sessionID)
+
+	// C-09: CAS delete — only remove the entry when runID matches (or runID
+	// is empty for backward-compat "delete any"). Prevents a stale Finish
+	// from wiping a newer run after Cancel → force-Cancel → StoreRunner.
+	deleted := r.activeRuns.DeleteIf(sessionID, func(existing activeRun) bool {
+		if runID == "" {
+			return true
+		}
+		return existing.runID == "" || existing.runID == runID
+	})
+	if !deleted {
+		if _, ok := r.activeRuns.Load(sessionID); ok {
+			// Stale Finish: a newer run occupies the slot — leave it alone.
+			if r.lg != nil {
+				r.lg.Debug("stale Finish skipped", loggateway.SessionID(sessionID), loggateway.Str("run_id", runID))
+			}
+			return
+		}
+	}
 	r.runStatuses.delete(sessionID)
 	r.pendingCancels.delete(sessionID)
 }

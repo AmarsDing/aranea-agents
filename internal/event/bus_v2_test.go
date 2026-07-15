@@ -174,3 +174,21 @@ func TestV2Bus_PublishDoesNotHoldLockAcrossBlock(t *testing.T) {
 		}
 	}
 }
+
+func TestV2Bus_PublishJournalsCritical(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	journal := event.NewCriticalJournal(dir)
+	bus := event.NewV2BusWithJournal(journal)
+	completed := biz.NewTaskCompletedEvent(biz.Task{
+		ID: "t-j", SessionID: "sess-j", Status: biz.TaskStatusCompleted,
+	})
+	bus.Publish(context.Background(), completed)
+	entries, err := journal.ReplayCritical("sess-j", time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("want 1 journaled critical event, got %d", len(entries))
+	}
+}

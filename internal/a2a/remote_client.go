@@ -114,12 +114,21 @@ func FetchRemoteAgentCard(ctx context.Context, remoteURL, authType, authConfigJS
 	if remoteURL == "" {
 		return biz.A2AAgentCard{}, apierror.BadRequest(apierror.DomainA2A, "remote_url is required")
 	}
+	// C-07: reject private/loopback/metadata URLs before any dial.
+	if err := validateRemoteURL(remoteURL); err != nil {
+		lg.Warn("A2A fetch remote card SSRF blocked", loggateway.StepID("a2a.remote_card.ssrf_blocked"), loggateway.Str("remote_url", remoteURL), loggateway.Err(err))
+		return biz.A2AAgentCard{}, apierror.BadRequest(apierror.DomainA2A, "remote_url blocked by SSRF policy").WithCause(err)
+	}
 	opts, err := ClientAuthOptions(authType, authConfigJSON)
 	if err != nil {
 		lg.Warn("A2A fetch remote card auth failed", loggateway.StepID("a2a.remote_card.auth_fail"), loggateway.Str("remote_url", remoteURL), loggateway.Err(err))
 		return biz.A2AAgentCard{}, err
 	}
-	opts = append(opts, a2aclient.WithTimeout(time.Duration(a2abiz.DefaultRemoteInvokeTimeoutSec)*time.Second))
+	timeout := time.Duration(a2abiz.DefaultRemoteInvokeTimeoutSec) * time.Second
+	opts = append(opts,
+		a2aclient.WithTimeout(timeout),
+		a2aclient.WithHTTPClient(newSSRFSafeHTTPClient(timeout)),
+	)
 	client, err := a2aclient.NewA2AClient(remoteURL, opts...)
 	if err != nil {
 		lg.Warn("A2A fetch remote card connect failed", loggateway.StepID("a2a.remote_card.connect_fail"), loggateway.Str("remote_url", remoteURL), loggateway.Err(err))

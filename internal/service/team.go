@@ -47,6 +47,9 @@ func NewTeamService(
 	teamStageReader biz.TeamStageV2Reader,
 	stepReader biz.StepV2Reader,
 ) *TeamService {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	return &TeamService{
 		uc: uc, graphUC: graphUC, agents: agents, sessions: sessions,
 		teamRunner: teamRunner, runs: runs, eventBus: eventBus, lg: lg,

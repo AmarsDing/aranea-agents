@@ -80,6 +80,9 @@ type chatRunStatusTracker struct {
 }
 
 func newChatRunStatusTracker(runs *rt.RunRegistry, sessions biz.SessionStatePort, bus biz.EventBus, lg loggateway.Logger) *chatRunStatusTracker {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	return &chatRunStatusTracker{
 		runs:       runs,
 		sessions:   sessions,
@@ -99,40 +102,80 @@ func (t *chatRunStatusTracker) SetRunStatus(ctx context.Context, sessionID, runI
 	return t.SetRunStatusWithAwait(ctx, sessionID, runID, status, errMsg, nil)
 }
 
+// criticalTerminalRunStatus reports statuses that must persist before WS publish
+// (C-11): completed / failed / cancelled / interrupted.
+func criticalTerminalRunStatus(status string) bool {
+	s := strings.TrimSpace(strings.ToLower(status))
+	switch s {
+	case "completed", "failed", "cancelled", "interrupted":
+		return true
+	default:
+		return false
+	}
+}
+
 // SetRunStatusWithAwait same as SetRunStatus but includes await metadata.
 func (t *chatRunStatusTracker) SetRunStatusWithAwait(ctx context.Context, sessionID, runID, status, errMsg string, await *AwaitStatusMeta) error {
+	from := biz.RunStateNone
+	hasCurrent := false
+	if entry, ok := t.runs.GetStatus(sessionID); ok {
+		from = biz.ParseRunState(entry.Status)
+		hasCurrent = true
+	}
+	to := biz.ParseRunState(status)
+
+	// C-10: cancelled is sticky — refuse overwrite to failed (silent no-op).
+	if hasCurrent && from == biz.RunStateCancelled && to == biz.RunStateFailed {
+		t.lg.Info("run: refuse overwrite cancelled→failed",
+			loggateway.StepID("run.cancelled_wins"),
+			loggateway.SessionID(sessionID),
+			loggateway.Str("run_id", runID))
+		return nil
+	}
+
 	// FSM validation (AS-FSM-01): reject illegal transitions.
 	// When no prior status record exists (bootstrap/crash recovery), validation
 	// is skipped to allow the first status write.
 	// TECH-DEBT(FSM): retry-from-terminal needs explicit state machine rule;
 	// current behavior rejects terminal→running transitions.
-	if t.sm != nil {
-		from := biz.RunStateNone
-		hasCurrent := false
-		if entry, ok := t.runs.GetStatus(sessionID); ok {
-			from = biz.ParseRunState(entry.Status)
-			hasCurrent = true
-		}
-		to := biz.ParseRunState(status)
-		if hasCurrent && from != to && !t.sm.CanTransition(from, to) {
-			t.lg.Warn("run: illegal state transition rejected by FSM",
-				loggateway.StepID("run.fsm_illegal"),
-				loggateway.Str("session_id", sessionID),
-				loggateway.Str("run_id", runID),
-				loggateway.Str("from", string(from)),
-				loggateway.Str("to", string(to)))
-			return apierror.BadRequest(apierror.DomainChat, "illegal run state transition: %s → %s", from, to)
-		}
+	if t.sm != nil && hasCurrent && from != to && !t.sm.CanTransition(from, to) {
+		t.lg.Warn("run: illegal state transition rejected by FSM",
+			loggateway.StepID("run.fsm_illegal"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("run_id", runID),
+			loggateway.Str("from", string(from)),
+			loggateway.Str("to", string(to)))
+		return apierror.BadRequest(apierror.DomainChat, "illegal run state transition: %s → %s", from, to)
 	}
-	t.runs.SetStatus(sessionID, runID, status, errMsg)
+
 	bind, _ := t.LoadBinding(sessionID)
-	if await != nil {
-		PublishRunStatusFull(t.bus, sessionID, runID, status, errMsg, await, bind.sessionRunID, bind.turnID)
-	} else {
-		PublishRunStatusFull(t.bus, sessionID, runID, status, errMsg, nil, bind.sessionRunID, bind.turnID)
+	publish := func() {
+		if await != nil {
+			PublishRunStatusFull(t.bus, sessionID, runID, status, errMsg, await, bind.sessionRunID, bind.turnID)
+		} else {
+			PublishRunStatusFull(t.bus, sessionID, runID, status, errMsg, nil, bind.sessionRunID, bind.turnID)
+		}
 	}
-	// C-11 fix: log on persist failure so operators can detect DB/memory
-	// divergence (WS already published; on restart the old status is restored).
+
+	// C-11: terminal statuses persist FIRST; on persist error do not publish WS.
+	if criticalTerminalRunStatus(status) {
+		if err := t.PersistRunStatus(ctx, sessionID, runID, status, errMsg); err != nil {
+			t.lg.Warn("persist terminal run status failed; skipping WS publish",
+				loggateway.StepID("run.persist_failed"),
+				loggateway.SessionID(sessionID),
+				loggateway.Str("run_id", runID),
+				loggateway.Str("status", status),
+				loggateway.Err(err))
+			return err
+		}
+		t.runs.SetStatus(sessionID, runID, status, errMsg)
+		publish()
+		return nil
+	}
+
+	// Non-terminal: best-effort publish then persist.
+	t.runs.SetStatus(sessionID, runID, status, errMsg)
+	publish()
 	if err := t.PersistRunStatus(ctx, sessionID, runID, status, errMsg); err != nil {
 		t.lg.Warn("persist run status failed; DB/memory may diverge on restart",
 			loggateway.StepID("run.persist_failed"),

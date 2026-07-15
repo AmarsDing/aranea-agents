@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -479,6 +480,8 @@ func (d *ToolDecorator) toolName() string {
 // cacheScopeFromCtx returns an identity scope for tool-result caching.
 // Without an Invocation Session, caching is disabled (ok=false) so unscoped
 // calls cannot poison or read a shared cross-tenant bucket.
+// C-03: scope includes workspace ID so results never leak across tenants
+// that share the same session/user identifiers.
 func cacheScopeFromCtx(ctx context.Context) (scope string, ok bool) {
 	inv, has := trpcagent.InvocationFromContext(ctx)
 	if !has || inv == nil || inv.Session == nil {
@@ -488,7 +491,8 @@ func cacheScopeFromCtx(ctx context.Context) (scope string, ok bool) {
 	if strings.TrimSpace(s.ID) == "" && strings.TrimSpace(s.UserID) == "" {
 		return "", false
 	}
-	return s.AppName + "\x00" + s.UserID + "\x00" + s.ID, true
+	wsID := workspace.IDFromContext(ctx)
+	return wsID + "\x00" + s.AppName + "\x00" + s.UserID + "\x00" + s.ID, true
 }
 
 func (d *ToolDecorator) cacheKey(scope string, jsonArgs []byte) string {

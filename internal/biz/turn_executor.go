@@ -74,8 +74,9 @@ type RunRegistry interface {
 	StoreCancelable(sessionID, runID string, cancel context.CancelFunc)
 	// ActiveRunner returns the runner and cancel for an active run.
 	ActiveRunner(sessionID string) (runID string, cancel context.CancelFunc, ok bool)
-	// Finish removes the active run entry for a session.
-	Finish(sessionID string)
+	// Finish removes the active run entry for a session when runID matches
+	// (or runID is empty for backward-compat delete-any).
+	Finish(sessionID, runID string)
 }
 
 // TurnTracer provides structured tracing for turn lifecycle events.

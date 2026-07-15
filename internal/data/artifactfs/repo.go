@@ -225,22 +225,73 @@ func (r *FSArtifactRepo) LoadMetas(_ context.Context, ids []string, version int)
 // store a relative URI (OUT-05 / ART-03); legacy entries written before this
 // change stored either an absolute path or a path that already includes the
 // storage root (e.g. "data/artifacts/session/..."). We detect and handle all
-// three cases so existing data stays readable. The result is always sanitized
-// against r.root.
+// three cases so existing data stays readable. Absolute paths outside the
+// repo root after EvalSymlinks are rejected (C-02) and fall back to the
+// canonical under-root location.
 func (r *FSArtifactRepo) resolveBinPath(meta artifactMeta) string {
+	fallback := filepath.Join(r.root, meta.SessionID, fmt.Sprintf("%s-v%d.bin", meta.ID, meta.Version))
 	uri := strings.TrimSpace(meta.StorageURI)
 	if uri == "" {
-		return filepath.Join(r.root, meta.SessionID, fmt.Sprintf("%s-v%d.bin", meta.ID, meta.Version))
+		return fallback
 	}
+
+	var candidate string
 	if filepath.IsAbs(uri) {
-		return uri
+		candidate = uri
+	} else {
+		uriOS := filepath.FromSlash(uri)
+		rootOS := filepath.FromSlash(r.root)
+		if strings.HasPrefix(uriOS, rootOS+string(os.PathSeparator)) {
+			candidate = uriOS
+		} else {
+			candidate = filepath.Join(r.root, uriOS)
+		}
 	}
-	uriOS := filepath.FromSlash(uri)
-	rootOS := filepath.FromSlash(r.root)
-	if strings.HasPrefix(uriOS, rootOS+string(os.PathSeparator)) {
-		return uri
+
+	abs, err := filepath.Abs(filepath.Clean(candidate))
+	if err != nil {
+		return fallback
 	}
-	return filepath.Join(r.root, uriOS)
+	if eval, err := filepath.EvalSymlinks(abs); err == nil && eval != "" {
+		abs = eval
+	} else if err != nil {
+		if _, statErr := os.Lstat(abs); statErr == nil {
+			// Exists but cannot resolve symlinks — reject (fail closed).
+			return fallback
+		}
+		// Path may not exist yet; still enforce root containment on Abs path.
+	}
+
+	rootAbs, err := filepath.Abs(filepath.Clean(r.root))
+	if err != nil {
+		return fallback
+	}
+	if evalRoot, err := filepath.EvalSymlinks(rootAbs); err == nil && evalRoot != "" {
+		rootAbs = evalRoot
+	}
+	if !artifactPathUnderRoot(abs, rootAbs) {
+		return fallback
+	}
+	return abs
+}
+
+func artifactPathUnderRoot(path, root string) bool {
+	path = filepath.Clean(path)
+	root = filepath.Clean(root)
+	sep := string(filepath.Separator)
+	rootWithSep := root
+	if !strings.HasSuffix(rootWithSep, sep) {
+		rootWithSep += sep
+	}
+	pathWithSep := path
+	if !strings.HasSuffix(pathWithSep, sep) {
+		pathWithSep += sep
+	}
+	if filepath.Separator == '\\' {
+		return strings.HasPrefix(strings.ToLower(pathWithSep), strings.ToLower(rootWithSep)) ||
+			strings.EqualFold(path, root)
+	}
+	return strings.HasPrefix(pathWithSep, rootWithSep) || path == root
 }
 
 // List returns artifact metadata for a session (no payload).

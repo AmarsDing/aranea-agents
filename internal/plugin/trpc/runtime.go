@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
@@ -22,11 +23,14 @@ type runtimeEntry struct {
 	modelRouter       *ModelRouterConfig
 	costGuard         *CostGuardConfig
 	confirmationGuard *ConfirmationGuardConfig
+	workspaceID       string
 }
 
 type Runtime struct {
-	mu             sync.RWMutex
-	active         []runtimeEntry
+	mu sync.RWMutex
+	// activeByWS partitions enabled plugins by workspace ID.
+	// Key "" = shared/legacy plugins visible to every workspace.
+	activeByWS     map[string][]runtimeEntry
 	stats          StatsRecorder
 	notifier       *HookNotifier
 	retryWorker    *HookDeliveryRetryWorker
@@ -39,9 +43,10 @@ type Runtime struct {
 
 func NewRuntime(stats StatsRecorder, lg loggateway.Logger) *Runtime {
 	return &Runtime{
-		stats:   stats,
-		budgets: NewCostGuardBudgetRegistry(lg),
-		lg:      lg,
+		activeByWS: make(map[string][]runtimeEntry),
+		stats:      stats,
+		budgets:    NewCostGuardBudgetRegistry(lg),
+		lg:         lg,
 	}
 }
 
@@ -140,12 +145,18 @@ func (rt *Runtime) SetMonitorBus(monitorBus contract.MonitorBus) {
 	InitHookLogger(monitorBus, rt.lg)
 }
 
-func (rt *Runtime) Apply(_ context.Context, plugins []biz.Plugin) {
+// Apply hot-reloads enabled plugins into workspace-partitioned storage (C-06).
+//
+// System workspace context replaces the entire partition map (full snapshot).
+// Tenant context merges by plugin.WorkspaceID and only touches partitions present
+// in the batch (plus clears the caller's partition when empty), so two workspaces
+// cannot overwrite each other.
+func (rt *Runtime) Apply(ctx context.Context, plugins []biz.Plugin) {
 	rt.mu.RLock()
 	monitorBus := rt.monitorBus
 	stats := rt.stats
 	rt.mu.RUnlock()
-	built := make([]runtimeEntry, 0, len(plugins))
+	byWS := make(map[string][]runtimeEntry)
 	for _, p := range plugins {
 		if !p.Enabled {
 			continue
@@ -154,6 +165,7 @@ func (rt *Runtime) Apply(_ context.Context, plugins []biz.Plugin) {
 		if ap == nil {
 			continue
 		}
+		wsID := strings.TrimSpace(p.WorkspaceID)
 		e := runtimeEntry{
 			plugin:            ap.plugin,
 			scope:             strings.TrimSpace(p.Scope),
@@ -164,12 +176,32 @@ func (rt *Runtime) Apply(_ context.Context, plugins []biz.Plugin) {
 			modelRouter:       ap.modelRouter,
 			costGuard:         ap.costGuard,
 			confirmationGuard: ap.confirmationGuard,
+			workspaceID:       wsID,
 		}
-		built = append(built, e)
+		byWS[wsID] = append(byWS[wsID], e)
 	}
 	rt.mu.Lock()
-	rt.active = built
-	rt.mu.Unlock()
+	defer rt.mu.Unlock()
+	if rt.activeByWS == nil {
+		rt.activeByWS = make(map[string][]runtimeEntry)
+	}
+	if workspace.IsSystem(ctx) {
+		rt.activeByWS = byWS
+		if rt.activeByWS == nil {
+			rt.activeByWS = make(map[string][]runtimeEntry)
+		}
+		return
+	}
+	if ws, ok := workspace.FromContext(ctx); ok && ws != workspace.SystemWorkspaceID {
+		// Tenant reload (List = shared + own): refresh those two partitions only.
+		rt.activeByWS[""] = byWS[""]
+		rt.activeByWS[ws] = byWS[ws]
+		return
+	}
+	// No workspace on ctx: merge partitions present in the batch (tests / legacy).
+	for wsID, entries := range byWS {
+		rt.activeByWS[wsID] = entries
+	}
 }
 
 // PluginMatchesScope reports whether a plugin scope applies to the given agent ID.
@@ -186,12 +218,33 @@ func PluginMatchesScope(scope, agentID string) bool {
 	return scope == agentID
 }
 
-// PluginsForAgent returns active plugins for the agent.
-func (rt *Runtime) PluginsForAgent(agentID string) []trpcplugin.Plugin {
+// entriesVisibleTo returns shared ("") entries plus the caller's workspace entries.
+// System / empty workspaceID returns every partition (admin / legacy callers).
+func (rt *Runtime) entriesVisibleTo(workspaceID string) []runtimeEntry {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" || workspaceID == workspace.SystemWorkspaceID {
+		var all []runtimeEntry
+		for _, entries := range rt.activeByWS {
+			all = append(all, entries...)
+		}
+		return all
+	}
+	shared := rt.activeByWS[""]
+	own := rt.activeByWS[workspaceID]
+	out := make([]runtimeEntry, 0, len(shared)+len(own))
+	out = append(out, shared...)
+	out = append(out, own...)
+	return out
+}
+
+// PluginsForAgent returns active plugins for the agent within workspace visibility (C-06).
+// Shared plugins (workspace="") are always included; tenant plugins only when workspaceID matches.
+func (rt *Runtime) PluginsForAgent(agentID, workspaceID string) []trpcplugin.Plugin {
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
-	out := make([]trpcplugin.Plugin, 0, len(rt.active))
-	for _, e := range rt.active {
+	entries := rt.entriesVisibleTo(workspaceID)
+	out := make([]trpcplugin.Plugin, 0, len(entries))
+	for _, e := range entries {
 		if PluginMatchesScope(e.scope, agentID) {
 			out = append(out, e.plugin)
 		}
@@ -203,12 +256,14 @@ func (rt *Runtime) PluginsForAgent(agentID string) []trpcplugin.Plugin {
 func (rt *Runtime) ModelRouterConfigForAgent(agentID string) (ModelRouterConfig, bool) {
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
-	for _, e := range rt.active {
-		if e.key != "model_router" || e.modelRouter == nil {
-			continue
-		}
-		if PluginMatchesScope(e.scope, agentID) {
-			return *e.modelRouter, true
+	for _, entries := range rt.activeByWS {
+		for _, e := range entries {
+			if e.key != "model_router" || e.modelRouter == nil {
+				continue
+			}
+			if PluginMatchesScope(e.scope, agentID) {
+				return *e.modelRouter, true
+			}
 		}
 	}
 	return ModelRouterConfig{}, false
@@ -230,12 +285,14 @@ func (rt *Runtime) SetCostGuardUsageRepo(repo biz.PluginCostGuardUsageRepo) {
 func (rt *Runtime) CostGuardConfigForAgent(agentID string) (CostGuardConfig, bool) {
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
-	for _, e := range rt.active {
-		if e.key != "cost_guard" || e.costGuard == nil {
-			continue
-		}
-		if PluginMatchesScope(e.scope, agentID) {
-			return *e.costGuard, true
+	for _, entries := range rt.activeByWS {
+		for _, e := range entries {
+			if e.key != "cost_guard" || e.costGuard == nil {
+				continue
+			}
+			if PluginMatchesScope(e.scope, agentID) {
+				return *e.costGuard, true
+			}
 		}
 	}
 	return CostGuardConfig{}, false
@@ -245,24 +302,29 @@ func (rt *Runtime) CostGuardConfigForAgent(agentID string) (CostGuardConfig, boo
 func (rt *Runtime) ConfirmationGuardConfigForAgent(agentID string) (ConfirmationGuardConfig, bool) {
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
-	for _, e := range rt.active {
-		if e.key != "confirmation_guard" || e.confirmationGuard == nil {
-			continue
-		}
-		if PluginMatchesScope(e.scope, agentID) {
-			return *e.confirmationGuard, true
+	for _, entries := range rt.activeByWS {
+		for _, e := range entries {
+			if e.key != "confirmation_guard" || e.confirmationGuard == nil {
+				continue
+			}
+			if PluginMatchesScope(e.scope, agentID) {
+				return *e.confirmationGuard, true
+			}
 		}
 	}
 	return ConfirmationGuardConfig{}, false
 }
 
-// Plugins returns all active plugins (no scope filter). Prefer PluginsForAgent at turn time.
+// Plugins returns all active plugins across all workspaces (no scope filter).
+// Prefer PluginsForAgent at turn time.
 func (rt *Runtime) Plugins() []trpcplugin.Plugin {
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
-	out := make([]trpcplugin.Plugin, len(rt.active))
-	for i, e := range rt.active {
-		out[i] = e.plugin
+	var out []trpcplugin.Plugin
+	for _, entries := range rt.activeByWS {
+		for _, e := range entries {
+			out = append(out, e.plugin)
+		}
 	}
 	return out
 }

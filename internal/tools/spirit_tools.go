@@ -16,8 +16,6 @@ import (
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 
 	"aranea-agents/pkg/apierror"
-
-	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------
@@ -157,7 +155,15 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			if taskPlan.Strategy == biz.StrategyDirect {
 				// 2026-07-05 Step 3: direct 路径也发布 v2 PlanBoard（如有 SubTasks），
 				// allocPlan=nil 表示无 agent 分配，PlanStep.AgentKeys 为空。
-				deps.planner.PublishV2Board(ctx, taskPlan, nil, "")
+				// C-18: PublishV2Board returns (PlanBoard, error) — do not ignore.
+				board, pubErr := deps.planner.PublishV2Board(ctx, taskPlan, nil, "")
+				if pubErr != nil {
+					publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "publish_board", pubErr.Error())
+					return out, pubErr
+				}
+				if board.ID != "" {
+					out.OrchestrationID = board.ID
+				}
 				// B-04 fix: do NOT publish orchestration_completed here — the DAG
 				// hasn't executed yet. PlanExecutor.publishPlanBoardTerminal will
 				// emit orchestration_completed/orchestration_failed when the DAG
@@ -186,10 +192,16 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			// 2026-07-05 Step 3: Phase 2 之后发布 v2 PlanBoard，使 PlanStep.AgentKeys
 			// 能从 allocPlan.Allocations 填充。PlanExecutor 订阅 PlanBoardCreatedEvent
 			// 后读取 PlanStep.AgentKeys 组建 team，避免查 DB 取错 agent。
-			deps.planner.PublishV2Board(ctx, taskPlan, allocPlan, "")
+			// C-18: PlanBoard.ID is the canonical orchestration_id (matches
+			// PlanExecutor terminal meta.orchestration_id).
+			board, pubErr := deps.planner.PublishV2Board(ctx, taskPlan, allocPlan, "")
+			if pubErr != nil {
+				publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "publish_board", pubErr.Error())
+				return out, pubErr
+			}
 
-			// Phase 3: Orchestrate
-			handle, orchStep, orchErr := executeOrchestratePhase(ctx, taskPlan, allocPlan, deps)
+			// Phase 3: Orchestrate (delegated to PlanExecutor; ID = PlanBoard.ID)
+			handle, orchStep, orchErr := executeOrchestratePhase(ctx, taskPlan, allocPlan, board.ID, deps)
 			out.Steps = append(out.Steps, orchStep)
 			if orchErr != nil {
 				publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "orchestrate", orchErr.Error())
@@ -293,16 +305,31 @@ func executeAllocatePhase(ctx context.Context, taskPlan *biz.TaskPlan, deps plan
 // 设计依据：docs/superpowers/plans/2026-07-05-fix-double-execution-plan-step-agent-keys.md
 // 原因：TaskOrchestratorImpl.orchestrateDAG 会与 PlanExecutor 双重执行，
 // 且不调用 MarkTeamDispatched，破坏 system-push 模式的 Task 延迟关闭机制。
-func executeOrchestratePhase(ctx context.Context, taskPlan *biz.TaskPlan, allocPlan *biz.AllocationPlan, deps planAndExecuteDeps) (*biz.OrchestrationHandle, biztypes.OrchestrationStepRecord, error) {
+//
+// C-18: planBoardID is the canonical orchestration_id (PlanBoard.ID). Must not
+// mint a separate orch_* UUID — check_progress/cancel and PlanExecutor terminal
+// events all key off the same ID.
+func executeOrchestratePhase(ctx context.Context, taskPlan *biz.TaskPlan, allocPlan *biz.AllocationPlan, planBoardID string, deps planAndExecuteDeps) (*biz.OrchestrationHandle, biztypes.OrchestrationStepRecord, error) {
 	start := time.Now().UTC()
+	planBoardID = strings.TrimSpace(planBoardID)
+	if planBoardID == "" {
+		return nil, biztypes.OrchestrationStepRecord{
+			StepName:   "orchestrate",
+			Status:     "failed",
+			Error:      "plan board id is required (PublishV2Board produced no board)",
+			StartedAt:  start,
+			FinishedAt: time.Now().UTC(),
+		}, apierror.Internal(apierror.DomainSpirit, "plan board id is required for orchestration")
+	}
 	deps.lg.Info("plan_and_execute: orchestration delegated to PlanExecutor",
 		loggateway.StepID("spirit.plan_and_execute.orch_delegated"),
 		loggateway.Str("plan_id", taskPlan.ID),
+		loggateway.Str("plan_board_id", planBoardID),
 		loggateway.Str("spirit_session_id", taskPlan.SpiritSessionID),
 		loggateway.Int("subtask_count", len(taskPlan.SubTasks)),
 	)
 	handle := &biz.OrchestrationHandle{
-		ID:              "orch_" + uuid.NewString()[:12],
+		ID:              planBoardID,
 		TaskPlanID:      taskPlan.ID,
 		AllocationID:    allocPlan.ID,
 		SpiritSessionID: taskPlan.SpiritSessionID,
@@ -354,8 +381,16 @@ type CheckOrchestrationProgressOutput struct {
 	Tasks           []TaskProgressView `json:"tasks"`
 }
 
+// PlanBoardOrchFallback resolves progress/cancel by PlanBoard.ID when the
+// legacy OrchestrationRepository has no row (C-18: canonical ID is PlanBoard.ID).
+type PlanBoardOrchFallback interface {
+	CheckPlanBoardProgress(ctx context.Context, planBoardID string) ([]biz.TaskProgress, error)
+	CancelPlanBoard(ctx context.Context, planBoardID string) error
+}
+
 // NewCheckOrchestrationProgressTool creates the check_progress tool.
-func NewCheckOrchestrationProgressTool(orchestrator biz.TaskOrchestratorPort, lg loggateway.Logger) *trpcfunction.FunctionTool[CheckOrchestrationProgressInput, CheckOrchestrationProgressOutput] {
+// boards may be nil; when set, a PlanBoard.ID lookup is used if orchestrator.GetByID fails.
+func NewCheckOrchestrationProgressTool(orchestrator biz.TaskOrchestratorPort, boards PlanBoardOrchFallback, lg loggateway.Logger) *trpcfunction.FunctionTool[CheckOrchestrationProgressInput, CheckOrchestrationProgressOutput] {
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, input CheckOrchestrationProgressInput) (CheckOrchestrationProgressOutput, error) {
 			orchestrationID := strings.TrimSpace(input.OrchestrationID)
@@ -364,6 +399,11 @@ func NewCheckOrchestrationProgressTool(orchestrator biz.TaskOrchestratorPort, lg
 			}
 
 			progress, err := orchestrator.CheckProgress(ctx, orchestrationID)
+			if err != nil && boards != nil {
+				if pbProgress, pbErr := boards.CheckPlanBoardProgress(ctx, orchestrationID); pbErr == nil {
+					progress, err = pbProgress, nil
+				}
+			}
 			if err != nil {
 				return CheckOrchestrationProgressOutput{}, apierror.Internal(apierror.DomainSpirit, "check progress: "+err.Error())
 			}
@@ -385,7 +425,7 @@ func NewCheckOrchestrationProgressTool(orchestrator biz.TaskOrchestratorPort, lg
 			}, nil
 		},
 		trpcfunction.WithName("check_progress"),
-		trpcfunction.WithDescription("查询编排执行进度。基于 orchestration_id 查询。返回编排状态和每个子任务的进度（含 agent_key、status、progress 百分比）。"),
+		trpcfunction.WithDescription("查询编排执行进度。基于 orchestration_id（= PlanBoard.ID）查询。返回编排状态和每个子任务的进度（含 agent_key、status、progress 百分比）。"),
 	)
 }
 
@@ -437,7 +477,8 @@ type CancelOrchestrationOutput struct {
 }
 
 // NewCancelOrchestrationTool creates the cancel_orchestration tool.
-func NewCancelOrchestrationTool(orchestrator biz.TaskOrchestratorPort, lg loggateway.Logger) *trpcfunction.FunctionTool[CancelOrchestrationInput, CancelOrchestrationOutput] {
+// boards may be nil; when set, cancel falls back to PlanBoard.ID if orchestrator.Cancel fails.
+func NewCancelOrchestrationTool(orchestrator biz.TaskOrchestratorPort, boards PlanBoardOrchFallback, lg loggateway.Logger) *trpcfunction.FunctionTool[CancelOrchestrationInput, CancelOrchestrationOutput] {
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, input CancelOrchestrationInput) (CancelOrchestrationOutput, error) {
 			orchestrationID := strings.TrimSpace(input.OrchestrationID)
@@ -445,13 +486,18 @@ func NewCancelOrchestrationTool(orchestrator biz.TaskOrchestratorPort, lg loggat
 				return CancelOrchestrationOutput{}, apierror.BadRequest(apierror.DomainSpirit, "orchestration_id is required")
 			}
 			err := orchestrator.Cancel(ctx, orchestrationID)
+			if err != nil && boards != nil {
+				if pbErr := boards.CancelPlanBoard(ctx, orchestrationID); pbErr == nil {
+					err = nil
+				}
+			}
 			if err != nil {
 				return CancelOrchestrationOutput{}, err
 			}
 			return CancelOrchestrationOutput{OrchestrationID: orchestrationID, Status: "cancelled"}, nil
 		},
 		trpcfunction.WithName("cancel_orchestration"),
-		trpcfunction.WithDescription("取消正在运行的编排。基于 orchestration_id 取消。取消后释放资源。"),
+		trpcfunction.WithDescription("取消正在运行的编排。orchestration_id 为 PlanBoard.ID。取消后释放资源。"),
 	)
 }
 

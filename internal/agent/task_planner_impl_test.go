@@ -331,3 +331,56 @@ func TestDetectTeamCount(t *testing.T) {
 	}
 }
 
+// fakeSeqPublisher captures v2 events for PublishV2Board tests.
+type fakeSeqPublisher struct {
+	events []biz.Event
+}
+
+func (f *fakeSeqPublisher) Publish(_ context.Context, e biz.Event) {
+	f.events = append(f.events, e)
+}
+
+// TestPublishV2Board_ReturnsPlanBoardID (C-18) verifies PublishV2Board returns
+// the created PlanBoard with a pb_ ID.
+func TestPublishV2Board_ReturnsPlanBoardID(t *testing.T) {
+	seq := &fakeSeqPublisher{}
+	impl := &taskPlannerImpl{lg: loggateway.NewNoop(), seq: seq}
+	plan := &biz.TaskPlan{
+		ID:              "tp-pub",
+		SpiritSessionID: "spirit-1",
+		Strategy:        biz.StrategyDAG,
+		SubTasks: []biz.SubTask{
+			{ID: "st-1", Name: "A"},
+			{ID: "st-2", Name: "B", DependsOn: []string{"st-1"}},
+		},
+	}
+	board, err := impl.PublishV2Board(context.Background(), plan, nil, "")
+	if err != nil {
+		t.Fatalf("PublishV2Board: %v", err)
+	}
+	if board.ID == "" || !strings.HasPrefix(board.ID, "pb_") {
+		t.Fatalf("board.ID = %q, want pb_ prefix", board.ID)
+	}
+	if len(board.Steps) != 2 {
+		t.Fatalf("steps = %d, want 2", len(board.Steps))
+	}
+	if len(seq.events) == 0 {
+		t.Fatal("expected PlanBoard/GraphStage events to be published")
+	}
+}
+
+// TestPublishV2Board_EmptySubTasksReturnsZero (C-18) verifies skipped publish
+// returns a zero PlanBoard without error.
+func TestPublishV2Board_EmptySubTasksReturnsZero(t *testing.T) {
+	impl := &taskPlannerImpl{lg: loggateway.NewNoop(), seq: &fakeSeqPublisher{}}
+	board, err := impl.PublishV2Board(context.Background(), &biz.TaskPlan{
+		ID: "tp", SpiritSessionID: "s",
+	}, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if board.ID != "" {
+		t.Fatalf("expected empty board ID when SubTasks empty, got %q", board.ID)
+	}
+}
+

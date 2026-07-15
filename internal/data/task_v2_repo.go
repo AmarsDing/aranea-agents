@@ -7,7 +7,9 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/internal/data/ent/predicate"
 	"aranea-agents/internal/data/ent/taskv2"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -31,7 +33,13 @@ func (r *taskV2Repo) GetTask(ctx context.Context, id string) (biz.Task, error) {
 	if r == nil || r.data == nil {
 		return biz.Task{}, fmt.Errorf("task v2 repo: database not configured")
 	}
-	row, err := r.data.RW().Read(ctx).TaskV2.Get(ctx, id)
+	preds := []predicate.TaskV2{taskv2.IDEQ(id)}
+	if wsPred := taskV2WorkspacePredicate(ctx); wsPred != nil {
+		preds = append(preds, wsPred)
+	}
+	row, err := r.data.RW().Read(ctx).TaskV2.Query().
+		Where(preds...).
+		Only(ctx)
 	if err != nil {
 		return biz.Task{}, entErrToBizErr(err, "TASK_V2")
 	}
@@ -43,8 +51,12 @@ func (r *taskV2Repo) ListTasksBySession(ctx context.Context, sessionID string) (
 	if r == nil || r.data == nil {
 		return nil, fmt.Errorf("task v2 repo: database not configured")
 	}
+	preds := []predicate.TaskV2{taskv2.SessionIDEQ(sessionID)}
+	if wsPred := taskV2WorkspacePredicate(ctx); wsPred != nil {
+		preds = append(preds, wsPred)
+	}
 	rows, err := r.data.RW().Read(ctx).TaskV2.Query().
-		Where(taskv2.SessionIDEQ(sessionID)).
+		Where(preds...).
 		Order(ent.Asc(taskv2.FieldSeq)).
 		All(ctx)
 	if err != nil {
@@ -53,10 +65,26 @@ func (r *taskV2Repo) ListTasksBySession(ctx context.Context, sessionID string) (
 	return entTasksV2ToBiz(rows), nil
 }
 
+// taskV2WorkspacePredicate returns a workspace visibility predicate for tasks_v2 (C-25).
+// System callers see all; default workspace also sees legacy empty workspace_id.
+func taskV2WorkspacePredicate(ctx context.Context) predicate.TaskV2 {
+	if workspace.IsSystem(ctx) {
+		return nil
+	}
+	callerWS := workspace.IDFromContext(ctx)
+	if callerWS == workspace.DefaultWorkspaceID {
+		return taskv2.WorkspaceIDIn(callerWS, "")
+	}
+	return taskv2.WorkspaceIDEQ(callerWS)
+}
+
 // CreateTask inserts a new Task with the caller's claimed Version.
 func (r *taskV2Repo) CreateTask(ctx context.Context, t biz.Task) (biz.Task, error) {
 	if r == nil || r.data == nil {
 		return biz.Task{}, fmt.Errorf("task v2 repo: database not configured")
+	}
+	if t.WorkspaceID == "" && !workspace.IsSystem(ctx) {
+		t.WorkspaceID = workspace.IDFromContext(ctx)
 	}
 	b := r.data.RW().Write(ctx).TaskV2.Create().
 		SetID(t.ID).
@@ -151,6 +179,9 @@ func (r *taskV2Repo) UpsertTask(ctx context.Context, t biz.Task) (biz.Task, erro
 		return entTaskV2ToBiz(existing), nil
 	}
 	// 2) Insert if not exists (or version guard rejected the update).
+	if t.WorkspaceID == "" && !workspace.IsSystem(ctx) {
+		t.WorkspaceID = workspace.IDFromContext(ctx)
+	}
 	cb := r.data.RW().Write(ctx).TaskV2.Create().
 		SetID(t.ID).
 		SetSessionID(t.SessionID).

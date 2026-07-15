@@ -12,14 +12,15 @@ import (
 	mcpconfig "aranea-agents/internal/mcp/config"
 	"aranea-agents/internal/skill/storage"
 	"aranea-agents/internal/tools"
-	"aranea-agents/internal/tools/memory"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
+	"aranea-agents/internal/tools/memory"
 	tooltrpc "aranea-agents/internal/tools/trpc"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
-	trpcmcpbroker "trpc.group/trpc-go/trpc-agent-go/tool/mcpbroker"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
+	trpcmcpbroker "trpc.group/trpc-go/trpc-agent-go/tool/mcpbroker"
 )
 
 func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (*tooltrpc.AssembledToolsets, error) {
@@ -258,10 +259,15 @@ func applyToolWorkspaceDirs(ctx context.Context, ag biz.Agent, deps TRPCBuilderD
 		shellDir := strings.TrimSpace(cfg.ShellExecDir)
 		if shellDir == "" {
 			cfg.ShellExecDir = root
-		} else if err := ensureToolWorkspaceDir(shellDir); err != nil {
-			deps.Logger().Warn("Shell 工作目录无效，回退到统一工作区",
-				loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Str("configured_dir", shellDir), loggateway.Err(err))
-			cfg.ShellExecDir = root
+		} else {
+			shellRoot, shellErr := resolveAgentFilesystemDir(ctx, ag, deps, shellDir)
+			if shellErr != nil {
+				deps.Logger().Warn("Shell 工作目录无效，回退到统一工作区",
+					loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Str("configured_dir", shellDir), loggateway.Err(shellErr))
+				cfg.ShellExecDir = root
+			} else {
+				cfg.ShellExecDir = shellRoot
+			}
 		}
 	}
 	if cfg.ClaudeCode && strings.TrimSpace(cfg.ClaudeCodeDir) == "" {
@@ -274,16 +280,52 @@ func resolveToolWorkspaceRoot(ctx context.Context, ag biz.Agent, deps TRPCBuilde
 	return resolveAgentFilesystemDir(ctx, ag, deps, configured)
 }
 
+// resolveAgentFilesystemDir returns the agent tool filesystem root.
+// Canonical layout: {base}/workspace/{workspaceID}/{agentKey}
+// Configured absolute (or any) paths must stay under the tenant root after
+// Abs+EvalSymlinks; host paths outside the root are rejected and fall back
+// to the safe agent root (C-04).
 func resolveAgentFilesystemDir(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, configured string) (string, error) {
+	base := toolWorkspaceBase(ctx, deps)
+	wsID := workspace.IDFromContext(ctx)
+	if strings.TrimSpace(wsID) == "" {
+		wsID = workspace.DefaultWorkspaceID
+	}
+	tenantRoot := filepath.Join(base, "workspace", wsID)
+	agentKey := strings.TrimSpace(ag.AgentKey)
+	safeRoot := tenantRoot
+	if agentKey != "" {
+		safeRoot = filepath.Join(tenantRoot, agentKey)
+	}
+
 	configured = strings.TrimSpace(configured)
 	if configured != "" {
-		if err := ensureToolWorkspaceDir(configured); err != nil {
-			deps.Logger().Warn("工具工作区路径无效，回退到默认目录",
-				loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Str("configured_dir", configured), loggateway.Err(err))
+		contained, err := containPathUnderRoot(configured, tenantRoot)
+		if err != nil {
+			deps.Logger().Warn("工具工作区路径越界或无效，回退到安全根目录",
+				loggateway.StepID("agent.tool_build"),
+				loggateway.Str("agent_id", ag.ID),
+				loggateway.Str("configured_dir", configured),
+				loggateway.Str("tenant_root", tenantRoot),
+				loggateway.Err(err))
+		} else if err := ensureFilesystemWorkspaceDir(contained); err != nil {
+			deps.Logger().Warn("工具工作区路径无效，回退到安全根目录",
+				loggateway.StepID("agent.tool_build"),
+				loggateway.Str("agent_id", ag.ID),
+				loggateway.Str("configured_dir", configured),
+				loggateway.Err(err))
 		} else {
-			return configured, nil
+			return contained, nil
 		}
 	}
+
+	if err := ensureFilesystemWorkspaceDir(safeRoot); err != nil {
+		return "", err
+	}
+	return safeRoot, nil
+}
+
+func toolWorkspaceBase(ctx context.Context, deps TRPCBuilderDeps) string {
 	base := "."
 	if deps.Sys != nil {
 		if st, err := deps.Sys.Get(ctx); err == nil && strings.TrimSpace(st.RootDirectory) != "" {
@@ -291,19 +333,67 @@ func resolveAgentFilesystemDir(ctx context.Context, ag biz.Agent, deps TRPCBuild
 		}
 	}
 	if v := strings.TrimSpace(os.Getenv("ARANEA_WORKSPACE_ROOT")); v != "" {
-		base = storage.Absolute(v)
-	} else if v := strings.TrimSpace(os.Getenv("WORKSPACE_ROOT")); v != "" {
-		base = storage.Absolute(v)
+		return storage.Absolute(v)
 	}
-	agentKey := strings.TrimSpace(ag.AgentKey)
-	dir := filepath.Join(base, "workspace")
-	if agentKey != "" {
-		dir = filepath.Join(dir, agentKey)
+	if v := strings.TrimSpace(os.Getenv("WORKSPACE_ROOT")); v != "" {
+		return storage.Absolute(v)
 	}
-	if err := ensureToolWorkspaceDir(dir); err != nil {
-		return "", err
+	return storage.Absolute(base)
+}
+
+// containPathUnderRoot Abs+EvalSymlinks candidate and requires it under root.
+// Rejects host absolute paths that escape the tenant/agent sandbox (C-04).
+func containPathUnderRoot(candidate, root string) (string, error) {
+	candidate = strings.TrimSpace(candidate)
+	root = strings.TrimSpace(root)
+	if candidate == "" {
+		return "", fmt.Errorf("path is empty")
 	}
-	return dir, nil
+	if root == "" {
+		return "", fmt.Errorf("root is empty")
+	}
+	absCand, err := filepath.Abs(filepath.Clean(candidate))
+	if err != nil {
+		return "", fmt.Errorf("resolve absolute path: %w", err)
+	}
+	if eval, err := filepath.EvalSymlinks(absCand); err == nil && eval != "" {
+		absCand = eval
+	} else if err != nil {
+		if _, statErr := os.Lstat(absCand); statErr == nil {
+			return "", fmt.Errorf("cannot resolve symlinks for existing path %q: %w", absCand, err)
+		}
+		// Path does not exist yet; containment still checked on Abs path.
+	}
+	absRoot, err := filepath.Abs(filepath.Clean(root))
+	if err != nil {
+		return "", fmt.Errorf("resolve root: %w", err)
+	}
+	if evalRoot, err := filepath.EvalSymlinks(absRoot); err == nil && evalRoot != "" {
+		absRoot = evalRoot
+	}
+	if !pathHasPrefixDir(absCand, absRoot) {
+		return "", fmt.Errorf("path %q is outside workspace root %q", absCand, absRoot)
+	}
+	return absCand, nil
+}
+
+func pathHasPrefixDir(path, root string) bool {
+	path = filepath.Clean(path)
+	root = filepath.Clean(root)
+	sep := string(filepath.Separator)
+	rootWithSep := root
+	if !strings.HasSuffix(rootWithSep, sep) {
+		rootWithSep += sep
+	}
+	pathWithSep := path
+	if !strings.HasSuffix(pathWithSep, sep) {
+		pathWithSep += sep
+	}
+	if filepath.Separator == '\\' {
+		return strings.HasPrefix(strings.ToLower(pathWithSep), strings.ToLower(rootWithSep)) ||
+			strings.EqualFold(path, root)
+	}
+	return strings.HasPrefix(pathWithSep, rootWithSep) || path == root
 }
 
 func ensureToolWorkspaceDir(dir string) error {
@@ -315,6 +405,11 @@ func ensureFilesystemWorkspaceDir(dir string) error {
 	if dir == "" {
 		return fmt.Errorf("filesystem workspace dir is empty")
 	}
+	abs, err := filepath.Abs(filepath.Clean(dir))
+	if err != nil {
+		return fmt.Errorf("resolve %q: %w", dir, err)
+	}
+	dir = abs
 	if st, err := os.Stat(dir); err == nil && st.IsDir() {
 		return nil
 	} else if err != nil && !os.IsNotExist(err) {

@@ -46,6 +46,9 @@ func NewSessionService(
 	sessionV2 *SessionV2Service,
 	lg loggateway.Logger,
 ) *SessionService {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	return &SessionService{
 		uc:             uc,
 		mon:            mon,

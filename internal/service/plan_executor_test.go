@@ -141,6 +141,15 @@ func (f *fakeReposForExecutor) UpsertPlanBoard(_ context.Context, pb biz.PlanBoa
 	return pb, nil
 }
 
+func (f *fakeReposForExecutor) GetPlanBoard(_ context.Context, id string) (biz.PlanBoard, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.board != nil && f.board.ID == id {
+		return *f.board, nil
+	}
+	return biz.PlanBoard{}, errors.New("not found")
+}
+
 func (f *fakeReposForExecutor) GetPlanStep(_ context.Context, id string) (biz.PlanStep, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -148,6 +157,18 @@ func (f *fakeReposForExecutor) GetPlanStep(_ context.Context, id string) (biz.Pl
 		return s, nil
 	}
 	return biz.PlanStep{}, errors.New("not found")
+}
+
+func (f *fakeReposForExecutor) ListPlanStepsByPlan(_ context.Context, planID string) ([]biz.PlanStep, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]biz.PlanStep, 0)
+	for _, s := range f.steps {
+		if s.PlanID == planID {
+			out = append(out, s)
+		}
+	}
+	return out, nil
 }
 
 // UpsertGraphStage stores the GraphStage in memory.

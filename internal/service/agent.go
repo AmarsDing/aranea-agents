@@ -30,6 +30,9 @@ type AgentService struct {
 }
 
 func NewAgentService(uc *biz.AgentUsecase, evoUC *biz.EvolutionUsecase, mon *biz.MonitorUsecase, a2aUC *biz.A2AUsecase, promptAI *PromptFileAIEditor, agentTemplateUC *biz.AgentTemplateUsecase, lg loggateway.Logger) *AgentService {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	return &AgentService{uc: uc, evoUC: evoUC, mon: mon, a2aUC: a2aUC, promptAI: promptAI, agentTemplateUC: agentTemplateUC, lg: lg}
 }
 

@@ -173,25 +173,25 @@ func (m *Manager) Plugins() []trpcplugin.Plugin {
 	return m.rt.Plugins()
 }
 
-// PluginsForAgent returns scope-filtered runner plugins.
-func (m *Manager) PluginsForAgent(agentID string) []trpcplugin.Plugin {
+// PluginsForAgent returns scope-filtered runner plugins visible to workspaceID (C-06).
+func (m *Manager) PluginsForAgent(agentID, workspaceID string) []trpcplugin.Plugin {
 	if m == nil || m.rt == nil {
 		return nil
 	}
-	return m.rt.PluginsForAgent(agentID)
+	return m.rt.PluginsForAgent(agentID, workspaceID)
 }
 
 // RunnerPlugins returns plugins for trpcrunner.WithPlugins, including the OnEvent bridge.
 func (m *Manager) RunnerPlugins() []trpcplugin.Plugin {
-	return m.RunnerPluginsForAgent("")
+	return m.RunnerPluginsForAgent("", "")
 }
 
 // RunnerPluginsForAgent returns scope-filtered plugins plus the OnEvent bridge and framework plugins.
-func (m *Manager) RunnerPluginsForAgent(agentID string) []trpcplugin.Plugin {
+func (m *Manager) RunnerPluginsForAgent(agentID, workspaceID string) []trpcplugin.Plugin {
 	if m == nil {
 		return nil
 	}
-	plugins := m.PluginsForAgent(agentID)
+	plugins := m.PluginsForAgent(agentID, workspaceID)
 	plugins = append(plugins, &productEventPlugin{mgr: m, name: "aranea_event_bridge"})
 	m.resolveMu.RLock()
 	resolver := m.resolveAgentID

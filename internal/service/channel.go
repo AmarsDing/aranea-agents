@@ -31,6 +31,9 @@ type ChannelService struct {
 }
 
 func NewChannelService(uc *biz.ChannelUsecase, turnJobs *biz.ChannelTurnJobUsecase, runtime *ChannelRuntime, lg loggateway.Logger) *ChannelService {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	s := &ChannelService{uc: uc, turnJobs: turnJobs, runtime: runtime, lg: lg}
 	s.testers = s.buildLiveTesters()
 	return s
