@@ -28,10 +28,20 @@ func NewMCPServerService(uc *biz.MCPServerUsecase, mon *biz.MonitorUsecase) *MCP
 	return &MCPServerService{uc: uc, mon: mon}
 }
 
-// assertMCPServerAccess 校验 caller 是否可访问指定 mcp server（P2-B IDOR 防护）。
+// assertMCPServerAccess 校验 caller 是否可读取指定 mcp server（P2-B IDOR 防护）。
 // 跨租户访问返回 NotFound（避免泄露 mcp server 存在性）。
-// 系统 caller（cron/admin）绕过校验；空 workspace_id 的 mcp server 视为全局共享。
+// 共享 mcp server（workspace_id=""）对所有租户可读；变更须用 assertMCPServerMutateAccess。
 func (s *MCPServerService) assertMCPServerAccess(ctx context.Context, serverID string) error {
+	return s.checkMCPServerAccess(ctx, serverID, false)
+}
+
+// assertMCPServerMutateAccess 校验 caller 是否可变更指定 mcp server。
+// 共享 mcp server（workspace_id=""）对租户只读（fail-closed）。
+func (s *MCPServerService) assertMCPServerMutateAccess(ctx context.Context, serverID string) error {
+	return s.checkMCPServerAccess(ctx, serverID, true)
+}
+
+func (s *MCPServerService) checkMCPServerAccess(ctx context.Context, serverID string, mutate bool) error {
 	if serverID == "" {
 		return nil
 	}
@@ -42,7 +52,13 @@ func (s *MCPServerService) assertMCPServerAccess(ctx context.Context, serverID s
 		}
 		return err
 	}
-	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), srv.WorkspaceID); err != nil {
+	callerWS := workspace.IDFromContext(ctx)
+	if mutate {
+		err = workspace.AssertWorkspaceMutate(callerWS, srv.WorkspaceID)
+	} else {
+		err = workspace.AssertWorkspaceOrShared(callerWS, srv.WorkspaceID)
+	}
+	if err != nil {
 		// TECH-DEBT(P2-B): add Warn log once MCPServerService gets lg field injected via wire.
 		return apierror.NotFound("MCP_SERVER", "mcp server not found")
 	}
@@ -165,7 +181,7 @@ func (s *MCPServerService) UpdateMCPServer(ctx context.Context, req *v1.UpdateMC
 		return nil, apierror.BadRequest("MCP_SERVER", "mcp_server body is required")
 	}
 	// P2-B: IDOR guard — verify caller workspace before any mutation.
-	if err := s.assertMCPServerAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertMCPServerMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	// Fetch current server to resolve proto3 zero-value ambiguity for bool/int fields.
@@ -194,7 +210,7 @@ func (s *MCPServerService) UpdateMCPServer(ctx context.Context, req *v1.UpdateMC
 
 func (s *MCPServerService) DeleteMCPServer(ctx context.Context, req *v1.DeleteMCPServerRequest) (*emptypb.Empty, error) {
 	// P2-B: IDOR guard — verify caller workspace before deletion.
-	if err := s.assertMCPServerAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertMCPServerMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
@@ -225,7 +241,7 @@ func (s *MCPServerService) ValidateMCPServer(ctx context.Context, req *v1.Valida
 
 func (s *MCPServerService) TestMCPServer(ctx context.Context, req *v1.TestMCPServerRequest) (*v1.MCPServerTestResponse, error) {
 	// P2-B: IDOR guard — verify caller workspace before probe.
-	if err := s.assertMCPServerAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertMCPServerMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	res, err := s.uc.TestMCPServer(ctx, req.GetId())
@@ -308,7 +324,7 @@ func (s *MCPServerService) ListMCPServerUserCredentials(ctx context.Context, req
 
 func (s *MCPServerService) UpsertMCPServerUserCredential(ctx context.Context, req *v1.UpsertMCPServerUserCredentialRequest) (*v1.MCPServerUserCredential, error) {
 	// P2-B: IDOR guard — verify caller workspace on parent mcp server.
-	if err := s.assertMCPServerAccess(ctx, req.GetMcpServerId()); err != nil {
+	if err := s.assertMCPServerMutateAccess(ctx, req.GetMcpServerId()); err != nil {
 		return nil, err
 	}
 	userID, err := resolveMCPCredentialUserID(ctx, req.GetUserId())
@@ -329,7 +345,7 @@ func (s *MCPServerService) UpsertMCPServerUserCredential(ctx context.Context, re
 
 func (s *MCPServerService) DeleteMCPServerUserCredential(ctx context.Context, req *v1.DeleteMCPServerUserCredentialRequest) (*emptypb.Empty, error) {
 	// P2-B: IDOR guard — verify caller workspace on parent mcp server.
-	if err := s.assertMCPServerAccess(ctx, req.GetMcpServerId()); err != nil {
+	if err := s.assertMCPServerMutateAccess(ctx, req.GetMcpServerId()); err != nil {
 		return nil, err
 	}
 	userID, err := resolveMCPCredentialUserID(ctx, req.GetUserId())

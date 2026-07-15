@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -96,13 +97,27 @@ func (r *CostGuardBudgetRegistry) TrackerForScope(scope string) *CostGuardBudget
 }
 
 // CostGuardScopeForAgent returns the budget bucket key for an agent turn.
+// E2E-P1-11: include workspace so multi-tenant shared agents do not share one
+// budget bucket. Format: "{workspace}:{agentID}" (or "global" fallbacks).
 func (rt *Runtime) CostGuardScopeForAgent(agentID string) string {
+	return rt.CostGuardScopeForAgentInWorkspace("", agentID)
+}
+
+// CostGuardScopeForAgentInWorkspace returns the budget bucket for workspace+agent.
+func (rt *Runtime) CostGuardScopeForAgentInWorkspace(workspaceID, agentID string) string {
 	agentID = strings.TrimSpace(agentID)
-	if rt == nil {
-		if agentID != "" {
-			return agentID
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" || workspaceID == workspace.SystemWorkspaceID {
+		workspaceID = workspace.DefaultWorkspaceID
+	}
+	base := func(id string) string {
+		if id == "" {
+			return workspaceID + ":global"
 		}
-		return "global"
+		return workspaceID + ":" + id
+	}
+	if rt == nil {
+		return base(agentID)
 	}
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
@@ -114,17 +129,11 @@ func (rt *Runtime) CostGuardScopeForAgent(agentID string) string {
 			continue
 		}
 		if s := strings.TrimSpace(e.scope); s != "" && !strings.EqualFold(s, "global") {
-			return s
+			return base(s)
 		}
-		if agentID != "" {
-			return agentID
-		}
-		return "global"
+		return base(agentID)
 	}
-	if agentID != "" {
-		return agentID
-	}
-	return "global"
+	return base(agentID)
 }
 
 // BudgetTrackerForContext returns the scope-aware tracker for the current invocation agent.
@@ -132,7 +141,8 @@ func (rt *Runtime) BudgetTrackerForContext(ctx context.Context) *CostGuardBudget
 	if rt == nil || rt.budgets == nil {
 		return NewCostGuardBudgetTracker(loggateway.NewNoop())
 	}
-	return rt.budgets.TrackerForScope(rt.CostGuardScopeForAgent(rt.platformAgentIDFromContext(ctx)))
+	ws := workspace.IDFromContext(ctx)
+	return rt.budgets.TrackerForScope(rt.CostGuardScopeForAgentInWorkspace(ws, rt.platformAgentIDFromContext(ctx)))
 }
 
 func (rt *Runtime) ToolRequiresConfirmation(ctx context.Context, toolName string, args []byte) bool {

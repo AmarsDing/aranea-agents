@@ -8,6 +8,7 @@ import (
 	v1 "aranea-agents/api/kratos/skill/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/service"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 )
@@ -154,7 +155,7 @@ func (m *memSkillRepo) FilesystemHealthStats(_ context.Context) (biz.SkillFilesy
 
 func newSkillService() *service.SkillService {
 	repo := newMemSkillRepo()
-	repo.items["sk1"] = biz.Skill{ID: "sk1", Name: "Test Skill", Enabled: true, Status: "active"}
+	repo.items["sk1"] = biz.Skill{ID: "sk1", Name: "Test Skill", Enabled: true, Status: "active", WorkspaceID: workspace.DefaultWorkspaceID}
 	return service.NewSkillService(biz.NewSkillUsecase(repo, nil), nil, nil, nil, nil, loggateway.NewNoop())
 }
 

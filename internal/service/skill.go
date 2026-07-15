@@ -36,10 +36,20 @@ func NewSkillService(uc *biz.SkillUsecase, agentUC *biz.AgentUsecase, healthUC *
 	return &SkillService{uc: uc, agentUC: agentUC, healthUC: healthUC, fs: fs, import_: importEng, lg: lg}
 }
 
-// assertSkillAccess 校验 caller 是否可访问指定 skill（P2-B IDOR 防护）。
+// assertSkillAccess 校验 caller 是否可读取指定 skill（P2-B IDOR 防护）。
 // 跨租户访问返回 NotFound（避免泄露 skill 存在性）。
-// 系统 caller（cron/admin）绕过校验；空 workspace_id 的 skill 视为全局共享。
+// 共享 skill（workspace_id=""）对所有租户可读；变更须用 assertSkillMutateAccess。
 func (s *SkillService) assertSkillAccess(ctx context.Context, skillID string) error {
+	return s.checkSkillAccess(ctx, skillID, false)
+}
+
+// assertSkillMutateAccess 校验 caller 是否可变更指定 skill。
+// 共享 skill（workspace_id=""）对租户只读（fail-closed）。
+func (s *SkillService) assertSkillMutateAccess(ctx context.Context, skillID string) error {
+	return s.checkSkillAccess(ctx, skillID, true)
+}
+
+func (s *SkillService) checkSkillAccess(ctx context.Context, skillID string, mutate bool) error {
 	if skillID == "" {
 		return nil
 	}
@@ -50,11 +60,17 @@ func (s *SkillService) assertSkillAccess(ctx context.Context, skillID string) er
 		}
 		return err
 	}
-	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), sk.WorkspaceID); err != nil {
+	callerWS := workspace.IDFromContext(ctx)
+	if mutate {
+		err = workspace.AssertWorkspaceMutate(callerWS, sk.WorkspaceID)
+	} else {
+		err = workspace.AssertWorkspaceOrShared(callerWS, sk.WorkspaceID)
+	}
+	if err != nil {
 		s.lg.Warn("skill access denied: workspace mismatch",
 			loggateway.StepID("skill.idor"),
 			loggateway.Str("skill_id", skillID),
-			loggateway.Str("caller_ws", workspace.IDFromContext(ctx)))
+			loggateway.Str("caller_ws", callerWS))
 		return apierror.NotFound("SKILL", "skill not found")
 	}
 	return nil
@@ -184,7 +200,7 @@ func (s *SkillService) ListSkills(ctx context.Context, req *v1.ListSkillsRequest
 }
 
 func (s *SkillService) ToggleSkillEnabled(ctx context.Context, req *v1.ToggleSkillEnabledRequest) (*v1.Skill, error) {
-	if err := s.assertSkillAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertSkillMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	out, err := s.uc.ToggleEnabled(ctx, req.GetId(), req.GetEnabled())
@@ -214,7 +230,7 @@ func (s *SkillService) DuplicateSkill(ctx context.Context, req *v1.DuplicateSkil
 }
 
 func (s *SkillService) DeleteSkill(ctx context.Context, req *v1.DeleteSkillRequest) (*emptypb.Empty, error) {
-	if err := s.assertSkillAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertSkillMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
@@ -261,7 +277,7 @@ func (s *SkillService) GetSkillFile(ctx context.Context, req *v1.GetSkillFileReq
 }
 
 func (s *SkillService) UpdateSkillFile(ctx context.Context, req *v1.UpdateSkillFileRequest) (*v1.SkillFileContent, error) {
-	if err := s.assertSkillAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertSkillMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	dir, err := s.skillDir(ctx, req.GetId())
@@ -337,7 +353,7 @@ func (s *SkillService) CreateSkill(ctx context.Context, req *v1.CreateSkillReque
 }
 
 func (s *SkillService) UpdateSkill(ctx context.Context, req *v1.UpdateSkillRequest) (*v1.Skill, error) {
-	if err := s.assertSkillAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertSkillMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	patch := biz.SkillUpdateDraft{}
@@ -374,7 +390,7 @@ func (s *SkillService) UpdateSkill(ctx context.Context, req *v1.UpdateSkillReque
 }
 
 func (s *SkillService) PublishSkill(ctx context.Context, req *v1.PublishSkillRequest) (*v1.Skill, error) {
-	if err := s.assertSkillAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertSkillMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	out, err := s.uc.Publish(ctx, req.GetId())
@@ -389,7 +405,7 @@ func (s *SkillService) PublishSkill(ctx context.Context, req *v1.PublishSkillReq
 }
 
 func (s *SkillService) DeleteSkillFile(ctx context.Context, req *v1.DeleteSkillFileRequest) (*emptypb.Empty, error) {
-	if err := s.assertSkillAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertSkillMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	rel := strings.TrimSpace(req.GetPath())
@@ -497,7 +513,7 @@ func (s *SkillService) GetSkillVersions(ctx context.Context, req *v1.GetSkillVer
 }
 
 func (s *SkillService) RollbackSkillVersion(ctx context.Context, req *v1.RollbackSkillVersionRequest) (*v1.Skill, error) {
-	if err := s.assertSkillAccess(ctx, req.GetSkillId()); err != nil {
+	if err := s.assertSkillMutateAccess(ctx, req.GetSkillId()); err != nil {
 		return nil, err
 	}
 	out, err := s.uc.RollbackVersion(ctx, req.GetSkillId(), req.GetVersionId())

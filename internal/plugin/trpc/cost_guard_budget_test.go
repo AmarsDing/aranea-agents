@@ -91,7 +91,7 @@ func TestCostGuard_BeforeModel_FallbackBypassesDailyBudget(t *testing.T) {
 	tracker.TryConsume(cfg.DailyTokenBudget, 100)
 
 	registry := NewCostGuardBudgetRegistry(loggateway.NewNoop())
-	registry.byScope["global"] = tracker
+	registry.byScope["default:global"] = tracker
 
 	c := &CostGuardPlugin{
 		base: basePlugin{
@@ -131,7 +131,7 @@ func TestCostGuard_BeforeModel_BlocksNonFallbackWhenOverBudget(t *testing.T) {
 	tracker.TryConsume(cfg.DailyTokenBudget, 100)
 
 	registry := NewCostGuardBudgetRegistry(loggateway.NewNoop())
-	registry.byScope["global"] = tracker
+	registry.byScope["default:global"] = tracker
 
 	c := &CostGuardPlugin{
 		base: basePlugin{

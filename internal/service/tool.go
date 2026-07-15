@@ -25,10 +25,20 @@ func NewToolService(uc *biz.ToolUsecase, mon *biz.MonitorUsecase) *ToolService {
 	return &ToolService{uc: uc, mon: mon}
 }
 
-// assertToolAccess 校验 caller 是否可访问指定 tool（P2-B IDOR 防护）。
+// assertToolAccess 校验 caller 是否可读取指定 tool（P2-B IDOR 防护）。
 // 跨租户访问返回 NotFound（避免泄露 tool 存在性）。
-// 系统 caller（cron/admin）绕过校验；空 workspace_id 的 tool 视为全局共享。
+// 共享 tool（workspace_id=""）对所有租户可读；变更须用 assertToolMutateAccess。
 func (s *ToolService) assertToolAccess(ctx context.Context, toolID string) error {
+	return s.checkToolAccess(ctx, toolID, false)
+}
+
+// assertToolMutateAccess 校验 caller 是否可变更指定 tool。
+// 共享 tool（workspace_id=""）对租户只读（fail-closed）。
+func (s *ToolService) assertToolMutateAccess(ctx context.Context, toolID string) error {
+	return s.checkToolAccess(ctx, toolID, true)
+}
+
+func (s *ToolService) checkToolAccess(ctx context.Context, toolID string, mutate bool) error {
 	if toolID == "" {
 		return nil
 	}
@@ -39,7 +49,13 @@ func (s *ToolService) assertToolAccess(ctx context.Context, toolID string) error
 		}
 		return err
 	}
-	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), t.WorkspaceID); err != nil {
+	callerWS := workspace.IDFromContext(ctx)
+	if mutate {
+		err = workspace.AssertWorkspaceMutate(callerWS, t.WorkspaceID)
+	} else {
+		err = workspace.AssertWorkspaceOrShared(callerWS, t.WorkspaceID)
+	}
+	if err != nil {
 		return apierror.NotFound("TOOL", "tool not found")
 	}
 	return nil
@@ -218,7 +234,7 @@ func (s *ToolService) CreateTool(ctx context.Context, req *v1.CreateToolRequest)
 }
 
 func (s *ToolService) UpdateTool(ctx context.Context, req *v1.UpdateToolRequest) (*v1.Tool, error) {
-	if err := s.assertToolAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertToolMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	in := biz.ToolUpsertInput{
@@ -253,7 +269,7 @@ func (s *ToolService) UpdateTool(ctx context.Context, req *v1.UpdateToolRequest)
 }
 
 func (s *ToolService) DeleteTool(ctx context.Context, req *v1.DeleteToolRequest) (*emptypb.Empty, error) {
-	if err := s.assertToolAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertToolMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	err := s.uc.Delete(ctx, req.GetId())
@@ -269,7 +285,7 @@ func (s *ToolService) DeleteTool(ctx context.Context, req *v1.DeleteToolRequest)
 }
 
 func (s *ToolService) ToggleToolEnabled(ctx context.Context, req *v1.ToggleToolEnabledRequest) (*v1.Tool, error) {
-	if err := s.assertToolAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertToolMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	t, err := s.uc.ToggleEnabled(ctx, req.GetId(), req.GetEnabled(), req.GetConfirmIntent())
@@ -433,7 +449,7 @@ func (s *ToolService) GetToolInvocationParams(ctx context.Context, req *v1.GetTo
 }
 
 func (s *ToolService) UpdateToolConfig(ctx context.Context, req *v1.UpdateToolConfigRequest) (*v1.Tool, error) {
-	if err := s.assertToolAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertToolMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	t, err := s.uc.UpdateToolConfig(ctx, req.GetId(), req.GetConfigJson())
@@ -448,7 +464,7 @@ func (s *ToolService) UpdateToolConfig(ctx context.Context, req *v1.UpdateToolCo
 }
 
 func (s *ToolService) TestTool(ctx context.Context, req *v1.TestToolRequest) (*v1.TestToolResponse, error) {
-	if err := s.assertToolAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertToolMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	res, err := s.uc.TestTool(ctx, req.GetId(), req.GetArgumentsJson(), int(req.GetTimeoutSec()))

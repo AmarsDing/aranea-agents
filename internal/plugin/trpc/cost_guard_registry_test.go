@@ -34,7 +34,25 @@ func TestCostGuardScopeForAgent_GlobalPluginPerAgent(t *testing.T) {
 			{key: "cost_guard", scope: "global", costGuard: &CostGuardConfig{}},
 		},
 	}
-	if got := rt.CostGuardScopeForAgent("agent-42"); got != "agent-42" {
-		t.Fatalf("global cost_guard should bucket by agent, got %q", got)
+	if got := rt.CostGuardScopeForAgent("agent-42"); got != "default:agent-42" {
+		t.Fatalf("global cost_guard should bucket by workspace:agent, got %q", got)
+	}
+}
+
+func TestCostGuardScopeForAgentInWorkspace_Isolation(t *testing.T) {
+	t.Parallel()
+	rt := &Runtime{
+		budgets: NewCostGuardBudgetRegistry(loggateway.NewNoop()),
+		active: []runtimeEntry{
+			{key: "cost_guard", scope: "global", costGuard: &CostGuardConfig{}},
+		},
+	}
+	a := rt.CostGuardScopeForAgentInWorkspace("ws-a", "agent-1")
+	b := rt.CostGuardScopeForAgentInWorkspace("ws-b", "agent-1")
+	if a == b {
+		t.Fatalf("expected workspace-isolated scopes, got %q and %q", a, b)
+	}
+	if a != "ws-a:agent-1" || b != "ws-b:agent-1" {
+		t.Fatalf("unexpected scopes a=%q b=%q", a, b)
 	}
 }

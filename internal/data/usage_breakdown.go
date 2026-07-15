@@ -33,6 +33,10 @@ func breakdownQueryWhere(query biz.UsageBreakdownQuery) (string, []any) {
 		like := "%" + s + "%"
 		args = append(args, like, like)
 	}
+	if query.WorkspaceID != "" {
+		parts = append(parts, "workspace_id = ?")
+		args = append(args, query.WorkspaceID)
+	}
 	return " WHERE " + strings.Join(parts, " AND "), args
 }
 

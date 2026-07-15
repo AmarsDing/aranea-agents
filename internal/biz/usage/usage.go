@@ -67,6 +67,10 @@ type Query struct {
 	Status       string
 	Limit        int
 	Granularity  string
+	// WorkspaceID filters events by workspace. Empty = no filter (system caller
+	// sees all workspaces); non-empty = restrict to that workspace only.
+	// Service layer injects this from ctx; clients cannot forge it.
+	WorkspaceID string
 }
 
 // Summary aggregates usage statistics.
@@ -130,6 +134,8 @@ type BreakdownQuery struct {
 	SortDir      string // asc/desc
 	Page         int32  // 1-based
 	PageSize     int32  // 默认 20，最大 100
+	// WorkspaceID filters breakdown by workspace. Same semantics as Query.WorkspaceID.
+	WorkspaceID string
 }
 
 // BreakdownResult 是 ListAllModelsBreakdown 的分页结果。

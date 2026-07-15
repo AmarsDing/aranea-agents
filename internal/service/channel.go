@@ -51,10 +51,20 @@ func (s *ChannelService) reloadRuntime(ctx context.Context) {
 	}
 }
 
-// assertChannelAccess 校验 caller 是否可访问指定 channel（P2-B IDOR 防护）。
+// assertChannelAccess 校验 caller 是否可读取指定 channel（P2-B IDOR 防护）。
 // 跨租户访问返回 NotFound（避免泄露 channel 存在性）。
-// 系统 caller（cron/admin）绕过校验；空 workspace_id 的 channel 视为全局共享。
+// 共享 channel（workspace_id=""）对所有租户可读；变更须用 assertChannelMutateAccess。
 func (s *ChannelService) assertChannelAccess(ctx context.Context, channelID string) error {
+	return s.checkChannelAccess(ctx, channelID, false)
+}
+
+// assertChannelMutateAccess 校验 caller 是否可变更指定 channel。
+// 共享 channel（workspace_id=""）对租户只读（fail-closed）。
+func (s *ChannelService) assertChannelMutateAccess(ctx context.Context, channelID string) error {
+	return s.checkChannelAccess(ctx, channelID, true)
+}
+
+func (s *ChannelService) checkChannelAccess(ctx context.Context, channelID string, mutate bool) error {
 	if channelID == "" {
 		return nil
 	}
@@ -65,11 +75,17 @@ func (s *ChannelService) assertChannelAccess(ctx context.Context, channelID stri
 		}
 		return err
 	}
-	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), c.WorkspaceID); err != nil {
+	callerWS := workspace.IDFromContext(ctx)
+	if mutate {
+		err = workspace.AssertWorkspaceMutate(callerWS, c.WorkspaceID)
+	} else {
+		err = workspace.AssertWorkspaceOrShared(callerWS, c.WorkspaceID)
+	}
+	if err != nil {
 		s.lg.Warn("channel access denied: workspace mismatch",
 			loggateway.StepID("channel.idor"),
 			loggateway.Str("channel_id", channelID),
-			loggateway.Str("caller_ws", workspace.IDFromContext(ctx)))
+			loggateway.Str("caller_ws", callerWS))
 		return apierror.NotFound("CHANNEL", "channel not found")
 	}
 	return nil
@@ -312,7 +328,7 @@ func (s *ChannelService) CreateChannel(ctx context.Context, req *v1.CreateChanne
 }
 
 func (s *ChannelService) UpdateChannel(ctx context.Context, req *v1.UpdateChannelRequest) (*v1.Channel, error) {
-	if err := s.assertChannelAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertChannelMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	current, err := s.uc.Get(ctx, req.GetId())
@@ -353,7 +369,7 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *v1.UpdateChanne
 }
 
 func (s *ChannelService) DeleteChannel(ctx context.Context, req *v1.DeleteChannelRequest) (*emptypb.Empty, error) {
-	if err := s.assertChannelAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertChannelMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
@@ -364,7 +380,7 @@ func (s *ChannelService) DeleteChannel(ctx context.Context, req *v1.DeleteChanne
 }
 
 func (s *ChannelService) ToggleChannel(ctx context.Context, req *v1.ToggleChannelRequest) (*v1.Channel, error) {
-	if err := s.assertChannelAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertChannelMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	c, err := s.uc.Toggle(ctx, req.GetId(), req.GetEnabled())
@@ -376,7 +392,7 @@ func (s *ChannelService) ToggleChannel(ctx context.Context, req *v1.ToggleChanne
 }
 
 func (s *ChannelService) TestChannel(ctx context.Context, req *v1.TestChannelRequest) (*v1.ChannelTestResult, error) {
-	if err := s.assertChannelAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertChannelMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	row, err := s.uc.Get(ctx, req.GetId())
@@ -426,7 +442,7 @@ func (s *ChannelService) ListChannelCredentials(ctx context.Context, req *v1.Get
 }
 
 func (s *ChannelService) UpsertChannelCredentials(ctx context.Context, req *v1.UpsertChannelCredentialsRequest) (*v1.ListChannelCredentialsResponse, error) {
-	if err := s.assertChannelAccess(ctx, req.GetChannelId()); err != nil {
+	if err := s.assertChannelMutateAccess(ctx, req.GetChannelId()); err != nil {
 		return nil, err
 	}
 	items, err := s.uc.UpsertCredentials(ctx, req.GetChannelId(), protoCredInputs(req.GetCredentials()))
@@ -442,7 +458,7 @@ func (s *ChannelService) UpsertChannelCredentials(ctx context.Context, req *v1.U
 }
 
 func (s *ChannelService) DeleteChannelCredential(ctx context.Context, req *v1.DeleteChannelCredentialRequest) (*emptypb.Empty, error) {
-	if err := s.assertChannelAccess(ctx, req.GetChannelId()); err != nil {
+	if err := s.assertChannelMutateAccess(ctx, req.GetChannelId()); err != nil {
 		return nil, err
 	}
 	if err := s.uc.DeleteCredential(ctx, req.GetChannelId(), req.GetCredentialKey()); err != nil {

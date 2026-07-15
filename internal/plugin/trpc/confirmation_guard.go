@@ -33,15 +33,17 @@ func (c *ConfirmationGuardPlugin) Register(r *trpcplugin.Registry) {
 }
 
 // beforeTool blocks tool execution when confirmation is required.
+//
+// E2E-P1-10 unify: when the product confirmation gate already ran (approved,
+// allow-without-channel, or explicitly handled), this plugin is a no-op.
+// Hard-blocking here only applies when the product gate is NOT installed /
+// did not match — so there is a single confirmation state machine in practice
+// whenever tool_confirmation BeforeTool is wired.
 func (c *ConfirmationGuardPlugin) beforeTool(ctx context.Context, args *trpctool.BeforeToolArgs) (*trpctool.BeforeToolResult, error) {
 	if args == nil {
 		return &trpctool.BeforeToolResult{Context: ctx}, nil
 	}
 	// P1-10: skip when the product callback already handled confirmation.
-	// The product callback (tool_confirmation.go) runs as a Chain BeforeTool
-	// hook before plugin callbacks. After user approval, it tags the context
-	// via WithToolConfirmHandled. Without this check the plugin would re-block
-	// the same tool the user just approved — see E2E-P1-10.
 	if ToolConfirmHandled(ctx) {
 		return &trpctool.BeforeToolResult{Context: ctx}, nil
 	}
@@ -52,10 +54,10 @@ func (c *ConfirmationGuardPlugin) beforeTool(ctx context.Context, args *trpctool
 			"default_action", c.cfg.DefaultAction,
 		)
 		c.base.record(ctx, "before_tool", "blocked")
-		msg := fmt.Sprintf("confirmation_guard: tool %q requires confirmation", args.ToolName)
+		msg := fmt.Sprintf("confirmation_guard: tool %q requires confirmation (enable product confirm gate for interactive approval)", args.ToolName)
 		return &trpctool.BeforeToolResult{
 			Context:      ctx,
-			CustomResult: map[string]any{"error": msg, "blocked": true},
+			CustomResult: map[string]any{"error": msg, "blocked": true, "needs_confirm": true},
 		}, nil
 	}
 	c.base.logger.Info("plugin.confirmation_guard.before_tool",

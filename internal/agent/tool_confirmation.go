@@ -54,7 +54,10 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		return &trpctool.BeforeToolResult{Context: ctx}, nil
 	}
 	if h.gate.pluginAllowWithoutChannel(toolKey, args.Arguments) {
-		return &trpctool.BeforeToolResult{Context: ctx}, nil
+		// P1-10: pluginAllowWithoutChannel means the product gate defers to the
+		// plugin's allow policy — mark handled so ConfirmationGuardPlugin does
+		// not hard-block after this allow path.
+		return &trpctool.BeforeToolResult{Context: plugintrpc.WithToolConfirmHandled(ctx)}, nil
 	}
 	if !h.gate.needsConfirm(toolKey, args.Arguments) {
 		return &trpctool.BeforeToolResult{Context: ctx}, nil

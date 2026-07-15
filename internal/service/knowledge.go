@@ -154,21 +154,38 @@ func (s *KnowledgeService) DeleteCollection(ctx context.Context, req *v1.DeleteC
 	if err != nil {
 		return nil, err
 	}
-	if err := s.assertCollectionAccess(ctx, c); err != nil {
+	if err := s.assertCollectionMutateAccess(ctx, c); err != nil {
 		return nil, err
 	}
 	return &emptypb.Empty{}, s.uc.DeleteCollection(ctx, req.GetId())
 }
 
-// assertCollectionAccess rejects cross-tenant collection access (C-01).
+// assertCollectionAccess rejects cross-tenant collection read access (C-01).
 // Returns NotFound (not Forbidden) to avoid leaking collection existence.
-// Empty collection.Workspace is treated as globally shared (system/legacy).
+// Empty collection.Workspace is treated as globally shared (system/legacy) for reads.
 func (s *KnowledgeService) assertCollectionAccess(ctx context.Context, c biz.KnowledgeCollection) error {
-	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), c.Workspace); err != nil {
+	return s.checkCollectionAccess(ctx, c, false)
+}
+
+// assertCollectionMutateAccess rejects mutate on shared/cross-tenant collections.
+// Shared collections (workspace="") are read-only for tenants (fail-closed).
+func (s *KnowledgeService) assertCollectionMutateAccess(ctx context.Context, c biz.KnowledgeCollection) error {
+	return s.checkCollectionAccess(ctx, c, true)
+}
+
+func (s *KnowledgeService) checkCollectionAccess(ctx context.Context, c biz.KnowledgeCollection, mutate bool) error {
+	callerWS := workspace.IDFromContext(ctx)
+	var err error
+	if mutate {
+		err = workspace.AssertWorkspaceMutate(callerWS, c.Workspace)
+	} else {
+		err = workspace.AssertWorkspaceOrShared(callerWS, c.Workspace)
+	}
+	if err != nil {
 		s.lg.Warn("knowledge collection access denied: workspace mismatch",
 			loggateway.StepID("knowledge.idor"),
 			loggateway.Str("collection_id", c.ID),
-			loggateway.Str("caller_ws", workspace.IDFromContext(ctx)),
+			loggateway.Str("caller_ws", callerWS),
 			loggateway.Str("resource_ws", c.Workspace))
 		return apierror.NotFound("KNOWLEDGE", "collection not found")
 	}
@@ -196,7 +213,7 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 	if err != nil {
 		return nil, err
 	}
-	if err := s.assertCollectionAccess(ctx, col); err != nil {
+	if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
 		return nil, err
 	}
 
@@ -331,7 +348,7 @@ func (s *KnowledgeService) DeleteDocument(ctx context.Context, req *v1.DeleteDoc
 	if err != nil {
 		return nil, err
 	}
-	if err := s.assertCollectionAccess(ctx, col); err != nil {
+	if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
 		return nil, err
 	}
 	return &emptypb.Empty{}, s.uc.DeleteDocument(ctx, req.GetId())

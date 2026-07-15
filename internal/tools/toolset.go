@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -34,6 +35,7 @@ import (
 	trpctodo "trpc.group/trpc-go/trpc-agent-go/tool/todo"
 	trpchttpfetch "trpc.group/trpc-go/trpc-agent-go/tool/webfetch/httpfetch"
 	trpcwikipedia "trpc.group/trpc-go/trpc-agent-go/tool/wikipedia"
+	tmcp "trpc.group/trpc-go/trpc-mcp-go"
 )
 
 type filesystemDirKey struct{}
@@ -426,12 +428,23 @@ type MCPServerConfig struct {
 	SessionReconnectMax int
 	AllowAdHocHTTP      bool
 	AdHocTimeoutSec     int
+	// RequireUserCredentials defers auth header resolution to tool-call time
+	// via HeaderInjector / MCPBrokerConfig.HeaderInjector (E2E-P1-08).
+	RequireUserCredentials bool
+	// HeaderInjector resolves per-request HTTP headers from Invocation context
+	// for this named server (MCP ToolSet path). Prefer over build-time Headers
+	// when RequireUserCredentials is set.
+	HeaderInjector func(ctx context.Context) (map[string]string, error)
 }
 
 type MCPBrokerConfig struct {
 	Servers         []MCPServerConfig
 	AllowAdHocHTTP  bool
 	AdHocTimeoutSec int
+	// HeaderInjector resolves per-request HTTP headers from Invocation context.
+	// Used for RequireUserCredentials MCP servers so user identity is available
+	// at tool-call time (not Agent build time). E2E-P1-08.
+	HeaderInjector func(ctx context.Context, req *trpcmcpbroker.HeaderInjectRequest) (map[string]string, error)
 }
 
 // ToConnectionConfig is the SINGLE mapping from MCPServerConfig to the framework
@@ -645,6 +658,24 @@ func buildMCPToolSet(cfg MCPServerConfig) (ToolSet, error) {
 	if reconnectMax > 0 {
 		opts = append(opts, trpcmcp.WithSessionReconnect(reconnectMax))
 	}
+	if cfg.HeaderInjector != nil {
+		injector := cfg.HeaderInjector
+		opts = append(opts, trpcmcp.WithMCPOptions(tmcp.WithHTTPBeforeRequest(
+			func(ctx context.Context, req *http.Request) error {
+				if req == nil {
+					return nil
+				}
+				headers, err := injector(ctx)
+				if err != nil {
+					return err
+				}
+				for k, v := range headers {
+					req.Header.Set(k, v)
+				}
+				return nil
+			},
+		)))
+	}
 
 	return trpcmcp.NewMCPToolSet(connCfg, opts...), nil
 }
@@ -667,6 +698,9 @@ func buildMCPBrokerTools(cfg MCPBrokerConfig) ([]Tool, error) {
 		brokerOpts = append(brokerOpts, trpcmcpbroker.WithAllowAdHocHTTP(true))
 	}
 	brokerOpts = append(brokerOpts, trpcmcpbroker.WithAdHocHTTPTimeout(mcpTimeoutDuration(cfg.AdHocTimeoutSec)))
+	if cfg.HeaderInjector != nil {
+		brokerOpts = append(brokerOpts, trpcmcpbroker.WithHTTPHeaderInjector(cfg.HeaderInjector))
+	}
 
 	broker := trpcmcpbroker.New(brokerOpts...)
 	tools := broker.Tools()

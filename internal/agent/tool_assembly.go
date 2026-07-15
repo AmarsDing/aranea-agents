@@ -18,6 +18,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcmcpbroker "trpc.group/trpc-go/trpc-agent-go/tool/mcpbroker"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -44,6 +45,7 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		if eff[biz.ToolKeyMCPBroker] {
 			if len(mcpServers) > 0 {
 				if brokerCfg := buildMCPBrokerFromServers(mcpServers, platformAllowAdHoc); brokerCfg != nil {
+					brokerCfg.HeaderInjector = mcpUserCredentialInjector(deps, mcpServers)
 					cfg.MCPBroker = brokerCfg
 				}
 			} else {
@@ -348,20 +350,38 @@ func resolveMCPServers(ctx context.Context, deps TRPCBuilderDeps, agentID string
 			lg.Warn("MCP server config parse failed", loggateway.StepID("agent.tool_build"), loggateway.Str("server_key", key), loggateway.Err(err))
 			continue
 		}
-		out = append(out, tooltrpc.MCPServerConfig{
-			Name:                key,
-			Transport:           string(sc.Transport),
-			ServerURL:           sc.URL,
-			Command:             sc.Command,
-			Args:                sc.Args,
-			Env:                 sc.Env,
-			Headers:             applyMCPAuthHeaders(ctx, key, sc, deps),
-			TimeoutSec:          normalizeMCPServerTimeout(sc.TimeoutSec),
-			ToolPrefix:          sc.ToolPrefix,
-			SessionReconnectMax: sc.SessionReconnectMax,
-			AllowAdHocHTTP:      tools.ProductionAllowAdHocHTTP(sc.AllowAdHocHTTP, platformAllowAdHoc),
-			AdHocTimeoutSec:     normalizeMCPServerTimeout(sc.AdHocTimeoutSec),
-		})
+		cfg := tooltrpc.MCPServerConfig{
+			Name:                   key,
+			Transport:              string(sc.Transport),
+			ServerURL:              sc.URL,
+			Command:                sc.Command,
+			Args:                   sc.Args,
+			Env:                    sc.Env,
+			Headers:                applyMCPAuthHeaders(ctx, key, sc, deps),
+			TimeoutSec:             normalizeMCPServerTimeout(sc.TimeoutSec),
+			ToolPrefix:             sc.ToolPrefix,
+			SessionReconnectMax:    sc.SessionReconnectMax,
+			AllowAdHocHTTP:         tools.ProductionAllowAdHocHTTP(sc.AllowAdHocHTTP, platformAllowAdHoc),
+			AdHocTimeoutSec:        normalizeMCPServerTimeout(sc.AdHocTimeoutSec),
+			RequireUserCredentials: sc.RequireUserCredentials,
+		}
+		if sc.RequireUserCredentials && deps.MCPTooling != nil && deps.MCPTooling.MCP() != nil {
+			mcpUC := deps.MCPTooling.MCP()
+			serverKey := key
+			staticHeaders := cfg.Headers
+			cfg.HeaderInjector = func(callCtx context.Context) (map[string]string, error) {
+				uid := sessionUserID(callCtx)
+				if uid == "" {
+					return nil, fmt.Errorf("MCP server %q requires user credentials but invocation has no user", serverKey)
+				}
+				bizSC := biz.MCPServerConfig{
+					Headers:                staticHeaders,
+					RequireUserCredentials: true,
+				}
+				return mcpUC.ResolveUserAuthHeaders(callCtx, serverKey, uid, bizSC)
+			}
+		}
+		out = append(out, cfg)
 	}
 	return out, nil
 }
@@ -371,7 +391,48 @@ func resolveMCPBrokerConfig(ctx context.Context, deps TRPCBuilderDeps, agentID s
 	if err != nil || len(servers) == 0 {
 		return nil, err
 	}
-	return buildMCPBrokerFromServers(servers, platformMCPAllowAdHocHTTP(ctx, deps)), nil
+	cfg := buildMCPBrokerFromServers(servers, platformMCPAllowAdHocHTTP(ctx, deps))
+	if cfg != nil {
+		cfg.HeaderInjector = mcpUserCredentialInjector(deps, servers)
+	}
+	return cfg, nil
+}
+
+// mcpUserCredentialInjector returns an Invocation-time header injector for
+// servers with RequireUserCredentials (E2E-P1-08). Build-time resolution is
+// skipped because Invocation.Session is not available yet.
+func mcpUserCredentialInjector(deps TRPCBuilderDeps, servers []tooltrpc.MCPServerConfig) func(context.Context, *trpcmcpbroker.HeaderInjectRequest) (map[string]string, error) {
+	needUser := false
+	byName := make(map[string]tooltrpc.MCPServerConfig, len(servers))
+	for _, s := range servers {
+		byName[s.Name] = s
+		if s.RequireUserCredentials {
+			needUser = true
+		}
+	}
+	if !needUser || deps.MCPTooling == nil || deps.MCPTooling.MCP() == nil {
+		return nil
+	}
+	mcpUC := deps.MCPTooling.MCP()
+	return func(ctx context.Context, req *trpcmcpbroker.HeaderInjectRequest) (map[string]string, error) {
+		if req == nil || req.IsAdHoc {
+			// Never inject user secrets onto model-supplied ad-hoc URLs.
+			return nil, nil
+		}
+		s, ok := byName[strings.TrimSpace(req.Selector)]
+		if !ok || !s.RequireUserCredentials {
+			return nil, nil
+		}
+		uid := sessionUserID(ctx)
+		if uid == "" {
+			return nil, fmt.Errorf("MCP server %q requires user credentials but invocation has no user", s.Name)
+		}
+		bizSC := biz.MCPServerConfig{
+			Headers:                s.Headers,
+			RequireUserCredentials: true,
+		}
+		return mcpUC.ResolveUserAuthHeaders(ctx, s.Name, uid, bizSC)
+	}
 }
 
 func platformMCPAllowAdHocHTTP(ctx context.Context, deps TRPCBuilderDeps) bool {
@@ -418,26 +479,10 @@ func applyMCPAuthHeaders(ctx context.Context, serverKey string, sc mcpconfig.Ser
 	for k, v := range sc.Headers {
 		headers[k] = v
 	}
-	// When require_user_credentials is set, resolve per-user auth headers and skip
-	// OAuth/API-key processing to avoid overwriting user credentials with static auth.
-	if sc.RequireUserCredentials && deps.MCPTooling != nil && deps.MCPTooling.MCP() != nil {
-		bizSC := biz.MCPServerConfig{
-			Headers:                sc.Headers,
-			Auth:                   biz.MCPAuthConfig{Type: sc.Auth.Type, HeaderName: sc.Auth.HeaderName},
-			RequireUserCredentials: sc.RequireUserCredentials,
-		}
-		if merged, err := deps.MCPTooling.MCP().ResolveUserAuthHeaders(ctx, serverKey, sessionUserID(ctx), bizSC); err == nil {
-			for k, v := range merged {
-				headers[k] = v
-			}
-			return headers
-		}
-		// User credential resolution failed: do NOT fall through to static auth.
-		// Returning headers without auth is safer than using low-privilege static
-		// credentials when user-level auth was explicitly required.
-		deps.Logger().Warn("MCP auth: RequireUserCredentials resolution failed, skipping static auth fallback",
-			loggateway.StepID("agent.tool_build"),
-			loggateway.Str("server_key", serverKey))
+	// E2E-P1-08: RequireUserCredentials must be resolved at Invocation/tool-call
+	// time via MCPBrokerConfig.HeaderInjector. Agent build has no Invocation yet,
+	// so only copy static headers here and skip user + static-auth fallback.
+	if sc.RequireUserCredentials {
 		return headers
 	}
 	authType := strings.ToLower(strings.TrimSpace(sc.Auth.Type))

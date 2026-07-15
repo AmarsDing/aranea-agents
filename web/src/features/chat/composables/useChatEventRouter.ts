@@ -8,7 +8,8 @@ type Store = ReturnType<typeof useChatActivityStore>;
  * useChatEventRouter dispatches v2 WS events into Pinia store mutations.
  *
  * The router is a pure function of (store, envelope) → store mutation.
- * No inference, no dedup, no re-parenting — just direct Map updates.
+ * Streaming delta dedup lives in activityV2Store.appendStepDelta (E2E-P1-05).
+ * Reconnect reconciliation uses fetchSessionHistory (no WS replay).
  */
 export function useChatEventRouter(store: Store) {
   function dispatch(env: V2WsEnvelope) {

@@ -212,6 +212,10 @@ func usageWhere(query biz.UsageQuery, billableOnly bool) (string, []any) {
 			args = append(args, query.Status)
 		}
 	}
+	if query.WorkspaceID != "" {
+		parts = append(parts, "workspace_id = ?")
+		args = append(args, query.WorkspaceID)
+	}
 	if len(parts) == 0 {
 		return "", args
 	}

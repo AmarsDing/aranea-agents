@@ -92,8 +92,8 @@ func AssertWorkspace(callerWS, resourceWS string) error {
 //   - callerWS == resourceWS → 允许
 //   - 其他 → Forbidden
 //
-// 适用场景：可共享实体（agent/team/graph_definition/plugin），这些实体可能由
-// 系统内置（workspace_id=""）供所有租户使用，也可能是租户私有（workspace_id="ws-xxx"）。
+// 适用场景：可共享实体的 **读** 路径（Get/List）。变更（Update/Delete）必须使用
+// AssertWorkspaceMutate，禁止租户改写共享资源。
 //
 // 与 AssertWorkspace 的区别：AssertWorkspace 把空 resourceWS 视为 DefaultWorkspaceID
 // （私有，仅 default 租户可访问）；本函数把空 resourceWS 视为全局共享（所有租户可访问）。
@@ -109,4 +109,21 @@ func AssertWorkspaceOrShared(callerWS, resourceWS string) error {
 		return nil
 	}
 	return apierror.Forbidden(DomainWorkspace, "access to resource in another workspace is not allowed")
+}
+
+// AssertWorkspaceMutate 校验 caller 是否可变更（Update/Delete）resource。
+// 共享资源（resourceWS == ""）仅 system caller 可写；租户只能变更本 workspace 私有资源。
+//
+// 规则：
+//   - callerWS == SystemWorkspaceID → 绕过
+//   - resourceWS == "" → Forbidden（共享/内置只读，防跨租户改写）
+//   - 其他 → 委托 AssertWorkspace（空视为 default 私有）
+func AssertWorkspaceMutate(callerWS, resourceWS string) error {
+	if callerWS == SystemWorkspaceID {
+		return nil
+	}
+	if resourceWS == "" {
+		return apierror.Forbidden(DomainWorkspace, "shared resources are read-only for tenants")
+	}
+	return AssertWorkspace(callerWS, resourceWS)
 }

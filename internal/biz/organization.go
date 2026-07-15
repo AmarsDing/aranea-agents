@@ -215,7 +215,9 @@ func (u *OrganizationUsecase) Update(ctx context.Context, id string, patch Organ
 	// Preserve it from current to avoid clearing on every update.
 	// DeptLeadAgentID and DeptLeadConfigJSON are also preserved from current
 	// (via merged := current above) — they should only be mutated by DeptLeadManager.
-	merged.WorkspaceID = patch.WorkspaceID
+	// P2-C: workspace_id is immutable on Update (preserve current value).
+	// merged.WorkspaceID stays from `current` (line 198: `merged := current`).
+	// Do NOT apply patch.WorkspaceID — clients cannot forge workspace reassignment.
 	merged.OwnerUserID = patch.OwnerUserID
 	merged.IsSystem = patch.IsSystem
 	merged.ConfigJSON = patch.ConfigJSON

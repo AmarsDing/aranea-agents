@@ -91,10 +91,20 @@ func (s *PluginService) reloadRuntime(ctx context.Context) {
 	})
 }
 
-// assertPluginAccess 校验 caller 是否可访问指定 plugin（P2-B IDOR 防护）。
+// assertPluginAccess 校验 caller 是否可读取指定 plugin（P2-B IDOR 防护）。
 // 跨租户访问返回 NotFound（避免泄露 plugin 存在性）。
-// 系统 caller（cron/admin）绕过校验；空 workspace_id 的 plugin 视为全局共享。
+// 共享 plugin（workspace_id=""）对所有租户可读；变更须用 assertPluginMutateAccess。
 func (s *PluginService) assertPluginAccess(ctx context.Context, pluginID string) error {
+	return s.checkPluginAccess(ctx, pluginID, false)
+}
+
+// assertPluginMutateAccess 校验 caller 是否可变更指定 plugin。
+// 共享 plugin（workspace_id=""）对租户只读（fail-closed）。
+func (s *PluginService) assertPluginMutateAccess(ctx context.Context, pluginID string) error {
+	return s.checkPluginAccess(ctx, pluginID, true)
+}
+
+func (s *PluginService) checkPluginAccess(ctx context.Context, pluginID string, mutate bool) error {
 	if pluginID == "" {
 		return nil
 	}
@@ -105,11 +115,17 @@ func (s *PluginService) assertPluginAccess(ctx context.Context, pluginID string)
 		}
 		return err
 	}
-	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), p.WorkspaceID); err != nil {
+	callerWS := workspace.IDFromContext(ctx)
+	if mutate {
+		err = workspace.AssertWorkspaceMutate(callerWS, p.WorkspaceID)
+	} else {
+		err = workspace.AssertWorkspaceOrShared(callerWS, p.WorkspaceID)
+	}
+	if err != nil {
 		s.lg.Warn("plugin access denied: workspace mismatch",
 			loggateway.StepID("plugin.idor"),
 			loggateway.Str("plugin_id", pluginID),
-			loggateway.Str("caller_ws", workspace.IDFromContext(ctx)))
+			loggateway.Str("caller_ws", callerWS))
 		return apierror.NotFound("PLUGIN", "plugin not found")
 	}
 	return nil
@@ -178,7 +194,7 @@ func (s *PluginService) ListPlugins(ctx context.Context, req *v1.ListPluginsRequ
 }
 
 func (s *PluginService) TogglePluginEnabled(ctx context.Context, req *v1.TogglePluginEnabledRequest) (*v1.Plugin, error) {
-	if err := s.assertPluginAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertPluginMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	out, err := s.uc.ToggleEnabled(ctx, req.GetId(), req.GetEnabled())
@@ -193,7 +209,7 @@ func (s *PluginService) TogglePluginEnabled(ctx context.Context, req *v1.ToggleP
 }
 
 func (s *PluginService) UpdatePluginConfig(ctx context.Context, req *v1.UpdatePluginConfigRequest) (*v1.Plugin, error) {
-	if err := s.assertPluginAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertPluginMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	out, err := s.uc.UpdateConfig(ctx, req.GetId(), req.GetConfigJson())
@@ -208,7 +224,7 @@ func (s *PluginService) UpdatePluginConfig(ctx context.Context, req *v1.UpdatePl
 }
 
 func (s *PluginService) UpdatePluginSortOrder(ctx context.Context, req *v1.UpdatePluginSortOrderRequest) (*v1.Plugin, error) {
-	if err := s.assertPluginAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertPluginMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	out, err := s.uc.UpdateSortOrder(ctx, req.GetId(), int(req.GetSortOrder()))
@@ -223,7 +239,7 @@ func (s *PluginService) UpdatePluginSortOrder(ctx context.Context, req *v1.Updat
 }
 
 func (s *PluginService) UpdatePluginScope(ctx context.Context, req *v1.UpdatePluginScopeRequest) (*v1.Plugin, error) {
-	if err := s.assertPluginAccess(ctx, req.GetId()); err != nil {
+	if err := s.assertPluginMutateAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	out, err := s.uc.UpdateScope(ctx, req.GetId(), req.GetScope())

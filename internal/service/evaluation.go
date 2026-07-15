@@ -246,6 +246,11 @@ func (s *EvaluationService) AnnotateCaseResult(ctx context.Context, req *v1.Anno
 }
 
 func (s *EvaluationService) GetAgentEvalTrend(ctx context.Context, req *v1.GetAgentEvalTrendRequest) (*v1.GetAgentEvalTrendResponse, error) {
+	if dsID := strings.TrimSpace(req.GetDatasetId()); dsID != "" {
+		if _, err := s.assertEvalDatasetAccess(ctx, dsID); err != nil {
+			return nil, err
+		}
+	}
 	points, err := s.uc.GetAgentEvalTrend(ctx, req.GetAgentId(), req.GetDatasetId(), int(req.GetLimit()))
 	if err != nil {
 		return nil, err

@@ -94,3 +94,71 @@ func TestAssertWorkspace_NonSystemCallerWithSystemResource(t *testing.T) {
 		t.Fatal("expected error for non-system caller accessing system resource, got nil")
 	}
 }
+
+// TestAssertWorkspaceMutate_SystemBypass verifies system callers can mutate
+// any resource, including shared (empty workspace) resources.
+func TestAssertWorkspaceMutate_SystemBypass(t *testing.T) {
+	cases := []struct {
+		name       string
+		callerWS   string
+		resourceWS string
+	}{
+		{"system caller, non-empty resource", SystemWorkspaceID, "ws-1"},
+		{"system caller, empty (shared) resource", SystemWorkspaceID, ""},
+		{"system caller, default resource", SystemWorkspaceID, DefaultWorkspaceID},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if err := AssertWorkspaceMutate(c.callerWS, c.resourceWS); err != nil {
+				t.Fatalf("system workspace should bypass mutate, got %v", err)
+			}
+		})
+	}
+}
+
+// TestAssertWorkspaceMutate_SharedReadOnlyForTenants verifies fail-closed:
+// empty resourceWS is shared/built-in and tenants must not mutate it.
+func TestAssertWorkspaceMutate_SharedReadOnlyForTenants(t *testing.T) {
+	for _, caller := range []string{"ws-1", DefaultWorkspaceID, "tenant-abc"} {
+		t.Run("caller="+caller, func(t *testing.T) {
+			err := AssertWorkspaceMutate(caller, "")
+			if err == nil {
+				t.Fatal("expected Forbidden for tenant mutating shared resource, got nil")
+			}
+			ae, ok := apierror.From(err)
+			if !ok {
+				t.Fatal("expected *apierror.Error")
+			}
+			if ae.Code != apierror.CodeForbidden {
+				t.Fatalf("expected FORBIDDEN code, got %s", ae.Code)
+			}
+			if ae.Domain != DomainWorkspace {
+				t.Fatalf("expected domain %q, got %q", DomainWorkspace, ae.Domain)
+			}
+		})
+	}
+}
+
+// TestAssertWorkspaceMutate_SameWorkspaceAllowed verifies tenants can mutate
+// resources owned by their own workspace.
+func TestAssertWorkspaceMutate_SameWorkspaceAllowed(t *testing.T) {
+	if err := AssertWorkspaceMutate("ws-1", "ws-1"); err != nil {
+		t.Fatalf("same workspace mutate should pass, got %v", err)
+	}
+}
+
+// TestAssertWorkspaceMutate_CrossWorkspaceForbidden verifies tenants cannot
+// mutate resources owned by another workspace.
+func TestAssertWorkspaceMutate_CrossWorkspaceForbidden(t *testing.T) {
+	err := AssertWorkspaceMutate("ws-1", "ws-2")
+	if err == nil {
+		t.Fatal("expected error for cross-workspace mutate, got nil")
+	}
+	ae, ok := apierror.From(err)
+	if !ok {
+		t.Fatal("expected *apierror.Error")
+	}
+	if ae.Code != apierror.CodeForbidden {
+		t.Fatalf("expected FORBIDDEN code, got %s", ae.Code)
+	}
+}

@@ -181,6 +181,34 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
 
   // === Streaming delta (does NOT bump version) ===
 
+  // E2E-P1-05: fingerprint recent streaming deltas to skip WS redelivery
+  // duplicates. Key = stepId:field; ring-bounded fingerprints per key.
+  const deltaDedupMaxPerKey = 64;
+  const recentDeltas = new Map<string, string[]>();
+
+  function deltaFingerprint(chunk: string): string {
+    const n = chunk.length;
+    if (n <= 48) return `${n}:${chunk}`;
+    return `${n}:${chunk.slice(0, 24)}:${chunk.slice(-24)}`;
+  }
+
+  function shouldApplyDelta(stepId: string, field: string, chunk: string): boolean {
+    if (!chunk) return false;
+    const key = `${stepId}:${field}`;
+    const fp = deltaFingerprint(chunk);
+    let ring = recentDeltas.get(key);
+    if (!ring) {
+      ring = [];
+      recentDeltas.set(key, ring);
+    }
+    if (ring.includes(fp)) return false;
+    ring.push(fp);
+    if (ring.length > deltaDedupMaxPerKey) {
+      ring.splice(0, ring.length - deltaDedupMaxPerKey);
+    }
+    return true;
+  }
+
   // P2-06 fix: accept any DeltaField string from the backend and handle only
   // the known string-appendable fields (content, reasoning). Unknown fields
   // (e.g. tool_args, state) are silently ignored — the final value arrives
@@ -190,6 +218,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   function appendStepDelta(stepId: string, field: string, chunk: string) {
     const s = steps.value.get(stepId);
     if (!s) return;
+    if (!shouldApplyDelta(stepId, field, chunk)) return;
     switch (field) {
       case 'content':
         s.Content += chunk;
@@ -353,7 +382,11 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       if (t.SpiritSessionID === spiritSessionId) turns.value.delete(id);
     }
     for (const [id, s] of steps.value) {
-      if (s.SpiritSessionID === spiritSessionId) steps.value.delete(id);
+      if (s.SpiritSessionID === spiritSessionId) {
+        steps.value.delete(id);
+        recentDeltas.delete(`${id}:content`);
+        recentDeltas.delete(`${id}:reasoning`);
+      }
     }
     for (const [id, ts] of teamStages.value) {
       if (ts.SessionID === spiritSessionId) teamStages.value.delete(id);
@@ -382,6 +415,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     tasks.value.clear();
     turns.value.clear();
     steps.value.clear();
+    recentDeltas.clear();
     teamStages.value.clear();
     teamRuns.value.clear();
     memberSessions.value.clear();

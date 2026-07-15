@@ -8,6 +8,7 @@ import (
 	v1 "aranea-agents/api/kratos/plugin/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/service"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -112,7 +113,7 @@ func (m *memPluginRepo) IncrementStats(_ context.Context, pluginKey string, delt
 
 func newPluginService() *service.PluginService {
 	repo := newMemPluginRepo()
-	repo.items["p1"] = biz.Plugin{ID: "p1", Key: "test-plugin", Name: "Test Plugin", Enabled: false}
+	repo.items["p1"] = biz.Plugin{ID: "p1", Key: "test-plugin", Name: "Test Plugin", Enabled: false, WorkspaceID: workspace.DefaultWorkspaceID}
 	return service.NewPluginService(biz.NewPluginUsecase(repo, nil, nil), nil, loggateway.NewNoop())
 }
 

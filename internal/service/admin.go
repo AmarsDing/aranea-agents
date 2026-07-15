@@ -18,6 +18,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"strings"
 )
 
 // encodePassword hashes a plain password with bcrypt. Returns the empty string
@@ -140,12 +141,17 @@ func (s *AdminService) CreateAdmin(ctx context.Context, req *v1.CreateAdminReque
 	if pwd != "" {
 		pwd = encodePassword(pwd)
 	}
+	adminWS := strings.TrimSpace(req.Admin.GetWorkspaceId())
+	if adminWS == "" {
+		adminWS = a.EffectiveWorkspaceID()
+	}
 	admin, err := s.uc.CreateAdmin(ctx, &biz.Admin{
-		Name:     req.Admin.Name,
-		Email:    req.Admin.Email,
-		Password: pwd,
-		Avatar:   req.Admin.Avatar,
-		Access:   req.Admin.Access,
+		Name:        req.Admin.Name,
+		Email:       req.Admin.Email,
+		Password:    pwd,
+		Avatar:      req.Admin.Avatar,
+		Access:      req.Admin.Access,
+		WorkspaceID: adminWS,
 	})
 	if err != nil {
 		return nil, err

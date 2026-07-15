@@ -396,9 +396,11 @@ func (r *evalRepo) ListRuns(ctx context.Context, datasetID, agentID string, limi
 }
 
 func (r *evalRepo) ListTrendPoints(ctx context.Context, agentID, datasetID string, limit int) ([]biz.EvalTrendPoint, error) {
+	wsClause, wsArgs := evalRunsWorkspaceFilter(ctx)
 	q := `SELECT id,created_at,trigger_source,exact_match_score,contains_match_score,llm_judge_score,tool_call_accuracy,pass_at_k,pass_hat_k
-		FROM eval_runs WHERE agent_id=? AND status='completed'`
+		FROM eval_runs WHERE agent_id=? AND status='completed'` + wsClause
 	args := []any{agentID}
+	args = append(args, wsArgs...)
 	if strings.TrimSpace(datasetID) != "" {
 		q += ` AND dataset_id=?`
 		args = append(args, datasetID)
@@ -427,13 +429,15 @@ func (r *evalRepo) GetRunsByIDs(ctx context.Context, ids []string) ([]biz.EvalRu
 	if len(ids) == 0 {
 		return nil, nil
 	}
+	wsClause, wsArgs := evalRunsWorkspaceFilter(ctx)
 	placeholders := r.data.Dialect().Placeholders(len(ids))
 	args := make([]any, len(ids))
 	for i, id := range ids {
 		args[i] = id
 	}
+	args = append(args, wsArgs...)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		r.data.Dialect().RenumberPlaceholders(evalRunSelect+` WHERE id IN (`+placeholders+`)`), args...)
+		r.data.Dialect().RenumberPlaceholders(evalRunSelect+` WHERE id IN (`+placeholders+`)`+wsClause), args...)
 	if err != nil {
 		return nil, err
 	}
