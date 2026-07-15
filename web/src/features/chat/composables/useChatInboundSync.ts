@@ -413,6 +413,14 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       channels: ['chat'],
       logEnabled: false,
       onActivityEvent: deps.onActivityEvent ? (ev) => deps.onActivityEvent!(ev) : undefined,
+      // E2E-P1-06: global WS now receives v2 terminal events; refresh session
+      // list badges/ordering when a background turn completes.
+      onV2Event: (envelope) => {
+        const kind = String(envelope.kind ?? '');
+        if (!/\.(completed|failed|cancelled|canceled)$/.test(kind)) return;
+        const sid = String(envelope.session_id ?? '').trim();
+        if (sid) void refreshSessionsAfterTurn(sid);
+      },
     });
   });
 

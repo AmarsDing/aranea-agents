@@ -24,6 +24,8 @@ func (EvalRun) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("dataset_id"),
 		index.Fields("agent_id"),
+		// P2-B: workspace visibility filter.
+		index.Fields("workspace_id").StorageKey("idx_eval_runs_workspace"),
 	}
 }
 
@@ -47,6 +49,9 @@ func (EvalRun) Fields() []ent.Field {
 		field.Text("error_message").Default(""),
 		field.String("started_at").Default(""),
 		field.String("finished_at").Default(""),
+		// P2-B: tenant isolation. empty = legacy (treated as default workspace);
+		// non-empty = tenant-private (visible only to owning workspace).
+		field.String("workspace_id").Default("").MaxLen(128),
 		field.String("created_at").Default(""),
 	}
 }

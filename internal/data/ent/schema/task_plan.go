@@ -34,6 +34,9 @@ func (TaskPlan) Fields() []ent.Field {
 		field.String("topology_hint").MaxLen(64).Default(""),
 		field.Text("memory_hit_json").Default("{}"),
 		field.String("status").MaxLen(32).Default("draft"),
+		// P2-B: tenant isolation. empty = legacy (treated as default workspace);
+		// non-empty = tenant-private (visible only to owning workspace).
+		field.String("workspace_id").Default("").MaxLen(128),
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 	}
@@ -42,5 +45,7 @@ func (TaskPlan) Fields() []ent.Field {
 func (TaskPlan) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("spirit_session_id"),
+		// P2-B: workspace visibility filter.
+		index.Fields("workspace_id", "status").StorageKey("idx_task_plans_workspace"),
 	}
 }

@@ -138,14 +138,16 @@ func (r *knowledgeRepo) GetCollection(ctx context.Context, id string) (biz.Knowl
 
 func (r *knowledgeRepo) ListCollections(ctx context.Context, workspace string, limit, offset int) ([]biz.KnowledgeCollection, int, error) {
 	var total int
-	cq := `SELECT COUNT(*) FROM knowledge_collections WHERE workspace = $1 OR $1 = ''`
+	// C-01: when workspace is non-empty, return tenant-owned + shared (empty
+	// workspace) rows. Empty workspace query (system) returns everything.
+	cq := `SELECT COUNT(*) FROM knowledge_collections WHERE workspace = $1 OR workspace = '' OR $1 = ''`
 	if err := r.data.Postgres().QueryRowContext(ctx, cq, workspace).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	q := `SELECT id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace,
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
-		  FROM knowledge_collections WHERE workspace = $1 OR $1 = ''
+		  FROM knowledge_collections WHERE workspace = $1 OR workspace = '' OR $1 = ''
 		  ORDER BY created_at DESC LIMIT $2 OFFSET $3`
 	rows, err := r.data.Postgres().QueryContext(ctx, q, workspace, limit, offset)
 	if err != nil {

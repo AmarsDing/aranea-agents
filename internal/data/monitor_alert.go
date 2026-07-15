@@ -168,12 +168,16 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'idle')`,
 
 // UpdateAlertFiringState persists the firing state machine columns (MON-OPT-02).
 //
-// SQLite single-writer guarantee: we run BEGIN IMMEDIATE so that any concurrent
-// reader that also tries to fire the same rule is blocked until this transaction
-// commits. This prevents duplicate Webhook notifications on restart or multi-goroutine
-// evaluation runs.
-// Postgres uses MVCC and does not support BEGIN IMMEDIATE; a standard BEGIN is used
-// instead, which starts a READ COMMITTED transaction (the default isolation level).
+// C-27 fix: use BeginTx instead of manual BEGIN/COMMIT statements. The previous
+// implementation executed "BEGIN IMMEDIATE" and "COMMIT" as separate ExecContext
+// calls on a *sql.DB (connection pool). Each ExecContext may acquire a DIFFERENT
+// connection from the pool, so the BEGIN/UPDATE/COMMIT were not guaranteed to run
+// on the same connection, breaking the transaction boundary and allowing duplicate
+// alerts to slip through.
+//
+// BeginTx acquires a single connection and binds it to the returned *sql.Tx; all
+// subsequent ExecContext calls on the tx use that same connection, guaranteeing
+// the transaction is atomic.
 func (r *monitorRepo) UpdateAlertFiringState(
 	ctx context.Context,
 	id string,
@@ -183,24 +187,17 @@ func (r *monitorRepo) UpdateAlertFiringState(
 	recoveredAt *time.Time,
 ) error {
 	r.ensureMonitorAlertFiringStateCols(ctx)
-	db := r.data.RWDB().WriteDB(ctx)
+	rawDB := r.data.RWDB().WriteHandle()
 	d := r.data.Dialect()
 
-	// SQLite: BEGIN IMMEDIATE acquires a write lock immediately; BEGIN DEFERRED (the
-	// default) only upgrades to write on the first write statement, leaving a gap for
-	// races. Postgres uses MVCC and does not have IMMEDIATE transactions; standard
-	// BEGIN is used instead.
-	beginStmt := "BEGIN IMMEDIATE"
-	if d.IsPostgres() {
-		beginStmt = "BEGIN"
-	}
-	if _, err := db.ExecContext(ctx, beginStmt); err != nil {
+	tx, err := rawDB.BeginTx(ctx, nil)
+	if err != nil {
 		return entErrToBizErr(err, "MONITOR_ALERT")
 	}
 	committed := false
 	defer func() {
 		if !committed {
-			db.ExecContext(ctx, "ROLLBACK") //nolint:errcheck
+			tx.Rollback() //nolint:errcheck
 		}
 	}()
 
@@ -218,13 +215,13 @@ UPDATE monitor_alert_rules
 SET firing_state = ?, last_fired_at = ?, last_fired_value = ?, recovered_at = ?,
     updated_at = ?
 WHERE id = ?`)
-	if _, err := db.ExecContext(ctx, updateSQL,
+	if _, err := tx.ExecContext(ctx, updateSQL,
 		string(state), lastFiredAtMs, lastFiredValue, recoveredAtMs,
 		time.Now().UTC().Format(time.RFC3339), id,
 	); err != nil {
 		return entErrToBizErr(err, "MONITOR_ALERT")
 	}
-	if _, err := db.ExecContext(ctx, "COMMIT"); err != nil {
+	if err := tx.Commit(); err != nil {
 		return entErrToBizErr(err, "MONITOR_ALERT")
 	}
 	committed = true

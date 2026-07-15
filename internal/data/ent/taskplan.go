@@ -46,6 +46,8 @@ type TaskPlan struct {
 	MemoryHitJSON string `json:"memory_hit_json,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
+	// WorkspaceID holds the value of the "workspace_id" field.
+	WorkspaceID string `json:"workspace_id,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt string `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -60,7 +62,7 @@ func (*TaskPlan) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case taskplan.FieldComplexityScore:
 			values[i] = new(sql.NullFloat64)
-		case taskplan.FieldID, taskplan.FieldSpiritSessionID, taskplan.FieldTraceID, taskplan.FieldUserMessage, taskplan.FieldIntentArtifactJSON, taskplan.FieldComplexityLevel, taskplan.FieldDimensionsJSON, taskplan.FieldSubTasksJSON, taskplan.FieldDagJSON, taskplan.FieldDecomposeReason, taskplan.FieldStrategy, taskplan.FieldStrategyReason, taskplan.FieldTopologyHint, taskplan.FieldMemoryHitJSON, taskplan.FieldStatus, taskplan.FieldCreatedAt, taskplan.FieldUpdatedAt:
+		case taskplan.FieldID, taskplan.FieldSpiritSessionID, taskplan.FieldTraceID, taskplan.FieldUserMessage, taskplan.FieldIntentArtifactJSON, taskplan.FieldComplexityLevel, taskplan.FieldDimensionsJSON, taskplan.FieldSubTasksJSON, taskplan.FieldDagJSON, taskplan.FieldDecomposeReason, taskplan.FieldStrategy, taskplan.FieldStrategyReason, taskplan.FieldTopologyHint, taskplan.FieldMemoryHitJSON, taskplan.FieldStatus, taskplan.FieldWorkspaceID, taskplan.FieldCreatedAt, taskplan.FieldUpdatedAt:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -173,6 +175,12 @@ func (_m *TaskPlan) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Status = value.String
 			}
+		case taskplan.FieldWorkspaceID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field workspace_id", values[i])
+			} else if value.Valid {
+				_m.WorkspaceID = value.String
+			}
 		case taskplan.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -265,6 +273,9 @@ func (_m *TaskPlan) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
+	builder.WriteString(", ")
+	builder.WriteString("workspace_id=")
+	builder.WriteString(_m.WorkspaceID)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt)

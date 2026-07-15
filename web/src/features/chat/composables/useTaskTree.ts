@@ -1,5 +1,4 @@
 // web/src/features/chat/composables/useTaskTree.ts
-import { computed } from 'vue';
 import type { useChatActivityStore } from '../../../stores/chat/activityV2Store';
 import type { Task, Turn, Step, TeamStage, PlanBoard } from '../v2Types';
 

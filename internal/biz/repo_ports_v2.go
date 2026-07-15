@@ -69,6 +69,9 @@ type StepV2Reader interface {
 	ListStepsByTurn(ctx context.Context, turnID string) ([]Step, error)
 	ListStepsByTask(ctx context.Context, taskID string) ([]Step, error)
 	ListStepsBySession(ctx context.Context, sessionID string) ([]Step, error) // replaces v1 ListBySession
+	// MaxSeqBySpiritSession returns MAX(seq) for the spirit session, or 0 if none.
+	// B-06: used to restore SeqAssigner after process restart.
+	MaxSeqBySpiritSession(ctx context.Context, spiritSessionID string) (int64, error)
 }
 
 type StepV2Writer interface {

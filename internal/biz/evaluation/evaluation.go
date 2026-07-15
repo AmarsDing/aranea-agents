@@ -60,6 +60,9 @@ type Run struct {
 	ErrorMessage       string
 	StartedAt          string
 	FinishedAt         string
+	// WorkspaceID scopes this run to a tenant workspace.
+	// empty = legacy (treated as default workspace); non-empty = tenant-private.
+	WorkspaceID        string
 	CreatedAt          string
 }
 

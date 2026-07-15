@@ -89,7 +89,7 @@ func (r *Runner) probeAll(ctx context.Context) {
 	}
 	defer r.mu.Unlock()
 
-	servers, err := r.deps.MCP.ListMCPServers(ctx)
+	servers, err := r.deps.MCP.ListMCPServers(ctx, biz.MCPListQuery{})
 	if err != nil {
 		r.lg.Error("MCP 健康检查列表失败", loggateway.StepID("mcp.health_list_fail"), loggateway.Err(err))
 		return

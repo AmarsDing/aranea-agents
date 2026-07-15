@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"aranea-agents/internal/workspace"
+	"aranea-agents/pkg/auth"
 
 	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
 )
@@ -19,27 +20,44 @@ const (
 	QueryWorkspaceID = "workspace_id"
 )
 
-// WorkspaceFilter is an HTTP filter (pre-handler) that extracts the
-// workspace ID from the request and injects it into the context.
+// WorkspaceFilter is an HTTP filter (pre-handler) that resolves the caller's
+// workspace and injects it into the context.
 //
-// Resolution order:
-//  1. X-Workspace-ID header
-//  2. workspace_id query parameter
-//  3. "default" workspace (single-tenant fallback)
+// B-01 (2026-07-16): workspace is bound to the authenticated principal's JWT
+// membership. Client Header/Query values are NOT trusted for any principal
+// (including admin). Admins that need another workspace must hold a JWT
+// stamped with that workspace_id (1:1 admin→workspace model / P2-A).
 //
-// If an empty string is provided via header/query we treat it as absent.
+// Resolution rules:
+//  1. No principal (public/no-auth paths): default workspace (ignore client forge).
+//  2. Authenticated principal: always JWT EffectiveWorkspaceID. A mismatched
+//     Header/Query is rejected with 403.
+//
 // Inject this filter AFTER the auth filter so that auth has already
 // validated the bearer token.
 func WorkspaceFilter() kratoshttp.FilterFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			wsID := r.Header.Get(HeaderWorkspaceID)
-			if wsID == "" {
-				wsID = r.URL.Query().Get(QueryWorkspaceID)
+			requested := r.Header.Get(HeaderWorkspaceID)
+			if requested == "" {
+				requested = r.URL.Query().Get(QueryWorkspaceID)
 			}
-			if wsID == "" {
+
+			claims, ok := auth.FromContext(r.Context())
+			var wsID string
+			switch {
+			case !ok || claims == nil:
+				// Unauthenticated path: do not honor client-supplied IDs.
 				wsID = workspace.DefaultWorkspaceID
+			default:
+				bound := claims.EffectiveWorkspaceID()
+				if requested != "" && requested != bound {
+					http.Error(w, "workspace not allowed for this principal", http.StatusForbidden)
+					return
+				}
+				wsID = bound
 			}
+
 			ctx := workspace.WithContext(r.Context(), wsID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

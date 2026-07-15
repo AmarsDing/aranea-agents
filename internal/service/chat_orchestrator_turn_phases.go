@@ -216,6 +216,13 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 	//
 	var turnProjector *v2.ActivityProjector
 	if o.infraDeps.V2ProjectorFactory != nil {
+		// B-06: after process restart, restore SeqAssigner from persisted MAX(seq)
+		// so new steps do not reuse Seq values already shown to clients.
+		if sr := o.stepReader(); sr != nil {
+			if maxSeq, err := sr.MaxSeqBySpiritSession(ctx, sessionID); err == nil {
+				o.infraDeps.V2ProjectorFactory.RestoreSeqIfNeeded(sessionID, maxSeq)
+			}
+		}
 		earlyMeta := chatagent.ProjectMeta{
 			SessionID:        sessionID,
 			RequestID:        userMsg.ID,

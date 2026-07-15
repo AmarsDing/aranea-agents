@@ -1,26 +1,6 @@
 // web/src/features/chat/__tests__/v2Types.spec.ts
 import { describe, it, expectTypeOf } from 'vitest';
-import type {
-  V2WsEnvelope,
-  Task,
-  Turn,
-  Step,
-  TeamStage,
-  TeamRun,
-  MemberSession,
-  PlanBoard,
-  PlanStep,
-  StepKind,
-  StepStatus,
-  TaskStatus,
-  TurnStatus,
-  TeamStageStatus,
-  TeamRunStatus,
-  MemberSessionStatus,
-  PlanStepStatus,
-  EventKind,
-  V2Event,
-} from '../v2Types';
+import type { V2WsEnvelope, Task, Step, StepKind, EventKind, V2Event } from '../v2Types';
 
 describe('v2Types', () => {
   it('V2WsEnvelope has correct shape', () => {

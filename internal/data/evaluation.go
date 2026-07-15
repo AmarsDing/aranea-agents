@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	bizevaluation "aranea-agents/internal/biz/evaluation"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
@@ -67,6 +68,7 @@ func EnsureEvalSchema(ctx context.Context, db *sql.DB) error {
 			error_message        TEXT NOT NULL DEFAULT '',
 			started_at           TEXT NOT NULL DEFAULT '',
 			finished_at          TEXT NOT NULL DEFAULT '',
+			workspace_id         TEXT NOT NULL DEFAULT '',
 			created_at           TEXT NOT NULL
 		)`,
 		`CREATE TABLE IF NOT EXISTS eval_case_results (
@@ -105,6 +107,7 @@ func EnsureEvalSchema(ctx context.Context, db *sql.DB) error {
 		`ALTER TABLE eval_runs ADD COLUMN pass_hat_k REAL NOT NULL DEFAULT 0`,
 		`ALTER TABLE eval_runs ADD COLUMN scores_json TEXT NOT NULL DEFAULT '{}'`,
 		`ALTER TABLE eval_case_results ADD COLUMN scores_json TEXT NOT NULL DEFAULT '{}'`,
+		`ALTER TABLE eval_runs ADD COLUMN workspace_id TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, s := range migrations {
 		_, _ = db.ExecContext(ctx, s) // best-effort for existing DBs
@@ -140,13 +143,14 @@ func (r *evalRepo) GetDataset(ctx context.Context, id string) (biz.EvalDataset, 
 
 func (r *evalRepo) ListDatasets(ctx context.Context, workspace string, limit, offset int) ([]biz.EvalDataset, int, error) {
 	var total int
+	// Tenant-owned + shared (empty workspace). Empty workspace arg (system) returns all.
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
-		r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(*) FROM eval_datasets WHERE workspace=? OR ?=''`), []any{workspace, workspace}, &total); err != nil {
+		r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(*) FROM eval_datasets WHERE workspace=? OR workspace='' OR ?=''`), []any{workspace, workspace}, &total); err != nil {
 		return nil, 0, err
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		r.data.Dialect().RenumberPlaceholders(`SELECT id,name,description,case_count,workspace,created_at,updated_at
-		 FROM eval_datasets WHERE workspace=? OR ?='' ORDER BY created_at DESC LIMIT ? OFFSET ?`),
+		 FROM eval_datasets WHERE workspace=? OR workspace='' OR ?='' ORDER BY created_at DESC LIMIT ? OFFSET ?`),
 		workspace, workspace, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -273,19 +277,19 @@ func (r *evalRepo) CreateRun(ctx context.Context, rn biz.EvalRun) (biz.EvalRun, 
 		 (id,dataset_id,agent_id,status,total_cases,completed_cases,
 		  exact_match_score,contains_match_score,llm_judge_score,tool_call_accuracy,
 		  pass_at_k,pass_hat_k,trigger_source,num_runs,scores_json,
-		  error_message,started_at,finished_at,created_at)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+		  error_message,started_at,finished_at,workspace_id,created_at)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
 		rn.ID, rn.DatasetID, rn.AgentID, rn.Status, rn.TotalCases, rn.CompletedCases,
 		rn.ExactMatchScore, rn.ContainsMatchScore, rn.LLMJudgeScore, rn.ToolCallAccuracy,
 		rn.PassAtK, rn.PassHatK, rn.TriggerSource, rn.NumRuns, normalizeEvalScoresJSON(rn.ScoresJSON),
-		rn.ErrorMessage, rn.StartedAt, rn.FinishedAt, rn.CreatedAt)
+		rn.ErrorMessage, rn.StartedAt, rn.FinishedAt, rn.WorkspaceID, rn.CreatedAt)
 	return rn, err
 }
 
 const evalRunSelect = `SELECT id,dataset_id,agent_id,status,total_cases,completed_cases,
 	exact_match_score,contains_match_score,llm_judge_score,tool_call_accuracy,
 	pass_at_k,pass_hat_k,trigger_source,num_runs,scores_json,
-	error_message,started_at,finished_at,created_at FROM eval_runs`
+	error_message,started_at,finished_at,workspace_id,created_at FROM eval_runs`
 
 func normalizeEvalScoresJSON(raw string) string {
 	if strings.TrimSpace(raw) == "" {
@@ -299,7 +303,7 @@ func scanEvalRun(row interface{ Scan(dest ...any) error }) (biz.EvalRun, error) 
 	err := row.Scan(&rn.ID, &rn.DatasetID, &rn.AgentID, &rn.Status, &rn.TotalCases, &rn.CompletedCases,
 		&rn.ExactMatchScore, &rn.ContainsMatchScore, &rn.LLMJudgeScore, &rn.ToolCallAccuracy,
 		&rn.PassAtK, &rn.PassHatK, &rn.TriggerSource, &rn.NumRuns, &rn.ScoresJSON,
-		&rn.ErrorMessage, &rn.StartedAt, &rn.FinishedAt, &rn.CreatedAt)
+		&rn.ErrorMessage, &rn.StartedAt, &rn.FinishedAt, &rn.WorkspaceID, &rn.CreatedAt)
 	return rn, err
 }
 
@@ -343,17 +347,39 @@ func (r *evalRepo) DeleteRun(ctx context.Context, id string) error {
 	})
 }
 
+// evalRunsWorkspaceFilter returns a SQL fragment (prefixed with " AND") and
+// matching args for workspace visibility filtering of eval_runs.
+//   - system caller (workspace.IsSystem): no filtering (sees all rows)
+//   - default workspace caller: sees own rows plus legacy rows (workspace_id='')
+//   - other tenant callers: strict equality (own rows only)
+func evalRunsWorkspaceFilter(ctx context.Context) (string, []any) {
+	if workspace.IsSystem(ctx) {
+		return "", nil
+	}
+	callerWS := workspace.IDFromContext(ctx)
+	if callerWS == workspace.DefaultWorkspaceID {
+		return ` AND workspace_id IN (?, ?)`, []any{callerWS, ""}
+	}
+	return ` AND workspace_id=?`, []any{callerWS}
+}
+
 func (r *evalRepo) ListRuns(ctx context.Context, datasetID, agentID string, limit, offset int) ([]biz.EvalRun, int, error) {
+	wsClause, wsArgs := evalRunsWorkspaceFilter(ctx)
+	baseWhere := `(dataset_id=? OR ?='') AND (agent_id=? OR ?='')`
+	baseArgs := []any{datasetID, datasetID, agentID, agentID}
+
 	var total int
+	countArgs := append(baseArgs, wsArgs...)
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
-		r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(*) FROM eval_runs WHERE (dataset_id=? OR ?='') AND (agent_id=? OR ?='')`),
-		[]any{datasetID, datasetID, agentID, agentID}, &total); err != nil {
+		r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(*) FROM eval_runs WHERE `+baseWhere+wsClause),
+		countArgs, &total); err != nil {
 		return nil, 0, err
 	}
+	selectArgs := append(append(baseArgs, wsArgs...), limit, offset)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		r.data.Dialect().RenumberPlaceholders(evalRunSelect+` WHERE (dataset_id=? OR ?='') AND (agent_id=? OR ?='')
-		 ORDER BY created_at DESC LIMIT ? OFFSET ?`),
-		datasetID, datasetID, agentID, agentID, limit, offset)
+		r.data.Dialect().RenumberPlaceholders(evalRunSelect+` WHERE `+baseWhere+wsClause+
+			` ORDER BY created_at DESC LIMIT ? OFFSET ?`),
+		selectArgs...)
 	if err != nil {
 		return nil, 0, err
 	}

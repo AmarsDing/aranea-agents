@@ -70,6 +70,74 @@ func TestPersistentTurnServiceLifecycle(t *testing.T) {
 	}
 }
 
+// TestAdmitTurn_IdempotencyKeyScoped verifies C-13: client idempotency keys are
+// stored as "source:key" on the SessionTurn row so CreateTurn can dedupe.
+func TestAdmitTurn_IdempotencyKeyScoped(t *testing.T) {
+	store := &testPersistentTurnStore{}
+	svc := &PersistentTurnService{Sessions: store, Now: func() time.Time { return time.Now().UTC() }}
+
+	_, err := svc.AdmitTurn(context.Background(), biz.TurnIntent{
+		Source:         biz.TurnSourceWS,
+		SessionID:      "sess-1",
+		AgentID:        "agent-1",
+		Content:        "hello",
+		IdempotencyKey: "client-key-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.created.IdempotencyKey != "ws:client-key-1" {
+		t.Fatalf("IdempotencyKey = %q, want %q", store.created.IdempotencyKey, "ws:client-key-1")
+	}
+}
+
+// idempotentTurnStore returns the first created turn on matching idempotency key.
+type idempotentTurnStore struct {
+	byKey map[string]biz.SessionTurn
+}
+
+func (s *idempotentTurnStore) CreateTurn(_ context.Context, turn biz.SessionTurn) (biz.SessionTurn, error) {
+	if s.byKey == nil {
+		s.byKey = make(map[string]biz.SessionTurn)
+	}
+	if turn.IdempotencyKey != "" {
+		if existing, ok := s.byKey[turn.SessionID+"|"+turn.IdempotencyKey]; ok {
+			return existing, nil
+		}
+		s.byKey[turn.SessionID+"|"+turn.IdempotencyKey] = turn
+	}
+	return turn, nil
+}
+
+func (s *idempotentTurnStore) UpdateTurn(_ context.Context, id string, fields biz.SessionTurnUpdateFields) (biz.SessionTurn, error) {
+	return biz.SessionTurn{ID: id}, nil
+}
+
+// TestAdmitTurn_SameIdempotencyKeyReturnsCanonical verifies retries with the
+// same key return the original turn ID (C-13).
+func TestAdmitTurn_SameIdempotencyKeyReturnsCanonical(t *testing.T) {
+	store := &idempotentTurnStore{}
+	svc := &PersistentTurnService{Sessions: store, Now: func() time.Time { return time.Now().UTC() }}
+	intent := biz.TurnIntent{
+		Source:         biz.TurnSourceWeb,
+		SessionID:      "sess-dup",
+		AgentID:        "agent-1",
+		Content:        "hello",
+		IdempotencyKey: "retry-me",
+	}
+	first, err := svc.AdmitTurn(context.Background(), intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := svc.AdmitTurn(context.Background(), intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ID != second.ID {
+		t.Fatalf("expected same canonical turn ID, got %q then %q", first.ID, second.ID)
+	}
+}
+
 func TestTurnFromSessionTurn(t *testing.T) {
 	cases := []struct {
 		name string

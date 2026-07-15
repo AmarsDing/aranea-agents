@@ -277,12 +277,18 @@ func init() {
 	adminDescPassword := adminFields[5].Descriptor()
 	// admin.DefaultPassword holds the default value on creation for the password field.
 	admin.DefaultPassword = adminDescPassword.Default.(string)
+	// adminDescWorkspaceID is the schema descriptor for workspace_id field.
+	adminDescWorkspaceID := adminFields[6].Descriptor()
+	// admin.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	admin.DefaultWorkspaceID = adminDescWorkspaceID.Default.(string)
+	// admin.WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
+	admin.WorkspaceIDValidator = adminDescWorkspaceID.Validators[0].(func(string) error)
 	// adminDescCreateTime is the schema descriptor for create_time field.
-	adminDescCreateTime := adminFields[6].Descriptor()
+	adminDescCreateTime := adminFields[7].Descriptor()
 	// admin.DefaultCreateTime holds the default value on creation for the create_time field.
 	admin.DefaultCreateTime = adminDescCreateTime.Default.(func() time.Time)
 	// adminDescUpdateTime is the schema descriptor for update_time field.
-	adminDescUpdateTime := adminFields[7].Descriptor()
+	adminDescUpdateTime := adminFields[8].Descriptor()
 	// admin.DefaultUpdateTime holds the default value on creation for the update_time field.
 	admin.DefaultUpdateTime = adminDescUpdateTime.Default.(func() time.Time)
 	// admin.UpdateDefaultUpdateTime holds the default value on update for the update_time field.
@@ -1579,16 +1585,22 @@ func init() {
 	crontaskDescMetadataJSON := crontaskFields[9].Descriptor()
 	// crontask.DefaultMetadataJSON holds the default value on creation for the metadata_json field.
 	crontask.DefaultMetadataJSON = crontaskDescMetadataJSON.Default.(string)
+	// crontaskDescWorkspaceID is the schema descriptor for workspace_id field.
+	crontaskDescWorkspaceID := crontaskFields[10].Descriptor()
+	// crontask.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	crontask.DefaultWorkspaceID = crontaskDescWorkspaceID.Default.(string)
+	// crontask.WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
+	crontask.WorkspaceIDValidator = crontaskDescWorkspaceID.Validators[0].(func(string) error)
 	// crontaskDescCreatedAt is the schema descriptor for created_at field.
-	crontaskDescCreatedAt := crontaskFields[10].Descriptor()
+	crontaskDescCreatedAt := crontaskFields[11].Descriptor()
 	// crontask.DefaultCreatedAt holds the default value on creation for the created_at field.
 	crontask.DefaultCreatedAt = crontaskDescCreatedAt.Default.(string)
 	// crontaskDescUpdatedAt is the schema descriptor for updated_at field.
-	crontaskDescUpdatedAt := crontaskFields[11].Descriptor()
+	crontaskDescUpdatedAt := crontaskFields[12].Descriptor()
 	// crontask.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	crontask.DefaultUpdatedAt = crontaskDescUpdatedAt.Default.(string)
 	// crontaskDescDeletedAt is the schema descriptor for deleted_at field.
-	crontaskDescDeletedAt := crontaskFields[12].Descriptor()
+	crontaskDescDeletedAt := crontaskFields[13].Descriptor()
 	// crontask.DefaultDeletedAt holds the default value on creation for the deleted_at field.
 	crontask.DefaultDeletedAt = crontaskDescDeletedAt.Default.(string)
 	// crontaskDescID is the schema descriptor for id field.
@@ -1781,8 +1793,14 @@ func init() {
 	evalrunDescFinishedAt := evalrunFields[17].Descriptor()
 	// evalrun.DefaultFinishedAt holds the default value on creation for the finished_at field.
 	evalrun.DefaultFinishedAt = evalrunDescFinishedAt.Default.(string)
+	// evalrunDescWorkspaceID is the schema descriptor for workspace_id field.
+	evalrunDescWorkspaceID := evalrunFields[18].Descriptor()
+	// evalrun.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	evalrun.DefaultWorkspaceID = evalrunDescWorkspaceID.Default.(string)
+	// evalrun.WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
+	evalrun.WorkspaceIDValidator = evalrunDescWorkspaceID.Validators[0].(func(string) error)
 	// evalrunDescCreatedAt is the schema descriptor for created_at field.
-	evalrunDescCreatedAt := evalrunFields[18].Descriptor()
+	evalrunDescCreatedAt := evalrunFields[19].Descriptor()
 	// evalrun.DefaultCreatedAt holds the default value on creation for the created_at field.
 	evalrun.DefaultCreatedAt = evalrunDescCreatedAt.Default.(string)
 	// evalrunDescID is the schema descriptor for id field.
@@ -4547,12 +4565,18 @@ func init() {
 	sessionturnDescMetadataJSON := sessionturnFields[27].Descriptor()
 	// sessionturn.DefaultMetadataJSON holds the default value on creation for the metadata_json field.
 	sessionturn.DefaultMetadataJSON = sessionturnDescMetadataJSON.Default.(string)
+	// sessionturnDescIdempotencyKey is the schema descriptor for idempotency_key field.
+	sessionturnDescIdempotencyKey := sessionturnFields[28].Descriptor()
+	// sessionturn.DefaultIdempotencyKey holds the default value on creation for the idempotency_key field.
+	sessionturn.DefaultIdempotencyKey = sessionturnDescIdempotencyKey.Default.(string)
+	// sessionturn.IdempotencyKeyValidator is a validator for the "idempotency_key" field. It is called by the builders before save.
+	sessionturn.IdempotencyKeyValidator = sessionturnDescIdempotencyKey.Validators[0].(func(string) error)
 	// sessionturnDescCreatedAt is the schema descriptor for created_at field.
-	sessionturnDescCreatedAt := sessionturnFields[28].Descriptor()
+	sessionturnDescCreatedAt := sessionturnFields[29].Descriptor()
 	// sessionturn.DefaultCreatedAt holds the default value on creation for the created_at field.
 	sessionturn.DefaultCreatedAt = sessionturnDescCreatedAt.Default.(string)
 	// sessionturnDescUpdatedAt is the schema descriptor for updated_at field.
-	sessionturnDescUpdatedAt := sessionturnFields[29].Descriptor()
+	sessionturnDescUpdatedAt := sessionturnFields[30].Descriptor()
 	// sessionturn.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	sessionturn.DefaultUpdatedAt = sessionturnDescUpdatedAt.Default.(string)
 	// sessionturnDescID is the schema descriptor for id field.
@@ -5227,12 +5251,18 @@ func init() {
 	taskplan.DefaultStatus = taskplanDescStatus.Default.(string)
 	// taskplan.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	taskplan.StatusValidator = taskplanDescStatus.Validators[0].(func(string) error)
+	// taskplanDescWorkspaceID is the schema descriptor for workspace_id field.
+	taskplanDescWorkspaceID := taskplanFields[16].Descriptor()
+	// taskplan.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	taskplan.DefaultWorkspaceID = taskplanDescWorkspaceID.Default.(string)
+	// taskplan.WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
+	taskplan.WorkspaceIDValidator = taskplanDescWorkspaceID.Validators[0].(func(string) error)
 	// taskplanDescCreatedAt is the schema descriptor for created_at field.
-	taskplanDescCreatedAt := taskplanFields[16].Descriptor()
+	taskplanDescCreatedAt := taskplanFields[17].Descriptor()
 	// taskplan.DefaultCreatedAt holds the default value on creation for the created_at field.
 	taskplan.DefaultCreatedAt = taskplanDescCreatedAt.Default.(string)
 	// taskplanDescUpdatedAt is the schema descriptor for updated_at field.
-	taskplanDescUpdatedAt := taskplanFields[17].Descriptor()
+	taskplanDescUpdatedAt := taskplanFields[18].Descriptor()
 	// taskplan.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	taskplan.DefaultUpdatedAt = taskplanDescUpdatedAt.Default.(string)
 	// taskplanDescID is the schema descriptor for id field.
@@ -5263,12 +5293,18 @@ func init() {
 	taskv2DescVersion := taskv2Fields[5].Descriptor()
 	// taskv2.DefaultVersion holds the default value on creation for the version field.
 	taskv2.DefaultVersion = taskv2DescVersion.Default.(int64)
+	// taskv2DescWorkspaceID is the schema descriptor for workspace_id field.
+	taskv2DescWorkspaceID := taskv2Fields[6].Descriptor()
+	// taskv2.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	taskv2.DefaultWorkspaceID = taskv2DescWorkspaceID.Default.(string)
+	// taskv2.WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
+	taskv2.WorkspaceIDValidator = taskv2DescWorkspaceID.Validators[0].(func(string) error)
 	// taskv2DescCreatedAt is the schema descriptor for created_at field.
-	taskv2DescCreatedAt := taskv2Fields[6].Descriptor()
+	taskv2DescCreatedAt := taskv2Fields[7].Descriptor()
 	// taskv2.DefaultCreatedAt holds the default value on creation for the created_at field.
 	taskv2.DefaultCreatedAt = taskv2DescCreatedAt.Default.(func() time.Time)
 	// taskv2DescUpdatedAt is the schema descriptor for updated_at field.
-	taskv2DescUpdatedAt := taskv2Fields[7].Descriptor()
+	taskv2DescUpdatedAt := taskv2Fields[8].Descriptor()
 	// taskv2.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	taskv2.DefaultUpdatedAt = taskv2DescUpdatedAt.Default.(func() time.Time)
 	// taskv2DescID is the schema descriptor for id field.

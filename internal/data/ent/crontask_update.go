@@ -160,6 +160,20 @@ func (_u *CronTaskUpdate) SetNillableMetadataJSON(v *string) *CronTaskUpdate {
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *CronTaskUpdate) SetWorkspaceID(v string) *CronTaskUpdate {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *CronTaskUpdate) SetNillableWorkspaceID(v *string) *CronTaskUpdate {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *CronTaskUpdate) SetCreatedAt(v string) *CronTaskUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -251,6 +265,11 @@ func (_u *CronTaskUpdate) check() error {
 			return &ValidationError{Name: "agent_id", err: fmt.Errorf(`ent: validator failed for field "CronTask.agent_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.WorkspaceID(); ok {
+		if err := crontask.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "CronTask.workspace_id": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -295,6 +314,9 @@ func (_u *CronTaskUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.MetadataJSON(); ok {
 		_spec.SetField(crontask.FieldMetadataJSON, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(crontask.FieldWorkspaceID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(crontask.FieldCreatedAt, field.TypeString, value)
@@ -458,6 +480,20 @@ func (_u *CronTaskUpdateOne) SetNillableMetadataJSON(v *string) *CronTaskUpdateO
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *CronTaskUpdateOne) SetWorkspaceID(v string) *CronTaskUpdateOne {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *CronTaskUpdateOne) SetNillableWorkspaceID(v *string) *CronTaskUpdateOne {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *CronTaskUpdateOne) SetCreatedAt(v string) *CronTaskUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -562,6 +598,11 @@ func (_u *CronTaskUpdateOne) check() error {
 			return &ValidationError{Name: "agent_id", err: fmt.Errorf(`ent: validator failed for field "CronTask.agent_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.WorkspaceID(); ok {
+		if err := crontask.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "CronTask.workspace_id": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -623,6 +664,9 @@ func (_u *CronTaskUpdateOne) sqlSave(ctx context.Context) (_node *CronTask, err 
 	}
 	if value, ok := _u.mutation.MetadataJSON(); ok {
 		_spec.SetField(crontask.FieldMetadataJSON, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(crontask.FieldWorkspaceID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(crontask.FieldCreatedAt, field.TypeString, value)

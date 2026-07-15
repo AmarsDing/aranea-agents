@@ -603,6 +603,8 @@ type Task struct {
 	Status      TaskStatus
 	Seq         int64 // 在 session 内的序号
 	Version     int64 // 乐观并发版本号（spec §3.3.5 VersionLT）
+	// P2-B: tenant isolation. empty = legacy (treated as default workspace); non-empty = tenant-private.
+	WorkspaceID string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	CompletedAt *time.Time

@@ -1,6 +1,7 @@
 <template>
   <div class="notice-block" :class="`notice-block--${noticeType}`">
     <q-icon :name="iconForType" size="14px" class="notice-block__icon" />
+    <!-- eslint-disable-next-line vue/no-v-html -- sanitized markdown HTML -->
     <div class="notice-block__message chat-message-prose" v-html="renderedContent"></div>
   </div>
 </template>

@@ -35,6 +35,10 @@ type Task struct {
 	AgentID      string
 	ConfigJSON   string
 	MetadataJSON string
+	// WorkspaceID is the tenant isolation scope.
+	// empty = legacy/system-owned (visible to system caller only);
+	// non-empty = tenant-private (visible only to owning workspace).
+	WorkspaceID string
 	CreatedAt    string
 	UpdatedAt    string
 	DeletedAt    string

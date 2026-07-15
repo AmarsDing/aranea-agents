@@ -46,4 +46,8 @@
 
 - [x] Launcher PE subsystem = GUI
 - [x] v0.1.24 发布（静默启动）
-- [ ] v0.1.25+ 环境探测 / 系统 PG 复用 / 预检弹窗
+- [x] v0.1.25+ 环境探测 / 系统 PG 复用 / 预检弹窗
+  - `cmd/launcher`：探测系统 PG `:5432` + Redis `:6379`，否则内置；`ARANEA_PG_PASSWORD`；`logs\preflight.txt`；失败/警告 MessageBox；`-check` / `-stop`
+  - `installer/aranea.nsi`：`%LOCALAPPDATA%\AraneaAgents`；桌面/开始菜单 → `AraneaLauncher.exe`；安装后 `-check`；调试入口 `start.bat`
+  - `web/src-electron/electron-main.ts`：同源反代 `/v1` `/api` `/healthz` `/v1/ws` → `:8000`
+  - 打包：`scripts/build-package.ps1` / release.yml 以 `-H windowsgui` 编译 `AraneaLauncher.exe`

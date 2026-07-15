@@ -68,6 +68,9 @@ type TaskPlan struct {
 	// Status is the lifecycle state of the plan.
 	Status TaskPlanStatus `json:"status"`
 
+	// P2-B: tenant isolation. empty = legacy (treated as default workspace); non-empty = tenant-private.
+	WorkspaceID string `json:"workspace_id"`
+
 	// Timestamps
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

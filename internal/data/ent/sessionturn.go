@@ -70,6 +70,8 @@ type SessionTurn struct {
 	ErrorMessage string `json:"error_message,omitempty"`
 	// MetadataJSON holds the value of the "metadata_json" field.
 	MetadataJSON string `json:"metadata_json,omitempty"`
+	// IdempotencyKey holds the value of the "idempotency_key" field.
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt string `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -84,7 +86,7 @@ func (*SessionTurn) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case sessionturn.FieldTurnNumber, sessionturn.FieldDurationMs, sessionturn.FieldFirstTokenMs, sessionturn.FieldModelCallCount, sessionturn.FieldToolCallCount, sessionturn.FieldSkillCallCount, sessionturn.FieldMcpCallCount, sessionturn.FieldInputTokens, sessionturn.FieldOutputTokens, sessionturn.FieldTotalTokens, sessionturn.FieldTotalCostMicroUsd:
 			values[i] = new(sql.NullInt64)
-		case sessionturn.FieldID, sessionturn.FieldSessionID, sessionturn.FieldRunID, sessionturn.FieldUserMessageID, sessionturn.FieldAssistantMessageID, sessionturn.FieldOwnerType, sessionturn.FieldAgentID, sessionturn.FieldTeamID, sessionturn.FieldStatus, sessionturn.FieldStartedAt, sessionturn.FieldEndedAt, sessionturn.FieldFinalProvider, sessionturn.FieldFinalModel, sessionturn.FieldFinalContentPreview, sessionturn.FieldErrorCode, sessionturn.FieldErrorMessage, sessionturn.FieldMetadataJSON, sessionturn.FieldCreatedAt, sessionturn.FieldUpdatedAt:
+		case sessionturn.FieldID, sessionturn.FieldSessionID, sessionturn.FieldRunID, sessionturn.FieldUserMessageID, sessionturn.FieldAssistantMessageID, sessionturn.FieldOwnerType, sessionturn.FieldAgentID, sessionturn.FieldTeamID, sessionturn.FieldStatus, sessionturn.FieldStartedAt, sessionturn.FieldEndedAt, sessionturn.FieldFinalProvider, sessionturn.FieldFinalModel, sessionturn.FieldFinalContentPreview, sessionturn.FieldErrorCode, sessionturn.FieldErrorMessage, sessionturn.FieldMetadataJSON, sessionturn.FieldIdempotencyKey, sessionturn.FieldCreatedAt, sessionturn.FieldUpdatedAt:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -269,6 +271,12 @@ func (_m *SessionTurn) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.MetadataJSON = value.String
 			}
+		case sessionturn.FieldIdempotencyKey:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field idempotency_key", values[i])
+			} else if value.Valid {
+				_m.IdempotencyKey = value.String
+			}
 		case sessionturn.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -397,6 +405,9 @@ func (_m *SessionTurn) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("metadata_json=")
 	builder.WriteString(_m.MetadataJSON)
+	builder.WriteString(", ")
+	builder.WriteString("idempotency_key=")
+	builder.WriteString(_m.IdempotencyKey)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt)

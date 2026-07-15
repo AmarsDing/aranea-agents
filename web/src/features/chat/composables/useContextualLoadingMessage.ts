@@ -3,7 +3,7 @@
  *
  * Processes Spirit ActivityEvents and produces a single-line contextual
  * loading message that replaces (not appends) the previous one.
- * Messages are suppressed during WS replay to avoid flicker.
+ * Messages are suppressed during reconnect hydrate to avoid flicker.
  */
 import { ref, type Ref } from 'vue';
 import type { ActivityEvent } from '../../../realtime/activityEvent';

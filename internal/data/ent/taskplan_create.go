@@ -232,6 +232,20 @@ func (_c *TaskPlanCreate) SetNillableStatus(v *string) *TaskPlanCreate {
 	return _c
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_c *TaskPlanCreate) SetWorkspaceID(v string) *TaskPlanCreate {
+	_c.mutation.SetWorkspaceID(v)
+	return _c
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_c *TaskPlanCreate) SetNillableWorkspaceID(v *string) *TaskPlanCreate {
+	if v != nil {
+		_c.SetWorkspaceID(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *TaskPlanCreate) SetCreatedAt(v string) *TaskPlanCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -361,6 +375,10 @@ func (_c *TaskPlanCreate) defaults() {
 		v := taskplan.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		v := taskplan.DefaultWorkspaceID
+		_c.mutation.SetWorkspaceID(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := taskplan.DefaultCreatedAt
 		_c.mutation.SetCreatedAt(v)
@@ -446,6 +464,14 @@ func (_c *TaskPlanCreate) check() error {
 	if v, ok := _c.mutation.Status(); ok {
 		if err := taskplan.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "TaskPlan.status": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		return &ValidationError{Name: "workspace_id", err: errors.New(`ent: missing required field "TaskPlan.workspace_id"`)}
+	}
+	if v, ok := _c.mutation.WorkspaceID(); ok {
+		if err := taskplan.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "TaskPlan.workspace_id": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
@@ -554,6 +580,10 @@ func (_c *TaskPlanCreate) createSpec() (*TaskPlan, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(taskplan.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.WorkspaceID(); ok {
+		_spec.SetField(taskplan.FieldWorkspaceID, field.TypeString, value)
+		_node.WorkspaceID = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(taskplan.FieldCreatedAt, field.TypeString, value)
@@ -798,6 +828,18 @@ func (u *TaskPlanUpsert) SetStatus(v string) *TaskPlanUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *TaskPlanUpsert) UpdateStatus() *TaskPlanUpsert {
 	u.SetExcluded(taskplan.FieldStatus)
+	return u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *TaskPlanUpsert) SetWorkspaceID(v string) *TaskPlanUpsert {
+	u.Set(taskplan.FieldWorkspaceID, v)
+	return u
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *TaskPlanUpsert) UpdateWorkspaceID() *TaskPlanUpsert {
+	u.SetExcluded(taskplan.FieldWorkspaceID)
 	return u
 }
 
@@ -1087,6 +1129,20 @@ func (u *TaskPlanUpsertOne) SetStatus(v string) *TaskPlanUpsertOne {
 func (u *TaskPlanUpsertOne) UpdateStatus() *TaskPlanUpsertOne {
 	return u.Update(func(s *TaskPlanUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *TaskPlanUpsertOne) SetWorkspaceID(v string) *TaskPlanUpsertOne {
+	return u.Update(func(s *TaskPlanUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *TaskPlanUpsertOne) UpdateWorkspaceID() *TaskPlanUpsertOne {
+	return u.Update(func(s *TaskPlanUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 
@@ -1547,6 +1603,20 @@ func (u *TaskPlanUpsertBulk) SetStatus(v string) *TaskPlanUpsertBulk {
 func (u *TaskPlanUpsertBulk) UpdateStatus() *TaskPlanUpsertBulk {
 	return u.Update(func(s *TaskPlanUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *TaskPlanUpsertBulk) SetWorkspaceID(v string) *TaskPlanUpsertBulk {
+	return u.Update(func(s *TaskPlanUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *TaskPlanUpsertBulk) UpdateWorkspaceID() *TaskPlanUpsertBulk {
+	return u.Update(func(s *TaskPlanUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 

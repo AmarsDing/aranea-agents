@@ -519,9 +519,8 @@ export function useChatSender(deps: SenderDeps) {
       const defaultTitle = t('chat.untitledSession');
       const currentTitle =
         entityKind === 'team'
-          ? deps.sessionStore.teamSessions[deps.sessionStore.selectedTeamId ?? '']?.find(
-              (s) => s.id === sessionId,
-            )?.title
+          ? deps.sessionStore.teamSessions[deps.sessionStore.selectedTeamId ?? '']?.find((s) => s.id === sessionId)
+              ?.title
           : deps.sessionStore.selectedSession?.title;
       if (currentTitle === defaultTitle || !currentTitle) {
         const newTitle = deps.makeSessionTitle(text);
@@ -621,10 +620,11 @@ export function useChatSender(deps: SenderDeps) {
           // doesn't stay true; the WS data channel will deliver the message.
           if (!followUp) markSendingDone();
           clearAttachments = true;
-          // B2: Drop the pending user row — the WS data channel will deliver
-          // the server-persisted user message. If the WS is disconnected,
-          // the next reconnect sync (event_replay) will fetch missed messages.
-          dropPendingUserRow(sessionId, pendingUserId);
+          // E2E-P1-07: Keep the optimistic task. HTTP ACK is not a delivery
+          // guarantee for task.created, and WS replay was removed. Reconcile
+          // via REST snapshot; upsertTask clears pending-user-* when the real
+          // task arrives (or on reconnect hydrate).
+          void activityStore.fetchSessionHistory(sessionId).catch(() => undefined);
         } catch {
           markPendingUserFailed(sessionId, pendingUserId, t('chat.sendFailedRetry', '发送失败，请点击重试'));
           if (!followUp) markSendingDone();

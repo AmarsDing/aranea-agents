@@ -774,14 +774,16 @@
 
 | 维度 | 内容 |
 |------|------|
-| **上游依赖** | 无（基础设施） |
-| **下游影响** | `data`（Ent hooks 过滤）、`server`（中间件注入）、`biz`（后台任务传播） |
-| **核心导出** | `WithContext`、`FromContext`、`IDFromContext`、`WithSystemWorkspace`、`IsSystem` |
+| **上游依赖** | `pkg/auth`（JWT `workspace_id` claim）；`server/middleware.WorkspaceFilter` |
+| **下游影响** | `data`（Ent hooks 过滤）、`server`（中间件注入）、`biz`/`service`（AssertWorkspace） |
+| **核心导出** | `WithContext`、`FromContext`、`IDFromContext`、`WithSystemWorkspace`、`IsSystem`、`AssertWorkspace` |
 | **共享类型** | `SystemWorkspaceID = "__system__"`、`DefaultWorkspaceID = "default"` |
 | **事件生产** | 无 |
 | **事件消费** | 无 |
-| **数据库** | 无 |
-| **前端对应** | 无（后端透明） |
+| **数据库** | `admins.workspace_id`（B-01 P2-A：1:1 admin→workspace）；其余实体逐步补 `workspace_id` |
+| **前端对应** | 无（后端透明；Header `X-Workspace-ID` 对已登录用户不可伪造） |
+
+**⚠️ 开发注意（B-01）**：已认证请求的 workspace **只**来自 JWT；与 Header/Query 不一致时返回 403。Admin 切租户需换带目标 `workspace_id` 的会话，不能靠 Header。
 
 ---
 

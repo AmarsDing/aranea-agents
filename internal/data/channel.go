@@ -47,6 +47,7 @@ func entToChannel(e *ent.PlatformChannel) biz.Channel {
 		CreatedAt:    e.CreatedAt,
 		UpdatedAt:    e.UpdatedAt,
 		DeletedAt:    e.DeletedAt,
+		WorkspaceID:  e.WorkspaceID, // P2-B: tenant isolation
 	}
 }
 
@@ -117,7 +118,8 @@ func (r *channelRepo) Create(ctx context.Context, row biz.Channel) (biz.Channel,
 		SetMetadataJSON(row.MetadataJSON).
 		SetCreatedAt(row.CreatedAt).
 		SetUpdatedAt(row.UpdatedAt).
-		SetDeletedAt("")
+		SetDeletedAt("").
+		SetWorkspaceID(row.WorkspaceID) // P2-B: tenant isolation
 	e, err := b.Save(ctx)
 	if err != nil {
 		return biz.Channel{}, entErrToBizErr(err, "CHANNEL")

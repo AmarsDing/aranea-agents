@@ -89,6 +89,10 @@ type Skill struct {
 	ParentVersionID      string
 	EvolutionReason      string
 	LifecycleStatus      string
+	// WorkspaceID is the owning workspace ID for tenant isolation (P2-B).
+	// empty = shared/legacy (visible to all workspaces, e.g., system builtins);
+	// non-empty = tenant-private (visible only to owning workspace).
+	WorkspaceID string
 }
 
 type ListQuery struct {
@@ -100,6 +104,10 @@ type ListQuery struct {
 	SyncOrigin        string
 	Limit             int
 	Offset            int
+	// WorkspaceID filters by tenant visibility (P2-B).
+	// empty = system caller (see all); non-empty = tenant caller
+	// (see shared with workspace_id="" + own with workspace_id==WorkspaceID).
+	WorkspaceID string
 }
 
 type ListResult struct {
@@ -265,6 +273,9 @@ type CreateInput struct {
 	SyncOrigin        string
 	Visibility        string
 	DefaultConfigJSON string
+	// WorkspaceID is the owning workspace for tenant isolation (P2-B).
+	// empty = shared/legacy (system builtins); non-empty = tenant-private.
+	WorkspaceID string
 }
 
 // DiskSyncInput upserts skill rows from on-disk packages (directory watcher).

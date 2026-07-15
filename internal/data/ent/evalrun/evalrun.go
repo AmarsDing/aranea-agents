@@ -46,6 +46,8 @@ const (
 	FieldStartedAt = "started_at"
 	// FieldFinishedAt holds the string denoting the finished_at field in the database.
 	FieldFinishedAt = "finished_at"
+	// FieldWorkspaceID holds the string denoting the workspace_id field in the database.
+	FieldWorkspaceID = "workspace_id"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// EdgeDataset holds the string denoting the dataset edge name in mutations.
@@ -90,6 +92,7 @@ var Columns = []string{
 	FieldErrorMessage,
 	FieldStartedAt,
 	FieldFinishedAt,
+	FieldWorkspaceID,
 	FieldCreatedAt,
 }
 
@@ -134,6 +137,10 @@ var (
 	DefaultStartedAt string
 	// DefaultFinishedAt holds the default value on creation for the "finished_at" field.
 	DefaultFinishedAt string
+	// DefaultWorkspaceID holds the default value on creation for the "workspace_id" field.
+	DefaultWorkspaceID string
+	// WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
+	WorkspaceIDValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
@@ -231,6 +238,11 @@ func ByStartedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByFinishedAt orders the results by the finished_at field.
 func ByFinishedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFinishedAt, opts...).ToFunc()
+}
+
+// ByWorkspaceID orders the results by the workspace_id field.
+func ByWorkspaceID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWorkspaceID, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

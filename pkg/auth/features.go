@@ -63,5 +63,5 @@ func WarnIfBypassEnabled() {
 }
 
 func DevBypassPrincipal() *Auth {
-	return &Auth{UserID: 1, Access: "admin"}
+	return &Auth{UserID: 1, Access: "admin", WorkspaceID: DefaultWorkspaceID}
 }

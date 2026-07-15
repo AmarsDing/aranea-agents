@@ -4,10 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 
 	v1 "aranea-agents/api/kratos/mcp_server/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/auth"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
@@ -22,6 +26,27 @@ type MCPServerService struct {
 
 func NewMCPServerService(uc *biz.MCPServerUsecase, mon *biz.MonitorUsecase) *MCPServerService {
 	return &MCPServerService{uc: uc, mon: mon}
+}
+
+// assertMCPServerAccess 校验 caller 是否可访问指定 mcp server（P2-B IDOR 防护）。
+// 跨租户访问返回 NotFound（避免泄露 mcp server 存在性）。
+// 系统 caller（cron/admin）绕过校验；空 workspace_id 的 mcp server 视为全局共享。
+func (s *MCPServerService) assertMCPServerAccess(ctx context.Context, serverID string) error {
+	if serverID == "" {
+		return nil
+	}
+	srv, err := s.uc.Get(ctx, serverID)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return apierror.NotFound("MCP_SERVER", "mcp server not found")
+		}
+		return err
+	}
+	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), srv.WorkspaceID); err != nil {
+		// TECH-DEBT(P2-B): add Warn log once MCPServerService gets lg field injected via wire.
+		return apierror.NotFound("MCP_SERVER", "mcp server not found")
+	}
+	return nil
 }
 
 func toProtoMCP(m biz.MCPServer) *v1.MCPServer {
@@ -79,7 +104,13 @@ func boolPtr(b bool) *bool { return &b }
 func intPtr(i int) *int { return &i }
 
 func (s *MCPServerService) ListMCPServers(ctx context.Context, _ *emptypb.Empty) (*v1.ListMCPServersResponse, error) {
-	items, err := s.uc.List(ctx)
+	q := biz.MCPListQuery{}
+	// P2-B: workspace visibility filter.
+	// System caller (cron/admin) sees all; tenant caller sees shared + own.
+	if !workspace.IsSystem(ctx) {
+		q.WorkspaceID = workspace.IDFromContext(ctx)
+	}
+	items, err := s.uc.List(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -101,6 +132,10 @@ func (s *MCPServerService) CreateMCPServer(ctx context.Context, req *v1.CreateMC
 		ConfigJSON:   req.GetConfigJson(),
 		MetadataJSON: req.GetMetadataJson(),
 	}
+	// P2-B: stamp caller workspace on create (system caller = empty/shared).
+	if !workspace.IsSystem(ctx) {
+		in.WorkspaceID = workspace.IDFromContext(ctx)
+	}
 	out, err := s.uc.Create(ctx, in)
 	if err != nil {
 		return nil, err
@@ -111,6 +146,10 @@ func (s *MCPServerService) CreateMCPServer(ctx context.Context, req *v1.CreateMC
 }
 
 func (s *MCPServerService) GetMCPServer(ctx context.Context, req *v1.GetMCPServerRequest) (*v1.MCPServer, error) {
+	// P2-B: IDOR guard — reads must use the same workspace assert as mutations.
+	if err := s.assertMCPServerAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	m, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -124,6 +163,10 @@ func (s *MCPServerService) GetMCPServer(ctx context.Context, req *v1.GetMCPServe
 func (s *MCPServerService) UpdateMCPServer(ctx context.Context, req *v1.UpdateMCPServerRequest) (*v1.MCPServer, error) {
 	if req.GetMcpServer() == nil {
 		return nil, apierror.BadRequest("MCP_SERVER", "mcp_server body is required")
+	}
+	// P2-B: IDOR guard — verify caller workspace before any mutation.
+	if err := s.assertMCPServerAccess(ctx, req.GetId()); err != nil {
+		return nil, err
 	}
 	// Fetch current server to resolve proto3 zero-value ambiguity for bool/int fields.
 	// Proto3 cannot distinguish "field not set" from "set to zero value" (false/0),
@@ -150,6 +193,10 @@ func (s *MCPServerService) UpdateMCPServer(ctx context.Context, req *v1.UpdateMC
 }
 
 func (s *MCPServerService) DeleteMCPServer(ctx context.Context, req *v1.DeleteMCPServerRequest) (*emptypb.Empty, error) {
+	// P2-B: IDOR guard — verify caller workspace before deletion.
+	if err := s.assertMCPServerAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
@@ -177,6 +224,10 @@ func (s *MCPServerService) ValidateMCPServer(ctx context.Context, req *v1.Valida
 }
 
 func (s *MCPServerService) TestMCPServer(ctx context.Context, req *v1.TestMCPServerRequest) (*v1.MCPServerTestResponse, error) {
+	// P2-B: IDOR guard — verify caller workspace before probe.
+	if err := s.assertMCPServerAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	res, err := s.uc.TestMCPServer(ctx, req.GetId())
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -214,8 +265,37 @@ func toProtoMCPUserCred(c biz.MCPServerUserCredential) *v1.MCPServerUserCredenti
 	}
 }
 
+// resolveMCPCredentialUserID binds credential RPCs to the authenticated principal.
+// Non-admins may only act on their own user_id; admins may manage any user.
+func resolveMCPCredentialUserID(ctx context.Context, requested string) (string, error) {
+	a, ok := auth.FromContext(ctx)
+	if !ok || a == nil {
+		return "", auth.ErrUnauthorized
+	}
+	self := strconv.FormatInt(a.UserID, 10)
+	reqID := strings.TrimSpace(requested)
+	if a.HasAdminAccess() {
+		if reqID == "" {
+			return self, nil
+		}
+		return reqID, nil
+	}
+	if reqID != "" && reqID != self {
+		return "", apierror.Forbidden("MCP_SERVER", "cannot manage credentials for another user")
+	}
+	return self, nil
+}
+
 func (s *MCPServerService) ListMCPServerUserCredentials(ctx context.Context, req *v1.ListMCPServerUserCredentialsRequest) (*v1.ListMCPServerUserCredentialsResponse, error) {
-	items, err := s.uc.ListUserCredentials(ctx, req.GetMcpServerId(), req.GetUserId())
+	// P2-B: IDOR guard — verify caller workspace on parent mcp server.
+	if err := s.assertMCPServerAccess(ctx, req.GetMcpServerId()); err != nil {
+		return nil, err
+	}
+	userID, err := resolveMCPCredentialUserID(ctx, req.GetUserId())
+	if err != nil {
+		return nil, err
+	}
+	items, err := s.uc.ListUserCredentials(ctx, req.GetMcpServerId(), userID)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +307,15 @@ func (s *MCPServerService) ListMCPServerUserCredentials(ctx context.Context, req
 }
 
 func (s *MCPServerService) UpsertMCPServerUserCredential(ctx context.Context, req *v1.UpsertMCPServerUserCredentialRequest) (*v1.MCPServerUserCredential, error) {
-	out, err := s.uc.UpsertUserCredential(ctx, req.GetMcpServerId(), req.GetUserId(), biz.MCPServerUserCredentialInput{
+	// P2-B: IDOR guard — verify caller workspace on parent mcp server.
+	if err := s.assertMCPServerAccess(ctx, req.GetMcpServerId()); err != nil {
+		return nil, err
+	}
+	userID, err := resolveMCPCredentialUserID(ctx, req.GetUserId())
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.uc.UpsertUserCredential(ctx, req.GetMcpServerId(), userID, biz.MCPServerUserCredentialInput{
 		CredentialKey: req.GetCredentialKey(),
 		Secret:        req.GetSecret(),
 		Status:        req.GetStatus(),
@@ -240,7 +328,15 @@ func (s *MCPServerService) UpsertMCPServerUserCredential(ctx context.Context, re
 }
 
 func (s *MCPServerService) DeleteMCPServerUserCredential(ctx context.Context, req *v1.DeleteMCPServerUserCredentialRequest) (*emptypb.Empty, error) {
-	if err := s.uc.DeleteUserCredential(ctx, req.GetMcpServerId(), req.GetUserId(), req.GetCredentialKey()); err != nil {
+	// P2-B: IDOR guard — verify caller workspace on parent mcp server.
+	if err := s.assertMCPServerAccess(ctx, req.GetMcpServerId()); err != nil {
+		return nil, err
+	}
+	userID, err := resolveMCPCredentialUserID(ctx, req.GetUserId())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.uc.DeleteUserCredential(ctx, req.GetMcpServerId(), userID, req.GetCredentialKey()); err != nil {
 		return nil, err
 	}
 	invalidateAllAgentBuildCaches()

@@ -9,6 +9,7 @@ import (
 	v1 "aranea-agents/api/kratos/knowledge/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/knowledge"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
@@ -100,11 +101,17 @@ func (s *KnowledgeService) CreateCollection(ctx context.Context, req *v1.CreateC
 			return nil, apierror.BadRequest("KNOWLEDGE", "embedding_model does not match current embedder model "+embedderModel)
 		}
 	}
-	c, err := s.uc.CreateCollection(ctx, biz.KnowledgeCollection{
+	in := biz.KnowledgeCollection{
 		Name:           name,
 		Description:    req.GetDescription(),
 		EmbeddingModel: model,
-	})
+	}
+	// C-01: stamp caller workspace so collections are tenant-scoped.
+	// System callers create shared collections (empty workspace).
+	if !workspace.IsSystem(ctx) {
+		in.Workspace = workspace.IDFromContext(ctx)
+	}
+	c, err := s.uc.CreateCollection(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -117,12 +124,20 @@ func (s *KnowledgeService) GetCollection(ctx context.Context, req *v1.GetCollect
 	if err != nil {
 		return nil, err
 	}
+	if err := s.assertCollectionAccess(ctx, c); err != nil {
+		return nil, err
+	}
 	return toProtoCollection(c), nil
 }
 
-// ListCollections returns all collections.
+// ListCollections returns collections visible in the caller's workspace.
 func (s *KnowledgeService) ListCollections(ctx context.Context, req *v1.ListCollectionsRequest) (*v1.ListCollectionsResponse, error) {
-	cols, total, err := s.uc.ListCollections(ctx, "", int(req.GetLimit()), int(req.GetOffset()))
+	ws := ""
+	// C-01: tenant callers list only their workspace; system sees all (ws="").
+	if !workspace.IsSystem(ctx) {
+		ws = workspace.IDFromContext(ctx)
+	}
+	cols, total, err := s.uc.ListCollections(ctx, ws, int(req.GetLimit()), int(req.GetOffset()))
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +150,29 @@ func (s *KnowledgeService) ListCollections(ctx context.Context, req *v1.ListColl
 
 // DeleteCollection removes a collection.
 func (s *KnowledgeService) DeleteCollection(ctx context.Context, req *v1.DeleteCollectionRequest) (*emptypb.Empty, error) {
+	c, err := s.uc.GetCollection(ctx, req.GetId())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertCollectionAccess(ctx, c); err != nil {
+		return nil, err
+	}
 	return &emptypb.Empty{}, s.uc.DeleteCollection(ctx, req.GetId())
+}
+
+// assertCollectionAccess rejects cross-tenant collection access (C-01).
+// Returns NotFound (not Forbidden) to avoid leaking collection existence.
+// Empty collection.Workspace is treated as globally shared (system/legacy).
+func (s *KnowledgeService) assertCollectionAccess(ctx context.Context, c biz.KnowledgeCollection) error {
+	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), c.Workspace); err != nil {
+		s.lg.Warn("knowledge collection access denied: workspace mismatch",
+			loggateway.StepID("knowledge.idor"),
+			loggateway.Str("collection_id", c.ID),
+			loggateway.Str("caller_ws", workspace.IDFromContext(ctx)),
+			loggateway.Str("resource_ws", c.Workspace))
+		return apierror.NotFound("KNOWLEDGE", "collection not found")
+	}
+	return nil
 }
 
 // IngestDocument ingests a document, chunks it, embeds the chunks, and indexes them.
@@ -157,6 +194,9 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 	}
 	col, err := s.uc.GetCollection(ctx, req.GetCollectionId())
 	if err != nil {
+		return nil, err
+	}
+	if err := s.assertCollectionAccess(ctx, col); err != nil {
 		return nil, err
 	}
 
@@ -263,6 +303,13 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 
 // ListDocuments returns documents for a collection.
 func (s *KnowledgeService) ListDocuments(ctx context.Context, req *v1.ListDocumentsRequest) (*v1.ListDocumentsResponse, error) {
+	col, err := s.uc.GetCollection(ctx, req.GetCollectionId())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertCollectionAccess(ctx, col); err != nil {
+		return nil, err
+	}
 	docs, total, err := s.uc.ListDocuments(ctx, req.GetCollectionId(), int(req.GetLimit()), int(req.GetOffset()))
 	if err != nil {
 		return nil, err
@@ -276,6 +323,17 @@ func (s *KnowledgeService) ListDocuments(ctx context.Context, req *v1.ListDocume
 
 // DeleteDocument removes a document and its chunks.
 func (s *KnowledgeService) DeleteDocument(ctx context.Context, req *v1.DeleteDocumentRequest) (*emptypb.Empty, error) {
+	doc, err := s.uc.GetDocument(ctx, req.GetId())
+	if err != nil {
+		return nil, err
+	}
+	col, err := s.uc.GetCollection(ctx, doc.CollectionID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertCollectionAccess(ctx, col); err != nil {
+		return nil, err
+	}
 	return &emptypb.Empty{}, s.uc.DeleteDocument(ctx, req.GetId())
 }
 
@@ -284,6 +342,13 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 	timer := prometheus.NewTimer(knowledgeSearchDuration)
 	defer timer.ObserveDuration()
 
+	col, err := s.uc.GetCollection(ctx, req.GetCollectionId())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertCollectionAccess(ctx, col); err != nil {
+		return nil, err
+	}
 	query := strings.TrimSpace(req.GetQuery())
 	if query == "" {
 		return nil, apierror.BadRequest("KNOWLEDGE", "query is required")
@@ -306,7 +371,6 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 	}
 
 	var chunks []biz.KnowledgeChunk
-	var err error
 
 	if s.search.Router != nil {
 		var rewriteResult *knowledge.QueryRewriteResult

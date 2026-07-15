@@ -37,3 +37,26 @@ func (s *defaultSeqAssigner) NextSeq(spiritSessionID string) int64 {
 	v, _ := s.counters.LoadOrStore(spiritSessionID, &atomic.Int64{})
 	return v.(*atomic.Int64).Add(1)
 }
+
+// RestoreAtLeast ensures the next NextSeq for spiritSessionID is strictly
+// greater than minSeq. No-op when minSeq <= 0 or the counter is already ahead.
+// B-06: call with MAX(seq) from persisted v2 entities after process restart.
+func (s *defaultSeqAssigner) RestoreAtLeast(spiritSessionID string, minSeq int64) {
+	if minSeq <= 0 {
+		return
+	}
+	if spiritSessionID == "" {
+		spiritSessionID = "_default_"
+	}
+	v, _ := s.counters.LoadOrStore(spiritSessionID, &atomic.Int64{})
+	counter := v.(*atomic.Int64)
+	for {
+		cur := counter.Load()
+		if cur >= minSeq {
+			return
+		}
+		if counter.CompareAndSwap(cur, minSeq) {
+			return
+		}
+	}
+}

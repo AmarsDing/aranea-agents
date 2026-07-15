@@ -65,6 +65,50 @@ func TestStepV2Repo_Upsert_JSONArgs(t *testing.T) {
 	}
 }
 
+// TestStepV2Repo_Upsert_VersionGuard verifies production CAS: stale Version
+// (incoming < stored) is a no-op returning the stored row (same as Task/Turn).
+func TestStepV2Repo_Upsert_VersionGuard(t *testing.T) {
+	d := openTestDataWithRWDB(t)
+	repo := NewStepV2Repo(d, loggateway.NewNoop())
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	_, err := repo.UpsertStep(ctx, biz.Step{
+		ID: "st-cas", TurnID: "turn-1", TaskID: "t-1",
+		SessionID: "s-1", SpiritSessionID: "s-1",
+		Kind: biz.StepKindThinking, Seq: 1, Content: "v1",
+		Status: biz.StepStatusRunning, StartedAt: now, Version: 1,
+	})
+	if err != nil {
+		t.Fatalf("UpsertStep v1: %v", err)
+	}
+	stale, err := repo.UpsertStep(ctx, biz.Step{
+		ID: "st-cas", TurnID: "turn-1", TaskID: "t-1",
+		SessionID: "s-1", SpiritSessionID: "s-1",
+		Kind: biz.StepKindThinking, Seq: 1, Content: "stale",
+		Status: biz.StepStatusPending, StartedAt: now, Version: 0,
+	})
+	if err != nil {
+		t.Fatalf("UpsertStep stale: %v", err)
+	}
+	if stale.Content != "v1" || stale.Status != biz.StepStatusRunning {
+		t.Fatalf("stale version overwrote: %+v", stale)
+	}
+	_, err = repo.UpsertStep(ctx, biz.Step{
+		ID: "st-cas", TurnID: "turn-1", TaskID: "t-1",
+		SessionID: "s-1", SpiritSessionID: "s-1",
+		Kind: biz.StepKindThinking, Seq: 1, Content: "v2",
+		Status: biz.StepStatusCompleted, StartedAt: now, Version: 2,
+	})
+	if err != nil {
+		t.Fatalf("UpsertStep v2: %v", err)
+	}
+	got, _ := repo.GetStep(ctx, "st-cas")
+	if got.Content != "v2" || got.Status != biz.StepStatusCompleted || got.Version != 2 {
+		t.Fatalf("newer version not applied: %+v", got)
+	}
+}
+
 func TestStepV2Repo_ListByTurn_SeqOrder(t *testing.T) {
 	d := openTestDataWithRWDB(t)
 	repo := NewStepV2Repo(d, loggateway.NewNoop())

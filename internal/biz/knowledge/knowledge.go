@@ -245,6 +245,17 @@ func (u *Usecase) CreateDocument(ctx context.Context, d Document) (Document, err
 	return u.documents.CreateDocument(ctx, d)
 }
 
+// GetDocument returns a single document by ID.
+func (u *Usecase) GetDocument(ctx context.Context, id string) (Document, error) {
+	if err := u.requireRepo(); err != nil {
+		return Document{}, err
+	}
+	if strings.TrimSpace(id) == "" {
+		return Document{}, ErrIDRequired
+	}
+	return u.documents.GetDocument(ctx, id)
+}
+
 // ListDocuments returns documents for a collection.
 func (u *Usecase) ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error) {
 	if err := u.requireRepo(); err != nil {

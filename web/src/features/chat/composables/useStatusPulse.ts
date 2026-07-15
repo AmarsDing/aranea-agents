@@ -3,7 +3,7 @@
  *
  * Manages pulse animations for team cards in the ChatEntitySidebar.
  * When a team's status changes, a brief highlight animation is triggered.
- * Pulses are suppressed during WS replay to avoid flicker.
+ * Pulses are suppressed during reconnect hydrate to avoid flicker.
  */
 import { onUnmounted, ref, type Ref } from 'vue';
 import { PULSE_COLOR_MAP, PULSE_DURATION_MAP } from '../../../features/spirit/observabilityConstants';

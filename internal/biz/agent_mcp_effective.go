@@ -161,7 +161,11 @@ func (t *AgentMCPTooling) EffectiveServersForAgent(ctx context.Context, agentID 
 	if !effectiveToolsAllowsMCPServers(eff) {
 		return nil, nil
 	}
-	rows, err := t.mcp.List(ctx)
+	// P2-B: Agent runtime sees all MCP servers (no workspace filter at this layer;
+	// workspace visibility is enforced at the admin RPC boundary in service layer).
+	// EffectiveServersForAgent is invoked by chat/team/graph runtime, which already
+	// resolves agent ownership via workspace-scoped agent repo lookups.
+	rows, err := t.mcp.List(ctx, MCPListQuery{})
 	if err != nil {
 		return nil, err
 	}

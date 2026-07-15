@@ -71,12 +71,12 @@ func (r *taskPlanRepo) Create(ctx context.Context, plan *biz.TaskPlan) (*biz.Tas
 		r.data.Dialect().RenumberPlaceholders(`INSERT INTO task_plans (id, spirit_session_id, trace_id, user_message, intent_artifact_json,
 			complexity_level, complexity_score, dimensions_json, sub_tasks_json, dag_json,
 			decompose_reason, strategy, strategy_reason, topology_hint, memory_hit_json,
-			status, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+			status, workspace_id, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		plan.ID, plan.SpiritSessionID, plan.TraceID, plan.UserMessage, intentArtifactJSON,
 		string(plan.ComplexityLevel), plan.ComplexityScore, string(dimensionsJSON), string(subTasksJSON), dagJSON,
 		plan.DecomposeReason, string(plan.Strategy), plan.StrategyReason, string(plan.TopologyHint), memoryHitJSON,
-		string(plan.Status), plan.CreatedAt.Format(time.RFC3339), plan.UpdatedAt.Format(time.RFC3339),
+		string(plan.Status), plan.WorkspaceID, plan.CreatedAt.Format(time.RFC3339), plan.UpdatedAt.Format(time.RFC3339),
 	)
 	if err != nil {
 		return nil, entErrToBizErr(err, "TASK_PLAN")
@@ -93,7 +93,7 @@ func (r *taskPlanRepo) GetByID(ctx context.Context, id string) (*biz.TaskPlan, e
 		r.data.Dialect().RenumberPlaceholders(`SELECT id, spirit_session_id, trace_id, user_message, intent_artifact_json,
 			complexity_level, complexity_score, dimensions_json, sub_tasks_json, dag_json,
 			decompose_reason, strategy, strategy_reason, topology_hint, memory_hit_json,
-			status, created_at, updated_at
+			status, workspace_id, created_at, updated_at
 		 FROM task_plans WHERE id = ?`), id)
 	if err != nil {
 		return nil, entErrToBizErr(err, "TASK_PLAN")
@@ -168,7 +168,7 @@ func (r *taskPlanRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionI
 		r.data.Dialect().RenumberPlaceholders(`SELECT id, spirit_session_id, trace_id, user_message, intent_artifact_json,
 			complexity_level, complexity_score, dimensions_json, sub_tasks_json, dag_json,
 			decompose_reason, strategy, strategy_reason, topology_hint, memory_hit_json,
-			status, created_at, updated_at
+			status, workspace_id, created_at, updated_at
 		 FROM task_plans WHERE spirit_session_id = ? ORDER BY created_at DESC`), spiritSessionID)
 	if err != nil {
 		return nil, entErrToBizErr(err, "TASK_PLAN")
@@ -208,6 +208,7 @@ func EnsureTaskPlanSchema(ctx context.Context, db *sql.DB, lg loggateway.Logger)
 		topology_hint TEXT DEFAULT '',
 		memory_hit_json TEXT DEFAULT '{}',
 		status TEXT DEFAULT 'draft',
+		workspace_id TEXT NOT NULL DEFAULT '',
 		created_at TEXT DEFAULT '',
 		updated_at TEXT DEFAULT ''
 	)`)
@@ -216,6 +217,9 @@ func EnsureTaskPlanSchema(ctx context.Context, db *sql.DB, lg loggateway.Logger)
 	}
 	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_task_plans_spirit_session_id ON task_plans(spirit_session_id)`); err != nil {
 		return fmt.Errorf("create task_plans index: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_task_plans_workspace ON task_plans(workspace_id, status)`); err != nil {
+		return fmt.Errorf("create task_plans workspace index: %w", err)
 	}
 	return nil
 }
@@ -230,7 +234,7 @@ func scanTaskPlanFromRows(rows *sql.Rows) (*biz.TaskPlan, error) {
 		&plan.ID, &plan.SpiritSessionID, &plan.TraceID, &plan.UserMessage, &plan.IntentArtifactJSON,
 		&complexityLevel, &plan.ComplexityScore, &dimensionsJSON, &subTasksJSON, &dagJSON,
 		&plan.DecomposeReason, &strategy, &plan.StrategyReason, &topologyHint, &memoryHitJSON,
-		&status, &createdAtStr, &updatedAtStr,
+		&status, &plan.WorkspaceID, &createdAtStr, &updatedAtStr,
 	)
 	if err != nil {
 		return nil, entErrToBizErr(err, "TASK_PLAN")

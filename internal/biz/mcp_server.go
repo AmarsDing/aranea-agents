@@ -71,10 +71,22 @@ type MCPServer struct {
 	CreatedAt    string
 	UpdatedAt    string
 	DeletedAt    string
+	// WorkspaceID is the owning workspace ID for tenant isolation (P2-B).
+	// empty = shared/legacy (visible to all workspaces, e.g., system builtins);
+	// non-empty = tenant-private (visible only to owning workspace).
+	WorkspaceID string
+}
+
+// MCPListQuery filters ListMCPServers.
+type MCPListQuery struct {
+	// WorkspaceID filters by tenant visibility (P2-B).
+	// empty = system caller (see all); non-empty = tenant caller
+	// (see shared with workspace_id="" + own with workspace_id==WorkspaceID).
+	WorkspaceID string
 }
 
 type MCPServerReader interface {
-	ListMCPServers(ctx context.Context) ([]MCPServer, error)
+	ListMCPServers(ctx context.Context, q MCPListQuery) ([]MCPServer, error)
 	GetMCPServer(ctx context.Context, id string) (MCPServer, error)
 	GetMCPServerByKey(ctx context.Context, key string) (MCPServer, error)
 }
@@ -107,8 +119,8 @@ func NewMCPServerUsecase(repo MCPServerRepo, credRepo MCPServerUserCredentialRep
 	return &MCPServerUsecase{repo: repo, credRepo: credRepo, prober: prober, metaEdit: metaEdit, crypto: crypto}
 }
 
-func (u *MCPServerUsecase) List(ctx context.Context) ([]MCPServer, error) {
-	return u.repo.ListMCPServers(ctx)
+func (u *MCPServerUsecase) List(ctx context.Context, q MCPListQuery) ([]MCPServer, error) {
+	return u.repo.ListMCPServers(ctx, q)
 }
 
 func (u *MCPServerUsecase) Get(ctx context.Context, id string) (MCPServer, error) {

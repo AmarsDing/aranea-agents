@@ -41,6 +41,8 @@ const (
 	FieldMemoryHitJSON = "memory_hit_json"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldWorkspaceID holds the string denoting the workspace_id field in the database.
+	FieldWorkspaceID = "workspace_id"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -67,6 +69,7 @@ var Columns = []string{
 	FieldTopologyHint,
 	FieldMemoryHitJSON,
 	FieldStatus,
+	FieldWorkspaceID,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -124,6 +127,10 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultWorkspaceID holds the default value on creation for the "workspace_id" field.
+	DefaultWorkspaceID string
+	// WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
+	WorkspaceIDValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt string
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -213,6 +220,11 @@ func ByMemoryHitJSON(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByWorkspaceID orders the results by the workspace_id field.
+func ByWorkspaceID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWorkspaceID, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

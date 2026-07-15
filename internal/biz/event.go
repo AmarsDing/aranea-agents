@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -20,6 +21,42 @@ type Event interface {
 	EntityID() string
 	// OccurredAt 返回事件发生时间（用于排序兜底，主排序用 Seq）
 	OccurredAt() time.Time
+}
+
+// IsTerminalEventKind reports whether kind represents a terminal lifecycle
+// state (completed/failed/cancelled/interrupted/skipped). B-06: these events
+// must not be silently dropped on EventBus or WS queues.
+func IsTerminalEventKind(kind EventKind) bool {
+	k := string(kind)
+	return strings.HasSuffix(k, ".completed") ||
+		strings.HasSuffix(k, ".failed") ||
+		strings.HasSuffix(k, ".cancelled") ||
+		strings.HasSuffix(k, ".interrupted") ||
+		strings.HasSuffix(k, ".skipped")
+}
+
+// IsCriticalDeliveryEvent reports whether e must use BlockUpTo / high-priority
+// delivery (B-06). Covers suffix-terminal kinds plus payloads that encode
+// terminal lifecycle without a *.completed/*.failed kind:
+//   - plan_board.updated when PlanBoard status is terminal
+//   - system.notice for orchestration_completed / orchestration_failed
+func IsCriticalDeliveryEvent(e Event) bool {
+	if e == nil {
+		return false
+	}
+	if IsTerminalEventKind(e.EventKind()) {
+		return true
+	}
+	switch ev := e.(type) {
+	case *PlanBoardUpdatedEvent:
+		return IsPlanBoardTerminal(ev.PlanBoard.Status)
+	case *SystemNoticeEvent:
+		switch ev.NoticeType {
+		case "orchestration_completed", "orchestration_failed":
+			return true
+		}
+	}
+	return false
 }
 
 // EventKind 标识事件类型，格式为 "<entity>.<action>"。

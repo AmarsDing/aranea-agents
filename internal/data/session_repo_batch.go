@@ -167,6 +167,11 @@ func (r *sessionRepo) batchUpdateSessions(
 // sessionSearchWheres builds predicates shared by SearchSessions and batch list.
 func sessionSearchWheres(q biz.SessionSearchQuery) []predicate.Session {
 	wheres := []predicate.Session{entsession.DeletedAtEQ("")}
+	// P2-C: workspace tenancy filter. Empty WorkspaceID = no filter (system caller bypass).
+	// Service layer is responsible for setting WorkspaceID from ctx via workspace.IDFromContext.
+	if q.WorkspaceID != "" {
+		wheres = append(wheres, entsession.WorkspaceIDEQ(q.WorkspaceID))
+	}
 	if q.OwnerType != "" {
 		wheres = append(wheres, entsession.OwnerTypeEQ(q.OwnerType))
 	}

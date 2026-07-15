@@ -34,6 +34,9 @@ message Admin {
   google.protobuf.Timestamp create_time = 8;
   // The latest timestamp at which the user was updated.
   google.protobuf.Timestamp update_time = 9;
+  // B-01 / P2-A: 1:1 admin → workspace binding stamped into JWT at login.
+  // Clients cannot switch workspace via Header/Query; membership is JWT-bound.
+  string workspace_id = 10;
 }
 
 // AdminSet is the set of admins.

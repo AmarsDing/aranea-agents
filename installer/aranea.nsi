@@ -32,7 +32,7 @@ RequestExecutionLevel user
 
 ; VIProductVersion 必须为 X.X.X.X；从 VERSION 粗解析，失败则用 0.1.0.0
 !define /date BUILD_YEAR "%Y"
-VIProductVersion "0.1.24.0"
+VIProductVersion "0.1.25.0"
 VIAddVersionKey "ProductName" "Aranea-Agents"
 VIAddVersionKey "CompanyName" "AmarsDing"
 VIAddVersionKey "LegalCopyright" "Copyright (C) 2026 AmarsDing"
@@ -93,11 +93,13 @@ Section "MainSection" SecMain
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\环境检查.lnk" "$INSTDIR\AraneaLauncher.exe" "-check" "$INSTDIR\frontend\resources\app\icons\icon.ico"
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\停止 Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "-stop" "$INSTDIR\frontend\resources\app\icons\icon.ico"
+  ; 调试入口：可见控制台（start.bat）；日常启动请用 AraneaLauncher.exe
+  CreateShortcut "$SMPROGRAMS\Aranea-Agents\启动（调试控制台）.lnk" "$INSTDIR\start.bat" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
   CreateShortcut "$SMPROGRAMS\Aranea-Agents\卸载.lnk" "$INSTDIR\uninstall.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"
 
-  ; 安静环境检查（只写 logs\preflight.txt，不弹窗、不启动服务、无 CMD）
-  DetailPrint "Running quiet environment check..."
-  nsExec::ExecToLog '"$INSTDIR\AraneaLauncher.exe" -check -quiet'
+  ; 安装结束弹出环境检查报告（写 logs\preflight.txt + MessageBox；不启动服务）
+  DetailPrint "Running environment check..."
+  nsExec::ExecToLog '"$INSTDIR\AraneaLauncher.exe" -check'
 
   ; 桌面快捷方式 → 静默 launcher
   CreateShortcut "$DESKTOP\Aranea-Agents.lnk" "$INSTDIR\AraneaLauncher.exe" "" "$INSTDIR\frontend\resources\app\icons\icon.ico"

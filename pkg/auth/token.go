@@ -7,12 +7,22 @@ import (
 	"github.com/google/uuid"
 )
 
-// GenerateToken generates a JWT token for the given username.
+// GenerateToken generates a JWT token for the given user.
+// Workspace is bound to DefaultWorkspaceID (B-01: membership comes from JWT, not client headers).
 func GenerateToken(userID int64, access, secret string, expiresAt time.Time) (string, error) {
+	return GenerateTokenForWorkspace(userID, access, DefaultWorkspaceID, secret, expiresAt)
+}
+
+// GenerateTokenForWorkspace generates a JWT bound to an explicit workspace membership.
+func GenerateTokenForWorkspace(userID int64, access, workspaceID, secret string, expiresAt time.Time) (string, error) {
+	if workspaceID == "" {
+		workspaceID = DefaultWorkspaceID
+	}
 	now := time.Now()
 	claims := Auth{
-		UserID: userID,
-		Access: access,
+		UserID:      userID,
+		Access:      access,
+		WorkspaceID: workspaceID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        uuid.NewString(),
 			Issuer:    "kratos",

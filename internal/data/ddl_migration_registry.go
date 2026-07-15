@@ -127,6 +127,12 @@ var ddlMigrations = []ddlMigration{
 	// entities (agents/teams/graph_definitions/plugins) for P2-B repo 层硬隔离.
 	// empty = shared/legacy (visible to all workspaces); non-empty = tenant-private.
 	{Version: 20261007, Name: "tenant_owned_workspace_id", SQL: "sql/migrations/20261007_tenant_owned_workspace_id.sql"},
+	// 20261008 session_turn_idempotency_key: C-13 unique (session_id, idempotency_key)
+	// so AdmitTurn retries return the canonical turn instead of duplicating LLM work.
+	{Version: 20261008, Name: "session_turn_idempotency_key", SQL: "sql/migrations/20261008_session_turn_idempotency_key.sql"},
+	// 20261009 platform_workspace_id: P2-B Phase 2 — workspace_id on tools/skill/
+	// mcp_server/channel/cron_task/eval_runs/tasks_v2/task_plans (Ent already had fields).
+	{Version: 20261009, Name: "platform_workspace_id", SQL: "sql/migrations/20261009_platform_workspace_id.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -141,49 +147,92 @@ func RunDDLMigrationsExternal(rawDB *sql.DB, entClient *ent.Client, d Dialect, l
 // runDDLMigrationsWithDialect runs DDL migrations with dialect-aware error handling.
 // Use this when the primary database is Postgres to ensure idempotent error detection
 // matches the active dialect.
+//
+// C-28: on Postgres, the whole migration loop is wrapped in a session-scoped
+// advisory lock so concurrent replicas cannot apply/record migrations in parallel.
 func runDDLMigrationsWithDialect(rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
 	ctx := context.Background()
-	for _, m := range ddlMigrations {
-		applied, err := isMigrationApplied(ctx, entClient, m.Version, lg)
-		if err != nil {
-			lg.Warn("migration check failed, running patch anyway",
-				loggateway.StepID("data.ddl_migration.check"),
-				loggateway.Int("version", m.Version),
-				loggateway.Err(err))
-			applied = false
-		}
-		if applied {
-			continue
-		}
-		// Execute SQL file first if set
-		if m.SQL != "" {
-			if err := executeSQLFileWithDialect(ctx, rawDB, m.SQL, d, lg); err != nil {
-				lg.Error("schema step (SQL) failed",
-					loggateway.StepID("data.schema."+m.Name),
+	return withDDLMigrationAdvisoryLock(ctx, rawDB, d, lg, func() error {
+		for _, m := range ddlMigrations {
+			applied, err := isMigrationApplied(ctx, entClient, m.Version, lg)
+			if err != nil {
+				lg.Warn("migration check failed, running patch anyway",
+					loggateway.StepID("data.ddl_migration.check"),
 					loggateway.Int("version", m.Version),
 					loggateway.Err(err))
-				return fmt.Errorf("%s: %w", m.Name, err)
+				applied = false
 			}
-		}
-		// Then execute Func if set
-		if m.Func != nil {
-			if err := m.Func(ctx, rawDB, entClient, d, lg); err != nil {
-				lg.Error("schema step failed",
-					loggateway.StepID("data.schema."+m.Name),
+			if applied {
+				continue
+			}
+			// Execute SQL file first if set
+			if m.SQL != "" {
+				if err := executeSQLFileWithDialect(ctx, rawDB, m.SQL, d, lg); err != nil {
+					lg.Error("schema step (SQL) failed",
+						loggateway.StepID("data.schema."+m.Name),
+						loggateway.Int("version", m.Version),
+						loggateway.Err(err))
+					return fmt.Errorf("%s: %w", m.Name, err)
+				}
+			}
+			// Then execute Func if set
+			if m.Func != nil {
+				if err := m.Func(ctx, rawDB, entClient, d, lg); err != nil {
+					lg.Error("schema step failed",
+						loggateway.StepID("data.schema."+m.Name),
+						loggateway.Int("version", m.Version),
+						loggateway.Err(err))
+					return fmt.Errorf("%s: %w", m.Name, err)
+				}
+			}
+			if err := recordMigrationApplied(ctx, entClient, d, m.Version, m.Name, lg); err != nil {
+				lg.Error("failed to record migration, aborting to prevent re-execution",
+					loggateway.StepID("data.ddl_migration.record"),
 					loggateway.Int("version", m.Version),
 					loggateway.Err(err))
-				return fmt.Errorf("%s: %w", m.Name, err)
+				return fmt.Errorf("record migration %s: %w", m.Name, err)
 			}
 		}
-		if err := recordMigrationApplied(ctx, entClient, d, m.Version, m.Name, lg); err != nil {
-			lg.Error("failed to record migration, aborting to prevent re-execution",
-				loggateway.StepID("data.ddl_migration.record"),
-				loggateway.Int("version", m.Version),
-				loggateway.Err(err))
-			return fmt.Errorf("record migration %s: %w", m.Name, err)
-		}
+		return nil
+	})
+}
+
+// ddlMigrationAdvisoryLockKey is a stable int64 key for pg_advisory_lock.
+// Value chosen to be unique among Aranea locks (ASCII "ARAN" + migration).
+const ddlMigrationAdvisoryLockKey int64 = 0x4152414E_4D4947 // "ARANMIG" truncated
+
+// withDDLMigrationAdvisoryLock serializes migration runners on Postgres via a
+// dedicated connection holding pg_advisory_lock for the duration of fn.
+// Non-Postgres dialects run fn without a lock (single-process / test adapters).
+func withDDLMigrationAdvisoryLock(ctx context.Context, rawDB *sql.DB, d Dialect, lg loggateway.Logger, fn func() error) error {
+	if rawDB == nil || !d.IsPostgres() {
+		return fn()
 	}
-	return nil
+	conn, err := rawDB.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("ddl migration advisory lock: acquire conn: %w", err)
+	}
+	defer func() {
+		if cerr := conn.Close(); cerr != nil {
+			lg.Warn("ddl migration lock conn close failed",
+				loggateway.StepID("data.ddl_migration.lock"),
+				loggateway.Err(cerr))
+		}
+	}()
+	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, ddlMigrationAdvisoryLockKey); err != nil {
+		return fmt.Errorf("ddl migration advisory lock: %w", err)
+	}
+	defer func() {
+		if _, uerr := conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, ddlMigrationAdvisoryLockKey); uerr != nil {
+			lg.Warn("ddl migration advisory unlock failed",
+				loggateway.StepID("data.ddl_migration.unlock"),
+				loggateway.Err(uerr))
+		}
+	}()
+	lg.Info("ddl migration advisory lock acquired",
+		loggateway.StepID("data.ddl_migration.lock"),
+		loggateway.Int64("lock_key", ddlMigrationAdvisoryLockKey))
+	return fn()
 }
 
 // executeSQLFileWithDialect is the dialect-aware SQL file executor.

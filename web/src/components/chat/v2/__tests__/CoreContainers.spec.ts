@@ -3,10 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { mount } from '@vue/test-utils';
 import { useChatActivityStore } from '../../../../stores/chat/activityV2Store';
-import SessionPanel from '../SessionPanel.vue';
-import TaskList from '../TaskList.vue';
 import TaskCard from '../TaskCard.vue';
-import TurnList from '../TurnList.vue';
 import TurnContainer from '../TurnContainer.vue';
 import type { Task, Turn, Step } from '../../../../features/chat/v2Types';
 

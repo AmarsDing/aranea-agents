@@ -5,6 +5,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/cron/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -19,6 +20,33 @@ type CronService struct {
 
 func NewCronService(uc *biz.CronUsecase) *CronService {
 	return &CronService{uc: uc}
+}
+
+// assertCronTaskAccess 校验 caller workspace 是否拥有指定 cron task。
+// P2-B: IDOR 防护 — 防止跨租户访问 cron task（私有实体）。
+//
+// 校验逻辑：
+//  1. 系统 caller（workspace.IsSystem）→ 绕过（cron/admin 后台任务）
+//  2. 查 task → task.WorkspaceID；task 不存在或查询失败 → NotFound（不泄露存在性）
+//  3. workspace.AssertWorkspace 校验；不匹配 → NotFound（不泄露存在性）
+//
+// TECH-DEBT(P2-B): add Warn log once CronService gets lg field injected via wire.
+func (s *CronService) assertCronTaskAccess(ctx context.Context, taskID string) error {
+	if workspace.IsSystem(ctx) {
+		return nil
+	}
+	task, err := s.uc.GetTask(ctx, taskID)
+	if err != nil {
+		// task 不存在或查询失败 → NotFound，不泄露存在性
+		// TECH-DEBT(P2-B): add Warn log once CronService gets lg field injected via wire.
+		return apierror.NotFound("CRON", "cron task not found")
+	}
+	if err := workspace.AssertWorkspace(workspace.IDFromContext(ctx), task.WorkspaceID); err != nil {
+		// workspace 不匹配 → NotFound，不泄露存在性
+		// TECH-DEBT(P2-B): add Warn log once CronService gets lg field injected via wire.
+		return apierror.NotFound("CRON", "cron task not found")
+	}
+	return nil
 }
 
 func toProtoCronTask(t biz.CronTask) *v1.CronTask {
@@ -96,6 +124,10 @@ func (s *CronService) CreateCronTask(ctx context.Context, req *v1.CreateCronTask
 		ConfigJSON:   req.GetConfigJson(),
 		MetadataJSON: req.GetMetadataJson(),
 	}
+	// P2-B: workspace isolation. System caller leaves WorkspaceID empty (system-owned).
+	if !workspace.IsSystem(ctx) {
+		in.WorkspaceID = workspace.IDFromContext(ctx)
+	}
 	out, err := s.uc.CreateTask(ctx, in)
 	if err != nil {
 		return nil, err
@@ -104,6 +136,10 @@ func (s *CronService) CreateCronTask(ctx context.Context, req *v1.CreateCronTask
 }
 
 func (s *CronService) GetCronTask(ctx context.Context, req *v1.GetCronTaskRequest) (*v1.CronTask, error) {
+	// P2-B: IDOR guard — reads must use the same workspace assert as mutations.
+	if err := s.assertCronTaskAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	t, err := s.uc.GetTask(ctx, req.GetId())
 	if err != nil {
 		return nil, err
@@ -115,6 +151,9 @@ func (s *CronService) UpdateCronTask(ctx context.Context, req *v1.UpdateCronTask
 	if req.GetTask() == nil {
 		return nil, apierror.BadRequest("CRON", "task body is required")
 	}
+	if err := s.assertCronTaskAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	out, err := s.uc.UpdateTask(ctx, req.GetId(), patchFromProtoCronTask(req.GetTask()))
 	if err != nil {
 		return nil, err
@@ -123,6 +162,9 @@ func (s *CronService) UpdateCronTask(ctx context.Context, req *v1.UpdateCronTask
 }
 
 func (s *CronService) DeleteCronTask(ctx context.Context, req *v1.DeleteCronTaskRequest) (*emptypb.Empty, error) {
+	if err := s.assertCronTaskAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	if err := s.uc.DeleteTask(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
@@ -130,6 +172,11 @@ func (s *CronService) DeleteCronTask(ctx context.Context, req *v1.DeleteCronTask
 }
 
 func (s *CronService) ListCronTaskRuns(ctx context.Context, req *v1.ListCronTaskRunsRequest) (*v1.ListCronTaskRunsResponse, error) {
+	if taskID := req.GetCronTaskId(); taskID != "" {
+		if err := s.assertCronTaskAccess(ctx, taskID); err != nil {
+			return nil, err
+		}
+	}
 	q := biz.CronTaskRunQuery{
 		TaskID: req.GetCronTaskId(),
 		Status: req.GetStatus(),
@@ -147,6 +194,9 @@ func (s *CronService) ListCronTaskRuns(ctx context.Context, req *v1.ListCronTask
 }
 
 func (s *CronService) TriggerCronTask(ctx context.Context, req *v1.TriggerCronTaskRequest) (*v1.CronTaskRun, error) {
+	if err := s.assertCronTaskAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	run, err := s.uc.TriggerTask(ctx, req.GetId())
 	if err != nil {
 		return nil, err
@@ -163,6 +213,9 @@ func (s *CronService) GetTaskRun(ctx context.Context, id string) (biz.CronTaskRu
 }
 
 func (s *CronService) ResetCronTaskFailures(ctx context.Context, req *v1.ResetCronTaskFailuresRequest) (*v1.CronTask, error) {
+	if err := s.assertCronTaskAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	out, err := s.uc.ResetTaskFailures(ctx, req.GetId())
 	if err != nil {
 		return nil, err

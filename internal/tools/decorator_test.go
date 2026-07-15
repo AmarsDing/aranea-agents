@@ -10,8 +10,21 @@ import (
 
 	"aranea-agents/pkg/loggateway"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
+
+func invocationCtx(appName, userID, sessionID string) context.Context {
+	inv := &trpcagent.Invocation{
+		Session: &trpcsession.Session{
+			AppName: appName,
+			UserID:  userID,
+			ID:      sessionID,
+		},
+	}
+	return trpcagent.NewInvocationContext(context.Background(), inv)
+}
 
 // decoratorMockTool is a test double implementing CallableTool.
 type decoratorMockTool struct {
@@ -168,14 +181,15 @@ func TestToolDecorator_Cache(t *testing.T) {
 	})
 	args1 := []byte(`{"path":"test.txt"}`)
 	args2 := []byte(`{"path":"other.txt"}`)
+	ctx := invocationCtx("agent-a", "user-1", "sess-1")
 
 	// First call — should invoke inner.
-	r1, err := d.Call(context.Background(), args1)
+	r1, err := d.Call(ctx, args1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// Second call with same args — should hit cache.
-	r2, err := d.Call(context.Background(), args1)
+	r2, err := d.Call(ctx, args1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -188,7 +202,7 @@ func TestToolDecorator_Cache(t *testing.T) {
 	}
 	mu.Unlock()
 	// Third call with different args — should invoke inner again.
-	_, err = d.Call(context.Background(), args2)
+	_, err = d.Call(ctx, args2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -197,6 +211,73 @@ func TestToolDecorator_Cache(t *testing.T) {
 		t.Errorf("expected 2 inner calls after different args, got %d", callCount)
 	}
 	mu.Unlock()
+}
+
+// TestToolDecorator_CacheIsolatedBySession verifies E2E-P1-09: identical
+// args from different sessions do not share cached tool results.
+func TestToolDecorator_CacheIsolatedBySession(t *testing.T) {
+	var callCount int32
+	var mu sync.Mutex
+	tool := &decoratorMockTool{
+		name: "file",
+		call: func(ctx context.Context, args []byte) (any, error) {
+			mu.Lock()
+			callCount++
+			mu.Unlock()
+			return "ok", nil
+		},
+	}
+	d := NewToolDecorator(tool, ToolDecoratorConfig{
+		EnableCache: true,
+		Logger:      loggateway.NewNoop(),
+	})
+	args := []byte(`{"path":"shared.txt"}`)
+	ctxA := invocationCtx("agent-a", "user-1", "sess-a")
+	ctxB := invocationCtx("agent-a", "user-1", "sess-b")
+
+	if _, err := d.Call(ctxA, args); err != nil {
+		t.Fatalf("sess-a call: %v", err)
+	}
+	if _, err := d.Call(ctxB, args); err != nil {
+		t.Fatalf("sess-b call: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if callCount != 2 {
+		t.Fatalf("expected 2 inner calls across sessions, got %d", callCount)
+	}
+}
+
+// TestToolDecorator_CacheDisabledWithoutInvocation verifies unscoped calls
+// never populate or read the shared cache bucket.
+func TestToolDecorator_CacheDisabledWithoutInvocation(t *testing.T) {
+	var callCount int32
+	var mu sync.Mutex
+	tool := &decoratorMockTool{
+		name: "file",
+		call: func(ctx context.Context, args []byte) (any, error) {
+			mu.Lock()
+			callCount++
+			mu.Unlock()
+			return "ok", nil
+		},
+	}
+	d := NewToolDecorator(tool, ToolDecoratorConfig{
+		EnableCache: true,
+		Logger:      loggateway.NewNoop(),
+	})
+	args := []byte(`{"path":"noscope.txt"}`)
+	if _, err := d.Call(context.Background(), args); err != nil {
+		t.Fatalf("call1: %v", err)
+	}
+	if _, err := d.Call(context.Background(), args); err != nil {
+		t.Fatalf("call2: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if callCount != 2 {
+		t.Fatalf("expected no cache without invocation, got %d calls", callCount)
+	}
 }
 
 // TestToolDecorator_NoCacheForExclusiveTool verifies that Exclusive tools
@@ -469,6 +550,7 @@ func TestToolDecorator_ConcurrentCacheAccess(t *testing.T) {
 	// Use two distinct arg sets so we exercise both cache hits and misses.
 	argsA := []byte(`{"path":"a.txt"}`)
 	argsB := []byte(`{"path":"b.txt"}`)
+	ctx := invocationCtx("agent-a", "user-1", "sess-1")
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
 		wg.Add(1)
@@ -478,7 +560,7 @@ func TestToolDecorator_ConcurrentCacheAccess(t *testing.T) {
 			if i%2 == 0 {
 				args = argsB
 			}
-			_, _ = d.Call(context.Background(), args)
+			_, _ = d.Call(ctx, args)
 		}(i)
 	}
 	wg.Wait()

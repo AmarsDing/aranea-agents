@@ -244,6 +244,20 @@ func (_u *TaskPlanUpdate) SetNillableStatus(v *string) *TaskPlanUpdate {
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *TaskPlanUpdate) SetWorkspaceID(v string) *TaskPlanUpdate {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *TaskPlanUpdate) SetNillableWorkspaceID(v *string) *TaskPlanUpdate {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *TaskPlanUpdate) SetCreatedAt(v string) *TaskPlanUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -336,6 +350,11 @@ func (_u *TaskPlanUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "TaskPlan.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.WorkspaceID(); ok {
+		if err := taskplan.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "TaskPlan.workspace_id": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -398,6 +417,9 @@ func (_u *TaskPlanUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(taskplan.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(taskplan.FieldWorkspaceID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(taskplan.FieldCreatedAt, field.TypeString, value)
@@ -642,6 +664,20 @@ func (_u *TaskPlanUpdateOne) SetNillableStatus(v *string) *TaskPlanUpdateOne {
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *TaskPlanUpdateOne) SetWorkspaceID(v string) *TaskPlanUpdateOne {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *TaskPlanUpdateOne) SetNillableWorkspaceID(v *string) *TaskPlanUpdateOne {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *TaskPlanUpdateOne) SetCreatedAt(v string) *TaskPlanUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -747,6 +783,11 @@ func (_u *TaskPlanUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "TaskPlan.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.WorkspaceID(); ok {
+		if err := taskplan.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "TaskPlan.workspace_id": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -826,6 +867,9 @@ func (_u *TaskPlanUpdateOne) sqlSave(ctx context.Context) (_node *TaskPlan, err 
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(taskplan.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(taskplan.FieldWorkspaceID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(taskplan.FieldCreatedAt, field.TypeString, value)

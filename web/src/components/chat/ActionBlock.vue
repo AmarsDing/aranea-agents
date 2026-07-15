@@ -14,7 +14,7 @@
       <!-- Per-category dispatch: pick the specialized detail component based
            on toolCategory (inferred from toolName via classifyTool). Falls
            back to GenericToolDetail for unknown categories. -->
-      <component v-if="expanded" :is="detailComponent" :step="step" class="act-activity__detail" />
+      <component :is="detailComponent" v-if="expanded" :step="step" class="act-activity__detail" />
     </template>
   </div>
 </template>

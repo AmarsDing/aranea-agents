@@ -132,6 +132,20 @@ func (_c *CronTaskCreate) SetNillableMetadataJSON(v *string) *CronTaskCreate {
 	return _c
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_c *CronTaskCreate) SetWorkspaceID(v string) *CronTaskCreate {
+	_c.mutation.SetWorkspaceID(v)
+	return _c
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_c *CronTaskCreate) SetNillableWorkspaceID(v *string) *CronTaskCreate {
+	if v != nil {
+		_c.SetWorkspaceID(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *CronTaskCreate) SetCreatedAt(v string) *CronTaskCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -243,6 +257,10 @@ func (_c *CronTaskCreate) defaults() {
 		v := crontask.DefaultMetadataJSON
 		_c.mutation.SetMetadataJSON(v)
 	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		v := crontask.DefaultWorkspaceID
+		_c.mutation.SetWorkspaceID(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := crontask.DefaultCreatedAt
 		_c.mutation.SetCreatedAt(v)
@@ -300,6 +318,14 @@ func (_c *CronTaskCreate) check() error {
 	}
 	if _, ok := _c.mutation.MetadataJSON(); !ok {
 		return &ValidationError{Name: "metadata_json", err: errors.New(`ent: missing required field "CronTask.metadata_json"`)}
+	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		return &ValidationError{Name: "workspace_id", err: errors.New(`ent: missing required field "CronTask.workspace_id"`)}
+	}
+	if v, ok := _c.mutation.WorkspaceID(); ok {
+		if err := crontask.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "CronTask.workspace_id": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "CronTask.created_at"`)}
@@ -386,6 +412,10 @@ func (_c *CronTaskCreate) createSpec() (*CronTask, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.MetadataJSON(); ok {
 		_spec.SetField(crontask.FieldMetadataJSON, field.TypeString, value)
 		_node.MetadataJSON = value
+	}
+	if value, ok := _c.mutation.WorkspaceID(); ok {
+		_spec.SetField(crontask.FieldWorkspaceID, field.TypeString, value)
+		_node.WorkspaceID = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(crontask.FieldCreatedAt, field.TypeString, value)
@@ -562,6 +592,18 @@ func (u *CronTaskUpsert) SetMetadataJSON(v string) *CronTaskUpsert {
 // UpdateMetadataJSON sets the "metadata_json" field to the value that was provided on create.
 func (u *CronTaskUpsert) UpdateMetadataJSON() *CronTaskUpsert {
 	u.SetExcluded(crontask.FieldMetadataJSON)
+	return u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *CronTaskUpsert) SetWorkspaceID(v string) *CronTaskUpsert {
+	u.Set(crontask.FieldWorkspaceID, v)
+	return u
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *CronTaskUpsert) UpdateWorkspaceID() *CronTaskUpsert {
+	u.SetExcluded(crontask.FieldWorkspaceID)
 	return u
 }
 
@@ -779,6 +821,20 @@ func (u *CronTaskUpsertOne) SetMetadataJSON(v string) *CronTaskUpsertOne {
 func (u *CronTaskUpsertOne) UpdateMetadataJSON() *CronTaskUpsertOne {
 	return u.Update(func(s *CronTaskUpsert) {
 		s.UpdateMetadataJSON()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *CronTaskUpsertOne) SetWorkspaceID(v string) *CronTaskUpsertOne {
+	return u.Update(func(s *CronTaskUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *CronTaskUpsertOne) UpdateWorkspaceID() *CronTaskUpsertOne {
+	return u.Update(func(s *CronTaskUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 
@@ -1169,6 +1225,20 @@ func (u *CronTaskUpsertBulk) SetMetadataJSON(v string) *CronTaskUpsertBulk {
 func (u *CronTaskUpsertBulk) UpdateMetadataJSON() *CronTaskUpsertBulk {
 	return u.Update(func(s *CronTaskUpsert) {
 		s.UpdateMetadataJSON()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *CronTaskUpsertBulk) SetWorkspaceID(v string) *CronTaskUpsertBulk {
+	return u.Update(func(s *CronTaskUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *CronTaskUpsertBulk) UpdateWorkspaceID() *CronTaskUpsertBulk {
+	return u.Update(func(s *CronTaskUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 

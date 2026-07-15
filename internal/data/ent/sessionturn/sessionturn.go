@@ -65,6 +65,8 @@ const (
 	FieldErrorMessage = "error_message"
 	// FieldMetadataJSON holds the string denoting the metadata_json field in the database.
 	FieldMetadataJSON = "metadata_json"
+	// FieldIdempotencyKey holds the string denoting the idempotency_key field in the database.
+	FieldIdempotencyKey = "idempotency_key"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -103,6 +105,7 @@ var Columns = []string{
 	FieldErrorCode,
 	FieldErrorMessage,
 	FieldMetadataJSON,
+	FieldIdempotencyKey,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -172,6 +175,10 @@ var (
 	DefaultErrorMessage string
 	// DefaultMetadataJSON holds the default value on creation for the "metadata_json" field.
 	DefaultMetadataJSON string
+	// DefaultIdempotencyKey holds the default value on creation for the "idempotency_key" field.
+	DefaultIdempotencyKey string
+	// IdempotencyKeyValidator is a validator for the "idempotency_key" field. It is called by the builders before save.
+	IdempotencyKeyValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt string
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -321,6 +328,11 @@ func ByErrorMessage(opts ...sql.OrderTermOption) OrderOption {
 // ByMetadataJSON orders the results by the metadata_json field.
 func ByMetadataJSON(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMetadataJSON, opts...).ToFunc()
+}
+
+// ByIdempotencyKey orders the results by the idempotency_key field.
+func ByIdempotencyKey(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIdempotencyKey, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

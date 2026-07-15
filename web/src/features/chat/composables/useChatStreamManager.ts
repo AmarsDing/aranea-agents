@@ -21,6 +21,11 @@ export type StreamManagerDeps = {
   /** v2 chat events: dispatched when a v2_event WS envelope arrives. */
   onV2Event?: (envelope: V2WsEnvelope) => void;
   refreshRunStatus: (sessionId?: string) => Promise<void>;
+  /**
+   * B-06: authoritative v2 snapshot hydration after WS reconnect.
+   * Server no longer replays events; clients must re-fetch REST history.
+   */
+  onReconnectHydrate?: (sessionId: string) => Promise<void>;
 };
 
 export function useChatStreamManager(deps: StreamManagerDeps) {
@@ -33,7 +38,22 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
   let teamStream: UseEnvelopeStreamReturn | null = null;
   let teamStreamSessionId: string | null = null;
 
+  /** True while reconnect snapshot hydrate is in flight (B-06). */
   const wsReplaying = ref(false);
+  /** Per-session: true after a disconnect so next onConnected triggers hydrate. */
+  const needsHydrateAfterReconnect = new Map<string, boolean>();
+
+  async function hydrateAfterReconnect(sessionId: string) {
+    if (!deps.onReconnectHydrate) return;
+    wsReplaying.value = true;
+    try {
+      await deps.onReconnectHydrate(sessionId);
+    } catch (e) {
+      console.warn('[chat] reconnect v2 hydrate failed', e);
+    } finally {
+      wsReplaying.value = false;
+    }
+  }
 
   function ensureChatStream(sessionId: string) {
     if (chatStream && chatStreamSessionId === sessionId) {
@@ -51,15 +71,23 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     // B-02: Disconnect previous stream before creating a new one.
     chatStream?.disconnect();
     deps.runtimeStore.setWsConnected(sessionId, false);
+    needsHydrateAfterReconnect.delete(sessionId);
 
     chatStream = createChatStream(sessionId, {
       lastEventId: getChannelWsCursor(sessionId),
       onConnected: () => {
         deps.runtimeStore.setWsConnected(sessionId, true);
         void deps.refreshRunStatus(sessionId);
+        // B-06: after a disconnect, re-hydrate authoritative v2 snapshot
+        // (WS last_event_id is echo-only; server replay was removed).
+        if (needsHydrateAfterReconnect.get(sessionId)) {
+          needsHydrateAfterReconnect.set(sessionId, false);
+          void hydrateAfterReconnect(sessionId);
+        }
       },
       onDisconnected: () => {
         deps.runtimeStore.setWsConnected(sessionId, false);
+        needsHydrateAfterReconnect.set(sessionId, true);
       },
       onServerShutdown: () => {
         $q.notify({
@@ -97,6 +125,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     // B-02: Disconnect previous stream before creating a new one.
     teamStream?.disconnect();
     deps.runtimeStore.setWsConnected(sessionId, false);
+    needsHydrateAfterReconnect.delete(sessionId);
 
     teamStream = createTeamStream(sessionId, {
       onServerShutdown: () => {
@@ -114,6 +143,14 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       onConnected: () => {
         deps.runtimeStore.setWsConnected(sessionId, true);
         void deps.refreshRunStatus(sessionId);
+        if (needsHydrateAfterReconnect.get(sessionId)) {
+          needsHydrateAfterReconnect.set(sessionId, false);
+          void hydrateAfterReconnect(sessionId);
+        }
+      },
+      onDisconnected: () => {
+        deps.runtimeStore.setWsConnected(sessionId, false);
+        needsHydrateAfterReconnect.set(sessionId, true);
       },
       onActivityEvent: deps.onActivityEvent,
       onV2Event: deps.onV2Event,

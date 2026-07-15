@@ -27,6 +27,8 @@ type Admin struct {
 	Access string `json:"access,omitempty"`
 	// Password holds the value of the "password" field.
 	Password string `json:"-"`
+	// WorkspaceID holds the value of the "workspace_id" field.
+	WorkspaceID string `json:"workspace_id,omitempty"`
 	// CreateTime holds the value of the "create_time" field.
 	CreateTime time.Time `json:"create_time,omitempty"`
 	// UpdateTime holds the value of the "update_time" field.
@@ -41,7 +43,7 @@ func (*Admin) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case admin.FieldID:
 			values[i] = new(sql.NullInt64)
-		case admin.FieldName, admin.FieldEmail, admin.FieldAvatar, admin.FieldAccess, admin.FieldPassword:
+		case admin.FieldName, admin.FieldEmail, admin.FieldAvatar, admin.FieldAccess, admin.FieldPassword, admin.FieldWorkspaceID:
 			values[i] = new(sql.NullString)
 		case admin.FieldCreateTime, admin.FieldUpdateTime:
 			values[i] = new(sql.NullTime)
@@ -95,6 +97,12 @@ func (_m *Admin) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field password", values[i])
 			} else if value.Valid {
 				_m.Password = value.String
+			}
+		case admin.FieldWorkspaceID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field workspace_id", values[i])
+			} else if value.Valid {
+				_m.WorkspaceID = value.String
 			}
 		case admin.FieldCreateTime:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -157,6 +165,9 @@ func (_m *Admin) String() string {
 	builder.WriteString(_m.Access)
 	builder.WriteString(", ")
 	builder.WriteString("password=<sensitive>")
+	builder.WriteString(", ")
+	builder.WriteString("workspace_id=")
+	builder.WriteString(_m.WorkspaceID)
 	builder.WriteString(", ")
 	builder.WriteString("create_time=")
 	builder.WriteString(_m.CreateTime.Format(time.ANSIC))

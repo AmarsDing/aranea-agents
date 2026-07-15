@@ -63,6 +63,7 @@ export function createTeamStream(
   sessionId: string,
   streamOpts?: {
     onConnected?: () => void;
+    onDisconnected?: () => void;
     onServerShutdown?: (reason: string) => void;
     onActivityEvent?: (ev: ActivityEvent) => void;
     onV2Event?: (envelope: V2WsEnvelope) => void;
@@ -73,6 +74,7 @@ export function createTeamStream(
     channels: ['chat', 'team', 'system'],
     autoConnect: false,
     onConnected: () => streamOpts?.onConnected?.(),
+    onDisconnected: () => streamOpts?.onDisconnected?.(),
     onServerShutdown: streamOpts?.onServerShutdown,
     onActivityEvent: streamOpts?.onActivityEvent,
     onV2Event: streamOpts?.onV2Event,

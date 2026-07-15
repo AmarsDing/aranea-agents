@@ -44,6 +44,13 @@ func (s *PersistentTurnService) AdmitTurn(ctx context.Context, intent biz.TurnIn
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
+	// C-13: scope client keys by source so WS/HTTP/channel retries collide correctly.
+	// Empty client keys use an id sentinel (set in CreateSessionTurn) so unique
+	// index never blocks independent turns.
+	idemKey := intent.IdempotencyKey
+	if idemKey != "" {
+		idemKey = string(turn.Source) + ":" + idemKey
+	}
 	meta, _ := json.Marshal(map[string]any{
 		"source":           turn.Source,
 		"target_type":      turn.TargetType,
@@ -51,16 +58,17 @@ func (s *PersistentTurnService) AdmitTurn(ctx context.Context, intent biz.TurnIn
 		"delivery_targets": intent.DeliveryTargets,
 	})
 	row, err := s.Sessions.CreateTurn(ctx, biz.SessionTurn{
-		ID:           turn.ID,
-		SessionID:    turn.SessionID,
-		OwnerType:    string(turn.TargetType),
-		AgentID:      turn.AgentID,
-		TeamID:       turn.TeamID,
-		Status:       string(turn.Status),
-		StartedAt:    now.Format(time.RFC3339),
-		MetadataJSON: string(meta),
-		CreatedAt:    now.Format(time.RFC3339),
-		UpdatedAt:    now.Format(time.RFC3339),
+		ID:             turn.ID,
+		SessionID:      turn.SessionID,
+		OwnerType:      string(turn.TargetType),
+		AgentID:        turn.AgentID,
+		TeamID:         turn.TeamID,
+		Status:         string(turn.Status),
+		StartedAt:      now.Format(time.RFC3339),
+		MetadataJSON:   string(meta),
+		IdempotencyKey: idemKey,
+		CreatedAt:      now.Format(time.RFC3339),
+		UpdatedAt:      now.Format(time.RFC3339),
 	})
 	if err != nil {
 		return biz.CanonicalTurn{}, err

@@ -127,6 +127,16 @@ func (s *stubStepReader) ListStepsByTask(_ context.Context, _ string) ([]biz.Ste
 	return nil, nil
 }
 
+func (s *stubStepReader) MaxSeqBySpiritSession(_ context.Context, _ string) (int64, error) {
+	var max int64
+	for _, st := range s.steps {
+		if st.Seq > max {
+			max = st.Seq
+		}
+	}
+	return max, nil
+}
+
 func (s *stubStepReader) ListStepsBySession(_ context.Context, _ string) ([]biz.Step, error) {
 	return s.steps, nil
 }

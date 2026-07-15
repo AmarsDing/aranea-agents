@@ -3,8 +3,8 @@ package server
 // ws_priority.go — MON-OPT-04: WebSocket 三优先级 send queue.
 //
 // Replaces the single wc.send channel with three priority lanes:
-//   high   — alert.notify, mcp health — NEVER silently dropped
-//   normal — runner.completion, team_run_*, intent_pass, system msgs
+//   high   — alert.notify, mcp health, v2 terminal lifecycle (*.completed/failed/…) — BlockUpTo
+//   normal — non-terminal v2 events, intent_pass, system msgs
 //   low    — flow_log, log, usage.*
 //
 // writePump drains: all pending high → normal → low (round-robin low to avoid starvation).

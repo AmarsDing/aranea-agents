@@ -29,6 +29,11 @@ func (f *fakeHub) BroadcastToSession(sid string, msg []byte) {
 	f.msgs[sid] = append(f.msgs[sid], msg)
 }
 
+// BroadcastCriticalToSession implements WSMessageBroadcaster (B-06).
+func (f *fakeHub) BroadcastCriticalToSession(sid string, msg []byte) {
+	f.BroadcastToSession(sid, msg)
+}
+
 // Msgs returns a snapshot of messages received for the given session.
 func (f *fakeHub) Msgs(sid string) [][]byte {
 	f.mu.Lock()
@@ -86,6 +91,9 @@ func TestWSV2Subscriber_ForwardsEvents(t *testing.T) {
 	}
 	if env.Kind != string(biz.EventKindTaskCreated) {
 		t.Errorf("envelope.Kind = %q, want %q", env.Kind, biz.EventKindTaskCreated)
+	}
+	if env.SessionID != "sess-1" {
+		t.Errorf("envelope.SessionID = %q, want %q", env.SessionID, "sess-1")
 	}
 }
 

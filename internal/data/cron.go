@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
+	"aranea-agents/internal/workspace"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -40,6 +41,7 @@ func entToBizCronTask(e *ent.CronTask) biz.CronTask {
 		AgentID:      e.AgentID,
 		ConfigJSON:   e.ConfigJSON,
 		MetadataJSON: e.MetadataJSON,
+		WorkspaceID:  e.WorkspaceID,
 		CreatedAt:    e.CreatedAt,
 		UpdatedAt:    e.UpdatedAt,
 		DeletedAt:    e.DeletedAt,
@@ -86,8 +88,22 @@ func entToBizCronTaskRun(e *ent.CronTaskRun, taskName string) biz.CronTaskRun {
 }
 
 func (r *cronRepo) ListCronTasks(ctx context.Context) ([]biz.CronTask, error) {
-	rows, err := r.data.RW().Read(ctx).CronTask.Query().
-		Where(crontask.DeletedAtEQ("")).
+	query := r.data.RW().Read(ctx).CronTask.Query().
+		Where(crontask.DeletedAtEQ(""))
+	// P2-B: workspace visibility filter.
+	// cron_task is tenant-owned (private): empty workspace_id = legacy/system-owned.
+	// System caller sees all; non-system caller sees only own workspace's records.
+	// Default-workspace caller also sees legacy (empty workspace_id) records, because
+	// AssertWorkspace treats empty resourceWS as DefaultWorkspaceID.
+	if !workspace.IsSystem(ctx) {
+		callerWS := workspace.IDFromContext(ctx)
+		if callerWS == workspace.DefaultWorkspaceID {
+			query = query.Where(crontask.WorkspaceIDIn(callerWS, ""))
+		} else {
+			query = query.Where(crontask.WorkspaceIDEQ(callerWS))
+		}
+	}
+	rows, err := query.
 		Order(
 			crontask.BySortOrder(),
 			crontask.ByCreatedAt(entsql.OrderDesc()),
@@ -133,6 +149,7 @@ func (r *cronRepo) CreateCronTask(ctx context.Context, t biz.CronTask) (biz.Cron
 		SetAgentID(t.AgentID).
 		SetConfigJSON(t.ConfigJSON).
 		SetMetadataJSON(t.MetadataJSON).
+		SetWorkspaceID(t.WorkspaceID).
 		SetCreatedAt(t.CreatedAt).
 		SetUpdatedAt(t.UpdatedAt).
 		SetDeletedAt("").

@@ -150,6 +150,12 @@ func (e *PlanExecutor) StartSubscription() {
 			}
 			board := pbEv.PlanBoard
 			if len(board.Steps) == 0 {
+				e.lg.Warn("PlanBoard 无 steps，fail-closed 跳过",
+					loggateway.Str("plan_board_id", board.ID),
+					loggateway.Str("task_id", board.TaskID))
+				go func(b biz.PlanBoard) {
+					_ = e.Subscribe(context.Background(), b)
+				}(board)
 				continue
 			}
 			// C-20 fix: execution lease — skip duplicate events for the same
@@ -195,13 +201,22 @@ func (e *PlanExecutor) StartSubscription() {
 // 和 GraphNode 列表（每个 PlanStep 对应一个 GraphNode），并发布 v2 事件。
 func (e *PlanExecutor) Subscribe(ctx context.Context, board biz.PlanBoard) error {
 	if len(board.Steps) == 0 {
-		return nil
+		// Fail-closed: an empty board previously returned nil and could be
+		// treated as a successful zero-work completion.
+		r := newDagRun(e, board)
+		r.publishPlanBoardFailed(ctx, "plan board has no steps")
+		return fmt.Errorf("plan board %s has no steps", board.ID)
 	}
 	// 2026-07-04 问题 D2 修复：DAG 执行开始前，将 PlanBoard 状态从 planning
 	// 更新为 executing，让前端能看到计划已进入执行阶段。之前 PlanBoard 创建后
 	// Status 始终是 "planning"，DAG 执行完成后直接跳到 "completed"，前端无法
 	// 区分"正在编排"和"正在执行"。
-	e.markPlanBoardExecuting(ctx, board)
+	//
+	// B-05 fix: markPlanBoardExecuting returns the updated board. Previously
+	// it mutated a by-value copy, so newDagRun still held Status=planning and
+	// publishPlanBoardTerminal's Executing→Complete transition was skipped,
+	// leaving successful DAGs stuck in "executing".
+	board = e.markPlanBoardExecuting(ctx, board)
 	// 同步创建 GraphStage（与 PlanBoard 一对一）。失败不阻断主流程，
 	// 仅记录日志（GraphStage 是可视化层，缺失不影响 DAG 调度正确性）。
 	e.initGraphStage(ctx, board)
@@ -214,10 +229,15 @@ func (e *PlanExecutor) Subscribe(ctx context.Context, board biz.PlanBoard) error
 // reflect the transition. Idempotent: if the PlanBoard is already in a
 // terminal or executing state, the update is skipped.
 //
+// Returns the board that should be used for subsequent DAG execution. On
+// successful transition the returned board has Status=Executing; otherwise
+// the input board is returned unchanged.
+//
 // 2026-07-04 问题 D2 修复：补齐 planning → executing 状态转换。
 // 2026-07-05 P1 #9b（AS-FSM-01）：用 PlanBoardStateMachine 显式校验转换，
 // 替代直接 if + 字段赋值。状态机会拒绝任何非法 from 状态（如 terminal）。
-func (e *PlanExecutor) markPlanBoardExecuting(ctx context.Context, board biz.PlanBoard) {
+// 2026-07-16 B-05：返回更新后的 board，避免 Subscribe 继续使用 planning 副本。
+func (e *PlanExecutor) markPlanBoardExecuting(ctx context.Context, board biz.PlanBoard) biz.PlanBoard {
 	// 状态机校验：只有 Planning 才能 Transition(Execute) → Executing。
 	// 若 board 已是 Executing 或 terminal 状态，Transition 返回错误，跳过。
 	newStatus, err := e.pbSM.Transition(board.Status, biz.PlanBoardEventExecute)
@@ -226,7 +246,7 @@ func (e *PlanExecutor) markPlanBoardExecuting(ctx context.Context, board biz.Pla
 			loggateway.Str("plan_board_id", board.ID),
 			loggateway.Str("from_status", string(board.Status)),
 			loggateway.Err(err))
-		return
+		return board
 	}
 	board.Status = newStatus
 	board.Version++
@@ -234,12 +254,15 @@ func (e *PlanExecutor) markPlanBoardExecuting(ctx context.Context, board biz.Pla
 		e.lg.Warn("markPlanBoardExecuting: upsert plan_board (executing) failed",
 			loggateway.Str("plan_board_id", board.ID),
 			loggateway.Err(err))
-		return
+		// Keep the in-memory Executing status so terminal transition can still
+		// succeed; the next UpsertPlanBoard (terminal) will reconcile DB.
+		return board
 	}
 	e.seq.Publish(ctx, biz.NewPlanBoardUpdatedEvent(board))
 	e.lg.Info("PlanBoard 状态转换: planning → executing",
 		loggateway.Str("plan_board_id", board.ID),
 		loggateway.Str("task_id", board.TaskID))
+	return board
 }
 
 // initGraphStage creates the GraphStage (and its GraphNodes) for the given
@@ -330,6 +353,11 @@ type dagRun struct {
 	// 中创建）。如果创建失败则为空，此时跳过 GraphNode 更新。
 	graphStageID string
 
+	// canceled is set when the Subscribe ctx is cancelled. Terminal publish
+	// uses a fresh context budget, so this flag (not ctx.Err()) drives Fail/
+	// Interrupt classification after the worker barrier.
+	canceled bool
+
 	mu         sync.Mutex
 	stepsByID  map[string]*biz.PlanStep
 	dependents map[string][]string // stepID → stepIDs that depend on it
@@ -411,15 +439,45 @@ func (r *dagRun) run(ctx context.Context) error {
 		runErr = nil
 	case <-ctx.Done():
 		runErr = ctx.Err()
+		r.canceled = true
+		// P1 (audit): do not compute terminal state until in-flight workers
+		// exit. Previously <-ctx.Done() raced ahead of wg.Wait(), so
+		// publish*Terminal could run while dispatch goroutines still wrote.
+		<-done
+	}
+	// Terminal persist/publish needs a live context: the Subscribe ctx may
+	// already be cancelled. Keep a short independent budget after cancel.
+	termCtx := ctx
+	if r.canceled {
+		var cancel context.CancelFunc
+		termCtx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 	}
 	// 发布 terminal 事件（无论成功/失败/取消），让前端流程图和计划列表
 	// 在刷新后能正确显示最终状态。失败仅记录日志，不阻断返回。
 	// 2026-07-04 问题 2 修复（Gap A + Gap B）：
 	//   - Gap A: GraphStage terminal 事件（Completed/Failed/Interrupted）
 	//   - Gap B: PlanBoard terminal 状态更新（Completed/Failed/PartialFailure）
-	r.publishPlanBoardTerminal(ctx)
-	r.publishGraphStageTerminal(ctx)
+	r.publishPlanBoardTerminal(termCtx)
+	r.publishGraphStageTerminal(termCtx)
 	return runErr
+}
+
+// snapshotStepOutcomes returns aggregated PlanStep failure flags under r.mu.
+// C-17: call only after the worker WaitGroup barrier so no writer remains;
+// the lock still documents the shared-state invariant and is race-detector safe.
+func (r *dagRun) snapshotStepOutcomes() (hasFailed, hasPartial bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.board.Steps {
+		switch r.board.Steps[i].Status {
+		case biz.PlanStepStatusFailed:
+			hasFailed = true
+		case biz.PlanStepStatusPartialFailure:
+			hasPartial = true
+		}
+	}
+	return hasFailed, hasPartial
 }
 
 // publishPlanBoardTerminal 根据 DAG 执行结果更新 PlanBoard terminal 状态
@@ -436,20 +494,12 @@ func (r *dagRun) run(ctx context.Context) error {
 // 若 from 状态不是 Executing（如 markPlanBoardExecuting 失败导致仍是 Planning），
 // 状态机拒绝转换并记 warn 日志，跳过发布——避免非法状态跳转。
 func (r *dagRun) publishPlanBoardTerminal(ctx context.Context) {
-	hasFailed := false
-	hasPartial := false
-	for i := range r.board.Steps {
-		s := &r.board.Steps[i]
-		switch s.Status {
-		case biz.PlanStepStatusFailed:
-			hasFailed = true
-		case biz.PlanStepStatusPartialFailure:
-			hasPartial = true
-		}
-	}
+	// C-17: scan under mu even after wg.Wait — defensive happens-before with
+	// any late unlock ordering, and documents the lock invariant for readers.
+	hasFailed, hasPartial := r.snapshotStepOutcomes()
 	var event biz.PlanBoardEvent
 	switch {
-	case ctx.Err() != nil:
+	case r.canceled:
 		event = biz.PlanBoardEventFail
 	case hasFailed:
 		event = biz.PlanBoardEventFail
@@ -552,28 +602,15 @@ func (r *dagRun) publishGraphStageTerminal(ctx context.Context) {
 			loggateway.Err(err))
 		return
 	}
-	// 扫描所有 step 状态，判定 terminal 事件。
-	hasFailed := false
-	hasRunning := false
-	for i := range r.board.Steps {
-		s := &r.board.Steps[i]
-		switch s.Status {
-		case biz.PlanStepStatusFailed, biz.PlanStepStatusPartialFailure:
-			hasFailed = true
-		case biz.PlanStepStatusRunning, biz.PlanStepStatusPending:
-			hasRunning = true
-		}
-	}
+	// C-17: locked snapshot after worker barrier.
+	hasFailed, hasPartial := r.snapshotStepOutcomes()
 	var event biz.GraphStageEvent
 	switch {
-	case ctx.Err() != nil:
+	case r.canceled:
 		event = biz.GraphStageEventInterrupt
-	case hasFailed:
+	case hasFailed || hasPartial:
 		event = biz.GraphStageEventFail
 	default:
-		// 没有 failed step；若仍有 running/pending（理论上不该出现，因为
-		// Wait 已返回），保守视为 Completed——状态详情由 GraphNode 体现。
-		_ = hasRunning
 		event = biz.GraphStageEventComplete
 	}
 	// 状态机校验：from=Running → terminal 状态。
@@ -635,6 +672,9 @@ func (r *dagRun) publishGraphStageTerminal(ctx context.Context) {
 // → wg=0 → 返回 nil → publishPlanBoardTerminal 标 Completed，导致 cyclic
 // PlanBoard 静默成功。此函数在 dispatch 前强制校验，fail-closed。
 func (r *dagRun) validateDAG() error {
+	if len(r.board.Steps) == 0 {
+		return fmt.Errorf("plan board has no steps")
+	}
 	// 1. 悬挂依赖检测：每个 DependsOn 必须指向已存在的 step。
 	for i := range r.board.Steps {
 		s := &r.board.Steps[i]

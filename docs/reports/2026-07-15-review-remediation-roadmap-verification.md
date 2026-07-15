@@ -430,19 +430,28 @@
 
 ## 8. 修复优先级建议
 
+> **2026-07-16 进度注记**（对照本报告后的实现审查）：
+> - ✅ P0：WS session 所有权校验 + `session_id=*` 管理员守卫（`ws.go` / `ws_session_auth*.go`）
+> - ✅ P0：JWT 绑定 Workspace + 非 admin 拒绝伪造 Header（`pkg/auth` + `middleware/workspace.go`）
+> - ✅ P0：CI 已启用 `check-frontend-layer.mjs`；Trivy `continue-on-error` 已不在 `ci.yml`
+> - ✅ P1：DAG fail-closed 校验（环/悬挂依赖）+ PlanBoard planning→executing 副本修复（B-05）
+> - ✅ P1：取消后等待 worker barrier 后再发 terminal（`plan_executor.run`）
+> - ✅ Wave3 补充：V2Bus Critical BlockUpTo；Publish 释放锁后再阻塞发送（避免与 Subscribe 死锁）
+> - ⏳ 仍未完成：workspace_id NOT NULL 全表落地、Session lock refcount、ChannelTurnJob CAS、Cron DB lease、DLQ/PendingQueue 持久化
+
 ### 8.1 P0 — 立即修复（安全 + 数据完整性）
 
-1. **WS session 所有权校验**（`internal/server/ws.go`）— 任何认证用户可订阅任意 session
-2. **session_id=* 管理员守卫**（`internal/server/ws.go:181`）— 全局订阅无权限检查
-3. **workspace_id NOT NULL + 唯一索引包含 workspace**（`internal/data/ent/schema/session.go` 等）— 数据隔离基础
-4. **Trivy `continue-on-error` 移除**（`.github/workflows/ci.yml:316`）— 安全漏洞不阻断 CI
+1. **WS session 所有权校验**（`internal/server/ws.go`）— ✅ 已落地（非 admin + SessionAuthorizer）
+2. **session_id=* 管理员守卫**（`internal/server/ws.go`）— ✅ 已落地
+3. **workspace_id NOT NULL + 唯一索引包含 workspace**（`internal/data/ent/schema/session.go` 等）— ⏳ 部分表已加字段/Default，尚未强制 NOT NULL
+4. **Trivy `continue-on-error` 移除**（`.github/workflows/ci.yml`）— ✅ 已不存在该绕过
 
 ### 8.2 P1 — 本周修复（编排正确性）
 
-1. **DAG 验证**（`internal/service/plan_executor.go`）— 环/悬挂依赖/无根图拒绝
-2. **取消后等待 worker barrier**（`internal/service/plan_executor.go:372-389`）
-3. **Session lock 引用计数**（`internal/biz/session_lock.go`）— sweep 不删除被持有的 entry
-4. **ChannelTurnJob CAS**（`internal/cronrunner/jobs/channel_turn_job_sweeper.go`）— expected-state 守卫
+1. **DAG 验证**（`internal/service/plan_executor.go`）— ✅ 环/悬挂依赖 fail-closed
+2. **取消后等待 worker barrier**（`internal/service/plan_executor.go`）— ✅ 已修复并加回归测试
+3. **Session lock 引用计数**（`internal/biz/session_lock.go`）— ⏳ 仍无 refcount
+4. **ChannelTurnJob CAS**（`internal/cronrunner/jobs/channel_turn_job_sweeper.go`）— ⏳ 仍直接 UpdateStatus
 
 ### 8.3 P2 — 本月修复（多实例 + 门禁）
 
@@ -486,3 +495,17 @@
 2. `cd web && pnpm test` — 确认 Vitest 当前状态
 3. `go test -race ./internal/agent/v2 -count=10` — 确认 Sequencer 竞态
 4. `go test -race ./internal/agent/v2 -run TestSequencer` — fake bus 同步验证
+
+---
+
+## 10. 附录：2026-07-16 后续落地（勿与 §1–9 取证快照混淆）
+
+本报告正文为 **2026-07-15** 静态取证快照。下列条目在 **2026-07-16** 已部分/全部修复，详情见 `2026-07-16-review-b01-b06-cas-remediation.md`：
+
+| 原结论（§） | 2026-07-16 现状 |
+|---|---|
+| §2.1 Auth 无 WorkspaceID | JWT claim + `EffectiveWorkspaceID`；登录写入 `admins.workspace_id` |
+| §2.2 Workspace 信任 Header | 已认证主体一律 JWT；Header forge → 403 |
+| Wave 3 `last_event_id` / 无重连 hydrate | 仍无服务端 replay；前端 reconnect → `fetchSessionHistory` |
+| Task/Turn/Step 无 Version CAS | Upsert 使用 `VersionLT`；三实体均有 VersionGuard 测试 |
+| Wave 3.3 Seq 跨重启不持久 | 增加 `RestoreAtLeast` + turn 启动时 `MaxSeqBySpiritSession` 恢复 |

@@ -122,13 +122,20 @@ func Middleware(lg loggateway.Logger) httpm.FilterFunc {
 	}
 }
 
-// SetCookie sets the login cookie in the HTTP response.
+// SetCookie sets the login cookie in the HTTP response, binding the principal
+// to DefaultWorkspaceID (legacy callers). Prefer SetCookieForWorkspace.
 func SetCookie(ctx context.Context, userID int64, access string, expiresAt time.Time) error {
+	return SetCookieForWorkspace(ctx, userID, access, DefaultWorkspaceID, expiresAt)
+}
+
+// SetCookieForWorkspace sets the login cookie with an explicit workspace membership
+// claim (B-01). Empty workspaceID falls back to DefaultWorkspaceID.
+func SetCookieForWorkspace(ctx context.Context, userID int64, access, workspaceID string, expiresAt time.Time) error {
 	tr, ok := transport.FromServerContext(ctx)
 	if !ok {
 		return fmt.Errorf("failed to get transport from context")
 	}
-	token, err := GenerateToken(userID, access, authSecretKey, expiresAt)
+	token, err := GenerateTokenForWorkspace(userID, access, workspaceID, authSecretKey, expiresAt)
 	if err != nil {
 		return err
 	}

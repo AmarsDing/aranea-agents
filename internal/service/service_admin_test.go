@@ -68,14 +68,15 @@ func TestEncodePassword_VerifiableWithBcrypt(t *testing.T) {
 func TestConvertAdmin(t *testing.T) {
 	now := time.Date(2024, 6, 15, 10, 30, 0, 0, time.UTC)
 	m := &biz.Admin{
-		ID:         1,
-		Name:       "admin",
-		Email:      "admin@example.com",
-		Password:   "hashed",
-		Access:     "superadmin",
-		Avatar:     "https://avatar.example.com/1.png",
-		CreateTime: now,
-		UpdateTime: now,
+		ID:          1,
+		Name:        "admin",
+		Email:       "admin@example.com",
+		Password:    "hashed",
+		Access:      "superadmin",
+		Avatar:      "https://avatar.example.com/1.png",
+		WorkspaceID: "ws-tenant-a",
+		CreateTime:  now,
+		UpdateTime:  now,
 	}
 	pb := service.ConvertAdmin(m)
 	if pb.Id != 1 || pb.Name != "admin" {
@@ -86,6 +87,9 @@ func TestConvertAdmin(t *testing.T) {
 	}
 	if pb.Access != "superadmin" || pb.Avatar != "https://avatar.example.com/1.png" {
 		t.Fatalf("access/avatar mismatch: access=%q avatar=%q", pb.Access, pb.Avatar)
+	}
+	if pb.WorkspaceId != "ws-tenant-a" {
+		t.Fatalf("workspace_id mismatch: %q", pb.WorkspaceId)
 	}
 	if pb.CreateTime == nil || pb.UpdateTime == nil {
 		t.Fatal("timestamps should not be nil")
@@ -148,10 +152,10 @@ func TestConvertAdmin_FieldsMapping(t *testing.T) {
 			errMsg:  "email mismatch",
 		},
 		{
-			name:    "access mapping",
-			admin:   &biz.Admin{Access: "admin", CreateTime: time.Now(), UpdateTime: time.Now()},
-			checkFn: func(pb *adminv1.Admin) bool { return pb.Access == "admin" },
-			errMsg:  "access mismatch",
+			name:    "workspace_id mapping",
+			admin:   &biz.Admin{WorkspaceID: "ws-x", CreateTime: time.Now(), UpdateTime: time.Now()},
+			checkFn: func(pb *adminv1.Admin) bool { return pb.WorkspaceId == "ws-x" },
+			errMsg:  "workspace_id mismatch",
 		},
 	}
 	for _, tt := range tests {

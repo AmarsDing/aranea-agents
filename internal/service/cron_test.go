@@ -149,7 +149,14 @@ func TestCronService_ListTaskRuns(t *testing.T) {
 	svc := newCronService()
 	ctx := context.Background()
 
-	resp, err := svc.ListCronTaskRuns(ctx, &v1.ListCronTaskRunsRequest{CronTaskId: "t1"})
+	created, err := svc.CreateCronTask(ctx, &v1.CreateCronTaskRequest{
+		TaskKey: "list-runs", Name: "List Runs",
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	resp, err := svc.ListCronTaskRuns(ctx, &v1.ListCronTaskRunsRequest{CronTaskId: created.GetId()})
 	if err != nil {
 		t.Fatalf("list runs: %v", err)
 	}

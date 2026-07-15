@@ -3,7 +3,6 @@ package v2
 import (
 	"context"
 	"errors"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -350,8 +349,8 @@ func (s *Sequencer) processTask(task publishTask) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if task.persist {
-		if isTerminalEventKind(task.event.EventKind()) {
-			// P1-04: WBPF for terminal events — try synchronous persist first.
+		if biz.IsCriticalDeliveryEvent(task.event) {
+			// P1-04: WBPF for critical/terminal events — try synchronous persist first.
 			persistCtx, persistCancel := context.WithTimeout(context.Background(), 2*time.Second)
 			_, err := persistAction(persistCtx, s.repoSet, s.activityRepo, task.event)
 			persistCancel()
@@ -377,19 +376,6 @@ func (s *Sequencer) processTask(task publishTask) {
 	}
 	// Sync bus publish.
 	s.bus.Publish(ctx, task.event)
-}
-
-// isTerminalEventKind returns true for event kinds that represent a terminal
-// lifecycle state (completed/failed/cancelled/interrupted/skipped). These
-// events require write-before-publish to guarantee the DB has the terminal
-// state before the frontend receives it.
-func isTerminalEventKind(kind biz.EventKind) bool {
-	k := string(kind)
-	return strings.HasSuffix(k, ".completed") ||
-		strings.HasSuffix(k, ".failed") ||
-		strings.HasSuffix(k, ".cancelled") ||
-		strings.HasSuffix(k, ".interrupted") ||
-		strings.HasSuffix(k, ".skipped")
 }
 
 // persistLoop consumes persistChan with retry + dead-letter.

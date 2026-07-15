@@ -92,6 +92,20 @@ func (_c *AdminCreate) SetNillablePassword(v *string) *AdminCreate {
 	return _c
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_c *AdminCreate) SetWorkspaceID(v string) *AdminCreate {
+	_c.mutation.SetWorkspaceID(v)
+	return _c
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_c *AdminCreate) SetNillableWorkspaceID(v *string) *AdminCreate {
+	if v != nil {
+		_c.SetWorkspaceID(*v)
+	}
+	return _c
+}
+
 // SetCreateTime sets the "create_time" field.
 func (_c *AdminCreate) SetCreateTime(v time.Time) *AdminCreate {
 	_c.mutation.SetCreateTime(v)
@@ -181,6 +195,10 @@ func (_c *AdminCreate) defaults() {
 		v := admin.DefaultPassword
 		_c.mutation.SetPassword(v)
 	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		v := admin.DefaultWorkspaceID
+		_c.mutation.SetWorkspaceID(v)
+	}
 	if _, ok := _c.mutation.CreateTime(); !ok {
 		v := admin.DefaultCreateTime()
 		_c.mutation.SetCreateTime(v)
@@ -207,6 +225,14 @@ func (_c *AdminCreate) check() error {
 	}
 	if _, ok := _c.mutation.Password(); !ok {
 		return &ValidationError{Name: "password", err: errors.New(`ent: missing required field "Admin.password"`)}
+	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		return &ValidationError{Name: "workspace_id", err: errors.New(`ent: missing required field "Admin.workspace_id"`)}
+	}
+	if v, ok := _c.mutation.WorkspaceID(); ok {
+		if err := admin.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "Admin.workspace_id": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.CreateTime(); !ok {
 		return &ValidationError{Name: "create_time", err: errors.New(`ent: missing required field "Admin.create_time"`)}
@@ -266,6 +292,10 @@ func (_c *AdminCreate) createSpec() (*Admin, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Password(); ok {
 		_spec.SetField(admin.FieldPassword, field.TypeString, value)
 		_node.Password = value
+	}
+	if value, ok := _c.mutation.WorkspaceID(); ok {
+		_spec.SetField(admin.FieldWorkspaceID, field.TypeString, value)
+		_node.WorkspaceID = value
 	}
 	if value, ok := _c.mutation.CreateTime(); ok {
 		_spec.SetField(admin.FieldCreateTime, field.TypeTime, value)
@@ -384,6 +414,18 @@ func (u *AdminUpsert) SetPassword(v string) *AdminUpsert {
 // UpdatePassword sets the "password" field to the value that was provided on create.
 func (u *AdminUpsert) UpdatePassword() *AdminUpsert {
 	u.SetExcluded(admin.FieldPassword)
+	return u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *AdminUpsert) SetWorkspaceID(v string) *AdminUpsert {
+	u.Set(admin.FieldWorkspaceID, v)
+	return u
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *AdminUpsert) UpdateWorkspaceID() *AdminUpsert {
+	u.SetExcluded(admin.FieldWorkspaceID)
 	return u
 }
 
@@ -517,6 +559,20 @@ func (u *AdminUpsertOne) SetPassword(v string) *AdminUpsertOne {
 func (u *AdminUpsertOne) UpdatePassword() *AdminUpsertOne {
 	return u.Update(func(s *AdminUpsert) {
 		s.UpdatePassword()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *AdminUpsertOne) SetWorkspaceID(v string) *AdminUpsertOne {
+	return u.Update(func(s *AdminUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *AdminUpsertOne) UpdateWorkspaceID() *AdminUpsertOne {
+	return u.Update(func(s *AdminUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 
@@ -818,6 +874,20 @@ func (u *AdminUpsertBulk) SetPassword(v string) *AdminUpsertBulk {
 func (u *AdminUpsertBulk) UpdatePassword() *AdminUpsertBulk {
 	return u.Update(func(s *AdminUpsert) {
 		s.UpdatePassword()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *AdminUpsertBulk) SetWorkspaceID(v string) *AdminUpsertBulk {
+	return u.Update(func(s *AdminUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *AdminUpsertBulk) UpdateWorkspaceID() *AdminUpsertBulk {
+	return u.Update(func(s *AdminUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 

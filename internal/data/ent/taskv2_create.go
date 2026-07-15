@@ -85,6 +85,20 @@ func (_c *TaskV2Create) SetNillableVersion(v *int64) *TaskV2Create {
 	return _c
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_c *TaskV2Create) SetWorkspaceID(v string) *TaskV2Create {
+	_c.mutation.SetWorkspaceID(v)
+	return _c
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_c *TaskV2Create) SetNillableWorkspaceID(v *string) *TaskV2Create {
+	if v != nil {
+		_c.SetWorkspaceID(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *TaskV2Create) SetCreatedAt(v time.Time) *TaskV2Create {
 	_c.mutation.SetCreatedAt(v)
@@ -184,6 +198,10 @@ func (_c *TaskV2Create) defaults() {
 		v := taskv2.DefaultVersion
 		_c.mutation.SetVersion(v)
 	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		v := taskv2.DefaultWorkspaceID
+		_c.mutation.SetWorkspaceID(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := taskv2.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -220,6 +238,14 @@ func (_c *TaskV2Create) check() error {
 	}
 	if _, ok := _c.mutation.Version(); !ok {
 		return &ValidationError{Name: "version", err: errors.New(`ent: missing required field "TaskV2.version"`)}
+	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		return &ValidationError{Name: "workspace_id", err: errors.New(`ent: missing required field "TaskV2.workspace_id"`)}
+	}
+	if v, ok := _c.mutation.WorkspaceID(); ok {
+		if err := taskv2.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "TaskV2.workspace_id": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "TaskV2.created_at"`)}
@@ -287,6 +313,10 @@ func (_c *TaskV2Create) createSpec() (*TaskV2, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Version(); ok {
 		_spec.SetField(taskv2.FieldVersion, field.TypeInt64, value)
 		_node.Version = value
+	}
+	if value, ok := _c.mutation.WorkspaceID(); ok {
+		_spec.SetField(taskv2.FieldWorkspaceID, field.TypeString, value)
+		_node.WorkspaceID = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(taskv2.FieldCreatedAt, field.TypeTime, value)
@@ -421,6 +451,18 @@ func (u *TaskV2Upsert) UpdateVersion() *TaskV2Upsert {
 // AddVersion adds v to the "version" field.
 func (u *TaskV2Upsert) AddVersion(v int64) *TaskV2Upsert {
 	u.Add(taskv2.FieldVersion, v)
+	return u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *TaskV2Upsert) SetWorkspaceID(v string) *TaskV2Upsert {
+	u.Set(taskv2.FieldWorkspaceID, v)
+	return u
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *TaskV2Upsert) UpdateWorkspaceID() *TaskV2Upsert {
+	u.SetExcluded(taskv2.FieldWorkspaceID)
 	return u
 }
 
@@ -595,6 +637,20 @@ func (u *TaskV2UpsertOne) AddVersion(v int64) *TaskV2UpsertOne {
 func (u *TaskV2UpsertOne) UpdateVersion() *TaskV2UpsertOne {
 	return u.Update(func(s *TaskV2Upsert) {
 		s.UpdateVersion()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *TaskV2UpsertOne) SetWorkspaceID(v string) *TaskV2UpsertOne {
+	return u.Update(func(s *TaskV2Upsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *TaskV2UpsertOne) UpdateWorkspaceID() *TaskV2UpsertOne {
+	return u.Update(func(s *TaskV2Upsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 
@@ -943,6 +999,20 @@ func (u *TaskV2UpsertBulk) AddVersion(v int64) *TaskV2UpsertBulk {
 func (u *TaskV2UpsertBulk) UpdateVersion() *TaskV2UpsertBulk {
 	return u.Update(func(s *TaskV2Upsert) {
 		s.UpdateVersion()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *TaskV2UpsertBulk) SetWorkspaceID(v string) *TaskV2UpsertBulk {
+	return u.Update(func(s *TaskV2Upsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *TaskV2UpsertBulk) UpdateWorkspaceID() *TaskV2UpsertBulk {
+	return u.Update(func(s *TaskV2Upsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 

@@ -406,6 +406,11 @@ export function useChatWorkspace() {
     onActivityEvent: handleActivityEvent,
     onV2Event: handleV2Event,
     refreshRunStatus: refreshRunStatusForUi,
+    // B-06: after WS reconnect, re-fetch authoritative v2 entity snapshot
+    // (server no longer replays missed events via last_event_id).
+    onReconnectHydrate: async (sessionId) => {
+      await activityStore.fetchSessionHistory(sessionId);
+    },
   });
 
   const contextualLoading = useContextualLoadingMessage(streamManager.wsReplaying);
@@ -1202,12 +1207,10 @@ export function useChatWorkspace() {
     try {
       if (replace) clearChatMarkdownCache();
 
-      // Phase 2 v2: Activity data is hydrated via the v2 WS replay path
-      // (useChatStreamManager → onV2Event → eventRouter → activityStore).
-      // REST fallback: also fetch v2 history so the activity stream renders
-      // even when WS replay is unavailable (dev proxy, reconnect failures).
+      // B-06: hydrate Activity v2 via REST authoritative snapshot.
+      // WS last_event_id is echo-only (server replay removed); reconnect
+      // also calls fetchSessionHistory via onReconnectHydrate.
       const v2Promise = activityStore.fetchSessionHistory(sessionId).catch((e) => {
-        // Swallow v2 fetch errors — WS replay may still populate the store.
         console.warn('[chat] v2 history fetch failed', e);
       });
       await messageStore.loadMessages(replace ? { sessionId, replace: true } : { sessionId });

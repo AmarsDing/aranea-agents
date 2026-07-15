@@ -482,6 +482,20 @@ func (_u *SessionTurnUpdate) SetNillableMetadataJSON(v *string) *SessionTurnUpda
 	return _u
 }
 
+// SetIdempotencyKey sets the "idempotency_key" field.
+func (_u *SessionTurnUpdate) SetIdempotencyKey(v string) *SessionTurnUpdate {
+	_u.mutation.SetIdempotencyKey(v)
+	return _u
+}
+
+// SetNillableIdempotencyKey sets the "idempotency_key" field if the given value is not nil.
+func (_u *SessionTurnUpdate) SetNillableIdempotencyKey(v *string) *SessionTurnUpdate {
+	if v != nil {
+		_u.SetIdempotencyKey(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *SessionTurnUpdate) SetCreatedAt(v string) *SessionTurnUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -547,6 +561,11 @@ func (_u *SessionTurnUpdate) check() error {
 	if v, ok := _u.mutation.SessionID(); ok {
 		if err := sessionturn.SessionIDValidator(v); err != nil {
 			return &ValidationError{Name: "session_id", err: fmt.Errorf(`ent: validator failed for field "SessionTurn.session_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.IdempotencyKey(); ok {
+		if err := sessionturn.IdempotencyKeyValidator(v); err != nil {
+			return &ValidationError{Name: "idempotency_key", err: fmt.Errorf(`ent: validator failed for field "SessionTurn.idempotency_key": %w`, err)}
 		}
 	}
 	return nil
@@ -677,6 +696,9 @@ func (_u *SessionTurnUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if value, ok := _u.mutation.MetadataJSON(); ok {
 		_spec.SetField(sessionturn.FieldMetadataJSON, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.IdempotencyKey(); ok {
+		_spec.SetField(sessionturn.FieldIdempotencyKey, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(sessionturn.FieldCreatedAt, field.TypeString, value)
@@ -1159,6 +1181,20 @@ func (_u *SessionTurnUpdateOne) SetNillableMetadataJSON(v *string) *SessionTurnU
 	return _u
 }
 
+// SetIdempotencyKey sets the "idempotency_key" field.
+func (_u *SessionTurnUpdateOne) SetIdempotencyKey(v string) *SessionTurnUpdateOne {
+	_u.mutation.SetIdempotencyKey(v)
+	return _u
+}
+
+// SetNillableIdempotencyKey sets the "idempotency_key" field if the given value is not nil.
+func (_u *SessionTurnUpdateOne) SetNillableIdempotencyKey(v *string) *SessionTurnUpdateOne {
+	if v != nil {
+		_u.SetIdempotencyKey(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *SessionTurnUpdateOne) SetCreatedAt(v string) *SessionTurnUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -1237,6 +1273,11 @@ func (_u *SessionTurnUpdateOne) check() error {
 	if v, ok := _u.mutation.SessionID(); ok {
 		if err := sessionturn.SessionIDValidator(v); err != nil {
 			return &ValidationError{Name: "session_id", err: fmt.Errorf(`ent: validator failed for field "SessionTurn.session_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.IdempotencyKey(); ok {
+		if err := sessionturn.IdempotencyKeyValidator(v); err != nil {
+			return &ValidationError{Name: "idempotency_key", err: fmt.Errorf(`ent: validator failed for field "SessionTurn.idempotency_key": %w`, err)}
 		}
 	}
 	return nil
@@ -1384,6 +1425,9 @@ func (_u *SessionTurnUpdateOne) sqlSave(ctx context.Context) (_node *SessionTurn
 	}
 	if value, ok := _u.mutation.MetadataJSON(); ok {
 		_spec.SetField(sessionturn.FieldMetadataJSON, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.IdempotencyKey(); ok {
+		_spec.SetField(sessionturn.FieldIdempotencyKey, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(sessionturn.FieldCreatedAt, field.TypeString, value)

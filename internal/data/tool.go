@@ -52,7 +52,7 @@ func toolSelectSQL(d Dialect) string {
 		       COALESCE(stats.invoke_count, 0), COALESCE(stats.invoke_count_24h, 0), COALESCE(stats.success_count, 0),
 		       COALESCE(stats.failure_count, 0), COALESCE(stats.blocked_count, 0), COALESCE(overrides.agent_override_count, 0),
 		       stats.avg_duration_ms, COALESCE(p95.p95_duration_ms, 0), COALESCE(last.started_at, ''), COALESCE(last.status, ''),
-		       t.created_at, t.updated_at, t.deleted_at
+		       t.created_at, t.updated_at, t.deleted_at, t.workspace_id
 		FROM tools t
 		LEFT JOIN (
 			SELECT tool_key,
@@ -101,6 +101,12 @@ func toolSelectSQL(d Dialect) string {
 func toolWhereClause(q biz.ToolListQuery) (string, []any) {
 	where := []string{"t.deleted_at = ''"}
 	args := []any{}
+	// P2-B: workspace visibility filter.
+	// empty WorkspaceID = system caller (see all); non-empty = tenant caller (shared + own).
+	if ws := strings.TrimSpace(q.WorkspaceID); ws != "" {
+		where = append(where, "(t.workspace_id = '' OR t.workspace_id = ?)")
+		args = append(args, ws)
+	}
 	if search := strings.TrimSpace(q.Search); search != "" {
 		like := "%" + strings.ToLower(search) + "%"
 		where = append(where, "(LOWER(t.tool_key) LIKE ? OR LOWER(t.display_name) LIKE ? OR LOWER(t.description) LIKE ? OR LOWER(t.category) LIKE ?)")
@@ -137,7 +143,7 @@ func scanBizTool(rows *sql.Rows) ([]biz.Tool, error) {
 			&item.ParametersSchemaJSON, &item.ResultSchemaJSON, &item.ConfigSchemaJSON, &item.ConfigJSON, &item.DefaultConfigJSON, &item.MetadataJSON,
 			&item.InvokeCount, &item.InvokeCount24h, &item.SuccessCount, &item.FailureCount, &item.BlockedCount, &item.AgentOverrideCount,
 			&avg, &p95, &item.LastInvokedAt, &item.LastStatus,
-			&item.CreatedAt, &item.UpdatedAt, &item.DeletedAt,
+			&item.CreatedAt, &item.UpdatedAt, &item.DeletedAt, &item.WorkspaceID,
 		); err != nil {
 			return nil, entErrToBizErr(err, "TOOL")
 		}
@@ -314,6 +320,7 @@ func (r *toolRepo) CreateTool(ctx context.Context, in biz.ToolUpsertInput) (biz.
 		SetCreatedAt(now).
 		SetUpdatedAt(now).
 		SetDeletedAt("").
+		SetWorkspaceID(in.WorkspaceID). // P2-B: tenant isolation
 		Exec(ctx)
 	if err != nil {
 		return biz.Tool{}, entErrToBizErr(err, "TOOL")

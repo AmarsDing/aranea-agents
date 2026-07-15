@@ -40,13 +40,14 @@ func encodePassword(password string) string {
 
 func convertAdmin(m *biz.Admin) *v1.Admin {
 	return &v1.Admin{
-		Id:         m.ID,
-		Name:       m.Name,
-		Email:      m.Email,
-		Avatar:     m.Avatar,
-		Access:     m.Access,
-		CreateTime: timestamppb.New(m.CreateTime),
-		UpdateTime: timestamppb.New(m.UpdateTime),
+		Id:          m.ID,
+		Name:        m.Name,
+		Email:       m.Email,
+		Avatar:      m.Avatar,
+		Access:      m.Access,
+		WorkspaceId: m.WorkspaceID,
+		CreateTime:  timestamppb.New(m.CreateTime),
+		UpdateTime:  timestamppb.New(m.UpdateTime),
 	}
 }
 
@@ -100,7 +101,7 @@ func (s *AdminService) Login(ctx context.Context, req *v1.LoginRequest) (*v1.Adm
 			loggateway.StepID("admin.login_failed"))
 		return nil, apierror.BadRequest("AUTH", "unsupported identity type")
 	}
-	if err := auth.SetCookie(ctx, admin.ID, admin.Access, time.Now().Add(7*24*time.Hour)); err != nil {
+	if err := auth.SetCookieForWorkspace(ctx, admin.ID, admin.Access, admin.WorkspaceID, time.Now().Add(7*24*time.Hour)); err != nil {
 		s.lg.Warn("admin login: set cookie failed",
 			loggateway.StepID("admin.login"), loggateway.Str("method", method), loggateway.Str("admin_name", admin.Name), loggateway.Err(err))
 		return nil, err

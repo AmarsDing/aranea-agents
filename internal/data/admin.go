@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -12,14 +13,15 @@ import (
 
 func convertAdmin(po *ent.Admin) *biz.Admin {
 	return &biz.Admin{
-		ID:         po.ID,
-		Name:       po.Name,
-		Email:      po.Email,
-		Avatar:     po.Avatar,
-		Access:     po.Access,
-		Password:   po.Password,
-		CreateTime: po.CreateTime,
-		UpdateTime: po.UpdateTime,
+		ID:          po.ID,
+		Name:        po.Name,
+		Email:       po.Email,
+		Avatar:      po.Avatar,
+		Access:      po.Access,
+		Password:    po.Password,
+		WorkspaceID: po.WorkspaceID,
+		CreateTime:  po.CreateTime,
+		UpdateTime:  po.UpdateTime,
 	}
 }
 
@@ -101,12 +103,17 @@ func (r *adminRepo) ListAdmins(ctx context.Context, opts ...biz.ListOption) ([]*
 }
 
 func (r *adminRepo) CreateAdmin(ctx context.Context, admin *biz.Admin) (*biz.Admin, error) {
+	ws := strings.TrimSpace(admin.WorkspaceID)
+	if ws == "" {
+		ws = "default"
+	}
 	po, err := r.data.RW().Write(ctx).Admin.Create().
 		SetName(admin.Name).
 		SetEmail(admin.Email).
 		SetAvatar(admin.Avatar).
 		SetAccess(admin.Access).
 		SetPassword(admin.Password).
+		SetWorkspaceID(ws).
 		SetCreateTime(time.Now()).
 		SetUpdateTime(time.Now()).
 		Save(ctx)

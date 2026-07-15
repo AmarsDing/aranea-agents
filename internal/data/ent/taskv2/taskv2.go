@@ -23,6 +23,8 @@ const (
 	FieldSeq = "seq"
 	// FieldVersion holds the string denoting the version field in the database.
 	FieldVersion = "version"
+	// FieldWorkspaceID holds the string denoting the workspace_id field in the database.
+	FieldWorkspaceID = "workspace_id"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -41,6 +43,7 @@ var Columns = []string{
 	FieldStatus,
 	FieldSeq,
 	FieldVersion,
+	FieldWorkspaceID,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 	FieldCompletedAt,
@@ -69,6 +72,10 @@ var (
 	DefaultSeq int64
 	// DefaultVersion holds the default value on creation for the "version" field.
 	DefaultVersion int64
+	// DefaultWorkspaceID holds the default value on creation for the "workspace_id" field.
+	DefaultWorkspaceID string
+	// WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
+	WorkspaceIDValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -108,6 +115,11 @@ func BySeq(opts ...sql.OrderTermOption) OrderOption {
 // ByVersion orders the results by the version field.
 func ByVersion(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldVersion, opts...).ToFunc()
+}
+
+// ByWorkspaceID orders the results by the workspace_id field.
+func ByWorkspaceID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWorkspaceID, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

@@ -24,9 +24,12 @@ type SequencerPublisher interface {
 }
 
 // SeqAssigner allocates monotonic Seq values per spirit session.
-// Implemented by *agent.SeqAssigner (NextSeq(spiritSessionID string) int64).
+// Implemented by *defaultSeqAssigner in this package.
 type SeqAssigner interface {
 	NextSeq(spiritSessionID string) int64
+	// RestoreAtLeast raises the counter so the next NextSeq is > minSeq.
+	// Used after process restart to avoid reusing Seq values already in DB (B-06).
+	RestoreAtLeast(spiritSessionID string, minSeq int64)
 }
 
 // ActivityProjector projects runtime callbacks into v2 events.
@@ -121,6 +124,9 @@ type ProjectorFactory struct {
 	// key=taskID, value=true。由 PlanExecutor.dispatchStep 调用 MarkTeamDispatched。
 	// OnTurnEnd 检查此表决定是否延迟 task.completed。
 	teamDispatched sync.Map
+	// seqRestored tracks spirit sessions whose SeqAssigner was restored from DB
+	// in this process (B-06). Avoids re-querying MaxSeq on every turn.
+	seqRestored sync.Map
 }
 
 // NewProjectorFactory constructs a factory that produces per-turn
@@ -186,6 +192,18 @@ func (f *ProjectorFactory) Seq() SequencerPublisher {
 		return nil
 	}
 	return f.seq
+}
+
+// RestoreSeqIfNeeded raises the shared SeqAssigner so the next NextSeq for
+// spiritSessionID is > maxSeqFromDB. Idempotent per process/session (B-06).
+func (f *ProjectorFactory) RestoreSeqIfNeeded(spiritSessionID string, maxSeqFromDB int64) {
+	if f == nil || f.seqAsg == nil || spiritSessionID == "" || maxSeqFromDB <= 0 {
+		return
+	}
+	if _, loaded := f.seqRestored.LoadOrStore(spiritSessionID, true); loaded {
+		return
+	}
+	f.seqAsg.RestoreAtLeast(spiritSessionID, maxSeqFromDB)
 }
 
 // OnTurnStart emits task.created (root turns only) followed by turn.started.

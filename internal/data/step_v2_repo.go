@@ -85,6 +85,28 @@ func (r *stepV2Repo) ListStepsBySession(ctx context.Context, sessionID string) (
 	return entStepsV2ToBiz(rows), nil
 }
 
+// MaxSeqBySpiritSession returns the highest Seq stored for the spirit session (0 if none).
+func (r *stepV2Repo) MaxSeqBySpiritSession(ctx context.Context, spiritSessionID string) (int64, error) {
+	if r == nil || r.data == nil {
+		return 0, fmt.Errorf("step v2 repo: database not configured")
+	}
+	if spiritSessionID == "" {
+		return 0, nil
+	}
+	row, err := r.data.RW().Read(ctx).StepV2.Query().
+		Where(stepv2.SpiritSessionID(spiritSessionID)).
+		Order(ent.Desc(stepv2.FieldSeq)).
+		Select(stepv2.FieldSeq).
+		First(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return 0, nil
+		}
+		return 0, entErrToBizErr(err, "STEP_V2")
+	}
+	return row.Seq, nil
+}
+
 // CreateStep inserts a new Step with the caller's claimed Version.
 func (r *stepV2Repo) CreateStep(ctx context.Context, s biz.Step) (biz.Step, error) {
 	if r == nil || r.data == nil {

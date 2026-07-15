@@ -80,6 +80,7 @@ var (
 		{Name: "avatar", Type: field.TypeString, Default: ""},
 		{Name: "access", Type: field.TypeString, Default: ""},
 		{Name: "password", Type: field.TypeString, Default: ""},
+		{Name: "workspace_id", Type: field.TypeString, Size: 128, Default: "default"},
 		{Name: "create_time", Type: field.TypeTime},
 		{Name: "update_time", Type: field.TypeTime},
 	}
@@ -98,6 +99,11 @@ var (
 				Name:    "idx_admins_email",
 				Unique:  false,
 				Columns: []*schema.Column{AdminsColumns[2]},
+			},
+			{
+				Name:    "idx_admins_workspace_id",
+				Unique:  false,
+				Columns: []*schema.Column{AdminsColumns[6]},
 			},
 		},
 	}
@@ -728,6 +734,7 @@ var (
 		{Name: "agent_id", Type: field.TypeString, Size: 256, Default: ""},
 		{Name: "config_json", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "metadata_json", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "workspace_id", Type: field.TypeString, Size: 128, Default: ""},
 		{Name: "created_at", Type: field.TypeString, Default: ""},
 		{Name: "updated_at", Type: field.TypeString, Default: ""},
 		{Name: "deleted_at", Type: field.TypeString, Default: ""},
@@ -741,7 +748,12 @@ var (
 			{
 				Name:    "idx_cron_task_agent",
 				Unique:  false,
-				Columns: []*schema.Column{CronTaskColumns[7], CronTaskColumns[12]},
+				Columns: []*schema.Column{CronTaskColumns[7], CronTaskColumns[13]},
+			},
+			{
+				Name:    "idx_cron_task_workspace",
+				Unique:  false,
+				Columns: []*schema.Column{CronTaskColumns[10], CronTaskColumns[13]},
 			},
 		},
 	}
@@ -884,6 +896,7 @@ var (
 		{Name: "error_message", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "started_at", Type: field.TypeString, Default: ""},
 		{Name: "finished_at", Type: field.TypeString, Default: ""},
+		{Name: "workspace_id", Type: field.TypeString, Size: 128, Default: ""},
 		{Name: "created_at", Type: field.TypeString, Default: ""},
 		{Name: "dataset_id", Type: field.TypeString, Size: 256},
 	}
@@ -895,7 +908,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "eval_runs_eval_datasets_runs",
-				Columns:    []*schema.Column{EvalRunsColumns[18]},
+				Columns:    []*schema.Column{EvalRunsColumns[19]},
 				RefColumns: []*schema.Column{EvalDatasetsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -904,12 +917,17 @@ var (
 			{
 				Name:    "evalrun_dataset_id",
 				Unique:  false,
-				Columns: []*schema.Column{EvalRunsColumns[18]},
+				Columns: []*schema.Column{EvalRunsColumns[19]},
 			},
 			{
 				Name:    "evalrun_agent_id",
 				Unique:  false,
 				Columns: []*schema.Column{EvalRunsColumns[1]},
+			},
+			{
+				Name:    "idx_eval_runs_workspace",
+				Unique:  false,
+				Columns: []*schema.Column{EvalRunsColumns[17]},
 			},
 		},
 	}
@@ -2477,6 +2495,7 @@ var (
 		{Name: "error_code", Type: field.TypeString, Default: ""},
 		{Name: "error_message", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "metadata_json", Type: field.TypeString, Size: 2147483647, Default: "{}"},
+		{Name: "idempotency_key", Type: field.TypeString, Size: 512, Default: ""},
 		{Name: "created_at", Type: field.TypeString, Default: ""},
 		{Name: "updated_at", Type: field.TypeString, Default: ""},
 	}
@@ -2487,9 +2506,14 @@ var (
 		PrimaryKey: []*schema.Column{SessionTurnsColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "sessionturn_session_id_turn_number",
-				Unique:  false,
+				Name:    "idx_session_turns_session_turn_unique",
+				Unique:  true,
 				Columns: []*schema.Column{SessionTurnsColumns[1], SessionTurnsColumns[3]},
+			},
+			{
+				Name:    "idx_session_turns_session_idem",
+				Unique:  true,
+				Columns: []*schema.Column{SessionTurnsColumns[1], SessionTurnsColumns[28]},
 			},
 			{
 				Name:    "sessionturn_status_started_at",
@@ -2820,6 +2844,7 @@ var (
 		{Name: "topology_hint", Type: field.TypeString, Size: 64, Default: ""},
 		{Name: "memory_hit_json", Type: field.TypeString, Size: 2147483647, Default: "{}"},
 		{Name: "status", Type: field.TypeString, Size: 32, Default: "draft"},
+		{Name: "workspace_id", Type: field.TypeString, Size: 128, Default: ""},
 		{Name: "created_at", Type: field.TypeString, Default: ""},
 		{Name: "updated_at", Type: field.TypeString, Default: ""},
 	}
@@ -2834,6 +2859,11 @@ var (
 				Unique:  false,
 				Columns: []*schema.Column{TaskPlansColumns[1]},
 			},
+			{
+				Name:    "idx_task_plans_workspace",
+				Unique:  false,
+				Columns: []*schema.Column{TaskPlansColumns[16], TaskPlansColumns[15]},
+			},
 		},
 	}
 	// TasksV2Columns holds the columns for the "tasks_v2" table.
@@ -2844,6 +2874,7 @@ var (
 		{Name: "status", Type: field.TypeString, Size: 32, Default: "pending"},
 		{Name: "seq", Type: field.TypeInt64, Default: 0},
 		{Name: "version", Type: field.TypeInt64, Default: 0},
+		{Name: "workspace_id", Type: field.TypeString, Size: 128, Default: ""},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
@@ -2863,6 +2894,11 @@ var (
 				Name:    "idx_tasks_v2_status",
 				Unique:  false,
 				Columns: []*schema.Column{TasksV2Columns[3]},
+			},
+			{
+				Name:    "idx_tasks_v2_workspace",
+				Unique:  false,
+				Columns: []*schema.Column{TasksV2Columns[6], TasksV2Columns[3]},
 			},
 		},
 	}

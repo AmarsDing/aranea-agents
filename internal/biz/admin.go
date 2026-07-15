@@ -16,14 +16,15 @@ import (
 
 // Admin is a Admin model.
 type Admin struct {
-	ID         int64
-	Name       string
-	Email      string
-	Password   string
-	Access     string
-	Avatar     string
-	CreateTime time.Time
-	UpdateTime time.Time
+	ID          int64
+	Name        string
+	Email       string
+	Password    string
+	Access      string
+	Avatar      string
+	WorkspaceID string
+	CreateTime  time.Time
+	UpdateTime  time.Time
 }
 
 // AdminReader provides read-only access to admin records.

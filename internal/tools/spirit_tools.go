@@ -310,11 +310,13 @@ func executeOrchestratePhase(ctx context.Context, taskPlan *biz.TaskPlan, allocP
 		Strategy:        taskPlan.Strategy,
 		Status:          biz.OrchestrationStatusRunning,
 	}
+	// B-04: Phase 3 only accepts/starts orchestration — DAG has not finished.
+	// Report "running" (not "completed") so callers do not treat tool success
+	// as durable execution completion. Terminal events come from PlanExecutor.
 	return handle, biztypes.OrchestrationStepRecord{
-		StepName:   "orchestrate",
-		Status:     "completed",
-		StartedAt:  start,
-		FinishedAt: time.Now().UTC(),
+		StepName:  "orchestrate",
+		Status:    "running",
+		StartedAt: start,
 	}, nil
 }
 

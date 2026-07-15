@@ -11,6 +11,8 @@ import (
 	"aranea-agents/internal/channel/lark"
 	"aranea-agents/internal/channel/slack"
 	"aranea-agents/internal/channel/telegram"
+	"aranea-agents/internal/workspace"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 
@@ -47,6 +49,30 @@ func (s *ChannelService) reloadRuntime(ctx context.Context) {
 	if s != nil && s.runtime != nil {
 		s.runtime.Reload(ctx)
 	}
+}
+
+// assertChannelAccess 校验 caller 是否可访问指定 channel（P2-B IDOR 防护）。
+// 跨租户访问返回 NotFound（避免泄露 channel 存在性）。
+// 系统 caller（cron/admin）绕过校验；空 workspace_id 的 channel 视为全局共享。
+func (s *ChannelService) assertChannelAccess(ctx context.Context, channelID string) error {
+	if channelID == "" {
+		return nil
+	}
+	c, err := s.uc.Get(ctx, channelID)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return apierror.NotFound("CHANNEL", "channel not found")
+		}
+		return err
+	}
+	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), c.WorkspaceID); err != nil {
+		s.lg.Warn("channel access denied: workspace mismatch",
+			loggateway.StepID("channel.idor"),
+			loggateway.Str("channel_id", channelID),
+			loggateway.Str("caller_ws", workspace.IDFromContext(ctx)))
+		return apierror.NotFound("CHANNEL", "channel not found")
+	}
+	return nil
 }
 
 func bizChannelToProto(c biz.Channel) *v1.Channel {
@@ -230,6 +256,19 @@ func (s *ChannelService) ListChannels(ctx context.Context, _ *emptypb.Empty) (*v
 	if err != nil {
 		return nil, err
 	}
+	// P2-B: workspace visibility filter (service layer — ChannelReader.List is
+	// Stability:stable and RunHealthChecks needs all channels, so we filter here).
+	// System caller (cron/admin) sees all; tenant caller sees shared (workspace_id="") + own.
+	if !workspace.IsSystem(ctx) {
+		ws := workspace.IDFromContext(ctx)
+		filtered := make([]biz.Channel, 0, len(items))
+		for _, c := range items {
+			if c.WorkspaceID == "" || c.WorkspaceID == ws {
+				filtered = append(filtered, c)
+			}
+		}
+		items = filtered
+	}
 	out := make([]*v1.Channel, 0, len(items))
 	for _, c := range items {
 		out = append(out, channelRowToProto(c, s.runtimeMetadataPatch(c.ID)))
@@ -238,6 +277,9 @@ func (s *ChannelService) ListChannels(ctx context.Context, _ *emptypb.Empty) (*v
 }
 
 func (s *ChannelService) GetChannel(ctx context.Context, req *v1.GetChannelRequest) (*v1.Channel, error) {
+	if err := s.assertChannelAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	c, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
 		return nil, err
@@ -256,6 +298,11 @@ func (s *ChannelService) CreateChannel(ctx context.Context, req *v1.CreateChanne
 		ConfigJSON:   req.GetConfigJson(),
 		MetadataJSON: req.GetMetadataJson(),
 	}
+	// P2-B: tenant isolation — tenant caller creates tenant-private channel;
+	// system caller (cron/admin) creates shared channel (workspace_id="").
+	if !workspace.IsSystem(ctx) {
+		row.WorkspaceID = workspace.IDFromContext(ctx)
+	}
 	c, err := s.uc.Create(ctx, row, protoCredInputs(req.GetCredentials()))
 	if err != nil {
 		return nil, err
@@ -265,6 +312,9 @@ func (s *ChannelService) CreateChannel(ctx context.Context, req *v1.CreateChanne
 }
 
 func (s *ChannelService) UpdateChannel(ctx context.Context, req *v1.UpdateChannelRequest) (*v1.Channel, error) {
+	if err := s.assertChannelAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	current, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
 		return nil, err
@@ -303,6 +353,9 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *v1.UpdateChanne
 }
 
 func (s *ChannelService) DeleteChannel(ctx context.Context, req *v1.DeleteChannelRequest) (*emptypb.Empty, error) {
+	if err := s.assertChannelAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
@@ -311,6 +364,9 @@ func (s *ChannelService) DeleteChannel(ctx context.Context, req *v1.DeleteChanne
 }
 
 func (s *ChannelService) ToggleChannel(ctx context.Context, req *v1.ToggleChannelRequest) (*v1.Channel, error) {
+	if err := s.assertChannelAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	c, err := s.uc.Toggle(ctx, req.GetId(), req.GetEnabled())
 	if err != nil {
 		return nil, err
@@ -320,6 +376,9 @@ func (s *ChannelService) ToggleChannel(ctx context.Context, req *v1.ToggleChanne
 }
 
 func (s *ChannelService) TestChannel(ctx context.Context, req *v1.TestChannelRequest) (*v1.ChannelTestResult, error) {
+	if err := s.assertChannelAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	row, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
 		return nil, err
@@ -352,6 +411,9 @@ func (s *ChannelService) TestChannel(ctx context.Context, req *v1.TestChannelReq
 }
 
 func (s *ChannelService) ListChannelCredentials(ctx context.Context, req *v1.GetChannelRequest) (*v1.ListChannelCredentialsResponse, error) {
+	if err := s.assertChannelAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	items, err := s.uc.ListCredentials(ctx, req.GetId())
 	if err != nil {
 		return nil, err
@@ -364,6 +426,9 @@ func (s *ChannelService) ListChannelCredentials(ctx context.Context, req *v1.Get
 }
 
 func (s *ChannelService) UpsertChannelCredentials(ctx context.Context, req *v1.UpsertChannelCredentialsRequest) (*v1.ListChannelCredentialsResponse, error) {
+	if err := s.assertChannelAccess(ctx, req.GetChannelId()); err != nil {
+		return nil, err
+	}
 	items, err := s.uc.UpsertCredentials(ctx, req.GetChannelId(), protoCredInputs(req.GetCredentials()))
 	if err != nil {
 		return nil, err
@@ -377,6 +442,9 @@ func (s *ChannelService) UpsertChannelCredentials(ctx context.Context, req *v1.U
 }
 
 func (s *ChannelService) DeleteChannelCredential(ctx context.Context, req *v1.DeleteChannelCredentialRequest) (*emptypb.Empty, error) {
+	if err := s.assertChannelAccess(ctx, req.GetChannelId()); err != nil {
+		return nil, err
+	}
 	if err := s.uc.DeleteCredential(ctx, req.GetChannelId(), req.GetCredentialKey()); err != nil {
 		return nil, err
 	}
@@ -385,6 +453,9 @@ func (s *ChannelService) DeleteChannelCredential(ctx context.Context, req *v1.De
 }
 
 func (s *ChannelService) ListChannelDeliveries(ctx context.Context, req *v1.ListChannelDeliveriesRequest) (*v1.ListChannelDeliveriesResponse, error) {
+	if err := s.assertChannelAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	limit := int(req.GetLimit())
 	items, err := s.uc.ListDeliveries(ctx, req.GetId(), limit)
 	if err != nil {
@@ -421,6 +492,9 @@ func bizTurnJobToProto(j biz.ChannelTurnJob) *v1.ChannelTurnJob {
 func (s *ChannelService) ListChannelTurnJobs(ctx context.Context, req *v1.ListChannelTurnJobsRequest) (*v1.ListChannelTurnJobsResponse, error) {
 	if s == nil || s.turnJobs == nil {
 		return &v1.ListChannelTurnJobsResponse{}, nil
+	}
+	if err := s.assertChannelAccess(ctx, req.GetId()); err != nil {
+		return nil, err
 	}
 	limit := int(req.GetLimit())
 	items, err := s.turnJobs.ListByChannel(ctx, req.GetId(), limit)

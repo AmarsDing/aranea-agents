@@ -14,7 +14,7 @@ type stubMCPServerRepo struct {
 	server biz.MCPServer
 }
 
-func (r *stubMCPServerRepo) ListMCPServers(_ context.Context) ([]biz.MCPServer, error) {
+func (r *stubMCPServerRepo) ListMCPServers(_ context.Context, _ biz.MCPListQuery) ([]biz.MCPServer, error) {
 	return []biz.MCPServer{r.server}, nil
 }
 func (r *stubMCPServerRepo) GetMCPServer(_ context.Context, _ string) (biz.MCPServer, error) {

@@ -133,13 +133,16 @@ async function main() {
     '"use strict";\n'
   );
 
-  // 运行时配置：留空 → SPA 走同源（electron-main 反代 /v1|/api|/healthz|/v1/ws → :8000）。
-  // 这样 Cookie 同站、无跨端口 CORS，避免登录 401 循环。
+  // 创建运行时配置
   const configDir = path.join(resAppDir, 'assets', 'config');
   await mkdir(configDir, { recursive: true });
   await writeFile(
     path.join(configDir, 'runtime-config.json'),
-    JSON.stringify({}, null, 2) + '\n'
+    JSON.stringify(
+      { backendUrl: 'http://127.0.0.1:8000', wsOrigin: 'http://127.0.0.1:8000' },
+      null,
+      2
+    ) + '\n'
   );
 
   // 创建 package.json

@@ -13,6 +13,7 @@ import (
 
 	"aranea-agents/pkg/loggateway"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -353,8 +354,11 @@ func (d *ToolDecorator) Declaration() *trpctool.Declaration {
 // with identical arguments return the cached result without invoking
 // the inner tool.
 func (d *ToolDecorator) Call(ctx context.Context, jsonArgs []byte) (any, error) {
-	if d.cache != nil {
-		if cached, ok := d.lookupCache(jsonArgs); ok {
+	// E2E-P1-09: only cache when invocation identity is present so results
+	// never leak across user/session/agent scopes on a shared Agent cache.
+	scope, scoped := cacheScopeFromCtx(ctx)
+	if d.cache != nil && scoped {
+		if cached, ok := d.lookupCache(scope, jsonArgs); ok {
 			return cached, nil
 		}
 	}
@@ -365,8 +369,8 @@ func (d *ToolDecorator) Call(ctx context.Context, jsonArgs []byte) (any, error) 
 		return nil, err
 	}
 	result = d.truncateResult(result)
-	if d.cache != nil {
-		d.storeCache(jsonArgs, result)
+	if d.cache != nil && scoped {
+		d.storeCache(scope, jsonArgs, result)
 	}
 	return result, nil
 }
@@ -472,23 +476,40 @@ func (d *ToolDecorator) toolName() string {
 	return ""
 }
 
-func (d *ToolDecorator) cacheKey(jsonArgs []byte) string {
+// cacheScopeFromCtx returns an identity scope for tool-result caching.
+// Without an Invocation Session, caching is disabled (ok=false) so unscoped
+// calls cannot poison or read a shared cross-tenant bucket.
+func cacheScopeFromCtx(ctx context.Context) (scope string, ok bool) {
+	inv, has := trpcagent.InvocationFromContext(ctx)
+	if !has || inv == nil || inv.Session == nil {
+		return "", false
+	}
+	s := inv.Session
+	if strings.TrimSpace(s.ID) == "" && strings.TrimSpace(s.UserID) == "" {
+		return "", false
+	}
+	return s.AppName + "\x00" + s.UserID + "\x00" + s.ID, true
+}
+
+func (d *ToolDecorator) cacheKey(scope string, jsonArgs []byte) string {
 	name := d.toolName()
 	h := sha256.New()
 	h.Write([]byte(name))
+	h.Write([]byte(":"))
+	h.Write([]byte(scope))
 	h.Write([]byte(":"))
 	h.Write(jsonArgs)
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func (d *ToolDecorator) lookupCache(jsonArgs []byte) (any, bool) {
+func (d *ToolDecorator) lookupCache(scope string, jsonArgs []byte) (any, bool) {
 	d.cacheMu.RLock()
 	defer d.cacheMu.RUnlock()
-	v, ok := d.cache[d.cacheKey(jsonArgs)]
+	v, ok := d.cache[d.cacheKey(scope, jsonArgs)]
 	return v, ok
 }
 
-func (d *ToolDecorator) storeCache(jsonArgs []byte, result any) {
+func (d *ToolDecorator) storeCache(scope string, jsonArgs []byte, result any) {
 	d.cacheMu.Lock()
 	defer d.cacheMu.Unlock()
 	if len(d.cache) >= decoratorCacheMaxEntries {
@@ -499,5 +520,5 @@ func (d *ToolDecorator) storeCache(jsonArgs []byte, result any) {
 		// be reused.
 		d.cache = make(map[string]any)
 	}
-	d.cache[d.cacheKey(jsonArgs)] = result
+	d.cache[d.cacheKey(scope, jsonArgs)] = result
 }

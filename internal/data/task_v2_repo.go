@@ -65,6 +65,7 @@ func (r *taskV2Repo) CreateTask(ctx context.Context, t biz.Task) (biz.Task, erro
 		SetStatus(string(t.Status)).
 		SetSeq(t.Seq).
 		SetVersion(t.Version).
+		SetWorkspaceID(t.WorkspaceID).
 		SetCreatedAt(t.CreatedAt).
 		SetUpdatedAt(t.UpdatedAt)
 	if t.CompletedAt != nil {
@@ -157,6 +158,7 @@ func (r *taskV2Repo) UpsertTask(ctx context.Context, t biz.Task) (biz.Task, erro
 		SetStatus(string(t.Status)).
 		SetSeq(t.Seq).
 		SetVersion(t.Version).
+		SetWorkspaceID(t.WorkspaceID).
 		SetCreatedAt(t.CreatedAt).
 		SetUpdatedAt(t.UpdatedAt)
 	if t.CompletedAt != nil {
@@ -191,6 +193,7 @@ func entTaskV2ToBiz(row *ent.TaskV2) biz.Task {
 		Status:      biz.TaskStatus(row.Status),
 		Seq:         row.Seq,
 		Version:     row.Version,
+		WorkspaceID: row.WorkspaceID,
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
 		CompletedAt: completedAt,

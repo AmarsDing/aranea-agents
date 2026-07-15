@@ -392,6 +392,20 @@ func (_c *SessionTurnCreate) SetNillableMetadataJSON(v *string) *SessionTurnCrea
 	return _c
 }
 
+// SetIdempotencyKey sets the "idempotency_key" field.
+func (_c *SessionTurnCreate) SetIdempotencyKey(v string) *SessionTurnCreate {
+	_c.mutation.SetIdempotencyKey(v)
+	return _c
+}
+
+// SetNillableIdempotencyKey sets the "idempotency_key" field if the given value is not nil.
+func (_c *SessionTurnCreate) SetNillableIdempotencyKey(v *string) *SessionTurnCreate {
+	if v != nil {
+		_c.SetIdempotencyKey(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *SessionTurnCreate) SetCreatedAt(v string) *SessionTurnCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -565,6 +579,10 @@ func (_c *SessionTurnCreate) defaults() {
 		v := sessionturn.DefaultMetadataJSON
 		_c.mutation.SetMetadataJSON(v)
 	}
+	if _, ok := _c.mutation.IdempotencyKey(); !ok {
+		v := sessionturn.DefaultIdempotencyKey
+		_c.mutation.SetIdempotencyKey(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := sessionturn.DefaultCreatedAt
 		_c.mutation.SetCreatedAt(v)
@@ -662,6 +680,14 @@ func (_c *SessionTurnCreate) check() error {
 	}
 	if _, ok := _c.mutation.MetadataJSON(); !ok {
 		return &ValidationError{Name: "metadata_json", err: errors.New(`ent: missing required field "SessionTurn.metadata_json"`)}
+	}
+	if _, ok := _c.mutation.IdempotencyKey(); !ok {
+		return &ValidationError{Name: "idempotency_key", err: errors.New(`ent: missing required field "SessionTurn.idempotency_key"`)}
+	}
+	if v, ok := _c.mutation.IdempotencyKey(); ok {
+		if err := sessionturn.IdempotencyKeyValidator(v); err != nil {
+			return &ValidationError{Name: "idempotency_key", err: fmt.Errorf(`ent: validator failed for field "SessionTurn.idempotency_key": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "SessionTurn.created_at"`)}
@@ -817,6 +843,10 @@ func (_c *SessionTurnCreate) createSpec() (*SessionTurn, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.MetadataJSON(); ok {
 		_spec.SetField(sessionturn.FieldMetadataJSON, field.TypeString, value)
 		_node.MetadataJSON = value
+	}
+	if value, ok := _c.mutation.IdempotencyKey(); ok {
+		_spec.SetField(sessionturn.FieldIdempotencyKey, field.TypeString, value)
+		_node.IdempotencyKey = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(sessionturn.FieldCreatedAt, field.TypeString, value)
@@ -1265,6 +1295,18 @@ func (u *SessionTurnUpsert) SetMetadataJSON(v string) *SessionTurnUpsert {
 // UpdateMetadataJSON sets the "metadata_json" field to the value that was provided on create.
 func (u *SessionTurnUpsert) UpdateMetadataJSON() *SessionTurnUpsert {
 	u.SetExcluded(sessionturn.FieldMetadataJSON)
+	return u
+}
+
+// SetIdempotencyKey sets the "idempotency_key" field.
+func (u *SessionTurnUpsert) SetIdempotencyKey(v string) *SessionTurnUpsert {
+	u.Set(sessionturn.FieldIdempotencyKey, v)
+	return u
+}
+
+// UpdateIdempotencyKey sets the "idempotency_key" field to the value that was provided on create.
+func (u *SessionTurnUpsert) UpdateIdempotencyKey() *SessionTurnUpsert {
+	u.SetExcluded(sessionturn.FieldIdempotencyKey)
 	return u
 }
 
@@ -1792,6 +1834,20 @@ func (u *SessionTurnUpsertOne) SetMetadataJSON(v string) *SessionTurnUpsertOne {
 func (u *SessionTurnUpsertOne) UpdateMetadataJSON() *SessionTurnUpsertOne {
 	return u.Update(func(s *SessionTurnUpsert) {
 		s.UpdateMetadataJSON()
+	})
+}
+
+// SetIdempotencyKey sets the "idempotency_key" field.
+func (u *SessionTurnUpsertOne) SetIdempotencyKey(v string) *SessionTurnUpsertOne {
+	return u.Update(func(s *SessionTurnUpsert) {
+		s.SetIdempotencyKey(v)
+	})
+}
+
+// UpdateIdempotencyKey sets the "idempotency_key" field to the value that was provided on create.
+func (u *SessionTurnUpsertOne) UpdateIdempotencyKey() *SessionTurnUpsertOne {
+	return u.Update(func(s *SessionTurnUpsert) {
+		s.UpdateIdempotencyKey()
 	})
 }
 
@@ -2490,6 +2546,20 @@ func (u *SessionTurnUpsertBulk) SetMetadataJSON(v string) *SessionTurnUpsertBulk
 func (u *SessionTurnUpsertBulk) UpdateMetadataJSON() *SessionTurnUpsertBulk {
 	return u.Update(func(s *SessionTurnUpsert) {
 		s.UpdateMetadataJSON()
+	})
+}
+
+// SetIdempotencyKey sets the "idempotency_key" field.
+func (u *SessionTurnUpsertBulk) SetIdempotencyKey(v string) *SessionTurnUpsertBulk {
+	return u.Update(func(s *SessionTurnUpsert) {
+		s.SetIdempotencyKey(v)
+	})
+}
+
+// UpdateIdempotencyKey sets the "idempotency_key" field to the value that was provided on create.
+func (u *SessionTurnUpsertBulk) UpdateIdempotencyKey() *SessionTurnUpsertBulk {
+	return u.Update(func(s *SessionTurnUpsert) {
+		s.UpdateIdempotencyKey()
 	})
 }
 

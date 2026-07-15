@@ -98,6 +98,20 @@ func (_u *AdminUpdate) SetNillablePassword(v *string) *AdminUpdate {
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *AdminUpdate) SetWorkspaceID(v string) *AdminUpdate {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *AdminUpdate) SetNillableWorkspaceID(v *string) *AdminUpdate {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // SetUpdateTime sets the "update_time" field.
 func (_u *AdminUpdate) SetUpdateTime(v time.Time) *AdminUpdate {
 	_u.mutation.SetUpdateTime(v)
@@ -145,7 +159,20 @@ func (_u *AdminUpdate) defaults() {
 	}
 }
 
+// check runs all checks and user-defined validators on the builder.
+func (_u *AdminUpdate) check() error {
+	if v, ok := _u.mutation.WorkspaceID(); ok {
+		if err := admin.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "Admin.workspace_id": %w`, err)}
+		}
+	}
+	return nil
+}
+
 func (_u *AdminUpdate) sqlSave(ctx context.Context) (_node int, err error) {
+	if err := _u.check(); err != nil {
+		return _node, err
+	}
 	_spec := sqlgraph.NewUpdateSpec(admin.Table, admin.Columns, sqlgraph.NewFieldSpec(admin.FieldID, field.TypeInt64))
 	if ps := _u.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
@@ -168,6 +195,9 @@ func (_u *AdminUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Password(); ok {
 		_spec.SetField(admin.FieldPassword, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(admin.FieldWorkspaceID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.UpdateTime(); ok {
 		_spec.SetField(admin.FieldUpdateTime, field.TypeTime, value)
@@ -262,6 +292,20 @@ func (_u *AdminUpdateOne) SetNillablePassword(v *string) *AdminUpdateOne {
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *AdminUpdateOne) SetWorkspaceID(v string) *AdminUpdateOne {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *AdminUpdateOne) SetNillableWorkspaceID(v *string) *AdminUpdateOne {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // SetUpdateTime sets the "update_time" field.
 func (_u *AdminUpdateOne) SetUpdateTime(v time.Time) *AdminUpdateOne {
 	_u.mutation.SetUpdateTime(v)
@@ -322,7 +366,20 @@ func (_u *AdminUpdateOne) defaults() {
 	}
 }
 
+// check runs all checks and user-defined validators on the builder.
+func (_u *AdminUpdateOne) check() error {
+	if v, ok := _u.mutation.WorkspaceID(); ok {
+		if err := admin.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "Admin.workspace_id": %w`, err)}
+		}
+	}
+	return nil
+}
+
 func (_u *AdminUpdateOne) sqlSave(ctx context.Context) (_node *Admin, err error) {
+	if err := _u.check(); err != nil {
+		return _node, err
+	}
 	_spec := sqlgraph.NewUpdateSpec(admin.Table, admin.Columns, sqlgraph.NewFieldSpec(admin.FieldID, field.TypeInt64))
 	id, ok := _u.mutation.ID()
 	if !ok {
@@ -362,6 +419,9 @@ func (_u *AdminUpdateOne) sqlSave(ctx context.Context) (_node *Admin, err error)
 	}
 	if value, ok := _u.mutation.Password(); ok {
 		_spec.SetField(admin.FieldPassword, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(admin.FieldWorkspaceID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.UpdateTime(); ok {
 		_spec.SetField(admin.FieldUpdateTime, field.TypeTime, value)

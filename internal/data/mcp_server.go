@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
@@ -39,17 +40,25 @@ func entToBizMCP(e *ent.PlatformMCPServer) biz.MCPServer {
 		CreatedAt:    e.CreatedAt,
 		UpdatedAt:    e.UpdatedAt,
 		DeletedAt:    e.DeletedAt,
+		WorkspaceID:  e.WorkspaceID, // P2-B: tenant isolation
 	}
 }
 
-func (r *mcpServerRepo) ListMCPServers(ctx context.Context) ([]biz.MCPServer, error) {
-	rows, err := r.data.RW().Read(ctx).PlatformMCPServer.Query().
-		Where(platformmcpserver.DeletedAtEQ("")).
-		Order(
-			platformmcpserver.BySortOrder(),
-			platformmcpserver.ByCreatedAt(entsql.OrderDesc()),
-		).
-		All(ctx)
+func (r *mcpServerRepo) ListMCPServers(ctx context.Context, q biz.MCPListQuery) ([]biz.MCPServer, error) {
+	pq := r.data.RW().Read(ctx).PlatformMCPServer.Query().
+		Where(platformmcpserver.DeletedAtEQ(""))
+	// P2-B: workspace visibility filter.
+	// empty WorkspaceID = system caller (see all); non-empty = tenant caller (shared + own).
+	if ws := strings.TrimSpace(q.WorkspaceID); ws != "" {
+		pq = pq.Where(platformmcpserver.Or(
+			platformmcpserver.WorkspaceIDEQ(""),
+			platformmcpserver.WorkspaceIDEQ(ws),
+		))
+	}
+	rows, err := pq.Order(
+		platformmcpserver.BySortOrder(),
+		platformmcpserver.ByCreatedAt(entsql.OrderDesc()),
+	).All(ctx)
 	if err != nil {
 		return nil, entErrToBizErr(err, apierror.DomainMCP)
 	}
@@ -109,6 +118,7 @@ func (r *mcpServerRepo) CreateMCPServer(ctx context.Context, m biz.MCPServer) (b
 		SetCreatedAt(m.CreatedAt).
 		SetUpdatedAt(m.UpdatedAt).
 		SetDeletedAt("").
+		SetWorkspaceID(m.WorkspaceID). // P2-B: tenant isolation
 		Save(ctx)
 	if err != nil {
 		return biz.MCPServer{}, entErrToBizErr(err, apierror.DomainMCP)

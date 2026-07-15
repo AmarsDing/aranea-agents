@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { useChatActivityStore } from '../../../../stores/chat/activityV2Store';
 import { useChatEventRouter } from '../useChatEventRouter';
-import type { V2WsEnvelope, Task, Step } from '../../v2Types';
+import type { Task, Step } from '../../v2Types';
 
 function mkTask(over: Partial<Task> = {}): Task {
   return {

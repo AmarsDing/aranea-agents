@@ -33,8 +33,8 @@
       lengths the native DOM is sufficient. If long-conversation perf returns,
       wrap ActivityStream items in DynamicScroller with per-activity items.
       v2 history: also render SessionPanelV2 when the v2 activity store has
-      tasks for this session, even if legacy messages are empty (dev proxy
-      WS replay failure or fresh page load before WS connects).
+      tasks for this session, even if legacy messages are empty (reconnect
+      hydrate pending or fresh page load before WS connects).
     -->
     <div
       v-else-if="hasV2Activities"
@@ -76,6 +76,7 @@
           {{ msg.content_markdown }}
         </div>
         <div v-else class="legacy-msg-bubble legacy-msg-bubble--assistant">
+          <!-- eslint-disable-next-line vue/no-v-html -- sanitized via renderLegacyContent/DOMPurify -->
           <div class="chat-message-prose" v-html="renderLegacyContent(msg)"></div>
         </div>
       </div>
@@ -179,7 +180,7 @@ defineEmits<{
 const { t } = useI18n();
 
 // v2 activity store: when legacy messages are empty but the v2 store has
-// tasks for this session (e.g. dev proxy WS replay failure, fresh page load),
+// tasks for this session (e.g. reconnect hydrate pending, fresh page load),
 // we still render SessionPanelV2 instead of the empty state.
 const activityStore = useActivityQueries();
 const hasV2Activities = computed(() =>

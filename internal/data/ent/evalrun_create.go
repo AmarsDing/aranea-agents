@@ -246,6 +246,20 @@ func (_c *EvalRunCreate) SetNillableFinishedAt(v *string) *EvalRunCreate {
 	return _c
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_c *EvalRunCreate) SetWorkspaceID(v string) *EvalRunCreate {
+	_c.mutation.SetWorkspaceID(v)
+	return _c
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_c *EvalRunCreate) SetNillableWorkspaceID(v *string) *EvalRunCreate {
+	if v != nil {
+		_c.SetWorkspaceID(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *EvalRunCreate) SetCreatedAt(v string) *EvalRunCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -381,6 +395,10 @@ func (_c *EvalRunCreate) defaults() {
 		v := evalrun.DefaultFinishedAt
 		_c.mutation.SetFinishedAt(v)
 	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		v := evalrun.DefaultWorkspaceID
+		_c.mutation.SetWorkspaceID(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := evalrun.DefaultCreatedAt
 		_c.mutation.SetCreatedAt(v)
@@ -439,6 +457,14 @@ func (_c *EvalRunCreate) check() error {
 	}
 	if _, ok := _c.mutation.FinishedAt(); !ok {
 		return &ValidationError{Name: "finished_at", err: errors.New(`ent: missing required field "EvalRun.finished_at"`)}
+	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		return &ValidationError{Name: "workspace_id", err: errors.New(`ent: missing required field "EvalRun.workspace_id"`)}
+	}
+	if v, ok := _c.mutation.WorkspaceID(); ok {
+		if err := evalrun.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "EvalRun.workspace_id": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "EvalRun.created_at"`)}
@@ -550,6 +576,10 @@ func (_c *EvalRunCreate) createSpec() (*EvalRun, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FinishedAt(); ok {
 		_spec.SetField(evalrun.FieldFinishedAt, field.TypeString, value)
 		_node.FinishedAt = value
+	}
+	if value, ok := _c.mutation.WorkspaceID(); ok {
+		_spec.SetField(evalrun.FieldWorkspaceID, field.TypeString, value)
+		_node.WorkspaceID = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(evalrun.FieldCreatedAt, field.TypeString, value)
@@ -895,6 +925,18 @@ func (u *EvalRunUpsert) SetFinishedAt(v string) *EvalRunUpsert {
 // UpdateFinishedAt sets the "finished_at" field to the value that was provided on create.
 func (u *EvalRunUpsert) UpdateFinishedAt() *EvalRunUpsert {
 	u.SetExcluded(evalrun.FieldFinishedAt)
+	return u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *EvalRunUpsert) SetWorkspaceID(v string) *EvalRunUpsert {
+	u.Set(evalrun.FieldWorkspaceID, v)
+	return u
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *EvalRunUpsert) UpdateWorkspaceID() *EvalRunUpsert {
+	u.SetExcluded(evalrun.FieldWorkspaceID)
 	return u
 }
 
@@ -1256,6 +1298,20 @@ func (u *EvalRunUpsertOne) SetFinishedAt(v string) *EvalRunUpsertOne {
 func (u *EvalRunUpsertOne) UpdateFinishedAt() *EvalRunUpsertOne {
 	return u.Update(func(s *EvalRunUpsert) {
 		s.UpdateFinishedAt()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *EvalRunUpsertOne) SetWorkspaceID(v string) *EvalRunUpsertOne {
+	return u.Update(func(s *EvalRunUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *EvalRunUpsertOne) UpdateWorkspaceID() *EvalRunUpsertOne {
+	return u.Update(func(s *EvalRunUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 
@@ -1786,6 +1842,20 @@ func (u *EvalRunUpsertBulk) SetFinishedAt(v string) *EvalRunUpsertBulk {
 func (u *EvalRunUpsertBulk) UpdateFinishedAt() *EvalRunUpsertBulk {
 	return u.Update(func(s *EvalRunUpsert) {
 		s.UpdateFinishedAt()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *EvalRunUpsertBulk) SetWorkspaceID(v string) *EvalRunUpsertBulk {
+	return u.Update(func(s *EvalRunUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *EvalRunUpsertBulk) UpdateWorkspaceID() *EvalRunUpsertBulk {
+	return u.Update(func(s *EvalRunUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 

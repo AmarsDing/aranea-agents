@@ -6,6 +6,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 )
 
@@ -73,6 +74,16 @@ func (s *stubStepV2Reader) ListStepsBySession(_ context.Context, _ string) ([]bi
 	return s.steps, nil
 }
 
+func (s *stubStepV2Reader) MaxSeqBySpiritSession(_ context.Context, _ string) (int64, error) {
+	var max int64
+	for _, st := range s.steps {
+		if st.Seq > max {
+			max = st.Seq
+		}
+	}
+	return max, nil
+}
+
 func (s *stubStepV2Reader) GetStep(_ context.Context, id string) (biz.Step, error) {
 	for _, st := range s.steps {
 		if st.ID == id {
@@ -104,7 +115,9 @@ func TestSessionService_ListActivities_DelegatesToV2(t *testing.T) {
 	}
 	svc := &SessionService{sessionV2: v2Svc}
 
-	resp, err := svc.ListActivities(context.Background(), &v1.ListActivitiesRequest{SessionId: "sess1"})
+	// P2-C: 系统 caller bypass IDOR 校验，让本测试聚焦于 v2 delegation 逻辑（StepV2 → Activity 字段映射），不依赖 SessionUsecase。
+	ctx := workspace.WithSystemWorkspace(context.Background())
+	resp, err := svc.ListActivities(ctx, &v1.ListActivitiesRequest{SessionId: "sess1"})
 	if err != nil {
 		t.Fatalf("ListActivities: %v", err)
 	}
@@ -144,7 +157,8 @@ func TestSessionService_ListActivities_RequiresSessionID(t *testing.T) {
 // sessionV2 returns an Internal error (defensive guard for misconfigured Wire).
 func TestSessionService_ListActivities_NotConfigured(t *testing.T) {
 	svc := &SessionService{}
-	_, err := svc.ListActivities(context.Background(), &v1.ListActivitiesRequest{SessionId: "sess1"})
+	ctx := workspace.WithSystemWorkspace(context.Background())
+	_, err := svc.ListActivities(ctx, &v1.ListActivitiesRequest{SessionId: "sess1"})
 	if err == nil {
 		t.Fatal("expected error for unconfigured service, got nil")
 	}

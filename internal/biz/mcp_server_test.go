@@ -17,7 +17,7 @@ type stubMCPRepo struct {
 	rows []MCPServer
 }
 
-func (s *stubMCPRepo) ListMCPServers(_ context.Context) ([]MCPServer, error) {
+func (s *stubMCPRepo) ListMCPServers(_ context.Context, _ MCPListQuery) ([]MCPServer, error) {
 	return s.rows, nil
 }
 

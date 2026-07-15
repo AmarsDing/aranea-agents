@@ -34,6 +34,8 @@ type CronTask struct {
 	ConfigJSON string `json:"config_json,omitempty"`
 	// MetadataJSON holds the value of the "metadata_json" field.
 	MetadataJSON string `json:"metadata_json,omitempty"`
+	// WorkspaceID holds the value of the "workspace_id" field.
+	WorkspaceID string `json:"workspace_id,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt string `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -52,7 +54,7 @@ func (*CronTask) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case crontask.FieldSortOrder:
 			values[i] = new(sql.NullInt64)
-		case crontask.FieldID, crontask.FieldTaskKey, crontask.FieldName, crontask.FieldDescription, crontask.FieldStatus, crontask.FieldAgentID, crontask.FieldConfigJSON, crontask.FieldMetadataJSON, crontask.FieldCreatedAt, crontask.FieldUpdatedAt, crontask.FieldDeletedAt:
+		case crontask.FieldID, crontask.FieldTaskKey, crontask.FieldName, crontask.FieldDescription, crontask.FieldStatus, crontask.FieldAgentID, crontask.FieldConfigJSON, crontask.FieldMetadataJSON, crontask.FieldWorkspaceID, crontask.FieldCreatedAt, crontask.FieldUpdatedAt, crontask.FieldDeletedAt:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -128,6 +130,12 @@ func (_m *CronTask) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field metadata_json", values[i])
 			} else if value.Valid {
 				_m.MetadataJSON = value.String
+			}
+		case crontask.FieldWorkspaceID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field workspace_id", values[i])
+			} else if value.Valid {
+				_m.WorkspaceID = value.String
 			}
 		case crontask.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -209,6 +217,9 @@ func (_m *CronTask) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("metadata_json=")
 	builder.WriteString(_m.MetadataJSON)
+	builder.WriteString(", ")
+	builder.WriteString("workspace_id=")
+	builder.WriteString(_m.WorkspaceID)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt)

@@ -112,6 +112,20 @@ func (_u *TaskV2Update) AddVersion(v int64) *TaskV2Update {
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *TaskV2Update) SetWorkspaceID(v string) *TaskV2Update {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *TaskV2Update) SetNillableWorkspaceID(v *string) *TaskV2Update {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *TaskV2Update) SetCreatedAt(v time.Time) *TaskV2Update {
 	_u.mutation.SetCreatedAt(v)
@@ -204,6 +218,11 @@ func (_u *TaskV2Update) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "TaskV2.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.WorkspaceID(); ok {
+		if err := taskv2.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "TaskV2.workspace_id": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -239,6 +258,9 @@ func (_u *TaskV2Update) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedVersion(); ok {
 		_spec.AddField(taskv2.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(taskv2.FieldWorkspaceID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(taskv2.FieldCreatedAt, field.TypeTime, value)
@@ -356,6 +378,20 @@ func (_u *TaskV2UpdateOne) AddVersion(v int64) *TaskV2UpdateOne {
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *TaskV2UpdateOne) SetWorkspaceID(v string) *TaskV2UpdateOne {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *TaskV2UpdateOne) SetNillableWorkspaceID(v *string) *TaskV2UpdateOne {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *TaskV2UpdateOne) SetCreatedAt(v time.Time) *TaskV2UpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -461,6 +497,11 @@ func (_u *TaskV2UpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "TaskV2.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.WorkspaceID(); ok {
+		if err := taskv2.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "TaskV2.workspace_id": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -513,6 +554,9 @@ func (_u *TaskV2UpdateOne) sqlSave(ctx context.Context) (_node *TaskV2, err erro
 	}
 	if value, ok := _u.mutation.AddedVersion(); ok {
 		_spec.AddField(taskv2.FieldVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(taskv2.FieldWorkspaceID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(taskv2.FieldCreatedAt, field.TypeTime, value)

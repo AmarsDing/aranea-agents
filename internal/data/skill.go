@@ -73,6 +73,14 @@ func escapeJSONStringValue(s string) string {
 
 func skillListPredicates(q biz.SkillListQuery) []predicate.PlatformSkill {
 	ps := []predicate.PlatformSkill{platformskill.DeletedAtEQ("")}
+	// P2-B: workspace visibility filter.
+	// empty WorkspaceID = system caller (see all); non-empty = tenant caller (shared + own).
+	if ws := strings.TrimSpace(q.WorkspaceID); ws != "" {
+		ps = append(ps, platformskill.Or(
+			platformskill.WorkspaceIDEQ(""),
+			platformskill.WorkspaceIDEQ(ws),
+		))
+	}
 	if s := strings.TrimSpace(q.Search); s != "" {
 		ps = append(ps, platformskill.Or(
 			platformskill.SkillKeyContainsFold(s),
@@ -408,6 +416,7 @@ func (r *skillRepo) assembleSkills(
 			ParentVersionID:   e.ParentVersionID,
 			EvolutionReason:   e.EvolutionReason,
 			LifecycleStatus:   e.LifecycleStatus,
+			WorkspaceID:       e.WorkspaceID, // P2-B: tenant isolation
 			CreatedAt:         e.CreatedAt,
 			UpdatedAt:         e.UpdatedAt,
 			Permissions:       biz.SkillPermissions{},
@@ -572,6 +581,7 @@ func (r *skillRepo) DuplicateSkill(ctx context.Context, id string) (biz.Skill, e
 		SetCreatedAt(now).
 		SetUpdatedAt(now).
 		SetDeletedAt("").
+		SetWorkspaceID(cur.WorkspaceID). // P2-B: inherit workspace from source
 		Save(ctx); err != nil {
 		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}
@@ -856,6 +866,7 @@ func (r *skillRepo) CreateSkillWithVersion(ctx context.Context, in biz.SkillCrea
 		SetCreatedAt(now).
 		SetUpdatedAt(now).
 		SetDeletedAt("").
+		SetWorkspaceID(in.WorkspaceID). // P2-B: tenant isolation
 		Save(ctx); err != nil {
 		return biz.Skill{}, entErrToBizErr(err, apierror.DomainSkill)
 	}

@@ -7,6 +7,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/tool/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -22,6 +23,26 @@ type ToolService struct {
 
 func NewToolService(uc *biz.ToolUsecase, mon *biz.MonitorUsecase) *ToolService {
 	return &ToolService{uc: uc, mon: mon}
+}
+
+// assertToolAccess 校验 caller 是否可访问指定 tool（P2-B IDOR 防护）。
+// 跨租户访问返回 NotFound（避免泄露 tool 存在性）。
+// 系统 caller（cron/admin）绕过校验；空 workspace_id 的 tool 视为全局共享。
+func (s *ToolService) assertToolAccess(ctx context.Context, toolID string) error {
+	if toolID == "" {
+		return nil
+	}
+	t, err := s.uc.GetTool(ctx, toolID)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return apierror.NotFound("TOOL", "tool not found")
+		}
+		return err
+	}
+	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), t.WorkspaceID); err != nil {
+		return apierror.NotFound("TOOL", "tool not found")
+	}
+	return nil
 }
 
 func bizToolToProto(t biz.Tool) *v1.Tool {
@@ -126,6 +147,11 @@ func (s *ToolService) ListTools(ctx context.Context, req *v1.ListToolsRequest) (
 		Limit:     limit,
 		Offset:    offset,
 	}
+	// P2-B: workspace visibility filter.
+	// System caller (cron/admin) sees all; tenant caller sees shared + own.
+	if !workspace.IsSystem(ctx) {
+		q.WorkspaceID = workspace.IDFromContext(ctx)
+	}
 	result, err := s.uc.ListTools(ctx, q)
 	if err != nil {
 		return nil, err
@@ -144,6 +170,10 @@ func (s *ToolService) ListTools(ctx context.Context, req *v1.ListToolsRequest) (
 }
 
 func (s *ToolService) GetTool(ctx context.Context, req *v1.GetToolRequest) (*v1.Tool, error) {
+	// P2-B: IDOR guard — reads must use the same workspace assert as mutations.
+	if err := s.assertToolAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	t, err := s.uc.GetTool(ctx, req.GetId())
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -174,6 +204,10 @@ func (s *ToolService) CreateTool(ctx context.Context, req *v1.CreateToolRequest)
 		DefaultConfigJSON:    req.GetDefaultConfigJson(),
 		MetadataJSON:         req.GetMetadataJson(),
 	}
+	// P2-B: assign tool to caller workspace (system caller → shared).
+	if !workspace.IsSystem(ctx) {
+		in.WorkspaceID = workspace.IDFromContext(ctx)
+	}
 	t, err := s.uc.Create(ctx, in)
 	if err != nil {
 		return nil, err
@@ -184,6 +218,9 @@ func (s *ToolService) CreateTool(ctx context.Context, req *v1.CreateToolRequest)
 }
 
 func (s *ToolService) UpdateTool(ctx context.Context, req *v1.UpdateToolRequest) (*v1.Tool, error) {
+	if err := s.assertToolAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	in := biz.ToolUpsertInput{
 		Key:                  req.GetKey(),
 		DisplayName:          req.GetDisplayName(),
@@ -216,6 +253,9 @@ func (s *ToolService) UpdateTool(ctx context.Context, req *v1.UpdateToolRequest)
 }
 
 func (s *ToolService) DeleteTool(ctx context.Context, req *v1.DeleteToolRequest) (*emptypb.Empty, error) {
+	if err := s.assertToolAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	err := s.uc.Delete(ctx, req.GetId())
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -229,6 +269,9 @@ func (s *ToolService) DeleteTool(ctx context.Context, req *v1.DeleteToolRequest)
 }
 
 func (s *ToolService) ToggleToolEnabled(ctx context.Context, req *v1.ToggleToolEnabledRequest) (*v1.Tool, error) {
+	if err := s.assertToolAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	t, err := s.uc.ToggleEnabled(ctx, req.GetId(), req.GetEnabled(), req.GetConfirmIntent())
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -390,6 +433,9 @@ func (s *ToolService) GetToolInvocationParams(ctx context.Context, req *v1.GetTo
 }
 
 func (s *ToolService) UpdateToolConfig(ctx context.Context, req *v1.UpdateToolConfigRequest) (*v1.Tool, error) {
+	if err := s.assertToolAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	t, err := s.uc.UpdateToolConfig(ctx, req.GetId(), req.GetConfigJson())
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -402,6 +448,9 @@ func (s *ToolService) UpdateToolConfig(ctx context.Context, req *v1.UpdateToolCo
 }
 
 func (s *ToolService) TestTool(ctx context.Context, req *v1.TestToolRequest) (*v1.TestToolResponse, error) {
+	if err := s.assertToolAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	res, err := s.uc.TestTool(ctx, req.GetId(), req.GetArgumentsJson(), int(req.GetTimeoutSec()))
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {

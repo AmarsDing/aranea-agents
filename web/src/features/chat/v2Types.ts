@@ -380,5 +380,7 @@ export type V2Event =
 export interface V2WsEnvelope {
   type: 'v2_event';
   kind: EventKind;
+  /** Spirit session id (envelope root) for global WS consumers. */
+  session_id?: string;
   payload: V2Event;
 }

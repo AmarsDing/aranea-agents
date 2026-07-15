@@ -27,6 +27,9 @@ func (TaskV2) Fields() []ent.Field {
 		field.String("status").MaxLen(32).Default("pending"),
 		field.Int64("seq").Default(0).Comment("Sequence within session, monotonic"),
 		field.Int64("version").Default(0).Comment("Monotonic version for optimistic concurrency (VersionLT)"),
+		// P2-B: tenant isolation. empty = legacy (treated as default workspace);
+		// non-empty = tenant-private (visible only to owning workspace).
+		field.String("workspace_id").Default("").MaxLen(128),
 		field.Time("created_at").Default(timeNow),
 		field.Time("updated_at").Default(timeNow),
 		field.Time("completed_at").Optional().Nillable(),
@@ -37,5 +40,7 @@ func (TaskV2) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("session_id", "seq").StorageKey("idx_tasks_v2_session_seq"),
 		index.Fields("status").StorageKey("idx_tasks_v2_status"),
+		// P2-B: workspace visibility filter.
+		index.Fields("workspace_id", "status").StorageKey("idx_tasks_v2_workspace"),
 	}
 }

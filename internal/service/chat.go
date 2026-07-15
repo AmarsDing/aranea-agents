@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/outbound"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
 
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
@@ -74,6 +75,30 @@ func NewChatService(deps ChatOrchestratorDeps) *ChatService {
 		deps.Turn.RT.SubAgentService.Start(context.Background())
 	}
 	return svc
+}
+
+// assertSessionAccess verifies the authenticated caller owns sessionID (E2E-P0-01).
+// System callers (default_user) and sessions with empty UserID are allowed so
+// cron/channel/durable entry points keep working. Cross-user access is Forbidden.
+func (s *ChatService) assertSessionAccess(ctx context.Context, sessionID string) error {
+	authUserID := ctxuser.FromContext(ctx)
+	if authUserID == ctxuser.DefaultUserID {
+		return nil
+	}
+	if s == nil || s.sessions == nil {
+		return nil
+	}
+	sess, err := s.sessions.Get(ctx, sessionID)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return apierror.NotFound(apierror.DomainSession, "session not found")
+		}
+		return err
+	}
+	if sess.UserID != "" && authUserID != sess.UserID {
+		return apierror.Forbidden(apierror.DomainChat, "session does not belong to the authenticated user")
+	}
+	return nil
 }
 
 // Close gracefully shuts down the ChatService, including SubAgentService and
@@ -302,6 +327,9 @@ func (s *ChatService) InterruptAndSendMessage(ctx context.Context, req *chatv1.I
 	if sessionID == "" {
 		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
 	}
+	if err := s.assertSessionAccess(ctx, sessionID); err != nil {
+		return nil, err
+	}
 	pendingID := strings.TrimSpace(req.GetPendingId())
 	if pendingID == "" {
 		return nil, apierror.BadRequest(apierror.DomainChat, "pending_id is required")
@@ -316,6 +344,9 @@ func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.Enqueu
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
 		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
+	}
+	if err := s.assertSessionAccess(ctx, sessionID); err != nil {
+		return nil, err
 	}
 	content := strings.TrimSpace(req.GetContent())
 	if content == "" {
@@ -347,6 +378,9 @@ func (s *ChatService) GetRunStatus(ctx context.Context, req *chatv1.GetRunStatus
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
 		return nil, apierror.BadRequest(apierror.DomainChat, "session_id is required")
+	}
+	if err := s.assertSessionAccess(ctx, sessionID); err != nil {
+		return nil, err
 	}
 	resp := &chatv1.RunStatus{Status: "idle"}
 	if runID, status, errMsg, updatedAt, ok := s.orch.GetRunStatus(ctx, sessionID); ok {

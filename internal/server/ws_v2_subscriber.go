@@ -35,6 +35,9 @@ type WSV2Subscriber struct {
 // Implemented by *WSServer.BroadcastToSession and the test fakeHub.
 type WSMessageBroadcaster interface {
 	BroadcastToSession(spiritSessionID string, msg []byte)
+	// BroadcastCriticalToSession delivers terminal lifecycle events on the
+	// high-priority WS lane (BlockUpTo; close conn on timeout). B-06.
+	BroadcastCriticalToSession(spiritSessionID string, msg []byte)
 }
 
 // NewWSV2Subscriber constructs and starts a subscriber goroutine.
@@ -84,10 +87,12 @@ func (s *WSV2Subscriber) run(ctx context.Context, ch <-chan biz.Event) {
 // forward serializes the v2 Event as JSON and pushes to the WS hub
 // (broadcasting to clients subscribed to the event's SpiritSessionID).
 func (s *WSV2Subscriber) forward(e biz.Event) {
+	sessionID := e.SpiritSessionID()
 	envelope := wsEnvelope{
-		Type:    "v2_event",
-		Kind:    string(e.EventKind()),
-		Payload: e,
+		Type:      "v2_event",
+		Kind:      string(e.EventKind()),
+		SessionID: sessionID,
+		Payload:   e,
 	}
 	msg, err := json.Marshal(envelope)
 	if err != nil {
@@ -95,7 +100,13 @@ func (s *WSV2Subscriber) forward(e biz.Event) {
 			loggateway.Str("kind", string(e.EventKind())), loggateway.Err(err))
 		return
 	}
-	s.hub.BroadcastToSession(e.SpiritSessionID(), msg)
+	// B-06: critical lifecycle events use the high-priority lane so they are
+	// not DropNewest'd when the normal queue is saturated.
+	if biz.IsCriticalDeliveryEvent(e) {
+		s.hub.BroadcastCriticalToSession(sessionID, msg)
+		return
+	}
+	s.hub.BroadcastToSession(sessionID, msg)
 }
 
 // Close stops the subscriber goroutine and waits for it to exit.
@@ -110,26 +121,49 @@ func (s *WSV2Subscriber) Close() error {
 
 // wsEnvelope is the wire format for v2 events on the WS channel.
 //
+// SessionID is duplicated at the envelope root so global (session_id=*)
+// subscribers can route without digging into unexported spiritSessionID
+// fields inside the payload (E2E-P1-06).
+//
 // Phase 2 frontend will consume `payload` directly; v1 frontend will ignore
 // events with `type == "v2_event"` (it only recognizes v1 ActivityEvent shapes
 // pushed via the existing activityEventPump in ws_io_pump.go).
 type wsEnvelope struct {
-	Type    string `json:"type"`    // "v2_event" or "v1_activity_event"
-	Kind    string `json:"kind"`    // EventKind value (e.g. "task.created")
-	Payload any    `json:"payload"` // the Event or ActivityEvent
+	Type      string `json:"type"`                 // "v2_event" or "v1_activity_event"
+	Kind      string `json:"kind"`                 // EventKind value (e.g. "task.created")
+	SessionID string `json:"session_id,omitempty"` // SpiritSessionID for routing
+	Payload   any    `json:"payload"`              // the Event or ActivityEvent
 }
 
 // BroadcastToSession enqueues a raw message to all WS connections subscribed to
 // the given session. Implements WSMessageBroadcaster for *WSServer.
 //
-// TODO(Phase 2): Wire WSV2Subscriber into the server lifecycle so this method
-// is exercised in production. Phase 1 ships the subscriber + test standalone.
+// Non-terminal / system messages use the normal lane (DropNewest under load).
 func (s *WSServer) BroadcastToSession(sessionID string, msg []byte) {
 	if s == nil || s.store == nil {
 		return
 	}
 	s.store.forEachConnForSession(sessionID, func(wc *wsConn) {
 		wc.queues.enqueueSystem(msg)
+		wc.wakeWriter()
+	})
+}
+
+// BroadcastCriticalToSession delivers terminal lifecycle events on the high
+// priority lane (BlockUpTo). If the high queue still times out, the connection
+// is closed so the client reconnects and hydrates authoritative state (B-06).
+func (s *WSServer) BroadcastCriticalToSession(sessionID string, msg []byte) {
+	if s == nil || s.store == nil {
+		return
+	}
+	cfg := s.wsConfig()
+	s.store.forEachConnForSession(sessionID, func(wc *wsConn) {
+		if ok := wc.queues.enqueue(cfg, wsPriorityHigh, msg); !ok {
+			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 高优先级队列超时，关闭连接",
+				loggateway.StepID("ws.critical_queue_timeout"))
+			wc.closeSend()
+			return
+		}
 		wc.wakeWriter()
 	})
 }

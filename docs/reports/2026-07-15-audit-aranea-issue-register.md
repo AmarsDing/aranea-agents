@@ -120,3 +120,22 @@
 3. 相关 Proto、Schema、前端类型和三件套同步。
 4. 对 Critical/Blocker 提供故障注入或双租户验证。
 5. 对行为变更定义回滚方式与可观测指标。
+
+## 6. 整改进度（2026-07-16）
+
+> 详细对照与残余见 `docs/reports/2026-07-16-review-b01-b06-cas-remediation.md`。
+
+| ID | 状态 | 说明 |
+|---|---|---|
+| B-01 | 🟡 部分关闭 | JWT `workspace_id` + `admins.workspace_id` 1:1；中间件拒 forge；无 membership 表/RLS |
+| B-02 | ✅ 已修 | SessionAuthorizer；`session_id=*` admin gate |
+| B-03 | ✅ 已修 | 生产 CodeExecutor fail-closed |
+| B-04 | ✅ 已修 | Spirit 不提前 completed |
+| B-05 | ✅ 已修 | PlanBoard 返回更新后的 board |
+| B-06 | 🟡 部分关闭 | 终态 WBPF + WS 高优；重连 REST hydrate；Seq `RestoreAtLeast`；无服务端 cursor replay |
+| B-07 | ✅ 已修 | 前端门禁与 sequencer race 测试修复（以当前 CI 为准） |
+| C-01 | ✅ 已修 | Knowledge workspace stamp/filter/assert |
+| C-13 | ✅ 已修 | session_turns.idempotency_key unique + OnConflict |
+| M-02 | 🟡 契约明确 | `last_event_id` echo-only；客户端 snapshot reconciliation |
+| M-03 | 🟡 部分关闭 | 重连自动 `fetchSessionHistory`；尚无 complete/partial/failed 三态 |
+| Upsert CAS (Task/Turn/Step) | ✅ 已具备 | `VersionLT` 单调守卫 + 三实体回归测试 |

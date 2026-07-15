@@ -27,6 +27,8 @@ type TaskV2 struct {
 	Seq int64 `json:"seq,omitempty"`
 	// Monotonic version for optimistic concurrency (VersionLT)
 	Version int64 `json:"version,omitempty"`
+	// WorkspaceID holds the value of the "workspace_id" field.
+	WorkspaceID string `json:"workspace_id,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -43,7 +45,7 @@ func (*TaskV2) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case taskv2.FieldSeq, taskv2.FieldVersion:
 			values[i] = new(sql.NullInt64)
-		case taskv2.FieldID, taskv2.FieldSessionID, taskv2.FieldUserMessage, taskv2.FieldStatus:
+		case taskv2.FieldID, taskv2.FieldSessionID, taskv2.FieldUserMessage, taskv2.FieldStatus, taskv2.FieldWorkspaceID:
 			values[i] = new(sql.NullString)
 		case taskv2.FieldCreatedAt, taskv2.FieldUpdatedAt, taskv2.FieldCompletedAt:
 			values[i] = new(sql.NullTime)
@@ -97,6 +99,12 @@ func (_m *TaskV2) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field version", values[i])
 			} else if value.Valid {
 				_m.Version = value.Int64
+			}
+		case taskv2.FieldWorkspaceID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field workspace_id", values[i])
+			} else if value.Valid {
+				_m.WorkspaceID = value.String
 			}
 		case taskv2.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -167,6 +175,9 @@ func (_m *TaskV2) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("version=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Version))
+	builder.WriteString(", ")
+	builder.WriteString("workspace_id=")
+	builder.WriteString(_m.WorkspaceID)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

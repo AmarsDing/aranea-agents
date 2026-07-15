@@ -43,6 +43,7 @@ func entSessionTurnToBiz(e *ent.SessionTurn) biz.SessionTurn {
 		ErrorCode:           e.ErrorCode,
 		ErrorMessage:        e.ErrorMessage,
 		MetadataJSON:        e.MetadataJSON,
+		IdempotencyKey:      e.IdempotencyKey,
 		CreatedAt:           e.CreatedAt,
 		UpdatedAt:           e.UpdatedAt,
 	}
@@ -59,7 +60,14 @@ func (r *sessionRepo) CreateSessionTurn(ctx context.Context, turn biz.SessionTur
 			}
 			turn.TurnNumber = maxTurnNumber
 		}
-		row, err := c.SessionTurn.Create().
+		idemKey := strings.TrimSpace(turn.IdempotencyKey)
+		if idemKey == "" {
+			// C-13: empty client keys become id-scoped sentinels so the unique
+			// index never collides across independent turns.
+			idemKey = "__id__:" + turn.ID
+			turn.IdempotencyKey = idemKey
+		}
+		b := c.SessionTurn.Create().
 			SetID(turn.ID).
 			SetSessionID(turn.SessionID).
 			SetRunID(turn.RunID).
@@ -88,11 +96,30 @@ func (r *sessionRepo) CreateSessionTurn(ctx context.Context, turn biz.SessionTur
 			SetErrorCode(turn.ErrorCode).
 			SetErrorMessage(turn.ErrorMessage).
 			SetMetadataJSON(turn.MetadataJSON).
+			SetIdempotencyKey(idemKey).
 			SetCreatedAt(turn.CreatedAt).
 			SetUpdatedAt(turn.UpdatedAt).
-			Save(txCtx)
+			OnConflictColumns(entsessionturn.FieldSessionID, entsessionturn.FieldIdempotencyKey).
+			Ignore()
+
+		id, err := b.ID(txCtx)
 		if err != nil {
-			return err
+			// Conflict path: load the canonical row by unique key.
+			existing, findErr := c.SessionTurn.Query().
+				Where(
+					entsessionturn.SessionID(turn.SessionID),
+					entsessionturn.IdempotencyKey(idemKey),
+				).
+				Only(txCtx)
+			if findErr != nil {
+				return err
+			}
+			saved = entSessionTurnToBiz(existing)
+			return nil
+		}
+		row, findErr := c.SessionTurn.Get(txCtx, id)
+		if findErr != nil {
+			return findErr
 		}
 		saved = entSessionTurnToBiz(row)
 		return nil

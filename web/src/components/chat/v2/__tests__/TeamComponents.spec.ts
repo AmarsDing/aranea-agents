@@ -5,8 +5,7 @@ import { mount } from '@vue/test-utils';
 import { useChatActivityStore } from '../../../../stores/chat/activityV2Store';
 import MemberSessionPanel from '../MemberSessionPanel.vue';
 import TeamRunCard from '../TeamRunCard.vue';
-import TeamStagePanel from '../TeamStagePanel.vue';
-import type { MemberSession, TeamRun, TeamStage } from '../../../../features/chat/v2Types';
+import type { MemberSession, TeamRun } from '../../../../features/chat/v2Types';
 
 describe('v2 Team Components', () => {
   beforeEach(() => setActivePinia(createPinia()));

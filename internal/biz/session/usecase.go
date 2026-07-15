@@ -96,12 +96,16 @@ type SessionSearchQuery struct {
 	ContextStatus string
 	Keyword       string
 	UserID        string
-	Limit         int
-	Offset        int
-	Page          int
-	PageSize      int
-	SortBy        string
-	SortOrder     string
+	// WorkspaceID filters by tenant workspace. Empty = no workspace filter
+	// (used for system callers that bypass tenancy). Set by service layer
+	// via workspace.IDFromContext(ctx); never trust client-supplied values.
+	WorkspaceID string
+	Limit       int
+	Offset      int
+	Page        int
+	PageSize    int
+	SortBy      string
+	SortOrder   string
 }
 
 // SessionListResult is paged session search output.
@@ -295,6 +299,7 @@ type SessionTurn struct {
 	ErrorCode           string
 	ErrorMessage        string
 	MetadataJSON        string
+	IdempotencyKey      string
 	CreatedAt           string
 	UpdatedAt           string
 }

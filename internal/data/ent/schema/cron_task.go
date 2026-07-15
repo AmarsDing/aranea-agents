@@ -31,6 +31,9 @@ func (CronTask) Fields() []ent.Field {
 		field.String("agent_id").Default("").MaxLen(256),
 		field.Text("config_json").Default(""),
 		field.Text("metadata_json").Default(""),
+		// P2-B: tenant isolation. empty = legacy/system-owned (visible to system caller only);
+		// non-empty = tenant-private (visible only to owning workspace).
+		field.String("workspace_id").Default("").MaxLen(128),
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 		field.String("deleted_at").Default(""),
@@ -40,5 +43,7 @@ func (CronTask) Fields() []ent.Field {
 func (CronTask) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("agent_id", "deleted_at").StorageKey("idx_cron_task_agent"),
+		// P2-B: workspace visibility filter.
+		index.Fields("workspace_id", "deleted_at").StorageKey("idx_cron_task_workspace"),
 	}
 }

@@ -60,6 +60,8 @@ export default tseslint.config(
     rules: {
       // Tests use `any` for partial mocks; keep production code strict.
       '@typescript-eslint/no-explicit-any': 'off',
+      // Spec files mount multiple stubs / define inline components.
+      'vue/one-component-per-file': 'off',
     },
   },
 )

@@ -9,6 +9,7 @@ import (
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
@@ -229,9 +230,52 @@ func (s *SessionService) getSessionMetrics(ctx context.Context, sessionID string
 	return metrics
 }
 
+// assertSessionAccess 验证 caller workspace 是否可访问目标 session（P2-C IDOR 防护）。
+// Session 是 tenant-owned 私有数据，使用 workspace.AssertWorkspace（空 resourceWS =
+// DefaultWorkspaceID，私有）。
+//
+// 校验逻辑：
+//  1. sessionID 为空 → 跳过（让 biz 层做参数校验）
+//  2. 系统 caller（workspace.IsSystem）→ 绕过（cron/admin 后台任务）
+//  3. 查 session → session.WorkspaceID；session 不存在或查询失败 → NotFound（不泄露存在性）
+//  4. workspace.AssertWorkspace 校验；不匹配 → NotFound（不泄露存在性）
+func (s *SessionService) assertSessionAccess(ctx context.Context, sessionID string) error {
+	if sessionID == "" {
+		return nil
+	}
+	if workspace.IsSystem(ctx) {
+		return nil
+	}
+	// Unit tests that only wire sessionV2 may leave uc nil; refuse rather than NPE,
+	// and treat as not found so callers don't leak via panic.
+	if s.uc == nil {
+		return apierror.NotFound(apierror.DomainSession, "session not found")
+	}
+	sess, err := s.uc.Get(ctx, sessionID)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return apierror.NotFound(apierror.DomainSession, "session not found")
+		}
+		return err
+	}
+	if err := workspace.AssertWorkspace(workspace.IDFromContext(ctx), sess.WorkspaceID); err != nil {
+		s.lg.Warn("session access denied: workspace mismatch",
+			loggateway.StepID("session.idor"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("caller_ws", workspace.IDFromContext(ctx)))
+		return apierror.NotFound(apierror.DomainSession, "session not found")
+	}
+	return nil
+}
+
 // SearchSessions implements GET /v1/sessions.
 func (s *SessionService) SearchSessions(ctx context.Context, req *v1.SearchSessionsRequest) (*v1.SearchSessionsResponse, error) {
 	q := searchQueryFromProto(req)
+	// P2-C: 系统 caller 看全部；非系统 caller 只看自己 workspace 的 session。
+	// workspace.IsSystem 为 true 时 callerWS 留空，data 层不做 workspace 过滤。
+	if !workspace.IsSystem(ctx) {
+		q.WorkspaceID = workspace.IDFromContext(ctx)
+	}
 	res, err := s.uc.Search(ctx, q)
 	if err != nil {
 		return nil, err
@@ -263,6 +307,11 @@ func (s *SessionService) CreateSession(ctx context.Context, req *v1.CreateSessio
 		TagsJSON:        req.GetTagsJson(),
 		MetadataJSON:    req.GetMetadataJson(),
 	}
+	// P2-C: 租户 caller 创建的 session 绑定到 caller workspace（覆盖客户端传入值）；
+	// 系统 caller 保留 req.WorkspaceId（允许 cron/admin 显式指定目标 workspace）。
+	if !workspace.IsSystem(ctx) {
+		in.WorkspaceID = workspace.IDFromContext(ctx)
+	}
 	created, err := s.uc.Create(ctx, in)
 	if err != nil {
 		return nil, err
@@ -281,6 +330,9 @@ func (s *SessionService) DeleteSessionsByAgent(ctx context.Context, req *v1.Dele
 
 // GetSession implements GET /v1/sessions/{id}.
 func (s *SessionService) GetSession(ctx context.Context, req *v1.GetSessionRequest) (*v1.Session, error) {
+	if err := s.assertSessionAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	out, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
 		return nil, mapSessionErr(err)
@@ -290,6 +342,9 @@ func (s *SessionService) GetSession(ctx context.Context, req *v1.GetSessionReque
 
 // UpdateSession implements PATCH /v1/sessions/{id}.
 func (s *SessionService) UpdateSession(ctx context.Context, req *v1.UpdateSessionRequest) (*v1.Session, error) {
+	if err := s.assertSessionAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	var fields biz.SessionUpdateFields
 	if v := req.GetTitle(); v != "" {
 		fields.Title = &v
@@ -312,6 +367,7 @@ func (s *SessionService) UpdateSession(ctx context.Context, req *v1.UpdateSessio
 	if v := req.GetDefaultModel(); v != "" {
 		fields.DefaultModel = &v
 	}
+	// P2-C: workspace_id immutable — Update 不修改 WorkspaceID（不在 fields 中设置）。
 	out, err := s.uc.Update(ctx, req.GetId(), fields)
 	if err != nil {
 		return nil, mapSessionErr(err)
@@ -322,6 +378,9 @@ func (s *SessionService) UpdateSession(ctx context.Context, req *v1.UpdateSessio
 
 // DeleteSession implements DELETE /v1/sessions/{id}.
 func (s *SessionService) DeleteSession(ctx context.Context, req *v1.DeleteSessionRequest) (*emptypb.Empty, error) {
+	if err := s.assertSessionAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, mapSessionErr(err)
 	}
@@ -331,6 +390,9 @@ func (s *SessionService) DeleteSession(ctx context.Context, req *v1.DeleteSessio
 
 // ArchiveSession implements POST /v1/sessions/{id}/archive.
 func (s *SessionService) ArchiveSession(ctx context.Context, req *v1.ArchiveSessionRequest) (*emptypb.Empty, error) {
+	if err := s.assertSessionAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	if err := s.uc.Archive(ctx, req.GetId()); err != nil {
 		return nil, mapSessionErr(err)
 	}
@@ -340,6 +402,9 @@ func (s *SessionService) ArchiveSession(ctx context.Context, req *v1.ArchiveSess
 
 // RestoreSession implements POST /v1/sessions/{id}/restore.
 func (s *SessionService) RestoreSession(ctx context.Context, req *v1.RestoreSessionRequest) (*v1.Session, error) {
+	if err := s.assertSessionAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	out, err := s.uc.Restore(ctx, req.GetId())
 	if err != nil {
 		return nil, mapSessionErr(err)
@@ -349,6 +414,9 @@ func (s *SessionService) RestoreSession(ctx context.Context, req *v1.RestoreSess
 
 // PinSession implements POST /v1/sessions/{id}/pin.
 func (s *SessionService) PinSession(ctx context.Context, req *v1.PinSessionRequest) (*v1.Session, error) {
+	if err := s.assertSessionAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	out, err := s.uc.Pin(ctx, req.GetId())
 	if err != nil {
 		return nil, mapSessionErr(err)
@@ -359,6 +427,9 @@ func (s *SessionService) PinSession(ctx context.Context, req *v1.PinSessionReque
 
 // UnpinSession implements POST /v1/sessions/{id}/unpin.
 func (s *SessionService) UnpinSession(ctx context.Context, req *v1.UnpinSessionRequest) (*v1.Session, error) {
+	if err := s.assertSessionAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	out, err := s.uc.Unpin(ctx, req.GetId())
 	if err != nil {
 		return nil, mapSessionErr(err)
@@ -395,6 +466,9 @@ func (s *SessionService) ListSessionMessages(ctx context.Context, req *v1.ListSe
 	if sessionID == "" {
 		return nil, apierror.BadRequest("SESSION", "session id is required")
 	}
+	if err := s.assertSessionAccess(ctx, sessionID); err != nil {
+		return nil, err
+	}
 	currentRev, err := s.uc.GetSessionRevision(ctx, sessionID)
 	if err != nil {
 		return nil, mapSessionErr(err)
@@ -423,8 +497,12 @@ func (s *SessionService) ListSessionMessages(ctx context.Context, req *v1.ListSe
 
 // SearchSessionMessages implements GET /v1/sessions/messages/search.
 func (s *SessionService) SearchSessionMessages(ctx context.Context, req *v1.SearchSessionMessagesRequest) (*v1.SearchSessionMessagesResponse, error) {
+	sessionID := strings.TrimSpace(req.GetSessionId())
+	if err := s.assertSessionAccess(ctx, sessionID); err != nil {
+		return nil, err
+	}
 	result, err := s.uc.SearchMessages(ctx, biz.MessageSearchQuery{
-		SessionID: strings.TrimSpace(req.GetSessionId()),
+		SessionID: sessionID,
 		Keyword:   strings.TrimSpace(req.GetKeyword()),
 		Limit:     int(req.GetLimit()),
 		Offset:    int(req.GetOffset()),
@@ -449,6 +527,9 @@ func (s *SessionService) SearchSessionMessages(ctx context.Context, req *v1.Sear
 
 // GetSessionTimeline implements GET /v1/sessions/{id}/timeline.
 func (s *SessionService) GetSessionTimeline(ctx context.Context, req *v1.GetSessionTimelineRequest) (*v1.SessionTimeline, error) {
+	if err := s.assertSessionAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	q := biz.TimelineQuery{
 		Limit:      int(req.GetLimit()),
 		Offset:     int(req.GetOffset()),
@@ -503,6 +584,9 @@ func toProtoSessionTurn(t biz.SessionTurn) *v1.SessionTurn {
 }
 
 func (s *SessionService) ListSessionTurns(ctx context.Context, req *v1.ListSessionTurnsRequest) (*v1.ListSessionTurnsResponse, error) {
+	if err := s.assertSessionAccess(ctx, req.GetSessionId()); err != nil {
+		return nil, err
+	}
 	res, err := s.uc.ListTurns(ctx, req.GetSessionId(), int(req.GetLimit()), int(req.GetOffset()))
 	if err != nil {
 		return nil, mapSessionErr(err)
@@ -517,6 +601,9 @@ func (s *SessionService) ListSessionTurns(ctx context.Context, req *v1.ListSessi
 func (s *SessionService) CompactSession(ctx context.Context, req *v1.CompactSessionRequest) (*v1.CompactSessionResponse, error) {
 	if req.GetSessionId() == "" {
 		return nil, apierror.BadRequest("SESSION", "session_id is required")
+	}
+	if err := s.assertSessionAccess(ctx, req.GetSessionId()); err != nil {
+		return nil, err
 	}
 	result, err := s.compress.CompactSession(ctx, req.GetSessionId(), req.GetPreserveInstruction())
 	if err != nil {
@@ -541,6 +628,9 @@ func (s *SessionService) GetCompressStatus(ctx context.Context, req *v1.GetCompr
 	if sessionID == "" {
 		return nil, apierror.BadRequest("SESSION", "session_id is required")
 	}
+	if err := s.assertSessionAccess(ctx, sessionID); err != nil {
+		return nil, err
+	}
 	status, err := s.compressStatus.CompressStatus(ctx, sessionID)
 	if err != nil {
 		return nil, mapSessionErr(err)
@@ -556,6 +646,9 @@ func (s *SessionService) ListChildSessions(ctx context.Context, req *v1.ListChil
 	parentSessionID := strings.TrimSpace(req.GetParentSessionId())
 	if parentSessionID == "" {
 		return nil, apierror.BadRequest("SESSION", "parent_session_id is required")
+	}
+	if err := s.assertSessionAccess(ctx, parentSessionID); err != nil {
+		return nil, err
 	}
 	sessions, err := s.uc.ListChildSessions(ctx, parentSessionID)
 	if err != nil {
@@ -578,6 +671,9 @@ func (s *SessionService) GetSessionTree(ctx context.Context, req *v1.GetSessionT
 	spiritSessionID := strings.TrimSpace(req.GetSpiritSessionId())
 	if spiritSessionID == "" {
 		return nil, apierror.BadRequest("SESSION", "spirit_session_id is required")
+	}
+	if err := s.assertSessionAccess(ctx, spiritSessionID); err != nil {
+		return nil, err
 	}
 	tree, err := s.uc.GetSessionTree(ctx, spiritSessionID)
 	if err != nil {
@@ -629,6 +725,9 @@ func (s *SessionService) ListActivities(ctx context.Context, req *v1.ListActivit
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
 		return nil, apierror.BadRequest("SESSION", "session_id is required")
+	}
+	if err := s.assertSessionAccess(ctx, sessionID); err != nil {
+		return nil, err
 	}
 
 	resp, err := s.sessionV2.ListSteps(ctx, &v1.ListStepsV2Request{

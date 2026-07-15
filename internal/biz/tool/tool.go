@@ -56,6 +56,10 @@ type Tool struct {
 	UpdatedAt            string
 	DeletedAt            string
 	Permissions          ToolPermissions
+	// WorkspaceID is the owning workspace ID for tenant isolation (P2-B).
+	// empty = shared/legacy (visible to all workspaces, e.g., system builtins);
+	// non-empty = tenant-private (visible only to owning workspace).
+	WorkspaceID string
 }
 
 type ToolPermissions struct {
@@ -81,6 +85,9 @@ type ToolUpsertInput struct {
 	ConfigJSON           string
 	DefaultConfigJSON    string
 	MetadataJSON         string
+	// WorkspaceID is set by the service layer based on caller context (P2-B).
+	// empty = shared/system builtin; non-empty = tenant-private.
+	WorkspaceID string
 }
 
 type ToolListQuery struct {
@@ -92,6 +99,10 @@ type ToolListQuery struct {
 	Sort      string
 	Limit     int
 	Offset    int
+	// WorkspaceID filters by tenant visibility (P2-B).
+	// empty = system caller (see all); non-empty = tenant caller
+	// (see shared with workspace_id="" + own with workspace_id==WorkspaceID).
+	WorkspaceID string
 }
 
 type ToolListResult struct {

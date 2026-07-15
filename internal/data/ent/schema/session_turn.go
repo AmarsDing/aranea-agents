@@ -48,6 +48,9 @@ func (SessionTurn) Fields() []ent.Field {
 		field.String("error_code").Default(""),
 		field.Text("error_message").Default(""),
 		field.Text("metadata_json").Default("{}"),
+		// C-13: client/source-scoped idempotency key. Empty client keys are
+		// stored as "__id__:<turn_id>" so the unique index never collides.
+		field.String("idempotency_key").Default("").MaxLen(512),
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 	}
@@ -55,7 +58,8 @@ func (SessionTurn) Fields() []ent.Field {
 
 func (SessionTurn) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("session_id", "turn_number"),
+		index.Fields("session_id", "turn_number").Unique().StorageKey("idx_session_turns_session_turn_unique"),
+		index.Fields("session_id", "idempotency_key").Unique().StorageKey("idx_session_turns_session_idem"),
 		index.Fields("status", "started_at"),
 		index.Fields("run_id").StorageKey("idx_session_turns_run_id"),
 		index.Fields("agent_id").StorageKey("idx_session_turns_agent_id"),

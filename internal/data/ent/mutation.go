@@ -2429,6 +2429,7 @@ type AdminMutation struct {
 	avatar        *string
 	access        *string
 	password      *string
+	workspace_id  *string
 	create_time   *time.Time
 	update_time   *time.Time
 	clearedFields map[string]struct{}
@@ -2721,6 +2722,42 @@ func (m *AdminMutation) ResetPassword() {
 	m.password = nil
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *AdminMutation) SetWorkspaceID(s string) {
+	m.workspace_id = &s
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *AdminMutation) WorkspaceID() (r string, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the Admin entity.
+// If the Admin object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AdminMutation) OldWorkspaceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *AdminMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
+}
+
 // SetCreateTime sets the "create_time" field.
 func (m *AdminMutation) SetCreateTime(t time.Time) {
 	m.create_time = &t
@@ -2827,7 +2864,7 @@ func (m *AdminMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AdminMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.name != nil {
 		fields = append(fields, admin.FieldName)
 	}
@@ -2842,6 +2879,9 @@ func (m *AdminMutation) Fields() []string {
 	}
 	if m.password != nil {
 		fields = append(fields, admin.FieldPassword)
+	}
+	if m.workspace_id != nil {
+		fields = append(fields, admin.FieldWorkspaceID)
 	}
 	if m.create_time != nil {
 		fields = append(fields, admin.FieldCreateTime)
@@ -2867,6 +2907,8 @@ func (m *AdminMutation) Field(name string) (ent.Value, bool) {
 		return m.Access()
 	case admin.FieldPassword:
 		return m.Password()
+	case admin.FieldWorkspaceID:
+		return m.WorkspaceID()
 	case admin.FieldCreateTime:
 		return m.CreateTime()
 	case admin.FieldUpdateTime:
@@ -2890,6 +2932,8 @@ func (m *AdminMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldAccess(ctx)
 	case admin.FieldPassword:
 		return m.OldPassword(ctx)
+	case admin.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
 	case admin.FieldCreateTime:
 		return m.OldCreateTime(ctx)
 	case admin.FieldUpdateTime:
@@ -2937,6 +2981,13 @@ func (m *AdminMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetPassword(v)
+		return nil
+	case admin.FieldWorkspaceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
 		return nil
 	case admin.FieldCreateTime:
 		v, ok := value.(time.Time)
@@ -3015,6 +3066,9 @@ func (m *AdminMutation) ResetField(name string) error {
 		return nil
 	case admin.FieldPassword:
 		m.ResetPassword()
+		return nil
+	case admin.FieldWorkspaceID:
+		m.ResetWorkspaceID()
 		return nil
 	case admin.FieldCreateTime:
 		m.ResetCreateTime()
@@ -26049,6 +26103,7 @@ type CronTaskMutation struct {
 	agent_id      *string
 	config_json   *string
 	metadata_json *string
+	workspace_id  *string
 	created_at    *string
 	updated_at    *string
 	deleted_at    *string
@@ -26506,6 +26561,42 @@ func (m *CronTaskMutation) ResetMetadataJSON() {
 	m.metadata_json = nil
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *CronTaskMutation) SetWorkspaceID(s string) {
+	m.workspace_id = &s
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *CronTaskMutation) WorkspaceID() (r string, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the CronTask entity.
+// If the CronTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CronTaskMutation) OldWorkspaceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *CronTaskMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *CronTaskMutation) SetCreatedAt(s string) {
 	m.created_at = &s
@@ -26648,7 +26739,7 @@ func (m *CronTaskMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CronTaskMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.task_key != nil {
 		fields = append(fields, crontask.FieldTaskKey)
 	}
@@ -26675,6 +26766,9 @@ func (m *CronTaskMutation) Fields() []string {
 	}
 	if m.metadata_json != nil {
 		fields = append(fields, crontask.FieldMetadataJSON)
+	}
+	if m.workspace_id != nil {
+		fields = append(fields, crontask.FieldWorkspaceID)
 	}
 	if m.created_at != nil {
 		fields = append(fields, crontask.FieldCreatedAt)
@@ -26711,6 +26805,8 @@ func (m *CronTaskMutation) Field(name string) (ent.Value, bool) {
 		return m.ConfigJSON()
 	case crontask.FieldMetadataJSON:
 		return m.MetadataJSON()
+	case crontask.FieldWorkspaceID:
+		return m.WorkspaceID()
 	case crontask.FieldCreatedAt:
 		return m.CreatedAt()
 	case crontask.FieldUpdatedAt:
@@ -26744,6 +26840,8 @@ func (m *CronTaskMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldConfigJSON(ctx)
 	case crontask.FieldMetadataJSON:
 		return m.OldMetadataJSON(ctx)
+	case crontask.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
 	case crontask.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case crontask.FieldUpdatedAt:
@@ -26821,6 +26919,13 @@ func (m *CronTaskMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetMetadataJSON(v)
+		return nil
+	case crontask.FieldWorkspaceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
 		return nil
 	case crontask.FieldCreatedAt:
 		v, ok := value.(string)
@@ -26933,6 +27038,9 @@ func (m *CronTaskMutation) ResetField(name string) error {
 		return nil
 	case crontask.FieldMetadataJSON:
 		m.ResetMetadataJSON()
+		return nil
+	case crontask.FieldWorkspaceID:
+		m.ResetWorkspaceID()
 		return nil
 	case crontask.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -30561,6 +30669,7 @@ type EvalRunMutation struct {
 	error_message           *string
 	started_at              *string
 	finished_at             *string
+	workspace_id            *string
 	created_at              *string
 	clearedFields           map[string]struct{}
 	dataset                 *string
@@ -31469,6 +31578,42 @@ func (m *EvalRunMutation) ResetFinishedAt() {
 	m.finished_at = nil
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *EvalRunMutation) SetWorkspaceID(s string) {
+	m.workspace_id = &s
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *EvalRunMutation) WorkspaceID() (r string, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the EvalRun entity.
+// If the EvalRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EvalRunMutation) OldWorkspaceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *EvalRunMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *EvalRunMutation) SetCreatedAt(s string) {
 	m.created_at = &s
@@ -31620,7 +31765,7 @@ func (m *EvalRunMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *EvalRunMutation) Fields() []string {
-	fields := make([]string, 0, 18)
+	fields := make([]string, 0, 19)
 	if m.dataset != nil {
 		fields = append(fields, evalrun.FieldDatasetID)
 	}
@@ -31672,6 +31817,9 @@ func (m *EvalRunMutation) Fields() []string {
 	if m.finished_at != nil {
 		fields = append(fields, evalrun.FieldFinishedAt)
 	}
+	if m.workspace_id != nil {
+		fields = append(fields, evalrun.FieldWorkspaceID)
+	}
 	if m.created_at != nil {
 		fields = append(fields, evalrun.FieldCreatedAt)
 	}
@@ -31717,6 +31865,8 @@ func (m *EvalRunMutation) Field(name string) (ent.Value, bool) {
 		return m.StartedAt()
 	case evalrun.FieldFinishedAt:
 		return m.FinishedAt()
+	case evalrun.FieldWorkspaceID:
+		return m.WorkspaceID()
 	case evalrun.FieldCreatedAt:
 		return m.CreatedAt()
 	}
@@ -31762,6 +31912,8 @@ func (m *EvalRunMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldStartedAt(ctx)
 	case evalrun.FieldFinishedAt:
 		return m.OldFinishedAt(ctx)
+	case evalrun.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
 	case evalrun.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	}
@@ -31891,6 +32043,13 @@ func (m *EvalRunMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetFinishedAt(v)
+		return nil
+	case evalrun.FieldWorkspaceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
 		return nil
 	case evalrun.FieldCreatedAt:
 		v, ok := value.(string)
@@ -32109,6 +32268,9 @@ func (m *EvalRunMutation) ResetField(name string) error {
 		return nil
 	case evalrun.FieldFinishedAt:
 		m.ResetFinishedAt()
+		return nil
+	case evalrun.FieldWorkspaceID:
+		m.ResetWorkspaceID()
 		return nil
 	case evalrun.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -78374,6 +78536,7 @@ type SessionTurnMutation struct {
 	error_code              *string
 	error_message           *string
 	metadata_json           *string
+	idempotency_key         *string
 	created_at              *string
 	updated_at              *string
 	clearedFields           map[string]struct{}
@@ -79678,6 +79841,42 @@ func (m *SessionTurnMutation) ResetMetadataJSON() {
 	m.metadata_json = nil
 }
 
+// SetIdempotencyKey sets the "idempotency_key" field.
+func (m *SessionTurnMutation) SetIdempotencyKey(s string) {
+	m.idempotency_key = &s
+}
+
+// IdempotencyKey returns the value of the "idempotency_key" field in the mutation.
+func (m *SessionTurnMutation) IdempotencyKey() (r string, exists bool) {
+	v := m.idempotency_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIdempotencyKey returns the old "idempotency_key" field's value of the SessionTurn entity.
+// If the SessionTurn object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SessionTurnMutation) OldIdempotencyKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIdempotencyKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIdempotencyKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIdempotencyKey: %w", err)
+	}
+	return oldValue.IdempotencyKey, nil
+}
+
+// ResetIdempotencyKey resets all changes to the "idempotency_key" field.
+func (m *SessionTurnMutation) ResetIdempotencyKey() {
+	m.idempotency_key = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *SessionTurnMutation) SetCreatedAt(s string) {
 	m.created_at = &s
@@ -79784,7 +79983,7 @@ func (m *SessionTurnMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SessionTurnMutation) Fields() []string {
-	fields := make([]string, 0, 29)
+	fields := make([]string, 0, 30)
 	if m.session_id != nil {
 		fields = append(fields, sessionturn.FieldSessionID)
 	}
@@ -79866,6 +80065,9 @@ func (m *SessionTurnMutation) Fields() []string {
 	if m.metadata_json != nil {
 		fields = append(fields, sessionturn.FieldMetadataJSON)
 	}
+	if m.idempotency_key != nil {
+		fields = append(fields, sessionturn.FieldIdempotencyKey)
+	}
 	if m.created_at != nil {
 		fields = append(fields, sessionturn.FieldCreatedAt)
 	}
@@ -79934,6 +80136,8 @@ func (m *SessionTurnMutation) Field(name string) (ent.Value, bool) {
 		return m.ErrorMessage()
 	case sessionturn.FieldMetadataJSON:
 		return m.MetadataJSON()
+	case sessionturn.FieldIdempotencyKey:
+		return m.IdempotencyKey()
 	case sessionturn.FieldCreatedAt:
 		return m.CreatedAt()
 	case sessionturn.FieldUpdatedAt:
@@ -80001,6 +80205,8 @@ func (m *SessionTurnMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldErrorMessage(ctx)
 	case sessionturn.FieldMetadataJSON:
 		return m.OldMetadataJSON(ctx)
+	case sessionturn.FieldIdempotencyKey:
+		return m.OldIdempotencyKey(ctx)
 	case sessionturn.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case sessionturn.FieldUpdatedAt:
@@ -80202,6 +80408,13 @@ func (m *SessionTurnMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetMetadataJSON(v)
+		return nil
+	case sessionturn.FieldIdempotencyKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIdempotencyKey(v)
 		return nil
 	case sessionturn.FieldCreatedAt:
 		v, ok := value.(string)
@@ -80481,6 +80694,9 @@ func (m *SessionTurnMutation) ResetField(name string) error {
 		return nil
 	case sessionturn.FieldMetadataJSON:
 		m.ResetMetadataJSON()
+		return nil
+	case sessionturn.FieldIdempotencyKey:
+		m.ResetIdempotencyKey()
 		return nil
 	case sessionturn.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -90687,6 +90903,7 @@ type TaskPlanMutation struct {
 	topology_hint        *string
 	memory_hit_json      *string
 	status               *string
+	workspace_id         *string
 	created_at           *string
 	updated_at           *string
 	clearedFields        map[string]struct{}
@@ -91359,6 +91576,42 @@ func (m *TaskPlanMutation) ResetStatus() {
 	m.status = nil
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *TaskPlanMutation) SetWorkspaceID(s string) {
+	m.workspace_id = &s
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *TaskPlanMutation) WorkspaceID() (r string, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the TaskPlan entity.
+// If the TaskPlan object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaskPlanMutation) OldWorkspaceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *TaskPlanMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *TaskPlanMutation) SetCreatedAt(s string) {
 	m.created_at = &s
@@ -91465,7 +91718,7 @@ func (m *TaskPlanMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TaskPlanMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 18)
 	if m.spirit_session_id != nil {
 		fields = append(fields, taskplan.FieldSpiritSessionID)
 	}
@@ -91511,6 +91764,9 @@ func (m *TaskPlanMutation) Fields() []string {
 	if m.status != nil {
 		fields = append(fields, taskplan.FieldStatus)
 	}
+	if m.workspace_id != nil {
+		fields = append(fields, taskplan.FieldWorkspaceID)
+	}
 	if m.created_at != nil {
 		fields = append(fields, taskplan.FieldCreatedAt)
 	}
@@ -91555,6 +91811,8 @@ func (m *TaskPlanMutation) Field(name string) (ent.Value, bool) {
 		return m.MemoryHitJSON()
 	case taskplan.FieldStatus:
 		return m.Status()
+	case taskplan.FieldWorkspaceID:
+		return m.WorkspaceID()
 	case taskplan.FieldCreatedAt:
 		return m.CreatedAt()
 	case taskplan.FieldUpdatedAt:
@@ -91598,6 +91856,8 @@ func (m *TaskPlanMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldMemoryHitJSON(ctx)
 	case taskplan.FieldStatus:
 		return m.OldStatus(ctx)
+	case taskplan.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
 	case taskplan.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case taskplan.FieldUpdatedAt:
@@ -91715,6 +91975,13 @@ func (m *TaskPlanMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case taskplan.FieldWorkspaceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
 		return nil
 	case taskplan.FieldCreatedAt:
 		v, ok := value.(string)
@@ -91839,6 +92106,9 @@ func (m *TaskPlanMutation) ResetField(name string) error {
 	case taskplan.FieldStatus:
 		m.ResetStatus()
 		return nil
+	case taskplan.FieldWorkspaceID:
+		m.ResetWorkspaceID()
+		return nil
 	case taskplan.FieldCreatedAt:
 		m.ResetCreatedAt()
 		return nil
@@ -91910,6 +92180,7 @@ type TaskV2Mutation struct {
 	addseq        *int64
 	version       *int64
 	addversion    *int64
+	workspace_id  *string
 	created_at    *time.Time
 	updated_at    *time.Time
 	completed_at  *time.Time
@@ -92243,6 +92514,42 @@ func (m *TaskV2Mutation) ResetVersion() {
 	m.addversion = nil
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *TaskV2Mutation) SetWorkspaceID(s string) {
+	m.workspace_id = &s
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *TaskV2Mutation) WorkspaceID() (r string, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the TaskV2 entity.
+// If the TaskV2 object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TaskV2Mutation) OldWorkspaceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *TaskV2Mutation) ResetWorkspaceID() {
+	m.workspace_id = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *TaskV2Mutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -92398,7 +92705,7 @@ func (m *TaskV2Mutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TaskV2Mutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
 	if m.session_id != nil {
 		fields = append(fields, taskv2.FieldSessionID)
 	}
@@ -92413,6 +92720,9 @@ func (m *TaskV2Mutation) Fields() []string {
 	}
 	if m.version != nil {
 		fields = append(fields, taskv2.FieldVersion)
+	}
+	if m.workspace_id != nil {
+		fields = append(fields, taskv2.FieldWorkspaceID)
 	}
 	if m.created_at != nil {
 		fields = append(fields, taskv2.FieldCreatedAt)
@@ -92441,6 +92751,8 @@ func (m *TaskV2Mutation) Field(name string) (ent.Value, bool) {
 		return m.Seq()
 	case taskv2.FieldVersion:
 		return m.Version()
+	case taskv2.FieldWorkspaceID:
+		return m.WorkspaceID()
 	case taskv2.FieldCreatedAt:
 		return m.CreatedAt()
 	case taskv2.FieldUpdatedAt:
@@ -92466,6 +92778,8 @@ func (m *TaskV2Mutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldSeq(ctx)
 	case taskv2.FieldVersion:
 		return m.OldVersion(ctx)
+	case taskv2.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
 	case taskv2.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case taskv2.FieldUpdatedAt:
@@ -92515,6 +92829,13 @@ func (m *TaskV2Mutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetVersion(v)
+		return nil
+	case taskv2.FieldWorkspaceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
 		return nil
 	case taskv2.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -92636,6 +92957,9 @@ func (m *TaskV2Mutation) ResetField(name string) error {
 		return nil
 	case taskv2.FieldVersion:
 		m.ResetVersion()
+		return nil
+	case taskv2.FieldWorkspaceID:
+		m.ResetWorkspaceID()
 		return nil
 	case taskv2.FieldCreatedAt:
 		m.ResetCreatedAt()

@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { useChatActivityStore } from '../../../../stores/chat/activityV2Store';
 import { useTaskTree } from '../useTaskTree';
-import type { Task, Turn, Step } from '../../v2Types';
+import type { Task } from '../../v2Types';
 
 describe('useTaskTree', () => {
   let store: ReturnType<typeof useChatActivityStore>;

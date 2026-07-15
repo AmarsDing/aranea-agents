@@ -330,6 +330,20 @@ func (_u *EvalRunUpdate) SetNillableFinishedAt(v *string) *EvalRunUpdate {
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *EvalRunUpdate) SetWorkspaceID(v string) *EvalRunUpdate {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *EvalRunUpdate) SetNillableWorkspaceID(v *string) *EvalRunUpdate {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *EvalRunUpdate) SetCreatedAt(v string) *EvalRunUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -425,6 +439,11 @@ func (_u *EvalRunUpdate) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *EvalRunUpdate) check() error {
+	if v, ok := _u.mutation.WorkspaceID(); ok {
+		if err := evalrun.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "EvalRun.workspace_id": %w`, err)}
+		}
+	}
 	if _u.mutation.DatasetCleared() && len(_u.mutation.DatasetIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "EvalRun.dataset"`)
 	}
@@ -517,6 +536,9 @@ func (_u *EvalRunUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.FinishedAt(); ok {
 		_spec.SetField(evalrun.FieldFinishedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(evalrun.FieldWorkspaceID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(evalrun.FieldCreatedAt, field.TypeString, value)
@@ -916,6 +938,20 @@ func (_u *EvalRunUpdateOne) SetNillableFinishedAt(v *string) *EvalRunUpdateOne {
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *EvalRunUpdateOne) SetWorkspaceID(v string) *EvalRunUpdateOne {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *EvalRunUpdateOne) SetNillableWorkspaceID(v *string) *EvalRunUpdateOne {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *EvalRunUpdateOne) SetCreatedAt(v string) *EvalRunUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -1024,6 +1060,11 @@ func (_u *EvalRunUpdateOne) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *EvalRunUpdateOne) check() error {
+	if v, ok := _u.mutation.WorkspaceID(); ok {
+		if err := evalrun.WorkspaceIDValidator(v); err != nil {
+			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "EvalRun.workspace_id": %w`, err)}
+		}
+	}
 	if _u.mutation.DatasetCleared() && len(_u.mutation.DatasetIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "EvalRun.dataset"`)
 	}
@@ -1133,6 +1174,9 @@ func (_u *EvalRunUpdateOne) sqlSave(ctx context.Context) (_node *EvalRun, err er
 	}
 	if value, ok := _u.mutation.FinishedAt(); ok {
 		_spec.SetField(evalrun.FieldFinishedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(evalrun.FieldWorkspaceID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(evalrun.FieldCreatedAt, field.TypeString, value)

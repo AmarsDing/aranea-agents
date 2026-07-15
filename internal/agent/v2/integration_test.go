@@ -228,11 +228,15 @@ func TestEndToEnd_CancelledTurnMarksCancelledStatus(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Verify persisted Turn has Status=cancelled.
+	// Pick the highest Version for each ID: non-terminal events persist via
+	// async persistChan and may land AFTER a terminal sync WBPF upsert when
+	// reading by append order (C-15). Version-monotonic selection matches
+	// production CAS semantics.
 	rs.mu.Lock()
 	var lastTurn biz.Turn
 	var hasTurn bool
 	for i := range rs.turns {
-		if rs.turns[i].ID == "turn-cancel" {
+		if rs.turns[i].ID == "turn-cancel" && (!hasTurn || rs.turns[i].Version >= lastTurn.Version) {
 			lastTurn = rs.turns[i]
 			hasTurn = true
 		}
@@ -240,7 +244,7 @@ func TestEndToEnd_CancelledTurnMarksCancelledStatus(t *testing.T) {
 	var lastTask biz.Task
 	var hasTask bool
 	for i := range rs.tasks {
-		if rs.tasks[i].ID == "task-cancel" {
+		if rs.tasks[i].ID == "task-cancel" && (!hasTask || rs.tasks[i].Version >= lastTask.Version) {
 			lastTask = rs.tasks[i]
 			hasTask = true
 		}
@@ -250,13 +254,13 @@ func TestEndToEnd_CancelledTurnMarksCancelledStatus(t *testing.T) {
 		t.Fatalf("no turn persisted for turn-cancel")
 	}
 	if lastTurn.Status != biz.TurnStatusCancelled {
-		t.Errorf("cancelled turn Status = %q, want %q", lastTurn.Status, biz.TurnStatusCancelled)
+		t.Errorf("cancelled turn Status = %q, want %q (version=%d)", lastTurn.Status, biz.TurnStatusCancelled, lastTurn.Version)
 	}
 	if !hasTask {
 		t.Fatalf("no task persisted for task-cancel")
 	}
 	if lastTask.Status != biz.TaskStatusCancelled {
-		t.Errorf("cancelled task Status = %q, want %q", lastTask.Status, biz.TaskStatusCancelled)
+		t.Errorf("cancelled task Status = %q, want %q (version=%d)", lastTask.Status, biz.TaskStatusCancelled, lastTask.Version)
 	}
 
 	// Verify published events carry cancelled status.

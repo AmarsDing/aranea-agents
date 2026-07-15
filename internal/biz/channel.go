@@ -43,6 +43,10 @@ type Channel struct {
 	CreatedAt    string
 	UpdatedAt    string
 	DeletedAt    string
+	// WorkspaceID is the owning workspace ID for tenant isolation (P2-B).
+	// empty = shared/legacy (visible to all workspaces, e.g., system builtins);
+	// non-empty = tenant-private (visible only to owning workspace).
+	WorkspaceID string
 }
 
 type ChannelTypeItem struct {
