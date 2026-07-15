@@ -263,7 +263,6 @@ jobs:
         run: |
           .\scripts\build-package.ps1 `
             -Version ${{ steps.version.outputs.version }} `
-            -DepsDir build/deps `
             -SkipDepsDownload `
             -SkipBackend `
             -SkipFrontend `
