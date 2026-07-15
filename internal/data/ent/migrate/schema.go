@@ -1788,6 +1788,7 @@ var (
 		{Name: "created_at", Type: field.TypeString, Default: ""},
 		{Name: "updated_at", Type: field.TypeString, Default: ""},
 		{Name: "deleted_at", Type: field.TypeString, Default: ""},
+		{Name: "workspace_id", Type: field.TypeString, Default: ""},
 	}
 	// ChannelTable holds the schema information for the "channel" table.
 	ChannelTable = &schema.Table{
@@ -1804,6 +1805,11 @@ var (
 				Name:    "idx_channel_deleted_at",
 				Unique:  false,
 				Columns: []*schema.Column{ChannelColumns[11]},
+			},
+			{
+				Name:    "platformchannel_workspace_id_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelColumns[12], ChannelColumns[5]},
 			},
 		},
 	}
@@ -1931,6 +1937,7 @@ var (
 		{Name: "created_at", Type: field.TypeString, Default: ""},
 		{Name: "updated_at", Type: field.TypeString, Default: ""},
 		{Name: "deleted_at", Type: field.TypeString, Default: ""},
+		{Name: "workspace_id", Type: field.TypeString, Default: ""},
 	}
 	// McpServerTable holds the schema information for the "mcp_server" table.
 	McpServerTable = &schema.Table{
@@ -1947,6 +1954,11 @@ var (
 				Name:    "idx_mcp_server_deleted_at",
 				Unique:  false,
 				Columns: []*schema.Column{McpServerColumns[11]},
+			},
+			{
+				Name:    "platformmcpserver_workspace_id_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{McpServerColumns[12], McpServerColumns[5]},
 			},
 		},
 	}
@@ -2048,12 +2060,20 @@ var (
 		{Name: "parent_version_id", Type: field.TypeString, Size: 256, Default: ""},
 		{Name: "evolution_reason", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "lifecycle_status", Type: field.TypeString, Size: 64, Default: "active"},
+		{Name: "workspace_id", Type: field.TypeString, Default: ""},
 	}
 	// SkillTable holds the schema information for the "skill" table.
 	SkillTable = &schema.Table{
 		Name:       "skill",
 		Columns:    SkillColumns,
 		PrimaryKey: []*schema.Column{SkillColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "platformskill_workspace_id_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{SkillColumns[26], SkillColumns[5]},
+			},
+		},
 	}
 	// ToolsColumns holds the columns for the "tools" table.
 	ToolsColumns = []*schema.Column{
@@ -2078,6 +2098,7 @@ var (
 		{Name: "created_at", Type: field.TypeString, Default: ""},
 		{Name: "updated_at", Type: field.TypeString, Default: ""},
 		{Name: "deleted_at", Type: field.TypeString, Default: ""},
+		{Name: "workspace_id", Type: field.TypeString, Default: ""},
 	}
 	// ToolsTable holds the schema information for the "tools" table.
 	ToolsTable = &schema.Table{
@@ -2109,6 +2130,11 @@ var (
 				Name:    "idx_tools_cat_enabled_deleted",
 				Unique:  false,
 				Columns: []*schema.Column{ToolsColumns[4], ToolsColumns[7], ToolsColumns[20]},
+			},
+			{
+				Name:    "platformtool_workspace_id_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{ToolsColumns[21], ToolsColumns[7]},
 			},
 		},
 	}

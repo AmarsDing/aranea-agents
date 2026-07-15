@@ -2,6 +2,7 @@ package biz
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"aranea-agents/pkg/loggateway"
@@ -15,6 +16,15 @@ const (
 	GraphMaxVersionHistory         = 50
 	UserTemplateIDPrefix           = "user:"
 )
+
+// ParseUserTemplateID extracts the underlying graph ID from a user template ID.
+// Returns (graphID, true) if templateID has the UserTemplateIDPrefix; (("", false) otherwise.
+func ParseUserTemplateID(templateID string) (string, bool) {
+	if !strings.HasPrefix(templateID, UserTemplateIDPrefix) {
+		return "", false
+	}
+	return strings.TrimPrefix(templateID, UserTemplateIDPrefix), true
+}
 
 type GraphVersionEntry struct {
 	Version  int              `json:"version"`

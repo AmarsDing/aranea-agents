@@ -33,6 +33,9 @@ func (PlatformChannel) Fields() []ent.Field {
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 		field.String("deleted_at").Default(""),
+		// P2-B: tenant isolation. empty = shared/legacy (visible to all workspaces);
+		// non-empty = tenant-private (visible only to owning workspace).
+		field.String("workspace_id").Default("").Comment("owning workspace ID; empty = shared/system builtin"),
 	}
 }
 
@@ -40,5 +43,7 @@ func (PlatformChannel) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("status", "enabled").StorageKey("idx_channel_status_enabled"),
 		index.Fields("deleted_at").StorageKey("idx_channel_deleted_at"),
+		// P2-B: tenant isolation index — filter channels by workspace visibility.
+		index.Fields("workspace_id", "enabled"),
 	}
 }

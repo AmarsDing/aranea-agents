@@ -68,6 +68,7 @@ func entTeamToBiz(e *ent.Team, lg loggateway.Logger) biz.Team {
 		CreatedAt:          e.CreatedAt,
 		UpdatedAt:          e.UpdatedAt,
 		DeletedAt:          e.DeletedAt,
+		WorkspaceID:        e.WorkspaceID,
 	}
 }
 
@@ -158,6 +159,31 @@ func (r *TeamRepo) ListTeams(ctx context.Context) ([]biz.Team, error) {
 	return out, nil
 }
 
+// ListTeamsByWorkspace returns teams visible to the given workspace (P2-B).
+// empty workspaceID = system caller (see all); non-empty = tenant caller
+// (see shared where workspace_id="" + own where workspace_id=caller).
+func (r *TeamRepo) ListTeamsByWorkspace(ctx context.Context, workspaceID string) ([]biz.Team, error) {
+	c := r.data.RW().Read(ctx)
+	query := c.Team.Query().Where(team.DeletedAtEQ(""))
+	if workspaceID != "" {
+		query = query.Where(team.Or(
+			team.WorkspaceIDEQ(""),
+			team.WorkspaceIDEQ(workspaceID),
+		))
+	}
+	rows, err := query.
+		Order(team.ByIsDefault(entsql.OrderDesc()), team.ByCreatedAt(entsql.OrderDesc())).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, "TEAM")
+	}
+	out := make([]biz.Team, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entTeamToBiz(row, r.data.lg))
+	}
+	return out, nil
+}
+
 func (r *TeamRepo) GetTeamByID(ctx context.Context, id string) (biz.Team, error) {
 	c := r.data.RW().Read(ctx)
 	row, err := c.Team.Query().Where(team.IDEQ(id), team.DeletedAtEQ("")).Only(ctx)
@@ -234,6 +260,7 @@ func (r *TeamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 		SetCreatedAt(t.CreatedAt).
 		SetUpdatedAt(t.UpdatedAt).
 		SetDeletedAt(t.DeletedAt).
+		SetWorkspaceID(t.WorkspaceID).
 		Save(ctx)
 	if err != nil {
 		return biz.Team{}, entErrToBizErr(err, "TEAM")

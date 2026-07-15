@@ -55,11 +55,20 @@ func entToBizPlugin(lg loggateway.Logger, e *ent.PlatformPlugin) biz.Plugin {
 		CreatedAt:         e.CreatedAt,
 		UpdatedAt:         e.UpdatedAt,
 		Permissions:       biz.AdminPluginPerms(),
+		WorkspaceID:       e.WorkspaceID, // P2-B: tenant isolation
 	}
 }
 
 func (r *pluginRepo) pluginSearchQuery(ctx context.Context, q biz.PluginListQuery) *ent.PlatformPluginQuery {
 	pq := r.data.RW().Read(ctx).PlatformPlugin.Query().Where(platformplugin.DeletedAtEQ(""))
+	// P2-B: workspace visibility filter.
+	// empty WorkspaceID = system caller (see all); non-empty = tenant caller (shared + own).
+	if ws := strings.TrimSpace(q.WorkspaceID); ws != "" {
+		pq = pq.Where(platformplugin.Or(
+			platformplugin.WorkspaceIDEQ(""),
+			platformplugin.WorkspaceIDEQ(ws),
+		))
+	}
 	if s := strings.TrimSpace(q.Search); s != "" {
 		pq = pq.Where(
 			platformplugin.Or(
@@ -161,6 +170,7 @@ func (r *pluginRepo) CreatePlugin(ctx context.Context, p biz.Plugin) (biz.Plugin
 		SetCreatedAt(now).
 		SetUpdatedAt(now).
 		SetDeletedAt("").
+		SetWorkspaceID(p.WorkspaceID). // P2-B: tenant isolation
 		Save(ctx)
 	if err != nil {
 		return biz.Plugin{}, err

@@ -55,7 +55,9 @@ type PlatformTool struct {
 	// UpdatedAt holds the value of the "updated_at" field.
 	UpdatedAt string `json:"updated_at,omitempty"`
 	// DeletedAt holds the value of the "deleted_at" field.
-	DeletedAt    string `json:"deleted_at,omitempty"`
+	DeletedAt string `json:"deleted_at,omitempty"`
+	// owning workspace ID; empty = shared/system builtin
+	WorkspaceID  string `json:"workspace_id,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -66,7 +68,7 @@ func (*PlatformTool) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case platformtool.FieldEnabled, platformtool.FieldReadonly, platformtool.FieldRequiresConfirmation, platformtool.FieldSupportsStreaming, platformtool.FieldSupportsConcurrency:
 			values[i] = new(sql.NullBool)
-		case platformtool.FieldID, platformtool.FieldToolKey, platformtool.FieldDisplayName, platformtool.FieldDescription, platformtool.FieldCategory, platformtool.FieldSource, platformtool.FieldRiskLevel, platformtool.FieldParametersSchemaJSON, platformtool.FieldResultSchemaJSON, platformtool.FieldConfigSchemaJSON, platformtool.FieldConfigJSON, platformtool.FieldFallbackConfigJSON, platformtool.FieldMetadataJSON, platformtool.FieldCreatedAt, platformtool.FieldUpdatedAt, platformtool.FieldDeletedAt:
+		case platformtool.FieldID, platformtool.FieldToolKey, platformtool.FieldDisplayName, platformtool.FieldDescription, platformtool.FieldCategory, platformtool.FieldSource, platformtool.FieldRiskLevel, platformtool.FieldParametersSchemaJSON, platformtool.FieldResultSchemaJSON, platformtool.FieldConfigSchemaJSON, platformtool.FieldConfigJSON, platformtool.FieldFallbackConfigJSON, platformtool.FieldMetadataJSON, platformtool.FieldCreatedAt, platformtool.FieldUpdatedAt, platformtool.FieldDeletedAt, platformtool.FieldWorkspaceID:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -209,6 +211,12 @@ func (_m *PlatformTool) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.DeletedAt = value.String
 			}
+		case platformtool.FieldWorkspaceID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field workspace_id", values[i])
+			} else if value.Valid {
+				_m.WorkspaceID = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -304,6 +312,9 @@ func (_m *PlatformTool) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("deleted_at=")
 	builder.WriteString(_m.DeletedAt)
+	builder.WriteString(", ")
+	builder.WriteString("workspace_id=")
+	builder.WriteString(_m.WorkspaceID)
 	builder.WriteByte(')')
 	return builder.String()
 }

@@ -66,7 +66,9 @@ type PlatformSkill struct {
 	EvolutionReason string `json:"evolution_reason,omitempty"`
 	// LifecycleStatus holds the value of the "lifecycle_status" field.
 	LifecycleStatus string `json:"lifecycle_status,omitempty"`
-	selectValues    sql.SelectValues
+	// owning workspace ID; empty = shared/system builtin
+	WorkspaceID  string `json:"workspace_id,omitempty"`
+	selectValues sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -78,7 +80,7 @@ func (*PlatformSkill) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case platformskill.FieldSortOrder:
 			values[i] = new(sql.NullInt64)
-		case platformskill.FieldID, platformskill.FieldSkillKey, platformskill.FieldName, platformskill.FieldDescription, platformskill.FieldStatus, platformskill.FieldConfigJSON, platformskill.FieldMetadataJSON, platformskill.FieldCreatedAt, platformskill.FieldUpdatedAt, platformskill.FieldDeletedAt, platformskill.FieldParentID, platformskill.FieldLevel, platformskill.FieldAgentID, platformskill.FieldProvider, platformskill.FieldModel, platformskill.FieldKind, platformskill.FieldRiskLevel, platformskill.FieldEntryPath, platformskill.FieldVisibility, platformskill.FieldFallbackConfigJSON, platformskill.FieldParentVersionID, platformskill.FieldEvolutionReason, platformskill.FieldLifecycleStatus:
+		case platformskill.FieldID, platformskill.FieldSkillKey, platformskill.FieldName, platformskill.FieldDescription, platformskill.FieldStatus, platformskill.FieldConfigJSON, platformskill.FieldMetadataJSON, platformskill.FieldCreatedAt, platformskill.FieldUpdatedAt, platformskill.FieldDeletedAt, platformskill.FieldParentID, platformskill.FieldLevel, platformskill.FieldAgentID, platformskill.FieldProvider, platformskill.FieldModel, platformskill.FieldKind, platformskill.FieldRiskLevel, platformskill.FieldEntryPath, platformskill.FieldVisibility, platformskill.FieldFallbackConfigJSON, platformskill.FieldParentVersionID, platformskill.FieldEvolutionReason, platformskill.FieldLifecycleStatus, platformskill.FieldWorkspaceID:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -251,6 +253,12 @@ func (_m *PlatformSkill) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.LifecycleStatus = value.String
 			}
+		case platformskill.FieldWorkspaceID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field workspace_id", values[i])
+			} else if value.Valid {
+				_m.WorkspaceID = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -361,6 +369,9 @@ func (_m *PlatformSkill) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("lifecycle_status=")
 	builder.WriteString(_m.LifecycleStatus)
+	builder.WriteString(", ")
+	builder.WriteString("workspace_id=")
+	builder.WriteString(_m.WorkspaceID)
 	builder.WriteByte(')')
 	return builder.String()
 }

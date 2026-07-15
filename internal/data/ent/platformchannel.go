@@ -37,7 +37,9 @@ type PlatformChannel struct {
 	// UpdatedAt holds the value of the "updated_at" field.
 	UpdatedAt string `json:"updated_at,omitempty"`
 	// DeletedAt holds the value of the "deleted_at" field.
-	DeletedAt    string `json:"deleted_at,omitempty"`
+	DeletedAt string `json:"deleted_at,omitempty"`
+	// owning workspace ID; empty = shared/system builtin
+	WorkspaceID  string `json:"workspace_id,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -50,7 +52,7 @@ func (*PlatformChannel) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case platformchannel.FieldSortOrder:
 			values[i] = new(sql.NullInt64)
-		case platformchannel.FieldID, platformchannel.FieldChannelKey, platformchannel.FieldName, platformchannel.FieldDescription, platformchannel.FieldStatus, platformchannel.FieldConfigJSON, platformchannel.FieldMetadataJSON, platformchannel.FieldCreatedAt, platformchannel.FieldUpdatedAt, platformchannel.FieldDeletedAt:
+		case platformchannel.FieldID, platformchannel.FieldChannelKey, platformchannel.FieldName, platformchannel.FieldDescription, platformchannel.FieldStatus, platformchannel.FieldConfigJSON, platformchannel.FieldMetadataJSON, platformchannel.FieldCreatedAt, platformchannel.FieldUpdatedAt, platformchannel.FieldDeletedAt, platformchannel.FieldWorkspaceID:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -139,6 +141,12 @@ func (_m *PlatformChannel) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.DeletedAt = value.String
 			}
+		case platformchannel.FieldWorkspaceID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field workspace_id", values[i])
+			} else if value.Valid {
+				_m.WorkspaceID = value.String
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -207,6 +215,9 @@ func (_m *PlatformChannel) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("deleted_at=")
 	builder.WriteString(_m.DeletedAt)
+	builder.WriteString(", ")
+	builder.WriteString("workspace_id=")
+	builder.WriteString(_m.WorkspaceID)
 	builder.WriteByte(')')
 	return builder.String()
 }

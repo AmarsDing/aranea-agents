@@ -146,8 +146,11 @@ type GraphDefinition struct {
 	VerificationGates string // JSON array of VerificationGate
 	TeamID            string // owning team ID (empty for template graphs)
 	IsTemplate        bool   // whether this graph is a reusable template
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	// WorkspaceID is the owning workspace ID for tenant isolation (P2-B).
+	// empty = shared/legacy (visible to all workspaces); non-empty = tenant-private.
+	WorkspaceID string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type GraphExecution struct {
@@ -296,6 +299,13 @@ type GraphReader interface {
 	GetDefinitionByName(ctx context.Context, name string) (*GraphDefinition, error)
 	ListDefinitions(ctx context.Context, pageSize int, pageToken string) ([]*GraphDefinition, string, error)
 	ListUserTemplateDefinitions(ctx context.Context, pageSize int) ([]*GraphDefinition, error)
+	// ListDefinitionsByWorkspace returns graph definitions visible to the given workspace (P2-B).
+	// empty workspaceID = system caller (see all); non-empty = tenant caller
+	// (see shared + own). Stability:stable
+	ListDefinitionsByWorkspace(ctx context.Context, pageSize int, pageToken string, workspaceID string) ([]*GraphDefinition, string, error)
+	// ListUserTemplateDefinitionsByWorkspace returns user template graph definitions
+	// visible to the given workspace (P2-B). Stability:stable
+	ListUserTemplateDefinitionsByWorkspace(ctx context.Context, pageSize int, workspaceID string) ([]*GraphDefinition, error)
 }
 
 // GraphWriter provides write access to graph definitions.
@@ -460,6 +470,11 @@ func (uc *GraphUsecase) ListGraphs(ctx context.Context, pageSize int, pageToken 
 	return uc.defUC.ListGraphs(ctx, pageSize, pageToken)
 }
 
+// ListGraphsByWorkspace returns graph definitions visible to the given workspace (P2-B).
+func (uc *GraphUsecase) ListGraphsByWorkspace(ctx context.Context, pageSize int, pageToken string, workspaceID string) ([]*GraphDefinition, string, error) {
+	return uc.defUC.ListGraphsByWorkspace(ctx, pageSize, pageToken, workspaceID)
+}
+
 func (uc *GraphUsecase) UpdateGraph(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error) {
 	return uc.defUC.UpdateGraph(ctx, def)
 }
@@ -484,16 +499,16 @@ func (uc *GraphUsecase) ListGraphTemplates(ctx context.Context) []GraphTemplateR
 	return uc.defUC.ListGraphTemplates(ctx)
 }
 
-func (uc *GraphUsecase) CreateGraphFromTemplate(ctx context.Context, templateID string, name string, description string) (*GraphDefinition, error) {
-	return uc.defUC.CreateGraphFromTemplate(ctx, templateID, name, description)
+func (uc *GraphUsecase) CreateGraphFromTemplate(ctx context.Context, templateID string, name string, description string, workspaceID string) (*GraphDefinition, error) {
+	return uc.defUC.CreateGraphFromTemplate(ctx, templateID, name, description, workspaceID)
 }
 
 func (uc *GraphUsecase) ExportGraph(ctx context.Context, graphID string) ([]byte, *GraphDefinition, error) {
 	return uc.defUC.ExportGraph(ctx, graphID)
 }
 
-func (uc *GraphUsecase) ImportGraph(ctx context.Context, raw []byte, name, description string) (*GraphDefinition, error) {
-	return uc.defUC.ImportGraph(ctx, raw, name, description)
+func (uc *GraphUsecase) ImportGraph(ctx context.Context, raw []byte, name, description, workspaceID string) (*GraphDefinition, error) {
+	return uc.defUC.ImportGraph(ctx, raw, name, description, workspaceID)
 }
 
 func (uc *GraphUsecase) ListGraphVersions(ctx context.Context, graphID string) ([]GraphVersionEntry, error) {
@@ -510,6 +525,11 @@ func (uc *GraphUsecase) SaveGraphAsTemplate(ctx context.Context, graphID, templa
 
 func (uc *GraphUsecase) ListUserTemplateGraphs(ctx context.Context) ([]*GraphDefinition, error) {
 	return uc.defUC.ListUserTemplateGraphs(ctx)
+}
+
+// ListUserTemplateGraphsByWorkspace returns user template graphs visible to the given workspace (P2-B).
+func (uc *GraphUsecase) ListUserTemplateGraphsByWorkspace(ctx context.Context, workspaceID string) ([]*GraphDefinition, error) {
+	return uc.defUC.ListUserTemplateGraphsByWorkspace(ctx, workspaceID)
 }
 
 func (uc *GraphUsecase) FindNodeDef(ctx context.Context, graphID string, nodeID string) *NodeTaskMeta {

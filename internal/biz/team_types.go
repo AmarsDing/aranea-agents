@@ -147,6 +147,9 @@ type Team struct {
 	CreatedAt          string
 	UpdatedAt          string
 	DeletedAt          string
+	// WorkspaceID is the owning workspace ID for tenant isolation (P2-B).
+	// empty = shared/legacy (visible to all workspaces); non-empty = tenant-private.
+	WorkspaceID string
 }
 
 type TeamRunRecord struct {

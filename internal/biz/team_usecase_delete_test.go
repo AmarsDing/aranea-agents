@@ -31,6 +31,9 @@ func (s *stubTeamReader) ListBySpiritSessionID(context.Context, string) ([]Team,
 func (s *stubTeamReader) ListTeamsByDepartmentID(context.Context, string) ([]Team, error) {
 	return nil, nil
 }
+func (s *stubTeamReader) ListTeamsByWorkspace(context.Context, string) ([]Team, error) {
+	return nil, nil
+}
 
 type stubTeamWriter struct {
 	deletedID string

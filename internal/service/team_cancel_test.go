@@ -41,6 +41,9 @@ func (r *cancelTeamRunRepo) ListBySpiritSessionID(_ context.Context, _ string) (
 func (r *cancelTeamRunRepo) ListTeamsByDepartmentID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
+func (r *cancelTeamRunRepo) ListTeamsByWorkspace(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 
 // TeamWriter stubs
 func (r *cancelTeamRunRepo) CreateTeam(_ context.Context, t biz.Team) (biz.Team, error) {

@@ -188,6 +188,20 @@ func (_u *PlatformMCPServerUpdate) SetNillableDeletedAt(v *string) *PlatformMCPS
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *PlatformMCPServerUpdate) SetWorkspaceID(v string) *PlatformMCPServerUpdate {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *PlatformMCPServerUpdate) SetNillableWorkspaceID(v *string) *PlatformMCPServerUpdate {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // Mutation returns the PlatformMCPServerMutation object of the builder.
 func (_u *PlatformMCPServerUpdate) Mutation() *PlatformMCPServerMutation {
 	return _u.mutation
@@ -282,6 +296,9 @@ func (_u *PlatformMCPServerUpdate) sqlSave(ctx context.Context) (_node int, err 
 	}
 	if value, ok := _u.mutation.DeletedAt(); ok {
 		_spec.SetField(platformmcpserver.FieldDeletedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(platformmcpserver.FieldWorkspaceID, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -464,6 +481,20 @@ func (_u *PlatformMCPServerUpdateOne) SetNillableDeletedAt(v *string) *PlatformM
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *PlatformMCPServerUpdateOne) SetWorkspaceID(v string) *PlatformMCPServerUpdateOne {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *PlatformMCPServerUpdateOne) SetNillableWorkspaceID(v *string) *PlatformMCPServerUpdateOne {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // Mutation returns the PlatformMCPServerMutation object of the builder.
 func (_u *PlatformMCPServerUpdateOne) Mutation() *PlatformMCPServerMutation {
 	return _u.mutation
@@ -588,6 +619,9 @@ func (_u *PlatformMCPServerUpdateOne) sqlSave(ctx context.Context) (_node *Platf
 	}
 	if value, ok := _u.mutation.DeletedAt(); ok {
 		_spec.SetField(platformmcpserver.FieldDeletedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(platformmcpserver.FieldWorkspaceID, field.TypeString, value)
 	}
 	_node = &PlatformMCPServer{config: _u.config}
 	_spec.Assign = _node.assignValues

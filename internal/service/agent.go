@@ -8,6 +8,7 @@ import (
 	v1 "aranea-agents/api/kratos/agent/v1"
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
@@ -30,6 +31,31 @@ type AgentService struct {
 
 func NewAgentService(uc *biz.AgentUsecase, evoUC *biz.EvolutionUsecase, mon *biz.MonitorUsecase, a2aUC *biz.A2AUsecase, promptAI *PromptFileAIEditor, agentTemplateUC *biz.AgentTemplateUsecase, lg loggateway.Logger) *AgentService {
 	return &AgentService{uc: uc, evoUC: evoUC, mon: mon, a2aUC: a2aUC, promptAI: promptAI, agentTemplateUC: agentTemplateUC, lg: lg}
+}
+
+// assertAgentAccess 验证 caller workspace 是否可访问目标 agent（P2-B IDOR 防护）。
+// 使用 AssertWorkspaceOrShared：共享 agent（workspace_id=""）对所有租户可见，
+// 租户私有 agent（workspace_id="ws-xxx"）仅归属租户可见。
+// 失败时返回 NotFound（避免泄露资源存在性），并记录 Warn 日志。
+func (s *AgentService) assertAgentAccess(ctx context.Context, agentID string) error {
+	if agentID == "" {
+		return nil
+	}
+	a, err := s.uc.Get(ctx, agentID)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return apierror.NotFound(apierror.DomainAgent, "agent not found")
+		}
+		return err
+	}
+	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), a.WorkspaceID); err != nil {
+		s.lg.Warn("agent access denied: workspace mismatch",
+			loggateway.StepID("agent.idor"),
+			loggateway.Str("agent_id", agentID),
+			loggateway.Str("caller_ws", workspace.IDFromContext(ctx)))
+		return apierror.NotFound(apierror.DomainAgent, "agent not found")
+	}
+	return nil
 }
 
 func fromProtoRuntime(pb *v1.AgentRuntimeSettings) *biz.AgentRuntimeSettings {
@@ -587,14 +613,20 @@ func (s *AgentService) CheckAgentKey(ctx context.Context, req *v1.CheckAgentKeyR
 }
 
 func (s *AgentService) ListAgents(ctx context.Context, req *v1.ListAgentsRequest) (*v1.ListAgentsResponse, error) {
+	// P2-B: 系统 caller（WorkspaceID="")看全部；租户 caller 看 shared + own。
+	callerWS := workspace.IDFromContext(ctx)
+	if workspace.IsSystem(ctx) {
+		callerWS = ""
+	}
 	page, err := s.uc.List(ctx, biz.AgentListQuery{
-		Keyword:   req.GetKeyword(),
-		Status:    req.GetStatus(),
-		Provider:  req.GetProvider(),
-		OrgNodeID: req.GetOrgNodeId(),
-		CreatedBy: biz.ResolveListCreatedByFilter(ctx, req.GetCreatedBy()),
-		Limit:     int(req.GetLimit()),
-		Offset:    int(req.GetOffset()),
+		Keyword:     req.GetKeyword(),
+		Status:      req.GetStatus(),
+		Provider:    req.GetProvider(),
+		OrgNodeID:   req.GetOrgNodeId(),
+		CreatedBy:   biz.ResolveListCreatedByFilter(ctx, req.GetCreatedBy()),
+		WorkspaceID: callerWS,
+		Limit:       int(req.GetLimit()),
+		Offset:      int(req.GetOffset()),
 	})
 	if err != nil {
 		return nil, err
@@ -613,7 +645,12 @@ func (s *AgentService) ListAgents(ctx context.Context, req *v1.ListAgentsRequest
 
 // CreateAgent implements POST /v1/agents.
 func (s *AgentService) CreateAgent(ctx context.Context, req *v1.CreateAgentRequest) (*v1.Agent, error) {
-	created, err := s.uc.Create(ctx, fromProtoCreate(req))
+	a := fromProtoCreate(req)
+	// P2-B: 租户 caller 创建的 agent 绑定到 caller workspace；系统 caller 创建共享 agent（workspace_id=""）。
+	if !workspace.IsSystem(ctx) {
+		a.WorkspaceID = workspace.IDFromContext(ctx)
+	}
+	created, err := s.uc.Create(ctx, a)
 	if err != nil {
 		return nil, err
 	}
@@ -623,6 +660,9 @@ func (s *AgentService) CreateAgent(ctx context.Context, req *v1.CreateAgentReque
 
 // GetAgent implements GET /v1/agents/{id}.
 func (s *AgentService) GetAgent(ctx context.Context, req *v1.GetAgentRequest) (*v1.Agent, error) {
+	if err := s.assertAgentAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	a, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -638,7 +678,11 @@ func (s *AgentService) UpdateAgent(ctx context.Context, req *v1.UpdateAgentReque
 	if req.GetAgent() == nil {
 		return nil, apierror.BadRequest(apierror.DomainAgent, "agent body is required")
 	}
+	if err := s.assertAgentAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	patch := fromProtoAgent(req.GetAgent())
+	patch.WorkspaceID = "" // P2-B: workspace_id immutable on update
 	a, err := s.uc.Update(ctx, req.GetId(), patch)
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -653,6 +697,9 @@ func (s *AgentService) UpdateAgent(ctx context.Context, req *v1.UpdateAgentReque
 
 // DeleteAgent implements DELETE /v1/agents/{id}.
 func (s *AgentService) DeleteAgent(ctx context.Context, req *v1.DeleteAgentRequest) (*emptypb.Empty, error) {
+	if err := s.assertAgentAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
@@ -663,6 +710,9 @@ func (s *AgentService) DeleteAgent(ctx context.Context, req *v1.DeleteAgentReque
 
 // ToggleFavorite implements PATCH /v1/agents/{id}/favorite.
 func (s *AgentService) ToggleFavorite(ctx context.Context, req *v1.ToggleFavoriteRequest) (*v1.Agent, error) {
+	if err := s.assertAgentAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	a, err := s.uc.ToggleFavorite(ctx, req.GetId())
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -675,6 +725,9 @@ func (s *AgentService) ToggleFavorite(ctx context.Context, req *v1.ToggleFavorit
 
 // GetAgentPromptPreview implements GET /v1/agents/{id}/system-prompt/preview.
 func (s *AgentService) GetAgentPromptPreview(ctx context.Context, req *v1.GetAgentPromptPreviewRequest) (*v1.GetAgentPromptPreviewResponse, error) {
+	if err := s.assertAgentAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	a, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -727,6 +780,9 @@ func bizEffectiveToolsToProto(in biz.AgentEffectiveTools) *v1.AgentEffectiveTool
 
 // GetAgentEffectiveTools implements GET /v1/agents/{agent_id}/tools/effective.
 func (s *AgentService) GetAgentEffectiveTools(ctx context.Context, req *v1.GetAgentEffectiveToolsRequest) (*v1.AgentEffectiveToolsView, error) {
+	if err := s.assertAgentAccess(ctx, req.GetAgentId()); err != nil {
+		return nil, err
+	}
 	out, err := s.uc.GetEffectiveTools(ctx, req.GetAgentId())
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -739,6 +795,9 @@ func (s *AgentService) GetAgentEffectiveTools(ctx context.Context, req *v1.GetAg
 
 // UpdateAgentToolPolicy implements PUT /v1/agents/{agent_id}/tools/policy.
 func (s *AgentService) UpdateAgentToolPolicy(ctx context.Context, req *v1.UpdateAgentToolPolicyRequest) (*v1.AgentEffectiveToolsView, error) {
+	if err := s.assertAgentAccess(ctx, req.GetAgentId()); err != nil {
+		return nil, err
+	}
 	in := biz.AgentToolPolicyInput{
 		ToolsEnabled: req.GetToolsEnabled(),
 		Profile:      req.GetProfile(),
@@ -758,6 +817,9 @@ func (s *AgentService) UpdateAgentToolPolicy(ctx context.Context, req *v1.Update
 
 // CreateAgentPromptFile implements POST /v1/agents/{agent_id}/files.
 func (s *AgentService) CreateAgentPromptFile(ctx context.Context, req *v1.CreateAgentPromptFileRequest) (*v1.AgentPromptFile, error) {
+	if err := s.assertAgentAccess(ctx, req.GetAgentId()); err != nil {
+		return nil, err
+	}
 	f := biz.AgentPromptFile{
 		AgentID:   req.GetAgentId(),
 		Name:      req.GetName(),
@@ -777,6 +839,9 @@ func (s *AgentService) CreateAgentPromptFile(ctx context.Context, req *v1.Create
 
 // UpdateAgentPromptFile implements PATCH /v1/agents/{agent_id}/files/{id}.
 func (s *AgentService) UpdateAgentPromptFile(ctx context.Context, req *v1.UpdateAgentPromptFileRequest) (*v1.AgentPromptFile, error) {
+	if err := s.assertAgentAccess(ctx, req.GetAgentId()); err != nil {
+		return nil, err
+	}
 	f := biz.AgentPromptFile{
 		ID:        req.GetId(),
 		AgentID:   req.GetAgentId(),
@@ -797,6 +862,9 @@ func (s *AgentService) UpdateAgentPromptFile(ctx context.Context, req *v1.Update
 
 // DeleteAgentPromptFile implements DELETE /v1/agents/{agent_id}/files/{id}.
 func (s *AgentService) DeleteAgentPromptFile(ctx context.Context, req *v1.DeleteAgentPromptFileRequest) (*emptypb.Empty, error) {
+	if err := s.assertAgentAccess(ctx, req.GetAgentId()); err != nil {
+		return nil, err
+	}
 	if err := s.uc.DeletePromptFile(ctx, req.GetAgentId(), req.GetId()); err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound(apierror.DomainAgentFile, "prompt file not found")
@@ -809,6 +877,9 @@ func (s *AgentService) DeleteAgentPromptFile(ctx context.Context, req *v1.Delete
 
 // EstimateTokens implements POST /v1/agents/{agent_id}/files/estimate-tokens.
 func (s *AgentService) EstimateTokens(ctx context.Context, req *v1.EstimateTokensRequest) (*v1.EstimateTokensResponse, error) {
+	if err := s.assertAgentAccess(ctx, req.GetAgentId()); err != nil {
+		return nil, err
+	}
 	estimates, err := s.uc.EstimateTokens(ctx, req.GetAgentId())
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -839,6 +910,9 @@ func (s *AgentService) EditPromptFileByAI(ctx context.Context, req *v1.EditPromp
 	instruction := strings.TrimSpace(req.GetInstruction())
 	if agentID == "" || fileID == "" || instruction == "" {
 		return nil, apierror.BadRequest(apierror.DomainAgentFile, "agent_id, file_id and instruction are required")
+	}
+	if err := s.assertAgentAccess(ctx, agentID); err != nil {
+		return nil, err
 	}
 	a, err := s.uc.Get(ctx, agentID)
 	if err != nil {
@@ -904,6 +978,9 @@ func (s *AgentService) ListAgentCreators(ctx context.Context, _ *emptypb.Empty) 
 
 // DuplicateAgent implements POST /v1/agents/{id}/duplicate.
 func (s *AgentService) DuplicateAgent(ctx context.Context, req *v1.DuplicateAgentRequest) (*v1.Agent, error) {
+	if err := s.assertAgentAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	dup, err := s.uc.Duplicate(ctx, req.GetId())
 	if err != nil {
 		return nil, err

@@ -61,6 +61,8 @@ const (
 	FieldEvolutionReason = "evolution_reason"
 	// FieldLifecycleStatus holds the string denoting the lifecycle_status field in the database.
 	FieldLifecycleStatus = "lifecycle_status"
+	// FieldWorkspaceID holds the string denoting the workspace_id field in the database.
+	FieldWorkspaceID = "workspace_id"
 	// Table holds the table name of the platformskill in the database.
 	Table = "skill"
 )
@@ -93,6 +95,7 @@ var Columns = []string{
 	FieldParentVersionID,
 	FieldEvolutionReason,
 	FieldLifecycleStatus,
+	FieldWorkspaceID,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -168,6 +171,8 @@ var (
 	DefaultLifecycleStatus string
 	// LifecycleStatusValidator is a validator for the "lifecycle_status" field. It is called by the builders before save.
 	LifecycleStatusValidator func(string) error
+	// DefaultWorkspaceID holds the default value on creation for the "workspace_id" field.
+	DefaultWorkspaceID string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
 	IDValidator func(string) error
 )
@@ -303,4 +308,9 @@ func ByEvolutionReason(opts ...sql.OrderTermOption) OrderOption {
 // ByLifecycleStatus orders the results by the lifecycle_status field.
 func ByLifecycleStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLifecycleStatus, opts...).ToFunc()
+}
+
+// ByWorkspaceID orders the results by the workspace_id field.
+func ByWorkspaceID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWorkspaceID, opts...).ToFunc()
 }

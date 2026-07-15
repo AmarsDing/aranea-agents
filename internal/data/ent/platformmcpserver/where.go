@@ -118,6 +118,11 @@ func DeletedAt(v string) predicate.PlatformMCPServer {
 	return predicate.PlatformMCPServer(sql.FieldEQ(FieldDeletedAt, v))
 }
 
+// WorkspaceID applies equality check predicate on the "workspace_id" field. It's identical to WorkspaceIDEQ.
+func WorkspaceID(v string) predicate.PlatformMCPServer {
+	return predicate.PlatformMCPServer(sql.FieldEQ(FieldWorkspaceID, v))
+}
+
 // ServerKeyEQ applies the EQ predicate on the "server_key" field.
 func ServerKeyEQ(v string) predicate.PlatformMCPServer {
 	return predicate.PlatformMCPServer(sql.FieldEQ(FieldServerKey, v))
@@ -751,6 +756,71 @@ func DeletedAtEqualFold(v string) predicate.PlatformMCPServer {
 // DeletedAtContainsFold applies the ContainsFold predicate on the "deleted_at" field.
 func DeletedAtContainsFold(v string) predicate.PlatformMCPServer {
 	return predicate.PlatformMCPServer(sql.FieldContainsFold(FieldDeletedAt, v))
+}
+
+// WorkspaceIDEQ applies the EQ predicate on the "workspace_id" field.
+func WorkspaceIDEQ(v string) predicate.PlatformMCPServer {
+	return predicate.PlatformMCPServer(sql.FieldEQ(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDNEQ applies the NEQ predicate on the "workspace_id" field.
+func WorkspaceIDNEQ(v string) predicate.PlatformMCPServer {
+	return predicate.PlatformMCPServer(sql.FieldNEQ(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDIn applies the In predicate on the "workspace_id" field.
+func WorkspaceIDIn(vs ...string) predicate.PlatformMCPServer {
+	return predicate.PlatformMCPServer(sql.FieldIn(FieldWorkspaceID, vs...))
+}
+
+// WorkspaceIDNotIn applies the NotIn predicate on the "workspace_id" field.
+func WorkspaceIDNotIn(vs ...string) predicate.PlatformMCPServer {
+	return predicate.PlatformMCPServer(sql.FieldNotIn(FieldWorkspaceID, vs...))
+}
+
+// WorkspaceIDGT applies the GT predicate on the "workspace_id" field.
+func WorkspaceIDGT(v string) predicate.PlatformMCPServer {
+	return predicate.PlatformMCPServer(sql.FieldGT(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDGTE applies the GTE predicate on the "workspace_id" field.
+func WorkspaceIDGTE(v string) predicate.PlatformMCPServer {
+	return predicate.PlatformMCPServer(sql.FieldGTE(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDLT applies the LT predicate on the "workspace_id" field.
+func WorkspaceIDLT(v string) predicate.PlatformMCPServer {
+	return predicate.PlatformMCPServer(sql.FieldLT(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDLTE applies the LTE predicate on the "workspace_id" field.
+func WorkspaceIDLTE(v string) predicate.PlatformMCPServer {
+	return predicate.PlatformMCPServer(sql.FieldLTE(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDContains applies the Contains predicate on the "workspace_id" field.
+func WorkspaceIDContains(v string) predicate.PlatformMCPServer {
+	return predicate.PlatformMCPServer(sql.FieldContains(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDHasPrefix applies the HasPrefix predicate on the "workspace_id" field.
+func WorkspaceIDHasPrefix(v string) predicate.PlatformMCPServer {
+	return predicate.PlatformMCPServer(sql.FieldHasPrefix(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDHasSuffix applies the HasSuffix predicate on the "workspace_id" field.
+func WorkspaceIDHasSuffix(v string) predicate.PlatformMCPServer {
+	return predicate.PlatformMCPServer(sql.FieldHasSuffix(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDEqualFold applies the EqualFold predicate on the "workspace_id" field.
+func WorkspaceIDEqualFold(v string) predicate.PlatformMCPServer {
+	return predicate.PlatformMCPServer(sql.FieldEqualFold(FieldWorkspaceID, v))
+}
+
+// WorkspaceIDContainsFold applies the ContainsFold predicate on the "workspace_id" field.
+func WorkspaceIDContainsFold(v string) predicate.PlatformMCPServer {
+	return predicate.PlatformMCPServer(sql.FieldContainsFold(FieldWorkspaceID, v))
 }
 
 // And groups predicates with the AND operator between them.

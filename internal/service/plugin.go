@@ -7,6 +7,7 @@ import (
 	v1 "aranea-agents/api/kratos/plugin/v1"
 	"aranea-agents/internal/biz"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -90,6 +91,30 @@ func (s *PluginService) reloadRuntime(ctx context.Context) {
 	})
 }
 
+// assertPluginAccess 校验 caller 是否可访问指定 plugin（P2-B IDOR 防护）。
+// 跨租户访问返回 NotFound（避免泄露 plugin 存在性）。
+// 系统 caller（cron/admin）绕过校验；空 workspace_id 的 plugin 视为全局共享。
+func (s *PluginService) assertPluginAccess(ctx context.Context, pluginID string) error {
+	if pluginID == "" {
+		return nil
+	}
+	p, err := s.uc.Get(ctx, pluginID)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return apierror.NotFound("PLUGIN", "plugin not found")
+		}
+		return err
+	}
+	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), p.WorkspaceID); err != nil {
+		s.lg.Warn("plugin access denied: workspace mismatch",
+			loggateway.StepID("plugin.idor"),
+			loggateway.Str("plugin_id", pluginID),
+			loggateway.Str("caller_ws", workspace.IDFromContext(ctx)))
+		return apierror.NotFound("PLUGIN", "plugin not found")
+	}
+	return nil
+}
+
 func toProtoPlugin(p biz.Plugin) *v1.Plugin {
 	return &v1.Plugin{
 		Id:                p.ID,
@@ -131,6 +156,11 @@ func (s *PluginService) ListPlugins(ctx context.Context, req *v1.ListPluginsRequ
 		Limit:         limit,
 		Offset:        offset,
 	}
+	// P2-B: workspace visibility filter.
+	// System caller (cron/admin) sees all; tenant caller sees shared + own.
+	if !workspace.IsSystem(ctx) {
+		q.WorkspaceID = workspace.IDFromContext(ctx)
+	}
 	result, err := s.uc.List(ctx, q)
 	if err != nil {
 		return nil, err
@@ -148,6 +178,9 @@ func (s *PluginService) ListPlugins(ctx context.Context, req *v1.ListPluginsRequ
 }
 
 func (s *PluginService) TogglePluginEnabled(ctx context.Context, req *v1.TogglePluginEnabledRequest) (*v1.Plugin, error) {
+	if err := s.assertPluginAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	out, err := s.uc.ToggleEnabled(ctx, req.GetId(), req.GetEnabled())
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -160,6 +193,9 @@ func (s *PluginService) TogglePluginEnabled(ctx context.Context, req *v1.ToggleP
 }
 
 func (s *PluginService) UpdatePluginConfig(ctx context.Context, req *v1.UpdatePluginConfigRequest) (*v1.Plugin, error) {
+	if err := s.assertPluginAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	out, err := s.uc.UpdateConfig(ctx, req.GetId(), req.GetConfigJson())
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -172,6 +208,9 @@ func (s *PluginService) UpdatePluginConfig(ctx context.Context, req *v1.UpdatePl
 }
 
 func (s *PluginService) UpdatePluginSortOrder(ctx context.Context, req *v1.UpdatePluginSortOrderRequest) (*v1.Plugin, error) {
+	if err := s.assertPluginAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	out, err := s.uc.UpdateSortOrder(ctx, req.GetId(), int(req.GetSortOrder()))
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -184,6 +223,9 @@ func (s *PluginService) UpdatePluginSortOrder(ctx context.Context, req *v1.Updat
 }
 
 func (s *PluginService) UpdatePluginScope(ctx context.Context, req *v1.UpdatePluginScopeRequest) (*v1.Plugin, error) {
+	if err := s.assertPluginAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	out, err := s.uc.UpdateScope(ctx, req.GetId(), req.GetScope())
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {

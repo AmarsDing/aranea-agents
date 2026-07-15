@@ -160,6 +160,20 @@ func (_c *PlatformMCPServerCreate) SetNillableDeletedAt(v *string) *PlatformMCPS
 	return _c
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_c *PlatformMCPServerCreate) SetWorkspaceID(v string) *PlatformMCPServerCreate {
+	_c.mutation.SetWorkspaceID(v)
+	return _c
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_c *PlatformMCPServerCreate) SetNillableWorkspaceID(v *string) *PlatformMCPServerCreate {
+	if v != nil {
+		_c.SetWorkspaceID(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *PlatformMCPServerCreate) SetID(v string) *PlatformMCPServerCreate {
 	_c.mutation.SetID(v)
@@ -237,6 +251,10 @@ func (_c *PlatformMCPServerCreate) defaults() {
 		v := platformmcpserver.DefaultDeletedAt
 		_c.mutation.SetDeletedAt(v)
 	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		v := platformmcpserver.DefaultWorkspaceID
+		_c.mutation.SetWorkspaceID(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -283,6 +301,9 @@ func (_c *PlatformMCPServerCreate) check() error {
 	}
 	if _, ok := _c.mutation.DeletedAt(); !ok {
 		return &ValidationError{Name: "deleted_at", err: errors.New(`ent: missing required field "PlatformMCPServer.deleted_at"`)}
+	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		return &ValidationError{Name: "workspace_id", err: errors.New(`ent: missing required field "PlatformMCPServer.workspace_id"`)}
 	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := platformmcpserver.IDValidator(v); err != nil {
@@ -368,6 +389,10 @@ func (_c *PlatformMCPServerCreate) createSpec() (*PlatformMCPServer, *sqlgraph.C
 	if value, ok := _c.mutation.DeletedAt(); ok {
 		_spec.SetField(platformmcpserver.FieldDeletedAt, field.TypeString, value)
 		_node.DeletedAt = value
+	}
+	if value, ok := _c.mutation.WorkspaceID(); ok {
+		_spec.SetField(platformmcpserver.FieldWorkspaceID, field.TypeString, value)
+		_node.WorkspaceID = value
 	}
 	return _node, _spec
 }
@@ -556,6 +581,18 @@ func (u *PlatformMCPServerUpsert) SetDeletedAt(v string) *PlatformMCPServerUpser
 // UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
 func (u *PlatformMCPServerUpsert) UpdateDeletedAt() *PlatformMCPServerUpsert {
 	u.SetExcluded(platformmcpserver.FieldDeletedAt)
+	return u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *PlatformMCPServerUpsert) SetWorkspaceID(v string) *PlatformMCPServerUpsert {
+	u.Set(platformmcpserver.FieldWorkspaceID, v)
+	return u
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *PlatformMCPServerUpsert) UpdateWorkspaceID() *PlatformMCPServerUpsert {
+	u.SetExcluded(platformmcpserver.FieldWorkspaceID)
 	return u
 }
 
@@ -765,6 +802,20 @@ func (u *PlatformMCPServerUpsertOne) SetDeletedAt(v string) *PlatformMCPServerUp
 func (u *PlatformMCPServerUpsertOne) UpdateDeletedAt() *PlatformMCPServerUpsertOne {
 	return u.Update(func(s *PlatformMCPServerUpsert) {
 		s.UpdateDeletedAt()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *PlatformMCPServerUpsertOne) SetWorkspaceID(v string) *PlatformMCPServerUpsertOne {
+	return u.Update(func(s *PlatformMCPServerUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *PlatformMCPServerUpsertOne) UpdateWorkspaceID() *PlatformMCPServerUpsertOne {
+	return u.Update(func(s *PlatformMCPServerUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 
@@ -1141,6 +1192,20 @@ func (u *PlatformMCPServerUpsertBulk) SetDeletedAt(v string) *PlatformMCPServerU
 func (u *PlatformMCPServerUpsertBulk) UpdateDeletedAt() *PlatformMCPServerUpsertBulk {
 	return u.Update(func(s *PlatformMCPServerUpsert) {
 		s.UpdateDeletedAt()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *PlatformMCPServerUpsertBulk) SetWorkspaceID(v string) *PlatformMCPServerUpsertBulk {
+	return u.Update(func(s *PlatformMCPServerUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *PlatformMCPServerUpsertBulk) UpdateWorkspaceID() *PlatformMCPServerUpsertBulk {
+	return u.Update(func(s *PlatformMCPServerUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 

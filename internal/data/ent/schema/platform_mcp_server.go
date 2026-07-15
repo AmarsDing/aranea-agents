@@ -33,6 +33,9 @@ func (PlatformMCPServer) Fields() []ent.Field {
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 		field.String("deleted_at").Default(""),
+		// P2-B: tenant isolation. empty = shared/legacy (visible to all workspaces);
+		// non-empty = tenant-private (visible only to owning workspace).
+		field.String("workspace_id").Default("").Comment("owning workspace ID; empty = shared/system builtin"),
 	}
 }
 
@@ -40,5 +43,7 @@ func (PlatformMCPServer) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("status", "enabled").StorageKey("idx_mcp_server_status_enabled"),
 		index.Fields("deleted_at").StorageKey("idx_mcp_server_deleted_at"),
+		// P2-B: tenant isolation index — filter mcp servers by workspace visibility.
+		index.Fields("workspace_id", "enabled"),
 	}
 }

@@ -108,6 +108,9 @@ func (r *observatoryTeamRepo) ListBySpiritSessionID(_ context.Context, _ string)
 func (r *observatoryTeamRepo) ListTeamsByDepartmentID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
+func (r *observatoryTeamRepo) ListTeamsByWorkspace(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 
 func TestGetTeamRunObservatory(t *testing.T) {
 	repo := &observatoryTeamRepo{

@@ -384,6 +384,20 @@ func (_u *PlatformSkillUpdate) SetNillableLifecycleStatus(v *string) *PlatformSk
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *PlatformSkillUpdate) SetWorkspaceID(v string) *PlatformSkillUpdate {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *PlatformSkillUpdate) SetNillableWorkspaceID(v *string) *PlatformSkillUpdate {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // Mutation returns the PlatformSkillMutation object of the builder.
 func (_u *PlatformSkillUpdate) Mutation() *PlatformSkillMutation {
 	return _u.mutation
@@ -550,6 +564,9 @@ func (_u *PlatformSkillUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if value, ok := _u.mutation.LifecycleStatus(); ok {
 		_spec.SetField(platformskill.FieldLifecycleStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(platformskill.FieldWorkspaceID, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -928,6 +945,20 @@ func (_u *PlatformSkillUpdateOne) SetNillableLifecycleStatus(v *string) *Platfor
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *PlatformSkillUpdateOne) SetWorkspaceID(v string) *PlatformSkillUpdateOne {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *PlatformSkillUpdateOne) SetNillableWorkspaceID(v *string) *PlatformSkillUpdateOne {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // Mutation returns the PlatformSkillMutation object of the builder.
 func (_u *PlatformSkillUpdateOne) Mutation() *PlatformSkillMutation {
 	return _u.mutation
@@ -1124,6 +1155,9 @@ func (_u *PlatformSkillUpdateOne) sqlSave(ctx context.Context) (_node *PlatformS
 	}
 	if value, ok := _u.mutation.LifecycleStatus(); ok {
 		_spec.SetField(platformskill.FieldLifecycleStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(platformskill.FieldWorkspaceID, field.TypeString, value)
 	}
 	_node = &PlatformSkill{config: _u.config}
 	_spec.Assign = _node.assignValues

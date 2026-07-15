@@ -374,15 +374,41 @@ func (f *trpcGraphBuilderFactory) buildNodeCallbacks(sessionID, spiritSessionID,
 	if f.replanner != nil {
 		replanner := f.replanner
 		lg := f.lg
+		// OnNodeError: observability only — log the failure. The actual replan
+		// decision + fallback recovery is in AfterNode, which can return a
+		// non-nil result with nil error to recover the node (see framework
+		// AfterNodeCallback docs in callbacks.go).
 		cb.RegisterOnNodeError(func(ctx context.Context, cbCtx *trpcgraph.NodeCallbackContext, state trpcgraph.State, err error) {
 			if cbCtx == nil || err == nil {
 				return
 			}
+			lg.Warn("graph node execution failed",
+				loggateway.StepID("graph.node_error"),
+				loggateway.Str("execution_id", execID),
+				loggateway.Str("session_id", sessionID),
+				loggateway.Str("graph_id", graphID),
+				loggateway.Str("failed_node", cbCtx.NodeID),
+				loggateway.Err(err),
+			)
+		})
+		// C-23 fix: AfterNode callback that applies the replanner's decision.
+		// When a node fails (nodeErr != nil), calls replanner.OnNodeFailure to
+		// get the action. For ReplanRetry/ReplanInsertFallback, returns a
+		// fallback result with nil error to recover the node and let the graph
+		// continue. For ReplanReroute/ReplanRebuildSubgraph (which require
+		// topology mutation the framework doesn't support), returns (nil, nil)
+		// to let the original error propagate.
+		// Previously the replanner's decision was only logged in OnNodeError
+		// and never applied, so ALL node failures halted the graph.
+		cb.RegisterAfterNode(func(ctx context.Context, cbCtx *trpcgraph.NodeCallbackContext, state trpcgraph.State, result any, nodeErr error) (any, error) {
+			if cbCtx == nil || nodeErr == nil {
+				return nil, nil
+			}
 			exec := biz.NewGraphExecution(ctx, execID, graphID, sessionID, "")
 			exec.SpiritSessionID = spiritSessionID
-			action, replanErr := replanner.OnNodeFailure(ctx, exec, cbCtx.NodeID, err)
+			action, replanErr := replanner.OnNodeFailure(ctx, exec, cbCtx.NodeID, nodeErr)
 			if replanErr != nil {
-				lg.Warn("runtime replanner: OnNodeFailure failed, execution continues without replan",
+				lg.Warn("runtime replanner: OnNodeFailure failed, node stays failed",
 					loggateway.StepID("replanner.callback_fail"),
 					loggateway.Str("execution_id", execID),
 					loggateway.Str("session_id", sessionID),
@@ -390,20 +416,54 @@ func (f *trpcGraphBuilderFactory) buildNodeCallbacks(sessionID, spiritSessionID,
 					loggateway.Str("failed_node", cbCtx.NodeID),
 					loggateway.Err(replanErr),
 				)
-				return
+				return nil, nil // original error propagates
 			}
-			if action != nil {
-				lg.Info("runtime replanner: replan action decided",
-					loggateway.StepID("replanner.action_decided"),
+			if action == nil {
+				return nil, nil
+			}
+			switch action.Type {
+			case graph.ReplanRetry:
+				// Transient failure: recover with a fallback result so the graph
+				// continues. True retry (re-invoking the node agent) is not
+				// possible within the AfterNode callback because the framework
+				// doesn't expose a re-invocation API. The fallback result lets
+				// downstream nodes proceed.
+				fallback := fmt.Sprintf("[recovered] transient failure tolerated for node %s: %s",
+					cbCtx.NodeID, nodeErr.Error())
+				lg.Info("runtime replanner: node recovered (retry/fallback)",
+					loggateway.StepID("replanner.recovered"),
 					loggateway.Str("execution_id", execID),
 					loggateway.Str("session_id", sessionID),
 					loggateway.Str("graph_id", graphID),
 					loggateway.Str("failed_node", cbCtx.NodeID),
 					loggateway.Str("replan_type", string(action.Type)),
-					loggateway.Int("new_nodes", len(action.NewNodes)),
-					loggateway.Int("new_edges", len(action.NewEdges)),
-					loggateway.Int("skip_nodes", len(action.SkipNodes)),
 				)
+				return fallback, nil
+			case graph.ReplanInsertFallback:
+				fallback := fmt.Sprintf("[fallback] node %s failed, using fallback: %s",
+					cbCtx.NodeID, nodeErr.Error())
+				lg.Info("runtime replanner: node recovered (insert_fallback)",
+					loggateway.StepID("replanner.recovered"),
+					loggateway.Str("execution_id", execID),
+					loggateway.Str("session_id", sessionID),
+					loggateway.Str("graph_id", graphID),
+					loggateway.Str("failed_node", cbCtx.NodeID),
+					loggateway.Str("replan_type", string(action.Type)),
+				)
+				return fallback, nil
+			default:
+				// ReplanReroute / ReplanRebuildSubgraph require topology mutation
+				// which the framework doesn't support at runtime. Log and let the
+				// original error propagate.
+				lg.Info("runtime replanner: action requires topology mutation, not applied",
+					loggateway.StepID("replanner.not_applied"),
+					loggateway.Str("execution_id", execID),
+					loggateway.Str("session_id", sessionID),
+					loggateway.Str("graph_id", graphID),
+					loggateway.Str("failed_node", cbCtx.NodeID),
+					loggateway.Str("replan_type", string(action.Type)),
+				)
+				return nil, nil
 			}
 		})
 	}

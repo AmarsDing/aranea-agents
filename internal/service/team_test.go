@@ -121,6 +121,18 @@ func (m *memTeamRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.
 func (m *memTeamRepo) ListTeamsByDepartmentID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
+// ListTeamsByWorkspace mirrors TeamRepo.ListTeamsByWorkspace semantics:
+// empty workspaceID = system caller (see all); non-empty = tenant caller
+// (see shared + own).
+func (m *memTeamRepo) ListTeamsByWorkspace(_ context.Context, workspaceID string) ([]biz.Team, error) {
+	out := make([]biz.Team, 0, len(m.teams))
+	for _, t := range m.teams {
+		if workspaceID == "" || t.WorkspaceID == "" || t.WorkspaceID == workspaceID {
+			out = append(out, t)
+		}
+	}
+	return out, nil
+}
 
 func newTeamService() *service.TeamService {
 	repo := newMemTeamRepo()

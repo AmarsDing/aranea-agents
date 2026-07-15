@@ -99,6 +99,7 @@ func entAgentToBiz(a *ent.Agent, lg loggateway.Logger) biz.Agent {
 		CreatedAt:          a.CreatedAt,
 		UpdatedAt:          a.UpdatedAt,
 		DeletedAt:          a.DeletedAt,
+		WorkspaceID:        a.WorkspaceID,
 	}
 	if err := json.Unmarshal([]byte(a.RolesJSON), &agent.Roles); err != nil {
 		lg.Warn("agent roles json unmarshal failed", loggateway.StepID("data.agent"), loggateway.Err(err))
@@ -576,6 +577,14 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 	if q.Kind != "" {
 		preds = append(preds, agent.KindEQ(agent.Kind(q.Kind)))
 	}
+	// P2-B: workspace 过滤。空 WorkspaceID = system caller（看全部）。
+	// 租户 caller 只看：自己私有的（workspace_id == caller）+ 全局共享的（workspace_id == ""）。
+	if q.WorkspaceID != "" {
+		preds = append(preds, agent.Or(
+			agent.WorkspaceIDEQ(""),
+			agent.WorkspaceIDEQ(q.WorkspaceID),
+		))
+	}
 	where := agent.And(preds...)
 	c := r.data.RW().Read(ctx)
 	total, err := c.Agent.Query().Where(where).Count(ctx)
@@ -733,6 +742,7 @@ func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		SetCreatedAt(a.CreatedAt).
 		SetUpdatedAt(a.UpdatedAt).
 		SetDeletedAt(a.DeletedAt).
+		SetWorkspaceID(a.WorkspaceID).
 		Save(ctx)
 	if err != nil {
 		if sqlgraph.IsConstraintError(err) && isAgentKeyConstraintError(err) {

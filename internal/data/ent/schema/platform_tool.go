@@ -42,6 +42,9 @@ func (PlatformTool) Fields() []ent.Field {
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 		field.String("deleted_at").Default(""),
+		// P2-B: tenant isolation. empty = shared/legacy (visible to all workspaces);
+		// non-empty = tenant-private (visible only to owning workspace).
+		field.String("workspace_id").Default("").Comment("owning workspace ID; empty = shared/system builtin"),
 	}
 }
 
@@ -53,5 +56,7 @@ func (PlatformTool) Indexes() []ent.Index {
 		index.Fields("deleted_at").StorageKey("idx_tools_deleted_at"),
 		index.Fields("enabled", "deleted_at").StorageKey("idx_tools_enabled_deleted"),
 		index.Fields("category", "enabled", "deleted_at").StorageKey("idx_tools_cat_enabled_deleted"),
+		// P2-B: tenant isolation index — filter tools by workspace visibility.
+		index.Fields("workspace_id", "enabled"),
 	}
 }

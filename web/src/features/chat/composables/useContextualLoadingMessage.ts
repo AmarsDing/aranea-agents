@@ -125,7 +125,9 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
     if (
       envType === 'spirit_team_completed' ||
       envType === 'spirit_team_failed' ||
-      envType === 'spirit_teams_all_completed'
+      envType === 'spirit_teams_all_completed' ||
+      envType === 'butler.orchestration.completed' ||
+      envType === 'butler.orchestration.failed'
     ) {
       loadingMessage.value = null;
     }

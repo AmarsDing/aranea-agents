@@ -1,8 +1,32 @@
 // web/src/stores/__tests__/activityV2.store.spec.ts
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
+
+// P2-07: mock the v2Api so fetchSessionHistory can be tested in isolation.
+vi.mock('../../features/session/v2Api', () => ({
+  listTasksV2: vi.fn(),
+  listTurnsV2: vi.fn(),
+  listStepsV2: vi.fn(),
+  listTeamStagesV2: vi.fn(),
+  listTeamRunsV2: vi.fn(),
+  listMemberSessionsV2: vi.fn(),
+  listPlanBoardsV2: vi.fn(),
+  listPlanStepsV2: vi.fn(),
+  listGraphStagesV2: vi.fn(),
+  listGraphNodesV2: vi.fn(),
+}));
+
+import {
+  listTasksV2,
+  listTurnsV2,
+  listStepsV2,
+  listTeamStagesV2,
+  listPlanBoardsV2,
+  listPlanStepsV2,
+  listGraphStagesV2,
+} from '../../features/session/v2Api';
 import { useChatActivityStore } from '../chat/activityV2Store';
-import type { Task, Turn, Step } from '../../features/chat/v2Types';
+import type { Task, Step } from '../../features/chat/v2Types';
 
 function makeTask(over: Partial<Task> = {}): Task {
   return {
@@ -95,5 +119,69 @@ describe('useChatActivityStore', () => {
     s.clearSession('s1');
     expect(s.tasks.has('t1')).toBe(false);
     expect(s.tasks.has('t2')).toBe(true);
+  });
+
+  // P2-07: sub-resource fetch failures must be recorded in hydrationErrors
+  // instead of being silently swallowed.
+  it('fetchSessionHistory records sub-resource failures in hydrationErrors', async () => {
+    vi.mocked(listTasksV2).mockResolvedValue([makeTask({ ID: 'task-1' })]);
+    vi.mocked(listStepsV2).mockResolvedValue([]);
+    vi.mocked(listTurnsV2).mockRejectedValue(new Error('turns API down'));
+    vi.mocked(listTeamStagesV2).mockResolvedValue([]);
+    vi.mocked(listPlanBoardsV2).mockResolvedValue([]);
+    vi.mocked(listPlanStepsV2).mockResolvedValue([]);
+    vi.mocked(listGraphStagesV2).mockResolvedValue([]);
+
+    const s = useChatActivityStore();
+    await s.fetchSessionHistory('sess-1');
+
+    expect(s.hydrationErrors.length).toBe(1);
+    expect(s.hydrationErrors[0].scope).toBe('turns');
+    expect(s.hydrationErrors[0].parentId).toBe('task-1');
+    expect(s.hydrationErrors[0].message).toBe('turns API down');
+  });
+
+  it('fetchSessionHistory clears hydrationErrors at start', async () => {
+    vi.mocked(listTasksV2).mockResolvedValue([]);
+    vi.mocked(listStepsV2).mockResolvedValue([]);
+
+    const s = useChatActivityStore();
+    // Simulate a previous failed fetch.
+    s.hydrationErrors.push({ scope: 'turns', parentId: 'old', message: 'old error' });
+    expect(s.hydrationErrors.length).toBe(1);
+
+    await s.fetchSessionHistory('sess-2');
+    expect(s.hydrationErrors.length).toBe(0);
+  });
+
+  it('appendStepDelta ignores unknown DeltaField without corrupting Reasoning', () => {
+    const s = useChatActivityStore();
+    const step: Step = {
+      ID: 's1',
+      TurnID: 't1',
+      TaskID: 'tk1',
+      SessionID: 's1',
+      SpiritSessionID: 's1',
+      Kind: 'reply',
+      AuthorAgentKey: 'a1',
+      Seq: 1,
+      Version: 1,
+      Content: '',
+      Reasoning: 'existing',
+      ToolName: '',
+      ToolCallID: '',
+      ToolArgs: null,
+      ToolResult: null,
+      ToolDurationMs: 0,
+      ToolErrorCode: '',
+      Status: 'running',
+      IsFinal: false,
+      StartedAt: '',
+      CompletedAt: null,
+    };
+    s.upsertStep(step);
+    s.appendStepDelta('s1', 'tool_args', '{"arg":1}');
+    expect(s.steps.get('s1')?.Content).toBe('');
+    expect(s.steps.get('s1')?.Reasoning).toBe('existing');
   });
 });

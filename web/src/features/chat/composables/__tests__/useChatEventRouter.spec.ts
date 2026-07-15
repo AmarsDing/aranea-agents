@@ -87,6 +87,18 @@ describe('useChatEventRouter', () => {
     expect(store.steps.get('s1')?.Reasoning).toBe('think');
   });
 
+  // P2-06: unknown DeltaField must not corrupt Reasoning (old if/else bug).
+  it('handles step.streaming with unknown DeltaField without corrupting Reasoning', () => {
+    store.upsertStep(mkStep({ ID: 's1', Content: '', Reasoning: 'existing' }));
+    router.dispatch({
+      type: 'v2_event',
+      kind: 'step.streaming',
+      payload: { StepID: 's1', DeltaField: 'tool_args', DeltaChunk: '{"arg":' },
+    });
+    expect(store.steps.get('s1')?.Content).toBe('');
+    expect(store.steps.get('s1')?.Reasoning).toBe('existing');
+  });
+
   it('handles task.completed with version guard', () => {
     store.upsertTask(mkTask({ ID: 't1', Version: 1, Status: 'running' }));
     router.dispatch({

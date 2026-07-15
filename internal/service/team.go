@@ -9,6 +9,7 @@ import (
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/team"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
@@ -54,6 +55,47 @@ func NewTeamService(
 		teamStageReader: teamStageReader,
 		stepReader:      stepReader,
 	}
+}
+
+// assertTeamAccess 验证 caller workspace 是否可访问目标 team（P2-B IDOR 防护）。
+// 使用 AssertWorkspaceOrShared：共享 team（workspace_id=""）对所有租户可见，
+// 租户私有 team（workspace_id="ws-xxx"）仅归属租户可见。
+// 失败时返回 NotFound（避免泄露资源存在性），并记录 Warn 日志。
+func (s *TeamService) assertTeamAccess(ctx context.Context, teamID string) error {
+	if teamID == "" {
+		return nil
+	}
+	t, err := s.uc.Get(ctx, teamID)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return apierror.NotFound("TEAM", "team not found")
+		}
+		return err
+	}
+	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), t.WorkspaceID); err != nil {
+		s.lg.Warn("team access denied: workspace mismatch",
+			loggateway.StepID("team.idor"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Str("caller_ws", workspace.IDFromContext(ctx)))
+		return apierror.NotFound("TEAM", "team not found")
+	}
+	return nil
+}
+
+// assertRunTeamAccess 验证 caller workspace 是否可访问目标 team run（P2-B IDOR 防护）。
+// 通过 run.team_id 查找归属 team，再校验 team 的 workspace。
+func (s *TeamService) assertRunTeamAccess(ctx context.Context, runID string) error {
+	if runID == "" {
+		return nil
+	}
+	run, err := s.uc.GetRun(ctx, runID)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return apierror.NotFound("TEAM", "team run not found")
+		}
+		return err
+	}
+	return s.assertTeamAccess(ctx, run.TeamID)
 }
 
 func toProtoTeam(t biz.Team) *v1.Team {
@@ -213,7 +255,12 @@ func mapTeamErr(err error) error {
 }
 
 func (s *TeamService) ListTeams(ctx context.Context, _ *v1.ListTeamsRequest) (*v1.ListTeamsResponse, error) {
-	items, err := s.uc.List(ctx)
+	// P2-B: 系统 caller（workspace_id="")看全部；租户 caller 看 shared + own。
+	callerWS := workspace.IDFromContext(ctx)
+	if workspace.IsSystem(ctx) {
+		callerWS = ""
+	}
+	items, err := s.uc.ListByWorkspace(ctx, callerWS)
 	if err != nil {
 		return nil, err
 	}
@@ -243,6 +290,10 @@ func (s *TeamService) CreateTeam(ctx context.Context, req *v1.CreateTeamRequest)
 		ADKAppName:     req.GetAdkAppName(),
 		DepartmentID:   req.GetDepartmentId(),
 	}
+	// P2-B: 租户 caller 创建的 team 绑定到 caller workspace；系统 caller 创建共享 team。
+	if !workspace.IsSystem(ctx) {
+		in.WorkspaceID = workspace.IDFromContext(ctx)
+	}
 	created, err := s.uc.Create(ctx, in)
 	if err != nil {
 		return nil, err
@@ -251,6 +302,9 @@ func (s *TeamService) CreateTeam(ctx context.Context, req *v1.CreateTeamRequest)
 }
 
 func (s *TeamService) GetTeam(ctx context.Context, req *v1.GetTeamRequest) (*v1.Team, error) {
+	if err := s.assertTeamAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	t, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
 		return nil, mapTeamErr(err)
@@ -266,7 +320,11 @@ func (s *TeamService) UpdateTeam(ctx context.Context, req *v1.UpdateTeamRequest)
 	if req.GetTeam() == nil {
 		return nil, apierror.BadRequest("TEAM", "team body is required")
 	}
+	if err := s.assertTeamAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	patch := teamFromProto(req.GetTeam())
+	patch.WorkspaceID = "" // P2-B: workspace_id immutable on update
 	if pb := req.GetTeam(); pb != nil {
 		base := patch.DefinitionJSON
 		if strings.TrimSpace(base) == "" {
@@ -290,6 +348,9 @@ func (s *TeamService) UpdateTeam(ctx context.Context, req *v1.UpdateTeamRequest)
 }
 
 func (s *TeamService) DeleteTeam(ctx context.Context, req *v1.DeleteTeamRequest) (*emptypb.Empty, error) {
+	if err := s.assertTeamAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, mapTeamErr(err)
 	}
@@ -297,6 +358,9 @@ func (s *TeamService) DeleteTeam(ctx context.Context, req *v1.DeleteTeamRequest)
 }
 
 func (s *TeamService) DuplicateTeam(ctx context.Context, req *v1.DuplicateTeamRequest) (*v1.Team, error) {
+	if err := s.assertTeamAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	t, err := s.uc.Duplicate(ctx, req.GetId())
 	if err != nil {
 		return nil, mapTeamErr(err)
@@ -305,6 +369,9 @@ func (s *TeamService) DuplicateTeam(ctx context.Context, req *v1.DuplicateTeamRe
 }
 
 func (s *TeamService) ListTeamRuns(ctx context.Context, req *v1.ListTeamRunsRequest) (*v1.ListTeamRunsResponse, error) {
+	if err := s.assertTeamAccess(ctx, req.GetTeamId()); err != nil {
+		return nil, err
+	}
 	items, err := s.uc.ListRuns(ctx, req.GetTeamId(), int(req.GetLimit()))
 	if err != nil {
 		return nil, err
@@ -317,6 +384,9 @@ func (s *TeamService) ListTeamRuns(ctx context.Context, req *v1.ListTeamRunsRequ
 }
 
 func (s *TeamService) GetTeamRun(ctx context.Context, req *v1.GetTeamRunRequest) (*v1.TeamRun, error) {
+	if err := s.assertRunTeamAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	r, err := s.uc.GetRun(ctx, req.GetId())
 	if err != nil {
 		return nil, mapTeamErr(err)
@@ -325,6 +395,9 @@ func (s *TeamService) GetTeamRun(ctx context.Context, req *v1.GetTeamRunRequest)
 }
 
 func (s *TeamService) CancelTeamRun(ctx context.Context, req *v1.CancelTeamRunRequest) (*v1.TeamRun, error) {
+	if err := s.assertRunTeamAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	r, err := s.uc.CancelRun(ctx, req.GetId())
 	if err != nil {
 		return nil, mapTeamErr(err)
@@ -349,6 +422,9 @@ func (s *TeamService) RunTeamTest(ctx context.Context, req *v1.RunTeamTestReques
 	}
 	if s.teamRunner == nil || s.sessions == nil {
 		return nil, apierror.Internal("TEAM", "team test runtime is not configured")
+	}
+	if err := s.assertTeamAccess(ctx, teamID); err != nil {
+		return nil, err
 	}
 	if _, err := s.uc.Get(ctx, teamID); err != nil {
 		return nil, mapTeamErr(err)
@@ -414,6 +490,9 @@ func (s *TeamService) RunTeamTest(ctx context.Context, req *v1.RunTeamTestReques
 }
 
 func (s *TeamService) ListTeamRunSteps(ctx context.Context, req *v1.ListTeamRunStepsRequest) (*v1.ListTeamRunStepsResponse, error) {
+	if err := s.assertRunTeamAccess(ctx, req.GetRunId()); err != nil {
+		return nil, err
+	}
 	items, err := s.uc.ListRunSteps(ctx, req.GetRunId())
 	if err != nil {
 		return nil, err
@@ -426,6 +505,9 @@ func (s *TeamService) ListTeamRunSteps(ctx context.Context, req *v1.ListTeamRunS
 }
 
 func (s *TeamService) UpdateSwarmMembers(ctx context.Context, req *v1.UpdateSwarmMembersRequest) (*v1.UpdateSwarmMembersResponse, error) {
+	if err := s.assertTeamAccess(ctx, req.GetTeamId()); err != nil {
+		return nil, err
+	}
 	updated, err := s.uc.UpdateSwarmMembers(ctx, req.GetTeamId(), req.GetAddAgentIds(), req.GetRemoveAgentIds())
 	if err != nil {
 		return nil, mapTeamErr(err)
@@ -434,6 +516,9 @@ func (s *TeamService) UpdateSwarmMembers(ctx context.Context, req *v1.UpdateSwar
 }
 
 func (s *TeamService) ExportTeamStructure(ctx context.Context, req *v1.ExportTeamStructureRequest) (*v1.ExportTeamStructureResponse, error) {
+	if err := s.assertTeamAccess(ctx, req.GetTeamId()); err != nil {
+		return nil, err
+	}
 	snap, err := s.exportStructureViaCompiler(ctx, req.GetTeamId())
 	if err != nil {
 		return nil, mapTeamErr(err)
@@ -454,6 +539,9 @@ func (s *TeamService) ExportTeamStructure(ctx context.Context, req *v1.ExportTea
 }
 
 func (s *TeamService) GetTeamRunSummary(ctx context.Context, req *v1.GetTeamRunSummaryRequest) (*v1.GetTeamRunSummaryResponse, error) {
+	if err := s.assertRunTeamAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	data, err := s.uc.GetRunSummary(ctx, req.GetId())
 	if err != nil {
 		return nil, mapTeamErr(err)

@@ -85,6 +85,11 @@ func (uc *GraphDefinitionUsecase) ListGraphs(ctx context.Context, pageSize int, 
 	return uc.reader.ListDefinitions(ctx, pageSize, pageToken)
 }
 
+// ListGraphsByWorkspace returns graph definitions visible to the given workspace (P2-B).
+func (uc *GraphDefinitionUsecase) ListGraphsByWorkspace(ctx context.Context, pageSize int, pageToken string, workspaceID string) ([]*GraphDefinition, string, error) {
+	return uc.reader.ListDefinitionsByWorkspace(ctx, pageSize, pageToken, workspaceID)
+}
+
 func (uc *GraphDefinitionUsecase) UpdateGraph(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error) {
 	previous, err := uc.reader.GetDefinition(ctx, def.ID)
 	if err != nil {
@@ -142,7 +147,7 @@ func (uc *GraphDefinitionUsecase) ListGraphTemplates(ctx context.Context) []Grap
 	return uc.factory.ListTemplates()
 }
 
-func (uc *GraphDefinitionUsecase) CreateGraphFromTemplate(ctx context.Context, templateID string, name string, description string) (*GraphDefinition, error) {
+func (uc *GraphDefinitionUsecase) CreateGraphFromTemplate(ctx context.Context, templateID string, name string, description string, workspaceID string) (*GraphDefinition, error) {
 	if strings.HasPrefix(templateID, UserTemplateIDPrefix) {
 		graphID := strings.TrimPrefix(templateID, UserTemplateIDPrefix)
 		src, err := uc.GetGraph(ctx, graphID)
@@ -157,6 +162,7 @@ func (uc *GraphDefinitionUsecase) CreateGraphFromTemplate(ctx context.Context, t
 		def.Name = name
 		def.Description = description
 		def.Version = 0
+		def.WorkspaceID = workspaceID // P2-B: set caller workspace
 		if def.Metadata != nil {
 			delete(def.Metadata, GraphMetadataUserTemplateKey)
 			delete(def.Metadata, GraphMetadataVersionHistoryKey)
@@ -168,6 +174,7 @@ func (uc *GraphDefinitionUsecase) CreateGraphFromTemplate(ctx context.Context, t
 		return nil, ErrGraphTemplateNotFound
 	}
 	def := uc.factory.TemplateToDef(tmpl, name, description)
+	def.WorkspaceID = workspaceID // P2-B: set caller workspace
 	return uc.CreateGraph(ctx, def)
 }
 
@@ -185,12 +192,13 @@ func (uc *GraphDefinitionUsecase) ExportGraph(ctx context.Context, graphID strin
 	return raw, export, nil
 }
 
-func (uc *GraphDefinitionUsecase) ImportGraph(ctx context.Context, raw []byte, name, description string) (*GraphDefinition, error) {
+func (uc *GraphDefinitionUsecase) ImportGraph(ctx context.Context, raw []byte, name, description, workspaceID string) (*GraphDefinition, error) {
 	var def GraphDefinition
 	if err := json.Unmarshal(raw, &def); err != nil {
 		return nil, apierror.BadRequest("GRAPH", "invalid graph json")
 	}
 	def.ID = ""
+	def.WorkspaceID = workspaceID // P2-B: set caller workspace (ignore exported value)
 	if strings.TrimSpace(name) != "" {
 		def.Name = name
 	}
@@ -270,6 +278,11 @@ func (uc *GraphDefinitionUsecase) SaveGraphAsTemplate(ctx context.Context, graph
 
 func (uc *GraphDefinitionUsecase) ListUserTemplateGraphs(ctx context.Context) ([]*GraphDefinition, error) {
 	return uc.reader.ListUserTemplateDefinitions(ctx, 200)
+}
+
+// ListUserTemplateGraphsByWorkspace returns user template graphs visible to the given workspace (P2-B).
+func (uc *GraphDefinitionUsecase) ListUserTemplateGraphsByWorkspace(ctx context.Context, workspaceID string) ([]*GraphDefinition, error) {
+	return uc.reader.ListUserTemplateDefinitionsByWorkspace(ctx, 200, workspaceID)
 }
 
 func (uc *GraphDefinitionUsecase) FindNodeDef(ctx context.Context, graphID string, nodeID string) *NodeTaskMeta {

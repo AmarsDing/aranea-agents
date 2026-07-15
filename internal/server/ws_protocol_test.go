@@ -207,6 +207,7 @@ func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
 		nil,
 		loggateway.NewNoop(),
 		v2Bus,
+		nil,
 	)
 	wc := &wsConn{
 		sessionID: "sess-user",
@@ -266,6 +267,7 @@ func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
 		nil,
 		loggateway.NewNoop(),
 		v2Bus,
+		nil,
 	)
 	wc := &wsConn{
 		sessionID: "sess-turn",
@@ -321,9 +323,156 @@ func TestWSUpstreamUserMessageAccepted(t *testing.T) {
 	raw, _ := json.Marshal(wsUpstream{
 		Direction: "client_to_server",
 		Channel:   "chat",
-		Type:      "user_message",
 		Payload:   map[string]any{"content": "hi"},
 	})
 	srv.handleUpstream(wc, raw)
 	time.Sleep(50 * time.Millisecond)
+}
+
+// TestWSUpstreamErrorPublishesSyntheticV2Failure verifies that
+// publishWSErrorActivity (P2-05 fix) emits the synthetic v2 Task/Turn/Step
+// failure events so the v2 timeline can render a stable ErrorBlock.
+//
+// Without this, WS send failures only flow through the v1 bridge path and
+// the v2-only ActivityStream has no entity to render.
+func TestWSUpstreamErrorPublishesSyntheticV2Failure(t *testing.T) {
+	v2Bus := event.NewV2Bus()
+	srv := NewWSServerFromInfra(
+		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
+		&event.Infra{MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop())},
+		nil,
+		stubChatSender{sendErr: context.Canceled},
+		nil,
+		nil,
+		loggateway.NewNoop(),
+		v2Bus,
+		nil,
+	)
+	wc := &wsConn{
+		sessionID: "sess-syn",
+		channels:  map[string]bool{"chat": true, "system": true},
+		send:      make(chan []byte, 2),
+	}
+	ch, unsub := v2Bus.Subscribe(biz.EventSubscribeOptions{})
+	defer unsub()
+
+	raw, _ := json.Marshal(wsUpstream{
+		Direction: "client_to_server",
+		Channel:   "chat",
+		Type:      "user_message",
+		RequestID: "req-syn-1",
+		Payload:   map[string]any{"content": "hello"},
+	})
+	srv.handleUpstream(wc, raw)
+
+	// Collect events published within 2 seconds. Expect at least:
+	//   1 *ActivityBridgeEvent (v1 compat)
+	//   1 *TaskFailedEvent (synthetic)
+	//   1 *TurnFailedEvent (synthetic)
+	//   1 *StepCreatedEvent (synthetic error Step)
+	//   1 *StepCompletedEvent (synthetic error Step)
+	deadline := time.After(2 * time.Second)
+	var gotTaskFailed, gotTurnFailed, gotStepCreated, gotStepCompleted bool
+	var synTaskID, synTurnID, synStepID string
+	var synTask *biz.TaskFailedEvent
+	var synTurn *biz.TurnFailedEvent
+	var synStepCreated *biz.StepCreatedEvent
+	var synStepCompleted *biz.StepCompletedEvent
+	for !gotTaskFailed || !gotTurnFailed || !gotStepCreated || !gotStepCompleted {
+		select {
+		case e := <-ch:
+			switch ev := e.(type) {
+			case *biz.TaskFailedEvent:
+				gotTaskFailed = true
+				synTask = ev
+				synTaskID = ev.Task.ID
+			case *biz.TurnFailedEvent:
+				gotTurnFailed = true
+				synTurn = ev
+				synTurnID = ev.Turn.ID
+			case *biz.StepCreatedEvent:
+				gotStepCreated = true
+				synStepCreated = ev
+				synStepID = ev.Step.ID
+			case *biz.StepCompletedEvent:
+				gotStepCompleted = true
+				synStepCompleted = ev
+			}
+		case <-deadline:
+			t.Fatalf("timeout — got taskFailed=%v turnFailed=%v stepCreated=%v stepCompleted=%v",
+				gotTaskFailed, gotTurnFailed, gotStepCreated, gotStepCompleted)
+		}
+	}
+
+	// Verify synthetic ID consistency: Task.ID, Turn.ID (Task + "-turn"),
+	// Step.ID (Turn + "-s1").
+	const wantTaskID = "ws-err-req-syn-1"
+	if synTaskID != wantTaskID {
+		t.Errorf("synthetic Task.ID = %q, want %q", synTaskID, wantTaskID)
+	}
+	const wantTurnID = wantTaskID + "-turn"
+	if synTurnID != wantTurnID {
+		t.Errorf("synthetic Turn.ID = %q, want %q", synTurnID, wantTurnID)
+	}
+	const wantStepID = wantTurnID + "-s1"
+	if synStepID != wantStepID {
+		t.Errorf("synthetic Step.ID = %q, want %q", synStepID, wantStepID)
+	}
+
+	// Verify Task fields.
+	if synTask.Task.SessionID != "sess-syn" {
+		t.Errorf("synthetic Task.SessionID = %q, want sess-syn", synTask.Task.SessionID)
+	}
+	if synTask.Task.Status != biz.TaskStatusFailed {
+		t.Errorf("synthetic Task.Status = %q, want failed", synTask.Task.Status)
+	}
+	if synTask.Task.Version != 1 {
+		t.Errorf("synthetic Task.Version = %d, want 1", synTask.Task.Version)
+	}
+	if synTask.Task.CompletedAt == nil {
+		t.Error("synthetic Task.CompletedAt should be non-nil")
+	}
+
+	// Verify Turn fields.
+	if synTurn.Turn.TaskID != wantTaskID {
+		t.Errorf("synthetic Turn.TaskID = %q, want %q", synTurn.Turn.TaskID, wantTaskID)
+	}
+	if synTurn.Turn.SessionID != "sess-syn" {
+		t.Errorf("synthetic Turn.SessionID = %q, want sess-syn", synTurn.Turn.SessionID)
+	}
+	if synTurn.Turn.SpiritSessionID != "sess-syn" {
+		t.Errorf("synthetic Turn.SpiritSessionID = %q, want sess-syn", synTurn.Turn.SpiritSessionID)
+	}
+	if synTurn.Turn.Status != biz.TurnStatusFailed {
+		t.Errorf("synthetic Turn.Status = %q, want failed", synTurn.Turn.Status)
+	}
+
+	// Verify Step fields (Kind=error carries error details for the frontend).
+	if synStepCreated.Step.TurnID != wantTurnID {
+		t.Errorf("synthetic Step.TurnID = %q, want %q", synStepCreated.Step.TurnID, wantTurnID)
+	}
+	if synStepCreated.Step.TaskID != wantTaskID {
+		t.Errorf("synthetic Step.TaskID = %q, want %q", synStepCreated.Step.TaskID, wantTaskID)
+	}
+	if synStepCreated.Step.Kind != biz.StepKindError {
+		t.Errorf("synthetic Step.Kind = %q, want error", synStepCreated.Step.Kind)
+	}
+	if synStepCreated.Step.Status != biz.StepStatusCompleted {
+		t.Errorf("synthetic Step.Status = %q, want completed", synStepCreated.Step.Status)
+	}
+	// The Content should carry the error message (from stubChatSender.sendErr
+	// = context.Canceled → message "context canceled" comes from send_failed
+	// error type + err.Error()).
+	if synStepCreated.Step.Content == "" {
+		t.Error("synthetic Step.Content should be non-empty (carries error message)")
+	}
+	if synStepCreated.Step.ToolErrorCode != "send_failed" {
+		t.Errorf("synthetic Step.ToolErrorCode = %q, want send_failed", synStepCreated.Step.ToolErrorCode)
+	}
+
+	// StepCompleted event should carry the same Step (same ID, same content).
+	if synStepCompleted.Step.ID != synStepCreated.Step.ID {
+		t.Errorf("StepCompleted.Step.ID = %q, want %q (same as StepCreated)",
+			synStepCompleted.Step.ID, synStepCreated.Step.ID)
+	}
 }

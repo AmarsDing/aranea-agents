@@ -3241,6 +3241,10 @@ func init() {
 	platformchannelDescDeletedAt := platformchannelFields[11].Descriptor()
 	// platformchannel.DefaultDeletedAt holds the default value on creation for the deleted_at field.
 	platformchannel.DefaultDeletedAt = platformchannelDescDeletedAt.Default.(string)
+	// platformchannelDescWorkspaceID is the schema descriptor for workspace_id field.
+	platformchannelDescWorkspaceID := platformchannelFields[12].Descriptor()
+	// platformchannel.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	platformchannel.DefaultWorkspaceID = platformchannelDescWorkspaceID.Default.(string)
 	// platformchannelDescID is the schema descriptor for id field.
 	platformchannelDescID := platformchannelFields[0].Descriptor()
 	// platformchannel.IDValidator is a validator for the "id" field. It is called by the builders before save.
@@ -3487,6 +3491,10 @@ func init() {
 	platformmcpserverDescDeletedAt := platformmcpserverFields[11].Descriptor()
 	// platformmcpserver.DefaultDeletedAt holds the default value on creation for the deleted_at field.
 	platformmcpserver.DefaultDeletedAt = platformmcpserverDescDeletedAt.Default.(string)
+	// platformmcpserverDescWorkspaceID is the schema descriptor for workspace_id field.
+	platformmcpserverDescWorkspaceID := platformmcpserverFields[12].Descriptor()
+	// platformmcpserver.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	platformmcpserver.DefaultWorkspaceID = platformmcpserverDescWorkspaceID.Default.(string)
 	// platformmcpserverDescID is the schema descriptor for id field.
 	platformmcpserverDescID := platformmcpserverFields[0].Descriptor()
 	// platformmcpserver.IDValidator is a validator for the "id" field. It is called by the builders before save.
@@ -3785,6 +3793,10 @@ func init() {
 	platformskill.DefaultLifecycleStatus = platformskillDescLifecycleStatus.Default.(string)
 	// platformskill.LifecycleStatusValidator is a validator for the "lifecycle_status" field. It is called by the builders before save.
 	platformskill.LifecycleStatusValidator = platformskillDescLifecycleStatus.Validators[0].(func(string) error)
+	// platformskillDescWorkspaceID is the schema descriptor for workspace_id field.
+	platformskillDescWorkspaceID := platformskillFields[26].Descriptor()
+	// platformskill.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	platformskill.DefaultWorkspaceID = platformskillDescWorkspaceID.Default.(string)
 	// platformskillDescID is the schema descriptor for id field.
 	platformskillDescID := platformskillFields[0].Descriptor()
 	// platformskill.IDValidator is a validator for the "id" field. It is called by the builders before save.
@@ -3871,6 +3883,10 @@ func init() {
 	platformtoolDescDeletedAt := platformtoolFields[20].Descriptor()
 	// platformtool.DefaultDeletedAt holds the default value on creation for the deleted_at field.
 	platformtool.DefaultDeletedAt = platformtoolDescDeletedAt.Default.(string)
+	// platformtoolDescWorkspaceID is the schema descriptor for workspace_id field.
+	platformtoolDescWorkspaceID := platformtoolFields[21].Descriptor()
+	// platformtool.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
+	platformtool.DefaultWorkspaceID = platformtoolDescWorkspaceID.Default.(string)
 	// platformtoolDescID is the schema descriptor for id field.
 	platformtoolDescID := platformtoolFields[0].Descriptor()
 	// platformtool.IDValidator is a validator for the "id" field. It is called by the builders before save.

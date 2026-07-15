@@ -67,6 +67,9 @@ func (r *runSummaryRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]T
 func (r *runSummaryRepo) ListTeamsByDepartmentID(_ context.Context, _ string) ([]Team, error) {
 	return nil, nil
 }
+func (r *runSummaryRepo) ListTeamsByWorkspace(_ context.Context, _ string) ([]Team, error) {
+	return nil, nil
+}
 
 // TeamWriter stubs
 func (r *runSummaryRepo) CreateTeam(_ context.Context, t Team) (Team, error)           { return t, nil }

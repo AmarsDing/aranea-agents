@@ -160,6 +160,20 @@ func (_c *PlatformChannelCreate) SetNillableDeletedAt(v *string) *PlatformChanne
 	return _c
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_c *PlatformChannelCreate) SetWorkspaceID(v string) *PlatformChannelCreate {
+	_c.mutation.SetWorkspaceID(v)
+	return _c
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_c *PlatformChannelCreate) SetNillableWorkspaceID(v *string) *PlatformChannelCreate {
+	if v != nil {
+		_c.SetWorkspaceID(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *PlatformChannelCreate) SetID(v string) *PlatformChannelCreate {
 	_c.mutation.SetID(v)
@@ -237,6 +251,10 @@ func (_c *PlatformChannelCreate) defaults() {
 		v := platformchannel.DefaultDeletedAt
 		_c.mutation.SetDeletedAt(v)
 	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		v := platformchannel.DefaultWorkspaceID
+		_c.mutation.SetWorkspaceID(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -283,6 +301,9 @@ func (_c *PlatformChannelCreate) check() error {
 	}
 	if _, ok := _c.mutation.DeletedAt(); !ok {
 		return &ValidationError{Name: "deleted_at", err: errors.New(`ent: missing required field "PlatformChannel.deleted_at"`)}
+	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		return &ValidationError{Name: "workspace_id", err: errors.New(`ent: missing required field "PlatformChannel.workspace_id"`)}
 	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := platformchannel.IDValidator(v); err != nil {
@@ -368,6 +389,10 @@ func (_c *PlatformChannelCreate) createSpec() (*PlatformChannel, *sqlgraph.Creat
 	if value, ok := _c.mutation.DeletedAt(); ok {
 		_spec.SetField(platformchannel.FieldDeletedAt, field.TypeString, value)
 		_node.DeletedAt = value
+	}
+	if value, ok := _c.mutation.WorkspaceID(); ok {
+		_spec.SetField(platformchannel.FieldWorkspaceID, field.TypeString, value)
+		_node.WorkspaceID = value
 	}
 	return _node, _spec
 }
@@ -556,6 +581,18 @@ func (u *PlatformChannelUpsert) SetDeletedAt(v string) *PlatformChannelUpsert {
 // UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
 func (u *PlatformChannelUpsert) UpdateDeletedAt() *PlatformChannelUpsert {
 	u.SetExcluded(platformchannel.FieldDeletedAt)
+	return u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *PlatformChannelUpsert) SetWorkspaceID(v string) *PlatformChannelUpsert {
+	u.Set(platformchannel.FieldWorkspaceID, v)
+	return u
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *PlatformChannelUpsert) UpdateWorkspaceID() *PlatformChannelUpsert {
+	u.SetExcluded(platformchannel.FieldWorkspaceID)
 	return u
 }
 
@@ -765,6 +802,20 @@ func (u *PlatformChannelUpsertOne) SetDeletedAt(v string) *PlatformChannelUpsert
 func (u *PlatformChannelUpsertOne) UpdateDeletedAt() *PlatformChannelUpsertOne {
 	return u.Update(func(s *PlatformChannelUpsert) {
 		s.UpdateDeletedAt()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *PlatformChannelUpsertOne) SetWorkspaceID(v string) *PlatformChannelUpsertOne {
+	return u.Update(func(s *PlatformChannelUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *PlatformChannelUpsertOne) UpdateWorkspaceID() *PlatformChannelUpsertOne {
+	return u.Update(func(s *PlatformChannelUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 
@@ -1141,6 +1192,20 @@ func (u *PlatformChannelUpsertBulk) SetDeletedAt(v string) *PlatformChannelUpser
 func (u *PlatformChannelUpsertBulk) UpdateDeletedAt() *PlatformChannelUpsertBulk {
 	return u.Update(func(s *PlatformChannelUpsert) {
 		s.UpdateDeletedAt()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *PlatformChannelUpsertBulk) SetWorkspaceID(v string) *PlatformChannelUpsertBulk {
+	return u.Update(func(s *PlatformChannelUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *PlatformChannelUpsertBulk) UpdateWorkspaceID() *PlatformChannelUpsertBulk {
+	return u.Update(func(s *PlatformChannelUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 

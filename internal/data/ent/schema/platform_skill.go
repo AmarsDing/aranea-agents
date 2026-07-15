@@ -5,6 +5,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // PlatformSkill maps table skill (Ent type name avoids collisions).
@@ -46,5 +47,15 @@ func (PlatformSkill) Fields() []ent.Field {
 		field.String("parent_version_id").Default("").MaxLen(256),
 		field.Text("evolution_reason").Default(""),
 		field.String("lifecycle_status").Default("active").MaxLen(64),
+		// P2-B: tenant isolation. empty = shared/legacy (visible to all workspaces);
+		// non-empty = tenant-private (visible only to owning workspace).
+		field.String("workspace_id").Default("").Comment("owning workspace ID; empty = shared/system builtin"),
+	}
+}
+
+func (PlatformSkill) Indexes() []ent.Index {
+	return []ent.Index{
+		// P2-B: tenant isolation index — filter skills by workspace visibility.
+		index.Fields("workspace_id", "enabled"),
 	}
 }

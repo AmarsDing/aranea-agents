@@ -356,6 +356,20 @@ func (_c *PlatformSkillCreate) SetNillableLifecycleStatus(v *string) *PlatformSk
 	return _c
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_c *PlatformSkillCreate) SetWorkspaceID(v string) *PlatformSkillCreate {
+	_c.mutation.SetWorkspaceID(v)
+	return _c
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_c *PlatformSkillCreate) SetNillableWorkspaceID(v *string) *PlatformSkillCreate {
+	if v != nil {
+		_c.SetWorkspaceID(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *PlatformSkillCreate) SetID(v string) *PlatformSkillCreate {
 	_c.mutation.SetID(v)
@@ -489,6 +503,10 @@ func (_c *PlatformSkillCreate) defaults() {
 		v := platformskill.DefaultLifecycleStatus
 		_c.mutation.SetLifecycleStatus(v)
 	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		v := platformskill.DefaultWorkspaceID
+		_c.mutation.SetWorkspaceID(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -607,6 +625,9 @@ func (_c *PlatformSkillCreate) check() error {
 		if err := platformskill.LifecycleStatusValidator(v); err != nil {
 			return &ValidationError{Name: "lifecycle_status", err: fmt.Errorf(`ent: validator failed for field "PlatformSkill.lifecycle_status": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		return &ValidationError{Name: "workspace_id", err: errors.New(`ent: missing required field "PlatformSkill.workspace_id"`)}
 	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := platformskill.IDValidator(v); err != nil {
@@ -748,6 +769,10 @@ func (_c *PlatformSkillCreate) createSpec() (*PlatformSkill, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.LifecycleStatus(); ok {
 		_spec.SetField(platformskill.FieldLifecycleStatus, field.TypeString, value)
 		_node.LifecycleStatus = value
+	}
+	if value, ok := _c.mutation.WorkspaceID(); ok {
+		_spec.SetField(platformskill.FieldWorkspaceID, field.TypeString, value)
+		_node.WorkspaceID = value
 	}
 	return _node, _spec
 }
@@ -1104,6 +1129,18 @@ func (u *PlatformSkillUpsert) SetLifecycleStatus(v string) *PlatformSkillUpsert 
 // UpdateLifecycleStatus sets the "lifecycle_status" field to the value that was provided on create.
 func (u *PlatformSkillUpsert) UpdateLifecycleStatus() *PlatformSkillUpsert {
 	u.SetExcluded(platformskill.FieldLifecycleStatus)
+	return u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *PlatformSkillUpsert) SetWorkspaceID(v string) *PlatformSkillUpsert {
+	u.Set(platformskill.FieldWorkspaceID, v)
+	return u
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *PlatformSkillUpsert) UpdateWorkspaceID() *PlatformSkillUpsert {
+	u.SetExcluded(platformskill.FieldWorkspaceID)
 	return u
 }
 
@@ -1509,6 +1546,20 @@ func (u *PlatformSkillUpsertOne) SetLifecycleStatus(v string) *PlatformSkillUpse
 func (u *PlatformSkillUpsertOne) UpdateLifecycleStatus() *PlatformSkillUpsertOne {
 	return u.Update(func(s *PlatformSkillUpsert) {
 		s.UpdateLifecycleStatus()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *PlatformSkillUpsertOne) SetWorkspaceID(v string) *PlatformSkillUpsertOne {
+	return u.Update(func(s *PlatformSkillUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *PlatformSkillUpsertOne) UpdateWorkspaceID() *PlatformSkillUpsertOne {
+	return u.Update(func(s *PlatformSkillUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 
@@ -2081,6 +2132,20 @@ func (u *PlatformSkillUpsertBulk) SetLifecycleStatus(v string) *PlatformSkillUps
 func (u *PlatformSkillUpsertBulk) UpdateLifecycleStatus() *PlatformSkillUpsertBulk {
 	return u.Update(func(s *PlatformSkillUpsert) {
 		s.UpdateLifecycleStatus()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *PlatformSkillUpsertBulk) SetWorkspaceID(v string) *PlatformSkillUpsertBulk {
+	return u.Update(func(s *PlatformSkillUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *PlatformSkillUpsertBulk) UpdateWorkspaceID() *PlatformSkillUpsertBulk {
+	return u.Update(func(s *PlatformSkillUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 

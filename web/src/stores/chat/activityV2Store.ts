@@ -26,6 +26,13 @@ import {
   listGraphNodesV2,
 } from '../../features/session/v2Api';
 
+// P2-07: record sub-resource fetch failures during history hydration.
+export interface HydrationError {
+  scope: string; // entity type: "turns" | "team_stages" | "team_runs" | ...
+  parentId: string; // parent entity ID (task ID, team_stage ID, etc.)
+  message: string; // error message
+}
+
 /**
  * useChatActivityStore holds all v2 chat entities in flat Maps keyed by ID.
  * Entities are keyed by their own ID; associations are via task_id / turn_id etc.
@@ -43,6 +50,21 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   const planSteps = ref(new Map<string, PlanStep>());
   const graphStages = ref(new Map<string, GraphStage>());
   const graphNodes = ref(new Map<string, GraphNode>());
+
+  // P2-07: track sub-resource fetch failures so the UI can distinguish
+  // "no data" from "failed to load" and show a partial/stale indicator.
+  const hydrationErrors = ref<HydrationError[]>([]);
+
+  function catchHydrationError<T>(scope: string, parentId: string): (e: unknown) => T[] {
+    return (e: unknown) => {
+      hydrationErrors.value.push({
+        scope,
+        parentId,
+        message: e instanceof Error ? e.message : String(e),
+      });
+      return [] as T[];
+    };
+  }
 
   // === Upsert helpers (optimistic-concurrency guarded) ===
 
@@ -159,11 +181,26 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
 
   // === Streaming delta (does NOT bump version) ===
 
-  function appendStepDelta(stepId: string, field: 'content' | 'reasoning', chunk: string) {
+  // P2-06 fix: accept any DeltaField string from the backend and handle only
+  // the known string-appendable fields (content, reasoning). Unknown fields
+  // (e.g. tool_args, state) are silently ignored — the final value arrives
+  // via the subsequent step.completed event which carries the complete Step
+  // entity. The previous if/else caught ALL non-content fields and appended
+  // them to Reasoning, causing silent data corruption.
+  function appendStepDelta(stepId: string, field: string, chunk: string) {
     const s = steps.value.get(stepId);
     if (!s) return;
-    if (field === 'content') s.Content += chunk;
-    else s.Reasoning += chunk;
+    switch (field) {
+      case 'content':
+        s.Content += chunk;
+        break;
+      case 'reasoning':
+        s.Reasoning += chunk;
+        break;
+      default:
+        // Unknown delta field — ignore; final value comes from step.completed.
+        break;
+    }
   }
 
   // === Query helpers ===
@@ -364,24 +401,29 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
    *   - Per team_run (parallel): member_sessions
    *   - Per graph_stage (parallel): graph_nodes
    *
-   * Isolated failures at child levels are swallowed (.catch(() => [])) so
-   * partial history can still render. Top-level task/step failures propagate.
+   * Isolated failures at child levels are caught and recorded in
+   * hydrationErrors (P2-07 fix) so the UI can show a partial/stale
+   * indicator. Top-level task/step failures propagate.
    */
   async function fetchSessionHistory(sessionId: string): Promise<void> {
+    // P2-07: clear previous hydration errors at the start of each fetch.
+    hydrationErrors.value = [];
+
     const [tasksList, stepsList] = await Promise.all([listTasksV2(sessionId), listStepsV2(sessionId)]);
     for (const t of tasksList) upsertTask(t);
     for (const s of stepsList) upsertStep(s);
 
     // Per-task parallel fetch: turns + 4 task-scoped child entities.
-    // Each call catches its own failure → empty array, so one failing task
-    // doesn't poison the others.
+    // Each call catches its own failure → empty array + recorded error,
+    // so one failing task doesn't poison the others and the UI can show
+    // a partial/stale indicator.
     const perTaskResults = await Promise.all(
       tasksList.map(async (t) => ({
-        turns: await listTurnsV2(t.ID).catch(() => [] as Turn[]),
-        teamStages: await listTeamStagesV2(t.ID).catch(() => [] as TeamStage[]),
-        planBoards: await listPlanBoardsV2(t.ID).catch(() => [] as PlanBoard[]),
-        planSteps: await listPlanStepsV2(t.ID).catch(() => [] as PlanStep[]),
-        graphStages: await listGraphStagesV2(t.ID).catch(() => [] as GraphStage[]),
+        turns: await listTurnsV2(t.ID).catch(catchHydrationError<Turn>('turns', t.ID)),
+        teamStages: await listTeamStagesV2(t.ID).catch(catchHydrationError<TeamStage>('team_stages', t.ID)),
+        planBoards: await listPlanBoardsV2(t.ID).catch(catchHydrationError<PlanBoard>('plan_boards', t.ID)),
+        planSteps: await listPlanStepsV2(t.ID).catch(catchHydrationError<PlanStep>('plan_steps', t.ID)),
+        graphStages: await listGraphStagesV2(t.ID).catch(catchHydrationError<GraphStage>('graph_stages', t.ID)),
       })),
     );
     for (const r of perTaskResults) {
@@ -400,9 +442,9 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       allGraphStages.push(...r.graphStages);
     }
 
-    // Per team_stage: fetch team_runs (parallel). Isolated failures → [].
+    // Per team_stage: fetch team_runs (parallel). Isolated failures → [] + error.
     const teamRunLists = await Promise.all(
-      allTeamStages.map((ts) => listTeamRunsV2(ts.ID).catch(() => [] as TeamRun[])),
+      allTeamStages.map((ts) => listTeamRunsV2(ts.ID).catch(catchHydrationError<TeamRun>('team_runs', ts.ID))),
     );
     const allTeamRuns: TeamRun[] = [];
     for (const runs of teamRunLists) {
@@ -410,17 +452,19 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       allTeamRuns.push(...runs);
     }
 
-    // Per team_run: fetch member_sessions (parallel). Isolated failures → [].
+    // Per team_run: fetch member_sessions (parallel). Isolated failures → [] + error.
     const memberSessionLists = await Promise.all(
-      allTeamRuns.map((tr) => listMemberSessionsV2(tr.ID).catch(() => [] as MemberSession[])),
+      allTeamRuns.map((tr) =>
+        listMemberSessionsV2(tr.ID).catch(catchHydrationError<MemberSession>('member_sessions', tr.ID)),
+      ),
     );
     for (const sessions of memberSessionLists) {
       for (const ms of sessions) upsertMemberSession(ms);
     }
 
-    // Per graph_stage: fetch graph_nodes (parallel). Isolated failures → [].
+    // Per graph_stage: fetch graph_nodes (parallel). Isolated failures → [] + error.
     const graphNodeLists = await Promise.all(
-      allGraphStages.map((gs) => listGraphNodesV2(gs.ID).catch(() => [] as GraphNode[])),
+      allGraphStages.map((gs) => listGraphNodesV2(gs.ID).catch(catchHydrationError<GraphNode>('graph_nodes', gs.ID))),
     );
     for (const nodes of graphNodeLists) {
       for (const gn of nodes) upsertGraphNode(gn);
@@ -466,5 +510,6 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     clearSession,
     clearAll,
     fetchSessionHistory,
+    hydrationErrors,
   };
 });

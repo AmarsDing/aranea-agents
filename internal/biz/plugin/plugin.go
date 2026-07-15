@@ -35,6 +35,10 @@ type Plugin struct {
 	CreatedAt         string
 	UpdatedAt         string
 	Permissions       Permissions
+	// WorkspaceID is the owning workspace ID for tenant isolation (P2-B).
+	// empty = shared/legacy (visible to all workspaces, e.g., system builtins);
+	// non-empty = tenant-private (visible only to owning workspace).
+	WorkspaceID string
 }
 
 // Permissions mirrors legacy JSON for admin UI.
@@ -58,6 +62,10 @@ type ListQuery struct {
 	CallbackPoint string
 	Limit         int
 	Offset        int
+	// WorkspaceID filters by tenant visibility (P2-B).
+	// empty = system caller (see all); non-empty = tenant caller
+	// (see shared with workspace_id="" + own with workspace_id==WorkspaceID).
+	WorkspaceID string
 }
 
 // ListResult is one page of plugins.
@@ -184,6 +192,14 @@ func (u *Usecase) GetByKey(ctx context.Context, key string) (Plugin, error) {
 		return Plugin{}, err
 	}
 	return p, nil
+}
+
+// Get returns a plugin by ID. (P2-B: service-layer IDOR check)
+func (u *Usecase) Get(ctx context.Context, id string) (Plugin, error) {
+	if strings.TrimSpace(id) == "" {
+		return Plugin{}, apierror.BadRequest("PLUGIN", "id is required")
+	}
+	return u.repo.GetPlugin(ctx, id)
 }
 
 // Create validates and stores a new plugin.

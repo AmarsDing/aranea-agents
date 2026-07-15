@@ -16,6 +16,11 @@ type TeamReader interface {
 	GetTeamByKey(ctx context.Context, teamKey string) (Team, error)
 	ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]Team, error)
 	ListTeamsByDepartmentID(ctx context.Context, deptID string) ([]Team, error)
+	// ListTeamsByWorkspace returns teams visible to the given workspace (P2-B).
+	// empty workspaceID = system caller (see all); non-empty = tenant caller
+	// (see shared + own).
+	// Stability:stable
+	ListTeamsByWorkspace(ctx context.Context, workspaceID string) ([]Team, error)
 }
 
 // Stability:stable
@@ -298,6 +303,12 @@ func (u *TeamUsecase) ListTeamsByStatus(ctx context.Context, status string) ([]T
 
 func (u *TeamUsecase) ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]Team, error) {
 	return u.reader.ListBySpiritSessionID(ctx, spiritSessionID)
+}
+
+// ListByWorkspace returns teams visible to the given workspace (P2-B).
+// empty workspaceID = system caller (see all); non-empty = tenant caller.
+func (u *TeamUsecase) ListByWorkspace(ctx context.Context, workspaceID string) ([]Team, error) {
+	return u.reader.ListTeamsByWorkspace(ctx, workspaceID)
 }
 
 func (u *TeamUsecase) Get(ctx context.Context, id string) (Team, error) {
@@ -635,6 +646,7 @@ func (u *TeamUsecase) Duplicate(ctx context.Context, id string) (Team, error) {
 		TaskDescription:    current.TaskDescription,
 		ParallelConfigJSON: current.ParallelConfigJSON,
 		Topology:           current.Topology,
+		WorkspaceID:        current.WorkspaceID, // P2-B: inherit source workspace
 	}
 	// Delegate to Create which validates definition_json and member existence.
 	return u.Create(ctx, dup)

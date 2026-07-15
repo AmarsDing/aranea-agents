@@ -107,6 +107,9 @@ func (m *parityMemRepo) GetTeamByKey(_ context.Context, _ string) (biz.Team, err
 func (m *parityMemRepo) ListTeamsByDepartmentID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
+func (m *parityMemRepo) ListTeamsByWorkspace(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 
 type parityStubAgents struct {
 	biz.AgentRepository

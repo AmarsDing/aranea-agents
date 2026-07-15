@@ -75,6 +75,9 @@ func (s stubTeamRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.
 func (s stubTeamRepo) ListTeamsByDepartmentID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
+func (s stubTeamRepo) ListTeamsByWorkspace(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 
 type channelTestAgentRepo struct {
 	key string

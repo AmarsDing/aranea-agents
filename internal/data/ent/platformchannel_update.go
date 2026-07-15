@@ -188,6 +188,20 @@ func (_u *PlatformChannelUpdate) SetNillableDeletedAt(v *string) *PlatformChanne
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *PlatformChannelUpdate) SetWorkspaceID(v string) *PlatformChannelUpdate {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *PlatformChannelUpdate) SetNillableWorkspaceID(v *string) *PlatformChannelUpdate {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // Mutation returns the PlatformChannelMutation object of the builder.
 func (_u *PlatformChannelUpdate) Mutation() *PlatformChannelMutation {
 	return _u.mutation
@@ -282,6 +296,9 @@ func (_u *PlatformChannelUpdate) sqlSave(ctx context.Context) (_node int, err er
 	}
 	if value, ok := _u.mutation.DeletedAt(); ok {
 		_spec.SetField(platformchannel.FieldDeletedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(platformchannel.FieldWorkspaceID, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -464,6 +481,20 @@ func (_u *PlatformChannelUpdateOne) SetNillableDeletedAt(v *string) *PlatformCha
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *PlatformChannelUpdateOne) SetWorkspaceID(v string) *PlatformChannelUpdateOne {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *PlatformChannelUpdateOne) SetNillableWorkspaceID(v *string) *PlatformChannelUpdateOne {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // Mutation returns the PlatformChannelMutation object of the builder.
 func (_u *PlatformChannelUpdateOne) Mutation() *PlatformChannelMutation {
 	return _u.mutation
@@ -588,6 +619,9 @@ func (_u *PlatformChannelUpdateOne) sqlSave(ctx context.Context) (_node *Platfor
 	}
 	if value, ok := _u.mutation.DeletedAt(); ok {
 		_spec.SetField(platformchannel.FieldDeletedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(platformchannel.FieldWorkspaceID, field.TypeString, value)
 	}
 	_node = &PlatformChannel{config: _u.config}
 	_spec.Assign = _node.assignValues

@@ -307,6 +307,20 @@ func (_u *PlatformToolUpdate) SetNillableDeletedAt(v *string) *PlatformToolUpdat
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *PlatformToolUpdate) SetWorkspaceID(v string) *PlatformToolUpdate {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *PlatformToolUpdate) SetNillableWorkspaceID(v *string) *PlatformToolUpdate {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // Mutation returns the PlatformToolMutation object of the builder.
 func (_u *PlatformToolUpdate) Mutation() *PlatformToolMutation {
 	return _u.mutation
@@ -425,6 +439,9 @@ func (_u *PlatformToolUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if value, ok := _u.mutation.DeletedAt(); ok {
 		_spec.SetField(platformtool.FieldDeletedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(platformtool.FieldWorkspaceID, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -726,6 +743,20 @@ func (_u *PlatformToolUpdateOne) SetNillableDeletedAt(v *string) *PlatformToolUp
 	return _u
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_u *PlatformToolUpdateOne) SetWorkspaceID(v string) *PlatformToolUpdateOne {
+	_u.mutation.SetWorkspaceID(v)
+	return _u
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_u *PlatformToolUpdateOne) SetNillableWorkspaceID(v *string) *PlatformToolUpdateOne {
+	if v != nil {
+		_u.SetWorkspaceID(*v)
+	}
+	return _u
+}
+
 // Mutation returns the PlatformToolMutation object of the builder.
 func (_u *PlatformToolUpdateOne) Mutation() *PlatformToolMutation {
 	return _u.mutation
@@ -874,6 +905,9 @@ func (_u *PlatformToolUpdateOne) sqlSave(ctx context.Context) (_node *PlatformTo
 	}
 	if value, ok := _u.mutation.DeletedAt(); ok {
 		_spec.SetField(platformtool.FieldDeletedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.WorkspaceID(); ok {
+		_spec.SetField(platformtool.FieldWorkspaceID, field.TypeString, value)
 	}
 	_node = &PlatformTool{config: _u.config}
 	_spec.Assign = _node.assignValues

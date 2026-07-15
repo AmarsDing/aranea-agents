@@ -57207,6 +57207,7 @@ type PlatformChannelMutation struct {
 	created_at    *string
 	updated_at    *string
 	deleted_at    *string
+	workspace_id  *string
 	clearedFields map[string]struct{}
 	done          bool
 	oldValue      func(context.Context) (*PlatformChannel, error)
@@ -57733,6 +57734,42 @@ func (m *PlatformChannelMutation) ResetDeletedAt() {
 	m.deleted_at = nil
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *PlatformChannelMutation) SetWorkspaceID(s string) {
+	m.workspace_id = &s
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *PlatformChannelMutation) WorkspaceID() (r string, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the PlatformChannel entity.
+// If the PlatformChannel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PlatformChannelMutation) OldWorkspaceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *PlatformChannelMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
+}
+
 // Where appends a list predicates to the PlatformChannelMutation builder.
 func (m *PlatformChannelMutation) Where(ps ...predicate.PlatformChannel) {
 	m.predicates = append(m.predicates, ps...)
@@ -57767,7 +57804,7 @@ func (m *PlatformChannelMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PlatformChannelMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 12)
 	if m.channel_key != nil {
 		fields = append(fields, platformchannel.FieldChannelKey)
 	}
@@ -57801,6 +57838,9 @@ func (m *PlatformChannelMutation) Fields() []string {
 	if m.deleted_at != nil {
 		fields = append(fields, platformchannel.FieldDeletedAt)
 	}
+	if m.workspace_id != nil {
+		fields = append(fields, platformchannel.FieldWorkspaceID)
+	}
 	return fields
 }
 
@@ -57831,6 +57871,8 @@ func (m *PlatformChannelMutation) Field(name string) (ent.Value, bool) {
 		return m.UpdatedAt()
 	case platformchannel.FieldDeletedAt:
 		return m.DeletedAt()
+	case platformchannel.FieldWorkspaceID:
+		return m.WorkspaceID()
 	}
 	return nil, false
 }
@@ -57862,6 +57904,8 @@ func (m *PlatformChannelMutation) OldField(ctx context.Context, name string) (en
 		return m.OldUpdatedAt(ctx)
 	case platformchannel.FieldDeletedAt:
 		return m.OldDeletedAt(ctx)
+	case platformchannel.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
 	}
 	return nil, fmt.Errorf("unknown PlatformChannel field %s", name)
 }
@@ -57947,6 +57991,13 @@ func (m *PlatformChannelMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDeletedAt(v)
+		return nil
+	case platformchannel.FieldWorkspaceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
 		return nil
 	}
 	return fmt.Errorf("unknown PlatformChannel field %s", name)
@@ -58044,6 +58095,9 @@ func (m *PlatformChannelMutation) ResetField(name string) error {
 		return nil
 	case platformchannel.FieldDeletedAt:
 		m.ResetDeletedAt()
+		return nil
+	case platformchannel.FieldWorkspaceID:
+		m.ResetWorkspaceID()
 		return nil
 	}
 	return fmt.Errorf("unknown PlatformChannel field %s", name)
@@ -60991,6 +61045,7 @@ type PlatformMCPServerMutation struct {
 	created_at    *string
 	updated_at    *string
 	deleted_at    *string
+	workspace_id  *string
 	clearedFields map[string]struct{}
 	done          bool
 	oldValue      func(context.Context) (*PlatformMCPServer, error)
@@ -61517,6 +61572,42 @@ func (m *PlatformMCPServerMutation) ResetDeletedAt() {
 	m.deleted_at = nil
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *PlatformMCPServerMutation) SetWorkspaceID(s string) {
+	m.workspace_id = &s
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *PlatformMCPServerMutation) WorkspaceID() (r string, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the PlatformMCPServer entity.
+// If the PlatformMCPServer object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PlatformMCPServerMutation) OldWorkspaceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *PlatformMCPServerMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
+}
+
 // Where appends a list predicates to the PlatformMCPServerMutation builder.
 func (m *PlatformMCPServerMutation) Where(ps ...predicate.PlatformMCPServer) {
 	m.predicates = append(m.predicates, ps...)
@@ -61551,7 +61642,7 @@ func (m *PlatformMCPServerMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PlatformMCPServerMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 12)
 	if m.server_key != nil {
 		fields = append(fields, platformmcpserver.FieldServerKey)
 	}
@@ -61585,6 +61676,9 @@ func (m *PlatformMCPServerMutation) Fields() []string {
 	if m.deleted_at != nil {
 		fields = append(fields, platformmcpserver.FieldDeletedAt)
 	}
+	if m.workspace_id != nil {
+		fields = append(fields, platformmcpserver.FieldWorkspaceID)
+	}
 	return fields
 }
 
@@ -61615,6 +61709,8 @@ func (m *PlatformMCPServerMutation) Field(name string) (ent.Value, bool) {
 		return m.UpdatedAt()
 	case platformmcpserver.FieldDeletedAt:
 		return m.DeletedAt()
+	case platformmcpserver.FieldWorkspaceID:
+		return m.WorkspaceID()
 	}
 	return nil, false
 }
@@ -61646,6 +61742,8 @@ func (m *PlatformMCPServerMutation) OldField(ctx context.Context, name string) (
 		return m.OldUpdatedAt(ctx)
 	case platformmcpserver.FieldDeletedAt:
 		return m.OldDeletedAt(ctx)
+	case platformmcpserver.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
 	}
 	return nil, fmt.Errorf("unknown PlatformMCPServer field %s", name)
 }
@@ -61731,6 +61829,13 @@ func (m *PlatformMCPServerMutation) SetField(name string, value ent.Value) error
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDeletedAt(v)
+		return nil
+	case platformmcpserver.FieldWorkspaceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
 		return nil
 	}
 	return fmt.Errorf("unknown PlatformMCPServer field %s", name)
@@ -61828,6 +61933,9 @@ func (m *PlatformMCPServerMutation) ResetField(name string) error {
 		return nil
 	case platformmcpserver.FieldDeletedAt:
 		m.ResetDeletedAt()
+		return nil
+	case platformmcpserver.FieldWorkspaceID:
+		m.ResetWorkspaceID()
 		return nil
 	}
 	return fmt.Errorf("unknown PlatformMCPServer field %s", name)
@@ -64278,6 +64386,7 @@ type PlatformSkillMutation struct {
 	parent_version_id    *string
 	evolution_reason     *string
 	lifecycle_status     *string
+	workspace_id         *string
 	clearedFields        map[string]struct{}
 	done                 bool
 	oldValue             func(context.Context) (*PlatformSkill, error)
@@ -65308,6 +65417,42 @@ func (m *PlatformSkillMutation) ResetLifecycleStatus() {
 	m.lifecycle_status = nil
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *PlatformSkillMutation) SetWorkspaceID(s string) {
+	m.workspace_id = &s
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *PlatformSkillMutation) WorkspaceID() (r string, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the PlatformSkill entity.
+// If the PlatformSkill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PlatformSkillMutation) OldWorkspaceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *PlatformSkillMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
+}
+
 // Where appends a list predicates to the PlatformSkillMutation builder.
 func (m *PlatformSkillMutation) Where(ps ...predicate.PlatformSkill) {
 	m.predicates = append(m.predicates, ps...)
@@ -65342,7 +65487,7 @@ func (m *PlatformSkillMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PlatformSkillMutation) Fields() []string {
-	fields := make([]string, 0, 25)
+	fields := make([]string, 0, 26)
 	if m.skill_key != nil {
 		fields = append(fields, platformskill.FieldSkillKey)
 	}
@@ -65418,6 +65563,9 @@ func (m *PlatformSkillMutation) Fields() []string {
 	if m.lifecycle_status != nil {
 		fields = append(fields, platformskill.FieldLifecycleStatus)
 	}
+	if m.workspace_id != nil {
+		fields = append(fields, platformskill.FieldWorkspaceID)
+	}
 	return fields
 }
 
@@ -65476,6 +65624,8 @@ func (m *PlatformSkillMutation) Field(name string) (ent.Value, bool) {
 		return m.EvolutionReason()
 	case platformskill.FieldLifecycleStatus:
 		return m.LifecycleStatus()
+	case platformskill.FieldWorkspaceID:
+		return m.WorkspaceID()
 	}
 	return nil, false
 }
@@ -65535,6 +65685,8 @@ func (m *PlatformSkillMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldEvolutionReason(ctx)
 	case platformskill.FieldLifecycleStatus:
 		return m.OldLifecycleStatus(ctx)
+	case platformskill.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
 	}
 	return nil, fmt.Errorf("unknown PlatformSkill field %s", name)
 }
@@ -65719,6 +65871,13 @@ func (m *PlatformSkillMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetLifecycleStatus(v)
 		return nil
+	case platformskill.FieldWorkspaceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown PlatformSkill field %s", name)
 }
@@ -65858,6 +66017,9 @@ func (m *PlatformSkillMutation) ResetField(name string) error {
 	case platformskill.FieldLifecycleStatus:
 		m.ResetLifecycleStatus()
 		return nil
+	case platformskill.FieldWorkspaceID:
+		m.ResetWorkspaceID()
+		return nil
 	}
 	return fmt.Errorf("unknown PlatformSkill field %s", name)
 }
@@ -65936,6 +66098,7 @@ type PlatformToolMutation struct {
 	created_at             *string
 	updated_at             *string
 	deleted_at             *string
+	workspace_id           *string
 	clearedFields          map[string]struct{}
 	done                   bool
 	oldValue               func(context.Context) (*PlatformTool, error)
@@ -66766,6 +66929,42 @@ func (m *PlatformToolMutation) ResetDeletedAt() {
 	m.deleted_at = nil
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (m *PlatformToolMutation) SetWorkspaceID(s string) {
+	m.workspace_id = &s
+}
+
+// WorkspaceID returns the value of the "workspace_id" field in the mutation.
+func (m *PlatformToolMutation) WorkspaceID() (r string, exists bool) {
+	v := m.workspace_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspaceID returns the old "workspace_id" field's value of the PlatformTool entity.
+// If the PlatformTool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PlatformToolMutation) OldWorkspaceID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspaceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspaceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspaceID: %w", err)
+	}
+	return oldValue.WorkspaceID, nil
+}
+
+// ResetWorkspaceID resets all changes to the "workspace_id" field.
+func (m *PlatformToolMutation) ResetWorkspaceID() {
+	m.workspace_id = nil
+}
+
 // Where appends a list predicates to the PlatformToolMutation builder.
 func (m *PlatformToolMutation) Where(ps ...predicate.PlatformTool) {
 	m.predicates = append(m.predicates, ps...)
@@ -66800,7 +66999,7 @@ func (m *PlatformToolMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PlatformToolMutation) Fields() []string {
-	fields := make([]string, 0, 20)
+	fields := make([]string, 0, 21)
 	if m.tool_key != nil {
 		fields = append(fields, platformtool.FieldToolKey)
 	}
@@ -66861,6 +67060,9 @@ func (m *PlatformToolMutation) Fields() []string {
 	if m.deleted_at != nil {
 		fields = append(fields, platformtool.FieldDeletedAt)
 	}
+	if m.workspace_id != nil {
+		fields = append(fields, platformtool.FieldWorkspaceID)
+	}
 	return fields
 }
 
@@ -66909,6 +67111,8 @@ func (m *PlatformToolMutation) Field(name string) (ent.Value, bool) {
 		return m.UpdatedAt()
 	case platformtool.FieldDeletedAt:
 		return m.DeletedAt()
+	case platformtool.FieldWorkspaceID:
+		return m.WorkspaceID()
 	}
 	return nil, false
 }
@@ -66958,6 +67162,8 @@ func (m *PlatformToolMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldUpdatedAt(ctx)
 	case platformtool.FieldDeletedAt:
 		return m.OldDeletedAt(ctx)
+	case platformtool.FieldWorkspaceID:
+		return m.OldWorkspaceID(ctx)
 	}
 	return nil, fmt.Errorf("unknown PlatformTool field %s", name)
 }
@@ -67107,6 +67313,13 @@ func (m *PlatformToolMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetDeletedAt(v)
 		return nil
+	case platformtool.FieldWorkspaceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspaceID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown PlatformTool field %s", name)
 }
@@ -67215,6 +67428,9 @@ func (m *PlatformToolMutation) ResetField(name string) error {
 		return nil
 	case platformtool.FieldDeletedAt:
 		m.ResetDeletedAt()
+		return nil
+	case platformtool.FieldWorkspaceID:
+		m.ResetWorkspaceID()
 		return nil
 	}
 	return fmt.Errorf("unknown PlatformTool field %s", name)

@@ -158,7 +158,10 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 				// 2026-07-05 Step 3: direct 路径也发布 v2 PlanBoard（如有 SubTasks），
 				// allocPlan=nil 表示无 agent 分配，PlanStep.AgentKeys 为空。
 				deps.planner.PublishV2Board(ctx, taskPlan, nil, "")
-				publishOrchestrationCompleted(deps.bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))
+				// B-04 fix: do NOT publish orchestration_completed here — the DAG
+				// hasn't executed yet. PlanExecutor.publishPlanBoardTerminal will
+				// emit orchestration_completed/orchestration_failed when the DAG
+				// reaches a terminal state.
 				return out, nil
 			}
 
@@ -194,7 +197,9 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			}
 
 			out.OrchestrationID = handle.ID
-			publishOrchestrationCompleted(deps.bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))
+			// B-04 fix: do NOT publish orchestration_completed here — the DAG
+			// hasn't executed yet. PlanExecutor.publishPlanBoardTerminal will
+			// emit the terminal orchestration event when the DAG finishes.
 			return out, nil
 		},
 		trpcfunction.WithName("plan_and_execute"),
@@ -324,20 +329,6 @@ func publishOrchestrationFailed(bus biz.EventBus, ctx context.Context, sessionID
 		"agent_key": "plan_and_execute",
 	}
 	bus.Publish(ctx, biz.NewSystemNoticeEvent(sessionID, "orchestration_failed", "", meta))
-}
-
-// publishOrchestrationCompleted emits a ButlerOrchestrationCompleted event.
-func publishOrchestrationCompleted(bus biz.EventBus, ctx context.Context, sessionID, orchestrationID, strategy string, subtaskCount int) {
-	if bus == nil {
-		return
-	}
-	meta := map[string]any{
-		"orchestration_id": orchestrationID,
-		"strategy":         strategy,
-		"subtask_count":    subtaskCount,
-		"agent_key":        "plan_and_execute",
-	}
-	bus.Publish(ctx, biz.NewSystemNoticeEvent(sessionID, "orchestration_completed", "", meta))
 }
 
 // CheckOrchestrationProgressInput is the input for the check_progress tool.

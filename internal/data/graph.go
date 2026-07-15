@@ -58,7 +58,8 @@ func (r *graphRepo) SaveDefinition(ctx context.Context, def *biz.GraphDefinition
 		SetVerificationGates(def.VerificationGates).
 		SetSortOrder(def.SortOrder).
 		SetTeamID(def.TeamID).
-		SetIsTemplate(def.IsTemplate)
+		SetIsTemplate(def.IsTemplate).
+		SetWorkspaceID(def.WorkspaceID) // P2-B: tenant isolation
 
 	if def.ID != "" {
 		builder.SetID(def.ID)
@@ -147,6 +148,58 @@ func (r *graphRepo) ListUserTemplateDefinitions(ctx context.Context, pageSize in
 	return out, nil
 }
 
+// ListDefinitionsByWorkspace returns graph definitions visible to the given workspace (P2-B).
+// empty workspaceID = system caller (see all); non-empty = tenant caller (see shared + own).
+func (r *graphRepo) ListDefinitionsByWorkspace(ctx context.Context, pageSize int, pageToken string, workspaceID string) ([]*biz.GraphDefinition, string, error) {
+	client := r.data.RW().Read(ctx)
+	query := client.GraphDefinition.Query().Order(ent.Asc(graphdefinition.FieldSortOrder), ent.Asc(graphdefinition.FieldCreatedAt))
+	// P2-B: workspace 过滤。空 WorkspaceID = system caller（看全部）。
+	// 租户 caller 只看：自己私有的（workspace_id == caller）+ 全局共享的（workspace_id == ""）。
+	if workspaceID != "" {
+		query = query.Where(graphdefinition.Or(
+			graphdefinition.WorkspaceIDEQ(""),
+			graphdefinition.WorkspaceIDEQ(workspaceID),
+		))
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	query = query.Limit(pageSize + 1)
+	if pageToken != "" {
+		query = query.Where(graphdefinition.IDGT(pageToken))
+	}
+	rows, err := query.All(ctx)
+	if err != nil {
+		return nil, "", entErrToBizErr(err, "GRAPH")
+	}
+	var nextToken string
+	if len(rows) > pageSize {
+		nextToken = rows[pageSize-1].ID
+		rows = rows[:pageSize]
+	}
+	result := make([]*biz.GraphDefinition, len(rows))
+	for i, row := range rows {
+		result[i] = entGraphToBiz(row, r.data.lg)
+	}
+	return result, nextToken, nil
+}
+
+// ListUserTemplateDefinitionsByWorkspace returns user template graph definitions
+// visible to the given workspace (P2-B).
+func (r *graphRepo) ListUserTemplateDefinitionsByWorkspace(ctx context.Context, pageSize int, workspaceID string) ([]*biz.GraphDefinition, error) {
+	defs, _, err := r.ListDefinitionsByWorkspace(ctx, pageSize, "", workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*biz.GraphDefinition, 0)
+	for _, def := range defs {
+		if biz.ReadUserTemplateMeta(def) != nil {
+			out = append(out, def)
+		}
+	}
+	return out, nil
+}
+
 func (r *graphRepo) DeleteDefinition(ctx context.Context, id string) error {
 	client := r.data.RW().Write(ctx)
 	err := client.GraphDefinition.DeleteOneID(id).Exec(ctx)
@@ -210,6 +263,7 @@ func entGraphToBiz(row *ent.GraphDefinition, lg loggateway.Logger) *biz.GraphDef
 		SortOrder:         row.SortOrder,
 		TeamID:            row.TeamID,
 		IsTemplate:        row.IsTemplate,
+		WorkspaceID:       row.WorkspaceID, // P2-B: tenant isolation
 		CreatedAt:         row.CreatedAt,
 		UpdatedAt:         row.UpdatedAt,
 	}

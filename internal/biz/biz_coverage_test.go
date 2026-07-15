@@ -78,6 +78,9 @@ func (m *memTeamRepoB) GetTeamByKey(_ context.Context, _ string) (biz.Team, erro
 func (m *memTeamRepoB) ListTeamsByDepartmentID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
+func (m *memTeamRepoB) ListTeamsByWorkspace(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 func (m *memTeamRepoB) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRunRecord, error) {
 	return nil, nil
 }

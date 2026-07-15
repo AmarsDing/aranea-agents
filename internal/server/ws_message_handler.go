@@ -145,7 +145,7 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 		safego.Go(turnCtx, "ws-user-message", func() {
 			if err := s.turnExecutor.ExecuteTurn(turnCtx, input); err != nil {
 				s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
-				s.publishWSErrorActivity(sessionID, requestID, "send_failed", err.Error())
+				s.publishWSErrorActivity(sessionID, requestID, "send_failed", err.Error(), input.Content)
 				s.lg.With(loggateway.SessionID(sessionID)).Info("WebSocket error ActivityEvent published",
 					loggateway.StepID("ws.error_activity_published"),
 					loggateway.Any("request_id", requestID))
@@ -178,7 +178,7 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 		_, err := s.sender.SendChatMessage(legacyCtx, req)
 		if err != nil {
 			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
-			s.publishWSErrorActivity(sessionID, requestID, "send_failed", err.Error())
+			s.publishWSErrorActivity(sessionID, requestID, "send_failed", err.Error(), req.Content)
 		}
 	})
 }
@@ -218,11 +218,11 @@ func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
 		resp, err := s.sender.EnqueueUserMessage(enqCtx, req)
 		if err != nil {
 			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 入队消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
-			s.publishWSErrorActivity(sessionID, requestID, "enqueue_failed", err.Error())
+			s.publishWSErrorActivity(sessionID, requestID, "enqueue_failed", err.Error(), req.Content)
 			return
 		}
 		if resp == nil || !resp.GetAccepted() {
-			s.publishWSErrorActivity(sessionID, requestID, "enqueue_rejected", "no active run for session")
+			s.publishWSErrorActivity(sessionID, requestID, "enqueue_rejected", "no active run for session", req.Content)
 		}
 	})
 }
@@ -266,7 +266,19 @@ func buildChatOptions(opts map[string]any) *chatv1.SendMessageOptions {
 // via biz.NewActivityBridgeEvent. The v1 ActivityEvent payload (Meta with
 // request_id/error_type, Content=message) is preserved verbatim by the bridge
 // so the chat error rendering and existing test assertions continue to work.
-func (s *WSServer) publishWSErrorActivity(sessionID, requestID, errorType, message string) {
+//
+// P2-05 fix: also publishes synthetic v2 Task/Turn/Step events so the v2
+// timeline can render a stable ErrorBlock. Without this, the bridge event
+// only feeds the v1 system-notification path, and v2-only pages would have
+// no persistent error surface. Synthetic IDs use the "ws-err-" prefix and
+// are NOT persisted (WS-layer publish bypasses the Sequencer), so they
+// vanish on page refresh — which is the intended UX for transient send
+// failures that the user can retry.
+//
+// userContent carries the user's original message text so the synthetic Task
+// can populate UserMessage (visible in TaskCard). Pass "" when the message
+// is unavailable (e.g. enqueue_rejected where no content was sent).
+func (s *WSServer) publishWSErrorActivity(sessionID, requestID, errorType, message, userContent string) {
 	if s.eventBus == nil {
 		return
 	}
@@ -291,6 +303,67 @@ func (s *WSServer) publishWSErrorActivity(sessionID, requestID, errorType, messa
 		Domain: biz.ActivityDomainChat,
 	}
 	s.eventBus.Publish(context.Background(), biz.NewActivityBridgeEvent(ev))
+
+	// P2-05: emit synthetic v2 Task/Turn/Step events so the v2 timeline
+	// (ActivityStream / TaskCard / TurnContainer / ErrorBlock) can render a
+	// stable failure surface. Synthetic IDs are prefixed with "ws-err-" so
+	// they never collide with real entity IDs. These events bypass the
+	// Sequencer (WS-layer direct publish), so they are NOT persisted to the
+	// database and will disappear on page refresh — appropriate for
+	// transient send/enqueue failures that the user can retry.
+	synID := requestID
+	if synID == "" {
+		synID = uuid.NewString()
+	}
+	taskID := "ws-err-" + synID
+	turnID := taskID + "-turn"
+	stepID := turnID + "-s1"
+	now := time.Now().UTC()
+	completedAt := &now
+
+	synTask := biz.Task{
+		ID:          taskID,
+		SessionID:   sessionID,
+		UserMessage: userContent,
+		Status:      biz.TaskStatusFailed,
+		Seq:         0,
+		Version:     1,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		CompletedAt: completedAt,
+	}
+	synTurn := biz.Turn{
+		ID:              turnID,
+		TaskID:          taskID,
+		SessionID:       sessionID,
+		SpiritSessionID: sessionID,
+		Seq:             1,
+		Version:         1,
+		Status:          biz.TurnStatusFailed,
+		StartedAt:       now,
+		CompletedAt:     completedAt,
+	}
+	errStep := biz.Step{
+		ID:              stepID,
+		TurnID:          turnID,
+		TaskID:          taskID,
+		SessionID:       sessionID,
+		SpiritSessionID: sessionID,
+		Kind:            biz.StepKindError,
+		Seq:             1,
+		Version:         1,
+		Content:         message,
+		ToolErrorCode:   errorType,
+		Status:          biz.StepStatusCompleted,
+		StartedAt:       now,
+		CompletedAt:     completedAt,
+	}
+
+	ctx := context.Background()
+	s.eventBus.Publish(ctx, biz.NewTaskFailedEvent(synTask))
+	s.eventBus.Publish(ctx, biz.NewTurnFailedEvent(synTurn))
+	s.eventBus.Publish(ctx, biz.NewStepCreatedEvent(errStep))
+	s.eventBus.Publish(ctx, biz.NewStepCompletedEvent(errStep))
 }
 
 // buildWSTurnOptions builds a WSTurnOptions from WS payload options.

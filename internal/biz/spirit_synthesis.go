@@ -135,10 +135,39 @@ func (u *SynthesisUsecase) SynthesizeResults(ctx context.Context, spiritSessionI
 // SynthesisEngine — pure synthesis logic (no I/O, no external deps)
 // ---------------------------------------------------------------------------
 
-type SynthesisEngine struct{}
+// SynthesisModelPort is a biz-level port for invoking an LLM to synthesize
+// team results into a final answer. Implemented by the service layer adapter
+// (which resolves provider/model via system settings + catalog and delegates
+// to biz.LLMCaller). nil-safe: when not wired, the engine falls back to
+// returning the raw synthesis prompt so callers still get usable content.
+//
+// C-24 fix: previously SynthesisEngine.synthesizePrompt only built a prompt
+// string and never called any LLM, so Prompt/Hybrid strategies produced no
+// real synthesis. The port lets the engine invoke a model while keeping biz
+// free of LLM infrastructure details.
+//
+// Stability:evolving
+type SynthesisModelPort interface {
+	// SynthesizeWithModel calls the resolved LLM with the given system and
+	// user prompts and returns the model's text output. Implementations MUST
+	// be nil-safe at the call site (the engine checks for nil before calling).
+	SynthesizeWithModel(ctx context.Context, system, user string) (string, error)
+}
 
-func NewSynthesisEngine() *SynthesisEngine {
-	return &SynthesisEngine{}
+type SynthesisEngine struct {
+	// model is optional; nil falls back to raw prompt output (used in tests
+	// and when no LLM is configured).
+	model SynthesisModelPort
+	lg    loggateway.Logger
+}
+
+// NewSynthesisEngine constructs a SynthesisEngine. model and lg may be nil;
+// when model is nil, Prompt/Hybrid strategies return the raw prompt string.
+func NewSynthesisEngine(model SynthesisModelPort, lg loggateway.Logger) *SynthesisEngine {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	return &SynthesisEngine{model: model, lg: lg}
 }
 
 func (e *SynthesisEngine) Synthesize(ctx context.Context, input SynthesisInput) (*SynthesisOutput, error) {
@@ -155,11 +184,11 @@ func (e *SynthesisEngine) Synthesize(ctx context.Context, input SynthesisInput) 
 	case SynthesisStrategyTemplate:
 		content, err = e.synthesizeTemplate(input)
 	case SynthesisStrategyPrompt:
-		content = e.synthesizePrompt(input)
+		content = e.synthesizePromptOrModel(ctx, input)
 	case SynthesisStrategyHybrid:
 		content, err = e.synthesizeTemplate(input)
 		if err == nil {
-			content += "\n\n---\n\n" + e.synthesizePrompt(input)
+			content += "\n\n---\n\n" + e.synthesizePromptOrModel(ctx, input)
 		}
 	default:
 		return nil, ErrUnknownStrategy
@@ -173,6 +202,28 @@ func (e *SynthesisEngine) Synthesize(ctx context.Context, input SynthesisInput) 
 		TeamResults:   input.TeamResults,
 		SynthesizedAt: time.Now().UTC().Format(time.RFC3339),
 	}, nil
+}
+
+// synthesizePromptOrModel invokes the LLM via the model port when wired;
+// otherwise (or on error) it falls back to returning the raw prompt so the
+// caller still gets usable content. C-24 fix.
+func (e *SynthesisEngine) synthesizePromptOrModel(ctx context.Context, input SynthesisInput) string {
+	rawPrompt := e.synthesizePrompt(input)
+	if e.model == nil {
+		return rawPrompt
+	}
+	systemPrompt := "你是一名资深的多团队协作结果综合分析师。请基于多个团队的执行结果，为用户产出结构化、可执行的综合分析。"
+	text, err := e.model.SynthesizeWithModel(ctx, systemPrompt, rawPrompt)
+	if err != nil {
+		e.lg.Warn("LLM 综合失败，回退到原始 prompt",
+			loggateway.StepID("spirit.synthesis.model_fallback"),
+			loggateway.Err(err))
+		return rawPrompt
+	}
+	if text = strings.TrimSpace(text); text == "" {
+		return rawPrompt
+	}
+	return text
 }
 
 func (e *SynthesisEngine) inferStrategy(input SynthesisInput) SynthesisStrategy {

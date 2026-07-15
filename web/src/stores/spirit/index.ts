@@ -591,7 +591,13 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
         orchestrationPhase.value = 'interrupted';
         break;
       case 'butler.orchestration.started':
+        break;
       case 'butler.orchestration.completed':
+        // B-04 fix: clear loading state when DAG reaches terminal state.
+        // Previously this was a no-op, leaving the "orchestrating" loading
+        // message stuck because orchestration_completed was published
+        // prematurely (before DAG execution) from spirit_tools.go.
+        orchestrationPhase.value = 'completed';
         break;
       case 'butler.orchestration.failed':
         if (teamId) {

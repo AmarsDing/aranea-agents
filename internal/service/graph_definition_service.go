@@ -5,9 +5,37 @@ import (
 
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/workspace"
+	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+// assertGraphAccess 验证 caller workspace 是否可访问目标 graph（P2-B IDOR 防护）。
+// 使用 AssertWorkspaceOrShared：共享 graph（workspace_id=""）对所有租户可见，
+// 租户私有 graph（workspace_id="ws-xxx"）仅归属租户可见。
+// 失败时返回 NotFound（避免泄露资源存在性），并记录 Warn 日志。
+func (s *GraphService) assertGraphAccess(ctx context.Context, graphID string) error {
+	if graphID == "" {
+		return nil
+	}
+	def, err := s.uc.GetGraph(ctx, graphID)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return apierror.NotFound("GRAPH", "graph definition not found")
+		}
+		return err
+	}
+	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), def.WorkspaceID); err != nil {
+		s.lg.Warn("graph access denied: workspace mismatch",
+			loggateway.StepID("graph.idor"),
+			loggateway.Str("graph_id", graphID),
+			loggateway.Str("caller_ws", workspace.IDFromContext(ctx)))
+		return apierror.NotFound("GRAPH", "graph definition not found")
+	}
+	return nil
+}
 
 func (s *GraphService) CreateGraph(ctx context.Context, req *graphv1.CreateGraphRequest) (*graphv1.CreateGraphResponse, error) {
 	def := &biz.GraphDefinition{
@@ -56,6 +84,10 @@ func (s *GraphService) CreateGraph(ctx context.Context, req *graphv1.CreateGraph
 	def.VerificationGates = req.VerificationGates
 	def.TeamID = req.TeamId
 	def.IsTemplate = req.IsTemplate
+	// P2-B: 租户 caller 创建的 graph 归属其 workspace；系统 caller 留空（共享）。
+	if !workspace.IsSystem(ctx) {
+		def.WorkspaceID = workspace.IDFromContext(ctx)
+	}
 	saved, err := s.uc.CreateGraph(ctx, def)
 	if err != nil {
 		return nil, err
@@ -68,6 +100,9 @@ func (s *GraphService) CreateGraph(ctx context.Context, req *graphv1.CreateGraph
 }
 
 func (s *GraphService) GetGraph(ctx context.Context, req *graphv1.GetGraphRequest) (*graphv1.GetGraphResponse, error) {
+	if err := s.assertGraphAccess(ctx, req.Id); err != nil { // P2-B: IDOR
+		return nil, err
+	}
 	def, err := s.uc.GetGraph(ctx, req.Id)
 	if err != nil {
 		return nil, err
@@ -80,7 +115,12 @@ func (s *GraphService) GetGraph(ctx context.Context, req *graphv1.GetGraphReques
 }
 
 func (s *GraphService) ListGraphs(ctx context.Context, req *graphv1.ListGraphsRequest) (*graphv1.ListGraphsResponse, error) {
-	defs, nextToken, err := s.uc.ListGraphs(ctx, int(req.PageSize), req.PageToken)
+	// P2-B: 系统 caller（workspace_id="")看全部；租户 caller 看 shared + own。
+	callerWS := workspace.IDFromContext(ctx)
+	if workspace.IsSystem(ctx) {
+		callerWS = ""
+	}
+	defs, nextToken, err := s.uc.ListGraphsByWorkspace(ctx, int(req.PageSize), req.PageToken, callerWS)
 	if err != nil {
 		return nil, err
 	}
@@ -96,6 +136,9 @@ func (s *GraphService) ListGraphs(ctx context.Context, req *graphv1.ListGraphsRe
 }
 
 func (s *GraphService) UpdateGraph(ctx context.Context, req *graphv1.UpdateGraphRequest) (*graphv1.UpdateGraphResponse, error) {
+	if err := s.assertGraphAccess(ctx, req.Id); err != nil { // P2-B: IDOR
+		return nil, err
+	}
 	def := &biz.GraphDefinition{
 		ID:               req.Id,
 		Name:             req.Name,
@@ -155,6 +198,9 @@ func (s *GraphService) UpdateGraph(ctx context.Context, req *graphv1.UpdateGraph
 }
 
 func (s *GraphService) DeleteGraph(ctx context.Context, req *graphv1.DeleteGraphRequest) (*graphv1.DeleteGraphResponse, error) {
+	if err := s.assertGraphAccess(ctx, req.Id); err != nil { // P2-B: IDOR
+		return nil, err
+	}
 	err := s.uc.DeleteGraph(ctx, req.Id)
 	if err != nil {
 		return nil, err
@@ -166,6 +212,12 @@ func (s *GraphService) ReorderGraphs(ctx context.Context, req *graphv1.ReorderGr
 	if len(req.Ids) == 0 {
 		return &graphv1.ReorderGraphsResponse{}, nil
 	}
+	// P2-B: IDOR — 校验 caller 对所有待排序 graph 的访问权限。
+	for _, id := range req.Ids {
+		if err := s.assertGraphAccess(ctx, id); err != nil {
+			return nil, err
+		}
+	}
 	err := s.uc.ReorderGraphs(ctx, req.Ids)
 	if err != nil {
 		return nil, err
@@ -174,6 +226,9 @@ func (s *GraphService) ReorderGraphs(ctx context.Context, req *graphv1.ReorderGr
 }
 
 func (s *GraphService) ValidateGraph(ctx context.Context, req *graphv1.ValidateGraphRequest) (*graphv1.ValidateGraphResponse, error) {
+	if err := s.assertGraphAccess(ctx, req.GraphId); err != nil { // P2-B: IDOR
+		return nil, err
+	}
 	result, err := s.uc.ValidateGraph(ctx, req.GraphId)
 	if err != nil {
 		return nil, err
@@ -208,7 +263,12 @@ func (s *GraphService) ListGraphTemplates(ctx context.Context, req *graphv1.List
 	for _, t := range tmplList {
 		resp.Templates = append(resp.Templates, bizTemplateToProto(t, s.lg))
 	}
-	userDefs, err := s.uc.ListUserTemplateGraphs(ctx)
+	// P2-B: 系统 caller（workspace_id="")看全部用户模板；租户 caller 看 shared + own。
+	callerWS := workspace.IDFromContext(ctx)
+	if workspace.IsSystem(ctx) {
+		callerWS = ""
+	}
+	userDefs, err := s.uc.ListUserTemplateGraphsByWorkspace(ctx, callerWS)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +283,18 @@ func (s *GraphService) ListGraphTemplates(ctx context.Context, req *graphv1.List
 }
 
 func (s *GraphService) CreateGraphFromTemplate(ctx context.Context, req *graphv1.CreateGraphFromTemplateRequest) (*graphv1.CreateGraphResponse, error) {
-	saved, err := s.uc.CreateGraphFromTemplate(ctx, req.TemplateId, req.Name, req.Description)
+	// P2-B: 从模板创建的 graph 归属 caller workspace（系统 caller 留空=共享）。
+	wsID := ""
+	if !workspace.IsSystem(ctx) {
+		wsID = workspace.IDFromContext(ctx)
+	}
+	// 若从用户模板创建，需校验对源 graph 的访问权限。
+	if id, ok := biz.ParseUserTemplateID(req.TemplateId); ok {
+		if err := s.assertGraphAccess(ctx, id); err != nil { // P2-B: IDOR
+			return nil, err
+		}
+	}
+	saved, err := s.uc.CreateGraphFromTemplate(ctx, req.TemplateId, req.Name, req.Description, wsID)
 	if err != nil {
 		return nil, err
 	}
@@ -235,6 +306,9 @@ func (s *GraphService) CreateGraphFromTemplate(ctx context.Context, req *graphv1
 }
 
 func (s *GraphService) ExportGraph(ctx context.Context, req *graphv1.ExportGraphRequest) (*graphv1.ExportGraphResponse, error) {
+	if err := s.assertGraphAccess(ctx, req.GraphId); err != nil { // P2-B: IDOR
+		return nil, err
+	}
 	raw, def, err := s.uc.ExportGraph(ctx, req.GraphId)
 	if err != nil {
 		return nil, err
@@ -247,7 +321,12 @@ func (s *GraphService) ExportGraph(ctx context.Context, req *graphv1.ExportGraph
 }
 
 func (s *GraphService) ImportGraph(ctx context.Context, req *graphv1.ImportGraphRequest) (*graphv1.ImportGraphResponse, error) {
-	saved, err := s.uc.ImportGraph(ctx, []byte(req.Json), req.Name, req.Description)
+	// P2-B: 导入的 graph 归属 caller workspace（系统 caller 留空=共享）。
+	wsID := ""
+	if !workspace.IsSystem(ctx) {
+		wsID = workspace.IDFromContext(ctx)
+	}
+	saved, err := s.uc.ImportGraph(ctx, []byte(req.Json), req.Name, req.Description, wsID)
 	if err != nil {
 		return nil, err
 	}
@@ -259,6 +338,9 @@ func (s *GraphService) ImportGraph(ctx context.Context, req *graphv1.ImportGraph
 }
 
 func (s *GraphService) ListGraphVersions(ctx context.Context, req *graphv1.ListGraphVersionsRequest) (*graphv1.ListGraphVersionsResponse, error) {
+	if err := s.assertGraphAccess(ctx, req.GraphId); err != nil { // P2-B: IDOR
+		return nil, err
+	}
 	items, err := s.uc.ListGraphVersions(ctx, req.GraphId)
 	if err != nil {
 		return nil, err
@@ -277,6 +359,9 @@ func (s *GraphService) ListGraphVersions(ctx context.Context, req *graphv1.ListG
 }
 
 func (s *GraphService) RollbackGraphVersion(ctx context.Context, req *graphv1.RollbackGraphVersionRequest) (*graphv1.RollbackGraphVersionResponse, error) {
+	if err := s.assertGraphAccess(ctx, req.GraphId); err != nil { // P2-B: IDOR
+		return nil, err
+	}
 	saved, err := s.uc.RollbackGraphVersion(ctx, req.GraphId, int(req.Version))
 	if err != nil {
 		return nil, err
@@ -289,6 +374,9 @@ func (s *GraphService) RollbackGraphVersion(ctx context.Context, req *graphv1.Ro
 }
 
 func (s *GraphService) SaveGraphAsTemplate(ctx context.Context, req *graphv1.SaveGraphAsTemplateRequest) (*graphv1.SaveGraphAsTemplateResponse, error) {
+	if err := s.assertGraphAccess(ctx, req.GraphId); err != nil { // P2-B: IDOR
+		return nil, err
+	}
 	meta, err := s.uc.SaveGraphAsTemplate(ctx, req.GraphId, req.TemplateName, req.Category, req.Description)
 	if err != nil {
 		return nil, err
@@ -304,6 +392,9 @@ func (s *GraphService) SaveGraphAsTemplate(ctx context.Context, req *graphv1.Sav
 }
 
 func (s *GraphService) VisualizeGraph(ctx context.Context, req *graphv1.VisualizeGraphRequest) (*graphv1.VisualizeGraphResponse, error) {
+	if err := s.assertGraphAccess(ctx, req.GraphId); err != nil { // P2-B: IDOR
+		return nil, err
+	}
 	vg, err := s.uc.VisualizeGraph(ctx, req.GraphId, req.Format)
 	if err != nil {
 		return nil, err

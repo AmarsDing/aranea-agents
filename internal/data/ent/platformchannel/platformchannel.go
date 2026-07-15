@@ -33,6 +33,8 @@ const (
 	FieldUpdatedAt = "updated_at"
 	// FieldDeletedAt holds the string denoting the deleted_at field in the database.
 	FieldDeletedAt = "deleted_at"
+	// FieldWorkspaceID holds the string denoting the workspace_id field in the database.
+	FieldWorkspaceID = "workspace_id"
 	// Table holds the table name of the platformchannel in the database.
 	Table = "channel"
 )
@@ -51,6 +53,7 @@ var Columns = []string{
 	FieldCreatedAt,
 	FieldUpdatedAt,
 	FieldDeletedAt,
+	FieldWorkspaceID,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -86,6 +89,8 @@ var (
 	DefaultUpdatedAt string
 	// DefaultDeletedAt holds the default value on creation for the "deleted_at" field.
 	DefaultDeletedAt string
+	// DefaultWorkspaceID holds the default value on creation for the "workspace_id" field.
+	DefaultWorkspaceID string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
 	IDValidator func(string) error
 )
@@ -151,4 +156,9 @@ func ByUpdatedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByDeletedAt orders the results by the deleted_at field.
 func ByDeletedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDeletedAt, opts...).ToFunc()
+}
+
+// ByWorkspaceID orders the results by the workspace_id field.
+func ByWorkspaceID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWorkspaceID, opts...).ToFunc()
 }

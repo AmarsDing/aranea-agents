@@ -483,6 +483,42 @@ func (r *dagRun) publishPlanBoardTerminal(ctx context.Context) {
 	r.pe.lg.Info("PlanBoard terminal 状态已发布",
 		loggateway.Str("plan_board_id", r.board.ID),
 		loggateway.Str("status", string(newStatus)))
+
+	// B-04 fix: publish orchestration terminal event NOW (not prematurely in
+	// spirit_tools.go). Previously plan_and_execute emitted orchestration_completed
+	// right after PublishV2Board, before the DAG had executed — a false success.
+	// Now the event fires only when the DAG reaches a terminal state.
+	r.publishOrchestrationTerminal(ctx, newStatus)
+}
+
+// publishOrchestrationTerminal emits orchestration_completed or
+// orchestration_failed based on the PlanBoard terminal status. B-04 fix:
+// this replaces the premature publishOrchestrationCompleted calls that were
+// in spirit_tools.go (which fired before DAG execution).
+func (r *dagRun) publishOrchestrationTerminal(ctx context.Context, status biz.PlanStatus) {
+	if r.pe.bus == nil || r.board.SessionID == "" {
+		return
+	}
+	var noticeType string
+	switch status {
+	case biz.PlanStatusCompleted, biz.PlanStatusPartialFailure:
+		noticeType = "orchestration_completed"
+	case biz.PlanStatusFailed:
+		noticeType = "orchestration_failed"
+	default:
+		return // non-terminal (shouldn't reach here)
+	}
+	meta := map[string]any{
+		"orchestration_id": r.board.ID,
+		"strategy":         string(r.board.Strategy),
+		"subtask_count":    len(r.board.Steps),
+		"agent_key":        "plan_executor",
+	}
+	r.pe.bus.Publish(ctx, biz.NewSystemNoticeEvent(r.board.SessionID, noticeType, "", meta))
+	r.pe.lg.Info("orchestration terminal 事件已发布",
+		loggateway.Str("plan_board_id", r.board.ID),
+		loggateway.Str("session_id", r.board.SessionID),
+		loggateway.Str("notice_type", noticeType))
 }
 
 // publishGraphStageTerminal 根据 DAG 执行结果发布 GraphStage terminal 事件。

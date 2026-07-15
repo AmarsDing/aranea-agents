@@ -286,6 +286,20 @@ func (_c *PlatformToolCreate) SetNillableDeletedAt(v *string) *PlatformToolCreat
 	return _c
 }
 
+// SetWorkspaceID sets the "workspace_id" field.
+func (_c *PlatformToolCreate) SetWorkspaceID(v string) *PlatformToolCreate {
+	_c.mutation.SetWorkspaceID(v)
+	return _c
+}
+
+// SetNillableWorkspaceID sets the "workspace_id" field if the given value is not nil.
+func (_c *PlatformToolCreate) SetNillableWorkspaceID(v *string) *PlatformToolCreate {
+	if v != nil {
+		_c.SetWorkspaceID(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *PlatformToolCreate) SetID(v string) *PlatformToolCreate {
 	_c.mutation.SetID(v)
@@ -399,6 +413,10 @@ func (_c *PlatformToolCreate) defaults() {
 		v := platformtool.DefaultDeletedAt
 		_c.mutation.SetDeletedAt(v)
 	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		v := platformtool.DefaultWorkspaceID
+		_c.mutation.SetWorkspaceID(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -472,6 +490,9 @@ func (_c *PlatformToolCreate) check() error {
 	}
 	if _, ok := _c.mutation.DeletedAt(); !ok {
 		return &ValidationError{Name: "deleted_at", err: errors.New(`ent: missing required field "PlatformTool.deleted_at"`)}
+	}
+	if _, ok := _c.mutation.WorkspaceID(); !ok {
+		return &ValidationError{Name: "workspace_id", err: errors.New(`ent: missing required field "PlatformTool.workspace_id"`)}
 	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := platformtool.IDValidator(v); err != nil {
@@ -593,6 +614,10 @@ func (_c *PlatformToolCreate) createSpec() (*PlatformTool, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.DeletedAt(); ok {
 		_spec.SetField(platformtool.FieldDeletedAt, field.TypeString, value)
 		_node.DeletedAt = value
+	}
+	if value, ok := _c.mutation.WorkspaceID(); ok {
+		_spec.SetField(platformtool.FieldWorkspaceID, field.TypeString, value)
+		_node.WorkspaceID = value
 	}
 	return _node, _spec
 }
@@ -883,6 +908,18 @@ func (u *PlatformToolUpsert) SetDeletedAt(v string) *PlatformToolUpsert {
 // UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
 func (u *PlatformToolUpsert) UpdateDeletedAt() *PlatformToolUpsert {
 	u.SetExcluded(platformtool.FieldDeletedAt)
+	return u
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *PlatformToolUpsert) SetWorkspaceID(v string) *PlatformToolUpsert {
+	u.Set(platformtool.FieldWorkspaceID, v)
+	return u
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *PlatformToolUpsert) UpdateWorkspaceID() *PlatformToolUpsert {
+	u.SetExcluded(platformtool.FieldWorkspaceID)
 	return u
 }
 
@@ -1211,6 +1248,20 @@ func (u *PlatformToolUpsertOne) SetDeletedAt(v string) *PlatformToolUpsertOne {
 func (u *PlatformToolUpsertOne) UpdateDeletedAt() *PlatformToolUpsertOne {
 	return u.Update(func(s *PlatformToolUpsert) {
 		s.UpdateDeletedAt()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *PlatformToolUpsertOne) SetWorkspaceID(v string) *PlatformToolUpsertOne {
+	return u.Update(func(s *PlatformToolUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *PlatformToolUpsertOne) UpdateWorkspaceID() *PlatformToolUpsertOne {
+	return u.Update(func(s *PlatformToolUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 
@@ -1706,6 +1757,20 @@ func (u *PlatformToolUpsertBulk) SetDeletedAt(v string) *PlatformToolUpsertBulk 
 func (u *PlatformToolUpsertBulk) UpdateDeletedAt() *PlatformToolUpsertBulk {
 	return u.Update(func(s *PlatformToolUpsert) {
 		s.UpdateDeletedAt()
+	})
+}
+
+// SetWorkspaceID sets the "workspace_id" field.
+func (u *PlatformToolUpsertBulk) SetWorkspaceID(v string) *PlatformToolUpsertBulk {
+	return u.Update(func(s *PlatformToolUpsert) {
+		s.SetWorkspaceID(v)
+	})
+}
+
+// UpdateWorkspaceID sets the "workspace_id" field to the value that was provided on create.
+func (u *PlatformToolUpsertBulk) UpdateWorkspaceID() *PlatformToolUpsertBulk {
+	return u.Update(func(s *PlatformToolUpsert) {
+		s.UpdateWorkspaceID()
 	})
 }
 

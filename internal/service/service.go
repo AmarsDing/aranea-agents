@@ -121,6 +121,7 @@ var ProviderSet = wire.NewSet(
 	NewSessionStatusGuard,
 	NewSpiritTeamAssembler,
 	NewSpiritSynthesisService,
+	NewSynthesisModelAdapter,
 	NewTeamStarter,
 	NewSkillEvolutionService,
 	NewSkillIntelligenceService,
