@@ -193,6 +193,15 @@ jobs:
             exit 1
           }
           Write-Host "Backend built: build/aranea-server.exe" -ForegroundColor Green
+          Write-Host "Building AraneaLauncher.exe (windowsgui, no console)..."
+          $launcherOut = & go build -ldflags "-s -w -H windowsgui" -o build/AraneaLauncher.exe ./cmd/launcher 2>&1
+          $launcherExit = $LASTEXITCODE
+          Write-Host $launcherOut
+          if ($launcherExit -ne 0) {
+            Write-Error "AraneaLauncher build failed (exit $launcherExit)"
+            exit 1
+          }
+          Write-Host "Launcher built: build/AraneaLauncher.exe" -ForegroundColor Green
 
       - name: Install frontend deps (pnpm install)
         shell: pwsh
@@ -309,18 +318,26 @@ jobs:
           body: |
             ## Aranea-Agents ${{ steps.version.outputs.version }}
 
-            ### Windows 安装包
-            - 下载 `AraneaAgents-${{ steps.version.outputs.version }}-win-x64.exe`
-            - 双击安装，点击桌面快捷方式启动
-            - 默认登录：`admin` / `changeme`
+            ### Windows 安装包（推荐）
+            1. 下载 `AraneaAgents-${{ steps.version.outputs.version }}-win-x64.exe`
+            2. 双击安装（默认装到 `%LOCALAPPDATA%\AraneaAgents`，**无需管理员**）
+            3. 点击桌面「Aranea-Agents」启动（**无黑框控制台**，静默拉起服务）
+            4. 默认登录：`admin` / `changeme`
+
+            ### 使用说明
+            - **启动**：桌面快捷方式 / `AraneaLauncher.exe`
+            - **停止**：开始菜单「停止 Aranea-Agents」或 `AraneaLauncher.exe -stop`
+            - **调试**：开始菜单「启动（调试控制台）」；日志在安装目录 `logs\`
+            - 首次启动需 10~30 秒初始化数据库，请稍候桌面窗口出现
 
             ### 系统要求
             - Windows 10 64位及以上
             - 最低 4GB 内存（推荐 8GB+）
-            - 1GB 可用磁盘空间
+            - 约 1.5GB 可用磁盘空间
 
             ### 内置组件
+            - 静默启动器（AraneaLauncher，无控制台）
             - 后端服务（Go + Kratos + trpc-agent-go）
-            - 前端桌面应用（Vue 3 + Quasar + Electron）
+            - 前端桌面应用（Vue 3 + Quasar + Electron，同源反代 API）
             - PostgreSQL 17 + pgvector
             - Redis 5

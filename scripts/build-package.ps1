@@ -96,7 +96,7 @@ $StagingDir = if ($stagingLocked) {
 $DepsTargetDir = Join-Path $BuildDir "deps"
 $OutDirFull = if ([System.IO.Path]::IsPathRooted($OutDir)) { $OutDir } else { Join-Path $RepoRoot $OutDir }
 
-# ─── Step 1: 编译后端 ─────────────────────────────────────────
+# ─── Step 1: 编译后端 + 静默启动器 ────────────────────────────
 if (-not $SkipBackend) {
     Write-Host "[1/6] Building backend (admin → aranea-server.exe)..." -ForegroundColor Cyan
 
@@ -110,8 +110,26 @@ if (-not $SkipBackend) {
         Write-Error "后端编译失败"
     }
     Write-Host "  [OK] aranea-server.exe built" -ForegroundColor Green
+
+    # -H windowsgui：双击无黑框控制台
+    $launcherLdflags = "-s -w -H windowsgui"
+    & go build -ldflags $launcherLdflags -o (Join-Path $BuildDir "AraneaLauncher.exe") ./cmd/launcher
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "启动器编译失败"
+    }
+    Write-Host "  [OK] AraneaLauncher.exe built (windowsgui)" -ForegroundColor Green
 } else {
     Write-Host "[1/6] Skipping backend build" -ForegroundColor Yellow
+    if (-not (Test-Path (Join-Path $BuildDir "AraneaLauncher.exe"))) {
+        Write-Host "  Building AraneaLauncher.exe (required for packaging)..." -ForegroundColor Yellow
+        $env:CGO_ENABLED = "0"
+        $env:GOOS = "windows"
+        $env:GOARCH = "amd64"
+        & go build -ldflags "-s -w -H windowsgui" -o (Join-Path $BuildDir "AraneaLauncher.exe") ./cmd/launcher
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "启动器编译失败"
+        }
+    }
 }
 
 # ─── Step 2: 编译前端 ──────────────────────────────────────────
@@ -207,9 +225,15 @@ if (Test-Path $StagingDir) {
 }
 New-Item -ItemType Directory -Force -Path $StagingDir | Out-Null
 
-# 复制后端二进制
+# 复制后端二进制 + 静默启动器
 Copy-Item (Join-Path $BuildDir "aranea-server.exe") (Join-Path $StagingDir "aranea-server.exe") -Force
 Write-Host "  [OK] aranea-server.exe" -ForegroundColor Green
+$launcherSrc = Join-Path $BuildDir "AraneaLauncher.exe"
+if (-not (Test-Path $launcherSrc)) {
+    Write-Error "缺少 AraneaLauncher.exe，请先编译 ./cmd/launcher"
+}
+Copy-Item $launcherSrc (Join-Path $StagingDir "AraneaLauncher.exe") -Force
+Write-Host "  [OK] AraneaLauncher.exe" -ForegroundColor Green
 
 # 复制 Electron 应用
 $electronAppDir = Join-Path $RepoRoot "web\build\electron\AraneaAgents-win32-x64"
@@ -333,22 +357,28 @@ $readmeContent = @"
 
 ## 快速开始
 
-1. 双击 start.bat 启动
-2. 首次启动自动初始化数据库（约 10 秒）
+1. 双击桌面「Aranea-Agents」快捷方式（或 AraneaLauncher.exe）
+2. 首次启动自动初始化数据库（约 10~30 秒，无黑框）
 3. 桌面应用自动打开
 4. 登录：admin / changeme
 
 ## 停止
 
-双击 stop.bat
+- 开始菜单「停止 Aranea-Agents」，或
+- `AraneaLauncher.exe -stop`，或
+- `stop.bat`
+
+## 调试
+
+若需查看控制台日志，使用开始菜单「启动（调试控制台）」或 `start.bat`。
+故障日志：`logs\launcher.log`、`logs\server.log`、`logs\postgres.log`
 
 ## 端口
 
 | 端口 | 服务 |
 |------|------|
-| 8000 | 后端 HTTP API |
+| 8000 | 后端 HTTP / WebSocket (`/v1/ws`) |
 | 9000 | gRPC |
-| 8002 | WebSocket |
 | 5433 | PostgreSQL（便携版） |
 | 6379 | Redis |
 

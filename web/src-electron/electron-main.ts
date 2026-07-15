@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu } from 'electron';
-import { createServer, type IncomingMessage, type ServerResponse } from 'http';
+import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from 'http';
 import { readFile, stat } from 'fs/promises';
+import net from 'net';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
@@ -9,6 +10,10 @@ import { fileURLToPath } from 'url';
 const platform = process.platform || os.platform();
 
 const currentDir = fileURLToPath(new URL('.', import.meta.url));
+
+/** Portable install backend (see installer staging config). */
+const BACKEND_HOST = '127.0.0.1';
+const BACKEND_PORT = 8000;
 
 // Remove the default application menu (File/Edit/View/Window/Help).
 Menu.setApplicationMenu(null);
@@ -36,9 +41,71 @@ const MIME_TYPES: Record<string, string> = {
   '.webp': 'image/webp',
 };
 
+function shouldProxy(urlPath: string): boolean {
+  return (
+    urlPath === '/healthz' ||
+    urlPath.startsWith('/v1/') ||
+    urlPath.startsWith('/api/') ||
+    urlPath.startsWith('/openapi')
+  );
+}
+
+function proxyHttp(req: IncomingMessage, res: ServerResponse) {
+  const headers = { ...req.headers, host: `${BACKEND_HOST}:${BACKEND_PORT}` };
+  const opts = {
+    hostname: BACKEND_HOST,
+    port: BACKEND_PORT,
+    path: req.url,
+    method: req.method,
+    headers,
+  };
+  const upstream = httpRequest(opts, (upRes) => {
+    res.writeHead(upRes.statusCode || 502, upRes.headers);
+    upRes.pipe(res);
+  });
+  upstream.on('error', () => {
+    if (!res.headersSent) {
+      res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
+    }
+    res.end('Backend unavailable. Start Aranea via desktop shortcut / AraneaLauncher.exe');
+  });
+  req.pipe(upstream);
+}
+
+function proxyUpgrade(req: IncomingMessage, socket: net.Socket, head: Buffer) {
+  const upstream = net.connect(BACKEND_PORT, BACKEND_HOST, () => {
+    const pathAndQuery = req.url || '/';
+    let payload = `GET ${pathAndQuery} HTTP/1.1\r\n`;
+    for (const [k, v] of Object.entries(req.headers)) {
+      if (v === undefined) continue;
+      if (Array.isArray(v)) {
+        for (const item of v) payload += `${k}: ${item}\r\n`;
+      } else {
+        payload += `${k}: ${v}\r\n`;
+      }
+    }
+    payload += '\r\n';
+    upstream.write(payload);
+    if (head.length) upstream.write(head);
+    socket.pipe(upstream);
+    upstream.pipe(socket);
+  });
+  upstream.on('error', () => {
+    socket.destroy();
+  });
+  socket.on('error', () => {
+    upstream.destroy();
+  });
+}
+
 async function serveStatic(rootDir: string, req: IncomingMessage, res: ServerResponse) {
   let urlPath = (req.url || '/').split('?')[0];
   urlPath = decodeURIComponent(urlPath);
+
+  if (shouldProxy(urlPath)) {
+    proxyHttp(req, res);
+    return;
+  }
 
   // Prevent path traversal
   if (urlPath.includes('..')) {
@@ -83,6 +150,14 @@ function startStaticServer(rootDir: string): Promise<number> {
         }
       });
     });
+    staticServer.on('upgrade', (req, socket, head) => {
+      const urlPath = (req.url || '').split('?')[0];
+      if (shouldProxy(urlPath) || urlPath.startsWith('/v1/ws')) {
+        proxyUpgrade(req, socket as net.Socket, head);
+        return;
+      }
+      socket.destroy();
+    });
     staticServer.listen(0, '127.0.0.1', () => {
       const addr = staticServer!.address();
       const port = typeof addr === 'object' && addr ? addr.port : 0;
@@ -114,11 +189,8 @@ async function createWindow() {
   if (process.env.DEV) {
     await mainWindow.loadURL(process.env.APP_URL);
   } else {
-    // Serve the app from a local HTTP server so the page origin is
-    // http://127.0.0.1:PORT/ — same-site as the backend at http://127.0.0.1:8000.
-    // This ensures SameSite=Lax session cookies are sent with XHR/fetch/WS requests.
-    // Using file:// makes the page cross-site, which blocks cookies and causes
-    // a 401 redirect loop (login → overview → 401 → login → ...).
+    // Local HTTP origin + reverse-proxy /v1|/api|/healthz|/v1/ws → backend :8000.
+    // Same-origin cookies work without cross-port CORS; login no longer 401-loops.
     const port = await startStaticServer(currentDir);
     await mainWindow.loadURL(`http://127.0.0.1:${port}/`);
   }
